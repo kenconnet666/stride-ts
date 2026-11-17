@@ -1,0 +1,22 @@
+{
+  "name": "stride-ts",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "native:sync": "pnpm --filter @stride-ts/native sync",
+    "dev": "pnpm native:sync && pnpm --filter @stride-ts/sandbox dev",
+    "build": "pnpm native:sync && pnpm --filter @stride-ts/sandbox build",
+    "typecheck": "pnpm native:sync && tsc -p .",
+    "test": "pnpm native:sync && vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@webgpu/types": "^0.1.74",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Machine-specific
+/.idea/
+/.claude/

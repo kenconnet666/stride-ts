@@ -1,0 +1,11 @@
+{
+  "name": "@stride-ts/engine",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@stride-ts/native": "workspace:*"
+  }
+}

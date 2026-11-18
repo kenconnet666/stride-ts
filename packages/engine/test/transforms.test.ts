@@ -74,6 +74,21 @@ describe('Transform', () => {
     expect(parent.require(Transform).world[12]).toBe(10);
   });
 
+  test('localMatrix、setLocalMatrix 在本地位置、旋转、缩放和矩阵之间来回换（Stride 的 LocalMatrix、Decompose）', () => {
+    const game = createGame();
+    const s = Math.SQRT1_2;
+    const entity = game.entities.create({ components: [Transform.with({ position: [1, 2, 3], rotation: [0, s, 0, s], scale: [2, 2, 2] })] });
+    const transform = entity.require(Transform);
+    const local = transform.localMatrix();
+    // 绕 Y 转 90° 再放大 2 倍：本地 +X 变成 -Z 方向、长 2
+    expect([local[0], local[2], local[12], local[13], local[14]].map((v) => +v!.toFixed(5) + 0)).toEqual([0, -2, 1, 2, 3]);
+    const other = game.entities.create({ components: [Transform.with({})] }).require(Transform);
+    other.setLocalMatrix(local);
+    expect([other.position.x, other.position.y, other.position.z, other.scale.y]).toEqual([1, 2, 3, 2]);
+    expect(other.rotation.y).toBeCloseTo(s, 6);
+    expect(other.rotation.w).toBeCloseTo(s, 6);
+  });
+
   test('销毁父实体时子孙实体一起销毁，槽位回收', () => {
     const game = createGame(4);
     const [a, b, c] = ['a', 'b', 'c'].map((name) => game.entities.create({ name, components: [Transform] }));

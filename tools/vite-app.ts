@@ -39,7 +39,7 @@ const brotli = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
 
 /** 构建完成后给 outDir 里的文件写 .br（最高质量）和 .gz（level 9）；压不小的跳过。 */
-export function precompress(): Plugin {
+function precompress(): Plugin {
   let outDir = '';
   return {
     name: 'stride-precompress',

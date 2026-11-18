@@ -13,6 +13,7 @@
 import type { TransformSlot, TransformStore } from '@stride-ts/native';
 import { prop, type DataValues, type EntityId } from '../data/prop';
 import { createSchema, type Column } from '../data/schema';
+import { Matrix, type Matrix4 } from '../mathematics/Matrix';
 import { ComponentType, type ExternalStorage } from './component';
 import type { Entity } from './Entity';
 import type { EntityManager } from './EntityManager';
@@ -47,6 +48,10 @@ export type TransformView = DataValues<TransformShape> & {
    * 脚本在那之前（比如第一帧的 start 里）要用世界位姿时先调用它。
    */
   updateWorldMatrix(): void;
+  /** 本地位置、旋转、缩放拼成的矩阵（Stride 的 LocalMatrix）；写进 out，没给时新建一个。 */
+  localMatrix(out?: Matrix4): Matrix4;
+  /** 把矩阵拆成本地位置、旋转、缩放（Stride 的 `matrix.Decompose(out Scale, out Rotation, out Position)`），只对没有切变的矩阵精确。 */
+  setLocalMatrix(matrix: Readonly<Matrix4>): void;
 };
 
 /** 一个变换存储在 TS 这边的记录：槽位属于哪个实体、每个槽位有哪些子槽位。 */
@@ -151,6 +156,23 @@ const external: ExternalStorage = {
       },
       updateWorldMatrix: {
         value: () => stateOf(manager).store.updateSlot(slotOf(manager, entity)),
+      },
+      localMatrix: {
+        value: (out: Matrix4 = new Float32Array(16)) => {
+          const { store } = stateOf(manager);
+          const slot = slotOf(manager, entity);
+          return Matrix.compose(out, store.position.subarray(slot * 3, slot * 3 + 3), store.rotation.subarray(slot * 4, slot * 4 + 4), store.scale.subarray(slot * 3, slot * 3 + 3));
+        },
+      },
+      setLocalMatrix: {
+        value: (matrix: Readonly<Matrix4>) => {
+          const { store } = stateOf(manager);
+          const slot = slotOf(manager, entity);
+          const { translation, rotation, scale } = Matrix.decompose(matrix);
+          store.position.set(translation, slot * 3);
+          store.rotation.set(rotation, slot * 4);
+          store.scale.set(scale, slot * 3);
+        },
       },
     });
   },

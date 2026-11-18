@@ -7,7 +7,8 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
 $all = Get-ChildItem apps -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'scripts\smoke.ts') } | ForEach-Object Name
-$selected = $Apps ? $Apps : $all
+# pwsh -File 把 `-Apps a,b` 当成一个字符串传进来，自己按逗号拆
+$selected = $Apps ? ($Apps -split ',' | ForEach-Object Trim) : $all
 $results = foreach ($app in $selected) {
     $port = [int]([regex]::Match((Get-Content -Raw "apps\$app\vite.config.ts"), 'strideApp\((\d+)').Groups[1].Value)
     $server = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "Set-Location apps\$app; pnpm dev --force --strictPort" -PassThru -WindowStyle Hidden

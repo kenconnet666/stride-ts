@@ -82,7 +82,7 @@ export function writeBrowser(record: BrowserRecord | undefined): void {
   writeFileSync(BROWSER_FILE, JSON.stringify(record, null, 2));
 }
 
-export function isAlive(pid: number): boolean {
+function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

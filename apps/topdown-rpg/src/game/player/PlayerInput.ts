@@ -55,9 +55,6 @@ export class PlayerInput extends SyncScript.props({
     const settings = { mesh: model.mesh, material: this.highlightMaterial.id, isShadowCaster: false };
     if (highlight.get(Model)) Object.assign(highlight.require(Model), settings);
     else highlight.add(Model.with(settings));
-    const { translation, rotation, scale } = Matrix.decompose(target.require(Transform).world);
-    [transform.position.x, transform.position.y, transform.position.z] = translation;
-    [transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w] = rotation;
-    [transform.scale.x, transform.scale.y, transform.scale.z] = scale;
+    transform.setLocalMatrix(target.require(Transform).world);
   }
 }

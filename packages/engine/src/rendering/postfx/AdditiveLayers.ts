@@ -16,7 +16,7 @@ export interface AdditiveLayer {
   readonly color?: readonly [number, number, number, number];
 }
 
-export const MAX_ADDITIVE_LAYERS = 3;
+const MAX_ADDITIVE_LAYERS = 3;
 
 /** 着色器里的各层：从 firstBinding 起是参数、MAX_ADDITIVE_LAYERS 张纹理、采样器；additiveLayers(uv) 是要加上的颜色。 */
 export const additiveLayersShader = (firstBinding: number) => /* wgsl */ `

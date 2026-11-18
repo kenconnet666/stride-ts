@@ -80,3 +80,32 @@ export function asObject(value: StrideValue | undefined): StrideObject | undefin
 export function asNumber(value: StrideValue | undefined, fallback: number): number {
   return typeof value === 'number' ? value : fallback;
 }
+
+const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+
+export function vec3(value: StrideValue | undefined, fallback: number, whole?: [number, number, number]): [number, number, number] {
+  const v = asObject(value);
+  if (!v && whole) return whole;
+  return [asNumber(v?.['X'], fallback), asNumber(v?.['Y'], fallback), asNumber(v?.['Z'], fallback)];
+}
+
+export function color4(value: StrideValue | undefined): [number, number, number, number] {
+  const c = asObject(value) ?? {};
+  return [asNumber(c['R'], 1), asNumber(c['G'], 1), asNumber(c['B'], 1), asNumber(c['A'], 1)];
+}
+
+export function vec2(value: StrideValue | undefined, fallback: number): [number, number] {
+  const v = asObject(value) ?? {};
+  return [asNumber(v['X'], fallback), asNumber(v['Y'], fallback)];
+}
+
+export function quaternion(value: StrideValue | undefined): [number, number, number, number] {
+  const q = asObject(value) ?? {};
+  return [asNumber(q['X'], 0), asNumber(q['Y'], 0), asNumber(q['Z'], 0), asNumber(q['W'], 1)];
+}
+
+/** Stride 的颜色值是 sRGB：转成线性。 */
+export function linearColor(value: StrideValue | undefined): [number, number, number, number] {
+  const c = asObject(value) ?? {};
+  return [srgbToLinear(asNumber(c['R'], 1)), srgbToLinear(asNumber(c['G'], 1)), srgbToLinear(asNumber(c['B'], 1)), asNumber(c['A'], 1)];
+}

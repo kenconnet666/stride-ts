@@ -12,7 +12,7 @@ const REFERENCE_SHADOW_SIZE = 1024;
 const SIZE_INDEX: Readonly<Record<ShadowMapSize, number>> = { xsmall: 0, small: 1, medium: 2, large: 3, xlarge: 4 };
 const ATLAS_SIZE = REFERENCE_SHADOW_SIZE * 2 ** (SIZE_INDEX.xlarge - 3) * 2;
 const FILTER_SIZES: Readonly<Record<ShadowMapFilter, number>> = { none: 0, pcf3x3: 3, pcf5x5: 5, pcf7x7: 7 };
-export const SHADOW_ATLAS_FORMAT: GPUTextureFormat = 'depth32float';
+const SHADOW_ATLAS_FORMAT: GPUTextureFormat = 'depth32float';
 /** Stride 的 MathUtil.ZeroTolerance。 */
 const ZERO_TOLERANCE = 1e-6;
 

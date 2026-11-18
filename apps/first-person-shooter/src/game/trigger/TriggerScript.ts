@@ -29,14 +29,9 @@ export abstract class TriggerScript extends AsyncScript.props({
     const entities = event.sourcePrefab.instantiate(this.game.entities);
     for (const entity of entities) {
       const transform = entity.require(Transform);
-      const own = Matrix.compose(Matrix.identity(), [transform.position.x, transform.position.y, transform.position.z],
-        [transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w], [transform.scale.x, transform.scale.y, transform.scale.z]);
       // Stride 的 own * local * matrix（行向量），列向量里反过来乘
-      const placed = Matrix.multiply(own, matrix, Matrix.multiply(own, local, own));
-      const { translation, rotation, scale } = Matrix.decompose(placed);
-      [transform.position.x, transform.position.y, transform.position.z] = translation;
-      [transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w] = rotation;
-      [transform.scale.x, transform.scale.y, transform.scale.z] = scale;
+      const own = transform.localMatrix();
+      transform.setLocalMatrix(Matrix.multiply(own, matrix, Matrix.multiply(own, local, own)));
       if (attach) transform.parent = attach;
     }
     void this.delay(event.duration).then(() => {

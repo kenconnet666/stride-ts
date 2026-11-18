@@ -200,7 +200,7 @@ function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): Mod
 }
 
 /** 权重量化成 0..255，四舍五入后差的补到最大的那个上，和仍是 255。 */
-export function quantizeWeights(weights: ArrayLike<number>): number[] {
+function quantizeWeights(weights: ArrayLike<number>): number[] {
   const quantized = Array.from(weights, (w) => Math.round(Math.min(1, Math.max(0, w)) * 255));
   const total = quantized.reduce((sum, w) => sum + w, 0);
   if (total > 0 && total !== 255) {

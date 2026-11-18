@@ -29,7 +29,7 @@ const BATCH_MS = 60;
 const BATCHES = 7;
 
 /** 把 run.iterate() 分批计时，每批足够长、超过计时器精度，报告中位数那一批。 */
-export async function measure(run: Run): Promise<number> {
+async function measure(run: Run): Promise<number> {
   let iterations = 0;
   const warmupEnd = performance.now() + WARMUP_MS;
   while (performance.now() < warmupEnd) {

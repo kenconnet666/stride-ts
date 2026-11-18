@@ -11,12 +11,8 @@ const LOOT_CRATE_LAYER = 7;
 function place(entities: readonly Entity[], attach: Entity | undefined, matrix: Readonly<Matrix4>): void {
   for (const entity of entities) {
     const transform = entity.require(Transform);
-    const local = Matrix.compose(Matrix.identity(), [transform.position.x, transform.position.y, transform.position.z],
-      [transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w], [transform.scale.x, transform.scale.y, transform.scale.z]);
-    const { translation, rotation, scale } = Matrix.decompose(Matrix.multiply(local, matrix, local));
-    [transform.position.x, transform.position.y, transform.position.z] = translation;
-    [transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w] = rotation;
-    [transform.scale.x, transform.scale.y, transform.scale.z] = scale;
+    const local = transform.localMatrix();
+    transform.setLocalMatrix(Matrix.multiply(local, matrix, local));
     if (attach) transform.parent = attach;
   }
 }

@@ -10,7 +10,6 @@ import { FULLSCREEN_VERTEX } from '../fullscreen';
 import type { GaussianBlur } from './GaussianBlur';
 import type { ImageScaler } from './ImageScaler';
 
-export { FULLSCREEN_VERTEX };
 
 /** 一帧的后处理里各效果共用的东西（PostProcessingEffects 每帧给一份）。 */
 export interface ImageEffectContext {
@@ -102,7 +101,7 @@ export class UniformArena {
 
 /** 纹理的默认视图，每张纹理只建一次。 */
 const views = new WeakMap<GPUTexture, GPUTextureView>();
-export function viewOf(texture: GPUTexture): GPUTextureView {
+function viewOf(texture: GPUTexture): GPUTextureView {
   let view = views.get(texture);
   if (!view) views.set(texture, (view = texture.createView()));
   return view;

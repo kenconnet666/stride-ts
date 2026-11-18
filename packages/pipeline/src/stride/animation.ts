@@ -251,7 +251,7 @@ function sample(keys: readonly (readonly number[])[] | undefined, time: number, 
 const REPEAT_MODES: Readonly<Record<string, AnimationRepeatMode>> = { PlayOnce: 'playOnce', LoopInfinite: 'loopInfinite', PlayOnceHold: 'playOnceHold' };
 
 /** Stride 的 TimeSpan 写法（"d:hh:mm:ss.fffffff" 或 "hh:mm:ss.fffffff"）换成秒。 */
-export function timeSpanSeconds(value: unknown): number {
+function timeSpanSeconds(value: unknown): number {
   if (typeof value === 'number') return value;
   if (typeof value !== 'string') return 0;
   const parts = value.split(':').map(Number);

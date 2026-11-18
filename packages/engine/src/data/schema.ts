@@ -85,7 +85,7 @@ export function createSchema(shape: Shape, numberKind: 'number' | 'f32', reserve
 }
 
 /** 报错文字：`Health.max is below…` 这类以 is 开头的直接接在路径后面，其余用冒号隔开。 */
-export function describeIssue(owner: string, issue: Issue): string {
+function describeIssue(owner: string, issue: Issue): string {
   const where = [owner, ...issue.path].join('.');
   return issue.message.startsWith('is ') ? `${where} ${issue.message}` : `${where}: ${issue.message}`;
 }

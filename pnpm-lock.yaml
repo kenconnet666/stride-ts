@@ -37,9 +37,6 @@ importers:
       '@stride-ts/engine':
         specifier: workspace:*
         version: link:../../packages/engine
-      '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.21.1/stride-ts-native-0.21.1.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.21.1/stride-ts-native-0.21.1.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8

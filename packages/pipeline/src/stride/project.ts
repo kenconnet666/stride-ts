@@ -95,3 +95,13 @@ export function importTransform(asset: AssetEntry): { pivot: [number, number, nu
     scale: asNumber(asset.data['ScaleImport'], 1),
   };
 }
+
+/** 同一个资源只导入一次：缓存导入的 Promise，结果是资源的内容路径。 */
+export function once(cache: Map<string, Promise<string>>, asset: AssetEntry, importAsset: () => Promise<void>): Promise<string> {
+  let pending = cache.get(asset.path);
+  if (!pending) {
+    pending = importAsset().then(() => asset.path);
+    cache.set(asset.path, pending);
+  }
+  return pending;
+}

@@ -94,6 +94,39 @@ describe('热重载', () => {
     expect(updated.x).toBe(4 + 4 * 3);
   });
 
+  test('有私有成员（#x）的脚本换新版本时重建：按当前的属性值挂新实例、重新 start，不会因为换原型而抛错', () => {
+    const counter = () => {
+      class Counter extends SyncScript.props({ step: 1 }) {
+        #count = 0;
+        started = 0;
+        override start(): void {
+          this.started++;
+        }
+        override update(): void {
+          this.#count += this.step;
+        }
+        get count(): number {
+          return this.#count;
+        }
+      }
+      return { Counter };
+    };
+    const game = new Game();
+    const v1 = counter();
+    game.registry.registerModules({ [PATH]: v1 });
+    const entity = game.entities.create({ components: [v1.Counter.with({ step: 5 })] });
+    frame(game);
+    expect(entity.require(v1.Counter).count).toBe(5);
+
+    // 源码没变、只是模块重新执行了（比如改了引擎的模块），类也是新的
+    const v2 = counter();
+    game.hotUpdate({ [PATH]: v2 });
+    frame(game);
+    const rebuilt = entity.require(v2.Counter);
+    expect(rebuilt).not.toBe(undefined);
+    expect([rebuilt.step, rebuilt.started, rebuilt.count]).toEqual([5, 1, 5]);
+  });
+
   test('没改的模块跳过；种类变了要整页刷新', () => {
     const registry = new Registry();
     const v1 = unitsV1();

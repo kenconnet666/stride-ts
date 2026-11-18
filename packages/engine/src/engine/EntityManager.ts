@@ -391,12 +391,23 @@ export class EntityManager {
     this.#systems = this.#systems.with(index, next);
   }
 
+  /**
+   * 换成新版本的脚本类。一般是换原型，状态全部保留；但新版本的类（到和旧实例共有的祖先为止）有私有成员（#x）时不能换：
+   * 私有成员只属于跑过那个构造函数的对象，换了原型的旧对象一访问就抛 TypeError。这时重建脚本：按当前的属性值挂一个新实例，
+   * start() 重新跑，其余运行时状态丢掉。改了引擎的模块时，Vite 会连带重新执行游戏模块，没改过的脚本也会走到这里。
+   */
   #replaceScript(previous: ScriptConstructor, next: ScriptConstructor): void {
     // 类体里的字段初始化只在构造时跑：新加的字段从一个新实例上取
     let template: Record<string, unknown> | undefined;
     for (const entity of this.#objects) {
       const script = entity?.scripts.get(previous);
       if (!entity || !script) continue;
+      if (hasNewPrivateMembers(script, next)) {
+        const values = this.#propValues(script as unknown as Record<string, unknown>, next);
+        this.#detach(entity, script);
+        this.#attach(entity, { script: next, init: values });
+        continue;
+      }
       entity.scripts.delete(previous);
       entity.scripts.set(next, script);
       Object.setPrototypeOf(script, next.prototype);
@@ -408,14 +419,20 @@ export class EntityManager {
     this.defaults.migrate(previous, next);
   }
 
-  /** 脚本属性按新 schema 重新赋值：已有的值保留（字段改名认 renamedFrom），新属性取默认值；stat 属性不动。 */
-  #reassignProps(script: Record<string, unknown>, next: ScriptConstructor): void {
-    const fields = next.schema.fields.filter((f) => !f.options.stat);
+  /** 旧实例上按新 schema 还能用的属性值（字段改名认 renamedFrom）；stat 属性不算。 */
+  #propValues(script: Record<string, unknown>, next: ScriptConstructor): Record<string, unknown> {
     const values: Record<string, unknown> = {};
-    for (const { name, options } of fields) {
+    for (const { name, options } of next.schema.fields.filter((f) => !f.options.stat)) {
       if (Object.hasOwn(script, name)) values[name] = script[name];
       else if (options.renamedFrom !== undefined && Object.hasOwn(script, options.renamedFrom)) values[name] = script[options.renamedFrom];
     }
+    return values;
+  }
+
+  /** 脚本属性按新 schema 重新赋值：已有的值保留（字段改名认 renamedFrom），新属性取默认值；stat 属性不动。 */
+  #reassignProps(script: Record<string, unknown>, next: ScriptConstructor): void {
+    const fields = next.schema.fields.filter((f) => !f.options.stat);
+    const values = this.#propValues(script, next);
     const assigned: Record<string, unknown> = {};
     try {
       next.schema.assign(assigned, values, this.defaults.arrayFor(next));
@@ -731,6 +748,18 @@ export class EntityManager {
   #assertNotIterating(what: string): void {
     if (this.#iterating) throw new Error(`cannot ${what} while a system iterates; record it in the system's commands`);
   }
+}
+
+/**
+ * 新版本的类（从 next 往上，直到旧实例构造时就有的祖先为止）有没有私有成员。看类的源码里有没有 `#名字`：
+ * 字符串里的 # 会误判，那样只是多重建一次，不会出错。
+ */
+function hasNewPrivateMembers(instance: object, next: ScriptConstructor): boolean {
+  for (let type: unknown = next; typeof type === 'function' && type !== Function.prototype; type = Object.getPrototypeOf(type)) {
+    if (instance instanceof (type as abstract new () => unknown)) return false;
+    if (/#[A-Za-z_$]/.test(Function.prototype.toString.call(type))) return true;
+  }
+  return false;
 }
 
 function splitArgs(args: readonly EntityArg[]): { components: ComponentInit<any>[]; scripts: ScriptInit<any>[] } {

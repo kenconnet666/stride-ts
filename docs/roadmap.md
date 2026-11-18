@@ -291,7 +291,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    - P2 补：UI 页面的 Idle、Run 按钮（现在用 `stride call idle`、`run` 代替）。遗留：画进渲染目标贴图的相机不用阴影、不做后处理；精灵没有 Swizzle、sprite sheet、billboard 的 Z 旋转。
 4. **PhysicsSample**（进行中，Bepu 版，`apps/physics-sample`，端口 5188；三个场景，`?scene=PhysicsSample/VolumeTrigger` 这样选）：
    - 已做：Body 组件（Stride 的 BodyComponent）和 `simulation.body(entity)`（运动学切换、唤醒、瞬移、速度、冲量、重力），凸包碰撞体（HullAsset，不分解），程序模型（Cube、Plane、Sphere、GeoSphere、Capsule，照 Stride 4.4.2 生成），`screenToWorldRaySegment`，导入器一次导入多个场景；原生 0.11.0（凸包、物体控制接口）。Raycasting 场景能玩（点箱子往上推）。
-   - 接着做：触发器和接触事件（VolumeTrigger：BepuTrigger、ContactEventHandler、Trigger、AutoResetRigidbody、Player 脚本）；约束（Constraints：球窝、铰链、齿轮马达、点在线上加线性限位、摆动和扭转限位、焊接，照 Bepu 的语义映射到 Jolt）；材质的镜面贴图、标量贴图、二值颜色的自发光；脚本属性引用场景（NextSceneScript 切场景）和实体销毁时移除物体；和桌面 Stride 比对、冒烟脚本。
+   - 做了（第二步）：触发器和接触事件（`TriggerHandler`、`simulation.setContactHandler`，按一对物体报开始、结束，睡着时接触还在，同 Bepu），实体销毁时移除物体，`Transform.updateWorldMatrix()`，YAML 的覆盖标记 `*` 去掉；原生 0.12.1（传感器、接触事件、移除物体、单个槽位的世界矩阵）。VolumeTrigger 场景能玩（角色走进触发器，箱子落下，走出来复位）；冒烟脚本 `pnpm --filter @stride-ts/physics-sample smoke` 覆盖 Raycasting 和 VolumeTrigger。
+   - 接着做：约束（Constraints：球窝、铰链、齿轮马达、点在线上加线性限位、摆动和扭转限位、焊接，照 Bepu 的语义映射到 Jolt）；材质的镜面贴图、标量贴图、二值颜色的自发光；脚本属性引用场景（NextSceneScript 切场景）和实体销毁时移除物体；和桌面 Stride 比对、冒烟脚本。
    - P2 补：各场景的 UI 文字和按钮。
 5. 之后按第三节的 P1 游戏顺序：BepuSample → Platformer2D → TopDownRPG → FirstPersonShooter。
 

@@ -3,9 +3,10 @@
  * 插值的物体渲染两步之间的位姿。Game 在"物理前"和"物理后"两组系统之间调用 update：
  *   新出现的 Static、Body、Character 建成物体 → 角色的移动输入交给原生 → 步进 → 插值 → 写回角色的 grounded。
  * 设置（重力、阻尼、步长）在建第一个物体之前改，之后只有步长和每帧步数还能改。
- * 动态刚体（Body）建好以后用 `body(entity)` 控制（Stride 的 BodyComponent 的属性和方法）。
+ * 动态刚体（Body）建好以后用 `body(entity)` 控制（Stride 的 BodyComponent 的属性和方法）。接触事件见 contacts.ts：
+ * 每一步之后把原生的事件交给两边的处理器。实体销毁（或去掉物理组件）时移除物体。
  *
- * 还没做：实体销毁时移除物体（原生侧还没有移除接口）、触发器、接触事件、约束。
+ * 还没做：约束。
  */
 import type { BodyDesc, BodyId, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore } from '@stride-ts/native';
 import { PhysicsHit } from '@stride-ts/native';
@@ -18,6 +19,7 @@ import type { GameTime } from '../games/GameTime';
 import type { Entity } from '../engine/Entity';
 import { Vector3, type QuatLike, type Vec3Like } from '../mathematics/vectors';
 import { Collider, hullPoints, triangleSoup, type ColliderShape } from './Collider';
+import { TriggerHandler, type ContactHandler } from './contacts';
 import { Body, Character, PhysicsBody, Static } from './components';
 
 type Vec3 = readonly [number, number, number];
@@ -62,6 +64,8 @@ export class Simulation {
   readonly #hulls = new Map<string, PhysicsHull>();
   /** body(entity) 给出的控制对象，按物体编号。 */
   readonly #controls = new Map<BodyId, BodyControl>();
+  /** 接触处理器，按物体编号。 */
+  readonly #handlers = new Map<BodyId, ContactHandler>();
   readonly #hit = new PhysicsHit();
 
   readonly #createStatics = system('Simulation.createStatics', {
@@ -74,8 +78,10 @@ export class Simulation {
         transform: transform.slot[i]! as TransformSlot,
         layer: body.layer[i]!,
         friction: body.friction[i]!,
+        sensor: body.trigger[i] !== 0,
+        contactEvents: body.trigger[i] !== 0,
       }));
-      this.#addBodies(descs, entities, count, commands);
+      this.#addBodies(descs, entities, count, commands, Array.from({ length: count }, (_, i) => body.trigger[i] !== 0));
     },
   });
 
@@ -92,8 +98,10 @@ export class Simulation {
         interpolated: b.interpolated[i] !== 0,
         gravity: b.gravity[i] !== 0,
         neverSleep: b.sleepThreshold[i]! < 0,
+        sensor: b.trigger[i] !== 0,
+        contactEvents: b.trigger[i] !== 0,
       }));
-      this.#addBodies(descs, entities, count, commands);
+      this.#addBodies(descs, entities, count, commands, Array.from({ length: count }, (_, i) => b.trigger[i] !== 0));
     },
   });
 
@@ -142,6 +150,19 @@ export class Simulation {
     },
   });
 
+  /** 实体销毁或去掉物理组件时移除物体（加进 EntityManager：只用它的 removed 回调）。 */
+  readonly #removeBodies = system('Simulation.removeBodies', {
+    with: { physics: PhysicsBody },
+    update: () => {},
+    removed: (entity) => {
+      const body = this.#entities.entity(entity).require(PhysicsBody).body as BodyId;
+      this.#world?.removeBodies([body]);
+      this.#handlers.delete(body);
+      this.#controls.delete(body);
+      delete this.#bodyEntities[body];
+    },
+  });
+
   readonly #readGrounded = system('Simulation.readGrounded', {
     with: { character: Character, physics: PhysicsBody },
     writes: [Character],
@@ -155,6 +176,7 @@ export class Simulation {
     this.#transforms = transforms;
     this.#entities = entities;
     this.#maxBodies = maxBodies;
+    entities.addSystems(this.#removeBodies);
   }
 
   /** 改设置；重力、阻尼和碰撞矩阵要在建第一个物体之前改。 */
@@ -176,6 +198,7 @@ export class Simulation {
     for (let steps = 0; this.#remaining >= step && steps < maxStepsPerFrame; steps++) {
       this.#world.step(step);
       this.#remaining -= step;
+      this.#dispatchContacts();
     }
     this.#world.interpolate(this.#remaining / step);
     entities.run(this.#readGrounded, time);
@@ -188,11 +211,28 @@ export class Simulation {
   body(entity: Entity | EntityId): BodyControl {
     const id = typeof entity === 'number' ? entity : entity.id;
     if (!this.#entities.hasComponent(id, Body)) throw new Error(`entity ${id} has no Body component`);
-    if (!this.#entities.hasComponent(id, PhysicsBody)) this.#createPending(this.#entities.game.updateTime);
-    const body = this.#entities.entity(id).require(PhysicsBody).body as BodyId;
+    const body = this.#bodyOf(id);
     let control = this.#controls.get(body);
     if (!control) this.#controls.set(body, (control = new BodyControl(this.#world!, body, this.#entities, id)));
     return control;
+  }
+
+  /** 碰撞体的接触处理器（场景里 ContactEventHandler 是 Trigger 的是 TriggerHandler）；没有时是 undefined。 */
+  contactHandler(entity: Entity | EntityId): ContactHandler | undefined {
+    return this.#handlers.get(this.#bodyOf(entity));
+  }
+
+  /**
+   * 设碰撞体的接触处理器（Stride 的 ContactEventHandler），undefined 取消。handler.noContactResponse 为真时物体变成只检测、
+   * 不挡东西。物体还没建时先建好。
+   */
+  setContactHandler(entity: Entity | EntityId, handler: ContactHandler | undefined): void {
+    const body = this.#bodyOf(entity);
+    const world = this.#world!;
+    world.setContactEvents(body, handler !== undefined);
+    world.setSensor(body, handler?.noContactResponse === true);
+    if (handler) this.#handlers.set(body, handler);
+    else this.#handlers.delete(body);
   }
 
   /** 射线（Stride 的 RayCast）：mask 的第 n 位为 1 表示层 n 的物体参与。没命中时返回 undefined。 */
@@ -229,12 +269,35 @@ export class Simulation {
     }));
   }
 
-  #addBodies(descs: BodyDesc[], entities: ArrayLike<EntityId>, count: number, commands: Commands): void {
+  /** 建好物体，记下编号对应的实体；triggers[i] 为真的带一个 TriggerHandler。 */
+  #addBodies(descs: BodyDesc[], entities: ArrayLike<EntityId>, count: number, commands: Commands, triggers?: readonly boolean[]): void {
     if (count === 0) return;
     const bodies = this.#worldOrCreate().addBodies(descs);
     for (let i = 0; i < count; i++) {
       this.#bodyEntities[bodies[i]!] = entities[i]!;
+      if (triggers?.[i]) this.#handlers.set(bodies[i]!, new TriggerHandler());
       commands.add(entities[i]!, PhysicsBody.with({ body: bodies[i]! }));
+    }
+  }
+
+  /** 实体的物体编号；物体还没建时先建好。实体没有物理组件时报错。 */
+  #bodyOf(entity: Entity | EntityId): BodyId {
+    const id = typeof entity === 'number' ? entity : entity.id;
+    if (!this.#entities.hasComponent(id, PhysicsBody)) this.#createPending(this.#entities.game.updateTime);
+    if (!this.#entities.hasComponent(id, PhysicsBody)) throw new Error(`entity ${id} has no Static, Body or Character component`);
+    return this.#entities.entity(id).require(PhysicsBody).body as BodyId;
+  }
+
+  /** 一步的接触事件交给两边的处理器（原生只报一次：设了事件的一方在前）。 */
+  #dispatchContacts(): void {
+    for (const { type, self, other } of this.#world!.contactEvents()) {
+      const a = this.#bodyEntities[self], b = this.#bodyEntities[other];
+      if (a === undefined || b === undefined) continue;
+      for (const [body, entity, otherEntity] of [[self, a, b], [other, b, a]] as const) {
+        const handler = this.#handlers.get(body);
+        if (type === 'started') handler?.onStartedTouching?.({ entity, other: otherEntity });
+        else handler?.onStoppedTouching?.({ entity, other: otherEntity });
+      }
     }
   }
 

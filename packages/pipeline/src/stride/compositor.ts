@@ -20,9 +20,9 @@ export interface ImportedCompositor {
 export type RenderTextureResolver = (assetId: string) => SceneRenderTexture | undefined;
 
 export function importCompositor(compositor: StrideObject | undefined, renderTexture: RenderTextureResolver = () => undefined): ImportedCompositor {
-  const slotIds = Object.values(asObject(field(compositor, 'Cameras')) ?? {}).map((slot) => asObject(slot)?.['Id']);
+  const slotIds = Object.values(asObject(compositor?.['Cameras']) ?? {}).map((slot) => asObject(slot)?.['Id']);
   const cameraSlots = new Map(slotIds.flatMap((id, index) => (typeof id === 'string' ? [[id, index] as const] : [])));
-  const shared = new Map(Object.values(asObject(field(compositor, 'SharedRenderers')) ?? {})
+  const shared = new Map(Object.values(asObject(compositor?.['SharedRenderers']) ?? {})
     .flatMap((renderer) => {
       const object = asObject(renderer);
       return typeof object?.['Id'] === 'string' ? [[object['Id'], object] as const] : [];
@@ -34,10 +34,10 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
     return reference ? shared.get(reference) : object;
   };
   const mainSlot = slotIds[0];
-  const camera = findRenderer(resolve(field(compositor, 'Game')), resolve, (node) =>
-    node.$type?.startsWith('Stride.Rendering.Compositing.SceneCameraRenderer') === true && parseObjectReference(field(node, 'Camera')) === mainSlot);
-  const forward = camera && findRenderer(resolve(field(camera, 'Child')), resolve, isForward);
-  const textureCameras = textureCamerasOf(resolve(field(compositor, 'Game')), resolve, cameraSlots, renderTexture);
+  const camera = findRenderer(resolve(compositor?.['Game']), resolve, (node) =>
+    node.$type?.startsWith('Stride.Rendering.Compositing.SceneCameraRenderer') === true && parseObjectReference(node['Camera']) === mainSlot);
+  const forward = camera && findRenderer(resolve(camera['Child']), resolve, isForward);
+  const textureCameras = textureCamerasOf(resolve(compositor?.['Game']), resolve, cameraSlots, renderTexture);
   const main = forward && { ...forwardSettings(forward), ...(textureCameras.length > 0 ? { textureCameras } : {}) };
   return { cameraSlots, main };
 }
@@ -53,25 +53,25 @@ function textureCamerasOf(
 ): SceneTextureCamera[] {
   if (!node) return [];
   if (node.$type?.startsWith('Stride.Rendering.Compositing.SceneCameraRenderer')) {
-    const child = resolve(field(node, 'Child'));
-    const slot = cameraSlots.get(parseObjectReference(field(node, 'Camera')) ?? '');
+    const child = resolve(node['Child']);
+    const slot = cameraSlots.get(parseObjectReference(node['Camera']) ?? '');
     if (child?.$type?.startsWith('Stride.Rendering.Compositing.RenderTextureSceneRenderer') && slot !== undefined) {
-      const texture = renderTexture(parseAssetReference(field(child, 'RenderTexture'))?.id ?? '');
-      const forward = findRenderer(resolve(field(child, 'Child')), resolve, isForward);
+      const texture = renderTexture(parseAssetReference(child['RenderTexture'])?.id ?? '');
+      const forward = findRenderer(resolve(child['Child']), resolve, isForward);
       return texture && forward ? [{ cameraSlot: slot, texture, ...forwardSettings(forward) }] : [];
     }
     return [];
   }
-  return Object.values(asObject(field(node, 'Children')) ?? {}).flatMap((child) => textureCamerasOf(resolve(child), resolve, cameraSlots, renderTexture));
+  return Object.values(asObject(node['Children']) ?? {}).flatMap((child) => textureCamerasOf(resolve(child), resolve, cameraSlots, renderTexture));
 }
 
 function forwardSettings(forward: StrideObject): SceneForwardRenderer {
-  const color = asObject(asObject(field(forward, 'Clear'))?.['Color']);
+  const color = asObject(asObject(forward['Clear'])?.['Color']);
   return {
     // Stride 清屏时把颜色从 sRGB 换到线性空间（ClearRenderer 的 ToColorSpace）
     clearColor: [srgbToLinear(asNumber(color?.['R'], 0.4)), srgbToLinear(asNumber(color?.['G'], 0.4)), srgbToLinear(asNumber(color?.['B'], 0.4)), asNumber(color?.['A'], 1)],
-    postEffects: field(forward, 'PostEffects') !== null,
-    transparent: field(forward, 'TransparentRenderStage') !== null,
+    postEffects: forward['PostEffects'] !== null,
+    transparent: forward['TransparentRenderStage'] !== null,
   };
 }
 
@@ -80,18 +80,12 @@ function findRenderer(node: StrideObject | undefined, resolve: (node: StrideValu
   if (!node) return undefined;
   if (match(node)) return node;
   if (node.$type?.startsWith('Stride.Rendering.Compositing.RenderTextureSceneRenderer')) return undefined;
-  const children = [field(node, 'Child'), ...Object.values(asObject(field(node, 'Children')) ?? {})];
+  const children = [node['Child'], ...Object.values(asObject(node['Children']) ?? {})];
   for (const child of children) {
     const found = findRenderer(resolve(child), resolve, match);
     if (found) return found;
   }
   return undefined;
-}
-
-/** 取字段；派生资源里改过的字段名后面带 *（Stride 的覆盖标记）。 */
-function field(object: StrideObject | undefined, name: string): StrideValue | undefined {
-  if (!object) return undefined;
-  return name in object ? object[name] : object[`${name}*`];
 }
 
 const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);

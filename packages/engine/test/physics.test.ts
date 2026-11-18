@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { Body, Character, Collider, Game, hullPoints, Mesh, Quaternion, Simulation, Static, Transform, Vector3, type Entity } from '../src/index';
+import { Body, Character, Collider, Game, hullPoints, Mesh, Quaternion, Simulation, Static, Transform, TriggerHandler, Vector3, type Entity } from '../src/index';
 
 let native: StrideNative;
 
@@ -153,5 +153,33 @@ describe('Body（Stride 的 BodyComponent）', () => {
     expect([...xs].sort()).toEqual([-0.5, 0.5]);
     expect([...ys].sort()).toEqual([4.5, 5.5]);
     expect([...zs].sort((a, b) => a - b)).toEqual([-1, 1]);
+  });
+});
+
+describe('接触事件和移除（Stride 的 IContactHandler、Trigger）', () => {
+  test('Trigger 的碰撞体带 TriggerHandler，物体进出时通知；脚本设的处理器两边都收到；实体销毁时移除物体', () => {
+    const game = createGame();
+    const box = (size: [number, number, number]) => new Collider([{ type: 'box', size }]).id;
+    const ground = game.entities.create({ components: [Transform.with({ position: [0, -0.5, 0] }), Static.with({ collider: box([20, 1, 20]) })] });
+    const zone = game.entities.create({ components: [Transform.with({ position: [0, 3, 0] }), Static.with({ collider: box([4, 2, 4]), trigger: true })] });
+    const crate = game.entities.create({ components: [Transform.with({ position: [0, 8, 0] }), Body.with({ collider: box([1, 1, 1]) })] });
+
+    const trigger = game.simulation.contactHandler(zone);
+    expect(trigger).toBeInstanceOf(TriggerHandler);
+    const log: string[] = [];
+    (trigger as TriggerHandler).onEnter(({ entity, other }) => log.push(`enter ${entity === zone.id} ${other === crate.id}`));
+    (trigger as TriggerHandler).onLeave(() => log.push('leave'));
+    // 地面上设一个脚本的处理器：落地时地面和箱子两边都收到
+    game.simulation.setContactHandler(ground, { onStartedTouching: ({ other }) => log.push(`ground touched ${other === crate.id}`) });
+    game.simulation.setContactHandler(crate, { onStartedTouching: ({ other }) => other === ground.id && log.push('crate landed') });
+    run(game, 180);
+    expect(log).toEqual(['enter true true', 'leave', 'ground touched true', 'crate landed']);
+    // 触发器不挡东西
+    expect(position(crate).y).toBeCloseTo(0.5, 1);
+
+    crate.destroy();
+    run(game, 10);
+    // 射线从触发器下面往下打（射线也打得到触发器，同 Bepu）：箱子没了，打到地面
+    expect(game.simulation.rayCast([0, 1.5, 0], [0, -1, 0], 10)?.entity).toBe(ground.id);
   });
 });

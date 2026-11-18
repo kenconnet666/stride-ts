@@ -62,6 +62,18 @@ describe('Transform', () => {
     expect(root.has(Transform)).toBe(false);
   });
 
+  test('updateWorldMatrix 现在就算出这个实体和祖先的世界矩阵（Stride 的 UpdateWorldMatrix）', () => {
+    const game = createGame();
+    const parent = game.entities.create({ components: [Transform.with({ position: [10, 0, 0] })] });
+    const child = game.entities.create({ components: [Transform.with({ position: [0, 2, 0] })] });
+    child.require(Transform).parent = parent;
+    const transform = child.require(Transform);
+    expect(transform.world[12]).toBe(0);
+    transform.updateWorldMatrix();
+    expect([transform.world[12], transform.world[13]]).toEqual([10, 2]);
+    expect(parent.require(Transform).world[12]).toBe(10);
+  });
+
   test('销毁父实体时子孙实体一起销毁，槽位回收', () => {
     const game = createGame(4);
     const [a, b, c] = ['a', 'b', 'c'].map((name) => game.entities.create({ name, components: [Transform] }));

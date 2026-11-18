@@ -18,6 +18,8 @@ export const Static = component('Static', {
   layer: prop.int().default(0).min(0).max(31),
   /** FrictionCoefficient。 */
   friction: prop.f32().default(1).min(0),
+  /** ContactEventHandler 是 Stride 的 Trigger：不挡东西，带一个 TriggerHandler（simulation.contactHandler(entity)）。 */
+  trigger: prop.bool().default(false),
 });
 
 /**
@@ -31,6 +33,8 @@ export const Body = component('Body', {
   friction: prop.f32().default(1).min(0),
   kinematic: prop.bool().default(false),
   gravity: prop.bool().default(true),
+  /** 同 Static.trigger。 */
+  trigger: prop.bool().default(false),
   /** SleepThreshold：负数一直醒着；其余用 Jolt 的全局睡眠阈值（和 Stride 不同：Bepu 按物体设）。 */
   sleepThreshold: prop.f32().default(0.01),
   interpolated: prop.bool().default(false),

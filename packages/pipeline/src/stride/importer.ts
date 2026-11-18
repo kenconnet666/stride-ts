@@ -330,16 +330,16 @@ export class StrideImporter {
     }
     if (shapes.length === 0) return undefined;
     const layer = /^Layer(\d+)$/.exec(String(component['CollisionLayer'] ?? 'Layer0'));
-    return { shapes, layer: layer ? Number(layer[1]) : 0, friction: asNumber(component['FrictionCoefficient'], 1) };
+    const handler = asObject(component['ContactEventHandler'])?.$type;
+    const trigger = handler === 'Stride.BepuPhysics.Definitions.Trigger,Stride.BepuPhysics';
+    if (handler !== undefined && !trigger) this.#warnings.push(`${where}: contact event handler ${handler} is not supported; ignored (scripts can set one with simulation.setContactHandler)`);
+    return { shapes, layer: layer ? Number(layer[1]) : 0, friction: asNumber(component['FrictionCoefficient'], 1), ...(trigger ? { trigger } : {}) };
   }
 
   /** Stride.BepuPhysics 的 BodyComponent：碰撞体加刚体的设置，默认值同 Stride。 */
   async #body(component: StrideObject, where: string): Promise<SceneBody | undefined> {
     const collidable = await this.#collidable(component, where);
     if (!collidable) return undefined;
-    if (component['ContactEventHandler'] !== null && component['ContactEventHandler'] !== undefined) {
-      this.#warnings.push(`${where}: contact event handlers are not supported yet; ignored`);
-    }
     return {
       ...collidable,
       kinematic: component['Kinematic'] === true,

@@ -302,9 +302,9 @@ export class ContentManager {
     const { model, camera, light, background, animation, sprite, static: collidable, character, body } = file.components;
     const { materials } = assets;
     const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
-    if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction }));
+    if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction, trigger: collidable.trigger ?? false }));
     if (character) {
-      const { shapes, ...settings } = character;
+      const { shapes, trigger: _trigger, ...settings } = character;
       entity.add(Character.with({ collider: collider(shapes), ...settings }));
     }
     if (body) {

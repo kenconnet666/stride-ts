@@ -461,6 +461,8 @@ export interface SceneCollidable {
   /** CollisionLayer，0..31。 */
   readonly layer: number;
   readonly friction: number;
+  /** ContactEventHandler 是 Stride 的 Trigger。 */
+  readonly trigger?: boolean;
 }
 
 /** Stride.BepuPhysics 的 BodyComponent：动态（或运动学）刚体。 */

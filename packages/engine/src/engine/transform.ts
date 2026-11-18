@@ -42,6 +42,11 @@ export type TransformView = DataValues<TransformShape> & {
   /** 父实体，undefined 表示根。父实体也要有 Transform，不能形成环；改父实体时本地值不变（同 Stride）。 */
   parent: Entity | undefined;
   readonly children: readonly Entity[];
+  /**
+   * 现在就算出世界矩阵（这个实体和它的祖先，Stride 的 UpdateWorldMatrix）。世界矩阵平时在每帧 update 之后统一算，
+   * 脚本在那之前（比如第一帧的 start 里）要用世界位姿时先调用它。
+   */
+  updateWorldMatrix(): void;
 };
 
 /** 一个变换存储在 TS 这边的记录：槽位属于哪个实体、每个槽位有哪些子槽位。 */
@@ -143,6 +148,9 @@ const external: ExternalStorage = {
           const state = stateOf(manager);
           return [...(state.children[slotOf(manager, entity)] ?? [])].map((child) => manager.entity(state.owner[child]!));
         },
+      },
+      updateWorldMatrix: {
+        value: () => stateOf(manager).store.updateSlot(slotOf(manager, entity)),
       },
     });
   },

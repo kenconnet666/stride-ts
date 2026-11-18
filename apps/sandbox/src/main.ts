@@ -1,8 +1,12 @@
-// Smoke test of the whole stack: Vite with cross-origin isolation, the native module with its
-// worker threads, WebGPU, and the frame loop. Boxes fall in Jolt; nothing is rendered yet but the
-// clear color, so the stats overlay shows what physics does.
-import { Game, type GameTime } from '@stride-ts/engine';
+/// <reference types="vite/client" />
+// Smoke test of the whole stack: Vite with cross-origin isolation, the native module with its worker
+// threads, WebGPU, the frame loop, and the entity core (an AsyncScript spawning particles that systems
+// move and expire). Boxes fall in Jolt; nothing is rendered yet but the clear color, so the stats
+// overlay shows what happens.
+import { Game, system, type GameTime } from '@stride-ts/engine';
 import type { PhysicsWorld } from '@stride-ts/native';
+import { Fountain } from './game/fountain';
+import { expire, integrate, Position } from './game/particles';
 
 const GRID = 10;
 const STATS_INTERVAL = 0.25;
@@ -10,11 +14,24 @@ const STATS_INTERVAL = 0.25;
 const PHYSICS_STEP = 1 / 60;
 const MAX_STEPS_PER_FRAME = 4;
 
+/** Particle count and mean height, gathered after the particles moved. */
+const particles = { count: 0, sumY: 0 };
+const measure = system({
+  with: { position: Position },
+  phase: 'afterPhysics',
+  update({ position, count }) {
+    particles.count += count;
+    for (let i = 0; i < count; i++) particles.sumY += position.y[i]!;
+  },
+});
+
 class SandboxGame extends Game {
   private world!: PhysicsWorld;
+  private fountain!: Fountain;
   private firstBox = 0;
   private physicsTime = 0;
   private stepMilliseconds = 0;
+  private entitiesMilliseconds = 0;
   private statsTime = 0;
   private readonly stats: HTMLElement;
 
@@ -32,9 +49,17 @@ class SandboxGame extends Game {
         halfExtent: [0.5, 0.5, 0.5],
       })),
     );
+    this.entities.addSystems(integrate, expire, measure);
+    this.fountain = this.entities.create({ name: 'fountain', components: [Fountain.with({ burst: 2_000, interval: 0.5 })] }).require(Fountain);
   }
 
   protected override update(time: GameTime): void {
+    particles.count = 0;
+    particles.sumY = 0;
+    const start = performance.now();
+    super.update(time);
+    this.entitiesMilliseconds = performance.now() - start;
+
     this.physicsTime = Math.min(this.physicsTime + time.elapsed, PHYSICS_STEP * MAX_STEPS_PER_FRAME);
     for (; this.physicsTime >= PHYSICS_STEP; this.physicsTime -= PHYSICS_STEP) {
       const start = performance.now();
@@ -76,12 +101,14 @@ class SandboxGame extends Game {
       `frame ${time.frameCount}  ${(1 / Math.max(time.elapsed, 1e-6)).toFixed(0)} fps  ${width}x${height}`,
       `native workers ${this.native.workerThreadCount}  crossOriginIsolated ${crossOriginIsolated}`,
       `physics ${boxes} boxes  step ${this.stepMilliseconds.toFixed(2)} ms  height mean ${(sumY / boxes).toFixed(2)} m, lowest ${lowestY.toFixed(2)} m`,
+      `entities ${this.entities.count}  scripts + systems ${this.entitiesMilliseconds.toFixed(2)} ms  particles ${particles.count}, mean height ${(particles.sumY / Math.max(1, particles.count)).toFixed(2)} m, spawned ${this.fountain.spawned}`,
+      `registered: ${Fountain.scriptName}, ${integrate.name}, ${expire.name}`,
     ].join('\n');
   }
 }
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const stats = document.querySelector<HTMLElement>('#stats')!;
-new SandboxGame(stats).run(canvas).catch((error: unknown) => {
+new SandboxGame(stats).run(canvas, { modules: import.meta.glob('./game/**/*.ts', { eager: true }) }).catch((error: unknown) => {
   stats.textContent = `failed: ${error instanceof Error ? error.message : String(error)}`;
 });

@@ -118,6 +118,7 @@ prop.json(schema)                      // any Standard Schema (zod, valibot): ch
 | `.label()`、`.group()`、`.description()`、`.hidden()` | 编辑器面板 |
 | `.renamedFrom('oldName')` | 改名以后，旧的场景文件和热重载照样能读 |
 | `.brand<'PlayerId'>()` | 只改类型，让不同用途的整数不能混用 |
+| `.sealed()`、`.inherit()`、`.stat()`，`.default(fn)` | 和分层覆盖有关，见下文"属性的分层、合并和转发" |
 
 **字面量简写**：属性直接写一个值，就是"这个类型加这个默认值"。`speed: 10` 等于 `prop.number().default(10)`，`name: 'hero'`、`visible: true` 同理；数据组件里的数字简写成 `f32`。
 
@@ -210,6 +211,107 @@ declare module '@stride-ts/engine' {
 }
 this.services.navigation;               // typed
 ```
+
+### 属性的分层、合并和转发
+
+参考两处：
+- **vue-tsx-pro**（`C:\Users\Administrator\IdeaProjects\vue-tsx-pro`，`packages/ui/src/utils/props.ts`、`config/defaults.ts`，规范见 `packages/ui/COMPONENTS.md` §2）：UI 组件的值来自好几层（组件默认、`createUi`、`Provider`、使用方、组件受管），逐层合并后再转发给内部部件（`propsXxx`）。它的体系是 Vue 和 DOM，和我们不同；借鉴的是合并规则和类型做法。
+- **Stride 自己的资源继承**：`OverrideType` 有 Base、New、Sealed 三种，集合的每一项带稳定的 `ItemId`（`Stride.Core.Assets/Reflection`）。
+
+**一个属性的值从哪里来**（上面的层覆盖下面的层）：
+
+| 层 | 例 | 存在哪里 |
+|---|---|---|
+| 运行时修饰（只对 `.stat()` 属性） | 减速 ×0.5，装备 +2 | 运行时，不存盘 |
+| 实例覆盖 | 场景里这个敌人的 `maxHealth: 120` | 场景文件，只存差异 |
+| 预制体链 | 精英兵预制体 → 士兵预制体，可以嵌套多层 | 预制体文件，只存差异 |
+| 变体 | 组件定义里的 `variants: { elite: { maxHealth: 300 } }`，实例选 `variant: 'elite'` | 组件定义 |
+| 作用域默认值（只对 `.inherit()` 属性） | 工程配置、关卡或某棵子树统一给的默认值，近的优先 | 工程配置、场景 |
+| schema 默认值 | `prop.f32().default(100)`，或由别的属性算出 | 组件定义 |
+
+合并规则：
+- **`undefined` 不表态**：覆盖层里没写的键沿用下面的层。`null` 只对 `.optional()` 属性有意义，表示明确地"没有值"，盖掉下面的层（同 vue-tsx-pro 的 `mergeProps`）。
+- **按路径合并，不整个替换**：嵌套对象和部件（见下）逐层合并，只覆盖其中一项不会丢掉其他项。
+- **集合项按 id 覆盖，不按下标**：基础预制体里插入或重排列表项，实例的覆盖不会错位（同 Stride 的 `ItemId`）。
+- **只在加载、生成、编辑时合并**：合并结果写进组件的普通字段或列，运行时读值就是普通读取，不逐层查找。基础预制体改了（编辑器里或热重载），没覆盖这一项的实例跟着变。
+- **编辑器显示每个值的来源**（实例、哪个预制体、变体、作用域、默认值），可以一键"重置到下一层"，对应 Stride Game Studio 里加粗显示的覆盖值。
+
+和分层有关的属性修饰：
+
+| 修饰 | 作用 |
+|---|---|
+| `.default((p) => p.radius * 2)` | 默认值由别的属性算出；那个属性变了，没覆盖的值跟着变（vue-tsx-pro 的默认值也可以引用别的 prop） |
+| `.sealed()` | 由组件自己或系统驱动（受管），预制体和实例都不能覆盖：类型上从覆盖对象里去掉，编辑器里只读。对应 Stride 的 `Sealed` 和 vue-tsx-pro 的受管层 |
+| `.inherit()` | 允许作用域默认值统一设置。只给调参和外观类的属性用（摩擦、音量、颜色），状态类的不行；vue-tsx-pro 也只让外观类的选项进 `defaults` |
+| `.stat()` | 允许运行时修饰 |
+
+**作用域默认值**：
+
+```ts
+game.defaults.set(RigidBody, { friction: 0.6 });   // only .inherit() props are accepted by the type
+```
+
+关卡或子树的根实体上挂一个 `Defaults` 组件，作用于它下面的实体，近的优先（同 vue-tsx-pro 的 `Provider`）。
+
+**部件：组合组件把覆盖转发给内部的部件**（对应 vue-tsx-pro 的 `propsXxx`）：
+
+```ts
+export const Wheel = component('Vehicles.Wheel', {
+  radius: prop.f32().min(0).default(0.4),
+  friction: prop.f32().default(1).inherit(),
+  steerAngle: prop.f32().sealed(),          // driven by the vehicle
+});
+
+export class Vehicle extends SyncScript.props('Vehicles.Vehicle', {
+  maxSteer: 35,
+  wheels: prop.parts(Wheel, ['frontLeft', 'frontRight', 'rearLeft', 'rearRight']),
+}) {
+  steering = 0;   // -1..1, set by the driver script
+
+  override update(): void {
+    this.wheels.frontLeft.steerAngle = this.steering * this.maxSteer;   // the owner may write sealed props
+  }
+}
+
+await scene.spawn(CarPrefab, {
+  position: [0, 0, 5],
+  props: {
+    maxSteer: 30,
+    wheels: { all: { radius: 0.45 }, rearLeft: { friction: 0.8 } },   // `all` first, then each part
+    // or per part: wheels: (name) => ({ radius: name.startsWith('rear') ? 0.45 : 0.42 })
+  },
+});
+```
+
+- 部件是预制体里按名字找到的子实体；`prop.parts` 给出带类型的访问，并负责转发覆盖。
+- 覆盖对象的类型是 `Overrides<typeof CarPrefab>`：深层可选，去掉 `.sealed()` 属性，部件名写错就是类型错误。
+- 部件的覆盖按同样的规则再合并一次（vue-tsx-pro 的嵌套 `propsXxx`）：组件给部件的默认值不会因为使用方也写了这个部件就整个丢掉。
+
+**可拦截的钩子：使用方先处理，可以接管内置行为**（同 vue-tsx-pro 的事件合并）：
+
+```ts
+door.opening.on((e) => {
+  if (!player.hasKey) e.preventDefault();   // the door's own opening logic is skipped
+});
+```
+
+钩子是同步的，按登记顺序先调使用方的处理函数，调用了 `preventDefault()` 就跳过组件自己的行为。广播给很多接收者、可以异步等待的消息仍用 `EventKey`。
+
+**运行时修饰：`.stat()`**（游戏里最常见的"层层合并"：加成和减益）：
+
+```ts
+maxRunSpeed: prop.number().min(0).default(10).stat(),
+
+using slow = this.stats.maxRunSpeed.multiply(0.5);     // removed at the end of the block
+this.stats.maxRunSpeed.add(2, { duration: 5 });          // removed after 5 seconds
+```
+
+- 计算顺序固定：(合并后的基础值 + 所有加值) × 所有乘数，最后按 `min`、`max` 截断；需要时再加带优先级的"直接改成某值"。
+- 只在修饰增减或到期时重算，结果写回字段，读取不花额外时间。
+
+**状态用标签表达**（vue-tsx-pro 用 `data-state` 属性表达组件状态，样式直接按状态选择）：`Stunned`、`Dead` 这类状态写成标签组件，系统用 `with`、`without` 直接选；编辑器和调试工具也能看到。加删标签会让实体换块，所以每帧都在切换的开关仍用 `bool` 列。
+
+**类型测试补充**：覆盖 `.sealed()` 属性、部件名写错、覆盖值类型不对，都要有 `@ts-expect-error` 的负例；vue-tsx-pro 还用一个静态检查脚本核对受管属性都从使用方的类型里去掉了，我们的 `Overrides` 由类型推出，不需要这一步。
 
 ### 向量和临时对象
 

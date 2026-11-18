@@ -67,7 +67,7 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 
 ## 组件和脚本的写法（设计草案）
 
-> 2026-11-18：不做 SWC 插件，改为纯 TS 的写法：属性用 `prop` builder 声明，类型全部由推导得出；大量实体的逻辑用数据组件加系统，系统直接遍历按块存放的列。完整设计（属性、脚本、数据组件和系统、事件、校验、热重载、原生接口）见 [docs/architecture.md](docs/architecture.md) 的"组件 API"。
+> 2026-11-18：不做 SWC 插件，改为纯 TS 的写法：属性用 `prop` builder 声明，类型全部由推导得出；大量实体的逻辑用数据组件加系统，系统直接遍历按块存放的列。完整设计（属性、脚本、数据组件和系统、属性的分层覆盖和转发、事件、校验、热重载、原生接口）见 [docs/architecture.md](docs/architecture.md) 的"组件 API"。
 
 名字和结构沿用 Stride，熟悉 Stride 的人容易上手，迁移 C# 游戏时有现成的对应关系；但迁移不是逐行翻译：异步加载、没有值类型、物理行为（Jolt 和 Bepu 不同）、材质、UI 都要按系统重新移植。按 TypeScript 的习惯调整：属性用声明式的 schema，方法用小驼峰，异步用 Promise，枚举用字符串字面量。
 

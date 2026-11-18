@@ -21,13 +21,15 @@ var capture = Array.IndexOf(args, "--capture") is var i and >= 0 ? args[i + 1] :
 var frames = Array.IndexOf(args, "--frames") is var j and >= 0 ? int.Parse(args[j + 1]) : 180;
 int? benchmark = Array.IndexOf(args, "--benchmark") is var b and >= 0 ? int.Parse(args[b + 1]) : null;
 var gpuProfile = args.Contains("--gpu-profile");
+// --dump-skybox：场景出现时打印天空盒光照的运行时数据（和 stride-ts 导入的 .skybox.json 比）
+var dumpSkybox = args.Contains("--dump-skybox");
 // --disable fxaa,brightfilter,bloom,lightstreak,lensflare：关掉这些后处理（逐个比对时用）
 var disabled = Array.IndexOf(args, "--disable") is var k and >= 0 ? args[k + 1].Split(',') : [];
 // --exposure EV：关掉自动曝光，固定曝光 2^EV（比对光照本身时用）
 float? exposure = Array.IndexOf(args, "--exposure") is var e and >= 0 ? float.Parse(args[e + 1], System.Globalization.CultureInfo.InvariantCulture) : null;
 // --only-light directional|skybox：只留这一种光（分开比对直射光和环境光时用）
 var onlyLight = Array.IndexOf(args, "--only-light") is var o and >= 0 ? args[o + 1] : null;
-using var game = capture == null && benchmark == null ? new Game() : new CaptureGame(capture, frames, benchmark, gpuProfile, disabled, exposure, onlyLight);
+using var game = capture == null && benchmark == null ? new Game() : new CaptureGame(capture, frames, benchmark, gpuProfile, dumpSkybox, disabled, exposure, onlyLight);
 game.Run();
 
 sealed class CaptureGame : Game
@@ -40,6 +42,7 @@ sealed class CaptureGame : Game
     private readonly string[] disabled;
     private readonly float? exposure;
     private readonly string? onlyLight;
+    private readonly bool dumpSkybox;
     private readonly Stopwatch stopwatch = new();
     private readonly ChannelReader<ProfilingEvent>? profilingEvents;
     /** 各渲染器（按 ProfilingKey 的名字）累计的 GPU 毫秒数和次数；嵌套的渲染器各算各的。 */
@@ -47,9 +50,9 @@ sealed class CaptureGame : Game
     private int frame;
     private bool stripped;
 
-    public CaptureGame(string? path, int frames, int? benchmark, bool gpuProfile, string[] disabled, float? exposure, string? onlyLight)
+    public CaptureGame(string? path, int frames, int? benchmark, bool gpuProfile, bool dumpSkybox, string[] disabled, float? exposure, string? onlyLight)
     {
-        (this.path, this.frames, this.benchmark, this.disabled, this.exposure, this.onlyLight) = (path, frames, benchmark, disabled, exposure, onlyLight);
+        (this.path, this.frames, this.benchmark, this.dumpSkybox, this.disabled, this.exposure, this.onlyLight) = (path, frames, benchmark, dumpSkybox, disabled, exposure, onlyLight);
         if (benchmark != null)
         {
             GraphicsDeviceManager.SynchronizeWithVerticalRetrace = false;
@@ -71,8 +74,36 @@ sealed class CaptureGame : Game
             Strip(scene);
             if (onlyLight != null) KeepOnlyLight(scene, onlyLight);
             DisablePostEffects();
+            if (dumpSkybox) DumpSkybox(scene);
         }
         base.Update(gameTime);
+    }
+
+    /**
+     * 打印天空盒光照的运行时数据（编译好的资源）：球谐系数（已乘 BaseCoefficients）、镜面立方体贴图的规格，
+     * 和镜面立方体贴图每一级每个面的平均颜色（RGBA16F；和 stride-ts 运行时生成的那张逐级比）。
+     */
+    private void DumpSkybox(Scene scene)
+    {
+        foreach (var light in scene.Entities.SelectMany(Descendants).SelectMany(entity => entity.Components.OfType<LightComponent>()))
+        {
+            if (light.Type is not Stride.Rendering.Lights.LightSkybox { Skybox: { } skybox }) continue;
+            var sh = skybox.DiffuseLightingParameters.GetValues(Stride.Rendering.Skyboxes.SphericalHarmonicsEnvironmentColorKeys.SphericalColors);
+            Console.WriteLine($"skybox intensity {light.Intensity}, rotation {light.Entity.Transform.Rotation}");
+            Console.WriteLine("sh " + string.Join(" ", sh.Select(c => $"{c.R:G6},{c.G:G6},{c.B:G6}")));
+            var specular = skybox.SpecularLightingParameters.Get(Stride.Rendering.Skyboxes.SkyboxKeys.CubeMap);
+            Console.WriteLine($"specular {specular.Width}x{specular.Height} mips {specular.MipLevelCount} {specular.Format}");
+            for (var mip = 0; mip < specular.MipLevelCount; mip++)
+            {
+                var faces = Enumerable.Range(0, 6).Select(face =>
+                {
+                    var texels = specular.GetData<Stride.Core.Mathematics.Half4>(GraphicsContext.CommandList, face, mip);
+                    var mean = texels.Aggregate(Stride.Core.Mathematics.Vector3.Zero, (sum, t) => sum + new Stride.Core.Mathematics.Vector3((float)t.X, (float)t.Y, (float)t.Z)) / texels.Length;
+                    return $"{mean.X:F4},{mean.Y:F4},{mean.Z:F4}";
+                });
+                Console.WriteLine($"mip {mip} " + string.Join(" ", faces));
+            }
+        }
     }
 
     private static void KeepOnlyLight(Scene scene, string kind)

@@ -69,6 +69,14 @@ export class ComponentType<S extends DataShape = DataShape, V extends string = s
     return this.#name !== undefined;
   }
 
+  /**
+   * @internal 热重载：这个新版本接替旧版本，用它的编号。表按编号找组件，所以旧代码手里的旧版本和新代码的
+   * 新版本落到同一组列上。
+   */
+  adopt(previous: ComponentType<any, any>): void {
+    Object.defineProperty(this, 'id', { value: previous.id });
+  }
+
   /** @internal 由登记表设置。 */
   setName(name: string): void {
     if (this.#name !== undefined && this.#name !== name) throw new Error(`${this.#name} is already named; cannot rename it to ${name}`);

@@ -65,7 +65,7 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 | 帧时间 | FPS 枪战约 10–13 ms；Top Down RPG 约 13–15 ms；TPP 无头浏览器约 90 fps |
 | 改一行脚本到看到效果 | 最好情况约 84–154 秒（AOT 加各种缓存） |
 | 首次加载、体积 | TPP 按正式发布设置：代码约 63 MB（gzip 约 19 MB：`dotnet.native.wasm` 53 MB / gzip 15.4 MB，加 50 个程序集 9.8 MB / gzip 3.8 MB），内容 10.2 MB（gzip 6.8 MB），合计 gzip 约 26 MB；游戏一更新，整个 wasm 都要重新下载。TS 版估算：代码约 4 MB（gzip 约 1.5 MB），内容同一量级，合计 gzip 约 7–8 MB；更新时只下载游戏脚本和改过的内容 |
-| 热重载 | 不支持 |
+| 热重载 | 不支持（TS 版支持：改脚本、系统、数据组件，页面不刷新、状态保留，见 docs/architecture.md 的"热重载"） |
 
 ## 组件和脚本的写法（设计草案）
 

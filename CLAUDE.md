@@ -10,7 +10,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - [docs/positioning.md](docs/positioning.md)：和 Babylon.js、PlayCanvas、three.js、Cocos、Unity、Godot、Needle 的对比（预估），特色和短板，要实测的性能点。
 - [docs/research.md](docs/research.md)：依赖逐项替代、库选型、线程模型和 API 取舍。
 
-现状（2026-11-18）：工程骨架已搭好（pnpm monorepo，见 README.md 的"开发"），git 仓库在 `main` 分支，远程 `origin` 是公开仓库 `kenconnet666/stride-ts`（2026-11-18 建，MIT 许可证）。提交并验证后直接推送到 origin，不用先问（用户 2026-11-18）；fork 同样直接推 origin，但永远不推上游 jrouwe。引擎有 `Game` 循环、`GraphicsDevice` 和实体核心（`prop`、数据组件和列存储、系统、脚本、按模块路径登记，见 docs/architecture.md 的"实现状态"），`Transform` 的数据在 stride-native 的变换存储里（层级传播、物理写回，见"共享内存的数据模型"）；原生绑定是 fork 里的 TypeScript（`StrideNative/JS/*.ts`）；渲染器有了骨架（RenderSystem、MeshRenderFeature 实例化绘制、ForwardRenderer，见 docs/architecture.md 的"渲染器"），材质、光照、阴影、剔除还没做。
+现状（2026-11-18）：工程骨架已搭好（pnpm monorepo，见 README.md 的"开发"），git 仓库在 `main` 分支，远程 `origin` 是公开仓库 `kenconnet666/stride-ts`（2026-11-18 建，MIT 许可证）。提交并验证后直接推送到 origin，不用先问（用户 2026-11-18）；fork 同样直接推 origin，但永远不推上游 jrouwe。引擎有 `Game` 循环、`GraphicsDevice` 和实体核心（`prop`、数据组件和列存储、系统、脚本、按模块路径登记，见 docs/architecture.md 的"实现状态"），开发时有热重载（`Game.hotEntry`），`Transform` 的数据在 stride-native 的变换存储里（层级传播、物理写回，见"共享内存的数据模型"）；原生绑定是 fork 里的 TypeScript（`StrideNative/JS/*.ts`）；渲染器有了骨架（RenderSystem、MeshRenderFeature 实例化绘制、ForwardRenderer，见 docs/architecture.md 的"渲染器"），材质、光照、阴影、剔除还没做。
 
 约定：
 - 和用户用中文沟通。**代码注释（含文档注释、测试标题）和 git 提交信息用中文**（用户 2026-11-18 决定，覆盖全局 CLAUDE.md 的英文约定）；标识符、文件名、运行时的报错和日志文字仍用英文。jolt-native-fork 里 Jolt 上游的文件保持英文。

@@ -32,7 +32,7 @@ export class Entity {
   get<C extends ComponentType<any, any>>(type: C): ViewOf<C> | undefined;
   get<T extends ScriptComponent>(type: abstract new () => T): T | undefined;
   get(type: ComponentType<any> | (abstract new () => ScriptComponent)): unknown {
-    if (typeof type === 'function') return this.scripts.get(type as ScriptConstructor);
+    if (typeof type === 'function') return this.script(type as ScriptConstructor);
     if (!this.manager.hasComponent(this.id, type)) return undefined;
     let view = this.views.get(type);
     if (!view) {
@@ -55,7 +55,18 @@ export class Entity {
   }
 
   has(type: ComponentType<any> | ScriptConstructor): boolean {
-    return typeof type === 'function' ? this.scripts.has(type) : this.manager.hasComponent(this.id, type);
+    return typeof type === 'function' ? this.script(type) !== undefined : this.manager.hasComponent(this.id, type);
+  }
+
+  /**
+   * @internal 这个类的脚本。热重载之后，没重新执行的代码（比如游戏入口）手里可能还是旧版本的类：
+   * 按登记的名字也能找到。
+   */
+  script(type: ScriptConstructor): ScriptComponent | undefined {
+    const found = this.scripts.get(type);
+    if (found || type.scriptName === undefined) return found;
+    for (const [registered, script] of this.scripts) if (registered.scriptName === type.scriptName) return script;
+    return undefined;
   }
 
   add(arg: EntityArg): this {

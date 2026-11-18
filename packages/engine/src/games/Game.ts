@@ -26,6 +26,11 @@ export interface GameOptions {
 const MAX_ELAPSED = 0.25;
 const DEFAULT_MAX_TRANSFORMS = 65536;
 
+/** Vite 的 `import.meta.hot` 里引擎用到的部分。 */
+export interface HotContext {
+  readonly data: Record<string, unknown>;
+}
+
 declare global {
   /** 正在运行的游戏，tools/ 里的脚本读它（`status`、`frames`、`sceneFrame`、`error`）。 */
   var strideGame: Game | undefined;
@@ -99,6 +104,50 @@ export class Game {
     (this.graphicsDevice as GraphicsDevice | undefined)?.destroy();
     (this.transforms as TransformStore | undefined)?.destroy();
     (this.native as StrideNative | undefined)?.shutdown();
+  }
+
+  /**
+   * 游戏入口用这个代替 `new`，开发时就有热重载：Vite 每次重新执行入口模块（入口导入的任何游戏模块改了都会）
+   * 都返回同一个正在运行的游戏，它换成新的类，并把新版本的模块交给 hotUpdate；第一次执行时才新建。
+   * 入口模块要写 `import.meta.hot?.accept()`，自己接住更新，页面才不会整个刷新：
+   *
+   *   const modules = import.meta.glob('./game/**\/*.ts', { eager: true });
+   *   const { game, created } = Game.hotEntry(import.meta.hot, modules, SandboxGame, stats);
+   *   if (created) void game.run(canvas, { modules });
+   *   import.meta.hot?.accept();
+   *
+   * 正式构建里 import.meta.hot 是 undefined，就是一次普通的 new。
+   */
+  static hotEntry<C extends new (...args: any[]) => Game>(
+    hot: HotContext | undefined,
+    modules: Readonly<Record<string, unknown>>,
+    GameClass: C,
+    ...args: ConstructorParameters<C>
+  ): { game: InstanceType<C>; created: boolean } {
+    const running = hot?.data['strideGame'] as InstanceType<C> | undefined;
+    if (running && running.status !== 'exited') {
+      // 游戏自己的类也可能改了：换原型，下一帧就跑新的 update、draw
+      Object.setPrototypeOf(running, GameClass.prototype);
+      running.hotUpdate(modules);
+      return { game: running, created: false };
+    }
+    const game = new GameClass(...args) as InstanceType<C>;
+    if (hot) hot.data['strideGame'] = game;
+    return { game, created: true };
+  }
+
+  /**
+   * 热重载：modules 是重新执行后的 `import.meta.glob` 结果，改过的模块是新对象。按名字把世界里的旧组件、
+   * 脚本、系统换成新版本，状态保留（见 EntityManager.hotUpdate）。出错时游戏继续跑旧版本。
+   */
+  hotUpdate(modules: Readonly<Record<string, unknown>>): void {
+    try {
+      const changes = this.registry.update(modules);
+      this.entities.hotUpdate(changes);
+      console.info(`[stride] hot update: ${changes.map((c) => c.name).join(', ') || 'no component, script or system changed'}`);
+    } catch (error) {
+      console.error('[stride] hot update failed; the game keeps the previous code', error);
+    }
   }
 
   protected async loadContent(): Promise<void> {}

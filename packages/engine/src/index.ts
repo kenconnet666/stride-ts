@@ -36,7 +36,7 @@ export { ScopedDefaults } from './engine/defaults';
 export { Entity, type View } from './engine/Entity';
 export { EntityManager, type EntityArg, type EntityDesc, type SpawnBatch } from './engine/EntityManager';
 export { EventKey, EventReceiver, Hook, hook, type HookEvent, type HookHandler } from './engine/events';
-export { Registry, type Registered } from './engine/registry';
+export { Registry, type HotChange, type Registered } from './engine/registry';
 export {
   AsyncScript,
   ScriptComponent,
@@ -51,7 +51,7 @@ export { Stat, type StatModifierOptions } from './engine/stats';
 export { system, System, type Chunk, type EntityIds, type Phase, type SystemSpec } from './engine/system';
 export { Transform, transformSlot, type TransformColumns, type TransformShape, type TransformView } from './engine/transform';
 export { validator } from './engine/validator';
-export { Game, type GameOptions, type GameStatus } from './games/Game';
+export { Game, type GameOptions, type GameStatus, type HotContext } from './games/Game';
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';

@@ -39,6 +39,18 @@ export class ScopedDefaults {
     this.#arrays.delete(type);
   }
 
+  /** @internal 热重载：设过的作用域默认值按字段名搬到新版本上。 */
+  migrate(previous: Owner, next: Owner): void {
+    const values = this.#arrays.get(previous);
+    if (!values) return;
+    this.#arrays.delete(previous);
+    const old = previous.schema.fields;
+    this.#arrays.set(next, next.schema.fields.map((field, f) => {
+      const from = old.findIndex((o) => o.name === field.name || o.name === field.options.renamedFrom);
+      return from >= 0 && field.options.inherit ? values[from] : next.schema.defaults[f];
+    }));
+  }
+
   /** @internal 创建实例时用的默认值。 */
   arrayFor(type: Owner): readonly unknown[] {
     return this.#arrays.get(type) ?? type.schema.defaults;

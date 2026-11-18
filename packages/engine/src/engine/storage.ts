@@ -3,7 +3,8 @@
  * 遍历表的列。目前一张表就是一块可增长的存储：容量翻倍时重新分配列，交给系统的列集合原地更新，
  * 所以 chunk 对象不会拿着过期的数组。
  */
-import { copyRow, createColumn, growColumn, type Column } from '../data/schema';
+import { ENCODED_KINDS, toCell } from '../data/cells';
+import { copyRow, createColumn, growColumn, type Column, type Field } from '../data/schema';
 import type { ComponentType } from './component';
 
 const INITIAL_CAPACITY = 64;
@@ -18,8 +19,8 @@ export interface ColumnSet {
 }
 
 export class Table {
-  /** 组件类型，按编号排序。 */
-  readonly types: readonly ComponentType[];
+  /** 组件类型，按编号排序；热重载时换成新版本（编号不变）。 */
+  types: readonly ComponentType[];
   readonly key: string;
   /** 按组件类型编号索引的列集合；表里没有的类型是 undefined。 */
   readonly sets: (ColumnSet | undefined)[] = [];
@@ -81,6 +82,27 @@ export class Table {
     }
   }
 
+  /**
+   * 热重载：组件换了新版本（next 已经接替了 previous 的编号）。按字段名把旧列的值搬进新布局，字段改名时认
+   * `renamedFrom`；新字段、或者种类变了的字段取默认值（没有默认值的是 0）。
+   */
+  replaceType(previous: ComponentType, next: ComponentType): void {
+    const old = this.sets[previous.id]!;
+    const columns = next.tableFields.map((field) => {
+      const column = createColumn(field, this.capacity);
+      const from = previous.tableFields.findIndex((f) => f.name === field.name || f.name === field.options.renamedFrom);
+      const source = previous.tableFields[from];
+      if (source && source.options.kind === field.options.kind && source.stride === field.stride) {
+        for (let row = 0; row < this.count; row++) copyRow(old.columns[from]!, row, column, row, field.stride);
+      } else {
+        fillDefault(column, field, this.count);
+      }
+      return column;
+    });
+    this.sets[next.id] = { type: next, columns, byName: byName(next, columns), version: old.version };
+    this.types = this.types.map((type) => (type === previous ? next : type));
+  }
+
   private grow(capacity: number): void {
     const entities = new Float64Array(capacity);
     entities.set(this.entities);
@@ -99,6 +121,21 @@ export class Table {
 
 export function tableKey(types: readonly ComponentType[]): string {
   return types.map((type) => type.id).join(',');
+}
+
+/** 前 count 行写上字段的默认值。 */
+function fillDefault(column: Column, field: Field, count: number): void {
+  const { options } = field;
+  if (!options.hasDefault || options.defaultValue === undefined) return;
+  const value = options.defaultValue;
+  if (field.stride > 1) {
+    const keys = options.kind === 'color' ? ['r', 'g', 'b', 'a'] : ['x', 'y', 'z', 'w'];
+    const components = Array.isArray(value) ? value : keys.slice(0, field.stride).map((k) => (value as Record<string, number>)[k]);
+    for (let row = 0; row < count; row++) (column as Float32Array).set(components as number[], row * field.stride);
+    return;
+  }
+  const cell = ENCODED_KINDS.has(options.kind) ? toCell(options, value) : options.kind === 'bool' ? (value ? 1 : 0) : value;
+  for (let row = 0; row < count; row++) (column as unknown[])[row] = cell;
 }
 
 function byName(type: ComponentType, columns: readonly Column[]): Record<string, Column> {

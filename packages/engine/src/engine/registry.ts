@@ -9,16 +9,35 @@ import { System } from './system';
 
 export type Registered = ComponentType<any> | System<any> | ScriptConstructor;
 
+/** 热重载时同一个名字换了新对象。 */
+export interface HotChange {
+  readonly name: string;
+  readonly previous: Registered;
+  readonly next: Registered;
+}
+
 export class Registry {
   readonly #byName = new Map<string, Registered>();
 
   /** 登记这些模块导出的所有组件、脚本、系统。modules：路径 → 模块命名空间对象。 */
   registerModules(modules: Readonly<Record<string, unknown>>): void {
-    for (const [path, module] of Object.entries(modules)) {
-      if (typeof module !== 'object' || module === null) continue;
-      const base = modulePath(path);
-      for (const [exportName, value] of Object.entries(module)) this.#register(value, `${base}#${exportName}`);
+    for (const [name, value] of this.#named(modules)) this.#add(name, value);
+  }
+
+  /**
+   * 热重载：Vite 重新执行了改动的模块，同名的东西换成了新对象。新对象取代旧的登记，返回取代了哪些；
+   * 没改的模块还是同一个对象，跳过；新出现的照常登记。
+   */
+  update(modules: Readonly<Record<string, unknown>>): HotChange[] {
+    const changes: HotChange[] = [];
+    for (const [name, next] of this.#named(modules)) {
+      const previous = this.#byName.get(name);
+      this.#byName.set(name, next);
+      if (previous === undefined || previous === next) continue;
+      if (kindOf(previous) !== kindOf(next)) throw new Error(`hot update: '${name}' changed from a ${kindOf(previous)} to a ${kindOf(next)}; reload the page`);
+      changes.push({ name, previous, next });
     }
+    return changes;
   }
 
   /** 按显式的名字登记一个东西（引擎和库的组件）。 */
@@ -36,16 +55,24 @@ export class Registry {
     return this.#byName.keys();
   }
 
-  #register(value: unknown, derived: string): void {
-    if (value instanceof ComponentType || value instanceof System) {
-      if (!value.isNamed) value.setName(derived);
-      this.#add(value.name, value);
-    } else if (isScriptClass(value)) {
-      // 自己的 scriptName 来自 props(name, ...) 或之前的登记；都没有就在这里起名
-      if (!Object.hasOwn(value, 'scriptName') || value.scriptName === undefined) {
-        Object.defineProperty(value, 'scriptName', { value: inheritedExplicitName(value) ?? derived });
+  /** 模块导出的组件、脚本、系统和它们的名字；还没名字的按 `路径#导出名` 起名。 */
+  *#named(modules: Readonly<Record<string, unknown>>): Generator<[string, Registered]> {
+    for (const [path, module] of Object.entries(modules)) {
+      if (typeof module !== 'object' || module === null) continue;
+      const base = modulePath(path);
+      for (const [exportName, value] of Object.entries(module)) {
+        const derived = `${base}#${exportName}`;
+        if (value instanceof ComponentType || value instanceof System) {
+          if (!value.isNamed) value.setName(derived);
+          yield [value.name, value];
+        } else if (isScriptClass(value)) {
+          // 自己的 scriptName 来自 props(name, ...) 或之前的登记；都没有就在这里起名
+          if (!Object.hasOwn(value, 'scriptName') || value.scriptName === undefined) {
+            Object.defineProperty(value, 'scriptName', { value: inheritedExplicitName(value) ?? derived });
+          }
+          yield [scriptName(value), value];
+        }
       }
-      this.#add(scriptName(value), value);
     }
   }
 
@@ -61,6 +88,10 @@ export class Registry {
 /** './gameplay/health.ts' 和 '/src/gameplay/health.ts' 都变成 'gameplay/health'。 */
 export function modulePath(path: string): string {
   return path.replace(/^\.?\//, '').replace(/^src\//, '').replace(/\.[cm]?[jt]sx?$/, '');
+}
+
+function kindOf(value: Registered): 'component' | 'system' | 'script' {
+  return value instanceof ComponentType ? 'component' : value instanceof System ? 'system' : 'script';
 }
 
 function nameOf(value: Registered): string | undefined {

@@ -11,11 +11,12 @@ import type { GameTime } from '../games/GameTime';
 import { Commands } from './Commands';
 import { ComponentType, type BareComponent, type ColumnsOf, type ComponentInit } from './component';
 import { ScopedDefaults } from './defaults';
+import type { HotChange } from './registry';
 import { Entity } from './Entity';
 import { AsyncScript, ScriptComponent, StartupScript, SyncScript, scriptName, type BareScript, type ScriptConstructor, type ScriptInit } from './scripts';
 import { Stat, type StatClock } from './stats';
 import { Table, tableKey, type ColumnSet } from './storage';
-import { orderSystems, type Phase, type System } from './system';
+import { orderSystems, System, type Phase } from './system';
 
 /** 创建实体或给实体添加时能传的东西：数据组件（直接列出或带值）或脚本。 */
 export type EntityArg = ComponentInit<any> | BareComponent | ScriptInit<any> | BareScript;
@@ -206,7 +207,7 @@ export class EntityManager {
     this.#assertAlive(id);
     if (typeof type === 'function') {
       const entity = this.entity(id);
-      const script = entity.scripts.get(type);
+      const script = entity.script(type);
       if (!script) throw new Error(`entity ${id} has no ${scriptName(type)}`);
       this.#detach(entity, script);
       return;
@@ -238,7 +239,9 @@ export class EntityManager {
   }
 
   /** @internal 视图对象：每个字段的读写都落到这个实体所在的行上，见 Entity.get。 */
-  createView(id: EntityId, type: ComponentType<any>): object {
+  createView(id: EntityId, given: ComponentType<any>): object {
+    // 热重载后 given 可能是旧版本：字段下标按表里现在的版本算
+    const type = this.#table[indexOf(id)]!.sets[given.id]!.type;
     const view = {};
     type.schema.fields.forEach((field, f) => {
       const isBool = field.options.kind === 'bool';
@@ -320,6 +323,90 @@ export class EntityManager {
     this.#ordered = undefined;
     this.#watching = this.#systems.filter((s) => s.spec.added || s.spec.removed);
     this.#afterChange();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // 热重载
+
+  /**
+   * 热重载（docs/architecture.md 的“热重载”）：把世界里的旧版本换成新版本，状态都保留。
+   * - 数据组件：新版本接替旧版本的编号，按字段名把列搬进新布局（`renamedFrom` 生效），新字段取默认值；
+   * - 脚本：已有实例换成新类的原型（下一次 update 就跑新代码），类体里新加的字段从一个新实例上拷过来，
+   *   属性按新 schema 重新赋值；正在跑的 AsyncScript.execute 继续跑旧代码，直到它结束；
+   * - 系统：加入过的旧版本换成新版本，排序重算。
+   */
+  hotUpdate(changes: readonly HotChange[]): void {
+    this.#assertNotIterating('hot-update');
+    for (const { previous, next } of changes) {
+      if (previous instanceof ComponentType) this.#replaceComponent(previous, next as ComponentType);
+      else if (previous instanceof System) this.#replaceSystem(previous, next as System);
+      else this.#replaceScript(previous, next as ScriptConstructor);
+    }
+    this.#ordered = undefined;
+    this.#watching = this.#systems.filter((s) => s.spec.added || s.spec.removed);
+    // 系统缓存的 chunk 拿着旧的列集合
+    for (const s of this.#systems) s.chunks.clear();
+  }
+
+  #replaceComponent(previous: ComponentType, next: ComponentType): void {
+    if (previous.external || next.external) throw new Error(`hot update: ${next.name} keeps its data in native memory and cannot be replaced; reload the page`);
+    next.adopt(previous);
+    for (const table of this.tables) {
+      if (!table.sets[previous.id]) continue;
+      table.replaceType(previous, next);
+      table.sets[next.id]!.version = ++this.#version;
+    }
+    // 视图按旧 schema 的字段下标读列，作废后下次 get 重建
+    for (const entity of this.#objects) {
+      entity?.views.delete(previous);
+      entity?.views.delete(next);
+    }
+    this.defaults.migrate(previous, next);
+  }
+
+  #replaceSystem(previous: System<any>, next: System<any>): void {
+    const index = this.#systems.indexOf(previous);
+    if (index < 0) return;
+    next.lastRun = previous.lastRun;
+    this.#systems = this.#systems.with(index, next);
+  }
+
+  #replaceScript(previous: ScriptConstructor, next: ScriptConstructor): void {
+    // 类体里的字段初始化只在构造时跑：新加的字段从一个新实例上取
+    let template: Record<string, unknown> | undefined;
+    for (const entity of this.#objects) {
+      const script = entity?.scripts.get(previous);
+      if (!entity || !script) continue;
+      entity.scripts.delete(previous);
+      entity.scripts.set(next, script);
+      Object.setPrototypeOf(script, next.prototype);
+      template ??= new (next as unknown as new () => Record<string, unknown>)();
+      const target = script as unknown as Record<string, unknown>;
+      for (const key of Object.keys(template)) if (!Object.hasOwn(target, key)) target[key] = template[key];
+      this.#reassignProps(target, next);
+    }
+    this.defaults.migrate(previous, next);
+  }
+
+  /** 脚本属性按新 schema 重新赋值：已有的值保留（字段改名认 renamedFrom），新属性取默认值；stat 属性不动。 */
+  #reassignProps(script: Record<string, unknown>, next: ScriptConstructor): void {
+    const fields = next.schema.fields.filter((f) => !f.options.stat);
+    const values: Record<string, unknown> = {};
+    for (const { name, options } of fields) {
+      if (Object.hasOwn(script, name)) values[name] = script[name];
+      else if (options.renamedFrom !== undefined && Object.hasOwn(script, options.renamedFrom)) values[name] = script[options.renamedFrom];
+    }
+    const assigned: Record<string, unknown> = {};
+    try {
+      next.schema.assign(assigned, values, this.defaults.arrayFor(next));
+    } catch (error) {
+      console.warn(`hot update: kept the old props of ${scriptName(next)}: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    for (const { name, options } of fields) {
+      script[name] = assigned[name];
+      if (options.renamedFrom !== undefined) delete script[options.renamedFrom];
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -464,8 +551,10 @@ export class EntityManager {
     const index = indexOf(id);
     const table = this.#table[index]!;
     const row = this.#row[index]!;
-    for (const { type, init } of components) {
-      const set = table.sets[type.id]!;
+    for (const { type: given, init } of components) {
+      const set = table.sets[given.id]!;
+      // 热重载后旧代码可能还拿着旧版本：按表里现在的版本写
+      const type = set.type;
       if (type.external) {
         // 表里只记槽位，值按槽位写进原生内存的列（布局和表的列一样）
         const slot = type.external.allocate(this, id);
@@ -562,7 +651,7 @@ export class EntityManager {
   // Scripts
 
   #attach(entity: Entity, { script: type, init }: ScriptInit<any>): void {
-    if (entity.scripts.has(type)) throw new Error(`entity '${entity.name}' already has ${scriptName(type)}`);
+    if (entity.script(type)) throw new Error(`entity '${entity.name}' already has ${scriptName(type)}`);
     const Concrete = type as unknown as new () => ScriptComponent;
     const script = new Concrete();
     type.schema.assign(script, init, this.defaults.arrayFor(type));

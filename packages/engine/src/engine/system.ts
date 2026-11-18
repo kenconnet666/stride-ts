@@ -112,8 +112,10 @@ export function orderSystems(systems: readonly System<any>[]): System<any>[] {
     if (seen === 'done') return;
     if (seen === 'visiting') throw new Error(`systems depend on each other in a cycle: ${[...path, s].map((x) => x.name).join(' -> ')}`);
     state.set(s, 'visiting');
-    for (const before of s.spec.after ?? []) {
-      if (!systems.includes(before)) throw new Error(`system ${s.name} runs after ${before.name}, which was not added`);
+    for (const after of s.spec.after ?? []) {
+      // 热重载后，没重新执行的代码手里可能还是旧版本：按名字找加入的新版本
+      const before = systems.includes(after) ? after : systems.find((x) => x.isNamed && x.name === after.name);
+      if (!before) throw new Error(`system ${s.name} runs after ${after.name}, which was not added`);
       if (before.phase !== s.phase) throw new Error(`system ${s.name} (${s.phase}) cannot run after ${before.name} (${before.phase})`);
       visit(before, [...path, s]);
     }

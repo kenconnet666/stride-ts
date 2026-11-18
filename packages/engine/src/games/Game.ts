@@ -1,4 +1,4 @@
-import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import { createStrideNative, type StrideNative, type TransformStore } from '@stride-ts/native';
 import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
@@ -10,6 +10,8 @@ export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
 export interface GameOptions {
   /** 原生模块任务系统的工作线程数；默认 hardwareConcurrency - 1。 */
   workerThreads?: number;
+  /** 变换存储的槽位数，即最多有多少个带 Transform 的实体；默认 65536（每个约 108 字节）。 */
+  maxTransforms?: number;
   /**
    * 游戏的模块，即 `import.meta.glob('./**\/*.ts', { eager: true })` 的结果：loadContent 之前，按路径和导出名
    * 给其中的组件、脚本、系统起名（见 engine/registry.ts）。
@@ -19,6 +21,7 @@ export interface GameOptions {
 
 // 更长的间隔（标签页在后台、断点停住）不在一步里模拟完。
 const MAX_ELAPSED = 0.25;
+const DEFAULT_MAX_TRANSFORMS = 65536;
 
 declare global {
   /** 正在运行的游戏，tools/ 里的脚本读它（`status`、`frames`、`sceneFrame`、`error`）。 */
@@ -32,6 +35,8 @@ declare global {
  */
 export class Game {
   native!: StrideNative;
+  /** 所有 Transform 组件的数据，在原生内存里；世界矩阵在每帧 update 之后、draw 之前算。 */
+  transforms!: TransformStore;
   graphicsDevice!: GraphicsDevice;
   readonly updateTime = new GameTime();
   readonly registry = new Registry();
@@ -59,6 +64,7 @@ export class Game {
     try {
       if (options.modules) this.registry.registerModules(options.modules);
       this.native = await createStrideNative(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads });
+      this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       this.graphicsDevice = await GraphicsDevice.create(canvas);
       await this.loadContent();
     } catch (error) {
@@ -79,6 +85,7 @@ export class Game {
     this.status = 'exited';
     this.entities.clear();
     (this.graphicsDevice as GraphicsDevice | undefined)?.destroy();
+    (this.transforms as TransformStore | undefined)?.destroy();
     (this.native as StrideNative | undefined)?.shutdown();
   }
 
@@ -98,6 +105,7 @@ export class Game {
     try {
       this.updateTime.advance(elapsed);
       this.update(this.updateTime);
+      this.transforms.update();
       this.graphicsDevice.resizeToDisplaySize();
       this.draw(this.updateTime);
     } catch (error) {

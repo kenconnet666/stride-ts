@@ -21,7 +21,17 @@ export {
 } from './data/prop';
 export type { Issue } from './data/schema';
 export { Commands } from './engine/Commands';
-export { component, tag, ComponentType, type BareComponent, type ComponentInit, type ComponentOptions } from './engine/component';
+export {
+  component,
+  tag,
+  ComponentType,
+  type BareComponent,
+  type ColumnsOf,
+  type ComponentInit,
+  type ComponentOptions,
+  type ExternalStorage,
+  type ViewOf,
+} from './engine/component';
 export { ScopedDefaults } from './engine/defaults';
 export { Entity, type View } from './engine/Entity';
 export { EntityManager, type EntityArg, type EntityDesc, type SpawnBatch } from './engine/EntityManager';
@@ -39,6 +49,7 @@ export {
 } from './engine/scripts';
 export { Stat, type StatModifierOptions } from './engine/stats';
 export { system, System, type Chunk, type EntityIds, type Phase, type SystemSpec } from './engine/system';
+export { Transform, transformSlot, type TransformColumns, type TransformShape, type TransformView } from './engine/transform';
 export { validator } from './engine/validator';
 export { Game, type GameOptions, type GameStatus } from './games/Game';
 export { GameTime } from './games/GameTime';

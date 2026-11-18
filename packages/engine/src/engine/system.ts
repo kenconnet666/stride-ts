@@ -12,17 +12,16 @@
  *     },
  *   });
  */
-import type { Columns, DataShape, EntityId } from '../data/prop';
+import type { EntityId } from '../data/prop';
 import type { GameTime } from '../games/GameTime';
 import type { Commands } from './Commands';
-import type { ComponentType } from './component';
+import type { ColumnsOf, ComponentType } from './component';
 import type { Table } from './storage';
 
 /** 系统在一帧里相对物理步进的位置（见 docs/architecture.md 的每帧顺序）。 */
 export type Phase = 'beforePhysics' | 'afterPhysics';
 
 type Query = Record<string, ComponentType<any, any>>;
-type ShapeOf<C> = C extends ComponentType<infer S extends DataShape, any> ? S : never;
 
 /** 每一行的实体 id：元素类型标成 EntityId 的 Float64Array。 */
 export type EntityIds = Float64Array & { readonly [row: number]: EntityId };
@@ -31,7 +30,7 @@ export type EntityIds = Float64Array & { readonly [row: number]: EntityId };
 export type Chunk<W extends Query> = {
   readonly count: number;
   readonly entities: EntityIds;
-} & { readonly [K in keyof W]: Columns<ShapeOf<W[K]>> };
+} & { readonly [K in keyof W]: ColumnsOf<W[K]> };
 
 export interface SystemSpec<W extends Query> {
   /** 要筛选的组件；键名就是 update() 里解构出来的名字。 */

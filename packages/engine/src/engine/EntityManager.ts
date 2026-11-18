@@ -5,16 +5,16 @@
  * 它们的后续代码在这一帧的任务返回后运行。
  */
 import { ENCODED_KINDS, fromCell, toCell } from '../data/cells';
-import type { Columns, DataShape, EntityId } from '../data/prop';
+import type { EntityId } from '../data/prop';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
 import { Commands } from './Commands';
-import { ComponentType, type BareComponent, type ComponentInit } from './component';
+import { ComponentType, type BareComponent, type ColumnsOf, type ComponentInit } from './component';
 import { ScopedDefaults } from './defaults';
 import { Entity } from './Entity';
 import { AsyncScript, ScriptComponent, StartupScript, SyncScript, scriptName, type BareScript, type ScriptConstructor, type ScriptInit } from './scripts';
 import { Stat, type StatClock } from './stats';
-import { Table, tableKey } from './storage';
+import { Table, tableKey, type ColumnSet } from './storage';
 import { orderSystems, type Phase, type System } from './system';
 
 /** 创建实体或给实体添加时能传的东西：数据组件（直接列出或带值）或脚本。 */
@@ -34,7 +34,7 @@ export interface SpawnBatch {
   readonly count: number;
   readonly firstRow: number;
   /** 生成的实体某个组件所在的列；通过它写入算作一次改动，`changed` 能看到。 */
-  columns<S extends DataShape>(type: ComponentType<S, any>): Columns<S>;
+  columns<C extends ComponentType<any, any>>(type: C): ColumnsOf<C>;
 }
 
 /** id = 下标 + 代数 * 2^20：最多约一百万个活着的实体，过期的 id 能被识别出来。 */
@@ -147,11 +147,11 @@ export class EntityManager {
       ids,
       count,
       firstRow,
-      columns: <S extends DataShape>(type: ComponentType<S, any>) => {
+      columns: <C extends ComponentType<any, any>>(type: C) => {
         const set = table.sets[type.id];
         if (!set) throw new Error(`the spawned entities have no ${type.name}`);
         set.version = ++this.#version;
-        return set.byName as Columns<S>;
+        return this.#columnsOf(set) as ColumnsOf<C>;
       },
     };
   }
@@ -172,6 +172,8 @@ export class EntityManager {
       for (const script of [...entity.scripts.values()]) this.#detach(entity, script);
     }
     this.#notify(id, this.#table[index], undefined);
+    // 数据在原生内存里的组件释放槽位；Transform 会先销毁子实体
+    for (const type of this.#table[index]!.types) type.external?.release(this, id, true);
     this.#removeRow(index);
     this.#table[index] = undefined;
     this.#objects[index] = undefined;
@@ -213,6 +215,8 @@ export class EntityManager {
     const from = this.#table[index]!;
     if (!from.has(type)) throw new Error(`entity ${id} has no ${type.name}`);
     const to = this.#tableFor(from.types.filter((t) => t !== type));
+    // 先释放：它可能拒绝（比如还有子实体的 Transform），这时什么都没变；所以 removed 回调读不到这种组件
+    type.external?.release(this, id, false);
     this.#notifyLeaving(id, from, to);
     this.#move(index, to);
     this.#objects[index]?.views.delete(type);
@@ -222,6 +226,15 @@ export class EntityManager {
 
   hasComponent(id: EntityId, type: ComponentType<any>): boolean {
     return this.isAlive(id) && this.#table[indexOf(id)]!.has(type);
+  }
+
+  /** @internal 实体在 external 组件存储里的槽位（表里这个组件的第一列）。 */
+  slotOf(id: EntityId, type: ComponentType<any>): number {
+    this.#assertAlive(id);
+    const index = indexOf(id);
+    const set = this.#table[index]!.sets[type.id];
+    if (!set || !type.external) throw new Error(`entity ${id} has no ${type.name}`);
+    return (set.columns[0] as Int32Array)[this.#row[index]!]!;
   }
 
   /** @internal 视图对象：每个字段的读写都落到这个实体所在的行上，见 Entity.get。 */
@@ -277,6 +290,7 @@ export class EntityManager {
         },
       });
     });
+    type.external?.extendView(this, id, view);
     return view;
   }
 
@@ -370,7 +384,7 @@ export class EntityManager {
         let chunk = s.chunks.get(table);
         if (!chunk) {
           chunk = { count: 0, entities: table.entities };
-          for (const [key, type] of Object.entries(spec.with as Record<string, ComponentType<any>>)) chunk[key] = table.sets[type.id]!.byName;
+          for (const [key, type] of Object.entries(spec.with as Record<string, ComponentType<any>>)) chunk[key] = this.#columnsOf(table.sets[type.id]!);
           s.chunks.set(table, chunk);
         }
         chunk.count = table.count;
@@ -440,9 +454,21 @@ export class EntityManager {
     const row = this.#row[index]!;
     for (const { type, init } of components) {
       const set = table.sets[type.id]!;
-      type.schema.writeRow(set.columns, row, init, this.defaults.arrayFor(type));
+      if (type.external) {
+        // 表里只记槽位，值按槽位写进原生内存的列（布局和表的列一样）
+        const slot = type.external.allocate(this, id);
+        (set.columns[0] as Int32Array)[row] = slot;
+        type.schema.writeRow(type.external.data(this), slot, init, this.defaults.arrayFor(type));
+      } else {
+        type.schema.writeRow(set.columns, row, init, this.defaults.arrayFor(type));
+      }
       set.version = ++this.#version;
     }
+  }
+
+  /** 给系统和 spawn 的列：普通组件是表里的列，external 的组件由它自己拼。 */
+  #columnsOf(set: ColumnSet): object {
+    return set.type.external ? set.type.external.chunk(this, set) : set.byName;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -516,6 +542,7 @@ export class EntityManager {
     const index = indexOf(id);
     const set = this.#table[index]!.sets[type.id];
     if (!set) throw new Error(`entity ${id} no longer has ${type.name}`);
+    if (type.external) return [type.external.data(this)[field] as unknown[], (set.columns[0] as Int32Array)[this.#row[index]!]!];
     return [set.columns[field] as unknown[], this.#row[index]!];
   }
 

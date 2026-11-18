@@ -27,7 +27,13 @@ stride-native（C++，一个 wasm 模块）：变换数组、层级传播、剔�
 - **Jolt 直接写这些数组**：动态物体步进后，位姿写进对应实体的本地变换；运动学物体反过来从数组读。不再有"从 Jolt 读出来、再写进场景"的步骤。
 - **TS 看到的是视图**：`transform.position` 是一个对象形式的访问器，背后读写的就是 wasm 内存里的那一格，不另存一份。
 - **上传 GPU 不经过中间拷贝**：`queue.writeBuffer(instanceBuffer, 0, wasmMemory.buffer, worldMatrixPtr, byteLength)` 直接从 wasm 内存上传整段世界矩阵。
-- **wasm 内存增长会让 TypedArray 视图失效**。两种做法：预先申请足够大的固定内存，关闭增长；或者每帧检查 `memory.buffer` 有没有换，换了就重建视图。原型先用固定内存，简单可靠。
+- **内存增长和视图**：stride-native 是多线程模块，内存是 SharedArrayBuffer。共享内存增长时旧的 buffer 不会失效，只是长度不变，所以在增长前建的视图（变换存储、物理位置缓冲的列）一直有效；之后新分配的内存要从当前的 `memory.buffer` 建视图，绑定层每次都现取。（原先以为要关掉增长，那是非共享内存的行为。）
+
+**实现（2026-11-18）**：
+- stride-native 的变换存储 `sn_transforms_*`：本地位置、旋转、缩放、父槽位、列主序世界矩阵各一列，槽位从 1 开始（0 表示空，父槽位为 0 就是根），列在创建时一次分配好。分配、释放成批进行；释放时检查子节点，挂接时检查环。层级变了才按深度计数排序重排计算顺序，平时一遍顺序扫描，世界矩阵用 Jolt 的 `Mat44`（SIMD）。Chrome 里 1 万个变换（每 10 个一条 9 层的链）每次更新 0.106 ms。
+- 物理世界创建时可以绑定变换存储，`sn_box` 带一个变换槽位：物体从槽位当前的世界位姿出发，动态物体每步结束把位姿写回槽位的本地位置和旋转，有父节点时换算到父节点空间。运动学物体从数组读位姿还没做（现在只有静态和动态）。
+- 引擎里是数据组件 `Transform`（`packages/engine/src/engine/transform.ts`）：表里只存一列槽位，值按槽位存在原生列里。组件类型多了一个 `external` 存取方式（以后刚体也用它），写入、默认值、校验、视图都复用普通数据组件的代码：`schema.writeRow` 直接以槽位为行号写进原生列。系统里写 `transform.position[transform.slot[i] * 3 + 1]`；视图另有 `world`、`parent`、`children`。销毁实体时子实体跟着销毁（同 Stride 把实体移出场景）；只去掉 `Transform` 时如果还有子实体就报错。
+- `Game` 在加载原生模块后创建变换存储（`maxTransforms`，默认 65536 个槽位），每帧在 `update` 之后、`draw` 之前调用一次 `transforms.update()`，所以 `update` 里读到的世界矩阵是上一帧的。和 Stride 不同，实体不会自动带 `Transform`：只有数据的实体（粒子之类）用不着。
 
 ## 渲染器：按 Stride 的结构
 
@@ -130,7 +136,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
    - 所以每个组件在登记时生成一个初始化函数，用 `new Function` 在运行时生成，和 zod 4 的 `z.compile` 同一做法；页面没有 CSP 限制，失败时退回循环。
    - 同一个预制体的覆盖只合并一次，所有实例共用合并结果。
 5. **原生 API 已改（2026-11-18 同日，fork 的提交见 `StrideNative/`）**：
-   - 物理世界和人群各有一块常驻的位置缓冲，`step()`、`update()` 在原生里直接写进去；`positions()` 返回同一个视图，每帧不再分配和拷贝。读 1 万个物体的 y 坐标从 0.11 ms 降到 0.008 ms（每个 0.8 ns）。下一步是让 Jolt 直接写进共享的变换数组，连步进末尾这一次写入也省掉。
+   - 物理世界和人群各有一块常驻的位置缓冲，`step()`、`update()` 在原生里直接写进去；`positions()` 返回同一个视图，每帧不再分配和拷贝。读 1 万个物体的 y 坐标从 0.11 ms 降到 0.008 ms（每个 0.8 ns）。之后（同日）绑定了变换槽位的物体由步进直接写回变换存储，见上文"共享内存的数据模型"。
    - C API 换成批量添加 `sn_physics_add_boxes`（一块 `sn_box` 表，C++ 里用 Jolt 的 `AddBodiesPrepare`/`AddBodiesFinalize`，相同尺寸的连续箱子共用一个形状），删除逐个添加和拷出位置的旧接口。JS 的 `addBox({ position, halfExtent, motion })` 复用一块参数缓冲，`addBoxes([...])` 一次调用。
    - 实测（建世界、加 1 万个物体、销毁）：旧包装 21 ms（2.1 µs 每个），逐个 `addBox` 6.8 ms（0.68 µs），一次 `addBoxes` 4.0 ms（0.40 µs）。
 6. **按帧预算看**（165 Hz 每帧约 6 ms）：1 万个实体的移动、上传、脚本、系统合计不到 0.5 ms。生成高峰原来一次 1 万个物理体要 21 ms、会卡一帧，现在批量 4 ms，更大的批量可以分到几帧里做。改完后在 Chrome 里跑沙盒：99% 的帧间隔是 6.06 ms，物理步进中位 0.27 ms、最长约 4 ms（工作线程调度的抖动）。
@@ -215,7 +221,8 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - `validator(Type)` 产出 Standard Schema 校验器；
   - `EventKey`（广播，每个接收者一个队列）和 `Hook`（同步、使用方先执行、可 `preventDefault`，事件对象复用并在派发后失效）；脚本的 `this.on`、`this.receive` 随脚本释放；
   - 系统的 `added`、`removed`：按实体回调（不是按块），`removed` 时还能读到数据，回调里的结构性改动走命令缓冲；
-  - 运行时测试 41 个，类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
+  - （2026-11-18）`Transform`：数据在 stride-native 的变换存储里，表里只存槽位；父子层级、销毁时连带子实体、和物理世界绑定，见上文"共享内存的数据模型"；
+  - 运行时测试 55 个，类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
 - **和下文设计的出入**：
   - 一个 archetype 目前是一块可增长的表（容量翻倍），还没有切成固定大小的块。
   - 默认值的检查在定义时做（越早越好），报错带字段名。
@@ -226,7 +233,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - `stat` 只给脚本用；数据组件的数值在系统里改。
 - **还没做**（依赖后面的里程碑）：
   - 资源引用 `asset`：要等内容管线；
-  - 预制体、部件（`prop.parts`）、按子树生效的默认值：要等实体层级，和第 2 步的 wasm 变换数组一起做；
+  - 预制体、部件（`prop.parts`）、按子树生效的默认值：实体层级已经有了（`Transform` 的父子），预制体还要等内容管线；
   - 热重载：Vite 的 HMR 要求静态写出依赖列表，要先定是加一个只在开发时生效的小插件，还是让游戏入口自己接住更新。
 
 ### bigint、小数、日期时间（2026-11-18 用户要求，已实现）
@@ -396,7 +403,7 @@ export const regen = system({
 - **`writes`** 声明会改哪些组件，用于变更检测（按块记版本）和以后的调度检查；`changed: [Health]` 只处理上次运行之后被写过的块。
 - **结构性改动**（加删组件、创建销毁实体）在遍历时只能记进命令缓冲：`update(chunk, time, commands)`，系统跑完后统一执行。
 - **顺序**：`phase`（物理之前、之后等）加 `after: [movement]`。
-- **引擎自己的组件**（变换、刚体）在 wasm 内存里，按实体槽位存放，不按块：块里带一列 `slot`，写成 `transform.x[slot[i]]`。
+- **引擎自己的组件**（变换、刚体）在 wasm 内存里，按实体槽位存放，不按块：块里带一列 `slot`，写成 `transform.position[transform.slot[i] * 3]`（`Transform` 已实现）。
 - **脚本里访问单个实体**：`entity.get(Health)` 返回一个视图对象，`health.current -= 10` 直接读写那一格；每个实体缓存一个视图。
 - 数据组件之间用实体句柄（`EntityId`，带品牌的整数）互相引用。
 
@@ -730,7 +737,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 | 公开的 `handle: number` | 藏在不从公开入口导出的 symbol 后面，只有绑定层内部互相传 |
 | `NativeError.code` 是负整数 | 字符串联合 `'invalid-argument' | 'invalid-handle' | 'failed' | 'not-initialized'`，负数放在 `status` |
 | `decodeMeshopt` 有 5 个位置参数 | 单个调用和批量调用用同一个 `MeshoptRequest` |
-| `positions()` 每次分配、拷贝、`slice()`、释放 | 物理世界和人群都返回常驻视图，由步进和更新在原生里写入；之后由 Jolt 直接写进共享的变换数组 |
+| `positions()` 每次分配、拷贝、`slice()`、释放 | 物理世界和人群都返回常驻视图，由步进和更新在原生里写入；绑定了变换槽位的物体由步进直接写回变换存储（`createTransforms`、`BoxDesc.transform`） |
 | `addBox` 每次调用都分配临时内存 | 参数缓冲复用 |
 | 基准要绕过包装层拿原始导出做分配 | `alloc`、`free` 和 `u8`/`i32`/`f32`/`i64` 等视图是公开方法 |
 

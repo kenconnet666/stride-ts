@@ -4,14 +4,35 @@
  * 引擎和库的组件则把名字写在第一个参数。
  * 变体是成组的取值：`component(shape, { variants: { elite: { max: 300 } } })`，用时写 `Health.variant('elite')`。
  */
-import type { DataShape, InitOf } from '../data/prop';
-import { createSchema, type Schema } from '../data/schema';
+import type { Columns, DataShape, DataValues, EntityId, InitOf } from '../data/prop';
+import { createSchema, type Column, type Field, type Schema } from '../data/schema';
+import type { EntityManager } from './EntityManager';
+import type { ColumnSet } from './storage';
 
 let nextTypeId = 0;
 const NO_RESERVED_NAMES = new Set<string>();
 
 export interface ComponentOptions<S extends DataShape, V extends string> {
   readonly variants?: { readonly [K in V]: Partial<InitOf<S, 'data'>> };
+}
+
+/**
+ * 数据不在表里、而在原生内存里的组件（Transform；以后还有刚体）。表里只存 tableFields 这几列，第一列是
+ * 实体在外部存储里的行号（槽位）；schema 的字段按这个行号存在 data() 给出的列里，布局和表的列一样，
+ * 所以写入、视图和校验都沿用普通组件的代码。
+ */
+export interface ExternalStorage {
+  readonly tableFields: readonly Field[];
+  /** 数据所在的列，按 schema 字段顺序，用槽位当行号。 */
+  data(manager: EntityManager): readonly Column[];
+  /** 实体得到这个组件时分配槽位。 */
+  allocate(manager: EntityManager, entity: EntityId): number;
+  /** 实体失去这个组件之前（销毁时 destroying 为 true）释放槽位；只是去掉组件时可以拒绝。 */
+  release(manager: EntityManager, entity: EntityId, destroying: boolean): void;
+  /** 给系统的列：表里的列加上数据列。 */
+  chunk(manager: EntityManager, set: ColumnSet): object;
+  /** 给视图加上 schema 字段以外的成员。 */
+  extendView(manager: EntityManager, entity: EntityId, view: object): void;
 }
 
 export class ComponentType<S extends DataShape = DataShape, V extends string = string> {
@@ -24,13 +45,19 @@ export class ComponentType<S extends DataShape = DataShape, V extends string = s
   readonly variants: Readonly<Record<string, object>>;
   /** 标签没有字段，只看有没有（Dead、Stunned）。 */
   readonly isTag: boolean;
+  /** @internal 数据在原生内存里时的存取方式。 */
+  readonly external: ExternalStorage | undefined;
+  /** 表里的列：普通组件就是 schema 的字段，external 的组件是它自己的几列。 */
+  readonly tableFields: readonly Field[];
   #name: string | undefined;
 
-  constructor(name: string | undefined, shape: S, options: ComponentOptions<S, V> = {}) {
+  constructor(name: string | undefined, shape: S, options: ComponentOptions<S, V> = {}, external?: ExternalStorage) {
     this.#name = name;
     this.schema = createSchema(shape, 'f32', NO_RESERVED_NAMES, name ?? 'component');
     this.isTag = this.schema.fields.length === 0;
     this.variants = checkVariants(this.schema, options.variants ?? {});
+    this.external = external;
+    this.tableFields = external ? external.tableFields : this.schema.fields;
   }
 
   /** 登记的名字：显式给的，或者游戏登记模块后得出的 `路径#导出名`。 */
@@ -63,6 +90,12 @@ export interface ComponentInit<S extends DataShape = DataShape> {
   readonly type: ComponentType<S, any>;
   readonly init: object | undefined;
 }
+
+/** 系统拿到的这个组件的列。external 的组件用幻影属性 __columns 声明自己的样子。 */
+export type ColumnsOf<C> = C extends { readonly __columns: infer X } ? X : C extends ComponentType<infer S, any> ? Columns<S> : never;
+
+/** entity.get 拿到的这个组件的视图。external 的组件用幻影属性 __view 声明自己的样子。 */
+export type ViewOf<C> = C extends { readonly __view: infer X } ? X : C extends ComponentType<infer S, any> ? DataValues<S> : never;
 
 /** 所有字段都有默认值的组件类型，可以直接列出。 */
 export type BareComponent = ComponentType<any, any> & { readonly __bare: true };

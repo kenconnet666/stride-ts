@@ -3,7 +3,7 @@
  * 需要对象时用 manager.entity(id) 取。
  */
 import type { DataShape, DataValues, EntityId } from '../data/prop';
-import type { ComponentType } from './component';
+import type { ComponentType, ViewOf } from './component';
 import type { EntityArg, EntityManager } from './EntityManager';
 import { scriptName, type ScriptComponent, type ScriptConstructor } from './scripts';
 
@@ -29,7 +29,7 @@ export class Entity {
     return this.manager.isAlive(this.id);
   }
 
-  get<S extends DataShape>(type: ComponentType<S, any>): View<S> | undefined;
+  get<C extends ComponentType<any, any>>(type: C): ViewOf<C> | undefined;
   get<T extends ScriptComponent>(type: abstract new () => T): T | undefined;
   get(type: ComponentType<any> | (abstract new () => ScriptComponent)): unknown {
     if (typeof type === 'function') return this.scripts.get(type as ScriptConstructor);
@@ -43,7 +43,7 @@ export class Entity {
   }
 
   /** 同 get，但没有这个组件或脚本时抛错。 */
-  require<S extends DataShape>(type: ComponentType<S, any>): View<S>;
+  require<C extends ComponentType<any, any>>(type: C): ViewOf<C>;
   require<T extends ScriptComponent>(type: abstract new () => T): T;
   require(type: ComponentType<any> | (abstract new () => ScriptComponent)): unknown {
     const found = this.get(type as ComponentType<any>);

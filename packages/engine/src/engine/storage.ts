@@ -34,7 +34,7 @@ export class Table {
     this.capacity = INITIAL_CAPACITY;
     this.entities = new Float64Array(this.capacity);
     for (const type of types) {
-      const columns = type.schema.fields.map((field) => createColumn(field, this.capacity));
+      const columns = type.tableFields.map((field) => createColumn(field, this.capacity));
       this.sets[type.id] = { type, columns, byName: byName(type, columns), version: 0 };
     }
   }
@@ -58,7 +58,7 @@ export class Table {
     const last = --this.count;
     for (const type of this.types) {
       const { columns } = this.sets[type.id]!;
-      type.schema.fields.forEach((field, f) => {
+      type.tableFields.forEach((field, f) => {
         const column = columns[f]!;
         if (row !== last) copyRow(column, last, column, row, field.stride);
         // 普通数组里放的是字符串：清掉空出来的位置，免得它一直引用着旧值
@@ -77,7 +77,7 @@ export class Table {
       const source = from.sets[type.id];
       if (!source) continue;
       const target = this.sets[type.id]!.columns;
-      type.schema.fields.forEach((field, f) => copyRow(source.columns[f]!, fromRow, target[f]!, toRow, field.stride));
+      type.tableFields.forEach((field, f) => copyRow(source.columns[f]!, fromRow, target[f]!, toRow, field.stride));
     }
   }
 
@@ -87,7 +87,7 @@ export class Table {
     this.entities = entities;
     for (const type of this.types) {
       const set = this.sets[type.id]!;
-      type.schema.fields.forEach((field, f) => {
+      type.tableFields.forEach((field, f) => {
         const grown = growColumn(set.columns[f]!, field, capacity);
         set.columns[f] = grown;
         set.byName[field.name] = grown;
@@ -103,6 +103,6 @@ export function tableKey(types: readonly ComponentType[]): string {
 
 function byName(type: ComponentType, columns: readonly Column[]): Record<string, Column> {
   const named: Record<string, Column> = {};
-  type.schema.fields.forEach((field, f) => (named[field.name] = columns[f]!));
+  type.tableFields.forEach((field, f) => (named[field.name] = columns[f]!));
   return named;
 }

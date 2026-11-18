@@ -4,11 +4,10 @@
  *   新出现的 Static、Body、Character 建成物体 → 角色的移动输入交给原生 → 步进 → 插值 → 写回角色的 grounded。
  * 设置（重力、阻尼、步长）在建第一个物体之前改，之后只有步长和每帧步数还能改。
  * 动态刚体（Body）建好以后用 `body(entity)` 控制（Stride 的 BodyComponent 的属性和方法）。接触事件见 contacts.ts：
- * 每一步之后把原生的事件交给两边的处理器。实体销毁（或去掉物理组件）时移除物体。
- *
- * 还没做：约束。
+ * 每一步之后把原生的事件交给两边的处理器。实体销毁（或去掉物理组件）时移除物体（连着的约束一起移除）。
+ * 约束用 `addConstraint`（Stride.BepuPhysics 的约束组件的参数，语义照 Bepu；Bepu 的约束是软的，这里是刚性的）。
  */
-import type { BodyDesc, BodyId, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore } from '@stride-ts/native';
+import type { BodyDesc, BodyId, ConstraintDesc, PhysicsConstraint, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore } from '@stride-ts/native';
 import { PhysicsHit } from '@stride-ts/native';
 import type { Commands } from '../engine/Commands';
 import type { EntityId } from '../data/prop';
@@ -34,6 +33,17 @@ export interface SimulationSettings {
   maxStepsPerFrame: number;
   /** 碰撞矩阵：collisionMasks[a] 的第 b 位为 1 表示层 a 和层 b 相互碰撞；默认全部碰撞。 */
   collisionMasks?: readonly number[];
+}
+
+/** 约束的设置（Stride.BepuPhysics 的约束组件）：A、B 是带物理组件的实体，其余字段照原生的 ConstraintDesc。 */
+export type ConstraintSettings = ConstraintDesc extends infer D
+  ? D extends { bodyA: BodyId; bodyB: BodyId } ? Omit<D, 'bodyA' | 'bodyB'> & { bodyA: Entity | EntityId; bodyB: Entity | EntityId } : never
+  : never;
+
+/** addConstraint 建的约束。 */
+export interface Constraint {
+  /** 移除约束（两个物体都会唤醒）；移除过的忽略。 */
+  remove(): void;
 }
 
 export interface SimulationHit {
@@ -235,6 +245,19 @@ export class Simulation {
     else this.#handlers.delete(body);
   }
 
+  /**
+   * 加一个约束（Stride 里把约束组件加到实体上）；两个物体还没建时先建好。实体销毁时连着的约束一起移除。
+   *
+   *   const hinge = simulation.addConstraint({ type: 'hinge', bodyA: cube, bodyB: sphere, localOffsetB: [4, 0, 0], localHingeAxisA: [0, 0, 1], localHingeAxisB: [0, 0, 1] });
+   *   hinge.remove();
+   */
+  addConstraint(settings: ConstraintSettings): Constraint {
+    const desc = { ...settings, bodyA: this.#bodyOf(settings.bodyA), bodyB: this.#bodyOf(settings.bodyB) } as ConstraintDesc;
+    const world = this.#world!;
+    const id: PhysicsConstraint = world.addConstraint(desc);
+    return { remove: () => world.removeConstraint(id) };
+  }
+
   /** 射线（Stride 的 RayCast）：mask 的第 n 位为 1 表示层 n 的物体参与。没命中时返回 undefined。 */
   rayCast(origin: Vec3, direction: Vec3, maxDistance: number, { mask = ALL_LAYERS }: { mask?: number } = {}): SimulationHit | undefined {
     return this.#result(this.#world?.rayCast(origin, direction, maxDistance, { mask, hit: this.#hit }));
@@ -371,6 +394,16 @@ export class BodyControl {
   set gravity(value: boolean) {
     this.#world.setGravity(this.#body, value);
     this.#view().gravity = value;
+  }
+
+  /** Stride 的 SleepThreshold：负数一直醒着；其余用 Jolt 的全局睡眠阈值（和 Stride 不同：Bepu 按物体设）。 */
+  get sleepThreshold(): number {
+    return this.#view().sleepThreshold;
+  }
+
+  set sleepThreshold(value: number) {
+    this.#world.setNeverSleep(this.#body, value < 0);
+    this.#view().sleepThreshold = value;
   }
 
   /** 醒着（Stride 的 Awake）；睡着的物体不参与仿真，直到被碰到或唤醒。 */

@@ -115,7 +115,7 @@ export { keyCode } from './input/keys';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Collider, hullPoints, type ColliderId, type ColliderShape, type HullTransform } from './physics/Collider';
 export { Body, Character, Static } from './physics/components';
-export { BodyControl, Simulation, type SimulationHit, type SimulationSettings } from './physics/Simulation';
+export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { TriggerHandler, type Contact, type ContactHandler } from './physics/contacts';
 export { Background, Camera, Light, Model, Skinned, Sprite } from './rendering/components';
 export { screenToWorldRaySegment } from './rendering/cameraRays';

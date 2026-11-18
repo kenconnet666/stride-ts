@@ -1,6 +1,7 @@
 // PhysicsSample 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍两个场景的玩法。
 //   pnpm --filter @stride-ts/physics-sample smoke [-- --hub <中枢名的一部分>]
 // Raycasting：点中箱子，箱子被推起来。VolumeTrigger：角色走进触发器，运动学的箱子变成动态落下；走出来后变回运动学、回到原位。
+// Constraints：球窝让球停在离立方体 4 米处；依次换完六种约束（调试命令 next 代替 UI 按钮），焊接让球停在立方体左边 4 米。
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +62,20 @@ stride('key', 'A', '--hold', '1500');
 await sleep(500);
 const after = state();
 check('走出来后变回运动学、回到原位', after.kinematic === after.total && after.heights === start.heights, after);
+
+// ---- Constraints
+await openScene('PhysicsSample/Constraints');
+const separation = () => stride('eval', `const g = strideGame; const at = (name) => g.entities.entity(g.entities.ids().find((i) => g.entities.entity(i).name === name)).require(strideEngine.Transform).position;
+  const a = at('cube'), b = at('sphere'); [b.x - a.x, b.y - a.y, b.z - a.z].map((v) => +v.toFixed(2))`) as [number, number, number];
+await sleep(1000);
+const socket = separation();
+check('球窝：球心离立方体中心 4 米', Math.abs(Math.hypot(...socket) - 4) < 0.1, socket);
+const names = [stride('call', 'constraint')];
+for (let i = 0; i < 5; i++) names.push(stride('call', 'next'));
+check('六种约束都能换上', names.join() === 'Ball Socket,Hinge,Angular Axis Gear Motor,Slider,Cone Twist,Weld', names);
+await sleep(1000);
+const weld = separation();
+check('焊接：球停在立方体左边 4 米', Math.abs(weld[0] + 4) < 0.1 && Math.abs(weld[1]) < 0.1 && Math.abs(weld[2]) < 0.1, weld);
 
 const logs = execFileSync(process.execPath, [cli, 'logs', '--hub', hub], { encoding: 'utf8' });
 check('没有错误日志', !/\berror\b/i.test(logs), logs.split('\n').filter((line) => /\berror\b/i.test(line)));

@@ -183,3 +183,36 @@ describe('接触事件和移除（Stride 的 IContactHandler、Trigger）', () =
     expect(game.simulation.rayCast([0, 1.5, 0], [0, -1, 0], 10)?.entity).toBe(ground.id);
   });
 });
+
+describe('约束（Stride.BepuPhysics 的约束组件）', () => {
+  test('addConstraint 接实体；remove 后自由落下；实体销毁时约束一起移除；sleepThreshold 为负时一直醒着', () => {
+    const game = createGame();
+    game.simulation.configure({ gravity: [0, -9, 0] });
+    const cube = game.entities.create({ components: [Transform.with({ position: [2, 0, -9] }), Body.with({ collider: new Collider([{ type: 'box', size: [2, 2, 2] }]).id, kinematic: true })] });
+    const sphere = game.entities.create({ components: [Transform.with({ position: [-2, 0, -9] }), Body.with({ collider: new Collider([{ type: 'sphere', radius: 1 }]).id })] });
+    const sphereBody = game.simulation.body(sphere);
+    sphereBody.sleepThreshold = -1;
+    expect(sphere.require(Body).sleepThreshold).toBe(-1);
+    const socket = game.simulation.addConstraint({ type: 'ballSocket', bodyA: cube, bodyB: sphere, localOffsetB: [4, 0, 0] });
+    sphereBody.applyLinearImpulse({ x: 0, y: 0, z: 18 });
+    run(game, 90);
+    const distance = () => {
+      const a = position(cube), b = position(sphere);
+      return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+    };
+    expect(distance()).toBeCloseTo(4, 1);
+    expect(sphereBody.awake).toBe(true);
+
+    socket.remove();
+    const height = position(sphere).y;
+    run(game, 60);
+    expect(position(sphere).y).toBeLessThan(height - 3);
+
+    // 焊接以后销毁立方体：约束跟着移除，球继续落
+    game.simulation.addConstraint({ type: 'weld', bodyA: cube, bodyB: sphere, localOffset: [-4, 0, 0] });
+    cube.destroy();
+    const before = position(sphere).y;
+    run(game, 30);
+    expect(position(sphere).y).toBeLessThan(before - 0.5);
+  });
+});

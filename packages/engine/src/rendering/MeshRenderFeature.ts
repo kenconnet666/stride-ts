@@ -291,13 +291,15 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
   let nDotL = max(dot(n, l), 0.0001);
   let shadow = computeShadow(in.world, n, nDotL, in.depth);
   let lightColorNdotL = view.lightColor.rgb * shadow * nDotL;
-  var color = diffuse / PI * lightColorNdotL;
+  var direct = diffuse / PI * lightColorNdotL;
   let h = normalize(v + l);
   let nDotH = saturate(dot(n, h));
   let lDotH = saturate(dot(l, h));
   let fresnel = specular + (1.0 - specular) * pow(1.0 - lDotH, 5.0);
   let reflected = fresnel * visibilitySmithSchlickGGX(alphaR, nDotL, nDotV) * normalDistributionGGX(alphaR, nDotH) / 4.0;
-  color += select(vec3f(0.0), reflected * lightColorNdotL, hasSpecular);
+  direct += select(vec3f(0.0), reflected * lightColorNdotL, hasSpecular);
+  // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致
+  var color = direct * PI;
 
   // 环境光：镜面项都乘 DFG（Stride 的环境 BRDF 查找表）
   let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;

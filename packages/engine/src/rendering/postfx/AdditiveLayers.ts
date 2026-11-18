@@ -4,7 +4,7 @@
  * 读出来加上（ToneMap.draw 的 layers），省掉一遍全分辨率 rgba16float 的读写；Expanded 放大的层（泛光）先在它自己的
  * 小图上做一次 9 点卷积（prefilter），全分辨率上就只采一次。9 个点的偏移是小图的整数个纹素，双线性插值和整数平移可以交换，
  * 所以两种做法相等，只有画面最外圈半个小图纹素（4K 下 2 个像素）里 clamp 的方式不同。
- * 4K（3840x1810，RTX 3050 笔记本）下，叠加从单独一遍 3.5 ms 变成色调映射多出的 1.2 ms 加预滤波 0.2 ms。
+ * 4K（3840x1810，RTX 3050 笔记本静谧模式）下，叠加从单独一遍 3.5 ms 变成色调映射多出的 1.2 ms 加预滤波 0.2 ms。
  */
 import type { ImageEffectContext, UniformArena } from './ImageEffect';
 

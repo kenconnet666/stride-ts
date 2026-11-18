@@ -6,7 +6,7 @@
  * - 画进渲染目标贴图的相机：SceneCameraRenderer 下面是 RenderTextureSceneRenderer 的，取它的贴图和里面的前向渲染器。
  * 多个相机分屏画、调试渲染器、单独的渲染阶段（UI）等以后随合成器的数据化一起做（docs/roadmap.md 的"合成器的最小数据化"）。
  */
-import type { SceneCompositor, SceneForwardRenderer, SceneRenderTexture, SceneTextureCamera } from '@stride-ts/engine/content-format';
+import type { SceneCompositor, SceneForwardRenderer, ScenePostEffects, SceneRenderTexture, SceneTextureCamera } from '@stride-ts/engine/content-format';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
 export interface ImportedCompositor {
@@ -38,7 +38,7 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
     node.$type?.startsWith('Stride.Rendering.Compositing.SceneCameraRenderer') === true && parseObjectReference(node['Camera']) === mainSlot);
   const forward = camera && findRenderer(resolve(camera['Child']), resolve, isForward);
   const textureCameras = textureCamerasOf(resolve(compositor?.['Game']), resolve, cameraSlots, renderTexture);
-  const main = forward && { ...forwardSettings(forward), ...(textureCameras.length > 0 ? { textureCameras } : {}) };
+  const main = forward && { ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}) };
   return { cameraSlots, main };
 }
 
@@ -58,20 +58,41 @@ function textureCamerasOf(
     if (child?.$type?.startsWith('Stride.Rendering.Compositing.RenderTextureSceneRenderer') && slot !== undefined) {
       const texture = renderTexture(parseAssetReference(child['RenderTexture'])?.id ?? '');
       const forward = findRenderer(resolve(child['Child']), resolve, isForward);
-      return texture && forward ? [{ cameraSlot: slot, texture, ...forwardSettings(forward) }] : [];
+      return texture && forward ? [{ cameraSlot: slot, texture, ...forwardSettings(forward, resolve) }] : [];
     }
     return [];
   }
   return Object.values(asObject(node['Children']) ?? {}).flatMap((child) => textureCamerasOf(resolve(child), resolve, cameraSlots, renderTexture));
 }
 
-function forwardSettings(forward: StrideObject): SceneForwardRenderer {
+function forwardSettings(forward: StrideObject, resolve: (node: StrideValue | undefined) => StrideObject | undefined): SceneForwardRenderer {
   const color = asObject(asObject(forward['Clear'])?.['Color']);
   return {
     // Stride 清屏时把颜色从 sRGB 换到线性空间（ClearRenderer 的 ToColorSpace）
     clearColor: [srgbToLinear(asNumber(color?.['R'], 0.4)), srgbToLinear(asNumber(color?.['G'], 0.4)), srgbToLinear(asNumber(color?.['B'], 0.4)), asNumber(color?.['A'], 1)],
-    postEffects: forward['PostEffects'] !== null,
+    postEffects: postEffectsOf(resolve(forward['PostEffects'])),
     transparent: forward['TransparentRenderStage'] !== null,
+  };
+}
+
+/**
+ * 后处理里各效果开不开（Stride 的 PostProcessingEffects）：效果的 Enabled 默认是 true；色调映射是颜色变换组
+ * （ColorTransforms）里的一项，组的 Transforms 默认是空的，没有 ToneMap 这一项就不做；Antialiasing 是 null 就不做抗锯齿。
+ * 我们还没有的效果（环境光遮蔽、屏幕空间反射、景深、雾、描边、胶片颗粒、暗角）不导入，见 docs/roadmap.md 的 P4。
+ */
+function postEffectsOf(effects: StrideObject | undefined): ScenePostEffects | null {
+  if (!effects) return null;
+  // 没写的效果是默认的（开着）；写成 null 的是没有这个效果
+  const enabled = (node: StrideValue | undefined) => node !== null && asObject(node)?.['Enabled'] !== false;
+  const colorTransforms = effects['ColorTransforms'];
+  const toneMap = Object.values(asObject(asObject(colorTransforms)?.['Transforms']) ?? {}).find((transform) => asObject(transform)?.$type === 'ToneMap');
+  return {
+    brightFilter: enabled(effects['BrightFilter']),
+    bloom: enabled(effects['Bloom']),
+    lightStreak: enabled(effects['LightStreak']),
+    lensFlare: enabled(effects['LensFlare']),
+    toneMap: toneMap !== undefined && enabled(colorTransforms) && enabled(toneMap),
+    antialiasing: enabled(effects['Antialiasing']),
   };
 }
 

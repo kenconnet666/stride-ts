@@ -18,7 +18,7 @@ export type ColliderShape = (
   /** 沿本地 Y；length 是两端球心的距离（Stride 的 CapsuleCollider.Length）。 */
   | { readonly type: 'capsule'; readonly radius: number; readonly length: number }
   | { readonly type: 'cylinder'; readonly radius: number; readonly length: number }
-  /** 这些网格的全部三角形，按实体的世界缩放；只能用在静态物体上。 */
+  /** 这些网格的全部三角形，按实体的世界缩放（Stride 的 MeshCollider）。动态刚体上只能单独用，质量属性按封闭网格算（同 Bepu）。 */
   | { readonly type: 'mesh'; readonly meshes: readonly Mesh[] }
   /**
    * 这些网格全部顶点的凸包（Stride 的 ConvexHullCollider），按实体的世界缩放。hull 先变换顶点：缩放、旋转（xyzw）、平移

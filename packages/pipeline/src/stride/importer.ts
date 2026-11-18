@@ -77,7 +77,7 @@ export interface ImporterOptions {
   readonly overrides?: string;
   /**
    * 没有覆盖文件的贴图怎么导出：ktx2（默认，Basis 压缩，显存最省）、source（源文件是 PNG/JPEG 时原样复制，
-   * 浏览器解码）、smallest（两者取下载小的）。
+   * 浏览器解码）、smallest（两者取下载小的）。要压缩、宽高又不是 4 的倍数的贴图总是编成 KTX2（要先缩放，见 #importTexture）。
    */
   readonly textureEncoding?: 'ktx2' | 'source' | 'smallest';
 }
@@ -638,13 +638,14 @@ export class StrideImporter {
       const meshes: SourceMesh[] = [];
       for (let m = 0; m < scene.meshCount; m++) {
         const data = scene.mesh(m);
-        const materialName = data.material === null ? undefined : scene.materials[data.material];
+        // 没有材质的网格（OBJ 没写 usemtl）：Assimp 给它一个叫 DefaultMaterial 的材质，Stride 的模型资源里就是这个槽位
+        const materialName = data.material === null ? 'DefaultMaterial' : scene.materials[data.material];
         let slot = materialName === undefined ? -1 : slotNames.indexOf(materialName);
         // Blender 导出时重名的材质带 .001 这样的后缀，Stride 的模型资源里只列了不带后缀的那个
         if (slot < 0 && materialName !== undefined) slot = slotNames.indexOf(materialName.replace(/\.\d{3}$/, ''));
-        if (slot < 0 && materialName !== undefined) {
+        if (slot < 0 && slots.length > 0) {
           this.#warnings.push(`${asset.file}: mesh material '${materialName}' has no slot in the model; using slot 0`);
-          slot = slots.length > 0 ? 0 : -1;
+          slot = 0;
         }
         const skin = skeleton ? meshSkin(data, scene, skeleton, modelTransform, asset.file, (message) => this.#warnings.push(message)) : undefined;
         const mesh: SourceMesh = { name: `mesh${m}`, material: slot < 0 ? null : slot, vertices: interleave(data, pivot, scale), indices: data.indices, ...(skin ? { skin } : {}) };
@@ -943,10 +944,16 @@ export class StrideImporter {
     const bytes = await readFile(file);
     const sourceEncoding = SOURCE_ENCODINGS[path.extname(file).toLowerCase()];
     const policy = this.#options.textureEncoding;
-    if (policy === 'source' && sourceEncoding) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     const image = await this.#tools.decodeImage(bytes);
-    const ktx2 = await this.#tools.encodeBasis(image.pixels, image.width, image.height, { mode: 'uastc', srgb, mipmaps: true });
-    if (policy === 'smallest' && sourceEncoding && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
+    // 压缩的贴图宽高补到 4 的倍数，用 Lanczos3 缩放（Stride 的 TextureHelper.FindBestTextureSize：块压缩格式要求整块）。
+    // 这样的源文件不能原样复制：运行时的尺寸和 Stride 不同，按点采样的图案会错开最多一个纹素
+    const width = asset.data['IsCompressed'] === false ? image.width : align4(image.width);
+    const height = asset.data['IsCompressed'] === false ? image.height : align4(image.height);
+    const resized = width !== image.width || height !== image.height;
+    if (policy === 'source' && sourceEncoding && !resized) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
+    const pixels = resized ? await this.#tools.resizeImage(image.pixels, image.width, image.height, width, height) : image.pixels;
+    const ktx2 = await this.#tools.encodeBasis(pixels, width, height, { mode: 'uastc', srgb, mipmaps: true });
+    if (policy === 'smallest' && sourceEncoding && !resized && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     await this.#write(asset.path + TEXTURE_EXTENSIONS.ktx2, ktx2);
     return { texture: asset.path, encoding: 'ktx2', srgb };
   }
@@ -1120,6 +1127,9 @@ function vec3(value: StrideValue | undefined, fallback: number, whole?: [number,
   if (!v && whole) return whole;
   return [asNumber(v?.['X'], fallback), asNumber(v?.['Y'], fallback), asNumber(v?.['Z'], fallback)];
 }
+
+/** 补到 4 的倍数（块压缩格式的整块）。 */
+const align4 = (n: number) => (n + 3) & ~3;
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

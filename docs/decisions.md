@@ -2,6 +2,14 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 BepuSample 的比对：后处理按效果开关，缺法线补平面法线，工具脚本不移植
+
+- **后处理按效果开关**：以前合成器只导入"有没有后处理"，效果一律按 Stride 的默认全开。BepuSample 和 Platformer2D 的合成器关掉了色调映射（ColorTransforms 里的 ToneMap），我们照样做 Hejl2 映射，整个画面比桌面版暗约 40/255。现在导入每个效果的 Enabled（`ScenePostEffects`：亮部提取、泛光、光芒、镜头光晕、色调映射、FXAA），色调映射关掉时 HDR 画面加上叠加层直接输出（超过 1 的截断，同 Stride）。我们还没有的效果（环境光遮蔽、屏幕空间反射、景深、雾、描边、胶片颗粒、暗角）不导入；BepuSample 开着环境光遮蔽和屏幕空间反射，P4 做。
+- **缺法线的网格补平面法线**：Stride 导入模型时用 Assimp 的 aiProcess_GenNormals（逐面法线，OBJ 的平滑组 `s 1` 不管），glTF 规范对缺法线的网格也要求平面着色。我们以前 FBX、OBJ 让 ufbx 按平滑组生成平滑法线，glTF 留空（法线是 0）。BepuSample 的 bridge.obj 没有法线，桌面版是一块块平面，我们是平滑过渡。现在原生导入统一补平面法线（stride-native 0.17.2），被法线不同的三角形共用的顶点拆开。
+- **没有材质的网格用 DefaultMaterial 槽位**：OBJ 没写 `usemtl` 时，Assimp 给网格一个叫 DefaultMaterial 的材质，Stride 的模型资源里就是这个槽位；我们的导入器照这个名字找槽位，找不到时和别的不认识的材质名一样用槽位 0。
+- **压缩的贴图宽高补到 4 的倍数**：照 Stride（TextureHelper.FindBestTextureSize，`IsCompressed` 默认开）用 Lanczos3 缩放到 4 的倍数再编 KTX2（原生 0.18.0 的 `st_image_resize`，用 basisu 自带的重采样器）。要缩放的源文件在 `source`、`smallest` 策略下也不原样复制，否则运行时的尺寸和 Stride 不同，按点采样的图案会错开。这样的贴图也就能用上压缩格式（以前运行时只能退回不压缩的 rgba8）。BepuSample 因此要加载贴图转码模块。
+- **没用到的工具脚本不移植**：BepuSample 的 Utils 里 CollisionComponent、RayCastComponent、OverlapTesterComponent、TriggerUsageComponent、TestComponent、ConstraintEditorComponent、ConstraintToggleComponent 在七个场景里都没挂，只是给用户抄的示例代码；它们演示的接触事件、射线、触发器、约束开关我们都有并有单测；重叠测试（Stride 的 BepuSimulation.Overlap）还没有，等游戏用到时做。GameProfilerComponent 打开 Stride 的性能叠加层，我们用 `stride perf` 代替。
+
 ## 2026-11-19 BepuSample：接触的软度不映射，调试文字先不画
 
 - **接触的软度**：Bepu 按物体设接触的弹簧（SpringFrequency、SpringDampingRatio）和最大恢复速度（MaximumRecoveryVelocity），Material Properties 场景靠它们演示"软"和"陷进去"。Jolt 的接触是刚性的，全局用 Baumgarte 恢复，没有按物体的接触软度；只映射摩擦。和 Stride 不同：这几项的效果看不到。别的做法：在接触回调里改 Jolt 的接触约束（ContactSettings 没有软度参数），或者自己写软接触——代价大、收益只在这一个演示上。

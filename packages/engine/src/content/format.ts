@@ -529,10 +529,22 @@ export interface SceneCharacter extends SceneCollidable {
 export interface SceneForwardRenderer {
   /** 线性空间的清屏色。 */
   readonly clearColor: readonly [number, number, number, number];
-  /** 有没有后处理（Stride 的 ForwardRenderer.PostEffects 不为 null）。 */
-  readonly postEffects: boolean;
+  /** 后处理（Stride 的 ForwardRenderer.PostEffects）；null 是没有后处理。 */
+  readonly postEffects: ScenePostEffects | null;
   /** 画不画透明阶段（Stride 的 TransparentRenderStage 不为 null）；画进渲染目标贴图的常常不画，贴图里就不会再出现贴图自己。 */
   readonly transparent: boolean;
+}
+
+/** 后处理里各效果开不开（Stride 的 PostProcessingEffects 下各效果的 Enabled），只有运行时有的效果。 */
+export interface ScenePostEffects {
+  readonly brightFilter: boolean;
+  readonly bloom: boolean;
+  readonly lightStreak: boolean;
+  readonly lensFlare: boolean;
+  /** 色调映射（ColorTransforms 里的 ToneMap）；关掉时 HDR 画面加上泛光等叠加层直接输出，超过 1 的截断。 */
+  readonly toneMap: boolean;
+  /** FXAA（Antialiasing）。 */
+  readonly antialiasing: boolean;
 }
 
 /** 渲染目标贴图（Stride 的 RenderTexture，.sdrendertex）：合成器里的相机画进去，精灵可以显示它。按内容路径区分。 */

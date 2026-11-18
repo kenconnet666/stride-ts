@@ -69,7 +69,7 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
   - TPP 的 mannequin（16 个网格、92 个节点）待机、走跑混合、起跳、空中、落地都对；动画系统每帧 0.12 ms（原生蒙皮 0.06 ms、求值 0.04 ms）。
   - 还没做：挂到骨骼节点（ModelNodeLink）、根运动、动画曲线（非骨骼的属性动画）、每帧按骨骼算的包围盒；原生求值失败时只有错误码，没有原因。
 - **合成器、渲染目标贴图、精灵（2026-11-19，AnimatedModel 用到的）**：
-  - 合成器的最小数据化：导入器读 GameSettings 引用的 .sdgfxcomp，相机槽位按 Cameras 列表编号（Camera.slot），主画面是槽位 0 的相机下第一个前向渲染器（清屏色、后处理开关、透明阶段开关），"相机画进渲染目标贴图"的分支（SceneCameraRenderer 加 RenderTextureSceneRenderer）写进场景的 `compositor.textureCameras`。`ForwardRenderer` 先画各个渲染目标贴图（一样的深度预通道、不透明、透明阶段，画完原样拷进贴图），再画主画面；所有相机的视图一起提取、剔除。
+  - 合成器的最小数据化：导入器读 GameSettings 引用的 .sdgfxcomp，相机槽位按 Cameras 列表编号（Camera.slot），主画面是槽位 0 的相机下第一个前向渲染器（清屏色、后处理和其中各效果的开关（`ScenePostEffects`，色调映射在颜色变换组里，关掉时直接输出）、透明阶段开关），"相机画进渲染目标贴图"的分支（SceneCameraRenderer 加 RenderTextureSceneRenderer）写进场景的 `compositor.textureCameras`。`ForwardRenderer` 先画各个渲染目标贴图（一样的深度预通道、不透明、透明阶段，画完原样拷进贴图），再画主画面；所有相机的视图一起提取、剔除。
   - 渲染目标贴图（Stride 的 RenderTexture）：`Texture.renderTarget`，没有 CPU 数据，GPU 纹理第一次用到时建，能画也能采样；内容管理按内容路径只建一次。
   - 精灵（Stride 的 SpriteComponent 加 SpriteFromTexture）：`Sprite` 数据组件，`SpriteRenderFeature` 在透明阶段画，矩形照 Stride 在 CPU 上算（`spriteQuad`：billboard 用相机的轴、实体的缩放，center 偏移），每个视图从远到近排，一个精灵一次绘制，混合方式照 Stride 的 SpriteBlend。
   - 点光和聚光（2026-11-19，BepuSample 的 Cube Mixer）：`Light` 的 point（radius）、spot（range、angleInner、angleOuter，度、整个锥的张角），衰减照 Stride 的 LightUtil（距离：1/d² 乘平滑的截断；聚光：saturate(cos θ · scale + offset)²，见 `spotAngleAttenuation`）。每帧最多 MAX_LOCAL_LIGHTS（256）个，放在存储缓冲里，所有视图共用，逐像素遍历。和 Stride 不同（暂时）：不分簇、不投阴影。

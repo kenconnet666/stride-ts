@@ -165,7 +165,7 @@ export class ForwardRenderer {
   /** 按场景的合成器设置：主画面的清屏色、后处理开关，和先画的渲染目标贴图。 */
   configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras }: CompositorSettings): void {
     this.clearColor.set(r, g, b, a);
-    this.postEffects.enabled = postEffects;
+    this.postEffects.configure(postEffects);
     this.drawTransparent = transparent;
     this.textureCameras = textureCameras;
   }

@@ -133,6 +133,9 @@ describe('导入 Stride 场景', () => {
     skyTexture: '11111111-0000-0000-0000-000000000006',
     bumpyScene: '11111111-0000-0000-0000-000000000007',
     quad: '11111111-0000-0000-0000-000000000008',
+    plain: '11111111-0000-0000-0000-0000000000f1',
+    odd: '11111111-0000-0000-0000-0000000000f2',
+    oddTexture: '11111111-0000-0000-0000-0000000000f3',
     bumpy: '11111111-0000-0000-0000-000000000009',
     bumps: '11111111-0000-0000-0000-00000000000a',
     physicsScene: '11111111-0000-0000-0000-00000000000b',
@@ -299,10 +302,26 @@ describe('导入 Stride 场景', () => {
       '                    t: !TransformComponent', '                        Id: tp2', '                        Children: {}',
       '                    s: !Game.Follower,Game', '                        Id: sp2', '                        Target: ref!! p1',
     ].join('\n'),
+    // OBJ 没写 usemtl、没有法线：Stride 的模型资源里只有一个叫 DefaultMaterial 的槽位（BepuSample 的 bridge.obj）
+    'Resources/plain.obj': ['v 0 0 0', 'v 1 0 0', 'v 0 1 0', 'f 1 2 3', ''].join('\n'),
+    'Assets/Models/Plain.sdm3d': [
+      '!Model', `Id: ${ids.plain}`, 'Source: !file ../../Resources/plain.obj', 'Materials:', '    7c8e:', '        Name: DefaultMaterial', '        MaterialInstance:',
+      `            Material: ${ids.odd}:Materials/Odd`,
+    ].join('\n'),
+    // 宽高不是 4 的倍数的贴图（BepuSample 的 Github.png 是 1015x1015）
+    'Resources/odd.png': encodePng(6, 5, new Uint8Array(6 * 5 * 4).fill(255)),
+    'Assets/Textures/Odd.sdtex': ['!Texture', `Id: ${ids.oddTexture}`, 'Source: ../../Resources/odd.png', 'Type: !ColorTextureType {}'].join('\n'),
+    'Assets/Materials/Odd.sdmat': [
+      '!MaterialAsset', `Id: ${ids.odd}`, 'Attributes:', '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeTextureColor',
+      `            Texture: ${ids.oddTexture}:Textures/Odd`,
+    ].join('\n'),
     'Assets/Bumpy.sdscene': [
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
       '                    t: !TransformComponent', '                        Id: tq1', '                        Children: {}',
       '                    m: !ModelComponent', '                        Id: mq1', `                        Model: ${ids.quad}:Models/Quad`, '                        Materials: {}',
+      '        -   Entity:', '                Id: q2', '                Name: Plain', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tq2', '                        Children: {}',
+      '                    m: !ModelComponent', '                        Id: mq2', `                        Model: ${ids.plain}:Models/Plain`, '                        Materials: {}',
     ].join('\n'),
     // TPP 的仿真设置；BepuSimulations 里没写的字段取 Stride 的默认值
     'Assets/GameSettings.sdgamesettings': [
@@ -509,9 +528,22 @@ describe('导入 Stride 场景', () => {
     expect(material.normalMap).toEqual({ texture: 'Game/Textures/Bumps', encoding: 'png', srgb: false, scale: [4, 4], offset: [0, 0], scaleAndBias: true, isXYNormal: true, invertY: true });
     const model = decodeModel((await readFile(path.join(out, 'Game/Models/Quad.model'))).buffer as ArrayBuffer);
     expect(model.meshes.map((m) => [m.vertexCount, m.layout.tangent])).toEqual([[4, 'snorm8x4']]);
+    // 没有材质的 OBJ 网格用 DefaultMaterial 槽位
+    const plain = decodeModel((await readFile(path.join(out, 'Game/Models/Plain.model'))).buffer as ArrayBuffer);
+    expect([plain.materials, plain.meshes.map((m) => m.material)]).toEqual([['Game/Materials/Odd'], [0]]);
     // 主场景的三角形没有法线贴图：没有切线
     await new StrideImporter(project, tools, out, { specularCubemapSize: 16 }).importScene(project.byPath('Game/Main')!);
     expect(decodeModel((await readFile(path.join(out, 'Game/Models/Tri.model'))).buffer as ArrayBuffer).meshes[0]!.layout.tangent).toBeUndefined();
+  });
+
+  test('压缩的贴图宽高补到 4 的倍数（Lanczos3 缩放，同 Stride）；要缩放的源文件不原样复制', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-odd');
+    await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' }).importScene(project.byPath('Game/Bumpy')!);
+    // KTX2 的头：12 字节标识、vkFormat、typeSize，然后是 pixelWidth、pixelHeight
+    const ktx2 = await readFile(path.join(out, 'Game/Textures/Odd.ktx2'));
+    const header = new DataView(ktx2.buffer, ktx2.byteOffset, ktx2.byteLength);
+    expect([header.getUint32(20, true), header.getUint32(24, true)]).toEqual([8, 8]);
   });
 
   test('材质：镜面颜色乘强度、遮蔽贴图的通道、贴图乘 Float4 的自发光（不做 sRGB 转换）、透明混合；材质层警告', async () => {
@@ -618,7 +650,7 @@ Game*: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
   test('相机槽位按列表编号；主画面是槽位 0 的相机下的前向渲染器，清屏色换到线性空间', () => {
     const { cameraSlots, main } = importCompositor(compositor);
     expect([...cameraSlots]).toEqual([['main-slot', 0], ['second-slot', 1]]);
-    expect(main?.postEffects).toBe(false);
+    expect(main?.postEffects).toBeNull();
     expect(main?.transparent).toBe(true);
     expect(main?.clearColor.map((c) => +c.toFixed(4))).toEqual([0.214, 0.214, 0.214, 1]);
   });
@@ -626,7 +658,49 @@ Game*: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
   test('相机画进渲染目标贴图的分支：槽位、贴图、里面的前向渲染器（不画透明阶段）', () => {
     const texture = { renderTexture: 'Game/RenderTexture', width: 320, height: 568, hdr: false, srgb: true };
     const { main } = importCompositor(compositor, (id) => (id === 'rt-id' ? texture : undefined));
-    expect(main?.textureCameras).toEqual([{ cameraSlot: 1, texture, clearColor: [1, 0, 0, 1], postEffects: true, transparent: false }]);
+    expect(main?.textureCameras).toEqual([{ cameraSlot: 1, texture, clearColor: [1, 0, 0, 1], postEffects: null, transparent: false }]);
+  });
+
+  test('后处理：共享的 PostProcessingEffects，没写的效果开着，ToneMap 看颜色变换组里的那一项，Antialiasing 为 null 时关', () => {
+    const withEffects = (effects: string) => importCompositor(parseStrideYaml(`!GraphicsCompositorAsset
+Id: c
+Cameras:
+    a1:
+        Id: main-slot
+SharedRenderers:
+    s1: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine
+        Id: main-forward
+        PostEffects: !PostProcessingEffects ref!! effects
+    s2: !PostProcessingEffects
+        Id: effects
+${effects}
+Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
+    Camera: ref!! main-slot
+    Child: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! main-forward
+`)).main?.postEffects;
+    // BepuSample：色调映射关掉，其余开着
+    expect(withEffects(`        BrightFilter:
+            Enabled*: true
+        LensFlare: {}
+        ColorTransforms:
+            Enabled*: true
+            Transforms:
+                t1: !ToneMap
+                    Enabled*: false
+                    Operator: !ToneMapHejl2Operator {}
+                t2: !FilmGrain
+                    Enabled*: false
+        Antialiasing: !FXAAEffect
+            Quality*: 8`)).toEqual({ brightFilter: true, bloom: true, lightStreak: true, lensFlare: true, toneMap: false, antialiasing: true });
+    expect(withEffects(`        Bloom:
+            Enabled: false
+        ColorTransforms:
+            Transforms:
+                t1: !ToneMap
+                    Operator: !ToneMapHejl2Operator {}
+        Antialiasing: null`)).toEqual({ brightFilter: true, bloom: false, lightStreak: true, lensFlare: true, toneMap: true, antialiasing: false });
+    // 颜色变换组里没有 ToneMap 就不做色调映射
+    expect(withEffects('        Fog: {}')?.toneMap).toBe(false);
   });
 
   test('没有合成器时没有槽位，用默认设置', () => {

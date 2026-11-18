@@ -7,6 +7,7 @@
  * enabled 为 false 时同 Stride（合成器的 PostEffects 是 null）：HDR 画面原样拷贝到输出，超过 1 的截断。
  * 临时的渲染目标每帧从池里借，参数每次绘制各占一段 uniform（见 ImageEffect.ts）。
  */
+import type { ScenePostEffects } from '../../content/format';
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { prefilterLayers, type AdditiveLayer } from './AdditiveLayers';
 import { Bloom } from './Bloom';
@@ -44,6 +45,18 @@ export class PostProcessingEffects {
     this.#arena = new UniformArena(device);
     this.#scaler = new ImageScaler(device, linearClamp);
     this.#blur = new GaussianBlur(device, linearClamp);
+  }
+
+  /** 按场景的合成器设置开关各效果；null 是不做后处理。 */
+  configure(settings: ScenePostEffects | null): void {
+    this.enabled = settings !== null;
+    if (!settings) return;
+    this.brightFilter.enabled = settings.brightFilter;
+    this.bloom.enabled = settings.bloom;
+    this.lightStreak.enabled = settings.lightStreak;
+    this.lensFlare.enabled = settings.lensFlare;
+    this.toneMap.enabled = settings.toneMap;
+    this.antialiasing.enabled = settings.antialiasing;
   }
 
   /** input 是 HDR 画面（rgba16float），结果写进 output；elapsed 是这一帧的秒数。 */

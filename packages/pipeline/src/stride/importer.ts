@@ -13,13 +13,17 @@ import {
   encodeModel,
   plainMesh,
   VERTEX_FLOATS,
+  type ColliderShapeFile,
   type ColorOperator,
   type MaterialFile,
   type ModelMeshData,
   type NormalMapSlot,
+  type SceneCharacter,
+  type SceneCollidable,
   type SceneEntityFile,
   type SceneFile,
   type SceneLightShadow,
+  type ScenePhysics,
   type SkyboxFile,
   TEXTURE_EXTENSIONS,
   type TextureEncoding,
@@ -123,7 +127,8 @@ export class StrideImporter {
     }
 
     const files = await Promise.all(entities.map((entity) => this.#entity(entity, parentOf.get(entity['Id'] as string) ?? null, asset)));
-    const scene: SceneFile = { name: path.basename(asset.path), entities: parentsFirst(files) };
+    const usesPhysics = files.some((file) => file.components.static || file.components.character);
+    const scene: SceneFile = { name: path.basename(asset.path), ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}), entities: parentsFirst(files) };
     await this.#write(asset.path + EXTENSIONS.scene, JSON.stringify(scene, null, 1));
     return {
       scene: asset.path,
@@ -179,9 +184,89 @@ export class StrideImporter {
         components.background = { texture: await this.#cubemap(this.#project.get(texture.id, where)), intensity: asNumber(component['Intensity'], 1) };
         return true;
       }
+      case 'Stride.BepuPhysics.StaticComponent,Stride.BepuPhysics': {
+        const collidable = await this.#collidable(component, where);
+        if (collidable) components.static = collidable;
+        return collidable !== undefined;
+      }
+      case 'Stride.BepuPhysics.CharacterComponent,Stride.BepuPhysics': {
+        const character = await this.#character(component, where);
+        if (character) components.character = character;
+        return character !== undefined;
+      }
       default:
         return false;
     }
+  }
+
+  /**
+   * Stride.BepuPhysics 的 CollidableComponent：碰撞体（CompoundCollider 的各形状，或者 MeshCollider 引用的模型）、
+   * 碰撞层和摩擦，默认值同 Stride。没有能用的形状时记警告、返回 undefined。
+   */
+  async #collidable(component: StrideObject, where: string): Promise<SceneCollidable | undefined> {
+    const collider = asObject(component['Collider']);
+    const shapes: ColliderShapeFile[] = [];
+    const type = colliderType(collider);
+    if (type === 'CompoundCollider') {
+      for (const child of Object.values(asObject(collider!['Colliders']) ?? {})) {
+        const shape = colliderShape(asObject(child) ?? {});
+        if (shape) shapes.push(shape);
+        else this.#warnings.push(`${where}: collider ${colliderType(asObject(child))} is not supported; skipping it`);
+      }
+    } else if (type === 'MeshCollider') {
+      const reference = parseAssetReference(collider!['Model']);
+      if (!reference) throw new Error(`${where}: MeshCollider has no model`);
+      const model = await this.#model(this.#project.get(reference.id, where));
+      shapes.push({ type: 'mesh', model, position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: asNumber(collider!['Mass'], 1) });
+    } else if (type !== 'EmptyCollider') {
+      this.#warnings.push(`${where}: collider ${type} is not supported; skipping the physics component`);
+    }
+    if (shapes.length === 0) return undefined;
+    const layer = /^Layer(\d+)$/.exec(String(component['CollisionLayer'] ?? 'Layer0'));
+    return { shapes, layer: layer ? Number(layer[1]) : 0, friction: asNumber(component['FrictionCoefficient'], 1) };
+  }
+
+  /** Stride.BepuPhysics 的 CharacterComponent：碰撞体加角色参数，默认值同 Stride。 */
+  async #character(component: StrideObject, where: string): Promise<SceneCharacter | undefined> {
+    const collidable = await this.#collidable(component, where);
+    if (!collidable) return undefined;
+    return {
+      ...collidable,
+      speed: asNumber(component['Speed'], 10),
+      // JumpForce 的数据别名是 JumpSpeed
+      jumpForce: asNumber(component['JumpForce'] ?? component['JumpSpeed'], 10),
+      maximumHorizontalForce: asNumber(component['MaximumHorizontalForce'], 200),
+      maximumVerticalForce: asNumber(component['MaximumVerticalForce'], 1000),
+      slopeAngle: asNumber(component['SlopeAngle'], 50),
+      airControlForceScale: asNumber(component['AirControlForceScale'], 0.2),
+      airControlScale: asNumber(component['AirControlScale'], 0.2),
+      gravity: component['Gravity'] !== false,
+      interpolated: component['InterpolationMode'] === 'Interpolated',
+    };
+  }
+
+  /**
+   * 场景的仿真设置：GameSettings 里 BepuConfiguration 的 BepuSimulations 中 AssociatedScene 是这个场景或为空的那个
+   * （GameSettings 优先取 DefaultScene 是这个场景的），没有时用 Stride 的默认值。
+   */
+  #physicsSettings(scene: AssetEntry): ScenePhysics {
+    const settings = this.#project.ofType('GameSettingsAsset');
+    const preferred = settings.find((s) => parseAssetReference(s.data['DefaultScene'])?.id === scene.id) ?? settings[0];
+    const defaults = preferred?.data['Defaults'];
+    const configuration = (Array.isArray(defaults) ? defaults : [])
+      .map(asObject)
+      .find((d) => d?.$type?.startsWith('Stride.BepuPhysics.BepuConfiguration'));
+    const list = configuration?.['BepuSimulations'];
+    const simulations = (Array.isArray(list) ? list : []).map(asObject);
+    const simulation = simulations.find((s) => parseAssetReference(s?.['AssociatedScene'])?.id === scene.id)
+      ?? simulations.find((s) => s?.['AssociatedScene'] === null || s?.['AssociatedScene'] === undefined) ?? {};
+    return {
+      gravity: vec3(simulation['PoseGravity'], 0, [0, -9.8, 0]),
+      linearDamping: asNumber(simulation['PoseLinearDamping'], 0.05),
+      angularDamping: asNumber(simulation['PoseAngularDamping'], 0.05),
+      fixedTimeStep: asNumber(simulation['FixedTimeStepSeconds'], 1 / 60),
+      maxStepsPerFrame: asNumber(simulation['MaxStepPerFrame'], 3),
+    };
   }
 
   async #light(component: StrideObject, where: string): Promise<SceneEntityFile['components']['light'] | undefined> {
@@ -651,9 +736,33 @@ function parentsFirst(entities: readonly SceneEntityFile[]): SceneEntityFile[] {
   return ordered;
 }
 
-function vec3(value: StrideValue | undefined, fallback: number): [number, number, number] {
-  const v = asObject(value) ?? {};
-  return [asNumber(v['X'], fallback), asNumber(v['Y'], fallback), asNumber(v['Z'], fallback)];
+function vec3(value: StrideValue | undefined, fallback: number, whole?: [number, number, number]): [number, number, number] {
+  const v = asObject(value);
+  if (!v && whole) return whole;
+  return [asNumber(v?.['X'], fallback), asNumber(v?.['Y'], fallback), asNumber(v?.['Z'], fallback)];
+}
+
+/** 碰撞体的类型名，去掉命名空间和程序集（"Stride.BepuPhysics.Definitions.Colliders.BoxCollider,Stride.BepuPhysics" → "BoxCollider"）。 */
+function colliderType(collider: StrideObject | undefined): string {
+  const type = collider?.$type ?? 'none';
+  return type.slice(0, type.includes(',') ? type.indexOf(',') : undefined).split('.').pop()!;
+}
+
+/** CompoundCollider 里的一个形状，默认值同 Stride（BoxCollider 边长 1，胶囊半径 0.35、长 0.5，球半径 0.5，圆柱半径 0.5、长 1）。 */
+function colliderShape(collider: StrideObject): ColliderShapeFile | undefined {
+  const local = { position: vec3(collider['PositionLocal'], 0), rotation: quaternion(collider['RotationLocal']), mass: asNumber(collider['Mass'], 1) };
+  switch (colliderType(collider)) {
+    case 'BoxCollider':
+      return { type: 'box', size: vec3(collider['Size'], 1), ...local };
+    case 'SphereCollider':
+      return { type: 'sphere', radius: asNumber(collider['Radius'], 0.5), ...local };
+    case 'CapsuleCollider':
+      return { type: 'capsule', radius: asNumber(collider['Radius'], 0.35), length: asNumber(collider['Length'], 0.5), ...local };
+    case 'CylinderCollider':
+      return { type: 'cylinder', radius: asNumber(collider['Radius'], 0.5), length: asNumber(collider['Length'], 1), ...local };
+    default:
+      return undefined;
+  }
 }
 
 function vec2(value: StrideValue | undefined, fallback: number): [number, number] {

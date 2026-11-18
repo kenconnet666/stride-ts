@@ -23,7 +23,7 @@ export interface AssetEntry {
   readonly data: StrideObject;
 }
 
-const ASSET_EXTENSIONS = new Set(['.sdscene', '.sdm3d', '.sdmat', '.sdprefab', '.sdtex', '.sdsky']);
+const ASSET_EXTENSIONS = new Set(['.sdscene', '.sdm3d', '.sdmat', '.sdprefab', '.sdtex', '.sdsky', '.sdgamesettings']);
 
 export class StrideProject {
   readonly #byId = new Map<string, AssetEntry>();
@@ -56,6 +56,11 @@ export class StrideProject {
     const entry = this.#byId.get(id);
     if (!entry) throw new Error(`${referencedFrom}: asset ${id} is not in any of the asset folders`);
     return entry;
+  }
+
+  /** 某种类型（YAML 顶层的类型，比如 GameSettingsAsset）的全部资源。 */
+  ofType(type: string): AssetEntry[] {
+    return [...this.#byId.values()].filter((entry) => entry.type === type);
   }
 
   /** 按内容路径找资源（包名/相对路径）。 */

@@ -312,6 +312,52 @@ export interface SceneLightShadow {
   readonly blendCascades: boolean;
 }
 
+/** 碰撞体里的一个形状（Stride.BepuPhysics 的 BoxCollider、CapsuleCollider…… 加 CompoundCollider 的本地位姿）。 */
+export type ColliderShapeFile = (
+  | { readonly type: 'box'; /** 边长。 */ readonly size: Vec3Tuple }
+  | { readonly type: 'sphere'; readonly radius: number }
+  /** 沿本地 Y，length 是两端球心的距离。 */
+  | { readonly type: 'capsule'; readonly radius: number; readonly length: number }
+  | { readonly type: 'cylinder'; readonly radius: number; readonly length: number }
+  /** Stride 的 MeshCollider：模型（内容路径）的全部三角形，按实体的世界缩放。 */
+  | { readonly type: 'mesh'; readonly model: string }
+) & {
+  readonly position: Vec3Tuple;
+  readonly rotation: readonly [number, number, number, number];
+  readonly mass: number;
+};
+
+/** 物理物体的公共部分（Stride 的 CollidableComponent）。 */
+export interface SceneCollidable {
+  readonly shapes: readonly ColliderShapeFile[];
+  /** CollisionLayer，0..31。 */
+  readonly layer: number;
+  readonly friction: number;
+}
+
+/** Stride 的 CharacterComponent。 */
+export interface SceneCharacter extends SceneCollidable {
+  readonly speed: number;
+  readonly jumpForce: number;
+  readonly maximumHorizontalForce: number;
+  readonly maximumVerticalForce: number;
+  readonly slopeAngle: number;
+  readonly airControlForceScale: number;
+  readonly airControlScale: number;
+  readonly gravity: boolean;
+  readonly interpolated: boolean;
+}
+
+/** 仿真设置（Stride 的 GameSettings 里 BepuConfiguration 的 BepuSimulation）。 */
+export interface ScenePhysics {
+  readonly gravity: Vec3Tuple;
+  readonly linearDamping: number;
+  readonly angularDamping: number;
+  /** 秒。 */
+  readonly fixedTimeStep: number;
+  readonly maxStepsPerFrame: number;
+}
+
 export interface SceneEntityFile {
   readonly id: string;
   readonly name: string;
@@ -347,11 +393,16 @@ export interface SceneEntityFile {
       };
     /** 背景（Stride 的 BackgroundComponent）：立方体贴图的内容路径和强度。 */
     readonly background?: { readonly texture: string; readonly intensity: number };
+    /** Stride.BepuPhysics 的 StaticComponent。 */
+    readonly static?: SceneCollidable;
+    readonly character?: SceneCharacter;
   };
 }
 
 export interface SceneFile {
   readonly name: string;
+  /** 场景用的仿真设置；没有时用引擎的默认值。 */
+  readonly physics?: ScenePhysics;
   /** 父实体都排在子实体前面。 */
   readonly entities: readonly SceneEntityFile[];
 }

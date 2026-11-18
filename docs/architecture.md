@@ -786,6 +786,34 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 
 只有当 Stride 依赖的某个特性 Jolt 的模型做不到、而且这个需求很重要时，才评估局部替换或扩展。
 
+**实现状态（2026-11-18，@stride-ts/native 0.8.1，引擎的 `physics/`、`input/`）**：
+
+- **原生侧（`Physics.h`）**：
+  - 形状：盒子、球、胶囊、圆柱、三角网格（按实体的世界缩放），带本地位姿的复合碰撞体。
+  - 物体：静态、动态、运动学、角色。成批加入。
+  - 32 个碰撞层加对称的碰撞矩阵，射线和球体扫掠按层遮罩。
+  - 插值：记下前后两步的位姿，`interpolate(alpha)` 写回两步之间。
+  - 角色在 `JPH::Character` 上照 Bepu 的角色控制器（Stride.BepuPhysics 的 `CharacterControllers`）实现：
+    - 站稳时用有上限的力（`MaximumHorizontalForce`）追目标水平速度，竖直方向用 `MaximumVerticalForce` 把角色压在地面上；
+    - 起跳把相对支撑物的竖直速度补到 `JumpForce`；
+    - 能不能站立按 `SlopeAngle`，地面状态用 Jolt 的 `PostSimulation`。
+- **引擎**：
+  - 组件：`Static`、`Character`。碰撞体是 `Collider` 资源，网格形状引用渲染网格，位置从量化数据反量化出来。
+  - `Simulation` 同 Stride 的 BepuSimulation：固定步长，每帧最多 3 步，单帧最多处理 0.25 秒。`Game` 在“物理前”和“物理后”两组系统之间调用它；有 physics 原生功能时自动建。
+  - 角色的移动照 Stride：脚本写 `moveX`、`moveY`（MoveVector，在角色的基里）和 `jump`，仿真后读 `grounded`。
+  - `InputManager` 是 Stride InputManager 的常用部分：键盘（KeyboardEvent.code）、鼠标（移动量按画布归一化，Pointer Lock）、手柄（标准布局，摇杆 y 向上为正）。
+- **资源管线**：导入 `StaticComponent`、`CharacterComponent` 的复合碰撞体和网格碰撞体、碰撞层、摩擦、角色参数，以及 GameSettings 里 BepuConfiguration 的仿真设置（重力、阻尼、步长）。凸包碰撞体还不支持，导入时警告。
+- **和 Stride 有意不同的地方**（Stride 的做法有缺陷时，修掉并在注释里写明）：
+  - 角色的摩擦为 0：水平速度完全由角色逻辑给，相当于 Bepu 的运动约束；Bepu 是约束和摩擦一起求解。
+  - 空中操控先把方向归一化：Stride 拿没归一化的目标速度做点积，单位对不上，离地后几乎没有空中操控。速度上限按目标速度的大小，摇杆推一半，空中也只到一半。
+  - 球体扫掠可以忽略起点就重叠的物体。TPP 的相机用它，再配一条射线防止钻进正后方的墙；Stride 的相机贴着旁边的箱子时会被拉到最近。
+  - TPP 的脚本按时间平滑（Stride 每帧固定比例，帧率越高越快），起跳宽限按帧时间减，每帧把输入事件取完（Stride 每帧取一个，悬空时没取的起跳会积到落地后才触发）。
+- **还没做**：
+  - 实体销毁时移除物体：原生侧还没有移除接口，目前销毁带物理组件的实体，物体会留在世界里。
+  - 动态物体组件（BodyComponent）、触发器、接触事件、约束。
+  - 场景里的脚本组件随场景导入：TPP 现在由游戏代码按实体名挂脚本。
+  - 动画。
+
 ### 怎么 fork 和维护 Jolt（2026-11-17 定）
 
 - **引入**（2026-11-17 用户改为独立 fork 仓库，取代原先的 git subtree 方案）：Jolt 的 fork 是单独的 git 仓库，本地在 `C:\Users\Administrator\CLionProjects\jolt-native-fork`。远程 `upstream` 指向 `jrouwe/JoltPhysics`（禁止推送）；`master` 只跟踪上游；我们的工作分支 `stride` 固定在上游发布标签上（当前 `v5.7.0`），补丁提交在它上面。远程 `origin` 是 GitHub 上的 fork `kenconnet666/JoltPhysics`，`stride` 分支推送到这里。`stride-native` 的源码就放在这个仓库的 `StrideNative/` 目录（2026-11-17 用户决定），见 [own-stack.md](own-stack.md) 的"结构"。

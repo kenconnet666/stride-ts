@@ -88,6 +88,19 @@ export class Vector3 implements Vec3Like {
     return this.set(this.x + (to.x - this.x) * t, this.y + (to.y - this.y) * t, this.z + (to.z - this.z) * t);
   }
 
+  /** 用单位四元数旋转（Stride 的 Quaternion.Rotate）：v' = q v q⁻¹。 */
+  rotate(q: Readonly<QuatLike>): this {
+    // t = 2 (q.xyz × v)，v' = v + w t + q.xyz × t
+    const tx = 2 * (q.y * this.z - q.z * this.y);
+    const ty = 2 * (q.z * this.x - q.x * this.z);
+    const tz = 2 * (q.x * this.y - q.y * this.x);
+    return this.set(
+      this.x + q.w * tx + (q.y * tz - q.z * ty),
+      this.y + q.w * ty + (q.z * tx - q.x * tz),
+      this.z + q.w * tz + (q.x * ty - q.y * tx),
+    );
+  }
+
   equals(v: Readonly<Vec3Like>, epsilon = 0): boolean {
     return Math.abs(this.x - v.x) <= epsilon && Math.abs(this.y - v.y) <= epsilon && Math.abs(this.z - v.z) <= epsilon;
   }

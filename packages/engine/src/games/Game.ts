@@ -1,9 +1,11 @@
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
-import { ContentManager } from '../content/ContentManager';
+import { ContentManager, type SceneInstance } from '../content/ContentManager';
 import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
 import { GraphicsDevice } from '../graphics/GraphicsDevice';
+import { InputManager } from '../input/InputManager';
+import { Simulation } from '../physics/Simulation';
 import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
@@ -28,6 +30,8 @@ export interface GameOptions {
   nativeFeatures?: readonly NativeFeature[];
   /** 变换存储的槽位数，即最多有多少个带 Transform 的实体；默认 65536（每个约 108 字节）。 */
   maxTransforms?: number;
+  /** 物理仿真最多的物体数（nativeFeatures 里有 physics 时），默认 4096。 */
+  maxBodies?: number;
   /**
    * 游戏的模块，即 `import.meta.glob('./**\/*.ts', { eager: true })` 的结果：loadContent 之前，按路径和导出名
    * 给其中的组件、脚本、系统起名（见 engine/registry.ts）。
@@ -38,6 +42,7 @@ export interface GameOptions {
 // 更长的间隔（标签页在后台、断点停住）不在一步里模拟完。
 const MAX_ELAPSED = 0.25;
 const DEFAULT_MAX_TRANSFORMS = 65536;
+const DEFAULT_MAX_BODIES = 4096;
 
 /** Vite 的 `import.meta.hot` 里引擎用到的部分。 */
 export interface HotContext {
@@ -59,6 +64,10 @@ export class Game {
   /** 所有 Transform 组件的数据，在原生内存里；世界矩阵在每帧 update 之后、draw 之前算。 */
   transforms!: TransformStore;
   graphicsDevice!: GraphicsDevice;
+  /** 键盘、鼠标、手柄（Stride 的 InputManager），每帧开头刷新。 */
+  input!: InputManager;
+  /** 物理仿真（Stride 的 BepuSimulation）；nativeFeatures 里没有 physics 时是 undefined。 */
+  simulation: Simulation | undefined;
   /** 渲染特性（默认有 MeshRenderFeature）、视图和光照（Stride 的 RenderSystem）。 */
   renderSystem!: RenderSystem;
   /** 每帧的 draw 交给它（Stride 的 GraphicsCompositor）；骨架阶段是一个前向渲染器。 */
@@ -96,7 +105,9 @@ export class Game {
         ...(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads }),
       });
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
+      if (this.native.hasFeature('physics')) this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
       this.graphicsDevice = await GraphicsDevice.create(canvas);
+      this.input = new InputManager(canvas);
       if (this.native.hasFeature('texture')) this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
       this.content.meshoptDecoder ??= (requests) => this.native.decodeMeshoptBatch(requests);
       this.content.imageDecoder ??= browserImageDecoder();
@@ -125,7 +136,9 @@ export class Game {
     this.entities.clear();
     (this.graphicsCompositor as ForwardRenderer | undefined)?.destroy();
     (this.renderSystem as RenderSystem | undefined)?.destroy();
+    (this.input as InputManager | undefined)?.destroy();
     (this.graphicsDevice as GraphicsDevice | undefined)?.destroy();
+    this.simulation?.destroy();
     (this.transforms as TransformStore | undefined)?.destroy();
     (this.native as StrideNative | undefined)?.shutdown();
   }
@@ -176,9 +189,22 @@ export class Game {
 
   protected async loadContent(): Promise<void> {}
 
-  /** 运行脚本和系统；重写时要调用 super.update(time)。 */
+  /**
+   * 加载场景、创建它的实体（ContentManager.loadScene），场景带的仿真设置交给 simulation。场景里有物理组件时
+   * 要在 nativeFeatures 里加上 physics。
+   */
+  async loadScene(path: string): Promise<SceneInstance> {
+    const scene = await this.content.loadScene(path, this.entities);
+    if (scene.physics) {
+      if (!this.simulation) throw new Error(`scene '${path}' has physics; run the game with nativeFeatures: [physics] (import { physics } from '@stride-ts/native/physics')`);
+      this.simulation.configure(scene.physics);
+    }
+    return scene;
+  }
+
+  /** 运行脚本、系统和物理仿真（在物理前和物理后两组系统之间）；重写时要调用 super.update(time)。 */
   protected update(time: GameTime): void {
-    this.entities.update(time);
+    this.entities.update(time, this.simulation ? (t) => this.simulation!.update(t) : undefined);
   }
 
   /** 画一帧：世界矩阵这时已经算好。默认交给图形合成器。 */
@@ -192,6 +218,7 @@ export class Game {
     this.lastFrameTime = now;
     try {
       this.updateTime.advance(elapsed);
+      this.input.update();
       this.update(this.updateTime);
       this.transforms.update();
       this.graphicsDevice.resizeToDisplaySize();

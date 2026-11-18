@@ -10,12 +10,14 @@
 import type { EntityManager } from '../engine/EntityManager';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
+import { Collider, type ColliderShape } from '../physics/Collider';
+import { Character, Static } from '../physics/components';
 import { Background, Camera, Light, Model } from '../rendering/components';
 import { Material } from '../rendering/Material';
 import { Mesh, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeCubemap, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type SceneEntityFile, type SceneFile, type SceneLightShadow, type SkyboxFile } from './format';
+import { decodeCubemap, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneLightShadow, type ScenePhysics, type SkyboxFile } from './format';
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
 export interface MeshoptRequest {
@@ -55,6 +57,8 @@ export interface SceneInstance {
   readonly name: string;
   /** 按场景文件里的实体 id。 */
   readonly entities: ReadonlyMap<string, Entity>;
+  /** 场景用的仿真设置（Game.loadScene 交给 simulation）。 */
+  readonly physics?: ScenePhysics;
 }
 
 const fetchReader: ContentReader = async (url) => {
@@ -181,8 +185,9 @@ export class ContentManager {
     const url = new URL(path + EXTENSIONS.scene, this.root);
     const scene = this.#json<SceneFile>(await this.#read(url));
     const components = scene.entities.map((e) => e.components);
+    const colliderModels = components.flatMap((c) => [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? [])]).flatMap((s) => (s.type === 'mesh' ? [s.model] : []));
     const [models, materials, skyboxes, cubemaps] = await Promise.all([
-      preload(components.flatMap((c) => (c.model ? [c.model.model] : [])), (p) => this.loadModel(p)),
+      preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels], (p) => this.loadModel(p)),
       preload(components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), (p) => this.loadMaterial(p)),
       preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
       preload(components.flatMap((c) => (c.background ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
@@ -200,12 +205,18 @@ export class ContentManager {
       created.set(file.id, entity);
       this.#addComponents(entity, file, assets, entities);
     }
-    return { name: scene.name, entities: created };
+    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}) };
   }
 
   #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
-    const { model, camera, light, background } = file.components;
+    const { model, camera, light, background, static: collidable, character } = file.components;
     const { materials } = assets;
+    const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
+    if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction }));
+    if (character) {
+      const { shapes, ...settings } = character;
+      entity.add(Character.with({ collider: collider(shapes), ...settings }));
+    }
     if (camera) entity.add(Camera.with(camera));
     if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
     else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
@@ -242,6 +253,14 @@ export class ContentManager {
   #json<T>(buffer: ArrayBuffer): T {
     return JSON.parse(new TextDecoder().decode(buffer)) as T;
   }
+}
+
+/** 场景文件里的碰撞形状换成 Collider 的形状：网格形状引用模型加载出来的全部网格。 */
+function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderShape {
+  const { position, rotation, mass } = shape;
+  if (shape.type !== 'mesh') return shape;
+  const model = assets.models.get(shape.model)!;
+  return { type: 'mesh', meshes: model.meshes.map(({ mesh }) => mesh), position, rotation, mass };
 }
 
 /** 并行加载一组（去重的）路径，结果按路径放进 Map。 */

@@ -7,7 +7,7 @@
 import type { ColorOperator } from '../content/format';
 import type { Branded } from '../data/prop';
 import { Color4, type ColorLike } from '../mathematics/vectors';
-import { ResourceTable } from './ResourceTable';
+import { ResourceTable } from '../engine/ResourceTable';
 import type { Texture } from './Texture';
 
 export type MaterialId = Branded<number, 'MaterialId'>;

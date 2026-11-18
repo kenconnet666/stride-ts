@@ -5,7 +5,7 @@
  */
 import type { CubemapData } from '../content/format';
 import type { Branded } from '../data/prop';
-import { ResourceTable } from './ResourceTable';
+import { ResourceTable } from '../engine/ResourceTable';
 
 export type CubemapId = Branded<number, 'CubemapId'>;
 export type SkyboxId = Branded<number, 'SkyboxId'>;

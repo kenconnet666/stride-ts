@@ -135,6 +135,8 @@ describe('导入 Stride 场景', () => {
     quad: '11111111-0000-0000-0000-000000000008',
     bumpy: '11111111-0000-0000-0000-000000000009',
     bumps: '11111111-0000-0000-0000-00000000000a',
+    physicsScene: '11111111-0000-0000-0000-00000000000b',
+    gameSettings: '11111111-0000-0000-0000-00000000000c',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
   const quadData = Buffer.from(new Float32Array([
@@ -247,6 +249,39 @@ describe('导入 Stride 场景', () => {
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
       '                    t: !TransformComponent', '                        Id: tq1', '                        Children: {}',
       '                    m: !ModelComponent', '                        Id: mq1', `                        Model: ${ids.quad}:Models/Quad`, '                        Materials: {}',
+    ].join('\n'),
+    // TPP 的仿真设置；BepuSimulations 里没写的字段取 Stride 的默认值
+    'Assets/GameSettings.sdgamesettings': [
+      '!GameSettingsAsset', `Id: ${ids.gameSettings}`, `DefaultScene: ${ids.physicsScene}:Physics`, 'Defaults:',
+      '    - !Stride.BepuPhysics.BepuConfiguration,Stride.BepuPhysics', '        BepuSimulations:',
+      '            -   AssociatedScene: null', '                FixedTimeStepSeconds: 0.02', '                PoseGravity: {X: 0.0, Y: -40.0, Z: 0.0}',
+    ].join('\n'),
+    'Assets/Physics.sdscene': [
+      '!SceneAsset', `Id: ${ids.physicsScene}`, 'Hierarchy:', '    Parts:',
+      // 复合碰撞体：盒子带本地位置，胶囊取默认尺寸，凸包还不支持（跳过并警告）
+      '        -   Entity:', '                Id: w1', '                Name: Wall', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tw1', '                        Children: {}',
+      '                    s: !Stride.BepuPhysics.StaticComponent,Stride.BepuPhysics', '                        Id: sw1',
+      '                        Collider: !Stride.BepuPhysics.Definitions.Colliders.CompoundCollider,Stride.BepuPhysics', '                            Colliders:',
+      '                                a: !Stride.BepuPhysics.Definitions.Colliders.BoxCollider,Stride.BepuPhysics',
+      '                                    PositionLocal: {X: 0.0, Y: 1.0, Z: 0.0}', '                                    Size: {X: 1.0, Y: 2.0, Z: 3.0}',
+      '                                b: !Stride.BepuPhysics.Definitions.Colliders.CapsuleCollider,Stride.BepuPhysics', '                                    Mass: 2.0',
+      '                                c: !Stride.BepuPhysics.Definitions.Colliders.ConvexHullCollider,Stride.BepuPhysics',
+      '                        CollisionLayer: Layer1', '                        FrictionCoefficient: 0.3',
+      // 网格碰撞体引用模型
+      '        -   Entity:', '                Id: r1', '                Name: Ramp', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tr1', '                        Children: {}',
+      '                    s: !Stride.BepuPhysics.StaticComponent,Stride.BepuPhysics', '                        Id: sr1',
+      '                        Collider: !Stride.BepuPhysics.Definitions.Colliders.MeshCollider,Stride.BepuPhysics', `                            Model: ${ids.model}:Models/Tri`,
+      // TPP 的角色
+      '        -   Entity:', '                Id: p1', '                Name: Player', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tp1', '                        Children: {}',
+      '                    c: !Stride.BepuPhysics.CharacterComponent,Stride.BepuPhysics', '                        Id: cp1',
+      '                        Collider: !Stride.BepuPhysics.Definitions.Colliders.CompoundCollider,Stride.BepuPhysics', '                            Colliders:',
+      '                                a: !Stride.BepuPhysics.Definitions.Colliders.CapsuleCollider,Stride.BepuPhysics',
+      '                                    PositionLocal: {X: 0.0, Y: 0.95, Z: 0.0}', '                                    Radius: 0.4', '                                    Length: 1.2',
+      '                        FrictionCoefficient: 0.5', '                        CollisionLayer: Layer2', '                        InterpolationMode: Interpolated',
+      '                        Speed: 10.0', '                        JumpForce: 13.0', '                        SlopeAngle: 45.0',
     ].join('\n'),
     'Assets/Main.sdscene': [
       '!SceneAsset',
@@ -380,6 +415,33 @@ describe('导入 Stride 场景', () => {
 
     const ktx2 = new Uint8Array(await readFile(path.join(out, 'Game/Textures/Checker.ktx2')));
     expect([...ktx2.subarray(0, 8)]).toEqual([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb]);
+  });
+
+  test('物理：静态体的复合和网格碰撞体、角色，仿真设置来自 GameSettings；不支持的形状跳过并警告', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-physics');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
+    const result = await importer.importScene(project.byPath('Game/Physics')!);
+    expect(result.skipped.size).toBe(0);
+    expect(result.warnings.filter((w) => w.includes('ConvexHullCollider'))).toHaveLength(1);
+    const scene = JSON.parse(await readFile(path.join(out, 'Game/Physics.scene.json'), 'utf8')) as SceneFile;
+    expect(scene.physics).toEqual({ gravity: [0, -40, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 0.02, maxStepsPerFrame: 3 });
+    const [wall, ramp, player] = scene.entities.map((e) => e.components);
+    expect(wall!.static).toEqual({
+      shapes: [
+        { type: 'box', size: [1, 2, 3], position: [0, 1, 0], rotation: [0, 0, 0, 1], mass: 1 },
+        { type: 'capsule', radius: 0.35, length: 0.5, position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 2 },
+      ],
+      layer: 1,
+      friction: 0.3,
+    });
+    expect(ramp!.static).toEqual({ shapes: [{ type: 'mesh', model: 'Game/Models/Tri', position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }], layer: 0, friction: 1 });
+    expect(player!.character).toMatchObject({ layer: 2, friction: 0.5, speed: 10, jumpForce: 13, slopeAngle: 45, maximumHorizontalForce: 200, interpolated: true, gravity: true });
+    expect(player!.character!.shapes).toEqual([{ type: 'capsule', radius: 0.4, length: 1.2, position: [0, 0.95, 0], rotation: [0, 0, 0, 1], mass: 1 }]);
+
+    // 没有物理组件的场景不写仿真设置
+    await importer.importScene(project.byPath('Game/Bumpy')!);
+    expect((JSON.parse(await readFile(path.join(out, 'Game/Bumpy.scene.json'), 'utf8')) as SceneFile).physics).toBeUndefined();
   });
 
   test('法线贴图：材质记下贴图（线性）和开关，用它的网格生成切线（snorm8x4）', async () => {

@@ -41,8 +41,12 @@ export {
   type MaterialFile,
   type ModelData,
   type ModelMeshData,
+  type ColliderShapeFile,
+  type SceneCharacter,
+  type SceneCollidable,
   type SceneEntityFile,
   type SceneFile,
+  type ScenePhysics,
   type SkyboxFile,
   TEXTURE_EXTENSIONS,
   type TextureEncoding,
@@ -83,7 +87,11 @@ export { Game, type GameOptions, type GameStatus, type HotContext } from './game
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
+export { GamePadButton, InputManager, type GamePadState, type MouseButton } from './input/InputManager';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
+export { Collider, type ColliderId, type ColliderShape } from './physics/Collider';
+export { Character, Static } from './physics/components';
+export { Simulation, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { Background, Camera, Light, Model } from './rendering/components';
 export { BackgroundRenderFeature } from './rendering/BackgroundRenderFeature';
 export { GpuResources } from './rendering/GpuResources';

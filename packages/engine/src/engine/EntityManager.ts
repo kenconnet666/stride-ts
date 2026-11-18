@@ -412,12 +412,14 @@ export class EntityManager {
   // ---------------------------------------------------------------------------------------------
   // Frame
 
-  update(time: GameTime): void {
+  /** 一帧：启动新脚本、跑 SyncScript 的 update、"物理前"的系统，然后 physics（仿真步进），再跑"物理后"的系统。 */
+  update(time: GameTime, physics?: (time: GameTime) => void): void {
     this.#startPending();
     for (const script of this.#syncScripts) {
       if (script.attached && script.enabled) script.update(time);
     }
     this.#runSystems('beforePhysics', time);
+    physics?.(time);
     this.#runSystems('afterPhysics', time);
     this.#endFrame(time);
   }

@@ -10,3 +10,4 @@
 | [physics-sample/](physics-sample/README.md) | PhysicsSample（Bepu 版，取自 master） | 选场景、可以停住物理 |
 | [bepu-sample/](bepu-sample/README.md) | BepuSample（取自 master） | 选子场景、可以停住物理；截图时关掉 UI 和调试文字 |
 | [platformer2d/](platformer2d/README.md) | Platformer2D（取自 releases/4.4.2） | 可以去掉脚本（精灵停在默认帧） |
+| [topdown-rpg/](topdown-rpg/README.md) | TopDownRPG（取自 Stride 源码当前分支的 Bepu 版） | 可以去掉脚本；截图工程去掉了没有 4.4.2 包的导航插件 |

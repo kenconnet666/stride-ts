@@ -7,6 +7,7 @@
 import { prop, type EntityId } from '../data/prop';
 import { component } from '../engine/component';
 import type { CubemapId, SkyboxId } from './Skybox';
+import type { SpriteSheetId } from './SpriteSheet';
 import type { TextureId } from './Texture';
 
 /** 透视相机，看向本地 -Z。默认值和 Stride 一样：竖直视角 45°，近裁剪面 0.1，远裁剪面 1000。 */
@@ -82,13 +83,19 @@ export const Model = component('Model', {
 });
 
 /**
- * 精灵（Stride 的 SpriteComponent 加 SpriteFromTexture）：一张贴图（Texture.id，也可以是渲染目标贴图），在实体的 XY 平面上
- * 画成 宽 / pixelsPerUnit × 高 / pixelsPerUnit 的矩形，billboard 时一直朝着相机。center 是实体位置落在贴图上的像素
- * （centerFromMiddle 时从贴图中心算，否则从左上角算）。color 按 sRGB 写（同 Stride 的编辑器），画的时候转成线性，
- * 和 intensity 一起乘在贴图上。画在透明阶段，从远到近。
+ * 精灵（Stride 的 SpriteComponent）：在实体的 XY 平面上画成 宽 / pixelsPerUnit × 高 / pixelsPerUnit 的矩形，billboard 时
+ * 一直朝着相机。画的东西二选一：
+ * - SpriteFromTexture：一整张贴图（texture 是 Texture.id，也可以是渲染目标贴图），用这里的 pixelsPerUnit、center；
+ * - SpriteFromSheet：sheet 不是 0 时用精灵表（SpriteSheet.id）里的第 frame 个精灵（循环取），区域、尺寸和原点用那个精灵的。
+ * center 是实体位置落在图上的像素（centerFromMiddle 时从中心算，否则从左上角算）。color 按 sRGB 写（同 Stride 的编辑器），
+ * 画的时候转成线性，和 intensity 一起乘在贴图上。画在透明阶段，从远到近；enabled 是 false 时不画。
  */
 export const Sprite = component('Sprite', {
-  texture: prop.u32().brand<'TextureId'>(),
+  enabled: prop.bool().default(true),
+  texture: prop.u32().brand<'TextureId'>().default(0 as TextureId),
+  sheet: prop.u32().brand<'SpriteSheetId'>().default(0 as SpriteSheetId),
+  /** 精灵表里的第几个精灵（Stride 的 SpriteFromSheet.CurrentFrame）。 */
+  frame: prop.int().default(0),
   pixelsPerUnit: prop.f32().default(100).min(0),
   centerX: prop.f32().default(0),
   centerY: prop.f32().default(0),

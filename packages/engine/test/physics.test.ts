@@ -95,6 +95,24 @@ describe('Simulation', () => {
     expect(Math.abs(position(player).z)).toBeLessThan(0.01);
     game.simulation.destroy();
   });
+
+  test('角色也能用 body()：teleport 绕 Y 转 180°（Platformer2D 的转身），实体跟着转，MoveVector 的 +X 变成世界 -X', () => {
+    const game = createGame();
+    game.entities.create({ components: [Transform.with({ position: [0, -1, 0] }), Static.with({ collider: new Collider([{ type: 'box', size: [100, 2, 100] }]).id })] });
+    const player = game.entities.create({
+      components: [Transform.with({ position: [0, 0.05, 0] }), Character.with({ collider: new Collider([{ type: 'capsule', radius: 0.4, length: 0.5 }]).id })],
+    });
+    run(game, 10);
+    const body = game.simulation.body(player);
+    const back = new Quaternion().setAxisAngle({ x: 0, y: 1, z: 0 }, Math.PI);
+    body.teleport(position(player), back);
+    expect([body.kinematic, body.gravity, body.sleepThreshold]).toEqual([false, true, 0.01]);
+    player.require(Character).moveX = 1;
+    run(game, 30);
+    expect(position(player).x).toBeLessThan(-4);
+    expect(Math.abs(player.require(Transform).rotation.y)).toBeCloseTo(1, 3);
+    game.simulation.destroy();
+  });
 });
 
 describe('Vector3、Quaternion', () => {
@@ -166,7 +184,7 @@ describe('Body（Stride 的 BodyComponent）', () => {
     expect(crate.require(Body).gravity).toBe(false);
     run(game, 30);
     expect(position(crate).y).toBeCloseTo(10, 3);
-    expect(() => game.simulation.body(game.entities.create({ components: [Transform] }))).toThrow(/no Body/);
+    expect(() => game.simulation.body(game.entities.create({ components: [Transform] }))).toThrow(/no Body or Character/);
   });
 
   test('凸包的点按 hull 的缩放、旋转、平移变换', () => {

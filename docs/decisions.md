@@ -2,6 +2,13 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 Platformer2D：精灵表不重新打包，角色用 body() 控制
+
+- **精灵表不打包成图集**：Stride 编译精灵表时把所有精灵重新打包进图集（Packing，默认开），我们每张源图导出成一张贴图，精灵记下它在源图上的区域。画出来一样；省掉打包，源图原样可查。代价是一个精灵表有几张源图就绑几张贴图（Platformer2D 的每个精灵表只有一张）。九宫格的边框（Borders）等 UI 用到时再做，导入时警告。
+- **帧号放在 Sprite 组件上**：Stride 的 CurrentFrame 在 SpriteFromSheet（精灵提供者）上，脚本写 `SpriteSheet.CurrentFrame`；我们的 Sprite 是数据组件，`sheet`、`frame` 是它的两列，脚本写 `entity.require(Sprite).frame`。
+- **角色也能用 `simulation.body()`**：Stride 的 CharacterComponent 继承 BodyComponent，Platformer2D 用 Orientation（瞬移）转身。我们的 BodyControl 接受带 Character 的实体，gravity 写回 Character 的列，Character 没有的 kinematic、sleepThreshold 记在控制对象里；原生侧的瞬移和读速度也接受角色（0.18.1），设速度、冲量仍只对动态和运动学物体（角色的速度由移动目标每步设）。
+- **音效先不放**：CollectCoin 的 SoundEffect 是 P2 的音频，导入时警告并写 null，脚本里不声明这个属性。
+
 ## 2026-11-19 BepuSample 的比对：后处理按效果开关，缺法线补平面法线，工具脚本不移植
 
 - **后处理按效果开关**：以前合成器只导入"有没有后处理"，效果一律按 Stride 的默认全开。BepuSample 和 Platformer2D 的合成器关掉了色调映射（ColorTransforms 里的 ToneMap），我们照样做 Hejl2 映射，整个画面比桌面版暗约 40/255。现在导入每个效果的 Enabled（`ScenePostEffects`：亮部提取、泛光、光芒、镜头光晕、色调映射、FXAA），色调映射关掉时 HDR 画面加上叠加层直接输出（超过 1 的截断，同 Stride）。我们还没有的效果（环境光遮蔽、屏幕空间反射、景深、雾、描边、胶片颗粒、暗角）不导入；BepuSample 开着环境光遮蔽和屏幕空间反射，P4 做。

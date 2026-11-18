@@ -27,6 +27,9 @@ import {
   type SceneConstraint,
   type SceneRenderTexture,
   type SceneSprite,
+  type SceneSpriteFromSheet,
+  type SceneSpriteFromTexture,
+  type SpriteSheetFile,
   type SpriteBlend,
   type SceneFile,
   type SceneLightShadow,
@@ -126,6 +129,7 @@ export class StrideImporter {
   readonly #warnings: string[] = [];
   readonly #materialFiles = new Map<string, Promise<MaterialFile>>();
   readonly #prefabs = new Map<string, Promise<string>>();
+  readonly #spriteSheets = new Map<string, Promise<string>>();
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
   constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2' }: ImporterOptions = {}) {
@@ -469,32 +473,93 @@ export class StrideImporter {
     };
   }
 
-  /** Stride 的 SpriteComponent：现在只支持 SpriteFromTexture（贴图或渲染目标贴图）。 */
+  /** Stride 的 SpriteComponent：SpriteFromTexture（贴图或渲染目标贴图）或 SpriteFromSheet（精灵表）。 */
   async #sprite(component: StrideObject, where: string): Promise<SceneSprite | undefined> {
     const provider = asObject(component['SpriteProvider']);
-    if (provider?.$type !== 'SpriteFromTexture') {
-      this.#warnings.push(`${where}: sprite provider ${provider?.$type ?? 'null'} is not supported yet; the sprite is skipped`);
-      return undefined;
-    }
-    const reference = parseAssetReference(provider['Texture']);
-    if (!reference) return undefined;
+    const source = await this.#spriteSource(provider, where);
+    if (!source) return undefined;
     if (component['Swizzle'] !== undefined && component['Swizzle'] !== 'None') this.#warnings.push(`${where}: sprite swizzle is not supported yet; ignored`);
-    const asset = this.#project.get(reference.id, where);
     return {
-      texture: asset.type === 'RenderTexture' ? renderTextureOf(asset) : await this.#texture(asset),
-      pixelsPerUnit: asNumber(provider['PixelsPerUnit'], 100),
-      center: vec2(provider['Center'], 0),
-      centerFromMiddle: provider['CenterFromMiddle'] !== false,
+      ...source,
+      ...(component['Enabled'] === false ? { enabled: false } : {}),
       type: component['SpriteType'] === 'Billboard' ? 'billboard' : 'sprite',
       color: color4(component['Color']),
       intensity: asNumber(component['Intensity'], 1),
-      isTransparent: provider['IsTransparent'] !== false,
+      // 精灵表的精灵由 Stride 的资源编译器看贴图有没有透明像素，我们一律当作透明（混合的结果一样）
+      isTransparent: provider!['IsTransparent'] !== false,
       premultipliedAlpha: component['PremultipliedAlpha'] !== false,
       ignoreDepth: component['IgnoreDepth'] === true,
       isAlphaCutoff: component['IsAlphaCutoff'] === true,
       blendMode: SPRITE_BLENDS[String(component['BlendMode'] ?? 'Auto')] ?? 'auto',
       sampler: SPRITE_SAMPLERS[String(component['Sampler'] ?? 'LinearClamp')] ?? 'linearClamp',
     };
+  }
+
+  /** 精灵画什么：SpriteFromTexture 的贴图和尺寸设置，或 SpriteFromSheet 的精灵表和默认帧；不支持的警告后返回 undefined。 */
+  async #spriteSource(provider: StrideObject | undefined, where: string): Promise<SceneSpriteFromTexture | SceneSpriteFromSheet | undefined> {
+    if (provider?.$type === 'SpriteFromSheet') {
+      const reference = parseAssetReference(provider['Sheet']);
+      if (!reference) return undefined;
+      return { sheet: await this.#spriteSheet(this.#project.get(reference.id, where)), frame: asNumber(provider['CurrentFrame'], 0) };
+    }
+    if (provider?.$type !== 'SpriteFromTexture') {
+      this.#warnings.push(`${where}: sprite provider ${provider?.$type ?? 'null'} is not supported yet; the sprite is skipped`);
+      return undefined;
+    }
+    const reference = parseAssetReference(provider['Texture']);
+    if (!reference) return undefined;
+    const asset = this.#project.get(reference.id, where);
+    return {
+      texture: asset.type === 'RenderTexture' ? renderTextureOf(asset) : await this.#texture(asset),
+      pixelsPerUnit: asNumber(provider['PixelsPerUnit'], 100),
+      center: vec2(provider['Center'], 0),
+      centerFromMiddle: provider['CenterFromMiddle'] !== false,
+    };
+  }
+
+  /**
+   * 导入精灵表（.sdsheet），返回它的内容路径。每张源图导出成一张贴图（内容路径是 `<精灵表>/<源图文件名>`），精灵记下
+   * 它在源图上的区域；Stride 会把精灵重新打包进图集，画出来一样。贴图的设置取精灵表的（IsCompressed、UseSRgbSampling、
+   * GenerateMipmaps，默认不生成 mip）。九宫格的边框（Borders）还不支持。
+   */
+  #spriteSheet(asset: AssetEntry): Promise<string> {
+    return once(this.#spriteSheets, asset, async () => {
+      const textures = new Map<string, Promise<ImportedTexture>>();
+      const sprites = await Promise.all(Object.values(asObject(asset.data['Sprites']) ?? {}).map(async (value) => {
+        const sprite = asObject(value)!;
+        const source = sourceOf({ ...asset, data: sprite });
+        let texture = textures.get(source);
+        if (!texture) {
+          const name = path.basename(source, path.extname(source));
+          texture = this.#texture({
+            ...asset,
+            id: `${asset.id}/${name}`,
+            type: 'Texture',
+            path: `${asset.path}/${name}`,
+            data: {
+              Source: sprite['Source'] ?? null,
+              Type: { $type: 'ColorTextureType', UseSRgbSampling: asset.data['UseSRgbSampling'] ?? true },
+              IsCompressed: asset.data['IsCompressed'] ?? true,
+              GenerateMipmaps: asset.data['GenerateMipmaps'] ?? false,
+            },
+          });
+          textures.set(source, texture);
+        }
+        const region = asObject(sprite['TextureRegion']);
+        const borders = asObject(sprite['Borders']);
+        if (borders && ['X', 'Y', 'Z', 'W'].some((k) => asNumber(borders[k], 0) !== 0)) this.#warnings.push(`${asset.file}: sprite '${String(sprite['Name'])}' has borders (nine-slice); not supported yet`);
+        return {
+          name: String(sprite['Name'] ?? ''),
+          texture: await texture,
+          region: [asNumber(region?.['X'], 0), asNumber(region?.['Y'], 0), asNumber(region?.['Width'], 0), asNumber(region?.['Height'], 0)] as const,
+          pixelsPerUnit: asNumber(sprite['PixelsPerUnit'], 100),
+          center: vec2(sprite['Center'], 0),
+          centerFromMiddle: sprite['CenterFromMiddle'] !== false,
+        };
+      }));
+      const file: SpriteSheetFile = { name: path.basename(asset.path), sprites };
+      await this.#write(asset.path + EXTENSIONS.spriteSheet, JSON.stringify(file, null, 1));
+    });
   }
 
   /** 场景的 GameSettings（DefaultScene 是这个场景的优先，没有时取第一个）。 */
@@ -952,7 +1017,7 @@ export class StrideImporter {
     const resized = width !== image.width || height !== image.height;
     if (policy === 'source' && sourceEncoding && !resized) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     const pixels = resized ? await this.#tools.resizeImage(image.pixels, image.width, image.height, width, height) : image.pixels;
-    const ktx2 = await this.#tools.encodeBasis(pixels, width, height, { mode: 'uastc', srgb, mipmaps: true });
+    const ktx2 = await this.#tools.encodeBasis(pixels, width, height, { mode: 'uastc', srgb, mipmaps: asset.data['GenerateMipmaps'] !== false });
     if (policy === 'smallest' && sourceEncoding && !resized && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     await this.#write(asset.path + TEXTURE_EXTENSIONS.ktx2, ktx2);
     return { texture: asset.path, encoding: 'ktx2', srgb };

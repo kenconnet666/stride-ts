@@ -239,12 +239,13 @@ export class Simulation {
   }
 
   /**
-   * 动态刚体的控制（Stride 的 BodyComponent 的属性和方法）。物体还没建（实体这一帧才加上 Body）时先建好，
-   * 所以脚本的 start() 里就能用。实体没有 Body 时报错。
+   * 动态刚体的控制（Stride 的 BodyComponent 的属性和方法）。角色也是一种刚体（Stride 的 CharacterComponent 继承
+   * BodyComponent），比如转身用 teleport 改朝向（CharacterComponent.Orientation）。物体还没建（实体这一帧才加上 Body）时
+   * 先建好，所以脚本的 start() 里就能用。实体没有 Body 也没有 Character 时报错。
    */
   body(entity: Entity | EntityId): BodyControl {
     const id = typeof entity === 'number' ? entity : entity.id;
-    if (!this.#entities.hasComponent(id, Body)) throw new Error(`entity ${id} has no Body component`);
+    if (!this.#entities.hasComponent(id, Body) && !this.#entities.hasComponent(id, Character)) throw new Error(`entity ${id} has no Body or Character component`);
     const body = this.#bodyOf(id);
     let control = this.#controls.get(body);
     if (!control) this.#controls.set(body, (control = new BodyControl(this.#world!, body, this.#entities, id)));
@@ -399,7 +400,8 @@ interface DetachedBody {
 
 /**
  * 一个动态刚体的控制（Stride 的 BodyComponent 的属性和方法），用 `game.simulation.body(entity)` 拿到。读写直接作用到原生的物体；
- * kinematic、gravity 也写回 Body 组件的列，组件里看到的总是当前的设置。
+ * kinematic、gravity 也写回 Body 组件的列，组件里看到的总是当前的设置。角色（Character 组件）的 gravity 写回它的列，
+ * Character 没有的 kinematic、sleepThreshold 记在这里。
  *
  * 物体移除以后（实体销毁，比如换场景时脚本的 cancel 里还在复位物体）同 Stride 的 BodyComponent 离开仿真：设置只记下，
  * 冲量、瞬移忽略，速度是 0，不醒着。
@@ -412,6 +414,8 @@ export class BodyControl {
   readonly #linear = [0, 0, 0];
   readonly #angular = [0, 0, 0];
   #detached: DetachedBody | undefined;
+  /** 角色的 kinematic、sleepThreshold（gravity 在 Character 的列里）。 */
+  #character: { kinematic: boolean; sleepThreshold: number } | undefined;
 
   /** @internal */
   constructor(world: PhysicsWorld, body: BodyId, entities: EntityManager, entity: EntityId) {
@@ -498,9 +502,23 @@ export class BodyControl {
     this.#detached = { kinematic, gravity, sleepThreshold };
   }
 
-  /** 设置在 Body 组件的列里；物体移除后在 detach 记下的拷贝里。 */
+  /** 设置在 Body 组件的列里（角色的见 #character）；物体移除后在 detach 记下的拷贝里。 */
   #settings(): DetachedBody {
-    return this.#detached ?? this.#entities.entity(this.#entity).require(Body);
+    if (this.#detached) return this.#detached;
+    const entity = this.#entities.entity(this.#entity);
+    const body = entity.get(Body);
+    if (body) return body;
+    const character = entity.require(Character);
+    // 同 Stride 的 BodyComponent 的默认值
+    const own = (this.#character ??= { kinematic: false, sleepThreshold: 0.01 });
+    return {
+      get kinematic() { return own.kinematic; },
+      set kinematic(value) { own.kinematic = value; },
+      get sleepThreshold() { return own.sleepThreshold; },
+      set sleepThreshold(value) { own.sleepThreshold = value; },
+      get gravity() { return character.gravity; },
+      set gravity(value) { character.gravity = value; },
+    };
   }
 
   #readVelocity(): void {

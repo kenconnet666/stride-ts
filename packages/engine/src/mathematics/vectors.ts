@@ -209,6 +209,12 @@ export class Quaternion implements QuatLike {
     return length > 0 ? this.set(this.x / length, this.y / length, this.z / length, this.w / length) : this.identity();
   }
 
+  /** 原地取逆（Stride 的 Quaternion.Invert）：共轭除以长度的平方，单位四元数就是共轭。 */
+  invert(): this {
+    const lengthSq = this.x * this.x + this.y * this.y + this.z * this.z + this.w * this.w;
+    return lengthSq > 0 ? this.set(-this.x / lengthSq, -this.y / lengthSq, -this.z / lengthSq, this.w / lengthSq) : this;
+  }
+
   /** 用这个旋转原地旋转 v。 */
   rotate(v: Vec3Like): Vec3Like {
     const { x, y, z, w } = this;

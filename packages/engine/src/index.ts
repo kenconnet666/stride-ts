@@ -66,6 +66,10 @@ export {
   type SceneForwardRenderer,
   type SceneRenderTexture,
   type SceneSprite,
+  type SceneSpriteFromSheet,
+  type SceneSpriteFromTexture,
+  type SceneSpriteSettings,
+  type SpriteSheetFile,
   type SceneTextureCamera,
   type SpriteBlend,
   type ScenePhysics,
@@ -141,6 +145,7 @@ export { PostProcessingEffects } from './rendering/postfx/PostProcessingEffects'
 export { ToneMap } from './rendering/postfx/ToneMap';
 export { ForwardRenderer, spotAngleAttenuation } from './rendering/ForwardRenderer';
 export { Material, type MaterialDesc, type MaterialId, type MaterialTexture } from './rendering/Material';
+export { SpriteSheet, type SpriteFrame, type SpriteSheetId } from './rendering/SpriteSheet';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';
 export { MipmapGenerator } from './rendering/MipmapGenerator';

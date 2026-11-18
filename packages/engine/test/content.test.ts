@@ -24,6 +24,8 @@ import {
   Model,
   prop,
   Skybox,
+  Sprite,
+  SpriteSheet,
   SyncScript,
   Transform,
   VERTEX_FLOATS,
@@ -31,6 +33,7 @@ import {
   type MaterialFile,
   type PrefabFile,
   type SceneFile,
+  type SpriteSheetFile,
   type SkyboxFile,
 } from '../src/index';
 
@@ -309,6 +312,38 @@ describe('贴图', () => {
     expect(material.baseColorTexture).toMatchObject({ scale: [2, 3], offset: [0.5, 0] });
     expect(material.baseColorTexture!.texture.data).toMatchObject({ format: 'rgba8unorm-srgb', width: 8, height: 8 });
     expect(await content.loadTexture('textures/Checker')).toBe(material.baseColorTexture!.texture);
+  });
+
+  test('精灵表：场景里的精灵引用精灵表和默认帧，同一张源图只解一次；帧号循环取（负数也是）', async () => {
+    const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+    const sprite = (name: string, x: number) => ({ name, texture: { texture: 'sheets/Hero/hero', encoding: 'png' as const, srgb: true }, region: [x, 0, 16, 20] as const, pixelsPerUnit: 16, center: [0, 0] as const, centerFromMiddle: true });
+    const files = new Map<string, Uint8Array>([
+      ['https://game.test/content/sheets/Hero/hero.png', new Uint8Array([1])],
+      ['https://game.test/content/sheets/Hero.sheet.json', encode({ name: 'Hero', sprites: [sprite('idle_0', 0), sprite('idle_1', 16), sprite('run_0', 32)] } satisfies SpriteSheetFile)],
+      ['https://game.test/content/scenes/Sprites.scene.json', encode({
+        name: 'Sprites',
+        entities: [{
+          id: 'hero', name: 'Hero', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1],
+          components: { sprite: { sheet: 'sheets/Hero', frame: 2, enabled: false, type: 'sprite', color: [1, 1, 1, 1], intensity: 1, isTransparent: true, premultipliedAlpha: true, ignoreDepth: false, isAlphaCutoff: true, blendMode: 'auto', sampler: 'pointClamp' } },
+        }],
+      } satisfies SceneFile)],
+    ]);
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async (url) => files.get(url.href)!.slice().buffer });
+    let decoded = 0;
+    content.imageDecoder = async () => {
+      decoded++;
+      return { format: 'rgba8unorm-srgb', width: 64, height: 32, levels: [new Uint8Array(64 * 32 * 4)] };
+    };
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(8);
+    const scene = await content.loadScene('scenes/Sprites', game.entities);
+    const hero = scene.entities.get('hero')!.require(Sprite);
+    expect([hero.frame, hero.enabled, hero.texture]).toEqual([2, false, 0]);
+    const sheet = SpriteSheet.byId(hero.sheet)!;
+    expect(decoded).toBe(1);
+    expect(sheet.sprites.map((s) => s.texture)).toEqual([sheet.sprites[0]!.texture, sheet.sprites[0]!.texture, sheet.sprites[0]!.texture]);
+    expect([sheet.frame(3)!.name, sheet.frame(-1)!.name, sheet.indexOf('idle_1')]).toEqual(['idle_0', 'run_0', 1]);
   });
 
   test('svg、png 的贴图槽交给 imageDecoder：按编码选扩展名，带上栅格化尺寸，颜色贴图是 sRGB', async () => {

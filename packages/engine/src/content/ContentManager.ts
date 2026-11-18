@@ -25,8 +25,9 @@ import { Material } from '../rendering/Material';
 import { Prefab } from './Prefab';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
+import { SpriteSheet } from '../rendering/SpriteSheet';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type TextureRef, type TextureSlot } from './format';
+import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -85,6 +86,7 @@ interface SceneAssets {
   readonly cubemaps: ReadonlyMap<string, Cubemap>;
   /** 背景和精灵的贴图（包括渲染目标贴图），按内容路径。 */
   readonly images: ReadonlyMap<string, Texture>;
+  readonly spriteSheets: ReadonlyMap<string, SpriteSheet>;
   /** 脚本属性引用的预制体。 */
   readonly prefabs: ReadonlyMap<string, Prefab>;
 }
@@ -246,10 +248,6 @@ export class ContentManager {
   }
 
   /**
-   * 加载贴图。ktx2 交给 textureDecoder 转码；svg、png、jpeg 交给 imageDecoder（srgb 决定格式，svg 按 size 栅格化）。
-   * 同一个文件只加载一次。
-   */
-  /**
    * 加载贴图。KTX2 的格式（包括是不是 sRGB）由文件决定；浏览器解码的图片（png、jpeg、svg）按 srgb 选格式，
    * 同一张图按 sRGB 和线性各加载一份。
    */
@@ -265,6 +263,15 @@ export class ContentManager {
       }
       if (!this.imageDecoder) throw new Error(`loading ${url.href}: no imageDecoder (Game sets one when it starts)`);
       return new Texture(path, await this.imageDecoder(bytes, { encoding, srgb, ...(size ? { size } : {}) }));
+    });
+  }
+
+  /** 加载精灵表：精灵用到的贴图按 sRGB 读，同一张贴图只加载一次。 */
+  loadSpriteSheet(path: string): Promise<SpriteSheet> {
+    return this.#once(path + EXTENSIONS.spriteSheet, async (url) => {
+      const file = this.#json<SpriteSheetFile>(await this.#read(url));
+      const sprites = await Promise.all(file.sprites.map(async ({ texture, ...sprite }) => ({ ...sprite, texture: await this.#loadTextureRef(texture, true) })));
+      return new SpriteSheet(path, sprites);
     });
   }
 
@@ -305,20 +312,21 @@ export class ContentManager {
     const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
     const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, animations, skyboxes, cubemaps, prefabs] = await Promise.all([
+    const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets] = await Promise.all([
       preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => this.loadModel(p)),
       preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
       preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => this.loadAnimation(p)),
       preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
       preload(components.flatMap((c) => (c.background?.type === 'cubemap' ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
       preload(scriptPaths('prefab'), (p) => this.loadPrefab(p)),
+      preload(components.flatMap((c) => (c.sprite && 'sheet' in c.sprite ? [c.sprite.sheet] : [])), (p) => this.loadSpriteSheet(p)),
     ]);
     // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
-    const imageRefs = components.flatMap((c) => [...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite ? [c.sprite.texture] : [])]);
+    const imageRefs = components.flatMap((c) => [...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite && 'texture' in c.sprite ? [c.sprite.texture] : [])]);
     const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
       ? [ref.renderTexture, this.renderTexture(ref)] as const
       : [ref.texture, await this.#loadTextureRef(ref, true)] as const)));
-    return { models, materials, animations, skyboxes, cubemaps, images, prefabs };
+    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets };
   }
 
   /**
@@ -407,7 +415,10 @@ export class ContentManager {
     } else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
     if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
     else if (background) entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, intensity: background.intensity }));
-    if (sprite) {
+    if (sprite && 'sheet' in sprite) {
+      const { sheet, color, ...settings } = sprite;
+      entity.add(Sprite.with({ ...settings, sheet: assets.spriteSheets.get(sheet)!.id, color: [...color] }));
+    } else if (sprite) {
       const { texture, center, color, ...settings } = sprite;
       const id = assets.images.get('renderTexture' in texture ? texture.renderTexture : texture.texture)!.id;
       entity.add(Sprite.with({ ...settings, texture: id, centerX: center[0], centerY: center[1], color: [...color] }));

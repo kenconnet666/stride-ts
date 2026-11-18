@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { crc32, deflateSync } from 'node:zlib';
 import path from 'node:path';
-import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile } from '@stride-ts/engine/content-format';
+import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile, type SpriteSheetFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
@@ -136,6 +136,7 @@ describe('导入 Stride 场景', () => {
     plain: '11111111-0000-0000-0000-0000000000f1',
     odd: '11111111-0000-0000-0000-0000000000f2',
     oddTexture: '11111111-0000-0000-0000-0000000000f3',
+    heroSheet: '11111111-0000-0000-0000-0000000000f4',
     bumpy: '11111111-0000-0000-0000-000000000009',
     bumps: '11111111-0000-0000-0000-00000000000a',
     physicsScene: '11111111-0000-0000-0000-00000000000b',
@@ -315,6 +316,16 @@ describe('导入 Stride 场景', () => {
       '!MaterialAsset', `Id: ${ids.odd}`, 'Attributes:', '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeTextureColor',
       `            Texture: ${ids.oddTexture}:Textures/Odd`,
     ].join('\n'),
+    // 精灵表（Platformer2D 的 knight_sheet）：两张源图，精灵按区域取
+    'Assets/Sprites/Hero.sdsheet': [
+      '!SpriteSheet', `Id: ${ids.heroSheet}`, 'Type: Sprite2D', 'Packing: {}', 'Sprites:',
+      '    s1:', '        Source: !file ../../Resources/checker.png', '        Name: idle_0', '        TextureRegion: {X: 0, Y: 0, Width: 8, Height: 4}',
+      '        PixelsPerUnit: 16.0', '        Center: {X: 0.0, Y: 0.0}', '        Borders: {X: 0.0, Y: 0.0, Z: 0.0, W: 0.0}',
+      '    s2:', '        Source: !file ../../Resources/checker.png', '        Name: idle_1', '        TextureRegion: {X: 8, Y: 0, Width: 8, Height: 4}',
+      '        PixelsPerUnit: 16.0', '        Center: {X: 1.0, Y: 2.0}', '        CenterFromMiddle: false',
+      '    s3:', '        Source: !file ../../Resources/odd.png', '        Name: jump_0', '        TextureRegion: {X: 0, Y: 0, Width: 6, Height: 5}',
+      '        PixelsPerUnit: 8.0', '        Center: {X: 0.0, Y: 0.0}', '        Borders: {X: 1.0, Y: 0.0, Z: 0.0, W: 0.0}',
+    ].join('\n'),
     'Assets/Bumpy.sdscene': [
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
       '                    t: !TransformComponent', '                        Id: tq1', '                        Children: {}',
@@ -322,6 +333,11 @@ describe('导入 Stride 场景', () => {
       '        -   Entity:', '                Id: q2', '                Name: Plain', '                Components:',
       '                    t: !TransformComponent', '                        Id: tq2', '                        Children: {}',
       '                    m: !ModelComponent', '                        Id: mq2', `                        Model: ${ids.plain}:Models/Plain`, '                        Materials: {}',
+      '        -   Entity:', '                Id: q3', '                Name: Hero', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tq3', '                        Children: {}',
+      '                    s: !SpriteComponent', '                        Id: sq3', '                        Enabled: false', '                        SpriteProvider: !SpriteFromSheet',
+      `                            Sheet: ${ids.heroSheet}:Sprites/Hero`, '                            CurrentFrame: 1',
+      '                        Color: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}', '                        IsAlphaCutoff: true', '                        Sampler: PointClamp',
     ].join('\n'),
     // TPP 的仿真设置；BepuSimulations 里没写的字段取 Stride 的默认值
     'Assets/GameSettings.sdgamesettings': [
@@ -523,7 +539,8 @@ describe('导入 Stride 场景', () => {
     const project = await writeProject();
     const out = path.join(dir, 'content-normal');
     const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'smallest' }).importScene(project.byPath('Game/Bumpy')!);
-    expect(result.warnings).toEqual([]);
+    // 精灵表的九宫格警告见精灵表的测试
+    expect(result.warnings.filter((warning) => !warning.includes('nine-slice'))).toEqual([]);
     const material = JSON.parse(await readFile(path.join(out, 'Game/Materials/Bumpy.material.json'), 'utf8')) as MaterialFile;
     expect(material.normalMap).toEqual({ texture: 'Game/Textures/Bumps', encoding: 'png', srgb: false, scale: [4, 4], offset: [0, 0], scaleAndBias: true, isXYNormal: true, invertY: true });
     const model = decodeModel((await readFile(path.join(out, 'Game/Models/Quad.model'))).buffer as ArrayBuffer);
@@ -534,6 +551,26 @@ describe('导入 Stride 场景', () => {
     // 主场景的三角形没有法线贴图：没有切线
     await new StrideImporter(project, tools, out, { specularCubemapSize: 16 }).importScene(project.byPath('Game/Main')!);
     expect(decodeModel((await readFile(path.join(out, 'Game/Models/Tri.model'))).buffer as ArrayBuffer).meshes[0]!.layout.tangent).toBeUndefined();
+  });
+
+  test('精灵表：每张源图一张贴图（不生成 mip），精灵记下区域、尺寸和原点；精灵组件引用精灵表和默认帧', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-sheet');
+    const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' }).importScene(project.byPath('Game/Bumpy')!);
+    expect(result.warnings).toEqual([expect.stringMatching(/Hero\.sdsheet: sprite 'jump_0' has borders \(nine-slice\); not supported yet$/)]);
+    const sheet = JSON.parse(await readFile(path.join(out, 'Game/Sprites/Hero.sheet.json'), 'utf8')) as SpriteSheetFile;
+    expect(sheet).toEqual({
+      name: 'Hero',
+      sprites: [
+        { name: 'idle_0', texture: { texture: 'Game/Sprites/Hero/checker', encoding: 'png', srgb: true }, region: [0, 0, 8, 4], pixelsPerUnit: 16, center: [0, 0], centerFromMiddle: true },
+        { name: 'idle_1', texture: { texture: 'Game/Sprites/Hero/checker', encoding: 'png', srgb: true }, region: [8, 0, 8, 4], pixelsPerUnit: 16, center: [1, 2], centerFromMiddle: false },
+        // 6x5 的源图要补到 8x8，编成 KTX2
+        { name: 'jump_0', texture: { texture: 'Game/Sprites/Hero/odd', encoding: 'ktx2', srgb: true }, region: [0, 0, 6, 5], pixelsPerUnit: 8, center: [0, 0], centerFromMiddle: true },
+      ],
+    });
+    const scene = JSON.parse(await readFile(path.join(out, 'Game/Bumpy.scene.json'), 'utf8')) as SceneFile;
+    const sprite = scene.entities.find((e) => e.name === 'Hero')!.components.sprite!;
+    expect(sprite).toMatchObject({ sheet: 'Game/Sprites/Hero', frame: 1, enabled: false, isAlphaCutoff: true, sampler: 'pointClamp' });
   });
 
   test('压缩的贴图宽高补到 4 的倍数（Lanczos3 缩放，同 Stride）；要缩放的源文件不原样复制', async () => {

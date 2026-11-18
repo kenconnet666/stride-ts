@@ -1,12 +1,12 @@
 /**
  * 精灵的根渲染特性（Stride 的 SpriteRenderFeature 加 Sprite3DBatch）：带 Sprite 和 Transform 的实体，画在透明阶段。
  * - 位置和 Stride 一样在 CPU 上算：普通精灵用实体的世界矩阵；billboard 用相机的世界矩阵（去掉相机的缩放、乘上实体的
- *   缩放、换成实体的位置）；再按 center 把矩形移开，宽高是贴图尺寸除以 pixelsPerUnit。
+ *   缩放、换成实体的位置）；再按 center 把矩形移开，宽高是贴图（精灵表的精灵是它的区域）尺寸除以 pixelsPerUnit。
  * - 每个视图按到相机的深度从远到近排（Stride 透明阶段的 BackToFrontSortMode），一个精灵一次绘制（4 个顶点的三角形带），
  *   实例数据（四个角的原点、两条边、颜色、UV）放在存储缓冲里，按视图分段。
  * - 混合同 Stride：auto 在贴图透明时是 alphaBlend，否则不混合；alphaBlend 按 premultipliedAlpha 选预乘或不预乘的
  *   混合；additiveBlend 是 src·alpha + dst。深度测试并写入，ignoreDepth 时都不做；不剔背面。
- * 和 Stride 不同（暂时）：没有 Swizzle、sprite sheet 和 billboard 的 RotationEulerZ。
+ * 和 Stride 不同（暂时）：没有 Swizzle、billboard 的 RotationEulerZ 和精灵的九宫格边框（Borders）。
  */
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
@@ -14,6 +14,7 @@ import { Matrix } from '../mathematics/Matrix';
 import { srgbToLinear } from '../mathematics/vectors';
 import { Sprite } from './components';
 import { RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { SpriteSheet } from './SpriteSheet';
 import { Texture } from './Texture';
 
 const SHADER = /* wgsl */ `
@@ -71,6 +72,11 @@ type Blend = 'none' | 'premultiplied' | 'nonPremultiplied' | 'additive' | 'noCol
 /** 提取出来的一个精灵。 */
 interface SpriteItem {
   texture: Texture;
+  /** 贴图上要画的区域，按贴图尺寸归一化：u、v、宽、高。 */
+  readonly uv: [number, number, number, number];
+  /** 区域的像素宽高。 */
+  width: number;
+  height: number;
   slot: number;
   pixelsPerUnit: number;
   centerX: number;
@@ -121,16 +127,37 @@ export class SpriteRenderFeature extends RootRenderFeature {
     with: { sprite: Sprite, transform: Transform },
     update: ({ sprite, transform, count }) => {
       for (let i = 0; i < count; i++) {
-        const texture = Texture.byId(sprite.texture[i]!);
+        if (sprite.enabled[i] === 0) continue;
+        // 精灵表：用第 frame 个精灵的贴图、区域和设置；否则是一整张贴图
+        const frame = sprite.sheet[i] !== 0 ? SpriteSheet.byId(sprite.sheet[i]!)?.frame(sprite.frame[i]!) : undefined;
+        const texture = frame ? frame.texture : Texture.byId(sprite.texture[i]!);
         if (!texture) continue;
-        const item = (this.#items[this.#count] ??= { color: [1, 1, 1, 1] } as SpriteItem);
+        const item = (this.#items[this.#count] ??= { color: [1, 1, 1, 1], uv: [0, 0, 1, 1] } as SpriteItem);
         this.#count++;
         item.texture = texture;
         item.slot = transform.slot[i]!;
-        item.pixelsPerUnit = sprite.pixelsPerUnit[i]!;
-        item.centerX = sprite.centerX[i]!;
-        item.centerY = sprite.centerY[i]!;
-        item.centerFromMiddle = sprite.centerFromMiddle[i] !== 0;
+        const { width, height } = texture.data;
+        if (frame) {
+          const [x, y, w, h] = frame.region;
+          item.uv[0] = x / width;
+          item.uv[1] = y / height;
+          item.uv[2] = w / width;
+          item.uv[3] = h / height;
+          item.width = w;
+          item.height = h;
+          item.pixelsPerUnit = frame.pixelsPerUnit;
+          [item.centerX, item.centerY] = frame.center;
+          item.centerFromMiddle = frame.centerFromMiddle;
+        } else {
+          item.uv[0] = item.uv[1] = 0;
+          item.uv[2] = item.uv[3] = 1;
+          item.width = width;
+          item.height = height;
+          item.pixelsPerUnit = sprite.pixelsPerUnit[i]!;
+          item.centerX = sprite.centerX[i]!;
+          item.centerY = sprite.centerY[i]!;
+          item.centerFromMiddle = sprite.centerFromMiddle[i] !== 0;
+        }
         item.billboard = sprite.type[i] === 'billboard';
         // 同 Stride：颜色乘强度（四个分量都乘），着色器里按 sRGB 转成线性
         const intensity = sprite.intensity[i]!;
@@ -213,11 +240,11 @@ export class SpriteRenderFeature extends RootRenderFeature {
     for (let i = 0; i < this.#count; i++) {
       const item = this.#items[i]!;
       const o = i * INSTANCE_FLOATS;
-      const { width, height } = item.texture.data;
-      spriteQuad(data, o, world, item.slot * 16, item.billboard ? camera : undefined, width, height, item);
+      spriteQuad(data, o, world, item.slot * 16, item.billboard ? camera : undefined, item.width, item.height, item);
       const ox = data[o]!, oy = data[o + 1]!, oz = data[o + 2]!;
       data.set(item.color, o + 12);
-      data.set([0, 0, 1, 1, item.alphaCutoff ? 1 : 0, 0, 0, 0], o + 16);
+      data.set(item.uv, o + 16);
+      data.set([item.alphaCutoff ? 1 : 0, 0, 0, 0], o + 20);
       depths[i] = (ox - view.eye.x) * fx + (oy - view.eye.y) * fy + (oz - view.eye.z) * fz;
     }
     const order = Array.from({ length: this.#count }, (_, i) => i).sort((a, b) => depths[b]! - depths[a]!);

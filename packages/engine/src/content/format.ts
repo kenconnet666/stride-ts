@@ -30,6 +30,7 @@ export const EXTENSIONS = {
   material: '.material.json',
   scene: '.scene.json',
   prefab: '.prefab.json',
+  spriteSheet: '.sheet.json',
   cubemap: '.cubemap',
   skybox: '.skybox.json',
   skeleton: '.skeleton',
@@ -574,13 +575,28 @@ export interface SceneCompositor extends SceneForwardRenderer {
 export type SpriteBlend = 'auto' | 'none' | 'alphaBlend' | 'additiveBlend' | 'noColor';
 
 /** 精灵（Stride 的 SpriteComponent 加 SpriteFromTexture）。 */
-export interface SceneSprite {
+/** 精灵（Stride 的 SpriteComponent）：一整张贴图（SpriteFromTexture）或精灵表里的一个精灵（SpriteFromSheet）。 */
+export type SceneSprite = SceneSpriteSettings & (SceneSpriteFromTexture | SceneSpriteFromSheet);
+
+export interface SceneSpriteFromTexture {
   readonly texture: TextureRef | SceneRenderTexture;
   /** 贴图的几个像素是 1 个单位。 */
   readonly pixelsPerUnit: number;
   /** 精灵的原点（实体的位置）在贴图上的像素位置：centerFromMiddle 时从贴图中心算，否则从左上角算。 */
   readonly center: readonly [number, number];
   readonly centerFromMiddle: boolean;
+}
+
+export interface SceneSpriteFromSheet {
+  /** 精灵表的内容路径（`.sheet.json`）。 */
+  readonly sheet: string;
+  /** 默认显示第几个精灵（Stride 的 CurrentFrame）。 */
+  readonly frame: number;
+}
+
+export interface SceneSpriteSettings {
+  /** 没写是 true（Stride 的 Enabled）。 */
+  readonly enabled?: boolean;
   /** billboard 一直朝着相机。 */
   readonly type: 'sprite' | 'billboard';
   /** 乘在贴图上的颜色（RGBA）和强度。 */
@@ -592,6 +608,22 @@ export interface SceneSprite {
   readonly isAlphaCutoff: boolean;
   readonly blendMode: SpriteBlend;
   readonly sampler: 'linearClamp' | 'pointClamp' | 'anisotropicClamp';
+}
+
+/** 精灵表（Stride 的 SpriteSheet，.sdsheet）：按 Stride 里的顺序列出精灵。 */
+export interface SpriteSheetFile {
+  readonly name: string;
+  readonly sprites: readonly {
+    readonly name: string;
+    /** 精灵所在的贴图（按 sRGB 采样）。同一张源图的精灵共用一张贴图。 */
+    readonly texture: TextureRef;
+    /** 贴图上的区域，像素：x、y（左上角）、宽、高。 */
+    readonly region: readonly [number, number, number, number];
+    readonly pixelsPerUnit: number;
+    /** 原点在区域里的像素位置：centerFromMiddle 时从区域中心算，否则从左上角算。 */
+    readonly center: readonly [number, number];
+    readonly centerFromMiddle: boolean;
+  }[];
 }
 
 /**

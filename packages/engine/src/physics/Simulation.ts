@@ -264,6 +264,15 @@ export class Simulation {
     return control;
   }
 
+  /**
+   * 静态物体表面的三角形（世界坐标，每个 9 个 float，朝外逆时针），导航网格的输入：mask 选层，触发器不算。还没建成物体的
+   * 静态体先建好。
+   */
+  staticTriangles(mask = ALL_LAYERS): Float32Array {
+    this.#createPending(this.#entities.game.updateTime);
+    return this.#world?.staticTriangles(mask) ?? new Float32Array(0);
+  }
+
   /** 碰撞体的接触处理器（场景里 ContactEventHandler 是 Trigger 的是 TriggerHandler）；没有时是 undefined。 */
   contactHandler(entity: Entity | EntityId): ContactHandler | undefined {
     return this.#handlers.get(this.#bodyOf(entity));

@@ -6,4 +6,4 @@ packages:
 # package.json 里照常写版本号，IDE 和工具就按普通的 npm 包对待；换新版本时改这里的地址，发布到 npm 后删掉这一条。
 # 不用 file: 指向本地的 tgz：pnpm 给它建的目录名带 `..`，JetBrains 的 IDE 就解析不出这个包的类型。
 overrides:
-  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.19.0/stride-ts-native-0.19.0.tgz
+  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.20.1/stride-ts-native-0.20.1.tgz

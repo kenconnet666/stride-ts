@@ -2,6 +2,14 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 TopDownRPG：导航网格的输入取物理形状的三角化，路径给拐点
+
+- **导航网格的输入**：Stride 的 RecastMeshSystem 把静态碰撞体按它自己的形状缓存（ShapeCacheSystem，球和胶囊有固定的细分）转成三角形。我们直接让 Jolt 把物理世界里的静态体三角化（`Shape::GetTriangles`，复合形状先收集叶子），各种形状都覆盖，和碰撞用的是同一份几何；球、胶囊的细分和 Stride 不完全一样，导航网格的边缘可能差一两个格子。
+- **路径给拐点**：Stride 的 FindFollowPath 沿拐点按固定步长采样出一串平滑的点，我们给 Detour 的直线路径（拐点，含起点和终点）。TopDownRPG 的 PlayerController 自己按路径点走，拐点照样能用；点更少，转角处的减速逻辑按拐点算。
+- **RecastNavigationComponent 只做了寻路**：Stride 里它还能排队寻路（SetTarget，由 RecastNavigationProcessor 处理）、按 Speed 直接移动实体，样例里没用到，等场景用到时再做。BepuNavigationBoundingBoxComponent 在 Stride 里本身没实现（源码里是 #warning），导入时忽略。
+- **挂到骨骼节点用变换存储的链接**：ModelNodeLink 的实体世界矩阵 = 目标的世界 × 节点矩阵 × 本地，不看父节点（Stride 的 TransformLink）。做在原生的变换存储里（`setLink`），计算顺序按链接排，帧末一次算完；别的做法是在 TS 里每帧算好世界矩阵写回本地变换，但子实体和物理都要跟着处理，容易出错。
+- **去掉物理组件就移除物体**：以前只在实体销毁时移除；Stride 里从实体上移除 BodyComponent 就离开仿真，TopDownRPG 出拳时靠它开关碰撞体。
+
 ## 2026-11-19 Platformer2D：精灵表不重新打包，角色用 body() 控制
 
 - **精灵表不打包成图集**：Stride 编译精灵表时把所有精灵重新打包进图集（Packing，默认开），我们每张源图导出成一张贴图，精灵记下它在源图上的区域。画出来一样；省掉打包，源图原样可查。代价是一个精灵表有几张源图就绑几张贴图（Platformer2D 的每个精灵表只有一张）。九宫格的边框（Borders）等 UI 用到时再做，导入时警告。

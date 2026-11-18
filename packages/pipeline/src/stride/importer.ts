@@ -33,6 +33,7 @@ import {
   type SpriteBlend,
   type SceneFile,
   type SceneLightShadow,
+  type SceneNavigation,
   type ScenePhysics,
   type SceneScript,
   type SceneScriptValue,
@@ -147,9 +148,11 @@ export class StrideImporter {
     });
     const files = await this.#hierarchy(asset, compositor.cameraSlots);
     const usesPhysics = files.some((file) => file.components.static || file.components.character || file.components.body);
+    const navigation = this.#navigationSettings(asset);
     const scene: SceneFile = {
       name: path.basename(asset.path),
       ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}),
+      ...(usesPhysics && navigation ? { navigation } : {}),
       ...(compositor.main ? { compositor: compositor.main } : {}),
       entities: files,
     };
@@ -349,6 +352,13 @@ export class StrideImporter {
       }
       case 'AnimationComponent':
         components.animation = await this.#animationComponent(component, where);
+        return true;
+      case 'RecastNavigationComponent':
+        // Stride.BepuPhysics.Navigation 的寻路组件是个脚本（StartupScript），引擎自带同名的脚本
+        components.scripts = [...(components.scripts ?? []), { type: 'RecastNavigationComponent', props: { speed: asNumber(component['Speed'], 5) } }];
+        return true;
+      case 'BepuNavigationBoundingBoxComponent':
+        // Stride 里还没实现（源码里是 #warning unimplemented），导航网格不看它
         return true;
       case 'ModelNodeLinkComponent': {
         // Target 引用的是 ModelComponent 的 Id，换成它所在的实体
@@ -601,6 +611,36 @@ export class StrideImporter {
       angularDamping: asNumber(simulation['PoseAngularDamping'], 0.05),
       fixedTimeStep: asNumber(simulation['FixedTimeStepSeconds'], 1 / 60),
       maxStepsPerFrame: asNumber(simulation['MaxStepPerFrame'], 3),
+    };
+  }
+
+  /** 场景的导航设置：GameSettings 里的 RecastNavigationConfiguration（没有时是 undefined，运行时用 Stride 的默认值）。 */
+  #navigationSettings(scene: AssetEntry): SceneNavigation | undefined {
+    const defaults = this.#gameSettings(scene)?.data['Defaults'];
+    const configuration = (Array.isArray(defaults) ? defaults : []).map(asObject).find((d) => d?.$type === 'RecastNavigationConfiguration');
+    if (!configuration) return undefined;
+    const b = asObject(configuration['BuildSettings']) ?? {};
+    for (const unsupported of ['PartitionType', 'VertsPerPoly'] as const) {
+      const value = b[unsupported];
+      if (value !== undefined && value !== 'WATERSHED' && value !== 6) this.#warnings.push(`${scene.file}: navigation ${unsupported} ${String(value)} is not supported; using ${unsupported === 'PartitionType' ? 'WATERSHED' : '6'}`);
+    }
+    return {
+      build: {
+        cellSize: asNumber(b['CellSize'], 0.3),
+        cellHeight: asNumber(b['CellHeight'], 0.2),
+        agentHeight: asNumber(b['AgentHeight'], 2),
+        agentRadius: asNumber(b['AgentRadius'], 0.6),
+        agentMaxClimb: asNumber(b['AgentMaxClimb'], 0.9),
+        agentMaxSlopeDegrees: asNumber(b['AgentMaxSlope'], 45),
+        tileSize: asNumber(b['TileSize'], 32),
+        maxEdgeLength: asNumber(b['EdgeMaxLen'], 12),
+        maxSimplificationError: asNumber(b['EdgeMaxError'], 1.3),
+        minRegionSize: asNumber(b['MinRegionSize'], 8),
+        mergeRegionSize: asNumber(b['MergedRegionSize'], 20),
+        detailSampleDistance: asNumber(b['DetailSampleDist'], 6),
+        detailSampleMaxError: asNumber(b['DetailSampleMaxError'], 1),
+      },
+      includedLayers: collisionMask(b['IncludedLayers']),
     };
   }
 
@@ -1207,6 +1247,18 @@ const align4 = (n: number) => (n + 3) & ~3;
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 游戏的脚本：带程序集名、不在 Stride 的命名空间里（引擎组件要么没有命名空间，要么以 Stride. 开头）。 */
+/** Stride 的 CollisionMask（`Layer0, Layer6` 这样的标志枚举，或 Everything、None）换成位掩码；没写是 Everything。 */
+export function collisionMask(value: StrideValue | undefined): number {
+  if (value === undefined || value === null || value === 'Everything') return 0xffffffff;
+  if (value === 'None') return 0;
+  let mask = 0;
+  for (const flag of String(value).split(',')) {
+    const layer = /^Layer(\d+)$/.exec(flag.trim());
+    if (layer) mask |= 1 << Number(layer[1]);
+  }
+  return mask >>> 0;
+}
+
 function isScriptType(type: string): boolean {
   return type.includes(',') && !type.startsWith('Stride.');
 }

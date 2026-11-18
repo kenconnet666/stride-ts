@@ -11,6 +11,8 @@ import { Registry } from '../engine/registry';
 import { GraphicsDevice } from '../graphics/GraphicsDevice';
 import { InputManager } from '../input/InputManager';
 import { Simulation } from '../physics/Simulation';
+import { NavigationSystem } from '../navigation/NavigationSystem';
+import { RecastNavigationComponent } from '../navigation/RecastNavigationComponent';
 import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
@@ -81,6 +83,8 @@ export class Game {
   input!: InputManager;
   /** 物理仿真（Stride 的 BepuSimulation）；nativeFeatures 里没有 physics 时是 undefined。 */
   simulation: Simulation | undefined;
+  /** 导航（Stride 的 RecastMeshSystem）；nativeFeatures 里没有 physics 和 navigation 时是 undefined。 */
+  navigation: NavigationSystem | undefined;
   /** 骨骼动画（Stride 的 AnimationProcessor 加蒙皮）：每帧在物理之后求姿势和蒙皮矩阵。 */
   animation!: AnimationSystem;
   /** 渲染特性（默认有 MeshRenderFeature）、视图和光照（Stride 的 RenderSystem）。 */
@@ -140,6 +144,8 @@ export class Game {
       });
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       if (this.native.hasFeature('physics')) this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
+      if (this.simulation && this.native.hasFeature('navigation')) this.navigation = new NavigationSystem(this.native, this.simulation);
+      this.registry.register(RecastNavigationComponent);
       this.animation = new AnimationSystem(this.native, this.entities);
       this.entities.addSystems(this.animation.system, modelNodeLinkSystem(this.entities, this.transforms, this.animation));
       this.content.animationNative ??= this.native;
@@ -244,6 +250,7 @@ export class Game {
       if (!this.simulation) throw new Error(`scene '${path}' has physics; run the game with nativeFeatures: [physics] (import { physics } from '@stride-ts/native/physics')`);
       this.simulation.configure(scene.physics);
     }
+    if (scene.navigation && this.navigation) this.navigation.settings = scene.navigation;
     return scene;
   }
 

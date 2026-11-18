@@ -666,6 +666,27 @@ export interface SceneScript {
 }
 
 /** 仿真设置（Stride 的 GameSettings 里 BepuConfiguration 的 BepuSimulation）。 */
+/** 导航的设置（Stride 的 RecastNavigationConfiguration，在 GameSettings 里）。 */
+export interface SceneNavigation {
+  readonly build: {
+    readonly cellSize: number;
+    readonly cellHeight: number;
+    readonly agentHeight: number;
+    readonly agentRadius: number;
+    readonly agentMaxClimb: number;
+    readonly agentMaxSlopeDegrees: number;
+    readonly tileSize: number;
+    readonly maxEdgeLength: number;
+    readonly maxSimplificationError: number;
+    readonly minRegionSize: number;
+    readonly mergeRegionSize: number;
+    readonly detailSampleDistance: number;
+    readonly detailSampleMaxError: number;
+  };
+  /** 参与的碰撞层，第 n 位是层 n。 */
+  readonly includedLayers: number;
+}
+
 export interface ScenePhysics {
   readonly gravity: Vec3Tuple;
   readonly linearDamping: number;
@@ -751,6 +772,8 @@ export interface SceneFile {
   readonly name: string;
   /** 场景用的仿真设置；没有时用引擎的默认值。 */
   readonly physics?: ScenePhysics;
+  /** 场景用的导航设置；没有时用 Stride 的默认值。 */
+  readonly navigation?: SceneNavigation;
   /** 主画面的合成器设置；没有时用前向渲染器的默认值。 */
   readonly compositor?: SceneCompositor;
   /** 父实体都排在子实体前面。 */

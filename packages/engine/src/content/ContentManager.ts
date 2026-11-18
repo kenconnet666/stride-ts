@@ -28,7 +28,7 @@ import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot } from './format';
+import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -109,6 +109,8 @@ export interface SceneInstance {
   readonly entities: ReadonlyMap<string, Entity>;
   /** 场景用的仿真设置（Game.loadScene 交给 simulation）。 */
   readonly physics?: ScenePhysics;
+  /** 场景用的导航设置（Game.loadScene 交给 navigation）。 */
+  readonly navigation?: SceneNavigation;
   /** 场景用的合成器设置（Game.loadScene 交给图形合成器）。 */
   readonly compositor?: CompositorSettings;
 }
@@ -288,7 +290,7 @@ export class ContentManager {
       ...scene.compositor,
       textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
     };
-    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(compositor ? { compositor } : {}) };
+    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
   }
 
   /** 加载预制体：引用的资源先加载好，实例化时才建实体（见 Prefab）。实例化时脚本按 options 对应，同 loadScene。 */

@@ -344,6 +344,9 @@ describe('导入 Stride 场景', () => {
       '!GameSettingsAsset', `Id: ${ids.gameSettings}`, `DefaultScene: ${ids.physicsScene}:Physics`, 'Defaults:',
       '    - !Stride.BepuPhysics.BepuConfiguration,Stride.BepuPhysics', '        BepuSimulations:',
       '            -   AssociatedScene: null', '                FixedTimeStepSeconds: 0.02', '                PoseGravity: {X: 0.0, Y: -40.0, Z: 0.0}',
+      // TopDownRPG 的导航设置：没写的取 Stride 的默认值
+      '    - !RecastNavigationConfiguration', '        BuildSettings:', '            CellSize: 0.1', '            AgentRadius: 0.5', '            MinRegionSize: 10',
+      '            IncludedLayers: Layer0, Layer6', '            PartitionType: WATERSHED', '        PathfindingSettings:', '            MaxAllowedVisitedTiles: 16',
     ].join('\n'),
     'Assets/Physics.sdscene': [
       '!SceneAsset', `Id: ${ids.physicsScene}`, 'Hierarchy:', '    Parts:',
@@ -517,6 +520,13 @@ describe('导入 Stride 场景', () => {
     expect(result.warnings.filter((w) => w.includes('ConvexHullCollider'))).toHaveLength(1);
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Physics.scene.json'), 'utf8')) as SceneFile;
     expect(scene.physics).toEqual({ gravity: [0, -40, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 0.02, maxStepsPerFrame: 3 });
+    expect(scene.navigation).toEqual({
+      build: {
+        cellSize: 0.1, cellHeight: 0.2, agentHeight: 2, agentRadius: 0.5, agentMaxClimb: 0.9, agentMaxSlopeDegrees: 45, tileSize: 32,
+        maxEdgeLength: 12, maxSimplificationError: 1.3, minRegionSize: 10, mergeRegionSize: 20, detailSampleDistance: 6, detailSampleMaxError: 1,
+      },
+      includedLayers: (1 << 0) | (1 << 6),
+    });
     const [wall, ramp, player] = scene.entities.map((e) => e.components);
     expect(wall!.static).toEqual({
       shapes: [

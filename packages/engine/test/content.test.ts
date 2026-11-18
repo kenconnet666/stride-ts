@@ -154,7 +154,7 @@ describe('ContentManager', () => {
     await expect(content.loadMaterial('materials/Missing')).rejects.toThrow('no https://game.test/content/materials/Missing.material.json');
   });
 
-  test('场景里的脚本：按类名对上 TS 脚本，实体引用换成 id、资源引用换成加载好的资源；找不到的脚本和属性警告后跳过', async () => {
+  test('场景里的脚本：按类名对上 TS 脚本，实体引用换成 id、资源引用换成加载好的资源；找不到的脚本和属性警告后跳过；同类的第二个挂到子实体上', async () => {
     class Follower extends SyncScript.props({
       target: prop.entity().optional(),
       speed: prop.number().default(1),
@@ -169,6 +169,7 @@ describe('ContentManager', () => {
         { id: 'a', name: 'A', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { scripts: [
           { type: 'MyGame.Ai.Follower', props: { target: { $entity: 'b' }, speed: 3, keys: ['W', 'Up'], look: { $asset: 'materials/Grid', kind: 'material' }, next: { $asset: 'scenes/Other', kind: 'scene' }, notInTs: 1 } },
           { type: 'MyGame.Missing', props: {} },
+          { type: 'MyGame.Ai.Follower', props: { speed: 7 } },
           { type: 'MyGame.OldName', props: { value: 7 } },
         ] } },
         { id: 'b', name: 'B', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} },
@@ -195,6 +196,9 @@ describe('ContentManager', () => {
       // 引用的场景只记路径，不加载（场景之间常常互相引用）
       expect(follower.next).toEqual({ path: 'scenes/Other' });
       expect(loaded.entities.get('a')!.require(Renamed).value).toBe(7);
+      // 同一个实体上第二个同类脚本挂到子实体上
+      const [extra] = loaded.entities.get('a')!.require(Transform).children;
+      expect([extra!.name, extra!.require(Follower).speed]).toEqual(['A', 7]);
     } finally {
       console.warn = warn;
     }

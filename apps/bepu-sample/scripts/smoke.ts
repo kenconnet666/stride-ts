@@ -1,7 +1,7 @@
 // BepuSample 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/bepu-sample smoke [-- --hub <中枢名的一部分>]
 // 检查：Colliders 场景在跑；相机控制器（W 前进）；小键盘 * 暂停仿真；T 扔出预制体；重力枪抓起箱子；换到 Material Properties 后
-// 旧场景的实体都去掉了；Cube Fountain 的生成器按物理时间生成预制体。
+// 旧场景的实体都去掉了；Constraint 的马达和铰链、Ropes 的绳子；Cube Fountain 的生成器按物理时间生成预制体。
 import { startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('bepu-sample');
@@ -64,6 +64,20 @@ stride('call', 'scene', '"Material"');
 await sleep(2000);
 const lines = (stride('call', 'debug-text') as { text: string }[]).map((line) => line.text);
 check('换到 Material Properties：说明文字换了，实体数变了', lines.some((text) => text.includes('materials properties')) && stride('eval', 'strideGame.entities.count') !== colliders, lines);
+
+// Constraint：搅拌叶片（Blade，约束组件挂在 Mixer 实体上）由单体角马达带着绕 Y 每秒转 10 弧度，铰链挂在底座上
+stride('call', 'scene', '"Constraint"');
+await sleep(2500);
+const mixer = stride('eval', `const g = strideGame; const id = g.entities.ids().find((i) => g.entities.entity(i).name === 'Blade');
+  const w = g.simulation.body(id).angularVelocity; [w.x, w.y, w.z].map((v) => +v.toFixed(2))`) as number[];
+check('Constraint：搅拌机按马达绕 Y 转', Math.abs(mixer[1]! - 10) < 1 && Math.abs(mixer[0]!) < 0.5, mixer);
+
+// Ropes：每根绳子铺出一串带刚体的节，挂在两头的物体上不会掉到地上
+stride('call', 'scene', '"Ropes"');
+await sleep(2500);
+const rope = stride('eval', `const g = strideGame; const ids = g.entities.ids().filter((i) => g.entities.hasComponent(i, strideEngine.Body) && g.entities.entity(i).name.includes('Rope'));
+  ({ count: ids.length, lowest: Math.min(...ids.map((i) => g.entities.entity(i).require(strideEngine.Transform).world[13])) })`) as { count: number; lowest: number };
+check('Ropes：绳子的节都在，挂着不掉', rope.count > 10 && rope.lowest > 0.2, rope);
 
 stride('call', 'scene', '"Fountain"');
 await sleep(3000);

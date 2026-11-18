@@ -5,6 +5,9 @@
  * 找脚本的规则：先看 loadScene 的 scripts 选项（显式对应，值为 null 表示有意不挂），再按类名（类型名最后一段）在登记表里找
  * 导出名相同的脚本。找不到时记警告并跳过：场景里可能有只在编辑器里用的脚本，或者还没翻译的脚本。
  * TS 脚本没有声明的属性也记警告并忽略（翻译时可以有意省掉一些属性）。
+ *
+ * 和 Stride 不同：一个实体上每种脚本只能有一个。Stride 场景里同一个实体上挂了几个同类的脚本时（比如 BepuSample 的
+ * Ropes 有 5 个 RopeSpawnerComponent），第二个起挂到自动建的子实体上（变换是单位的，位置和父实体相同）。
  */
 import type { SceneAssetKind, SceneScript, SceneScriptValue } from './format';
 import type { EntityId } from '../data/prop';
@@ -39,6 +42,8 @@ export function scriptAssetRefs(scripts: readonly SceneScript[]): ScriptAssetRef
 export interface ScriptValueContext {
   readonly entities: ReadonlyMap<string, Entity>;
   readonly asset: (kind: SceneAssetKind, path: string) => object;
+  /** 实体上已经有同类脚本时，建一个子实体来挂（见文件开头）。 */
+  readonly extraEntity: (owner: Entity) => Entity;
 }
 
 export class SceneScriptBinder {
@@ -68,7 +73,7 @@ export class SceneScriptBinder {
       }
       init[name] = field.options.kind === 'component' ? resolveComponent(value, field.options.target!(), context, `${where}: ${script.type}.${name}`) : resolveValue(value, context);
     }
-    entity.add({ script: type, init });
+    (entity.get(type) ? context.extraEntity(entity) : entity).add({ script: type, init });
   }
 
   #resolve(type: string, where: string): ScriptConstructor | undefined {

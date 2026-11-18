@@ -24,6 +24,7 @@ import {
   type SceneCollidable,
   type SceneEntityFile,
   type SceneBody,
+  type SceneConstraint,
   type SceneRenderTexture,
   type SceneSprite,
   type SpriteBlend,
@@ -89,6 +90,9 @@ interface HierarchyContext {
   /** 合成器里相机槽位的 Id → 下标（Camera.slot）；预制体是空的。 */
   readonly cameraSlots: ReadonlyMap<string, number>;
 }
+
+/** Stride.BepuPhysics 的约束组件的类型名前缀。 */
+const CONSTRAINT_PREFIX = 'Stride.BepuPhysics.Constraints.';
 
 interface ImportedTexture {
   readonly texture: string;
@@ -212,6 +216,11 @@ export class StrideImporter {
       const object = asObject(component);
       const type = object?.$type ?? 'unknown';
       if (!object || type === 'TransformComponent') continue;
+      if (type.startsWith(CONSTRAINT_PREFIX)) {
+        const constraint = this.#constraint(type, object, where, context);
+        if (constraint) components.constraints = [...(components.constraints ?? []), constraint];
+        continue;
+      }
       if (isScriptType(type)) {
         components.scripts = [...(components.scripts ?? []), await this.#script(type, object, where, context)];
         continue;
@@ -228,6 +237,36 @@ export class StrideImporter {
       scale: vec3(transform['Scale'], 1),
       components,
     };
+  }
+
+  /**
+   * Stride.BepuPhysics 的约束组件：A、B 引用的是物理组件，换成所在的实体；其余属性名首字母小写，向量、四元数换成数组。
+   * 没有 A（或两体约束没有 B）的记警告、跳过。
+   */
+  #constraint(type: string, component: StrideObject, where: string, context: HierarchyContext): SceneConstraint | undefined {
+    const name = type.slice(CONSTRAINT_PREFIX.length, type.indexOf(','));
+    const constraintType = lowerFirst(name.replace(/ConstraintComponent$/, ''));
+    const entity = (key: string) => {
+      const reference = parseObjectReference(component[key]);
+      return reference === undefined ? undefined : context.owners.get(reference);
+    };
+    const bodyA = entity('A'), bodyB = entity('B');
+    const oneBody = constraintType.startsWith('oneBody');
+    if (bodyA === undefined || (!oneBody && bodyB === undefined)) {
+      this.#warnings.push(`${where}: ${name} has no ${bodyA === undefined ? 'A' : 'B'} body in this scene; skipping it`);
+      return undefined;
+    }
+    const settings: Record<string, number | number[]> = {};
+    for (const [key, value] of Object.entries(component)) {
+      if (['Id', 'Enabled', 'A', 'B', '$type'].includes(key)) continue;
+      if (typeof value === 'number') settings[lowerFirst(key)] = value;
+      else {
+        const vector = asObject(value);
+        const keys = vector ? Object.keys(vector).join(',') : '';
+        if (keys === 'X,Y,Z' || keys === 'X,Y,Z,W') settings[lowerFirst(key)] = Object.values(vector!).map((v) => asNumber(v, 0));
+      }
+    }
+    return { type: constraintType, enabled: component['Enabled'] !== false, bodyA, ...(oneBody ? {} : { bodyB: bodyB! }), settings };
   }
 
   /** 游戏的脚本组件：类型名去掉程序集，属性名改成小写开头，值按 SceneScriptValue 换过来。 */

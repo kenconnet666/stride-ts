@@ -275,6 +275,10 @@ describe('导入 Stride 场景', () => {
       '                    t: !TransformComponent', '                        Id: tg2', '                        Children: {}',
       '                    i: !InstanceComponent', '                        Id: ig2', '                        Master: ref!! ing3',
       '                    b: !Stride.BepuPhysics.BodyComponent,Stride.BepuPhysics', '                        Id: bg2', '                        Collider: !Stride.BepuPhysics.Definitions.Colliders.EmptyCollider,Stride.BepuPhysics {}',
+      // 约束组件：A 引用的是物理组件；两体约束缺 B 的跳过
+      '                    m: !Stride.BepuPhysics.Constraints.OneBodyAngularMotorConstraintComponent,Stride.BepuPhysics', '                        Id: mg2', '                        Enabled: false',
+      '                        A: ref!! bg2', '                        TargetVelocity: {X: 0.0, Y: 10.0, Z: 0.0}', '                        MotorDamping: 50.0', '                        MotorMaximumForce: 10000000.0',
+      '                    h: !Stride.BepuPhysics.Constraints.HingeConstraintComponent,Stride.BepuPhysics', '                        Id: hg2', '                        A: ref!! bg2', '                        B: null',
       '        -   Entity:', '                Id: g3', '                Name: Master', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg3', '                        Children: {}',
       '                    n: !InstancingComponent', '                        Id: ing3', '                        Type: !InstancingEntityTransform {}',
@@ -510,7 +514,7 @@ describe('导入 Stride 场景', () => {
     const project = await writeProject();
     const out = path.join(dir, 'content-glass');
     const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16 }).importScene(project.byPath('Game/Glassy')!);
-    expect(result.warnings).toEqual([expect.stringContaining('material layers are not supported yet')]);
+    expect(result.warnings).toEqual([expect.stringContaining('HingeConstraintComponent has no B body'), expect.stringContaining('material layers are not supported yet')]);
     const material = JSON.parse(await readFile(path.join(out, 'Game/Materials/Glass.material.json'), 'utf8')) as MaterialFile;
     const checker = { texture: 'Game/Textures/Checker', srgb: true, offset: [0, 0] };
     expect(material).toEqual({
@@ -530,6 +534,9 @@ describe('导入 Stride 场景', () => {
     expect(scene.entities[1]!.components.instance).toEqual({ master: 'g3' });
     expect(scene.entities[1]!.components.body!.shapes).toEqual([{ type: 'empty', position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }]);
     expect(scene.entities[2]!.components.instancing).toEqual({});
+    expect(scene.entities[1]!.components.constraints).toEqual([
+      { type: 'oneBodyAngularMotor', enabled: false, bodyA: 'g2', settings: { targetVelocity: [0, 10, 0], motorDamping: 50, motorMaximumForce: 10000000 } },
+    ]);
     // 脚本属性引用的预制体导出成 .prefab.json：父实体在前，引用换成预制体里的实体 id
     expect(scene.entities[0]!.components.scripts![0]!.props['spawn']).toEqual({ $asset: 'Game/Prefabs/Crate', kind: 'prefab' });
     const prefab = JSON.parse(await readFile(path.join(out, 'Game/Prefabs/Crate.prefab.json'), 'utf8')) as PrefabFile;

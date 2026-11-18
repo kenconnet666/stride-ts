@@ -16,6 +16,9 @@ import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, Static } from '../physics/components';
+import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
+import type { ConstraintSettings } from '../physics/Simulation';
+import type { ScriptConstructor } from '../engine/scripts';
 import { Background, Camera, Instance, Instancing, Light, Model, Sprite } from '../rendering/components';
 import type { EntityId } from '../data/prop';
 import { Material } from '../rendering/Material';
@@ -334,6 +337,27 @@ export class ContentManager {
       created.set(file.id, entity);
       this.#addComponents(entity, file, assets, entities);
     }
+    // 约束组件引用的物体可能排在后面：实体都建好以后再挂（约束在脚本启动时加）
+    for (const file of files) {
+      for (const constraint of file.components.constraints ?? []) {
+        // 各种约束的组件按设置的类型参数化，这里只按基类用
+        const component = CONSTRAINT_COMPONENTS[constraint.type as keyof typeof CONSTRAINT_COMPONENTS] as unknown as ScriptConstructor<ConstraintComponentBase> | undefined;
+        if (!component) {
+          console.warn(`[stride] ${where}: ${file.name}: constraint type '${constraint.type}' is not supported; skipped`);
+          continue;
+        }
+        const body = (id: string) => {
+          const entity = created.get(id);
+          if (!entity) throw new Error(`${where}: entity '${file.name}' has a constraint on ${id}, which is not in the scene`);
+          return entity;
+        };
+        const entity = created.get(file.id)!;
+        entity.add({ script: component, init: {} });
+        const script = entity.require(component);
+        script.settings = { ...constraint.settings, type: constraint.type, bodyA: body(constraint.bodyA), ...(constraint.bodyB ? { bodyB: body(constraint.bodyB) } : {}) } as ConstraintSettings;
+        script.enabled = constraint.enabled;
+      }
+    }
     // 实例引用的主实体可能排在后面：实体都建好以后再挂
     for (const file of files) {
       const instance = file.components.instance;
@@ -347,6 +371,12 @@ export class ContentManager {
     const context = {
       entities: created,
       asset: (kind: string, assetPath: string): object => (kind === 'scene' ? ({ path: assetPath } satisfies SceneReference) : byKind[kind]!.get(assetPath)!),
+      extraEntity: (owner: Entity): Entity => {
+        const extra = entities.create({ name: owner.name, components: [Transform] });
+        // 是 owner 的子实体：owner 销毁时一起销毁
+        extra.require(Transform).parent = owner;
+        return extra;
+      },
     };
     for (const file of files) {
       for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${where}: ${file.name}`);

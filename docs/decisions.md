@@ -6,6 +6,9 @@
 
 - **接触的软度**：Bepu 按物体设接触的弹簧（SpringFrequency、SpringDampingRatio）和最大恢复速度（MaximumRecoveryVelocity），Material Properties 场景靠它们演示"软"和"陷进去"。Jolt 的接触是刚性的，全局用 Baumgarte 恢复，没有按物体的接触软度；只映射摩擦。和 Stride 不同：这几项的效果看不到。别的做法：在接触回调里改 Jolt 的接触约束（ContactSettings 没有软度参数），或者自己写软接触——代价大、收益只在这一个演示上。
 - **调试文字**：BepuSample 的脚本大量用 Stride 的 DebugText.Print 当界面。文字渲染（字体、矢量）是 P2 的大件，P1 先做 `game.debugText`（记下每帧打印的文字，`stride call debug-text` 读），P2 做文字渲染时画出来。
+- **伺服和马达**：Bepu 的伺服有最大速度、基础速度，马达有阻尼（MotorSettings.Damping，速度误差到力的软度）；Jolt 的马达只有弹簧（位置马达）和力的上限，所以这几项不映射，速度马达是"在力的上限内尽快达到目标速度"。重力枪、搅拌机的效果一致，只是起步更硬。
+- **约束组件**：每种约束一个脚本类（BallSocketConstraintComponent 等，名字同 Stride），启动时加约束、移除时去掉，场景卸载时跟着去掉；同一个实体上可以挂几种不同的约束，但同一种只能挂一个（我们的实体按类存脚本）。样例里同种约束挂在同一实体上的只有 RopeSpawner 的代码，它直接调 `simulation.addConstraint`。ConstraintToggleComponent、ConstraintEditorComponent 在样例的场景里没用到，没有移植。
+- **同类脚本**：Stride 的实体上可以挂几个同类的组件（Ropes 场景的一个实体上有 5 个 RopeSpawnerComponent），我们的实体按类存脚本，每类一个。加载场景时第二个起挂到自动建的子实体上（单位变换），脚本里的 `this.entity` 是那个子实体。别的做法：让实体按列表存脚本——`entity.get`、热重载、调试命令都要跟着改，等真有脚本需要在同一实体上多实例时再做。
 - **模型实例化**：Stride 的 InstancingComponent 把实例的变换收集起来一次实例化绘制；我们的渲染器本来就把同网格同材质的物体合批，所以 `Instance` 只是"借用主实体的模型"，主实体自己不画。多网格的模型（拆成子实体）只借用主实体那一个网格。
 
 ## 2026-11-19 PhysicsSample 的材质和验收

@@ -12,10 +12,13 @@ import { BepuSampleGame } from './game/BepuSampleGame';
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const stats = document.querySelector<HTMLElement>('#stats')!;
 const modules = import.meta.glob('./game/**/*.ts', { eager: true });
+// Cube Fountain 的生成器最多生成 100000 个方块（每秒 50 个），Jolt 的物理世界容量是固定的：比默认的 4096 放大一些，
+// 每秒 50 个能跑十来分钟（Bepu 没有上限）
+const MAX_BODIES = 32768;
 
 const { game, created } = Game.hotEntry(import.meta.hot, modules, BepuSampleGame, stats);
 if (created) {
-  game.run(canvas, { modules, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics] }).catch((error: unknown) => {
+  game.run(canvas, { modules, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics], maxBodies: MAX_BODIES }).catch((error: unknown) => {
     stats.textContent = `failed: ${error instanceof Error ? error.message : String(error)}`;
   });
 }

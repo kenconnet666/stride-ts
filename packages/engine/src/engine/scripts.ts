@@ -85,11 +85,24 @@ export abstract class ScriptComponent {
   /** start() 之前设好；脚本被移除之前一直属于这个实体。 */
   entity!: Entity;
   game!: Game;
-  /** 停用的 SyncScript 不再 update，状态保留。 */
-  enabled = true;
   /** 脚本移除或游戏退出时释放（事件接收器、钩子、计时器、资源）。 */
   protected readonly disposables = new DisposableStack();
   readonly #abort = new AbortController();
+  #enabled = true;
+
+  /** 停用的 SyncScript 不再 update，状态保留（Stride 的 EntityComponent.Enabled）。 */
+  get enabled(): boolean {
+    return this.#enabled;
+  }
+
+  set enabled(value: boolean) {
+    if (value === this.#enabled) return;
+    this.#enabled = value;
+    this.onEnabledChanged();
+  }
+
+  /** enabled 改了以后调用；比如约束组件用它开关约束。 */
+  protected onEnabledChanged(): void {}
   /** @internal 启动过（EntityManager 在第一次 update 之前设）；没启动就移除的脚本不调 cancel，同 Stride。 */
   [STARTED] = false;
   /** @internal 有 .stat() 属性的脚本由管理器设置。 */

@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { Body, Character, Collider, Game, hullPoints, Mesh, Quaternion, Simulation, Static, Transform, TriggerHandler, Vector3, type Entity } from '../src/index';
+import { Body, Character, Collider, Game, hullPoints, Mesh, OneBodyAngularMotorConstraintComponent, Quaternion, Simulation, Static, Transform, TriggerHandler, Vector3, type Entity } from '../src/index';
 
 let native: StrideNative;
 
@@ -104,6 +104,21 @@ describe('Vector3、Quaternion', () => {
     expect(v.x).toBeCloseTo(1);
     expect(v.y).toBeCloseTo(0);
     expect(v.z).toBeCloseTo(0);
+  });
+
+  test('Quaternion.lookRotation 把本地 +Z 转到 forward，+Y 朝 up（Stride 的 LookRotation）；和 up 平行时也是单位四元数', () => {
+    // 和 up 平行时换一根轴当 up，结果仍是单位四元数
+    const vertical = Quaternion.lookRotation({ x: 0, y: 3, z: 0 }, { x: 0, y: 1, z: 0 });
+    expect(Math.hypot(vertical.x, vertical.y, vertical.z, vertical.w)).toBeCloseTo(1, 6);
+    expect(new Vector3(0, 0, 1).rotate(vertical).y).toBeCloseTo(1, 6);
+    for (const forward of [{ x: 1, y: 0, z: 0 }, { x: 0, y: 0, z: -1 }, { x: 1, y: 2, z: -3 }, { x: 0, y: -0.2, z: 1 }]) {
+      const q = Quaternion.lookRotation(forward, { x: 0, y: 1, z: 0 });
+      const z = new Vector3(0, 0, 1).rotate(q);
+      const f = new Vector3().copy(forward).normalize();
+      expect(z.clone().subtract(f).length()).toBeLessThan(1e-6);
+      // +X 是水平的（up 和 forward 张成的平面的法线）
+      expect(Math.abs(new Vector3(1, 0, 0).rotate(q).y)).toBeLessThan(1e-6);
+    }
   });
 
   test('Quaternion.slerp 走短的一边：0° 到 90° 的一半是 45°；目标取反（同一个旋转）结果一样', () => {
@@ -217,6 +232,26 @@ describe('仿真的时间倍率和开关（Stride 的 BepuSimulation.TimeScale�
 });
 
 describe('约束（Stride.BepuPhysics 的约束组件）', () => {
+  test('约束组件（Stride 的 OneBodyAngularMotorConstraintComponent 等）：启动时加约束，enabled 开关，实体销毁时移除', () => {
+    const game = createGame();
+    game.simulation.configure({ gravity: [0, 0, 0] });
+    const wheel = game.entities.create({ components: [Transform, Body.with({ collider: new Collider([{ type: 'cylinder', radius: 1, length: 0.5 }]).id, sleepThreshold: -1 })] });
+    wheel.add(OneBodyAngularMotorConstraintComponent);
+    const motor = wheel.require(OneBodyAngularMotorConstraintComponent);
+    motor.settings = { type: 'oneBodyAngularMotor', bodyA: wheel, targetVelocity: [0, 3, 0] };
+    run(game, 60);
+    expect(game.simulation.body(wheel).angularVelocity.y).toBeCloseTo(3, 1);
+    motor.enabled = false;
+    game.simulation.body(wheel).angularVelocity = { x: 0, y: 0, z: 0 };
+    run(game, 30);
+    expect(game.simulation.body(wheel).angularVelocity.y).toBeCloseTo(0, 3);
+    motor.enabled = true;
+    motor.update({ targetVelocity: [0, -2, 0] });
+    run(game, 60);
+    expect(game.simulation.body(wheel).angularVelocity.y).toBeCloseTo(-2, 1);
+    expect(() => wheel.destroy()).not.toThrow();
+  });
+
   test('单体线性伺服（重力枪）：把物体拉向目标；update 改目标，enabled 关掉后自由落下；onStep 每个物理步调一次', () => {
     const game = createGame();
     const crate = game.entities.create({ components: [Transform, Body.with({ collider: new Collider([{ type: 'box', size: [1, 1, 1] }]).id, sleepThreshold: -1 })] });

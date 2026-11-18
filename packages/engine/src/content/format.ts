@@ -640,6 +640,12 @@ export interface SceneEntityFile {
   readonly rotation: readonly [number, number, number, number];
   readonly scale: Vec3Tuple;
   readonly components: {
+    /**
+     * Stride.BepuPhysics 的约束组件（BallSocketConstraintComponent 等），可以有几个。type 是约束种类（类名去掉
+     * ConstraintComponent、首字母小写），bodyA、bodyB 是带物理组件的实体（场景里的 id，单体约束没有 bodyB），settings 是
+     * 其余属性（名字首字母小写，同 Simulation.addConstraint 的设置；向量、四元数是数组）。
+     */
+    readonly constraints?: readonly SceneConstraint[];
     /** Stride 的 InstancingComponent：这个实体的模型给 instance 引用它的实体画。 */
     readonly instancing?: Record<string, never>;
     /** Stride 的 InstanceComponent：master 是带 instancing 的实体（场景里的 id），null 是还没指定（运行时由脚本设）。 */
@@ -697,6 +703,14 @@ export interface SceneFile {
   readonly compositor?: SceneCompositor;
   /** 父实体都排在子实体前面。 */
   readonly entities: readonly SceneEntityFile[];
+}
+
+export interface SceneConstraint {
+  readonly type: string;
+  readonly enabled: boolean;
+  readonly bodyA: string;
+  readonly bodyB?: string;
+  readonly settings: Readonly<Record<string, number | readonly number[]>>;
 }
 
 /** 预制体（Stride 的 PrefabAsset）：和场景一样的实体层级，实例化时才建出来。 */

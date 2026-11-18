@@ -157,6 +157,37 @@ export class Quaternion implements QuatLike {
     );
   }
 
+  /**
+   * 本地 +Z 朝 forward、+Y 尽量朝 up 的旋转（Stride 的 Quaternion.LookRotation）。forward、up 不必是单位向量。
+   * 和 Stride 不同：forward 和 up 平行时 Stride 得到退化的（不是旋转的）结果，这里改用和 forward 最不平行的坐标轴当 up。
+   */
+  static lookRotation(forward: Readonly<Vec3Like>, up: Readonly<Vec3Like>): Quaternion {
+    const f = new Vector3().copy(forward).normalize();
+    let r = new Vector3().copy(up).cross(f);
+    if (r.length() < 1e-6) {
+      const axis = Math.abs(f.x) < Math.abs(f.y) ? (Math.abs(f.x) < Math.abs(f.z) ? { x: 1, y: 0, z: 0 } : { x: 0, y: 0, z: 1 }) : Math.abs(f.y) < Math.abs(f.z) ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
+      r = new Vector3().copy(axis).cross(f);
+    }
+    r.normalize();
+    const u = f.clone().cross(r);
+    // 列是 r、u、f 的旋转矩阵转四元数（Shepperd：按最大的对角项分情况，数值稳定）
+    const trace = r.x + u.y + f.z;
+    if (trace > 0) {
+      const s = Math.sqrt(trace + 1) * 2;
+      return new Quaternion((u.z - f.y) / s, (f.x - r.z) / s, (r.y - u.x) / s, 0.25 * s);
+    }
+    if (r.x > u.y && r.x > f.z) {
+      const s = Math.sqrt(1 + r.x - u.y - f.z) * 2;
+      return new Quaternion(0.25 * s, (u.x + r.y) / s, (f.x + r.z) / s, (u.z - f.y) / s);
+    }
+    if (u.y > f.z) {
+      const s = Math.sqrt(1 + u.y - r.x - f.z) * 2;
+      return new Quaternion((u.x + r.y) / s, 0.25 * s, (f.y + u.z) / s, (f.x - r.z) / s);
+    }
+    const s = Math.sqrt(1 + f.z - r.x - u.y) * 2;
+    return new Quaternion((f.x + r.z) / s, (f.y + u.z) / s, 0.25 * s, (r.y - u.x) / s);
+  }
+
   /** 球面线性插值到 to（Stride 的 Quaternion.Slerp）：走短的那一边；几乎相同时退化成线性插值。 */
   slerp(to: Readonly<QuatLike>, t: number): this {
     const dot = this.x * to.x + this.y * to.y + this.z * to.z + this.w * to.w;

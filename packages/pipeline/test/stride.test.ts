@@ -5,7 +5,7 @@ import path from 'node:path';
 import { decodeCubemap, decodeModel, type MaterialFile, type SceneFile, type SkyboxFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { floatToHalf, halfToFloat, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, StrideImporter, StrideProject } from '../src/index';
+import { floatToHalf, fromRgb9e5, halfToFloat, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, StrideImporter, StrideProject, toRgb9e5 } from '../src/index';
 
 describe('Stride 的 YAML', () => {
   test('标签里的逗号（程序集限定名）、对象引用和资源引用', () => {
@@ -71,12 +71,24 @@ function encodeDdsCube(size: number, color: readonly [number, number, number, nu
   return bytes;
 }
 
-describe('DDS 和半精度', () => {
+describe('DDS、半精度和 RGB9E5', () => {
   test('半精度往返、舍入和特殊值', () => {
     for (const value of [0, 1, -2, 0.5, 65504, 6.103515625e-5]) expect(halfToFloat(floatToHalf(value))).toBe(value);
     expect(halfToFloat(floatToHalf(1 / 3))).toBeCloseTo(1 / 3, 3);
     expect(halfToFloat(floatToHalf(1e6))).toBe(Infinity);
     expect(Number.isNaN(halfToFloat(floatToHalf(NaN)))).toBe(true);
+  });
+
+  test('RGB9E5：能精确表示的值原样还原，其余相对误差在 9 位尾数以内，负数当 0，超出范围截到最大值', () => {
+    const packed = toRgb9e5(new Float32Array([0.5, 1, 2, 1, 0, 0, 0, 1, 0.1, 3.7, 1000, 1, -1, 1e9, 0.25, 1]));
+    expect(fromRgb9e5(packed[0]!)).toEqual([0.5, 1, 2]);
+    expect(fromRgb9e5(packed[1]!)).toEqual([0, 0, 0]);
+    // 共用指数跟着最大的通道（1000），小通道的精度是 1000 / 512 量级
+    const [r, g, b] = fromRgb9e5(packed[2]!);
+    expect(b).toBeCloseTo(1000, -1);
+    expect(Math.abs(g - 3.7)).toBeLessThan(1000 / 512);
+    expect(r).toBeLessThan(1000 / 512);
+    expect(fromRgb9e5(packed[3]!)).toEqual([0, 65408, 0]);
   });
 
   test('读浮点立方体贴图；不是立方体贴图或格式不对时报错', () => {
@@ -238,7 +250,7 @@ describe('导入 Stride 场景', () => {
     }
     const project = await StrideProject.open([{ package: 'Game', dir: path.join(dir, 'Assets') }]);
     const out = path.join(dir, 'content');
-    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16, specularSamples: 32 });
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
     const result = await importer.importScene(project.byPath('Game/Main')!);
     expect(result).toMatchObject({
       scene: 'Game/Main',
@@ -255,15 +267,13 @@ describe('导入 Stride 场景', () => {
     expect(scene.entities.map((e) => [e.name, e.parent])).toEqual([['Root', null], ['Child', 'e2'], ['Sky', null]]);
     expect(scene.entities[2]!.components).toEqual({ light: { type: 'skybox', skybox: 'Game/Sky', intensity: 1.5 }, background: { texture: 'Game/SkyTexture', intensity: 3 } });
 
-    // 恒定的天空：球谐的常数项就是天空的颜色，预滤波的每一级也都是它
+    // 恒定的天空：球谐的常数项就是天空的颜色；镜面的预滤波在运行时做，这里只引用源立方体贴图（和背景是同一个文件）
     const skybox = JSON.parse(await readFile(path.join(out, 'Game/Sky.skybox.json'), 'utf8')) as SkyboxFile;
-    expect(skybox.specular).toBe('Game/Sky.specular');
+    expect([skybox.radiance, skybox.specularSize]).toEqual(['Game/SkyTexture', 16]);
     expect(skybox.diffuseSH.slice(0, 3).map((c) => Math.round(c * 100) / 100)).toEqual([0.5, 1, 2]);
-    const specular = decodeCubemap((await readFile(path.join(out, 'Game/Sky.specular.cubemap'))).buffer as ArrayBuffer);
-    expect([specular.size, specular.levels.length]).toEqual([16, 5]);
-    expect([...specular.levels[4]!.subarray(0, 3)].map(halfToFloat)).toEqual([0.5, 1, 2]);
-    const background = decodeCubemap((await readFile(path.join(out, 'Game/SkyTexture.cubemap'))).buffer as ArrayBuffer);
-    expect([background.size, background.levels.length, halfToFloat(background.levels[0]![2]!)]).toEqual([8, 1, 2]);
+    const radiance = decodeCubemap((await readFile(path.join(out, 'Game/SkyTexture.cubemap'))).buffer as ArrayBuffer);
+    expect([radiance.size, radiance.format, radiance.levels.length]).toEqual([8, 'rgb9e5ufloat', 1]);
+    expect(fromRgb9e5(new DataView(radiance.levels[0]!.buffer, radiance.levels[0]!.byteOffset).getUint32(0, true))).toEqual([0.5, 1, 2]);
     expect(scene.entities[1]!.position).toEqual([0, 2, 0]);
     expect(scene.entities[0]!.components.light).toEqual({ type: 'directional', color: [1, 0.5, 0], intensity: 5 });
     expect(scene.entities[1]!.components.model).toEqual({ model: 'Game/Models/Tri', materials: [] });

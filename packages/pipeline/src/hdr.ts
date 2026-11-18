@@ -1,6 +1,7 @@
 /**
- * 读 DDS 里的浮点立方体贴图（Stride 的 HDR 天空盒用它）：RGBA16F 或 RGBA32F，老式 FourCC 和 DX10 头都认，
- * 统一转成 RGBA32F。面的顺序和行的方向就是 DDS 的（+X -X +Y -Y +Z -Z，行从上到下），和 WebGPU 一致。
+ * HDR 图像：读 DDS 里的浮点立方体贴图（Stride 的 HDR 天空盒用它），RGBA16F 或 RGBA32F，老式 FourCC 和 DX10 头都认，
+ * 统一转成 RGBA32F；面的顺序和行的方向就是 DDS 的（+X -X +Y -Y +Z -Z，行从上到下），和 WebGPU 一致。
+ * 再加上导出用的两种紧凑格式：半精度（RGBA16F）和 RGB9E5。
  */
 
 export interface FloatCubemap {
@@ -94,4 +95,33 @@ export function toHalf(values: Float32Array): Uint16Array {
   const out = new Uint16Array(values.length);
   for (let i = 0; i < values.length; i++) out[i] = floatToHalf(values[i]!);
   return out;
+}
+
+/**
+ * RGBA32F 转 RGB9E5（三个 9 位尾数共用一个 5 位指数，丢掉 alpha），按 D3D/WebGPU 的 rgb9e5ufloat：
+ * R 在低 9 位，然后 G、B，指数在最高 5 位。负数和 NaN 当 0，太大的截到最大值 65408。
+ */
+export function toRgb9e5(rgba: Float32Array): Uint32Array {
+  const out = new Uint32Array(rgba.length / 4);
+  const MANTISSA_BITS = 9, BIAS = 15, MAX = ((2 ** MANTISSA_BITS - 1) / 2 ** MANTISSA_BITS) * 2 ** (31 - BIAS);
+  const clamp = (v: number) => (v > 0 ? Math.min(v, MAX) : 0);
+  for (let i = 0; i < out.length; i++) {
+    const r = clamp(rgba[i * 4]!), g = clamp(rgba[i * 4 + 1]!), b = clamp(rgba[i * 4 + 2]!);
+    const max = Math.max(r, g, b);
+    let exponent = Math.max(-BIAS - 1, Math.floor(Math.log2(max || 2 ** -(BIAS + 1)))) + 1 + BIAS;
+    let scale = 2 ** (exponent - BIAS - MANTISSA_BITS);
+    if (Math.floor(max / scale + 0.5) === 2 ** MANTISSA_BITS) {
+      scale *= 2;
+      exponent += 1;
+    }
+    const m = (v: number) => Math.floor(v / scale + 0.5);
+    out[i] = (m(r) | (m(g) << 9) | (m(b) << 18) | (exponent << 27)) >>> 0;
+  }
+  return out;
+}
+
+/** RGB9E5 转回 RGB（测试和调试用）。 */
+export function fromRgb9e5(packed: number): [number, number, number] {
+  const scale = 2 ** ((packed >>> 27) - 15 - 9);
+  return [(packed & 0x1ff) * scale, ((packed >>> 9) & 0x1ff) * scale, ((packed >>> 18) & 0x1ff) * scale];
 }

@@ -5,8 +5,8 @@
  * - 模型 `<路径>.model`：二进制容器。开头 12 字节是 magic 'SMDL'、版本、JSON 头的字节数，接着是 JSON 头
  *   （网格表和材质槽），补齐到 4 字节，后面是数据区：每个网格的交错顶点（位置、法线、UV，见 VERTEX_FLOATS）
  *   和索引。加载后直接上传，不做转换。
- * - 立方体贴图 `<路径>.cubemap`：同样的容器（magic 'SCUB'），JSON 头是尺寸和级数，数据区是各级 mip 的 RGBA16F，
- *   每级 6 个面连续（+X -X +Y -Y +Z -Z，行从上到下，WebGPU 的布局），直接上传。
+ * - 立方体贴图 `<路径>.cubemap`：同样的容器（magic 'SCUB'），JSON 头是尺寸、级数和纹素格式（RGBA16F 或 RGB9E5），
+ *   数据区是各级 mip，每级 6 个面连续（+X -X +Y -Y +Z -Z，行从上到下，WebGPU 的布局），直接上传。
  * - 贴图 `<路径>.ktx2`：KTX2 加 Basis，运行时按设备转码。
  * - 材质 `<路径>.material.json`、天空盒 `<路径>.skybox.json`、场景 `<路径>.scene.json`：JSON。场景以后改成二进制，
  *   物理部分直接是原生能读的布局。
@@ -104,28 +104,38 @@ export function decodeModel(buffer: ArrayBuffer, source = 'model'): ModelData {
   };
 }
 
-/** 立方体贴图：各级 mip 的 RGBA16F（半精度浮点的位），每级 6 个面连续，从 size 到 1。 */
+/**
+ * 立方体贴图的纹素格式（WebGPU 的名字）：RGBA16F（8 字节），或 RGB9E5（4 字节，三个通道共用一个指数，
+ * 没有 alpha，HDR 天空用它省一半）。
+ */
+export type CubemapFormat = 'rgba16float' | 'rgb9e5ufloat';
+
+export const CUBEMAP_TEXEL_BYTES: Readonly<Record<CubemapFormat, number>> = { rgba16float: 8, rgb9e5ufloat: 4 };
+
+/** 立方体贴图：各级 mip 的纹素（按 format 解释的字节），每级 6 个面连续，从 size 到 1。 */
 export interface CubemapData {
   readonly size: number;
-  readonly levels: readonly Uint16Array[];
+  readonly format: CubemapFormat;
+  readonly levels: readonly Uint8Array[];
 }
 
 interface CubemapHeader {
   readonly size: number;
   readonly levels: number;
-  readonly format: 'rgba16float';
+  readonly format: CubemapFormat;
 }
 
 export function encodeCubemap(cubemap: CubemapData): Uint8Array {
+  const texel = CUBEMAP_TEXEL_BYTES[cubemap.format];
   const total = cubemap.levels.reduce((sum, level, i) => {
     const edge = Math.max(1, cubemap.size >> i);
-    if (level.length !== 6 * edge * edge * 4) throw new RangeError(`cubemap level ${i} must hold 6 * ${edge}² RGBA texels`);
+    if (level.byteLength !== 6 * edge * edge * texel) throw new RangeError(`cubemap level ${i} must hold 6 * ${edge}² ${cubemap.format} texels`);
     return sum + level.byteLength;
   }, 0);
-  const { bytes, dataStart } = encodeContainer(CUBEMAP_MAGIC, CUBEMAP_VERSION, { size: cubemap.size, levels: cubemap.levels.length, format: 'rgba16float' } satisfies CubemapHeader, total);
+  const { bytes, dataStart } = encodeContainer(CUBEMAP_MAGIC, CUBEMAP_VERSION, { size: cubemap.size, levels: cubemap.levels.length, format: cubemap.format } satisfies CubemapHeader, total);
   let offset = dataStart;
   for (const level of cubemap.levels) {
-    bytes.set(byteView(level), offset);
+    bytes.set(level, offset);
     offset += level.byteLength;
   }
   return bytes;
@@ -134,21 +144,28 @@ export function encodeCubemap(cubemap: CubemapData): Uint8Array {
 /** 读立方体贴图文件；各级是 buffer 上的视图，不拷贝。 */
 export function decodeCubemap(buffer: ArrayBuffer, source = 'cubemap'): CubemapData {
   const { header, dataStart } = decodeContainer<CubemapHeader>(buffer, CUBEMAP_MAGIC, CUBEMAP_VERSION, 'cubemap', source);
-  const levels: Uint16Array[] = [];
+  const texel = CUBEMAP_TEXEL_BYTES[header.format];
+  if (texel === undefined) throw new Error(`${source} has cubemap format ${header.format}; this engine reads ${Object.keys(CUBEMAP_TEXEL_BYTES).join(', ')}`);
+  const levels: Uint8Array[] = [];
   for (let i = 0, offset = dataStart; i < header.levels; i++) {
     const edge = Math.max(1, header.size >> i);
-    levels.push(new Uint16Array(buffer, offset, 6 * edge * edge * 4));
-    offset += 6 * edge * edge * 8;
+    levels.push(new Uint8Array(buffer, offset, 6 * edge * edge * texel));
+    offset += 6 * edge * edge * texel;
   }
-  return { size: header.size, levels };
+  return { size: header.size, format: header.format, levels };
 }
 
-/** 天空盒的光照（Stride 的 Skybox：漫反射是球谐，镜面是预滤波的立方体贴图）。 */
+/**
+ * 天空盒的光照（Stride 的 Skybox）：漫反射是球谐，资源管线算好；镜面是按粗糙度预滤波的立方体贴图，运行时第一次用到
+ * 时在 GPU 上从 radiance 生成（同 Stride 的 RadiancePrefilteringGGX），不随内容下载。
+ */
 export interface SkyboxFile {
   /** 3 阶球谐的 9 个 RGB 系数（线性），已经乘过基函数常数，按 Stride 的 EvaluateSphericalHarmonics 求值。 */
   readonly diffuseSH: readonly number[];
-  /** 镜面光照的立方体贴图（内容路径）：第 i 级 mip 对应粗糙度 i / (级数 - 1)。 */
-  readonly specular: string;
+  /** 源立方体贴图（内容路径，通常也是背景用的那张），带 mip。 */
+  readonly radiance: string;
+  /** 预滤波的镜面立方体贴图的边长（2 的幂），同 Stride 的 SkyboxAsset.SpecularCubeMapSize，默认 256。 */
+  readonly specularSize: number;
 }
 
 /** 材质文件。颜色都是线性空间的。 */

@@ -21,6 +21,7 @@
  */
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
+import { BRDF } from './brdf';
 import { Model } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
@@ -38,26 +39,6 @@ export interface MeshBatch {
   /** 在实例缓冲里的起点，Prepare 时算。 */
   first: number;
 }
-
-/** BRDF 的几个函数，同 Stride 的 BRDFMicrofacet.sdsl。 */
-const BRDF = /* wgsl */ `
-const PI = 3.14159265358979;
-
-fn normalDistributionGGX(alphaR: f32, nDotH: f32) -> f32 {
-  let alphaR2 = alphaR * alphaR;
-  let d = max(nDotH * nDotH * (alphaR2 - 1.0) + 1.0, 0.0001);
-  return alphaR2 / (PI * d * d);
-}
-
-fn visibilitySchlickGGX(alphaR: f32, nDotX: f32) -> f32 {
-  let k = alphaR * 0.5;
-  return nDotX / (nDotX * (1.0 - k) + k);
-}
-
-/** Smith-Schlick-GGX，已经除以 N·L · N·V。 */
-fn visibilitySmithSchlickGGX(alphaR: f32, nDotL: f32, nDotV: f32) -> f32 {
-  return visibilitySchlickGGX(alphaR, nDotL) * visibilitySchlickGGX(alphaR, nDotV) / (nDotL * nDotV);
-}`;
 
 const SHADER = /* wgsl */ `
 ${BRDF}
@@ -459,7 +440,7 @@ class Gpu {
       data.set([direction.x / length, direction.y / length, direction.z / length, 0], o + 20);
       data.set([color.r, color.g, color.b, 1], o + 24);
       data.set([ambient.r, ambient.g, ambient.b, 1], o + 28);
-      data.set([skybox?.intensity ?? 0, skybox?.skybox.specular.data.levels.length ?? 0, 0, 0], o + 32);
+      data.set([skybox?.intensity ?? 0, skybox?.skybox.specularLevels ?? 0, 0, 0], o + 32);
       for (let c = 0; c < 9; c++) {
         const sh = skybox?.skybox.diffuseSH;
         data.set(sh ? [sh[c * 3]!, sh[c * 3 + 1]!, sh[c * 3 + 2]!, 0] : [0, 0, 0, 0], o + 36 + c * 4);
@@ -470,7 +451,7 @@ class Gpu {
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
-    const skySpecular = skybox ? this.#resources.cubemap(skybox.skybox.specular) : this.#resources.blackCube;
+    const skySpecular = skybox ? this.#resources.skyboxSpecular(skybox.skybox) : this.#resources.blackCube;
     if (skySpecular !== this.#skySpecular) {
       this.#skySpecular = skySpecular;
       this.#viewBindGroup = undefined;

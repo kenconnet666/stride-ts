@@ -10,6 +10,7 @@ import {
   decodeModel,
   encodeCubemap,
   encodeModel,
+  CUBEMAP_TEXEL_BYTES,
   Game,
   ktx2Decoder,
   Light,
@@ -162,12 +163,14 @@ describe('贴图', () => {
 });
 
 describe('立方体贴图和天空盒', () => {
-  test('立方体贴图文件往返；每一级的长度要对得上', () => {
-    const levels = [4, 2, 1].map((edge, i) => new Uint16Array(6 * edge * edge * 4).fill(i + 1));
-    const bytes = encodeCubemap({ size: 4, levels });
-    const decoded = decodeCubemap(bytes.buffer as ArrayBuffer, 'sky.cubemap');
-    expect([decoded.size, decoded.levels.map((l) => l.length), decoded.levels[2]![0]]).toEqual([4, [384, 96, 24], 3]);
-    expect(() => encodeCubemap({ size: 4, levels: [new Uint16Array(10)] })).toThrow('cubemap level 0');
+  test('立方体贴图文件往返，两种纹素格式；每一级的长度要对得上', () => {
+    for (const format of ['rgba16float', 'rgb9e5ufloat'] as const) {
+      const texel = CUBEMAP_TEXEL_BYTES[format];
+      const levels = [4, 2, 1].map((edge, i) => new Uint8Array(6 * edge * edge * texel).fill(i + 1));
+      const decoded = decodeCubemap(encodeCubemap({ size: 4, format, levels }).buffer as ArrayBuffer, 'sky.cubemap');
+      expect([decoded.size, decoded.format, decoded.levels.map((l) => l.byteLength), decoded.levels[2]![0]]).toEqual([4, format, [96, 24, 6].map((n) => n * texel), 3]);
+    }
+    expect(() => encodeCubemap({ size: 4, format: 'rgb9e5ufloat', levels: [new Uint8Array(10)] })).toThrow('cubemap level 0 must hold 6 * 4² rgb9e5ufloat texels');
     expect(() => decodeCubemap(new ArrayBuffer(16), 'x')).toThrow('x is not a cubemap file');
   });
 
@@ -175,11 +178,10 @@ describe('立方体贴图和天空盒', () => {
     const native = await createStrideNative({ workerThreads: 1 });
     try {
       const json = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).buffer as ArrayBuffer;
-      const cube = (size: number) => encodeCubemap({ size, levels: [new Uint16Array(6 * size * size * 4)] }).buffer as ArrayBuffer;
+      const cube = (size: number) => encodeCubemap({ size, format: 'rgb9e5ufloat', levels: [new Uint8Array(6 * size * size * 4)] }).buffer as ArrayBuffer;
       const sh = Array.from({ length: 27 }, (_, i) => i);
       const files = new Map<string, ArrayBuffer>([
-        ['https://game.test/content/Sky.skybox.json', json({ diffuseSH: sh, specular: 'Sky.specular' } satisfies SkyboxFile)],
-        ['https://game.test/content/Sky.specular.cubemap', cube(2)],
+        ['https://game.test/content/Sky.skybox.json', json({ diffuseSH: sh, radiance: 'SkyTexture', specularSize: 64 } satisfies SkyboxFile)],
         ['https://game.test/content/SkyTexture.cubemap', cube(4)],
         ['https://game.test/content/Metal.material.json', json({ name: 'Metal', baseColor: [1, 1, 1, 1], metalness: 1, roughness: 0.2, emissive: [0, 1, 2], cavity: { diffuse: 0.5, specular: 0.75 } } satisfies MaterialFile)],
         ['https://game.test/content/Main.scene.json', json({
@@ -196,10 +198,11 @@ describe('立方体贴图和天空盒', () => {
       const light = sky.require(Light);
       expect([light.type, light.intensity]).toEqual(['skybox', 1.5]);
       const skybox = Skybox.byId(light.skybox)!;
-      expect([skybox.name, skybox.diffuseSH[26], skybox.specular.data.size]).toEqual(['Sky', 26, 2]);
-      expect(skybox.specular).toBe(await content.loadCubemap('Sky.specular'));
+      expect([skybox.name, skybox.diffuseSH[26], skybox.specularSize, skybox.specularLevels]).toEqual(['Sky', 26, 64, 7]);
+      // 天空盒光照和背景用同一张源立方体贴图，只加载一次
       const background = sky.require(Background);
-      expect([Cubemap.byId(background.texture)!.data.size, background.intensity]).toEqual([4, 3]);
+      expect(Cubemap.byId(background.texture)).toBe(skybox.radiance);
+      expect([skybox.radiance.data.size, background.intensity]).toEqual([4, 3]);
 
       const metal = await content.loadMaterial('Metal');
       expect([metal.metalness, metal.roughness, metal.emissive, metal.cavity]).toEqual([1, 0.2, [0, 1, 2], { diffuse: 0.5, specular: 0.75 }]);

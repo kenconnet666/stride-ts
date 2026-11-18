@@ -1,8 +1,10 @@
 /**
- * 渲染特性共用的 GPU 资源：贴图和立方体贴图第一次用到时上传，之后复用（Mesh、Material 这些数据对象本身不碰 GPU），
- * 还有几个常用的默认资源和采样器。渲染系统销毁时一起释放。
+ * 渲染特性共用的 GPU 资源：贴图和立方体贴图第一次用到时上传，天空盒的镜面立方体贴图第一次用到时生成，之后复用
+ * （Mesh、Material 这些数据对象本身不碰 GPU），还有几个常用的默认资源和采样器。渲染系统销毁时一起释放。
  */
-import type { Cubemap } from './Skybox';
+import { CUBEMAP_TEXEL_BYTES } from '../content/format';
+import type { Cubemap, Skybox } from './Skybox';
+import { prefilterSkybox } from './SkyboxPrefilter';
 import type { Texture } from './Texture';
 
 export class GpuResources {
@@ -17,6 +19,7 @@ export class GpuResources {
   readonly linearClamp: GPUSampler;
   readonly #textures = new Map<Texture, GPUTexture>();
   readonly #cubemaps = new Map<Cubemap, GPUTexture>();
+  readonly #skyboxSpecular = new Map<Skybox, GPUTexture>();
 
   constructor(device: GPUDevice) {
     this.device = device;
@@ -58,18 +61,28 @@ export class GpuResources {
   cubemap(cubemap: Cubemap): GPUTexture {
     let gpu = this.#cubemaps.get(cubemap);
     if (!gpu) {
-      const { size, levels } = cubemap.data;
-      const target = this.device.createTexture({ label: cubemap.name, size: [size, size, 6], format: 'rgba16float', mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+      const { size, format, levels } = cubemap.data;
+      const target = this.device.createTexture({ label: cubemap.name, size: [size, size, 6], format, mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
       levels.forEach((data, mipLevel) => {
         const edge = Math.max(1, size >> mipLevel);
-        this.device.queue.writeTexture({ texture: target, mipLevel }, data, { bytesPerRow: edge * 8, rowsPerImage: edge }, [edge, edge, 6]);
+        this.device.queue.writeTexture({ texture: target, mipLevel }, data, { bytesPerRow: edge * CUBEMAP_TEXEL_BYTES[format], rowsPerImage: edge }, [edge, edge, 6]);
       });
       this.#cubemaps.set(cubemap, (gpu = target));
     }
     return gpu;
   }
 
+  /** 天空盒的镜面立方体贴图；第一次用到时从 radiance 预滤波生成（SkyboxPrefilter.ts）。 */
+  skyboxSpecular(skybox: Skybox): GPUTexture {
+    let gpu = this.#skyboxSpecular.get(skybox);
+    if (!gpu) {
+      gpu = prefilterSkybox(this.device, this.cubemap(skybox.radiance), skybox.specularSize, this.linearClamp, `${skybox.name} specular`);
+      this.#skyboxSpecular.set(skybox, gpu);
+    }
+    return gpu;
+  }
+
   destroy(): void {
-    for (const texture of [...this.#textures.values(), ...this.#cubemaps.values(), this.white, this.blackCube]) texture.destroy();
+    for (const texture of [...this.#textures.values(), ...this.#cubemaps.values(), ...this.#skyboxSpecular.values(), this.white, this.blackCube]) texture.destroy();
   }
 }

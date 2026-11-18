@@ -101,7 +101,7 @@ export class ContentManager {
   loadSkybox(path: string): Promise<Skybox> {
     return this.#once(path + EXTENSIONS.skybox, async (url) => {
       const file = this.#json<SkyboxFile>(await this.#read(url));
-      return new Skybox(path, file.diffuseSH, await this.loadCubemap(file.specular));
+      return new Skybox(path, file.diffuseSH, await this.loadCubemap(file.radiance), file.specularSize);
     });
   }
 

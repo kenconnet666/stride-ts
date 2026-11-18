@@ -1,7 +1,7 @@
 /**
  * 把 Stride 工程的场景导入成运行时内容（格式见 @stride-ts/engine 的 content/format.ts）：场景里的实体、
  * 变换和父子关系，ModelComponent 引用的模型（源 FBX/glTF 经 stride-tools 导入）、材质和贴图（源图片解码后
- * 编成 KTX2 加 Basis），相机，光源（天空盒光的球谐和预滤波立方体贴图同 Stride 的 SkyboxGenerator），背景。
+ * 编成 KTX2 加 Basis），相机，光源（天空盒光的球谐同 Stride 的 SkyboxGenerator，镜面的预滤波在运行时做），背景。
  * 现在不认识的组件（物理、脚本、动画）跳过并计数，后面的里程碑逐个接上。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -20,7 +20,7 @@ import {
   type SkyboxFile,
   type TextureSlot,
 } from '@stride-ts/engine/content-format';
-import { readDdsCubemap, toHalf, type FloatCubemap } from '../dds.ts';
+import { readDdsCubemap, toRgb9e5, type FloatCubemap } from '../hdr.ts';
 import type { AssetEntry, StrideProject } from './project.ts';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -39,10 +39,8 @@ export interface ImportResult {
 }
 
 export interface ImporterOptions {
-  /** 天空盒镜面光照的立方体贴图边长（2 的幂），默认 256，同 Stride 的 SkyboxAsset.SpecularCubeMapSize。 */
+  /** 天空盒镜面光照的立方体贴图边长（2 的幂），默认 256，同 Stride 的 SkyboxAsset.SpecularCubeMapSize；运行时按它生成。 */
   readonly specularCubemapSize?: number;
-  /** GGX 预滤波每个纹素的采样数，默认 1024，同 Stride 的 RadiancePrefilteringGGX。 */
-  readonly specularSamples?: number;
 }
 
 const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
@@ -65,11 +63,11 @@ export class StrideImporter {
   readonly #warnings: string[] = [];
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
-  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, specularSamples = 1024 }: ImporterOptions = {}) {
+  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256 }: ImporterOptions = {}) {
     this.#project = project;
     this.#tools = tools;
     this.#out = out;
-    this.#options = { specularCubemapSize, specularSamples };
+    this.#options = { specularCubemapSize };
   }
 
   async importScene(asset: AssetEntry): Promise<ImportResult> {
@@ -355,28 +353,28 @@ export class StrideImporter {
     });
   }
 
-  /** 把一个 HDR 立方体贴图资源（.sdtex，源文件是 DDS）原样导出成 .cubemap（RGBA16F，带源文件的 mip）。 */
+  /** 把一个 HDR 立方体贴图资源（.sdtex，源文件是 DDS）导出成 .cubemap：RGB9E5，带源文件的 mip。 */
   #cubemap(asset: AssetEntry): Promise<string> {
     return once(this.#cubemaps, asset, async () => {
       const source = await this.#hdrSource(asset);
-      await this.#write(asset.path + EXTENSIONS.cubemap, encodeCubemap({ size: source.size, levels: source.levels.map(toHalf) }));
+      const levels = source.levels.map((level) => new Uint8Array(toRgb9e5(level).buffer));
+      await this.#write(asset.path + EXTENSIONS.cubemap, encodeCubemap({ size: source.size, format: 'rgb9e5ufloat', levels }));
     });
   }
 
   /**
-   * 导入天空盒（.sdsky），同 Stride 的 SkyboxGenerator：漫反射是 3 阶球谐，镜面是 GGX 预滤波的立方体贴图
-   * （写成 `<天空盒路径>.specular.cubemap`）。返回天空盒的内容路径。
+   * 导入天空盒（.sdsky）：漫反射是 3 阶球谐，同 Stride 的 SkyboxGenerator，从源文件的浮点数据算；镜面的预滤波
+   * 在运行时从源立方体贴图生成，这里只记下尺寸。源立方体贴图导出成 .cubemap，背景用同一张时只导出一次。
+   * 返回天空盒的内容路径。
    */
   #skybox(asset: AssetEntry): Promise<string> {
     return once(this.#skyboxes, asset, async () => {
       const reference = parseAssetReference(asset.data['CubeMap']);
       if (!reference) throw new Error(`${asset.file}: skybox has no CubeMap`);
-      const source = await this.#hdrSource(this.#project.get(reference.id, asset.file));
-      const level0 = { size: source.size, faces: source.levels[0]! };
-      const [sh, specular] = await Promise.all([this.#tools.cubemapSH(level0), this.#tools.prefilterCubemapGGX(level0, this.#options.specularCubemapSize, this.#options.specularSamples)]);
-      const specularPath = `${asset.path}.specular`;
-      await this.#write(specularPath + EXTENSIONS.cubemap, encodeCubemap({ size: specular.size, levels: specular.levels.map(toHalf) }));
-      const file: SkyboxFile = { diffuseSH: [...sh], specular: specularPath };
+      const texture = this.#project.get(reference.id, asset.file);
+      const source = await this.#hdrSource(texture);
+      const [sh, radiance] = await Promise.all([this.#tools.cubemapSH({ size: source.size, faces: source.levels[0]! }), this.#cubemap(texture)]);
+      const file: SkyboxFile = { diffuseSH: [...sh], radiance, specularSize: this.#options.specularCubemapSize };
       await this.#write(asset.path + EXTENSIONS.skybox, JSON.stringify(file, null, 1));
     });
   }

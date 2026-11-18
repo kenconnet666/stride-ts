@@ -122,7 +122,32 @@ describe('导入 Stride 场景', () => {
     texture: '11111111-0000-0000-0000-000000000004',
     skybox: '11111111-0000-0000-0000-000000000005',
     skyTexture: '11111111-0000-0000-0000-000000000006',
+    bumpyScene: '11111111-0000-0000-0000-000000000007',
+    quad: '11111111-0000-0000-0000-000000000008',
+    bumpy: '11111111-0000-0000-0000-000000000009',
+    bumps: '11111111-0000-0000-0000-00000000000a',
   };
+  // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
+  const quadData = Buffer.from(new Float32Array([
+    0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0,
+    0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+    0, 1, 1, 1, 1, 0, 0, 0,
+  ]).buffer);
+  const quadGltf = JSON.stringify({
+    asset: { version: '2.0' },
+    buffers: [{ byteLength: quadData.byteLength + 12, uri: `data:application/octet-stream;base64,${Buffer.concat([quadData, Buffer.from(new Uint16Array([0, 1, 2, 0, 2, 3]).buffer)]).toString('base64')}` }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 48 }, { buffer: 0, byteOffset: 48, byteLength: 48 }, { buffer: 0, byteOffset: 96, byteLength: 32 }, { buffer: 0, byteOffset: 128, byteLength: 12 }],
+    accessors: [
+      { bufferView: 0, componentType: 5126, count: 4, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] },
+      { bufferView: 1, componentType: 5126, count: 4, type: 'VEC3' },
+      { bufferView: 2, componentType: 5126, count: 4, type: 'VEC2' },
+      { bufferView: 3, componentType: 5123, count: 6, type: 'SCALAR' },
+    ],
+    materials: [{ name: 'Bumpy' }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1, TEXCOORD_0: 2 }, indices: 3, material: 0 }] }],
+    nodes: [{ mesh: 0 }],
+    scenes: [{ nodes: [0] }],
+  });
   const gltf = JSON.stringify({
     asset: { version: '2.0' },
     buffers: [{ byteLength: 36, uri: 'data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAA' }],
@@ -190,6 +215,30 @@ describe('导入 Stride 场景', () => {
     'Assets/SkyTexture.sdtex': ['!Texture', `Id: ${ids.skyTexture}`, 'Source: !file ../Resources/sky.dds', 'Type: !ColorTextureType {}'].join('\n'),
     'Assets/Sky.sdsky': ['!SkyboxAsset', `Id: ${ids.skybox}`, `CubeMap: ${ids.skyTexture}:SkyTexture`].join('\n'),
     'Assets/Textures/Checker.sdtex': ['!Texture', `Id: ${ids.texture}`, 'Source: ../../Resources/checker.png', 'Type: !ColorTextureType {}'].join('\n'),
+    'Resources/quad.gltf': quadGltf,
+    'Assets/Models/Quad.sdm3d': [
+      '!Model', `Id: ${ids.quad}`, 'Source: ../../Resources/quad.gltf', 'Materials:', '    5b6d:', '        Name: Bumpy', '        MaterialInstance:',
+      `            Material: ${ids.bumpy}:Materials/Bumpy`,
+    ].join('\n'),
+    'Assets/Materials/Bumpy.sdmat': [
+      '!MaterialAsset', `Id: ${ids.bumpy}`, 'Attributes:',
+      '    Surface: !MaterialNormalMapFeature',
+      '        NormalMap: !ComputeTextureColor',
+      `            Texture: ${ids.bumps}:Textures/Bumps`,
+      '            Scale: {X: 4.0, Y: 4.0}',
+      '            Offset: {X: 0.0, Y: 0.0}',
+      '        IsXYNormal: true',
+      '    Diffuse: !MaterialDiffuseMapFeature',
+      '        DiffuseMap: !ComputeColor',
+      '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+    ].join('\n'),
+    // 法线贴图默认 InvertY（OpenGL 的 Y+）
+    'Assets/Textures/Bumps.sdtex': ['!Texture', `Id: ${ids.bumps}`, 'Source: ../../Resources/checker.png', 'Type: !NormalMapTextureType {}'].join('\n'),
+    'Assets/Bumpy.sdscene': [
+      '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tq1', '                        Children: {}',
+      '                    m: !ModelComponent', '                        Id: mq1', `                        Model: ${ids.quad}:Models/Quad`, '                        Materials: {}',
+    ].join('\n'),
     'Assets/Main.sdscene': [
       '!SceneAsset',
       `Id: ${ids.scene}`,
@@ -322,6 +371,20 @@ describe('导入 Stride 场景', () => {
 
     const ktx2 = new Uint8Array(await readFile(path.join(out, 'Game/Textures/Checker.ktx2')));
     expect([...ktx2.subarray(0, 8)]).toEqual([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb]);
+  });
+
+  test('法线贴图：材质记下贴图（线性）和开关，用它的网格生成切线（snorm8x4）', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-normal');
+    const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'smallest' }).importScene(project.byPath('Game/Bumpy')!);
+    expect(result.warnings).toEqual([]);
+    const material = JSON.parse(await readFile(path.join(out, 'Game/Materials/Bumpy.material.json'), 'utf8')) as MaterialFile;
+    expect(material.normalMap).toEqual({ texture: 'Game/Textures/Bumps', encoding: 'png', scale: [4, 4], offset: [0, 0], scaleAndBias: true, isXYNormal: true, invertY: true });
+    const model = decodeModel((await readFile(path.join(out, 'Game/Models/Quad.model'))).buffer as ArrayBuffer);
+    expect(model.meshes.map((m) => [m.vertexCount, m.layout.tangent])).toEqual([[4, 'snorm8x4']]);
+    // 主场景的三角形没有法线贴图：没有切线
+    await new StrideImporter(project, tools, out, { specularCubemapSize: 16 }).importScene(project.byPath('Game/Main')!);
+    expect(decodeModel((await readFile(path.join(out, 'Game/Models/Tri.model'))).buffer as ArrayBuffer).meshes[0]!.layout.tangent).toBeUndefined();
   });
 
   test('覆盖目录里的 SVG 代替源图片，原样导出，材质的贴图槽记下编码和栅格化尺寸', async () => {

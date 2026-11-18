@@ -1,7 +1,7 @@
 /**
  * 材质，和 Stride 默认的 PBR 材质对应：漫反射颜色（可以带一张贴图，按运算符和颜色组合，即 Stride 材质里最常见的
  * ComputeTextureColor、ComputeBinaryColor 的形状）、金属度工作流的镜面反射（GGX、Schlick、Smith-Schlick-GGX）、
- * 光泽度、自发光和 cavity，见 content/format.ts 的 MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
+ * 光泽度、自发光、cavity 和法线贴图，见 content/format.ts 的 MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
  * 见 docs/architecture.md 的"外观：材质参数的分层"，等着色器系统一起做。和 Mesh 一样只是数据，GPU 资源由渲染特性管理。
  */
 import type { ColorOperator } from '../content/format';
@@ -19,6 +19,16 @@ export interface MaterialTexture {
   readonly offset?: readonly [number, number];
 }
 
+/** 法线贴图（Stride 的 MaterialNormalMapFeature），各开关的意思见 content/format.ts 的 NormalMapSlot。 */
+export interface MaterialNormalMap extends MaterialTexture {
+  /** 把 0..1 映射到 -1..1，默认 true。 */
+  readonly scaleAndBias?: boolean;
+  /** 只用 xy，z 由单位长度算出，默认 true。 */
+  readonly isXYNormal?: boolean;
+  /** y 取反，默认 false（Stride 导入时按贴图的 InvertY 翻转绿色通道，管线把它记在这里）。 */
+  readonly invertY?: boolean;
+}
+
 export interface MaterialDesc {
   /** 线性空间的颜色，默认白色。 */
   readonly baseColor?: Readonly<ColorLike> | readonly [number, number, number, number?];
@@ -33,6 +43,8 @@ export interface MaterialDesc {
   readonly emissive?: readonly [number, number, number];
   /** cavity：可见的漫反射、镜面分别乘的系数，默认 1。 */
   readonly cavity?: { readonly diffuse: number; readonly specular: number };
+  /** 法线贴图；用它的网格要有切线（资源管线给这样的网格生成 MikkTSpace 切线）。 */
+  readonly normalMap?: MaterialNormalMap;
 }
 
 const materials = new ResourceTable<Material>();
@@ -48,6 +60,7 @@ export class Material {
   readonly roughness: number;
   readonly emissive: readonly [number, number, number];
   readonly cavity: { readonly diffuse: number; readonly specular: number };
+  readonly normalMap: Required<MaterialNormalMap> | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
   version = 0;
 
@@ -63,6 +76,15 @@ export class Material {
     this.roughness = desc.roughness ?? 1;
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.cavity = desc.cavity ?? { diffuse: 1, specular: 1 };
+    const normalMap = desc.normalMap;
+    this.normalMap = normalMap && {
+      texture: normalMap.texture,
+      scale: normalMap.scale ?? [1, 1],
+      offset: normalMap.offset ?? [0, 0],
+      scaleAndBias: normalMap.scaleAndBias ?? true,
+      isXYNormal: normalMap.isXYNormal ?? true,
+      invertY: normalMap.invertY ?? false,
+    };
     this.id = materials.add(this) as MaterialId;
   }
 

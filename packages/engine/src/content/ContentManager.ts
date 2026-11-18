@@ -124,7 +124,18 @@ export class ContentManager {
     return this.#once(path + EXTENSIONS.material, async (url) => {
       const file = this.#json<MaterialFile>(await this.#read(url));
       const slot = file.baseColorTexture;
+      const normal = file.normalMap;
+      // 法线贴图是线性的数据，不按 sRGB 解
+      const normalMap = normal && {
+        texture: await this.loadTexture(normal.texture, { encoding: normal.encoding ?? 'ktx2', srgb: false, ...(normal.size ? { size: normal.size } : {}) }),
+        scale: normal.scale,
+        offset: normal.offset,
+        scaleAndBias: normal.scaleAndBias,
+        isXYNormal: normal.isXYNormal,
+        invertY: normal.invertY,
+      };
       return new Material(file.name, {
+        ...(normalMap ? { normalMap } : {}),
         baseColor: file.baseColor,
         ...(slot ? { baseColorTexture: { texture: await this.loadTexture(slot.texture, { encoding: slot.encoding ?? 'ktx2', srgb: true, ...(slot.size ? { size: slot.size } : {}) }), scale: slot.scale, offset: slot.offset } } : {}),
         ...(file.baseColorOperator ? { baseColorOperator: file.baseColorOperator } : {}),

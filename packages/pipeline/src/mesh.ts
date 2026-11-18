@@ -5,21 +5,55 @@
  *   量化成 unorm16。包围盒最长的轴超过 MAX_QUANTIZED_EXTENT（16 位的精度会低于 0.1 mm）时保留 float32。
  * - 法线：八面体编码，两个 snorm16（精度约 0.003°，金属表面的高光看不出差别）。
  * - UV：按网格的 UV 范围量化成 unorm16；范围超过 MAX_QUANTIZED_UV_RANGE（平铺很多次，16 位的精度不够）时保留 float32。
+ * - 切线（只有材质用法线贴图的网格有）：snorm8x4，xyz 加手性（同 meshopt、glTF-Transform 对切线的量化）。
  */
 import type { StrideTools } from '@stride-ts/native/tools';
-import { vertexLayoutOffsets, VERTEX_FLOATS, type Dequantize, type ModelMeshData, type VertexLayout } from '@stride-ts/engine/content-format';
+import { TANGENT_FLOATS, vertexLayoutOffsets, VERTEX_FLOATS, type Dequantize, type ModelMeshData, type VertexLayout } from '@stride-ts/engine/content-format';
 
 /** 16 位量化精度 0.1 mm 对应的最长包围盒边长（米）。 */
 export const MAX_QUANTIZED_EXTENT = 65535 * 0.0001;
 /** UV 范围不超过 16 时，unorm16 的精度是 1/4096，对 2048 的贴图是半个纹素。 */
 export const MAX_QUANTIZED_UV_RANGE = 16;
 
-/** 管线里的网格：FLOAT_LAYOUT 的交错顶点（每个 VERTEX_FLOATS 个 float）和三角形索引。 */
+/** 管线里的网格：FLOAT_LAYOUT 的交错顶点（每个 VERTEX_FLOATS 个 float）和三角形索引，可以带切线（每个顶点 TANGENT_FLOATS 个）。 */
 export interface SourceMesh {
   readonly name: string;
   readonly material: number | null;
   readonly vertices: Float32Array;
   readonly indices: Uint32Array;
+  readonly tangents?: Float32Array;
+}
+
+/**
+ * 给网格生成 MikkTSpace 切线（同法线贴图烘焙工具的约定）。生成的是每个三角形角一份，同一个顶点在不同三角形里的切线
+ * 不一样时（UV 的接缝、镜像的地方）把顶点拆开，一样的合回一个。
+ */
+export function addTangents(mesh: SourceMesh, tools: StrideTools): SourceMesh {
+  const count = mesh.vertices.length / VERTEX_FLOATS;
+  const positions = new Float32Array(count * 3), normals = new Float32Array(count * 3), uvs = new Float32Array(count * 2);
+  for (let v = 0; v < count; v++) {
+    const o = v * VERTEX_FLOATS;
+    positions.set(mesh.vertices.subarray(o, o + 3), v * 3);
+    normals.set(mesh.vertices.subarray(o + 3, o + 6), v * 3);
+    uvs.set(mesh.vertices.subarray(o + 6, o + 8), v * 2);
+  }
+  const corners = tools.generateTangents({ positions, normals, uvs, indices: mesh.indices });
+  // 每个原顶点已经分出去的副本：（切线，新下标）
+  const copies: { tangent: Float32Array; index: number }[][] = Array.from({ length: count }, () => []);
+  const vertices: number[] = [], tangents: number[] = [];
+  const indices = new Uint32Array(mesh.indices.length);
+  mesh.indices.forEach((source, corner) => {
+    const tangent = corners.subarray(corner * TANGENT_FLOATS, (corner + 1) * TANGENT_FLOATS);
+    let copy = copies[source]!.find((c) => c.tangent.every((value, k) => value === tangent[k]));
+    if (!copy) {
+      copy = { tangent, index: vertices.length / VERTEX_FLOATS };
+      copies[source]!.push(copy);
+      vertices.push(...mesh.vertices.subarray(source * VERTEX_FLOATS, (source + 1) * VERTEX_FLOATS));
+      tangents.push(...tangent);
+    }
+    indices[corner] = copy.index;
+  });
+  return { ...mesh, vertices: new Float32Array(vertices), indices, tangents: new Float32Array(tangents) };
 }
 
 /** 一个模型的网格压缩：重排、量化、meshopt 编码。 */
@@ -61,10 +95,13 @@ function reorder(mesh: SourceMesh, tools: StrideTools): SourceMesh {
   let next = 0;
   const indices = optimized.map((i) => (remap[i] === -1 ? (remap[i] = next++) : remap[i]!));
   const vertices = new Float32Array(next * VERTEX_FLOATS);
+  const tangents = mesh.tangents && new Float32Array(next * TANGENT_FLOATS);
   for (let v = 0; v < count; v++) {
-    if (remap[v]! >= 0) vertices.set(mesh.vertices.subarray(v * VERTEX_FLOATS, (v + 1) * VERTEX_FLOATS), remap[v]! * VERTEX_FLOATS);
+    if (remap[v]! < 0) continue;
+    vertices.set(mesh.vertices.subarray(v * VERTEX_FLOATS, (v + 1) * VERTEX_FLOATS), remap[v]! * VERTEX_FLOATS);
+    tangents?.set(mesh.tangents!.subarray(v * TANGENT_FLOATS, (v + 1) * TANGENT_FLOATS), remap[v]! * TANGENT_FLOATS);
   }
-  return { ...mesh, vertices, indices };
+  return { ...mesh, vertices, indices, ...(tangents ? { tangents } : {}) };
 }
 
 function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): ModelMeshData {
@@ -74,6 +111,7 @@ function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): Mod
     position: volume.quantize ? 'unorm16x4' : 'float32x3',
     normal: 'snorm16x2',
     uv: uv.quantize ? 'unorm16x2' : 'float32x2',
+    ...(mesh.tangents ? { tangent: 'snorm8x4' as const } : {}),
   };
   const dequantize: Dequantize = {
     positionOffset: volume.quantize ? volume.min : [0, 0, 0],
@@ -97,6 +135,9 @@ function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): Mod
     for (let k = 0; k < 2; k++) {
       if (uv.quantize) bytes.setUint16(at + offsets.uv + k * 2, unorm16(source[6 + k]!, uv.min[k]!, uv.range[k]!), true);
       else bytes.setFloat32(at + offsets.uv + k * 4, source[6 + k]!, true);
+    }
+    if (mesh.tangents) {
+      for (let k = 0; k < 4; k++) bytes.setInt8(at + offsets.tangent! + k, Math.round(Math.min(1, Math.max(-1, mesh.tangents[v * TANGENT_FLOATS + k]!)) * 127));
     }
   }
   return {

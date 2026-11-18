@@ -860,7 +860,8 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - **天空盒**：见上面，镜面预滤波改在运行时做，内容少 4 MB。
   - **分发**：`tools/vite-app.ts` 是 apps 共用的 Vite 配置，构建后给 dist 里压得小的文件写 `.br` 和 `.gz`，静态服务器打开预压缩文件的支持就直接发。
   - **结果**：TPP 页面下载（正式版 wasm、JS、内容）从约 9.4 MB（brotli 约 1.6 MB）变成 4.2 MB（brotli 1.1 MB），其中 wasm 3.1 MB（brotli 728 KB）；原生模块拆分后 TPP 只要核心，页面 1.6 MB（brotli 约 500 KB），wasm 361 KB（brotli 97 KB）。
-- **下一段**：法线贴图（需要切线，stride-tools 有 `generateTangents`），然后是 TPP 开着的其余后处理（Bright filter 加 Bloom、光芒、镜头光晕，FXAA），再和桌面 Stride 截图比对。方向光阴影和剔除已做（见"渲染器"）。
+- **法线贴图（2026-11-18）**：照 Stride 的 MaterialNormalMapFeature、MaterialSurfaceNormalMap 和 NormalUpdate：切线空间的法线（InvertY、×2-1、由 xy 算 z）乘 TBN，副切线 = w · cross(法线, 切线)。导入器只给材质用法线贴图的网格生成 MikkTSpace 切线（`addTangents`：每个三角形角一份，切线不同的地方拆开顶点），量化成 snorm8x4，顶点从 16 字节变成 20 字节；Stride 在导入时翻转法线贴图的绿色通道（NormalMapTextureType.InvertY，默认开），这里记在材质上、采样后翻转，结果一样，PNG 可以原样复制。TPP 只有人物的两块哑光黑用法线贴图，platformer 的导入改成 `--textures source`：两张 PNG 178 KB，编成 KTX2 是 95 KB，但要多下载 339 KB（brotli）的贴图转码侧模块。
+- **下一段**：TPP 开着的其余后处理（Bright filter 加 Bloom、光芒、镜头光晕，FXAA），再和桌面 Stride 截图比对。方向光阴影、剔除和法线贴图已做（见"渲染器"和上一条）。
 
 ## 对齐的验证方法
 

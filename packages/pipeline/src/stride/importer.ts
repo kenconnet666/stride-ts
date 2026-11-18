@@ -16,6 +16,7 @@ import {
   type ColorOperator,
   type MaterialFile,
   type ModelMeshData,
+  type NormalMapSlot,
   type SceneEntityFile,
   type SceneFile,
   type SceneLightShadow,
@@ -25,7 +26,7 @@ import {
   type TextureSlot,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, toRgb9e5, type FloatCubemap } from '../hdr.ts';
-import { compressMeshes, type SourceMesh } from '../mesh.ts';
+import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
 import type { AssetEntry, StrideProject } from './project.ts';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -90,6 +91,7 @@ export class StrideImporter {
   readonly #hdrSources = new Map<string, Promise<FloatCubemap>>();
   readonly #skipped = new Map<string, number>();
   readonly #warnings: string[] = [];
+  readonly #materialFiles = new Map<string, Promise<MaterialFile>>();
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
   constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2' }: ImporterOptions = {}) {
@@ -259,10 +261,13 @@ export class StrideImporter {
     // 材质槽按 .sdm3d 里的顺序；源文件里的网格按材质名对上槽
     const slots = Object.values(asObject(asset.data['Materials']) ?? {}).map((slot) => asObject(slot) ?? {});
     const slotNames = slots.map((slot) => String(slot['Name'] ?? ''));
-    const materials = await Promise.all(slots.map(async (slot) => {
+    const slotAssets = slots.map((slot) => {
       const reference = parseAssetReference(asObject(slot['MaterialInstance'])?.['Material']);
-      return reference ? this.#material(this.#project.get(reference.id, asset.file)) : null;
-    }));
+      return reference ? this.#project.get(reference.id, asset.file) : null;
+    });
+    const materials = await Promise.all(slotAssets.map((material) => (material ? this.#material(material) : null)));
+    // 材质用法线贴图的槽：这些网格要生成切线
+    const normalMapped = await Promise.all(slotAssets.map(async (material) => material !== null && (await this.#materialFileOf(material)).normalMap !== undefined));
 
     const pivot = vec3(asset.data['PivotPosition'], 0);
     const scale = asNumber(asset.data['ScaleImport'], 1);
@@ -277,10 +282,16 @@ export class StrideImporter {
           this.#warnings.push(`${asset.file}: mesh material '${materialName}' has no slot in the model; using slot 0`);
           slot = slots.length > 0 ? 0 : -1;
         }
-        meshes.push({ name: `mesh${m}`, material: slot < 0 ? null : slot, vertices: interleave(data, pivot, scale), indices: data.indices });
+        const mesh: SourceMesh = { name: `mesh${m}`, material: slot < 0 ? null : slot, vertices: interleave(data, pivot, scale), indices: data.indices };
+        if (slot < 0 || !normalMapped[slot]) meshes.push(mesh);
+        else if (data.normals && data.uvs) meshes.push(addTangents(mesh, this.#tools));
+        else {
+          this.#warnings.push(`${asset.file}: mesh ${m} has a normal-mapped material but no ${data.normals ? 'UVs' : 'normals'}; it gets no tangents`);
+          meshes.push(mesh);
+        }
       }
       const encoded: ModelMeshData[] = this.#options.plain
-        ? meshes.map((mesh) => plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices))
+        ? meshes.map((mesh) => plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices, mesh.tangents))
         : compressMeshes(meshes, this.#tools);
       await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes: encoded, materials }));
     } finally {
@@ -290,7 +301,17 @@ export class StrideImporter {
 
   /** 导入一个材质资源（.sdmat），返回它的内容路径。 */
   #material(asset: AssetEntry): Promise<string> {
-    return once(this.#materials, asset, async () => this.#write(asset.path + EXTENSIONS.material, JSON.stringify(await this.#materialFile(asset), null, 1)));
+    return once(this.#materials, asset, async () => this.#write(asset.path + EXTENSIONS.material, JSON.stringify(await this.#materialFileOf(asset), null, 1)));
+  }
+
+  /** 材质资源转成的 MaterialFile，同一个只转一次（模型导入时还要看它有没有法线贴图）。 */
+  #materialFileOf(asset: AssetEntry): Promise<MaterialFile> {
+    let pending = this.#materialFiles.get(asset.path);
+    if (!pending) {
+      pending = this.#materialFile(asset);
+      this.#materialFiles.set(asset.path, pending);
+    }
+    return pending;
   }
 
   async #materialFile(asset: AssetEntry): Promise<MaterialFile> {
@@ -314,6 +335,34 @@ export class StrideImporter {
       roughness,
       ...this.#emissive(asObject(attributes['Emissive']), asset),
       ...this.#cavity(asObject(attributes['Occlusion']), asset),
+      ...await this.#normalMap(asObject(attributes['Surface']), asset, uvScale),
+    };
+  }
+
+  /** 法线贴图（MaterialNormalMapFeature）：开关的默认值同 Stride；InvertY 来自贴图资源的 NormalMapTextureType（默认 true）。 */
+  async #normalMap(surface: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Promise<{ normalMap?: NormalMapSlot }> {
+    if (!surface) return {};
+    if (surface.$type !== 'MaterialNormalMapFeature') {
+      this.#warnings.push(`${asset.file}: surface ${surface.$type ?? 'feature'} is not supported; using the vertex normals`);
+      return {};
+    }
+    const node = asObject(surface['NormalMap']) ?? {};
+    const reference = parseAssetReference(node['Texture']);
+    if (node.$type !== 'ComputeTextureColor' || !reference) {
+      this.#warnings.push(`${asset.file}: normal map ${node.$type ?? 'value'} without a texture is not supported; using the vertex normals`);
+      return {};
+    }
+    const textureAsset = this.#project.get(reference.id, asset.file);
+    const type = asObject(textureAsset.data['Type']);
+    const scale = vec2(node['Scale'], 1);
+    const slot = textureSlot(await this.#texture(textureAsset), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(node['Offset'], 0));
+    return {
+      normalMap: {
+        ...slot,
+        scaleAndBias: surface['ScaleAndBias'] !== false,
+        isXYNormal: surface['IsXYNormal'] !== false,
+        invertY: type?.$type === 'NormalMapTextureType' && type['InvertY'] !== false,
+      },
     };
   }
 

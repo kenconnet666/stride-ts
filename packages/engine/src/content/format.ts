@@ -34,24 +34,31 @@ export const EXTENSIONS = {
  * - 位置：float32x3，或按模型的包围盒量化的 unorm16x4（w 不用）；
  * - 法线：float32x3，或八面体编码的 snorm16x2；
  * - UV：float32x2，或按网格的 UV 范围量化的 unorm16x2。
+ * - 切线（可选，材质有法线贴图的网格才有）：xyz 加手性 w（副切线 = w · cross(法线, 切线)，同 MikkTSpace 和 Stride），
+ *   float32x4 或 snorm8x4。
  * 量化的属性按 Dequantize 还原。
  */
 export interface VertexLayout {
   readonly position: 'float32x3' | 'unorm16x4';
   readonly normal: 'float32x3' | 'snorm16x2';
   readonly uv: 'float32x2' | 'unorm16x2';
+  readonly tangent?: 'float32x4' | 'snorm8x4';
 }
 
 /** 不量化的布局：32 字节，就是 VERTEX_FLOATS 个 float。程序化网格和 --plain 导出的模型用它。 */
 export const FLOAT_LAYOUT: VertexLayout = { position: 'float32x3', normal: 'float32x3', uv: 'float32x2' };
+/** 带切线的不量化布局：每个顶点 VERTEX_FLOATS + TANGENT_FLOATS 个 float。 */
+export const FLOAT_TANGENT_LAYOUT: VertexLayout = { ...FLOAT_LAYOUT, tangent: 'float32x4' };
+export const TANGENT_FLOATS = 4;
 
-const ATTRIBUTE_BYTES = { float32x3: 12, float32x2: 8, unorm16x4: 8, snorm16x2: 4, unorm16x2: 4 } as const;
+const ATTRIBUTE_BYTES = { float32x4: 16, float32x3: 12, float32x2: 8, unorm16x4: 8, snorm16x2: 4, unorm16x2: 4, snorm8x4: 4 } as const;
 
-/** 各属性在顶点里的字节偏移和顶点的字节数。 */
-export function vertexLayoutOffsets(layout: VertexLayout): { position: number; normal: number; uv: number; stride: number } {
+/** 各属性在顶点里的字节偏移和顶点的字节数；没有切线时 tangent 是 undefined。 */
+export function vertexLayoutOffsets(layout: VertexLayout): { position: number; normal: number; uv: number; tangent: number | undefined; stride: number } {
   const normal = ATTRIBUTE_BYTES[layout.position];
   const uv = normal + ATTRIBUTE_BYTES[layout.normal];
-  return { position: 0, normal, uv, stride: uv + ATTRIBUTE_BYTES[layout.uv] };
+  const end = uv + ATTRIBUTE_BYTES[layout.uv];
+  return layout.tangent ? { position: 0, normal, uv, tangent: end, stride: end + ATTRIBUTE_BYTES[layout.tangent] } : { position: 0, normal, uv, tangent: undefined, stride: end };
 }
 
 /** 量化属性的还原：值 = offset + 归一化的整数 · scale。没有量化的属性 offset 0、scale 1。 */
@@ -101,19 +108,33 @@ export interface ModelData {
   readonly materials: readonly (string | null)[];
 }
 
-/** 不量化、不压缩的网格（FLOAT_LAYOUT）：程序化网格、--plain 导出和测试用。 */
-export function plainMesh(name: string, material: number | null, vertices: Float32Array, indices: Uint16Array | Uint32Array): ModelMeshData {
+/**
+ * 不量化、不压缩的网格（FLOAT_LAYOUT）：程序化网格、--plain 导出和测试用。给了切线（每个顶点 TANGENT_FLOATS 个）时
+ * 交错进顶点，用 FLOAT_TANGENT_LAYOUT。
+ */
+export function plainMesh(name: string, material: number | null, vertices: Float32Array, indices: Uint16Array | Uint32Array, tangents?: Float32Array): ModelMeshData {
   if (vertices.length % VERTEX_FLOATS !== 0) throw new RangeError(`model mesh '${name}': vertices must hold ${VERTEX_FLOATS} floats per vertex`);
+  const count = vertices.length / VERTEX_FLOATS;
+  if (tangents && tangents.length !== count * TANGENT_FLOATS) throw new RangeError(`model mesh '${name}': tangents must hold ${TANGENT_FLOATS} floats per vertex`);
+  let interleaved = vertices;
+  if (tangents) {
+    const floats = VERTEX_FLOATS + TANGENT_FLOATS;
+    interleaved = new Float32Array(count * floats);
+    for (let v = 0; v < count; v++) {
+      interleaved.set(vertices.subarray(v * VERTEX_FLOATS, (v + 1) * VERTEX_FLOATS), v * floats);
+      interleaved.set(tangents.subarray(v * TANGENT_FLOATS, (v + 1) * TANGENT_FLOATS), v * floats + VERTEX_FLOATS);
+    }
+  }
   return {
     name,
     material,
-    layout: FLOAT_LAYOUT,
+    layout: tangents ? FLOAT_TANGENT_LAYOUT : FLOAT_LAYOUT,
     dequantize: IDENTITY_DEQUANTIZE,
     compression: 'none',
-    vertexCount: vertices.length / VERTEX_FLOATS,
+    vertexCount: count,
     indexCount: indices.length,
     indexFormat: indices instanceof Uint16Array ? 'uint16' : 'uint32',
-    vertices: byteView(vertices),
+    vertices: byteView(interleaved),
     indices: byteView(indices),
   };
 }
@@ -245,6 +266,17 @@ export interface TextureSlot {
   readonly offset: readonly [number, number];
 }
 
+/**
+ * 法线贴图（Stride 的 MaterialNormalMapFeature）：贴图是线性的；scaleAndBias 把 0..1 映射到 -1..1，isXYNormal 只用 xy、
+ * z 由单位长度算出，invertY 把 y 取反（Stride 的 NormalMapTextureType.InvertY 在导入时翻转绿色通道，这里在采样后做，
+ * 结果一样）。网格要有切线。
+ */
+export interface NormalMapSlot extends TextureSlot {
+  readonly scaleAndBias: boolean;
+  readonly isXYNormal: boolean;
+  readonly invertY: boolean;
+}
+
 export interface MaterialFile {
   readonly name: string;
   /** 线性颜色。没有贴图时就是漫反射颜色，有贴图时按 baseColorOperator 和贴图组合。 */
@@ -260,6 +292,7 @@ export interface MaterialFile {
   readonly emissive?: Vec3Tuple;
   /** Stride 的 Occlusion 特性里的 cavity：漫反射和镜面的可见部分乘上这两个系数。 */
   readonly cavity?: { readonly diffuse: number; readonly specular: number };
+  readonly normalMap?: NormalMapSlot;
 }
 
 export type Vec3Tuple = readonly [number, number, number];

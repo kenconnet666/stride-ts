@@ -2,7 +2,7 @@ import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { vertexLayoutOffsets, VERTEX_FLOATS, type ModelMeshData } from '@stride-ts/engine/content-format';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { compressMeshes, MAX_QUANTIZED_EXTENT, octEncode, type SourceMesh } from '../src/index';
+import { addTangents, compressMeshes, MAX_QUANTIZED_EXTENT, octEncode, type SourceMesh } from '../src/index';
 
 // 管线压缩的网格交给运行时模块解码，再按顶点着色器的做法还原，和源数据比较。
 
@@ -118,6 +118,40 @@ describe('网格压缩', () => {
     // 压缩后明显比 32 字节的 float 顶点小
     const raw = source.reduce((sum, m) => sum + m.vertices.byteLength + m.indices.length * 2, 0);
     expect(meshes.reduce((sum, m) => sum + m.vertices.byteLength + m.indices.byteLength, 0)).toBeLessThan(raw * 0.6);
+  });
+
+  test('切线：MikkTSpace，切线朝 U 增大的方向，w · cross(N, T) 朝 V 增大的方向；UV 镜像的接缝处拆开顶点；压缩成 snorm8x4', async () => {
+    // 两个相接的四边形，在 z = 0 上，法线 +Z；右边那个的 U 反过来（镜像），共用的那条边两边的切线相反
+    const vertices = new Float32Array([
+      [0, 0, 0, 0, 0, 1, 0, 1], [1, 0, 0, 0, 0, 1, 1, 1], [1, 1, 0, 0, 0, 1, 1, 0], [0, 1, 0, 0, 0, 1, 0, 0],
+      [2, 0, 0, 0, 0, 1, 0, 1], [2, 1, 0, 0, 0, 1, 0, 0],
+    ].flat());
+    const source: SourceMesh = { name: 'strip', material: 0, vertices, indices: new Uint32Array([0, 1, 2, 0, 2, 3, 1, 4, 5, 1, 5, 2]) };
+    const withTangents = addTangents(source, tools);
+    // 共用的顶点 1、2 各拆成两个
+    expect(withTangents.vertices.length / VERTEX_FLOATS).toBe(8);
+    const tangents = withTangents.tangents!;
+    for (let v = 0; v < 8; v++) {
+      const [tx, ty, tz, w] = tangents.subarray(v * 4, v * 4 + 4);
+      const x = withTangents.vertices[v * VERTEX_FLOATS]!;
+      // 左边的四边形 U 沿 +X 增大，右边的沿 -X；V 都沿 -Y 增大
+      const left = withTangents.indices.slice(0, 6).includes(v);
+      expect([tx, ty, tz].map((c) => Math.round(c! * 1000) / 1000 + 0)).toEqual([left ? 1 : -1, 0, 0]);
+      // B = w · cross((0, 0, 1), T) = w · (-ty, tx, 0)：要朝 -Y
+      expect(w! * tx!).toBeCloseTo(-1, 3);
+      expect(x).toBeGreaterThanOrEqual(0);
+    }
+
+    const [mesh] = compressMeshes([withTangents], tools);
+    expect(mesh!.layout.tangent).toBe('snorm8x4');
+    const { stride, tangent } = vertexLayoutOffsets(mesh!.layout);
+    expect(stride).toBe(20);
+    const [bytes] = await native.decodeMeshoptBatch([{ source: mesh!.vertices, count: mesh!.vertexCount, stride, mode: 'attributes' }]);
+    const view = new DataView(bytes!.buffer, bytes!.byteOffset, bytes!.byteLength);
+    const decoded = Array.from({ length: mesh!.vertexCount }, (_, v) => [0, 1, 2, 3].map((k) => view.getInt8(v * stride + tangent! + k) / 127));
+    // 重排过的顶点：拿解码后的切线集合和源切线集合比（精度 1/127）
+    const sort = (list: number[][]) => list.map((t) => t.map((c) => Math.round(c))).map(String).sort();
+    expect(sort(decoded)).toEqual(sort(Array.from({ length: 8 }, (_, v) => [...tangents.subarray(v * 4, v * 4 + 4)])));
   });
 
   test('大模型的位置和平铺很多次的 UV 保留 float32，原样还原', async () => {

@@ -11,6 +11,8 @@
  *   立方体贴图；方向先按天空盒的旋转转回去，再把 z 取反（Stride 的立方体贴图约定）；
  * - 环境光的镜面项乘 DFG 查找表（MaterialSpecularMicrofacetEnvironmentGGXLUT：按 (1 - sqrt(alphaR), N·V) 采样，
  *   specular · r + g）。查找表启动时在 GPU 上积分生成，和 Stride 自带的那张一致（最大误差约 0.02）；
+ * - 法线贴图（MaterialSurfaceNormalMap、NormalUpdate）：切线空间的法线（可选 y 取反、×2-1、由 xy 算 z）乘 TBN，
+ *   副切线 = w · cross(法线, 切线)；之后的光照都用这个法线。网格没有切线时用顶点法线；
  * - 自发光直接加上。
  * 输出线性的 HDR 颜色，色调映射在后面（ToneMapRenderer）。
  *
@@ -82,17 +84,21 @@ struct View {
 
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
 // 没有贴图的材质绑一张 1x1 的白图。surface：金属度、粗糙度、漫反射 cavity、镜面 cavity。
+// normalFlags：第 1 位有法线贴图，第 2 位 ×2-1，第 3 位 y 取反，第 4 位由 xy 算 z。
 struct Material {
   baseColor: vec4f,
   uvTransform: vec4f,
   emissive: vec4f,
   surface: vec4f,
+  normalUvTransform: vec4f,
   combine: u32,
   specular: u32,
+  normalFlags: u32,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
 @group(1) @binding(2) var baseColorSampler: sampler;
+@group(1) @binding(3) var normalTexture: texture_2d<f32>;
 
 // 网格的反量化：位置 = offset + 输入 · scale，UV = uvTransform.zw + 输入 · uvTransform.xy；flags 的第 1 位：法线是八面体编码。
 // 不量化的网格 offset 0、scale 1。unorm16 的位置读进来是 vec4f，snorm16x2 的法线是 (x, y, 0)，都按 vec3f 用。
@@ -115,9 +121,11 @@ struct Varyings {
   @location(2) uv: vec2f,
   // 视图空间的深度（裁剪坐标的 w），选阴影级联用（Stride 的 DepthVS）
   @location(3) depth: f32,
+  // 世界空间的切线和手性；网格没有切线时是 0
+  @location(4) tangent: vec4f,
 };
 
-@vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32) -> Varyings {
+fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, instance: u32) -> Varyings {
   let world = worlds[slots[instance]];
   let local = mesh.positionOffset.xyz + position * mesh.positionScale.xyz;
   let localNormal = select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u);
@@ -125,11 +133,38 @@ struct Varyings {
   var out: Varyings;
   out.position = view.viewProjection * worldPosition;
   out.world = worldPosition.xyz;
-  // 均匀缩放下法线直接用世界矩阵变换；非均匀缩放要用逆转置，等材质系统一起做
+  // 均匀缩放下法线、切线直接用世界矩阵变换；非均匀缩放要用逆转置，等材质系统一起做
   out.normal = (world * vec4f(localNormal, 0.0)).xyz;
   out.uv = mesh.uvTransform.zw + uv * mesh.uvTransform.xy;
   out.depth = out.position.w;
+  out.tangent = vec4f((world * vec4f(tangent.xyz, 0.0)).xyz, tangent.w);
   return out;
+}
+
+@vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32) -> Varyings {
+  return transformVertex(position, normal, uv, vec4f(0.0), instance);
+}
+
+@vertex fn vsTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @builtin(instance_index) instance: u32) -> Varyings {
+  return transformVertex(position, normal, uv, tangent, instance);
+}
+
+/**
+ * 着色用的法线：有法线贴图、网格有切线时按切线空间的法线算（Stride 的 MaterialSurfaceNormalMap 加 UpdateNormalFromTangentSpace），
+ * 否则是顶点法线。贴图总是采样（没有时绑白图），用 select 挑结果：采样必须在一致的控制流里。
+ */
+fn surfaceNormal(in: Varyings) -> vec3f {
+  let n = normalize(in.normal);
+  var m = textureSample(normalTexture, baseColorSampler, in.uv * material.normalUvTransform.xy + material.normalUvTransform.zw).xyz;
+  let flags = material.normalFlags;
+  m.y = select(m.y, 1.0 - m.y, (flags & 4u) != 0u);
+  m = select(m, 2.0 * m - 1.0, (flags & 2u) != 0u);
+  m.z = select(m.z, sqrt(max(0.0, 1.0 - (m.x * m.x + m.y * m.y))), (flags & 8u) != 0u);
+  let tangentLength = length(in.tangent.xyz);
+  let t = in.tangent.xyz / max(tangentLength, 1e-8);
+  let b = in.tangent.w * cross(n, t);
+  let mapped = normalize(m.x * t + m.y * b + m.z * n);
+  return select(n, mapped, (flags & 1u) != 0u && tangentLength > 0.0);
 }
 
 /** 世界方向转到天空盒的立方体贴图里：按天空盒的旋转转回去（行向量乘矩阵 = 乘转置），z 取反。 */
@@ -237,7 +272,7 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
 }
 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
-  let n = normalize(in.normal);
+  let n = surfaceNormal(in);
   let v = normalize(view.eye.xyz - in.world);
   let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw).rgb;
   let albedo = select(texel * material.baseColor.rgb, texel + material.baseColor.rgb, material.combine == 1u);
@@ -329,8 +364,8 @@ const VIEW_STRIDE = 768;
 const VIEW_FLOATS = 164;
 /** 一帧最多的视图数：主视图加 4 个阴影级联，留些余量。 */
 const MAX_VIEWS = 8;
-/** 材质 uniform：baseColor、uvTransform、emissive、surface 各一个 vec4，再加 combine、specular 两个 u32，补齐到 16 字节。 */
-const MATERIAL_BYTES = 80;
+/** 材质 uniform：baseColor、uvTransform、emissive、surface、normalUvTransform 各一个 vec4，再加三个 u32，补齐到 16 字节。 */
+const MATERIAL_BYTES = 96;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 /** 网格参数的 uniform：positionOffset、positionScale、uvTransform 各一个 vec4，再加 flags，补齐到 16 字节。 */
 const MESH_PARAMS_BYTES = 64;
@@ -570,6 +605,7 @@ class Gpu {
         { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} },
       ],
     });
     this.#meshLayout = device.createBindGroupLayout({
@@ -586,7 +622,7 @@ class Gpu {
    */
   pipelineFor(stage: RenderStage, layout: VertexLayout): GPURenderPipeline {
     const { colorFormat, depthFormat } = stage.output;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}`;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);
@@ -595,13 +631,14 @@ class Gpu {
         layout: this.#pipelineLayout,
         vertex: {
           module: this.#module,
-          entryPoint: 'vs',
+          entryPoint: layout.tangent ? 'vsTangent' : 'vs',
           buffers: [{
             arrayStride: offsets.stride,
             attributes: [
               { shaderLocation: 0, offset: offsets.position, format: layout.position },
               { shaderLocation: 1, offset: offsets.normal, format: layout.normal },
               { shaderLocation: 2, offset: offsets.uv, format: layout.uv },
+              ...(layout.tangent ? [{ shaderLocation: 3, offset: offsets.tangent!, format: layout.tangent }] : []),
             ],
           }],
         },
@@ -738,12 +775,15 @@ class Gpu {
     if (gpu.version !== material.version || !gpu.bindGroup) {
       const slot = material.baseColorTexture;
       const { r, g, b, a } = material.baseColor;
+      const normalMap = material.normalMap;
       const floats = new Float32Array(this.#materialData);
       floats.set([r, g, b, a, ...(slot?.scale ?? [1, 1]), ...(slot?.offset ?? [0, 0]), ...material.emissive, 0]);
       floats.set([material.metalness ?? 0, material.roughness, material.cavity.diffuse, material.cavity.specular], 12);
+      floats.set([...(normalMap?.scale ?? [1, 1]), ...(normalMap?.offset ?? [0, 0])], 16);
       const codes = new Uint32Array(this.#materialData);
-      codes[16] = OPERATOR_CODES[material.baseColorOperator];
-      codes[17] = material.metalness === undefined ? 0 : 1;
+      codes[20] = OPERATOR_CODES[material.baseColorOperator];
+      codes[21] = material.metalness === undefined ? 0 : 1;
+      codes[22] = normalMap ? 1 | (normalMap.scaleAndBias ? 2 : 0) | (normalMap.invertY ? 4 : 0) | (normalMap.isXYNormal ? 8 : 0) : 0;
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       gpu.bindGroup = this.device.createBindGroup({
         label: `${material.name} material`,
@@ -752,6 +792,7 @@ class Gpu {
           { binding: 0, resource: { buffer: gpu.buffer } },
           { binding: 1, resource: (slot ? this.#resources.texture(slot.texture) : this.#resources.white).createView() },
           { binding: 2, resource: this.#resources.linearRepeat },
+          { binding: 3, resource: (normalMap ? this.#resources.texture(normalMap.texture) : this.#resources.white).createView() },
         ],
       });
       gpu.version = material.version;

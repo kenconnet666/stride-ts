@@ -99,14 +99,14 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 | JS 方法调用 | | | 0.3–0.5 ns |
 | JS 调 wasm（什么都不做的导出函数） | | | 4–6 ns |
 | **读物理结果（每帧）** | | | |
-| 现在的 `positions()`：分配、拷贝、`slice()`、释放 | 0.11 ms | | 11–13 ns |
+| 旧的 `positions()`：分配、拷贝、`slice()`、释放（已改，见结论 5） | 0.11 ms | | 11–13 ns |
 | 原生写进一块常驻缓冲，JS 读视图 | 0.05 ms | | 5 ns |
 | **创建（6 个属性，默认值加一项覆盖）** | | | |
 | 脚本对象，按键名循环合并属性 | 1.4–1.7 ms | 14–15 ms | 130–170 ns |
 | 脚本对象，按固定代码逐项赋值 | 0.08 ms | 0.83 ms | 8 ns |
 | 写进 Float32Array 的列 | 0.12 ms | 1.2 ms | 10–12 ns |
 | 每个实体在 wasm 里单独分配一块（分配、写、释放） | 1.0 ms | 10.5 ms | 105 ns |
-| 物理体，现在的包装（每次 `addBox` 都分配临时内存） | 21 ms | | 2.1 µs |
+| 物理体，旧的包装（每次 `addBox` 都分配临时内存；已改，见结论 5） | 21 ms | | 2.1 µs |
 | 物理体，直接调导出函数、参数缓冲复用 | 6.3 ms | | 0.6 µs（Jolt 本身） |
 | **每帧更新** | | | |
 | 脚本 `update()`，4 个类混在一起（多态调用） | 0.03 ms | 0.30 ms | 3 ns |
@@ -129,10 +129,11 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
    - 按键名循环合并属性比固定代码逐项赋值慢 17 倍（139 对 8 ns），原因是动态键名的读写。
    - 所以每个组件在登记时生成一个初始化函数，用 `new Function` 在运行时生成，和 zod 4 的 `z.compile` 同一做法；页面没有 CSP 限制，失败时退回循环。
    - 同一个预制体的覆盖只合并一次，所有实例共用合并结果。
-5. **原生 API 要改（已记入下文"原生模块的 TS 接口"）**：
-   - `positions()` 改成返回常驻视图，读结果的开销减半。理想情况下 Jolt 直接写进共享的变换数组，连这一次拷贝也没有。
-   - `addBox` 的包装占了物理体创建时间的 70%：参数缓冲改成复用，并加一个批量添加的接口（一块打包好的描述数据，C++ 里用 Jolt 的 `AddBodiesPrepare`/`AddBodiesFinalize`），大批生成时还能再省 Jolt 本身的一部分。
-6. **按帧预算看**（165 Hz 每帧约 6 ms）：1 万个实体的移动、上传、脚本、系统合计不到 0.5 ms。风险在生成高峰：现在的写法一次生成 1 万个物理体要 21 ms，会卡一帧。改完之后约 6 ms，主要是 Jolt 本身，大批生成可以分到几帧里做。
+5. **原生 API 已改（2026-11-18 同日，fork 的提交见 `StrideNative/`）**：
+   - 物理世界和人群各有一块常驻的位置缓冲，`step()`、`update()` 在原生里直接写进去；`positions()` 返回同一个视图，每帧不再分配和拷贝。读 1 万个物体的 y 坐标从 0.11 ms 降到 0.008 ms（每个 0.8 ns）。下一步是让 Jolt 直接写进共享的变换数组，连步进末尾这一次写入也省掉。
+   - C API 换成批量添加 `sn_physics_add_boxes`（一块 `sn_box` 表，C++ 里用 Jolt 的 `AddBodiesPrepare`/`AddBodiesFinalize`，相同尺寸的连续箱子共用一个形状），删除逐个添加和拷出位置的旧接口。JS 的 `addBox({ position, halfExtent, motion })` 复用一块参数缓冲，`addBoxes([...])` 一次调用。
+   - 实测（建世界、加 1 万个物体、销毁）：旧包装 21 ms（2.1 µs 每个），逐个 `addBox` 6.8 ms（0.68 µs），一次 `addBoxes` 4.0 ms（0.40 µs）。
+6. **按帧预算看**（165 Hz 每帧约 6 ms）：1 万个实体的移动、上传、脚本、系统合计不到 0.5 ms。生成高峰原来一次 1 万个物理体要 21 ms、会卡一帧，现在批量 4 ms，更大的批量可以分到几帧里做。改完后在 Chrome 里跑沙盒：99% 的帧间隔是 6.06 ms，物理步进中位 0.27 ms、最长约 4 ms（工作线程调度的抖动）。
 
 没测到的：GC 停顿（这组微基准里临时对象被逃逸分析消掉了，要在真实场景里用 `tools/cpu-profile.cjs` 看）、Jolt 步进本身（见 StrideNative 的测试，100 个箱子每步 0.17 ms）、GPU 端的耗时。
 
@@ -600,7 +601,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 
 | 现在 | 改成 |
 |---|---|
-| `addBox(position, halfExtent, dynamic: boolean)` | `addBox({ position, halfExtent, motion: 'dynamic' })`：位置参数里夹布尔值，调用处看不出含义 |
+| ~~`addBox(position, halfExtent, dynamic: boolean)`~~ | 已改（2026-11-18）：`addBox({ position, halfExtent, motion })`，另有批量的 `addBoxes` |
 | `TextureTarget.bc7 = 1`、`mode?: number` | 字符串字面量联合，如 `'bc7'`；数字只在绑定层内部用 |
 | 返回裸 `number` 的物体编号、代理编号 | 品牌类型 `BodyId`、`AgentId`，不同编号不能混用，运行时零开销 |
 | `destroy()` | 同时实现 `[Symbol.dispose]`，可以写 `using world = native.createPhysicsWorld(...)` |
@@ -608,8 +609,8 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 | `NativeError.code` 是负整数 | 字符串联合：`'out-of-memory'`、`'invalid-argument'`、`'capacity'` 等 |
 | `decodeMeshopt` 有 5 个位置参数，和 `MeshoptRequest` 重复 | 单个调用和批量调用用同一个请求对象 |
 | `globalThis.strideGame` 没有类型 | 用 `declare global` 声明 |
-| `positions()` 每次分配、拷贝、`slice()`、释放（实测 11–13 ns 每个物体） | 返回常驻的视图（实测 5 ns）；最终由 Jolt 直接写进共享的变换数组 |
-| `addBox` 每次调用都分配临时内存（包装占物理体创建时间的 70%） | 参数缓冲复用；加批量添加 `addBodies(packed)`，C++ 里用 Jolt 的 `AddBodiesPrepare`/`AddBodiesFinalize` |
+| ~~`positions()` 每次分配、拷贝、`slice()`、释放~~ | 已改（2026-11-18）：物理世界和人群都返回常驻视图，由步进和更新在原生里写入；最终由 Jolt 直接写进共享的变换数组 |
+| ~~`addBox` 每次调用都分配临时内存~~ | 已改（2026-11-18）：参数缓冲复用；批量的 `addBoxes` 走 Jolt 的 `AddBodiesPrepare`/`AddBodiesFinalize` |
 
 ## 物理：Jolt 作为内核，Stride 风格的那一层自己用 C++ 写
 

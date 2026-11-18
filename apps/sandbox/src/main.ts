@@ -25,11 +25,13 @@ class SandboxGame extends Game {
 
   protected override async loadContent(): Promise<void> {
     this.world = this.native.createPhysicsWorld(GRID * GRID + 1);
-    this.world.addBox([0, -1, 0], [50, 1, 50], false);
-    for (let i = 0; i < GRID * GRID; i++) {
-      const index = this.world.addBox([(i % GRID) * 1.5 - 7, 5 + Math.floor(i / GRID) * 1.2, 0], [0.5, 0.5, 0.5], true);
-      if (i === 0) this.firstBox = index;
-    }
+    this.world.addBox({ position: [0, -1, 0], halfExtent: [50, 1, 50], motion: 'static' });
+    this.firstBox = this.world.addBoxes(
+      Array.from({ length: GRID * GRID }, (_, i) => ({
+        position: [(i % GRID) * 1.5 - 7, 5 + Math.floor(i / GRID) * 1.2, 0],
+        halfExtent: [0.5, 0.5, 0.5],
+      })),
+    );
   }
 
   protected override update(time: GameTime): void {

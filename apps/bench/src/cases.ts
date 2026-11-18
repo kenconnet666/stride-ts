@@ -1,4 +1,4 @@
-import type { StrideNative } from '@stride-ts/native';
+import type { BoxDesc, StrideNative } from '@stride-ts/native';
 import type { Case, Run } from './harness';
 
 /** The raw Emscripten exports the cases need; the wrapper keeps them internal, a benchmark has to reach past it. */
@@ -6,8 +6,6 @@ interface RawModule {
   _sn_alloc(size: number): number;
   _sn_free(ptr: number): void;
   _sn_worker_thread_count(): number;
-  _sn_physics_get_positions(world: number, out: number, count: number): number;
-  _sn_physics_add_box(world: number, position: number, halfExtent: number, dynamic: number): number;
 }
 
 export interface Context {
@@ -162,46 +160,29 @@ export function createCases({ device, native }: Context): Case[] {
     },
   ];
 
-  /** A physics world with n bodies spread out so none touch; the cases only read positions. */
-  const physicsWorld = (n: number) => {
-    const world = native.createPhysicsWorld(n);
-    for (let i = 0; i < n; i++) world.addBox([(i % 100) * 3, 2, Math.floor(i / 100) * 3], [0.5, 0.5, 0.5], true);
-    return world;
-  };
+  /** n boxes spread out so none touch. */
+  const spreadBoxes = (n: number): BoxDesc[] =>
+    Array.from({ length: n }, (_, i) => ({
+      position: [(i % 100) * 3, 2, Math.floor(i / 100) * 3],
+      halfExtent: [0.5, 0.5, 0.5],
+    }));
 
   const physicsRead: Case[] = [
     {
       group: 'physics read: positions of n bodies per frame',
-      name: 'current API: positions() allocates, copies, slices, frees',
+      name: 'positions(): the view step() rewrites, every y read',
       sizes: [1_000, 10_000],
       setup(n) {
-        const world = physicsWorld(n);
+        const world = native.createPhysicsWorld(n);
+        world.addBoxes(spreadBoxes(n));
         return {
           iterate() {
             const p = world.positions();
-            sink += p[p.length - 1]!;
+            let total = 0;
+            for (let i = 0; i < n; i++) total += p[i * 3 + 1]!;
+            sink += total;
           },
           dispose: () => world.destroy(),
-        };
-      },
-    },
-    {
-      group: 'physics read: positions of n bodies per frame',
-      name: 'native fills a persistent buffer, JS reads a view',
-      sizes: [1_000, 10_000],
-      setup(n) {
-        const world = physicsWorld(n);
-        const out = nativeFloats(n * 3);
-        const handle = (world as unknown as { handle: number }).handle;
-        return {
-          iterate() {
-            raw._sn_physics_get_positions(handle, out.ptr, n);
-            sink += out.view[n * 3 - 1]!;
-          },
-          dispose: () => {
-            out.free();
-            world.destroy();
-          },
         };
       },
     },
@@ -311,32 +292,31 @@ export function createCases({ device, native }: Context): Case[] {
     },
     {
       group: 'create: spawn n entities with 6 props (defaults merged with one override)',
-      name: 'physics bodies through the current API (world + n addBox + destroy)',
+      name: 'physics bodies: world + n addBox calls + destroy',
       sizes: [1_000, 10_000],
       setup(n) {
-        return { iterate: () => physicsWorld(n).destroy() };
+        const boxes = spreadBoxes(n);
+        return {
+          iterate() {
+            const world = native.createPhysicsWorld(n);
+            for (const box of boxes) world.addBox(box);
+            world.destroy();
+          },
+        };
       },
     },
     {
       group: 'create: spawn n entities with 6 props (defaults merged with one override)',
-      name: 'physics bodies, raw export with reused argument buffers',
+      name: 'physics bodies: world + one addBoxes batch + destroy',
       sizes: [1_000, 10_000],
       setup(n) {
-        // Same native work as above without the wrapper's per-call allocations: separates Jolt's cost from ours.
-        const args = nativeFloats(6);
-        args.view.set([0, 2, 0, 0.5, 0.5, 0.5]);
+        const boxes = spreadBoxes(n);
         return {
           iterate() {
             const world = native.createPhysicsWorld(n);
-            const handle = (world as unknown as { handle: number }).handle;
-            for (let i = 0; i < n; i++) {
-              args.view[0] = (i % 100) * 3;
-              args.view[2] = Math.floor(i / 100) * 3;
-              raw._sn_physics_add_box(handle, args.ptr, args.ptr + 12, 1);
-            }
+            world.addBoxes(boxes);
             world.destroy();
           },
-          dispose: args.free,
         };
       },
     },

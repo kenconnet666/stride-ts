@@ -13,14 +13,15 @@ afterAll(() => native?.shutdown());
 test('a dynamic box falls onto the ground', () => {
   const world = native.createPhysicsWorld(16);
   try {
-    world.addBox([0, -1, 0], [10, 1, 10], false);
-    const box = world.addBox([0, 5, 0], [0.5, 0.5, 0.5], true);
+    world.addBox({ position: [0, -1, 0], halfExtent: [10, 1, 10], motion: 'static' });
+    const box = world.addBox({ position: [0, 5, 0], halfExtent: [0.5, 0.5, 0.5] });
+    const positions = world.positions();
 
     for (let i = 0; i < 180; i++) world.step(1 / 60);
 
-    const y = world.positions()[box * 3 + 1]!;
     expect(native.workerThreadCount).toBe(2);
-    expect(y).toBeCloseTo(0.5, 1);
+    expect(world.positions()).toBe(positions);
+    expect(positions[box * 3 + 1]).toBeCloseTo(0.5, 1);
   } finally {
     world.destroy();
   }

@@ -2,7 +2,7 @@
 // C++ 源码在那个仓库的 StrideNative/ 里，用 StrideNative/Scripts/build-wasm.ps1 编译。
 // STRIDE_NATIVE_DIST 可以改位置；默认假定 fork 在 ~/CLionProjects/jolt-native-fork，和 ~/WebstormProjects 并列。
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,10 +22,12 @@ if (!existsSync(path.join(source, 'stride-native-core.wasm'))) {
   process.exit(0);
 }
 
+// 绑定是 TypeScript（.ts，Emscripten 工厂的类型在 .d.mts），Emscripten 产物是 .mjs 加 .wasm
+const SHIPPED = /\.(ts|mts|mjs|wasm)$/;
 mkdirSync(target, { recursive: true });
+const shipped = readdirSync(source).filter((name) => SHIPPED.test(name));
 let copied = 0;
-for (const name of readdirSync(source)) {
-  if (!/\.(mjs|wasm|d\.ts)$/.test(name)) continue;
+for (const name of shipped) {
   const from = path.join(source, name);
   const to = path.join(target, name);
   const fromStat = statSync(from);
@@ -38,6 +40,14 @@ for (const name of readdirSync(source)) {
   // 保留源文件的时间戳，下次同步可以跳过没变的文件。
   utimesSync(to, fromStat.atime, fromStat.mtime);
   copied++;
+}
+
+// fork 删掉或改名的文件（例如以前的 .mjs 包装和 .d.ts）不能留在 dist 里
+for (const name of readdirSync(target)) {
+  if (SHIPPED.test(name) && !shipped.includes(name)) {
+    rmSync(path.join(target, name));
+    console.log(`Removed ${name}`);
+  }
 }
 
 writeFileSync(path.join(target, 'source.json'), JSON.stringify({ source, ...gitState(source) }, null, 2) + '\n');

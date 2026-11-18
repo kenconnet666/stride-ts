@@ -711,24 +711,28 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 - `*.check.ts` 只给 tsc 检查：正例用 `Equal` 断言推导出的类型，负例用 `@ts-expect-error` 固定"必须报错"。
 - 用脚本生成上百个组件和系统的压力样例，记录 tsc 的检查时间和实例化次数，防止类型推导拖慢编辑器。
 
-## 原生模块的 TS 接口（2026-11-18 设计草案）
+## 原生模块的 TS 接口（2026-11-18 已实现）
 
-现在的绑定层（`native-module.mjs`、`stride-native.mjs`、`stride-tools.mjs`）和手写的 `.d.ts` 放在 fork 里，类型和实现迟早对不上。计划把绑定层搬进本仓库的 `packages/native/src/`，用 TS 重写；fork 只产出 Emscripten 的核心模块和 wasm。fork 里的 Node 测试和浏览器测试页改成引用本仓库的绑定层，或者只留一层很薄的测试外壳。
+绑定层和 C API 放在一起，都在 fork 的 `StrideNative/JS/`，用 TypeScript 写（`native-module.ts`、`stride-native.ts`、`stride-tools.ts`）。原先的设想是把绑定搬进本仓库，实际做下来留在 fork 更好：改 C API 的同一个提交里就能改绑定和 fork 的 Node、浏览器测试，两边不会对不上。
 
-接口按下表调整：
+- **只用可擦除的语法**：Node 22.18+/24 直接运行（fork 的 Node 测试），Vite 照常编译，fork 的浏览器测试服务器用 `module.stripTypeScriptTypes` 去掉类型再发出。不需要构建步骤，也没有手写的 `.d.ts`。
+- **Emscripten 工厂的类型**：`*-core.d.mts` 逐个列出各模块导出的 C 函数名，`CoreModule<E>` 把它们映射成 `_sn_*` 成员。不用 `_sn_${string}` 索引签名：名字写错在编译期就报，也不会因为 `noUncheckedIndexedAccess` 变成可能 undefined。
+- **类型检查**：`pnpm native:sync` 把 `.ts`、`.d.mts`、`.mjs`、`.wasm` 拷进 `packages/native/dist`（顺带删掉 fork 已经不产出的旧文件），包的 `exports` 直接指向 `dist/stride-native.ts`；本仓库的 `tsc`（开了 `allowImportingTsExtensions`）用全部严格选项检查它们。
 
-| 现在 | 改成 |
+接口相对原来的 .mjs 版本的变化：
+
+| 原来 | 现在 |
 |---|---|
-| ~~`addBox(position, halfExtent, dynamic: boolean)`~~ | 已改（2026-11-18）：`addBox({ position, halfExtent, motion })`，另有批量的 `addBoxes` |
-| `TextureTarget.bc7 = 1`、`mode?: number` | 字符串字面量联合，如 `'bc7'`；数字只在绑定层内部用 |
-| 返回裸 `number` 的物体编号、代理编号 | 品牌类型 `BodyId`、`AgentId`，不同编号不能混用，运行时零开销 |
-| `destroy()` | 同时实现 `[Symbol.dispose]`，可以写 `using world = native.createPhysicsWorld(...)` |
-| 公开的 `handle: number` | 改为内部字段 |
-| `NativeError.code` 是负整数 | 字符串联合：`'out-of-memory'`、`'invalid-argument'`、`'capacity'` 等 |
-| `decodeMeshopt` 有 5 个位置参数，和 `MeshoptRequest` 重复 | 单个调用和批量调用用同一个请求对象 |
-| `globalThis.strideGame` 没有类型 | 用 `declare global` 声明 |
-| ~~`positions()` 每次分配、拷贝、`slice()`、释放~~ | 已改（2026-11-18）：物理世界和人群都返回常驻视图，由步进和更新在原生里写入；最终由 Jolt 直接写进共享的变换数组 |
-| ~~`addBox` 每次调用都分配临时内存~~ | 已改（2026-11-18）：参数缓冲复用；批量的 `addBoxes` 走 Jolt 的 `AddBodiesPrepare`/`AddBodiesFinalize` |
+| `addBox(position, halfExtent, dynamic: boolean)` | `addBox({ position, halfExtent, motion })`；批量的 `addBoxes` 走 Jolt 的 `AddBodiesPrepare`/`AddBodiesFinalize`，返回每个盒子的 `BodyId` |
+| `TextureTarget.bc7 = 1`、`mode?: number` | 字符串字面量联合，如 `'bc7'`；整数只在绑定层内部用，公开边界检查取值 |
+| 返回裸 `number` 的物体编号、代理编号 | 品牌类型 `BodyId`、`AgentId`，不能混用，运行时零开销 |
+| `destroy()` | 原生对象共用基类 `NativeObject`：`destroy()` 可重复调用，同时实现 `[Symbol.dispose]`，可以写 `using world = native.createPhysicsWorld(...)`；释放后再用抛 `invalid-handle` |
+| 公开的 `handle: number` | 藏在不从公开入口导出的 symbol 后面，只有绑定层内部互相传 |
+| `NativeError.code` 是负整数 | 字符串联合 `'invalid-argument' | 'invalid-handle' | 'failed' | 'not-initialized'`，负数放在 `status` |
+| `decodeMeshopt` 有 5 个位置参数 | 单个调用和批量调用用同一个 `MeshoptRequest` |
+| `positions()` 每次分配、拷贝、`slice()`、释放 | 物理世界和人群都返回常驻视图，由步进和更新在原生里写入；之后由 Jolt 直接写进共享的变换数组 |
+| `addBox` 每次调用都分配临时内存 | 参数缓冲复用 |
+| 基准要绕过包装层拿原始导出做分配 | `alloc`、`free` 和 `u8`/`i32`/`f32`/`i64` 等视图是公开方法 |
 
 ## 物理：Jolt 作为内核，Stride 风格的那一层自己用 C++ 写
 

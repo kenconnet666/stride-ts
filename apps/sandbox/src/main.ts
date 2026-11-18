@@ -42,12 +42,13 @@ class SandboxGame extends Game {
   protected override async loadContent(): Promise<void> {
     this.world = this.native.createPhysicsWorld(GRID * GRID + 1);
     this.world.addBox({ position: [0, -1, 0], halfExtent: [50, 1, 50], motion: 'static' });
-    this.firstBox = this.world.addBoxes(
+    const boxes = this.world.addBoxes(
       Array.from({ length: GRID * GRID }, (_, i) => ({
         position: [(i % GRID) * 1.5 - 7, 5 + Math.floor(i / GRID) * 1.2, 0],
         halfExtent: [0.5, 0.5, 0.5],
       })),
     );
+    this.firstBox = boxes[0]!;
     this.entities.addSystems(integrate, expire, measure);
     this.fountain = this.entities.create({ name: 'fountain', components: [Fountain.with({ burst: 2_000, interval: 0.5 })] }).require(Fountain);
   }

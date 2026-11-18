@@ -15,7 +15,8 @@
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["packages/*/src", "packages/*/test", "apps/*/src", "apps/*/vite.config.ts", "vitest.config.ts"]
 }

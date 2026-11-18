@@ -33,7 +33,7 @@ jolt-native-fork/
     CMakeLists.txt          the only build file; Jolt comes in through ../Build/CMakeLists.txt
     Include/StrideNative/   C API: Core.h (init, memory, tasks), Runtime.h, Tools.h
     Source/Core|Shared|Runtime|Tools
-    JS/                     loaders and wrappers (.mjs) plus .d.ts typings
+    JS/                     TypeScript bindings (native-module.ts, stride-native.ts, stride-tools.ts)
     ThirdParty/             libraries copied once; source table in ThirdParty/README.md
     Tests/Native|JS|Browser
     Scripts/build-wasm.ps1  builds both modules and runs the Node tests

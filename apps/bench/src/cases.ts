@@ -1,13 +1,6 @@
 import type { BoxDesc, StrideNative } from '@stride-ts/native';
 import type { Case, Run } from './harness';
 
-/** 用例要用的 Emscripten 原始导出；包装层不公开它们，基准只能绕过包装层直接拿。 */
-interface RawModule {
-  _sn_alloc(size: number): number;
-  _sn_free(ptr: number): void;
-  _sn_worker_thread_count(): number;
-}
-
 export interface Context {
   readonly device: GPUDevice;
   readonly native: StrideNative;
@@ -17,10 +10,7 @@ export interface Context {
 const INSTANCE_FLOATS = 16;
 const DT = 1 / 60;
 
-const rawOf = (native: StrideNative) => (native as unknown as { module: RawModule }).module;
-
 export function createCases({ device, native }: Context): Case[] {
-  const raw = rawOf(native);
 
   const instanceBuffer = (n: number) =>
     device.createBuffer({ size: n * INSTANCE_FLOATS * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
@@ -28,9 +18,8 @@ export function createCases({ device, native }: Context): Case[] {
 
   /** 原生内存上的 Float32Array；由 dispose 释放分配。 */
   const nativeFloats = (count: number) => {
-    const ptr = raw._sn_alloc(count * 4);
-    if (ptr === 0) throw new Error(`native alloc of ${count * 4} bytes failed`);
-    return { ptr, view: new Float32Array(native.buffer, ptr, count), free: () => raw._sn_free(ptr) };
+    const ptr = native.alloc(count * 4);
+    return { ptr, view: native.f32(ptr, count), free: () => native.free(ptr) };
   };
 
   /** 移动每个实体并上传所有实例矩阵：测数据放在哪里对每帧开销的影响。 */
@@ -152,7 +141,7 @@ export function createCases({ device, native }: Context): Case[] {
         return {
           iterate() {
             let total = 0;
-            for (let i = 0; i < n; i++) total += raw._sn_worker_thread_count();
+            for (let i = 0; i < n; i++) total += native.module._sn_worker_thread_count();
             sink += total;
           },
         };
@@ -281,11 +270,11 @@ export function createCases({ device, native }: Context): Case[] {
         return {
           iterate() {
             for (let i = 0; i < n; i++) {
-              const ptr = raw._sn_alloc(keys.length * 4);
+              const ptr = native.alloc(keys.length * 4);
               new Float32Array(native.buffer, ptr, keys.length).set(values);
               pointers[i] = ptr;
             }
-            for (let i = 0; i < n; i++) raw._sn_free(pointers[i]!);
+            for (let i = 0; i < n; i++) native.free(pointers[i]!);
           },
         };
       },
@@ -422,9 +411,8 @@ export function createCases({ device, native }: Context): Case[] {
  * 但要数据原样到达才有意义。
  */
 export async function checkSharedUpload({ device, native }: Context): Promise<string> {
-  const raw = rawOf(native);
   const count = 4096;
-  const ptr = raw._sn_alloc(count * 4);
+  const ptr = native.alloc(count * 4);
   try {
     const source = new Float32Array(native.buffer, ptr, count);
     for (let i = 0; i < count; i++) source[i] = i * 0.5;
@@ -442,6 +430,6 @@ export async function checkSharedUpload({ device, native }: Context): Promise<st
     readback.destroy();
     return mismatches === 0 ? `ok, ${count} floats match` : `${mismatches} of ${count} floats differ`;
   } finally {
-    raw._sn_free(ptr);
+    native.free(ptr);
   }
 }

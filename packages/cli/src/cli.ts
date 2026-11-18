@@ -5,7 +5,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
-import type { HubLogEntry, LogLevel } from '@stride-ts/engine/debug-protocol';
+import type { HubLogEntry, LogLevel, PageInfo } from '@stride-ts/engine/debug-protocol';
 import { CdpSession, closeBrowser, openUrl, pageTarget } from './chrome.ts';
 import { HubClient } from './client.ts';
 import { formatJson } from './format.ts';
@@ -32,7 +32,9 @@ Game
   set <entity> <Component.field[.x]> <json value>
   pause | resume | step [frames] | time [--scale <x>] [--fixed <seconds>|off]
   key <code> [--hold <ms> | --down | --up]          KeyboardEvent.code or Stride key name: KeyW or W, ArrowLeft or Left
-  mouse move <dx> <dy> | mouse <left|middle|right> [--hold <ms> | --down | --up]
+  mouse move <dx> <dy> | mouse <left|middle|right> [--hold <ms> | --down | --up] [--trusted]
+                                                    --trusted: a real click at the canvas center through the DevTools
+                                                    protocol (stride open's Chrome), so the page may lock the pointer
   shot <out.png> [--diff <reference.png>] [--diff-out <file>] [--threshold 2]
   perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, native timings, GPU per pass
   native [--reset]                                  native counters (physics bodies, ...), timings, wasm memory
@@ -71,6 +73,7 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     hold: { type: 'string' },
     down: { type: 'boolean' },
     up: { type: 'boolean' },
+    trusted: { type: 'boolean' },
     diff: { type: 'string' },
     'diff-out': { type: 'string' },
     threshold: { type: 'string' },
@@ -118,6 +121,38 @@ function parseJson(text: string): unknown {
 const vector = (text: string | undefined, what: string) => required(text, what).split(',').map(Number);
 
 /** 按键或鼠标键的动作：--hold 毫秒、--down、--up，默认按一下。 */
+/** 连到页面的 DevTools 协议（只有 stride open 启动的 Chrome 有）。 */
+async function pageCdp(command: string): Promise<{ client: HubClient; info: PageInfo; cdp: CdpSession }> {
+  const browser = readBrowser();
+  if (!browser) throw new Error(`${command} needs a Chrome started by stride open (it uses the DevTools protocol)`);
+  const client = await HubClient.find(options.hub);
+  const pages = await client.pages();
+  const info = page === undefined ? pages.at(-1) : pages.find((p) => p.id === page);
+  if (!info) throw new Error('no page is connected');
+  return { client, info, cdp: await CdpSession.connect((await pageTarget(browser, info.url)).webSocketDebuggerUrl) };
+}
+
+/**
+ * 在画布中央真实地按一下鼠标（DevTools 协议的 Input.dispatchMouseEvent）：和合成的 DOM 事件不同，它算用户操作，页面能拿到指针
+ * 锁定。--hold 按住这么久，--down、--up 只按下或只松开；默认按下 100 ms（游戏至少跑过几帧）再松开。
+ */
+async function trustedClick(button: string): Promise<unknown> {
+  if (!['left', 'middle', 'right'].includes(button)) throw new Error(`button must be left, middle or right, got '${button}'`);
+  const { cdp: session } = await pageCdp('mouse --trusted');
+  await using cdp = session;
+  const { result } = (await cdp.send('Runtime.evaluate', {
+    expression: "(() => { const r = document.querySelector('canvas').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; })()",
+    returnByValue: true,
+  })) as { result: { value: [number, number] } };
+  const [x, y] = result.value;
+  const send = (type: 'mousePressed' | 'mouseReleased') => cdp.send('Input.dispatchMouseEvent', { type, x, y, button, clickCount: 1 });
+  if (!options.up) await send('mousePressed');
+  if (options.down) return { pressed: [x, y] };
+  if (!options.up) await new Promise((resolve) => setTimeout(resolve, Number(options.hold ?? 100)));
+  await send('mouseReleased');
+  return { clicked: [x, y] };
+}
+
 function pressAction(): Record<string, unknown> {
   if (options.hold !== undefined) return { action: 'hold', ms: Number(options.hold) };
   return { action: options.down ? 'down' : options.up ? 'up' : 'press' };
@@ -189,7 +224,9 @@ const commands: Record<string, () => Promise<unknown>> = {
   key: () => call('input', { key: required(rest[0], 'key code'), ...pressAction() }, Number(options.hold ?? 0)),
   mouse() {
     if (rest[0] === 'move') return call('input', { mouse: [Number(rest[1] ?? 0), Number(rest[2] ?? 0)] });
-    return call('input', { button: required(rest[0], "'move' or a button"), ...pressAction() }, Number(options.hold ?? 0));
+    const button = required(rest[0], "'move' or a button");
+    if (options.trusted) return trustedClick(button);
+    return call('input', { button, ...pressAction() }, Number(options.hold ?? 0));
   },
   async shot() {
     const file = required(rest[0], 'output file');
@@ -214,13 +251,8 @@ const commands: Record<string, () => Promise<unknown>> = {
     return call('eval', { code: COLLECT_GPU_COUNTERS });
   },
   async 'cpu-profile'() {
-    const browser = readBrowser();
-    if (!browser) throw new Error('cpu-profile needs a Chrome started by stride open (it uses the DevTools protocol)');
-    const client = await HubClient.find(options.hub);
-    const pages = await client.pages();
-    const info = page === undefined ? pages.at(-1) : pages.find((p) => p.id === page);
-    if (!info) throw new Error('no page is connected');
-    await using cdp = await CdpSession.connect((await pageTarget(browser, info.url)).webSocketDebuggerUrl);
+    const { client, info, cdp: session } = await pageCdp('cpu-profile');
+    await using cdp = session;
     await cdp.send('Profiler.enable');
     await cdp.send('Profiler.setSamplingInterval', { interval: 100 });
     const frame = async () => ((await client.call('status', {}, { page: info.id })) as { frame: number }).frame;

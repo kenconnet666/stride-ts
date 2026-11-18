@@ -1,6 +1,6 @@
 // Third Person Platformer 的 PlayerInput：把键盘、鼠标、手柄的输入换成三个事件——世界空间的移动方向（按相机的朝向）、
 // 屏幕空间的镜头转动量、起跳。属性的默认值是 TPP 场景里的值。
-import { EventKey, GamePadButton, prop, SyncScript, Transform, Vector3, type GameTime, type InputManager } from '@stride-ts/engine';
+import { EventKey, GamePadButton, prop, SyncScript, Transform, Vector3, type GameTime } from '@stride-ts/engine';
 
 /** 世界空间的移动方向，长度 0..1（摇杆的推动程度）。 */
 export const MoveDirectionEventKey = new EventKey<Vector3>();
@@ -28,7 +28,7 @@ export class PlayerInput extends SyncScript.props({
     const input = this.game.input;
 
     // 移动：按相机的朝向换到世界空间
-    const move = thumbAny(input, 'leftThumb', this.deadZone);
+    const move = input.thumbAny('leftThumb', this.deadZone);
     if (this.keysLeft.some((key) => input.isKeyDown(key))) move[0] -= 1;
     if (this.keysRight.some((key) => input.isKeyDown(key))) move[0] += 1;
     if (this.keysUp.some((key) => input.isKeyDown(key))) move[1] += 1;
@@ -44,7 +44,7 @@ export class PlayerInput extends SyncScript.props({
     MoveDirectionEventKey.broadcast(world);
 
     // 镜头：右摇杆（乘这一帧的时间），锁定鼠标后加上鼠标的移动量；点画布锁定，Esc 解锁
-    const camera = thumbAny(input, 'rightThumb', this.deadZone);
+    const camera = input.thumbAny('rightThumb', this.deadZone);
     const cameraLength = Math.hypot(camera[0], camera[1]);
     // 摇杆只取方向，转动速度按这一帧的时间算（鼠标的移动量本身就和时间有关）
     const stick = cameraLength < this.deadZone ? 0 : time.elapsed / cameraLength;
@@ -76,15 +76,3 @@ export class PlayerInput extends SyncScript.props({
   }
 }
 
-/** TPP 的 GetLeftThumbAny / GetRightThumbAny：超过死区的摇杆取平均。 */
-function thumbAny(input: InputManager, thumb: 'leftThumb' | 'rightThumb', deadZone: number): [number, number] {
-  let count = 0, x = 0, y = 0;
-  for (const pad of input.gamePads) {
-    const [px, py] = pad[thumb];
-    if (Math.hypot(px, py) < deadZone) continue;
-    count++;
-    x += px;
-    y += py;
-  }
-  return count > 1 ? [x / count, y / count] : [x, y];
-}

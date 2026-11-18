@@ -26,6 +26,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `set <实体> <组件.字段> <JSON>` | 改组件字段或脚本属性，例如 `set PlayerCharacter Character.speed 20` |
 | `pause`、`resume`、`step [n]`、`time --scale 0.5 --fixed 0.016` | 暂停（只画不更新）、单步、时间倍率、固定步长（复现用） |
 | `key KeyW --hold 1000`、`mouse move 100 0`、`mouse left` | 模拟输入（合成 DOM 事件，走 InputManager 的正常路径；拿不到指针锁定） |
+| `mouse left --trusted` | 用 DevTools 协议在画布中央真实地按一下（stride open 启动的 Chrome）：算用户操作，页面能锁定指针；锁定后 `mouse move` 的移动量照常进 `mouseDelta` |
 | `shot out.png [--diff ref.png]` | 截下一帧的后备缓冲（不含页面上的文字）；和参考图逐像素比较，写放大 16 倍的差异图 |
 | `perf [--seconds 3]` | 帧时间分布、每个系统和阶段的 CPU 时间、每个渲染通道的 GPU 时间、渲染统计 |
 | `raycast <x,y,z> <dx,dy,dz>` | 物理射线 |

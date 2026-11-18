@@ -140,6 +140,24 @@ describe('Vector3、Quaternion', () => {
     }
   });
 
+  test('Quaternion.setYawPitchRoll 先 roll（Z）再 pitch（X）再 yaw（Y），同 Stride 的 RotationYawPitchRoll', () => {
+    const [yaw, pitch, roll] = [0.7, -0.4, 0.25];
+    const q = new Quaternion().setYawPitchRoll(yaw, pitch, roll);
+    const expected = new Quaternion().setAxisAngle({ x: 0, y: 1, z: 0 }, yaw)
+      .multiply(new Quaternion().setAxisAngle({ x: 1, y: 0, z: 0 }, pitch))
+      .multiply(new Quaternion().setAxisAngle({ x: 0, y: 0, z: 1 }, roll));
+    for (const key of ['x', 'y', 'z', 'w'] as const) expect(q[key]).toBeCloseTo(expected[key], 6);
+  });
+
+  test('Quaternion.betweenDirections 把 source 转到 target；方向相反时转 180°', () => {
+    for (const [source, target] of [[{ x: 0, y: 1, z: 0 }, { x: 0.3, y: 0.2, z: -2 }], [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }], [{ x: 0, y: 2, z: 0 }, { x: 0, y: 1, z: 0 }]] as const) {
+      const q = Quaternion.betweenDirections(source, target);
+      expect(Math.hypot(q.x, q.y, q.z, q.w)).toBeCloseTo(1, 6);
+      const rotated = new Vector3().copy(source).normalize().rotate(q);
+      expect(rotated.subtract(new Vector3().copy(target).normalize()).length()).toBeLessThan(1e-6);
+    }
+  });
+
   test('Quaternion.slerp 走短的一边：0° 到 90° 的一半是 45°；目标取反（同一个旋转）结果一样', () => {
     const y = { x: 0, y: 1, z: 0 };
     const to = new Quaternion().setAxisAngle(y, Math.PI / 2);

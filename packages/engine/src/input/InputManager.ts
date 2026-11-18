@@ -195,6 +195,26 @@ export class InputManager {
     return this.gamePads.some((pad) => (pad.buttons & button) === button);
   }
 
+  /** 超过死区的摇杆取平均（Stride 模板的 InputManagerExtensions.GetLeftThumbAny、GetRightThumbAny）。 */
+  thumbAny(thumb: 'leftThumb' | 'rightThumb', deadZone: number): [number, number] {
+    let count = 0, x = 0, y = 0;
+    for (const pad of this.gamePads) {
+      const [px, py] = pad[thumb];
+      if (Math.hypot(px, py) < deadZone) continue;
+      count++;
+      x += px;
+      y += py;
+    }
+    return count > 1 ? [x / count, y / count] : [x, y];
+  }
+
+  /** 超过死区的扳机取平均（Stride 模板的 InputManagerExtensions.GetLeftTriggerAny、GetRightTriggerAny）。 */
+  triggerAny(trigger: 'leftTrigger' | 'rightTrigger', deadZone: number): number {
+    const pressed = this.gamePads.map((pad) => pad[trigger]).filter((value) => value >= deadZone);
+    const total = pressed.reduce((sum, value) => sum + value, 0);
+    return pressed.length > 1 ? total / pressed.length : total;
+  }
+
   destroy(): void {
     this.#abort.abort();
     this.unlockMousePosition();

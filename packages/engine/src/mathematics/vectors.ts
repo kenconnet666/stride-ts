@@ -146,6 +146,14 @@ export class Quaternion implements QuatLike {
     return this.set(axis.x * s, axis.y * s, axis.z * s, Math.cos(half));
   }
 
+  /** 先绕 Z 转 roll、再绕 X 转 pitch、再绕 Y 转 yaw（弧度，Stride 的 Quaternion.RotationYawPitchRoll）。 */
+  setYawPitchRoll(yaw: number, pitch: number, roll: number): this {
+    const sy = Math.sin(yaw / 2), cy = Math.cos(yaw / 2);
+    const sp = Math.sin(pitch / 2), cp = Math.cos(pitch / 2);
+    const sr = Math.sin(roll / 2), cr = Math.cos(roll / 2);
+    return this.set(cy * sp * cr + sy * cp * sr, sy * cp * cr - cy * sp * sr, cy * cp * sr - sy * sp * cr, cy * cp * cr + sy * sp * sr);
+  }
+
   /** this = this * q：先按 q 旋转，再按 this 旋转。 */
   multiply(q: Readonly<QuatLike>): this {
     const { x, y, z, w } = this;
@@ -155,6 +163,19 @@ export class Quaternion implements QuatLike {
       w * q.z + x * q.y - y * q.x + z * q.w,
       w * q.w - x * q.x - y * q.y - z * q.z,
     );
+  }
+
+  /** 把 source 方向转到 target 方向的最短旋转（Stride 的 Quaternion.BetweenDirections）；两者相反时绕任意一根垂直的轴转 180°。 */
+  static betweenDirections(source: Readonly<Vec3Like>, target: Readonly<Vec3Like>): Quaternion {
+    const s = new Vector3().copy(source);
+    const norms = Math.sqrt(s.dot(s) * (target.x * target.x + target.y * target.y + target.z * target.z));
+    const real = norms + s.dot(target);
+    if (real < 1e-6 * norms) {
+      const q = Math.abs(s.x) > Math.abs(s.z) ? new Quaternion(-s.y, s.x, 0, 0) : new Quaternion(0, -s.z, s.y, 0);
+      return q.normalize();
+    }
+    const axis = s.cross(target);
+    return new Quaternion(axis.x, axis.y, axis.z, real).normalize();
   }
 
   /**

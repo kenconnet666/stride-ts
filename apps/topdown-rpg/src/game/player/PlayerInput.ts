@@ -1,7 +1,7 @@
 // TopDownRPG 的 PlayerInput：鼠标指着箱子时把高亮实体换成箱子的模型（高亮材质）摆在箱子上；按下时打射线，点到地面或箱子就
 // 广播 moveDestinationEvent（按着拖动时沿地面一直更新目的地），点到地面时放点击特效。
 // 和 Stride 不同：Stride 的高亮把箱子模型的每个材质槽都换成高亮材质；我们的模型一个网格一个实体，箱子只有一个网格，换它的材质。
-import { EventKey, Matrix, Model, prop, SyncScript, Transform, type Entity } from '@stride-ts/engine';
+import { EventKey, Matrix, Model, prop, Quaternion, SyncScript, Transform, type Entity } from '@stride-ts/engine';
 import type { ClickResult } from '../core/ClickResult';
 import { screenPositionToWorldPositionRaycast, spawnPrefabInstance } from '../core/Utils';
 
@@ -36,13 +36,8 @@ export class PlayerInput extends SyncScript.props({
       MoveDestinationEventKey.broadcast(click);
       if (this.clickEffect && click.type === 'ground') {
         // 特效的 +Y 转到地面的法线上
-        const up = click.normal;
-        const axis = { x: up.z, y: 0, z: -up.x };
-        const angle = Math.acos(Math.max(-1, Math.min(1, up.y)));
-        const length = Math.hypot(axis.x, axis.z);
-        const s = Math.sin(angle / 2) / (length || 1);
-        const rotation = length > 1e-6 ? [axis.x * s, 0, axis.z * s, Math.cos(angle / 2)] : [0, 0, 0, 1];
-        spawnPrefabInstance(this, this.clickEffect, undefined, 1.2, Matrix.compose(Matrix.identity(), [click.worldPosition.x, click.worldPosition.y, click.worldPosition.z], rotation, [1, 1, 1]));
+        const { x, y, z, w } = Quaternion.betweenDirections({ x: 0, y: 1, z: 0 }, click.normal);
+        spawnPrefabInstance(this, this.clickEffect, undefined, 1.2, Matrix.compose(Matrix.identity(), [click.worldPosition.x, click.worldPosition.y, click.worldPosition.z], [x, y, z, w], [1, 1, 1]));
       }
     }
   }

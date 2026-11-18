@@ -314,7 +314,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    5. ~~和桌面 Stride 比对~~（2026-11-19，`tools/stride-capture/topdown-rpg`，两边都不挂脚本）：平均每通道差 2.45/255，差超过 8 的像素 0.13%，差在格子贴图的颜色上（Stride 压成 BC 格式，我们用原样的 PNG）。
    - P2 补：粒子特效（点击、尘土、拿金币）、音乐和音效。遗留：RecastNavigationComponent 的排队寻路和直接移动；场景的父子层级（偏移不累加）。
 8. **FirstPersonShooter**（`apps/first-person-shooter`，端口 5196），P1 的最后一个游戏；做完后 P1 收尾（整理、文档），进入 P2。第一人称：WASD 走、鼠标转视角（点画面锁定鼠标，Esc 解锁）、左键开枪（射线打到动态刚体给冲量）、9 发打完或按 R/E 换弹，枪口火焰、弹孔、受击拖尾是 VFXPackage 的粒子预制体（P2，导入时警告跳过，生成照常）。需要的能力引擎大都有了（射线、冲量、鼠标锁定、列表和对象属性、精灵表、ModelNodeLink、自己搭混合栈）。分步：
-   1. 骨架：导入 MainScene 和 Packs（PrototypingBlocks、mannequinModel、SamplesAssetPackage、VFXPackage）、Gun 模型、Bullets 精灵表、准星贴图；场景能看：枪挂在手臂模型的 MachinegunBone 上，准星（IgnoreDepth 的精灵）在画面中央，子弹数精灵在枪上。
-   2. 玩法脚本：PlayerInput（键盘、鼠标锁定、手柄）、PlayerController、FpsCamera、WeaponScript（射线、冲量、冷却、换弹、子弹数精灵的帧）、AnimationController（待机、走、开枪、换弹）、EffectController 和 TriggerScript（TriggerGroup 列表属性、生成后定时移除）。冒烟脚本走完移动、转视角、开枪推动箱子、换弹。
+   1. ~~骨架~~（2026-11-19）：导入 MainScene 和 Packs（PrototypingBlocks、mannequinModel、SamplesAssetPackage、VFXPackage）、Gun 模型、Bullets 精灵表、准星贴图；场景能看：枪挂在手臂模型的 MachinegunBone 上，准星（IgnoreDepth 的精灵）在画面中央，子弹数精灵在枪上。
+   2. ~~玩法脚本~~（2026-11-19）：PlayerInput（键盘、鼠标锁定、手柄）、PlayerController、FpsCamera、WeaponScript（射线、冲量、冷却、换弹、子弹数精灵的帧）、AnimationController（待机、走、开枪、换弹）、EffectController 和 TriggerScript（TriggerGroup 是嵌套对象属性，生成的特效预制体定时移除）。顺带补上：`InputManager.thumbAny`、`triggerAny`（Stride 模板的 InputManagerExtensions，TPP 也改用）、`Quaternion.setYawPitchRoll`、`betweenDirections`（TopDownRPG 也改用）；调试 CLI 的 `mouse left --trusted`（DevTools 协议的真实点击，页面能锁定指针）。冒烟脚本 `pnpm --filter @stride-ts/first-person-shooter smoke` 走完锁定鼠标、第一枪换弹、转视角、走动、开枪推箱子、特效生成和移除、换弹动画、Esc 解锁。
    3. 和桌面 Stride 比对（`tools/stride-capture/first-person-shooter`，两边都不挂脚本）。
 

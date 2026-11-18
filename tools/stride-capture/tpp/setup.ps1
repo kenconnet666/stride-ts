@@ -1,7 +1,7 @@
 # 从 Stride 源码搭出截参考图用的桌面 Third Person Platformer（官方 nuget 包），再编译。
 # 和源码里模板的差别：Stride 包用 4.4.2、目标框架 net10.0（源码 master 的模板是 4.4.0 / net11.0，4.4.0 读不了它的 GraphicsCompositor），
 # GraphicsCompositor 取 releases/4.4.2 标签里的版本，nuget 源只用 nuget.org（不用本机编的开发版包），入口换成本目录的 ThirdPersonPlatformerApp.cs。
-# 用法：pwsh tools/stride-capture/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>]
+# 用法：pwsh tools/stride-capture/tpp/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>]
 param(
     [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
     [string]$Out = 'C:\code\stride-tpp'

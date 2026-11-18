@@ -31,11 +31,13 @@
  */
 import type { FrustumCuller } from '@stride-ts/native';
 import type { AnimationSystem } from '../animation/AnimationSystem';
+import type { EntityId } from '../data/prop';
 import type { ColumnsOf } from '../engine/component';
+import type { EntityManager } from '../engine/EntityManager';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { BRDF } from './brdf';
-import { Model, Skinned } from './components';
+import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
 import { Material, type MaterialTexture } from './Material';
@@ -119,6 +121,10 @@ struct Material {
 @group(1) @binding(3) var normalTexture: texture_2d<f32>;
 @group(1) @binding(4) var emissiveTexture: texture_2d<f32>;
 @group(1) @binding(5) var occlusionTexture: texture_2d<f32>;
+// 每张贴图各自的采样器（Stride 的 ComputeTextureBase.Filtering、AddressModeU/V）
+@group(1) @binding(6) var normalSampler: sampler;
+@group(1) @binding(7) var emissiveSampler: sampler;
+@group(1) @binding(8) var occlusionSampler: sampler;
 
 // 网格的反量化：位置 = offset + 输入 · scale，UV = uvTransform.zw + 输入 · uvTransform.xy；flags 的第 1 位：法线是八面体编码。
 // 不量化的网格 offset 0、scale 1。unorm16 的位置读进来是 vec4f，snorm16x2 的法线是 (x, y, 0)，都按 vec3f 用。
@@ -197,7 +203,7 @@ fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f) -> mat4x4f {
  */
 fn surfaceNormal(in: Varyings) -> vec3f {
   let n = normalize(in.normal);
-  var m = textureSample(normalTexture, baseColorSampler, in.uv * material.normalUvTransform.xy + material.normalUvTransform.zw).xyz;
+  var m = textureSample(normalTexture, normalSampler, in.uv * material.normalUvTransform.xy + material.normalUvTransform.zw).xyz;
   let flags = material.normalFlags;
   m.y = select(m.y, 1.0 - m.y, (flags & 4u) != 0u);
   m = select(m, 2.0 * m - 1.0, (flags & 2u) != 0u);
@@ -373,7 +379,7 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
   let f0 = select(material.specularColor.rgb, mix(vec3f(0.02), albedo, metalness), isMetalness);
   let specular = select(vec3f(0.0), f0, hasSpecular) * material.surface.w * visible;
   // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, occlusionDirect)
-  let ao = dot(textureSample(occlusionTexture, baseColorSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
+  let ao = dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
   let directOcclusion = mix(1.0, ao, material.occlusionDirect);
   let roughness = material.surface.y;
   let alphaR = max(roughness * roughness, 0.001);
@@ -414,7 +420,7 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
   let skySpecularColor = textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
   color += diffuse * skyDiffuse + environmentSpecular * skySpecularColor;
 
-  color += textureSample(emissiveTexture, baseColorSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb * material.emissive.rgb;
+  color += textureSample(emissiveTexture, emissiveSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb * material.emissive.rgb;
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用
   return vec4f(color, saturate(base.a * material.blend.a));
 }`;
@@ -512,8 +518,31 @@ export class MeshRenderFeature extends RootRenderFeature {
 
   readonly #extractSystem = system('MeshRenderFeature.extract', {
     with: { model: Model, transform: Transform },
-    without: [Skinned],
+    without: [Skinned, Instancing],
     update: ({ model, transform, count }) => this.#extract(model, transform.slot, count, false),
+  });
+
+  /** 实例：画主实体的模型（每帧按主实体查一次）。 */
+  readonly #masters = new Map<EntityId, { mesh: number; material: number; isShadowCaster: boolean } | null>();
+  #entityManager: EntityManager | undefined;
+  readonly #extractInstancesSystem = system('MeshRenderFeature.extractInstances', {
+    with: { instance: Instance, transform: Transform },
+    update: ({ instance, transform, count }) => {
+      const masters = this.#masters, entities = this.#entityManager!;
+      for (let i = 0; i < count; i++) {
+        const id = instance.master[i]! as EntityId;
+        let master = masters.get(id);
+        if (master === undefined) {
+          const model = id >= 0 && entities.isAlive(id) ? entities.entity(id).get(Model) : undefined;
+          master = model ? { mesh: model.mesh, material: model.material, isShadowCaster: model.isShadowCaster } : null;
+          masters.set(id, master);
+        }
+        if (!master) continue;
+        const batch = this.#batchFor(master.mesh, master.material, master.isShadowCaster, false);
+        if (batch.count === batch.slots.length) batch.slots = grow(batch.slots, batch.count * 2);
+        batch.slots[batch.count++] = transform.slot[i]!;
+      }
+    },
   });
 
   readonly #extractSkinnedSystem = system('MeshRenderFeature.extractSkinned', {
@@ -539,6 +568,9 @@ export class MeshRenderFeature extends RootRenderFeature {
     for (const batch of this.batches) batch.count = 0;
     context.game.entities.run(this.#extractSystem, context.time);
     context.game.entities.run(this.#extractSkinnedSystem, context.time);
+    this.#masters.clear();
+    this.#entityManager = context.game.entities;
+    context.game.entities.run(this.#extractInstancesSystem, context.time);
     let first = 0;
     for (const batch of this.batches) {
       batch.first = first;
@@ -776,6 +808,7 @@ class Gpu {
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        ...[6, 7, 8].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, sampler: {} })),
       ],
     });
     this.#meshLayout = device.createBindGroupLayout({
@@ -1000,16 +1033,20 @@ class Gpu {
       floats[43] = occlusion.directLighting;
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
+      const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});
       gpu.bindGroup = this.device.createBindGroup({
         label: `${material.name} material`,
         layout: this.#materialLayout,
         entries: [
           { binding: 0, resource: { buffer: gpu.buffer } },
           { binding: 1, resource: view(slot) },
-          { binding: 2, resource: this.#resources.linearRepeat },
+          { binding: 2, resource: sampler(slot) },
           { binding: 3, resource: view(normalMap) },
           { binding: 4, resource: view(emissiveTexture) },
           { binding: 5, resource: view(occlusion.texture) },
+          { binding: 6, resource: sampler(normalMap) },
+          { binding: 7, resource: sampler(emissiveTexture) },
+          { binding: 8, resource: sampler(occlusion.texture) },
         ],
       });
       gpu.version = material.version;

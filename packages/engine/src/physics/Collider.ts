@@ -25,6 +25,8 @@ export type ColliderShape = (
    * （Stride 的 HullAsset 的 Scaling、LocalRotation、LocalOffset），默认不变。
    */
   | { readonly type: 'convexHull'; readonly meshes: readonly Mesh[]; readonly hull?: HullTransform }
+  /** 没有形状、不碰撞（Stride 的 EmptyCollider，给约束当锚点用）；只能单独用。 */
+  | { readonly type: 'empty' }
 ) & {
   readonly position?: Vec3;
   readonly rotation?: readonly [number, number, number, number];

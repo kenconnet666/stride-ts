@@ -59,6 +59,10 @@ const MAX_FRAME_TIME = 0.25;
 const ALL_LAYERS = 0xffffffff;
 
 export class Simulation {
+  /** 仿真时间相对游戏时间的倍率（Stride 的 BepuSimulation.TimeScale）。 */
+  timeScale = 1;
+  /** 关掉时不步进（Stride 的 BepuSimulation.Enabled）：物体停在原地，新加的物体照常建好。 */
+  enabled = true;
   readonly settings: SimulationSettings = { gravity: [0, -9.8, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 1 / 60, maxStepsPerFrame: 3 };
   readonly #native: StrideNative;
   readonly #transforms: TransformStore;
@@ -208,10 +212,10 @@ export class Simulation {
   update(time: GameTime): void {
     this.#createPending(time);
     const entities = this.#entities;
-    if (!this.#world) return;
+    if (!this.#world || !this.enabled) return;
     entities.run(this.#moveCharacters, time);
     const { fixedTimeStep: step, maxStepsPerFrame } = this.settings;
-    this.#remaining += Math.min(time.elapsed, MAX_FRAME_TIME);
+    this.#remaining += Math.min(time.elapsed, MAX_FRAME_TIME) * this.timeScale;
     for (let steps = 0; this.#remaining >= step && steps < maxStepsPerFrame; steps++) {
       this.#world.step(step);
       this.#remaining -= step;

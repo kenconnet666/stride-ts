@@ -2,6 +2,12 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 BepuSample：接触的软度不映射，调试文字先不画
+
+- **接触的软度**：Bepu 按物体设接触的弹簧（SpringFrequency、SpringDampingRatio）和最大恢复速度（MaximumRecoveryVelocity），Material Properties 场景靠它们演示"软"和"陷进去"。Jolt 的接触是刚性的，全局用 Baumgarte 恢复，没有按物体的接触软度；只映射摩擦。和 Stride 不同：这几项的效果看不到。别的做法：在接触回调里改 Jolt 的接触约束（ContactSettings 没有软度参数），或者自己写软接触——代价大、收益只在这一个演示上。
+- **调试文字**：BepuSample 的脚本大量用 Stride 的 DebugText.Print 当界面。文字渲染（字体、矢量）是 P2 的大件，P1 先做 `game.debugText`（记下每帧打印的文字，`stride call debug-text` 读），P2 做文字渲染时画出来。
+- **模型实例化**：Stride 的 InstancingComponent 把实例的变换收集起来一次实例化绘制；我们的渲染器本来就把同网格同材质的物体合批，所以 `Instance` 只是"借用主实体的模型"，主实体自己不画。多网格的模型（拆成子实体）只借用主实体那一个网格。
+
 ## 2026-11-19 PhysicsSample 的材质和验收
 
 - **材质分两批**：PhysicsSample 的材质用到透明（混合）、遮蔽贴图、镜面工作流（镜面颜色乘强度）、贴图乘颜色的自发光（`ComputeBinaryColor`），都能化成固定着色器里"一张贴图乘一个常量"的形状，P1 做了（没有贴图的槽绑白图，不加变体）。`LogoD` 有材质层（`MaskC` 按贴图的 alpha 混进来），材质层要按层生成着色器，按 D3 由 P2 的着色器系统做；在那之前导入器警告并只用底层材质，Logo 方块缺贴花图案。别的做法：在固定管线里为两层的材质加特例——P2 还要整个换掉，不划算。

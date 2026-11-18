@@ -3,6 +3,7 @@ import { AnimationSystem } from '../animation/AnimationSystem';
 import { ContentManager, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
+import { DebugText } from '../debug/DebugText';
 import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
@@ -90,6 +91,8 @@ export class Game {
   /** 资源管线产出的模型、材质、场景（默认从页面旁边的 content/ 加载，可以换成别的根目录）。 */
   content = new ContentManager();
   readonly entities: EntityManager = new EntityManager(this);
+  /** 脚本每帧打印的调试文字（Stride 的 DebugTextSystem）。 */
+  readonly debugText = new DebugText();
   /** 调试命令、计数器、事件和日志转发（debug/Debug.ts）。 */
   readonly debug = new Debug(() => (this.status === 'starting' ? undefined : this.frames));
   /** 暂停时不跑 update（脚本、系统、物理、游戏时间都停住），画面照常画；step() 单步。 */
@@ -258,14 +261,22 @@ export class Game {
       // 先换上新场景：旧场景的脚本在 cancel 里出错时，根场景也已经是新的
       this.rootScene = next;
       this.sceneFrame = this.frames;
-      // 父实体在前：销毁父实体时子实体已经跟着销毁了
-      for (const entity of previous?.entities.values() ?? []) {
-        if (this.entities.isAlive(entity.id)) entity.destroy();
-      }
+      if (previous) this.unloadScene(previous);
       return next;
     });
     this.rootSceneChange = change;
     return change;
+  }
+
+  /**
+   * 卸载 loadScene 加载的场景（Stride 里从 Scene.Children 去掉子场景再 Content.Unload）：销毁场景文件里的实体，子实体、
+   * 脚本、物体跟着去掉；已经销毁的跳过。脚本运行中另建的实体不动（和 Stride 不同）。
+   */
+  unloadScene(scene: SceneInstance): void {
+    // 父实体在前：销毁父实体时子实体已经跟着销毁了
+    for (const entity of scene.entities.values()) {
+      if (this.entities.isAlive(entity.id)) entity.destroy();
+    }
   }
 
   /** 运行脚本、系统和物理仿真（在物理前和物理后两组系统之间）；重写时要调用 super.update(time)。 */
@@ -290,6 +301,7 @@ export class Game {
         const real = Math.min(interval / 1000, MAX_ELAPSED) * this.timeScale;
         this.updateTime.advance(this.fixedTimeStep ?? (this.paused ? STEP_SECONDS : real));
         this.input.update();
+        this.debugText.beginFrame();
         this.update(this.updateTime);
         this.transforms.update();
       }

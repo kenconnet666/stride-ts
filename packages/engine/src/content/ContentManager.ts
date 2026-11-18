@@ -16,7 +16,8 @@ import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, Static } from '../physics/components';
-import { Background, Camera, Light, Model, Sprite } from '../rendering/components';
+import { Background, Camera, Instance, Instancing, Light, Model, Sprite } from '../rendering/components';
+import type { EntityId } from '../data/prop';
 import { Material } from '../rendering/Material';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
@@ -200,7 +201,8 @@ export class ContentManager {
     return this.#once(path + EXTENSIONS.material, async (url) => {
       const file = this.#json<MaterialFile>(await this.#read(url));
       // 颜色贴图按 sRGB 解；法线、遮蔽这些数据贴图是线性的
-      const slot = async ({ scale, offset, ...ref }: TextureSlot, srgb: boolean) => ({ texture: await this.#loadTextureRef(ref, srgb), scale, offset });
+      const slot = async ({ scale, offset, filter, addressU, addressV, ...ref }: TextureSlot, srgb: boolean) =>
+        ({ texture: await this.#loadTextureRef(ref, srgb), scale, offset, sampler: { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } });
       const { normalMap: normal, ambientOcclusion: occlusion } = file;
       const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture] = await Promise.all([
         file.baseColorTexture && slot(file.baseColorTexture, true),
@@ -298,6 +300,14 @@ export class ContentManager {
       created.set(file.id, entity);
       this.#addComponents(entity, file, assets, entities);
     }
+    // 实例引用的主实体可能排在后面：实体都建好以后再挂
+    for (const file of scene.entities) {
+      const instance = file.components.instance;
+      if (!instance) continue;
+      const master = instance.master === null ? undefined : created.get(instance.master);
+      if (instance.master !== null && !master) throw new Error(`${url.href}: entity '${file.name}' is an instance of ${instance.master}, which is not in the scene`);
+      created.get(file.id)!.add(Instance.with({ master: master?.id ?? (-1 as EntityId) }));
+    }
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
     const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: models, material: materials, animation: animations };
     const context = {
@@ -315,7 +325,7 @@ export class ContentManager {
   }
 
   #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
-    const { model, camera, light, background, animation, sprite, static: collidable, character, body } = file.components;
+    const { model, camera, light, background, animation, sprite, static: collidable, character, body, instancing } = file.components;
     const { materials } = assets;
     const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
     if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction, trigger: collidable.trigger ?? false }));
@@ -328,6 +338,7 @@ export class ContentManager {
       entity.add(Body.with({ collider: collider(shapes), ...settings }));
     }
     if (camera) entity.add(Camera.with(camera));
+    if (instancing) entity.add(Instancing);
     if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
     else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
     if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));

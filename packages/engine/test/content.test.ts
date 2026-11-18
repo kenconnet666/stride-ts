@@ -16,6 +16,8 @@ import {
   plainMesh,
   Game,
   ktx2Decoder,
+  Instance,
+  Instancing,
   Light,
   Material,
   Mesh,
@@ -199,6 +201,20 @@ describe('ContentManager', () => {
       expect.stringContaining('MyGame.Ai.Follower.notInTs is not a prop of the TS script'),
       expect.stringContaining('no TS script named Missing for MyGame.Missing'),
     ]);
+  });
+
+  test('模型实例化：实例引用的主实体排在后面也能挂上，主实体带 Instancing；没有主实体的实例是 -1', async () => {
+    const entity = (id: string, components: SceneFile['entities'][number]['components']) => ({ id, name: id, parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components }) as const;
+    const scene: SceneFile = { name: 'Instances', entities: [entity('a', { instance: { master: 'm' } }), entity('b', { instance: { master: null } }), entity('m', { instancing: {} })] };
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(8);
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => json(scene) });
+    const loaded = await content.loadScene('scenes/Instances', game.entities);
+    const master = loaded.entities.get('m')!;
+    expect(master.has(Instancing)).toBe(true);
+    expect(loaded.entities.get('a')!.require(Instance).master).toBe(master.id);
+    expect(loaded.entities.get('b')!.require(Instance).master).toBe(-1);
   });
 
   test('换根场景：新场景加载好后销毁旧根场景的实体（连同子实体），另建的实体不动；连着换按顺序来', async () => {

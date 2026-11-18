@@ -97,13 +97,23 @@ describe('Simulation', () => {
   });
 });
 
-describe('Vector3.rotate', () => {
+describe('Vector3、Quaternion', () => {
   test('绕 Y 转 90° 把 +Z 转到 +X，同 Stride 的 Quaternion.Rotate', () => {
     const q = new Quaternion().setAxisAngle({ x: 0, y: 1, z: 0 }, Math.PI / 2);
     const v = new Vector3(0, 0, 1).rotate(q);
     expect(v.x).toBeCloseTo(1);
     expect(v.y).toBeCloseTo(0);
     expect(v.z).toBeCloseTo(0);
+  });
+
+  test('Quaternion.slerp 走短的一边：0° 到 90° 的一半是 45°；目标取反（同一个旋转）结果一样', () => {
+    const y = { x: 0, y: 1, z: 0 };
+    const to = new Quaternion().setAxisAngle(y, Math.PI / 2);
+    const half = new Quaternion().slerp(to, 0.5);
+    const expected = new Quaternion().setAxisAngle(y, Math.PI / 4);
+    expect([half.x, half.y, half.z, half.w].map((c, i) => c - [expected.x, expected.y, expected.z, expected.w][i]!).every((d) => Math.abs(d) < 1e-6)).toBe(true);
+    const flipped = new Quaternion().slerp({ x: -to.x, y: -to.y, z: -to.z, w: -to.w }, 0.5);
+    expect(Math.abs(flipped.y - half.y) < 1e-6 && Math.abs(flipped.w - half.w) < 1e-6).toBe(true);
   });
 });
 
@@ -184,6 +194,25 @@ describe('接触事件和移除（Stride 的 IContactHandler、Trigger）', () =
     run(game, 10);
     // 射线从触发器下面往下打（射线也打得到触发器，同 Bepu）：箱子没了，打到地面
     expect(game.simulation.rayCast([0, 1.5, 0], [0, -1, 0], 10)?.entity).toBe(ground.id);
+  });
+});
+
+describe('仿真的时间倍率和开关（Stride 的 BepuSimulation.TimeScale、Enabled）', () => {
+  test('timeScale 是 0.5 时同样的帧数落一半的时间；关掉后不动，新物体照常建好', () => {
+    const fall = (setup: (game: Game & { simulation: Simulation }) => void) => {
+      const game = createGame();
+      setup(game);
+      const crate = game.entities.create({ components: [Transform.with({ position: [0, 100, 0] }), Body.with({ collider: new Collider([{ type: 'sphere', radius: 0.5 }]).id })] });
+      run(game, 30);
+      return { game, crate, drop: 100 - position(crate).y };
+    };
+    const normal = fall(() => {}).drop;
+    const slow = fall((game) => (game.simulation.timeScale = 0.5)).drop;
+    // 自由落体的距离和时间的平方成正比
+    expect(slow / normal).toBeCloseTo(0.25, 1);
+    const { game, crate, drop } = fall((game) => (game.simulation.enabled = false));
+    expect(drop).toBe(0);
+    expect(() => game.simulation.body(crate)).not.toThrow();
   });
 });
 

@@ -34,6 +34,7 @@ import {
   type SkyboxFile,
   TEXTURE_EXTENSIONS,
   type TextureEncoding,
+  type TextureSampler,
   type TextureSlot,
   type Vec3Tuple,
 } from '@stride-ts/engine/content-format';
@@ -232,10 +233,10 @@ export class StrideImporter {
     }
     if (Array.isArray(value)) return Promise.all(value.map((item) => this.#scriptValue(item, where)));
     const entries = Object.entries(value).filter(([key]) => key !== '$type');
-    // Stride 把列表存成以哈希为键的映射；Vector3、Quaternion 存成 X、Y、Z（W）
+    // Stride 把列表存成以哈希为键的映射；Vector2、Vector3、Quaternion 存成 X、Y（Z、W）
     if (entries.length > 0 && entries.every(([key]) => /^[0-9a-f]{32}$/.test(key))) return Promise.all(entries.map(([, item]) => this.#scriptValue(item, where)));
     const keys = entries.map(([key]) => key).join(',');
-    if (keys === 'X,Y,Z' || keys === 'X,Y,Z,W') return entries.map(([, item]) => (typeof item === 'number' ? item : 0));
+    if (keys === 'X,Y' || keys === 'X,Y,Z' || keys === 'X,Y,Z,W') return entries.map(([, item]) => (typeof item === 'number' ? item : 0));
     const object: Record<string, SceneScriptValue> = {};
     for (const [key, item] of entries) object[lowerFirst(key)] = await this.#scriptValue(item, where);
     return object;
@@ -266,6 +267,18 @@ export class StrideImporter {
       case 'CameraComponent':
         components.camera = cameraOf(component, this.#cameraSlots);
         return true;
+      case 'InstancingComponent':
+        if (asObject(component['Type'])?.$type !== 'InstancingEntityTransform') this.#warnings.push(`${where}: instancing ${String(asObject(component['Type'])?.$type)} is not supported; using InstancingEntityTransform`);
+        components.instancing = {};
+        return true;
+      case 'InstanceComponent': {
+        // Master 引用的是 InstancingComponent 的 Id，换成它所在的实体
+        const master = parseObjectReference(component['Master']);
+        const entity = master === undefined ? undefined : this.#owners.get(master);
+        if (master !== undefined && entity === undefined) this.#warnings.push(`${where}: instancing master ${master} is not in this scene; using null`);
+        components.instance = { master: entity ?? null };
+        return true;
+      }
       case 'AnimationComponent':
         components.animation = await this.#animationComponent(component, where);
         return true;
@@ -329,7 +342,9 @@ export class StrideImporter {
       if (!reference) throw new Error(`${where}: MeshCollider has no model`);
       const model = await this.#model(this.#project.get(reference.id, where));
       shapes.push({ type: 'mesh', model, position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: asNumber(collider!['Mass'], 1) });
-    } else if (type !== 'EmptyCollider') {
+    } else if (type === 'EmptyCollider') {
+      shapes.push({ type: 'empty', position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 });
+    } else {
       this.#warnings.push(`${where}: collider ${type} is not supported; skipping the physics component`);
     }
     if (shapes.length === 0) return undefined;
@@ -542,13 +557,17 @@ export class StrideImporter {
     const skeletonReference = parseAssetReference(asset.data['Skeleton']);
     const skeleton = skeletonReference ? await this.#skeleton(this.#project.get(skeletonReference.id, asset.file)) : undefined;
     const modelTransform = importMatrix(asset);
-    const scene = await this.#tools.loadScene(await readFile(sourceOf(asset)));
+    const source = sourceOf(asset);
+    // OBJ 不能从内容认出来，按扩展名告诉原生侧
+    const scene = await this.#tools.loadScene(await readFile(source), path.extname(source).toLowerCase() === '.obj' ? 'obj' : 'auto');
     try {
       const meshes: SourceMesh[] = [];
       for (let m = 0; m < scene.meshCount; m++) {
         const data = scene.mesh(m);
         const materialName = data.material === null ? undefined : scene.materials[data.material];
         let slot = materialName === undefined ? -1 : slotNames.indexOf(materialName);
+        // Blender 导出时重名的材质带 .001 这样的后缀，Stride 的模型资源里只列了不带后缀的那个
+        if (slot < 0 && materialName !== undefined) slot = slotNames.indexOf(materialName.replace(/\.\d{3}$/, ''));
         if (slot < 0 && materialName !== undefined) {
           this.#warnings.push(`${asset.file}: mesh material '${materialName}' has no slot in the model; using slot 0`);
           slot = slots.length > 0 ? 0 : -1;
@@ -660,7 +679,7 @@ export class StrideImporter {
     const material: MaterialFile = {
       name: path.basename(asset.path),
       baseColor: color,
-      ...(texture ? { baseColorTexture: textureSlot(await texture.texture, texture.scale, texture.offset) } : {}),
+      ...(texture ? { baseColorTexture: textureSlot(await texture.texture, texture.scale, texture.offset, texture.sampler) } : {}),
       ...(texture && operator !== 'multiply' ? { baseColorOperator: operator } : {}),
       ...(metalness === undefined ? {} : { metalness }),
       ...(workflow === 'MaterialSpecularMapFeature' ? { specular: this.#specularColor(specular!, asset, uvScale) } : {}),
@@ -711,11 +730,10 @@ export class StrideImporter {
       this.#warnings.push(`${asset.file}: normal map ${node.$type ?? 'value'} without a texture is not supported; using the vertex normals`);
       return {};
     }
-    this.#checkSampler(node, asset);
     const textureAsset = this.#project.get(reference.id, asset.file);
     const type = asObject(textureAsset.data['Type']);
     const scale = vec2(node['Scale'], 1);
-    const slot = textureSlot(await this.#texture(textureAsset), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(node['Offset'], 0));
+    const slot = textureSlot(await this.#texture(textureAsset), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(node['Offset'], 0), samplerOf(node));
     return {
       normalMap: {
         ...slot,
@@ -737,7 +755,7 @@ export class StrideImporter {
     const emissive: Vec3Tuple = [map.color[0] * intensity, map.color[1] * intensity, map.color[2] * intensity];
     if (map.texture && map.operator !== 'multiply') this.#warnings.push(`${asset.file}: emissive texture with operator ${map.operator} is not supported; using the color`);
     const texture = map.texture && map.operator === 'multiply' ? map.texture : undefined;
-    return { emissive, ...(texture ? { emissiveTexture: textureSlot(await texture.texture, texture.scale, texture.offset) } : {}) };
+    return { emissive, ...(texture ? { emissiveTexture: textureSlot(await texture.texture, texture.scale, texture.offset, texture.sampler) } : {}) };
   }
 
   /**
@@ -751,9 +769,8 @@ export class StrideImporter {
     const directLighting = this.#scalar(asObject(feature['DirectLightingFactor']), 0, asset);
     let ambientOcclusion: MaterialFile['ambientOcclusion'];
     if (reference) {
-      this.#checkSampler(map!, asset);
       const scale = vec2(map!['Scale'], 1);
-      const slot = textureSlot(await this.#texture(this.#project.get(reference.id, asset.file)), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(map!['Offset'], 0));
+      const slot = textureSlot(await this.#texture(this.#project.get(reference.id, asset.file)), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(map!['Offset'], 0), samplerOf(map!));
       const channel = String(map!['Channel'] ?? 'R').toLowerCase() as 'r' | 'g' | 'b' | 'a';
       ambientOcclusion = { value: 1, texture: { ...slot, channel }, directLighting };
     } else {
@@ -765,16 +782,6 @@ export class StrideImporter {
     const diffuse = lerp(this.#scalar(asObject(feature['DiffuseCavity']), 1, asset));
     const specular = lerp(this.#scalar(asObject(feature['SpecularCavity']), 1, asset));
     return { ...(ambientOcclusion ? { ambientOcclusion } : {}), ...(diffuse === 1 && specular === 1 ? {} : { cavity: { diffuse, specular } }) };
-  }
-
-  /** 材质贴图的采样器：运行时只有 Stride 的默认值（线性三线性过滤、重复寻址），别的记警告。 */
-  #checkSampler(node: StrideObject, asset: AssetEntry): void {
-    const filtering = node['Filtering'] ?? 'Linear';
-    if (filtering !== 'Linear') this.#warnings.push(`${asset.file}: texture filtering ${String(filtering)} is not supported; using Linear`);
-    for (const key of ['AddressModeU', 'AddressModeV']) {
-      const mode = node[key] ?? 'Wrap';
-      if (mode !== 'Wrap') this.#warnings.push(`${asset.file}: texture ${key} ${String(mode)} is not supported; using Wrap`);
-    }
   }
 
   /** ComputeFloat 的值；没有贴图的 ComputeTextureScalar 用它的 FallbackValue（Stride 也是这样）。 */
@@ -806,9 +813,8 @@ export class StrideImporter {
       case 'ComputeTextureColor': {
         const reference = parseAssetReference(node['Texture']);
         if (!reference) return { color: linearColor(asObject(node['FallbackValue'])?.['Value']), operator: 'multiply' };
-        this.#checkSampler(node, asset);
         const scale = vec2(node['Scale'], 1);
-        const texture = { texture: this.#texture(this.#project.get(reference.id, asset.file)), scale: [scale[0] * uvScale[0], scale[1] * uvScale[1]], offset: vec2(node['Offset'], 0) } as const;
+        const texture = { texture: this.#texture(this.#project.get(reference.id, asset.file)), scale: [scale[0] * uvScale[0], scale[1] * uvScale[1]], offset: vec2(node['Offset'], 0), sampler: samplerOf(node) } as const;
         return { color: WHITE, texture, operator: 'multiply' };
       }
       case 'ComputeBinaryColor': {
@@ -952,8 +958,23 @@ function once(cache: Map<string, Promise<string>>, asset: AssetEntry, importAsse
 }
 
 /** 材质里的贴图槽：ktx2 是默认，不写 encoding。 */
-function textureSlot({ texture, encoding, size, srgb }: ImportedTexture, scale: readonly [number, number], offset: readonly [number, number]): TextureSlot {
-  return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb, scale, offset };
+function textureSlot({ texture, encoding, size, srgb }: ImportedTexture, scale: readonly [number, number], offset: readonly [number, number], sampler: TextureSampler): TextureSlot {
+  return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb, scale, offset, ...sampler };
+}
+
+/**
+ * 贴图节点（ComputeTextureColor、ComputeTextureScalar）的采样器，只写和默认值（线性、重复）不同的。Stride 的过滤方式里带
+ * Anisotropic 的是各向异性，Point（含 Comparison、MinMagMipPoint）是最近点，其余（含混合的几种）按线性。
+ */
+function samplerOf(node: StrideObject): TextureSampler {
+  const filtering = String(node['Filtering'] ?? 'Linear');
+  const filter = /Anisotropic/.test(filtering) ? 'anisotropic' : /^(Comparison)?Point$|^(Comparison)?MinMagMipPoint$/.test(filtering) ? 'point' : undefined;
+  const address = (value: StrideValue | undefined) => {
+    const mode = String(value ?? 'Wrap');
+    return mode === 'Clamp' || mode === 'Border' ? 'clamp' : mode === 'Mirror' || mode === 'MirrorOnce' ? 'mirror' : undefined;
+  };
+  const [addressU, addressV] = [address(node['AddressModeU']), address(node['AddressModeV'])];
+  return { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } as TextureSampler;
 }
 
 /** SVG 根元素的 width、height（像素，不带单位或 px）；没有时用 viewBox 的大小；都没有时返回 undefined（运行时用图片本身的尺寸）。 */
@@ -976,7 +997,7 @@ const WHITE: Color4Tuple = [1, 1, 1, 1];
 interface ColorExpression {
   readonly color: Color4Tuple;
   /** texture 是导入中的贴图。 */
-  readonly texture?: { readonly texture: Promise<ImportedTexture>; readonly scale: readonly [number, number]; readonly offset: readonly [number, number] };
+  readonly texture?: { readonly texture: Promise<ImportedTexture>; readonly scale: readonly [number, number]; readonly offset: readonly [number, number]; readonly sampler: TextureSampler };
   readonly operator: ColorOperator;
 }
 

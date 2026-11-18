@@ -1,5 +1,6 @@
 import { describe as group, expect, it } from 'vitest';
 import { Debug, FrameTimings, describe } from '../src/debug/Debug';
+import { DebugText } from '../src/debug/DebugText';
 
 group('describe', () => {
   it('实体只写 id 和名字，类型数组变数组，循环引用和太长的部分截断', () => {
@@ -45,5 +46,18 @@ group('Debug', () => {
     expect(debug.watches()).toEqual({ ok: { x: 1 }, broken: 'error: boom' });
     debug.counter('agents', 3);
     expect(debug.counters()).toEqual({ agents: 3 });
+  });
+});
+
+group('DebugText', () => {
+  it('一帧里 print 的文字在下一帧开始时成为 lines，再下一帧清掉', () => {
+    const text = new DebugText();
+    text.print('a', [1, 2]);
+    text.print('b');
+    expect(text.lines).toEqual([]);
+    text.beginFrame();
+    expect(text.lines).toEqual([{ text: 'a', position: [1, 2] }, { text: 'b', position: [0, 0] }]);
+    text.beginFrame();
+    expect(text.lines).toEqual([]);
   });
 });

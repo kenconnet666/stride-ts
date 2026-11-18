@@ -256,7 +256,7 @@ describe('导入 Stride 场景', () => {
       '    Occlusion: !MaterialOcclusionMapFeature', '        AmbientOcclusionMap: !ComputeTextureScalar', `            Texture: ${ids.texture}:Textures/Checker`,
       '            Channel: G', '            Scale: {X: 2.0, Y: 2.0}', '        DirectLightingFactor: !ComputeFloat', '            Value: 0.5',
       '    Emissive: !MaterialEmissiveMapFeature', '        EmissiveMap: !ComputeBinaryColor', '            Operator: Multiply',
-      '            LeftChild: !ComputeTextureColor', `                Texture: ${ids.texture}:Textures/Checker`,
+      '            LeftChild: !ComputeTextureColor', `                Texture: ${ids.texture}:Textures/Checker`, '                Filtering: Point', '                AddressModeU: Mirror',
       '            RightChild: !ComputeFloat4', '                Value: {X: 5.0, Y: 9.0, Z: 50.0, W: 5.0}', '        Intensity: !ComputeFloat', '            Value: 2.0',
       '    Transparency: !MaterialTransparencyBlendFeature', '        Alpha: !ComputeFloat', '            Value: 0.25',
       '        Tint: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
@@ -265,9 +265,17 @@ describe('导入 Stride 场景', () => {
     'Assets/Glassy.sdscene': [
       '!SceneAsset', `Id: ${ids.glassScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: g1', '                Name: Holder', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg1', '                        Children: {}',
-      '                    s: !Game.Holder,Game', '                        Id: sg1', `                        Look: ${ids.glass}:Materials/Glass`,
+      '                    s: !Game.Holder,Game', '                        Id: sg1', `                        Look: ${ids.glass}:Materials/Glass`, '                        Speed: {X: 5.0, Y: 2.0}',
       // 正交相机（PhysicsSample 的 VolumeTrigger）
       '                    c: !CameraComponent', '                        Id: cg1', '                        Projection: Orthographic', '                        OrthographicSize: 21.0',
+      // 模型实例化（BepuSample）：实例引用的是 InstancingComponent 的 Id，主实体排在后面；空碰撞体的刚体
+      '        -   Entity:', '                Id: g2', '                Name: Instance', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tg2', '                        Children: {}',
+      '                    i: !InstanceComponent', '                        Id: ig2', '                        Master: ref!! ing3',
+      '                    b: !Stride.BepuPhysics.BodyComponent,Stride.BepuPhysics', '                        Id: bg2', '                        Collider: !Stride.BepuPhysics.Definitions.Colliders.EmptyCollider,Stride.BepuPhysics {}',
+      '        -   Entity:', '                Id: g3', '                Name: Master', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tg3', '                        Children: {}',
+      '                    n: !InstancingComponent', '                        Id: ing3', '                        Type: !InstancingEntityTransform {}',
     ].join('\n'),
     'Assets/Bumpy.sdscene': [
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
@@ -497,12 +505,17 @@ describe('导入 Stride 场景', () => {
       specular: [0.5, 0.5, 0.5],
       roughness: 1,
       emissive: [10, 18, 100],
-      emissiveTexture: { ...checker, scale: [1, 1] },
+      emissiveTexture: { ...checker, scale: [1, 1], filter: 'point', addressU: 'mirror' },
       ambientOcclusion: { value: 1, texture: { ...checker, scale: [2, 2], channel: 'g' }, directLighting: 0.5 },
       transparency: { type: 'blend', alpha: 0.25 },
     });
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Glassy.scene.json'), 'utf8')) as SceneFile;
     expect(scene.entities[0]!.components.camera).toEqual({ verticalFieldOfView: 45, nearClipPlane: 0.1, farClipPlane: 1000, projection: 'orthographic', orthographicSize: 21 });
+    // Vector2 的脚本属性是数组
+    expect(scene.entities[0]!.components.scripts![0]!.props['speed']).toEqual([5, 2]);
+    expect(scene.entities[1]!.components.instance).toEqual({ master: 'g3' });
+    expect(scene.entities[1]!.components.body!.shapes).toEqual([{ type: 'empty', position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }]);
+    expect(scene.entities[2]!.components.instancing).toEqual({});
   });
 
   test('覆盖目录里的 SVG 代替源图片，原样导出，材质的贴图槽记下编码和栅格化尺寸', async () => {

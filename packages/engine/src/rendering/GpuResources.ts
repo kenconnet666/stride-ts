@@ -2,7 +2,7 @@
  * 渲染特性共用的 GPU 资源：贴图和立方体贴图第一次用到时上传，天空盒的镜面立方体贴图第一次用到时生成，之后复用
  * （Mesh、Material 这些数据对象本身不碰 GPU），还有几个常用的默认资源和采样器。渲染系统销毁时一起释放。
  */
-import { CUBEMAP_TEXEL_BYTES } from '../content/format';
+import { CUBEMAP_TEXEL_BYTES, type TextureSampler } from '../content/format';
 import { MipmapGenerator } from './MipmapGenerator';
 import type { Cubemap, Skybox } from './Skybox';
 import { prefilterSkybox } from './SkyboxPrefilter';
@@ -14,8 +14,6 @@ export class GpuResources {
   readonly white: GPUTexture;
   /** 1x1 的黑色立方体贴图：没有天空盒时绑它。 */
   readonly blackCube: GPUTexture;
-  /** Stride 材质贴图采样的默认值：重复寻址、三线性过滤，不开各向异性（ComputeTextureBase 的 Filtering = Linear，和桌面 Stride 的截图一致）。 */
-  readonly linearRepeat: GPUSampler;
   /** 立方体贴图和查找表用（Stride 的 LinearSampler）。 */
   readonly linearClamp: GPUSampler;
   /** 1x1 的深度图（值 1）：没有阴影、或者正在画阴影图集时，阴影的绑定位置绑它。 */
@@ -33,19 +31,37 @@ export class GpuResources {
     device.queue.writeTexture({ texture: this.white }, new Uint8Array([255, 255, 255, 255]), { bytesPerRow: 4 }, [1, 1]);
     this.blackCube = device.createTexture({ label: 'black cube', size: [1, 1, 6], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     device.queue.writeTexture({ texture: this.blackCube }, new Uint16Array(6 * 4), { bytesPerRow: 8, rowsPerImage: 1 }, [1, 1, 6]);
-    this.linearRepeat = device.createSampler({
-      label: 'linear repeat',
-      addressModeU: 'repeat',
-      addressModeV: 'repeat',
-      magFilter: 'linear',
-      minFilter: 'linear',
-      mipmapFilter: 'linear',
-    });
     this.linearClamp = device.createSampler({ label: 'linear clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
     this.emptyShadowAtlas = device.createTexture({ label: 'empty shadow atlas', size: [1, 1], format: 'depth32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
     clearDepth(device, this.emptyShadowAtlas);
     this.shadowComparison = device.createSampler({ label: 'shadow comparison', magFilter: 'linear', minFilter: 'linear', compare: 'less-equal' });
     this.#mipmaps = new MipmapGenerator(device);
+  }
+
+  readonly #samplers = new Map<string, GPUSampler>();
+
+  /**
+   * 材质贴图的采样器（Stride 的 Filtering、AddressModeU/V），同样的设置共用一个。默认是重复寻址、三线性过滤、不开各向异性
+   * （Filtering = Linear，和桌面 Stride 的截图一致）；各向异性同 Stride 的默认 16 倍。
+   */
+  sampler({ filter, addressU, addressV }: TextureSampler): GPUSampler {
+    const key = `${filter ?? 'linear'}:${addressU ?? 'wrap'}:${addressV ?? 'wrap'}`;
+    let sampler = this.#samplers.get(key);
+    if (!sampler) {
+      const mode = (address: TextureSampler['addressU']): GPUAddressMode => (address === 'clamp' ? 'clamp-to-edge' : address === 'mirror' ? 'mirror-repeat' : 'repeat');
+      const linear = filter !== 'point';
+      sampler = this.device.createSampler({
+        label: `material ${key}`,
+        addressModeU: mode(addressU),
+        addressModeV: mode(addressV),
+        magFilter: linear ? 'linear' : 'nearest',
+        minFilter: linear ? 'linear' : 'nearest',
+        mipmapFilter: linear ? 'linear' : 'nearest',
+        ...(filter === 'anisotropic' ? { maxAnisotropy: 16 } : {}),
+      });
+      this.#samplers.set(key, sampler);
+    }
+    return sampler;
   }
 
   /**

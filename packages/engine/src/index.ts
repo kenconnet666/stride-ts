@@ -105,6 +105,7 @@ export { system, System, type Chunk, type EntityIds, type Phase, type SystemSpec
 export { Transform, transformSlot, type TransformColumns, type TransformShape, type TransformView } from './engine/transform';
 export { validator } from './engine/validator';
 export { Debug, FrameTimings, describe, type DebugHandler } from './debug/Debug';
+export { DebugText, type DebugTextLine } from './debug/DebugText';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
 export { Game, type GameOptions, type GameStatus, type HotContext } from './games/Game';
 export { GameTime } from './games/GameTime';
@@ -117,7 +118,7 @@ export { Collider, hullPoints, type ColliderId, type ColliderShape, type HullTra
 export { Body, Character, Static } from './physics/components';
 export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { TriggerHandler, type Contact, type ContactHandler } from './physics/contacts';
-export { Background, Camera, Light, Model, Skinned, Sprite } from './rendering/components';
+export { Background, Camera, Instance, Instancing, Light, Model, Skinned, Sprite } from './rendering/components';
 export { cameraProjectionMatrix, screenToWorldRaySegment, type CameraProjection } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
 export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';

@@ -4,7 +4,7 @@
  *   entities.create({ components: [Transform.with({ position: [0, 3, 10] }), Camera] });
  *   entities.create({ components: [Transform, Model.with({ mesh: cube.id, material: red.id })] });
  */
-import { prop } from '../data/prop';
+import { prop, type EntityId } from '../data/prop';
 import { component } from '../engine/component';
 import type { CubemapId, SkyboxId } from './Skybox';
 import type { TextureId } from './Texture';
@@ -103,6 +103,18 @@ export const Sprite = component('Sprite', {
  * 蒙皮网格：画的时候顶点按蒙皮矩阵变换（GPU 蒙皮）。palette 是这个网格的蒙皮矩阵在所有蒙皮矩阵连起来的缓冲里的
  * 起点（按关节数），动画系统挂骨架时分配并每帧更新（animation/AnimationSystem.ts）。
  */
+/**
+ * 模型实例化的主实体（Stride 的 InstancingComponent，InstancingEntityTransform）：它的 Model 不按自己的变换画，而是在每个
+ * 引用它的 Instance 实体的位置画一份。和 Stride 不同：我们的渲染器本来就把同一网格、同一材质的物体合成一次实例化绘制，
+ * 这里只是"借用主实体的模型"；主实体的模型拆成多个子实体时（多网格的模型）只用主实体自己那个网格。
+ */
+export const Instancing = component('Instancing', {});
+
+/** 模型实例化的一个实例（Stride 的 InstanceComponent）：按自己的世界矩阵画 master（带 Instancing 的实体）的模型；master 是 -1 时不画。 */
+export const Instance = component('Instance', {
+  master: prop.entity().default(-1 as EntityId),
+});
+
 export const Skinned = component('Skinned', {
   palette: prop.u32().default(0).transient(),
 });

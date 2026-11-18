@@ -157,6 +157,22 @@ export class Quaternion implements QuatLike {
     );
   }
 
+  /** 球面线性插值到 to（Stride 的 Quaternion.Slerp）：走短的那一边；几乎相同时退化成线性插值。 */
+  slerp(to: Readonly<QuatLike>, t: number): this {
+    const dot = this.x * to.x + this.y * to.y + this.z * to.z + this.w * to.w;
+    let inverse: number, opposite: number;
+    if (Math.abs(dot) > 1 - 1e-6) {
+      inverse = 1 - t;
+      opposite = t * Math.sign(dot);
+    } else {
+      const angle = Math.acos(Math.abs(dot));
+      const invSin = 1 / Math.sin(angle);
+      inverse = Math.sin((1 - t) * angle) * invSin;
+      opposite = Math.sin(t * angle) * invSin * Math.sign(dot);
+    }
+    return this.set(inverse * this.x + opposite * to.x, inverse * this.y + opposite * to.y, inverse * this.z + opposite * to.z, inverse * this.w + opposite * to.w);
+  }
+
   normalize(): this {
     const length = Math.hypot(this.x, this.y, this.z, this.w);
     return length > 0 ? this.set(this.x / length, this.y / length, this.z / length, this.w / length) : this.identity();

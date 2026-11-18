@@ -4,7 +4,7 @@
  * 光泽度、自发光（可以乘一张贴图）、环境光遮蔽（可以是贴图）、cavity、法线贴图和透明混合，见 content/format.ts 的 MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
  * 见 docs/architecture.md 的"外观：材质参数的分层"，等着色器系统一起做。和 Mesh 一样只是数据，GPU 资源由渲染特性管理。
  */
-import type { AmbientOcclusionSlot, ColorOperator } from '../content/format';
+import type { AmbientOcclusionSlot, ColorOperator, TextureSampler } from '../content/format';
 import type { Branded } from '../data/prop';
 import { Color4, type ColorLike } from '../mathematics/vectors';
 import { ResourceTable } from '../engine/ResourceTable';
@@ -17,6 +17,8 @@ export interface MaterialTexture {
   /** 采样坐标 = uv * scale + offset。 */
   readonly scale?: readonly [number, number];
   readonly offset?: readonly [number, number];
+  /** 默认线性三线性过滤、重复寻址。 */
+  readonly sampler?: TextureSampler;
 }
 
 /** 法线贴图（Stride 的 MaterialNormalMapFeature），各开关的意思见 content/format.ts 的 NormalMapSlot。 */
@@ -134,7 +136,7 @@ export class Material {
   }
 }
 
-/** 贴图槽补上默认的 uv 变换。 */
-function withTransform({ texture, scale = [1, 1], offset = [0, 0] }: MaterialTexture): Required<MaterialTexture> {
-  return { texture, scale, offset };
+/** 贴图槽补上默认的 uv 变换和采样器。 */
+function withTransform({ texture, scale = [1, 1], offset = [0, 0], sampler = {} }: MaterialTexture): Required<MaterialTexture> {
+  return { texture, scale, offset, sampler };
 }

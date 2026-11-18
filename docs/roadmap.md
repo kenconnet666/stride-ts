@@ -293,5 +293,11 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    - 做了：Body 组件和 `simulation.body(entity)`（运动学、唤醒、瞬移、速度、冲量、重力、睡眠阈值；物体移除后只记设置），凸包碰撞体，程序模型（照 Stride 4.4.2 生成），`screenToWorldRaySegment`；触发器和接触事件（`TriggerHandler`、`setContactHandler`），实体销毁时移除物体和连着的约束；约束（球窝、铰链、齿轮马达、点在线上、线性限位、摆动和扭转限位、焊接，语义照 Bepu，映射到 Jolt；刚性，和 Bepu 的软约束不同）；换根场景（`game.setRootScene`，`prop.asset('scene')`），运行中改重力；材质的透明混合、环境光遮蔽、镜面颜色工作流、贴图乘颜色的自发光，贴图引用记 sRGB；正交相机（`Camera.projection`、`orthographicSize`）。原生到 0.14.0。
    - 验收：和桌面 Stride（master 的样例配 4.4.2 的包）比，去掉 UI 后平均每通道差 0.13 到 1.32/255，差超过 10 的像素 0.56% 到 2.40%，都在箱子的发光标志（材质层，P2）上（`tools/stride-capture/physics-sample`）；冒烟脚本 `pnpm --filter @stride-ts/physics-sample smoke` 走完三个场景的玩法和换场景。
    - P2 补：各场景的 UI 文字和按钮（现在用调试命令 `next`、`previous`、`next-scene`、`previous-scene` 代替），材质层（LogoD）。遗留：透明物体不投阴影、同一批的透明实例不排序。
-5. 之后按第三节的 P1 游戏顺序：BepuSample → Platformer2D → TopDownRPG → FirstPersonShooter。
+5. **BepuSample**（进行中，`apps/bepu-sample`，端口 5190；主场景加七个演示子场景，`?scene=Colliders` 选，或 `stride call scene '"Ropes"'`）。分步：
+   1. ~~骨架~~（2026-11-19）：子场景的加载和卸载（`game.unloadScene`），模型实例化（`Instancing`、`Instance`，Stride 的 InstancingComponent、InstanceComponent），程序模型补上圆柱、圆锥，OBJ 模型（原生 0.15.0，ufbx 读），空碰撞体（EmptyCollider），贴图的采样器（Point、各向异性、寻址模式，每张贴图各自的），`Simulation.timeScale`、`enabled`，`Quaternion.slerp`，`game.debugText`（先不画，`stride call debug-text` 读），脚本属性的 Vector2 是数组；脚本 SceneSelector、FindAndAttachCamera、BasicCameraController、TimeControl、SceneDescription。Colliders、Material Properties 场景能看能飞；冒烟脚本 `pnpm --filter @stride-ts/bepu-sample smoke`。
+   2. 接着做：预制体（`prop.asset('prefab')`、实例化）和 Spawner、Thrower；重力枪（单体线性、角度伺服约束）→ Cube Fountain。
+   3. 场景里的约束组件（球窝、铰链、单体角马达、距离限制、球窝马达，启用开关、运行中改参数）和绳子 → Constraint、Ropes。
+   4. 聚光灯（含阴影）→ Cube Mixer。
+   5. Convex And Mesh Collider（动态的网格碰撞体）、其余工具脚本（Collision、RayCast、OverlapTester、TriggerUsage）；和桌面 Stride 比对。
+6. 之后按第三节的 P1 游戏顺序：Platformer2D → TopDownRPG → FirstPersonShooter。
 

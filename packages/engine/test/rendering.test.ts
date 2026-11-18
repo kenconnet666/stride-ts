@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  cameraProjectionMatrix, coverSource, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
+  cameraProjectionMatrix, coverSource, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
   type DirectionalShadowSettings, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
@@ -134,6 +134,24 @@ describe('MeshRenderFeature', () => {
 
     game.entities.create({ components: [Transform, Model.with({ mesh: cube.id, material: 999 as never })] });
     expect(() => feature.extract({ game, time: game.updateTime })).toThrow('material 999, which does not exist');
+  });
+
+  test('模型实例化：Instance 按自己的变换画主实体（Instancing）的模型，和同网格同材质的物体合批；主实体自己不画，没有主实体的不画', () => {
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(64);
+    const cube = Mesh.cube();
+    const red = new Material('red', { baseColor: [1, 0, 0] });
+    const master = game.entities.create({ components: [Transform, Instancing, Model.with({ mesh: cube.id, material: red.id })] });
+    const plain = game.entities.create({ components: [Transform, Model.with({ mesh: cube.id, material: red.id })] });
+    const instances = Array.from({ length: 2 }, () => game.entities.create({ components: [Transform, Instance.with({ master: master.id })] }));
+    game.entities.create({ components: [Transform, Instance] });
+    const feature = new MeshRenderFeature();
+    feature.extract({ game, time: game.updateTime });
+    expect(feature.batches.map((b) => [...b.slots.subarray(0, b.count)])).toEqual([[transformSlot(plain), ...instances.map(transformSlot)]]);
+    master.destroy();
+    feature.extract({ game, time: game.updateTime });
+    expect(feature.batches.map((b) => b.count)).toEqual([1]);
   });
 
   test('投不投阴影分成不同的批次；Cull 用网格的包围盒在原生模块里剔除，并量出主视图里可见物体的距离范围', () => {

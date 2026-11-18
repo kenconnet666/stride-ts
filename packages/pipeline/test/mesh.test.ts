@@ -171,7 +171,8 @@ describe('程序模型（Stride 的 GeometricPrimitive）', () => {
       const e2 = [0, 1, 2].map((k) => positions[c! + k]! - positions[a! + k]!);
       const cross = [e1[1]! * e2[2]! - e1[2]! * e2[1]!, e1[2]! * e2[0]! - e1[0]! * e2[2]!, e1[0]! * e2[1]! - e1[1]! * e2[0]!];
       const area = Math.hypot(...cross);
-      if (area < 1e-9) continue;
+      // Stride 的圆柱侧面首尾那列顶点重合，留下只有浮点误差大小的退化三角形
+      if (area < 1e-6) continue;
       const n = [0, 1, 2].map((k) => normals[a! + k]! + normals[b! + k]! + normals[c! + k]!);
       if (cross[0]! * n[0]! + cross[1]! * n[1]! + cross[2]! * n[2]! <= 0) return false;
     }
@@ -193,7 +194,7 @@ describe('程序模型（Stride 的 GeometricPrimitive）', () => {
     expect(extent(moved)).toEqual([3, 0.5, 0.5]);
   });
 
-  test('平面、经纬球、测地球、胶囊：顶点数照 Stride，三角形都朝外', () => {
+  test('平面、经纬球、测地球、胶囊、圆柱、圆锥：顶点数照 Stride，三角形都朝外', () => {
     const plane = generate('PlaneProceduralModel\nSize: {X: 100.0, Y: 100.0}\nNormal: UpY');
     expect([plane.positions.length / 3, plane.indices.length]).toEqual([4, 6]);
     expect(extent(plane)).toEqual([50, 0, 50]);
@@ -206,7 +207,14 @@ describe('程序模型（Stride 的 GeometricPrimitive）', () => {
     const capsule = generate('CapsuleProceduralModel\nRadius: 0.25');
     expect(capsule.positions.length / 3).toBe(16 * 33);
     expect(extent(capsule)).toEqual([0.25, 0.5, 0.25]);
-    for (const mesh of [plane, sphere, geo, capsule]) expect(allCounterClockwise(mesh)).toBe(true);
+    // 圆柱：侧面 2·33 个顶点加两个盖子各 32 个；圆锥：锥面和底面各 16 段 × 17 个顶点加一排 17 个端点
+    const cylinder = generate('CylinderProceduralModel\nHeight: 2.0\nRadius: 0.5');
+    expect([cylinder.positions.length / 3, cylinder.indices.length]).toEqual([33 * 2 + 32 * 2, 33 * 6 + 30 * 6]);
+    expect(extent(cylinder)).toEqual([0.5, 1, 0.5]);
+    const cone = generate('ConeProceduralModel\nRadius: 0.5\nHeight: 1.0');
+    expect([cone.positions.length / 3, cone.indices.length]).toEqual([2 * 17 * 17, 2 * 16 * 31 * 3]);
+    expect(extent(cone)).toEqual([0.5, 0.5, 0.5]);
+    for (const mesh of [plane, sphere, geo, capsule, cylinder, cone]) expect(allCounterClockwise(mesh)).toBe(true);
     expect(generate('TorusProceduralModel\nRadius: 1.0')).toBeUndefined();
   });
 });

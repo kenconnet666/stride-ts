@@ -381,7 +381,15 @@ export interface TextureRef {
   readonly srgb?: boolean;
 }
 
-export interface TextureSlot extends TextureRef {
+/** 采样器（Stride 的 ComputeTextureBase.Filtering、AddressModeU/V）：没写的是线性三线性过滤、重复寻址。 */
+export interface TextureSampler {
+  readonly filter?: 'point' | 'anisotropic';
+  /** Stride 的 Clamp、Border 都是 clamp（WebGPU 没有边框色），Mirror、MirrorOnce 都是 mirror。 */
+  readonly addressU?: 'clamp' | 'mirror';
+  readonly addressV?: 'clamp' | 'mirror';
+}
+
+export interface TextureSlot extends TextureRef, TextureSampler {
   /** 采样坐标 = uv * scale + offset（scale 已经乘上 Stride 材质的 UVScale）。 */
   readonly scale: readonly [number, number];
   readonly offset: readonly [number, number];
@@ -461,6 +469,8 @@ export interface SceneLightShadow {
 /** 碰撞体里的一个形状（Stride.BepuPhysics 的 BoxCollider、CapsuleCollider…… 加 CompoundCollider 的本地位姿）。 */
 export type ColliderShapeFile = (
   | { readonly type: 'box'; /** 边长。 */ readonly size: Vec3Tuple }
+  /** Stride 的 EmptyCollider：没有形状、不碰撞，只能单独用。 */
+  | { readonly type: 'empty' }
   | { readonly type: 'sphere'; readonly radius: number }
   /** 沿本地 Y，length 是两端球心的距离。 */
   | { readonly type: 'capsule'; readonly radius: number; readonly length: number }
@@ -588,7 +598,7 @@ export interface SceneAnimation {
 export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene';
 
 /**
- * 脚本的属性值（Stride 序列化的值换过来）：标量原样；列表是数组；Vector3、Quaternion 是数组；别的结构是键名改成
+ * 脚本的属性值（Stride 序列化的值换过来）：标量原样；列表是数组；Vector2、Vector3、Quaternion 是数组；别的结构是键名改成
  * 小写开头的对象；对实体或组件的引用是 { $entity: 场景里的实体 id }；对资源的引用是 { $asset: 内容路径, kind }。
  */
 export type SceneScriptValue =
@@ -626,6 +636,10 @@ export interface SceneEntityFile {
   readonly rotation: readonly [number, number, number, number];
   readonly scale: Vec3Tuple;
   readonly components: {
+    /** Stride 的 InstancingComponent：这个实体的模型给 instance 引用它的实体画。 */
+    readonly instancing?: Record<string, never>;
+    /** Stride 的 InstanceComponent：master 是带 instancing 的实体（场景里的 id），null 是还没指定（运行时由脚本设）。 */
+    readonly instance?: { readonly master: string | null };
     readonly model?: {
       /** 模型的内容路径。 */
       readonly model: string;

@@ -2,7 +2,7 @@
  * Stride 的程序模型（.sdpromodel，ProceduralModelAsset）：照 Stride 4.4.2 的 GeometricPrimitive 生成网格，再按
  * PrimitiveProceduralModelBase 先加 LocalOffset、再乘 Scale（法线乘缩放的逆再归一化）。
  * Stride 的三角形顺时针是正面，我们的渲染器逆时针是正面：生成后每个三角形的后两个顶点对调。
- * 现在有 Cube、Plane、Sphere、GeoSphere、Capsule；Cylinder、Cone、Disc、Torus、Teapot 用到时再加。
+ * 现在有 Cube、Plane、Sphere、GeoSphere、Capsule、Cylinder、Cone；Disc、Torus、Teapot 用到时再加。
  */
 import { asNumber, asObject, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -57,6 +57,12 @@ export function proceduralMesh(type: StrideObject): ProceduralMesh | undefined {
       break;
     case 'CapsuleProceduralModel':
       mesh = capsule(asNumber(type['Length'], 0.5), asNumber(type['Radius'], 0.35), asNumber(type['Tessellation'], 8), uScale, vScale);
+      break;
+    case 'CylinderProceduralModel':
+      mesh = cylinder(asNumber(type['Height'], 1), asNumber(type['Radius'], 0.5), asNumber(type['Tessellation'], 32), uScale, vScale);
+      break;
+    case 'ConeProceduralModel':
+      mesh = cone(asNumber(type['Radius'], 0.5), asNumber(type['Height'], 1), asNumber(type['Tessellation'], 16), uScale, vScale);
       break;
     default:
       return undefined;
@@ -205,6 +211,81 @@ const OCTAHEDRON_INDICES = [0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, 5, 1, 4, 5, 4, 3
 const SPLAT_EPSILON = 1.192092896e-7;
 
 /** Stride 的 GeometricPrimitive.GeoSphere：八面体细分，修好经度接缝和两极的 UV。 */
+/** GeometricPrimitive.Cylinder：沿 Y，侧面一圈（首尾两列顶点重合，UV 不同），上下两个扇形盖子。 */
+function cylinder(height: number, radius: number, tessellation: number, uScale: number, vScale: number): MeshBuilder {
+  const n = Math.max(tessellation, 3);
+  const half = height / 2;
+  const mesh = new MeshBuilder();
+  const circle = (i: number): V3 => {
+    const angle = Math.fround((i * 2 * Math.PI) / n);
+    return [Math.sin(angle), 0, Math.cos(angle)];
+  };
+  const stride = n + 1;
+  for (let i = 0; i <= n; i++) {
+    const normal = circle(i);
+    const side = scaled(normal, radius);
+    mesh.vertex([side[0], half, side[2]], normal, (i / n) * uScale, 0);
+    mesh.vertex([side[0], -half, side[2]], normal, (i / n) * uScale, vScale);
+    mesh.indices.push(i * 2, (i * 2 + 2) % (stride * 2), i * 2 + 1, i * 2 + 1, (i * 2 + 2) % (stride * 2), (i * 2 + 3) % (stride * 2));
+  }
+  for (const isTop of [true, false]) {
+    const base = mesh.vertexCount;
+    for (let i = 0; i < n - 2; i++) {
+      let i1 = (i + 1) % n, i2 = (i + 2) % n;
+      if (isTop) [i1, i2] = [i2, i1];
+      mesh.indices.push(base, base + i1, base + i2);
+    }
+    const normal: V3 = isTop ? [0, 1, 0] : [0, -1, 0];
+    const scaleX = isTop ? -0.5 : 0.5, scaleY = -0.5;
+    for (let i = 0; i < n; i++) {
+      const c = circle(i);
+      mesh.vertex([c[0] * radius, normal[1] * half, c[2] * radius], normal, uScale * (c[0] * scaleX + 0.5), vScale * (c[2] * scaleY + 0.5));
+    }
+  }
+  return mesh;
+}
+
+/** GeometricPrimitive.Cone：底面在 -height/2，尖在 +height/2；锥面和底面各是一组分段的环加一排端点。 */
+function cone(radius: number, height: number, tessellation: number, uScale: number, vScale: number): MeshBuilder {
+  const n = Math.max(tessellation, 3);
+  const perSection = n + 1;
+  const mesh = new MeshBuilder();
+  for (let e = 0; e < 2; e++) {
+    const topHeight = e === 0 ? height : 0;
+    const sign = e === 0 ? 1 : -1;
+    const slopeLength = Math.sqrt(radius * radius + topHeight * topHeight);
+    const slopeCos = topHeight / slopeLength, slopeSin = radius / slopeLength;
+    for (let j = 0; j < n; j++) {
+      const ratio = j / n;
+      const y = ratio * topHeight - height * 0.5;
+      const r = (1 - ratio) * radius;
+      for (let i = 0; i <= n; i++) {
+        const angle = (i / n) * 2 * Math.PI;
+        mesh.vertex([Math.cos(angle) * r, y, Math.sin(angle) * r], [sign * Math.cos(angle) * slopeCos, sign * slopeSin, sign * Math.sin(angle) * slopeCos], (i / n) * uScale, (1 - ratio) * vScale);
+      }
+    }
+    for (let i = 0; i <= n; i++) {
+      const angle = ((i + 0.5) / n) * 2 * Math.PI;
+      mesh.vertex([0, topHeight - height * 0.5, 0], [sign * Math.cos(angle) * slopeCos, sign * slopeSin, sign * Math.sin(angle) * slopeCos], ((i + 0.5) / n) * uScale, 0);
+    }
+  }
+  for (let e = 0; e < 2; e++) {
+    const offset = e === 0 ? 0 : perSection * (n + 1);
+    const [v1, v2, v3, v4] = e === 0 ? [1, perSection, 1, perSection + 1] : [perSection, 1, perSection + 1, 1];
+    for (let j = 0; j < n - 1; j++) {
+      for (let i = 0; i < n; i++) {
+        const at = offset + j * perSection + i;
+        mesh.indices.push(at, at + v1, at + v2, at + perSection, at + v3, at + v4);
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const at = offset + (n - 1) * perSection + i;
+      mesh.indices.push(at, at + v1, at + v2);
+    }
+  }
+  return mesh;
+}
+
 function geoSphere(radius: number, tessellation: number, uScale: number, vScale: number): MeshBuilder {
   const points = OCTAHEDRON_VERTICES.map((p) => [...p] as V3);
   let indices = [...OCTAHEDRON_INDICES];

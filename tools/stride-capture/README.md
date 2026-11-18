@@ -7,3 +7,4 @@
 |---|---|---|
 | [tpp/](tpp/README.md) | Third Person Platformer | 静态画面（去掉脚本、动画、角色物理）；可以关单个后处理、固定曝光、只留一种光、测帧时间 |
 | [animated-model/](animated-model/README.md) | AnimatedModel | 动画停在第 0 帧 |
+| [physics-sample/](physics-sample/README.md) | PhysicsSample（Bepu 版，取自 master） | 选场景、可以停住物理 |

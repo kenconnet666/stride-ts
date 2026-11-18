@@ -289,13 +289,9 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    - 做了：导入和运行（角色跑步、Idle/Run 淡入淡出、拖动转身）；2D 背景（Background 的 Is2D）；一个视图最多 4 个方向光；相机槽位（Camera.slot）；合成器的最小数据化（主画面的清屏色、后处理开关、透明阶段开关，相机画进渲染目标贴图 RenderTextureSceneRenderer）；渲染目标贴图（Texture.renderTarget）；精灵（Sprite 组件、SpriteRenderFeature，普通和 billboard，透明阶段，从远到近）；指针事件（`input.pointerEvents`）；关掉后处理时原样拷贝。
    - 验收：和桌面 Stride 4.4.2 比（动画停在第 0 帧，去掉 UI 按钮的区域）平均每通道差 0.148/255，差超过 10 的像素 0.31%（`tools/stride-capture/animated-model`）；冒烟脚本 `pnpm --filter @stride-ts/animated-model smoke` 通过。
    - P2 补：UI 页面的 Idle、Run 按钮（现在用 `stride call idle`、`run` 代替）。遗留：画进渲染目标贴图的相机不用阴影、不做后处理；精灵没有 Swizzle、sprite sheet、billboard 的 Z 旋转。
-4. **PhysicsSample**（进行中，Bepu 版，`apps/physics-sample`，端口 5188；三个场景，`?scene=PhysicsSample/VolumeTrigger` 这样选）：
-   - 已做：Body 组件（Stride 的 BodyComponent）和 `simulation.body(entity)`（运动学切换、唤醒、瞬移、速度、冲量、重力），凸包碰撞体（HullAsset，不分解），程序模型（Cube、Plane、Sphere、GeoSphere、Capsule，照 Stride 4.4.2 生成），`screenToWorldRaySegment`，导入器一次导入多个场景；原生 0.11.0（凸包、物体控制接口）。Raycasting 场景能玩（点箱子往上推）。
-   - 做了（第二步）：触发器和接触事件（`TriggerHandler`、`simulation.setContactHandler`，按一对物体报开始、结束，睡着时接触还在，同 Bepu），实体销毁时移除物体，`Transform.updateWorldMatrix()`，YAML 的覆盖标记 `*` 去掉；原生 0.12.1（传感器、接触事件、移除物体、单个槽位的世界矩阵）。VolumeTrigger 场景能玩（角色走进触发器，箱子落下，走出来复位）；冒烟脚本 `pnpm --filter @stride-ts/physics-sample smoke` 覆盖 Raycasting 和 VolumeTrigger。
-   - 做了（第三步）：约束（`simulation.addConstraint`：球窝、铰链、齿轮马达、点在线上、线性限位、摆动和扭转限位、焊接，语义照 Bepu，映射到 Jolt 的 Point、Hinge、Gear、SixDOF、Fixed；Bepu 的约束是软的，这里是刚性的），`BodyControl.sleepThreshold`，变换的本地矩阵不要求单位四元数（同 Stride）；原生 0.13.1。Constraints 场景能换六种约束（调试命令 next、previous 代替 UI 按钮）；冒烟脚本覆盖三个场景。
-   - 做了（第四步）：换根场景（`game.setRootScene`，Stride 的 `SceneSystem.SceneInstance.RootScene`：新场景加载好后销毁旧场景的实体），脚本属性引用场景（`prop.asset('scene')` 得到 `SceneReference`，只记路径），NextSceneScript（调试命令 `next-scene`、`previous-scene` 代替 UI 的按钮）；运行中改重力（原生 0.14.0）；物体移除后 `BodyControl` 只记设置（同 Stride 离开仿真的 BodyComponent）；还没启动就移除的脚本不调 `cancel`（同 Stride）。冒烟脚本加了换场景，共用部分抽到 `tools/smoke.ts`，只看本次运行以来的错误日志。
-   - 做了（第五步）：材质的透明混合（`MaterialTransparencyBlendFeature`：预乘 alpha，透明阶段不写深度，透明的批从远到近；不投阴影）、环境光遮蔽（数值或贴图的一个通道，直射光按 DirectLightingFactor）、镜面颜色工作流（`MaterialSpecularMapFeature`）、贴图乘颜色的自发光（`ComputeBinaryColor`、`ComputeFloat4`）；贴图引用记下 sRGB（按 Stride 的贴图类型），浏览器解码的图片按 sRGB 和线性分开缓存。材质层（LogoD）留给 P2。
-   - 接着做：和桌面 Stride 比对（4.4.2 的 PhysicsSample 是 Bullet 版，见 decisions.md 的"PhysicsSample 的材质和验收"），比完 PhysicsSample 收尾。
-   - P2 补：各场景的 UI 文字和按钮。
+4. ~~PhysicsSample~~（2026-11-19 P1 部分完成，Bepu 版，`apps/physics-sample`，端口 5188；三个场景，`?scene=PhysicsSample/VolumeTrigger` 这样选，NextSceneScript 在场景之间换）：
+   - 做了：Body 组件和 `simulation.body(entity)`（运动学、唤醒、瞬移、速度、冲量、重力、睡眠阈值；物体移除后只记设置），凸包碰撞体，程序模型（照 Stride 4.4.2 生成），`screenToWorldRaySegment`；触发器和接触事件（`TriggerHandler`、`setContactHandler`），实体销毁时移除物体和连着的约束；约束（球窝、铰链、齿轮马达、点在线上、线性限位、摆动和扭转限位、焊接，语义照 Bepu，映射到 Jolt；刚性，和 Bepu 的软约束不同）；换根场景（`game.setRootScene`，`prop.asset('scene')`），运行中改重力；材质的透明混合、环境光遮蔽、镜面颜色工作流、贴图乘颜色的自发光，贴图引用记 sRGB；正交相机（`Camera.projection`、`orthographicSize`）。原生到 0.14.0。
+   - 验收：和桌面 Stride（master 的样例配 4.4.2 的包）比，去掉 UI 后平均每通道差 0.13 到 1.32/255，差超过 10 的像素 0.56% 到 2.40%，都在箱子的发光标志（材质层，P2）上（`tools/stride-capture/physics-sample`）；冒烟脚本 `pnpm --filter @stride-ts/physics-sample smoke` 走完三个场景的玩法和换场景。
+   - P2 补：各场景的 UI 文字和按钮（现在用调试命令 `next`、`previous`、`next-scene`、`previous-scene` 代替），材质层（LogoD）。遗留：透明物体不投阴影、同一批的透明实例不排序。
 5. 之后按第三节的 P1 游戏顺序：BepuSample → Platformer2D → TopDownRPG → FirstPersonShooter。
 

@@ -352,6 +352,7 @@ export class StrideImporter {
       this.#warnings.push(`${asset.file}: normal map ${node.$type ?? 'value'} without a texture is not supported; using the vertex normals`);
       return {};
     }
+    this.#checkSampler(node, asset);
     const textureAsset = this.#project.get(reference.id, asset.file);
     const type = asObject(textureAsset.data['Type']);
     const scale = vec2(node['Scale'], 1);
@@ -394,6 +395,16 @@ export class StrideImporter {
     return diffuse === 1 && specular === 1 ? {} : { cavity: { diffuse, specular } };
   }
 
+  /** 材质贴图的采样器：运行时只有 Stride 的默认值（线性三线性过滤、重复寻址），别的记警告。 */
+  #checkSampler(node: StrideObject, asset: AssetEntry): void {
+    const filtering = node['Filtering'] ?? 'Linear';
+    if (filtering !== 'Linear') this.#warnings.push(`${asset.file}: texture filtering ${String(filtering)} is not supported; using Linear`);
+    for (const key of ['AddressModeU', 'AddressModeV']) {
+      const mode = node[key] ?? 'Wrap';
+      if (mode !== 'Wrap') this.#warnings.push(`${asset.file}: texture ${key} ${String(mode)} is not supported; using Wrap`);
+    }
+  }
+
   /** ComputeFloat 的值；没有贴图的 ComputeTextureScalar 用它的 FallbackValue（Stride 也是这样）。 */
   #scalar(node: StrideObject | undefined, fallback: number, asset: AssetEntry): number {
     if (!node) return fallback;
@@ -418,6 +429,7 @@ export class StrideImporter {
       case 'ComputeTextureColor': {
         const reference = parseAssetReference(node['Texture']);
         if (!reference) return { color: linearColor(asObject(node['FallbackValue'])?.['Value']), operator: 'multiply' };
+        this.#checkSampler(node, asset);
         const scale = vec2(node['Scale'], 1);
         const texture = { texture: this.#texture(this.#project.get(reference.id, asset.file)), scale: [scale[0] * uvScale[0], scale[1] * uvScale[1]], offset: vec2(node['Offset'], 0) } as const;
         return { color: WHITE, texture, operator: 'multiply' };

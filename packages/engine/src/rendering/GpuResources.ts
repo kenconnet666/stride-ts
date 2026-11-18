@@ -14,7 +14,7 @@ export class GpuResources {
   readonly white: GPUTexture;
   /** 1x1 的黑色立方体贴图：没有天空盒时绑它。 */
   readonly blackCube: GPUTexture;
-  /** Stride 贴图采样的默认值：重复、线性过滤（ComputeTextureBase 的 Filtering、AddressModeU/V）；各向异性让斜看的地面不糊。 */
+  /** Stride 材质贴图采样的默认值：重复寻址、三线性过滤，不开各向异性（ComputeTextureBase 的 Filtering = Linear，和桌面 Stride 的截图一致）。 */
   readonly linearRepeat: GPUSampler;
   /** 立方体贴图和查找表用（Stride 的 LinearSampler）。 */
   readonly linearClamp: GPUSampler;
@@ -40,7 +40,6 @@ export class GpuResources {
       magFilter: 'linear',
       minFilter: 'linear',
       mipmapFilter: 'linear',
-      maxAnisotropy: 16,
     });
     this.linearClamp = device.createSampler({ label: 'linear clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
     this.emptyShadowAtlas = device.createTexture({ label: 'empty shadow atlas', size: [1, 1], format: 'depth32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });

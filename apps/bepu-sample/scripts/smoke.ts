@@ -1,7 +1,7 @@
 // BepuSample 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/bepu-sample smoke [-- --hub <中枢名的一部分>]
 // 检查：Colliders 场景在跑；相机控制器（W 前进）；小键盘 * 暂停仿真；T 扔出预制体；重力枪抓起箱子；换到 Material Properties 后
-// 旧场景的实体都去掉了；Constraint 的马达和铰链、Ropes 的绳子；Cube Fountain 的生成器按物理时间生成预制体。
+// 旧场景的实体都去掉了；Constraint 的马达和铰链、Ropes 的绳子、Cube Mixer 的聚光灯；Cube Fountain 的生成器按物理时间生成预制体。
 import { startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('bepu-sample');
@@ -78,6 +78,12 @@ await sleep(2500);
 const rope = stride('eval', `const g = strideGame; const ids = g.entities.ids().filter((i) => g.entities.hasComponent(i, strideEngine.Body) && g.entities.entity(i).name.includes('Rope'));
   ({ count: ids.length, lowest: Math.min(...ids.map((i) => g.entities.entity(i).require(strideEngine.Transform).world[13])) })`) as { count: number; lowest: number };
 check('Ropes：绳子的节都在，挂着不掉', rope.count > 10 && rope.lowest > 0.2, rope);
+
+// Cube Mixer：三盏聚光灯（红、绿、蓝）
+stride('call', 'scene', '"Mixer"');
+await sleep(2500);
+const spots = stride('eval', `const l = strideGame.renderSystem.lighting; l.locals.slice(0, l.localCount).map((light) => [light.spot, +light.color.r.toFixed(0), +light.color.g.toFixed(0), +light.color.b.toFixed(0)].join())`) as string[];
+check('Cube Mixer：三盏聚光灯', spots.length === 3 && spots.every((light) => light.startsWith('true')), spots);
 
 stride('call', 'scene', '"Fountain"');
 await sleep(3000);

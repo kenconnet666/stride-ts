@@ -139,15 +139,15 @@ export { LightStreak } from './rendering/postfx/LightStreak';
 export { gaussianOffsetsWeights } from './rendering/postfx/GaussianBlur';
 export { PostProcessingEffects } from './rendering/postfx/PostProcessingEffects';
 export { ToneMap } from './rendering/postfx/ToneMap';
-export { ForwardRenderer } from './rendering/ForwardRenderer';
+export { ForwardRenderer, spotAngleAttenuation } from './rendering/ForwardRenderer';
 export { Material, type MaterialDesc, type MaterialId, type MaterialTexture } from './rendering/Material';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';
 export { MipmapGenerator } from './rendering/MipmapGenerator';
 export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
 export {
-  MAX_DIRECTIONAL_LIGHTS, RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalLight, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
-  type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,
+  MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalLight, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
+  type LocalLight, type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,
 } from './rendering/RenderSystem';
 export { DirectionalShadowCascades, type CascadeRectangle } from './rendering/shadows/DirectionalShadowCascades';
 export { ShadowMapRenderer } from './rendering/shadows/ShadowMapRenderer';

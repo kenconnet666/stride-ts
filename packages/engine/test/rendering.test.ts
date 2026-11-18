@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  cameraProjectionMatrix, coverSource, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
+  cameraProjectionMatrix, coverSource, spotAngleAttenuation, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
   type DirectionalShadowSettings, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
@@ -57,6 +57,15 @@ describe('Matrix', () => {
     expect(rounded(Matrix.transformPoint(ortho, 0, -10.5, -100))).toEqual([0, -1, 1]);
     const perspective = cameraProjectionMatrix(new Float32Array(16), { ...camera, projection: 'perspective' }, 16 / 9);
     expect([...perspective]).toEqual([...Matrix.perspectiveFovRH(new Float32Array(16), Math.PI / 4, 16 / 9, 0.1, 100)]);
+  });
+
+  test('聚光的角度衰减（Stride 的 LightSpot）：内锥的边上是 1，外锥的边上是 0；内外颠倒时按小的当内锥', () => {
+    const [scale, offset] = spotAngleAttenuation(50, 90);
+    const at = (degrees: number) => Math.min(Math.max(Math.cos((degrees * Math.PI) / 180) * scale + offset, 0), 1);
+    expect(at(25)).toBeCloseTo(1, 6);
+    expect(at(45)).toBeCloseTo(0, 6);
+    expect(at(35)).toBeGreaterThan(0);
+    expect(spotAngleAttenuation(90, 50)).toEqual([scale, offset]);
   });
 
   test('视锥平面朝内：视野里的点在所有平面的正面，近平面后面、视野外的点在某个平面的背面', () => {

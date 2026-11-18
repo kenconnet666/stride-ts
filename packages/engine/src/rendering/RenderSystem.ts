@@ -199,6 +199,23 @@ export interface DirectionalLight {
  * 这一帧的光照：最多 MAX_DIRECTIONAL_LIGHTS 个方向光、环境光和一个天空盒光（点光源以后加）。
  * 和 Stride 不同（暂时）：只有一个方向光能投阴影（第一个打开阴影的），其余的不投。
  */
+/** 一帧最多这么多个点光和聚光（超出的不画）。 */
+export const MAX_LOCAL_LIGHTS = 256;
+
+/**
+ * 点光或聚光（Stride 的 LightPoint、LightSpot）：位置、颜色乘强度、半径平方的倒数（距离衰减到 0 的地方）；聚光还有照向的
+ * 方向和角度衰减的 scale、offset（saturate(dot(-L, direction) · scale + offset)²）。
+ */
+export interface LocalLight {
+  spot: boolean;
+  readonly position: Vector3;
+  readonly direction: Vector3;
+  readonly color: Color4;
+  invSquareRadius: number;
+  angleScale: number;
+  angleOffset: number;
+}
+
 export interface Lighting {
   /** 预先分配了 MAX_DIRECTIONAL_LIGHTS 个，前 directionalCount 个有效。 */
   readonly directionals: readonly DirectionalLight[];
@@ -213,6 +230,9 @@ export interface Lighting {
   readonly ambient: Color4;
   /** 没有天空盒光时是 undefined。 */
   skybox: SkyboxLight | undefined;
+  /** 预先分配了 MAX_LOCAL_LIGHTS 个，前 localCount 个有效。 */
+  readonly locals: readonly LocalLight[];
+  localCount: number;
 }
 
 export class RenderSystem {
@@ -229,6 +249,8 @@ export class RenderSystem {
     shadow: undefined,
     ambient: new Color4(),
     skybox: undefined,
+    locals: Array.from({ length: MAX_LOCAL_LIGHTS }, (): LocalLight => ({ spot: false, position: new Vector3(), direction: new Vector3(), color: new Color4(), invSquareRadius: 1, angleScale: 0, angleOffset: 1 })),
+    localCount: 0,
   };
   /** 场景里没有 Light 组件时用的光照（直射光的漫反射要除以 π，所以强度 3 大约是满亮度）。 */
   readonly defaultLighting: Lighting = {
@@ -239,6 +261,8 @@ export class RenderSystem {
     shadow: undefined,
     ambient: new Color4(0.15, 0.15, 0.18, 1),
     skybox: undefined,
+    locals: [],
+    localCount: 0,
   };
   /** 特性共用的贴图、立方体贴图和采样器。 */
   readonly resources: GpuResources;

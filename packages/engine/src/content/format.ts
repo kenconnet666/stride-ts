@@ -682,7 +682,11 @@ export interface SceneEntityFile {
         /** 天空盒的内容路径。 */
         readonly skybox: string;
         readonly intensity: number;
-      };
+      }
+      /** 点光（Stride 的 LightPoint）。 */
+      | { readonly type: 'point'; readonly color: Vec3Tuple; readonly intensity: number; readonly radius: number }
+      /** 聚光（Stride 的 LightSpot），锥角是度、整个锥的张角。 */
+      | { readonly type: 'spot'; readonly color: Vec3Tuple; readonly intensity: number; readonly range: number; readonly angleInner: number; readonly angleOuter: number };
     readonly background?: SceneBackground;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;

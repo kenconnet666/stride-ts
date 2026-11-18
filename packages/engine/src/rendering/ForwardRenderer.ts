@@ -11,18 +11,32 @@
  * 每个像素只做一次完整的着色（TPP 的不透明通道 3.0 → 0.9 ms 量级的差别就在这里）。
  */
 import type { CompositorSettings, TextureCamera } from '../content/ContentManager';
+import type { ColumnsOf } from '../engine/component';
 import { system } from '../engine/system';
-import { Transform } from '../engine/transform';
+import { Transform, type TransformColumns } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
 import { Color4 } from '../mathematics/vectors';
 import { cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
-import { MAX_DIRECTIONAL_LIGHTS, RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { Skybox } from './Skybox';
 import { UniformArena } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
 import { PostProcessingEffects } from './postfx/PostProcessingEffects';
+
+const DEGREES = Math.PI / 180;
+
+/**
+ * 聚光的角度衰减 saturate(cos θ · scale + offset)² 的 scale、offset（Stride 的 LightSpot.UpdateLightCache）：内锥（整个锥的
+ * 张角，度）里是 1，到外锥减到 0；内外锥角颠倒时按小的当内锥。
+ */
+export function spotAngleAttenuation(angleInner: number, angleOuter: number): [scale: number, offset: number] {
+  const inner = Math.min(angleInner, angleOuter), outer = Math.max(angleInner, angleOuter);
+  const cosInner = Math.cos((inner / 2) * DEGREES), cosOuter = Math.cos((outer / 2) * DEGREES);
+  const scale = 1 / Math.max(0.001, cosInner - cosOuter);
+  return [scale, -cosOuter * scale];
+}
 
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
 const CASCADE_COUNTS = { one: 1, two: 2, four: 4 } as const;
@@ -106,6 +120,8 @@ export class ForwardRenderer {
           sky.intensity = intensity;
           Matrix.rotationOf(sky.rotation, transform.world, transform.slot[i]! * 16);
           lighting.skybox = sky;
+        } else if (light.type[i] === 'point' || light.type[i] === 'spot') {
+          this.#collectLocal(light, transform, i, color, intensity);
         } else if (light.type[i] === 'ambient') {
           lighting.ambient.set(lighting.ambient.r + color.r * intensity, lighting.ambient.g + color.g * intensity, lighting.ambient.b + color.b * intensity, 1);
         } else if (lighting.directionalCount < MAX_DIRECTIONAL_LIGHTS) {
@@ -253,11 +269,29 @@ export class ForwardRenderer {
     pass.end();
   }
 
+  /** 点光、聚光的常量（Stride 的 LightPoint、LightSpot.UpdateLightCache 算的那些）；超过 MAX_LOCAL_LIGHTS 个的不画。 */
+  #collectLocal(light: ColumnsOf<typeof Light>, transform: TransformColumns, i: number, color: Color4, intensity: number): void {
+    const lighting = this.renderSystem.lighting;
+    if (lighting.localCount >= MAX_LOCAL_LIGHTS) return;
+    const local = lighting.locals[lighting.localCount++]!;
+    const w = transform.slot[i]! * 16, world = transform.world;
+    local.spot = light.type[i] === 'spot';
+    local.position.set(world[w + 12]!, world[w + 13]!, world[w + 14]!);
+    // 聚光照向本地 -Z
+    local.direction.set(-world[w + 8]!, -world[w + 9]!, -world[w + 10]!).normalize();
+    local.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
+    const radius = Math.max(0.001, local.spot ? light.range[i]! : light.radius[i]!);
+    local.invSquareRadius = 1 / (radius * radius);
+    if (!local.spot) return;
+    [local.angleScale, local.angleOffset] = spotAngleAttenuation(light.angleInner[i]!, light.angleOuter[i]!);
+  }
+
   /** 从 Light 组件收集这一帧的光照；一个都没有时用默认光照。 */
   #gatherLighting(context: RenderContext): void {
     const { lighting, defaultLighting } = this.renderSystem;
     lighting.ambient.set(0, 0, 0, 1);
     lighting.directionalCount = 0;
+    lighting.localCount = 0;
     lighting.shadowLight = -1;
     lighting.directionalShadow = undefined;
     lighting.skybox = undefined;

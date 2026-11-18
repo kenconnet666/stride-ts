@@ -43,7 +43,7 @@ import type { GpuResources } from './GpuResources';
 import { Material, type MaterialTexture } from './Material';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
 import { Mesh } from './Mesh';
-import { MAX_DIRECTIONAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
 export interface MeshBatch {
@@ -81,7 +81,12 @@ struct View {
   // 方向光：光线前进的方向、颜色乘强度
   lightDirections: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
+  // x：点光和聚光的个数（localLights 的前几个）
+  locals: vec4f,
 };
+// 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
+// direction 是聚光照向的方向，angle 是角度衰减的 scale、offset
+struct LocalLight { position: vec4f, color: vec4f, direction: vec4f, angle: vec4f };
 @group(0) @binding(0) var<uniform> view: View;
 @group(0) @binding(1) var<storage, read> worlds: array<mat4x4f>;
 @group(0) @binding(2) var<storage, read> slots: array<u32>;
@@ -93,6 +98,7 @@ struct View {
 // 蒙皮：按变换槽位找这个实体的蒙皮矩阵起点，蒙皮矩阵是所有蒙皮网格的连在一起
 @group(0) @binding(8) var<storage, read> paletteOf: array<u32>;
 @group(0) @binding(9) var<storage, read> palettes: array<mat4x4f>;
+@group(0) @binding(10) var<storage, read> localLights: array<LocalLight>;
 
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
 // 没有贴图的槽绑一张 1x1 的白图，所以不用分支：自发光 = 贴图 · emissive，遮蔽 = dot(贴图, occlusionMask)（mask 是
@@ -362,6 +368,25 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
   return shadow;
 }
 
+/** 一个像素上着色要用的表面属性。 */
+struct Surface { n: vec3f, v: vec3f, diffuse: vec3f, specular: vec3f, hasSpecular: bool, alphaR: f32, nDotV: f32 };
+
+/**
+ * 一个光源的直射光：Lambert 漫反射加 GGX 镜面（Fresnel Schlick、Smith-Schlick-GGX 可见性），l 是指向光源的单位向量，
+ * lightColor 已经乘过衰减、阴影和遮蔽（Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet）。
+ */
+fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
+  let nDotL = max(dot(s.n, l), 0.0001);
+  let lightColorNdotL = lightColor * nDotL;
+  var result = s.diffuse / PI * lightColorNdotL;
+  let h = normalize(s.v + l);
+  let nDotH = saturate(dot(s.n, h));
+  let lDotH = saturate(dot(l, h));
+  let fresnel = s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0);
+  let reflected = fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0;
+  return result + select(vec3f(0.0), reflected * lightColorNdotL, s.hasSpecular);
+}
+
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let n = surfaceNormal(in);
   let v = normalize(view.eye.xyz - in.world);
@@ -385,25 +410,33 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
 
-  // 直射光（DirectLightGroup.PrepareDirectLight：光色 · 阴影 · N·L），逐个方向光相加
+  // 直射光（DirectLightGroup.PrepareDirectLight：光色 · 衰减 · 阴影 · N·L），逐个光源相加
+  let surface = Surface(n, v, diffuse, specular, hasSpecular, alphaR, nDotV);
   var direct = vec3f(0.0);
   let lightCount = u32(view.sky.z);
   let shadowLight = i32(view.sky.w);
   for (var i = 0u; i < lightCount; i++) {
     let l = -view.lightDirections[i].xyz;
-    let nDotL = max(dot(n, l), 0.0001);
     var shadow = 1.0;
     if (i32(i) == shadowLight) {
-      shadow = computeShadow(in.world, n, nDotL, in.depth);
+      shadow = computeShadow(in.world, n, max(dot(n, l), 0.0001), in.depth);
     }
-    let lightColorNdotL = view.lightColors[i].rgb * shadow * nDotL * directOcclusion;
-    direct += diffuse / PI * lightColorNdotL;
-    let h = normalize(v + l);
-    let nDotH = saturate(dot(n, h));
-    let lDotH = saturate(dot(l, h));
-    let fresnel = specular + (1.0 - specular) * pow(1.0 - lDotH, 5.0);
-    let reflected = fresnel * visibilitySmithSchlickGGX(alphaR, nDotL, nDotV) * normalDistributionGGX(alphaR, nDotH) / 4.0;
-    direct += select(vec3f(0.0), reflected * lightColorNdotL, hasSpecular);
+    direct += shadeLight(surface, l, view.lightColors[i].rgb * shadow * directOcclusion);
+  }
+  // 点光、聚光：距离衰减（LightUtil.GetDistanceAttenuation），聚光再乘角度衰减（GetAngularAttenuation）
+  for (var i = 0u; i < u32(view.locals.x); i++) {
+    let light = localLights[i];
+    let toLight = light.position.xyz - in.world;
+    let distance = length(toLight);
+    let l = toLight / distance;
+    let d2 = distance * distance;
+    let falloff = saturate(1.0 - pow(d2 * light.position.w, 2.0));
+    var attenuation = falloff * falloff / max(d2, 0.0001);
+    if (light.color.w > 0.5) {
+      let angular = saturate(dot(-l, light.direction.xyz) * light.angle.x + light.angle.y);
+      attenuation *= angular * angular;
+    }
+    direct += shadeLight(surface, l, light.color.rgb * attenuation * directOcclusion);
   }
   // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致
   var color = direct * PI;
@@ -471,7 +504,9 @@ const SAMPLES = 1024u;
 /** 每个视图的常量占一块：uniform 的动态偏移必须是 minUniformBufferOffsetAlignment（256）的整数倍。 */
 const VIEW_STRIDE = 768;
 /** View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4。 */
-const VIEW_FLOATS = 188;
+const VIEW_FLOATS = 192;
+/** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
+const LOCAL_LIGHT_FLOATS = 16;
 /** 一帧最多的视图数：主视图加 4 个阴影级联，留些余量。 */
 const MAX_VIEWS = 8;
 /** 材质 uniform：baseColor、uvTransform、emissive、surface、normalUvTransform 各一个 vec4，再加三个 u32，补齐到 16 字节。 */
@@ -774,6 +809,8 @@ class Gpu {
   #palettes: GPUBuffer | undefined;
   #views: GPUBuffer | undefined;
   readonly #viewData = new Float32Array((VIEW_STRIDE / 4) * MAX_VIEWS);
+  readonly #localLightData = new Float32Array(MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS);
+  readonly #localLights: GPUBuffer;
   /** 视图绑定组，按绑在阴影位置上的深度图分开：画阴影图集时不能同时采样它。 */
   readonly #viewBindGroups = new Map<GPUTexture, GPUBindGroup>();
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
@@ -797,6 +834,7 @@ class Gpu {
         { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'comparison' } },
         { binding: 8, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 9, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 10, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -817,6 +855,7 @@ class Gpu {
     });
     this.#pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.#viewLayout, this.#materialLayout, this.#meshLayout] });
     this.#dfgLut = createDfgLut(device);
+    this.#localLights = this.#createStorage('MeshRenderFeature local lights', MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS * 4);
   }
 
   /**
@@ -918,7 +957,7 @@ class Gpu {
   uploadViews(views: readonly RenderView[], lighting: Lighting): void {
     const stride = VIEW_STRIDE / 4;
     if (views.length > MAX_VIEWS) throw new RangeError(`MeshRenderFeature supports ${MAX_VIEWS} views, got ${views.length}`);
-    const { directionals, directionalCount, ambient, skybox, shadow } = lighting;
+    const { directionals, directionalCount, ambient, skybox, shadow, locals, localCount } = lighting;
     const data = this.#viewData;
     for (const view of views) {
       const o = view.index * stride;
@@ -946,7 +985,15 @@ class Gpu {
         data.set([direction.x / length, direction.y / length, direction.z / length, 0], o + 156 + i * 4);
         data.set([color.r, color.g, color.b, 1], o + 172 + i * 4);
       }
+      data.set([localCount, 0, 0, 0], o + 188);
     }
+    // 点光、聚光：所有视图共用一份
+    const lights = this.#localLightData;
+    for (let i = 0; i < localCount; i++) {
+      const { position: p, color: c, direction: d, spot, invSquareRadius, angleScale, angleOffset } = locals[i]!;
+      lights.set([p.x, p.y, p.z, invSquareRadius, c.r, c.g, c.b, spot ? 1 : 0, d.x, d.y, d.z, 0, angleScale, angleOffset, 0, 0], i * LOCAL_LIGHT_FLOATS);
+    }
+    if (localCount > 0) this.device.queue.writeBuffer(this.#localLights, 0, lights, 0, localCount * LOCAL_LIGHT_FLOATS);
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
@@ -976,6 +1023,7 @@ class Gpu {
           { binding: 7, resource: this.#resources.shadowComparison },
           { binding: 8, resource: { buffer: this.#paletteOf! } },
           { binding: 9, resource: { buffer: this.#palettes! } },
+          { binding: 10, resource: { buffer: this.#localLights } },
         ],
       });
       this.#viewBindGroups.set(atlas, group);
@@ -1055,7 +1103,7 @@ class Gpu {
   }
 
   destroy(): void {
-    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes]) buffer?.destroy();
+    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#localLights]) buffer?.destroy();
     for (const { params, vertices, indices } of this.#meshes.values()) {
       params.destroy();
       vertices.destroy();

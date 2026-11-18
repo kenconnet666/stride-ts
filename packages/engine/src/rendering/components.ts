@@ -32,9 +32,16 @@ export const Camera = component('Camera', {
  * 对数划分，大小按画面和 shadowSize 定（xlarge 每个级联最多 2048）。
  */
 export const Light = component('Light', {
-  type: prop.enum(['directional', 'ambient', 'skybox']).default('directional'),
+  type: prop.enum(['directional', 'ambient', 'skybox', 'point', 'spot']).default('directional'),
   color: prop.color(),
   intensity: prop.f32().default(1).min(0),
+  /** 点光的半径：光照在这里衰减到 0（Stride 的 LightPoint.Radius）。 */
+  radius: prop.f32().default(1).min(0),
+  /** 聚光照到多远（Stride 的 LightSpot.Range）。 */
+  range: prop.f32().default(3).min(0),
+  /** 聚光的内锥角、外锥角（度，整个锥的张角）：内锥里全亮，到外锥平滑地暗到 0。 */
+  angleInner: prop.f32().default(30).min(0).max(180).unit('deg'),
+  angleOuter: prop.f32().default(35).min(0).max(180).unit('deg'),
   skybox: prop.u32().brand<'SkyboxId'>().default(0 as SkyboxId),
   shadow: prop.bool().default(false).group('Shadow'),
   shadowSize: prop.enum(['xsmall', 'small', 'medium', 'large', 'xlarge']).default('medium').group('Shadow'),

@@ -546,6 +546,16 @@ export class StrideImporter {
           ...(shadow ? { shadow } : {}),
         };
       }
+      case 'LightPoint':
+      case 'LightSpot': {
+        // 默认值同 Stride：点光半径 1，聚光范围 3、内外锥角 30°、35°
+        const color = asObject(asObject(type['Color'])?.['Value']) ?? {};
+        if (asObject(type['Shadow'])?.['Enabled'] === true) this.#warnings.push(`${where}: shadows of ${type.$type} are not supported yet; the light casts no shadow`);
+        const rgb: Vec3Tuple = [asNumber(color['R'], 1), asNumber(color['G'], 1), asNumber(color['B'], 1)];
+        return type.$type === 'LightSpot'
+          ? { type: 'spot', color: rgb, intensity, range: asNumber(type['Range'], 3), angleInner: asNumber(type['AngleInner'], 30), angleOuter: asNumber(type['AngleOuter'], 35) }
+          : { type: 'point', color: rgb, intensity, radius: asNumber(type['Radius'], 1) };
+      }
       case 'LightSkybox': {
         const skybox = parseAssetReference(type['Skybox']);
         return skybox ? { type: 'skybox', skybox: await this.#skybox(this.#project.get(skybox.id, where)), intensity } : undefined;

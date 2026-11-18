@@ -1,5 +1,7 @@
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
 import { ContentManager, type SceneInstance } from '../content/ContentManager';
+import { registerGameCommands } from '../debug/commands';
+import { Debug } from '../debug/Debug';
 import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
@@ -37,12 +39,19 @@ export interface GameOptions {
    * 给其中的组件、脚本、系统起名（见 engine/registry.ts）。
    */
   modules?: Readonly<Record<string, unknown>>;
+  /**
+   * 连开发服务器上的调试中枢，让 `stride` 命令（@stride-ts/cli）能查看和操作这个游戏，见 debug/Debug.ts。
+   * undefined（默认）时看页面地址带不带 ?debug；游戏入口一般传 `import.meta.env.DEV || undefined`：开发服务器上总是打开。
+   */
+  debug?: boolean | undefined;
 }
 
 // 更长的间隔（标签页在后台、断点停住）不在一步里模拟完。
 const MAX_ELAPSED = 0.25;
 const DEFAULT_MAX_TRANSFORMS = 65536;
 const DEFAULT_MAX_BODIES = 4096;
+/** 暂停时单步、没设 fixedTimeStep 时每步的秒数。 */
+const STEP_SECONDS = 1 / 60;
 
 /** Vite 的 `import.meta.hot` 里引擎用到的部分。 */
 export interface HotContext {
@@ -50,7 +59,7 @@ export interface HotContext {
 }
 
 declare global {
-  /** 正在运行的游戏，tools/ 里的脚本读它（`status`、`frames`、`sceneFrame`、`error`）。 */
+  /** 正在运行的游戏，控制台和调试命令的 eval 读它。 */
   var strideGame: Game | undefined;
 }
 
@@ -77,6 +86,14 @@ export class Game {
   /** 资源管线产出的模型、材质、场景（默认从页面旁边的 content/ 加载，可以换成别的根目录）。 */
   content = new ContentManager();
   readonly entities: EntityManager = new EntityManager(this);
+  /** 调试命令、计数器、事件和日志转发（debug/Debug.ts）。 */
+  readonly debug = new Debug(() => (this.status === 'starting' ? undefined : this.frames));
+  /** 暂停时不跑 update（脚本、系统、物理、游戏时间都停住），画面照常画；step() 单步。 */
+  paused = false;
+  /** 游戏时间相对真实时间的倍率。 */
+  timeScale = 1;
+  /** 设了以后每帧固定前进这么多秒，不看真实时间（调试时复现同样的过程）。 */
+  fixedTimeStep: number | undefined;
 
   status: GameStatus = 'starting';
   error: string | undefined;
@@ -84,6 +101,7 @@ export class Game {
   sceneFrame: number | undefined;
 
   private lastFrameTime: number | undefined;
+  private pendingSteps = 0;
 
   /** 标了 inherit() 的属性的作用域默认值：之后创建的组件和脚本都取这里的值，见 engine/defaults.ts。 */
   get defaults(): ScopedDefaults {
@@ -97,6 +115,10 @@ export class Game {
   async run(canvas: HTMLCanvasElement, options: GameOptions = {}): Promise<void> {
     globalThis.strideGame = this;
     this.entities.onError = (error) => this.fail(error);
+    if (options.debug ?? new URLSearchParams(location.search).has('debug')) {
+      registerGameCommands(this.debug, this);
+      this.debug.connect();
+    }
     try {
       if (options.modules) this.registry.registerModules(options.modules);
       this.native = await createStrideNative({
@@ -187,6 +209,11 @@ export class Game {
     }
   }
 
+  /** 暂停时再跑 frames 帧，每帧前进 fixedTimeStep（没设时 1/60 秒）；没暂停时不起作用。 */
+  step(frames = 1): void {
+    this.pendingSteps += frames;
+  }
+
   protected async loadContent(): Promise<void> {}
 
   /**
@@ -214,15 +241,25 @@ export class Game {
 
   private readonly frame = (now: number): void => {
     if (this.status !== 'running') return;
-    const elapsed = this.lastFrameTime === undefined ? 0 : Math.min((now - this.lastFrameTime) / 1000, MAX_ELAPSED);
+    const interval = this.lastFrameTime === undefined ? 0 : now - this.lastFrameTime;
     this.lastFrameTime = now;
+    const start = performance.now();
     try {
-      this.updateTime.advance(elapsed);
-      this.input.update();
-      this.update(this.updateTime);
-      this.transforms.update();
+      const updating = !this.paused || this.pendingSteps > 0;
+      if (updating) {
+        if (this.paused) this.pendingSteps--;
+        const real = Math.min(interval / 1000, MAX_ELAPSED) * this.timeScale;
+        this.updateTime.advance(this.fixedTimeStep ?? (this.paused ? STEP_SECONDS : real));
+        this.input.update();
+        this.update(this.updateTime);
+        this.transforms.update();
+      }
+      const drawStart = performance.now();
       this.graphicsDevice.resizeToDisplaySize();
       this.draw(this.updateTime);
+      const end = performance.now();
+      this.debug.frames.record(interval, updating ? drawStart - start : 0, end - drawStart);
+      this.debug.endFrame();
     } catch (error) {
       this.fail(error);
       throw error;

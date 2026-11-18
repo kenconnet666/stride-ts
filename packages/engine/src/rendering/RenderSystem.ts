@@ -95,11 +95,13 @@ export class RenderView {
 
 /** 根渲染特性（Stride 的 RootRenderFeature）：负责一类可画的东西，比如网格。 */
 export abstract class RootRenderFeature {
+  /** 名字（调试统计里用；类名在正式构建里会被压缩，所以显式写）。 */
+  abstract readonly name: string;
   #system: RenderSystem | undefined;
 
   /** 加入渲染系统后可用。 */
   get system(): RenderSystem {
-    if (!this.#system) throw new Error(`${this.constructor.name} has not been added to a RenderSystem`);
+    if (!this.#system) throw new Error(`${this.name} has not been added to a RenderSystem`);
     return this.#system;
   }
 
@@ -119,6 +121,10 @@ export abstract class RootRenderFeature {
   abstract prepare(context: RenderContext): void;
   /** 把这个特性的东西画进一个视图的一个阶段。 */
   abstract draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void;
+  /** 上一帧的统计（调试的 perf 命令读），比如画了多少实例、多少次绘制。 */
+  stats(): Record<string, number> {
+    return {};
+  }
   destroy(): void {}
 }
 

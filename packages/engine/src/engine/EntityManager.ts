@@ -56,6 +56,11 @@ export class EntityManager {
   readonly game: Game;
   /** 标了 .inherit() 的属性的作用域默认值，对之后创建的实例生效。 */
   readonly defaults = new ScopedDefaults();
+  /**
+   * 设了以后按阶段累计 CPU 毫秒数：每个系统按名字，另有 'scripts.start'、'scripts.update'、'physics'。
+   * 调试时（Debug 的 perf 命令）打开，平时是 undefined，没有开销。
+   */
+  timings: Map<string, number> | undefined;
   /** 没有调用方能接住的错误交给它：比如 AsyncScript.execute 被拒绝。 */
   onError: (error: unknown) => void = (error) => {
     throw error;
@@ -102,6 +107,21 @@ export class EntityManager {
   /** 活着的实体数。 */
   get count(): number {
     return this.#alive;
+  }
+
+  /** 所有活着的实体，按下标顺序。 */
+  ids(): EntityId[] {
+    const ids: EntityId[] = [];
+    for (let index = 0; index < this.#table.length; index++) {
+      if (this.#table[index] !== undefined) ids.push((this.#generation[index]! * INDEX_SPAN + index) as EntityId);
+    }
+    return ids;
+  }
+
+  /** 实体的数据组件类型。 */
+  componentTypes(id: EntityId): readonly ComponentType<any>[] {
+    this.#assertAlive(id);
+    return this.#table[indexOf(id)]!.types;
   }
 
   isAlive(id: EntityId): boolean {
@@ -414,14 +434,29 @@ export class EntityManager {
 
   /** 一帧：启动新脚本、跑 SyncScript 的 update、"物理前"的系统，然后 physics（仿真步进），再跑"物理后"的系统。 */
   update(time: GameTime, physics?: (time: GameTime) => void): void {
+    let lap = this.#lap('', 0);
     this.#startPending();
+    lap = this.#lap('scripts.start', lap);
     for (const script of this.#syncScripts) {
       if (script.attached && script.enabled) script.update(time);
     }
+    this.#lap('scripts.update', lap);
     this.#runSystems('beforePhysics', time);
-    physics?.(time);
+    if (physics) {
+      lap = this.#lap('', 0);
+      physics(time);
+      this.#lap('physics', lap);
+    }
     this.#runSystems('afterPhysics', time);
     this.#endFrame(time);
+  }
+
+  /** timings 打开时把 start 以来的毫秒数记到 label 下（label 为空时只取时间），返回现在；关着时什么都不做。 */
+  #lap(label: string, start: number): number {
+    if (!this.timings) return 0;
+    const now = performance.now();
+    if (label) this.timings.set(label, (this.timings.get(label) ?? 0) + now - start);
+    return now;
   }
 
   /** @internal AsyncScript.nextFrame 和 delay：在第一个满足 done(time) 的帧末尾兑现。 */
@@ -470,7 +505,10 @@ export class EntityManager {
   #runSystems(phase: Phase, time: GameTime): void {
     this.#ordered ??= orderSystems(this.#systems);
     for (const s of this.#ordered) {
-      if (s.phase === phase) this.#runSystem(s, time);
+      if (s.phase !== phase) continue;
+      const lap = this.#lap('', 0);
+      this.#runSystem(s, time);
+      this.#lap(s.name, lap);
     }
   }
 

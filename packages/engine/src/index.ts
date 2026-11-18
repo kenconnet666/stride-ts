@@ -83,6 +83,8 @@ export { Stat, type StatModifierOptions } from './engine/stats';
 export { system, System, type Chunk, type EntityIds, type Phase, type SystemSpec } from './engine/system';
 export { Transform, transformSlot, type TransformColumns, type TransformShape, type TransformView } from './engine/transform';
 export { validator } from './engine/validator';
+export { Debug, FrameTimings, describe, type DebugHandler } from './debug/Debug';
+export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
 export { Game, type GameOptions, type GameStatus, type HotContext } from './games/Game';
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';

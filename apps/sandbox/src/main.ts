@@ -11,7 +11,7 @@ const modules = import.meta.glob('./game/**/*.ts', { eager: true });
 
 const { game, created } = Game.hotEntry(import.meta.hot, modules, SandboxGame, stats);
 if (created) {
-  game.run(canvas, { modules, debugNative: import.meta.env.DEV, nativeFeatures: [physics] }).catch((error: unknown) => {
+  game.run(canvas, { modules, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics] }).catch((error: unknown) => {
     stats.textContent = `failed: ${error instanceof Error ? error.message : String(error)}`;
   });
 }

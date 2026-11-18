@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./content-format": "./src/content/format.ts"
+    "./content-format": "./src/content/format.ts",
+    "./debug-protocol": "./src/debug/protocol.ts"
   },
   "dependencies": {
     "@stride-ts/native": "^0.8.1"

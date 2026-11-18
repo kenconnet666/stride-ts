@@ -1,0 +1,21 @@
+{
+  "name": "@stride-ts/cli",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "stride: inspect and drive a running stride-ts game from the command line (for agents and developers)",
+  "bin": {
+    "stride": "./src/cli.ts"
+  },
+  "exports": {
+    "./vite": "./src/vite.ts",
+    "./hub": "./src/hub.ts"
+  },
+  "dependencies": {
+    "@stride-ts/engine": "workspace:*",
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
+  }
+}

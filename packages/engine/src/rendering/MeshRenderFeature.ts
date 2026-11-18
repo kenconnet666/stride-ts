@@ -442,6 +442,7 @@ interface GpuMaterial {
 }
 
 export class MeshRenderFeature extends RootRenderFeature {
+  readonly name = 'MeshRenderFeature';
   /** 这一帧的批次，按第一次出现的顺序；空的批次留着下一帧复用。 */
   readonly batches: MeshBatch[] = [];
   readonly #batchByKey = new Map<number, MeshBatch>();
@@ -491,6 +492,10 @@ export class MeshRenderFeature extends RootRenderFeature {
   /** 这一帧提取到的实例总数（剔除之前）。 */
   get instanceCount(): number {
     return this.#instanceCount;
+  }
+
+  override stats(): Record<string, number> {
+    return { instances: this.#instanceCount, drawnInstances: this.drawnInstances, drawCalls: this.drawCalls };
   }
 
   override cull(context: RenderContext, views: readonly RenderView[]): void {

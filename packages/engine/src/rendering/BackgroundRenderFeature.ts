@@ -37,6 +37,7 @@ struct Uniforms {
 const UNIFORM_FLOATS = 40;
 
 export class BackgroundRenderFeature extends RootRenderFeature {
+  readonly name = 'BackgroundRenderFeature';
   /** 这一帧的背景；没有 Background 组件时不画。 */
   #cubemap: Cubemap | undefined;
   #intensity = 1;

@@ -283,14 +283,28 @@ export class ContentManager {
    * 再按顺序创建实体和组件，最后挂脚本（这时所有实体都在，脚本属性里的实体引用才解析得了）。
    */
   async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
-    const url = new URL(path + EXTENSIONS.scene, this.root);
-    const scene = this.#json<SceneFile>(await this.#read(url));
-    const created = this.#instantiate(scene.entities, await this.#preloadAssets(scene.entities, url), entities, options, path);
+    const { scene, assets } = await this.#sceneWithAssets(path);
+    const created = this.#instantiate(scene.entities, assets, entities, options, path, scene.offset);
     const compositor = scene.compositor && {
       ...scene.compositor,
       textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
     };
     return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
+  }
+
+  /**
+   * 只加载场景文件和它引用的资源，不建实体（Stride 的 Content.LoadAsync 预加载，TopDownRPG 的 SceneStreaming 走近分块时用）；
+   * 之后的 loadScene 直接用加载好的。
+   */
+  async preloadScene(path: string): Promise<void> {
+    await this.#sceneWithAssets(path);
+  }
+
+  #sceneWithAssets(path: string): Promise<{ scene: SceneFile; assets: SceneAssets }> {
+    return this.#once(path + EXTENSIONS.scene, async (url) => {
+      const scene = this.#json<SceneFile>(await this.#read(url));
+      return { scene, assets: await this.#preloadAssets(scene.entities, url) };
+    });
   }
 
   /** 加载预制体：引用的资源先加载好，实例化时才建实体（见 Prefab）。实例化时脚本按 options 对应，同 loadScene。 */
@@ -336,10 +350,12 @@ export class ContentManager {
    * 按实体文件建实体：先按顺序建实体和组件（父实体在前），再挂实例的主实体，最后挂脚本（这时所有实体都在，脚本属性里的
    * 实体引用才解析得了）。返回按文件里的实体 id 的表；where 用在报错和警告里。
    */
-  #instantiate(files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string): Map<string, Entity> {
+  #instantiate(files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string, offset?: readonly [number, number, number]): Map<string, Entity> {
     const created = new Map<string, Entity>();
     for (const file of files) {
-      const entity = entities.create({ name: file.name, components: [Transform.with({ position: file.position, rotation: file.rotation, scale: file.scale })] });
+      // 场景的偏移（Stride 的 Scene.Offset）加在根实体上
+      const position = offset && file.parent === null ? file.position.map((value, i) => value + offset[i]!) as unknown as typeof file.position : file.position;
+      const entity = entities.create({ name: file.name, components: [Transform.with({ position, rotation: file.rotation, scale: file.scale })] });
       if (file.parent !== null) {
         const parent = created.get(file.parent);
         if (!parent) throw new Error(`${where}: entity '${file.name}' comes before its parent ${file.parent}`);

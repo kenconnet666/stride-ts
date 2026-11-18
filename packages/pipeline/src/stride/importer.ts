@@ -149,10 +149,12 @@ export class StrideImporter {
     const files = await this.#hierarchy(asset, compositor.cameraSlots);
     const usesPhysics = files.some((file) => file.components.static || file.components.character || file.components.body);
     const navigation = this.#navigationSettings(asset);
+    const offset = vec3(asset.data['Offset'], 0);
     const scene: SceneFile = {
       name: path.basename(asset.path),
       ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}),
       ...(usesPhysics && navigation ? { navigation } : {}),
+      ...(offset.some((value) => value !== 0) ? { offset } : {}),
       ...(compositor.main ? { compositor: compositor.main } : {}),
       entities: files,
     };
@@ -281,7 +283,8 @@ export class StrideImporter {
     const name = type.slice(0, type.indexOf(','));
     const props: Record<string, SceneScriptValue> = {};
     for (const [key, value] of Object.entries(component)) {
-      if (key === 'Id' || key.startsWith('~') || key === '$type') continue;
+      // Priority 是 Stride 脚本基类的执行顺序，我们的脚本按挂上的顺序跑，不导入
+      if (key === 'Id' || key === 'Priority' || key.startsWith('~') || key === '$type') continue;
       props[lowerFirst(key)] = await this.#scriptValue(value, `${where}: ${name}.${key}`, context);
     }
     return { type: name, props };
@@ -302,6 +305,8 @@ export class StrideImporter {
       return value;
     }
     if (Array.isArray(value)) return Promise.all(value.map((item) => this.#scriptValue(item, where, context)));
+    // 带类型标签的引用（`!Stride.BepuPhysics.BodyComponent,Stride.BepuPhysics ref!! Id`）解析出来是 { $type, value: 'ref!! Id' }
+    if (typeof value['value'] === 'string' && parseObjectReference(value['value']) !== undefined) return this.#scriptValue(value['value'], where, context);
     const entries = Object.entries(value).filter(([key]) => key !== '$type');
     // Stride 把列表存成以哈希为键的映射；Vector2、Vector3、Quaternion 存成 X、Y（Z、W）
     if (entries.length > 0 && entries.every(([key]) => /^[0-9a-f]{32}$/.test(key))) return Promise.all(entries.map(([, item]) => this.#scriptValue(item, where, context)));
@@ -611,6 +616,7 @@ export class StrideImporter {
       angularDamping: asNumber(simulation['PoseAngularDamping'], 0.05),
       fixedTimeStep: asNumber(simulation['FixedTimeStepSeconds'], 1 / 60),
       maxStepsPerFrame: asNumber(simulation['MaxStepPerFrame'], 3),
+      ...collisionMatrix(simulation),
     };
   }
 
@@ -1247,6 +1253,27 @@ const align4 = (n: number) => (n + 3) & ~3;
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 游戏的脚本：带程序集名、不在 Stride 的命名空间里（引擎组件要么没有命名空间，要么以 Stride. 开头）。 */
+/**
+ * BepuSimulation 的碰撞矩阵（Layer0 到 Layer31 各是一个 CollisionMask）：Stride 按对称矩阵存，反序列化时按层号依次
+ * Set(layer, mask)，两层共有的那一位以后设的为准，没写的层保持全部碰撞。全部碰撞时不写。
+ */
+function collisionMatrix(simulation: StrideObject): { collisionMasks?: number[] } {
+  const masks = Array.from({ length: 32 }, () => 0xffffffff);
+  let listed = false;
+  for (let layer = 0; layer < 32; layer++) {
+    const value = simulation[`Layer${layer}`];
+    if (value === undefined) continue;
+    listed = true;
+    const mask = collisionMask(value);
+    for (let other = 0; other < 32; other++) {
+      const collide = ((mask >>> other) & 1) !== 0;
+      masks[layer] = collide ? masks[layer]! | (1 << other) : masks[layer]! & ~(1 << other);
+      masks[other] = collide ? masks[other]! | (1 << layer) : masks[other]! & ~(1 << layer);
+    }
+  }
+  return listed && masks.some((mask) => mask >>> 0 !== 0xffffffff) ? { collisionMasks: masks.map((mask) => mask >>> 0) } : {};
+}
+
 /** Stride 的 CollisionMask（`Layer0, Layer6` 这样的标志枚举，或 Everything、None）换成位掩码；没写是 Everything。 */
 export function collisionMask(value: StrideValue | undefined): number {
   if (value === undefined || value === null || value === 'Everything') return 0xffffffff;

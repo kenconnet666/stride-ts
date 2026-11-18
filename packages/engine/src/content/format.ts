@@ -694,6 +694,8 @@ export interface ScenePhysics {
   /** 秒。 */
   readonly fixedTimeStep: number;
   readonly maxStepsPerFrame: number;
+  /** 碰撞矩阵（Stride 的 Layer0 到 Layer31）：collisionMasks[a] 的第 b 位为 1 表示层 a 和层 b 碰撞；没写是全部碰撞。 */
+  readonly collisionMasks?: readonly number[];
 }
 
 export interface SceneEntityFile {
@@ -774,6 +776,11 @@ export interface SceneFile {
   readonly physics?: ScenePhysics;
   /** 场景用的导航设置；没有时用 Stride 的默认值。 */
   readonly navigation?: SceneNavigation;
+  /**
+   * 整个场景的平移（Stride 的 Scene.Offset，TopDownRPG 的分块场景用它摆到各自的位置），加在根实体上。和 Stride 不同：
+   * Stride 加在世界矩阵上、根实体的本地位置不变，这里直接加进根实体的本地位置；父场景的偏移不累加（我们的场景没有父子关系）。
+   */
+  readonly offset?: readonly [number, number, number];
   /** 主画面的合成器设置；没有时用前向渲染器的默认值。 */
   readonly compositor?: SceneCompositor;
   /** 父实体都排在子实体前面。 */

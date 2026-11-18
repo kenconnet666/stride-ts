@@ -302,6 +302,8 @@ describe('导入 Stride 场景', () => {
       '        -   Entity:', '                Id: p2', '                Name: Label', '                Components:',
       '                    t: !TransformComponent', '                        Id: tp2', '                        Children: {}',
       '                    s: !Game.Follower,Game', '                        Id: sp2', '                        Target: ref!! p1',
+      // 带类型标签的组件引用（TopDownRPG 的 SceneStreaming.Trigger）；Priority 是脚本基类的执行顺序，不导入
+      '                        Body: !Stride.BepuPhysics.BodyComponent,Stride.BepuPhysics ref!! bp1', '                        Priority: 20000',
     ].join('\n'),
     // OBJ 没写 usemtl、没有法线：Stride 的模型资源里只有一个叫 DefaultMaterial 的槽位（BepuSample 的 bridge.obj）
     'Resources/plain.obj': ['v 0 0 0', 'v 1 0 0', 'v 0 1 0', 'f 1 2 3', ''].join('\n'),
@@ -344,12 +346,15 @@ describe('导入 Stride 场景', () => {
       '!GameSettingsAsset', `Id: ${ids.gameSettings}`, `DefaultScene: ${ids.physicsScene}:Physics`, 'Defaults:',
       '    - !Stride.BepuPhysics.BepuConfiguration,Stride.BepuPhysics', '        BepuSimulations:',
       '            -   AssociatedScene: null', '                FixedTimeStepSeconds: 0.02', '                PoseGravity: {X: 0.0, Y: -40.0, Z: 0.0}',
+      // 碰撞矩阵（TopDownRPG）：层 4、15 只和层 5 碰撞
+      '                Layer4: Layer5', '                Layer15: Layer5',
       // TopDownRPG 的导航设置：没写的取 Stride 的默认值
       '    - !RecastNavigationConfiguration', '        BuildSettings:', '            CellSize: 0.1', '            AgentRadius: 0.5', '            MinRegionSize: 10',
       '            IncludedLayers: Layer0, Layer6', '            PartitionType: WATERSHED', '        PathfindingSettings:', '            MaxAllowedVisitedTiles: 16',
     ].join('\n'),
     'Assets/Physics.sdscene': [
-      '!SceneAsset', `Id: ${ids.physicsScene}`, 'Hierarchy:', '    Parts:',
+      // Offset：TopDownRPG 的分块场景用它摆位置
+      '!SceneAsset', `Id: ${ids.physicsScene}`, 'Offset: {X: -20.0, Y: 0.0, Z: 0.0}', 'Hierarchy:', '    Parts:',
       // 复合碰撞体：盒子带本地位置，胶囊取默认尺寸，凸包还不支持（跳过并警告）
       '        -   Entity:', '                Id: w1', '                Name: Wall', '                Components:',
       '                    t: !TransformComponent', '                        Id: tw1', '                        Children: {}',
@@ -519,7 +524,12 @@ describe('导入 Stride 场景', () => {
     expect(result.skipped.size).toBe(0);
     expect(result.warnings.filter((w) => w.includes('ConvexHullCollider'))).toHaveLength(1);
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Physics.scene.json'), 'utf8')) as SceneFile;
-    expect(scene.physics).toEqual({ gravity: [0, -40, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 0.02, maxStepsPerFrame: 3 });
+    const others = (0xffffffff & ~(1 << 4) & ~(1 << 15)) >>> 0;
+    expect(scene.physics).toEqual({
+      gravity: [0, -40, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 0.02, maxStepsPerFrame: 3,
+      collisionMasks: Array.from({ length: 32 }, (_, layer) => (layer === 4 || layer === 15 ? 1 << 5 : layer === 5 ? 0xffffffff : others)),
+    });
+    expect(scene.offset).toEqual([-20, 0, 0]);
     expect(scene.navigation).toEqual({
       build: {
         cellSize: 0.1, cellHeight: 0.2, agentHeight: 2, agentRadius: 0.5, agentMaxClimb: 0.9, agentMaxSlopeDegrees: 45, tileSize: 32,
@@ -626,7 +636,7 @@ describe('导入 Stride 场景', () => {
     const prefab = JSON.parse(await readFile(path.join(out, 'Game/Prefabs/Crate.prefab.json'), 'utf8')) as PrefabFile;
     expect(prefab.entities.map((e) => [e.name, e.parent])).toEqual([['Crate', null], ['Label', 'p1']]);
     expect(prefab.entities[0]!.components.body!.shapes[0]).toMatchObject({ type: 'box', size: [1, 1, 1] });
-    expect(prefab.entities[1]!.components.scripts).toEqual([{ type: 'Game.Follower', props: { target: { $entity: 'p1' } } }]);
+    expect(prefab.entities[1]!.components.scripts).toEqual([{ type: 'Game.Follower', props: { target: { $entity: 'p1' }, body: { $entity: 'p1' } } }]);
   });
 
   test('覆盖目录里的 SVG 代替源图片，原样导出，材质的贴图槽记下编码和栅格化尺寸', async () => {

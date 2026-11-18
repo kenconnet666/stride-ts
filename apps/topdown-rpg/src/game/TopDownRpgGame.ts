@@ -17,7 +17,9 @@ export class TopDownRpgGame extends Game {
   }
 
   protected override async loadContent(): Promise<void> {
-    await this.setRootScene(MAIN_SCENE, { scripts: SCENE_SCRIPTS });
+    // 页面地址 `?scene=DynamicScene` 选流式加载分块的版本
+    const scene = new URLSearchParams(location.search).get('scene');
+    await this.setRootScene(scene ? `TopDownRPG/${scene}` : MAIN_SCENE, { scripts: SCENE_SCRIPTS });
   }
 
   protected override update(time: GameTime): void {

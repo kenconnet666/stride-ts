@@ -231,6 +231,19 @@ describe('ContentManager', () => {
     await expect(load(scene([{ type: 'G.Listener', props: { source: { $entity: 'a' } } }]))).rejects.toThrow(/has no Signal/);
   });
 
+  test('场景的偏移（Stride 的 Scene.Offset）加在根实体上，子实体不加', async () => {
+    const entity = (id: string, parent: string | null) => ({ id, name: id, parent, position: [1, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} }) as const;
+    const scene: SceneFile = { name: 'Chunk', offset: [-20, 0, 5], entities: [entity('root', null), entity('child', 'root')] };
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(8);
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => json(scene) });
+    const loaded = await content.loadScene('scenes/Chunk', game.entities);
+    game.transforms.update();
+    expect([...loaded.entities.get('root')!.require(Transform).world.subarray(12, 15)]).toEqual([-19, 0, 5]);
+    expect([...loaded.entities.get('child')!.require(Transform).world.subarray(12, 15)]).toEqual([-18, 0, 5]);
+  });
+
   test('模型实例化：实例引用的主实体排在后面也能挂上，主实体带 Instancing；没有主实体的实例是 -1', async () => {
     const entity = (id: string, components: SceneFile['entities'][number]['components']) => ({ id, name: id, parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components }) as const;
     const scene: SceneFile = { name: 'Instances', entities: [entity('a', { instance: { master: 'm' } }), entity('b', { instance: { master: null } }), entity('m', { instancing: {} })] };

@@ -1,7 +1,8 @@
 // TopDownRPG 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的，1280x720），用调试 CLI 玩一遍。
 //   pnpm --filter @stride-ts/topdown-rpg smoke [-- --hub <中枢名的一部分>]
 // 检查：场景在跑、导航网格建好；点地面角色寻路走过去；鼠标指着箱子时高亮；点箱子走过去出拳，箱子碎掉、掉出金币；
-// 掉落的金币和场景里的金币都能拾取（3 秒后移除）；出拳的碰撞体挂在右手上。
+// 掉落的金币和场景里的金币都能拾取（3 秒后移除）；出拳的碰撞体挂在右手上。DynamicScene：一开始加载中央的分块，走到东边的
+// 触发器里加载东边的分块、离开中央时卸载它，角色一直站在地面上，导航网格跟着重建。
 import { startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('topdown-rpg');
@@ -53,5 +54,25 @@ check('拾取场景里的金币', stride('eval', `strideGame.entities.isAlive(${
 
 const punch = stride('eval', `${BY} const p = at(by('PunchCollision')[0]), m = at(by('MannequinModel')[0]); [p[1] - m[1], Math.hypot(p[0] - m[0], p[2] - m[2])]`) as [number, number];
 check('出拳的碰撞体挂在右手上', punch[0] > 0.8 && punch[0] < 1.6 && punch[1] < 0.8, punch);
+
+// DynamicScene：分块按触发器里的深度流式加载
+stride('eval', `location.href = location.origin + '/?scene=DynamicScene'`);
+await sleep(1500);
+stride('wait');
+await sleep(3000);
+const CHUNKS = `${BY} const [S] = g.registry.scriptsNamed('SceneStreaming');
+  [g.entities.ids().map((i) => g.entities.entity(i)).filter((e) => e.get(S)?.instance).map((e) => e.get(S).instance.name).sort().join(','), at(by('PlayerCharacter')[0])[1], g.navigation.ready]`;
+type Chunks = [string, number, boolean];
+const initial = stride('eval', CHUNKS) as Chunks;
+check('DynamicScene：一开始加载中央的分块，角色站在地上', initial[0] === 'CentralChunk' && initial[1] > -0.5 && initial[2], initial);
+const MOVE = (x: number) => `${BY} g.simulation.body(by('PlayerCharacter')[0]).teleport({ x: ${x}, y: 0.1, z: 0 }, { x: 0, y: 0, z: 0, w: 1 }); 1`;
+stride('eval', MOVE(-10));
+await sleep(2000);
+const both = stride('eval', CHUNKS) as Chunks;
+check('走到两块的交界：东边的分块也加载', both[0] === 'CentralChunk,EasternChunk', both);
+stride('eval', MOVE(-18));
+await sleep(2000);
+const east = stride('eval', CHUNKS) as Chunks;
+check('走进东边：中央的分块卸载，角色站在东边的地面上', east[0] === 'EasternChunk' && east[1] > -0.5, east);
 
 finish();

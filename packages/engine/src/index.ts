@@ -132,7 +132,7 @@ export {
 export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type ConstraintSettingsOf, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './navigation/NavigationSystem';
 export { RecastNavigationComponent, type NavigationState } from './navigation/RecastNavigationComponent';
-export { TriggerHandler, type Contact, type ContactHandler } from './physics/contacts';
+export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
 export { Background, Camera, Instance, Instancing, Light, Model, Skinned, Sprite } from './rendering/components';
 export { cameraProjectionMatrix, screenToWorldRaySegment, type CameraProjection } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';

@@ -1,4 +1,4 @@
-// 从 Stride 仓库导入 TopDownRPG 模板的主场景、分块子场景和资源，写进 public/content（不提交）。
+// 从 Stride 仓库导入 TopDownRPG 模板的主场景、分块加载的场景和资源，写进 public/content（不提交）。
 // Stride 仓库默认在 ~/IdeaProjects/stride（和 ~/WebstormProjects 并列），可以用 STRIDE_REPO 改。
 //   pnpm --filter @stride-ts/topdown-rpg import:stride
 import { execFileSync } from 'node:child_process';
@@ -14,7 +14,8 @@ execFileSync(process.execPath, [
   cli, 'import-stride',
   '--package', `TopDownRPG=${path.join(templates, 'TopDownRPG', 'TopDownRPG', 'Assets')}`,
   ...['PrototypingBlocks', 'mannequinModel', 'SamplesAssetPackage', 'VFXPackage'].flatMap((pack) => ['--package', `${pack}=${path.join(templates, 'Packs', pack, 'Assets')}`]),
-  '--scene', 'TopDownRPG/MainScene',
+  // MainScene 是 GameSettings 的默认场景（整张地图）；DynamicScene 走到边上时流式加载相邻的分块场景
+  ...['MainScene', 'DynamicScene', 'CentralChunk', 'NorthernChunk', 'SouthernChunk', 'EasternChunk', 'WesternChunk'].flatMap((scene) => ['--scene', `TopDownRPG/${scene}`]),
   '--out', path.join(app, 'public', 'content'),
   '--textures', 'source',
 ], { stdio: 'inherit' });

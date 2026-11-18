@@ -235,6 +235,26 @@ describe('接触事件和移除（Stride 的 IContactHandler、Trigger）', () =
     game.simulation.destroy();
   });
 
+  test('接触处理器有 onTouching 时每个物理步收到深度（Stride 的 OnTouching，TopDownRPG 的 SceneStreaming 按它加载分块）', () => {
+    const game = createGame();
+    const zone = game.entities.create({ components: [Transform.with({ position: [0, 3, 0] }), Static.with({ collider: new Collider([{ type: 'box', size: [4, 2, 4] }]).id })] });
+    const box = game.entities.create({ components: [Transform.with({ position: [0, 6, 0] }), Body.with({ collider: new Collider([{ type: 'box', size: [1, 1, 1] }]).id })] });
+    const events: string[] = [];
+    const depths: number[] = [];
+    run(game, 1);
+    game.simulation.setContactHandler(zone, {
+      noContactResponse: true,
+      onStartedTouching: ({ other }) => events.push(`start ${other === box.id}`),
+      onTouching: ({ other, depth }) => other === box.id && depths.push(depth),
+      onStoppedTouching: () => events.push('stop'),
+    });
+    run(game, 90);
+    expect(events).toEqual(['start true', 'stop']);
+    expect(depths.length).toBeGreaterThan(5);
+    expect(Math.max(...depths)).toBeGreaterThan(0.5);
+    game.simulation.destroy();
+  });
+
   test('Trigger 的碰撞体带 TriggerHandler，物体进出时通知；脚本设的处理器两边都收到；实体销毁时移除物体', () => {
     const game = createGame();
     const box = (size: [number, number, number]) => new Collider([{ type: 'box', size }]).id;

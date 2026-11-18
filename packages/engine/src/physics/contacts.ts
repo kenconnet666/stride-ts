@@ -1,5 +1,5 @@
 /**
- * 接触事件（Stride.BepuPhysics 的 IContactHandler）：碰撞体设了处理器后，和别的物体开始接触、不再接触时回调。
+ * 接触事件（Stride.BepuPhysics 的 IContactHandler）：碰撞体设了处理器后，和别的物体开始接触、接触期间每步、不再接触时回调。
  * 按一对物体算（复合碰撞体的多个形状算一次）；物体睡着时接触还在（同 Bepu）。用 `game.simulation.setContactHandler(entity, handler)`
  * 设，场景里 ContactEventHandler 是 Trigger 的碰撞体自带一个 TriggerHandler（`simulation.contactHandler(entity)` 取）。
  */
@@ -11,10 +11,20 @@ export interface Contact {
   readonly other: EntityId;
 }
 
+/** 正在接触：这一个物理步里两者最深的穿透深度（米，正数是陷进去）。 */
+export interface TouchingContact extends Contact {
+  readonly depth: number;
+}
+
 export interface ContactHandler {
   /** 只检测、不产生碰撞响应（Stride 的 NoContactResponse）；设处理器时读一次。 */
   readonly noContactResponse?: boolean;
   onStartedTouching?(contact: Contact): void;
+  /**
+   * 接触期间每个物理步调一次（Stride 的 OnTouching，那里给每个接触点，这里给这一步最深的深度）。设处理器时看有没有这个方法，
+   * 有才让原生侧报（每步每对物体一个事件）。
+   */
+  onTouching?(contact: TouchingContact): void;
   onStoppedTouching?(contact: Contact): void;
 }
 

@@ -1,6 +1,7 @@
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
 import { AnimationSystem } from '../animation/AnimationSystem';
 import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
+import { hook } from '../engine/events';
 import { ContentManager, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
@@ -113,6 +114,8 @@ export class Game {
   sceneFrame: number | undefined;
   /** 根场景（Stride 的 SceneSystem.SceneInstance.RootScene），setRootScene 设；loadScene 加的场景不算。 */
   rootScene: SceneInstance | undefined;
+  /** 加载（loadScene）或卸载（unloadScene）了一个场景之后触发（Stride 里场景的 Children 变了，TopDownRPG 的 EnableDynamicNavigation 听它重建导航网格）。 */
+  readonly scenesChanged = hook<{ readonly scene: SceneInstance; readonly loaded: boolean }>('scenesChanged');
   /** 正在换的根场景：连着换几次时按顺序来。 */
   private rootSceneChange: Promise<unknown> = Promise.resolve();
 
@@ -251,6 +254,7 @@ export class Game {
       this.simulation.configure(scene.physics);
     }
     if (scene.navigation && this.navigation) this.navigation.settings = scene.navigation;
+    this.scenesChanged.run({ scene, loaded: true });
     return scene;
   }
 
@@ -285,6 +289,7 @@ export class Game {
     for (const entity of scene.entities.values()) {
       if (this.entities.isAlive(entity.id)) entity.destroy();
     }
+    this.scenesChanged.run({ scene, loaded: false });
   }
 
   /** 运行脚本、系统和物理仿真（在物理前和物理后两组系统之间）；重写时要调用 super.update(time)。 */

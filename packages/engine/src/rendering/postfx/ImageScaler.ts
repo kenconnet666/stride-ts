@@ -7,8 +7,8 @@
  */
 import { FullscreenShader, type RenderTargetPool, type UniformArena } from './ImageEffect';
 
-/** 线性或 Expanded 的一次采样（AdditiveComposite 也用）。 */
-export const SCALED_SAMPLE = /* wgsl */ `
+/** 线性或 Expanded 的一次采样。 */
+const SCALED_SAMPLE = /* wgsl */ `
 const JITTERS = array<vec2f, 9>(vec2f(-2.0, 0.0), vec2f(0.0, 0.0), vec2f(2.0, 0.0), vec2f(-1.0, 1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(0.0, 2.0), vec2f(0.0, -2.0));
 
 fn scaledSample(source: texture_2d<f32>, linearClamp: sampler, uv: vec2f, texelSize: vec2f, expanded: bool) -> vec4f {

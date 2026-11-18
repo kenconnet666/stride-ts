@@ -2,13 +2,13 @@
  * 光芒（Stride 的 LightStreak，默认设置）：亮部图缩到 1/4（线性，两次减半；第一次的 1/2 和镜头光晕共用），沿 streakCount 个方向
  * （从 phase 度起均分一圈）各做 iterationCount 轮方向采样：每轮 4 个点，间距是 4^轮次，权重按 lerp(0.7, 1, attenuation)^距离
  * 衰减再归一，前三个点分别给 r、g、b 乘色差系数，越界的点算黑。各方向的结果乘 (1 / streakCount) · 0.2 · amount 累加，
- * 放大到 1/2、半径 3 的高斯模糊（σ 比 3），再加回画面（AdditiveComposite）。变形镜头（isAnamorphic）多采上下两排。
+ * 放大到 1/2、半径 3 的高斯模糊（σ 比 3），再加回画面（AdditiveLayers，在色调映射里）。变形镜头（isAnamorphic）多采上下两排。
  *
  * 和 Stride 的结果相同，通道的组织不同：Stride 每个方向每轮一个通道，再一个方向一个通道累加（默认 4 · 5 + 4 个）。
  * 这些通道都在 1/4 的小图上，耗时主要是通道本身的固定开销，所以这里一个通道同时算 4 个方向（4 个渲染目标），
  * 最后一轮直接把 4 个方向乘系数加起来写进累加缓冲（默认 5 个通道）。
  */
-import type { AdditiveLayer } from './AdditiveComposite';
+import type { AdditiveLayer } from './AdditiveLayers';
 import { ADD_BLEND, FullscreenShader, type ImageEffectContext } from './ImageEffect';
 
 const TAPS_PER_ITERATION = 4;

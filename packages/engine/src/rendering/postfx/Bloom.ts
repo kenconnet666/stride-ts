@@ -1,11 +1,11 @@
 /**
  * 泛光（Stride 的 Bloom，默认设置）：亮部图（可选先按 distortion 压扁，做变形镜头的效果）一级级缩小到 1 / 2^downScale，
- * 高斯模糊，再用 Expanded 采样放大、按 Stride 的 BlendStates.Additive 加回画面（AdditiveComposite）。叠加的颜色是
+ * 高斯模糊，再用 Expanded 采样放大、按 Stride 的 BlendStates.Additive 加回画面（AdditiveLayers，在色调映射里）。叠加的颜色是
  * (amount, …, amount)，Additive 又乘了一次源的 alpha（也是 amount），所以实际的权重是 amount²，同 Stride。
  * 模糊半径按缩小后的画面算：lerp(1, 长边 · 0.25 / 2^downScale, radius / 100)，取整，至少 1。
  * 残影（Afterimage，Stride 默认关）还没做。
  */
-import type { AdditiveLayer } from './AdditiveComposite';
+import type { AdditiveLayer } from './AdditiveLayers';
 import type { ImageEffectContext } from './ImageEffect';
 
 export class Bloom {

@@ -4,6 +4,8 @@
  * 在 HDR 画面上做（Stride 的 Bloom 默认开着 StableConvolution，FXAA 排在最前面），前后各一次范围转换：
  * - 压缩（RangeCompressorShader）：颜色 / (1 + 最大分量)，alpha 写感知亮度 sqrt(Rec.709 亮度)，FXAA 用 alpha 当亮度；
  * - 解压（RangeDecompressorShader）：颜色 / (1 - 最大分量)。
+ * 和 Stride 不同：解压不单独画一遍全分辨率，FXAA 输出时当场解压（结果只差中间结果存成 rgba16float 的舍入）。压缩没并进来：
+ * 在 FXAA 里每个采样点现算压缩、手动双线性插值时（试过，4K 下）FXAA 从 2.6 ms 涨到 9.6 ms，比单独一遍压缩（1.3 ms）贵得多。
  * 沿边搜索的步长表来自原着色器的各个预设（FXAA_QUALITY__P0..Pn）。原着色器按预设在编译期展开成嵌套的 if，这里也按预设
  * 生成展开的着色器（写成运行时的循环、按下标取步长时，TPP 上 FXAA 这一遍 0.62 ms，展开后 0.52 ms）。
  */
@@ -45,15 +47,6 @@ const COMPRESS_SHADER = /* wgsl */ `
   return vec4f(color / (1.0 + max(max(color.r, color.g), color.b)), luma);
 }`;
 
-const DECOMPRESS_SHADER = /* wgsl */ `
-@group(0) @binding(0) var source: texture_2d<f32>;
-
-@fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  let color = textureLoad(source, vec2u(in.position.xy), 0).rgb;
-  let denominator = 1.0 - max(max(color.r, color.g), color.b);
-  return vec4f(select(color, color / denominator, denominator > 0.0), 1.0);
-}`;
-
 /** WGSL 的浮点字面量。 */
 const float = (value: number) => (Number.isInteger(value) ? value.toFixed(1) : String(value));
 
@@ -83,6 +76,12 @@ fn lumaAt(p: vec2f, o: vec2f) -> f32 {
   return tap(p + o * fxaa.rcpFrame.xy).a;
 }
 
+// 范围解压（RangeDecompressorShader）：颜色 / (1 - 最大分量)
+fn decompressed(color: vec3f) -> vec4f {
+  let denominator = 1.0 - max(max(color.r, color.g), color.b);
+  return vec4f(select(color, color / denominator, denominator > 0.0), 1.0);
+}
+
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let rcp = fxaa.rcpFrame.xy;
   var posM = in.uv;
@@ -97,7 +96,7 @@ fn lumaAt(p: vec2f, o: vec2f) -> f32 {
   let rangeMin = min(min(lumaN, lumaW), min(lumaE, min(lumaS, lumaM)));
   let range = rangeMax - rangeMin;
   if (range < max(fxaa.quality.z, rangeMax * fxaa.quality.y)) {
-    return rgbyM;
+    return decompressed(rgbyM.rgb);
   }
 
   let lumaNW = lumaAt(posM, vec2f(-1.0, -1.0));
@@ -179,7 +178,7 @@ fn lumaAt(p: vec2f, o: vec2f) -> f32 {
   let pixelOffsetSubpix = max(pixelOffsetGood, subpixH);
   if (!horzSpan) { posM.x += pixelOffsetSubpix * lengthSign; }
   if (horzSpan) { posM.y += pixelOffsetSubpix * lengthSign; }
-  return vec4f(tap(posM).rgb, lumaM);
+  return decompressed(tap(posM).rgb);
 }`;
 
 export class Fxaa {
@@ -191,7 +190,6 @@ export class Fxaa {
   edgeThreshold = 0.063;
   edgeThresholdMin = 0.0312;
   readonly #compress: FullscreenShader;
-  readonly #decompress: FullscreenShader;
   /** 按预设号生成的 FXAA 着色器。 */
   readonly #fxaa = new Map<number, FullscreenShader>();
   readonly #device: GPUDevice;
@@ -200,7 +198,6 @@ export class Fxaa {
   constructor(device: GPUDevice, linearClamp: GPUSampler) {
     this.#device = device;
     this.#compress = new FullscreenShader(device, 'FXAA range compress', COMPRESS_SHADER);
-    this.#decompress = new FullscreenShader(device, 'FXAA range decompress', DECOMPRESS_SHADER);
     this.#sampler = linearClamp;
   }
 
@@ -213,7 +210,7 @@ export class Fxaa {
     return DITHER_BASE[this.dither] + this.quality;
   }
 
-  /** 在 HDR 画面上做 FXAA：input 被改写（中间结果），返回结果所在的纹理（从池里借的）。 */
+  /** 在 HDR 画面上做 FXAA：input 被改写（结果写回它），中间的压缩画面从池里借。 */
   drawHdr(encoder: GPUCommandEncoder, pool: RenderTargetPool, arena: UniformArena, input: GPUTexture): GPUTexture {
     const preset = this.preset;
     let fxaa = this.#fxaa.get(preset);
@@ -226,7 +223,6 @@ export class Fxaa {
     this.#compress.draw(encoder, compressed, [input]);
     const parameters = [1 / input.width, 1 / input.height, 0, 0, this.subpix, this.edgeThreshold, this.edgeThresholdMin, 0];
     fxaa.draw(encoder, input, [arena.push(parameters), compressed, this.#sampler]);
-    this.#decompress.draw(encoder, compressed, [input]);
-    return compressed;
+    return input;
   }
 }

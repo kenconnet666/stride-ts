@@ -4,9 +4,9 @@
  *   靠近边缘 10% 渐隐，各乘自己的色差颜色（按 colorAberrationStrength 插值），和乘 amount · 0.0005；
  * - 复制（FlareReplicate）：鬼影图再按 1、2.5、4、-4.5、-8 倍缩放各采一次（边缘 18% 渐隐），加上模糊亮部图的
  *   光环（-1 倍乘 haloFactor、0.1 倍乘 haloFactor / 2）和 -0.05 倍的一点；
- * 结果加回画面（AdditiveComposite）。
+ * 结果加回画面（AdditiveLayers，在色调映射里）。
  */
-import type { AdditiveLayer } from './AdditiveComposite';
+import type { AdditiveLayer } from './AdditiveLayers';
 import { FullscreenShader, type ImageEffectContext } from './ImageEffect';
 
 const ARTIFACTS = 8;

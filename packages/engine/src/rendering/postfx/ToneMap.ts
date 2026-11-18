@@ -7,9 +7,12 @@
  *   Stride 在 CPU 上做（要回读平均亮度），这里放在 GPU 上（1x1 的两张纹理轮流读写），没有回读；
  * - 曝光（AutoExposure、AutoKeyValue）：key = 1.03 - 2 / (2 + log10(adapted + 1))，曝光 = key / adapted；
  * - 算子：Hejl2（白点 5）。亮度、对比度是 0 时只剩 max(color, 0.0001)。
+ * 泛光等效果的层在映射之前加上（见 AdditiveLayers.ts）。
  */
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../fullscreen';
+import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
+import type { UniformArena } from './ImageEffect';
 
 const LUMINANCE_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
@@ -51,6 +54,7 @@ struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure:
 @group(0) @binding(0) var<uniform> settings: Settings;
 @group(0) @binding(1) var hdr: texture_2d<f32>;
 @group(0) @binding(2) var adapted: texture_2d<f32>;
+${additiveLayersShader(3)}
 
 fn hejl2(color: vec3f, whitePoint: f32) -> vec3f {
   var w = 1.425 * whitePoint + 0.05;
@@ -61,7 +65,7 @@ fn hejl2(color: vec3f, whitePoint: f32) -> vec3f {
 }
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  let color = max(textureLoad(hdr, vec2u(in.position.xy), 0).rgb, vec3f(0.0001));
+  let color = max(textureLoad(hdr, vec2u(in.position.xy), 0).rgb + additiveLayers(in.uv), vec3f(0.0001));
   let luminance = max(textureLoad(adapted, vec2u(0u), 0).r, 0.0001);
   let keyValue = select(settings.keyValue, 1.03 - 2.0 / (2.0 + log2(luminance + 1.0) / log2(10.0)), settings.autoKeyValue > 0.5);
   let exposure = select(settings.exposure, max(keyValue / luminance, 0.0001), settings.autoExposure > 0.5);
@@ -151,8 +155,8 @@ export class ToneMap {
     this.#measured = next;
   }
 
-  /** 按 measure 量出的亮度把 input 映射后画进 output。 */
-  draw(encoder: GPUCommandEncoder, input: GPUTexture, output: GPUTextureView, outputFormat: GPUTextureFormat): void {
+  /** 按 measure 量出的亮度把 input 加上 layers（已经 prefilterLayers 过）映射后画进 output。 */
+  draw(encoder: GPUCommandEncoder, arena: UniformArena, input: GPUTexture, layers: readonly AdditiveLayer[], output: GPUTextureView, outputFormat: GPUTextureFormat): void {
     const adapted = this.#measured;
     if (!adapted) throw new Error("ToneMap.draw: call measure first in the frame");
     const tonemap = this.#tonemapPipeline(outputFormat);
@@ -162,6 +166,7 @@ export class ToneMap {
         { binding: 0, resource: { buffer: this.#settings } },
         { binding: 1, resource: input.createView() },
         { binding: 2, resource: adapted.createView() },
+        ...additiveLayerResources(arena, layers, input, this.#sampler).map((resource, i) => ({ binding: 3 + i, resource: resource instanceof GPUTexture ? resource.createView() : resource })),
       ],
     }), output);
   }

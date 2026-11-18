@@ -15,7 +15,7 @@ import { SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './scene
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import { Collider, type ColliderShape } from '../physics/Collider';
-import { Character, Static } from '../physics/components';
+import { Body, Character, Static } from '../physics/components';
 import { Background, Camera, Light, Model, Sprite } from '../rendering/components';
 import { Material } from '../rendering/Material';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
@@ -254,7 +254,8 @@ export class ContentManager {
     const url = new URL(path + EXTENSIONS.scene, this.root);
     const scene = this.#json<SceneFile>(await this.#read(url));
     const components = scene.entities.map((e) => e.components);
-    const colliderModels = components.flatMap((c) => [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? [])]).flatMap((s) => (s.type === 'mesh' ? [s.model] : []));
+    const colliderModels = components.flatMap((c) => [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? []), ...(c.body?.shapes ?? [])])
+      .flatMap((s) => (s.type === 'mesh' || s.type === 'convexHull' ? [s.model] : []));
     const scriptAssets = scriptAssetRefs(components.flatMap((c) => c.scripts ?? []));
     const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
@@ -298,13 +299,17 @@ export class ContentManager {
   }
 
   #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
-    const { model, camera, light, background, animation, sprite, static: collidable, character } = file.components;
+    const { model, camera, light, background, animation, sprite, static: collidable, character, body } = file.components;
     const { materials } = assets;
     const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
     if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction }));
     if (character) {
       const { shapes, ...settings } = character;
       entity.add(Character.with({ collider: collider(shapes), ...settings }));
+    }
+    if (body) {
+      const { shapes, ...settings } = body;
+      entity.add(Body.with({ collider: collider(shapes), ...settings }));
     }
     if (camera) entity.add(Camera.with(camera));
     if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
@@ -375,9 +380,9 @@ export class ContentManager {
 /** 场景文件里的碰撞形状换成 Collider 的形状：网格形状引用模型加载出来的全部网格。 */
 function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderShape {
   const { position, rotation, mass } = shape;
-  if (shape.type !== 'mesh') return shape;
-  const model = assets.models.get(shape.model)!;
-  return { type: 'mesh', meshes: model.meshes.map(({ mesh }) => mesh), position, rotation, mass };
+  if (shape.type === 'mesh') return { type: 'mesh', meshes: assets.models.get(shape.model)!.meshes.map(({ mesh }) => mesh), position, rotation, mass };
+  if (shape.type === 'convexHull') return { type: 'convexHull', meshes: assets.models.get(shape.model)!.meshes.map(({ mesh }) => mesh), hull: shape.hull, position, rotation, mass };
+  return shape;
 }
 
 /** 脚本属性能引用的资源种类（加载场景时预先加载）。 */

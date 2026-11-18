@@ -2,7 +2,7 @@ import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { vertexLayoutOffsets, VERTEX_FLOATS, type ModelMeshData } from '@stride-ts/engine/content-format';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { addTangents, compressMeshes, MAX_QUANTIZED_EXTENT, octEncode, type SourceMesh } from '../src/index';
+import { addTangents, compressMeshes, MAX_QUANTIZED_EXTENT, octEncode, parseStrideYaml, proceduralMesh, type ProceduralMesh, type SourceMesh } from '../src/index';
 
 // 管线压缩的网格交给运行时模块解码，再按顶点着色器的做法还原，和源数据比较。
 
@@ -159,5 +159,54 @@ describe('网格压缩', () => {
     const [mesh] = compressMeshes([big], tools);
     expect([mesh!.layout, vertexLayoutOffsets(mesh!.layout).stride]).toEqual([{ position: 'float32x3', normal: 'snorm16x2', uv: 'float32x2' }, 24]);
     expectSameMesh(await restore(native, mesh!), big, { position: 0, normal: 2e-4, uv: 0 });
+  });
+});
+
+describe('程序模型（Stride 的 GeometricPrimitive）', () => {
+  /** 三角形从外面看都是逆时针：法线（三个顶点法线的和）和按顶点顺序的叉积同向。 */
+  const allCounterClockwise = ({ positions, normals, indices }: ProceduralMesh) => {
+    for (let t = 0; t < indices.length; t += 3) {
+      const [a, b, c] = [indices[t]!, indices[t + 1]!, indices[t + 2]!].map((i) => i * 3);
+      const e1 = [0, 1, 2].map((k) => positions[b! + k]! - positions[a! + k]!);
+      const e2 = [0, 1, 2].map((k) => positions[c! + k]! - positions[a! + k]!);
+      const cross = [e1[1]! * e2[2]! - e1[2]! * e2[1]!, e1[2]! * e2[0]! - e1[0]! * e2[2]!, e1[0]! * e2[1]! - e1[1]! * e2[0]!];
+      const area = Math.hypot(...cross);
+      if (area < 1e-9) continue;
+      const n = [0, 1, 2].map((k) => normals[a! + k]! + normals[b! + k]! + normals[c! + k]!);
+      if (cross[0]! * n[0]! + cross[1]! * n[1]! + cross[2]! * n[2]! <= 0) return false;
+    }
+    return true;
+  };
+  const extent = ({ positions }: ProceduralMesh) => {
+    const max = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < positions.length; i++) max[i % 3] = Math.max(max[i % 3]!, positions[i]!);
+    return max.map((v) => Math.round(v * 1e4) / 1e4);
+  };
+  const generate = (yaml: string) => proceduralMesh(parseStrideYaml(`!${yaml}`))!;
+
+  test('立方体：每个面 4 个顶点，Size 是边长，LocalOffset 先加、Scale 再乘', () => {
+    const cube = generate('CubeProceduralModel\nSize: {X: 2.0, Y: 2.0, Z: 2.0}');
+    expect([cube.positions.length / 3, cube.indices.length]).toEqual([24, 36]);
+    expect(extent(cube)).toEqual([1, 1, 1]);
+    expect(allCounterClockwise(cube)).toBe(true);
+    const moved = generate('CubeProceduralModel\nLocalOffset: {X: 1.0, Y: 0.0, Z: 0.0}\nScale: {X: 2.0, Y: 1.0, Z: 1.0}');
+    expect(extent(moved)).toEqual([3, 0.5, 0.5]);
+  });
+
+  test('平面、经纬球、测地球、胶囊：顶点数照 Stride，三角形都朝外', () => {
+    const plane = generate('PlaneProceduralModel\nSize: {X: 100.0, Y: 100.0}\nNormal: UpY');
+    expect([plane.positions.length / 3, plane.indices.length]).toEqual([4, 6]);
+    expect(extent(plane)).toEqual([50, 0, 50]);
+    const sphere = generate('SphereProceduralModel\nRadius: 1.0');
+    expect(sphere.positions.length / 3).toBe(17 * 33);
+    expect(sphere.indices.length).toBe(16 * 32 * 6);
+    const geo = generate('GeoSphereProceduralModel\nRadius: 1.0');
+    // 3 次细分：8 · 4³ 个三角形
+    expect(geo.indices.length).toBe(8 * 64 * 3);
+    const capsule = generate('CapsuleProceduralModel\nRadius: 0.25');
+    expect(capsule.positions.length / 3).toBe(16 * 33);
+    expect(extent(capsule)).toEqual([0.25, 0.5, 0.25]);
+    for (const mesh of [plane, sphere, geo, capsule]) expect(allCounterClockwise(mesh)).toBe(true);
+    expect(generate('TorusProceduralModel\nRadius: 1.0')).toBeUndefined();
   });
 });

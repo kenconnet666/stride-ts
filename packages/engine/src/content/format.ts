@@ -440,6 +440,15 @@ export type ColliderShapeFile = (
   | { readonly type: 'cylinder'; readonly radius: number; readonly length: number }
   /** Stride 的 MeshCollider：模型（内容路径）的全部三角形，按实体的世界缩放。 */
   | { readonly type: 'mesh'; readonly model: string }
+  /**
+   * Stride 的 ConvexHullCollider 加 HullAsset（不做分解）：模型（内容路径）全部顶点的凸包，顶点先按 hull 的 scale、rotation、
+   * offset 变换（HullAsset 的 Scaling、LocalRotation、LocalOffset），按实体的世界缩放。
+   */
+  | {
+    readonly type: 'convexHull';
+    readonly model: string;
+    readonly hull: { readonly scale: Vec3Tuple; readonly rotation: readonly [number, number, number, number]; readonly offset: Vec3Tuple };
+  }
 ) & {
   readonly position: Vec3Tuple;
   readonly rotation: readonly [number, number, number, number];
@@ -452,6 +461,15 @@ export interface SceneCollidable {
   /** CollisionLayer，0..31。 */
   readonly layer: number;
   readonly friction: number;
+}
+
+/** Stride.BepuPhysics 的 BodyComponent：动态（或运动学）刚体。 */
+export interface SceneBody extends SceneCollidable {
+  readonly kinematic: boolean;
+  readonly gravity: boolean;
+  /** SleepThreshold；负数一直醒着。 */
+  readonly sleepThreshold: number;
+  readonly interpolated: boolean;
 }
 
 /** Stride 的 CharacterComponent。 */
@@ -607,6 +625,7 @@ export interface SceneEntityFile {
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;
+    readonly body?: SceneBody;
     /** 游戏的脚本（Stride 的 ScriptComponent），按场景文件里的顺序；运行时按类型名找对应的 TS 脚本。 */
     readonly scripts?: readonly SceneScript[];
     readonly animation?: SceneAnimation;

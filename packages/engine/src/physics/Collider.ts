@@ -20,11 +20,23 @@ export type ColliderShape = (
   | { readonly type: 'cylinder'; readonly radius: number; readonly length: number }
   /** 这些网格的全部三角形，按实体的世界缩放；只能用在静态物体上。 */
   | { readonly type: 'mesh'; readonly meshes: readonly Mesh[] }
+  /**
+   * 这些网格全部顶点的凸包（Stride 的 ConvexHullCollider），按实体的世界缩放。hull 先变换顶点：缩放、旋转（xyzw）、平移
+   * （Stride 的 HullAsset 的 Scaling、LocalRotation、LocalOffset），默认不变。
+   */
+  | { readonly type: 'convexHull'; readonly meshes: readonly Mesh[]; readonly hull?: HullTransform }
 ) & {
   readonly position?: Vec3;
   readonly rotation?: readonly [number, number, number, number];
   readonly mass?: number;
 };
+
+/** 凸包顶点的变换。 */
+export interface HullTransform {
+  readonly scale: Vec3;
+  readonly rotation: readonly [number, number, number, number];
+  readonly offset: Vec3;
+}
 
 const colliders = new ResourceTable<Collider>();
 
@@ -57,4 +69,26 @@ export function triangleSoup(meshes: readonly Mesh[]): { positions: Float32Array
     index += part.indices.length;
   }
   return { positions, indices };
+}
+
+/** 凸包的点：各网格的全部顶点，按 hull 缩放、旋转、平移。 */
+export function hullPoints(meshes: readonly Mesh[], hull?: HullTransform): Float32Array {
+  const parts = meshes.map((mesh) => mesh.positions());
+  const points = new Float32Array(parts.reduce((sum, p) => sum + p.length, 0));
+  let at = 0;
+  for (const part of parts) {
+    points.set(part, at);
+    at += part.length;
+  }
+  if (!hull) return points;
+  const { scale: [sx, sy, sz], rotation: [qx, qy, qz, qw], offset: [ox, oy, oz] } = hull;
+  for (let i = 0; i < points.length; i += 3) {
+    const x = points[i]! * sx, y = points[i + 1]! * sy, z = points[i + 2]! * sz;
+    // q · v · q⁻¹，展开成 v + 2w(u×v) + 2u×(u×v)
+    const cx = qy * z - qz * y, cy = qz * x - qx * z, cz = qx * y - qy * x;
+    points[i] = x + 2 * (qw * cx + qy * cz - qz * cy) + ox;
+    points[i + 1] = y + 2 * (qw * cy + qz * cx - qx * cz) + oy;
+    points[i + 2] = z + 2 * (qw * cz + qx * cy - qy * cx) + oz;
+  }
+  return points;
 }

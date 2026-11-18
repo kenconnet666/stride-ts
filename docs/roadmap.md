@@ -289,5 +289,9 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    - 做了：导入和运行（角色跑步、Idle/Run 淡入淡出、拖动转身）；2D 背景（Background 的 Is2D）；一个视图最多 4 个方向光；相机槽位（Camera.slot）；合成器的最小数据化（主画面的清屏色、后处理开关、透明阶段开关，相机画进渲染目标贴图 RenderTextureSceneRenderer）；渲染目标贴图（Texture.renderTarget）；精灵（Sprite 组件、SpriteRenderFeature，普通和 billboard，透明阶段，从远到近）；指针事件（`input.pointerEvents`）；关掉后处理时原样拷贝。
    - 验收：和桌面 Stride 4.4.2 比（动画停在第 0 帧，去掉 UI 按钮的区域）平均每通道差 0.148/255，差超过 10 的像素 0.31%（`tools/stride-capture/animated-model`）；冒烟脚本 `pnpm --filter @stride-ts/animated-model smoke` 通过。
    - P2 补：UI 页面的 Idle、Run 按钮（现在用 `stride call idle`、`run` 代替）。遗留：画进渲染目标贴图的相机不用阴影、不做后处理；精灵没有 Swizzle、sprite sheet、billboard 的 Z 旋转。
-4. 之后按第三节的 P1 游戏顺序：PhysicsSample → BepuSample → Platformer2D → TopDownRPG → FirstPersonShooter。
+4. **PhysicsSample**（进行中，Bepu 版，`apps/physics-sample`，端口 5188；三个场景，`?scene=PhysicsSample/VolumeTrigger` 这样选）：
+   - 已做：Body 组件（Stride 的 BodyComponent）和 `simulation.body(entity)`（运动学切换、唤醒、瞬移、速度、冲量、重力），凸包碰撞体（HullAsset，不分解），程序模型（Cube、Plane、Sphere、GeoSphere、Capsule，照 Stride 4.4.2 生成），`screenToWorldRaySegment`，导入器一次导入多个场景；原生 0.11.0（凸包、物体控制接口）。Raycasting 场景能玩（点箱子往上推）。
+   - 接着做：触发器和接触事件（VolumeTrigger：BepuTrigger、ContactEventHandler、Trigger、AutoResetRigidbody、Player 脚本）；约束（Constraints：球窝、铰链、齿轮马达、点在线上加线性限位、摆动和扭转限位、焊接，照 Bepu 的语义映射到 Jolt）；材质的镜面贴图、标量贴图、二值颜色的自发光；脚本属性引用场景（NextSceneScript 切场景）和实体销毁时移除物体；和桌面 Stride 比对、冒烟脚本。
+   - P2 补：各场景的 UI 文字和按钮。
+5. 之后按第三节的 P1 游戏顺序：BepuSample → Platformer2D → TopDownRPG → FirstPersonShooter。
 

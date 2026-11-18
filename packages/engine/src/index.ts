@@ -55,6 +55,7 @@ export {
   type AnimationRepeatMode,
   type ColliderShapeFile,
   type SceneBackground,
+  type SceneBody,
   type SceneCharacter,
   type SceneCollidable,
   type SceneEntityFile,
@@ -112,10 +113,11 @@ export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
 export { GamePadButton, InputManager, type GamePadState, type MouseButton, type PointerEvent } from './input/InputManager';
 export { keyCode } from './input/keys';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
-export { Collider, type ColliderId, type ColliderShape } from './physics/Collider';
-export { Character, Static } from './physics/components';
-export { Simulation, type SimulationHit, type SimulationSettings } from './physics/Simulation';
+export { Collider, hullPoints, type ColliderId, type ColliderShape, type HullTransform } from './physics/Collider';
+export { Body, Character, Static } from './physics/components';
+export { BodyControl, Simulation, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { Background, Camera, Light, Model, Skinned, Sprite } from './rendering/components';
+export { screenToWorldRaySegment } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
 export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';
 export { GpuResources } from './rendering/GpuResources';

@@ -5,3 +5,4 @@ export { floatToHalf, fromRgb9e5, halfToFloat, readDdsCubemap, regenerateMips, t
 export { StrideProject, type AssetEntry, type AssetRoot } from './stride/project.ts';
 export { asNumber, asObject, dictionaryKey, parseAssetReference, parseObjectReference, parseStrideYaml, type StrideObject, type StrideValue } from './stride/yaml.ts';
 export { importCompositor, type ImportedCompositor } from './stride/compositor.ts';
+export { proceduralMesh, type ProceduralMesh } from './stride/procedural.ts';

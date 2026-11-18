@@ -22,6 +22,7 @@ import {
   type SceneAssetKind,
   type SceneCollidable,
   type SceneEntityFile,
+  type SceneBody,
   type SceneRenderTexture,
   type SceneSprite,
   type SpriteBlend,
@@ -38,6 +39,7 @@ import {
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
 import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
 import { importCompositor } from './compositor.ts';
+import { proceduralMesh } from './procedural.ts';
 import { importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
 import { importTransform, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { asNumber, asObject, dictionaryKey, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
@@ -154,7 +156,7 @@ export class StrideImporter {
     });
     this.#cameraSlots = compositor.cameraSlots;
     const files = await Promise.all(entities.map((entity) => this.#entity(entity, parentOf.get(entity['Id'] as string) ?? null, asset)));
-    const usesPhysics = files.some((file) => file.components.static || file.components.character);
+    const usesPhysics = files.some((file) => file.components.static || file.components.character || file.components.body);
     const scene: SceneFile = {
       name: path.basename(asset.path),
       ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}),
@@ -288,6 +290,11 @@ export class StrideImporter {
         if (collidable) components.static = collidable;
         return collidable !== undefined;
       }
+      case 'Stride.BepuPhysics.BodyComponent,Stride.BepuPhysics': {
+        const body = await this.#body(component, where);
+        if (body) components.body = body;
+        return body !== undefined;
+      }
       case 'Stride.BepuPhysics.CharacterComponent,Stride.BepuPhysics': {
         const character = await this.#character(component, where);
         if (character) components.character = character;
@@ -308,7 +315,8 @@ export class StrideImporter {
     const type = colliderType(collider);
     if (type === 'CompoundCollider') {
       for (const child of Object.values(asObject(collider!['Colliders']) ?? {})) {
-        const shape = colliderShape(asObject(child) ?? {});
+        const object = asObject(child) ?? {};
+        const shape = colliderType(object) === 'ConvexHullCollider' ? await this.#convexHull(object, where) : colliderShape(object);
         if (shape) shapes.push(shape);
         else this.#warnings.push(`${where}: collider ${colliderType(asObject(child))} is not supported; skipping it`);
       }
@@ -323,6 +331,40 @@ export class StrideImporter {
     if (shapes.length === 0) return undefined;
     const layer = /^Layer(\d+)$/.exec(String(component['CollisionLayer'] ?? 'Layer0'));
     return { shapes, layer: layer ? Number(layer[1]) : 0, friction: asNumber(component['FrictionCoefficient'], 1) };
+  }
+
+  /** Stride.BepuPhysics 的 BodyComponent：碰撞体加刚体的设置，默认值同 Stride。 */
+  async #body(component: StrideObject, where: string): Promise<SceneBody | undefined> {
+    const collidable = await this.#collidable(component, where);
+    if (!collidable) return undefined;
+    if (component['ContactEventHandler'] !== null && component['ContactEventHandler'] !== undefined) {
+      this.#warnings.push(`${where}: contact event handlers are not supported yet; ignored`);
+    }
+    return {
+      ...collidable,
+      kinematic: component['Kinematic'] === true,
+      gravity: component['Gravity'] !== false,
+      sleepThreshold: asNumber(component['SleepThreshold'], 0.01),
+      interpolated: component['InterpolationMode'] === 'Interpolated',
+    };
+  }
+
+  /** Stride 的 ConvexHullCollider：引用的 HullAsset 由模型的顶点算（不做分解），带上它的缩放、旋转、偏移。 */
+  async #convexHull(collider: StrideObject, where: string): Promise<ColliderShapeFile | undefined> {
+    const reference = parseAssetReference(collider['Hull']);
+    if (!reference) return undefined;
+    const hull = this.#project.get(reference.id, where);
+    if (asObject(hull.data['Decomposition'])?.['Enabled'] === true) this.#warnings.push(`${hull.file}: convex decomposition is not supported yet; using one hull`);
+    const model = parseAssetReference(hull.data['Model']);
+    if (!model) throw new Error(`${hull.file}: the hull has no model`);
+    return {
+      type: 'convexHull',
+      model: await this.#model(this.#project.get(model.id, hull.file)),
+      hull: { scale: vec3(hull.data['Scaling'], 1), rotation: quaternion(hull.data['LocalRotation']), offset: vec3(hull.data['LocalOffset'], 0) },
+      position: vec3(collider['PositionLocal'], 0),
+      rotation: quaternion(collider['RotationLocal']),
+      mass: asNumber(collider['Mass'], 1),
+    };
   }
 
   /** Stride.BepuPhysics 的 CharacterComponent：碰撞体加角色参数，默认值同 Stride。 */
@@ -480,6 +522,7 @@ export class StrideImporter {
   }
 
   async #importModel(asset: AssetEntry): Promise<void> {
+    if (asset.type === 'ProceduralModelAsset') return this.#importProceduralModel(asset);
     // 材质槽按 .sdm3d 里的顺序；源文件里的网格按材质名对上槽
     const slots = Object.values(asObject(asset.data['Materials']) ?? {}).map((slot) => asObject(slot) ?? {});
     const slotNames = slots.map((slot) => String(slot['Name'] ?? ''));
@@ -522,6 +565,27 @@ export class StrideImporter {
     } finally {
       scene.destroy();
     }
+  }
+
+  /** Stride 的程序模型（.sdpromodel）：照 Stride 生成网格（procedural.ts），一个网格一个材质槽。 */
+  async #importProceduralModel(asset: AssetEntry): Promise<void> {
+    const type = asObject(asset.data['Type']) ?? {};
+    const generated = proceduralMesh(type);
+    if (!generated) throw new Error(`${asset.file}: procedural model ${type.$type ?? 'null'} is not supported yet`);
+    const reference = parseAssetReference(asObject(type['MaterialInstance'])?.['Material']);
+    const materialAsset = reference ? this.#project.get(reference.id, asset.file) : null;
+    const material = materialAsset ? await this.#material(materialAsset) : null;
+    let mesh: SourceMesh = {
+      name: 'mesh0',
+      material: material === null ? null : 0,
+      vertices: interleave({ positions: generated.positions, normals: generated.normals, uvs: generated.uvs }, [0, 0, 0], 1),
+      indices: generated.indices,
+    };
+    if (materialAsset && (await this.#materialFileOf(materialAsset)).normalMap !== undefined) mesh = addTangents(mesh, this.#tools);
+    const encoded = this.#options.plain
+      ? [plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices, mesh.tangents ? { tangents: mesh.tangents } : {})]
+      : compressMeshes([mesh], this.#tools);
+    await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes: encoded, materials: material === null ? [] : [material] }));
   }
 
   /** 导入骨架资源（.sdskel），同一个只导入一次。 */

@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { Character, Collider, Game, Quaternion, Simulation, Static, Transform, Vector3, type Entity } from '../src/index';
+import { Body, Character, Collider, Game, hullPoints, Mesh, Quaternion, Simulation, Static, Transform, Vector3, type Entity } from '../src/index';
 
 let native: StrideNative;
 
@@ -101,5 +101,57 @@ describe('Vector3.rotate', () => {
     expect(v.x).toBeCloseTo(1);
     expect(v.y).toBeCloseTo(0);
     expect(v.z).toBeCloseTo(0);
+  });
+});
+
+describe('Body（Stride 的 BodyComponent）', () => {
+  /** 单位立方体的 8 个角做成的网格（凸包形状用它的顶点）。 */
+  const cubeMesh = () => Mesh.cube(1);
+
+  test('凸包的刚体落到地面；body() 控制运动学、瞬移、速度、冲量、重力、唤醒，kinematic、gravity 写回列', () => {
+    const game = createGame();
+    game.entities.create({ components: [Transform.with({ position: [0, -0.5, 0] }), Static.with({ collider: new Collider([{ type: 'box', size: [20, 1, 20] }]).id })] });
+    const crate = game.entities.create({
+      components: [Transform.with({ position: [0, 3, 0] }), Body.with({ collider: new Collider([{ type: 'convexHull', meshes: [cubeMesh()] }]).id, sleepThreshold: -1 })],
+    });
+    // 物体还没建时 body() 先建好
+    const body = game.simulation.body(crate);
+    expect(body.awake).toBe(true);
+    run(game, 120);
+    expect(position(crate).y).toBeCloseTo(0.5, 1);
+
+    body.applyLinearImpulse({ x: 0, y: 5, z: 0 });
+    expect(body.linearVelocity.y).toBeCloseTo(5, 3);
+
+    body.kinematic = true;
+    expect(crate.require(Body).kinematic).toBe(true);
+    body.teleport({ x: 0, y: 10, z: 0 }, new Quaternion());
+    expect(position(crate).y).toBe(10);
+    body.linearVelocity = { x: 1, y: 0, z: 0 };
+    run(game, 60);
+    expect(position(crate).x).toBeCloseTo(1, 1);
+    expect(position(crate).y).toBeCloseTo(10, 3);
+
+    body.kinematic = false;
+    body.linearVelocity = { x: 0, y: 0, z: 0 };
+    body.gravity = false;
+    expect(crate.require(Body).gravity).toBe(false);
+    run(game, 30);
+    expect(position(crate).y).toBeCloseTo(10, 3);
+    expect(() => game.simulation.body(game.entities.create({ components: [Transform] }))).toThrow(/no Body/);
+  });
+
+  test('凸包的点按 hull 的缩放、旋转、平移变换', () => {
+    // 绕 Y 转 90°：x 轴转到 -z
+    const points = hullPoints([cubeMesh()], { scale: [2, 1, 1], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], offset: [0, 5, 0] });
+    const xs = new Set<number>(), ys = new Set<number>(), zs = new Set<number>();
+    for (let i = 0; i < points.length; i += 3) {
+      xs.add(Math.round(points[i]! * 1000) / 1000 + 0);
+      ys.add(Math.round(points[i + 1]! * 1000) / 1000 + 0);
+      zs.add(Math.round(points[i + 2]! * 1000) / 1000 + 0);
+    }
+    expect([...xs].sort()).toEqual([-0.5, 0.5]);
+    expect([...ys].sort()).toEqual([4.5, 5.5]);
+    expect([...zs].sort((a, b) => a - b)).toEqual([-1, 1]);
   });
 });

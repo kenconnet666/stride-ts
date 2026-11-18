@@ -1,12 +1,13 @@
 /**
  * 物理仿真（Stride.BepuPhysics 的 BepuSimulation），内核是 stride-native 里的 Jolt：固定步长，每帧最多几步，
  * 插值的物体渲染两步之间的位姿。Game 在"物理前"和"物理后"两组系统之间调用 update：
- *   新出现的 Static、Character 建成物体 → 角色的移动输入交给原生 → 步进 → 插值 → 写回角色的 grounded。
+ *   新出现的 Static、Body、Character 建成物体 → 角色的移动输入交给原生 → 步进 → 插值 → 写回角色的 grounded。
  * 设置（重力、阻尼、步长）在建第一个物体之前改，之后只有步长和每帧步数还能改。
+ * 动态刚体（Body）建好以后用 `body(entity)` 控制（Stride 的 BodyComponent 的属性和方法）。
  *
- * 还没做：实体销毁时移除物体（原生侧还没有移除接口），动态物体组件（BodyComponent）、触发器、接触事件。
+ * 还没做：实体销毁时移除物体（原生侧还没有移除接口）、触发器、接触事件、约束。
  */
-import type { BodyDesc, BodyId, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore } from '@stride-ts/native';
+import type { BodyDesc, BodyId, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore } from '@stride-ts/native';
 import { PhysicsHit } from '@stride-ts/native';
 import type { Commands } from '../engine/Commands';
 import type { EntityId } from '../data/prop';
@@ -14,8 +15,10 @@ import type { EntityManager } from '../engine/EntityManager';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import type { GameTime } from '../games/GameTime';
-import { Collider, triangleSoup, type ColliderShape } from './Collider';
-import { Character, PhysicsBody, Static } from './components';
+import type { Entity } from '../engine/Entity';
+import { Vector3, type QuatLike, type Vec3Like } from '../mathematics/vectors';
+import { Collider, hullPoints, triangleSoup, type ColliderShape } from './Collider';
+import { Body, Character, PhysicsBody, Static } from './components';
 
 type Vec3 = readonly [number, number, number];
 
@@ -55,6 +58,10 @@ export class Simulation {
   readonly #bodyEntities: EntityId[] = [];
   /** 网格形状建成的原生三角网格，按网格的 id 组合缓存（同一个模型的碰撞体共用）。 */
   readonly #meshes = new Map<string, PhysicsMesh>();
+  /** 凸包形状，按网格的 id 组合加 hull 的变换缓存。 */
+  readonly #hulls = new Map<string, PhysicsHull>();
+  /** body(entity) 给出的控制对象，按物体编号。 */
+  readonly #controls = new Map<BodyId, BodyControl>();
   readonly #hit = new PhysicsHit();
 
   readonly #createStatics = system('Simulation.createStatics', {
@@ -67,6 +74,24 @@ export class Simulation {
         transform: transform.slot[i]! as TransformSlot,
         layer: body.layer[i]!,
         friction: body.friction[i]!,
+      }));
+      this.#addBodies(descs, entities, count, commands);
+    },
+  });
+
+  readonly #createBodies = system('Simulation.createBodies', {
+    with: { body: Body, transform: Transform },
+    without: [PhysicsBody],
+    update: ({ body: b, transform, entities, count }, _time, commands) => {
+      const descs = Array.from({ length: count }, (_, i): BodyDesc => ({
+        motion: b.kinematic[i] ? 'kinematic' : 'dynamic',
+        shapes: this.#shapes(b.collider[i]!),
+        transform: transform.slot[i]! as TransformSlot,
+        layer: b.layer[i]!,
+        friction: b.friction[i]!,
+        interpolated: b.interpolated[i] !== 0,
+        gravity: b.gravity[i] !== 0,
+        neverSleep: b.sleepThreshold[i]! < 0,
       }));
       this.#addBodies(descs, entities, count, commands);
     },
@@ -142,9 +167,8 @@ export class Simulation {
 
   /** 一帧的仿真：建新物体、按固定步长步进（最多 maxStepsPerFrame 步），插值的物体写回两步之间的位姿。 */
   update(time: GameTime): void {
+    this.#createPending(time);
     const entities = this.#entities;
-    entities.run(this.#createStatics, time);
-    entities.run(this.#createCharacters, time);
     if (!this.#world) return;
     entities.run(this.#moveCharacters, time);
     const { fixedTimeStep: step, maxStepsPerFrame } = this.settings;
@@ -155,6 +179,20 @@ export class Simulation {
     }
     this.#world.interpolate(this.#remaining / step);
     entities.run(this.#readGrounded, time);
+  }
+
+  /**
+   * 动态刚体的控制（Stride 的 BodyComponent 的属性和方法）。物体还没建（实体这一帧才加上 Body）时先建好，
+   * 所以脚本的 start() 里就能用。实体没有 Body 时报错。
+   */
+  body(entity: Entity | EntityId): BodyControl {
+    const id = typeof entity === 'number' ? entity : entity.id;
+    if (!this.#entities.hasComponent(id, Body)) throw new Error(`entity ${id} has no Body component`);
+    if (!this.#entities.hasComponent(id, PhysicsBody)) this.#createPending(this.#entities.game.updateTime);
+    const body = this.#entities.entity(id).require(PhysicsBody).body as BodyId;
+    let control = this.#controls.get(body);
+    if (!control) this.#controls.set(body, (control = new BodyControl(this.#world!, body, this.#entities, id)));
+    return control;
   }
 
   /** 射线（Stride 的 RayCast）：mask 的第 n 位为 1 表示层 n 的物体参与。没命中时返回 undefined。 */
@@ -200,6 +238,13 @@ export class Simulation {
     }
   }
 
+  /** 新出现的 Static、Body、Character 建成物体。 */
+  #createPending(time: GameTime): void {
+    this.#entities.run(this.#createStatics, time);
+    this.#entities.run(this.#createBodies, time);
+    this.#entities.run(this.#createCharacters, time);
+  }
+
   #shapes(id: number): ShapeDesc[] {
     const collider = Collider.byId(id);
     if (!collider) throw new Error(`physics body refers to collider ${id}, which does not exist`);
@@ -208,6 +253,12 @@ export class Simulation {
 
   #shape(shape: ColliderShape): ShapeDesc {
     const local = { ...(shape.position ? { position: shape.position } : {}), ...(shape.rotation ? { rotation: shape.rotation } : {}), mass: shape.mass ?? 1 };
+    if (shape.type === 'convexHull') {
+      const key = `${shape.meshes.map((mesh) => mesh.id).join(',')}:${JSON.stringify(shape.hull ?? null)}`;
+      let hull = this.#hulls.get(key);
+      if (hull === undefined) this.#hulls.set(key, (hull = this.#worldOrCreate().createHull(hullPoints(shape.meshes, shape.hull))));
+      return { type: 'convexHull', hull, ...local };
+    }
     if (shape.type !== 'mesh') return { ...shape, ...local } as ShapeDesc;
     const key = shape.meshes.map((mesh) => mesh.id).join(',');
     let mesh = this.#meshes.get(key);
@@ -217,5 +268,91 @@ export class Simulation {
       this.#meshes.set(key, mesh);
     }
     return { type: 'mesh', mesh, ...local };
+  }
+}
+
+/**
+ * 一个动态刚体的控制（Stride 的 BodyComponent 的属性和方法），用 `game.simulation.body(entity)` 拿到。读写直接作用到原生的物体；
+ * kinematic、gravity 也写回 Body 组件的列，组件里看到的总是当前的设置。
+ */
+export class BodyControl {
+  readonly #world: PhysicsWorld;
+  readonly #body: BodyId;
+  readonly #entities: EntityManager;
+  readonly #entity: EntityId;
+  readonly #linear = [0, 0, 0];
+  readonly #angular = [0, 0, 0];
+
+  /** @internal */
+  constructor(world: PhysicsWorld, body: BodyId, entities: EntityManager, entity: EntityId) {
+    this.#world = world;
+    this.#body = body;
+    this.#entities = entities;
+    this.#entity = entity;
+  }
+
+  /** 运动学：不受力和重力，按速度走（Stride 的 Kinematic）。 */
+  get kinematic(): boolean {
+    return this.#view().kinematic;
+  }
+
+  set kinematic(value: boolean) {
+    this.#world.setKinematic(this.#body, value);
+    this.#view().kinematic = value;
+  }
+
+  get gravity(): boolean {
+    return this.#view().gravity;
+  }
+
+  set gravity(value: boolean) {
+    this.#world.setGravity(this.#body, value);
+    this.#view().gravity = value;
+  }
+
+  /** 醒着（Stride 的 Awake）；睡着的物体不参与仿真，直到被碰到或唤醒。 */
+  get awake(): boolean {
+    return this.#world.isAwake(this.#body);
+  }
+
+  set awake(value: boolean) {
+    this.#world.setAwake(this.#body, value);
+  }
+
+  /** 世界空间的线速度（读的是一份拷贝；改要整个赋值）。 */
+  get linearVelocity(): Vector3 {
+    this.#world.velocity(this.#body, this.#linear, this.#angular);
+    return new Vector3(this.#linear[0], this.#linear[1], this.#linear[2]);
+  }
+
+  set linearVelocity(value: Vec3Like) {
+    this.#world.setVelocity(this.#body, [value.x, value.y, value.z]);
+  }
+
+  get angularVelocity(): Vector3 {
+    this.#world.velocity(this.#body, this.#linear, this.#angular);
+    return new Vector3(this.#angular[0], this.#angular[1], this.#angular[2]);
+  }
+
+  set angularVelocity(value: Vec3Like) {
+    this.#world.setVelocity(this.#body, undefined, [value.x, value.y, value.z]);
+  }
+
+  /** 在质心加冲量（Stride 的 ApplyLinearImpulse）。 */
+  applyLinearImpulse(impulse: Vec3Like): void {
+    this.#world.applyImpulse(this.#body, [impulse.x, impulse.y, impulse.z]);
+  }
+
+  applyAngularImpulse(impulse: Vec3Like): void {
+    this.#world.applyImpulse(this.#body, undefined, [impulse.x, impulse.y, impulse.z]);
+  }
+
+  /** 瞬移到世界位姿并唤醒（Stride 的 Teleport）；实体的变换立即更新。 */
+  teleport(position: Vec3Like, rotation: QuatLike): void {
+    this.#world.teleport(this.#body, [position.x, position.y, position.z], [rotation.x, rotation.y, rotation.z, rotation.w]);
+  }
+
+  #view() {
+    return this.#entities.entity(this.#entity).require(Body);
   }
 }

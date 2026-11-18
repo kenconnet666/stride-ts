@@ -20,6 +20,22 @@ export const Static = component('Static', {
   friction: prop.f32().default(1).min(0),
 });
 
+/**
+ * 动态刚体（Stride.BepuPhysics 的 BodyComponent）：受力、碰撞、重力。kinematic 时是运动学物体（不受力，按速度走）。
+ * 这些列是建物体时的设置；物体建好以后，切换运动学、开关重力、读写速度、加冲量、瞬移、唤醒用 `game.simulation.body(entity)`
+ * （直接改列不起作用）。
+ */
+export const Body = component('Body', {
+  collider: prop.u32().brand<'ColliderId'>().default(0 as ColliderId),
+  layer: prop.int().default(0).min(0).max(31),
+  friction: prop.f32().default(1).min(0),
+  kinematic: prop.bool().default(false),
+  gravity: prop.bool().default(true),
+  /** SleepThreshold：负数一直醒着；其余用 Jolt 的全局睡眠阈值（和 Stride 不同：Bepu 按物体设）。 */
+  sleepThreshold: prop.f32().default(0.01),
+  interpolated: prop.bool().default(false),
+});
+
 /** 角色（Stride 的 CharacterComponent）：不转动的动态刚体，按移动输入和起跳请求走。 */
 export const Character = component('Character', {
   collider: prop.u32().brand<'ColliderId'>().default(0 as ColliderId),

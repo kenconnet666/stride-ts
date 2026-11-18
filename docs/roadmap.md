@@ -43,7 +43,7 @@
 | ScriptComponent（Sync、Async、Startup）、EventKey、MicroThreading | 脚本和事件 | ✅ |
 | Prefab、InstancingComponent | 预制体、GPU 实例化 | ▶ 预制体实例化和嵌套（P1）；✅ 实例化绘制 |
 | TransformComponent、ModelNodeLink、TransformLink | 层级、挂到骨骼节点 | ✅ 层级；▶ 挂到骨骼节点（P1，FPS、TopDownRPG 用） |
-| Animations（剪辑、混合、AnimationComponent） | 骨骼动画、混合、曲线 | 🔨 ozz 采样加混合、GPU 蒙皮（P1） |
+| Animations（剪辑、混合、AnimationComponent） | 骨骼动画、混合、曲线 | ✅ ozz 采样加混合、GPU 蒙皮；▶ 曲线、根运动 |
 | Updater（UpdateEngine） | 按属性路径给任意字段做动画 | ▶ 随动画剪辑里的非骨骼曲线一起做（P1） |
 | Morph targets | 变形动画 | ▶（P2） |
 | Input（键鼠、手柄、触摸、手势、传感器） | | ✅ 键鼠手柄；▶ 触摸和手势（P2）；▶ 重力、加速度计（P3，浏览器的 DeviceMotion） |
@@ -284,6 +284,6 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
 下一步按顺序：
 1. ~~场景脚本导入~~（2026-11-19 完成）：导入器把 Stride 的脚本组件写进场景（属性名改成小写开头，实体和资源的引用写成 `$entity`、`$asset`）；运行时按类名在登记表里找翻译过来的 TS 脚本（`loadScene` 的 `scripts` 选项可以显式对应），找不到的脚本和属性警告后跳过；新的属性种类 `prop.asset(kind)`；`InputManager` 也认 Stride 的键名。TPP 改成由场景挂脚本。顺手修了热重载在有私有成员的脚本上崩溃的问题。
-2. **骨骼动画**：ufbx 导出骨架、蒙皮、动画剪辑；ozz 采样和混合；蒙皮顶点格式、GPU 蒙皮；AnimationComponent 和 TPP 的 AnimationController；ModelNodeLink。
+2. ~~骨骼动画~~（2026-11-19 完成，ModelNodeLink 留到 FPS、TopDownRPG 用到时做）：ufbx 导出骨架、蒙皮、动画剪辑；ozz 采样和混合；蒙皮顶点格式、GPU 蒙皮；AnimationComponent 和 TPP 的 AnimationController。TPP 的角色动起来了。见 architecture.md 的"骨骼动画和 GPU 蒙皮"。
 3. 之后按第三节的 P1 游戏顺序：AnimatedModel → PhysicsSample → BepuSample → Platformer2D → TopDownRPG → FirstPersonShooter。
 

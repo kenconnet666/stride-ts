@@ -1,4 +1,5 @@
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
+import { AnimationSystem } from '../animation/AnimationSystem';
 import { ContentManager, type LoadSceneOptions, type SceneInstance } from '../content/ContentManager';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
@@ -77,6 +78,8 @@ export class Game {
   input!: InputManager;
   /** 物理仿真（Stride 的 BepuSimulation）；nativeFeatures 里没有 physics 时是 undefined。 */
   simulation: Simulation | undefined;
+  /** 骨骼动画（Stride 的 AnimationProcessor 加蒙皮）：每帧在物理之后求姿势和蒙皮矩阵。 */
+  animation!: AnimationSystem;
   /** 渲染特性（默认有 MeshRenderFeature）、视图和光照（Stride 的 RenderSystem）。 */
   renderSystem!: RenderSystem;
   /** 每帧的 draw 交给它（Stride 的 GraphicsCompositor）；骨架阶段是一个前向渲染器。 */
@@ -128,6 +131,9 @@ export class Game {
       });
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       if (this.native.hasFeature('physics')) this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
+      this.animation = new AnimationSystem(this.native, this.entities);
+      this.entities.addSystems(this.animation.system);
+      this.content.animationNative ??= this.native;
       this.graphicsDevice = await GraphicsDevice.create(canvas);
       this.input = new InputManager(canvas);
       if (this.native.hasFeature('texture')) this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
@@ -161,6 +167,7 @@ export class Game {
     (this.input as InputManager | undefined)?.destroy();
     (this.graphicsDevice as GraphicsDevice | undefined)?.destroy();
     this.simulation?.destroy();
+    (this.animation as AnimationSystem | undefined)?.destroy();
     (this.transforms as TransformStore | undefined)?.destroy();
     (this.native as StrideNative | undefined)?.shutdown();
   }

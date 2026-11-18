@@ -40,6 +40,8 @@ export class Mesh {
   /** 顶点的字节数。 */
   readonly vertexStride: number;
   readonly bounds: Bounds;
+  /** 剔除用的包围盒，默认就是 bounds；蒙皮网格由内容管理放大到动画会到的范围。 */
+  cullBounds: Bounds;
 
   constructor(name: string, data: MeshData) {
     this.layout = data.layout ?? FLOAT_LAYOUT;
@@ -50,6 +52,7 @@ export class Mesh {
     this.name = name;
     this.data = data;
     this.bounds = boundsOf(data.vertices, this.layout, this.dequantize, this.vertexStride);
+    this.cullBounds = this.bounds;
     this.id = meshes.add(this) as MeshId;
   }
 

@@ -1,0 +1,242 @@
+/**
+ * Stride 的骨骼动画资源导入：骨架（.sdskel）、动画剪辑（.sdanim）和模型网格的蒙皮。
+ *
+ * - 骨架：按 .sdskel 列出的节点（名字和深度，深度优先排）从源文件里取静止姿势；关节的局部变换在源文件里的父节点就是
+ *   列表里的父关节时直接用，不是时（列表跳过了中间节点）由世界矩阵算。根关节带上骨架资源的导入变换（PivotPosition、
+ *   ScaleImport），所以模型空间和导入后的网格一致。输出 `.skeleton`（关节名和父关节，加 ozz 的骨架档案）。
+ * - 动画：源文件的第一个动画按 30 帧每秒烘焙成线性关键帧（ufbx），按关节名对上骨架；动画没碰的关节用静止姿势；
+ *   根关节的键同样带上导入变换。ClipDuration 打开时只取那一段。输出 `.anim`（时长、重复方式、骨架，加 ozz 的动画档案）。
+ * - 蒙皮：蒙皮网格的关节按名字对上骨架，逆绑定矩阵右乘导入变换的逆（网格的顶点已经变换过）；没有蒙皮、但挂在骨架节点上
+ *   的网格做成只有一个关节的刚性蒙皮，跟着那个节点动（同 Stride 里按节点变换画的网格）。
+ */
+import { readFile } from 'node:fs/promises';
+import { encodeAnimation, encodeSkeleton, EXTENSIONS, type AnimationRepeatMode } from '@stride-ts/engine/content-format';
+import { Matrix } from '@stride-ts/engine/math';
+import type { JointDescription, JointTrack, MeshData, Scene, StrideTools } from '@stride-ts/native/tools';
+import { INFLUENCES, type SourceSkin } from '../mesh.ts';
+import { importTransform, sourceOf, type AssetEntry } from './project.ts';
+import { asObject } from './yaml.ts';
+
+/** 烘焙动画的采样率（每秒关键帧数，同 ufbx 和 Stride 的默认）。 */
+const SAMPLE_RATE = 30;
+
+export interface ImportedSkeleton {
+  /** 内容路径。 */
+  readonly path: string;
+  readonly joints: readonly (JointDescription & { readonly name: string; readonly parent: number })[];
+  readonly indexOf: ReadonlyMap<string, number>;
+  /** 导入变换（位置' = (位置 - pivot) · scale）的矩阵。 */
+  readonly transform: Float32Array;
+}
+
+/** 导入要用的东西：工具模块、写内容文件、记警告。 */
+export interface AnimationImportContext {
+  readonly tools: StrideTools;
+  write(contentPath: string, data: Uint8Array): Promise<void>;
+  warn(message: string): void;
+}
+
+/** 资源的导入变换（importTransform）的矩阵：先平移 -pivot，再缩放。 */
+export function importMatrix(asset: AssetEntry): Float32Array {
+  const { pivot, scale } = importTransform(asset);
+  return Matrix.scaleTranslation(new Float32Array(16), scale, scale, scale, -pivot[0] * scale, -pivot[1] * scale, -pivot[2] * scale);
+}
+
+const isIdentity = (m: Float32Array) => m.every((value, i) => value === (i % 5 === 0 ? 1 : 0));
+
+export async function importSkeleton(asset: AssetEntry, context: AnimationImportContext): Promise<ImportedSkeleton> {
+  const listed = Object.values(asObject(asset.data['Nodes']) ?? {}).map((node) => {
+    const object = asObject(node) ?? {};
+    return { name: String(object['Name'] ?? ''), depth: Number(object['Depth'] ?? 0) };
+  });
+  if (listed.length === 0) throw new Error(`${asset.file}: the skeleton lists no nodes`);
+  const transform = importMatrix(asset);
+  const scene = await context.tools.loadScene(await readFile(sourceOf(asset)));
+  try {
+    const nodeOf = nodesByName(scene, asset.file, context);
+    // 父关节：列表是深度优先的，每个深度最近的那个就是下一层的父关节
+    const lastAtDepth: number[] = [];
+    const joints = listed.map(({ name, depth }, index) => {
+      const parent = depth > 0 ? (lastAtDepth[depth - 1] ?? -1) : -1;
+      lastAtDepth[depth] = index;
+      lastAtDepth.length = depth + 1;
+      const node = nodeOf.get(name);
+      if (node === undefined) {
+        context.warn(`${asset.file}: skeleton node '${name}' is not in ${sourceOf(asset)}; using its rest pose as identity`);
+        return { name, parent };
+      }
+      const source = scene.nodes[node]!;
+      const parentNode = parent >= 0 ? nodeOf.get(listed[parent]!.name) : undefined;
+      if (parent >= 0 && source.parent === parentNode) return { name, parent, translation: source.translation, rotation: source.rotation, scale: source.scale };
+      // 根关节在模型空间里（带上导入变换），否则相对列表里的父关节
+      const local = new Float32Array(16);
+      if (parent < 0) Matrix.multiply(local, transform, source.world);
+      else {
+        const parentWorld = parentNode === undefined ? Matrix.identity() : scene.nodes[parentNode]!.world;
+        Matrix.invert(local, parentWorld);
+        Matrix.multiply(local, local, source.world);
+      }
+      return { name, parent, ...Matrix.decompose(local) };
+    });
+    const archive = context.tools.buildSkeleton(joints);
+    await context.write(asset.path + EXTENSIONS.skeleton, encodeSkeleton({ joints: joints.map(({ name, parent }) => ({ name, parent })), archive }));
+    return { path: asset.path, joints, indexOf: new Map(joints.map((joint, i) => [joint.name, i])), transform };
+  } finally {
+    scene.destroy();
+  }
+}
+
+export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkeleton, context: AnimationImportContext): Promise<void> {
+  const type = asObject(asset.data['Type'])?.$type;
+  if (type !== undefined && type !== 'StandardAnimationAssetType') context.warn(`${asset.file}: ${type} is not supported yet; imported as a standard animation`);
+  if (asset.data['RootMotion'] === true) context.warn(`${asset.file}: root motion is not supported yet; the root keeps its motion`);
+  const scene = await context.tools.loadScene(await readFile(sourceOf(asset)));
+  try {
+    if (scene.animations.length === 0) throw new Error(`${asset.file}: ${sourceOf(asset)} has no animation`);
+    const baked = await scene.bakeAnimation(0, SAMPLE_RATE);
+    const nodeOf = nodesByName(scene, asset.file, context);
+    const animationTransform = importMatrix(asset);
+    let tracks: JointTrack[] = skeleton.joints.map((joint) => {
+      const node = nodeOf.get(joint.name);
+      if (node === undefined) return restTrack(joint);
+      const track = baked.tracks[node]!;
+      if (joint.parent >= 0) return track;
+      // 根关节在模型空间里：带上导入变换和它在源文件里的父节点的世界矩阵（根节点本身就是单位矩阵）
+      const parentNode = scene.nodes[node]!.parent;
+      const toModel = parentNode < 0 ? animationTransform : Matrix.multiply(new Float32Array(16), animationTransform, scene.nodes[parentNode]!.world);
+      return isIdentity(toModel) ? track : transformTrack(track, toModel);
+    });
+    let duration = baked.duration;
+    const clip = asObject(asset.data['ClipDuration']);
+    if (clip?.['Enabled'] === true) {
+      const start = timeSpanSeconds(clip['StartAnimationTime']), end = Math.min(duration, timeSpanSeconds(clip['EndAnimationTime']));
+      if (end > start) {
+        tracks = tracks.map((track) => trimTrack(track, start, end));
+        duration = end - start;
+      }
+    }
+    const archive = withContext(asset.file, () => context.tools.buildAnimation(Math.max(duration, 1e-3), tracks));
+    const repeatMode = REPEAT_MODES[String(asset.data['RepeatMode'] ?? 'LoopInfinite')] ?? 'loopInfinite';
+    await context.write(asset.path + EXTENSIONS.animation, encodeAnimation({ duration, repeatMode, skeleton: skeleton.path, archive }));
+  } finally {
+    scene.destroy();
+  }
+}
+
+/**
+ * 模型网格的蒙皮；网格既没有蒙皮、也不挂在骨架的节点上时返回 undefined（静态网格）。transform 是模型资源的导入变换，
+ * 网格顶点已经变换过，所以逆绑定矩阵右乘它的逆。
+ */
+export function meshSkin(mesh: MeshData, scene: Scene, skeleton: ImportedSkeleton, modelTransform: Float32Array, where: string, warn: (message: string) => void): SourceSkin | undefined {
+  const untransform = new Float32Array(16);
+  Matrix.invert(untransform, modelTransform);
+  const vertexCount = mesh.positions.length / 3;
+  if (!mesh.skin) {
+    const name = scene.nodes[mesh.node]?.name;
+    const joint = name === undefined ? undefined : skeleton.indexOf.get(name);
+    if (joint === undefined) return undefined;
+    const inverseBind = new Float32Array(16);
+    Matrix.invert(inverseBind, scene.nodes[mesh.node]!.world);
+    Matrix.multiply(inverseBind, inverseBind, untransform);
+    const vertexWeights = new Float32Array(vertexCount * INFLUENCES);
+    for (let v = 0; v < vertexCount; v++) vertexWeights[v * INFLUENCES] = 1;
+    return { joints: [joint], inverseBinds: Array.from(inverseBind), vertexJoints: new Uint16Array(vertexCount * INFLUENCES), vertexWeights };
+  }
+  const { jointNodes, inverseBinds, joints, weights } = mesh.skin;
+  const mapped = Array.from(jointNodes, (node) => {
+    const name = scene.nodes[node]?.name ?? '';
+    const joint = skeleton.indexOf.get(name);
+    if (joint === undefined) warn(`${where}: skin joint '${name}' is not in skeleton ${skeleton.path}; bound to the root`);
+    return joint ?? 0;
+  });
+  const adjusted = new Float32Array(inverseBinds.length);
+  for (let j = 0; j < jointNodes.length; j++) {
+    const bind = adjusted.subarray(j * 16, (j + 1) * 16);
+    Matrix.multiply(bind, inverseBinds.subarray(j * 16, (j + 1) * 16), untransform);
+  }
+  return { joints: mapped, inverseBinds: Array.from(adjusted), vertexJoints: joints, vertexWeights: weights };
+}
+
+/** 出错时在消息前面加上是哪个资源。 */
+function withContext<T>(where: string, run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    throw new Error(`${where}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
+}
+
+/** 节点名到下标；重名的节点警告一次，用第一个。 */
+function nodesByName(scene: Scene, where: string, context: AnimationImportContext): Map<string, number> {
+  const nodeOf = new Map<string, number>();
+  scene.nodes.forEach((node, i) => {
+    if (!nodeOf.has(node.name)) nodeOf.set(node.name, i);
+    else context.warn(`${where}: several nodes are named '${node.name}'; joints match the first`);
+  });
+  return nodeOf;
+}
+
+/** 一直停在静止姿势的轨道。 */
+function restTrack(joint: JointDescription): JointTrack {
+  return {
+    translations: [[0, ...(joint.translation ?? [0, 0, 0])]],
+    rotations: [[0, ...(joint.rotation ?? [0, 0, 0, 1])]],
+    scales: [[0, ...(joint.scale ?? [1, 1, 1])]],
+  };
+}
+
+/** 轨道的每个时刻左乘 m：三条通道合在一起算矩阵再拆开，时刻取三条通道的所有关键帧时间。 */
+function transformTrack(track: JointTrack, m: Float32Array): JointTrack {
+  const times = [...new Set([track.translations, track.rotations, track.scales].flatMap((keys) => (keys ?? []).map((key) => key[0]!)))].sort((a, b) => a - b);
+  const local = new Float32Array(16);
+  const keys = times.map((time) => {
+    Matrix.compose(local, sample(track.translations, time, 3), sample(track.rotations, time, 4), sample(track.scales, time, 3));
+    return { time, ...Matrix.decompose(Matrix.multiply(local, m, local)) };
+  });
+  return {
+    translations: keys.map(({ time, translation }) => [time, ...translation]),
+    rotations: keys.map(({ time, rotation }) => [time, ...rotation]),
+    scales: keys.map(({ time, scale }) => [time, ...scale]),
+  };
+}
+
+/** 只取 [start, end] 这一段，时间移到从 0 开始；两头按线性插值补上关键帧。 */
+function trimTrack(track: JointTrack, start: number, end: number): JointTrack {
+  const trim = (keys: readonly (readonly number[])[] | undefined, width: number) => {
+    if (!keys || keys.length === 0) return [];
+    const inside = keys.filter((key) => key[0]! > start && key[0]! < end).map((key) => [key[0]! - start, ...key.slice(1)]);
+    return [[0, ...sample(keys, start, width)], ...inside, [end - start, ...sample(keys, end, width)]];
+  };
+  return { translations: trim(track.translations, 3), rotations: trim(track.rotations, 4), scales: trim(track.scales, 3) };
+}
+
+/** 通道在 time 的值：关键帧之间线性插值（四元数是归一化的线性插值，烘焙的关键帧很密，和球面插值差别可以忽略）。 */
+function sample(keys: readonly (readonly number[])[] | undefined, time: number, width: number): number[] {
+  if (!keys || keys.length === 0) return width === 4 ? [0, 0, 0, 1] : width === 3 ? [0, 0, 0] : [];
+  if (time <= keys[0]![0]!) return keys[0]!.slice(1, 1 + width) as number[];
+  for (let k = 1; k < keys.length; k++) {
+    const [a, b] = [keys[k - 1]!, keys[k]!];
+    if (time > b[0]!) continue;
+    const f = b[0]! === a[0]! ? 0 : (time - a[0]!) / (b[0]! - a[0]!);
+    let sign = 1;
+    if (width === 4) sign = a[1]! * b[1]! + a[2]! * b[2]! + a[3]! * b[3]! + a[4]! * b[4]! < 0 ? -1 : 1;
+    const value = Array.from({ length: width }, (_, c) => a[1 + c]! + (sign * b[1 + c]! - a[1 + c]!) * f);
+    if (width === 4) {
+      const length = Math.hypot(...value) || 1;
+      return value.map((v) => v / length);
+    }
+    return value;
+  }
+  return keys.at(-1)!.slice(1, 1 + width) as number[];
+}
+
+const REPEAT_MODES: Readonly<Record<string, AnimationRepeatMode>> = { PlayOnce: 'playOnce', LoopInfinite: 'loopInfinite', PlayOnceHold: 'playOnceHold' };
+
+/** Stride 的 TimeSpan 写法（"d:hh:mm:ss.fffffff" 或 "hh:mm:ss.fffffff"）换成秒。 */
+export function timeSpanSeconds(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return 0;
+  const parts = value.split(':').map(Number);
+  const [seconds = 0, minutes = 0, hours = 0, days = 0] = parts.reverse();
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+}

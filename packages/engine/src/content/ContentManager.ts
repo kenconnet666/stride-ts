@@ -7,6 +7,9 @@
  *
  * 引用计数、卸载、按组加载、在 Worker 里解码（README 的"实例化、懒加载、缓存"）以后加。
  */
+import type { Skin as NativeSkin } from '@stride-ts/native';
+import { AnimationComponent } from '../animation/AnimationComponent';
+import { AnimationClip, Skeleton, type AnimationNative } from '../animation/resources';
 import type { EntityManager } from '../engine/EntityManager';
 import { SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
 import type { Entity } from '../engine/Entity';
@@ -15,15 +18,16 @@ import { Collider, type ColliderShape } from '../physics/Collider';
 import { Character, Static } from '../physics/components';
 import { Background, Camera, Light, Model } from '../rendering/components';
 import { Material } from '../rendering/Material';
-import { Mesh, type MeshData } from '../rendering/Mesh';
+import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeCubemap, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneLightShadow, type ScenePhysics, type SkyboxFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneLightShadow, type ScenePhysics, type SkyboxFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
     model: LoadedModel;
     material: Material;
+    animation: AnimationClip;
   }
 }
 
@@ -53,16 +57,18 @@ export interface ContentOptions {
   readonly read?: ContentReader;
 }
 
-/** 加载好的模型：网格和材质槽（模型自带的材质，没有的槽是 null）。 */
+/** 加载好的模型：网格（蒙皮网格带着它的蒙皮）、材质槽（模型自带的材质，没有的槽是 null）和蒙皮网格用的骨架。 */
 export interface LoadedModel {
-  readonly meshes: readonly { readonly mesh: Mesh; readonly material: number | null }[];
+  readonly meshes: readonly { readonly mesh: Mesh; readonly material: number | null; readonly skin?: NativeSkin }[];
   readonly materials: readonly (Material | null)[];
+  readonly skeleton?: Skeleton;
 }
 
 /** 场景引用的资源，实例化之前并行加载好。 */
 interface SceneAssets {
   readonly models: ReadonlyMap<string, LoadedModel>;
   readonly materials: ReadonlyMap<string, Material>;
+  readonly animations: ReadonlyMap<string, AnimationClip>;
   readonly skyboxes: ReadonlyMap<string, Skybox>;
   readonly cubemaps: ReadonlyMap<string, Cubemap>;
 }
@@ -96,6 +102,8 @@ export class ContentManager {
   imageDecoder: ImageDecoder | undefined;
   /** 解码 meshopt 压缩的模型；Game 启动时设置（原生模块的 decodeMeshoptBatch，各个流在原生线程里并行解）。 */
   meshoptDecoder: MeshoptDecoder | undefined;
+  /** 加载骨架、动画剪辑和蒙皮；Game 启动时设置（原生模块）。 */
+  animationNative: AnimationNative | undefined;
 
   constructor({ root = 'content/', read = fetchReader }: ContentOptions = {}) {
     const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
@@ -106,15 +114,43 @@ export class ContentManager {
   loadModel(path: string): Promise<LoadedModel> {
     return this.#once(path + EXTENSIONS.model, async (url) => {
       const data = decodeModel(await this.#read(url), url.href);
-      const [meshes, materials] = await Promise.all([
+      const [meshes, materials, skeleton] = await Promise.all([
         this.#decodeMeshes(data.meshes, url),
         Promise.all(data.materials.map((material) => (material === null ? null : this.loadMaterial(material)))),
+        data.skeleton === undefined ? undefined : this.loadSkeleton(data.skeleton),
       ]);
-      return {
-        meshes: data.meshes.map((mesh, i) => ({ mesh: new Mesh(`${path}/${mesh.name}`, meshes[i]!), material: mesh.material })),
-        materials,
-      };
+      const loaded = data.meshes.map((file, i) => {
+        const mesh = new Mesh(`${path}/${file.name}`, meshes[i]!);
+        const skin = file.skin && this.#animationNative(url).createSkin(new Uint32Array(file.skin.joints), new Float32Array(file.skin.inverseBinds));
+        return { mesh, material: file.material, ...(skin ? { skin } : {}) };
+      });
+      if (loaded.some((part) => part.skin) && !skeleton) throw new Error(`${url.href}: the model has skinned meshes but no skeleton`);
+      // 蒙皮网格动起来会超出绑定姿势的包围盒：剔除时用整个模型的包围盒放大一半（和 Stride 不同，Stride 每帧按骨骼算）
+      const skinnedBounds = inflate(unionBounds(loaded.map(({ mesh }) => mesh.bounds)), 1.5);
+      for (const part of loaded) if (part.skin) part.mesh.cullBounds = skinnedBounds;
+      return { meshes: loaded, materials, ...(skeleton ? { skeleton } : {}) };
     });
+  }
+
+  loadSkeleton(path: string): Promise<Skeleton> {
+    return this.#once(path + EXTENSIONS.skeleton, async (url) => {
+      const { joints, archive } = decodeSkeleton(await this.#read(url), url.href);
+      return new Skeleton(path, joints, this.#animationNative(url).loadSkeleton(archive));
+    });
+  }
+
+  /** 动画剪辑；它的骨架一起加载。 */
+  loadAnimation(path: string): Promise<AnimationClip> {
+    return this.#once(path + EXTENSIONS.animation, async (url) => {
+      const { repeatMode, skeleton, archive } = decodeAnimation(await this.#read(url), url.href);
+      const native = this.#animationNative(url);
+      return new AnimationClip(path, repeatMode, await this.loadSkeleton(skeleton), native.loadAnimation(archive));
+    });
+  }
+
+  #animationNative(url: URL): AnimationNative {
+    if (!this.animationNative) throw new Error(`loading ${url.href}: skeletons, animations and skins need animationNative (Game sets one when it starts)`);
+    return this.animationNative;
   }
 
   /** 模型文件里的网格变成 MeshData：压缩的一起交给 meshoptDecoder 并行解码，没压缩的直接用文件里的字节。 */
@@ -204,16 +240,17 @@ export class ContentManager {
     const components = scene.entities.map((e) => e.components);
     const colliderModels = components.flatMap((c) => [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? [])]).flatMap((s) => (s.type === 'mesh' ? [s.model] : []));
     const scriptAssets = scriptAssetRefs(components.flatMap((c) => c.scripts ?? []));
-    const unsupported = scriptAssets.find((ref) => ref.kind !== 'model' && ref.kind !== 'material');
+    const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
     const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, skyboxes, cubemaps] = await Promise.all([
+    const [models, materials, animations, skyboxes, cubemaps] = await Promise.all([
       preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => this.loadModel(p)),
       preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
+      preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => this.loadAnimation(p)),
       preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
       preload(components.flatMap((c) => (c.background ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
     ]);
-    const assets: SceneAssets = { models, materials, skyboxes, cubemaps };
+    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps };
 
     const created = new Map<string, Entity>();
     for (const file of scene.entities) {
@@ -227,7 +264,8 @@ export class ContentManager {
       this.#addComponents(entity, file, assets, entities);
     }
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
-    const context = { entities: created, asset: (kind: string, assetPath: string) => (kind === 'model' ? models : materials).get(assetPath)! as object };
+    const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: models, material: materials, animation: animations };
+    const context = { entities: created, asset: (kind: string, assetPath: string) => byKind[kind]!.get(assetPath)! };
     for (const file of scene.entities) {
       for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${path}: ${file.name}`);
     }
@@ -235,7 +273,7 @@ export class ContentManager {
   }
 
   #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
-    const { model, camera, light, background, static: collidable, character } = file.components;
+    const { model, camera, light, background, animation, static: collidable, character } = file.components;
     const { materials } = assets;
     const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
     if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction }));
@@ -247,21 +285,29 @@ export class ContentManager {
     if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
     else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
     if (background) entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
+    if (animation) {
+      entity.add({ script: AnimationComponent, init: {} });
+      const clips = entity.require(AnimationComponent).animations;
+      for (const { name, clip } of animation.animations) clips.set(name, assets.animations.get(clip)!);
+    }
     if (!model) return;
     const loaded = assets.models.get(model.model)!;
-    loaded.meshes.forEach(({ mesh, material: slot }, i) => {
+    const skinned: { entity: Entity; skin: NativeSkin }[] = [];
+    loaded.meshes.forEach(({ mesh, material: slot, skin }, i) => {
       // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
       const override = slot === null ? null : (model.materials[slot] ?? null);
       const material = (override === null ? null : materials.get(override)) ?? (slot === null ? null : loaded.materials[slot]) ?? this.defaultMaterial;
       const component = Model.with({ mesh: mesh.id, material: material.id, isShadowCaster: model.isShadowCaster ?? true });
       // 一个实体只能有一个 Model：多出来的网格挂成子实体
-      if (i === 0) {
-        entity.add(component);
-        return;
+      let part = entity;
+      if (i === 0) entity.add(component);
+      else {
+        part = entities.create({ name: `${file.name}/${mesh.name}`, components: [Transform, component] });
+        part.require(Transform).parent = entity;
       }
-      const part = entities.create({ name: `${file.name}/${mesh.name}`, components: [Transform, component] });
-      part.require(Transform).parent = entity;
+      if (skin) skinned.push({ entity: part, skin });
     });
+    if (loaded.skeleton) entities.game.animation.attach(entity, loaded.skeleton, skinned);
   }
 
   #once<T>(path: string, load: (url: URL) => Promise<T>): Promise<T> {
@@ -287,6 +333,26 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
   if (shape.type !== 'mesh') return shape;
   const model = assets.models.get(shape.model)!;
   return { type: 'mesh', meshes: model.meshes.map(({ mesh }) => mesh), position, rotation, mass };
+}
+
+/** 脚本属性能引用的资源种类（加载场景时预先加载）。 */
+const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation']);
+
+function unionBounds(all: readonly Bounds[]): Bounds {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (const bounds of all) {
+    for (let c = 0; c < 3; c++) {
+      min[c] = Math.min(min[c]!, bounds.min[c]!);
+      max[c] = Math.max(max[c]!, bounds.max[c]!);
+    }
+  }
+  return { min: [min[0]!, min[1]!, min[2]!], max: [max[0]!, max[1]!, max[2]!] };
+}
+
+/** 包围盒绕中心放大 factor 倍。 */
+function inflate({ min, max }: Bounds, factor: number): Bounds {
+  const at = (c: number, sign: number) => (min[c]! + max[c]!) / 2 + (sign * (max[c]! - min[c]!) * factor) / 2;
+  return { min: [at(0, -1), at(1, -1), at(2, -1)], max: [at(0, 1), at(1, 1), at(2, 1)] };
 }
 
 /** 并行加载一组（去重的）路径，结果按路径放进 Map。 */

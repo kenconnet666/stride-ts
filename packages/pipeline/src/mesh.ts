@@ -6,22 +6,52 @@
  * - 法线：八面体编码，两个 snorm16（精度约 0.003°，金属表面的高光看不出差别）。
  * - UV：按网格的 UV 范围量化成 unorm16；范围超过 MAX_QUANTIZED_UV_RANGE（平铺很多次，16 位的精度不够）时保留 float32。
  * - 切线（只有材质用法线贴图的网格有）：snorm8x4，xyz 加手性（同 meshopt、glTF-Transform 对切线的量化）。
+ * - 蒙皮（只有蒙皮网格有）：关节下标 uint8x4（关节不超过 256 个时）或 uint16x4，权重 unorm8x4（四舍五入后的误差
+ *   补到最大的权重上，和仍是 1）。
  */
 import type { StrideTools } from '@stride-ts/native/tools';
-import { TANGENT_FLOATS, vertexLayoutOffsets, VERTEX_FLOATS, type Dequantize, type ModelMeshData, type VertexLayout } from '@stride-ts/engine/content-format';
+import { TANGENT_FLOATS, vertexLayoutOffsets, VERTEX_FLOATS, type Dequantize, type MeshSkin, type ModelMeshData, type VertexLayout } from '@stride-ts/engine/content-format';
 
 /** 16 位量化精度 0.1 mm 对应的最长包围盒边长（米）。 */
 export const MAX_QUANTIZED_EXTENT = 65535 * 0.0001;
 /** UV 范围不超过 16 时，unorm16 的精度是 1/4096，对 2048 的贴图是半个纹素。 */
 export const MAX_QUANTIZED_UV_RANGE = 16;
 
-/** 管线里的网格：FLOAT_LAYOUT 的交错顶点（每个 VERTEX_FLOATS 个 float）和三角形索引，可以带切线（每个顶点 TANGENT_FLOATS 个）。 */
+/** 每个顶点的影响数（关节下标和权重各这么多个）。 */
+export const INFLUENCES = 4;
+
+/**
+ * 管线里的网格：FLOAT_LAYOUT 的交错顶点（每个 VERTEX_FLOATS 个 float）和三角形索引，可以带切线（每个顶点 TANGENT_FLOATS 个）
+ * 和蒙皮（每个顶点 INFLUENCES 个关节下标和权重，加上网格的关节表 skin）。
+ */
 export interface SourceMesh {
   readonly name: string;
   readonly material: number | null;
   readonly vertices: Float32Array;
   readonly indices: Uint32Array;
   readonly tangents?: Float32Array;
+  readonly skin?: SourceSkin;
+}
+
+export interface SourceSkin extends MeshSkin {
+  readonly joints: readonly number[];
+  /** 每个顶点 INFLUENCES 个，skin.joints 的下标。 */
+  readonly vertexJoints: Uint16Array;
+  /** 每个顶点 INFLUENCES 个，和为 1。 */
+  readonly vertexWeights: Float32Array;
+}
+
+/** 按 remap（新下标 → 原下标）挑出蒙皮的顶点属性。 */
+function remapSkin(skin: SourceSkin | undefined, sources: ArrayLike<number>): SourceSkin | undefined {
+  if (!skin) return undefined;
+  const vertexJoints = new Uint16Array(sources.length * INFLUENCES);
+  const vertexWeights = new Float32Array(sources.length * INFLUENCES);
+  for (let v = 0; v < sources.length; v++) {
+    const from = sources[v]! * INFLUENCES;
+    vertexJoints.set(skin.vertexJoints.subarray(from, from + INFLUENCES), v * INFLUENCES);
+    vertexWeights.set(skin.vertexWeights.subarray(from, from + INFLUENCES), v * INFLUENCES);
+  }
+  return { ...skin, vertexJoints, vertexWeights };
 }
 
 /**
@@ -40,7 +70,7 @@ export function addTangents(mesh: SourceMesh, tools: StrideTools): SourceMesh {
   const corners = tools.generateTangents({ positions, normals, uvs, indices: mesh.indices });
   // 每个原顶点已经分出去的副本：（切线，新下标）
   const copies: { tangent: Float32Array; index: number }[][] = Array.from({ length: count }, () => []);
-  const vertices: number[] = [], tangents: number[] = [];
+  const vertices: number[] = [], tangents: number[] = [], sources: number[] = [];
   const indices = new Uint32Array(mesh.indices.length);
   mesh.indices.forEach((source, corner) => {
     const tangent = corners.subarray(corner * TANGENT_FLOATS, (corner + 1) * TANGENT_FLOATS);
@@ -50,10 +80,12 @@ export function addTangents(mesh: SourceMesh, tools: StrideTools): SourceMesh {
       copies[source]!.push(copy);
       vertices.push(...mesh.vertices.subarray(source * VERTEX_FLOATS, (source + 1) * VERTEX_FLOATS));
       tangents.push(...tangent);
+      sources.push(source);
     }
     indices[corner] = copy.index;
   });
-  return { ...mesh, vertices: new Float32Array(vertices), indices, tangents: new Float32Array(tangents) };
+  const skin = remapSkin(mesh.skin, sources);
+  return { ...mesh, vertices: new Float32Array(vertices), indices, tangents: new Float32Array(tangents), ...(skin ? { skin } : {}) };
 }
 
 /** 一个模型的网格压缩：重排、量化、meshopt 编码。 */
@@ -96,12 +128,15 @@ function reorder(mesh: SourceMesh, tools: StrideTools): SourceMesh {
   const indices = optimized.map((i) => (remap[i] === -1 ? (remap[i] = next++) : remap[i]!));
   const vertices = new Float32Array(next * VERTEX_FLOATS);
   const tangents = mesh.tangents && new Float32Array(next * TANGENT_FLOATS);
+  const sources = new Uint32Array(next);
   for (let v = 0; v < count; v++) {
     if (remap[v]! < 0) continue;
     vertices.set(mesh.vertices.subarray(v * VERTEX_FLOATS, (v + 1) * VERTEX_FLOATS), remap[v]! * VERTEX_FLOATS);
     tangents?.set(mesh.tangents!.subarray(v * TANGENT_FLOATS, (v + 1) * TANGENT_FLOATS), remap[v]! * TANGENT_FLOATS);
+    sources[remap[v]!] = v;
   }
-  return { ...mesh, vertices, indices, ...(tangents ? { tangents } : {}) };
+  const skin = remapSkin(mesh.skin, sources);
+  return { ...mesh, vertices, indices, ...(tangents ? { tangents } : {}), ...(skin ? { skin } : {}) };
 }
 
 function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): ModelMeshData {
@@ -112,6 +147,7 @@ function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): Mod
     normal: 'snorm16x2',
     uv: uv.quantize ? 'unorm16x2' : 'float32x2',
     ...(mesh.tangents ? { tangent: 'snorm8x4' as const } : {}),
+    ...(mesh.skin ? { joints: mesh.skin.joints.length <= 256 ? 'uint8x4' as const : 'uint16x4' as const, weights: 'unorm8x4' as const } : {}),
   };
   const dequantize: Dequantize = {
     positionOffset: volume.quantize ? volume.min : [0, 0, 0],
@@ -139,10 +175,19 @@ function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): Mod
     if (mesh.tangents) {
       for (let k = 0; k < 4; k++) bytes.setInt8(at + offsets.tangent! + k, Math.round(Math.min(1, Math.max(-1, mesh.tangents[v * TANGENT_FLOATS + k]!)) * 127));
     }
+    if (mesh.skin) {
+      const joints = mesh.skin.vertexJoints.subarray(v * INFLUENCES, (v + 1) * INFLUENCES);
+      for (let k = 0; k < INFLUENCES; k++) {
+        if (layout.joints === 'uint8x4') bytes.setUint8(at + offsets.joints! + k, joints[k]!);
+        else bytes.setUint16(at + offsets.joints! + k * 2, joints[k]!, true);
+      }
+      quantizeWeights(mesh.skin.vertexWeights.subarray(v * INFLUENCES, (v + 1) * INFLUENCES)).forEach((weight, k) => bytes.setUint8(at + offsets.weights! + k, weight));
+    }
   }
   return {
     name: mesh.name,
     material: mesh.material,
+    ...(mesh.skin ? { skin: { joints: mesh.skin.joints, inverseBinds: mesh.skin.inverseBinds } } : {}),
     layout,
     dequantize,
     compression: 'meshopt',
@@ -152,6 +197,17 @@ function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): Mod
     vertices: tools.encodeVertices(new Uint8Array(bytes.buffer), offsets.stride),
     indices: tools.encodeIndices(mesh.indices, count),
   };
+}
+
+/** 权重量化成 0..255，四舍五入后差的补到最大的那个上，和仍是 255。 */
+export function quantizeWeights(weights: ArrayLike<number>): number[] {
+  const quantized = Array.from(weights, (w) => Math.round(Math.min(1, Math.max(0, w)) * 255));
+  const total = quantized.reduce((sum, w) => sum + w, 0);
+  if (total > 0 && total !== 255) {
+    const largest = quantized.indexOf(Math.max(...quantized));
+    quantized[largest] = quantized[largest]! + 255 - total;
+  }
+  return quantized;
 }
 
 function uvRange(vertices: Float32Array): { min: [number, number]; range: [number, number]; quantize: boolean } {

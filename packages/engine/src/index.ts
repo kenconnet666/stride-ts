@@ -20,6 +20,16 @@ export {
   type Vec3Input,
 } from './data/prop';
 export type { Issue } from './data/schema';
+export {
+  AnimationComponent,
+  PlayingAnimation,
+  type AddAnimationOptions,
+  type AnimationBlendOperation,
+  type AnimationBlendStack,
+  type BlendTreeBuilder,
+} from './animation/AnimationComponent';
+export { AnimationSystem, ModelSkeleton, type SkinnedPart } from './animation/AnimationSystem';
+export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
 export { ContentManager, type ContentOptions, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance } from './content/ContentManager';
 export type { SceneScriptMap } from './content/sceneScripts';
 export {
@@ -42,6 +52,7 @@ export {
   type MaterialFile,
   type ModelData,
   type ModelMeshData,
+  type AnimationRepeatMode,
   type ColliderShapeFile,
   type SceneCharacter,
   type SceneCollidable,
@@ -96,7 +107,7 @@ export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Collider, type ColliderId, type ColliderShape } from './physics/Collider';
 export { Character, Static } from './physics/components';
 export { Simulation, type SimulationHit, type SimulationSettings } from './physics/Simulation';
-export { Background, Camera, Light, Model } from './rendering/components';
+export { Background, Camera, Light, Model, Skinned } from './rendering/components';
 export { BackgroundRenderFeature } from './rendering/BackgroundRenderFeature';
 export { GpuResources } from './rendering/GpuResources';
 export { Cubemap, Skybox, type CubemapId, type SkyboxId } from './rendering/Skybox';

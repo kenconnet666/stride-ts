@@ -56,15 +56,17 @@ export class SceneScriptBinder {
   attach(entity: Entity, script: SceneScript, context: ScriptValueContext, where: string): void {
     const type = this.#resolve(script.type, where);
     if (!type) return;
-    const fields = new Set(type.schema.fields.map((field) => field.name));
+    const fields = new Map(type.schema.fields.map((field) => [field.name, field]));
     const init: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(script.props)) {
-      if (!fields.has(name)) {
+      const field = fields.get(name);
+      if (!field) {
         this.#warnOnce(`${script.type}.${name}`, `${where}: ${script.type}.${name} is not a prop of the TS script; ignored`);
         continue;
       }
       // null 是 Stride 里没有设的引用：用 TS 脚本的默认值
-      if (value !== null) init[name] = resolveValue(value, context);
+      if (value === null) continue;
+      init[name] = field.options.kind === 'component' ? resolveComponent(value, field.options.target!(), context, `${where}: ${script.type}.${name}`) : resolveValue(value, context);
     }
     entity.add({ script: type, init });
   }
@@ -84,6 +86,20 @@ export class SceneScriptBinder {
     this.#warned.add(key);
     console.warn(`[stride] ${message}`);
   }
+}
+
+/**
+ * 引用组件的属性（prop.component）：场景里写的是组件所在的实体，换成那个实体上的组件或脚本。组件要先挂好：场景自带的组件
+ * （比如 AnimationComponent）在脚本之前挂，脚本之间的引用要求被引用的脚本在实体的组件列表里排在前面。
+ */
+function resolveComponent(value: SceneScriptValue, target: unknown, context: ScriptValueContext, where: string): unknown {
+  const id = typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, SceneScriptValue>)['$entity'] : undefined;
+  if (typeof id !== 'string') throw new Error(`${where}: expected a component reference, got ${JSON.stringify(value)}`);
+  const entity = context.entities.get(id);
+  if (!entity) throw new Error(`${where}: refers to entity ${id}, which is not in the scene`);
+  const found = entity.get(target as never) as unknown;
+  if (found === undefined) throw new Error(`${where}: entity '${entity.name}' has no ${(target as { name?: string }).name ?? 'such component'} (yet)`);
+  return found;
 }
 
 /** 场景值换成脚本属性的初始值：实体引用换成实体 id，资源引用换成加载好的资源，其余原样（数组和对象逐项换）。 */

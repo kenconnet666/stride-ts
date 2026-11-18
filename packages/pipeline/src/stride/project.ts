@@ -5,7 +5,7 @@
  */
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { parseStrideYaml, type StrideObject } from './yaml.ts';
+import { asNumber, asObject, parseStrideYaml, type StrideObject } from './yaml.ts';
 
 /** 一个包的资源目录（Stride 包里 AssetFolders 指的目录）。 */
 export interface AssetRoot {
@@ -77,4 +77,21 @@ export class StrideProject {
 async function listFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
   return entries.filter((e) => e.isFile()).map((e) => path.join(e.parentPath, e.name));
+}
+
+/** 资源的源文件（`Source` 相对资源文件；写成 `!file 路径` 时也认）。 */
+export function sourceOf(asset: AssetEntry): string {
+  const source = asset.data['Source'];
+  const file = typeof source === 'string' ? source : asObject(source)?.$type === 'file' ? asObject(source)!['value'] : undefined;
+  if (typeof file !== 'string') throw new Error(`${asset.file}: ${asset.type} has no Source`);
+  return path.resolve(path.dirname(asset.file), file);
+}
+
+/** 导入源文件时的变换（模型、骨架、动画资源的 PivotPosition 和 ScaleImport）：位置' = (位置 - pivot) · scale。 */
+export function importTransform(asset: AssetEntry): { pivot: [number, number, number]; scale: number } {
+  const pivot = asObject(asset.data['PivotPosition']);
+  return {
+    pivot: [asNumber(pivot?.['X'], 0), asNumber(pivot?.['Y'], 0), asNumber(pivot?.['Z'], 0)],
+    scale: asNumber(asset.data['ScaleImport'], 1),
+  };
 }

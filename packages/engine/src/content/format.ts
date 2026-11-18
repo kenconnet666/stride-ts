@@ -17,9 +17,13 @@
 export const VERTEX_FLOATS = 8;
 
 export const MODEL_MAGIC = 0x4c444d53; // 'SMDL'，小端
-export const MODEL_VERSION = 2;
+export const MODEL_VERSION = 3;
 export const CUBEMAP_MAGIC = 0x42554353; // 'SCUB'，小端
 export const CUBEMAP_VERSION = 1;
+export const SKELETON_MAGIC = 0x4c4b5353; // 'SSKL'，小端
+export const SKELETON_VERSION = 1;
+export const ANIMATION_MAGIC = 0x4d4e4153; // 'SANM'，小端
+export const ANIMATION_VERSION = 1;
 
 export const EXTENSIONS = {
   model: '.model',
@@ -27,6 +31,8 @@ export const EXTENSIONS = {
   scene: '.scene.json',
   cubemap: '.cubemap',
   skybox: '.skybox.json',
+  skeleton: '.skeleton',
+  animation: '.anim',
 } as const;
 
 /**
@@ -36,6 +42,8 @@ export const EXTENSIONS = {
  * - UV：float32x2，或按网格的 UV 范围量化的 unorm16x2。
  * - 切线（可选，材质有法线贴图的网格才有）：xyz 加手性 w（副切线 = w · cross(法线, 切线)，同 MikkTSpace 和 Stride），
  *   float32x4 或 snorm8x4。
+ * - 蒙皮（可选，蒙皮网格才有）：4 个关节下标（网格蒙皮的关节表的下标，见 MeshSkin）uint8x4 或 uint16x4，
+ *   4 个权重（和为 1）unorm8x4 或 float32x4。
  * 量化的属性按 Dequantize 还原。
  */
 export interface VertexLayout {
@@ -43,22 +51,38 @@ export interface VertexLayout {
   readonly normal: 'float32x3' | 'snorm16x2';
   readonly uv: 'float32x2' | 'unorm16x2';
   readonly tangent?: 'float32x4' | 'snorm8x4';
+  readonly joints?: 'uint8x4' | 'uint16x4';
+  readonly weights?: 'unorm8x4' | 'float32x4';
 }
 
 /** 不量化的布局：32 字节，就是 VERTEX_FLOATS 个 float。程序化网格和 --plain 导出的模型用它。 */
 export const FLOAT_LAYOUT: VertexLayout = { position: 'float32x3', normal: 'float32x3', uv: 'float32x2' };
-/** 带切线的不量化布局：每个顶点 VERTEX_FLOATS + TANGENT_FLOATS 个 float。 */
-export const FLOAT_TANGENT_LAYOUT: VertexLayout = { ...FLOAT_LAYOUT, tangent: 'float32x4' };
 export const TANGENT_FLOATS = 4;
 
-const ATTRIBUTE_BYTES = { float32x4: 16, float32x3: 12, float32x2: 8, unorm16x4: 8, snorm16x2: 4, unorm16x2: 4, snorm8x4: 4 } as const;
+const ATTRIBUTE_BYTES = { float32x4: 16, float32x3: 12, float32x2: 8, unorm16x4: 8, snorm16x2: 4, unorm16x2: 4, snorm8x4: 4, uint8x4: 4, uint16x4: 8, unorm8x4: 4 } as const;
 
-/** 各属性在顶点里的字节偏移和顶点的字节数；没有切线时 tangent 是 undefined。 */
-export function vertexLayoutOffsets(layout: VertexLayout): { position: number; normal: number; uv: number; tangent: number | undefined; stride: number } {
-  const normal = ATTRIBUTE_BYTES[layout.position];
-  const uv = normal + ATTRIBUTE_BYTES[layout.normal];
-  const end = uv + ATTRIBUTE_BYTES[layout.uv];
-  return layout.tangent ? { position: 0, normal, uv, tangent: end, stride: end + ATTRIBUTE_BYTES[layout.tangent] } : { position: 0, normal, uv, tangent: undefined, stride: end };
+/** 各属性在顶点里的字节偏移和顶点的字节数；没有的可选属性是 undefined。 */
+export interface VertexOffsets {
+  readonly position: number;
+  readonly normal: number;
+  readonly uv: number;
+  readonly tangent: number | undefined;
+  readonly joints: number | undefined;
+  readonly weights: number | undefined;
+  readonly stride: number;
+}
+
+export function vertexLayoutOffsets(layout: VertexLayout): VertexOffsets {
+  let at = 0;
+  const next = (format: keyof typeof ATTRIBUTE_BYTES | undefined) => {
+    if (format === undefined) return undefined;
+    const offset = at;
+    at += ATTRIBUTE_BYTES[format];
+    return offset;
+  };
+  const position = next(layout.position)!, normal = next(layout.normal)!, uv = next(layout.uv)!;
+  const tangent = next(layout.tangent), joints = next(layout.joints), weights = next(layout.weights);
+  return { position, normal, uv, tangent, joints, weights, stride: at };
 }
 
 /** 量化属性的还原：值 = offset + 归一化的整数 · scale。没有量化的属性 offset 0、scale 1。 */
@@ -74,10 +98,21 @@ export const IDENTITY_DEQUANTIZE: Dequantize = { positionOffset: [0, 0, 0], posi
 /** 'meshopt'：顶点和索引是 meshopt 编码的（glTF EXT_meshopt_compression 的 ATTRIBUTES 和 TRIANGLES），运行时并行解码。 */
 export type MeshCompression = 'none' | 'meshopt';
 
+/**
+ * 网格的蒙皮：顶点的关节下标指向 joints，joints 是模型骨架（ModelHeader.skeleton）的关节下标；inverseBinds 每个关节
+ * 一个列主序 4x4（网格的顶点到绑定时的关节空间）。关节的模型矩阵乘逆绑定就是蒙皮矩阵。
+ * 没有蒙皮、但挂在骨架节点上的网格（刚性部件）导入成只有一个关节、权重 1 的蒙皮。
+ */
+export interface MeshSkin {
+  readonly joints: readonly number[];
+  readonly inverseBinds: readonly number[];
+}
+
 export interface ModelMeshHeader {
   readonly name: string;
   /** 在模型材质槽里的下标；没有材质时是 null。 */
   readonly material: number | null;
+  readonly skin?: MeshSkin;
   readonly layout: VertexLayout;
   readonly dequantize: Dequantize;
   readonly compression: MeshCompression;
@@ -95,6 +130,8 @@ export interface ModelHeader {
   readonly meshes: readonly ModelMeshHeader[];
   /** 材质槽：模型自带的材质（内容路径），没有材质的槽是 null。实体可以按槽覆盖。 */
   readonly materials: readonly (string | null)[];
+  /** 蒙皮网格用的骨架（内容路径）。 */
+  readonly skeleton?: string;
 }
 
 /** 一个网格的数据：vertices、indices 是文件里的字节（压缩时是编码后的流，解码见 ContentManager）。 */
@@ -106,35 +143,55 @@ export interface ModelMeshData extends Omit<ModelMeshHeader, 'vertexByteOffset' 
 export interface ModelData {
   readonly meshes: readonly ModelMeshData[];
   readonly materials: readonly (string | null)[];
+  readonly skeleton?: string;
+}
+
+/** plainMesh 的可选属性。 */
+export interface PlainMeshExtras {
+  /** 每个顶点 TANGENT_FLOATS 个。 */
+  readonly tangents?: Float32Array;
+  /** 蒙皮：关节表、逆绑定，和每个顶点 4 个关节下标（joints 的下标）、4 个权重。 */
+  readonly skin?: MeshSkin & { readonly vertexJoints: Uint16Array; readonly vertexWeights: Float32Array };
 }
 
 /**
- * 不量化、不压缩的网格（FLOAT_LAYOUT）：程序化网格、--plain 导出和测试用。给了切线（每个顶点 TANGENT_FLOATS 个）时
- * 交错进顶点，用 FLOAT_TANGENT_LAYOUT。
+ * 不量化、不压缩的网格（FLOAT_LAYOUT）：程序化网格、--plain 导出和测试用。给了切线时交错进顶点（float32x4），
+ * 给了蒙皮时再加 uint16x4 的关节下标和 float32x4 的权重。
  */
-export function plainMesh(name: string, material: number | null, vertices: Float32Array, indices: Uint16Array | Uint32Array, tangents?: Float32Array): ModelMeshData {
+export function plainMesh(name: string, material: number | null, vertices: Float32Array, indices: Uint16Array | Uint32Array, { tangents, skin }: PlainMeshExtras = {}): ModelMeshData {
   if (vertices.length % VERTEX_FLOATS !== 0) throw new RangeError(`model mesh '${name}': vertices must hold ${VERTEX_FLOATS} floats per vertex`);
   const count = vertices.length / VERTEX_FLOATS;
   if (tangents && tangents.length !== count * TANGENT_FLOATS) throw new RangeError(`model mesh '${name}': tangents must hold ${TANGENT_FLOATS} floats per vertex`);
-  let interleaved = vertices;
-  if (tangents) {
-    const floats = VERTEX_FLOATS + TANGENT_FLOATS;
-    interleaved = new Float32Array(count * floats);
-    for (let v = 0; v < count; v++) {
-      interleaved.set(vertices.subarray(v * VERTEX_FLOATS, (v + 1) * VERTEX_FLOATS), v * floats);
-      interleaved.set(tangents.subarray(v * TANGENT_FLOATS, (v + 1) * TANGENT_FLOATS), v * floats + VERTEX_FLOATS);
+  if (skin && (skin.vertexJoints.length !== count * 4 || skin.vertexWeights.length !== count * 4)) throw new RangeError(`model mesh '${name}': skin needs 4 joints and 4 weights per vertex`);
+  const layout: VertexLayout = {
+    ...FLOAT_LAYOUT,
+    ...(tangents ? { tangent: 'float32x4' as const } : {}),
+    ...(skin ? { joints: 'uint16x4' as const, weights: 'float32x4' as const } : {}),
+  };
+  const offsets = vertexLayoutOffsets(layout);
+  const bytes = new DataView(new ArrayBuffer(count * offsets.stride));
+  for (let v = 0; v < count; v++) {
+    const at = v * offsets.stride;
+    for (let k = 0; k < VERTEX_FLOATS; k++) bytes.setFloat32(at + k * 4, vertices[v * VERTEX_FLOATS + k]!, true);
+    if (tangents) for (let k = 0; k < TANGENT_FLOATS; k++) bytes.setFloat32(at + offsets.tangent! + k * 4, tangents[v * TANGENT_FLOATS + k]!, true);
+    if (skin) {
+      for (let k = 0; k < 4; k++) {
+        bytes.setUint16(at + offsets.joints! + k * 2, skin.vertexJoints[v * 4 + k]!, true);
+        bytes.setFloat32(at + offsets.weights! + k * 4, skin.vertexWeights[v * 4 + k]!, true);
+      }
     }
   }
   return {
     name,
     material,
-    layout: tangents ? FLOAT_TANGENT_LAYOUT : FLOAT_LAYOUT,
+    ...(skin ? { skin: { joints: skin.joints, inverseBinds: skin.inverseBinds } } : {}),
+    layout,
     dequantize: IDENTITY_DEQUANTIZE,
     compression: 'none',
     vertexCount: count,
     indexCount: indices.length,
     indexFormat: indices instanceof Uint16Array ? 'uint16' : 'uint32',
-    vertices: byteView(interleaved),
+    vertices: new Uint8Array(bytes.buffer),
     indices: byteView(indices),
   };
 }
@@ -156,7 +213,8 @@ export function encodeModel(model: ModelData): Uint8Array {
     offset = align4(offset + indices.byteLength);
     return { ...mesh, vertexByteOffset, vertexByteLength: vertices.byteLength, indexByteOffset, indexByteLength: indices.byteLength };
   });
-  const { bytes, dataStart } = encodeContainer(MODEL_MAGIC, MODEL_VERSION, { meshes, materials: model.materials } satisfies ModelHeader, offset);
+  const header: ModelHeader = { meshes, materials: model.materials, ...(model.skeleton ? { skeleton: model.skeleton } : {}) };
+  const { bytes, dataStart } = encodeContainer(MODEL_MAGIC, MODEL_VERSION, header, offset);
   model.meshes.forEach((mesh, i) => {
     const header = meshes[i]!;
     bytes.set(mesh.vertices, dataStart + header.vertexByteOffset);
@@ -170,12 +228,69 @@ export function decodeModel(buffer: ArrayBuffer, source = 'model'): ModelData {
   const { header, dataStart } = decodeContainer<ModelHeader>(buffer, MODEL_MAGIC, MODEL_VERSION, 'model', source);
   return {
     materials: header.materials,
+    ...(header.skeleton ? { skeleton: header.skeleton } : {}),
     meshes: header.meshes.map(({ vertexByteOffset, vertexByteLength, indexByteOffset, indexByteLength, ...mesh }) => ({
       ...mesh,
       vertices: new Uint8Array(buffer, dataStart + vertexByteOffset, vertexByteLength),
       indices: new Uint8Array(buffer, dataStart + indexByteOffset, indexByteLength),
     })),
   };
+}
+
+/** 骨架的关节（深度优先，父关节在前）；数据区是 ozz 的骨架档案（运行时交给 stride-native）。 */
+export interface SkeletonHeader {
+  readonly joints: readonly { readonly name: string; readonly parent: number }[];
+}
+
+export interface SkeletonData extends SkeletonHeader {
+  /** ozz 的骨架档案。 */
+  readonly archive: Uint8Array;
+}
+
+/** 播放到头之后怎么办（Stride 的 AnimationRepeatMode）。 */
+export type AnimationRepeatMode = 'playOnce' | 'loopInfinite' | 'playOnceHold';
+
+/** 动画剪辑；数据区是 ozz 的动画档案，轨道按骨架的关节顺序。 */
+export interface AnimationHeader {
+  /** 秒。 */
+  readonly duration: number;
+  readonly repeatMode: AnimationRepeatMode;
+  /** 剪辑对应的骨架（内容路径）。 */
+  readonly skeleton: string;
+}
+
+export interface AnimationData extends AnimationHeader {
+  readonly archive: Uint8Array;
+}
+
+export function encodeSkeleton({ archive, ...header }: SkeletonData): Uint8Array {
+  return encodeBlob(SKELETON_MAGIC, SKELETON_VERSION, header satisfies SkeletonHeader, archive);
+}
+
+export function decodeSkeleton(buffer: ArrayBuffer, source = 'skeleton'): SkeletonData {
+  const { header, blob } = decodeBlob<SkeletonHeader>(buffer, SKELETON_MAGIC, SKELETON_VERSION, 'skeleton', source);
+  return { ...header, archive: blob };
+}
+
+export function encodeAnimation({ archive, ...header }: AnimationData): Uint8Array {
+  return encodeBlob(ANIMATION_MAGIC, ANIMATION_VERSION, header satisfies AnimationHeader, archive);
+}
+
+export function decodeAnimation(buffer: ArrayBuffer, source = 'animation'): AnimationData {
+  const { header, blob } = decodeBlob<AnimationHeader>(buffer, ANIMATION_MAGIC, ANIMATION_VERSION, 'animation', source);
+  return { ...header, archive: blob };
+}
+
+/** JSON 头加一整块数据的容器（骨架、动画）。 */
+function encodeBlob(magic: number, version: number, header: object, blob: Uint8Array): Uint8Array {
+  const { bytes, dataStart } = encodeContainer(magic, version, header, blob.byteLength);
+  bytes.set(blob, dataStart);
+  return bytes;
+}
+
+function decodeBlob<H>(buffer: ArrayBuffer, magic: number, version: number, kind: string, source: string): { header: H; blob: Uint8Array } {
+  const { header, dataStart } = decodeContainer<H>(buffer, magic, version, kind, source);
+  return { header, blob: new Uint8Array(buffer, dataStart) };
 }
 
 /**
@@ -348,6 +463,11 @@ export interface SceneCharacter extends SceneCollidable {
   readonly interpolated: boolean;
 }
 
+/** Stride 的 AnimationComponent：按名字列出的剪辑（内容路径），脚本按名字播放。 */
+export interface SceneAnimation {
+  readonly animations: readonly { readonly name: string; readonly clip: string }[];
+}
+
 /** 脚本属性引用的资源种类。 */
 export type SceneAssetKind = 'model' | 'material' | 'animation';
 
@@ -421,6 +541,7 @@ export interface SceneEntityFile {
     readonly character?: SceneCharacter;
     /** 游戏的脚本（Stride 的 ScriptComponent），按场景文件里的顺序；运行时按类型名找对应的 TS 脚本。 */
     readonly scripts?: readonly SceneScript[];
+    readonly animation?: SceneAnimation;
   };
 }
 

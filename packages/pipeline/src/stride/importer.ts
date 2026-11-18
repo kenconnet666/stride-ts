@@ -34,7 +34,8 @@ import {
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
 import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
-import type { AssetEntry, StrideProject } from './project.ts';
+import { importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
+import { importTransform, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
 export interface ImportResult {
@@ -94,6 +95,8 @@ export class StrideImporter {
   readonly #textures = new Map<string, Promise<ImportedTexture>>();
   readonly #cubemaps = new Map<string, Promise<string>>();
   readonly #skyboxes = new Map<string, Promise<string>>();
+  readonly #skeletons = new Map<string, Promise<ImportedSkeleton>>();
+  readonly #animations = new Map<string, Promise<string>>();
   /** 解码过的 HDR 立方体贴图源文件：天空盒光照和背景常用同一张。 */
   readonly #hdrSources = new Map<string, Promise<FloatCubemap>>();
   readonly #skipped = new Map<string, number>();
@@ -222,6 +225,7 @@ export class StrideImporter {
     const kinds: Record<string, [SceneAssetKind, () => Promise<string>]> = {
       Model: ['model', () => this.#model(asset)],
       MaterialAsset: ['material', () => this.#material(asset)],
+      Animation: ['animation', () => this.#animation(asset)],
     };
     const kind = kinds[asset.type];
     if (!kind) {
@@ -239,6 +243,9 @@ export class StrideImporter {
         return true;
       case 'CameraComponent':
         components.camera = cameraOf(component);
+        return true;
+      case 'AnimationComponent':
+        components.animation = await this.#animationComponent(component, where);
         return true;
       case 'LightComponent': {
         const light = await this.#light(component, where);
@@ -421,8 +428,10 @@ export class StrideImporter {
     // 材质用法线贴图的槽：这些网格要生成切线
     const normalMapped = await Promise.all(slotAssets.map(async (material) => material !== null && (await this.#materialFileOf(material)).normalMap !== undefined));
 
-    const pivot = vec3(asset.data['PivotPosition'], 0);
-    const scale = asNumber(asset.data['ScaleImport'], 1);
+    const { pivot, scale } = importTransform(asset);
+    const skeletonReference = parseAssetReference(asset.data['Skeleton']);
+    const skeleton = skeletonReference ? await this.#skeleton(this.#project.get(skeletonReference.id, asset.file)) : undefined;
+    const modelTransform = importMatrix(asset);
     const scene = await this.#tools.loadScene(await readFile(sourceOf(asset)));
     try {
       const meshes: SourceMesh[] = [];
@@ -434,7 +443,8 @@ export class StrideImporter {
           this.#warnings.push(`${asset.file}: mesh material '${materialName}' has no slot in the model; using slot 0`);
           slot = slots.length > 0 ? 0 : -1;
         }
-        const mesh: SourceMesh = { name: `mesh${m}`, material: slot < 0 ? null : slot, vertices: interleave(data, pivot, scale), indices: data.indices };
+        const skin = skeleton ? meshSkin(data, scene, skeleton, modelTransform, asset.file, (message) => this.#warnings.push(message)) : undefined;
+        const mesh: SourceMesh = { name: `mesh${m}`, material: slot < 0 ? null : slot, vertices: interleave(data, pivot, scale), indices: data.indices, ...(skin ? { skin } : {}) };
         if (slot < 0 || !normalMapped[slot]) meshes.push(mesh);
         else if (data.normals && data.uvs) meshes.push(addTangents(mesh, this.#tools));
         else {
@@ -443,12 +453,49 @@ export class StrideImporter {
         }
       }
       const encoded: ModelMeshData[] = this.#options.plain
-        ? meshes.map((mesh) => plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices, mesh.tangents))
+        ? meshes.map((mesh) => plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices, { ...(mesh.tangents ? { tangents: mesh.tangents } : {}), ...(mesh.skin ? { skin: mesh.skin } : {}) }))
         : compressMeshes(meshes, this.#tools);
-      await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes: encoded, materials }));
+      await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes: encoded, materials, ...(skeleton ? { skeleton: skeleton.path } : {}) }));
     } finally {
       scene.destroy();
     }
+  }
+
+  /** 导入骨架资源（.sdskel），同一个只导入一次。 */
+  #skeleton(asset: AssetEntry): Promise<ImportedSkeleton> {
+    let pending = this.#skeletons.get(asset.path);
+    if (!pending) {
+      pending = importSkeleton(asset, this.#animationContext);
+      this.#skeletons.set(asset.path, pending);
+    }
+    return pending;
+  }
+
+  /** 导入动画资源（.sdanim），返回它的内容路径。 */
+  #animation(asset: AssetEntry): Promise<string> {
+    return once(this.#animations, asset, async () => {
+      const reference = parseAssetReference(asset.data['Skeleton']);
+      if (!reference) throw new Error(`${asset.file}: the animation has no skeleton`);
+      await importAnimation(asset, await this.#skeleton(this.#project.get(reference.id, asset.file)), this.#animationContext);
+    });
+  }
+
+  get #animationContext(): AnimationImportContext {
+    return { tools: this.#tools, write: (contentPath, data) => this.#write(contentPath, data), warn: (message) => void this.#warnings.push(message) };
+  }
+
+  /** Stride 的 AnimationComponent：Animations 是名字到剪辑的字典。 */
+  async #animationComponent(component: StrideObject, where: string): Promise<NonNullable<SceneEntityFile['components']['animation']>> {
+    const animations: { name: string; clip: string }[] = [];
+    for (const [key, value] of Object.entries(asObject(component['Animations']) ?? {})) {
+      // 字典项写成 名字: 引用，或者 { Key: 名字, Value: 引用 }
+      const entry = asObject(value);
+      const name = entry && 'Key' in entry ? String(entry['Key']) : key;
+      const reference = parseAssetReference(entry && 'Value' in entry ? entry['Value'] : value);
+      if (!reference) continue;
+      animations.push({ name, clip: await this.#animation(this.#project.get(reference.id, where)) });
+    }
+    return { animations };
   }
 
   /** 导入一个材质资源（.sdmat），返回它的内容路径。 */
@@ -741,14 +788,6 @@ export function svgSize(svg: string): [number, number] | undefined {
   if (width && height) return [width, height];
   const viewBox = attribute('viewBox')?.trim().split(/[\s,]+/).map(Number);
   return viewBox && viewBox.length === 4 && viewBox[2]! > 0 && viewBox[3]! > 0 ? [Math.round(viewBox[2]!), Math.round(viewBox[3]!)] : undefined;
-}
-
-/** 资源的源文件（`Source` 相对资源文件；写成 `!file 路径` 时也认）。 */
-function sourceOf(asset: AssetEntry): string {
-  const source = asset.data['Source'];
-  const file = typeof source === 'string' ? source : asObject(source)?.$type === 'file' ? asObject(source)!['value'] : undefined;
-  if (typeof file !== 'string') throw new Error(`${asset.file}: ${asset.type} has no Source`);
-  return path.resolve(path.dirname(asset.file), file);
 }
 
 type Color4Tuple = readonly [number, number, number, number];

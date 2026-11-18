@@ -61,3 +61,11 @@ export const Model = component('Model', {
   /** 投下阴影（Stride 的 ModelComponent.IsShadowCaster）。 */
   isShadowCaster: prop.bool().default(true),
 });
+
+/**
+ * 蒙皮网格：画的时候顶点按蒙皮矩阵变换（GPU 蒙皮）。palette 是这个网格的蒙皮矩阵在所有蒙皮矩阵连起来的缓冲里的
+ * 起点（按关节数），动画系统挂骨架时分配并每帧更新（animation/AnimationSystem.ts）。
+ */
+export const Skinned = component('Skinned', {
+  palette: prop.u32().default(0).transient(),
+});

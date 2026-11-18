@@ -145,6 +145,58 @@ export const Matrix = {
     return out;
   },
 
+  /**
+   * 拆成平移、旋转（四元数 xyzw）、缩放（Stride 的 Matrix.Decompose）。只对没有切变的矩阵精确；镜像（行列式为负）
+   * 记在 x 的缩放上。
+   */
+  decompose(m: Readonly<Matrix4>): { translation: Vec3Tuple; rotation: [number, number, number, number]; scale: Vec3Tuple } {
+    const scale: Vec3Tuple = [0, 1, 2].map((c) => Math.hypot(m[c * 4]!, m[c * 4 + 1]!, m[c * 4 + 2]!)) as Vec3Tuple;
+    const determinant = m[0]! * (m[5]! * m[10]! - m[9]! * m[6]!) - m[4]! * (m[1]! * m[10]! - m[9]! * m[2]!) + m[8]! * (m[1]! * m[6]! - m[5]! * m[2]!);
+    if (determinant < 0) scale[0] = -scale[0];
+    // 旋转矩阵 r[列][行]，按最大的对角项分情况转四元数（Shepperd）
+    const r = [0, 1, 2].map((c) => [0, 1, 2].map((k) => (scale[c] === 0 ? 0 : m[c * 4 + k]! / scale[c]!)));
+    const [m00, m11, m22] = [r[0]![0]!, r[1]![1]!, r[2]![2]!];
+    const trace = m00 + m11 + m22;
+    let x: number, y: number, z: number, w: number;
+    if (trace > 0) {
+      const s = Math.sqrt(trace + 1) * 2;
+      [w, x, y, z] = [0.25 * s, (r[1]![2]! - r[2]![1]!) / s, (r[2]![0]! - r[0]![2]!) / s, (r[0]![1]! - r[1]![0]!) / s];
+    } else if (m00 > m11 && m00 > m22) {
+      const s = Math.sqrt(1 + m00 - m11 - m22) * 2;
+      [w, x, y, z] = [(r[1]![2]! - r[2]![1]!) / s, 0.25 * s, (r[1]![0]! + r[0]![1]!) / s, (r[2]![0]! + r[0]![2]!) / s];
+    } else if (m11 > m22) {
+      const s = Math.sqrt(1 + m11 - m00 - m22) * 2;
+      [w, x, y, z] = [(r[2]![0]! - r[0]![2]!) / s, (r[1]![0]! + r[0]![1]!) / s, 0.25 * s, (r[2]![1]! + r[1]![2]!) / s];
+    } else {
+      const s = Math.sqrt(1 + m22 - m00 - m11) * 2;
+      [w, x, y, z] = [(r[0]![1]! - r[1]![0]!) / s, (r[2]![0]! + r[0]![2]!) / s, (r[2]![1]! + r[1]![2]!) / s, 0.25 * s];
+    }
+    return { translation: [m[12]!, m[13]!, m[14]!], rotation: [x, y, z, w], scale };
+  },
+
+  /** 平移、旋转（四元数 xyzw）、缩放拼成矩阵：先缩放，再旋转，再平移（Stride 的 Matrix.Transformation 的常用形式）。 */
+  compose(out: Matrix4, translation: ArrayLike<number>, rotation: ArrayLike<number>, scale: ArrayLike<number>): Matrix4 {
+    const [x, y, z, w] = [rotation[0]!, rotation[1]!, rotation[2]!, rotation[3]!];
+    const [sx, sy, sz] = [scale[0]!, scale[1]!, scale[2]!];
+    out[0] = (1 - 2 * (y * y + z * z)) * sx;
+    out[1] = 2 * (x * y + z * w) * sx;
+    out[2] = 2 * (x * z - y * w) * sx;
+    out[3] = 0;
+    out[4] = 2 * (x * y - z * w) * sy;
+    out[5] = (1 - 2 * (x * x + z * z)) * sy;
+    out[6] = 2 * (y * z + x * w) * sy;
+    out[7] = 0;
+    out[8] = 2 * (x * z + y * w) * sz;
+    out[9] = 2 * (y * z - x * w) * sz;
+    out[10] = (1 - 2 * (x * x + y * y)) * sz;
+    out[11] = 0;
+    out[12] = translation[0]!;
+    out[13] = translation[1]!;
+    out[14] = translation[2]!;
+    out[15] = 1;
+    return out;
+  },
+
   /** 用矩阵变换一个点（带平移，做透视除法）。 */
   transformPoint(m: Readonly<Matrix4>, x: number, y: number, z: number): [number, number, number] {
     const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;

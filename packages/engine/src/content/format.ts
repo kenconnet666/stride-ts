@@ -7,7 +7,8 @@
  *   和索引，一般是 meshopt 编码的。解码后直接上传，反量化在顶点着色器里做。
  * - 立方体贴图 `<路径>.cubemap`：同样的容器（magic 'SCUB'），JSON 头是尺寸、级数和纹素格式（RGBA16F 或 RGB9E5），
  *   数据区是各级 mip，每级 6 个面连续（+X -X +Y -Y +Z -Z，行从上到下，WebGPU 的布局），直接上传。
- * - 贴图 `<路径>.ktx2`：KTX2 加 Basis，运行时按设备转码。
+ * - 贴图：`<路径>.ktx2`（KTX2 加 Basis，运行时按设备转码，显存最省），或者下载最小的 `.svg`（矢量，加载时按指定尺寸
+ *   栅格化）、`.png`/`.jpg`（浏览器解码），后两种在 GPU 上生成 mip。用哪种写在材质的贴图槽里（TextureSlot.encoding）。
  * - 材质 `<路径>.material.json`、天空盒 `<路径>.skybox.json`、场景 `<路径>.scene.json`：JSON。场景以后改成二进制，
  *   物理部分直接是原生能读的布局。
  */
@@ -24,7 +25,6 @@ export const EXTENSIONS = {
   model: '.model',
   material: '.material.json',
   scene: '.scene.json',
-  texture: '.ktx2',
   cubemap: '.cubemap',
   skybox: '.skybox.json',
 } as const;
@@ -225,9 +225,21 @@ export interface SkyboxFile {
 /** 贴图和颜色的组合方式：结果 = 运算(贴图采样, 颜色)。对应 Stride ComputeBinaryColor 的运算符，先支持用到的两个。 */
 export type ColorOperator = 'multiply' | 'add';
 
+/**
+ * 贴图文件的编码：ktx2（Basis，运行时转码成 GPU 压缩格式），svg（矢量，加载时栅格化），png、jpeg（浏览器解码）。
+ * 后三种在显存里是未压缩的 RGBA8，换来的是更小的下载。
+ */
+export type TextureEncoding = 'ktx2' | 'svg' | 'png' | 'jpeg';
+
+export const TEXTURE_EXTENSIONS: Readonly<Record<TextureEncoding, string>> = { ktx2: '.ktx2', svg: '.svg', png: '.png', jpeg: '.jpg' };
+
 export interface TextureSlot {
-  /** 贴图的内容路径；文件是 KTX2（Basis 压缩），运行时按设备支持转码。 */
+  /** 贴图的内容路径，文件是 `<路径><TEXTURE_EXTENSIONS[encoding]>`。 */
   readonly texture: string;
+  /** 默认 ktx2。 */
+  readonly encoding?: TextureEncoding;
+  /** svg 栅格化的尺寸（像素），默认取 SVG 的 width、height。 */
+  readonly size?: readonly [number, number];
   /** 采样坐标 = uv * scale + offset（scale 已经乘上 Stride 材质的 UVScale）。 */
   readonly scale: readonly [number, number];
   readonly offset: readonly [number, number];

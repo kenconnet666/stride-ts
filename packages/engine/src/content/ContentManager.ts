@@ -14,8 +14,8 @@ import { Background, Camera, Light, Model } from '../rendering/components';
 import { Material } from '../rendering/Material';
 import { Mesh, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
-import { Texture, type TextureDecoder } from '../rendering/Texture';
-import { decodeCubemap, decodeModel, EXTENSIONS, vertexLayoutOffsets, type ModelMeshData, type MaterialFile, type SceneEntityFile, type SceneFile, type SkyboxFile } from './format';
+import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
+import { decodeCubemap, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type SceneEntityFile, type SceneFile, type SkyboxFile } from './format';
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
 export interface MeshoptRequest {
@@ -71,6 +71,8 @@ export class ContentManager {
   readonly defaultMaterial = new Material('default');
   /** 把 KTX2 贴图转码成设备支持的格式；Game 在图形设备建好之后设置（ktx2Decoder），测试里可以换成假的。 */
   textureDecoder: TextureDecoder | undefined;
+  /** 把 SVG、PNG、JPEG 贴图解成 RGBA8；Game 启动时设置（browserImageDecoder），测试里可以换成假的。 */
+  imageDecoder: ImageDecoder | undefined;
   /** 解码 meshopt 压缩的模型；Game 启动时设置（原生模块的 decodeMeshoptBatch，各个流在原生线程里并行解）。 */
   meshoptDecoder: MeshoptDecoder | undefined;
 
@@ -121,7 +123,7 @@ export class ContentManager {
       const slot = file.baseColorTexture;
       return new Material(file.name, {
         baseColor: file.baseColor,
-        ...(slot ? { baseColorTexture: { texture: await this.loadTexture(slot.texture), scale: slot.scale, offset: slot.offset } } : {}),
+        ...(slot ? { baseColorTexture: { texture: await this.loadTexture(slot.texture, { encoding: slot.encoding ?? 'ktx2', srgb: true, ...(slot.size ? { size: slot.size } : {}) }), scale: slot.scale, offset: slot.offset } } : {}),
         ...(file.baseColorOperator ? { baseColorOperator: file.baseColorOperator } : {}),
         ...(file.metalness === undefined ? {} : { metalness: file.metalness }),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
@@ -142,11 +144,19 @@ export class ContentManager {
     });
   }
 
-  loadTexture(path: string): Promise<Texture> {
-    return this.#once(path + EXTENSIONS.texture, async (url) => {
-      const decode = this.textureDecoder;
-      if (!decode) throw new Error(`loading ${url.href}: no textureDecoder (Game sets one when it starts)`);
-      return new Texture(path, await decode(new Uint8Array(await this.#read(url))));
+  /**
+   * 加载贴图。ktx2 交给 textureDecoder 转码；svg、png、jpeg 交给 imageDecoder（srgb 决定格式，svg 按 size 栅格化）。
+   * 同一个文件只加载一次。
+   */
+  loadTexture(path: string, { encoding = 'ktx2', srgb = true, size }: { encoding?: TextureEncoding; srgb?: boolean; size?: readonly [number, number] } = {}): Promise<Texture> {
+    return this.#once(path + TEXTURE_EXTENSIONS[encoding], async (url) => {
+      const bytes = new Uint8Array(await this.#read(url));
+      if (encoding === 'ktx2') {
+        if (!this.textureDecoder) throw new Error(`loading ${url.href}: no textureDecoder (Game sets one when it starts)`);
+        return new Texture(path, await this.textureDecoder(bytes));
+      }
+      if (!this.imageDecoder) throw new Error(`loading ${url.href}: no imageDecoder (Game sets one when it starts)`);
+      return new Texture(path, await this.imageDecoder(bytes, { encoding, srgb, ...(size ? { size } : {}) }));
     });
   }
 

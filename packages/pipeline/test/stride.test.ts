@@ -5,7 +5,7 @@ import path from 'node:path';
 import { decodeCubemap, decodeModel, type MaterialFile, type SceneFile, type SkyboxFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { floatToHalf, fromRgb9e5, halfToFloat, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, StrideImporter, StrideProject, toRgb9e5 } from '../src/index';
+import { floatToHalf, fromRgb9e5, halfToFloat, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
 
 describe('Stride 的 YAML', () => {
   test('标签里的逗号（程序集限定名）、对象引用和资源引用', () => {
@@ -243,12 +243,17 @@ describe('导入 Stride 场景', () => {
     ].join('\n'),
   };
 
-  test('实体、父子、模型、材质、贴图、光源、天空盒、背景；不认识的组件计数', async () => {
+  const writeProject = async () => {
     for (const [file, text] of Object.entries(files)) {
       await mkdir(path.dirname(path.join(dir, file)), { recursive: true });
       await writeFile(path.join(dir, file), text);
     }
-    const project = await StrideProject.open([{ package: 'Game', dir: path.join(dir, 'Assets') }]);
+    return StrideProject.open([{ package: 'Game', dir: path.join(dir, 'Assets') }]);
+  };
+  const readMaterial = async (out: string) => JSON.parse(await readFile(path.join(out, 'Game/Materials/Red.material.json'), 'utf8')) as MaterialFile;
+
+  test('实体、父子、模型、材质、贴图、光源、天空盒、背景；不认识的组件计数', async () => {
+    const project = await writeProject();
     const out = path.join(dir, 'content');
     const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
     const result = await importer.importScene(project.byPath('Game/Main')!);
@@ -299,5 +304,33 @@ describe('导入 Stride 场景', () => {
 
     const ktx2 = new Uint8Array(await readFile(path.join(out, 'Game/Textures/Checker.ktx2')));
     expect([...ktx2.subarray(0, 8)]).toEqual([0xab, 0x4b, 0x54, 0x58, 0x20, 0x32, 0x30, 0xbb]);
+  });
+
+  test('覆盖目录里的 SVG 代替源图片，原样导出，材质的贴图槽记下编码和栅格化尺寸', async () => {
+    const project = await writeProject();
+    const overrides = path.join(dir, 'overrides');
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32"><rect width="64" height="32" fill="#888"/></svg>';
+    await mkdir(path.join(overrides, 'Game/Textures'), { recursive: true });
+    await writeFile(path.join(overrides, 'Game/Textures/Checker.svg'), svg);
+    const out = path.join(dir, 'content-svg');
+    await new StrideImporter(project, tools, out, { specularCubemapSize: 16, overrides }).importScene(project.byPath('Game/Main')!);
+    expect((await readMaterial(out)).baseColorTexture).toEqual({ texture: 'Game/Textures/Checker', encoding: 'svg', size: [64, 32], scale: [2, 6], offset: [0.5, 0] });
+    expect(await readFile(path.join(out, 'Game/Textures/Checker.svg'), 'utf8')).toBe(svg);
+  });
+
+  test('textureEncoding：source 复制 PNG 源文件；smallest 取 PNG 和 KTX2 里小的（这张 16x16 的 PNG 更小）', async () => {
+    const project = await writeProject();
+    for (const textureEncoding of ['source', 'smallest'] as const) {
+      const out = path.join(dir, `content-${textureEncoding}`);
+      await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding }).importScene(project.byPath('Game/Main')!);
+      expect((await readMaterial(out)).baseColorTexture).toEqual({ texture: 'Game/Textures/Checker', encoding: 'png', scale: [2, 6], offset: [0.5, 0] });
+      expect(await readFile(path.join(out, 'Game/Textures/Checker.png'))).toEqual(files['Resources/checker.png']);
+    }
+  });
+
+  test('svgSize：width、height 是像素时用它们，否则用 viewBox，都没有时 undefined', () => {
+    expect(svgSize('<svg width="512" height="256px" viewBox="0 0 10 10">')).toEqual([512, 256]);
+    expect(svgSize('<svg width="100%" viewBox="0 0 300 150">')).toEqual([300, 150]);
+    expect(svgSize('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg">')).toBeUndefined();
   });
 });

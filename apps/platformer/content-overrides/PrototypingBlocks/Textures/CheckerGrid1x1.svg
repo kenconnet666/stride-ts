@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Stride PrototypingBlocks 的 CheckerGrid1x1.png 的矢量版：2x2 的棋盘格，外框和中线实线，每个方块 5x5 的虚线格 -->
+  <rect width="512" height="512" fill="#9f9f9f"/>
+  <path d="M0 0H256V256H0ZM256 256H512V512H256Z" fill="#b2b2b2"/>
+  <g stroke="#666" stroke-width="2" stroke-dasharray="3.25 2.75" fill="none">
+    <path stroke-dashoffset="0.25" d="M52 0V512M103 0V512M154 0V512M205 0V512M307 0V512M358 0V512M409 0V512M460 0V512"/>
+    <path stroke-dashoffset="2" d="M0 52H512M0 103H512M0 154H512M0 205H512M0 307H512M0 358H512M0 409H512M0 460H512"/>
+  </g>
+  <path d="M3 0V512M509 0V512M0 3H512M0 509H512" stroke="#666" stroke-width="6"/>
+  <path d="M256 0V512M0 256H512" stroke="#666" stroke-width="4"/>
+</svg>

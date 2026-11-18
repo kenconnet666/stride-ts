@@ -3,6 +3,7 @@
  * （Mesh、Material 这些数据对象本身不碰 GPU），还有几个常用的默认资源和采样器。渲染系统销毁时一起释放。
  */
 import { CUBEMAP_TEXEL_BYTES } from '../content/format';
+import { MipmapGenerator } from './MipmapGenerator';
 import type { Cubemap, Skybox } from './Skybox';
 import { prefilterSkybox } from './SkyboxPrefilter';
 import type { Texture } from './Texture';
@@ -20,6 +21,7 @@ export class GpuResources {
   readonly #textures = new Map<Texture, GPUTexture>();
   readonly #cubemaps = new Map<Cubemap, GPUTexture>();
   readonly #skyboxSpecular = new Map<Skybox, GPUTexture>();
+  readonly #mipmaps: MipmapGenerator;
 
   constructor(device: GPUDevice) {
     this.device = device;
@@ -37,14 +39,20 @@ export class GpuResources {
       maxAnisotropy: 16,
     });
     this.linearClamp = device.createSampler({ label: 'linear clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
+    this.#mipmaps = new MipmapGenerator(device);
   }
 
-  /** 贴图的 GPU 纹理；第一次用到时上传所有 mip，压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝。 */
+  /**
+   * 贴图的 GPU 纹理；第一次用到时上传所有 mip，压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝。
+   * 只给了第 0 级的（generateMipmaps）上传后在 GPU 上生成完整的 mip 链。
+   */
   texture(texture: Texture): GPUTexture {
     let gpu = this.#textures.get(texture);
     if (!gpu) {
-      const { format, width, height, levels } = texture.data;
-      const target = this.device.createTexture({ label: texture.name, size: [width, height], format, mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+      const { format, width, height, levels, generateMipmaps } = texture.data;
+      const mipLevelCount = generateMipmaps ? Math.floor(Math.log2(Math.max(width, height))) + 1 : levels.length;
+      const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | (generateMipmaps ? GPUTextureUsage.RENDER_ATTACHMENT : 0);
+      const target = this.device.createTexture({ label: texture.name, size: [width, height], format, mipLevelCount, usage });
       const block = texture.blockBytes;
       levels.forEach((data, mipLevel) => {
         const w = Math.max(1, width >> mipLevel), h = Math.max(1, height >> mipLevel);
@@ -52,6 +60,7 @@ export class GpuResources {
         const size = block ? [Math.ceil(w / 4) * 4, Math.ceil(h / 4) * 4] : [w, h];
         this.device.queue.writeTexture({ texture: target, mipLevel }, data, layout, size);
       });
+      if (generateMipmaps) this.#mipmaps.generate(target);
       this.#textures.set(texture, (gpu = target));
     }
     return gpu;

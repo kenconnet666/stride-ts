@@ -44,6 +44,8 @@ export {
   type SceneEntityFile,
   type SceneFile,
   type SkyboxFile,
+  TEXTURE_EXTENSIONS,
+  type TextureEncoding,
   type TextureSlot,
 } from './content/format';
 export { Commands } from './engine/Commands';
@@ -89,7 +91,8 @@ export { ToneMap } from './rendering/ToneMap';
 export { ForwardRenderer } from './rendering/ForwardRenderer';
 export { Material, type MaterialDesc, type MaterialId, type MaterialTexture } from './rendering/Material';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
-export { ktx2Decoder, Texture, type TextureData, type TextureDecoder } from './rendering/Texture';
+export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder } from './rendering/Texture';
+export { MipmapGenerator } from './rendering/MipmapGenerator';
 export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
 export { RenderStage, RenderSystem, RenderView, RootRenderFeature, type Lighting, type RenderContext, type RenderOutput, type SkyboxLight } from './rendering/RenderSystem';
 export { Color4, Quaternion, srgbToLinear, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';

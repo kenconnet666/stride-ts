@@ -191,6 +191,28 @@ describe('贴图', () => {
     expect(material.baseColorTexture!.texture.data).toMatchObject({ format: 'rgba8unorm-srgb', width: 8, height: 8 });
     expect(await content.loadTexture('textures/Checker')).toBe(material.baseColorTexture!.texture);
   });
+
+  test('svg、png 的贴图槽交给 imageDecoder：按编码选扩展名，带上栅格化尺寸，颜色贴图是 sRGB', async () => {
+    const svg = new TextEncoder().encode('<svg/>');
+    const files = new Map<string, Uint8Array>([
+      ['https://game.test/content/textures/Grid.svg', svg],
+      ['https://game.test/content/materials/Grid.material.json', new TextEncoder().encode(JSON.stringify({
+        name: 'Grid',
+        baseColor: [1, 1, 1, 1],
+        baseColorTexture: { texture: 'textures/Grid', encoding: 'svg', size: [256, 128], scale: [1, 1], offset: [0, 0] },
+      } satisfies MaterialFile))],
+    ]);
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async (url) => files.get(url.href)!.slice().buffer });
+    await expect(content.loadMaterial('materials/Grid')).rejects.toThrow('no imageDecoder');
+    const calls: unknown[] = [];
+    content.imageDecoder = async (bytes, options) => {
+      calls.push([new TextDecoder().decode(bytes), options]);
+      return { format: 'rgba8unorm-srgb', width: 256, height: 128, levels: [new Uint8Array(256 * 128 * 4)], generateMipmaps: true };
+    };
+    const material = await content.loadMaterial('materials/Grid');
+    expect(calls).toEqual([['<svg/>', { encoding: 'svg', srgb: true, size: [256, 128] }]]);
+    expect(material.baseColorTexture!.texture.data).toMatchObject({ width: 256, generateMipmaps: true });
+  });
 });
 
 describe('立方体贴图和天空盒', () => {

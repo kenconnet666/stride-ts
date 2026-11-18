@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Stride PrototypingBlocks 的 CheckerGrid10x10.png 的矢量版：2x2 的棋盘格，每个方块 10x10 格，每格再分 5 份 -->
+  <defs>
+    <pattern id="minor" width="5.12" height="5.12" patternUnits="userSpaceOnUse">
+      <path d="M0 0.5H5.12M0.5 0V5.12" stroke="#666" stroke-opacity="0.11" fill="none"/>
+    </pattern>
+    <pattern id="major" width="25.6" height="25.6" patternUnits="userSpaceOnUse">
+      <path d="M0 0.5H25.6M0.5 0V25.6" stroke="#666" stroke-opacity="0.42" fill="none"/>
+    </pattern>
+  </defs>
+  <rect width="512" height="512" fill="#a0a0a0"/>
+  <path d="M0 0H256V256H0ZM256 256H512V512H256Z" fill="#b3b3b3"/>
+  <rect width="512" height="512" fill="url(#minor)"/>
+  <rect width="512" height="512" fill="url(#major)"/>
+  <path d="M256 0V512M0 256H512" stroke="#666" stroke-opacity="0.8" stroke-width="2"/>
+  <path d="M0.75 0V512M511.25 0V512M0 0.75H512M0 511.25H512" stroke="#666" stroke-width="1.5"/>
+</svg>

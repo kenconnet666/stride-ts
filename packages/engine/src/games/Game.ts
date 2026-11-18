@@ -8,7 +8,7 @@ import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
 import { RenderSystem } from '../rendering/RenderSystem';
-import { ktx2Decoder } from '../rendering/Texture';
+import { browserImageDecoder, ktx2Decoder } from '../rendering/Texture';
 import { GameTime } from './GameTime';
 
 export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
@@ -90,6 +90,7 @@ export class Game {
       this.graphicsDevice = await GraphicsDevice.create(canvas);
       this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
       this.content.meshoptDecoder ??= (requests) => this.native.decodeMeshoptBatch(requests);
+      this.content.imageDecoder ??= browserImageDecoder();
       this.renderSystem = new RenderSystem(this.graphicsDevice);
       this.renderSystem.addFeature(new MeshRenderFeature());
       // 背景画在网格之后，只落在没画到的地方

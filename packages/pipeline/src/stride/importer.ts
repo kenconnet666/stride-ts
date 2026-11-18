@@ -4,7 +4,7 @@
  * 编成 KTX2 加 Basis），相机，光源（天空盒光的球谐同 Stride 的 SkyboxGenerator，镜面的预滤波在运行时做），背景。
  * 现在不认识的组件（物理、脚本、动画）跳过并计数，后面的里程碑逐个接上。
  */
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { StrideTools } from '@stride-ts/native/tools';
 import {
@@ -19,6 +19,8 @@ import {
   type SceneEntityFile,
   type SceneFile,
   type SkyboxFile,
+  TEXTURE_EXTENSIONS,
+  type TextureEncoding,
   type TextureSlot,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, toRgb9e5, type FloatCubemap } from '../hdr.ts';
@@ -48,7 +50,26 @@ export interface ImporterOptions {
    * （见 ../mesh.ts）。运行时两种都能读。
    */
   readonly plain?: boolean;
+  /**
+   * 覆盖目录：`<目录>/<内容路径>.svg`（或 .png、.jpg）存在时，用它代替资源的源图片，原样导出（SVG 是矢量，下载最小）。
+   * Stride 仓库只读，换成矢量版之类的改动放在这里。
+   */
+  readonly overrides?: string;
+  /**
+   * 没有覆盖文件的贴图怎么导出：ktx2（默认，Basis 压缩，显存最省）、source（源文件是 PNG/JPEG 时原样复制，
+   * 浏览器解码）、smallest（两者取下载小的）。
+   */
+  readonly textureEncoding?: 'ktx2' | 'source' | 'smallest';
 }
+
+/** 导出的贴图：内容路径、编码，svg 带上栅格化尺寸。 */
+interface ImportedTexture {
+  readonly texture: string;
+  readonly encoding: TextureEncoding;
+  readonly size?: readonly [number, number];
+}
+
+const SOURCE_ENCODINGS: Readonly<Record<string, TextureEncoding>> = { '.svg': 'svg', '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg' };
 
 const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
 
@@ -61,7 +82,7 @@ export class StrideImporter {
   readonly #options: Required<ImporterOptions>;
   readonly #models = new Map<string, Promise<string>>();
   readonly #materials = new Map<string, Promise<string>>();
-  readonly #textures = new Map<string, Promise<string>>();
+  readonly #textures = new Map<string, Promise<ImportedTexture>>();
   readonly #cubemaps = new Map<string, Promise<string>>();
   readonly #skyboxes = new Map<string, Promise<string>>();
   /** 解码过的 HDR 立方体贴图源文件：天空盒光照和背景常用同一张。 */
@@ -70,11 +91,11 @@ export class StrideImporter {
   readonly #warnings: string[] = [];
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
-  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false }: ImporterOptions = {}) {
+  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2' }: ImporterOptions = {}) {
     this.#project = project;
     this.#tools = tools;
     this.#out = out;
-    this.#options = { specularCubemapSize, plain };
+    this.#options = { specularCubemapSize, plain, overrides, textureEncoding };
   }
 
   async importScene(asset: AssetEntry): Promise<ImportResult> {
@@ -256,7 +277,7 @@ export class StrideImporter {
     return {
       name: path.basename(asset.path),
       baseColor: color,
-      ...(texture ? { baseColorTexture: { ...texture, texture: await texture.texture } } : {}),
+      ...(texture ? { baseColorTexture: textureSlot(await texture.texture, texture.scale, texture.offset) } : {}),
       ...(texture && operator !== 'multiply' ? { baseColorOperator: operator } : {}),
       ...(metalness === undefined ? {} : { metalness }),
       roughness,
@@ -351,16 +372,50 @@ export class StrideImporter {
     }
   }
 
-  /** 导入一个贴图资源（.sdtex）：解码源图片，编成 KTX2（UASTC 加 mipmap），返回内容路径。 */
-  #texture(asset: AssetEntry): Promise<string> {
-    return once(this.#textures, asset, async () => {
-      const type = asObject(asset.data['Type']);
-      // 颜色贴图默认按 sRGB 采样（Stride 的 ColorTextureType.UseSRgbSampling），法线、灰度贴图是线性的
-      const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
-      const image = await this.#tools.decodeImage(await readFile(sourceOf(asset)));
-      const ktx2 = await this.#tools.encodeBasis(image.pixels, image.width, image.height, { mode: 'uastc', srgb, mipmaps: true });
-      await this.#write(asset.path + EXTENSIONS.texture, ktx2);
-    });
+  /** 导入一个贴图资源（.sdtex），同一张只导入一次。 */
+  #texture(asset: AssetEntry): Promise<ImportedTexture> {
+    let pending = this.#textures.get(asset.path);
+    if (!pending) {
+      pending = this.#importTexture(asset);
+      this.#textures.set(asset.path, pending);
+    }
+    return pending;
+  }
+
+  /** 有覆盖文件就原样导出它；否则按 textureEncoding：编成 KTX2（UASTC 加 mipmap），或复制 PNG/JPEG 源文件。 */
+  async #importTexture(asset: AssetEntry): Promise<ImportedTexture> {
+    const override = await this.#override(asset.path);
+    if (override) return this.#copyTexture(asset.path, override.encoding, await readFile(override.file));
+
+    const file = sourceOf(asset);
+    const bytes = await readFile(file);
+    const sourceEncoding = SOURCE_ENCODINGS[path.extname(file).toLowerCase()];
+    const policy = this.#options.textureEncoding;
+    if (policy === 'source' && sourceEncoding) return this.#copyTexture(asset.path, sourceEncoding, bytes);
+    const type = asObject(asset.data['Type']);
+    // 颜色贴图默认按 sRGB 采样（Stride 的 ColorTextureType.UseSRgbSampling），法线、灰度贴图是线性的
+    const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
+    const image = await this.#tools.decodeImage(bytes);
+    const ktx2 = await this.#tools.encodeBasis(image.pixels, image.width, image.height, { mode: 'uastc', srgb, mipmaps: true });
+    if (policy === 'smallest' && sourceEncoding && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes);
+    await this.#write(asset.path + TEXTURE_EXTENSIONS.ktx2, ktx2);
+    return { texture: asset.path, encoding: 'ktx2' };
+  }
+
+  async #copyTexture(contentPath: string, encoding: TextureEncoding, bytes: Uint8Array): Promise<ImportedTexture> {
+    await this.#write(contentPath + TEXTURE_EXTENSIONS[encoding], bytes);
+    const size = encoding === 'svg' ? svgSize(new TextDecoder().decode(bytes)) : undefined;
+    return { texture: contentPath, encoding, ...(size ? { size } : {}) };
+  }
+
+  /** 覆盖目录里这个内容路径的文件（.svg 优先，然后 .png、.jpg）。 */
+  async #override(contentPath: string): Promise<{ file: string; encoding: TextureEncoding } | undefined> {
+    if (!this.#options.overrides) return undefined;
+    for (const [extension, encoding] of Object.entries(SOURCE_ENCODINGS)) {
+      const file = path.join(this.#options.overrides, contentPath + extension);
+      if (await access(file).then(() => true, () => false)) return { file, encoding };
+    }
+    return undefined;
   }
 
   /** 把一个 HDR 立方体贴图资源（.sdtex，源文件是 DDS）导出成 .cubemap：RGB9E5，带源文件的 mip。 */
@@ -416,6 +471,23 @@ function once(cache: Map<string, Promise<string>>, asset: AssetEntry, importAsse
   return pending;
 }
 
+/** 材质里的贴图槽：ktx2 是默认，不写 encoding。 */
+function textureSlot({ texture, encoding, size }: ImportedTexture, scale: readonly [number, number], offset: readonly [number, number]): TextureSlot {
+  return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), scale, offset };
+}
+
+/** SVG 根元素的 width、height（像素，不带单位或 px）；没有时用 viewBox 的大小；都没有时返回 undefined（运行时用图片本身的尺寸）。 */
+export function svgSize(svg: string): [number, number] | undefined {
+  const root = /<svg\b[^>]*>/i.exec(svg)?.[0];
+  if (!root) return undefined;
+  const attribute = (name: string) => new RegExp(`\\s${name}\\s*=\\s*["']([^"']*)["']`, 'i').exec(root)?.[1];
+  const pixels = (value: string | undefined) => (value && /^\s*[\d.]+\s*(px)?\s*$/.test(value) ? Math.round(parseFloat(value)) : undefined);
+  const [width, height] = [pixels(attribute('width')), pixels(attribute('height'))];
+  if (width && height) return [width, height];
+  const viewBox = attribute('viewBox')?.trim().split(/[\s,]+/).map(Number);
+  return viewBox && viewBox.length === 4 && viewBox[2]! > 0 && viewBox[3]! > 0 ? [Math.round(viewBox[2]!), Math.round(viewBox[3]!)] : undefined;
+}
+
 /** 资源的源文件（`Source` 相对资源文件；写成 `!file 路径` 时也认）。 */
 function sourceOf(asset: AssetEntry): string {
   const source = asset.data['Source'];
@@ -431,8 +503,8 @@ const WHITE: Color4Tuple = [1, 1, 1, 1];
 /** 颜色树化简后的形状：有贴图时结果 = operator(贴图采样, color)，没有贴图时就是 color。 */
 interface ColorExpression {
   readonly color: Color4Tuple;
-  /** texture 是导入中的贴图的内容路径。 */
-  readonly texture?: Omit<TextureSlot, 'texture'> & { readonly texture: Promise<string> };
+  /** texture 是导入中的贴图。 */
+  readonly texture?: { readonly texture: Promise<ImportedTexture>; readonly scale: readonly [number, number]; readonly offset: readonly [number, number] };
   readonly operator: ColorOperator;
 }
 

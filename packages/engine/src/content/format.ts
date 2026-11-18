@@ -377,6 +377,8 @@ export interface TextureRef {
   readonly encoding?: TextureEncoding;
   /** svg 栅格化的尺寸（像素），默认取 SVG 的 width、height。 */
   readonly size?: readonly [number, number];
+  /** 按 sRGB 采样（Stride 的贴图类型决定）；没写时按用途：颜色贴图是，法线、遮蔽这些数据贴图不是。 */
+  readonly srgb?: boolean;
 }
 
 export interface TextureSlot extends TextureRef {
@@ -403,18 +405,43 @@ export interface MaterialFile {
   readonly baseColorTexture?: TextureSlot;
   /** 默认 multiply（baseColor 是白色时就是贴图本身）。 */
   readonly baseColorOperator?: ColorOperator;
-  /** 金属度工作流（Stride 的 MaterialMetalnessMapFeature）；没有时材质没有镜面反射。 */
+  /** 金属度工作流（Stride 的 MaterialMetalnessMapFeature）；没有时材质没有镜面反射（除非有 specular）。 */
   readonly metalness?: number;
+  /** 镜面工作流（Stride 的 MaterialSpecularMapFeature）：镜面颜色乘强度，线性；和 metalness 二选一，漫反射不变暗。 */
+  readonly specular?: Vec3Tuple;
   /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。 */
   readonly roughness?: number;
-  /** 自发光：线性颜色乘强度。 */
+  /** 自发光：线性颜色乘强度；有 emissiveTexture 时再乘贴图（Stride 的 ComputeBinaryColor 乘法）。 */
   readonly emissive?: Vec3Tuple;
+  readonly emissiveTexture?: TextureSlot;
+  /** 环境光遮蔽（Stride 的 Occlusion 特性的 AmbientOcclusionMap）。 */
+  readonly ambientOcclusion?: AmbientOcclusionSlot;
+  /** 透明（Stride 的 MaterialTransparencyBlendFeature）：预乘 alpha 混合，画在透明阶段。 */
+  readonly transparency?: TransparencyFile;
   /** Stride 的 Occlusion 特性里的 cavity：漫反射和镜面的可见部分乘上这两个系数。 */
   readonly cavity?: { readonly diffuse: number; readonly specular: number };
   readonly normalMap?: NormalMapSlot;
 }
 
 export type Vec3Tuple = readonly [number, number, number];
+
+/**
+ * 环境光遮蔽：遮蔽值 = 贴图的 channel 通道（没有贴图时是 value）。环境光（环境色、天空盒）乘遮蔽值，直射光乘
+ * lerp(1, 遮蔽值, directLighting)（Stride 的 MaterialPixelStream、LightSkyboxShader）。
+ */
+export interface AmbientOcclusionSlot {
+  readonly value: number;
+  readonly texture?: TextureSlot & { readonly channel: 'r' | 'g' | 'b' | 'a' };
+  readonly directLighting: number;
+}
+
+/** 透明混合：可见的漫反射和镜面乘 alpha 和 tint，输出的 alpha 是漫反射的 alpha 乘这个 alpha（Stride 的预乘 alpha）。 */
+export interface TransparencyFile {
+  readonly type: 'blend';
+  readonly alpha: number;
+  /** 线性颜色，默认白色。 */
+  readonly tint?: Vec3Tuple;
+}
 
 /** 方向光的阴影设置（Stride 的 LightDirectionalShadowMap），各字段的意思见 Light 组件。 */
 export interface SceneLightShadow {

@@ -38,7 +38,7 @@ import { BRDF } from './brdf';
 import { Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
-import { Material } from './Material';
+import { Material, type MaterialTexture } from './Material';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
 import { Mesh } from './Mesh';
 import { MAX_DIRECTIONAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
@@ -93,22 +93,32 @@ struct View {
 @group(0) @binding(9) var<storage, read> palettes: array<mat4x4f>;
 
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
-// 没有贴图的材质绑一张 1x1 的白图。surface：金属度、粗糙度、漫反射 cavity、镜面 cavity。
-// normalFlags：第 1 位有法线贴图，第 2 位 ×2-1，第 3 位 y 取反，第 4 位由 xy 算 z。
+// 没有贴图的槽绑一张 1x1 的白图，所以不用分支：自发光 = 贴图 · emissive，遮蔽 = dot(贴图, occlusionMask)（mask 是
+// 通道的单位向量，没有贴图时是 (值, 0, 0, 0)）。surface：金属度、粗糙度、漫反射 cavity、镜面 cavity。
+// specular：0 没有镜面，1 金属度工作流，2 镜面颜色工作流（specularColor）。blend：透明的 tint 和 alpha（不透明是 1）。
+// normalFlags：第 1 位有法线贴图，第 2 位 ×2-1，第 3 位 y 取反，第 4 位由 xy 算 z。occlusionDirect：直射光受遮蔽的程度。
 struct Material {
   baseColor: vec4f,
   uvTransform: vec4f,
   emissive: vec4f,
   surface: vec4f,
   normalUvTransform: vec4f,
+  specularColor: vec4f,
+  emissiveUvTransform: vec4f,
+  occlusionMask: vec4f,
+  occlusionUvTransform: vec4f,
+  blend: vec4f,
   combine: u32,
   specular: u32,
   normalFlags: u32,
+  occlusionDirect: f32,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
 @group(1) @binding(2) var baseColorSampler: sampler;
 @group(1) @binding(3) var normalTexture: texture_2d<f32>;
+@group(1) @binding(4) var emissiveTexture: texture_2d<f32>;
+@group(1) @binding(5) var occlusionTexture: texture_2d<f32>;
 
 // 网格的反量化：位置 = offset + 输入 · scale，UV = uvTransform.zw + 输入 · uvTransform.xy；flags 的第 1 位：法线是八面体编码。
 // 不量化的网格 offset 0、scale 1。unorm16 的位置读进来是 vec4f，snorm16x2 的法线是 (x, y, 0)，都按 vec3f 用。
@@ -349,14 +359,22 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let n = surfaceNormal(in);
   let v = normalize(view.eye.xyz - in.world);
-  let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw).rgb;
-  let albedo = select(texel * material.baseColor.rgb, texel + material.baseColor.rgb, material.combine == 1u);
+  let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
+  let base = select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
+  let albedo = base.rgb;
 
-  // 金属度工作流（MaterialSurfaceMetalness），再乘 cavity（PrepareMaterialForLightingAndShading）
-  let hasSpecular = material.specular == 1u;
+  // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint
+  // （PrepareMaterialForLightingAndShading；镜面项的 alpha 是 matDiffuseSpecularAlphaBlend.y）
+  let hasSpecular = material.specular != 0u;
   let metalness = material.surface.x;
-  let diffuse = select(albedo, albedo * (1.0 - metalness), hasSpecular) * material.surface.z;
-  let specular = select(vec3f(0.0), mix(vec3f(0.02), albedo, metalness), hasSpecular) * material.surface.w;
+  let isMetalness = material.specular == 1u;
+  let visible = material.blend.rgb * material.blend.a;
+  let diffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * visible;
+  let f0 = select(material.specularColor.rgb, mix(vec3f(0.02), albedo, metalness), isMetalness);
+  let specular = select(vec3f(0.0), f0, hasSpecular) * material.surface.w * visible;
+  // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, occlusionDirect)
+  let ao = dot(textureSample(occlusionTexture, baseColorSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
+  let directOcclusion = mix(1.0, ao, material.occlusionDirect);
   let roughness = material.surface.y;
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
@@ -372,7 +390,7 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
     if (i32(i) == shadowLight) {
       shadow = computeShadow(in.world, n, nDotL, in.depth);
     }
-    let lightColorNdotL = view.lightColors[i].rgb * shadow * nDotL;
+    let lightColorNdotL = view.lightColors[i].rgb * shadow * nDotL * directOcclusion;
     direct += diffuse / PI * lightColorNdotL;
     let h = normalize(v + l);
     let nDotH = saturate(dot(n, h));
@@ -387,17 +405,18 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
   // 环境光：镜面项都乘 DFG（Stride 的环境 BRDF 查找表）
   let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
   let environmentSpecular = select(vec3f(0.0), specular * dfg.x + dfg.y, hasSpecular);
-  color += diffuse * view.ambientColor.rgb + environmentSpecular * view.ambientColor.rgb;
+  color += (diffuse * view.ambientColor.rgb + environmentSpecular * view.ambientColor.rgb) * ao;
 
   // 天空盒光：强度是 0 时贡献也是 0，不用分支
-  let skyIntensity = view.sky.x;
+  let skyIntensity = view.sky.x * ao;
   let skyDiffuse = evaluateSH(skyDirection(n)) * skyIntensity;
   let reflection = skyDirection(reflect(-v, n));
   let skySpecularColor = textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
   color += diffuse * skyDiffuse + environmentSpecular * skySpecularColor;
 
-  color += material.emissive.rgb;
-  return vec4f(color, 1.0);
+  color += textureSample(emissiveTexture, baseColorSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb * material.emissive.rgb;
+  // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用
+  return vec4f(color, saturate(base.a * material.blend.a));
 }`;
 
 const DFG_LUT_WIDTH = 32;
@@ -450,7 +469,8 @@ const VIEW_FLOATS = 188;
 /** 一帧最多的视图数：主视图加 4 个阴影级联，留些余量。 */
 const MAX_VIEWS = 8;
 /** 材质 uniform：baseColor、uvTransform、emissive、surface、normalUvTransform 各一个 vec4，再加三个 u32，补齐到 16 字节。 */
-const MATERIAL_BYTES = 96;
+const MATERIAL_BYTES = 176;
+const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 /** 网格参数的 uniform：positionOffset、positionScale、uvTransform 各一个 vec4，再加 flags，补齐到 16 字节。 */
 const MESH_PARAMS_BYTES = 64;
@@ -585,21 +605,28 @@ export class MeshRenderFeature extends RootRenderFeature {
     gpu.uploadViews(this.system.views, this.system.lighting);
   }
 
-  override draw(_context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
+  /**
+   * 不透明的批画在深度预通道、不透明和阴影阶段，透明材质的批只画在透明阶段（不投阴影，和 Stride 不同：Stride 默认按 alpha
+   * 抖动着投阴影）。透明的批按第一个实例到相机的距离从远到近画；同一批的实例不排序（和 Stride 不同：Stride 按每个物体排）。
+   */
+  override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     const culling = this.#viewCulling.get(view);
-    // 还没有透明材质：透明阶段没有网格要画
-    if (!gpu || !culling || stage.transparent) return;
+    if (!gpu || !culling) return;
     const { pass: cullPass, index } = culling;
     const counts = cullPass.culler.counts;
+    const visible = (b: number) => counts[index * cullPass.batchCount + b]! > 0 && this.batches[b]!.material.isTransparent === stage.transparent;
+    const order = stage.transparent ? this.#backToFront(context, view, cullPass.batchCount, visible) : undefined;
+    if (order?.length === 0) return;
     const shadow = stage.shadowCasters ? undefined : this.system.lighting.shadow;
     pass.setBindGroup(0, gpu.viewBindGroup(shadow?.atlas), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     const viewOffset = cullPass.offset + index * cullPass.slotCount;
-    for (let b = 0; b < cullPass.batchCount; b++) {
+    for (let i = 0, end = order?.length ?? cullPass.batchCount; i < end; i++) {
+      const b = order ? order[i]! : i;
       const batch = this.batches[b]!;
       const count = counts[index * cullPass.batchCount + b]!;
-      if (count === 0 || (stage.shadowCasters && !batch.isShadowCaster)) continue;
+      if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       if (batch.material !== material) {
         material = batch.material;
@@ -626,6 +653,19 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.#gpu = undefined;
     for (const pass of this.#cullPasses) pass.culler.destroy();
     this.#cullPasses.length = 0;
+  }
+
+  /** 可见的透明批按第一个实例到相机的距离从远到近排。 */
+  #backToFront(context: RenderContext, view: RenderView, batchCount: number, visible: (b: number) => boolean): number[] {
+    const world = context.game.transforms.world;
+    const { x, y, z } = view.eye;
+    const distance = (b: number) => {
+      const at = this.batches[b]!.slots[0]! * 16;
+      return (world[at + 12]! - x) ** 2 + (world[at + 13]! - y) ** 2 + (world[at + 14]! - z) ** 2;
+    };
+    const order: number[] = [];
+    for (let b = 0; b < batchCount; b++) if (visible(b)) order.push(b);
+    return order.length < 2 ? order : order.map((b) => [b, distance(b)] as const).sort((p, q) => q[1] - p[1]).map(([b]) => b);
   }
 
   /** 一张表的行按批记下变换槽位。相邻的行大多是同一批，先比较上一批，省掉大部分 Map 查找。 */
@@ -734,6 +774,8 @@ class Gpu {
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: {} },
       ],
     });
     this.#meshLayout = device.createBindGroupLayout({
@@ -777,11 +819,11 @@ class Gpu {
             ],
           }],
         },
-        ...(colorFormat ? { fragment: { module: this.#module, entryPoint: 'fs', targets: [{ format: colorFormat }] } } : {}),
+        ...(colorFormat ? { fragment: { module: this.#module, entryPoint: 'fs', targets: [{ format: colorFormat, ...(stage.transparent ? { blend: PREMULTIPLIED_ALPHA } : {}) }] } } : {}),
         primitive: stage.shadowCasters
           ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth }
           : { topology: 'triangle-list', cullMode: 'back', frontFace: 'ccw' },
-        depthStencil: { format: depthFormat, depthWriteEnabled: true, depthCompare: 'less-equal' },
+        depthStencil: { format: depthFormat, depthWriteEnabled: !stage.transparent, depthCompare: 'less-equal' },
       });
       this.#pipelines.set(key, pipeline);
     }
@@ -939,26 +981,35 @@ class Gpu {
       this.#materials.set(material, gpu);
     }
     if (gpu.version !== material.version || !gpu.bindGroup) {
-      const slot = material.baseColorTexture;
+      const { baseColorTexture: slot, normalMap, emissiveTexture, ambientOcclusion: occlusion, transparency } = material;
       const { r, g, b, a } = material.baseColor;
-      const normalMap = material.normalMap;
+      const uv = (texture: Required<MaterialTexture> | undefined) => [...(texture?.scale ?? [1, 1]), ...(texture?.offset ?? [0, 0])];
       const floats = new Float32Array(this.#materialData);
-      floats.set([r, g, b, a, ...(slot?.scale ?? [1, 1]), ...(slot?.offset ?? [0, 0]), ...material.emissive, 0]);
+      floats.set([r, g, b, a, ...uv(slot), ...material.emissive, 0]);
       floats.set([material.metalness ?? 0, material.roughness, material.cavity.diffuse, material.cavity.specular], 12);
-      floats.set([...(normalMap?.scale ?? [1, 1]), ...(normalMap?.offset ?? [0, 0])], 16);
+      floats.set(uv(normalMap), 16);
+      floats.set([...(material.specular ?? [0, 0, 0]), 0], 20);
+      floats.set(uv(emissiveTexture), 24);
+      floats.set(occlusion.texture ? CHANNELS[occlusion.texture.channel] : [occlusion.value, 0, 0, 0], 28);
+      floats.set(uv(occlusion.texture), 32);
+      floats.set(transparency ? [...transparency.tint, transparency.alpha] : [1, 1, 1, 1], 36);
       const codes = new Uint32Array(this.#materialData);
-      codes[20] = OPERATOR_CODES[material.baseColorOperator];
-      codes[21] = material.metalness === undefined ? 0 : 1;
-      codes[22] = normalMap ? 1 | (normalMap.scaleAndBias ? 2 : 0) | (normalMap.invertY ? 4 : 0) | (normalMap.isXYNormal ? 8 : 0) : 0;
+      codes[40] = OPERATOR_CODES[material.baseColorOperator];
+      codes[41] = material.specular ? 2 : material.metalness === undefined ? 0 : 1;
+      codes[42] = normalMap ? 1 | (normalMap.scaleAndBias ? 2 : 0) | (normalMap.invertY ? 4 : 0) | (normalMap.isXYNormal ? 8 : 0) : 0;
+      floats[43] = occlusion.directLighting;
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
+      const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       gpu.bindGroup = this.device.createBindGroup({
         label: `${material.name} material`,
         layout: this.#materialLayout,
         entries: [
           { binding: 0, resource: { buffer: gpu.buffer } },
-          { binding: 1, resource: (slot ? this.#resources.texture(slot.texture) : this.#resources.white).createView() },
+          { binding: 1, resource: view(slot) },
           { binding: 2, resource: this.#resources.linearRepeat },
-          { binding: 3, resource: (normalMap ? this.#resources.texture(normalMap.texture) : this.#resources.white).createView() },
+          { binding: 3, resource: view(normalMap) },
+          { binding: 4, resource: view(emissiveTexture) },
+          { binding: 5, resource: view(occlusion.texture) },
         ],
       });
       gpu.version = material.version;
@@ -989,6 +1040,12 @@ class Gpu {
     return buffer;
   }
 }
+
+/** Stride 的 BlendStates.AlphaBlend：颜色已经乘过 alpha。 */
+const PREMULTIPLIED_ALPHA: GPUBlendState = {
+  color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+  alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
+};
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 

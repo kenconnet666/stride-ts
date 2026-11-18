@@ -21,7 +21,7 @@ import { Material } from '../rendering/Material';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type TextureRef } from './format';
+import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type TextureRef, type TextureSlot } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -199,26 +199,28 @@ export class ContentManager {
   loadMaterial(path: string): Promise<Material> {
     return this.#once(path + EXTENSIONS.material, async (url) => {
       const file = this.#json<MaterialFile>(await this.#read(url));
-      const slot = file.baseColorTexture;
-      const normal = file.normalMap;
-      // 法线贴图是线性的数据，不按 sRGB 解
-      const normalMap = normal && {
-        texture: await this.loadTexture(normal.texture, { encoding: normal.encoding ?? 'ktx2', srgb: false, ...(normal.size ? { size: normal.size } : {}) }),
-        scale: normal.scale,
-        offset: normal.offset,
-        scaleAndBias: normal.scaleAndBias,
-        isXYNormal: normal.isXYNormal,
-        invertY: normal.invertY,
-      };
+      // 颜色贴图按 sRGB 解；法线、遮蔽这些数据贴图是线性的
+      const slot = async ({ scale, offset, ...ref }: TextureSlot, srgb: boolean) => ({ texture: await this.#loadTextureRef(ref, srgb), scale, offset });
+      const { normalMap: normal, ambientOcclusion: occlusion } = file;
+      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture] = await Promise.all([
+        file.baseColorTexture && slot(file.baseColorTexture, true),
+        file.emissiveTexture && slot(file.emissiveTexture, true),
+        normal && slot(normal, false),
+        occlusion?.texture && slot(occlusion.texture, false),
+      ]);
       return new Material(file.name, {
-        ...(normalMap ? { normalMap } : {}),
         baseColor: file.baseColor,
-        ...(slot ? { baseColorTexture: { texture: await this.loadTexture(slot.texture, { encoding: slot.encoding ?? 'ktx2', srgb: true, ...(slot.size ? { size: slot.size } : {}) }), scale: slot.scale, offset: slot.offset } } : {}),
+        ...(baseColorTexture ? { baseColorTexture } : {}),
         ...(file.baseColorOperator ? { baseColorOperator: file.baseColorOperator } : {}),
         ...(file.metalness === undefined ? {} : { metalness: file.metalness }),
+        ...(file.specular ? { specular: file.specular } : {}),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
         ...(file.emissive ? { emissive: file.emissive } : {}),
+        ...(emissiveTexture ? { emissiveTexture } : {}),
+        ...(occlusion ? { ambientOcclusion: { value: occlusion.value, directLighting: occlusion.directLighting, ...(occlusionTexture ? { texture: { ...occlusionTexture, channel: occlusion.texture!.channel } } : {}) } } : {}),
         ...(file.cavity ? { cavity: file.cavity } : {}),
+        ...(normalTexture ? { normalMap: { ...normalTexture, scaleAndBias: normal!.scaleAndBias, isXYNormal: normal!.isXYNormal, invertY: normal!.invertY } } : {}),
+        ...(file.transparency ? { transparency: { alpha: file.transparency.alpha, ...(file.transparency.tint ? { tint: file.transparency.tint } : {}) } } : {}),
       });
     });
   }
@@ -238,8 +240,13 @@ export class ContentManager {
    * 加载贴图。ktx2 交给 textureDecoder 转码；svg、png、jpeg 交给 imageDecoder（srgb 决定格式，svg 按 size 栅格化）。
    * 同一个文件只加载一次。
    */
+  /**
+   * 加载贴图。KTX2 的格式（包括是不是 sRGB）由文件决定；浏览器解码的图片（png、jpeg、svg）按 srgb 选格式，
+   * 同一张图按 sRGB 和线性各加载一份。
+   */
   loadTexture(path: string, { encoding = 'ktx2', srgb = true, size }: { encoding?: TextureEncoding; srgb?: boolean; size?: readonly [number, number] } = {}): Promise<Texture> {
-    return this.#once(path + TEXTURE_EXTENSIONS[encoding], async (url) => {
+    const variant = encoding === 'ktx2' || srgb ? '' : ' (linear)';
+    return this.#once(path + TEXTURE_EXTENSIONS[encoding], variant, async (url) => {
       const bytes = new Uint8Array(await this.#read(url));
       if (encoding === 'ktx2') {
         if (!this.textureDecoder) {
@@ -365,18 +372,24 @@ export class ContentManager {
     return texture;
   }
 
-  #loadTextureRef({ texture, encoding = 'ktx2', size }: TextureRef, srgb: boolean): Promise<Texture> {
-    return this.loadTexture(texture, { encoding, srgb, ...(size ? { size } : {}) });
+  /** defaultSrgb：引用里没写 srgb 时按用途定。 */
+  #loadTextureRef({ texture, encoding = 'ktx2', size, srgb }: TextureRef, defaultSrgb: boolean): Promise<Texture> {
+    return this.loadTexture(texture, { encoding, srgb: srgb ?? defaultSrgb, ...(size ? { size } : {}) });
   }
 
-  #once<T>(path: string, load: (url: URL) => Promise<T>): Promise<T> {
+  /** 同一个文件（按 variant 区分同一文件的不同加载方式）只加载一次。 */
+  #once<T>(path: string, variant: string, load: (url: URL) => Promise<T>): Promise<T>;
+  #once<T>(path: string, load: (url: URL) => Promise<T>): Promise<T>;
+  #once<T>(path: string, a: string | ((url: URL) => Promise<T>), b?: (url: URL) => Promise<T>): Promise<T> {
+    const [variant, load] = typeof a === 'string' ? [a, b!] : ['', a];
     const url = new URL(path, this.root);
-    let pending = this.#cache.get(url.href) as Promise<T> | undefined;
+    const key = url.href + variant;
+    let pending = this.#cache.get(key) as Promise<T> | undefined;
     if (!pending) {
       pending = load(url);
-      this.#cache.set(url.href, pending);
+      this.#cache.set(key, pending);
       // 失败的不留在缓存里，下次可以重试
-      pending.catch(() => this.#cache.delete(url.href));
+      pending.catch(() => this.#cache.delete(key));
     }
     return pending;
   }

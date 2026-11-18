@@ -288,6 +288,43 @@ describe('贴图', () => {
     expect(calls).toEqual([['<svg/>', { encoding: 'svg', srgb: true, size: [256, 128] }]]);
     expect(material.baseColorTexture!.texture.data).toMatchObject({ width: 256, generateMipmaps: true });
   });
+
+  test('材质的自发光贴图、遮蔽贴图、镜面颜色、透明：贴图引用写了 srgb 就按它，没写按用途（遮蔽是线性的）；同一张图按 sRGB 和线性各解一次', async () => {
+    const png = (texture: string, srgb?: boolean) => ({ texture, encoding: 'png' as const, ...(srgb === undefined ? {} : { srgb }), scale: [1, 1] as const, offset: [0, 0] as const });
+    const files = new Map<string, Uint8Array>([
+      ['https://game.test/content/textures/Mask.png', new Uint8Array([1])],
+      ['https://game.test/content/textures/Occlusion.png', new Uint8Array([2])],
+      ['https://game.test/content/materials/Glow.material.json', new TextEncoder().encode(JSON.stringify({
+        name: 'Glow',
+        baseColor: [1, 1, 1, 1],
+        specular: [0.2, 0.2, 0.2],
+        emissive: [5, 9, 50],
+        emissiveTexture: png('textures/Mask'),
+        ambientOcclusion: { value: 1, texture: { ...png('textures/Mask'), channel: 'a' }, directLighting: 0 },
+        transparency: { type: 'blend', alpha: 0.25 },
+      } satisfies MaterialFile))],
+      ['https://game.test/content/materials/Box.material.json', new TextEncoder().encode(JSON.stringify({
+        name: 'Box',
+        baseColor: [1, 1, 1, 1],
+        ambientOcclusion: { value: 1, texture: { ...png('textures/Occlusion', true), channel: 'r' }, directLighting: 0.5 },
+      } satisfies MaterialFile))],
+    ]);
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async (url) => files.get(url.href)!.slice().buffer });
+    const decoded: string[] = [];
+    content.imageDecoder = async (bytes, { srgb }) => {
+      decoded.push(`${bytes[0]} ${srgb}`);
+      return { format: srgb ? 'rgba8unorm-srgb' : 'rgba8unorm', width: 1, height: 1, levels: [new Uint8Array(4)], generateMipmaps: false };
+    };
+    const glow = await content.loadMaterial('materials/Glow');
+    expect([glow.specular, glow.isTransparent, glow.transparency, glow.emissive]).toEqual([[0.2, 0.2, 0.2], true, { alpha: 0.25, tint: [1, 1, 1] }, [5, 9, 50]]);
+    expect(glow.emissiveTexture!.texture.data.format).toBe('rgba8unorm-srgb');
+    expect(glow.ambientOcclusion.texture).toMatchObject({ channel: 'a' });
+    expect(glow.ambientOcclusion.texture!.texture.data.format).toBe('rgba8unorm');
+    const box = await content.loadMaterial('materials/Box');
+    expect(box.ambientOcclusion).toMatchObject({ value: 1, directLighting: 0.5 });
+    expect(box.ambientOcclusion.texture!.texture.data.format).toBe('rgba8unorm-srgb');
+    expect(decoded.sort()).toEqual(['1 false', '1 true', '2 true']);
+  });
 });
 
 describe('立方体贴图和天空盒', () => {

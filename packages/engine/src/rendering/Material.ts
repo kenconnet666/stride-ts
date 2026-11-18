@@ -1,10 +1,10 @@
 /**
  * 材质，和 Stride 默认的 PBR 材质对应：漫反射颜色（可以带一张贴图，按运算符和颜色组合，即 Stride 材质里最常见的
- * ComputeTextureColor、ComputeBinaryColor 的形状）、金属度工作流的镜面反射（GGX、Schlick、Smith-Schlick-GGX）、
- * 光泽度、自发光、cavity 和法线贴图，见 content/format.ts 的 MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
+ * ComputeTextureColor、ComputeBinaryColor 的形状）、金属度或镜面颜色工作流的镜面反射（GGX、Schlick、Smith-Schlick-GGX）、
+ * 光泽度、自发光（可以乘一张贴图）、环境光遮蔽（可以是贴图）、cavity、法线贴图和透明混合，见 content/format.ts 的 MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
  * 见 docs/architecture.md 的"外观：材质参数的分层"，等着色器系统一起做。和 Mesh 一样只是数据，GPU 资源由渲染特性管理。
  */
-import type { ColorOperator } from '../content/format';
+import type { AmbientOcclusionSlot, ColorOperator } from '../content/format';
 import type { Branded } from '../data/prop';
 import { Color4, type ColorLike } from '../mathematics/vectors';
 import { ResourceTable } from '../engine/ResourceTable';
@@ -29,18 +29,36 @@ export interface MaterialNormalMap extends MaterialTexture {
   readonly invertY?: boolean;
 }
 
+/** 环境光遮蔽，意思同 content/format.ts 的 AmbientOcclusionSlot。 */
+export interface MaterialAmbientOcclusion extends Omit<AmbientOcclusionSlot, 'texture'> {
+  readonly texture?: MaterialTexture & { readonly channel: 'r' | 'g' | 'b' | 'a' };
+}
+
+/** 透明混合（Stride 的 MaterialTransparencyBlendFeature），意思同 content/format.ts 的 TransparencyFile。 */
+export interface MaterialTransparency {
+  readonly alpha: number;
+  readonly tint?: readonly [number, number, number];
+}
+
 export interface MaterialDesc {
   /** 线性空间的颜色，默认白色。 */
   readonly baseColor?: Readonly<ColorLike> | readonly [number, number, number, number?];
   readonly baseColorTexture?: MaterialTexture;
   /** 贴图和 baseColor 怎么组合，默认 multiply。 */
   readonly baseColorOperator?: ColorOperator;
-  /** 金属度（0 到 1）；不给时材质没有镜面反射（Stride 里没有 Specular 特性的材质）。 */
+  /** 金属度（0 到 1）；metalness、specular 都不给时材质没有镜面反射（Stride 里没有 Specular 特性的材质）。 */
   readonly metalness?: number;
+  /** 镜面工作流的镜面颜色（线性，已乘强度）；给了就不看 metalness。 */
+  readonly specular?: readonly [number, number, number];
   /** 粗糙度 = 1 - 光泽度，默认 1。 */
   readonly roughness?: number;
-  /** 自发光，线性颜色乘强度，默认没有。 */
+  /** 自发光，线性颜色乘强度，默认没有；有 emissiveTexture 时再乘贴图的颜色。 */
   readonly emissive?: readonly [number, number, number];
+  readonly emissiveTexture?: MaterialTexture;
+  /** 环境光遮蔽，默认没有遮蔽。 */
+  readonly ambientOcclusion?: MaterialAmbientOcclusion;
+  /** 透明混合；有它的材质画在透明阶段（不写深度、从远到近）。 */
+  readonly transparency?: MaterialTransparency;
   /** cavity：可见的漫反射、镜面分别乘的系数，默认 1。 */
   readonly cavity?: { readonly diffuse: number; readonly specular: number };
   /** 法线贴图；用它的网格要有切线（资源管线给这样的网格生成 MikkTSpace 切线）。 */
@@ -57,8 +75,12 @@ export class Material {
   readonly baseColorTexture: Required<MaterialTexture> | undefined;
   readonly baseColorOperator: ColorOperator;
   readonly metalness: number | undefined;
+  readonly specular: readonly [number, number, number] | undefined;
   readonly roughness: number;
   readonly emissive: readonly [number, number, number];
+  readonly emissiveTexture: Required<MaterialTexture> | undefined;
+  readonly ambientOcclusion: { readonly value: number; readonly texture: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a' } | undefined; readonly directLighting: number };
+  readonly transparency: Required<MaterialTransparency> | undefined;
   readonly cavity: { readonly diffuse: number; readonly specular: number };
   readonly normalMap: Required<MaterialNormalMap> | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
@@ -70,17 +92,24 @@ export class Material {
     this.baseColor = Array.isArray(baseColor)
       ? new Color4(baseColor[0], baseColor[1], baseColor[2], baseColor[3] ?? 1)
       : new Color4().copy(baseColor as ColorLike);
-    this.baseColorTexture = baseColorTexture && { texture: baseColorTexture.texture, scale: baseColorTexture.scale ?? [1, 1], offset: baseColorTexture.offset ?? [0, 0] };
+    this.baseColorTexture = baseColorTexture && withTransform(baseColorTexture);
     this.baseColorOperator = desc.baseColorOperator ?? 'multiply';
     this.metalness = desc.metalness;
+    this.specular = desc.specular;
     this.roughness = desc.roughness ?? 1;
     this.emissive = desc.emissive ?? [0, 0, 0];
+    this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
+    const occlusion = desc.ambientOcclusion;
+    this.ambientOcclusion = {
+      value: occlusion?.value ?? 1,
+      texture: occlusion?.texture && { ...withTransform(occlusion.texture), channel: occlusion.texture.channel },
+      directLighting: occlusion?.directLighting ?? 0,
+    };
+    this.transparency = desc.transparency && { alpha: desc.transparency.alpha, tint: desc.transparency.tint ?? [1, 1, 1] };
     this.cavity = desc.cavity ?? { diffuse: 1, specular: 1 };
     const normalMap = desc.normalMap;
     this.normalMap = normalMap && {
-      texture: normalMap.texture,
-      scale: normalMap.scale ?? [1, 1],
-      offset: normalMap.offset ?? [0, 0],
+      ...withTransform(normalMap),
       scaleAndBias: normalMap.scaleAndBias ?? true,
       isXYNormal: normalMap.isXYNormal ?? true,
       invertY: normalMap.invertY ?? false,
@@ -94,8 +123,18 @@ export class Material {
     this.version++;
   }
 
+  /** 透明材质画在透明阶段。 */
+  get isTransparent(): boolean {
+    return this.transparency !== undefined;
+  }
+
   /** @internal Model 组件里存的 id 对应的材质。 */
   static byId(id: number): Material | undefined {
     return materials.get(id);
   }
+}
+
+/** 贴图槽补上默认的 uv 变换。 */
+function withTransform({ texture, scale = [1, 1], offset = [0, 0] }: MaterialTexture): Required<MaterialTexture> {
+  return { texture, scale, offset };
 }

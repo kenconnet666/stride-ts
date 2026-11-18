@@ -294,7 +294,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    - 做了（第二步）：触发器和接触事件（`TriggerHandler`、`simulation.setContactHandler`，按一对物体报开始、结束，睡着时接触还在，同 Bepu），实体销毁时移除物体，`Transform.updateWorldMatrix()`，YAML 的覆盖标记 `*` 去掉；原生 0.12.1（传感器、接触事件、移除物体、单个槽位的世界矩阵）。VolumeTrigger 场景能玩（角色走进触发器，箱子落下，走出来复位）；冒烟脚本 `pnpm --filter @stride-ts/physics-sample smoke` 覆盖 Raycasting 和 VolumeTrigger。
    - 做了（第三步）：约束（`simulation.addConstraint`：球窝、铰链、齿轮马达、点在线上、线性限位、摆动和扭转限位、焊接，语义照 Bepu，映射到 Jolt 的 Point、Hinge、Gear、SixDOF、Fixed；Bepu 的约束是软的，这里是刚性的），`BodyControl.sleepThreshold`，变换的本地矩阵不要求单位四元数（同 Stride）；原生 0.13.1。Constraints 场景能换六种约束（调试命令 next、previous 代替 UI 按钮）；冒烟脚本覆盖三个场景。
    - 做了（第四步）：换根场景（`game.setRootScene`，Stride 的 `SceneSystem.SceneInstance.RootScene`：新场景加载好后销毁旧场景的实体），脚本属性引用场景（`prop.asset('scene')` 得到 `SceneReference`，只记路径），NextSceneScript（调试命令 `next-scene`、`previous-scene` 代替 UI 的按钮）；运行中改重力（原生 0.14.0）；物体移除后 `BodyControl` 只记设置（同 Stride 离开仿真的 BodyComponent）；还没启动就移除的脚本不调 `cancel`（同 Stride）。冒烟脚本加了换场景，共用部分抽到 `tools/smoke.ts`，只看本次运行以来的错误日志。
-   - 接着做：材质的透明（TriggerMat，`MaterialTransparencyBlendFeature`，透明阶段从远到近）、遮蔽贴图（`MaterialOcclusionMapFeature` 的标量贴图）、镜面工作流（`MaterialSpecularMapFeature`：镜面颜色乘强度）；和桌面 Stride 比对（4.4.2 的 PhysicsSample 是 Bullet 版，见 decisions.md 的"PhysicsSample 的材质和验收"）。
+   - 做了（第五步）：材质的透明混合（`MaterialTransparencyBlendFeature`：预乘 alpha，透明阶段不写深度，透明的批从远到近；不投阴影）、环境光遮蔽（数值或贴图的一个通道，直射光按 DirectLightingFactor）、镜面颜色工作流（`MaterialSpecularMapFeature`）、贴图乘颜色的自发光（`ComputeBinaryColor`、`ComputeFloat4`）；贴图引用记下 sRGB（按 Stride 的贴图类型），浏览器解码的图片按 sRGB 和线性分开缓存。材质层（LogoD）留给 P2。
+   - 接着做：和桌面 Stride 比对（4.4.2 的 PhysicsSample 是 Bullet 版，见 decisions.md 的"PhysicsSample 的材质和验收"），比完 PhysicsSample 收尾。
    - P2 补：各场景的 UI 文字和按钮。
 5. 之后按第三节的 P1 游戏顺序：BepuSample → Platformer2D → TopDownRPG → FirstPersonShooter。
 

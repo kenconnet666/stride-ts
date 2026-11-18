@@ -137,6 +137,8 @@ describe('导入 Stride 场景', () => {
     bumps: '11111111-0000-0000-0000-00000000000a',
     physicsScene: '11111111-0000-0000-0000-00000000000b',
     gameSettings: '11111111-0000-0000-0000-00000000000c',
+    glass: '11111111-0000-0000-0000-00000000000d',
+    glassScene: '11111111-0000-0000-0000-00000000000e',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
   const quadData = Buffer.from(new Float32Array([
@@ -245,6 +247,26 @@ describe('导入 Stride 场景', () => {
     ].join('\n'),
     // 法线贴图默认 InvertY（OpenGL 的 Y+）
     'Assets/Textures/Bumps.sdtex': ['!Texture', `Id: ${ids.bumps}`, 'Source: ../../Resources/checker.png', 'Type: !NormalMapTextureType {}'].join('\n'),
+    // PhysicsSample 用到的材质特性：镜面颜色、遮蔽贴图（G 通道）、贴图乘 Float4 的自发光、透明混合；材质层还不支持
+    'Assets/Materials/Glass.sdmat': [
+      '!MaterialAsset', `Id: ${ids.glass}`, 'Attributes:',
+      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    Specular: !MaterialSpecularMapFeature', '        SpecularMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '        Intensity: !ComputeFloat', '            Value: 0.5',
+      '    Occlusion: !MaterialOcclusionMapFeature', '        AmbientOcclusionMap: !ComputeTextureScalar', `            Texture: ${ids.texture}:Textures/Checker`,
+      '            Channel: G', '            Scale: {X: 2.0, Y: 2.0}', '        DirectLightingFactor: !ComputeFloat', '            Value: 0.5',
+      '    Emissive: !MaterialEmissiveMapFeature', '        EmissiveMap: !ComputeBinaryColor', '            Operator: Multiply',
+      '            LeftChild: !ComputeTextureColor', `                Texture: ${ids.texture}:Textures/Checker`,
+      '            RightChild: !ComputeFloat4', '                Value: {X: 5.0, Y: 9.0, Z: 50.0, W: 5.0}', '        Intensity: !ComputeFloat', '            Value: 2.0',
+      '    Transparency: !MaterialTransparencyBlendFeature', '        Alpha: !ComputeFloat', '            Value: 0.25',
+      '        Tint: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      'Layers:', '    l1:', `        Material: ${ids.bumpy}:Materials/Bumpy`,
+    ].join('\n'),
+    'Assets/Glassy.sdscene': [
+      '!SceneAsset', `Id: ${ids.glassScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: g1', '                Name: Holder', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tg1', '                        Children: {}',
+      '                    s: !Game.Holder,Game', '                        Id: sg1', `                        Look: ${ids.glass}:Materials/Glass`,
+    ].join('\n'),
     'Assets/Bumpy.sdscene': [
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
       '                    t: !TransformComponent', '                        Id: tq1', '                        Children: {}',
@@ -406,7 +428,7 @@ describe('导入 Stride 场景', () => {
     expect(material).toEqual({
       name: 'Red',
       baseColor: [1, 0, 0, 1],
-      baseColorTexture: { texture: 'Game/Textures/Checker', scale: [2, 6], offset: [0.5, 0] },
+      baseColorTexture: { texture: 'Game/Textures/Checker', srgb: true, scale: [2, 6], offset: [0.5, 0] },
       baseColorOperator: 'add',
       metalness: 0.25,
       roughness: 0.25,
@@ -452,12 +474,31 @@ describe('导入 Stride 场景', () => {
     const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'smallest' }).importScene(project.byPath('Game/Bumpy')!);
     expect(result.warnings).toEqual([]);
     const material = JSON.parse(await readFile(path.join(out, 'Game/Materials/Bumpy.material.json'), 'utf8')) as MaterialFile;
-    expect(material.normalMap).toEqual({ texture: 'Game/Textures/Bumps', encoding: 'png', scale: [4, 4], offset: [0, 0], scaleAndBias: true, isXYNormal: true, invertY: true });
+    expect(material.normalMap).toEqual({ texture: 'Game/Textures/Bumps', encoding: 'png', srgb: false, scale: [4, 4], offset: [0, 0], scaleAndBias: true, isXYNormal: true, invertY: true });
     const model = decodeModel((await readFile(path.join(out, 'Game/Models/Quad.model'))).buffer as ArrayBuffer);
     expect(model.meshes.map((m) => [m.vertexCount, m.layout.tangent])).toEqual([[4, 'snorm8x4']]);
     // 主场景的三角形没有法线贴图：没有切线
     await new StrideImporter(project, tools, out, { specularCubemapSize: 16 }).importScene(project.byPath('Game/Main')!);
     expect(decodeModel((await readFile(path.join(out, 'Game/Models/Tri.model'))).buffer as ArrayBuffer).meshes[0]!.layout.tangent).toBeUndefined();
+  });
+
+  test('材质：镜面颜色乘强度、遮蔽贴图的通道、贴图乘 Float4 的自发光（不做 sRGB 转换）、透明混合；材质层警告', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-glass');
+    const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16 }).importScene(project.byPath('Game/Glassy')!);
+    expect(result.warnings).toEqual([expect.stringContaining('material layers are not supported yet')]);
+    const material = JSON.parse(await readFile(path.join(out, 'Game/Materials/Glass.material.json'), 'utf8')) as MaterialFile;
+    const checker = { texture: 'Game/Textures/Checker', srgb: true, offset: [0, 0] };
+    expect(material).toEqual({
+      name: 'Glass',
+      baseColor: [1, 1, 1, 1],
+      specular: [0.5, 0.5, 0.5],
+      roughness: 1,
+      emissive: [10, 18, 100],
+      emissiveTexture: { ...checker, scale: [1, 1] },
+      ambientOcclusion: { value: 1, texture: { ...checker, scale: [2, 2], channel: 'g' }, directLighting: 0.5 },
+      transparency: { type: 'blend', alpha: 0.25 },
+    });
   });
 
   test('覆盖目录里的 SVG 代替源图片，原样导出，材质的贴图槽记下编码和栅格化尺寸', async () => {
@@ -468,7 +509,7 @@ describe('导入 Stride 场景', () => {
     await writeFile(path.join(overrides, 'Game/Textures/Checker.svg'), svg);
     const out = path.join(dir, 'content-svg');
     await new StrideImporter(project, tools, out, { specularCubemapSize: 16, overrides }).importScene(project.byPath('Game/Main')!);
-    expect((await readMaterial(out)).baseColorTexture).toEqual({ texture: 'Game/Textures/Checker', encoding: 'svg', size: [64, 32], scale: [2, 6], offset: [0.5, 0] });
+    expect((await readMaterial(out)).baseColorTexture).toEqual({ texture: 'Game/Textures/Checker', encoding: 'svg', size: [64, 32], srgb: true, scale: [2, 6], offset: [0.5, 0] });
     expect(await readFile(path.join(out, 'Game/Textures/Checker.svg'), 'utf8')).toBe(svg);
   });
 
@@ -477,7 +518,7 @@ describe('导入 Stride 场景', () => {
     for (const textureEncoding of ['source', 'smallest'] as const) {
       const out = path.join(dir, `content-${textureEncoding}`);
       await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding }).importScene(project.byPath('Game/Main')!);
-      expect((await readMaterial(out)).baseColorTexture).toEqual({ texture: 'Game/Textures/Checker', encoding: 'png', scale: [2, 6], offset: [0.5, 0] });
+      expect((await readMaterial(out)).baseColorTexture).toEqual({ texture: 'Game/Textures/Checker', encoding: 'png', srgb: true, scale: [2, 6], offset: [0.5, 0] });
       expect(await readFile(path.join(out, 'Game/Textures/Checker.png'))).toEqual(files['Resources/checker.png']);
     }
   });

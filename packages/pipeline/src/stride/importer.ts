@@ -35,6 +35,7 @@ import {
   TEXTURE_EXTENSIONS,
   type TextureEncoding,
   type TextureSlot,
+  type Vec3Tuple,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
 import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
@@ -83,6 +84,8 @@ interface ImportedTexture {
   readonly texture: string;
   readonly encoding: TextureEncoding;
   readonly size?: readonly [number, number];
+  /** 按 sRGB 采样（Stride 的贴图类型决定）。 */
+  readonly srgb: boolean;
 }
 
 const SOURCE_ENCODINGS: Readonly<Record<string, TextureEncoding>> = { '.svg': 'svg', '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg' };
@@ -647,23 +650,52 @@ export class StrideImporter {
     const uvScale = vec2(asObject(attributes['Overrides'])?.['UVScale'], 1);
     const { color, texture, operator } = diffuse ? this.#evaluateColor(diffuse, asset, uvScale) : { color: WHITE, operator: 'multiply' as const };
     const specular = asObject(attributes['Specular']);
-    if (specular && specular.$type !== 'MaterialMetalnessMapFeature') this.#warnings.push(`${asset.file}: specular ${specular.$type ?? 'feature'} is not supported; the material has no specular`);
-    const metalness = specular?.$type === 'MaterialMetalnessMapFeature' ? this.#scalar(asObject(specular['MetalnessMap']), 0, asset) : undefined;
+    const workflow = specular?.$type;
+    if (specular && workflow !== 'MaterialMetalnessMapFeature' && workflow !== 'MaterialSpecularMapFeature') this.#warnings.push(`${asset.file}: specular ${workflow ?? 'feature'} is not supported; the material has no specular`);
+    const metalness = workflow === 'MaterialMetalnessMapFeature' ? this.#scalar(asObject(specular!['MetalnessMap']), 0, asset) : undefined;
     const microSurface = asObject(attributes['MicroSurface']);
     const glossiness = this.#scalar(asObject(microSurface?.['GlossinessMap']), 0, asset);
     // Invert 为真时这张图存的是粗糙度（MaterialGlossinessMapFeature.Invert）
     const roughness = microSurface?.['Invert'] === true ? glossiness : 1 - glossiness;
-    return {
+    const material: MaterialFile = {
       name: path.basename(asset.path),
       baseColor: color,
       ...(texture ? { baseColorTexture: textureSlot(await texture.texture, texture.scale, texture.offset) } : {}),
       ...(texture && operator !== 'multiply' ? { baseColorOperator: operator } : {}),
       ...(metalness === undefined ? {} : { metalness }),
+      ...(workflow === 'MaterialSpecularMapFeature' ? { specular: this.#specularColor(specular!, asset, uvScale) } : {}),
       roughness,
-      ...this.#emissive(asObject(attributes['Emissive']), asset),
-      ...this.#cavity(asObject(attributes['Occlusion']), asset),
+      ...await this.#emissive(asObject(attributes['Emissive']), asset, uvScale),
+      ...await this.#occlusion(asObject(attributes['Occlusion']), asset, uvScale),
       ...await this.#normalMap(asObject(attributes['Surface']), asset, uvScale),
+      ...this.#transparency(asObject(attributes['Transparency']), asset, uvScale),
     };
+    if (asObject(asset.data['Layers']) && Object.keys(asObject(asset.data['Layers'])!).length > 0) {
+      this.#warnings.push(`${asset.file}: material layers are not supported yet (P2 shader system); using the base material`);
+    }
+    return material;
+  }
+
+  /** 镜面颜色工作流（MaterialSpecularMapFeature）：镜面颜色乘强度；镜面贴图还不支持，用它的后备颜色。 */
+  #specularColor(feature: StrideObject, asset: AssetEntry, uvScale: readonly [number, number]): Vec3Tuple {
+    const map = this.#evaluateColor(asObject(feature['SpecularMap']) ?? {}, asset, uvScale);
+    if (map.texture) this.#warnings.push(`${asset.file}: specular textures are not supported; using the color`);
+    const intensity = Math.min(Math.max(this.#scalar(asObject(feature['Intensity']), 1, asset), 0), 1);
+    return [map.color[0] * intensity, map.color[1] * intensity, map.color[2] * intensity];
+  }
+
+  /** 透明（MaterialTransparencyBlendFeature）：alpha 限制在 0..1，tint 是常量颜色；别的透明特性记警告。 */
+  #transparency(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Pick<MaterialFile, 'transparency'> {
+    if (!feature) return {};
+    if (feature.$type !== 'MaterialTransparencyBlendFeature') {
+      this.#warnings.push(`${asset.file}: transparency ${feature.$type ?? 'feature'} is not supported; the material is opaque`);
+      return {};
+    }
+    const alpha = Math.min(Math.max(this.#scalar(asObject(feature['Alpha']), 1, asset), 0), 1);
+    const tint = this.#evaluateColor(asObject(feature['Tint']) ?? { $type: 'ComputeColor' }, asset, uvScale);
+    if (tint.texture) this.#warnings.push(`${asset.file}: a textured transparency tint is not supported; using the color`);
+    const [r, g, b] = tint.color;
+    return { transparency: { type: 'blend', alpha, ...(r === 1 && g === 1 && b === 1 ? {} : { tint: [r, g, b] }) } };
   }
 
   /** 法线贴图（MaterialNormalMapFeature）：开关的默认值同 Stride；InvertY 来自贴图资源的 NormalMapTextureType（默认 true）。 */
@@ -694,32 +726,45 @@ export class StrideImporter {
     };
   }
 
-  /** 自发光（MaterialEmissiveMapFeature）：线性颜色乘强度，同 Stride 的 MaterialSurfaceEmissiveShading。 */
-  #emissive(feature: StrideObject | undefined, asset: AssetEntry): Pick<MaterialFile, 'emissive'> {
+  /**
+   * 自发光（MaterialEmissiveMapFeature）：颜色乘强度，同 Stride 的 MaterialSurfaceEmissiveShading；颜色树化简成"贴图乘颜色"
+   * （比如 PhysicsSample 的 ComputeBinaryColor：贴图乘 ComputeFloat4），贴图加颜色的记警告、只用颜色。
+   */
+  async #emissive(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Promise<Pick<MaterialFile, 'emissive' | 'emissiveTexture'>> {
     if (!feature) return {};
-    const map = asObject(feature['EmissiveMap']);
-    if (map?.$type !== 'ComputeColor') {
-      this.#warnings.push(`${asset.file}: emissive ${map?.$type ?? 'map'} is not supported; skipping it`);
-      return {};
-    }
-    const color = linearColor(map['Value']);
+    const map = this.#evaluateColor(asObject(feature['EmissiveMap']) ?? {}, asset, uvScale);
     const intensity = this.#scalar(asObject(feature['Intensity']), 1, asset);
-    return { emissive: [color[0] * intensity, color[1] * intensity, color[2] * intensity] };
+    const emissive: Vec3Tuple = [map.color[0] * intensity, map.color[1] * intensity, map.color[2] * intensity];
+    if (map.texture && map.operator !== 'multiply') this.#warnings.push(`${asset.file}: emissive texture with operator ${map.operator} is not supported; using the color`);
+    const texture = map.texture && map.operator === 'multiply' ? map.texture : undefined;
+    return { emissive, ...(texture ? { emissiveTexture: textureSlot(await texture.texture, texture.scale, texture.offset) } : {}) };
   }
 
   /**
-   * Occlusion 特性里的 cavity：可见的漫反射、镜面分别乘 lerp(1, cavity, DiffuseCavity / SpecularCavity)
-   * （Stride 的 MaterialPixelStream.PrepareMaterialForLightingAndShading）。环境光遮蔽的贴图还没接。
+   * Occlusion 特性：环境光遮蔽（数值或贴图的一个通道，DirectLightingFactor 决定直射光受多少影响），cavity：可见的漫反射、
+   * 镜面分别乘 lerp(1, cavity, DiffuseCavity / SpecularCavity)（Stride 的 MaterialPixelStream.PrepareMaterialForLightingAndShading）。
    */
-  #cavity(feature: StrideObject | undefined, asset: AssetEntry): Pick<MaterialFile, 'cavity'> {
+  async #occlusion(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Promise<Pick<MaterialFile, 'cavity' | 'ambientOcclusion'>> {
     if (!feature) return {};
-    const ambientOcclusion = this.#scalar(asObject(feature['AmbientOcclusionMap']), 1, asset);
-    if (ambientOcclusion !== 1) this.#warnings.push(`${asset.file}: ambient occlusion ${ambientOcclusion} is not supported; using 1`);
+    const map = asObject(feature['AmbientOcclusionMap']);
+    const reference = map?.$type === 'ComputeTextureScalar' ? parseAssetReference(map['Texture']) : undefined;
+    const directLighting = this.#scalar(asObject(feature['DirectLightingFactor']), 0, asset);
+    let ambientOcclusion: MaterialFile['ambientOcclusion'];
+    if (reference) {
+      this.#checkSampler(map!, asset);
+      const scale = vec2(map!['Scale'], 1);
+      const slot = textureSlot(await this.#texture(this.#project.get(reference.id, asset.file)), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(map!['Offset'], 0));
+      const channel = String(map!['Channel'] ?? 'R').toLowerCase() as 'r' | 'g' | 'b' | 'a';
+      ambientOcclusion = { value: 1, texture: { ...slot, channel }, directLighting };
+    } else {
+      const value = this.#scalar(map, 1, asset);
+      if (value !== 1) ambientOcclusion = { value, directLighting };
+    }
     const cavity = this.#scalar(asObject(feature['CavityMap']), 1, asset);
     const lerp = (amount: number) => 1 + (cavity - 1) * amount;
     const diffuse = lerp(this.#scalar(asObject(feature['DiffuseCavity']), 1, asset));
     const specular = lerp(this.#scalar(asObject(feature['SpecularCavity']), 1, asset));
-    return diffuse === 1 && specular === 1 ? {} : { cavity: { diffuse, specular } };
+    return { ...(ambientOcclusion ? { ambientOcclusion } : {}), ...(diffuse === 1 && specular === 1 ? {} : { cavity: { diffuse, specular } }) };
   }
 
   /** 材质贴图的采样器：运行时只有 Stride 的默认值（线性三线性过滤、重复寻址），别的记警告。 */
@@ -753,6 +798,11 @@ export class StrideImporter {
     switch (node.$type) {
       case 'ComputeColor':
         return { color: linearColor(node['Value']), operator: 'multiply' };
+      case 'ComputeFloat4': {
+        // 不是颜色：不做 sRGB 转换
+        const v = asObject(node['Value']) ?? {};
+        return { color: [asNumber(v['X'], 0), asNumber(v['Y'], 0), asNumber(v['Z'], 0), asNumber(v['W'], 0)], operator: 'multiply' };
+      }
       case 'ComputeTextureColor': {
         const reference = parseAssetReference(node['Texture']);
         if (!reference) return { color: linearColor(asObject(node['FallbackValue'])?.['Value']), operator: 'multiply' };
@@ -804,27 +854,27 @@ export class StrideImporter {
   /** 有覆盖文件就原样导出它；否则按 textureEncoding：编成 KTX2（UASTC 加 mipmap），或复制 PNG/JPEG 源文件。 */
   async #importTexture(asset: AssetEntry): Promise<ImportedTexture> {
     const override = await this.#override(asset.path);
-    if (override) return this.#copyTexture(asset.path, override.encoding, await readFile(override.file));
+    const type = asObject(asset.data['Type']);
+    // 颜色贴图默认按 sRGB 采样（Stride 的 ColorTextureType.UseSRgbSampling），法线、灰度贴图是线性的
+    const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
+    if (override) return this.#copyTexture(asset.path, override.encoding, await readFile(override.file), srgb);
 
     const file = sourceOf(asset);
     const bytes = await readFile(file);
     const sourceEncoding = SOURCE_ENCODINGS[path.extname(file).toLowerCase()];
     const policy = this.#options.textureEncoding;
-    if (policy === 'source' && sourceEncoding) return this.#copyTexture(asset.path, sourceEncoding, bytes);
-    const type = asObject(asset.data['Type']);
-    // 颜色贴图默认按 sRGB 采样（Stride 的 ColorTextureType.UseSRgbSampling），法线、灰度贴图是线性的
-    const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
+    if (policy === 'source' && sourceEncoding) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     const image = await this.#tools.decodeImage(bytes);
     const ktx2 = await this.#tools.encodeBasis(image.pixels, image.width, image.height, { mode: 'uastc', srgb, mipmaps: true });
-    if (policy === 'smallest' && sourceEncoding && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes);
+    if (policy === 'smallest' && sourceEncoding && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     await this.#write(asset.path + TEXTURE_EXTENSIONS.ktx2, ktx2);
-    return { texture: asset.path, encoding: 'ktx2' };
+    return { texture: asset.path, encoding: 'ktx2', srgb };
   }
 
-  async #copyTexture(contentPath: string, encoding: TextureEncoding, bytes: Uint8Array): Promise<ImportedTexture> {
+  async #copyTexture(contentPath: string, encoding: TextureEncoding, bytes: Uint8Array, srgb: boolean): Promise<ImportedTexture> {
     await this.#write(contentPath + TEXTURE_EXTENSIONS[encoding], bytes);
     const size = encoding === 'svg' ? svgSize(new TextDecoder().decode(bytes)) : undefined;
-    return { texture: contentPath, encoding, ...(size ? { size } : {}) };
+    return { texture: contentPath, encoding, ...(size ? { size } : {}), srgb };
   }
 
   /** 覆盖目录里这个内容路径的文件（.svg 优先，然后 .png、.jpg）。 */
@@ -902,8 +952,8 @@ function once(cache: Map<string, Promise<string>>, asset: AssetEntry, importAsse
 }
 
 /** 材质里的贴图槽：ktx2 是默认，不写 encoding。 */
-function textureSlot({ texture, encoding, size }: ImportedTexture, scale: readonly [number, number], offset: readonly [number, number]): TextureSlot {
-  return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), scale, offset };
+function textureSlot({ texture, encoding, size, srgb }: ImportedTexture, scale: readonly [number, number], offset: readonly [number, number]): TextureSlot {
+  return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb, scale, offset };
 }
 
 /** SVG 根元素的 width、height（像素，不带单位或 px）；没有时用 viewBox 的大小；都没有时返回 undefined（运行时用图片本身的尺寸）。 */

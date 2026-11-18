@@ -74,7 +74,7 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 ```ts
 import { SyncScript, AsyncScript, component, system, prop, Vector3 } from '@stride-ts/engine';
 
-export class PlayerController extends SyncScript.props('Gameplay.PlayerController', {
+export class PlayerController extends SyncScript.props({
   // Shown in the editor and read from the scene, like a public C# property
   maxRunSpeed: prop.number().min(0).default(10).unit('m/s'),
   jumpHeight: 1.2,                       // shorthand: number with a default
@@ -95,7 +95,7 @@ export class PlayerController extends SyncScript.props('Gameplay.PlayerControlle
   }
 }
 
-export class DoorOpener extends AsyncScript.props('Gameplay.DoorOpener', {
+export class DoorOpener extends AsyncScript.props({
   trigger: prop.component(() => TriggerComponent),
 }) {
   override async execute(): Promise<void> {
@@ -106,13 +106,13 @@ export class DoorOpener extends AsyncScript.props('Gameplay.DoorOpener', {
   }
 }
 
-export const Health = component('Gameplay.Health', {
+export const Health = component({
   max: prop.f32().min(0).default(100),
   current: prop.f32().default(100).transient(),   // runtime state, not saved
 });
-export const Regen = component('Gameplay.Regen', { rate: 5 });
+export const Regen = component({ rate: 5 });
 
-export const regen = system('Gameplay.Regen', {
+export const regen = system({
   with: { health: Health, regen: Regen },
   writes: [Health],
   update({ health, regen, count }, time) {
@@ -125,14 +125,14 @@ export const regen = system('Gameplay.Regen', {
 | Stride（C#） | stride-ts |
 |---|---|
 | `Entity.Get<T>()` | `entity.get(Type)` 返回 `T \| undefined`，`entity.require(Type)` 拿不到就抛错：泛型在运行时不存在，把类本身传进去 |
-| 公开属性和字段 | `SyncScript.props(name, { ... })` 里用 `prop` 声明，类型由推导得出；导出场景里的值在启动时写入 |
+| 公开属性和字段 | `SyncScript.props({ ... })` 里用 `prop` 声明，类型由推导得出；导出场景里的值在启动时写入 |
 | `SyncScript.Update()` | `update()` |
 | `AsyncScript` 加 `await Script.NextFrame()` | async 的 `execute()` 加 `await this.nextFrame()`；取消用 `this.signal`（`AbortSignal`） |
 | `EntityProcessor<T>` | 系统 `system(name, { with, update })`，按块遍历列 |
 | `Vector3` 等值类型 | 可变对象：预分配、每帧复用，临时的从池里取（`using v = temp.vec3()`） |
 | `out`、`ref` 参数，如射线检测的结果 | 传入一个结果对象让它填写：`simulation.raycast(from, to, hit)` |
 | `Content.Load`（同步） | `await content.load()`；预加载过的资源可以同步 `get()` |
-| 导出场景中的组件 `type` | `props()`、`component()` 的第一个参数，运行时按名字创建实例并填入属性 |
+| 导出场景中的组件 `type` | 默认由源文件路径加导出名推出（`gameplay/health#Health`，游戏入口交给引擎 `import.meta.glob` 的结果），引擎和库的组件手写名字；运行时按名字找到模块、创建实例并填入属性 |
 | `EventKey<T>` | 同名，`broadcast()`、`receiver()` |
 | 改脚本要重新编译、重启 | Vite HMR 只替换这个模块，已有实例换成新类，字段值保留，游戏不重启 |
 

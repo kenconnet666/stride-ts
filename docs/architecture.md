@@ -122,10 +122,40 @@ prop.json(schema)                      // any Standard Schema (zod, valibot): ch
 
 **字面量简写**：属性直接写一个值，就是"这个类型加这个默认值"。`speed: 10` 等于 `prop.number().default(10)`，`name: 'hero'`、`visible: true` 同理；数据组件里的数字简写成 `f32`。
 
+### 组件的名字（2026-11-18 用户决定：默认不手写）
+
+运行时有四处要用一个稳定的字符串认出组件：场景和预制体文件里的 `type`、热重载时新旧定义的对应、编辑器的组件列表和覆盖记录、按需加载时该 `import()` 哪个模块。C# 靠反射拿类型全名；JS 里类名在正式版被压缩，打包后模块路径也不存在，数据组件更是没有类名。
+
+做法：**名字由源文件路径加导出名推出**，形如 `gameplay/health#Health`，作者不写。
+
+```ts
+// game entry: Vite's built-in import.meta.glob, keys stay source paths in production builds too
+const modules = import.meta.glob('./**/*.ts');
+await game.run(canvas, { modules });
+
+// gameplay/health.ts
+export const Health = component({ max: prop.f32().default(100), current: 100 });
+```
+
+- 游戏入口把 `import.meta.glob` 的结果交给引擎。它是 Vite 自带的功能，不是我们的编译期改写；键是源文件路径，值是 `() => import(...)`。
+- 模块执行完以后，引擎遍历它的导出，按对象身份给组件、脚本、系统登记名字。所以定义时的检查（重名、默认值是否满足 `min`/`max`、`renamedFrom` 冲突）改在登记时做，报错带上推出的名字。
+- 名字直接指向模块：场景引用了 `levels/castle/boss#BossAI`，加载器就知道去 `import()` 哪个分块，按关卡拆分代码不需要另做一份"名字到模块"的清单，也不必一开始就加载所有模块。
+- 热重载时模块路径和导出名不变，新旧定义自然对上。
+- 代价：移动文件或改导出名，名字就变了（同 Godot 的 `res://` 路径、Unreal 的资源路径加重定向）。编辑器移动文件时自动在工程里记一条重定向（`renamed: { 'old/path#X': 'new/path#X' }`），场景加载时先查它；也可以在定义处写 `renamedFrom`。
+
+需要手写名字的情况，作为第一个可选参数：
+
+| 情况 | 例 |
+|---|---|
+| 引擎和库包里的组件：不经过游戏的 glob，名字要跨版本稳定 | `component('Stride.Physics.RigidBody', { ... })` |
+| 希望移动文件也不影响存档的少数游戏组件 | `SyncScript.props('Gameplay.Player', { ... })` |
+
+`EventKey` 不存盘，不需要名字；调试时显示它被登记的导出名。
+
 ### 脚本
 
 ```ts
-export class PlayerController extends SyncScript.props('Gameplay.PlayerController', {
+export class PlayerController extends SyncScript.props({
   maxRunSpeed: prop.number().min(0).default(10).unit('m/s'),
   jumpHeight: 1.2,
   camera: prop.component(() => CameraComponent),
@@ -145,7 +175,7 @@ export class PlayerController extends SyncScript.props('Gameplay.PlayerControlle
   }
 }
 
-export class DoorOpener extends AsyncScript.props('Gameplay.DoorOpener', {
+export class DoorOpener extends AsyncScript.props({
   trigger: prop.component(() => TriggerComponent),
 }) {
   override async execute(): Promise<void> {
@@ -157,7 +187,7 @@ export class DoorOpener extends AsyncScript.props('Gameplay.DoorOpener', {
 }
 ```
 
-- `SyncScript.props(name, shape)` 返回一个已经带好属性类型的基类，同时按名字登记。场景文件里的 `type` 和热重载都靠这个名字；类名在正式版会被压缩，不能当名字。名字的类型是 `` `${string}.${string}` ``。不需要属性的脚本直接 `extends SyncScript`。
+- `SyncScript.props(shape)` 返回一个已经带好属性类型的基类；名字由文件路径和导出名推出（见下文"组件的名字"）。不需要属性的脚本直接 `extends SyncScript`。
 - `entity.get(T)` 返回 `T | undefined`；`entity.require(T)` 拿不到就抛错，消息里带实体名和组件名。
 - `AsyncScript` 有 `this.signal`（`AbortSignal`），脚本被移除或游戏退出时中止，对应 Stride 的取消。脚本自己的等待方法（`nextFrame()`、`delay()`）自动带上它；等别的东西时把它传进去。
 - 按键用 `KeyboardEvent.code` 的字面量联合（`'KeyW'`、`'Space'`），不另造一套 `Keys`。
@@ -165,14 +195,14 @@ export class DoorOpener extends AsyncScript.props('Gameplay.DoorOpener', {
 ### 数据组件和系统
 
 ```ts
-export const Health = component('Gameplay.Health', {
+export const Health = component({
   max: prop.f32().min(0).default(100),
   current: 100,
 });
-export const Regen = component('Gameplay.Regen', { rate: 5 });   // per second
-export const Dead = tag('Gameplay.Dead');
+export const Regen = component({ rate: 5 });   // per second
+export const Dead = tag();
 
-export const regen = system('Gameplay.Regen', {
+export const regen = system({
   with: { health: Health, regen: Regen },
   without: [Dead],
   writes: [Health],
@@ -195,7 +225,7 @@ export const regen = system('Gameplay.Regen', {
 ### 事件和服务
 
 ```ts
-export const damaged = new EventKey<{ target: EntityId; amount: number }>('Gameplay.Damaged');
+export const damaged = new EventKey<{ target: EntityId; amount: number }>();
 
 damaged.broadcast({ target, amount: 10 });
 const rx = damaged.receiver();          // once, in start()
@@ -256,13 +286,13 @@ game.defaults.set(RigidBody, { friction: 0.6 });   // only .inherit() props are 
 **部件：组合组件把覆盖转发给内部的部件**（对应 vue-tsx-pro 的 `propsXxx`）：
 
 ```ts
-export const Wheel = component('Vehicles.Wheel', {
+export const Wheel = component({
   radius: prop.f32().min(0).default(0.4),
   friction: prop.f32().default(1).inherit(),
   steerAngle: prop.f32().sealed(),          // driven by the vehicle
 });
 
-export class Vehicle extends SyncScript.props('Vehicles.Vehicle', {
+export class Vehicle extends SyncScript.props({
   maxSteer: 35,
   wheels: prop.parts(Wheel, ['frontLeft', 'frontRight', 'rearLeft', 'rearRight']),
 }) {
@@ -320,14 +350,14 @@ this.stats.maxRunSpeed.add(2, { duration: 5 });          // removed after 5 seco
 
 ### 校验放在哪里
 
-- **定义时**：`component()` 和 `props()` 检查重名、默认值是否满足 `min`/`max`、`renamedFrom` 是否冲突，报错带组件名和字段名。
-- **加载和编辑时**：场景文件按 schema 解码，问题带路径（`entities[3].Gameplay.Health.max`）。`validators(Health)` 产出符合 Standard Schema 的校验器，给编辑器和 Node 后端用。
+- **登记时**（模块执行完、名字推出之后）：检查重名、默认值是否满足 `min`/`max`、`renamedFrom` 是否冲突，报错带组件名和字段名。
+- **加载和编辑时**：场景文件按 schema 解码，问题带路径（`entities[3].gameplay/health#Health.max`）。`validators(Health)` 产出符合 Standard Schema 的校验器，给编辑器和 Node 后端用。
 - **公共 API 的选项**：在边界上检查一次（`createStrideNative`、`NavConfig`），内部不重复。
 - **每帧路径不校验**；开发期的断言写在 `import.meta.env.DEV` 里。
 
 ### 热重载（Vite HMR，不重启）
 
-- **脚本**：按名字找到新类，把已有实例的原型换成新类的原型（`Object.setPrototypeOf`），属性按新 schema 重新解码（`renamedFrom` 生效），运行时状态的字段保留。
+- **脚本**：按名字（模块路径加导出名）找到新类，把已有实例的原型换成新类的原型（`Object.setPrototypeOf`），属性按新 schema 重新解码（`renamedFrom` 生效），运行时状态的字段保留。
 - **数据组件**：schema 变了，就按字段名把旧列拷进新布局，新字段取默认值。
 - **系统**：按名字替换。
 

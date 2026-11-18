@@ -7,27 +7,34 @@
  */
 import { FullscreenShader, type RenderTargetPool, type UniformArena } from './ImageEffect';
 
-const SCALER_SHADER = /* wgsl */ `
-struct Scaler { color: vec4f, texelSize: vec2f, expanded: f32 };
-@group(0) @binding(0) var<uniform> scaler: Scaler;
-@group(0) @binding(1) var source: texture_2d<f32>;
-@group(0) @binding(2) var linearClamp: sampler;
-
+/** 线性或 Expanded 的一次采样（AdditiveComposite 也用）。 */
+export const SCALED_SAMPLE = /* wgsl */ `
 const JITTERS = array<vec2f, 9>(vec2f(-2.0, 0.0), vec2f(0.0, 0.0), vec2f(2.0, 0.0), vec2f(-1.0, 1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(0.0, 2.0), vec2f(0.0, -2.0));
 
-@fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  if (scaler.expanded == 0.0) {
-    return textureSampleLevel(source, linearClamp, in.uv, 0.0) * scaler.color;
+fn scaledSample(source: texture_2d<f32>, linearClamp: sampler, uv: vec2f, texelSize: vec2f, expanded: bool) -> vec4f {
+  if (!expanded) {
+    return textureSampleLevel(source, linearClamp, uv, 0.0);
   }
   var color = vec4f(0.0);
   var weights = 0.0;
   for (var j = 0u; j < 9u; j++) {
     let jitter = JITTERS[j];
     let weight = 3.0 - max(abs(jitter.x), abs(jitter.y));
-    color += weight * textureSampleLevel(source, linearClamp, in.uv + jitter * scaler.texelSize, 0.0);
+    color += weight * textureSampleLevel(source, linearClamp, uv + jitter * texelSize, 0.0);
     weights += weight;
   }
-  return color / weights * scaler.color;
+  return color / weights;
+}`;
+
+const SCALER_SHADER = /* wgsl */ `
+struct Scaler { color: vec4f, texelSize: vec2f, expanded: f32 };
+@group(0) @binding(0) var<uniform> scaler: Scaler;
+@group(0) @binding(1) var source: texture_2d<f32>;
+@group(0) @binding(2) var linearClamp: sampler;
+${SCALED_SAMPLE}
+
+@fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
+  return scaledSample(source, linearClamp, in.uv, scaler.texelSize, scaler.expanded != 0.0) * scaler.color;
 }`;
 
 export interface ScaleOptions {

@@ -5,9 +5,21 @@
  *   （docs/lessons.md 的 writeBuffer 生效时机），所以参数不共用缓冲；
  * - FullscreenShader：一个全屏着色器按目标格式和混合方式缓存管线。
  */
+import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../fullscreen';
+import type { GaussianBlur } from './GaussianBlur';
+import type { ImageScaler } from './ImageScaler';
 
 export { FULLSCREEN_VERTEX };
+
+/** 一帧的后处理里各效果共用的东西（PostProcessingEffects 每帧给一份）。 */
+export interface ImageEffectContext {
+  readonly encoder: GPUCommandEncoder;
+  readonly pool: RenderTargetPool;
+  readonly arena: UniformArena;
+  readonly scaler: ImageScaler;
+  readonly blur: GaussianBlur;
+}
 
 export class RenderTargetPool {
   readonly #device: GPUDevice;
@@ -128,28 +140,40 @@ export class FullscreenShader {
     this.#module = device.createShaderModule({ label, code: `${FULLSCREEN_VERTEX}\n${code}` });
   }
 
-  pipeline(format: GPUTextureFormat, blend?: GPUBlendState): GPURenderPipeline {
-    const key = `${format}:${blend ? idOf(blend) : ''}`;
+  /** formats 是各渲染目标（@location 0、1、…）的格式，混合方式各目标相同。 */
+  pipeline(formats: readonly GPUTextureFormat[], blend?: GPUBlendState): GPURenderPipeline {
+    const key = `${formats.join(',')}:${blend ? idOf(blend) : ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       pipeline = this.device.createRenderPipeline({
         label: this.#label,
         layout: 'auto',
         vertex: { module: this.#module, entryPoint: 'fullscreenVertex' },
-        fragment: { module: this.#module, entryPoint: 'fs', targets: [{ format, ...(blend ? { blend } : {}) }] },
+        fragment: { module: this.#module, entryPoint: 'fs', targets: formats.map((format) => ({ format, ...(blend ? { blend } : {}) })) },
       });
       this.#pipelines.set(key, pipeline);
     }
     return pipeline;
   }
 
-  /** 画一次全屏三角形：resources 按绑定号排；load 为真时保留目标原来的内容（混合用）。 */
-  draw(encoder: GPUCommandEncoder, target: GPUTexture | GPUTextureView, resources: readonly FullscreenResource[], { blend, load = false, format }: { blend?: GPUBlendState; load?: boolean; format?: GPUTextureFormat } = {}): void {
-    const view = target instanceof GPUTexture ? viewOf(target) : target;
-    const targetFormat = format ?? (target instanceof GPUTexture ? target.format : undefined);
-    if (!targetFormat) throw new Error(`${this.#label}: drawing into a texture view needs its format`);
-    const pipeline = this.pipeline(targetFormat, blend);
-    const pass = encoder.beginRenderPass({ label: this.#label, colorAttachments: [{ view, loadOp: load ? 'load' : 'clear', clearValue: [0, 0, 0, 0], storeOp: 'store' }] });
+  /**
+   * 画一次全屏三角形：target 是一个或几个渲染目标（几个时着色器按 @location 顺序输出）；resources 按绑定号排；
+   * load 为真时保留目标原来的内容（混合用）；format 是目标为纹理视图时的格式。
+   */
+  draw(encoder: GPUCommandEncoder, target: GPUTexture | GPUTextureView | readonly GPUTexture[], resources: readonly FullscreenResource[], { blend, load = false, format }: { blend?: GPUBlendState; load?: boolean; format?: GPUTextureFormat } = {}): void {
+    const targets: readonly (GPUTexture | GPUTextureView)[] = target instanceof GPUTexture || target instanceof GPUTextureView ? [target] : target;
+    const formats = targets.map((t) => {
+      const targetFormat = t instanceof GPUTexture ? t.format : format;
+      if (!targetFormat) throw new Error(`${this.#label}: drawing into a texture view needs its format`);
+      return targetFormat;
+    });
+    const pipeline = this.pipeline(formats, blend);
+    const timestampWrites = GpuProfiler.of(this.device)?.passTimestamps(this.#label);
+    const pass = encoder.beginRenderPass({
+      label: this.#label,
+      colorAttachments: targets.map((t) => ({ view: t instanceof GPUTexture ? viewOf(t) : t, loadOp: load ? 'load' : 'clear', clearValue: [0, 0, 0, 0], storeOp: 'store' })),
+      ...(timestampWrites ? { timestampWrites } : {}),
+    });
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, this.#bindGroup(pipeline, resources));
     pass.draw(3);
@@ -176,8 +200,8 @@ export class FullscreenShader {
   }
 }
 
-/** Stride 的 BlendStates.Additive：源乘源的 alpha，加到目标上。 */
-export const ADDITIVE_BLEND: GPUBlendState = {
-  color: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
-  alpha: { srcFactor: 'src-alpha', dstFactor: 'one', operation: 'add' },
+/** 直接相加（Stride 的 BlendStates.Additive 是源先乘源的 alpha，需要时在着色器里乘）。 */
+export const ADD_BLEND: GPUBlendState = {
+  color: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
+  alpha: { srcFactor: 'one', dstFactor: 'one', operation: 'add' },
 };

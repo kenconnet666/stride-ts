@@ -1,14 +1,13 @@
 /**
- * 镜头光晕（Stride 的 LensFlare，默认设置）：亮部图缩到 1/2（线性），半径 8 的高斯模糊（σ 比 3）；
+ * 镜头光晕（Stride 的 LensFlare，默认设置）：亮部图缩到 1/2（线性，和光芒共用），半径 8 的高斯模糊（σ 比 3）；
  * - 鬼影（FlareArtifact）：8 个以画面中心缩放（倍数为负就是翻到对面）、再按 sin(到中心的距离^d) 桶形畸变的采样，
  *   靠近边缘 10% 渐隐，各乘自己的色差颜色（按 colorAberrationStrength 插值），和乘 amount · 0.0005；
  * - 复制（FlareReplicate）：鬼影图再按 1、2.5、4、-4.5、-8 倍缩放各采一次（边缘 18% 渐隐），加上模糊亮部图的
  *   光环（-1 倍乘 haloFactor、0.1 倍乘 haloFactor / 2）和 -0.05 倍的一点；
- * 结果加回画面。
+ * 结果加回画面（AdditiveComposite）。
  */
-import { ADDITIVE_BLEND, FullscreenShader, type RenderTargetPool, type UniformArena } from './ImageEffect';
-import type { GaussianBlur } from './GaussianBlur';
-import type { ImageScaler } from './ImageScaler';
+import type { AdditiveLayer } from './AdditiveComposite';
+import { FullscreenShader, type ImageEffectContext } from './ImageEffect';
 
 const ARTIFACTS = 8;
 
@@ -90,14 +89,12 @@ export class LensFlare {
     this.#sampler = linearClamp;
   }
 
-  /** bright 是亮部图，结果加到 output 上。 */
-  draw(encoder: GPUCommandEncoder, pool: RenderTargetPool, arena: UniformArena, scaler: ImageScaler, blur: GaussianBlur, bright: GPUTexture, output: GPUTexture): void {
+  /** half 是缩到 1/2 的亮部图（线性），返回要加回画面的一层。 */
+  draw({ encoder, pool, arena, blur }: ImageEffectContext, half: GPUTexture): AdditiveLayer {
     if (this.zoomOffsetsDistortions.length !== ARTIFACTS || this.colorAberrations.length !== ARTIFACTS) {
       throw new RangeError(`LensFlare needs ${ARTIFACTS} zoomOffsetsDistortions and colorAberrations`);
     }
-    const format = bright.format;
-    const half = pool.acquire(Math.max(1, bright.width >> 1), Math.max(1, bright.height >> 1), format, 'LensFlare half');
-    scaler.draw(encoder, arena, bright, half, { expanded: false });
+    const format = half.format;
     const blurred = pool.acquire(half.width, half.height, format, 'LensFlare blurred');
     blur.draw(encoder, pool, arena, half, blurred, 8, 3);
 
@@ -111,6 +108,6 @@ export class LensFlare {
 
     const flare = pool.acquire(half.width, half.height, format, 'LensFlare');
     this.#replicate.draw(encoder, flare, [arena.push([amount, amount * this.haloFactor]), artifacts, blurred, this.#sampler]);
-    scaler.draw(encoder, arena, flare, output, { expanded: false, blend: ADDITIVE_BLEND, load: true });
+    return { texture: flare, expanded: false };
   }
 }

@@ -1,7 +1,8 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { Body, Character, Collider, Game, hullPoints, Mesh, OneBodyAngularMotorConstraintComponent, Quaternion, Simulation, Static, Transform, TriggerHandler, Vector3, type Entity } from '../src/index';
+import { AnimationSystem, Body, Character, Collider, Game, hullPoints, Mesh, ModelNodeLink, OneBodyAngularMotorConstraintComponent, Quaternion, Simulation, Static, Transform, TriggerHandler, Vector3, type Entity } from '../src/index';
+import { modelNodeLinkSystem } from '../src/animation/ModelNodeLink';
 
 let native: StrideNative;
 
@@ -203,6 +204,23 @@ describe('Body（Stride 的 BodyComponent）', () => {
 });
 
 describe('接触事件和移除（Stride 的 IContactHandler、Trigger）', () => {
+  test('去掉 Body 组件就移除物体（实体还在）；再加回来时按当时的位置重新建（TopDownRPG 出拳的碰撞体）', () => {
+    const game = createGame();
+    const ball = game.entities.create({ components: [Transform.with({ position: [0, 5, 0] }), Body.with({ collider: new Collider([{ type: 'sphere', radius: 0.5 }]).id, gravity: false })] });
+    // 沿 +Z 的射线穿过 y 高度处
+    const hitAt = (y: number) => game.simulation.rayCast([0, y, -5], [0, 0, 1], 10)?.entity;
+    run(game, 2);
+    expect(hitAt(5)).toBe(ball.id);
+    ball.remove(Body);
+    run(game, 2);
+    expect(hitAt(5)).toBeUndefined();
+    ball.require(Transform).position.y = 9;
+    ball.add(Body.with({ collider: new Collider([{ type: 'sphere', radius: 0.5 }]).id, gravity: false }));
+    run(game, 2);
+    expect([hitAt(9), position(ball).y]).toEqual([ball.id, 9]);
+    game.simulation.destroy();
+  });
+
   test('Trigger 的碰撞体带 TriggerHandler，物体进出时通知；脚本设的处理器两边都收到；实体销毁时移除物体', () => {
     const game = createGame();
     const box = (size: [number, number, number]) => new Collider([{ type: 'box', size }]).id;
@@ -331,3 +349,29 @@ describe('约束（Stride.BepuPhysics 的约束组件）', () => {
     expect(position(sphere).y).toBeLessThan(before - 0.5);
   });
 });
+
+describe('挂到骨骼节点（Stride 的 ModelNodeLinkComponent）', () => {
+  test('世界矩阵 = 目标的世界 × 节点矩阵 × 本地，不看父节点；目标没有骨架时跟着目标；去掉组件后回到父节点', () => {
+    const game = createGame();
+    const animation = new AnimationSystem(native, game.entities);
+    game.entities.addSystems(animation.system, modelNodeLinkSystem(game.entities, game.transforms, animation));
+    const model = game.entities.create({ components: [Transform.with({ position: [10, 0, 0] })] });
+    const holder = game.entities.create({ components: [Transform.with({ position: [0, 0, 50] })] });
+    const hand = game.entities.create({ components: [Transform.with({ position: [1, 0, 0] }), ModelNodeLink.with({ target: model.id, nodeName: 'Palm' })] });
+    hand.require(Transform).parent = holder;
+    run(game, 1);
+    expect([...hand.require(Transform).world.subarray(12, 15)]).toEqual([11, 0, 0]);
+    // 目标是 -1：用父实体
+    hand.require(ModelNodeLink).target = -1 as never;
+    run(game, 1);
+    expect([...hand.require(Transform).world.subarray(12, 15)]).toEqual([1, 0, 50]);
+    hand.require(ModelNodeLink).target = model.id;
+    run(game, 1);
+    hand.remove(ModelNodeLink);
+    run(game, 1);
+    expect([...hand.require(Transform).world.subarray(12, 15)]).toEqual([1, 0, 50]);
+    animation.destroy();
+    game.simulation.destroy();
+  });
+});
+

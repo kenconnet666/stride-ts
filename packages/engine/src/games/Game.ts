@@ -1,5 +1,6 @@
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
 import { AnimationSystem } from '../animation/AnimationSystem';
+import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { ContentManager, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
@@ -140,7 +141,7 @@ export class Game {
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       if (this.native.hasFeature('physics')) this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
       this.animation = new AnimationSystem(this.native, this.entities);
-      this.entities.addSystems(this.animation.system);
+      this.entities.addSystems(this.animation.system, modelNodeLinkSystem(this.entities, this.transforms, this.animation));
       this.content.animationNative ??= this.native;
       this.graphicsDevice = await GraphicsDevice.create(canvas);
       this.input = new InputManager(canvas);

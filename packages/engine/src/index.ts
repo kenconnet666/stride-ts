@@ -29,6 +29,7 @@ export {
   type BlendTreeBuilder,
 } from './animation/AnimationComponent';
 export { AnimationSystem, ModelSkeleton, type SkinnedPart } from './animation/AnimationSystem';
+export { ModelNodeLink } from './animation/ModelNodeLink';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
 export { Prefab } from './content/Prefab';
 export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';

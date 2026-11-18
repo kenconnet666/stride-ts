@@ -101,6 +101,17 @@ export class AnimationSystem {
     return view ? this.#states[view.state]?.instance : undefined;
   }
 
+  /**
+   * 模型实体上名为 nodeName 的骨骼节点的模型空间矩阵（列主序 4x4，原生内存上的视图，下一次求姿势时更新）；
+   * 没有骨架、没有这个节点时是 undefined。
+   */
+  nodeMatrix(entity: Entity, nodeName: string): Float32Array | undefined {
+    const view = entity.get(ModelSkeleton);
+    const state = view ? this.#states[view.state] : undefined;
+    const joint = state?.skeleton.jointIndex(nodeName) ?? -1;
+    return state && joint >= 0 ? state.instance.modelMatrices().subarray(joint * 16, joint * 16 + 16) : undefined;
+  }
+
   destroy(): void {
     for (const state of this.#states) if (state) this.#free(state);
     this.#states.length = 1;

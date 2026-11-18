@@ -694,6 +694,10 @@ export interface SceneEntityFile {
     readonly instancing?: Record<string, never>;
     /** Stride 的 InstanceComponent：master 是带 instancing 的实体（场景里的 id），null 是还没指定（运行时由脚本设）。 */
     readonly instance?: { readonly master: string | null };
+    /**
+     * Stride 的 ModelNodeLinkComponent：挂到 target（带模型的实体，场景里的 id；null 是父实体）的骨骼节点 nodeName 上。
+     */
+    readonly nodeLink?: { readonly target: string | null; readonly nodeName: string };
     readonly model?: {
       /** 模型的内容路径。 */
       readonly model: string;

@@ -9,6 +9,7 @@
  */
 import type { Skin as NativeSkin } from '@stride-ts/native';
 import { AnimationComponent } from '../animation/AnimationComponent';
+import { ModelNodeLink } from '../animation/ModelNodeLink';
 import { AnimationClip, Skeleton, type AnimationNative } from '../animation/resources';
 import type { EntityManager } from '../engine/EntityManager';
 import { SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
@@ -366,13 +367,17 @@ export class ContentManager {
         script.enabled = constraint.enabled;
       }
     }
-    // 实例引用的主实体可能排在后面：实体都建好以后再挂
+    // 实例的主实体、挂到骨骼节点的目标可能排在后面：实体都建好以后再挂
+    const entityOf = (id: string | null, file: SceneEntityFile, what: string): EntityId => {
+      if (id === null) return -1 as EntityId;
+      const entity = created.get(id);
+      if (!entity) throw new Error(`${where}: entity '${file.name}' refers to ${id} (${what}), which is not in the scene`);
+      return entity.id;
+    };
     for (const file of files) {
-      const instance = file.components.instance;
-      if (!instance) continue;
-      const master = instance.master === null ? undefined : created.get(instance.master);
-      if (instance.master !== null && !master) throw new Error(`${where}: entity '${file.name}' is an instance of ${instance.master}, which is not in the scene`);
-      created.get(file.id)!.add(Instance.with({ master: master?.id ?? (-1 as EntityId) }));
+      const { instance, nodeLink } = file.components;
+      if (instance) created.get(file.id)!.add(Instance.with({ master: entityOf(instance.master, file, 'instancing master') }));
+      if (nodeLink) created.get(file.id)!.add(ModelNodeLink.with({ target: entityOf(nodeLink.target, file, 'model node link target'), nodeName: nodeLink.nodeName }));
     }
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
     const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs };

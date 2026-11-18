@@ -350,6 +350,14 @@ export class StrideImporter {
       case 'AnimationComponent':
         components.animation = await this.#animationComponent(component, where);
         return true;
+      case 'ModelNodeLinkComponent': {
+        // Target 引用的是 ModelComponent 的 Id，换成它所在的实体
+        const target = parseObjectReference(component['Target']);
+        const entity = target === undefined ? undefined : context.owners.get(target);
+        if (target !== undefined && entity === undefined) this.#warnings.push(`${where}: model node link target ${target} is not in this scene; using the parent`);
+        components.nodeLink = { target: entity ?? null, nodeName: typeof component['NodeName'] === 'string' ? component['NodeName'] : '' };
+        return true;
+      }
       case 'LightComponent': {
         const light = await this.#light(component, where);
         if (light) components.light = light;

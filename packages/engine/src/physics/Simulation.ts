@@ -176,6 +176,18 @@ export class Simulation {
     },
   });
 
+  /**
+   * 去掉了 Static、Body、Character 的实体（Stride 里从实体上移除 BodyComponent 就离开仿真，TopDownRPG 出拳时这样开关碰撞体）：
+   * 去掉 PhysicsBody，由 #removeBodies 移除物体；再加回组件时按当时的位姿重新建。
+   */
+  readonly #removeOrphans = system('Simulation.removeOrphans', {
+    with: { physics: PhysicsBody },
+    without: [Static, Body, Character],
+    update: ({ entities, count }, _time, commands) => {
+      for (let i = 0; i < count; i++) commands.remove(entities[i]!, PhysicsBody);
+    },
+  });
+
   /** 实体销毁或去掉物理组件时移除物体（加进 EntityManager：只用它的 removed 回调）。 */
   readonly #removeBodies = system('Simulation.removeBodies', {
     with: { physics: PhysicsBody },
@@ -358,8 +370,9 @@ export class Simulation {
     }
   }
 
-  /** 新出现的 Static、Body、Character 建成物体。 */
+  /** 新出现的 Static、Body、Character 建成物体；去掉了这些组件的（实体还在）移除物体。 */
   #createPending(time: GameTime): void {
+    this.#entities.run(this.#removeOrphans, time);
     this.#entities.run(this.#createStatics, time);
     this.#entities.run(this.#createBodies, time);
     this.#entities.run(this.#createCharacters, time);

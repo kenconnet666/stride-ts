@@ -1,6 +1,6 @@
 # 桌面 Stride 的参考截图
 
-用官方 Stride 4.4.2（nuget）编出 Third Person Platformer，截一张静态画面，和 stride-ts 的 `apps/platformer` 逐像素比对（`../compare-stride.cjs`、`../hdr-ratio.cjs`）。
+用官方 Stride 4.4.2（nuget）编出 Third Person Platformer，截一张静态画面，和 stride-ts 的 `apps/platformer` 逐像素比对（`stride shot --diff`、`../hdr-ratio.ts`）。
 
 ## 搭建
 
@@ -38,7 +38,7 @@ P.antialiasing.enabled = P.brightFilter.enabled = false; P.toneMap.autoExposure 
 ## 2026-11-18 的结果
 
 画面：默认设置下平均每通道差 0.6/255，差超过 10 的像素 0%。比对中找到并修掉的：
-- 直射光少乘了 π（Stride 的 `MaterialSurfaceLightingAndShading` 把直射光的总和乘 π，`hdr-ratio.cjs` 量出处处 3.14 倍）；
+- 直射光少乘了 π（Stride 的 `MaterialSurfaceLightingAndShading` 把直射光的总和乘 π，`hdr-ratio` 量出处处 3.14 倍）；
 - 材质贴图开了 16 倍各向异性，Stride 默认是三线性（`Filtering = Linear`），远处斜看的网格线因此不同；
 - 天空盒光照偏暗约 2%、蓝色最多：我们用了 DDS 自带的 mip（侧面偏暗偏黄），Stride 的贴图编译默认从第 0 级重建 mip。
   `--dump-skybox` 和 stride-ts 运行时的镜面立方体贴图逐级比找到的，修正后每级每个面的平均值一致到 4 位小数。
@@ -53,7 +53,7 @@ P.antialiasing.enabled = P.brightFilter.enabled = false; P.toneMap.autoExposure 
 | 默认 | 7.70 ms | 8.86 ms | 6.65 ms |
 | 关掉 FXAA、亮部提取和三个效果 | 3.95 ms | 4.95 ms | 3.34 ms |
 
-第一次比时我们慢 18%。按通道比（Stride 用 `--gpu-profile`，我们用 `../gpu-profile.cjs`）找到并修掉：
+第一次比时我们慢 18%。按通道比（Stride 用 `--gpu-profile`，我们用 `stride perf`）找到并修掉：
 
 | 通道 | Stride | 修之前 | 修之后 | 原因 |
 |---|---|---|---|---|

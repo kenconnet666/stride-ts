@@ -212,7 +212,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - 每帧大量"活几秒"的对象：40 ms 的停顿；
   - 每个实体单独 `writeBuffer`：1 万个要 2 ms；
   - 每个实体每帧调一次 wasm。
-- **要尽早实测的**：Jolt 在 1 千到 1 万个物体时的步进时间、动画的批量采样、GPU 进程在几千个 draw 时会不会成为瓶颈。等渲染器的里程碑 1 有了真实场景，用 `tools/frame-time.cjs` 和 `tools/cpu-profile.cjs` 测。
+- **要尽早实测的**：Jolt 在 1 千到 1 万个物体时的步进时间、动画的批量采样、GPU 进程在几千个 draw 时会不会成为瓶颈。等渲染器的里程碑 1 有了真实场景，用 `stride perf` 和 `stride cpu-profile` 测。
 
 ## 组件 API：脚本、数据组件、系统（2026-11-18 设计草案，取代 11-17 的装饰器加插件方案）
 
@@ -894,7 +894,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 
 ## 对齐的验证方法
 
-- **截图比对**：同一场景、同一相机位置，用桌面 Stride、C# 移植版和这里各截一张，算差异图。桌面 Stride 用 `tools/stride-capture`（官方 4.4.2，可以关单个后处理、固定曝光、只留一种光），这边用 `tools/compare-stride.cjs`；整体偏亮偏暗时用 `tools/hdr-ratio.cjs` 看是倍数差还是随角度的差。
+- **截图比对**：同一场景、同一相机位置，用桌面 Stride、C# 移植版和这里各截一张，算差异图。桌面 Stride 用 `tools/stride-capture`（官方 4.4.2，可以关单个后处理、固定曝光、只留一种光），这边用 `stride shot --diff`；整体偏亮偏暗时用 `tools/hdr-ratio.ts` 看是倍数差还是随角度的差。
 - **复用 Stride 的图形测试**：`Stride.Graphics.Tests` 的场景和 gold 图可以作为渲染器的回归测试，从最基本的开始（几何体、精灵、字体）。
 - **样例清单**：沿用 C# 移植版验证过的那批（SpriteFonts、AnimatedModel、GameMenu、MaterialShader、Third Person Platformer……），C# 版可以当参考实现。
 

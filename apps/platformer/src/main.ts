@@ -6,7 +6,7 @@ import { Game } from '@stride-ts/engine';
 import { physics } from '@stride-ts/native/physics';
 import { PlatformerGame } from './game/platformer';
 
-// 调试用：控制台和 tools/play.cjs 的 eval 步骤可以拿到引擎的类型（比如 Transform）
+// 调试用：控制台和 stride eval 可以拿到引擎的类型（比如 Transform）
 (globalThis as { strideEngine?: typeof engine }).strideEngine = engine;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;

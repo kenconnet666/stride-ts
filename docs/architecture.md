@@ -68,7 +68,13 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
   - 渲染：蒙皮网格的实体带 `Skinned`（蒙皮矩阵在连起来的缓冲里的起点），`MeshRenderFeature` 给它们单独分批、用 `vsSkinned` 管线，每帧把蒙皮矩阵直接从 wasm 内存上传；顶点乘 4 个蒙皮矩阵的加权和再乘世界矩阵（阴影投射同样）。剔除用整个模型的包围盒放大一半（和 Stride 不同，Stride 每帧按骨骼算包围盒）。
   - TPP 的 mannequin（16 个网格、92 个节点）待机、走跑混合、起跳、空中、落地都对；动画系统每帧 0.12 ms（原生蒙皮 0.06 ms、求值 0.04 ms）。
   - 还没做：挂到骨骼节点（ModelNodeLink）、根运动、动画曲线（非骨骼的属性动画）、每帧按骨骼算的包围盒；原生求值失败时只有错误码，没有原因。
-- 接下来：Stride 的 WGSL 和效果系统（等着色器系统）、透明阶段、点光源和聚光灯（及其阴影）、render bundle 缓存静态批次、非均匀缩放的法线（逆转置）。
+- **合成器、渲染目标贴图、精灵（2026-11-19，AnimatedModel 用到的）**：
+  - 合成器的最小数据化：导入器读 GameSettings 引用的 .sdgfxcomp，相机槽位按 Cameras 列表编号（Camera.slot），主画面是槽位 0 的相机下第一个前向渲染器（清屏色、后处理开关、透明阶段开关），"相机画进渲染目标贴图"的分支（SceneCameraRenderer 加 RenderTextureSceneRenderer）写进场景的 `compositor.textureCameras`。`ForwardRenderer` 先画各个渲染目标贴图（一样的深度预通道、不透明、透明阶段，画完原样拷进贴图），再画主画面；所有相机的视图一起提取、剔除。
+  - 渲染目标贴图（Stride 的 RenderTexture）：`Texture.renderTarget`，没有 CPU 数据，GPU 纹理第一次用到时建，能画也能采样；内容管理按内容路径只建一次。
+  - 精灵（Stride 的 SpriteComponent 加 SpriteFromTexture）：`Sprite` 数据组件，`SpriteRenderFeature` 在透明阶段画，矩形照 Stride 在 CPU 上算（`spriteQuad`：billboard 用相机的轴、实体的缩放，center 偏移），每个视图从远到近排，一个精灵一次绘制，混合方式照 Stride 的 SpriteBlend。
+  - 背景支持平面图片（Is2D，铺满视图）；背景、精灵的常量按视图分块，渲染目标贴图的相机也画得到。
+  - 和 Stride 不同（暂时）：画进渲染目标贴图的相机不用阴影（级联按主视图算）、不做后处理；一个视图最多 4 个方向光、只有一个投阴影。
+- 接下来：Stride 的 WGSL 和效果系统（等着色器系统）、透明材质、点光源和聚光灯（及其阴影）、render bundle 缓存静态批次、非均匀缩放的法线（逆转置）。
 
 C# 移植版踩过的 WebGPU 坑，全部适用，见 [lessons.md](lessons.md)：`writeBuffer` 的生效时机、pass 内的状态去重、scissor 一直有效、调试组会切断 pass、没写的颜色目标要设 writeMask 0。
 
@@ -897,7 +903,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - **分发**：`tools/vite-app.ts` 是 apps 共用的 Vite 配置，构建后给 dist 里压得小的文件写 `.br` 和 `.gz`，静态服务器打开预压缩文件的支持就直接发。
   - **结果**：TPP 页面下载（正式版 wasm、JS、内容）从约 9.4 MB（brotli 约 1.6 MB）变成 4.2 MB（brotli 1.1 MB），其中 wasm 3.1 MB（brotli 728 KB）；原生模块拆分后 TPP 只要核心，页面 1.6 MB（brotli 约 500 KB），wasm 361 KB（brotli 97 KB）。
 - **法线贴图（2026-11-18）**：照 Stride 的 MaterialNormalMapFeature、MaterialSurfaceNormalMap 和 NormalUpdate：切线空间的法线（InvertY、×2-1、由 xy 算 z）乘 TBN，副切线 = w · cross(法线, 切线)。导入器只给材质用法线贴图的网格生成 MikkTSpace 切线（`addTangents`：每个三角形角一份，切线不同的地方拆开顶点），量化成 snorm8x4，顶点从 16 字节变成 20 字节；Stride 在导入时翻转法线贴图的绿色通道（NormalMapTextureType.InvertY，默认开），这里记在材质上、采样后翻转，结果一样，PNG 可以原样复制。TPP 只有人物的两块哑光黑用法线贴图，platformer 的导入改成 `--textures source`：两张 PNG 178 KB，编成 KTX2 是 95 KB，但要多下载 339 KB（brotli）的贴图转码侧模块。
-- **和桌面 Stride 的截图比对（2026-11-18）**：TPP 默认设置下平均每通道差 0.7/255，差超过 10 的像素 0%，只剩地面网格线的亚像素差（SVG 棋盘格）。方法和工具见 `tools/stride-capture/README.md`；比对中修掉了直射光少乘 π、材质贴图多开的各向异性（Stride 默认三线性）、天空盒源贴图用了文件自带的 mip（Stride 从第 0 级重建）；剩下的只有有意保留的 SVG 棋盘格。按通道比 GPU 时间（Stride 用它自己的时间戳）又修了深度预通道、PCF 和 FXAA 的展开。同一块显卡上的帧时间：桌面 Stride 7.70 ms，我们 6.65 ms（关掉后处理时 3.95 对 3.34 ms），明细见那份 README。
+- **和桌面 Stride 的截图比对（2026-11-18）**：TPP 默认设置下平均每通道差 0.7/255，差超过 10 的像素 0%，只剩地面网格线的亚像素差（SVG 棋盘格）。方法和工具见 `tools/stride-capture/tpp/README.md`；比对中修掉了直射光少乘 π、材质贴图多开的各向异性（Stride 默认三线性）、天空盒源贴图用了文件自带的 mip（Stride 从第 0 级重建）；剩下的只有有意保留的 SVG 棋盘格。按通道比 GPU 时间（Stride 用它自己的时间戳）又修了深度预通道、PCF 和 FXAA 的展开。同一块显卡上的帧时间：桌面 Stride 7.70 ms，我们 6.65 ms（关掉后处理时 3.95 对 3.34 ms），明细见那份 README。
 
 ## 对齐的验证方法
 

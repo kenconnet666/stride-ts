@@ -30,11 +30,14 @@ export class RenderStage {
   readonly output: RenderOutput;
   /** 阴影投射阶段：只画投射阴影的物体、只写深度（Stride 的 ShadowMapRenderStageSelector 选进来的）。 */
   readonly shadowCasters: boolean;
+  /** 透明阶段（Stride 的 Transparent）：不透明的画完之后，混合着画（精灵、以后的透明材质）。 */
+  readonly transparent: boolean;
 
-  constructor(name: string, output: RenderOutput, { shadowCasters = false }: { shadowCasters?: boolean } = {}) {
+  constructor(name: string, output: RenderOutput, { shadowCasters = false, transparent = false }: { shadowCasters?: boolean; transparent?: boolean } = {}) {
     this.name = name;
     this.output = output;
     this.shadowCasters = shadowCasters;
+    this.transparent = transparent;
   }
 }
 
@@ -64,6 +67,8 @@ export class RenderView {
   height = 1;
   /** 画进目标的哪一块（阴影图集里的一个级联）；undefined 是整个目标。 */
   viewport: Viewport | undefined;
+  /** 着色时用不用方向光的阴影；阴影级联是按主视图算的，别的相机（画进渲染目标贴图的）暂时不用。 */
+  receivesShadows = true;
   /** 朝内的视锥平面：左、右、下、上、近、远，每个 xyzw（Matrix.frustumPlanes）。update() 算。 */
   readonly frustumPlanes = new Float32Array(24);
   /**

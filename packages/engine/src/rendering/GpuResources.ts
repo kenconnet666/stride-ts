@@ -49,11 +49,16 @@ export class GpuResources {
   }
 
   /**
-   * 贴图的 GPU 纹理；第一次用到时上传所有 mip，压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝。
+   * 贴图的 GPU 纹理；渲染目标第一次用到时创建（内容是空的），其余的第一次用到时上传所有 mip，压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝。
    * 只给了第 0 级的（generateMipmaps）上传后在 GPU 上生成完整的 mip 链。
    */
   texture(texture: Texture): GPUTexture {
     let gpu = this.#textures.get(texture);
+    if (!gpu && texture.data.renderTarget) {
+      const { format, width, height } = texture.data;
+      gpu = this.device.createTexture({ label: texture.name, size: [width, height], format, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
+      this.#textures.set(texture, gpu);
+    }
     if (!gpu) {
       const { format, width, height, levels, generateMipmaps } = texture.data;
       const mipLevelCount = generateMipmaps ? Math.floor(Math.log2(Math.max(width, height))) + 1 : levels.length;

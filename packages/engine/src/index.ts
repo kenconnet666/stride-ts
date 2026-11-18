@@ -30,7 +30,7 @@ export {
 } from './animation/AnimationComponent';
 export { AnimationSystem, ModelSkeleton, type SkinnedPart } from './animation/AnimationSystem';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
-export { ContentManager, type ContentOptions, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance } from './content/ContentManager';
+export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance } from './content/ContentManager';
 export type { SceneScriptMap } from './content/sceneScripts';
 export {
   decodeCubemap,
@@ -60,6 +60,11 @@ export {
   type SceneEntityFile,
   type SceneFile,
   type SceneCompositor,
+  type SceneForwardRenderer,
+  type SceneRenderTexture,
+  type SceneSprite,
+  type SceneTextureCamera,
+  type SpriteBlend,
   type ScenePhysics,
   type SkyboxFile,
   TEXTURE_EXTENSIONS,
@@ -110,7 +115,8 @@ export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Collider, type ColliderId, type ColliderShape } from './physics/Collider';
 export { Character, Static } from './physics/components';
 export { Simulation, type SimulationHit, type SimulationSettings } from './physics/Simulation';
-export { Background, Camera, Light, Model, Skinned } from './rendering/components';
+export { Background, Camera, Light, Model, Skinned, Sprite } from './rendering/components';
+export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
 export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';
 export { GpuResources } from './rendering/GpuResources';
 export { Cubemap, Skybox, type CubemapId, type SkyboxId } from './rendering/Skybox';

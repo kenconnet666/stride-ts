@@ -70,6 +70,31 @@ export const Model = component('Model', {
 });
 
 /**
+ * 精灵（Stride 的 SpriteComponent 加 SpriteFromTexture）：一张贴图（Texture.id，也可以是渲染目标贴图），在实体的 XY 平面上
+ * 画成 宽 / pixelsPerUnit × 高 / pixelsPerUnit 的矩形，billboard 时一直朝着相机。center 是实体位置落在贴图上的像素
+ * （centerFromMiddle 时从贴图中心算，否则从左上角算）。color 按 sRGB 写（同 Stride 的编辑器），画的时候转成线性，
+ * 和 intensity 一起乘在贴图上。画在透明阶段，从远到近。
+ */
+export const Sprite = component('Sprite', {
+  texture: prop.u32().brand<'TextureId'>(),
+  pixelsPerUnit: prop.f32().default(100).min(0),
+  centerX: prop.f32().default(0),
+  centerY: prop.f32().default(0),
+  centerFromMiddle: prop.bool().default(true),
+  type: prop.enum(['sprite', 'billboard']).default('sprite'),
+  color: prop.color(),
+  intensity: prop.f32().default(1).min(0),
+  /** 贴图有透明部分（SpriteFromTexture.IsTransparent）：blendMode 是 auto 时决定混不混合。 */
+  isTransparent: prop.bool().default(true),
+  premultipliedAlpha: prop.bool().default(true),
+  ignoreDepth: prop.bool().default(false),
+  /** alpha 小于 0.1 的像素不画（Stride 的 IsAlphaCutoff）。 */
+  isAlphaCutoff: prop.bool().default(false),
+  blendMode: prop.enum(['auto', 'none', 'alphaBlend', 'additiveBlend', 'noColor']).default('auto'),
+  sampler: prop.enum(['linearClamp', 'pointClamp', 'anisotropicClamp']).default('linearClamp'),
+});
+
+/**
  * 蒙皮网格：画的时候顶点按蒙皮矩阵变换（GPU 蒙皮）。palette 是这个网格的蒙皮矩阵在所有蒙皮矩阵连起来的缓冲里的
  * 起点（按关节数），动画系统挂骨架时分配并每帧更新（animation/AnimationSystem.ts）。
  */

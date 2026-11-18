@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  coverSource, DirectionalShadowCascades, Fxaa, Game, gaussianOffsetsWeights, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
+  coverSource, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
   type DirectionalShadowSettings, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
@@ -269,5 +269,31 @@ describe('平面背景（Stride 的 Background Is2D）', () => {
     expect(coverSource(1000, 500, 100, 100)).toEqual([0.25, 0, 0.5, 1]);
     expect(coverSource(500, 1000, 200, 100)).toEqual([0, 0.375, 1, 0.25]);
     expect(coverSource(640, 1136, 640, 1136)).toEqual([0, 0, 1, 1]);
+  });
+});
+
+describe('精灵（Stride 的 SpriteRenderFeature）', () => {
+  const round = (values: ArrayLike<number>) => Array.from(values, (v) => Math.round(v * 1e5) / 1e5 + 0);
+  const shape = { pixelsPerUnit: 100, centerX: 0, centerY: 0, centerFromMiddle: false };
+
+  test('宽高是贴图尺寸除以 pixelsPerUnit；center 在左上角时矩形往右下移半个', () => {
+    const world = Matrix.identity();
+    world[12] = 1;
+    const out = new Float32Array(12);
+    spriteQuad(out, 0, world, 0, undefined, 200, 100, shape);
+    // 中心 = 位置 + (宽/2, -高/2)，X 边 2、Y 边 1
+    expect(round(out)).toEqual([2, -0.5, 0, 1, 2, 0, 0, 0, 0, 1, 0, 0]);
+    spriteQuad(out, 0, world, 0, undefined, 200, 100, { ...shape, centerFromMiddle: true });
+    expect(round(out.subarray(0, 3))).toEqual([1, 0, 0]);
+  });
+
+  test('billboard 用相机的轴（去掉相机的缩放），长度是实体的缩放', () => {
+    const world = Matrix.identity();
+    world[0] = world[5] = 3;
+    // 相机绕 Y 转了 90°（X 轴朝 -Z），并且放大了 2 倍
+    const camera = new Float32Array([0, 0, -2, 0, 0, 2, 0, 0, 2, 0, 0, 0, 5, 0, 0, 1]);
+    const out = new Float32Array(12);
+    spriteQuad(out, 0, world, 0, camera, 100, 100, { ...shape, centerFromMiddle: true });
+    expect(round(out)).toEqual([0, 0, 0, 1, 0, 0, -3, 0, 0, 3, 0, 0]);
   });
 });

@@ -16,12 +16,12 @@ import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import { Collider, type ColliderShape } from '../physics/Collider';
 import { Character, Static } from '../physics/components';
-import { Background, Camera, Light, Model } from '../rendering/components';
+import { Background, Camera, Light, Model, Sprite } from '../rendering/components';
 import { Material } from '../rendering/Material';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneCompositor, type SceneLightShadow, type ScenePhysics, type SkyboxFile, type TextureRef } from './format';
+import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type TextureRef } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -71,8 +71,19 @@ interface SceneAssets {
   readonly animations: ReadonlyMap<string, AnimationClip>;
   readonly skyboxes: ReadonlyMap<string, Skybox>;
   readonly cubemaps: ReadonlyMap<string, Cubemap>;
-  /** 平面背景图，按内容路径。 */
+  /** 背景和精灵的贴图（包括渲染目标贴图），按内容路径。 */
   readonly images: ReadonlyMap<string, Texture>;
+}
+
+/** 合成器里画进渲染目标贴图的相机，贴图已经建好。 */
+export interface TextureCamera extends SceneForwardRenderer {
+  readonly cameraSlot: number;
+  readonly texture: Texture;
+}
+
+/** 场景的合成器设置（贴图已经建好）：主画面的前向渲染器，和先画的渲染目标贴图。 */
+export interface CompositorSettings extends SceneForwardRenderer {
+  readonly textureCameras: readonly TextureCamera[];
 }
 
 export interface SceneInstance {
@@ -81,8 +92,8 @@ export interface SceneInstance {
   readonly entities: ReadonlyMap<string, Entity>;
   /** 场景用的仿真设置（Game.loadScene 交给 simulation）。 */
   readonly physics?: ScenePhysics;
-  /** 场景用的主画面合成器设置（Game.loadScene 交给图形合成器）。 */
-  readonly compositor?: SceneCompositor;
+  /** 场景用的合成器设置（Game.loadScene 交给图形合成器）。 */
+  readonly compositor?: CompositorSettings;
 }
 
 const fetchReader: ContentReader = async (url) => {
@@ -95,6 +106,7 @@ export class ContentManager {
   readonly root: URL;
   readonly #read: ContentReader;
   readonly #cache = new Map<string, Promise<unknown>>();
+  readonly #renderTextures = new Map<string, Texture>();
   /** 没有材质的网格用它：白色。 */
   readonly defaultMaterial = new Material('default');
   /**
@@ -254,9 +266,11 @@ export class ContentManager {
       preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
       preload(components.flatMap((c) => (c.background?.type === 'cubemap' ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
     ]);
-    // 背景的平面图片按 sRGB 读（同 Stride 的颜色贴图）
-    const images = new Map(await Promise.all(components.flatMap((c) => (c.background?.type === '2d' ? [c.background.image] : []))
-      .map(async (image) => [image.texture, await this.#loadTextureRef(image, true)] as const)));
+    // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
+    const imageRefs = components.flatMap((c) => [...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite ? [c.sprite.texture] : [])]);
+    const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
+      ? [ref.renderTexture, this.renderTexture(ref)] as const
+      : [ref.texture, await this.#loadTextureRef(ref, true)] as const)));
     const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, images };
 
     const created = new Map<string, Entity>();
@@ -276,11 +290,15 @@ export class ContentManager {
     for (const file of scene.entities) {
       for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${path}: ${file.name}`);
     }
-    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.compositor ? { compositor: scene.compositor } : {}) };
+    const compositor = scene.compositor && {
+      ...scene.compositor,
+      textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
+    };
+    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(compositor ? { compositor } : {}) };
   }
 
   #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
-    const { model, camera, light, background, animation, static: collidable, character } = file.components;
+    const { model, camera, light, background, animation, sprite, static: collidable, character } = file.components;
     const { materials } = assets;
     const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
     if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction }));
@@ -293,6 +311,11 @@ export class ContentManager {
     else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
     if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
     else if (background) entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, intensity: background.intensity }));
+    if (sprite) {
+      const { texture, center, color, ...settings } = sprite;
+      const id = assets.images.get('renderTexture' in texture ? texture.renderTexture : texture.texture)!.id;
+      entity.add(Sprite.with({ ...settings, texture: id, centerX: center[0], centerY: center[1], color: [...color] }));
+    }
     if (animation) {
       entity.add({ script: AnimationComponent, init: {} });
       const clips = entity.require(AnimationComponent).animations;
@@ -316,6 +339,16 @@ export class ContentManager {
       if (skin) skinned.push({ entity: part, skin });
     });
     if (loaded.skeleton) entities.game.animation.attach(entity, loaded.skeleton, skinned);
+  }
+
+  /** 渲染目标贴图（Stride 的 RenderTexture）：同一个内容路径只建一次，内容由合成器画进去。 */
+  renderTexture({ renderTexture, width, height, hdr, srgb }: SceneRenderTexture): Texture {
+    let texture = this.#renderTextures.get(renderTexture);
+    if (!texture) {
+      texture = Texture.renderTarget(renderTexture, width, height, hdr ? 'rgba16float' : srgb ? 'rgba8unorm-srgb' : 'rgba8unorm');
+      this.#renderTextures.set(renderTexture, texture);
+    }
+    return texture;
   }
 
   #loadTextureRef({ texture, encoding = 'ktx2', size }: TextureRef, srgb: boolean): Promise<Texture> {

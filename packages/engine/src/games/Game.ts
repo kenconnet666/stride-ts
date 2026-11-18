@@ -12,6 +12,7 @@ import { Simulation } from '../physics/Simulation';
 import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
+import { SpriteRenderFeature } from '../rendering/SpriteRenderFeature';
 import { RenderSystem } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../rendering/Texture';
 import { GameTime } from './GameTime';
@@ -143,6 +144,7 @@ export class Game {
       this.renderSystem.addFeature(new MeshRenderFeature());
       // 背景画在网格之后，只落在没画到的地方
       this.renderSystem.addFeature(new BackgroundRenderFeature());
+      this.renderSystem.addFeature(new SpriteRenderFeature());
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);
       await this.loadContent();
     } catch (error) {

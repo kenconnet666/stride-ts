@@ -7,8 +7,8 @@
     <link rel="icon" href="data:," />
     <style>
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-      /* 样例是竖屏的手机游戏（GameSettings 的 640x1136）：画布保持这个比例，居中 */
-      canvas { display: block; height: 100%; aspect-ratio: 640 / 1136; max-width: 100%; margin: 0 auto; }
+      /* 画布铺满窗口（同 Stride：后备缓冲就是窗口的大小；样例默认的窗口是竖屏的 640x1136） */
+      canvas { display: block; width: 100%; height: 100%; }
       #stats {
         position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 8px;
         font: 12px/1.4 ui-monospace, monospace; color: #e8e8e8; background: rgb(0 0 0 / 0.5);

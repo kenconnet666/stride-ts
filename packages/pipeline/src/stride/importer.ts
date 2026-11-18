@@ -22,6 +22,9 @@ import {
   type SceneAssetKind,
   type SceneCollidable,
   type SceneEntityFile,
+  type SceneRenderTexture,
+  type SceneSprite,
+  type SpriteBlend,
   type SceneFile,
   type SceneLightShadow,
   type ScenePhysics,
@@ -145,7 +148,10 @@ export class StrideImporter {
         if (typeof id === 'string') this.#owners.set(id, entity['Id'] as string);
       }
     }
-    const compositor = importCompositor(this.#compositorOf(asset));
+    const compositor = importCompositor(this.#compositorOf(asset), (id) => {
+      const texture = this.#project.get(id, asset.file);
+      return texture.type === 'RenderTexture' ? renderTextureOf(texture) : undefined;
+    });
     this.#cameraSlots = compositor.cameraSlots;
     const files = await Promise.all(entities.map((entity) => this.#entity(entity, parentOf.get(entity['Id'] as string) ?? null, asset)));
     const usesPhysics = files.some((file) => file.components.static || file.components.character);
@@ -262,6 +268,11 @@ export class StrideImporter {
         if (light) components.light = light;
         return light !== undefined;
       }
+      case 'SpriteComponent': {
+        const sprite = await this.#sprite(component, where);
+        if (sprite) components.sprite = sprite;
+        return sprite !== undefined;
+      }
       case 'BackgroundComponent': {
         const texture = parseAssetReference(component['Texture']);
         if (!texture) return false;
@@ -330,6 +341,34 @@ export class StrideImporter {
       airControlScale: asNumber(component['AirControlScale'], 0.2),
       gravity: component['Gravity'] !== false,
       interpolated: component['InterpolationMode'] === 'Interpolated',
+    };
+  }
+
+  /** Stride 的 SpriteComponent：现在只支持 SpriteFromTexture（贴图或渲染目标贴图）。 */
+  async #sprite(component: StrideObject, where: string): Promise<SceneSprite | undefined> {
+    const provider = asObject(component['SpriteProvider']);
+    if (provider?.$type !== 'SpriteFromTexture') {
+      this.#warnings.push(`${where}: sprite provider ${provider?.$type ?? 'null'} is not supported yet; the sprite is skipped`);
+      return undefined;
+    }
+    const reference = parseAssetReference(provider['Texture']);
+    if (!reference) return undefined;
+    if (component['Swizzle'] !== undefined && component['Swizzle'] !== 'None') this.#warnings.push(`${where}: sprite swizzle is not supported yet; ignored`);
+    const asset = this.#project.get(reference.id, where);
+    return {
+      texture: asset.type === 'RenderTexture' ? renderTextureOf(asset) : await this.#texture(asset),
+      pixelsPerUnit: asNumber(provider['PixelsPerUnit'], 100),
+      center: vec2(provider['Center'], 0),
+      centerFromMiddle: provider['CenterFromMiddle'] !== false,
+      type: component['SpriteType'] === 'Billboard' ? 'billboard' : 'sprite',
+      color: color4(component['Color']),
+      intensity: asNumber(component['Intensity'], 1),
+      isTransparent: provider['IsTransparent'] !== false,
+      premultipliedAlpha: component['PremultipliedAlpha'] !== false,
+      ignoreDepth: component['IgnoreDepth'] === true,
+      isAlphaCutoff: component['IsAlphaCutoff'] === true,
+      blendMode: SPRITE_BLENDS[String(component['BlendMode'] ?? 'Auto')] ?? 'auto',
+      sampler: SPRITE_SAMPLERS[String(component['Sampler'] ?? 'LinearClamp')] ?? 'linearClamp',
     };
   }
 
@@ -904,6 +943,26 @@ function colliderShape(collider: StrideObject): ColliderShapeFile | undefined {
     default:
       return undefined;
   }
+}
+
+/** Stride 的 RenderTexture 资源（.sdrendertex），默认值同 Stride：512x512、LDR、sRGB。 */
+function renderTextureOf(asset: AssetEntry): SceneRenderTexture {
+  return {
+    renderTexture: asset.path,
+    width: asNumber(asset.data['Width'], 512),
+    height: asNumber(asset.data['Height'], 512),
+    hdr: asset.data['Format'] === 'HDR',
+    srgb: asset.data['UseSRgbSampling'] !== false,
+  };
+}
+
+const SPRITE_BLENDS: Readonly<Record<string, SpriteBlend>> = { Auto: 'auto', None: 'none', AlphaBlend: 'alphaBlend', AdditiveBlend: 'additiveBlend', NoColor: 'noColor' };
+const SPRITE_SAMPLERS: Readonly<Record<string, SceneSprite['sampler']>> = { LinearClamp: 'linearClamp', PointClamp: 'pointClamp', AnisotropicClamp: 'anisotropicClamp' };
+
+/** Stride 的 Color4（原样，不换颜色空间）。 */
+function color4(value: StrideValue | undefined): [number, number, number, number] {
+  const c = asObject(value) ?? {};
+  return [asNumber(c['R'], 1), asNumber(c['G'], 1), asNumber(c['B'], 1), asNumber(c['A'], 1)];
 }
 
 function vec2(value: StrideValue | undefined, fallback: number): [number, number] {

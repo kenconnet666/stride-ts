@@ -467,12 +467,61 @@ export interface SceneCharacter extends SceneCollidable {
   readonly interpolated: boolean;
 }
 
-/** 场景用的图形合成器里主画面（槽位 0 的相机）的前向渲染器设置。 */
-export interface SceneCompositor {
+/** 前向渲染器的设置（Stride 的 ForwardRenderer）。 */
+export interface SceneForwardRenderer {
   /** 线性空间的清屏色。 */
   readonly clearColor: readonly [number, number, number, number];
   /** 有没有后处理（Stride 的 ForwardRenderer.PostEffects 不为 null）。 */
   readonly postEffects: boolean;
+  /** 画不画透明阶段（Stride 的 TransparentRenderStage 不为 null）；画进渲染目标贴图的常常不画，贴图里就不会再出现贴图自己。 */
+  readonly transparent: boolean;
+}
+
+/** 渲染目标贴图（Stride 的 RenderTexture，.sdrendertex）：合成器里的相机画进去，精灵可以显示它。按内容路径区分。 */
+export interface SceneRenderTexture {
+  readonly renderTexture: string;
+  readonly width: number;
+  readonly height: number;
+  /** Stride 的 Format：HDR 是 16 位浮点，LDR 是 8 位。 */
+  readonly hdr: boolean;
+  /** LDR 时按 sRGB 存（Stride 的 UseSRgbSampling）。 */
+  readonly srgb: boolean;
+}
+
+/** 合成器里画进渲染目标贴图的相机（Stride 的 SceneCameraRenderer 加 RenderTextureSceneRenderer）。 */
+export interface SceneTextureCamera extends SceneForwardRenderer {
+  /** 相机槽位（Camera.slot）。 */
+  readonly cameraSlot: number;
+  readonly texture: SceneRenderTexture;
+}
+
+/** 场景用的图形合成器：主画面（槽位 0 的相机）的前向渲染器设置，和先画好的渲染目标贴图。 */
+export interface SceneCompositor extends SceneForwardRenderer {
+  readonly textureCameras?: readonly SceneTextureCamera[];
+}
+
+/** 精灵的混合方式（Stride 的 SpriteBlend；auto 是贴图透明时 alphaBlend，不透明时 none）。 */
+export type SpriteBlend = 'auto' | 'none' | 'alphaBlend' | 'additiveBlend' | 'noColor';
+
+/** 精灵（Stride 的 SpriteComponent 加 SpriteFromTexture）。 */
+export interface SceneSprite {
+  readonly texture: TextureRef | SceneRenderTexture;
+  /** 贴图的几个像素是 1 个单位。 */
+  readonly pixelsPerUnit: number;
+  /** 精灵的原点（实体的位置）在贴图上的像素位置：centerFromMiddle 时从贴图中心算，否则从左上角算。 */
+  readonly center: readonly [number, number];
+  readonly centerFromMiddle: boolean;
+  /** billboard 一直朝着相机。 */
+  readonly type: 'sprite' | 'billboard';
+  /** 乘在贴图上的颜色（RGBA）和强度。 */
+  readonly color: readonly [number, number, number, number];
+  readonly intensity: number;
+  readonly isTransparent: boolean;
+  readonly premultipliedAlpha: boolean;
+  readonly ignoreDepth: boolean;
+  readonly isAlphaCutoff: boolean;
+  readonly blendMode: SpriteBlend;
+  readonly sampler: 'linearClamp' | 'pointClamp' | 'anisotropicClamp';
 }
 
 /**
@@ -561,6 +610,7 @@ export interface SceneEntityFile {
     /** 游戏的脚本（Stride 的 ScriptComponent），按场景文件里的顺序；运行时按类型名找对应的 TS 脚本。 */
     readonly scripts?: readonly SceneScript[];
     readonly animation?: SceneAnimation;
+    readonly sprite?: SceneSprite;
   };
 }
 

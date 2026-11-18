@@ -588,7 +588,8 @@ export class MeshRenderFeature extends RootRenderFeature {
   override draw(_context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     const culling = this.#viewCulling.get(view);
-    if (!gpu || !culling) return;
+    // 还没有透明材质：透明阶段没有网格要画
+    if (!gpu || !culling || stage.transparent) return;
     const { pass: cullPass, index } = culling;
     const counts = cullPass.culler.counts;
     const shadow = stage.shadowCasters ? undefined : this.system.lighting.shadow;
@@ -849,13 +850,13 @@ class Gpu {
       data.set(view.viewProjection, o);
       data.set([view.eye.x, view.eye.y, view.eye.z, 1], o + 16);
       data.set([ambient.r, ambient.g, ambient.b, 1], o + 20);
-      data.set([skybox?.intensity ?? 0, skybox?.skybox.specularLevels ?? 0, directionalCount, shadow ? lighting.shadowLight : -1], o + 24);
+      data.set([skybox?.intensity ?? 0, skybox?.skybox.specularLevels ?? 0, directionalCount, shadow && view.receivesShadows ? lighting.shadowLight : -1], o + 24);
       for (let c = 0; c < 9; c++) {
         const sh = skybox?.skybox.diffuseSH;
         data.set(sh ? [sh[c * 3]!, sh[c * 3 + 1]!, sh[c * 3 + 2]!, 0] : [0, 0, 0, 0], o + 28 + c * 4);
       }
       data.set(skybox ? skybox.rotation : IDENTITY, o + 64);
-      if (shadow) {
+      if (shadow && view.receivesShadows) {
         const atlasSize = shadow.atlas.width;
         data.set(shadow.worldToShadow, o + 80);
         data.set(shadow.splits, o + 144);

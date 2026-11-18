@@ -285,9 +285,9 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 下一步按顺序：
 1. ~~场景脚本导入~~（2026-11-19 完成）：导入器把 Stride 的脚本组件写进场景（属性名改成小写开头，实体和资源的引用写成 `$entity`、`$asset`）；运行时按类名在登记表里找翻译过来的 TS 脚本（`loadScene` 的 `scripts` 选项可以显式对应），找不到的脚本和属性警告后跳过；新的属性种类 `prop.asset(kind)`；`InputManager` 也认 Stride 的键名。TPP 改成由场景挂脚本。顺手修了热重载在有私有成员的脚本上崩溃的问题。
 2. ~~骨骼动画~~（2026-11-19 完成，ModelNodeLink 留到 FPS、TopDownRPG 用到时做）：ufbx 导出骨架、蒙皮、动画剪辑；ozz 采样和混合；蒙皮顶点格式、GPU 蒙皮；AnimationComponent 和 TPP 的 AnimationController。TPP 的角色动起来了。见 architecture.md 的"骨骼动画和 GPU 蒙皮"。
-3. **AnimatedModel**（进行中，`apps/animated-model`，端口 5186；见 decisions.md 的"AnimatedModel 分两次验收"）：
-   - 已做：导入和运行（角色跑步、Idle/Run 淡入淡出、拖动转身），2D 背景（Background 的 Is2D），一个视图最多 4 个方向光，相机槽位（Camera.slot，合成器的 Cameras），主画面的合成器设置（清屏色、后处理开关），指针事件（`input.pointerEvents`，调试 CLI 的合成输入也发指针事件），Stride 字典键的 `id~` 前缀。
-   - 接着做：第二个相机渲染到纹理（RenderTextureSceneRenderer）、精灵（SpriteComponent 的 SpriteFromTexture，普通和 Billboard，透明阶段）；然后和桌面 Stride 的截图比对、写冒烟脚本。
-   - P2 补：UI 页面的 Idle、Run 按钮（现在用 `stride call idle`、`run` 代替）。
+3. ~~AnimatedModel~~（2026-11-19 P1 部分完成，`apps/animated-model`，端口 5186；见 decisions.md 的"AnimatedModel 分两次验收"）：
+   - 做了：导入和运行（角色跑步、Idle/Run 淡入淡出、拖动转身）；2D 背景（Background 的 Is2D）；一个视图最多 4 个方向光；相机槽位（Camera.slot）；合成器的最小数据化（主画面的清屏色、后处理开关、透明阶段开关，相机画进渲染目标贴图 RenderTextureSceneRenderer）；渲染目标贴图（Texture.renderTarget）；精灵（Sprite 组件、SpriteRenderFeature，普通和 billboard，透明阶段，从远到近）；指针事件（`input.pointerEvents`）；关掉后处理时原样拷贝。
+   - 验收：和桌面 Stride 4.4.2 比（动画停在第 0 帧，去掉 UI 按钮的区域）平均每通道差 0.148/255，差超过 10 的像素 0.31%（`tools/stride-capture/animated-model`）；冒烟脚本 `pnpm --filter @stride-ts/animated-model smoke` 通过。
+   - P2 补：UI 页面的 Idle、Run 按钮（现在用 `stride call idle`、`run` 代替）。遗留：画进渲染目标贴图的相机不用阴影、不做后处理；精灵没有 Swizzle、sprite sheet、billboard 的 Z 旋转。
 4. 之后按第三节的 P1 游戏顺序：PhysicsSample → BepuSample → Platformer2D → TopDownRPG → FirstPersonShooter。
 

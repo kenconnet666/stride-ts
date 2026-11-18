@@ -1,8 +1,12 @@
 /// <reference types="vite/client" />
 // Stride 的 AnimatedModel 样例的移植：入口只负责启动，游戏内容在 game/ 里，开发时可以热重载。
 // 场景先用 `pnpm --filter @stride-ts/animated-model import:stride` 从 Stride 仓库导入。
+import * as engine from '@stride-ts/engine';
 import { Game } from '@stride-ts/engine';
 import { AnimatedModelGame } from './game/AnimatedModelGame';
+
+// 调试用：控制台和 stride eval 可以拿到引擎的类型（比如 AnimationComponent）
+(globalThis as { strideEngine?: typeof engine }).strideEngine = engine;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const stats = document.querySelector<HTMLElement>('#stats')!;

@@ -510,11 +510,14 @@ SharedRenderers:
         Id: texture-forward
         Clear:
             Color: {R: 1.0, G: 0.0, B: 0.0, A: 1.0}
+        TransparentRenderStage: null
 Game*: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
     Children:
         c1: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
             Camera: ref!! second-slot
-            Child: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! texture-forward
+            Child: !Stride.Rendering.Compositing.RenderTextureSceneRenderer,Stride.Rendering
+                RenderTexture: rt-id:RenderTexture
+                Child: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! texture-forward
         c2: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
             Camera: ref!! main-slot
             Child: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
@@ -526,7 +529,14 @@ Game*: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
     const { cameraSlots, main } = importCompositor(compositor);
     expect([...cameraSlots]).toEqual([['main-slot', 0], ['second-slot', 1]]);
     expect(main?.postEffects).toBe(false);
+    expect(main?.transparent).toBe(true);
     expect(main?.clearColor.map((c) => +c.toFixed(4))).toEqual([0.214, 0.214, 0.214, 1]);
+  });
+
+  test('相机画进渲染目标贴图的分支：槽位、贴图、里面的前向渲染器（不画透明阶段）', () => {
+    const texture = { renderTexture: 'Game/RenderTexture', width: 320, height: 568, hdr: false, srgb: true };
+    const { main } = importCompositor(compositor, (id) => (id === 'rt-id' ? texture : undefined));
+    expect(main?.textureCameras).toEqual([{ cameraSlot: 1, texture, clearColor: [1, 0, 0, 1], postEffects: true, transparent: false }]);
   });
 
   test('没有合成器时没有槽位，用默认设置', () => {

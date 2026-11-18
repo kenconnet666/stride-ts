@@ -20,6 +20,8 @@ export interface TextureData {
   readonly levels: readonly Uint8Array[];
   /** 只给了第 0 级，其余各级上传后在 GPU 上生成（格式必须能渲染，比如 rgba8unorm-srgb）。 */
   readonly generateMipmaps?: boolean;
+  /** 渲染目标（Stride 的 RenderTexture）：没有 levels，内容由合成器画进去。 */
+  readonly renderTarget?: boolean;
 }
 
 export class Texture {
@@ -29,10 +31,15 @@ export class Texture {
   readonly data: TextureData;
 
   constructor(name: string, data: TextureData) {
-    if (data.levels.length === 0) throw new RangeError(`texture '${name}' has no mip levels`);
+    if (data.levels.length === 0 && !data.renderTarget) throw new RangeError(`texture '${name}' has no mip levels`);
     this.name = name;
     this.data = data;
     this.id = textures.add(this) as TextureId;
+  }
+
+  /** 渲染目标贴图（Stride 的 RenderTexture）：一级，可以画进去，也可以采样。 */
+  static renderTarget(name: string, width: number, height: number, format: GPUTextureFormat): Texture {
+    return new Texture(name, { format, width, height, levels: [], renderTarget: true });
   }
 
   /** @internal 组件里存的 id 对应的贴图。 */

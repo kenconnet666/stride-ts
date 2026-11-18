@@ -16,9 +16,11 @@ class SandboxGame extends Game {
   private physicsTime = 0;
   private stepMilliseconds = 0;
   private statsTime = 0;
+  private readonly stats: HTMLElement;
 
-  constructor(private readonly stats: HTMLElement) {
+  constructor(stats: HTMLElement) {
     super();
+    this.stats = stats;
   }
 
   protected override async loadContent(): Promise<void> {

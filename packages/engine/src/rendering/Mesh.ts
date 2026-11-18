@@ -1,10 +1,10 @@
 /**
- * 网格（对应 Stride 的 Mesh 加 MeshDraw）：交错的顶点（位置 xyz、法线 xyz、UV xy，每个 32 字节）和索引，
- * 放在 CPU 这边，布局就是 GPU 上的布局，渲染特性第一次画它时原样上传。资源管线产出的模型文件用同一种布局
- * （content/format.ts），所以加载时不用转换。程序化网格对应 Stride 的 ProceduralModels：尺寸默认 1，
- * 右手坐标系，三角形从外面看是逆时针。
+ * 网格（对应 Stride 的 Mesh 加 MeshDraw）：交错的顶点和索引，放在 CPU 这边，布局就是 GPU 上的布局，渲染特性第一次
+ * 画它时原样上传。布局见 content/format.ts 的 VertexLayout：资源管线产出的模型一般是量化的 16 字节顶点（反量化在顶点
+ * 着色器里做），程序化网格和 --plain 导出的模型是 32 字节的 float（FLOAT_LAYOUT）。程序化网格对应 Stride 的
+ * ProceduralModels：尺寸默认 1，右手坐标系，三角形从外面看是逆时针。
  */
-import { VERTEX_FLOATS } from '../content/format';
+import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../content/format';
 import type { Branded } from '../data/prop';
 import { ResourceTable } from './ResourceTable';
 
@@ -13,9 +13,13 @@ export { VERTEX_FLOATS };
 export type MeshId = Branded<number, 'MeshId'>;
 
 export interface MeshData {
-  /** 交错的顶点，每个 VERTEX_FLOATS 个 float。 */
-  readonly vertices: Float32Array;
+  /** 交错的顶点：FLOAT_LAYOUT 时一般是 Float32Array（每个顶点 VERTEX_FLOATS 个），其他布局是字节。 */
+  readonly vertices: Float32Array | Uint8Array;
   readonly indices: Uint16Array | Uint32Array;
+  /** 默认 FLOAT_LAYOUT。 */
+  readonly layout?: VertexLayout;
+  /** 量化属性的还原，默认不量化。 */
+  readonly dequantize?: Dequantize;
 }
 
 /** 轴对齐包围盒，模型空间。 */
@@ -31,19 +35,26 @@ export class Mesh {
   readonly id: MeshId;
   readonly name: string;
   readonly data: MeshData;
+  readonly layout: VertexLayout;
+  readonly dequantize: Dequantize;
+  /** 顶点的字节数。 */
+  readonly vertexStride: number;
   readonly bounds: Bounds;
 
   constructor(name: string, data: MeshData) {
-    if (data.vertices.length % VERTEX_FLOATS !== 0) throw new RangeError(`mesh '${name}': vertices must hold ${VERTEX_FLOATS} floats per vertex`);
+    this.layout = data.layout ?? FLOAT_LAYOUT;
+    this.dequantize = data.dequantize ?? IDENTITY_DEQUANTIZE;
+    this.vertexStride = vertexLayoutOffsets(this.layout).stride;
+    if (data.vertices.byteLength % this.vertexStride !== 0) throw new RangeError(`mesh '${name}': vertex bytes are not a multiple of the ${this.vertexStride}-byte vertex`);
     if (data.indices.length % 3 !== 0) throw new RangeError(`mesh '${name}': indices must form triangles`);
     this.name = name;
     this.data = data;
-    this.bounds = boundsOf(data.vertices);
+    this.bounds = boundsOf(data.vertices, this.layout, this.dequantize, this.vertexStride);
     this.id = meshes.add(this) as MeshId;
   }
 
   get vertexCount(): number {
-    return this.data.vertices.length / VERTEX_FLOATS;
+    return this.data.vertices.byteLength / this.vertexStride;
   }
 
   /** @internal Model 组件里存的 id 对应的网格。 */
@@ -73,17 +84,23 @@ export class Mesh {
   }
 }
 
-function boundsOf(vertices: Float32Array): Bounds {
+/** 量化的位置就是反量化的范围；float 的位置逐个顶点算。 */
+function boundsOf(vertices: Float32Array | Uint8Array, layout: VertexLayout, dequantize: Dequantize, stride: number): Bounds {
+  if (layout.position === 'unorm16x4') {
+    const { positionOffset: o, positionScale: s } = dequantize;
+    return { min: [o[0], o[1], o[2]], max: [o[0] + s[0], o[1] + s[1], o[2] + s[2]] };
+  }
+  const view = new DataView(vertices.buffer, vertices.byteOffset, vertices.byteLength);
   const min: [number, number, number] = [Infinity, Infinity, Infinity];
   const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
-  for (let v = 0; v < vertices.length; v += VERTEX_FLOATS) {
+  for (let at = 0; at < vertices.byteLength; at += stride) {
     for (let k = 0; k < 3; k++) {
-      const value = vertices[v + k]!;
+      const value = view.getFloat32(at + k * 4, true);
       if (value < min[k]!) min[k] = value;
       if (value > max[k]!) max[k] = value;
     }
   }
-  return vertices.length === 0 ? { min: [0, 0, 0], max: [0, 0, 0] } : { min, max };
+  return vertices.byteLength === 0 ? { min: [0, 0, 0], max: [0, 0, 0] } : { min, max };
 }
 
 class QuadBuilder {

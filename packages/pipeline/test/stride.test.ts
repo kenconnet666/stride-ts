@@ -280,7 +280,8 @@ describe('导入 Stride 场景', () => {
 
     const model = decodeModel((await readFile(path.join(out, 'Game/Models/Tri.model'))).buffer as ArrayBuffer);
     expect(model.materials).toEqual(['Game/Materials/Red']);
-    expect(model.meshes.map((m) => [m.material, m.indices.length])).toEqual([[0, 3]]);
+    // 默认压缩：三角形很小，位置和 UV 都量化，16 字节的顶点、meshopt
+    expect(model.meshes.map((m) => [m.material, m.indexCount, m.compression, m.layout.position])).toEqual([[0, 3, 'meshopt', 'unorm16x4']]);
 
     const material = JSON.parse(await readFile(path.join(out, 'Game/Materials/Red.material.json'), 'utf8')) as MaterialFile;
     // 红色加贴图：uv 缩放是贴图的 Scale 乘材质的 UVScale；cavity 0.5 按 DiffuseCavity 1、SpecularCavity 0.5 插值

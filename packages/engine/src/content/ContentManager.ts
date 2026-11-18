@@ -12,10 +12,21 @@ import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import { Background, Camera, Light, Model } from '../rendering/components';
 import { Material } from '../rendering/Material';
-import { Mesh } from '../rendering/Mesh';
+import { Mesh, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type TextureDecoder } from '../rendering/Texture';
-import { decodeCubemap, decodeModel, EXTENSIONS, type MaterialFile, type SceneEntityFile, type SceneFile, type SkyboxFile } from './format';
+import { decodeCubemap, decodeModel, EXTENSIONS, vertexLayoutOffsets, type ModelMeshData, type MaterialFile, type SceneEntityFile, type SceneFile, type SkyboxFile } from './format';
+
+/** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
+export interface MeshoptRequest {
+  readonly source: Uint8Array;
+  readonly count: number;
+  readonly stride: number;
+  readonly mode: 'attributes' | 'triangles';
+}
+
+/** 并行解码一批 meshopt 流，返回每个请求的 count * stride 个字节。 */
+export type MeshoptDecoder = (requests: readonly MeshoptRequest[]) => Promise<Uint8Array[]>;
 
 /** 读一个文件；默认用 fetch，测试和 Node 里可以换成读本地文件。 */
 export type ContentReader = (url: URL) => Promise<ArrayBuffer>;
@@ -60,6 +71,8 @@ export class ContentManager {
   readonly defaultMaterial = new Material('default');
   /** 把 KTX2 贴图转码成设备支持的格式；Game 在图形设备建好之后设置（ktx2Decoder），测试里可以换成假的。 */
   textureDecoder: TextureDecoder | undefined;
+  /** 解码 meshopt 压缩的模型；Game 启动时设置（原生模块的 decodeMeshoptBatch，各个流在原生线程里并行解）。 */
+  meshoptDecoder: MeshoptDecoder | undefined;
 
   constructor({ root = 'content/', read = fetchReader }: ContentOptions = {}) {
     const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
@@ -70,11 +83,35 @@ export class ContentManager {
   loadModel(path: string): Promise<LoadedModel> {
     return this.#once(path + EXTENSIONS.model, async (url) => {
       const data = decodeModel(await this.#read(url), url.href);
-      const materials = await Promise.all(data.materials.map((material) => (material === null ? null : this.loadMaterial(material))));
+      const [meshes, materials] = await Promise.all([
+        this.#decodeMeshes(data.meshes, url),
+        Promise.all(data.materials.map((material) => (material === null ? null : this.loadMaterial(material)))),
+      ]);
       return {
-        meshes: data.meshes.map((mesh) => ({ mesh: new Mesh(`${path}/${mesh.name}`, mesh), material: mesh.material })),
+        meshes: data.meshes.map((mesh, i) => ({ mesh: new Mesh(`${path}/${mesh.name}`, meshes[i]!), material: mesh.material })),
         materials,
       };
+    });
+  }
+
+  /** 模型文件里的网格变成 MeshData：压缩的一起交给 meshoptDecoder 并行解码，没压缩的直接用文件里的字节。 */
+  async #decodeMeshes(meshes: readonly ModelMeshData[], url: URL): Promise<MeshData[]> {
+    const compressed = meshes.filter((mesh) => mesh.compression === 'meshopt');
+    let decoded: Uint8Array[] = [];
+    if (compressed.length > 0) {
+      if (!this.meshoptDecoder) throw new Error(`loading ${url.href}: compressed meshes need a meshoptDecoder (Game sets one when it starts)`);
+      decoded = await this.meshoptDecoder(compressed.flatMap((mesh) => [
+        { source: mesh.vertices, count: mesh.vertexCount, stride: vertexLayoutOffsets(mesh.layout).stride, mode: 'attributes' as const },
+        { source: mesh.indices, count: mesh.indexCount, stride: mesh.indexFormat === 'uint16' ? 2 : 4, mode: 'triangles' as const },
+      ]));
+    }
+    let next = 0;
+    return meshes.map((mesh) => {
+      const [vertices, indexBytes] = mesh.compression === 'meshopt' ? [decoded[next++]!, decoded[next++]!] : [mesh.vertices, mesh.indices];
+      const indices = mesh.indexFormat === 'uint16'
+        ? new Uint16Array(indexBytes.buffer, indexBytes.byteOffset, mesh.indexCount)
+        : new Uint32Array(indexBytes.buffer, indexBytes.byteOffset, mesh.indexCount);
+      return { vertices, indices, layout: mesh.layout, dequantize: mesh.dequantize };
     });
   }
 

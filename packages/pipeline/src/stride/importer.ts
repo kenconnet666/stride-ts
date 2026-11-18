@@ -11,6 +11,7 @@ import {
   EXTENSIONS,
   encodeCubemap,
   encodeModel,
+  plainMesh,
   VERTEX_FLOATS,
   type ColorOperator,
   type MaterialFile,
@@ -21,6 +22,7 @@ import {
   type TextureSlot,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, toRgb9e5, type FloatCubemap } from '../hdr.ts';
+import { compressMeshes, type SourceMesh } from '../mesh.ts';
 import type { AssetEntry, StrideProject } from './project.ts';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -41,6 +43,11 @@ export interface ImportResult {
 export interface ImporterOptions {
   /** 天空盒镜面光照的立方体贴图边长（2 的幂），默认 256，同 Stride 的 SkyboxAsset.SpecularCubeMapSize；运行时按它生成。 */
   readonly specularCubemapSize?: number;
+  /**
+   * 导出不压缩的内容，方便查看和调试：模型是 32 字节的 float 顶点、不用 meshopt。默认 false：量化加 meshopt
+   * （见 ../mesh.ts）。运行时两种都能读。
+   */
+  readonly plain?: boolean;
 }
 
 const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
@@ -63,11 +70,11 @@ export class StrideImporter {
   readonly #warnings: string[] = [];
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
-  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256 }: ImporterOptions = {}) {
+  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false }: ImporterOptions = {}) {
     this.#project = project;
     this.#tools = tools;
     this.#out = out;
-    this.#options = { specularCubemapSize };
+    this.#options = { specularCubemapSize, plain };
   }
 
   async importScene(asset: AssetEntry): Promise<ImportResult> {
@@ -209,7 +216,7 @@ export class StrideImporter {
     const scale = asNumber(asset.data['ScaleImport'], 1);
     const scene = await this.#tools.loadScene(await readFile(sourceOf(asset)));
     try {
-      const meshes: ModelMeshData[] = [];
+      const meshes: SourceMesh[] = [];
       for (let m = 0; m < scene.meshCount; m++) {
         const data = scene.mesh(m);
         const materialName = data.material === null ? undefined : scene.materials[data.material];
@@ -218,9 +225,12 @@ export class StrideImporter {
           this.#warnings.push(`${asset.file}: mesh material '${materialName}' has no slot in the model; using slot 0`);
           slot = slots.length > 0 ? 0 : -1;
         }
-        meshes.push({ name: `mesh${m}`, material: slot < 0 ? null : slot, ...interleave(data, pivot, scale) });
+        meshes.push({ name: `mesh${m}`, material: slot < 0 ? null : slot, vertices: interleave(data, pivot, scale), indices: data.indices });
       }
-      await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes, materials }));
+      const encoded: ModelMeshData[] = this.#options.plain
+        ? meshes.map((mesh) => plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices))
+        : compressMeshes(meshes, this.#tools);
+      await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes: encoded, materials }));
     } finally {
       scene.destroy();
     }
@@ -495,12 +505,12 @@ function cameraOf(component: StrideObject): NonNullable<SceneEntityFile['compone
   };
 }
 
-/** 导入的网格变成交错顶点（位置减去轴心再乘缩放，同 Stride 的 PivotPosition、ScaleImport），没有的属性填 0。 */
+/** 导入的网格变成 FLOAT_LAYOUT 的交错顶点（位置减去轴心再乘缩放，同 Stride 的 PivotPosition、ScaleImport），没有的属性填 0。 */
 function interleave(
-  mesh: { positions: Float32Array; normals: Float32Array | null; uvs: Float32Array | null; indices: Uint32Array },
+  mesh: { positions: Float32Array; normals: Float32Array | null; uvs: Float32Array | null },
   pivot: readonly [number, number, number],
   scale: number,
-): { vertices: Float32Array; indices: Uint16Array | Uint32Array } {
+): Float32Array {
   const count = mesh.positions.length / 3;
   const vertices = new Float32Array(count * VERTEX_FLOATS);
   for (let v = 0; v < count; v++) {
@@ -509,5 +519,5 @@ function interleave(
     if (mesh.normals) vertices.set(mesh.normals.subarray(v * 3, v * 3 + 3), o + 3);
     if (mesh.uvs) vertices.set(mesh.uvs.subarray(v * 2, v * 2 + 2), o + 6);
   }
-  return { vertices, indices: count <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices };
+  return vertices;
 }

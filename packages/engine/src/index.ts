@@ -20,17 +20,24 @@ export {
   type Vec3Input,
 } from './data/prop';
 export type { Issue } from './data/schema';
-export { ContentManager, type ContentOptions, type ContentReader, type LoadedModel, type SceneInstance } from './content/ContentManager';
+export { ContentManager, type ContentOptions, type ContentReader, type LoadedModel, type MeshoptDecoder, type MeshoptRequest, type SceneInstance } from './content/ContentManager';
 export {
   decodeCubemap,
   decodeModel,
   encodeCubemap,
   encodeModel,
+  FLOAT_LAYOUT,
+  IDENTITY_DEQUANTIZE,
+  plainMesh,
+  vertexLayoutOffsets,
   VERTEX_FLOATS,
   CUBEMAP_TEXEL_BYTES,
   type ColorOperator,
   type CubemapData,
   type CubemapFormat,
+  type Dequantize,
+  type MeshCompression,
+  type VertexLayout,
   type MaterialFile,
   type ModelData,
   type ModelMeshData,

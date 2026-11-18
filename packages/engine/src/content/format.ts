@@ -3,8 +3,8 @@
  * 管线可以直接导入它。资源之间用相对内容根目录的路径引用（不带扩展名），比如 `models/PrototypingBlocks/Wall0x2x5`。
  *
  * - 模型 `<路径>.model`：二进制容器。开头 12 字节是 magic 'SMDL'、版本、JSON 头的字节数，接着是 JSON 头
- *   （网格表和材质槽），补齐到 4 字节，后面是数据区：每个网格的交错顶点（位置、法线、UV，见 VERTEX_FLOATS）
- *   和索引。加载后直接上传，不做转换。
+ *   （网格表和材质槽），补齐到 4 字节，后面是数据区：每个网格的交错顶点（布局见 VertexLayout，一般是量化的 16 字节）
+ *   和索引，一般是 meshopt 编码的。解码后直接上传，反量化在顶点着色器里做。
  * - 立方体贴图 `<路径>.cubemap`：同样的容器（magic 'SCUB'），JSON 头是尺寸、级数和纹素格式（RGBA16F 或 RGB9E5），
  *   数据区是各级 mip，每级 6 个面连续（+X -X +Y -Y +Z -Z，行从上到下，WebGPU 的布局），直接上传。
  * - 贴图 `<路径>.ktx2`：KTX2 加 Basis，运行时按设备转码。
@@ -12,11 +12,11 @@
  *   物理部分直接是原生能读的布局。
  */
 
-/** 每个顶点的 float 数：位置 xyz、法线 xyz、UV xy。 */
+/** 不量化时每个顶点的 float 数：位置 xyz、法线 xyz、UV xy（FLOAT_LAYOUT）。 */
 export const VERTEX_FLOATS = 8;
 
 export const MODEL_MAGIC = 0x4c444d53; // 'SMDL'，小端
-export const MODEL_VERSION = 1;
+export const MODEL_VERSION = 2;
 export const CUBEMAP_MAGIC = 0x42554353; // 'SCUB'，小端
 export const CUBEMAP_VERSION = 1;
 
@@ -29,16 +29,59 @@ export const EXTENSIONS = {
   skybox: '.skybox.json',
 } as const;
 
+/**
+ * 交错顶点里每个属性的格式（WebGPU 的顶点格式名），顺序是位置、法线、UV，紧挨着放。
+ * - 位置：float32x3，或按模型的包围盒量化的 unorm16x4（w 不用）；
+ * - 法线：float32x3，或八面体编码的 snorm16x2；
+ * - UV：float32x2，或按网格的 UV 范围量化的 unorm16x2。
+ * 量化的属性按 Dequantize 还原。
+ */
+export interface VertexLayout {
+  readonly position: 'float32x3' | 'unorm16x4';
+  readonly normal: 'float32x3' | 'snorm16x2';
+  readonly uv: 'float32x2' | 'unorm16x2';
+}
+
+/** 不量化的布局：32 字节，就是 VERTEX_FLOATS 个 float。程序化网格和 --plain 导出的模型用它。 */
+export const FLOAT_LAYOUT: VertexLayout = { position: 'float32x3', normal: 'float32x3', uv: 'float32x2' };
+
+const ATTRIBUTE_BYTES = { float32x3: 12, float32x2: 8, unorm16x4: 8, snorm16x2: 4, unorm16x2: 4 } as const;
+
+/** 各属性在顶点里的字节偏移和顶点的字节数。 */
+export function vertexLayoutOffsets(layout: VertexLayout): { position: number; normal: number; uv: number; stride: number } {
+  const normal = ATTRIBUTE_BYTES[layout.position];
+  const uv = normal + ATTRIBUTE_BYTES[layout.normal];
+  return { position: 0, normal, uv, stride: uv + ATTRIBUTE_BYTES[layout.uv] };
+}
+
+/** 量化属性的还原：值 = offset + 归一化的整数 · scale。没有量化的属性 offset 0、scale 1。 */
+export interface Dequantize {
+  readonly positionOffset: readonly [number, number, number];
+  readonly positionScale: readonly [number, number, number];
+  readonly uvOffset: readonly [number, number];
+  readonly uvScale: readonly [number, number];
+}
+
+export const IDENTITY_DEQUANTIZE: Dequantize = { positionOffset: [0, 0, 0], positionScale: [1, 1, 1], uvOffset: [0, 0], uvScale: [1, 1] };
+
+/** 'meshopt'：顶点和索引是 meshopt 编码的（glTF EXT_meshopt_compression 的 ATTRIBUTES 和 TRIANGLES），运行时并行解码。 */
+export type MeshCompression = 'none' | 'meshopt';
+
 export interface ModelMeshHeader {
   readonly name: string;
   /** 在模型材质槽里的下标；没有材质时是 null。 */
   readonly material: number | null;
+  readonly layout: VertexLayout;
+  readonly dequantize: Dequantize;
+  readonly compression: MeshCompression;
   readonly vertexCount: number;
   readonly indexCount: number;
   readonly indexFormat: 'uint16' | 'uint32';
-  /** 相对数据区开头的字节偏移，都是 4 的倍数。 */
+  /** 相对数据区开头的字节偏移和长度（压缩时是编码后的长度），偏移都是 4 的倍数。 */
   readonly vertexByteOffset: number;
+  readonly vertexByteLength: number;
   readonly indexByteOffset: number;
+  readonly indexByteLength: number;
 }
 
 export interface ModelHeader {
@@ -47,11 +90,10 @@ export interface ModelHeader {
   readonly materials: readonly (string | null)[];
 }
 
-export interface ModelMeshData {
-  readonly name: string;
-  readonly material: number | null;
-  readonly vertices: Float32Array;
-  readonly indices: Uint16Array | Uint32Array;
+/** 一个网格的数据：vertices、indices 是文件里的字节（压缩时是编码后的流，解码见 ContentManager）。 */
+export interface ModelMeshData extends Omit<ModelMeshHeader, 'vertexByteOffset' | 'vertexByteLength' | 'indexByteOffset' | 'indexByteLength'> {
+  readonly vertices: Uint8Array;
+  readonly indices: Uint8Array;
 }
 
 export interface ModelData {
@@ -59,31 +101,45 @@ export interface ModelData {
   readonly materials: readonly (string | null)[];
 }
 
+/** 不量化、不压缩的网格（FLOAT_LAYOUT）：程序化网格、--plain 导出和测试用。 */
+export function plainMesh(name: string, material: number | null, vertices: Float32Array, indices: Uint16Array | Uint32Array): ModelMeshData {
+  if (vertices.length % VERTEX_FLOATS !== 0) throw new RangeError(`model mesh '${name}': vertices must hold ${VERTEX_FLOATS} floats per vertex`);
+  return {
+    name,
+    material,
+    layout: FLOAT_LAYOUT,
+    dequantize: IDENTITY_DEQUANTIZE,
+    compression: 'none',
+    vertexCount: vertices.length / VERTEX_FLOATS,
+    indexCount: indices.length,
+    indexFormat: indices instanceof Uint16Array ? 'uint16' : 'uint32',
+    vertices: byteView(vertices),
+    indices: byteView(indices),
+  };
+}
+
 const align4 = (n: number) => (n + 3) & ~3;
 
 export function encodeModel(model: ModelData): Uint8Array {
   let offset = 0;
-  const meshes: ModelMeshHeader[] = model.meshes.map((mesh) => {
-    if (mesh.vertices.length % VERTEX_FLOATS !== 0) throw new RangeError(`model mesh '${mesh.name}': vertices must hold ${VERTEX_FLOATS} floats per vertex`);
+  const meshes: ModelMeshHeader[] = model.meshes.map(({ vertices, indices, ...mesh }) => {
+    if (mesh.compression === 'none') {
+      const stride = vertexLayoutOffsets(mesh.layout).stride;
+      if (vertices.byteLength !== mesh.vertexCount * stride) throw new RangeError(`model mesh '${mesh.name}': ${mesh.vertexCount} vertices need ${mesh.vertexCount * stride} bytes, got ${vertices.byteLength}`);
+      if (indices.byteLength !== mesh.indexCount * (mesh.indexFormat === 'uint16' ? 2 : 4)) throw new RangeError(`model mesh '${mesh.name}': index bytes do not match ${mesh.indexCount} ${mesh.indexFormat} indices`);
+    }
+    if (mesh.indexCount % 3 !== 0) throw new RangeError(`model mesh '${mesh.name}': indices must form triangles`);
     const vertexByteOffset = offset;
-    offset += mesh.vertices.byteLength;
+    offset = align4(offset + vertices.byteLength);
     const indexByteOffset = offset;
-    offset = align4(offset + mesh.indices.byteLength);
-    return {
-      name: mesh.name,
-      material: mesh.material,
-      vertexCount: mesh.vertices.length / VERTEX_FLOATS,
-      indexCount: mesh.indices.length,
-      indexFormat: mesh.indices instanceof Uint16Array ? 'uint16' : 'uint32',
-      vertexByteOffset,
-      indexByteOffset,
-    };
+    offset = align4(offset + indices.byteLength);
+    return { ...mesh, vertexByteOffset, vertexByteLength: vertices.byteLength, indexByteOffset, indexByteLength: indices.byteLength };
   });
   const { bytes, dataStart } = encodeContainer(MODEL_MAGIC, MODEL_VERSION, { meshes, materials: model.materials } satisfies ModelHeader, offset);
   model.meshes.forEach((mesh, i) => {
     const header = meshes[i]!;
-    bytes.set(byteView(mesh.vertices), dataStart + header.vertexByteOffset);
-    bytes.set(byteView(mesh.indices), dataStart + header.indexByteOffset);
+    bytes.set(mesh.vertices, dataStart + header.vertexByteOffset);
+    bytes.set(mesh.indices, dataStart + header.indexByteOffset);
   });
   return bytes;
 }
@@ -93,13 +149,10 @@ export function decodeModel(buffer: ArrayBuffer, source = 'model'): ModelData {
   const { header, dataStart } = decodeContainer<ModelHeader>(buffer, MODEL_MAGIC, MODEL_VERSION, 'model', source);
   return {
     materials: header.materials,
-    meshes: header.meshes.map((mesh) => ({
-      name: mesh.name,
-      material: mesh.material,
-      vertices: new Float32Array(buffer, dataStart + mesh.vertexByteOffset, mesh.vertexCount * VERTEX_FLOATS),
-      indices: mesh.indexFormat === 'uint16'
-        ? new Uint16Array(buffer, dataStart + mesh.indexByteOffset, mesh.indexCount)
-        : new Uint32Array(buffer, dataStart + mesh.indexByteOffset, mesh.indexCount),
+    meshes: header.meshes.map(({ vertexByteOffset, vertexByteLength, indexByteOffset, indexByteLength, ...mesh }) => ({
+      ...mesh,
+      vertices: new Uint8Array(buffer, dataStart + vertexByteOffset, vertexByteLength),
+      indices: new Uint8Array(buffer, dataStart + indexByteOffset, indexByteLength),
     })),
   };
 }

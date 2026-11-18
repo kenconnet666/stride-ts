@@ -11,6 +11,8 @@ import {
   encodeCubemap,
   encodeModel,
   CUBEMAP_TEXEL_BYTES,
+  FLOAT_LAYOUT,
+  plainMesh,
   Game,
   ktx2Decoder,
   Light,
@@ -35,23 +37,52 @@ const vertices = (count: number, x = 0) => {
 };
 
 describe('模型文件', () => {
-  test('编码再解码，网格、索引格式和材质槽原样还原', () => {
+  test('编码再解码，网格、布局、索引格式和材质槽原样还原；字节数对不上时报错', () => {
     const bytes = encodeModel({
       materials: ['materials/Grid', null],
-      meshes: [
-        { name: 'a', material: 0, vertices: vertices(3), indices: new Uint16Array([0, 1, 2]) },
-        { name: 'b', material: null, vertices: vertices(4, 10), indices: new Uint32Array([0, 1, 2, 0, 2, 3]) },
-      ],
+      meshes: [plainMesh('a', 0, vertices(3), new Uint16Array([0, 1, 2])), plainMesh('b', null, vertices(4, 10), new Uint32Array([0, 1, 2, 0, 2, 3]))],
     });
     const model = decodeModel(bytes.buffer as ArrayBuffer);
     expect(model.materials).toEqual(['materials/Grid', null]);
-    expect(model.meshes.map((m) => [m.name, m.material, m.vertices.length / VERTEX_FLOATS, m.indices.constructor.name])).toEqual([
-      ['a', 0, 3, 'Uint16Array'],
-      ['b', null, 4, 'Uint32Array'],
+    expect(model.meshes.map((m) => [m.name, m.material, m.vertexCount, m.indexFormat, m.compression, m.layout])).toEqual([
+      ['a', 0, 3, 'uint16', 'none', FLOAT_LAYOUT],
+      ['b', null, 4, 'uint32', 'none', FLOAT_LAYOUT],
     ]);
-    expect(model.meshes[1]!.vertices[0]).toBe(10);
-    expect([...model.meshes[1]!.indices]).toEqual([0, 1, 2, 0, 2, 3]);
+    const b = model.meshes[1]!;
+    expect(new Float32Array(b.vertices.slice().buffer)[0]).toBe(10);
+    expect([...new Uint32Array(b.indices.slice().buffer)]).toEqual([0, 1, 2, 0, 2, 3]);
     expect(() => decodeModel(new ArrayBuffer(16))).toThrow('not a model file');
+    expect(() => encodeModel({ materials: [], meshes: [{ ...plainMesh('c', null, vertices(3), new Uint16Array([0, 1, 2])), vertexCount: 4 }] })).toThrow("model mesh 'c': 4 vertices need 128 bytes, got 96");
+  });
+
+  test('meshopt 压缩、量化的网格经 meshoptDecoder 解码，反量化参数和布局带到 Mesh 上', async () => {
+    const [native, tools] = await Promise.all([createStrideNative({ workerThreads: 1 }), createStrideTools({ workerThreads: 1 })]);
+    try {
+      // 两个顶点、一个退化的三角形就够看格式：位置 unorm16x4、法线八面体 snorm16x2、UV unorm16x2，16 字节
+      const layout = { position: 'unorm16x4', normal: 'snorm16x2', uv: 'unorm16x2' } as const;
+      const raw = new Uint16Array([0, 65535, 0, 0, 0, 32767, 0, 65535, 65535, 0, 65535, 0, 32767, 0, 65535, 0]);
+      const indices = new Uint32Array([0, 1, 1]);
+      const dequantize = { positionOffset: [1, 2, 3], positionScale: [4, 4, 4], uvOffset: [0, 0], uvScale: [2, 2] } as const;
+      const model = encodeModel({
+        materials: [],
+        meshes: [{
+          name: 'q', material: null, layout, dequantize, compression: 'meshopt', vertexCount: 2, indexCount: 3, indexFormat: 'uint16',
+          vertices: tools.encodeVertices(new Uint8Array(raw.buffer), 16), indices: tools.encodeIndices(indices, 2),
+        }],
+      });
+      const content = new ContentManager({ root: 'https://game.test/content/', read: async () => model.slice().buffer });
+      await expect(content.loadModel('Q')).rejects.toThrow('need a meshoptDecoder');
+      content.meshoptDecoder = (requests) => native.decodeMeshoptBatch(requests);
+      const { meshes: [loaded] } = await content.loadModel('Q');
+      const mesh = loaded!.mesh;
+      expect([mesh.layout, mesh.vertexStride, mesh.vertexCount, [...mesh.data.indices]]).toEqual([layout, 16, 2, [0, 1, 1]]);
+      expect(new Uint16Array(mesh.data.vertices.slice().buffer)).toEqual(raw);
+      // 量化的位置：包围盒就是反量化的范围
+      expect(mesh.bounds).toEqual({ min: [1, 2, 3], max: [5, 6, 7] });
+    } finally {
+      native.shutdown();
+      tools.shutdown();
+    }
   });
 });
 
@@ -67,8 +98,8 @@ describe('ContentManager', () => {
     ['https://game.test/content/models/Wall.model', encodeModel({
       materials: ['materials/Grid'],
       meshes: [
-        { name: 'wall', material: 0, vertices: vertices(3), indices: new Uint16Array([0, 1, 2]) },
-        { name: 'trim', material: null, vertices: vertices(3), indices: new Uint16Array([0, 1, 2]) },
+        plainMesh('wall', 0, vertices(3), new Uint16Array([0, 1, 2])),
+        plainMesh('trim', null, vertices(3), new Uint16Array([0, 1, 2])),
       ],
     }).buffer as ArrayBuffer],
     ['https://game.test/content/materials/Grid.material.json', json({ name: 'Grid', baseColor: [1, 1, 1, 1] } satisfies MaterialFile)],

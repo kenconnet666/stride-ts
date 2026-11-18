@@ -4,7 +4,7 @@ import { Game, Material, Matrix, Mesh, MeshRenderFeature, Model, Transform, tran
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
 
 /** 交错顶点里第 v 个顶点从 offset 起的 size 个 float。 */
-const attribute = (vertices: Float32Array, v: number, offset: number, size: number) => [...vertices.subarray(v * VERTEX_FLOATS + offset, v * VERTEX_FLOATS + offset + size)];
+const attribute = (vertices: Float32Array | Uint8Array, v: number, offset: number, size: number) => [...(vertices as Float32Array).subarray(v * VERTEX_FLOATS + offset, v * VERTEX_FLOATS + offset + size)];
 
 // 渲染里不碰 GPU 的部分：矩阵、程序化网格、按批提取。真正画出来在 Chrome 里看（apps/sandbox）。
 

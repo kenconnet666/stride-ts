@@ -17,6 +17,8 @@
  * - Prepare：把变换存储的世界矩阵列整段上传（直接从 wasm 内存，只传用到的那一段），批次的槽位拼成一个
  *   实例缓冲上传，每个视图的常量（相机、光照、天空盒）写进按视图分块的 uniform 缓冲（动态偏移）。
  * - Draw：每批一次实例化绘制；着色器用 worlds[slots[instance_index]] 取世界矩阵，firstInstance 是批次的起点。
+ *   顶点布局（content/format.ts 的 VertexLayout）不同的网格用不同的管线；量化的属性在顶点着色器里按网格的参数还原
+ *   （第 2 组绑定），八面体编码的法线也在那里解开。
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
 import { system } from '../engine/system';
@@ -26,7 +28,8 @@ import { Model } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
 import { Material } from './Material';
-import { Mesh, VERTEX_FLOATS } from './Mesh';
+import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
+import { Mesh } from './Mesh';
 import { RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
@@ -75,6 +78,20 @@ struct Material {
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
 @group(1) @binding(2) var baseColorSampler: sampler;
 
+// 网格的反量化：位置 = offset + 输入 · scale，UV = uvTransform.zw + 输入 · uvTransform.xy；flags 的第 1 位：法线是八面体编码。
+// 不量化的网格 offset 0、scale 1。unorm16 的位置读进来是 vec4f，snorm16x2 的法线是 (x, y, 0)，都按 vec3f 用。
+struct MeshParams { positionOffset: vec4f, positionScale: vec4f, uvTransform: vec4f, flags: u32 };
+@group(2) @binding(0) var<uniform> mesh: MeshParams;
+
+/** 八面体编码还原成单位向量（同 meshopt 的 octahedral 滤波，资源管线的编码见 packages/pipeline/src/mesh.ts）。 */
+fn octDecode(e: vec2f) -> vec3f {
+  var n = vec3f(e, 1.0 - abs(e.x) - abs(e.y));
+  let t = max(-n.z, 0.0);
+  n.x += select(t, -t, n.x >= 0.0);
+  n.y += select(t, -t, n.y >= 0.0);
+  return normalize(n);
+}
+
 struct Varyings {
   @builtin(position) position: vec4f,
   @location(0) world: vec3f,
@@ -84,13 +101,15 @@ struct Varyings {
 
 @vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32) -> Varyings {
   let world = worlds[slots[instance]];
-  let worldPosition = world * vec4f(position, 1.0);
+  let local = mesh.positionOffset.xyz + position * mesh.positionScale.xyz;
+  let localNormal = select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u);
+  let worldPosition = world * vec4f(local, 1.0);
   var out: Varyings;
   out.position = view.viewProjection * worldPosition;
   out.world = worldPosition.xyz;
   // 均匀缩放下法线直接用世界矩阵变换；非均匀缩放要用逆转置，等材质系统一起做
-  out.normal = (world * vec4f(normal, 0.0)).xyz;
-  out.uv = uv;
+  out.normal = (world * vec4f(localNormal, 0.0)).xyz;
+  out.uv = mesh.uvTransform.zw + uv * mesh.uvTransform.xy;
   return out;
 }
 
@@ -208,10 +227,13 @@ const VIEW_FLOATS = 88;
 /** 材质 uniform：baseColor、uvTransform、emissive、surface 各一个 vec4，再加 combine、specular 两个 u32，补齐到 16 字节。 */
 const MATERIAL_BYTES = 80;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
-/** 交错的顶点：位置 xyz、法线 xyz、UV xy（Mesh 的布局）。 */
-const VERTEX_STRIDE = VERTEX_FLOATS * 4;
+/** 网格参数的 uniform：positionOffset、positionScale、uvTransform 各一个 vec4，再加 flags，补齐到 16 字节。 */
+const MESH_PARAMS_BYTES = 64;
 
 interface GpuMesh {
+  /** 第 2 组绑定：反量化参数。 */
+  readonly params: GPUBuffer;
+  readonly bindGroup: GPUBindGroup;
   readonly vertices: GPUBuffer;
   readonly indices: GPUBuffer;
   readonly indexFormat: GPUIndexFormat;
@@ -276,9 +298,8 @@ export class MeshRenderFeature extends RootRenderFeature {
   override draw(_context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     if (!gpu || this.#instanceCount === 0) return;
-    pass.setPipeline(gpu.pipelineFor(stage));
     pass.setBindGroup(0, gpu.viewBindGroup(), [view.index * VIEW_STRIDE]);
-    let mesh: Mesh | undefined, material: Material | undefined;
+    let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined;
     for (const batch of this.batches) {
       if (batch.count === 0) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
@@ -289,6 +310,9 @@ export class MeshRenderFeature extends RootRenderFeature {
       const gpuMesh = gpu.mesh(batch.mesh);
       if (batch.mesh !== mesh) {
         mesh = batch.mesh;
+        const next = gpu.pipelineFor(stage, mesh.layout);
+        if (next !== pipeline) pass.setPipeline((pipeline = next));
+        pass.setBindGroup(2, gpuMesh.bindGroup);
         pass.setVertexBuffer(0, gpuMesh.vertices);
         pass.setIndexBuffer(gpuMesh.indices, gpuMesh.indexFormat);
       }
@@ -331,6 +355,7 @@ class Gpu {
   readonly #module: GPUShaderModule;
   readonly #viewLayout: GPUBindGroupLayout;
   readonly #materialLayout: GPUBindGroupLayout;
+  readonly #meshLayout: GPUBindGroupLayout;
   readonly #pipelineLayout: GPUPipelineLayout;
   readonly #pipelines = new Map<string, GPURenderPipeline>();
   readonly #meshes = new Map<Mesh, GpuMesh>();
@@ -370,27 +395,33 @@ class Gpu {
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
-    this.#pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.#viewLayout, this.#materialLayout] });
+    this.#meshLayout = device.createBindGroupLayout({
+      label: 'MeshRenderFeature mesh',
+      entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }],
+    });
+    this.#pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.#viewLayout, this.#materialLayout, this.#meshLayout] });
     this.#dfgLut = createDfgLut(device);
   }
 
-  pipelineFor(stage: RenderStage): GPURenderPipeline {
+  /** 一个阶段加一种顶点布局一条管线。 */
+  pipelineFor(stage: RenderStage, layout: VertexLayout): GPURenderPipeline {
     const { colorFormat, depthFormat } = stage.output;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}`;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
+      const offsets = vertexLayoutOffsets(layout);
       pipeline = this.device.createRenderPipeline({
-        label: `MeshRenderFeature ${stage.name}`,
+        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}`,
         layout: this.#pipelineLayout,
         vertex: {
           module: this.#module,
           entryPoint: 'vs',
           buffers: [{
-            arrayStride: VERTEX_STRIDE,
+            arrayStride: offsets.stride,
             attributes: [
-              { shaderLocation: 0, offset: 0, format: 'float32x3' },
-              { shaderLocation: 1, offset: 12, format: 'float32x3' },
-              { shaderLocation: 2, offset: 24, format: 'float32x2' },
+              { shaderLocation: 0, offset: offsets.position, format: layout.position },
+              { shaderLocation: 1, offset: offsets.normal, format: layout.normal },
+              { shaderLocation: 2, offset: offsets.uv, format: layout.uv },
             ],
           }],
         },
@@ -477,7 +508,14 @@ class Gpu {
     let gpu = this.#meshes.get(mesh);
     if (!gpu) {
       const { vertices, indices } = mesh.data;
+      const { positionOffset: po, positionScale: ps, uvOffset: uo, uvScale: us } = mesh.dequantize;
+      const data = new ArrayBuffer(MESH_PARAMS_BYTES);
+      new Float32Array(data).set([...po, 0, ...ps, 0, us[0], us[1], uo[0], uo[1]]);
+      new Uint32Array(data)[12] = mesh.layout.normal === 'snorm16x2' ? 1 : 0;
+      const params = this.#createFilled(`${mesh.name} params`, GPUBufferUsage.UNIFORM, new Uint8Array(data));
       gpu = {
+        params,
+        bindGroup: this.device.createBindGroup({ label: `${mesh.name} params`, layout: this.#meshLayout, entries: [{ binding: 0, resource: { buffer: params } }] }),
         vertices: this.#createFilled(`${mesh.name} vertices`, GPUBufferUsage.VERTEX, vertices),
         indices: this.#createFilled(`${mesh.name} indices`, GPUBufferUsage.INDEX, indices),
         indexFormat: indices instanceof Uint16Array ? 'uint16' : 'uint32',
@@ -522,7 +560,8 @@ class Gpu {
 
   destroy(): void {
     for (const buffer of [this.#worlds, this.#instances, this.#views]) buffer?.destroy();
-    for (const { vertices, indices } of this.#meshes.values()) {
+    for (const { params, vertices, indices } of this.#meshes.values()) {
+      params.destroy();
       vertices.destroy();
       indices.destroy();
     }
@@ -535,7 +574,7 @@ class Gpu {
   }
 
   /** 建好就填上数据的缓冲；用 mappedAtCreation，所以 16 位索引的字节数不必是 4 的倍数。 */
-  #createFilled(label: string, usage: number, data: Float32Array | Uint16Array | Uint32Array): GPUBuffer {
+  #createFilled(label: string, usage: number, data: ArrayBufferView): GPUBuffer {
     const buffer = this.device.createBuffer({ label, size: Math.ceil(data.byteLength / 4) * 4, usage, mappedAtCreation: true });
     new Uint8Array(buffer.getMappedRange()).set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
     buffer.unmap();

@@ -55,6 +55,15 @@ export class Registry {
     return this.#byName.keys();
   }
 
+  /** 名字是 name、或 `路径#name` 的脚本（Stride 场景里的脚本按类名找翻译过来的 TS 脚本）。 */
+  scriptsNamed(name: string): ScriptConstructor[] {
+    const found: ScriptConstructor[] = [];
+    for (const [registered, value] of this.#byName) {
+      if (kindOf(value) === 'script' && (registered === name || registered.endsWith(`#${name}`))) found.push(value as ScriptConstructor);
+    }
+    return found;
+  }
+
   /** 模块导出的组件、脚本、系统和它们的名字；还没名字的按 `路径#导出名` 起名。 */
   *#named(modules: Readonly<Record<string, unknown>>): Generator<[string, Registered]> {
     for (const [path, module] of Object.entries(modules)) {

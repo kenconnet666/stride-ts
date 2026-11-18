@@ -370,11 +370,13 @@ describe('导入 Stride 场景', () => {
       textures: ['Game/Textures/Checker', 'Game/SkyTexture'],
       skyboxes: ['Game/Sky'],
     });
-    expect([...result.skipped]).toEqual([['Game.Spinner,Game', 1]]);
+    // 游戏的脚本按类型名和属性导出，不算跳过
+    expect([...result.skipped]).toEqual([]);
 
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Main.scene.json'), 'utf8')) as SceneFile;
     // 父实体排在前面，即使文件里子实体在前
     expect(scene.entities.map((e) => [e.name, e.parent])).toEqual([['Root', null], ['Child', 'e2'], ['Sky', null]]);
+    expect(scene.entities[1]!.components.scripts).toEqual([{ type: 'Game.Spinner', props: {} }]);
     expect(scene.entities[2]!.components).toEqual({ light: { type: 'skybox', skybox: 'Game/Sky', intensity: 1.5 }, background: { texture: 'Game/SkyTexture', intensity: 3 } });
 
     // 恒定的天空：球谐的常数项就是天空的颜色；镜面的预滤波在运行时做，这里只引用源立方体贴图（和背景是同一个文件）

@@ -20,7 +20,8 @@ export {
   type Vec3Input,
 } from './data/prop';
 export type { Issue } from './data/schema';
-export { ContentManager, type ContentOptions, type ContentReader, type LoadedModel, type MeshoptDecoder, type MeshoptRequest, type SceneInstance } from './content/ContentManager';
+export { ContentManager, type ContentOptions, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance } from './content/ContentManager';
+export type { SceneScriptMap } from './content/sceneScripts';
 export {
   decodeCubemap,
   decodeModel,
@@ -90,6 +91,7 @@ export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
 export { GamePadButton, InputManager, type GamePadState, type MouseButton } from './input/InputManager';
+export { keyCode } from './input/keys';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Collider, type ColliderId, type ColliderShape } from './physics/Collider';
 export { Character, Static } from './physics/components';

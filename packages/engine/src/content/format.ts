@@ -348,6 +348,29 @@ export interface SceneCharacter extends SceneCollidable {
   readonly interpolated: boolean;
 }
 
+/** 脚本属性引用的资源种类。 */
+export type SceneAssetKind = 'model' | 'material' | 'animation';
+
+/**
+ * 脚本的属性值（Stride 序列化的值换过来）：标量原样；列表是数组；Vector3、Quaternion 是数组；别的结构是键名改成
+ * 小写开头的对象；对实体或组件的引用是 { $entity: 场景里的实体 id }；对资源的引用是 { $asset: 内容路径, kind }。
+ */
+export type SceneScriptValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly SceneScriptValue[]
+  | { readonly $entity: string }
+  | { readonly $asset: string; readonly kind: SceneAssetKind }
+  | { readonly [key: string]: SceneScriptValue };
+
+/** 场景里的一个脚本组件：Stride 的类型名（不带程序集）和属性（键名改成小写开头）。 */
+export interface SceneScript {
+  readonly type: string;
+  readonly props: Readonly<Record<string, SceneScriptValue>>;
+}
+
 /** 仿真设置（Stride 的 GameSettings 里 BepuConfiguration 的 BepuSimulation）。 */
 export interface ScenePhysics {
   readonly gravity: Vec3Tuple;
@@ -396,6 +419,8 @@ export interface SceneEntityFile {
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;
+    /** 游戏的脚本（Stride 的 ScriptComponent），按场景文件里的顺序；运行时按类型名找对应的 TS 脚本。 */
+    readonly scripts?: readonly SceneScript[];
   };
 }
 

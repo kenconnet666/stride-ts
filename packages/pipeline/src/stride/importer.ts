@@ -19,11 +19,14 @@ import {
   type ModelMeshData,
   type NormalMapSlot,
   type SceneCharacter,
+  type SceneAssetKind,
   type SceneCollidable,
   type SceneEntityFile,
   type SceneFile,
   type SceneLightShadow,
   type ScenePhysics,
+  type SceneScript,
+  type SceneScriptValue,
   type SkyboxFile,
   TEXTURE_EXTENSIONS,
   type TextureEncoding,
@@ -96,6 +99,8 @@ export class StrideImporter {
   readonly #skipped = new Map<string, number>();
   readonly #warnings: string[] = [];
   readonly #materialFiles = new Map<string, Promise<MaterialFile>>();
+  /** 正在导入的场景里，组件和实体的 Id 对应的实体 Id（脚本属性里的 ref!! 引用用）。 */
+  #owners = new Map<string, string>();
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
   constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2' }: ImporterOptions = {}) {
@@ -126,6 +131,14 @@ export class StrideImporter {
       }
     }
 
+    this.#owners = new Map();
+    for (const entity of entities) {
+      this.#owners.set(entity['Id'] as string, entity['Id'] as string);
+      for (const component of Object.values(asObject(entity['Components']) ?? {})) {
+        const id = asObject(component)?.['Id'];
+        if (typeof id === 'string') this.#owners.set(id, entity['Id'] as string);
+      }
+    }
     const files = await Promise.all(entities.map((entity) => this.#entity(entity, parentOf.get(entity['Id'] as string) ?? null, asset)));
     const usesPhysics = files.some((file) => file.components.static || file.components.character);
     const scene: SceneFile = { name: path.basename(asset.path), ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}), entities: parentsFirst(files) };
@@ -150,6 +163,10 @@ export class StrideImporter {
       const object = asObject(component);
       const type = object?.$type ?? 'unknown';
       if (!object || type === 'TransformComponent') continue;
+      if (isScriptType(type)) {
+        components.scripts = [...(components.scripts ?? []), await this.#script(type, object, where)];
+        continue;
+      }
       const handled = await this.#component(type, object, components, where);
       if (!handled) this.#skipped.set(type, (this.#skipped.get(type) ?? 0) + 1);
     }
@@ -162,6 +179,56 @@ export class StrideImporter {
       scale: vec3(transform['Scale'], 1),
       components,
     };
+  }
+
+  /** 游戏的脚本组件：类型名去掉程序集，属性名改成小写开头，值按 SceneScriptValue 换过来。 */
+  async #script(type: string, component: StrideObject, where: string): Promise<SceneScript> {
+    const name = type.slice(0, type.indexOf(','));
+    const props: Record<string, SceneScriptValue> = {};
+    for (const [key, value] of Object.entries(component)) {
+      if (key === 'Id' || key.startsWith('~') || key === '$type') continue;
+      props[lowerFirst(key)] = await this.#scriptValue(value, `${where}: ${name}.${key}`);
+    }
+    return { type: name, props };
+  }
+
+  async #scriptValue(value: StrideValue | undefined, where: string): Promise<SceneScriptValue> {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const object = parseObjectReference(value);
+      if (object !== undefined) {
+        const entity = this.#owners.get(object);
+        if (entity === undefined) this.#warnings.push(`${where}: reference ${object} is not in this scene; using null`);
+        return entity === undefined ? null : { $entity: entity };
+      }
+      const reference = parseAssetReference(value);
+      if (reference && GUID.test(reference.id)) return this.#scriptAsset(this.#project.get(reference.id, where), where);
+      return value;
+    }
+    if (Array.isArray(value)) return Promise.all(value.map((item) => this.#scriptValue(item, where)));
+    const entries = Object.entries(value).filter(([key]) => key !== '$type');
+    // Stride 把列表存成以哈希为键的映射；Vector3、Quaternion 存成 X、Y、Z（W）
+    if (entries.length > 0 && entries.every(([key]) => /^[0-9a-f]{32}$/.test(key))) return Promise.all(entries.map(([, item]) => this.#scriptValue(item, where)));
+    const keys = entries.map(([key]) => key).join(',');
+    if (keys === 'X,Y,Z' || keys === 'X,Y,Z,W') return entries.map(([, item]) => (typeof item === 'number' ? item : 0));
+    const object: Record<string, SceneScriptValue> = {};
+    for (const [key, item] of entries) object[lowerFirst(key)] = await this.#scriptValue(item, where);
+    return object;
+  }
+
+  /** 脚本属性引用的资源：能导入的种类导入并给出内容路径，别的记警告。 */
+  async #scriptAsset(asset: AssetEntry, where: string): Promise<SceneScriptValue> {
+    const kinds: Record<string, [SceneAssetKind, () => Promise<string>]> = {
+      Model: ['model', () => this.#model(asset)],
+      MaterialAsset: ['material', () => this.#material(asset)],
+    };
+    const kind = kinds[asset.type];
+    if (!kind) {
+      this.#warnings.push(`${where}: ${asset.type} ${asset.path} is not supported in script properties; using null`);
+      return null;
+    }
+    return { $asset: await kind[1](), kind: kind[0] };
   }
 
   /** 把一个组件写进 components；不认识的返回 false。 */
@@ -740,6 +807,17 @@ function vec3(value: StrideValue | undefined, fallback: number, whole?: [number,
   const v = asObject(value);
   if (!v && whole) return whole;
   return [asNumber(v?.['X'], fallback), asNumber(v?.['Y'], fallback), asNumber(v?.['Z'], fallback)];
+}
+
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 游戏的脚本：带程序集名、不在 Stride 的命名空间里（引擎组件要么没有命名空间，要么以 Stride. 开头）。 */
+function isScriptType(type: string): boolean {
+  return type.includes(',') && !type.startsWith('Stride.');
+}
+
+function lowerFirst(name: string): string {
+  return name.charAt(0).toLowerCase() + name.slice(1);
 }
 
 /** 碰撞体的类型名，去掉命名空间和程序集（"Stride.BepuPhysics.Definitions.Colliders.BoxCollider,Stride.BepuPhysics" → "BoxCollider"）。 */

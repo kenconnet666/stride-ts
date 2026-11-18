@@ -8,6 +8,7 @@
  * 引用计数、卸载、按组加载、在 Worker 里解码（README 的"实例化、懒加载、缓存"）以后加。
  */
 import type { EntityManager } from '../engine/EntityManager';
+import { SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import { Collider, type ColliderShape } from '../physics/Collider';
@@ -18,6 +19,19 @@ import { Mesh, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
 import { decodeCubemap, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneLightShadow, type ScenePhysics, type SkyboxFile } from './format';
+
+declare module '../data/prop' {
+  interface AssetTypes {
+    model: LoadedModel;
+    material: Material;
+  }
+}
+
+/** loadScene 的选项。 */
+export interface LoadSceneOptions {
+  /** 场景里的 Stride 脚本类型（带命名空间）显式对应到 TS 脚本；没列的按类名在登记表里找，见 sceneScripts.ts。 */
+  readonly scripts?: SceneScriptMap;
+}
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
 export interface MeshoptRequest {
@@ -180,15 +194,22 @@ export class ContentManager {
     });
   }
 
-  /** 加载场景并把它的实体创建在 entities 里（场景引用的模型、材质、天空盒、立方体贴图先并行加载完）。 */
-  async loadScene(path: string, entities: EntityManager): Promise<SceneInstance> {
+  /**
+   * 加载场景并把它的实体创建在 entities 里：场景引用的模型、材质、天空盒、立方体贴图（包括脚本属性引用的）先并行加载完，
+   * 再按顺序创建实体和组件，最后挂脚本（这时所有实体都在，脚本属性里的实体引用才解析得了）。
+   */
+  async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const url = new URL(path + EXTENSIONS.scene, this.root);
     const scene = this.#json<SceneFile>(await this.#read(url));
     const components = scene.entities.map((e) => e.components);
     const colliderModels = components.flatMap((c) => [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? [])]).flatMap((s) => (s.type === 'mesh' ? [s.model] : []));
+    const scriptAssets = scriptAssetRefs(components.flatMap((c) => c.scripts ?? []));
+    const unsupported = scriptAssets.find((ref) => ref.kind !== 'model' && ref.kind !== 'material');
+    if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
+    const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
     const [models, materials, skyboxes, cubemaps] = await Promise.all([
-      preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels], (p) => this.loadModel(p)),
-      preload(components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), (p) => this.loadMaterial(p)),
+      preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => this.loadModel(p)),
+      preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
       preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
       preload(components.flatMap((c) => (c.background ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
     ]);
@@ -204,6 +225,11 @@ export class ContentManager {
       }
       created.set(file.id, entity);
       this.#addComponents(entity, file, assets, entities);
+    }
+    const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
+    const context = { entities: created, asset: (kind: string, assetPath: string) => (kind === 'model' ? models : materials).get(assetPath)! as object };
+    for (const file of scene.entities) {
+      for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${path}: ${file.name}`);
     }
     return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}) };
   }

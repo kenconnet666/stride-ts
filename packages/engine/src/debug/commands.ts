@@ -11,6 +11,7 @@ import type { Entity } from '../engine/Entity';
 import { scriptName, type ScriptComponent, type ScriptConstructor } from '../engine/scripts';
 import type { Game } from '../games/Game';
 import type { MouseButton } from '../input/InputManager';
+import { keyCode } from '../input/keys';
 import { describe, type Debug } from './Debug';
 
 type Args = Readonly<Record<string, unknown>>;
@@ -22,7 +23,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('inspect', 'All component values and script properties of one entity. args: entity (id or name).', (args) => inspect(game, entityArg(game, args)));
   debug.command('set', "Set a component field or script property. args: entity, path ('Component.field' or 'Script.prop', optionally '.x'), value.", (args) => set(game, args));
   debug.command('time', 'Pause, resume, step frames, time scale, fixed time step. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear).', (args) => time(game, args));
-  debug.command('input', "Simulate input. args: key (KeyboardEvent.code) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
+  debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64.', () => screenshot(debug, game));
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
   debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
@@ -172,7 +173,8 @@ async function input(game: Game, args: Args): Promise<unknown> {
   }
   let down: () => void, up: () => void;
   if (typeof args['key'] === 'string') {
-    const code = args['key'];
+    // Stride 的键名（'W'、'Left'）也认，派发的事件用浏览器的 code
+    const code = keyCode(args['key']);
     down = () => window.dispatchEvent(new KeyboardEvent('keydown', { code, key: code }));
     up = () => window.dispatchEvent(new KeyboardEvent('keyup', { code, key: code }));
   } else if (typeof args['button'] === 'string') {

@@ -1,5 +1,5 @@
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
-import { ContentManager, type SceneInstance } from '../content/ContentManager';
+import { ContentManager, type LoadSceneOptions, type SceneInstance } from '../content/ContentManager';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
 import type { ScopedDefaults } from '../engine/defaults';
@@ -220,8 +220,8 @@ export class Game {
    * 加载场景、创建它的实体（ContentManager.loadScene），场景带的仿真设置交给 simulation。场景里有物理组件时
    * 要在 nativeFeatures 里加上 physics。
    */
-  async loadScene(path: string): Promise<SceneInstance> {
-    const scene = await this.content.loadScene(path, this.entities);
+  async loadScene(path: string, options: LoadSceneOptions = {}): Promise<SceneInstance> {
+    const scene = await this.content.loadScene(path, this.entities, options);
     if (scene.physics) {
       if (!this.simulation) throw new Error(`scene '${path}' has physics; run the game with nativeFeatures: [physics] (import { physics } from '@stride-ts/native/physics')`);
       this.simulation.configure(scene.physics);

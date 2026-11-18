@@ -11,7 +11,7 @@ export type ColumnKind =
   | 'number' | 'f32' | 'int' | 'u8' | 'u32' | 'bool' | 'string' | 'enum' | 'entity' | 'vec3' | 'quat' | 'color'
   | 'i64' | 'u64' | 'decimal' | 'date' | 'time' | 'datetime' | 'instant';
 /** 只有脚本能用的种类：长度不定或值是对象。 */
-export type ObjectKind = 'list' | 'object' | 'union' | 'json' | 'component' | 'bytes';
+export type ObjectKind = 'list' | 'object' | 'union' | 'json' | 'component' | 'bytes' | 'asset';
 export type PropKind = ColumnKind | ObjectKind;
 
 /** 记在类型里的修饰：sealed（由拥有者驱动）、inherit（作用域默认值）、stat（运行时修饰）。 */
@@ -77,6 +77,8 @@ export interface PropOptions {
   readonly renamedFrom?: string;
   /** enum：允许的取值。 */
   readonly values?: readonly string[];
+  /** asset：资源的种类（AssetTypes 的键）。 */
+  readonly assetKind?: string;
   /** list：元素的属性声明。 */
   readonly item?: AnyProp;
   /** object：嵌套的 shape。union：每个子类型的 shape。 */
@@ -194,6 +196,12 @@ const declare = <T, K extends PropKind, I = T>(kind: K, extra: Partial<PropOptio
 /** prop.component() 需要知道的那部分组件类型或脚本类。 */
 type Referable = { readonly __shape: Shape };
 
+/**
+ * prop.asset 能引用的资源种类和加载后的类型。数据层不依赖资源模块：各模块用声明合并加上自己的种类，比如
+ * content/ContentManager.ts 加了 model、material。
+ */
+export interface AssetTypes {}
+
 export const prop = {
   /** 64 位浮点数；列是 Float64Array。 */
   number: () => declare<number, 'number'>('number'),
@@ -257,6 +265,11 @@ export const prop = {
    * 继承表达式里出现自己的类名会让 TS 报循环引用（TS2506）。
    */
   component: <C extends Referable>(target: () => C) => declare<ReferenceTo<C>, 'component'>('component', { target }),
+  /**
+   * 一个加载好的资源（只有脚本能用），比如 `prop.asset('model')`：场景里的脚本属性引用资源时，加载场景时一并加载好再传进来；
+   * 代码里创建时传加载好的对象（`game.content.loadModel(...)`）。种类见 AssetTypes。
+   */
+  asset: <K extends keyof AssetTypes & string>(kind: K) => declare<AssetTypes[K], 'asset'>('asset', { assetKind: kind }),
 };
 
 function isAllDefault(shape: Shape): boolean {

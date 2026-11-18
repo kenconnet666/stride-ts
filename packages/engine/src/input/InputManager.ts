@@ -2,12 +2,14 @@
  * 输入（Stride 的 InputManager 的常用部分）：键盘、鼠标、手柄。浏览器事件随时到达，Game 在每帧开头调用 update()，
  * 这一帧里读到的都是同一份状态：按住的键、这一帧刚按下或松开的键、这一帧的鼠标移动量。
  *
- * - 键用 KeyboardEvent.code 表示（'KeyW'、'ArrowLeft'、'Space'），和键盘布局无关。
+ * - 键用 KeyboardEvent.code 表示（'KeyW'、'ArrowLeft'、'Space'），和键盘布局无关；也认 Stride 的 Keys 名字（'W'、'Left'），见 keys.ts。
  * - 鼠标的位置和移动量按画布尺寸归一化（同 Stride：划过整个画布宽度，移动量的 x 是 1）。
  * - lockMousePosition() 用 Pointer Lock：浏览器要求在用户操作（点击）之后不久调用，脚本在按下鼠标的那一帧调用即可；
  *   用户按 Esc 时浏览器自己解除锁定。
  * - 手柄用 Gamepad API 的标准布局，摇杆的 y 向上为正（同 Stride）。
  */
+
+import { keyCode } from './keys';
 
 /** 鼠标按键。 */
 export type MouseButton = 'left' | 'middle' | 'right';
@@ -107,18 +109,18 @@ export class InputManager {
     this.#pollGamePads();
   }
 
-  isKeyDown(code: string): boolean {
-    return this.#down.has(code);
+  isKeyDown(key: string): boolean {
+    return this.#down.has(keyCode(key));
   }
 
   /** 这一帧刚按下。 */
-  isKeyPressed(code: string): boolean {
-    return this.#pressed.has(code);
+  isKeyPressed(key: string): boolean {
+    return this.#pressed.has(keyCode(key));
   }
 
   /** 这一帧刚松开。 */
-  isKeyReleased(code: string): boolean {
-    return this.#released.has(code);
+  isKeyReleased(key: string): boolean {
+    return this.#released.has(keyCode(key));
   }
 
   isMouseButtonDown(button: MouseButton): boolean {

@@ -20,7 +20,9 @@ import {
   Material,
   Mesh,
   Model,
+  prop,
   Skybox,
+  SyncScript,
   Transform,
   VERTEX_FLOATS,
   type GraphicsDevice,
@@ -147,6 +149,53 @@ describe('ContentManager', () => {
     await content.loadModel('models/Wall');
     expect(reads.filter((r) => r.endsWith('Wall.model'))).toHaveLength(1);
     await expect(content.loadMaterial('materials/Missing')).rejects.toThrow('no https://game.test/content/materials/Missing.material.json');
+  });
+
+  test('场景里的脚本：按类名对上 TS 脚本，实体引用换成 id、资源引用换成加载好的资源；找不到的脚本和属性警告后跳过', async () => {
+    class Follower extends SyncScript.props({
+      target: prop.entity().optional(),
+      speed: prop.number().default(1),
+      keys: prop.list(prop.string()).default([]),
+      look: prop.asset('material').optional(),
+    }) {}
+    class Renamed extends SyncScript.props({ value: prop.number().default(0) }) {}
+    const scene: SceneFile = {
+      name: 'Scripts',
+      entities: [
+        { id: 'a', name: 'A', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { scripts: [
+          { type: 'MyGame.Ai.Follower', props: { target: { $entity: 'b' }, speed: 3, keys: ['W', 'Up'], look: { $asset: 'materials/Grid', kind: 'material' }, notInTs: 1 } },
+          { type: 'MyGame.Missing', props: {} },
+          { type: 'MyGame.OldName', props: { value: 7 } },
+        ] } },
+        { id: 'b', name: 'B', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} },
+      ],
+    };
+    const content = new ContentManager({
+      root: 'https://game.test/content/',
+      read: async (url) => (url.href.endsWith('Scripts.scene.json') ? json(scene) : files.get(url.href) ?? Promise.reject(new Error(`no ${url.href}`))),
+    });
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(8);
+    game.registry.registerModules({ './ai/Follower.ts': { Follower } });
+    const warnings: string[] = [];
+    const warn = console.warn;
+    console.warn = (message: string) => void warnings.push(message);
+    try {
+      const loaded = await content.loadScene('scenes/Scripts', game.entities, { scripts: { 'MyGame.OldName': Renamed } });
+      const follower = loaded.entities.get('a')!.require(Follower);
+      expect(follower.target).toBe(loaded.entities.get('b')!.id);
+      expect(follower.speed).toBe(3);
+      expect(follower.keys).toEqual(['W', 'Up']);
+      expect(follower.look).toBe(await content.loadMaterial('materials/Grid'));
+      expect(loaded.entities.get('a')!.require(Renamed).value).toBe(7);
+    } finally {
+      console.warn = warn;
+    }
+    expect(warnings).toEqual([
+      expect.stringContaining('MyGame.Ai.Follower.notInTs is not a prop of the TS script'),
+      expect.stringContaining('no TS script named Missing for MyGame.Missing'),
+    ]);
   });
 });
 

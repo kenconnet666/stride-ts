@@ -23,7 +23,12 @@ export interface AssetEntry {
   readonly data: StrideObject;
 }
 
-const ASSET_EXTENSIONS = new Set(['.sdscene', '.sdm3d', '.sdmat', '.sdprefab', '.sdtex', '.sdsky', '.sdgamesettings']);
+// Stride 的全部资源种类都建索引：引用总能解析到资源，导入器还不支持的种类由导入器给出警告，而不是"找不到资源"
+const ASSET_EXTENSIONS = new Set([
+  '.sdscene', '.sdprefab', '.sdm3d', '.sdpromodel', '.sdprefabmodel', '.sdmat', '.sdtex', '.sdsky', '.sdgamesettings',
+  '.sdskel', '.sdanim', '.sdsheet', '.sdfnt', '.sdpcfnt', '.sduipage', '.sduilib', '.sdsnd', '.sdpart', '.sdhull',
+  '.sdnavmesh', '.sdgfxcomp', '.sdrendertex', '.sdvid', '.sdhf', '.sdfx', '.sdsl',
+]);
 
 export class StrideProject {
   readonly #byId = new Map<string, AssetEntry>();

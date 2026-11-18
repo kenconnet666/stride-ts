@@ -31,7 +31,7 @@ Game
   inspect <entity>        all component values and script properties (entity: id or name)
   set <entity> <Component.field[.x]> <json value>
   pause | resume | step [frames] | time [--scale <x>] [--fixed <seconds>|off]
-  key <code> [--hold <ms> | --down | --up]          KeyboardEvent.code, e.g. KeyW, Space, ArrowLeft
+  key <code> [--hold <ms> | --down | --up]          KeyboardEvent.code or Stride key name: KeyW or W, ArrowLeft or Left
   mouse move <dx> <dy> | mouse <left|middle|right> [--hold <ms> | --down | --up]
   shot <out.png> [--diff <reference.png>] [--diff-out <file>] [--threshold 2]
   perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, native timings, GPU per pass

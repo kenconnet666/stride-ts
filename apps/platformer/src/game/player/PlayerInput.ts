@@ -15,13 +15,13 @@ export class PlayerInput extends SyncScript.props({
   /** 决定"前"是哪个方向的相机实体；没有时移动方向就是世界的 X、Z。 */
   camera: prop.entity().optional(),
   mouseSensitivity: prop.number().default(1),
+  // 按键：KeyboardEvent.code 或 Stride 的 Keys 名字（场景里存的是后者），默认值是 TPP 场景里的
+  keysLeft: prop.list(prop.string()).default(['KeyA', 'ArrowLeft']),
+  keysRight: prop.list(prop.string()).default(['KeyD', 'ArrowRight']),
+  keysUp: prop.list(prop.string()).default(['KeyW', 'ArrowUp']),
+  keysDown: prop.list(prop.string()).default(['KeyS', 'ArrowDown']),
+  keysJump: prop.list(prop.string()).default(['Space']),
 }) {
-  // Stride 里是可编辑的按键列表；这里是 TPP 场景里的值（KeyboardEvent.code）
-  keysLeft = ['KeyA', 'ArrowLeft'];
-  keysRight = ['KeyD', 'ArrowRight'];
-  keysUp = ['KeyW', 'ArrowUp'];
-  keysDown = ['KeyS', 'ArrowDown'];
-  keysJump = ['Space'];
   #jumpButtonDown = false;
 
   override update(time: GameTime): void {

@@ -175,6 +175,8 @@ function issuesOf(options: PropOptions, value: unknown, path: readonly (string |
     }
     case 'component':
       return typeof value === 'object' && value !== null ? [] : fail('is not a script or component view');
+    case 'asset':
+      return typeof value === 'object' && value !== null ? [] : fail(`is not a loaded ${options.assetKind} (load it with game.content first)`);
     case 'i64':
     case 'u64':
     case 'decimal':

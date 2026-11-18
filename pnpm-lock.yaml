@@ -21,6 +21,16 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6))
 
+  apps/bench:
+    dependencies:
+      '@stride-ts/native':
+        specifier: workspace:*
+        version: link:../../packages/native
+    devDependencies:
+      vite:
+        specifier: ^8.3.8
+        version: 8.3.8(@types/node@26.6.6)
+
   apps/sandbox:
     dependencies:
       '@stride-ts/engine':

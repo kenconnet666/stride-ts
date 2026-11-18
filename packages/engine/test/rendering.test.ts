@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  DirectionalShadowCascades, Game, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
+  DirectionalShadowCascades, Fxaa, Game, gaussianOffsetsWeights, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
   type DirectionalShadowSettings, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
@@ -229,5 +229,37 @@ describe('DirectionalShadowCascades', () => {
     view.update();
     cascades.collect(view, new Vector3(0, -1, 0), settings, 1024, rectangles, 4096, shadow);
     expect(shadow.cascadeCount).toBe(1);
+  });
+});
+
+describe('后处理', () => {
+  test('高斯模糊的权重同 Stride 的 GaussianUtil.Calculate1D：两边加起来是 1，相邻两个像素合成一次线性采样', () => {
+    const taps = gaussianOffsetsWeights(9, 3.5);
+    // 半径 9：中心加 (9 + 1) / 2 = 5 组
+    expect(taps.length).toBe(6);
+    expect(taps[0]![0]).toBe(0);
+    expect(taps[0]![1] + 2 * taps.slice(1).reduce((sum, [, w]) => sum + w, 0)).toBeCloseTo(1, 6);
+    // 第 1 组合并了像素 1 和 2，偏移落在它们之间，偏向权重大的 1
+    expect(taps[1]![0]).toBeGreaterThan(1);
+    expect(taps[1]![0]).toBeLessThan(1.5);
+    // 半径是奇数时最后一组只有一个像素，偏移正好是半径
+    expect(taps[5]![0]).toBe(9);
+    // σ = 9 / 3.5：中心的未归一化权重 1，像素 1 的是 exp(-1 / (2σ²))
+    const sigma = 9 / 3.5;
+    const w1 = Math.exp(-1 / (2 * sigma * sigma)), w2 = Math.exp(-4 / (2 * sigma * sigma));
+    expect(taps[1]![1] / taps[0]![1]).toBeCloseTo(w1 + w2, 6);
+  });
+});
+
+describe('FXAA', () => {
+  test('抖动和档位换成预设号（同 Stride 的 FXAAEffect）：默认 Low 第 3 档是 23，超出范围报错', () => {
+    const fxaa = Object.assign(Object.create(Fxaa.prototype) as Fxaa, { dither: 'low', quality: 3 });
+    expect(fxaa.preset).toBe(23);
+    Object.assign(fxaa, { dither: 'medium', quality: 5 });
+    expect(fxaa.preset).toBe(15);
+    Object.assign(fxaa, { dither: 'none', quality: 9 });
+    expect(fxaa.preset).toBe(39);
+    Object.assign(fxaa, { dither: 'none', quality: 3 });
+    expect(() => fxaa.preset).toThrow("FXAA quality must be 9..9 for dither 'none', got 3");
   });
 });

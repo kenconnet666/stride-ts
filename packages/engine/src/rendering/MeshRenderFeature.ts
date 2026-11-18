@@ -14,7 +14,7 @@
  * - 法线贴图（MaterialSurfaceNormalMap、NormalUpdate）：切线空间的法线（可选 y 取反、×2-1、由 xy 算 z）乘 TBN，
  *   副切线 = w · cross(法线, 切线)；之后的光照都用这个法线。网格没有切线时用顶点法线；
  * - 自发光直接加上。
- * 输出线性的 HDR 颜色，色调映射在后面（ToneMapRenderer）。
+ * 输出线性的 HDR 颜色，后处理和色调映射在后面（postfx/PostProcessingEffects）。
  *
  * 数据流：
  * - Extract：遍历带 Model 和 Transform 的实体，按（网格，材质，是否投射阴影）分批，每批记下实体的变换槽位。

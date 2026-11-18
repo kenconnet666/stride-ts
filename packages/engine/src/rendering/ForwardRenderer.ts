@@ -1,7 +1,7 @@
 /**
  * 图形合成器的前向渲染器（Stride 的 GraphicsCompositor 里的 ForwardRenderer）：一个相机、一个不透明阶段，
- * 画进 RGBA16F 的 HDR 颜色缓冲加深度缓冲（同 Stride 的 HDR 渲染模式），再经色调映射（ToneMap）写进后备缓冲。
- * 方向光可以投阴影（ShadowMapRenderer）。以后加透明阶段、其余后处理（Bloom、FXAA……）、多个相机槽位。
+ * 画进 RGBA16F 的 HDR 颜色缓冲加深度缓冲（同 Stride 的 HDR 渲染模式），再经后处理（PostProcessingEffects：泛光、
+ * 色调映射……）写进后备缓冲。方向光可以投阴影（ShadowMapRenderer）。以后加透明阶段、多个相机槽位。
  * 每帧：Collect（相机变成视图）→ Extract → 剔除主视图 → 按主视图的可见范围算出阴影级联 → 剔除级联 → Prepare
  * → 画阴影图集 → 画主视图 → 后处理。
  */
@@ -13,7 +13,7 @@ import { Camera, Light } from './components';
 import { RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { Skybox } from './Skybox';
-import { ToneMap } from './ToneMap';
+import { PostProcessingEffects } from './postfx/PostProcessingEffects';
 
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
 const CASCADE_COUNTS = { one: 1, two: 2, four: 4 } as const;
@@ -26,8 +26,8 @@ export class ForwardRenderer {
   readonly clearColor = new Color4(0.01, 0.0134, 0.022, 1);
   /** 这一帧用的相机实体找到了没有；没有相机时只清屏（同 Stride）。 */
   hasCamera = false;
-  /** HDR 画面到显示范围的映射（设置同 Stride 的 ToneMap，可以改）。 */
-  readonly toneMap: ToneMap;
+  /** 后处理（Stride 的 ForwardRenderer.PostEffects），设置可以改，默认值同 Stride。 */
+  readonly postEffects: PostProcessingEffects;
   readonly shadowMapRenderer: ShadowMapRenderer;
 
   readonly #mainView = new RenderView();
@@ -108,7 +108,7 @@ export class ForwardRenderer {
   constructor(renderSystem: RenderSystem) {
     this.renderSystem = renderSystem;
     this.opaqueStage = new RenderStage('Opaque', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT });
-    this.toneMap = new ToneMap(renderSystem.device, renderSystem.resources.linearClamp);
+    this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
   }
 
@@ -143,14 +143,14 @@ export class ForwardRenderer {
     });
     if (this.hasCamera) renderSystem.draw(context, pass, this.#mainView, this.opaqueStage);
     pass.end();
-    this.toneMap.draw(encoder, targets.color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
+    this.postEffects.draw(encoder, targets.color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
     graphicsDevice.queue.submit([encoder.finish()]);
   }
 
   destroy(): void {
     this.#targets?.color.destroy();
     this.#targets?.depth.destroy();
-    this.toneMap.destroy();
+    this.postEffects.destroy();
     this.shadowMapRenderer.destroy();
   }
 

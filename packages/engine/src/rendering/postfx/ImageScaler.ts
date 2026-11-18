@@ -1,0 +1,68 @@
+/**
+ * 缩放和拷贝（Stride 的 ImageScaler 和 ImageMultiScaler）：
+ * - 线性：一次双线性采样；
+ * - Expanded（Stride 的 SpriteSuperSampler，用 supersample 构造的效果都用它）：以输入的像素为单位在 9 个点上采样，
+ *   中心权重 3、对角 2、两格外 1，缩小时不会闪；
+ * 结果乘 color，可以叠加（混合方式由调用方给）。multiScale 一级级减半到目标尺寸，每级都用 Expanded。
+ */
+import { FullscreenShader, type RenderTargetPool, type UniformArena } from './ImageEffect';
+
+const SCALER_SHADER = /* wgsl */ `
+struct Scaler { color: vec4f, texelSize: vec2f, expanded: f32 };
+@group(0) @binding(0) var<uniform> scaler: Scaler;
+@group(0) @binding(1) var source: texture_2d<f32>;
+@group(0) @binding(2) var linearClamp: sampler;
+
+const JITTERS = array<vec2f, 9>(vec2f(-2.0, 0.0), vec2f(0.0, 0.0), vec2f(2.0, 0.0), vec2f(-1.0, 1.0), vec2f(1.0, 1.0), vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(0.0, 2.0), vec2f(0.0, -2.0));
+
+@fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
+  if (scaler.expanded == 0.0) {
+    return textureSampleLevel(source, linearClamp, in.uv, 0.0) * scaler.color;
+  }
+  var color = vec4f(0.0);
+  var weights = 0.0;
+  for (var j = 0u; j < 9u; j++) {
+    let jitter = JITTERS[j];
+    let weight = 3.0 - max(abs(jitter.x), abs(jitter.y));
+    color += weight * textureSampleLevel(source, linearClamp, in.uv + jitter * scaler.texelSize, 0.0);
+    weights += weight;
+  }
+  return color / weights * scaler.color;
+}`;
+
+export interface ScaleOptions {
+  readonly expanded: boolean;
+  /** 结果乘的颜色，默认白色。 */
+  readonly color?: readonly [number, number, number, number];
+  readonly blend?: GPUBlendState;
+  /** 保留输出原来的内容（叠加时）。 */
+  readonly load?: boolean;
+}
+
+export class ImageScaler {
+  readonly #shader: FullscreenShader;
+  readonly #sampler: GPUSampler;
+
+  constructor(device: GPUDevice, linearClamp: GPUSampler) {
+    this.#shader = new FullscreenShader(device, 'ImageScaler', SCALER_SHADER);
+    this.#sampler = linearClamp;
+  }
+
+  draw(encoder: GPUCommandEncoder, arena: UniformArena, input: GPUTexture, output: GPUTexture, { expanded, color = [1, 1, 1, 1], blend, load = false }: ScaleOptions): void {
+    const parameters = arena.push([...color, 1 / input.width, 1 / input.height, expanded ? 1 : 0, 0]);
+    this.#shader.draw(encoder, output, [parameters, input, this.#sampler], { ...(blend ? { blend } : {}), load });
+  }
+
+  /** 一级级减半（Expanded）直到输出的尺寸（Stride 的 ImageMultiScaler 往下缩），中间各级从池里借。 */
+  multiScale(encoder: GPUCommandEncoder, pool: RenderTargetPool, arena: UniformArena, input: GPUTexture, output: GPUTexture): void {
+    let previous = input;
+    for (;;) {
+      const width = Math.max(1, previous.width >> 1), height = Math.max(1, previous.height >> 1);
+      const last = width <= output.width && height <= output.height;
+      const target = last ? output : pool.acquire(width, height, output.format, 'ImageMultiScaler level');
+      this.draw(encoder, arena, previous, target, { expanded: true });
+      if (last) return;
+      previous = target;
+    }
+  }
+}

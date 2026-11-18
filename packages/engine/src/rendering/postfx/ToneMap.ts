@@ -1,6 +1,6 @@
 /**
  * 色调映射（Stride 的 PostProcessingEffects 里的 ToneMap，默认设置）：把线性的 HDR 画面映射到显示范围，写进
- * 后备缓冲的 sRGB 视图。
+ * 后备缓冲的 sRGB 视图。分两步，同 Stride：measure 在泛光叠加之前量平均亮度（LuminanceEffect），draw 最后映射。
  * - 平均亮度（LuminanceEffect）：HDR 画面按 Rec.601 的亮度取 log2（至少 0.001）写进 S×S 的 R16F 图
  *   （S = min(nextPow2(宽), nextPow2(高)) / 2），再一级级 2x2 平均到 1x1，就是对数平均（几何平均）；
  * - 适应（TemporalAdaptation）：adapted += (平均亮度 - adapted) · (1 - e^(-dt · AdaptationRate))，第一帧直接取当前值。
@@ -8,7 +8,7 @@
  * - 曝光（AutoExposure、AutoKeyValue）：key = 1.03 - 2 / (2 + log10(adapted + 1))，曝光 = key / adapted；
  * - 算子：Hejl2（白点 5）。亮度、对比度是 0 时只剩 max(color, 0.0001)。
  */
-import { FULLSCREEN_VERTEX } from './fullscreen';
+import { FULLSCREEN_VERTEX } from '../fullscreen';
 
 const LUMINANCE_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
@@ -99,6 +99,8 @@ export class ToneMap {
   #current = 0;
   #reset = true;
   #targets: LuminanceTargets | undefined;
+  /** measure 写好的适应亮度，draw 读它。 */
+  #measured: GPUTexture | undefined;
 
   constructor(device: GPUDevice, sampler: GPUSampler) {
     this.#device = device;
@@ -120,8 +122,8 @@ export class ToneMap {
     this.#adapted = [adapted(), adapted()];
   }
 
-  /** 把 input（rgba16float 的 HDR 画面）映射后画进 output；elapsed 是这一帧的秒数，用于亮度适应。 */
-  draw(encoder: GPUCommandEncoder, input: GPUTexture, output: GPUTextureView, outputFormat: GPUTextureFormat, elapsed: number): void {
+  /** 量 input（rgba16float 的 HDR 画面）的平均亮度并做时间上的适应；elapsed 是这一帧的秒数。 */
+  measure(encoder: GPUCommandEncoder, input: GPUTexture, elapsed: number): void {
     const targets = this.#targetsFor(input);
     const factor = this.temporalAdaptation ? 1 - Math.exp(-elapsed * this.adaptationRate) : 1;
     this.#device.queue.writeBuffer(this.#adaptUniform, 0, new Float32Array([factor, this.#reset || !this.temporalAdaptation ? 1 : 0]));
@@ -145,14 +147,20 @@ export class ToneMap {
         { binding: 2, resource: previous.createView() },
       ],
     }), next.createView());
-    // 映射
+    this.#measured = next;
+  }
+
+  /** 按 measure 量出的亮度把 input 映射后画进 output。 */
+  draw(encoder: GPUCommandEncoder, input: GPUTexture, output: GPUTextureView, outputFormat: GPUTextureFormat): void {
+    const adapted = this.#measured;
+    if (!adapted) throw new Error("ToneMap.draw: call measure first in the frame");
     const tonemap = this.#tonemapPipeline(outputFormat);
     this.#fullscreen(encoder, tonemap, this.#device.createBindGroup({
       layout: tonemap.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: { buffer: this.#settings } },
         { binding: 1, resource: input.createView() },
-        { binding: 2, resource: next.createView() },
+        { binding: 2, resource: adapted.createView() },
       ],
     }), output);
   }

@@ -60,6 +60,7 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
 - 沙盒里 100 个由 Jolt 驱动的箱子加地面：101 个实例、6 次绘制，CPU 上整个 draw（找相机、提取、上传、编码、提交）0.13 ms，165 fps。
 - **剔除（2026-11-18）**：特性在 Cull 阶段把这一帧所有批次的槽位连着写进 stride-native 的剔除工作区（`FrustumCuller`，原生内存上的常驻视图），一次 `sn_transforms_cull` 剔除一组视图：每批用网格的包围盒，按槽位的世界矩阵变换（同 Stride 的 BoundingBoxExt.Transform），和视图的平面比较（同 VisibilityGroup），每批可见的槽位紧凑写出，实例缓冲直接从 wasm 内存上传。主视图顺带量出可见物体到近平面的最近、最远距离（Stride 的 MinimumDistance、MaximumDistance）。一帧剔除两次：主视图，然后按它的距离范围算出的阴影级联（忽略近、远平面）。
 - **方向光阴影（2026-11-18，`rendering/shadows`）**：照 Stride 的 LightDirectionalShadowMapRenderer 和 ShadowMapReceiverDirectional。`Light` 组件的 shadow 开头的列是设置（大小、过滤、级联数、深度偏移、法线偏移、稳定化、对数划分、深度范围、级联混合，默认值同 Stride），导入器从 Stride 的 YAML 读出来。级联按可见范围（带 1.1 / 2 倍的滞后）对数划分，外接球定大小、投影对齐到整像素；4096² 的 depth32float 图集，每个级联一块（xlarge 是 2048），投射阶段只写深度、不剔背面、不做深度裁剪（`depth-clip-control`）。着色器按视图深度选级联，法线偏移、深度偏移后比较采样（一次或 3/5/7 的 PCF，核同 Stride），相邻级联在交界处混合，阴影乘在直射光上。`Model.isShadowCaster` 控制投不投（批次按它分）。TPP 的主视图加 4 个级联一帧 134 次绘制，CPU 上整个 draw 0.41 ms，164 fps。
+- **后处理（2026-11-18，`rendering/postfx`）**：照 Stride 的 PostProcessingEffects（`ForwardRenderer.postEffects`），默认值和顺序同它的 DrawCore：FXAA（3.11 PC Quality，预设 23，在 HDR 上做，前后各一次 Karis 范围压缩/解压，因为 Stride 的 Bloom 默认 StableConvolution）→ 量平均亮度 → 亮部提取（BrightFilter）→ 泛光（多级 Expanded 缩小、可分离高斯、Additive 叠加，实际权重是 amount²）、光芒（LightStreak，4 个方向 × 5 轮）、镜头光晕（LensFlare，8 个鬼影加光环）依次叠加 → 色调映射（ToneMap 拆成 measure 和 draw，平均亮度在叠加之前量）。公共部分（ImageEffect.ts）：每帧复用的临时渲染目标池、一帧的 uniform 各占一段（避开 writeBuffer 的生效时机）、全屏通道按资源缓存绑定组和视图。TPP 在 RTX 3050 笔记本上同一会话里的增量：FXAA 约 0、泛光 +0.7 ms、光芒 +2.7 ms、镜头光晕 +0.2 ms（光芒约 30 个小渲染通道，开销在通道本身，要用 GPU 时间戳细查）。残影（Afterimage）、Stride 默认关的效果（环境光遮蔽、景深、局部反射、雾、轮廓）还没做。
 - 接下来：Stride 的 WGSL 和效果系统（等着色器系统）、透明阶段、点光源和聚光灯（及其阴影）、render bundle 缓存静态批次、非均匀缩放的法线（逆转置）。
 
 C# 移植版踩过的 WebGPU 坑，全部适用，见 [lessons.md](lessons.md)：`writeBuffer` 的生效时机、pass 内的状态去重、scissor 一直有效、调试组会切断 pass、没写的颜色目标要设 writeMask 0。
@@ -861,7 +862,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - **分发**：`tools/vite-app.ts` 是 apps 共用的 Vite 配置，构建后给 dist 里压得小的文件写 `.br` 和 `.gz`，静态服务器打开预压缩文件的支持就直接发。
   - **结果**：TPP 页面下载（正式版 wasm、JS、内容）从约 9.4 MB（brotli 约 1.6 MB）变成 4.2 MB（brotli 1.1 MB），其中 wasm 3.1 MB（brotli 728 KB）；原生模块拆分后 TPP 只要核心，页面 1.6 MB（brotli 约 500 KB），wasm 361 KB（brotli 97 KB）。
 - **法线贴图（2026-11-18）**：照 Stride 的 MaterialNormalMapFeature、MaterialSurfaceNormalMap 和 NormalUpdate：切线空间的法线（InvertY、×2-1、由 xy 算 z）乘 TBN，副切线 = w · cross(法线, 切线)。导入器只给材质用法线贴图的网格生成 MikkTSpace 切线（`addTangents`：每个三角形角一份，切线不同的地方拆开顶点），量化成 snorm8x4，顶点从 16 字节变成 20 字节；Stride 在导入时翻转法线贴图的绿色通道（NormalMapTextureType.InvertY，默认开），这里记在材质上、采样后翻转，结果一样，PNG 可以原样复制。TPP 只有人物的两块哑光黑用法线贴图，platformer 的导入改成 `--textures source`：两张 PNG 178 KB，编成 KTX2 是 95 KB，但要多下载 339 KB（brotli）的贴图转码侧模块。
-- **下一段**：TPP 开着的其余后处理（Bright filter 加 Bloom、光芒、镜头光晕，FXAA），再和桌面 Stride 截图比对。方向光阴影、剔除和法线贴图已做（见"渲染器"和上一条）。
+- **下一段**：和桌面 Stride 截图比对。方向光阴影、剔除、法线贴图和 TPP 开着的后处理已做（见"渲染器"和上一条）。
 
 ## 对齐的验证方法
 

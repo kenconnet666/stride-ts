@@ -1,19 +1,22 @@
 /**
  * 图形合成器的前向渲染器（Stride 的 GraphicsCompositor 里的 ForwardRenderer）：一个相机、一个不透明阶段，
  * 画进 RGBA16F 的 HDR 颜色缓冲加深度缓冲（同 Stride 的 HDR 渲染模式），再经色调映射（ToneMap）写进后备缓冲。
- * 以后加透明阶段、阴影、其余后处理（Bloom、FXAA……）、多个相机槽位。
- * 每帧：Collect（相机变成视图）→ Extract → Prepare → Draw → 后处理。
+ * 方向光可以投阴影（ShadowMapRenderer）。以后加透明阶段、其余后处理（Bloom、FXAA……）、多个相机槽位。
+ * 每帧：Collect（相机变成视图）→ Extract → 剔除主视图 → 按主视图的可见范围算出阴影级联 → 剔除级联 → Prepare
+ * → 画阴影图集 → 画主视图 → 后处理。
  */
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
 import { Color4 } from '../mathematics/vectors';
 import { Camera, Light } from './components';
-import { RenderStage, RenderView, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { Skybox } from './Skybox';
 import { ToneMap } from './ToneMap';
 
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
+const CASCADE_COUNTS = { one: 1, two: 2, four: 4 } as const;
 const HDR_FORMAT: GPUTextureFormat = 'rgba16float';
 
 export class ForwardRenderer {
@@ -25,6 +28,7 @@ export class ForwardRenderer {
   hasCamera = false;
   /** HDR 画面到显示范围的映射（设置同 Stride 的 ToneMap，可以改）。 */
   readonly toneMap: ToneMap;
+  readonly shadowMapRenderer: ShadowMapRenderer;
 
   readonly #mainView = new RenderView();
   #targets: { color: GPUTexture; depth: GPUTexture } | undefined;
@@ -41,6 +45,8 @@ export class ForwardRenderer {
       view.nearClipPlane = camera.nearClipPlane[0]!;
       view.farClipPlane = camera.farClipPlane[0]!;
       const { width, height } = this.renderSystem.graphicsDevice.canvas;
+      view.width = width;
+      view.height = height;
       Matrix.perspectiveFovRH(view.projection, (camera.verticalFieldOfView[0]! * Math.PI) / 180, width / height, view.nearClipPlane, view.farClipPlane);
       view.update();
     },
@@ -50,6 +56,10 @@ export class ForwardRenderer {
   #directionalFound = false;
   #lightFound = false;
   #skyboxLight: SkyboxLight | undefined;
+  readonly #shadowSettings: DirectionalShadowSettings = {
+    size: 'medium', filter: 'none', cascadeCount: 4, depthBias: 0, normalOffsetScale: 0, stabilization: 'projectionSnapping',
+    pssmFactor: 0.5, depthRange: 'automatic', minDistance: 0, maxDistance: 50, blendCascades: true,
+  };
   readonly #lightColor = new Color4();
   readonly #collectLights = system('ForwardRenderer.lights', {
     with: { light: Light, transform: Transform },
@@ -75,6 +85,21 @@ export class ForwardRenderer {
           const w = transform.slot[i]! * 16;
           lighting.direction.set(-transform.world[w + 8]!, -transform.world[w + 9]!, -transform.world[w + 10]!);
           lighting.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
+          if (light.shadow[i]) {
+            const s = this.#shadowSettings;
+            s.size = light.shadowSize[i]!;
+            s.filter = light.shadowFilter[i]!;
+            s.cascadeCount = CASCADE_COUNTS[light.shadowCascadeCount[i]!];
+            s.depthBias = light.shadowDepthBias[i]!;
+            s.normalOffsetScale = light.shadowNormalOffsetScale[i]!;
+            s.stabilization = light.shadowStabilization[i]!;
+            s.pssmFactor = light.shadowPssmFactor[i]!;
+            s.depthRange = light.shadowDepthRange[i]!;
+            s.minDistance = light.shadowMinDistance[i]!;
+            s.maxDistance = light.shadowMaxDistance[i]!;
+            s.blendCascades = light.shadowBlendCascades[i] !== 0;
+            lighting.directionalShadow = s;
+          }
         }
       }
     },
@@ -84,6 +109,7 @@ export class ForwardRenderer {
     this.renderSystem = renderSystem;
     this.opaqueStage = new RenderStage('Opaque', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT });
     this.toneMap = new ToneMap(renderSystem.device, renderSystem.resources.linearClamp);
+    this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
   }
 
   draw(context: RenderContext): void {
@@ -95,12 +121,19 @@ export class ForwardRenderer {
     this.hasCamera = this.#cameraFound;
     renderSystem.collect(this.hasCamera ? [this.#mainView] : []);
     this.#gatherLighting(context);
+    renderSystem.lighting.shadow = undefined;
+    let shadowViews: readonly RenderView[] = [];
     if (this.hasCamera) {
       renderSystem.extract(context);
+      renderSystem.cull(context, [this.#mainView]);
+      shadowViews = this.shadowMapRenderer.collect(this.#mainView, renderSystem.lighting);
+      renderSystem.addViews(shadowViews);
+      renderSystem.cull(context, shadowViews);
       renderSystem.prepare(context);
     }
 
     const encoder = graphicsDevice.device.createCommandEncoder({ label: 'ForwardRenderer' });
+    this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews);
     const { r, g, b, a } = this.clearColor;
     const targets = this.#targetsForCanvas();
     const pass = encoder.beginRenderPass({
@@ -118,6 +151,7 @@ export class ForwardRenderer {
     this.#targets?.color.destroy();
     this.#targets?.depth.destroy();
     this.toneMap.destroy();
+    this.shadowMapRenderer.destroy();
   }
 
   /** 从 Light 组件收集这一帧的光照；一个都没有时用默认光照。 */
@@ -126,6 +160,7 @@ export class ForwardRenderer {
     lighting.ambient.set(0, 0, 0, 1);
     lighting.color.set(0, 0, 0, 1);
     lighting.direction.set(0, -1, 0);
+    lighting.directionalShadow = undefined;
     lighting.skybox = undefined;
     this.#directionalFound = false;
     this.#lightFound = false;

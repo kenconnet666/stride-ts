@@ -19,6 +19,8 @@ export class GraphicsDevice {
   readonly backBufferViewFormat: GPUTextureFormat;
   /** KTX2 贴图转码成什么：设备支持的第一个压缩格式，都不支持时是 RGBA8。 */
   readonly textureTarget: TextureTarget;
+  /** 设备能关掉深度裁剪（'depth-clip-control'）：阴影投射者用它把视锥前面的物体压到近平面上（Stride 的 DepthClipEnable = false）。 */
+  readonly depthClipControl: boolean;
   private readonly context: GPUCanvasContext;
 
   static async create(canvas: HTMLCanvasElement): Promise<GraphicsDevice> {
@@ -26,15 +28,17 @@ export class GraphicsDevice {
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) throw new Error('No WebGPU adapter is available');
     const compression = COMPRESSION.filter(([feature]) => adapter.features.has(feature));
-    const device = await adapter.requestDevice({ requiredFeatures: compression.map(([feature]) => feature) });
+    const depthClipControl = adapter.features.has('depth-clip-control');
+    const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...(depthClipControl ? ['depth-clip-control' as const] : [])] });
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('The canvas has no WebGPU context');
-    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8');
+    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8', depthClipControl);
   }
 
-  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget) {
+  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget, depthClipControl: boolean) {
     this.device = device;
     this.textureTarget = textureTarget;
+    this.depthClipControl = depthClipControl;
     this.canvas = canvas;
     this.context = context;
     this.backBufferFormat = navigator.gpu.getPreferredCanvasFormat();

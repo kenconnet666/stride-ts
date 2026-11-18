@@ -94,7 +94,12 @@ export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh'
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder } from './rendering/Texture';
 export { MipmapGenerator } from './rendering/MipmapGenerator';
 export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
-export { RenderStage, RenderSystem, RenderView, RootRenderFeature, type Lighting, type RenderContext, type RenderOutput, type SkyboxLight } from './rendering/RenderSystem';
+export {
+  RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
+  type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,
+} from './rendering/RenderSystem';
+export { DirectionalShadowCascades, type CascadeRectangle } from './rendering/shadows/DirectionalShadowCascades';
+export { ShadowMapRenderer } from './rendering/shadows/ShadowMapRenderer';
 export { Color4, Quaternion, srgbToLinear, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';
 export { Decimal, type Rounding } from './values/Decimal';
 export { civilFromDays, daysFromCivil, Instant, LocalDate, LocalDateTime, LocalTime } from './values/temporal';

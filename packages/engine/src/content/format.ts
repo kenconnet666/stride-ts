@@ -264,6 +264,21 @@ export interface MaterialFile {
 
 export type Vec3Tuple = readonly [number, number, number];
 
+/** 方向光的阴影设置（Stride 的 LightDirectionalShadowMap），各字段的意思见 Light 组件。 */
+export interface SceneLightShadow {
+  readonly size: 'xsmall' | 'small' | 'medium' | 'large' | 'xlarge';
+  readonly filter: 'none' | 'pcf3x3' | 'pcf5x5' | 'pcf7x7';
+  readonly cascadeCount: 'one' | 'two' | 'four';
+  readonly depthBias: number;
+  readonly normalOffsetScale: number;
+  readonly stabilization: 'none' | 'viewSnapping' | 'projectionSnapping';
+  readonly pssmFactor: number;
+  readonly depthRange: 'automatic' | 'manual';
+  readonly minDistance: number;
+  readonly maxDistance: number;
+  readonly blendCascades: boolean;
+}
+
 export interface SceneEntityFile {
   readonly id: string;
   readonly name: string;
@@ -278,6 +293,8 @@ export interface SceneEntityFile {
       readonly model: string;
       /** 按槽覆盖模型的材质；null 表示用模型自带的。 */
       readonly materials: readonly (string | null)[];
+      /** 投下阴影；没有时是 true（同 Stride 的 ModelComponent.IsShadowCaster）。 */
+      readonly isShadowCaster?: boolean;
     };
     readonly camera?: { readonly verticalFieldOfView: number; readonly nearClipPlane: number; readonly farClipPlane: number };
     readonly light?:
@@ -286,6 +303,8 @@ export interface SceneEntityFile {
         /** sRGB，同 Light 组件。 */
         readonly color: Vec3Tuple;
         readonly intensity: number;
+        /** 方向光的阴影，字段同 Light 组件的 shadow 开头的列；没有就是不投阴影。 */
+        readonly shadow?: SceneLightShadow;
       }
       | {
         readonly type: 'skybox';

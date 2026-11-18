@@ -2,7 +2,7 @@
  * 渲染系统的骨架，名字和阶段照 Stride（Rendering/RenderSystem.cs）：合成器先收集视图（Collect），
  * 然后各个根渲染特性从实体里提取这一帧要画的东西（Extract）、上传数据（Prepare），最后按视图和阶段绘制（Draw）。
  * 和 Stride 不同的地方：没有通用的 RenderObject / RenderNode 列表，每个特性直接按列遍历实体（数据导向），
- * 也还没有剔除和排列组合（效果系统等内容管线）。
+ * 剔除也由特性自己做（Cull，在 stride-native 里），还没有排列组合（效果系统等内容管线）。
  */
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
@@ -18,9 +18,9 @@ export interface RenderContext {
   readonly time: GameTime;
 }
 
-/** 一个阶段画进去的目标格式（Stride 的 RenderOutputDescription）。 */
+/** 一个阶段画进去的目标格式（Stride 的 RenderOutputDescription）；只画深度的阶段没有颜色格式。 */
 export interface RenderOutput {
-  readonly colorFormat: GPUTextureFormat;
+  readonly colorFormat?: GPUTextureFormat;
   readonly depthFormat: GPUTextureFormat;
 }
 
@@ -28,11 +28,22 @@ export interface RenderOutput {
 export class RenderStage {
   readonly name: string;
   readonly output: RenderOutput;
+  /** 阴影投射阶段：只画投射阴影的物体、只写深度（Stride 的 ShadowMapRenderStageSelector 选进来的）。 */
+  readonly shadowCasters: boolean;
 
-  constructor(name: string, output: RenderOutput) {
+  constructor(name: string, output: RenderOutput, { shadowCasters = false }: { shadowCasters?: boolean } = {}) {
     this.name = name;
     this.output = output;
+    this.shadowCasters = shadowCasters;
   }
+}
+
+/** 画进目标的一块矩形（像素）。 */
+export interface Viewport {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** 一个视角：相机、阴影级联等。矩阵的布局见 mathematics/Matrix.ts。 */
@@ -48,12 +59,37 @@ export class RenderView {
   farClipPlane = 1000;
   /** 在 RenderSystem.views 里的下标；特性按它给每个视图的常量分块。 */
   index = -1;
+  /** 目标的宽高（像素）；阴影图的大小按主视图的算。 */
+  width = 1;
+  height = 1;
+  /** 画进目标的哪一块（阴影图集里的一个级联）；undefined 是整个目标。 */
+  viewport: Viewport | undefined;
+  /** 朝内的视锥平面：左、右、下、上、近、远，每个 xyzw（Matrix.frustumPlanes）。update() 算。 */
+  readonly frustumPlanes = new Float32Array(24);
+  /**
+   * 相机近平面（法线是相机的前方，w = dot(n, 近平面上的点)，距离 = dot(n, p) - w），量可见物体的距离用，
+   * 同 Stride 的 VisibilityGroup。update() 算。
+   */
+  readonly nearPlane = new Float32Array(4);
+  /** 剔除时忽略近、远平面（Stride 的 VisiblityIgnoreDepthPlanes）：阴影级联前后的物体也要投下阴影。 */
+  ignoreDepthPlanes = false;
+  /** 可见物体的包围盒到近平面的最近、最远距离（Stride 的 MinimumDistance、MaximumDistance），剔除后才有。 */
+  minimumDistance = Infinity;
+  maximumDistance = -Infinity;
 
-  /** 由 view 和 projection 算出其余的矩阵和相机位置。 */
+  /** 由 view 和 projection 算出其余的矩阵、相机位置和剔除用的平面。 */
   update(): void {
     Matrix.multiply(this.viewProjection, this.projection, this.view);
     Matrix.invert(this.inverseViewProjection, this.viewProjection);
-    if (Matrix.invert(CAMERA_WORLD, this.view)) this.eye.set(CAMERA_WORLD[12]!, CAMERA_WORLD[13]!, CAMERA_WORLD[14]!);
+    Matrix.frustumPlanes(this.frustumPlanes, this.viewProjection);
+    if (!Matrix.invert(CAMERA_WORLD, this.view)) return;
+    this.eye.set(CAMERA_WORLD[12]!, CAMERA_WORLD[13]!, CAMERA_WORLD[14]!);
+    // 相机看向本地 -Z
+    const fx = -CAMERA_WORLD[8]!, fy = -CAMERA_WORLD[9]!, fz = -CAMERA_WORLD[10]!;
+    const length = Math.hypot(fx, fy, fz) || 1;
+    const nx = fx / length, ny = fy / length, nz = fz / length;
+    const near = this.nearClipPlane;
+    this.nearPlane.set([nx, ny, nz, nx * (this.eye.x + nx * near) + ny * (this.eye.y + ny * near) + nz * (this.eye.z + nz * near)]);
   }
 }
 
@@ -74,6 +110,11 @@ export abstract class RootRenderFeature {
 
   /** 从实体里取出这一帧要画的东西，只在 CPU 上做。 */
   abstract extract(context: RenderContext): void;
+  /**
+   * 剔除：算出每个视图里可见的东西，并把可见物体的距离并进视图的 minimumDistance、maximumDistance。
+   * 一帧里可能调用多次（先主视图，再按主视图的距离范围算出的阴影级联）。
+   */
+  cull(_context: RenderContext, _views: readonly RenderView[]): void {}
   /** 上传这一帧的数据；这时视图都已收集好。 */
   abstract prepare(context: RenderContext): void;
   /** 把这个特性的东西画进一个视图的一个阶段。 */
@@ -91,12 +132,57 @@ export interface SkyboxLight {
   readonly rotation: Float32Array;
 }
 
-/** 这一帧的光照：一个方向光、环境光和一个天空盒光（多个方向光、点光源、阴影以后加）。 */
+/** 方向光的阴影设置（Stride 的 LightDirectionalShadowMap），来自 Light 组件。 */
+export interface DirectionalShadowSettings {
+  size: ShadowMapSize;
+  filter: ShadowMapFilter;
+  cascadeCount: 1 | 2 | 4;
+  /** 从阴影空间的深度里减去的偏移。 */
+  depthBias: number;
+  /** 沿法线把采样点推出去的比例（按阴影图集的像素大小和 1 - N·L 缩放）。 */
+  normalOffsetScale: number;
+  stabilization: ShadowStabilization;
+  /** 对数划分里对数分布的比重是 1 - pssmFactor。 */
+  pssmFactor: number;
+  /** automatic：按可见物体的距离范围；manual：相机近平面加 minDistance 到 maxDistance。 */
+  depthRange: 'automatic' | 'manual';
+  minDistance: number;
+  maxDistance: number;
+  /** 相邻级联在交界处混合。 */
+  blendCascades: boolean;
+}
+
+export type ShadowMapSize = 'xsmall' | 'small' | 'medium' | 'large' | 'xlarge';
+export type ShadowMapFilter = 'none' | 'pcf3x3' | 'pcf5x5' | 'pcf7x7';
+export type ShadowStabilization = 'none' | 'viewSnapping' | 'projectionSnapping';
+
+/** 着色时要的阴影数据（Stride 的 ShadowMapReceiverDirectional 的参数），由 ShadowMapRenderer 每帧填。 */
+export interface ShadowReceiver {
+  /** 深度图集，各级联是其中一块。 */
+  readonly atlas: GPUTexture;
+  cascadeCount: number;
+  /** 每个级联 16 个 float：世界坐标到图集 UV（xy）和深度（z）。 */
+  readonly worldToShadow: Float32Array;
+  /** 每个级联的结束距离（视图空间的深度）。 */
+  readonly splits: Float32Array;
+  depthBias: number;
+  normalOffsetScale: number;
+  /** 0：单次比较采样；3、5、7：PCF 的核大小。 */
+  filterSize: number;
+  blendCascades: boolean;
+  depthRangeAutomatic: boolean;
+}
+
+/** 这一帧的光照：一个方向光（可以有阴影）、环境光和一个天空盒光（多个方向光、点光源以后加）。 */
 export interface Lighting {
   /** 光线前进的方向（世界空间，不必归一化）。 */
   readonly direction: Vector3;
   /** 方向光：线性空间的颜色乘强度。 */
   readonly color: Color4;
+  /** 方向光的阴影设置；不投阴影时是 undefined。 */
+  directionalShadow: DirectionalShadowSettings | undefined;
+  /** 这一帧画好的阴影；没有时是 undefined。 */
+  shadow: ShadowReceiver | undefined;
   /** 环境光：线性空间的颜色乘强度。 */
   readonly ambient: Color4;
   /** 没有天空盒光时是 undefined。 */
@@ -112,6 +198,8 @@ export class RenderSystem {
   readonly lighting: Lighting = {
     direction: new Vector3(),
     color: new Color4(),
+    directionalShadow: undefined,
+    shadow: undefined,
     ambient: new Color4(),
     skybox: undefined,
   };
@@ -119,6 +207,8 @@ export class RenderSystem {
   readonly defaultLighting: Lighting = {
     direction: new Vector3(-0.4, -1, -0.6),
     color: new Color4(3, 3, 3, 1),
+    directionalShadow: undefined,
+    shadow: undefined,
     ambient: new Color4(0.15, 0.15, 0.18, 1),
     skybox: undefined,
   };
@@ -140,17 +230,31 @@ export class RenderSystem {
     return feature;
   }
 
-  /** Collect：这一帧要画的视图。 */
+  /** Collect：这一帧要画的视图（先清空）。 */
   collect(views: readonly RenderView[]): void {
     this.views.length = 0;
-    views.forEach((view, index) => {
-      view.index = index;
+    this.addViews(views);
+  }
+
+  /** 追加视图（阴影级联在主视图剔除之后才算得出来）。 */
+  addViews(views: readonly RenderView[]): void {
+    for (const view of views) {
+      view.index = this.views.length;
       this.views.push(view);
-    });
+    }
   }
 
   extract(context: RenderContext): void {
     for (const feature of this.features) feature.extract(context);
+  }
+
+  /** 剔除这些视图：先重置距离范围，再交给各特性。 */
+  cull(context: RenderContext, views: readonly RenderView[]): void {
+    for (const view of views) {
+      view.minimumDistance = Infinity;
+      view.maximumDistance = -Infinity;
+    }
+    for (const feature of this.features) feature.cull(context, views);
   }
 
   prepare(context: RenderContext): void {

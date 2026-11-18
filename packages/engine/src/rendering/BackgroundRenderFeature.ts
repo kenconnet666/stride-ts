@@ -102,8 +102,10 @@ export class BackgroundRenderFeature extends RootRenderFeature {
   }
 
   override draw(_context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
-    if (!this.#cubemap || !this.#gpu || !this.#bindGroup || view.index !== 0) return;
-    pass.setPipeline(this.#pipelineFor(stage));
+    // 只画在主视图上；只有深度的阶段（阴影投射）没有颜色可画
+    const colorFormat = stage.output.colorFormat;
+    if (!this.#cubemap || !this.#gpu || !this.#bindGroup || view.index !== 0 || !colorFormat) return;
+    pass.setPipeline(this.#pipelineFor(stage, colorFormat));
     pass.setBindGroup(0, this.#bindGroup);
     pass.draw(3);
   }
@@ -113,9 +115,9 @@ export class BackgroundRenderFeature extends RootRenderFeature {
     this.#gpu = undefined;
   }
 
-  #pipelineFor(stage: RenderStage): GPURenderPipeline {
+  #pipelineFor(stage: RenderStage, colorFormat: GPUTextureFormat): GPURenderPipeline {
     const gpu = this.#gpu!;
-    const { colorFormat, depthFormat } = stage.output;
+    const { depthFormat } = stage.output;
     const key = `${stage.name}:${colorFormat}:${depthFormat}`;
     let pipeline = gpu.pipelines.get(key);
     if (!pipeline) {

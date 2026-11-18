@@ -18,6 +18,10 @@ export class GpuResources {
   readonly linearRepeat: GPUSampler;
   /** 立方体贴图和查找表用（Stride 的 LinearSampler）。 */
   readonly linearClamp: GPUSampler;
+  /** 1x1 的深度图（值 1）：没有阴影、或者正在画阴影图集时，阴影的绑定位置绑它。 */
+  readonly emptyShadowAtlas: GPUTexture;
+  /** 阴影图的比较采样（Stride 的 LinearClampCompareLessEqualSampler）：参考深度 <= 图里的深度时是亮的，双线性插值比较结果。 */
+  readonly shadowComparison: GPUSampler;
   readonly #textures = new Map<Texture, GPUTexture>();
   readonly #cubemaps = new Map<Cubemap, GPUTexture>();
   readonly #skyboxSpecular = new Map<Skybox, GPUTexture>();
@@ -39,6 +43,9 @@ export class GpuResources {
       maxAnisotropy: 16,
     });
     this.linearClamp = device.createSampler({ label: 'linear clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
+    this.emptyShadowAtlas = device.createTexture({ label: 'empty shadow atlas', size: [1, 1], format: 'depth32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
+    clearDepth(device, this.emptyShadowAtlas);
+    this.shadowComparison = device.createSampler({ label: 'shadow comparison', magFilter: 'linear', minFilter: 'linear', compare: 'less-equal' });
     this.#mipmaps = new MipmapGenerator(device);
   }
 
@@ -92,6 +99,13 @@ export class GpuResources {
   }
 
   destroy(): void {
-    for (const texture of [...this.#textures.values(), ...this.#cubemaps.values(), ...this.#skyboxSpecular.values(), this.white, this.blackCube]) texture.destroy();
+    for (const texture of [...this.#textures.values(), ...this.#cubemaps.values(), ...this.#skyboxSpecular.values(), this.white, this.blackCube, this.emptyShadowAtlas]) texture.destroy();
   }
+}
+
+/** 深度图写成 1（远）：深度格式不能用 writeTexture，用一次只清深度的绘制。 */
+function clearDepth(device: GPUDevice, texture: GPUTexture): void {
+  const encoder = device.createCommandEncoder({ label: texture.label });
+  encoder.beginRenderPass({ colorAttachments: [], depthStencilAttachment: { view: texture.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' } }).end();
+  device.queue.submit([encoder.finish()]);
 }

@@ -44,7 +44,7 @@ export class PlatformerGame extends Game {
     this.stats.textContent = [
       `frame ${time.frameCount}  ${(1 / Math.max(time.elapsed, 1e-6)).toFixed(0)} fps`,
       `${SCENE}: ${this.entities.count} entities, loaded in ${this.loadMilliseconds.toFixed(0)} ms`,
-      `render: ${mesh?.instanceCount ?? 0} instances in ${mesh?.batches.filter((b) => b.count > 0).length ?? 0} draws  draw ${this.drawMilliseconds.toFixed(2)} ms`,
+      `render: ${mesh?.instanceCount ?? 0} instances, ${mesh?.drawnInstances ?? 0} drawn in ${mesh?.drawCalls ?? 0} draws (all views)  draw ${this.drawMilliseconds.toFixed(2)} ms`,
     ].join('\n');
   }
 }

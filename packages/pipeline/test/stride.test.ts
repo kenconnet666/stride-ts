@@ -207,6 +207,7 @@ describe('导入 Stride 场景', () => {
       '                        Id: mc1',
       `                        Model: ${ids.model}:Models/Tri`,
       '                        Materials: {}',
+      '                        IsShadowCaster: false',
       '                    s1: !Game.Spinner,Game',
       '                        Id: sc1',
       '        -   Entity:',
@@ -223,6 +224,17 @@ describe('导入 Stride 场景', () => {
       '                        Type: !LightDirectional',
       '                            Color: !ColorRgbProvider',
       '                                Value: {R: 1.0, G: 0.5, B: 0.0}',
+      // TPP 的设置：没写的字段（级联数、稳定化、法线偏移）取 Stride 的默认值
+      '                            Shadow:',
+      '                                Enabled: true',
+      '                                Filter: !LightShadowMapFilterTypePcf',
+      '                                    FilterSize: Filter5x5',
+      '                                Size: XLarge',
+      '                                DepthRange: {}',
+      '                                PartitionMode: !LightDirectionalShadowMap.PartitionLogarithmic {}',
+      '                                ComputeTransmittance: false',
+      '                                BiasParameters:',
+      '                                    DepthBias: 0.0015',
       '                        Intensity: 5.0',
       '        -   Entity:',
       '                Id: e3',
@@ -280,8 +292,14 @@ describe('导入 Stride 场景', () => {
     expect([radiance.size, radiance.format, radiance.levels.length]).toEqual([8, 'rgb9e5ufloat', 1]);
     expect(fromRgb9e5(new DataView(radiance.levels[0]!.buffer, radiance.levels[0]!.byteOffset).getUint32(0, true))).toEqual([0.5, 1, 2]);
     expect(scene.entities[1]!.position).toEqual([0, 2, 0]);
-    expect(scene.entities[0]!.components.light).toEqual({ type: 'directional', color: [1, 0.5, 0], intensity: 5 });
-    expect(scene.entities[1]!.components.model).toEqual({ model: 'Game/Models/Tri', materials: [] });
+    expect(scene.entities[0]!.components.light).toEqual({
+      type: 'directional', color: [1, 0.5, 0], intensity: 5,
+      shadow: {
+        size: 'xlarge', filter: 'pcf5x5', cascadeCount: 'four', depthBias: 0.0015, normalOffsetScale: 10, stabilization: 'projectionSnapping',
+        pssmFactor: 0.5, depthRange: 'automatic', minDistance: 0, maxDistance: 50, blendCascades: true,
+      },
+    });
+    expect(scene.entities[1]!.components.model).toEqual({ model: 'Game/Models/Tri', materials: [], isShadowCaster: false });
 
     const model = decodeModel((await readFile(path.join(out, 'Game/Models/Tri.model'))).buffer as ArrayBuffer);
     expect(model.materials).toEqual(['Game/Materials/Red']);

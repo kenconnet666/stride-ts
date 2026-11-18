@@ -18,6 +18,7 @@ import {
   type ModelMeshData,
   type SceneEntityFile,
   type SceneFile,
+  type SceneLightShadow,
   type SkyboxFile,
   TEXTURE_EXTENSIONS,
   type TextureEncoding,
@@ -188,10 +189,12 @@ export class StrideImporter {
       case 'LightDirectional':
       case 'LightAmbient': {
         const color = asObject(asObject(type['Color'])?.['Value']) ?? {};
+        const shadow = type.$type === 'LightDirectional' ? this.#shadow(asObject(type['Shadow']), where) : undefined;
         return {
           type: type.$type === 'LightDirectional' ? 'directional' : 'ambient',
           color: [asNumber(color['R'], 1), asNumber(color['G'], 1), asNumber(color['B'], 1)],
           intensity,
+          ...(shadow ? { shadow } : {}),
         };
       }
       case 'LightSkybox': {
@@ -201,6 +204,34 @@ export class StrideImporter {
       default:
         return undefined;
     }
+  }
+
+  /** 方向光的阴影（LightDirectionalShadowMap）；没开时返回 undefined。没写的字段取 Stride 的默认值。 */
+  #shadow(shadow: StrideObject | undefined, where: string): SceneLightShadow | undefined {
+    if (!shadow || shadow['Enabled'] !== true) return undefined;
+    const filter = asObject(shadow['Filter']);
+    let filterName: SceneLightShadow['filter'] = 'none';
+    if (filter?.$type === 'LightShadowMapFilterTypePcf') filterName = PCF_FILTERS[String(filter['FilterSize'] ?? 'Filter3x3')] ?? 'pcf3x3';
+    else if (filter) this.#warnings.push(`${where}: shadow filter ${filter.$type ?? 'value'} is not supported; using a single comparison sample`);
+    const partition = asObject(shadow['PartitionMode']);
+    if (partition?.$type === 'LightDirectionalShadowMap.PartitionManual') {
+      this.#warnings.push(`${where}: manual shadow cascade splits are not supported; using the logarithmic partition`);
+    }
+    const bias = asObject(shadow['BiasParameters']) ?? {};
+    const depthRange = asObject(shadow['DepthRange']) ?? {};
+    return {
+      size: SHADOW_SIZES[String(shadow['Size'] ?? 'Medium')] ?? 'medium',
+      filter: filterName,
+      cascadeCount: CASCADE_COUNTS[String(shadow['CascadeCount'] ?? 'FourCascades')] ?? 'four',
+      depthBias: asNumber(bias['DepthBias'], 0.01),
+      normalOffsetScale: asNumber(bias['NormalOffsetScale'], 10),
+      stabilization: STABILIZATION_MODES[String(shadow['StabilizationMode'] ?? 'ProjectionSnapping')] ?? 'projectionSnapping',
+      pssmFactor: partition?.$type === 'LightDirectionalShadowMap.PartitionLogarithmic' ? asNumber(partition['PSSMFactor'], 0.5) : 0.5,
+      depthRange: depthRange['IsAutomatic'] === false ? 'manual' : 'automatic',
+      minDistance: asNumber(depthRange['ManualMinDistance'], 0),
+      maxDistance: asNumber(depthRange['ManualMaxDistance'], 50),
+      blendCascades: depthRange['IsBlendingCascades'] !== false,
+    };
   }
 
   async #modelComponent(component: StrideObject, where: string): Promise<NonNullable<SceneEntityFile['components']['model']>> {
@@ -216,7 +247,7 @@ export class StrideImporter {
       while (materials.length < slot) materials.push(null);
       materials[slot] = await this.#material(this.#project.get(material.id, where));
     }
-    return { model, materials };
+    return { model, materials, ...(component['IsShadowCaster'] === false ? { isShadowCaster: false } : {}) };
   }
 
   /** 导入一个模型资源（.sdm3d），返回它的内容路径。 */
@@ -462,6 +493,12 @@ export class StrideImporter {
 }
 
 /** 同一个资源只导入一次：缓存导入的 Promise，结果是资源的内容路径。 */
+/** Stride 的 LightShadowMapSize、LightShadowMapFilterTypePcfSize、LightShadowMapCascadeCount、LightShadowMapStabilizationMode。 */
+const SHADOW_SIZES: Readonly<Record<string, SceneLightShadow['size']>> = { XSmall: 'xsmall', Small: 'small', Medium: 'medium', Large: 'large', XLarge: 'xlarge' };
+const PCF_FILTERS: Readonly<Record<string, SceneLightShadow['filter']>> = { Filter3x3: 'pcf3x3', Filter5x5: 'pcf5x5', Filter7x7: 'pcf7x7' };
+const CASCADE_COUNTS: Readonly<Record<string, SceneLightShadow['cascadeCount']>> = { OneCascade: 'one', TwoCascades: 'two', FourCascades: 'four' };
+const STABILIZATION_MODES: Readonly<Record<string, SceneLightShadow['stabilization']>> = { None: 'none', ViewSnapping: 'viewSnapping', ProjectionSnapping: 'projectionSnapping' };
+
 function once(cache: Map<string, Promise<string>>, asset: AssetEntry, importAsset: () => Promise<void>): Promise<string> {
   let pending = cache.get(asset.path);
   if (!pending) {

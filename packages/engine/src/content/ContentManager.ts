@@ -15,7 +15,7 @@ import { Material } from '../rendering/Material';
 import { Mesh, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeCubemap, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type SceneEntityFile, type SceneFile, type SkyboxFile } from './format';
+import { decodeCubemap, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type SceneEntityFile, type SceneFile, type SceneLightShadow, type SkyboxFile } from './format';
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
 export interface MeshoptRequest {
@@ -197,7 +197,7 @@ export class ContentManager {
     const { materials } = assets;
     if (camera) entity.add(Camera.with(camera));
     if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
-    else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity }));
+    else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
     if (background) entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
     if (!model) return;
     const loaded = assets.models.get(model.model)!;
@@ -205,7 +205,7 @@ export class ContentManager {
       // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
       const override = slot === null ? null : (model.materials[slot] ?? null);
       const material = (override === null ? null : materials.get(override)) ?? (slot === null ? null : loaded.materials[slot]) ?? this.defaultMaterial;
-      const component = Model.with({ mesh: mesh.id, material: material.id });
+      const component = Model.with({ mesh: mesh.id, material: material.id, isShadowCaster: model.isShadowCaster ?? true });
       // 一个实体只能有一个 Model：多出来的网格挂成子实体
       if (i === 0) {
         entity.add(component);
@@ -236,4 +236,22 @@ export class ContentManager {
 /** 并行加载一组（去重的）路径，结果按路径放进 Map。 */
 async function preload<T>(paths: readonly string[], load: (path: string) => Promise<T>): Promise<Map<string, T>> {
   return new Map(await Promise.all([...new Set(paths)].map(async (path) => [path, await load(path)] as const)));
+}
+
+/** 场景文件里的阴影设置换成 Light 组件的列。 */
+function shadowColumns(shadow: SceneLightShadow) {
+  return {
+    shadow: true,
+    shadowSize: shadow.size,
+    shadowFilter: shadow.filter,
+    shadowCascadeCount: shadow.cascadeCount,
+    shadowDepthBias: shadow.depthBias,
+    shadowNormalOffsetScale: shadow.normalOffsetScale,
+    shadowStabilization: shadow.stabilization,
+    shadowPssmFactor: shadow.pssmFactor,
+    shadowDepthRange: shadow.depthRange,
+    shadowMinDistance: shadow.minDistance,
+    shadowMaxDistance: shadow.maxDistance,
+    shadowBlendCascades: shadow.blendCascades,
+  } as const;
 }

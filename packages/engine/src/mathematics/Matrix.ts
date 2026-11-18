@@ -87,6 +87,64 @@ export const Matrix = {
     return out;
   },
 
+  /** 右手坐标系的观察矩阵（Stride 的 Matrix.LookAtRH）：从 eye 看向 target，up 定上方。 */
+  lookAtRH(out: Matrix4, eye: ArrayLike<number>, target: ArrayLike<number>, up: ArrayLike<number>): Matrix4 {
+    const z = normalize([eye[0]! - target[0]!, eye[1]! - target[1]!, eye[2]! - target[2]!]);
+    const x = normalize(cross(up, z));
+    const y = cross(z, x);
+    out.set([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, eye), -dot(y, eye), -dot(z, eye), 1]);
+    return out;
+  },
+
+  /** 右手坐标系的正交投影（Stride 的 Matrix.OrthoOffCenterRH），深度 0（近）到 1（远）。 */
+  orthoOffCenterRH(out: Matrix4, left: number, right: number, bottom: number, top: number, near: number, far: number): Matrix4 {
+    out.fill(0);
+    out[0] = 2 / (right - left);
+    out[5] = 2 / (top - bottom);
+    out[10] = 1 / (near - far);
+    out[12] = (left + right) / (left - right);
+    out[13] = (top + bottom) / (bottom - top);
+    out[14] = near / (near - far);
+    out[15] = 1;
+    return out;
+  },
+
+  /** 先缩放再平移（Stride 的 Matrix.Scaling(s) * Matrix.Translation(t)）。 */
+  scaleTranslation(out: Matrix4, sx: number, sy: number, sz: number, tx: number, ty: number, tz: number): Matrix4 {
+    out.fill(0);
+    out[0] = sx;
+    out[5] = sy;
+    out[10] = sz;
+    out[12] = tx;
+    out[13] = ty;
+    out[14] = tz;
+    out[15] = 1;
+    return out;
+  },
+
+  /**
+   * 视图投影矩阵的 6 个视锥平面，朝内（dot(n, p) + w > 0 在内侧），法线归一化，顺序：左、右、下、上、近、远
+   * （近、远在最后，剔除时可以只用前 4 个）。深度范围 0..1，同 WebGPU。
+   */
+  frustumPlanes(out: Float32Array, viewProjection: Readonly<Matrix4>): Float32Array {
+    const m = viewProjection;
+    // 裁剪坐标 = M * p，第 i 行是 (m[i], m[4 + i], m[8 + i], m[12 + i])
+    const row = (i: number, sign: number, base: number | undefined, o: number): void => {
+      for (let c = 0; c < 4; c++) out[o + c] = (base === undefined ? 0 : m[c * 4 + base]!) + sign * m[c * 4 + i]!;
+    };
+    row(0, 1, 3, 0);
+    row(0, -1, 3, 4);
+    row(1, 1, 3, 8);
+    row(1, -1, 3, 12);
+    row(2, 1, undefined, 16);
+    row(2, -1, 3, 20);
+    for (let o = 0; o < 24; o += 4) {
+      const length = Math.hypot(out[o]!, out[o + 1]!, out[o + 2]!) || 1;
+      for (let c = 0; c < 4; c++) out[o + c]! /= length;
+    }
+    return out;
+  },
+
   /** 用矩阵变换一个点（带平移，做透视除法）。 */
   transformPoint(m: Readonly<Matrix4>, x: number, y: number, z: number): [number, number, number] {
     const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
@@ -97,3 +155,18 @@ export const Matrix = {
     ];
   },
 } as const;
+
+type Vec3Tuple = [number, number, number];
+
+function dot(a: ArrayLike<number>, b: ArrayLike<number>): number {
+  return a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+}
+
+function cross(a: ArrayLike<number>, b: ArrayLike<number>): Vec3Tuple {
+  return [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
+}
+
+function normalize(v: Vec3Tuple): Vec3Tuple {
+  const length = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / length, v[1] / length, v[2] / length];
+}

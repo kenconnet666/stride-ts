@@ -117,7 +117,7 @@ export class SandboxGame extends Game {
     this.stats.textContent = [
       `frame ${time.frameCount}  ${(1 / Math.max(time.elapsed, 1e-6)).toFixed(0)} fps  ${width}x${height}`,
       `native workers ${this.native.workerThreadCount}  crossOriginIsolated ${crossOriginIsolated}`,
-      `render: ${this.renderSystem.features.filter((f) => f instanceof MeshRenderFeature).map((f) => `${f.instanceCount} instances in ${f.batches.filter((b) => b.count > 0).length} draws`).join(', ')}  draw ${this.drawMilliseconds.toFixed(2)} ms`,
+      `render: ${this.renderSystem.features.filter((f) => f instanceof MeshRenderFeature).map((f) => `${f.instanceCount} instances, ${f.drawnInstances} drawn in ${f.drawCalls} draws`).join(', ')}  draw ${this.drawMilliseconds.toFixed(2)} ms`,
       `physics ${crates.count} crates  step ${this.stepMilliseconds.toFixed(2)} ms  height from world matrices: mean ${(crates.sumY / Math.max(1, crates.count)).toFixed(2)} m, lowest ${crates.lowestY.toFixed(2)} m`,
       `entities ${this.entities.count}  scripts + systems ${this.entitiesMilliseconds.toFixed(2)} ms  particles ${particles.count}, mean height ${(particles.sumY / Math.max(1, particles.count)).toFixed(2)} m, spawned ${this.fountain.spawned}`,
       `registered: ${Fountain.scriptName}, ${integrate.name}, ${expire.name}`,

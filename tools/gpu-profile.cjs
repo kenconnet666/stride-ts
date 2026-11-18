@@ -5,7 +5,9 @@ const { chromium } = require(process.argv[2]);
 const seconds = Number(process.argv[4] ?? 3);
 (async () => {
   const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', args: ['--enable-webgpu-developer-features', '--disable-frame-rate-limit', '--disable-gpu-vsync', ...(process.env.CHROME_ARGS?.split(' ').filter(Boolean) ?? [])] });
-  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  // VIEWPORT=宽x高 改视口（默认 1400x900），比如 VIEWPORT=3840x2160 测 4K
+  const [width, height] = (process.env.VIEWPORT ?? '1400x900').split('x').map(Number);
+  const page = await browser.newPage({ viewport: { width, height } });
   await page.goto(process.argv[3]);
   await page.waitForFunction(() => globalThis.strideGame?.frames > 120, null, { timeout: 60000 });
   const supported = await page.evaluate(() => { const p = globalThis.strideGame.graphicsDevice.profiler; p.enabled = true; return p.supported; });

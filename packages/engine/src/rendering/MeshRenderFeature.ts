@@ -115,7 +115,8 @@ fn octDecode(e: vec2f) -> vec3f {
 }
 
 struct Varyings {
-  @builtin(position) position: vec4f,
+  // invariant：深度预通道和不透明阶段的管线算出完全相同的深度，less-equal 才不会漏掉像素
+  @invariant @builtin(position) position: vec4f,
   @location(0) world: vec3f,
   @location(1) normal: vec3f,
   @location(2) uv: vec2f,
@@ -188,45 +189,80 @@ fn evaluateSH(d: vec3f) -> vec3f {
   return color;
 }
 
-/** PCF 核在一个轴上的采样位置（相对基准像素，单位是像素）和权重（Stride 的 ShadowMapFilterPcf，核是两个轴的乘积）。 */
-struct PcfAxis { offsets: vec4f, weights: vec4f, count: u32 };
-
-fn pcfAxis(size: u32, s: f32) -> PcfAxis {
-  if (size == 3u) {
-    let w = vec2f(3.0 - 2.0 * s, 1.0 + 2.0 * s);
-    return PcfAxis(vec4f((2.0 - s) / w.x - 1.0, s / w.y + 1.0, 0.0, 0.0), vec4f(w, 0.0, 0.0), 2u);
-  }
-  if (size == 5u) {
-    let w = vec3f(4.0 - 3.0 * s, 7.0, 1.0 + 3.0 * s);
-    return PcfAxis(vec4f((3.0 - 2.0 * s) / w.x - 2.0, (3.0 + s) / w.y, s / w.z + 2.0, 0.0), vec4f(w, 0.0), 3u);
-  }
-  let w = vec4f(5.0 * s - 6.0, 11.0 * s - 28.0, -(11.0 * s + 17.0), -(5.0 * s + 1.0));
-  return PcfAxis(vec4f((4.0 * s - 5.0) / w.x - 3.0, (4.0 * s - 16.0) / w.y - 1.0, -(7.0 * s + 5.0) / w.z + 1.0, -s / w.w + 3.0), w, 4u);
+/** 图集里一次双线性的比较采样，乘权重；offset 以像素为单位，相对 PCF 的基准像素。 */
+fn pcfTap(base: vec2f, offset: vec2f, weight: f32, depth: f32) -> f32 {
+  return weight * textureSampleCompareLevel(shadowAtlas, shadowComparison, base + offset * view.shadowAtlas.x, depth);
 }
 
-/** 图集里 position 处的阴影（1 是亮）：一次双线性的比较采样，或者 PCF（权重的和是 16、144、2704，同 Stride 的归一化）。 */
+// PCF 的一行：x 方向的偏移和权重按分量写开（不用动态下标，编译器才能把采样都放在寄存器里）
+fn pcfRow2(base: vec2f, ox: vec2f, wx: vec2f, oy: f32, wy: f32, depth: f32) -> f32 {
+  return wy * (pcfTap(base, vec2f(ox.x, oy), wx.x, depth) + pcfTap(base, vec2f(ox.y, oy), wx.y, depth));
+}
+fn pcfRow3(base: vec2f, ox: vec3f, wx: vec3f, oy: f32, wy: f32, depth: f32) -> f32 {
+  return wy * (pcfTap(base, vec2f(ox.x, oy), wx.x, depth) + pcfTap(base, vec2f(ox.y, oy), wx.y, depth) + pcfTap(base, vec2f(ox.z, oy), wx.z, depth));
+}
+fn pcfRow4(base: vec2f, ox: vec4f, wx: vec4f, oy: f32, wy: f32, depth: f32) -> f32 {
+  return wy * (pcfTap(base, vec2f(ox.x, oy), wx.x, depth) + pcfTap(base, vec2f(ox.y, oy), wx.y, depth)
+    + pcfTap(base, vec2f(ox.z, oy), wx.z, depth) + pcfTap(base, vec2f(ox.w, oy), wx.w, depth));
+}
+
+// Stride 的 ShadowMapFilterPcf：3x3、5x5、7x7 的核分别用 2x2、3x3、4x4 次双线性比较采样，权重的和是 16、144、2704。
+// Stride 的核大小是编译期常量、循环 [unroll]；这里按核大小分三个函数全部展开（运行时的动态循环加动态下标，
+// TPP 的不透明通道慢了约 1.9 ms）
+fn pcf3(base: vec2f, st: vec2f, depth: f32) -> f32 {
+  let w0 = 3.0 - 2.0 * st;
+  let w1 = 1.0 + 2.0 * st;
+  let o0 = (2.0 - st) / w0 - 1.0;
+  let o1 = st / w1 + 1.0;
+  let ox = vec2f(o0.x, o1.x);
+  let wx = vec2f(w0.x, w1.x);
+  return (pcfRow2(base, ox, wx, o0.y, w0.y, depth) + pcfRow2(base, ox, wx, o1.y, w1.y, depth)) / 16.0;
+}
+
+fn pcf5(base: vec2f, st: vec2f, depth: f32) -> f32 {
+  let w0 = 4.0 - 3.0 * st;
+  let w1 = vec2f(7.0);
+  let w2 = 1.0 + 3.0 * st;
+  let o0 = (3.0 - 2.0 * st) / w0 - 2.0;
+  let o1 = (3.0 + st) / w1;
+  let o2 = st / w2 + 2.0;
+  let ox = vec3f(o0.x, o1.x, o2.x);
+  let wx = vec3f(w0.x, w1.x, w2.x);
+  return (pcfRow3(base, ox, wx, o0.y, w0.y, depth) + pcfRow3(base, ox, wx, o1.y, w1.y, depth) + pcfRow3(base, ox, wx, o2.y, w2.y, depth)) / 144.0;
+}
+
+fn pcf7(base: vec2f, st: vec2f, depth: f32) -> f32 {
+  let w0 = 5.0 * st - 6.0;
+  let w1 = 11.0 * st - 28.0;
+  let w2 = -(11.0 * st + 17.0);
+  let w3 = -(5.0 * st + 1.0);
+  let o0 = (4.0 * st - 5.0) / w0 - 3.0;
+  let o1 = (4.0 * st - 16.0) / w1 - 1.0;
+  let o2 = -(7.0 * st + 5.0) / w2 + 1.0;
+  let o3 = -st / w3 + 3.0;
+  let ox = vec4f(o0.x, o1.x, o2.x, o3.x);
+  let wx = vec4f(w0.x, w1.x, w2.x, w3.x);
+  return (pcfRow4(base, ox, wx, o0.y, w0.y, depth) + pcfRow4(base, ox, wx, o1.y, w1.y, depth)
+    + pcfRow4(base, ox, wx, o2.y, w2.y, depth) + pcfRow4(base, ox, wx, o3.y, w3.y, depth)) / 2704.0;
+}
+
+/** 图集里 position 处的阴影（1 是亮）：一次双线性的比较采样，或者 PCF（Stride 的 CalculatePCFKernelParameters）。 */
 fn filterShadow(position: vec2f, depth: f32) -> f32 {
   let size = u32(view.shadow.w);
   if (size == 0u) {
     return textureSampleCompareLevel(shadowAtlas, shadowComparison, position, depth);
   }
-  let texel = view.shadowAtlas.x;
   let uv = position * view.shadowAtlas.y;
   let rounded = floor(uv + 0.5);
   let st = uv + 0.5 - rounded;
-  let base = (rounded - 0.5) * texel;
-  let ax = pcfAxis(size, st.x);
-  let ay = pcfAxis(size, st.y);
-  var shadow = 0.0;
-  var total = 0.0;
-  for (var j = 0u; j < ay.count; j++) {
-    for (var i = 0u; i < ax.count; i++) {
-      let w = ax.weights[i] * ay.weights[j];
-      shadow += w * textureSampleCompareLevel(shadowAtlas, shadowComparison, base + vec2f(ax.offsets[i], ay.offsets[j]) * texel, depth);
-      total += w;
-    }
+  let base = (rounded - 0.5) * view.shadowAtlas.x;
+  if (size == 3u) {
+    return pcf3(base, st, depth);
   }
-  return shadow / total;
+  if (size == 5u) {
+    return pcf5(base, st, depth);
+  }
+  return pcf7(base, st, depth);
 }
 
 fn shadowFromCascade(position: vec3f, cascade: u32) -> f32 {
@@ -619,8 +655,9 @@ class Gpu {
   }
 
   /**
-   * 一个阶段加一种顶点布局一条管线。只有深度的阶段（阴影投射）不剔背面、不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor），
-   * 没有片元着色器。
+   * 一个阶段加一种顶点布局一条管线。只有深度的阶段（深度预通道、阴影投射）没有片元着色器；阴影投射还不剔背面、
+   * 不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor）。深度比较是 less-equal（Stride 的 DepthStencilStates.Default），
+   * 不透明阶段靠它复用深度预通道的结果。
    */
   pipelineFor(stage: RenderStage, layout: VertexLayout): GPURenderPipeline {
     const { colorFormat, depthFormat } = stage.output;
@@ -645,10 +682,10 @@ class Gpu {
           }],
         },
         ...(colorFormat ? { fragment: { module: this.#module, entryPoint: 'fs', targets: [{ format: colorFormat }] } } : {}),
-        primitive: colorFormat
-          ? { topology: 'triangle-list', cullMode: 'back', frontFace: 'ccw' }
-          : { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth },
-        depthStencil: { format: depthFormat, depthWriteEnabled: true, depthCompare: 'less' },
+        primitive: stage.shadowCasters
+          ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth }
+          : { topology: 'triangle-list', cullMode: 'back', frontFace: 'ccw' },
+        depthStencil: { format: depthFormat, depthWriteEnabled: true, depthCompare: 'less-equal' },
       });
       this.#pipelines.set(key, pipeline);
     }

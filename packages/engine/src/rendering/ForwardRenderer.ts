@@ -1,9 +1,11 @@
 /**
- * 图形合成器的前向渲染器（Stride 的 GraphicsCompositor 里的 ForwardRenderer）：一个相机、一个不透明阶段，
+ * 图形合成器的前向渲染器（Stride 的 GraphicsCompositor 里的 ForwardRenderer）：一个相机、深度预通道加不透明阶段，
  * 画进 RGBA16F 的 HDR 颜色缓冲加深度缓冲（同 Stride 的 HDR 渲染模式），再经后处理（PostProcessingEffects：泛光、
  * 色调映射……）写进后备缓冲。方向光可以投阴影（ShadowMapRenderer）。以后加透明阶段、多个相机槽位。
  * 每帧：Collect（相机变成视图）→ Extract → 剔除主视图 → 按主视图的可见范围算出阴影级联 → 剔除级联 → Prepare
- * → 画阴影图集 → 画主视图 → 后处理。
+ * → 画阴影图集 → 深度预通道 → 画主视图 → 后处理。
+ * 深度预通道同 Stride 默认合成器的 GBuffer 阶段（ZPrepass 效果）：先只画深度，不透明阶段用 less-equal 复用它，
+ * 每个像素只做一次完整的着色（TPP 的不透明通道 3.0 → 0.9 ms 量级的差别就在这里）。
  */
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
@@ -21,6 +23,8 @@ const HDR_FORMAT: GPUTextureFormat = 'rgba16float';
 
 export class ForwardRenderer {
   readonly renderSystem: RenderSystem;
+  /** 深度预通道（Stride 的 GBuffer 阶段）：主视图里的物体只写深度。 */
+  readonly depthPrepassStage: RenderStage;
   readonly opaqueStage: RenderStage;
   /** 线性空间的清屏色；默认是 sRGB 的 (0.1, 0.12, 0.16)。 */
   readonly clearColor = new Color4(0.01, 0.0134, 0.022, 1);
@@ -107,6 +111,7 @@ export class ForwardRenderer {
 
   constructor(renderSystem: RenderSystem) {
     this.renderSystem = renderSystem;
+    this.depthPrepassStage = new RenderStage('DepthPrepass', { depthFormat: DEPTH_FORMAT });
     this.opaqueStage = new RenderStage('Opaque', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT });
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
@@ -136,12 +141,22 @@ export class ForwardRenderer {
     this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews);
     const { r, g, b, a } = this.clearColor;
     const targets = this.#targetsForCanvas();
+    const depth = targets.depth.createView();
+    const prepassTimestamps = graphicsDevice.profiler.passTimestamps('ForwardRenderer depth prepass');
+    const prepass = encoder.beginRenderPass({
+      label: 'ForwardRenderer depth prepass',
+      ...(prepassTimestamps ? { timestampWrites: prepassTimestamps } : {}),
+      colorAttachments: [],
+      depthStencilAttachment: { view: depth, depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
+    });
+    if (this.hasCamera) renderSystem.draw(context, prepass, this.#mainView, this.depthPrepassStage);
+    prepass.end();
     const timestampWrites = graphicsDevice.profiler.passTimestamps('ForwardRenderer opaque');
     const pass = encoder.beginRenderPass({
       label: 'ForwardRenderer opaque',
       ...(timestampWrites ? { timestampWrites } : {}),
       colorAttachments: [{ view: targets.color.createView(), clearValue: [r, g, b, a], loadOp: 'clear', storeOp: 'store' }],
-      depthStencilAttachment: { view: targets.depth.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'discard' },
+      depthStencilAttachment: { view: depth, depthLoadOp: 'load', depthStoreOp: 'discard' },
     });
     if (this.hasCamera) renderSystem.draw(context, pass, this.#mainView, this.opaqueStage);
     pass.end();

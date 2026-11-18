@@ -4,7 +4,8 @@
  * 在 HDR 画面上做（Stride 的 Bloom 默认开着 StableConvolution，FXAA 排在最前面），前后各一次范围转换：
  * - 压缩（RangeCompressorShader）：颜色 / (1 + 最大分量)，alpha 写感知亮度 sqrt(Rec.709 亮度)，FXAA 用 alpha 当亮度；
  * - 解压（RangeDecompressorShader）：颜色 / (1 - 最大分量)。
- * 沿边搜索的步长表来自原着色器的各个预设（FXAA_QUALITY__P0..Pn），这里写成一个循环，和原来嵌套的 if 等价。
+ * 沿边搜索的步长表来自原着色器的各个预设（FXAA_QUALITY__P0..Pn）。原着色器按预设在编译期展开成嵌套的 if，这里也按预设
+ * 生成展开的着色器（写成运行时的循环、按下标取步长时，TPP 上 FXAA 这一遍 0.62 ms，展开后 0.52 ms）。
  */
 import { FullscreenShader, type RenderTargetPool, type UniformArena } from './ImageEffect';
 
@@ -53,9 +54,24 @@ const DECOMPRESS_SHADER = /* wgsl */ `
   return vec4f(select(color, color / denominator, denominator > 0.0), 1.0);
 }`;
 
-const FXAA_SHADER = /* wgsl */ `
-// rcpFrame：一个像素的大小；quality：subpix、边缘阈值、最小阈值、步数；steps：各步的步长
-struct Fxaa { rcpFrame: vec4f, quality: vec4f, steps: array<vec4f, 3> };
+/** WGSL 的浮点字面量。 */
+const float = (value: number) => (Number.isInteger(value) ? value.toFixed(1) : String(value));
+
+/** 沿边搜索的第 3 步起：两端都还没找到边缘时才做（同原着色器的嵌套 if，一旦停下就不再继续）。 */
+const searchSteps = (steps: readonly number[]) => steps.slice(2).map((step) => `
+  if (doneNP) {
+    if (!doneN) { lumaEndN = tap(posN).a - lumaNN * 0.5; }
+    if (!doneP) { lumaEndP = tap(posP).a - lumaNN * 0.5; }
+    doneN = abs(lumaEndN) >= gradientScaled;
+    doneP = abs(lumaEndP) >= gradientScaled;
+    if (!doneN) { posN -= offNP * ${float(step)}; }
+    if (!doneP) { posP += offNP * ${float(step)}; }
+    doneNP = !doneN || !doneP;
+  }`).join('');
+
+const fxaaShader = (steps: readonly number[]) => /* wgsl */ `
+// rcpFrame：一个像素的大小；quality：subpix、边缘阈值、最小阈值
+struct Fxaa { rcpFrame: vec4f, quality: vec4f };
 @group(0) @binding(0) var<uniform> fxaa: Fxaa;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var linearClamp: sampler;
@@ -65,9 +81,6 @@ fn tap(p: vec2f) -> vec4f {
 }
 fn lumaAt(p: vec2f, o: vec2f) -> f32 {
   return tap(p + o * fxaa.rcpFrame.xy).a;
-}
-fn searchStep(i: u32) -> f32 {
-  return fxaa.steps[i / 4u][i % 4u];
 }
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
@@ -130,8 +143,8 @@ fn searchStep(i: u32) -> f32 {
   let offNP = vec2f(select(rcp.x, 0.0, !horzSpan), select(rcp.y, 0.0, horzSpan));
   if (!horzSpan) { posB.x += lengthSign * 0.5; }
   if (horzSpan) { posB.y += lengthSign * 0.5; }
-  var posN = posB - offNP * searchStep(0u);
-  var posP = posB + offNP * searchStep(0u);
+  var posN = posB - offNP * ${float(steps[0]!)};
+  var posP = posB + offNP * ${float(steps[0]!)};
   let subpixD = -2.0 * subpixC + 3.0;
   var lumaEndN = tap(posN).a;
   let subpixE = subpixC * subpixC;
@@ -145,20 +158,9 @@ fn searchStep(i: u32) -> f32 {
   lumaEndP -= lumaNN * 0.5;
   var doneN = abs(lumaEndN) >= gradientScaled;
   var doneP = abs(lumaEndP) >= gradientScaled;
-  if (!doneN) { posN -= offNP * searchStep(1u); }
-  if (!doneP) { posP += offNP * searchStep(1u); }
-  var doneNP = !doneN || !doneP;
-  // 原着色器按预设展开成嵌套的 if，这里是同样的步骤
-  for (var i = 2u; i < u32(fxaa.quality.w); i++) {
-    if (!doneNP) { break; }
-    if (!doneN) { lumaEndN = tap(posN).a - lumaNN * 0.5; }
-    if (!doneP) { lumaEndP = tap(posP).a - lumaNN * 0.5; }
-    doneN = abs(lumaEndN) >= gradientScaled;
-    doneP = abs(lumaEndP) >= gradientScaled;
-    if (!doneN) { posN -= offNP * searchStep(i); }
-    if (!doneP) { posP += offNP * searchStep(i); }
-    doneNP = !doneN || !doneP;
-  }
+  if (!doneN) { posN -= offNP * ${float(steps[1]!)}; }
+  if (!doneP) { posP += offNP * ${float(steps[1]!)}; }
+  var doneNP = !doneN || !doneP;${searchSteps(steps)}
 
   var dstN = posM.x - posN.x;
   var dstP = posP.x - posM.x;
@@ -190,13 +192,15 @@ export class Fxaa {
   edgeThresholdMin = 0.0312;
   readonly #compress: FullscreenShader;
   readonly #decompress: FullscreenShader;
-  readonly #fxaa: FullscreenShader;
+  /** 按预设号生成的 FXAA 着色器。 */
+  readonly #fxaa = new Map<number, FullscreenShader>();
+  readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
 
   constructor(device: GPUDevice, linearClamp: GPUSampler) {
+    this.#device = device;
     this.#compress = new FullscreenShader(device, 'FXAA range compress', COMPRESS_SHADER);
     this.#decompress = new FullscreenShader(device, 'FXAA range decompress', DECOMPRESS_SHADER);
-    this.#fxaa = new FullscreenShader(device, 'FXAA', FXAA_SHADER);
     this.#sampler = linearClamp;
   }
 
@@ -211,14 +215,17 @@ export class Fxaa {
 
   /** 在 HDR 画面上做 FXAA：input 被改写（中间结果），返回结果所在的纹理（从池里借的）。 */
   drawHdr(encoder: GPUCommandEncoder, pool: RenderTargetPool, arena: UniformArena, input: GPUTexture): GPUTexture {
-    const steps = PRESET_STEPS[this.preset];
-    if (!steps) throw new RangeError(`FXAA preset ${this.preset} does not exist`);
+    const preset = this.preset;
+    let fxaa = this.#fxaa.get(preset);
+    if (!fxaa) {
+      const steps = PRESET_STEPS[preset];
+      if (!steps) throw new RangeError(`FXAA preset ${preset} does not exist`);
+      this.#fxaa.set(preset, (fxaa = new FullscreenShader(this.#device, 'FXAA', fxaaShader(steps))));
+    }
     const compressed = pool.acquire(input.width, input.height, input.format, 'FXAA');
     this.#compress.draw(encoder, compressed, [input]);
-    const parameters = new Float32Array(8 + 12);
-    parameters.set([1 / input.width, 1 / input.height, 0, 0, this.subpix, this.edgeThreshold, this.edgeThresholdMin, steps.length]);
-    parameters.set(steps, 8);
-    this.#fxaa.draw(encoder, input, [arena.push(parameters), compressed, this.#sampler]);
+    const parameters = [1 / input.width, 1 / input.height, 0, 0, this.subpix, this.edgeThreshold, this.edgeThresholdMin, 0];
+    fxaa.draw(encoder, input, [arena.push(parameters), compressed, this.#sampler]);
     this.#decompress.draw(encoder, compressed, [input]);
     return compressed;
   }

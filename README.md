@@ -174,4 +174,8 @@ this.bullets.give(bullet);
 
 - 游戏脚本是否只用 TypeScript。
 - C# 移植版是否和这里并行推进。
-- 这个目录对应的 GitHub 仓库，由用户自己创建。
+- ~~这个目录对应的 GitHub 仓库~~：2026-11-18 已建成公开仓库 [kenconnet666/stride-ts](https://github.com/kenconnet666/stride-ts)，MIT 许可证。
+
+## 许可证
+
+MIT，见 [LICENSE](LICENSE)。原生模块在 Jolt 的 fork [kenconnet666/JoltPhysics](https://github.com/kenconnet666/JoltPhysics) 的 `stride` 分支（Jolt 本身是 MIT）。

@@ -1,6 +1,7 @@
 {
   "name": "@stride-ts/native",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     ".": {

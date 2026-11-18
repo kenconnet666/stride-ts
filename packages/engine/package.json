@@ -1,6 +1,7 @@
 {
   "name": "@stride-ts/engine",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

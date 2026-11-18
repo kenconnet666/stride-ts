@@ -1,22 +1,22 @@
 /**
- * An entity as an object, for scripts and scene code (Stride's Entity). Entities spawned in bulk for
- * systems are only ids; manager.entity(id) gives the object when one is needed.
+ * 实体对象，给脚本和场景代码用（对应 Stride 的 Entity）。批量生成给系统用的实体只有 id，
+ * 需要对象时用 manager.entity(id) 取。
  */
-import type { DataValues, EntityId, Shape } from '../data/prop';
+import type { DataShape, DataValues, EntityId } from '../data/prop';
 import type { ComponentType } from './component';
 import type { EntityArg, EntityManager } from './EntityManager';
 import { scriptName, type ScriptComponent, type ScriptConstructor } from './scripts';
 
-/** A data component of one entity seen as an object; reads and writes go to its row in the columns. */
-export type View<S extends Shape> = DataValues<S>;
+/** 把一个实体的数据组件看成对象；读写都落到它在列里的那一行。 */
+export type View<S extends DataShape> = DataValues<S>;
 
 export class Entity {
   readonly id: EntityId;
   readonly manager: EntityManager;
   name: string;
-  /** @internal Scripts by class. */
+  /** @internal 按类存放的脚本。 */
   readonly scripts = new Map<ScriptConstructor, ScriptComponent>();
-  /** @internal Views of data components, made on first get. */
+  /** @internal 数据组件的视图，第一次 get 时创建。 */
   readonly views = new Map<ComponentType<any>, object>();
 
   constructor(manager: EntityManager, id: EntityId, name: string) {
@@ -29,7 +29,7 @@ export class Entity {
     return this.manager.isAlive(this.id);
   }
 
-  get<S extends Shape>(type: ComponentType<S>): View<S> | undefined;
+  get<S extends DataShape>(type: ComponentType<S, any>): View<S> | undefined;
   get<T extends ScriptComponent>(type: abstract new () => T): T | undefined;
   get(type: ComponentType<any> | (abstract new () => ScriptComponent)): unknown {
     if (typeof type === 'function') return this.scripts.get(type as ScriptConstructor);
@@ -42,8 +42,8 @@ export class Entity {
     return view;
   }
 
-  /** Like get, but throws when the entity lacks the component or script. */
-  require<S extends Shape>(type: ComponentType<S>): View<S>;
+  /** 同 get，但没有这个组件或脚本时抛错。 */
+  require<S extends DataShape>(type: ComponentType<S, any>): View<S>;
   require<T extends ScriptComponent>(type: abstract new () => T): T;
   require(type: ComponentType<any> | (abstract new () => ScriptComponent)): unknown {
     const found = this.get(type as ComponentType<any>);

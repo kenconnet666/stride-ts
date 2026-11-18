@@ -1,4 +1,5 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
 import { GraphicsDevice } from '../graphics/GraphicsDevice';
@@ -7,28 +8,27 @@ import { GameTime } from './GameTime';
 export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
 
 export interface GameOptions {
-  /** Job-system threads of the native module; defaults to hardwareConcurrency - 1. */
+  /** 原生模块任务系统的工作线程数；默认 hardwareConcurrency - 1。 */
   workerThreads?: number;
   /**
-   * The game's modules, `import.meta.glob('./**\/*.ts', { eager: true })`: their components, scripts and
-   * systems are named after path and export (see engine/registry.ts) before loadContent runs.
+   * 游戏的模块，即 `import.meta.glob('./**\/*.ts', { eager: true })` 的结果：loadContent 之前，按路径和导出名
+   * 给其中的组件、脚本、系统起名（见 engine/registry.ts）。
    */
   modules?: Readonly<Record<string, unknown>>;
 }
 
-// A longer gap (a background tab, a breakpoint) is not simulated in one step.
+// 更长的间隔（标签页在后台、断点停住）不在一步里模拟完。
 const MAX_ELAPSED = 0.25;
 
 declare global {
-  /** The running game, read by the scripts in tools/ (`status`, `frames`, `sceneFrame`, `error`). */
+  /** 正在运行的游戏，tools/ 里的脚本读它（`status`、`frames`、`sceneFrame`、`error`）。 */
   var strideGame: Game | undefined;
 }
 
 /**
- * Owns the native module, the graphics device, the entities and the frame loop (Stride's Game).
- * Subclass it and override loadContent, update (calling super.update, which runs scripts and systems)
- * and draw; `native` and `graphicsDevice` exist once run() has initialized them. An exception in any of
- * them, or a rejected AsyncScript, stops the game with status 'failed'.
+ * 拥有原生模块、图形设备、实体和帧循环（对应 Stride 的 Game）。
+ * 继承它并重写 loadContent、update（要调用 super.update，脚本和系统在里面跑）和 draw；run() 初始化之后
+ * 才有 `native` 和 `graphicsDevice`。其中任何一处抛异常，或 AsyncScript 被拒绝，游戏都会停下，状态为 'failed'。
  */
 export class Game {
   native!: StrideNative;
@@ -39,10 +39,15 @@ export class Game {
 
   status: GameStatus = 'starting';
   error: string | undefined;
-  /** The frame on which the content finished loading. */
+  /** 内容加载完成时的帧号。 */
   sceneFrame: number | undefined;
 
   private lastFrameTime: number | undefined;
+
+  /** 标了 inherit() 的属性的作用域默认值：之后创建的组件和脚本都取这里的值，见 engine/defaults.ts。 */
+  get defaults(): ScopedDefaults {
+    return this.entities.defaults;
+  }
 
   get frames(): number {
     return this.updateTime.frameCount;
@@ -65,17 +70,21 @@ export class Game {
     requestAnimationFrame(this.frame);
   }
 
+  /**
+   * 停止游戏并释放资源。失败之后也可以调用（原来只在 running 时生效，失败的游戏会一直占着原生线程和 GPU 设备）；
+   * 初始化中途失败时，还没创建的部分跳过。
+   */
   exit(): void {
-    if (this.status !== 'running') return;
+    if (this.status === 'exited') return;
     this.status = 'exited';
     this.entities.clear();
-    this.graphicsDevice.destroy();
-    this.native.shutdown();
+    (this.graphicsDevice as GraphicsDevice | undefined)?.destroy();
+    (this.native as StrideNative | undefined)?.shutdown();
   }
 
   protected async loadContent(): Promise<void> {}
 
-  /** Runs scripts and systems; overrides call super.update(time). */
+  /** 运行脚本和系统；重写时要调用 super.update(time)。 */
   protected update(time: GameTime): void {
     this.entities.update(time);
   }

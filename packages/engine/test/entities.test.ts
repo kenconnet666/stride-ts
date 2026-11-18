@@ -11,8 +11,8 @@ const frame = (game: Game, seconds = 1 / 60) => {
   game.entities.update(game.updateTime);
 };
 
-describe('entities', () => {
-  test('create places data components with their values; views read and write the row', () => {
+describe('实体', () => {
+  test('create 把数据组件连同取值放进表；视图读写那一行', () => {
     const game = new Game();
     const hero = game.entities.create({ name: 'hero', components: [Health.with({ current: 40 }), Regen] });
     const health = hero.require(Health);
@@ -23,7 +23,7 @@ describe('entities', () => {
     expect(() => hero.require(Team)).toThrow("entity 'hero'");
   });
 
-  test('adding and removing components moves the row and keeps the values', () => {
+  test('加删组件会搬行，值保留', () => {
     const game = new Game();
     const others = game.entities.spawn(3, [Health.with({ current: 1 })]);
     const e = game.entities.create({ components: [Health.with({ current: 7 })] });
@@ -33,11 +33,11 @@ describe('entities', () => {
     e.remove(Health);
     expect(e.has(Health)).toBe(false);
     expect(e.require(Team).id).toBe(3);
-    // The entities that stayed in the first table are intact after the swap-remove
+    // 留在原表里的实体在交换删除之后数据完好
     for (const id of others.ids) expect(game.entities.entity(id).require(Health).current).toBe(1);
   });
 
-  test('destroyed ids are not alive even when the index is reused', () => {
+  test('销毁后的 id 即使下标被复用也不算活着', () => {
     const game = new Game();
     const [first] = game.entities.spawn(1, [Health]).ids;
     game.entities.destroy(first!);
@@ -49,7 +49,7 @@ describe('entities', () => {
     expect(game.entities.count).toBe(1);
   });
 
-  test('a view of a destroyed entity throws instead of reading another row', () => {
+  test('已销毁实体的视图会抛错，不会读到别的行', () => {
     const game = new Game();
     const e = game.entities.create({ components: [Health] });
     const view = e.require(Health);
@@ -57,7 +57,7 @@ describe('entities', () => {
     expect(() => view.current).toThrow('does not exist');
   });
 
-  test('a spawned batch takes consecutive rows and sets values column by column', () => {
+  test('批量生成占连续的行，可以按列写值', () => {
     const game = new Game();
     game.entities.spawn(5, [Health, Regen]);
     const batch = game.entities.spawn(100, [Health, Regen]);
@@ -68,14 +68,14 @@ describe('entities', () => {
     expect(() => batch.columns(Team)).toThrow('have no');
   });
 
-  test('values are checked when entities are created', () => {
+  test('创建实体时检查取值', () => {
     const game = new Game();
     expect(() => game.entities.create({ components: [Health.with({ max: -5 })] })).toThrow('below the minimum 0');
   });
 });
 
-describe('systems', () => {
-  test('update gets typed columns per table, without excludes, writes bump changed', () => {
+describe('系统', () => {
+  test('update 按表拿到带类型的列，without 排除，writes 让 changed 看到改动', () => {
     const game = new Game();
     const living = game.entities.spawn(1000, [Health.with({ current: 50 }), Regen]);
     const dead = game.entities.spawn(10, [Health.with({ current: 50 }), Regen, Dead]);
@@ -96,11 +96,11 @@ describe('systems', () => {
     expect(visited).toBe(1000);
     expect(game.entities.entity(living.ids[0]!).require(Health).current).toBe(55);
     expect(game.entities.entity(dead.ids[0]!).require(Health).current).toBe(50);
-    // watcher ran after regen (ordered by `after` although added first) and saw both tables changed
+    // watcher 虽然先加入，但按 `after` 排在 regen 之后，并且看到两张表都改过
     expect(changedRuns).toBe(2);
   });
 
-  test('changed skips tables nobody wrote since the last run', () => {
+  test('changed 跳过上次运行以来没人写过的表', () => {
     const game = new Game();
     game.entities.spawn(5, [Health]);
     let runs = 0;
@@ -113,7 +113,7 @@ describe('systems', () => {
     expect(runs).toBe(2);
   });
 
-  test('structural changes go through commands, applied after the system', () => {
+  test('结构性改动走命令缓冲，系统跑完后执行', () => {
     const game = new Game();
     game.entities.spawn(4, [Health.with({ current: 0 })]);
     game.entities.spawn(4, [Health.with({ current: 10 })]);
@@ -133,7 +133,7 @@ describe('systems', () => {
     expect(() => frame(game)).toThrow("record it in the system's commands");
   });
 
-  test('cycles in after are reported', () => {
+  test('after 里的循环依赖会报错', () => {
     const game = new Game();
     const a = system({ with: { health: Health }, update: () => {} });
     const b = system({ with: { health: Health }, after: [a], update: () => {} });
@@ -143,7 +143,7 @@ describe('systems', () => {
     expect(() => frame(game)).toThrow('cycle');
   });
 
-  test('tables created after a system was added are picked up', () => {
+  test('系统加入之后才建的表也会被匹配上', () => {
     const game = new Game();
     let seen = 0;
     game.entities.addSystems(system({ with: { regen: Regen }, update: ({ count }) => void (seen += count) }));
@@ -154,7 +154,7 @@ describe('systems', () => {
     expect(seen).toBe(5);
   });
 
-  test('a time step uses GameTime', () => {
+  test('时间步进由 GameTime 记录', () => {
     const time = new GameTime();
     time.advance(0.5);
     expect([time.elapsed, time.total, time.frameCount]).toEqual([0.5, 0.5, 1]);

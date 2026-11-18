@@ -1,6 +1,6 @@
 /**
- * Systems: per-frame logic over every entity that has a set of data components. update() is called once
- * per table with that table's columns, typed from the component shapes:
+ * 系统：对拥有某组数据组件的所有实体做的每帧逻辑。update() 每张表调用一次，拿到这张表的列，
+ * 列的类型由组件的 shape 推导：
  *
  *   export const regen = system({
  *     with: { health: Health, regen: Regen },
@@ -12,39 +12,46 @@
  *     },
  *   });
  */
-import type { Columns, EntityId, Shape } from '../data/prop';
+import type { Columns, DataShape, EntityId } from '../data/prop';
 import type { GameTime } from '../games/GameTime';
 import type { Commands } from './Commands';
 import type { ComponentType } from './component';
 import type { Table } from './storage';
 
-/** Where in the frame a system runs, relative to the physics step (see docs/architecture.md, frame order). */
+/** 系统在一帧里相对物理步进的位置（见 docs/architecture.md 的每帧顺序）。 */
 export type Phase = 'beforePhysics' | 'afterPhysics';
 
-type Query = Record<string, ComponentType<any>>;
-type ShapeOf<C> = C extends ComponentType<infer S extends Shape> ? S : never;
+type Query = Record<string, ComponentType<any, any>>;
+type ShapeOf<C> = C extends ComponentType<infer S extends DataShape, any> ? S : never;
 
-/** The entity id of each row: a Float64Array whose elements are typed as EntityId. */
+/** 每一行的实体 id：元素类型标成 EntityId 的 Float64Array。 */
 export type EntityIds = Float64Array & { readonly [row: number]: EntityId };
 
-/** One table's worth of entities: `count` rows, their ids, and the columns of every queried component. */
+/** 一张表的实体：`count` 行、它们的 id，以及每个查询组件的列。 */
 export type Chunk<W extends Query> = {
   readonly count: number;
   readonly entities: EntityIds;
 } & { readonly [K in keyof W]: Columns<ShapeOf<W[K]>> };
 
 export interface SystemSpec<W extends Query> {
-  /** The components to select on; the keys are the names update() destructures. */
+  /** 要筛选的组件；键名就是 update() 里解构出来的名字。 */
   readonly with: W & { readonly count?: never; readonly entities?: never };
   readonly without?: readonly ComponentType<any>[];
-  /** Components this system changes: their tables get a new version, which `changed` filters on. */
+  /** 这个系统会改的组件：跑过之后表的版本递增，`changed` 按版本筛选。 */
   readonly writes?: readonly W[keyof W][];
-  /** Only visit tables where one of these components was written since this system last ran. */
+  /** 只处理自这个系统上次运行以来、这些组件被写过的表。 */
   readonly changed?: readonly W[keyof W][];
   readonly phase?: Phase;
-  /** Systems of the same phase that must run first. */
+  /** 同一阶段里必须先跑的系统。 */
   readonly after?: readonly System<any>[];
   update(chunk: Chunk<W>, time: GameTime, commands: Commands): void;
+  /**
+   * 实体开始满足这个系统的条件时调用（创建、加组件，或系统加入时已经满足的实体），数据已经写好。
+   * 用来创建对应的原生资源，比如刚体。结构性改动只能记进 commands。
+   */
+  added?(entity: EntityId, commands: Commands): void;
+  /** 实体不再满足条件时调用（销毁、去掉组件，或系统被移除），这时还能读到它的数据。 */
+  removed?(entity: EntityId, commands: Commands): void;
 }
 
 export class System<W extends Query = Query> {
@@ -52,13 +59,13 @@ export class System<W extends Query = Query> {
   readonly phase: Phase;
   #name: string | undefined;
 
-  /** @internal Tables matched so far, and how many of the manager's tables have been looked at. */
+  /** @internal 已经匹配上的表，以及管理器的表看到了第几张。 */
   readonly matched: Table[] = [];
   /** @internal */
   tablesSeen = 0;
-  /** @internal One chunk object per matched table, refreshed before each call. */
+  /** @internal 每张匹配的表一个 chunk 对象，每次调用前刷新。 */
   readonly chunks = new Map<Table, Record<string, unknown>>();
-  /** @internal Write version at this system's last run, for `changed`. */
+  /** @internal 这个系统上次运行时的写入版本，给 `changed` 用。 */
   lastRun = 0;
 
   constructor(name: string | undefined, spec: SystemSpec<W>) {
@@ -79,13 +86,13 @@ export class System<W extends Query = Query> {
     return this.#name !== undefined;
   }
 
-  /** @internal Set by the registry. */
+  /** @internal 由登记表设置。 */
   setName(name: string): void {
     if (this.#name !== undefined && this.#name !== name) throw new Error(`${this.#name} is already named; cannot rename it to ${name}`);
     this.#name = name;
   }
 
-  /** @internal Whether a table has every `with` component and none of the `without` ones. */
+  /** @internal 表是否有 `with` 里的全部组件、且没有 `without` 里的任何一个。 */
   matches(table: Table): boolean {
     return Object.values(this.spec.with).every((type) => table.has(type)) && !(this.spec.without ?? []).some((type) => table.has(type));
   }
@@ -97,7 +104,7 @@ export function system(nameOrSpec: string | SystemSpec<Query>, spec?: SystemSpec
   return typeof nameOrSpec === 'string' ? new System(nameOrSpec, spec!) : new System(undefined, nameOrSpec);
 }
 
-/** Orders the added systems: by phase, then so that every system runs after the ones in its `after`. */
+/** 给加入的系统排序：先按阶段，再保证每个系统都在它 `after` 里的系统之后。 */
 export function orderSystems(systems: readonly System<any>[]): System<any>[] {
   const ordered: System<any>[] = [];
   const state = new Map<System<any>, 'visiting' | 'done'>();

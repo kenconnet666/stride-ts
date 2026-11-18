@@ -1,26 +1,64 @@
 /**
- * Property declarations: `prop.f32().min(0).default(100)`. A Prop is immutable; every modifier returns a new
- * one and records what it changed in the type parameters, so the TS types of scripts, components, init
- * objects and columns are inferred from the declaration alone (same approach as easy-query-ts's columns).
+ * 属性声明：`prop.f32().min(0).default(100)`。Prop 不可变，每个修饰方法都返回新对象，并把改了什么记在
+ * 类型参数里；脚本字段、组件、init 对象、视图和列的 TS 类型都只从声明推导出来（做法同 easy-query-ts 的列）。
  */
+import type { Color4, ColorLike, Quaternion, QuatLike, Vec3Like, Vector3 } from '../mathematics/vectors';
 
-/** How a value is stored: data components keep a column of this kind per field. */
-export type PropKind = 'number' | 'f32' | 'int' | 'u8' | 'u32' | 'bool' | 'string' | 'enum' | 'entity';
+/** 数据组件能存的种类：每个字段一列（向量按行交错存放，每行 3 或 4 个 float）。 */
+export type ColumnKind = 'number' | 'f32' | 'int' | 'u8' | 'u32' | 'bool' | 'string' | 'enum' | 'entity' | 'vec3' | 'quat' | 'color';
+/** 只有脚本能用的种类：长度不定或值是对象。 */
+export type ObjectKind = 'list' | 'object' | 'union' | 'json' | 'component';
+export type PropKind = ColumnKind | ObjectKind;
+
+/** 记在类型里的修饰：sealed（由拥有者驱动）、inherit（作用域默认值）、stat（运行时修饰）。 */
+export type Modifier = 'sealed' | 'inherit' | 'stat';
 
 declare const brandKey: unique symbol;
-/** A value type that only differs by name at compile time: `EntityId` and `BodyId` cannot be mixed up. */
+/** 只在编译期区分名字的值类型：`EntityId` 和 `BodyId` 不能混用，运行时就是原来的类型。 */
 export type Branded<T, B extends string> = T & { readonly [brandKey]: B };
 
-/** An entity handle: index plus generation, so a handle to a destroyed entity is detected. */
+/** 实体句柄：下标加代数，已销毁实体的旧句柄能被识别出来。 */
 export type EntityId = Branded<number, 'EntityId'>;
+
+export type Vec3Input = Readonly<Vec3Like> | readonly [number, number, number];
+export type QuatInput = Readonly<QuatLike> | readonly [number, number, number, number];
+export type ColorInput = Readonly<ColorLike> | readonly [number, number, number, number];
+
+/**
+ * Standard Schema（https://standardschema.dev）里 prop.json() 用到的部分：zod、valibot、arktype 的 schema
+ * 都有 `~standard.validate`。只支持同步校验。
+ */
+export interface StandardSchema<Output = unknown> {
+  readonly '~standard': {
+    readonly version: 1;
+    readonly vendor: string;
+    readonly validate: (value: unknown) => StandardResult<Output> | Promise<StandardResult<Output>>;
+    readonly types?: { readonly input: unknown; readonly output: Output } | undefined;
+  };
+}
+
+export type StandardResult<Output> =
+  | { readonly value: Output; readonly issues?: undefined }
+  | { readonly issues: readonly StandardIssue[] };
+
+export interface StandardIssue {
+  readonly message: string;
+  readonly path?: readonly (PropertyKey | { readonly key: PropertyKey })[] | undefined;
+}
 
 export interface PropOptions {
   readonly kind: PropKind;
-  /** Whether `defaultValue` applies; a prop without one must be given a value. */
+  /** `defaultValue` 是否有效；没有默认值的属性创建时必须给值。 */
   readonly hasDefault: boolean;
   readonly defaultValue: unknown;
-  /** Runtime state: not saved, not shown in the editor. */
+  /** 运行时状态：不存盘，不进编辑器面板。 */
   readonly transient: boolean;
+  /** 由拥有者驱动：init 和覆盖对象都不能设它。 */
+  readonly sealed: boolean;
+  /** 作用域默认值（game.defaults）可以设它。 */
+  readonly inherit: boolean;
+  /** 可以通过 script.stats 加运行时修饰。 */
+  readonly stat: boolean;
   readonly min?: number;
   readonly max?: number;
   readonly step?: number;
@@ -29,115 +67,195 @@ export interface PropOptions {
   readonly group?: string;
   readonly description?: string;
   readonly hidden?: boolean;
-  /** Earlier field name: scene files and hot reload still read values saved under it. */
+  /** 改名之前的字段名：场景文件和热重载仍能读到按旧名保存的值。 */
   readonly renamedFrom?: string;
-  /** Allowed values of an enum prop. */
+  /** enum：允许的取值。 */
   readonly values?: readonly string[];
+  /** list：元素的属性声明。 */
+  readonly item?: AnyProp;
+  /** object：嵌套的 shape。union：每个子类型的 shape。 */
+  readonly shape?: Shape;
+  readonly variants?: Readonly<Record<string, Shape>>;
+  /** union：标明子类型的那个字段。 */
+  readonly discriminator?: string;
+  /** json：校验器。 */
+  readonly schema?: StandardSchema;
+  /** component：脚本类或组件类型，包在函数里，模块之间可以互相引用。 */
+  readonly target?: () => unknown;
 }
 
 /**
- * One property. T is the value type, D whether it has a default (then it may be left out when creating),
- * K the storage kind. The declare-only fields exist in types only.
+ * 一个属性。T 是脚本里拿到的值类型，D 是否有默认值（有就可以在创建时省略），K 是存储种类，M 是修饰，
+ * I 是 init 对象可以传的类型（向量可以传元组）。declare 的字段只存在于类型里。
  */
-export class Prop<T, D extends boolean = false, K extends PropKind = PropKind> {
+export class Prop<T, D extends boolean = false, K extends PropKind = PropKind, M extends Modifier = never, I = T> {
   declare readonly __type: T;
   declare readonly __hasDefault: D;
   declare readonly __kind: K;
+  declare readonly __modifiers: M;
+  declare readonly __input: I;
   readonly options: PropOptions;
 
   constructor(options: PropOptions) {
     this.options = options;
   }
 
-  private changed(changes: Partial<PropOptions>): Prop<any, any, any> {
+  private changed(changes: Partial<PropOptions>): Prop<any, any, any, any, any> {
     return new Prop({ ...this.options, ...changes });
   }
 
-  default(value: T): Prop<T, true, K> {
+  default(value: I): Prop<T, true, K, M, I> {
     return this.changed({ hasDefault: true, defaultValue: value });
   }
 
-  /** The value may be undefined; that is also its default. Not for data components (columns have no "missing"). */
-  optional(): Prop<T | undefined, true, K> {
+  /** 值可以是 undefined，默认值也是它。数据组件不能用（列里没有“缺失”这个值）。 */
+  optional(): Prop<T | undefined, true, K, M, I | undefined> {
     return this.changed({ hasDefault: true, defaultValue: undefined });
   }
 
-  /** Runtime state: not saved and not shown in the editor, so it needs a default. */
-  transient(this: Prop<T, true, K>): Prop<T, true, K> {
+  /** 运行时状态：不存盘、不进编辑器面板，所以要先有默认值。 */
+  transient(this: Prop<T, true, K, M, I>): Prop<T, true, K, M, I> {
     return this.changed({ transient: true });
   }
 
-  min(this: Prop<number, D, K>, value: number): Prop<T, D, K> {
+  /** 由所属的脚本或系统驱动：init 和覆盖对象都不能设它，所以要先有默认值。 */
+  sealed(this: Prop<T, true, K, M, I>): Prop<T, true, K, M | 'sealed', I> {
+    return this.changed({ sealed: true });
+  }
+
+  /** 允许作用域默认值设置：game.defaults.set(Type, { ... })。只给调参类的值用，不给状态用。 */
+  inherit(this: Prop<T, true, K, M, I>): Prop<T, true, K, M | 'inherit', I> {
+    return this.changed({ inherit: true });
+  }
+
+  /** 运行时可以通过 script.stats 加上加值和乘数（只有脚本能用）。 */
+  stat(this: Prop<number, true, K, M, I>): Prop<T, true, K, M | 'stat', I> {
+    return this.changed({ stat: true });
+  }
+
+  min(this: Prop<number, D, K, M, I>, value: number): Prop<T, D, K, M, I> {
     return this.changed({ min: value });
   }
 
-  max(this: Prop<number, D, K>, value: number): Prop<T, D, K> {
+  max(this: Prop<number, D, K, M, I>, value: number): Prop<T, D, K, M, I> {
     return this.changed({ max: value });
   }
 
-  /** Editor slider step. */
-  step(this: Prop<number, D, K>, value: number): Prop<T, D, K> {
+  /** 编辑器滑块的步长。 */
+  step(this: Prop<number, D, K, M, I>, value: number): Prop<T, D, K, M, I> {
     return this.changed({ step: value });
   }
 
-  /** Shown next to the value in the editor: 'm/s', 'deg'. */
-  unit(this: Prop<number, D, K>, value: string): Prop<T, D, K> {
+  /** 编辑器里显示在值旁边的单位：'m/s'、'deg'。 */
+  unit(this: Prop<number, D, K, M, I>, value: string): Prop<T, D, K, M, I> {
     return this.changed({ unit: value });
   }
 
-  label(value: string): Prop<T, D, K> {
+  label(value: string): Prop<T, D, K, M, I> {
     return this.changed({ label: value });
   }
 
-  group(value: string): Prop<T, D, K> {
+  group(value: string): Prop<T, D, K, M, I> {
     return this.changed({ group: value });
   }
 
-  description(value: string): Prop<T, D, K> {
+  description(value: string): Prop<T, D, K, M, I> {
     return this.changed({ description: value });
   }
 
-  hidden(): Prop<T, D, K> {
+  hidden(): Prop<T, D, K, M, I> {
     return this.changed({ hidden: true });
   }
 
-  renamedFrom(oldName: string): Prop<T, D, K> {
+  renamedFrom(oldName: string): Prop<T, D, K, M, I> {
     return this.changed({ renamedFrom: oldName });
   }
 
-  /** Changes the type only: `prop.u32().brand<'TeamId'>()`. */
-  brand<B extends string>(): Prop<Branded<T, B>, D, K> {
-    return this as unknown as Prop<Branded<T, B>, D, K>;
+  /** 只改类型：`prop.u32().brand<'TeamId'>()`。 */
+  brand<B extends string>(): Prop<Branded<T, B>, D, K, M, Branded<T, B>> {
+    return this as never;
   }
 }
 
-export type AnyProp = Prop<any, boolean, PropKind>;
+export type AnyProp = Prop<any, boolean, PropKind, Modifier, any>;
 
-const declare = <T, K extends PropKind>(kind: K, extra: Partial<PropOptions> = {}): Prop<T, false, K> =>
-  new Prop({ kind, hasDefault: false, defaultValue: undefined, transient: false, ...extra });
+const declare = <T, K extends PropKind, I = T>(kind: K, extra: Partial<PropOptions> = {}): Prop<T, false, K, never, I> =>
+  new Prop({ kind, hasDefault: false, defaultValue: undefined, transient: false, sealed: false, inherit: false, stat: false, ...extra });
+
+/** prop.component() 需要知道的那部分组件类型或脚本类。 */
+type Referable = { readonly __shape: Shape };
 
 export const prop = {
-  /** 64-bit float; a column of Float64Array. */
+  /** 64 位浮点数；列是 Float64Array。 */
   number: () => declare<number, 'number'>('number'),
-  /** 32-bit float; a column of Float32Array. The usual choice for data components. */
+  /** 32 位浮点数；列是 Float32Array。数据组件一般用它。 */
   f32: () => declare<number, 'f32'>('f32'),
-  /** 32-bit signed integer; a column of Int32Array. */
+  /** 32 位有符号整数；列是 Int32Array。 */
   int: () => declare<number, 'int'>('int'),
   u8: () => declare<number, 'u8'>('u8'),
   u32: () => declare<number, 'u32'>('u32'),
-  /** A column of Uint8Array (0 or 1) in data components, a boolean in scripts. */
+  /** 数据组件里是 Uint8Array 列（0 或 1），脚本和视图里是 boolean。 */
   bool: () => declare<boolean, 'bool'>('bool'),
   string: () => declare<string, 'string'>('string'),
   enum: <const V extends string>(values: readonly [V, ...V[]]) => declare<V, 'enum'>('enum', { values }),
-  /** A handle to another entity; a column of Float64Array. */
+  /** 另一个实体的句柄；列是 Float64Array。 */
   entity: () => declare<EntityId, 'entity'>('entity'),
+  /** 脚本里是 Vector3；数据组件里每行交错存 3 个 float。默认 (0, 0, 0)。 */
+  vec3: () => declare<Vector3, 'vec3', Vec3Input>('vec3', { hasDefault: true, defaultValue: [0, 0, 0] }) as unknown as Prop<Vector3, true, 'vec3', never, Vec3Input>,
+  /** 脚本里是 Quaternion；数据组件里每行交错存 4 个 float。默认单位四元数。 */
+  quat: () => declare<Quaternion, 'quat', QuatInput>('quat', { hasDefault: true, defaultValue: [0, 0, 0, 1] }) as unknown as Prop<Quaternion, true, 'quat', never, QuatInput>,
+  /** 脚本里是线性空间的 RGBA Color4；数据组件里每行交错存 4 个 float。默认白色。 */
+  color: () => declare<Color4, 'color', ColorInput>('color', { hasDefault: true, defaultValue: [1, 1, 1, 1] }) as unknown as Prop<Color4, true, 'color', never, ColorInput>,
+  /** 元素的列表（只有脚本能用）。默认空列表，每个脚本实例各有一份。 */
+  list: <P extends AnyProp>(item: P) =>
+    declare<ValueOfProp<P>[], 'list', InputOfProp<P>[]>('list', { item, hasDefault: true, defaultValue: [] }) as unknown as Prop<ValueOfProp<P>[], true, 'list', never, InputOfProp<P>[]>,
+  /** 嵌套对象（只有脚本能用）：`prop.object({ min: prop.vec3(), max: prop.vec3() })`。 */
+  object: <S extends Shape>(shape: S) =>
+    declare<ScriptValues<S>, 'object', InitOf<S, 'script'>>('object', { shape, hasDefault: isAllDefault(shape), defaultValue: {} }) as unknown as Prop<
+      ScriptValues<S>,
+      {} extends InitOf<S, 'script'> ? true : false,
+      'object',
+      never,
+      InitOf<S, 'script'>
+    >,
+  /** 几种 shape 之一，靠判别字段区分（只有脚本能用）。 */
+  union: <const D extends string, V extends Record<string, Shape>>(discriminator: D, variants: V) =>
+    declare<UnionValue<D, V>, 'union', UnionInput<D, V>>('union', { discriminator, variants }),
+  /** Standard Schema（zod、valibot、arktype）接受的任意数据；赋值时校验（只有脚本能用）。 */
+  json: <Output>(schema: StandardSchema<Output>) => declare<Output, 'json'>('json', { schema }),
+  /**
+   * 另一个脚本或数据组件，创建时传入（只有脚本能用）。包在函数里，模块之间可以互相 import。
+   * 引用自己或互相引用的脚本时，在 props() 里写 `() => ScriptComponent`，再在类体里用 declare 收窄类型：
+   * 继承表达式里出现自己的类名会让 TS 报循环引用（TS2506）。
+   */
+  component: <C extends Referable>(target: () => C) => declare<ReferenceTo<C>, 'component'>('component', { target }),
 };
 
-/** What a shape may contain: props, or literals as shorthand for "this type with this default". */
+function isAllDefault(shape: Shape): boolean {
+  return Object.values(shape).every((value) => !(value instanceof Prop) || value.options.hasDefault);
+}
+
+/** 引用在脚本里的值：脚本实例，或数据组件的视图。 */
+export type ReferenceTo<C> = C extends abstract new () => infer Instance
+  ? Instance
+  : C extends { readonly __shape: infer S extends Shape }
+    ? DataValues<S>
+    : never;
+
+type UnionValue<D extends string, V extends Record<string, Shape>> = {
+  [K in keyof V & string]: Flat<{ -readonly [P in D]: K } & ScriptValues<V[K]>>;
+}[keyof V & string];
+type UnionInput<D extends string, V extends Record<string, Shape>> = {
+  [K in keyof V & string]: Flat<{ readonly [P in D]: K } & InitOf<V[K], 'script'>>;
+}[keyof V & string];
+
+/** shape 里可以写的东西：属性声明，或字面量（简写“这个类型、这个默认值”）。 */
 export type ShapeValue = AnyProp | number | string | boolean;
 export type Shape = { readonly [key: string]: ShapeValue };
+/** 数据组件接受的 shape：只能是能放进列的种类。 */
+export type DataShape = { readonly [key: string]: Prop<any, boolean, ColumnKind, Modifier, any> | number | string | boolean };
 
-/** The prop a shape value stands for in a script: a number literal is a 64-bit number. */
+/** shape 里的值在脚本中代表的属性：数字字面量是 64 位数。 */
 export type ScriptPropOf<V> = V extends AnyProp
   ? V
   : V extends number
@@ -148,7 +266,7 @@ export type ScriptPropOf<V> = V extends AnyProp
         ? Prop<boolean, true, 'bool'>
         : never;
 
-/** The prop a shape value stands for in a data component: a number literal is an f32 column. */
+/** shape 里的值在数据组件中代表的属性：数字字面量是 f32 列。 */
 export type DataPropOf<V> = V extends AnyProp
   ? V
   : V extends number
@@ -159,28 +277,51 @@ export type DataPropOf<V> = V extends AnyProp
         ? Prop<boolean, true, 'bool'>
         : never;
 
-type TypeOf<P> = P extends Prop<infer T, any, any> ? T : never;
-type HasDefault<P> = P extends Prop<any, infer D, any> ? D : never;
+type ValueOfProp<P> = P extends Prop<infer T, any, any, any, any> ? T : never;
+type InputOfProp<P> = P extends Prop<any, any, any, any, infer I> ? I : never;
+type HasDefault<P> = P extends Prop<any, infer D, any, any, any> ? D : never;
+type ModifiersOf<P> = P extends Prop<any, any, any, infer M, any> ? M : never;
 
-/** Field values of a script shape. */
-export type ScriptValues<S extends Shape> = { -readonly [K in keyof S]: TypeOf<ScriptPropOf<S[K]>> };
+/** 通过视图看到的数据组件字段：向量是直接读写列的 x/y/z(/w) 对象。 */
+type ViewValueOf<P> = P extends Prop<infer T, any, infer K, any, any>
+  ? K extends 'vec3'
+    ? Vec3Like
+    : K extends 'quat'
+      ? QuatLike
+      : K extends 'color'
+        ? ColorLike
+        : T
+  : never;
 
-/** Field values of a data component shape. */
-export type DataValues<S extends Shape> = { -readonly [K in keyof S]: TypeOf<DataPropOf<S[K]>> };
+/** 脚本 shape 的字段值。 */
+export type ScriptValues<S extends Shape> = { -readonly [K in keyof S]: ValueOfProp<ScriptPropOf<S[K]>> };
+
+/** 数据组件 shape 的字段值，按视图里的样子。 */
+export type DataValues<S extends Shape> = { -readonly [K in keyof S]: ViewValueOf<DataPropOf<S[K]>> };
 
 type Flat<T> = { [K in keyof T]: T[K] } & {};
-type KeysWithDefault<S extends Shape, Of> = { [K in keyof S]: HasDefault<Of extends 'data' ? DataPropOf<S[K]> : ScriptPropOf<S[K]>> extends true ? K : never }[keyof S];
+type PropOfKind<S extends Shape, K extends keyof S, Of> = Of extends 'data' ? DataPropOf<S[K]> : ScriptPropOf<S[K]>;
+type SealedKeys<S extends Shape, Of> = { [K in keyof S]: 'sealed' extends ModifiersOf<PropOfKind<S, K, Of>> ? K : never }[keyof S];
+type DefaultedKeys<S extends Shape, Of> = { [K in keyof S]: HasDefault<PropOfKind<S, K, Of>> extends true ? K : never }[keyof S];
 
-/** What creating a script or component takes: props without a default are required. */
+/** 创建脚本或组件时传的值：没有默认值的必填，sealed 的不能传。 */
 export type InitOf<S extends Shape, Of extends 'data' | 'script'> = Flat<
-  { [K in Exclude<keyof S, KeysWithDefault<S, Of>>]: (Of extends 'data' ? DataValues<S> : ScriptValues<S>)[K] } & {
-    [K in KeysWithDefault<S, Of>]?: (Of extends 'data' ? DataValues<S> : ScriptValues<S>)[K];
+  { readonly [K in Exclude<keyof S, DefaultedKeys<S, Of> | SealedKeys<S, Of>>]: InputOfProp<PropOfKind<S, K, Of>> } & {
+    readonly [K in Exclude<DefaultedKeys<S, Of>, SealedKeys<S, Of>>]?: InputOfProp<PropOfKind<S, K, Of>>;
   }
 >;
 
-/** The typed array (or plain array) a data component keeps per field. */
-export type ColumnOf<P> = P extends Prop<infer T, any, infer K>
-  ? K extends 'f32'
+/** 作用域默认值可以设的属性（标了 .inherit() 的）。 */
+export type InheritedOf<S extends Shape, Of extends 'data' | 'script'> = Flat<{
+  readonly [K in keyof S as 'inherit' extends ModifiersOf<PropOfKind<S, K, Of>> ? K : never]?: InputOfProp<PropOfKind<S, K, Of>>;
+}>;
+
+/** 脚本 shape 里标了 .stat() 的键。 */
+export type StatKeys<S extends Shape> = { [K in keyof S]: 'stat' extends ModifiersOf<ScriptPropOf<S[K]>> ? K : never }[keyof S];
+
+/** 数据组件每个字段的列：TypedArray 或普通数组。 */
+export type ColumnOf<P> = P extends Prop<infer T, any, infer K, any, any>
+  ? K extends 'f32' | 'vec3' | 'quat' | 'color'
     ? Float32Array
     : K extends 'number' | 'entity'
       ? Float64Array

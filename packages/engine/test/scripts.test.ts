@@ -5,7 +5,7 @@ const frame = (game: Game, seconds = 1 / 60) => {
   game.updateTime.advance(seconds);
   game.entities.update(game.updateTime);
 };
-/** AsyncScript continuations run once the frame's task returns; let them. */
+/** AsyncScript 的后续代码在这一帧的任务返回后才运行；这里让它们跑完。 */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 const Health = component({ current: 100 });
@@ -28,13 +28,13 @@ class Mover extends SyncScript.props({
 
 class Spawner extends StartupScript {
   override start(): void {
-    // A script created during start() starts in the same frame
+    // 在 start() 里创建的脚本在同一帧启动
     this.game.entities.create({ name: 'child', components: [Mover] });
   }
 }
 
-describe('scripts', () => {
-  test('props have defaults and init values; start runs once before the first update', () => {
+describe('脚本', () => {
+  test('属性有默认值和 init 值；start 在第一次 update 之前只跑一次', () => {
     const game = new Game();
     const e = game.entities.create({ components: [Mover.with({ speed: 4 }), Health] });
     const mover = e.require(Mover);
@@ -45,7 +45,7 @@ describe('scripts', () => {
     expect(mover.position).toBe(4);
   });
 
-  test('disabled scripts are not updated', () => {
+  test('停用的脚本不再 update', () => {
     const game = new Game();
     const mover = game.entities.create({ components: [Mover] }).require(Mover);
     mover.enabled = false;
@@ -53,14 +53,14 @@ describe('scripts', () => {
     expect(mover.position).toBe(0);
   });
 
-  test('scripts added during start() start in the same frame', () => {
+  test('在 start() 里加的脚本同一帧启动', () => {
     const game = new Game();
     game.entities.create({ components: [Spawner] });
     frame(game, 1);
     expect(game.entities.count).toBe(2);
   });
 
-  test('removal aborts the signal, releases disposables, then calls cancel', () => {
+  test('移除时先中止 signal、释放 disposables，再调用 cancel', () => {
     const game = new Game();
     const order: string[] = [];
     class Owner extends SyncScript {
@@ -80,7 +80,7 @@ describe('scripts', () => {
     expect(e.get(Owner)).toBeUndefined();
   });
 
-  test('async scripts continue once per frame and stop when removed', async () => {
+  test('异步脚本每帧继续一次，移除后停止', async () => {
     const game = new Game();
     let ticks = 0;
     let finished = false;
@@ -97,7 +97,7 @@ describe('scripts', () => {
       }
     }
     const e = game.entities.create({ components: [Ticker] });
-    // execute() starts in frame 1; each nextFrame() continues after the frame ends, before the next one
+    // execute() 在第 1 帧开始；每次 nextFrame() 都在当前帧结束后、下一帧开始前继续
     frame(game);
     expect(ticks).toBe(1);
     await settle();
@@ -114,7 +114,7 @@ describe('scripts', () => {
     expect(ticks).toBe(4);
   });
 
-  test('delay resolves after the given game time', async () => {
+  test('delay 在过了给定的游戏时间后兑现', async () => {
     const game = new Game();
     let done = false;
     class Waiter extends AsyncScript {
@@ -124,7 +124,7 @@ describe('scripts', () => {
       }
     }
     game.entities.create({ components: [Waiter] });
-    // execute() calls delay(1) in the first frame, at total 0.6: it resolves at the first frame ending at 1.6 or later
+    // execute() 在第一帧（total 0.6）调用 delay(1)：在第一个结束时 total 不小于 1.6 的帧兑现
     frame(game, 0.6);
     await settle();
     frame(game, 0.6);
@@ -135,7 +135,7 @@ describe('scripts', () => {
     expect(done).toBe(true);
   });
 
-  test('an error in execute reaches onError', async () => {
+  test('execute 里的错误交给 onError', async () => {
     const game = new Game();
     const onError = vi.fn();
     game.entities.onError = onError;
@@ -151,7 +151,7 @@ describe('scripts', () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'boom' }));
   });
 
-  test('property names that shadow script members are rejected', () => {
+  test('会盖掉脚本成员的属性名被拒绝', () => {
     expect(() => SyncScript.props({ update: 1 })).toThrow("'update' is reserved");
   });
 });

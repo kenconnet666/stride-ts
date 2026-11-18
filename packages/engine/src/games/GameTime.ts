@@ -1,8 +1,8 @@
-/** Timing of the current frame, in seconds (Stride's GameTime, which uses TimeSpan). */
+/** 当前帧的时间，单位秒（对应 Stride 的 GameTime，那边用 TimeSpan）。 */
 export class GameTime {
-  /** Time since the game started running. */
+  /** 游戏开始运行以来的时间。 */
   total = 0;
-  /** Time since the previous frame; 0 on the first frame. */
+  /** 距上一帧的时间；第一帧是 0。 */
   elapsed = 0;
   frameCount = 0;
 

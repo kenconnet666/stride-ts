@@ -1,8 +1,7 @@
 /**
- * Names components, scripts and systems after the module that exports them: `gameplay/health#Health`.
- * The game passes `import.meta.glob('./**\/*.ts', { eager: true })` (a Vite feature: keys stay source paths
- * in production builds); scene files, hot reload and the editor refer to things by these names.
- * Engine and library components pass an explicit name instead, which is kept.
+ * 按导出它们的模块给组件、脚本、系统起名：`gameplay/health#Health`。
+ * 游戏传入 `import.meta.glob('./**\/*.ts', { eager: true })` 的结果（Vite 自带的功能，正式构建里键名
+ * 仍是源文件路径）；场景文件、热重载、编辑器都按这些名字引用。引擎和库的组件显式给名字，登记时保留。
  */
 import { ComponentType } from './component';
 import { isScriptClass, scriptName, type ScriptConstructor } from './scripts';
@@ -13,7 +12,7 @@ export type Registered = ComponentType<any> | System<any> | ScriptConstructor;
 export class Registry {
   readonly #byName = new Map<string, Registered>();
 
-  /** Registers every component, script and system the modules export. modules: path → module namespace. */
+  /** 登记这些模块导出的所有组件、脚本、系统。modules：路径 → 模块命名空间对象。 */
   registerModules(modules: Readonly<Record<string, unknown>>): void {
     for (const [path, module] of Object.entries(modules)) {
       if (typeof module !== 'object' || module === null) continue;
@@ -22,7 +21,7 @@ export class Registry {
     }
   }
 
-  /** Registers one thing under its explicit name (engine and library components). */
+  /** 按显式的名字登记一个东西（引擎和库的组件）。 */
   register(value: Registered): void {
     const name = nameOf(value);
     if (name === undefined) throw new Error('register() needs a named component, script or system; game code is named by registerModules');
@@ -42,7 +41,7 @@ export class Registry {
       if (!value.isNamed) value.setName(derived);
       this.#add(value.name, value);
     } else if (isScriptClass(value)) {
-      // An own scriptName is set by props(name, ...) or an earlier registration; otherwise name it here
+      // 自己的 scriptName 来自 props(name, ...) 或之前的登记；都没有就在这里起名
       if (!Object.hasOwn(value, 'scriptName') || value.scriptName === undefined) {
         Object.defineProperty(value, 'scriptName', { value: inheritedExplicitName(value) ?? derived });
       }
@@ -52,14 +51,14 @@ export class Registry {
 
   #add(name: string, value: Registered): void {
     const existing = this.#byName.get(name);
-    // The same thing re-exported from another module keeps its first name
+    // 同一个东西从别的模块再导出，保留第一次的名字
     if (existing === value) return;
     if (existing) throw new Error(`two different things are named '${name}'`);
     this.#byName.set(name, value);
   }
 }
 
-/** './gameplay/health.ts' and '/src/gameplay/health.ts' both become 'gameplay/health'. */
+/** './gameplay/health.ts' 和 '/src/gameplay/health.ts' 都变成 'gameplay/health'。 */
 export function modulePath(path: string): string {
   return path.replace(/^\.?\//, '').replace(/^src\//, '').replace(/\.[cm]?[jt]sx?$/, '');
 }
@@ -70,8 +69,8 @@ function nameOf(value: Registered): string | undefined {
 }
 
 /**
- * props('Gameplay.Player', ...) puts the explicit name on the intermediate class that props() returns;
- * the user's class extends it directly, so the name is found one step up.
+ * props('Gameplay.Player', ...) 把显式的名字放在 props() 返回的中间类上；
+ * 用户的类直接继承它，所以往上找一层就能找到名字。
  */
 function inheritedExplicitName(script: ScriptConstructor): string | undefined {
   const parent = Object.getPrototypeOf(script) as ScriptConstructor;

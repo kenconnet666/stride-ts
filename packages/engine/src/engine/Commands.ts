@@ -1,6 +1,5 @@
 /**
- * Structural changes recorded while systems iterate (creating or destroying entities, adding or removing
- * components move rows between tables); the manager applies them after each system.
+ * 系统遍历期间记下的结构性改动（创建、销毁实体，加删组件会让行在表之间搬动）；管理器在每个系统跑完后执行。
  */
 import type { EntityId } from '../data/prop';
 import type { ComponentType } from './component';
@@ -31,7 +30,7 @@ export class Commands {
     this.#ops.push({ kind: 'remove', id, type });
   }
 
-  /** @internal Applies and clears the recorded changes, in order; entities destroyed meanwhile are skipped. */
+  /** @internal 按顺序执行并清空记下的改动；期间已被销毁的实体跳过。 */
   apply(manager: EntityManager): void {
     if (this.#ops.length === 0) return;
     const ops = this.#ops;

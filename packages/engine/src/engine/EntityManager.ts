@@ -1,20 +1,22 @@
 /**
- * Owns the entities of a game: their data components in archetype tables, their scripts, and the systems.
- * update() runs one frame in the documented order (docs/architecture.md, "生命周期"): pending start() and
- * execute() calls, SyncScript.update, systems before physics, systems after physics, then the AsyncScript
- * waiters, whose continuations run once the frame's task returns.
+ * 管理一个游戏的实体：按 archetype 分表存放的数据组件、脚本和系统。
+ * update() 按文档里的顺序跑一帧（docs/architecture.md 的“生命周期”）：待启动脚本的 start() 和 execute()、
+ * SyncScript.update、物理之前的系统、物理之后的系统，最后是 AsyncScript 的等待者，
+ * 它们的后续代码在这一帧的任务返回后运行。
  */
-import type { Columns, EntityId, Shape } from '../data/prop';
+import type { Columns, DataShape, EntityId } from '../data/prop';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
 import { Commands } from './Commands';
 import { ComponentType, type BareComponent, type ComponentInit } from './component';
+import { ScopedDefaults } from './defaults';
 import { Entity } from './Entity';
 import { AsyncScript, ScriptComponent, StartupScript, SyncScript, scriptName, type BareScript, type ScriptConstructor, type ScriptInit } from './scripts';
+import { Stat, type StatClock } from './stats';
 import { Table, tableKey } from './storage';
 import { orderSystems, type Phase, type System } from './system';
 
-/** What an entity can be created with or given: a data component (bare or with values) or a script. */
+/** 创建实体或给实体添加时能传的东西：数据组件（直接列出或带值）或脚本。 */
 export type EntityArg = ComponentInit<any> | BareComponent | ScriptInit<any> | BareScript;
 
 export interface EntityDesc {
@@ -23,20 +25,23 @@ export interface EntityDesc {
 }
 
 /**
- * Entities made by one spawn() call. Their rows are consecutive, from firstRow, until the next structural
- * change (destroying or moving an entity of the table moves another row into the gap).
+ * 一次 spawn() 生成的实体。它们的行从 firstRow 起连续，直到下一次结构性改动（销毁或搬走这张表里的实体，
+ * 会把另一行搬进空出来的位置）。
  */
 export interface SpawnBatch {
   readonly ids: readonly EntityId[];
   readonly count: number;
   readonly firstRow: number;
-  /** The table's columns of a spawned component; writing through them counts as a change for `changed`. */
-  columns<S extends Shape>(type: ComponentType<S>): Columns<S>;
+  /** 生成的实体某个组件所在的列；通过它写入算作一次改动，`changed` 能看到。 */
+  columns<S extends DataShape>(type: ComponentType<S, any>): Columns<S>;
 }
 
-/** Ids are index + generation * 2^20: up to about a million live entities, stale ids are detected. */
+/** id = 下标 + 代数 * 2^20：最多约一百万个活着的实体，过期的 id 能被识别出来。 */
 const INDEX_SPAN = 1 << 20;
 const indexOf = (id: number) => id % INDEX_SPAN;
+
+/** 向量类字段在视图里的分量名，顺序与列里交错存放的顺序一致。 */
+const VECTOR_KEYS = { vec3: ['x', 'y', 'z'], quat: ['x', 'y', 'z', 'w'], color: ['r', 'g', 'b', 'a'] } as const;
 
 interface Waiter {
   readonly script: AsyncScript;
@@ -47,12 +52,14 @@ interface Waiter {
 
 export class EntityManager {
   readonly game: Game;
-  /** Called with errors no caller can catch: a rejected AsyncScript.execute. */
+  /** 标了 .inherit() 的属性的作用域默认值，对之后创建的实例生效。 */
+  readonly defaults = new ScopedDefaults();
+  /** 没有调用方能接住的错误交给它：比如 AsyncScript.execute 被拒绝。 */
   onError: (error: unknown) => void = (error) => {
     throw error;
   };
 
-  // Per entity index
+  // 按实体下标存放
   readonly #generation: number[] = [];
   readonly #table: (Table | undefined)[] = [];
   readonly #row: number[] = [];
@@ -61,25 +68,36 @@ export class EntityManager {
   #alive = 0;
 
   readonly #tables = new Map<string, Table>();
-  /** @internal In creation order; systems keep how many they have looked at. */
+  /** @internal 按创建顺序；每个系统记着自己看到了第几张。 */
   readonly tables: Table[] = [];
 
   #systems: System<any>[] = [];
   #ordered: System<any>[] | undefined;
+  /** 带 added 或 removed 回调的系统：实体开始或不再满足它们的条件时通知它们。 */
+  #watching: System<any>[] = [];
   readonly #commands = new Commands();
-  /** Bumped on every write that `changed` filters should see. */
+  /** 每次 `changed` 应该看到的写入都递增。 */
   #version = 1;
   #iterating = false;
 
   readonly #pendingStart: ScriptComponent[] = [];
   #syncScripts: SyncScript[] = [];
   #waiters: Waiter[] = [];
+  /** 限时的 stat 修饰，按游戏时间到期。 */
+  #timers: { readonly at: number; readonly expire: () => void }[] = [];
+  readonly #clock: StatClock;
 
   constructor(game: Game) {
     this.game = game;
+    this.#clock = {
+      get now() {
+        return game.updateTime.total;
+      },
+      schedule: (at, expire) => void this.#timers.push({ at, expire }),
+    };
   }
 
-  /** Live entities. */
+  /** 活着的实体数。 */
   get count(): number {
     return this.#alive;
   }
@@ -89,21 +107,23 @@ export class EntityManager {
     return this.#table[index] !== undefined && this.#generation[index] === Math.floor(id / INDEX_SPAN);
   }
 
-  /** Creates an entity with its components and scripts placed directly in their final table. */
+  /** 创建实体，组件直接放进最终的表，脚本一并挂上。 */
   create(desc: EntityDesc = {}): Entity {
     this.#assertNotIterating('create an entity');
     const { components, scripts } = splitArgs(desc.components ?? []);
-    const id = this.#allocate(this.#tableFor(components.map((c) => c.type)));
+    const table = this.#tableFor(components.map((c) => c.type));
+    const id = this.#allocate(table);
     this.#writeComponents(id, components);
     const entity = new Entity(this, id, desc.name ?? `entity ${indexOf(id)}`);
     this.#objects[indexOf(id)] = entity;
     for (const script of scripts) this.#attach(entity, script);
+    this.#notify(id, undefined, table);
+    this.#afterChange();
     return entity;
   }
 
   /**
-   * Creates count entities that only have data components, without entity objects. They take consecutive
-   * rows of one table, so the returned batch can set per-entity values column by column:
+   * 生成 count 个只有数据组件、没有实体对象的实体。它们占同一张表里连续的行，所以可以按列给每个实体写值：
    *
    *   const batch = entities.spawn(1000, [Position, Velocity]);
    *   const velocity = batch.columns(Velocity);
@@ -120,11 +140,13 @@ export class EntityManager {
       ids[i] = this.#allocate(table);
       this.#writeComponents(ids[i]!, inits);
     }
+    for (const id of ids) this.#notify(id, undefined, table);
+    this.#afterChange();
     return {
       ids,
       count,
       firstRow,
-      columns: <S extends Shape>(type: ComponentType<S>) => {
+      columns: <S extends DataShape>(type: ComponentType<S, any>) => {
         const set = table.sets[type.id];
         if (!set) throw new Error(`the spawned entities have no ${type.name}`);
         set.version = ++this.#version;
@@ -133,7 +155,7 @@ export class EntityManager {
     };
   }
 
-  /** The object of an entity, made on first use for entities that were spawned as ids. */
+  /** 实体对象；批量生成的实体在第一次用到时才创建。 */
   entity(id: EntityId): Entity {
     this.#assertAlive(id);
     const index = indexOf(id);
@@ -148,12 +170,14 @@ export class EntityManager {
     if (entity) {
       for (const script of [...entity.scripts.values()]) this.#detach(entity, script);
     }
+    this.#notify(id, this.#table[index], undefined);
     this.#removeRow(index);
     this.#table[index] = undefined;
     this.#objects[index] = undefined;
     this.#generation[index] = (this.#generation[index]! + 1) % 0x10000;
     this.#free.push(index);
     this.#alive--;
+    this.#afterChange();
   }
 
   add(id: EntityId, arg: EntityArg): void {
@@ -165,9 +189,13 @@ export class EntityManager {
       const index = indexOf(id);
       const from = this.#table[index]!;
       if (from.has(component.type)) throw new Error(`entity ${id} already has ${component.type.name}`);
-      this.#move(index, this.#tableFor([...from.types, component.type]));
+      const to = this.#tableFor([...from.types, component.type]);
+      this.#notifyLeaving(id, from, to);
+      this.#move(index, to);
       this.#writeComponents(id, [component]);
+      this.#notifyEntering(id, from, to);
     }
+    this.#afterChange();
   }
 
   remove(id: EntityId, type: ComponentType<any> | ScriptConstructor): void {
@@ -183,30 +211,65 @@ export class EntityManager {
     const index = indexOf(id);
     const from = this.#table[index]!;
     if (!from.has(type)) throw new Error(`entity ${id} has no ${type.name}`);
-    this.#move(index, this.#tableFor(from.types.filter((t) => t !== type)));
+    const to = this.#tableFor(from.types.filter((t) => t !== type));
+    this.#notifyLeaving(id, from, to);
+    this.#move(index, to);
     this.#objects[index]?.views.delete(type);
+    this.#notifyEntering(id, from, to);
+    this.#afterChange();
   }
 
   hasComponent(id: EntityId, type: ComponentType<any>): boolean {
     return this.isAlive(id) && this.#table[indexOf(id)]!.has(type);
   }
 
-  /** @internal A view object whose fields read and write the entity's row; see Entity.get. */
+  /** @internal 视图对象：每个字段的读写都落到这个实体所在的行上，见 Entity.get。 */
   createView(id: EntityId, type: ComponentType<any>): object {
     const view = {};
     type.schema.fields.forEach((field, f) => {
       const isBool = field.options.kind === 'bool';
+      const touch = () => (this.#table[indexOf(id)]!.sets[type.id]!.version = ++this.#version);
+      if (field.stride > 1) {
+        // 向量字段：返回一个活的 x/y/z(/w) 对象，直接读写列里交错存放的那几个 float；整体赋值时逐分量拷贝
+        const keys = VECTOR_KEYS[field.options.kind as 'vec3' | 'quat' | 'color'];
+        const live = {};
+        keys.forEach((key, k) => {
+          Object.defineProperty(live, key, {
+            enumerable: true,
+            get: () => {
+              const [column, row] = this.#cell(id, type, f);
+              return column[row * field.stride + k];
+            },
+            set: (value: number) => {
+              const [column, row] = this.#cell(id, type, f);
+              column[row * field.stride + k] = value;
+              touch();
+            },
+          });
+        });
+        Object.defineProperty(view, field.name, {
+          enumerable: true,
+          get: () => live,
+          set: (value: unknown) => {
+            const [column, row] = this.#cell(id, type, f);
+            const values = Array.isArray(value) ? value : keys.map((key) => (value as Record<string, number>)[key]);
+            for (let k = 0; k < keys.length; k++) column[row * field.stride + k] = values[k];
+            touch();
+          },
+        });
+        return;
+      }
       Object.defineProperty(view, field.name, {
         enumerable: true,
         get: () => {
           const [column, row] = this.#cell(id, type, f);
-          const value = (column as unknown[])[row];
+          const value = column[row];
           return isBool ? value === 1 : value;
         },
         set: (value: unknown) => {
           const [column, row] = this.#cell(id, type, f);
-          (column as unknown[])[row] = isBool ? (value ? 1 : 0) : value;
-          this.#table[indexOf(id)]!.sets[type.id]!.version = ++this.#version;
+          column[row] = isBool ? (value ? 1 : 0) : value;
+          touch();
         },
       });
     });
@@ -214,19 +277,31 @@ export class EntityManager {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Systems
+  // 系统
 
+  /** 加入系统；带 added 回调的系统会对已经满足条件的实体各调一次 added。 */
   addSystems(...systems: System<any>[]): void {
     for (const s of systems) {
       if (this.#systems.includes(s)) throw new Error(`system ${s.name} was already added`);
     }
     this.#systems = [...this.#systems, ...systems];
     this.#ordered = undefined;
+    this.#watching = this.#systems.filter((s) => s.spec.added || s.spec.removed);
+    for (const s of systems) {
+      if (s.spec.added) this.#forEachMatching(s, (id) => this.#callback(() => s.spec.added!(id, this.#commands)));
+    }
+    this.#afterChange();
   }
 
+  /** 移除系统；带 removed 回调的系统会对还满足条件的实体各调一次 removed。 */
   removeSystems(...systems: System<any>[]): void {
+    for (const s of systems) {
+      if (this.#systems.includes(s) && s.spec.removed) this.#forEachMatching(s, (id) => this.#callback(() => s.spec.removed!(id, this.#commands)));
+    }
     this.#systems = this.#systems.filter((s) => !systems.includes(s));
     this.#ordered = undefined;
+    this.#watching = this.#systems.filter((s) => s.spec.added || s.spec.removed);
+    this.#afterChange();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -242,13 +317,13 @@ export class EntityManager {
     this.#endFrame(time);
   }
 
-  /** @internal AsyncScript.nextFrame and delay: resolved at the end of the first frame where done(time) holds. */
+  /** @internal AsyncScript.nextFrame 和 delay：在第一个满足 done(time) 的帧末尾兑现。 */
   waitFor(script: AsyncScript, done: (time: GameTime) => boolean): Promise<void> {
     if (!script.attached) return Promise.reject(script.signal.reason);
     return new Promise((resolve, reject) => this.#waiters.push({ script, done, resolve, reject }));
   }
 
-  /** Removes every entity; their scripts are cancelled. */
+  /** 移除所有实体，它们的脚本都被取消。 */
   clear(): void {
     for (let index = 0; index < this.#table.length; index++) {
       if (this.#table[index] !== undefined) this.destroy((this.#generation[index]! * INDEX_SPAN + index) as EntityId);
@@ -256,7 +331,7 @@ export class EntityManager {
   }
 
   #startPending(): void {
-    // start() may create entities with scripts of their own: they start in the same frame
+    // start() 里可能又创建了带脚本的实体：它们在同一帧启动
     for (let i = 0; i < this.#pendingStart.length; i++) {
       const script = this.#pendingStart[i]!;
       if (!script.attached) continue;
@@ -270,7 +345,7 @@ export class EntityManager {
 
   #execute(script: AsyncScript): void {
     script.execute().catch((error: unknown) => {
-      // The script was removed while awaiting: its waits reject with the abort reason, which ends it
+      // 脚本在等待时被移除：等待以中止原因被拒绝，脚本就此结束，不算错误
       if (script.signal.aborted && error === script.signal.reason) return;
       this.onError(error);
     });
@@ -310,6 +385,14 @@ export class EntityManager {
   }
 
   #endFrame(time: GameTime): void {
+    if (this.#timers.length > 0) {
+      // 到期的限时 stat 修饰在帧末移除，下一帧读到的就是新值
+      const due = this.#timers.filter((t) => t.at <= time.total);
+      if (due.length > 0) {
+        this.#timers = this.#timers.filter((t) => t.at > time.total);
+        for (const timer of due) timer.expire();
+      }
+    }
     if (this.#waiters.length === 0) return;
     const waiting = this.#waiters;
     this.#waiters = [];
@@ -353,12 +436,61 @@ export class EntityManager {
     const row = this.#row[index]!;
     for (const { type, init } of components) {
       const set = table.sets[type.id]!;
-      type.schema.writeRow(set.columns, row, init);
+      type.schema.writeRow(set.columns, row, init, this.defaults.arrayFor(type));
       set.version = ++this.#version;
     }
   }
 
-  /** Moves an entity's row to another table, keeping the components both tables have. */
+  // ---------------------------------------------------------------------------------------------
+  // 系统的 added / removed 通知
+
+  /** 实体从 from 表搬到 to 表（创建时 from 为空，销毁时 to 为空）前后，通知开始或不再满足条件的系统。 */
+  #notify(id: EntityId, from: Table | undefined, to: Table | undefined): void {
+    this.#notifyLeaving(id, from, to);
+    this.#notifyEntering(id, from, to);
+  }
+
+  /** 在搬走之前调用：removed 回调还能读到组件数据。 */
+  #notifyLeaving(id: EntityId, from: Table | undefined, to: Table | undefined): void {
+    if (this.#watching.length === 0 || !from) return;
+    for (const s of this.#watching) {
+      if (s.spec.removed && s.matches(from) && !(to && s.matches(to))) this.#callback(() => s.spec.removed!(id, this.#commands));
+    }
+  }
+
+  /** 在搬好、写好数据之后调用。 */
+  #notifyEntering(id: EntityId, from: Table | undefined, to: Table | undefined): void {
+    if (this.#watching.length === 0 || !to) return;
+    for (const s of this.#watching) {
+      if (s.spec.added && s.matches(to) && !(from && s.matches(from))) this.#callback(() => s.spec.added!(id, this.#commands));
+    }
+  }
+
+  /** 回调期间不允许直接做结构性改动（会打乱正在进行的搬移），只能记进命令缓冲。 */
+  #callback(fn: () => void): void {
+    const was = this.#iterating;
+    this.#iterating = true;
+    try {
+      fn();
+    } finally {
+      this.#iterating = was;
+    }
+  }
+
+  /** 公开的结构性操作做完之后，执行回调里记下的命令。系统遍历期间由系统自己在跑完后执行。 */
+  #afterChange(): void {
+    if (!this.#iterating) this.#commands.apply(this);
+  }
+
+  #forEachMatching(s: System<any>, fn: (id: EntityId) => void): void {
+    for (const table of this.tables) {
+      if (!s.matches(table)) continue;
+      // 先复制 id：回调里记下的命令要等遍历完才执行，但保险起见不直接遍历会变的数组
+      for (const id of Array.from(table.entities.subarray(0, table.count))) fn(id as EntityId);
+    }
+  }
+
+  /** 把实体的行搬到另一张表，两张表都有的组件的值保留。 */
   #move(index: number, to: Table): void {
     const from = this.#table[index]!;
     const fromRow = this.#row[index]!;
@@ -369,7 +501,7 @@ export class EntityManager {
     this.#row[index] = toRow;
   }
 
-  /** Swap-removes the entity's row and fixes up the entity that moved into it. */
+  /** 用最后一行填补的方式删除实体的行，并更新搬进来的那个实体的行号。 */
   #removeRow(index: number): void {
     const moved = this.#table[index]!.removeRow(this.#row[index]!);
     if (moved >= 0) this.#row[indexOf(moved)] = this.#row[index]!;
@@ -390,11 +522,29 @@ export class EntityManager {
     if (entity.scripts.has(type)) throw new Error(`entity '${entity.name}' already has ${scriptName(type)}`);
     const Concrete = type as unknown as new () => ScriptComponent;
     const script = new Concrete();
-    type.schema.assign(script, init);
+    type.schema.assign(script, init, this.defaults.arrayFor(type));
+    this.#createStats(script, type);
     script.entity = entity;
     script.game = this.game;
     entity.scripts.set(type, script);
     this.#pendingStart.push(script);
+  }
+
+  /** 把标了 stat() 的属性换成访问器：读到的是加上修饰后的值，赋值改的是基础值。 */
+  #createStats(script: ScriptComponent, type: ScriptConstructor): void {
+    const statFields = type.schema.fields.filter((f) => f.options.stat);
+    if (statFields.length === 0) return;
+    const table: Record<string, Stat> = {};
+    for (const field of statFields) {
+      const stat = new Stat((script as unknown as Record<string, number>)[field.name]!, field.options, this.#clock);
+      table[field.name] = stat;
+      Object.defineProperty(script, field.name, {
+        enumerable: true,
+        get: () => stat.value,
+        set: (value: number) => (stat.base = value),
+      });
+    }
+    script.statTable = table;
   }
 
   #detach(entity: Entity, script: ScriptComponent): void {

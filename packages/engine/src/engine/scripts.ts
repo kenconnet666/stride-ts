@@ -1,73 +1,92 @@
 /**
- * Scripts, shaped like Stride's: StartupScript (start), SyncScript (start + update every frame) and
- * AsyncScript (execute, awaiting nextFrame or delay). Properties are declared with props() and typed by
- * inference:
+ * 脚本，结构同 Stride：StartupScript（start）、SyncScript（start，加上每帧的 update）、
+ * AsyncScript（execute，用 nextFrame 或 delay 等待）。属性用 props() 声明，类型靠推导：
  *
  *   export class PlayerController extends SyncScript.props({
- *     maxRunSpeed: prop.number().min(0).default(10),
+ *     maxRunSpeed: prop.number().min(0).default(10).stat(),
  *     jumpHeight: 1.2,
  *   }) {
- *     override update(time: GameTime): void { this.maxRunSpeed; }   // number
+ *     override update(time: GameTime): void { this.maxRunSpeed; }   // number，已经算上修饰
  *   }
  *
- * Everything a script registers through `this.disposables` is released when it is removed, together with
- * aborting `this.signal`.
+ * 脚本通过 `this.disposables`、`this.on`、`this.receive` 登记的东西，在脚本移除时和 `this.signal` 的中止
+ * 一起释放。
  */
-import type { InitOf, ScriptValues, Shape } from '../data/prop';
+import type { InheritedOf, InitOf, ScriptValues, Shape, StatKeys } from '../data/prop';
 import { createSchema, type Schema } from '../data/schema';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
+import { checkVariants, variantValues } from './component';
 import type { Entity } from './Entity';
+import type { EventKey, EventReceiver, Hook, HookHandler } from './events';
+import type { Stat } from './stats';
 
-/** Names a script's own members use; a property with one of them would shadow it. */
+/** 脚本自己成员用的名字；属性叫这些名字会把成员盖掉。 */
 const RESERVED = new Set([
-  'entity', 'game', 'enabled', 'signal', 'disposables', 'attached',
-  'start', 'update', 'cancel', 'execute', 'nextFrame', 'delay', 'constructor',
+  'entity', 'game', 'enabled', 'signal', 'disposables', 'attached', 'stats', 'statTable', 'on', 'receive',
+  'start', 'update', 'cancel', 'execute', 'nextFrame', 'delay', 'detach', 'constructor',
 ]);
 
-/** Any script class, abstract or not. */
+/** 任意脚本类，抽象的也算。 */
 export type ScriptConstructor<T extends ScriptComponent = ScriptComponent> = (abstract new () => T) & {
   readonly schema: Schema;
+  readonly variants: Readonly<Record<string, object>>;
   readonly scriptName: string | undefined;
 };
 
-/** The shape a script class declared with props(); {} when it has none. */
+/** 脚本类用 props() 声明的 shape；没有时是 {}。 */
 export type ShapeOfScript<C> = C extends { readonly __shape: infer S extends Shape } ? S : {};
+/** 脚本类用 props() 声明的变体名。 */
+export type VariantsOfScript<C> = C extends { readonly __variants: infer V extends string } ? V : never;
 
-/** A script class plus the values to create it with: `PlayerController.with({ maxRunSpeed: 12 })`. */
+/** 脚本类加上创建时的取值：`PlayerController.with({ maxRunSpeed: 12 })`。 */
 export interface ScriptInit<C extends ScriptConstructor = ScriptConstructor> {
   readonly script: C;
   readonly init: object | undefined;
 }
 
-/** A script class whose properties all have defaults, so it can be listed as is. */
+/** 所有属性都有默认值的脚本类，可以直接列出。 */
 export type BareScript = ScriptConstructor & { readonly __bare: true };
 
-/** The class props() returns: the base class with the declared properties on its instances. */
-export type WithProps<B extends ScriptConstructor, S extends Shape> = (abstract new () => InstanceType<B> & ScriptValues<S>) &
-  Omit<B, 'prototype' | '__shape' | '__bare'> & {
+export interface ScriptOptions<S extends Shape, V extends string> {
+  readonly variants?: { readonly [K in V]: Partial<InitOf<S, 'script'>> };
+}
+
+/** script.stats：每个标了 .stat() 的属性一个 Stat。 */
+export type StatsOf<S extends Shape> = { readonly [K in StatKeys<S>]: Stat };
+
+/** props() 返回的类：在基类的实例上加上声明的属性。 */
+export type WithProps<B extends ScriptConstructor, S extends Shape, V extends string> = (abstract new () => InstanceType<B> &
+  ScriptValues<S> & { readonly stats: StatsOf<S> }) &
+  Omit<B, 'prototype' | '__shape' | '__bare' | '__variants'> & {
     readonly __shape: S;
+    readonly __variants: V;
     readonly __bare: {} extends InitOf<S, 'script'> ? true : false;
   };
 
 export abstract class ScriptComponent {
   declare static readonly __shape: {};
+  declare static readonly __variants: never;
   declare static readonly __bare: true;
-  /** @internal The properties; props() gives each script class its own. */
+  /** @internal 属性；props() 给每个脚本类一份自己的。 */
   static schema: Schema = createSchema({}, 'number', RESERVED, 'script');
-  /** @internal Given to props(), or `path#Export` once the game registered the module. */
+  /** @internal */
+  static variants: Readonly<Record<string, object>> = {};
+  /** @internal 传给 props() 的名字，或游戏登记模块后得出的 `路径#导出名`。 */
   static scriptName: string | undefined;
 
-  /** Set before start(); the script belongs to this entity until it is removed. */
+  /** start() 之前设好；脚本被移除之前一直属于这个实体。 */
   entity!: Entity;
   game!: Game;
-  /** A disabled SyncScript is not updated; its state is kept. */
+  /** 停用的 SyncScript 不再 update，状态保留。 */
   enabled = true;
-  /** Released when the script is removed or the game exits (event receivers, hooks, timers, assets). */
+  /** 脚本移除或游戏退出时释放（事件接收器、钩子、计时器、资源）。 */
   protected readonly disposables = new DisposableStack();
   readonly #abort = new AbortController();
+  /** @internal 有 .stat() 属性的脚本由管理器设置。 */
+  statTable: Readonly<Record<string, Stat>> = {};
 
-  /** Aborted when the script is removed or the game exits; pass it to anything the script awaits. */
+  /** 脚本移除或游戏退出时中止；脚本 await 的东西都把它传进去。 */
   get signal(): AbortSignal {
     return this.#abort.signal;
   }
@@ -76,26 +95,48 @@ export abstract class ScriptComponent {
     return !this.#abort.signal.aborted;
   }
 
-  /** Called after removal, once the signal is aborted and the disposables are released. */
+  /** 标了 .stat() 的属性的修饰：`this.stats.maxRunSpeed.multiply(0.5)`。 */
+  get stats(): object {
+    return this.statTable;
+  }
+
+  /** 处理一个钩子，直到脚本被移除。 */
+  protected on<T>(hook: Hook<T>, handler: HookHandler<T>): void {
+    this.disposables.use(hook.on(handler));
+  }
+
+  /** 事件键的接收器，脚本移除时释放。 */
+  protected receive<T>(key: EventKey<T>): EventReceiver<T> {
+    return this.disposables.use(key.receiver());
+  }
+
+  /** 移除后调用：这时 signal 已中止、disposables 已释放。 */
   cancel(): void {}
 
-  static props<B extends ScriptConstructor, S extends Shape>(this: B, shape: S): WithProps<B, S>;
-  static props<B extends ScriptConstructor, S extends Shape>(this: B, name: string, shape: S): WithProps<B, S>;
-  static props(this: ScriptConstructor, nameOrShape: string | Shape, maybeShape?: Shape): unknown {
-    const [name, shape] = typeof nameOrShape === 'string' ? [nameOrShape, maybeShape ?? {}] : [undefined, nameOrShape];
+  static props<B extends ScriptConstructor, S extends Shape, V extends string = never>(this: B, shape: S, options?: ScriptOptions<S, V>): WithProps<B, S, V>;
+  static props<B extends ScriptConstructor, S extends Shape, V extends string = never>(this: B, name: string, shape: S, options?: ScriptOptions<S, V>): WithProps<B, S, V>;
+  static props(this: ScriptConstructor, a: string | Shape, b?: Shape | ScriptOptions<Shape, string>, c?: ScriptOptions<Shape, string>): unknown {
+    const [name, shape, options] = typeof a === 'string' ? [a, (b as Shape) ?? {}, c] : [undefined, a, b as ScriptOptions<Shape, string> | undefined];
     const base = this as unknown as abstract new () => ScriptComponent;
     abstract class Props extends base {}
-    Object.defineProperty(Props, 'schema', { value: createSchema(shape, 'number', RESERVED, name ?? `${this.name} props`) });
+    const schema = createSchema(shape, 'number', RESERVED, name ?? `${this.name} props`);
+    Object.defineProperty(Props, 'schema', { value: schema });
+    Object.defineProperty(Props, 'variants', { value: checkVariants(schema, options?.variants ?? {}) });
     Object.defineProperty(Props, 'scriptName', { value: name, writable: true });
     return Props;
   }
 
-  /** This script with property values, for entities.create or entity.add. */
+  /** 带上属性值的这个脚本，给 entities.create 或 entity.add 用。 */
   static with<C extends ScriptConstructor>(this: C, init: InitOf<ShapeOfScript<C>, 'script'>): ScriptInit<C> {
     return { script: this, init };
   }
 
-  /** @internal Called by the manager when the script is removed. */
+  /** 先取变体的值，再叠加 init。 */
+  static variant<C extends ScriptConstructor>(this: C, name: VariantsOfScript<C>, init: Partial<InitOf<ShapeOfScript<C>, 'script'>> = {}): ScriptInit<C> {
+    return { script: this, init: { ...variantValues(this.variants, name, scriptName(this)), ...init } };
+  }
+
+  /** @internal 脚本被移除时由管理器调用。 */
   detach(): void {
     if (!this.attached) return;
     this.#abort.abort(new DOMException(`script ${scriptName(this.constructor as ScriptConstructor)} was removed`, 'AbortError'));
@@ -107,31 +148,29 @@ export abstract class ScriptComponent {
   }
 }
 
-/** Has start(), called once before its first frame (Stride's StartupScript). */
+/** 有 start()，在第一帧之前调用一次（对应 Stride 的 StartupScript）。 */
 export abstract class StartupScript extends ScriptComponent {
   start(): void {}
 }
 
-/** start() once, then update() every frame while enabled (Stride's SyncScript). */
+/** start() 一次，之后启用期间每帧 update()（对应 Stride 的 SyncScript）。 */
 export abstract class SyncScript extends StartupScript {
   update(_time: GameTime): void {}
 }
 
-/** execute() runs once; it awaits nextFrame() or delay() to spread work over frames (Stride's AsyncScript). */
+/** execute() 运行一次，用 nextFrame() 或 delay() 把工作分摊到多帧（对应 Stride 的 AsyncScript）。 */
 export abstract class AsyncScript extends ScriptComponent {
   async execute(): Promise<void> {}
 
   /**
-   * Resolves at the end of the current frame, so the code after it runs before the next frame's scripts
-   * and systems (unlike Stride, where it resumes inside the next frame's script phase: a promise
-   * continuation cannot run in the middle of our synchronous frame). Rejects with an AbortError once the
-   * script is removed.
+   * 在当前帧末尾兑现，所以它后面的代码在下一帧的脚本和系统之前运行。这和 Stride 不同（Stride 在下一帧的
+   * 脚本阶段里继续）：Promise 的后续代码没法插进同步执行的一帧中间。脚本移除后以 AbortError 拒绝。
    */
   nextFrame(): Promise<void> {
     return this.entity.manager.waitFor(this, () => true);
   }
 
-  /** Resolves after the first frame on which `seconds` of game time have passed. */
+  /** 在游戏时间过了 `seconds` 秒之后的第一个帧末尾兑现。 */
   delay(seconds: number): Promise<void> {
     const until = this.game.updateTime.total + seconds;
     return this.entity.manager.waitFor(this, (time) => time.total >= until);
@@ -145,3 +184,6 @@ export function scriptName(script: ScriptConstructor): string {
 export function isScriptClass(value: unknown): value is ScriptConstructor {
   return typeof value === 'function' && value.prototype instanceof ScriptComponent;
 }
+
+/** 作用域默认值能给这个脚本类设的属性。 */
+export type ScriptInherited<C> = InheritedOf<ShapeOfScript<C>, 'script'>;

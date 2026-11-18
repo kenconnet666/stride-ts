@@ -1,9 +1,10 @@
 // 打开 GpuProfiler 测几秒，打印各渲染通道（按作用域分组）的平均 GPU 毫秒数；DETAIL=1 时再列出每个"作用域/通道"。
-// 开着 --enable-webgpu-developer-features（时间戳不量化）、去掉帧率上限。用法：node gpu-profile.cjs <playwright> <地址> [秒数]
+// 开着 --enable-webgpu-developer-features（时间戳不量化）、去掉帧率上限；CHROME_ARGS 里的参数（空格分隔）也传给 Chrome，比如 --enable-dawn-features=use_dxc。
+// 用法：node gpu-profile.cjs <playwright> <地址> [秒数]
 const { chromium } = require(process.argv[2]);
 const seconds = Number(process.argv[4] ?? 3);
 (async () => {
-  const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', args: ['--enable-webgpu-developer-features', '--disable-frame-rate-limit', '--disable-gpu-vsync'] });
+  const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', args: ['--enable-webgpu-developer-features', '--disable-frame-rate-limit', '--disable-gpu-vsync', ...(process.env.CHROME_ARGS?.split(' ').filter(Boolean) ?? [])] });
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   await page.goto(process.argv[3]);
   await page.waitForFunction(() => globalThis.strideGame?.frames > 120, null, { timeout: 60000 });

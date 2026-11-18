@@ -272,25 +272,33 @@ fn shadowFromCascade(position: vec3f, cascade: u32) -> f32 {
   return filterShadow(s.xy, s.z);
 }
 
+const CASCADE_INDICES = vec4u(0u, 1u, 2u, 3u);
+
+/**
+ * v 的第 i 个分量。不写 v[i]：动态下标取 uniform 里 vec4 的分量时，DXC 先把整行存进局部数组再按下标读
+ * （DXIL 里的 alloca），像素着色器里很慢。
+ */
+fn component(v: vec4f, i: u32) -> f32 {
+  return dot(v, select(vec4f(0.0), vec4f(1.0), CASCADE_INDICES == vec4u(i)));
+}
+
 /** 方向光的阴影（Stride 的 ShadowMapReceiverDirectional.ComputeShadow）。 */
 fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 {
   let count = u32(view.shadow.x);
   if (count == 0u) {
     return 1.0;
   }
-  var cascade = 0u;
-  for (var i = 0u; i + 1u < count; i++) {
-    if (depth > view.shadowSplits[i]) {
-      cascade = i + 1u;
-    }
-  }
+  // 级联：前 count - 1 个分界里深度超过了几个（分界递增，同 Stride 逐个比较取最后一个超过的）
+  let splits = view.shadowSplits;
+  let passed = select(vec4f(0.0), vec4f(1.0), (vec4f(depth) > splits) & (CASCADE_INDICES + 1u < vec4u(count)));
+  let cascade = u32(dot(passed, vec4f(1.0)));
   // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去
   let p = position + 2.0 * view.shadowAtlas.x * view.shadow.z * saturate(1.0 - nDotL) * normal;
   var shadow = shadowFromCascade(p, cascade);
-  let nextSplit = view.shadowSplits[cascade];
+  let nextSplit = component(splits, cascade);
   var splitSize = nextSplit;
   if (cascade > 0u) {
-    splitSize = nextSplit - view.shadowSplits[cascade - 1u];
+    splitSize = nextSplit - component(splits, cascade - 1u);
   }
   let splitDistance = (nextSplit - depth) / splitSize;
   if (splitDistance < 0.2) {

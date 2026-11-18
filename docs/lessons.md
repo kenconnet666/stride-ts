@@ -14,6 +14,15 @@
 - **读回是异步的**：`mapAsync` 加一圈 staging 缓冲，读上一帧的结果。不要为了读回而每帧额外提交一次。
 - **时间戳查询不是到处都有**：要先判断特性是否支持，再决定开不开 GPU 计时。
 - **输出带 alpha 的画布**：透明像素会透出页面背景。不需要透明就把 alpha 写成 1，或者把画布配置成 opaque。
+- **着色器里别用运行时的循环次数和动态下标**（2026-11-18，stride-ts 和桌面 Stride 逐通道比 GPU 时间时发现）：
+  - Chrome 在 Windows 上把 WGSL 经 Tint 转成 HLSL，再用 DXC（`-O3`）编译。Dawn 的 `use_dxc` 默认已开；强制开或关，GPU 时间都一样。
+  - 下标是变量时，DXC 会把整个 vector 存进局部数组再读回来（DXIL 里的 `alloca`），像素着色器里很慢。这包括按下标取 uniform 里 vec4 的分量，比如 `splits[i]`。改法：用 vector 运算，或者和独热向量求点积。
+  - 次数只在运行时才知道的循环不会展开。Stride 的着色器是编译期常量加 `[unroll]`；我们这边按情况拆成几个完全展开的函数，或者按设置生成着色器源码（FXAA 预设）。
+  - 实际效果：PCF 从 2.9 ms 降到 1.6 ms，阴影级联的分界从 1.6 ms 降到 1.5 ms，FXAA 从 0.62 ms 降到 0.52 ms。
+  - 看生成代码：Chrome 加 `--enable-unsafe-webgpu --enable-dawn-features=dump_shaders,disable_symbol_renaming`，控制台里会打出每个着色器的 WGSL、HLSL 和 DXIL 反汇编。
+- **测过但没用的**：
+  - 关掉 Dawn 的 robustness（越界保护）或校验，GPU 时间不变。
+  - 全屏通道的 `loadOp` 从 `clear` 换成 `load`，帧时间不变、通道时间反而多 0.5 ms。NVIDIA 对“清屏后整张覆盖”的情况有快速路径，所以全屏通道照常用 `clear`。
 
 ## 浏览器运行环境
 

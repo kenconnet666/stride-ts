@@ -20,6 +20,10 @@
   - 次数只在运行时才知道的循环不会展开。Stride 的着色器是编译期常量加 `[unroll]`；我们这边按情况拆成几个完全展开的函数，或者按设置生成着色器源码（FXAA 预设）。
   - 实际效果：PCF 从 2.9 ms 降到 1.6 ms，阴影级联的分界从 1.6 ms 降到 1.5 ms，FXAA 从 0.62 ms 降到 0.52 ms。
   - 看生成代码：Chrome 加 `--enable-unsafe-webgpu --enable-dawn-features=dump_shaders,disable_symbol_renaming`，控制台里会打出每个着色器的 WGSL、HLSL 和 DXIL 反汇编。
+- **浏览器在呈现时多做的事**（读源码确认的，`C:\code\refs` 里的 chromium、firefox）：
+  - Chrome 的画布配成 `alphaMode: 'opaque'` 时，每帧呈现前会多画一遍全屏三角形，只写 alpha 通道（`WebGPUTextureAlphaClearer`），开销是一次 bgra8 读写，大约几十微秒。改成 `premultiplied` 能省掉这一遍，但合成器就要把画布当半透明图层混合，所以还是用 `opaque`。
+  - 在 Windows 上，首选格式 bgra8unorm 不需要额外拷贝。Mac 的 rgba8unorm、Linux 和 Android 的 bgra8unorm 会多拷一次，所以要用 `getPreferredCanvasFormat()`。
+  - Firefox 只有 bgra8unorm 走共享纹理；别的格式要读回 CPU，非常慢。它会把 `viewFormats` 传下去，所以我们这种“bgra8unorm 画布加 sRGB 视图”的写法可以用。
 - **测过但没用的**：
   - 关掉 Dawn 的 robustness（越界保护）或校验，GPU 时间不变。
   - 全屏通道的 `loadOp` 从 `clear` 换成 `load`，帧时间不变、通道时间反而多 0.5 ms。NVIDIA 对“清屏后整张覆盖”的情况有快速路径，所以全屏通道照常用 `clear`。

@@ -62,6 +62,33 @@ export function readDdsCubemap(bytes: Uint8Array, source: string): FloatCubemap 
   return { size: width, levels };
 }
 
+/**
+ * 从第 0 级重建整条 mip 链（每级 2x2 盒式平均，到 1x1 为止），丢掉文件里原有的 mip。Stride 的贴图编译默认就这样做
+ * （TextureAsset.GenerateMipmaps 默认 true，TextureHelper 用 Box 滤波）；TPP 天空盒 DDS 自带的 mip 和第 0 级不一致，
+ * 用它们的话镜面预滤波偏暗、偏黄。
+ */
+export function regenerateMips(cube: FloatCubemap): FloatCubemap {
+  const levels = [cube.levels[0]!];
+  for (let size = cube.size; size > 1; size >>= 1) {
+    const source = levels[levels.length - 1]!;
+    const half = size >> 1;
+    const target = new Float32Array(6 * half * half * 4);
+    for (let face = 0; face < 6; face++) {
+      const from = face * size * size * 4, to = face * half * half * 4;
+      for (let y = 0; y < half; y++) {
+        for (let x = 0; x < half; x++) {
+          for (let k = 0; k < 4; k++) {
+            const at = (row: number, column: number) => source[from + (row * size + column) * 4 + k]!;
+            target[to + (y * half + x) * 4 + k] = (at(2 * y, 2 * x) + at(2 * y, 2 * x + 1) + at(2 * y + 1, 2 * x) + at(2 * y + 1, 2 * x + 1)) / 4;
+          }
+        }
+      }
+    }
+    levels.push(target);
+  }
+  return { size: cube.size, levels };
+}
+
 export function halfToFloat(bits: number): number {
   const sign = bits & 0x8000 ? -1 : 1;
   const exponent = (bits >> 10) & 0x1f;

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { decodeCubemap, decodeModel, type MaterialFile, type SceneFile, type SkyboxFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { floatToHalf, fromRgb9e5, halfToFloat, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
+import { floatToHalf, fromRgb9e5, halfToFloat, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
 
 describe('Stride 的 YAML', () => {
   test('标签里的逗号（程序集限定名）、对象引用和资源引用', () => {
@@ -89,6 +89,15 @@ describe('DDS、半精度和 RGB9E5', () => {
     expect(Math.abs(g - 3.7)).toBeLessThan(1000 / 512);
     expect(r).toBeLessThan(1000 / 512);
     expect(fromRgb9e5(packed[3]!)).toEqual([0, 65408, 0]);
+  });
+
+  test('重建 mip：每级 2x2 盒式平均到 1x1，丢掉原来的 mip（同 Stride 贴图编译的 GenerateMipmaps）', () => {
+    // 2x2 的面：每个面四个纹素是 1、2、3、6，下一级是平均 3；原来的第 1 级（全 0）不要
+    const level0 = new Float32Array(6 * 4 * 4);
+    for (let face = 0; face < 6; face++) [1, 2, 3, 6].forEach((v, i) => level0.set([v, v * face, 0, 1], (face * 4 + i) * 4));
+    const cube = regenerateMips({ size: 2, levels: [level0, new Float32Array(6 * 4)] });
+    expect(cube.levels.map((level) => level.length)).toEqual([6 * 4 * 4, 6 * 4]);
+    expect([...cube.levels[1]!.subarray(5 * 4, 6 * 4)]).toEqual([3, 15, 0, 1]);
   });
 
   test('读浮点立方体贴图；不是立方体贴图或格式不对时报错', () => {
@@ -338,7 +347,7 @@ describe('导入 Stride 场景', () => {
     expect([skybox.radiance, skybox.specularSize]).toEqual(['Game/SkyTexture', 16]);
     expect(skybox.diffuseSH.slice(0, 3).map((c) => Math.round(c * 100) / 100)).toEqual([0.5, 1, 2]);
     const radiance = decodeCubemap((await readFile(path.join(out, 'Game/SkyTexture.cubemap'))).buffer as ArrayBuffer);
-    expect([radiance.size, radiance.format, radiance.levels.length]).toEqual([8, 'rgb9e5ufloat', 1]);
+    expect([radiance.size, radiance.format, radiance.levels.length]).toEqual([8, 'rgb9e5ufloat', 4]); // 8、4、2、1：从第 0 级重建的 mip
     expect(fromRgb9e5(new DataView(radiance.levels[0]!.buffer, radiance.levels[0]!.byteOffset).getUint32(0, true))).toEqual([0.5, 1, 2]);
     expect(scene.entities[1]!.position).toEqual([0, 2, 0]);
     expect(scene.entities[0]!.components.light).toEqual({

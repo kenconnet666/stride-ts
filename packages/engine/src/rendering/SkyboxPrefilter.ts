@@ -2,7 +2,7 @@
  * 天空盒镜面光照的预滤波，在 GPU 上做（同 Stride 的 RadiancePrefilteringGGXNoCompute，资源管线不再导出结果）：
  * 输出 size 的 RGBA16F 立方体贴图，第 i 级 mip 的粗糙度是 i / (级数 - 1)。最高一级不滤波，按方向重采样源贴图；
  * 其余每个纹素用 1024 个 GGX 重要性采样，按采样的立体角从源贴图合适的 mip 里取（包括 Stride 按 N·L 算 pdf 的写法，
- * 保持结果一致）。源贴图的 mip 来自资源文件（Stride 也是用源文件自带的 mip）。每个（级别，面）一次全屏绘制。
+ * 保持结果一致）。源贴图的 mip 由导入器从第 0 级重建（同 Stride 贴图编译的 GenerateMipmaps）。每个（级别，面）一次全屏绘制。
  */
 import { BRDF } from './brdf';
 import { FULLSCREEN_VERTEX } from './fullscreen';

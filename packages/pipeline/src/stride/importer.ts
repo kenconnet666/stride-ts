@@ -25,7 +25,7 @@ import {
   type TextureEncoding,
   type TextureSlot,
 } from '@stride-ts/engine/content-format';
-import { readDdsCubemap, toRgb9e5, type FloatCubemap } from '../hdr.ts';
+import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
 import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
 import type { AssetEntry, StrideProject } from './project.ts';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
@@ -510,7 +510,7 @@ export class StrideImporter {
     return undefined;
   }
 
-  /** 把一个 HDR 立方体贴图资源（.sdtex，源文件是 DDS）导出成 .cubemap：RGB9E5，带源文件的 mip。 */
+  /** 把一个 HDR 立方体贴图资源（.sdtex，源文件是 DDS）导出成 .cubemap：RGB9E5，mip 同 #hdrSource。 */
   #cubemap(asset: AssetEntry): Promise<string> {
     return once(this.#cubemaps, asset, async () => {
       const source = await this.#hdrSource(asset);
@@ -536,11 +536,16 @@ export class StrideImporter {
     });
   }
 
+  /** 贴图资源的源立方体贴图；GenerateMipmaps（默认开）时同 Stride 从第 0 级重建 mip，否则用文件里的。 */
   #hdrSource(asset: AssetEntry): Promise<FloatCubemap> {
     let pending = this.#hdrSources.get(asset.path);
     if (!pending) {
       const file = sourceOf(asset);
-      pending = readFile(file).then((bytes) => readDdsCubemap(bytes, file));
+      const generateMipmaps = asset.data['GenerateMipmaps'] !== false;
+      pending = readFile(file).then((bytes) => {
+        const cube = readDdsCubemap(bytes, file);
+        return generateMipmaps ? regenerateMips(cube) : cube;
+      });
       this.#hdrSources.set(asset.path, pending);
     }
     return pending;

@@ -227,8 +227,28 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 - **还没做**（依赖后面的里程碑）：
   - 资源引用 `asset`：要等内容管线；
   - 预制体、部件（`prop.parts`）、按子树生效的默认值：要等实体层级，和第 2 步的 wasm 变换数组一起做；
-  - 热重载：Vite 的 HMR 要求静态写出依赖列表，要先定是加一个只在开发时生效的小插件，还是让游戏入口自己接住更新；
-  - bigint、decimal、日期等类型（参照 json-wire，2026-11-18 用户提出，见下一步）。
+  - 热重载：Vite 的 HMR 要求静态写出依赖列表，要先定是加一个只在开发时生效的小插件，还是让游戏入口自己接住更新。
+
+### bigint、小数、日期时间（2026-11-18 用户要求，已实现）
+
+要求：原生支持 bigint、decimal、日期这类 JSON 装不下的值，像 json-wire（`C:\Users\Administrator\IdeaProjects\json-wire`）给 JSON 加的支持那样，而且要方便和 wasm 那边互相操作。用户定的做法：不依赖 json-wire，自己实现一套适合引擎的。
+
+| 属性 | 脚本、视图里的值 | 数据组件的列 | C 侧（`StrideNative/Values.h`） | 线上（json-wire 的种类） |
+|---|---|---|---|---|
+| `prop.i64()`、`prop.u64()` | `bigint` | `BigInt64Array`、`BigUint64Array` | `int64_t`、`uint64_t` | bigint |
+| `prop.decimal(scale, precision = 18)` | `Decimal` | `BigInt64Array`（单位数） | `sn_decimal64` | decimal：`"12.50"` |
+| `prop.date()` | `LocalDate` | `Int32Array`（1970-01-01 起的天数） | `sn_date` | date：`"2024-01-31"` |
+| `prop.time()` | `LocalTime` | `BigInt64Array`（零点起的纳秒） | `sn_time` | time：`"13:45:00"` |
+| `prop.datetime()` | `LocalDateTime` | `BigInt64Array`（纳秒，钟面时间） | `sn_datetime` | timestamp：`"2024-01-31T13:45:00.5"` |
+| `prop.instant()` | `Instant`（和 `Date` 互转） | `BigInt64Array`（Unix 纪元起的纳秒） | `sn_instant` | timestamptz：`"2024-01-31T05:45:00Z"` |
+| `prop.bytes()`（只给脚本） | `Uint8Array` | 无 | 无 | bytes：base64 |
+
+- **二进制布局参照 Apache Arrow**（decimal64、date32、time64[ns]、timestamp[ns]）：这是为跨语言零拷贝设计的成熟布局。数据组件的列可以直接放进 wasm 内存，C++ 按 `Values.h` 的类型读写，JS 用 `native.i64()`、`native.i32()` 视图看同一块内存，中间不换算、不拷贝。Emscripten 默认用 BigInt 传 i64 参数（`WASM_BIGINT` 一直开着）。
+- **两边的算法相同、用同一组对照值测试**：日期用 Howard Hinnant 的 days_from_civil；小数换算位数用银行家舍入。对照值由 JS 的 `Date` 独立算出，`values.test.ts` 和 fork 的 `RuntimeTests.cpp` 都拿它核对。
+- **小数是定点数**：位数是属性声明的一部分，不跟着值存；最多 18 位有效数字（放得进 int64）。传入的值小数位比声明多、或有效数字超出时报错，不悄悄舍入。运算（加减乘除、换算位数）在 `Decimal` 上精确进行，除法和缩位按指定方式舍入。
+- **值类型自带、零依赖**：`Decimal`、`LocalDate`、`LocalTime`、`LocalDateTime`、`Instant` 在 `packages/engine/src/values/`，不可变，命名同 java.time（json-wire 的 Java 一侧也是这些名字）。不用 decimal.js 和 `@internationalized/date`。
+- **线上格式和 json-wire 一致**：`values/wire.ts` 的 `toWire`、`fromWire`、`stringifyWire`、`parseWireJson`、`wireText`、`parseWire`，路径、转义、`$value` 包装、同一路径一种值的规则都相同，所以能和用 json-wire 的 Java、TS 后端直接互通。用 json-wire 仓库的 `spec/order.json` 做对照测试：读进来、再写回去，结果完全相同。
+- **只给系统看原始值**：系统拿到的是 int64 / int32 列（快，和 wasm 一致）；脚本和视图读字段时才换算成值对象。
 
 **实测（沙盒，本机 Chrome）**：
 - 负载：1.2 万个粒子实体，`Fountain` 脚本每 0.5 秒生成 2000 个，`expire` 系统用命令缓冲销毁到期的。

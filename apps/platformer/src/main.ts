@@ -14,7 +14,7 @@ const modules = import.meta.glob('./game/**/*.ts', { eager: true });
 
 const { game, created } = Game.hotEntry(import.meta.hot, modules, PlatformerGame, stats);
 if (created) {
-  game.run(canvas, { modules }).catch((error: unknown) => {
+  game.run(canvas, { modules, debugNative: import.meta.env.DEV }).catch((error: unknown) => {
     stats.textContent = `failed: ${error instanceof Error ? error.message : String(error)}`;
   });
 }

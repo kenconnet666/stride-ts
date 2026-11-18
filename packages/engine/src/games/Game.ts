@@ -16,6 +16,11 @@ export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
 export interface GameOptions {
   /** 原生模块任务系统的工作线程数；默认 hardwareConcurrency - 1。 */
   workerThreads?: number;
+  /**
+   * 用调试版的原生运行时：Jolt 断言（失败时 console.error 带 C++ 调用栈）和 Emscripten 的运行时检查，比正式版慢。
+   * 游戏入口一般传 `import.meta.env.DEV`：开发服务器上用调试版，构建出来的页面用正式版。
+   */
+  debugNative?: boolean;
   /** 变换存储的槽位数，即最多有多少个带 Transform 的实体；默认 65536（每个约 108 字节）。 */
   maxTransforms?: number;
   /**
@@ -80,7 +85,7 @@ export class Game {
     this.entities.onError = (error) => this.fail(error);
     try {
       if (options.modules) this.registry.registerModules(options.modules);
-      this.native = await createStrideNative(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads });
+      this.native = await createStrideNative({ debug: options.debugNative ?? false, ...(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads }) });
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       this.graphicsDevice = await GraphicsDevice.create(canvas);
       this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);

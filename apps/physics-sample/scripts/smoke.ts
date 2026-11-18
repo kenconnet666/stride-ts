@@ -2,31 +2,22 @@
 //   pnpm --filter @stride-ts/physics-sample smoke [-- --hub <中枢名的一部分>]
 // Raycasting：点中箱子，箱子被推起来。VolumeTrigger：角色走进触发器，运动学的箱子变成动态落下；走出来后变回运动学、回到原位。
 // Constraints：球窝让球停在离立方体 4 米处；依次换完六种约束（调试命令 next 代替 UI 按钮），焊接让球停在立方体左边 4 米。
-import { execFileSync } from 'node:child_process';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+// 换场景：NextSceneScript 的 next-scene 走一圈回到 Constraints，旧场景的实体、物体都去掉了，物理照常。
+import { startSmoke } from '../../../tools/smoke.ts';
 
-const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const cli = path.resolve(app, '..', '..', 'packages', 'cli', 'src', 'cli.ts');
-const hubIndex = process.argv.indexOf('--hub');
-const hub = hubIndex >= 0 ? process.argv[hubIndex + 1]! : 'physics-sample';
+const { stride, sleep, check, finish } = startSmoke('physics-sample');
 
-function stride(...args: string[]): unknown {
-  return JSON.parse(execFileSync(process.execPath, [cli, ...args, '--hub', hub], { encoding: 'utf8' }));
-}
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-let failed = 0;
-function check(name: string, ok: boolean, detail: unknown): void {
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : `: ${JSON.stringify(detail)}`}`);
-  if (!ok) failed++;
-}
-
-/** 打开某个场景（换页面地址，等游戏跑起来）。 */
+/** 打开某个场景（换页面地址），等到新页面的这个场景跑过几帧。 */
 async function openScene(scene: string): Promise<void> {
   stride('eval', `location.href = location.origin + '/?scene=${scene}'`);
   await sleep(1500);
   stride('wait');
+  for (let tries = 0; tries < 100; tries++) {
+    const { scene: name, frame, sceneFrame } = stride('status') as { scene: string | null; frame: number; sceneFrame: number | null };
+    if (name === scene.split('/').at(-1) && sceneFrame !== null && frame - sceneFrame > 5) return;
+    await sleep(100);
+  }
+  throw new Error(`${scene} did not start`);
 }
 
 /** 页面里的表达式：所有带 Body 的实体。 */
@@ -77,6 +68,21 @@ await sleep(1000);
 const weld = separation();
 check('焊接：球停在立方体左边 4 米', Math.abs(weld[0] + 4) < 0.1 && Math.abs(weld[1]) < 0.1 && Math.abs(weld[2]) < 0.1, weld);
 
-const logs = execFileSync(process.execPath, [cli, 'logs', '--hub', hub], { encoding: 'utf8' });
-check('没有错误日志', !/\berror\b/i.test(logs), logs.split('\n').filter((line) => /\berror\b/i.test(line)));
-process.exit(failed > 0 ? 1 : 0);
+// ---- 换场景
+const sceneStatus = () => stride('status') as { scene: string; entities: number; error: string | null };
+const startScene = sceneStatus();
+const visited: string[] = [];
+for (let i = 0; i < 3; i++) {
+  const target = stride('call', 'next-scene') as string;
+  await sleep(1500);
+  const now = sceneStatus();
+  check(`换到 ${target}`, now.scene === target.split('/').at(-1) && now.error === null, now);
+  visited.push(now.scene);
+}
+const back = sceneStatus();
+check('走一圈回到 Constraints，实体数不变', back.scene === startScene.scene && back.entities === startScene.entities && new Set(visited).size === 3, { startScene, back, visited });
+await sleep(1000);
+const again = separation();
+check('回来后球窝照常', Math.abs(Math.hypot(...again) - 4) < 0.1, again);
+
+finish();

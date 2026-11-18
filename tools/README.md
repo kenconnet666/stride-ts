@@ -17,6 +17,7 @@
 | 脚本 | 作用 |
 |---|---|
 | `vite-app.ts` | apps 共用的 Vite 配置（`strideApp(端口)`）：跨源隔离的响应头、不预打包原生模块、调试中枢（`strideDebug`）、构建后写 `.br`/`.gz` 预压缩文件 |
+| `smoke.ts` | 样例冒烟脚本（`apps/*/scripts/smoke.ts`，`pnpm --filter <样例> smoke`）共用的部分：`startSmoke(中枢名)` 给出调 CLI 的 `stride`、`check`，`finish()` 查本次运行以来的错误日志后按结果退出 |
 | `hdr-ratio.ts` | 两张截图（都固定曝光 EV0、关掉 FXAA 和亮部提取）反推色调映射前的 HDR 值，按行打印参考/我们的比值，分辨整体倍数和随角度的差。用法：`node tools/hdr-ratio.ts <参考.png> <我们的.png>` |
 | `stride-capture/` | 桌面 Stride 的截图工程，每个样例一个子目录（`tpp/`、`animated-model/`）：`setup.ps1` 从 Stride 源码搭出并编译，截图参数见各自的 README |
 | `bench.cjs` | 打开 `apps/bench`（先 `pnpm --filter @stride-ts/bench dev`，端口 5182），等基准跑完，打印结果表；第三个参数给文件名时另存 JSON。用法：`node bench.cjs <playwright> http://localhost:5182/ [out.json]` |

@@ -81,7 +81,8 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 ## 组件 API：脚本、数据组件、系统（2026-11-18 设计草案，取代 11-17 的装饰器加插件方案）
 
 原则（参考 easy-query-ts 的实体定义，见 `C:\code\easy-query-ts\packages\core\src\schema.ts`）：
-- **一份声明，多处使用**：属性用 `prop` builder 声明，TS 类型、默认值、场景文件的编解码、加载时的校验、编辑器面板都从它来。类型靠推导，不靠代码生成、装饰器或反射。
+- **一份声明，多处使用**：属性用 `prop` builder 声明，TS 类型、默认值、场景文件的编解码、加载时的校验、编辑器面板都从它来。类型靠推导，不靠代码生成、装饰器或反射；唯一的例外是编辑器做的资源（预制体、场景、模型、材质），由工具生成类型，见"资源的强类型"。
+- **尽量强类型**（用户 2026-11-18）：代码引用组件、预制体、部件、材质槽、钩子、事件时，名字和值写错都要是类型错误；可以用类型提取工具简化写法，但不退回 `string`、`any` 这类宽松类型。
 - **引擎核心零依赖**：和校验库只通过 [Standard Schema](https://standardschema.dev)（`~standard.validate`）对接。zod、valibot 的 schema 能接进来，我们的 schema 也能导出给它们的生态用。
 - **DSL 只在定义时跑**：builder、schema、查询只在模块加载和场景加载时求值；每帧的路径上没有代理、闭包和临时对象。
 - **源码只用可擦除的语法**（`erasableSyntaxOnly`）：不用 enum、namespace、参数属性、装饰器；枚举一律写成字符串字面量联合。
@@ -222,16 +223,82 @@ export const regen = system({
 - **脚本里访问单个实体**：`entity.get(Health)` 返回一个视图对象，`health.current -= 10` 直接读写那一格；每个实体缓存一个视图。
 - 数据组件之间用实体句柄（`EntityId`，带品牌的整数）互相引用。
 
-### 事件和服务
+### 生命周期
+
+参照 Stride（脚本的 `Start`、`Update`、`Execute`、`Cancel`；处理器的 `OnEntityComponentAdding`、`OnEntityComponentRemoved`）和 Vue（setup 里登记的东西卸载时自动清理）。
+
+| 阶段 | 脚本 | 数据组件 |
+|---|---|---|
+| 属性解码完 | 实例已创建，引用还没解析，不调用户代码 | 值写进列 |
+| 同一批生成的组件都挂好、引用解析完 | `start()` | 系统的 `added(chunk)` |
+| 每帧 | `update(time)`；异步脚本的 `await` 在固定时机继续 | 系统的 `update` |
+| 停用、启用 | `enabled = false` 时不再调 `update`，状态保留 | 加 `Disabled` 标签，系统用 `without` 排除 |
+| 移除 | `cancel()`；`this.signal` 中止 | 系统的 `removed(chunk)` |
+
+**清理自动化**：脚本里登记的东西（钩子、事件接收器、`.stat()` 修饰、计时器、加载的资源）都挂到脚本自己的清理栈上（JS 原生的 `DisposableStack`），移除时一起释放，不用在 `cancel()` 里逐个注销：
+
+```ts
+override start(): void {
+  this.on(door.opening, (e) => { /* ... */ });   // released with the script
+  this.hits = this.receive(damaged);             // same
+}
+```
+
+在脚本之外登记的（工具、编辑器插件）返回一个 `Disposable`，自己用 `using` 或 `dispose()` 释放。
+
+**每帧的顺序**（固定，所有事件都在这个顺序里的固定位置派发，不在浏览器的事件回调里直接调游戏代码）：
+
+1. 输入：把这一帧收到的 DOM 事件合进输入状态。
+2. 拾取和输入事件的派发（见下文"事件"）。
+3. 同步脚本的 `update`；异步脚本从 `nextFrame()` 继续。
+4. 系统：物理之前的阶段。
+5. 固定步长的物理（每帧 0 到 4 步），步进结束后派发接触事件。
+6. 系统：物理之后的阶段。
+7. stride-native 里做变换传播、动画求值。
+8. 渲染：收集、提取、准备、绘制。
+
+结构性改动（生成、销毁、加删组件）在 3 到 6 里都只记进命令缓冲，每个阶段结束时统一执行。
+
+### 事件
+
+参照 DOM（捕获、冒泡，`stopPropagation`、`preventDefault`）、Stride UI 的路由方式（`Tunnel`、`Bubble`、`Direct`）、Bepu 的接触回调（开始、持续、结束接触），以及 vue-tsx-pro 合并事件的规则（使用方先执行，`preventDefault()` 跳过组件自己的处理）。
+
+| 种类 | 例 | 怎么派发 |
+|---|---|---|
+| 广播消息 `EventKey<T>` | 受伤、关卡完成 | 发给所有接收者，同步读或异步等，同 Stride |
+| 钩子 `Hook<T>` | 门要打开、角色要跳 | 同步，使用方先处理，可以 `preventDefault()` 接管组件自己的行为 |
+| 输入 | 按键、鼠标、手柄 | 轮询状态（`isKeyDown`、`isKeyPressed`）加按帧的事件流 |
+| 实体上的指针事件 | 点中、悬停一个物体 | 沿实体的父链路由：先捕获（根到目标），再冒泡（目标到根） |
+| 物理接触 | 开始、持续、结束接触；进出触发区 | 在 wasm 里收集，步进结束后派发；先给刚体所在实体，再冒泡到父实体 |
 
 ```ts
 export const damaged = new EventKey<{ target: EntityId; amount: number }>();
-
 damaged.broadcast({ target, amount: 10 });
-const rx = damaged.receiver();          // once, in start()
-for (const hit of rx.drain()) { /* sync scripts, once per frame */ }
-const hit = await rx.receive(this.signal);   // async scripts
+for (const hit of this.hits.drain()) { /* sync scripts, once per frame */ }
+const hit = await this.hits.receive(this.signal);   // async scripts
+
+// a hook declared by the Door component; user handlers run before the door's own logic
+this.on(door.opening, (e) => {
+  if (!player.hasKey) e.preventDefault();
+});
+
+// pointer events on entities: picked by a raycast at the start of the frame
+this.on(this.entity.pointer.click, (e) => {
+  e.stopPropagation();                    // the parent entities do not hear it
+});
+
+// contacts: the wheel's contact bubbles up to the car
+this.on(this.entity.contact.started, (e) => {
+  if (e.other.has(Hazard)) damaged.broadcast({ target: this.entity.id, amount: 10 });
+});
 ```
+
+- **指针事件**：每帧开头用一条射线拾取，目标是带碰撞体或 `Pickable` 标签的实体。事件有 `pointerenter`、`pointerleave`、`pointerdown`、`pointerup`、`click`，沿父链路由，组合物体在根上就能统一处理（点中车轮，车身的脚本也收得到）。
+- **接触**：Stride 的 Bepu 版接口是 `IContactHandler` 的三个回调；这里按帧收集后统一派发，不在步进途中逐个回调 JS。
+- **事件对象复用**：同一种事件每次派发用池里的同一个对象，不分配；处理函数不能把它存下来，开发版在派发结束后把它标成失效，之后再读就报错。
+- **类型**：`this.on(hook, handler)` 的处理函数参数由钩子的类型推出；组件声明钩子写 `opening: hook<{ by: EntityId }>()`，和属性一样在 schema 里，编辑器也能列出来。
+
+### 服务
 
 扩展包用声明合并登记自己的服务，核心不依赖它们（同 easy-query-ts 的 `NumericExtensions`）：
 
@@ -303,29 +370,33 @@ export class Vehicle extends SyncScript.props({
   }
 }
 
-await scene.spawn(CarPrefab, {
+await scene.spawn(assets.prefabs.car, {
   position: [0, 0, 5],
-  props: {
-    maxSteer: 30,
-    wheels: { all: { radius: 0.45 }, rearLeft: { friction: 0.8 } },   // `all` first, then each part
-    // or per part: wheels: (name) => ({ radius: name.startsWith('rear') ? 0.45 : 0.42 })
+  set: {
+    Vehicle: {
+      maxSteer: 30,
+      wheels: { all: { radius: 0.45 }, rearLeft: { friction: 0.8 } },   // `all` first, then each part
+      // or per part: wheels: (name) => ({ radius: name.startsWith('rear') ? 0.45 : 0.42 })
+    },
+    RigidBody: { mass: 1500 },
   },
+  parts: { rearLeft: { set: { Model: { materials: { tire: { tint: [0.2, 0.2, 0.2, 1] } } } } } },
 });
 ```
 
-- 部件是预制体里按名字找到的子实体；`prop.parts` 给出带类型的访问，并负责转发覆盖。
-- 覆盖对象的类型是 `Overrides<typeof CarPrefab>`：深层可选，去掉 `.sealed()` 属性，部件名写错就是类型错误。
-- 部件的覆盖按同样的规则再合并一次（vue-tsx-pro 的嵌套 `propsXxx`）：组件给部件的默认值不会因为使用方也写了这个部件就整个丢掉。
+覆盖对象的结构（`Overrides<P>`）：
 
-**可拦截的钩子：使用方先处理，可以接管内置行为**（同 vue-tsx-pro 的事件合并）：
+| 层级 | 键 | 值 |
+|---|---|---|
+| 实体 | `set` | 组件的导出名 → 这个组件的覆盖（深层可选，去掉 `.sealed()` 属性） |
+| 实体 | `parts` | 子实体的名字 → 同样结构的覆盖，可以一层层往下 |
+| 组件属性 | `prop.parts` 声明的属性 | 部件名或 `all` → 部件组件的覆盖；也可以是 `(name) => 覆盖` |
 
-```ts
-door.opening.on((e) => {
-  if (!player.hasKey) e.preventDefault();   // the door's own opening logic is skipped
-});
-```
-
-钩子是同步的，按登记顺序先调使用方的处理函数，调用了 `preventDefault()` 就跳过组件自己的行为。广播给很多接收者、可以异步等待的消息仍用 `EventKey`。
+- **和 vue-tsx-pro 最大的不同**：DOM 元素只有一个扁平的属性表，没声明的属性（`...rest`）可以默认落到主元素上。实体上挂着好几个组件，同名字段没法分辨，所以覆盖固定是"组件 → 字段"两级，再加部件名，不做隐式落到主元素的规则。
+- **转发**：组件用 `prop.parts` 声明自己要哪些部件，覆盖经由这个组件的属性转发下去，类型是部件组件的覆盖类型；也可以不经组件，用 `parts` 直接按实体层级覆盖。两条路落到同一批子实体上，按同样的规则合并。
+- **嵌套再合并**：部件的覆盖按同样的规则再合并一次（vue-tsx-pro 的嵌套 `propsXxx`），组件给部件的默认值不会因为使用方也写了这个部件就整个丢掉。
+- **键名**：组件的键是它的导出名（`Vehicle`、`RigidBody`）。同一个实体上两个组件导出名相同时，编辑器报错，要求改名；代码里也可以用不依赖键名的写法 `car.root.set(Vehicle, { maxSteer: 30 })`。
+- **类型**：部件名、组件名、属性名、值的类型写错都是类型错误；预制体的类型从哪里来见下文"资源的强类型"。
 
 **运行时修饰：`.stat()`**（游戏里最常见的"层层合并"：加成和减益）：
 
@@ -342,6 +413,102 @@ this.stats.maxRunSpeed.add(2, { duration: 5 });          // removed after 5 seco
 **状态用标签表达**（vue-tsx-pro 用 `data-state` 属性表达组件状态，样式直接按状态选择）：`Stunned`、`Dead` 这类状态写成标签组件，系统用 `with`、`without` 直接选；编辑器和调试工具也能看到。加删标签会让实体换块，所以每帧都在切换的开关仍用 `bool` 列。
 
 **类型测试补充**：覆盖 `.sealed()` 属性、部件名写错、覆盖值类型不对，都要有 `@ts-expect-error` 的负例；vue-tsx-pro 还用一个静态检查脚本核对受管属性都从使用方的类型里去掉了，我们的 `Overrides` 由类型推出，不需要这一步。
+
+### 资源的强类型（2026-11-18 用户要求：编辑器做的预制体等，代码引用时尽量强类型）
+
+编辑器做的预制体、场景、模型、材质是数据文件，TS 推导不出它们的结构（导入 JSON 得到的是放宽后的 `string`，认不出组件）。所以**资源由工具生成类型**，这是整个工程里唯一的代码生成，只针对资源；组件、脚本、系统的类型仍全部靠推导。
+
+**生成什么**：一个 TS 模块 `src/assets.gen.ts`，导出带类型的资源句柄，值只是资源 id，类型里记着结构：
+
+```ts
+// src/assets.gen.ts: generated from the asset files, do not edit
+import type { Vehicle } from './gameplay/vehicle';
+import type { Wheel } from './gameplay/wheel';
+import type { RigidBody, Model } from '@stride-ts/engine';
+
+interface CarPrefab {
+  components: { Vehicle: typeof Vehicle; RigidBody: typeof RigidBody; Model: ModelOf<CarModel> };
+  parts: {
+    frontLeft: { components: { Wheel: typeof Wheel; Model: ModelOf<WheelModel> }; parts: {} };
+    // frontRight, rearLeft, rearRight ...
+  };
+}
+// WheelModel, CarPaint, Glass, Rubber, GatePrefab, BossPrefab are generated the same way
+interface CarModel { materials: { body: typeof CarPaint; glass: typeof Glass; tire: typeof Rubber } }
+
+export const assets = {
+  prefabs: { car: prefabRef<CarPrefab>('c3a1…') },
+  models: { car: modelRef<CarModel>('9f20…') },
+  scenes: { castle: sceneRef<{ entities: { gate: GatePrefab; boss: BossPrefab } }>('41be…') },
+} as const;
+```
+
+- **组件类型用 `import type` 引入**：组件的名字就是"路径#导出名"（见"组件的名字"），生成器据此直接写出引用；在 IDE 里重命名组件，预制体的类型跟着报错，不会悄悄失效。
+- **覆盖到哪一层都有类型**：组件名、属性名、部件名、模型的材质槽名、材质的实例参数名和值类型。编辑器里删了一个部件，引用它的代码在类型检查时就报错。
+- **场景只给标了"导出"的实体生成类型**：代码要引用的门、首领在编辑器里勾选导出，`scene.entities.gate` 有类型；其余实体不进类型，生成文件和类型检查都保持小。
+- **怎么生成、什么时候更新**：
+  - 编辑器的 Node 后端保存资源时重写这个文件，Vite 热更新跟着生效。
+  - `pnpm assets:types` 单独生成；`dev`、`build`、`typecheck` 先跑它（同 `native:sync`）。
+  - 生成的文件不提交（`.gitignore`），避免合并冲突；新克隆的仓库跑一次 `typecheck` 就有了。
+  - 输出按资源路径排序、格式固定，同样的资源生成同样的文件。
+- **类型写法**：生成的结构用 `interface`（类型检查器能缓存，悬停时显示名字而不是展开一大串），不用深层交叉类型。类型压力测试里加上"几百个预制体、几层部件"的生成样例，记录检查时间。
+
+**类型提取工具**（简化使用方的写法，仍然是强类型）：
+
+| 工具类型 | 得到 |
+|---|---|
+| `Overrides<P>` | 预制体或组件的覆盖对象（深层可选，去掉 `.sealed()`） |
+| `ComponentsOf<P>`、`PartsOf<P>` | 预制体根实体上的组件表、部件表 |
+| `PartOf<P, 'frontLeft'>` | 某个部件的结构，可以继续取 `ComponentsOf` |
+| `PropsOf<C>`、`ValuesOf<C>` | 组件的属性声明、属性值类型 |
+| `MaterialParams<M>` | 材质可以逐实例改的参数和值类型 |
+| `InstanceOf<P>` | `spawn` 返回的实体句柄：`car.components.Vehicle`、`car.parts.frontLeft` 都有类型 |
+
+```ts
+type CarSetup = Overrides<typeof assets.prefabs.car>;
+const tuned: CarSetup = { set: { Vehicle: { maxSteer: 28 } } };
+
+const car = await scene.spawn(assets.prefabs.car, tuned);
+car.components.Vehicle.steering = 0.5;            // Vehicle instance, typed
+car.parts.frontLeft.components.Wheel.radius;      // number
+```
+
+**代码里定义的预制体**用 `prefab({ components, parts })` 写，类型直接推导，得到和生成的预制体同样的结构，`spawn`、`Overrides` 两者通用。
+
+### 外观：材质参数的分层（对照 CSS）
+
+参照 vue-tsx-pro 的样式引擎（`packages/tsx/STYLE-ENGINE.md` §1、§11，`src/styles/recipe.ts`）：配方把"部件 × 档位 × 组合档位 × 默认值"写在一处；按"基础 < 档位 < 组合档位 < 主题定制 < 使用方 `sx`"分段放进依次靠后的 `@layer`；主题 token 是根上的变量，换主题只换变量；状态样式跟着 `data-*` 属性；动态值直接改元素上的 CSS 变量，类名不变、组件不重新渲染。
+
+| CSS 这边 | 这里 |
+|---|---|
+| 声明（`color`、`padding`） | 材质参数（基础色、粗糙度、自发光），布局来自 WGSL 反射 |
+| 配方的部件 | 模型的材质槽（车身、玻璃、轮胎），名字有类型（见"资源的强类型"） |
+| 配方的档位、组合档位 | 材质变体：`team: 'red' \| 'blue'`、`wear: 'clean' \| 'scorched'`，以及几个档位同时取某些值时的追加 |
+| `@layer` 分段覆盖 | 同一套分层：材质资源 < 变体 < 作用域（关卡的调色板）< 实例覆盖；`undefined` 不表态 |
+| 主题 token、根上的变量 | 全局着色器参数（调色板、雾、时间）：一个 uniform 缓冲，改了不用逐个物体处理 |
+| 动态值改 CSS 变量，类名不变 | **实例参数**：材质声明哪些参数能逐实例改，值写进实例数据列、整段上传；改它不换管线，也不打断合批 |
+| 改到类里写死的值，生成新的组合类，按片段缓存 | 改到非实例参数，派生一个材质，按（基础材质，覆盖内容）缓存；同样的覆盖共用一个派生材质，照样能合批 |
+| 状态别名（`_hover`、`_selected`） | 状态标签驱动变体或实例参数：受击闪白是改实例参数 `emissive`，不换材质 |
+| 样式热更新原地生效 | 材质资源改了，原地更新参数缓冲，不重载场景 |
+
+```ts
+export const CarPaint = material({
+  effect: 'StrideForwardShadingEffect',
+  params: { baseColor: param.color().default([1, 1, 1, 1]), roughness: param.f32().default(0.4) },
+  instanceParams: { tint: param.color().default([1, 1, 1, 1]), emissive: param.f32().default(0) },
+  variants: {
+    team: { red: { baseColor: [0.8, 0.1, 0.1, 1] }, blue: { baseColor: [0.1, 0.2, 0.8, 1] } },
+  },
+});
+
+model.materials.body.set({ tint: [1, 0.9, 0.9, 1] });   // instance param: no new material, still batched
+model.materials.body.variant({ team: 'blue' });         // variant: shared derived material, cached
+```
+
+- **关键取舍：哪些是"变量"，哪些是"类"**。实例参数相当于 CSS 变量，可以逐物体改，不打断合批；排列组合键（有没有法线贴图、透明模式）相当于类，改了要换管线。这决定渲染性能，所以在材质定义里显式声明，不靠运行时猜。
+- 材质用 TS 定义（`material()`）时类型直接推导；编辑器里做的材质由生成的 `assets.gen.ts` 给出同样的类型。
+- 参数名和类型来自着色器的反射数据；材质声明的参数和反射对不上时，在登记时报错。
+- 游戏内 UI（里程碑 5）还没定：用 DOM 叠加层就直接用 vue-tsx-pro 的样式引擎；用 WebGPU 自己画（照 Stride UI）就按这里的分层规则做 UI 的主题。
 
 ### 向量和临时对象
 
@@ -434,6 +601,7 @@ this.stats.maxRunSpeed.add(2, { duration: 5 });          // removed after 5 seco
 - **编辑器前端在浏览器里**，视口用的就是游戏运行时的同一套引擎和渲染器，所见即所得，编辑器里看到的就是游戏里的画面。场景树、属性面板、资源浏览器都是 Web UI。以后可以用 Electron 或 Tauri 打包成桌面应用。
 - **Node.js 后端**：
   - 管理工程文件。工程用文本格式（JSON 或 YAML），方便 diff 和合并。
+  - 保存资源时重新生成 `src/assets.gen.ts`（资源的强类型，见"组件 API"里的"资源的强类型"），移动文件时记重定向（见"组件的名字"）。
   - 运行资源管线。
   - 提供开发服务器：Vite，负责脚本热重载。
   - 编辑器里点"播放"，就在同一个页面里运行游戏。

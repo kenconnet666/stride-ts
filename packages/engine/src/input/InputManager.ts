@@ -74,6 +74,8 @@ export class InputManager {
   readonly mousePosition: [number, number] = [0, 0];
   /** 这一帧鼠标的移动量（按画布尺寸归一化；锁定时也有）。 */
   readonly mouseDelta: [number, number] = [0, 0];
+  /** 这一帧鼠标滚轮转了多少格，向前（远离用户）是正（Stride 的 MouseWheelDelta）。 */
+  mouseWheelDelta = 0;
   /** 连着的手柄，每帧开头刷新。 */
   readonly gamePads: GamePadState[] = [];
   /** 这一帧的指针事件，按发生的顺序。 */
@@ -88,6 +90,7 @@ export class InputManager {
   #pendingReleased = new Set<string>();
   #pendingDelta: [number, number] = [0, 0];
   #pendingPosition: [number, number] = [0, 0];
+  #pendingWheel = 0;
   #pendingPointerEvents: PointerEvent[] = [];
   /** 每个指针上一个事件的位置和是否按着。 */
   readonly #pointers = new Map<number, { x: number; y: number; down: boolean }>();
@@ -117,6 +120,12 @@ export class InputManager {
       target.addEventListener(type, (event) => this.#pointer(POINTER_TYPES[type], event as globalThis.PointerEvent), options);
     }
     canvas.addEventListener('contextmenu', (event) => event.preventDefault(), options);
+    // 浏览器的 deltaY 向下为正，按模式换成格：像素模式一格约 100 像素，行模式一格 3 行
+    canvas.addEventListener('wheel', (event) => {
+      const notches = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL ? event.deltaY / 100 : event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY / 3 : event.deltaY;
+      this.#pendingWheel -= notches;
+      event.preventDefault();
+    }, { ...options, passive: false });
     // 失去焦点时按着的键收不到 keyup：全部当作松开
     window.addEventListener('blur', () => {
       for (const key of this.#down) this.#pendingReleased.add(key);
@@ -133,6 +142,8 @@ export class InputManager {
     [this.mouseDelta[0], this.mouseDelta[1]] = this.#pendingDelta;
     this.#pendingDelta = [0, 0];
     [this.mousePosition[0], this.mousePosition[1]] = this.#pendingPosition;
+    this.mouseWheelDelta = this.#pendingWheel;
+    this.#pendingWheel = 0;
     this.pointerEvents = this.#pendingPointerEvents;
     this.#pendingPointerEvents = [];
     this.#pollGamePads();

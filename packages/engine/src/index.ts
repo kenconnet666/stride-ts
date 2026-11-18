@@ -30,6 +30,7 @@ export {
 } from './animation/AnimationComponent';
 export { AnimationSystem, ModelSkeleton, type SkinnedPart } from './animation/AnimationSystem';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
+export { Prefab } from './content/Prefab';
 export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
 export type { SceneScriptMap } from './content/sceneScripts';
 export {
@@ -59,6 +60,7 @@ export {
   type SceneCharacter,
   type SceneCollidable,
   type SceneEntityFile,
+  type PrefabFile,
   type SceneFile,
   type SceneCompositor,
   type SceneForwardRenderer,
@@ -116,7 +118,7 @@ export { keyCode } from './input/keys';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Collider, hullPoints, type ColliderId, type ColliderShape, type HullTransform } from './physics/Collider';
 export { Body, Character, Static } from './physics/components';
-export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type SimulationHit, type SimulationSettings } from './physics/Simulation';
+export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type ConstraintSettingsOf, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { TriggerHandler, type Contact, type ContactHandler } from './physics/contacts';
 export { Background, Camera, Instance, Instancing, Light, Model, Skinned, Sprite } from './rendering/components';
 export { cameraProjectionMatrix, screenToWorldRaySegment, type CameraProjection } from './rendering/cameraRays';

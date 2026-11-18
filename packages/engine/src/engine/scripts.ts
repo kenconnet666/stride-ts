@@ -59,10 +59,14 @@ export type StatsOf<S extends Shape> = { readonly [K in StatKeys<S>]: Stat };
 export type WithProps<B extends ScriptConstructor, S extends Shape, V extends string> = (abstract new () => InstanceType<B> &
   ScriptValues<S> & { readonly stats: StatsOf<S> }) &
   Omit<B, 'prototype' | '__shape' | '__bare' | '__variants'> & {
-    readonly __shape: S;
+    /** 基类用 props() 声明的属性也在里面（脚本类可以一层层地加属性）。 */
+    readonly __shape: ShapeOfScript<B> & S;
     readonly __variants: V;
-    readonly __bare: {} extends InitOf<S, 'script'> ? true : false;
+    readonly __bare: {} extends InitOf<ShapeOfScript<B> & S, 'script'> ? true : false;
   };
+
+/** props() 建的类上记着的 shape（含基类的），子类再调 props() 时合并。 */
+const PROPS_SHAPE = Symbol('propsShape');
 
 /** @internal 脚本启动过的标记（symbol 键，不和脚本自己的字段重名）。 */
 export const STARTED = Symbol('started');
@@ -124,7 +128,10 @@ export abstract class ScriptComponent {
     const [name, shape, options] = typeof a === 'string' ? [a, (b as Shape) ?? {}, c] : [undefined, a, b as ScriptOptions<Shape, string> | undefined];
     const base = this as unknown as abstract new () => ScriptComponent;
     abstract class Props extends base {}
-    const schema = createSchema(shape, 'number', RESERVED, name ?? `${this.name} props`);
+    // 基类也是 props() 建的时候，它的属性一起放进这一层的 schema
+    const merged = { ...((this as { [PROPS_SHAPE]?: Shape })[PROPS_SHAPE] ?? {}), ...shape };
+    const schema = createSchema(merged, 'number', RESERVED, name ?? `${this.name} props`);
+    Object.defineProperty(Props, PROPS_SHAPE, { value: merged });
     Object.defineProperty(Props, 'schema', { value: schema });
     Object.defineProperty(Props, 'variants', { value: checkVariants(schema, options?.variants ?? {}) });
     Object.defineProperty(Props, 'scriptName', { value: name, writable: true });

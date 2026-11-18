@@ -19,10 +19,11 @@ import { Body, Character, Static } from '../physics/components';
 import { Background, Camera, Instance, Instancing, Light, Model, Sprite } from '../rendering/components';
 import type { EntityId } from '../data/prop';
 import { Material } from '../rendering/Material';
+import { Prefab } from './Prefab';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type TextureRef, type TextureSlot } from './format';
+import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type TextureRef, type TextureSlot } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -30,6 +31,7 @@ declare module '../data/prop' {
     material: Material;
     animation: AnimationClip;
     scene: SceneReference;
+    prefab: Prefab;
   }
 }
 
@@ -80,6 +82,8 @@ interface SceneAssets {
   readonly cubemaps: ReadonlyMap<string, Cubemap>;
   /** 背景和精灵的贴图（包括渲染目标贴图），按内容路径。 */
   readonly images: ReadonlyMap<string, Texture>;
+  /** 脚本属性引用的预制体。 */
+  readonly prefabs: ReadonlyMap<string, Prefab>;
 }
 
 /** 合成器里画进渲染目标贴图的相机，贴图已经建好。 */
@@ -268,60 +272,86 @@ export class ContentManager {
   async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const url = new URL(path + EXTENSIONS.scene, this.root);
     const scene = this.#json<SceneFile>(await this.#read(url));
-    const components = scene.entities.map((e) => e.components);
+    const created = this.#instantiate(scene.entities, await this.#preloadAssets(scene.entities, url), entities, options, path);
+    const compositor = scene.compositor && {
+      ...scene.compositor,
+      textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
+    };
+    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(compositor ? { compositor } : {}) };
+  }
+
+  /** 加载预制体：引用的资源先加载好，实例化时才建实体（见 Prefab）。实例化时脚本按 options 对应，同 loadScene。 */
+  loadPrefab(path: string, options: LoadSceneOptions = {}): Promise<Prefab> {
+    return this.#once(path + EXTENSIONS.prefab, async (url) => {
+      const file = this.#json<PrefabFile>(await this.#read(url));
+      const assets = await this.#preloadAssets(file.entities, url);
+      const roots = file.entities.filter((entity) => entity.parent === null).map((entity) => entity.id);
+      return new Prefab(file.name, (entities) => {
+        const created = this.#instantiate(file.entities, assets, entities, options, path);
+        return roots.map((id) => created.get(id)!);
+      });
+    });
+  }
+
+  /** 实体文件引用的资源（包括脚本属性引用的）并行加载好。 */
+  async #preloadAssets(files: readonly SceneEntityFile[], url: URL): Promise<SceneAssets> {
+    const components = files.map((e) => e.components);
     const colliderModels = components.flatMap((c) => [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? []), ...(c.body?.shapes ?? [])])
       .flatMap((s) => (s.type === 'mesh' || s.type === 'convexHull' ? [s.model] : []));
     const scriptAssets = scriptAssetRefs(components.flatMap((c) => c.scripts ?? []));
     const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
     const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, animations, skyboxes, cubemaps] = await Promise.all([
+    const [models, materials, animations, skyboxes, cubemaps, prefabs] = await Promise.all([
       preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => this.loadModel(p)),
       preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
       preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => this.loadAnimation(p)),
       preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
       preload(components.flatMap((c) => (c.background?.type === 'cubemap' ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
+      preload(scriptPaths('prefab'), (p) => this.loadPrefab(p)),
     ]);
     // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
     const imageRefs = components.flatMap((c) => [...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite ? [c.sprite.texture] : [])]);
     const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
       ? [ref.renderTexture, this.renderTexture(ref)] as const
       : [ref.texture, await this.#loadTextureRef(ref, true)] as const)));
-    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, images };
+    return { models, materials, animations, skyboxes, cubemaps, images, prefabs };
+  }
 
+  /**
+   * 按实体文件建实体：先按顺序建实体和组件（父实体在前），再挂实例的主实体，最后挂脚本（这时所有实体都在，脚本属性里的
+   * 实体引用才解析得了）。返回按文件里的实体 id 的表；where 用在报错和警告里。
+   */
+  #instantiate(files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string): Map<string, Entity> {
     const created = new Map<string, Entity>();
-    for (const file of scene.entities) {
+    for (const file of files) {
       const entity = entities.create({ name: file.name, components: [Transform.with({ position: file.position, rotation: file.rotation, scale: file.scale })] });
       if (file.parent !== null) {
         const parent = created.get(file.parent);
-        if (!parent) throw new Error(`${url.href}: entity '${file.name}' comes before its parent ${file.parent}`);
+        if (!parent) throw new Error(`${where}: entity '${file.name}' comes before its parent ${file.parent}`);
         entity.require(Transform).parent = parent;
       }
       created.set(file.id, entity);
       this.#addComponents(entity, file, assets, entities);
     }
     // 实例引用的主实体可能排在后面：实体都建好以后再挂
-    for (const file of scene.entities) {
+    for (const file of files) {
       const instance = file.components.instance;
       if (!instance) continue;
       const master = instance.master === null ? undefined : created.get(instance.master);
-      if (instance.master !== null && !master) throw new Error(`${url.href}: entity '${file.name}' is an instance of ${instance.master}, which is not in the scene`);
+      if (instance.master !== null && !master) throw new Error(`${where}: entity '${file.name}' is an instance of ${instance.master}, which is not in the scene`);
       created.get(file.id)!.add(Instance.with({ master: master?.id ?? (-1 as EntityId) }));
     }
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
-    const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: models, material: materials, animation: animations };
+    const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs };
     const context = {
       entities: created,
       asset: (kind: string, assetPath: string): object => (kind === 'scene' ? ({ path: assetPath } satisfies SceneReference) : byKind[kind]!.get(assetPath)!),
     };
-    for (const file of scene.entities) {
-      for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${path}: ${file.name}`);
+    for (const file of files) {
+      for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${where}: ${file.name}`);
     }
-    const compositor = scene.compositor && {
-      ...scene.compositor,
-      textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
-    };
-    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(compositor ? { compositor } : {}) };
+    return created;
   }
 
   #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
@@ -418,8 +448,8 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
   return shape;
 }
 
-/** 脚本属性能引用的资源种类（model、material、animation 加载场景时预先加载，scene 只给路径）。 */
-const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene']);
+/** 脚本属性能引用的资源种类（model、material、animation、prefab 加载场景时预先加载，scene 只给路径）。 */
+const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab']);
 
 function unionBounds(all: readonly Bounds[]): Bounds {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];

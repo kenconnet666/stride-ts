@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { crc32, deflateSync } from 'node:zlib';
 import path from 'node:path';
-import { decodeCubemap, decodeModel, type MaterialFile, type SceneFile, type SkyboxFile } from '@stride-ts/engine/content-format';
+import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
@@ -139,6 +139,7 @@ describe('导入 Stride 场景', () => {
     gameSettings: '11111111-0000-0000-0000-00000000000c',
     glass: '11111111-0000-0000-0000-00000000000d',
     glassScene: '11111111-0000-0000-0000-00000000000e',
+    cratePrefab: '11111111-0000-0000-0000-00000000000f',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
   const quadData = Buffer.from(new Float32Array([
@@ -266,6 +267,7 @@ describe('导入 Stride 场景', () => {
       '!SceneAsset', `Id: ${ids.glassScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: g1', '                Name: Holder', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg1', '                        Children: {}',
       '                    s: !Game.Holder,Game', '                        Id: sg1', `                        Look: ${ids.glass}:Materials/Glass`, '                        Speed: {X: 5.0, Y: 2.0}',
+      `                        Spawn: ${ids.cratePrefab}:Prefabs/Crate`,
       // 正交相机（PhysicsSample 的 VolumeTrigger）
       '                    c: !CameraComponent', '                        Id: cg1', '                        Projection: Orthographic', '                        OrthographicSize: 21.0',
       // 模型实例化（BepuSample）：实例引用的是 InstancingComponent 的 Id，主实体排在后面；空碰撞体的刚体
@@ -276,6 +278,18 @@ describe('导入 Stride 场景', () => {
       '        -   Entity:', '                Id: g3', '                Name: Master', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg3', '                        Children: {}',
       '                    n: !InstancingComponent', '                        Id: ing3', '                        Type: !InstancingEntityTransform {}',
+    ].join('\n'),
+    // 预制体：根实体带刚体，子实体带脚本（脚本属性引用同一个预制体里的根实体）
+    'Assets/Prefabs/Crate.sdprefab': [
+      '!PrefabAsset', `Id: ${ids.cratePrefab}`, 'Hierarchy:', '    RootParts:', '        - ref!! p1', '    Parts:',
+      '        -   Entity:', '                Id: p1', '                Name: Crate', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tp1', '                        Children:', '                            c: ref!! tp2',
+      '                    b: !Stride.BepuPhysics.BodyComponent,Stride.BepuPhysics', '                        Id: bp1',
+      '                        Collider: !Stride.BepuPhysics.Definitions.Colliders.CompoundCollider,Stride.BepuPhysics', '                            Colliders:',
+      '                                a: !Stride.BepuPhysics.Definitions.Colliders.BoxCollider,Stride.BepuPhysics', '                                    Size: {X: 1.0, Y: 1.0, Z: 1.0}',
+      '        -   Entity:', '                Id: p2', '                Name: Label', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tp2', '                        Children: {}',
+      '                    s: !Game.Follower,Game', '                        Id: sp2', '                        Target: ref!! p1',
     ].join('\n'),
     'Assets/Bumpy.sdscene': [
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
@@ -516,6 +530,12 @@ describe('导入 Stride 场景', () => {
     expect(scene.entities[1]!.components.instance).toEqual({ master: 'g3' });
     expect(scene.entities[1]!.components.body!.shapes).toEqual([{ type: 'empty', position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }]);
     expect(scene.entities[2]!.components.instancing).toEqual({});
+    // 脚本属性引用的预制体导出成 .prefab.json：父实体在前，引用换成预制体里的实体 id
+    expect(scene.entities[0]!.components.scripts![0]!.props['spawn']).toEqual({ $asset: 'Game/Prefabs/Crate', kind: 'prefab' });
+    const prefab = JSON.parse(await readFile(path.join(out, 'Game/Prefabs/Crate.prefab.json'), 'utf8')) as PrefabFile;
+    expect(prefab.entities.map((e) => [e.name, e.parent])).toEqual([['Crate', null], ['Label', 'p1']]);
+    expect(prefab.entities[0]!.components.body!.shapes[0]).toMatchObject({ type: 'box', size: [1, 1, 1] });
+    expect(prefab.entities[1]!.components.scripts).toEqual([{ type: 'Game.Follower', props: { target: { $entity: 'p1' } } }]);
   });
 
   test('覆盖目录里的 SVG 代替源图片，原样导出，材质的贴图槽记下编码和栅格化尺寸', async () => {

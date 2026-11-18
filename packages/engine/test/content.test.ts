@@ -29,6 +29,7 @@ import {
   VERTEX_FLOATS,
   type GraphicsDevice,
   type MaterialFile,
+  type PrefabFile,
   type SceneFile,
   type SkyboxFile,
 } from '../src/index';
@@ -215,6 +216,29 @@ describe('ContentManager', () => {
     expect(master.has(Instancing)).toBe(true);
     expect(loaded.entities.get('a')!.require(Instance).master).toBe(master.id);
     expect(loaded.entities.get('b')!.require(Instance).master).toBe(-1);
+  });
+
+  test('预制体：脚本属性拿到加载好的 Prefab，每次实例化建一组新实体（根实体按顺序返回），预制体里的脚本引用的是这一组的实体', async () => {
+    class Label extends SyncScript.props({ target: prop.entity().optional() }) {}
+    class Spawner extends SyncScript.props({ prefab: prop.asset('prefab').optional() }) {}
+    const entity = (id: string, parent: string | null, components: SceneFile['entities'][number]['components']) =>
+      ({ id, name: id, parent, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components }) as const;
+    const prefab: PrefabFile = { name: 'Crate', entities: [entity('crate', null, {}), entity('label', 'crate', { scripts: [{ type: 'Game.Label', props: { target: { $entity: 'crate' } } }] })] };
+    const scene: SceneFile = { name: 'Spawning', entities: [entity('spawner', null, { scripts: [{ type: 'Game.Spawner', props: { prefab: { $asset: 'prefabs/Crate', kind: 'prefab' } } }] })] };
+    const files: Record<string, unknown> = { 'prefabs/Crate.prefab.json': prefab, 'scenes/Spawning.scene.json': scene };
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    game.registry.registerModules({ './Label.ts': { Label }, './Spawner.ts': { Spawner } });
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async (url) => json(files[url.pathname.slice('/content/'.length)]) });
+    const loaded = await content.loadScene('scenes/Spawning', game.entities);
+    const crate = loaded.entities.get('spawner')!.require(Spawner).prefab!;
+    expect(crate).toBe(await content.loadPrefab('prefabs/Crate'));
+    const [first] = crate.instantiate(game.entities);
+    const [second] = crate.instantiate(game.entities);
+    expect(first!.id).not.toBe(second!.id);
+    const [label] = second!.require(Transform).children;
+    expect(label!.require(Label).target).toBe(second!.id);
   });
 
   test('换根场景：新场景加载好后销毁旧根场景的实体（连同子实体），另建的实体不动；连着换按顺序来', async () => {

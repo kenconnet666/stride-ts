@@ -9,8 +9,8 @@
  *   数据区是各级 mip，每级 6 个面连续（+X -X +Y -Y +Z -Z，行从上到下，WebGPU 的布局），直接上传。
  * - 贴图：`<路径>.ktx2`（KTX2 加 Basis，运行时按设备转码，显存最省），或者下载最小的 `.svg`（矢量，加载时按指定尺寸
  *   栅格化）、`.png`/`.jpg`（浏览器解码），后两种在 GPU 上生成 mip。用哪种写在材质的贴图槽里（TextureSlot.encoding）。
- * - 材质 `<路径>.material.json`、天空盒 `<路径>.skybox.json`、场景 `<路径>.scene.json`：JSON。场景以后改成二进制，
- *   物理部分直接是原生能读的布局。
+ * - 材质 `<路径>.material.json`、天空盒 `<路径>.skybox.json`、场景 `<路径>.scene.json`、预制体 `<路径>.prefab.json`：
+ *   JSON。场景以后改成二进制，物理部分直接是原生能读的布局。
  */
 
 /** 不量化时每个顶点的 float 数：位置 xyz、法线 xyz、UV xy（FLOAT_LAYOUT）。 */
@@ -29,6 +29,7 @@ export const EXTENSIONS = {
   model: '.model',
   material: '.material.json',
   scene: '.scene.json',
+  prefab: '.prefab.json',
   cubemap: '.cubemap',
   skybox: '.skybox.json',
   skeleton: '.skeleton',
@@ -594,8 +595,11 @@ export interface SceneAnimation {
 }
 
 /** 脚本属性引用的资源种类。 */
-/** scene：只记路径，不随引用它的场景加载（场景之间常常互相引用），切换时才加载（Game.setRootScene）。 */
-export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene';
+/**
+ * scene：只记路径，不随引用它的场景加载（场景之间常常互相引用），切换时才加载（Game.setRootScene）。
+ * prefab：随场景加载好（和它引用的资源一起），脚本运行中实例化。
+ */
+export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab';
 
 /**
  * 脚本的属性值（Stride 序列化的值换过来）：标量原样；列表是数组；Vector2、Vector3、Quaternion 是数组；别的结构是键名改成
@@ -691,6 +695,13 @@ export interface SceneFile {
   readonly physics?: ScenePhysics;
   /** 主画面的合成器设置；没有时用前向渲染器的默认值。 */
   readonly compositor?: SceneCompositor;
+  /** 父实体都排在子实体前面。 */
+  readonly entities: readonly SceneEntityFile[];
+}
+
+/** 预制体（Stride 的 PrefabAsset）：和场景一样的实体层级，实例化时才建出来。 */
+export interface PrefabFile {
+  readonly name: string;
   /** 父实体都排在子实体前面。 */
   readonly entities: readonly SceneEntityFile[];
 }

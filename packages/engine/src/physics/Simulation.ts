@@ -5,7 +5,8 @@
  * 设置（重力、阻尼、步长）在建第一个物体之前改，之后只有步长和每帧步数还能改。
  * 动态刚体（Body）建好以后用 `body(entity)` 控制（Stride 的 BodyComponent 的属性和方法）。接触事件见 contacts.ts：
  * 每一步之后把原生的事件交给两边的处理器。实体销毁（或去掉物理组件）时移除物体（连着的约束一起移除）。
- * 约束用 `addConstraint`（Stride.BepuPhysics 的约束组件的参数，语义照 Bepu；Bepu 的约束是软的，这里是刚性的）。
+ * 约束用 `addConstraint`（Stride.BepuPhysics 的约束组件的参数，语义照 Bepu；Bepu 的约束都是软的，这里除了伺服、马达和
+ * 距离限制都是刚性的）。每个物理步之前调 `onStep` 登记的回调（Stride 的 ISimulationUpdate.SimulationUpdate）。
  */
 import type { BodyDesc, BodyId, ConstraintDesc, PhysicsConstraint, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore } from '@stride-ts/native';
 import { PhysicsHit } from '@stride-ts/native';
@@ -35,14 +36,24 @@ export interface SimulationSettings {
   collisionMasks?: readonly number[];
 }
 
-/** 约束的设置（Stride.BepuPhysics 的约束组件）：A、B 是带物理组件的实体，其余字段照原生的 ConstraintDesc。 */
+/** 约束的设置（Stride.BepuPhysics 的约束组件）：A、B 是带物理组件的实体（单体约束只有 A），其余字段照原生的 ConstraintDesc。 */
 export type ConstraintSettings = ConstraintDesc extends infer D
-  ? D extends { bodyA: BodyId; bodyB: BodyId } ? Omit<D, 'bodyA' | 'bodyB'> & { bodyA: Entity | EntityId; bodyB: Entity | EntityId } : never
+  ? D extends { bodyB: BodyId } ? Omit<D, 'bodyA' | 'bodyB'> & { bodyA: Entity | EntityId; bodyB: Entity | EntityId }
+    : D extends { bodyA: BodyId } ? Omit<D, 'bodyA'> & { bodyA: Entity | EntityId } : never
   : never;
 
-/** addConstraint 建的约束。 */
-export interface Constraint {
-  /** 移除约束（两个物体都会唤醒）；移除过的忽略。 */
+/** 某种约束的设置，比如 `ConstraintSettingsOf<'oneBodyLinearServo'>`。 */
+export type ConstraintSettingsOf<T extends ConstraintSettings['type']> = Extract<ConstraintSettings, { type: T }>;
+
+/** addConstraint 建的约束（Stride 的 ConstraintComponent）。 */
+export interface Constraint<S extends ConstraintSettings = ConstraintSettings> {
+  /** 现在的设置。 */
+  readonly settings: S;
+  /** 关掉时约束不起作用（Stride 的 ConstraintComponent.Enabled）。 */
+  enabled: boolean;
+  /** 改设置（Stride 里改约束组件的属性），比如伺服的目标；内部是移除再加回去。 */
+  update(changes: Partial<Omit<S, 'type'>>): void;
+  /** 移除约束（物体会唤醒）；移除过的忽略。 */
   remove(): void;
 }
 
@@ -76,6 +87,7 @@ export class Simulation {
   readonly #meshes = new Map<string, PhysicsMesh>();
   /** 凸包形状，按网格的 id 组合加 hull 的变换缓存。 */
   readonly #hulls = new Map<string, PhysicsHull>();
+  readonly #stepListeners = new Set<(timeStep: number) => void>();
   /** body(entity) 给出的控制对象，按物体编号。 */
   readonly #controls = new Map<BodyId, BodyControl>();
   /** 接触处理器，按物体编号。 */
@@ -217,6 +229,7 @@ export class Simulation {
     const { fixedTimeStep: step, maxStepsPerFrame } = this.settings;
     this.#remaining += Math.min(time.elapsed, MAX_FRAME_TIME) * this.timeScale;
     for (let steps = 0; this.#remaining >= step && steps < maxStepsPerFrame; steps++) {
+      for (const listener of this.#stepListeners) listener(step);
       this.#world.step(step);
       this.#remaining -= step;
       this.#dispatchContacts();
@@ -262,11 +275,20 @@ export class Simulation {
    *   const hinge = simulation.addConstraint({ type: 'hinge', bodyA: cube, bodyB: sphere, localOffsetB: [4, 0, 0], localHingeAxisA: [0, 0, 1], localHingeAxisB: [0, 0, 1] });
    *   hinge.remove();
    */
-  addConstraint(settings: ConstraintSettings): Constraint {
-    const desc = { ...settings, bodyA: this.#bodyOf(settings.bodyA), bodyB: this.#bodyOf(settings.bodyB) } as ConstraintDesc;
-    const world = this.#world!;
-    const id: PhysicsConstraint = world.addConstraint(desc);
-    return { remove: () => world.removeConstraint(id) };
+  addConstraint<S extends ConstraintSettings>(settings: S): Constraint<S> {
+    return new ConstraintHandle(settings, (s) => {
+      const desc = { ...s, bodyA: this.#bodyOf(s.bodyA), ...('bodyB' in s ? { bodyB: this.#bodyOf(s.bodyB) } : {}) } as ConstraintDesc;
+      return this.#world!.addConstraint(desc);
+    }, (id) => this.#world?.removeConstraint(id));
+  }
+
+  /**
+   * 每个物理步之前调 listener(步长)（Stride 的 ISimulationUpdate.SimulationUpdate），返回的 Disposable 取消登记。
+   * 物理按固定步长走，一帧可能走几步，也可能一步不走（按仿真时间算的逻辑放在这里）。
+   */
+  onStep(listener: (timeStep: number) => void): Disposable {
+    this.#stepListeners.add(listener);
+    return { [Symbol.dispose]: () => void this.#stepListeners.delete(listener) };
   }
 
   /** 射线（Stride 的 RayCast）：mask 的第 n 位为 1 表示层 n 的物体参与。没命中时返回 undefined。 */
@@ -488,5 +510,52 @@ export class BodyControl {
     } else {
       this.#world.velocity(this.#body, this.#linear, this.#angular);
     }
+  }
+}
+
+/** addConstraint 给出的约束：设置留在 TS 这边，关掉、改设置时移除原生的约束，需要时再按新设置加回去。 */
+class ConstraintHandle<S extends ConstraintSettings> implements Constraint<S> {
+  #settings: S;
+  #id: PhysicsConstraint | undefined;
+  #removed = false;
+  readonly #add: (settings: S) => PhysicsConstraint;
+  readonly #remove: (id: PhysicsConstraint) => void;
+
+  constructor(settings: S, add: (settings: S) => PhysicsConstraint, remove: (id: PhysicsConstraint) => void) {
+    this.#settings = settings;
+    this.#add = add;
+    this.#remove = remove;
+    this.#id = add(settings);
+  }
+
+  get settings(): S {
+    return this.#settings;
+  }
+
+  get enabled(): boolean {
+    return this.#id !== undefined;
+  }
+
+  set enabled(value: boolean) {
+    if (this.#removed || value === this.enabled) return;
+    if (value) this.#id = this.#add(this.#settings);
+    else this.#detach();
+  }
+
+  update(changes: Partial<Omit<S, 'type'>>): void {
+    this.#settings = { ...this.#settings, ...changes };
+    if (this.#removed || this.#id === undefined) return;
+    this.#detach();
+    this.#id = this.#add(this.#settings);
+  }
+
+  remove(): void {
+    this.#detach();
+    this.#removed = true;
+  }
+
+  #detach(): void {
+    if (this.#id !== undefined) this.#remove(this.#id);
+    this.#id = undefined;
   }
 }

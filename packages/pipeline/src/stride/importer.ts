@@ -16,6 +16,7 @@ import {
   type ColliderShapeFile,
   type ColorOperator,
   type MaterialFile,
+  type PrefabFile,
   type ModelMeshData,
   type NormalMapSlot,
   type SceneCharacter,
@@ -81,6 +82,14 @@ export interface ImporterOptions {
 }
 
 /** 导出的贴图：内容路径、编码，svg 带上栅格化尺寸。 */
+/** 一次场景或预制体层级导入的上下文。 */
+interface HierarchyContext {
+  /** 组件和实体的 Id → 所在实体的 Id。 */
+  readonly owners: ReadonlyMap<string, string>;
+  /** 合成器里相机槽位的 Id → 下标（Camera.slot）；预制体是空的。 */
+  readonly cameraSlots: ReadonlyMap<string, number>;
+}
+
 interface ImportedTexture {
   readonly texture: string;
   readonly encoding: TextureEncoding;
@@ -112,10 +121,7 @@ export class StrideImporter {
   readonly #skipped = new Map<string, number>();
   readonly #warnings: string[] = [];
   readonly #materialFiles = new Map<string, Promise<MaterialFile>>();
-  /** 正在导入的场景里，组件和实体的 Id 对应的实体 Id（脚本属性里的 ref!! 引用用）。 */
-  #owners = new Map<string, string>();
-  /** 正在导入的场景用的图形合成器里，相机槽位的 Id 对应的下标（Camera.slot）。 */
-  #cameraSlots: ReadonlyMap<string, number> = new Map();
+  readonly #prefabs = new Map<string, Promise<string>>();
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
   constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2' }: ImporterOptions = {}) {
@@ -127,6 +133,44 @@ export class StrideImporter {
 
   async importScene(asset: AssetEntry): Promise<ImportResult> {
     if (asset.type !== 'SceneAsset') throw new Error(`${asset.file} is a ${asset.type}, not a scene`);
+    const compositor = importCompositor(this.#compositorOf(asset), (id) => {
+      const texture = this.#project.get(id, asset.file);
+      return texture.type === 'RenderTexture' ? renderTextureOf(texture) : undefined;
+    });
+    const files = await this.#hierarchy(asset, compositor.cameraSlots);
+    const usesPhysics = files.some((file) => file.components.static || file.components.character || file.components.body);
+    const scene: SceneFile = {
+      name: path.basename(asset.path),
+      ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}),
+      ...(compositor.main ? { compositor: compositor.main } : {}),
+      entities: files,
+    };
+    await this.#write(asset.path + EXTENSIONS.scene, JSON.stringify(scene, null, 1));
+    return {
+      scene: asset.path,
+      entities: scene.entities.length,
+      models: [...this.#models.keys()],
+      materials: [...this.#materials.keys()],
+      textures: [...this.#textures.keys(), ...this.#cubemaps.keys()],
+      skyboxes: [...this.#skyboxes.keys()],
+      skipped: this.#skipped,
+      warnings: this.#warnings,
+    };
+  }
+
+  /** 导入预制体（.sdprefab），返回它的内容路径；脚本属性引用预制体时用，同一个只导入一次。 */
+  #prefab(asset: AssetEntry): Promise<string> {
+    return once(this.#prefabs, asset, async () => {
+      const prefab: PrefabFile = { name: path.basename(asset.path), entities: await this.#hierarchy(asset, new Map()) };
+      await this.#write(asset.path + EXTENSIONS.prefab, JSON.stringify(prefab, null, 1));
+    });
+  }
+
+  /**
+   * 场景或预制体的实体层级（Hierarchy.Parts），父实体排在前面。cameraSlots 是合成器的相机槽位（预制体没有）。
+   * 场景导入途中会导入脚本属性引用的预制体，所以层级里的引用表都放在这次调用的上下文里，不放在导入器上。
+   */
+  async #hierarchy(asset: AssetEntry, cameraSlots: ReadonlyMap<string, number>): Promise<SceneEntityFile[]> {
     const parts = asset.data['Hierarchy'] && asObject(asset.data['Hierarchy'])?.['Parts'];
     if (!Array.isArray(parts)) throw new Error(`${asset.file}: no Hierarchy.Parts`);
 
@@ -146,41 +190,21 @@ export class StrideImporter {
       }
     }
 
-    this.#owners = new Map();
+    // 组件和实体的 Id → 所在实体的 Id（脚本属性和 InstanceComponent 里的 ref!! 引用用）
+    const owners = new Map<string, string>();
     for (const entity of entities) {
-      this.#owners.set(entity['Id'] as string, entity['Id'] as string);
+      owners.set(entity['Id'] as string, entity['Id'] as string);
       for (const component of Object.values(asObject(entity['Components']) ?? {})) {
         const id = asObject(component)?.['Id'];
-        if (typeof id === 'string') this.#owners.set(id, entity['Id'] as string);
+        if (typeof id === 'string') owners.set(id, entity['Id'] as string);
       }
     }
-    const compositor = importCompositor(this.#compositorOf(asset), (id) => {
-      const texture = this.#project.get(id, asset.file);
-      return texture.type === 'RenderTexture' ? renderTextureOf(texture) : undefined;
-    });
-    this.#cameraSlots = compositor.cameraSlots;
-    const files = await Promise.all(entities.map((entity) => this.#entity(entity, parentOf.get(entity['Id'] as string) ?? null, asset)));
-    const usesPhysics = files.some((file) => file.components.static || file.components.character || file.components.body);
-    const scene: SceneFile = {
-      name: path.basename(asset.path),
-      ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}),
-      ...(compositor.main ? { compositor: compositor.main } : {}),
-      entities: parentsFirst(files),
-    };
-    await this.#write(asset.path + EXTENSIONS.scene, JSON.stringify(scene, null, 1));
-    return {
-      scene: asset.path,
-      entities: scene.entities.length,
-      models: [...this.#models.keys()],
-      materials: [...this.#materials.keys()],
-      textures: [...this.#textures.keys(), ...this.#cubemaps.keys()],
-      skyboxes: [...this.#skyboxes.keys()],
-      skipped: this.#skipped,
-      warnings: this.#warnings,
-    };
+    const context: HierarchyContext = { owners, cameraSlots };
+    const files = await Promise.all(entities.map((entity) => this.#entity(entity, parentOf.get(entity['Id'] as string) ?? null, asset, context)));
+    return parentsFirst(files);
   }
 
-  async #entity(entity: StrideObject, parent: string | null, scene: AssetEntry): Promise<SceneEntityFile> {
+  async #entity(entity: StrideObject, parent: string | null, scene: AssetEntry, context: HierarchyContext): Promise<SceneEntityFile> {
     const where = `${scene.file}: entity '${String(entity['Name'])}'`;
     const transform = componentOf(entity, 'TransformComponent') ?? {};
     const components: Components = {};
@@ -189,10 +213,10 @@ export class StrideImporter {
       const type = object?.$type ?? 'unknown';
       if (!object || type === 'TransformComponent') continue;
       if (isScriptType(type)) {
-        components.scripts = [...(components.scripts ?? []), await this.#script(type, object, where)];
+        components.scripts = [...(components.scripts ?? []), await this.#script(type, object, where, context)];
         continue;
       }
-      const handled = await this.#component(type, object, components, where);
+      const handled = await this.#component(type, object, components, where, context);
       if (!handled) this.#skipped.set(type, (this.#skipped.get(type) ?? 0) + 1);
     }
     return {
@@ -207,23 +231,23 @@ export class StrideImporter {
   }
 
   /** 游戏的脚本组件：类型名去掉程序集，属性名改成小写开头，值按 SceneScriptValue 换过来。 */
-  async #script(type: string, component: StrideObject, where: string): Promise<SceneScript> {
+  async #script(type: string, component: StrideObject, where: string, context: HierarchyContext): Promise<SceneScript> {
     const name = type.slice(0, type.indexOf(','));
     const props: Record<string, SceneScriptValue> = {};
     for (const [key, value] of Object.entries(component)) {
       if (key === 'Id' || key.startsWith('~') || key === '$type') continue;
-      props[lowerFirst(key)] = await this.#scriptValue(value, `${where}: ${name}.${key}`);
+      props[lowerFirst(key)] = await this.#scriptValue(value, `${where}: ${name}.${key}`, context);
     }
     return { type: name, props };
   }
 
-  async #scriptValue(value: StrideValue | undefined, where: string): Promise<SceneScriptValue> {
+  async #scriptValue(value: StrideValue | undefined, where: string, context: HierarchyContext): Promise<SceneScriptValue> {
     if (value === null || value === undefined) return null;
     if (typeof value === 'number' || typeof value === 'boolean') return value;
     if (typeof value === 'string') {
       const object = parseObjectReference(value);
       if (object !== undefined) {
-        const entity = this.#owners.get(object);
+        const entity = context.owners.get(object);
         if (entity === undefined) this.#warnings.push(`${where}: reference ${object} is not in this scene; using null`);
         return entity === undefined ? null : { $entity: entity };
       }
@@ -231,14 +255,14 @@ export class StrideImporter {
       if (reference && GUID.test(reference.id)) return this.#scriptAsset(this.#project.get(reference.id, where), where);
       return value;
     }
-    if (Array.isArray(value)) return Promise.all(value.map((item) => this.#scriptValue(item, where)));
+    if (Array.isArray(value)) return Promise.all(value.map((item) => this.#scriptValue(item, where, context)));
     const entries = Object.entries(value).filter(([key]) => key !== '$type');
     // Stride 把列表存成以哈希为键的映射；Vector2、Vector3、Quaternion 存成 X、Y（Z、W）
-    if (entries.length > 0 && entries.every(([key]) => /^[0-9a-f]{32}$/.test(key))) return Promise.all(entries.map(([, item]) => this.#scriptValue(item, where)));
+    if (entries.length > 0 && entries.every(([key]) => /^[0-9a-f]{32}$/.test(key))) return Promise.all(entries.map(([, item]) => this.#scriptValue(item, where, context)));
     const keys = entries.map(([key]) => key).join(',');
     if (keys === 'X,Y' || keys === 'X,Y,Z' || keys === 'X,Y,Z,W') return entries.map(([, item]) => (typeof item === 'number' ? item : 0));
     const object: Record<string, SceneScriptValue> = {};
-    for (const [key, item] of entries) object[lowerFirst(key)] = await this.#scriptValue(item, where);
+    for (const [key, item] of entries) object[lowerFirst(key)] = await this.#scriptValue(item, where, context);
     return object;
   }
 
@@ -249,6 +273,7 @@ export class StrideImporter {
       MaterialAsset: ['material', () => this.#material(asset)],
       Animation: ['animation', () => this.#animation(asset)],
       SceneAsset: ['scene', () => Promise.resolve(asset.path)],
+      PrefabAsset: ['prefab', () => this.#prefab(asset)],
     };
     const kind = kinds[asset.type];
     if (!kind) {
@@ -259,13 +284,13 @@ export class StrideImporter {
   }
 
   /** 把一个组件写进 components；不认识的返回 false。 */
-  async #component(type: string, component: StrideObject, components: Components, where: string): Promise<boolean> {
+  async #component(type: string, component: StrideObject, components: Components, where: string, context: HierarchyContext): Promise<boolean> {
     switch (type) {
       case 'ModelComponent':
         components.model = await this.#modelComponent(component, where);
         return true;
       case 'CameraComponent':
-        components.camera = cameraOf(component, this.#cameraSlots);
+        components.camera = cameraOf(component, context.cameraSlots);
         return true;
       case 'InstancingComponent':
         if (asObject(component['Type'])?.$type !== 'InstancingEntityTransform') this.#warnings.push(`${where}: instancing ${String(asObject(component['Type'])?.$type)} is not supported; using InstancingEntityTransform`);
@@ -274,7 +299,7 @@ export class StrideImporter {
       case 'InstanceComponent': {
         // Master 引用的是 InstancingComponent 的 Id，换成它所在的实体
         const master = parseObjectReference(component['Master']);
-        const entity = master === undefined ? undefined : this.#owners.get(master);
+        const entity = master === undefined ? undefined : context.owners.get(master);
         if (master !== undefined && entity === undefined) this.#warnings.push(`${where}: instancing master ${master} is not in this scene; using null`);
         components.instance = { master: entity ?? null };
         return true;

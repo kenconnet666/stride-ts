@@ -60,6 +60,15 @@ describe('脚本', () => {
     expect(game.entities.count).toBe(2);
   });
 
+  test('子类再调 props() 时继承基类的属性：schema 里两层都有，默认值和初始值都生效', () => {
+    abstract class Base extends SyncScript.props({ rate: prop.number().default(1) }) {}
+    class Derived extends Base.props({ count: prop.int().default(3) }) {}
+    expect(Derived.schema.fields.map((f) => f.name)).toEqual(['rate', 'count']);
+    const game = new Game();
+    const derived = game.entities.create({ components: [Derived.with({ rate: 2 })] }).require(Derived);
+    expect([derived.rate, derived.count]).toEqual([2, 3]);
+  });
+
   test('移除时先中止 signal、释放 disposables，再调用 cancel', () => {
     const game = new Game();
     const order: string[] = [];

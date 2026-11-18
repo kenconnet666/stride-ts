@@ -217,6 +217,30 @@ describe('仿真的时间倍率和开关（Stride 的 BepuSimulation.TimeScale�
 });
 
 describe('约束（Stride.BepuPhysics 的约束组件）', () => {
+  test('单体线性伺服（重力枪）：把物体拉向目标；update 改目标，enabled 关掉后自由落下；onStep 每个物理步调一次', () => {
+    const game = createGame();
+    const crate = game.entities.create({ components: [Transform, Body.with({ collider: new Collider([{ type: 'box', size: [1, 1, 1] }]).id, sleepThreshold: -1 })] });
+    let steps = 0;
+    const listening = game.simulation.onStep((timeStep) => void (steps += timeStep > 0 ? 1 : 0));
+    const servo = game.simulation.addConstraint({ type: 'oneBodyLinearServo', bodyA: crate, target: [0, 5, 0] });
+    run(game, 120);
+    expect(position(crate).y).toBeCloseTo(5, 1);
+    servo.update({ target: [3, 5, 0] });
+    expect(servo.settings.target).toEqual([3, 5, 0]);
+    run(game, 120);
+    expect(position(crate).x).toBeCloseTo(3, 1);
+    servo.enabled = false;
+    run(game, 30);
+    expect(position(crate).y).toBeLessThan(4);
+    expect(steps).toBe(270);
+    listening[Symbol.dispose]();
+    run(game, 10);
+    expect(steps).toBe(270);
+    servo.remove();
+    servo.enabled = true;
+    expect(servo.enabled).toBe(false);
+  });
+
   test('addConstraint 接实体；remove 后自由落下；实体销毁时约束一起移除；sleepThreshold 为负时一直醒着', () => {
     const game = createGame();
     game.simulation.configure({ gravity: [0, -9, 0] });

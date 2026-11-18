@@ -15,7 +15,7 @@
 游戏脚本（TS，Stride 风格的 API）
 引擎层（TS）：实体、组件、脚本调度、场景加载、内容管理、输入、音频
 渲染器（TS 负责组织，WGSL 来自 Stride 的效果）：RenderSystem、RenderFeature、RenderStage、Compositor
-stride-native（C++，一个 wasm 模块）：变换数组、层级传播、剔除、动画求值、Jolt、Recast、解码
+stride-native（C++，核心 wasm 模块加按需加载的侧模块和第三方插件）：变换数组、层级传播、剔除、动画求值、Jolt、Recast、解码
 浏览器：WebGPU、Web Audio、Gamepad、Worker
 ```
 
@@ -852,11 +852,12 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - 运行时：`GraphicsDevice` 申请设备有的压缩特性，按 BC > ASTC > ETC2 选转码目标（`textureTarget`），都没有时是 RGBA8。`ContentManager.loadTexture` 用 `Game` 设置的 `textureDecoder`（`ktx2Decoder`：stride-native 的 Basis 转码器在原生线程里并行转各级 mip）；压缩格式要求尺寸是 4 的倍数，不是的贴图退回 RGBA8。`Texture` 和 `Mesh` 一样只放数据，`MeshRenderFeature` 第一次用到时上传（压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝）。采样器同 Stride 的默认值：重复、线性过滤、mipmap 线性，加 16 倍各向异性。没有贴图的材质绑一张 1x1 的白图，着色器不分支。
 - **体积（2026-11-18）**：页面下载的东西都量过，按"调试优先、完整引擎用得到的代码不裁剪、保留小体积下载的能力"取舍：
   - **原生模块不裁剪**：Jolt 的调试渲染器、性能分析器、约束、软体、载具、高度场，Basis 的 HDR、BC4/BC5、ETC1S、XUASTC，运行时导航网格构建都留着（编辑器、地形、法线贴图、动态导航网格、小体积贴图都会用到）；LTO、`-Os`、closure 这些让堆栈难读的优化也先不做。正式版 wasm 留着函数名（`--profiling-funcs`，brotli 后多 4%），另有调试版（Jolt 断言加 Emscripten 运行时检查），`Game.run` 的 `debugNative` 选它，app 传 `import.meta.env.DEV`。
+  - **原生模块拆成核心加侧模块**（用户 2026-11-18 定）：核心 `stride-native-core`（任务系统、变换存储、meshopt 解码、动画、插件 API）是 Emscripten 的主模块，物理（Jolt）、贴图（KTX2/Basis 转码）、导航（Recast/Detour）是侧模块，共用同一块内存、分配器和任务系统，速度不变（1000 个盒子的步进实测一样）。游戏用 `Game.run(canvas, { nativeFeatures: [physics] })` 选用，功能从 `@stride-ts/native/<名字>` 导入，没导入的打包器不输出；没加载的功能的方法抛 `NativeError` 并说明怎么加载，KTX2 解码器只在有 texture 时接上。正式版各模块：核心 361 KB（brotli 97 KB），physics 1.6 MB（275 KB），texture 1.1 MB（339 KB），navigation 204 KB（64 KB）；原来整个运行时模块 3.1 MB（728 KB）。第三方也能写 wasm 插件（插件 C API 加 CMake 函数，见 fork 的 `StrideNative/Plugins/README.md`），和内置侧模块一样在启动时加载。
   - **模型**：顶点量化成 16 字节（位置按模型的包围盒 unorm16，精度低于 0.1 mm 时保留 float；法线八面体 snorm16x2；UV 按范围 unorm16，范围超过 16 时保留 float），按顶点缓存和读取顺序重排后 meshopt 编码（`packages/pipeline/src/mesh.ts`，参考 glTF-Transform）；运行时 `ContentManager.meshoptDecoder`（原生 `decodeMeshoptBatch`）并行解码，顶点着色器按网格参数反量化、解八面体法线。TPP 的模型 1.12 MB（brotli 512 KB）变 383 KB（brotli 303 KB），显存也减半。`--plain` 导出不压缩的 float 模型方便调试，运行时两种都能读。
   - **贴图**：除了 KTX2，贴图槽可以是 svg、png、jpeg（`browserImageDecoder`：PNG/JPEG 用 createImageBitmap，SVG 用 Image 加 OffscreenCanvas 按目标尺寸栅格化），只有第 0 级，`MipmapGenerator` 在 GPU 上生成 mip（sRGB 视图，线性空间平均）。导入时 `--overrides` 目录里的 `<内容路径>.svg` 代替源图片；TPP 的两张棋盘格是手写的 SVG（0.8 KB、1 KB，原来的 KTX2 是 16 KB、52 KB；栅格化后和原 PNG 的平均差 0.02 和 3.4），代价是显存里是未压缩的 RGBA8。
   - **天空盒**：见上面，镜面预滤波改在运行时做，内容少 4 MB。
   - **分发**：`tools/vite-app.ts` 是 apps 共用的 Vite 配置，构建后给 dist 里压得小的文件写 `.br` 和 `.gz`，静态服务器打开预压缩文件的支持就直接发。
-  - **结果**：TPP 页面下载（正式版 wasm、JS、内容）从约 9.4 MB（brotli 约 1.6 MB）变成 4.2 MB（brotli 1.1 MB），其中 wasm 3.1 MB（brotli 728 KB）。
+  - **结果**：TPP 页面下载（正式版 wasm、JS、内容）从约 9.4 MB（brotli 约 1.6 MB）变成 4.2 MB（brotli 1.1 MB），其中 wasm 3.1 MB（brotli 728 KB）；原生模块拆分后 TPP 只要核心，页面 1.6 MB（brotli 约 500 KB），wasm 361 KB（brotli 97 KB）。
 - **下一段**：方向光阴影（Stride 的级联阴影贴图），然后是 TPP 开着的其余后处理（Bright filter 加 Bloom、光芒、镜头光晕，FXAA）和法线贴图（需要切线，stride-tools 有 `generateTangents`）。
 
 ## 对齐的验证方法

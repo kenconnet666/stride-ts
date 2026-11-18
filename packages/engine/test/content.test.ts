@@ -1,4 +1,5 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import { texture } from '@stride-ts/native/texture';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
@@ -153,7 +154,7 @@ describe('贴图', () => {
   let native: StrideNative;
   let tools: StrideTools;
   beforeAll(async () => {
-    [native, tools] = await Promise.all([createStrideNative({ workerThreads: 1 }), createStrideTools({ workerThreads: 1 })]);
+    [native, tools] = await Promise.all([createStrideNative({ workerThreads: 1, features: [texture] }), createStrideTools({ workerThreads: 1 })]);
   });
   afterAll(() => {
     native?.shutdown();

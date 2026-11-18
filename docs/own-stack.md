@@ -1,4 +1,4 @@
-# 自己维护的技术栈：JS/TS 在仓库内，原生库合成一个 wasm
+# 自己维护的技术栈：JS/TS 在仓库内，原生库合成一个 C++ 工程
 
 状态：设计，2026-11-17。用户的想法：依赖分两类。JS/TS 的部分放在仓库里自己维护、按需要改；需要 wasm 的部分 fork 过来维护成自己需要的样子，多个项目合进一个，避免同一份数据在多个库之间重复处理。
 
@@ -6,7 +6,7 @@
 
 可行，并且比"npm 依赖加一层桥接"更适合长期做一个自己的引擎：
 
-- **原生部分合成一个 C++ 工程，产出一个 wasm 模块（`stride-native`）**。我们选的原生库都是 C/C++：Jolt、Recast/Detour、Basis Universal、meshoptimizer，以后可能要的 ozz-animation、HarfBuzz、msdfgen 也是。只要不选 Rapier（Rust），就能用同一个 Emscripten 加 CMake 工程编译。
+- **原生部分合成一个 C++ 工程，产出一个运行时（`stride-native`）**：核心模块加按需加载的侧模块，共用一个堆和一个任务系统（2026-11-18 起，见下面的"拆成核心加侧模块"）。我们选的原生库都是 C/C++：Jolt、Recast/Detour、Basis Universal、meshoptimizer，以后可能要的 ozz-animation、HarfBuzz、msdfgen 也是。只要不选 Rapier（Rust），就能用同一个 Emscripten 加 CMake 工程编译。
 - **JS/TS 部分整体放进 monorepo**：引擎（渲染、场景、加载、输入、音频）和 Stride 风格的 API 是同一份代码，不再是"引擎依赖加一层适配"。
 
 ## 原生部分：一个 wasm 模块
@@ -31,8 +31,9 @@ jolt-native-fork/
   Jolt/ Build/ ...          upstream Jolt, unchanged
   StrideNative/
     CMakeLists.txt          the only build file; Jolt comes in through ../Build/CMakeLists.txt
-    Include/StrideNative/   C API: Core.h (init, memory, tasks), Runtime.h, Tools.h
-    Source/Core|Shared|Runtime|Tools
+    Include/StrideNative/   C API: Core.h (init, memory, tasks), Runtime.h, Physics.h, Texture.h, Navigation.h, Plugin.h, Tools.h
+    Source/Core|Runtime|Physics|Texture|Navigation|Shared|Tools
+    Plugins/                how to write a wasm plugin, and the example plugin
     JS/                     TypeScript bindings (native-module.ts, stride-native.ts, stride-tools.ts)
     ThirdParty/             libraries copied once; source table in ThirdParty/README.md
     Tests/Native|JS|Browser
@@ -40,6 +41,17 @@ jolt-native-fork/
 ```
 
 第三方库各编成静态库，我们的代码是 OBJECT 库，两个 wasm 模块各自最后链接一次。
+
+### 拆成核心加侧模块（2026-11-18）
+
+上面"合成一个模块"要的东西（一份胶水、一个堆、一个分配器、一个线程池、零拷贝共享数据）用 Emscripten 的动态链接也能得到，同时只下载用到的功能：
+
+- `stride-native-core` 是主模块（`MAIN_MODULE=2`）：任务系统、Jolt 的 Core、变换存储、meshopt、ozz、插件 API。
+- `stride-native-physics`、`-texture`、`-navigation` 是侧模块（`SIDE_MODULE=2`），启动时按 `features` 加载（每个线程一份），和核心共用内存和任务系统，跨模块的状态都经过核心里的非内联函数。
+- 第三方插件也是侧模块，只用插件 C API（`Plugin.h`）；核心导出哪些符号由"ABI 探针"（示例插件，链接在核心上）决定。
+- 原来"一个文件"的好处里只少了"一次编译"：多了几个文件，各自按内容哈希长期缓存，改了物理不影响核心的缓存。
+
+细节见 fork 的 `StrideNative/README.md` 的"Core and side modules"。
 
 ### API 的设计原则
 

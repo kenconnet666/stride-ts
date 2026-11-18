@@ -1,4 +1,4 @@
-import { createStrideNative, type StrideNative, type TransformStore } from '@stride-ts/native';
+import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
 import { ContentManager } from '../content/ContentManager';
 import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
@@ -21,6 +21,11 @@ export interface GameOptions {
    * 游戏入口一般传 `import.meta.env.DEV`：开发服务器上用调试版，构建出来的页面用正式版。
    */
   debugNative?: boolean;
+  /**
+   * 要加载的原生侧模块，从 `@stride-ts/native/<名字>` 导入：physics（Jolt）、texture（KTX2 贴图转码，内容里有 KTX2
+   * 贴图时要有它）、navigation（Recast/Detour），也可以是第三方插件。没列出的不会下载，构建时也不会输出。
+   */
+  nativeFeatures?: readonly NativeFeature[];
   /** 变换存储的槽位数，即最多有多少个带 Transform 的实体；默认 65536（每个约 108 字节）。 */
   maxTransforms?: number;
   /**
@@ -85,10 +90,14 @@ export class Game {
     this.entities.onError = (error) => this.fail(error);
     try {
       if (options.modules) this.registry.registerModules(options.modules);
-      this.native = await createStrideNative({ debug: options.debugNative ?? false, ...(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads }) });
+      this.native = await createStrideNative({
+        debug: options.debugNative ?? false,
+        features: options.nativeFeatures ?? [],
+        ...(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads }),
+      });
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       this.graphicsDevice = await GraphicsDevice.create(canvas);
-      this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
+      if (this.native.hasFeature('texture')) this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
       this.content.meshoptDecoder ??= (requests) => this.native.decodeMeshoptBatch(requests);
       this.content.imageDecoder ??= browserImageDecoder();
       this.renderSystem = new RenderSystem(this.graphicsDevice);

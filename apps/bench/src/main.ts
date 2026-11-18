@@ -1,4 +1,5 @@
 import { createStrideNative } from '@stride-ts/native';
+import { physics } from '@stride-ts/native/physics';
 import { checkSharedUpload, createCases } from './cases';
 import { createRenderCases } from './render-cases';
 import { runCases, type Result } from './harness';
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
   const adapter = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) throw new Error('WebGPU is not available');
   const device = await adapter.requestDevice();
-  const native = await createStrideNative({ workerThreads: 2 });
+  const native = await createStrideNative({ workerThreads: 2, features: [physics] });
   const info = adapter.info;
   print(`crossOriginIsolated ${crossOriginIsolated}, ${navigator.hardwareConcurrency} cores, GPU ${info.vendor} ${info.architecture} ${info.description}`);
   print(`writeBuffer from wasm shared memory, read back: ${await checkSharedUpload({ device, native })}`);

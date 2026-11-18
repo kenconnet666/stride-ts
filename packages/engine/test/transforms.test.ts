@@ -1,4 +1,5 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import { physics } from '@stride-ts/native/physics';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { component, Game, system, Transform, transformSlot, type Entity, type TransformColumns } from '../src/index';
 
@@ -6,7 +7,7 @@ import { component, Game, system, Transform, transformSlot, type Entity, type Tr
 let native: StrideNative;
 
 beforeAll(async () => {
-  native = await createStrideNative({ workerThreads: 1 });
+  native = await createStrideNative({ workerThreads: 1, features: [physics] });
 });
 
 afterAll(() => native?.shutdown());

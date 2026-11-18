@@ -69,7 +69,10 @@ export class ContentManager {
   readonly #cache = new Map<string, Promise<unknown>>();
   /** 没有材质的网格用它：白色。 */
   readonly defaultMaterial = new Material('default');
-  /** 把 KTX2 贴图转码成设备支持的格式；Game 在图形设备建好之后设置（ktx2Decoder），测试里可以换成假的。 */
+  /**
+   * 把 KTX2 贴图转码成设备支持的格式；加载了原生的 texture 功能时，Game 在图形设备建好之后设置（ktx2Decoder），
+   * 测试里可以换成假的。
+   */
   textureDecoder: TextureDecoder | undefined;
   /** 把 SVG、PNG、JPEG 贴图解成 RGBA8；Game 启动时设置（browserImageDecoder），测试里可以换成假的。 */
   imageDecoder: ImageDecoder | undefined;
@@ -152,7 +155,9 @@ export class ContentManager {
     return this.#once(path + TEXTURE_EXTENSIONS[encoding], async (url) => {
       const bytes = new Uint8Array(await this.#read(url));
       if (encoding === 'ktx2') {
-        if (!this.textureDecoder) throw new Error(`loading ${url.href}: no textureDecoder (Game sets one when it starts)`);
+        if (!this.textureDecoder) {
+          throw new Error(`loading ${url.href}: no textureDecoder; run the game with nativeFeatures: [texture] (import { texture } from '@stride-ts/native/texture')`);
+        }
         return new Texture(path, await this.textureDecoder(bytes));
       }
       if (!this.imageDecoder) throw new Error(`loading ${url.href}: no imageDecoder (Game sets one when it starts)`);

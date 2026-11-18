@@ -9,3 +9,4 @@
 | [animated-model/](animated-model/README.md) | AnimatedModel | 动画停在第 0 帧 |
 | [physics-sample/](physics-sample/README.md) | PhysicsSample（Bepu 版，取自 master） | 选场景、可以停住物理 |
 | [bepu-sample/](bepu-sample/README.md) | BepuSample（取自 master） | 选子场景、可以停住物理；截图时关掉 UI 和调试文字 |
+| [platformer2d/](platformer2d/README.md) | Platformer2D（取自 releases/4.4.2） | 可以去掉脚本（精灵停在默认帧） |

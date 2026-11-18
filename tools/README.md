@@ -19,7 +19,7 @@
 | `vite-app.ts` | apps 共用的 Vite 配置（`strideApp(端口)`）：跨源隔离的响应头、不预打包原生模块、调试中枢（`strideDebug`）、构建后写 `.br`/`.gz` 预压缩文件 |
 | `smoke.ts` | 样例冒烟脚本（`apps/*/scripts/smoke.ts`，`pnpm --filter <样例> smoke`）共用的部分：`startSmoke(中枢名)` 给出调 CLI 的 `stride`、`check`，`finish()` 查本次运行以来的错误日志后按结果退出 |
 | `hdr-ratio.ts` | 两张截图（都固定曝光 EV0、关掉 FXAA 和亮部提取）反推色调映射前的 HDR 值，按行打印参考/我们的比值，分辨整体倍数和随角度的差。用法：`node tools/hdr-ratio.ts <参考.png> <我们的.png>` |
-| `stride-capture/` | 桌面 Stride 的截图工程，每个样例一个子目录（`tpp/`、`animated-model/`、`physics-sample/`、`bepu-sample/`）：`setup.ps1` 从 Stride 源码搭出并编译，截图参数见各自的 README |
+| `stride-capture/` | 桌面 Stride 的截图工程，每个样例一个子目录（`tpp/`、`animated-model/`、`physics-sample/`、`bepu-sample/`、`platformer2d/`）：`setup.ps1` 从 Stride 源码搭出并编译，截图参数见各自的 README |
 | `bench.cjs` | 打开 `apps/bench`（先 `pnpm --filter @stride-ts/bench dev`，端口 5182），等基准跑完，打印结果表；第三个参数给文件名时另存 JSON。用法：`node bench.cjs <playwright> http://localhost:5182/ [out.json]` |
 | `gc-trace.cjs` | 打开 `apps/bench/gc.html`，开着 Chrome 的 tracing 跑各种分配模式，按场景报告帧间隔和 V8 记录的主线程 GC 停顿（次数、总时长、最长一次）。用法：`node gc-trace.cjs <playwright> http://localhost:5182/gc.html [trace.json]` |
 | `gen-type-stress.mjs` | 生成 `packages/engine/test/stress.check.ts`（默认 300 个组件、150 个系统、150 个脚本），之后用 `npx tsc -p . --extendedDiagnostics` 看检查时间和实例化次数。用法：`node tools/gen-type-stress.mjs [组件数] [系统数] [脚本数]` |

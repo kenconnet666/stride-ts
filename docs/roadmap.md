@@ -301,10 +301,10 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    5. ~~动态网格和比对~~（2026-11-19）：动态的网格刚体（原生 0.17.0，封闭网格按体积积分算质心和惯量）、网格对网格的碰撞（0.17.1）；后处理按效果开关（`ScenePostEffects`，色调映射能关），缺法线的网格补平面法线（0.17.2），没有材质的网格用 DefaultMaterial 槽位，压缩的贴图宽高补到 4 的倍数（Lanczos3，0.18.0 的 `st_image_resize`）。场景里没挂的工具脚本不移植（见 decisions.md）。
    - 验收：和桌面 Stride（master 的样例配 4.4.2 的包，停住物理）比，七个场景平均每通道差 0.37 到 1.11/255，差超过 32 的像素都在 0.05% 以内（`tools/stride-capture/bepu-sample`）；冒烟脚本 `pnpm --filter @stride-ts/bepu-sample smoke` 走完七个场景的玩法。
    - P2 补：场景选择和说明的 UI、调试文字的渲染（现在用 `stride call scene`、`stride call debug-text`）。P4 补：环境光遮蔽、屏幕空间反射（样例的合成器开着）。遗留：接触的软度不映射（见 decisions.md）；重叠测试（BepuSimulation.Overlap）还没有；点光和聚光的阴影、分簇。
-6. **Platformer2D**（进行中，`apps/platformer2d`，端口 5192）。样例不用 Bepu 的 2D 模式：平台、金币、角色都在 Z=0 上，3D 物理照常；角色转身是把 CharacterComponent.Orientation 绕 Y 转 180°，精灵跟着实体翻过来。分步：
+6. ~~Platformer2D~~（2026-11-19 P1 部分完成，`apps/platformer2d`，端口 5192）。样例不用 Bepu 的 2D 模式：平台、金币、角色都在 Z=0 上，3D 物理照常；角色转身是把 CharacterComponent.Orientation 绕 Y 转 180°，精灵跟着实体翻过来。分步：
    1. ~~精灵表和骨架~~（2026-11-19）：导入 .sdsheet（每张源图一张贴图，精灵记下区域、PixelsPerUnit、中心；默认不生成 mip，同 Stride），`SpriteSheet` 资源（`frame` 循环取，同 SpriteFromSheet.GetSprite），`Sprite` 的 `sheet`、`frame`（Stride 的 CurrentFrame）和 `enabled`；场景能看。
    2. ~~脚本和玩法~~（2026-11-19）：PlayerController（左右走、跳、按状态切帧、转身）、CoinRotation、CollectCoin（触发器、AsyncScript、拿到后隐藏精灵、3 秒后移除实体）；`simulation.body()` 也接受角色（Stride 的 CharacterComponent 继承 BodyComponent，转身用 teleport，原生 0.18.1），`Quaternion.invert`。音效属于 P2，导入时警告跳过。冒烟脚本 `pnpm --filter @stride-ts/platformer2d smoke` 走完待机、跑、转身、跳、拿金币。
-   - 接着做第 3 步。
-   3. 和桌面 Stride 比对（`tools/stride-capture/platformer2d`）。
-7. 然后按第三节的 P1 游戏顺序：TopDownRPG → FirstPersonShooter。
+   3. ~~和桌面 Stride 比对~~（2026-11-19，`tools/stride-capture/platformer2d`，两边都不挂脚本）：平均每通道差 2.17/255，精灵的形状和位置一致，差都在精灵内部——Stride 把精灵表压成 BC 格式，像素画的颜色被带偏；我们的精灵表源图原样用 PNG。
+   - P2 补：拿金币的音效。遗留：九宫格的精灵边框（Borders）。
+7. 接着做 **TopDownRPG**，然后 FirstPersonShooter（第三节的 P1 游戏顺序）。
 

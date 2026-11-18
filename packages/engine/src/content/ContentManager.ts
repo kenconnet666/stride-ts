@@ -21,7 +21,7 @@ import { Material } from '../rendering/Material';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneLightShadow, type ScenePhysics, type SkyboxFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneCompositor, type SceneLightShadow, type ScenePhysics, type SkyboxFile, type TextureRef } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -71,6 +71,8 @@ interface SceneAssets {
   readonly animations: ReadonlyMap<string, AnimationClip>;
   readonly skyboxes: ReadonlyMap<string, Skybox>;
   readonly cubemaps: ReadonlyMap<string, Cubemap>;
+  /** 平面背景图，按内容路径。 */
+  readonly images: ReadonlyMap<string, Texture>;
 }
 
 export interface SceneInstance {
@@ -79,6 +81,8 @@ export interface SceneInstance {
   readonly entities: ReadonlyMap<string, Entity>;
   /** 场景用的仿真设置（Game.loadScene 交给 simulation）。 */
   readonly physics?: ScenePhysics;
+  /** 场景用的主画面合成器设置（Game.loadScene 交给图形合成器）。 */
+  readonly compositor?: SceneCompositor;
 }
 
 const fetchReader: ContentReader = async (url) => {
@@ -248,9 +252,12 @@ export class ContentManager {
       preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
       preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => this.loadAnimation(p)),
       preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
-      preload(components.flatMap((c) => (c.background ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
+      preload(components.flatMap((c) => (c.background?.type === 'cubemap' ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
     ]);
-    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps };
+    // 背景的平面图片按 sRGB 读（同 Stride 的颜色贴图）
+    const images = new Map(await Promise.all(components.flatMap((c) => (c.background?.type === '2d' ? [c.background.image] : []))
+      .map(async (image) => [image.texture, await this.#loadTextureRef(image, true)] as const)));
+    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, images };
 
     const created = new Map<string, Entity>();
     for (const file of scene.entities) {
@@ -269,7 +276,7 @@ export class ContentManager {
     for (const file of scene.entities) {
       for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${path}: ${file.name}`);
     }
-    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}) };
+    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.compositor ? { compositor: scene.compositor } : {}) };
   }
 
   #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
@@ -284,7 +291,8 @@ export class ContentManager {
     if (camera) entity.add(Camera.with(camera));
     if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
     else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
-    if (background) entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
+    if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
+    else if (background) entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, intensity: background.intensity }));
     if (animation) {
       entity.add({ script: AnimationComponent, init: {} });
       const clips = entity.require(AnimationComponent).animations;
@@ -308,6 +316,10 @@ export class ContentManager {
       if (skin) skinned.push({ entity: part, skin });
     });
     if (loaded.skeleton) entities.game.animation.attach(entity, loaded.skeleton, skinned);
+  }
+
+  #loadTextureRef({ texture, encoding = 'ktx2', size }: TextureRef, srgb: boolean): Promise<Texture> {
+    return this.loadTexture(texture, { encoding, srgb, ...(size ? { size } : {}) });
   }
 
   #once<T>(path: string, load: (url: URL) => Promise<T>): Promise<T> {

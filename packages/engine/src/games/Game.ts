@@ -229,6 +229,7 @@ export class Game {
    */
   async loadScene(path: string, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const scene = await this.content.loadScene(path, this.entities, options);
+    if (scene.compositor) this.graphicsCompositor.configure(scene.compositor);
     if (scene.physics) {
       if (!this.simulation) throw new Error(`scene '${path}' has physics; run the game with nativeFeatures: [physics] (import { physics } from '@stride-ts/native/physics')`);
       this.simulation.configure(scene.physics);

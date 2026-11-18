@@ -7,12 +7,13 @@
  * 深度预通道同 Stride 默认合成器的 GBuffer 阶段（ZPrepass 效果）：先只画深度，不透明阶段用 less-equal 复用它，
  * 每个像素只做一次完整的着色（TPP 的不透明通道 3.0 → 0.9 ms 量级的差别就在这里）。
  */
+import type { SceneCompositor } from '../content/format';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
 import { Color4 } from '../mathematics/vectors';
 import { Camera, Light } from './components';
-import { RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { MAX_DIRECTIONAL_LIGHTS, RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { Skybox } from './Skybox';
 import { PostProcessingEffects } from './postfx/PostProcessingEffects';
@@ -28,6 +29,8 @@ export class ForwardRenderer {
   readonly opaqueStage: RenderStage;
   /** 线性空间的清屏色；默认是 sRGB 的 (0.1, 0.12, 0.16)。 */
   readonly clearColor = new Color4(0.01, 0.0134, 0.022, 1);
+  /** 用哪个相机槽位的相机（Camera.slot，Stride 的 SceneCameraRenderer.Camera）；默认 0。 */
+  cameraSlot = 0;
   /** 这一帧用的相机实体找到了没有；没有相机时只清屏（同 Stride）。 */
   hasCamera = false;
   /** 后处理（Stride 的 ForwardRenderer.PostEffects），设置可以改，默认值同 Stride。 */
@@ -36,28 +39,29 @@ export class ForwardRenderer {
 
   readonly #mainView = new RenderView();
   #targets: { color: GPUTexture; depth: GPUTexture } | undefined;
-  // 找相机：第一个带 Camera 和 Transform 的实体
+  // 找相机：第一个槽位是 cameraSlot、带 Camera 和 Transform 的实体
   #cameraFound = false;
   readonly #findCamera = system('ForwardRenderer.camera', {
     with: { camera: Camera, transform: Transform },
     update: ({ camera, transform, count }) => {
-      if (this.#cameraFound || count === 0) return;
+      if (this.#cameraFound) return;
+      const row = camera.slot.indexOf(this.cameraSlot);
+      if (row < 0 || row >= count) return;
       this.#cameraFound = true;
       const view = this.#mainView;
-      const slot = transform.slot[0]!;
+      const slot = transform.slot[row]!;
       if (!Matrix.invert(view.view, transform.world.subarray(slot * 16, slot * 16 + 16))) Matrix.setIdentity(view.view);
-      view.nearClipPlane = camera.nearClipPlane[0]!;
-      view.farClipPlane = camera.farClipPlane[0]!;
+      view.nearClipPlane = camera.nearClipPlane[row]!;
+      view.farClipPlane = camera.farClipPlane[row]!;
       const { width, height } = this.renderSystem.graphicsDevice.canvas;
       view.width = width;
       view.height = height;
-      Matrix.perspectiveFovRH(view.projection, (camera.verticalFieldOfView[0]! * Math.PI) / 180, width / height, view.nearClipPlane, view.farClipPlane);
+      Matrix.perspectiveFovRH(view.projection, (camera.verticalFieldOfView[row]! * Math.PI) / 180, width / height, view.nearClipPlane, view.farClipPlane);
       view.update();
     },
   });
 
-  // 光源：第一个方向光、第一个天空盒光，加上所有环境光
-  #directionalFound = false;
+  // 光源：前 MAX_DIRECTIONAL_LIGHTS 个方向光、第一个天空盒光，加上所有环境光
   #lightFound = false;
   #skyboxLight: SkyboxLight | undefined;
   readonly #shadowSettings: DirectionalShadowSettings = {
@@ -83,13 +87,14 @@ export class ForwardRenderer {
           lighting.skybox = sky;
         } else if (light.type[i] === 'ambient') {
           lighting.ambient.set(lighting.ambient.r + color.r * intensity, lighting.ambient.g + color.g * intensity, lighting.ambient.b + color.b * intensity, 1);
-        } else if (!this.#directionalFound) {
-          this.#directionalFound = true;
+        } else if (lighting.directionalCount < MAX_DIRECTIONAL_LIGHTS) {
+          const directional = lighting.directionals[lighting.directionalCount]!;
           // 照向本地 -Z：世界矩阵第三列（Z 轴）取反
           const w = transform.slot[i]! * 16;
-          lighting.direction.set(-transform.world[w + 8]!, -transform.world[w + 9]!, -transform.world[w + 10]!);
-          lighting.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
-          if (light.shadow[i]) {
+          directional.direction.set(-transform.world[w + 8]!, -transform.world[w + 9]!, -transform.world[w + 10]!);
+          directional.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
+          if (light.shadow[i] && lighting.shadowLight < 0) {
+            lighting.shadowLight = lighting.directionalCount;
             const s = this.#shadowSettings;
             s.size = light.shadowSize[i]!;
             s.filter = light.shadowFilter[i]!;
@@ -104,6 +109,7 @@ export class ForwardRenderer {
             s.blendCascades = light.shadowBlendCascades[i] !== 0;
             lighting.directionalShadow = s;
           }
+          lighting.directionalCount++;
         }
       }
     },
@@ -115,6 +121,12 @@ export class ForwardRenderer {
     this.opaqueStage = new RenderStage('Opaque', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT });
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
+  }
+
+  /** 按场景导入的合成器设置（清屏色、后处理开关）。 */
+  configure({ clearColor: [r, g, b, a], postEffects }: SceneCompositor): void {
+    this.clearColor.set(r, g, b, a);
+    this.postEffects.enabled = postEffects;
   }
 
   draw(context: RenderContext): void {
@@ -176,16 +188,18 @@ export class ForwardRenderer {
   #gatherLighting(context: RenderContext): void {
     const { lighting, defaultLighting } = this.renderSystem;
     lighting.ambient.set(0, 0, 0, 1);
-    lighting.color.set(0, 0, 0, 1);
-    lighting.direction.set(0, -1, 0);
+    lighting.directionalCount = 0;
+    lighting.shadowLight = -1;
     lighting.directionalShadow = undefined;
     lighting.skybox = undefined;
-    this.#directionalFound = false;
     this.#lightFound = false;
     context.game.entities.run(this.#collectLights, context.time);
     if (this.#lightFound) return;
-    lighting.direction.copy(defaultLighting.direction);
-    lighting.color.copy(defaultLighting.color);
+    defaultLighting.directionals.forEach((light, i) => {
+      lighting.directionals[i]!.direction.copy(light.direction);
+      lighting.directionals[i]!.color.copy(light.color);
+    });
+    lighting.directionalCount = defaultLighting.directionalCount;
     lighting.ambient.copy(defaultLighting.ambient);
   }
 

@@ -34,9 +34,10 @@ import {
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
 import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
+import { importCompositor } from './compositor.ts';
 import { importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
 import { importTransform, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
-import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, dictionaryKey, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
 export interface ImportResult {
   /** 场景的内容路径。 */
@@ -104,6 +105,8 @@ export class StrideImporter {
   readonly #materialFiles = new Map<string, Promise<MaterialFile>>();
   /** 正在导入的场景里，组件和实体的 Id 对应的实体 Id（脚本属性里的 ref!! 引用用）。 */
   #owners = new Map<string, string>();
+  /** 正在导入的场景用的图形合成器里，相机槽位的 Id 对应的下标（Camera.slot）。 */
+  #cameraSlots: ReadonlyMap<string, number> = new Map();
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
   constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2' }: ImporterOptions = {}) {
@@ -142,9 +145,16 @@ export class StrideImporter {
         if (typeof id === 'string') this.#owners.set(id, entity['Id'] as string);
       }
     }
+    const compositor = importCompositor(this.#compositorOf(asset));
+    this.#cameraSlots = compositor.cameraSlots;
     const files = await Promise.all(entities.map((entity) => this.#entity(entity, parentOf.get(entity['Id'] as string) ?? null, asset)));
     const usesPhysics = files.some((file) => file.components.static || file.components.character);
-    const scene: SceneFile = { name: path.basename(asset.path), ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}), entities: parentsFirst(files) };
+    const scene: SceneFile = {
+      name: path.basename(asset.path),
+      ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}),
+      ...(compositor.main ? { compositor: compositor.main } : {}),
+      entities: parentsFirst(files),
+    };
     await this.#write(asset.path + EXTENSIONS.scene, JSON.stringify(scene, null, 1));
     return {
       scene: asset.path,
@@ -242,7 +252,7 @@ export class StrideImporter {
         components.model = await this.#modelComponent(component, where);
         return true;
       case 'CameraComponent':
-        components.camera = cameraOf(component);
+        components.camera = cameraOf(component, this.#cameraSlots);
         return true;
       case 'AnimationComponent':
         components.animation = await this.#animationComponent(component, where);
@@ -255,7 +265,11 @@ export class StrideImporter {
       case 'BackgroundComponent': {
         const texture = parseAssetReference(component['Texture']);
         if (!texture) return false;
-        components.background = { texture: await this.#cubemap(this.#project.get(texture.id, where)), intensity: asNumber(component['Intensity'], 1) };
+        const asset = this.#project.get(texture.id, where);
+        const intensity = asNumber(component['Intensity'], 1);
+        components.background = component['Is2D'] === true
+          ? { type: '2d', image: await this.#texture(asset), intensity }
+          : { type: 'cubemap', texture: await this.#cubemap(asset), intensity };
         return true;
       }
       case 'Stride.BepuPhysics.StaticComponent,Stride.BepuPhysics': {
@@ -319,14 +333,24 @@ export class StrideImporter {
     };
   }
 
+  /** 场景的 GameSettings（DefaultScene 是这个场景的优先，没有时取第一个）。 */
+  #gameSettings(scene: AssetEntry): AssetEntry | undefined {
+    const settings = this.#project.ofType('GameSettingsAsset');
+    return settings.find((s) => parseAssetReference(s.data['DefaultScene'])?.id === scene.id) ?? settings[0];
+  }
+
+  /** GameSettings 引用的图形合成器。 */
+  #compositorOf(scene: AssetEntry): StrideObject | undefined {
+    const reference = parseAssetReference(this.#gameSettings(scene)?.data['GraphicsCompositor']);
+    return reference ? this.#project.get(reference.id, scene.file).data : undefined;
+  }
+
   /**
    * 场景的仿真设置：GameSettings 里 BepuConfiguration 的 BepuSimulations 中 AssociatedScene 是这个场景或为空的那个
    * （GameSettings 优先取 DefaultScene 是这个场景的），没有时用 Stride 的默认值。
    */
   #physicsSettings(scene: AssetEntry): ScenePhysics {
-    const settings = this.#project.ofType('GameSettingsAsset');
-    const preferred = settings.find((s) => parseAssetReference(s.data['DefaultScene'])?.id === scene.id) ?? settings[0];
-    const defaults = preferred?.data['Defaults'];
+    const defaults = this.#gameSettings(scene)?.data['Defaults'];
     const configuration = (Array.isArray(defaults) ? defaults : [])
       .map(asObject)
       .find((d) => d?.$type?.startsWith('Stride.BepuPhysics.BepuConfiguration'));
@@ -402,7 +426,7 @@ export class StrideImporter {
     // 按槽覆盖材质：键是 "<hash>~<槽号>"
     const materials: (string | null)[] = [];
     for (const [key, value] of Object.entries(asObject(component['Materials']) ?? {})) {
-      const slot = Number(key.slice(key.lastIndexOf('~') + 1));
+      const slot = Number(dictionaryKey(key));
       const material = parseAssetReference(value);
       if (!Number.isInteger(slot) || !material) continue;
       while (materials.length < slot) materials.push(null);
@@ -490,7 +514,7 @@ export class StrideImporter {
     for (const [key, value] of Object.entries(asObject(component['Animations']) ?? {})) {
       // 字典项写成 名字: 引用，或者 { Key: 名字, Value: 引用 }
       const entry = asObject(value);
-      const name = entry && 'Key' in entry ? String(entry['Key']) : key;
+      const name = entry && 'Key' in entry ? String(entry['Key']) : dictionaryKey(key);
       const reference = parseAssetReference(entry && 'Value' in entry ? entry['Value'] : value);
       if (!reference) continue;
       animations.push({ name, clip: await this.#animation(this.#project.get(reference.id, where)) });
@@ -898,11 +922,14 @@ function linearColor(value: StrideValue | undefined): [number, number, number, n
   return [srgbToLinear(asNumber(c['R'], 1)), srgbToLinear(asNumber(c['G'], 1)), srgbToLinear(asNumber(c['B'], 1)), asNumber(c['A'], 1)];
 }
 
-function cameraOf(component: StrideObject): NonNullable<SceneEntityFile['components']['camera']> {
+/** 相机；slots 是合成器的相机槽位 Id 到下标，槽位是 0（Main）时不写。 */
+function cameraOf(component: StrideObject, slots: ReadonlyMap<string, number>): NonNullable<SceneEntityFile['components']['camera']> {
+  const slot = typeof component['Slot'] === 'string' ? (slots.get(component['Slot']) ?? 0) : 0;
   return {
     verticalFieldOfView: asNumber(component['VerticalFieldOfView'], 45),
     nearClipPlane: asNumber(component['NearClipPlane'], 0.1),
     farClipPlane: asNumber(component['FarClipPlane'], 1000),
+    ...(slot > 0 ? { slot } : {}),
   };
 }
 

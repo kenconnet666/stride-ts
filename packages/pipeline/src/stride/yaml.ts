@@ -67,6 +67,11 @@ export function parseObjectReference(value: StrideValue | undefined): string | u
   return typeof value === 'string' && value.startsWith('ref!! ') ? value.slice('ref!! '.length) : undefined;
 }
 
+/** Stride 序列化字典时键写成 "<项的 id>~<键>"：取出真正的键（没有 ~ 时原样返回）。 */
+export function dictionaryKey(key: string): string {
+  return key.slice(key.indexOf('~') + 1);
+}
+
 export function asObject(value: StrideValue | undefined): StrideObject | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
 }

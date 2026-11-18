@@ -289,7 +289,7 @@ describe('立方体贴图和天空盒', () => {
         ['https://game.test/content/Metal.material.json', json({ name: 'Metal', baseColor: [1, 1, 1, 1], metalness: 1, roughness: 0.2, emissive: [0, 1, 2], cavity: { diffuse: 0.5, specular: 0.75 } } satisfies MaterialFile)],
         ['https://game.test/content/Main.scene.json', json({
           name: 'Main',
-          entities: [{ id: 'sky', name: 'Sky', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { light: { type: 'skybox', skybox: 'Sky', intensity: 1.5 }, background: { texture: 'SkyTexture', intensity: 3 } } }],
+          entities: [{ id: 'sky', name: 'Sky', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { light: { type: 'skybox', skybox: 'Sky', intensity: 1.5 }, background: { type: 'cubemap', texture: 'SkyTexture', intensity: 3 } } }],
         } satisfies SceneFile)],
       ]);
       const content = new ContentManager({ root: 'https://game.test/content/', read: async (url) => files.get(url.href)! });

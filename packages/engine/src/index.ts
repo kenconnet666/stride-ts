@@ -54,14 +54,17 @@ export {
   type ModelMeshData,
   type AnimationRepeatMode,
   type ColliderShapeFile,
+  type SceneBackground,
   type SceneCharacter,
   type SceneCollidable,
   type SceneEntityFile,
   type SceneFile,
+  type SceneCompositor,
   type ScenePhysics,
   type SkyboxFile,
   TEXTURE_EXTENSIONS,
   type TextureEncoding,
+  type TextureRef,
   type TextureSlot,
 } from './content/format';
 export { Commands } from './engine/Commands';
@@ -101,14 +104,14 @@ export { Game, type GameOptions, type GameStatus, type HotContext } from './game
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
-export { GamePadButton, InputManager, type GamePadState, type MouseButton } from './input/InputManager';
+export { GamePadButton, InputManager, type GamePadState, type MouseButton, type PointerEvent } from './input/InputManager';
 export { keyCode } from './input/keys';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Collider, type ColliderId, type ColliderShape } from './physics/Collider';
 export { Character, Static } from './physics/components';
 export { Simulation, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { Background, Camera, Light, Model, Skinned } from './rendering/components';
-export { BackgroundRenderFeature } from './rendering/BackgroundRenderFeature';
+export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';
 export { GpuResources } from './rendering/GpuResources';
 export { Cubemap, Skybox, type CubemapId, type SkyboxId } from './rendering/Skybox';
 export { Bloom } from './rendering/postfx/Bloom';
@@ -122,11 +125,11 @@ export { ToneMap } from './rendering/postfx/ToneMap';
 export { ForwardRenderer } from './rendering/ForwardRenderer';
 export { Material, type MaterialDesc, type MaterialId, type MaterialTexture } from './rendering/Material';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
-export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder } from './rendering/Texture';
+export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';
 export { MipmapGenerator } from './rendering/MipmapGenerator';
 export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
 export {
-  RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
+  MAX_DIRECTIONAL_LIGHTS, RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalLight, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
   type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,
 } from './rendering/RenderSystem';
 export { DirectionalShadowCascades, type CascadeRectangle } from './rendering/shadows/DirectionalShadowCascades';

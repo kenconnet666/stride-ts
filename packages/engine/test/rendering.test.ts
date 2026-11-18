@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  DirectionalShadowCascades, Fxaa, Game, gaussianOffsetsWeights, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
+  coverSource, DirectionalShadowCascades, Fxaa, Game, gaussianOffsetsWeights, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
   type DirectionalShadowSettings, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
@@ -261,5 +261,13 @@ describe('FXAA', () => {
     expect(fxaa.preset).toBe(39);
     Object.assign(fxaa, { dither: 'none', quality: 3 });
     expect(() => fxaa.preset).toThrow("FXAA quality must be 9..9 for dither 'none', got 3");
+  });
+});
+
+describe('平面背景（Stride 的 Background Is2D）', () => {
+  test('保持比例铺满视图：竖屏的视图裁掉横图的两边，横屏的视图裁掉竖图的上下', () => {
+    expect(coverSource(1000, 500, 100, 100)).toEqual([0.25, 0, 0.5, 1]);
+    expect(coverSource(500, 1000, 200, 100)).toEqual([0, 0.375, 1, 0.25]);
+    expect(coverSource(640, 1136, 640, 1136)).toEqual([0, 0, 1, 1]);
   });
 });

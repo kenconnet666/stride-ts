@@ -41,7 +41,7 @@ import type { GpuResources } from './GpuResources';
 import { Material } from './Material';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
 import { Mesh } from './Mesh';
-import { RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { MAX_DIRECTIONAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
 export interface MeshBatch {
@@ -64,10 +64,8 @@ ${BRDF}
 struct View {
   viewProjection: mat4x4f,
   eye: vec4f,
-  lightDirection: vec4f,
-  lightColor: vec4f,
   ambientColor: vec4f,
-  // x：天空盒光的强度（没有天空盒时是 0），y：镜面立方体贴图的级数
+  // x：天空盒光的强度（没有天空盒时是 0），y：镜面立方体贴图的级数，z：方向光的个数，w：投阴影的方向光的下标（没有时 -1）
   sky: vec4f,
   skySH: array<vec4f, 9>,
   skyRotation: mat4x4f,
@@ -78,6 +76,9 @@ struct View {
   shadow: vec4f,
   // x：图集一个像素的大小（1 / 尺寸），y：图集尺寸，z：级联交界处混合，w：深度范围是自动的
   shadowAtlas: vec4f,
+  // 方向光：光线前进的方向、颜色乘强度
+  lightDirections: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
+  lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
 };
 @group(0) @binding(0) var<uniform> view: View;
 @group(0) @binding(1) var<storage, read> worlds: array<mat4x4f>;
@@ -360,18 +361,26 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
 
-  // 直射光（DirectLightGroup.PrepareDirectLight：光色 · 阴影 · N·L）
-  let l = -view.lightDirection.xyz;
-  let nDotL = max(dot(n, l), 0.0001);
-  let shadow = computeShadow(in.world, n, nDotL, in.depth);
-  let lightColorNdotL = view.lightColor.rgb * shadow * nDotL;
-  var direct = diffuse / PI * lightColorNdotL;
-  let h = normalize(v + l);
-  let nDotH = saturate(dot(n, h));
-  let lDotH = saturate(dot(l, h));
-  let fresnel = specular + (1.0 - specular) * pow(1.0 - lDotH, 5.0);
-  let reflected = fresnel * visibilitySmithSchlickGGX(alphaR, nDotL, nDotV) * normalDistributionGGX(alphaR, nDotH) / 4.0;
-  direct += select(vec3f(0.0), reflected * lightColorNdotL, hasSpecular);
+  // 直射光（DirectLightGroup.PrepareDirectLight：光色 · 阴影 · N·L），逐个方向光相加
+  var direct = vec3f(0.0);
+  let lightCount = u32(view.sky.z);
+  let shadowLight = i32(view.sky.w);
+  for (var i = 0u; i < lightCount; i++) {
+    let l = -view.lightDirections[i].xyz;
+    let nDotL = max(dot(n, l), 0.0001);
+    var shadow = 1.0;
+    if (i32(i) == shadowLight) {
+      shadow = computeShadow(in.world, n, nDotL, in.depth);
+    }
+    let lightColorNdotL = view.lightColors[i].rgb * shadow * nDotL;
+    direct += diffuse / PI * lightColorNdotL;
+    let h = normalize(v + l);
+    let nDotH = saturate(dot(n, h));
+    let lDotH = saturate(dot(l, h));
+    let fresnel = specular + (1.0 - specular) * pow(1.0 - lDotH, 5.0);
+    let reflected = fresnel * visibilitySmithSchlickGGX(alphaR, nDotL, nDotV) * normalDistributionGGX(alphaR, nDotH) / 4.0;
+    direct += select(vec3f(0.0), reflected * lightColorNdotL, hasSpecular);
+  }
   // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致
   var color = direct * PI;
 
@@ -436,8 +445,8 @@ const SAMPLES = 1024u;
 
 /** 每个视图的常量占一块：uniform 的动态偏移必须是 minUniformBufferOffsetAlignment（256）的整数倍。 */
 const VIEW_STRIDE = 768;
-/** View 结构：viewProjection 16、eye 4、光方向 4、光色 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12。 */
-const VIEW_FLOATS = 164;
+/** View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4。 */
+const VIEW_FLOATS = 188;
 /** 一帧最多的视图数：主视图加 4 个阴影级联，留些余量。 */
 const MAX_VIEWS = 8;
 /** 材质 uniform：baseColor、uvTransform、emissive、surface、normalUvTransform 各一个 vec4，再加三个 u32，补齐到 16 字节。 */
@@ -833,30 +842,33 @@ class Gpu {
   uploadViews(views: readonly RenderView[], lighting: Lighting): void {
     const stride = VIEW_STRIDE / 4;
     if (views.length > MAX_VIEWS) throw new RangeError(`MeshRenderFeature supports ${MAX_VIEWS} views, got ${views.length}`);
-    const { direction, color, ambient, skybox, shadow } = lighting;
-    const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
+    const { directionals, directionalCount, ambient, skybox, shadow } = lighting;
     const data = this.#viewData;
     for (const view of views) {
       const o = view.index * stride;
       data.set(view.viewProjection, o);
       data.set([view.eye.x, view.eye.y, view.eye.z, 1], o + 16);
-      data.set([direction.x / length, direction.y / length, direction.z / length, 0], o + 20);
-      data.set([color.r, color.g, color.b, 1], o + 24);
-      data.set([ambient.r, ambient.g, ambient.b, 1], o + 28);
-      data.set([skybox?.intensity ?? 0, skybox?.skybox.specularLevels ?? 0, 0, 0], o + 32);
+      data.set([ambient.r, ambient.g, ambient.b, 1], o + 20);
+      data.set([skybox?.intensity ?? 0, skybox?.skybox.specularLevels ?? 0, directionalCount, shadow ? lighting.shadowLight : -1], o + 24);
       for (let c = 0; c < 9; c++) {
         const sh = skybox?.skybox.diffuseSH;
-        data.set(sh ? [sh[c * 3]!, sh[c * 3 + 1]!, sh[c * 3 + 2]!, 0] : [0, 0, 0, 0], o + 36 + c * 4);
+        data.set(sh ? [sh[c * 3]!, sh[c * 3 + 1]!, sh[c * 3 + 2]!, 0] : [0, 0, 0, 0], o + 28 + c * 4);
       }
-      data.set(skybox ? skybox.rotation : IDENTITY, o + 72);
+      data.set(skybox ? skybox.rotation : IDENTITY, o + 64);
       if (shadow) {
         const atlasSize = shadow.atlas.width;
-        data.set(shadow.worldToShadow, o + 88);
-        data.set(shadow.splits, o + 152);
-        data.set([shadow.cascadeCount, shadow.depthBias, shadow.normalOffsetScale, shadow.filterSize], o + 156);
-        data.set([1 / atlasSize, atlasSize, shadow.blendCascades ? 1 : 0, shadow.depthRangeAutomatic ? 1 : 0], o + 160);
+        data.set(shadow.worldToShadow, o + 80);
+        data.set(shadow.splits, o + 144);
+        data.set([shadow.cascadeCount, shadow.depthBias, shadow.normalOffsetScale, shadow.filterSize], o + 148);
+        data.set([1 / atlasSize, atlasSize, shadow.blendCascades ? 1 : 0, shadow.depthRangeAutomatic ? 1 : 0], o + 152);
       } else {
-        data.fill(0, o + 88, o + VIEW_FLOATS);
+        data.fill(0, o + 80, o + 156);
+      }
+      for (let i = 0; i < directionalCount; i++) {
+        const { direction, color } = directionals[i]!;
+        const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
+        data.set([direction.x / length, direction.y / length, direction.z / length, 0], o + 156 + i * 4);
+        data.set([color.r, color.g, color.b, 1], o + 172 + i * 4);
       }
     }
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });

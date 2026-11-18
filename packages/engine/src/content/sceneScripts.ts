@@ -59,13 +59,13 @@ export class SceneScriptBinder {
     const fields = new Map(type.schema.fields.map((field) => [field.name, field]));
     const init: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(script.props)) {
+      // null 是 Stride 里没有设的引用：用 TS 脚本的默认值（TS 脚本没有这个属性也无所谓）
+      if (value === null) continue;
       const field = fields.get(name);
       if (!field) {
         this.#warnOnce(`${script.type}.${name}`, `${where}: ${script.type}.${name} is not a prop of the TS script; ignored`);
         continue;
       }
-      // null 是 Stride 里没有设的引用：用 TS 脚本的默认值
-      if (value === null) continue;
       init[name] = field.options.kind === 'component' ? resolveComponent(value, field.options.target!(), context, `${where}: ${script.type}.${name}`) : resolveValue(value, context);
     }
     entity.add({ script: type, init });

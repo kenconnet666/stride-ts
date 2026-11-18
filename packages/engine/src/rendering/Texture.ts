@@ -4,7 +4,13 @@
  * 要下载小的贴图是 SVG 或 PNG/JPEG，由 browserImageDecoder 解成 RGBA8，只有第 0 级，mip 在 GPU 上生成。
  */
 import type { StrideNative, TextureTarget } from '@stride-ts/native';
+import type { Branded } from '../data/prop';
+import { ResourceTable } from '../engine/ResourceTable';
 import type { GraphicsDevice } from '../graphics/GraphicsDevice';
+
+export type TextureId = Branded<number, 'TextureId'>;
+
+const textures = new ResourceTable<Texture>();
 
 export interface TextureData {
   readonly format: GPUTextureFormat;
@@ -17,6 +23,8 @@ export interface TextureData {
 }
 
 export class Texture {
+  /** 从 1 开始；组件的列（比如 Background.image）存它。 */
+  readonly id: TextureId;
   readonly name: string;
   readonly data: TextureData;
 
@@ -24,6 +32,12 @@ export class Texture {
     if (data.levels.length === 0) throw new RangeError(`texture '${name}' has no mip levels`);
     this.name = name;
     this.data = data;
+    this.id = textures.add(this) as TextureId;
+  }
+
+  /** @internal 组件里存的 id 对应的贴图。 */
+  static byId(id: number): Texture | undefined {
+    return textures.get(id);
   }
 
   /** 压缩格式（4x4 块）的块字节数；未压缩的是 0。 */

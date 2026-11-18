@@ -3,4 +3,5 @@ export { StrideImporter, svgSize, type ImporterOptions, type ImportResult } from
 export { addTangents, compressMeshes, MAX_QUANTIZED_EXTENT, MAX_QUANTIZED_UV_RANGE, octEncode, type SourceMesh } from './mesh.ts';
 export { floatToHalf, fromRgb9e5, halfToFloat, readDdsCubemap, regenerateMips, toHalf, toRgb9e5, type FloatCubemap } from './hdr.ts';
 export { StrideProject, type AssetEntry, type AssetRoot } from './stride/project.ts';
-export { asNumber, asObject, parseAssetReference, parseObjectReference, parseStrideYaml, type StrideObject, type StrideValue } from './stride/yaml.ts';
+export { asNumber, asObject, dictionaryKey, parseAssetReference, parseObjectReference, parseStrideYaml, type StrideObject, type StrideValue } from './stride/yaml.ts';
+export { importCompositor, type ImportedCompositor } from './stride/compositor.ts';

@@ -7,6 +7,8 @@
  * - lockMousePosition() 用 Pointer Lock：浏览器要求在用户操作（点击）之后不久调用，脚本在按下鼠标的那一帧调用即可；
  *   用户按 Esc 时浏览器自己解除锁定。
  * - 手柄用 Gamepad API 的标准布局，摇杆的 y 向上为正（同 Stride）。
+ * - 指针事件（Stride 的 PointerEvents）：鼠标、触摸、笔都走 Pointer Events，这一帧在画布上发生的按下、移动、松开按顺序
+ *   列出，位置和移动量同样按画布尺寸归一化。鼠标不按键移动也有 moved（同 Stride 桌面版）。
  */
 
 import { keyCode } from './keys';
@@ -52,6 +54,21 @@ export interface GamePadState {
 
 const MOUSE_BUTTONS: readonly MouseButton[] = ['left', 'middle', 'right'];
 
+/** 一个指针事件（Stride 的 PointerEvent）。 */
+export interface PointerEvent {
+  /** 浏览器的 pointerId：鼠标一个，每根手指各一个。 */
+  readonly pointerId: number;
+  readonly eventType: 'pressed' | 'moved' | 'released' | 'canceled';
+  /** 画布内归一化到 0..1。 */
+  readonly position: readonly [number, number];
+  /** 和这个指针上一个事件的位置差。 */
+  readonly deltaPosition: readonly [number, number];
+  /** 事件之后指针是否按着。 */
+  readonly isDown: boolean;
+}
+
+const POINTER_TYPES = { pointerdown: 'pressed', pointermove: 'moved', pointerup: 'released', pointercancel: 'canceled' } as const;
+
 export class InputManager {
   /** 这一帧鼠标的位置（画布内归一化到 0..1）。 */
   readonly mousePosition: [number, number] = [0, 0];
@@ -59,6 +76,8 @@ export class InputManager {
   readonly mouseDelta: [number, number] = [0, 0];
   /** 连着的手柄，每帧开头刷新。 */
   readonly gamePads: GamePadState[] = [];
+  /** 这一帧的指针事件，按发生的顺序。 */
+  pointerEvents: readonly PointerEvent[] = [];
 
   readonly #canvas: HTMLCanvasElement;
   readonly #down = new Set<string>();
@@ -69,6 +88,9 @@ export class InputManager {
   #pendingReleased = new Set<string>();
   #pendingDelta: [number, number] = [0, 0];
   #pendingPosition: [number, number] = [0, 0];
+  #pendingPointerEvents: PointerEvent[] = [];
+  /** 每个指针上一个事件的位置和是否按着。 */
+  readonly #pointers = new Map<number, { x: number; y: number; down: boolean }>();
   readonly #abort = new AbortController();
 
   constructor(canvas: HTMLCanvasElement) {
@@ -89,6 +111,11 @@ export class InputManager {
       this.#pendingPosition[0] = (event.clientX - rect.left) / width;
       this.#pendingPosition[1] = (event.clientY - rect.top) / height;
     }, options);
+    for (const type of Object.keys(POINTER_TYPES) as (keyof typeof POINTER_TYPES)[]) {
+      // 松开和取消可能发生在画布外（按着拖出去），挂在 window 上
+      const target: EventTarget = type === 'pointerup' || type === 'pointercancel' ? window : canvas;
+      target.addEventListener(type, (event) => this.#pointer(POINTER_TYPES[type], event as globalThis.PointerEvent), options);
+    }
     canvas.addEventListener('contextmenu', (event) => event.preventDefault(), options);
     // 失去焦点时按着的键收不到 keyup：全部当作松开
     window.addEventListener('blur', () => {
@@ -106,6 +133,8 @@ export class InputManager {
     [this.mouseDelta[0], this.mouseDelta[1]] = this.#pendingDelta;
     this.#pendingDelta = [0, 0];
     [this.mousePosition[0], this.mousePosition[1]] = this.#pendingPosition;
+    this.pointerEvents = this.#pendingPointerEvents;
+    this.#pendingPointerEvents = [];
     this.#pollGamePads();
   }
 
@@ -158,6 +187,19 @@ export class InputManager {
   destroy(): void {
     this.#abort.abort();
     this.unlockMousePosition();
+  }
+
+  #pointer(eventType: PointerEvent['eventType'], event: globalThis.PointerEvent): void {
+    const rect = this.#canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / (rect.width || 1), y = (event.clientY - rect.top) / (rect.height || 1);
+    const last = this.#pointers.get(event.pointerId);
+    // 画布外松开的、从没在画布上出现过的指针不算
+    if (!last && eventType !== 'pressed' && eventType !== 'moved') return;
+    const down = eventType === 'pressed' || (eventType === 'moved' && (last?.down ?? false));
+    this.#pendingPointerEvents.push({ pointerId: event.pointerId, eventType, position: [x, y], deltaPosition: last ? [x - last.x, y - last.y] : [0, 0], isDown: down });
+    // 手指抬起就没了；鼠标一直在，下次移动的差值接着这次算
+    if ((eventType === 'released' || eventType === 'canceled') && event.pointerType !== 'mouse') this.#pointers.delete(event.pointerId);
+    else this.#pointers.set(event.pointerId, { x, y, down });
   }
 
   #press(key: string): void {

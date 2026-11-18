@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>stride-ts animated model</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+      /* 样例是竖屏的手机游戏（GameSettings 的 640x1136）：画布保持这个比例，居中 */
+      canvas { display: block; height: 100%; aspect-ratio: 640 / 1136; max-width: 100%; margin: 0 auto; }
+      #stats {
+        position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 8px;
+        font: 12px/1.4 ui-monospace, monospace; color: #e8e8e8; background: rgb(0 0 0 / 0.5);
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <pre id="stats">starting...</pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -179,13 +179,28 @@ export interface ShadowReceiver {
   depthRangeAutomatic: boolean;
 }
 
-/** 这一帧的光照：一个方向光（可以有阴影）、环境光和一个天空盒光（多个方向光、点光源以后加）。 */
-export interface Lighting {
+/** 最多几个方向光（Stride 的 LightDirectionalGroupRenderer 默认也是一组最多 8 个；4 个足够常见的场景）。 */
+export const MAX_DIRECTIONAL_LIGHTS = 4;
+
+/** 一个方向光。 */
+export interface DirectionalLight {
   /** 光线前进的方向（世界空间，不必归一化）。 */
   readonly direction: Vector3;
-  /** 方向光：线性空间的颜色乘强度。 */
+  /** 线性空间的颜色乘强度。 */
   readonly color: Color4;
-  /** 方向光的阴影设置；不投阴影时是 undefined。 */
+}
+
+/**
+ * 这一帧的光照：最多 MAX_DIRECTIONAL_LIGHTS 个方向光、环境光和一个天空盒光（点光源以后加）。
+ * 和 Stride 不同（暂时）：只有一个方向光能投阴影（第一个打开阴影的），其余的不投。
+ */
+export interface Lighting {
+  /** 预先分配了 MAX_DIRECTIONAL_LIGHTS 个，前 directionalCount 个有效。 */
+  readonly directionals: readonly DirectionalLight[];
+  directionalCount: number;
+  /** 投阴影的方向光在 directionals 里的下标；没有时是 -1。 */
+  shadowLight: number;
+  /** 投阴影的方向光的阴影设置；没有时是 undefined。 */
   directionalShadow: DirectionalShadowSettings | undefined;
   /** 这一帧画好的阴影；没有时是 undefined。 */
   shadow: ShadowReceiver | undefined;
@@ -202,8 +217,9 @@ export class RenderSystem {
   readonly views: RenderView[] = [];
   /** 这一帧的光照，由合成器在 Collect 时从 Light 组件收集。 */
   readonly lighting: Lighting = {
-    direction: new Vector3(),
-    color: new Color4(),
+    directionals: directionalLights(),
+    directionalCount: 0,
+    shadowLight: -1,
     directionalShadow: undefined,
     shadow: undefined,
     ambient: new Color4(),
@@ -211,8 +227,9 @@ export class RenderSystem {
   };
   /** 场景里没有 Light 组件时用的光照（直射光的漫反射要除以 π，所以强度 3 大约是满亮度）。 */
   readonly defaultLighting: Lighting = {
-    direction: new Vector3(-0.4, -1, -0.6),
-    color: new Color4(3, 3, 3, 1),
+    directionals: [{ direction: new Vector3(-0.4, -1, -0.6), color: new Color4(3, 3, 3, 1) }],
+    directionalCount: 1,
+    shadowLight: -1,
     directionalShadow: undefined,
     shadow: undefined,
     ambient: new Color4(0.15, 0.15, 0.18, 1),
@@ -275,4 +292,8 @@ export class RenderSystem {
     for (const feature of this.features) feature.destroy();
     this.resources.destroy();
   }
+}
+
+function directionalLights(): DirectionalLight[] {
+  return Array.from({ length: MAX_DIRECTIONAL_LIGHTS }, () => ({ direction: new Vector3(), color: new Color4() }));
 }

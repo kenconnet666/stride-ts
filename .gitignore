@@ -6,5 +6,6 @@ dist/
 /.idea/
 /.claude/
 
-# 从 Stride 仓库导入的内容（pnpm --filter @stride-ts/platformer import）
+# 从 Stride 仓库导入的内容（各个 app 的 pnpm import:stride）
 /apps/platformer/public/content/
+/apps/animated-model/public/content/

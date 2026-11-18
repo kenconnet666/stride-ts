@@ -369,13 +369,17 @@ export type TextureEncoding = 'ktx2' | 'svg' | 'png' | 'jpeg';
 
 export const TEXTURE_EXTENSIONS: Readonly<Record<TextureEncoding, string>> = { ktx2: '.ktx2', svg: '.svg', png: '.png', jpeg: '.jpg' };
 
-export interface TextureSlot {
+/** 一张贴图文件：内容路径和编码。 */
+export interface TextureRef {
   /** 贴图的内容路径，文件是 `<路径><TEXTURE_EXTENSIONS[encoding]>`。 */
   readonly texture: string;
   /** 默认 ktx2。 */
   readonly encoding?: TextureEncoding;
   /** svg 栅格化的尺寸（像素），默认取 SVG 的 width、height。 */
   readonly size?: readonly [number, number];
+}
+
+export interface TextureSlot extends TextureRef {
   /** 采样坐标 = uv * scale + offset（scale 已经乘上 Stride 材质的 UVScale）。 */
   readonly scale: readonly [number, number];
   readonly offset: readonly [number, number];
@@ -463,6 +467,21 @@ export interface SceneCharacter extends SceneCollidable {
   readonly interpolated: boolean;
 }
 
+/** 场景用的图形合成器里主画面（槽位 0 的相机）的前向渲染器设置。 */
+export interface SceneCompositor {
+  /** 线性空间的清屏色。 */
+  readonly clearColor: readonly [number, number, number, number];
+  /** 有没有后处理（Stride 的 ForwardRenderer.PostEffects 不为 null）。 */
+  readonly postEffects: boolean;
+}
+
+/**
+ * 背景（Stride 的 BackgroundComponent）：立方体贴图（内容路径），或者 Is2D 的平面图片（铺满画面，多出的部分裁掉）。
+ */
+export type SceneBackground =
+  | { readonly type: 'cubemap'; readonly texture: string; readonly intensity: number }
+  | { readonly type: '2d'; readonly image: TextureRef; readonly intensity: number };
+
 /** Stride 的 AnimationComponent：按名字列出的剪辑（内容路径），脚本按名字播放。 */
 export interface SceneAnimation {
   readonly animations: readonly { readonly name: string; readonly clip: string }[];
@@ -518,7 +537,8 @@ export interface SceneEntityFile {
       /** 投下阴影；没有时是 true（同 Stride 的 ModelComponent.IsShadowCaster）。 */
       readonly isShadowCaster?: boolean;
     };
-    readonly camera?: { readonly verticalFieldOfView: number; readonly nearClipPlane: number; readonly farClipPlane: number };
+    /** slot：图形合成器的相机槽位下标（Stride 的 CameraComponent.Slot），默认 0。 */
+    readonly camera?: { readonly verticalFieldOfView: number; readonly nearClipPlane: number; readonly farClipPlane: number; readonly slot?: number };
     readonly light?:
       | {
         readonly type: 'directional' | 'ambient';
@@ -534,8 +554,7 @@ export interface SceneEntityFile {
         readonly skybox: string;
         readonly intensity: number;
       };
-    /** 背景（Stride 的 BackgroundComponent）：立方体贴图的内容路径和强度。 */
-    readonly background?: { readonly texture: string; readonly intensity: number };
+    readonly background?: SceneBackground;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;
@@ -549,6 +568,8 @@ export interface SceneFile {
   readonly name: string;
   /** 场景用的仿真设置；没有时用引擎的默认值。 */
   readonly physics?: ScenePhysics;
+  /** 主画面的合成器设置；没有时用前向渲染器的默认值。 */
+  readonly compositor?: SceneCompositor;
   /** 父实体都排在子实体前面。 */
   readonly entities: readonly SceneEntityFile[];
 }

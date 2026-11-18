@@ -6,13 +6,16 @@
  */
 import { prop } from '../data/prop';
 import { component } from '../engine/component';
-import type { SkyboxId } from './Skybox';
+import type { CubemapId, SkyboxId } from './Skybox';
+import type { TextureId } from './Texture';
 
 /** 透视相机，看向本地 -Z。默认值和 Stride 一样：竖直视角 45°，近裁剪面 0.1，远裁剪面 1000。 */
 export const Camera = component('Camera', {
   verticalFieldOfView: prop.f32().default(45).min(1).max(179).unit('deg'),
   nearClipPlane: prop.f32().default(0.1).min(0),
   farClipPlane: prop.f32().default(1000).min(0),
+  /** 图形合成器的相机槽位（Stride 的 CameraComponent.Slot，按合成器的 Cameras 列表编号）；0 是主画面用的那个。 */
+  slot: prop.u32().default(0),
 });
 
 /**
@@ -45,9 +48,13 @@ export const Light = component('Light', {
   shadowBlendCascades: prop.bool().default(true).group('Shadow'),
 });
 
-/** 背景（Stride 的 BackgroundComponent）：在没画到的地方画立方体贴图（Cubemap.id），乘强度，跟着实体旋转。 */
+/**
+ * 背景（Stride 的 BackgroundComponent）：在没画到的地方画立方体贴图（texture，Cubemap.id，跟着实体旋转），或者平面图片
+ * （image，Texture.id，Stride 的 Is2D：保持比例铺满画面，多出的部分两边对称裁掉），乘强度。两个都设时用 image。
+ */
 export const Background = component('Background', {
-  texture: prop.u32().brand<'CubemapId'>(),
+  texture: prop.u32().brand<'CubemapId'>().default(0 as CubemapId),
+  image: prop.u32().brand<'TextureId'>().default(0 as TextureId),
   intensity: prop.f32().default(1).min(0),
 });
 

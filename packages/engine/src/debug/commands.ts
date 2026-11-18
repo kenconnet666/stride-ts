@@ -158,6 +158,10 @@ function time(game: Game, args: Args): unknown {
 }
 
 const MOUSE_BUTTONS: Record<MouseButton, number> = { left: 0, middle: 1, right: 2 };
+/** 合成的鼠标指针的 pointerId（浏览器真实鼠标的是 1，用别的值不和它混在一起）。 */
+const SYNTHETIC_POINTER = 1000;
+/** 上一次合成的指针位置（client 坐标）。 */
+let syntheticPointer: [number, number] | undefined;
 
 /**
  * 派发合成的 DOM 事件，走和真实输入一样的路径（InputManager 的监听器）。press 按下后等游戏跑过一帧再松开，
@@ -169,7 +173,12 @@ async function input(game: Game, args: Args): Promise<unknown> {
   if (Array.isArray(args['mouse'])) {
     const [dx = 0, dy = 0] = args['mouse'] as number[];
     const rect = canvas.getBoundingClientRect();
-    window.dispatchEvent(new MouseEvent('mousemove', { movementX: dx, movementY: dy, clientX: rect.left + rect.width / 2 + dx, clientY: rect.top + rect.height / 2 + dy }));
+    // 指针从上一次合成的位置（第一次从画布中心）移过去；先在起点发一个，没见过这个指针的 InputManager 也能算出移动量
+    const [x, y] = (syntheticPointer ??= [rect.left + rect.width / 2, rect.top + rect.height / 2]);
+    syntheticPointer = [x + dx, y + dy];
+    canvas.dispatchEvent(new PointerEvent('pointermove', { pointerId: SYNTHETIC_POINTER, pointerType: 'mouse', clientX: x, clientY: y }));
+    canvas.dispatchEvent(new PointerEvent('pointermove', { pointerId: SYNTHETIC_POINTER, pointerType: 'mouse', clientX: x + dx, clientY: y + dy }));
+    window.dispatchEvent(new MouseEvent('mousemove', { movementX: dx, movementY: dy, clientX: x + dx, clientY: y + dy }));
   }
   let down: () => void, up: () => void;
   if (typeof args['key'] === 'string') {
@@ -180,8 +189,17 @@ async function input(game: Game, args: Args): Promise<unknown> {
   } else if (typeof args['button'] === 'string') {
     const button = MOUSE_BUTTONS[args['button'] as MouseButton];
     if (button === undefined) throw new Error(`button must be left, middle or right, got '${args['button']}'`);
-    down = () => canvas.dispatchEvent(new MouseEvent('mousedown', { button, bubbles: true }));
-    up = () => window.dispatchEvent(new MouseEvent('mouseup', { button }));
+    const rect = canvas.getBoundingClientRect();
+    const [clientX, clientY] = syntheticPointer ?? [rect.left + rect.width / 2, rect.top + rect.height / 2];
+    const pointer = { pointerId: SYNTHETIC_POINTER, pointerType: 'mouse', clientX, clientY, button };
+    down = () => {
+      canvas.dispatchEvent(new PointerEvent('pointerdown', pointer));
+      canvas.dispatchEvent(new MouseEvent('mousedown', { button, bubbles: true }));
+    };
+    up = () => {
+      window.dispatchEvent(new PointerEvent('pointerup', pointer));
+      window.dispatchEvent(new MouseEvent('mouseup', { button }));
+    };
   } else {
     return { frame: game.frames };
   }

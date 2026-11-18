@@ -65,7 +65,7 @@ export class ShadowMapRenderer {
     receiver.filterSize = FILTER_SIZES[settings.filter];
     receiver.blendCascades = settings.blendCascades;
     receiver.depthRangeAutomatic = settings.depthRange === 'automatic';
-    this.#cascades.collect(main, lighting.direction, settings, size, rectangles, ATLAS_SIZE, receiver);
+    this.#cascades.collect(main, lighting.directionals[lighting.shadowLight]!.direction, settings, size, rectangles, ATLAS_SIZE, receiver);
     lighting.shadow = receiver;
     return this.#cascades.views.slice(0, receiver.cascadeCount);
   }

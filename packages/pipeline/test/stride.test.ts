@@ -5,7 +5,7 @@ import path from 'node:path';
 import { decodeCubemap, decodeModel, type MaterialFile, type SceneFile, type SkyboxFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { floatToHalf, fromRgb9e5, halfToFloat, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
+import { dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
 
 describe('Stride 的 YAML', () => {
   test('标签里的逗号（程序集限定名）、对象引用和资源引用', () => {
@@ -377,7 +377,7 @@ describe('导入 Stride 场景', () => {
     // 父实体排在前面，即使文件里子实体在前
     expect(scene.entities.map((e) => [e.name, e.parent])).toEqual([['Root', null], ['Child', 'e2'], ['Sky', null]]);
     expect(scene.entities[1]!.components.scripts).toEqual([{ type: 'Game.Spinner', props: {} }]);
-    expect(scene.entities[2]!.components).toEqual({ light: { type: 'skybox', skybox: 'Game/Sky', intensity: 1.5 }, background: { texture: 'Game/SkyTexture', intensity: 3 } });
+    expect(scene.entities[2]!.components).toEqual({ light: { type: 'skybox', skybox: 'Game/Sky', intensity: 1.5 }, background: { type: 'cubemap', texture: 'Game/SkyTexture', intensity: 3 } });
 
     // 恒定的天空：球谐的常数项就是天空的颜色；镜面的预滤波在运行时做，这里只引用源立方体贴图（和背景是同一个文件）
     const skybox = JSON.parse(await readFile(path.join(out, 'Game/Sky.skybox.json'), 'utf8')) as SkyboxFile;
@@ -486,5 +486,54 @@ describe('导入 Stride 场景', () => {
     expect(svgSize('<svg width="512" height="256px" viewBox="0 0 10 10">')).toEqual([512, 256]);
     expect(svgSize('<svg width="100%" viewBox="0 0 300 150">')).toEqual([300, 150]);
     expect(svgSize('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg">')).toBeUndefined();
+  });
+});
+
+describe('图形合成器', () => {
+  // AnimatedModel 的合成器的结构：第二个槽位的相机渲染到纹理，主画面引用共享的前向渲染器，字段名带覆盖标记 *
+  const compositor = parseStrideYaml(`!GraphicsCompositorAsset
+Id: c
+Cameras:
+    a1:
+        Id: main-slot
+        Name: Main
+    b2*:
+        Id: second-slot
+        Name: Second
+SharedRenderers:
+    s1: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine
+        Id: main-forward
+        Clear:
+            Color: {R: 0.5, G: 0.5, B: 0.5, A: 1.0}
+        PostEffects: null
+    s2: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine
+        Id: texture-forward
+        Clear:
+            Color: {R: 1.0, G: 0.0, B: 0.0, A: 1.0}
+Game*: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
+    Children:
+        c1: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
+            Camera: ref!! second-slot
+            Child: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! texture-forward
+        c2: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
+            Camera: ref!! main-slot
+            Child: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
+                Children:
+                    f: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! main-forward
+`);
+
+  test('相机槽位按列表编号；主画面是槽位 0 的相机下的前向渲染器，清屏色换到线性空间', () => {
+    const { cameraSlots, main } = importCompositor(compositor);
+    expect([...cameraSlots]).toEqual([['main-slot', 0], ['second-slot', 1]]);
+    expect(main?.postEffects).toBe(false);
+    expect(main?.clearColor.map((c) => +c.toFixed(4))).toEqual([0.214, 0.214, 0.214, 1]);
+  });
+
+  test('没有合成器时没有槽位，用默认设置', () => {
+    expect(importCompositor(undefined)).toEqual({ cameraSlots: new Map(), main: undefined });
+  });
+
+  test('字典的键去掉项的 id 前缀', () => {
+    expect([dictionaryKey('32dcc5bc~Idle'), dictionaryKey('Run'), dictionaryKey('a~b~c')]).toEqual(['Idle', 'Run', 'b~c']);
   });
 });

@@ -30,7 +30,7 @@ export {
 } from './animation/AnimationComponent';
 export { AnimationSystem, ModelSkeleton, type SkinnedPart } from './animation/AnimationSystem';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
-export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance } from './content/ContentManager';
+export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
 export type { SceneScriptMap } from './content/sceneScripts';
 export {
   decodeCubemap,

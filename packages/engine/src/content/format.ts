@@ -557,7 +557,8 @@ export interface SceneAnimation {
 }
 
 /** 脚本属性引用的资源种类。 */
-export type SceneAssetKind = 'model' | 'material' | 'animation';
+/** scene：只记路径，不随引用它的场景加载（场景之间常常互相引用），切换时才加载（Game.setRootScene）。 */
+export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene';
 
 /**
  * 脚本的属性值（Stride 序列化的值换过来）：标量原样；列表是数组；Vector3、Quaternion 是数组；别的结构是键名改成

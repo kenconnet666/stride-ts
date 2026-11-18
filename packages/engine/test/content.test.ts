@@ -157,13 +157,14 @@ describe('ContentManager', () => {
       speed: prop.number().default(1),
       keys: prop.list(prop.string()).default([]),
       look: prop.asset('material').optional(),
+      next: prop.asset('scene').optional(),
     }) {}
     class Renamed extends SyncScript.props({ value: prop.number().default(0) }) {}
     const scene: SceneFile = {
       name: 'Scripts',
       entities: [
         { id: 'a', name: 'A', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { scripts: [
-          { type: 'MyGame.Ai.Follower', props: { target: { $entity: 'b' }, speed: 3, keys: ['W', 'Up'], look: { $asset: 'materials/Grid', kind: 'material' }, notInTs: 1 } },
+          { type: 'MyGame.Ai.Follower', props: { target: { $entity: 'b' }, speed: 3, keys: ['W', 'Up'], look: { $asset: 'materials/Grid', kind: 'material' }, next: { $asset: 'scenes/Other', kind: 'scene' }, notInTs: 1 } },
           { type: 'MyGame.Missing', props: {} },
           { type: 'MyGame.OldName', props: { value: 7 } },
         ] } },
@@ -188,6 +189,8 @@ describe('ContentManager', () => {
       expect(follower.speed).toBe(3);
       expect(follower.keys).toEqual(['W', 'Up']);
       expect(follower.look).toBe(await content.loadMaterial('materials/Grid'));
+      // 引用的场景只记路径，不加载（场景之间常常互相引用）
+      expect(follower.next).toEqual({ path: 'scenes/Other' });
       expect(loaded.entities.get('a')!.require(Renamed).value).toBe(7);
     } finally {
       console.warn = warn;
@@ -196,6 +199,28 @@ describe('ContentManager', () => {
       expect.stringContaining('MyGame.Ai.Follower.notInTs is not a prop of the TS script'),
       expect.stringContaining('no TS script named Missing for MyGame.Missing'),
     ]);
+  });
+
+  test('换根场景：新场景加载好后销毁旧根场景的实体（连同子实体），另建的实体不动；连着换按顺序来', async () => {
+    const sceneFile = (name: string): SceneFile => ({
+      name,
+      entities: [
+        { id: 'root', name: `${name} root`, parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} },
+        { id: 'child', name: `${name} child`, parent: 'root', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} },
+      ],
+    });
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    game.content = new ContentManager({ root: 'https://game.test/content/', read: async (url) => json(sceneFile(url.pathname.split('/').at(-1)!.split('.')[0]!)) });
+    const first = await game.setRootScene('scenes/First');
+    const spawned = game.entities.create({ name: 'spawned' });
+    expect(game.rootScene).toBe(first);
+    const [second, third] = await Promise.all([game.setRootScene({ path: 'scenes/Second' }), game.setRootScene('scenes/Third')]);
+    expect(game.rootScene).toBe(third);
+    expect([...first.entities.values(), ...second!.entities.values()].some((e) => game.entities.isAlive(e.id))).toBe(false);
+    expect([...third!.entities.values()].map((e) => e.name)).toEqual(['Third root', 'Third child']);
+    expect(game.entities.isAlive(spawned.id)).toBe(true);
   });
 });
 

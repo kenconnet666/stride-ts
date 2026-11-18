@@ -69,7 +69,10 @@ describe('Simulation', () => {
     const above = [position(player).x, 10, position(player).z] as const;
     expect(game.simulation.rayCast(above, [0, -1, 0], 20)?.entity).toBe(player.id);
     expect(game.simulation.rayCast(above, [0, -1, 0], 20, { mask: 1 << 0 })?.entity).toBe(floor.id);
-    expect(() => game.simulation.configure({ gravity: [0, -9.8, 0] })).toThrow(/before the first physics body/);
+    // 建了物体以后：重力能改，阻尼只能设成一样的值
+    game.simulation.configure({ gravity: [0, -9, 0], linearDamping: game.simulation.settings.linearDamping });
+    expect(game.simulation.settings.gravity).toEqual([0, -9, 0]);
+    expect(() => game.simulation.configure({ angularDamping: 0.5 })).toThrow(/angularDamping must be set before the first physics body/);
     game.simulation.configure({ maxStepsPerFrame: 2 });
     game.simulation.destroy();
   });
@@ -209,8 +212,14 @@ describe('约束（Stride.BepuPhysics 的约束组件）', () => {
     expect(position(sphere).y).toBeLessThan(height - 3);
 
     // 焊接以后销毁立方体：约束跟着移除，球继续落
+    const cubeBody = game.simulation.body(cube);
     game.simulation.addConstraint({ type: 'weld', bodyA: cube, bodyB: sphere, localOffset: [-4, 0, 0] });
     cube.destroy();
+    // 移除后的物体（同 Stride 离开仿真的 BodyComponent）：设置只记下，冲量、瞬移忽略
+    cubeBody.kinematic = false;
+    cubeBody.applyLinearImpulse({ x: 0, y: 1, z: 0 });
+    cubeBody.teleport(new Vector3(0, 0, 0), new Quaternion());
+    expect([cubeBody.kinematic, cubeBody.awake, cubeBody.linearVelocity.y]).toEqual([false, false, 0]);
     const before = position(sphere).y;
     run(game, 30);
     expect(position(sphere).y).toBeLessThan(before - 0.5);

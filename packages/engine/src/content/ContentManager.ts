@@ -28,7 +28,13 @@ declare module '../data/prop' {
     model: LoadedModel;
     material: Material;
     animation: AnimationClip;
+    scene: SceneReference;
   }
+}
+
+/** 脚本属性引用的场景（Stride 的 Scene 类型的属性）：只是路径，交给 Game.setRootScene 时才加载。 */
+export interface SceneReference {
+  readonly path: string;
 }
 
 /** loadScene 的选项。 */
@@ -287,7 +293,10 @@ export class ContentManager {
     }
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
     const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: models, material: materials, animation: animations };
-    const context = { entities: created, asset: (kind: string, assetPath: string) => byKind[kind]!.get(assetPath)! };
+    const context = {
+      entities: created,
+      asset: (kind: string, assetPath: string): object => (kind === 'scene' ? ({ path: assetPath } satisfies SceneReference) : byKind[kind]!.get(assetPath)!),
+    };
     for (const file of scene.entities) {
       for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${path}: ${file.name}`);
     }
@@ -385,8 +394,8 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
   return shape;
 }
 
-/** 脚本属性能引用的资源种类（加载场景时预先加载）。 */
-const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation']);
+/** 脚本属性能引用的资源种类（model、material、animation 加载场景时预先加载，scene 只给路径）。 */
+const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene']);
 
 function unionBounds(all: readonly Bounds[]): Bounds {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];

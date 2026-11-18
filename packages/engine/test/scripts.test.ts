@@ -78,6 +78,13 @@ describe('脚本', () => {
     expect(order).toEqual(['dispose (aborted true)', 'cancel']);
     expect(owner.attached).toBe(false);
     expect(e.get(Owner)).toBeUndefined();
+
+    // 还没启动就移除：不调 start，也不调 cancel（同 Stride）
+    order.length = 0;
+    const early = game.entities.create({ components: [Owner] });
+    early.destroy();
+    frame(game);
+    expect(order).toEqual([]);
   });
 
   test('异步脚本每帧继续一次，移除后停止', async () => {

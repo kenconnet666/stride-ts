@@ -41,6 +41,7 @@ function status(debug: Debug, game: Game): unknown {
     error: game.error ?? null,
     frame: game.frames,
     sceneFrame: game.sceneFrame ?? null,
+    scene: game.rootScene?.name ?? null,
     time: { total: game.updateTime.total, paused: game.paused, timeScale: game.timeScale, fixedTimeStep: game.fixedTimeStep ?? null },
     fps: recent.length > 0 ? 1000 / meanInterval : null,
     canvas: canvas ? { width: canvas.width, height: canvas.height, clientWidth: canvas.clientWidth, clientHeight: canvas.clientHeight, devicePixelRatio } : null,

@@ -1,6 +1,6 @@
 // PhysicsSample：三个物理演示场景（Raycasting、VolumeTrigger、Constraints），场景里的脚本按类名对上 game/ 里翻译过来的 TS 脚本。
-// 现在先是 Raycasting：点击箱子把它往上推，空格让有 ImpulseOnSpaceScript 的箱子往上跳。
-// 还没有的（P2）：各场景的 UI 文字和切换场景的按钮。
+// 从 Raycasting 开始（`?scene=PhysicsSample/VolumeTrigger` 这样换开始的场景），NextSceneScript 在场景之间换。
+// 还没有的（P2）：各场景的 UI 文字和按钮（现在用调试命令代替）。
 import { Game, type GameTime } from '@stride-ts/engine';
 
 const SCENE = 'PhysicsSample/Raycasting';
@@ -16,7 +16,7 @@ export class PhysicsSampleGame extends Game {
   }
 
   protected override async loadContent(): Promise<void> {
-    await this.loadScene(new URLSearchParams(location.search).get('scene') ?? SCENE);
+    await this.setRootScene(new URLSearchParams(location.search).get('scene') ?? SCENE);
   }
 
   protected override update(time: GameTime): void {

@@ -238,12 +238,13 @@ export class StrideImporter {
     return object;
   }
 
-  /** 脚本属性引用的资源：能导入的种类导入并给出内容路径，别的记警告。 */
+  /** 脚本属性引用的资源：能导入的种类导入并给出内容路径，别的记警告。场景只给路径，不跟着导入（要用 --scene 另外导入）。 */
   async #scriptAsset(asset: AssetEntry, where: string): Promise<SceneScriptValue> {
     const kinds: Record<string, [SceneAssetKind, () => Promise<string>]> = {
       Model: ['model', () => this.#model(asset)],
       MaterialAsset: ['material', () => this.#material(asset)],
       Animation: ['animation', () => this.#animation(asset)],
+      SceneAsset: ['scene', () => Promise.resolve(asset.path)],
     };
     const kind = kinds[asset.type];
     if (!kind) {

@@ -13,7 +13,7 @@ import { ComponentType, type BareComponent, type ColumnsOf, type ComponentInit }
 import { ScopedDefaults } from './defaults';
 import type { HotChange } from './registry';
 import { Entity } from './Entity';
-import { AsyncScript, ScriptComponent, StartupScript, SyncScript, scriptName, type BareScript, type ScriptConstructor, type ScriptInit } from './scripts';
+import { AsyncScript, ScriptComponent, STARTED, StartupScript, SyncScript, scriptName, type BareScript, type ScriptConstructor, type ScriptInit } from './scripts';
 import { Stat, type StatClock } from './stats';
 import { Table, tableKey, type ColumnSet } from './storage';
 import { orderSystems, System, type Phase } from './system';
@@ -494,6 +494,7 @@ export class EntityManager {
     for (let i = 0; i < this.#pendingStart.length; i++) {
       const script = this.#pendingStart[i]!;
       if (!script.attached) continue;
+      script[STARTED] = true;
       if (script instanceof StartupScript) script.start();
       if (script instanceof SyncScript) this.#syncScripts.push(script);
       if (script instanceof AsyncScript) this.#execute(script);

@@ -1,6 +1,6 @@
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
 import { AnimationSystem } from '../animation/AnimationSystem';
-import { ContentManager, type LoadSceneOptions, type SceneInstance } from '../content/ContentManager';
+import { ContentManager, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
 import type { ScopedDefaults } from '../engine/defaults';
@@ -101,8 +101,12 @@ export class Game {
 
   status: GameStatus = 'starting';
   error: string | undefined;
-  /** 内容加载完成时的帧号。 */
+  /** 内容加载完成（或换了根场景）时的帧号。 */
   sceneFrame: number | undefined;
+  /** 根场景（Stride 的 SceneSystem.SceneInstance.RootScene），setRootScene 设；loadScene 加的场景不算。 */
+  rootScene: SceneInstance | undefined;
+  /** 正在换的根场景：连着换几次时按顺序来。 */
+  private rootSceneChange: Promise<unknown> = Promise.resolve();
 
   private lastFrameTime: number | undefined;
   private pendingSteps = 0;
@@ -237,6 +241,31 @@ export class Game {
       this.simulation.configure(scene.physics);
     }
     return scene;
+  }
+
+  /**
+   * 换根场景（Stride 里给 SceneSystem.SceneInstance.RootScene 赋值）：加载新场景，加载好后销毁旧根场景的实体
+   * （子实体、脚本、物体跟着去掉）。加载期间旧场景照常运行。和 Stride 不同：只销毁旧场景文件里的实体，脚本运行中
+   * 另建的实体不动。
+   *
+   *   override update(): void { if (this.input.isKeyPressed('N')) void this.game.setRootScene(this.nextScene); }
+   */
+  setRootScene(scene: string | SceneReference, options: LoadSceneOptions = {}): Promise<SceneInstance> {
+    const path = typeof scene === 'string' ? scene : scene.path;
+    const change = this.rootSceneChange.catch(() => undefined).then(async () => {
+      const next = await this.loadScene(path, options);
+      const previous = this.rootScene;
+      // 先换上新场景：旧场景的脚本在 cancel 里出错时，根场景也已经是新的
+      this.rootScene = next;
+      this.sceneFrame = this.frames;
+      // 父实体在前：销毁父实体时子实体已经跟着销毁了
+      for (const entity of previous?.entities.values() ?? []) {
+        if (this.entities.isAlive(entity.id)) entity.destroy();
+      }
+      return next;
+    });
+    this.rootSceneChange = change;
+    return change;
   }
 
   /** 运行脚本、系统和物理仿真（在物理前和物理后两组系统之间）；重写时要调用 super.update(time)。 */

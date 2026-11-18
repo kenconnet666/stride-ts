@@ -64,6 +64,9 @@ export type WithProps<B extends ScriptConstructor, S extends Shape, V extends st
     readonly __bare: {} extends InitOf<S, 'script'> ? true : false;
   };
 
+/** @internal 脚本启动过的标记（symbol 键，不和脚本自己的字段重名）。 */
+export const STARTED = Symbol('started');
+
 export abstract class ScriptComponent {
   declare static readonly __shape: {};
   declare static readonly __variants: never;
@@ -83,6 +86,8 @@ export abstract class ScriptComponent {
   /** 脚本移除或游戏退出时释放（事件接收器、钩子、计时器、资源）。 */
   protected readonly disposables = new DisposableStack();
   readonly #abort = new AbortController();
+  /** @internal 启动过（EntityManager 在第一次 update 之前设）；没启动就移除的脚本不调 cancel，同 Stride。 */
+  [STARTED] = false;
   /** @internal 有 .stat() 属性的脚本由管理器设置。 */
   statTable: Readonly<Record<string, Stat>> = {};
 
@@ -110,7 +115,7 @@ export abstract class ScriptComponent {
     return this.disposables.use(key.receiver());
   }
 
-  /** 移除后调用：这时 signal 已中止、disposables 已释放。 */
+  /** 移除后调用：这时 signal 已中止、disposables 已释放。还没启动就移除的脚本不调（同 Stride 的 ScriptSystem.Remove）。 */
   cancel(): void {}
 
   static props<B extends ScriptConstructor, S extends Shape, V extends string = never>(this: B, shape: S, options?: ScriptOptions<S, V>): WithProps<B, S, V>;
@@ -143,7 +148,7 @@ export abstract class ScriptComponent {
     try {
       this.disposables.dispose();
     } finally {
-      this.cancel();
+      if (this[STARTED]) this.cancel();
     }
   }
 }

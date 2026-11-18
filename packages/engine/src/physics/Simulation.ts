@@ -168,6 +168,7 @@ export class Simulation {
       const body = this.#entities.entity(entity).require(PhysicsBody).body as BodyId;
       this.#world?.removeBodies([body]);
       this.#handlers.delete(body);
+      this.#controls.get(body)?.detach();
       this.#controls.delete(body);
       delete this.#bodyEntities[body];
     },
@@ -189,10 +190,16 @@ export class Simulation {
     entities.addSystems(this.#removeBodies);
   }
 
-  /** 改设置；重力、阻尼和碰撞矩阵要在建第一个物体之前改。 */
+  /**
+   * 改设置。重力随时能改（Stride 的 PoseGravity；睡着的物体被碰到或唤醒后才受新的重力）；阻尼和碰撞矩阵要在建第一个
+   * 物体之前改，之后只能设成和现在一样的值（换场景时场景带的设置常常相同）。
+   */
   configure(settings: Partial<SimulationSettings>): void {
-    if (this.#world && (settings.gravity || settings.linearDamping !== undefined || settings.angularDamping !== undefined || settings.collisionMasks)) {
-      throw new Error('Simulation.configure: gravity, damping and collisionMasks must be set before the first physics body is created');
+    if (this.#world) {
+      const fixed = (['linearDamping', 'angularDamping', 'collisionMasks'] as const)
+        .filter((key) => settings[key] !== undefined && JSON.stringify(settings[key]) !== JSON.stringify(this.settings[key]));
+      if (fixed.length > 0) throw new Error(`Simulation.configure: ${fixed.join(', ')} must be set before the first physics body is created`);
+      if (settings.gravity) this.#world.setWorldGravity(settings.gravity);
     }
     Object.assign(this.settings, settings);
   }
@@ -357,9 +364,19 @@ export class Simulation {
   }
 }
 
+/** 物体移除后 BodyControl 记着的设置。 */
+interface DetachedBody {
+  kinematic: boolean;
+  gravity: boolean;
+  sleepThreshold: number;
+}
+
 /**
  * 一个动态刚体的控制（Stride 的 BodyComponent 的属性和方法），用 `game.simulation.body(entity)` 拿到。读写直接作用到原生的物体；
  * kinematic、gravity 也写回 Body 组件的列，组件里看到的总是当前的设置。
+ *
+ * 物体移除以后（实体销毁，比如换场景时脚本的 cancel 里还在复位物体）同 Stride 的 BodyComponent 离开仿真：设置只记下，
+ * 冲量、瞬移忽略，速度是 0，不醒着。
  */
 export class BodyControl {
   readonly #world: PhysicsWorld;
@@ -368,6 +385,7 @@ export class BodyControl {
   readonly #entity: EntityId;
   readonly #linear = [0, 0, 0];
   readonly #angular = [0, 0, 0];
+  #detached: DetachedBody | undefined;
 
   /** @internal */
   constructor(world: PhysicsWorld, body: BodyId, entities: EntityManager, entity: EntityId) {
@@ -379,76 +397,92 @@ export class BodyControl {
 
   /** 运动学：不受力和重力，按速度走（Stride 的 Kinematic）。 */
   get kinematic(): boolean {
-    return this.#view().kinematic;
+    return this.#settings().kinematic;
   }
 
   set kinematic(value: boolean) {
-    this.#world.setKinematic(this.#body, value);
-    this.#view().kinematic = value;
+    if (!this.#detached) this.#world.setKinematic(this.#body, value);
+    this.#settings().kinematic = value;
   }
 
   get gravity(): boolean {
-    return this.#view().gravity;
+    return this.#settings().gravity;
   }
 
   set gravity(value: boolean) {
-    this.#world.setGravity(this.#body, value);
-    this.#view().gravity = value;
+    if (!this.#detached) this.#world.setGravity(this.#body, value);
+    this.#settings().gravity = value;
   }
 
   /** Stride 的 SleepThreshold：负数一直醒着；其余用 Jolt 的全局睡眠阈值（和 Stride 不同：Bepu 按物体设）。 */
   get sleepThreshold(): number {
-    return this.#view().sleepThreshold;
+    return this.#settings().sleepThreshold;
   }
 
   set sleepThreshold(value: number) {
-    this.#world.setNeverSleep(this.#body, value < 0);
-    this.#view().sleepThreshold = value;
+    if (!this.#detached) this.#world.setNeverSleep(this.#body, value < 0);
+    this.#settings().sleepThreshold = value;
   }
 
   /** 醒着（Stride 的 Awake）；睡着的物体不参与仿真，直到被碰到或唤醒。 */
   get awake(): boolean {
-    return this.#world.isAwake(this.#body);
+    return !this.#detached && this.#world.isAwake(this.#body);
   }
 
   set awake(value: boolean) {
-    this.#world.setAwake(this.#body, value);
+    if (!this.#detached) this.#world.setAwake(this.#body, value);
   }
 
   /** 世界空间的线速度（读的是一份拷贝；改要整个赋值）。 */
   get linearVelocity(): Vector3 {
-    this.#world.velocity(this.#body, this.#linear, this.#angular);
+    this.#readVelocity();
     return new Vector3(this.#linear[0], this.#linear[1], this.#linear[2]);
   }
 
   set linearVelocity(value: Vec3Like) {
-    this.#world.setVelocity(this.#body, [value.x, value.y, value.z]);
+    if (!this.#detached) this.#world.setVelocity(this.#body, [value.x, value.y, value.z]);
   }
 
   get angularVelocity(): Vector3 {
-    this.#world.velocity(this.#body, this.#linear, this.#angular);
+    this.#readVelocity();
     return new Vector3(this.#angular[0], this.#angular[1], this.#angular[2]);
   }
 
   set angularVelocity(value: Vec3Like) {
-    this.#world.setVelocity(this.#body, undefined, [value.x, value.y, value.z]);
+    if (!this.#detached) this.#world.setVelocity(this.#body, undefined, [value.x, value.y, value.z]);
   }
 
   /** 在质心加冲量（Stride 的 ApplyLinearImpulse）。 */
   applyLinearImpulse(impulse: Vec3Like): void {
-    this.#world.applyImpulse(this.#body, [impulse.x, impulse.y, impulse.z]);
+    if (!this.#detached) this.#world.applyImpulse(this.#body, [impulse.x, impulse.y, impulse.z]);
   }
 
   applyAngularImpulse(impulse: Vec3Like): void {
-    this.#world.applyImpulse(this.#body, undefined, [impulse.x, impulse.y, impulse.z]);
+    if (!this.#detached) this.#world.applyImpulse(this.#body, undefined, [impulse.x, impulse.y, impulse.z]);
   }
 
   /** 瞬移到世界位姿并唤醒（Stride 的 Teleport）；实体的变换立即更新。 */
   teleport(position: Vec3Like, rotation: QuatLike): void {
-    this.#world.teleport(this.#body, [position.x, position.y, position.z], [rotation.x, rotation.y, rotation.z, rotation.w]);
+    if (!this.#detached) this.#world.teleport(this.#body, [position.x, position.y, position.z], [rotation.x, rotation.y, rotation.z, rotation.w]);
   }
 
-  #view() {
-    return this.#entities.entity(this.#entity).require(Body);
+  /** @internal 物体移除时（Simulation 调用）：记下设置，之后不再碰原生的物体。 */
+  detach(): void {
+    const { kinematic, gravity, sleepThreshold } = this.#settings();
+    this.#detached = { kinematic, gravity, sleepThreshold };
+  }
+
+  /** 设置在 Body 组件的列里；物体移除后在 detach 记下的拷贝里。 */
+  #settings(): DetachedBody {
+    return this.#detached ?? this.#entities.entity(this.#entity).require(Body);
+  }
+
+  #readVelocity(): void {
+    if (this.#detached) {
+      this.#linear.fill(0);
+      this.#angular.fill(0);
+    } else {
+      this.#world.velocity(this.#body, this.#linear, this.#angular);
+    }
   }
 }

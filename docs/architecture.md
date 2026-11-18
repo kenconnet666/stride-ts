@@ -210,20 +210,25 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - `system()`，支持 `with`、`without`、`writes`、`changed`、`phase`、`after`，以及命令缓冲；
   - `StartupScript`、`SyncScript`、`AsyncScript`（`props`、`with`、`signal`、`disposables`、`nextFrame`、`delay`、`cancel`）；
   - 按"路径#导出名"登记（`Registry`）；
-  - 运行时测试 30 个，类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
+  - （2026-11-18 补全）属性类型 `vec3`、`quat`、`color`（数学类型在 `mathematics/vectors.ts`；数据组件里按行交错存 3 或 4 个 float，视图返回直接读写列的 x/y/z 对象），以及只给脚本用的 `list`、`object`、`union`、`json`（接 Standard Schema）、`component`（引用别的脚本或数据组件）；
+  - 修饰 `sealed`、`inherit`（加 `game.defaults` 作用域默认值）、`stat`（`script.stats`，可限时、可用 `using` 自动撤销）；组件和脚本的变体（`variants`、`.variant(name, init)`）；
+  - `validator(Type)` 产出 Standard Schema 校验器；
+  - `EventKey`（广播，每个接收者一个队列）和 `Hook`（同步、使用方先执行、可 `preventDefault`，事件对象复用并在派发后失效）；脚本的 `this.on`、`this.receive` 随脚本释放；
+  - 系统的 `added`、`removed`：按实体回调（不是按块），`removed` 时还能读到数据，回调里的结构性改动走命令缓冲；
+  - 运行时测试 41 个，类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
 - **和下文设计的出入**：
   - 一个 archetype 目前是一块可增长的表（容量翻倍），还没有切成固定大小的块。
   - 默认值的检查在定义时做（越早越好），报错带字段名。
   - 布尔字段在列里是 `Uint8Array`（0 和 1），视图和脚本里是 `boolean`。
   - 数据组件的字段不能是 `optional`：列里没有"缺失"这个值。
   - `nextFrame()` 之后的代码在当前帧结束后、下一帧开始前运行：Promise 的后续代码没法插进同步的一帧中间。这一点和 Stride 不同，Stride 是在下一帧的脚本阶段继续。
-- **还没做**：
-  - 属性类型 `vec3`、`quat`、`color`、`asset`、`component`、`list`、`object`、`union`、`json`；
-  - 分层覆盖（`sealed`、`inherit`、`stat`、变体、预制体）；
-  - 钩子和 `EventKey`；
-  - 系统的 `added`、`removed`；
-  - 热重载；
-  - `validators()`。
+  - 脚本引用自己或互相引用时，`props()` 里写 `prop.component(() => ScriptComponent)`，再在类体里用 `declare target: Other` 收窄：继承表达式里出现自己的类名，TS 会报循环引用（TS2506），和 easy-query-ts 把关系与实体分开定义是同一个原因。
+  - `stat` 只给脚本用；数据组件的数值在系统里改。
+- **还没做**（依赖后面的里程碑）：
+  - 资源引用 `asset`：要等内容管线；
+  - 预制体、部件（`prop.parts`）、按子树生效的默认值：要等实体层级，和第 2 步的 wasm 变换数组一起做；
+  - 热重载：Vite 的 HMR 要求静态写出依赖列表，要先定是加一个只在开发时生效的小插件，还是让游戏入口自己接住更新；
+  - bigint、decimal、日期等类型（参照 json-wire，2026-11-18 用户提出，见下一步）。
 
 **实测（沙盒，本机 Chrome）**：
 - 负载：1.2 万个粒子实体，`Fountain` 脚本每 0.5 秒生成 2000 个，`expire` 系统用命令缓冲销毁到期的。

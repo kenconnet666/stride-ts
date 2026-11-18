@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>stride-ts platformer</title>
+    <!-- 没有图标：空的 data URL，浏览器就不去请求 /favicon.ico（开发时控制台少一条 404） -->
+    <link rel="icon" href="data:," />
     <style>
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
       canvas { display: block; width: 100%; height: 100%; }

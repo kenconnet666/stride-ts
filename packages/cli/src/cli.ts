@@ -6,11 +6,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import type { HubLogEntry, LogLevel } from '@stride-ts/engine/debug-protocol';
-import { closeBrowser, openUrl } from './chrome.ts';
+import { CdpSession, closeBrowser, openUrl, pageTarget } from './chrome.ts';
 import { HubClient } from './client.ts';
 import { formatJson } from './format.ts';
+import { COLLECT_GPU_COUNTERS, INSTALL_GPU_COUNTERS } from './gpu-calls.ts';
 import { decodePng, diffImages, encodePng } from './png.ts';
-import { listHubs } from './state.ts';
+import { profileCallers, summarizeProfile, type CpuProfile } from './profile.ts';
+import { listHubs, readBrowser } from './state.ts';
 
 const HELP = `stride <command> [options]   (from the repository: pnpm exec stride <command>)
 
@@ -32,7 +34,11 @@ Game
   key <code> [--hold <ms> | --down | --up]          KeyboardEvent.code, e.g. KeyW, Space, ArrowLeft
   mouse move <dx> <dy> | mouse <left|middle|right> [--hold <ms> | --down | --up]
   shot <out.png> [--diff <reference.png>] [--diff-out <file>] [--threshold 2]
-  perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, GPU per pass
+  perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, native timings, GPU per pass
+  native [--reset]                                  native counters (physics bodies, ...), timings, wasm memory
+  gpu-calls [--seconds 2]                           WebGPU calls and writeBuffer bytes per frame
+  cpu-profile [--seconds 5] [--out profile.json] [--callers <regex>]
+                          sample the main thread (needs a Chrome from stride open): ms per frame by kind and function
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
   logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
   eval <code | ->         run JavaScript in the page (strideGame, strideEngine are globals); - reads stdin
@@ -79,6 +85,9 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     level: { type: 'string' },
     source: { type: 'string' },
     json: { type: 'boolean' },
+    reset: { type: 'boolean' },
+    out: { type: 'string' },
+    callers: { type: 'string' },
   },
 });
 
@@ -197,6 +206,35 @@ const commands: Record<string, () => Promise<unknown>> = {
   perf() {
     const seconds = Number(options.seconds ?? 3);
     return call('perf', { seconds, gpu: !options['no-gpu'] }, seconds * 1000);
+  },
+  native: () => call('native', options.reset ? { reset: true } : {}),
+  async 'gpu-calls'() {
+    await call('eval', { code: INSTALL_GPU_COUNTERS });
+    await new Promise((resolve) => setTimeout(resolve, Number(options.seconds ?? 2) * 1000));
+    return call('eval', { code: COLLECT_GPU_COUNTERS });
+  },
+  async 'cpu-profile'() {
+    const browser = readBrowser();
+    if (!browser) throw new Error('cpu-profile needs a Chrome started by stride open (it uses the DevTools protocol)');
+    const client = await HubClient.find(options.hub);
+    const pages = await client.pages();
+    const info = page === undefined ? pages.at(-1) : pages.find((p) => p.id === page);
+    if (!info) throw new Error('no page is connected');
+    await using cdp = await CdpSession.connect((await pageTarget(browser, info.url)).webSocketDebuggerUrl);
+    await cdp.send('Profiler.enable');
+    await cdp.send('Profiler.setSamplingInterval', { interval: 100 });
+    const frame = async () => ((await client.call('status', {}, { page: info.id })) as { frame: number }).frame;
+    const first = await frame();
+    await cdp.send('Profiler.start');
+    await new Promise((resolve) => setTimeout(resolve, Number(options.seconds ?? 5) * 1000));
+    const { profile } = (await cdp.send('Profiler.stop')) as { profile: CpuProfile };
+    const frames = (await frame()) - first;
+    if (options.out) writeFileSync(options.out, JSON.stringify(profile));
+    return {
+      ...(options.out ? { file: options.out } : {}),
+      ...(summarizeProfile(profile, frames) as object),
+      ...(options.callers ? { callers: profileCallers(profile, new RegExp(options.callers), frames) } : {}),
+    };
   },
   raycast: () => call('raycast', {
     origin: vector(rest[0], 'origin x,y,z'),

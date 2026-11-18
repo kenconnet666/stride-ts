@@ -7,6 +7,7 @@ import { WebSocket } from 'ws';
 import type { CallMessage } from '@stride-ts/engine/debug-protocol';
 import { formatJson } from '../src/format.ts';
 import { decodePng, diffImages, encodePng } from '../src/png.ts';
+import { profileCallers, summarizeProfile } from '../src/profile.ts';
 
 describe('PNG', () => {
   it('编码后解码得到同样的像素，比较能找出差的位置', () => {
@@ -22,6 +23,26 @@ describe('PNG', () => {
     expect(diff.max).toBe(40);
     expect(diff.over).toEqual({ '1': 1, '2': 1, '8': 1, '32': 1 });
     expect(diff.bounds).toEqual([3, 1, 1, 1]);
+  });
+});
+
+describe('CPU 剖析的汇总', () => {
+  it('自身时间按函数和类别、包含时间算到调用链上的每一层，callers 给出调用链', () => {
+    // root → frame（js） → step（wasm）；采样：frame 1 次、step 2 次，每次 1 ms（时间差从第二个开始算）
+    const profile = {
+      nodes: [
+        { id: 1, callFrame: { functionName: '(root)', url: '' }, children: [2] },
+        { id: 2, callFrame: { functionName: 'frame', url: 'http://x/index.js' }, children: [3] },
+        { id: 3, callFrame: { functionName: 'step', url: 'wasm://wasm/core' } },
+      ],
+      samples: [2, 3, 3],
+      timeDeltas: [0, 1000, 1000, 1000],
+    };
+    const summary = summarizeProfile(profile, 1) as { self: Record<string, number>; inclusive: Record<string, number>; selfByKind: Record<string, number> };
+    expect(summary.self).toEqual({ 'step [wasm]': 2, 'frame [index.js]': 1 });
+    expect(summary.selfByKind).toEqual({ wasm: 2, 'js index.js': 1 });
+    expect(summary.inclusive['frame [index.js]']).toBe(3);
+    expect(profileCallers(profile, /^step$/, 1)).toEqual({ 'frame [index.js] <- (root) []': 2 });
   });
 });
 

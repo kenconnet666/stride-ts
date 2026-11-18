@@ -25,6 +25,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64.', () => screenshot(debug, game));
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
+  debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
   debug.command('raycast', 'Physics ray cast. args: origin [x,y,z], direction [x,y,z], maxDistance (default 1000), mask.', (args) => raycast(game, args));
   debug.command('eval', 'Evaluate JavaScript in the page (globalThis.strideGame is the game); awaits promises. args: code.', (args) => evaluate(args));
 }
@@ -234,6 +235,7 @@ async function perf(debug: Debug, game: Game, args: Args): Promise<unknown> {
     await framesPassed(game, 1);
     profiler.reset();
   }
+  game.native.resetDebugTimings();
   const firstFrame = debug.frames.total;
   const firstUpdate = game.frames;
   await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
@@ -241,6 +243,7 @@ async function perf(debug: Debug, game: Game, args: Args): Promise<unknown> {
   const updates = Math.max(1, game.frames - firstUpdate);
   game.entities.timings = undefined;
   const gpuReport = gpu ? profiler.report() : [];
+  const native = game.native.debugSnapshot();
   if (!wasProfiling) profiler.enabled = false;
   const intervals = debug.frames.last(frames, debug.frames.interval);
   const perFrame = (total: number) => total / updates;
@@ -252,6 +255,7 @@ async function perf(debug: Debug, game: Game, args: Args): Promise<unknown> {
     updateMs: summary(debug.frames.last(frames, debug.frames.update)),
     drawMs: summary(debug.frames.last(frames, debug.frames.draw)),
     cpuMsPerUpdate: Object.fromEntries([...timings].sort((a, b) => b[1] - a[1]).map(([label, ms]) => [label, round(perFrame(ms))])),
+    nativeMsPerUpdate: Object.fromEntries(Object.entries(native.timings).sort((a, b) => b[1].ms - a[1].ms).map(([label, t]) => [label, round(perFrame(t.ms))])),
     gpu: gpu ? { totalMs: round(gpuReport.reduce((sum, [, t]) => sum + t.milliseconds, 0)), passes: Object.fromEntries(gpuReport.map(([label, t]) => [label, round(t.milliseconds)])) } : 'timestamp-query is not available',
     render: Object.fromEntries(game.renderSystem.features.map((feature) => [feature.name, feature.stats()])),
   };
@@ -265,6 +269,12 @@ function summary(values: readonly number[]): unknown {
 }
 
 const round = (value: number) => Math.round(value * 1000) / 1000;
+
+function nativeStats(game: Game, { reset }: Args): unknown {
+  const snapshot = game.native.debugSnapshot();
+  if (reset === true) game.native.resetDebugTimings();
+  return { workerThreads: game.native.workerThreadCount, collecting: game.native.debugCollecting, ...snapshot };
+}
 
 function raycast(game: Game, args: Args): unknown {
   if (!game.simulation) throw new Error('the game has no physics (nativeFeatures has no physics)');

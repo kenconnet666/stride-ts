@@ -18,7 +18,7 @@ const CHROME_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> = {
 
 export interface OpenOptions {
   readonly headless?: boolean;
-  /** 窗口大小 [宽, 高]（无头时就是视口；有窗口时含浏览器边框）。 */
+  /** 视口大小 [宽, 高]（CSS 像素）：启动后按页面量出的边框差调整窗口。 */
   readonly size?: readonly [number, number];
   /** 设备像素比（--force-device-scale-factor），测高分屏用。 */
   readonly dpr?: number;
@@ -26,15 +26,65 @@ export interface OpenOptions {
   readonly chromeArgs?: readonly string[];
 }
 
-/** 打开 url：已经有 stride 启动的 Chrome 时开新标签，否则启动一个。 */
+/** 打开 url：已经有 stride 启动的 Chrome 时开新标签，否则启动一个；给了 size 时把视口调成这么大。 */
 export async function openUrl(url: string, options: OpenOptions = {}): Promise<BrowserRecord> {
-  const running = readBrowser();
-  if (running) {
-    const response = await fetch(`http://127.0.0.1:${running.port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' });
+  let browser = readBrowser();
+  if (browser) {
+    const response = await fetch(`http://127.0.0.1:${browser.port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' });
     if (!response.ok) throw new Error(`Chrome refused to open a tab: ${response.status} ${await response.text()}`);
-    return running;
+  } else {
+    browser = await launch(url, options);
   }
-  return launch(url, options);
+  if (options.size) await setViewport(browser, url, options.size);
+  return browser;
+}
+
+/** 把 url 所在窗口的视口调成 size：量出页面的 innerWidth、innerHeight 和窗口大小的差，按差值设窗口。 */
+async function setViewport(browser: BrowserRecord, url: string, [width, height]: readonly [number, number]): Promise<void> {
+  const target = await pageTarget(browser, url);
+  await using page = await CdpSession.connect(target.webSocketDebuggerUrl);
+  await using root = await CdpSession.connect(await browserSocket(browser));
+  const { windowId, bounds } = (await root.send('Browser.getWindowForTarget', { targetId: target.id })) as { windowId: number; bounds: { width: number; height: number } };
+  const innerSize = async (): Promise<[number, number]> => {
+    // 刚打开的标签还在加载时没有执行上下文：等它
+    for (const deadline = Date.now() + 10_000; ; await new Promise((resolve) => setTimeout(resolve, 100))) {
+      try {
+        const { result } = (await page.send('Runtime.evaluate', { expression: '[innerWidth, innerHeight]', returnByValue: true })) as { result: { value: [number, number] } };
+        return result.value;
+      } catch (error) {
+        if (Date.now() > deadline) throw error;
+      }
+    }
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const [innerWidth, innerHeight] = await innerSize();
+    if (innerWidth === width && innerHeight === height) return;
+    const current = attempt === 0 ? bounds : ((await root.send('Browser.getWindowBounds', { windowId })) as { bounds: { width: number; height: number } }).bounds;
+    await root.send('Browser.setWindowBounds', { windowId, bounds: { width: current.width + width - innerWidth, height: current.height + height - innerHeight, windowState: 'normal' } });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+}
+
+export interface PageTarget {
+  readonly id: string;
+  readonly url: string;
+  readonly webSocketDebuggerUrl: string;
+}
+
+/** stride 启动的 Chrome 里地址以 urlPrefix 开头的标签（最近打开的在前）；等它出现最多 10 秒。 */
+export async function pageTarget(browser: BrowserRecord, urlPrefix: string): Promise<PageTarget> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const targets = (await (await fetch(`http://127.0.0.1:${browser.port}/json/list`)).json()) as (PageTarget & { type: string })[];
+    const found = targets.find((t) => t.type === 'page' && t.url.startsWith(urlPrefix));
+    if (found) return found;
+    if (Date.now() > deadline) throw new Error(`no tab at ${urlPrefix} in the stride Chrome (tabs: ${targets.map((t) => t.url).join(', ')})`);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+async function browserSocket(browser: BrowserRecord): Promise<string> {
+  return ((await (await fetch(`http://127.0.0.1:${browser.port}/json/version`)).json()) as { webSocketDebuggerUrl: string }).webSocketDebuggerUrl;
 }
 
 async function launch(url: string, { headless = false, size, dpr, chromeArgs = [] }: OpenOptions): Promise<BrowserRecord> {
@@ -83,9 +133,10 @@ export async function closeBrowser(): Promise<boolean> {
   const running = readBrowser();
   if (!running) return false;
   try {
-    // CDP 的 Browser.close：让 Chrome 自己正常退出
-    const { webSocketDebuggerUrl } = (await (await fetch(`http://127.0.0.1:${running.port}/json/version`)).json()) as { webSocketDebuggerUrl: string };
-    await cdp(webSocketDebuggerUrl, 'Browser.close');
+    // CDP 的 Browser.close：让 Chrome 自己正常退出（连接随之断开，不等回复）
+    const session = await CdpSession.connect(await browserSocket(running));
+    session.send('Browser.close').catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 500));
   } catch {
     try {
       process.kill(running.pid);
@@ -97,20 +148,61 @@ export async function closeBrowser(): Promise<boolean> {
   return true;
 }
 
-/** 发一条 CDP 命令（Node 自带的 WebSocket），返回结果。 */
-export function cdp(socketUrl: string, method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(socketUrl);
-    socket.onopen = () => socket.send(JSON.stringify({ id: 1, method, params }));
+/** 一个 CDP 连接（Node 自带的 WebSocket）：按 id 配对命令和回复，收到的事件交给 on 登记的回调。 */
+export class CdpSession implements AsyncDisposable {
+  readonly #socket: WebSocket;
+  #nextId = 1;
+  readonly #pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  readonly #listeners = new Map<string, (params: unknown) => void>();
+
+  private constructor(socket: WebSocket) {
+    this.#socket = socket;
     socket.onmessage = (event) => {
-      const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message: string } };
-      if (message.id !== 1) return;
-      socket.close();
-      if (message.error) reject(new Error(`${method}: ${message.error.message}`));
-      else resolve(message.result);
+      const message = JSON.parse(String(event.data)) as { id?: number; result?: unknown; error?: { message: string }; method?: string; params?: unknown };
+      if (message.id === undefined) return void (message.method && this.#listeners.get(message.method)?.(message.params));
+      const pending = this.#pending.get(message.id);
+      this.#pending.delete(message.id);
+      if (message.error) pending?.reject(new Error(message.error.message));
+      else pending?.resolve(message.result);
     };
-    // Browser.close 时连接直接断开，不回结果
-    socket.onclose = () => resolve(undefined);
-    socket.onerror = () => reject(new Error(`cannot connect to ${socketUrl}`));
-  });
+    socket.onclose = () => {
+      for (const { reject } of this.#pending.values()) reject(new Error('the CDP connection closed'));
+      this.#pending.clear();
+    };
+  }
+
+  static connect(url: string): Promise<CdpSession> {
+    return new Promise((resolve, reject) => {
+      const socket = new WebSocket(url);
+      socket.onopen = () => resolve(new CdpSession(socket));
+      socket.onerror = () => reject(new Error(`cannot connect to ${url}`));
+    });
+  }
+
+  /**
+   * 发一条命令，等回复。每条带超时：Node 自带的 WebSocket 不让事件循环保持运行，没有这个计时器的话，等回复时
+   * 进程会以为无事可做而退出。
+   */
+  send(method: string, params: Record<string, unknown> = {}, timeout = 60_000): Promise<unknown> {
+    const id = this.#nextId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(id);
+        reject(new Error(`${method}: no reply in ${timeout} ms`));
+      }, timeout);
+      this.#pending.set(id, {
+        resolve: (value) => (clearTimeout(timer), resolve(value)),
+        reject: (error) => (clearTimeout(timer), reject(new Error(`${method}: ${error.message}`))),
+      });
+      this.#socket.send(JSON.stringify({ id, method, params }));
+    });
+  }
+
+  on(event: string, listener: (params: unknown) => void): void {
+    this.#listeners.set(event, listener);
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.#socket.close();
+  }
 }

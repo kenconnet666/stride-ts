@@ -107,6 +107,8 @@ export interface ImageDiff {
   /** 每个像素取 RGB 三个通道里差得最多的那个（0..255），下面都按它算。 */
   readonly max: number;
   readonly mean: number;
+  /** 每个通道 b 减 a 的平均（有符号），看整体偏亮还是偏暗、偏哪个颜色。 */
+  readonly meanSignedRgb: readonly [number, number, number];
   /** 差超过 1、2、8、32 的像素数。 */
   readonly over: Readonly<Record<'1' | '2' | '8' | '32', number>>;
   /** 差超过 threshold 的像素的范围 [x, y, 宽, 高]，没有时为 null。 */
@@ -115,15 +117,17 @@ export interface ImageDiff {
   readonly image: Image;
 }
 
-/** 逐像素比较两张同样大小的图（忽略 alpha）。 */
+/** 逐像素比较两张同样大小的图（忽略 alpha），a 是参考。 */
 export function diffImages(a: Image, b: Image, { threshold = 2, amplify = 16 } = {}): ImageDiff {
   if (a.width !== b.width || a.height !== b.height) throw new Error(`size differs: ${a.width}x${a.height} vs ${b.width}x${b.height}`);
   const data = new Uint8Array(a.data.length);
   const over = { '1': 0, '2': 0, '8': 0, '32': 0 };
   let max = 0, sum = 0, minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
+  const signed = [0, 0, 0];
   for (let i = 0, p = 0; i < a.data.length; i += 4, p++) {
     let d = 0;
     for (let c = 0; c < 3; c++) {
+      signed[c]! += b.data[i + c]! - a.data[i + c]!;
       const channel = Math.abs(a.data[i + c]! - b.data[i + c]!);
       data[i + c] = Math.min(255, channel * amplify);
       d = Math.max(d, channel);
@@ -148,6 +152,7 @@ export function diffImages(a: Image, b: Image, { threshold = 2, amplify = 16 } =
     height: a.height,
     max,
     mean: sum / (a.width * a.height),
+    meanSignedRgb: signed.map((s) => s / (a.width * a.height)) as [number, number, number],
     over,
     bounds: maxX < 0 ? null : [minX, minY, maxX - minX + 1, maxY - minY + 1],
     image: { width: a.width, height: a.height, data },

@@ -260,12 +260,19 @@ export class Game {
       const end = performance.now();
       this.debug.frames.record(interval, updating ? drawStart - start : 0, end - drawStart);
       this.debug.endFrame();
+      if (this.debug.connected) this.forwardNativeDebug();
     } catch (error) {
       this.fail(error);
       throw error;
     }
     requestAnimationFrame(this.frame);
   };
+
+  /** 调试 CLI 连着时：打开原生侧的收集（计数器、计时），原生日志转给调试桥。 */
+  private forwardNativeDebug(): void {
+    if (!this.native.debugCollecting) this.native.debugCollecting = true;
+    for (const { level, message } of this.native.drainDebugLog()) this.debug.log(level, message, undefined, 'native');
+  }
 
   private fail(error: unknown): void {
     this.status = 'failed';

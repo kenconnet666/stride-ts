@@ -3,6 +3,7 @@
 // 场景先用 `pnpm --filter @stride-ts/platformer import:stride` 从 Stride 仓库导入。
 import * as engine from '@stride-ts/engine';
 import { Game } from '@stride-ts/engine';
+import { physics } from '@stride-ts/native/physics';
 import { PlatformerGame } from './game/platformer';
 
 // 调试用：控制台和 tools/play.cjs 的 eval 步骤可以拿到引擎的类型（比如 Transform）
@@ -14,7 +15,7 @@ const modules = import.meta.glob('./game/**/*.ts', { eager: true });
 
 const { game, created } = Game.hotEntry(import.meta.hot, modules, PlatformerGame, stats);
 if (created) {
-  game.run(canvas, { modules, debugNative: import.meta.env.DEV }).catch((error: unknown) => {
+  game.run(canvas, { modules, debugNative: import.meta.env.DEV, nativeFeatures: [physics] }).catch((error: unknown) => {
     stats.textContent = `failed: ${error instanceof Error ? error.message : String(error)}`;
   });
 }

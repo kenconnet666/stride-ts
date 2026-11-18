@@ -27,6 +27,10 @@ node play.cjs "$(node -e "console.log(require.resolve('playwright'))")" http://l
 | `frame-time.cjs` | 去掉帧率上限（`--disable-frame-rate-limit`），测场景就绪后 600 帧的平均帧时间 |
 | `cpu-profile.cjs` | 用 CDP 采样主线程 5 秒，按类别（wasm、JS、GC、空闲）和函数汇总自身时间与包含时间；`PROFILE_OUT=<文件>` 保存原始剖析数据 |
 | `profile-callers.cjs` | 读取保存的剖析数据，统计某个函数（正则匹配）是被谁调用的 |
+| `gpu-profile.cjs` | 打开引擎的 `GpuProfiler`（WebGPU 时间戳）测几秒，按作用域（后处理按效果）汇总各渲染通道的 GPU 毫秒数；`DETAIL=1` 列出每个通道。用法：`node gpu-profile.cjs <playwright> <地址> [秒数]` |
+| `compare-stride.cjs` | 和桌面 Stride 的参考图（`stride-capture/`）逐像素比较，写差异图。用法：`node compare-stride.cjs <playwright> <地址> <参考图> <输出目录> [页面里执行的设置]` |
+| `hdr-ratio.cjs` | 两边固定曝光 EV0 时，反推色调映射前的 HDR 值，按行打印参考/我们的比值，分辨整体倍数和随角度的差 |
+| `stride-capture/` | 桌面 Stride 的截图工程：`setup.ps1` 从 Stride 源码搭出并编译 TPP，截图参数见其中的 README |
 | `gpu-calls.cjs` | 统计每帧各个 WebGPU 调用的次数，以及 `writeBuffer` 写入的字节数和大小分布 |
 | `aot-log.cjs` | .NET 专用：拦截 `main.js`，打开 Mono 的 AOT 日志。新引擎用不到，留作参考 |
 

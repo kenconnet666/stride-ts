@@ -18,6 +18,6 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - Jolt 的 fork 是单独的仓库：`C:\Users\Administrator\CLionProjects\jolt-native-fork`（已加入本项目的工作目录）。远程 `origin` 是 `kenconnet666/JoltPhysics`，`upstream` 是 `jrouwe/JoltPhysics`（禁止推送）；工作分支 `stride`，基于上游发布标签。做法见 [docs/architecture.md](docs/architecture.md) 的"怎么 fork 和维护 Jolt"。原生 C++ 工程 `stride-native`/`stride-tools` 在这个仓库的 `StrideNative/` 目录（说明见其中的 README.md），按阶段提交到 `stride` 分支。
 - 要读的 Stride 源码在 `C:\Users\Administrator\IdeaProjects\stride`，只读，不在那边提交，除非用户要求（例如需要在那边加工具）。
 - 在 Chrome 里实际跑过、看过结果，才能说某件事完成了；测试脚本在 [tools/](tools/README.md)。应用内置浏览器的面板隐藏时 `requestAnimationFrame` 不触发，看帧循环要用 `tools/play.cjs`（本机 Chrome）。
-- 改了 `StrideNative` 并重新编译后，跑 `pnpm native:sync` 把产物拷进 `packages/native/dist`（`dev`、`build`、`test`、`typecheck` 会先自动同步）。
+- 改了 `StrideNative` 并重新编译后，跑 `pnpm native:sync` 把产物拷进 `packages/native/src`（拷来的，不提交，改绑定去 fork 的 `StrideNative/JS/`）（`dev`、`build`、`test`、`typecheck` 会先自动同步）。
 - 调研自己做，不派子代理。
 - TS API 的写法参考用户自己的 easy-query-ts（`C:\code\easy-query-ts`，只读）：带幻影类型参数的不可变 builder、类型全靠推导不做代码生成、核心零依赖并通过 Standard Schema 对接校验库、`*.check.ts` 类型测试。属性的分层合并和转发参考 vue-tsx-pro（`C:\Users\Administrator\IdeaProjects\vue-tsx-pro`，只读）的 `packages/ui/src/utils/props.ts` 和 `COMPONENTS.md` §2，它是 Vue 和 DOM 的体系，只借鉴规则和类型做法。

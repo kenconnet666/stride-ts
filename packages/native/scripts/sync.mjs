@@ -1,4 +1,6 @@
-// 把 jolt-native-fork 编好的 stride-native / stride-tools 模块拷进 dist/。
+// 把 jolt-native-fork 编好的 stride-native / stride-tools 模块拷进 src/：TypeScript 绑定加 Emscripten 的 .mjs 和 .wasm。
+// 放在 src/ 而不是 dist/：WebStorm 会把 dist 当构建输出排除、不建索引，里面的 .ts 就解析不出类型、也不能自动导入。
+// src/ 里的文件是拷来的（不提交），要改绑定去 fork 的 StrideNative/JS/ 改。
 // C++ 源码在那个仓库的 StrideNative/ 里，用 StrideNative/Scripts/build-wasm.ps1 编译。
 // STRIDE_NATIVE_DIST 可以改位置；默认假定 fork 在 ~/CLionProjects/jolt-native-fork，和 ~/WebstormProjects 并列。
 import { execFileSync } from 'node:child_process';
@@ -10,7 +12,9 @@ const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const repoRoot = path.resolve(packageDir, '..', '..');
 const source = process.env.STRIDE_NATIVE_DIST
   ?? path.resolve(repoRoot, '..', '..', 'CLionProjects', 'jolt-native-fork', 'StrideNative', 'Build', 'WASM_Release', 'dist');
-const target = path.join(packageDir, 'dist');
+const target = path.join(packageDir, 'src');
+// 以前拷到 dist/：留着会让 IDE 和打包工具看到两份
+rmSync(path.join(packageDir, 'dist'), { recursive: true, force: true });
 
 if (!existsSync(path.join(source, 'stride-native-core.wasm'))) {
   const message = `No stride-native build at ${source}. Build it with StrideNative/Scripts/build-wasm.ps1 in jolt-native-fork, or set STRIDE_NATIVE_DIST.`;

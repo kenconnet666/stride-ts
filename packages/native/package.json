@@ -4,8 +4,8 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./dist/stride-native.ts",
-    "./tools": "./dist/stride-tools.ts"
+    ".": "./src/stride-native.ts",
+    "./tools": "./src/stride-tools.ts"
   },
   "scripts": {
     "sync": "node scripts/sync.mjs"

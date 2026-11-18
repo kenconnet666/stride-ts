@@ -732,7 +732,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 
 - **只用可擦除的语法**：Node 22.18+/24 直接运行（fork 的 Node 测试），Vite 照常编译，fork 的浏览器测试服务器用 `module.stripTypeScriptTypes` 去掉类型再发出。不需要构建步骤，也没有手写的 `.d.ts`。
 - **Emscripten 工厂的类型**：`*-core.d.mts` 逐个列出各模块导出的 C 函数名，`CoreModule<E>` 把它们映射成 `_sn_*` 成员。不用 `_sn_${string}` 索引签名：名字写错在编译期就报，也不会因为 `noUncheckedIndexedAccess` 变成可能 undefined。
-- **类型检查**：`pnpm native:sync` 把 `.ts`、`.d.mts`、`.mjs`、`.wasm` 拷进 `packages/native/dist`（顺带删掉 fork 已经不产出的旧文件），包的 `exports` 直接指向 `dist/stride-native.ts`；本仓库的 `tsc`（开了 `allowImportingTsExtensions`）用全部严格选项检查它们。
+- **类型检查**：`pnpm native:sync` 把 `.ts`、`.d.mts`、`.mjs`、`.wasm` 拷进 `packages/native/src`（顺带删掉 fork 已经不产出的旧文件），包的 `exports` 直接指向 `src/stride-native.ts`；放在 `src` 而不是 `dist`，是因为 WebStorm 把 `dist` 当构建输出排除、不建索引，里面的绑定就解析不出类型，也不能自动导入（2026-11-18 用户发现）；本仓库的 `tsc`（开了 `allowImportingTsExtensions`）用全部严格选项检查它们。
 
 接口相对原来的 .mjs 版本的变化：
 

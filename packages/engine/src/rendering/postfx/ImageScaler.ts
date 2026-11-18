@@ -60,6 +60,12 @@ export class ImageScaler {
     this.#shader.draw(encoder, output, [parameters, input, this.#sampler], { ...(blend ? { blend } : {}), load });
   }
 
+  /** 原样拷贝到同样大小的纹理视图（比如后备缓冲）：像素中心一对一采样；目标是 sRGB 或 8 位时由硬件编码、截断。 */
+  copy(encoder: GPUCommandEncoder, arena: UniformArena, input: GPUTexture, output: GPUTextureView, format: GPUTextureFormat): void {
+    const parameters = arena.push([1, 1, 1, 1, 1 / input.width, 1 / input.height, 0, 0]);
+    this.#shader.draw(encoder, output, [parameters, input, this.#sampler], { format });
+  }
+
   /** 一级级减半（Expanded）直到输出的尺寸（Stride 的 ImageMultiScaler 往下缩），中间各级从池里借。 */
   multiScale(encoder: GPUCommandEncoder, pool: RenderTargetPool, arena: UniformArena, input: GPUTexture, output: GPUTexture): void {
     let previous = input;

@@ -1,20 +1,31 @@
 /**
- * 网格的根渲染特性（Stride 的 MeshRenderFeature；现在只有漫反射（颜色加一张贴图）、一个方向光和环境光，
- * 着色公式同 Stride 的 Lambert：直射光 albedo / π · 光色 · N·L，环境光 albedo · 环境色，光色是线性的、已经乘过强度）。
+ * 网格的根渲染特性（Stride 的 MeshRenderFeature）。着色和 Stride 默认的 PBR 材质一致（StrideForwardShadingEffect
+ * 里 MaterialSurfaceShadingDiffuseLambert 加 MaterialSurfaceShadingSpecularMicrofacet）：
+ * - 金属度工作流：镜面色 = lerp(0.02, albedo, 金属度)，漫反射色 = albedo · (1 - 金属度)，再乘 cavity；
+ * - 直射光：漫反射 albedo / π · 光色 · N·L；镜面 F · G · D / 4 · 光色 · N·L，D 是 GGX，F 是 Schlick（用 L·H），
+ *   G 是 Smith-Schlick-GGX（已除以 N·L · N·V），alphaR = 粗糙度²（至少 0.001），N·L 至少 0.0001；
+ * - 环境光（Stride 的 LightSimpleAmbient）：漫反射和镜面都用环境色；
+ * - 天空盒光（LightSkyboxShader）：漫反射用 3 阶球谐，镜面在反射方向上按 mip = sqrt(alphaR) · 级数 采样预滤波的
+ *   立方体贴图；方向先按天空盒的旋转转回去，再把 z 取反（Stride 的立方体贴图约定）；
+ * - 环境光的镜面项乘 DFG 查找表（MaterialSpecularMicrofacetEnvironmentGGXLUT：按 (1 - sqrt(alphaR), N·V) 采样，
+ *   specular · r + g）。查找表启动时在 GPU 上积分生成，和 Stride 自带的那张一致（最大误差约 0.02）；
+ * - 自发光直接加上。
+ * 输出线性的 HDR 颜色，色调映射在后面（ToneMapRenderer）。
  *
  * 数据流：
  * - Extract：遍历带 Model 和 Transform 的实体，按（网格，材质）分批，每批记下实体的变换槽位。
  * - Prepare：把变换存储的世界矩阵列整段上传（直接从 wasm 内存，只传用到的那一段），批次的槽位拼成一个
- *   实例缓冲上传，每个视图的常量写进按视图分块的 uniform 缓冲（动态偏移）。
+ *   实例缓冲上传，每个视图的常量（相机、光照、天空盒）写进按视图分块的 uniform 缓冲（动态偏移）。
  * - Draw：每批一次实例化绘制；着色器用 worlds[slots[instance_index]] 取世界矩阵，firstInstance 是批次的起点。
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Model } from './components';
+import { FULLSCREEN_VERTEX } from './fullscreen';
+import type { GpuResources } from './GpuResources';
 import { Material } from './Material';
 import { Mesh, VERTEX_FLOATS } from './Mesh';
-import type { Texture } from './Texture';
 import { RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
@@ -28,55 +39,193 @@ export interface MeshBatch {
   first: number;
 }
 
+/** BRDF 的几个函数，同 Stride 的 BRDFMicrofacet.sdsl。 */
+const BRDF = /* wgsl */ `
+const PI = 3.14159265358979;
+
+fn normalDistributionGGX(alphaR: f32, nDotH: f32) -> f32 {
+  let alphaR2 = alphaR * alphaR;
+  let d = max(nDotH * nDotH * (alphaR2 - 1.0) + 1.0, 0.0001);
+  return alphaR2 / (PI * d * d);
+}
+
+fn visibilitySchlickGGX(alphaR: f32, nDotX: f32) -> f32 {
+  let k = alphaR * 0.5;
+  return nDotX / (nDotX * (1.0 - k) + k);
+}
+
+/** Smith-Schlick-GGX，已经除以 N·L · N·V。 */
+fn visibilitySmithSchlickGGX(alphaR: f32, nDotL: f32, nDotV: f32) -> f32 {
+  return visibilitySchlickGGX(alphaR, nDotL) * visibilitySchlickGGX(alphaR, nDotV) / (nDotL * nDotV);
+}`;
+
 const SHADER = /* wgsl */ `
+${BRDF}
+
 struct View {
   viewProjection: mat4x4f,
+  eye: vec4f,
   lightDirection: vec4f,
   lightColor: vec4f,
   ambientColor: vec4f,
+  // x：天空盒光的强度（没有天空盒时是 0），y：镜面立方体贴图的级数
+  sky: vec4f,
+  skySH: array<vec4f, 9>,
+  skyRotation: mat4x4f,
 };
 @group(0) @binding(0) var<uniform> view: View;
 @group(0) @binding(1) var<storage, read> worlds: array<mat4x4f>;
 @group(0) @binding(2) var<storage, read> slots: array<u32>;
+@group(0) @binding(3) var skySpecular: texture_cube<f32>;
+@group(0) @binding(4) var dfgLut: texture_2d<f32>;
+@group(0) @binding(5) var linearClamp: sampler;
 
-// 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。没有贴图的材质绑一张 1x1 的白图
-struct Material { baseColor: vec4f, uvTransform: vec4f, combine: u32 };
+// 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
+// 没有贴图的材质绑一张 1x1 的白图。surface：金属度、粗糙度、漫反射 cavity、镜面 cavity。
+struct Material {
+  baseColor: vec4f,
+  uvTransform: vec4f,
+  emissive: vec4f,
+  surface: vec4f,
+  combine: u32,
+  specular: u32,
+};
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
 @group(1) @binding(2) var baseColorSampler: sampler;
 
 struct Varyings {
   @builtin(position) position: vec4f,
-  @location(0) normal: vec3f,
-  @location(1) uv: vec2f,
+  @location(0) world: vec3f,
+  @location(1) normal: vec3f,
+  @location(2) uv: vec2f,
 };
-
-const PI = 3.14159265358979;
 
 @vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32) -> Varyings {
   let world = worlds[slots[instance]];
+  let worldPosition = world * vec4f(position, 1.0);
   var out: Varyings;
-  out.position = view.viewProjection * world * vec4f(position, 1.0);
+  out.position = view.viewProjection * worldPosition;
+  out.world = worldPosition.xyz;
   // 均匀缩放下法线直接用世界矩阵变换；非均匀缩放要用逆转置，等材质系统一起做
   out.normal = (world * vec4f(normal, 0.0)).xyz;
   out.uv = uv;
   return out;
 }
 
+/** 世界方向转到天空盒的立方体贴图里：按天空盒的旋转转回去（行向量乘矩阵 = 乘转置），z 取反。 */
+fn skyDirection(direction: vec3f) -> vec3f {
+  let rotation = mat3x3f(view.skyRotation[0].xyz, view.skyRotation[1].xyz, view.skyRotation[2].xyz);
+  let d = direction * rotation;
+  return vec3f(d.xy, -d.z);
+}
+
+/** 3 阶球谐求值，同 Stride 的 EvaluateSphericalHarmonics（系数已乘过基函数常数）。 */
+fn evaluateSH(d: vec3f) -> vec3f {
+  var color = view.skySH[0].rgb;
+  color += view.skySH[1].rgb * d.y;
+  color += view.skySH[2].rgb * d.z;
+  color += view.skySH[3].rgb * d.x;
+  color += view.skySH[4].rgb * d.y * d.x;
+  color += view.skySH[5].rgb * d.y * d.z;
+  color += view.skySH[6].rgb * (3.0 * d.z * d.z - 1.0);
+  color += view.skySH[7].rgb * d.x * d.z;
+  color += view.skySH[8].rgb * (d.x * d.x - d.y * d.y);
+  return color;
+}
+
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let n = normalize(in.normal);
-  let nDotL = max(dot(n, -view.lightDirection.xyz), 0.0);
+  let v = normalize(view.eye.xyz - in.world);
   let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw).rgb;
   let albedo = select(texel * material.baseColor.rgb, texel + material.baseColor.rgb, material.combine == 1u);
-  let color = albedo / PI * view.lightColor.rgb * nDotL + albedo * view.ambientColor.rgb;
-  return vec4f(color, material.baseColor.a);
+
+  // 金属度工作流（MaterialSurfaceMetalness），再乘 cavity（PrepareMaterialForLightingAndShading）
+  let hasSpecular = material.specular == 1u;
+  let metalness = material.surface.x;
+  let diffuse = select(albedo, albedo * (1.0 - metalness), hasSpecular) * material.surface.z;
+  let specular = select(vec3f(0.0), mix(vec3f(0.02), albedo, metalness), hasSpecular) * material.surface.w;
+  let roughness = material.surface.y;
+  let alphaR = max(roughness * roughness, 0.001);
+  let nDotV = max(dot(n, v), 0.0001);
+
+  // 直射光（DirectLightGroup）
+  let l = -view.lightDirection.xyz;
+  let nDotL = max(dot(n, l), 0.0001);
+  let lightColorNdotL = view.lightColor.rgb * nDotL;
+  var color = diffuse / PI * lightColorNdotL;
+  let h = normalize(v + l);
+  let nDotH = saturate(dot(n, h));
+  let lDotH = saturate(dot(l, h));
+  let fresnel = specular + (1.0 - specular) * pow(1.0 - lDotH, 5.0);
+  let reflected = fresnel * visibilitySmithSchlickGGX(alphaR, nDotL, nDotV) * normalDistributionGGX(alphaR, nDotH) / 4.0;
+  color += select(vec3f(0.0), reflected * lightColorNdotL, hasSpecular);
+
+  // 环境光：镜面项都乘 DFG（Stride 的环境 BRDF 查找表）
+  let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
+  let environmentSpecular = select(vec3f(0.0), specular * dfg.x + dfg.y, hasSpecular);
+  color += diffuse * view.ambientColor.rgb + environmentSpecular * view.ambientColor.rgb;
+
+  // 天空盒光：强度是 0 时贡献也是 0，不用分支
+  let skyIntensity = view.sky.x;
+  let skyDiffuse = evaluateSH(skyDirection(n)) * skyIntensity;
+  let reflection = skyDirection(reflect(-v, n));
+  let skySpecularColor = textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
+  color += diffuse * skyDiffuse + environmentSpecular * skySpecularColor;
+
+  color += material.emissive.rgb;
+  return vec4f(color, 1.0);
+}`;
+
+const DFG_LUT_WIDTH = 32;
+const DFG_LUT_HEIGHT = 64;
+
+/**
+ * 环境 BRDF 的 DFG 查找表：x 是光泽度（1 - sqrt(alphaR)），y 是 N·V，值是 (scale, bias)，镜面项 = specular · scale + bias。
+ * GGX 重要性采样（1024 个 Hammersley 点），G 用 Smith-Schlick-GGX，F 用 Schlick；尺寸同 Stride 的 EnvironmentLightingDFGLUT16。
+ */
+const DFG_LUT_SHADER = /* wgsl */ `
+${BRDF}
+${FULLSCREEN_VERTEX}
+
+const SAMPLES = 1024u;
+
+@fragment fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  let size = vec2f(${DFG_LUT_WIDTH}.0, ${DFG_LUT_HEIGHT}.0);
+  let glossiness = position.x / size.x;
+  let nDotV = position.y / size.y;
+  let roughness = 1.0 - glossiness;
+  let alphaR = roughness * roughness;
+  let a2 = alphaR * alphaR;
+  let v = vec3f(sqrt(1.0 - nDotV * nDotV), 0.0, nDotV);
+  var scale = 0.0;
+  var bias = 0.0;
+  for (var i = 0u; i < SAMPLES; i++) {
+    let xi = vec2f(f32(reverseBits(i)) * 2.3283064365386963e-10, (f32(i) + 0.5) / f32(SAMPLES));
+    let phi = 2.0 * PI * xi.x;
+    let cosTheta = sqrt((1.0 - xi.y) / (1.0 + (a2 - 1.0) * xi.y));
+    let sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+    let h = vec3f(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
+    let vDotH = dot(v, h);
+    let l = 2.0 * vDotH * h - v;
+    let nDotL = l.z;
+    if (nDotL > 0.0) {
+      let g = visibilitySchlickGGX(alphaR, nDotL) * visibilitySchlickGGX(alphaR, nDotV);
+      let visibility = g * max(vDotH, 0.0) / (max(h.z, 0.0) * nDotV);
+      let fc = pow(1.0 - max(vDotH, 0.0), 5.0);
+      scale += (1.0 - fc) * visibility;
+      bias += fc * visibility;
+    }
+  }
+  return vec4f(scale / f32(SAMPLES), bias / f32(SAMPLES), 0.0, 1.0);
 }`;
 
 /** 每个视图的常量占一块：uniform 的动态偏移必须是 minUniformBufferOffsetAlignment（256）的整数倍。 */
-const VIEW_STRIDE = 256;
-const VIEW_FLOATS = 28;
-/** 材质 uniform：baseColor、uvTransform（scale.xy, offset.xy）、combine，按 16 字节对齐。 */
-const MATERIAL_BYTES = 48;
+const VIEW_STRIDE = 512;
+/** View 结构：viewProjection 16、eye 4、光方向 4、光色 4、环境色 4、sky 4、球谐 36、天空盒旋转 16。 */
+const VIEW_FLOATS = 88;
+/** 材质 uniform：baseColor、uvTransform、emissive、surface 各一个 vec4，再加 combine、specular 两个 u32，补齐到 16 字节。 */
+const MATERIAL_BYTES = 80;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 /** 交错的顶点：位置 xyz、法线 xyz、UV xy（Mesh 的布局）。 */
 const VERTEX_STRIDE = VERTEX_FLOATS * 4;
@@ -130,7 +279,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   override prepare(context: RenderContext): void {
-    const gpu = (this.#gpu ??= new Gpu(this.system.device));
+    const gpu = (this.#gpu ??= new Gpu(this.system.device, this.system.resources));
     let first = 0;
     for (const batch of this.batches) {
       batch.first = first;
@@ -154,7 +303,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       // pass 内只在变化时重设状态（docs/lessons.md）
       if (batch.material !== material) {
         material = batch.material;
-        pass.setBindGroup(1, gpu.material(material).bindGroup);
+        pass.setBindGroup(1, gpu.material(material));
       }
       const gpuMesh = gpu.mesh(batch.mesh);
       if (batch.mesh !== mesh) {
@@ -197,6 +346,7 @@ function grow(array: Uint32Array, capacity: number): Uint32Array {
 /** 一个特性在一个设备上的 GPU 资源。 */
 class Gpu {
   readonly device: GPUDevice;
+  readonly #resources: GpuResources;
   readonly #module: GPUShaderModule;
   readonly #viewLayout: GPUBindGroupLayout;
   readonly #materialLayout: GPUBindGroupLayout;
@@ -204,10 +354,8 @@ class Gpu {
   readonly #pipelines = new Map<string, GPURenderPipeline>();
   readonly #meshes = new Map<Mesh, GpuMesh>();
   readonly #materials = new Map<Material, GpuMaterial>();
-  readonly #textures = new Map<Texture, GPUTexture>();
-  readonly #sampler: GPUSampler;
-  readonly #white: GPUTexture;
   readonly #materialData = new ArrayBuffer(MATERIAL_BYTES);
+  readonly #dfgLut: GPUTexture;
 
   #worlds: GPUBuffer | undefined;
   #instances: GPUBuffer | undefined;
@@ -215,9 +363,12 @@ class Gpu {
   #views: GPUBuffer | undefined;
   readonly #viewData = new Float32Array((VIEW_STRIDE / 4) * 4);
   #viewBindGroup: GPUBindGroup | undefined;
+  /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
+  #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice) {
+  constructor(device: GPUDevice, resources: GpuResources) {
     this.device = device;
+    this.#resources = resources;
     this.#module = device.createShaderModule({ label: 'MeshRenderFeature', code: SHADER });
     this.#viewLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature view',
@@ -225,6 +376,9 @@ class Gpu {
         { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: VIEW_FLOATS * 4 } },
         { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube' } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 5, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -236,18 +390,7 @@ class Gpu {
       ],
     });
     this.#pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.#viewLayout, this.#materialLayout] });
-    // Stride 贴图采样的默认值：重复、线性过滤（ComputeTextureBase 的 Filtering、AddressModeU/V）；各向异性让斜看的地面不糊
-    this.#sampler = device.createSampler({
-      label: 'MeshRenderFeature linear wrap',
-      addressModeU: 'repeat',
-      addressModeV: 'repeat',
-      magFilter: 'linear',
-      minFilter: 'linear',
-      mipmapFilter: 'linear',
-      maxAnisotropy: 16,
-    });
-    this.#white = device.createTexture({ label: 'white', size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
-    device.queue.writeTexture({ texture: this.#white }, new Uint8Array([255, 255, 255, 255]), { bytesPerRow: 4 }, [1, 1]);
+    this.#dfgLut = createDfgLut(device);
   }
 
   pipelineFor(stage: RenderStage): GPURenderPipeline {
@@ -306,24 +449,32 @@ class Gpu {
   uploadViews(views: readonly RenderView[], lighting: Lighting): void {
     const stride = VIEW_STRIDE / 4;
     if (this.#viewData.length < views.length * stride) throw new RangeError(`MeshRenderFeature supports ${this.#viewData.length / stride} views, got ${views.length}`);
-    const { direction, color, ambient } = lighting;
+    const { direction, color, ambient, skybox } = lighting;
     const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
     const data = this.#viewData;
     for (const view of views) {
       const o = view.index * stride;
       data.set(view.viewProjection, o);
-      data[o + 16] = direction.x / length;
-      data[o + 17] = direction.y / length;
-      data[o + 18] = direction.z / length;
-      data[o + 20] = color.r;
-      data[o + 21] = color.g;
-      data[o + 22] = color.b;
-      data[o + 24] = ambient.r;
-      data[o + 25] = ambient.g;
-      data[o + 26] = ambient.b;
+      data.set([view.eye.x, view.eye.y, view.eye.z, 1], o + 16);
+      data.set([direction.x / length, direction.y / length, direction.z / length, 0], o + 20);
+      data.set([color.r, color.g, color.b, 1], o + 24);
+      data.set([ambient.r, ambient.g, ambient.b, 1], o + 28);
+      data.set([skybox?.intensity ?? 0, skybox?.skybox.specular.data.levels.length ?? 0, 0, 0], o + 32);
+      for (let c = 0; c < 9; c++) {
+        const sh = skybox?.skybox.diffuseSH;
+        data.set(sh ? [sh[c * 3]!, sh[c * 3 + 1]!, sh[c * 3 + 2]!, 0] : [0, 0, 0, 0], o + 36 + c * 4);
+      }
+      if (skybox) data.set(skybox.rotation, o + 72);
+      else data.set(IDENTITY, o + 72);
     }
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
+
+    const skySpecular = skybox ? this.#resources.cubemap(skybox.skybox.specular) : this.#resources.blackCube;
+    if (skySpecular !== this.#skySpecular) {
+      this.#skySpecular = skySpecular;
+      this.#viewBindGroup = undefined;
+    }
   }
 
   viewBindGroup(): GPUBindGroup {
@@ -334,6 +485,9 @@ class Gpu {
         { binding: 0, resource: { buffer: this.#views!, size: VIEW_FLOATS * 4 } },
         { binding: 1, resource: { buffer: this.#worlds! } },
         { binding: 2, resource: { buffer: this.#instances! } },
+        { binding: 3, resource: this.#skySpecular!.createView({ dimension: 'cube' }) },
+        { binding: 4, resource: this.#dfgLut.createView() },
+        { binding: 5, resource: this.#resources.linearClamp },
       ],
     }));
   }
@@ -353,7 +507,8 @@ class Gpu {
     return gpu;
   }
 
-  material(material: Material): GpuMaterial & { readonly bindGroup: GPUBindGroup } {
+  /** 材质的绑定组；参数改了（version 变了）就重新上传。 */
+  material(material: Material): GPUBindGroup {
     let gpu = this.#materials.get(material);
     if (!gpu) {
       const buffer = this.device.createBuffer({ label: `${material.name} material`, size: MATERIAL_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -362,41 +517,26 @@ class Gpu {
     }
     if (gpu.version !== material.version || !gpu.bindGroup) {
       const slot = material.baseColorTexture;
-      const floats = new Float32Array(this.#materialData);
       const { r, g, b, a } = material.baseColor;
-      floats.set([r, g, b, a, ...(slot?.scale ?? [1, 1]), ...(slot?.offset ?? [0, 0])]);
-      new Uint32Array(this.#materialData)[8] = OPERATOR_CODES[material.baseColorOperator];
+      const floats = new Float32Array(this.#materialData);
+      floats.set([r, g, b, a, ...(slot?.scale ?? [1, 1]), ...(slot?.offset ?? [0, 0]), ...material.emissive, 0]);
+      floats.set([material.metalness ?? 0, material.roughness, material.cavity.diffuse, material.cavity.specular], 12);
+      const codes = new Uint32Array(this.#materialData);
+      codes[16] = OPERATOR_CODES[material.baseColorOperator];
+      codes[17] = material.metalness === undefined ? 0 : 1;
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       gpu.bindGroup = this.device.createBindGroup({
         label: `${material.name} material`,
         layout: this.#materialLayout,
         entries: [
           { binding: 0, resource: { buffer: gpu.buffer } },
-          { binding: 1, resource: (slot ? this.texture(slot.texture) : this.#white).createView() },
-          { binding: 2, resource: this.#sampler },
+          { binding: 1, resource: (slot ? this.#resources.texture(slot.texture) : this.#resources.white).createView() },
+          { binding: 2, resource: this.#resources.linearRepeat },
         ],
       });
       gpu.version = material.version;
     }
-    return gpu as GpuMaterial & { readonly bindGroup: GPUBindGroup };
-  }
-
-  /** 贴图第一次用到时上传所有 mip；压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝。 */
-  texture(texture: Texture): GPUTexture {
-    let gpu = this.#textures.get(texture);
-    if (!gpu) {
-      const { format, width, height, levels } = texture.data;
-      gpu = this.device.createTexture({ label: texture.name, size: [width, height], format, mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
-      const block = texture.blockBytes;
-      levels.forEach((data, mipLevel) => {
-        const w = Math.max(1, width >> mipLevel), h = Math.max(1, height >> mipLevel);
-        const layout = block ? { bytesPerRow: Math.ceil(w / 4) * block, rowsPerImage: Math.ceil(h / 4) } : { bytesPerRow: w * 4 };
-        const size = block ? [Math.ceil(w / 4) * 4, Math.ceil(h / 4) * 4] : [w, h];
-        this.device.queue.writeTexture({ texture: gpu!, mipLevel }, data, layout, size);
-      });
-      this.#textures.set(texture, gpu);
-    }
-    return gpu;
+    return gpu.bindGroup;
   }
 
   destroy(): void {
@@ -406,8 +546,7 @@ class Gpu {
       indices.destroy();
     }
     for (const { buffer } of this.#materials.values()) buffer.destroy();
-    for (const texture of this.#textures.values()) texture.destroy();
-    this.#white.destroy();
+    this.#dfgLut.destroy();
   }
 
   #createStorage(label: string, size: number): GPUBuffer {
@@ -421,6 +560,27 @@ class Gpu {
     buffer.unmap();
     return buffer;
   }
+}
+
+const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+/** 在 GPU 上积分出 DFG 查找表（一次全屏绘制）。 */
+function createDfgLut(device: GPUDevice): GPUTexture {
+  const texture = device.createTexture({ label: 'DFG LUT', size: [DFG_LUT_WIDTH, DFG_LUT_HEIGHT], format: 'rg16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
+  const module = device.createShaderModule({ label: 'DFG LUT', code: DFG_LUT_SHADER });
+  const pipeline = device.createRenderPipeline({
+    label: 'DFG LUT',
+    layout: 'auto',
+    vertex: { module, entryPoint: 'fullscreenVertex' },
+    fragment: { module, entryPoint: 'fs', targets: [{ format: 'rg16float' }] },
+  });
+  const encoder = device.createCommandEncoder({ label: 'DFG LUT' });
+  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: 'clear', storeOp: 'store' }] });
+  pass.setPipeline(pipeline);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([encoder.finish()]);
+  return texture;
 }
 
 /** 缓冲按 2 的幂增长，避免每多一个实体就重建。 */

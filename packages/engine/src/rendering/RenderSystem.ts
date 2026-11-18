@@ -9,6 +9,8 @@ import type { GameTime } from '../games/GameTime';
 import type { GraphicsDevice } from '../graphics/GraphicsDevice';
 import { Matrix } from '../mathematics/Matrix';
 import { Color4, Vector3 } from '../mathematics/vectors';
+import { GpuResources } from './GpuResources';
+import type { Skybox } from './Skybox';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -38,14 +40,20 @@ export class RenderView {
   readonly view = Matrix.identity();
   readonly projection = Matrix.identity();
   readonly viewProjection = Matrix.identity();
+  /** 背景用它把屏幕坐标变回世界方向。 */
+  readonly inverseViewProjection = Matrix.identity();
+  /** 相机在世界空间的位置（镜面反射要用视线方向）。 */
+  readonly eye = new Vector3();
   nearClipPlane = 0.1;
   farClipPlane = 1000;
   /** 在 RenderSystem.views 里的下标；特性按它给每个视图的常量分块。 */
   index = -1;
 
-  /** 由 view 和 projection 算出 viewProjection。 */
+  /** 由 view 和 projection 算出其余的矩阵和相机位置。 */
   update(): void {
     Matrix.multiply(this.viewProjection, this.projection, this.view);
+    Matrix.invert(this.inverseViewProjection, this.viewProjection);
+    if (Matrix.invert(CAMERA_WORLD, this.view)) this.eye.set(CAMERA_WORLD[12]!, CAMERA_WORLD[13]!, CAMERA_WORLD[14]!);
   }
 }
 
@@ -73,7 +81,17 @@ export abstract class RootRenderFeature {
   destroy(): void {}
 }
 
-/** 这一帧的光照：一个方向光加环境光（多个方向光、点光源、阴影以后加）。 */
+const CAMERA_WORLD = Matrix.identity();
+
+/** 天空盒光：天空盒、强度和实体的旋转。 */
+export interface SkyboxLight {
+  skybox: Skybox;
+  intensity: number;
+  /** 天空盒实体世界矩阵的旋转部分（列主序 4x4，平移为 0）。 */
+  readonly rotation: Float32Array;
+}
+
+/** 这一帧的光照：一个方向光、环境光和一个天空盒光（多个方向光、点光源、阴影以后加）。 */
 export interface Lighting {
   /** 光线前进的方向（世界空间，不必归一化）。 */
   readonly direction: Vector3;
@@ -81,6 +99,8 @@ export interface Lighting {
   readonly color: Color4;
   /** 环境光：线性空间的颜色乘强度。 */
   readonly ambient: Color4;
+  /** 没有天空盒光时是 undefined。 */
+  skybox: SkyboxLight | undefined;
 }
 
 export class RenderSystem {
@@ -93,16 +113,21 @@ export class RenderSystem {
     direction: new Vector3(),
     color: new Color4(),
     ambient: new Color4(),
+    skybox: undefined,
   };
   /** 场景里没有 Light 组件时用的光照（直射光的漫反射要除以 π，所以强度 3 大约是满亮度）。 */
   readonly defaultLighting: Lighting = {
     direction: new Vector3(-0.4, -1, -0.6),
     color: new Color4(3, 3, 3, 1),
     ambient: new Color4(0.15, 0.15, 0.18, 1),
+    skybox: undefined,
   };
+  /** 特性共用的贴图、立方体贴图和采样器。 */
+  readonly resources: GpuResources;
 
   constructor(graphicsDevice: GraphicsDevice) {
     this.graphicsDevice = graphicsDevice;
+    this.resources = new GpuResources(graphicsDevice.device);
   }
 
   get device(): GPUDevice {
@@ -138,5 +163,6 @@ export class RenderSystem {
 
   destroy(): void {
     for (const feature of this.features) feature.destroy();
+    this.resources.destroy();
   }
 }

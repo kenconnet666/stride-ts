@@ -19,6 +19,14 @@ describe('Matrix', () => {
     expect(Matrix.invert(inverse, new Float32Array(16))).toBe(false);
   });
 
+  test('rotationOf 取旋转部分：去掉缩放和平移', () => {
+    // 绕 Y 转 90°，缩放 2，平移 (5, 6, 7)
+    const world = new Float32Array([0, 0, -2, 0, 0, 2, 0, 0, 2, 0, 0, 0, 5, 6, 7, 1]);
+    const padded = new Float32Array(32);
+    padded.set(world, 16);
+    expect([...Matrix.rotationOf(new Float32Array(16), padded, 16)]).toEqual([0, 0, -1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1]);
+  });
+
   test('透视投影和 Stride 的 PerspectiveFovRH 一样：看向 -Z，近处深度 0、远处 1', () => {
     const p = Matrix.perspectiveFovRH(new Float32Array(16), Math.PI / 4, 16 / 9, 0.1, 1000);
     expect(Matrix.transformPoint(p, 0, 0, -0.1)[2]).toBeCloseTo(0, 6);

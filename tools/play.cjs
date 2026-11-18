@@ -73,6 +73,7 @@ const path = require('path');
           }
         }
         else if (step.key) await page.keyboard.press(step.key);
+        else if (step.eval) await page.evaluate(step.eval);
         else if (step.down) await page.keyboard.down(step.down);
         else if (step.up) await page.keyboard.up(step.up);
         else if (step.hold) { await page.keyboard.down(step.hold); await page.waitForTimeout(step.ms ?? 500); await page.keyboard.up(step.hold); }

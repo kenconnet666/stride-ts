@@ -5,7 +5,11 @@
  * - 模型 `<路径>.model`：二进制容器。开头 12 字节是 magic 'SMDL'、版本、JSON 头的字节数，接着是 JSON 头
  *   （网格表和材质槽），补齐到 4 字节，后面是数据区：每个网格的交错顶点（位置、法线、UV，见 VERTEX_FLOATS）
  *   和索引。加载后直接上传，不做转换。
- * - 材质 `<路径>.material.json`、场景 `<路径>.scene.json`：JSON。场景以后改成二进制，物理部分直接是原生能读的布局。
+ * - 立方体贴图 `<路径>.cubemap`：同样的容器（magic 'SCUB'），JSON 头是尺寸和级数，数据区是各级 mip 的 RGBA16F，
+ *   每级 6 个面连续（+X -X +Y -Y +Z -Z，行从上到下，WebGPU 的布局），直接上传。
+ * - 贴图 `<路径>.ktx2`：KTX2 加 Basis，运行时按设备转码。
+ * - 材质 `<路径>.material.json`、天空盒 `<路径>.skybox.json`、场景 `<路径>.scene.json`：JSON。场景以后改成二进制，
+ *   物理部分直接是原生能读的布局。
  */
 
 /** 每个顶点的 float 数：位置 xyz、法线 xyz、UV xy。 */
@@ -13,8 +17,17 @@ export const VERTEX_FLOATS = 8;
 
 export const MODEL_MAGIC = 0x4c444d53; // 'SMDL'，小端
 export const MODEL_VERSION = 1;
+export const CUBEMAP_MAGIC = 0x42554353; // 'SCUB'，小端
+export const CUBEMAP_VERSION = 1;
 
-export const EXTENSIONS = { model: '.model', material: '.material.json', scene: '.scene.json', texture: '.ktx2' } as const;
+export const EXTENSIONS = {
+  model: '.model',
+  material: '.material.json',
+  scene: '.scene.json',
+  texture: '.ktx2',
+  cubemap: '.cubemap',
+  skybox: '.skybox.json',
+} as const;
 
 export interface ModelMeshHeader {
   readonly name: string;
@@ -66,32 +79,18 @@ export function encodeModel(model: ModelData): Uint8Array {
       indexByteOffset,
     };
   });
-  const json = new TextEncoder().encode(JSON.stringify({ meshes, materials: model.materials } satisfies ModelHeader));
-  const dataStart = 12 + align4(json.byteLength);
-  const bytes = new Uint8Array(dataStart + offset);
-  const view = new DataView(bytes.buffer);
-  view.setUint32(0, MODEL_MAGIC, true);
-  view.setUint32(4, MODEL_VERSION, true);
-  view.setUint32(8, json.byteLength, true);
-  bytes.set(json, 12);
-  bytes.fill(0x20, 12 + json.byteLength, dataStart); // 用空格补齐，JSON 头仍能整段解析
+  const { bytes, dataStart } = encodeContainer(MODEL_MAGIC, MODEL_VERSION, { meshes, materials: model.materials } satisfies ModelHeader, offset);
   model.meshes.forEach((mesh, i) => {
     const header = meshes[i]!;
-    bytes.set(new Uint8Array(mesh.vertices.buffer, mesh.vertices.byteOffset, mesh.vertices.byteLength), dataStart + header.vertexByteOffset);
-    bytes.set(new Uint8Array(mesh.indices.buffer, mesh.indices.byteOffset, mesh.indices.byteLength), dataStart + header.indexByteOffset);
+    bytes.set(byteView(mesh.vertices), dataStart + header.vertexByteOffset);
+    bytes.set(byteView(mesh.indices), dataStart + header.indexByteOffset);
   });
   return bytes;
 }
 
 /** 读模型文件；顶点和索引是 buffer 上的视图，不拷贝。 */
 export function decodeModel(buffer: ArrayBuffer, source = 'model'): ModelData {
-  const view = new DataView(buffer);
-  if (buffer.byteLength < 12 || view.getUint32(0, true) !== MODEL_MAGIC) throw new Error(`${source} is not a model file`);
-  const version = view.getUint32(4, true);
-  if (version !== MODEL_VERSION) throw new Error(`${source} has model format version ${version}; this engine reads version ${MODEL_VERSION}`);
-  const jsonLength = view.getUint32(8, true);
-  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 12, jsonLength))) as ModelHeader;
-  const dataStart = 12 + align4(jsonLength);
+  const { header, dataStart } = decodeContainer<ModelHeader>(buffer, MODEL_MAGIC, MODEL_VERSION, 'model', source);
   return {
     materials: header.materials,
     meshes: header.meshes.map((mesh) => ({
@@ -103,6 +102,53 @@ export function decodeModel(buffer: ArrayBuffer, source = 'model'): ModelData {
         : new Uint32Array(buffer, dataStart + mesh.indexByteOffset, mesh.indexCount),
     })),
   };
+}
+
+/** 立方体贴图：各级 mip 的 RGBA16F（半精度浮点的位），每级 6 个面连续，从 size 到 1。 */
+export interface CubemapData {
+  readonly size: number;
+  readonly levels: readonly Uint16Array[];
+}
+
+interface CubemapHeader {
+  readonly size: number;
+  readonly levels: number;
+  readonly format: 'rgba16float';
+}
+
+export function encodeCubemap(cubemap: CubemapData): Uint8Array {
+  const total = cubemap.levels.reduce((sum, level, i) => {
+    const edge = Math.max(1, cubemap.size >> i);
+    if (level.length !== 6 * edge * edge * 4) throw new RangeError(`cubemap level ${i} must hold 6 * ${edge}² RGBA texels`);
+    return sum + level.byteLength;
+  }, 0);
+  const { bytes, dataStart } = encodeContainer(CUBEMAP_MAGIC, CUBEMAP_VERSION, { size: cubemap.size, levels: cubemap.levels.length, format: 'rgba16float' } satisfies CubemapHeader, total);
+  let offset = dataStart;
+  for (const level of cubemap.levels) {
+    bytes.set(byteView(level), offset);
+    offset += level.byteLength;
+  }
+  return bytes;
+}
+
+/** 读立方体贴图文件；各级是 buffer 上的视图，不拷贝。 */
+export function decodeCubemap(buffer: ArrayBuffer, source = 'cubemap'): CubemapData {
+  const { header, dataStart } = decodeContainer<CubemapHeader>(buffer, CUBEMAP_MAGIC, CUBEMAP_VERSION, 'cubemap', source);
+  const levels: Uint16Array[] = [];
+  for (let i = 0, offset = dataStart; i < header.levels; i++) {
+    const edge = Math.max(1, header.size >> i);
+    levels.push(new Uint16Array(buffer, offset, 6 * edge * edge * 4));
+    offset += 6 * edge * edge * 8;
+  }
+  return { size: header.size, levels };
+}
+
+/** 天空盒的光照（Stride 的 Skybox：漫反射是球谐，镜面是预滤波的立方体贴图）。 */
+export interface SkyboxFile {
+  /** 3 阶球谐的 9 个 RGB 系数（线性），已经乘过基函数常数，按 Stride 的 EvaluateSphericalHarmonics 求值。 */
+  readonly diffuseSH: readonly number[];
+  /** 镜面光照的立方体贴图（内容路径）：第 i 级 mip 对应粗糙度 i / (级数 - 1)。 */
+  readonly specular: string;
 }
 
 /** 材质文件。颜色都是线性空间的。 */
@@ -124,8 +170,14 @@ export interface MaterialFile {
   readonly baseColorTexture?: TextureSlot;
   /** 默认 multiply（baseColor 是白色时就是贴图本身）。 */
   readonly baseColorOperator?: ColorOperator;
+  /** 金属度工作流（Stride 的 MaterialMetalnessMapFeature）；没有时材质没有镜面反射。 */
   readonly metalness?: number;
+  /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。 */
   readonly roughness?: number;
+  /** 自发光：线性颜色乘强度。 */
+  readonly emissive?: Vec3Tuple;
+  /** Stride 的 Occlusion 特性里的 cavity：漫反射和镜面的可见部分乘上这两个系数。 */
+  readonly cavity?: { readonly diffuse: number; readonly specular: number };
 }
 
 export type Vec3Tuple = readonly [number, number, number];
@@ -146,12 +198,21 @@ export interface SceneEntityFile {
       readonly materials: readonly (string | null)[];
     };
     readonly camera?: { readonly verticalFieldOfView: number; readonly nearClipPlane: number; readonly farClipPlane: number };
-    readonly light?: {
-      readonly type: 'directional' | 'ambient';
-      /** sRGB，同 Light 组件。 */
-      readonly color: Vec3Tuple;
-      readonly intensity: number;
-    };
+    readonly light?:
+      | {
+        readonly type: 'directional' | 'ambient';
+        /** sRGB，同 Light 组件。 */
+        readonly color: Vec3Tuple;
+        readonly intensity: number;
+      }
+      | {
+        readonly type: 'skybox';
+        /** 天空盒的内容路径。 */
+        readonly skybox: string;
+        readonly intensity: number;
+      };
+    /** 背景（Stride 的 BackgroundComponent）：立方体贴图的内容路径和强度。 */
+    readonly background?: { readonly texture: string; readonly intensity: number };
   };
 }
 
@@ -159,4 +220,31 @@ export interface SceneFile {
   readonly name: string;
   /** 父实体都排在子实体前面。 */
   readonly entities: readonly SceneEntityFile[];
+}
+
+/** 容器的开头：magic、版本、JSON 头的字节数，接着是 JSON 头，用空格补齐到 4 字节（仍能整段解析），后面是数据区。 */
+function encodeContainer(magic: number, version: number, header: object, dataBytes: number): { bytes: Uint8Array; dataStart: number } {
+  const json = new TextEncoder().encode(JSON.stringify(header));
+  const dataStart = 12 + align4(json.byteLength);
+  const bytes = new Uint8Array(dataStart + dataBytes);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(0, magic, true);
+  view.setUint32(4, version, true);
+  view.setUint32(8, json.byteLength, true);
+  bytes.set(json, 12);
+  bytes.fill(0x20, 12 + json.byteLength, dataStart);
+  return { bytes, dataStart };
+}
+
+function decodeContainer<H>(buffer: ArrayBuffer, magic: number, version: number, kind: string, source: string): { header: H; dataStart: number } {
+  const view = new DataView(buffer);
+  if (buffer.byteLength < 12 || view.getUint32(0, true) !== magic) throw new Error(`${source} is not a ${kind} file`);
+  const found = view.getUint32(4, true);
+  if (found !== version) throw new Error(`${source} has ${kind} format version ${found}; this engine reads version ${version}`);
+  const jsonLength = view.getUint32(8, true);
+  return { header: JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 12, jsonLength))) as H, dataStart: 12 + align4(jsonLength) };
+}
+
+function byteView(array: ArrayBufferView): Uint8Array {
+  return new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
 }

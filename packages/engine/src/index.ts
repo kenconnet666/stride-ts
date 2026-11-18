@@ -22,15 +22,19 @@ export {
 export type { Issue } from './data/schema';
 export { ContentManager, type ContentOptions, type ContentReader, type LoadedModel, type SceneInstance } from './content/ContentManager';
 export {
+  decodeCubemap,
   decodeModel,
+  encodeCubemap,
   encodeModel,
   VERTEX_FLOATS,
   type ColorOperator,
+  type CubemapData,
   type MaterialFile,
   type ModelData,
   type ModelMeshData,
   type SceneEntityFile,
   type SceneFile,
+  type SkyboxFile,
   type TextureSlot,
 } from './content/format';
 export { Commands } from './engine/Commands';
@@ -68,13 +72,17 @@ export { Game, type GameOptions, type GameStatus, type HotContext } from './game
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
-export { Camera, Light, Model } from './rendering/components';
+export { Background, Camera, Light, Model } from './rendering/components';
+export { BackgroundRenderFeature } from './rendering/BackgroundRenderFeature';
+export { GpuResources } from './rendering/GpuResources';
+export { Cubemap, Skybox, type CubemapId, type SkyboxId } from './rendering/Skybox';
+export { ToneMap } from './rendering/ToneMap';
 export { ForwardRenderer } from './rendering/ForwardRenderer';
 export { Material, type MaterialDesc, type MaterialId, type MaterialTexture } from './rendering/Material';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { ktx2Decoder, Texture, type TextureData, type TextureDecoder } from './rendering/Texture';
 export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
-export { RenderStage, RenderSystem, RenderView, RootRenderFeature, type Lighting, type RenderContext, type RenderOutput } from './rendering/RenderSystem';
+export { RenderStage, RenderSystem, RenderView, RootRenderFeature, type Lighting, type RenderContext, type RenderOutput, type SkyboxLight } from './rendering/RenderSystem';
 export { Color4, Quaternion, srgbToLinear, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';
 export { Decimal, type Rounding } from './values/Decimal';
 export { civilFromDays, daysFromCivil, Instant, LocalDate, LocalDateTime, LocalTime } from './values/temporal';

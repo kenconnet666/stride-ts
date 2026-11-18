@@ -29,6 +29,18 @@ export const Matrix = {
     return out;
   },
 
+  /** 矩阵（source 里从 offset 开始的 16 个数）的旋转部分：前三列各自归一化去掉缩放，平移置 0。 */
+  rotationOf(out: Matrix4, source: Readonly<Float32Array>, offset = 0): Matrix4 {
+    out.fill(0);
+    for (let c = 0; c < 3; c++) {
+      const o = offset + c * 4;
+      const length = Math.hypot(source[o]!, source[o + 1]!, source[o + 2]!) || 1;
+      for (let r = 0; r < 3; r++) out[c * 4 + r] = source[o + r]! / length;
+    }
+    out[15] = 1;
+    return out;
+  },
+
   /** 逆矩阵；奇异时返回 false，out 不变。 */
   invert(out: Matrix4, m: Readonly<Matrix4>): boolean {
     const [a00, a01, a02, a03, a10, a11, a12, a13, a20, a21, a22, a23, a30, a31, a32, a33] = m as unknown as number[] as [

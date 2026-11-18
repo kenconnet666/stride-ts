@@ -1,6 +1,6 @@
 // Third Person Platformer：现在只加载导入的场景并画出来（相机停在 Stride 场景里的初始位置）。
 // 角色控制、相机脚本、物理、动画在后面的里程碑移植。
-import { Game, MeshRenderFeature, type GameTime } from '@stride-ts/engine';
+import { Game, MeshRenderFeature, type GameTime, type SceneInstance } from '@stride-ts/engine';
 
 const SCENE = 'ThirdPersonPlatformer/MainScene';
 const STATS_INTERVAL = 0.25;
@@ -16,9 +16,12 @@ export class PlatformerGame extends Game {
     this.stats = stats;
   }
 
+  /** 加载好的场景；按场景文件里的实体 id 找实体。 */
+  scene: SceneInstance | undefined;
+
   protected override async loadContent(): Promise<void> {
     const start = performance.now();
-    await this.content.loadScene(SCENE, this.entities);
+    this.scene = await this.content.loadScene(SCENE, this.entities);
     this.loadMilliseconds = performance.now() - start;
   }
 

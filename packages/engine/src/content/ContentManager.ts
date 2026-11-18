@@ -1,5 +1,5 @@
 /**
- * 内容管理（对应 Stride 的 ContentManager）：按内容路径加载资源管线产出的模型、材质、贴图、场景（格式见 format.ts），
+ * 内容管理（对应 Stride 的 ContentManager）：按内容路径加载资源管线产出的模型、材质、贴图、立方体贴图、天空盒、场景（格式见 format.ts），
  * 同一个路径只加载一次（缓存的是 Promise，并发请求也只发一次），并把场景实例化成实体。
  *
  *   const scene = await game.content.loadScene('scenes/MainScene');
@@ -10,11 +10,12 @@
 import type { EntityManager } from '../engine/EntityManager';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
-import { Camera, Light, Model } from '../rendering/components';
+import { Background, Camera, Light, Model } from '../rendering/components';
 import { Material } from '../rendering/Material';
 import { Mesh } from '../rendering/Mesh';
+import { Cubemap, Skybox } from '../rendering/Skybox';
 import { Texture, type TextureDecoder } from '../rendering/Texture';
-import { decodeModel, EXTENSIONS, type MaterialFile, type SceneEntityFile, type SceneFile } from './format';
+import { decodeCubemap, decodeModel, EXTENSIONS, type MaterialFile, type SceneEntityFile, type SceneFile, type SkyboxFile } from './format';
 
 /** 读一个文件；默认用 fetch，测试和 Node 里可以换成读本地文件。 */
 export type ContentReader = (url: URL) => Promise<ArrayBuffer>;
@@ -29,6 +30,14 @@ export interface ContentOptions {
 export interface LoadedModel {
   readonly meshes: readonly { readonly mesh: Mesh; readonly material: number | null }[];
   readonly materials: readonly (Material | null)[];
+}
+
+/** 场景引用的资源，实例化之前并行加载好。 */
+interface SceneAssets {
+  readonly models: ReadonlyMap<string, LoadedModel>;
+  readonly materials: ReadonlyMap<string, Material>;
+  readonly skyboxes: ReadonlyMap<string, Skybox>;
+  readonly cubemaps: ReadonlyMap<string, Cubemap>;
 }
 
 export interface SceneInstance {
@@ -77,7 +86,22 @@ export class ContentManager {
         baseColor: file.baseColor,
         ...(slot ? { baseColorTexture: { texture: await this.loadTexture(slot.texture), scale: slot.scale, offset: slot.offset } } : {}),
         ...(file.baseColorOperator ? { baseColorOperator: file.baseColorOperator } : {}),
+        ...(file.metalness === undefined ? {} : { metalness: file.metalness }),
+        ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
+        ...(file.emissive ? { emissive: file.emissive } : {}),
+        ...(file.cavity ? { cavity: file.cavity } : {}),
       });
+    });
+  }
+
+  loadCubemap(path: string): Promise<Cubemap> {
+    return this.#once(path + EXTENSIONS.cubemap, async (url) => new Cubemap(path, decodeCubemap(await this.#read(url), url.href)));
+  }
+
+  loadSkybox(path: string): Promise<Skybox> {
+    return this.#once(path + EXTENSIONS.skybox, async (url) => {
+      const file = this.#json<SkyboxFile>(await this.#read(url));
+      return new Skybox(path, file.diffuseSH, await this.loadCubemap(file.specular));
     });
   }
 
@@ -89,18 +113,18 @@ export class ContentManager {
     });
   }
 
-  /** 加载场景并把它的实体创建在 entities 里（默认场景里的模型、材质先并行加载完）。 */
+  /** 加载场景并把它的实体创建在 entities 里（场景引用的模型、材质、天空盒、立方体贴图先并行加载完）。 */
   async loadScene(path: string, entities: EntityManager): Promise<SceneInstance> {
     const url = new URL(path + EXTENSIONS.scene, this.root);
     const scene = this.#json<SceneFile>(await this.#read(url));
-    const models = new Map<string, LoadedModel>();
-    const materials = new Map<string, Material>();
-    await Promise.all([
-      ...new Set(scene.entities.flatMap((e) => (e.components.model ? [e.components.model.model] : []))),
-    ].map(async (model) => models.set(model, await this.loadModel(model))));
-    await Promise.all([
-      ...new Set(scene.entities.flatMap((e) => (e.components.model?.materials ?? []).filter((m): m is string => m !== null))),
-    ].map(async (material) => materials.set(material, await this.loadMaterial(material))));
+    const components = scene.entities.map((e) => e.components);
+    const [models, materials, skyboxes, cubemaps] = await Promise.all([
+      preload(components.flatMap((c) => (c.model ? [c.model.model] : [])), (p) => this.loadModel(p)),
+      preload(components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), (p) => this.loadMaterial(p)),
+      preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
+      preload(components.flatMap((c) => (c.background ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
+    ]);
+    const assets: SceneAssets = { models, materials, skyboxes, cubemaps };
 
     const created = new Map<string, Entity>();
     for (const file of scene.entities) {
@@ -111,17 +135,20 @@ export class ContentManager {
         entity.require(Transform).parent = parent;
       }
       created.set(file.id, entity);
-      this.#addComponents(entity, file, models, materials, entities);
+      this.#addComponents(entity, file, assets, entities);
     }
     return { name: scene.name, entities: created };
   }
 
-  #addComponents(entity: Entity, file: SceneEntityFile, models: ReadonlyMap<string, LoadedModel>, materials: ReadonlyMap<string, Material>, entities: EntityManager): void {
-    const { model, camera, light } = file.components;
+  #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
+    const { model, camera, light, background } = file.components;
+    const { materials } = assets;
     if (camera) entity.add(Camera.with(camera));
-    if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity }));
+    if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
+    else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity }));
+    if (background) entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
     if (!model) return;
-    const loaded = models.get(model.model)!;
+    const loaded = assets.models.get(model.model)!;
     loaded.meshes.forEach(({ mesh, material: slot }, i) => {
       // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
       const override = slot === null ? null : (model.materials[slot] ?? null);
@@ -152,4 +179,9 @@ export class ContentManager {
   #json<T>(buffer: ArrayBuffer): T {
     return JSON.parse(new TextDecoder().decode(buffer)) as T;
   }
+}
+
+/** 并行加载一组（去重的）路径，结果按路径放进 Map。 */
+async function preload<T>(paths: readonly string[], load: (path: string) => Promise<T>): Promise<Map<string, T>> {
+  return new Map(await Promise.all([...new Set(paths)].map(async (path) => [path, await load(path)] as const)));
 }

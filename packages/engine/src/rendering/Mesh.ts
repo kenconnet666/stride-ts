@@ -6,6 +6,7 @@
  */
 import { VERTEX_FLOATS } from '../content/format';
 import type { Branded } from '../data/prop';
+import { ResourceTable } from './ResourceTable';
 
 export { VERTEX_FLOATS };
 
@@ -23,8 +24,7 @@ export interface Bounds {
   readonly max: readonly [number, number, number];
 }
 
-/** 按 id 找网格：数据组件的列里只能存数字。 */
-const meshes: (Mesh | undefined)[] = [undefined];
+const meshes = new ResourceTable<Mesh>();
 
 export class Mesh {
   /** 从 1 开始；Model 组件的 mesh 列存它。 */
@@ -36,11 +36,10 @@ export class Mesh {
   constructor(name: string, data: MeshData) {
     if (data.vertices.length % VERTEX_FLOATS !== 0) throw new RangeError(`mesh '${name}': vertices must hold ${VERTEX_FLOATS} floats per vertex`);
     if (data.indices.length % 3 !== 0) throw new RangeError(`mesh '${name}': indices must form triangles`);
-    this.id = meshes.length as MeshId;
     this.name = name;
     this.data = data;
     this.bounds = boundsOf(data.vertices);
-    meshes.push(this);
+    this.id = meshes.add(this) as MeshId;
   }
 
   get vertexCount(): number {
@@ -49,7 +48,7 @@ export class Mesh {
 
   /** @internal Model 组件里存的 id 对应的网格。 */
   static byId(id: number): Mesh | undefined {
-    return meshes[id];
+    return meshes.get(id);
   }
 
   /** 立方体（Stride 的 CubeProceduralModel），中心在原点，每个面 4 个顶点，法线朝外，每个面 UV 铺满 0..1。 */

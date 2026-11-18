@@ -2,10 +2,10 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { crc32, deflateSync } from 'node:zlib';
 import path from 'node:path';
-import { decodeModel, type MaterialFile, type SceneFile } from '@stride-ts/engine/content-format';
+import { decodeCubemap, decodeModel, type MaterialFile, type SceneFile, type SkyboxFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { parseAssetReference, parseObjectReference, parseStrideYaml, StrideImporter, StrideProject } from '../src/index';
+import { floatToHalf, halfToFloat, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, StrideImporter, StrideProject } from '../src/index';
 
 describe('Stride 的 YAML', () => {
   test('标签里的逗号（程序集限定名）、对象引用和资源引用', () => {
@@ -51,6 +51,45 @@ function encodePng(width: number, height: number, rgba: Uint8Array): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
+/** 只有一级 mip、处处同一个颜色的 RGBA16F 立方体贴图 DDS（老式 FourCC 113，Stride 的天空盒就是这种）。 */
+function encodeDdsCube(size: number, color: readonly [number, number, number, number]): Buffer {
+  const texels = 6 * size * size;
+  const bytes = Buffer.alloc(128 + texels * 8);
+  bytes.writeUInt32LE(0x20534444, 0); // 'DDS '
+  bytes.writeUInt32LE(124, 4);
+  bytes.writeUInt32LE(0x1007, 8); // CAPS | HEIGHT | WIDTH | PIXELFORMAT
+  bytes.writeUInt32LE(size, 12);
+  bytes.writeUInt32LE(size, 16);
+  bytes.writeUInt32LE(1, 28);
+  bytes.writeUInt32LE(32, 76);
+  bytes.writeUInt32LE(0x4, 80); // DDPF_FOURCC
+  bytes.writeUInt32LE(113, 84); // D3DFMT_A16B16G16R16F
+  bytes.writeUInt32LE(0x1008, 108); // TEXTURE | COMPLEX
+  bytes.writeUInt32LE(0xfe00, 112); // CUBEMAP 加 6 个面
+  const half = color.map(floatToHalf);
+  for (let i = 0; i < texels * 4; i++) bytes.writeUInt16LE(half[i % 4]!, 128 + i * 2);
+  return bytes;
+}
+
+describe('DDS 和半精度', () => {
+  test('半精度往返、舍入和特殊值', () => {
+    for (const value of [0, 1, -2, 0.5, 65504, 6.103515625e-5]) expect(halfToFloat(floatToHalf(value))).toBe(value);
+    expect(halfToFloat(floatToHalf(1 / 3))).toBeCloseTo(1 / 3, 3);
+    expect(halfToFloat(floatToHalf(1e6))).toBe(Infinity);
+    expect(Number.isNaN(halfToFloat(floatToHalf(NaN)))).toBe(true);
+  });
+
+  test('读浮点立方体贴图；不是立方体贴图或格式不对时报错', () => {
+    const cube = readDdsCubemap(encodeDdsCube(4, [0.25, 0.5, 4, 1]), 'sky.dds');
+    expect([cube.size, cube.levels.length, cube.levels[0]!.length]).toEqual([4, 1, 6 * 16 * 4]);
+    expect([...cube.levels[0]!.subarray(-4)]).toEqual([0.25, 0.5, 4, 1]);
+    const notCube = encodeDdsCube(4, [0, 0, 0, 0]);
+    notCube.writeUInt32LE(0, 112);
+    expect(() => readDdsCubemap(notCube, 'flat.dds')).toThrow('flat.dds is not a square cubemap');
+    expect(() => readDdsCubemap(new Uint8Array(200), 'x.dds')).toThrow('x.dds is not a DDS file');
+  });
+});
+
 describe('导入 Stride 场景', () => {
   let tools: StrideTools;
   let dir: string;
@@ -64,7 +103,14 @@ describe('导入 Stride 场景', () => {
   });
 
   // 一个最小的 Stride 工程：一个三角形的 glTF 模型、一个"颜色加贴图"的材质（贴图是 16x16 的棋盘格 PNG）、一个父子两个实体的场景
-  const ids = { scene: '11111111-0000-0000-0000-000000000001', model: '11111111-0000-0000-0000-000000000002', material: '11111111-0000-0000-0000-000000000003', texture: '11111111-0000-0000-0000-000000000004' };
+  const ids = {
+    scene: '11111111-0000-0000-0000-000000000001',
+    model: '11111111-0000-0000-0000-000000000002',
+    material: '11111111-0000-0000-0000-000000000003',
+    texture: '11111111-0000-0000-0000-000000000004',
+    skybox: '11111111-0000-0000-0000-000000000005',
+    skyTexture: '11111111-0000-0000-0000-000000000006',
+  };
   const gltf = JSON.stringify({
     asset: { version: '2.0' },
     buffers: [{ byteLength: 36, uri: 'data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAA' }],
@@ -106,9 +152,31 @@ describe('导入 Stride 场景', () => {
       '    Specular: !MaterialMetalnessMapFeature',
       '        MetalnessMap: !ComputeFloat',
       '            Value: 0.25',
+      '    MicroSurface: !MaterialGlossinessMapFeature',
+      '        GlossinessMap: !ComputeFloat',
+      '            Value: 0.75',
+      '    Emissive: !MaterialEmissiveMapFeature',
+      '        EmissiveMap: !ComputeColor',
+      '            Value: {R: 1.0, G: 1.0, B: 0.0, A: 1.0}',
+      '        Intensity: !ComputeFloat',
+      '            Value: 2.0',
+      '    Occlusion: !MaterialOcclusionMapFeature',
+      '        AmbientOcclusionMap: !ComputeFloat',
+      '            Value: 1.0',
+      '        CavityMap: !ComputeTextureScalar',
+      '            FallbackValue:',
+      '                Value: 0.5',
+      '        DiffuseCavity: !ComputeFloat',
+      '            Value: 1.0',
+      '        SpecularCavity: !ComputeFloat',
+      '            Value: 0.5',
       '    Overrides:',
       '        UVScale: {X: 1.0, Y: 3.0}',
     ].join('\n'),
+    // 天空：8x8 的 HDR 立方体贴图，处处是 (0.5, 1, 2)
+    'Resources/sky.dds': encodeDdsCube(8, [0.5, 1, 2, 1]),
+    'Assets/SkyTexture.sdtex': ['!Texture', `Id: ${ids.skyTexture}`, 'Source: !file ../Resources/sky.dds', 'Type: !ColorTextureType {}'].join('\n'),
+    'Assets/Sky.sdsky': ['!SkyboxAsset', `Id: ${ids.skybox}`, `CubeMap: ${ids.skyTexture}:SkyTexture`].join('\n'),
     'Assets/Textures/Checker.sdtex': ['!Texture', `Id: ${ids.texture}`, 'Source: ../../Resources/checker.png', 'Type: !ColorTextureType {}'].join('\n'),
     'Assets/Main.sdscene': [
       '!SceneAsset',
@@ -144,23 +212,58 @@ describe('导入 Stride 场景', () => {
       '                            Color: !ColorRgbProvider',
       '                                Value: {R: 1.0, G: 0.5, B: 0.0}',
       '                        Intensity: 5.0',
+      '        -   Entity:',
+      '                Id: e3',
+      '                Name: Sky',
+      '                Components:',
+      '                    t3: !TransformComponent',
+      '                        Id: tc3',
+      '                        Children: {}',
+      '                    l3: !LightComponent',
+      '                        Id: lc3',
+      '                        Type: !LightSkybox',
+      `                            Skybox: ${ids.skybox}:Sky`,
+      '                        Intensity: 1.5',
+      '                    b3: !BackgroundComponent',
+      '                        Id: bc3',
+      `                        Texture: ${ids.skyTexture}:SkyTexture`,
+      '                        Intensity: 3.0',
     ].join('\n'),
   };
 
-  test('实体、父子、模型、材质、贴图、光源；不认识的组件计数', async () => {
+  test('实体、父子、模型、材质、贴图、光源、天空盒、背景；不认识的组件计数', async () => {
     for (const [file, text] of Object.entries(files)) {
       await mkdir(path.dirname(path.join(dir, file)), { recursive: true });
       await writeFile(path.join(dir, file), text);
     }
     const project = await StrideProject.open([{ package: 'Game', dir: path.join(dir, 'Assets') }]);
     const out = path.join(dir, 'content');
-    const result = await new StrideImporter(project, tools, out).importScene(project.byPath('Game/Main')!);
-    expect(result).toMatchObject({ scene: 'Game/Main', entities: 2, models: ['Game/Models/Tri'], materials: ['Game/Materials/Red'], textures: ['Game/Textures/Checker'] });
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16, specularSamples: 32 });
+    const result = await importer.importScene(project.byPath('Game/Main')!);
+    expect(result).toMatchObject({
+      scene: 'Game/Main',
+      entities: 3,
+      models: ['Game/Models/Tri'],
+      materials: ['Game/Materials/Red'],
+      textures: ['Game/Textures/Checker', 'Game/SkyTexture'],
+      skyboxes: ['Game/Sky'],
+    });
     expect([...result.skipped]).toEqual([['Game.Spinner,Game', 1]]);
 
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Main.scene.json'), 'utf8')) as SceneFile;
     // 父实体排在前面，即使文件里子实体在前
-    expect(scene.entities.map((e) => [e.name, e.parent])).toEqual([['Root', null], ['Child', 'e2']]);
+    expect(scene.entities.map((e) => [e.name, e.parent])).toEqual([['Root', null], ['Child', 'e2'], ['Sky', null]]);
+    expect(scene.entities[2]!.components).toEqual({ light: { type: 'skybox', skybox: 'Game/Sky', intensity: 1.5 }, background: { texture: 'Game/SkyTexture', intensity: 3 } });
+
+    // 恒定的天空：球谐的常数项就是天空的颜色，预滤波的每一级也都是它
+    const skybox = JSON.parse(await readFile(path.join(out, 'Game/Sky.skybox.json'), 'utf8')) as SkyboxFile;
+    expect(skybox.specular).toBe('Game/Sky.specular');
+    expect(skybox.diffuseSH.slice(0, 3).map((c) => Math.round(c * 100) / 100)).toEqual([0.5, 1, 2]);
+    const specular = decodeCubemap((await readFile(path.join(out, 'Game/Sky.specular.cubemap'))).buffer as ArrayBuffer);
+    expect([specular.size, specular.levels.length]).toEqual([16, 5]);
+    expect([...specular.levels[4]!.subarray(0, 3)].map(halfToFloat)).toEqual([0.5, 1, 2]);
+    const background = decodeCubemap((await readFile(path.join(out, 'Game/SkyTexture.cubemap'))).buffer as ArrayBuffer);
+    expect([background.size, background.levels.length, halfToFloat(background.levels[0]![2]!)]).toEqual([8, 1, 2]);
     expect(scene.entities[1]!.position).toEqual([0, 2, 0]);
     expect(scene.entities[0]!.components.light).toEqual({ type: 'directional', color: [1, 0.5, 0], intensity: 5 });
     expect(scene.entities[1]!.components.model).toEqual({ model: 'Game/Models/Tri', materials: [] });
@@ -170,13 +273,16 @@ describe('导入 Stride 场景', () => {
     expect(model.meshes.map((m) => [m.material, m.indices.length])).toEqual([[0, 3]]);
 
     const material = JSON.parse(await readFile(path.join(out, 'Game/Materials/Red.material.json'), 'utf8')) as MaterialFile;
-    // 红色加贴图：uv 缩放是贴图的 Scale 乘材质的 UVScale
+    // 红色加贴图：uv 缩放是贴图的 Scale 乘材质的 UVScale；cavity 0.5 按 DiffuseCavity 1、SpecularCavity 0.5 插值
     expect(material).toEqual({
       name: 'Red',
       baseColor: [1, 0, 0, 1],
       baseColorTexture: { texture: 'Game/Textures/Checker', scale: [2, 6], offset: [0.5, 0] },
       baseColorOperator: 'add',
       metalness: 0.25,
+      roughness: 0.25,
+      emissive: [2, 2, 0],
+      cavity: { diffuse: 0.5, specular: 0.75 },
     });
     expect(result.warnings).toEqual([]);
 

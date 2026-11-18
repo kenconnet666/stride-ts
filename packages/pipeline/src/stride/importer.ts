@@ -1,13 +1,26 @@
 /**
  * 把 Stride 工程的场景导入成运行时内容（格式见 @stride-ts/engine 的 content/format.ts）：场景里的实体、
  * 变换和父子关系，ModelComponent 引用的模型（源 FBX/glTF 经 stride-tools 导入）、材质和贴图（源图片解码后
- * 编成 KTX2 加 Basis），相机，光源。
- * 现在不认识的组件（物理、脚本、动画、背景）跳过并计数，后面的里程碑逐个接上。
+ * 编成 KTX2 加 Basis），相机，光源（天空盒光的球谐和预滤波立方体贴图同 Stride 的 SkyboxGenerator），背景。
+ * 现在不认识的组件（物理、脚本、动画）跳过并计数，后面的里程碑逐个接上。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { EXTENSIONS, encodeModel, VERTEX_FLOATS, type ColorOperator, type MaterialFile, type ModelMeshData, type SceneEntityFile, type SceneFile, type TextureSlot } from '@stride-ts/engine/content-format';
+import {
+  EXTENSIONS,
+  encodeCubemap,
+  encodeModel,
+  VERTEX_FLOATS,
+  type ColorOperator,
+  type MaterialFile,
+  type ModelMeshData,
+  type SceneEntityFile,
+  type SceneFile,
+  type SkyboxFile,
+  type TextureSlot,
+} from '@stride-ts/engine/content-format';
+import { readDdsCubemap, toHalf, type FloatCubemap } from '../dds.ts';
 import type { AssetEntry, StrideProject } from './project.ts';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -17,35 +30,46 @@ export interface ImportResult {
   readonly entities: number;
   readonly models: readonly string[];
   readonly materials: readonly string[];
+  /** 贴图和立方体贴图。 */
   readonly textures: readonly string[];
+  readonly skyboxes: readonly string[];
   /** 跳过的组件类型和个数。 */
   readonly skipped: ReadonlyMap<string, number>;
   readonly warnings: readonly string[];
 }
 
-/**
- * Stride 的天空盒光（LightSkybox）按天空盒纹理算漫反射环境光；纹理还没接上，先当一个白色的环境光，
- * 强度乘这个估计值（晴天天空的平均亮度大约是直射光的几分之一）。接上天空盒以后去掉。
- */
-const SKYBOX_AMBIENT_ESTIMATE = 0.2;
+export interface ImporterOptions {
+  /** 天空盒镜面光照的立方体贴图边长（2 的幂），默认 256，同 Stride 的 SkyboxAsset.SpecularCubeMapSize。 */
+  readonly specularCubemapSize?: number;
+  /** GGX 预滤波每个纹素的采样数，默认 1024，同 Stride 的 RadiancePrefilteringGGX。 */
+  readonly specularSamples?: number;
+}
 
 const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+
+type Components = { -readonly [K in keyof SceneEntityFile['components']]: SceneEntityFile['components'][K] };
 
 export class StrideImporter {
   readonly #project: StrideProject;
   readonly #tools: StrideTools;
   readonly #out: string;
+  readonly #options: Required<ImporterOptions>;
   readonly #models = new Map<string, Promise<string>>();
   readonly #materials = new Map<string, Promise<string>>();
   readonly #textures = new Map<string, Promise<string>>();
+  readonly #cubemaps = new Map<string, Promise<string>>();
+  readonly #skyboxes = new Map<string, Promise<string>>();
+  /** 解码过的 HDR 立方体贴图源文件：天空盒光照和背景常用同一张。 */
+  readonly #hdrSources = new Map<string, Promise<FloatCubemap>>();
   readonly #skipped = new Map<string, number>();
   readonly #warnings: string[] = [];
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
-  constructor(project: StrideProject, tools: StrideTools, out: string) {
+  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, specularSamples = 1024 }: ImporterOptions = {}) {
     this.#project = project;
     this.#tools = tools;
     this.#out = out;
+    this.#options = { specularCubemapSize, specularSamples };
   }
 
   async importScene(asset: AssetEntry): Promise<ImportResult> {
@@ -77,7 +101,8 @@ export class StrideImporter {
       entities: scene.entities.length,
       models: [...this.#models.keys()],
       materials: [...this.#materials.keys()],
-      textures: [...this.#textures.keys()],
+      textures: [...this.#textures.keys(), ...this.#cubemaps.keys()],
+      skyboxes: [...this.#skyboxes.keys()],
       skipped: this.#skipped,
       warnings: this.#warnings,
     };
@@ -86,15 +111,13 @@ export class StrideImporter {
   async #entity(entity: StrideObject, parent: string | null, scene: AssetEntry): Promise<SceneEntityFile> {
     const where = `${scene.file}: entity '${String(entity['Name'])}'`;
     const transform = componentOf(entity, 'TransformComponent') ?? {};
-    const components: { -readonly [K in keyof SceneEntityFile['components']]: SceneEntityFile['components'][K] } = {};
+    const components: Components = {};
     for (const component of Object.values(asObject(entity['Components']) ?? {})) {
       const object = asObject(component);
       const type = object?.$type ?? 'unknown';
       if (!object || type === 'TransformComponent') continue;
-      if (type === 'ModelComponent') components.model = await this.#modelComponent(object, where);
-      else if (type === 'CameraComponent') components.camera = cameraOf(object);
-      else if (type === 'LightComponent' && lightOf(object)) components.light = lightOf(object)!;
-      else this.#skipped.set(type, (this.#skipped.get(type) ?? 0) + 1);
+      const handled = await this.#component(type, object, components, where);
+      if (!handled) this.#skipped.set(type, (this.#skipped.get(type) ?? 0) + 1);
     }
     return {
       id: entity['Id'] as string,
@@ -105,6 +128,53 @@ export class StrideImporter {
       scale: vec3(transform['Scale'], 1),
       components,
     };
+  }
+
+  /** 把一个组件写进 components；不认识的返回 false。 */
+  async #component(type: string, component: StrideObject, components: Components, where: string): Promise<boolean> {
+    switch (type) {
+      case 'ModelComponent':
+        components.model = await this.#modelComponent(component, where);
+        return true;
+      case 'CameraComponent':
+        components.camera = cameraOf(component);
+        return true;
+      case 'LightComponent': {
+        const light = await this.#light(component, where);
+        if (light) components.light = light;
+        return light !== undefined;
+      }
+      case 'BackgroundComponent': {
+        const texture = parseAssetReference(component['Texture']);
+        if (!texture) return false;
+        components.background = { texture: await this.#cubemap(this.#project.get(texture.id, where)), intensity: asNumber(component['Intensity'], 1) };
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  async #light(component: StrideObject, where: string): Promise<SceneEntityFile['components']['light'] | undefined> {
+    const type = asObject(component['Type']);
+    const intensity = asNumber(component['Intensity'], 1);
+    switch (type?.$type) {
+      case 'LightDirectional':
+      case 'LightAmbient': {
+        const color = asObject(asObject(type['Color'])?.['Value']) ?? {};
+        return {
+          type: type.$type === 'LightDirectional' ? 'directional' : 'ambient',
+          color: [asNumber(color['R'], 1), asNumber(color['G'], 1), asNumber(color['B'], 1)],
+          intensity,
+        };
+      }
+      case 'LightSkybox': {
+        const skybox = parseAssetReference(type['Skybox']);
+        return skybox ? { type: 'skybox', skybox: await this.#skybox(this.#project.get(skybox.id, where)), intensity } : undefined;
+      }
+      default:
+        return undefined;
+    }
   }
 
   async #modelComponent(component: StrideObject, where: string): Promise<NonNullable<SceneEntityFile['components']['model']>> {
@@ -123,19 +193,12 @@ export class StrideImporter {
     return { model, materials };
   }
 
-  /** 导入一个模型资源（.sdm3d），返回它的内容路径；同一个模型只导入一次。 */
+  /** 导入一个模型资源（.sdm3d），返回它的内容路径。 */
   #model(asset: AssetEntry): Promise<string> {
-    let pending = this.#models.get(asset.path);
-    if (!pending) {
-      pending = this.#importModel(asset).then(() => asset.path);
-      this.#models.set(asset.path, pending);
-    }
-    return pending;
+    return once(this.#models, asset, () => this.#importModel(asset));
   }
 
   async #importModel(asset: AssetEntry): Promise<void> {
-    const source = asset.data['Source'];
-    if (typeof source !== 'string') throw new Error(`${asset.file}: model has no Source`);
     // 材质槽按 .sdm3d 里的顺序；源文件里的网格按材质名对上槽
     const slots = Object.values(asObject(asset.data['Materials']) ?? {}).map((slot) => asObject(slot) ?? {});
     const slotNames = slots.map((slot) => String(slot['Name'] ?? ''));
@@ -146,7 +209,7 @@ export class StrideImporter {
 
     const pivot = vec3(asset.data['PivotPosition'], 0);
     const scale = asNumber(asset.data['ScaleImport'], 1);
-    const scene = await this.#tools.loadScene(await readFile(path.resolve(path.dirname(asset.file), source)));
+    const scene = await this.#tools.loadScene(await readFile(sourceOf(asset)));
     try {
       const meshes: ModelMeshData[] = [];
       for (let m = 0; m < scene.meshCount; m++) {
@@ -165,14 +228,9 @@ export class StrideImporter {
     }
   }
 
-  /** 导入一个材质资源（.sdmat），返回它的内容路径；同一个材质只导入一次。 */
+  /** 导入一个材质资源（.sdmat），返回它的内容路径。 */
   #material(asset: AssetEntry): Promise<string> {
-    let pending = this.#materials.get(asset.path);
-    if (!pending) {
-      pending = this.#materialFile(asset).then((file) => this.#write(asset.path + EXTENSIONS.material, JSON.stringify(file, null, 1))).then(() => asset.path);
-      this.#materials.set(asset.path, pending);
-    }
-    return pending;
+    return once(this.#materials, asset, async () => this.#write(asset.path + EXTENSIONS.material, JSON.stringify(await this.#materialFile(asset), null, 1)));
   }
 
   async #materialFile(asset: AssetEntry): Promise<MaterialFile> {
@@ -180,16 +238,63 @@ export class StrideImporter {
     const diffuse = asObject(asObject(attributes['Diffuse'])?.['DiffuseMap']);
     const uvScale = vec2(asObject(attributes['Overrides'])?.['UVScale'], 1);
     const { color, texture, operator } = diffuse ? this.#evaluateColor(diffuse, asset, uvScale) : { color: WHITE, operator: 'multiply' as const };
-    const metalness = asObject(asObject(attributes['Specular'])?.['MetalnessMap'])?.['Value'];
-    const glossiness = asObject(asObject(attributes['MicroSurface'])?.['GlossinessMap'])?.['Value'];
+    const specular = asObject(attributes['Specular']);
+    if (specular && specular.$type !== 'MaterialMetalnessMapFeature') this.#warnings.push(`${asset.file}: specular ${specular.$type ?? 'feature'} is not supported; the material has no specular`);
+    const metalness = specular?.$type === 'MaterialMetalnessMapFeature' ? this.#scalar(asObject(specular['MetalnessMap']), 0, asset) : undefined;
+    const microSurface = asObject(attributes['MicroSurface']);
+    const glossiness = this.#scalar(asObject(microSurface?.['GlossinessMap']), 0, asset);
+    // Invert 为真时这张图存的是粗糙度（MaterialGlossinessMapFeature.Invert）
+    const roughness = microSurface?.['Invert'] === true ? glossiness : 1 - glossiness;
     return {
       name: path.basename(asset.path),
       baseColor: color,
       ...(texture ? { baseColorTexture: { ...texture, texture: await texture.texture } } : {}),
       ...(texture && operator !== 'multiply' ? { baseColorOperator: operator } : {}),
-      ...(typeof metalness === 'number' ? { metalness } : {}),
-      ...(typeof glossiness === 'number' ? { roughness: 1 - glossiness } : {}),
+      ...(metalness === undefined ? {} : { metalness }),
+      roughness,
+      ...this.#emissive(asObject(attributes['Emissive']), asset),
+      ...this.#cavity(asObject(attributes['Occlusion']), asset),
     };
+  }
+
+  /** 自发光（MaterialEmissiveMapFeature）：线性颜色乘强度，同 Stride 的 MaterialSurfaceEmissiveShading。 */
+  #emissive(feature: StrideObject | undefined, asset: AssetEntry): Pick<MaterialFile, 'emissive'> {
+    if (!feature) return {};
+    const map = asObject(feature['EmissiveMap']);
+    if (map?.$type !== 'ComputeColor') {
+      this.#warnings.push(`${asset.file}: emissive ${map?.$type ?? 'map'} is not supported; skipping it`);
+      return {};
+    }
+    const color = linearColor(map['Value']);
+    const intensity = this.#scalar(asObject(feature['Intensity']), 1, asset);
+    return { emissive: [color[0] * intensity, color[1] * intensity, color[2] * intensity] };
+  }
+
+  /**
+   * Occlusion 特性里的 cavity：可见的漫反射、镜面分别乘 lerp(1, cavity, DiffuseCavity / SpecularCavity)
+   * （Stride 的 MaterialPixelStream.PrepareMaterialForLightingAndShading）。环境光遮蔽的贴图还没接。
+   */
+  #cavity(feature: StrideObject | undefined, asset: AssetEntry): Pick<MaterialFile, 'cavity'> {
+    if (!feature) return {};
+    const ambientOcclusion = this.#scalar(asObject(feature['AmbientOcclusionMap']), 1, asset);
+    if (ambientOcclusion !== 1) this.#warnings.push(`${asset.file}: ambient occlusion ${ambientOcclusion} is not supported; using 1`);
+    const cavity = this.#scalar(asObject(feature['CavityMap']), 1, asset);
+    const lerp = (amount: number) => 1 + (cavity - 1) * amount;
+    const diffuse = lerp(this.#scalar(asObject(feature['DiffuseCavity']), 1, asset));
+    const specular = lerp(this.#scalar(asObject(feature['SpecularCavity']), 1, asset));
+    return diffuse === 1 && specular === 1 ? {} : { cavity: { diffuse, specular } };
+  }
+
+  /** ComputeFloat 的值；没有贴图的 ComputeTextureScalar 用它的 FallbackValue（Stride 也是这样）。 */
+  #scalar(node: StrideObject | undefined, fallback: number, asset: AssetEntry): number {
+    if (!node) return fallback;
+    if (node.$type === 'ComputeFloat') return asNumber(node['Value'], fallback);
+    if (node.$type === 'ComputeTextureScalar') {
+      if (parseAssetReference(node['Texture'])) this.#warnings.push(`${asset.file}: scalar textures are not supported; using the fallback value`);
+      return asNumber(asObject(node['FallbackValue'])?.['Value'], fallback);
+    }
+    this.#warnings.push(`${asset.file}: scalar ${node.$type ?? 'value'} is not supported; using ${fallback}`);
+    return fallback;
   }
 
   /**
@@ -238,25 +343,52 @@ export class StrideImporter {
     }
   }
 
-  /** 导入一个贴图资源（.sdtex）：解码源图片，编成 KTX2（UASTC 加 mipmap），返回内容路径；同一张贴图只导入一次。 */
+  /** 导入一个贴图资源（.sdtex）：解码源图片，编成 KTX2（UASTC 加 mipmap），返回内容路径。 */
   #texture(asset: AssetEntry): Promise<string> {
-    let pending = this.#textures.get(asset.path);
-    if (!pending) {
-      pending = this.#importTexture(asset).then(() => asset.path);
-      this.#textures.set(asset.path, pending);
-    }
-    return pending;
+    return once(this.#textures, asset, async () => {
+      const type = asObject(asset.data['Type']);
+      // 颜色贴图默认按 sRGB 采样（Stride 的 ColorTextureType.UseSRgbSampling），法线、灰度贴图是线性的
+      const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
+      const image = await this.#tools.decodeImage(await readFile(sourceOf(asset)));
+      const ktx2 = await this.#tools.encodeBasis(image.pixels, image.width, image.height, { mode: 'uastc', srgb, mipmaps: true });
+      await this.#write(asset.path + EXTENSIONS.texture, ktx2);
+    });
   }
 
-  async #importTexture(asset: AssetEntry): Promise<void> {
-    const source = asset.data['Source'];
-    if (typeof source !== 'string') throw new Error(`${asset.file}: texture has no Source`);
-    const type = asObject(asset.data['Type']);
-    // 颜色贴图默认按 sRGB 采样（Stride 的 ColorTextureType.UseSRgbSampling），法线、灰度贴图是线性的
-    const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
-    const image = await this.#tools.decodeImage(await readFile(path.resolve(path.dirname(asset.file), source)));
-    const ktx2 = await this.#tools.encodeBasis(image.pixels, image.width, image.height, { mode: 'uastc', srgb, mipmaps: true });
-    await this.#write(asset.path + EXTENSIONS.texture, ktx2);
+  /** 把一个 HDR 立方体贴图资源（.sdtex，源文件是 DDS）原样导出成 .cubemap（RGBA16F，带源文件的 mip）。 */
+  #cubemap(asset: AssetEntry): Promise<string> {
+    return once(this.#cubemaps, asset, async () => {
+      const source = await this.#hdrSource(asset);
+      await this.#write(asset.path + EXTENSIONS.cubemap, encodeCubemap({ size: source.size, levels: source.levels.map(toHalf) }));
+    });
+  }
+
+  /**
+   * 导入天空盒（.sdsky），同 Stride 的 SkyboxGenerator：漫反射是 3 阶球谐，镜面是 GGX 预滤波的立方体贴图
+   * （写成 `<天空盒路径>.specular.cubemap`）。返回天空盒的内容路径。
+   */
+  #skybox(asset: AssetEntry): Promise<string> {
+    return once(this.#skyboxes, asset, async () => {
+      const reference = parseAssetReference(asset.data['CubeMap']);
+      if (!reference) throw new Error(`${asset.file}: skybox has no CubeMap`);
+      const source = await this.#hdrSource(this.#project.get(reference.id, asset.file));
+      const level0 = { size: source.size, faces: source.levels[0]! };
+      const [sh, specular] = await Promise.all([this.#tools.cubemapSH(level0), this.#tools.prefilterCubemapGGX(level0, this.#options.specularCubemapSize, this.#options.specularSamples)]);
+      const specularPath = `${asset.path}.specular`;
+      await this.#write(specularPath + EXTENSIONS.cubemap, encodeCubemap({ size: specular.size, levels: specular.levels.map(toHalf) }));
+      const file: SkyboxFile = { diffuseSH: [...sh], specular: specularPath };
+      await this.#write(asset.path + EXTENSIONS.skybox, JSON.stringify(file, null, 1));
+    });
+  }
+
+  #hdrSource(asset: AssetEntry): Promise<FloatCubemap> {
+    let pending = this.#hdrSources.get(asset.path);
+    if (!pending) {
+      const file = sourceOf(asset);
+      pending = readFile(file).then((bytes) => readDdsCubemap(bytes, file));
+      this.#hdrSources.set(asset.path, pending);
+    }
+    return pending;
   }
 
   async #write(contentPath: string, data: string | Uint8Array): Promise<void> {
@@ -264,6 +396,24 @@ export class StrideImporter {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, data);
   }
+}
+
+/** 同一个资源只导入一次：缓存导入的 Promise，结果是资源的内容路径。 */
+function once(cache: Map<string, Promise<string>>, asset: AssetEntry, importAsset: () => Promise<void>): Promise<string> {
+  let pending = cache.get(asset.path);
+  if (!pending) {
+    pending = importAsset().then(() => asset.path);
+    cache.set(asset.path, pending);
+  }
+  return pending;
+}
+
+/** 资源的源文件（`Source` 相对资源文件；写成 `!file 路径` 时也认）。 */
+function sourceOf(asset: AssetEntry): string {
+  const source = asset.data['Source'];
+  const file = typeof source === 'string' ? source : asObject(source)?.$type === 'file' ? asObject(source)!['value'] : undefined;
+  if (typeof file !== 'string') throw new Error(`${asset.file}: ${asset.type} has no Source`);
+  return path.resolve(path.dirname(asset.file), file);
 }
 
 type Color4Tuple = readonly [number, number, number, number];
@@ -345,17 +495,6 @@ function cameraOf(component: StrideObject): NonNullable<SceneEntityFile['compone
     nearClipPlane: asNumber(component['NearClipPlane'], 0.1),
     farClipPlane: asNumber(component['FarClipPlane'], 1000),
   };
-}
-
-function lightOf(component: StrideObject): SceneEntityFile['components']['light'] | undefined {
-  const type = asObject(component['Type']);
-  const intensity = asNumber(component['Intensity'], 1);
-  if (type?.$type === 'LightDirectional') {
-    const color = asObject(asObject(type['Color'])?.['Value']) ?? {};
-    return { type: 'directional', color: [asNumber(color['R'], 1), asNumber(color['G'], 1), asNumber(color['B'], 1)], intensity };
-  }
-  if (type?.$type === 'LightSkybox') return { type: 'ambient', color: [1, 1, 1], intensity: intensity * SKYBOX_AMBIENT_ESTIMATE };
-  return undefined;
 }
 
 /** 导入的网格变成交错顶点（位置减去轴心再乘缩放，同 Stride 的 PivotPosition、ScaleImport），没有的属性填 0。 */

@@ -4,6 +4,7 @@ import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
 import { GraphicsDevice } from '../graphics/GraphicsDevice';
+import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
 import { RenderSystem } from '../rendering/RenderSystem';
@@ -85,6 +86,8 @@ export class Game {
       this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
       this.renderSystem = new RenderSystem(this.graphicsDevice);
       this.renderSystem.addFeature(new MeshRenderFeature());
+      // 背景画在网格之后，只落在没画到的地方
+      this.renderSystem.addFeature(new BackgroundRenderFeature());
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);
       await this.loadContent();
     } catch (error) {

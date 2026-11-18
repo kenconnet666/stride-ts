@@ -1,0 +1,55 @@
+/**
+ * 立方体贴图和天空盒（Stride 的 TextureCube 和 Skybox）。天空盒是预处理过的环境光照：漫反射是 3 阶球谐，
+ * 镜面是按粗糙度预滤波的立方体贴图（资源管线里用 stride-tools 算，同 Stride 的 SkyboxGenerator）。
+ * 和 Mesh 一样只是数据，按 id 登记，组件的列里存 id；GPU 资源由渲染系统管理。
+ */
+import type { CubemapData } from '../content/format';
+import type { Branded } from '../data/prop';
+import { ResourceTable } from './ResourceTable';
+
+export type CubemapId = Branded<number, 'CubemapId'>;
+export type SkyboxId = Branded<number, 'SkyboxId'>;
+
+const cubemaps = new ResourceTable<Cubemap>();
+const skyboxes = new ResourceTable<Skybox>();
+
+/** RGBA16F 的立方体贴图，带 mip（布局见 content/format.ts 的 CubemapData）。 */
+export class Cubemap {
+  readonly id: CubemapId;
+  readonly name: string;
+  readonly data: CubemapData;
+
+  constructor(name: string, data: CubemapData) {
+    if (data.levels.length === 0) throw new RangeError(`cubemap '${name}' has no mip levels`);
+    this.name = name;
+    this.data = data;
+    this.id = cubemaps.add(this) as CubemapId;
+  }
+
+  /** @internal 组件里存的 id 对应的立方体贴图。 */
+  static byId(id: number): Cubemap | undefined {
+    return cubemaps.get(id);
+  }
+}
+
+export class Skybox {
+  readonly id: SkyboxId;
+  readonly name: string;
+  /** 9 个 RGB 系数，已经乘过基函数常数（同 Stride 的 SphericalHarmonicsEnvironmentColor.SphericalColors）。 */
+  readonly diffuseSH: Float32Array;
+  /** 第 i 级 mip 对应粗糙度 i / (级数 - 1)。 */
+  readonly specular: Cubemap;
+
+  constructor(name: string, diffuseSH: ArrayLike<number>, specular: Cubemap) {
+    if (diffuseSH.length !== 27) throw new RangeError(`skybox '${name}' needs 9 RGB spherical harmonics coefficients`);
+    this.name = name;
+    this.diffuseSH = Float32Array.from(diffuseSH);
+    this.specular = specular;
+    this.id = skyboxes.add(this) as SkyboxId;
+  }
+
+  /** @internal Light 组件里存的 id 对应的天空盒。 */
+  static byId(id: number): Skybox | undefined {
+    return skyboxes.get(id);
+  }
+}

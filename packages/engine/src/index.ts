@@ -7,6 +7,7 @@ export {
   type Columns,
   type DataShape,
   type DataValues,
+  type DecimalInput,
   type EntityId,
   type InheritedOf,
   type InitOf,
@@ -43,3 +44,19 @@ export { Game, type GameOptions, type GameStatus } from './games/Game';
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { Color4, Quaternion, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';
+export { Decimal, type Rounding } from './values/Decimal';
+export { civilFromDays, daysFromCivil, Instant, LocalDate, LocalDateTime, LocalTime } from './values/temporal';
+export {
+  decodeBase64,
+  encodeBase64,
+  fromWire,
+  parseWire,
+  parseWireJson,
+  stringifyWire,
+  toWire,
+  wireText,
+  wireTypeOf,
+  type Json,
+  type WireReader,
+  type WireType,
+} from './values/wire';

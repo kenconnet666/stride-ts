@@ -4,6 +4,7 @@
  * SyncScript.update、物理之前的系统、物理之后的系统，最后是 AsyncScript 的等待者，
  * 它们的后续代码在这一帧的任务返回后运行。
  */
+import { ENCODED_KINDS, fromCell, toCell } from '../data/cells';
 import type { Columns, DataShape, EntityId } from '../data/prop';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
@@ -259,16 +260,19 @@ export class EntityManager {
         });
         return;
       }
+      // bigint、小数、日期时间：列里是 int64 / int32 的原始值，视图读写时换算成值对象
+      const encoded = ENCODED_KINDS.has(field.options.kind);
       Object.defineProperty(view, field.name, {
         enumerable: true,
         get: () => {
           const [column, row] = this.#cell(id, type, f);
           const value = column[row];
+          if (encoded) return fromCell(field.options, value as number | bigint);
           return isBool ? value === 1 : value;
         },
         set: (value: unknown) => {
           const [column, row] = this.#cell(id, type, f);
-          column[row] = isBool ? (value ? 1 : 0) : value;
+          column[row] = encoded ? toCell(field.options, value) : isBool ? (value ? 1 : 0) : value;
           touch();
         },
       });

@@ -3,11 +3,15 @@
  * 类型参数里；脚本字段、组件、init 对象、视图和列的 TS 类型都只从声明推导出来（做法同 easy-query-ts 的列）。
  */
 import type { Color4, ColorLike, Quaternion, QuatLike, Vec3Like, Vector3 } from '../mathematics/vectors';
+import type { Decimal } from '../values/Decimal';
+import type { Instant, LocalDate, LocalDateTime, LocalTime } from '../values/temporal';
 
 /** 数据组件能存的种类：每个字段一列（向量按行交错存放，每行 3 或 4 个 float）。 */
-export type ColumnKind = 'number' | 'f32' | 'int' | 'u8' | 'u32' | 'bool' | 'string' | 'enum' | 'entity' | 'vec3' | 'quat' | 'color';
+export type ColumnKind =
+  | 'number' | 'f32' | 'int' | 'u8' | 'u32' | 'bool' | 'string' | 'enum' | 'entity' | 'vec3' | 'quat' | 'color'
+  | 'i64' | 'u64' | 'decimal' | 'date' | 'time' | 'datetime' | 'instant';
 /** 只有脚本能用的种类：长度不定或值是对象。 */
-export type ObjectKind = 'list' | 'object' | 'union' | 'json' | 'component';
+export type ObjectKind = 'list' | 'object' | 'union' | 'json' | 'component' | 'bytes';
 export type PropKind = ColumnKind | ObjectKind;
 
 /** 记在类型里的修饰：sealed（由拥有者驱动）、inherit（作用域默认值）、stat（运行时修饰）。 */
@@ -23,6 +27,8 @@ export type EntityId = Branded<number, 'EntityId'>;
 export type Vec3Input = Readonly<Vec3Like> | readonly [number, number, number];
 export type QuatInput = Readonly<QuatLike> | readonly [number, number, number, number];
 export type ColorInput = Readonly<ColorLike> | readonly [number, number, number, number];
+/** 小数可以从这些写法得到：Decimal、文字（`"12.50"`）、数字、bigint。 */
+export type DecimalInput = Decimal | string | number | bigint;
 
 /**
  * Standard Schema（https://standardschema.dev）里 prop.json() 用到的部分：zod、valibot、arktype 的 schema
@@ -82,6 +88,9 @@ export interface PropOptions {
   readonly schema?: StandardSchema;
   /** component：脚本类或组件类型，包在函数里，模块之间可以互相引用。 */
   readonly target?: () => unknown;
+  /** decimal：小数位数，以及最多几位有效数字（存成 int64 时不超过 18）。 */
+  readonly scale?: number;
+  readonly precision?: number;
 }
 
 /**
@@ -221,6 +230,25 @@ export const prop = {
   /** 几种 shape 之一，靠判别字段区分（只有脚本能用）。 */
   union: <const D extends string, V extends Record<string, Shape>>(discriminator: D, variants: V) =>
     declare<UnionValue<D, V>, 'union', UnionInput<D, V>>('union', { discriminator, variants }),
+  /** 64 位有符号整数，脚本里是 bigint；列是 BigInt64Array，和 C 的 int64_t 布局相同。 */
+  i64: () => declare<bigint, 'i64', bigint | number>('i64'),
+  /** 64 位无符号整数，脚本里是 bigint；列是 BigUint64Array。 */
+  u64: () => declare<bigint, 'u64', bigint | number>('u64'),
+  /**
+   * 定点小数，scale 位小数、最多 precision 位有效数字（默认 18，存成 int64 的单位数时不能更多）。
+   * 脚本里是 Decimal；列是 BigInt64Array（单位数），同 Arrow 的 decimal64。多出的小数位不会被悄悄舍掉，而是报错。
+   */
+  decimal: (scale: number, precision = 18) => declare<Decimal, 'decimal', DecimalInput>('decimal', { scale, precision }),
+  /** 日期，脚本里是 LocalDate；列是 Int32Array（1970-01-01 起的天数）。也可以传 `"2024-01-31"`。 */
+  date: () => declare<LocalDate, 'date', LocalDate | string>('date'),
+  /** 一天里的时刻，脚本里是 LocalTime；列是 BigInt64Array（零点起的纳秒）。 */
+  time: () => declare<LocalTime, 'time', LocalTime | string>('time'),
+  /** 不带时区的日期时间，脚本里是 LocalDateTime；列是 BigInt64Array（纳秒）。 */
+  datetime: () => declare<LocalDateTime, 'datetime', LocalDateTime | string>('datetime'),
+  /** 时间线上的时刻（UTC），脚本里是 Instant；列是 BigInt64Array（Unix 纪元起的纳秒）。也可以传 Date 或带时差的 ISO 文字。 */
+  instant: () => declare<Instant, 'instant', Instant | Date | string>('instant'),
+  /** 字节（只有脚本能用），线上写成 base64。默认空，每个脚本实例各有一份。 */
+  bytes: () => declare<Uint8Array, 'bytes'>('bytes', { hasDefault: true, defaultValue: new Uint8Array(0) }) as unknown as Prop<Uint8Array, true, 'bytes'>,
   /** Standard Schema（zod、valibot、arktype）接受的任意数据；赋值时校验（只有脚本能用）。 */
   json: <Output>(schema: StandardSchema<Output>) => declare<Output, 'json'>('json', { schema }),
   /**
@@ -319,19 +347,28 @@ export type InheritedOf<S extends Shape, Of extends 'data' | 'script'> = Flat<{
 /** 脚本 shape 里标了 .stat() 的键。 */
 export type StatKeys<S extends Shape> = { [K in keyof S]: 'stat' extends ModifiersOf<ScriptPropOf<S[K]>> ? K : never }[keyof S];
 
+/** 每种列存储种类对应的数组类型；不在表里的（string、enum）是普通数组。 */
+interface ColumnArrays {
+  f32: Float32Array;
+  vec3: Float32Array;
+  quat: Float32Array;
+  color: Float32Array;
+  number: Float64Array;
+  entity: Float64Array;
+  i64: BigInt64Array;
+  decimal: BigInt64Array;
+  time: BigInt64Array;
+  datetime: BigInt64Array;
+  instant: BigInt64Array;
+  u64: BigUint64Array;
+  int: Int32Array;
+  date: Int32Array;
+  u8: Uint8Array;
+  bool: Uint8Array;
+  u32: Uint32Array;
+}
+
 /** 数据组件每个字段的列：TypedArray 或普通数组。 */
-export type ColumnOf<P> = P extends Prop<infer T, any, infer K, any, any>
-  ? K extends 'f32' | 'vec3' | 'quat' | 'color'
-    ? Float32Array
-    : K extends 'number' | 'entity'
-      ? Float64Array
-      : K extends 'int'
-        ? Int32Array
-        : K extends 'u8' | 'bool'
-          ? Uint8Array
-          : K extends 'u32'
-            ? Uint32Array
-            : T[]
-  : never;
+export type ColumnOf<P> = P extends Prop<infer T, any, infer K, any, any> ? (K extends keyof ColumnArrays ? ColumnArrays[K] : T[]) : never;
 
 export type Columns<S extends Shape> = { readonly [K in keyof S]: ColumnOf<DataPropOf<S[K]>> };

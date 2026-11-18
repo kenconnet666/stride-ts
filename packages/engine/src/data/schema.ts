@@ -4,6 +4,7 @@
  * 按键名循环赋值要慢 17 倍。
  */
 import { Color4, Quaternion, Vector3 } from '../mathematics/vectors';
+import { cellIssue, ENCODED_KINDS, toCell, toValue } from './cells';
 import { prop, Prop, type AnyProp, type PropKind, type PropOptions, type Shape, type StandardIssue } from './prop';
 
 export interface Field {
@@ -14,7 +15,7 @@ export interface Field {
 }
 
 /** 数据组件一个字段的存储。 */
-export type Column = Float32Array | Float64Array | Int32Array | Uint8Array | Uint32Array | unknown[];
+export type Column = Float32Array | Float64Array | Int32Array | Uint8Array | Uint32Array | BigInt64Array | BigUint64Array | unknown[];
 
 /** 值的一个问题：哪里不对（字段名、列表下标组成的路径）、为什么不对。 */
 export interface Issue {
@@ -38,7 +39,9 @@ export interface Schema {
 /** 是否检查运行时传进来的值：开发版检查，正式版信任调用方。 */
 const CHECK_VALUES = (import.meta as { env?: { DEV?: boolean } }).env?.DEV ?? true;
 
-const COLUMN_KINDS = new Set<PropKind>(['number', 'f32', 'int', 'u8', 'u32', 'bool', 'string', 'enum', 'entity', 'vec3', 'quat', 'color']);
+const COLUMN_KINDS = new Set<PropKind>([
+  'number', 'f32', 'int', 'u8', 'u32', 'bool', 'string', 'enum', 'entity', 'vec3', 'quat', 'color', ...ENCODED_KINDS,
+]);
 const STRIDES: Partial<Record<PropKind, number>> = { vec3: 3, quat: 4, color: 4 };
 
 /**
@@ -172,6 +175,17 @@ function issuesOf(options: PropOptions, value: unknown, path: readonly (string |
     }
     case 'component':
       return typeof value === 'object' && value !== null ? [] : fail('is not a script or component view');
+    case 'i64':
+    case 'u64':
+    case 'decimal':
+    case 'date':
+    case 'time':
+    case 'datetime':
+    case 'instant':
+    case 'bytes': {
+      const problem = cellIssue(options, value);
+      return problem ? fail(problem) : [];
+    }
     default: {
       if (typeof value !== 'number' || Number.isNaN(value)) return fail(`${String(value)} is not a number`);
       const range = INTEGER_RANGES[options.kind];
@@ -237,7 +251,7 @@ function toScriptValue(options: PropOptions, value: unknown): unknown {
       return result instanceof Promise || result.issues ? value : result.value;
     }
     default:
-      return value;
+      return ENCODED_KINDS.has(options.kind) || options.kind === 'bytes' ? toValue(options, value) : value;
   }
 }
 
@@ -252,7 +266,7 @@ function components(value: unknown, keys: readonly string[]): number[] {
 }
 
 /** 基本类型原样存；其余的要经过转换。 */
-const isPlain = (kind: PropKind) => !['vec3', 'quat', 'color', 'list', 'object', 'union', 'json'].includes(kind);
+const isPlain = (kind: PropKind) => !['vec3', 'quat', 'color', 'list', 'object', 'union', 'json', 'bytes'].includes(kind) && !ENCODED_KINDS.has(kind);
 
 // -------------------------------------------------------------------------------------------------
 // 生成的初始化函数
@@ -273,7 +287,7 @@ function compile<Mode extends 'object' | 'row'>(
   const missing = (name: string) => {
     throw new TypeError(`${owner}.${name} is required`);
   };
-  // 转换函数：对象模式是转成脚本里的值，行模式是把 stride 个 float 写进列
+  // 转换函数：对象模式是转成脚本里的值；行模式是把 stride 个 float 写进列，或把值编码成 int64 / int32
   const convert = fields.map((field) =>
     mode === 'object'
       ? isPlain(field.options.kind) ? undefined : (value: unknown) => toScriptValue(field.options, value)
@@ -282,7 +296,11 @@ function compile<Mode extends 'object' | 'row'>(
             const values = components(value, field.options.kind === 'color' ? ['r', 'g', 'b', 'a'] : ['x', 'y', 'z', 'w'].slice(0, field.stride));
             column.set(values, row * field.stride);
           }
-        : undefined,
+        : ENCODED_KINDS.has(field.options.kind)
+          ? (column: unknown[], row: number, value: unknown) => {
+              column[row] = toCell(field.options, value);
+            }
+          : undefined,
   );
   const lines = fields.map((field, i) => {
     const key = JSON.stringify(field.name);
@@ -351,7 +369,16 @@ export function createColumn(field: Field, capacity: number): Column {
     case 'entity':
       return new Float64Array(capacity);
     case 'int':
+    case 'date':
       return new Int32Array(capacity);
+    case 'i64':
+    case 'decimal':
+    case 'time':
+    case 'datetime':
+    case 'instant':
+      return new BigInt64Array(capacity);
+    case 'u64':
+      return new BigUint64Array(capacity);
     case 'u8':
     case 'bool':
       return new Uint8Array(capacity);

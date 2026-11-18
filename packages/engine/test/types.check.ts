@@ -20,6 +20,9 @@ import {
   type Vec3Like,
   type Vector3,
   type View,
+  type Decimal,
+  type Instant,
+  type LocalDate,
 } from '../src/index';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -194,3 +197,16 @@ scoped.defaults.set(Paint, { tint: [1, 0, 0, 1] });
 // 校验器的输出类型就是 init 的类型
 const healthValidator = validator(Health);
 expect<Equal<NonNullable<typeof healthValidator['~standard']['types']>['output'], Parameters<typeof Health.with>[0]>>();
+// ---- bigint、小数、日期时间 ----
+const Account = component({ balance: prop.decimal(2).default('0'), id: prop.i64().default(0n), opened: prop.date().default('2024-01-01'), seen: prop.instant().default(new Date(0)) });
+expect<Equal<Chunk<{ a: typeof Account }>['a']['balance'], BigInt64Array>>();
+expect<Equal<Chunk<{ a: typeof Account }>['a']['opened'], Int32Array>>();
+const account = new Game().entities.create({ components: [Account.with({ balance: 12.5, id: 1 })] }).require(Account);
+expect<Equal<typeof account.balance, Decimal>>();
+expect<Equal<typeof account.id, bigint>>();
+expect<Equal<typeof account.opened, LocalDate>>();
+expect<Equal<typeof account.seen, Instant>>();
+// @ts-expect-error 日期要传 LocalDate 或文字
+Account.with({ opened: new Date() });
+// @ts-expect-error bytes 只给脚本用
+component({ blob: prop.bytes() });

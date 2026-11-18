@@ -7,6 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@stride-ts/native": "workspace:*"
+    "@stride-ts/native": "^0.1.0"
   }
 }

@@ -8,11 +8,10 @@
     "node": ">=22"
   },
   "scripts": {
-    "native:sync": "pnpm --filter @stride-ts/native sync",
-    "dev": "pnpm native:sync && pnpm --filter @stride-ts/sandbox dev",
-    "build": "pnpm native:sync && pnpm --filter @stride-ts/sandbox build",
-    "typecheck": "pnpm native:sync && tsc -p .",
-    "test": "pnpm native:sync && vitest run"
+    "dev": "pnpm --filter @stride-ts/sandbox dev",
+    "build": "pnpm --filter @stride-ts/sandbox build",
+    "typecheck": "tsc -p .",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

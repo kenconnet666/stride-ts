@@ -174,7 +174,6 @@ three.js 以对象为中心：每个物体一个 Object3D，每帧更新矩阵�
 stride-ts/
   packages/
     engine/        (built) our engine layer and renderer in Stride's shape: entities, components, scripts, scene loading, input, audio, RenderSystem
-    native/        (built) the stride-native/stride-tools modules and JS wrappers, copied from jolt-native-fork/StrideNative by scripts/sync.mjs (source lives there)
     content/       loading by groups, caches, reference counts
   apps/
     sandbox/       (built) smoke-test page for the whole stack

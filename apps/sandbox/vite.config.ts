@@ -10,5 +10,7 @@ export default defineConfig({
   server: { port: 5180, strictPort: true, headers: crossOriginIsolation },
   preview: { port: 5181, strictPort: true, headers: crossOriginIsolation },
   worker: { format: 'es' },
+  // Emscripten 的模块按 import.meta.url 找 .wasm 和自己的 worker，预打包会把它挪到 .vite/deps，那层关系就断了
+  optimizeDeps: { exclude: ['@stride-ts/native'] },
   build: { target: 'es2024' },
 });

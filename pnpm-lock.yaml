@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
+
 importers:
 
   .:
@@ -24,8 +27,8 @@ importers:
   apps/bench:
     dependencies:
       '@stride-ts/native':
-        specifier: workspace:*
-        version: link:../../packages/native
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -37,8 +40,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: workspace:*
-        version: link:../../packages/native
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -47,10 +50,8 @@ importers:
   packages/engine:
     dependencies:
       '@stride-ts/native':
-        specifier: workspace:*
-        version: link:../native
-
-  packages/native: {}
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
 
 packages:
 
@@ -186,6 +187,11 @@ packages:
 
   '@rolldown/pluginutils@1.1.1':
     resolution: {integrity: sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA==}
+
+  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz':
+    resolution: {integrity: sha512-hF8uQHWo6PUMqqn0EpllECQCUykUV+qou9fVY+PxNrp8SZuaCLhgHxmqbLakUPISUyuNd00PTaZvbxjXgjvrOg==, tarball: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz}
+    version: 0.1.0
+    engines: {node: '>=22'}
 
   '@tybys/wasm-util@0.10.5':
     resolution: {integrity: sha512-dOGOPxlaNV+G046mZzN+9C0dAcQZeSKcXiVaM0TYy/LM4ttTmgSBDxYfovcYI8Em3+eAbiAYpvWLOv8+ZVRJKA==}
@@ -685,6 +691,8 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.1.1': {}
+
+  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz': {}
 
   '@tybys/wasm-util@0.10.5':
     dependencies:

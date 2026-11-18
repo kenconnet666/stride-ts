@@ -1,7 +1,5 @@
 node_modules/
 dist/
-# 从 jolt-native-fork 拷来的原生模块和绑定（pnpm native:sync）
-/packages/native/src/
 *.tsbuildinfo
 
 # Machine-specific

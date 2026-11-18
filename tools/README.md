@@ -35,7 +35,7 @@ node play.cjs "$(node -e "console.log(require.resolve('playwright'))")" http://l
 |---|---|
 | `build-jolt-wasm.ps1` | 只测 Jolt 本身：用 emsdk 把 `jolt-native-fork` 的 `UnitTests` 编成多线程加 SIMD 的 wasm，再用 Node 跑。参数 `-Config Debug\|Release\|Distribution`（默认 Distribution）；构建目录是 `Build/WASM_<Config>` |
 
-StrideNative 的两个模块（`stride-native`、`stride-tools`）用 fork 仓库里的 `StrideNative/Scripts/build-wasm.ps1` 构建和测试，浏览器测试页是 `StrideNative/Tests/Browser/serve.mjs`。编好后在本仓库跑 `pnpm native:sync`，拷进 `packages/native/src`。
+StrideNative 的两个模块（`stride-native`、`stride-tools`）用 fork 仓库里的 `StrideNative/Scripts/build-wasm.ps1` 构建和测试，浏览器测试页是 `StrideNative/Tests/Browser/serve.mjs`。构建脚本最后打出 npm 包 `@stride-ts/native` 的 tgz；本仓库从 fork 的 GitHub Release 安装它，更新流程见根目录 README 的"开发"。
 
 注意事项：
 - 无头 Chrome 的帧节奏固定在 60 Hz 左右，和显示器无关。测性能要用 `frame-time.cjs`，它会去掉帧率上限。

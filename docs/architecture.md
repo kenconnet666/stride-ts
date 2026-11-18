@@ -640,7 +640,7 @@ export const assets = {
 - **场景只给标了"导出"的实体生成类型**：代码要引用的门、首领在编辑器里勾选导出，`scene.entities.gate` 有类型；其余实体不进类型，生成文件和类型检查都保持小。
 - **怎么生成、什么时候更新**：
   - 编辑器的 Node 后端保存资源时重写这个文件，Vite 热更新跟着生效。
-  - `pnpm assets:types` 单独生成；`dev`、`build`、`typecheck` 先跑它（同 `native:sync`）。
+  - `pnpm assets:types` 单独生成；`dev`、`build`、`typecheck` 先跑它。
   - 生成的文件不提交（`.gitignore`），避免合并冲突；新克隆的仓库跑一次 `typecheck` 就有了。
   - 输出按资源路径排序、格式固定，同样的资源生成同样的文件。
 - **类型写法**：生成的结构用 `interface`（类型检查器能缓存，悬停时显示名字而不是展开一大串），不用深层交叉类型。类型压力测试里加上"几百个预制体、几层部件"的生成样例，记录检查时间。
@@ -744,7 +744,8 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 
 - **只用可擦除的语法**：Node 22.18+/24 直接运行（fork 的 Node 测试），Vite 照常编译，fork 的浏览器测试服务器用 `module.stripTypeScriptTypes` 去掉类型再发出。不需要构建步骤，也没有手写的 `.d.ts`。
 - **Emscripten 工厂的类型**：`*-core.d.mts` 逐个列出各模块导出的 C 函数名，`CoreModule<E>` 把它们映射成 `_sn_*` 成员。不用 `_sn_${string}` 索引签名：名字写错在编译期就报，也不会因为 `noUncheckedIndexedAccess` 变成可能 undefined。
-- **类型检查**：`pnpm native:sync` 把 `.ts`、`.d.mts`、`.mjs`、`.wasm` 拷进 `packages/native/src`（顺带删掉 fork 已经不产出的旧文件），包的 `exports` 直接指向 `src/stride-native.ts`；放在 `src` 而不是 `dist`，是因为 WebStorm 把 `dist` 当构建输出排除、不建索引，里面的绑定就解析不出类型，也不能自动导入（2026-11-18 用户发现）；本仓库的 `tsc`（开了 `allowImportingTsExtensions`）用全部严格选项检查它们。
+- **打包和安装**（2026-11-18 用户定）：fork 的 `StrideNative/JS/` 是 npm 包 `@stride-ts/native`。源码在 `src/`，fork 自己的 tsconfig 开 `allowImportingTsExtensions` 加 `rewriteRelativeImportExtensions`（同 easy-query-ts），编译成 `dist/*.js` 加 `.d.ts`（带 declarationMap）；`dist/` 里还有 Emscripten 的 `.mjs`、`.wasm`，两个 wasm 也在 `exports` 里导出。fork 自己的 Node 测试和浏览器测试页加载的就是 `dist/`。`build-wasm.ps1` 最后 `pnpm pack`，`release-native.ps1` 发布成 fork 的 GitHub Release `native-v<版本>`；本仓库各包照常依赖 `^0.1.0`，`pnpm-workspace.yaml` 的 override 指向 Release 的 tgz 地址，发布到 npm 后删掉。Vite 配置里 `optimizeDeps.exclude` 了这个包：Emscripten 的模块按 `import.meta.url` 找 `.wasm` 和自己的 worker，预打包会把这层关系弄断。
+- **两次踩坑**（都是 JetBrains IDE 解析不出包的类型，`tsc`、Vite 都正常）：拷到本仓库 `dist/` 时，IDE 把 `dist` 当构建输出排除、不建索引；改用 `file:` 安装本地 tgz 时，pnpm 在 `node_modules/.pnpm` 下建的目录名带 `..`（`@stride-ts+native@file+..+._<hash>`），IDE 的解析器遇到这种路径就失败（同一份文件放进正常名字的目录就好了，2026-11-18 实测）。从 GitHub Release 安装，目录名是 `@stride-ts+native@https+++g_<hash>`，没有这个问题。
 
 接口相对原来的 .mjs 版本的变化：
 

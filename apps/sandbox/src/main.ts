@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 // 整套技术栈的冒烟测试：跨源隔离的 Vite、带工作线程的原生模块、WebGPU、帧循环，以及实体核心
 // （AsyncScript 生成粒子，系统移动并回收它们）。箱子是带 Transform 的实体，Jolt 步进后把位姿直接写回
-// 原生的变换存储；现在只画清屏色，所以发生了什么看左上角的统计。
-import { Game, system, tag, Transform, transformSlot, type GameTime } from '@stride-ts/engine';
+// 原生的变换存储，渲染器直接从那里上传世界矩阵、实例化绘制。粒子只是数据，不画，看左上角的统计。
+import { Camera, Game, Material, Mesh, MeshRenderFeature, Model, system, tag, Transform, transformSlot, type GameTime } from '@stride-ts/engine';
 import type { PhysicsWorld } from '@stride-ts/native';
 import { Fountain } from './game/fountain';
 import { expire, integrate, Position } from './game/particles';
@@ -47,6 +47,7 @@ class SandboxGame extends Game {
   private physicsTime = 0;
   private stepMilliseconds = 0;
   private entitiesMilliseconds = 0;
+  private drawMilliseconds = 0;
   private statsTime = 0;
   private readonly stats: HTMLElement;
 
@@ -66,6 +67,20 @@ class SandboxGame extends Game {
       }),
     );
     this.world.addBoxes(boxes.map((box) => ({ halfExtent: [0.5, 0.5, 0.5], transform: transformSlot(box) })));
+
+    // 看得见的部分：每排箱子一种颜色（同网格同材质的合成一次实例化绘制），地面和相机
+    const cube = Mesh.cube();
+    const palette = [[0.8, 0.25, 0.1], [0.9, 0.6, 0.1], [0.2, 0.6, 0.3], [0.15, 0.35, 0.8], [0.6, 0.2, 0.7]] as const;
+    const materials = palette.map((color, i) => new Material(`crate ${i}`, { baseColor: color }));
+    boxes.forEach((box, i) => box.add(Model.with({ mesh: cube.id, material: materials[Math.floor(i / GRID) % materials.length]!.id })));
+    const ground = new Material('ground', { baseColor: [0.35, 0.35, 0.33] });
+    this.entities.create({ name: 'ground', components: [Transform, Model.with({ mesh: Mesh.plane(100, 100).id, material: ground.id })] });
+    // 绕 X 轴低头 12°
+    const pitch = (-12 * Math.PI) / 180;
+    this.entities.create({
+      name: 'camera',
+      components: [Transform.with({ position: [0, 7, 24], rotation: [Math.sin(pitch / 2), 0, 0, Math.cos(pitch / 2)] }), Camera],
+    });
     this.entities.addSystems(integrate, expire, measure, measureCrates);
     this.fountain = this.entities.create({ name: 'fountain', components: [Fountain.with({ burst: 2_000, interval: 0.5 })] }).require(Fountain);
   }
@@ -92,18 +107,10 @@ class SandboxGame extends Game {
     }
   }
 
-  protected override draw(): void {
-    const { device, queue } = this.graphicsDevice;
-    const encoder = device.createCommandEncoder();
-    encoder.beginRenderPass({
-      colorAttachments: [{
-        view: this.graphicsDevice.currentBackBuffer().createView(),
-        clearValue: { r: 0.1, g: 0.12, b: 0.16, a: 1 },
-        loadOp: 'clear',
-        storeOp: 'store',
-      }],
-    }).end();
-    queue.submit([encoder.finish()]);
+  protected override draw(time: GameTime): void {
+    const start = performance.now();
+    super.draw(time);
+    this.drawMilliseconds = performance.now() - start;
   }
 
   private showStats(time: GameTime): void {
@@ -111,6 +118,7 @@ class SandboxGame extends Game {
     this.stats.textContent = [
       `frame ${time.frameCount}  ${(1 / Math.max(time.elapsed, 1e-6)).toFixed(0)} fps  ${width}x${height}`,
       `native workers ${this.native.workerThreadCount}  crossOriginIsolated ${crossOriginIsolated}`,
+      `render: ${this.renderSystem.features.filter((f) => f instanceof MeshRenderFeature).map((f) => `${f.instanceCount} instances in ${f.batches.filter((b) => b.count > 0).length} draws`).join(', ')}  draw ${this.drawMilliseconds.toFixed(2)} ms`,
       `physics ${crates.count} crates  step ${this.stepMilliseconds.toFixed(2)} ms  height from world matrices: mean ${(crates.sumY / Math.max(1, crates.count)).toFixed(2)} m, lowest ${crates.lowestY.toFixed(2)} m`,
       `entities ${this.entities.count}  scripts + systems ${this.entitiesMilliseconds.toFixed(2)} ms  particles ${particles.count}, mean height ${(particles.sumY / Math.max(1, particles.count)).toFixed(2)} m, spawned ${this.fountain.spawned}`,
       `registered: ${Fountain.scriptName}, ${integrate.name}, ${expire.name}`,

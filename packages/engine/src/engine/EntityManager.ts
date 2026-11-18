@@ -369,37 +369,49 @@ export class EntityManager {
     });
   }
 
+  /**
+   * 立即对匹配的表跑一次这个系统，不加入每帧的阶段。给帧循环之外的固定时刻用，比如渲染的提取阶段
+   * （世界矩阵算好之后、绘制之前）。系统不必先 addSystems；它的 added、removed 回调不会被调用。
+   */
+  run(s: System<any>, time: GameTime): void {
+    this.#assertNotIterating('run a system');
+    this.#runSystem(s, time);
+  }
+
   #runSystems(phase: Phase, time: GameTime): void {
     this.#ordered ??= orderSystems(this.#systems);
     for (const s of this.#ordered) {
-      if (s.phase !== phase) continue;
-      for (; s.tablesSeen < this.tables.length; s.tablesSeen++) {
-        const table = this.tables[s.tablesSeen]!;
-        if (s.matches(table)) s.matched.push(table);
-      }
-      const { spec } = s;
-      for (const table of s.matched) {
-        if (table.count === 0) continue;
-        if (spec.changed && !spec.changed.some((type) => table.sets[type.id]!.version > s.lastRun)) continue;
-        let chunk = s.chunks.get(table);
-        if (!chunk) {
-          chunk = { count: 0, entities: table.entities };
-          for (const [key, type] of Object.entries(spec.with as Record<string, ComponentType<any>>)) chunk[key] = this.#columnsOf(table.sets[type.id]!);
-          s.chunks.set(table, chunk);
-        }
-        chunk.count = table.count;
-        chunk.entities = table.entities;
-        this.#iterating = true;
-        try {
-          spec.update(chunk as never, time, this.#commands);
-        } finally {
-          this.#iterating = false;
-        }
-        for (const type of spec.writes ?? []) table.sets[type.id]!.version = ++this.#version;
-      }
-      s.lastRun = this.#version;
-      this.#commands.apply(this);
+      if (s.phase === phase) this.#runSystem(s, time);
     }
+  }
+
+  #runSystem(s: System<any>, time: GameTime): void {
+    for (; s.tablesSeen < this.tables.length; s.tablesSeen++) {
+      const table = this.tables[s.tablesSeen]!;
+      if (s.matches(table)) s.matched.push(table);
+    }
+    const { spec } = s;
+    for (const table of s.matched) {
+      if (table.count === 0) continue;
+      if (spec.changed && !spec.changed.some((type) => table.sets[type.id]!.version > s.lastRun)) continue;
+      let chunk = s.chunks.get(table);
+      if (!chunk) {
+        chunk = { count: 0, entities: table.entities };
+        for (const [key, type] of Object.entries(spec.with as Record<string, ComponentType<any>>)) chunk[key] = this.#columnsOf(table.sets[type.id]!);
+        s.chunks.set(table, chunk);
+      }
+      chunk.count = table.count;
+      chunk.entities = table.entities;
+      this.#iterating = true;
+      try {
+        spec.update(chunk as never, time, this.#commands);
+      } finally {
+        this.#iterating = false;
+      }
+      for (const type of spec.writes ?? []) table.sets[type.id]!.version = ++this.#version;
+    }
+    s.lastRun = this.#version;
+    this.#commands.apply(this);
   }
 
   #endFrame(time: GameTime): void {

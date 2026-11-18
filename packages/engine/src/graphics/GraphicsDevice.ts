@@ -3,6 +3,11 @@ export class GraphicsDevice {
   readonly device: GPUDevice;
   readonly canvas: HTMLCanvasElement;
   readonly backBufferFormat: GPUTextureFormat;
+  /**
+   * 渲染时用的后备缓冲视图格式：画布格式的 sRGB 版本。着色器输出线性颜色，写入时由硬件转成 sRGB，
+   * 和 Stride 默认的线性颜色空间一致（画布本身不能配置成 sRGB 格式，只能在视图上用）。
+   */
+  readonly backBufferViewFormat: GPUTextureFormat;
   private readonly context: GPUCanvasContext;
 
   static async create(canvas: HTMLCanvasElement): Promise<GraphicsDevice> {
@@ -20,8 +25,9 @@ export class GraphicsDevice {
     this.canvas = canvas;
     this.context = context;
     this.backBufferFormat = navigator.gpu.getPreferredCanvasFormat();
+    this.backBufferViewFormat = `${this.backBufferFormat}-srgb` as GPUTextureFormat;
     // 用 opaque：预乘 alpha 的画布在 alpha 小于 1 的地方会透出页面背景。
-    context.configure({ device, format: this.backBufferFormat, alphaMode: 'opaque' });
+    context.configure({ device, format: this.backBufferFormat, alphaMode: 'opaque', viewFormats: [this.backBufferViewFormat] });
     void device.lost.then((info) => {
       if (info.reason !== 'destroyed') console.error(`WebGPU device lost: ${info.message}`);
     });
@@ -47,6 +53,11 @@ export class GraphicsDevice {
   /** 这一帧要画进去的纹理；每帧都是新的。 */
   currentBackBuffer(): GPUTexture {
     return this.context.getCurrentTexture();
+  }
+
+  /** 这一帧后备缓冲的 sRGB 视图（backBufferViewFormat），渲染目标用它。 */
+  currentBackBufferView(): GPUTextureView {
+    return this.context.getCurrentTexture().createView({ format: this.backBufferViewFormat });
   }
 
   destroy(): void {

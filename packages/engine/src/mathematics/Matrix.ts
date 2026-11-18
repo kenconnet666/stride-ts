@@ -1,0 +1,87 @@
+/**
+ * 4x4 矩阵的运算，直接作用在 Float32Array 上（对应 Stride.Core.Mathematics.Matrix 的静态方法）。
+ * 布局和 Stride 的 Matrix 在内存里一样：16 个 float，平移在 12..14。按列主序、列向量理解就是 WGSL 的
+ * mat4x4f，所以变换存储的世界矩阵可以原样上传。out 可以和参数是同一个数组。
+ */
+export type Matrix4 = Float32Array;
+
+const temp = new Float32Array(16);
+
+export const Matrix = {
+  /** 新的单位矩阵。 */
+  identity(): Matrix4 {
+    return Matrix.setIdentity(new Float32Array(16));
+  },
+
+  setIdentity(out: Matrix4): Matrix4 {
+    out.fill(0);
+    out[0] = out[5] = out[10] = out[15] = 1;
+    return out;
+  },
+
+  /** out = a * b：先做 b 的变换，再做 a 的（列向量）。和 Stride 的 Matrix.Multiply(b, a) 同一个结果。 */
+  multiply(out: Matrix4, a: Readonly<Matrix4>, b: Readonly<Matrix4>): Matrix4 {
+    for (let c = 0; c < 4; c++) {
+      const b0 = b[c * 4]!, b1 = b[c * 4 + 1]!, b2 = b[c * 4 + 2]!, b3 = b[c * 4 + 3]!;
+      for (let r = 0; r < 4; r++) temp[c * 4 + r] = a[r]! * b0 + a[4 + r]! * b1 + a[8 + r]! * b2 + a[12 + r]! * b3;
+    }
+    out.set(temp);
+    return out;
+  },
+
+  /** 逆矩阵；奇异时返回 false，out 不变。 */
+  invert(out: Matrix4, m: Readonly<Matrix4>): boolean {
+    const [a00, a01, a02, a03, a10, a11, a12, a13, a20, a21, a22, a23, a30, a31, a32, a33] = m as unknown as number[] as [
+      number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number,
+    ];
+    const b00 = a00 * a11 - a01 * a10, b01 = a00 * a12 - a02 * a10, b02 = a00 * a13 - a03 * a10;
+    const b03 = a01 * a12 - a02 * a11, b04 = a01 * a13 - a03 * a11, b05 = a02 * a13 - a03 * a12;
+    const b06 = a20 * a31 - a21 * a30, b07 = a20 * a32 - a22 * a30, b08 = a20 * a33 - a23 * a30;
+    const b09 = a21 * a32 - a22 * a31, b10 = a21 * a33 - a23 * a31, b11 = a22 * a33 - a23 * a32;
+    const det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+    if (det === 0 || !Number.isFinite(det)) return false;
+    const d = 1 / det;
+    out[0] = (a11 * b11 - a12 * b10 + a13 * b09) * d;
+    out[1] = (a02 * b10 - a01 * b11 - a03 * b09) * d;
+    out[2] = (a31 * b05 - a32 * b04 + a33 * b03) * d;
+    out[3] = (a22 * b04 - a21 * b05 - a23 * b03) * d;
+    out[4] = (a12 * b08 - a10 * b11 - a13 * b07) * d;
+    out[5] = (a00 * b11 - a02 * b08 + a03 * b07) * d;
+    out[6] = (a32 * b02 - a30 * b05 - a33 * b01) * d;
+    out[7] = (a20 * b05 - a22 * b02 + a23 * b01) * d;
+    out[8] = (a10 * b10 - a11 * b08 + a13 * b06) * d;
+    out[9] = (a01 * b08 - a00 * b10 - a03 * b06) * d;
+    out[10] = (a30 * b04 - a31 * b02 + a33 * b00) * d;
+    out[11] = (a21 * b02 - a20 * b04 - a23 * b00) * d;
+    out[12] = (a11 * b07 - a10 * b09 - a12 * b06) * d;
+    out[13] = (a00 * b09 - a01 * b07 + a02 * b06) * d;
+    out[14] = (a31 * b01 - a30 * b03 - a32 * b00) * d;
+    out[15] = (a20 * b03 - a21 * b01 + a22 * b00) * d;
+    return true;
+  },
+
+  /**
+   * 右手坐标系的透视投影（Stride 的 Matrix.PerspectiveFovRH）：相机看向 -Z，深度 0（近）到 1（远），
+   * 和 WebGPU 的裁剪空间一致。fieldOfView 是竖直视角，弧度。
+   */
+  perspectiveFovRH(out: Matrix4, fieldOfView: number, aspectRatio: number, near: number, far: number): Matrix4 {
+    const yScale = 1 / Math.tan(fieldOfView / 2);
+    out.fill(0);
+    out[0] = yScale / aspectRatio;
+    out[5] = yScale;
+    out[10] = far / (near - far);
+    out[11] = -1;
+    out[14] = (near * far) / (near - far);
+    return out;
+  },
+
+  /** 用矩阵变换一个点（带平移，做透视除法）。 */
+  transformPoint(m: Readonly<Matrix4>, x: number, y: number, z: number): [number, number, number] {
+    const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+    return [
+      (m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) / w,
+      (m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) / w,
+      (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / w,
+    ];
+  },
+} as const;

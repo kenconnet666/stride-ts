@@ -52,6 +52,14 @@ GPU 驱动：
 
 WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"为单位。
 
+**骨架（2026-11-18 已实现，`packages/engine/src/rendering`）**：
+- `RenderSystem`（特性、视图、光照占位）、`RenderView`、`RenderStage`、`RootRenderFeature`，阶段照 Stride：合成器先 Collect（相机变成视图），然后各特性 Extract（从实体按列取这一帧要画的东西，只在 CPU 上）、Prepare（上传）、按视图和阶段 Draw。和 Stride 不同：没有通用的 RenderObject / RenderNode 列表，特性直接用系统按列遍历实体（`entities.run(system, time)`，不加入每帧的阶段）；还没有剔除、排列组合和效果系统。
+- `MeshRenderFeature`：按（网格，材质）分批，每批一次实例化绘制。世界矩阵不进实例缓冲：每帧把变换存储的世界矩阵列整段上传（直接从 wasm 共享内存，只传到 `slotLimit`），实例缓冲里只有每个实体的变换槽位（4 字节），着色器取 `worlds[slots[instance_index]]`，批次用 `firstInstance` 起步。上传每帧各写一次、都在提交之前，pass 内只在网格或材质变化时重设状态。
+- `ForwardRenderer`（图形合成器，`game.graphicsCompositor`）：第一个带 `Camera` 和 `Transform` 的实体当主相机，一个不透明阶段，深度 `depth24plus`，画进后备缓冲的 sRGB 视图（着色器输出线性颜色，和 Stride 默认的线性颜色空间一致）。没有相机时只清屏。`Game.draw` 默认交给它，帧顺序是 update → 变换更新 → draw。
+- `Camera`（Stride 的默认值：竖直视角 45°、近 0.1、远 1000，看向本地 -Z）、`Model`（`mesh`、`material` 存 `Mesh.id`、`Material.id`，内容管线做好后换成资源引用）；`Mesh.cube`、`Mesh.plane` 对应 Stride 的程序化模型；`Material` 暂时只有基础色；光照暂时是 `renderSystem.lighting` 里的一个方向光加环境光，着色是 Lambert。`Matrix`（`mathematics/Matrix.ts`）在 Float32Array 上做乘法、求逆、`perspectiveFovRH`，布局和 Stride 的 Matrix 一样。
+- 沙盒里 100 个由 Jolt 驱动的箱子加地面：101 个实例、6 次绘制，CPU 上整个 draw（找相机、提取、上传、编码、提交）0.13 ms，165 fps。
+- 接下来：PBR 材质和 Stride 的 WGSL（等着色器系统）、`LightComponent` 和阴影、剔除（stride-native 里用 SIMD）、透明阶段、render bundle 缓存静态批次、非均匀缩放的法线（逆转置）。
+
 C# 移植版踩过的 WebGPU 坑，全部适用，见 [lessons.md](lessons.md)：`writeBuffer` 的生效时机、pass 内的状态去重、scissor 一直有效、调试组会切断 pass、没写的颜色目标要设 writeMask 0。
 
 ## TS 端的高性能写法和构建（2026-11-17；2026-11-18 改为不做编译期改写）
@@ -222,7 +230,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - `EventKey`（广播，每个接收者一个队列）和 `Hook`（同步、使用方先执行、可 `preventDefault`，事件对象复用并在派发后失效）；脚本的 `this.on`、`this.receive` 随脚本释放；
   - 系统的 `added`、`removed`：按实体回调（不是按块），`removed` 时还能读到数据，回调里的结构性改动走命令缓冲；
   - （2026-11-18）`Transform`：数据在 stride-native 的变换存储里，表里只存槽位；父子层级、销毁时连带子实体、和物理世界绑定，见上文"共享内存的数据模型"；
-  - 运行时测试 55 个，类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
+  - 运行时测试 60 个，类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
 - **和下文设计的出入**：
   - 一个 archetype 目前是一块可增长的表（容量翻倍），还没有切成固定大小的块。
   - 默认值的检查在定义时做（越早越好），报错带字段名。

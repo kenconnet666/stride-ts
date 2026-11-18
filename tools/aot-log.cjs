@@ -1,4 +1,4 @@
-// Usage: node aot-log.cjs <playwright> <url>: loads a page with Mono's AOT log on and prints the console lines about AOT.
+// 用法：node aot-log.cjs <playwright> <url>：打开 Mono 的 AOT 日志加载页面，打印控制台里和 AOT 有关的行。
 const { chromium } = require(process.argv[2]);
 (async () => {
   const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-unsafe-webgpu'] });

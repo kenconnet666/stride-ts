@@ -1,5 +1,5 @@
-// Usage: node gpu-calls.cjs <playwright> <url> [frames]
-// Counts the WebGPU calls of a game a frame once its scene draws, with the bytes and the sizes of the buffer writes.
+// 用法：node gpu-calls.cjs <playwright> <url> [帧数]
+// 场景开始绘制后，统计游戏每帧的 WebGPU 调用次数，以及缓冲写入的字节数和大小分布。
 const { chromium } = require(process.argv[2]);
 (async () => {
   const [url, frameCount = '120'] = process.argv.slice(3);

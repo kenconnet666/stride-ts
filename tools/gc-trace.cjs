@@ -1,6 +1,6 @@
-// Usage: node gc-trace.cjs <path of playwright> <url of apps/bench/gc.html> [trace.json]
-// Runs the GC scenarios in headless Chrome with tracing on, then reports for each scenario the frame
-// pacing measured by the page and the main-thread GC pauses recorded by V8 inside the scenario's window.
+// 用法：node gc-trace.cjs <playwright 路径> <apps/bench/gc.html 的 url> [trace.json]
+// 在开着 tracing 的无头 Chrome 里跑 GC 场景，按场景报告页面测到的帧节奏，
+// 以及 V8 在该场景时间窗口内记录的主线程 GC 停顿。
 const { chromium } = require(process.argv[2]);
 const fs = require('node:fs');
 
@@ -22,7 +22,7 @@ const CATEGORIES = ['devtools.timeline', 'v8', 'disabled-by-default-v8.gc', 'bli
   const events = trace.traceEvents ?? trace;
   const marks = new Map(events.filter((e) => e.name?.startsWith('gc:')).map((e) => [e.name, e]));
   const mainThread = [...marks.values()][0];
-  // Top-level GC pauses on the page's main thread: nested phases (V8.GC_MC_MARK inside MajorGC) are skipped
+  // 页面主线程上的顶层 GC 停顿：嵌套的阶段（MajorGC 里面的 V8.GC_MC_MARK）跳过，避免重复计算
   const gcEvents = events
     .filter((e) => e.pid === mainThread.pid && e.tid === mainThread.tid && e.ph === 'X' && /GC/.test(e.name) && e.dur > 0)
     .sort((a, b) => a.ts - b.ts);

@@ -1,16 +1,15 @@
-// Frame pacing under different allocation patterns. Each scenario runs on requestAnimationFrame for a few
-// seconds between performance marks; tools/gc-trace.cjs records a Chrome trace and adds the GC events that
-// fall inside each window, so pauses are measured by V8 itself rather than guessed from frame gaps.
+// 不同分配模式下的帧节奏。每个场景用 requestAnimationFrame 跑几秒，前后打 performance mark；
+// tools/gc-trace.cjs 录 Chrome trace，统计落在每个窗口里的 GC 事件，停顿时长取自 V8 自己的记录，不靠帧间隔猜。
 
 interface Scenario {
   readonly name: string;
-  /** Long-lived objects to hold during the run, like a game world's object graph. */
+  /** 运行期间一直持有的长寿对象，相当于游戏世界的对象图。 */
   readonly retained?: number;
-  /** Short-lived objects allocated per frame; they escape into a ring, so the JIT cannot remove them. */
+  /** 每帧分配的短命对象；它们被存进环形数组，JIT 没法把分配优化掉。 */
   readonly garbagePerFrame?: number;
-  /** Per-frame work without allocation over this many entities (typed-array columns). */
+  /** 不分配内存的每帧工作，处理这么多个实体（TypedArray 列）。 */
   readonly columns?: number;
-  /** How long the garbage stays reachable, in frames (default 1): longer lives get objects promoted to the old generation. */
+  /** 垃圾对象保持可达多少帧（默认 1）：活得越久越会被晋升到老生代。 */
   readonly garbageFrames?: number;
   readonly runMs?: number;
 }
@@ -33,7 +32,7 @@ declare global {
 
 const RUN_MS = 5000;
 const SETTLE_MS = 1000;
-/** Approximate bytes per Point in V8 (header and three compressed fields, plus the boxed double in y); for the MB/s estimate. */
+/** V8 里每个 Point 大约多少字节（对象头、三个压缩字段，加上 y 装箱的 double）；用来估算 MB/s。 */
 const OBJECT_BYTES = 40;
 
 const scenarios: Scenario[] = [
@@ -45,8 +44,7 @@ const scenarios: Scenario[] = [
   { name: 'retained 1M objects, no garbage', retained: 1_000_000 },
   { name: 'retained 1M objects + 10k garbage per frame', retained: 1_000_000, garbagePerFrame: 10_000 },
   { name: 'retained 1M objects + 100k garbage per frame', retained: 1_000_000, garbagePerFrame: 100_000 },
-  // Objects that live about 2 s (projectiles, effects, queued events): they survive scavenges, get promoted
-  // and are only freed by major GCs.
+  // 活约 2 秒的对象（子弹、特效、排队的事件）：它们熬过新生代回收、被晋升，只能靠老生代回收释放。
   { name: 'mid-lived: 1k objects per frame, each kept ~2 s', garbagePerFrame: 1_000, garbageFrames: 330, runMs: 15_000 },
   { name: 'mid-lived: 5k objects per frame, each kept ~2 s, 1M retained', retained: 1_000_000, garbagePerFrame: 5_000, garbageFrames: 330, runMs: 15_000 },
 ];
@@ -66,13 +64,13 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const percentile = (sorted: number[], p: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]!;
 
 async function run(scenario: Scenario): Promise<ScenarioResult> {
-  // A large live heap, like a game world's objects: every major GC has to mark all of it.
+  // 很大的存活堆，相当于游戏世界的对象：每次老生代回收都要把它全部标记一遍。
   let retained: Point[] | undefined;
   if (scenario.retained) {
     retained = Array.from({ length: scenario.retained }, (_, i) => new Point(i, i * 0.5, 0));
   }
   const perFrame = scenario.garbagePerFrame ?? 0;
-  // A ring holding the last garbageFrames frames of objects: each object is dropped that many frames later
+  // 环形数组保存最近 garbageFrames 帧的对象：每个对象在这么多帧之后被丢弃
   const garbage: Point[] = new Array(perFrame * (scenario.garbageFrames ?? 1));
   const y = new Float32Array(scenario.columns ?? 0);
   const v = new Float32Array(scenario.columns ?? 0).fill(1);

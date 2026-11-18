@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 
-// The native module's memory is a SharedArrayBuffer, which needs a cross-origin isolated page.
+// 原生模块的内存是 SharedArrayBuffer，页面必须是跨源隔离的。
 const crossOriginIsolation = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Embedder-Policy': 'require-corp',

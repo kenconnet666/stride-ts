@@ -1,4 +1,4 @@
-// An AsyncScript that spawns a burst of particles every `interval` seconds; expire() removes them again.
+// 每隔 `interval` 秒生成一批粒子的 AsyncScript；到期的由 expire() 回收。
 import { AsyncScript, prop } from '@stride-ts/engine';
 import { Lifetime, Position, Velocity } from './particles';
 
@@ -12,7 +12,7 @@ export class Fountain extends AsyncScript.props({
   override async execute(): Promise<void> {
     for (;;) {
       const batch = this.game.entities.spawn(this.burst, [Position, Velocity, Lifetime.with({ seconds: this.lifetime })]);
-      // Per-particle values go straight into the columns: no entity objects, nothing for the GC to keep
+      // 每个粒子的值直接写进列：没有实体对象，不给 GC 留下要追踪的东西
       const { x, y, z } = batch.columns(Velocity);
       for (let row = batch.firstRow; row < batch.firstRow + batch.count; row++) {
         const angle = Math.random() * Math.PI * 2;

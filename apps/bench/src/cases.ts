@@ -1,7 +1,7 @@
 import type { BoxDesc, StrideNative } from '@stride-ts/native';
 import type { Case, Run } from './harness';
 
-/** The raw Emscripten exports the cases need; the wrapper keeps them internal, a benchmark has to reach past it. */
+/** 用例要用的 Emscripten 原始导出；包装层不公开它们，基准只能绕过包装层直接拿。 */
 interface RawModule {
   _sn_alloc(size: number): number;
   _sn_free(ptr: number): void;
@@ -13,7 +13,7 @@ export interface Context {
   readonly native: StrideNative;
 }
 
-/** Floats per instance: one 4x4 world matrix, the layout the renderer uploads. */
+/** 每个实例的 float 数：一个 4x4 世界矩阵，渲染器上传的就是这个布局。 */
 const INSTANCE_FLOATS = 16;
 const DT = 1 / 60;
 
@@ -26,14 +26,14 @@ export function createCases({ device, native }: Context): Case[] {
     device.createBuffer({ size: n * INSTANCE_FLOATS * 4, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
   const flushGpu = () => device.queue.onSubmittedWorkDone();
 
-  /** A Float32Array over native memory; the allocation is released by dispose. */
+  /** 原生内存上的 Float32Array；由 dispose 释放分配。 */
   const nativeFloats = (count: number) => {
     const ptr = raw._sn_alloc(count * 4);
     if (ptr === 0) throw new Error(`native alloc of ${count * 4} bytes failed`);
     return { ptr, view: new Float32Array(native.buffer, ptr, count), free: () => raw._sn_free(ptr) };
   };
 
-  /** Moves every entity and uploads all instance matrices: the per-frame cost of the data's location. */
+  /** 移动每个实体并上传所有实例矩阵：测数据放在哪里对每帧开销的影响。 */
   const uploadCase = (name: string, setup: (n: number, buffer: GPUBuffer) => Run): Case => ({
     group: 'upload: move n entities and upload n x 64 B per frame',
     name,
@@ -119,7 +119,7 @@ export function createCases({ device, native }: Context): Case[] {
     }),
   ];
 
-  // Results are added here so the JIT cannot drop the measured work.
+  // 结果累加到这里，JIT 就不能把被测的代码当成无用代码删掉。
   let sink = 0;
   class Counter {
     count = 3;
@@ -160,7 +160,7 @@ export function createCases({ device, native }: Context): Case[] {
     },
   ];
 
-  /** n boxes spread out so none touch. */
+  /** n 个互不接触的箱子。 */
   const spreadBoxes = (n: number): BoxDesc[] =>
     Array.from({ length: n }, (_, i) => ({
       position: [(i % 100) * 3, 2, Math.floor(i / 100) * 3],
@@ -231,7 +231,7 @@ export function createCases({ device, native }: Context): Case[] {
       name: 'script objects, props assigned by straight-line code',
       sizes: [1_000, 10_000, 100_000],
       setup(n) {
-        // What a per-schema initializer built once at registration would do: no loop over key names.
+        // 相当于登记时为每个 schema 生成一次的初始化函数：不按键名循环。
         const init = (s: ScriptObject) => {
           s.speed = defaults.speed;
           s.health = overrides.health ?? defaults.health;
@@ -418,8 +418,8 @@ export function createCases({ device, native }: Context): Case[] {
 }
 
 /**
- * Uploads a pattern straight from wasm shared memory and reads it back from the GPU:
- * writeBuffer accepting a view over a SharedArrayBuffer is only useful if the data arrives intact.
+ * 直接从 wasm 共享内存上传一组数据，再从 GPU 读回来核对：writeBuffer 接受 SharedArrayBuffer 上的视图，
+ * 但要数据原样到达才有意义。
  */
 export async function checkSharedUpload({ device, native }: Context): Promise<string> {
   const raw = rawOf(native);

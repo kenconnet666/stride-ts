@@ -4,7 +4,7 @@ import { createRenderCases } from './render-cases';
 import { runCases, type Result } from './harness';
 
 declare global {
-  // Read by tools/bench.cjs.
+  // tools/bench.cjs 读这两个值。
   var benchResults: Result[] | undefined;
   var benchError: string | undefined;
 }
@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   print(`crossOriginIsolated ${crossOriginIsolated}, ${navigator.hardwareConcurrency} cores, GPU ${info.vendor} ${info.architecture} ${info.description}`);
   print(`writeBuffer from wasm shared memory, read back: ${await checkSharedUpload({ device, native })}`);
 
-  // ?only=render runs just the groups whose name starts with that word
+  // ?only=render 只跑名字以这个词开头的组
   const only = new URLSearchParams(location.search).get('only');
   const cases = [...createCases({ device, native }), ...createRenderCases(device)].filter((c) => !only || c.group.startsWith(only));
   let group = '';

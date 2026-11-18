@@ -1,7 +1,7 @@
-// Usage: node cpu-profile.cjs <playwright> <url> [seconds] [symbols file]
-// Headless Chrome without frame rate limit: once the scene draws, samples the main thread for some seconds and prints
-// the self time by kind (wasm, JS, GC, idle) and the costliest functions, with the inclusive time of the top callers.
-// A symbols file (lines "index:name", from WasmEmitSymbolMap) names the wasm functions of a stripped build.
+// 用法：node cpu-profile.cjs <playwright> <url> [秒数] [符号文件]
+// 不限帧率的无头 Chrome：场景开始绘制后，对主线程采样若干秒，按类别（wasm、JS、GC、空闲）打印自身时间，
+// 以及最耗时的函数和主要调用者的包含时间。符号文件（每行 "下标:名字"，来自 WasmEmitSymbolMap）
+// 给去掉符号的构建里的 wasm 函数补上名字。
 const { chromium } = require(process.argv[2]);
 const fs = require('fs');
 (async () => {

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 
-// Checks the package wiring: the copied module loads in Node with its worker threads and steps physics.
+// 检查包的接线：拷来的模块能在 Node 里带着工作线程加载，并能步进物理。
 let native: StrideNative;
 
 beforeAll(async () => {
@@ -10,7 +10,7 @@ beforeAll(async () => {
 
 afterAll(() => native?.shutdown());
 
-test('a dynamic box falls onto the ground', () => {
+test('动态箱子落到地面上', () => {
   const world = native.createPhysicsWorld(16);
   try {
     world.addBox({ position: [0, -1, 0], halfExtent: [10, 1, 10], motion: 'static' });

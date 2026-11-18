@@ -1,8 +1,7 @@
 /// <reference types="vite/client" />
-// Smoke test of the whole stack: Vite with cross-origin isolation, the native module with its worker
-// threads, WebGPU, the frame loop, and the entity core (an AsyncScript spawning particles that systems
-// move and expire). Boxes fall in Jolt; nothing is rendered yet but the clear color, so the stats
-// overlay shows what happens.
+// 整套技术栈的冒烟测试：跨源隔离的 Vite、带工作线程的原生模块、WebGPU、帧循环，以及实体核心
+// （AsyncScript 生成粒子，系统移动并回收它们）。箱子在 Jolt 里下落；现在只画清屏色，
+// 所以发生了什么看左上角的统计。
 import { Game, system, type GameTime } from '@stride-ts/engine';
 import type { PhysicsWorld } from '@stride-ts/native';
 import { Fountain } from './game/fountain';
@@ -10,11 +9,11 @@ import { expire, integrate, Position } from './game/particles';
 
 const GRID = 10;
 const STATS_INTERVAL = 0.25;
-// Fixed physics step like Stride's simulation: long steps let fast boxes tunnel through the ground.
+// 和 Stride 的物理一样用固定步长：步长太长时快速下落的箱子会穿过地面。
 const PHYSICS_STEP = 1 / 60;
 const MAX_STEPS_PER_FRAME = 4;
 
-/** Particle count and mean height, gathered after the particles moved. */
+/** 粒子数和平均高度，在粒子移动之后统计。 */
 const particles = { count: 0, sumY: 0 };
 const measure = system({
   with: { position: Position },

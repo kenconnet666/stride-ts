@@ -13,7 +13,8 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 现状（2026-11-18）：工程骨架已搭好（pnpm monorepo，见 README.md 的"开发"），本地 git 仓库在 `main` 分支，还没有远程；GitHub 仓库由用户自己创建。引擎有 `Game` 循环、`GraphicsDevice` 和实体核心（`prop`、数据组件和列存储、系统、脚本、按模块路径登记，见 docs/architecture.md 的"实现状态"）；渲染器还没开始写。
 
 约定：
-- 和用户用中文沟通；代码、标识符、注释、提交信息用英文。
+- 和用户用中文沟通。**代码注释（含文档注释、测试标题）和 git 提交信息用中文**（用户 2026-11-18 决定，覆盖全局 CLAUDE.md 的英文约定）；标识符、文件名、运行时的报错和日志文字仍用英文。jolt-native-fork 里 Jolt 上游的文件保持英文。
+- wasm 那边（jolt-native-fork 的 StrideNative）有问题、或者我们需要新能力时，直接改那边的代码，不在 TS 里绕过去；改完重编、跑原生/Node/浏览器测试，再 `pnpm native:sync`。
 - Jolt 的 fork 是单独的仓库：`C:\Users\Administrator\CLionProjects\jolt-native-fork`（已加入本项目的工作目录）。远程 `origin` 是 `kenconnet666/JoltPhysics`，`upstream` 是 `jrouwe/JoltPhysics`（禁止推送）；工作分支 `stride`，基于上游发布标签。做法见 [docs/architecture.md](docs/architecture.md) 的"怎么 fork 和维护 Jolt"。原生 C++ 工程 `stride-native`/`stride-tools` 在这个仓库的 `StrideNative/` 目录（说明见其中的 README.md），按阶段提交到 `stride` 分支。
 - 要读的 Stride 源码在 `C:\Users\Administrator\IdeaProjects\stride`，只读，不在那边提交，除非用户要求（例如需要在那边加工具）。
 - 在 Chrome 里实际跑过、看过结果，才能说某件事完成了；测试脚本在 [tools/](tools/README.md)。应用内置浏览器的面板隐藏时 `requestAnimationFrame` 不触发，看帧循环要用 `tools/play.cjs`（本机 Chrome）。

@@ -1,7 +1,6 @@
-// Copies the built stride-native / stride-tools modules from jolt-native-fork into dist/.
-// The C++ sources live in that repository (StrideNative/); build them there with
-// StrideNative/Scripts/build-wasm.ps1. STRIDE_NATIVE_DIST overrides the default location, which
-// assumes the fork is checked out at ~/CLionProjects/jolt-native-fork next to ~/WebstormProjects.
+// 把 jolt-native-fork 编好的 stride-native / stride-tools 模块拷进 dist/。
+// C++ 源码在那个仓库的 StrideNative/ 里，用 StrideNative/Scripts/build-wasm.ps1 编译。
+// STRIDE_NATIVE_DIST 可以改位置；默认假定 fork 在 ~/CLionProjects/jolt-native-fork，和 ~/WebstormProjects 并列。
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -32,11 +31,11 @@ for (const name of readdirSync(source)) {
   const fromStat = statSync(from);
   if (existsSync(to)) {
     const toStat = statSync(to);
-    // utimes rounds to whole milliseconds.
+    // utimes 会把时间取整到毫秒。
     if (toStat.size === fromStat.size && Math.abs(toStat.mtimeMs - fromStat.mtimeMs) < 1) continue;
   }
   copyFileSync(from, to);
-  // Keep the source timestamp so the next sync can skip unchanged files.
+  // 保留源文件的时间戳，下次同步可以跳过没变的文件。
   utimesSync(to, fromStat.atime, fromStat.mtime);
   copied++;
 }
@@ -44,7 +43,7 @@ for (const name of readdirSync(source)) {
 writeFileSync(path.join(target, 'source.json'), JSON.stringify({ source, ...gitState(source) }, null, 2) + '\n');
 console.log(copied ? `Copied ${copied} file(s) from ${source}` : 'stride-native is up to date');
 
-/** Which fork commit the build came from; `dirty` means the working tree had uncommitted changes. */
+/** 产物来自 fork 的哪个提交；`dirty` 表示当时工作区有未提交的改动。 */
 function gitState(dir) {
   try {
     const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();

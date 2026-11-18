@@ -1,5 +1,5 @@
-// Usage: node profile-callers.cjs <profile.json> <regex of a function> [frames]
-// For each sample with a matching function on its stack, the caller of its outermost match: who enters it, and how much.
+// 用法：node profile-callers.cjs <profile.json> <函数名正则> [层数]
+// 对调用栈上有匹配函数的每个采样，找出最外层匹配的调用者：谁进入了它、占多少。
 const fs = require('fs');
 const [file, pattern, frames = '1'] = process.argv.slice(2);
 const profile = JSON.parse(fs.readFileSync(file, 'utf8'));

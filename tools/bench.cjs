@@ -1,5 +1,5 @@
-// Usage: node bench.cjs <path of playwright> <url> [out.json]
-// Runs apps/bench in headless Chrome (WebGPU on, no frame rate limit) and prints its result table.
+// 用法：node bench.cjs <playwright 路径> <url> [out.json]
+// 在无头 Chrome 里（开 WebGPU、不限帧率）跑 apps/bench，打印结果表。
 const { chromium } = require(process.argv[2]);
 const fs = require('node:fs');
 (async () => {

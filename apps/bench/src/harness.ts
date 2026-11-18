@@ -1,4 +1,4 @@
-/** One benchmark case: setup builds the state for n entities and returns the work timed per iteration. */
+/** 一个基准用例：setup 准备 n 个实体的状态，返回每次迭代要计时的工作。 */
 export interface Case {
   readonly group: string;
   readonly name: string;
@@ -7,9 +7,9 @@ export interface Case {
 }
 
 export interface Run {
-  /** One iteration: a frame's worth of work, or one whole creation pass. */
+  /** 一次迭代：一帧的工作量，或一整轮创建。 */
   iterate(): void;
-  /** Called between timed batches, outside the timing (flushes GPU work, resets state). */
+  /** 在两批计时之间调用，不计入时间（等 GPU 做完、重置状态）。 */
   between?(): Promise<void> | void;
   dispose?(): void;
 }
@@ -18,7 +18,7 @@ export interface Result {
   readonly group: string;
   readonly name: string;
   readonly n: number;
-  /** Median milliseconds per iteration over the batches. */
+  /** 各批每次迭代耗时（毫秒）的中位数。 */
   readonly ms: number;
   readonly nsPerEntity: number;
   readonly error?: string;
@@ -28,7 +28,7 @@ const WARMUP_MS = 150;
 const BATCH_MS = 60;
 const BATCHES = 7;
 
-/** Times run.iterate() in batches long enough to be above timer resolution, and reports the median batch. */
+/** 把 run.iterate() 分批计时，每批足够长、超过计时器精度，报告中位数那一批。 */
 export async function measure(run: Run): Promise<number> {
   let iterations = 0;
   const warmupEnd = performance.now() + WARMUP_MS;

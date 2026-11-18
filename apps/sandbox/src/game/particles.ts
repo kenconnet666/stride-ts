@@ -1,4 +1,4 @@
-// Particles as data components and a system: the shape of per-frame logic over many entities.
+// 用数据组件和系统写的粒子：对大量实体做每帧逻辑的写法。
 import { component, prop, system } from '@stride-ts/engine';
 
 const GRAVITY = -9.81;
@@ -28,7 +28,7 @@ export const integrate = system({
   },
 });
 
-/** Counts lifetimes down and destroys expired particles through the system's commands. */
+/** 倒数寿命，通过系统的命令缓冲销毁到期的粒子。 */
 export const expire = system({
   with: { lifetime: Lifetime },
   writes: [Lifetime],

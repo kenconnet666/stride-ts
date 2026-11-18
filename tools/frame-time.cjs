@@ -1,5 +1,5 @@
-// Usage: node frame-time.cjs <path of playwright> <url>
-// Headless Chrome without frame rate limit: the average frame time over 600 frames once the scene is there.
+// 用法：node frame-time.cjs <playwright 路径> <url>
+// 不限帧率的无头 Chrome：场景就绪后，测 600 帧的平均帧时间。
 const { chromium } = require(process.argv[2]);
 (async () => {
   const browser = await chromium.launch({ executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--enable-unsafe-webgpu', '--disable-gpu-vsync', '--disable-frame-rate-limit'] });

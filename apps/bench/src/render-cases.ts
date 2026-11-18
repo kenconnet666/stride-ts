@@ -1,7 +1,7 @@
 import type { Case, Run } from './harness';
 
-// CPU cost of encoding and submitting one frame of n cubes, the part of rendering a JS engine pays for.
-// The GPU work is tiny (small cubes into a 1280x720 target), so the numbers are submission overhead.
+// 编码并提交一帧 n 个立方体的 CPU 开销，也就是 JS 引擎在渲染上要付的那部分。
+// GPU 的活很少（小立方体画进 1280x720 的目标），所以测到的就是提交开销。
 
 const CUBE = /* wgsl */ `
 const corners = array<vec3f, 8>(
@@ -29,13 +29,13 @@ const INSTANCED = /* wgsl */ `${CUBE}
 }
 @fragment fn fs() -> @location(0) vec4f { return vec4f(0.8, 0.6, 0.2, 1); }`;
 
-/** Uniform blocks must start at multiples of minUniformBufferOffsetAlignment (256 on every adapter we target). */
+/** uniform 块必须从 minUniformBufferOffsetAlignment 的整数倍开始（我们面向的适配器都是 256）。 */
 const UNIFORM_STRIDE = 256;
 const FORMAT: GPUTextureFormat = 'rgba8unorm';
 const SIZES = [100, 1_000, 5_000, 10_000];
 const GROUP = 'render: CPU time to encode and submit one frame of n cubes';
 
-/** A small cube somewhere on screen: scale 0.01, translated in clip space. */
+/** 屏幕上某处的一个小立方体：缩放 0.01，在裁剪空间里平移。 */
 function writeTransform(target: Float32Array, offset: number, i: number): void {
   target.fill(0, offset, offset + 16);
   target[offset] = target[offset + 5] = target[offset + 10] = 0.01;
@@ -64,7 +64,7 @@ export function createRenderCases(device: GPUDevice): Case[] {
     fragment: { module: perDrawModule, entryPoint: 'fs', targets: [{ format: FORMAT }] },
   });
 
-  /** n objects, each with its own 256-byte uniform block in one buffer, bound by dynamic offset. */
+  /** n 个物体，每个在同一个缓冲里有自己的 256 字节 uniform 块，用动态偏移绑定。 */
   const perDrawScene = (n: number) => {
     const data = new Float32Array((n * UNIFORM_STRIDE) / 4);
     for (let i = 0; i < n; i++) {

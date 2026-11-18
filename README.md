@@ -40,7 +40,7 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 | 方面 | 选择 | 理由 |
 |---|---|---|
 | 渲染和引擎层 | **自己写，和 Stride 对齐**（2026-11-17 用户决定） | 按 Stride 的 RenderSystem、RenderFeature、Effect 结构用 TS 实现，复用 C# 移植版编出来的 Stride WGSL 着色器，画面和桌面 Stride 一致；变换数组放在 wasm 内存里，Jolt 直接写，整段上传给 GPU。见 [docs/architecture.md](docs/architecture.md) |
-| 语言和构建 | TypeScript 7 加 Vite 8（底层是 Rolldown 和 Oxc；SWC 插件开始写时再接入，见 [docs/architecture.md](docs/architecture.md)） | 毫秒级重新构建，开发时 HMR，发布时产物按内容哈希命名 |
+| 语言和构建 | TypeScript 7 加 Vite 8（底层是 Rolldown 和 Oxc），不做编译期改写（2026-11-18 用户决定，见 [docs/architecture.md](docs/architecture.md)） | 毫秒级重新构建，开发时 HMR，发布时产物按内容哈希命名；开发版和正式版跑同一份代码 |
 | 物理 | **Jolt**（JoltPhysics.js） | 功能覆盖 Stride 用到的角色、约束、软体、车辆、布娃娃；JS 绑定由作者本人维护；有带 SIMD 的多线程版本。备选 Rapier：有确定性版本，适合联网和回放 |
 | 导航 | recast-navigation-js | 和 Stride 的 DotRecast 是同一套算法 |
 | 纹理 | KTX2 加 Basis Universal 转码器，在 Worker 里转码 | glTF 标准扩展 |
@@ -67,62 +67,74 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 
 ## 组件和脚本的写法（设计草案）
 
-> 2026-11-17：组件 API 扩展成"脚本、数据组件、系统"三种写法，靠 SWC 插件把数据组件和系统编译成数据导向的循环。见 [docs/architecture.md](docs/architecture.md) 的"组件 API"和"TS 端的高性能写法和构建"。下面是脚本这一种写法的草案。
+> 2026-11-18：不做 SWC 插件，改为纯 TS 的写法：属性用 `prop` builder 声明，类型全部由推导得出；大量实体的逻辑用数据组件加系统，系统直接遍历按块存放的列。完整设计（属性、脚本、数据组件和系统、事件、校验、热重载、原生接口）见 [docs/architecture.md](docs/architecture.md) 的"组件 API"。
 
-名字和结构沿用 Stride，熟悉 Stride 的人容易上手，迁移 C# 游戏时有现成的对应关系；但迁移不是逐行翻译：异步加载、没有值类型、物理行为（Jolt 和 Bepu 不同）、材质、UI 都要按系统重新移植。按 TypeScript 的习惯调整：属性用装饰器，方法用小驼峰，异步用 Promise。
+名字和结构沿用 Stride，熟悉 Stride 的人容易上手，迁移 C# 游戏时有现成的对应关系；但迁移不是逐行翻译：异步加载、没有值类型、物理行为（Jolt 和 Bepu 不同）、材质、UI 都要按系统重新移植。按 TypeScript 的习惯调整：属性用声明式的 schema，方法用小驼峰，异步用 Promise，枚举用字符串字面量。
 
 ```ts
-import { SyncScript, property, Vector3, Keys, CharacterComponent } from 'stride-ts';
+import { SyncScript, AsyncScript, component, system, prop, Vector3 } from '@stride-ts/engine';
 
-export class PlayerController extends SyncScript {
+export class PlayerController extends SyncScript.props('Gameplay.PlayerController', {
   // Shown in the editor and read from the scene, like a public C# property
-  @property({ min: 0 }) maxRunSpeed = 10;
+  maxRunSpeed: prop.number().min(0).default(10).unit('m/s'),
+  jumpHeight: 1.2,                       // shorthand: number with a default
+}) {
   private character!: CharacterComponent;
   // Reused every frame: no allocation in update()
   private readonly move = new Vector3();
 
   override start(): void {
-    this.character = this.entity.get(CharacterComponent)!;
+    this.character = this.entity.require(CharacterComponent);
   }
 
   override update(): void {
     this.move.set(0, 0, 0);
-    if (this.input.isKeyDown(Keys.W)) this.move.z -= 1;
+    if (this.input.isKeyDown('KeyW')) this.move.z -= 1;
     this.character.move(this.move.normalize().scale(this.maxRunSpeed));
-    if (this.input.isKeyPressed(Keys.Space)) this.character.tryJump();
+    if (this.input.isKeyPressed('Space')) this.character.tryJump(this.jumpHeight);
   }
 }
 
-export class DoorOpener extends AsyncScript {
-  @property() trigger!: TriggerComponent;
+export class DoorOpener extends AsyncScript.props('Gameplay.DoorOpener', {
+  trigger: prop.component(() => TriggerComponent),
+}) {
   override async execute(): Promise<void> {
-    while (this.game.isRunning) {
-      await this.trigger.entered();
+    for (;;) {
+      await this.trigger.entered(this.signal);   // aborted when the script is removed
       await this.nextFrame();
     }
   }
 }
 
-@component('Gameplay.Health')            // the type name of the exported scene
-export class HealthComponent extends EntityComponent {
-  @property() max = 100;
-  current = 100;                         // runtime state, not saved
-}
+export const Health = component('Gameplay.Health', {
+  max: prop.f32().min(0).default(100),
+  current: prop.f32().default(100).transient(),   // runtime state, not saved
+});
+export const Regen = component('Gameplay.Regen', { rate: 5 });
+
+export const regen = system('Gameplay.Regen', {
+  with: { health: Health, regen: Regen },
+  writes: [Health],
+  update({ health, regen, count }, time) {
+    for (let i = 0; i < count; i++)
+      health.current[i] = Math.min(health.max[i], health.current[i] + regen.rate[i] * time.elapsed);
+  },
+});
 ```
 
 | Stride（C#） | stride-ts |
 |---|---|
-| `Entity.Get<T>()` | `entity.get(Type)`：泛型在运行时不存在，把类本身传进去 |
-| 公开属性和字段 | `@property()`，导出场景里的值在启动时写入 |
+| `Entity.Get<T>()` | `entity.get(Type)` 返回 `T \| undefined`，`entity.require(Type)` 拿不到就抛错：泛型在运行时不存在，把类本身传进去 |
+| 公开属性和字段 | `SyncScript.props(name, { ... })` 里用 `prop` 声明，类型由推导得出；导出场景里的值在启动时写入 |
 | `SyncScript.Update()` | `update()` |
-| `AsyncScript` 加 `await Script.NextFrame()` | async 的 `execute()` 加 `await this.nextFrame()` |
-| `EntityProcessor<T>` | `EntityProcessor<T>`，构造时传入组件类 |
-| `Vector3` 等值类型 | 可变对象：预分配、每帧复用，引擎路径上不 new |
+| `AsyncScript` 加 `await Script.NextFrame()` | async 的 `execute()` 加 `await this.nextFrame()`；取消用 `this.signal`（`AbortSignal`） |
+| `EntityProcessor<T>` | 系统 `system(name, { with, update })`，按块遍历列 |
+| `Vector3` 等值类型 | 可变对象：预分配、每帧复用，临时的从池里取（`using v = temp.vec3()`） |
 | `out`、`ref` 参数，如射线检测的结果 | 传入一个结果对象让它填写：`simulation.raycast(from, to, hit)` |
 | `Content.Load`（同步） | `await content.load()`；预加载过的资源可以同步 `get()` |
-| 导出场景中的组件 `type` | `@component('Namespace.Name')` 注册，运行时按名字创建实例并填入属性 |
+| 导出场景中的组件 `type` | `props()`、`component()` 的第一个参数，运行时按名字创建实例并填入属性 |
+| `EventKey<T>` | 同名，`broadcast()`、`receiver()` |
 | 改脚本要重新编译、重启 | Vite HMR 只替换这个模块，已有实例换成新类，字段值保留，游戏不重启 |
-| （新增）大量实体的每帧逻辑 | 数据组件（`@component` 加 `@f32` 等带类型字段）加系统（`system({ query, update })`），SWC 插件编译成按下标遍历 TypedArray 的循环 |
 
 ## 实例化、懒加载、缓存（设计草案）
 

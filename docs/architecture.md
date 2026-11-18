@@ -48,7 +48,7 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
 
 C# 移植版踩过的 WebGPU 坑，全部适用，见 [lessons.md](lessons.md)：`writeBuffer` 的生效时机、pass 内的状态去重、scissor 一直有效、调试组会切断 pass、没写的颜色目标要设 writeMask 0。
 
-## TS 端的高性能写法和构建（2026-11-17）
+## TS 端的高性能写法和构建（2026-11-17；2026-11-18 改为不做编译期改写）
 
 TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，不来自转译工具：Babel 只是编译期改写源码，本身不让代码变快。
 
@@ -61,77 +61,196 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 | 帧节奏 | `requestAnimationFrame` 跟随屏幕刷新率；165 Hz 每帧预算约 6 ms，CPU 端目标 2–4 ms |
 | 主线程 | 只跑游戏循环；加载和解码放进 Worker；需要时整个引擎可以搬进 Worker（OffscreenCanvas） |
 
-构建（2026-11-17 定：用 SWC 插件）。2026-11-18 的骨架还没有插件，用的是 Vite 8 自带的 Oxc 转译 TS；开始写插件时再把 TS 转译换成 SWC：
-- **开发和正式版都走 SWC**：组件 API 依赖插件做编译期改写，两边必须一致。SWC 是 Rust 写的，和 esbuild 同一速度量级，热重载仍是几百毫秒。Vite 里用 SWC 取代 esbuild 处理 TS。
-- **插件用 Rust 写，编成 wasm 给 SWC 加载**，和 `swc_core` 的版本绑定，升级 SWC 时一起升级、一起测试。
-- **插件做的事**：
-  - 数据组件生成结构数组存储和元数据（见下文"组件 API"）。
-  - 系统的查询循环改写成按下标遍历 TypedArray。
-  - 向量运算内联：`a.add(b).scale(s)` 展开成标量运算，变换直接读写 wasm 内存里的数组。
-  - 从 `@property` 和字段类型生成序列化和编辑器面板用的描述，运行时不靠反射。
-  - 只在正式版：删掉断言、日志、统计。
-- **约束**：
-  - 插件只认识固定的写法，认不出来的退回运行时实现照样能跑，编译时提示哪里没被优化。
-  - 同一套测试在"改写"和"不改写"两种模式下跑，结果必须相同。
-  - 生成 source map，断点和报错指向源码。
+构建：**不做 SWC 插件，也不做任何编译期改写**（用户 2026-11-18 决定，取代 11-17 的 SWC 插件方案）。Vite 8 自带的 Oxc 只做 TS 类型擦除，开发版和正式版跑同一份代码。原先打算交给插件的事改成这样：
 
-插件对性能的影响（预估，要实测）：
-- SWC 编译器本身不带来运行时性能，收益全部来自插件的改写。
-- **系统循环改写**收益最大：和"每个实体一个对象"的写法比，热循环快几倍（常见 2–10 倍），实体越多越明显。
-- **向量内联**主要减少 GC 造成的偶发卡顿，平均帧时间改善有限（V8 的逃逸分析有时已经能消掉临时对象）。
-- **删调试代码、生成元数据**：每帧影响小，后者主要改善加载。
-- 对 GPU、wasm 里的工作（物理、变换、剔除、动画）、WebGPU 调用开销、一般游戏脚本没有影响。
-- TPP 规模的场景里 JS 游戏逻辑约占每帧 1 ms，帧率变化不明显；成千上万个实体每帧都有逻辑时，收益最大。
-- 插件的目标是"易读的对象式写法，跑出接近手写 TypedArray 循环的速度"，不是比手写更快。
-- 验证：同一个系统写三份（朴素对象写法、插件编译后、手写 TypedArray），在 1 千、1 万、10 万个实体下比较帧时间和 GC 次数。收益不明显时，插件只保留元数据生成和删调试代码，降低复杂度。
+| 原计划由插件做 | 现在 |
+|---|---|
+| 数据组件生成结构数组存储和元数据 | `component()` 在运行时按属性 schema 建列（TypedArray），元数据就是 schema 对象本身 |
+| 系统的查询循环改写成按下标遍历 TypedArray | 系统直接拿到按块切好的列，自己写 `for` 循环，列的类型由 schema 推导 |
+| 向量运算内联 | 不做。脚本里的向量运算保持方法调用，临时向量预分配或从池里取（见下文）；大量实体的数学在系统里直接写标量 |
+| 从 `@property` 生成序列化和编辑器面板的描述 | 属性用 `prop` builder 声明，序列化、校验、编辑器面板都读同一份 schema |
+| 正式版删掉断言、日志、统计 | 写在 `if (import.meta.env.DEV)` 里，Vite 正式构建时替换成常量，死分支被删掉 |
 
-## 组件 API：脚本、数据组件、系统（2026-11-17 设计草案）
+不做的理由：
+- 插件和 `swc_core` 的版本绑定，Rust 加 wasm 的维护成本高。
+- "认不出来就退回运行时实现"意味着同一段代码有两种行为，要跑两套测试；source map 和断点也会变差。
+- 类型推导已经够用：easy-query-ts（`C:\code\easy-query-ts`）的结果类型全靠 TS 推导，不做代码生成，运行时的 schema 对象是唯一的事实来源。这里照同样的路子做。
+
+性能验证：同一个系统写成"每个实体一个对象"和"列加 `for` 循环"两种，在 1 千、1 万、10 万个实体下比较帧时间和 GC 次数。
+
+## 组件 API：脚本、数据组件、系统（2026-11-18 设计草案，取代 11-17 的装饰器加插件方案）
+
+原则（参考 easy-query-ts 的实体定义，见 `C:\code\easy-query-ts\packages\core\src\schema.ts`）：
+- **一份声明，多处使用**：属性用 `prop` builder 声明，TS 类型、默认值、场景文件的编解码、加载时的校验、编辑器面板都从它来。类型靠推导，不靠代码生成、装饰器或反射。
+- **引擎核心零依赖**：和校验库只通过 [Standard Schema](https://standardschema.dev)（`~standard.validate`）对接。zod、valibot 的 schema 能接进来，我们的 schema 也能导出给它们的生态用。
+- **DSL 只在定义时跑**：builder、schema、查询只在模块加载和场景加载时求值；每帧的路径上没有代理、闭包和临时对象。
+- **源码只用可擦除的语法**（`erasableSyntaxOnly`）：不用 enum、namespace、参数属性、装饰器；枚举一律写成字符串字面量联合。
 
 | 写法 | 用途 | 数据存在哪里 |
 |---|---|---|
-| 脚本（`SyncScript`、`AsyncScript`） | 游戏玩法：角色控制、关卡流程、UI 逻辑，数量少，写起来要顺手 | 普通对象 |
-| 数据组件（`@component` 加带类型的字段） | 大量实体共有的数据：血量、速度、AI 状态 | 插件生成的结构数组（每个字段一个 TypedArray） |
-| 系统（`system` 加查询） | 每帧对大量实体做的事：回血、移动、冷却计时 | 直接遍历那些 TypedArray |
+| 脚本（`SyncScript`、`AsyncScript`、`StartupScript`） | 游戏玩法：角色控制、关卡流程、UI 逻辑，数量少，写起来要顺手 | 普通对象 |
+| 数据组件（`component()`） | 大量实体共有的数据：血量、速度、AI 状态 | 按块存放的列：数值是 TypedArray，其余是普通数组 |
+| 系统（`system()`） | 每帧对大量实体做的事：回血、移动、冷却计时 | 直接遍历块里的列 |
+
+### 属性：`prop`
 
 ```ts
-@component('Gameplay.Health')
-export class Health {
-  @f32({ min: 0 }) max = 100;
-  @f32 current = 100;
-}
+prop.number()  prop.f32()  prop.int()  prop.u8()  prop.bool()  prop.string()
+prop.enum(['idle', 'run', 'jump'])     // 'idle' | 'run' | 'jump'
+prop.vec3()  prop.quat()  prop.color()
+prop.asset(Model)                      // AssetRef<Model>: the scene file stores the asset id
+prop.entity()                          // EntityId
+prop.component(() => CameraComponent)  // resolved after the scene is built; the thunk breaks import cycles
+prop.list(prop.vec3())
+prop.object({ min: prop.vec3(), max: prop.vec3() })
+prop.union('kind', { box: { size: prop.vec3() }, sphere: { radius: prop.f32() } })  // discriminated union
+prop.json(schema)                      // any Standard Schema (zod, valibot): checked on load and on edit
+```
 
-@component('Gameplay.Regen')
-export class Regen {
-  @f32 rate = 5;          // per second
-}
+修饰方法都返回新对象，并把状态记在类型参数里（幻影类型参数，同 easy-query-ts 的 `Column<T, N, O, P>`）：
 
-export const regen = system({
-  query: [Health, Regen],
-  update(q, time) {
-    for (const e of q) {
-      e.health.current = Math.min(e.health.max, e.health.current + e.regen.rate * time.dt);
-    }
-  },
-});
+| 方法 | 作用 |
+|---|---|
+| `.default(v)` | 默认值；有默认值的属性在场景文件里可省 |
+| `.optional()` | 值可以是 `undefined` |
+| `.transient()` | 运行时状态：不存盘，不进编辑器面板 |
+| `.min()`、`.max()`、`.step()`、`.unit()` | 只能用在数值属性上（用 `this` 参数限定），加载和编辑时校验，编辑器拿来做滑块 |
+| `.label()`、`.group()`、`.description()`、`.hidden()` | 编辑器面板 |
+| `.renamedFrom('oldName')` | 改名以后，旧的场景文件和热重载照样能读 |
+| `.brand<'PlayerId'>()` | 只改类型，让不同用途的整数不能混用 |
 
-// What the plugin makes of update(), roughly
-function updateCompiled(q, time) {
-  const n = q.count, idx = q.indices;
-  const cur = Health.current, max = Health.max, rate = Regen.rate, dt = time.dt;
-  for (let k = 0; k < n; k++) {
-    const i = idx[k];
-    cur[i] = Math.min(max[i], cur[i] + rate[i] * dt);
+**字面量简写**：属性直接写一个值，就是"这个类型加这个默认值"。`speed: 10` 等于 `prop.number().default(10)`，`name: 'hero'`、`visible: true` 同理；数据组件里的数字简写成 `f32`。
+
+### 脚本
+
+```ts
+export class PlayerController extends SyncScript.props('Gameplay.PlayerController', {
+  maxRunSpeed: prop.number().min(0).default(10).unit('m/s'),
+  jumpHeight: 1.2,
+  camera: prop.component(() => CameraComponent),
+}) {
+  private readonly move = new Vector3();
+  private character!: CharacterComponent;
+
+  override start(): void {
+    this.character = this.entity.require(CharacterComponent);
+  }
+
+  override update(time: GameTime): void {
+    this.move.set(0, 0, 0);
+    if (this.input.isKeyDown('KeyW')) this.move.z -= 1;
+    this.character.move(this.move.normalize().scale(this.maxRunSpeed));
+    if (this.input.isKeyPressed('Space')) this.character.tryJump(this.jumpHeight);
   }
 }
 
-// Transforms live in the wasm memory that Jolt and the renderer share:
-//   e.transform.position.addScaled(e.velocity.value, time.dt)
-// becomes px[i] += vx[i] * dt; py[i] += vy[i] * dt; pz[i] += vz[i] * dt;
+export class DoorOpener extends AsyncScript.props('Gameplay.DoorOpener', {
+  trigger: prop.component(() => TriggerComponent),
+}) {
+  override async execute(): Promise<void> {
+    for (;;) {
+      await this.trigger.entered(this.signal);
+      await this.delay(0.5);
+    }
+  }
+}
 ```
 
-- 脚本保持 Stride 的手感（`@property`、`update()`、`async execute()`），插件在脚本里只做向量内联、元数据和删调试代码。
-- 事件用带类型的 `EventKey<T>`，不用字符串。
-- 数据组件之间用实体句柄（整数）互相引用；脚本可以持有组件的视图对象。
+- `SyncScript.props(name, shape)` 返回一个已经带好属性类型的基类，同时按名字登记。场景文件里的 `type` 和热重载都靠这个名字；类名在正式版会被压缩，不能当名字。名字的类型是 `` `${string}.${string}` ``。不需要属性的脚本直接 `extends SyncScript`。
+- `entity.get(T)` 返回 `T | undefined`；`entity.require(T)` 拿不到就抛错，消息里带实体名和组件名。
+- `AsyncScript` 有 `this.signal`（`AbortSignal`），脚本被移除或游戏退出时中止，对应 Stride 的取消。脚本自己的等待方法（`nextFrame()`、`delay()`）自动带上它；等别的东西时把它传进去。
+- 按键用 `KeyboardEvent.code` 的字面量联合（`'KeyW'`、`'Space'`），不另造一套 `Keys`。
+
+### 数据组件和系统
+
+```ts
+export const Health = component('Gameplay.Health', {
+  max: prop.f32().min(0).default(100),
+  current: 100,
+});
+export const Regen = component('Gameplay.Regen', { rate: 5 });   // per second
+export const Dead = tag('Gameplay.Dead');
+
+export const regen = system('Gameplay.Regen', {
+  with: { health: Health, regen: Regen },
+  without: [Dead],
+  writes: [Health],
+  update({ health, regen, count }, time) {
+    for (let i = 0; i < count; i++)
+      health.current[i] = Math.min(health.max[i], health.current[i] + regen.rate[i] * time.elapsed);
+  },
+});
+```
+
+- **存储按 archetype 分块**：组件组合相同的实体放在同一块里，块内每个字段一列、连续存放。`update` 每块调用一次，`count` 是这一块的实体数；列是预先建好的视图，每帧不分配。
+- **`with` 写成对象**：键名就是 `update` 里解构出来的名字，列的类型从 schema 推出：`f32` 是 `Float32Array`，`int` 是 `Int32Array`，`bool` 是 `Uint8Array`，`entity` 是 `Uint32Array`，其余是普通数组。
+- **`writes`** 声明会改哪些组件，用于变更检测（按块记版本）和以后的调度检查；`changed: [Health]` 只处理上次运行之后被写过的块。
+- **结构性改动**（加删组件、创建销毁实体）在遍历时只能记进命令缓冲：`update(chunk, time, commands)`，系统跑完后统一执行。
+- **顺序**：`phase`（物理之前、之后等）加 `after: [movement]`。
+- **引擎自己的组件**（变换、刚体）在 wasm 内存里，按实体槽位存放，不按块：块里带一列 `slot`，写成 `transform.x[slot[i]]`。
+- **脚本里访问单个实体**：`entity.get(Health)` 返回一个视图对象，`health.current -= 10` 直接读写那一格；每个实体缓存一个视图。
+- 数据组件之间用实体句柄（`EntityId`，带品牌的整数）互相引用。
+
+### 事件和服务
+
+```ts
+export const damaged = new EventKey<{ target: EntityId; amount: number }>('Gameplay.Damaged');
+
+damaged.broadcast({ target, amount: 10 });
+const rx = damaged.receiver();          // once, in start()
+for (const hit of rx.drain()) { /* sync scripts, once per frame */ }
+const hit = await rx.receive(this.signal);   // async scripts
+```
+
+扩展包用声明合并登记自己的服务，核心不依赖它们（同 easy-query-ts 的 `NumericExtensions`）：
+
+```ts
+declare module '@stride-ts/engine' {
+  interface Services { navigation: NavigationSystem }
+}
+this.services.navigation;               // typed
+```
+
+### 向量和临时对象
+
+- `Vector3` 等是可变的类：实例方法原地修改并返回 `this`，可以链式调用；要新对象就显式 `clone()`。参数接受 `Readonly<Vec3Like>`（`{ x, y, z }`），wasm 内存里的变换视图也能直接传。
+- 临时向量从池里取，配合 `using`：`using v = temp.vec3();`，作用域结束自动还回池，没有分配。
+
+### 校验放在哪里
+
+- **定义时**：`component()` 和 `props()` 检查重名、默认值是否满足 `min`/`max`、`renamedFrom` 是否冲突，报错带组件名和字段名。
+- **加载和编辑时**：场景文件按 schema 解码，问题带路径（`entities[3].Gameplay.Health.max`）。`validators(Health)` 产出符合 Standard Schema 的校验器，给编辑器和 Node 后端用。
+- **公共 API 的选项**：在边界上检查一次（`createStrideNative`、`NavConfig`），内部不重复。
+- **每帧路径不校验**；开发期的断言写在 `import.meta.env.DEV` 里。
+
+### 热重载（Vite HMR，不重启）
+
+- **脚本**：按名字找到新类，把已有实例的原型换成新类的原型（`Object.setPrototypeOf`），属性按新 schema 重新解码（`renamedFrom` 生效），运行时状态的字段保留。
+- **数据组件**：schema 变了，就按字段名把旧列拷进新布局，新字段取默认值。
+- **系统**：按名字替换。
+
+### 类型测试
+
+做法同 easy-query-ts：
+- `*.check.ts` 只给 tsc 检查：正例用 `Equal` 断言推导出的类型，负例用 `@ts-expect-error` 固定"必须报错"。
+- 用脚本生成上百个组件和系统的压力样例，记录 tsc 的检查时间和实例化次数，防止类型推导拖慢编辑器。
+
+## 原生模块的 TS 接口（2026-11-18 设计草案）
+
+现在的绑定层（`native-module.mjs`、`stride-native.mjs`、`stride-tools.mjs`）和手写的 `.d.ts` 放在 fork 里，类型和实现迟早对不上。计划把绑定层搬进本仓库的 `packages/native/src/`，用 TS 重写；fork 只产出 Emscripten 的核心模块和 wasm。fork 里的 Node 测试和浏览器测试页改成引用本仓库的绑定层，或者只留一层很薄的测试外壳。
+
+接口按下表调整：
+
+| 现在 | 改成 |
+|---|---|
+| `addBox(position, halfExtent, dynamic: boolean)` | `addBox({ position, halfExtent, motion: 'dynamic' })`：位置参数里夹布尔值，调用处看不出含义 |
+| `TextureTarget.bc7 = 1`、`mode?: number` | 字符串字面量联合，如 `'bc7'`；数字只在绑定层内部用 |
+| 返回裸 `number` 的物体编号、代理编号 | 品牌类型 `BodyId`、`AgentId`，不同编号不能混用，运行时零开销 |
+| `destroy()` | 同时实现 `[Symbol.dispose]`，可以写 `using world = native.createPhysicsWorld(...)` |
+| 公开的 `handle: number` | 改为内部字段 |
+| `NativeError.code` 是负整数 | 字符串联合：`'out-of-memory'`、`'invalid-argument'`、`'capacity'` 等 |
+| `decodeMeshopt` 有 5 个位置参数，和 `MeshoptRequest` 重复 | 单个调用和批量调用用同一个请求对象 |
+| `globalThis.strideGame` 没有类型 | 用 `declare global` 声明 |
 
 ## 物理：Jolt 作为内核，Stride 风格的那一层自己用 C++ 写
 

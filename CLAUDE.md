@@ -5,7 +5,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 开工前先读：
 - [README.md](README.md)：推荐方案、原型计划、组件和脚本的写法（设计草案，含和 C# 的对照）、实例化、懒加载和缓存的设计、待用户决定的事项。
 - [docs/lessons.md](docs/lessons.md)：Stride C# 网页移植的经验，包括 WebGPU 的坑、浏览器环境、资源管线、性能数字和用户的工作偏好。
-- [docs/architecture.md](docs/architecture.md)：**已定的架构**（用户 2026-11-17）：和 Stride 对齐的自有渲染器、数据导向、和 Jolt 共享内存，以及里程碑。
+- [docs/architecture.md](docs/architecture.md)：**已定的架构**（用户 2026-11-17）：和 Stride 对齐的自有渲染器、数据导向、和 Jolt 共享内存，以及里程碑。2026-11-18 起不做 SWC 插件和任何编译期改写，组件 API 改为纯 TS 推导的写法（`prop` builder、数据组件加系统），见其中的"组件 API"。
 - [docs/own-stack.md](docs/own-stack.md)：技术栈的组织方式（用户 2026-11-17 定的方向）：JS/TS 部分在仓库内自己维护（引擎层和渲染器都自己写），原生库合成一个 C++ 工程、产出一个 wasm 模块。
 - [docs/positioning.md](docs/positioning.md)：和 Babylon.js、PlayCanvas、three.js、Cocos、Unity、Godot、Needle 的对比（预估），特色和短板，要实测的性能点。
 - [docs/research.md](docs/research.md)：依赖逐项替代、库选型、线程模型和 API 取舍。
@@ -19,3 +19,4 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - 在 Chrome 里实际跑过、看过结果，才能说某件事完成了；测试脚本在 [tools/](tools/README.md)。应用内置浏览器的面板隐藏时 `requestAnimationFrame` 不触发，看帧循环要用 `tools/play.cjs`（本机 Chrome）。
 - 改了 `StrideNative` 并重新编译后，跑 `pnpm native:sync` 把产物拷进 `packages/native/dist`（`dev`、`build`、`test`、`typecheck` 会先自动同步）。
 - 调研自己做，不派子代理。
+- TS API 的写法参考用户自己的 easy-query-ts（`C:\code\easy-query-ts`，只读）：带幻影类型参数的不可变 builder、类型全靠推导不做代码生成、核心零依赖并通过 Standard Schema 对接校验库、`*.check.ts` 类型测试。

@@ -122,9 +122,9 @@
 | Stride（C#） | TS 孪生版 |
 |---|---|
 | `Entity.Get<T>()` | `entity.get(Type)`：泛型在运行时不存在，把类本身传进去 |
-| 公开属性和字段 | `@property()`，导出场景里的值在启动时写入 |
+| 公开属性和字段 | `SyncScript.props(name, { ... })` 里用 `prop` 声明，类型由推导得出（2026-11-18 起不用装饰器，见 [architecture.md](architecture.md) 的"组件 API"） |
 | `SyncScript.Update()`，`AsyncScript` 加 `await Script.NextFrame()` | `update()`，async 的 `execute()` 加 `await this.nextFrame()` |
-| 组件类型 | `@component('Namespace.Name')` 注册，运行时按导出场景里的 `type` 创建实例 |
+| 组件类型 | `props()`、`component()` 的第一个参数登记名字，运行时按导出场景里的 `type` 创建实例 |
 | `Vector3` 等值类型 | 可变对象，预分配、每帧复用 |
 | `out`、`ref` 参数 | 传入一个结果对象让它填写，如 `simulation.raycast(from, to, hit)` |
 | `Content.Load`（同步） | `await content.load()` 或 `loadGroup()`；之后同步 `get()` |

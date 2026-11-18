@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  coverSource, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
+  cameraProjectionMatrix, coverSource, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
   type DirectionalShadowSettings, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
@@ -48,6 +48,15 @@ describe('Matrix', () => {
     const ortho = Matrix.orthoOffCenterRH(new Float32Array(16), -2, 4, -1, 3, 0, 10);
     expect(rounded(Matrix.transformPoint(ortho, -2, -1, 0))).toEqual([-1, -1, 0]);
     expect(rounded(Matrix.transformPoint(ortho, 4, 3, -10))).toEqual([1, 1, 1]);
+  });
+
+  test('相机的正交投影（Stride 的 OrthoRH）：看到 orthographicSize 高、按宽高比的宽；透视的同 PerspectiveFovRH', () => {
+    const camera = { projection: 'orthographic', verticalFieldOfView: 45, orthographicSize: 21, nearClipPlane: 0.1, farClipPlane: 100 } as const;
+    const ortho = cameraProjectionMatrix(new Float32Array(16), camera, 16 / 9);
+    expect(rounded(Matrix.transformPoint(ortho, (21 * 16) / 9 / 2, 10.5, -0.1))).toEqual([1, 1, 0]);
+    expect(rounded(Matrix.transformPoint(ortho, 0, -10.5, -100))).toEqual([0, -1, 1]);
+    const perspective = cameraProjectionMatrix(new Float32Array(16), { ...camera, projection: 'perspective' }, 16 / 9);
+    expect([...perspective]).toEqual([...Matrix.perspectiveFovRH(new Float32Array(16), Math.PI / 4, 16 / 9, 0.1, 100)]);
   });
 
   test('视锥平面朝内：视野里的点在所有平面的正面，近平面后面、视野外的点在某个平面的背面', () => {

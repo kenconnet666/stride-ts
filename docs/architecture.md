@@ -72,6 +72,7 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
   - 合成器的最小数据化：导入器读 GameSettings 引用的 .sdgfxcomp，相机槽位按 Cameras 列表编号（Camera.slot），主画面是槽位 0 的相机下第一个前向渲染器（清屏色、后处理开关、透明阶段开关），"相机画进渲染目标贴图"的分支（SceneCameraRenderer 加 RenderTextureSceneRenderer）写进场景的 `compositor.textureCameras`。`ForwardRenderer` 先画各个渲染目标贴图（一样的深度预通道、不透明、透明阶段，画完原样拷进贴图），再画主画面；所有相机的视图一起提取、剔除。
   - 渲染目标贴图（Stride 的 RenderTexture）：`Texture.renderTarget`，没有 CPU 数据，GPU 纹理第一次用到时建，能画也能采样；内容管理按内容路径只建一次。
   - 精灵（Stride 的 SpriteComponent 加 SpriteFromTexture）：`Sprite` 数据组件，`SpriteRenderFeature` 在透明阶段画，矩形照 Stride 在 CPU 上算（`spriteQuad`：billboard 用相机的轴、实体的缩放，center 偏移），每个视图从远到近排，一个精灵一次绘制，混合方式照 Stride 的 SpriteBlend。
+  - 相机有透视和正交两种投影（`Camera.projection`、`orthographicSize`，Stride 的 PerspectiveFovRH、OrthoRH），投影矩阵由 `cameraProjectionMatrix` 统一算（前向渲染器和 `screenToWorldRaySegment` 共用）；正交相机的阴影只用一级级联（同 Stride）。
   - 背景支持平面图片（Is2D，铺满视图）；背景、精灵的常量按视图分块，渲染目标贴图的相机也画得到。
   - 和 Stride 不同（暂时）：画进渲染目标贴图的相机不用阴影（级联按主视图算）、不做后处理；一个视图最多 4 个方向光、只有一个投阴影。
 - 接下来：Stride 的 WGSL 和效果系统（等着色器系统）、透明材质、点光源和聚光灯（及其阴影）、render bundle 缓存静态批次、非均匀缩放的法线（逆转置）。

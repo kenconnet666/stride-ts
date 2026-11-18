@@ -118,7 +118,7 @@ export { Body, Character, Static } from './physics/components';
 export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { TriggerHandler, type Contact, type ContactHandler } from './physics/contacts';
 export { Background, Camera, Light, Model, Skinned, Sprite } from './rendering/components';
-export { screenToWorldRaySegment } from './rendering/cameraRays';
+export { cameraProjectionMatrix, screenToWorldRaySegment, type CameraProjection } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
 export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';
 export { GpuResources } from './rendering/GpuResources';

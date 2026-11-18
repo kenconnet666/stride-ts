@@ -109,6 +109,11 @@ export const Matrix = {
     return out;
   },
 
+  /** 右手坐标系、以视线为中心的正交投影（Stride 的 Matrix.OrthoRH）。 */
+  orthoRH(out: Matrix4, width: number, height: number, near: number, far: number): Matrix4 {
+    return Matrix.orthoOffCenterRH(out, -width / 2, width / 2, -height / 2, height / 2, near, far);
+  },
+
   /** 先缩放再平移（Stride 的 Matrix.Scaling(s) * Matrix.Translation(t)）。 */
   scaleTranslation(out: Matrix4, sx: number, sy: number, sz: number, tx: number, ty: number, tz: number): Matrix4 {
     out.fill(0);

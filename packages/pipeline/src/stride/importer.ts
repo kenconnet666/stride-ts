@@ -1104,6 +1104,7 @@ function cameraOf(component: StrideObject, slots: ReadonlyMap<string, number>): 
     nearClipPlane: asNumber(component['NearClipPlane'], 0.1),
     farClipPlane: asNumber(component['FarClipPlane'], 1000),
     ...(slot > 0 ? { slot } : {}),
+    ...(component['Projection'] === 'Orthographic' ? { projection: 'orthographic', orthographicSize: asNumber(component['OrthographicSize'], 10) } : {}),
   };
 }
 

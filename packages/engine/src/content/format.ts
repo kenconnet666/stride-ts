@@ -635,7 +635,15 @@ export interface SceneEntityFile {
       readonly isShadowCaster?: boolean;
     };
     /** slot：图形合成器的相机槽位下标（Stride 的 CameraComponent.Slot），默认 0。 */
-    readonly camera?: { readonly verticalFieldOfView: number; readonly nearClipPlane: number; readonly farClipPlane: number; readonly slot?: number };
+    readonly camera?: {
+      readonly verticalFieldOfView: number;
+      readonly nearClipPlane: number;
+      readonly farClipPlane: number;
+      readonly slot?: number;
+      /** 没写是透视。 */
+      readonly projection?: 'orthographic';
+      readonly orthographicSize?: number;
+    };
     readonly light?:
       | {
         readonly type: 'directional' | 'ambient';

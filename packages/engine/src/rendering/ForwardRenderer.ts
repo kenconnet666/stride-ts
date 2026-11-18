@@ -15,6 +15,7 @@ import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
 import { Color4 } from '../mathematics/vectors';
+import { cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
 import { MAX_DIRECTIONAL_LIGHTS, RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
@@ -69,7 +70,13 @@ export class ForwardRenderer {
         if (!Matrix.invert(view.view, transform.world.subarray(slot * 16, slot * 16 + 16))) Matrix.setIdentity(view.view);
         view.nearClipPlane = camera.nearClipPlane[row]!;
         view.farClipPlane = camera.farClipPlane[row]!;
-        Matrix.perspectiveFovRH(view.projection, (camera.verticalFieldOfView[row]! * Math.PI) / 180, view.width / view.height, view.nearClipPlane, view.farClipPlane);
+        cameraProjectionMatrix(view.projection, {
+          projection: camera.projection[row]!,
+          verticalFieldOfView: camera.verticalFieldOfView[row]!,
+          orthographicSize: camera.orthographicSize[row]!,
+          nearClipPlane: view.nearClipPlane,
+          farClipPlane: view.farClipPlane,
+        }, view.width / view.height);
         view.update();
       }
     },

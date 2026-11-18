@@ -11,7 +11,12 @@ import type { TextureId } from './Texture';
 
 /** 透视相机，看向本地 -Z。默认值和 Stride 一样：竖直视角 45°，近裁剪面 0.1，远裁剪面 1000。 */
 export const Camera = component('Camera', {
+  /** 透视或正交（Stride 的 CameraProjectionMode）。 */
+  projection: prop.enum(['perspective', 'orthographic']).default('perspective'),
+  /** 透视投影的竖直视角。 */
   verticalFieldOfView: prop.f32().default(45).min(1).max(179).unit('deg'),
+  /** 正交投影看到的高度（世界单位），宽度按宽高比（Stride 的 OrthographicSize）。 */
+  orthographicSize: prop.f32().default(10).min(0),
   nearClipPlane: prop.f32().default(0.1).min(0),
   farClipPlane: prop.f32().default(1000).min(0),
   /** 图形合成器的相机槽位（Stride 的 CameraComponent.Slot，按合成器的 Cameras 列表编号）；0 是主画面用的那个。 */

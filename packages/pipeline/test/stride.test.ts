@@ -266,6 +266,8 @@ describe('导入 Stride 场景', () => {
       '!SceneAsset', `Id: ${ids.glassScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: g1', '                Name: Holder', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg1', '                        Children: {}',
       '                    s: !Game.Holder,Game', '                        Id: sg1', `                        Look: ${ids.glass}:Materials/Glass`,
+      // 正交相机（PhysicsSample 的 VolumeTrigger）
+      '                    c: !CameraComponent', '                        Id: cg1', '                        Projection: Orthographic', '                        OrthographicSize: 21.0',
     ].join('\n'),
     'Assets/Bumpy.sdscene': [
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
@@ -499,6 +501,8 @@ describe('导入 Stride 场景', () => {
       ambientOcclusion: { value: 1, texture: { ...checker, scale: [2, 2], channel: 'g' }, directLighting: 0.5 },
       transparency: { type: 'blend', alpha: 0.25 },
     });
+    const scene = JSON.parse(await readFile(path.join(out, 'Game/Glassy.scene.json'), 'utf8')) as SceneFile;
+    expect(scene.entities[0]!.components.camera).toEqual({ verticalFieldOfView: 45, nearClipPlane: 0.1, farClipPlane: 1000, projection: 'orthographic', orthographicSize: 21 });
   });
 
   test('覆盖目录里的 SVG 代替源图片，原样导出，材质的贴图槽记下编码和栅格化尺寸', async () => {

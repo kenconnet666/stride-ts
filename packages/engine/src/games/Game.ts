@@ -7,6 +7,7 @@ import { GraphicsDevice } from '../graphics/GraphicsDevice';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
 import { RenderSystem } from '../rendering/RenderSystem';
+import { ktx2Decoder } from '../rendering/Texture';
 import { GameTime } from './GameTime';
 
 export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
@@ -81,6 +82,7 @@ export class Game {
       this.native = await createStrideNative(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads });
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       this.graphicsDevice = await GraphicsDevice.create(canvas);
+      this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
       this.renderSystem = new RenderSystem(this.graphicsDevice);
       this.renderSystem.addFeature(new MeshRenderFeature());
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);

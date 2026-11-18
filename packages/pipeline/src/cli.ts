@@ -39,7 +39,7 @@ async function importStride(args: string[]): Promise<void> {
   const tools = await createStrideTools();
   try {
     const result = await new StrideImporter(project, tools, values.out).importScene(scene);
-    console.log(`imported ${result.scene}: ${result.entities} entities, ${result.models.length} models, ${result.materials.length} materials in ${((performance.now() - started) / 1000).toFixed(1)} s -> ${values.out}`);
+    console.log(`imported ${result.scene}: ${result.entities} entities, ${result.models.length} models, ${result.materials.length} materials, ${result.textures.length} textures in ${((performance.now() - started) / 1000).toFixed(1)} s -> ${values.out}`);
     if (result.skipped.size > 0) console.log(`skipped components: ${[...result.skipped].map(([type, count]) => `${type} x${count}`).join(', ')}`);
     for (const warning of result.warnings) console.warn(`warning: ${warning}`);
   } finally {

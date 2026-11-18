@@ -1,12 +1,13 @@
 /**
  * 把 Stride 工程的场景导入成运行时内容（格式见 @stride-ts/engine 的 content/format.ts）：场景里的实体、
- * 变换和父子关系，ModelComponent 引用的模型（源 FBX/glTF 经 stride-tools 导入）和材质，相机，光源。
+ * 变换和父子关系，ModelComponent 引用的模型（源 FBX/glTF 经 stride-tools 导入）、材质和贴图（源图片解码后
+ * 编成 KTX2 加 Basis），相机，光源。
  * 现在不认识的组件（物理、脚本、动画、背景）跳过并计数，后面的里程碑逐个接上。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { EXTENSIONS, encodeModel, VERTEX_FLOATS, type MaterialFile, type ModelMeshData, type SceneEntityFile, type SceneFile } from '@stride-ts/engine/content-format';
+import { EXTENSIONS, encodeModel, VERTEX_FLOATS, type ColorOperator, type MaterialFile, type ModelMeshData, type SceneEntityFile, type SceneFile, type TextureSlot } from '@stride-ts/engine/content-format';
 import type { AssetEntry, StrideProject } from './project.ts';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -16,6 +17,7 @@ export interface ImportResult {
   readonly entities: number;
   readonly models: readonly string[];
   readonly materials: readonly string[];
+  readonly textures: readonly string[];
   /** 跳过的组件类型和个数。 */
   readonly skipped: ReadonlyMap<string, number>;
   readonly warnings: readonly string[];
@@ -27,11 +29,6 @@ export interface ImportResult {
  */
 const SKYBOX_AMBIENT_ESTIMATE = 0.2;
 
-/**
- * 贴图还没接上时，颜色树里的贴图按这个线性灰度估计（棋盘格这类网格贴图的平均亮度）。接上贴图后去掉。
- */
-const TEXTURE_ESTIMATE = 0.5;
-
 const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
 
 export class StrideImporter {
@@ -40,6 +37,7 @@ export class StrideImporter {
   readonly #out: string;
   readonly #models = new Map<string, Promise<string>>();
   readonly #materials = new Map<string, Promise<string>>();
+  readonly #textures = new Map<string, Promise<string>>();
   readonly #skipped = new Map<string, number>();
   readonly #warnings: string[] = [];
 
@@ -79,6 +77,7 @@ export class StrideImporter {
       entities: scene.entities.length,
       models: [...this.#models.keys()],
       materials: [...this.#materials.keys()],
+      textures: [...this.#textures.keys()],
       skipped: this.#skipped,
       warnings: this.#warnings,
     };
@@ -170,56 +169,94 @@ export class StrideImporter {
   #material(asset: AssetEntry): Promise<string> {
     let pending = this.#materials.get(asset.path);
     if (!pending) {
-      pending = this.#write(asset.path + EXTENSIONS.material, JSON.stringify(this.#materialFile(asset), null, 1)).then(() => asset.path);
+      pending = this.#materialFile(asset).then((file) => this.#write(asset.path + EXTENSIONS.material, JSON.stringify(file, null, 1))).then(() => asset.path);
       this.#materials.set(asset.path, pending);
     }
     return pending;
   }
 
-  #materialFile(asset: AssetEntry): MaterialFile {
+  async #materialFile(asset: AssetEntry): Promise<MaterialFile> {
     const attributes = asObject(asset.data['Attributes']) ?? {};
     const diffuse = asObject(asObject(attributes['Diffuse'])?.['DiffuseMap']);
-    const textures: string[] = [];
-    const baseColor = diffuse ? this.#evaluateColor(diffuse, asset, textures).map((c, i) => (i < 3 ? Math.min(1, Math.max(0, c)) : c)) as [number, number, number, number] : [1, 1, 1, 1] as [number, number, number, number];
-    const baseColorTexture = textures[0];
+    const uvScale = vec2(asObject(attributes['Overrides'])?.['UVScale'], 1);
+    const { color, texture, operator } = diffuse ? this.#evaluateColor(diffuse, asset, uvScale) : { color: WHITE, operator: 'multiply' as const };
     const metalness = asObject(asObject(attributes['Specular'])?.['MetalnessMap'])?.['Value'];
     const glossiness = asObject(asObject(attributes['MicroSurface'])?.['GlossinessMap'])?.['Value'];
     return {
       name: path.basename(asset.path),
-      baseColor,
-      ...(baseColorTexture === undefined ? {} : { baseColorTexture }),
+      baseColor: color,
+      ...(texture ? { baseColorTexture: { ...texture, texture: await texture.texture } } : {}),
+      ...(texture && operator !== 'multiply' ? { baseColorOperator: operator } : {}),
       ...(typeof metalness === 'number' ? { metalness } : {}),
       ...(typeof glossiness === 'number' ? { roughness: 1 - glossiness } : {}),
     };
   }
 
   /**
-   * Stride 材质的颜色树（ComputeColor、ComputeTextureColor、ComputeBinaryColor）算成一个线性颜色。贴图还没接上，
-   * 先按 TEXTURE_ESTIMATE 的灰度估计，并记下贴图的内容路径。
+   * Stride 材质的颜色树（ComputeColor、ComputeTextureColor、ComputeBinaryColor）化成"一张贴图按运算符组合一个颜色"，
+   * 也就是运行时着色器支持的形状；纯颜色的子树在导入时算好。超出这个形状的树（两张贴图、贴图和颜色混用不同的
+   * 运算符）记警告，只保留一张贴图。
    */
-  #evaluateColor(node: StrideObject, asset: AssetEntry, textures: string[]): [number, number, number, number] {
+  #evaluateColor(node: StrideObject, asset: AssetEntry, uvScale: readonly [number, number]): ColorExpression {
     switch (node.$type) {
       case 'ComputeColor':
-        return linearColor(node['Value']);
+        return { color: linearColor(node['Value']), operator: 'multiply' };
       case 'ComputeTextureColor': {
-        const texture = parseAssetReference(node['Texture']);
-        if (texture) textures.push(this.#project.get(texture.id, asset.file).path);
-        return [TEXTURE_ESTIMATE, TEXTURE_ESTIMATE, TEXTURE_ESTIMATE, 1];
+        const reference = parseAssetReference(node['Texture']);
+        if (!reference) return { color: linearColor(asObject(node['FallbackValue'])?.['Value']), operator: 'multiply' };
+        const scale = vec2(node['Scale'], 1);
+        const texture = { texture: this.#texture(this.#project.get(reference.id, asset.file)), scale: [scale[0] * uvScale[0], scale[1] * uvScale[1]], offset: vec2(node['Offset'], 0) } as const;
+        return { color: WHITE, texture, operator: 'multiply' };
       }
       case 'ComputeBinaryColor': {
-        const left = this.#evaluateColor(asObject(node['LeftChild']) ?? {}, asset, textures);
-        const right = this.#evaluateColor(asObject(node['RightChild']) ?? {}, asset, textures);
-        const op = BINARY_OPERATORS[String(node['Operator'])];
-        if (!op) {
-          this.#warnings.push(`${asset.file}: color operator ${String(node['Operator'])} is not supported; using the left side`);
+        const name = String(node['Operator']);
+        const left = this.#evaluateColor(asObject(node['LeftChild']) ?? {}, asset, uvScale);
+        const right = this.#evaluateColor(asObject(node['RightChild']) ?? {}, asset, uvScale);
+        const fold = BINARY_OPERATORS[name];
+        const texture = left.texture ?? right.texture;
+        if (!texture) {
+          if (fold) return { color: combine(left.color, right.color, fold), operator: 'multiply' };
+          this.#warnings.push(`${asset.file}: color operator ${name} is not supported; using the left side`);
           return left;
         }
-        return [op(left[0], right[0]), op(left[1], right[1]), op(left[2], right[2]), left[3] * right[3]];
+        if (left.texture && right.texture) {
+          this.#warnings.push(`${asset.file}: combining two textures is not supported; using the left one`);
+          return left;
+        }
+        // 剩下的是"一边有贴图、一边是颜色"；支持的两个运算都满足交换律，不用管贴图在哪边
+        const [textured, constant] = left.texture ? [left, right] : [right, left];
+        const operator = TEXTURE_OPERATORS[name];
+        const pureTexture = textured.operator === 'multiply' && textured.color.every((c) => c === 1);
+        if (operator && pureTexture) return { color: constant.color, texture, operator };
+        if (operator && fold && operator === textured.operator) return { color: combine(textured.color, constant.color, fold), texture, operator };
+        this.#warnings.push(`${asset.file}: color operator ${name} on a texture is not supported; ignoring the color`);
+        return textured;
       }
       default:
         this.#warnings.push(`${asset.file}: color ${node.$type ?? 'value'} is not supported; using white`);
-        return [1, 1, 1, 1];
+        return { color: WHITE, operator: 'multiply' };
     }
+  }
+
+  /** 导入一个贴图资源（.sdtex）：解码源图片，编成 KTX2（UASTC 加 mipmap），返回内容路径；同一张贴图只导入一次。 */
+  #texture(asset: AssetEntry): Promise<string> {
+    let pending = this.#textures.get(asset.path);
+    if (!pending) {
+      pending = this.#importTexture(asset).then(() => asset.path);
+      this.#textures.set(asset.path, pending);
+    }
+    return pending;
+  }
+
+  async #importTexture(asset: AssetEntry): Promise<void> {
+    const source = asset.data['Source'];
+    if (typeof source !== 'string') throw new Error(`${asset.file}: texture has no Source`);
+    const type = asObject(asset.data['Type']);
+    // 颜色贴图默认按 sRGB 采样（Stride 的 ColorTextureType.UseSRgbSampling），法线、灰度贴图是线性的
+    const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
+    const image = await this.#tools.decodeImage(await readFile(path.resolve(path.dirname(asset.file), source)));
+    const ktx2 = await this.#tools.encodeBasis(image.pixels, image.width, image.height, { mode: 'uastc', srgb, mipmaps: true });
+    await this.#write(asset.path + EXTENSIONS.texture, ktx2);
   }
 
   async #write(contentPath: string, data: string | Uint8Array): Promise<void> {
@@ -227,6 +264,25 @@ export class StrideImporter {
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, data);
   }
+}
+
+type Color4Tuple = readonly [number, number, number, number];
+
+const WHITE: Color4Tuple = [1, 1, 1, 1];
+
+/** 颜色树化简后的形状：有贴图时结果 = operator(贴图采样, color)，没有贴图时就是 color。 */
+interface ColorExpression {
+  readonly color: Color4Tuple;
+  /** texture 是导入中的贴图的内容路径。 */
+  readonly texture?: Omit<TextureSlot, 'texture'> & { readonly texture: Promise<string> };
+  readonly operator: ColorOperator;
+}
+
+/** 着色器里能和贴图组合的运算符（Stride 的 Add 是 3ds 风格的加法，对不透明的颜色就是相加）。 */
+const TEXTURE_OPERATORS: Readonly<Record<string, ColorOperator>> = { Add: 'add', Multiply: 'multiply' };
+
+function combine(a: Color4Tuple, b: Color4Tuple, op: (a: number, b: number) => number): Color4Tuple {
+  return [op(a[0], b[0]), op(a[1], b[1]), op(a[2], b[2]), a[3] * b[3]];
 }
 
 /** Stride 的 BinaryOperator（ComputeBinaryColor 用）里常见的几个。 */
@@ -265,6 +321,11 @@ function parentsFirst(entities: readonly SceneEntityFile[]): SceneEntityFile[] {
 function vec3(value: StrideValue | undefined, fallback: number): [number, number, number] {
   const v = asObject(value) ?? {};
   return [asNumber(v['X'], fallback), asNumber(v['Y'], fallback), asNumber(v['Z'], fallback)];
+}
+
+function vec2(value: StrideValue | undefined, fallback: number): [number, number] {
+  const v = asObject(value) ?? {};
+  return [asNumber(v['X'], fallback), asNumber(v['Y'], fallback)];
 }
 
 function quaternion(value: StrideValue | undefined): [number, number, number, number] {

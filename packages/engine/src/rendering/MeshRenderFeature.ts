@@ -1,6 +1,6 @@
 /**
- * 网格的根渲染特性（Stride 的 MeshRenderFeature；现在只有基础色、一个方向光和环境光，着色公式同 Stride 的
- * Lambert：直射光 albedo / π · 光色 · N·L，环境光 albedo · 环境色，光色是线性的、已经乘过强度）。
+ * 网格的根渲染特性（Stride 的 MeshRenderFeature；现在只有漫反射（颜色加一张贴图）、一个方向光和环境光，
+ * 着色公式同 Stride 的 Lambert：直射光 albedo / π · 光色 · N·L，环境光 albedo · 环境色，光色是线性的、已经乘过强度）。
  *
  * 数据流：
  * - Extract：遍历带 Model 和 Transform 的实体，按（网格，材质）分批，每批记下实体的变换槽位。
@@ -14,6 +14,7 @@ import { Transform } from '../engine/transform';
 import { Model } from './components';
 import { Material } from './Material';
 import { Mesh, VERTEX_FLOATS } from './Mesh';
+import type { Texture } from './Texture';
 import { RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
@@ -38,8 +39,11 @@ struct View {
 @group(0) @binding(1) var<storage, read> worlds: array<mat4x4f>;
 @group(0) @binding(2) var<storage, read> slots: array<u32>;
 
-struct Material { baseColor: vec4f };
+// 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。没有贴图的材质绑一张 1x1 的白图
+struct Material { baseColor: vec4f, uvTransform: vec4f, combine: u32 };
 @group(1) @binding(0) var<uniform> material: Material;
+@group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
+@group(1) @binding(2) var baseColorSampler: sampler;
 
 struct Varyings {
   @builtin(position) position: vec4f,
@@ -62,7 +66,8 @@ const PI = 3.14159265358979;
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let n = normalize(in.normal);
   let nDotL = max(dot(n, -view.lightDirection.xyz), 0.0);
-  let albedo = material.baseColor.rgb;
+  let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw).rgb;
+  let albedo = select(texel * material.baseColor.rgb, texel + material.baseColor.rgb, material.combine == 1u);
   let color = albedo / PI * view.lightColor.rgb * nDotL + albedo * view.ambientColor.rgb;
   return vec4f(color, material.baseColor.a);
 }`;
@@ -70,6 +75,9 @@ const PI = 3.14159265358979;
 /** 每个视图的常量占一块：uniform 的动态偏移必须是 minUniformBufferOffsetAlignment（256）的整数倍。 */
 const VIEW_STRIDE = 256;
 const VIEW_FLOATS = 28;
+/** 材质 uniform：baseColor、uvTransform（scale.xy, offset.xy）、combine，按 16 字节对齐。 */
+const MATERIAL_BYTES = 48;
+const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 /** 交错的顶点：位置 xyz、法线 xyz、UV xy（Mesh 的布局）。 */
 const VERTEX_STRIDE = VERTEX_FLOATS * 4;
 
@@ -82,7 +90,7 @@ interface GpuMesh {
 
 interface GpuMaterial {
   readonly buffer: GPUBuffer;
-  readonly bindGroup: GPUBindGroup;
+  bindGroup: GPUBindGroup | undefined;
   version: number;
 }
 
@@ -196,6 +204,10 @@ class Gpu {
   readonly #pipelines = new Map<string, GPURenderPipeline>();
   readonly #meshes = new Map<Mesh, GpuMesh>();
   readonly #materials = new Map<Material, GpuMaterial>();
+  readonly #textures = new Map<Texture, GPUTexture>();
+  readonly #sampler: GPUSampler;
+  readonly #white: GPUTexture;
+  readonly #materialData = new ArrayBuffer(MATERIAL_BYTES);
 
   #worlds: GPUBuffer | undefined;
   #instances: GPUBuffer | undefined;
@@ -217,9 +229,25 @@ class Gpu {
     });
     this.#materialLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature material',
-      entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } }],
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+      ],
     });
     this.#pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.#viewLayout, this.#materialLayout] });
+    // Stride 贴图采样的默认值：重复、线性过滤（ComputeTextureBase 的 Filtering、AddressModeU/V）；各向异性让斜看的地面不糊
+    this.#sampler = device.createSampler({
+      label: 'MeshRenderFeature linear wrap',
+      addressModeU: 'repeat',
+      addressModeV: 'repeat',
+      magFilter: 'linear',
+      minFilter: 'linear',
+      mipmapFilter: 'linear',
+      maxAnisotropy: 16,
+    });
+    this.#white = device.createTexture({ label: 'white', size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    device.queue.writeTexture({ texture: this.#white }, new Uint8Array([255, 255, 255, 255]), { bytesPerRow: 4 }, [1, 1]);
   }
 
   pipelineFor(stage: RenderStage): GPURenderPipeline {
@@ -325,17 +353,48 @@ class Gpu {
     return gpu;
   }
 
-  material(material: Material): GpuMaterial {
+  material(material: Material): GpuMaterial & { readonly bindGroup: GPUBindGroup } {
     let gpu = this.#materials.get(material);
     if (!gpu) {
-      const buffer = this.device.createBuffer({ label: `${material.name} material`, size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-      gpu = { buffer, bindGroup: this.device.createBindGroup({ layout: this.#materialLayout, entries: [{ binding: 0, resource: { buffer } }] }), version: -1 };
+      const buffer = this.device.createBuffer({ label: `${material.name} material`, size: MATERIAL_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      gpu = { buffer, bindGroup: undefined, version: -1 };
       this.#materials.set(material, gpu);
     }
-    if (gpu.version !== material.version) {
+    if (gpu.version !== material.version || !gpu.bindGroup) {
+      const slot = material.baseColorTexture;
+      const floats = new Float32Array(this.#materialData);
       const { r, g, b, a } = material.baseColor;
-      this.device.queue.writeBuffer(gpu.buffer, 0, new Float32Array([r, g, b, a]));
+      floats.set([r, g, b, a, ...(slot?.scale ?? [1, 1]), ...(slot?.offset ?? [0, 0])]);
+      new Uint32Array(this.#materialData)[8] = OPERATOR_CODES[material.baseColorOperator];
+      this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
+      gpu.bindGroup = this.device.createBindGroup({
+        label: `${material.name} material`,
+        layout: this.#materialLayout,
+        entries: [
+          { binding: 0, resource: { buffer: gpu.buffer } },
+          { binding: 1, resource: (slot ? this.texture(slot.texture) : this.#white).createView() },
+          { binding: 2, resource: this.#sampler },
+        ],
+      });
       gpu.version = material.version;
+    }
+    return gpu as GpuMaterial & { readonly bindGroup: GPUBindGroup };
+  }
+
+  /** 贴图第一次用到时上传所有 mip；压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝。 */
+  texture(texture: Texture): GPUTexture {
+    let gpu = this.#textures.get(texture);
+    if (!gpu) {
+      const { format, width, height, levels } = texture.data;
+      gpu = this.device.createTexture({ label: texture.name, size: [width, height], format, mipLevelCount: levels.length, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+      const block = texture.blockBytes;
+      levels.forEach((data, mipLevel) => {
+        const w = Math.max(1, width >> mipLevel), h = Math.max(1, height >> mipLevel);
+        const layout = block ? { bytesPerRow: Math.ceil(w / 4) * block, rowsPerImage: Math.ceil(h / 4) } : { bytesPerRow: w * 4 };
+        const size = block ? [Math.ceil(w / 4) * 4, Math.ceil(h / 4) * 4] : [w, h];
+        this.device.queue.writeTexture({ texture: gpu!, mipLevel }, data, layout, size);
+      });
+      this.#textures.set(texture, gpu);
     }
     return gpu;
   }
@@ -347,6 +406,8 @@ class Gpu {
       indices.destroy();
     }
     for (const { buffer } of this.#materials.values()) buffer.destroy();
+    for (const texture of this.#textures.values()) texture.destroy();
+    this.#white.destroy();
   }
 
   #createStorage(label: string, size: number): GPUBuffer {

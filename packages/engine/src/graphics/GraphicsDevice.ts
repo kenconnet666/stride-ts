@@ -1,3 +1,12 @@
+import type { TextureTarget } from '@stride-ts/native';
+
+/** 贴图压缩格式的特性和对应的 Basis 转码目标，按优先级：桌面 GPU 有 BC，移动 GPU 有 ASTC 或 ETC2。 */
+const COMPRESSION: readonly (readonly [GPUFeatureName, TextureTarget])[] = [
+  ['texture-compression-bc', 'bc7'],
+  ['texture-compression-astc', 'astc4x4'],
+  ['texture-compression-etc2', 'etc2rgba8'],
+];
+
 /** WebGPU 设备和它呈现到的画布（对应 Stride 的 GraphicsDevice 和 GraphicsPresenter）。 */
 export class GraphicsDevice {
   readonly device: GPUDevice;
@@ -8,20 +17,24 @@ export class GraphicsDevice {
    * 和 Stride 默认的线性颜色空间一致（画布本身不能配置成 sRGB 格式，只能在视图上用）。
    */
   readonly backBufferViewFormat: GPUTextureFormat;
+  /** KTX2 贴图转码成什么：设备支持的第一个压缩格式，都不支持时是 RGBA8。 */
+  readonly textureTarget: TextureTarget;
   private readonly context: GPUCanvasContext;
 
   static async create(canvas: HTMLCanvasElement): Promise<GraphicsDevice> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) throw new Error('No WebGPU adapter is available');
-    const device = await adapter.requestDevice();
+    const compression = COMPRESSION.filter(([feature]) => adapter.features.has(feature));
+    const device = await adapter.requestDevice({ requiredFeatures: compression.map(([feature]) => feature) });
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('The canvas has no WebGPU context');
-    return new GraphicsDevice(device, canvas, context);
+    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8');
   }
 
-  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext) {
+  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget) {
     this.device = device;
+    this.textureTarget = textureTarget;
     this.canvas = canvas;
     this.context = context;
     this.backBufferFormat = navigator.gpu.getPreferredCanvasFormat();

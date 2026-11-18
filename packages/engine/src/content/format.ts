@@ -14,7 +14,7 @@ export const VERTEX_FLOATS = 8;
 export const MODEL_MAGIC = 0x4c444d53; // 'SMDL'，小端
 export const MODEL_VERSION = 1;
 
-export const EXTENSIONS = { model: '.model', material: '.material.json', scene: '.scene.json' } as const;
+export const EXTENSIONS = { model: '.model', material: '.material.json', scene: '.scene.json', texture: '.ktx2' } as const;
 
 export interface ModelMeshHeader {
   readonly name: string;
@@ -106,11 +106,24 @@ export function decodeModel(buffer: ArrayBuffer, source = 'model'): ModelData {
 }
 
 /** 材质文件。颜色都是线性空间的。 */
+/** 贴图和颜色的组合方式：结果 = 运算(贴图采样, 颜色)。对应 Stride ComputeBinaryColor 的运算符，先支持用到的两个。 */
+export type ColorOperator = 'multiply' | 'add';
+
+export interface TextureSlot {
+  /** 贴图的内容路径；文件是 KTX2（Basis 压缩），运行时按设备支持转码。 */
+  readonly texture: string;
+  /** 采样坐标 = uv * scale + offset（scale 已经乘上 Stride 材质的 UVScale）。 */
+  readonly scale: readonly [number, number];
+  readonly offset: readonly [number, number];
+}
+
 export interface MaterialFile {
   readonly name: string;
+  /** 线性颜色。没有贴图时就是漫反射颜色，有贴图时按 baseColorOperator 和贴图组合。 */
   readonly baseColor: readonly [number, number, number, number];
-  /** 漫反射贴图（内容路径）；贴图还没接上时渲染器先用 baseColor（就是 Stride 的 FallbackValue）。 */
-  readonly baseColorTexture?: string;
+  readonly baseColorTexture?: TextureSlot;
+  /** 默认 multiply（baseColor 是白色时就是贴图本身）。 */
+  readonly baseColorOperator?: ColorOperator;
   readonly metalness?: number;
   readonly roughness?: number;
 }

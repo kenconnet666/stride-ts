@@ -1,6 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { Camera, ContentManager, decodeModel, encodeModel, Game, Light, Material, Mesh, Model, Transform, VERTEX_FLOATS, type MaterialFile, type SceneFile } from '../src/index';
+import { Camera, ContentManager, decodeModel, encodeModel, Game, ktx2Decoder, Light, Material, Mesh, Model, Transform, VERTEX_FLOATS, type GraphicsDevice, type MaterialFile, type SceneFile } from '../src/index';
 
 // 内容格式和加载：不碰 GPU。读文件换成从内存里的 Map 取。
 
@@ -91,5 +92,49 @@ describe('ContentManager', () => {
     await content.loadModel('models/Wall');
     expect(reads.filter((r) => r.endsWith('Wall.model'))).toHaveLength(1);
     await expect(content.loadMaterial('materials/Missing')).rejects.toThrow('no https://game.test/content/materials/Missing.material.json');
+  });
+});
+
+describe('贴图', () => {
+  let native: StrideNative;
+  let tools: StrideTools;
+  beforeAll(async () => {
+    [native, tools] = await Promise.all([createStrideNative({ workerThreads: 1 }), createStrideTools({ workerThreads: 1 })]);
+  });
+  afterAll(() => {
+    native?.shutdown();
+    tools?.shutdown();
+  });
+
+  const ktx2 = (size: number, srgb: boolean) => tools.encodeBasis(new Uint8Array(size * size * 4).fill(200), size, size, { srgb, mipmaps: true });
+
+  test('KTX2 按设备的转码目标解码，sRGB 标记决定格式；尺寸不是 4 的倍数时退回 RGBA8', async () => {
+    const decode = ktx2Decoder(native, { textureTarget: 'bc7' } as GraphicsDevice);
+    const color = await decode(await ktx2(16, true));
+    expect([color.format, color.width, color.levels.length]).toEqual(['bc7-rgba-unorm-srgb', 16, 5]);
+    expect(color.levels[0]!.byteLength).toBe(4 * 4 * 16);
+    const linear = await decode(await ktx2(6, false));
+    expect([linear.format, linear.levels[0]!.byteLength]).toEqual(['rgba8unorm', 6 * 6 * 4]);
+  });
+
+  test('材质引用的贴图经 textureDecoder 加载，uv 变换和运算符带到材质上', async () => {
+    const encoded = await ktx2(8, true);
+    const files = new Map<string, Uint8Array>([
+      ['https://game.test/content/textures/Checker.ktx2', encoded],
+      ['https://game.test/content/materials/Grid.material.json', new TextEncoder().encode(JSON.stringify({
+        name: 'Grid',
+        baseColor: [0.1, 0.2, 0.3, 1],
+        baseColorTexture: { texture: 'textures/Checker', scale: [2, 3], offset: [0.5, 0] },
+        baseColorOperator: 'add',
+      } satisfies MaterialFile))],
+    ]);
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async (url) => files.get(url.href)!.slice().buffer });
+    await expect(content.loadMaterial('materials/Grid')).rejects.toThrow('no textureDecoder');
+    content.textureDecoder = ktx2Decoder(native, { textureTarget: 'rgba8' } as GraphicsDevice);
+    const material = await content.loadMaterial('materials/Grid');
+    expect(material.baseColorOperator).toBe('add');
+    expect(material.baseColorTexture).toMatchObject({ scale: [2, 3], offset: [0.5, 0] });
+    expect(material.baseColorTexture!.texture.data).toMatchObject({ format: 'rgba8unorm-srgb', width: 8, height: 8 });
+    expect(await content.loadTexture('textures/Checker')).toBe(material.baseColorTexture!.texture);
   });
 });

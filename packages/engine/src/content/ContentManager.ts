@@ -1,5 +1,5 @@
 /**
- * 内容管理（对应 Stride 的 ContentManager）：按内容路径加载资源管线产出的模型、材质、场景（格式见 format.ts），
+ * 内容管理（对应 Stride 的 ContentManager）：按内容路径加载资源管线产出的模型、材质、贴图、场景（格式见 format.ts），
  * 同一个路径只加载一次（缓存的是 Promise，并发请求也只发一次），并把场景实例化成实体。
  *
  *   const scene = await game.content.loadScene('scenes/MainScene');
@@ -13,6 +13,7 @@ import { Transform } from '../engine/transform';
 import { Camera, Light, Model } from '../rendering/components';
 import { Material } from '../rendering/Material';
 import { Mesh } from '../rendering/Mesh';
+import { Texture, type TextureDecoder } from '../rendering/Texture';
 import { decodeModel, EXTENSIONS, type MaterialFile, type SceneEntityFile, type SceneFile } from './format';
 
 /** 读一个文件；默认用 fetch，测试和 Node 里可以换成读本地文件。 */
@@ -48,6 +49,8 @@ export class ContentManager {
   readonly #cache = new Map<string, Promise<unknown>>();
   /** 没有材质的网格用它：白色。 */
   readonly defaultMaterial = new Material('default');
+  /** 把 KTX2 贴图转码成设备支持的格式；Game 在图形设备建好之后设置（ktx2Decoder），测试里可以换成假的。 */
+  textureDecoder: TextureDecoder | undefined;
 
   constructor({ root = 'content/', read = fetchReader }: ContentOptions = {}) {
     const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
@@ -69,7 +72,20 @@ export class ContentManager {
   loadMaterial(path: string): Promise<Material> {
     return this.#once(path + EXTENSIONS.material, async (url) => {
       const file = this.#json<MaterialFile>(await this.#read(url));
-      return new Material(file.name, { baseColor: file.baseColor });
+      const slot = file.baseColorTexture;
+      return new Material(file.name, {
+        baseColor: file.baseColor,
+        ...(slot ? { baseColorTexture: { texture: await this.loadTexture(slot.texture), scale: slot.scale, offset: slot.offset } } : {}),
+        ...(file.baseColorOperator ? { baseColorOperator: file.baseColorOperator } : {}),
+      });
+    });
+  }
+
+  loadTexture(path: string): Promise<Texture> {
+    return this.#once(path + EXTENSIONS.texture, async (url) => {
+      const decode = this.textureDecoder;
+      if (!decode) throw new Error(`loading ${url.href}: no textureDecoder (Game sets one when it starts)`);
+      return new Texture(path, await decode(new Uint8Array(await this.#read(url))));
     });
   }
 

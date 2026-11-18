@@ -25,11 +25,13 @@ export {
   decodeModel,
   encodeModel,
   VERTEX_FLOATS,
+  type ColorOperator,
   type MaterialFile,
   type ModelData,
   type ModelMeshData,
   type SceneEntityFile,
   type SceneFile,
+  type TextureSlot,
 } from './content/format';
 export { Commands } from './engine/Commands';
 export {
@@ -68,8 +70,9 @@ export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Camera, Light, Model } from './rendering/components';
 export { ForwardRenderer } from './rendering/ForwardRenderer';
-export { Material, type MaterialDesc, type MaterialId } from './rendering/Material';
+export { Material, type MaterialDesc, type MaterialId, type MaterialTexture } from './rendering/Material';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
+export { ktx2Decoder, Texture, type TextureData, type TextureDecoder } from './rendering/Texture';
 export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
 export { RenderStage, RenderSystem, RenderView, RootRenderFeature, type Lighting, type RenderContext, type RenderOutput } from './rendering/RenderSystem';
 export { Color4, Quaternion, srgbToLinear, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';

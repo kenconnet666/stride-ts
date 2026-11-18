@@ -57,10 +57,13 @@ export class SceneScriptBinder {
     this.#explicit = explicit;
   }
 
-  /** 把 script 挂到 entity 上；找不到对应的 TS 脚本时警告并跳过。where 用在警告里（场景和实体名）。 */
-  attach(entity: Entity, script: SceneScript, context: ScriptValueContext, where: string): void {
+  /**
+   * 把 script 挂到 entity 上；找不到对应的 TS 脚本时警告并跳过。where 用在警告里（场景和实体名）。
+   * deferMissing 时，引用的组件或脚本还没挂上（比如同一个实体上排在后面的脚本）就不挂，返回 false，调用方之后再试。
+   */
+  attach(entity: Entity, script: SceneScript, context: ScriptValueContext, where: string, { deferMissing = false } = {}): boolean {
     const type = this.#resolve(script.type, where);
-    if (!type) return;
+    if (!type) return true;
     const fields = new Map(type.schema.fields.map((field) => [field.name, field]));
     const init: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(script.props)) {
@@ -71,9 +74,16 @@ export class SceneScriptBinder {
         this.#warnOnce(`${script.type}.${name}`, `${where}: ${script.type}.${name} is not a prop of the TS script; ignored`);
         continue;
       }
-      init[name] = field.options.kind === 'component' ? resolveComponent(value, field.options.target!(), context, `${where}: ${script.type}.${name}`) : resolveValue(value, context);
+      if (field.options.kind !== 'component') {
+        init[name] = resolveValue(value, context);
+        continue;
+      }
+      const component = resolveComponent(value, field.options.target!(), context, `${where}: ${script.type}.${name}`, deferMissing);
+      if (component === MISSING) return false;
+      init[name] = component;
     }
     (entity.get(type) ? context.extraEntity(entity) : entity).add({ script: type, init });
+    return true;
   }
 
   #resolve(type: string, where: string): ScriptConstructor | undefined {
@@ -93,16 +103,20 @@ export class SceneScriptBinder {
   }
 }
 
+/** resolveComponent 的结果：引用的组件还没挂上（deferMissing 时）。 */
+const MISSING = Symbol('missing');
+
 /**
- * 引用组件的属性（prop.component）：场景里写的是组件所在的实体，换成那个实体上的组件或脚本。组件要先挂好：场景自带的组件
- * （比如 AnimationComponent）在脚本之前挂，脚本之间的引用要求被引用的脚本在实体的组件列表里排在前面。
+ * 引用组件的属性（prop.component）：场景里写的是组件所在的实体，换成那个实体上的组件或脚本。场景自带的组件（比如
+ * AnimationComponent）在脚本之前挂；脚本之间的引用不要求顺序（同 Stride），被引用的脚本还没挂上时 deferMissing 返回 MISSING。
  */
-function resolveComponent(value: SceneScriptValue, target: unknown, context: ScriptValueContext, where: string): unknown {
+function resolveComponent(value: SceneScriptValue, target: unknown, context: ScriptValueContext, where: string, deferMissing: boolean): unknown {
   const id = typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, SceneScriptValue>)['$entity'] : undefined;
   if (typeof id !== 'string') throw new Error(`${where}: expected a component reference, got ${JSON.stringify(value)}`);
   const entity = context.entities.get(id);
   if (!entity) throw new Error(`${where}: refers to entity ${id}, which is not in the scene`);
   const found = entity.get(target as never) as unknown;
+  if (found === undefined && deferMissing) return MISSING;
   if (found === undefined) throw new Error(`${where}: entity '${entity.name}' has no ${(target as { name?: string }).name ?? 'such component'} (yet)`);
   return found;
 }

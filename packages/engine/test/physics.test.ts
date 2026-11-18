@@ -221,6 +221,20 @@ describe('接触事件和移除（Stride 的 IContactHandler、Trigger）', () =
     game.simulation.destroy();
   });
 
+  test('挂在动态刚体下面的运动学刚体跟着它走（TopDownRPG 掉落的金币和它的拾取触发器）', () => {
+    const game = createGame();
+    game.entities.create({ components: [Transform.with({ position: [0, -1, 0] }), Static.with({ collider: new Collider([{ type: 'box', size: [20, 2, 20] }]).id })] });
+    const coin = game.entities.create({ components: [Transform.with({ position: [0, 3, 0] }), Body.with({ collider: new Collider([{ type: 'cylinder', radius: 0.3, length: 0.1 }]).id })] });
+    const pickup = game.entities.create({ components: [Transform, Body.with({ collider: new Collider([{ type: 'sphere', radius: 0.5 }]).id, kinematic: true, trigger: true })] });
+    pickup.require(Transform).parent = coin;
+    run(game, 90);
+    expect(position(coin).y).toBeLessThan(0.2);
+    const world = pickup.require(Transform).world;
+    expect(world[13]).toBeCloseTo(position(coin).y, 1);
+    expect(game.simulation.rayCast([0, 5, 0], [0, -1, 0], 10, { mask: 1 << 0 })?.entity).toBeDefined();
+    game.simulation.destroy();
+  });
+
   test('Trigger 的碰撞体带 TriggerHandler，物体进出时通知；脚本设的处理器两边都收到；实体销毁时移除物体', () => {
     const game = createGame();
     const box = (size: [number, number, number]) => new Collider([{ type: 'box', size }]).id;

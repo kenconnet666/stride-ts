@@ -60,13 +60,13 @@ export async function importSkeleton(asset: AssetEntry, context: AnimationImport
       const parent = depth > 0 ? (lastAtDepth[depth - 1] ?? -1) : -1;
       lastAtDepth[depth] = index;
       lastAtDepth.length = depth + 1;
-      const node = nodeOf.get(name);
+      const node = nodeOf.get(cleanNodeName(name));
       if (node === undefined) {
         context.warn(`${asset.file}: skeleton node '${name}' is not in ${sourceOf(asset)}; using its rest pose as identity`);
         return { name, parent };
       }
       const source = scene.nodes[node]!;
-      const parentNode = parent >= 0 ? nodeOf.get(listed[parent]!.name) : undefined;
+      const parentNode = parent >= 0 ? nodeOf.get(cleanNodeName(listed[parent]!.name)) : undefined;
       if (parent >= 0 && source.parent === parentNode) return { name, parent, translation: source.translation, rotation: source.rotation, scale: source.scale };
       // 根关节在模型空间里（带上导入变换），否则相对列表里的父关节
       const local = new Float32Array(16);
@@ -80,7 +80,7 @@ export async function importSkeleton(asset: AssetEntry, context: AnimationImport
     });
     const archive = context.tools.buildSkeleton(joints);
     await context.write(asset.path + EXTENSIONS.skeleton, encodeSkeleton({ joints: joints.map(({ name, parent }) => ({ name, parent })), archive }));
-    return { path: asset.path, joints, indexOf: new Map(joints.map((joint, i) => [joint.name, i])), transform };
+    return { path: asset.path, joints, indexOf: new Map(joints.map((joint, i) => [cleanNodeName(joint.name), i])), transform };
   } finally {
     scene.destroy();
   }
@@ -96,8 +96,9 @@ export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkele
     const baked = await scene.bakeAnimation(0, SAMPLE_RATE);
     const nodeOf = nodesByName(scene, asset.file, context);
     const animationTransform = importMatrix(asset);
+    if (!skeleton.joints.some((joint) => nodeOf.has(cleanNodeName(joint.name)))) context.warn(`${asset.file}: no node of ${sourceOf(asset)} matches a joint of ${skeleton.path}; the animation stays in the rest pose`);
     let tracks: JointTrack[] = skeleton.joints.map((joint) => {
-      const node = nodeOf.get(joint.name);
+      const node = nodeOf.get(cleanNodeName(joint.name));
       if (node === undefined) return restTrack(joint);
       const track = baked.tracks[node]!;
       if (joint.parent >= 0) return track;
@@ -132,7 +133,7 @@ export function meshSkin(mesh: MeshData, scene: Scene, skeleton: ImportedSkeleto
   Matrix.invert(untransform, modelTransform);
   const vertexCount = mesh.positions.length / 3;
   if (!mesh.skin) {
-    const name = scene.nodes[mesh.node]?.name;
+    const name = cleanNodeName(scene.nodes[mesh.node]?.name);
     const joint = name === undefined ? undefined : skeleton.indexOf.get(name);
     if (joint === undefined) return undefined;
     const inverseBind = new Float32Array(16);
@@ -144,7 +145,7 @@ export function meshSkin(mesh: MeshData, scene: Scene, skeleton: ImportedSkeleto
   }
   const { jointNodes, inverseBinds, joints, weights } = mesh.skin;
   const mapped = Array.from(jointNodes, (node) => {
-    const name = scene.nodes[node]?.name ?? '';
+    const name = cleanNodeName(scene.nodes[node]?.name) ?? '';
     const joint = skeleton.indexOf.get(name);
     if (joint === undefined) warn(`${where}: skin joint '${name}' is not in skeleton ${skeleton.path}; bound to the root`);
     return joint ?? 0;
@@ -166,12 +167,29 @@ function withContext<T>(where: string, run: () => T): T {
   }
 }
 
-/** 节点名到下标；重名的节点警告一次，用第一个。 */
+/**
+ * 源文件里的节点名换成 Stride 用的名字（Stride.Importer.3D 的 CleanNodeName）：去掉 `#`、`__` 之后的部分，FBX 的命名空间
+ * （`mannequinModel:CATRigHub001`）只留最后一个 `:` 之后的名字，删掉空格。骨架、动画、蒙皮都按它对关节。
+ */
+export function cleanNodeName<T extends string | undefined>(name: T): T {
+  if (name === undefined || name.trim() === '') return name;
+  let clean: string = name;
+  for (const separator of ['#', '__']) {
+    const at = clean.indexOf(separator);
+    if (at !== -1) clean = clean.slice(0, at);
+  }
+  const colon = clean.lastIndexOf(':');
+  if (colon !== -1 && colon + 1 < clean.length) clean = clean.slice(colon + 1);
+  return clean.replaceAll(':', '_').replaceAll(' ', '') as T;
+}
+
+/** 节点名（按 cleanNodeName）到下标；重名的节点警告一次，用第一个。 */
 function nodesByName(scene: Scene, where: string, context: AnimationImportContext): Map<string, number> {
   const nodeOf = new Map<string, number>();
   scene.nodes.forEach((node, i) => {
-    if (!nodeOf.has(node.name)) nodeOf.set(node.name, i);
-    else context.warn(`${where}: several nodes are named '${node.name}'; joints match the first`);
+    const name = cleanNodeName(node.name);
+    if (!nodeOf.has(name)) nodeOf.set(name, i);
+    else context.warn(`${where}: several nodes are named '${name}'; joints match the first`);
   });
   return nodeOf;
 }

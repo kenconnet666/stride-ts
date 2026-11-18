@@ -211,6 +211,26 @@ describe('ContentManager', () => {
     ]);
   });
 
+  test('脚本属性引用的脚本排在后面也能挂上（同 Stride，TopDownRPG 的 CrateScript 引用同一实体上的 Trigger）；引用不存在的脚本时报错', async () => {
+    class Signal extends SyncScript {}
+    class Listener extends SyncScript.props({ source: prop.component(() => Signal) }) {}
+    const entity = (id: string, scripts: { type: string; props: Record<string, never> | { source: { $entity: string } } }[]) =>
+      ({ id, name: id, parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { scripts } }) as const;
+    const scene = (scripts: Parameters<typeof entity>[1]): SceneFile => ({ name: 'Order', entities: [entity('a', scripts)] });
+    const load = async (file: SceneFile) => {
+      const game = new Game();
+      game.native = native;
+      game.transforms = native.createTransforms(8);
+      game.registry.registerModules({ './Order.ts': { Signal, Listener } });
+      const content = new ContentManager({ root: 'https://game.test/content/', read: async () => json(file) });
+      return content.loadScene('scenes/Order', game.entities);
+    };
+    const loaded = await load(scene([{ type: 'G.Listener', props: { source: { $entity: 'a' } } }, { type: 'G.Signal', props: {} }]));
+    const a = loaded.entities.get('a')!;
+    expect(a.require(Listener).source).toBe(a.require(Signal));
+    await expect(load(scene([{ type: 'G.Listener', props: { source: { $entity: 'a' } } }]))).rejects.toThrow(/has no Signal/);
+  });
+
   test('模型实例化：实例引用的主实体排在后面也能挂上，主实体带 Instancing；没有主实体的实例是 -1', async () => {
     const entity = (id: string, components: SceneFile['entities'][number]['components']) => ({ id, name: id, parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components }) as const;
     const scene: SceneFile = { name: 'Instances', entities: [entity('a', { instance: { master: 'm' } }), entity('b', { instance: { master: null } }), entity('m', { instancing: {} })] };

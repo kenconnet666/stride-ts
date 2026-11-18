@@ -3,6 +3,8 @@
 import { Game, type GameTime } from '@stride-ts/engine';
 
 export const MAIN_SCENE = 'TopDownRPG/MainScene';
+/** 场景里不移植的 Stride 脚本：MusicScript 只放背景音乐（P2 的音频）。 */
+export const SCENE_SCRIPTS = { 'TopDownRPG.Gameplay.MusicScript': null } as const;
 const STATS_INTERVAL = 0.25;
 
 export class TopDownRpgGame extends Game {
@@ -15,7 +17,7 @@ export class TopDownRpgGame extends Game {
   }
 
   protected override async loadContent(): Promise<void> {
-    await this.setRootScene(MAIN_SCENE);
+    await this.setRootScene(MAIN_SCENE, { scripts: SCENE_SCRIPTS });
   }
 
   protected override update(time: GameTime): void {

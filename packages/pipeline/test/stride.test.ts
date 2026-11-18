@@ -5,7 +5,7 @@ import path from 'node:path';
 import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile, type SpriteSheetFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
+import { cleanNodeName, dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
 
 describe('Stride 的 YAML', () => {
   test('标签里的逗号（程序集限定名）、对象引用和资源引用', () => {
@@ -752,6 +752,11 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
 
   test('没有合成器时没有槽位，用默认设置', () => {
     expect(importCompositor(undefined)).toEqual({ cameraSlots: new Map(), main: undefined });
+  });
+
+  test('节点名同 Stride 的 CleanNodeName：FBX 的命名空间只留最后一段，去掉 # 和 __ 之后的部分、空格', () => {
+    expect(['mannequinModel:CATRigHub001', 'a:b:Hand', 'Bone#1', 'Arm__end', 'Left Hand', 'Trailing:', ''].map(cleanNodeName))
+      .toEqual(['CATRigHub001', 'Hand', 'Bone', 'Arm', 'LeftHand', 'Trailing_', '']);
   });
 
   test('字典的键去掉项的 id 前缀', () => {

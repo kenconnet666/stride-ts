@@ -46,7 +46,7 @@ const indexOf = (id: number) => id % INDEX_SPAN;
 const VECTOR_KEYS = { vec3: ['x', 'y', 'z'], quat: ['x', 'y', 'z', 'w'], color: ['r', 'g', 'b', 'a'] } as const;
 
 interface Waiter {
-  readonly script: AsyncScript;
+  readonly script: ScriptComponent;
   readonly done: (time: GameTime) => boolean;
   readonly resolve: () => void;
   readonly reject: (reason: unknown) => void;
@@ -477,7 +477,7 @@ export class EntityManager {
   }
 
   /** @internal AsyncScript.nextFrame 和 delay：在第一个满足 done(time) 的帧末尾兑现。 */
-  waitFor(script: AsyncScript, done: (time: GameTime) => boolean): Promise<void> {
+  waitFor(script: ScriptComponent, done: (time: GameTime) => boolean): Promise<void> {
     if (!script.attached) return Promise.reject(script.signal.reason);
     return new Promise((resolve, reject) => this.#waiters.push({ script, done, resolve, reject }));
   }

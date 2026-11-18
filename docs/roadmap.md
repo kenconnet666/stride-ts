@@ -310,7 +310,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    1. ~~骨架~~（2026-11-19）：导入主场景（GameSettings 的默认场景是 MainScene，整张地图都在里面；分块流式加载的是另一个 DynamicScene，第 3 步做），Packs（PrototypingBlocks、mannequinModel、SamplesAssetPackage、VFXPackage）的模型；挂到骨骼节点（`ModelNodeLink`，原生 0.19.0 的变换链接：世界矩阵 = 目标的世界 × 节点矩阵 × 本地，不看父节点）；去掉 Static、Body、Character 组件时移除物体（以前只在实体销毁时）。场景能看，出拳的碰撞体挂在右手上。
    2. ~~导航~~（2026-11-19）：`game.navigation`（Stride 的 RecastMeshSystem）用物理世界里的静态体（不含触发器，按 IncludedLayers）运行时建导航网格：原生 0.20.0 的 `staticTriangles` 用 Jolt 三角化各种形状（0.20.1 补上复合形状的叶子），Recast 分块并行建；GameSettings 的 RecastNavigationConfiguration 随场景导入；`RecastNavigationComponent`（引擎自带的脚本）的 tryFindPath、path、state。TopDownRPG 的地面建网格 142 ms。
    3. 接触深度和流式加载：接触处理器逐步收到接触的深度（Stride 的 IContactHandler.OnTouching，原生补），SceneStreaming（子场景按需加载、卸载），EnableDynamicNavigation（子场景变了就重建导航网格）。
-   4. 玩法脚本：PlayerInput（屏幕射线、点击、高亮）、PlayerController、AnimationController、CrateScript、CoinScript、LootCoinScript、Trigger。冒烟脚本。
+   4. ~~玩法脚本~~（2026-11-19，先于第 3 步做：默认的 MainScene 用不到流式加载）：PlayerInput（屏幕射线、点击、高亮）、PlayerController（寻路、出拳）、AnimationController（自己搭混合栈）、CrateScript、CoinScript、LootCoinScript、Trigger；MusicScript 是 P2 的音频，不挂。顺带补上：脚本属性引用的脚本排在后面也能挂上（同 Stride）；`nextFrame`、`delay` 挪到脚本基类（同 Stride 的 Script.NextFrame，所有脚本都能等）；挂在会动的刚体下面的运动学刚体、挂在骨骼节点上的刚体每步跟着实体走（掉落金币的拾取触发器、出拳的碰撞体）；节点名照 Stride 的 CleanNodeName 处理（Punch.fbx 的节点带 FBX 命名空间，以前对不上，出拳是静止姿势）。冒烟脚本 `pnpm --filter @stride-ts/topdown-rpg smoke` 走完点地面寻路、高亮、出拳打碎箱子、拾取掉落的和场景里的金币。
+   - 接着做第 3 步。
    5. 和桌面 Stride 比对。
 8. 然后 FirstPersonShooter（第三节的 P1 游戏顺序）。
 

@@ -132,6 +132,21 @@ export abstract class ScriptComponent {
     return this.disposables.use(key.receiver());
   }
 
+  /**
+   * 在当前帧末尾兑现，所以它后面的代码在下一帧的脚本和系统之前运行（Stride 的 Script.NextFrame，所有脚本都能用）。
+   * 这和 Stride 不同（Stride 在下一帧的脚本阶段里继续）：Promise 的后续代码没法插进同步执行的一帧中间。脚本移除后以
+   * AbortError 拒绝。
+   */
+  nextFrame(): Promise<void> {
+    return this.entity.manager.waitFor(this, () => true);
+  }
+
+  /** 在游戏时间过了 `seconds` 秒之后的第一个帧末尾兑现（TopDownRPG 的 WaitTime）。脚本移除后以 AbortError 拒绝。 */
+  delay(seconds: number): Promise<void> {
+    const until = this.game.updateTime.total + seconds;
+    return this.entity.manager.waitFor(this, (time) => time.total >= until);
+  }
+
   /** 移除后调用：这时 signal 已中止、disposables 已释放。还没启动就移除的脚本不调（同 Stride 的 ScriptSystem.Remove）。 */
   cancel(): void {}
 
@@ -186,20 +201,6 @@ export abstract class SyncScript extends StartupScript {
 /** execute() 运行一次，用 nextFrame() 或 delay() 把工作分摊到多帧（对应 Stride 的 AsyncScript）。 */
 export abstract class AsyncScript extends ScriptComponent {
   async execute(): Promise<void> {}
-
-  /**
-   * 在当前帧末尾兑现，所以它后面的代码在下一帧的脚本和系统之前运行。这和 Stride 不同（Stride 在下一帧的
-   * 脚本阶段里继续）：Promise 的后续代码没法插进同步执行的一帧中间。脚本移除后以 AbortError 拒绝。
-   */
-  nextFrame(): Promise<void> {
-    return this.entity.manager.waitFor(this, () => true);
-  }
-
-  /** 在游戏时间过了 `seconds` 秒之后的第一个帧末尾兑现。 */
-  delay(seconds: number): Promise<void> {
-    const until = this.game.updateTime.total + seconds;
-    return this.entity.manager.waitFor(this, (time) => time.total >= until);
-  }
 }
 
 export function scriptName(script: ScriptConstructor): string {

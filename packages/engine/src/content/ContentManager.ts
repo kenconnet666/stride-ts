@@ -393,8 +393,16 @@ export class ContentManager {
         return extra;
       },
     };
-    for (const file of files) {
-      for (const script of file.components.scripts ?? []) binder.attach(created.get(file.id)!, script, context, `${where}: ${file.name}`);
+    // 脚本属性可以引用别的脚本（同一个实体上排在后面的也行）：被引用的还没挂上的推迟到下一轮，一轮没有进展时按原样报错
+    let pending = files.flatMap((file) => (file.components.scripts ?? []).map((script) => ({ file, script })));
+    while (pending.length > 0) {
+      const deferred = pending.filter(({ file, script }) => !binder.attach(created.get(file.id)!, script, context, `${where}: ${file.name}`, { deferMissing: true }));
+      if (deferred.length === pending.length) {
+        // 没有进展：不推迟地挂第一个，引用的东西不在时它报错
+        const { file, script } = deferred.shift()!;
+        binder.attach(created.get(file.id)!, script, context, `${where}: ${file.name}`);
+      }
+      pending = deferred;
     }
     return created;
   }

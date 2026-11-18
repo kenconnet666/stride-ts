@@ -8,6 +8,9 @@
 - **路径给拐点**：Stride 的 FindFollowPath 沿拐点按固定步长采样出一串平滑的点，我们给 Detour 的直线路径（拐点，含起点和终点）。TopDownRPG 的 PlayerController 自己按路径点走，拐点照样能用；点更少，转角处的减速逻辑按拐点算。
 - **RecastNavigationComponent 只做了寻路**：Stride 里它还能排队寻路（SetTarget，由 RecastNavigationProcessor 处理）、按 Speed 直接移动实体，样例里没用到，等场景用到时再做。BepuNavigationBoundingBoxComponent 在 Stride 里本身没实现（源码里是 #warning），导入时忽略。
 - **挂到骨骼节点用变换存储的链接**：ModelNodeLink 的实体世界矩阵 = 目标的世界 × 节点矩阵 × 本地，不看父节点（Stride 的 TransformLink）。做在原生的变换存储里（`setLink`），计算顺序按链接排，帧末一次算完；别的做法是在 TS 里每帧算好世界矩阵写回本地变换，但子实体和物理都要跟着处理，容易出错。
+- **跟着实体走的刚体**：挂在会动的刚体下面的运动学刚体（掉落金币的拾取触发器）、挂在骨骼节点上的刚体（出拳的碰撞体）每个物理步先瞬移到实体当前的世界位姿。Bepu 里刚体由仿真驱动变换，这两种情况都停在原处（运动学的睡下后变换才跟父实体走，触发器仍在原处；出拳的碰撞体停在加进仿真时手的位置），样例的本意显然是跟着走。和 Stride 不同，记在 Simulation 的 followMovingParents 上。
+- **脚本属性互相引用不要求顺序**：Stride 反序列化时引用总能解析；我们挂脚本时被引用的脚本还没挂上就推迟到下一轮（TopDownRPG 的 CrateScript 排在它引用的 Trigger 前面）。
+- **节点名照 Stride 的 CleanNodeName**：FBX 的命名空间（`mannequinModel:CATRigHub001`）只留最后一段，去掉 `#`、`__` 之后的部分和空格；动画一个关节都对不上时导入警告（以前静默变成静止姿势）。
 - **去掉物理组件就移除物体**：以前只在实体销毁时移除；Stride 里从实体上移除 BodyComponent 就离开仿真，TopDownRPG 出拳时靠它开关碰撞体。
 
 ## 2026-11-19 Platformer2D：精灵表不重新打包，角色用 body() 控制

@@ -21,6 +21,7 @@ node play.cjs "$(node -e "console.log(require.resolve('playwright'))")" http://l
 |---|---|
 | `play.cjs` | 按 JSON 步骤试玩（按键、点击、移动鼠标、截图），报告页面错误、帧数和最长的帧间隔。默认无头；`PLAY_HEADED=1` 开窗口（指针锁定需要窗口）；`PLAY_LOG=<文字>` 打印包含这段文字的控制台输出 |
 | `bench.cjs` | 打开 `apps/bench`（先 `pnpm --filter @stride-ts/bench dev`，端口 5182），等基准跑完，打印结果表；第三个参数给文件名时另存 JSON。用法：`node bench.cjs <playwright> http://localhost:5182/ [out.json]` |
+| `gc-trace.cjs` | 打开 `apps/bench/gc.html`，开着 Chrome 的 tracing 跑各种分配模式，按场景报告帧间隔和 V8 记录的主线程 GC 停顿（次数、总时长、最长一次）。用法：`node gc-trace.cjs <playwright> http://localhost:5182/gc.html [trace.json]` |
 | `frame-time.cjs` | 去掉帧率上限（`--disable-frame-rate-limit`），测场景就绪后 600 帧的平均帧时间 |
 | `cpu-profile.cjs` | 用 CDP 采样主线程 5 秒，按类别（wasm、JS、GC、空闲）和函数汇总自身时间与包含时间；`PROFILE_OUT=<文件>` 保存原始剖析数据 |
 | `profile-callers.cjs` | 读取保存的剖析数据，统计某个函数（正则匹配）是被谁调用的 |

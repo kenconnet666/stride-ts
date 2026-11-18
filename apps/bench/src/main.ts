@@ -1,5 +1,6 @@
 import { createStrideNative } from '@stride-ts/native';
 import { checkSharedUpload, createCases } from './cases';
+import { createRenderCases } from './render-cases';
 import { runCases, type Result } from './harness';
 
 declare global {
@@ -30,8 +31,11 @@ async function main(): Promise<void> {
   print(`crossOriginIsolated ${crossOriginIsolated}, ${navigator.hardwareConcurrency} cores, GPU ${info.vendor} ${info.architecture} ${info.description}`);
   print(`writeBuffer from wasm shared memory, read back: ${await checkSharedUpload({ device, native })}`);
 
+  // ?only=render runs just the groups whose name starts with that word
+  const only = new URLSearchParams(location.search).get('only');
+  const cases = [...createCases({ device, native }), ...createRenderCases(device)].filter((c) => !only || c.group.startsWith(only));
   let group = '';
-  const results = await runCases(createCases({ device, native }), (result) => {
+  const results = await runCases(cases, (result) => {
     if (result.group !== group) {
       group = result.group;
       print(`\n${group}`);

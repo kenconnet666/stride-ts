@@ -10,5 +10,5 @@ export default defineConfig({
   server: { port: 5182, strictPort: true, headers: crossOriginIsolation },
   preview: { port: 5183, strictPort: true, headers: crossOriginIsolation },
   worker: { format: 'es' },
-  build: { target: 'es2024' },
+  build: { target: 'es2024', rollupOptions: { input: ['index.html', 'gc.html'] } },
 });

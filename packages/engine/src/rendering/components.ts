@@ -15,6 +15,16 @@ export const Camera = component('Camera', {
 });
 
 /**
+ * 光源（Stride 的 LightComponent；现在有方向光和环境光，Stride 的天空盒光先当环境光）。方向光照向实体的
+ * 本地 -Z，同 Stride。颜色按 sRGB 写（同 Stride 的编辑器），渲染时转成线性再乘强度。
+ */
+export const Light = component('Light', {
+  type: prop.enum(['directional', 'ambient']).default('directional'),
+  color: prop.color(),
+  intensity: prop.f32().default(1).min(0),
+});
+
+/**
  * 用一个网格和一个材质画出实体。列里存 Mesh.id、Material.id（类型是 MeshId、MaterialId）：数据组件的列
  * 只能放数字，内容管线做好后改成资源引用。相同网格加材质的实体合成一次实例化绘制。
  */

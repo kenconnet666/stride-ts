@@ -1,5 +1,6 @@
 /**
- * 网格的根渲染特性（Stride 的 MeshRenderFeature，骨架阶段只有前向的基础色加一个方向光）。
+ * 网格的根渲染特性（Stride 的 MeshRenderFeature；现在只有基础色、一个方向光和环境光，着色公式同 Stride 的
+ * Lambert：直射光 albedo / π · 光色 · N·L，环境光 albedo · 环境色，光色是线性的、已经乘过强度）。
  *
  * 数据流：
  * - Extract：遍历带 Model 和 Transform 的实体，按（网格，材质）分批，每批记下实体的变换槽位。
@@ -12,7 +13,7 @@ import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Model } from './components';
 import { Material } from './Material';
-import { Mesh } from './Mesh';
+import { Mesh, VERTEX_FLOATS } from './Mesh';
 import { RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
@@ -43,29 +44,34 @@ struct Material { baseColor: vec4f };
 struct Varyings {
   @builtin(position) position: vec4f,
   @location(0) normal: vec3f,
+  @location(1) uv: vec2f,
 };
 
-@vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @builtin(instance_index) instance: u32) -> Varyings {
+const PI = 3.14159265358979;
+
+@vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32) -> Varyings {
   let world = worlds[slots[instance]];
   var out: Varyings;
   out.position = view.viewProjection * world * vec4f(position, 1.0);
   // 均匀缩放下法线直接用世界矩阵变换；非均匀缩放要用逆转置，等材质系统一起做
   out.normal = (world * vec4f(normal, 0.0)).xyz;
+  out.uv = uv;
   return out;
 }
 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let n = normalize(in.normal);
-  let diffuse = max(dot(n, -view.lightDirection.xyz), 0.0);
-  let color = material.baseColor.rgb * (view.ambientColor.rgb + view.lightColor.rgb * diffuse);
+  let nDotL = max(dot(n, -view.lightDirection.xyz), 0.0);
+  let albedo = material.baseColor.rgb;
+  let color = albedo / PI * view.lightColor.rgb * nDotL + albedo * view.ambientColor.rgb;
   return vec4f(color, material.baseColor.a);
 }`;
 
 /** 每个视图的常量占一块：uniform 的动态偏移必须是 minUniformBufferOffsetAlignment（256）的整数倍。 */
 const VIEW_STRIDE = 256;
 const VIEW_FLOATS = 28;
-/** 交错的顶点：位置 xyz、法线 xyz。 */
-const VERTEX_STRIDE = 24;
+/** 交错的顶点：位置 xyz、法线 xyz、UV xy（Mesh 的布局）。 */
+const VERTEX_STRIDE = VERTEX_FLOATS * 4;
 
 interface GpuMesh {
   readonly vertices: GPUBuffer;
@@ -232,6 +238,7 @@ class Gpu {
             attributes: [
               { shaderLocation: 0, offset: 0, format: 'float32x3' },
               { shaderLocation: 1, offset: 12, format: 'float32x3' },
+              { shaderLocation: 2, offset: 24, format: 'float32x2' },
             ],
           }],
         },
@@ -306,12 +313,7 @@ class Gpu {
   mesh(mesh: Mesh): GpuMesh {
     let gpu = this.#meshes.get(mesh);
     if (!gpu) {
-      const { positions, normals, indices } = mesh.data;
-      const vertices = new Float32Array(mesh.vertexCount * 6);
-      for (let v = 0; v < mesh.vertexCount; v++) {
-        vertices.set(positions.subarray(v * 3, v * 3 + 3), v * 6);
-        vertices.set(normals.subarray(v * 3, v * 3 + 3), v * 6 + 3);
-      }
+      const { vertices, indices } = mesh.data;
       gpu = {
         vertices: this.#createFilled(`${mesh.name} vertices`, GPUBufferUsage.VERTEX, vertices),
         indices: this.#createFilled(`${mesh.name} indices`, GPUBufferUsage.INDEX, indices),

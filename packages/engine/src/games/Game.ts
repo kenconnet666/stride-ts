@@ -1,4 +1,5 @@
 import { createStrideNative, type StrideNative, type TransformStore } from '@stride-ts/native';
+import { ContentManager } from '../content/ContentManager';
 import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
@@ -52,6 +53,8 @@ export class Game {
   graphicsCompositor!: ForwardRenderer;
   readonly updateTime = new GameTime();
   readonly registry = new Registry();
+  /** 资源管线产出的模型、材质、场景（默认从页面旁边的 content/ 加载，可以换成别的根目录）。 */
+  content = new ContentManager();
   readonly entities: EntityManager = new EntityManager(this);
 
   status: GameStatus = 'starting';

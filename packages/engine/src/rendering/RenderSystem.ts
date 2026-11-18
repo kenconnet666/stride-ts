@@ -73,12 +73,13 @@ export abstract class RootRenderFeature {
   destroy(): void {}
 }
 
-/** 场景光照的占位：一个方向光加环境光。LightComponent 做好后由光照特性从实体收集。 */
+/** 这一帧的光照：一个方向光加环境光（多个方向光、点光源、阴影以后加）。 */
 export interface Lighting {
   /** 光线前进的方向（世界空间，不必归一化）。 */
   readonly direction: Vector3;
-  /** 线性空间的颜色乘强度。 */
+  /** 方向光：线性空间的颜色乘强度。 */
   readonly color: Color4;
+  /** 环境光：线性空间的颜色乘强度。 */
   readonly ambient: Color4;
 }
 
@@ -87,9 +88,16 @@ export class RenderSystem {
   readonly features: RootRenderFeature[] = [];
   /** 这一帧的视图，由合成器在 Collect 时填。 */
   readonly views: RenderView[] = [];
+  /** 这一帧的光照，由合成器在 Collect 时从 Light 组件收集。 */
   readonly lighting: Lighting = {
+    direction: new Vector3(),
+    color: new Color4(),
+    ambient: new Color4(),
+  };
+  /** 场景里没有 Light 组件时用的光照（直射光的漫反射要除以 π，所以强度 3 大约是满亮度）。 */
+  readonly defaultLighting: Lighting = {
     direction: new Vector3(-0.4, -1, -0.6),
-    color: new Color4(1, 1, 1, 1),
+    color: new Color4(3, 3, 3, 1),
     ambient: new Color4(0.15, 0.15, 0.18, 1),
   };
 

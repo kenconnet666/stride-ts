@@ -5,3 +5,6 @@ dist/
 # Machine-specific
 /.idea/
 /.claude/
+
+# 从 Stride 仓库导入的内容（pnpm --filter @stride-ts/platformer import）
+/apps/platformer/public/content/

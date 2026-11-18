@@ -4,9 +4,10 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./content-format": "./src/content/format.ts"
   },
   "dependencies": {
-    "@stride-ts/native": "^0.1.0"
+    "@stride-ts/native": "^0.2.0"
   }
 }

@@ -15,7 +15,9 @@
     "verbatimModuleSyntax": true,
     "erasableSyntaxOnly": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    // packages/pipeline 在 Node 里直接运行 .ts，相对导入要写扩展名
+    "allowImportingTsExtensions": true
   },
   "include": ["packages/*/src", "packages/*/test", "apps/*/src", "apps/*/vite.config.ts", "vitest.config.ts"]
 }

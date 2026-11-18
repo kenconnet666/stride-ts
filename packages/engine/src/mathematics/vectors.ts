@@ -195,4 +195,14 @@ export class Color4 implements ColorLike {
   clone(): Color4 {
     return new Color4(this.r, this.g, this.b, this.a);
   }
+
+  /** 把 sRGB 的 r、g、b 转成线性（alpha 不变），同 Stride 的 Color.ToLinear。 */
+  toLinear(): this {
+    return this.set(srgbToLinear(this.r), srgbToLinear(this.g), srgbToLinear(this.b), this.a);
+  }
+}
+
+/** sRGB 的一个分量转成线性（IEC 61966-2-1 的分段公式）。 */
+export function srgbToLinear(value: number): number {
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
 }

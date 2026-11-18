@@ -20,6 +20,17 @@ export {
   type Vec3Input,
 } from './data/prop';
 export type { Issue } from './data/schema';
+export { ContentManager, type ContentOptions, type ContentReader, type LoadedModel, type SceneInstance } from './content/ContentManager';
+export {
+  decodeModel,
+  encodeModel,
+  VERTEX_FLOATS,
+  type MaterialFile,
+  type ModelData,
+  type ModelMeshData,
+  type SceneEntityFile,
+  type SceneFile,
+} from './content/format';
 export { Commands } from './engine/Commands';
 export {
   component,
@@ -55,13 +66,13 @@ export { Game, type GameOptions, type GameStatus, type HotContext } from './game
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
-export { Camera, Model } from './rendering/components';
+export { Camera, Light, Model } from './rendering/components';
 export { ForwardRenderer } from './rendering/ForwardRenderer';
 export { Material, type MaterialDesc, type MaterialId } from './rendering/Material';
-export { Mesh, type MeshData, type MeshId } from './rendering/Mesh';
+export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
 export { RenderStage, RenderSystem, RenderView, RootRenderFeature, type Lighting, type RenderContext, type RenderOutput } from './rendering/RenderSystem';
-export { Color4, Quaternion, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';
+export { Color4, Quaternion, srgbToLinear, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';
 export { Decimal, type Rounding } from './values/Decimal';
 export { civilFromDays, daysFromCivil, Instant, LocalDate, LocalDateTime, LocalTime } from './values/temporal';
 export {

@@ -7,7 +7,7 @@ import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
 import { Color4 } from '../mathematics/vectors';
-import { Camera } from './components';
+import { Camera, Light } from './components';
 import { RenderStage, RenderView, type RenderContext, type RenderSystem } from './RenderSystem';
 
 const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
@@ -40,6 +40,31 @@ export class ForwardRenderer {
     },
   });
 
+  // 光源：第一个方向光，加上所有环境光
+  #directionalFound = false;
+  #lightFound = false;
+  readonly #lightColor = new Color4();
+  readonly #collectLights = system('ForwardRenderer.lights', {
+    with: { light: Light, transform: Transform },
+    update: ({ light, transform, count }) => {
+      const lighting = this.renderSystem.lighting;
+      if (count > 0) this.#lightFound = true;
+      for (let i = 0; i < count; i++) {
+        const color = this.#lightColor.set(light.color[i * 4]!, light.color[i * 4 + 1]!, light.color[i * 4 + 2]!, 1).toLinear();
+        const intensity = light.intensity[i]!;
+        if (light.type[i] === 'ambient') {
+          lighting.ambient.set(lighting.ambient.r + color.r * intensity, lighting.ambient.g + color.g * intensity, lighting.ambient.b + color.b * intensity, 1);
+        } else if (!this.#directionalFound) {
+          this.#directionalFound = true;
+          // 照向本地 -Z：世界矩阵第三列（Z 轴）取反
+          const w = transform.slot[i]! * 16;
+          lighting.direction.set(-transform.world[w + 8]!, -transform.world[w + 9]!, -transform.world[w + 10]!);
+          lighting.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
+        }
+      }
+    },
+  });
+
   constructor(renderSystem: RenderSystem) {
     this.renderSystem = renderSystem;
     this.opaqueStage = new RenderStage('Opaque', { colorFormat: renderSystem.graphicsDevice.backBufferViewFormat, depthFormat: DEPTH_FORMAT });
@@ -53,6 +78,7 @@ export class ForwardRenderer {
     context.game.entities.run(this.#findCamera, context.time);
     this.hasCamera = this.#cameraFound;
     renderSystem.collect(this.hasCamera ? [this.#mainView] : []);
+    this.#gatherLighting(context);
     if (this.hasCamera) {
       renderSystem.extract(context);
       renderSystem.prepare(context);
@@ -72,6 +98,21 @@ export class ForwardRenderer {
 
   destroy(): void {
     this.#depth?.destroy();
+  }
+
+  /** 从 Light 组件收集这一帧的光照；一个都没有时用默认光照。 */
+  #gatherLighting(context: RenderContext): void {
+    const { lighting, defaultLighting } = this.renderSystem;
+    lighting.ambient.set(0, 0, 0, 1);
+    lighting.color.set(0, 0, 0, 1);
+    lighting.direction.set(0, -1, 0);
+    this.#directionalFound = false;
+    this.#lightFound = false;
+    context.game.entities.run(this.#collectLights, context.time);
+    if (this.#lightFound) return;
+    lighting.direction.copy(defaultLighting.direction);
+    lighting.color.copy(defaultLighting.color);
+    lighting.ambient.copy(defaultLighting.ambient);
   }
 
   /** 和后备缓冲同样大小的深度缓冲；画布尺寸变了就重建。 */

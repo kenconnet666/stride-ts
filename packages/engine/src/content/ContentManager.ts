@@ -1,0 +1,139 @@
+/**
+ * 内容管理（对应 Stride 的 ContentManager）：按内容路径加载资源管线产出的模型、材质、场景（格式见 format.ts），
+ * 同一个路径只加载一次（缓存的是 Promise，并发请求也只发一次），并把场景实例化成实体。
+ *
+ *   const scene = await game.content.loadScene('scenes/MainScene');
+ *   scene.entities.get(id);
+ *
+ * 引用计数、卸载、按组加载、在 Worker 里解码（README 的"实例化、懒加载、缓存"）以后加。
+ */
+import type { EntityManager } from '../engine/EntityManager';
+import type { Entity } from '../engine/Entity';
+import { Transform } from '../engine/transform';
+import { Camera, Light, Model } from '../rendering/components';
+import { Material } from '../rendering/Material';
+import { Mesh } from '../rendering/Mesh';
+import { decodeModel, EXTENSIONS, type MaterialFile, type SceneEntityFile, type SceneFile } from './format';
+
+/** 读一个文件；默认用 fetch，测试和 Node 里可以换成读本地文件。 */
+export type ContentReader = (url: URL) => Promise<ArrayBuffer>;
+
+export interface ContentOptions {
+  /** 内容根目录；默认是页面旁边的 `content/`。 */
+  readonly root?: string | URL;
+  readonly read?: ContentReader;
+}
+
+/** 加载好的模型：网格和材质槽（模型自带的材质，没有的槽是 null）。 */
+export interface LoadedModel {
+  readonly meshes: readonly { readonly mesh: Mesh; readonly material: number | null }[];
+  readonly materials: readonly (Material | null)[];
+}
+
+export interface SceneInstance {
+  readonly name: string;
+  /** 按场景文件里的实体 id。 */
+  readonly entities: ReadonlyMap<string, Entity>;
+}
+
+const fetchReader: ContentReader = async (url) => {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`loading ${url.href} failed: HTTP ${response.status}`);
+  return response.arrayBuffer();
+};
+
+export class ContentManager {
+  readonly root: URL;
+  readonly #read: ContentReader;
+  readonly #cache = new Map<string, Promise<unknown>>();
+  /** 没有材质的网格用它：白色。 */
+  readonly defaultMaterial = new Material('default');
+
+  constructor({ root = 'content/', read = fetchReader }: ContentOptions = {}) {
+    const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
+    this.root = new URL(root, base);
+    this.#read = read;
+  }
+
+  loadModel(path: string): Promise<LoadedModel> {
+    return this.#once(path + EXTENSIONS.model, async (url) => {
+      const data = decodeModel(await this.#read(url), url.href);
+      const materials = await Promise.all(data.materials.map((material) => (material === null ? null : this.loadMaterial(material))));
+      return {
+        meshes: data.meshes.map((mesh) => ({ mesh: new Mesh(`${path}/${mesh.name}`, mesh), material: mesh.material })),
+        materials,
+      };
+    });
+  }
+
+  loadMaterial(path: string): Promise<Material> {
+    return this.#once(path + EXTENSIONS.material, async (url) => {
+      const file = this.#json<MaterialFile>(await this.#read(url));
+      return new Material(file.name, { baseColor: file.baseColor });
+    });
+  }
+
+  /** 加载场景并把它的实体创建在 entities 里（默认场景里的模型、材质先并行加载完）。 */
+  async loadScene(path: string, entities: EntityManager): Promise<SceneInstance> {
+    const url = new URL(path + EXTENSIONS.scene, this.root);
+    const scene = this.#json<SceneFile>(await this.#read(url));
+    const models = new Map<string, LoadedModel>();
+    const materials = new Map<string, Material>();
+    await Promise.all([
+      ...new Set(scene.entities.flatMap((e) => (e.components.model ? [e.components.model.model] : []))),
+    ].map(async (model) => models.set(model, await this.loadModel(model))));
+    await Promise.all([
+      ...new Set(scene.entities.flatMap((e) => (e.components.model?.materials ?? []).filter((m): m is string => m !== null))),
+    ].map(async (material) => materials.set(material, await this.loadMaterial(material))));
+
+    const created = new Map<string, Entity>();
+    for (const file of scene.entities) {
+      const entity = entities.create({ name: file.name, components: [Transform.with({ position: file.position, rotation: file.rotation, scale: file.scale })] });
+      if (file.parent !== null) {
+        const parent = created.get(file.parent);
+        if (!parent) throw new Error(`${url.href}: entity '${file.name}' comes before its parent ${file.parent}`);
+        entity.require(Transform).parent = parent;
+      }
+      created.set(file.id, entity);
+      this.#addComponents(entity, file, models, materials, entities);
+    }
+    return { name: scene.name, entities: created };
+  }
+
+  #addComponents(entity: Entity, file: SceneEntityFile, models: ReadonlyMap<string, LoadedModel>, materials: ReadonlyMap<string, Material>, entities: EntityManager): void {
+    const { model, camera, light } = file.components;
+    if (camera) entity.add(Camera.with(camera));
+    if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity }));
+    if (!model) return;
+    const loaded = models.get(model.model)!;
+    loaded.meshes.forEach(({ mesh, material: slot }, i) => {
+      // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
+      const override = slot === null ? null : (model.materials[slot] ?? null);
+      const material = (override === null ? null : materials.get(override)) ?? (slot === null ? null : loaded.materials[slot]) ?? this.defaultMaterial;
+      const component = Model.with({ mesh: mesh.id, material: material.id });
+      // 一个实体只能有一个 Model：多出来的网格挂成子实体
+      if (i === 0) {
+        entity.add(component);
+        return;
+      }
+      const part = entities.create({ name: `${file.name}/${mesh.name}`, components: [Transform, component] });
+      part.require(Transform).parent = entity;
+    });
+  }
+
+  #once<T>(path: string, load: (url: URL) => Promise<T>): Promise<T> {
+    const url = new URL(path, this.root);
+    let pending = this.#cache.get(url.href) as Promise<T> | undefined;
+    if (!pending) {
+      pending = load(url);
+      this.#cache.set(url.href, pending);
+      // 失败的不留在缓存里，下次可以重试
+      pending.catch(() => this.#cache.delete(url.href));
+    }
+    return pending;
+  }
+
+  #json<T>(buffer: ArrayBuffer): T {
+    return JSON.parse(new TextDecoder().decode(buffer)) as T;
+  }
+}

@@ -231,7 +231,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - 系统的 `added`、`removed`：按实体回调（不是按块），`removed` 时还能读到数据，回调里的结构性改动走命令缓冲；
   - （2026-11-18）`Transform`：数据在 stride-native 的变换存储里，表里只存槽位；父子层级、销毁时连带子实体、和物理世界绑定，见上文"共享内存的数据模型"；
   - （2026-11-18）热重载：`Game.hotEntry`、`game.hotUpdate`，组件、脚本、系统、游戏类都能在运行中换成新版本，见"热重载"；
-  - 运行时测试 64 个，类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
+  - 运行时测试 68 个（含管线的导入测试），类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
 - **和下文设计的出入**：
   - 一个 archetype 目前是一块可增长的表（容量翻倍），还没有切成固定大小的块。
   - 默认值的检查在定义时做（越早越好），报错带字段名。
@@ -837,6 +837,14 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 - **动画**：压缩曲线格式（参考 Stride 的），在 stride-native 里求值。
 
 这正是"一个东西不处理多次"：导入时一次转换到位，运行时只做上传和拷贝。
+
+**第一段（2026-11-18 已实现）**：
+- **格式**（`packages/engine/src/content/format.ts`，不依赖别的模块，管线通过 `@stride-ts/engine/content-format` 导入）：资源之间按内容路径引用（"包名/相对路径"，不带扩展名）。模型 `.model` 是一个小容器：12 字节头（magic `SMDL`、版本、JSON 长度）、JSON 头（网格表、材质槽）、数据区（每个网格的交错顶点和索引）；顶点是位置、法线、UV 各 3/3/2 个 float，就是 `Mesh` 和 GPU 上的布局，加载后原样上传。材质 `.material.json`、场景 `.scene.json` 先用 JSON（父实体排在前面），以后场景换成二进制。
+- **运行时**（`ContentManager`，`game.content`）：按内容路径加载，同一份只加载一次；`loadScene(path, entities)` 先并行加载场景引用的模型和材质，再按顺序创建实体（`Transform` 和父子、`Model`、`Camera`、`Light`），多网格的模型把多出来的网格挂成子实体。读文件的函数可以换，测试里在 Node 下读内存。
+- **管线**（`packages/pipeline`，Node 直接运行 TS）：Stride 工程导入器 `StrideImporter`。YAML 用 `yaml` 库读；Stride 的标签里允许逗号（`!Stride.BepuPhysics.StaticComponent,Stride.BepuPhysics`），按规范不行，所以解析前把标签里的 `,` `[` `]` 换成百分号编码，读完再解码。资源按 GUID 索引；场景的父子关系来自 `Transform.Children` 里引用的子 Transform 组件 id。模型的源文件经 stride-tools 导入（0.2.0 起按节点实例和材质拆网格、烘焙节点变换，同 Stride），网格按材质名对上 `.sdm3d` 的材质槽，应用 `PivotPosition`、`ScaleImport`。材质把 Stride 的颜色树（`ComputeColor`、`ComputeTextureColor`、`ComputeBinaryColor` 加运算符）算成一个线性基础色，贴图还没接上时按 0.5 的灰度估计并记下贴图路径；`LightSkybox` 先当环境光（强度乘 0.2 的估计）。不认识的组件（物理、脚本、动画、背景）跳过并计数。命令行：`node packages/pipeline/src/cli.ts import-stride --package 名字=资源目录 … --scene 包名/场景 --out 目录`。
+- **Third Person Platformer**（`apps/platformer`）：`pnpm --filter @stride-ts/platformer import:stride` 从 Stride 仓库导入场景和 PrototypingBlocks、mannequinModel 两个资源包（0.5 秒，278 个实体、19 个模型、13 个材质，共 1.3 MB），页面加载场景用 93 ms，150 个实例分 34 次绘制，draw 0.24 ms，165 fps。几何、位置、层级、光源都对；和 Stride 的差别：没有贴图、PBR 和色调映射（地面偏亮），人物停在绑定姿势。
+- **着色**：和 Stride 的 Lambert 一致，直射光 `albedo / π · 光色 · N·L`，环境光 `albedo · 环境色`；`Light` 组件（方向光照向本地 -Z，颜色按 sRGB 写，渲染时转线性再乘强度，同 Stride 的 `LightProcessor`）。
+- **下一段**：贴图（stride-tools 开放 stb_image 解码，管线把 PNG 编成 KTX2 加 Basis，运行时按设备支持转码成 BC7/ASTC/ETC2，材质里按 Stride 的运算符组合贴图和颜色），然后是 PBR 和色调映射。
 
 ## 对齐的验证方法
 

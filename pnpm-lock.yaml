@@ -5,7 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
+  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+
+pnpmfileChecksum: sha256-cNVAWsfYgR1gA9gfl6uRdr7jzzf0Qt8bfIezEETHYTs=
 
 importers:
 
@@ -22,17 +24,30 @@ importers:
         version: 7.0.2
       vitest:
         specifier: ^5.1.0
-        version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6))
+        version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1))
 
   apps/bench:
     dependencies:
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
-        version: 8.3.8(@types/node@26.6.6)
+        version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
+
+  apps/platformer:
+    dependencies:
+      '@stride-ts/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@stride-ts/native':
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+    devDependencies:
+      vite:
+        specifier: ^8.3.8
+        version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
 
   apps/sandbox:
     dependencies:
@@ -40,18 +55,30 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
-        version: 8.3.8(@types/node@26.6.6)
+        version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
 
   packages/engine:
     dependencies:
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+
+  packages/pipeline:
+    dependencies:
+      '@stride-ts/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@stride-ts/native':
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
 packages:
 
@@ -188,9 +215,9 @@ packages:
   '@rolldown/pluginutils@1.1.1':
     resolution: {integrity: sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA==}
 
-  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz':
-    resolution: {integrity: sha512-hF8uQHWo6PUMqqn0EpllECQCUykUV+qou9fVY+PxNrp8SZuaCLhgHxmqbLakUPISUyuNd00PTaZvbxjXgjvrOg==, tarball: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz}
-    version: 0.1.0
+  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz':
+    resolution: {integrity: sha512-85bgp9SDETJicvwlF0m5Cli7VyT/FsDT0zhSt3W/d/ThGQtLE42R1aOedysgtB02SY7QMMZlRgPufqsYpSDwNw==, tarball: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz}
+    version: 0.2.0
     engines: {node: '>=22'}
 
   '@tybys/wasm-util@0.10.5':
@@ -602,6 +629,11 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
+  yaml@2.9.1:
+    resolution: {integrity: sha512-3NxN8+78OdzbT7C/WjGsyfPAtJaN3FNDsWxv7Y7mcDsT/oOmgW8BpyQQFFBnvZE3j9Y2Sdz1ULFLezL7Eb2yFw==}
+    engines: {node: '>= 14.6'}
+    hasBin: true
+
 snapshots:
 
   '@emnapi/core@2.0.0-beta.2':
@@ -692,7 +724,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.1.1': {}
 
-  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.1.0/stride-ts-native-0.1.0.tgz': {}
+  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.2.0/stride-ts-native-0.2.0.tgz': {}
 
   '@tybys/wasm-util@0.10.5':
     dependencies:
@@ -772,14 +804,14 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@vitest/mocker@5.1.0(vite@8.3.8(@types/node@26.6.6))':
+  '@vitest/mocker@5.1.0(vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1))':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       '@vitest/spy': 5.1.0
       estree-walker: 3.0.3
       magic-string: 1.4.5
     optionalDependencies:
-      vite: 8.3.8(@types/node@26.6.6)
+      vite: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
 
   '@vitest/spy@5.1.0': {}
 
@@ -936,7 +968,7 @@ snapshots:
 
   undici-types@8.9.0: {}
 
-  vite@8.3.8(@types/node@26.6.6):
+  vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1):
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
@@ -946,11 +978,12 @@ snapshots:
     optionalDependencies:
       '@types/node': 26.6.6
       fsevents: 2.3.3
+      yaml: 2.9.1
 
-  vitest@5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)):
+  vitest@5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1)):
     dependencies:
       '@types/chai': 5.2.3
-      '@vitest/mocker': 5.1.0(vite@8.3.8(@types/node@26.6.6))
+      '@vitest/mocker': 5.1.0(vite@8.3.8(@types/node@26.6.6)(yaml@2.9.1))
       chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
@@ -961,7 +994,7 @@ snapshots:
       tinybench: 6.2.3
       tinyexec: 1.3.1
       tinyglobby: 0.2.17
-      vite: 8.3.8(@types/node@26.6.6)
+      vite: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
       why-is-node-running: 3.2.1
     optionalDependencies:
       '@types/node': 26.6.6
@@ -969,3 +1002,5 @@ snapshots:
       - msw
 
   why-is-node-running@3.2.1: {}
+
+  yaml@2.9.1: {}

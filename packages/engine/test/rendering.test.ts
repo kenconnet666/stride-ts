@@ -1,6 +1,10 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { Game, Material, Matrix, Mesh, MeshRenderFeature, Model, Transform, transformSlot } from '../src/index';
+import { VERTEX_FLOATS } from '../src/rendering/Mesh';
+
+/** 交错顶点里第 v 个顶点从 offset 起的 size 个 float。 */
+const attribute = (vertices: Float32Array, v: number, offset: number, size: number) => [...vertices.subarray(v * VERTEX_FLOATS + offset, v * VERTEX_FLOATS + offset + size)];
 
 // 渲染里不碰 GPU 的部分：矩阵、程序化网格、按批提取。真正画出来在 Chrome 里看（apps/sandbox）。
 
@@ -27,24 +31,24 @@ describe('Matrix', () => {
 describe('Mesh', () => {
   test('立方体每个面 4 个顶点，三角形从外面看是逆时针（正面朝外）', () => {
     const cube = Mesh.cube(2);
-    const { positions, normals, indices } = cube.data;
+    const { vertices, indices } = cube.data;
     expect([cube.vertexCount, indices.length]).toEqual([24, 36]);
-    expect(Math.max(...positions)).toBe(1);
-    const at = (i: number) => [positions[i * 3]!, positions[i * 3 + 1]!, positions[i * 3 + 2]!];
+    expect(cube.bounds).toEqual({ min: [-1, -1, -1], max: [1, 1, 1] });
+    const at = (i: number) => attribute(vertices, i, 0, 3);
     for (let t = 0; t < indices.length; t += 3) {
       const [a, b, c] = [at(indices[t]!), at(indices[t + 1]!), at(indices[t + 2]!)];
       const e1 = b.map((v, k) => v - a[k]!), e2 = c.map((v, k) => v - a[k]!);
       const cross = [e1[1]! * e2[2]! - e1[2]! * e2[1]!, e1[2]! * e2[0]! - e1[0]! * e2[2]!, e1[0]! * e2[1]! - e1[1]! * e2[0]!];
-      const n = indices[t]! * 3;
-      expect(cross[0]! * normals[n]! + cross[1]! * normals[n + 1]! + cross[2]! * normals[n + 2]!).toBeGreaterThan(0);
+      const n = attribute(vertices, indices[t]!, 3, 3);
+      expect(cross[0]! * n[0]! + cross[1]! * n[1]! + cross[2]! * n[2]!).toBeGreaterThan(0);
     }
   });
 
-  test('平面在 y = 0 上，法线朝 +Y', () => {
+  test('平面在 y = 0 上，法线朝 +Y，UV 铺满 0..1', () => {
     const plane = Mesh.plane(4, 2);
-    expect([...plane.data.normals.subarray(0, 3)]).toEqual([0, 1, 0]);
-    expect(Math.max(...plane.data.positions.filter((_, i) => i % 3 === 0))).toBe(2);
-    expect(Math.max(...plane.data.positions.filter((_, i) => i % 3 === 2))).toBe(1);
+    expect(attribute(plane.data.vertices, 0, 3, 3)).toEqual([0, 1, 0]);
+    expect(plane.bounds).toEqual({ min: [-2, 0, -1], max: [2, 0, 1] });
+    expect([0, 1, 2, 3].map((v) => attribute(plane.data.vertices, v, 6, 2))).toEqual([[0, 1], [1, 1], [1, 0], [0, 0]]);
   });
 });
 

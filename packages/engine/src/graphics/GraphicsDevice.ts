@@ -1,4 +1,5 @@
 import type { TextureTarget } from '@stride-ts/native';
+import { GpuProfiler } from './GpuProfiler';
 
 /** 贴图压缩格式的特性和对应的 Basis 转码目标，按优先级：桌面 GPU 有 BC，移动 GPU 有 ASTC 或 ETC2。 */
 const COMPRESSION: readonly (readonly [GPUFeatureName, TextureTarget])[] = [
@@ -21,6 +22,8 @@ export class GraphicsDevice {
   readonly textureTarget: TextureTarget;
   /** 设备能关掉深度裁剪（'depth-clip-control'）：阴影投射者用它把视锥前面的物体压到近平面上（Stride 的 DepthClipEnable = false）。 */
   readonly depthClipControl: boolean;
+  /** 渲染通道的 GPU 耗时（开发时测量，默认关；设备不支持 timestamp-query 时打开也不记录）。 */
+  readonly profiler: GpuProfiler;
   private readonly context: GPUCanvasContext;
 
   static async create(canvas: HTMLCanvasElement): Promise<GraphicsDevice> {
@@ -29,16 +32,19 @@ export class GraphicsDevice {
     if (!adapter) throw new Error('No WebGPU adapter is available');
     const compression = COMPRESSION.filter(([feature]) => adapter.features.has(feature));
     const depthClipControl = adapter.features.has('depth-clip-control');
-    const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...(depthClipControl ? ['depth-clip-control' as const] : [])] });
+    const timestampQuery = adapter.features.has('timestamp-query');
+    const optional = [...(depthClipControl ? ['depth-clip-control' as const] : []), ...(timestampQuery ? ['timestamp-query' as const] : [])];
+    const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...optional] });
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('The canvas has no WebGPU context');
-    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8', depthClipControl);
+    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8', depthClipControl, timestampQuery);
   }
 
-  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget, depthClipControl: boolean) {
+  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget, depthClipControl: boolean, timestampQuery: boolean) {
     this.device = device;
     this.textureTarget = textureTarget;
     this.depthClipControl = depthClipControl;
+    this.profiler = new GpuProfiler(device, timestampQuery);
     this.canvas = canvas;
     this.context = context;
     this.backBufferFormat = navigator.gpu.getPreferredCanvasFormat();
@@ -78,6 +84,7 @@ export class GraphicsDevice {
   }
 
   destroy(): void {
+    this.profiler.destroy();
     this.context.unconfigure();
     this.device.destroy();
   }

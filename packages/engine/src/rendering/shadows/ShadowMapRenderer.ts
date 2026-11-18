@@ -73,8 +73,10 @@ export class ShadowMapRenderer {
   /** 把投射者画进图集：清一次，每个级联设自己的视口。 */
   draw(context: RenderContext, encoder: GPUCommandEncoder, renderSystem: RenderSystem, views: readonly RenderView[]): void {
     if (views.length === 0) return;
+    const timestampWrites = this.#graphicsDevice.profiler.passTimestamps('ShadowMapRenderer');
     const pass = encoder.beginRenderPass({
       label: 'ShadowMapRenderer',
+      ...(timestampWrites ? { timestampWrites } : {}),
       colorAttachments: [],
       depthStencilAttachment: { view: this.#atlasTexture().createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
     });

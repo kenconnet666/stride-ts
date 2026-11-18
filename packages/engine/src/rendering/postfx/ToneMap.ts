@@ -8,6 +8,7 @@
  * - 曝光（AutoExposure、AutoKeyValue）：key = 1.03 - 2 / (2 + log10(adapted + 1))，曝光 = key / adapted；
  * - 算子：Hejl2（白点 5）。亮度、对比度是 0 时只剩 max(color, 0.0001)。
  */
+import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../fullscreen';
 
 const LUMINANCE_SHADER = /* wgsl */ `
@@ -178,7 +179,8 @@ export class ToneMap {
   }
 
   #fullscreen(encoder: GPUCommandEncoder, pipeline: GPURenderPipeline, bindGroup: GPUBindGroup, target: GPUTextureView): void {
-    const pass = encoder.beginRenderPass({ label: pipeline.label, colorAttachments: [{ view: target, loadOp: 'clear', storeOp: 'store' }] });
+    const timestampWrites = GpuProfiler.of(this.#device)?.passTimestamps(pipeline.label);
+    const pass = encoder.beginRenderPass({ label: pipeline.label, colorAttachments: [{ view: target, loadOp: 'clear', storeOp: 'store' }], ...(timestampWrites ? { timestampWrites } : {}) });
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
     pass.draw(3);

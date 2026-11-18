@@ -82,6 +82,7 @@ export { validator } from './engine/validator';
 export { Game, type GameOptions, type GameStatus, type HotContext } from './games/Game';
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
+export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Background, Camera, Light, Model } from './rendering/components';
 export { BackgroundRenderFeature } from './rendering/BackgroundRenderFeature';

@@ -136,14 +136,17 @@ export class ForwardRenderer {
     this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews);
     const { r, g, b, a } = this.clearColor;
     const targets = this.#targetsForCanvas();
+    const timestampWrites = graphicsDevice.profiler.passTimestamps('ForwardRenderer opaque');
     const pass = encoder.beginRenderPass({
       label: 'ForwardRenderer opaque',
+      ...(timestampWrites ? { timestampWrites } : {}),
       colorAttachments: [{ view: targets.color.createView(), clearValue: [r, g, b, a], loadOp: 'clear', storeOp: 'store' }],
       depthStencilAttachment: { view: targets.depth.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'discard' },
     });
     if (this.hasCamera) renderSystem.draw(context, pass, this.#mainView, this.opaqueStage);
     pass.end();
     this.postEffects.draw(encoder, targets.color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
+    graphicsDevice.profiler.resolve(encoder);
     graphicsDevice.queue.submit([encoder.finish()]);
   }
 

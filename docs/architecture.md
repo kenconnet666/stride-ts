@@ -199,6 +199,39 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 
 ## 组件 API：脚本、数据组件、系统（2026-11-18 设计草案，取代 11-17 的装饰器加插件方案）
 
+**实现状态（2026-11-18，`packages/engine/src/data` 和 `src/engine`）**：
+
+- **已实现**：
+  - `prop` builder（`number`、`f32`、`int`、`u8`、`u32`、`bool`、`string`、`enum`、`entity`；`default`、`optional`、`transient`、`min`、`max`、`step`、`unit`、`label`、`group`、`description`、`hidden`、`renamedFrom`、`brand`）和字面量简写；
+  - 登记时生成的初始化函数（不支持代码生成的环境退回循环）；
+  - `component()`、`tag()`，按 archetype 分表的列存储；
+  - 实体对象和按 id 批量生成（`spawn` 返回批次，可按列写入每个实体的值）；
+  - 视图（`entity.get`、`require`）；
+  - `system()`，支持 `with`、`without`、`writes`、`changed`、`phase`、`after`，以及命令缓冲；
+  - `StartupScript`、`SyncScript`、`AsyncScript`（`props`、`with`、`signal`、`disposables`、`nextFrame`、`delay`、`cancel`）；
+  - 按"路径#导出名"登记（`Registry`）；
+  - 运行时测试 30 个，类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
+- **和下文设计的出入**：
+  - 一个 archetype 目前是一块可增长的表（容量翻倍），还没有切成固定大小的块。
+  - 默认值的检查在定义时做（越早越好），报错带字段名。
+  - 布尔字段在列里是 `Uint8Array`（0 和 1），视图和脚本里是 `boolean`。
+  - 数据组件的字段不能是 `optional`：列里没有"缺失"这个值。
+  - `nextFrame()` 之后的代码在当前帧结束后、下一帧开始前运行：Promise 的后续代码没法插进同步的一帧中间。这一点和 Stride 不同，Stride 是在下一帧的脚本阶段继续。
+- **还没做**：
+  - 属性类型 `vec3`、`quat`、`color`、`asset`、`component`、`list`、`object`、`union`、`json`；
+  - 分层覆盖（`sealed`、`inherit`、`stat`、变体、预制体）；
+  - 钩子和 `EventKey`；
+  - 系统的 `added`、`removed`；
+  - 热重载；
+  - `validators()`。
+
+**实测（沙盒，本机 Chrome）**：
+- 负载：1.2 万个粒子实体，`Fountain` 脚本每 0.5 秒生成 2000 个，`expire` 系统用命令缓冲销毁到期的。
+- 每帧耗时：脚本加系统中位 0.14 ms，p99 0.3 ms；生成那一帧最长约 3 ms。
+- 同样的生成加销毁（2000 个）在 Node 里约 0.4 ms。
+- GC：6 秒内 7 次新生代回收，最长 0.69 ms；1 次老生代回收，1.2 ms。
+- 类型压力测试：300 个组件、150 个系统、150 个脚本，tsc 检查时间多 0.36 s，实例化 15.5 万次，没有 TS2589。
+
 原则（参考 easy-query-ts 的实体定义，见 `C:\code\easy-query-ts\packages\core\src\schema.ts`）：
 - **一份声明，多处使用**：属性用 `prop` builder 声明，TS 类型、默认值、场景文件的编解码、加载时的校验、编辑器面板都从它来。类型靠推导，不靠代码生成、装饰器或反射；唯一的例外是编辑器做的资源（预制体、场景、模型、材质），由工具生成类型，见"资源的强类型"。
 - **尽量强类型**（用户 2026-11-18）：代码引用组件、预制体、部件、材质槽、钩子、事件时，名字和值写错都要是类型错误；可以用类型提取工具简化写法，但不退回 `string`、`any` 这类宽松类型。
@@ -258,7 +291,7 @@ export const Health = component({ max: prop.f32().default(100), current: 100 });
 ```
 
 - 游戏入口把 `import.meta.glob` 的结果交给引擎。它是 Vite 自带的功能，不是我们的编译期改写；键是源文件路径，值是 `() => import(...)`。
-- 模块执行完以后，引擎遍历它的导出，按对象身份给组件、脚本、系统登记名字。所以定义时的检查（重名、默认值是否满足 `min`/`max`、`renamedFrom` 冲突）改在登记时做，报错带上推出的名字。
+- 模块执行完以后，引擎遍历它的导出，按对象身份给组件、脚本、系统登记名字（`Registry.registerModules`）。属性和默认值在定义时就检查，报错带字段名；同名冲突在登记时报，带上推出的名字。
 - 名字直接指向模块：场景引用了 `levels/castle/boss#BossAI`，加载器就知道去 `import()` 哪个分块，按关卡拆分代码不需要另做一份"名字到模块"的清单，也不必一开始就加载所有模块。
 - 热重载时模块路径和导出名不变，新旧定义自然对上。
 - 代价：移动文件或改导出名，名字就变了（同 Godot 的 `res://` 路径、Unreal 的资源路径加重定向）。编辑器移动文件时自动在工程里记一条重定向（`renamed: { 'old/path#X': 'new/path#X' }`），场景加载时先查它；也可以在定义处写 `renamedFrom`。
@@ -369,7 +402,7 @@ override start(): void {
 
 1. 输入：把这一帧收到的 DOM 事件合进输入状态。
 2. 拾取和输入事件的派发（见下文"事件"）。
-3. 同步脚本的 `update`；异步脚本从 `nextFrame()` 继续。
+3. 待启动脚本的 `start()`（异步脚本是 `execute()`），然后同步脚本的 `update`。异步脚本 `await nextFrame()` 之后的代码在上一帧结束后、这一帧开始前运行（见上文"实现状态"）。
 4. 系统：物理之前的阶段。
 5. 固定步长的物理（每帧 0 到 4 步），步进结束后派发接触事件。
 6. 系统：物理之后的阶段。

@@ -23,7 +23,8 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 | 目录 | 内容 |
 |---|---|
 | `packages/native` | `@stride-ts/native`：`scripts/sync.mjs` 把 fork 编好的 `stride-native`/`stride-tools` 拷进 `dist/`（不提交，`dist/source.json` 记录来源提交） |
-| `packages/engine` | `@stride-ts/engine`：引擎层，目录按 Stride 的命名空间分（`games/`、`graphics/`）；源码直接以 TS 导出，不单独构建 |
+| `packages/engine` | `@stride-ts/engine`：引擎层，目录按 Stride 的命名空间分：`data/`（`prop` 和 schema）、`engine/`（实体、列存储、系统、脚本、登记）、`games/`、`graphics/`；源码直接以 TS 导出，不单独构建。`test/` 里有运行时测试、类型测试 `types.check.ts` 和类型压力测试 `stress.check.ts` |
+| `apps/sandbox/src/game` | 沙盒的游戏代码，用 `import.meta.glob` 交给引擎登记：粒子组件和系统、生成粒子的 `Fountain` 脚本 |
 | `apps/sandbox` | 冒烟测试页：跨源隔离、原生模块的工作线程、WebGPU、帧循环、Jolt 步进 |
 | `apps/bench` | 数据布局和跨边界开销的基准（JS 对象、JS 堆的 TypedArray、wasm 共享内存、JS 到 wasm 的调用、上传 GPU、创建和每帧更新）。`pnpm --filter @stride-ts/bench dev` 在 5182 端口，`tools/bench.cjs` 在无头 Chrome 里跑并打印结果（`?only=render` 只跑渲染提交）；`gc.html` 是 GC 场景，用 `tools/gc-trace.cjs` 跑。结论见 [docs/architecture.md](docs/architecture.md) 的"实测"各节和"复杂场景的帧预算估算" |
 | `tools/` | Playwright 脚本和原生构建脚本，见 [tools/README.md](tools/README.md) |

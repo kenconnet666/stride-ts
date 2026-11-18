@@ -10,7 +10,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - [docs/positioning.md](docs/positioning.md)：和 Babylon.js、PlayCanvas、three.js、Cocos、Unity、Godot、Needle 的对比（预估），特色和短板，要实测的性能点。
 - [docs/research.md](docs/research.md)：依赖逐项替代、库选型、线程模型和 API 取舍。
 
-现状（2026-11-18）：工程骨架已搭好（pnpm monorepo，见 README.md 的"开发"），本地 git 仓库在 `main` 分支，还没有远程；GitHub 仓库由用户自己创建。引擎只有 `Game` 循环和 `GraphicsDevice`，渲染器还没开始写。
+现状（2026-11-18）：工程骨架已搭好（pnpm monorepo，见 README.md 的"开发"），本地 git 仓库在 `main` 分支，还没有远程；GitHub 仓库由用户自己创建。引擎有 `Game` 循环、`GraphicsDevice` 和实体核心（`prop`、数据组件和列存储、系统、脚本、按模块路径登记，见 docs/architecture.md 的"实现状态"）；渲染器还没开始写。
 
 约定：
 - 和用户用中文沟通；代码、标识符、注释、提交信息用英文。

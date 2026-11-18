@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@stride-ts/engine": "workspace:*",
-    "@stride-ts/native": "^0.21.0",
+    "@stride-ts/native": "^0.21.1",
     "yaml": "^2.9.1"
   }
 }

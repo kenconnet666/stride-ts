@@ -42,9 +42,13 @@ await sleep(200);
 const turned = stride('eval', PLAYER) as Player;
 check('A 转身往左：绕 Y 转 180°', Math.abs(Math.abs(turned[2]) - 1) < 1e-3 && turned[0] < running[0], turned);
 
+// 起跳后轮询：刚打开的浏览器帧率不稳，固定等一段真实时间时角色可能才刚离地
 stride('key', 'W');
-await sleep(250);
-const jumping = stride('eval', PLAYER) as Player;
+let jumping = stride('eval', PLAYER) as Player;
+for (let i = 0; i < 15 && !(jumping[1] > start[1] + 0.5); i++) {
+  await sleep(100);
+  jumping = stride('eval', PLAYER) as Player;
+}
 check('W 起跳，放跳的帧', !jumping[4] && jumping[1] > start[1] + 0.5 && jumping[3] >= 21, jumping);
 await sleep(1200);
 

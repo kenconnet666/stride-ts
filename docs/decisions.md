@@ -2,11 +2,12 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
-## 2026-11-19 FirstPersonShooter：特效预制体照常生成，冒烟测试用真实点击拿指针锁定
+## 2026-11-19 FirstPersonShooter：特效预制体照常生成，冒烟测试用真实点击拿指针锁定，穿透容差降到 1 mm
 
 - **特效预制体照常生成**：枪口火焰、弹孔、受击拖尾都是 VFXPackage 的粒子预制体（P2），导入时粒子组件跳过，预制体只剩变换。EffectController 照 Stride 生成、定时移除，P2 有了粒子就直接能看，不用回头改脚本。
 - **TriggerGroup 是脚本属性的嵌套对象**：Stride 里 TriggerGroup、TriggerEvent 是带 DataContract 的数据类；我们用 `prop.object` 和 `prop.list` 声明，场景导入的值照常对上，不为它们加新的资源或组件种类。
 - **冒烟测试用真实点击**：浏览器只在用户操作里允许指针锁定，调试 CLI 的合成事件拿不到。`stride mouse left --trusted` 走 DevTools 协议的 Input.dispatchMouseEvent（stride open 启动的 Chrome），算用户操作；锁定后合成的 `mouse move` 照常进 mouseDelta。考虑过给 InputManager 加调试用的"假装锁定"，那样测不到真实的锁定路径，不选。
+- **穿透容差降到 1 mm**：Jolt 默认允许物体陷进去 2 cm 才往外推（`mPenetrationSlop`），Bepu 的接触是软弹簧（样例里 30 Hz），静止时只压下去零点几毫米。结果是我们的角色和放在地上的物体都比 Stride 低 2 cm，FirstPersonShooter 的相机矮 2 cm，地面的网格线错开 4 像素。原生 0.21.1 对所有世界设成 1 mm（留一点免得堆叠的物体来回抖），所有样例的冒烟脚本回归通过。没有做成可配置：Stride 没有对应的设置。
 - **共用的数学和输入**：Stride 模板各自带一份的 InputManagerExtensions（摇杆、扳机超过死区取平均）进了 `InputManager.thumbAny`、`triggerAny`；`Quaternion.betweenDirections`、`setYawPitchRoll` 同 Stride。TPP、TopDownRPG 改用它们。
 
 ## 2026-11-19 TopDownRPG：导航网格的输入取物理形状的三角化，路径给拐点

@@ -8,6 +8,6 @@
     "./content-format": "./src/content/format.ts"
   },
   "dependencies": {
-    "@stride-ts/native": "^0.7.0"
+    "@stride-ts/native": "^0.8.0"
   }
 }

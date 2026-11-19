@@ -14,6 +14,7 @@
 - **EditText 用浏览器的输入框编辑**：Stride 桌面版自己解释按键（方向键、Home、End、退格），没有复制粘贴和撤销，输入法靠系统的 TextInput。我们在激活的 EditText 后面放一个看不见的 `<input>`（多行时 `<textarea>`），键盘、输入法、选中、复制粘贴、撤销都是浏览器的，行为和网页上的输入框一样；输入框摆在 EditText 的位置，输入法的候选窗在字旁边，读屏软件读得到。Enter、Esc 结束编辑同 Stride（多行时 Shift+Enter 换行，多做的）；编辑时点画布的别处不结束编辑（同 Stride 桌面版，挡掉画布的 mousedown 默认行为）。
 - **滚轮滚动 ScrollViewer**（多做的）：Stride 桌面版的 UI 不处理鼠标滚轮，ScrollViewer 只能拖。鼠标在 ScrollViewer（或它里面的元素）上时滚轮滚动它，一格 50 个虚拟像素；鼠标被 UI 占着，脚本看不到这次滚轮。
 - **OutsideClick 按弹窗的矩形判断**：Stride 拿相对弹窗中心的位置和 [0, 大小] 比，点在弹窗的左半边、上半边也算外面；我们按矩形判断。
+- **每帧只提交一次命令**：场景（ForwardRenderer）、UI、调试文字以前各建一个命令编码器、各提交一次；现在都录进 `GraphicsDevice.frameEncoder`，Game 在帧末提交一次（GPU 计时的查询也在这里解析），后备缓冲的视图每帧只建一次。GameMenu 的启动页 0.57 → 0.43 ms（桌面 Stride 0.52 ms）。约束：`queue.writeBuffer` 在提交之前就写好，同一个缓冲一帧只能写一份，所以每个 UI 有自己的 SpriteBatch。游戏自己的根渲染器（SpriteFonts 的 FontRenderer）照旧可以自己提交。
 - **调试文字按左上角摆**：Stride 的 FastTextRenderer 每个字以给的位置为中心，整段字向左上偏半个字（4、8 像素）；我们按给的位置当左上角。字体用 Stride 自带的 8x16 位图（嵌在引擎里，5.8 KB），颜色同 Stride（LightGreen 当线性颜色用）。
 - **键名的缩写整个小写**：脚本属性和 UI 属性的键名以前只把第一个字母改小写，`UILibrary` 变成 `uILibrary`；现在开头的缩写整个小写（`uiLibrary`、`imeSelectionColor`），后面的单词不变。已有的样例里只有 GameMenu 有这样的键。
 

@@ -27,7 +27,8 @@ const WHEEL_STEP = 50;
 
 export class UISystem {
   readonly #components = new Set<UIComponent>();
-  #batch: SpriteBatch | undefined;
+  /** 每个 UI 一个：SpriteBatch 的数据在 end() 时用 writeBuffer 写，同一帧里一个缓冲只能写一份（见 GraphicsDevice.frameEncoder）。 */
+  readonly #batches = new Map<UIComponent, SpriteBatch>();
   #warnedNotFullScreen = false;
   /** 上一帧画出来的 UI（指针按它找元素）。 */
   #targets = new Map<UIComponent, PickingTarget>();
@@ -52,6 +53,8 @@ export class UISystem {
   /** @internal UIComponent 移除时。 */
   remove(component: UIComponent): void {
     this.#components.delete(component);
+    this.#batches.get(component)?.destroy();
+    this.#batches.delete(component);
   }
 
   /** @internal Game 建好输入以后调用：每帧在脚本之前处理 UI 的输入。 */
@@ -146,7 +149,6 @@ export class UISystem {
     if (visible.length === 0) return;
     const device = game.graphicsDevice;
     const target: [number, number] = [device.canvas.width, device.canvas.height];
-    const batch = (this.#batch ??= new SpriteBatch(device.device, game.renderSystem.resources));
     for (const component of visible) {
       if (!component.isFullScreen) {
         if (!this.#warnedNotFullScreen) console.warn(`[stride] UI on entity '${component.entity.name}' is not full screen; only full-screen UI is supported yet`);
@@ -164,9 +166,9 @@ export class UISystem {
       root.arrange(virtual, false);
       root.updateWorldMatrix(IDENTITY);
       root.updateElementState(0);
-      // 每个 UI 单独提交：SpriteBatch 的数据在 end() 时写进同一个缓冲，几批放进一次提交会互相覆盖
-      const encoder = device.device.createCommandEncoder({ label: 'UI' });
-      const pass = encoder.beginRenderPass({
+      let batch = this.#batches.get(component);
+      if (!batch) this.#batches.set(component, (batch = new SpriteBatch(device.device, game.renderSystem.resources)));
+      const pass = device.frameEncoder.beginRenderPass({
         label: `UI ${component.entity.name}`,
         colorAttachments: [{ view: device.currentBackBufferView(), loadOp: 'load', storeOp: 'store' }],
       });
@@ -175,7 +177,6 @@ export class UISystem {
       drawUI(root, { batch, virtualResolution: virtual, ratio, snapText: component.snapText });
       batch.end();
       pass.end();
-      device.device.queue.submit([encoder.finish()]);
     }
     // 布局之后：影子输入框跟上 EditText 的位置，选区同步回来
     this.textInput?.update();
@@ -186,8 +187,8 @@ export class UISystem {
     this.#input?.releaseAll(this);
     this.textInput?.destroy();
     this.textInput = undefined;
-    this.#batch?.destroy();
-    this.#batch = undefined;
+    for (const batch of this.#batches.values()) batch.destroy();
+    this.#batches.clear();
     this.#components.clear();
     this.#targets.clear();
   }

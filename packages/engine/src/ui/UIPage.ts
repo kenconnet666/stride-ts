@@ -105,9 +105,14 @@ function applyProps(element: UIElement, data: UIElementFile, props: Readonly<Rec
       warned.add(id);
       continue;
     }
-    target[key] = resolveValue(value, resources, where);
+    target[key] = MERGED_PROPS.test(key) && Array.isArray(value)
+      ? value.map((item: number | null, i: number) => item ?? (target[key] as readonly number[])[i])
+      : resolveValue(value, resources, where);
   }
 }
+
+/** 颜色、Thickness：文件里没写的成员（null）保持元素类型的默认值（Stride 反序列化时只覆盖写了的成员）。 */
+const MERGED_PROPS = /^(margin|padding|color)$|Color$/;
 
 function resolveValue(value: UIValue, resources: UIResources, where: string): unknown {
   if (value === null || typeof value !== 'object') return value;

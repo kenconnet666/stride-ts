@@ -77,7 +77,8 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
   - 相机有透视和正交两种投影（`Camera.projection`、`orthographicSize`，Stride 的 PerspectiveFovRH、OrthoRH），投影矩阵由 `cameraProjectionMatrix` 统一算（前向渲染器和 `screenToWorldRaySegment` 共用）；正交相机的阴影只用一级级联（同 Stride）。
   - 背景支持平面图片（Is2D，铺满视图）；背景、精灵的常量按视图分块，渲染目标贴图的相机也画得到。
   - 和 Stride 不同（暂时）：画进渲染目标贴图的相机不用阴影（级联按主视图算）、不做后处理；一个视图最多 4 个方向光、只有一个投阴影。
-- **文字（2026-11-19，`rendering/text`，SpriteFonts 用到的）**：字体导入成字形轮廓（`.font.json` 加按码位块分的 `.glyphs`），`SpriteFont` 用到哪块下载哪块；`SpriteBatch` 画贴图和文字，文字从轮廓逐像素算覆盖率（Slug），任何缩放都清晰；排版照 Stride 的 SpriteFont，改掉了它的几处毛病（见 decisions.md）。合成器的根可以是游戏自己的渲染器（`Game.rootRenderer`、`loadGameSettings`）。还没有：UI 系统用的文字排版（换行、富文本）、世界空间的文字（MSDF）、SVG 精灵按矢量画。
+- **文字（2026-11-19，`rendering/text`，SpriteFonts 用到的）**：字体导入成字形轮廓（`.font.json` 加按码位块分的 `.glyphs`），`SpriteFont` 用到哪块下载哪块；`SpriteBatch` 画贴图和文字，文字从轮廓逐像素算覆盖率（Slug），任何缩放都清晰；排版照 Stride 的 SpriteFont，改掉了它的几处毛病（见 decisions.md）。合成器的根可以是游戏自己的渲染器（`Game.rootRenderer`、`loadGameSettings`）。还没有：富文本、世界空间的文字（MSDF）、SVG 精灵按矢量画。
+- **UI（2026-11-19，`ui/`，GameMenu 用到的）**：照 Stride 的 UI 系统，布局只做两维（见 decisions.md）。资源：.sduipage、.sduilib 导入成 `UIFile`（元素平铺成数组），`content.loadUIPage`、`loadUILibrary`；`UIComponent` 是引擎自带的脚本组件。元素树：`UIElement` 的 Measure、Arrange 照 Stride（附加属性做成元素上的属性），面板 Grid、UniformGrid、StackPanel、Canvas，控件 ContentDecorator、Button、ImageElement、TextBlock（换行）、ModalElement、ScrollViewer、EditText。`game.ui`（UISystem）每帧在场景之后布局、用 SpriteBatch 画全屏的 UI（九宫格、文字、剪裁矩形）；输入在脚本之前：按上一帧的样子把指针事件交给元素（路由事件，`ui/events.ts`、`ui/UIPicking.ts`），UI 占着的鼠标、键盘对脚本藏起来（`input/capture.ts`，Stride master 的 Input Capture）；EditText 的编辑交给隐藏的 DOM 输入框（`ui/TextInputBridge.ts`）。还没有：放在 3D 场景里的 UI（不是全屏的、UIElementLink）、除输入框以外的无障碍树、Slider、ToggleButton 这些没用到的控件。
 - 接下来：Stride 的 WGSL 和效果系统（等着色器系统）、透明材质、点光源和聚光灯（及其阴影）、render bundle 缓存静态批次、非均匀缩放的法线（逆转置）。
 
 C# 移植版踩过的 WebGPU 坑，全部适用，见 [lessons.md](lessons.md)：`writeBuffer` 的生效时机、pass 内的状态去重、scissor 一直有效、调试组会切断 pass、没写的颜色目标要设 writeMask 0。

@@ -373,6 +373,7 @@ export class Game {
       this.draw(this.updateTime);
       this.ui.draw(this, this.updateTime.elapsed);
       this.debugTextRenderer.draw(this);
+      this.graphicsDevice.submitFrame();
       const end = performance.now();
       this.startup.firstFrame ??= end;
       this.debug.frames.record(interval, updating ? drawStart - start : 0, end - drawStart);

@@ -145,18 +145,22 @@ export class MainScript extends UISceneBase.props({
     return library;
   }
 
-  /** 血条从 15% 慢慢充满：缩短精灵的区域，网格的两列跟着按比例分。 */
+  /** 血条从 15% 慢慢充满。 */
   async #fillLifeBar(): Promise<void> {
     let percentage = 0.15;
     while (percentage < 1) {
       await this.nextFrame();
       percentage = Math.min(1, percentage + this.game.updateTime.elapsed * 0.02);
-      const width = percentage * this.#gaugeBarWidth;
-      this.#lifebarGauge.region[2] = width;
-      const columns = this.#lifebarGrid.columnDefinitions;
-      columns.at(1)!.sizeValue = width / this.#gaugeBarWidth;
-      columns.at(2)!.sizeValue = 1 - columns.at(1)!.sizeValue;
+      this.setLifeBar(percentage);
     }
+  }
+
+  /** 血条显示到 percentage（0 到 1）：缩短精灵的区域，网格的两列按比例分。 */
+  setLifeBar(percentage: number): void {
+    this.#lifebarGauge.region[2] = percentage * this.#gaugeBarWidth;
+    const columns = this.#lifebarGrid.columnDefinitions;
+    columns.at(1)!.sizeValue = percentage;
+    columns.at(2)!.sizeValue = 1 - percentage;
   }
 
   #canPurchase(requireMoney: number, requireBonus: number): boolean {
@@ -215,8 +219,8 @@ export class MainScript extends UISceneBase.props({
 
     const currentShipButton = child(root, Button, 'currentShipButton');
     currentShipButton.onClick(() => {
-      this.#updateShipStatus();
-      this.shipSelectPopup.visibility = 'visible';
+      this.updateShipStatus();
+      this.showShipSelectionPopup();
     });
     this.#currentShipImage = child(currentShipButton, ImageElement, 'currentShipImage');
 
@@ -235,7 +239,7 @@ export class MainScript extends UISceneBase.props({
     this.shipSelectPopup.panelZIndex = 1;
     const stack = child(this.shipSelectPopup, StackPanel, 'contentStackPanel');
     for (const ship of this.ships) stack.children.add(this.#createShipSelectionItem(ship));
-    this.#updateShipStatus();
+    this.updateShipStatus();
     this.shipSelectPopup.visibility = 'collapsed';
   }
 
@@ -268,7 +272,12 @@ export class MainScript extends UISceneBase.props({
     this.welcomePopup.visibility = 'visible';
   }
 
-  #updateShipStatus(): void {
+  showShipSelectionPopup(): void {
+    this.shipSelectPopup.visibility = 'visible';
+  }
+
+  /** 选飞船的弹窗里每艘飞船的星星换成它现在的属性。 */
+  updateShipStatus(): void {
     for (const ship of this.ships) {
       frameOf(ship.powerImage!).currentFrame = this.#borderStarFrames[ship.power]!;
       frameOf(ship.controlImage!).currentFrame = this.#borderStarFrames[ship.control]!;

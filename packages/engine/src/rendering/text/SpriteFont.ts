@@ -42,10 +42,22 @@ export class SpriteFont {
   readonly defaultCharacter: number;
   /** 栅格化时 ppem 取整（见 FontFile.integerPpem）。 */
   readonly integerPpem: boolean;
+  #useKerning = true;
+  /**
+   * 排版的版本：下载完一块（能用的字形变了）或者开关字距时加一。排版的缓存按它作废，TextBlock、EditText 看它变了就重新量。
+   */
+  layoutVersion = 0;
+
   /** 做不做字距（Stride 的 UseKerning）；默认做。和桌面 Stride 比对时关掉，看字距以外的差。 */
-  useKerning = true;
-  /** 下载完的块数：每多一块，能用的字形就变了（排版的缓存按它作废）。 */
-  loadedBlocks = 0;
+  get useKerning(): boolean {
+    return this.#useKerning;
+  }
+
+  set useKerning(value: boolean) {
+    if (value === this.#useKerning) return;
+    this.#useKerning = value;
+    this.layoutVersion++;
+  }
   readonly #file: FontFile;
   readonly #blocks = new Set<number>();
   readonly #loaded = new Map<number, Promise<void>>();
@@ -163,7 +175,7 @@ export class SpriteFont {
           });
         }
         this.#blockReady.add(block);
-        this.loadedBlocks++;
+        this.layoutVersion++;
       });
       // 失败的块下次再试
       pending.catch(() => this.#loaded.delete(block));

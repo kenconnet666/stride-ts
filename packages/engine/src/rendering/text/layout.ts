@@ -74,7 +74,7 @@ const layouts = new WeakMap<SpriteFont, Map<string, readonly PositionedGlyph[]>>
 export function layoutText(font: SpriteFont, text: string, fontSize: FontSize, alignment: TextAlignment = 'left', boxWidth?: number): readonly PositionedGlyph[] {
   let cache = layouts.get(font);
   if (!cache) layouts.set(font, (cache = new Map()));
-  const key = `${font.loadedBlocks}:${font.useKerning ? 1 : 0}:${fontSize[0]}:${fontSize[1]}:${alignment}:${boxWidth ?? ''}:${text}`;
+  const key = `${font.layoutVersion}:${fontSize[0]}:${fontSize[1]}:${alignment}:${boxWidth ?? ''}:${text}`;
   let result = cache.get(key);
   if (!result) {
     if (cache.size >= MAX_CACHED) cache.clear();

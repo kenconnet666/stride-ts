@@ -58,8 +58,8 @@ export class EditText extends Control {
   inputType: EditTextInputType = 'none';
   doNotSnapText = false;
   synchronousCharacterGeneration = false;
-  /** 上次量的时候字体下载完了几块（同 TextBlock）。 */
-  #measuredBlocks = -1;
+  /** 上次量的时候字体的排版版本（同 TextBlock）。 */
+  #measuredVersion = -1;
 
   constructor() {
     super();
@@ -298,7 +298,7 @@ export class EditText extends Control {
   protected override measureOverride(): Vec2 {
     let desired: Vec2 = [0, 0];
     const font = this.#font;
-    this.#measuredBlocks = font?.loadedBlocks ?? -1;
+    this.#measuredVersion = font?.layoutVersion ?? -1;
     if (font) {
       let lineSpacing = font.totalLineSpacing(this.actualTextSize);
       if (font.kind === 'sdf') lineSpacing *= this.actualTextSize / font.size;
@@ -311,7 +311,7 @@ export class EditText extends Control {
   protected override onUpdate(elapsedSeconds: number): void {
     this.#caretTime += elapsedSeconds;
     const font = this.#font;
-    if (font && font.loadedBlocks !== this.#measuredBlocks) this.invalidateMeasure();
+    if (font && font.layoutVersion !== this.#measuredVersion) this.invalidateMeasure();
   }
 
   protected override arrangeOverride(finalSize: Vec2): Vec2 {

@@ -938,8 +938,8 @@ export interface UIElementFile {
 
 /**
  * UI 元素的属性值：标量原样，枚举是首字母小写的名字（'center'、'collapsed'）；颜色是 sRGB 的 [r, g, b, a]（0 到 1）；
- * Thickness（Margin、Padding）是 [左, 上, 右, 下]；向量是数组，Stride 里的 NaN（没设）是 null；Grid 的行列定义是对象的数组；
- * 图片是 UISpriteValue；字体是 { $asset, kind: 'font' }。
+ * Thickness（Margin、Padding）是 [左, 上, 右, 下]；颜色、Thickness 里的 null 是文件里没写的成员（保持元素类型的默认值）；
+ * 向量是数组，Stride 里的 NaN（没设）是 null；Grid 的行列定义是对象的数组；图片是 UISpriteValue；字体是 { $asset, kind: 'font' }。
  */
 export type UIValue =
   | null

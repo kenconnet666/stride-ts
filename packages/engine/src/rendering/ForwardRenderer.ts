@@ -209,7 +209,7 @@ export class ForwardRenderer {
       renderSystem.prepare(context);
     }
 
-    const encoder = graphicsDevice.device.createCommandEncoder({ label: 'ForwardRenderer' });
+    const encoder = graphicsDevice.frameEncoder;
     this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews);
     // 渲染目标贴图：画完原样拷进贴图
     const copy = this.#textureCopy;
@@ -226,8 +226,6 @@ export class ForwardRenderer {
     const { r, g, b, a } = this.clearColor;
     this.#drawView(context, encoder, this.hasCamera ? this.#mainView : undefined, targets, [r, g, b, a], this.drawTransparent, 'ForwardRenderer');
     this.postEffects.draw(encoder, targets.color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
-    graphicsDevice.profiler.resolve(encoder);
-    graphicsDevice.queue.submit([encoder.finish()]);
   }
 
   destroy(): void {

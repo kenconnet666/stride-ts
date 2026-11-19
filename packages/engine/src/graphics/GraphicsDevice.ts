@@ -25,6 +25,9 @@ export class GraphicsDevice {
   /** 渲染通道的 GPU 耗时（开发时测量，默认关；设备不支持 timestamp-query 时打开也不记录）。 */
   readonly profiler: GpuProfiler;
   private readonly context: GPUCanvasContext;
+  #frameEncoder: GPUCommandEncoder | undefined;
+  #viewTexture: GPUTexture | undefined;
+  #view: GPUTextureView | undefined;
 
   static async create(canvas: HTMLCanvasElement): Promise<GraphicsDevice> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
@@ -78,9 +81,31 @@ export class GraphicsDevice {
     return this.context.getCurrentTexture();
   }
 
-  /** 这一帧后备缓冲的 sRGB 视图（backBufferViewFormat），渲染目标用它。 */
+  /** 这一帧后备缓冲的 sRGB 视图（backBufferViewFormat），渲染目标用它；同一帧里只建一次。 */
   currentBackBufferView(): GPUTextureView {
-    return this.context.getCurrentTexture().createView({ format: this.backBufferViewFormat });
+    const texture = this.context.getCurrentTexture();
+    if (texture !== this.#viewTexture) {
+      this.#viewTexture = texture;
+      this.#view = texture.createView({ format: this.backBufferViewFormat });
+    }
+    return this.#view!;
+  }
+
+  /**
+   * 这一帧的命令编码器：场景、UI、调试文字都录进它，帧末 Game 一次提交（每次提交都有固定开销）。用 queue.writeBuffer 写的数据
+   * 在提交之前就写好了，所以同一个缓冲在一帧里只能写一份（要写几份的用几个缓冲）。
+   */
+  get frameEncoder(): GPUCommandEncoder {
+    return (this.#frameEncoder ??= this.device.createCommandEncoder({ label: 'frame' }));
+  }
+
+  /** @internal 帧末：GPU 计时的查询解析进来，提交这一帧的命令。 */
+  submitFrame(): void {
+    const encoder = this.#frameEncoder;
+    if (!encoder) return;
+    this.#frameEncoder = undefined;
+    this.profiler.resolve(encoder);
+    this.queue.submit([encoder.finish()]);
   }
 
   destroy(): void {

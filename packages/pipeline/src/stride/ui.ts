@@ -177,8 +177,10 @@ export class UIImporter {
       this.#context.warnings.push(`${where}: ${value.$type} is not supported; ignored`);
       return undefined;
     }
-    if (THICKNESS_PROPS.has(key)) return ['Left', 'Top', 'Right', 'Bottom'].map((side) => asNumber(value[side], 0));
-    if (key.endsWith('Color')) return ['R', 'G', 'B', 'A'].map((channel) => asNumber(value[channel], 0) / 255);
+    // Thickness、颜色没写的成员是 null：Stride 反序列化时只覆盖写了的成员，没写的保持元素类型的默认值（Button 的
+    // `Padding: {Left: 45.0, Top: 20.0, Bottom: 25.0}` 右边还是默认的 10）
+    if (THICKNESS_PROPS.has(key)) return ['Left', 'Top', 'Right', 'Bottom'].map((side) => (typeof value[side] === 'number' ? value[side] : null));
+    if (key.endsWith('Color')) return ['R', 'G', 'B', 'A'].map((channel) => (typeof value[channel] === 'number' ? value[channel] / 255 : null));
     if (key === 'RowDefinitions' || key === 'ColumnDefinitions') return Object.values(value).map((strip) => stripDefinition(asObject(strip) ?? {}));
     const keys = Object.keys(value).join(',');
     // Vector2、Vector3（Canvas 的位置和大小）：只要 X、Y，NaN（没设）是 null

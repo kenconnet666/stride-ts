@@ -34,8 +34,7 @@ export class DebugTextRenderer {
     const device = game.graphicsDevice;
     const { width, height } = device.canvas;
     const batch = (this.#batch ??= new SpriteBatch(device.device, game.renderSystem.resources));
-    const encoder = device.device.createCommandEncoder({ label: 'DebugText' });
-    const pass = encoder.beginRenderPass({ label: 'DebugText', colorAttachments: [{ view: device.currentBackBufferView(), loadOp: 'load', storeOp: 'store' }] });
+    const pass = device.frameEncoder.beginRenderPass({ label: 'DebugText', colorAttachments: [{ view: device.currentBackBufferView(), loadOp: 'load', storeOp: 'store' }] });
     batch.virtualResolution = undefined;
     batch.begin(pass, width, height, device.backBufferViewFormat);
     const u = 1 / COLUMNS, v = 1 / ROWS;
@@ -57,7 +56,6 @@ export class DebugTextRenderer {
     }
     batch.end();
     pass.end();
-    device.device.queue.submit([encoder.finish()]);
   }
 
   async #load(game: Game): Promise<void> {

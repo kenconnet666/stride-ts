@@ -442,6 +442,15 @@ describe('按 UIFile 建元素', () => {
     expect(root.visualChildren).toEqual([canvas, status]);
   });
 
+  test('Thickness、颜色里没写的成员保持元素类型的默认值（Button 的内边距默认 10、5、10、7）', () => {
+    const button = buildElement({
+      name: 'B', designResolution: [1, 1], root: 0,
+      elements: [{ type: 'Button', props: { padding: [45, 20, null, 25], color: [null, 0.5, null, null] } }],
+    }, 0, resources) as Button;
+    expect(button.padding).toEqual([45, 20, 10, 25]);
+    expect(button.color).toEqual([1, 0.5, 1, 1]);
+  });
+
   test('UI 库每次实例化都新建一个；名字不对、类型不对时报错', () => {
     const library = new UILibrary(file, resources);
     const a = library.instantiateElement('Popup', ModalElement);

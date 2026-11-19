@@ -660,7 +660,7 @@ describe('导入 Stride 场景', () => {
         {
           type: 'ContentDecorator',
           props: {
-            backgroundColor: [0, 0, 0, 0], drawLayerNumber: 2, horizontalAlignment: 'center', margin: [10, 0, 0, 0], padding: [0, 0, 0, 0], name: 'controlStatus',
+            backgroundColor: [0, 0, 0, 0], drawLayerNumber: 2, horizontalAlignment: 'center', margin: [10, null, null, null], padding: [null, null, null, null], name: 'controlStatus',
             backgroundImage: { sheet: 'Game/Sprites/Hero', frame: 2 },
           },
           attached: { gridRow: 1 },

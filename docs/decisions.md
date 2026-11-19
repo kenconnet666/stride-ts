@@ -10,6 +10,10 @@
 - **UI 画在整个画面之后**：Stride 的 UI 在前向渲染器的透明阶段里画（会被泛光、色调映射处理，也会被 3D 物体的深度挡住），我们画在后处理之后、调试文字之前。全屏 UI 本来就清了深度，区别只在后处理：UI 的颜色照原样显示，这是想要的。
 - **UI 的裁剪用剪裁矩形**：Stride 的 ClipToBounds 用模板缓冲，按元素本身的形状（可以转角度）裁；我们用元素在屏幕上的包围盒做剪裁矩形，不用模板缓冲、不打断合批。转了角度的元素裁到包围盒；样例里裁剪的都是 ScrollViewer，不转。
 - **EditText 的文字区域按内边距放**：Stride 把文字区域（元素减去内边距）放在元素中心，左右或上下内边距不一样时文字偏了（GameMenu 的名字输入框上 30、下 40，文字高了 5 像素）；我们放在内边距里面。
+- **UI 输入照 Stride master 的占用**：Stride 4.4.2 没有输入的占用（UI 和脚本都看到同样的输入），master 上加了（InputManager.MaskCapturedInput、InputCaptureMonitor 样例），我们照 master 做：GameMenu 的脚本本来就是 master 版的。按键的屏蔽照 ButtonCaptureTracker，脚本不会看到没有按下的松开、没有松开的按下。
+- **EditText 用浏览器的输入框编辑**：Stride 桌面版自己解释按键（方向键、Home、End、退格），没有复制粘贴和撤销，输入法靠系统的 TextInput。我们在激活的 EditText 后面放一个看不见的 `<input>`（多行时 `<textarea>`），键盘、输入法、选中、复制粘贴、撤销都是浏览器的，行为和网页上的输入框一样；输入框摆在 EditText 的位置，输入法的候选窗在字旁边，读屏软件读得到。Enter、Esc 结束编辑同 Stride（多行时 Shift+Enter 换行，多做的）；编辑时点画布的别处不结束编辑（同 Stride 桌面版，挡掉画布的 mousedown 默认行为）。
+- **滚轮滚动 ScrollViewer**（多做的）：Stride 桌面版的 UI 不处理鼠标滚轮，ScrollViewer 只能拖。鼠标在 ScrollViewer（或它里面的元素）上时滚轮滚动它，一格 50 个虚拟像素；鼠标被 UI 占着，脚本看不到这次滚轮。
+- **OutsideClick 按弹窗的矩形判断**：Stride 拿相对弹窗中心的位置和 [0, 大小] 比，点在弹窗的左半边、上半边也算外面；我们按矩形判断。
 - **调试文字按左上角摆**：Stride 的 FastTextRenderer 每个字以给的位置为中心，整段字向左上偏半个字（4、8 像素）；我们按给的位置当左上角。字体用 Stride 自带的 8x16 位图（嵌在引擎里，5.8 KB），颜色同 Stride（LightGreen 当线性颜色用）。
 - **键名的缩写整个小写**：脚本属性和 UI 属性的键名以前只把第一个字母改小写，`UILibrary` 变成 `uILibrary`；现在开头的缩写整个小写（`uiLibrary`、`imeSelectionColor`），后面的单词不变。已有的样例里只有 GameMenu 有这样的键。
 

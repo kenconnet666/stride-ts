@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InputManager, keyCode } from '../src/index';
+import { InputCapturePriority, InputManager, keyCode } from '../src/index';
 
 describe('按键名', () => {
   it('Stride 的 Keys 名字换成 KeyboardEvent.code，已经是 code 的原样返回', () => {
@@ -55,6 +55,79 @@ describe('指针事件（Stride 的 PointerEvents）', () => {
     pointer(canvas, 'pointermove', 30, 20, 'touch', 7);
     input.update();
     expect(input.pointerEvents.map((e) => [e.eventType, e.deltaPosition[0]])).toEqual([['pressed', 0], ['released', 0], ['moved', 0]]);
+    input.destroy();
+  });
+});
+
+describe('占用（Stride 的 Input Capture）', () => {
+  const setup = () => {
+    const canvas = Object.assign(new EventTarget(), {
+      clientWidth: 200,
+      clientHeight: 100,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 100 }),
+    });
+    const win = new EventTarget();
+    (globalThis as { window?: EventTarget }).window = win;
+    (globalThis as { document?: object }).document = { pointerLockElement: null };
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement);
+    const key = (type: 'keydown' | 'keyup', code: string) => win.dispatchEvent(Object.assign(new Event(type), { code, repeat: false }));
+    const pointer = (type: string, pointerType: string, pointerId: number) =>
+      (type === 'pointerup' ? win : canvas).dispatchEvent(Object.assign(new Event(type), { clientX: 10, clientY: 10, pointerType, pointerId }));
+    return { canvas, input, key, pointer };
+  };
+  const ui = {};
+  const game = {};
+
+  it('键盘被占着时脚本看不到；开始占用时还按着的键给一个松开，结束占用时还按着的键松开之前继续藏着', () => {
+    const { input, key } = setup();
+    key('keydown', 'KeyA');
+    input.update();
+    expect([input.isKeyPressed('A'), input.isKeyDown('A'), input.downKeys]).toEqual([true, true, ['KeyA']]);
+    // 脚本读过这一帧之后被占用：A 给一个松开
+    expect(input.tryCapture('keyboard', ui, InputCapturePriority.focus)).toBe(true);
+    expect([input.isKeyDown('A'), input.isKeyReleased('A'), input.downKeys]).toEqual([false, true, []]);
+    key('keydown', 'KeyB');
+    input.update();
+    expect([input.isKeyPressed('B'), input.isKeyReleased('A')]).toEqual([false, false]);
+    // 优先级不高于现在的占用者时抢不走
+    expect(input.tryCapture('keyboard', game, InputCapturePriority.hover)).toBe(false);
+    input.release('keyboard', ui);
+    // A、B 还按着：继续藏着，松开时也不报
+    expect([input.isKeyDown('A'), input.isKeyDown('B'), input.downKeys]).toEqual([false, false, []]);
+    key('keyup', 'KeyA');
+    input.update();
+    expect([input.isKeyReleased('A'), input.isKeyDown('B')]).toEqual([false, false]);
+    key('keydown', 'KeyA');
+    input.update();
+    expect([input.isKeyPressed('A'), input.isKeyDown('A')]).toEqual([true, true]);
+    input.destroy();
+  });
+
+  it('在 update 里（脚本读之前）占用时，这一帧刚按下的键不补松开', () => {
+    const { input, key } = setup();
+    const stop = input.onResolvingCapture(() => input.tryCapture('keyboard', ui, InputCapturePriority.focus));
+    key('keydown', 'KeyA');
+    input.update();
+    expect([input.isKeyPressed('A'), input.isKeyReleased('A')]).toEqual([false, false]);
+    stop();
+    input.destroy();
+  });
+
+  it('关掉屏蔽后脚本看到全部；鼠标被占着时鼠标的指针事件和滚轮藏起来，触摸的指针按指针占用', () => {
+    const { input, pointer } = setup();
+    input.tryCapture('mouse', ui);
+    pointer('pointerdown', 'mouse', 1);
+    pointer('pointerdown', 'touch', 7);
+    pointer('pointerdown', 'touch', 8);
+    input.capturePointer(8, ui);
+    input.update();
+    expect(input.rawPointerEvents).toHaveLength(3);
+    expect(input.pointerEvents.map((e) => e.pointerId)).toEqual([7]);
+    input.maskCapturedInput = false;
+    expect(input.pointerEvents).toHaveLength(3);
+    input.maskCapturedInput = true;
+    input.releaseAll(ui);
+    expect([input.captureOwner('mouse'), input.pointerEvents.length]).toEqual([null, 3]);
     input.destroy();
   });
 });

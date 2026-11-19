@@ -1,8 +1,10 @@
 /**
  * 按钮（Stride 的 ButtonBase、Button）：按下、没按、指针悬停时各一张图（常是九宫格的框），默认大小跟着内容走
- * （sizeToContent）；关掉时大小按图片算。点击、按下的状态由 UI 输入（step 4）设。
+ * （sizeToContent）；关掉时大小按图片算。指针按下变成按下状态，在按钮上松开时发 Click（clickMode 是 press 时按下就发），
+ * 指针移出去就不算按下了。
  */
 import type { SpriteFrame } from '../../rendering/SpriteSheet';
+import { registerClassHandler, RoutedEvent, RoutedEventArgs, type TouchEventArgs } from '../events';
 import type { Color, Thickness, Vec2 } from '../UIElement';
 import type { SpriteProvider } from '../sprites';
 import { ContentControl } from './ContentControl';
@@ -15,6 +17,8 @@ const WHITE: Color = [1, 1, 1, 1];
 const BUTTON_PADDING: Thickness = [10, 5, 10, 7];
 
 export abstract class ButtonBase extends ContentControl {
+  /** 点击（Stride 的 Click，冒泡）：`button.addHandler(ButtonBase.clickEvent, () => ...)`。 */
+  static readonly clickEvent = new RoutedEvent<RoutedEventArgs>('Click', 'bubble');
   clickMode: ClickMode = 'release';
   #isPressed = false;
 
@@ -25,7 +29,34 @@ export abstract class ButtonBase extends ContentControl {
 
   get isPressed(): boolean { return this.#isPressed; }
   protected set isPressed(value: boolean) { this.#isPressed = value; }
+
+  /** 登记点击的处理函数（addHandler(ButtonBase.clickEvent, ...) 的简写）。 */
+  onClick(handler: (sender: ButtonBase) => void): void {
+    this.addHandler(ButtonBase.clickEvent, (sender) => handler(sender as ButtonBase));
+  }
+
+  protected override onTouchDown(args: TouchEventArgs): void {
+    super.onTouchDown(args);
+    this.isPressed = true;
+    if (this.clickMode === 'press') this.raiseEvent(new RoutedEventArgs(ButtonBase.clickEvent));
+  }
+
+  protected override onTouchUp(args: TouchEventArgs): void {
+    super.onTouchUp(args);
+    if (this.isPressed && this.clickMode === 'release') this.raiseEvent(new RoutedEventArgs(ButtonBase.clickEvent));
+    this.isPressed = false;
+  }
+
+  protected override onTouchLeave(args: TouchEventArgs): void {
+    super.onTouchLeave(args);
+    this.isPressed = false;
+  }
+
+  /** 点击时按钮自己的反应（Stride 的 OnClick，比如 ToggleButton 换状态）。 */
+  protected handleClick(_args: RoutedEventArgs): void {}
 }
+
+registerClassHandler(ButtonBase, ButtonBase.clickEvent, (element, args) => (element as unknown as { handleClick(args: RoutedEventArgs): void }).handleClick(args));
 
 export class Button extends ButtonBase {
   #pressedImage: SpriteProvider | null = null;
@@ -36,8 +67,6 @@ export class Button extends ButtonBase {
   #sizeToContent = true;
   /** 乘在按钮图片上的颜色（sRGB）。 */
   color: Color = WHITE;
-  /** 指针在按钮上（UI 输入设）。 */
-  isMouseOver = false;
 
   constructor() {
     super();
@@ -72,7 +101,7 @@ export class Button extends ButtonBase {
 
   /** 现在该画的图：按下、悬停（有悬停图时）、没按。 */
   get buttonImage(): SpriteFrame | undefined {
-    const provider = this.isPressed ? this.#pressedImage : this.isMouseOver && this.#mouseOverImage ? this.#mouseOverImage : this.#notPressedImage;
+    const provider = this.isPressed ? this.#pressedImage : this.mouseOverState === 'element' && this.#mouseOverImage ? this.#mouseOverImage : this.#notPressedImage;
     return provider?.getSprite();
   }
 
@@ -82,6 +111,10 @@ export class Button extends ButtonBase {
 
   protected override arrangeOverride(finalSize: Vec2): Vec2 {
     return this.#sizeToContent ? super.arrangeOverride(finalSize) : imageSize(this.buttonImage, finalSize, this.#imageStretchType, this.#imageStretchDirection, false);
+  }
+
+  protected override onMouseOverStateChanged(): void {
+    this.#imageChanged();
   }
 
   #imageChanged(): void {

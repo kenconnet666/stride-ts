@@ -136,6 +136,9 @@ export class Game {
 
   private lastFrameTime: number | undefined;
   private pendingSteps = 0;
+  /** 正在跑一帧（exit 推迟到帧末）。 */
+  private inFrame = false;
+  private exitRequested = false;
 
   /** 标了 inherit() 的属性的作用域默认值：之后创建的组件和脚本都取这里的值，见 engine/defaults.ts。 */
   get defaults(): ScopedDefaults {
@@ -171,6 +174,7 @@ export class Game {
       this.content.animationNative ??= this.native;
       this.graphicsDevice = await GraphicsDevice.create(canvas);
       this.input = new InputManager(canvas);
+      this.ui.attach(this);
       if (this.native.hasFeature('texture')) this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
       this.content.meshoptDecoder ??= (requests) => this.native.decodeMeshoptBatch(requests);
       this.content.imageDecoder ??= browserImageDecoder();
@@ -194,10 +198,15 @@ export class Game {
 
   /**
    * 停止游戏并释放资源。失败之后也可以调用（原来只在 running 时生效，失败的游戏会一直占着原生线程和 GPU 设备）；
-   * 初始化中途失败时，还没创建的部分跳过。
+   * 初始化中途失败时，还没创建的部分跳过。在一帧里面调用（脚本、UI 的点击处理函数）时，这一帧跑完再停（同 Stride 的
+   * Game.Exit），免得这一帧剩下的部分用到已经释放的东西。
    */
   exit(): void {
     if (this.status === 'exited') return;
+    if (this.inFrame) {
+      this.exitRequested = true;
+      return;
+    }
     this.status = 'exited';
     this.entities.clear();
     const root = this.rootRenderer as SceneRenderer | undefined;
@@ -347,6 +356,7 @@ export class Game {
     const interval = this.lastFrameTime === undefined ? 0 : now - this.lastFrameTime;
     this.lastFrameTime = now;
     const start = performance.now();
+    this.inFrame = true;
     try {
       const updating = !this.paused || this.pendingSteps > 0;
       if (updating) {
@@ -371,6 +381,12 @@ export class Game {
     } catch (error) {
       this.fail(error);
       throw error;
+    } finally {
+      this.inFrame = false;
+    }
+    if (this.exitRequested) {
+      this.exit();
+      return;
     }
     requestAnimationFrame(this.frame);
   };

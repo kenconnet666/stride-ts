@@ -294,7 +294,7 @@ export class ContentManager {
   loadSpriteSheet(path: string): Promise<SpriteSheet> {
     return this.#once(path + EXTENSIONS.spriteSheet, async (url) => {
       const file = this.#json<SpriteSheetFile>(await this.#read(url));
-      const sprites = await Promise.all(file.sprites.map(async ({ texture, ...sprite }) => ({ ...sprite, texture: await this.#loadTextureRef(texture, true) })));
+      const sprites = await Promise.all(file.sprites.map(async ({ texture, region, ...sprite }) => ({ ...sprite, region: [...region] as [number, number, number, number], texture: await this.#loadTextureRef(texture, true) })));
       return new SpriteSheet(path, sprites);
     });
   }

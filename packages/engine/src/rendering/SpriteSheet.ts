@@ -14,8 +14,8 @@ const sheets = new ResourceTable<SpriteSheet>();
 export interface SpriteFrame {
   readonly name: string;
   readonly texture: Texture;
-  /** 贴图上的区域，像素：x、y（左上角）、宽、高。 */
-  readonly region: readonly [number, number, number, number];
+  /** 贴图上的区域，像素：x、y（左上角）、宽、高。可以改（GameMenu 按比例缩短血条的精灵），用到它的 UI 元素下一帧重新量。 */
+  region: [number, number, number, number];
   /** 区域的几个像素是 1 个单位。 */
   readonly pixelsPerUnit: number;
   /** 精灵的原点（实体的位置）在区域里的像素位置：centerFromMiddle 时从区域中心算，否则从左上角算。 */
@@ -41,6 +41,11 @@ export class SpriteSheet {
   frame(frame: number): SpriteFrame | undefined {
     const count = this.sprites.length;
     return count > 0 ? this.sprites[((frame % count) + count) % count] : undefined;
+  }
+
+  /** 按名字找精灵（Stride 的 SpriteSheet[name]）。 */
+  find(name: string): SpriteFrame | undefined {
+    return this.sprites.find((sprite) => sprite.name === name);
   }
 
   /** 按名字找精灵的下标（Stride 的 FindImageIndex），找不到是 -1。 */

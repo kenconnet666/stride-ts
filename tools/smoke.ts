@@ -20,7 +20,8 @@ export interface Smoke {
 export function startSmoke(defaultHub: string): Smoke {
   const hubIndex = process.argv.indexOf('--hub');
   const hub = hubIndex >= 0 ? process.argv[hubIndex + 1]! : defaultHub;
-  const run = (...args: string[]) => execFileSync(process.execPath, [cli, ...args, '--hub', hub], { encoding: 'utf8' });
+  // 截图的 PNG 可能有几 MB（默认的输出上限是 1 MB）
+  const run = (...args: string[]) => execFileSync(process.execPath, [cli, ...args, '--hub', hub], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   // logs --json 一行一条，seq 递增
   const lastSeq = (): number => {
     const lines = run('logs', '--json').trim().split('\n').filter(Boolean);

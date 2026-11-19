@@ -6,7 +6,12 @@
  * （Stride 的 WorldMatrix 也以元素中心为原点，只是整个 UI 的原点在虚拟分辨率的中心）。
  *
  * 和 Stride 一样，尺寸属性里 NaN 表示没设（按内容或对齐决定），最大值默认是无穷大。
+ *
+ * 指针事件（events.ts 的路由事件）：按下、移动、松开先走隧道的 Preview 版本再走冒泡的；元素自己的反应写在 onTouchDown 这些
+ * 方法里（Stride 的类处理函数），只在元素和它的父元素都启用时调用。
  */
+import type { UISystem } from './UISystem';
+import { addHandler, raiseEvent, registerClassHandler, removeHandler, RoutedEvent, type RoutedEventArgs, type RoutedEventHandler, type TouchEventArgs } from './events';
 export type Vec2 = [number, number];
 /** 左、上、右、下。 */
 export type Thickness = readonly [left: number, top: number, right: number, bottom: number];
@@ -19,6 +24,8 @@ export type Visibility = 'visible' | 'hidden' | 'collapsed';
 export type Matrix2D = readonly [number, number, number, number, number, number];
 
 export const IDENTITY: Matrix2D = [1, 0, 0, 1, 0, 0];
+/** 指针在不在元素上（Stride 的 MouseOverState）：在元素本身上、在某个子元素上、不在。 */
+export type MouseOverState = 'none' | 'element' | 'child';
 export const TRANSPARENT: Color = [0, 0, 0, 0];
 const NO_THICKNESS: Thickness = [0, 0, 0, 0];
 
@@ -115,6 +122,10 @@ export abstract class UIElement {
   maxChildrenDepthBias = 0;
   #isHierarchyEnabled = true;
 
+  /** 有指针按在它（或它的子元素）上。 */
+  isTouched = false;
+  #mouseOverState: MouseOverState = 'none';
+
   isMeasureValid = false;
   isArrangeValid = false;
   #forceNextMeasure = true;
@@ -123,6 +134,7 @@ export abstract class UIElement {
   #previousArrangeSize: Vec2 = [-1, -1];
   #previousParentCollapsed = false;
   #layoutingContext: LayoutingContext | null = null;
+  #uiSystem: UISystem | null = null;
 
   get visualChildren(): readonly UIElement[] {
     return this.visualChildrenList;
@@ -244,6 +256,16 @@ export abstract class UIElement {
     if (!parent) return;
     parent.visualChildrenList.push(child);
     if (parent.#layoutingContext) child.layoutingContext = parent.#layoutingContext;
+  }
+
+  /** 显示这棵树的 UI 系统（Stride 的 UIElementServices）：根元素上设，子元素沿父元素找。 */
+  get uiSystem(): UISystem | null {
+    return this.#uiSystem ?? this.visualParent?.uiSystem ?? null;
+  }
+
+  /** @internal UISystem 画根元素时设。 */
+  set uiSystem(value: UISystem | null) {
+    this.#uiSystem = value;
   }
 
   // ---- 布局 ----
@@ -432,6 +454,112 @@ export abstract class UIElement {
     return offsets;
   }
 
+  /** 鼠标在它上面（UI 输入每帧更新）。 */
+  get mouseOverState(): MouseOverState { return this.#mouseOverState; }
+  set mouseOverState(value: MouseOverState) {
+    if (value === this.#mouseOverState) return;
+    this.#mouseOverState = value;
+    this.onMouseOverStateChanged();
+  }
+
+  /** mouseOverState 变了以后（按钮换悬停的图）。 */
+  protected onMouseOverStateChanged(): void {}
+
+  // ---- 事件 ----
+  static readonly previewTouchDownEvent = new RoutedEvent<TouchEventArgs>('PreviewTouchDown', 'tunnel');
+  static readonly previewTouchMoveEvent = new RoutedEvent<TouchEventArgs>('PreviewTouchMove', 'tunnel');
+  static readonly previewTouchUpEvent = new RoutedEvent<TouchEventArgs>('PreviewTouchUp', 'tunnel');
+  static readonly touchDownEvent = new RoutedEvent<TouchEventArgs>('TouchDown', 'bubble');
+  static readonly touchEnterEvent = new RoutedEvent<TouchEventArgs>('TouchEnter', 'direct');
+  static readonly touchLeaveEvent = new RoutedEvent<TouchEventArgs>('TouchLeave', 'direct');
+  static readonly touchMoveEvent = new RoutedEvent<TouchEventArgs>('TouchMove', 'bubble');
+  static readonly touchUpEvent = new RoutedEvent<TouchEventArgs>('TouchUp', 'bubble');
+
+  /** 登记处理函数（Stride 的 AddHandler）；handledEventsToo 时处理过的事件也收到。 */
+  addHandler<A extends RoutedEventArgs>(event: RoutedEvent<A>, handler: RoutedEventHandler<A>, handledEventsToo = false): void {
+    addHandler(this, event, handler, handledEventsToo);
+  }
+
+  removeHandler<A extends RoutedEventArgs>(event: RoutedEvent<A>, handler: RoutedEventHandler<A>): void {
+    removeHandler(this, event, handler);
+  }
+
+  /** 从这个元素发出事件（Stride 的 RaiseEvent）。 */
+  raiseEvent(args: RoutedEventArgs): void {
+    raiseEvent(this, args);
+  }
+
+  /** @internal UI 输入：按下（先 PreviewTouchDown 再 TouchDown）。 */
+  raiseTouchDown(args: TouchEventArgs): void {
+    this.#raise(args, UIElement.previewTouchDownEvent, UIElement.touchDownEvent);
+  }
+
+  /** @internal */
+  raiseTouchMove(args: TouchEventArgs): void {
+    this.#raise(args, UIElement.previewTouchMoveEvent, UIElement.touchMoveEvent);
+  }
+
+  /** @internal */
+  raiseTouchUp(args: TouchEventArgs): void {
+    this.#raise(args, UIElement.previewTouchUpEvent, UIElement.touchUpEvent);
+  }
+
+  /** @internal */
+  raiseTouchEnter(args: TouchEventArgs): void {
+    this.#raise(args, UIElement.touchEnterEvent);
+  }
+
+  /** @internal */
+  raiseTouchLeave(args: TouchEventArgs): void {
+    this.#raise(args, UIElement.touchLeaveEvent);
+  }
+
+  #raise(args: TouchEventArgs, ...events: RoutedEvent<TouchEventArgs>[]): void {
+    for (const event of events) {
+      args.routedEvent = event;
+      raiseEvent(this, args);
+    }
+  }
+
+  protected onPreviewTouchDown(_args: TouchEventArgs): void {
+    this.isTouched = true;
+  }
+
+  protected onPreviewTouchMove(_args: TouchEventArgs): void {}
+
+  protected onPreviewTouchUp(_args: TouchEventArgs): void {
+    this.isTouched = false;
+  }
+
+  protected onTouchDown(_args: TouchEventArgs): void {}
+
+  protected onTouchMove(_args: TouchEventArgs): void {}
+
+  protected onTouchUp(_args: TouchEventArgs): void {}
+
+  protected onTouchEnter(_args: TouchEventArgs): void {
+    this.isTouched = true;
+  }
+
+  protected onTouchLeave(_args: TouchEventArgs): void {
+    this.isTouched = false;
+  }
+
+  /** 虚拟坐标里的点在不在元素的矩形里（Stride 的 Intersects；ModalElement 改成整个 UI）。 */
+  intersects(point: readonly [number, number]): boolean {
+    const [a, b, c, d, e, f] = this.worldMatrix;
+    const determinant = a * d - b * c;
+    if (determinant === 0) return false;
+    const x = point[0] - e, y = point[1] - f;
+    const localX = (d * x - c * y) / determinant, localY = (a * y - b * x) / determinant;
+    return Math.abs(localX) <= this.renderSize[0] / 2 && Math.abs(localY) <= this.renderSize[1] / 2;
+  }
+
+  /** 世界矩阵的原点（元素中心）在虚拟坐标里的位置。 */
+  get worldPosition(): readonly [number, number] {
+    return [this.worldMatrix[4], this.worldMatrix[5]];
+  }
+
   // ---- 每帧 ----
   /** @internal 每帧在布局之前（Stride 的 Update）：子类做按时间的变化（滚动的惯性、光标闪烁、图片换了重新量）。 */
   update(elapsedSeconds: number): void {
@@ -478,4 +606,22 @@ function sameSize(a: readonly [number, number], b: readonly [number, number]): b
 function sameContext(a: LayoutingContext, b: LayoutingContext): boolean {
   return a.realResolution[0] === b.realResolution[0] && a.realResolution[1] === b.realResolution[1]
     && a.virtualResolution[0] === b.virtualResolution[0] && a.virtualResolution[1] === b.virtualResolution[1];
+}
+
+// 元素自己的反应（Stride 的类处理函数）：只在元素和它的父元素都启用时调用
+type TouchHandlers = { [K in 'onPreviewTouchDown' | 'onPreviewTouchMove' | 'onPreviewTouchUp' | 'onTouchDown' | 'onTouchMove' | 'onTouchUp' | 'onTouchEnter' | 'onTouchLeave']: (args: TouchEventArgs) => void };
+const CLASS_HANDLERS: readonly [RoutedEvent<TouchEventArgs>, keyof TouchHandlers][] = [
+  [UIElement.previewTouchDownEvent, 'onPreviewTouchDown'],
+  [UIElement.previewTouchMoveEvent, 'onPreviewTouchMove'],
+  [UIElement.previewTouchUpEvent, 'onPreviewTouchUp'],
+  [UIElement.touchDownEvent, 'onTouchDown'],
+  [UIElement.touchMoveEvent, 'onTouchMove'],
+  [UIElement.touchUpEvent, 'onTouchUp'],
+  [UIElement.touchEnterEvent, 'onTouchEnter'],
+  [UIElement.touchLeaveEvent, 'onTouchLeave'],
+];
+for (const [event, method] of CLASS_HANDLERS) {
+  registerClassHandler(UIElement, event, (element, args) => {
+    if (element.isHierarchyEnabled) (element as unknown as TouchHandlers)[method](args);
+  });
 }

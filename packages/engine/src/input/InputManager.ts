@@ -9,8 +9,11 @@
  * - 手柄用 Gamepad API 的标准布局，摇杆的 y 向上为正（同 Stride）。
  * - 指针事件（Stride 的 PointerEvents）：鼠标、触摸、笔都走 Pointer Events，这一帧在画布上发生的按下、移动、松开按顺序
  *   列出，位置和移动量同样按画布尺寸归一化。鼠标不按键移动也有 moved（同 Stride 桌面版）。
+ * - 占用（capture.ts）：UI 悬停时占着鼠标、输入框有焦点时占着键盘，maskCapturedInput 开着时脚本看不到被占的输入；
+ *   UI 自己读不受占用影响的 raw* 版本。
  */
 
+import { ButtonTracker, CaptureState, InputCapturePriority } from './capture';
 import { keyCode } from './keys';
 
 /** 鼠标按键。 */
@@ -58,6 +61,8 @@ const MOUSE_BUTTONS: readonly MouseButton[] = ['left', 'middle', 'right'];
 export interface PointerEvent {
   /** 浏览器的 pointerId：鼠标一个，每根手指各一个。 */
   readonly pointerId: number;
+  /** 来自鼠标还是触摸、笔（触摸和笔按指针单独占用，鼠标跟着鼠标设备）。 */
+  readonly device: 'mouse' | 'touch' | 'pen';
   readonly eventType: 'pressed' | 'moved' | 'released' | 'canceled';
   /** 画布内归一化到 0..1。 */
   readonly position: readonly [number, number];
@@ -69,25 +74,32 @@ export interface PointerEvent {
 
 const POINTER_TYPES = { pointerdown: 'pressed', pointermove: 'moved', pointerup: 'released', pointercancel: 'canceled' } as const;
 
+/** 能被占用的设备。 */
+export type InputDevice = 'mouse' | 'keyboard';
+
 export class InputManager {
   /** 这一帧鼠标的位置（画布内归一化到 0..1）。 */
   readonly mousePosition: [number, number] = [0, 0];
   /** 这一帧鼠标的移动量（按画布尺寸归一化；锁定时也有）。 */
   readonly mouseDelta: [number, number] = [0, 0];
-  /** 这一帧鼠标滚轮转了多少格，向前（远离用户）是正（Stride 的 MouseWheelDelta）。 */
-  mouseWheelDelta = 0;
   /** 连着的手柄，每帧开头刷新。 */
   readonly gamePads: GamePadState[] = [];
-  /** 这一帧的指针事件，按发生的顺序。 */
-  pointerEvents: readonly PointerEvent[] = [];
+  /** 这一帧所有的指针事件（不管占用），按发生的顺序；UI 用它。 */
+  rawPointerEvents: readonly PointerEvent[] = [];
+  /** 这一帧鼠标滚轮转的格数，不管占用。 */
+  rawMouseWheelDelta = 0;
 
   readonly #canvas: HTMLCanvasElement;
-  readonly #down = new Set<string>();
-  #pressed = new Set<string>();
-  #released = new Set<string>();
+  readonly #capture: Readonly<Record<InputDevice, CaptureState>> = { mouse: new CaptureState(), keyboard: new CaptureState() };
+  readonly #keyboard = new ButtonTracker(this.#capture.keyboard);
+  readonly #mouseButtons = new ButtonTracker(this.#capture.mouse);
+  /** 触摸、笔的指针被谁占着（鼠标的指针跟着鼠标设备）。 */
+  readonly #pointerOwners = new Map<number, object>();
+  #maskCapturedInput = true;
+  /** 正在处理占用（update 里、脚本读这一帧之前）。 */
+  #resolving = false;
+  readonly #resolvers = new Set<() => void>();
   // 事件到达时先记在这里，update() 时交给这一帧
-  #pendingPressed = new Set<string>();
-  #pendingReleased = new Set<string>();
   #pendingDelta: [number, number] = [0, 0];
   #pendingPosition: [number, number] = [0, 0];
   #pendingWheel = 0;
@@ -101,11 +113,11 @@ export class InputManager {
     const options = { signal: this.#abort.signal };
     window.addEventListener('keydown', (event) => {
       if (event.repeat) return;
-      this.#press(event.code);
+      this.#keyboard.press(event.code);
     }, options);
-    window.addEventListener('keyup', (event) => this.#release(event.code), options);
-    canvas.addEventListener('mousedown', (event) => this.#press(mouseKey(event.button)), options);
-    window.addEventListener('mouseup', (event) => this.#release(mouseKey(event.button)), options);
+    window.addEventListener('keyup', (event) => this.#keyboard.release(event.code), options);
+    canvas.addEventListener('mousedown', (event) => this.#mouseButtons.press(mouseKey(event.button)), options);
+    window.addEventListener('mouseup', (event) => this.#mouseButtons.release(mouseKey(event.button)), options);
     window.addEventListener('mousemove', (event) => {
       const width = canvas.clientWidth || 1, height = canvas.clientHeight || 1;
       this.#pendingDelta[0] += event.movementX / width;
@@ -128,51 +140,147 @@ export class InputManager {
     }, { ...options, passive: false });
     // 失去焦点时按着的键收不到 keyup：全部当作松开
     window.addEventListener('blur', () => {
-      for (const key of this.#down) this.#pendingReleased.add(key);
-      this.#down.clear();
+      this.#keyboard.releaseAll();
+      this.#mouseButtons.releaseAll();
     }, options);
   }
 
-  /** @internal 每帧开头由 Game 调用。 */
+  /** @internal 每帧开头由 Game 调用：换上这一帧的输入，再让占用方（UI）按这一帧的输入决定占用（Stride 的 ResolvingCapture）。 */
   update(): void {
-    this.#pressed = this.#pendingPressed;
-    this.#released = this.#pendingReleased;
-    this.#pendingPressed = new Set();
-    this.#pendingReleased = new Set();
+    this.#keyboard.update();
+    this.#mouseButtons.update();
     [this.mouseDelta[0], this.mouseDelta[1]] = this.#pendingDelta;
     this.#pendingDelta = [0, 0];
     [this.mousePosition[0], this.mousePosition[1]] = this.#pendingPosition;
-    this.mouseWheelDelta = this.#pendingWheel;
+    this.rawMouseWheelDelta = this.#pendingWheel;
     this.#pendingWheel = 0;
-    this.pointerEvents = this.#pendingPointerEvents;
+    this.rawPointerEvents = this.#pendingPointerEvents;
     this.#pendingPointerEvents = [];
     this.#pollGamePads();
+    this.#resolving = true;
+    try {
+      for (const resolve of this.#resolvers) resolve();
+    } finally {
+      this.#resolving = false;
+    }
+  }
+
+  /** @internal 每帧 update 时、脚本读输入之前调用 resolve（UI 在这里按指针决定占用）；返回取消登记的函数。 */
+  onResolvingCapture(resolve: () => void): () => void {
+    this.#resolvers.add(resolve);
+    return () => this.#resolvers.delete(resolve);
+  }
+
+  /** 被占用的输入对脚本和系统藏起来（Stride 的 MaskCapturedInput，默认开）；关掉后脚本看到全部输入。 */
+  get maskCapturedInput(): boolean {
+    return this.#maskCapturedInput;
+  }
+
+  set maskCapturedInput(value: boolean) {
+    if (value === this.#maskCapturedInput) return;
+    this.#maskCapturedInput = value;
+    for (const device of ['mouse', 'keyboard'] as const) this.#updateMask(device);
+  }
+
+  /** 占着设备的对象，没有时是 null。 */
+  captureOwner(device: InputDevice): object | null {
+    return this.#capture[device].owner;
+  }
+
+  /** 占用设备；已经被别人以不低的优先级占着时返回 false。 */
+  tryCapture(device: InputDevice, owner: object, priority: number = InputCapturePriority.hover): boolean {
+    const state = this.#capture[device];
+    if (state.owner && state.owner !== owner && priority <= state.priority) return false;
+    state.owner = owner;
+    state.priority = priority;
+    this.#updateMask(device);
+    return true;
+  }
+
+  /** owner 占着设备时放开。 */
+  release(device: InputDevice, owner: object): void {
+    const state = this.#capture[device];
+    if (state.owner !== owner) return;
+    state.owner = null;
+    state.priority = 0;
+    this.#updateMask(device);
+  }
+
+  /** 占用一个触摸、笔的指针（UI 在指针按下时占着它，松开后放开）。 */
+  capturePointer(pointerId: number, owner: object): void {
+    this.#pointerOwners.set(pointerId, owner);
+  }
+
+  releasePointer(pointerId: number, owner: object): void {
+    if (this.#pointerOwners.get(pointerId) === owner) this.#pointerOwners.delete(pointerId);
+  }
+
+  /** 放开 owner 占着的所有设备和指针。 */
+  releaseAll(owner: object): void {
+    this.release('mouse', owner);
+    this.release('keyboard', owner);
+    for (const [pointerId, pointerOwner] of this.#pointerOwners) if (pointerOwner === owner) this.#pointerOwners.delete(pointerId);
+  }
+
+  #updateMask(device: InputDevice): void {
+    const state = this.#capture[device];
+    const masked = this.#maskCapturedInput && state.owner !== null;
+    if (masked === state.masked) return;
+    state.masked = masked;
+    (device === 'keyboard' ? this.#keyboard : this.#mouseButtons).maskChanged(masked, this.#resolving);
+  }
+
+  /** 这一帧给脚本看的指针事件：被占用的鼠标、指针的事件藏起来。 */
+  get pointerEvents(): readonly PointerEvent[] {
+    if (!this.#maskCapturedInput) return this.rawPointerEvents;
+    const mouseMasked = this.#capture.mouse.masked;
+    return this.rawPointerEvents.filter((event) => (event.device === 'mouse' ? !mouseMasked : !this.#pointerOwners.has(event.pointerId)));
+  }
+
+  /** 这一帧鼠标滚轮转了多少格，向前（远离用户）是正（Stride 的 MouseWheelDelta）；鼠标被占用时是 0。 */
+  get mouseWheelDelta(): number {
+    return this.#capture.mouse.masked ? 0 : this.rawMouseWheelDelta;
+  }
+
+  /** 按着的键（KeyboardEvent.code，Stride 的 DownKeys）。 */
+  get downKeys(): readonly string[] {
+    return this.#keyboard.downKeys();
   }
 
   isKeyDown(key: string): boolean {
-    return this.#down.has(keyCode(key));
+    return this.#keyboard.isDown(keyCode(key));
   }
 
   /** 这一帧刚按下。 */
   isKeyPressed(key: string): boolean {
-    return this.#pressed.has(keyCode(key));
+    return this.#keyboard.isPressed(keyCode(key));
   }
 
   /** 这一帧刚松开。 */
   isKeyReleased(key: string): boolean {
-    return this.#released.has(keyCode(key));
+    return this.#keyboard.isReleased(keyCode(key));
+  }
+
+  /** 不管占用：键盘上这个键按着（UI 自己用）。 */
+  isRawKeyDown(key: string): boolean {
+    return this.#keyboard.down.has(keyCode(key));
   }
 
   isMouseButtonDown(button: MouseButton): boolean {
-    return this.#down.has(mouseKey(MOUSE_BUTTONS.indexOf(button)));
+    return this.#mouseButtons.isDown(mouseKey(MOUSE_BUTTONS.indexOf(button)));
   }
 
   isMouseButtonPressed(button: MouseButton): boolean {
-    return this.#pressed.has(mouseKey(MOUSE_BUTTONS.indexOf(button)));
+    return this.#mouseButtons.isPressed(mouseKey(MOUSE_BUTTONS.indexOf(button)));
   }
 
   isMouseButtonReleased(button: MouseButton): boolean {
-    return this.#released.has(mouseKey(MOUSE_BUTTONS.indexOf(button)));
+    return this.#mouseButtons.isReleased(mouseKey(MOUSE_BUTTONS.indexOf(button)));
+  }
+
+  /** 不管占用：鼠标有键按着或这一帧刚松开（UI 判断游戏里的拖动）。 */
+  get rawMouseButtonsActive(): boolean {
+    return this.#mouseButtons.down.size > 0 || this.#mouseButtons.released.size > 0;
   }
 
   get isMousePositionLocked(): boolean {
@@ -227,21 +335,11 @@ export class InputManager {
     // 画布外松开的、从没在画布上出现过的指针不算
     if (!last && eventType !== 'pressed' && eventType !== 'moved') return;
     const down = eventType === 'pressed' || (eventType === 'moved' && (last?.down ?? false));
-    this.#pendingPointerEvents.push({ pointerId: event.pointerId, eventType, position: [x, y], deltaPosition: last ? [x - last.x, y - last.y] : [0, 0], isDown: down });
+    const device = event.pointerType === 'touch' || event.pointerType === 'pen' ? event.pointerType : 'mouse';
+    this.#pendingPointerEvents.push({ pointerId: event.pointerId, device, eventType, position: [x, y], deltaPosition: last ? [x - last.x, y - last.y] : [0, 0], isDown: down });
     // 手指抬起就没了；鼠标一直在，下次移动的差值接着这次算
     if ((eventType === 'released' || eventType === 'canceled') && event.pointerType !== 'mouse') this.#pointers.delete(event.pointerId);
     else this.#pointers.set(event.pointerId, { x, y, down });
-  }
-
-  #press(key: string): void {
-    if (this.#down.has(key)) return;
-    this.#down.add(key);
-    this.#pendingPressed.add(key);
-  }
-
-  #release(key: string): void {
-    if (!this.#down.delete(key)) return;
-    this.#pendingReleased.add(key);
   }
 
   #pollGamePads(): void {

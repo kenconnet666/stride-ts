@@ -2,8 +2,9 @@ import { describe, expect, test } from 'vitest';
 import type { UIFile } from '../src/content/format';
 import {
   buildElement, Button, Canvas, ContentDecorator, Grid, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet, StackPanel,
-  StripDefinition, TextBlock, UIElement, UILibrary, UniformGrid, type SpriteFrame, type Texture,
+  StripDefinition, TextBlock, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture,
 } from '../src/index';
+import { hitTest, PickingState, routePointerEvents, updateMouseOver } from '../src/ui/UIPicking';
 
 /** 测试用的元素（Stride 测试里的 MeasureValidator、ArrangeValidator）：量出固定的大小，记下给它的空间。 */
 class Probe extends UIElement {
@@ -449,5 +450,108 @@ describe('按 UIFile 建元素', () => {
     expect(a.overlayColor).toEqual([0, 0, 0, 0.5]);
     expect(() => library.instantiateElement('Nope')).toThrow(/no element named 'Nope'/);
     expect(() => library.instantiateElement('Popup', Button)).toThrow(/is a ModalElement, not a Button/);
+  });
+});
+
+describe('UI 的指针（照 Stride 的 UIPicking）', () => {
+  /** 400x400 的 UI：左上一个按钮（0..100），右边一个 ScrollViewer，里面是很高的 StackPanel 和一个按钮。 */
+  function scene() {
+    const root = new Canvas();
+    const button = new Button();
+    button.width = 100;
+    button.height = 100;
+    const viewer = new ScrollViewer();
+    viewer.scrollMode = 'vertical';
+    viewer.width = 100;
+    viewer.height = 200;
+    viewer.canvasAbsolutePosition = [200, 0];
+    const stack = new StackPanel();
+    const inner = new Button();
+    inner.height = 50;
+    stack.children.add(inner);
+    for (let i = 0; i < 5; i++) stack.children.add(new Probe(100, 100));
+    viewer.content = stack;
+    root.children.add(button);
+    root.children.add(viewer);
+    const target = { root, virtualResolution: [400, 400] as const };
+    const layout = () => {
+      root.measure([400, 400]);
+      root.arrange([400, 400], false);
+      root.updateWorldMatrix([1, 0, 0, 1, 0, 0]);
+      root.updateElementState(0);
+    };
+    layout();
+    return { root, button, viewer, stack, inner, target, layout };
+  }
+  const event = (eventType: PointerEvent['eventType'], x: number, y: number, dy = 0): PointerEvent =>
+    ({ pointerId: 1, device: 'mouse', eventType, position: [x / 400, y / 400], deltaPosition: [0, dy / 400], isDown: eventType === 'pressed' });
+
+  test('找元素：可以点的、画得最靠前的；ClipToBounds 外面不找子元素', () => {
+    const { root, button, viewer, inner } = scene();
+    expect(hitTest(root, [50, 50])).toBe(button);
+    expect(hitTest(root, [250, 20])).toBe(inner);
+    expect(hitTest(root, [250, 150])).toBe(viewer);
+    expect(hitTest(root, [150, 50])).toBeNull();
+    // 内容超出 ScrollViewer 的部分点不到
+    expect(hitTest(root, [250, 350])).toBeNull();
+  });
+
+  test('在按钮上按下、松开发 Click；按下后移出去再松开不发', () => {
+    const { button, target } = scene();
+    const state = new PickingState();
+    let clicks = 0;
+    button.onClick(() => clicks++);
+    const presses: PointerEvent[] = [];
+    routePointerEvents(target, state, [event('pressed', 50, 50)], 0, (e) => presses.push(e));
+    expect([button.isPressed, button.isTouched, presses.length]).toEqual([true, true, 1]);
+    routePointerEvents(target, state, [event('released', 50, 50)], 0, () => {});
+    expect([clicks, button.isPressed]).toEqual([1, false]);
+    routePointerEvents(target, state, [event('pressed', 50, 50), event('moved', 150, 50), event('released', 150, 50)], 0, () => {});
+    expect([clicks, button.isPressed, button.isTouched]).toEqual([1, false, false]);
+  });
+
+  test('模态的弹窗挡住后面的元素，点到弹窗外面发 OutsideClick', () => {
+    const { root, button, target, layout } = scene();
+    const modal = new ModalElement();
+    modal.width = 100;
+    modal.height = 100;
+    modal.canvasAbsolutePosition = [300, 300];
+    root.children.add(modal);
+    layout();
+    expect(hitTest(root, [50, 50])).toBe(modal);
+    let outside = 0, clicks = 0;
+    modal.addHandler(ModalElement.outsideClickEvent, () => outside++);
+    button.onClick(() => clicks++);
+    routePointerEvents(target, new PickingState(), [event('pressed', 50, 50), event('released', 50, 50)], 0, () => {});
+    expect([outside, clicks]).toEqual([1, 0]);
+    routePointerEvents(target, new PickingState(), [event('pressed', 350, 350), event('released', 350, 350)], 0, () => {});
+    expect(outside).toBe(1);
+  });
+
+  test('悬停：鼠标下面的元素是 element，父元素是 child，移开后是 none', () => {
+    const { root, viewer, inner, target } = scene();
+    const state = new PickingState();
+    expect(updateMouseOver(target, state, [250 / 400, 20 / 400])).toBe(inner);
+    expect([inner.mouseOverState, viewer.mouseOverState, root.mouseOverState]).toEqual(['element', 'child', 'child']);
+    updateMouseOver(target, state, [150 / 400, 50 / 400]);
+    expect([inner.mouseOverState, viewer.mouseOverState, root.mouseOverState]).toEqual(['none', 'none', 'none']);
+  });
+
+  test('ScrollViewer：拖过阈值才开始滚，开始滚以后里面按着的按钮不再算按下', () => {
+    const { viewer, stack, inner, target, layout } = scene();
+    const state = new PickingState();
+    let clicks = 0;
+    inner.onClick(() => clicks++);
+    routePointerEvents(target, state, [event('pressed', 250, 20)], 0, () => {});
+    expect(inner.isPressed).toBe(true);
+    routePointerEvents(target, state, [event('moved', 250, 15, -5)], 0, () => {});
+    expect(viewer.isUserScrollingViewer).toBe(false);
+    routePointerEvents(target, state, [event('moved', 250, 5, -10)], 0, () => {});
+    expect(viewer.isUserScrollingViewer).toBe(true);
+    viewer.update(1 / 60);
+    layout();
+    expect(stack.scrollPosition).toBeGreaterThan(0);
+    routePointerEvents(target, state, [event('released', 250, 5)], 0, () => {});
+    expect([clicks, inner.isPressed, viewer.isUserScrollingViewer]).toEqual([0, false, false]);
   });
 });

@@ -3,6 +3,7 @@
  * 内容能自己滚动（ScrollInfo，比如 StackPanel 沿堆叠方向）时交给内容，否则自己按偏移移动内容。
  * 拖动和惯性由 UI 输入（step 4）喂给 lastFrameTranslation 和速度。没有做 Stride 的 SnapToAnchors（样例没有用到）。
  */
+import type { TouchEventArgs } from '../events';
 import { multiply, sizeWithoutThickness, sizeWithThickness, translation, UIElement, type Color, type Vec2 } from '../UIElement';
 import { ContentControl } from './ContentControl';
 
@@ -58,6 +59,8 @@ export class ScrollViewer extends ContentControl {
   /** 用户正在拖着滚动。 */
   isUserScrollingViewer = false;
   #userManuallyScrolled = false;
+  #isTouchedDown = false;
+  #accumulatedTranslation: Vec2 = [0, 0];
   #viewport: Vec2 = [0, 0];
   #requests: { value: Vec2; relative: boolean }[] = [];
   readonly scrollBars: readonly [ScrollBar, ScrollBar] = [new ScrollBar(), new ScrollBar()];
@@ -328,6 +331,48 @@ export class ScrollViewer extends ContentControl {
     this.lastFrameTranslation = [0, 0];
   }
 
+  // ---- 拖动（Stride 的 OnPreviewTouch*）：拖过 scrollStartThreshold 才开始滚，滚动时吞掉指针事件，里面的按钮不会被点到 ----
+  protected override onPreviewTouchDown(args: TouchEventArgs): void {
+    super.onPreviewTouchDown(args);
+    this.stopCurrentScrolling();
+    this.#accumulatedTranslation = [0, 0];
+    this.#isTouchedDown = true;
+  }
+
+  protected override onPreviewTouchUp(args: TouchEventArgs): void {
+    super.onPreviewTouchUp(args);
+    if (this.isUserScrollingViewer) {
+      args.handled = true;
+      leaveTouchedChildren(this, args);
+    }
+    this.isUserScrollingViewer = false;
+    this.#isTouchedDown = false;
+  }
+
+  protected override onTouchEnter(args: TouchEventArgs): void {
+    super.onTouchEnter(args);
+    this.stopCurrentScrolling();
+    this.#accumulatedTranslation = [0, 0];
+  }
+
+  protected override onTouchLeave(args: TouchEventArgs): void {
+    super.onTouchLeave(args);
+    this.isUserScrollingViewer = false;
+    this.#isTouchedDown = false;
+  }
+
+  protected override onPreviewTouchMove(args: TouchEventArgs): void {
+    super.onPreviewTouchMove(args);
+    if (this.#scrollMode === 'none' || !this.#touchScrollingEnabled || !this.#isTouchedDown) return;
+    for (const d of directions(this.#scrollMode)) this.lastFrameTranslation[d] -= args.worldTranslation[d];
+    this.#accumulatedTranslation = [this.#accumulatedTranslation[0] + this.lastFrameTranslation[0], this.#accumulatedTranslation[1] + this.lastFrameTranslation[1]];
+    if (!this.isUserScrollingViewer && Math.hypot(...this.#accumulatedTranslation) > this.scrollStartThreshold) {
+      this.isUserScrollingViewer = true;
+      this.lastFrameTranslation = [...this.#accumulatedTranslation];
+    }
+    if (this.isUserScrollingViewer) args.handled = true;
+  }
+
   /** 滚动条摆在右边、下边，位置按滚动的比例。 */
   protected override updateChildrenWorldMatrix(): void {
     const content = this.visualContent;
@@ -345,5 +390,15 @@ export class ScrollViewer extends ContentControl {
       // 滚动条的世界矩阵：这个元素的世界矩阵平移到滚动条左上角（滚动条自己再加上半个大小到中心）
       bar.updateWorldMatrix(multiply(translation(position[0], position[1]), this.worldMatrix));
     }
+  }
+}
+
+/** 开始拖动滚动后，里面被按着的元素都收到移出（按钮不再算按下）。 */
+function leaveTouchedChildren(parent: UIElement, args: TouchEventArgs): void {
+  for (const child of parent.visualChildren) {
+    if (!child.isTouched) continue;
+    const copy = Object.assign(Object.create(Object.getPrototypeOf(args) as object) as TouchEventArgs, args, { handled: false, source: undefined });
+    child.raiseTouchLeave(copy);
+    leaveTouchedChildren(child, args);
   }
 }

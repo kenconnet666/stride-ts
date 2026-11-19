@@ -79,19 +79,46 @@ function drawTextBlock(text: TextBlock, context: UIRenderContext): void {
   });
 }
 
+/** 输入框：图片，选区（或输入法拼的字）的底色，文字，光标（Stride 的 DefaultEditTextRenderer）。 */
 function drawEditText(edit: EditText, context: UIRenderContext): void {
-  drawSprite(context.batch, edit, edit.backgroundImage?.getSprite(), scale(WHITE, edit.renderOpacity));
+  const { batch } = context;
+  drawSprite(batch, edit, edit.backgroundImage?.getSprite(), scale(WHITE, edit.renderOpacity));
   const font = edit.font;
   if (!font) return;
   const [w, h] = edit.renderSize;
   const [left, top, right] = edit.padding;
-  context.batch.drawText(font, edit.textToDisplay, offset(edit.worldMatrix, -w / 2 + left, -h / 2 + top), {
+  const origin = offset(edit.worldMatrix, -w / 2 + left, -h / 2 + top);
+  const boundaries = edit.isSelectionActive || edit.composition ? edit.textBoundaries() : undefined;
+  if (boundaries) {
+    const composing = edit.composition.length > 0;
+    const start = edit.selectionStart, end = start + (composing ? [...edit.composition].length : edit.selectionLength);
+    const color = scale(composing ? edit.imeSelectionColor : edit.selectionColor, edit.renderOpacity);
+    // 每行一块
+    for (let i = start; i < end;) {
+      let j = i;
+      while (j < end && boundaries.y[j + 1] === boundaries.y[i]) j++;
+      const x0 = boundaries.x[i]!, x1 = boundaries.x[Math.max(j, i + 1)]!;
+      if (x1 > x0) batch.drawQuad(null, rectQuad(origin, x0, boundaries.y[i]!, x1 - x0, boundaries.lineHeight), WHOLE, color);
+      i = Math.max(j, i + 1);
+    }
+  }
+  batch.drawText(font, edit.textToDisplay, origin, {
     fontSize: edit.actualTextSize,
     color: scale(edit.textColor, edit.renderOpacity),
     alignment: edit.textAlignment,
     boxWidth: w - left - right,
     snap: context.snapText && !edit.doNotSnapText,
   });
+  if (boundaries && edit.isCaretVisible) {
+    const caret = edit.composition ? edit.selectionStart + [...edit.composition].length : edit.caretPosition;
+    const width = edit.caretWidth / context.ratio[0];
+    batch.drawQuad(null, rectQuad(origin, boundaries.x[caret]!, boundaries.y[caret]!, width, boundaries.lineHeight), WHOLE, scale(edit.caretColor, edit.renderOpacity));
+  }
+}
+
+/** origin 坐标系里的矩形。 */
+function rectQuad(m: Matrix2D, x: number, y: number, width: number, height: number): Quad {
+  return { origin: apply(m, x, y), axisX: [m[0] * width, m[1] * width], axisY: [m[2] * height, m[3] * height] };
 }
 
 /** 滚动条的大小向上取整到真实像素（同 Stride）。 */

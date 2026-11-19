@@ -127,7 +127,8 @@ export { Game, type GameOptions, type GameStatus, type LoadGameSettingsOptions, 
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
-export { GamePadButton, InputManager, type GamePadState, type MouseButton, type PointerEvent } from './input/InputManager';
+export { GamePadButton, InputManager, type GamePadState, type InputDevice, type MouseButton, type PointerEvent } from './input/InputManager';
+export { InputCapturePriority } from './input/capture';
 export { keyCode } from './input/keys';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
 export { Collider, hullPoints, type ColliderId, type ColliderShape, type HullTransform } from './physics/Collider';

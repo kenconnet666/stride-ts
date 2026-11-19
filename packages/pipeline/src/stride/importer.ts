@@ -40,6 +40,7 @@ import {
   type SceneScript,
   type SceneScriptValue,
   type Vec3Tuple,
+  parseCollisionMask,
 } from '@stride-ts/engine/content-format';
 import { addTangents, compressMeshes, meshMorph, type SourceMesh, type SourceMorph } from '../mesh.ts';
 import { importCompositor } from './compositor.ts';
@@ -772,7 +773,7 @@ export class StrideImporter {
         detailSampleDistance: asNumber(b['DetailSampleDist'], 6),
         detailSampleMaxError: asNumber(b['DetailSampleMaxError'], 1),
       },
-      includedLayers: collisionMask(b['IncludedLayers']),
+      includedLayers: parseCollisionMask(b['IncludedLayers']),
     };
   }
 
@@ -1025,7 +1026,7 @@ function collisionMatrix(simulation: StrideObject): { collisionMasks?: number[] 
     const value = simulation[`Layer${layer}`];
     if (value === undefined) continue;
     listed = true;
-    const mask = collisionMask(value);
+    const mask = parseCollisionMask(value);
     for (let other = 0; other < 32; other++) {
       const collide = ((mask >>> other) & 1) !== 0;
       masks[layer] = collide ? masks[layer]! | (1 << other) : masks[layer]! & ~(1 << other);
@@ -1033,18 +1034,6 @@ function collisionMatrix(simulation: StrideObject): { collisionMasks?: number[] 
     }
   }
   return listed && masks.some((mask) => mask >>> 0 !== 0xffffffff) ? { collisionMasks: masks.map((mask) => mask >>> 0) } : {};
-}
-
-/** Stride 的 CollisionMask（`Layer0, Layer6` 这样的标志枚举，或 Everything、None）换成位掩码；没写是 Everything。 */
-function collisionMask(value: StrideValue | undefined): number {
-  if (value === undefined || value === null || value === 'Everything') return 0xffffffff;
-  if (value === 'None') return 0;
-  let mask = 0;
-  for (const flag of String(value).split(',')) {
-    const layer = /^Layer(\d+)$/.exec(flag.trim());
-    if (layer) mask |= 1 << Number(layer[1]);
-  }
-  return mask >>> 0;
 }
 
 /**

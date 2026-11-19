@@ -981,6 +981,22 @@ export interface ScenePhysics {
   readonly collisionMasks?: readonly number[];
 }
 
+/**
+ * Stride 的 CollisionMask 在资源文件里的写法（`Everything`、`None`，或者 `Layer0, Layer3, …`）换成位掩码：第 n 位是层 n。
+ * 没写当全部。场景里的脚本属性是这种字符串时（射线的 CollideWith）脚本自己调它；已经是数字的原样返回。
+ */
+export function parseCollisionMask(value: unknown): number {
+  if (typeof value === 'number') return value >>> 0;
+  if (value === undefined || value === null || value === 'Everything') return 0xffffffff;
+  if (value === 'None') return 0;
+  let mask = 0;
+  for (const flag of String(value).split(',')) {
+    const layer = /^Layer(\d+)$/.exec(flag.trim());
+    if (layer) mask |= 1 << Number(layer[1]);
+  }
+  return mask >>> 0;
+}
+
 export interface SceneEntityFile {
   readonly id: string;
   readonly name: string;

@@ -92,6 +92,7 @@ export {
   type TextureSlot,
   type ParticleModuleFile,
   type ParticleValue,
+  parseCollisionMask,
 } from './content/format';
 export { Commands } from './engine/Commands';
 export {

@@ -676,7 +676,7 @@ describe('导入 Stride 场景', () => {
         { name: 'idle_1', texture: { texture: 'Game/Sprites/Hero/checker', encoding: 'png', srgb: true }, region: [8, 0, 8, 4], pixelsPerUnit: 16, center: [1, 2], centerFromMiddle: false },
         // 6x5 的源图要补到 8x8，编成 KTX2
         // 九宫格的边框：左、上、右、下
-        { name: 'jump_0', texture: { texture: 'Game/Sprites/Hero/odd', encoding: 'ktx2', srgb: true }, region: [0, 0, 6, 5], pixelsPerUnit: 8, center: [0, 0], centerFromMiddle: true, borders: [1, 0, 0, 0] },
+        { name: 'jump_0', texture: { texture: 'Game/Sprites/Hero/odd', encoding: 'png', srgb: true }, region: [0, 0, 6, 5], pixelsPerUnit: 8, center: [0, 0], centerFromMiddle: true, borders: [1, 0, 0, 0] },
       ],
     });
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Bumpy.scene.json'), 'utf8')) as SceneFile;
@@ -732,14 +732,20 @@ describe('导入 Stride 场景', () => {
     expect(await readFile(path.join(out, 'Game/Sounds/Click.wav'), 'utf8')).toBe('RIFF....WAVE');
   });
 
-  test('压缩的贴图宽高补到 4 的倍数（Lanczos3 缩放，同 Stride）；要缩放的源文件不原样复制', async () => {
+  test("压缩的贴图宽高补到 4 的倍数（Lanczos3 缩放，同 Stride）；'source' 时缩放过的不原样复制源文件，写成缩放后的 PNG", async () => {
     const project = await writeProject();
     const out = path.join(dir, 'content-odd');
     await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' }).importScene(project.byPath('Game/Bumpy')!);
-    // KTX2 的头：12 字节标识、vkFormat、typeSize，然后是 pixelWidth、pixelHeight
-    const ktx2 = await readFile(path.join(out, 'Game/Textures/Odd.ktx2'));
-    const header = new DataView(ktx2.buffer, ktx2.byteOffset, ktx2.byteLength);
-    expect([header.getUint32(20, true), header.getUint32(24, true)]).toEqual([8, 8]);
+    // PNG 的 IHDR：8 字节标识、块长和类型，然后是宽、高（大端）
+    const png = await readFile(path.join(out, 'Game/Textures/Odd.png'));
+    const header = new DataView(png.buffer, png.byteOffset, png.byteLength);
+    expect([header.getUint32(16), header.getUint32(20)]).toEqual([8, 8]);
+    // 默认的策略照常编成 KTX2（头里 12 字节标识、vkFormat、typeSize，然后是 pixelWidth、pixelHeight）
+    const compressed = path.join(dir, 'content-odd-ktx2');
+    await new StrideImporter(project, tools, compressed, { specularCubemapSize: 16 }).importScene(project.byPath('Game/Bumpy')!);
+    const ktx2 = await readFile(path.join(compressed, 'Game/Textures/Odd.ktx2'));
+    const ktx2Header = new DataView(ktx2.buffer, ktx2.byteOffset, ktx2.byteLength);
+    expect([ktx2Header.getUint32(20, true), ktx2Header.getUint32(24, true)]).toEqual([8, 8]);
   });
 
   test('材质：镜面颜色乘强度、遮蔽贴图的通道、贴图乘 Float4 的自发光（不做 sRGB 转换）、透明混合、材质层', async () => {

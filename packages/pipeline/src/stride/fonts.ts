@@ -10,7 +10,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { EXTENSIONS, encodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, type FontFile } from '@stride-ts/engine/content-format';
+import { EXTENSIONS, encodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, glyphPointStep, snapGlyphPoints, type FontFile } from '@stride-ts/engine/content-format';
 import { slugGlyph } from '../font.ts';
 import { once, type AssetEntry, type StrideProject } from './project.ts';
 import { asNumber, asObject, type StrideObject } from './yaml.ts';
@@ -84,6 +84,10 @@ export class FontImporter {
       list.push(codepoint);
       blocks.set(block, list);
     }
+    // 点存在字体网格的四分之一上（TrueType 的点和中点正好在上面）；有坐标大到 16 位放不下的字体就用粗一些的网格
+    let largest = 0;
+    for (const outline of outlines.values()) for (const v of outline.curves) largest = Math.max(largest, Math.abs(v / em));
+    const pointStep = glyphPointStep(1 / (4 * em), largest);
     for (const [block, list] of blocks) {
       const records = new ArrayBuffer(list.length * GLYPH_WORDS * 4);
       const u32 = new Uint32Array(records);
@@ -93,7 +97,8 @@ export class FontImporter {
       list.forEach((codepoint, i) => {
         const outline = outlines.get(glyphOf.get(codepoint)!)!;
         const bounds = outline.bounds.map((v) => v / em) as [number, number, number, number];
-        const slug = slugGlyph(outline.curves.map((v) => v / em), bounds);
+        // 曲线先对齐到文件里的网格，再分带
+        const slug = slugGlyph(snapGlyphPoints(outline.curves.map((v) => v / em), pointStep), bounds);
         const r = i * GLYPH_WORDS;
         u32[r + GLYPH_RECORD.codepoint] = codepoint;
         f32[r + GLYPH_RECORD.advance] = outline.advance / em;
@@ -106,7 +111,7 @@ export class FontImporter {
         for (const v of slug.points) points.push(v);
         for (const v of slug.bands) bands.push(v);
       });
-      const data = encodeGlyphBlock({ glyphs: records, glyphCount: list.length, points: Float32Array.from(points), bands: Uint32Array.from(bands) });
+      const data = encodeGlyphBlock({ glyphs: records, glyphCount: list.length, points: Float32Array.from(points), bands: Uint32Array.from(bands), pointStep });
       await this.#context.write(`${asset.path}.${block}${EXTENSIONS.glyphs}`, data);
     }
 

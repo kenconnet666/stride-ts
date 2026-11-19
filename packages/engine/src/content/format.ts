@@ -25,7 +25,8 @@ export const SKELETON_VERSION = 1;
 export const ANIMATION_MAGIC = 0x4d4e4153; // 'SANM'，小端
 export const ANIMATION_VERSION = 1;
 export const GLYPHS_MAGIC = 0x594c4753; // 'SGLY'，小端
-export const GLYPHS_VERSION = 1;
+// 2：点是网格上的 16 位整数、存差分，带的字是 16 位
+export const GLYPHS_VERSION = 2;
 
 export const EXTENSIONS = {
   model: '.model',
@@ -908,6 +909,8 @@ export interface GlyphBlock {
   readonly points: Float32Array;
   /** 带的头和曲线表，字形的带从 bandStart 起，里面的偏移和点下标都相对字形。 */
   readonly bands: Uint32Array;
+  /** 点所在网格的步长（em）：文件里点存成这个步长的 16 位整数，见 encodeGlyphBlock。 */
+  readonly pointStep: number;
 }
 
 /** 字形记录里每个字的位置（u32 和 f32 混着放）。 */
@@ -925,24 +928,87 @@ export const GLYPH_RECORD = {
 } as const;
 export const GLYPH_WORDS = 16;
 
-export function encodeGlyphBlock({ glyphs, glyphCount, points, bands }: GlyphBlock): Uint8Array {
+/**
+ * 坐标（x、y 交替）对齐到步长 step 的网格上：存进文件再读出来就是这些值。管线在分带之前调用——分带看的就是运行时拿到的几何，
+ * 对齐以后才变成水平、竖直的线也照水平、竖直的处理（它们和平行的射线求交会除以 0）。
+ */
+export function snapGlyphPoints(points: Float32Array, step: number): Float32Array {
+  return points.map((value) => Math.round(value / step) * step);
+}
+
+/**
+ * 能把这些坐标都存进 16 位整数的步长：从 finest 起，放不下就翻倍。finest 取字体网格的四分之一（1 / (4 · unitsPerEm)）时，
+ * TrueType 的轮廓（整数的点和它们的中点）正好落在网格上，没有损失。
+ */
+export function glyphPointStep(finest: number, largest: number): number {
+  let step = finest;
+  while (largest / step > 32767) step *= 2;
+  return step;
+}
+
+/**
+ * 字形块的文件：字形记录，点，带。
+ * - 点是步长 pointStep 的网格上的 16 位整数，存的是和同一个字形里前一个点的差（每个字形的第一个点是它本身），x 和 y 分开放：
+ *   轮廓上相邻的点离得近，差都是小数，压缩以后比直接存 f32 小得多。
+ * - 带的字存成 16 位（一个字形的带头、曲线表里的数都相对这个字形，不会超过 65535）。
+ * 读进来以后还原成 f32 的点和 u32 的带，运行时和着色器用的还是那一份。
+ */
+export function encodeGlyphBlock({ glyphs, glyphCount, points, bands, pointStep }: GlyphBlock): Uint8Array {
   const glyphBytes = glyphCount * GLYPH_WORDS * 4;
-  const { bytes, dataStart } = encodeContainer(GLYPHS_MAGIC, GLYPHS_VERSION, { glyphCount, pointCount: points.length / 2, bandWords: bands.length }, glyphBytes + points.byteLength + bands.byteLength);
-  bytes.set(new Uint8Array(glyphs, 0, glyphBytes), dataStart);
-  bytes.set(byteView(points), dataStart + glyphBytes);
-  bytes.set(byteView(bands), dataStart + glyphBytes + points.byteLength);
+  const records = new Uint32Array(glyphs, 0, glyphCount * GLYPH_WORDS);
+  const pointCount = points.length / 2;
+  const deltas = new Int16Array(points.length);
+  for (let g = 0; g < glyphCount; g++) {
+    const start = records[g * GLYPH_WORDS + GLYPH_RECORD.pointStart]!;
+    const end = g + 1 < glyphCount ? records[(g + 1) * GLYPH_WORDS + GLYPH_RECORD.pointStart]! : pointCount;
+    let lastX = 0, lastY = 0;
+    for (let i = start; i < end; i++) {
+      const x = Math.round(points[i * 2]! / pointStep), y = Math.round(points[i * 2 + 1]! / pointStep);
+      if (Math.abs(x) > 32767 || Math.abs(y) > 32767) throw new Error(`glyph block: point ${points[i * 2]}, ${points[i * 2 + 1]} does not fit 16 bits at step ${pointStep}`);
+      // 差可以超出 16 位：按 16 位回绕着存，读的时候回绕着加回来
+      deltas[i] = x - lastX;
+      deltas[pointCount + i] = y - lastY;
+      lastX = x;
+      lastY = y;
+    }
+  }
+  const narrow = new Uint16Array(bands.length);
+  bands.forEach((word, i) => {
+    if (word > 0xffff) throw new Error(`glyph block: band word ${word} does not fit 16 bits`);
+    narrow[i] = word;
+  });
+  const { bytes, dataStart } = encodeContainer(GLYPHS_MAGIC, GLYPHS_VERSION, { glyphCount, pointCount, bandWords: bands.length, pointStep },
+    glyphBytes + deltas.byteLength + narrow.byteLength);
+  let at = dataStart;
+  for (const part of [new Uint8Array(glyphs, 0, glyphBytes), byteView(deltas), byteView(narrow)]) {
+    bytes.set(part, at);
+    at += part.byteLength;
+  }
   return bytes;
 }
 
 export function decodeGlyphBlock(buffer: ArrayBuffer, source = 'glyphs'): GlyphBlock {
-  const { header, dataStart } = decodeContainer<{ glyphCount: number; pointCount: number; bandWords: number }>(buffer, GLYPHS_MAGIC, GLYPHS_VERSION, 'glyphs', source);
-  const glyphBytes = header.glyphCount * GLYPH_WORDS * 4;
-  return {
-    glyphs: buffer.slice(dataStart, dataStart + glyphBytes),
-    glyphCount: header.glyphCount,
-    points: new Float32Array(buffer.slice(dataStart + glyphBytes, dataStart + glyphBytes + header.pointCount * 8)),
-    bands: new Uint32Array(buffer.slice(dataStart + glyphBytes + header.pointCount * 8, dataStart + glyphBytes + header.pointCount * 8 + header.bandWords * 4)),
-  };
+  const { header, dataStart } = decodeContainer<{ glyphCount: number; pointCount: number; bandWords: number; pointStep: number }>(buffer, GLYPHS_MAGIC, GLYPHS_VERSION, 'glyphs', source);
+  const { glyphCount, pointCount, bandWords, pointStep } = header;
+  const pointsAt = dataStart + glyphCount * GLYPH_WORDS * 4, bandsAt = pointsAt + pointCount * 4;
+  const glyphs = buffer.slice(dataStart, pointsAt);
+  const records = new Uint32Array(glyphs);
+  const deltas = new Int16Array(buffer.slice(pointsAt, bandsAt));
+  const points = new Float32Array(pointCount * 2);
+  // 回绕着累加（差是按 16 位回绕存的）
+  const sum = new Int16Array(2);
+  for (let g = 0; g < glyphCount; g++) {
+    const start = records[g * GLYPH_WORDS + GLYPH_RECORD.pointStart]!;
+    const end = g + 1 < glyphCount ? records[(g + 1) * GLYPH_WORDS + GLYPH_RECORD.pointStart]! : pointCount;
+    sum[0] = sum[1] = 0;
+    for (let i = start; i < end; i++) {
+      sum[0]! += deltas[i]!;
+      sum[1]! += deltas[pointCount + i]!;
+      points[i * 2] = sum[0]! * pointStep;
+      points[i * 2 + 1] = sum[1]! * pointStep;
+    }
+  }
+  return { glyphs, glyphCount, points, bands: Uint32Array.from(new Uint16Array(buffer.slice(bandsAt, bandsAt + bandWords * 2))), pointStep };
 }
 
 /**

@@ -371,8 +371,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
 | 样例 | 应用（端口） | 做了什么 | 截图差 | 没做完的 |
 |---|---|---|---|---|
-| SpriteFonts | `apps/sprite-fonts`（5198） | 矢量文字（Slug）、SpriteBatch、字体导入 | 0.21 到 0.97（六屏），对齐 2.65、抗锯齿 4.80（hinting） | UI 文字的换行和富文本、世界空间的文字（MSDF）、点存成 f16 |
-| GameMenu | `apps/game-menu`（5200） | UI 系统：导入、布局、渲染、输入 | 3.5 到 4.6（BC 压缩、hinting） | 输入框以外的无障碍树、按键的路由事件、没用到的控件（ToggleButton 等） |
+| SpriteFonts | `apps/sprite-fonts`（5198） | 矢量文字（Slug）、SpriteBatch、字体导入 | 0.21 到 0.97（六屏），对齐 2.65、抗锯齿 4.80（hinting） | 富文本（Stride 没有，P3 之后） |
+| GameMenu | `apps/game-menu`（5200） | UI 系统：导入、布局、渲染、输入 | 3.5 到 4.6（BC 压缩、hinting） | |
 | UIElementLink | `apps/ui-element-link`（5202） | 放在 3D 里的 UI、实体跟着 UI 元素走 | 4.46 到 6.81（Stride 的 UI 被色调映射，见 decisions.md） |  |
 | UIParticles | `apps/ui-particles`（5204） | 粒子系统（CPU 模拟）、粒子画在 UI 上面 | 4.65、4.68 | |
 | SimpleAudio | `apps/simple-audio`（5206） | 声音（Web Audio） | 1.53 | |

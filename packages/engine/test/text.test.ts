@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../src/content/format';
+import { decodeGlyphBlock, encodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, glyphPointStep, snapGlyphPoints, type FontFile, type GlyphBlock } from '../src/content/format';
 import { glyphScale, layoutText, measureText, SpriteFont } from '../src/index';
 
 // 一个合成的字体：A 宽 0.5 em、B 宽 0.6 em、空格 0.25 em，都在第 0 块；第 0x30 块有一个日文假名
@@ -14,7 +14,7 @@ function block(codepoints: readonly number[]): GlyphBlock {
     u32[i * GLYPH_WORDS + GLYPH_RECORD.codepoint] = codepoint;
     f32[i * GLYPH_WORDS + GLYPH_RECORD.advance] = ADVANCES[codepoint]!;
   });
-  return { glyphs, glyphCount: codepoints.length, points: new Float32Array(0), bands: new Uint32Array(0) };
+  return { glyphs, glyphCount: codepoints.length, points: new Float32Array(0), bands: new Uint32Array(0), pointStep: 1 / 8192 };
 }
 
 function font(kind: FontFile['kind'], extra: Partial<FontFile> = {}): { font: SpriteFont; loads: number[] } {
@@ -31,6 +31,47 @@ function font(kind: FontFile['kind'], extra: Partial<FontFile> = {}): { font: Sp
     loads,
   };
 }
+
+describe('字形块的文件', () => {
+  test('点是网格上的 16 位整数、存差分，带存成 16 位：网格上的点读回来一模一样，带一样', () => {
+    // 两个字形：第一个 4 个点，第二个 3 个点；步长 1/8192（2048 个单位的字体网格的四分之一）
+    const step = 1 / 8192;
+    const glyphs = new ArrayBuffer(2 * GLYPH_WORDS * 4);
+    const u32 = new Uint32Array(glyphs);
+    u32[GLYPH_RECORD.pointStart] = 0;
+    u32[GLYPH_WORDS + GLYPH_RECORD.pointStart] = 4;
+    u32[GLYPH_WORDS + GLYPH_RECORD.bandStart] = 5;
+    // 第二个字形里相邻两点的差超过 16 位（-3.9 到 3.9 是 63898 级）：差按 16 位回绕着存
+    const points = snapGlyphPoints(Float32Array.from([0.1, -0.2, 0.7, -0.2, 0.7, 0.9, 0.33333, 0.5, -3.9, 3, 3.9, 3.5, 2.25, -3.9]), step);
+    const bands = Uint32Array.from([1, 2, 0, 1, 65535, 3, 2, 1]);
+    const bytes = encodeGlyphBlock({ glyphs, glyphCount: 2, points, bands, pointStep: step });
+    const decoded = decodeGlyphBlock(bytes.buffer as ArrayBuffer);
+    expect([decoded.glyphCount, decoded.pointStep]).toEqual([2, step]);
+    expect([...decoded.bands]).toEqual([...bands]);
+    expect([...decoded.points]).toEqual([...points]);
+    // 数据区：记录 128 字节、点 7×4、带 8×2（32 位存法是 128 + 56 + 32）
+    expect(bytes.byteLength % 4).toBe(0);
+    expect(bytes.byteLength).toBeLessThan(128 + 28 + 16 + 100);
+    // 放不下的不悄悄截断
+    expect(() => encodeGlyphBlock({ glyphs, glyphCount: 2, points, bands: Uint32Array.from([70000]), pointStep: step })).toThrow(/16 bits/);
+    expect(() => encodeGlyphBlock({ glyphs, glyphCount: 2, points: Float32Array.from([5, 0]), bands, pointStep: step })).toThrow(/16 bits/);
+  });
+
+  test('对齐到网格：不在网格上的点挪不到半步；步长从字体网格的四分之一起，坐标放不下就翻倍', () => {
+    const step = glyphPointStep(1 / (4 * 2048), 1.5);
+    expect(step).toBe(1 / 8192);
+    // 坐标到 ±9 em 的字体：1/8192 的网格只放得下 ±4 em，翻两倍
+    expect(glyphPointStep(1 / 8192, 9)).toBe(1 / 2048);
+    const curve = Float32Array.from([0.123456, 0.5, 0.300001, 0.50001, 0.9, 0.2]);
+    const snapped = snapGlyphPoints(curve, step);
+    snapped.forEach((value, i) => expect(Math.abs(value - curve[i]!)).toBeLessThanOrEqual(step / 2 + 1e-9));
+    // 差不到半步的两个 y 对齐以后相等（这条线成了水平的，分带时就按水平的处理）
+    expect(snapped[1]).toBe(snapped[3]);
+    // TrueType 的点（整数单位）和中点（半个单位）本来就在网格上
+    const exact = Float32Array.from([100 / 2048, 1433 / 2048, 200.5 / 2048, -300 / 2048]);
+    expect([...snapGlyphPoints(exact, step)]).toEqual([...exact]);
+  });
+});
 
 describe('SpriteFont', () => {
   test('度量照 Stride：运行时字体的行距是上升 + 下降 + 行间距，基线是上升 + 行间距，按字号缩放；编译期字体乘 LineGapFactor 和 LineGapBaseLineFactor，不随字号变', () => {

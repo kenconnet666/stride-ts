@@ -704,7 +704,7 @@ async function testFont(): Promise<SpriteFont> {
       name: 'Test', kind: 'dynamic', size: 20, antiAlias: 'default', integerPpem: false, ascent: 0.9, descent: 0.2, lineGap: 0.1, spacing: 0, lineSpacing: 0,
       lineGapFactor: 1, lineGapBaseLineFactor: 1, defaultCharacter: 65, blocks: [0], kerning: [],
     },
-    () => Promise.resolve({ glyphs, glyphCount: advances.length, points: new Float32Array(0), bands: new Uint32Array(0) }),
+    () => Promise.resolve({ glyphs, glyphCount: advances.length, points: new Float32Array(0), bands: new Uint32Array(0), pointStep: 1 / 8192 }),
   );
   await font.ensure('AB');
   return font;

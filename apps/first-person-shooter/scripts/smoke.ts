@@ -47,11 +47,14 @@ stride('mouse', 'move', '-64', '76');
 await sleep(500);
 const box = stride('eval', BOX) as number[];
 const before = state();
+// 点完在页面里逐帧看 0.5 秒取最多的实体数：特效可能晚一帧生成，枪口火焰又很快移除，忙的时候隔一次 CLI 调用会错过
+stride('eval', `globalThis.mostEntities = 0; (() => { const end = performance.now() + 500; const poll = () => {
+  globalThis.mostEntities = Math.max(globalThis.mostEntities, strideGame.entities.ids().length); if (performance.now() < end) requestAnimationFrame(poll); }; poll(); })(); 1`);
 stride('mouse', 'left', '--trusted');
-await sleep(150);
-const fired = state();
-check('开枪生成特效的预制体（枪口火焰、弹孔、受击拖尾）', fired.entities === before.entities + 3, { before: before.entities, after: fired.entities });
-await sleep(1000);
+await sleep(700);
+const most = stride('eval', 'globalThis.mostEntities') as number;
+check('开枪生成特效的预制体（枪口火焰、弹孔、受击拖尾）', most === before.entities + 3, { before: before.entities, most });
+await sleep(450);
 const pushed = stride('eval', BOX) as number[];
 check('瞄准箱子开枪：箱子被推走，少一发', box[2]! - pushed[2]! > 0.2 && state().bullets === 8, { box, pushed, bullets: state().bullets });
 check('枪口火焰、弹孔按时移除（受击拖尾 6 秒）', state().entities === before.entities + 1, { before: before.entities, now: state().entities });

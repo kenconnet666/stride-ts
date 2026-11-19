@@ -172,6 +172,7 @@ export {
 export { SpriteSheet, type SpriteFrame, type SpriteSheetId } from './rendering/SpriteSheet';
 export { SpriteFont, type FontGlyph, type LoadedGlyphBlock } from './rendering/text/SpriteFont';
 export { SpriteBatch, type Color, type DrawOptions, type DrawStringOptions, type Rect, type Vec2 } from './rendering/text/SpriteBatch';
+export { spriteEffect, SPRITE_EFFECT_PARAMETERS, type SpriteEffect } from './rendering/text/SpriteEffect';
 export { GlyphStore } from './rendering/text/GlyphStore';
 export { glyphAdvance, glyphScale, layoutText, measureText, type FontSize, type PositionedGlyph, type TextAlignment } from './rendering/text/layout';
 export {

@@ -20,6 +20,7 @@ import { Texture } from '../Texture';
 import { GlyphStore } from './GlyphStore';
 import { glyphScale, layoutText, measureText, type FontSize, type TextAlignment } from './layout';
 import { SLUG_WGSL } from './slug';
+import { SPRITE_EFFECT_PARAMETERS, spriteEffectShader, type SpriteEffect } from './SpriteEffect';
 import type { SpriteFont } from './SpriteFont';
 
 export type Vec2 = readonly [number, number];
@@ -167,6 +168,13 @@ export class SpriteBatch {
   transform: Float32Array | undefined;
   /** 设了 transform 时，一个虚拟单位大约多少真实像素（文字的抗锯齿边要多宽）；不设时按渲染目标和虚拟分辨率算。 */
   pixelRatio: Vec2 | undefined;
+  /** 自定义效果（见 SpriteEffect）：begin 时取，这一批的贴图都用它画；没有时照常画。 */
+  effect: SpriteEffect | undefined;
+  #activeEffect: SpriteEffect | undefined;
+  readonly #effectLayout: GPUBindGroupLayout;
+  readonly #effectBuffer: GPUBuffer;
+  readonly #effectModules = new Map<string, GPUShaderModule>();
+  readonly #effectGroups = new WeakMap<SpriteEffect, GPUBindGroup>();
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #glyphs: GlyphStore;
@@ -209,6 +217,14 @@ export class SpriteBatch {
       ],
     });
     this.#uniform = device.createBuffer({ label: 'SpriteBatch transform', size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#effectLayout = device.createBindGroupLayout({
+      label: 'SpriteBatch effect',
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+      ],
+    });
+    this.#effectBuffer = device.createBuffer({ label: 'SpriteBatch effect parameters', size: SPRITE_EFFECT_PARAMETERS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#items = this.#createItems(this.#data.byteLength);
   }
 
@@ -225,6 +241,7 @@ export class SpriteBatch {
     this.#count = 0;
     this.#runs = [];
     this.#scissor = undefined;
+    this.#activeEffect = this.effect;
   }
 
   /** 之后画的东西裁到 rect（真实像素，整数）里；undefined 是不裁（UI 的 ClipToBounds）。 */
@@ -395,6 +412,11 @@ export class SpriteBatch {
       entries: [{ binding: 0, resource: { buffer: this.#items } }, { binding: 1, resource: { buffer: this.#uniform } }],
     });
     pass.setBindGroup(0, this.#itemGroup);
+    const effect = this.#activeEffect;
+    if (effect) {
+      this.#device.queue.writeBuffer(this.#effectBuffer, 0, effect.parameters);
+      pass.setBindGroup(2, this.#effectGroup(effect));
+    }
     let scissor: Rect | undefined;
     for (const run of this.#runs) {
       if (run.scissor !== scissor) {
@@ -415,6 +437,7 @@ export class SpriteBatch {
   destroy(): void {
     this.#items.destroy();
     this.#uniform.destroy();
+    this.#effectBuffer.destroy();
     this.#glyphs.destroy();
   }
 
@@ -455,18 +478,22 @@ export class SpriteBatch {
 
   #pipeline(kind: Run['kind']): GPURenderPipeline {
     const depthFormat = this.#depthFormat;
-    const key = `${kind}:${this.#format}:${depthFormat ?? ''}`;
+    // 自定义效果只换贴图的片元着色器，文字照常画
+    const effect = kind === 'sprite' ? this.#activeEffect : undefined;
+    const key = `${kind}:${this.#format}:${depthFormat ?? ''}:${effect ? `${effect.blend}:${effect.code}` : ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
+      const groups = [this.#itemLayout, kind === 'glyph' ? this.#glyphs.layout : this.#textureLayout, ...(effect ? [this.#effectLayout] : [])];
+      // 预乘 alpha（Stride 的 BlendStates.AlphaBlend）；效果可以要 NonPremultiplied（颜色乘源的 alpha）
+      const source: GPUBlendFactor = effect?.blend === 'nonPremultiplied' ? 'src-alpha' : 'one';
       pipeline = this.#device.createRenderPipeline({
-        label: `SpriteBatch ${kind}`,
-        layout: this.#device.createPipelineLayout({ bindGroupLayouts: [this.#itemLayout, kind === 'glyph' ? this.#glyphs.layout : this.#textureLayout] }),
+        label: `SpriteBatch ${kind}${effect ? ' effect' : ''}`,
+        layout: this.#device.createPipelineLayout({ bindGroupLayouts: groups }),
         vertex: { module: this.#module, entryPoint: kind === 'glyph' ? 'vsGlyph' : 'vsSprite' },
         fragment: {
-          module: this.#module,
-          entryPoint: kind === 'glyph' ? 'fsGlyph' : 'fsSprite',
-          // 预乘 alpha（Stride 的 BlendStates.AlphaBlend）
-          targets: [{ format: this.#format, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
+          module: effect ? this.#effectModule(effect) : this.#module,
+          entryPoint: kind === 'glyph' ? 'fsGlyph' : effect ? 'fsEffect' : 'fsSprite',
+          targets: [{ format: this.#format, blend: { color: { srcFactor: source, dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
         },
         primitive: { topology: 'triangle-strip' },
         ...(depthFormat ? { depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' } } : {}),
@@ -474,6 +501,28 @@ export class SpriteBatch {
       this.#pipelines.set(key, pipeline);
     }
     return pipeline;
+  }
+
+  #effectModule(effect: SpriteEffect): GPUShaderModule {
+    let module = this.#effectModules.get(effect.code);
+    if (!module) {
+      module = this.#device.createShaderModule({ label: 'SpriteBatch effect', code: SHADER + spriteEffectShader(effect) });
+      this.#effectModules.set(effect.code, module);
+    }
+    return module;
+  }
+
+  #effectGroup(effect: SpriteEffect): GPUBindGroup {
+    let group = this.#effectGroups.get(effect);
+    if (!group) {
+      group = this.#device.createBindGroup({
+        label: 'SpriteBatch effect',
+        layout: this.#effectLayout,
+        entries: [{ binding: 0, resource: { buffer: this.#effectBuffer } }, { binding: 1, resource: this.#resources.sampler(effect.sampler) }],
+      });
+      this.#effectGroups.set(effect, group);
+    }
+    return group;
   }
 
   #textureGroup(texture: Texture): GPUBindGroup {

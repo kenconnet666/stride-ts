@@ -398,7 +398,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    2. ~~着色器~~（2026-11-19）：网格效果 `meshEffect`（`rendering/meshEffect.ts`）：游戏导出、按导出名登记，合成器里 MeshRenderFeature 的 EffectName 是它时网格都用它画（导入器写进场景合成器的 `meshEffect`）；四个 WGSL 钩子（投影前改世界位置、改 UV、顶点算给片元的值、改最终颜色），没定义的用默认；每个网格 16 个参数（Stride 的 Mesh.Parameters，`Mesh.setEffectParameters`）。SpaceEscapeEffectMain 照 BendFogRenderFeature 的值写弯曲、雾、UV 区域（Stride 把弯曲的 X 系数写进了 X、Y 两个位置，照它画出来的样子取）。加载 LevelBlocks 看过：走廊、远处的雾。顺手：网格着色器编译出错时把出错的行打到控制台（以前只看到管线无效、全黑）。
    3. ~~脚本~~（2026-11-19）：CharacterScript（三条道，左右键或横着划换道、下键或往下划滑铲，按动画进度插值换道，包围盒随状态换）、BackgroundScript 加 LevelGenerator、Section、BackgroundInfo、ObstacleInfo（关卡一段段往前移、回收、随机接新段，障碍物按包围盒、洞按矩形判断）、GameScript、UIScript、PlayAnimationScript。引擎补上：场景模板 `content.loadSceneTemplate`（Stride 里脚本属性引用的 Scene：加载了不放进游戏，从里面 Clone 实体；`prefab(名字)` 实例化模板实体，`scriptProps` 读模板上脚本的属性）、`content.addModel`（给实体挂加载好的模型，同 `new ModelComponent(model)`）、脚本的列表属性收到 `{}` 时当空列表（Stride 的 YAML 把空集合写成 `{}`）。拖动手势先在 CharacterScript 里按指针事件识别（引擎还没有手势）。在 Chrome 里玩过：主菜单、开始、换道、滑铲、撞管子结束、Retry。
    4. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/space-escape`，4.4.2 的样例）：冒烟 9 项；关卡换成固定的几段后截主菜单和跑动中两张，平均每通道差 3.14、5.30/255，关卡、弯曲、雾、天空板、角色、UI 一致。帧时间：桌面 0.91 ms，stride-ts 0.78 ms。
-9. **MaterialShader**（`apps/material-shader`，端口 5214）：一个场景，一块程序化平面（32x32 细分）上的水面材质。
+9. ~~MaterialShader~~（2026-11-19 完成，`apps/material-shader`，端口 5214）：一个场景，一块程序化平面（32x32 细分）上的水面材质。
    - 材质用游戏自己的着色器类：位移贴图（MaterialDisplacementMapFeature，顶点阶段）是 ComputeColorWave（按到中心的距离和时间算正弦波），法线贴图是 ComputeColorWaveNormal（同一个波的导数）。
    - 还有漫反射贴图、光泽度、没有贴图的镜面贴图（只有回退值）。
    - 没有脚本，水面靠 Global.Time 动起来。
@@ -407,3 +407,11 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    1. 导入和骨架：`apps/material-shader` 导入场景、材质、贴图；平面能看（暂时没有位移、法线树）。
    2. ~~颜色树推广到法线和位移~~（2026-11-19）：材质的 `emissiveShader` 推广成 `shaderTrees`（自发光、法线、位移三棵树用同一个编译器，贴图共用绑定组 3、顶点着色器也能读）；导入器导出 `normalTree`（法线贴图是着色器类时）和 `displacementTree`（顶点阶段的位移贴图，别的阶段警告），有法线树的网格也生成切线；位移在顶点着色器里沿模型空间的法线推（深度预通道和阴影同样推），顶点阶段的贴图用第 0 级 mip。ComputeColorWave、ComputeColorWaveNormal 写成 WGSL。在 Chrome 里看过：水面一圈圈起伏、高光跟着波纹。
    3. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/material-shader`）：冒烟 4 项（材质带着法线树和位移树、水面在动）；桌面在第 120 帧（1.999992 秒）截图，我们用新加的 `stride time --total` 把时钟拨到同一个时间再截，平均每通道差 0.36/255。
+10. ~~CustomEffect~~（2026-11-19 完成，`apps/custom-effect`，端口 5216）：没有场景，合成器的根是游戏的 CustomEffectRenderer（SceneRendererBase）。
+   - 先清成绿色，再用 SpriteBatch 画背景图和 Stride 的标志。
+   - SpriteBatch 带着自定义效果（Effect.sdsl，继承 SpriteBase 重写 Shading）：从中心放出水波纹，按波扭曲 UV 再采样、按波调亮度，相位随时间变；混合是 NonPremultiplied。
+
+   分步：
+   1. ~~导入和骨架~~（2026-11-19）：`apps/custom-effect` 导入游戏设置（渲染器的属性 Background、Logo 是贴图）。
+   2. ~~SpriteBatch 的自定义效果~~（2026-11-19）：`spriteEffect`（`rendering/text/SpriteEffect.ts`）：WGSL 着色函数（`sampleTexture0` 采样正在画的贴图，同 Stride 的 Texture0，取回贴图里存的值）、16 个参数、采样器（默认线性钳位，同 Stride 的 SpriteBatch）、混合（预乘或 NonPremultiplied）；`SpriteBatch.effect`。CustomEffectRenderer 和水波纹（`WaveEffect.ts`）写成 TS，宽高比每帧按画布算（Stride 只在初始化时取一次）。在 Chrome 里看过：标志和背景一圈圈扭曲。
+   3. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/custom-effect`）：冒烟 5 项；第 120 帧（2.000 秒）平均每通道差 0.64/255。比对时发现标志贴图透明区里透出两条横线（UASTC 把黑白相间的透明块的 alpha 压出了误差），导入器加了 alpha 渗色（见 architecture.md 的贴图）；剩下的差在字母边缘：Stride 的边缘有一圈暗边（源图透明区是黑的，Stride 不渗色），我们没有。

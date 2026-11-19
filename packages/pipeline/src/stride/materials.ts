@@ -20,6 +20,7 @@ import {
   type Vec3Tuple,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
+import { bleedTransparentColors } from '../image.ts';
 import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { importColorTree } from './particles.ts';
@@ -360,7 +361,8 @@ export class MaterialImporter {
     const height = asset.data['IsCompressed'] === false ? image.height : align4(image.height);
     const resized = width !== image.width || height !== image.height;
     if (policy === 'source' && sourceEncoding && !resized) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
-    const pixels = resized ? await this.#context.tools.resizeImage(image.pixels, image.width, image.height, width, height) : image.pixels;
+    const sized = resized ? await this.#context.tools.resizeImage(image.pixels, image.width, image.height, width, height) : image.pixels;
+    const pixels = bleedTransparentColors(sized, width, height);
     const ktx2 = await this.#context.tools.encodeBasis(pixels, width, height, { mode: 'uastc', srgb, mipmaps: asset.data['GenerateMipmaps'] !== false });
     if (policy === 'smallest' && sourceEncoding && !resized && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     await this.#context.write(asset.path + TEXTURE_EXTENSIONS.ktx2, ktx2);

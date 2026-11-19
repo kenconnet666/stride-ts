@@ -8,25 +8,19 @@
  * 引用计数、卸载、按组加载、在 Worker 里解码（README 的"实例化、懒加载、缓存"）以后加。
  */
 import type { Skin as NativeSkin } from '@stride-ts/native';
-import { AnimationComponent } from '../animation/AnimationComponent';
-import { ModelNodeLink } from '../animation/ModelNodeLink';
 import { AnimationClip, Skeleton, type AnimationNative } from '../animation/resources';
 import type { EntityManager } from '../engine/EntityManager';
-import { resolveSceneValues, SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
+import { resolveSceneValues, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
 import type { Entity, EntityScene } from '../engine/Entity';
 import { SceneRoot, Transform } from '../engine/transform';
 import type { Vec3Like } from '../mathematics/vectors';
-import { Collider, type ColliderShape } from '../physics/Collider';
-import { Body, Character, Static } from '../physics/components';
-import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
-import type { ConstraintSettings } from '../physics/Simulation';
-import type { ScriptConstructor } from '../engine/scripts';
-import { Background, Camera, Instance, Instancing, Light, Model, ModelPart, Skinned, Sprite } from '../rendering/components';
+import { Model, ModelPart, Skinned } from '../rendering/components';
 import { ModelMorph, ModelSkeleton } from '../animation/AnimationSystem';
 import { Morphed } from '../animation/morphs';
-import type { EntityId } from '../data/prop';
 import { Material, type MaterialShaderTrees } from '../rendering/Material';
+import { preload, textureRefs } from './loading';
 import { Prefab } from './Prefab';
+import { SceneBuilder, type SceneAssets } from './SceneBuilder';
 import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
@@ -35,14 +29,10 @@ import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
-import type { ParticleModuleClass } from '../particles/modules';
 import { ColorTreeCompiler } from '../rendering/colorTree';
 import type { ShaderClass } from '../rendering/shaderClass';
-import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
-import { UIComponent } from '../ui/UIComponent';
-import { UIElementLink } from '../ui/UIElementLink';
 import { buildElement, uiAssetPaths, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneLocalLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -108,24 +98,6 @@ export interface LoadedModel {
   readonly morphTargets?: readonly string[];
 }
 
-/** 场景引用的资源，实例化之前并行加载好。 */
-interface SceneAssets {
-  readonly models: ReadonlyMap<string, LoadedModel>;
-  readonly materials: ReadonlyMap<string, Material>;
-  readonly animations: ReadonlyMap<string, AnimationClip>;
-  readonly skyboxes: ReadonlyMap<string, Skybox>;
-  readonly cubemaps: ReadonlyMap<string, Cubemap>;
-  /** 背景和精灵的贴图（包括渲染目标贴图），按内容路径。 */
-  readonly images: ReadonlyMap<string, Texture>;
-  readonly spriteSheets: ReadonlyMap<string, SpriteSheet>;
-  /** 脚本属性引用的预制体、字体、贴图、UI 页面和库。 */
-  readonly prefabs: ReadonlyMap<string, Prefab>;
-  readonly fonts: ReadonlyMap<string, SpriteFont>;
-  readonly textures: ReadonlyMap<string, Texture>;
-  readonly uiPages: ReadonlyMap<string, UIPage>;
-  readonly uiLibraries: ReadonlyMap<string, UILibrary>;
-  readonly sounds: ReadonlyMap<string, Sound>;
-}
 
 /** 合成器里画进渲染目标贴图的相机，贴图已经建好。 */
 export interface TextureCamera extends SceneForwardRenderer {
@@ -185,6 +157,7 @@ export class ContentManager {
   /** 没有材质的网格用它：白色。 */
   readonly defaultMaterial = new Material('default');
   readonly #shaderClasses: (name: string) => ShaderClass | undefined;
+  readonly #scenes = new SceneBuilder(this);
   /**
    * 把 KTX2 贴图转码成设备支持的格式；加载了原生的 texture 功能时，Game 在图形设备建好之后设置（ktx2Decoder），
    * 测试里可以换成假的。
@@ -278,7 +251,7 @@ export class ContentManager {
       const file = this.#json<MaterialFile>(await this.#read(url));
       // 颜色贴图按 sRGB 解；法线、遮蔽这些数据贴图是线性的
       const slot = async ({ scale, offset, filter, addressU, addressV, ...ref }: TextureSlot, srgb: boolean) =>
-        ({ texture: await this.#loadTextureRef(ref, srgb), scale, offset, sampler: { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } });
+        ({ texture: await this.loadTextureRef(ref, srgb), scale, offset, sampler: { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } });
       const { normalMap: normal, ambientOcclusion: occlusion } = file;
       const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture, shaderTrees, glossinessTexture] = await Promise.all([
         file.baseColorTexture && slot(file.baseColorTexture, true),
@@ -328,8 +301,8 @@ export class ContentManager {
       ['coatFlakesMetalness', coat.metalFlakes.metalness, 'f32'], ['coatFlakesNormal', coat.metalFlakes.normal.tree, 'vec4f'],
       ['coatTopGloss', coat.coat.glossiness, 'f32'], ['coatTopMetalness', coat.coat.metalness, 'f32'], ['coatTopNormal', coat.coat.normal.tree, 'vec4f'],
     ] : [];
-    const refs = [emissive?.tree, normal?.tree, displacement?.tree, ...layerTrees, ...coatTrees.map(([, tree]) => tree)].flatMap((t) => (t ? particleTextures(t) : []));
-    const textures = new Map(await Promise.all(refs.map(async (ref) => [ref.texture, await this.#loadTextureRef(ref, ref.srgb ?? true)] as const)));
+    const refs = [emissive?.tree, normal?.tree, displacement?.tree, ...layerTrees, ...coatTrees.map(([, tree]) => tree)].flatMap((t) => (t ? textureRefs(t) : []));
+    const textures = new Map(await Promise.all(refs.map(async (ref) => [ref.texture, await this.loadTextureRef(ref, ref.srgb ?? true)] as const)));
     const compiler = new ColorTreeCompiler({ texture: (path) => textures.get(path), shaderClass: (name) => this.#shaderClasses(name) }, 3);
     const functions = [
       emissive && `fn emissiveTree() -> vec4f {\n  return ${compiler.color(emissive.tree)};\n}\n`,
@@ -406,7 +379,7 @@ export class ContentManager {
   loadSpriteSheet(path: string): Promise<SpriteSheet> {
     return this.#once(path + EXTENSIONS.spriteSheet, async (url) => {
       const file = this.#json<SpriteSheetFile>(await this.#read(url));
-      const sprites = await Promise.all(file.sprites.map(async ({ texture, region, ...sprite }) => ({ ...sprite, region: [...region] as [number, number, number, number], texture: await this.#loadTextureRef(texture, true) })));
+      const sprites = await Promise.all(file.sprites.map(async ({ texture, region, ...sprite }) => ({ ...sprite, region: [...region] as [number, number, number, number], texture: await this.loadTextureRef(texture, true) })));
       return new SpriteSheet(path, sprites);
     });
   }
@@ -436,7 +409,7 @@ export class ContentManager {
     const [spriteSheets, fonts, textures] = await Promise.all([
       preload(paths.spriteSheets, (p) => this.loadSpriteSheet(p)),
       preload(paths.fonts, (p) => this.loadFont(p)),
-      Promise.all(paths.textures.map(async (value) => 'texture' in value ? [value.texture.texture, await this.#loadTextureRef(value.texture, true)] as const : undefined)),
+      Promise.all(paths.textures.map(async (value) => 'texture' in value ? [value.texture.texture, await this.loadTextureRef(value.texture, true)] as const : undefined)),
     ]);
     return { file, resources: { spriteSheets, fonts, textures: new Map(textures.filter((entry) => entry !== undefined)) } };
   }
@@ -445,7 +418,7 @@ export class ContentManager {
   loadTextureAsset(path: string): Promise<Texture> {
     return this.#once(path + EXTENSIONS.texture, async (url) => {
       const ref = this.#json<TextureRef>(await this.#read(url));
-      return this.#loadTextureRef(ref, ref.srgb ?? true);
+      return this.loadTextureRef(ref, ref.srgb ?? true);
     });
   }
 
@@ -504,7 +477,7 @@ export class ContentManager {
    */
   async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const { scene, assets } = await this.#sceneWithAssets(path);
-    const created = this.#instantiate(scene.entities, assets, entities, options, path);
+    const created = this.#scenes.instantiate(scene.entities, assets, entities, options, path);
     const [x, y, z] = options.offset ?? scene.offset ?? [0, 0, 0];
     // 没有变换存储（场景里也就没有带 Transform 的实体）时只记下偏移
     const root = entities.game.transforms ? new SceneRoot(entities, [x, y, z], options.parent?.root) : undefined;
@@ -528,7 +501,7 @@ export class ContentManager {
   #sceneWithAssets(path: string): Promise<{ scene: SceneFile; assets: SceneAssets }> {
     return this.#once(path + EXTENSIONS.scene, async (url) => {
       const scene = this.#json<SceneFile>(await this.#read(url));
-      return { scene, assets: await this.#preloadAssets(scene.entities, url) };
+      return { scene, assets: await this.#scenes.preload(scene.entities, url.href) };
     });
   }
 
@@ -539,7 +512,7 @@ export class ContentManager {
     return this.#once(path + EXTENSIONS.scene, 'template', async () => {
       const { scene, assets } = await this.#sceneWithAssets(path);
       return new SceneTemplate(path, scene.entities, (files, name) => new Prefab(name, (entities) => {
-        const created = this.#instantiate(files, assets, entities, options, name);
+        const created = this.#scenes.instantiate(files, assets, entities, options, name);
         return [created.get(files[0]!.id)!];
       }));
     });
@@ -549,183 +522,13 @@ export class ContentManager {
   loadPrefab(path: string, options: LoadSceneOptions = {}): Promise<Prefab> {
     return this.#once(path + EXTENSIONS.prefab, async (url) => {
       const file = this.#json<PrefabFile>(await this.#read(url));
-      const assets = await this.#preloadAssets(file.entities, url);
+      const assets = await this.#scenes.preload(file.entities, url.href);
       const roots = file.entities.filter((entity) => entity.parent === null).map((entity) => entity.id);
       return new Prefab(file.name, (entities) => {
-        const created = this.#instantiate(file.entities, assets, entities, options, path);
+        const created = this.#scenes.instantiate(file.entities, assets, entities, options, path);
         return roots.map((id) => created.get(id)!);
       });
     });
-  }
-
-  /** 实体文件引用的资源（包括脚本属性引用的）并行加载好。 */
-  async #preloadAssets(files: readonly SceneEntityFile[], url: URL): Promise<SceneAssets> {
-    const components = files.map((e) => e.components);
-    const colliderModels = components.flatMap((c) => [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? []), ...(c.body?.shapes ?? [])])
-      .flatMap((s) => (s.type === 'mesh' || s.type === 'convexHull' ? [s.model] : []));
-    const scriptAssets = scriptAssetRefs(components.flatMap((c) => c.scripts ?? []));
-    const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
-    if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
-    const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds] = await Promise.all([
-      preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => this.loadModel(p)),
-      preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
-      preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => this.loadAnimation(p)),
-      preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
-      preload(components.flatMap((c) => (c.background?.type === 'cubemap' ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
-      preload(scriptPaths('prefab'), (p) => this.loadPrefab(p)),
-      preload([...components.flatMap((c) => (c.sprite && 'sheet' in c.sprite ? [c.sprite.sheet] : [])), ...scriptPaths('spriteSheet')], (p) => this.loadSpriteSheet(p)),
-      preload(scriptPaths('font'), (p) => this.loadFont(p)),
-      preload(scriptPaths('texture'), (p) => this.loadTextureAsset(p)),
-      preload([...components.flatMap((c) => (c.ui?.page ? [c.ui.page] : [])), ...scriptPaths('uiPage')], (p) => this.loadUIPage(p)),
-      preload(scriptPaths('uiLibrary'), (p) => this.loadUILibrary(p)),
-      preload(scriptPaths('sound'), (p) => this.loadSound(p)),
-    ]);
-    // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
-    const imageRefs = components.flatMap((c) => [
-      ...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite && 'texture' in c.sprite ? [c.sprite.texture] : []),
-      ...(c.particleSystem ? particleTextures(c.particleSystem) : []),
-    ]);
-    const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
-      ? [ref.renderTexture, this.renderTexture(ref)] as const
-      : [ref.texture, await this.#loadTextureRef(ref, true)] as const)));
-    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds };
-  }
-
-  /**
-   * 按实体文件建实体：先按顺序建实体和组件（父实体在前），再挂实例的主实体，最后挂脚本（这时所有实体都在，脚本属性里的
-   * 实体引用才解析得了）。返回按文件里的实体 id 的表；where 用在报错和警告里。
-   */
-  #instantiate(files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string): Map<string, Entity> {
-    const created = new Map<string, Entity>();
-    for (const file of files) {
-      const entity = entities.create({ name: file.name, components: [Transform.with({ position: file.position, rotation: file.rotation, scale: file.scale })] });
-      if (file.parent !== null) {
-        const parent = created.get(file.parent);
-        if (!parent) throw new Error(`${where}: entity '${file.name}' comes before its parent ${file.parent}`);
-        entity.require(Transform).parent = parent;
-      }
-      created.set(file.id, entity);
-      this.#addComponents(entity, file, assets, entities, created);
-    }
-    // 约束组件引用的物体可能排在后面：实体都建好以后再挂（约束在脚本启动时加）
-    for (const file of files) {
-      for (const constraint of file.components.constraints ?? []) {
-        // 各种约束的组件按设置的类型参数化，这里只按基类用
-        const component = CONSTRAINT_COMPONENTS[constraint.type as keyof typeof CONSTRAINT_COMPONENTS] as unknown as ScriptConstructor<ConstraintComponentBase> | undefined;
-        if (!component) {
-          console.warn(`[stride] ${where}: ${file.name}: constraint type '${constraint.type}' is not supported; skipped`);
-          continue;
-        }
-        const body = (id: string) => {
-          const entity = created.get(id);
-          if (!entity) throw new Error(`${where}: entity '${file.name}' has a constraint on ${id}, which is not in the scene`);
-          return entity;
-        };
-        const entity = created.get(file.id)!;
-        entity.add({ script: component, init: {} });
-        const script = entity.require(component);
-        script.settings = { ...constraint.settings, type: constraint.type, bodyA: body(constraint.bodyA), ...(constraint.bodyB ? { bodyB: body(constraint.bodyB) } : {}) } as ConstraintSettings;
-        script.enabled = constraint.enabled;
-      }
-    }
-    // 实例的主实体、挂到骨骼节点的目标可能排在后面：实体都建好以后再挂
-    const entityOf = (id: string | null, file: SceneEntityFile, what: string): EntityId => {
-      if (id === null) return -1 as EntityId;
-      const entity = created.get(id);
-      if (!entity) throw new Error(`${where}: entity '${file.name}' refers to ${id} (${what}), which is not in the scene`);
-      return entity.id;
-    };
-    for (const file of files) {
-      const { instance, nodeLink, ui, uiElementLink } = file.components;
-      if (ui) created.get(file.id)!.add(uiComponent(ui, assets));
-      if (instance) created.get(file.id)!.add(Instance.with({ master: entityOf(instance.master, file, 'instancing master') }));
-      if (nodeLink) created.get(file.id)!.add(ModelNodeLink.with({ target: entityOf(nodeLink.target, file, 'model node link target'), nodeName: nodeLink.nodeName }));
-      if (uiElementLink) created.get(file.id)!.add(UIElementLink.with({ target: entityOf(uiElementLink.target, file, 'UI element link target'), nodeName: uiElementLink.nodeName }));
-    }
-    const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
-    const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = {
-      model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs, font: assets.fonts, texture: assets.textures,
-      spriteSheet: assets.spriteSheets, uiPage: assets.uiPages, uiLibrary: assets.uiLibraries, sound: assets.sounds,
-    };
-    const context = {
-      entities: created,
-      asset: (kind: string, assetPath: string): object => (kind === 'scene' ? ({ path: assetPath } satisfies SceneReference) : byKind[kind]!.get(assetPath)!),
-      extraEntity: (owner: Entity): Entity => {
-        const extra = entities.create({ name: owner.name, components: [Transform] });
-        // 是 owner 的子实体：owner 销毁时一起销毁
-        extra.require(Transform).parent = owner;
-        return extra;
-      },
-    };
-    // 脚本属性可以引用别的脚本（同一个实体上排在后面的也行）：被引用的还没挂上的推迟到下一轮，一轮没有进展时按原样报错
-    let pending = files.flatMap((file) => (file.components.scripts ?? []).map((script) => ({ file, script })));
-    while (pending.length > 0) {
-      const deferred = pending.filter(({ file, script }) => !binder.attach(created.get(file.id)!, script, context, `${where}: ${file.name}`, { deferMissing: true }));
-      if (deferred.length === pending.length) {
-        // 没有进展：不推迟地挂第一个，引用的东西不在时它报错
-        const { file, script } = deferred.shift()!;
-        binder.attach(created.get(file.id)!, script, context, `${where}: ${file.name}`);
-      }
-      pending = deferred;
-    }
-    return created;
-  }
-
-  /** created 是这个场景里已经建好的实体（按场景文件里的 id），粒子模块引用的实体在模拟时才找。 */
-  #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager, created: ReadonlyMap<string, Entity>): void {
-    const { model, camera, light, background, animation, sprite, static: collidable, character, body, instancing, particleSystem } = file.components;
-    const { materials } = assets;
-    const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
-    if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction, trigger: collidable.trigger ?? false }));
-    if (character) {
-      const { shapes, trigger: _trigger, ...settings } = character;
-      entity.add(Character.with({ collider: collider(shapes), ...settings }));
-    }
-    if (body) {
-      const { shapes, ...settings } = body;
-      entity.add(Body.with({ collider: collider(shapes), ...settings }));
-    }
-    if (camera) entity.add(Camera.with(camera));
-    if (instancing) entity.add(Instancing);
-    if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
-    else if (light?.type === 'point') {
-      entity.add(Light.with({ type: 'point', color: [...light.color, 1], intensity: light.intensity, radius: light.radius, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
-    } else if (light?.type === 'spot') {
-      const { range, angleInner, angleOuter } = light;
-      entity.add(Light.with({ type: 'spot', color: [...light.color, 1], intensity: light.intensity, range, angleInner, angleOuter, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
-    } else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
-    const backgroundGroup = { intensity: background?.intensity ?? 1, renderGroup: background?.renderGroup ?? 0 };
-    if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, ...backgroundGroup }));
-    else if (background) entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, ...backgroundGroup }));
-    if (sprite && 'sheet' in sprite) {
-      const { sheet, color, ...settings } = sprite;
-      entity.add(Sprite.with({ ...settings, sheet: assets.spriteSheets.get(sheet)!.id, color: [...color] }));
-    } else if (sprite) {
-      const { texture, center, color, ...settings } = sprite;
-      const id = assets.images.get('renderTexture' in texture ? texture.renderTexture : texture.texture)!.id;
-      entity.add(Sprite.with({ ...settings, texture: id, centerX: center[0], centerY: center[1], color: [...color] }));
-    }
-    if (particleSystem) {
-      entity.add({ script: ParticleSystemComponent, init: {} });
-      entity.require(ParticleSystemComponent).load(particleSystem, {
-        texture: (path) => assets.images.get(path),
-        entityPosition: (id) => {
-          const world = created.get(id)?.get(Transform)?.world;
-          return world ? [world[12]!, world[13]!, world[14]!] : undefined;
-        },
-        module: (type) => entities.game.registry.particleModule(type) as ParticleModuleClass | undefined,
-        shaderClass: (name) => entities.game.registry.shaderClass(name),
-      });
-    }
-    if (animation) {
-      entity.add({ script: AnimationComponent, init: {} });
-      const clips = entity.require(AnimationComponent).animations;
-      for (const { name, clip } of animation.animations) clips.set(name, assets.animations.get(clip)!);
-    }
-    if (!model) return;
-    const overrides = model.materials.map((path) => (path === null ? null : (materials.get(path) ?? null)));
-    this.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true, renderGroup: model.renderGroup ?? 0 });
   }
 
   /**
@@ -776,8 +579,8 @@ export class ContentManager {
     return texture;
   }
 
-  /** defaultSrgb：引用里没写 srgb 时按用途定。 */
-  #loadTextureRef({ texture, encoding = 'ktx2', size, srgb }: TextureRef, defaultSrgb: boolean): Promise<Texture> {
+  /** @internal 按贴图引用加载。defaultSrgb：引用里没写 srgb 时按用途定。 */
+  loadTextureRef({ texture, encoding = 'ktx2', size, srgb }: TextureRef, defaultSrgb: boolean): Promise<Texture> {
     return this.loadTexture(texture, { encoding, srgb: srgb ?? defaultSrgb, ...(size ? { size } : {}) });
   }
 
@@ -803,16 +606,7 @@ export class ContentManager {
   }
 }
 
-/** 场景文件里的碰撞形状换成 Collider 的形状：网格形状引用模型加载出来的全部网格。 */
-function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderShape {
-  const { position, rotation, mass } = shape;
-  if (shape.type === 'mesh') return { type: 'mesh', meshes: assets.models.get(shape.model)!.meshes.map(({ mesh }) => mesh), position, rotation, mass };
-  if (shape.type === 'convexHull') return { type: 'convexHull', meshes: assets.models.get(shape.model)!.meshes.map(({ mesh }) => mesh), hull: shape.hull, position, rotation, mass };
-  return shape;
-}
 
-/** 脚本属性能引用的资源种类（model、material、animation、prefab 加载场景时预先加载，scene 只给路径）。 */
-const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary', 'sound']);
 
 function unionBounds(all: readonly Bounds[]): Bounds {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -836,54 +630,6 @@ function expand({ min, max }: Bounds, margin: number): Bounds {
   return { min: [min[0] - margin, min[1] - margin, min[2] - margin], max: [max[0] + margin, max[1] + margin, max[2] + margin] };
 }
 
-/** 并行加载一组（去重的）路径，结果按路径放进 Map。 */
-/** 场景文件里的 UIComponent。 */
-function uiComponent({ page, resolution, size, resolutionStretch, ...flags }: SceneUI, assets: SceneAssets) {
-  return UIComponent.with({
-    ...(page ? { page: assets.uiPages.get(page)! } : {}),
-    resolution: [...resolution],
-    size: [...size],
-    resolutionStretch,
-    ...flags,
-  });
-}
 
-/** 粒子系统里引用的贴图（材质的 ComputeTextureColor 这些）。 */
-function particleTextures(module: ParticleModuleFile): TextureRef[] {
-  const found: TextureRef[] = [];
-  const visit = (value: unknown): void => {
-    if (Array.isArray(value)) value.forEach(visit);
-    else if (value && typeof value === 'object') {
-      if (typeof (value as TextureRef).texture === 'string' && !('$type' in value)) found.push(value as TextureRef);
-      else Object.values(value).forEach(visit);
-    }
-  };
-  visit(module);
-  return found;
-}
 
-async function preload<T>(paths: readonly string[], load: (path: string) => Promise<T>): Promise<Map<string, T>> {
-  return new Map(await Promise.all([...new Set(paths)].map(async (path) => [path, await load(path)] as const)));
-}
 
-/** 场景文件里的阴影设置换成 Light 组件的列。 */
-function localShadowColumns(shadow: SceneLocalLightShadow) {
-  return { shadow: true, shadowSize: shadow.size, shadowFilter: shadow.filter, shadowDepthBias: shadow.depthBias, shadowNormalOffsetScale: shadow.normalOffsetScale };
-}
-
-function shadowColumns(shadow: SceneLightShadow) {
-  return {
-    shadow: true,
-    shadowSize: shadow.size,
-    shadowFilter: shadow.filter,
-    shadowCascadeCount: shadow.cascadeCount,
-    shadowDepthBias: shadow.depthBias,
-    shadowNormalOffsetScale: shadow.normalOffsetScale,
-    shadowStabilization: shadow.stabilization,
-    shadowPssmFactor: shadow.pssmFactor,
-    shadowDepthRange: shadow.depthRange,
-    shadowMinDistance: shadow.minDistance,
-    shadowMaxDistance: shadow.maxDistance,
-    shadowBlendCascades: shadow.blendCascades,
-  } as const;
-}

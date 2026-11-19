@@ -831,6 +831,11 @@ export interface SceneEntityFile {
      * Stride 的 ModelNodeLinkComponent：挂到 target（带模型的实体，场景里的 id；null 是父实体）的骨骼节点 nodeName 上。
      */
     readonly nodeLink?: { readonly target: string | null; readonly nodeName: string };
+    /**
+     * Stride 的 UIElementLinkComponent：跟着 UI 元素 nodeName 走。target 是带 UI 组件的实体（场景里的 id；null 是父实体），
+     * camera 是带相机的实体（面向相机的 UI 用它算朝向；null 是不用）。
+     */
+    readonly uiElementLink?: { readonly target: string | null; readonly camera: string | null; readonly nodeName: string };
     readonly model?: {
       /** 模型的内容路径。 */
       readonly model: string;

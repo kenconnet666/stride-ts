@@ -43,7 +43,7 @@ import { importCompositor } from './compositor.ts';
 import { FontImporter } from './fonts.ts';
 import { MaterialImporter, type ImportedTexture } from './materials.ts';
 import { proceduralMesh } from './procedural.ts';
-import { importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
+import { cleanNodeName, importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
 import { importTransform, once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { UIImporter } from './ui.ts';
 import { asNumber, asObject, color4, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, quaternion, vec2, vec3, type StrideObject, type StrideValue } from './yaml.ts';
@@ -424,6 +424,17 @@ export class StrideImporter {
         const sprite = await this.#sprite(component, where);
         if (sprite) components.sprite = sprite;
         return sprite !== undefined;
+      }
+      case 'UIElementLinkComponent': {
+        // Target 引用的是 UIComponent 的 Id、Camera 引用的是 CameraComponent 的 Id，换成它们所在的实体
+        const entity = (key: string, what: string) => {
+          const id = parseObjectReference(component[key]);
+          const owner = id === undefined ? undefined : context.owners.get(id);
+          if (id !== undefined && owner === undefined) this.#warnings.push(`${where}: UI element link ${what} ${id} is not in this scene; using null`);
+          return owner ?? null;
+        };
+        components.uiElementLink = { target: entity('Target', 'target'), camera: entity('Camera', 'camera'), nodeName: typeof component['NodeName'] === 'string' ? component['NodeName'] : '' };
+        return true;
       }
       case 'UIComponent':
         components.ui = await this.#uiComponent(component, where);
@@ -825,9 +836,10 @@ export class StrideImporter {
         const data = scene.mesh(m);
         // 没有材质的网格（OBJ 没写 usemtl）：Assimp 给它一个叫 DefaultMaterial 的材质，Stride 的模型资源里就是这个槽位
         const materialName = data.material === null ? 'DefaultMaterial' : scene.materials[data.material];
-        let slot = materialName === undefined ? -1 : slotNames.indexOf(materialName);
-        // Blender 导出时重名的材质带 .001 这样的后缀，Stride 的模型资源里只列了不带后缀的那个
-        if (slot < 0 && materialName !== undefined) slot = slotNames.indexOf(materialName.replace(/\.\d{3}$/, ''));
+        // 槽位名按 Stride 导入时的清理找：原名；Blender 导出时重名的材质带 .001 这样的后缀，Stride 的模型资源里只列了不带后缀的；
+        // FBX 的命名空间（c100:chr:x），新版 Stride 只留最后一段（CleanNodeName），旧版把 : 换成 _（UIElementLink 的骑士）
+        const candidates = materialName === undefined ? [] : [materialName, materialName.replace(/\.\d{3}$/, ''), cleanNodeName(materialName), materialName.replaceAll(':', '_')];
+        let slot = candidates.map((name) => slotNames.indexOf(name)).find((index) => index >= 0) ?? -1;
         if (slot < 0 && slots.length > 0) {
           this.#warnings.push(`${asset.file}: mesh material '${materialName}' has no slot in the model; using slot 0`);
           slot = 0;

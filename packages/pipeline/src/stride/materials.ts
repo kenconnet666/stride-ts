@@ -280,8 +280,6 @@ export class MaterialImporter {
     const type = asObject(asset.data['Type']);
     // 颜色贴图默认按 sRGB 采样（Stride 的 ColorTextureType.UseSRgbSampling），法线、灰度贴图是线性的
     const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
-    // Stride 编译颜色贴图时预乘 alpha；我们存直通 alpha，画的时候在着色器里乘（精灵、UI、SpriteBatch），不预乘的设置不支持
-    if (type?.$type === 'ColorTextureType' && type['PremultiplyAlpha'] === false) this.#context.warnings.push(`${asset.file}: PremultiplyAlpha: false is not supported; the texture is drawn premultiplied`);
     if (override) return this.#copyTexture(asset.path, override.encoding, await readFile(override.file), srgb);
 
     const file = sourceOf(asset);

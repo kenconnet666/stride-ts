@@ -373,6 +373,11 @@ describe('导入 Stride 场景', () => {
       '                    u: !UIComponent', '                        Id: uu1', `                        Page: ${ids.menuPage}:UI/Menu`,
       '                        Resolution: {X: 640.0, Y: 1136.0, Z: 1000.0}', '                        Size: {X: 1.0, Y: 1.0, Z: 1.0}',
       '                        ResolutionStretch: FixedWidthFixedHeight', '                        IsBillboard: false',
+      // UIElementLinkComponent：Target 引用 UIComponent、Camera 引用 CameraComponent 的 Id，换成实体
+      '        -   Entity:', '                Id: u2', '                Name: Follower', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tu2', '                        Children: {}',
+      '                    l: !UIElementLinkComponent', '                        Id: lu2', '                        Target: ref!! uu1',
+      '                        Camera: ref!! missing', '                        NodeName: ElementName',
     ].join('\n'),
     'Assets/Bumpy.sdscene': [
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
@@ -644,7 +649,7 @@ describe('导入 Stride 场景', () => {
     const project = await writeProject();
     const out = path.join(dir, 'content-ui');
     const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' }).importScene(project.byPath('Game/Menu')!);
-    expect(result.warnings).toEqual([]);
+    expect(result.warnings).toEqual([expect.stringMatching(/UI element link camera missing is not in this scene; using null$/)]);
     const page = JSON.parse(await readFile(path.join(out, 'Game/UI/Menu.ui.json'), 'utf8')) as UIFile;
     expect(page).toEqual({
       name: 'Menu',
@@ -679,6 +684,7 @@ describe('导入 Stride 场景', () => {
     } satisfies UIFile);
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Menu.scene.json'), 'utf8')) as SceneFile;
     const { ui, scripts } = scene.entities[0]!.components;
+    expect(scene.entities[1]!.components.uiElementLink).toEqual({ target: 'u1', camera: null, nodeName: 'ElementName' });
     expect(ui).toEqual({ page: 'Game/UI/Menu', resolution: [640, 1136, 1000], size: [1, 1, 1], resolutionStretch: 'fixedWidthFixedHeight', isBillboard: false });
     expect(scripts).toEqual([{
       type: 'Game.MenuScript',

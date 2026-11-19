@@ -73,6 +73,13 @@ export {
   type SceneSpriteFromTexture,
   type SceneSpriteSettings,
   type SpriteSheetFile,
+  type SceneUI,
+  type UIElementFile,
+  type UIElementType,
+  type UIFile,
+  type UISpriteValue,
+  type UIStripDefinition,
+  type UIValue,
   type SceneTextureCamera,
   type SpriteBlend,
   type ScenePhysics,
@@ -163,6 +170,24 @@ export { SpriteFont, type FontGlyph, type LoadedGlyphBlock } from './rendering/t
 export { SpriteBatch, type Color, type DrawOptions, type DrawStringOptions, type Rect, type Vec2 } from './rendering/text/SpriteBatch';
 export { GlyphStore } from './rendering/text/GlyphStore';
 export { glyphAdvance, glyphScale, layoutText, measureText, type FontSize, type PositionedGlyph, type TextAlignment } from './rendering/text/layout';
+export {
+  UIElement, multiply as multiplyMatrix2D, translation as translationMatrix2D,
+  type HorizontalAlignment, type LayoutingContext, type Matrix2D, type Thickness, type VerticalAlignment, type Visibility,
+} from './ui/UIElement';
+export { Panel, UIElementCollection } from './ui/panels/Panel';
+export { Canvas } from './ui/panels/Canvas';
+export { GridBase, UniformGrid } from './ui/panels/UniformGrid';
+export { Grid, StripDefinition, StripDefinitionCollection, type StripType } from './ui/panels/Grid';
+export { StackPanel } from './ui/panels/StackPanel';
+export { Control, ContentControl, ContentDecorator } from './ui/controls/ContentControl';
+export { Button, ButtonBase, type ClickMode } from './ui/controls/Button';
+export { ImageElement, imageSize, type StretchDirection, type StretchType } from './ui/controls/ImageElement';
+export { TextBlock } from './ui/controls/TextBlock';
+export { ModalElement } from './ui/controls/ModalElement';
+export { ScrollBar, ScrollViewer, type Orientation, type ScrollInfo, type ScrollingMode } from './ui/controls/ScrollViewer';
+export { EditText, type EditTextInputType } from './ui/controls/EditText';
+export { SpriteFromSheet, SpriteFromTexture, type SpriteProvider } from './ui/sprites';
+export { buildElement, UILibrary, UIPage, type UIResources } from './ui/UIPage';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';
 export { MipmapGenerator } from './rendering/MipmapGenerator';

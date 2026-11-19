@@ -925,8 +925,9 @@ export interface UIElementFile {
   /** 元素的属性：Stride 的属性名首字母小写，值见 UIValue。没写的是 Stride 的默认值。 */
   readonly props: Readonly<Record<string, UIValue>>;
   /**
-   * 附加属性（Stride 的 DependencyProperties 里别的类定义的）：`row`、`column`、`rowSpan`、`columnSpan`（GridBase）、
-   * `zIndex`（Panel）、`absolutePosition`、`relativePosition`、`relativeSize`、`pinOrigin`、`useAbsolutePosition`（Canvas）。
+   * 附加属性（Stride 的 DependencyProperties 里别的类定义的），名字同运行时 UIElement 上的属性：`gridRow`、`gridColumn`、
+   * `gridRowSpan`、`gridColumnSpan`、`panelZIndex`、`canvasAbsolutePosition`、`canvasRelativePosition`、`canvasRelativeSize`、
+   * `canvasPinOrigin`、`canvasUseAbsolutePosition`。
    */
   readonly attached?: Readonly<Record<string, UIValue>>;
   /** 面板的子元素（Stride 的 Panel.Children），按顺序。 */

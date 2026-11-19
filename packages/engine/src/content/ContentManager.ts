@@ -29,7 +29,8 @@ import { Cubemap, Skybox } from '../rendering/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot } from './format';
+import { buildElement, uiAssetPaths, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -39,6 +40,9 @@ declare module '../data/prop' {
     scene: SceneReference;
     prefab: Prefab;
     font: SpriteFont;
+    spriteSheet: SpriteSheet;
+    uiPage: UIPage;
+    uiLibrary: UILibrary;
   }
 }
 
@@ -90,10 +94,12 @@ interface SceneAssets {
   /** 背景和精灵的贴图（包括渲染目标贴图），按内容路径。 */
   readonly images: ReadonlyMap<string, Texture>;
   readonly spriteSheets: ReadonlyMap<string, SpriteSheet>;
-  /** 脚本属性引用的预制体、字体、贴图。 */
+  /** 脚本属性引用的预制体、字体、贴图、UI 页面和库。 */
   readonly prefabs: ReadonlyMap<string, Prefab>;
   readonly fonts: ReadonlyMap<string, SpriteFont>;
   readonly textures: ReadonlyMap<string, Texture>;
+  readonly uiPages: ReadonlyMap<string, UIPage>;
+  readonly uiLibraries: ReadonlyMap<string, UILibrary>;
 }
 
 /** 合成器里画进渲染目标贴图的相机，贴图已经建好。 */
@@ -292,6 +298,36 @@ export class ContentManager {
     });
   }
 
+  /**
+   * 加载 UI 页面（Stride 的 UIPage）：引用的精灵表、字体、贴图先加载好，再建元素树。同一页面只建一次（同 Stride 的
+   * Content.Load），用到它的地方共用这棵树。
+   */
+  loadUIPage(path: string): Promise<UIPage> {
+    return this.#once(path + EXTENSIONS.ui, 'page', async (url) => {
+      const { file, resources } = await this.#uiFile(url);
+      return new UIPage(file.name, file.root === undefined ? null : buildElement(file, file.root, resources));
+    });
+  }
+
+  /** 加载 UI 库（Stride 的 UILibrary）：instantiateElement 每次按模板新建元素。 */
+  loadUILibrary(path: string): Promise<UILibrary> {
+    return this.#once(path + EXTENSIONS.ui, 'library', async (url) => {
+      const { file, resources } = await this.#uiFile(url);
+      return new UILibrary(file, resources);
+    });
+  }
+
+  async #uiFile(url: URL): Promise<{ file: UIFile; resources: UIResources }> {
+    const file = this.#json<UIFile>(await this.#read(url));
+    const paths = uiAssetPaths(file);
+    const [spriteSheets, fonts, textures] = await Promise.all([
+      preload(paths.spriteSheets, (p) => this.loadSpriteSheet(p)),
+      preload(paths.fonts, (p) => this.loadFont(p)),
+      Promise.all(paths.textures.map(async (value) => 'texture' in value ? [value.texture.texture, await this.#loadTextureRef(value.texture, true)] as const : undefined)),
+    ]);
+    return { file, resources: { spriteSheets, fonts, textures: new Map(textures.filter((entry) => entry !== undefined)) } };
+  }
+
   /** 加载单独引用的贴图资源（脚本属性、合成器渲染器引用的）：先读它的 TextureRef，再按里面的编码和 sRGB 读贴图。 */
   loadTextureAsset(path: string): Promise<Texture> {
     return this.#once(path + EXTENSIONS.texture, async (url) => {
@@ -385,23 +421,25 @@ export class ContentManager {
     const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
     const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets, fonts, textures] = await Promise.all([
+    const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries] = await Promise.all([
       preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => this.loadModel(p)),
       preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
       preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => this.loadAnimation(p)),
       preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => this.loadSkybox(p)),
       preload(components.flatMap((c) => (c.background?.type === 'cubemap' ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
       preload(scriptPaths('prefab'), (p) => this.loadPrefab(p)),
-      preload(components.flatMap((c) => (c.sprite && 'sheet' in c.sprite ? [c.sprite.sheet] : [])), (p) => this.loadSpriteSheet(p)),
+      preload([...components.flatMap((c) => (c.sprite && 'sheet' in c.sprite ? [c.sprite.sheet] : [])), ...scriptPaths('spriteSheet')], (p) => this.loadSpriteSheet(p)),
       preload(scriptPaths('font'), (p) => this.loadFont(p)),
       preload(scriptPaths('texture'), (p) => this.loadTextureAsset(p)),
+      preload([...components.flatMap((c) => (c.ui?.page ? [c.ui.page] : [])), ...scriptPaths('uiPage')], (p) => this.loadUIPage(p)),
+      preload(scriptPaths('uiLibrary'), (p) => this.loadUILibrary(p)),
     ]);
     // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
     const imageRefs = components.flatMap((c) => [...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite && 'texture' in c.sprite ? [c.sprite.texture] : [])]);
     const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
       ? [ref.renderTexture, this.renderTexture(ref)] as const
       : [ref.texture, await this.#loadTextureRef(ref, true)] as const)));
-    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures };
+    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries };
   }
 
   /**
@@ -456,7 +494,10 @@ export class ContentManager {
       if (nodeLink) created.get(file.id)!.add(ModelNodeLink.with({ target: entityOf(nodeLink.target, file, 'model node link target'), nodeName: nodeLink.nodeName }));
     }
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
-    const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs, font: assets.fonts, texture: assets.textures };
+    const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = {
+      model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs, font: assets.fonts, texture: assets.textures,
+      spriteSheet: assets.spriteSheets, uiPage: assets.uiPages, uiLibrary: assets.uiLibraries,
+    };
     const context = {
       entities: created,
       asset: (kind: string, assetPath: string): object => (kind === 'scene' ? ({ path: assetPath } satisfies SceneReference) : byKind[kind]!.get(assetPath)!),
@@ -583,7 +624,7 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
 }
 
 /** 脚本属性能引用的资源种类（model、material、animation、prefab 加载场景时预先加载，scene 只给路径）。 */
-const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture']);
+const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary']);
 
 function unionBounds(all: readonly Bounds[]): Bounds {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];

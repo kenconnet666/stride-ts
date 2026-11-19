@@ -351,6 +351,8 @@ describe('导入 Stride 场景', () => {
       '                BackgroundImage: !SpriteFromSheet', `                    Sheet: ${ids.heroSheet}:Sprites/Hero`, '                    CurrentFrame*: 2',
       '            Base:', `                BasePartAsset: ${ids.menuLibrary}:UI/Lib`, '                BasePartId: x', '                InstanceId: y',
       '        -   UIElement: !ImageElement', '                Id: i1', '                DependencyProperties: {}', '                StretchDirection: DownOnly',
+      // 不带引号的数字样的名字是字符串（GameMenu 的 Text: 000）
+      '                Name: 007',
       '                Color: {R: 255, G: 0, B: 51, A: 255}',
       '        -   UIElement: !Canvas', '                Id: c1', '                DependencyProperties:',
       '                    3c3d~Canvas.PinOriginPropertyKey: {X: 1.0, Y: 0.0, Z: 0.0}', '                    6549~Canvas.RelativeSizePropertyKey: {X: NaN, Y: 0.4, Z: 1.0}',
@@ -661,11 +663,11 @@ describe('导入 Stride 场景', () => {
             backgroundColor: [0, 0, 0, 0], drawLayerNumber: 2, horizontalAlignment: 'center', margin: [10, 0, 0, 0], padding: [0, 0, 0, 0], name: 'controlStatus',
             backgroundImage: { sheet: 'Game/Sprites/Hero', frame: 2 },
           },
-          attached: { row: 1 },
+          attached: { gridRow: 1 },
           content: 2,
         },
-        { type: 'ImageElement', props: { stretchDirection: 'downOnly', color: [1, 0, 0.2, 1] } },
-        { type: 'Canvas', props: { visibility: 'collapsed' }, attached: { pinOrigin: [1, 0], relativeSize: [null, 0.4], zIndex: -1 }, children: [] },
+        { type: 'ImageElement', props: { stretchDirection: 'downOnly', name: '007', color: [1, 0, 0.2, 1] } },
+        { type: 'Canvas', props: { visibility: 'collapsed' }, attached: { canvasPinOrigin: [1, 0], canvasRelativeSize: [null, 0.4], panelZIndex: -1 }, children: [] },
       ],
     } satisfies UIFile);
     const library = JSON.parse(await readFile(path.join(out, 'Game/UI/Lib.ui.json'), 'utf8')) as UIFile;

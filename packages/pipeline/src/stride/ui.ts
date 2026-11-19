@@ -7,7 +7,7 @@
 import path from 'node:path';
 import { EXTENSIONS, type TextureRef, type UIElementFile, type UIElementType, type UIFile, type UIStripDefinition, type UIValue } from '@stride-ts/engine/content-format';
 import { once, type AssetEntry, type StrideProject } from './project.ts';
-import { asNumber, asObject, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, vec3, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, scalarSource, vec3, type StrideObject, type StrideValue } from './yaml.ts';
 
 export interface UIImportContext {
   readonly project: StrideProject;
@@ -31,6 +31,8 @@ const ENUM_PROPS = new Set([
   'HorizontalAlignment', 'VerticalAlignment', 'Visibility', 'Orientation', 'StretchType', 'StretchDirection', 'ScrollMode',
   'TextAlignment', 'ClickMode', 'State', 'InputType', 'TickPlacement',
 ]);
+/** 值是字符串的属性：YAML 里不带引号的 `Text: 000` 会读成数字，按原文取。 */
+const STRING_PROPS = new Set(['Name', 'Text']);
 /** 值是 Thickness 的属性：[左, 上, 右, 下]。 */
 const THICKNESS_PROPS = new Set(['Margin', 'Padding', 'BorderThickness']);
 /** 深度方向的属性：两维布局不用。 */
@@ -38,13 +40,16 @@ const DEPTH_PROPS = new Set(['Depth', 'MinimumDepth', 'MaximumDepth', 'DepthAlig
 /** 不当属性导入的键：元素的 Id、附加属性和层级（另外处理）。 */
 const STRUCTURE_KEYS = new Set(['$type', 'Id', 'DependencyProperties', 'Children', 'Content']);
 
-/** 附加属性的键（`GridBase.RowPropertyKey`）→ UIElementFile.attached 的名字；Grid 的层不导入（两维）。 */
+/**
+ * 附加属性的键（`GridBase.RowPropertyKey`）→ UIElementFile.attached 的名字：类名（GridBase 写成 grid）加属性名，同运行时
+ * UIElement 上的属性（gridRow、panelZIndex、canvasRelativePosition）。Grid 的层不导入（两维）。
+ */
 function attachedName(key: string): string | null | undefined {
   const match = /^(GridBase|Panel|Canvas)\.(\w+)PropertyKey$/.exec(key);
   if (!match) return undefined;
   const [, owner, name] = match;
   if (owner === 'GridBase' && (name === 'Layer' || name === 'LayerSpan')) return null;
-  return lowerFirst(name!);
+  return (owner === 'GridBase' ? 'grid' : owner!.toLowerCase()) + name;
 }
 
 export class UIImporter {
@@ -106,6 +111,10 @@ export class UIImporter {
     const props: Record<string, UIValue> = {};
     for (const [key, value] of Object.entries(object)) {
       if (STRUCTURE_KEYS.has(key) || DEPTH_PROPS.has(key) || value === undefined) continue;
+      if (STRING_PROPS.has(key) && value !== null && typeof value !== 'string') {
+        props[lowerFirst(key)] = scalarSource(object, key) ?? String(value);
+        continue;
+      }
       const converted = await this.#value(key, value, `${where}.${key}`);
       if (converted !== undefined) props[lowerFirst(key)] = converted;
     }

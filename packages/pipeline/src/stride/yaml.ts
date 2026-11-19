@@ -6,6 +6,7 @@
  * 按 YAML 规范那是流式指示符，标准解析器会出错。所以解析前把标签里的 `,` `[` `]` 换成百分号编码（标签里允许），
  * 读出来再解码回去。
  * 派生资源（预制体的实例、模板）里改过的字段，键名后面带 `*`（覆盖标记，`Position*:`）：读的时候去掉，按原名访问。
+ * 不带引号的标量按 YAML 的规则解析，`Text: 000` 读出来是数字 0；字段其实是字符串时用 scalarSource 取原文。
  */
 import { isMap, isScalar, isSeq, parseDocument, type Node } from 'yaml';
 
@@ -13,6 +14,14 @@ export type StrideValue = string | number | boolean | null | StrideValue[] | Str
 export interface StrideObject {
   readonly [key: string]: StrideValue | undefined;
   readonly $type?: string;
+}
+
+/** 映射里不带引号、解析成数字或布尔的值的原文（键 → 原文）；用 symbol 存在映射对象上，Object.entries 看不到。 */
+const SOURCES = Symbol('sources');
+
+/** 映射里 key 的值在文件里的原文（不带引号、读成数字或布尔的才有）。 */
+export function scalarSource(object: StrideObject, key: string): string | undefined {
+  return (object as { [SOURCES]?: Record<string, string> })[SOURCES]?.[key];
 }
 
 const TAG = /(^|[\s:\-])!([^\s!][^\s]*)/gm;
@@ -30,10 +39,15 @@ function convert(node: Node | null | undefined): StrideValue {
   if (node === null || node === undefined) return null;
   const type = typeOf(node.tag);
   if (isMap(node)) {
-    const object: Record<string, StrideValue> = type === undefined ? {} : { $type: type };
+    const object: Record<string, StrideValue> & { [SOURCES]?: Record<string, string> } = type === undefined ? {} : { $type: type };
     for (const pair of node.items) {
-      const key = isScalar(pair.key) ? String(pair.key.value) : String(pair.key);
-      object[key.endsWith('*') ? key.slice(0, -1) : key] = convert(pair.value as Node | null);
+      const rawKey = isScalar(pair.key) ? String(pair.key.value) : String(pair.key);
+      const key = rawKey.endsWith('*') ? rawKey.slice(0, -1) : rawKey;
+      const value = convert(pair.value as Node | null);
+      object[key] = value;
+      if ((typeof value === 'number' || typeof value === 'boolean') && isScalar(pair.value) && pair.value.source !== undefined) {
+        (object[SOURCES] ??= {})[key] = pair.value.source;
+      }
     }
     return object;
   }

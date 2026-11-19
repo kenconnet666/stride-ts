@@ -21,6 +21,8 @@ export interface SpriteFrame {
   /** 精灵的原点（实体的位置）在区域里的像素位置：centerFromMiddle 时从区域中心算，否则从左上角算。 */
   readonly center: readonly [number, number];
   readonly centerFromMiddle: boolean;
+  /** 九宫格的边框，像素：左、上、右、下（UI 拉伸图片时四个角不变形）；没有时整张拉伸。 */
+  readonly borders?: readonly [number, number, number, number];
 }
 
 export class SpriteSheet {

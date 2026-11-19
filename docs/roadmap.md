@@ -369,4 +369,9 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    3. ~~粒子渲染~~（2026-11-19）：`particles/ParticleRenderer.ts`：照 Stride 在 CPU 上把粒子展开成顶点（Billboard、Quad 按粒子的朝向、Hexagon 两个四边形；翻页 UV；局部模拟的换到世界），所有发射器的顶点一个缓冲、每帧写一次，每个发射器画一次；颜色 = 组件颜色 × 材质（贴图按预乘用、粒子颜色或常量），alpha 乘 1 - AlphaAdditive，预乘混合、比深度不写深度；系统从远到近，发射器按 DrawPriority，ByDepth 的粒子从远到近。一般在前向渲染器的透明阶段里画，合成器的 `particlesOverUI` 时在 UI 之后画进后备缓冲（前向渲染器留着深度缓冲）。Chrome 里看过彩纸（顶点颜色的 Quad）和火（翻页、加法）。单测 1 个（翻页）。
    4. ~~脚本翻译和冒烟~~（2026-11-19）：UISceneBase、SplashScript（用代码建 Grid 布局的 UI，按钮在按钮上实例化命中特效的预制体、2 秒后移除，导火索按比例缩短、火跟着烧到的地方，新游戏和结束两种状态切换火和彩纸）；引擎补了 `SpriteFromSheet.create(sheet, name)`（Stride 的 SpriteFromSheet.Create，UIElementLink 的脚本也改用它）。冒烟 10 项（UI、导火索、火跟着走、点"恭喜"和"重新开始"、命中特效出现和移除）。
    5. ~~和桌面 Stride 比对~~（2026-11-19，`tools/stride-capture/ui-particles`）：600x600、固定步长，导火索设成一半、发射器改成固定种子并重置后走 60 步截新游戏，进入结束后同样截一张。UI 的布局、火的位置和翻页、彩纸的范围和颜色一致；平均每通道差 4.65、4.68/255，来自精灵表的 BC 压缩和文字的 hinting（同 GameMenu），彩纸每个粒子的位置差一点（生成器的小数部分在重置时不清零，两边生成的时刻差一帧）。帧时间（新游戏，不限帧率）：桌面 Stride 0.79 ms，stride-ts 0.47 ms（一开始 1.28 ms：展开顶点时每个粒子分配小数组，画面外的系统也展开；改成标量、按包围盒剔除）；导入 7 s（重新导入，第一次 17 s），构建 7 s，页面下载 4.9 MB（brotli 3.3 MB），第一帧 1.0 s。UIParticles 完成。
+5. **SimpleAudio**（`apps/simple-audio`，端口 5206）：一个场景，全屏 UI 页面（背景、居中的 DJ 图、左右两个波形图），SoundScript 一开始循环放背景音乐（mp3，StreamFromDisk），每次点击重放音效（wav，Spatialized 但场景里没有 AudioEmitter，按 2D 放）并让两个波形图从中间往两边散开、渐隐。要做的是音频（P2 的"音频"的第一段：音效和音乐，空间化等用到的样例再做）。分步：
+   1. 导入：.sdsnd 导入成 `.sound.json`（源文件、是否流式、是否空间化），源文件是浏览器能解的格式（mp3、ogg、wav）时原样复制（D9 的 (c)），其他格式警告；脚本属性引用声音（`prop.asset('sound')`）。
+   2. 音频运行时（`audio/`）：`game.audio`（Web Audio 的 AudioContext，主音量；浏览器要用户先操作才能出声：第一次按键、点击时恢复，之前要放的排队），`Sound`（不流式的解码成 AudioBuffer；流式的用 `<audio>` 元素边下边放），`SoundInstance`（Play、Pause、Stop、IsLooping、Volume、Pan、Pitch、PlayState，照 Stride 的 API）。单测（状态机）。
+   3. 脚本翻译（SoundScript：AsyncScript，按名字找图片元素、点击时重放音效）、冒烟（Chrome 加 `--autoplay-policy=no-user-gesture-required`，用 AnalyserNode 量输出不是静音）。
+   4. 和桌面 Stride 比对（画面截图；声音只核对播放状态和时长）。
 

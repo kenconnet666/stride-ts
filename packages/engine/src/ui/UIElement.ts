@@ -202,12 +202,20 @@ export abstract class UIElement {
   /** 在 Canvas 里用绝对位置（true）还是相对位置。 */
   get canvasUseAbsolutePosition(): boolean { return this.#canvasUseAbsolutePosition; }
   set canvasUseAbsolutePosition(value: boolean) { this.#canvasUseAbsolutePosition = value; this.#invalidateParentMeasure(); }
-  /** Canvas 里钉住的位置，虚拟像素；某一维是 NaN 时用相对位置。 */
+  /** Canvas 里钉住的位置，虚拟像素；某一维是 NaN 时用相对位置。设它同时改用绝对位置（同 Stride 的 SetCanvasAbsolutePosition）。 */
   get canvasAbsolutePosition(): readonly [number, number] { return this.#canvasAbsolutePosition; }
-  set canvasAbsolutePosition(value: readonly [number, number]) { this.#canvasAbsolutePosition = [value[0], value[1]]; this.#invalidateParentMeasure(); }
-  /** Canvas 里钉住的位置，按 Canvas 的大小的比例。 */
+  set canvasAbsolutePosition(value: readonly [number, number]) {
+    this.#canvasAbsolutePosition = [value[0], value[1]];
+    this.#canvasUseAbsolutePosition = true;
+    this.#invalidateParentMeasure();
+  }
+  /** Canvas 里钉住的位置，按 Canvas 的大小的比例。设它同时改用相对位置（同 Stride 的 SetCanvasRelativePosition）。 */
   get canvasRelativePosition(): readonly [number, number] { return this.#canvasRelativePosition; }
-  set canvasRelativePosition(value: readonly [number, number]) { this.#canvasRelativePosition = [value[0], value[1]]; this.#invalidateParentMeasure(); }
+  set canvasRelativePosition(value: readonly [number, number]) {
+    this.#canvasRelativePosition = [value[0], value[1]];
+    this.#canvasUseAbsolutePosition = false;
+    this.#invalidateParentMeasure();
+  }
   /** Canvas 里的大小，按 Canvas 的大小的比例；NaN 是不限。 */
   get canvasRelativeSize(): readonly [number, number] { return this.#canvasRelativeSize; }
   set canvasRelativeSize(value: readonly [number, number]) { this.#canvasRelativeSize = [Math.abs(value[0]), Math.abs(value[1])]; this.#invalidateParentMeasure(); }

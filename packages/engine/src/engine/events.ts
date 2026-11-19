@@ -52,6 +52,13 @@ export class EventReceiver<T> implements Disposable {
     return this.#queue.shift();
   }
 
+  /** 取走队列里最早的一个，返回有没有（Stride 无参数事件的 TryReceive；EventKey<void> 的 tryReceive 分不出有没有）。 */
+  tryConsume(): boolean {
+    if (this.#queue.length === 0) return false;
+    this.#queue.shift();
+    return true;
+  }
+
   /** 队列里所有的值，从早到晚；之后队列为空。 */
   drain(): readonly T[] {
     if (this.#queue.length === 0) return EMPTY as readonly T[];

@@ -194,18 +194,14 @@ export class Simulation {
   });
 
   /**
-   * 跟着实体走的刚体，每步先移到实体现在的世界位姿：
-   * - 挂在会动的刚体下面的运动学刚体：TopDownRPG 掉落的金币是带刚体的圆柱，拾取用的触发器是它子实体上的运动学刚体，要跟着它落下；
-   * - 挂在骨骼节点上的刚体（ModelNodeLink，命中框）：TopDownRPG 出拳的碰撞体挂在右手上，出拳时跟着手挥出去。
-   * 和 Stride 不同：Bepu 里刚体由仿真驱动变换，不跟父实体或骨骼走（运动学的醒着时停在原处，睡下后变换才跟着父实体，触发器
-   * 仍在原处；出拳的碰撞体停在加进仿真时手的位置），这里让它们跟着，符合场景的本意。
+   * 挂在骨骼节点上的刚体（ModelNodeLink，命中框）每步先移到节点现在的世界位姿：TopDownRPG 出拳的碰撞体挂在右手上，出拳时
+   * 跟着手挥出去。和 Stride 不同：Bepu 里刚体由仿真驱动变换，出拳的碰撞体停在加进仿真时手的位置，这里让它跟着，符合场景的本意。
+   * 运动学刚体跟着变换（自己或父实体被移动）由原生侧在步进前处理（stride-native 的 FollowMovedKinematics）。
    */
-  readonly #followMovingParents = system('Simulation.followMovingParents', {
-    with: { body: Body, physics: PhysicsBody, transform: Transform },
-    update: ({ body, physics, transform, entities, count }) => {
+  readonly #followNodeLinks = system('Simulation.followNodeLinks', {
+    with: { body: Body, physics: PhysicsBody, transform: Transform, link: ModelNodeLink },
+    update: ({ physics, transform, count }) => {
       for (let i = 0; i < count; i++) {
-        const entity = this.#entities.entity(entities[i]!);
-        if (!entity.get(ModelNodeLink) && (body.kinematic[i] === 0 || !this.#hasMovingAncestor(entity))) continue;
         const slot = transform.slot[i]! as TransformSlot;
         this.#transforms.updateSlot(slot);
         const { translation, rotation } = Matrix.decompose(this.#transforms.world.subarray(slot * 16, slot * 16 + 16));
@@ -213,15 +209,6 @@ export class Simulation {
       }
     },
   });
-
-  /** 父实体链上有没有动态刚体或角色。 */
-  #hasMovingAncestor(entity: Entity): boolean {
-    for (let parent = entity.require(Transform).parent; parent; parent = parent.require(Transform).parent) {
-      if (!parent.get(PhysicsBody)) continue;
-      if (parent.get(Character) || parent.get(Body)?.kinematic === false) return true;
-    }
-    return false;
-  }
 
   /** 实体销毁或去掉物理组件时移除物体（加进 EntityManager：只用它的 removed 回调）。 */
   readonly #removeBodies = system('Simulation.removeBodies', {
@@ -277,7 +264,7 @@ export class Simulation {
     this.#remaining += Math.min(time.elapsed, MAX_FRAME_TIME) * this.timeScale;
     for (let steps = 0; this.#remaining >= step && steps < maxStepsPerFrame; steps++) {
       for (const listener of this.#stepListeners) listener(step);
-      entities.run(this.#followMovingParents, time);
+      entities.run(this.#followNodeLinks, time);
       this.#world.step(step);
       this.#remaining -= step;
       this.#dispatchContacts();

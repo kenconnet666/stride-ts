@@ -37,6 +37,13 @@ export class BackgroundSection {
     this.#secondOrigin = [...this.#firstOrigin];
   }
 
+  /** 停在 position 处（比对截图时从外面定住；Stride 那边的截图工程用反射设 ScrollPos）。 */
+  scrollTo(position: number): void {
+    this.isUpdating = false;
+    this.scrollPos = position;
+    this.#updateQuads();
+  }
+
   /** 滚动（isUpdating 时）并画这一层的一两个四边形。 */
   draw(elapsed: number, batch: SpriteBatch): void {
     if (this.isUpdating) {

@@ -24,6 +24,16 @@ export class JumpyJetRenderer implements SceneRenderer {
     this.parallaxBackgrounds = parallaxBackgrounds;
   }
 
+  /** 四层背景，从远到近（第一次画之前是空的）。 */
+  get sections(): readonly BackgroundSection[] {
+    return this.#sections ?? [];
+  }
+
+  /** 背景在滚（游戏结束时停住）。 */
+  get isScrolling(): boolean {
+    return this.#sections?.[0]?.isUpdating ?? true;
+  }
+
   startScrolling(): void {
     for (const section of this.#sections ?? []) section.isUpdating = true;
   }

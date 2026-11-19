@@ -177,6 +177,13 @@ describe('事件', () => {
     const next = b.receive();
     damaged.broadcast({ amount: 3 });
     expect((await next).amount).toBe(3);
+    // 没有值的事件（Stride 的无参数 EventKey）：tryConsume 取走一个、说有没有
+    const started = new EventKey<void>();
+    const c = started.receiver();
+    expect(c.tryConsume()).toBe(false);
+    started.broadcast();
+    started.broadcast();
+    expect([c.tryConsume(), c.tryConsume(), c.tryConsume()]).toEqual([true, true, false]);
     b[Symbol.dispose]();
     expect(damaged.receiverCount).toBe(1);
   });

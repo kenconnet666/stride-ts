@@ -74,7 +74,7 @@
 - **路径给拐点**：Stride 的 FindFollowPath 沿拐点按固定步长采样出一串平滑的点，我们给 Detour 的直线路径（拐点，含起点和终点）。TopDownRPG 的 PlayerController 自己按路径点走，拐点照样能用；点更少，转角处的减速逻辑按拐点算。
 - **RecastNavigationComponent 只做了寻路**：Stride 里它还能排队寻路（SetTarget，由 RecastNavigationProcessor 处理）、按 Speed 直接移动实体，样例里没用到，等场景用到时再做。BepuNavigationBoundingBoxComponent 在 Stride 里本身没实现（源码里是 #warning），导入时忽略。
 - **挂到骨骼节点用变换存储的链接**：ModelNodeLink 的实体世界矩阵 = 目标的世界 × 节点矩阵 × 本地，不看父节点（Stride 的 TransformLink）。做在原生的变换存储里（`setLink`），计算顺序按链接排，帧末一次算完；别的做法是在 TS 里每帧算好世界矩阵写回本地变换，但子实体和物理都要跟着处理，容易出错。
-- **跟着实体走的刚体**：挂在会动的刚体下面的运动学刚体（掉落金币的拾取触发器）、挂在骨骼节点上的刚体（出拳的碰撞体）每个物理步先瞬移到实体当前的世界位姿。Bepu 里刚体由仿真驱动变换，这两种情况都停在原处（运动学的睡下后变换才跟父实体走，触发器仍在原处；出拳的碰撞体停在加进仿真时手的位置），样例的本意显然是跟着走。和 Stride 不同，记在 Simulation 的 followMovingParents 上。
+- **跟着实体走的刚体**：运动学刚体的世界变换被物理以外改过（脚本移动了它或它的父实体：JumpyJet 移动管子组的根，掉落金币的拾取触发器跟着金币落）、挂在骨骼节点上的刚体（出拳的碰撞体），每个物理步先瞬移到实体当前的世界位姿。Bepu 里刚体由仿真驱动变换，这些情况都停在原处（运动学的醒着时被写回、睡下后变换才跟父实体走，物理里仍在原处；出拳的碰撞体停在加进仿真时手的位置），样例的本意显然是跟着走。和 Stride 不同：运动学的在原生侧（stride-native 的 FollowMovedKinematics，按上次写回的位姿比较），骨骼节点的在 Simulation 的 followNodeLinks。
 - **脚本属性互相引用不要求顺序**：Stride 反序列化时引用总能解析；我们挂脚本时被引用的脚本还没挂上就推迟到下一轮（TopDownRPG 的 CrateScript 排在它引用的 Trigger 前面）。
 - **节点名照 Stride 的 CleanNodeName**：FBX 的命名空间（`mannequinModel:CATRigHub001`）只留最后一段，去掉 `#`、`__` 之后的部分和空格；动画一个关节都对不上时导入警告（以前静默变成静止姿势）。
 - **流式加载时停住物理**：Stride 的 SceneStreaming 用同步的 Content.Load，加载那一帧整个游戏停住；我们的场景加载是异步的（取文件、建实体），分块加载期间把物理仿真停住，角色不会在地面出现之前掉下去（DynamicScene 一开始就是这样：角色站在中央分块的触发器里，脚下还没有地面）。渲染和脚本照常跑。

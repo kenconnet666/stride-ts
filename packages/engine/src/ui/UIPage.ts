@@ -94,7 +94,7 @@ export function buildElement(file: UIFile, index: number, resources: UIResources
 
 function applyProps(element: UIElement, data: UIElementFile, props: Readonly<Record<string, UIValue>>, resources: UIResources, where: string): void {
   const target = element as unknown as Record<string, unknown>;
-  for (const [key, value] of Object.entries(props)) {
+  for (const [key, value] of Object.entries(props).sort(([a], [b]) => Number(a === USE_ABSOLUTE) - Number(b === USE_ABSOLUTE))) {
     if ((key === 'rowDefinitions' || key === 'columnDefinitions') && element instanceof Grid) {
       for (const strip of value as readonly UIStripDefinition[]) element[key].add(stripDefinition(strip));
       continue;
@@ -110,6 +110,9 @@ function applyProps(element: UIElement, data: UIElementFile, props: Readonly<Rec
       : resolveValue(value, resources, where);
   }
 }
+
+/** 文件里存的是标志本身：放到位置之后设，免得被设位置时顺带改的值盖掉。 */
+const USE_ABSOLUTE = 'canvasUseAbsolutePosition';
 
 /** 颜色、Thickness：文件里没写的成员（null）保持元素类型的默认值（Stride 反序列化时只覆盖写了的成员）。 */
 const MERGED_PROPS = /^(margin|padding|color)$|Color$/;

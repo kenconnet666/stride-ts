@@ -332,6 +332,20 @@ describe('其他面板', () => {
     canvas.arrange([200, 100], false);
     expect(child.arrangeMatrix).toEqual([1, 0, 0, 1, 128 - 100, 50 - 50]);
   });
+
+  test('Canvas：设相对位置改用相对位置，设绝对位置改用绝对位置（同 Stride 的 SetCanvasRelativePosition）', () => {
+    const canvas = new Canvas();
+    const child = new Probe(10, 10);
+    child.canvasPinOrigin = [0.5, 0.5];
+    child.canvasRelativePosition = [0.5, 0.7];
+    canvas.children.add(child);
+    canvas.measure([200, 100]);
+    canvas.arrange([200, 100], false);
+    expect(child.canvasUseAbsolutePosition).toBe(false);
+    expect(child.arrangeMatrix).toEqual([1, 0, 0, 1, 100 - 5 - 100, 70 - 5 - 50]);
+    child.canvasAbsolutePosition = [20, 30];
+    expect(child.canvasUseAbsolutePosition).toBe(true);
+  });
 });
 
 /** 一张 100x50 的精灵（可以带九宫格的边框）。 */
@@ -440,6 +454,20 @@ describe('按 UIFile 建元素', () => {
     expect(canvas.canvasRelativeSize[0]).toBeNaN();
     // 画的顺序按 ZIndex：Canvas（0）在前
     expect(root.visualChildren).toEqual([canvas, status]);
+  });
+
+  test('文件里存的 canvasUseAbsolutePosition 不被设位置时顺带改的值盖掉，不论键的顺序', () => {
+    const page: UIFile = {
+      name: 'Pins', designResolution: [100, 100], root: 0, templates: {},
+      elements: [
+        { type: 'Canvas', props: {}, children: [1, 2] },
+        { type: 'ImageElement', props: { name: 'a' }, attached: { canvasUseAbsolutePosition: true, canvasRelativePosition: [0.5, 0.5] } },
+        { type: 'ImageElement', props: { name: 'b' }, attached: { canvasUseAbsolutePosition: false, canvasAbsolutePosition: [1, 2] } },
+      ],
+    };
+    const root = buildElement(page, 0, resources) as Canvas;
+    expect(root.find(ImageElement, 'a')!.canvasUseAbsolutePosition).toBe(true);
+    expect(root.find(ImageElement, 'b')!.canvasUseAbsolutePosition).toBe(false);
   });
 
   test('Thickness、颜色里没写的成员保持元素类型的默认值（Button 的内边距默认 10、5、10、7）', () => {

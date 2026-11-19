@@ -165,7 +165,7 @@ export class ForwardRenderer {
   constructor(renderSystem: RenderSystem) {
     this.renderSystem = renderSystem;
     this.depthPrepassStage = new RenderStage('DepthPrepass', { depthFormat: DEPTH_FORMAT });
-    this.opaqueStage = new RenderStage('Opaque', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT });
+    this.opaqueStage = new RenderStage('Opaque', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { afterDepthPrepass: true });
     this.transparentStage = new RenderStage('Transparent', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { transparent: true });
     this.#textureCopy = { scaler: new ImageScaler(renderSystem.device, renderSystem.resources.linearClamp), arena: new UniformArena(renderSystem.device, 4096) };
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);

@@ -46,13 +46,22 @@ export class RenderStage {
    * 方向光的级联不裁（级联前面的物体也要投下阴影）。
    */
   readonly depthClip: boolean;
+  /**
+   * 这个阶段画之前，同样的物体已经在深度预通道里画过：网格只比较深度相等、不再写深度（被挡住的像素不着色）。
+   * 渲染器保证预通道和这个阶段画的是同一批东西。
+   */
+  readonly afterDepthPrepass: boolean;
 
-  constructor(name: string, output: RenderOutput, { shadowCasters = false, transparent = false, depthClip = false }: { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean } = {}) {
+  constructor(
+    name: string, output: RenderOutput,
+    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false }: { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean } = {},
+  ) {
     this.name = name;
     this.output = output;
     this.shadowCasters = shadowCasters;
     this.transparent = transparent;
     this.depthClip = depthClip;
+    this.afterDepthPrepass = afterDepthPrepass;
   }
 }
 

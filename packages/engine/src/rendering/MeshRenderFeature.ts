@@ -119,8 +119,10 @@ struct LocalShadow {
 @group(0) @binding(13) var<storage, read> localShadows: array<LocalShadow>;
 
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
-// 没有贴图的槽绑一张 1x1 的白图，所以不用分支：自发光 = 贴图 · emissive，遮蔽 = dot(贴图, occlusionMask)（mask 是
-// 通道的单位向量，没有贴图时是 (值, 0, 0, 0)）。surface：金属度、粗糙度、漫反射 cavity、镜面 cavity。
+// 没有贴图的槽绑一张 1x1 的白图（绑定组的形状不随材质变）：自发光 = 贴图 · emissive，遮蔽 = dot(贴图, occlusionMask)（mask 是
+// 通道的单位向量，没有贴图时是 (值, 0, 0, 0)）。没有贴图的槽不采样：flags.w 的各位记着哪些槽有贴图，着色器按它跳过
+// （条件只看 uniform，是一致的控制流，里面可以用 textureSample；白图采一次也要花时间，全屏的物体上加起来不少）。
+// surface：金属度、粗糙度、漫反射 cavity、镜面 cavity。
 // specular：0 没有镜面，1 金属度工作流，2 镜面颜色工作流（specularColor），3 镜面颜色工作流并且能量守恒（漫反射乘 1 - 镜面）。blend：透明的 tint 和漫反射的 alpha（不透明是 1），
 // emissive.w：镜面的透明系数（Stride 的 matDiffuseSpecularAlphaBlend.y）。
 // normalFlags：第 1 位有法线贴图，第 2 位 ×2-1，第 3 位 y 取反，第 4 位由 xy 算 z。occlusionDirect：直射光受遮蔽的程度。
@@ -142,7 +144,8 @@ struct Material {
   // 光泽度贴图：通道的单位向量（没有贴图时是 0）
   glossinessMask: vec4f,
   glossinessUvTransform: vec4f,
-  // x 为 1 时光泽度贴图存的是粗糙度（Stride 的 Invert）；y 是 Alpha 裁剪的阈值，没有时是 -1；z 是玻璃的折射率，不是玻璃时是 0
+  // x 为 1 时光泽度贴图存的是粗糙度（Stride 的 Invert）；y 是 Alpha 裁剪的阈值，没有时是 -1；z 是玻璃的折射率，不是玻璃时是 0；
+  // w 的各位：1 有漫反射贴图，2 有自发光贴图，4 有遮蔽贴图（法线贴图看 normalFlags，光泽度贴图看 glossinessMask）
   flags: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
@@ -272,11 +275,14 @@ fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f) -> mat4x4f {
  */
 fn surfaceNormal(in: Varyings, coatPass: bool) -> vec3f {
   let n = normalize(in.normal);
-  var m = textureSample(normalTexture, normalSampler, in.uv * material.normalUvTransform.xy + material.normalUvTransform.zw).xyz;
   let flags = material.normalFlags;
-  m.y = select(m.y, 1.0 - m.y, (flags & 4u) != 0u);
-  m = select(m, 2.0 * m - 1.0, (flags & 2u) != 0u);
-  m.z = select(m.z, sqrt(max(0.0, 1.0 - (m.x * m.x + m.y * m.y))), (flags & 8u) != 0u);
+  var m = vec3f(0.0, 0.0, 1.0);
+  if ((flags & 1u) != 0u) {
+    m = textureSample(normalTexture, normalSampler, in.uv * material.normalUvTransform.xy + material.normalUvTransform.zw).xyz;
+    m.y = select(m.y, 1.0 - m.y, (flags & 4u) != 0u);
+    m = select(m, 2.0 * m - 1.0, (flags & 2u) != 0u);
+    m.z = select(m.z, sqrt(max(0.0, 1.0 - (m.x * m.x + m.y * m.y))), (flags & 8u) != 0u);
+  }
   // 法线树（材质的颜色树，已经换好）优先于法线贴图
   let tree = treeNormal(in);
   m = select(m, tree.xyz, tree.w > 0.5);
@@ -505,7 +511,10 @@ fn facingNormal(n: vec3f, front: bool) -> vec3f {
 
 /** 漫反射的基础色：贴图和颜色按运算符组合。 */
 fn baseColor(in: Varyings) -> vec4f {
-  let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
+  var texel = vec4f(1.0);
+  if ((u32(material.flags.w) & 1u) != 0u) {
+    texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
+  }
   return select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
 }
 
@@ -517,13 +526,15 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let nDotL = max(dot(s.n, l), 0.0001);
   let lightColorNdotL = lightColor * nDotL;
   var result = s.diffuse / PI * lightColorNdotL;
-  let h = normalize(s.v + l);
-  let nDotH = saturate(dot(s.n, h));
-  let lDotH = saturate(dot(l, h));
-  // 玻璃的菲涅耳项就是它的反射比例（MaterialSpecularMicrofacetFresnelThinGlass），放在 s.specular 里
-  let fresnel = select(s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0), s.specular, s.glass);
-  let reflected = fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0;
-  return result + select(vec3f(0.0), reflected * lightColorNdotL, s.hasSpecular);
+  if (s.hasSpecular) {
+    let h = normalize(s.v + l);
+    let nDotH = saturate(dot(s.n, h));
+    let lDotH = saturate(dot(l, h));
+    // 玻璃的菲涅耳项就是它的反射比例（MaterialSpecularMicrofacetFresnelThinGlass），放在 s.specular 里
+    let fresnel = select(s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0), s.specular, s.glass);
+    result += fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0 * lightColorNdotL;
+  }
+  return result;
 }
 
 /** Alpha 裁剪的材质在只写深度的阶段（深度预通道、阴影）：同不透明阶段一样丢掉 alpha 低于阈值的像素。 */
@@ -561,8 +572,11 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
     discard;
   }
   // 粗糙度：常量，或者光泽度贴图的一个通道（没有贴图时 mask 是 0，取常量）
-  let glossTexel = dot(textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw), material.glossinessMask);
   let hasGlossTexture = dot(material.glossinessMask, vec4f(1.0)) > 0.0;
+  var glossTexel = 0.0;
+  if (hasGlossTexture) {
+    glossTexel = dot(textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw), material.glossinessMask);
+  }
   // 材质层按遮罩混进各个属性（没有层时原样）
   let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb,
     select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture)));
@@ -586,9 +600,11 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
   let litDiffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a * conserved;
   let diffuse = select(litDiffuse, vec3f(0.0), (material.specular & 8u) != 0u);
   // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, 直射光受影响的程度)；材质层可以把这两个数换成自己的
-  let occlusion = layerOcclusion(in, vec2f(
-    dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask),
-    material.occlusionDirect));
+  var occlusionBase = material.occlusionMask.x;
+  if ((u32(material.flags.w) & 4u) != 0u) {
+    occlusionBase = dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
+  }
+  let occlusion = layerOcclusion(in, vec2f(occlusionBase, material.occlusionDirect));
   let ao = occlusion.x;
   let directOcclusion = mix(1.0, ao, occlusion.y);
   let roughness = layered.roughness;
@@ -598,7 +614,11 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
   // 直射光（DirectLightGroup.PrepareDirectLight：光色 · 衰减 · 阴影 · N·L），逐个光源相加
   // 玻璃：镜面的菲涅耳项和环境光的镜面系数都换成它的反射比例（Stride 的 FresnelThinGlass、EnvironmentThinGlass）
   let isGlass = material.flags.z > 0.0;
-  let glass = thinGlass(base.rgb, nDotV, material.flags.z);
+  // 不是玻璃的材质不算（里面有三次 pow，每个像素都算的话是这个着色器里最贵的一段）
+  var glass = Glass(vec3f(1.0), vec3f(0.0));
+  if (isGlass) {
+    glass = thinGlass(base.rgb, nDotV, material.flags.z);
+  }
   let surface = Surface(n, v, diffuse, select(specular, glass.reflectance, isGlass), hasSpecular, isGlass, alphaR, nDotV);
   var direct = vec3f(0.0);
   let lightCount = u32(view.sky.z);
@@ -633,17 +653,26 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
   // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致
   var color = direct * PI;
 
-  // 环境光：镜面项都乘 DFG（Stride 的环境 BRDF 查找表）
-  let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
-  let environmentSpecular = select(vec3f(0.0), select(specular * dfg.x + dfg.y, glass.reflectance, isGlass), hasSpecular);
-  color += (diffuse * view.ambientColor.rgb + environmentSpecular * view.ambientColor.rgb) * ao;
-
-  // 天空盒光：强度是 0 时贡献也是 0，不用分支
-  let skyIntensity = view.sky.x * ao;
-  let skyDiffuse = evaluateSH(skyDirection(n)) * skyIntensity;
-  let reflection = skyDirection(reflect(-v, n));
-  let skySpecularColor = textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
-  color += diffuse * skyDiffuse + environmentSpecular * skySpecularColor;
+  // 环境光和天空盒光都没有的场景（只有直射光）整段跳过
+  let hasAmbient = any(view.ambientColor.rgb > vec3f(0.0));
+  let hasSky = view.sky.x > 0.0;
+  if (hasAmbient || hasSky) {
+    // 环境光：镜面项都乘 DFG（Stride 的环境 BRDF 查找表）
+    var environmentSpecular = vec3f(0.0);
+    if (hasSpecular) {
+      let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
+      environmentSpecular = select(specular * dfg.x + dfg.y, glass.reflectance, isGlass);
+    }
+    color += (diffuse * view.ambientColor.rgb + environmentSpecular * view.ambientColor.rgb) * ao;
+    if (hasSky) {
+      let skyIntensity = view.sky.x * ao;
+      color += diffuse * evaluateSH(skyDirection(n)) * skyIntensity;
+      if (hasSpecular) {
+        let reflection = skyDirection(reflect(-v, n));
+        color += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
+      }
+    }
+  }
 
   // 自发光：a 不小于 0 时输出的 alpha 用它（Stride 的 UseAlpha）
   let emitted = emissiveColor(in);
@@ -669,7 +698,11 @@ function materialTreesCode(trees: MaterialShaderTrees | undefined): string {
   return vec4f(e.rgb * ${wgslFloat(emissive.intensity)}, ${emissive.useAlpha ? 'e.a' : '-1.0'});
 }`
     : `fn emissiveColor(in: Varyings) -> vec4f {
-  return vec4f(textureSample(emissiveTexture, emissiveSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb * material.emissive.rgb, -1.0);
+  var texel = vec3f(1.0);
+  if ((u32(material.flags.w) & 2u) != 0u) {
+    texel = textureSample(emissiveTexture, emissiveSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb;
+  }
+  return vec4f(texel * material.emissive.rgb, -1.0);
 }`;
   const normalCode = normal
     ? `fn treeNormal(in: Varyings) -> vec4f {
@@ -1356,7 +1389,11 @@ class Gpu {
         primitive: stage.shadowCasters
           ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth && !stage.depthClip }
           : { topology: 'triangle-list', cullMode: materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
-        depthStencil: { format: depthFormat, depthWriteEnabled: !stage.transparent, depthCompare: 'less-equal' },
+        // 深度预通道之后的阶段：同样的物体、同样的顶点着色器（位置是 @invariant 的）已经把深度写好了，这里只让深度相等的
+        // 像素过，也不再写深度，被挡住的像素一个都不着色
+        depthStencil: stage.afterDepthPrepass
+          ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'equal' }
+          : { format: depthFormat, depthWriteEnabled: !stage.transparent, depthCompare: 'less-equal' },
       });
       this.#pipelines.set(key, pipeline);
     }
@@ -1616,7 +1653,8 @@ class Gpu {
       const gloss = material.glossinessMap;
       floats.set(gloss ? CHANNELS[gloss.channel] : [0, 0, 0, 0], 44);
       floats.set(uv(gloss), 48);
-      floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, material.glass?.refractiveIndex ?? 0, 0], 52);
+      const textures = (slot ? 1 : 0) | (emissiveTexture ? 2 : 0) | (occlusion.texture ? 4 : 0);
+      floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, material.glass?.refractiveIndex ?? 0, textures], 52);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});

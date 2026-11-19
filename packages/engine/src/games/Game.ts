@@ -60,10 +60,14 @@ export interface GameOptions {
    * undefined（默认）时看页面地址带不带 ?debug；游戏入口一般传 `import.meta.env.DEV || undefined`：开发服务器上总是打开。
    */
   debug?: boolean | undefined;
+  /** 把帧号和帧率写进这个页面元素（样例页面角上的那行字），每秒 4 次。 */
+  stats?: HTMLElement;
 }
 
 // 更长的间隔（标签页在后台、断点停住）不在一步里模拟完。
 const MAX_ELAPSED = 0.25;
+/** GameOptions.stats 隔多少秒（游戏时间）更新一次。 */
+const STATS_INTERVAL = 0.25;
 const DEFAULT_MAX_TRANSFORMS = 65536;
 const DEFAULT_MAX_BODIES = 4096;
 /** 暂停时单步、没设 fixedTimeStep 时每步的秒数。 */
@@ -161,6 +165,8 @@ export class Game {
   /** 正在跑一帧（exit 推迟到帧末）。 */
   private inFrame = false;
   private exitRequested = false;
+  /** GameOptions.stats 和上次写它的游戏时间。 */
+  private statsOutput: { readonly element: HTMLElement; time: number } | undefined;
 
   /** 标了 inherit() 的属性的作用域默认值：之后创建的组件和脚本都取这里的值，见 engine/defaults.ts。 */
   get defaults(): ScopedDefaults {
@@ -174,6 +180,7 @@ export class Game {
   async run(canvas: HTMLCanvasElement, options: GameOptions = {}): Promise<void> {
     globalThis.strideGame = this;
     this.entities.onError = (error) => this.fail(error);
+    if (options.stats) this.statsOutput = { element: options.stats, time: 0 };
     if (options.debug ?? new URLSearchParams(location.search).has('debug')) {
       registerGameCommands(this.debug, this);
       this.debug.connect();
@@ -421,6 +428,7 @@ export class Game {
         this.input.update();
         this.debugText.beginFrame();
         this.update(this.updateTime);
+        this.writeStats();
         await scriptContinuations();
         this.transforms.update();
         this.particles.update(this.updateTime.elapsed);
@@ -453,6 +461,13 @@ export class Game {
   private forwardNativeDebug(): void {
     if (!this.native.debugCollecting) this.native.debugCollecting = true;
     for (const { level, message } of this.native.drainDebugLog()) this.debug.log(level, message, undefined, 'native');
+  }
+
+  private writeStats(): void {
+    const stats = this.statsOutput, time = this.updateTime;
+    if (!stats || time.total - stats.time < STATS_INTERVAL) return;
+    stats.time = time.total;
+    stats.element.textContent = `frame ${time.frameCount}  ${(1 / Math.max(time.elapsed, 1e-6)).toFixed(0)} fps`;
   }
 
   private fail(error: unknown): void {

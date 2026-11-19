@@ -18,9 +18,9 @@ const modules = import.meta.glob('./game/**/*.ts', { eager: true });
 const MAX_BODIES = 32768;
 // 贴图大多原样用 PNG；Github.png 是 1015x1015，照 Stride 缩放到 4 的倍数后编成 KTX2，要转码模块
 
-const { game, created } = Game.hotEntry(import.meta.hot, modules, BepuSampleGame, stats);
+const { game, created } = Game.hotEntry(import.meta.hot, modules, BepuSampleGame);
 if (created) {
-  game.run(canvas, { modules, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics, texture], maxBodies: MAX_BODIES }).catch((error: unknown) => {
+  game.run(canvas, { modules, stats, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics, texture], maxBodies: MAX_BODIES }).catch((error: unknown) => {
     stats.textContent = `failed: ${error instanceof Error ? error.message : String(error)}`;
   });
 }

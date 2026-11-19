@@ -14,9 +14,9 @@ const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const stats = document.querySelector<HTMLElement>('#stats')!;
 const modules = import.meta.glob('./game/**/*.ts', { eager: true });
 
-const { game, created } = Game.hotEntry(import.meta.hot, modules, TopDownRpgGame, stats);
+const { game, created } = Game.hotEntry(import.meta.hot, modules, TopDownRpgGame);
 if (created) {
-  game.run(canvas, { modules, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics, navigation] }).catch((error: unknown) => {
+  game.run(canvas, { modules, stats, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics, navigation] }).catch((error: unknown) => {
     stats.textContent = `failed: ${error instanceof Error ? error.message : String(error)}`;
   });
 }

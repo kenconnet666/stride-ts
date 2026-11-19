@@ -92,6 +92,8 @@ export interface MaterialShaderLayer {
   readonly glossiness?: { readonly invert: boolean };
   readonly normal?: { readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
   readonly emissive: boolean;
+  /** 这层有环境光遮蔽：直射光受它影响的程度。 */
+  readonly occlusion?: { readonly directLighting: number };
 }
 
 export interface MaterialDesc {

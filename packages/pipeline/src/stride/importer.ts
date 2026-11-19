@@ -102,6 +102,8 @@ interface HierarchyContext {
   readonly owners: ReadonlyMap<string, string>;
   /** 合成器里相机槽位的 Id → 下标（Camera.slot）；预制体是空的。 */
   readonly cameraSlots: ReadonlyMap<string, number>;
+  /** 合成器里渲染阶段的 Id → 名字；只在导入游戏自己的渲染器的属性时有，引用阶段的属性导出成阶段的名字。 */
+  readonly renderStages?: ReadonlyMap<string, string>;
 }
 
 /** Stride.BepuPhysics 的约束组件的类型名前缀。 */
@@ -175,7 +177,7 @@ export class StrideImporter {
     const compositor = compositorReference ? importCompositor(this.#project.get(compositorReference.id, asset.file).data) : undefined;
     const game = compositor?.gameRenderer;
     const where = `${asset.file}: graphics compositor`;
-    const renderer = game ? await this.#script(`${game.type},`, game.settings, where, { owners: new Map(), cameraSlots: compositor.cameraSlots }) : null;
+    const renderer = game ? await this.#script(`${game.type},`, game.settings, where, { owners: new Map(), cameraSlots: compositor.cameraSlots, renderStages: compositor.renderStages }) : null;
     const defaults = asset.data['Defaults'];
     const rendering = (Array.isArray(defaults) ? defaults : []).map(asObject).find((d) => d?.$type?.startsWith('Stride.Graphics.RenderingSettings')) ?? {};
     const file: GameSettingsFile = {
@@ -344,6 +346,8 @@ export class StrideImporter {
     if (typeof value === 'string') {
       const object = parseObjectReference(value);
       if (object !== undefined) {
+        const stage = context.renderStages?.get(object);
+        if (stage !== undefined) return stage;
         const entity = context.owners.get(object);
         if (entity === undefined) this.#warnings.push(`${where}: reference ${object} is not in this scene; using null`);
         return entity === undefined ? null : { $entity: entity };

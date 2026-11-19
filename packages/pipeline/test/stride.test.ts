@@ -263,6 +263,9 @@ describe('导入 Stride 场景', () => {
       '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}', '    Diffuse: !MaterialDiffuseMapFeature',
       '        DiffuseMap: !ComputeColor',
       '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    Occlusion: !MaterialOcclusionMapFeature', '        AmbientOcclusionMap: !ComputeTextureScalar', `            Texture: ${ids.texture}:Textures/Checker`,
+      '        DirectLightingFactor: !ComputeFloat', '            Value: 0.25',
+      '        CavityMap: !ComputeTextureScalar', '            FallbackValue:', '                Value: 1.0',
     ].join('\n'),
     // 法线贴图默认 InvertY（OpenGL 的 Y+）
     'Assets/Textures/Bumps.sdtex': ['!Texture', `Id: ${ids.bumps}`, 'Source: ../../Resources/checker.png', 'Type: !NormalMapTextureType {}'].join('\n'),
@@ -933,6 +936,8 @@ describe('导入 Stride 场景', () => {
       layers: [{
         blend: { $type: 'computeTextureScalar' },
         diffuse: { $type: 'computeColor', value: [1, 1, 1, 1] },
+        // 层的环境光遮蔽：贴图的树和直射光受影响的程度（没有贴图的 cavity 不起作用，不报警告）
+        occlusion: { tree: expect.objectContaining({ $type: 'computeTextureScalar', texture: expect.objectContaining({ texture: 'Game/Textures/Checker' }) }), directLighting: 0.25 },
         normal: { tree: expect.objectContaining({ $type: 'computeTextureColor', texture: expect.objectContaining({ texture: 'Game/Textures/Bumps' }), scale: [4, 4] }), scaleAndBias: true, isXYNormal: true },
       }],
     });
@@ -1124,15 +1129,25 @@ Cameras:
     s0:
         Id: slot0
         Name: Main
+RenderStages:
+    a1:
+        Id: stage-opaque
+        Name: Opaque
+    a2:
+        Id: stage-transparent
+        Name: Transparent
 Game*: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
     Id: cam
     Camera: ref!! slot0
     Child*: !JumpyJet.JumpyJetRenderer,JumpyJet.Game
         Id: r
         ParallaxBackgrounds: p1:ParallaxBackgrounds
+        OpaqueRenderStage: ref!! stage-opaque
 `));
     expect(underCamera.gameRenderer?.type).toBe('JumpyJet.JumpyJetRenderer');
     expect(underCamera.gameRenderer?.settings['ParallaxBackgrounds']).toBe('p1:ParallaxBackgrounds');
+    // 渲染阶段按 Id 记下名字：游戏的渲染器引用阶段的属性导出成阶段的名字
+    expect([...underCamera.renderStages]).toEqual([['stage-opaque', 'Opaque'], ['stage-transparent', 'Transparent']]);
     // 网格的效果名不是默认的 StrideForwardShadingEffect 时带上（SpaceEscape 的 SpaceEscapeEffectMain）
     const withEffect = (name: string) => importCompositor(parseStrideYaml(`!GraphicsCompositorAsset
 Id: c
@@ -1199,7 +1214,7 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
   });
 
   test('没有合成器时没有槽位，用默认设置', () => {
-    expect(importCompositor(undefined)).toEqual({ cameraSlots: new Map(), main: undefined });
+    expect(importCompositor(undefined)).toEqual({ cameraSlots: new Map(), main: undefined, gameRenderer: undefined, renderStages: new Map() });
   });
 
   test('节点名同 Stride 的 CleanNodeName：FBX 的命名空间只留最后一段，去掉 # 和 __ 之后的部分、空格', () => {

@@ -583,9 +583,12 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
   let conserved = select(vec3f(1.0), 1.0 - visibleSpecular, workflow == 3u);
   let litDiffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a * conserved;
   let diffuse = select(litDiffuse, vec3f(0.0), (material.specular & 8u) != 0u);
-  // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, occlusionDirect)
-  let ao = dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
-  let directOcclusion = mix(1.0, ao, material.occlusionDirect);
+  // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, 直射光受影响的程度)；材质层可以把这两个数换成自己的
+  let occlusion = layerOcclusion(in, vec2f(
+    dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask),
+    material.occlusionDirect));
+  let ao = occlusion.x;
+  let directOcclusion = mix(1.0, ao, occlusion.y);
   let roughness = layered.roughness;
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
@@ -730,7 +733,7 @@ fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface {
 
 /**
  * 材质层（Stride 的 MaterialBlendLayer、MaterialStreamLinearBlend）：每层的遮罩 b，各个属性 mix(下面的, 这层的, b)；光泽度换成粗糙度
- * 再混，法线在切线空间里混再归一化，自发光（乘过强度的）也一样混。没有层时三个函数原样返回。
+ * 再混，法线在切线空间里混再归一化，自发光（乘过强度的）、环境光遮蔽和它对直射光的影响也一样混。没有层时这几个函数原样返回。
  */
 function layersCode(layers: readonly MaterialShaderLayer[]): string {
   const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y);`;
@@ -748,9 +751,15 @@ function layersCode(layers: readonly MaterialShaderLayer[]): string {
     `  n = normalize(mix(n, l${i}, saturate(layer${i}Blend())));`,
   ].filter(Boolean).join('\n') : '')).filter(Boolean);
   const emissive = layers.map((layer, i) => (layer.emissive ? `  e = mix(e, layer${i}Emissive(), saturate(layer${i}Blend()));` : '')).filter(Boolean);
+  const occlusion = layers.map((layer, i) => (layer.occlusion
+    ? `  o = mix(o, vec2f(layer${i}Occlusion(), ${wgslFloat(layer.occlusion.directLighting)}), saturate(layer${i}Blend()));` : '')).filter(Boolean);
   return `struct LayerSurface { albedo: vec3f, metalness: f32, specular: vec3f, roughness: f32 };
 fn layerEmissive(in: Varyings, base: vec3f) -> vec3f {
 ${emissive.length > 0 ? `  ${fill}\n  var e = base;\n${emissive.join('\n')}\n  return e;` : '  return base;'}
+}
+// base：环境光遮蔽、直射光受它影响的程度
+fn layerOcclusion(in: Varyings, base: vec2f) -> vec2f {
+${occlusion.length > 0 ? `  ${fill}\n  var o = base;\n${occlusion.join('\n')}\n  return o;` : '  return base;'}
 }
 fn materialLayers(in: Varyings, s: LayerSurface) -> LayerSurface {
   var r = s;

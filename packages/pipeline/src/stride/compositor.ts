@@ -23,6 +23,8 @@ export interface ImportedCompositor {
   readonly main: SceneCompositor | undefined;
   /** 根是游戏自己的渲染器时：类型名（带命名空间，不带程序集）和它在合成器里的设置。 */
   readonly gameRenderer: { readonly type: string; readonly settings: StrideObject } | undefined;
+  /** 渲染阶段的 Id → 名字（Opaque、Transparent、ShadowMapCaster……）：游戏自己的渲染器的属性里引用它们。 */
+  readonly renderStages: ReadonlyMap<string, string>;
 }
 
 /** 渲染目标贴图资源的引用（Id）换成场景里的写法；找不到时返回 undefined。 */
@@ -68,7 +70,11 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
   const game = isGame(root) ? root : isGame(cameraChild) ? cameraChild : undefined;
   const gameRenderer = game ? { type: game.$type!.slice(0, game.$type!.indexOf(',')), settings: game } : undefined;
   const borrowed = !main && game === cameraChild && game ? { clearColor: [0, 0, 0, 1] as const, postEffects: null, transparent: true } : undefined;
-  return { cameraSlots, main: main ?? borrowed, gameRenderer };
+  const renderStages = new Map(Object.values(asObject(compositor?.['RenderStages']) ?? {}).flatMap((stage) => {
+    const { Id: id, Name: name } = asObject(stage) ?? {};
+    return typeof id === 'string' && typeof name === 'string' ? [[id, name] as const] : [];
+  }));
+  return { cameraSlots, main: main ?? borrowed, gameRenderer, renderStages };
 }
 
 const isForward = (node: StrideObject) => node.$type?.startsWith('Stride.Rendering.Compositing.ForwardRenderer') === true;

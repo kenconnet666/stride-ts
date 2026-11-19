@@ -529,6 +529,11 @@ export interface MaterialLayerFile {
   readonly normal?: { readonly tree: ParticleModuleFile; readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
   /** 自发光：颜色乘强度（下面没有自发光时是 0 往上混）。 */
   readonly emissive?: { readonly tree: ParticleModuleFile; readonly intensity: number };
+  /**
+   * 环境光遮蔽（Occlusion 特性的 AmbientOcclusionMap，标量树）和直射光受它影响的程度（DirectLightingFactor）；
+   * 下面没有遮蔽时是从 1、0 往上混。
+   */
+  readonly occlusion?: { readonly tree: ParticleModuleFile; readonly directLighting: number };
 }
 
 /** 法线贴图的颜色树和它的两个开关（意思同 NormalMapSlot）。 */

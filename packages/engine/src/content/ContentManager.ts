@@ -343,6 +343,7 @@ export class ContentManager {
         layer.glossiness && `fn layer${i}Gloss() -> f32 {\n  return ${compiler.scalar(layer.glossiness.tree)};\n}\n`,
         layer.normal && `fn layer${i}Normal() -> vec4f {\n  return ${compiler.color(layer.normal.tree)};\n}\n`,
         layer.emissive && `fn layer${i}Emissive() -> vec3f {\n  return ${compiler.color(layer.emissive.tree)}.rgb * ${layer.emissive.intensity};\n}\n`,
+        layer.occlusion && `fn layer${i}Occlusion() -> f32 {\n  return ${compiler.scalar(layer.occlusion.tree)};\n}\n`,
       ]),
       ...coatTrees.map(([name, tree, type]) => `fn ${name}() -> ${type} {\n  return ${type === 'f32' ? compiler.scalar(tree) : compiler.color(tree)};\n}\n`),
     ];
@@ -365,6 +366,7 @@ export class ContentManager {
           emissive: layer.emissive !== undefined,
           ...(layer.glossiness ? { glossiness: { invert: layer.glossiness.invert } } : {}),
           ...(layer.normal ? { normal: { scaleAndBias: layer.normal.scaleAndBias, isXYNormal: layer.normal.isXYNormal } } : {}),
+          ...(layer.occlusion ? { occlusion: { directLighting: layer.occlusion.directLighting } } : {}),
         })),
       } : {}),
     };

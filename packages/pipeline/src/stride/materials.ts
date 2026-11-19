@@ -194,8 +194,12 @@ export class MaterialImporter {
       const microSurface = asObject(attributes['MicroSurface']);
       const surface = asObject(attributes['Surface']);
       const emissive = asObject(attributes['Emissive']);
+      const occlusion = asObject(attributes['Occlusion']);
+      // 层的 cavity 还没做：没有贴图、后备值是 1 的 cavity 本来就不起作用，别的才报
+      const cavityMap = asObject(occlusion?.['CavityMap']);
+      if (cavityMap && (parseAssetReference(cavityMap['Texture']) || this.#scalar(cavityMap, 1, sub) !== 1)) this.#context.warnings.push(`${where}: the layer's cavity is not supported yet; ignored`);
       if (emissive && emissive.$type !== 'MaterialEmissiveMapFeature') this.#context.warnings.push(`${where}: the layer's emissive ${emissive.$type ?? 'feature'} is not supported; ignored`);
-      for (const key of ['Occlusion', 'Transparency', 'Displacement']) if (attributes[key]) this.#context.warnings.push(`${where}: the layer's ${key} is not supported yet; ignored`);
+      for (const key of ['Transparency', 'Displacement']) if (attributes[key]) this.#context.warnings.push(`${where}: the layer's ${key} is not supported yet; ignored`);
       if (Object.keys(asObject(sub.data['Layers']) ?? {}).length > 0) this.#context.warnings.push(`${where}: nested layers are not supported yet; ignored`);
       layers.push({
         blend: await this.#colorTree(blendMap, asset, 'layer blend map'),
@@ -205,6 +209,12 @@ export class MaterialImporter {
         ...(microSurface?.['GlossinessMap'] ? { glossiness: { tree: await tree(microSurface['GlossinessMap'], 'layer glossiness'), invert: microSurface['Invert'] === true } } : {}),
         ...(emissive?.$type === 'MaterialEmissiveMapFeature' ? { emissive: { tree: await tree(emissive['EmissiveMap'], 'layer emissive'), intensity: this.#scalar(asObject(emissive['Intensity']), 1, sub) } } : {}),
         ...(surface?.$type === 'MaterialNormalMapFeature' ? { normal: { tree: await tree(surface['NormalMap'], 'layer normal map'), scaleAndBias: surface['ScaleAndBias'] !== false, isXYNormal: surface['IsXYNormal'] !== false } } : {}),
+        ...(occlusion?.$type === 'MaterialOcclusionMapFeature' ? {
+          occlusion: {
+            tree: await tree(occlusion['AmbientOcclusionMap'] ?? { $type: 'ComputeFloat', Value: 1 }, 'layer occlusion'),
+            directLighting: this.#scalar(asObject(occlusion['DirectLightingFactor']), 0, sub),
+          },
+        } : {}),
       });
     }
     return layers;

@@ -94,6 +94,32 @@ describe('场景文档（SceneDocument）', () => {
     expect(document.entity('a')!.name).toBe('A');
   });
 
+  test('挪子树：换父实体、排在新兄弟里的第几个，后代跟着走；一步撤销；不能挪进自己的后代', () => {
+    const file: SceneFile = { name: 'Move', entities: [entity('a'), entity('a1', 'a'), entity('a2', 'a'), entity('x'), entity('x1', 'x'), entity('x1a', 'x1'), entity('y')] };
+    const document = new SceneDocument(file);
+    const order = () => document.file.entities.map((e) => `${e.id}<${e.parent ?? ''}`);
+    // x（连着 x1、x1a）挪到 a 下面，排第 1 个：在 a1 后面、a2 前面
+    const inverse = document.apply(document.moveSubtree('x', 'a', 1));
+    expect(order()).toEqual(['a<', 'a1<a', 'x<a', 'x1<x', 'x1a<x1', 'a2<a', 'y<']);
+    // 本地的值没变
+    expect(document.entity('x')!.position).toEqual([0, 0, 0]);
+    document.apply(inverse);
+    expect(document.file).toEqual(file);
+    // 挪到最上层的最后、挪到没有子实体的实体下面、挪到第 0 个
+    document.apply(document.moveSubtree('a1', null, 99));
+    expect(order().at(-1)).toBe('a1<');
+    document.apply(document.moveSubtree('a2', 'y', 0));
+    expect(order().slice(-3)).toEqual(['y<', 'a2<y', 'a1<']);
+    document.apply(document.moveSubtree('y', null, 0));
+    expect(order().slice(0, 2)).toEqual(['y<', 'a2<y']);
+    expect(() => document.moveSubtree('x', 'x1a', 0)).toThrow('cannot move entity x under itself or its descendant x1a');
+    // 加子实体：排在父实体的子实体最后
+    document.apply(document.addChild(entity('x2', 'x')));
+    expect(order().indexOf('x2<x')).toBe(order().indexOf('x1a<x1') + 1);
+    document.apply(document.addChild(entity('z')));
+    expect(order().at(-1)).toBe('z<');
+  });
+
   test('撤销重做；连着改同一个值（同一个 mergeKey）并成一步，commit 以后另起一步', () => {
     const document = new SceneDocument(scene());
     const undo = new UndoStack(document);

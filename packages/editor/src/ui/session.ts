@@ -5,11 +5,11 @@
  * 视口里拖操纵器改的经撤销栈记下，界面跟着刷新。Vue 的响应式只包在这一层：文档本身不可变，每改一次 version 加一。
  */
 import { shallowRef, triggerRef } from 'vue';
-import type { SceneFile } from '@stride-ts/engine/content-format';
+import type { SceneEntityFile, SceneFile } from '@stride-ts/engine/content-format';
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import type { EditAgent, EditableScene, Game } from '@stride-ts/engine';
 import { EditorClient } from '../client/EditorClient.ts';
-import type { AssetRecord, ProjectInfo } from '../protocol.ts';
+import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
 
 export class EditorSession implements EditableScene {
   readonly client = new EditorClient();
@@ -27,6 +27,9 @@ export class EditorSession implements EditableScene {
   readonly agent = shallowRef<EditAgent>();
   /** 正在编辑的场景的内容路径。 */
   readonly scenePath = shallowRef<string>();
+  #document: SceneDocument | undefined;
+  /** 最近一次修改以后游戏页面里的实体跟上了。 */
+  #synced: Promise<void> = Promise.resolve();
   #undo: UndoStack<SceneFile> | undefined;
 
   async start(): Promise<void> {
@@ -46,11 +49,36 @@ export class EditorSession implements EditableScene {
     if (!agent) throw new Error('the game page is not in edit mode (open it with ?debug&stride-edit)');
     const path = agent.scenePath;
     if (!path) throw new Error('the game did not load its root scene from a content path; the editor cannot tell which scene file to open');
-    this.#undo = new UndoStack(new SceneDocument(await this.client.readAsset<SceneFile>('scene', path)));
+    agent.onSelectionChanged = (ids) => (this.selection.value = ids);
+    await this.#open(agent, path);
+  }
+
+  /**
+   * 移动、改名资源（引用它们的文件跟着改写，见后端的 moveAssets）。改写的是磁盘上的文件，所以先保存打开着的场景；场景文件
+   * 被改写了（或者场景自己挪了）就从磁盘重新打开（撤销的历史从这里重新开始）。
+   */
+  async moveAssets(request: MoveRequest): Promise<MoveResult> {
+    if (this.dirty.value) await this.save();
+    const result = await this.client.moveAssets(request);
+    const agent = this.agent.value, path = this.scenePath.value;
+    if (agent && path) {
+      const moved = movedPath(request, path);
+      if (moved !== path || result.rewritten.some((asset) => asset.kind === 'scene' && asset.path === moved)) await this.#open(agent, moved);
+    }
+    return result;
+  }
+
+  /** 删掉一个资源；还有别的资源引用它时报错（错误里列出是谁），force 照删。 */
+  async deleteAsset(kind: AssetKind, path: string, force = false): Promise<void> {
+    await this.client.deleteAsset(kind, path, { force });
+  }
+
+  async #open(agent: EditAgent, path: string): Promise<void> {
+    this.#document = new SceneDocument(await this.client.readAsset<SceneFile>('scene', path));
+    this.#undo = new UndoStack(this.#document);
     this.scenePath.value = path;
     this.dirty.value = false;
     this.selection.value = [];
-    agent.onSelectionChanged = (ids) => (this.selection.value = ids);
     await agent.open(this);
     this.agent.value = agent;
     this.#changed(false);
@@ -92,6 +120,37 @@ export class EditorSession implements EditableScene {
     if (this.#require().redo()) this.#changed();
   }
 
+  /** 加一个空实体（只有变换），放在 parent 的子实体的最后（null 是最上层），选中它。 */
+  async addEntity(parent: string | null): Promise<void> {
+    const entity: SceneEntityFile = { id: crypto.randomUUID(), name: 'Entity', parent, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} };
+    this.apply(this.#requireDocument().addChild(entity));
+    this.commit();
+    // 游戏页面里建好了实体再选：代理只认场景里有的实体
+    await this.#synced;
+    this.select([entity.id]);
+  }
+
+  /** 删掉选中的实体和它们的后代（一步撤销）。 */
+  deleteSelection(): void {
+    const document = this.#requireDocument();
+    const selected = new Set(this.selection.value);
+    // 祖先也选中了的不用单独删：删祖先时一起删了
+    const roots = [...selected].filter((id) => {
+      for (let parent = document.entity(id)?.parent ?? null; parent !== null; parent = document.entity(parent)?.parent ?? null) if (selected.has(parent)) return false;
+      return document.entity(id) !== undefined;
+    });
+    if (roots.length === 0) return;
+    this.apply({ type: 'batch', edits: roots.map((id) => document.removeSubtree(id)) });
+    this.commit();
+    this.select([]);
+  }
+
+  /** 把实体连同后代挪到 parent 下面（null 是最上层），排在新的兄弟里的第 position 个。 */
+  moveEntity(id: string, parent: string | null, position: number): void {
+    this.apply(this.#requireDocument().moveSubtree(id, parent, position));
+    this.commit();
+  }
+
   select(ids: readonly string[]): void {
     this.selection.value = ids;
     const agent = this.agent.value;
@@ -110,11 +169,22 @@ export class EditorSession implements EditableScene {
     this.version.value++;
     triggerRef(this.version);
     // 游戏页面里的实体跟上；操纵器拖动时代理自己也会 sync，重复的没有开销（没变的组件不重建）
-    void this.agent.value?.sync();
+    this.#synced = this.agent.value?.sync() ?? Promise.resolve();
+  }
+
+  #requireDocument(): SceneDocument {
+    if (!this.#document) throw new Error('no scene is open in the editor yet');
+    return this.#document;
   }
 
   #require(): UndoStack<SceneFile> {
     if (!this.#undo) throw new Error('no scene is open in the editor yet');
     return this.#undo;
   }
+}
+
+/** 这次移动以后场景 path 在哪（没挪它就是原样）。 */
+function movedPath(request: MoveRequest, path: string): string {
+  if ('folder' in request) return path.startsWith(`${request.folder}/`) ? request.to + path.slice(request.folder.length) : path;
+  return request.assets.find((move) => move.kind === 'scene' && move.from === path)?.to ?? path;
 }

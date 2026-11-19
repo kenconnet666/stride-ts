@@ -87,6 +87,27 @@ export class SceneDocument<F extends EntitiesFile = SceneFile> {
     return { type: 'remove', entities: [...ids] };
   }
 
+  /**
+   * 把一个实体连同后代挪到 parent（null 是挪到最上层）下面，排在新的兄弟里的第 position 个（按挪走之后的兄弟算，超出是最后）。
+   * 本地的变换不变（跟着新的父实体走）。是删了再加的一次 batch，撤销一步回去。
+   */
+  moveSubtree(id: string, parent: string | null, position: number): SceneEdit {
+    const remove = this.removeSubtree(id) as Extract<SceneEdit, { type: 'remove' }>;
+    const moving = new Set(remove.entities);
+    if (parent !== null && moving.has(parent)) throw new Error(`scene ${this.#file.name}: cannot move entity ${id} under itself or its descendant ${parent}`);
+    if (parent !== null) this.#require(parent);
+    const rest = this.#file.entities.filter((entity) => !moving.has(entity.id));
+    const subtree = this.#file.entities.filter((entity) => moving.has(entity.id)).map((entity) => (entity.id === id ? { ...entity, parent } : entity));
+    const at = insertionIndex(rest, parent, position);
+    return { type: 'batch', edits: [remove, { type: 'add', entities: subtree.map((entity, k) => ({ entity, index: at + k })) }] };
+  }
+
+  /** 加一个实体，排在它的父实体（entity.parent）的子实体的最后。 */
+  addChild(entity: SceneEntityFile): SceneEdit {
+    if (entity.parent !== null) this.#require(entity.parent);
+    return { type: 'add', entities: [{ entity, index: insertionIndex(this.#file.entities, entity.parent, Infinity) }] };
+  }
+
   #require(id: string): SceneEntityFile {
     const entity = this.entity(id);
     if (!entity) throw new Error(`scene ${this.#file.name}: no entity ${id}`);
@@ -107,6 +128,22 @@ function indexOf(entities: readonly SceneEntityFile[], id: string): number {
     INDICES.set(entities, indices);
   }
   return indices.get(id) ?? -1;
+}
+
+/**
+ * 要在 parent 的子实体里排第 position 个，新实体放在列表的哪个下标：排在原来第 position 个兄弟的前面；排最后的话放在最后
+ * 一个兄弟和紧跟着它的后代后面（子树在文件里连着的，不把它拆开）；没有兄弟就紧跟父实体，最上层就放到最后。父实体总在前面。
+ */
+function insertionIndex(entities: readonly SceneEntityFile[], parent: string | null, position: number): number {
+  const siblings: number[] = [];
+  entities.forEach((entity, index) => entity.parent === parent && siblings.push(index));
+  if (position < siblings.length) return siblings[Math.max(0, position)]!;
+  if (siblings.length === 0) return parent === null ? entities.length : indexOf(entities, parent) + 1;
+  const last = siblings.at(-1)!;
+  const subtree = new Set([entities[last]!.id]);
+  let at = last + 1;
+  while (at < entities.length && entities[at]!.parent !== null && subtree.has(entities[at]!.parent!)) subtree.add(entities[at++]!.id);
+  return at;
 }
 
 function applyEdit<F extends EntitiesFile>(file: F, edit: SceneEdit): [F, SceneEdit] {

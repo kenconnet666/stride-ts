@@ -1,6 +1,6 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Tree } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import type { EditorSession } from './session';
 
@@ -24,7 +24,7 @@ function buildTree(entities: readonly SceneEntityFile[]): Node[] {
   return roots;
 }
 
-/** 场景树：场景里的实体按父子关系列出；选中和视口里的选中是同一个。 */
+/** 场景树：场景里的实体按父子关系列出；选中和视口里的选中是同一个。拖动换父实体、换顺序（本地的变换不变）。 */
 export const SceneTree = _component(({ session }: { session: EditorSession }) => {
   const { version, selection, agent } = session;
   const roots = _derived.by(() => {
@@ -46,6 +46,7 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       _expanded={expanded}
       _selected={[...selection.value]}
       onUpdate:_selected={(ids: string[]) => session.select(ids)}
+      onMove={(move: TreeMove<Node>) => session.moveEntity(move.key, move.target.parent ?? null, move.target.index)}
       loading={!agent.value}
     />
   );

@@ -7,6 +7,9 @@ import { colorToHex, emptyValue, eulerToQuaternion, hexToColor, quaternionToEule
 /** 文件里一个值的路径（相对 FieldEditor 拿到的值）。 */
 export type ValuePath = readonly (string | number)[];
 
+/** 资源字段的输入框提示的资源列表（`<datalist>`）的 id：每种资源一个，属性面板画。 */
+export const assetListId = (kind: string): string => `stride-assets-${kind}`;
+
 /** 字段编辑器要的场景信息：选实体的下拉框列出哪些实体。 */
 export interface FieldContext {
   readonly entities: readonly { readonly id: string; readonly name: string }[];
@@ -108,13 +111,15 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
         );
       }
       case 'asset': {
-        // 现在是手写内容路径；从资源浏览器拖进来、按种类列出可选的资源还没做
+        // 输入时列出这一种的资源（属性面板里每种一个 datalist，见 assetListId）
         const path = type.form === 'ref' ? (value as { $asset?: string } | null)?.$asset : (value as string | null);
         return (
-          <TextField
-            _value={path ?? ''}
+          <input
+            {...css.attrs(styles.select)}
+            list={assetListId(type.asset)}
+            value={path ?? ''}
             placeholder={type.asset}
-            onUpdate:_value={(next: string) => onSet(type.form === 'ref' ? ['$asset'] : [], next)}
+            onChange={(event: Event) => onSet(type.form === 'ref' ? ['$asset'] : [], (event.target as HTMLInputElement).value)}
           />
         );
       }

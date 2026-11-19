@@ -1,4 +1,4 @@
-import { Play, Redo2, Save, Square, Undo2 } from '@lucide/icons';
+import { Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { IconButton, Splitter } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -24,6 +24,13 @@ export const App = _component(({ session }: { session: EditorSession }) => {
   const { dirty, scenePath, version } = session;
 
   const shortcut = (event: KeyboardEvent) => {
+    // 在输入框里按 Delete 是删字
+    const typing = event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]');
+    if (event.key === 'Delete' && !typing && !playing) {
+      session.deleteSelection();
+      event.preventDefault();
+      return;
+    }
     if (!(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
     if (key === 's') void session.save();
@@ -52,6 +59,8 @@ export const App = _component(({ session }: { session: EditorSession }) => {
           <IconButton icon={Save} aria-label="保存（Ctrl+S）" disabled={!dirty.value || playing} onClick={() => void session.save()} />
           <IconButton icon={Undo2} aria-label="撤销（Ctrl+Z）" disabled={!session.canUndo || playing} onClick={() => session.undo()} />
           <IconButton icon={Redo2} aria-label="重做（Ctrl+Y）" disabled={!session.canRedo || playing} onClick={() => session.redo()} />
+          <IconButton icon={Plus} aria-label="加实体（选中的实体下面）" disabled={!session.agent.value || playing} onClick={() => void session.addEntity(session.selection.value.length === 1 ? session.selection.value[0]! : null)} />
+          <IconButton icon={Trash2} aria-label="删掉选中的实体（Delete）" disabled={session.selection.value.length === 0 || playing} onClick={() => session.deleteSelection()} />
           <IconButton icon={playing ? Square : Play} aria-label={playing ? '停止试玩' : '试玩'} onClick={() => void togglePlay()} />
           <span {...css.attrs(styles.title)}>{scenePath.value ?? '……'}{dirty.value ? ' *' : ''}</span>
           <span {...css.attrs(styles.spacer)} />

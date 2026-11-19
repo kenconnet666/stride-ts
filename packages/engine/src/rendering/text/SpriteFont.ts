@@ -22,6 +22,8 @@ export interface FontGlyph {
   readonly pointStart: number;
   readonly bandStart: number;
   readonly block: LoadedGlyphBlock;
+  /** 在块里的序号（GPU 的字形表里是块的起点加它）。 */
+  readonly index: number;
 }
 
 /** 下载好的码位块（GPU 那边按它上传一次，见 GlyphStore）。 */
@@ -137,6 +139,7 @@ export class SpriteFont {
             pointStart: u32[r + GLYPH_RECORD.pointStart]!,
             bandStart: u32[r + GLYPH_RECORD.bandStart]!,
             block: loaded,
+            index: i,
           });
         }
         this.#blockReady.add(block);

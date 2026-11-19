@@ -18,7 +18,7 @@ import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
 import { SpriteRenderFeature } from '../rendering/SpriteRenderFeature';
-import { RenderSystem } from '../rendering/RenderSystem';
+import { RenderSystem, type SceneRenderer } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../rendering/Texture';
 import { GameTime } from './GameTime';
 
@@ -90,8 +90,10 @@ export class Game {
   animation!: AnimationSystem;
   /** 渲染特性（默认有 MeshRenderFeature）、视图和光照（Stride 的 RenderSystem）。 */
   renderSystem!: RenderSystem;
-  /** 每帧的 draw 交给它（Stride 的 GraphicsCompositor）；骨架阶段是一个前向渲染器。 */
+  /** 场景的前向渲染器（Stride 的 GraphicsCompositor 里的 ForwardRenderer），场景的合成器设置交给它。 */
   graphicsCompositor!: ForwardRenderer;
+  /** 每帧画整个画面的根渲染器（Stride 的 GraphicsCompositor.Game）；默认是 graphicsCompositor，游戏可以换成自己的。 */
+  rootRenderer!: SceneRenderer;
   readonly updateTime = new GameTime();
   readonly registry = new Registry();
   /** 资源管线产出的模型、材质、场景（默认从页面旁边的 content/ 加载，可以换成别的根目录）。 */
@@ -166,6 +168,7 @@ export class Game {
       this.renderSystem.addFeature(new BackgroundRenderFeature());
       this.renderSystem.addFeature(new SpriteRenderFeature());
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);
+      this.rootRenderer = this.graphicsCompositor;
       await this.loadContent();
       this.startup.content = performance.now();
     } catch (error) {
@@ -185,6 +188,8 @@ export class Game {
     if (this.status === 'exited') return;
     this.status = 'exited';
     this.entities.clear();
+    const root = this.rootRenderer as SceneRenderer | undefined;
+    if (root !== this.graphicsCompositor) root?.destroy?.();
     (this.graphicsCompositor as ForwardRenderer | undefined)?.destroy();
     (this.renderSystem as RenderSystem | undefined)?.destroy();
     (this.input as InputManager | undefined)?.destroy();
@@ -303,7 +308,7 @@ export class Game {
 
   /** 画一帧：世界矩阵这时已经算好。默认交给图形合成器。 */
   protected draw(time: GameTime): void {
-    this.graphicsCompositor.draw({ game: this, time });
+    this.rootRenderer.draw({ game: this, time });
   }
 
   private readonly frame = (now: number): void => {

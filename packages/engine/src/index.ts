@@ -160,6 +160,8 @@ export {
 } from './rendering/Material';
 export { SpriteSheet, type SpriteFrame, type SpriteSheetId } from './rendering/SpriteSheet';
 export { SpriteFont, type FontGlyph, type LoadedGlyphBlock } from './rendering/text/SpriteFont';
+export { SpriteBatch, type Color, type DrawOptions, type DrawStringOptions, type Rect, type Vec2 } from './rendering/text/SpriteBatch';
+export { GlyphStore } from './rendering/text/GlyphStore';
 export { glyphAdvance, layoutText, measureText, type FontSize, type PositionedGlyph, type TextAlignment } from './rendering/text/layout';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';
@@ -167,7 +169,7 @@ export { MipmapGenerator } from './rendering/MipmapGenerator';
 export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
 export {
   MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalLight, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
-  type LocalLight, type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,
+  type LocalLight, type SceneRenderer, type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,
 } from './rendering/RenderSystem';
 export { DirectionalShadowCascades, type CascadeRectangle } from './rendering/shadows/DirectionalShadowCascades';
 export { ShadowMapRenderer } from './rendering/shadows/ShadowMapRenderer';

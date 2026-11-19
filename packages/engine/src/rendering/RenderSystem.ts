@@ -18,6 +18,15 @@ export interface RenderContext {
   readonly time: GameTime;
 }
 
+/**
+ * 图形合成器的根渲染器（Stride 的 GraphicsCompositor.Game，ISceneRenderer）：每帧画整个画面。默认是前向渲染器，游戏可以换成
+ * 自己的（比如 SpriteFonts 的 FontRenderer 只用 SpriteBatch 画字）。
+ */
+export interface SceneRenderer {
+  draw(context: RenderContext): void;
+  destroy?(): void;
+}
+
 /** 一个阶段画进去的目标格式（Stride 的 RenderOutputDescription）；只画深度的阶段没有颜色格式。 */
 export interface RenderOutput {
   readonly colorFormat?: GPUTextureFormat;

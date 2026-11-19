@@ -626,7 +626,7 @@ export class StrideImporter {
             path: `${asset.path}/${name}`,
             data: {
               Source: sprite['Source'] ?? null,
-              Type: { $type: 'ColorTextureType', UseSRgbSampling: asset.data['UseSRgbSampling'] ?? true },
+              Type: { $type: 'ColorTextureType', UseSRgbSampling: asset.data['UseSRgbSampling'] ?? true, PremultiplyAlpha: asset.data['PremultiplyAlpha'] ?? true },
               IsCompressed: asset.data['IsCompressed'] ?? true,
               GenerateMipmaps: asset.data['GenerateMipmaps'] ?? false,
             },

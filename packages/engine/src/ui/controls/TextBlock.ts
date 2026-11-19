@@ -29,6 +29,8 @@ export class TextBlock extends UIElement {
   #textSize = NaN;
   #wrapText = false;
   #wrappedText = '';
+  /** 上次量的时候字体下载完了几块：字形是按块下载的，下完新的块文字的大小会变，要重新量。 */
+  #measuredBlocks = -1;
   /** 文字颜色（sRGB），默认 Stride 的 0xF0F0F0。 */
   textColor: Color = [240 / 255, 240 / 255, 240 / 255, 1];
   /** 描边（Stride 的 OutlineColor、OutlineThickness；还不画）。 */
@@ -85,8 +87,15 @@ export class TextBlock extends UIElement {
   }
 
   protected override measureOverride(available: Vec2): Vec2 {
+    this.#measuredBlocks = this.#font?.loadedBlocks ?? -1;
     if (this.#wrapText) this.#updateWrappedText(available[0]);
     return this.calculateTextSize();
+  }
+
+  protected override onUpdate(): void {
+    const font = this.#font;
+    if (!font) return;
+    if (font.loadedBlocks !== this.#measuredBlocks) this.invalidateMeasure();
   }
 
   protected override arrangeOverride(finalSize: Vec2): Vec2 {

@@ -67,23 +67,26 @@ function kerning(font: SpriteFont, previous: FontGlyph | undefined, glyph: FontG
 const MAX_CACHED = 256;
 const layouts = new WeakMap<SpriteFont, Map<string, readonly PositionedGlyph[]>>();
 
-/** 排好的字（包括空格这样没有轮廓的，画的时候跳过）。 */
-export function layoutText(font: SpriteFont, text: string, fontSize: FontSize, alignment: TextAlignment = 'left'): readonly PositionedGlyph[] {
+/**
+ * 排好的字（包括空格这样没有轮廓的，画的时候跳过）。居中、右对齐时每行在 boxWidth（字体像素）里对齐，没给时是最宽那一行
+ * 的宽度（SpriteBatch.DrawString）；UI 的文字给元素的宽度（Stride 的 GlyphEnumerator 带 TextBoxSize）。
+ */
+export function layoutText(font: SpriteFont, text: string, fontSize: FontSize, alignment: TextAlignment = 'left', boxWidth?: number): readonly PositionedGlyph[] {
   let cache = layouts.get(font);
   if (!cache) layouts.set(font, (cache = new Map()));
-  const key = `${font.loadedBlocks}:${font.useKerning ? 1 : 0}:${fontSize[0]}:${fontSize[1]}:${alignment}:${text}`;
+  const key = `${font.loadedBlocks}:${font.useKerning ? 1 : 0}:${fontSize[0]}:${fontSize[1]}:${alignment}:${boxWidth ?? ''}:${text}`;
   let result = cache.get(key);
   if (!result) {
     if (cache.size >= MAX_CACHED) cache.clear();
-    result = layout(font, text, fontSize, alignment);
+    result = layout(font, text, fontSize, alignment, boxWidth);
     cache.set(key, result);
   }
   return result;
 }
 
-function layout(font: SpriteFont, text: string, fontSize: FontSize, alignment: TextAlignment): PositionedGlyph[] {
+function layout(font: SpriteFont, text: string, fontSize: FontSize, alignment: TextAlignment, box: number | undefined): PositionedGlyph[] {
   const characters = [...text];
-  const boxWidth = alignment === 'left' ? 0 : measureText(font, text, fontSize)[0];
+  const boxWidth = alignment === 'left' ? 0 : box ?? measureText(font, text, fontSize)[0];
   const lineStart = (start: number): number => {
     if (alignment === 'left') return 0;
     let end = start;

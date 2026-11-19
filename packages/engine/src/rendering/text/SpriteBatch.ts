@@ -14,7 +14,7 @@
  */
 import { srgbToLinear } from '../../mathematics/vectors';
 import type { GpuResources } from '../GpuResources';
-import type { Texture } from '../Texture';
+import { Texture } from '../Texture';
 import { GlyphStore } from './GlyphStore';
 import { glyphScale, layoutText, measureText, type FontSize, type TextAlignment } from './layout';
 import { SLUG_WGSL } from './slug';
@@ -23,6 +23,8 @@ import type { SpriteFont } from './SpriteFont';
 export type Vec2 = readonly [number, number];
 export type Rect = readonly [x: number, y: number, width: number, height: number];
 export type Color = readonly [number, number, number, number];
+/** 二维仿射矩阵 [a, b, c, d, e, f]（同 UI 的 Matrix2D）。 */
+export type Matrix2DLike = readonly [number, number, number, number, number, number];
 
 export interface DrawOptions {
   /** 贴图上的区域（像素）；不给时是整张。 */
@@ -44,6 +46,25 @@ export interface DrawStringOptions {
   readonly origin?: Vec2;
   readonly scale?: Vec2;
   readonly alignment?: TextAlignment;
+}
+
+/** UI 的一个四边形：左上角和两条边，虚拟坐标（Stride 的 UIBatch 画元素时用世界矩阵乘上大小）。 */
+export interface Quad {
+  readonly origin: Vec2;
+  readonly axisX: Vec2;
+  readonly axisY: Vec2;
+}
+
+/** drawText 的选项（Stride 的 SpriteFont.InternalUIDrawCommand）。 */
+export interface DrawTextOptions {
+  /** 要的字号，虚拟像素（TextBlock.ActualTextSize）。 */
+  readonly fontSize: number;
+  readonly color?: Color;
+  readonly alignment?: TextAlignment;
+  /** 对齐用的框宽，虚拟像素（元素的宽）。 */
+  readonly boxWidth?: number;
+  /** 文字和每个字的原点对齐到真实像素（Stride 的 SnapText，全屏的 UI 默认开）。 */
+  readonly snap?: boolean;
 }
 
 // 每项 16 个 float：贴图是 原点、x 边、y 边、UV、颜色；字形是 原点、x 轴、y 轴、em 范围、字形下标和是否锯齿、颜色
@@ -85,7 +106,9 @@ struct SpriteVaryings {
 }
 
 @fragment fn fsSprite(in: SpriteVaryings) -> @location(0) vec4f {
-  return textureSample(spriteTexture, spriteSampler, in.uv) * in.color;
+  // 贴图按 Stride 的预乘 alpha 用（见 SpriteRenderFeature）
+  let texel = textureSample(spriteTexture, spriteSampler, in.uv);
+  return vec4f(texel.rgb * texel.a, texel.a) * in.color;
 }
 
 // 字形：a = em 原点在屏幕上的位置、em 的 x 轴，b = em 的 y 轴、em 范围的最小角，c = em 范围的最大角、字形下标、是否锯齿
@@ -123,8 +146,16 @@ struct GlyphVaryings {
 interface Run {
   readonly kind: 'sprite' | 'glyph';
   readonly texture?: Texture;
+  /** 裁剪矩形，真实像素；没有时是整个渲染目标。 */
+  readonly scissor?: Rect;
   readonly first: number;
   count: number;
+}
+
+let whiteTexture: Texture | undefined;
+/** 画纯色矩形用的 1x1 白色贴图。 */
+function white(): Texture {
+  return (whiteTexture ??= new Texture('white', { format: 'rgba8unorm', width: 1, height: 1, levels: [new Uint8Array([255, 255, 255, 255])] }));
 }
 
 export class SpriteBatch {
@@ -149,6 +180,7 @@ export class SpriteBatch {
   #pass: GPURenderPassEncoder | undefined;
   #format: GPUTextureFormat = 'bgra8unorm-srgb';
   #targetSize: Vec2 = [1, 1];
+  #scissor: Rect | undefined;
 
   constructor(device: GPUDevice, resources: GpuResources) {
     this.#device = device;
@@ -181,6 +213,60 @@ export class SpriteBatch {
     this.#format = format;
     this.#count = 0;
     this.#runs = [];
+    this.#scissor = undefined;
+  }
+
+  /** 之后画的东西裁到 rect（真实像素，整数）里；undefined 是不裁（UI 的 ClipToBounds）。 */
+  setScissor(rect: Rect | undefined): void {
+    this.#scissor = rect;
+  }
+
+  /** 画一个四边形（UI）：texture 的 uv 区域（0 到 1：u、v、宽、高）铺到 quad 上；texture 是 null 时画纯色。 */
+  drawQuad(texture: Texture | null, quad: Quad, uv: Rect, color: Color): void {
+    const at = this.#reserve('sprite', texture ?? white(), color);
+    const d = this.#data;
+    d[at] = quad.origin[0]; d[at + 1] = quad.origin[1]; d[at + 2] = quad.axisX[0]; d[at + 3] = quad.axisX[1];
+    d[at + 4] = quad.axisY[0]; d[at + 5] = quad.axisY[1];
+    d[at + 8] = uv[0]; d[at + 9] = uv[1]; d[at + 10] = uv[2]; d[at + 11] = uv[3];
+  }
+
+  /**
+   * 画 UI 的文字（Stride 的 UIBatch.DrawString）：transform 把文字框的局部坐标（虚拟像素，左上角是原点）换到屏幕的虚拟坐标。
+   * 运行时字体按 字号 · 真实 / 虚拟 排版（snap 时；不 snap 时按虚拟像素，同 Stride），编译期字体按要的字号；snap 时文字框的
+   * 左上角和每个字的原点取整到真实像素。
+   */
+  drawText(font: SpriteFont, text: string, transform: Matrix2DLike, { fontSize, color = WHITE, alignment = 'left', boxWidth, snap = true }: DrawTextOptions): void {
+    const ratio: Vec2 = font.isStatic || !snap ? [1, 1] : this.#ratio();
+    const size: FontSize = [ratio[1] * fontSize, ratio[1] * fontSize];
+    const emToFont = glyphScale(font, size);
+    const [a, b, c, d, e, f] = transform;
+    const screen = this.#ratio();
+    // 文字框的左上角取整到真实像素
+    const ox = snap ? Math.round(e * screen[0]) / screen[0] : e, oy = snap ? Math.round(f * screen[1]) / screen[1] : f;
+    // 字体像素的 x、y 在屏幕虚拟坐标里的向量
+    const ux = a / ratio[0], uy = b / ratio[0], vx = c / ratio[1], vy = d / ratio[1];
+    const pixels = Math.min(Math.hypot(ux, uy) * screen[0], Math.hypot(vx, vy) * screen[1]) * Math.min(Math.abs(emToFont[0]), Math.abs(emToFont[1]));
+    if (!(pixels > 0)) return;
+    const dilation = 1 / pixels;
+    const aliased = font.antiAlias === 'aliased' ? 1 : 0;
+    const baseOffset = font.baseOffset(size[1]);
+    // em 的 x 轴、y 轴（y 向上，所以取反）
+    const ax = emToFont[0] * ux, ay = emToFont[0] * uy;
+    const bx = -emToFont[1] * vx, by = -emToFont[1] * vy;
+    const linear = toLinear(color);
+    const box = boxWidth === undefined ? undefined : boxWidth * ratio[0];
+    for (const { glyph, x, y } of layoutText(font, text, size, alignment, box)) {
+      if (glyph.hBands === 0) continue;
+      const gx = snap ? Math.round(x) : x, gy = snap ? Math.round(y + baseOffset) : y + baseOffset;
+      const index = this.#glyphs.glyphIndex(glyph);
+      const at = this.#reserve('glyph', undefined, linear, true);
+      const data = this.#data, bounds = glyph.bounds;
+      data[at] = ox + gx * ux + gy * vx; data[at + 1] = oy + gx * uy + gy * vy; data[at + 2] = ax; data[at + 3] = ay;
+      data[at + 4] = bx; data[at + 5] = by; data[at + 6] = bounds[0] - dilation; data[at + 7] = bounds[1] - dilation;
+      data[at + 8] = bounds[2] + dilation; data[at + 9] = bounds[3] + dilation;
+      this.#bits[at + 10] = index;
+      this.#bits[at + 11] = aliased;
+    }
   }
 
   /** 画一张贴图到 destination（虚拟坐标的矩形）。 */
@@ -271,11 +357,21 @@ export class SpriteBatch {
       entries: [{ binding: 0, resource: { buffer: this.#items } }, { binding: 1, resource: { buffer: this.#uniform } }],
     });
     pass.setBindGroup(0, this.#itemGroup);
+    let scissor: Rect | undefined;
     for (const run of this.#runs) {
+      if (run.scissor !== scissor) {
+        // 剪裁矩形要在渲染目标里面
+        const [tw, th] = this.#targetSize;
+        const [x, y, w, h] = run.scissor ?? [0, 0, tw, th];
+        const x0 = Math.min(Math.max(x, 0), tw), y0 = Math.min(Math.max(y, 0), th);
+        pass.setScissorRect(x0, y0, Math.max(0, Math.min(x + w, tw) - x0), Math.max(0, Math.min(y + h, th) - y0));
+        scissor = run.scissor;
+      }
       pass.setPipeline(this.#pipeline(run.kind));
       pass.setBindGroup(1, run.kind === 'glyph' ? this.#glyphs.bindGroup() : this.#textureGroup(run.texture!));
       pass.draw(4, run.count, 0, run.first);
     }
+    if (scissor) pass.setScissorRect(0, 0, this.#targetSize[0], this.#targetSize[1]);
   }
 
   destroy(): void {
@@ -294,8 +390,9 @@ export class SpriteBatch {
   #reserve(kind: Run['kind'], texture: Texture | undefined, color: Color, linear = false): number {
     if (!this.#pass) throw new Error('SpriteBatch: call begin before drawing');
     const last = this.#runs.at(-1);
-    if (last && last.kind === kind && last.texture === texture) last.count++;
-    else this.#runs.push({ kind, ...(texture ? { texture } : {}), first: this.#count, count: 1 });
+    const scissor = this.#scissor;
+    if (last && last.kind === kind && last.texture === texture && last.scissor === scissor) last.count++;
+    else this.#runs.push({ kind, ...(texture ? { texture } : {}), ...(scissor ? { scissor } : {}), first: this.#count, count: 1 });
     if ((this.#count + 1) * ITEM_FLOATS > this.#data.length) {
       const grown = new Float32Array(this.#data.length * 2);
       grown.set(this.#data);

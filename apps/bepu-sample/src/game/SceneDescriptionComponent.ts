@@ -1,4 +1,4 @@
-// BepuSample 的 SceneDescriptionComponent：在屏幕右上方印出场景的说明（game.debugText，渲染在 P2）。
+// BepuSample 的 SceneDescriptionComponent：在屏幕右上方印出场景的说明（game.debugText）。
 import { prop, SyncScript } from '@stride-ts/engine';
 
 export class SceneDescriptionComponent extends SyncScript.props({

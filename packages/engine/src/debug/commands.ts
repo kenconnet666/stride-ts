@@ -28,7 +28,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
   debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
   debug.command('raycast', 'Physics ray cast. args: origin [x,y,z], direction [x,y,z], maxDistance (default 1000), mask.', (args) => raycast(game, args));
-  debug.command('debug-text', 'Lines the scripts printed with game.debugText in the last frame (not drawn yet).', () => game.debugText.lines);
+  debug.command('debug-text', 'Lines the scripts printed with game.debugText in the last frame.', () => game.debugText.lines);
   debug.command('eval', 'Evaluate JavaScript in the page (globalThis.strideGame is the game); awaits promises. args: code.', (args) => evaluate(args));
 }
 

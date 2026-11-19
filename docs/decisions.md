@@ -2,10 +2,15 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
-## 2026-11-19 GameMenu：UI 的布局只做两维；UI 资源平铺成元素数组
+## 2026-11-19 GameMenu：UI 只做两维的布局、画在最后；贴图按预乘 alpha 用
 
 - **布局只做两维**：Stride 的 UI 布局是三维的（每个元素有 Depth、MinimumDepth、MaximumDepth、DepthAlignment，Margin 有 Front、Back，Grid 有层 LayerDefinitions），为了把 UI 放进 3D 场景时有厚度。实际用法里深度一直是默认值：GameMenu、UIElementLink、UIParticles 的页面没有一个元素设了深度（WelcomePopup 的 DepthAlignment: Stretch 在两维里没有意义）。3D 里的 UI 由 UIComponent 的世界矩阵和 Size 摆放，不靠深度布局。只做两维，每个元素的布局计算和存储少三分之一，代码更好读。导入时深度方向的属性和 Grid 的层直接不导入（不警告：它们在两维里没有对应）。代价：真要做有厚度的 3D UI（层叠的面板）时要补，目前没有样例用到。
 - **UI 资源平铺成元素数组**（`UIFile`，`.ui.json`）：元素按 Hierarchy.Parts 的顺序放进数组，Children、Content 的 `ref!!` 引用换成下标；属性名首字母小写，值换成 JSON（颜色是 0 到 1 的 sRGB，Thickness 是四元数组，NaN 是 null，枚举是首字母小写的名字）。UI 库的实例（带 Base 的元素）在 Stride 的文件里已经是完整的属性，导入时不去合并 UI 库。页面和库同一种文件，库多一个 `templates`（名字 → 元素）。
+- **贴图按预乘 alpha 用**：Stride 编译颜色贴图（包括精灵表）时预乘 alpha（ColorTextureType.PremultiplyAlpha 默认开；DirectXTex 对 sRGB 格式在线性空间乘，等于采样后的 rgb 乘 a），画精灵、UI、SpriteBatch 都按预乘混合。我们的贴图存直通 alpha，以前直接按预乘混合，半透明的边会发亮（Platformer2D 的精灵边、UI 的圆角框）。现在精灵、SpriteBatch（UI 用它画）的着色器采样后乘 alpha，结果和 Stride 一样（差 8 位量化；Stride 的 mip 在预乘之后生成，我们在之前，只影响有 mip 的半透明贴图）。设成 PremultiplyAlpha: false 的贴图不支持，导入时警告。别的做法：导入时预乘——KTX2 可以在编码前乘，但原样复制的 PNG 只能在运行时让浏览器乘，两条路径；着色器里乘一次最简单。
+- **UI 画在整个画面之后**：Stride 的 UI 在前向渲染器的透明阶段里画（会被泛光、色调映射处理，也会被 3D 物体的深度挡住），我们画在后处理之后、调试文字之前。全屏 UI 本来就清了深度，区别只在后处理：UI 的颜色照原样显示，这是想要的。
+- **UI 的裁剪用剪裁矩形**：Stride 的 ClipToBounds 用模板缓冲，按元素本身的形状（可以转角度）裁；我们用元素在屏幕上的包围盒做剪裁矩形，不用模板缓冲、不打断合批。转了角度的元素裁到包围盒；样例里裁剪的都是 ScrollViewer，不转。
+- **EditText 的文字区域按内边距放**：Stride 把文字区域（元素减去内边距）放在元素中心，左右或上下内边距不一样时文字偏了（GameMenu 的名字输入框上 30、下 40，文字高了 5 像素）；我们放在内边距里面。
+- **调试文字按左上角摆**：Stride 的 FastTextRenderer 每个字以给的位置为中心，整段字向左上偏半个字（4、8 像素）；我们按给的位置当左上角。字体用 Stride 自带的 8x16 位图（嵌在引擎里，5.8 KB），颜色同 Stride（LightGreen 当线性颜色用）。
 - **键名的缩写整个小写**：脚本属性和 UI 属性的键名以前只把第一个字母改小写，`UILibrary` 变成 `uILibrary`；现在开头的缩写整个小写（`uiLibrary`、`imeSelectionColor`），后面的单词不变。已有的样例里只有 GameMenu 有这样的键。
 
 ## 2026-11-19 SpriteFonts：文字按轮廓画（Slug）；排版改掉 Stride 的两处毛病；合成器的游戏渲染器

@@ -29,8 +29,9 @@ import { Cubemap, Skybox } from '../rendering/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
+import { UIComponent } from '../ui/UIComponent';
 import { buildElement, uiAssetPaths, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -489,7 +490,8 @@ export class ContentManager {
       return entity.id;
     };
     for (const file of files) {
-      const { instance, nodeLink } = file.components;
+      const { instance, nodeLink, ui } = file.components;
+      if (ui) created.get(file.id)!.add(uiComponent(ui, assets));
       if (instance) created.get(file.id)!.add(Instance.with({ master: entityOf(instance.master, file, 'instancing master') }));
       if (nodeLink) created.get(file.id)!.add(ModelNodeLink.with({ target: entityOf(nodeLink.target, file, 'model node link target'), nodeName: nodeLink.nodeName }));
     }
@@ -644,6 +646,17 @@ function inflate({ min, max }: Bounds, factor: number): Bounds {
 }
 
 /** 并行加载一组（去重的）路径，结果按路径放进 Map。 */
+/** 场景文件里的 UIComponent。 */
+function uiComponent({ page, resolution, size, resolutionStretch, ...flags }: SceneUI, assets: SceneAssets) {
+  return UIComponent.with({
+    ...(page ? { page: assets.uiPages.get(page)! } : {}),
+    resolution: [...resolution],
+    size: [...size],
+    resolutionStretch,
+    ...flags,
+  });
+}
+
 async function preload<T>(paths: readonly string[], load: (path: string) => Promise<T>): Promise<Map<string, T>> {
   return new Map(await Promise.all([...new Set(paths)].map(async (path) => [path, await load(path)] as const)));
 }

@@ -6,6 +6,7 @@ import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneIns
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
 import { DebugText } from '../debug/DebugText';
+import { DebugTextRenderer } from '../debug/DebugTextRenderer';
 import type { ScopedDefaults } from '../engine/defaults';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
@@ -20,6 +21,8 @@ import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
 import { SpriteRenderFeature } from '../rendering/SpriteRenderFeature';
 import { RenderSystem, type SceneRenderer } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../rendering/Texture';
+import { UIComponent } from '../ui/UIComponent';
+import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
 
 export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
@@ -106,6 +109,9 @@ export class Game {
   readonly entities: EntityManager = new EntityManager(this);
   /** 脚本每帧打印的调试文字（Stride 的 DebugTextSystem）。 */
   readonly debugText = new DebugText();
+  /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
+  readonly ui = new UISystem();
+  private readonly debugTextRenderer = new DebugTextRenderer();
   /** 调试命令、计数器、事件和日志转发（debug/Debug.ts）。 */
   readonly debug = new Debug(() => (this.status === 'starting' ? undefined : this.frames));
   /** 暂停时不跑 update（脚本、系统、物理、游戏时间都停住），画面照常画；step() 单步。 */
@@ -159,6 +165,7 @@ export class Game {
       if (this.native.hasFeature('physics')) this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
       if (this.simulation && this.native.hasFeature('navigation')) this.navigation = new NavigationSystem(this.native, this.simulation);
       this.registry.register(RecastNavigationComponent);
+      this.registry.register(UIComponent);
       this.animation = new AnimationSystem(this.native, this.entities);
       this.entities.addSystems(this.animation.system, modelNodeLinkSystem(this.entities, this.transforms, this.animation));
       this.content.animationNative ??= this.native;
@@ -196,6 +203,8 @@ export class Game {
     const root = this.rootRenderer as SceneRenderer | undefined;
     if (root !== this.graphicsCompositor) root?.destroy?.();
     (this.graphicsCompositor as ForwardRenderer | undefined)?.destroy();
+    this.ui.destroy();
+    this.debugTextRenderer.destroy();
     (this.renderSystem as RenderSystem | undefined)?.destroy();
     (this.input as InputManager | undefined)?.destroy();
     (this.graphicsDevice as GraphicsDevice | undefined)?.destroy();
@@ -352,6 +361,8 @@ export class Game {
       const drawStart = performance.now();
       this.graphicsDevice.resizeToDisplaySize();
       this.draw(this.updateTime);
+      this.ui.draw(this, this.updateTime.elapsed);
+      this.debugTextRenderer.draw(this);
       const end = performance.now();
       this.startup.firstFrame ??= end;
       this.debug.frames.record(interval, updating ? drawStart - start : 0, end - drawStart);

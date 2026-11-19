@@ -53,7 +53,9 @@ struct Varyings {
 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let sprite = sprites[in.instance];
-  let color = textureSample(spriteTexture, spriteSampler, in.uv) * sprite.color;
+  // Stride 编译贴图时预乘 alpha（ColorTextureType.PremultiplyAlpha 默认开，在线性空间乘），我们的贴图存的是直通 alpha，采样后乘上
+  let texel = textureSample(spriteTexture, spriteSampler, in.uv);
+  let color = vec4f(texel.rgb * texel.a, texel.a) * sprite.color;
   if (sprite.flags.x != 0.0 && color.a < 0.1) {
     discard;
   }

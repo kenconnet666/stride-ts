@@ -47,6 +47,7 @@ Game
   pick <x> <y>                                      entity under a canvas pixel (CSS pixels from the top-left; meshes and sprites)
   wireframe [on|off]                                overlay the wireframe of the meshes on the main view (no argument toggles)
   quality [low|medium|high|ultra]                   quality tier: caps on shadows and post effects (no argument shows the current one)
+  taa [on|off]                                      temporal anti-aliasing instead of FXAA (no argument toggles)
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
   logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
   eval <code | ->         run JavaScript in the page (strideGame, strideEngine are globals); - reads stdin
@@ -317,6 +318,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   },
   pick: () => call('pick', { x: Number(rest[0]), y: Number(rest[1]) }),
   metrics: () => call('metrics', options.over ? { over: true } : {}),
+  taa: () => call('taa', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
   quality: () => call('quality', rest[0] === undefined ? {} : { tier: rest[0] }),
   wireframe: () => call('wireframe', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
   raycast: () => call('raycast', {

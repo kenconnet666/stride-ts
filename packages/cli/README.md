@@ -32,6 +32,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `perf [--seconds 3]` | 帧时间分布、每个系统和阶段的 CPU 时间、每个渲染通道的 GPU 时间、渲染统计 |
 | `metrics [--over]` | 各系统的统计量和预算（`game.metrics`）：实体数、绘制次数、显存（缓冲、贴图的个数和字节）、原生内存、帧时间，加上游戏自己登记的；`--over` 只列超了预算的 |
 | `pick <x> <y>` | 画布上那个像素（CSS 像素，左上角起）最前面的网格或精灵属于哪个实体（GPU 编号缓冲，同 `game.pick`） |
+| `taa [on\|off]` | 主画面用时间抗锯齿（TAA 加锐化）代替 FXAA；不带参数是切换（`game.graphicsCompositor.temporalAntialiasing`） |
 | `quality [low\|medium\|high\|ultra]` | 画质档位：阴影和后处理的上限（`game.graphicsCompositor.quality`，见 `rendering/Quality.ts`）；不带参数是看现在的 |
 | `wireframe [on\|off]` | 在主画面上叠画网格的线框（三角形的边）；不带参数是切换（`game.graphicsCompositor.wireframe`） |
 | `raycast <x,y,z> <dx,dy,dz>` | 物理射线 |

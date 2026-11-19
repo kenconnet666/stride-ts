@@ -24,6 +24,7 @@ import { GraphTexturePool } from './graph/GraphTexturePool';
 import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphStats } from './graph/RenderGraph';
 import { limitShadowCascades, limitShadowFilter, limitShadowSize, QUALITY_TIERS, type QualitySettings } from './Quality';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
+import { TemporalAntialiasing } from './TemporalAntialiasing';
 import { Skybox } from './Skybox';
 import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
@@ -94,6 +95,8 @@ export class ForwardRenderer {
   hasCamera = false;
   /** 后处理（Stride 的 ForwardRenderer.PostEffects），设置可以改，默认值同 Stride。 */
   readonly postEffects: PostProcessingEffects;
+  /** 时间抗锯齿（默认关，开着时代替后处理里的 FXAA；见 TemporalAntialiasing.ts）。 */
+  readonly temporalAntialiasing: TemporalAntialiasing;
   readonly shadowMapRenderer: ShadowMapRenderer;
 
   readonly #mainView = new RenderView();
@@ -212,6 +215,7 @@ export class ForwardRenderer {
     this.transparentStage = new RenderStage('Transparent', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { transparent: true });
     this.#textureCopy = { scaler: new ImageScaler(renderSystem.device, renderSystem.resources.linearClamp), arena: new UniformArena(renderSystem.device, 4096) };
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
+    this.temporalAntialiasing = new TemporalAntialiasing(renderSystem.device);
     this.#pool = new GraphTexturePool(renderSystem.device);
     this.#graph = new RenderGraph(this.#pool);
     this.picker = new ScenePicker(renderSystem);
@@ -266,6 +270,11 @@ export class ForwardRenderer {
     this.#wanted.set(this.cameraSlot, this.#mainView);
     context.game.entities.run(this.#findCameras, context.time);
     this.hasCamera = this.#found.has(this.#mainView);
+    // 有后处理（画进 HDR 缓冲）、合成器和画质档位都要抗锯齿时才用 TAA：投影在剔除之前挪
+    const post = this.postEffects.enabled || !this.directOutput;
+    const temporal = this.hasCamera && post && this.temporalAntialiasing.enabled && this.postEffects.antialiasing.enabled && this.quality.antialiasing;
+    if (temporal) this.temporalAntialiasing.jitter(this.#mainView);
+    else this.temporalAntialiasing.reset();
     const views = [...(this.hasCamera ? [this.#mainView] : []), ...this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view))];
 
     renderSystem.collect(views);
@@ -310,16 +319,17 @@ export class ForwardRenderer {
     const { r, g, b, a } = this.clearColor;
     // 场景里有 UI、或者粒子画在 UI 上面时留着深度缓冲（它们在后处理之后和它比深度），否则丢掉（分块渲染的 GPU 上省带宽）
     const particles = context.game.particles;
-    const keepDepth = context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
+    const keepDepth = temporal || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
     // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
     if (this.picker.pending) frame.pass('ScenePicker', (pass) => pass.sideEffect(), () => this.picker.draw(context, encoder, mainView, canvas.width, canvas.height));
-    const post = this.postEffects.enabled || !this.directOutput;
     if (post) {
       const color = graph.texture({ label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT });
       this.#viewPasses(context, frame, mainView, this.#hdrOutput(color), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
-      this.postEffects.record(frame, color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed, this.quality);
+      // TAA 做了抗锯齿，后处理里就不再做 FXAA
+      const input = temporal ? this.temporalAntialiasing.record(frame, color, depth, this.#mainView) : color;
+      this.postEffects.record(frame, input, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed, temporal ? { ...this.quality, antialiasing: false } : this.quality);
     } else {
       this.#viewPasses(context, frame, mainView, this.#backBufferOutput(canvas.width, canvas.height), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
     }
@@ -328,6 +338,10 @@ export class ForwardRenderer {
     this.#pool.endFrame();
     copy.arena.flush();
     if (post) this.postEffects.flush();
+    if (temporal) {
+      this.temporalAntialiasing.flush();
+      this.temporalAntialiasing.unjitter(this.#mainView);
+    }
   }
 
   destroy(): void {
@@ -336,6 +350,7 @@ export class ForwardRenderer {
     this.#pool.destroy();
     this.#textureCopy.arena.destroy();
     this.postEffects.destroy();
+    this.temporalAntialiasing.destroy();
     this.picker.destroy();
     this.shadowMapRenderer.destroy();
   }
@@ -453,7 +468,8 @@ export class ForwardRenderer {
     if (this.#depth?.width !== width || this.#depth.height !== height) {
       this.#depth?.destroy();
       this.#depth = this.renderSystem.graphicsDevice.device.createTexture({
-        label: `ForwardRenderer depth ${width}x${height}`, size: [width, height], format: DEPTH_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT,
+        // TAA 读它重投影
+        label: `ForwardRenderer depth ${width}x${height}`, size: [width, height], format: DEPTH_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       });
     }
     return this.#depth;

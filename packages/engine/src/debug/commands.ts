@@ -41,6 +41,11 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const current = game.graphicsCompositor.quality;
     return { tier: Object.entries(QUALITY_TIERS).find(([, settings]) => settings === current)?.[0] ?? 'custom', ...current };
   });
+  debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false; omitted toggles).', (args) => {
+    const taa = game.graphicsCompositor.temporalAntialiasing;
+    taa.enabled = typeof args['on'] === 'boolean' ? args['on'] : !taa.enabled;
+    return { enabled: taa.enabled, feedback: taa.feedback, clipSigma: taa.clipSigma, sharpness: taa.sharpness };
+  });
   debug.command('wireframe', 'Overlay the wireframe of the meshes on the main view. args: on (boolean; omitted toggles).', (args) => {
     const compositor = game.graphicsCompositor;
     compositor.wireframe = typeof args['on'] === 'boolean' ? args['on'] : !compositor.wireframe;

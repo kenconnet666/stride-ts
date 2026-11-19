@@ -13,6 +13,7 @@
  *   UI 自己读不受占用影响的 raw* 版本。
  */
 
+import type { VirtualButtonConfig } from './virtualButtons';
 import { ButtonTracker, CaptureState, InputCapturePriority } from './capture';
 import { keyCode } from './keys';
 
@@ -88,6 +89,8 @@ export class InputManager {
   rawPointerEvents: readonly PointerEvent[] = [];
   /** 这一帧鼠标滚轮转的格数，不管占用。 */
   rawMouseWheelDelta = 0;
+  /** 虚拟按钮的配置（Stride 的 VirtualButtonConfigSet），getVirtualButton 按下标取。 */
+  readonly virtualButtonConfigSet: VirtualButtonConfig[] = [];
 
   readonly #canvas: HTMLCanvasElement;
   readonly #capture: Readonly<Record<InputDevice, CaptureState>> = { mouse: new CaptureState(), keyboard: new CaptureState() };
@@ -296,6 +299,19 @@ export class InputManager {
 
   unlockMousePosition(): void {
     if (this.isMousePositionLocked) document.exitPointerLock();
+  }
+
+  /**
+   * 鼠标在画布里的位置，左上角是原点（Stride 的 AbsoluteMousePosition）。和 Stride 不同：单位是 CSS 像素，不是后备缓冲的
+   * 真实像素，高分屏上数值不变；`game.debugText.fromCanvas` 把它换成 print 用的位置。
+   */
+  get absoluteMousePosition(): [number, number] {
+    return [this.mousePosition[0] * this.#canvas.clientWidth, this.mousePosition[1] * this.#canvas.clientHeight];
+  }
+
+  /** 第 configIndex 组虚拟按钮里名字是 name 的值（Stride 的 GetVirtualButton）；没有这组时是 0。 */
+  getVirtualButton(configIndex: number, name: string): number {
+    return this.virtualButtonConfigSet[configIndex]?.value(this, name) ?? 0;
   }
 
   /** 至少一个手柄按着这个键（TPP 的 IsGamePadButtonDownAny）。 */

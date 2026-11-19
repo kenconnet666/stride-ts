@@ -13,14 +13,14 @@ import { ModelNodeLink } from '../animation/ModelNodeLink';
 import { AnimationClip, Skeleton, type AnimationNative } from '../animation/resources';
 import type { EntityManager } from '../engine/EntityManager';
 import { resolveSceneValues, SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
-import type { Entity } from '../engine/Entity';
+import type { Entity, EntityScene } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
 import type { ScriptConstructor } from '../engine/scripts';
-import { Background, Camera, Instance, Instancing, Light, Model, Skinned, Sprite } from '../rendering/components';
+import { Background, Camera, Instance, Instancing, Light, Model, ModelPart, Skinned, Sprite } from '../rendering/components';
 import { ModelMorph, ModelSkeleton } from '../animation/AnimationSystem';
 import { Morphed } from '../animation/morphs';
 import type { EntityId } from '../data/prop';
@@ -146,9 +146,9 @@ export interface GameSettings {
   readonly defaultBackBufferSize: readonly [number, number];
 }
 
-export interface SceneInstance {
+export interface SceneInstance extends EntityScene {
   readonly name: string;
-  /** 按场景文件里的实体 id。 */
+  /** 场景文件建的实体，按文件里的实体 id；运行时放进场景的实体（Entity.scene）不在这里。 */
   readonly entities: ReadonlyMap<string, Entity>;
   /** 场景用的仿真设置（Game.loadScene 交给 simulation）。 */
   readonly physics?: ScenePhysics;
@@ -169,8 +169,6 @@ export class ContentManager {
   readonly #read: ContentReader;
   readonly #cache = new Map<string, Promise<unknown>>();
   readonly #renderTextures = new Map<string, Texture>();
-  /** addModel 建的多余网格的子实体，removeModel 时销毁。 */
-  readonly #modelParts = new Map<EntityId, Entity[]>();
   /** 没有材质的网格用它：白色。 */
   readonly defaultMaterial = new Material('default');
   readonly #shaderClasses: (name: string) => ShaderClass | undefined;
@@ -477,7 +475,9 @@ export class ContentManager {
       ...scene.compositor,
       textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
     };
-    return { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
+    const instance: SceneInstance = { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
+    for (const entity of created.values()) entity.scene = instance;
+    return instance;
   }
 
   /**
@@ -700,7 +700,6 @@ export class ContentManager {
     if (entity.get(Model)) throw new Error(`entity '${entity.name}' already has a model; removeModel it first`);
     const skinned: { entity: Entity; skin: NativeSkin }[] = [];
     const morphed: Entity[] = [];
-    const parts: Entity[] = [];
     loaded.meshes.forEach(({ mesh, material: slot, skin }, i) => {
       // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
       const material = (slot === null ? null : (materials[slot] ?? loaded.materials[slot])) ?? this.defaultMaterial;
@@ -708,16 +707,14 @@ export class ContentManager {
       let part = entity;
       if (i === 0) entity.add(component);
       else {
-        part = entities.create({ name: `${entity.name}/${mesh.name}`, components: [Transform, component] });
+        part = entities.create({ name: `${entity.name}/${mesh.name}`, components: [Transform, component, ModelPart] });
         part.require(Transform).parent = entity;
-        parts.push(part);
       }
       if (skin) skinned.push({ entity: part, skin });
       if (mesh.data.morph) morphed.push(part);
     });
     if (loaded.skeleton) entities.game.animation.attach(entity, loaded.skeleton, skinned);
     if (loaded.morphTargets) entities.game.animation.attachMorphs(entity, loaded.morphTargets, morphed);
-    if (parts.length > 0) this.#modelParts.set(entity.id, parts);
   }
 
   /**
@@ -725,8 +722,7 @@ export class ContentManager {
    * 旧的这些都跟着换掉）。之后可以再 addModel。
    */
   removeModel(entity: Entity): void {
-    for (const part of this.#modelParts.get(entity.id) ?? []) part.destroy();
-    this.#modelParts.delete(entity.id);
+    for (const child of entity.get(Transform)?.children ?? []) if (child.has(ModelPart)) child.destroy();
     for (const type of [ModelSkeleton, ModelMorph, Skinned, Morphed, Model]) if (entity.get(type)) entity.remove(type);
   }
 

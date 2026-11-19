@@ -6,6 +6,8 @@
  *   entity.add(BallSocketConstraintComponent);
  *   entity.require(BallSocketConstraintComponent).settings = { type: 'ballSocket', bodyA: a, bodyB: b, localOffsetB: [0, 2, 0] };
  */
+import type { EntityId } from '../data/prop';
+import type { Entity } from '../engine/Entity';
 import { StartupScript } from '../engine/scripts';
 import type { Constraint, ConstraintSettings, ConstraintSettingsOf } from './Simulation';
 
@@ -24,6 +26,14 @@ export abstract class ConstraintComponentBase<S extends ConstraintSettings = Con
     if (!this.#started) return;
     this.#constraint?.remove();
     this.#constraint = this.#add();
+  }
+
+  /** 克隆的实体带着同样的约束；连着的物体在被克隆的子树里时换成它的克隆。 */
+  override cloneFrom(source: this, cloneOf: (entity: Entity) => Entity): void {
+    const settings = source.#settings;
+    if (!settings) return;
+    const body = (entity: Entity | EntityId) => cloneOf(typeof entity === 'number' ? this.entity.manager.entity(entity) : entity);
+    this.settings = { ...settings, bodyA: body(settings.bodyA), ...('bodyB' in settings ? { bodyB: body(settings.bodyB) } : {}) };
   }
 
   /** enabled（Stride 的 ConstraintComponentBase.Enabled）关掉时约束不起作用。 */

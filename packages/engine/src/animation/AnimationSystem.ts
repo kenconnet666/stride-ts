@@ -65,6 +65,7 @@ export class AnimationSystem {
   readonly #freeMorphs: number[] = [];
   readonly #morphSpace = new SlotSpace();
   readonly #stack: BatchStack;
+  readonly #cloning: Disposable;
 
   /** 每帧推进动画、求姿势和蒙皮矩阵（加进 EntityManager，物理之后跑）。 */
   readonly system = system('AnimationSystem', {
@@ -89,6 +90,26 @@ export class AnimationSystem {
     this.#entities = entities;
     this.#batch = new AnimationBatch(native);
     this.#stack = new BatchStack(this.#batch);
+    this.#cloning = entities.onClone((clones) => this.#attachClones(clones));
+  }
+
+  /**
+   * 克隆的模型实体挂上自己的骨架实例和形变权重（共用骨架、蒙皮这些资源）：姿势从绑定姿势开始，形变权重照抄现在的值。
+   * ModelSkeleton、Skinned 这些只有运行时状态的组件克隆时不抄，在这里按被克隆的那一份重新挂。
+   */
+  #attachClones(clones: ReadonlyMap<Entity, Entity>): void {
+    /** 被克隆的子树里带着 type、而且 field 等于 value 的实体的克隆（找出一个骨架、一组权重对应的网格实体）。 */
+    const partsWith = (type: typeof Skinned | typeof Morphed, field: 'palette' | 'weights', value: number): Entity[] =>
+      [...clones].filter(([source]) => (source.get(type) as Record<string, number> | undefined)?.[field] === value).map(([, clone]) => clone);
+    for (const [source, clone] of clones) {
+      const state = this.#states[source.get(ModelSkeleton)?.state ?? 0];
+      if (state) {
+        const parts = state.parts.flatMap(({ skin, base }) => partsWith(Skinned, 'palette', base).map((entity) => ({ entity, skin })));
+        this.attach(clone, state.skeleton, parts);
+      }
+      const morphs = this.#morphs[source.get(ModelMorph)?.state ?? 0];
+      if (morphs) this.attachMorphs(clone, morphs.morphTargetNames, partsWith(Morphed, 'weights', morphs.base)).weights.set(morphs.weights);
+    }
   }
 
   /** 所有蒙皮矩阵连起来的关节数（渲染器按它分配 GPU 缓冲）。 */
@@ -162,6 +183,7 @@ export class AnimationSystem {
   }
 
   destroy(): void {
+    this.#cloning[Symbol.dispose]();
     for (const state of this.#states) if (state) this.#free(state);
     this.#states.length = 1;
     this.#morphs.length = 1;

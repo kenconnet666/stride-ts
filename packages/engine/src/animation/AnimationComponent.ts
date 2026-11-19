@@ -81,6 +81,12 @@ export class AnimationComponent extends ScriptComponent {
   blendTreeBuilder: BlendTreeBuilder | undefined;
   readonly #playing: PlayingAnimation[] = [];
 
+  /** 克隆的实体带着同样的剪辑；正在播放的不跟着（同 Stride：PlayingAnimations 不参与克隆）。 */
+  override cloneFrom(source: this): void {
+    for (const [name, clip] of source.animations) this.animations.set(name, clip);
+    this.blendTreeBuilder = source.blendTreeBuilder;
+  }
+
   /** 正在播放的动画，按合成的顺序（后面的叠在前面的上面）。 */
   get playingAnimations(): readonly PlayingAnimation[] {
     return this.#playing;

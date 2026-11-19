@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { AnimationSystem, Body, Character, Collider, Game, hullPoints, Mesh, ModelNodeLink, OneBodyAngularMotorConstraintComponent, Quaternion, Simulation, Static, Transform, TriggerHandler, Vector3, type Entity } from '../src/index';
+import { AnimationComponent, AnimationSystem, Morphed, Body, Character, Collider, formatBool, formatColor, formatFloat, formatVector, Game, hullPoints, Mesh, ModelNodeLink, OneBodyAngularMotorConstraintComponent, Quaternion, Simulation, Static, Transform, TriggerHandler, Vector3, type AnimationClip, type Entity } from '../src/index';
 import { modelNodeLinkSystem } from '../src/animation/ModelNodeLink';
 
 let native: StrideNative;
@@ -443,3 +443,45 @@ describe('挂到骨骼节点（Stride 的 ModelNodeLinkComponent）', () => {
   });
 });
 
+describe('克隆带形变和动画的模型', () => {
+  test('克隆有自己的一组形变权重（照抄现在的值，带形变的网格实体指向它），带着同样的剪辑；销毁克隆不影响原来的', () => {
+    const game = createGame();
+    const animation = new AnimationSystem(native, game.entities);
+    game.entities.addSystems(animation.system, animation.morphSystem);
+    const model = game.entities.create({ name: 'model', components: [Transform] });
+    const part = game.entities.create({ name: 'part', components: [Transform] });
+    part.require(Transform).parent = model;
+    const morphs = animation.attachMorphs(model, ['Bigger', 'Taller'], [model, part]);
+    morphs.setMorphWeight(1, 0.5);
+    model.add({ script: AnimationComponent, init: {} });
+    const idle = { name: 'Idle', duration: 1, repeatMode: 'loopInfinite' } as AnimationClip;
+    model.require(AnimationComponent).animations.set('Idle', idle);
+
+    const clone = model.clone();
+    const [clonePart] = clone.require(Transform).children;
+    const cloned = animation.morphs(clone)!;
+    expect(cloned).not.toBe(morphs);
+    expect([cloned.morphTargetNames, [...cloned.weights]]).toEqual([['Bigger', 'Taller'], [0, 0.5]]);
+    expect(cloned.base).not.toBe(morphs.base);
+    expect([clone.require(Morphed).weights, clonePart!.require(Morphed).weights]).toEqual([cloned.base, cloned.base]);
+    expect(clone.require(AnimationComponent).animations.get('Idle')).toBe(idle);
+    expect(clone.require(AnimationComponent).playingAnimations).toHaveLength(0);
+    cloned.setMorphWeight(0, 1);
+    clone.destroy();
+    run(game, 1);
+    expect([[...morphs.weights], animation.morphs(model)]).toEqual([[0, 0.5], morphs]);
+    animation.destroy();
+    game.simulation.destroy();
+  });
+});
+
+
+describe('C# 风格的数值文字（DebugText 打印用）', () => {
+  test('float 是能还原成同一个 float32 的最短写法，指数不大于 -5、不小于 15 用科学计数法；向量、颜色、bool 同 Stride、C#', () => {
+    expect([5.6, 10, 0.1, 1 / 3, 0.000012, 1e-6, 1e15, -2.5, 0].map((v) => formatFloat(v))).toEqual(['5.6', '10', '0.1', '0.33333334', '1.2E-05', '1E-06', '1E+15', '-2.5', '0']);
+    expect(formatVector({ x: 1, y: 2, z: 3 })).toBe('X:1 Y:2 Z:3');
+    expect(formatVector({ x: 0.5, y: 0 })).toBe('X:0.5 Y:0');
+    expect(formatColor([1, 0, 0, 1])).toBe('#FFFF0000');
+    expect([formatBool(true), formatBool(false)]).toEqual(['True', 'False']);
+  });
+});

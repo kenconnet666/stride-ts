@@ -24,12 +24,22 @@ export class ParticleSystemComponent extends StartupScript {
   color: [number, number, number, number] = [1, 1, 1, 1];
   /** 模拟的速度倍数。 */
   speed = 1;
+  /** load 用的文件和上下文，克隆时照着再建一个粒子系统。 */
+  #loaded: readonly [file: ParticleModuleFile, context: ParticleContext | undefined] | undefined;
 
   /** 按导入的组件文件建粒子系统；context 给出贴图和场景里的实体。 */
   load(file: ParticleModuleFile, context?: ParticleContext): void {
+    this.#loaded = [file, context];
     this.particleSystem = new ParticleSystem((file['particleSystem'] as ParticleModuleFile | undefined) ?? {}, context);
     this.color = [...value(file, 'color', [1, 1, 1, 1])] as [number, number, number, number];
     this.speed = value(file, 'speed', 1);
+  }
+
+  /** 克隆的实体有自己的粒子系统（同样的设置，从头模拟），颜色和速度照抄现在的值。用代码建的粒子系统（没经过 load）不跟着。 */
+  override cloneFrom(source: this): void {
+    if (source.#loaded) this.load(...source.#loaded);
+    this.color = [...source.color];
+    this.speed = source.speed;
   }
 
   override start(): void {

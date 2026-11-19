@@ -60,4 +60,14 @@ group('DebugText', () => {
     text.beginFrame();
     expect(text.lines).toEqual([]);
   });
+
+  it('位置默认是 CSS 像素；设了 virtualResolution 时按高度缩放、水平居中换到画布上，fromCanvas 反过来', () => {
+    const text = new DebugText(() => [1920, 900]);
+    expect([text.scale, text.toCanvas([500, 320]), text.fromCanvas([500, 320])]).toEqual([1, [500, 320], [500, 320]]);
+    text.virtualResolution = [1280, 720];
+    expect(text.scale).toBe(1.25);
+    // 画面中间还在中间；左边缘落在居中的 16:9 区域的左边缘
+    expect([text.toCanvas([640, 360]), text.toCanvas([0, 720])]).toEqual([[960, 450], [160, 900]]);
+    expect(text.fromCanvas(text.toCanvas([500, 320]))).toEqual([500, 320]);
+  });
 });

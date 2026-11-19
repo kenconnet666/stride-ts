@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InputCapturePriority, InputManager, keyCode } from '../src/index';
+import { InputCapturePriority, InputManager, keyCode, VirtualButton, VirtualButtonBinding, VirtualButtonConfig } from '../src/index';
 
 describe('按键名', () => {
   it('Stride 的 Keys 名字换成 KeyboardEvent.code，已经是 code 的原样返回', () => {
@@ -128,6 +128,39 @@ describe('占用（Stride 的 Input Capture）', () => {
     input.maskCapturedInput = true;
     input.releaseAll(ui);
     expect([input.captureOwner('mouse'), input.pointerEvents.length]).toEqual([null, 3]);
+    input.destroy();
+  });
+});
+
+describe('虚拟按钮（Stride 的 VirtualButtonConfigSet）', () => {
+  it('取同名绑定里绝对值最大的值：键按着是 1，扳机是它的值；没有这组配置或这个名字时是 0', () => {
+    const canvas = Object.assign(new EventTarget(), {
+      width: 400,
+      height: 200,
+      clientWidth: 200,
+      clientHeight: 100,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 100 }),
+    });
+    const win = new EventTarget();
+    (globalThis as { window?: EventTarget }).window = win;
+    (globalThis as { document?: object }).document = { pointerLockElement: null };
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement);
+    input.virtualButtonConfigSet.push(new VirtualButtonConfig(
+      new VirtualButtonBinding('Forward', VirtualButton.keyboard('W')),
+      new VirtualButtonBinding('Forward', VirtualButton.gamePad('leftTrigger')),
+      new VirtualButtonBinding('Fire', VirtualButton.mouse('left')),
+    ));
+    input.update();
+    input.gamePads[0] = { buttons: 0, leftThumb: [0, 0], rightThumb: [0, 0], leftTrigger: 0.25, rightTrigger: 0 };
+    expect(input.getVirtualButton(0, 'Forward')).toBe(0.25);
+    win.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyW', repeat: false }));
+    input.update();
+    expect(input.getVirtualButton(0, 'Forward')).toBe(1);
+    expect([input.getVirtualButton(0, 'Fire'), input.getVirtualButton(0, 'Back'), input.getVirtualButton(1, 'Forward')]).toEqual([0, 0, 0]);
+    // 绝对位置按 CSS 像素算（画布显示成 200×100，后备缓冲 400×200，鼠标在中间）
+    win.dispatchEvent(Object.assign(new Event('mousemove'), { clientX: 100, clientY: 50, movementX: 0, movementY: 0 }));
+    input.update();
+    expect(input.absoluteMousePosition).toEqual([100, 50]);
     input.destroy();
   });
 });

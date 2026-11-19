@@ -114,7 +114,7 @@ export class Game {
   content = new ContentManager({ shaderClass: (name) => this.registry.shaderClass(name) });
   readonly entities: EntityManager = new EntityManager(this);
   /** 脚本每帧打印的调试文字（Stride 的 DebugTextSystem）。 */
-  readonly debugText = new DebugText();
+  readonly debugText = new DebugText(() => [this.graphicsDevice.canvas.clientWidth, this.graphicsDevice.canvas.clientHeight]);
   /** 音频（Stride 的 AudioEngine）：Web Audio，用户第一次操作页面后出声。 */
   readonly audio = new AudioEngine();
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
@@ -301,6 +301,8 @@ export class Game {
    */
   async loadGameSettings(path: string, { renderers = {}, ...sceneOptions }: LoadGameSettingsOptions = {}): Promise<GameSettings> {
     const settings = (this.settings = await this.content.loadGameSettings(path));
+    // 样例的调试文字是按这么大的窗口摆的
+    this.debugText.virtualResolution = settings.defaultBackBufferSize;
     if (settings.renderer) {
       const factory = renderers[settings.renderer.type];
       if (factory) this.rootRenderer = await factory(settings.renderer.props, this);
@@ -360,13 +362,14 @@ export class Game {
   }
 
   /**
-   * 卸载 loadScene 加载的场景（Stride 里从 Scene.Children 去掉子场景再 Content.Unload）：销毁场景文件里的实体，子实体、
-   * 脚本、物体跟着去掉；已经销毁的跳过。脚本运行中另建的实体不动（和 Stride 不同）。
+   * 卸载 loadScene 加载的场景（Stride 里从 Scene.Children 去掉子场景再 Content.Unload）：销毁场景里的实体，子实体、脚本、
+   * 物体跟着去掉；已经销毁的跳过。场景里的实体是场景文件建的那些，加上脚本放进来的（`entity.scene = this.entity.scene`，
+   * 见 Entity.scene）；脚本另建、又没放进场景也没挂到场景实体下面的实体不动。
    */
   unloadScene(scene: SceneInstance): void {
-    // 父实体在前：销毁父实体时子实体已经跟着销毁了
-    for (const entity of scene.entities.values()) {
-      if (this.entities.isAlive(entity.id)) entity.destroy();
+    // 场景文件建的和运行时放进来的（Entity.scene）；销毁父实体时子实体已经跟着销毁了
+    for (const entity of this.entities.inScene(scene)) {
+      if (entity.alive) entity.destroy();
     }
     this.scenesChanged.run({ scene, loaded: false });
   }

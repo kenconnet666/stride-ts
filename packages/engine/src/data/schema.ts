@@ -267,6 +267,58 @@ function components(value: unknown, keys: readonly string[]): number[] {
   return Array.isArray(value) ? (value as number[]) : keys.map((k) => (value as Record<string, number>)[k]!);
 }
 
+/** copyValue 怎么换引用：实体 id、组件引用（脚本或数据组件的视图）各换成什么。 */
+export interface ReferenceMap {
+  entity(id: number): number;
+  component(reference: object): object;
+}
+
+/**
+ * 复制一个属性现在的值，用来当另一个拥有者的 init（克隆实体时）：实体引用、组件引用经 references 换，嵌套在列表、对象里的
+ * 也换；json 深拷贝；其余原样返回（向量、列表这些在 assign、writeRow 时本来就会复制）。
+ */
+export function copyValue(options: PropOptions, value: unknown, references: ReferenceMap): unknown {
+  if (value === undefined || value === null) return value;
+  switch (options.kind) {
+    case 'entity':
+      return references.entity(value as number);
+    case 'component':
+      return references.component(value as object);
+    case 'list':
+      return (value as unknown[]).map((item) => copyValue(options.item!.options, item, references));
+    case 'object':
+      return copyFields(objectFields(options), value as Record<string, unknown>, references);
+    case 'union': {
+      const tag = (value as Record<string, unknown>)[options.discriminator!] as string;
+      return { [options.discriminator!]: tag, ...copyFields(variantFields(options, tag), value as Record<string, unknown>, references) };
+    }
+    case 'json':
+      return structuredClone(value);
+    default:
+      return value;
+  }
+}
+
+/** 这个属性，或者它嵌套的列表元素、对象字段里，有没有 kind 这种属性。 */
+export function containsKind(options: PropOptions, kind: PropKind): boolean {
+  switch (options.kind) {
+    case 'list':
+      return containsKind(options.item!.options, kind);
+    case 'object':
+      return objectFields(options).some((field) => containsKind(field.options, kind));
+    case 'union':
+      return Object.keys(options.variants!).some((tag) => variantFields(options, tag).some((field) => containsKind(field.options, kind)));
+    default:
+      return options.kind === kind;
+  }
+}
+
+function copyFields(fields: readonly Field[], value: Record<string, unknown>, references: ReferenceMap): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const field of fields) out[field.name] = copyValue(field.options, value[field.name], references);
+  return out;
+}
+
 /** 基本类型原样存；其余的要经过转换。 */
 const isPlain = (kind: PropKind) => !['vec3', 'quat', 'color', 'list', 'object', 'union', 'json', 'bytes'].includes(kind) && !ENCODED_KINDS.has(kind);
 

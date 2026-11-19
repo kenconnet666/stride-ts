@@ -106,7 +106,8 @@ export {
   type ViewOf,
 } from './engine/component';
 export { ScopedDefaults } from './engine/defaults';
-export { Entity, type View } from './engine/Entity';
+export type { CloneHandler } from './engine/clone';
+export { Entity, type EntityScene, type View } from './engine/Entity';
 export { EntityManager, type EntityArg, type EntityDesc, type SpawnBatch } from './engine/EntityManager';
 export { EventKey, EventReceiver, Hook, hook, type HookEvent, type HookHandler } from './engine/events';
 export { Registry, type HotChange, type Registered } from './engine/registry';
@@ -132,6 +133,7 @@ export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
 export { GamePadButton, InputManager, type GamePadState, type InputDevice, type MouseButton, type PointerEvent } from './input/InputManager';
+export { VirtualButton, VirtualButtonBinding, VirtualButtonConfig, type VirtualButtonInput } from './input/virtualButtons';
 export { InputCapturePriority } from './input/capture';
 export { keyCode } from './input/keys';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';
@@ -146,7 +148,7 @@ export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type
 export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './navigation/NavigationSystem';
 export { RecastNavigationComponent, type NavigationState } from './navigation/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
-export { Background, Camera, Instance, Instancing, Light, Model, Skinned, Sprite } from './rendering/components';
+export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, Skinned, Sprite } from './rendering/components';
 export { cameraProjectionMatrix, screenToWorldRaySegment, type CameraProjection } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
 export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';
@@ -227,6 +229,7 @@ export {
 export { DirectionalShadowCascades, type CascadeRectangle } from './rendering/shadows/DirectionalShadowCascades';
 export { ShadowMapRenderer } from './rendering/shadows/ShadowMapRenderer';
 export { Color4, Quaternion, srgbToLinear, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';
+export { formatBool, formatColor, formatFloat, formatVector } from './mathematics/format';
 export { Decimal, type Rounding } from './values/Decimal';
 export { civilFromDays, daysFromCivil, Instant, LocalDate, LocalDateTime, LocalTime } from './values/temporal';
 export {

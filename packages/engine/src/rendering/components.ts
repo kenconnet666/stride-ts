@@ -5,7 +5,7 @@
  *   entities.create({ components: [Transform, Model.with({ mesh: cube.id, material: red.id })] });
  */
 import { prop, type EntityId } from '../data/prop';
-import { component } from '../engine/component';
+import { component, tag } from '../engine/component';
 import type { CubemapId, SkyboxId } from './Skybox';
 import type { SpriteSheetId } from './SpriteSheet';
 import type { TextureId } from './Texture';
@@ -128,6 +128,9 @@ export const Instancing = component('Instancing', {});
 export const Instance = component('Instance', {
   master: prop.entity().default(-1 as EntityId),
 });
+
+/** 模型多出来的网格所在的子实体（一个实体只能有一个 Model，ContentManager.addModel 把其余网格挂成带这个标记的子实体）。 */
+export const ModelPart = tag('ModelPart');
 
 export const Skinned = component('Skinned', {
   palette: prop.u32().default(0).transient(),

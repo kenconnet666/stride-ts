@@ -24,7 +24,7 @@ import type { Stat } from './stats';
 /** 脚本自己成员用的名字；属性叫这些名字会把成员盖掉。 */
 const RESERVED = new Set([
   'entity', 'game', 'enabled', 'signal', 'disposables', 'attached', 'stats', 'statTable', 'on', 'receive',
-  'start', 'update', 'cancel', 'execute', 'nextFrame', 'delay', 'detach', 'constructor',
+  'start', 'update', 'cancel', 'execute', 'nextFrame', 'delay', 'detach', 'cloneFrom', 'addTask', 'onEnabledChanged', 'constructor',
 ]);
 
 /** 任意脚本类，抽象的也算。 */
@@ -157,6 +157,12 @@ export abstract class ScriptComponent {
     const until = this.game.updateTime.total + seconds;
     return this.entity.manager.waitFor(this, (time) => time.total >= until);
   }
+
+  /**
+   * 实体被克隆时（entity.clone()）在克隆出来的脚本上调用：属性已经按 source 现在的值设好，属性以外的创作数据（不是运行时
+   * 状态）在这里从 source 抄过来。cloneOf 把被克隆的那棵子树里的实体换成它的克隆，子树以外的原样返回。
+   */
+  cloneFrom(_source: this, _cloneOf: (entity: Entity) => Entity): void {}
 
   /** 移除后调用：这时 signal 已中止、disposables 已释放。还没启动就移除的脚本不调（同 Stride 的 ScriptSystem.Remove）。 */
   cancel(): void {}

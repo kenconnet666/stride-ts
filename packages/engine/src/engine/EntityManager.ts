@@ -8,11 +8,12 @@ import { ENCODED_KINDS, fromCell, toCell } from '../data/cells';
 import type { EntityId } from '../data/prop';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
+import { cloneEntity, type CloneHandler } from './clone';
 import { Commands } from './Commands';
 import { ComponentType, type BareComponent, type ColumnsOf, type ComponentInit } from './component';
 import { ScopedDefaults } from './defaults';
 import type { HotChange } from './registry';
-import { Entity } from './Entity';
+import { Entity, type EntityScene } from './Entity';
 import { AsyncScript, ScriptComponent, STARTED, StartupScript, SyncScript, scriptName, type BareScript, type ScriptConstructor, type ScriptInit } from './scripts';
 import { Stat, type StatClock } from './stats';
 import { Table, tableKey, type ColumnSet } from './storage';
@@ -23,6 +24,8 @@ export type EntityArg = ComponentInit<any> | BareComponent | ScriptInit<any> | B
 
 export interface EntityDesc {
   readonly name?: string;
+  /** 放进这个场景，场景卸载时跟着销毁（见 Entity.scene）。 */
+  readonly scene?: EntityScene | undefined;
   readonly components?: readonly EntityArg[];
 }
 
@@ -86,6 +89,7 @@ export class EntityManager {
   /** 每次 `changed` 应该看到的写入都递增。 */
   #version = 1;
   #iterating = false;
+  #cloneHandlers: readonly CloneHandler[] = [];
 
   readonly #pendingStart: ScriptComponent[] = [];
   #syncScripts: SyncScript[] = [];
@@ -137,11 +141,30 @@ export class EntityManager {
     const id = this.#allocate(table);
     this.#writeComponents(id, components);
     const entity = new Entity(this, id, desc.name ?? `entity ${indexOf(id)}`);
+    entity.ownScene = desc.scene;
     this.#objects[indexOf(id)] = entity;
     for (const script of scripts) this.#attach(entity, script);
     this.#notify(id, undefined, table);
     this.#afterChange();
     return entity;
+  }
+
+  /** 把实体连同子实体再建一份，见 engine/clone.ts；脚本里写 `entity.clone()`。 */
+  clone(entity: Entity): Entity {
+    this.#assertNotIterating('clone an entity');
+    this.#assertAlive(entity.id);
+    return cloneEntity(this, entity, this.#cloneHandlers);
+  }
+
+  /** 每次克隆之后调用 handler；系统用它给克隆出来的实体补上自己挂的运行时状态（比如骨架）。释放返回值就不再调用。 */
+  onClone(handler: CloneHandler): Disposable {
+    this.#cloneHandlers = [...this.#cloneHandlers, handler];
+    return { [Symbol.dispose]: () => (this.#cloneHandlers = this.#cloneHandlers.filter((h) => h !== handler)) };
+  }
+
+  /** 直接放在 scene 里的实体（场景文件建的，或者 Entity.scene 赋的），不含跟着父实体算进去的。 */
+  inScene(scene: EntityScene): Entity[] {
+    return this.#objects.filter((entity): entity is Entity => entity?.ownScene === scene);
   }
 
   /**

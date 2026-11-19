@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { component, Game, system, Transform, transformSlot, type Entity, type TransformColumns } from '../src/index';
+import { component, Game, prop, SyncScript, system, tag, Transform, transformSlot, type Entity, type EntityId, type TransformColumns } from '../src/index';
 
 // Transform 的数据在原生内存里：测试直接加载 stride-native（Node 里也是多线程的 wasm）
 let native: StrideNative;
@@ -140,5 +140,107 @@ describe('Transform', () => {
   test('没有原生存储时给出说明', () => {
     const game = new Game();
     expect(() => game.entities.create({ components: [Transform] })).toThrow('after Game.run has loaded the native module');
+  });
+});
+
+describe('克隆实体（Stride 的 Entity.Clone）', () => {
+  const Aim = component({ target: prop.entity().default(-1 as EntityId), spread: prop.vec3().default([0, 0, 0]) });
+  /** 只有运行时状态：系统挂的，克隆时不抄。 */
+  const Handle = component({ handle: prop.u32().default(0).transient() });
+  const Marked = tag();
+  class Partner extends SyncScript.props({ label: 'none' }) {}
+  class Follower extends SyncScript.props({
+    target: prop.entity().optional(),
+    speed: prop.number().default(1).stat(),
+    path: prop.list(prop.object({ at: prop.vec3(), stop: prop.entity().optional() })).default([]),
+    partner: prop.component(() => Partner).optional(),
+    cooldown: prop.number().default(0).transient(),
+  }) {
+    notes: string[] = [];
+    owner: Entity | undefined;
+    override cloneFrom(source: this, cloneOf: (entity: Entity) => Entity): void {
+      this.notes = [...source.notes];
+      this.owner = source.owner && cloneOf(source.owner);
+    }
+  }
+
+  test('连同子实体再建一份：组件和脚本属性照抄现在的值，子树里的引用换成克隆的，子树外的照旧；根没有父实体', () => {
+    const game = createGame();
+    const outside = game.entities.create({ name: 'outside', components: [Transform] });
+    const root = game.entities.create({ name: 'root', components: [Transform.with({ position: [1, 2, 3] }), Health, Marked] });
+    const child = game.entities.create({ name: 'child', components: [Transform.with({ position: [0, 1, 0], scale: [2, 2, 2] }), Handle.with({}), Partner.with({ label: 'p' })] });
+    root.require(Transform).parent = outside;
+    child.require(Transform).parent = root;
+    child.add(Aim.with({ target: root.id, spread: [1, 2, 3] }));
+    root.add(Follower.with({ target: child.id, speed: 4, path: [{ at: [1, 0, 0], stop: child.id }, { at: [2, 0, 0], stop: outside.id }], partner: child.require(Partner) }));
+    // 克隆抄的是现在的值，不是创建时的
+    root.require(Health).current = 40;
+    root.require(Transform).position.x = 9;
+    child.require(Handle).handle = 7;
+    const follower = root.require(Follower);
+    follower.stats.speed.multiply(10);
+    follower.cooldown = 3;
+    follower.notes.push('seen');
+    follower.owner = child;
+    follower.enabled = false;
+
+    const clone = root.clone();
+    const [cloneChild] = clone.require(Transform).children;
+    expect([clone.name, cloneChild!.name]).toEqual(['root', 'child']);
+    expect(clone.require(Transform).parent).toBeUndefined();
+    expect({ ...clone.require(Transform).position }).toEqual({ x: 9, y: 2, z: 3 });
+    expect(cloneChild!.require(Transform).scale.y).toBe(2);
+    expect([clone.require(Health).current, clone.has(Marked)]).toEqual([40, true]);
+    // 数据组件里的实体引用；只有运行时状态的组件不抄
+    expect(cloneChild!.require(Aim).target).toBe(clone.id);
+    expect({ ...cloneChild!.require(Aim).spread }).toEqual({ x: 1, y: 2, z: 3 });
+    expect(cloneChild!.has(Handle)).toBe(false);
+    // 脚本：属性（含嵌套的引用、组件引用）、stat 的基础值、enabled；transient 的属性取默认值；cloneFrom 抄属性以外的
+    const copy = clone.require(Follower);
+    expect(copy).not.toBe(follower);
+    expect(copy.target).toBe(cloneChild!.id);
+    expect(copy.path.map((p) => [p.at.x, p.stop])).toEqual([[1, cloneChild!.id], [2, outside.id]]);
+    expect(copy.path[0]!.at).not.toBe(follower.path[0]!.at);
+    expect(copy.partner).toBe(cloneChild!.require(Partner));
+    expect([copy.speed, follower.speed, copy.cooldown, copy.enabled]).toEqual([4, 40, 0, false]);
+    expect([copy.notes, copy.owner]).toEqual([['seen'], cloneChild]);
+    // 原来的不受影响
+    expect([root.require(Transform).children.length, follower.target]).toEqual([1, child.id]);
+  });
+
+  test('onClone：系统拿到这次克隆的每一对实体，给克隆补上自己挂的运行时状态', () => {
+    const game = createGame();
+    const root = game.entities.create({ name: 'root', components: [Transform, Handle.with({})] });
+    const child = game.entities.create({ name: 'child', components: [Transform] });
+    child.require(Transform).parent = root;
+    const seen: string[][] = [];
+    const stop = game.entities.onClone((clones) => {
+      seen.push([...clones].map(([source, clone]) => `${source.name}:${source.id !== clone.id}`));
+      for (const [source, clone] of clones) if (source.has(Handle)) clone.add(Handle.with({}));
+    });
+    const clone = root.clone();
+    expect(seen).toEqual([['root:true', 'child:true']]);
+    expect(clone.has(Handle)).toBe(true);
+    stop[Symbol.dispose]();
+    root.clone();
+    expect(seen).toHaveLength(1);
+  });
+});
+
+describe('实体所在的场景（Stride 的 Entity.Scene）', () => {
+  test('运行时建的实体放进场景后随场景卸载；没放进去的跟着父实体，根实体不动', () => {
+    const game = createGame();
+    const scene = { name: 'Level', entities: new Map<string, Entity>() };
+    const fromFile = game.entities.create({ name: 'fromFile', scene, components: [Transform] });
+    const child = game.entities.create({ name: 'child', components: [Transform] });
+    child.require(Transform).parent = fromFile;
+    const loose = game.entities.create({ name: 'loose', components: [Transform] });
+    const placed = fromFile.clone();
+    expect([fromFile.scene, child.scene, loose.scene, placed.scene]).toEqual([scene, scene, undefined, undefined]);
+    placed.scene = fromFile.scene;
+    expect(game.entities.inScene(scene).map((entity) => entity.name)).toEqual(['fromFile', 'fromFile']);
+
+    game.unloadScene(scene);
+    expect([fromFile.alive, child.alive, placed.alive, loose.alive]).toEqual([false, false, false, true]);
   });
 });

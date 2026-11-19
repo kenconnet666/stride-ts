@@ -6,14 +6,22 @@ import type { DataShape, DataValues, EntityId } from '../data/prop';
 import type { ComponentType, ViewOf } from './component';
 import type { EntityArg, EntityManager } from './EntityManager';
 import { scriptName, type ScriptComponent, type ScriptConstructor } from './scripts';
+import { Transform } from './transform';
 
 /** 把一个实体的数据组件看成对象；读写都落到它在列里的那一行。 */
 export type View<S extends DataShape> = DataValues<S>;
+
+/** 实体所在的场景（见 Entity.scene）；场景对象由内容管理建（SceneInstance）。 */
+export interface EntityScene {
+  readonly name: string;
+}
 
 export class Entity {
   readonly id: EntityId;
   readonly manager: EntityManager;
   name: string;
+  /** @internal 直接放进的场景；没有时跟着父实体，见 scene。 */
+  ownScene: EntityScene | undefined;
   /** @internal 按类存放的脚本。 */
   readonly scripts = new Map<ScriptConstructor, ScriptComponent>();
   /** @internal 数据组件的视图，第一次 get 时创建。 */
@@ -27,6 +35,25 @@ export class Entity {
 
   get alive(): boolean {
     return this.manager.isAlive(this.id);
+  }
+
+  /**
+   * 实体所在的场景（Stride 的 Entity.Scene）：场景文件建的实体在那个场景里，别的实体跟着父实体。运行时建的根实体（create、
+   * 克隆、预制体实例）不在任何场景里，场景卸载时不会跟着销毁；赋值把它放进一个场景（Stride 的 `Entity.Scene.Entities.Add`），
+   * 也可以在 create 时给：
+   *
+   *   clone.scene = this.entity.scene;
+   *   this.game.entities.create({ name: 'Bullet', scene: this.entity.scene, components: [Transform] });
+   */
+  get scene(): EntityScene | undefined {
+    for (let entity: Entity | undefined = this; entity; entity = entity.get(Transform)?.parent) {
+      if (entity.ownScene) return entity.ownScene;
+    }
+    return undefined;
+  }
+
+  set scene(scene: EntityScene | undefined) {
+    this.ownScene = scene;
   }
 
   get<C extends ComponentType<any, any>>(type: C): ViewOf<C> | undefined;
@@ -77,6 +104,11 @@ export class Entity {
   remove(type: ComponentType<any> | ScriptConstructor): this {
     this.manager.remove(this.id, type);
     return this;
+  }
+
+  /** 把这个实体连同子实体再建一份（Stride 的 Entity.Clone），见 engine/clone.ts。 */
+  clone(): Entity {
+    return this.manager.clone(this);
   }
 
   destroy(): void {

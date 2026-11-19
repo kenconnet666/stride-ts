@@ -19,7 +19,7 @@ $results = foreach ($app in $selected) {
             Start-Sleep -Milliseconds 500
         }
         pnpm exec stride close | Out-Null
-        pnpm exec stride open "http://localhost:$port/" --headless --size 1280x720 --dpr 1 | Out-Null
+        pnpm exec stride open "http://localhost:$port/" --headless --size 1280x720 --dpr 1 --chrome-arg=--autoplay-policy=no-user-gesture-required | Out-Null
         $output = pnpm --filter "@stride-ts/$app" smoke -- --hub $app 2>&1
         $output | Write-Host
         [pscustomobject]@{ App = $app; Passed = $LASTEXITCODE -eq 0; Failed = @($output | Select-String '^FAIL').Count }

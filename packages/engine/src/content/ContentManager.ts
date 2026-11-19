@@ -29,11 +29,13 @@ import { Cubemap, Skybox } from '../rendering/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
+import type { AudioEngine } from '../audio/AudioEngine';
+import { Sound } from '../audio/Sound';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import { UIElementLink } from '../ui/UIElementLink';
 import { buildElement, uiAssetPaths, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile, type ParticleModuleFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -46,6 +48,7 @@ declare module '../data/prop' {
     spriteSheet: SpriteSheet;
     uiPage: UIPage;
     uiLibrary: UILibrary;
+    sound: Sound;
   }
 }
 
@@ -103,6 +106,7 @@ interface SceneAssets {
   readonly textures: ReadonlyMap<string, Texture>;
   readonly uiPages: ReadonlyMap<string, UIPage>;
   readonly uiLibraries: ReadonlyMap<string, UILibrary>;
+  readonly sounds: ReadonlyMap<string, Sound>;
 }
 
 /** 合成器里画进渲染目标贴图的相机，贴图已经建好。 */
@@ -164,6 +168,8 @@ export class ContentManager {
   meshoptDecoder: MeshoptDecoder | undefined;
   /** 加载骨架、动画剪辑和蒙皮；Game 启动时设置（原生模块）。 */
   animationNative: AnimationNative | undefined;
+  /** 解码声音；Game 启动时设置（game.audio）。 */
+  audio: AudioEngine | undefined;
 
   constructor({ root = 'content/', read = fetchReader }: ContentOptions = {}) {
     const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
@@ -364,6 +370,20 @@ export class ContentManager {
     });
   }
 
+  /**
+   * 加载声音：不流式的下载并整个解码，流式的只记下音频文件的地址（实例播放时边下边放）。
+   */
+  loadSound(path: string): Promise<Sound> {
+    return this.#once(path + EXTENSIONS.sound, async (url) => {
+      const file = this.#json<SoundFile>(await this.#read(url));
+      const audio = this.audio;
+      if (!audio) throw new Error(`loading ${url.href}: sounds need an audio engine (Game sets one when it starts)`);
+      const audioUrl = new URL(`${path}.${file.encoding}`, this.root);
+      const source = file.streamFromDisk ? { url: audioUrl.href } : { buffer: await audio.decode(await this.#read(audioUrl)) };
+      return new Sound(audio, file.name, source, file.spatialized);
+    });
+  }
+
   /** 加载字体：先只读度量和码位块的清单，字形的块用到时再下载（见 SpriteFont）。 */
   loadFont(path: string): Promise<SpriteFont> {
     return this.#once(path + EXTENSIONS.font, async (url) => {
@@ -426,7 +446,7 @@ export class ContentManager {
     const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
     const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries] = await Promise.all([
+    const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds] = await Promise.all([
       preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => this.loadModel(p)),
       preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
       preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => this.loadAnimation(p)),
@@ -438,6 +458,7 @@ export class ContentManager {
       preload(scriptPaths('texture'), (p) => this.loadTextureAsset(p)),
       preload([...components.flatMap((c) => (c.ui?.page ? [c.ui.page] : [])), ...scriptPaths('uiPage')], (p) => this.loadUIPage(p)),
       preload(scriptPaths('uiLibrary'), (p) => this.loadUILibrary(p)),
+      preload(scriptPaths('sound'), (p) => this.loadSound(p)),
     ]);
     // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
     const imageRefs = components.flatMap((c) => [
@@ -447,7 +468,7 @@ export class ContentManager {
     const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
       ? [ref.renderTexture, this.renderTexture(ref)] as const
       : [ref.texture, await this.#loadTextureRef(ref, true)] as const)));
-    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries };
+    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds };
   }
 
   /**
@@ -506,7 +527,7 @@ export class ContentManager {
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
     const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = {
       model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs, font: assets.fonts, texture: assets.textures,
-      spriteSheet: assets.spriteSheets, uiPage: assets.uiPages, uiLibrary: assets.uiLibraries,
+      spriteSheet: assets.spriteSheets, uiPage: assets.uiPages, uiLibrary: assets.uiLibraries, sound: assets.sounds,
     };
     const context = {
       entities: created,
@@ -638,7 +659,7 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
 }
 
 /** 脚本属性能引用的资源种类（model、material、animation、prefab 加载场景时预先加载，scene 只给路径）。 */
-const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary']);
+const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary', 'sound']);
 
 function unionBounds(all: readonly Bounds[]): Bounds {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];

@@ -2,6 +2,12 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 SimpleAudio：声音
+
+- **用 Web Audio，源文件原样用**：浏览器自己解 mp3、ogg、wav（D9 的 (c)），不转码、不带解码器。不流式的声音整个解码成 AudioBuffer（音效：开始得快，能同时放很多个）；流式的（StreamFromDisk，音乐）每个实例一个 `<audio>` 元素边下边放，经过 MediaElementAudioSourceNode 接到同一个主音量。没选 AudioWorklet 加 wasm 解码：浏览器已经会解这些格式。
+- **浏览器要用户先操作才出声**：Chrome、Safari 的自动播放策略让 AudioContext 在用户点击、按键之前挂起。和 Stride 不同（桌面一启动就有声音）：之前开始放的声音状态是 Playing，恢复出声后从头接着放（AudioContext 挂起时时间不走）。Game 在窗口上监听第一次点击、按键，恢复出声。
+- **SoundInstance 的语义照 Stride**：Play 在放时什么也不做、Pause 只在放时有效、Stop 回到开头、没循环的放完 PlayState 自己变回 Stopped；Pitch 是播放速度，音高跟着变（`<audio>` 关掉 preservesPitch）。空间化的声音没有 AudioEmitter 时按 2D 放（同 Stride）；AudioEmitter、AudioListener 等用到的样例再做。
+
 ## 2026-11-19 UIParticles：粒子系统
 
 - **粒子在 CPU 上模拟，照 Stride 的算法**：Stride 的粒子系统是 CPU 上的（每个发射器一个粒子池，生成器、初始化器、更新器），样例的粒子数在几百到几千，用 JS 的类型化数组按字段分列存足够快，以后数量大的效果再考虑放进原生侧或 GPU 计算。随机数、每帧的顺序、生成器的状态机都照 Stride，固定种子（RandomSeedMethod: Fixed）时结果和桌面一样（RandomSeed 和 .NET 算的逐位对上）；默认的按时间取种子两边本来就对不上。

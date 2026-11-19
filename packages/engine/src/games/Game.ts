@@ -22,6 +22,7 @@ import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
 import { SpriteRenderFeature } from '../rendering/SpriteRenderFeature';
 import { RenderSystem, type SceneRenderer } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../rendering/Texture';
+import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
@@ -111,6 +112,8 @@ export class Game {
   readonly entities: EntityManager = new EntityManager(this);
   /** 脚本每帧打印的调试文字（Stride 的 DebugTextSystem）。 */
   readonly debugText = new DebugText();
+  /** 音频（Stride 的 AudioEngine）：Web Audio，用户第一次操作页面后出声。 */
+  readonly audio = new AudioEngine();
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
   readonly particles = new ParticleSystems();
   /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
@@ -185,6 +188,8 @@ export class Game {
       if (this.native.hasFeature('texture')) this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
       this.content.meshoptDecoder ??= (requests) => this.native.decodeMeshoptBatch(requests);
       this.content.imageDecoder ??= browserImageDecoder();
+      this.content.audio ??= this.audio;
+      this.audio.attach(window);
       this.renderSystem = new RenderSystem(this.graphicsDevice);
       this.renderSystem.addFeature(new MeshRenderFeature());
       // 背景画在网格之后，只落在没画到的地方
@@ -222,6 +227,7 @@ export class Game {
     this.ui.destroy();
     this.debugTextRenderer.destroy();
     this.particles.destroy();
+    this.audio.destroy();
     (this.renderSystem as RenderSystem | undefined)?.destroy();
     (this.input as InputManager | undefined)?.destroy();
     (this.graphicsDevice as GraphicsDevice | undefined)?.destroy();

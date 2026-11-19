@@ -1,13 +1,15 @@
-// TopDownRPG 的 CoinScript：金币一直转；角色碰到（Trigger 广播）后转得更快、跳一下、缩没，放拿金币的特效，3 秒后移除。
-// 音效（SoundEffect）属于 P2 的音频，场景导入时是 null，这里不声明。
-import { prop, Quaternion, SyncScript, Transform, Matrix, type EventReceiver, type GameTime } from '@stride-ts/engine';
+// TopDownRPG 的 CoinScript：金币一直转；角色碰到（Trigger 广播）后转得更快、跳一下、缩没，放拿金币的特效和音效，3 秒后移除。
+import { prop, Quaternion, SyncScript, Transform, Matrix, type EventReceiver, type GameTime, type SoundInstance } from '@stride-ts/engine';
 import { spawnPrefabInstance, worldPosition } from '../core/Utils';
 import { Trigger } from './Trigger';
 
 export class CoinScript extends SyncScript.props({
   coinGetEffect: prop.asset('prefab').optional(),
+  soundEffect: prop.asset('sound').optional(),
   trigger: prop.component(() => Trigger).optional(),
 }) {
+  /** 被碰到时放的那一声（没配音效时是 undefined）。 */
+  sfxInstance: SoundInstance | undefined;
   #triggered: EventReceiver<boolean> | undefined;
   #spinSpeed = 1;
   #activated = false;
@@ -15,6 +17,7 @@ export class CoinScript extends SyncScript.props({
 
   override start(): void {
     this.#triggered = this.trigger && this.receive(this.trigger.triggerEvent);
+    this.sfxInstance = this.soundEffect?.createInstance();
   }
 
   override update(time: GameTime): void {
@@ -33,6 +36,7 @@ export class CoinScript extends SyncScript.props({
 
   #collisionStarted(): void {
     this.#activated = true;
+    this.sfxInstance?.play();
     const at = worldPosition(this.entity);
     spawnPrefabInstance(this, this.coinGetEffect, undefined, 3, Matrix.compose(Matrix.identity(), [at.x, at.y, at.z], [0, 0, 0, 1], [1, 1, 1]));
     void this.delay(3).then(() => this.entity.destroy(), () => undefined);

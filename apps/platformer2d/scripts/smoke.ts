@@ -1,7 +1,7 @@
 // Platformer2D 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 玩一遍。
 //   pnpm --filter @stride-ts/platformer2d smoke [-- --hub <中枢名的一部分>]
 // 检查：场景在跑、精灵表的帧在换（待机、金币）；W 起跳（跳的帧）；按住 D 往右跑（跑步的帧）、A 转身往左（实体绕 Y 转 180°）；
-// 走到右下角的金币上：精灵马上隐藏，3 秒后金币实体移除。
+// 走到右下角的金币上：精灵马上隐藏、音效响起，3 秒后金币实体移除。
 import { startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('platformer2d');
@@ -60,6 +60,9 @@ await sleep(3200);
 stride('key', 'D', '--up');
 const collected = stride('eval', COINS) as [number, number, string];
 check('碰到金币：精灵马上隐藏', collected[0] === coins && collected[1] === coins - 1, { coins, collected });
+const sounds = stride('eval', `const type = strideGame.registry.scriptsNamed('CollectCoin')[0];
+  [...strideGame.rootScene.entities.values()].map((e) => e.get(type)?.sfxInstance?.playState).filter(Boolean)`) as string[];
+check('拿到的那个金币放了音效', sounds.length === 1 && (sounds[0] === 'playing' || sounds[0] === 'stopped'), sounds);
 await sleep(3300);
 check('3 秒后金币实体移除', (stride('eval', COINS) as [number, number, string])[0] === coins - 1, stride('eval', COINS));
 

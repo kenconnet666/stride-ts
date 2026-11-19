@@ -292,6 +292,8 @@ describe('粒子的形状和材质', () => {
     expect(compiler.vertexScalar(sampled)).toBe('textureSampleLevel(t0, s0, streams.uv * vec2f(1.0, 1.0) + vec2f(0.0, 0.0), 0.0).g');
     expect(compiler.scalar(sampled)).toBe('textureSample(t1, s1, streams.uv * vec2f(1.0, 1.0) + vec2f(0.0, 0.0)).g');
     expect(compiler.vertexScalar({ $type: 'computeShaderClassScalar', mixinReference: 'Wave' })).toBe('Wave().r');
+    // 没有贴图时用 FallbackValue（ComputeFloat，导出成 { value }；TopDownRPG 的 HighlightMaterial）
+    expect(compiler.vertexScalar({ $type: 'computeTextureScalar', fallbackValue: { value: 0.5 } })).toBe('0.5');
   });
 
   test('BoundingSphereStatic：世界包围盒是位置周围 半径 · 缩放 的立方体', () => {

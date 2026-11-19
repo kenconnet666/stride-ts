@@ -128,7 +128,8 @@ export class ColorTreeCompiler {
         return float(get(file, 'value', 1));
       case 'computeTextureScalar': {
         const texel = this.#sample(file);
-        if (!texel) return float(get(file, 'fallbackValue', 1));
+        // FallbackValue 是 ComputeFloat，导出成 { value }
+        if (!texel) return float(get(get(file, 'fallbackValue', {} as ParticleModuleFile), 'value', 1));
         const channel = String(file['channel'] ?? 'r').toLowerCase();
         return `${texel}.${channel.length === 1 && 'rgba'.includes(channel) ? channel : 'r'}`;
       }

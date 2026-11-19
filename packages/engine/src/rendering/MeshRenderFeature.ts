@@ -210,6 +210,8 @@ struct Varyings {
   @location(5) local: vec3f,
   // 网格效果在顶点着色器里算、给片元着色器用的值（effectVarying，比如雾因子）
   @location(6) effect: vec4f,
+  // 实例的变换槽位（点选的编号缓冲写它）
+  @location(7) @interpolate(flat) slot: u32,
 };
 
 const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
@@ -241,6 +243,7 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   out.depth = out.position.w;
   out.tangent = vec4f((world * vec4f(localTangent, 0.0)).xyz, tangent.w);
   out.local = local;
+  out.slot = slot;
   return out;
 }
 
@@ -538,6 +541,15 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
 }
 
 /** Alpha 裁剪的材质在只写深度的阶段（深度预通道、阴影）：同不透明阶段一样丢掉 alpha 低于阈值的像素。 */
+/** 点选的编号缓冲：写实例的变换槽位加一（0 留给"什么都没有"）；Alpha 裁剪掉的像素点不到。 */
+@fragment fn fsPick(in: Varyings) -> @location(0) u32 {
+  let base = baseColor(in);
+  if (base.a < material.flags.y) {
+    discard;
+  }
+  return in.slot + 1u;
+}
+
 @fragment fn fsCutout(in: Varyings) {
   let base = baseColor(in);
   if (base.a < material.flags.y) {
@@ -1053,6 +1065,10 @@ export class MeshRenderFeature extends RootRenderFeature {
     return this.batches.some((batch) => batch.count > 0);
   }
 
+  override get supportsPicking(): boolean {
+    return true;
+  }
+
   override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     const culling = this.#viewCulling.get(view);
@@ -1060,7 +1076,8 @@ export class MeshRenderFeature extends RootRenderFeature {
     const { pass: cullPass, index } = culling;
     const counts = cullPass.culler.counts;
     // 透明阶段画透明的材质，再给有清漆的（不透明的）材质叠一遍清漆
-    const inStage = (material: Material) => (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
+    // 点选的阶段透明、不透明的都画
+    const inStage = (material: Material) => stage.picking || (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
     const visible = (b: number) => {
       const batch = this.batches[b]!;
       return counts[index * cullPass.batchCount + b]! > 0 && inStage(batch.material) && inRenderMask(view.cullingMask, batch.renderGroup);
@@ -1383,7 +1400,7 @@ class Gpu {
           }],
         },
         ...(colorFormat ? {
-          fragment: {
+          fragment: stage.picking ? { module, entryPoint: 'fsPick', targets: [{ format: colorFormat }] } : {
             module,
             entryPoint: materialPass?.entryPoint ?? 'fs',
             targets: [{ format: colorFormat, ...(stage.transparent ? { blend: materialPass?.blend ?? PREMULTIPLIED_ALPHA } : {}) }],

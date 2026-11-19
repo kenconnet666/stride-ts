@@ -125,11 +125,12 @@ export {
 } from './engine/scripts';
 export { Stat, type StatModifierOptions } from './engine/stats';
 export { system, System, type Chunk, type EntityIds, type Phase, type SystemSpec } from './engine/system';
-export { SceneRoot, Transform, transformSlot, type TransformColumns, type TransformShape, type TransformView } from './engine/transform';
+export { entityAtSlot, SceneRoot, Transform, transformSlot, type TransformColumns, type TransformShape, type TransformView } from './engine/transform';
 export { validator } from './engine/validator';
 export { Debug, FrameTimings, describe, type DebugHandler } from './debug/Debug';
 export { DebugText, type DebugTextLine } from './debug/DebugText';
 export { drawCollider } from './physics/debugShapes';
+export { ScenePicker } from './rendering/ScenePicker';
 export { DebugDraw, DEBUG_LINE_FLOATS, type DebugColor, type DebugDrawOptions, type DebugPoint } from './debug/DebugDraw';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
 export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './games/Game';

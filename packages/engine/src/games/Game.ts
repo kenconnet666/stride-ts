@@ -11,7 +11,9 @@ import { DebugDraw } from '../debug/DebugDraw';
 import { DebugDrawRenderer } from '../debug/DebugDrawRenderer';
 import { DebugTextRenderer } from '../debug/DebugTextRenderer';
 import type { ScopedDefaults } from '../engine/defaults';
-import type { EntityScene } from '../engine/Entity';
+import type { Entity, EntityScene } from '../engine/Entity';
+import { entityAtSlot, Transform } from '../engine/transform';
+import { ModelPart } from '../rendering/components';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
 import { GraphicsDevice } from '../graphics/GraphicsDevice';
@@ -415,6 +417,18 @@ export class Game {
   }
 
   /** 画一帧：世界矩阵这时已经算好。默认交给图形合成器。 */
+  /**
+   * 点选：画布上 (x, y)（CSS 像素，左上角是原点）最前面的网格属于哪个实体；那里没有网格时是 undefined。结果要等画一两帧
+   * （在 GPU 上画编号、读回，见 ScenePicker）。模型多出来的网格挂在子实体上，点到它们算点到模型所在的实体。
+   */
+  async pick(x: number, y: number): Promise<Entity | undefined> {
+    const canvas = this.graphicsDevice.canvas;
+    const ratio = canvas.width / Math.max(1, canvas.clientWidth);
+    const slot = await this.graphicsCompositor.picker.pick(x * ratio, y * ratio);
+    const entity = slot === undefined ? undefined : entityAtSlot(this.entities, slot);
+    return entity?.has(ModelPart) ? (entity.require(Transform).parent ?? entity) : entity;
+  }
+
   protected draw(time: GameTime): void {
     this.rootRenderer.draw({ game: this, time });
   }

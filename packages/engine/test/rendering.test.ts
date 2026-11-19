@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  Camera, cameraProjectionMatrix, inRenderMask, RENDER_GROUP_ALL, coverSource, spotAngleAttenuation, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, screenToWorldRaySegment, Transform, Vector3, transformSlot, worldToScreen,
+  Camera, cameraProjectionMatrix, entityAtSlot, inRenderMask, RENDER_GROUP_ALL, coverSource, spotAngleAttenuation, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, screenToWorldRaySegment, Transform, Vector3, transformSlot, worldToScreen,
   type DirectionalShadowSettings, type GraphicsDevice, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
@@ -202,6 +202,9 @@ describe('MeshRenderFeature', () => {
     const context = { game, time: game.updateTime };
     feature.extract(context);
     expect(feature.batches.map((b) => [b.isShadowCaster, b.count])).toEqual([[true, 3], [false, 1]]);
+    // 实例按变换槽位认；点选读回槽位以后用它换回实体
+    expect(entities.map((entity) => entityAtSlot(game.entities, transformSlot(entity)))).toEqual(entities);
+    expect(entityAtSlot(game.entities, 9999)).toBeUndefined();
     // 渲染组不同的也分开成批；视图的掩码里没有的组不画
     entities[3]!.require(Model).renderGroup = 4;
     feature.extract(context);

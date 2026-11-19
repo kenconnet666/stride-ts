@@ -24,6 +24,7 @@ import { Skybox } from './Skybox';
 import { UniformArena } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
 import { PostProcessingEffects } from './postfx/PostProcessingEffects';
+import { ScenePicker } from './ScenePicker';
 
 const DEGREES = Math.PI / 180;
 
@@ -96,6 +97,8 @@ export class ForwardRenderer {
   readonly #textureViews: RenderView[] = [];
   /** HDR 颜色缓冲和深度缓冲，按尺寸缓存（主画面一套，每个渲染目标贴图的尺寸一套）。 */
   readonly #targets = new Map<string, FrameTargets>();
+  /** 点选（Game.pick 用它）：问主画面上某个像素最前面的是哪个实例。 */
+  readonly picker: ScenePicker;
   /** 没有后处理时主画面直接画进后备缓冲（省掉 HDR 缓冲和一遍拷贝）；关掉是先画进 HDR 缓冲再拷过去，对比、排查时用。 */
   directOutput = true;
   /** 没有后处理时主画面直接画进后备缓冲用的两个阶段（颜色格式是后备缓冲的）。 */
@@ -191,6 +194,7 @@ export class ForwardRenderer {
     this.transparentStage = new RenderStage('Transparent', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { transparent: true });
     this.#textureCopy = { scaler: new ImageScaler(renderSystem.device, renderSystem.resources.linearClamp), arena: new UniformArena(renderSystem.device, 4096) };
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
+    this.picker = new ScenePicker(renderSystem);
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
   }
 
@@ -280,6 +284,8 @@ export class ForwardRenderer {
     const keepDepth = context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
+    // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
+    if (this.picker.pending) this.picker.draw(context, encoder, mainView, canvas.width, canvas.height);
     if (!this.postEffects.enabled && this.directOutput) {
       this.#drawView(context, encoder, mainView, this.#backBufferOutput(canvas.width, canvas.height), targets.depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
       return;
@@ -297,6 +303,7 @@ export class ForwardRenderer {
     this.#targets.clear();
     this.#textureCopy.arena.destroy();
     this.postEffects.destroy();
+    this.picker.destroy();
     this.shadowMapRenderer.destroy();
   }
 

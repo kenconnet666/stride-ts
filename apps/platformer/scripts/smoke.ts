@@ -1,7 +1,7 @@
 // ThirdPersonPlatformer 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍样例的玩法。
 //   pnpm --filter @stride-ts/platformer smoke [-- --hub <中枢名的一部分>]
 // 每次先重新加载页面。检查：游戏在跑、场景画出来了；角色落在地上站住；按住 W 往前跑、骨骼跟着动，松开后停下；
-// 空格跳起来再落回地面；没有错误日志（finish 检查）。镜头要锁定鼠标才转，合成事件锁不了，不在这里测。
+// 空格跳起来再落回地面；点选认得出角色；没有错误日志（finish 检查）。镜头要锁定鼠标才转，合成事件锁不了，不在这里测。
 import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('platformer');
@@ -39,6 +39,12 @@ check('场景画出来了', drawn.entities > 50 && drawn.drawn > 20 && drawn.dra
 type Point = [number, number, number];
 const rest = stride('eval', `frames(90).then(async () => { const a = playerAt(); await frames(20); return [a, playerAt()]; })`) as [Point, Point];
 check('角色落在地上站住', Math.abs(rest[1][1] - rest[0][1]) < 0.01 && rest[1][1] > -1, rest);
+
+// 点选（GPU 上画编号再读回）：角色在画面中间偏下，点到的是蒙皮的模型；最上面一行是天空，什么都点不到
+const picked = stride('eval', `(async () => { const c = strideGame.graphicsDevice.canvas;
+  const name = async (x, y) => (await strideGame.pick(c.clientWidth * x, c.clientHeight * y))?.name ?? null;
+  return [await name(0.5, 0.6), await name(0.5, 0.005), await name(0.15, 0.9)]; })()`) as (string | null)[];
+check('点选：角色、天空、地面', picked[0] === 'MannequinModel' && picked[1] === null && typeof picked[2] === 'string' && picked[2] !== 'MannequinModel', picked);
 
 // 按住 W：往前跑，走跑的动画在播（权重加起来是 1）；松开后停下
 const run = stride('eval', `(async () => {

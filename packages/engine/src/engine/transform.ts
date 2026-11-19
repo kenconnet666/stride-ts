@@ -243,6 +243,12 @@ export const Transform = new ComponentType('Transform', shape, {}, external) as 
 };
 
 /** 实体的变换槽位，绑定物理刚体时用：`world.addBox({ halfExtent, transform: transformSlot(box) })`。 */
+/** 变换槽位属于哪个实体（场景的根、空着的槽位是 undefined）；渲染那边按槽位认实例，点选时用它换回实体。 */
+export function entityAtSlot(manager: EntityManager, slot: number): Entity | undefined {
+  const id = stateOf(manager).owner[slot];
+  return id === undefined ? undefined : manager.entity(id);
+}
+
 export function transformSlot(entity: Entity): TransformSlot {
   return slotOf(entity.manager, entity.id);
 }

@@ -51,11 +51,15 @@ export class RenderStage {
    * 渲染器保证预通道和这个阶段画的是同一批东西。
    */
   readonly afterDepthPrepass: boolean;
+  /** 点选用的编号缓冲（ScenePicker）：颜色写的是实例的编号；透明、不透明的都画，只有 supportsPicking 的特性画。 */
+  readonly picking: boolean;
 
   constructor(
     name: string, output: RenderOutput,
-    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false }: { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean } = {},
+    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false, picking = false }:
+    { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean; picking?: boolean } = {},
   ) {
+    this.picking = picking;
     this.name = name;
     this.output = output;
     this.shadowCasters = shadowCasters;
@@ -156,6 +160,10 @@ export abstract class RootRenderFeature {
   abstract extract(context: RenderContext): void;
   /** 这一帧有没有东西要画进只写深度的阶段（深度预通道）；都没有时渲染器不开这一遍。extract 之后才准。 */
   get drawsDepth(): boolean {
+    return false;
+  }
+  /** 会不会画点选的编号缓冲（RenderStage.picking）；不会的特性在那个阶段不被调用。 */
+  get supportsPicking(): boolean {
     return false;
   }
   /**
@@ -407,7 +415,7 @@ export class RenderSystem {
   }
 
   draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
-    for (const feature of this.features) feature.draw(context, pass, view, stage);
+    for (const feature of this.features) if (!stage.picking || feature.supportsPicking) feature.draw(context, pass, view, stage);
   }
 
   /** 这一帧有没有特性要画深度预通道（纯 2D 的画面没有网格，这一遍是空的，可以省掉）。 */

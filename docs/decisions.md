@@ -2,6 +2,18 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 CSharpIntermediate：声音的发射器和听者；只改朝向；相机教程里 Stride 的毛病
+
+- **发射器和听者做成引擎自带的脚本组件**（`AudioEmitterComponent`、`AudioListenerComponent`），场景里的同名组件导入成它们的属性。空间化用 Web Audio 的 PannerNode：距离模型 inverse、参考距离 1，和 Stride 在 Windows 上用的 X3DAudio 默认曲线一样（1 米以内不衰减，以外 1/距离）。听者的朝向是实体的 -Z：Stride 传给 X3DAudio 的是 +Z，X3DAudio 是左手系，左右算出来和我们一致。和 Stride 不同的地方：
+  - 没标 Spatialized 的声音也能挂在发射器上放（不做空间化）；Stride 直接不让。
+  - `directionalFactor` 起作用（正面是实体的 +Z，背面的音量 1 - 这个值，中间按角度过渡，用 PannerNode 的锥形近似心形）。Stride 的 XAudio2 后端把指向类型写死成全向，这个值没有效果；别的后端不看它。
+  - `environment` 的混响是合成的（指数衰减的白噪声做冲激响应，混响时间小、中、大各 0.4、0.8、1.6 秒，自己定的），所有浏览器都有；Stride 用 Windows 的 HRTF 自带的房间模型，只在 Windows 上、只在 UseHRTF 时有。我们也只在 `useHRTF` 时加混响，免得同一个场景默认的 `Small` 让所有发射器都带上混响。
+  - 不做多普勒和按距离的低通。X3DAudio 默认两样都算，但 Stride 传的速度是每帧的位移（不是每秒），多普勒几乎听不出；低通是 X3DAudio 的默认曲线（1 米以外截到采样率的 1/8），Stride 没有调它的接口，更像是没关掉而不是要这个效果。Web Audio 也已经去掉了多普勒。
+- **`body.setOrientation`**（原生 0.29.0 的 `sn_physics_body_set_rotation`）：只改物体的朝向，位置和它的插值不动。第一人称、第三人称相机每帧把鼠标的偏航写给角色（Stride 的 `character.SetTargetPose(Quaternion)`）；用 teleport 的话每帧都让插值从头开始，开着插值的角色走起来一顿一顿。
+- **鼠标锁定**：Stride 的脚本一启动就锁、Esc 来回切换。浏览器里锁鼠标要先有用户操作，锁着时按 Esc 由浏览器解锁（页面收不到这次按键）。所以两个相机教程改成：点左键锁定，锁着时才转视角，没锁时屏幕上提示一句；Esc 解锁。
+- **第三人称相机的避障射线只跳过角色自己**：Stride 的脚本用 `CollisionMask.Everything & ~character.CollisionLayer.ToMask()` 跳过角色所在的整个层，而教程场景里的墙和箱子都和角色同在 Layer0，射线只打得到地面，相机退到墙边时穿到墙后面。我们用穿透的射线取第一个不是角色自己的命中，墙能挡住相机。
+- **`entity.findChild(name)`**（Stride 的 `Entity.FindChild`）：只找直接子实体，同 Stride。
+
 ## 2026-11-19 CSharpIntermediate：预制体的实例照文件里的值；穿透的射线；投影
 
 - **预制体的实例照场景文件里的值，不和预制体合并**：场景文件里存着实例每个成员的值，改过的成员键名后面带 `*`。CSharpIntermediate 的场景里有一批实例的 `Model: null`，而且一半实例对应的预制体部件已经不存在了（预制体改过以后场景没重新保存）。试过照 Game Studio 的做法合并（没标覆盖的成员取预制体现在的值），撤掉了：

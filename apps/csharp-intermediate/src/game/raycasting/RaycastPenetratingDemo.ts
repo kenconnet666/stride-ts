@@ -12,7 +12,7 @@ export class RaycastPenetratingDemo extends SyncScript.props({
     const print = (text: string) => this.game.debugText.print(text, [700, y]);
     print('Raycast penetration demo');
     const transform = this.entity.require(Transform);
-    const laser = transform.children.find((child) => child.name === 'Laser')?.require(Transform);
+    const laser = this.entity.findChild('Laser')?.require(Transform);
     if (laser) laser.scale.z = MAX_DISTANCE;
     const { x, y: height, z } = transform.position;
     const hits = this.game.simulation!.rayCastPenetrating([x, height, z], [0, 0, -1], MAX_DISTANCE, { mask: parseCollisionMask(this.collideWith) });

@@ -14,7 +14,7 @@ export class RaycastDemo extends SyncScript.props({
     const print = (text: string, y: number) => this.game.debugText.print(text, [340, y]);
     print('Press Q and E to raise/lower weapons', 80);
     const { position } = this.entity.require(Transform);
-    const laser = this.entity.require(Transform).children.find((child) => child.name === 'Laser')?.require(Transform);
+    const laser = this.entity.findChild('Laser')?.require(Transform);
     const hitPoint = this.hitPoint === undefined ? undefined : this.game.entities.entity(this.hitPoint).require(Transform);
     const hit = this.game.simulation!.rayCast([position.x, position.y, position.z], [0, 0, 1], MAX_DISTANCE, { mask: parseCollisionMask(this.collideWith) });
     if (hit) {

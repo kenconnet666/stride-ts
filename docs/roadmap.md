@@ -336,6 +336,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    分步（按主题分组，每组先看 Stride 的脚本和我们缺什么）：
    1. ~~导入和骨架~~（2026-11-19）：26 个场景都导入了、在 Chrome 里都能进，TutorialUI 写成 TS（换根场景，`stride call tutorial`）。导入器补上：没有模型的 ModelComponent 不画（以前报错）、单独导入脚本用代码加载的资源（`--asset` 也认材质、预制体、声音等）。导入时跳过的组件：AudioListenerComponent、AudioEmitterComponent（第 3 步做）；UI 的渲染组 Group4 当 Group0 用。
    2. ~~界面和物理~~（2026-11-19，脚本写好、场景能进，按键的玩法留到第 5 步的冒烟里走）：01 UIByCode、UIByEditor；02 CollisionTriggerDemo、Teleport；03 RaycastDemo、RaycastPenetratingDemo（原生 0.28.0 的穿透射线，`simulation.rayCastPenetrating`）；04 ProjectDemo、UnprojectDemo（`worldToScreen`，`debugText.fromScreen`）；05 AsyncCollisionTriggerDemo、AsyncWebApi（fetch）。工具脚本 ObjectSpawner、OmniDirectionMovement。
-   3. 场景、动画、声音：06 LoadScene、LoadChildScene（~~写好~~，`game.loadScene` 的 `parent`、`offset`：子场景随父场景卸载）；07 AnimationBasics（~~写好~~）；08 声音还没做（AudioDemo、LoadMusic：声像、音量，`AudioEmitterComponent`、`AudioListenerComponent`）。
-   4. 相机、角色、导航（还没做）：09 FirstPersonCamera、CharacterMovement；10 ThirdPersonCamera（相机避障的射线）；11 NavigateCharacter（`RecastNavigationComponent` 的寻路、沿路径走）。
-   5. 冒烟（每个场景都能进、各主题的玩法走一遍）和几张桌面比对；回头看一遍哪里比 Stride 差、Stride 哪里有毛病。桌面版的截图工程搭了一半（`tools/stride-capture/csharp-intermediate`，还没提交）：样例要 Stride.BepuPhysics.Navigation，只有本机编的 4.5.3-dev4 有这个包，而那一版的资源编译器编天空盒时要 `STRIDE_WEBGPU_NATIVE_LIBRARY`（见 stride-webprobe3 的 build/wgpu/README.md），设好再编。
+   3. ~~场景、动画、声音~~（2026-11-19）：06 LoadScene、LoadChildScene（`game.loadScene` 的 `parent`、`offset`：子场景随父场景卸载）；07 AnimationBasics；08 AudioDemo、LoadMusic。引擎补上声音的发射器和听者（`AudioEmitterComponent`、`AudioListenerComponent`：按实体的位置空间化，指向性，HRTF 时的混响），场景里的同名组件导入成它们。
+   4. ~~相机、角色、导航~~（2026-11-19）：09 FirstPersonCamera、CharacterMovement；10 ThirdPersonCamera（相机避障的射线，Stride 的脚本会穿墙，见 docs/decisions.md）；11 NavigateCharacter（寻路、沿路径走、拐点上放球）。引擎补上：`body.setOrientation`（原生 0.29.0，只改朝向、不打断位置的插值）、`entity.findChild`、`Quaternion.toEulerXYZ`。
+   5. 冒烟和桌面比对：
+      - ~~冒烟~~（2026-11-19）：22 项。22 个教程场景都能进，11 个主题完成版的玩法各走一遍（UI 的按钮和输入框、触发器、两种射线按层过滤、投影和点地面克隆、异步脚本换材质、子场景和换根场景、动画的淡入和暂停、音乐和发射器、两个相机的锁鼠标和转视角、导航），换一圈教程实体数不变。冒烟脚本共用的页面帮手放进了 `tools/smoke.ts`（`PAGE_HELPERS`）；别的样例的冒烟还各带一份自己的，回头换成共用的。
+      - 桌面比对还没做：截图工程搭了一半（`tools/stride-capture/csharp-intermediate`，还没提交）。样例要 Stride.BepuPhysics.Navigation，只有本机编的 4.5.3-dev4 有这个包，而那一版的资源编译器编天空盒时要 `STRIDE_WEBGPU_NATIVE_LIBRARY`（见 stride-webprobe3 的 build/wgpu/README.md），设好再编。

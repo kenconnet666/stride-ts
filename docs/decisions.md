@@ -2,6 +2,14 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 UIParticles：粒子系统
+
+- **粒子在 CPU 上模拟，照 Stride 的算法**：Stride 的粒子系统是 CPU 上的（每个发射器一个粒子池，生成器、初始化器、更新器），样例的粒子数在几百到几千，用 JS 的类型化数组按字段分列存足够快，以后数量大的效果再考虑放进原生侧或 GPU 计算。随机数、每帧的顺序、生成器的状态机都照 Stride，固定种子（RandomSeedMethod: Fixed）时结果和桌面一样（RandomSeed 和 .NET 算的逐位对上）；默认的按时间取种子两边本来就对不上。
+- **场景按 Stride 的对象树原样导入**：粒子系统由几十种模块组成，导入成 `ParticleModuleFile`（类型名、属性名首字母小写，没写的属性运行时取 Stride 的默认值），运行时按 `$type` 建模块；导入器只留下运行时认识的类型，其余警告后去掉。加新模块只要在两边各加一项。
+- **力场的衰减改掉 Stride 的毛病**：Stride 的 FieldFalloff 在 FalloffStart 到 FalloffEnd 之间除以 FalloffEnd / FalloffStart（应该是两者的差），过渡区里力几乎不变、到 FalloffEnd 时突然跳到 StrengthOutside。我们线性过渡。影响：UIParticles 的彩纸在力场的边缘附近受力和 Stride 不一样（Stride 的更强）。
+- **组件的 Control 不导入运行时**：ParticleSystemComponent 的 Control（ResetSeconds、Play/Pause/Stop）在 Stride 里只在编辑器和预览里起作用（ParticleSystemSimulationProcessor 的 applyEditorControl），游戏运行时粒子系统一直在播。我们照运行时的行为。
+- **统一缩放取世界矩阵 X 轴的长度**：Stride 把实体和所有父实体本地缩放的 X 乘起来（父实体转了角度时和世界矩阵不一样）；统一缩放时两者相同，我们直接从世界矩阵取。
+
 ## 2026-11-19 UIElementLink：放在 3D 里的 UI；跟着 UI 元素走
 
 - **放在 3D 里的 UI 也画在后处理之后**（和桌面比对时量到的代价见 `tools/stride-capture/ui-element-link`：这个样例的场景很暗，Stride 的自动曝光把 UI 提亮很多，量平均亮度时也算上了 UI；我们的 UI 是原色，场景的曝光只看场景）：Stride 在透明阶段里画，会被色调映射、泛光、FXAA 处理；我们和全屏 UI 一样画在后处理之后（UI 的颜色照原样），另外和场景的深度缓冲比较，被更近的物体挡住。为此前向渲染器在场景里有 UI 时把主画面的深度缓冲留下来（`depthStoreOp: 'store'`，平时 `discard`，分块渲染的 GPU 上省带宽）。代价：斜着的 UI 的边没有 FXAA。没选在透明阶段里画：那样 UI 的颜色被色调映射改掉，和全屏 UI 不一致。

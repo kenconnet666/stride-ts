@@ -191,6 +191,9 @@ export { SpriteFromSheet, SpriteFromTexture, type SpriteProvider } from './ui/sp
 export { buildElement, UILibrary, UIPage, type UIResources } from './ui/UIPage';
 export { UIComponent, type ResolutionStretch } from './ui/UIComponent';
 export { UIElementLink } from './ui/UIElementLink';
+export { ParticleSystem } from './particles/ParticleSystem';
+export { ParticleEmitter, type SimulationSpace, type RandomSeedMethod, type SortingPolicy } from './particles/ParticleEmitter';
+export { ParticleSystemComponent, ParticleSystems } from './particles/ParticleSystemComponent';
 export { UISystem } from './ui/UISystem';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';

@@ -29,10 +29,11 @@ import { Cubemap, Skybox } from '../rendering/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
+import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import { UIElementLink } from '../ui/UIElementLink';
 import { buildElement, uiAssetPaths, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile, type ParticleModuleFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -437,7 +438,10 @@ export class ContentManager {
       preload(scriptPaths('uiLibrary'), (p) => this.loadUILibrary(p)),
     ]);
     // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
-    const imageRefs = components.flatMap((c) => [...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite && 'texture' in c.sprite ? [c.sprite.texture] : [])]);
+    const imageRefs = components.flatMap((c) => [
+      ...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite && 'texture' in c.sprite ? [c.sprite.texture] : []),
+      ...(c.particleSystem ? particleTextures(c.particleSystem) : []),
+    ]);
     const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
       ? [ref.renderTexture, this.renderTexture(ref)] as const
       : [ref.texture, await this.#loadTextureRef(ref, true)] as const)));
@@ -527,7 +531,7 @@ export class ContentManager {
   }
 
   #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
-    const { model, camera, light, background, animation, sprite, static: collidable, character, body, instancing } = file.components;
+    const { model, camera, light, background, animation, sprite, static: collidable, character, body, instancing, particleSystem } = file.components;
     const { materials } = assets;
     const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
     if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction, trigger: collidable.trigger ?? false }));
@@ -556,6 +560,10 @@ export class ContentManager {
       const { texture, center, color, ...settings } = sprite;
       const id = assets.images.get('renderTexture' in texture ? texture.renderTexture : texture.texture)!.id;
       entity.add(Sprite.with({ ...settings, texture: id, centerX: center[0], centerY: center[1], color: [...color] }));
+    }
+    if (particleSystem) {
+      entity.add({ script: ParticleSystemComponent, init: {} });
+      entity.require(ParticleSystemComponent).load(particleSystem);
     }
     if (animation) {
       entity.add({ script: AnimationComponent, init: {} });
@@ -657,6 +665,20 @@ function uiComponent({ page, resolution, size, resolutionStretch, ...flags }: Sc
     resolutionStretch,
     ...flags,
   });
+}
+
+/** 粒子系统里引用的贴图（材质的 ComputeTextureColor 这些）。 */
+function particleTextures(module: ParticleModuleFile): TextureRef[] {
+  const found: TextureRef[] = [];
+  const visit = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(visit);
+    else if (value && typeof value === 'object') {
+      if (typeof (value as TextureRef).texture === 'string' && !('$type' in value)) found.push(value as TextureRef);
+      else Object.values(value).forEach(visit);
+    }
+  };
+  visit(module);
+  return found;
 }
 
 async function preload<T>(paths: readonly string[], load: (path: string) => Promise<T>): Promise<Map<string, T>> {

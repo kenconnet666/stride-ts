@@ -22,6 +22,7 @@ import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
 import { SpriteRenderFeature } from '../rendering/SpriteRenderFeature';
 import { RenderSystem, type SceneRenderer } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../rendering/Texture';
+import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
@@ -110,6 +111,8 @@ export class Game {
   readonly entities: EntityManager = new EntityManager(this);
   /** 脚本每帧打印的调试文字（Stride 的 DebugTextSystem）。 */
   readonly debugText = new DebugText();
+  /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
+  readonly particles = new ParticleSystems();
   /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
   readonly ui = new UISystem();
   private readonly debugTextRenderer = new DebugTextRenderer();
@@ -170,6 +173,7 @@ export class Game {
       if (this.simulation && this.native.hasFeature('navigation')) this.navigation = new NavigationSystem(this.native, this.simulation);
       this.registry.register(RecastNavigationComponent);
       this.registry.register(UIComponent);
+      this.registry.register(ParticleSystemComponent);
       this.animation = new AnimationSystem(this.native, this.entities);
       this.entities.addSystems(this.animation.system, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui));
       this.content.animationNative ??= this.native;
@@ -372,6 +376,7 @@ export class Game {
         this.debugText.beginFrame();
         this.update(this.updateTime);
         this.transforms.update();
+        this.particles.update(this.updateTime.elapsed);
       }
       const drawStart = performance.now();
       this.draw(this.updateTime);

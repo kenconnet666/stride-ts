@@ -24,3 +24,6 @@ pwsh tools/stride-capture/space-escape/capture-ours.ps1
 | Run | 5.30/255 | 82516（11.3%） | 10177（1.4%） |
 
 关卡、走廊往远处弯、远处的雾、天空板、角色、UI 两边一致。看得出的差别：金属表面的高光略有不同；角色跑起来的姿势差一点（动画采样）。
+
+帧时间（主菜单，640x1136，不限帧率）：桌面 Stride 0.91 ms（`--benchmark 2000`），stride-ts 0.78 ms。构建 8 s，页面下载 5.75 MB
+（brotli 4.0 MB），第一帧 1.0 s。

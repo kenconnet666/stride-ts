@@ -833,6 +833,31 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
     expect(main(lighting('!Stride.Rendering.Shadows.ShadowMapRenderer,Stride.Rendering {}'))?.shadows).toBeUndefined();
   });
 
+  test('粒子画在 UI 上面：粒子的透明阶段由主画面里的 SingleStageRenderer 画；在前向渲染器的阶段里时不算', () => {
+    expect(main(compositor)?.particlesOverUI).toBeUndefined();
+    const particles = (stage: string) => parseStrideYaml(`!GraphicsCompositorAsset
+Id: c
+Cameras:
+    a1:
+        Id: main-slot
+RenderFeatures:
+    r1: !Stride.Particles.Rendering.ParticleEmitterRenderFeature,Stride.Particles
+        RenderStageSelectors:
+            s1: !Stride.Particles.Rendering.ParticleEmitterTransparentRenderStageSelector,Stride.Particles
+                OpaqueRenderStage: ref!! ${stage}
+                TransparentRenderStage: ref!! ${stage}
+Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
+    Camera: ref!! main-slot
+    Child: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
+        Children:
+            c1: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine {}
+            c2: !Stride.Rendering.Compositing.SingleStageRenderer,Stride.Rendering
+                RenderStage: ref!! particles-stage
+`);
+    expect(main(particles('particles-stage'))?.particlesOverUI).toBe(true);
+    expect(main(particles('transparent-stage'))?.particlesOverUI).toBeUndefined();
+  });
+
   test('相机画进渲染目标贴图的分支：槽位、贴图、里面的前向渲染器（不画透明阶段）', () => {
     const texture = { renderTexture: 'Game/RenderTexture', width: 320, height: 568, hdr: false, srgb: true };
     const { main } = importCompositor(compositor, (id) => (id === 'rt-id' ? texture : undefined));

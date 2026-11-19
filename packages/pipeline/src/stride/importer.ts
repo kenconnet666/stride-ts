@@ -2,7 +2,7 @@
  * 把 Stride 工程的场景和预制体导入成运行时内容（格式见 @stride-ts/engine 的 content/format.ts）：实体的层级和变换，
  * 模型（源 FBX/glTF 经 stride-tools 导入，含骨架和蒙皮）、动画、相机、光源、背景、精灵和精灵表，物理（碰撞体、刚体、
  * 角色、约束，GameSettings 里的仿真和碰撞矩阵）、导航设置，以及游戏脚本的属性。材质、贴图、天空盒在 materials.ts。
- * 还不认识的组件（粒子、音频、UI 等）跳过并计数。
+ * 还不认识的组件（音频等）跳过并计数。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -42,6 +42,7 @@ import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
 import { importCompositor } from './compositor.ts';
 import { FontImporter } from './fonts.ts';
 import { MaterialImporter, type ImportedTexture } from './materials.ts';
+import { importParticleSystem } from './particles.ts';
 import { proceduralMesh } from './procedural.ts';
 import { cleanNodeName, importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
 import { importTransform, once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
@@ -370,10 +371,14 @@ export class StrideImporter {
 
   /** 单独引用的贴图：导出贴图，旁边写它的 TextureRef（content.loadTexture 读）。 */
   async #textureDescriptor(asset: AssetEntry): Promise<string> {
-    const { texture, encoding, size, srgb } = await this.#materials.texture(asset);
-    const ref: TextureRef = { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb };
-    await this.#write(asset.path + EXTENSIONS.texture, JSON.stringify(ref));
+    await this.#write(asset.path + EXTENSIONS.texture, JSON.stringify(await this.#textureRef(asset)));
     return asset.path;
+  }
+
+  /** 导出贴图，返回场景、资源文件里引用它的 TextureRef。 */
+  async #textureRef(asset: AssetEntry): Promise<TextureRef> {
+    const { texture, encoding, size, srgb } = await this.#materials.texture(asset);
+    return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb };
   }
 
   /** 把一个组件写进 components；不认识的返回 false。 */
@@ -438,6 +443,12 @@ export class StrideImporter {
       }
       case 'UIComponent':
         components.ui = await this.#uiComponent(component, where);
+        return true;
+      case 'ParticleSystemComponent':
+        components.particleSystem = await importParticleSystem(component, where, {
+          texture: (id) => this.#textureRef(this.#project.get(id, where)),
+          warn: (message) => this.#warnings.push(message),
+        });
         return true;
       case 'BackgroundComponent': {
         const texture = parseAssetReference(component['Texture']);

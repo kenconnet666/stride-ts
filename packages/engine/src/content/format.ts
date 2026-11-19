@@ -581,12 +581,30 @@ export interface SceneCompositor extends SceneForwardRenderer {
   readonly textureCameras?: readonly SceneTextureCamera[];
   /** false：整个合成器不画阴影（Stride 的 ForwardLightingRenderFeature 没有 ShadowMapRenderer）。没写是画。 */
   readonly shadows?: false;
+  /**
+   * true：粒子画在 UI 上面（Stride 的合成器把粒子放进自己的渲染阶段，在前向渲染器之后用 SingleStageRenderer 画，UIParticles）。
+   * 没写时粒子在场景的透明阶段里。
+   */
+  readonly particlesOverUI?: true;
+}
+
+/** 粒子模块里的值：数字、布尔、字符串（枚举，首字母小写；名字原样）、数组（向量、四元数、颜色）、贴图、嵌套的模块、模块的列表。 */
+export type ParticleValue = number | boolean | string | null | readonly number[] | TextureRef | ParticleModuleFile | readonly ParticleModuleFile[];
+
+/**
+ * 粒子系统里的一个对象（Stride 的 ParticleSystemComponent、ParticleSystem、发射器、生成器、初始化器、更新器、形状、材质……）：
+ * $type 是 Stride 的类名首字母小写（发射器这种不带类型标签的没有），其余是属性，名字首字母小写，没写的用 Stride 的默认值。
+ * 向量、四元数、颜色是数组（颜色原样，不换色彩空间），贴图是 TextureRef，Spawners、Initializers、Updaters、Emitters 是数组。
+ * 导入器只留下运行时认识的模块类型（见 pipeline 的 particles.ts），其余的警告后去掉。
+ */
+export interface ParticleModuleFile {
+  readonly $type?: string;
+  readonly [key: string]: ParticleValue | undefined;
 }
 
 /** 精灵的混合方式（Stride 的 SpriteBlend；auto 是贴图透明时 alphaBlend，不透明时 none）。 */
 export type SpriteBlend = 'auto' | 'none' | 'alphaBlend' | 'additiveBlend' | 'noColor';
 
-/** 精灵（Stride 的 SpriteComponent 加 SpriteFromTexture）。 */
 /** 精灵（Stride 的 SpriteComponent）：一整张贴图（SpriteFromTexture）或精灵表里的一个精灵（SpriteFromSheet）。 */
 export type SceneSprite = SceneSpriteSettings & (SceneSpriteFromTexture | SceneSpriteFromSheet);
 
@@ -836,6 +854,8 @@ export interface SceneEntityFile {
      * camera 是带相机的实体（Stride 用它算面向相机的 UI 的朝向；引擎按 UI 实际画的相机算，不用它，见 UIElementLink）。
      */
     readonly uiElementLink?: { readonly target: string | null; readonly camera: string | null; readonly nodeName: string };
+    /** Stride 的 ParticleSystemComponent（Control、Color、Speed 和 ParticleSystem），见 ParticleModuleFile。 */
+    readonly particleSystem?: ParticleModuleFile;
     readonly model?: {
       /** 模型的内容路径。 */
       readonly model: string;

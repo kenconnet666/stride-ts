@@ -4,6 +4,7 @@ import {
   Border, buildElement, Button, Canvas, ContentDecorator, ContentPresenter, Grid, ImageButton, Slider, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet,
   ScrollBar, ScrollingText, SpriteFont, StackPanel, StripDefinition, TextBlock, ToggleButton, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture,
 } from '../src/index';
+import { routeKeyEvents } from '../src/ui/UIKeyboard';
 import { fullScreenTarget, hitTest, PickingState, routePointerEvents, updateMouseOver } from '../src/ui/UIPicking';
 
 /** 测试用的元素（Stride 测试里的 MeasureValidator、ArrangeValidator）：量出固定的大小，记下给它的空间。 */
@@ -620,6 +621,28 @@ describe('UI 的指针（照 Stride 的 UIPicking）', () => {
     const image = button.content as ImageElement;
     expect([image instanceof ImageElement, image.source, button.padding]).toEqual([true, up, [0, 0, 0, 0]]);
     expect(() => (button.content = new TextBlock())).toThrow(/cannot be modified/);
+  });
+
+  test('键盘事件发给有焦点的元素、往上冒泡：文字、刚按下、刚松开、按着的键；停用的元素收不到', () => {
+    const { root, button, layout } = scene();
+    const seen: string[] = [];
+    const keys = { down: new Set(['ArrowLeft', 'ShiftLeft']), pressed: new Set(['ArrowLeft']), released: new Set(['KeyA']) };
+    root.addHandler(UIElement.textInputEvent, (_, args) => seen.push(`text ${args.text}`));
+    root.addHandler(UIElement.keyPressedEvent, (_, args) => seen.push(`pressed ${args.key} ${args.source === button} ${args.isKeyDown('LeftShift')} ${args.isKeyDown('A')}`));
+    root.addHandler(UIElement.keyReleasedEvent, (_, args) => seen.push(`released ${args.key}`));
+    root.addHandler(UIElement.keyDownEvent, (_, args) => seen.push(`down ${args.key}`));
+    routeKeyEvents(button, keys, ['a', 'b']);
+    expect(seen).toEqual(['text a', 'text b', 'pressed ArrowLeft true true false', 'released KeyA', 'down ArrowLeft', 'down ShiftLeft']);
+    // 元素自己处理掉的不再往上
+    seen.length = 0;
+    button.addHandler(UIElement.keyPressedEvent, (_, args) => (args.handled = true));
+    routeKeyEvents(button, keys, []);
+    expect(seen).toEqual(['released KeyA', 'down ArrowLeft', 'down ShiftLeft']);
+    seen.length = 0;
+    root.isEnabled = false;
+    layout();
+    routeKeyEvents(button, keys, ['a']);
+    expect(seen).toEqual([]);
   });
 
   test('模态的弹窗挡住后面的元素，点到弹窗外面发 OutsideClick', () => {

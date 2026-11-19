@@ -11,7 +11,10 @@
  * 方法里（Stride 的类处理函数），只在元素和它的父元素都启用时调用。
  */
 import type { UISystem } from './UISystem';
-import { addHandler, raiseEvent, registerClassHandler, removeHandler, RoutedEvent, type RoutedEventArgs, type RoutedEventHandler, type TouchEventArgs } from './events';
+import {
+  addHandler, raiseEvent, registerClassHandler, removeHandler, RoutedEvent, type KeyEventArgs, type RoutedEventArgs, type RoutedEventHandler, type TextEventArgs,
+  type TouchEventArgs,
+} from './events';
 export type Vec2 = [number, number];
 /** 左、上、右、下。 */
 export type Thickness = readonly [left: number, top: number, right: number, bottom: number];
@@ -482,6 +485,11 @@ export abstract class UIElement {
   static readonly touchLeaveEvent = new RoutedEvent<TouchEventArgs>('TouchLeave', 'direct');
   static readonly touchMoveEvent = new RoutedEvent<TouchEventArgs>('TouchMove', 'bubble');
   static readonly touchUpEvent = new RoutedEvent<TouchEventArgs>('TouchUp', 'bubble');
+  /** 键盘事件：发给有焦点的元素（UISystem.focusedElement），往上冒泡。KeyDown 是按着的键每帧一次。 */
+  static readonly keyPressedEvent = new RoutedEvent<KeyEventArgs>('KeyPressed', 'bubble');
+  static readonly keyDownEvent = new RoutedEvent<KeyEventArgs>('KeyDown', 'bubble');
+  static readonly keyReleasedEvent = new RoutedEvent<KeyEventArgs>('KeyReleased', 'bubble');
+  static readonly textInputEvent = new RoutedEvent<TextEventArgs>('TextInput', 'bubble');
 
   /** 登记处理函数（Stride 的 AddHandler）；handledEventsToo 时处理过的事件也收到。 */
   addHandler<A extends RoutedEventArgs>(event: RoutedEvent<A>, handler: RoutedEventHandler<A>, handledEventsToo = false): void {
@@ -522,7 +530,27 @@ export abstract class UIElement {
     this.#raise(args, UIElement.touchLeaveEvent);
   }
 
-  #raise(args: TouchEventArgs, ...events: RoutedEvent<TouchEventArgs>[]): void {
+  /** @internal UI 输入：键盘（见 UIKeyboard.ts）。 */
+  raiseKeyPressed(args: KeyEventArgs): void {
+    this.#raise(args, UIElement.keyPressedEvent);
+  }
+
+  /** @internal */
+  raiseKeyDown(args: KeyEventArgs): void {
+    this.#raise(args, UIElement.keyDownEvent);
+  }
+
+  /** @internal */
+  raiseKeyReleased(args: KeyEventArgs): void {
+    this.#raise(args, UIElement.keyReleasedEvent);
+  }
+
+  /** @internal */
+  raiseTextInput(args: TextEventArgs): void {
+    this.#raise(args, UIElement.textInputEvent);
+  }
+
+  #raise<A extends RoutedEventArgs>(args: A, ...events: RoutedEvent<A>[]): void {
     for (const event of events) {
       args.routedEvent = event;
       raiseEvent(this, args);
@@ -552,6 +580,14 @@ export abstract class UIElement {
   protected onTouchLeave(_args: TouchEventArgs): void {
     this.isTouched = false;
   }
+
+  protected onKeyPressed(_args: KeyEventArgs): void {}
+
+  protected onKeyDown(_args: KeyEventArgs): void {}
+
+  protected onKeyReleased(_args: KeyEventArgs): void {}
+
+  protected onTextInput(_args: TextEventArgs): void {}
 
   /** 虚拟坐标里的点在不在元素的矩形里（Stride 的 Intersects；ModalElement 改成整个 UI）。 */
   intersects(point: readonly [number, number]): boolean {
@@ -617,8 +653,10 @@ function sameContext(a: LayoutingContext, b: LayoutingContext): boolean {
 }
 
 // 元素自己的反应（Stride 的类处理函数）：只在元素和它的父元素都启用时调用
-type TouchHandlers = { [K in 'onPreviewTouchDown' | 'onPreviewTouchMove' | 'onPreviewTouchUp' | 'onTouchDown' | 'onTouchMove' | 'onTouchUp' | 'onTouchEnter' | 'onTouchLeave']: (args: TouchEventArgs) => void };
-const CLASS_HANDLERS: readonly [RoutedEvent<TouchEventArgs>, keyof TouchHandlers][] = [
+type ClassHandlerName = 'onPreviewTouchDown' | 'onPreviewTouchMove' | 'onPreviewTouchUp' | 'onTouchDown' | 'onTouchMove' | 'onTouchUp' | 'onTouchEnter' | 'onTouchLeave'
+  | 'onKeyPressed' | 'onKeyDown' | 'onKeyReleased' | 'onTextInput';
+type ClassHandlers = { [K in ClassHandlerName]: (args: RoutedEventArgs) => void };
+const CLASS_HANDLERS: readonly [RoutedEvent<TouchEventArgs> | RoutedEvent<KeyEventArgs> | RoutedEvent<TextEventArgs>, ClassHandlerName][] = [
   [UIElement.previewTouchDownEvent, 'onPreviewTouchDown'],
   [UIElement.previewTouchMoveEvent, 'onPreviewTouchMove'],
   [UIElement.previewTouchUpEvent, 'onPreviewTouchUp'],
@@ -627,9 +665,13 @@ const CLASS_HANDLERS: readonly [RoutedEvent<TouchEventArgs>, keyof TouchHandlers
   [UIElement.touchUpEvent, 'onTouchUp'],
   [UIElement.touchEnterEvent, 'onTouchEnter'],
   [UIElement.touchLeaveEvent, 'onTouchLeave'],
+  [UIElement.keyPressedEvent, 'onKeyPressed'],
+  [UIElement.keyDownEvent, 'onKeyDown'],
+  [UIElement.keyReleasedEvent, 'onKeyReleased'],
+  [UIElement.textInputEvent, 'onTextInput'],
 ];
 for (const [event, method] of CLASS_HANDLERS) {
-  registerClassHandler(UIElement, event, (element, args) => {
-    if (element.isHierarchyEnabled) (element as unknown as TouchHandlers)[method](args);
+  registerClassHandler(UIElement, event as unknown as RoutedEvent<RoutedEventArgs>, (element, args) => {
+    if (element.isHierarchyEnabled) (element as unknown as ClassHandlers)[method](args);
   });
 }

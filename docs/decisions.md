@@ -62,6 +62,22 @@
   - 还没做：清漆加透明（Stride 第一遍沿用材质的透明混合）报警告，第一遍按不透明画；没有切线的网格上碎片和橘皮的法线贴图不起作用（和别的法线贴图一样）。
 - 还没做的材质特性（次表面散射、曲面细分）导入时报警告，不悄悄忽略。
 
+## 2026-11-20 文字的描边按到轮廓的距离画；键盘事件发给有焦点的元素
+
+**描边**（TextBlock 的 `outlineColor`、`outlineThickness`，ScrollingText 也有）。Stride 把整段文字往八个方向各偏移 thickness 再画一遍，垫在字下面：九倍的字形、描边比笔画粗时八个影子分开露出来、角是方的。我们的字本来就是按轮廓逐像素算的（Slug），所以描边在同一个着色器里算"这个像素到字形轮廓的距离"，不到半径的涂上描边色，边上按距离过渡一个像素：
+
+- 一个字多画一项（字形的矩形向外扩半径），粗细不限，角是圆的，放大缩小、放进 3D 里都一样清楚。
+- 距离怎么找：字形的曲线本来按横带、竖带分好了（数穿越用的），找距离时看采样点上下 radius 以内的横带；横带里没有横的直线（和带平行的不参与数穿越），再到竖带里找它们。每条曲线上最近的点用牛顿法（从投到弦上的位置起步，四次）：闭式解要解三次方程，在接近直线的曲线上单精度不够用。
+- 整段文字的描边先画完再画字，相邻的字的描边不会盖住前一个字。
+- 没解决的：半透明的描边在相邻两个字的描边重叠的地方会深一些（各画各的、叠了两层）。Stride 的八遍叠得更厉害。要完全均匀得先把整段描边画到一层上再合成，等 UI 的分层缓存做了再说。
+- 只有 `SpriteBatch.drawText`（UI 用的）有描边；`drawString`（照 Stride 的 SpriteBatch.DrawString）没加，Stride 那边也没有。
+
+**键盘事件**（`UIElement.keyPressedEvent`、`keyDownEvent`、`keyReleasedEvent`、`textInputEvent`，冒泡）：照 Stride 发给 `game.ui.focusedElement`。焦点可以给任何元素（用方向键选菜单项这类），它占着键盘，脚本读不到按键，UI 读的是不管占用的原始状态（`input.rawKeys`、`input.rawTextInput`）。
+
+- 和 Stride 不同：这一帧有文字输入时 Stride 不发 KeyPressed、KeyReleased（松开的事件会丢），我们照发。
+- 和 Stride 不同：TextInput 只有键盘直接打出来的字（keydown 的 `key`），没有输入法拼字的过程。浏览器里要输入法就得有一个拿着焦点的 DOM 输入框，手机上它一拿焦点就弹出软键盘——给菜单项焦点不该弹键盘。要输入法的地方用 EditText（它后面有输入框）。
+- 键名是 `KeyboardEvent.code`（同 InputManager），`args.isKeyDown('LeftShift')` 也认 Stride 的键名。
+
 ## 2026-11-20 UI 控件补齐：开关按钮、图片按钮、滚动文字
 
 Stride 能写进 .sduipage 的元素类型我们都有了（`UIElementType` 和运行时的类型表是同一份清单，少一个就编不过）：这次补上 ToggleButton、ImageButton、ScrollingText、ContentPresenter，页面里单独放的 ScrollBar 也认。样例的页面没有用到它们，在 GameMenu 的页面上用代码加了一组、在 Chrome 里点过看过。

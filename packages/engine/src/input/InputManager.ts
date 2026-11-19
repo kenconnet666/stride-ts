@@ -15,7 +15,7 @@
 
 import type { VirtualButtonConfig } from './virtualButtons';
 import { GestureCollection, type GestureEvent } from './gestures';
-import { ButtonTracker, CaptureState, InputCapturePriority } from './capture';
+import { ButtonTracker, CaptureState, InputCapturePriority, type RawKeys } from './capture';
 import { keyCode } from './keys';
 
 /** 鼠标按键。 */
@@ -91,6 +91,8 @@ export class InputManager {
   rawPointerEvents: readonly PointerEvent[] = [];
   /** 这一帧鼠标滚轮转的格数，不管占用。 */
   rawMouseWheelDelta = 0;
+  /** 这一帧键盘打出来的字（一次按键一个，按住重复的也算），不管占用；UI 发给有焦点的元素。输入法拼的字不在这里（EditText 有自己的输入框）。 */
+  rawTextInput: readonly string[] = [];
   /** 虚拟按钮的配置（Stride 的 VirtualButtonConfigSet），getVirtualButton 按下标取。 */
   readonly virtualButtonConfigSet: VirtualButtonConfig[] = [];
 
@@ -113,6 +115,7 @@ export class InputManager {
   #pendingPosition: [number, number] = [0, 0];
   #pendingWheel = 0;
   #pendingPointerEvents: PointerEvent[] = [];
+  #pendingText: string[] = [];
   /** 每个指针上一个事件的位置和是否按着。 */
   readonly #pointers = new Map<number, { x: number; y: number; down: boolean }>();
   readonly #abort = new AbortController();
@@ -121,6 +124,8 @@ export class InputManager {
     this.#canvas = canvas;
     const options = { signal: this.#abort.signal };
     window.addEventListener('keydown', (event) => {
+      // key 是一个字符时就是打出来的字（Enter、ArrowLeft 这些是名字）；带 Ctrl、Meta 的是快捷键
+      if (!event.isComposing && !event.ctrlKey && !event.metaKey && [...event.key].length === 1) this.#pendingText.push(event.key);
       if (event.repeat) return;
       this.#keyboard.press(event.code);
     }, options);
@@ -168,6 +173,8 @@ export class InputManager {
     this.#pendingWheel = 0;
     this.rawPointerEvents = this.#pendingPointerEvents;
     this.#pendingPointerEvents = [];
+    this.rawTextInput = this.#pendingText;
+    this.#pendingText = [];
     this.#pollGamePads();
     this.#resolving = true;
     try {
@@ -273,6 +280,11 @@ export class InputManager {
   /** 这一帧刚松开。 */
   isKeyReleased(key: string): boolean {
     return this.#keyboard.isReleased(keyCode(key));
+  }
+
+  /** 不管占用：键盘这一帧按着、刚按下、刚松开的键（UI 发给有焦点的元素）。 */
+  get rawKeys(): RawKeys {
+    return this.#keyboard;
   }
 
   /** 不管占用：键盘上这个键按着（UI 自己用）。 */

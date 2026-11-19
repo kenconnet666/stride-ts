@@ -3,6 +3,7 @@
  * 隧道（tunnel）的从根传到源元素，直接（direct）的只给源元素。每个元素先跑类处理函数（元素自己的行为，比如按钮在按下时
  * 变成按下状态），再跑登记的处理函数；handled 之后后面的处理函数不再收到（登记时说了 handledEventsToo 的除外）。
  */
+import { keyCode } from '../input/keys';
 import type { UIElement } from './UIElement';
 
 export type RoutingStrategy = 'bubble' | 'tunnel' | 'direct';
@@ -45,6 +46,24 @@ export class TouchEventArgs extends RoutedEventArgs {
   worldPosition: readonly [number, number] = [0, 0];
   /** 和上一个事件的位置差，虚拟坐标。 */
   worldTranslation: readonly [number, number] = [0, 0];
+}
+
+/** 按键事件（Stride 的 KeyEventArgs）：发给有键盘焦点的元素（UISystem.focusedElement）。 */
+export class KeyEventArgs extends RoutedEventArgs {
+  /** 哪个键（KeyboardEvent.code，同 InputManager）。 */
+  key = '';
+  /** UI 看到的按着的键。有焦点的元素占着键盘，脚本从 InputManager 读不到，组合键从这里判断。 */
+  downKeys: ReadonlySet<string> = new Set();
+
+  /** key 可以写 KeyboardEvent.code 或 Stride 的键名（同 InputManager.isKeyDown）。 */
+  isKeyDown(key: string): boolean {
+    return this.downKeys.has(keyCode(key));
+  }
+}
+
+/** 文字输入事件（Stride 的 TextEventArgs）：键盘打出来的字，一次一个。 */
+export class TextEventArgs extends RoutedEventArgs {
+  text = '';
 }
 
 export type RoutedEventHandler<A extends RoutedEventArgs> = (sender: UIElement, args: A) => void;

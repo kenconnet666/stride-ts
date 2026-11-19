@@ -47,6 +47,29 @@ describe('指针事件（Stride 的 PointerEvents）', () => {
     input.destroy();
   });
 
+  it('键盘的原始状态和打出来的字：不管占用都读得到；带 Ctrl 的、输入法拼字中的、Enter 这类不是字', () => {
+    const { win, input } = setup();
+    const key = (type: string, code: string, text: string, extra: object = {}) =>
+      win.dispatchEvent(Object.assign(new Event(type), { code, key: text, repeat: false, ctrlKey: false, metaKey: false, isComposing: false, ...extra }));
+    const owner = {};
+    input.tryCapture('keyboard', owner, InputCapturePriority.focus);
+    key('keydown', 'KeyA', 'a');
+    key('keydown', 'KeyA', 'a', { repeat: true });
+    key('keydown', 'Enter', 'Enter');
+    key('keydown', 'KeyC', 'c', { ctrlKey: true });
+    key('keydown', 'KeyN', 'n', { isComposing: true });
+    key('keydown', 'Digit1', '😀');
+    input.update();
+    expect(input.rawTextInput).toEqual(['a', 'a', '😀']);
+    expect([...input.rawKeys.pressed].sort()).toEqual(['Digit1', 'Enter', 'KeyA', 'KeyC', 'KeyN']);
+    // 键盘被占着：脚本什么都看不到
+    expect([input.isKeyDown('A'), input.isKeyPressed('A'), input.downKeys]).toEqual([false, false, []]);
+    key('keyup', 'KeyA', 'a');
+    input.update();
+    expect([input.rawTextInput, [...input.rawKeys.pressed], [...input.rawKeys.released], input.rawKeys.down.has('Enter')]).toEqual([[], [], ['KeyA'], true]);
+    input.destroy();
+  });
+
   it('手指抬起后就忘掉；没在画布上出现过的指针的松开不算', () => {
     const { canvas, win, input, pointer } = setup();
     pointer(win, 'pointerup', 50, 50, 'touch', 7);
@@ -70,7 +93,7 @@ describe('占用（Stride 的 Input Capture）', () => {
     (globalThis as { window?: EventTarget }).window = win;
     (globalThis as { document?: object }).document = { pointerLockElement: null };
     const input = new InputManager(canvas as unknown as HTMLCanvasElement);
-    const key = (type: 'keydown' | 'keyup', code: string) => win.dispatchEvent(Object.assign(new Event(type), { code, repeat: false }));
+    const key = (type: 'keydown' | 'keyup', code: string) => win.dispatchEvent(Object.assign(new Event(type), { code, key: '', repeat: false }));
     const pointer = (type: string, pointerType: string, pointerId: number) =>
       (type === 'pointerup' ? win : canvas).dispatchEvent(Object.assign(new Event(type), { clientX: 10, clientY: 10, pointerType, pointerId }));
     return { canvas, input, key, pointer };
@@ -153,7 +176,7 @@ describe('虚拟按钮（Stride 的 VirtualButtonConfigSet）', () => {
     input.update();
     input.gamePads[0] = { buttons: 0, leftThumb: [0, 0], rightThumb: [0, 0], leftTrigger: 0.25, rightTrigger: 0 };
     expect(input.getVirtualButton(0, 'Forward')).toBe(0.25);
-    win.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyW', repeat: false }));
+    win.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyW', key: 'w', repeat: false }));
     input.update();
     expect(input.getVirtualButton(0, 'Forward')).toBe(1);
     expect([input.getVirtualButton(0, 'Fire'), input.getVirtualButton(0, 'Back'), input.getVirtualButton(1, 'Forward')]).toEqual([0, 0, 0]);

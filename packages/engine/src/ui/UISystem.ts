@@ -27,6 +27,7 @@ import { IDENTITY, type UIElement } from './UIElement';
 import type { UIComponent } from './UIComponent';
 import { fullScreenTarget, PickingState, routePointerEvents, updateMouseOver, type PickingTarget } from './UIPicking';
 import { TextInputBridge } from './TextInputBridge';
+import { routeKeyEvents } from './UIKeyboard';
 import { pointerToVirtual, projectedPixelRatio, uiWorldMatrix } from './UIProjection';
 import { drawUI } from './UIRenderer';
 
@@ -79,14 +80,21 @@ export class UISystem {
     this.#detachInput = game.input.onResolvingCapture(() => this.#resolveInput(game));
   }
 
-  /** 有键盘焦点的元素（Stride 的 FocusedElement，现在是激活的 EditText）。 */
+  /**
+   * 有键盘焦点的元素（Stride 的 FocusedElement）：它占着键盘（脚本读不到按键），键盘事件发给它、往上冒泡
+   * （UIElement.keyPressedEvent 等）。EditText 激活时自己拿焦点；别的元素由代码给（比如用方向键选菜单项）。
+   * 元素藏起来、停用或者不画了，焦点自动丢掉。
+   */
   get focusedElement(): UIElement | null {
     return this.#focused;
   }
 
-  /** @internal EditText 激活、停用时设：有焦点的元素占着键盘。 */
   set focusedElement(element: UIElement | null) {
+    const previous = this.#focused;
+    if (previous === element) return;
     this.#focused = element;
+    // 焦点从正在编辑的输入框挪走：结束编辑
+    if (previous instanceof EditText) previous.isSelectionActive = false;
     if (!this.#input) return;
     if (element) this.#input.tryCapture('keyboard', this, InputCapturePriority.focus);
     else this.#input.release('keyboard', this);
@@ -100,7 +108,10 @@ export class UISystem {
       if (focused instanceof EditText) focused.isSelectionActive = false;
       this.focusedElement = null;
     }
-    if (this.#focused) input.tryCapture('keyboard', this, InputCapturePriority.focus);
+    if (this.#focused) {
+      input.tryCapture('keyboard', this, InputCapturePriority.focus);
+      routeKeyEvents(this.#focused, input.rawKeys, input.rawTextInput);
+    }
 
     if (this.#releaseMouseDrag) {
       this.#mouseDragOwnedByUi = false;

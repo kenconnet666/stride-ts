@@ -189,6 +189,7 @@ export {
   UIElement, multiply as multiplyMatrix2D, translation as translationMatrix2D,
   type HorizontalAlignment, type LayoutingContext, type Matrix2D, type Thickness, type VerticalAlignment, type Visibility,
 } from './ui/UIElement';
+export { KeyEventArgs, RoutedEvent, RoutedEventArgs, TextEventArgs, TouchEventArgs, type RoutedEventHandler, type RoutingStrategy, type TouchAction } from './ui/events';
 export { Panel, UIElementCollection } from './ui/panels/Panel';
 export { Canvas } from './ui/panels/Canvas';
 export { GridBase, UniformGrid } from './ui/panels/UniformGrid';

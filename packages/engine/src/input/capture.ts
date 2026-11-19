@@ -17,6 +17,13 @@ export class CaptureState {
   masked = false;
 }
 
+/** 一组按键这一帧的原始状态，不管占用（InputManager.rawKeys）。 */
+export interface RawKeys {
+  readonly down: ReadonlySet<string>;
+  readonly pressed: ReadonlySet<string>;
+  readonly released: ReadonlySet<string>;
+}
+
 /**
  * 一组按键（键盘的键或鼠标的键）：原始的按着、刚按下、刚松开，和按占用屏蔽之后给脚本看的。
  */

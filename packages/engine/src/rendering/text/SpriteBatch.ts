@@ -10,15 +10,13 @@
  * - 字不是位图，是从轮廓逐像素算覆盖率（Slug，见 slug.ts），任何缩放、旋转都清晰；没有 SpriteEffects 的镜像。
  * - drawString 的原点是虚拟坐标（和 measureString 量出来的一样）。Stride 把它直接当字体像素用，窗口和虚拟分辨率不一样大时
  *   旋转中心就偏了（SpriteFonts 的动画那屏）。
- * - 编译期字体只有自己的字号：drawString、measureString 给别的字号也按 size。Stride 的字形不变，额外间距和行距却按给的字号
- *   缩放；measureString 还按虚拟分辨率缩放，量出来的和画出来的不一样大（SpriteFonts 的抗锯齿那屏几行叠在一起）。
  * - 做字距（见 layout.ts）。
  */
 import { srgbToLinear } from '../../mathematics/vectors';
 import type { GpuResources } from '../GpuResources';
 import type { Texture } from '../Texture';
 import { GlyphStore } from './GlyphStore';
-import { layoutText, measureText, type FontSize, type TextAlignment } from './layout';
+import { glyphScale, layoutText, measureText, type FontSize, type TextAlignment } from './layout';
 import { SLUG_WGSL } from './slug';
 import type { SpriteFont } from './SpriteFont';
 
@@ -144,6 +142,8 @@ export class SpriteBatch {
   #items: GPUBuffer;
   #itemGroup: GPUBindGroup | undefined;
   #data = new Float32Array(ITEM_FLOATS * 256);
+  /** 同一块内存按 u32 看：字形的下标和标志按位写（着色器里 bitcast 回来）。 */
+  #bits = new Uint32Array(this.#data.buffer);
   #count = 0;
   #runs: Run[] = [];
   #pass: GPURenderPassEncoder | undefined;
@@ -192,14 +192,18 @@ export class SpriteBatch {
     // 原点按 目标 / 源 的比例换到目标矩形里，矩形绕 (x, y) 转
     const ox = (origin[0] * w) / sw, oy = (origin[1] * h) / sh;
     const left = x - ox * cos + oy * sin, top = y - ox * sin - oy * cos;
-    this.#push('sprite', texture, [left, top, w * cos, w * sin, -h * sin, h * cos, 0, 0, sx / width, sy / height, sw / width, sh / height], color);
+    const at = this.#reserve('sprite', texture, color);
+    const d = this.#data;
+    d[at] = left; d[at + 1] = top; d[at + 2] = w * cos; d[at + 3] = w * sin;
+    d[at + 4] = -h * sin; d[at + 5] = h * cos;
+    d[at + 8] = sx / width; d[at + 9] = sy / height; d[at + 10] = sw / width; d[at + 11] = sh / height;
   }
 
   /** 画文字（Stride 的 DrawString）：position 是文字左上角（行顶）的虚拟坐标。 */
   drawString(font: SpriteFont, text: string, position: Vec2, { fontSize = font.size, color = WHITE, rotation = 0, origin = [0, 0], scale = [1, 1], alignment = 'left' }: DrawStringOptions = {}): void {
     const ratio = this.#ratio();
     const size = this.#fontPixels(font, fontSize, ratio);
-    const emToFont: Vec2 = font.isStatic ? [font.size, font.size] : size;
+    const emToFont = glyphScale(font, size);
     // 字体像素到虚拟坐标的缩放，位置先取整到真实像素
     const sx = scale[0] / ratio[0], sy = scale[1] / ratio[1];
     const px = Math.round(position[0] * ratio[0]) / ratio[0], py = Math.round(position[1] * ratio[1]) / ratio[1];
@@ -210,17 +214,23 @@ export class SpriteBatch {
     const dilation = 1 / pixels;
     const aliased = font.antiAlias === 'aliased' ? 1 : 0;
     const baseOffset = font.baseOffset(size[1]);
+    // em 的 x 轴、y 轴（y 向上，所以屏幕上朝上）在虚拟坐标里的向量，每个字都一样
+    const ax = emToFont[0] * sx * cos, ay = emToFont[0] * sx * sin;
+    const bx = emToFont[1] * sy * sin, by = -emToFont[1] * sy * cos;
+    const linear = toLinear(color);
     for (const { glyph, x, y } of layoutText(font, text, size, alignment)) {
-      if (glyph.hBands === 0 || /\s/u.test(String.fromCodePoint(glyph.codepoint))) continue;
+      // 空格这样没有轮廓的字不画
+      if (glyph.hBands === 0) continue;
       // 字的原点相对文字原点（字体像素，字体像素就是真实像素），取整同 Stride
       const gx = Math.round(x - origin[0] * ratio[0]), gy = Math.round(y + baseOffset - origin[1] * ratio[1]);
-      // em 的 x 轴、y 轴（y 向上，所以屏幕上朝上）在虚拟坐标里的向量
-      const axisX: Vec2 = [emToFont[0] * sx * cos, emToFont[0] * sx * sin];
-      const axisY: Vec2 = [emToFont[1] * sy * sin, -emToFont[1] * sy * cos];
-      const ox = px + gx * sx * cos - gy * sy * sin, oy = py + gx * sx * sin + gy * sy * cos;
-      const [x0, y0, x1, y1] = glyph.bounds;
       const index = this.#glyphs.glyphIndex(glyph);
-      this.#push('glyph', undefined, [ox, oy, axisX[0], axisX[1], axisY[0], axisY[1], x0 - dilation, y0 - dilation, x1 + dilation, y1 + dilation, bitsOf(index), bitsOf(aliased)], color);
+      const at = this.#reserve('glyph', undefined, linear, true);
+      const d = this.#data, bounds = glyph.bounds;
+      d[at] = px + gx * sx * cos - gy * sy * sin; d[at + 1] = py + gx * sx * sin + gy * sy * cos; d[at + 2] = ax; d[at + 3] = ay;
+      d[at + 4] = bx; d[at + 5] = by; d[at + 6] = bounds[0] - dilation; d[at + 7] = bounds[1] - dilation;
+      d[at + 8] = bounds[2] + dilation; d[at + 9] = bounds[3] + dilation;
+      this.#bits[at + 10] = index;
+      this.#bits[at + 11] = aliased;
     }
   }
 
@@ -235,7 +245,7 @@ export class SpriteBatch {
     return [w / ratio[0], h / ratio[1]];
   }
 
-  /** 排版用的字号（真实像素）：运行时字体是 字号 · 真实 / 虚拟，编译期字体总是自己的 size（见文件开头）。 */
+  /** 排版用的字号（真实像素）：运行时字体是 字号 · 真实 / 虚拟；编译期字体总是自己的 size（同 Stride，不随虚拟分辨率缩放）。 */
   #fontPixels(font: SpriteFont, fontSize: number, ratio: Vec2): FontSize {
     return font.isStatic ? [font.size, font.size] : [fontSize * ratio[0], fontSize * ratio[1]];
   }
@@ -280,7 +290,8 @@ export class SpriteBatch {
     return [width / vx, height / vy];
   }
 
-  #push(kind: Run['kind'], texture: Texture | undefined, geometry: readonly number[], color: Color): void {
+  /** 加一项，写好颜色，返回它在 #data 里的起点（几何由调用方写）。linear 为 true 时颜色已经是线性的。 */
+  #reserve(kind: Run['kind'], texture: Texture | undefined, color: Color, linear = false): number {
     if (!this.#pass) throw new Error('SpriteBatch: call begin before drawing');
     const last = this.#runs.at(-1);
     if (last && last.kind === kind && last.texture === texture) last.count++;
@@ -289,12 +300,12 @@ export class SpriteBatch {
       const grown = new Float32Array(this.#data.length * 2);
       grown.set(this.#data);
       this.#data = grown;
+      this.#bits = new Uint32Array(grown.buffer);
     }
     const at = this.#count * ITEM_FLOATS;
-    this.#data.set(geometry, at);
-    // 颜色当 sRGB 给，转成线性（alpha 不变）
-    this.#data.set([srgbToLinear(color[0]), srgbToLinear(color[1]), srgbToLinear(color[2]), color[3]], at + 12);
+    this.#data.set(linear ? color : toLinear(color), at + 12);
     this.#count++;
+    return at;
   }
 
   #pipeline(kind: Run['kind']): GPURenderPipeline {
@@ -339,7 +350,7 @@ export class SpriteBatch {
   }
 }
 
-/** u32 按位放进 float 数组（着色器里 bitcast 回来）。 */
-function bitsOf(value: number): number {
-  return new Float32Array(new Uint32Array([value]).buffer)[0]!;
+/** 颜色当 sRGB 给（同 Stride 的 SpriteBatch），转成线性；alpha 不变。 */
+function toLinear([r, g, b, a]: Color): Color {
+  return [srgbToLinear(r), srgbToLinear(g), srgbToLinear(b), a];
 }

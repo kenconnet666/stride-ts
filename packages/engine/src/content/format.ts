@@ -652,6 +652,11 @@ export interface FontFile {
   readonly size: number;
   /** aliased 时覆盖率按 0.5 取舍（没有抗锯齿）；clearType 在 Stride 里已经升级成灰度，和 default 一样。 */
   readonly antiAlias: 'default' | 'aliased' | 'clearType';
+  /**
+   * 字体要求栅格化时把 ppem（每 em 的像素数）取整（head 表 flags 的第 3 位，Arial 这些 TrueType 字体都有）：Stride 用的 FreeType
+   * 开着 hinting，照做，字号 33.33 的字按 33 画、按 33 排，见 rendering/text/layout.ts 的 glyphScale。
+   */
+  readonly integerPpem: boolean;
   /** 字体的上升、下降（都是正数）和行间距（hhea）。 */
   readonly ascent: number;
   readonly descent: number;

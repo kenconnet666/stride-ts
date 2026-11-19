@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../src/content/format';
-import { layoutText, measureText, SpriteFont } from '../src/index';
+import { glyphScale, layoutText, measureText, SpriteFont } from '../src/index';
 
 // 一个合成的字体：A 宽 0.5 em、B 宽 0.6 em、空格 0.25 em，都在第 0 块；第 0x30 块有一个日文假名
 const ADVANCES: Readonly<Record<number, number>> = { 32: 0.25, 65: 0.5, 66: 0.6, 0x3042: 1 };
@@ -20,7 +20,7 @@ function block(codepoints: readonly number[]): GlyphBlock {
 function font(kind: FontFile['kind'], extra: Partial<FontFile> = {}): { font: SpriteFont; loads: number[] } {
   const loads: number[] = [];
   const file: FontFile = {
-    name: 'Test', kind, size: 20, antiAlias: 'default', ...metrics, spacing: 0, lineSpacing: 0, lineGapFactor: 1, lineGapBaseLineFactor: 1,
+    name: 'Test', kind, size: 20, antiAlias: 'default', integerPpem: false, ...metrics, spacing: 0, lineSpacing: 0, lineGapFactor: 1, lineGapBaseLineFactor: 1,
     defaultCharacter: 32, blocks: [0, 0x30], kerning: [65, 66, -0.1], ...extra,
   };
   return {
@@ -33,16 +33,18 @@ function font(kind: FontFile['kind'], extra: Partial<FontFile> = {}): { font: Sp
 }
 
 describe('SpriteFont', () => {
-  test('度量照 Stride：运行时字体的行距是上升 + 下降 + 行间距，基线是上升 + 行间距；编译期字体乘 LineGapFactor 和 LineGapBaseLineFactor', () => {
+  test('度量照 Stride：运行时字体的行距是上升 + 下降 + 行间距，基线是上升 + 行间距，按字号缩放；编译期字体乘 LineGapFactor 和 LineGapBaseLineFactor，不随字号变', () => {
     const dynamic = font('dynamic', { lineGapFactor: 3, lineGapBaseLineFactor: 0.5 }).font;
     expect(dynamic.defaultLineSpacing(10)).toBeCloseTo(12, 5);
     expect(dynamic.baseOffset(10)).toBeCloseTo(10, 5);
     const fixed = font('static', { lineGapFactor: 3, lineGapBaseLineFactor: 0.5, spacing: 2, lineSpacing: 4 }).font;
-    expect(fixed.defaultLineSpacing(10)).toBeCloseTo((0.3 + 1.1) * 10, 5);
-    expect(fixed.baseOffset(10)).toBeCloseTo((0.1 * 3 * 0.5 + 0.9) * 10, 5);
-    // 额外间距和行距按 字号 / size 缩放
-    expect(fixed.extraSpacing(40)).toBe(4);
-    expect(fixed.totalLineSpacing(40)).toBeCloseTo(8 + 1.4 * 40, 5);
+    // 编译期字体按自己的 size 20（OfflineRasterizedSpriteFont 重写了这些，给的字号不起作用）
+    expect(fixed.defaultLineSpacing(10)).toBeCloseTo((0.3 + 1.1) * 20, 5);
+    expect(fixed.baseOffset(10)).toBeCloseTo((0.1 * 3 * 0.5 + 0.9) * 20, 5);
+    expect(fixed.extraSpacing(40)).toBe(2);
+    expect(fixed.totalLineSpacing(40)).toBeCloseTo(4 + 1.4 * 20, 5);
+    // 运行时字体的额外间距按 字号 / size 缩放
+    expect(font('dynamic', { spacing: 2 }).font.extraSpacing(40)).toBe(4);
   });
 
   test('字形按块下载：没下载的块这一次是 undefined、开始下载；字体里没有的字是 null；ensure 下载文字用到的块', async () => {
@@ -81,6 +83,17 @@ describe('文字排版', () => {
     await fixed.ensure('AB');
     // 宽度按 size 20：A = 10、B = 12，额外间距 2（SpriteBatch 给编译期字体的字号总是 size）
     expect(layoutText(fixed, 'AB', [20, 20]).map((g) => g.nextX)).toEqual([12, 26]);
+  });
+
+  test('字体要求整数 ppem 时（同 FreeType）：字号 33.33 按 33 排、按 33 画；46.67 按 47', async () => {
+    const { font: f } = font('dynamic', { integerPpem: true, kerning: [] });
+    await f.ensure('B');
+    expect(glyphScale(f, [100 / 3, 100 / 3])).toEqual([33, 33]);
+    expect(glyphScale(f, [140 / 3, 140 / 3])).toEqual([47, 47]);
+    // B = 0.6 em：round(0.6 · 33) = 20
+    expect(layoutText(f, 'B', [100 / 3, 100 / 3])[0]!.nextX).toBe(20);
+    // 不要求时按原样
+    expect(glyphScale(font('dynamic').font, [100 / 3, 100 / 3])[0]).toBeCloseTo(100 / 3, 6);
   });
 
   test('字距按 kern 表推后面所有的字（和 Stride 不同），换行后重新开始', async () => {

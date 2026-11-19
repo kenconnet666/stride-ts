@@ -3,9 +3,9 @@
  * （码位 >> 8）分文件，用到哪块才下载哪块：glyph() 碰到没下载的块时开始下载、这一次返回 undefined，下载完以后就有了；
  * 一开始就要齐的文字先 await ensure(text)。
  *
- * 度量照 Stride：编译期字体（static）的行距 = (行间距 · LineGapFactor + 上升 + 下降) · 字号，基线 = (行间距 · LineGapFactor ·
- * LineGapBaseLineFactor + 上升) · 字号（FreeTypeFontImporter）；运行时字体（dynamic）的两个因子都按 1（FontManager.GetFontInfo）。
- * 换字号时都按 字号 / size 缩放（SpriteFont.GetFontDefaultLineSpacing 这些）。字距取 kern 表（kerning()）。
+ * 度量照 Stride：编译期字体（static）的行距 = (行间距 · LineGapFactor + 上升 + 下降) · size，基线 = (行间距 · LineGapFactor ·
+ * LineGapBaseLineFactor + 上升) · size（FreeTypeFontImporter），都不随字号变（OfflineRasterizedSpriteFont 重写了 GetFontDefaultLineSpacing
+ * 这些）；运行时字体（dynamic）的两个因子都按 1（FontManager.GetFontInfo），按 字号 / size 缩放。字距取 kern 表（kerning()）。
  */
 import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../../content/format';
 
@@ -40,6 +40,12 @@ export class SpriteFont {
   readonly size: number;
   readonly antiAlias: FontFile['antiAlias'];
   readonly defaultCharacter: number;
+  /** 栅格化时 ppem 取整（见 FontFile.integerPpem）。 */
+  readonly integerPpem: boolean;
+  /** 做不做字距（Stride 的 UseKerning）；默认做。和桌面 Stride 比对时关掉，看字距以外的差。 */
+  useKerning = true;
+  /** 下载完的块数：每多一块，能用的字形就变了（排版的缓存按它作废）。 */
+  loadedBlocks = 0;
   readonly #file: FontFile;
   readonly #blocks = new Set<number>();
   readonly #loaded = new Map<number, Promise<void>>();
@@ -58,6 +64,7 @@ export class SpriteFont {
     this.size = file.size;
     this.antiAlias = file.antiAlias;
     this.defaultCharacter = file.defaultCharacter;
+    this.integerPpem = file.integerPpem;
     for (const block of file.blocks) this.#blocks.add(block);
     for (let i = 0; i + 2 < file.kerning.length; i += 3) this.#kerning.set(file.kerning[i]! * 0x110000 + file.kerning[i + 1]!, file.kerning[i + 2]!);
     this.#loadBlock = loadBlock;
@@ -77,24 +84,29 @@ export class SpriteFont {
   defaultLineSpacing(fontSize: number): number {
     const { ascent, descent, lineGap, lineGapFactor } = this.#file;
     const gapFactor = this.isStatic ? lineGapFactor : 1;
-    return (lineGap * gapFactor + ascent + descent) * fontSize;
+    return (lineGap * gapFactor + ascent + descent) * this.#effective(fontSize);
   }
 
   /** 行顶到基线的距离（Stride 的 GetBaseOffsetY）。 */
   baseOffset(fontSize: number): number {
     const { ascent, lineGap, lineGapFactor, lineGapBaseLineFactor } = this.#file;
     const factor = this.isStatic ? lineGapFactor * lineGapBaseLineFactor : 1;
-    return (lineGap * factor + ascent) * fontSize;
+    return (lineGap * factor + ascent) * this.#effective(fontSize);
   }
 
-  /** 字符之间额外的距离（Stride 的 GetExtraSpacing：Spacing 按 字号 / size 缩放）。 */
+  /** 字符之间额外的距离（Stride 的 GetExtraSpacing：运行时字体的 Spacing 按 字号 / size 缩放）。 */
   extraSpacing(fontSize: number): number {
-    return (fontSize / this.size) * this.#file.spacing;
+    return (this.#effective(fontSize) / this.size) * this.#file.spacing;
   }
 
   /** 行之间额外的距离（Stride 的 GetExtraLineSpacing）。 */
   extraLineSpacing(fontSize: number): number {
-    return (fontSize / this.size) * this.#file.lineSpacing;
+    return (this.#effective(fontSize) / this.size) * this.#file.lineSpacing;
+  }
+
+  /** 度量用的字号：编译期字体总是自己的 size。 */
+  #effective(fontSize: number): number {
+    return this.isStatic ? this.size : fontSize;
   }
 
   /** 一行占的总高度（Stride 的 GetTotalLineSpacing）。 */
@@ -151,6 +163,7 @@ export class SpriteFont {
           });
         }
         this.#blockReady.add(block);
+        this.loadedBlocks++;
       });
       // 失败的块下次再试
       pending.catch(() => this.#loaded.delete(block));

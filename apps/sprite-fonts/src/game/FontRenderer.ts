@@ -2,7 +2,7 @@
 // （介绍、编译期字体、运行时字体、粗体斜体、三种抗锯齿、日文、左中右对齐、旋转缩放的动画），每屏淡入淡出、到时间换下一屏；
 // 空格或点击暂停，左右键换屏。虚拟分辨率 1920x1080。颜色照 Stride 是 Color.White * alpha（四个通道都乘）。
 // 合成器里的类型名是 SpriteFonts.FontRenderer，属性（字体、背景图）随游戏设置导入，SpriteFontsGame 用 create 建它。
-// 和 Stride 不同的地方在 SpriteBatch 里（原点的单位、编译期字体的字号、字距），这里照原样调用。
+// 和 Stride 不同的地方在 SpriteBatch 里（原点的单位、字距），这里照原样调用。
 import { SpriteBatch, type Color, type RenderContext, type SceneRenderer, type SpriteFont, type Texture, type Vec2 } from '@stride-ts/engine';
 
 /** 每屏显示的秒数：第一个是介绍，后面依次是各组文字。 */

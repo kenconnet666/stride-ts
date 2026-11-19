@@ -73,6 +73,7 @@ export class FontImporter {
     if (missing > 0 && kind !== 'dynamic') this.#context.warnings.push(`${asset.file}: ${missing} characters are not in the font; they use the default character`);
 
     const glyphs = [...new Set(codepoints.map((codepoint) => glyphOf.get(codepoint)!))];
+
     const outlines = new Map((await tools.glyphOutlines(bytes, glyphs, { tolerance: em / 4096 })).map((outline) => [outline.glyph, outline]));
 
     // 按码位块（码位 >> 8）分文件
@@ -114,6 +115,7 @@ export class FontImporter {
       kind,
       size: asNumber(fontType['Size'], 20),
       antiAlias: ANTI_ALIAS[String(fontType['AntiAlias'] ?? 'Default')] ?? 'default',
+      integerPpem: (description.headFlags & 8) !== 0,
       ascent: description.ascent / em,
       descent: -description.descent / em,
       lineGap: description.lineGap / em,

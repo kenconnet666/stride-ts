@@ -32,6 +32,16 @@ sealed class BenchmarkGame : Game
         profilingEvents = Profiler.Subscribe();
     }
 
+    /**
+     * 不放启动画面：测帧时间用不着它；而且 Stride 4.4.2 在有启动画面、没有默认场景时（SpriteFonts）永远等不到场景的加载任务，
+     * 合成器一直换不上，画面一直是黑的（SceneSystem.Draw 要 sceneTask 和 compositorTask 都不为空）。
+     */
+    protected override void PrepareContext()
+    {
+        base.PrepareContext();
+        SceneSystem.SplashScreenUrl = null;
+    }
+
     /** 命令行的 `--benchmark N`（加 `--gpu-profile` 时另外记 GPU 时间），没有时是 null。 */
     public static BenchmarkGame? FromArgs(string[] args) =>
         Array.IndexOf(args, "--benchmark") is var i and >= 0 ? new BenchmarkGame(int.Parse(args[i + 1]), args.Contains("--gpu-profile")) : null;

@@ -5,6 +5,7 @@
  */
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { Scene, StrideTools } from '@stride-ts/native/tools';
 import { asNumber, asObject, parseStrideYaml, type StrideObject } from './yaml.ts';
 
 /** 一个包的资源目录（Stride 包里 AssetFolders 指的目录）。 */
@@ -104,4 +105,20 @@ export function once(cache: Map<string, Promise<string>>, asset: AssetEntry, imp
     cache.set(asset.path, pending);
   }
   return pending;
+}
+
+/**
+ * 读源文件交给原生的场景导入：.gltf 引用的外部 .bin 换成 data URI（原生侧读不了文件），.obj 按 OBJ 读，别的自动认。
+ */
+export async function loadSourceScene(tools: StrideTools, file: string): Promise<Scene> {
+  const extension = path.extname(file).toLowerCase();
+  if (extension === '.obj') return tools.loadScene(await readFile(file), 'obj');
+  if (extension !== '.gltf') return tools.loadScene(await readFile(file));
+  const document = JSON.parse(await readFile(file, 'utf8')) as { buffers?: { uri?: string }[] };
+  for (const buffer of document.buffers ?? []) {
+    if (buffer.uri === undefined || buffer.uri.startsWith('data:')) continue;
+    const bytes = await readFile(path.resolve(path.dirname(file), decodeURIComponent(buffer.uri)));
+    buffer.uri = `data:application/octet-stream;base64,${bytes.toString('base64')}`;
+  }
+  return tools.loadScene(new TextEncoder().encode(JSON.stringify(document)), 'gltf');
 }

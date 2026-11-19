@@ -48,7 +48,7 @@ import { MaterialImporter, type ImportedTexture } from './materials.ts';
 import { importParticleSystem } from './particles.ts';
 import { proceduralMesh } from './procedural.ts';
 import { cleanNodeName, importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
-import { importTransform, once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
+import { importTransform, loadSourceScene, once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { UIImporter } from './ui.ts';
 import { asNumber, asObject, color4, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, quaternion, vec2, vec3, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -870,9 +870,7 @@ export class StrideImporter {
     const skeletonReference = parseAssetReference(asset.data['Skeleton']);
     const skeleton = skeletonReference ? await this.#skeleton(this.#project.get(skeletonReference.id, asset.file)) : undefined;
     const modelTransform = importMatrix(asset);
-    const source = sourceOf(asset);
-    // OBJ 不能从内容认出来，按扩展名告诉原生侧
-    const scene = await this.#tools.loadScene(await readFile(source), path.extname(source).toLowerCase() === '.obj' ? 'obj' : 'auto');
+    const scene = await loadSourceScene(this.#tools, sourceOf(asset));
     try {
       const meshes: SourceMesh[] = [];
       for (let m = 0; m < scene.meshCount; m++) {

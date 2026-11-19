@@ -9,12 +9,11 @@
  * - 蒙皮：蒙皮网格的关节按名字对上骨架，逆绑定矩阵右乘导入变换的逆（网格的顶点已经变换过）；没有蒙皮、但挂在骨架节点上
  *   的网格做成只有一个关节的刚性蒙皮，跟着那个节点动（同 Stride 里按节点变换画的网格）。
  */
-import { readFile } from 'node:fs/promises';
 import { encodeAnimation, encodeSkeleton, EXTENSIONS, type AnimationRepeatMode } from '@stride-ts/engine/content-format';
 import { Matrix } from '@stride-ts/engine/math';
 import type { JointDescription, JointTrack, MeshData, Scene, StrideTools } from '@stride-ts/native/tools';
 import { INFLUENCES, type SourceSkin } from '../mesh.ts';
-import { importTransform, sourceOf, type AssetEntry } from './project.ts';
+import { importTransform, loadSourceScene, sourceOf, type AssetEntry } from './project.ts';
 import { asObject } from './yaml.ts';
 
 /** 烘焙动画的采样率（每秒关键帧数，同 ufbx 和 Stride 的默认）。 */
@@ -51,7 +50,7 @@ export async function importSkeleton(asset: AssetEntry, context: AnimationImport
   });
   if (listed.length === 0) throw new Error(`${asset.file}: the skeleton lists no nodes`);
   const transform = importMatrix(asset);
-  const scene = await context.tools.loadScene(await readFile(sourceOf(asset)));
+  const scene = await loadSourceScene(context.tools, sourceOf(asset));
   try {
     const nodeOf = nodesByName(scene);
     // 父关节：列表是深度优先的，每个深度最近的那个就是下一层的父关节
@@ -90,7 +89,7 @@ export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkele
   const type = asObject(asset.data['Type'])?.$type;
   if (type !== undefined && type !== 'StandardAnimationAssetType') context.warn(`${asset.file}: ${type} is not supported yet; imported as a standard animation`);
   if (asset.data['RootMotion'] === true) context.warn(`${asset.file}: root motion is not supported yet; the root keeps its motion`);
-  const scene = await context.tools.loadScene(await readFile(sourceOf(asset)));
+  const scene = await loadSourceScene(context.tools, sourceOf(asset));
   try {
     if (scene.animations.length === 0) throw new Error(`${asset.file}: ${sourceOf(asset)} has no animation`);
     const baked = await scene.bakeAnimation(0, SAMPLE_RATE);

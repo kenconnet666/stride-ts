@@ -19,6 +19,8 @@ import {
   type ModelMeshData,
   type SceneCharacter,
   type SceneAssetKind,
+  type SoundEncoding,
+  type SoundFile,
   type SceneCollidable,
   type SceneEntityFile,
   type SceneBody,
@@ -98,6 +100,8 @@ interface HierarchyContext {
 
 /** Stride.BepuPhysics 的约束组件的类型名前缀。 */
 const CONSTRAINT_PREFIX = 'Stride.BepuPhysics.Constraints.';
+/** 原样复制的音频源文件的扩展名。 */
+const SOUND_ENCODINGS: Readonly<Record<string, SoundEncoding>> = { mp3: 'mp3', ogg: 'ogg', wav: 'wav', flac: 'flac', m4a: 'aac', aac: 'aac' };
 
 type Components = { -readonly [K in keyof SceneEntityFile['components']]: SceneEntityFile['components'][K] };
 
@@ -115,6 +119,7 @@ export class StrideImporter {
   readonly #skipped = new Map<string, number>();
   readonly #warnings: string[] = [];
   readonly #prefabs = new Map<string, Promise<string>>();
+  readonly #sounds = new Map<string, Promise<string>>();
   readonly #spriteSheets = new Map<string, Promise<string>>();
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
@@ -360,6 +365,7 @@ export class StrideImporter {
       SpriteSheet: ['spriteSheet', () => this.#spriteSheet(asset)],
       UIPageAsset: ['uiPage', () => this.#ui.ui(asset)],
       UILibraryAsset: ['uiLibrary', () => this.#ui.ui(asset)],
+      Sound: ['sound', () => this.#sound(asset, where)],
     };
     const kind = kinds[asset.type];
     if (!kind) {
@@ -367,6 +373,27 @@ export class StrideImporter {
       return null;
     }
     return { $asset: await kind[1](), kind: kind[0] };
+  }
+
+  /**
+   * 声音（.sdsnd）：浏览器能解的源文件（mp3、ogg、wav、flac、aac）原样复制（D9 的 (c)，不转码），旁边写 SoundFile；
+   * 别的格式报错（要转码，见 D9）。
+   */
+  #sound(asset: AssetEntry, where: string): Promise<string> {
+    return once(this.#sounds, asset, async () => {
+      const source = sourceOf(asset);
+      const extension = path.extname(source).slice(1).toLowerCase();
+      const encoding = SOUND_ENCODINGS[extension];
+      if (!encoding) throw new Error(`${where}: sound ${asset.path} is a .${extension} file; only mp3, ogg, wav, flac and aac (m4a) are copied as they are`);
+      await this.#write(`${asset.path}.${encoding}`, await readFile(source));
+      const sound: SoundFile = {
+        name: path.basename(asset.path),
+        encoding,
+        streamFromDisk: asset.data['StreamFromDisk'] === true,
+        spatialized: asset.data['Spatialized'] === true,
+      };
+      await this.#write(asset.path + EXTENSIONS.sound, JSON.stringify(sound));
+    });
   }
 
   /** 单独引用的贴图：导出贴图，旁边写它的 TextureRef（content.loadTexture 读）。 */

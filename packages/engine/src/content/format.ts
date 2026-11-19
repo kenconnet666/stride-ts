@@ -45,7 +45,23 @@ export const EXTENSIONS = {
   ui: '.ui.json',
   /** 字体的一个码位块（码位 >> 8）：`<字体>.<块号>.glyphs`。 */
   glyphs: '.glyphs',
+  /** 声音（SoundFile），音频文件在旁边。 */
+  sound: '.sound.json',
 } as const;
+
+/** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */
+export type SoundEncoding = 'mp3' | 'ogg' | 'wav' | 'flac' | 'aac';
+
+/**
+ * 声音（Stride 的 Sound 资源，.sdsnd）：音频文件是 `<路径>.<encoding>`。streamFromDisk 的边下边放（音乐），其余的先整个解码
+ * （音效）；spatialized 的可以按 AudioEmitter 的位置空间化。
+ */
+export interface SoundFile {
+  readonly name: string;
+  readonly encoding: SoundEncoding;
+  readonly streamFromDisk: boolean;
+  readonly spatialized: boolean;
+}
 
 /**
  * 交错顶点里每个属性的格式（WebGPU 的顶点格式名），顺序是位置、法线、UV，紧挨着放。
@@ -760,7 +776,7 @@ export interface SceneAnimation {
  * scene：只记路径，不随引用它的场景加载（场景之间常常互相引用），切换时才加载（Game.setRootScene）。
  * prefab：随场景加载好（和它引用的资源一起），脚本运行中实例化。
  */
-export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab' | 'font' | 'texture' | 'spriteSheet' | 'uiPage' | 'uiLibrary';
+export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab' | 'font' | 'texture' | 'spriteSheet' | 'uiPage' | 'uiLibrary' | 'sound';
 
 /**
  * 游戏设置（Stride 的 GameSettings）：默认场景和图形合成器。合成器的根（Stride 的 GraphicsCompositor.Game）是游戏自己的渲染器时

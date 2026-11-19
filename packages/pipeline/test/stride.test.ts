@@ -147,6 +147,7 @@ describe('导入 Stride 场景', () => {
     cratePrefab: '11111111-0000-0000-0000-00000000000f',
     menuScene: '11111111-0000-0000-0000-0000000000f5',
     menuPage: '11111111-0000-0000-0000-0000000000f6',
+    clickSound: '11111111-0000-0000-0000-0000000000a1',
     menuLibrary: '11111111-0000-0000-0000-0000000000f7',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
@@ -365,11 +366,14 @@ describe('导入 Stride 场景', () => {
       '        -   UIElement: !ModalElement', '                Id: m1', '                DependencyProperties: {}', '                Name: Popup',
       '                OverlayColor: {R: 0, G: 0, B: 0, A: 153}', '                Content: null',
     ].join('\n'),
+    // 声音：浏览器能解的源文件原样复制
+    'Assets/Sounds/Click.sdsnd': ['!Sound', `Id: ${ids.clickSound}`, 'Source: !file click.wav', 'StreamFromDisk: false', 'Spatialized: true'].join('\n'),
+    'Assets/Sounds/click.wav': 'RIFF....WAVE',
     'Assets/Menu.sdscene': [
       '!SceneAsset', `Id: ${ids.menuScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: u1', '                Name: UI', '                Components:',
       '                    t: !TransformComponent', '                        Id: tu1', '                        Children: {}',
       '                    s: !Game.MenuScript,Game', '                        Id: su1', `                        UILibrary: ${ids.menuLibrary}:UI/Lib`,
-      `                        Images: ${ids.heroSheet}:Sprites/Hero`,
+      `                        Images: ${ids.heroSheet}:Sprites/Hero`, `                        Click: ${ids.clickSound}:Sounds/Click`,
       '                    u: !UIComponent', '                        Id: uu1', `                        Page: ${ids.menuPage}:UI/Menu`,
       '                        Resolution: {X: 640.0, Y: 1136.0, Z: 1000.0}', '                        Size: {X: 1.0, Y: 1.0, Z: 1.0}',
       '                        ResolutionStretch: FixedWidthFixedHeight', '                        IsBillboard: false',
@@ -645,7 +649,7 @@ describe('导入 Stride 场景', () => {
     expect(sprite).toMatchObject({ sheet: 'Game/Sprites/Hero', frame: 1, enabled: false, isAlphaCutoff: true, sampler: 'pointClamp' });
   });
 
-  test('UI：页面和库的元素平铺成数组，引用换成下标，属性按 UIValue 换；UIComponent 引用页面，脚本属性引用 UI 库和精灵表', async () => {
+  test('UI：页面和库的元素平铺成数组，引用换成下标，属性按 UIValue 换；UIComponent 引用页面，脚本属性引用 UI 库、精灵表和声音（源文件原样复制）', async () => {
     const project = await writeProject();
     const out = path.join(dir, 'content-ui');
     const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' }).importScene(project.byPath('Game/Menu')!);
@@ -688,8 +692,9 @@ describe('导入 Stride 场景', () => {
     expect(ui).toEqual({ page: 'Game/UI/Menu', resolution: [640, 1136, 1000], size: [1, 1, 1], resolutionStretch: 'fixedWidthFixedHeight', isBillboard: false });
     expect(scripts).toEqual([{
       type: 'Game.MenuScript',
-      props: { uiLibrary: { $asset: 'Game/UI/Lib', kind: 'uiLibrary' }, images: { $asset: 'Game/Sprites/Hero', kind: 'spriteSheet' } },
-    }]);
+      props: { uiLibrary: { $asset: 'Game/UI/Lib', kind: 'uiLibrary' }, images: { $asset: 'Game/Sprites/Hero', kind: 'spriteSheet' }, click: { $asset: 'Game/Sounds/Click', kind: 'sound' } },
+    }]);    expect(JSON.parse(await readFile(path.join(out, 'Game/Sounds/Click.sound.json'), 'utf8'))).toEqual({ name: 'Click', encoding: 'wav', streamFromDisk: false, spatialized: true });
+    expect(await readFile(path.join(out, 'Game/Sounds/Click.wav'), 'utf8')).toBe('RIFF....WAVE');
   });
 
   test('压缩的贴图宽高补到 4 的倍数（Lanczos3 缩放，同 Stride）；要缩放的源文件不原样复制', async () => {

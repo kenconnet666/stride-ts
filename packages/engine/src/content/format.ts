@@ -1160,9 +1160,9 @@ export interface UIFile {
   readonly elements: readonly UIElementFile[];
 }
 
-/** UI 元素的类型（Stride 的类名）。 */
+/** UI 元素的类型（Stride 的类名，能写在 .sduipage 里的都在；ContentControl 这类抽象类不算）。 */
 export type UIElementType =
-  | 'Border' | 'Button' | 'Canvas' | 'ContentControl' | 'ContentDecorator' | 'ContentPresenter' | 'EditText' | 'Grid'
+  | 'Border' | 'Button' | 'Canvas' | 'ContentDecorator' | 'ContentPresenter' | 'EditText' | 'Grid'
   | 'ImageButton' | 'ImageElement' | 'ModalElement' | 'ScrollBar' | 'ScrollingText' | 'ScrollViewer' | 'Slider' | 'StackPanel'
   | 'TextBlock' | 'ToggleButton' | 'UniformGrid';
 

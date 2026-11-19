@@ -21,7 +21,7 @@ export interface UIImportContext {
 }
 
 const ELEMENT_TYPES = new Set<string>([
-  'Border', 'Button', 'Canvas', 'ContentControl', 'ContentDecorator', 'ContentPresenter', 'EditText', 'Grid', 'ImageButton',
+  'Border', 'Button', 'Canvas', 'ContentDecorator', 'ContentPresenter', 'EditText', 'Grid', 'ImageButton',
   'ImageElement', 'ModalElement', 'ScrollBar', 'ScrollingText', 'ScrollViewer', 'Slider', 'StackPanel', 'TextBlock',
   'ToggleButton', 'UniformGrid',
 ] satisfies UIElementType[]);

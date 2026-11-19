@@ -12,6 +12,8 @@ import type { SpriteFrame } from '../rendering/SpriteSheet';
 import type { Quad, Rect, SpriteBatch } from '../rendering/text/SpriteBatch';
 import { Border } from './controls/Border';
 import { Button } from './controls/Button';
+import { ScrollingText } from './controls/ScrollingText';
+import { ToggleButton } from './controls/ToggleButton';
 import { ContentDecorator } from './controls/ContentControl';
 import { EditText } from './controls/EditText';
 import { ImageElement } from './controls/ImageElement';
@@ -65,6 +67,8 @@ function drawContent(element: UIElement, context: UIRenderContext): void {
   if (element instanceof ImageElement) drawSprite(batch, element, element.sprite, scale(element.color, opacity));
   else if (element instanceof ContentDecorator) drawSprite(batch, element, element.backgroundImage?.getSprite(), scale(WHITE, opacity));
   else if (element instanceof Button) drawSprite(batch, element, element.buttonImage, scale(element.color, opacity));
+  else if (element instanceof ToggleButton) drawSprite(batch, element, element.toggleButtonImage, scale(element.color, opacity));
+  else if (element instanceof ScrollingText) drawScrollingText(element, context);
   else if (element instanceof TextBlock) drawTextBlock(element, context);
   else if (element instanceof EditText) drawEditText(element, context);
   else if (element instanceof ScrollBar) drawScrollBar(element, context);
@@ -143,6 +147,20 @@ function drawTextBlock(text: TextBlock, context: UIRenderContext): void {
     fontSize: text.actualTextSize,
     color: scale(text.textColor, text.renderOpacity),
     alignment: text.textAlignment,
+    boxWidth: w,
+    snap: context.snapText && !text.doNotSnapText,
+  });
+}
+
+/** 滚动的文字（Stride 的 DefaultScrollingTextRenderer）：那串字从左边偏 scrollingOffset 的地方画起，元素范围以外的被裁掉（clipToBounds）。 */
+function drawScrollingText(text: ScrollingText, context: UIRenderContext): void {
+  const font = text.font;
+  if (!font || !Number.isFinite(text.scrollingOffset)) return;
+  const [w, h] = text.renderSize;
+  context.batch.drawText(font, text.textToDisplay, offset(text.worldMatrix, -w / 2 + text.scrollingOffset, -h / 2), {
+    fontSize: text.actualTextSize,
+    color: scale(text.textColor, text.renderOpacity),
+    alignment: 'left',
     boxWidth: w,
     snap: context.snapText && !text.doNotSnapText,
   });

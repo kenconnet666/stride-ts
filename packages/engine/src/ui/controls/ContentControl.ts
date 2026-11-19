@@ -1,6 +1,6 @@
 /**
  * 控件（Stride 的 Control：有内边距）和内容控件（ContentControl：装一个子元素）；ContentDecorator 在内容后面画一张背景图
- * （常是九宫格的框）。
+ * （常是九宫格的框），ContentPresenter 什么都不画。
  */
 import { sizeWithoutThickness, sizeWithThickness, translation, UIElement, type Thickness, type Vec2 } from '../UIElement';
 import type { SpriteProvider } from '../sprites';
@@ -60,6 +60,9 @@ export abstract class ContentControl extends Control {
     return finalSize;
   }
 }
+
+/** Stride 的 ContentPresenter（那边已标过时）：只装一个子元素，什么都不画。新写的用 ContentDecorator。 */
+export class ContentPresenter extends ContentControl {}
 
 export class ContentDecorator extends ContentControl {
   backgroundImage: SpriteProvider | null = null;

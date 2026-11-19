@@ -2,16 +2,20 @@
  * UI 页面和 UI 库（Stride 的 UIPage、UILibrary），以及按导入的 UIFile 建元素树。页面加载时建一次元素树；UI 库每次
  * instantiateElement 都按模板新建一棵（同 Stride 的 UILibraryExtensions.InstantiateElement 克隆模板）。
  */
-import type { UIElementFile, UIFile, UISpriteValue, UIStripDefinition, UIValue } from '../content/format';
+import type { UIElementFile, UIElementType, UIFile, UISpriteValue, UIStripDefinition, UIValue } from '../content/format';
 import type { SpriteSheet } from '../rendering/SpriteSheet';
 import type { SpriteFont } from '../rendering/text/SpriteFont';
 import type { Texture } from '../rendering/Texture';
-import { Button } from './controls/Button';
-import { ContentControl, ContentDecorator } from './controls/ContentControl';
+import { Border } from './controls/Border';
+import { ScrollingText } from './controls/ScrollingText';
+import { Slider } from './controls/Slider';
+import { ToggleButton } from './controls/ToggleButton';
+import { Button, ImageButton } from './controls/Button';
+import { ContentControl, ContentDecorator, ContentPresenter } from './controls/ContentControl';
 import { EditText } from './controls/EditText';
 import { ImageElement } from './controls/ImageElement';
 import { ModalElement } from './controls/ModalElement';
-import { ScrollViewer } from './controls/ScrollViewer';
+import { ScrollBar, ScrollViewer } from './controls/ScrollViewer';
 import { TextBlock } from './controls/TextBlock';
 import { Canvas } from './panels/Canvas';
 import { Grid, StripDefinition } from './panels/Grid';
@@ -66,8 +70,9 @@ export interface UIResources {
   readonly textures: ReadonlyMap<string, Texture>;
 }
 
-const ELEMENT_TYPES: Readonly<Record<string, new () => UIElement>> = {
-  Button, Canvas, ContentDecorator, EditText, Grid, ImageElement, ModalElement, ScrollViewer, StackPanel, TextBlock, UniformGrid,
+const ELEMENT_TYPES: Readonly<Record<UIElementType, new () => UIElement>> = {
+  Border, Button, Canvas, ContentDecorator, ContentPresenter, EditText, Grid, ImageButton, ImageElement, ModalElement, ScrollBar, ScrollingText, ScrollViewer, Slider,
+  StackPanel, TextBlock, ToggleButton, UniformGrid,
 };
 
 /** 警告过的"元素类型.属性"，每种只警告一次。 */
@@ -78,7 +83,7 @@ export function buildElement(file: UIFile, index: number, resources: UIResources
   const data = file.elements[index];
   if (!data) throw new Error(`UI ${file.name}: no element ${index}`);
   const create = ELEMENT_TYPES[data.type];
-  if (!create) throw new Error(`UI ${file.name}: element type ${data.type} is not supported yet`);
+  if (!create) throw new Error(`UI ${file.name}: unknown element type ${data.type}`);
   const element = new create();
   applyProps(element, data, { ...data.props, ...data.attached }, resources, file.name);
   if (data.children) {

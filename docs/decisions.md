@@ -62,6 +62,17 @@
   - 还没做：清漆加透明（Stride 第一遍沿用材质的透明混合）报警告，第一遍按不透明画；没有切线的网格上碎片和橘皮的法线贴图不起作用（和别的法线贴图一样）。
 - 还没做的材质特性（次表面散射、曲面细分）导入时报警告，不悄悄忽略。
 
+## 2026-11-20 UI 控件补齐：开关按钮、图片按钮、滚动文字
+
+Stride 能写进 .sduipage 的元素类型我们都有了（`UIElementType` 和运行时的类型表是同一份清单，少一个就编不过）：这次补上 ToggleButton、ImageButton、ScrollingText、ContentPresenter，页面里单独放的 ScrollBar 也认。样例的页面没有用到它们，在 GameMenu 的页面上用代码加了一组、在 Chrome 里点过看过。
+
+- **ToggleButton** 照 Stride：三个状态各一张图（可另给悬停时的图），点一下换状态并发 Checked、Indeterminate、Unchecked。状态的名字照 Stride 的枚举写成 `'checked' | 'unChecked' | 'indeterminate'`（导入器把枚举值的首字母改小写，页面文件里就是这三个）。
+- **ImageButton**、**ContentPresenter** 在 Stride 里已经标了过时（分别建议用 Button 的三张图、ContentDecorator），为了老页面能照常导入才有；新写的不用。
+- **ScrollingText** 和 Stride 不同的两处：
+  - 滚出左边的字从要画的那串里去掉。Stride 去字的循环条件写反了，从不去字，重复滚动时那串字一直变长（每帧量一遍越来越长的字符串）、偏移一直变负。
+  - 不重复的文字全滚出去以后，`appendText` 接上的字从右边进来。Stride 把它们接在早已滚出去的那串后面，要等新接的字比空出来的那段还长才看得见。
+  - 没改的：文字改了会让布局失效一次（大小其实只看 `desiredCharacterNumber`）；滚动是每帧在 CPU 上挪偏移、重画这一个元素，UI 的缓存做了以后（路线图"没变就不做"）它应该只让自己那一层重画。
+
 ## 2026-11-20 透明实例逐个从远到近画
 
 以前透明阶段按批排（看每批第一个实例到相机的距离），同一批里的实例不排、不同批的实例不能交错；重叠的半透明物体混合的先后会错。Stride 把透明的渲染节点逐个排。

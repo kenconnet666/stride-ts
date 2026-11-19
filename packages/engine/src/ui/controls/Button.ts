@@ -5,10 +5,10 @@
  */
 import type { SpriteFrame } from '../../rendering/SpriteSheet';
 import { registerClassHandler, RoutedEvent, RoutedEventArgs, type TouchEventArgs } from '../events';
-import type { Color, Thickness, Vec2 } from '../UIElement';
+import type { Color, Thickness, UIElement, Vec2 } from '../UIElement';
 import type { SpriteProvider } from '../sprites';
 import { ContentControl } from './ContentControl';
-import { imageSize, type StretchDirection, type StretchType } from './ImageElement';
+import { ImageElement, imageSize, type StretchDirection, type StretchType } from './ImageElement';
 
 /** 什么时候算点击：松开时（默认），还是按下时。 */
 export type ClickMode = 'release' | 'press';
@@ -79,6 +79,7 @@ export class Button extends ButtonBase {
     if (value === super.isPressed) return;
     super.isPressed = value;
     this.invalidateMeasure();
+    this.onButtonImageChanged();
   }
 
   get pressedImage(): SpriteProvider | null { return this.#pressedImage; }
@@ -99,11 +100,17 @@ export class Button extends ButtonBase {
     this.invalidateMeasure();
   }
 
-  /** 现在该画的图：按下、悬停（有悬停图时）、没按。 */
-  get buttonImage(): SpriteFrame | undefined {
-    const provider = this.isPressed ? this.#pressedImage : this.mouseOverState === 'element' && this.#mouseOverImage ? this.#mouseOverImage : this.#notPressedImage;
-    return provider?.getSprite();
+  /** 现在该画的图是哪一张：按下、悬停（有悬停图时）、没按。 */
+  get buttonImageProvider(): SpriteProvider | null {
+    return this.isPressed ? this.#pressedImage : this.mouseOverState === 'element' && this.#mouseOverImage ? this.#mouseOverImage : this.#notPressedImage;
   }
+
+  get buttonImage(): SpriteFrame | undefined {
+    return this.buttonImageProvider?.getSprite();
+  }
+
+  /** 该画的图换了（换了图、按下松开、指针进出）；ImageButton 在这里更新它的内容。 */
+  protected onButtonImageChanged(): void {}
 
   protected override measureOverride(available: Vec2): Vec2 {
     return this.#sizeToContent ? super.measureOverride(available) : imageSize(this.buttonImage, available, this.#imageStretchType, this.#imageStretchDirection, true);
@@ -119,5 +126,32 @@ export class Button extends ButtonBase {
 
   #imageChanged(): void {
     if (!this.#sizeToContent) this.invalidateMeasure();
+    this.onButtonImageChanged();
+  }
+}
+
+const NO_PADDING: Thickness = [0, 0, 0, 0];
+
+/**
+ * 图片按钮（Stride 的 ImageButton，Stride 里已经标成过时：用 sizeToContent 是 false 的 Button）：内容是一张跟着按钮状态换的图，
+ * 大小按图算；内容不能自己设。留着是为了读得了用它的 UI 页面。
+ */
+export class ImageButton extends Button {
+  readonly #image = new ImageElement();
+
+  constructor() {
+    super();
+    this.padding = NO_PADDING;
+    super.content = this.#image;
+  }
+
+  override get content(): UIElement | null { return super.content; }
+  override set content(_value: UIElement | null) {
+    throw new Error('The content of an ImageButton cannot be modified by the user.');
+  }
+
+  protected override onButtonImageChanged(): void {
+    // 基类的构造函数里设图的时候这里还没建好
+    if (this.#image) this.#image.source = this.buttonImageProvider;
   }
 }

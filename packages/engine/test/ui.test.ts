@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import type { UIFile } from '../src/content/format';
+import { GLYPH_RECORD, GLYPH_WORDS, type UIFile } from '../src/content/format';
 import {
-  Border, buildElement, Button, Canvas, ContentDecorator, Grid, Slider, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet, StackPanel,
-  StripDefinition, TextBlock, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture,
+  Border, buildElement, Button, Canvas, ContentDecorator, ContentPresenter, Grid, ImageButton, Slider, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet,
+  ScrollBar, ScrollingText, SpriteFont, StackPanel, StripDefinition, TextBlock, ToggleButton, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture,
 } from '../src/index';
 import { fullScreenTarget, hitTest, PickingState, routePointerEvents, updateMouseOver } from '../src/ui/UIPicking';
 
@@ -479,6 +479,35 @@ describe('按 UIFile 建元素', () => {
     expect(button.color).toEqual([1, 0.5, 1, 1]);
   });
 
+  test('Stride 能写进页面的元素类型都建得出来，属性照文件设', () => {
+    const types = [
+      'Border', 'Button', 'Canvas', 'ContentDecorator', 'ContentPresenter', 'EditText', 'Grid', 'ImageButton', 'ImageElement', 'ModalElement', 'ScrollBar',
+      'ScrollingText', 'ScrollViewer', 'Slider', 'StackPanel', 'TextBlock', 'ToggleButton', 'UniformGrid',
+    ] as const;
+    const none = { spriteSheets: new Map(), fonts: new Map(), textures: new Map() };
+    const file: UIFile = {
+      name: 'Page', designResolution: [100, 100], root: 0, templates: {},
+      elements: [
+        ...types.map((type) => ({ type, props: {} })),
+        { type: 'ToggleButton', props: { state: 'checked', isThreeState: true } },
+        { type: 'ScrollingText', props: { text: 'News', scrollingSpeed: 25, desiredCharacterNumber: 12, repeatText: false } },
+        { type: 'ContentPresenter', props: {}, content: 0 },
+        { type: 'ScrollBar', props: { barColor: [1, 0, 0, 1] } },
+      ],
+    };
+    expect(types.map((_, index) => buildElement(file, index, none).constructor.name)).toEqual(types);
+    const toggle = buildElement(file, types.length, none) as ToggleButton;
+    expect([toggle.state, toggle.isThreeState]).toEqual(['checked', true]);
+    const scrolling = buildElement(file, types.length + 1, none) as ScrollingText;
+    expect([scrolling.text, scrolling.scrollingSpeed, scrolling.desiredCharacterNumber, scrolling.repeatText]).toEqual(['News', 25, 12, false]);
+    const presenter = buildElement(file, types.length + 2, none) as ContentPresenter;
+    expect(presenter.content).toBeInstanceOf(Border);
+    presenter.content!.width = 30;
+    presenter.measure([100, 100]);
+    expect(presenter.desiredSizeWithMargins[0]).toBe(30);
+    expect((buildElement(file, types.length + 3, none) as ScrollBar).barColor).toEqual([1, 0, 0, 1]);
+  });
+
   test('UI 库每次实例化都新建一个；名字不对、类型不对时报错', () => {
     const library = new UILibrary(file, resources);
     const a = library.instantiateElement('Popup', ModalElement);
@@ -547,6 +576,52 @@ describe('UI 的指针（照 Stride 的 UIPicking）', () => {
     expect([clicks, button.isPressed, button.isTouched]).toEqual([1, false, false]);
   });
 
+  test('开关按钮：点一下换一个状态并发事件；三态时多一个不确定；图按状态和悬停取', () => {
+    const { root, target, layout } = scene();
+    const toggle = new ToggleButton();
+    toggle.width = toggle.height = 100;
+    toggle.canvasAbsolutePosition = [0, 200];
+    root.children.add(toggle);
+    layout();
+    const provider = (frame: SpriteFrame) => ({ getSprite: () => frame });
+    const [on, off, maybe, onOver] = [sprite(10, 10), sprite(20, 20), sprite(30, 30), sprite(40, 40)];
+    Object.assign(toggle, { checkedImage: provider(on), uncheckedImage: provider(off), indeterminateImage: provider(maybe), checkedMouseOverImage: provider(onOver) });
+    const seen: string[] = [];
+    for (const [name, event] of [['checked', ToggleButton.checkedEvent], ['indeterminate', ToggleButton.indeterminateEvent], ['unchecked', ToggleButton.uncheckedEvent]] as const) {
+      toggle.addHandler(event, () => seen.push(name));
+    }
+    const state = new PickingState();
+    const click = () => routePointerEvents(target, state, [event('pressed', 50, 250), event('released', 50, 250)], 0, () => {});
+    expect([toggle.state, toggle.toggleButtonImage, toggle.padding]).toEqual(['unChecked', off, [10, 5, 10, 7]]);
+    click();
+    expect([toggle.state, toggle.toggleButtonImage]).toEqual(['checked', on]);
+    toggle.mouseOverState = 'element';
+    expect(toggle.toggleButtonImage).toBe(onOver);
+    click();
+    // 没给不确定状态的悬停图：用它平常的图
+    toggle.isThreeState = true;
+    click();
+    click();
+    expect([toggle.state, toggle.toggleButtonImage]).toEqual(['indeterminate', maybe]);
+    // 正在不确定的时候关掉三态：换到下一个状态
+    toggle.isThreeState = false;
+    expect(toggle.state).toBe('unChecked');
+    toggle.state = 'indeterminate';
+    expect(toggle.isThreeState).toBe(true);
+    expect(seen).toEqual(['checked', 'unchecked', 'checked', 'indeterminate', 'unchecked', 'indeterminate']);
+  });
+
+  test('图片按钮：内容是跟着状态换的图，没有内边距，内容不能自己设', () => {
+    const button = new ImageButton();
+    const provider = (frame: SpriteFrame) => ({ getSprite: () => frame });
+    const [up, down] = [provider(sprite(10, 10)), provider(sprite(20, 20))];
+    button.notPressedImage = up;
+    button.pressedImage = down;
+    const image = button.content as ImageElement;
+    expect([image instanceof ImageElement, image.source, button.padding]).toEqual([true, up, [0, 0, 0, 0]]);
+    expect(() => (button.content = new TextBlock())).toThrow(/cannot be modified/);
+  });
+
   test('模态的弹窗挡住后面的元素，点到弹窗外面发 OutsideClick', () => {
     const { root, button, target, layout } = scene();
     const modal = new ModalElement();
@@ -590,6 +665,111 @@ describe('UI 的指针（照 Stride 的 UIPicking）', () => {
     expect(stack.scrollPosition).toBeGreaterThan(0);
     routePointerEvents(target, state, [event('released', 250, 5)], 0, () => {});
     expect([clicks, inner.isPressed, viewer.isUserScrollingViewer]).toEqual([0, false, false]);
+  });
+});
+
+/** 合成的字体：字号 20 时 A 宽 10、B 宽 12，字形已经下载好。 */
+async function testFont(): Promise<SpriteFont> {
+  const advances = [[65, 0.5], [66, 0.6]] as const;
+  const glyphs = new ArrayBuffer(advances.length * GLYPH_WORDS * 4);
+  advances.forEach(([codepoint, advance], i) => {
+    new Uint32Array(glyphs)[i * GLYPH_WORDS + GLYPH_RECORD.codepoint] = codepoint;
+    new Float32Array(glyphs)[i * GLYPH_WORDS + GLYPH_RECORD.advance] = advance;
+  });
+  const font = new SpriteFont(
+    {
+      name: 'Test', kind: 'dynamic', size: 20, antiAlias: 'default', integerPpem: false, ascent: 0.9, descent: 0.2, lineGap: 0.1, spacing: 0, lineSpacing: 0,
+      lineGapFactor: 1, lineGapBaseLineFactor: 1, defaultCharacter: 65, blocks: [0], kerning: [],
+    },
+    () => Promise.resolve({ glyphs, glyphCount: advances.length, points: new Float32Array(0), bands: new Uint32Array(0) }),
+  );
+  await font.ensure('AB');
+  return font;
+}
+
+describe('滚动的文字（照 Stride 的 ScrollingText）', () => {
+  async function scrolling(text: string, repeat = true): Promise<ScrollingText> {
+    const element = Object.assign(new ScrollingText(), { font: await testFont(), text, repeatText: repeat, desiredCharacterNumber: 4, horizontalAlignment: 'left' as const });
+    element.measure([200, 100]);
+    element.arrange([200, 100], false);
+    return element;
+  }
+
+  test('宽度是 desiredCharacterNumber 个 A；只画在自己的范围里，比文字多画三层', async () => {
+    const element = await scrolling('AB');
+    expect(element.renderSize[0]).toBeCloseTo(40, 5);
+    expect(element.clipToBounds).toBe(true);
+    expect(element.drawLayerNumber).toBe(new TextBlock().drawLayerNumber + 3);
+    element.desiredCharacterNumber = 6;
+    expect(element.isMeasureValid).toBe(false);
+  });
+
+  test('从右边进来往左滚：按速度挪，右边不够就接字（重复时从头再接），左边滚出去的字去掉', async () => {
+    const element = await scrolling('AB');
+    expect(element.scrollingOffset).toBeCloseTo(40, 5);
+    expect(element.textToDisplay).toBe('');
+    element.update(0.5);
+    // 40 像素每秒：半秒挪 20，露出来的 20 里要有字
+    expect(element.scrollingOffset).toBeCloseTo(20, 5);
+    expect(element.textToDisplay).toBe('AB');
+    expect(element.accumulatedWidth).toBeCloseTo(22, 5);
+    element.update(1);
+    // 那串的左边到了 -20：第一个 A（宽 10）整个滚出去了，去掉以后左边是 -10
+    expect(element.textToDisplay).toBe('BABAB');
+    expect(element.scrollingOffset).toBeCloseTo(-10, 5);
+    expect(element.accumulatedWidth).toBeCloseTo(66, 5);
+    // 滚很久那串字也不变长
+    for (let i = 0; i < 1000; i++) element.update(0.1);
+    expect(element.textToDisplay.length).toBeLessThanOrEqual(6);
+    expect(element.scrollingOffset).toBeGreaterThan(-12);
+    expect(element.scrollingOffset).toBeLessThanOrEqual(0);
+  });
+
+  test('速度不小于 0；禁用时不滚', async () => {
+    const element = await scrolling('AB');
+    element.scrollingSpeed = -5;
+    expect(element.scrollingSpeed).toBe(0);
+    element.scrollingSpeed = 100;
+    element.isEnabled = false;
+    element.update(0.1);
+    expect(element.scrollingOffset).toBeCloseTo(40, 5);
+    element.isEnabled = true;
+    element.update(0.1);
+    expect(element.scrollingOffset).toBeCloseTo(30, 5);
+  });
+
+  test('不重复：滚完就空了；appendText 接上的字接着滚，直接改 text 从头滚起', async () => {
+    const element = await scrolling('AB', false);
+    element.update(0.75);
+    expect(element.textToDisplay).toBe('AB');
+    expect(element.scrollingOffset).toBeCloseTo(10, 5);
+    // 接字不打断正在滚的
+    element.appendText('B');
+    element.arrange([200, 100], false);
+    element.update(0.25);
+    expect(element.text).toBe('ABB');
+    expect(element.textToDisplay).toBe('ABB');
+    expect(element.scrollingOffset).toBeCloseTo(0, 5);
+    // 全滚出去：停在右边等着
+    element.update(5);
+    expect(element.textToDisplay).toBe('');
+    expect(element.scrollingOffset).toBeCloseTo(40, 5);
+    element.appendText('A');
+    element.measure([200, 100]);
+    element.arrange([200, 100], false);
+    element.update(0.25);
+    expect(element.textToDisplay).toBe('A');
+    expect(element.scrollingOffset).toBeCloseTo(30, 5);
+    // 直接改文字：从头
+    element.text = 'BA';
+    element.measure([200, 100]);
+    element.arrange([200, 100], false);
+    expect(element.textToDisplay).toBe('');
+    expect(element.scrollingOffset).toBeCloseTo(40, 5);
+    element.update(0.5);
+    expect(element.textToDisplay).toBe('BA');
+    element.clearText();
+    expect(element.textToDisplay).toBe('');
   });
 });
 

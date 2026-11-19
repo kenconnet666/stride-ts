@@ -92,7 +92,7 @@ export class TextBlock extends UIElement {
     return this.calculateTextSize();
   }
 
-  protected override onUpdate(): void {
+  protected override onUpdate(_elapsedSeconds: number): void {
     const font = this.#font;
     if (!font) return;
     if (font.layoutVersion !== this.#measuredVersion) this.invalidateMeasure();

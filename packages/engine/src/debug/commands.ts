@@ -45,6 +45,7 @@ function status(debug: Debug, game: Game): unknown {
     scene: game.rootScene?.name ?? null,
     time: { total: game.updateTime.total, paused: game.paused, timeScale: game.timeScale, fixedTimeStep: game.fixedTimeStep ?? null },
     fps: recent.length > 0 ? 1000 / meanInterval : null,
+    startup: game.startup,
     canvas: canvas ? { width: canvas.width, height: canvas.height, clientWidth: canvas.clientWidth, clientHeight: canvas.clientHeight, devicePixelRatio } : null,
     gpu: device ? { ...adapterInfo(device.device.adapterInfo), textureTarget: device.textureTarget, timestamps: device.profiler.supported } : null,
     native: game.native ? { workerThreads: game.native.workerThreadCount } : null,

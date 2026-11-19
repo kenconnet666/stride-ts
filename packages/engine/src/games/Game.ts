@@ -110,6 +110,8 @@ export class Game {
 
   status: GameStatus = 'starting';
   error: string | undefined;
+  /** 启动各阶段完成的时刻（页面开始加载后的毫秒数）：原生模块就绪、loadContent 完成、第一帧画完。 */
+  readonly startup: { native?: number; content?: number; firstFrame?: number } = {};
   /** 内容加载完成（或换了根场景）时的帧号。 */
   sceneFrame: number | undefined;
   /** 根场景（Stride 的 SceneSystem.SceneInstance.RootScene），setRootScene 设；loadScene 加的场景不算。 */
@@ -145,6 +147,7 @@ export class Game {
         features: options.nativeFeatures ?? [],
         ...(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads }),
       });
+      this.startup.native = performance.now();
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       if (this.native.hasFeature('physics')) this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
       if (this.simulation && this.native.hasFeature('navigation')) this.navigation = new NavigationSystem(this.native, this.simulation);
@@ -164,6 +167,7 @@ export class Game {
       this.renderSystem.addFeature(new SpriteRenderFeature());
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);
       await this.loadContent();
+      this.startup.content = performance.now();
     } catch (error) {
       this.fail(error);
       throw error;
@@ -322,6 +326,7 @@ export class Game {
       this.graphicsDevice.resizeToDisplaySize();
       this.draw(this.updateTime);
       const end = performance.now();
+      this.startup.firstFrame ??= end;
       this.debug.frames.record(interval, updating ? drawStart - start : 0, end - drawStart);
       this.debug.endFrame();
       if (this.debug.connected) this.forwardNativeDebug();

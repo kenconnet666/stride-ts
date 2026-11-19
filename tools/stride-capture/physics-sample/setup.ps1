@@ -40,5 +40,6 @@ $compositor = Join-Path $sample 'Assets\Shared\GraphicsCompositor.sdgfxcomp'
 $windows = Join-Path $sample 'PhysicsSample.Windows\PhysicsSample.Windows.csproj'
 (Get-Content -Raw $windows) -replace '(<ProjectReference Include=[^>]*/>)', "`$1`n    <PackageReference Include=`"Stride.BepuPhysics`" Version=`"4.4.2`" />" | Set-Content -LiteralPath $windows -NoNewline
 Copy-Item (Join-Path $PSScriptRoot 'PhysicsSampleApp.cs') (Join-Path $sample 'PhysicsSample.Windows\PhysicsSampleApp.cs') -Force
+Copy-Item (Join-Path $PSScriptRoot '..\Benchmark.cs') (Join-Path $sample 'PhysicsSample.Windows\Benchmark.cs') -Force
 dotnet build (Join-Path $sample 'PhysicsSample.Windows\PhysicsSample.Windows.csproj') -c Release
 Write-Host "built $(Join-Path $sample 'Bin\Windows\Release\PhysicsSample.Windows.exe')"

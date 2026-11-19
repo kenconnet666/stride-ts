@@ -17,6 +17,7 @@
 | 脚本 | 作用 |
 |---|---|
 | `vite-app.ts` | apps 共用的 Vite 配置（`strideApp(端口)`）：跨源隔离的响应头、不预打包原生模块、调试中枢（`strideDebug`）、构建后写 `.br`/`.gz` 预压缩文件 |
+| `measure.ps1` | 测每个样例的工程数字：导入时间、构建时间、页面下载量（原始和 brotli）、启动各阶段（`Game.startup`）、帧时间（preview 构建、无头 Chrome 不限帧率、`stride perf`）。桌面 Stride 的帧时间用各截图工程的 `--benchmark`（`stride-capture/Benchmark.cs`）。用法：`pwsh tools/measure.ps1 [-Apps a,b] [-SkipImport] [-Out measure.json]` |
 | `regress.ps1` | 回归：所有样例的冒烟脚本挨个跑一遍，每个样例单独起开发服务器（`--force`）、单独开无头 Chrome，最后打印结果表。用法：`pwsh tools/regress.ps1 [-Apps physics-sample,topdown-rpg]` |
 | `smoke.ts` | 样例冒烟脚本（`apps/*/scripts/smoke.ts`，`pnpm --filter <样例> smoke`）共用的部分：`startSmoke(中枢名)` 给出调 CLI 的 `stride`、`check`，`finish()` 查本次运行以来的错误日志后按结果退出 |
 | `hdr-ratio.ts` | 两张截图（都固定曝光 EV0、关掉 FXAA 和亮部提取）反推色调映射前的 HDR 值，按行打印参考/我们的比值，分辨整体倍数和随角度的差。用法：`node tools/hdr-ratio.ts <参考.png> <我们的.png>` |

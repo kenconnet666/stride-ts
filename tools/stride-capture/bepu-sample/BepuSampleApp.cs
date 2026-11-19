@@ -1,6 +1,6 @@
 // 截参考图用（stride-ts 和桌面 Stride 比对）：加 --capture <png> 时，主场景加载好后把 --scene <内容地址>（比如
 // Scenes/Colliders）加成子场景（同样例的 SceneSelectorComponent），关掉选场景的 UI、调试文字和性能叠加层（stride-ts 还没有），
-// 画满 --frames 帧（默认 90）后把后备缓冲存成 PNG 再退出；--freeze-physics 让仿真不步进。不加参数时就是原来的样例。
+// 画满 --frames 帧（默认 90）后把后备缓冲存成 PNG 再退出；--freeze-physics 让仿真不步进。--benchmark N [--gpu-profile] 测帧时间（游戏照常跑，见 ../Benchmark.cs）。不加参数时就是原来的样例。
 #nullable enable
 using System;
 using System.IO;
@@ -12,7 +12,7 @@ using Stride.Graphics;
 string? Option(string name) => Array.IndexOf(args, name) is var i and >= 0 ? args[i + 1] : null;
 var capture = Option("--capture");
 var frames = int.Parse(Option("--frames") ?? "90");
-using var game = capture == null ? new Game() : new CaptureGame(capture, Option("--scene"), frames, Array.IndexOf(args, "--freeze-physics") >= 0);
+using var game = BenchmarkGame.FromArgs(args) ?? (capture == null ? new Game() : new CaptureGame(capture, Option("--scene"), frames, Array.IndexOf(args, "--freeze-physics") >= 0));
 game.Run();
 
 sealed class CaptureGame(string path, string? scene, int frames, bool freezePhysics) : Game

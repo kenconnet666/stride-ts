@@ -67,7 +67,8 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
   - 运行时：`ContentManager.loadSkeleton`、`loadAnimation`，`prop.asset('animation')`；`AnimationComponent`（Stride 的 API：`play`、`crossfade`、`blend`、`add`、`ended`、`blendTreeBuilder`，时间用秒）；`AnimationSystem`（`game.animation`，物理之后的系统）把所有带骨架的模型的混合栈写进一个原生的 `AnimationBatch`，ozz 在工作线程上并行采样、混合（同 Stride 的 AnimationBlender：线性、叠加、相减）、求模型空间矩阵，再算蒙皮矩阵（关节矩阵乘逆绑定），结果留在 wasm 内存里。
   - 渲染：蒙皮网格的实体带 `Skinned`（蒙皮矩阵在连起来的缓冲里的起点），`MeshRenderFeature` 给它们单独分批、用 `vsSkinned` 管线，每帧把蒙皮矩阵直接从 wasm 内存上传；顶点乘 4 个蒙皮矩阵的加权和再乘世界矩阵（阴影投射同样）。剔除用整个模型的包围盒放大一半（和 Stride 不同，Stride 每帧按骨骼算包围盒）。
   - TPP 的 mannequin（16 个网格、92 个节点）待机、走跑混合、起跳、空中、落地都对；动画系统每帧 0.12 ms（原生蒙皮 0.06 ms、求值 0.04 ms）。
-  - 还没做：挂到骨骼节点（ModelNodeLink）、根运动、动画曲线（非骨骼的属性动画）、每帧按骨骼算的包围盒；原生求值失败时只有错误码，没有原因。
+  - 挂到骨骼节点（2026-11-19）：`ModelNodeLink`，原生变换存储的链接（`setLink`）：世界矩阵 = 目标的世界 × 节点矩阵 × 本地，不看父节点；节点名照 Stride 的 CleanNodeName 对。挂在节点上的刚体每个物理步跟着实体走。
+  - 还没做：根运动、动画曲线（非骨骼的属性动画）、每帧按骨骼算的包围盒；原生求值失败时只有错误码，没有原因。
 - **合成器、渲染目标贴图、精灵（2026-11-19，AnimatedModel 用到的）**：
   - 合成器的最小数据化：导入器读 GameSettings 引用的 .sdgfxcomp，相机槽位按 Cameras 列表编号（Camera.slot），主画面是槽位 0 的相机下第一个前向渲染器（清屏色、后处理和其中各效果的开关（`ScenePostEffects`，色调映射在颜色变换组里，关掉时直接输出）、透明阶段开关），"相机画进渲染目标贴图"的分支（SceneCameraRenderer 加 RenderTextureSceneRenderer）写进场景的 `compositor.textureCameras`。`ForwardRenderer` 先画各个渲染目标贴图（一样的深度预通道、不透明、透明阶段，画完原样拷进贴图），再画主画面；所有相机的视图一起提取、剔除。
   - 渲染目标贴图（Stride 的 RenderTexture）：`Texture.renderTarget`，没有 CPU 数据，GPU 纹理第一次用到时建，能画也能采样；内容管理按内容路径只建一次。
@@ -258,9 +259,9 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - `nextFrame()` 之后的代码在当前帧结束后、下一帧开始前运行：Promise 的后续代码没法插进同步的一帧中间。这一点和 Stride 不同，Stride 是在下一帧的脚本阶段继续。
   - 脚本引用自己或互相引用时，`props()` 里写 `prop.component(() => ScriptComponent)`，再在类体里用 `declare target: Other` 收窄：继承表达式里出现自己的类名，TS 会报循环引用（TS2506），和 easy-query-ts 把关系与实体分开定义是同一个原因。
   - `stat` 只给脚本用；数据组件的数值在系统里改。
+- **后来补上的**（2026-11-19）：资源引用 `prop.asset(kind)`（加载场景时一并加载好，种类见 `AssetTypes`，游戏可以用声明合并加种类）；预制体（`Prefab.instantiate`）；`Transform` 的 `localMatrix()`、`setLocalMatrix()`、`updateWorldMatrix()`；`Game.startup`（启动各阶段的时刻，`stride status` 报出来）。
 - **还没做**（依赖后面的里程碑）：
-  - 资源引用 `asset`：要等内容管线；
-  - 预制体、部件（`prop.parts`）、按子树生效的默认值：实体层级已经有了（`Transform` 的父子），预制体还要等内容管线；
+  - 部件（`prop.parts`）、按子树生效的默认值；
 
 ### bigint、小数、日期时间（2026-11-18 用户要求，已实现）
 
@@ -801,7 +802,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 
 只有当 Stride 依赖的某个特性 Jolt 的模型做不到、而且这个需求很重要时，才评估局部替换或扩展。
 
-**实现状态（2026-11-18，@stride-ts/native 0.8.1，引擎的 `physics/`、`input/`）**：
+**实现状态（2026-11-18 起，P1 结束时是 @stride-ts/native 0.21.1；引擎的 `physics/`、`navigation/`、`input/`）**：
 
 - **原生侧（`Physics.h`）**：
   - 形状：盒子、球、胶囊、圆柱、三角网格（按实体的世界缩放），带本地位姿的复合碰撞体。
@@ -823,34 +824,14 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - 空中操控先把方向归一化：Stride 拿没归一化的目标速度做点积，单位对不上，离地后几乎没有空中操控。速度上限按目标速度的大小，摇杆推一半，空中也只到一半。
   - 球体扫掠可以忽略起点就重叠的物体。TPP 的相机用它，再配一条射线防止钻进正后方的墙；Stride 的相机贴着旁边的箱子时会被拉到最近。
   - TPP 的脚本按时间平滑（Stride 每帧固定比例，帧率越高越快），起跳宽限按帧时间减，每帧把输入事件取完（Stride 每帧取一个，悬空时没取的起跳会积到落地后才触发）。
-- **还没做**：
-  - 实体销毁时移除物体：原生侧还没有移除接口，目前销毁带物理组件的实体，物体会留在世界里。
-  - 动态物体组件（BodyComponent）、触发器、接触事件、约束。
-  - 场景里的脚本组件随场景导入：TPP 现在由游戏代码按实体名挂脚本。
-  - 动画。
-
-### 怎么 fork 和维护 Jolt（2026-11-17 定）
-
-- **引入**（2026-11-17 用户改为独立 fork 仓库，取代原先的 git subtree 方案）：Jolt 的 fork 是单独的 git 仓库，本地在 `C:\Users\Administrator\CLionProjects\jolt-native-fork`。远程 `upstream` 指向 `jrouwe/JoltPhysics`（禁止推送）；`master` 只跟踪上游；我们的工作分支 `stride` 固定在上游发布标签上（当前 `v5.7.0`），补丁提交在它上面。远程 `origin` 是 GitHub 上的 fork `kenconnet666/JoltPhysics`，`stride` 分支推送到这里。`stride-native` 的源码就放在这个仓库的 `StrideNative/` 目录（2026-11-17 用户决定），见 [own-stack.md](own-stack.md) 的"结构"。
-- **Jolt 本体尽量不改**：我们的代码放在 `StrideNative/Source/`，通过 Jolt 的公开 API 和扩展点接入（对象层过滤、接触监听器、自定义形状）。非改不可的，作为少量独立提交留在 Jolt 代码之上，每个提交写明原因，升级时重新应用。
-- **构建选项**：
-  - 按需关掉用不到的功能，调试渲染器只在调试版开启。
-  - 只出多线程版（`-pthread`，Jolt 自带任务系统），开 SIMD（`-msimd128`）。单线程路线已放弃（用户 2026-11-17 决定）：部署必须带 COOP/COEP 响应头。
-  - 单精度。跨平台确定性（`JPH_CROSS_PLATFORM_DETERMINISTIC`）有性能代价，等需要联网同步或回放时再开。
-  - Emscripten 参数、内存和多线程配置参考 JoltPhysics.js 的构建脚本。
-- **测试**：物理层是纯 C++，先原生编译，在桌面上跑单元测试（编译快，能用 IDE 断点）；同一套测试编成 wasm 用 Node 再跑一遍，确认两边一致。大部分调试不用进浏览器。
-- **wasm 构建（2026-11-17 在本机跑通）**：
-  - Jolt 自带 Emscripten 支持：`Build/CMakeLists.txt` 加 Emscripten 的 CMake 工具链文件即可，上游 CI 用 emsdk 6.0.8 编 `UnitTests`，再用 `node UnitTests.js` 跑。SIMD 由 `USE_WASM_SIMD` 控制（`-msimd128 -msse4.2`：Jolt 写的是 SSE 指令，由 Emscripten 翻译成 wasm SIMD）；Jolt 的构建不带 `-pthread`，多线程要我们自己加。
-  - JoltPhysics.js 在 Jolt 之上用 WebIDL 生成绑定（`webidl_binder.py`），关掉 RTTI、异常、自定义分配器和 ObjectStream，链接参数有 `MODULARIZE`、`EXPORT_ES6`、`INITIAL_MEMORY=128MB`、`STACK_SIZE=1MB`，多线程版加 `-pthread`、`SHARED_MEMORY`、`PTHREAD_POOL_SIZE`。`stride-native` 不用 WebIDL，其余参数可以照搬。
-  - 我们的构建（只出多线程版）：在 Jolt 的 CMake 之外加 `-DCMAKE_CXX_FLAGS=-pthread`，链接加 `-pthread -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency`，并开 `USE_WASM_SIMD`。Worker 池必须预先开好：Jolt 默认开"核数 − 1"个工作线程，而且是同步创建的，池不够大时主线程会死锁。共享内存要求最大内存固定，UnitTests 用的是 128 MB 初始内存、不扩容。
-  - 本机工具链：emsdk 在 `C:\Users\Administrator\emsdk`（6.0.8，和上游 CI 一致）；CMake 和 Ninja 用 CLion 自带的。一条命令编译并测试：`tools/build-jolt-wasm.ps1 [-Config Debug|Release|Distribution]`。
-  - 结果：多线程加 SIMD 的 Distribution 版，644 个用例在 Node 里全部通过（比当初的单线程版多出的 1 个是多线程测试 `TestMultithreadedAddRemoveAndQuery`）；12 核首次全量编译约 2 分钟。原生 MinGW Debug 版 648 个用例全部通过，多出的是 GPU 计算（DX12）相关的测试。
-  - Jolt 自己的单元测试仍然从 `Build/` 编（上面的脚本）。
-- **StrideNative 两个模块（2026-11-17 跑通）**：`StrideNative/Scripts/build-wasm.ps1` 编出 `stride-native` 和 `stride-tools` 两个多线程加 SIMD 的模块，再在 Node 里跑 8 个端到端测试（管线产出资源、运行时消费）；原生 MinGW 下两个 doctest 可执行文件（运行时 4 个、管线 6 个用例）全部通过。浏览器测试页（`Tests/Browser/serve.mjs`，带 COOP/COEP）在 Chromium 里 6 项全部通过：11 个工作线程，100 个箱子每步 0.17 ms，8 份 2 万顶点的 meshopt 并行解码，256×256 KTX2 的 9 级 mip 并行转码，分块并行建导航网格加 16 个代理的群体移动，256 个角色并行采样动画。
-  - CLion 里打开 `jolt-native-fork`，CMake 根目录现在是 `StrideNative/`，两个配置：`Debug`（MinGW，跑 `StrideNativeRuntimeTests`/`StrideNativeToolsTests`，可下断点）和 `WASM-Release`（emsdk 工具链），构建目录都在被忽略的 `StrideNative/Build/` 下。
-- **升级**：跟随 Jolt 的发布按计划进行：`git fetch upstream --tags`，把 `stride` 分支 rebase 到新标签上（补丁自然重新应用）、跑原生和 wasm 两套测试，再跑游戏的回归截图。
-
-只有 Jolt 这样持续同步上游。Recast、Basis、meshopt 等是复制一次后由我们维护，或者自己写（2026-11-17 用户决定），见 [own-stack.md](own-stack.md) 的"依赖策略"。它们和 Jolt 一样编进同一个模块、走同一套 C API；2026-11-17 已全部导入 `StrideNative/ThirdParty/`。
+- **P1 里补上的**（2026-11-19，按游戏需要逐个做，细节见 docs/roadmap.md 的"进度"和 docs/decisions.md）：
+  - 动态和运动学刚体（`Body` 组件、`simulation.body(entity)`：唤醒、瞬移、速度、冲量、重力、睡眠阈值），凸包和动态网格碰撞体（网格对网格的碰撞），去掉物理组件或销毁实体时移除物体。
+  - 触发器和接触事件（开始、结束、每步最深的穿透深度，Stride 的 IContactHandler），约束（Stride.BepuPhysics 的约束组件，原生侧是 Jolt 的约束），GameSettings 的碰撞矩阵。
+  - 挂在会动的刚体下的运动学刚体、挂在骨骼节点上的刚体每步跟着实体走；静态体三角化（`staticTriangles`）给导航用。
+  - 穿透容差 1 mm（Jolt 默认 2 cm，Bepu 的软接触静止时几乎不陷进去），静止高度和 Stride 一致。
+  - 导航（`game.navigation`，Stride 的 RecastMeshSystem）：运行时从物理世界的静态体建导航网格（Recast 分块并行），`RecastNavigationComponent` 寻路（Detour 的拐点）。
+  - 输入：`thumbAny`、`triggerAny`（Stride 模板的 InputManagerExtensions），指针事件，Stride 的键名。
+- **还没做**：Bepu 接触的软度参数（SpringFrequency 等）不映射；RecastNavigationComponent 的排队寻路和直接移动；Bepu 的 2D 模式。
 
 ## 编辑器和资源管线：自己做，Node.js 加 Web（2026-11-17 用户决定）
 

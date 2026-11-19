@@ -42,6 +42,7 @@ foreach ($script in 'Player\PlayerController.cs', 'Player\AnimationController.cs
 $compositor = Join-Path $game 'Assets\GraphicsCompositor.sdgfxcomp'
 (Get-Content -Raw $compositor) -replace 'SerializedVersion: \{Stride: 3\.1\.0\.3\}', 'SerializedVersion: {Stride: 3.1.0.1}' | Set-Content -LiteralPath $compositor -NoNewline
 Copy-Item (Join-Path $PSScriptRoot 'TopDownRPGApp.cs') (Join-Path $game 'TopDownRPG.Windows\TopDownRPGApp.cs') -Force
+Copy-Item (Join-Path $PSScriptRoot '..\Benchmark.cs') (Join-Path $game 'TopDownRPG.Windows\Benchmark.cs') -Force
 
 dotnet build (Join-Path $game 'TopDownRPG.Windows\TopDownRPG.Windows.csproj') -c Release
 Write-Host "built $(Join-Path $game 'Bin\Windows\Release\TopDownRPG.Windows.exe')"

@@ -27,5 +27,6 @@ Set-Content -LiteralPath (Join-Path $Out 'nuget.config') -Value @'
 
 $sample = Join-Path $Out 'samples\Graphics\AnimatedModel'
 Copy-Item (Join-Path $PSScriptRoot 'AnimatedModelApp.cs') (Join-Path $sample 'AnimatedModel.Windows\AnimatedModelApp.cs') -Force
+Copy-Item (Join-Path $PSScriptRoot '..\Benchmark.cs') (Join-Path $sample 'AnimatedModel.Windows\Benchmark.cs') -Force
 dotnet build (Join-Path $sample 'AnimatedModel.Windows\AnimatedModel.Windows.csproj') -c Release
 Write-Host "built $(Join-Path $sample 'Bin\Windows\Release\AnimatedModel.Windows.exe')"

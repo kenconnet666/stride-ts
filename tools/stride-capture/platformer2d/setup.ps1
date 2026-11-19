@@ -31,5 +31,6 @@ $gameProject = Join-Path $template 'Platformer2D.Game\Platformer2D.csproj'
 (Get-Content -Raw $gameProject) -replace '(<PackageReference Include="Stride.Engine"[^>]*/>)', "`$1`n    <PackageReference Include=`"Stride.BepuPhysics`" Version=`"4.4.2`" />" |
     Set-Content -LiteralPath $gameProject -NoNewline
 Copy-Item (Join-Path $PSScriptRoot 'Platformer2DApp.cs') (Join-Path $template 'Platformer2D.Windows\Platformer2DApp.cs') -Force
+Copy-Item (Join-Path $PSScriptRoot '..\Benchmark.cs') (Join-Path $template 'Platformer2D.Windows\Benchmark.cs') -Force
 dotnet build (Join-Path $template 'Platformer2D.Windows\Platformer2D.Windows.csproj') -c Release
 Write-Host "built $(Join-Path $template 'Bin\Windows\Release\Platformer2D.Windows.exe')"

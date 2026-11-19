@@ -1,7 +1,8 @@
 # 桌面 Stride 的参考截图
 
 每个对齐用的样例一个子目录：`setup.ps1` 从 Stride 源码搭出用官方 nuget 包（4.4.2）编的桌面版，入口换成能截图的版本；
-截好的参考图不进仓库，需要时重新截。stride-ts 这边用 `stride shot --diff` 比。
+截好的参考图不进仓库，需要时重新截。stride-ts 这边用 `stride shot --diff` 比。各工程共用 [Benchmark.cs](Benchmark.cs)：
+`--benchmark N [--gpu-profile]` 让游戏照常跑着测帧时间（TPP 有自己的静态模式），stride-ts 这边对应 `tools/measure.ps1`。
 
 | 目录 | 样例 | 说明 |
 |---|---|---|

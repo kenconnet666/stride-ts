@@ -1,5 +1,5 @@
 // 截参考图用（stride-ts 和桌面 Stride 比对）：加 --capture <png> 时，正在播放的动画每帧都停在第 0 帧（姿势和 stride-ts 那边
-// 一样定住），画满 --frames 帧（默认 60）后把后备缓冲存成 PNG 再退出。不加参数时就是原来的样例。
+// 一样定住），画满 --frames 帧（默认 60）后把后备缓冲存成 PNG 再退出。--benchmark N [--gpu-profile] 测帧时间（游戏照常跑，见 ../Benchmark.cs）。不加参数时就是原来的样例。
 using System;
 using System.IO;
 using Stride.Engine;
@@ -8,7 +8,7 @@ using Stride.Graphics;
 
 var capture = Array.IndexOf(args, "--capture") is var i and >= 0 ? args[i + 1] : null;
 var frames = Array.IndexOf(args, "--frames") is var j and >= 0 ? int.Parse(args[j + 1]) : 60;
-using var game = capture == null ? new Game() : new CaptureGame(capture, frames);
+using var game = BenchmarkGame.FromArgs(args) ?? (capture == null ? new Game() : new CaptureGame(capture, frames));
 game.Run();
 
 sealed class CaptureGame(string path, int frames) : Game

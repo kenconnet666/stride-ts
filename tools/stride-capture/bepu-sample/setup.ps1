@@ -41,6 +41,7 @@ $windows = Join-Path $sample 'BepuSample.Windows\BepuSample.Windows.csproj'
 (Get-Content -Raw $windows) -replace '(<ProjectReference Include=[^>]*/>)', "`$1`n    <PackageReference Include=`"Stride.BepuPhysics`" Version=`"4.4.2`" />" | Set-Content -LiteralPath $windows -NoNewline
 Remove-Item (Join-Path $sample 'BepuSample.Windows\BepuSample.Windows.DemoApp.cs')
 Copy-Item (Join-Path $PSScriptRoot 'BepuSampleApp.cs') (Join-Path $sample 'BepuSample.Windows\BepuSampleApp.cs') -Force
+Copy-Item (Join-Path $PSScriptRoot '..\Benchmark.cs') (Join-Path $sample 'BepuSample.Windows\Benchmark.cs') -Force
 dotnet build (Join-Path $sample 'BepuSample.Windows\BepuSample.Windows.csproj') -c Release
 # 样例的 Windows 工程指定了 RuntimeIdentifier，输出在 win-x64 子目录里
 Write-Host "built $(Join-Path $sample 'Bin\Windows\Release\win-x64\BepuSample.Windows.exe')"

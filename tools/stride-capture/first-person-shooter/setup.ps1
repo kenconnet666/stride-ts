@@ -37,6 +37,7 @@ $game = Join-Path $Out 'Templates\FirstPersonShooter\FirstPersonShooter'
 $compositor = Join-Path $game 'Assets\GraphicsCompositor.sdgfxcomp'
 (Get-Content -Raw $compositor) -replace 'SerializedVersion: \{Stride: 3\.1\.0\.3\}', 'SerializedVersion: {Stride: 3.1.0.1}' | Set-Content -LiteralPath $compositor -NoNewline
 Copy-Item (Join-Path $PSScriptRoot 'FirstPersonShooterApp.cs') (Join-Path $game 'FirstPersonShooter.Windows\FirstPersonShooterApp.cs') -Force
+Copy-Item (Join-Path $PSScriptRoot '..\Benchmark.cs') (Join-Path $game 'FirstPersonShooter.Windows\Benchmark.cs') -Force
 
 dotnet build (Join-Path $game 'FirstPersonShooter.Windows\FirstPersonShooter.Windows.csproj') -c Release
 Write-Host "built $(Join-Path $game 'Bin\Windows\Release\FirstPersonShooter.Windows.exe')"

@@ -38,13 +38,13 @@
 
 | Stride 模块 | 内容 | 处理 |
 |---|---|---|
-| Games、Engine 的 Game、GameSystem、SceneSystem | 游戏循环、时间、场景实例、子场景 | ✅ 循环和时间；▶ 子场景和场景切换（P1） |
+| Games、Engine 的 Game、GameSystem、SceneSystem | 游戏循环、时间、场景实例、子场景 | ✅ 循环和时间、子场景和场景切换、流式加载（P1） |
 | Entity、EntityComponent、Processor | 实体、组件、处理器 | ✅ 数据组件加系统（我们的写法，见 architecture.md 的"组件 API"） |
 | ScriptComponent（Sync、Async、Startup）、EventKey、MicroThreading | 脚本和事件 | ✅ |
-| Prefab、InstancingComponent | 预制体、GPU 实例化 | ▶ 预制体实例化和嵌套（P1）；✅ 实例化绘制 |
-| TransformComponent、ModelNodeLink、TransformLink | 层级、挂到骨骼节点 | ✅ 层级；▶ 挂到骨骼节点（P1，FPS、TopDownRPG 用） |
+| Prefab、InstancingComponent | 预制体、GPU 实例化 | ✅ 预制体实例化（Stride 存的是展开后的实体，嵌套随之支持）、实例化绘制 |
+| TransformComponent、ModelNodeLink、TransformLink | 层级、挂到骨骼节点 | ✅ 层级、挂到骨骼节点（ModelNodeLink） |
 | Animations（剪辑、混合、AnimationComponent） | 骨骼动画、混合、曲线 | ✅ ozz 采样加混合、GPU 蒙皮；▶ 曲线、根运动 |
-| Updater（UpdateEngine） | 按属性路径给任意字段做动画 | ▶ 随动画剪辑里的非骨骼曲线一起做（P1） |
+| Updater（UpdateEngine） | 按属性路径给任意字段做动画 | ▶ 随动画剪辑里的非骨骼曲线一起做（P1 的游戏都没用到，挪到 P2：有样例用到时做） |
 | Morph targets | 变形动画 | ▶（P2） |
 | Input（键鼠、手柄、触摸、手势、传感器） | | ✅ 键鼠手柄；▶ 触摸和手势（P2）；▶ 重力、加速度计（P3，浏览器的 DeviceMotion） |
 | Audio（声音、空间化、流式） | | ▶ Web Audio：音效、音乐流、AudioEmitter/Listener 空间化（P2） |
@@ -59,18 +59,18 @@
 | 内容 | 处理 |
 |---|---|
 | 前向渲染、HDR、PBR、方向光阴影、天空盒、背景、深度预通道 | ✅ |
-| 点光、聚光（clustered），点光阴影（立方体、抛物面），聚光阴影 | ▶（P1，TopDownRPG、教程场景用） |
+| 点光、聚光（clustered），点光阴影（立方体、抛物面），聚光阴影 | ✅ 点光、聚光（P1，逐像素遍历，最多 256 个）；▶ 阴影和分簇挪到 P2（P1 的游戏都没开，教程场景用到时做） |
 | 光探针（球谐、四面体插值）、光照烘焙 | ▶（P3） |
-| 材质特性：漫反射、镜面、法线、自发光、透明（混合、cutoff）、遮蔽、clear coat、次表面散射、头发、卡通、位移 | ✅ 前四项；▶ 透明和遮蔽（P1）；▶ clear coat、卡通（P2）；⏸ 次表面散射、头发 |
+| 材质特性：漫反射、镜面、法线、自发光、透明（混合、cutoff）、遮蔽、clear coat、次表面散射、头发、卡通、位移 | ✅ 前四项、透明（混合）和遮蔽（P1）；▶ cutoff、clear coat、卡通（P2）；⏸ 次表面散射、头发 |
 | 材质层（MaterialBlendLayers）、颜色树（ComputeColor） | ▶ 由着色器系统生成（P2，见 D3） |
 | 曲面细分（Tessellation） | ✂ WebGPU 没有曲面细分阶段；位移改用顶点位移 |
-| 精灵（SpriteComponent、精灵表）、字体（SpriteFont：静态、动态、SDF） | ▶ P1 做精灵，SVG 精灵按矢量画；P2 做字体：屏幕上的字按字形轮廓直接画，世界空间的字用 MSDF，Stride 的位图字体照样能导入 |
+| 精灵（SpriteComponent、精灵表）、字体（SpriteFont：静态、动态、SDF） | ✅ 精灵和精灵表（P1，SVG 先栅格化）；▶ SVG 精灵按矢量画挪到 P2 的矢量渲染底座；P2 做字体：屏幕上的字按字形轮廓直接画，世界空间的字用 MSDF，Stride 的位图字体照样能导入 |
 | 后处理：FXAA、Bloom、光芒、镜头光晕、色调映射、颜色变换 | ✅ |
 | 后处理：TAA、SSAO、景深、雾、轮廓、光束（LightShafts）、局部反射（SSR）、抖动 | ▶（P3，按样例需要逐个做） |
 | MSAA | ▶（P2） |
 | 自定义效果（.sdsl / .sdfx，CustomEffect、MaterialShader 样例） | ▶ 着色器系统（P2，见 D3） |
-| 图形合成器（GraphicsCompositor，.sdgfxcomp）：多相机、渲染到纹理、分屏 | ▶ 合成器数据化，读 .sdgfxcomp（P1 最小，P2 完整） |
-| 线框、调试渲染（DebugRenderer、物理形状） | ▶（P1，编辑器和调试都要） |
+| 图形合成器（GraphicsCompositor，.sdgfxcomp）：多相机、渲染到纹理、分屏 | ✅ 读 .sdgfxcomp 的最小数据化（P1：相机槽位、渲染到纹理、后处理开关）；▶ 完整的合成器（P2） |
+| 线框、调试渲染（DebugRenderer、物理形状） | ▶ 挪到 P3：和编辑器的解析线 Gizmo、网格一起做（P1 的游戏和调试没用到，现在用调试 CLI 的射线、查看代替） |
 | 体素全局光照（Voxels） | ✂ 实验性功能，Stride 默认关 |
 | 延迟渲染 | ✂ Stride 也只用 GBuffer 做 SSR，主路径是前向 |
 
@@ -79,8 +79,8 @@
 | Stride 插件 | 处理 |
 |---|---|
 | BepuPhysics（刚体、角色、触发器、约束、射线和扫掠、碰撞层、凸包、网格碰撞） | ✅ 静态体、角色、动态刚体、触发器、接触事件、约束（Bepu 的约束组件映射到 Jolt，刚性）、射线、扫掠、凸包、网格碰撞（含动态网格）；▶ 重叠测试、接触的软度 |
-| BepuPhysics.Navigation（Recast 导航网格组件） | ▶ Recast 已在原生侧（P1，TopDownRPG） |
-| BepuPhysics._2D、Soft | ▶ 2D 用 Jolt 锁定轴（P1，Platformer2D）；⏸ 软体（Jolt 有，样例不用） |
+| BepuPhysics.Navigation（Recast 导航网格组件） | ✅ 运行时建导航网格、寻路（P1，TopDownRPG）；▶ 排队寻路、直接移动 |
+| BepuPhysics._2D、Soft | ✂ 2D 模式：Platformer2D 不用它（平台和角色都在 Z=0 上，3D 物理照常），有样例用到时再用 Jolt 锁定轴；⏸ 软体（Jolt 有，样例不用） |
 | Heightfield（地形） | ▶ Jolt 高度场加地形渲染（P3） |
 | BulletPhysics（旧物理、旧导航） | ✂ 被 Bepu 取代，我们用 Jolt |
 | Particles（发射器、初始化器、更新器、形状、材质、动画） | ▶（P2，大块：CPU 模拟放在 C++，GPU 实例化绘制） |
@@ -94,16 +94,16 @@
 
 | 资源 | 处理 |
 |---|---|
-| .sdscene、.sdprefab、.sdm3d（模型）、.sdmat、.sdtex、.sdsky、.sdgamesettings | ✅ 导入；▶ 预制体（P1） |
-| .sdskel、.sdanim | 🔨（P1） |
-| .sdsheet（精灵表）、.sdfnt（字体）、.sdpcfnt | ▶（P1、P2） |
+| .sdscene、.sdprefab、.sdm3d（模型）、.sdmat、.sdtex、.sdsky、.sdgamesettings | ✅ 导入，含预制体 |
+| .sdskel、.sdanim | ✅（P1） |
+| .sdsheet（精灵表）、.sdfnt（字体）、.sdpcfnt | ✅ 精灵表（P1）；▶ 字体（P2） |
 | .sduipage、.sduilib | ▶（P2） |
 | .sdsnd（声音） | ▶ 转成 Opus/WebM 或保留 mp3、ogg（P2，见 D9） |
 | .sdpart、粒子组件 | ▶（P2） |
-| .sdpromodel（程序模型：立方体、球、平面、圆柱、胶囊、圆环、茶壶） | ▶（P1，教程和物理样例大量使用） |
+| .sdpromodel（程序模型：立方体、球、平面、圆柱、胶囊、圆环、茶壶） | ✅（P1） |
 | .sdprefabmodel、.sdhull（凸包分解） | ▶（P2，VHACD 已在 stride-tools） |
-| .sdnavmesh | ▶（P1） |
-| .sdgfxcomp | ▶（P1、P2） |
+| .sdnavmesh | ▶ 预先烘焙的导航网格（P1 的 TopDownRPG 运行时建，有样例用烘焙的再做） |
+| .sdgfxcomp | ✅ 最小（P1）；▶ 完整（P2） |
 | .sdsl、.sdfx | ▶ 着色器系统（P2） |
 | .sdrendertex | ▶（P2） |
 | .sdvid | ▶（P3） |
@@ -204,8 +204,8 @@
 | 阶段 | 内容 | 用来验收的游戏和场景 |
 |---|---|---|
 | **P1 运行时补齐 3D 游戏的基础** | 场景脚本导入、骨骼动画和混合、挂到骨骼节点、预制体、程序模型、动态刚体、触发器、接触事件、约束、导航、点光和聚光（含阴影，分簇）、透明材质、精灵和精灵表（SVG 精灵按矢量画）、2D 物理、调试渲染、合成器的最小数据化 | ThirdPersonPlatformer（完整，含动画）、AnimatedModel、PhysicsSample、BepuSample、Platformer2D、TopDownRPG、FirstPersonShooter（不含粒子） |
-| **P2 界面、声音、效果** | 矢量渲染的底座、UI 系统和 .sduipage、影子 DOM（选中复制、无障碍、输入法）、字体（字形轮廓和 MSDF）、音频、粒子、着色器系统（自定义效果、材质层、颜色树）、MSAA、渲染到纹理、Morph、触摸 | SpriteFonts、GameMenu、UIElementLink、UIParticles、SimpleAudio、ParticlesSample、JumpyJet、SpaceEscape、MaterialShader、CustomEffect、MorphTargets、FPS（含粒子）、教程 CSharpBeginner、CSharpIntermediate |
-| **P3 编辑器** | 见第一节的编辑器表，矢量优先（SVG 图标、解析线的 Gizmo 和网格、SVG 资源导入） | 用编辑器打开 P1、P2 的每个游戏，改场景和属性后能保存、播放；用编辑器从零搭一个小游戏 |
+| **P2 界面、声音、效果** | 矢量渲染的底座（含 SVG 精灵按矢量画）、UI 系统和 .sduipage、影子 DOM（选中复制、无障碍、输入法）、字体（字形轮廓和 MSDF）、音频、粒子、着色器系统（自定义效果、材质层、颜色树）、MSAA、渲染到纹理、Morph、触摸，从 P1 挪来的点光和聚光的阴影、分簇，动画剪辑的非骨骼曲线（Updater） | SpriteFonts、GameMenu、UIElementLink、UIParticles、SimpleAudio、ParticlesSample、JumpyJet、SpaceEscape、MaterialShader、CustomEffect、MorphTargets、FPS（含粒子）、教程 CSharpBeginner、CSharpIntermediate |
+| **P3 编辑器** | 见第一节的编辑器表，矢量优先（SVG 图标、解析线的 Gizmo 和网格、SVG 资源导入）；调试渲染（线框、物理形状，从 P1 挪来） | 用编辑器打开 P1、P2 的每个游戏，改场景和属性后能保存、播放；用编辑器从零搭一个小游戏 |
 | **P4 现代画面** | 画质档位、TAA 加锐化和可选的时间性上采样、GTAO、随机 SSR、SSGI、接触阴影、PCSS、物理天空和日夜循环、体积云、体积雾和体积光、扩展材质、贴花、GPU 粒子和特效、矢量贴图；Stride 剩下的效果（景深、轮廓、光束、光探针等） | Starbreach（本机）、Sponza、Bistro 这类公开的测试场景，加上用 P4 功能重新打光的 TPP、TopDownRPG |
 | **P5 软件光追和全局光照** | tinybvh 进 stride-native、WGSL 遍历、参考路径追踪器、光照贴图和光探针的 GPU 烘焙、DDGI、光追阴影、反射、AO、时空降噪、ReSTIR 直接光 | 同上，加日夜循环下的室内外场景；误差和参考路径追踪器比较 |
 | **P6 大规模场景** | GPU 驱动渲染和遮挡剔除、簇 LOD 加可见性缓冲、地形、植被、分块流式加载、Gaussian splatting | 大场景基准（几百万到上亿三角形、上万实例）、一个开放世界的小游戏 |
@@ -318,5 +318,30 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    2. ~~玩法脚本~~（2026-11-19）：PlayerInput（键盘、鼠标锁定、手柄）、PlayerController、FpsCamera、WeaponScript（射线、冲量、冷却、换弹、子弹数精灵的帧）、AnimationController（待机、走、开枪、换弹）、EffectController 和 TriggerScript（TriggerGroup 是嵌套对象属性，生成的特效预制体定时移除）。顺带补上：`InputManager.thumbAny`、`triggerAny`（Stride 模板的 InputManagerExtensions，TPP 也改用）、`Quaternion.setYawPitchRoll`、`betweenDirections`（TopDownRPG 也改用）；调试 CLI 的 `mouse left --trusted`（DevTools 协议的真实点击，页面能锁定指针）。冒烟脚本 `pnpm --filter @stride-ts/first-person-shooter smoke` 走完锁定鼠标、第一枪换弹、转视角、走动、开枪推箱子、特效生成和移除、换弹动画、Esc 解锁。
    3. ~~和桌面 Stride 比对~~（2026-11-19，`tools/stride-capture/first-person-shooter`，两边都不挂脚本）：平均每通道差 2.69/255，差超过 8 的像素 1.3%，超过 32 的 0.09%；我们整体亮约 2/255，格子贴图有 BC 压缩的颜色差（同 TopDownRPG）。第一次比时角色比 Stride 低 2 cm（相机跟着矮，地面网格线错开 4 像素）：Jolt 默认的穿透容差 2 cm，Bepu 的软接触静止时几乎不陷进去；原生 0.21.1 降到 1 mm，角色和放在地上的物体的静止高度和 Stride 一致。回归脚本 `pwsh tools/regress.ps1` 把所有样例的冒烟脚本挨个跑一遍（各自起开发服务器、开无头 Chrome），全部通过；Platformer2D 的起跳检查改成轮询（刚打开的浏览器帧率不稳，固定等 250 ms 时偶尔才刚离地）。
    - P2 补：枪口火焰、弹孔、受击拖尾的粒子。
-9. 接着 **P1 收尾**：整理（文件按职责归位、合并重复、删掉没人用的代码）、文档（architecture.md 的实现状态、各样例的说明），然后进入 P2。
+9. ~~P1 收尾~~（2026-11-19）：
+   - 整理：导入器拆出材质、贴图、天空盒（`stride/materials.ts`，七个样例的导入产物逐字节不变），YAML 值的读取归到 `yaml.ts`；`Transform.localMatrix()`、`setLocalMatrix()` 取代游戏里三处手写的组合和拆分；knip 查出的多余导出去掉，入口补上 `AssetTypes` 和材质描述的类型；AnimatedModel 去掉用不到的依赖。
+   - 测量工具：`tools/measure.ps1`（导入、构建、下载量、启动各阶段、帧时间），`Game.startup`（`stride status` 报启动各阶段的时刻），桌面版各截图工程共用的 `tools/stride-capture/Benchmark.cs`（`--benchmark N [--gpu-profile]`，游戏照常跑）。
+   - 测帧时间时发现 AnimatedModel 的合成器没有阴影渲染器，Stride 不画阴影而我们画了：改成按合成器关掉，帧时间 1.21 → 0.82 ms，截图差 0.148 → 0.083/255。
+   - 没有游戏用到、挪到后面阶段的（见 decisions.md 的"P1 收尾"）：点光和聚光的阴影与分簇（P2）、SVG 精灵按矢量画（P2 的矢量底座）、动画剪辑的非骨骼曲线（P2）、调试渲染（P3，和编辑器的 Gizmo 一起）、Bepu 的 2D 模式（不做，有样例用到再说）、预先烘焙的导航网格。
+   - 验收数字（2026-11-19，RTX 3050 笔记本，TPP 的桌面基准 6.87 ms，没有降频；下载量是页面实际请求的文件，本机 preview；第一帧是页面开始加载到第一帧画完；帧时间两边都不限帧率，游戏照常跑、没有输入，窗口同截图工程）：
+
+     | 游戏 | 导入 | 构建 | 下载（brotli） | 第一帧 | 桌面 Stride 帧时间 | stride-ts 帧时间 | 比值 |
+     |---|---|---|---|---|---|---|---|
+     | ThirdPersonPlatformer | 2.0 s | 7.5 s | 4.07 MB（1.09） | 1234 ms | 6.87 ms（静态：去掉脚本、动画） | 5.48 ms | 0.80 |
+     | AnimatedModel（640x1061） | 2.4 s | 4.9 s | 1.62 MB（0.73） | 1115 ms | 0.95 ms | 0.82 ms | 0.86 |
+     | PhysicsSample | 1.4 s | 6.3 s | 2.69 MB（0.69） | 1050 ms | 1.05 ms | 0.49 ms | 0.47 |
+     | BepuSample（1600x900） | 5.7 s | 8.3 s | 5.59 MB（1.31） | 895 ms | 9.38 ms（含 UI 和调试文字） | 4.90 ms | 0.52 |
+     | Platformer2D | 1.4 s | 6.1 s | 2.49 MB（0.52） | 1114 ms | 3.80 ms | 2.52 ms | 0.66 |
+     | TopDownRPG | 2.4 s | 8.4 s | 4.54 MB（1.51） | 1182 ms | 5.73 ms | 5.57 ms | 0.97 |
+     | FirstPersonShooter | 2.4 s | 7.9 s | 3.97 MB（1.10） | 1148 ms | 5.90 ms | 4.95 ms | 0.84 |
+
+     画面比对的结果见各游戏那一条和 `tools/stride-capture/*/README.md`；平均每通道差 ≤ 1/255 的验收线只有 TPP、AnimatedModel、PhysicsSample、BepuSample 达到，Platformer2D、TopDownRPG、FirstPersonShooter 在 2.2 到 2.7/255，差在 Stride 压成 BC 格式的贴图颜色上（我们用 `--textures source` 原样的 PNG），属于有意的偏差。
+   - 回归：`pwsh tools/regress.ps1` 六个样例的冒烟脚本全过；类型检查、单元测试（164 个）全过。
+
+**P1 完成（2026-11-19）。**
+
+### P2 界面、声音、效果
+
+下一步按顺序（阶段表的游戏顺序）：
+1. 接着做 **SpriteFonts**：先盘点它用到的（字体资源 .sdfnt：静态、动态、SDF；SpriteFont 的绘制、SpriteBatch），按路线图 D16 的推荐做矢量渲染的底座和字体（屏幕上的字按字形轮廓画，世界空间的字用 MSDF），写分步计划。
 

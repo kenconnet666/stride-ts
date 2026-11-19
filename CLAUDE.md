@@ -9,6 +9,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - [docs/own-stack.md](docs/own-stack.md)：技术栈的组织方式（用户 2026-11-17 定的方向）：JS/TS 部分在仓库内自己维护（引擎层和渲染器都自己写），原生库合成一个 C++ 工程（运行时是核心 wasm 加按需加载的侧模块）。
 - [docs/positioning.md](docs/positioning.md)：和 Babylon.js、PlayCanvas、three.js、Cocos、Unity、Godot、Needle 的对比（预估），特色和短板，要实测的性能点。
 - [docs/research.md](docs/research.md)：依赖逐项替代、库选型、线程模型和 API 取舍。
+- [docs/vector-assets.md](docs/vector-assets.md)：资源尽量矢量化（用户 2026-11-19 的方向）的格式讨论稿：2D 矢量图、材质图、几何、地形各用什么格式，要用户定的问题，几何实验的设计和结果。
 - [docs/roadmap.md](docs/roadmap.md)：路线图（范围、原则、阶段、取舍）和末尾的"进度"；执行中自己做的决定记在 [docs/decisions.md](docs/decisions.md)，已完成各项的过程在 [docs/progress-log.md](docs/progress-log.md)。
 
 现状（2026-11-19，P1 完成，正在做 P2；进度和下一步见 docs/roadmap.md 末尾的"进度"，只留结论，已完成各项的过程在 docs/progress-log.md）：

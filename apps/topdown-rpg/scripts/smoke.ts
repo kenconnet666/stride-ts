@@ -60,9 +60,21 @@ check('点击和箱子碎的时候有粒子特效', afterPunch[4] > 0, afterPunc
 
 // 走到金币上（瞬移过去）：拾取后 3 秒移除。箱子被角色碰到也会碎（同 Stride），所以只看这一枚金币
 const TELEPORT = (target: string) => `${BY} const e = ${target}; const w = at(e); g.simulation.body(by('PlayerCharacter')[0]).teleport({ x: w[0], y: 0.05, z: w[2] }, { x: 0, y: 0, z: 0, w: 1 }); e.id`;
+// 金币带着冲量飞出来，要等它停稳了再过去：还在滚的时候瞬移到它当时的位置会扑空
+stride('eval', `(async () => { ${BY} const coin = by('LootGoldCoin')[0];
+  for (let i = 0, last = at(coin); i < 30; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const now = at(coin);
+    if (Math.hypot(now[0] - last[0], now[1] - last[1], now[2] - last[2]) < 0.005) break;
+    last = now;
+  }
+  return 1; })()`);
 const lootCoin = stride('eval', TELEPORT(`by('LootGoldCoin')[0]`)) as number;
 await sleep(3800);
-check('拾取掉落的金币', stride('eval', `strideGame.entities.isAlive(${lootCoin})`) === false, lootCoin);
+check('拾取掉落的金币', stride('eval', `strideGame.entities.isAlive(${lootCoin})`) === false,
+  // 没拾到时看角色和这枚金币各在哪
+  stride('eval', `${BY} const e = g.entities.isAlive(${lootCoin}) ? g.entities.entity(${lootCoin}) : undefined;
+    ({ player: at(by('PlayerCharacter')[0]).map((v) => +v.toFixed(2)), coin: e ? at(e).map((v) => +v.toFixed(2)) : null, children: e ? e.require(strideEngine.Transform).children.map((c) => [c.name, ...at(c).map((v) => +v.toFixed(2)), c.require(strideEngine.Transform).scale.x]) : null })`));
 
 // 场景里的金币（静态的触发器）
 const sceneCoin = stride('eval', TELEPORT(`by('CoinGold').find((e) => e.require(strideEngine.Transform).parent?.name !== 'LootGoldCoin')`)) as number;

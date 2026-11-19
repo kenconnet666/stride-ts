@@ -6,7 +6,7 @@ import type { DataShape, DataValues, EntityId } from '../data/prop';
 import type { ComponentType, ViewOf } from './component';
 import type { EntityArg, EntityManager } from './EntityManager';
 import { scriptName, type ScriptComponent, type ScriptConstructor } from './scripts';
-import { Transform } from './transform';
+import { syncSceneRoot, Transform, type SceneRoot } from './transform';
 
 /** 把一个实体的数据组件看成对象；读写都落到它在列里的那一行。 */
 export type View<S extends DataShape> = DataValues<S>;
@@ -14,6 +14,8 @@ export type View<S extends DataShape> = DataValues<S>;
 /** 实体所在的场景（见 Entity.scene）；场景对象由内容管理建（SceneInstance）。 */
 export interface EntityScene {
   readonly name: string;
+  /** 场景在变换存储里的根：场景的偏移、和父场景的关系（见 SceneRoot）。没有时场景里的实体就按自己的位置摆。 */
+  readonly root?: SceneRoot | undefined;
 }
 
 export class Entity {
@@ -54,6 +56,7 @@ export class Entity {
 
   set scene(scene: EntityScene | undefined) {
     this.ownScene = scene;
+    syncSceneRoot(this.manager, this);
   }
 
   get<C extends ComponentType<any, any>>(type: C): ViewOf<C> | undefined;

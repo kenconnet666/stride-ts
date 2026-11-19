@@ -9,6 +9,7 @@ import type { EntityId } from '../data/prop';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
 import { cloneEntity, type CloneHandler } from './clone';
+import { syncSceneRoot } from './transform';
 import { Commands } from './Commands';
 import { ComponentType, type BareComponent, type ColumnsOf, type ComponentInit } from './component';
 import { ScopedDefaults } from './defaults';
@@ -143,6 +144,7 @@ export class EntityManager {
     const entity = new Entity(this, id, desc.name ?? `entity ${indexOf(id)}`);
     entity.ownScene = desc.scene;
     this.#objects[indexOf(id)] = entity;
+    if (desc.scene?.root) syncSceneRoot(this, entity);
     for (const script of scripts) this.#attach(entity, script);
     this.#notify(id, undefined, table);
     this.#afterChange();
@@ -201,6 +203,11 @@ export class EntityManager {
   }
 
   /** 实体对象；批量生成的实体在第一次用到时才创建。 */
+  /** @internal 已经有实体对象的才返回（不为没有对象的实体新建）。 */
+  peek(id: EntityId): Entity | undefined {
+    return this.#objects[indexOf(id)];
+  }
+
   entity(id: EntityId): Entity {
     this.#assertAlive(id);
     const index = indexOf(id);

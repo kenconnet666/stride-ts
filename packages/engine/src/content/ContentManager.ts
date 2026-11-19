@@ -14,7 +14,8 @@ import { AnimationClip, Skeleton, type AnimationNative } from '../animation/reso
 import type { EntityManager } from '../engine/EntityManager';
 import { resolveSceneValues, SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
 import type { Entity, EntityScene } from '../engine/Entity';
-import { Transform } from '../engine/transform';
+import { SceneRoot, Transform } from '../engine/transform';
+import type { Vec3Like } from '../mathematics/vectors';
 import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
@@ -67,8 +68,13 @@ export interface SceneReference {
 export interface LoadSceneOptions {
   /** 场景里的 Stride 脚本类型（带命名空间）显式对应到 TS 脚本；没列的按类名在登记表里找，见 sceneScripts.ts。 */
   readonly scripts?: SceneScriptMap;
-  /** 场景的偏移（Stride 的 Scene.Offset，加在根实体的位置上）；没给时用场景文件里的。 */
+  /** 场景的偏移（Stride 的 Scene.Offset）；没给时用场景文件里的。加载以后改 `scene.offset`。 */
   readonly offset?: readonly [number, number, number];
+  /**
+   * 作为这个场景的子场景（Stride 的 Scene.Parent）：偏移接在父场景的偏移后面；用 Game.loadScene 加载时，父场景卸载、根场景换掉
+   * 也跟着卸载。
+   */
+  readonly parent?: EntityScene | undefined;
 }
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
@@ -150,6 +156,11 @@ export interface GameSettings {
 
 export interface SceneInstance extends EntityScene {
   readonly name: string;
+  /**
+   * 场景的偏移（Stride 的 Scene.Offset），相对父场景；可以直接改 x、y、z。场景里实体的世界位置带着它（和父场景的偏移），
+   * 本地位置不带。
+   */
+  readonly offset: Vec3Like;
   /** 场景文件建的实体，按文件里的实体 id；运行时放进场景的实体（Entity.scene）不在这里。 */
   readonly entities: ReadonlyMap<string, Entity>;
   /** 场景用的仿真设置（Game.loadScene 交给 simulation）。 */
@@ -491,12 +502,15 @@ export class ContentManager {
    */
   async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const { scene, assets } = await this.#sceneWithAssets(path);
-    const created = this.#instantiate(scene.entities, assets, entities, options, path, options.offset ?? scene.offset);
+    const created = this.#instantiate(scene.entities, assets, entities, options, path);
+    const [x, y, z] = options.offset ?? scene.offset ?? [0, 0, 0];
+    // 没有变换存储（场景里也就没有带 Transform 的实体）时只记下偏移
+    const root = entities.game.transforms ? new SceneRoot(entities, [x, y, z], options.parent?.root) : undefined;
     const compositor = scene.compositor && {
       ...scene.compositor,
       textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
     };
-    const instance: SceneInstance = { name: scene.name, entities: created, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
+    const instance: SceneInstance = { name: scene.name, entities: created, root, offset: root?.offset ?? { x, y, z }, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
     for (const entity of created.values()) entity.scene = instance;
     return instance;
   }
@@ -580,12 +594,10 @@ export class ContentManager {
    * 按实体文件建实体：先按顺序建实体和组件（父实体在前），再挂实例的主实体，最后挂脚本（这时所有实体都在，脚本属性里的
    * 实体引用才解析得了）。返回按文件里的实体 id 的表；where 用在报错和警告里。
    */
-  #instantiate(files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string, offset?: readonly [number, number, number]): Map<string, Entity> {
+  #instantiate(files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string): Map<string, Entity> {
     const created = new Map<string, Entity>();
     for (const file of files) {
-      // 场景的偏移（Stride 的 Scene.Offset）加在根实体上
-      const position = offset && file.parent === null ? file.position.map((value, i) => value + offset[i]!) as unknown as typeof file.position : file.position;
-      const entity = entities.create({ name: file.name, components: [Transform.with({ position, rotation: file.rotation, scale: file.scale })] });
+      const entity = entities.create({ name: file.name, components: [Transform.with({ position: file.position, rotation: file.rotation, scale: file.scale })] });
       if (file.parent !== null) {
         const parent = created.get(file.parent);
         if (!parent) throw new Error(`${where}: entity '${file.name}' comes before its parent ${file.parent}`);

@@ -130,7 +130,7 @@ check('异步脚本：球进触发器换成黄色的材质，出去换回来', y
 
 // —— 场景：C 加载、卸载子场景；B 换到场景 B，A 换回来 ——
 load('Scene loading');
-type Scenes = { root: string; base: number; withChild: number; unloaded: number; sceneB: string; linesB: string[]; back: string; backCount: number };
+type Scenes = { root: string; base: number; withChild: number; unloaded: number; childOffset: number[]; sceneB: string; linesB: string[]; back: string; backCount: number };
 const scenes = evaluate<Scenes>(`(async () => {
   const root = () => strideGame.rootScene?.name, entities = () => strideGame.entities.count;
   const until = async (done) => { for (let i = 0; i < 300 && !done(); i++) await frames(1); await frames(3); };
@@ -138,12 +138,16 @@ const scenes = evaluate<Scenes>(`(async () => {
   await tap('KeyC'); await until(() => entities() !== r.base); r.withChild = entities();
   await tap('KeyC'); await frames(3); r.unloaded = entities();
   await tap('KeyC'); await until(() => entities() !== r.base);
+  // 第二次加载的子场景往上抬 0.5：偏移在场景上，根实体的世界位置带着它，本地位置不带
+  const moved = strideGame.entities.ids().map((i) => strideGame.entities.entity(i)).find((e) => e.ownScene && e.ownScene !== strideGame.rootScene && !e.require(strideEngine.Transform).parent);
+  const t = moved.require(strideEngine.Transform);
+  r.childOffset = [moved.ownScene.offset.y, +(t.world[13] - t.position.y).toFixed(4)];
   await tap('KeyB'); await until(() => root() !== r.root); r.sceneB = root(); r.linesB = lines();
   await tap('KeyA'); await until(() => root() !== r.sceneB); r.back = root(); r.backCount = entities();
   return r;
 })()`);
 check('场景：C 加载再卸载子场景；带着子场景换到场景 B、再换回 A，实体数回到原样',
-  scenes.withChild > scenes.base && scenes.unloaded === scenes.base && scenes.sceneB === 'Completed-SceneB' && scenes.linesB.includes('Load scene-A, press: A')
+  scenes.withChild > scenes.base && scenes.unloaded === scenes.base && scenes.childOffset.join() === '0.5,0.5' && scenes.sceneB === 'Completed-SceneB' && scenes.linesB.includes('Load scene-A, press: A')
   && scenes.back === scenes.root && scenes.backCount === scenes.base, scenes);
 
 // —— 动画：E 加速，R 淡入跑步，P 出一拳后回到待机，S 暂停 ——

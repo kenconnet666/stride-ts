@@ -88,11 +88,8 @@ declare global {
  * 继承它并重写 loadContent 和 update（要调用 super.update，脚本和系统在里面跑）；draw 默认交给图形合成器，
  * 重写时可以不调用 super.draw，自己画。run() 初始化之后才有 `native`、`graphicsDevice` 和渲染系统。其中任何一处抛异常，或 AsyncScript 被拒绝，游戏都会停下，状态为 'failed'。
  */
-/** Game.loadScene 的选项。 */
-export interface LoadChildSceneOptions extends LoadSceneOptions {
-  /** 作为这个场景的子场景（Stride 的 Scene.Parent）：父场景卸载、根场景换掉时跟着卸载。 */
-  readonly parent?: EntityScene | undefined;
-}
+/** Game.loadScene 的选项（同 LoadSceneOptions；parent 给了就是子场景）。 */
+export type LoadChildSceneOptions = LoadSceneOptions;
 
 /** Game.loadGameSettings 的选项：合成器的游戏渲染器怎么建（按 Stride 的类型名），默认场景的加载选项。 */
 export interface LoadGameSettingsOptions extends LoadSceneOptions {
@@ -337,8 +334,9 @@ export class Game {
    *
    *   this.child = await this.game.loadScene(this.childScene, { parent: this.entity.scene, offset: [0, 0.5, 0] });
    */
-  async loadScene(reference: string | SceneReference, { parent, ...options }: LoadChildSceneOptions = {}): Promise<SceneInstance> {
+  async loadScene(reference: string | SceneReference, options: LoadChildSceneOptions = {}): Promise<SceneInstance> {
     const path = typeof reference === 'string' ? reference : reference.path;
+    const { parent } = options;
     const scene = await this.content.loadScene(path, this.entities, options);
     if (parent) this.#childScenes.set(parent, [...(this.#childScenes.get(parent) ?? []), scene]);
     if (scene.compositor) {
@@ -398,6 +396,7 @@ export class Game {
     for (const entity of this.entities.inScene(scene)) {
       if (entity.alive) entity.destroy();
     }
+    scene.root?.dispose();
     this.scenesChanged.run({ scene, loaded: false });
   }
 

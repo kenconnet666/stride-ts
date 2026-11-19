@@ -364,7 +364,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | PhysicsSample | `apps/physics-sample`（5188） | 0.37 到 1.02（连 UI 一起比） | 透明物体不投阴影（P4） |
 | BepuSample | `apps/bepu-sample`（5190） | 0.15 到 0.66 | |
 | Platformer2D | `apps/platformer2d`（5192） | 1.08（Stride 把精灵表压成 BC） | |
-| TopDownRPG | `apps/topdown-rpg`（5194） | 1.06（BC 压缩） | 场景的父子层级 |
+| TopDownRPG | `apps/topdown-rpg`（5194） | 1.06（BC 压缩） | |
 | FirstPersonShooter | `apps/first-person-shooter`（5196） | 0.74 | |
 
 **P2 界面、声音、效果**（进行中）：
@@ -417,10 +417,10 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
       - 没有样例用到、挪走的：分簇（P4）；画进渲染目标贴图的相机的阴影和后处理（AnimatedModel 的那台相机本来就没开，P4）；透明物体的阴影（P4）；精灵的 Swizzle（样例的资源里全是 null）；精灵组件的九宫格边框（Stride 的边框只在 UI 的图片上起作用，UI 那边已经做了；Platformer2D 的精灵表没有边框，这一条划掉）。
       - ~~透明实例的排序~~（2026-11-20，`rendering/transparentOrder.ts`）：透明的实例逐个从远到近画，不同批的可以交错，同一批里连着的一次画完。见 decisions.md 的"透明实例逐个从远到近画"。
       - ~~RecastNavigationComponent 的排队寻路和沿路径走~~（2026-11-20）：`setTarget`、`startFollowingPath`，见 decisions.md。
-      - **场景的偏移**（下一个做）：Stride 的场景有自己的偏移和父子关系（子场景的世界矩阵 = 父场景的 × 偏移），实体的本地位置不带偏移；我们加载子场景时把偏移直接加进根实体的本地位置，脚本读到的本地位置带着偏移（TopDownRPG 的分块、CSharpIntermediate 的子场景都这样）。做法：每个场景在变换存储里占一个槽位当隐藏的根（不是实体），根实体在存储里挂在它下面，`Transform.parent` 对脚本仍然是 undefined；场景的 `offset` 可以运行时改，子场景挂在父场景的根下面。
+      - ~~场景的偏移~~（2026-11-20）：场景在变换存储里占一个隐藏的根（`SceneRoot`），根实体挂在它下面，子场景的根挂在父场景的根下面；实体的本地位置不再带偏移，`scene.offset` 可以运行时改。见 decisions.md 的"场景的偏移在场景上"。
    4. UI 和文字：换行和富文本、世界空间的文字（MSDF）、按键的路由事件、还没用到的控件（ToggleButton 等）、输入框以外的无障碍树（影子 DOM：选中复制、读屏、输入法）、SVG 精灵按矢量画。
    5. 导入器里报"not supported"的逐条过一遍（材质漫反射的颜色运算和两张贴图的合成、嵌套的层、凸分解、阴影的滤波和手动分割等）：有样例用到的补上，没用到的记进后面的阶段。导入的警告每次都要看：CSharpIntermediate 的木地板成了镜面，导入时其实报了警告。~~导入没有缓存，每次都重编贴图~~（2026-11-19：贴图编码的结果按内容哈希缓存在 `~/.stride-ts/cache/pipeline`，`packages/pipeline/src/cache.ts`；一张 2048 的法线贴图编成 KTX2 要两分钟，重新导入不再等）。
-      - 比对时发现要查的：PrototypingBlocks 的拱（CSharpIntermediate 的 SceneB）在点光下，拱顶内侧的两边比桌面亮 12/255 左右，Stride 那边每块之间有明暗的接缝、我们是平滑的（不带阴影比也一样）：多半是模型导入的法线（平滑组）不一样。
+      - 比对时发现要查的：PrototypingBlocks 的拱（CSharpIntermediate 的 SceneB）在点光下，拱顶内侧的两边比桌面亮 12/255 左右，不带阴影比也一样。原因没查清：不是法线（FBX 里每个角存着法线，我们读的就是它，每个位置只有一个法线；Stride 那边看着像接缝的是格子贴图的线），要查的是点光的镜面项（材质金属度 0.5、光泽度 0.5，差在光源和相机之间的那段顶上，像高光的位置）。
    6. 整理：各样例冒烟脚本里自带的页面帮手换成 `tools/smoke.ts` 的 `PAGE_HELPERS`；文档只留结论。
    7. P2 的验收数字（`tools/measure.ps1`：导入、构建、下载量、启动、帧时间对桌面 Stride 的倍数）和全量回归，写进 progress-log.md；然后进 P3（编辑器）。
 16. **几何表示的实验**（用户 2026-11-19 要求：矢量化的几何先做实验再定；和第 14、15 项穿插着做，不等 P6）。设计和判定标准在 [vector-assets.md](vector-assets.md) 的"几何"一节，结果写回那份文档：

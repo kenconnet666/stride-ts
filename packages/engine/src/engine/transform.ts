@@ -14,6 +14,7 @@ import type { TransformSlot, TransformStore } from '@stride-ts/native';
 import { prop, type DataValues, type EntityId } from '../data/prop';
 import { createSchema, type Column } from '../data/schema';
 import { Matrix, type Matrix4 } from '../mathematics/Matrix';
+import type { Vec3Like } from '../mathematics/vectors';
 import { ComponentType, type ExternalStorage } from './component';
 import type { Entity } from './Entity';
 import type { EntityManager } from './EntityManager';
@@ -54,11 +55,11 @@ export type TransformView = DataValues<TransformShape> & {
   setLocalMatrix(matrix: Readonly<Matrix4>): void;
 };
 
-/** 一个变换存储在 TS 这边的记录：槽位属于哪个实体、每个槽位有哪些子槽位。 */
+/** 一个变换存储在 TS 这边的记录：槽位属于哪个实体（场景的根不属于实体）、每个槽位有哪些子槽位。 */
 interface TransformState {
   readonly store: TransformStore;
   readonly data: readonly Column[];
-  readonly owner: EntityId[];
+  readonly owner: (EntityId | undefined)[];
   readonly children: (Set<number> | undefined)[];
 }
 
@@ -81,13 +82,66 @@ function slotOf(manager: EntityManager, entity: EntityId): TransformSlot {
 
 function setParent(manager: EntityManager, entity: EntityId, parent: Entity | undefined): void {
   if (parent && parent.manager !== manager) throw new Error(`entity ${entity} and its parent '${parent.name}' belong to different games`);
-  const state = stateOf(manager);
-  const slot = slotOf(manager, entity);
-  const parentSlot = parent ? slotOf(manager, parent.id) : null;
+  // 没有父实体的实体挂在它所在场景的根下面（见 SceneRoot）
+  const sceneRoot = parent ? undefined : manager.peek(entity)?.ownScene?.root;
+  attach(stateOf(manager), slotOf(manager, entity), parent ? slotOf(manager, parent.id) : (sceneRoot?.slot ?? null));
+}
+
+/** 槽位挂到 parentSlot 下面（null 是没有父节点），两边的子槽位表跟着改。 */
+function attach(state: TransformState, slot: number, parentSlot: number | null): void {
   const previous = state.store.parent[slot]!;
-  state.store.setParent(slot, parentSlot);
+  state.store.setParent(slot as TransformSlot, parentSlot as TransformSlot | null);
   state.children[previous]?.delete(slot);
   if (parentSlot !== null) (state.children[parentSlot] ??= new Set()).add(slot);
+}
+
+/**
+ * 场景的根（Stride 的 Scene.Offset、Scene.Parent）：场景在变换存储里占一个槽位，不属于任何实体。场景里没有父实体的实体在存储里
+ * 挂在它下面，世界矩阵因此带上场景的偏移；子场景的根挂在父场景的根下面，偏移一层层累加。实体自己的本地位置不带偏移，对脚本
+ * 来说它们仍然是根（Transform.parent 是 undefined）。
+ */
+export class SceneRoot {
+  /** @internal 在变换存储里的槽位。 */
+  readonly slot: TransformSlot;
+  /** 场景的偏移（相对父场景）；可以随时改，下一次算世界矩阵时生效。 */
+  readonly offset: Vec3Like;
+  readonly #state: TransformState;
+
+  constructor(manager: EntityManager, offset: readonly [number, number, number] = [0, 0, 0], parent?: SceneRoot) {
+    const state = (this.#state = stateOf(manager));
+    const slot = (this.slot = state.store.allocate());
+    state.owner[slot] = undefined;
+    state.store.position.set(offset, slot * 3);
+    if (parent) attach(state, slot, parent.slot);
+    const component = (axis: number): PropertyDescriptor => ({
+      enumerable: true,
+      get: () => state.store.position[slot * 3 + axis]!,
+      set: (value: number) => (state.store.position[slot * 3 + axis] = value),
+    });
+    this.offset = Object.defineProperties({}, { x: component(0), y: component(1), z: component(2) }) as Vec3Like;
+  }
+
+  /** 场景卸载时释放：还挂在下面的（没跟着场景销毁的实体、别的场景的根）变成没有父节点。 */
+  dispose(): void {
+    const state = this.#state;
+    for (const child of [...(state.children[this.slot] ?? [])]) attach(state, child, null);
+    state.children[this.slot] = undefined;
+    state.children[state.store.parent[this.slot]!]?.delete(this.slot);
+    state.store.free(this.slot);
+  }
+}
+
+/**
+ * @internal 实体放进或者移出场景以后（Entity.scene、EntityManager.create）：没有父实体的实体改挂到新场景的根下面
+ * （没有场景、或者场景没有根时不挂）。
+ */
+export function syncSceneRoot(manager: EntityManager, entity: Entity): void {
+  if (!entity.has(Transform)) return;
+  const state = stateOf(manager);
+  const slot = slotOf(manager, entity.id);
+  // 有父实体的跟着父实体
+  if (state.owner[state.store.parent[slot]!] !== undefined) return;
+  attach(state, slot, entity.ownScene?.root?.slot ?? null);
 }
 
 const external: ExternalStorage = {
@@ -99,6 +153,9 @@ const external: ExternalStorage = {
     const state = stateOf(manager);
     const slot = state.store.allocate();
     state.owner[slot] = entity;
+    // 已经在场景里的实体后加 Transform：挂到场景的根下面（刚创建的实体这时还没有实体对象，由 create 接着挂）
+    const sceneRoot = manager.peek(entity)?.ownScene?.root;
+    if (sceneRoot) attach(state, slot, sceneRoot.slot);
     return slot;
   },
 
@@ -113,6 +170,7 @@ const external: ExternalStorage = {
     }
     state.children[state.store.parent[slot]!]?.delete(slot);
     state.children[slot] = undefined;
+    state.owner[slot] = undefined;
     state.store.free(slot);
   },
 
@@ -142,8 +200,9 @@ const external: ExternalStorage = {
       parent: {
         enumerable: true,
         get: () => {
-          const parent = stateOf(manager).store.parent[slotOf(manager, entity)]!;
-          return parent === 0 ? undefined : manager.entity(stateOf(manager).owner[parent]!);
+          // 挂在场景的根下面（槽位不属于实体）的也是根
+          const owner = stateOf(manager).owner[stateOf(manager).store.parent[slotOf(manager, entity)]!];
+          return owner === undefined ? undefined : manager.entity(owner);
         },
         set: (parent: Entity | undefined) => setParent(manager, entity, parent),
       },

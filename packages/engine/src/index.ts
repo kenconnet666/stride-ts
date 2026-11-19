@@ -125,7 +125,7 @@ export {
 } from './engine/scripts';
 export { Stat, type StatModifierOptions } from './engine/stats';
 export { system, System, type Chunk, type EntityIds, type Phase, type SystemSpec } from './engine/system';
-export { Transform, transformSlot, type TransformColumns, type TransformShape, type TransformView } from './engine/transform';
+export { SceneRoot, Transform, transformSlot, type TransformColumns, type TransformShape, type TransformView } from './engine/transform';
 export { validator } from './engine/validator';
 export { Debug, FrameTimings, describe, type DebugHandler } from './debug/Debug';
 export { DebugText, type DebugTextLine } from './debug/DebugText';

@@ -233,7 +233,7 @@ describe('ContentManager', () => {
     await expect(load(scene([{ type: 'G.Listener', props: { source: { $entity: 'a' } } }]))).rejects.toThrow(/has no Signal/);
   });
 
-  test('场景的偏移（Stride 的 Scene.Offset）加在根实体上，子实体不加', async () => {
+  test('场景的偏移（Stride 的 Scene.Offset）在场景上：实体的世界位置带着它，本地位置不带；可以运行时改；子场景的偏移接在父场景后面', async () => {
     const entity = (id: string, parent: string | null) => ({ id, name: id, parent, position: [1, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} }) as const;
     const scene: SceneFile = { name: 'Chunk', offset: [-20, 0, 5], entities: [entity('root', null), entity('child', 'root')] };
     const game = new Game();
@@ -242,8 +242,36 @@ describe('ContentManager', () => {
     const content = new ContentManager({ root: 'https://game.test/content/', read: async () => json(scene) });
     const loaded = await content.loadScene('scenes/Chunk', game.entities);
     game.transforms.update();
-    expect([...loaded.entities.get('root')!.require(Transform).world.subarray(12, 15)]).toEqual([-19, 0, 5]);
-    expect([...loaded.entities.get('child')!.require(Transform).world.subarray(12, 15)]).toEqual([-18, 0, 5]);
+    const root = loaded.entities.get('root')!, child = loaded.entities.get('child')!;
+    const world = (entity: typeof root) => [...entity.require(Transform).world.subarray(12, 15)];
+    expect([world(root), world(child)]).toEqual([[-19, 0, 5], [-18, 0, 5]]);
+    expect([{ ...root.require(Transform).position }, root.require(Transform).parent]).toEqual([{ x: 1, y: 0, z: 0 }, undefined]);
+    expect(child.require(Transform).parent).toBe(root);
+
+    // 运行时改场景的偏移；子场景的偏移接在父场景的后面
+    loaded.offset.y = 2;
+    const nested = await content.loadScene('scenes/Chunk', game.entities, { parent: loaded, offset: [0, 0, 1] });
+    // 运行时放进场景的实体跟着场景的偏移；移出来就不跟了；有父实体的不受影响
+    const placed = game.entities.create({ name: 'placed', scene: loaded, components: [Transform.with({ position: [0, 1, 0] })] });
+    const later = game.entities.create({ name: 'later', components: [Transform] });
+    later.scene = nested;
+    game.transforms.update();
+    expect([world(root), world(nested.entities.get('root')!), world(placed), world(later)]).toEqual([[-19, 2, 5], [-19, 2, 6], [-20, 3, 5], [-20, 2, 6]]);
+    later.scene = undefined;
+    child.scene = nested;
+    game.transforms.update();
+    expect([world(later), world(child)]).toEqual([[0, 0, 0], [-18, 2, 5]]);
+    // 从父实体下面拿出来的实体回到它所在场景的根下面
+    child.scene = loaded;
+    child.require(Transform).parent = undefined;
+    game.transforms.update();
+    expect(world(child)).toEqual([-19, 2, 5]);
+
+    // 场景的根释放以后，还留着的实体不再带偏移
+    nested.root!.dispose();
+    loaded.root!.dispose();
+    game.transforms.update();
+    expect([world(root), world(placed)]).toEqual([[1, 0, 0], [0, 1, 0]]);
   });
 
   test('模型实例化：实例引用的主实体排在后面也能挂上，主实体带 Instancing；没有主实体的实例是 -1', async () => {
@@ -336,7 +364,10 @@ describe('ContentManager', () => {
     // 子场景（Stride 的 scene.Parent）：带偏移加载；换根场景时跟着父场景一起卸载，自己先卸载的不再管
     const child = await game.loadScene({ path: 'scenes/Child' }, { parent: third, offset: [0, 0.5, 0] });
     const early = await game.loadScene('scenes/Early', { parent: third });
-    expect({ ...child.entities.get('root')!.require(Transform).position }).toEqual({ x: 0, y: 0.5, z: 0 });
+    // 偏移在场景上：实体的本地位置不带，世界位置带；对脚本来说它还是根
+    const childRoot = child.entities.get('root')!.require(Transform);
+    game.transforms.update();
+    expect([{ ...childRoot.position }, { ...child.offset }, [...childRoot.world.subarray(12, 15)], childRoot.parent]).toEqual([{ x: 0, y: 0, z: 0 }, { x: 0, y: 0.5, z: 0 }, [0, 0.5, 0], undefined]);
     game.unloadScene(early);
     const fourth = await game.setRootScene('scenes/Fourth');
     expect([...child.entities.values(), ...early.entities.values()].some((e) => game.entities.isAlive(e.id))).toBe(false);

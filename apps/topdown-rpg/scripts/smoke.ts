@@ -37,8 +37,13 @@ check('鼠标指着箱子时高亮', highlight > 0.5, highlight);
 
 const [crates, loot] = stride('eval', COUNTS) as Vec;
 stride('mouse', 'left');
-await sleep(4000);
-const afterPunch = stride('eval', COUNTS) as Vec;
+// 箱子一碎就数金币：金币掉在角色脚边，可能马上被捡起、3 秒后移除，隔久了数就少了
+const afterPunch = stride('eval', `new Promise((resolve) => {
+  const started = performance.now();
+  const poll = () => { ${BY} const counts = [by('LootBox').length, by('LootGoldCoin').length, by('CoinGold').length];
+    if (counts[0] < ${crates} || performance.now() - started > 6000) resolve(counts); else requestAnimationFrame(poll); };
+  poll();
+})`) as Vec;
 check('点箱子：走过去出拳，箱子碎掉、掉出金币', afterPunch[0] < crates && afterPunch[1] >= loot + 3, { before: [crates, loot], afterPunch });
 
 // 走到金币上（瞬移过去）：拾取后 3 秒移除。箱子被角色碰到也会碎（同 Stride），所以只看这一枚金币

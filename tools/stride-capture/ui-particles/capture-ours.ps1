@@ -26,7 +26,7 @@ function Shot([string]$name, [string]$code) {
     Start-Sleep -Milliseconds 500
     $result = pnpm exec stride shot (Join-Path $Out "$name.png") --diff (Join-Path $Reference "$name.png") --hub ui-particles | ConvertFrom-Json
     $d = $result.diff
-    '{0}: mean {1:N2}, over 8 {2}, over 32 {3}' -f $name, $d.mean, $d.over.'8', $d.over.'32'
+    '{0}: per channel {1:N2}, over 8 {2}, over 32 {3}' -f $name, $d.meanChannel, $d.over.'8', $d.over.'32'
 }
 
 Shot 'newgame' 'splash.fusePercentage = 0.5'

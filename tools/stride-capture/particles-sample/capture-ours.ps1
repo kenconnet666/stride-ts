@@ -28,7 +28,7 @@ foreach ($scene in 'MainScene', 'AnimatedParticles', 'ChildParticles', 'CustomMa
     Start-Sleep -Milliseconds 500
     $result = pnpm exec stride shot (Join-Path $Out "$scene.png") --diff (Join-Path $Reference "$scene.png") --hub particles-sample | ConvertFrom-Json
     $d = $result.diff
-    '{0}: mean {1:N2}, over 8 {2}, over 32 {3}' -f $scene, $d.mean, $d.over.'8', $d.over.'32'
+    '{0}: per channel {1:N2}, over 8 {2}, over 32 {3}' -f $scene, $d.meanChannel, $d.over.'8', $d.over.'32'
 }
 # 用完就关：无头 Chrome 开着会一直按满帧率渲染
 pnpm exec stride close | Out-Null

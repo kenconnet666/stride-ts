@@ -13,4 +13,4 @@ pwsh tools/stride-capture/custom-effect/capture-ours.ps1
 
 ## 2026-11-19 的结果
 
-2.000 秒时平均每通道差 0.64/255。波纹的形状、相位和亮度两边一致，差在标志的字母边缘：Stride 的边缘有一圈暗边（源图透明区是黑的，Stride 不渗色），我们导入时做了 alpha 渗色（见 docs/architecture.md 的贴图），没有暗边。
+2.000 秒时平均每通道差 0.43/255。波纹的形状、相位和亮度两边一致，差在标志的字母边缘：Stride 的边缘有一圈暗边（源图透明区是黑的，Stride 不渗色），我们导入时做了 alpha 渗色（见 docs/architecture.md 的贴图），没有暗边。

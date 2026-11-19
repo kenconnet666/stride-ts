@@ -31,5 +31,5 @@ pnpm exec stride step 2 --hub $hub | Out-Null
 Start-Sleep -Milliseconds 300
 $result = pnpm exec stride shot $Out --diff $Reference --hub $hub | ConvertFrom-Json
 $d = $result.diff
-'Clips at {0}: mean {1:N2}, over 8 {2}, over 32 {3}' -f (($times | ForEach-Object { '{0} {1:N3} s' -f $_.Name, $_.Seconds }) -join ', '), $d.mean, $d.over.'8', $d.over.'32'
+'Clips at {0}: per channel {1:N2}, over 8 {2}, over 32 {3}' -f (($times | ForEach-Object { '{0} {1:N3} s' -f $_.Name, $_.Seconds }) -join ', '), $d.meanChannel, $d.over.'8', $d.over.'32'
 pnpm exec stride close | Out-Null

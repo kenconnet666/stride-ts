@@ -4,6 +4,8 @@
 截好的参考图不进仓库，需要时重新截。stride-ts 这边用 `stride shot --diff` 比。各工程共用 [Benchmark.cs](Benchmark.cs)：
 `--benchmark N [--gpu-profile]` 让游戏照常跑着测帧时间（TPP 有自己的静态模式），stride-ts 这边对应 `tools/measure.ps1`。
 
+各样例说明里的"平均差"是平均每通道差（/255，`stride shot --diff` 结果里的 `meanChannel`，`capture-ours.ps1` 打印的就是它）。P1 的几个（tpp、animated-model、physics-sample、bepu-sample、platformer2d、topdown-rpg、first-person-shooter）当时记的是每个像素取差最大的通道再平均，偏大，重截时换成每通道的。
+
 | 目录 | 样例 | 说明 |
 |---|---|---|
 | [tpp/](tpp/README.md) | Third Person Platformer | 静态画面（去掉脚本、动画、角色物理）；可以关单个后处理、固定曝光、只留一种光、测帧时间 |

@@ -17,8 +17,8 @@ pnpm exec stride open 'http://localhost:5220/' --headless --size 1280x720 --dpr 
 pnpm exec stride wait --hub csharp-beginner | Out-Null
 # 菜单的按钮（和 tutorial 命令）在 TutorialUI 的 start 里才建
 Start-Sleep -Seconds 2
-# 参考图是 Release 版截的，Stride 的调试文字只在调试版显示
-pnpm exec stride eval 'strideGame.debugText.visible = false' --hub csharp-beginner | Out-Null
+# 参考图是 Release 版截的，Stride 的调试文字只在调试版显示；色调映射的亮度适应两边都关掉（见 CSharpBeginnerApp.cs）
+pnpm exec stride eval 'strideGame.debugText.visible = false; strideGame.graphicsCompositor.postEffects.toneMap.temporalAdaptation = false' --hub csharp-beginner | Out-Null
 
 foreach ($shot in @(@('Cloning entities', 'cloning'), @('Keyboard input', 'keyboard'), @('Properties', 'properties'))) {
     $name = '"{0}"' -f $shot[0]

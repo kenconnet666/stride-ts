@@ -27,5 +27,5 @@ pnpm exec stride step 1 --hub $hub | Out-Null
 Start-Sleep -Milliseconds 300
 $result = pnpm exec stride shot $Out --diff $Reference --hub $hub | ConvertFrom-Json
 $d = $result.diff
-'Ripple at {0:N3} s: mean {1:N2}, over 8 {2}, over 32 {3}' -f $time, $d.mean, $d.over.'8', $d.over.'32'
+'Ripple at {0:N3} s: per channel {1:N2}, over 8 {2}, over 32 {3}' -f $time, $d.meanChannel, $d.over.'8', $d.over.'32'
 pnpm exec stride close | Out-Null

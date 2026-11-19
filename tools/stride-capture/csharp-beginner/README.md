@@ -16,7 +16,9 @@ pwsh tools/stop-dev.ps1
 | `keyboard.png` | Keyboard input | 三个茶壶（程序模型 Teapot） |
 | `properties.png` | Properties | 近处的箱子（带材质层的发光标志） |
 
-两边都等相机的 2 秒插值走完。桌面版走完后把相机摆到教程的 Camera 实体那里：Stride 的插值不封顶，最后一帧会冲过头一点，冲多少看那一帧多长（我们封顶到 1，见 decisions.md）。
+两边都关掉色调映射的亮度适应（`TemporalAdaptation`，时间常数 1 秒）：相机移到位以后曝光还在变，早截晚截墙面能差 4/255，桌面 Stride 自己两次截图就差这么多。两边都等相机的 2 秒插值走完。桌面版走完后把相机摆到教程的 Camera 实体那里：Stride 的插值不封顶，最后一帧会冲过头一点，冲多少看那一帧多长（我们封顶到 1，见 decisions.md）。
+
+逐个效果比对时，桌面版加 `--only properties --disable bloom,lightstreak`（可选 fxaa、brightfilter、bloom、lightstreak、lensflare），我们这边用 `stride eval` 关同样的效果（`strideGame.graphicsCompositor.postEffects.bloom.enabled = false`）。
 
 参考图里没有调试文字：Stride 的 `DebugTextSystem.Visible` 默认只在调试版是 true，截图工程是 Release 版。`capture-ours.ps1` 把我们的 `debugText.visible` 关掉再截。它只比顶上 100 像素的 UI 以下的部分（`stride shot --region`）：Stride 的 UI 在后处理之前画、被色调映射（白底成了灰的），我们画在后处理之后，是有意的偏差。
 
@@ -26,11 +28,14 @@ UI 以下的场景，平均每通道差（/255）和任一通道差超过 8、32
 
 | 图 | 平均差 | 超过 8 | 超过 32 |
 |---|---|---|---|
-| cloning | 2.35 | 4.52% | 1.30% |
-| keyboard | 2.27 | 4.08% | 1.44% |
-| properties | 5.98 | 11.39% | 2.09% |
+| cloning | 1.44 | 0.94% | 0.16% |
+| keyboard | 1.24 | 0.66% | 0.09% |
+| properties | 1.55 | 0.71% | 0.04% |
 
-物体的位置、大小、阴影两边一致（克隆的剑、茶壶、梯子逐像素对得上）。差的来源：
+物体的位置、大小、阴影两边一致（克隆的剑、茶壶、梯子逐像素对得上），剩下的差在格子贴图的颜色（Stride 压成 BC 格式）。
 
-- 格子贴图的颜色：Stride 压成 BC 格式，我们用原样的 PNG（同 TopDownRPG、FirstPersonShooter，它们是 2.2 到 2.7）。
-- 箱子的发光标志（properties 那张近处有两个，所以差大）：我们的蓝色光晕比 Stride 宽、亮。带材质层的箱子这是第一次近距离比，还没查是自发光的强度还是泛光的问题，记在 docs/roadmap.md 的"进度"里。
+第一次比是 2.35、2.27、5.98，属性那张近处的箱子标志比 Stride 多一圈蓝光。逐个效果比（两边只开泛光、只开光芒、只开镜头光晕，都关）找到三处，修掉以后降到上面的数（见 docs/decisions.md 的"贴图的颜色键和 1 位 alpha；泛光的权重"）：
+
+- 泛光的权重强了 4 倍（少算了一次颜色空间转换）：三张都受影响，占了差的大头；
+- 箱子的遮罩贴图有颜色键和 `Alpha: Mask`，以前没导入，标志周围的黑底上漏出蓝色的条纹；
+- 两边截图时色调映射的亮度适应还没走完，墙面差 4/255。

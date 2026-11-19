@@ -15,7 +15,7 @@ pwsh tools/stride-capture/ui-particles/capture-ours.ps1
 | `newgame.png` | 场景跑 30 帧后导火索设成一半，所有发射器改成固定种子并重置，再跑 60 帧（火在冒） |
 | `endgame.png` | 进入结束（SplashScript.EnterEndGame：火停掉，大彩纸移到画面上方），同样定住粒子，60 帧 |
 
-`capture-ours.ps1` 在 stride-ts 这边暂停后单步走同样的 60 步再截，逐张比。CLI 打印的 mean 是三个通道加起来的，下面的表是每通道的平均。
+`capture-ours.ps1` 在 stride-ts 这边暂停后单步走同样的 60 步再截，逐张比。
 
 ## 2026-11-19 的结果
 

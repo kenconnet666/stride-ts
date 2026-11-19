@@ -35,7 +35,7 @@ function Shot([string]$name) {
     Start-Sleep -Milliseconds 300
     $result = pnpm exec stride shot (Join-Path $Out "$name.png") --diff (Join-Path $Reference "$name.png") --hub $hub | ConvertFrom-Json
     $d = $result.diff
-    '{0}: mean {1:N2}, over 8 {2}, over 32 {3}' -f $name, $d.mean, $d.over.'8', $d.over.'32'
+    '{0}: per channel {1:N2}, over 8 {2}, over 32 {3}' -f $name, $d.meanChannel, $d.over.'8', $d.over.'32'
 }
 
 # 多行的代码从标准输入传（经过 pnpm 的 .cmd 包装时，参数里的换行会截断命令行）

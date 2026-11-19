@@ -25,7 +25,7 @@ function Shot([string]$name) {
     Start-Sleep -Milliseconds 300
     $result = pnpm exec stride shot (Join-Path $Out "$name.png") --diff (Join-Path $Reference "$name.png") --hub $hub | ConvertFrom-Json
     $d = $result.diff
-    '{0}: mean {1:N2}, over 8 {2}, over 32 {3}' -f $name, $d.mean, $d.over.'8', $d.over.'32'
+    '{0}: per channel {1:N2}, over 8 {2}, over 32 {3}' -f $name, $d.meanChannel, $d.over.'8', $d.over.'32'
 }
 
 pnpm exec stride call fixed-level --hub $hub | Out-Null

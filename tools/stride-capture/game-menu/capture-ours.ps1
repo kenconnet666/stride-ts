@@ -23,7 +23,7 @@ function Shot([string]$name) {
     Start-Sleep -Milliseconds 800
     $result = pnpm exec stride shot (Join-Path $Out "$name.png") --diff (Join-Path $Reference "$name.png") --hub game-menu | ConvertFrom-Json
     $d = $result.diff
-    '{0}: mean {1:N2}, over 8 {2}, over 32 {3}' -f $name, $d.mean, $d.over.'8', $d.over.'32'
+    '{0}: per channel {1:N2}, over 8 {2}, over 32 {3}' -f $name, $d.meanChannel, $d.over.'8', $d.over.'32'
 }
 function Main([string]$code) {
     pnpm exec stride eval "const type = strideGame.registry.scriptsNamed('MainScript')[0]; const main = [...strideGame.rootScene.entities.values()].map((e) => e.get(type)).find(Boolean); $code; 1" --hub game-menu | Out-Null

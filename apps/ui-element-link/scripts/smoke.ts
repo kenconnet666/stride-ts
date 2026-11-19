@@ -92,6 +92,8 @@ async function visit(name: string, next: string): Promise<void> {
   check(`${name}：FollowingEntity 跟着按钮`, gap < (name === 'FullScreen' ? 0.5 : 0.005), gap);
   const running = stride('eval', 'runningAnimations()') as number;
   check(`${name}：骑士在跑`, running === 1, running);
+  const smoke = stride('eval', 'strideGame.particles.components.reduce((sum, c) => sum + c.particleSystem.livingParticles, 0)') as number;
+  check(`${name}：烟的粒子在冒`, smoke > 0, smoke);
   stride('eval', 'uiClick(...cornerPoint()).then(() => 1)');
   await sleep(300);
   check(`${name}：点角上的按钮不换场景`, scene() === name, scene());

@@ -27,6 +27,8 @@ $freeze = @'
   button.canvasAbsolutePosition = [center[0] + center[0] * 0.75 * 0.5, center[1]];
   const knight = all.find((e) => e.name === 'Running Knight').get(strideEngine.AnimationComponent);
   for (const playing of knight.playingAnimations) { playing.currentTime = 0; playing.timeFactor = 0; }
+  // 烟的粒子每次的样子不一样，两边都去掉
+  for (const e of all) if (e.get(strideEngine.ParticleSystemComponent)) e.remove(strideEngine.ParticleSystemComponent);
   return 1;
 })()
 '@

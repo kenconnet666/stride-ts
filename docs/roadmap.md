@@ -363,8 +363,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | AnimatedModel | `apps/animated-model`（5186） | 0.09 | 画进渲染目标贴图的相机不用阴影、不做后处理 |
 | PhysicsSample | `apps/physics-sample`（5188） | 0.37 到 1.02（连 UI 一起比） | 透明物体不投阴影、同一批的透明实例不排序 |
 | BepuSample | `apps/bepu-sample`（5190） | 0.15 到 0.66 | |
-| Platformer2D | `apps/platformer2d`（5192） | 1.08（Stride 把精灵表压成 BC） | 拿金币的音效；九宫格的精灵边框 |
-| TopDownRPG | `apps/topdown-rpg`（5194） | 1.06（BC 压缩） | 粒子特效、音乐和音效；RecastNavigationComponent 的排队寻路和直接移动；场景的父子层级 |
+| Platformer2D | `apps/platformer2d`（5192） | 1.08（Stride 把精灵表压成 BC） | 九宫格的精灵边框 |
+| TopDownRPG | `apps/topdown-rpg`（5194） | 1.06（BC 压缩） | RecastNavigationComponent 的排队寻路和直接移动；场景的父子层级 |
 | FirstPersonShooter | `apps/first-person-shooter`（5196） | 0.74 | |
 
 **P2 界面、声音、效果**（进行中）：
@@ -373,7 +373,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 |---|---|---|---|---|
 | SpriteFonts | `apps/sprite-fonts`（5198） | 矢量文字（Slug）、SpriteBatch、字体导入 | 0.21 到 0.97（六屏），对齐 2.65、抗锯齿 4.80（hinting） | UI 文字的换行和富文本、世界空间的文字（MSDF）、点存成 f16 |
 | GameMenu | `apps/game-menu`（5200） | UI 系统：导入、布局、渲染、输入 | 3.5 到 4.6（BC 压缩、hinting） | 输入框以外的无障碍树、按键的路由事件、没用到的控件（ToggleButton 等） |
-| UIElementLink | `apps/ui-element-link`（5202） | 放在 3D 里的 UI、实体跟着 UI 元素走 | 4.46 到 6.81（Stride 的 UI 被色调映射，见 decisions.md） | 场景里烟的粒子（现在有粒子系统了，重新导入、比对） |
+| UIElementLink | `apps/ui-element-link`（5202） | 放在 3D 里的 UI、实体跟着 UI 元素走 | 4.46 到 6.81（Stride 的 UI 被色调映射，见 decisions.md） |  |
 | UIParticles | `apps/ui-particles`（5204） | 粒子系统（CPU 模拟）、粒子画在 UI 上面 | 4.65、4.68 | |
 | SimpleAudio | `apps/simple-audio`（5206） | 声音（Web Audio） | 1.53 | |
 | ParticlesSample | `apps/particles-sample`（5208） | 曲线、飘带和拖尾、子粒子、自定义模块和材质 | 0.70 到 2.09（七个场景） | |
@@ -408,8 +408,11 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
       - ~~清漆材质~~（2026-11-19，`MaterialClearCoatFeature`，教程里蓝色的箱子）：两遍（金属碎片加底漆、清漆加在上面），输入都是颜色树。射线那张从 1.71 降到 1.00，蓝箱子各个面的平均颜色两边差不到 2/255。
 15. **P2 收尾**（CSharpIntermediate 是 P2 清单里最后一个样例；这一项把 P2 里记下没做完的补齐，再测一遍验收数字）。分步：
    1. ~~重截 P1 的七个样例~~（2026-11-19）：各补了 `capture-ours.ps1`（共用 `tools/stride-capture/ours.ps1`），`capture-all.ps1` 一步跑完；按每通道平均差重记进"已完成"的表。除 TPP 的默认设置（1.84，后处理把贴图的小差放大了）外都在 1.1 以内。
-   2. 样例里记着"P2 补"的：~~AnimatedModel 的 Idle、Run 按钮和 PhysicsSample 各场景的文字、按钮~~（2026-11-19：按钮绑到 UI 上，PhysicsSample 的三个脚本照 Stride 用代码建页面，调试命令去掉，冒烟改成点真的按钮）；Platformer2D 拿金币的音效；TopDownRPG 的粒子特效、音乐和音效；UIElementLink 场景里烟的粒子。
-   3. P2 清单里还没做的引擎能力，每项先看 Stride 怎么做、有没有样例用到：点光和聚光的阴影、分簇；MSAA；画进渲染目标贴图的相机（阴影、后处理）；渲染组和渲染掩码；动画剪辑的非骨骼曲线；触摸手势；透明物体的阴影和同一批里的排序；精灵的 Swizzle、九宫格边框；RecastNavigationComponent 的排队寻路和直接移动；场景父子层级的偏移累加。
+   2. 样例里记着"P2 补"的：~~AnimatedModel 的 Idle、Run 按钮和 PhysicsSample 各场景的文字、按钮~~（2026-11-19：按钮绑到 UI 上，PhysicsSample 的三个脚本照 Stride 用代码建页面，调试命令去掉，冒烟改成点真的按钮）；~~Platformer2D 拿金币的音效；TopDownRPG 的粒子特效、音乐和音效~~（2026-11-19：金币、箱子、掉落金币的音效和 MusicScript 的背景音乐接上；粒子特效的预制体原来就在放，冒烟补了检查）；~~UIElementLink 场景里烟的粒子~~（2026-11-19：重新导入就有了，冒烟检查粒子在冒；截图比对时两边都去掉）。
+   3. P2 清单里还没做的引擎能力，每项先看 Stride 怎么做、有没有样例用到（2026-11-19 查过 Stride 的全部样例）：
+      - **点光和聚光的阴影**：CSharpIntermediate 的 SceneB 有一盏投阴影的点光（导入时一直在报警告），要做。照 Stride 的 `LightPointShadowMapRendererCubeMap`（点光默认的类型）：六个面各占图集里一块（四周留 8 像素的边），按到光源的方向选面，深度按到光源的轴向距离算；聚光是一个透视视图（`LightSpotShadowMapRenderer`），一起做。分步：图集改成按矩形分配（现在只会排级联的格子）→ 收集点光、聚光的阴影视图和着色器要的数据（放存储缓冲，不给盏数设上限）→ 接收的着色器 → 导入器（阴影的类型、大小、偏移）→ 单测 → 截图工程加 SceneB 一张，和桌面比。抛物面的那种（`LightPointShadowMapRendererParaboloid`）没有样例用，记到 P4。
+      - MSAA（只有没移植的 VRSandbox 开了）、渲染组和渲染掩码（样例的合成器全是 All；UI 上写的 Group4、Group25 没有效果）：没有样例用到，挪到后面——MSAA 进 P4，渲染掩码进 P3（编辑器的辅助图形要用）。
+      - 还没查的：分簇；画进渲染目标贴图的相机（阴影、后处理）；动画剪辑的非骨骼曲线；触摸手势（SpaceEscape、TouchInputs 用到）；透明物体的阴影和同一批里的排序；精灵的 Swizzle、九宫格边框；RecastNavigationComponent 的排队寻路和直接移动；场景父子层级的偏移累加。
    4. UI 和文字：换行和富文本、世界空间的文字（MSDF）、按键的路由事件、还没用到的控件（ToggleButton 等）、输入框以外的无障碍树（影子 DOM：选中复制、读屏、输入法）、SVG 精灵按矢量画。
    5. 导入器里报"not supported"的逐条过一遍（材质漫反射的颜色运算和两张贴图的合成、嵌套的层、凸分解、阴影的滤波和手动分割等）：有样例用到的补上，没用到的记进后面的阶段。导入的警告每次都要看：CSharpIntermediate 的木地板成了镜面，导入时其实报了警告。~~导入没有缓存，每次都重编贴图~~（2026-11-19：贴图编码的结果按内容哈希缓存在 `~/.stride-ts/cache/pipeline`，`packages/pipeline/src/cache.ts`；一张 2048 的法线贴图编成 KTX2 要两分钟，重新导入不再等）。
    6. 整理：各样例冒烟脚本里自带的页面帮手换成 `tools/smoke.ts` 的 `PAGE_HELPERS`；文档只留结论。

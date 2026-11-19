@@ -937,6 +937,24 @@ Game*: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
 `));
     expect(underCamera.gameRenderer?.type).toBe('JumpyJet.JumpyJetRenderer');
     expect(underCamera.gameRenderer?.settings['ParallaxBackgrounds']).toBe('p1:ParallaxBackgrounds');
+    // 网格的效果名不是默认的 StrideForwardShadingEffect 时带上（SpaceEscape 的 SpaceEscapeEffectMain）
+    const withEffect = (name: string) => importCompositor(parseStrideYaml(`!GraphicsCompositorAsset
+Id: c
+Cameras:
+    s0:
+        Id: slot0
+RenderFeatures:
+    f1: !Stride.Rendering.MeshRenderFeature,Stride.Rendering
+        RenderStageSelectors:
+            r1: !Stride.Rendering.MeshTransparentRenderStageSelector,Stride.Rendering
+                EffectName*: ${name}
+Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
+    Id: cam
+    Camera: ref!! slot0
+    Child: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine
+        Id: fw
+`)).main?.meshEffect;
+    expect([withEffect('SpaceEscapeEffectMain'), withEffect('StrideForwardShadingEffect')]).toEqual(['SpaceEscapeEffectMain', undefined]);
     // 运行时借前向渲染器画场景：不做后处理（Stride 里游戏的渲染器直接画到输出上）
     expect(underCamera.main).toEqual({ clearColor: [0, 0, 0, 1], postEffects: null, transparent: true });
     expect(custom.main).toBeUndefined();

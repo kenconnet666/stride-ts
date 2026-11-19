@@ -7,6 +7,7 @@
 import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../content/format';
 import type { Branded } from '../data/prop';
 import { ResourceTable } from '../engine/ResourceTable';
+import { MESH_EFFECT_PARAMETERS } from './meshEffect';
 
 export { VERTEX_FLOATS };
 
@@ -42,6 +43,10 @@ export class Mesh {
   readonly bounds: Bounds;
   /** 剔除用的包围盒，默认就是 bounds；蒙皮网格由内容管理放大到动画会到的范围。 */
   cullBounds: Bounds;
+  /** 网格效果的参数里改过的值（Stride 的 Mesh.Parameters），NaN 的用效果的默认值；没改过时是 undefined。 */
+  effectParameters: Float32Array | undefined;
+  /** 改了效果参数要递增，渲染特性据此重新上传。 */
+  effectVersion = 0;
 
   constructor(name: string, data: MeshData) {
     this.layout = data.layout ?? FLOAT_LAYOUT;
@@ -54,6 +59,17 @@ export class Mesh {
     this.bounds = boundsOf(data.vertices, this.layout, this.dequantize, this.vertexStride);
     this.cullBounds = this.bounds;
     this.id = meshes.add(this) as MeshId;
+  }
+
+  /**
+   * 改网格效果的参数（见 meshEffect）：从第 offset 个 float 起写 values，别的保持原样（没改过的用效果的默认值）。同一个模型资源
+   * 的实例共用网格，一起变（同 Stride 的 Mesh.Parameters）。
+   */
+  setEffectParameters(values: ArrayLike<number>, offset = 0): void {
+    if (offset < 0 || offset + values.length > MESH_EFFECT_PARAMETERS) throw new RangeError(`mesh '${this.name}': effect parameters ${offset}..${offset + values.length} are out of 0..${MESH_EFFECT_PARAMETERS}`);
+    this.effectParameters ??= new Float32Array(MESH_EFFECT_PARAMETERS).fill(NaN);
+    this.effectParameters.set(values, offset);
+    this.effectVersion++;
   }
 
   get vertexCount(): number {

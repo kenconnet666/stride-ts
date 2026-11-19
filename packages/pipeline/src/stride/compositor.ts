@@ -54,8 +54,12 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
   const particleStage = parseObjectReference(findNode(particles?.['RenderStageSelectors'], (node) => 'TransparentRenderStage' in node)?.['TransparentRenderStage']);
   const overlay = camera && particleStage !== undefined && findRenderer(resolve(camera['Child']), resolve, (node) =>
     node.$type?.startsWith('Stride.Rendering.Compositing.SingleStageRenderer') === true && parseObjectReference(node['RenderStage']) === particleStage);
+  // 网格的效果：MeshTransparentRenderStageSelector 的 EffectName 不是默认的 StrideForwardShadingEffect 时（SpaceEscape）
+  const meshes = findNode(compositor?.['RenderFeatures'], (node) => node.$type?.startsWith('Stride.Rendering.MeshRenderFeature') === true);
+  const effectName = findNode(meshes?.['RenderStageSelectors'], (node) => node.$type?.startsWith('Stride.Rendering.MeshTransparentRenderStageSelector') === true)?.['EffectName'];
+  const meshEffect = typeof effectName === 'string' && effectName !== 'StrideForwardShadingEffect' ? { meshEffect: effectName } : {};
   const main = forward && {
-    ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}), ...shadows, ...(overlay ? { particlesOverUI: true as const } : {}),
+    ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}), ...shadows, ...(overlay ? { particlesOverUI: true as const } : {}), ...meshEffect,
   };
   // 游戏的类型带程序集名、不在 Stride 的命名空间里（同场景脚本）
   const isGame = (node: StrideObject | undefined) => (node?.$type ?? '').includes(',') && !(node?.$type ?? '').startsWith('Stride.');

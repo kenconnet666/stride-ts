@@ -19,6 +19,7 @@ import { RecastNavigationComponent } from '../navigation/RecastNavigationCompone
 import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
+import type { MeshEffect } from '../rendering/meshEffect';
 import { SpriteRenderFeature } from '../rendering/SpriteRenderFeature';
 import { RenderSystem, type SceneRenderer } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../rendering/Texture';
@@ -101,6 +102,8 @@ export class Game {
   animation!: AnimationSystem;
   /** 渲染特性（默认有 MeshRenderFeature）、视图和光照（Stride 的 RenderSystem）。 */
   renderSystem!: RenderSystem;
+  /** 网格的渲染特性（Stride 的 MeshRenderFeature）；场景的合成器指定的网格效果交给它。 */
+  meshes!: MeshRenderFeature;
   /** 场景的前向渲染器（Stride 的 GraphicsCompositor 里的 ForwardRenderer），场景的合成器设置交给它。 */
   graphicsCompositor!: ForwardRenderer;
   /** 每帧画整个画面的根渲染器（Stride 的 GraphicsCompositor.Game）；默认是 graphicsCompositor，游戏可以换成自己的。 */
@@ -193,7 +196,7 @@ export class Game {
       this.content.audio ??= this.audio;
       this.audio.attach(window);
       this.renderSystem = new RenderSystem(this.graphicsDevice);
-      this.renderSystem.addFeature(new MeshRenderFeature());
+      this.meshes = this.renderSystem.addFeature(new MeshRenderFeature());
       // 背景画在网格之后，只落在没画到的地方
       this.renderSystem.addFeature(new BackgroundRenderFeature());
       this.renderSystem.addFeature(new SpriteRenderFeature());
@@ -313,7 +316,10 @@ export class Game {
    */
   async loadScene(path: string, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const scene = await this.content.loadScene(path, this.entities, options);
-    if (scene.compositor) this.graphicsCompositor.configure(scene.compositor);
+    if (scene.compositor) {
+      this.graphicsCompositor.configure(scene.compositor);
+      this.meshes.effect = this.#meshEffect(scene.compositor.meshEffect, path);
+    }
     if (scene.physics) {
       if (!this.simulation) throw new Error(`scene '${path}' has physics; run the game with nativeFeatures: [physics] (import { physics } from '@stride-ts/native/physics')`);
       this.simulation.configure(scene.physics);
@@ -343,6 +349,14 @@ export class Game {
     });
     this.rootSceneChange = change;
     return change;
+  }
+
+  /** 合成器指定的网格效果：按名字找游戏导出的 meshEffect，找不到时警告、用默认效果。 */
+  #meshEffect(name: string | undefined, where: string): MeshEffect | undefined {
+    if (name === undefined) return undefined;
+    const effect = this.registry.meshEffect(name);
+    if (!effect) console.warn(`[stride] ${where}: no mesh effect named ${name}; using the default (export meshEffect(...) under that name)`);
+    return effect;
   }
 
   /**

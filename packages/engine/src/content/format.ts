@@ -623,6 +623,11 @@ export interface SceneCompositor extends SceneForwardRenderer {
    * 没写时粒子在场景的透明阶段里。
    */
   readonly particlesOverUI?: true;
+  /**
+   * 网格用的效果（Stride 合成器里 MeshRenderFeature 的 EffectName，不是默认的 StrideForwardShadingEffect 时），运行时按名字对上
+   * 游戏导出的 meshEffect（SpaceEscape 的 SpaceEscapeEffectMain）。没写是默认效果。
+   */
+  readonly meshEffect?: string;
 }
 
 /**

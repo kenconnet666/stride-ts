@@ -4,6 +4,7 @@
  * 仍是源文件路径）；场景文件、热重载、编辑器都按这些名字引用。引擎和库的组件显式给名字，登记时保留。
  */
 import { ComponentType } from './component';
+import { isMeshEffect, type MeshEffect } from '../rendering/meshEffect';
 import { isShaderClass, type ShaderClass } from '../rendering/shaderClass';
 import { isScriptClass, scriptName, type ScriptConstructor } from './scripts';
 import { System } from './system';
@@ -29,9 +30,12 @@ export class Registry {
   readonly #particleModules = new Map<string, ParticleModuleExport>();
   /** 着色器类：导出名（同 Stride 的 MixinReference）→ WGSL。 */
   readonly #shaderClasses = new Map<string, ShaderClass>();
+  /** 网格效果：导出名（同 Stride 合成器里的 EffectName）→ 效果。 */
+  readonly #meshEffects = new Map<string, MeshEffect>();
 
   /**
-   * 登记这些模块导出的所有组件、脚本、系统，和粒子模块、着色器类（按导出名，Stride 场景里的粒子模块、着色器类按类名找它）。
+   * 登记这些模块导出的所有组件、脚本、系统，和粒子模块、着色器类、网格效果（按导出名，Stride 场景里的粒子模块、着色器类、
+   * 合成器的效果按名字找它）。
    * modules：路径 → 模块命名空间对象。
    */
   registerModules(modules: Readonly<Record<string, unknown>>): void {
@@ -82,11 +86,17 @@ export class Registry {
     return this.#shaderClasses.get(name);
   }
 
+  /** 网格效果（名字区分大小写，同 Stride 的 EffectName）。 */
+  meshEffect(name: string): MeshEffect | undefined {
+    return this.#meshEffects.get(name);
+  }
+
   #registerParticleModules(modules: Readonly<Record<string, unknown>>): void {
     for (const module of Object.values(modules)) {
       if (typeof module !== 'object' || module === null) continue;
       for (const [exportName, value] of Object.entries(module)) {
         if (isShaderClass(value)) this.#shaderClasses.set(exportName, value);
+        if (isMeshEffect(value)) this.#meshEffects.set(exportName, value);
         if (typeof value !== 'function' || typeof (value as Partial<ParticleModuleExport>).particleModuleKind !== 'string') continue;
         this.#particleModules.set(exportName.charAt(0).toLowerCase() + exportName.slice(1), value as ParticleModuleExport);
       }

@@ -395,6 +395,6 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
    分步：
    1. ~~导入和骨架~~（2026-11-19）：`apps/space-escape` 导入游戏设置、场景（Scene、LevelBlocks）、模型、骨架、动画、材质；在 Chrome 里看过，角色画出来了。导入器补上：重名的节点照 Stride 的 GenerateUniqueNames 加 `_1`、`_2`（深度优先先序，第一个也加；以前骨架找不到 `jet_F_R_1` 这类节点，动画只对第一个同名节点），骨架、动画、蒙皮都按这个名字（`strideNodeNames`）；Alpha 裁剪（MaterialTransparencyCutoffFeature，材质的 `alphaCutoff`，不透明阶段里丢掉 alpha 低于阈值的像素，深度预通道和阴影也丢）。
-   2. 着色器：网格材质的顶点和着色扩展点（世界位置在投影前可改、着色结果可改），游戏用 `shaderClass` 写弯曲和雾（同 ParticlesSample 的自定义着色器类）；BendFogRenderFeature 的参数（开关、雾色、弯曲系数）。
+   2. ~~着色器~~（2026-11-19）：网格效果 `meshEffect`（`rendering/meshEffect.ts`）：游戏导出、按导出名登记，合成器里 MeshRenderFeature 的 EffectName 是它时网格都用它画（导入器写进场景合成器的 `meshEffect`）；四个 WGSL 钩子（投影前改世界位置、改 UV、顶点算给片元的值、改最终颜色），没定义的用默认；每个网格 16 个参数（Stride 的 Mesh.Parameters，`Mesh.setEffectParameters`）。SpaceEscapeEffectMain 照 BendFogRenderFeature 的值写弯曲、雾、UV 区域（Stride 把弯曲的 X 系数写进了 X、Y 两个位置，照它画出来的样子取）。加载 LevelBlocks 看过：走廊、远处的雾。顺手：网格着色器编译出错时把出错的行打到控制台（以前只看到管线无效、全黑）。
    3. 脚本：CharacterScript（换道、跳、滑铲，动画切换，和障碍的碰撞）、BackgroundScript 加 LevelGenerator、Section、Obstacle、Hole（程序关卡）、GameScript、UIScript、PlayIdleAnimationScript；能玩。
    4. 冒烟和桌面比对（同 JumpyJet 的取法，样例在 master 还是 4.4.2 先确认）。

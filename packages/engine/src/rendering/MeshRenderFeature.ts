@@ -41,6 +41,7 @@ import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
 import { Material, type EmissiveShader, type MaterialTexture } from './Material';
+import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { MATERIAL_STREAMS } from './shaderClass';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
 import { Mesh } from './Mesh';
@@ -143,7 +144,8 @@ struct Material {
 
 // 网格的反量化：位置 = offset + 输入 · scale，UV = uvTransform.zw + 输入 · uvTransform.xy；flags 的第 1 位：法线是八面体编码。
 // 不量化的网格 offset 0、scale 1。unorm16 的位置读进来是 vec4f，snorm16x2 的法线是 (x, y, 0)，都按 vec3f 用。
-struct MeshParams { positionOffset: vec4f, positionScale: vec4f, uvTransform: vec4f, flags: u32 };
+// effect：网格效果的参数（meshEffect.ts，Stride 的 Mesh.Parameters），没有效果时没用
+struct MeshParams { positionOffset: vec4f, positionScale: vec4f, uvTransform: vec4f, flags: u32, effect: MeshEffectParameters };
 @group(2) @binding(0) var<uniform> mesh: MeshParams;
 
 /** 八面体编码还原成单位向量（同 meshopt 的 octahedral 滤波，资源管线的编码见 packages/pipeline/src/mesh.ts）。 */
@@ -167,6 +169,8 @@ struct Varyings {
   @location(4) tangent: vec4f,
   // 模型空间的位置（材质的颜色树里的 streams.position，Stride 的 POSITION）
   @location(5) local: vec3f,
+  // 网格效果在顶点着色器里算、给片元着色器用的值（effectVarying，比如雾因子）
+  @location(6) effect: vec4f,
 };
 
 const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
@@ -177,13 +181,15 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   let local = (skin * vec4f(mesh.positionOffset.xyz + position * mesh.positionScale.xyz, 1.0)).xyz;
   let localNormal = (skin * vec4f(select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u), 0.0)).xyz;
   let localTangent = (skin * vec4f(tangent.xyz, 0.0)).xyz;
-  let worldPosition = world * vec4f(local, 1.0);
+  // 网格效果可以在投影前改世界位置（Stride 的 PreTransformPosition，SpaceEscape 的走廊往远处弯）
+  let worldPosition = vec4f(effectWorldPosition((world * vec4f(local, 1.0)).xyz, mesh.effect), 1.0);
   var out: Varyings;
   out.position = view.viewProjection * worldPosition;
   out.world = worldPosition.xyz;
+  out.effect = effectVarying(out.position, worldPosition.xyz, mesh.effect);
   // 均匀缩放下法线、切线直接用世界矩阵变换；非均匀缩放要用逆转置，等材质系统一起做
   out.normal = (world * vec4f(localNormal, 0.0)).xyz;
-  out.uv = mesh.uvTransform.zw + uv * mesh.uvTransform.xy;
+  out.uv = effectUv(mesh.uvTransform.zw + uv * mesh.uvTransform.xy, mesh.effect);
   out.depth = out.position.w;
   out.tangent = vec4f((world * vec4f(localTangent, 0.0)).xyz, tangent.w);
   out.local = local;
@@ -485,8 +491,8 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let emitted = emissiveColor(in);
   color += emitted.rgb;
   let alpha = select(base.a, emitted.a, emitted.a >= 0.0);
-  // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用
-  return vec4f(color, saturate(alpha * material.blend.a));
+  // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
+  return effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect);
 }`;
 
 /** 默认的自发光：贴图乘 emissive（没有贴图时是白图）。 */
@@ -565,7 +571,8 @@ const MATERIAL_BYTES = 224;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 /** 网格参数的 uniform：positionOffset、positionScale、uvTransform 各一个 vec4，再加 flags，补齐到 16 字节。 */
-const MESH_PARAMS_BYTES = 64;
+/** 反量化参数和 flags（64 字节），加上网格效果的 16 个参数。 */
+const MESH_PARAMS_BYTES = 64 + MESH_EFFECT_PARAMETERS * 4;
 
 /** 一次剔除：一个剔除工作区和它剔除的视图；结果在实例缓冲里从 offset 开始，每个视图 slotCount 个。 */
 interface CullPass {
@@ -577,8 +584,11 @@ interface CullPass {
 }
 
 interface GpuMesh {
-  /** 第 2 组绑定：反量化参数。 */
+  /** 第 2 组绑定：反量化参数、网格效果的参数。 */
   readonly params: GPUBuffer;
+  /** 上传的效果参数是哪个效果、网格的哪个版本（变了就重新上传）。 */
+  effect: MeshEffect | undefined;
+  effectVersion: number;
   readonly bindGroup: GPUBindGroup;
   readonly vertices: GPUBuffer;
   readonly indices: GPUBuffer;
@@ -594,6 +604,8 @@ interface GpuMaterial {
 
 export class MeshRenderFeature extends RootRenderFeature {
   readonly name = 'MeshRenderFeature';
+  /** 网格效果（Stride 合成器里 MeshRenderFeature 的 EffectName 指的效果）：所有网格都用它画；没有时是默认的效果。 */
+  effect: MeshEffect | undefined;
   /** 这一帧的批次，按第一次出现的顺序；空的批次留着下一帧复用。 */
   readonly batches: MeshBatch[] = [];
   readonly #batchByKey = new Map<number, MeshBatch>();
@@ -746,11 +758,11 @@ export class MeshRenderFeature extends RootRenderFeature {
       const count = counts[index * cullPass.batchCount + b]!;
       if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
-      const gpuMesh = gpu.mesh(batch.mesh);
+      const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
       if (materialChanged || meshChanged) {
         // 管线也按材质分（自发光变体、两面画），同样的组合是同一条管线
-        const next = gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.material);
+        const next = gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.material, this.effect);
         if (next !== pipeline) pass.setPipeline((pipeline = next));
       }
       if (materialChanged) {
@@ -919,12 +931,13 @@ class Gpu {
     this.#localLights = this.#createStorage('MeshRenderFeature local lights', MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS * 4);
   }
 
-  /** 自发光变体的着色器模块（颜色树的代码是键）。 */
-  #module(emissive: EmissiveShader | undefined): GPUShaderModule {
-    const key = emissive?.code ?? '';
+  /** 着色器模块：按自发光的颜色树和网格效果分变体（两段代码是键）。 */
+  #module(emissive: EmissiveShader | undefined, effect: MeshEffect | undefined): GPUShaderModule {
+    const key = `${emissive?.code ?? ''}|${effect?.code ?? ''}`;
     let module = this.#modules.get(key);
     if (!module) {
-      module = this.device.createShaderModule({ label: `MeshRenderFeature${emissive ? ' (emissive tree)' : ''}`, code: SHADER + (emissive ? treeEmissive(emissive) : DEFAULT_EMISSIVE) });
+      const label = `MeshRenderFeature${emissive ? ' (emissive tree)' : ''}${effect ? ' (mesh effect)' : ''}`;
+      module = createCheckedShaderModule(this.device, label, SHADER + meshEffectCode(effect) + (emissive ? treeEmissive(emissive) : DEFAULT_EMISSIVE));
       this.#modules.set(key, module);
     }
     return module;
@@ -972,7 +985,7 @@ class Gpu {
    * 阴影投射）没有片元着色器；阴影投射还不剔背面、不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor）。深度比较是 less-equal
    * （Stride 的 DepthStencilStates.Default），不透明阶段靠它复用深度预通道的结果。
    */
-  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, material: Material): GPURenderPipeline {
+  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, material: Material, effect: MeshEffect | undefined): GPURenderPipeline {
     const { colorFormat, depthFormat } = stage.output;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
@@ -980,12 +993,12 @@ class Gpu {
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
     const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${doubleSided}:${cutout}:${emissive?.code ?? ''}`;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${doubleSided}:${cutout}:${emissive?.code ?? ''}:${effect?.code ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);
       const entryPoint = `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
-      const module = this.#module(emissive);
+      const module = this.#module(emissive, effect);
       pipeline = this.device.createRenderPipeline({
         label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${emissive ? ' emissive tree' : ''}`,
         layout: this.#layout(emissive?.textures.length ?? 0).layout,
@@ -1147,7 +1160,7 @@ class Gpu {
     return group;
   }
 
-  mesh(mesh: Mesh): GpuMesh {
+  mesh(mesh: Mesh, effect: MeshEffect | undefined): GpuMesh {
     let gpu = this.#meshes.get(mesh);
     if (!gpu) {
       const { vertices, indices } = mesh.data;
@@ -1155,9 +1168,11 @@ class Gpu {
       const data = new ArrayBuffer(MESH_PARAMS_BYTES);
       new Float32Array(data).set([...po, 0, ...ps, 0, us[0], us[1], uo[0], uo[1]]);
       new Uint32Array(data)[12] = mesh.layout.normal === 'snorm16x2' ? 1 : 0;
-      const params = this.#createFilled(`${mesh.name} params`, GPUBufferUsage.UNIFORM, new Uint8Array(data));
+      const params = this.#createFilled(`${mesh.name} params`, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, new Uint8Array(data));
       gpu = {
         params,
+        effect: undefined,
+        effectVersion: -1,
         bindGroup: this.device.createBindGroup({ label: `${mesh.name} params`, layout: this.#meshLayout, entries: [{ binding: 0, resource: { buffer: params } }] }),
         vertices: this.#createFilled(`${mesh.name} vertices`, GPUBufferUsage.VERTEX, vertices),
         indices: this.#createFilled(`${mesh.name} indices`, GPUBufferUsage.INDEX, indices),
@@ -1165,6 +1180,16 @@ class Gpu {
         indexCount: indices.length,
       };
       this.#meshes.set(mesh, gpu);
+    }
+    if (effect && (gpu.effect !== effect || gpu.effectVersion !== mesh.effectVersion)) {
+      // 网格改过的参数盖在效果的默认值上（NaN 是没改）
+      const values = Float32Array.from(effect.defaults, (value, i) => {
+        const own = mesh.effectParameters?.[i];
+        return own === undefined || Number.isNaN(own) ? value : own;
+      });
+      this.device.queue.writeBuffer(gpu.params, 64, values);
+      gpu.effect = effect;
+      gpu.effectVersion = mesh.effectVersion;
     }
     return gpu;
   }
@@ -1279,4 +1304,20 @@ function createDfgLut(device: GPUDevice): GPUTexture {
 /** 缓冲按 2 的幂增长，避免每多一个实体就重建。 */
 function capacityFor(bytes: number): number {
   return Math.max(256, 2 ** Math.ceil(Math.log2(bytes)));
+}
+
+/**
+ * 建着色器模块，编译出错时把出错的行打到控制台（会进调试 CLI 的日志）：游戏写的颜色树、着色器类、网格效果拼进来的 WGSL 出错时，
+ * 不然只看到管线无效、画面全黑。
+ */
+function createCheckedShaderModule(device: GPUDevice, label: string, code: string): GPUShaderModule {
+  const module = device.createShaderModule({ label, code });
+  void module.getCompilationInfo().then(({ messages }) => {
+    const lines = code.split('\n');
+    for (const m of messages) {
+      if (m.type !== 'error') continue;
+      console.error(`[stride] ${label}: WGSL ${m.lineNum}:${m.linePos}: ${m.message}\n  ${lines[m.lineNum - 1]?.trim() ?? ''}`);
+    }
+  });
+  return module;
 }

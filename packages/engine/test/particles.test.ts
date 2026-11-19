@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { CurveSampler } from '../src/particles/curves';
-import { FieldFalloff } from '../src/particles/fieldShapes';
+import { FieldFalloff, FieldShapeTorus } from '../src/particles/fieldShapes';
+import type { Vec3 } from '../src/particles/math';
 import { compileMaterial, flipbookOf, scrollOf } from '../src/particles/material';
 import { circumcenter, expandCatmullRom, expandCircular } from '../src/particles/ribbons';
 import { buildShapes, drawOrder, VERTEX_FLOATS } from '../src/particles/shapes';
@@ -351,5 +352,80 @@ describe('按寿命改颜色、转角和 UV 滚动', () => {
     const scroll = scrollOf({ startFrame: [0, 0, 1, 1], endFrame: [0, 1, 1, 2] });
     expect(scroll(1)).toEqual([0, 0, 1, 1]);
     expect(scroll(0.5)).toEqual([0, 0.5, 1, 1]);
+  });
+});
+
+describe('子粒子（照 Stride 的 SpawnerFromParent 和 ParticleChildInitializer）', () => {
+  const PARENT_SPAWNER: ParticleModuleFile = { $type: 'spawnerPerFrame', spawnCount: 2, loopCondition: 'oneShot', duration: [0.02, 0.02] };
+  const fromParent = (trigger: ParticleModuleFile, count: number): ParticleModuleFile =>
+    ({ $type: 'spawnerFromParent', parentName: 'Parent', particleSpawnTrigger: trigger, spawnCount: [count, count] });
+
+  test('死亡触发：父粒子寿命到了多留一帧，子粒子生在它最后的位置', () => {
+    const particles = new ParticleSystem({
+      emitters: [
+        {
+          emitterName: 'Parent', randomSeedMethod: 'fixed', particleLifetime: [0.1, 0.1], spawners: [ONE_PARTICLE],
+          initializers: [{ $type: 'initialPositionSeed', positionMin: [1, 2, 3], positionMax: [1, 2, 3] }],
+        },
+        {
+          emitterName: 'Child', randomSeedMethod: 'fixed', particleLifetime: [10, 10],
+          spawners: [fromParent({ $type: 'particleSpawnTriggerDeath' }, 3)],
+          initializers: [{ $type: 'initialPositionParent', parentName: 'Parent', positionMin: [0, 0, 0], positionMax: [0, 0, 0] }],
+        },
+      ],
+    });
+    const [parent, child] = particles.emitters;
+    expect(parent!.delayParticleDeath).toBe(1);
+    for (let i = 0; i < 12; i++) particles.update(STEP);
+    expect(parent!.pool.living).toBe(0);
+    expect(child!.pool.living).toBe(3);
+    expect([...child!.pool.field('position')!.subarray(0, 9)]).toEqual([1, 2, 3, 1, 2, 3, 1, 2, 3]);
+  });
+
+  test('寿命触发：按顺序对应父粒子，继承颜色（相乘再预乘）、速度（乘系数）和生成顺序（父粒子的序号在高 16 位）', () => {
+    const particles = new ParticleSystem({
+      emitters: [
+        {
+          emitterName: 'Parent', randomSeedMethod: 'fixed', particleLifetime: [10, 10], spawners: [PARENT_SPAWNER],
+          initializers: [
+            { $type: 'initialSpawnOrder' },
+            { $type: 'initialColorSeed', colorMin: [1, 0.5, 0, 0.5], colorMax: [1, 0.5, 0, 0.5] },
+            { $type: 'initialVelocitySeed', velocityMin: [0, 2, 0], velocityMax: [0, 2, 0] },
+          ],
+        },
+        {
+          emitterName: 'Child', randomSeedMethod: 'fixed', particleLifetime: [10, 10],
+          spawners: [fromParent({ $type: 'particleSpawnTriggerLifetime', lifetimeLowerLimit: 0, lifetimeUpperLimit: 1 }, 1)],
+          initializers: [
+            { $type: 'initialColorParent', parentName: 'Parent' },
+            { $type: 'initialVelocityParent', parentName: 'Parent', velocityMin: [0, 0, 0], velocityMax: [0, 0, 0], parentVelocityFactor: 0.5 },
+            { $type: 'initialOrderParent', parentName: 'Parent' },
+          ],
+        },
+      ],
+    });
+    particles.update(STEP);
+    const child = particles.emitters[1]!.pool;
+    expect(child.living).toBe(2);
+    expect([...child.field('color')!.subarray(0, 4)]).toEqual([0.25, 0.125, 0, 0.5]);
+    expect([...child.field('velocity')!.subarray(0, 3)]).toEqual([0, 1, 0]);
+    expect([...child.integers('order')!.subarray(0, 2)]).toEqual([0, 1 << 16]);
+    // 父粒子记下每个子粒子取到的序号
+    expect([...particles.emitters[0]!.pool.integers('childOrder')!.subarray(0, 2)]).toEqual([1, 1]);
+  });
+
+  test('圆环：管子中心线上相对距离 0，管子外面 1；碰撞放回管子表面', () => {
+    const torus = new FieldShapeTorus({ bigRadius: 2, smallRadius: 0.25 });
+    torus.prepare([0, 0, 0], [0, 0, 0, 1], [1, 1, 1]);
+    const along: Vec3 = [0, 0, 0], around: Vec3 = [0, 0, 0], away: Vec3 = [0, 0, 0];
+    expect(torus.distance([2, 0, 0], along, around, away)).toBeCloseTo(0);
+    expect(torus.distance([0, 0, 0], along, around, away)).toBe(1);
+    // 管子里：中心线外 0.25 · 2 · 0.5 = 0.25（一半的管子半径）
+    expect(torus.distance([2.25, 0, 0], along, around, away)).toBeCloseTo(0.5);
+    expect(away.map((c) => +c.toFixed(5) + 0)).toEqual([1, 0, 0]);
+    const point: Vec3 = [0, 0, 0], normal: Vec3 = [0, 0, 0];
+    expect(torus.isPointInside([2, 0.1, 0], point, normal)).toBe(true);
+    expect(point.map((c) => +c.toFixed(5) + 0)).toEqual([2, 0.5, 0]);
+    expect(normal.map((c) => +c.toFixed(5) + 0)).toEqual([0, 1, 0]);
   });
 });

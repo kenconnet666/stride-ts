@@ -64,26 +64,18 @@ export function buildRibbons(
 ): number {
   const pool = emitter.pool;
   const position = pool.field('position')!, size = pool.field('size'), direction = pool.field('direction');
-  const color = pool.field('color'), life = pool.field('life')!, spawnOrder = pool.integers('order');
+  const spawnOrder = pool.integers('order');
   const local = emitter.simulationSpace === 'local';
   const space = emitter.drawTransform;
   const sections = ribbon.sections;
-  // 一条带子的点（插值的点也在里面）：粒子 k 在 k · sections；extra 是 Ribbon 的大小或者 Trail 的宽度向量
-  const width = ribbon.trail ? 3 : 1;
-  const points = new Float64Array(order.length * sections * 3);
-  const extra = new Float64Array(order.length * sections * width);
-  const group: number[] = [];
-
-  const flush = () => {
-    if (group.length > 0) at = ribbonize(ribbon, camera, group, points, extra, vertices, at, color, life, uv);
-    group.length = 0;
-  };
+  const writer = new RibbonWriter(ribbon, camera, order.length * sections, vertices, at, pool.field('color'), pool.field('life')!, uv);
+  const { points, extra, group } = writer;
   let previousGroup = 0;
   const p: Vec3 = [0, 0, 0], d: Vec3 = [0, 0, 0];
   for (const i of order) {
     if (spawnOrder) {
       const current = spawnOrder[i]! >>> GROUP_BIT_OFFSET;
-      if (current !== previousGroup) flush();
+      if (current !== previousGroup) writer.flush();
       previousGroup = current;
     }
     const slot = group.length * sections;
@@ -110,93 +102,149 @@ export function buildRibbons(
     if (ribbon.trail) extra.set(d, slot * 3);
     else extra[slot] = particleSize;
   }
-  flush();
-  return at;
+  writer.flush();
+  return writer.at;
 }
 
-/** 写一条带子（group 是它的粒子，点从 points 的开头起）。 */
-function ribbonize(
-  ribbon: RibbonSettings, camera: CameraAxes, group: readonly number[], points: Float64Array, extra: Float64Array,
-  v: Float32Array, at: number, color: Float32Array | undefined, life: Float32Array,
-  uv: (remainingLife: number) => readonly [number, number, number, number],
-): number {
-  const sections = ribbon.sections, last = group.length * sections, width = ribbon.trail ? 3 : 1;
-  let r = 1, g = 1, b = 1, a = 1, u0 = 0, v0 = 0, us = 1, vs = 1;
-  const particle = (k: number) => {
-    const i = group[k]!;
-    if (color) {
-      r = clamp(color[i * 4]!); g = clamp(color[i * 4 + 1]!); b = clamp(color[i * 4 + 2]!); a = clamp(color[i * 4 + 3]!);
+/** 把一个发射器的带子一条条写进顶点数组：group 是正在攒的这一条的粒子，它们的点从 points 的开头起。 */
+class RibbonWriter {
+  readonly points: Float64Array;
+  readonly extra: Float64Array;
+  readonly group: number[] = [];
+  at: number;
+  /** 点投影到屏幕上的 (x, y)（Ribbon 用）。 */
+  readonly #screen: Float64Array;
+  readonly #width: Vec3 = [0, 0, 0];
+  #r = 1; #g = 1; #b = 1; #a = 1; #u0 = 0; #v0 = 0; #us = 1; #vs = 1;
+
+  readonly ribbon: RibbonSettings;
+  readonly camera: CameraAxes;
+  readonly vertices: Float32Array;
+  readonly color: Float32Array | undefined;
+  readonly life: Float32Array;
+  readonly uv: (remainingLife: number) => readonly [number, number, number, number];
+
+  constructor(
+    ribbon: RibbonSettings, camera: CameraAxes, capacity: number, vertices: Float32Array, at: number,
+    color: Float32Array | undefined, life: Float32Array, uv: (remainingLife: number) => readonly [number, number, number, number],
+  ) {
+    this.ribbon = ribbon;
+    this.camera = camera;
+    this.vertices = vertices;
+    this.color = color;
+    this.life = life;
+    this.uv = uv;
+    this.points = new Float64Array(capacity * 3);
+    this.extra = new Float64Array(capacity * (ribbon.trail ? 3 : 1));
+    this.#screen = new Float64Array(ribbon.trail ? 0 : capacity * 2);
+    this.at = at;
+  }
+
+  /** 写出攒好的这一条，开始下一条。 */
+  flush(): void {
+    if (this.group.length > 0) this.#ribbonize();
+    this.group.length = 0;
+  }
+
+  #ribbonize(): void {
+    const { ribbon, points, extra } = this;
+    const sections = ribbon.sections, last = this.group.length * sections;
+    // 只有一个粒子：每个四边形缩成一点（Stride 写的是零位置的四边形）
+    if (last <= sections) {
+      this.#particle(0);
+      for (let q = 0; q < last * 4; q++) this.#vertex(points[0]!, points[1]!, points[2]!, 0, 0);
+      return;
     }
-    [u0, v0, us, vs] = uv(life[i]!);
-  };
-  const vertex = (x: number, y: number, z: number, u: number, w: number) => {
+    if (sections > 1) {
+      if (ribbon.smoothing === 'best') expandCircular(points, extra, ribbon.trail ? 3 : 1, sections, last);
+      else expandCatmullRom(points, extra, ribbon.trail ? 3 : 1, sections, last);
+    }
+    if (!ribbon.trail) this.#project(last);
+
+    const width = this.#width;
+    let axisX = 0, axisY = 0;
+    if (!ribbon.trail) [axisX, axisY] = this.#along(0, 1);
+    this.#widthAt(0, axisX, axisY);
+    let w0 = width[0], w1 = width[1], w2 = width[2];
+    let ox = points[0]!, oy = points[1]!, oz = points[2]!;
+    let vOld = 0;
+    // 居中时左右各伸出半宽，在边上时只往一边伸出整个宽度
+    const side = ribbon.centered ? 1 : 0;
+    const asIs = ribbon.texCoordPolicy === 'asIs', stretched = ribbon.texCoordPolicy === 'stretched';
+    for (let k = 0; k < last; k++) {
+      if (k % sections === 0) this.#particle(k / sections);
+      const cx = points[k * 3]!, cy = points[k * 3 + 1]!, cz = points[k * 3 + 2]!;
+      if (!ribbon.trail) {
+        // 宽度方向：前后两段在屏幕上的走向的平均
+        const [nx, ny] = k + 1 < last ? this.#along(k, k + 1) : this.#along(last - 2, last - 1);
+        const [mx, my] = normalize2(axisX + nx, axisY + ny);
+        axisX = nx; axisY = ny;
+        this.#widthAt(k, mx, my);
+      } else {
+        this.#widthAt(k, 0, 0);
+      }
+      const n0 = width[0], n1 = width[1], n2 = width[2];
+      const vNew = stretched
+        ? ((k + 1) / last) * ribbon.texCoordsFactor
+        : Math.sqrt((cx - ox) ** 2 + (cy - oy) ** 2 + (cz - oz) ** 2) * ribbon.texCoordsFactor + vOld;
+      // 上边在前一个点，下边在这个点
+      this.#vertex(ox - w0 * side, oy - w1 * side, oz - w2 * side, 0, asIs ? 0 : vOld);
+      this.#vertex(ox + w0, oy + w1, oz + w2, 1, asIs ? 0 : vOld);
+      this.#vertex(cx + n0, cy + n1, cz + n2, 1, asIs ? 1 : vNew);
+      this.#vertex(cx - n0 * side, cy - n1 * side, cz - n2 * side, 0, asIs ? 1 : vNew);
+      vOld = vNew;
+      w0 = n0; w1 = n1; w2 = n2;
+      ox = cx; oy = cy; oz = cz;
+    }
+  }
+
+  /** 第 k 个粒子的颜色和 UV 帧。 */
+  #particle(k: number): void {
+    const i = this.group[k]!, color = this.color;
+    if (color) {
+      this.#r = clamp(color[i * 4]!); this.#g = clamp(color[i * 4 + 1]!); this.#b = clamp(color[i * 4 + 2]!); this.#a = clamp(color[i * 4 + 3]!);
+    }
+    [this.#u0, this.#v0, this.#us, this.#vs] = this.uv(this.life[i]!);
+  }
+
+  #vertex(x: number, y: number, z: number, u: number, w: number): void {
+    const ribbon = this.ribbon, v = this.vertices, at = this.at;
     let fu = ribbon.flipU ? 1 - u : u, fv = ribbon.flipV ? 1 - w : w;
     if (ribbon.swapUV) [fu, fv] = [fv, fu];
     v[at] = x; v[at + 1] = y; v[at + 2] = z;
-    v[at + 3] = u0 + us * fu; v[at + 4] = v0 + vs * fv;
-    v[at + 5] = r; v[at + 6] = g; v[at + 7] = b; v[at + 8] = a;
-    at += VERTEX_FLOATS;
-  };
-
-  // 只有一个粒子：每个四边形缩成一点（Stride 写的是零位置的四边形）
-  if (last <= sections) {
-    particle(0);
-    for (let q = 0; q < last * 4; q++) vertex(points[0]!, points[1]!, points[2]!, 0, 0);
-    return at;
-  }
-  if (sections > 1) {
-    if (ribbon.smoothing === 'best') expandCircular(points, extra, width, sections, last);
-    else expandCatmullRom(points, extra, width, sections, last);
+    v[at + 3] = this.#u0 + this.#us * fu; v[at + 4] = this.#v0 + this.#vs * fv;
+    v[at + 5] = this.#r; v[at + 6] = this.#g; v[at + 7] = this.#b; v[at + 8] = this.#a;
+    this.at = at + VERTEX_FLOATS;
   }
 
-  const { right, up } = camera;
-  // Ribbon 的宽度方向：投影到屏幕上的走向 (x, y) 转 90 度换回世界
-  const projected = (k: number): [number, number] => project(camera.viewProjection, points, k);
-  const along = (k: number, next: number): [number, number] => {
-    const [x0, y0] = projected(k), [x1, y1] = projected(next);
-    return normalize2(x0 - x1, y0 - y1);
-  };
-  const widthAt = (k: number, ax: number, ay: number, out: Vec3) => {
-    if (ribbon.trail) {
+  /** 前 count 个点投影到裁剪空间再除以 w 的 (x, y)；viewProjection 按列存。 */
+  #project(count: number): void {
+    const m = this.camera.viewProjection, points = this.points, screen = this.#screen;
+    for (let k = 0; k < count; k++) {
+      const x = points[k * 3]!, y = points[k * 3 + 1]!, z = points[k * 3 + 2]!;
+      const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
+      screen[k * 2] = (m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) / w;
+      screen[k * 2 + 1] = (m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) / w;
+    }
+  }
+
+  /** 点 k 到 next 在屏幕上的走向，指回 k（归一化，同 Stride）。 */
+  #along(k: number, next: number): [number, number] {
+    const screen = this.#screen;
+    return normalize2(screen[k * 2]! - screen[next * 2]!, screen[k * 2 + 1]! - screen[next * 2 + 1]!);
+  }
+
+  /** 点 k 的宽度向量写进 #width：Trail 是存好的宽度，Ribbon 是屏幕上的方向 (ax, ay) 乘半个大小、转 90 度换回世界。 */
+  #widthAt(k: number, ax: number, ay: number): void {
+    const out = this.#width, extra = this.extra;
+    if (this.ribbon.trail) {
       out[0] = extra[k * 3]!; out[1] = extra[k * 3 + 1]!; out[2] = extra[k * 3 + 2]!;
       return;
     }
+    const { right, up } = this.camera;
     const half = extra[k]! * 0.5, x = ax * half, y = ay * half;
-    for (let c = 0; c < 3; c++) out[c] = y * right[c]! - x * up[c]!;
-  };
-
-  let [axisX, axisY] = ribbon.trail ? [0, 0] : along(0, 1);
-  const oldWidth: Vec3 = [0, 0, 0], newWidth: Vec3 = [0, 0, 0];
-  widthAt(0, axisX, axisY, oldWidth);
-  let ox = points[0]!, oy = points[1]!, oz = points[2]!;
-  let vOld = 0;
-  const side = ribbon.centered ? 1 : 0, span = ribbon.centered ? 2 : 1;
-  for (let k = 0; k < last; k++) {
-    if (k % sections === 0) particle(k / sections);
-    const cx = points[k * 3]!, cy = points[k * 3 + 1]!, cz = points[k * 3 + 2]!;
-    if (!ribbon.trail) {
-      const [nx, ny] = k + 1 < last ? along(k, k + 1) : along(last - 2, last - 1);
-      const [mx, my] = normalize2(axisX + nx, axisY + ny);
-      axisX = nx; axisY = ny;
-      widthAt(k, mx, my, newWidth);
-    } else {
-      widthAt(k, 0, 0, newWidth);
-    }
-    const vNew = ribbon.texCoordPolicy === 'stretched'
-      ? ((k + 1) / last) * ribbon.texCoordsFactor
-      : Math.hypot(cx - ox, cy - oy, cz - oz) * ribbon.texCoordsFactor + vOld;
-    const asIs = ribbon.texCoordPolicy === 'asIs';
-    // 上边在前一个点，下边在这个点
-    const [w0, w1, w2] = oldWidth, [n0, n1, n2] = newWidth;
-    vertex(ox - w0 * side, oy - w1 * side, oz - w2 * side, 0, asIs ? 0 : vOld);
-    vertex(ox + w0 * (span - side), oy + w1 * (span - side), oz + w2 * (span - side), 1, asIs ? 0 : vOld);
-    vertex(cx + n0 * (span - side), cy + n1 * (span - side), cz + n2 * (span - side), 1, asIs ? 1 : vNew);
-    vertex(cx - n0 * side, cy - n1 * side, cz - n2 * side, 0, asIs ? 1 : vNew);
-    vOld = vNew;
-    oldWidth[0] = n0; oldWidth[1] = n1; oldWidth[2] = n2;
-    ox = cx; oy = cy; oz = cz;
+    out[0] = y * right[0] - x * up[0]; out[1] = y * right[1] - x * up[1]; out[2] = y * right[2] - x * up[2];
   }
-  return at;
 }
 
 /** 插值的点按 Catmull-Rom（Stride 的 ExpandVertices_CatmullRom），extra 线性插值，最后一段向 0 过渡。 */
@@ -289,13 +337,6 @@ export function circumcenter(out: Float64Array, a: ArrayLike<number>, b: ArrayLi
 const length = (x: number, y: number, z: number) => Math.sqrt(x * x + y * y + z * z);
 const distance = (a: ArrayLike<number>, b: ArrayLike<number>) => length(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
 const clamp = (c: number) => (c < 0 ? 0 : c > 1 ? 1 : c);
-
-/** 点 k 投影到裁剪空间再除以 w 的 (x, y)；viewProjection 按列存。 */
-function project(m: Readonly<Float32Array>, points: Float64Array, k: number): [number, number] {
-  const x = points[k * 3]!, y = points[k * 3 + 1]!, z = points[k * 3 + 2]!;
-  const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
-  return [(m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) / w, (m[1]! * x + m[5]! * y + m[9]! * z + m[13]!) / w];
-}
 
 /** 归一化（长度为 0 时原样，同 Stride 的 Normalize）。 */
 function normalize2(x: number, y: number): [number, number] {

@@ -31,7 +31,7 @@ Component: !ParticleSystemComponent
                     1b69e5edd8a0614c87724fee7903d49f: !Initial3DRotationSeed
                         DisplayParticleRotation: true
                         RotationQuaternionMin: {X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
-                    2b69e5edd8a0614c87724fee7903d49f: !InitialPositionParent
+                    2b69e5edd8a0614c87724fee7903d49f: !InitialUnknownSeed
                         Dummy: 1
                     3b69e5edd8a0614c87724fee7903d49f: !InitialPositionArc
                         Target: ref!! e574779f-f5b0-4272-8b43-f67704512191
@@ -81,7 +81,7 @@ describe('粒子系统的导入', () => {
     expect(textures).toEqual(['8b03c447-e775-437b-a178-b7c0921ebf24']);
     expect(warnings).toHaveLength(3);
     expect(warnings[0]).toContain('ShapeBuilderCustom');
-    expect(warnings[1]).toContain('InitialPositionParent');
+    expect(warnings[1]).toContain('InitialUnknownSeed');
     expect(warnings[2]).toContain('00000000-f5b0-4272-8b43-f67704512191 is not in this scene');
   });
 });

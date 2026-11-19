@@ -28,7 +28,7 @@ export function value<T extends ParticleValue>(file: ParticleModuleFile | undefi
   return (found === undefined || found === null ? fallback : found) as T;
 }
 
-const vec3 = (file: ParticleModuleFile, key: string, fallback: Vec3): Vec3 => [...value(file, key, fallback)] as Vec3;
+export const vec3 = (file: ParticleModuleFile, key: string, fallback: Vec3): Vec3 => [...value(file, key, fallback)] as Vec3;
 const quat = (file: ParticleModuleFile, key: string, fallback: Quat): Quat => [...value(file, key, fallback)] as Quat;
 
 /**
@@ -248,7 +248,7 @@ export class InitialSizeSeed extends ParticleInitializer {
 }
 
 /** 在 min 到 max 的盒子里随机一个向量：盒子按模块的世界缩放、旋转变换（PositionSeed、VelocitySeed 共用）。 */
-function randomBox(module: ParticleTransform, min: Readonly<Vec3>, max: Readonly<Vec3>, seedOffset: number, translate: boolean) {
+export function randomBox(module: ParticleTransform, min: Readonly<Vec3>, max: Readonly<Vec3>, seedOffset: number, translate: boolean) {
   const scale = module.worldScale;
   const corner: Vec3 = [min[0] * scale[0], min[1] * scale[1], min[2] * scale[2]];
   const axes: Vec3[] = [[max[0] * scale[0] - corner[0], 0, 0], [0, max[1] * scale[1] - corner[1], 0], [0, 0, max[2] * scale[2] - corner[2]]];
@@ -479,9 +479,11 @@ export class InitialSpawnOrder extends ParticleInitializer {
   initialize(pool: ParticlePool, range: SpawnedRange): void {
     const order = pool.integers('order');
     if (!order) return;
+    const childOrder = pool.integers('childOrder');
     forEachSpawned(range, (i) => {
       order[i] = this.#next;
       this.#next = (this.#next + 1) >>> 0;
+      if (childOrder) childOrder[i] = 0;
     });
   }
 

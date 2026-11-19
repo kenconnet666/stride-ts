@@ -20,12 +20,24 @@ export const PARTICLE_FIELDS = {
   collision: 1,
   /** 生成的顺序（Stride 的 Order）：高 16 位是组（同一组连成一条飘带），低 16 位是组里的顺序。 */
   order: 1,
+  /** 子粒子已经取到的序号（Stride 的 ChildOrder，InitialOrderParent 要父粒子有它）。 */
+  childOrder: 1,
+  /**
+   * 子粒子的生成控制（Stride 的 ChildrenFlags00 到 03，SpawnerFromParent 按 ParentControlFlag 选一组）：这一帧要生成几个
+   * 子粒子、累积的小数部分。
+   */
+  children0: 2,
+  children1: 2,
+  children2: 2,
+  children3: 2,
 } as const;
 
 export type ParticleField = keyof typeof PARTICLE_FIELDS;
 /** 存成 32 位无符号整数的字段（其余是 float）。 */
-export type IntegerField = 'randomSeed' | 'order';
-const INTEGER_FIELDS: ReadonlySet<ParticleField> = new Set<IntegerField>(['randomSeed', 'order']);
+export type IntegerField = 'randomSeed' | 'order' | 'childOrder';
+const INTEGER_FIELDS: ReadonlySet<ParticleField> = new Set<IntegerField>(['randomSeed', 'order', 'childOrder']);
+/** 子粒子的生成控制的四组字段。 */
+export const CHILDREN_FIELDS = ['children0', 'children1', 'children2', 'children3'] as const;
 
 export class ParticlePool {
   /** 能放多少个粒子。 */
@@ -40,6 +52,11 @@ export class ParticlePool {
 
   has(field: ParticleField): boolean {
     return this.#fields.has(field);
+  }
+
+  /** 加一个字段（子粒子的发射器要父发射器有的字段），活着的粒子的值是 0。 */
+  addField(field: ParticleField): void {
+    if (!this.#fields.has(field)) this.#fields.set(field, this.#allocate(field, this.capacity));
   }
 
   /** float 字段的列（粒子 i 的值在 [i · 宽度, (i + 1) · 宽度)）；没有这个字段时是 undefined。 */

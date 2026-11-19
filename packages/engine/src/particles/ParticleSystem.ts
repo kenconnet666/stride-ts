@@ -31,6 +31,7 @@ export class ParticleSystem implements EmitterParent {
   constructor(file: ParticleModuleFile = {}, context: ParticleContext = NO_CONTEXT) {
     const emitters = (file['emitters'] as readonly ParticleModuleFile[] | undefined) ?? [];
     this.emitters = emitters.map((emitter) => new ParticleEmitter(emitter, context));
+    for (const emitter of this.emitters) emitter.linkParents(this.emitters);
     this.warmupTime = value(file['settings'] as ParticleModuleFile | undefined, 'warmupTime', 0);
     const shape = file['boundingShape'] as ParticleModuleFile | null | undefined;
     this.boundingBox = shape?.$type === 'boundingBoxStatic'

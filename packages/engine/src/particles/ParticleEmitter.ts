@@ -3,13 +3,15 @@
  * 第一次时按 RandomSeedMethod 建种子序列 → 算模块的世界变换 → 按需要调粒子池的大小 → 按寿命删掉死了的、按速度移动 →
  * 更新器 → 生成新粒子并初始化 → 后置的更新器。顺序同 Stride，固定种子时结果一样。
  *
- * 形状（ShapeBuilder）和材质（Material）是画的时候用的，原样留着（ParticleModuleFile），见粒子的渲染。
+ * 形状（ShapeBuilder）和材质（Material）是画的时候用的：形状读成 ShapeSettings，材质编译成着色器（material.ts），见粒子的渲染。
+ * 子粒子的模块按名字连到同一个粒子系统里的父发射器（children.ts）。
  */
 import type { ParticleModuleFile } from '../content/format';
 import { compileMaterial, type MaterialProgram } from './material';
 import { SHAPES, ShapeSettings } from './shapes';
 import { createInitializer, createSpawner, NO_CONTEXT, ParticleTransform, value, type ParticleContext, type ParticleInitializer, type ParticleSpawner, type SpawnedRange } from './modules';
 import { createUpdater, type ParticleUpdater } from './updaters';
+import { clearChildren, createChildInitializer, createChildSpawner, isChildModule, type ParentEmitter } from './children';
 import { ParticlePool, type IntegerField, type ParticleField } from './ParticlePool';
 import { RandomOffset, RandomSeedGenerator, seedFloat } from './random';
 import type { Quat, Vec3 } from './math';
@@ -27,7 +29,7 @@ export interface EmitterParent {
   readonly uniformScale: number;
 }
 
-export class ParticleEmitter {
+export class ParticleEmitter implements ParentEmitter {
   readonly name: string;
   enabled: boolean;
   /** 能不能生成新粒子（Stride 的 CanEmitParticles；粒子系统的 Timeout、StopEmitters 关掉）。 */
@@ -52,6 +54,8 @@ export class ParticleEmitter {
   readonly pool: ParticlePool;
   /** 粒子系统的变换（画局部模拟的粒子时要）。 */
   readonly drawTransform = new ParticleTransform();
+  /** 寿命到了的粒子多留一帧（Stride 的 DelayParticleDeath）：连着的子粒子生成器的个数，死亡触发要看到它们。 */
+  delayParticleDeath = 0;
   #seedGenerator: RandomSeedGenerator | undefined;
   #initialized = false;
   #poolDirty = true;
@@ -78,8 +82,8 @@ export class ParticleEmitter {
     this.program = this.material ? compileMaterial(this.material, context.texture) : undefined;
     const modules = <T>(key: string, create: (module: ParticleModuleFile) => T | undefined): T[] =>
       ((file[key] as readonly ParticleModuleFile[] | undefined) ?? []).map(create).filter((module): module is T => module !== undefined);
-    this.spawners = modules('spawners', createSpawner);
-    this.initializers = modules('initializers', (module) => createInitializer(module, context));
+    this.spawners = modules('spawners', (module) => createSpawner(module) ?? createChildSpawner(module));
+    this.initializers = modules('initializers', (module) => createInitializer(module, context) ?? createChildInitializer(module));
     this.updaters = modules('updaters', createUpdater);
     const fields = new Set<ParticleField>(['life', 'randomSeed', 'position']);
     for (const module of [...this.initializers, ...this.updaters]) if (module.enabled) for (const field of module.requiredFields) fields.add(field);
@@ -94,6 +98,18 @@ export class ParticleEmitter {
   set randomSeedMethod(method: RandomSeedMethod) {
     this.#randomSeedMethod = method;
     this.#initialized = false;
+  }
+
+  /** 子粒子的模块按 ParentName 连上父发射器（粒子系统建好所有发射器后调用一次；同名时取第一个，同 Stride）。 */
+  linkParents(emitters: readonly ParticleEmitter[]): void {
+    for (const module of [...this.spawners, ...this.initializers]) {
+      if (isChildModule(module)) module.linkParent(emitters.find((emitter) => emitter.name === module.parentName));
+    }
+  }
+
+  /** 父粒子要多存的字段（子粒子的模块要的）。 */
+  requireField(field: ParticleField): void {
+    this.pool.addField(field);
   }
 
   /** 种子序列（Update 第一次时建）。 */
@@ -171,7 +187,7 @@ export class ParticleEmitter {
     this.pool.setCapacity(Math.ceil(this.particleLifetime[1] * perSecond));
   }
 
-  /** 寿命按 dt / 这个粒子的寿命减少，到 0 的删掉；按速度移动。 */
+  /** 寿命按 dt / 这个粒子的寿命减少，到 0 的删掉（连着子粒子生成器时多留一帧，寿命停在接近 0）；按速度移动。 */
   #moveAndDelete(dt: number): void {
     const pool = this.pool;
     const life = pool.field('life')!, seeds = pool.seeds;
@@ -179,9 +195,11 @@ export class ParticleEmitter {
     for (let i = 0; i < pool.living; i++) {
       if (life[i]! > 1) life[i] = 1;
       const startingLife = minLife + (maxLife - minLife) * seedFloat(seeds[i]!, RandomOffset.lifetime);
-      if (life[i]! <= ZERO_TOLERANCE || (life[i]! -= dt / startingLife) <= ZERO_TOLERANCE) {
+      if (life[i]! <= ZERO_TOLERANCE || ((life[i]! -= dt / startingLife) <= ZERO_TOLERANCE && this.delayParticleDeath === 0)) {
         pool.remove(i);
         i--;
+      } else if (life[i]! <= ZERO_TOLERANCE) {
+        life[i] = ZERO_TOLERANCE;
       }
     }
     const position = pool.field('position')!;
@@ -212,6 +230,7 @@ export class ParticleEmitter {
     }
     const range: SpawnedRange = { start, end, capacity };
     this.#initializeDefaults(range);
+    clearChildren(pool, range);
     for (const initializer of this.initializers) if (initializer.enabled) initializer.initialize(pool, range);
   }
 

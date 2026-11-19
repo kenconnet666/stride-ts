@@ -13,11 +13,13 @@ import { lowerFirst, parseAssetReference, parseObjectReference, type StrideObjec
 export const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
   // Stride 的类名就拼错成这样（BoundingSphereStatic 少了个 S）
   'BoundingBoxStatic', 'BoundingSpheretatic',
-  'SpawnerPerSecond', 'SpawnerPerFrame',
+  'SpawnerPerSecond', 'SpawnerPerFrame', 'SpawnerFromParent',
+  'ParticleSpawnTriggerLifetime', 'ParticleSpawnTriggerDeath', 'ParticleSpawnTriggerCollision', 'ParticleSpawnTriggerDistance',
   'InitialSizeSeed', 'InitialPositionSeed', 'InitialPositionArc', 'InitialVelocitySeed', 'InitialDirectionSeed', 'InitialRotationSeed',
   'Initial3DRotationSeed', 'InitialColorSeed', 'InitialSpawnOrder',
+  'InitialPositionParent', 'InitialColorParent', 'InitialVelocityParent', 'InitialOrderParent',
   'UpdaterForceField', 'UpdaterGravity', 'UpdaterSizeOverTime', 'UpdaterColorOverTime', 'UpdaterRotationOverTime', 'UpdaterSpeedToDirection',
-  'UpdaterCollider', 'FieldShapeSphere', 'FieldShapeCylinder',
+  'UpdaterCollider', 'FieldShapeSphere', 'FieldShapeCylinder', 'FieldShapeTorus',
   'ShapeBuilderBillboard', 'ShapeBuilderQuad', 'ShapeBuilderHexagon', 'ShapeBuilderOrientedQuad', 'ShapeBuilderRibbon', 'ShapeBuilderTrail',
   'ParticleMaterialComputeColor', 'ComputeTextureColor', 'ComputeTextureScalar', 'ComputeVertexStreamColor', 'ColorVertexStreamDefinition',
   'ComputeFloat4', 'ComputeFloat', 'ComputeColor', 'ComputeBinaryColor',
@@ -28,8 +30,8 @@ export const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
 
 /** 按 Id 存的集合（曲线的关键帧也是），换成数组。 */
 const COLLECTIONS = new Set(['Emitters', 'Spawners', 'Initializers', 'Updaters', 'KeyFrames']);
-/** 字符串原样的属性（名字）；其余的字符串是枚举。 */
-const NAMES = new Set(['EmitterName', 'Name']);
+/** 字符串原样的属性（名字，ParentName 按名字找发射器）；其余的字符串是枚举。 */
+const NAMES = new Set(['EmitterName', 'Name', 'ParentName']);
 
 export interface ParticleImportContext {
   /** 贴图引用（Id）导出贴图。 */

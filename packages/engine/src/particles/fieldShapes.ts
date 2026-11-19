@@ -1,5 +1,5 @@
 /**
- * 力场和碰撞用的形状（Stride 的 Updaters.FieldShapes）和衰减（FieldFalloff）。形状按更新器的世界变换摆放（prepare），
+ * 力场和碰撞用的形状（Stride 的 Updaters.FieldShapes：球、圆柱、圆环）和衰减（FieldFalloff）。形状按更新器的世界变换摆放（prepare），
  * distance 给出粒子到中心的相对距离（1 在表面上）和沿轴、绕轴、离开中心三个方向；isPointInside 给出最近的表面点和法线。
  *
  * 和 Stride 不同（改掉的毛病）：衰减在 FalloffStart 到 FalloffEnd 之间线性过渡；Stride 除以的是 FalloffEnd / FalloffStart 而不是
@@ -161,11 +161,60 @@ export class FieldShapeCylinder extends PlacedShape {
   }
 }
 
+/**
+ * 圆环（Stride 的 FieldShapes.Torus）：在本地 XZ 平面上，中心线半径 BigRadius、管子半径 SmallRadius（相对 BigRadius）。
+ * 相对距离是到中心线的距离除以管子半径（管子外面是 1）；沿轴是绕圆环的切线方向，离开中心是离开中心线。
+ */
+export class FieldShapeTorus extends PlacedShape {
+  readonly bigRadius: number;
+  readonly smallRadius: number;
+
+  constructor(file: ParticleModuleFile = {}) {
+    super();
+    this.bigRadius = value(file, 'bigRadius', 1);
+    this.smallRadius = value(file, 'smallRadius', 0.33333);
+  }
+
+  override prepare(position: Readonly<Vec3>, rotation: Readonly<Quat>, size: Readonly<Vec3>): void {
+    super.prepare(position, rotation, size.map((s) => s * this.bigRadius) as Vec3);
+  }
+
+  distance(position: Readonly<Vec3>, along: Vec3, around: Vec3, away: Vec3): number {
+    const local = this.local(position).map((c, k) => c / this.size[k]!) as Vec3;
+    const fromOrigin = Math.hypot(local[0], local[2]);
+    const squared = 1 + fromOrigin * fromOrigin - 2 * fromOrigin + local[1] * local[1];
+    const strength = squared >= this.smallRadius * this.smallRadius ? 1 : Math.sqrt(squared) / this.smallRadius;
+    // 切线：上方 × 在平面上的位置
+    along.splice(0, 3, ...normalize(rotate(this.rotation, [local[2], 0, -local[0]])));
+    // 离开中心线：从中心线上最近的点指向粒子
+    const onCircle: Vec3 = fromOrigin > 0 ? [local[0] / fromOrigin, 0, local[2] / fromOrigin] : [local[0], 0, local[2]];
+    const toCircle = rotate(this.rotation, onCircle.map((c, k) => (c - local[k]!) * this.size[k]!) as Vec3);
+    away.splice(0, 3, ...normalize<Vec3>([-toCircle[0], -toCircle[1], -toCircle[2]]));
+    crossInto(around, along, away);
+    return strength;
+  }
+
+  isPointInside(position: Readonly<Vec3>, surfacePoint: Vec3, surfaceNormal: Vec3): boolean {
+    const local = this.local(position).map((c, k) => c / this.size[k]!) as Vec3;
+    const fromOrigin = Math.hypot(local[0], local[2]);
+    const onCircle: Vec3 = fromOrigin > ZERO_TOLERANCE ? [local[0] / fromOrigin, 0, local[2] / fromOrigin] : [local[0], 0, local[2]];
+    const normal = local.map((c, k) => c - onCircle[k]!) as Vec3;
+    const length = Math.hypot(...normal);
+    const inside = length <= this.smallRadius;
+    const coefficient = length > ZERO_TOLERANCE ? this.smallRadius / length : this.smallRadius;
+    const point = rotate(this.rotation, normal.map((c, k) => (c * coefficient + onCircle[k]!) * this.size[k]!) as Vec3);
+    surfacePoint.splice(0, 3, point[0] + this.position[0], point[1] + this.position[1], point[2] + this.position[2]);
+    surfaceNormal.splice(0, 3, ...normalize(rotate(this.rotation, normal.map((c, k) => c / this.size[k]!) as Vec3)));
+    return inside;
+  }
+}
+
 /** 文件里的形状（不认识的是 null，同 Stride 的没有形状）。 */
 export function createFieldShape(file: ParticleModuleFile | null | undefined): FieldShape | null {
   switch (file?.$type) {
     case 'fieldShapeSphere': return new FieldShapeSphere(file);
     case 'fieldShapeCylinder': return new FieldShapeCylinder(file);
+    case 'fieldShapeTorus': return new FieldShapeTorus(file);
     default: return null;
   }
 }

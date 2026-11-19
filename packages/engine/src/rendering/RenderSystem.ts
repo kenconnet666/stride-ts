@@ -154,6 +154,10 @@ export abstract class RootRenderFeature {
 
   /** 从实体里取出这一帧要画的东西，只在 CPU 上做。 */
   abstract extract(context: RenderContext): void;
+  /** 这一帧有没有东西要画进只写深度的阶段（深度预通道）；都没有时渲染器不开这一遍。extract 之后才准。 */
+  get drawsDepth(): boolean {
+    return false;
+  }
   /**
    * 剔除：算出每个视图里可见的东西，并把可见物体的距离并进视图的 minimumDistance、maximumDistance。
    * 一帧里可能调用多次（先主视图，再按主视图的距离范围算出的阴影级联）。
@@ -404,6 +408,11 @@ export class RenderSystem {
 
   draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     for (const feature of this.features) feature.draw(context, pass, view, stage);
+  }
+
+  /** 这一帧有没有特性要画深度预通道（纯 2D 的画面没有网格，这一遍是空的，可以省掉）。 */
+  get drawsDepth(): boolean {
+    return this.features.some((feature) => feature.drawsDepth);
   }
 
   destroy(): void {

@@ -1049,6 +1049,10 @@ export class MeshRenderFeature extends RootRenderFeature {
    * 抖动着投阴影）。透明的实例逐个按到相机的距离从远到近画（同 Stride 按每个物体排）：不同批的实例可以交错，同一批里连着的
    * 几个一次画完。
    */
+  override get drawsDepth(): boolean {
+    return this.batches.some((batch) => batch.count > 0);
+  }
+
   override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     const culling = this.#viewCulling.get(view);

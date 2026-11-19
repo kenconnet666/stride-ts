@@ -41,7 +41,7 @@ import { Morphed } from '../animation/morphs';
 import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
-import { Material, type MaterialShaderTrees, type MaterialTexture } from './Material';
+import { Material, type MaterialShaderLayer, type MaterialShaderTrees, type MaterialTexture } from './Material';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { MATERIAL_STREAMS } from './shaderClass';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
@@ -266,11 +266,15 @@ fn surfaceNormal(in: Varyings) -> vec3f {
   // 法线树（材质的颜色树，已经换好）优先于法线贴图
   let tree = treeNormal(in);
   m = select(m, tree.xyz, tree.w > 0.5);
+  // 材质层的法线按遮罩混进来（没有法线贴图时底下是 (0, 0, 1)）
+  let hasBase = (flags & 1u) != 0u || tree.w > 0.5;
+  let layered = layerNormal(in, select(vec3f(0.0, 0.0, 1.0), m, hasBase));
+  m = select(m, layered.xyz, layered.w > 0.5);
   let tangentLength = length(in.tangent.xyz);
   let t = in.tangent.xyz / max(tangentLength, 1e-8);
   let b = in.tangent.w * cross(n, t);
   let mapped = normalize(m.x * t + m.y * b + m.z * n);
-  return select(n, mapped, ((flags & 1u) != 0u || tree.w > 0.5) && tangentLength > 0.0);
+  return select(n, mapped, (hasBase || layered.w > 0.5) && tangentLength > 0.0);
 }
 
 /** 世界方向转到天空盒的立方体贴图里：按天空盒的旋转转回去（行向量乘矩阵 = 乘转置），z 取反。 */
@@ -456,14 +460,20 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   if (base.a < material.flags.y) {
     discard;
   }
-  let albedo = base.rgb;
+  // 粗糙度：常量，或者光泽度贴图的一个通道（没有贴图时 mask 是 0，取常量）
+  let glossTexel = dot(textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw), material.glossinessMask);
+  let hasGlossTexture = dot(material.glossinessMask, vec4f(1.0)) > 0.0;
+  // 材质层按遮罩混进各个属性（没有层时原样）
+  let layered = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb,
+    select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture)));
+  let albedo = layered.albedo;
 
   // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint
   // （PrepareMaterialForLightingAndShading；镜面项的 alpha 是 matDiffuseSpecularAlphaBlend.y）
   let hasSpecular = material.specular != 0u;
-  let metalness = material.surface.x;
+  let metalness = layered.metalness;
   let isMetalness = material.specular == 1u;
-  let f0 = select(material.specularColor.rgb, mix(vec3f(0.02), albedo, metalness), isMetalness);
+  let f0 = select(layered.specular, mix(vec3f(0.02), albedo, metalness), isMetalness);
   let specular = select(vec3f(0.0), f0, hasSpecular) * material.surface.w * material.blend.rgb * material.emissive.w;
   // 镜面颜色工作流默认能量守恒（Stride 的 IsEnergyConservative：MaterialSurfaceShadingDiffuseLambert 的漫反射乘 1 - 镜面）
   let conserved = select(vec3f(1.0), 1.0 - specular, material.specular == 3u);
@@ -471,10 +481,7 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, occlusionDirect)
   let ao = dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
   let directOcclusion = mix(1.0, ao, material.occlusionDirect);
-  // 粗糙度：常量，或者光泽度贴图的一个通道（没有贴图时 mask 是 0，取常量）
-  let glossTexel = dot(textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw), material.glossinessMask);
-  let hasGlossTexture = dot(material.glossinessMask, vec4f(1.0)) > 0.0;
-  let roughness = select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture);
+  let roughness = layered.roughness;
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
 
@@ -523,7 +530,7 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
 
   // 自发光：a 不小于 0 时输出的 alpha 用它（Stride 的 UseAlpha）
   let emitted = emissiveColor(in);
-  color += emitted.rgb;
+  color += layerEmissive(in, emitted.rgb);
   let alpha = select(base.a, emitted.a, emitted.a >= 0.0);
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
   return effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect);
@@ -563,7 +570,41 @@ function materialTreesCode(trees: MaterialShaderTrees | undefined): string {
   return ${displacement.scaleAndBias ? '(2.0 * d - 1.0)' : 'd'} * ${wgslFloat(displacement.intensity)};
 }`
     : 'fn treeDisplacement(uv: vec2f, local: vec3f) -> f32 { return 0.0; }';
-  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode].join('\n');
+  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode, layersCode(trees?.layers ?? [])].join('\n');
+}
+
+/**
+ * 材质层（Stride 的 MaterialBlendLayer、MaterialStreamLinearBlend）：每层的遮罩 b，各个属性 mix(下面的, 这层的, b)；光泽度换成粗糙度
+ * 再混，法线在切线空间里混再归一化，自发光（乘过强度的）也一样混。没有层时三个函数原样返回。
+ */
+function layersCode(layers: readonly MaterialShaderLayer[]): string {
+  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y);`;
+  const surface = layers.map((layer, i) => [
+    `  let b${i} = saturate(layer${i}Blend());`,
+    layer.diffuse ? `  r.albedo = mix(r.albedo, layer${i}Diffuse().rgb, b${i});` : '',
+    layer.specular ? `  r.specular = mix(r.specular, layer${i}Specular(), b${i});` : '',
+    layer.metalness ? `  r.metalness = mix(r.metalness, layer${i}Metalness(), b${i});` : '',
+    layer.glossiness ? `  r.roughness = mix(r.roughness, ${layer.glossiness.invert ? '' : '1.0 - '}layer${i}Gloss(), b${i});` : '',
+  ].filter(Boolean).join('\n')).join('\n');
+  const normals = layers.map((layer, i) => (layer.normal ? [
+    `  var l${i} = layer${i}Normal().xyz;`,
+    layer.normal.scaleAndBias ? `  l${i} = 2.0 * l${i} - 1.0;` : '',
+    layer.normal.isXYNormal ? `  l${i}.z = sqrt(max(0.0, 1.0 - (l${i}.x * l${i}.x + l${i}.y * l${i}.y)));` : '',
+    `  n = normalize(mix(n, l${i}, saturate(layer${i}Blend())));`,
+  ].filter(Boolean).join('\n') : '')).filter(Boolean);
+  const emissive = layers.map((layer, i) => (layer.emissive ? `  e = mix(e, layer${i}Emissive(), saturate(layer${i}Blend()));` : '')).filter(Boolean);
+  return `struct LayerSurface { albedo: vec3f, metalness: f32, specular: vec3f, roughness: f32 };
+fn layerEmissive(in: Varyings, base: vec3f) -> vec3f {
+${emissive.length > 0 ? `  ${fill}\n  var e = base;\n${emissive.join('\n')}\n  return e;` : '  return base;'}
+}
+fn materialLayers(in: Varyings, s: LayerSurface) -> LayerSurface {
+  var r = s;
+${layers.length > 0 ? `  ${fill}\n${surface}` : ''}
+  return r;
+}
+fn layerNormal(in: Varyings, m: vec3f) -> vec4f {
+${normals.length > 0 ? `  ${fill}\n  var n = m;\n${normals.join('\n')}\n  return vec4f(n, 1.0);` : '  return vec4f(m, 0.0);'}
+}`;
 }
 
 /** WGSL 的浮点字面量（整数也带小数点）。 */
@@ -1011,7 +1052,7 @@ class Gpu {
 
   /** 着色器模块：按自发光的颜色树和网格效果分变体（两段代码是键）。 */
   #module(trees: MaterialShaderTrees | undefined, effect: MeshEffect | undefined): GPUShaderModule {
-    const key = `${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement]) : ''}|${effect?.code ?? ''}`;
+    const key = `${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers]) : ''}|${effect?.code ?? ''}`;
     let module = this.#modules.get(key);
     if (!module) {
       const label = `MeshRenderFeature${trees ? ' (material trees)' : ''}${effect ? ' (mesh effect)' : ''}`;
@@ -1073,7 +1114,7 @@ class Gpu {
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
     const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement]) : ''}:${effect?.code ?? ''}`;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers]) : ''}:${effect?.code ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);

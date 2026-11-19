@@ -506,6 +506,26 @@ export interface NormalMapSlot extends TextureSlot {
   readonly invertY: boolean;
 }
 
+/**
+ * 一个材质层（Stride 的 MaterialBlendLayer）：子材质的各个属性按遮罩 blend（0 到 1）线性混进下面的结果（Stride 的
+ * MaterialStreamLinearBlend）。子材质没有的属性不改；都是颜色树，运行时编译。
+ */
+export interface MaterialLayerFile {
+  /** 遮罩（BlendMap，标量树）。 */
+  readonly blend: ParticleModuleFile;
+  readonly diffuse?: ParticleModuleFile;
+  /** 镜面颜色工作流：颜色乘强度。 */
+  readonly specular?: { readonly color: ParticleModuleFile; readonly intensity: ParticleModuleFile };
+  /** 金属度工作流。 */
+  readonly metalness?: ParticleModuleFile;
+  /** 光泽度（invert 时存的是粗糙度）。 */
+  readonly glossiness?: { readonly tree: ParticleModuleFile; readonly invert: boolean };
+  /** 切线空间的法线（规则同 MaterialFile.normalTree）。 */
+  readonly normal?: { readonly tree: ParticleModuleFile; readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
+  /** 自发光：颜色乘强度（下面没有自发光时是 0 往上混）。 */
+  readonly emissive?: { readonly tree: ParticleModuleFile; readonly intensity: number };
+}
+
 export interface MaterialFile {
   readonly name: string;
   /** 线性颜色。没有贴图时就是漫反射颜色，有贴图时按 baseColorOperator 和贴图组合。 */
@@ -544,6 +564,8 @@ export interface MaterialFile {
    */
   readonly displacementTree?: { readonly tree: ParticleModuleFile; readonly intensity: number; readonly scaleAndBias: boolean };
   readonly emissiveTree?: { readonly tree: ParticleModuleFile; readonly intensity: number; readonly useAlpha: boolean };
+  /** 材质层（Stride 的 MaterialBlendLayer），按顺序叠在这个材质上面。 */
+  readonly layers?: readonly MaterialLayerFile[];
   /** 两面都画（Stride 的 CullMode 是 None）。 */
   readonly doubleSided?: boolean;
   /** 环境光遮蔽（Stride 的 Occlusion 特性的 AmbientOcclusionMap）。 */

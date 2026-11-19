@@ -303,15 +303,25 @@ export class ContentManager {
    * 材质的颜色树（自发光、法线贴图、位移贴图）：先加载它们引用的贴图，再用同一个编译器编译（贴图共用绑定组 3，着色器类按游戏
    * 登记的找）。一棵树都没有时是 undefined。
    */
-  async #shaderTrees({ emissiveTree: emissive, normalTree: normal, displacementTree: displacement }: MaterialFile): Promise<MaterialShaderTrees | undefined> {
-    if (!emissive && !normal && !displacement) return undefined;
-    const refs = [emissive, normal, displacement].flatMap((t) => (t ? particleTextures(t.tree) : []));
+  async #shaderTrees({ emissiveTree: emissive, normalTree: normal, displacementTree: displacement, layers = [] }: MaterialFile): Promise<MaterialShaderTrees | undefined> {
+    if (!emissive && !normal && !displacement && layers.length === 0) return undefined;
+    const layerTrees = layers.flatMap((l) => [l.blend, l.diffuse, l.specular?.color, l.specular?.intensity, l.metalness, l.glossiness?.tree, l.normal?.tree, l.emissive?.tree]);
+    const refs = [emissive?.tree, normal?.tree, displacement?.tree, ...layerTrees].flatMap((t) => (t ? particleTextures(t) : []));
     const textures = new Map(await Promise.all(refs.map(async (ref) => [ref.texture, await this.#loadTextureRef(ref, ref.srgb ?? true)] as const)));
     const compiler = new ColorTreeCompiler({ texture: (path) => textures.get(path), shaderClass: (name) => this.#shaderClasses(name) }, 3);
     const functions = [
       emissive && `fn emissiveTree() -> vec4f {\n  return ${compiler.color(emissive.tree)};\n}\n`,
       normal && `fn normalTree() -> vec4f {\n  return ${compiler.color(normal.tree)};\n}\n`,
       displacement && `fn displacementTree() -> f32 {\n  return ${compiler.vertexScalar(displacement.tree)};\n}\n`,
+      ...layers.flatMap((layer, i) => [
+        `fn layer${i}Blend() -> f32 {\n  return ${compiler.scalar(layer.blend)};\n}\n`,
+        layer.diffuse && `fn layer${i}Diffuse() -> vec4f {\n  return ${compiler.color(layer.diffuse)};\n}\n`,
+        layer.specular && `fn layer${i}Specular() -> vec3f {\n  return ${compiler.color(layer.specular.color)}.rgb * clamp(${compiler.scalar(layer.specular.intensity)}, 0.0, 1.0);\n}\n`,
+        layer.metalness && `fn layer${i}Metalness() -> f32 {\n  return ${compiler.scalar(layer.metalness)};\n}\n`,
+        layer.glossiness && `fn layer${i}Gloss() -> f32 {\n  return ${compiler.scalar(layer.glossiness.tree)};\n}\n`,
+        layer.normal && `fn layer${i}Normal() -> vec4f {\n  return ${compiler.color(layer.normal.tree)};\n}\n`,
+        layer.emissive && `fn layer${i}Emissive() -> vec3f {\n  return ${compiler.color(layer.emissive.tree)}.rgb * ${layer.emissive.intensity};\n}\n`,
+      ]),
     ];
     return {
       code: compiler.declarations + functions.filter(Boolean).join(''),
@@ -319,6 +329,14 @@ export class ContentManager {
       ...(emissive ? { emissive: { intensity: emissive.intensity, useAlpha: emissive.useAlpha } } : {}),
       ...(normal ? { normal: { scaleAndBias: normal.scaleAndBias, isXYNormal: normal.isXYNormal } } : {}),
       ...(displacement ? { displacement: { intensity: displacement.intensity, scaleAndBias: displacement.scaleAndBias } } : {}),
+      ...(layers.length > 0 ? {
+        layers: layers.map((layer) => ({
+          diffuse: layer.diffuse !== undefined, specular: layer.specular !== undefined, metalness: layer.metalness !== undefined,
+          emissive: layer.emissive !== undefined,
+          ...(layer.glossiness ? { glossiness: { invert: layer.glossiness.invert } } : {}),
+          ...(layer.normal ? { normal: { scaleAndBias: layer.normal.scaleAndBias, isXYNormal: layer.normal.isXYNormal } } : {}),
+        })),
+      } : {}),
     };
   }
 

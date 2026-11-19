@@ -742,11 +742,11 @@ describe('导入 Stride 场景', () => {
     expect([header.getUint32(20, true), header.getUint32(24, true)]).toEqual([8, 8]);
   });
 
-  test('材质：镜面颜色乘强度、遮蔽贴图的通道、贴图乘 Float4 的自发光（不做 sRGB 转换）、透明混合；材质层警告', async () => {
+  test('材质：镜面颜色乘强度、遮蔽贴图的通道、贴图乘 Float4 的自发光（不做 sRGB 转换）、透明混合、材质层', async () => {
     const project = await writeProject();
     const out = path.join(dir, 'content-glass');
     const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16 }).importScene(project.byPath('Game/Glassy')!);
-    expect(result.warnings).toEqual([expect.stringContaining('HingeConstraintComponent has no B body'), expect.stringContaining('material layers are not supported yet')]);
+    expect(result.warnings).toEqual([expect.stringContaining('HingeConstraintComponent has no B body')]);
     const material = JSON.parse(await readFile(path.join(out, 'Game/Materials/Glass.material.json'), 'utf8')) as MaterialFile;
     const checker = { texture: 'Game/Textures/Checker', srgb: true, offset: [0, 0] };
     expect(material).toEqual({
@@ -758,6 +758,12 @@ describe('导入 Stride 场景', () => {
       emissiveTexture: { ...checker, scale: [1, 1], filter: 'point', addressU: 'mirror' },
       ambientOcclusion: { value: 1, texture: { ...checker, scale: [2, 2], channel: 'g' }, directLighting: 0.5 },
       transparency: { type: 'blend', alpha: 0.25 },
+      // 层没写 BlendMap：Stride 的默认 ComputeTextureScalar（后备值 1，整层盖上）；子材质的漫反射和法线贴图导出成颜色树
+      layers: [{
+        blend: { $type: 'computeTextureScalar' },
+        diffuse: { $type: 'computeColor', value: [1, 1, 1, 1] },
+        normal: { tree: expect.objectContaining({ $type: 'computeTextureColor', texture: expect.objectContaining({ texture: 'Game/Textures/Bumps' }), scale: [4, 4] }), scaleAndBias: true, isXYNormal: true },
+      }],
     });
     const laser = JSON.parse(await readFile(path.join(out, 'Game/Materials/Laser.material.json'), 'utf8')) as MaterialFile;
     expect(laser).toMatchObject({

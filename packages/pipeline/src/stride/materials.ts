@@ -12,6 +12,7 @@ import {
   TEXTURE_EXTENSIONS,
   type ColorOperator,
   type MaterialFile,
+  type MaterialLayerFile,
   type ParticleModuleFile,
   type SkyboxFile,
   type TextureEncoding,
@@ -116,10 +117,47 @@ export class MaterialImporter {
       ...this.#transparency(asObject(attributes['Transparency']), asset, uvScale),
       ...this.#cullMode(attributes['CullMode'], asset),
     };
-    if (asObject(asset.data['Layers']) && Object.keys(asObject(asset.data['Layers'])!).length > 0) {
-      this.#context.warnings.push(`${asset.file}: material layers are not supported yet (P2 shader system); using the base material`);
+    const layers = await this.#layers(asset);
+    return layers.length > 0 ? { ...material, layers } : material;
+  }
+
+  /**
+   * 材质层（Stride 的 MaterialBlendLayer）：子材质的漫反射、镜面、金属度、光泽度、法线各导出成颜色树，遮罩是 BlendMap。
+   * 停用的、没有子材质或遮罩的层跳过（同 Stride）；子材质自己的层、别的属性（自发光、遮蔽、透明）还不支持，记警告。
+   */
+  async #layers(asset: AssetEntry): Promise<MaterialLayerFile[]> {
+    const layers: MaterialLayerFile[] = [];
+    for (const value of Object.values(asObject(asset.data['Layers']) ?? {})) {
+      const layer = asObject(value);
+      const reference = parseAssetReference(layer?.['Material']);
+      // 没写 BlendMap 是 Stride 的默认值 new ComputeTextureScalar()（没有贴图，后备值 1：整层盖上），写成 null 才是没有
+      const blendMap = layer?.['BlendMap'] === null ? undefined : (asObject(layer?.['BlendMap']) ?? { $type: 'ComputeTextureScalar' });
+      if (!layer || layer['Enabled'] === false || !reference || !blendMap) continue;
+      const where = `${asset.file}: layer ${String(layer['Name'] ?? reference.url)}`;
+      const uvScale = vec2(asObject(layer['Overrides'])?.['UVScale'], 1);
+      if (uvScale[0] !== 1 || uvScale[1] !== 1) this.#context.warnings.push(`${where}: UVScale overrides are not supported yet`);
+      const sub = this.#context.project.get(reference.id, asset.file);
+      const attributes = asObject(sub.data['Attributes']) ?? {};
+      const tree = (node: StrideValue | undefined, what: string) => this.#colorTree(asObject(node) ?? {}, sub, what);
+      const diffuse = asObject(asObject(attributes['Diffuse'])?.['DiffuseMap']);
+      const specular = asObject(attributes['Specular']);
+      const microSurface = asObject(attributes['MicroSurface']);
+      const surface = asObject(attributes['Surface']);
+      const emissive = asObject(attributes['Emissive']);
+      if (emissive && emissive.$type !== 'MaterialEmissiveMapFeature') this.#context.warnings.push(`${where}: the layer's emissive ${emissive.$type ?? 'feature'} is not supported; ignored`);
+      for (const key of ['Occlusion', 'Transparency', 'Displacement']) if (attributes[key]) this.#context.warnings.push(`${where}: the layer's ${key} is not supported yet; ignored`);
+      if (Object.keys(asObject(sub.data['Layers']) ?? {}).length > 0) this.#context.warnings.push(`${where}: nested layers are not supported yet; ignored`);
+      layers.push({
+        blend: await this.#colorTree(blendMap, asset, 'layer blend map'),
+        ...(diffuse ? { diffuse: await tree(diffuse, 'layer diffuse') } : {}),
+        ...(specular?.$type === 'MaterialSpecularMapFeature' ? { specular: { color: await tree(specular['SpecularMap'], 'layer specular'), intensity: await tree(specular['Intensity'] ?? { $type: 'ComputeFloat', Value: 1 }, 'layer specular intensity') } } : {}),
+        ...(specular?.$type === 'MaterialMetalnessMapFeature' ? { metalness: await tree(specular['MetalnessMap'], 'layer metalness') } : {}),
+        ...(microSurface?.['GlossinessMap'] ? { glossiness: { tree: await tree(microSurface['GlossinessMap'], 'layer glossiness'), invert: microSurface['Invert'] === true } } : {}),
+        ...(emissive?.$type === 'MaterialEmissiveMapFeature' ? { emissive: { tree: await tree(emissive['EmissiveMap'], 'layer emissive'), intensity: this.#scalar(asObject(emissive['Intensity']), 1, sub) } } : {}),
+        ...(surface?.$type === 'MaterialNormalMapFeature' ? { normal: { tree: await tree(surface['NormalMap'], 'layer normal map'), scaleAndBias: surface['ScaleAndBias'] !== false, isXYNormal: surface['IsXYNormal'] !== false } } : {}),
+      });
     }
-    return material;
+    return layers;
   }
 
   /** 镜面颜色工作流（MaterialSpecularMapFeature）：镜面颜色乘强度；镜面贴图还不支持，用它的后备颜色。 */

@@ -62,6 +62,22 @@ export interface MaterialShaderTrees {
   readonly normal?: { readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
   /** 位移贴图：顶点沿模型空间的法线移动 值 × intensity（scaleAndBias 时值先换到 -1..1）。 */
   readonly displacement?: { readonly intensity: number; readonly scaleAndBias: boolean };
+  /**
+   * 材质层（content/format.ts 的 MaterialLayerFile）：第 i 层的函数是 layer{i}Blend，有哪个属性就有 layer{i}Diffuse、
+   * layer{i}Specular、layer{i}Metalness、layer{i}Gloss、layer{i}Normal。
+   */
+  readonly layers?: readonly MaterialShaderLayer[];
+}
+
+/** 一个材质层有哪些属性（函数在 MaterialShaderTrees.code 里）。 */
+export interface MaterialShaderLayer {
+  readonly diffuse: boolean;
+  readonly specular: boolean;
+  readonly metalness: boolean;
+  /** invert 时光泽度树存的是粗糙度。 */
+  readonly glossiness?: { readonly invert: boolean };
+  readonly normal?: { readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
+  readonly emissive: boolean;
 }
 
 export interface MaterialDesc {

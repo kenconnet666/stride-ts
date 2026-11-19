@@ -3,7 +3,7 @@
  * 颜色先限制到 half 能安全表示的范围（NaN 变 0），亮度用 Rec.601（至少 0.0001）：
  *   结果 = 颜色 · smoothstep(0, 1, saturate(sqrt(亮度) / (steepness + 1) - threshold)) · color
  */
-import { FullscreenShader, type UniformArena } from './ImageEffect';
+import { FullscreenShader, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 
 const BRIGHT_SHADER = /* wgsl */ `
 struct Bright { color: vec4f, steepness: f32, threshold: f32 };
@@ -31,8 +31,8 @@ export class BrightFilter {
   }
 
   /** input 和 output 一样大。 */
-  draw(encoder: GPUCommandEncoder, arena: UniformArena, input: GPUTexture, output: GPUTexture): void {
+  draw(frame: EffectFrame, arena: UniformArena, input: Image, output: Image): void {
     const parameters = arena.push([...this.color, 1, this.steepness, this.threshold]);
-    this.#shader.draw(encoder, output, [parameters, input]);
+    this.#shader.draw(frame, output, [parameters, input]);
   }
 }

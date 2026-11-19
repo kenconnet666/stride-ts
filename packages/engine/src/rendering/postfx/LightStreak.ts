@@ -9,7 +9,7 @@
  * 最后一轮直接把 4 个方向乘系数加起来写进累加缓冲（默认 5 个通道）。
  */
 import type { AdditiveLayer } from './AdditiveLayers';
-import { ADD_BLEND, FullscreenShader, type ImageEffectContext } from './ImageEffect';
+import { ADD_BLEND, FullscreenShader, type Image, type ImageEffectContext } from './ImageEffect';
 
 const TAPS_PER_ITERATION = 4;
 const MAX_STREAKS = 8;
@@ -100,14 +100,14 @@ export class LightStreak {
   }
 
   /** half 是缩到 1/2 的亮部图（线性），返回要加回画面的一层；没有方向或者轮数是 0 时是 undefined。 */
-  draw({ encoder, pool, arena, scaler, blur }: ImageEffectContext, half: GPUTexture): AdditiveLayer | undefined {
+  draw({ frame, arena, scaler, blur }: ImageEffectContext, half: Image): AdditiveLayer | undefined {
     const streaks = Math.min(Math.max(0, Math.trunc(this.streakCount)), MAX_STREAKS);
     if (streaks === 0 || this.iterationCount <= 0) return undefined;
     const format = half.format;
-    const quarter = pool.acquire(Math.max(1, half.width >> 1), Math.max(1, half.height >> 1), format, 'LightStreak quarter');
-    scaler.draw(encoder, arena, half, quarter, { expanded: false });
-    const accumulation = pool.acquire(quarter.width, quarter.height, format, 'LightStreak accumulation');
-    const scratch = (label: string) => Array.from({ length: BATCH }, () => pool.acquire(quarter.width, quarter.height, format, label));
+    const quarter = frame.acquire(Math.max(1, half.width >> 1), Math.max(1, half.height >> 1), format, 'LightStreak quarter');
+    scaler.draw(frame, arena, half, quarter, { expanded: false });
+    const accumulation = frame.acquire(quarter.width, quarter.height, format, 'LightStreak accumulation');
+    const scratch = (label: string) => Array.from({ length: BATCH }, () => frame.acquire(quarter.width, quarter.height, format, label));
     const pingPong = this.iterationCount > 1 ? [scratch('LightStreak scratch A'), scratch('LightStreak scratch B')] : [];
 
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -126,7 +126,7 @@ export class LightStreak {
         const angle = (this.phase * Math.PI) / 180 + (s * 2 * Math.PI) / streaks;
         parameters.set(s < streaks ? [Math.cos(angle), Math.sin(angle), factor, 0] : [1, 0, 0, 0], d * 4);
       }
-      let sources: readonly GPUTexture[] = Array.from({ length: BATCH }, () => quarter);
+      let sources: readonly Image[] = Array.from({ length: BATCH }, () => quarter);
       for (let level = 0; level < this.iterationCount; level++) {
         const passLength = TAPS_PER_ITERATION ** level;
         const weights = Array.from({ length: TAPS_PER_ITERATION }, (_, i) => decay ** (i * passLength));
@@ -135,17 +135,17 @@ export class LightStreak {
         const resources = [arena.push(parameters), ...sources, this.#sampler];
         if (level === this.iterationCount - 1) {
           // 第一批覆盖累加缓冲，之后的批次叠加
-          this.#sum.draw(encoder, accumulation, resources, first > 0 ? { blend: ADD_BLEND, load: true } : {});
+          this.#sum.draw(frame, accumulation, resources, first > 0 ? { blend: ADD_BLEND, load: true } : {});
         } else {
           const targets = pingPong[level % 2]!;
-          this.#streak.draw(encoder, targets, resources);
+          this.#streak.draw(frame, targets, resources);
           sources = targets;
         }
       }
     }
-    const upscaled = pool.acquire(half.width, half.height, format, 'LightStreak upscaled');
-    scaler.draw(encoder, arena, accumulation, upscaled, { expanded: false });
-    blur.draw(encoder, pool, arena, upscaled, upscaled, 3, 3);
+    const upscaled = frame.acquire(half.width, half.height, format, 'LightStreak upscaled');
+    scaler.draw(frame, arena, accumulation, upscaled, { expanded: false });
+    blur.draw(frame, arena, upscaled, upscaled, 3, 3);
     return { texture: upscaled, expanded: false };
   }
 }

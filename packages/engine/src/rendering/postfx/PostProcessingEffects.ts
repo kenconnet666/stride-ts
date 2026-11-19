@@ -14,7 +14,9 @@ import { Bloom } from './Bloom';
 import { BrightFilter } from './BrightFilter';
 import { Fxaa } from './Fxaa';
 import { GaussianBlur } from './GaussianBlur';
-import { RenderTargetPool, UniformArena, type ImageEffectContext } from './ImageEffect';
+import { GraphTexturePool } from '../graph/GraphTexturePool';
+import { RenderGraph } from '../graph/RenderGraph';
+import { EffectFrame, UniformArena, type Image, type ImageEffectContext } from './ImageEffect';
 import { ImageScaler } from './ImageScaler';
 import { LensFlare } from './LensFlare';
 import { LightStreak } from './LightStreak';
@@ -28,7 +30,9 @@ export class PostProcessingEffects {
   readonly lensFlare: LensFlare;
   readonly antialiasing: Fxaa;
   readonly toneMap: ToneMap;
-  readonly #pool: RenderTargetPool;
+  /** 这一帧的后处理通道和临时目标（见 EffectFrame）；临时目标的贴图跨帧留在池里。 */
+  readonly #pool: GraphTexturePool;
+  readonly #graph: RenderGraph;
   readonly #arena: UniformArena;
   readonly #scaler: ImageScaler;
   readonly #blur: GaussianBlur;
@@ -41,7 +45,8 @@ export class PostProcessingEffects {
     this.lensFlare = new LensFlare(device, linearClamp);
     this.antialiasing = new Fxaa(device, linearClamp);
     this.toneMap = new ToneMap(device, linearClamp);
-    this.#pool = new RenderTargetPool(device);
+    this.#pool = new GraphTexturePool(device);
+    this.#graph = new RenderGraph(this.#pool);
     this.#arena = new UniformArena(device);
     this.#scaler = new ImageScaler(device, linearClamp);
     this.#blur = new GaussianBlur(device, linearClamp);
@@ -61,7 +66,6 @@ export class PostProcessingEffects {
 
   /** input 是 HDR 画面（rgba16float），结果写进 output；elapsed 是这一帧的秒数。 */
   draw(encoder: GPUCommandEncoder, input: GPUTexture, output: GPUTextureView, outputFormat: GPUTextureFormat, elapsed: number): void {
-    this.#pool.recycle();
     this.#arena.reset();
     // GPU 耗时按效果分组（GpuProfiler 打开时）
     const profiler = GpuProfiler.of(this.#device);
@@ -75,20 +79,22 @@ export class PostProcessingEffects {
       this.#arena.flush();
       return;
     }
+    this.#graph.beginFrame();
+    const frame = new EffectFrame(encoder, this.#graph, profiler ?? undefined);
     scope('FXAA');
-    const current = this.antialiasing.enabled ? this.antialiasing.drawHdr(encoder, this.#pool, this.#arena, input) : input;
+    const current = this.antialiasing.enabled ? this.antialiasing.drawHdr(frame, this.#arena, input) : input;
     scope('ToneMap');
-    this.toneMap.measure(encoder, current, elapsed);
+    this.toneMap.measure(frame, current, elapsed);
     let layers: AdditiveLayer[] = [];
     if (this.brightFilter.enabled && (this.bloom.enabled || this.lightStreak.enabled || this.lensFlare.enabled)) {
-      const context: ImageEffectContext = { encoder, pool: this.#pool, arena: this.#arena, scaler: this.#scaler, blur: this.#blur };
-      const bright = this.#pool.acquire(current.width, current.height, current.format, 'BrightFilter');
+      const context: ImageEffectContext = { frame, arena: this.#arena, scaler: this.#scaler, blur: this.#blur };
+      const bright = frame.acquire(current.width, current.height, current.format, 'BrightFilter');
       scope('BrightFilter');
-      this.brightFilter.draw(encoder, this.#arena, current, bright);
-      let half: GPUTexture | undefined;
+      this.brightFilter.draw(frame, this.#arena, current, bright);
+      let half: Image | undefined;
       if (this.lightStreak.enabled || this.lensFlare.enabled) {
-        half = this.#pool.acquire(Math.max(1, bright.width >> 1), Math.max(1, bright.height >> 1), bright.format, 'BrightFilter half');
-        this.#scaler.draw(encoder, this.#arena, bright, half, { expanded: false });
+        half = frame.acquire(Math.max(1, bright.width >> 1), Math.max(1, bright.height >> 1), bright.format, 'BrightFilter half');
+        this.#scaler.draw(frame, this.#arena, bright, half, { expanded: false });
       }
       // 作用域用写死的名字：构建后类名会被压缩
       scope('Bloom');
@@ -102,7 +108,10 @@ export class PostProcessingEffects {
       layers = prefilterLayers(context, layers);
     }
     scope('ToneMap');
-    this.toneMap.draw(encoder, this.#arena, current, layers, output, outputFormat);
+    this.toneMap.draw(frame, this.#arena, current, layers, output, outputFormat);
+    // 都录好了：跑（没人用的中间结果不算，临时目标轮着用），闲了太久的贴图还给系统
+    this.#graph.execute();
+    this.#pool.endFrame();
     scope('');
     // 参数在提交之前一次写进 GPU
     this.#arena.flush();

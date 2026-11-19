@@ -8,7 +8,7 @@
  */
 import type { AdditiveLayer } from './AdditiveLayers';
 import { srgbToLinear } from '../../mathematics/vectors';
-import type { ImageEffectContext } from './ImageEffect';
+import type { Image, ImageEffectContext } from './ImageEffect';
 
 export class Bloom {
   enabled = true;
@@ -22,19 +22,19 @@ export class Bloom {
   distortion: [number, number] = [1, 1];
 
   /** bright 是亮部图，返回要加回画面的一层。 */
-  draw({ encoder, pool, arena, scaler, blur }: ImageEffectContext, bright: GPUTexture): AdditiveLayer {
+  draw({ frame, arena, scaler, blur }: ImageEffectContext, bright: Image): AdditiveLayer {
     let input = bright;
     const [dx, dy] = [Math.max(1, this.distortion[0]), Math.max(1, this.distortion[1])];
     if (dx > 1 || dy > 1) {
-      const anamorphic = pool.acquire(Math.max(1, Math.trunc(input.width / dx)), Math.max(1, Math.trunc(input.height / dy)), input.format, 'Bloom anamorphic');
-      scaler.draw(encoder, arena, input, anamorphic, { expanded: true });
+      const anamorphic = frame.acquire(Math.max(1, Math.trunc(input.width / dx)), Math.max(1, Math.trunc(input.height / dy)), input.format, 'Bloom anamorphic');
+      scaler.draw(frame, arena, input, anamorphic, { expanded: true });
       input = anamorphic;
     }
-    const blurred = pool.acquire(Math.max(1, input.width >> this.downScale), Math.max(1, input.height >> this.downScale), input.format, 'Bloom blur');
-    if (this.downScale > 0) scaler.multiScale(encoder, pool, arena, input, blurred);
+    const blurred = frame.acquire(Math.max(1, input.width >> this.downScale), Math.max(1, input.height >> this.downScale), input.format, 'Bloom blur');
+    if (this.downScale > 0) scaler.multiScale(frame, arena, input, blurred);
     const maxRadius = 0.25 * Math.max(input.width, input.height) * 2 ** -this.downScale;
     const radius = Math.max(1, Math.trunc(1 + (maxRadius - 1) * Math.max(0, this.radius / 100)));
-    blur.draw(encoder, pool, arena, this.downScale > 0 ? blurred : input, blurred, radius, Math.max(1, this.sigmaRatio));
+    blur.draw(frame, arena, this.downScale > 0 ? blurred : input, blurred, radius, Math.max(1, this.sigmaRatio));
     const linear = srgbToLinear(this.amount);
     return { texture: blurred, expanded: true, color: [linear, linear, linear, this.amount] };
   }

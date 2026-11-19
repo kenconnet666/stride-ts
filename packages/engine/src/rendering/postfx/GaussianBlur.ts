@@ -2,7 +2,7 @@
  * 可分离的高斯模糊（Stride 的 GaussianBlur）：先横后竖两遍。权重和偏移照 GaussianUtil.Calculate1D：σ = 半径 / sigmaRatio，
  * 相邻两个像素合成一次落在它们之间的线性采样，所以半径 r 只要 (r + 1) / 2 + 1 次采样（对称的两边各一次）。
  */
-import { FullscreenShader, type RenderTargetPool, type UniformArena } from './ImageEffect';
+import { FullscreenShader, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 
 /** 一遍最多的采样组数：半径到 2 · (MAX_TAPS - 1)。 */
 const MAX_TAPS = 32;
@@ -55,15 +55,15 @@ export class GaussianBlur {
   }
 
   /** input 模糊后写进 output（可以是同一张：横向的结果先写进借来的纹理）。 */
-  draw(encoder: GPUCommandEncoder, pool: RenderTargetPool, arena: UniformArena, input: GPUTexture, output: GPUTexture, radius: number, sigmaRatio: number): void {
+  draw(frame: EffectFrame, arena: UniformArena, input: Image, output: Image, radius: number, sigmaRatio: number): void {
     const taps = gaussianOffsetsWeights(radius, sigmaRatio);
     if (taps.length > MAX_TAPS) throw new RangeError(`GaussianBlur supports a radius up to ${2 * (MAX_TAPS - 1)}, got ${radius}`);
     const packed = new Float32Array(4 + MAX_TAPS * 4);
     taps.forEach(([offset, weight], i) => packed.set([offset, weight], 4 + i * 4));
-    const horizontal = pool.acquire(input.width, input.height, input.format, 'GaussianBlur horizontal');
-    const pass = (source: GPUTexture, target: GPUTexture, dx: number, dy: number) => {
+    const horizontal = frame.acquire(input.width, input.height, input.format, 'GaussianBlur horizontal');
+    const pass = (source: Image, target: Image, dx: number, dy: number) => {
       packed.set([dx / source.width, dy / source.height, taps.length, 0]);
-      this.#shader.draw(encoder, target, [arena.push(packed), source, this.#sampler]);
+      this.#shader.draw(frame, target, [arena.push(packed), source, this.#sampler]);
     };
     pass(input, horizontal, 1, 0);
     pass(horizontal, output, 0, 1);

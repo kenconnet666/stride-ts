@@ -6,11 +6,11 @@
  * 所以两种做法相等，只有画面最外圈半个小图纹素（4K 下 2 个像素）里 clamp 的方式不同。
  * 4K（3840x1810，RTX 3050 笔记本静谧模式）下，叠加从单独一遍 3.5 ms 变成色调映射多出的 1.2 ms 加预滤波 0.2 ms。
  */
-import type { ImageEffectContext, UniformArena } from './ImageEffect';
+import type { Image, ImageEffectContext, UniformArena } from './ImageEffect';
 
 /** 一层：texture 乘 color，按 ImageScaler 的规则采样（expanded 时 9 点），再按 Additive 加上去。 */
 export interface AdditiveLayer {
-  readonly texture: GPUTexture;
+  readonly texture: Image;
   readonly expanded: boolean;
   /** 默认白色。 */
   readonly color?: readonly [number, number, number, number];
@@ -39,18 +39,18 @@ fn additiveLayers(uv: vec2f) -> vec3f {
 }`;
 
 /** Expanded 的层先在小图上做 9 点卷积，换成只采一次的层。 */
-export function prefilterLayers({ encoder, pool, arena, scaler }: ImageEffectContext, layers: readonly AdditiveLayer[]): AdditiveLayer[] {
+export function prefilterLayers({ frame, arena, scaler }: ImageEffectContext, layers: readonly AdditiveLayer[]): AdditiveLayer[] {
   return layers.map((layer) => {
     if (!layer.expanded) return layer;
     const { texture } = layer;
-    const filtered = pool.acquire(texture.width, texture.height, texture.format, 'AdditiveLayers prefilter');
-    scaler.draw(encoder, arena, texture, filtered, { expanded: true });
+    const filtered = frame.acquire(texture.width, texture.height, texture.format, 'AdditiveLayers prefilter');
+    scaler.draw(frame, arena, texture, filtered, { expanded: true });
     return { ...layer, texture: filtered, expanded: false };
   });
 }
 
 /** additiveLayersShader 的绑定资源；空着的槽位绑 fallback（不会采样）。 */
-export function additiveLayerResources(arena: UniformArena, layers: readonly AdditiveLayer[], fallback: GPUTexture, sampler: GPUSampler): [GPUBufferBinding, ...GPUTexture[], GPUSampler] {
+export function additiveLayerResources(arena: UniformArena, layers: readonly AdditiveLayer[], fallback: GPUTexture, sampler: GPUSampler): [GPUBufferBinding, ...Image[], GPUSampler] {
   if (layers.length > MAX_ADDITIVE_LAYERS) throw new RangeError(`At most ${MAX_ADDITIVE_LAYERS} additive layers are supported, got ${layers.length}`);
   const parameters = new Float32Array(MAX_ADDITIVE_LAYERS * 8);
   layers.forEach(({ expanded, color = [1, 1, 1, 1] }, i) => {

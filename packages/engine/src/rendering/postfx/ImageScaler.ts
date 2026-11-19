@@ -5,7 +5,7 @@
  *   中心权重 3、对角 2、两格外 1，缩小时不会闪；
  * 结果乘 color，可以叠加（混合方式由调用方给）。multiScale 一级级减半到目标尺寸，每级都用 Expanded。
  */
-import { FullscreenShader, type RenderTargetPool, type UniformArena } from './ImageEffect';
+import { FullscreenShader, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 
 /** 线性或 Expanded 的一次采样。 */
 const SCALED_SAMPLE = /* wgsl */ `
@@ -55,25 +55,25 @@ export class ImageScaler {
     this.#sampler = linearClamp;
   }
 
-  draw(encoder: GPUCommandEncoder, arena: UniformArena, input: GPUTexture, output: GPUTexture, { expanded, color = [1, 1, 1, 1], blend, load = false }: ScaleOptions): void {
+  draw(frame: EffectFrame, arena: UniformArena, input: Image, output: Image, { expanded, color = [1, 1, 1, 1], blend, load = false }: ScaleOptions): void {
     const parameters = arena.push([...color, 1 / input.width, 1 / input.height, expanded ? 1 : 0, 0]);
-    this.#shader.draw(encoder, output, [parameters, input, this.#sampler], { ...(blend ? { blend } : {}), load });
+    this.#shader.draw(frame, output, [parameters, input, this.#sampler], { ...(blend ? { blend } : {}), load });
   }
 
   /** 原样拷贝到同样大小的纹理视图（比如后备缓冲）：像素中心一对一采样；目标是 sRGB 或 8 位时由硬件编码、截断。 */
   copy(encoder: GPUCommandEncoder, arena: UniformArena, input: GPUTexture, output: GPUTextureView, format: GPUTextureFormat): void {
     const parameters = arena.push([1, 1, 1, 1, 1 / input.width, 1 / input.height, 0, 0]);
-    this.#shader.draw(encoder, output, [parameters, input, this.#sampler], { format });
+    this.#shader.drawNow(encoder, output, [parameters, input, this.#sampler], { format });
   }
 
   /** 一级级减半（Expanded）直到输出的尺寸（Stride 的 ImageMultiScaler 往下缩），中间各级从池里借。 */
-  multiScale(encoder: GPUCommandEncoder, pool: RenderTargetPool, arena: UniformArena, input: GPUTexture, output: GPUTexture): void {
+  multiScale(frame: EffectFrame, arena: UniformArena, input: Image, output: Image): void {
     let previous = input;
     for (;;) {
       const width = Math.max(1, previous.width >> 1), height = Math.max(1, previous.height >> 1);
       const last = width <= output.width && height <= output.height;
-      const target = last ? output : pool.acquire(width, height, output.format, 'ImageMultiScaler level');
-      this.draw(encoder, arena, previous, target, { expanded: true });
+      const target = last ? output : frame.acquire(width, height, output.format, 'ImageMultiScaler level');
+      this.draw(frame, arena, previous, target, { expanded: true });
       if (last) return;
       previous = target;
     }

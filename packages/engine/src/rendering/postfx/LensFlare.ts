@@ -7,7 +7,7 @@
  * 结果加回画面（AdditiveLayers，在色调映射里）。
  */
 import type { AdditiveLayer } from './AdditiveLayers';
-import { FullscreenShader, type ImageEffectContext } from './ImageEffect';
+import { FullscreenShader, type Image, type ImageEffectContext } from './ImageEffect';
 
 const ARTIFACTS = 8;
 
@@ -90,24 +90,24 @@ export class LensFlare {
   }
 
   /** half 是缩到 1/2 的亮部图（线性），返回要加回画面的一层。 */
-  draw({ encoder, pool, arena, blur }: ImageEffectContext, half: GPUTexture): AdditiveLayer {
+  draw({ frame, arena, blur }: ImageEffectContext, half: Image): AdditiveLayer {
     if (this.zoomOffsetsDistortions.length !== ARTIFACTS || this.colorAberrations.length !== ARTIFACTS) {
       throw new RangeError(`LensFlare needs ${ARTIFACTS} zoomOffsetsDistortions and colorAberrations`);
     }
     const format = half.format;
-    const blurred = pool.acquire(half.width, half.height, format, 'LensFlare blurred');
-    blur.draw(encoder, pool, arena, half, blurred, 8, 3);
+    const blurred = frame.acquire(half.width, half.height, format, 'LensFlare blurred');
+    blur.draw(frame, arena, half, blurred, 8, 3);
 
     const amount = this.amount * 0.0005;
     const parameters = new Float32Array(4 + ARTIFACTS * 8);
     parameters.set([amount, this.colorAberrationStrength]);
     this.zoomOffsetsDistortions.forEach((zoom, i) => parameters.set(zoom, 4 + i * 4));
     this.colorAberrations.forEach((color, i) => parameters.set(color, 4 + ARTIFACTS * 4 + i * 4));
-    const artifacts = pool.acquire(half.width, half.height, format, 'LensFlare artifacts');
-    this.#artifact.draw(encoder, artifacts, [arena.push(parameters), blurred, this.#sampler]);
+    const artifacts = frame.acquire(half.width, half.height, format, 'LensFlare artifacts');
+    this.#artifact.draw(frame, artifacts, [arena.push(parameters), blurred, this.#sampler]);
 
-    const flare = pool.acquire(half.width, half.height, format, 'LensFlare');
-    this.#replicate.draw(encoder, flare, [arena.push([amount, amount * this.haloFactor]), artifacts, blurred, this.#sampler]);
+    const flare = frame.acquire(half.width, half.height, format, 'LensFlare');
+    this.#replicate.draw(frame, flare, [arena.push([amount, amount * this.haloFactor]), artifacts, blurred, this.#sampler]);
     return { texture: flare, expanded: false };
   }
 }

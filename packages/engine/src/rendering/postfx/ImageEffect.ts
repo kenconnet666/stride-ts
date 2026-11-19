@@ -7,56 +7,51 @@
  */
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../fullscreen';
+import type { GraphTexture, PassBuilder, PassResources, RenderGraph } from '../graph/RenderGraph';
 import type { GaussianBlur } from './GaussianBlur';
 import type { ImageScaler } from './ImageScaler';
 
 
 /** 一帧的后处理里各效果共用的东西（PostProcessingEffects 每帧给一份）。 */
 export interface ImageEffectContext {
-  readonly encoder: GPUCommandEncoder;
-  readonly pool: RenderTargetPool;
+  readonly frame: EffectFrame;
   readonly arena: UniformArena;
   readonly scaler: ImageScaler;
   readonly blur: GaussianBlur;
 }
 
-export class RenderTargetPool {
-  readonly #device: GPUDevice;
-  readonly #free = new Map<string, GPUTexture[]>();
-  readonly #used = new Map<string, GPUTexture[]>();
+/** 效果读写的画面：这一帧的临时目标（渲染图的句柄），或者一张真的贴图（场景的 HDR 画面这种图外面的）。 */
+export type Image = GraphTexture | GPUTexture;
 
-  constructor(device: GPUDevice) {
-    this.#device = device;
+export const isGraphTexture = (value: object): value is GraphTexture => 'imported' in value;
+
+/**
+ * 一帧后处理的录制：效果往渲染图里加通道（FullscreenShader.draw）、要临时目标（acquire），都录完了由 PostProcessingEffects
+ * 执行。临时目标用到才占一张真的贴图、最后一次用完就让给后面的（见 RenderGraph），所以一串中间结果只占同时要用的那几张。
+ */
+export class EffectFrame {
+  readonly encoder: GPUCommandEncoder;
+  readonly graph: RenderGraph;
+  readonly #profiler: GpuProfiler | undefined;
+
+  constructor(encoder: GPUCommandEncoder, graph: RenderGraph, profiler: GpuProfiler | undefined) {
+    this.encoder = encoder;
+    this.graph = graph;
+    this.#profiler = profiler;
   }
 
-  /** 借一个渲染目标（可以采样）；这一帧内不会再借给别人。 */
-  acquire(width: number, height: number, format: GPUTextureFormat, label: string): GPUTexture {
-    const key = `${width}x${height}:${format}`;
-    const texture = this.#free.get(key)?.pop() ?? this.#device.createTexture({
-      label,
-      size: [Math.max(1, width), Math.max(1, height)],
-      format,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+  /** 这一帧的一个临时渲染目标（可以采样）。 */
+  acquire(width: number, height: number, format: GPUTextureFormat, label: string): GraphTexture {
+    return this.graph.texture({ label, width: Math.max(1, width), height: Math.max(1, height), format });
+  }
+
+  /** 加一个通道（同 RenderGraph.pass）；GPU 耗时的分组（GpuProfiler.scope）按加的时候的算，执行时换回去。 */
+  pass(name: string, setup: (builder: PassBuilder) => void, execute: (resources: PassResources) => void): void {
+    const profiler = this.#profiler, scope = profiler?.scope;
+    this.graph.pass(name, setup, (resources) => {
+      if (profiler && scope !== undefined) profiler.scope = scope;
+      execute(resources);
     });
-    let used = this.#used.get(key);
-    if (!used) this.#used.set(key, (used = []));
-    used.push(texture);
-    return texture;
-  }
-
-  /** 每帧开始时调用：上一帧借出的都还回来；上一帧没用到的销毁（画布尺寸变了以后的旧纹理）。 */
-  recycle(): void {
-    for (const textures of this.#free.values()) for (const texture of textures) texture.destroy();
-    this.#free.clear();
-    for (const [key, textures] of this.#used) this.#free.set(key, textures);
-    this.#used.clear();
-  }
-
-  destroy(): void {
-    for (const map of [this.#free, this.#used]) {
-      for (const textures of map.values()) for (const texture of textures) texture.destroy();
-      map.clear();
-    }
   }
 }
 
@@ -118,6 +113,8 @@ function idOf(object: object): number {
 
 /** 绑定的资源：纹理直接给（用它的默认视图），其余同 GPUBindingResource。 */
 export type FullscreenResource = GPUTexture | GPUSampler | GPUBufferBinding | GPUTextureView;
+/** 录制时给的资源：还可以是这一帧的临时目标。 */
+export type RecordedResource = FullscreenResource | GraphTexture;
 
 /** 绑定组缓存的上限：池里的纹理换了（画布尺寸变了）以后，旧的键不会再命中，到上限就清空。 */
 const MAX_CACHED_BIND_GROUPS = 512;
@@ -156,10 +153,31 @@ export class FullscreenShader {
   }
 
   /**
-   * 画一次全屏三角形：target 是一个或几个渲染目标（几个时着色器按 @location 顺序输出）；resources 按绑定号排；
-   * load 为真时保留目标原来的内容（混合用）；format 是目标为纹理视图时的格式。
+   * 往这一帧的渲染图里加一个通道：画一次全屏三角形。target 是一个或几个渲染目标（几个时着色器按 @location 顺序输出）；
+   * resources 按绑定号排；load 为真时保留目标原来的内容（混合用）；format 是目标为纹理视图时的格式。读写了哪些临时目标
+   * 从参数里看得出来，不用另外声明；目标是图外面的贴图、视图时算有副作用（一定会画）。
    */
-  draw(encoder: GPUCommandEncoder, target: GPUTexture | GPUTextureView | readonly GPUTexture[], resources: readonly FullscreenResource[], { blend, load = false, format }: { blend?: GPUBlendState; load?: boolean; format?: GPUTextureFormat } = {}): void {
+  draw(frame: EffectFrame, target: Image | GPUTextureView | readonly Image[], resources: readonly RecordedResource[], options: { blend?: GPUBlendState; load?: boolean; format?: GPUTextureFormat } = {}): void {
+    const targets: readonly (Image | GPUTextureView)[] = Array.isArray(target) ? target : [target as Image | GPUTextureView];
+    frame.pass(this.#label, (pass) => {
+      for (const item of targets) {
+        if (!isGraphTexture(item)) pass.sideEffect();
+        else if (options.load) pass.readWrite(item);
+        else pass.write(item);
+      }
+      for (const resource of resources) if (isGraphTexture(resource)) pass.read(resource);
+    }, (real) => {
+      this.drawNow(
+        frame.encoder,
+        targets.map((item) => (isGraphTexture(item) ? real.texture(item) : item)),
+        resources.map((resource) => (isGraphTexture(resource) ? real.texture(resource) : resource)),
+        options,
+      );
+    });
+  }
+
+  /** 马上录进 encoder（不经渲染图）：画一次全屏三角形，参数同 draw，但都是真的贴图。 */
+  drawNow(encoder: GPUCommandEncoder, target: GPUTexture | GPUTextureView | readonly (GPUTexture | GPUTextureView)[], resources: readonly FullscreenResource[], { blend, load = false, format }: { blend?: GPUBlendState; load?: boolean; format?: GPUTextureFormat } = {}): void {
     const targets: readonly (GPUTexture | GPUTextureView)[] = target instanceof GPUTexture || target instanceof GPUTextureView ? [target] : target;
     const formats = targets.map((t) => {
       const targetFormat = t instanceof GPUTexture ? t.format : format;

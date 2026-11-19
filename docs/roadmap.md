@@ -374,4 +374,11 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    2. ~~音频运行时~~（2026-11-19，`audio/`）：`game.audio`（AudioEngine：一个 AudioContext 加主音量；第一次点击、按键时恢复出声，之前开始放的声音恢复后接着放），`content.loadSound`、脚本属性 `prop.asset('sound')`，`Sound`（不流式的整个解码成 AudioBuffer，流式的每个实例一个 `<audio>` 元素经 Web Audio 输出），`SoundInstance`（Play、PlayExclusive、Pause、Stop、IsLooping、Volume、Pan、Pitch、PlayState、Position，语义照 Stride）。单测 4 个（假的 AudioContext：状态、位置、循环、独占、恢复出声）。
    3. ~~脚本翻译和冒烟~~（2026-11-19）：SoundScript（AsyncScript：循环放音乐，点击重放音效、波形图散开渐隐）。冒烟 8 项（UI、音乐在放、AnalyserNode 量到主音量的输出不是静音、点击后音效和波形图、音效放完停止）；`tools/regress.ps1` 开 Chrome 时带 `--autoplay-policy=no-user-gesture-required`（合成的点击不算用户操作）。
    4. ~~和桌面 Stride 比对~~（2026-11-19，`tools/stride-capture/simple-audio`）：1280x720 截静止和波形图不透明两张，平均每通道差 1.53/255（背景图的 BC 色带、文字的 hinting），布局一致；声音两边是同一个源文件，冒烟核对播放和输出。帧时间：桌面 Stride 0.48 ms，stride-ts 0.39 ms；导入 2.4 s，构建 7 s，页面下载 2.6 MB（brotli 1.0 MB），第一帧 1.1 s。SimpleAudio 完成。
+6. **ParticlesSample**（`apps/particles-sample`，端口 5208）：七个场景（MainScene、AnimatedParticles、ChildParticles、CustomMaterials、CustomParticles、Lasers、RibbonParticles），NextSceneScript 换场景，加上相机绕转、旋转、预制体实例、激光朝向这些脚本。粒子用到约四十种模块：曲线（ComputeCurveSampler/ComputeAnimationCurve 的 Float、Vector3、Color4、Quaternion）、按寿命改大小、颜色、旋转，重力、速度方向、碰撞（圆柱、球），朝向的四边形、飘带（Ribbon）、拖尾（Trail），UV 滚动，生成顺序，子粒子（SpawnerFromParent 和三种触发、从父粒子继承位置、颜色、速度、顺序），材质的颜色树（ComputeBinaryColor、ComputeTextureScalar、参数），还有样例自己写的模块（CustomParticle 的生成器、初始化器、更新器、形状）和自定义材质（自己的着色器）。分步（每步按场景验收）：
+   1. 应用和导入：`apps/particles-sample` 导入七个场景（不认识的模块先警告），脚本翻译（NextSceneScript、CameraOrbitScript、RotationScript、RotateEntity、AnimationStart、PrefabInstance、LaserOrientationScript、UIScript、GameProfiler），场景能换、模型和灯光画出来。
+   2. MainScene：曲线采样器（动画曲线的关键帧和插值，照 Stride 的 AnimationCurve），按寿命改大小，重力，速度方向，InitialRotationSeed，碰撞（圆柱、球），OrientedQuad 形状，BoundingSphereStatic；材质的颜色树（照 Stride 的 ComputeColor：二元运算、贴图标量、参数）。
+   3. 飘带和拖尾（RibbonParticles、Lasers、AnimatedParticles、预制体）：ShapeBuilderRibbon、ShapeBuilderTrail（按生成顺序连成带子，平滑），InitialSpawnOrder、InitialDirectionSeed、InitialPositionArc，UVBuilderScroll，按寿命改颜色、旋转。
+   4. 子粒子（ChildParticles）：SpawnerFromParent（生命周期、死亡、碰撞三种触发），InitialPositionParent、ColorParent、VelocityParent、OrderParent，圆环的力场。
+   5. 自定义（CustomParticles、CustomMaterials）：游戏代码登记自己的粒子模块和粒子材质（按类型名，同脚本），样例的 CustomParticle* 翻译成 TS，自定义材质的着色器写成 WGSL。
+   6. 冒烟（七个场景轮一圈）和桌面比对（固定种子、固定步长）。
 

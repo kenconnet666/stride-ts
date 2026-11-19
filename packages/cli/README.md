@@ -20,7 +20,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 
 | 命令 | 作用 |
 |---|---|
-| `open <url> [--headless] [--size 1400x900] [--dpr 2]` | 用自己启动的 Chrome 打开（独立的用户目录，开着 CDP 端口），等到游戏运行起来再返回；再次 open 时在同一个浏览器里开新标签。`close` 关掉这个浏览器 |
+| `open <url> [--headless] [--size 1400x900] [--dpr 2]` | 用自己启动的 Chrome 打开（独立的用户目录 `~/.stride-ts/chrome`，装在里面的扩展会保留，比如 Claude 插件；无头的另用 `~/.stride-ts/chrome-headless`；开着 CDP 端口），等到游戏运行起来再返回；再次 open 时在同一个浏览器里开新标签。`close` 关掉这个浏览器 |
 | `status` | 状态、帧号、游戏时间、帧率、画布、GPU 适配器、计数器、观察项 |
 | `entities [--name x] [--with C]`、`inspect <实体>` | 列实体；看某个实体的所有组件值和脚本属性。实体写 id 或名字 |
 | `set <实体> <组件.字段> <JSON>` | 改组件字段或脚本属性，例如 `set PlayerCharacter Character.speed 20` |

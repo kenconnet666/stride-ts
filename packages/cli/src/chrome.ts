@@ -1,6 +1,7 @@
 /**
  * `stride open` 启动的 Chrome：独立进程（CLI 退出后还在），用自己的用户目录（~/.stride-ts/chrome，和用户平时的
- * Chrome 分开），开着远程调试端口（CDP），后续的 open 在同一个浏览器里开新标签，`stride close` 关掉它。
+ * Chrome 分开；装在里面的扩展会保留，比如 Claude 插件），开着远程调试端口（CDP），后续的 open 在同一个浏览器里开新标签，
+ * `stride close` 关掉它。无头的（回归脚本用）另用 ~/.stride-ts/chrome-headless，不加载有界面的那个目录里装的扩展。
  * 默认带 --enable-webgpu-developer-features（时间戳不量化到 100 µs，GpuProfiler 才测得细）。
  */
 import { spawn } from 'node:child_process';
@@ -9,6 +10,7 @@ import path from 'node:path';
 import { readBrowser, STATE_DIR, writeBrowser, type BrowserRecord } from './state.ts';
 
 const PROFILE_DIR = path.join(STATE_DIR, 'chrome');
+const HEADLESS_PROFILE_DIR = path.join(STATE_DIR, 'chrome-headless');
 
 const CHROME_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> = {
   win32: ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'],
@@ -90,11 +92,12 @@ async function browserSocket(browser: BrowserRecord): Promise<string> {
 async function launch(url: string, { headless = false, size, dpr, chromeArgs = [] }: OpenOptions): Promise<BrowserRecord> {
   const executable = process.env['CHROME_PATH'] ?? CHROME_PATHS[process.platform]?.find((candidate) => existsSync(candidate));
   if (!executable) throw new Error('Chrome is not installed in the usual place; set CHROME_PATH');
-  mkdirSync(PROFILE_DIR, { recursive: true });
-  const portFile = path.join(PROFILE_DIR, 'DevToolsActivePort');
+  const profile = headless ? HEADLESS_PROFILE_DIR : PROFILE_DIR;
+  mkdirSync(profile, { recursive: true });
+  const portFile = path.join(profile, 'DevToolsActivePort');
   rmSync(portFile, { force: true });
   const args = [
-    `--user-data-dir=${PROFILE_DIR}`,
+    `--user-data-dir=${profile}`,
     // 端口 0：Chrome 自己挑一个空闲端口，写进用户目录的 DevToolsActivePort
     '--remote-debugging-port=0',
     '--no-first-run',

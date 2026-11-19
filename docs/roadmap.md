@@ -329,4 +329,11 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    1. ~~导入和骨架~~（2026-11-19）：导入主场景和 15 个教程场景；TutorialUI 写成 TS（按钮照占位按钮复制、加载子场景、相机 2 秒插值）。导入器补上：程序模型 Teapot、材质的贴图用到时才导入。
    2. ~~演示脚本和引擎能力~~（2026-11-19）：15 个演示脚本。引擎补上（细节见 docs/decisions.md 同日的条目）：`entity.clone()`（实体层的通用克隆）、`entity.scene`（运行时建的实体放进场景、随场景卸载）、虚拟按钮、`input.absoluteMousePosition`、C# 风格的数值文字（`formatFloat` 等）、`Quaternion.lerp`；调试文字改成按 CSS 像素和设计分辨率摆（高分屏上清楚，字跟着物体）。
    3. 冒烟 11 项（2026-11-19，15 个教程都能进、键盘和虚拟按钮、克隆、代码加载、预制体、换一圈教程实体数不变）；桌面比对还没做（下一步）。
-14. **CSharpIntermediate**（`apps/csharp-intermediate`）：进阶教程，26 个场景：代码建 UI 和编辑器做的 UI、碰撞和触发（同步、异步）、射线（含穿透）、投影和反投影、Web API、加载场景和子场景、动画、声音和音乐、第一和第三人称相机、角色移动、导航、生成物体、全向移动。分步同上，按场景分组做。
+14. **CSharpIntermediate**（`apps/csharp-intermediate`，端口 5222）：进阶教程。主场景 IntermediateTutorials 的 TutorialUI 有"开始"和"完成"两列按钮，点一个就把根场景换成那个教程的场景；11 个主题各有 Start-、Completed- 两个场景（场景加载另有 SceneB 和一个子场景），共 26 个，脚本 23 个。
+
+   分步（按主题分组，每组先看 Stride 的脚本和我们缺什么）：
+   1. 导入和骨架：导入全部场景，TutorialUI 写成 TS；记下导入器不认识的组件。
+   2. 界面和物理：01 用代码建 UI、编辑器做的 UI；02 碰撞和触发、瞬移；03 射线（含穿透的 `RayCastPenetrating`）；04 投影和反投影（`Vector3.Project`、`Viewport.Unproject`）；05 异步脚本（等触发器、Web API 用 fetch）。
+   3. 场景、动画、声音：06 换根场景、加载和卸载子场景（`Content.Unload`）；07 动画的播放、交叉淡入、暂停和速度；08 声音（声像、音量，`AudioEmitterComponent`）。
+   4. 相机、角色、导航：09 第一人称相机；10 第三人称相机（相机避障的射线）和角色移动；11 导航（`RecastNavigationComponent` 的寻路、沿路径走）。
+   5. 冒烟（每个场景都能进、各主题的玩法走一遍）和几张桌面比对；回头看一遍哪里比 Stride 差、Stride 哪里有毛病。

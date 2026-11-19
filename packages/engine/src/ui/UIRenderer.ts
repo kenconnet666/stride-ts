@@ -30,6 +30,8 @@ export interface UIRenderContext {
   /** 真实像素 / 虚拟像素（放在 3D 里的 UI 是估计的）。 */
   readonly ratio: readonly [number, number];
   readonly snapText: boolean;
+  /** 页面上的选区盖住这段文字的哪一段（影子 DOM，见 SemanticsLayer.selectionOf）。 */
+  readonly selectionOf?: ((text: TextBlock) => readonly [number, number] | undefined) | undefined;
 }
 
 const WHOLE: Rect = [0, 0, 1, 1];
@@ -143,6 +145,7 @@ function drawTextBlock(text: TextBlock, context: UIRenderContext): void {
   const font = text.font;
   if (!font) return;
   const [w, h] = text.renderSize;
+  const selected = context.selectionOf?.(text);
   context.batch.drawText(font, text.textToDisplay, offset(text.worldMatrix, -w / 2, -h / 2), {
     fontSize: text.actualTextSize,
     color: scale(text.textColor, text.renderOpacity),
@@ -150,6 +153,7 @@ function drawTextBlock(text: TextBlock, context: UIRenderContext): void {
     boxWidth: w,
     snap: context.snapText && !text.doNotSnapText,
     outline: textOutline(text),
+    selection: selected ? { start: selected[0], end: selected[1], color: scale(text.selectionColor, text.renderOpacity) } : undefined,
   });
 }
 

@@ -70,6 +70,8 @@ export interface DrawTextOptions {
   readonly snap?: boolean;
   /** 描边：字的轮廓往外 thickness（虚拟像素）以内涂上 color，画在字的下面。 */
   readonly outline?: { readonly color: Color; readonly thickness: number } | undefined;
+  /** 选中的一段（文字里的码位，[start, end)）：每行在字的下面垫一块 color。 */
+  readonly selection?: { readonly start: number; readonly end: number; readonly color: Color } | undefined;
 }
 
 // 每项 16 个 float：贴图是 原点、x 边、y 边、UV、颜色；字形是 原点、x 轴、y 轴、em 范围、字形下标（最高位是锯齿）、描边的半径、颜色
@@ -304,7 +306,7 @@ export class SpriteBatch {
    * 运行时字体按 字号 · 真实 / 虚拟 排版（snap 时；不 snap 时按虚拟像素，同 Stride），编译期字体按要的字号；snap 时文字框的
    * 左上角和每个字的原点取整到真实像素。
    */
-  drawText(font: SpriteFont, text: string, transform: Matrix2DLike, { fontSize, color = WHITE, alignment = 'left', boxWidth, snap = true, outline }: DrawTextOptions): void {
+  drawText(font: SpriteFont, text: string, transform: Matrix2DLike, { fontSize, color = WHITE, alignment = 'left', boxWidth, snap = true, outline, selection }: DrawTextOptions): void {
     const ratio: Vec2 = font.isStatic || !snap ? [1, 1] : this.#ratio();
     const size: FontSize = [ratio[1] * fontSize, ratio[1] * fontSize];
     const emToFont = glyphScale(font, size);
@@ -323,6 +325,18 @@ export class SpriteBatch {
     const axes = [emToFont[0] * ux, emToFont[0] * uy, -emToFont[1] * vx, -emToFont[1] * vy] as const;
     const box = boxWidth === undefined ? undefined : boxWidth * ratio[0];
     const glyphs = layoutText(font, text, size, alignment, box);
+    if (selection) {
+      // 选中的字每行并成一块（字体像素里的矩形换到虚拟坐标）
+      const lineHeight = font.totalLineSpacing(size[1]);
+      const selected = glyphs.filter(({ index }) => index >= selection.start && index < selection.end);
+      for (let i = 0; i < selected.length;) {
+        let j = i;
+        while (j + 1 < selected.length && selected[j + 1]!.y === selected[i]!.y) j++;
+        const x = selected[i]!.x, y = selected[i]!.y, width = selected[j]!.nextX - x;
+        this.drawQuad(null, { origin: [ox + x * ux + y * vx, oy + x * uy + y * vy], axisX: [width * ux, width * uy], axisY: [lineHeight * vx, lineHeight * vy] }, [0, 0, 1, 1], selection.color);
+        i = j + 1;
+      }
+    }
     // radius：描边的半径（em），0 是字本身
     const emit = (linear: Color, radius: number): void => {
       for (const { glyph, x, y } of glyphs) {

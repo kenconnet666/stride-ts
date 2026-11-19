@@ -53,6 +53,11 @@ export abstract class ButtonBase extends ContentControl {
   }
 
   /** 点击时按钮自己的反应（Stride 的 OnClick，比如 ToggleButton 换状态）。 */
+  /** 用代码点一下（读屏软件的操作、键盘的 Enter 也走这里）：发 Click。停用的不发。 */
+  performClick(): void {
+    if (this.isHierarchyEnabled) this.raiseEvent(new RoutedEventArgs(ButtonBase.clickEvent));
+  }
+
   protected handleClick(_args: RoutedEventArgs): void {}
 }
 

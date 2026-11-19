@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { GLYPH_RECORD, GLYPH_WORDS, type UIFile } from '../src/content/format';
 import {
-  Border, buildElement, Button, Canvas, ContentDecorator, ContentPresenter, Grid, ImageButton, Slider, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet,
-  ScrollBar, ScrollingText, SpriteFont, StackPanel, StripDefinition, TextBlock, ToggleButton, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture,
+  Border, buildElement, Button, Canvas, collectSemantics, ContentDecorator, ContentPresenter, EditText, Grid, semanticsKey, ImageButton, Slider, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet,
+  ScrollBar, ScrollingText, SpriteFont, StackPanel, StripDefinition, TextBlock, ToggleButton, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture, type ToggleState,
 } from '../src/index';
 import { routeKeyEvents } from '../src/ui/UIKeyboard';
 import { fullScreenTarget, hitTest, PickingState, routePointerEvents, updateMouseOver } from '../src/ui/UIPicking';
@@ -793,6 +793,84 @@ describe('滚动的文字（照 Stride 的 ScrollingText）', () => {
     expect(element.textToDisplay).toBe('BA');
     element.clearText();
     expect(element.textToDisplay).toBe('');
+  });
+});
+
+describe('语义树（影子 DOM 的内容）', () => {
+  test('文字和控件各一个节点，按树的顺序：角色、名字、状态、位置；看不见的不算', async () => {
+    const font = await testFont();
+    const root = new Canvas();
+    const place = <T extends UIElement>(element: T, x: number, y: number, width: number, height: number): T => {
+      Object.assign(element, { width, height, canvasAbsolutePosition: [x, y] });
+      root.children.add(element);
+      return element;
+    };
+    const play = place(new Button(), 10, 20, 100, 40);
+    play.padding = [0, 0, 0, 0];
+    play.content = Object.assign(new TextBlock(), { font, text: 'AB' });
+    const sound = place(Object.assign(new ToggleButton(), { accessibleLabel: 'Sound', state: 'checked' as ToggleState }), 10, 80, 40, 40);
+    const volume = place(Object.assign(new Slider(), { name: 'Volume', minimum: 0, maximum: 10, value: 4 }), 10, 140, 200, 20);
+    const lines = place(Object.assign(new TextBlock(), { font, text: 'AB\nA', textAlignment: 'center' as const, isSelectable: true }), 200, 0, 100, 60);
+    place(Object.assign(new TextBlock(), { font, text: 'AAA', visibility: 'hidden' as const }), 0, 300, 50, 20);
+    place(Object.assign(new EditText(), { name: 'Password', inputType: 'password' as const, text: 'AB' }), 0, 330, 50, 20);
+    place(Object.assign(new ScrollingText(), { font, text: 'ABBA' }), 0, 360, 40, 20);
+    const dialog = place(Object.assign(new ModalElement(), { name: 'Confirm' }), 100, 200, 200, 100);
+    const ok = Object.assign(new Button(), { isEnabled: false });
+    ok.content = Object.assign(new TextBlock(), { font, text: 'BA' });
+    dialog.content = ok;
+    root.measure([400, 400]);
+    root.arrange([400, 400], false);
+    root.updateWorldMatrix([1, 0, 0, 1, 0, 0]);
+    root.updateElementState(0);
+
+    const nodes = collectSemantics(root);
+    // 最后一列：被模态的弹窗挡住（弹窗和它里面的不挡）
+    expect(nodes.map((node) => [node.role, node.label, node.hidden, node.disabled, node.blocked])).toEqual([
+      ['button', 'AB', false, false, true],
+      // 按钮里的文字：名字已经在按钮上，对读屏软件藏起来
+      ['text', 'AB', true, false, true],
+      ['checkbox', 'Sound', false, false, true],
+      ['slider', 'Volume', false, false, true],
+      ['text', 'AB\nA', false, false, true],
+      // 没在编辑的输入框：名字和里面的文字（密码是圆点）
+      ['textbox', 'Password', false, false, true],
+      // 滚动的文字给整段，不是这一帧露出来的几个字
+      ['marquee', 'ABBA', false, false, true],
+      ['dialog', 'Confirm', false, false, false],
+      ['button', 'BA', false, true, false],
+      ['text', 'BA', true, true, false],
+    ]);
+    expect([nodes[5]!.value, nodes[5]!.readOnly]).toEqual(['••', false]);
+    // 弹窗不是模态的：谁都不挡
+    dialog.isModal = false;
+    expect(collectSemantics(root).some((node) => node.blocked)).toBe(false);
+    dialog.isModal = true;
+    const [button, , checkbox, slider, text] = nodes;
+    // 位置是元素的左上角（世界矩阵的原点在中心）
+    expect([button!.matrix, button!.size]).toEqual([[1, 0, 0, 1, 10, 20], [100, 40]]);
+    expect([checkbox!.element, checkbox!.checked]).toEqual([sound, 'true']);
+    expect([slider!.element, slider!.range]).toEqual([volume, { min: 0, max: 10, value: 4 }]);
+    // 两行，居中：A 宽 10、B 宽 12，框宽 100
+    expect(text!.element).toBe(lines);
+    expect(text!.text!.selectable).toBe(true);
+    expect(text!.text!.lines.map((line) => [line.text, line.x, line.width, line.start])).toEqual([['AB', 39, 22, 0], ['A', 45, 10, 3]]);
+    expect(text!.text!.lines[1]!.y).toBeCloseTo(text!.text!.lineHeight, 5);
+
+    // 没变时节点的键不变；状态变了才变（影子 DOM 靠它决定要不要写 DOM）
+    const keys = nodes.map(semanticsKey);
+    expect(collectSemantics(root).map(semanticsKey)).toEqual(keys);
+    sound.state = 'indeterminate';
+    volume.value = 7;
+    const changed = collectSemantics(root);
+    expect(changed.map(semanticsKey).map((key, i) => key !== keys[i])).toEqual([false, false, true, true, false, false, false, false, false, false]);
+    expect([changed[2]!.checked, changed[3]!.range!.value]).toEqual(['mixed', 7]);
+    // 代码点一下按钮：发 Click；停用的不发
+    const clicks: string[] = [];
+    play.onClick(() => clicks.push('play'));
+    ok.onClick(() => clicks.push('ok'));
+    play.performClick();
+    ok.performClick();
+    expect(clicks).toEqual(['play']);
   });
 });
 

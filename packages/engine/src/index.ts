@@ -132,6 +132,7 @@ export { DebugText, type DebugTextLine } from './debug/DebugText';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
 export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './games/Game';
 export { GameTime } from './games/GameTime';
+export { UserPreferences } from './games/UserPreferences';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
 export { GamePadButton, InputManager, type GamePadState, type InputDevice, type MouseButton, type PointerEvent } from './input/InputManager';
@@ -229,6 +230,8 @@ export { meshEffect, MESH_EFFECT_PARAMETERS, type MeshEffect } from './rendering
 export { particleField, ParticlePool, type AnyParticleField, type CustomParticleField, type ParticleField } from './particles/ParticlePool';
 export { RandomOffset, seedFloat } from './particles/random';
 export { UISystem } from './ui/UISystem';
+export { collectSemantics, semanticsKey, type SemanticsLine, type SemanticsNode, type SemanticsRole } from './ui/semantics';
+export { SemanticsLayer } from './ui/SemanticsLayer';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';
 export { MipmapGenerator } from './rendering/MipmapGenerator';

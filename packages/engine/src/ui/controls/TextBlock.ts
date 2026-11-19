@@ -31,6 +31,13 @@ export class TextBlock extends UIElement {
   #wrappedText = '';
   /** 上次量的时候字体的排版版本：字形按块下载，下完新的块（或开关字距）文字的大小会变，要重新量。 */
   #measuredVersion = -1;
+  /**
+   * 可以用鼠标拖着选中文字（再 Ctrl+C 复制）。默认关：鼠标落在文字上照常是游戏和 UI 的输入。全选、查找、读屏不受这个开关影响
+   * （见 SemanticsLayer）。
+   */
+  isSelectable = false;
+  /** 选中的那段文字的底色（sRGB），同 EditText 的默认值。 */
+  selectionColor: Color = [0x80 / 255, 0xb4 / 255, 0xd5 / 255, 1];
   /** 文字颜色（sRGB），默认 Stride 的 0xF0F0F0。 */
   textColor: Color = [240 / 255, 240 / 255, 240 / 255, 1];
   /**

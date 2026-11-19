@@ -26,6 +26,8 @@ import { ScrollViewer } from './controls/ScrollViewer';
 import { IDENTITY, type UIElement } from './UIElement';
 import type { UIComponent } from './UIComponent';
 import { fullScreenTarget, PickingState, routePointerEvents, updateMouseOver, type PickingTarget } from './UIPicking';
+import { SemanticsLayer, type SemanticsPage } from './SemanticsLayer';
+import type { TextBlock } from './controls/TextBlock';
 import { TextInputBridge } from './TextInputBridge';
 import { routeKeyEvents } from './UIKeyboard';
 import { pointerToVirtual, projectedPixelRatio, uiWorldMatrix } from './UIProjection';
@@ -60,6 +62,11 @@ export class UISystem {
   elementUnderMouseCursor: UIElement | null = null;
   /** @internal 激活的 EditText 后面的影子输入框（attach 时建）。 */
   textInput: TextInputBridge | undefined;
+  /**
+   * 影子 DOM（attach 时建）：全屏 UI 的文字和控件在页面上的透明节点，读屏、Tab 键、查找、复制靠它。
+   * `game.ui.semantics.enabled = false` 关掉。
+   */
+  semantics: SemanticsLayer | undefined;
 
   /** @internal UIComponent 启动时登记。 */
   add(component: UIComponent): void {
@@ -77,6 +84,7 @@ export class UISystem {
   attach(game: Game): void {
     this.#input = game.input;
     this.textInput = new TextInputBridge(game.graphicsDevice.canvas);
+    this.semantics = new SemanticsLayer(game.graphicsDevice.canvas);
     this.#detachInput = game.input.onResolvingCapture(() => this.#resolveInput(game));
   }
 
@@ -207,7 +215,12 @@ export class UISystem {
     this.#laidOut = false;
     const visible = this.#visible();
     this.#targets = new Map();
-    if (visible.length === 0) return;
+    const pages: SemanticsPage[] = [];
+    if (visible.length === 0) {
+      this.semantics?.update(pages);
+      return;
+    }
+    const selectionOf = this.semantics ? (text: TextBlock) => this.semantics?.selectionOf(text) : undefined;
     const device = game.graphicsDevice;
     const target: [number, number] = [device.canvas.width, device.canvas.height];
     const inScene = visible.filter((component) => !component.isFullScreen);
@@ -216,6 +229,7 @@ export class UISystem {
       if (!component.isFullScreen) continue;
       const root = component.page!.rootElement!;
       const virtual = UISystem.virtualResolution(component, target);
+      pages.push({ root, virtualResolution: virtual });
       this.#targets.set(component, fullScreenTarget(root, virtual));
       const ratio: [number, number] = [target[0] / virtual[0], target[1] / virtual[1]];
       const batch = this.#batch(game, component);
@@ -227,12 +241,13 @@ export class UISystem {
       batch.transform = undefined;
       batch.pixelRatio = undefined;
       batch.begin(pass, target[0], target[1], device.backBufferViewFormat);
-      drawUI(root, { batch, virtualResolution: virtual, ratio, snapText: component.snapText });
+      drawUI(root, { batch, virtualResolution: virtual, ratio, snapText: component.snapText, selectionOf });
       batch.end();
       pass.end();
     }
-    // 布局之后：影子输入框跟上 EditText 的位置，选区同步回来
+    // 布局之后：影子输入框跟上 EditText 的位置，选区同步回来；影子 DOM 照这一帧的 UI 树同步
     this.textInput?.update();
+    this.semantics?.update(pages);
   }
 
   /** 放在 3D 里的 UI：按主相机从远到近画进一个通道，和场景的深度比较。没有相机时不画。 */
@@ -317,6 +332,8 @@ export class UISystem {
     this.#input?.releaseAll(this);
     this.textInput?.destroy();
     this.textInput = undefined;
+    this.semantics?.destroy();
+    this.semantics = undefined;
     for (const batch of this.#batches.values()) batch.destroy();
     this.#batches.clear();
     this.#components.clear();

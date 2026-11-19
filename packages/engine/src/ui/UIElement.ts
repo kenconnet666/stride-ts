@@ -65,6 +65,8 @@ export function sizeWithThickness(size: readonly [number, number], t: Thickness)
 
 export abstract class UIElement {
   name: string | null = null;
+  /** 读屏软件读的名字（见 SemanticsLayer）；不设时按钮读它里面的文字，没有文字的读 name。 */
+  accessibleLabel: string | null = null;
   /** 背景色，画在元素的矩形上。 */
   backgroundColor: Color = TRANSPARENT;
   /** 把子元素裁到自己的矩形里。 */

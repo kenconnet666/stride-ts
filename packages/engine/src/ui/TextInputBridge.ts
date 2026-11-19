@@ -5,6 +5,7 @@
  *
  * 和 Stride 不同：Stride 桌面版自己解释按键（左右、Home、End、Ctrl+C……），我们用浏览器的，行为和别的网页输入框一样。
  * Enter、Esc 结束编辑，同 Stride（Stride 桌面版的多行输入框也是 Enter 结束）；多行的可以 Shift+Enter 换行（多做的）。
+ * Tab 结束编辑并把焦点交给下一个控件（Shift+Tab 上一个），顺序是影子 DOM 的（SemanticsLayer）。
  */
 import type { EditText } from './controls/EditText';
 
@@ -110,6 +111,12 @@ export class TextInputBridge {
       if (key === 'Escape' || (key === 'Enter' && !(multiline && shiftKey))) {
         event.preventDefault();
         if (this.#edit) this.#edit.isSelectionActive = false;
+      } else if (key === 'Tab' && this.#edit) {
+        // Tab：结束编辑，焦点交给界面上的下一个控件（影子 DOM 里的顺序）
+        const edit = this.#edit;
+        event.preventDefault();
+        edit.isSelectionActive = false;
+        edit.uiSystem?.semantics?.focusNext(edit, shiftKey);
       }
     }, { signal });
     // 浏览器窗口失去焦点之类：结束编辑（Stride 在游戏暂停时也结束）

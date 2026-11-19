@@ -30,6 +30,7 @@ import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleS
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
+import { UserPreferences } from './UserPreferences';
 
 export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
 
@@ -130,6 +131,8 @@ export class Game {
   readonly particles = new ParticleSystems();
   /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
   readonly ui = new UISystem();
+  /** 用户在系统里设的偏好：少动画、高对比、深浅色。 */
+  readonly userPreferences = new UserPreferences();
   private readonly debugTextRenderer = new DebugTextRenderer();
   /** 调试命令、计数器、事件和日志转发（debug/Debug.ts）。 */
   readonly debug = new Debug(() => (this.status === 'starting' ? undefined : this.frames));

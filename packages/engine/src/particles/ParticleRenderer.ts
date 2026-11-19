@@ -9,7 +9,7 @@
  */
 import { Matrix } from '../mathematics/Matrix';
 import type { GpuResources } from '../rendering/GpuResources';
-import type { RenderView } from '../rendering/RenderSystem';
+import { inRenderMask, type RenderView } from '../rendering/RenderSystem';
 import { MATERIAL_STREAMS } from '../rendering/shaderClass';
 import type { Vec3 } from './math';
 import type { MaterialProgram } from './material';
@@ -96,7 +96,7 @@ export class ParticleRenderer {
     const eye: Vec3 = [cameraWorld[12]!, cameraWorld[13]!, cameraWorld[14]!];
     // 粒子系统从远到近
     const systems = components
-      .filter((component) => component.enabled && inFrustum(component.particleSystem.worldBounds(), view.frustumPlanes))
+      .filter((component) => component.enabled && inRenderMask(view.cullingMask, component.renderGroup) && inFrustum(component.particleSystem.worldBounds(), view.frustumPlanes))
       .map((component) => ({ component, distance: Math.hypot(...component.particleSystem.translation.map((t, i) => t - eye[i]!)) }))
       .sort((a, b) => b.distance - a.distance);
 

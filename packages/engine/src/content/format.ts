@@ -832,6 +832,8 @@ export interface SceneSpriteFromSheet {
 export interface SceneSpriteSettings {
   /** 没写是 true（Stride 的 Enabled）。 */
   readonly enabled?: boolean;
+  /** 渲染组（Stride 的 RenderGroup，0 到 31）；没写是 0。 */
+  readonly renderGroup?: number;
   /** billboard 一直朝着相机。 */
   readonly type: 'sprite' | 'billboard';
   /** 乘在贴图上的颜色（RGBA）和强度。 */
@@ -1017,8 +1019,8 @@ export function decodeGlyphBlock(buffer: ArrayBuffer, source = 'glyphs'): GlyphB
  * 背景（Stride 的 BackgroundComponent）：立方体贴图（内容路径），或者 Is2D 的平面图片（铺满画面，多出的部分裁掉）。
  */
 export type SceneBackground =
-  | { readonly type: 'cubemap'; readonly texture: string; readonly intensity: number }
-  | { readonly type: '2d'; readonly image: TextureRef; readonly intensity: number };
+  | { readonly type: 'cubemap'; readonly texture: string; readonly intensity: number; readonly renderGroup?: number }
+  | { readonly type: '2d'; readonly image: TextureRef; readonly intensity: number; readonly renderGroup?: number };
 
 /** Stride 的 AnimationComponent：按名字列出的剪辑（内容路径），脚本按名字播放。 */
 export interface SceneAnimation {

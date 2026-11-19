@@ -71,6 +71,8 @@ export const Background = component('Background', {
   texture: prop.u32().brand<'CubemapId'>().default(0 as CubemapId),
   image: prop.u32().brand<'TextureId'>().default(0 as TextureId),
   intensity: prop.f32().default(1).min(0),
+  /** 渲染组（Stride 的 RenderGroup，0 到 31）：视图的掩码里没有这一组时不画。 */
+  renderGroup: prop.u8().max(31).default(0),
 });
 
 /**
@@ -118,6 +120,8 @@ export const Sprite = component('Sprite', {
   isAlphaCutoff: prop.bool().default(false),
   blendMode: prop.enum(['auto', 'none', 'alphaBlend', 'additiveBlend', 'noColor']).default('auto'),
   sampler: prop.enum(['linearClamp', 'pointClamp', 'anisotropicClamp']).default('linearClamp'),
+  /** 渲染组（Stride 的 RenderGroup，0 到 31）：视图的掩码里没有这一组时不画。 */
+  renderGroup: prop.u8().max(31).default(0),
 });
 
 /**

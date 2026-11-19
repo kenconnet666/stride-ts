@@ -528,10 +528,10 @@ export class StrideImporter {
         const texture = parseAssetReference(component['Texture']);
         if (!texture) return false;
         const asset = this.#project.get(texture.id, where);
-        const intensity = asNumber(component['Intensity'], 1);
+        const shared = { intensity: asNumber(component['Intensity'], 1), ...(renderGroupOf(component['RenderGroup']) !== 0 ? { renderGroup: renderGroupOf(component['RenderGroup']) } : {}) };
         components.background = component['Is2D'] === true
-          ? { type: '2d', image: await this.#materials.texture(asset), intensity }
-          : { type: 'cubemap', texture: await this.#materials.cubemap(asset), intensity };
+          ? { type: '2d', image: await this.#materials.texture(asset), ...shared }
+          : { type: 'cubemap', texture: await this.#materials.cubemap(asset), ...shared };
         return true;
       }
       case 'Stride.BepuPhysics.StaticComponent,Stride.BepuPhysics': {
@@ -667,6 +667,7 @@ export class StrideImporter {
     return {
       ...source,
       ...(component['Enabled'] === false ? { enabled: false } : {}),
+      ...(renderGroupOf(component['RenderGroup']) !== 0 ? { renderGroup: renderGroupOf(component['RenderGroup']) } : {}),
       type: component['SpriteType'] === 'Billboard' ? 'billboard' : 'sprite',
       color: color4(component['Color']),
       intensity: asNumber(component['Intensity'], 1),

@@ -9,7 +9,7 @@ import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
 import { Background } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
-import { RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 import { Cubemap } from './Skybox';
 import { Texture } from './Texture';
 
@@ -69,6 +69,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
   #gpu: Gpu | undefined;
   #bindGroup: GPUBindGroup | undefined;
   #bound: GPUTexture | undefined;
+  #renderGroup = 0;
 
   readonly #extractSystem = system('BackgroundRenderFeature.extract', {
     with: { background: Background, transform: Transform },
@@ -77,6 +78,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
       this.#image = Texture.byId(background.image[0]!);
       this.#cubemap = this.#image ? undefined : Cubemap.byId(background.texture[0]!);
       this.#intensity = background.intensity[0]!;
+      this.#renderGroup = background.renderGroup[0]!;
       Matrix.rotationOf(this.#rotation, transform.world, transform.slot[0]! * 16);
     },
   });
@@ -123,6 +125,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
     // 只有深度的阶段（阴影投射）没有颜色可画；背景画在不透明阶段
     const colorFormat = stage.output.colorFormat;
     if ((!this.#cubemap && !this.#image) || !this.#bindGroup || !colorFormat || stage.transparent || view.index >= MAX_VIEWS) return;
+    if (!inRenderMask(view.cullingMask, this.#renderGroup)) return;
     pass.setPipeline(this.#pipelineFor(stage, colorFormat, this.#image ? 'fs2D' : 'fs'));
     pass.setBindGroup(0, this.#bindGroup, [view.index * VIEW_STRIDE]);
     pass.draw(3);

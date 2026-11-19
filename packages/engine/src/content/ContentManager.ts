@@ -695,8 +695,9 @@ export class ContentManager {
       const { range, angleInner, angleOuter } = light;
       entity.add(Light.with({ type: 'spot', color: [...light.color, 1], intensity: light.intensity, range, angleInner, angleOuter, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
     } else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
-    if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
-    else if (background) entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, intensity: background.intensity }));
+    const backgroundGroup = { intensity: background?.intensity ?? 1, renderGroup: background?.renderGroup ?? 0 };
+    if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, ...backgroundGroup }));
+    else if (background) entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, ...backgroundGroup }));
     if (sprite && 'sheet' in sprite) {
       const { sheet, color, ...settings } = sprite;
       entity.add(Sprite.with({ ...settings, sheet: assets.spriteSheets.get(sheet)!.id, color: [...color] }));

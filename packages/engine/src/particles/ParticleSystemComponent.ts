@@ -24,6 +24,8 @@ export class ParticleSystemComponent extends StartupScript {
   color: [number, number, number, number] = [1, 1, 1, 1];
   /** 模拟的速度倍数。 */
   speed = 1;
+  /** 渲染组（Stride 的 RenderGroup，0 到 31）：视图的掩码里没有这一组时不画。 */
+  renderGroup = 0;
   /** load 用的文件和上下文，克隆时照着再建一个粒子系统。 */
   #loaded: readonly [file: ParticleModuleFile, context: ParticleContext | undefined] | undefined;
 
@@ -33,6 +35,8 @@ export class ParticleSystemComponent extends StartupScript {
     this.particleSystem = new ParticleSystem((file['particleSystem'] as ParticleModuleFile | undefined) ?? {}, context);
     this.color = [...value(file, 'color', [1, 1, 1, 1])] as [number, number, number, number];
     this.speed = value(file, 'speed', 1);
+    // 导入的文件里是枚举的名字（group4）
+    this.renderGroup = Number(/[0-9]+$/.exec(String(value<string | number>(file, 'renderGroup', 0)))?.[0] ?? 0);
   }
 
   /** 克隆的实体有自己的粒子系统（同样的设置，从头模拟），颜色和速度照抄现在的值。用代码建的粒子系统（没经过 load）不跟着。 */
@@ -40,6 +44,7 @@ export class ParticleSystemComponent extends StartupScript {
     if (source.#loaded) this.load(...source.#loaded);
     this.color = [...source.color];
     this.speed = source.speed;
+    this.renderGroup = source.renderGroup;
   }
 
   override start(): void {

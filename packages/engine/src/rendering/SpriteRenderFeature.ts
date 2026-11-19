@@ -13,7 +13,7 @@ import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
 import { srgbToLinear } from '../mathematics/vectors';
 import { Sprite } from './components';
-import { RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 import { SpriteSheet } from './SpriteSheet';
 import { Texture } from './Texture';
 
@@ -74,6 +74,7 @@ type Blend = 'none' | 'premultiplied' | 'nonPremultiplied' | 'additive' | 'noCol
 /** 提取出来的一个精灵。 */
 interface SpriteItem {
   texture: Texture;
+  renderGroup: number;
   /** 贴图上要画的区域，按贴图尺寸归一化：u、v、宽、高。 */
   readonly uv: [number, number, number, number];
   /** 区域的像素宽高。 */
@@ -171,6 +172,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
         item.ignoreDepth = sprite.ignoreDepth[i] !== 0;
         item.alphaCutoff = sprite.isAlphaCutoff[i] !== 0;
         item.sampler = sprite.sampler[i]!;
+        item.renderGroup = sprite.renderGroup[i]!;
       }
     },
   });
@@ -216,6 +218,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
     let pipeline: GPURenderPipeline | undefined, textureGroup: GPUBindGroup | undefined;
     order.forEach((index, drawn) => {
       const item = this.#items[index]!;
+      if (!inRenderMask(view.cullingMask, item.renderGroup)) return;
       const nextPipeline = this.#pipelineFor(gpu, colorFormat, stage.output.depthFormat, item);
       if (nextPipeline !== pipeline) pass.setPipeline((pipeline = nextPipeline));
       const nextGroup = this.#textureGroup(gpu, item);

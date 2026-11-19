@@ -493,7 +493,7 @@ describe('导入 Stride 场景', () => {
       '                    m: !ModelComponent', '                        Id: mq2', `                        Model: ${ids.plain}:Models/Plain`, '                        Materials: {}',
       '        -   Entity:', '                Id: q3', '                Name: Hero', '                Components:',
       '                    t: !TransformComponent', '                        Id: tq3', '                        Children: {}',
-      '                    s: !SpriteComponent', '                        Id: sq3', '                        Enabled: false', '                        SpriteProvider: !SpriteFromSheet',
+      '                    s: !SpriteComponent', '                        Id: sq3', '                        Enabled: false', '                        RenderGroup: Group2', '                        SpriteProvider: !SpriteFromSheet',
       `                            Sheet: ${ids.heroSheet}:Sprites/Hero`, '                            CurrentFrame: 1',
       '                        Color: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}', '                        IsAlphaCutoff: true', '                        Sampler: PointClamp',
     ].join('\n'),
@@ -748,7 +748,7 @@ describe('导入 Stride 场景', () => {
     });
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Bumpy.scene.json'), 'utf8')) as SceneFile;
     const sprite = scene.entities.find((e) => e.name === 'Hero')!.components.sprite!;
-    expect(sprite).toMatchObject({ sheet: 'Game/Sprites/Hero', frame: 1, enabled: false, isAlphaCutoff: true, sampler: 'pointClamp' });
+    expect(sprite).toMatchObject({ sheet: 'Game/Sprites/Hero', frame: 1, enabled: false, renderGroup: 2, isAlphaCutoff: true, sampler: 'pointClamp' });
   });
 
   test('UI：页面和库的元素平铺成数组，引用换成下标，属性按 UIValue 换；UIComponent 引用页面，脚本属性引用 UI 库、精灵表和声音（源文件原样复制）', async () => {

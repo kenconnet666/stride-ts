@@ -18,6 +18,7 @@ import { isGraphTexture, UniformArena, type EffectFrame, type Image, type ImageE
 import { ImageScaler } from './ImageScaler';
 import { LensFlare } from './LensFlare';
 import { LightStreak } from './LightStreak';
+import { QUALITY_TIERS, type QualitySettings } from '../Quality';
 import { ToneMap } from './ToneMap';
 
 export class PostProcessingEffects {
@@ -61,7 +62,7 @@ export class PostProcessingEffects {
    * 往这一帧的渲染图里加后处理的通道：input 是 HDR 画面（rgba16float；这一帧的临时贴图，或者一张真的贴图），结果写进
    * output；elapsed 是这一帧的秒数。调用方执行完渲染图以后要调 flush（uniform 的参数那时才写进 GPU）。
    */
-  record(frame: EffectFrame, input: Image, output: GPUTextureView, outputFormat: GPUTextureFormat, elapsed: number): void {
+  record(frame: EffectFrame, input: Image, output: GPUTextureView, outputFormat: GPUTextureFormat, elapsed: number, quality: QualitySettings = QUALITY_TIERS.ultra): void {
     this.#arena.reset();
     // GPU 耗时按效果分组（GpuProfiler 打开时）
     const profiler = GpuProfiler.of(this.#device);
@@ -78,28 +79,30 @@ export class PostProcessingEffects {
       return;
     }
     scope('FXAA');
-    const current = this.antialiasing.enabled ? this.antialiasing.drawHdr(frame, this.#arena, input) : input;
+    // 各效果开不开：合成器的设置要开，画质档位也给
+    const bloom = this.bloom.enabled && quality.bloom, lightStreak = this.lightStreak.enabled && quality.lightStreak, lensFlare = this.lensFlare.enabled && quality.lensFlare;
+    const current = this.antialiasing.enabled && quality.antialiasing ? this.antialiasing.drawHdr(frame, this.#arena, input) : input;
     scope('ToneMap');
     this.toneMap.measure(frame, current, elapsed);
     let layers: AdditiveLayer[] = [];
-    if (this.brightFilter.enabled && (this.bloom.enabled || this.lightStreak.enabled || this.lensFlare.enabled)) {
+    if (this.brightFilter.enabled && (bloom || lightStreak || lensFlare)) {
       const context: ImageEffectContext = { frame, arena: this.#arena, scaler: this.#scaler, blur: this.#blur };
       const bright = frame.acquire(current.width, current.height, current.format, 'BrightFilter');
       scope('BrightFilter');
       this.brightFilter.draw(frame, this.#arena, current, bright);
       let half: Image | undefined;
-      if (this.lightStreak.enabled || this.lensFlare.enabled) {
+      if (lightStreak || lensFlare) {
         half = frame.acquire(Math.max(1, bright.width >> 1), Math.max(1, bright.height >> 1), bright.format, 'BrightFilter half');
         this.#scaler.draw(frame, this.#arena, bright, half, { expanded: false });
       }
       // 作用域用写死的名字：构建后类名会被压缩
       scope('Bloom');
-      if (this.bloom.enabled) layers.push(this.bloom.draw(context, bright));
+      if (bloom) layers.push(this.bloom.draw(context, bright));
       scope('LightStreak');
-      const streak = half && this.lightStreak.enabled ? this.lightStreak.draw(context, half) : undefined;
+      const streak = half && lightStreak ? this.lightStreak.draw(context, half) : undefined;
       if (streak) layers.push(streak);
       scope('LensFlare');
-      if (half && this.lensFlare.enabled) layers.push(this.lensFlare.draw(context, half));
+      if (half && lensFlare) layers.push(this.lensFlare.draw(context, half));
       scope('AdditiveLayers');
       layers = prefilterLayers(context, layers);
     }

@@ -22,6 +22,7 @@ import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage
 import { GpuProfiler } from '../graphics/GpuProfiler';
 import { GraphTexturePool } from './graph/GraphTexturePool';
 import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphStats } from './graph/RenderGraph';
+import { limitShadowCascades, limitShadowFilter, limitShadowSize, QUALITY_TIERS, type QualitySettings } from './Quality';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { Skybox } from './Skybox';
 import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
@@ -114,6 +115,8 @@ export class ForwardRenderer {
   directOutput = true;
   /** 调试视图：在主画面上叠画网格的线框（三角形的边）。 */
   wireframe = false;
+  /** 画质档位：内容要的阴影、后处理不超过它给的上限（见 Quality.ts）；默认极高，就是照内容写的画。 */
+  quality: QualitySettings = QUALITY_TIERS.ultra;
   readonly #wireframeStage = new RenderStage('Wireframe', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { wireframe: true });
   /** 没有后处理时主画面直接画进后备缓冲用的两个阶段（颜色格式是后备缓冲的）。 */
   #directStages: DirectStages | undefined;
@@ -179,12 +182,13 @@ export class ForwardRenderer {
           const w = transform.slot[i]! * 16;
           directional.direction.set(-transform.world[w + 8]!, -transform.world[w + 9]!, -transform.world[w + 10]!);
           directional.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
-          if (this.drawShadows && light.shadow[i] && lighting.shadowLight < 0) {
+          if (this.drawShadows && this.quality.shadows && light.shadow[i] && lighting.shadowLight < 0) {
             lighting.shadowLight = lighting.directionalCount;
             const s = this.#shadowSettings;
-            s.size = light.shadowSize[i]!;
-            s.filter = light.shadowFilter[i]!;
-            s.cascadeCount = CASCADE_COUNTS[light.shadowCascadeCount[i]!];
+            // 大小、滤波、级联数不超过画质档位给的
+            s.size = limitShadowSize(light.shadowSize[i]!, this.quality);
+            s.filter = limitShadowFilter(light.shadowFilter[i]!, this.quality);
+            s.cascadeCount = limitShadowCascades(CASCADE_COUNTS[light.shadowCascadeCount[i]!], this.quality);
             s.depthBias = light.shadowDepthBias[i]!;
             s.normalOffsetScale = light.shadowNormalOffsetScale[i]!;
             s.stabilization = light.shadowStabilization[i]!;
@@ -315,7 +319,7 @@ export class ForwardRenderer {
     if (post) {
       const color = graph.texture({ label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT });
       this.#viewPasses(context, frame, mainView, this.#hdrOutput(color), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
-      this.postEffects.record(frame, color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
+      this.postEffects.record(frame, color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed, this.quality);
     } else {
       this.#viewPasses(context, frame, mainView, this.#backBufferOutput(canvas.width, canvas.height), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
     }
@@ -405,10 +409,10 @@ export class ForwardRenderer {
     local.radius = radius;
     local.invSquareRadius = 1 / (radius * radius);
     local.shadowIndex = -1;
-    local.castsShadow = this.drawShadows && light.shadow[i] !== 0;
+    local.castsShadow = this.drawShadows && this.quality.shadows && light.shadow[i] !== 0;
     if (local.castsShadow) {
-      local.shadow.size = light.shadowSize[i]!;
-      local.shadow.filter = light.shadowFilter[i]!;
+      local.shadow.size = limitShadowSize(light.shadowSize[i]!, this.quality);
+      local.shadow.filter = limitShadowFilter(light.shadowFilter[i]!, this.quality);
       local.shadow.depthBias = light.shadowDepthBias[i]!;
       local.shadow.normalOffsetScale = light.shadowNormalOffsetScale[i]!;
       local.world.set(world.subarray(w, w + 16));

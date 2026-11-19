@@ -45,12 +45,22 @@ export class EffectFrame {
     return this.graph.texture({ label, width: Math.max(1, width), height: Math.max(1, height), format });
   }
 
-  /** 加一个通道（同 RenderGraph.pass）；GPU 耗时的分组（GpuProfiler.scope）按加的时候的算，执行时换回去。 */
+  /**
+   * 加一个通道（同 RenderGraph.pass）；GPU 耗时的分组（GpuProfiler.scope）按加的时候的算，执行时换过去、执行完换回来
+   * （不换回来的话，最后一个通道的分组会留到下一帧，下一帧先加的通道就记到它名下）。
+   */
   pass(name: string, setup: (builder: PassBuilder) => void, execute: (resources: PassResources) => void): void {
-    const profiler = this.#profiler, scope = profiler?.scope;
+    const profiler = this.#profiler;
+    if (!profiler) return this.graph.pass(name, setup, execute);
+    const scope = profiler.scope;
     this.graph.pass(name, setup, (resources) => {
-      if (profiler && scope !== undefined) profiler.scope = scope;
-      execute(resources);
+      const outer = profiler.scope;
+      profiler.scope = scope;
+      try {
+        execute(resources);
+      } finally {
+        profiler.scope = outer;
+      }
     });
   }
 }

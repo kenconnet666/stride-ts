@@ -137,6 +137,7 @@ export { applyGizmoChange, TransformGizmo, type GizmoAxis, type GizmoChange, typ
 export { checkEntity, checkFields, COMPONENT_FIELDS, ENTITY_FIELDS, scriptFields, TEXTURE_FIELDS, type ComponentDescription, type Field, type FieldType } from './editor/fields';
 export { LiveScene, type SceneSource } from './editor/LiveScene';
 export { Metrics, type Metric, type MetricUnit } from './debug/Metrics';
+export { limitShadowCascades, limitShadowFilter, limitShadowSize, QUALITY_TIERS, type QualitySettings, type QualityTier } from './rendering/Quality';
 export { GpuMemory, PipelineCounts, textureBytes, type GpuResourceCount } from './graphics/GpuMemory';
 export type { ModelUse } from './content/SceneBuilder';
 export { SceneDocument, UndoStack, type EntitiesFile, type SceneEdit, type ScenePath } from './editor/SceneDocument';

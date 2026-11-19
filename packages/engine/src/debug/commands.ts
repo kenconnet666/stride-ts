@@ -5,6 +5,7 @@
  * 实体参数可以是 id（数字）或名字（先按全名找，再按包含这段文字找，不唯一时报错并列出候选）。组件和脚本按登记的名字
  * （`路径#导出名`）或 # 后面的部分找。
  */
+import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
 import type { EntityId } from '../data/prop';
 import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
@@ -30,6 +31,15 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
   debug.command('metrics', 'Statistics of the systems and their budgets (entities, draw calls, GPU memory, native memory, frame times, and what the game registered). args: over (only those over budget).', (args) => {
     return args['over'] === true ? game.metrics.over() : game.metrics.snapshot();
+  });
+  debug.command('quality', 'Quality tier of the renderer (caps on shadows and post effects). args: tier (low, medium, high, ultra; omitted reads the current settings).', (args) => {
+    const tier = args['tier'];
+    if (typeof tier === 'string') {
+      if (!Object.hasOwn(QUALITY_TIERS, tier)) throw new Error(`quality tier must be one of ${Object.keys(QUALITY_TIERS).join(', ')}, got '${tier}'`);
+      game.graphicsCompositor.quality = QUALITY_TIERS[tier as QualityTier];
+    }
+    const current = game.graphicsCompositor.quality;
+    return { tier: Object.entries(QUALITY_TIERS).find(([, settings]) => settings === current)?.[0] ?? 'custom', ...current };
   });
   debug.command('wireframe', 'Overlay the wireframe of the meshes on the main view. args: on (boolean; omitted toggles).', (args) => {
     const compositor = game.graphicsCompositor;

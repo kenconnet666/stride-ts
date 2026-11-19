@@ -20,7 +20,7 @@ const SIZE_INDEX: Readonly<Record<ShadowMapSize, number>> = { xsmall: 0, small: 
 const MAX_ATLAS_SIZE = REFERENCE_SHADOW_SIZE * 2 ** (SIZE_INDEX.xlarge - 3) * 2;
 /** 图集从这么大起，不够了翻倍。和 Stride 不同：Stride 一上来就建最大的（4096x4096 的 depth32float 是 64 MB），不管用了多少。 */
 const MIN_ATLAS_SIZE = 1024;
-/** 用到的地方连着这么多帧不到一半才缩小（相机转一下就够用、再转回来又不够的时候不来回重建）。 */
+/** 连着这么多帧在一半大的图集里也放得下才缩小（相机转一下就够用、再转回来又不够的时候不来回重建）。 */
 const SHRINK_FRAMES = 300;
 const FILTER_SIZES: Readonly<Record<ShadowMapFilter, number>> = { none: 0, pcf3x3: 3, pcf5x5: 5, pcf7x7: 7 };
 const SHADOW_ATLAS_FORMAT: GPUTextureFormat = 'depth32float';
@@ -40,9 +40,9 @@ export class ShadowMapRenderer {
   #packer = new GuillotinePacker(MIN_ATLAS_SIZE, MIN_ATLAS_SIZE);
   /** 这一帧有阴影图没放下。 */
   #full = false;
-  /** 这一帧放进去的阴影图占到哪（x、y 方向上最远的边）。 */
-  #extent = 0;
-  /** 连着多少帧用到的地方不到图集的一半。 */
+  /** 这一帧按顺序要过的地方：每次是 count 块 size 见方的（缩小之前拿它在一半大的图集里试排）。 */
+  readonly #requests: { size: number; count: number }[] = [];
+  /** 连着多少帧在一半大的图集里也放得下。 */
   #roomyFrames = 0;
   /** 这一帧每个阴影视图用哪个阶段画。 */
   readonly #stages = new Map<RenderView, RenderStage>();
@@ -72,7 +72,7 @@ export class ShadowMapRenderer {
       this.#packer.clear();
       this.#stages.clear();
       this.#full = false;
-      this.#extent = 0;
+      this.#requests.length = 0;
       lighting.shadow = undefined;
       lighting.localShadowCount = 0;
       views = [...this.#collectDirectional(main, lighting), ...this.#collectLocals(main, lighting)];
@@ -80,7 +80,7 @@ export class ShadowMapRenderer {
       // 放不下：图集翻倍，这一帧重新排（阴影图在图集里的位置、采样用的变换都跟着图集的大小）
       this.#resize(this.#atlasSize * 2);
     }
-    this.#roomyFrames = views.length > 0 && this.#atlasSize > MIN_ATLAS_SIZE && this.#extent * 2 <= this.#atlasSize ? this.#roomyFrames + 1 : 0;
+    this.#roomyFrames = views.length > 0 && this.#atlasSize > MIN_ATLAS_SIZE && this.#fitsHalf() ? this.#roomyFrames + 1 : 0;
     if (views.length > 0) lighting.shadowAtlas = this.#atlasTexture();
     return views;
   }
@@ -170,8 +170,18 @@ export class ShadowMapRenderer {
   #insert(size: number, count: number): ReturnType<GuillotinePacker['insert']> {
     const rectangles = this.#packer.insert(size, size, count);
     if (!rectangles) this.#full = true;
-    for (const { x, y, width, height } of rectangles ?? []) this.#extent = Math.max(this.#extent, x + width, y + height);
+    this.#requests.push({ size, count });
     return rectangles;
+  }
+
+  /**
+   * 这一帧要的地方在一半大的图集里照同样的顺序排不排得下。不能只看占到哪：级联是排成一行的，四块 1024 在 4096 的图集里
+   * 占满一整行，2048 的图集其实放得下。
+   */
+  #fitsHalf(): boolean {
+    const half = this.#atlasSize / 2;
+    const packer = new GuillotinePacker(half, half);
+    return this.#requests.every(({ size, count }) => packer.insert(size, size, count) !== undefined);
   }
 
   #resize(size: number): void {

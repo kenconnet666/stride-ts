@@ -81,6 +81,7 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
 - **文字（2026-11-19，`rendering/text`，SpriteFonts 用到的）**：字体导入成字形轮廓（`.font.json` 加按码位块分的 `.glyphs`），`SpriteFont` 用到哪块下载哪块；`SpriteBatch` 画贴图和文字，文字从轮廓逐像素算覆盖率（Slug），任何缩放都清晰；排版照 Stride 的 SpriteFont，改掉了它的几处毛病（见 decisions.md）。合成器的根可以是游戏自己的渲染器（`Game.rootRenderer`、`loadGameSettings`）。`SpriteBatch.effect` 是自定义效果（`spriteEffect`，2026-11-19 CustomEffect 用到，Stride 的 SpriteBatch.Begin 带 EffectInstance）：一个 WGSL 函数算像素颜色，`sampleTexture0` 采样正在画的贴图，16 个参数、采样器、混合（预乘或 NonPremultiplied），这一批的贴图都用它画。还没有：富文本、世界空间的文字（MSDF）、SVG 精灵按矢量画。
 - **UI（2026-11-19，`ui/`，GameMenu 用到的）**：照 Stride 的 UI 系统，布局只做两维（见 decisions.md）。资源：.sduipage、.sduilib 导入成 `UIFile`（元素平铺成数组），`content.loadUIPage`、`loadUILibrary`；`UIComponent` 是引擎自带的脚本组件。元素树：`UIElement` 的 Measure、Arrange 照 Stride（附加属性做成元素上的属性），面板 Grid、UniformGrid、StackPanel、Canvas，控件 ContentDecorator、Button、ToggleButton、ImageElement、TextBlock（换行）、ScrollingText、ModalElement、ScrollViewer、Slider、Border、EditText（Stride 能写进页面的类型都有）；文字的描边在字形的着色器里按到轮廓的距离画；键盘事件发给有焦点的元素（`game.ui.focusedElement`）；影子 DOM（`game.ui.semantics`：全屏 UI 的文字和控件在页面上的透明节点，读屏、Tab 键、查找、复制用）。
 - **调试渲染（2026-11-20，`debug/DebugDraw.ts`）**：`game.debugDraw` 立即模式的线和线框形状，固定像素宽、解析抗锯齿，画在后处理之后；`simulation.showColliders` 把碰撞体画出来。`game.ui`（UISystem）每帧布局、在场景之后用 SpriteBatch 画 UI（九宫格、文字、剪裁矩形）：全屏的铺满画面，不是全屏的按 Size 和实体的世界矩阵放进 3D 场景（面向相机、固定大小，`ui/UIProjection.ts`），按主相机画、和场景的深度比较；实体可以跟着 UI 元素走（`UIElementLink`，走变换存储的链接，同 ModelNodeLink）；输入在脚本之前：按上一帧的样子把指针事件交给元素（路由事件，`ui/events.ts`、`ui/UIPicking.ts`），UI 占着的鼠标、键盘对脚本藏起来（`input/capture.ts`，Stride master 的 Input Capture）；EditText 的编辑交给隐藏的 DOM 输入框（`ui/TextInputBridge.ts`）。Slider（水平的）、Border 在 MorphTargets 时加上。还没有：除输入框以外的无障碍树、竖直的 Slider、ToggleButton 这些没用到的控件。
+- **统计量、预热、渲染图（2026-11-20，P4 的底座）**：`game.metrics` 和设备上的记账（显存 `graphicsDevice.memory`、管线 `graphicsDevice.pipelines`），每个样例的基线进回归；模型的管线在加载场景、预制体时后台编好（`MeshRenderFeature.warm`）；渲染图（`rendering/graph/`：通道声明读写、裁掉没用的、临时贴图轮着用）先接了后处理，主画面的各遍还是前向渲染器里直接写的。见 decisions.md 2026-11-20 的三条。
 - 接下来：Stride 的 WGSL 和效果系统（等着色器系统）、透明材质、点光源和聚光灯（及其阴影）、render bundle 缓存静态批次、非均匀缩放的法线（逆转置）。
 
 C# 移植版踩过的 WebGPU 坑，全部适用，见 [lessons.md](lessons.md)：`writeBuffer` 的生效时机、pass 内的状态去重、scissor 一直有效、调试组会切断 pass、没写的颜色目标要设 writeMask 0。
@@ -691,6 +692,8 @@ car.components.Vehicle.steering = 0.5;            // Vehicle instance, typed
 car.parts.frontLeft.components.Wheel.radius;      // number
 ```
 
+**实现到哪了**（2026-11-20）：生成器在 `packages/editor`（开发服务器启动、资源增减时重写 `src/assets.gen.ts`，`stride-editor assets-types` 单独生成）。现在句柄是 `assetRef(种类, 内容路径)`，按种类、目录分层（`assets.prefabs.Game.Prefabs.Bullet`），`content.load(句柄)` 的结果类型跟着种类；上面例子里的结构类型（预制体的组件和部件、模型的材质槽、场景里导出的实体）、`Overrides`、`scene.spawn` 还没有，等编辑器能编辑这些的时候做。句柄的值现在是路径不是 id（按路径还是按 id 引用等用户定）。
+
 **代码里定义的预制体**用 `prefab({ components, parts })` 写，类型直接推导，得到和生成的预制体同样的结构，`spawn`、`Overrides` 两者通用。
 
 ### 外观：材质参数的分层（对照 CSS）
@@ -843,13 +846,14 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 ## 编辑器和资源管线：自己做，Node.js 加 Web（2026-11-17 用户决定）
 
 不依赖 Stride Game Studio。编辑器和资源管线都是我们自己的：
-- **编辑器前端在浏览器里**，视口用的就是游戏运行时的同一套引擎和渲染器，所见即所得，编辑器里看到的就是游戏里的画面。场景树、属性面板、资源浏览器都是 Web UI。以后可以用 Electron 或 Tauri 打包成桌面应用。
-- **Node.js 后端**：
-  - 管理工程文件。工程用文本格式（JSON 或 YAML），方便 diff 和合并。
-  - 保存资源时重新生成 `src/assets.gen.ts`（资源的强类型，见"组件 API"里的"资源的强类型"），移动文件时记重定向（见"组件的名字"）。
-  - 运行资源管线。
-  - 提供开发服务器：Vite，负责脚本热重载。
-  - 编辑器里点"播放"，就在同一个页面里运行游戏。
+- **编辑器的界面在浏览器里，视口就是运行着的游戏**（2026-11-20 定的做法，见 decisions.md 的"编辑器怎么带着游戏跑"）：界面是外面的一个页面，把游戏自己的页面嵌在里面；游戏页面带 `?stride-edit` 打开就是编辑状态——照自己的入口启动，但场景不挂脚本、仿真不走，`game.editor`（`EditAgent`）是编辑器在页面里的代理（编辑相机、点选、操纵器、让实体跟着场景文档）。试玩是把里面的页面不带 `?stride-edit` 重新打开：一个干净的游戏。界面还没做（场景树、属性面板、资源浏览器），等用户定框架；以后可以用 Electron 或 Tauri 打包成桌面应用。
+- **场景文件是编辑器里的真相**（decisions.md 的"场景文档"）：编辑的是场景文件的 JSON（`SceneDocument`：改值、加删实体，每个修改都有逆操作，撤销重做建在上面），游戏里的实体照着它更新、只重建变了的组件（`LiveScene`），保存就是把文档写回去。不从运行时的实体反推文件。
+- **Node.js 后端是开发服务器上的 Vite 插件**（`packages/editor`，decisions.md 的"编辑器的后端"），不是单独的进程：
+  - 工程就是应用的目录，清单 `stride.project.json` 可以没有；内容目录（运行时加载的那些文件）就是编辑器编辑的资源，不另设一套源格式。
+  - 资源数据库：内容目录里有哪些资源、谁引用了谁（和运行时预加载是同一份逻辑），文件变化用 Vite 的监视器，变了经 HMR 通道推给页面。
+  - 保存资源时重新生成 `src/assets.gen.ts`（见"组件 API"里的"资源的强类型"；现在句柄只带种类）。
+  - 开发服务器本身是 Vite，负责脚本热重载。
+  - 还没做：运行资源管线（导入 glTF、PNG 这些源文件）、资源的改名和移动（按路径还是按 id 引用等用户定）。
 - **资源管线在 Node 端**，输入是通用格式，输出是运行时的二进制：
   - 模型：glTF（cgltf）和 FBX（ufbx）直接导入，不经过 Assimp 或 FBX2glTF。
   - 纹理：编码成 KTX2 加 Basis（Basis 的编码器）。

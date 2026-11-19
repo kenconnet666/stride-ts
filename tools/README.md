@@ -23,7 +23,7 @@
 | `verify.ps1` | 耗时的验证放进单独的 git 工作树（默认 `../stride-ts-verify`，分离头指针）挂后台跑，主检出接着改：工作树切到给定的提交、`pnpm install`，导入的内容用目录联接指向主检出，再跑脚本（默认 `regress.ps1`）。先本地提交，通过后再推送。用法：`pwsh tools/verify.ps1 [-Ref <提交>] [-Script tools/measure.ps1] [给脚本的参数，如 -Apps jumpy-jet,physics-sample]` |
 | `debug-bridge/` | Chrome 扩展 Stride Debug Bridge：让 `cpu-profile`、`mouse --trusted` 在用户平时的 Chrome 里也能用（`chrome.debugger`，Chrome 不许默认配置文件开远程调试端口）。安装见其中的 README |
 | `smoke.ts` | 样例冒烟脚本（`apps/*/scripts/smoke.ts`，`pnpm --filter <样例> smoke`）共用的部分：`startSmoke(中枢名)` 给出调 CLI 的 `stride`、`check`，`finish()` 查本次运行以来的错误日志、把统计量（`stride metrics`）和 `budgets.json` 里记的基线比，再按结果退出 |
-| `budgets.json` | 每个样例冒烟跑完时的统计量基线（实体数、绘制次数、显存、原生内存）。回归时不能比它高出太多（个数 1.5 倍加 16，字节 1.3 倍加 4 MB），抓成倍的退步和泄漏。有意的变化之后重记：`$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/regress.ps1` |
+| `budgets.json` | 每个样例冒烟跑完时的统计量基线（实体数、绘制次数、显存、原生内存）。回归时不能比它高出太多（个数 1.5 倍加 16，字节 1.3 倍加 4 MB），抓成倍的退步和泄漏。有意的变化之后在验证工作树里重记（`$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/verify.ps1`），再把工作树里的 `tools/budgets.json` 拷回主检出 |
 | `hdr-ratio.ts` | 两张截图（都固定曝光 EV0、关掉 FXAA 和亮部提取）反推色调映射前的 HDR 值，按行打印参考/我们的比值，分辨整体倍数和随角度的差。用法：`node tools/hdr-ratio.ts <参考.png> <我们的.png>` |
 | `stride-capture/` | 桌面 Stride 的截图工程，每个样例一个子目录（`tpp/`、`animated-model/`、`physics-sample/`、`bepu-sample/`、`platformer2d/`、`topdown-rpg/`、`first-person-shooter/`、`sprite-fonts/`、`game-menu/`、`ui-element-link/`、`ui-particles/`、`simple-audio/`）：`setup.ps1` 从 Stride 源码搭出并编译，截图参数见各自的 README |
 | `run-page.ts` | 在自己的无头 Chrome 里（`~/.stride-ts/run-page`，跑完就关）打开一个不连调试中枢的页面，等它把结果放到全局变量上，打印页面的文字；`--out` 另存 JSON，`--screenshot` 截图。不用 Playwright。用法：`node tools/run-page.ts http://localhost:5182/displacement.html displacementResults --error displacementError`（几何实验 E2，见 docs/vector-assets.md） |

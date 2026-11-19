@@ -60,15 +60,15 @@ await sleep(1000);
 const fire1 = stride('eval', `position('Fire')`) as number[];
 check('火跟着导火索往左走', fire1[0]! < fire0[0]!, { fire0, fire1 });
 
-stride('eval', `uiClick(...uiButton('Congratulations')).then(() => 1)`);
-await sleep(500);
+// 命中特效只生成 0.5 秒、粒子活 1 秒：点完 0.2 秒就在页面里记下（隔几次 CLI 调用再查就晚了）
+const spawned = stride('eval', `uiClick(...uiButton('Congratulations')).then(() => new Promise((r) => setTimeout(r, 200)))
+  .then(() => ({ entities: named('${HIT}').length, particles: particles('${HIT}') }))`) as { entities: number; particles: number };
+await sleep(300);
 const ended = stride('eval', `({ fire: particles('Fire'), confetti: particles('ConfettiBig'), confettiAt: position('ConfettiBig') })`) as { fire: number; confetti: number; confettiAt: number[] };
 check('点"恭喜"：火停掉，大彩纸移到画面里放', ended.fire === 0 && ended.confetti > 0 && ended.confettiAt[0] === 0, ended);
-const hit = () => stride('eval', `({ entities: named('${HIT}').length, particles: particles('${HIT}') })`) as { entities: number; particles: number };
-const spawned = hit();
 check('按钮上出现命中特效', spawned.entities === 1 && spawned.particles > 0, spawned);
 await sleep(2500);
-const removed = hit();
+const removed = stride('eval', `({ entities: named('${HIT}').length })`) as { entities: number };
 check('命中特效 2 秒后移除', removed.entities === 0, removed);
 
 stride('eval', `uiClick(...uiButton('Click here to start the game over')).then(() => 1)`);

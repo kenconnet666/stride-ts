@@ -2,7 +2,7 @@
  * 颜色树（Stride 材质的 IComputeColor、IComputeScalar）编译成 WGSL 表达式，粒子材质和网格材质共用。表达式从共用的 `streams`
  * （MaterialStreams，见 shaderClass.ts）读 UV、顶点颜色、时间。节点照 Stride 的 ComputeColor：
  * - ComputeTextureColor：采样贴图（按预乘 alpha 用，同 Stride 编译贴图时预乘），UV 乘 Scale 加 Offset，TexcoordIndex 选哪套 UV；
- *   没有贴图时用 FallbackValue；
+ *   没有贴图时用 FallbackValue；UseRandomTextureCoordinates 时每个 UV 格子里的贴图随机翻转、旋转、平移（清漆的金属碎片）；
  * - ComputeTextureScalar：采样贴图的一个通道（Channel，默认 R），四个分量都是它；
  * - ComputeVertexStreamColor：顶点颜色（粒子的颜色）；
  * - ComputeFloat4、ComputeFloat：常量；ComputeColor：常量颜色，换到线性空间、预乘 alpha（同 Stride 的 ToColorSpace、PremultiplyAlpha）；
@@ -28,6 +28,25 @@ const WHITE = 'vec4f(1.0)';
 const OPERATORS: Readonly<Record<string, string>> = {
   overlay: 'fn overlay(a: vec4f, b: vec4f) -> vec4f {\n  return mix(2.0 * a * b, 1.0 - 2.0 * (1.0 - a) * (1.0 - b), step(b, vec4f(0.5)));\n}\n',
 };
+/**
+ * UseRandomTextureCoordinates（Stride 的 ComputeColorTextureScaledOffsetDynamicSamplerRandomUV）：按 UV 所在的整数格子取一个伪随机数，
+ * 决定格子里的贴图怎么翻转、转 90° 的几倍、平移四分之几，256 种里挑一种；平铺的小贴图看不出重复。
+ * 和 Stride 不同：采样时用打乱之前的坐标的导数（textureSampleGrad）。打乱以后的坐标在格子边上是断的，照它自己的导数选 mip，
+ * 每个格子的边上会取到最小的一级，画出一圈模糊的线。
+ */
+const RANDOM_UV = `fn randomUv(uv: vec2f) -> vec2f {
+  var pattern = u32(fract(sin(dot(floor(uv), vec2f(12.9898, 78.233) * 2.0)) * 43758.5453) * 256.0) % 256u;
+  var r = fract(uv);
+  r.x = select(r.x, 1.0 - r.x, pattern % 2u != 0u);
+  pattern /= 2u;
+  r.y = select(r.y, 1.0 - r.y, pattern % 2u != 0u);
+  pattern /= 2u;
+  let turn = pattern % 4u;
+  r = select(select(select(r, vec2f(r.y, 1.0 - r.x), turn == 1u), vec2f(1.0 - r.y, r.x), turn == 2u), 1.0 - r, turn == 3u);
+  pattern /= 4u;
+  return r + vec2f(f32(pattern % 4u), f32((pattern / 4u) % 4u)) * 0.25;
+}
+`;
 /** TextureRef.invertY 的贴图采样后翻转绿色通道。 */
 const FLIP_GREEN = 'fn flipGreen(texel: vec4f) -> vec4f {\n  return vec4f(texel.r, 1.0 - texel.g, texel.b, texel.a);\n}\n';
 const warned = new Set<string>();
@@ -149,8 +168,13 @@ export class ColorTreeCompiler {
     const i = this.#bound.push({ texture, sampler: samplerOf(node) }) - 1;
     const [sx, sy] = get(node, 'scale', [1, 1]), [ox, oy] = get(node, 'offset', [0, 0]);
     const uv = get<string>(node, 'texcoordIndex', 'texcoord0') === 'texcoord1' ? 'streams.uv1' : 'streams.uv';
-    const at = `${uv} * vec2f(${float(sx!)}, ${float(sy!)}) + vec2f(${float(ox!)}, ${float(oy!)})`;
-    const texel = this.#vertex ? `textureSampleLevel(t${i}, s${i}, ${at}, 0.0)` : `textureSample(t${i}, s${i}, ${at})`;
+    const scaled = `${uv} * vec2f(${float(sx!)}, ${float(sy!)}) + vec2f(${float(ox!)}, ${float(oy!)})`;
+    const random = get(node, 'useRandomTextureCoordinates', false);
+    if (random) this.#functions.set('randomUv', RANDOM_UV);
+    const at = random ? `randomUv(${scaled})` : scaled;
+    const texel = this.#vertex ? `textureSampleLevel(t${i}, s${i}, ${at}, 0.0)`
+      : random ? `textureSampleGrad(t${i}, s${i}, ${at}, dpdx(${scaled}), dpdy(${scaled}))`
+      : `textureSample(t${i}, s${i}, ${at})`;
     if (!ref!.invertY) return texel;
     this.#functions.set('flipGreen', FLIP_GREEN);
     return `flipGreen(${texel})`;

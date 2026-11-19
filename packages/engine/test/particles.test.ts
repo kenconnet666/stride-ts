@@ -344,6 +344,16 @@ describe('粒子的形状和材质', () => {
     expect(compiler.declarations).toContain('fn flipGreen(texel: vec4f) -> vec4f');
   });
 
+  test('随机的贴图坐标（清漆的金属碎片）：坐标按格子打乱，mip 照打乱之前的坐标选', () => {
+    const compiler = new ColorTreeCompiler({ texture: () => ({}) as Texture, shaderClass: () => undefined }, 3);
+    const flakes: ParticleModuleFile = { $type: 'computeTextureScalar', texture: { texture: 'flakes' }, scale: [128, 128], useRandomTextureCoordinates: true };
+    const uv = 'streams.uv * vec2f(128.0, 128.0) + vec2f(0.0, 0.0)';
+    expect(compiler.declarations).not.toContain('randomUv');
+    expect(compiler.scalar(flakes)).toBe(`textureSampleGrad(t0, s0, randomUv(${uv}), dpdx(${uv}), dpdy(${uv})).r`);
+    expect(compiler.vertexScalar(flakes)).toBe(`textureSampleLevel(t1, s1, randomUv(${uv}), 0.0).r`);
+    expect(compiler.declarations).toContain('fn randomUv(uv: vec2f) -> vec2f');
+  });
+
   test('BoundingSphereStatic：世界包围盒是位置周围 半径 · 缩放 的立方体', () => {
     const particles = new ParticleSystem({ boundingShape: { $type: 'boundingSpheretatic', radius: 2 } });
     particles.translation = [1, 0, 0];

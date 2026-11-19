@@ -67,6 +67,20 @@ export interface MaterialShaderTrees {
    * layer{i}Specular、layer{i}Metalness、layer{i}Gloss、layer{i}Normal。
    */
   readonly layers?: readonly MaterialShaderLayer[];
+  /**
+   * 清漆（content/format.ts 的 ClearCoatFile）：code 里有 coatLodDistance、coatBaseDiffuse、coatBaseGloss、coatFlakesDiffuse、
+   * coatFlakesGloss、coatFlakesMetalness、coatFlakesNormal、coatTopGloss、coatTopMetalness、coatTopNormal 这些函数。
+   */
+  readonly clearCoat?: MaterialShaderClearCoat;
+}
+
+/** 清漆各棵树的开关（函数在 MaterialShaderTrees.code 里）。 */
+export interface MaterialShaderClearCoat {
+  readonly baseInvert: boolean;
+  readonly flakesInvert: boolean;
+  readonly flakesNormal: { readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
+  readonly topInvert: boolean;
+  readonly topNormal: { readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
 }
 
 /** 一个材质层有哪些属性（函数在 MaterialShaderTrees.code 里）。 */
@@ -198,6 +212,11 @@ export class Material {
   setBaseColor(color: Readonly<ColorLike>): void {
     this.baseColor.copy(color);
     this.version++;
+  }
+
+  /** 有清漆：不透明阶段画底下一遍，透明阶段再叠一遍清漆。 */
+  get hasClearCoat(): boolean {
+    return this.shaderTrees?.clearCoat !== undefined;
   }
 
   /** 透明混合和玻璃的材质画在透明阶段。 */

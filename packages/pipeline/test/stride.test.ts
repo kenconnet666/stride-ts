@@ -142,6 +142,7 @@ describe('导入 Stride 场景', () => {
     muted: '11111111-0000-0000-0000-0000000000a6',
     pipe: '11111111-0000-0000-0000-0000000000a7',
     pane: '11111111-0000-0000-0000-0000000000a8',
+    lacquer: '11111111-0000-0000-0000-0000000000a9',
     heroSheet: '11111111-0000-0000-0000-0000000000f4',
     bumpy: '11111111-0000-0000-0000-000000000009',
     bumps: '11111111-0000-0000-0000-00000000000a',
@@ -395,6 +396,22 @@ describe('导入 Stride 场景', () => {
       '    Specular: !MaterialMetalnessMapFeature', '        MetalnessMap: !ComputeFloat', '            Value: 0.08',
       '    SpecularModel: !MaterialSpecularThinGlassModelFeature', '        RefractiveIndex: 1.563',
       '    CullMode: None',
+      'Layers: {}',
+    ].join('\n'),
+    // CSharpIntermediate 的 Yellow：清漆的车漆，碎片的法线贴图按随机的贴图坐标取；没写的输入用 Stride 的默认值
+    'Assets/Materials/Lacquer.sdmat': [
+      '!MaterialAsset', `Id: ${ids.lacquer}`, 'Attributes:',
+      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}',
+      '    Specular: !MaterialMetalnessMapFeature', '        MetalnessMap: !ComputeFloat', '            Value: 0.0',
+      '    SpecularModel: !MaterialSpecularMicrofacetModelFeature {}',
+      '    ClearCoat: !MaterialClearCoatFeature',
+      '        BasePaintDiffuseMap: !ComputeColor', '            Value: {R: 0.0, G: 0.0, B: 1.0, A: 1.0}',
+      '        MetalFlakesMetalnessMap: !ComputeFloat', '            Value: 1.0',
+      '        MetalFlakesNormalMap: !ComputeTextureColor', `            Texture: ${ids.bumps}:Textures/Bumps`,
+      '            Scale: {X: 128.0, Y: 128.0}', '            UseRandomTextureCoordinates: true',
+      '        ClearCoatGlossinessMap: !ComputeFloat', '            Value: 1.0',
+      '        OrangePeelScaleAndBias: false', '        OrangePeelIsXYNormal: true',
       'Layers: {}',
     ].join('\n'),
     // 没给材质的程序模型（CSharpIntermediate 的激光：圆柱，材质由实体的 Materials 覆盖）
@@ -836,6 +853,26 @@ describe('导入 Stride 场景', () => {
     await importer.importAsset(project.byPath('Game/Materials/Muted')!);
     const muted = JSON.parse(await readFile(path.join(out, 'Game/Materials/Muted.material.json'), 'utf8')) as MaterialFile;
     expect(muted).toEqual({ name: 'Muted', baseColor: [1, 0, 0, 1], roughness: 1 });
+  });
+
+  test('清漆的各个输入导出成颜色树，没写的用 Stride 的默认值', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-coat');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
+    await importer.importAsset(project.byPath('Game/Materials/Lacquer')!);
+    expect(importer.warnings).toEqual([]);
+    const { clearCoat, ...rest } = JSON.parse(await readFile(path.join(out, 'Game/Materials/Lacquer.material.json'), 'utf8')) as MaterialFile;
+    expect(rest).toEqual({ name: 'Lacquer', baseColor: [1, 1, 1, 1], metalness: 0, roughness: 1 });
+    const float = (value: number) => ({ $type: 'computeFloat', value });
+    expect(clearCoat).toMatchObject({
+      lodDistance: float(1),
+      basePaint: { diffuse: { $type: 'computeColor', value: [0, 0, 1, 1] }, glossiness: float(0), invert: false },
+      metalFlakes: {
+        diffuse: { $type: 'computeColor', value: [0, 0, 0, 1] }, glossiness: float(0), invert: false, metalness: float(1),
+        normal: { tree: { $type: 'computeTextureColor', texture: { texture: 'Game/Textures/Bumps', invertY: true }, scale: [128, 128], useRandomTextureCoordinates: true }, scaleAndBias: true, isXYNormal: false },
+      },
+      coat: { glossiness: float(1), invert: false, metalness: float(0), normal: { tree: { $type: 'computeColor', value: [0, 0, 0, 1] }, scaleAndBias: false, isXYNormal: true } },
+    });
   });
 
   test('玻璃的镜面模型导出折射率；漫反射缺着色模型时不算漫反射光照', async () => {

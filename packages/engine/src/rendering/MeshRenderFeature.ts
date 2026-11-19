@@ -41,7 +41,7 @@ import { Morphed } from '../animation/morphs';
 import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
-import { Material, type MaterialShaderLayer, type MaterialShaderTrees, type MaterialTexture } from './Material';
+import { Material, type MaterialShaderClearCoat, type MaterialShaderLayer, type MaterialShaderTrees, type MaterialTexture } from './Material';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { MATERIAL_STREAMS } from './shaderClass';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
@@ -256,7 +256,7 @@ fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f) -> mat4x4f {
  * 着色用的法线：有法线贴图、网格有切线时按切线空间的法线算（Stride 的 MaterialSurfaceNormalMap 加 UpdateNormalFromTangentSpace），
  * 否则是顶点法线。贴图总是采样（没有时绑白图），用 select 挑结果：采样必须在一致的控制流里。
  */
-fn surfaceNormal(in: Varyings) -> vec3f {
+fn surfaceNormal(in: Varyings, coatPass: bool) -> vec3f {
   let n = normalize(in.normal);
   var m = textureSample(normalTexture, normalSampler, in.uv * material.normalUvTransform.xy + material.normalUvTransform.zw).xyz;
   let flags = material.normalFlags;
@@ -270,11 +270,14 @@ fn surfaceNormal(in: Varyings) -> vec3f {
   let hasBase = (flags & 1u) != 0u || tree.w > 0.5;
   let layered = layerNormal(in, select(vec3f(0.0, 0.0, 1.0), m, hasBase));
   m = select(m, layered.xyz, layered.w > 0.5);
+  // 清漆：底下一遍用金属碎片的法线，清漆那一遍用橘皮的法线
+  let coat = coatNormal(in, coatPass);
+  m = select(m, coat.xyz, coat.w > 0.5);
   let tangentLength = length(in.tangent.xyz);
   let t = in.tangent.xyz / max(tangentLength, 1e-8);
   let b = in.tangent.w * cross(n, t);
   let mapped = normalize(m.x * t + m.y * b + m.z * n);
-  return select(n, mapped, (hasBase || layered.w > 0.5) && tangentLength > 0.0);
+  return select(n, mapped, (hasBase || layered.w > 0.5 || coat.w > 0.5) && tangentLength > 0.0);
 }
 
 /** 世界方向转到天空盒的立方体贴图里：按天空盒的旋转转回去（行向量乘矩阵 = 乘转置），z 取反。 */
@@ -482,7 +485,7 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
 
 /** 玻璃透射的那一遍（Stride 的 MaterialSurfaceTransmittanceShading）：输出的颜色乘到背景上（混合是 目标 × 源）。 */
 @fragment fn fsGlassTransmittance(in: Varyings, @builtin(front_facing) front: bool) -> @location(0) vec4f {
-  let n = facingNormal(surfaceNormal(in), front);
+  let n = facingNormal(surfaceNormal(in, false), front);
   let v = normalize(view.eye.xyz - in.world);
   let base = baseColor(in);
   let glass = thinGlass(base.rgb, max(dot(n, v), 0.0001), material.flags.z);
@@ -490,7 +493,17 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
 }
 
 @fragment fn fs(in: Varyings, @builtin(front_facing) front: bool) -> @location(0) vec4f {
-  let n = facingNormal(surfaceNormal(in), front);
+  return shade(in, front, false);
+}
+
+/** 清漆叠在上面的那一遍（透明阶段，加到画面上）。 */
+@fragment fn fsClearCoat(in: Varyings, @builtin(front_facing) front: bool) -> @location(0) vec4f {
+  return shade(in, front, true);
+}
+
+/** 一个像素的光照；coatPass 为真时是清漆的那一遍。 */
+fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
+  let n = facingNormal(surfaceNormal(in, coatPass), front);
   let v = normalize(view.eye.xyz - in.world);
   let base = baseColor(in);
   if (base.a < material.flags.y) {
@@ -500,8 +513,10 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let glossTexel = dot(textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw), material.glossinessMask);
   let hasGlossTexture = dot(material.glossinessMask, vec4f(1.0)) > 0.0;
   // 材质层按遮罩混进各个属性（没有层时原样）
-  let layered = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb,
+  let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb,
     select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture)));
+  // 清漆把漫反射色、金属度、粗糙度换成这一遍的（没有清漆时原样）
+  let layered = coatSurface(in, layers, coatPass);
   let albedo = layered.albedo;
 
   // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint
@@ -614,7 +629,50 @@ function materialTreesCode(trees: MaterialShaderTrees | undefined): string {
   return ${displacement.scaleAndBias ? '(2.0 * d - 1.0)' : 'd'} * ${wgslFloat(displacement.intensity)};
 }`
     : 'fn treeDisplacement(uv: vec2f, local: vec3f) -> f32 { return 0.0; }';
-  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode, layersCode(trees?.layers ?? [])].join('\n');
+  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode, layersCode(trees?.layers ?? []), clearCoatCode(trees?.clearCoat)].join('\n');
+}
+
+/**
+ * 清漆（Stride 的 MaterialClearCoatFeature）接进网格着色器的两个函数，没有清漆时原样返回：
+ * - coatNormal：切线空间的法线，w 为 0 时没有清漆。底下一遍是金属碎片的，清漆那一遍是橘皮的；
+ * - coatSurface：这一遍的漫反射色、金属度、粗糙度。底下一遍（MaterialSurfaceDiffuseMetalFlakes、GlossinessMapMetalFlakes）：
+ *   漫反射色和光泽度按到相机的距离从金属碎片过渡到底漆，碎片的光泽度先按法线贴图的长度压低（法线越乱越粗糙）；
+ *   清漆那一遍：材质自己的漫反射色，配清漆的金属度和光泽度。
+ */
+function clearCoatCode(coat: MaterialShaderClearCoat | undefined): string {
+  if (!coat) {
+    return `fn coatNormal(in: Varyings, coatPass: bool) -> vec4f { return vec4f(0.0); }
+fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface { return s; }`;
+  }
+  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y);`;
+  const unpack = (name: string, { scaleAndBias, isXYNormal }: { scaleAndBias: boolean; isXYNormal: boolean }) => [
+    scaleAndBias ? `  ${name} = 2.0 * ${name} - 1.0;` : '',
+    isXYNormal ? `  ${name}.z = sqrt(max(0.0, 1.0 - (${name}.x * ${name}.x + ${name}.y * ${name}.y)));` : '',
+  ].filter(Boolean).join('\n');
+  const gloss = (call: string, invert: boolean) => (invert ? `(1.0 - ${call})` : call);
+  return `fn coatFlakes() -> vec3f {
+  var flakes = coatFlakesNormal().xyz;
+${unpack('flakes', coat.flakesNormal)}
+  return flakes;
+}
+fn coatNormal(in: Varyings, coatPass: bool) -> vec4f {
+  ${fill}
+  var peel = coatTopNormal().xyz;
+${unpack('peel', coat.topNormal)}
+  return vec4f(select(coatFlakes(), peel, coatPass), 1.0);
+}
+fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface {
+  ${fill}
+  let top = LayerSurface(s.albedo, coatTopMetalness(), s.specular, 1.0 - ${gloss('coatTopGloss()', coat.topInvert)});
+  let lod = saturate(distance(view.eye.xyz, in.world) * coatLodDistance());
+  let normalLength = length(coatFlakes());
+  let flakesGloss = ${gloss('coatFlakesGloss()', coat.flakesInvert)};
+  let corrected = normalLength * flakesGloss / (normalLength + flakesGloss * (1.0 - normalLength));
+  let glossiness = mix(corrected, ${gloss('coatBaseGloss()', coat.baseInvert)}, lod);
+  let under = LayerSurface(mix(coatFlakesDiffuse().rgb, coatBaseDiffuse().rgb, lod), coatFlakesMetalness(), s.specular, 1.0 - glossiness);
+  if (coatPass) { return top; }
+  return under;
+}`;
 }
 
 /**
@@ -898,7 +956,9 @@ export class MeshRenderFeature extends RootRenderFeature {
     if (!gpu || !culling) return;
     const { pass: cullPass, index } = culling;
     const counts = cullPass.culler.counts;
-    const visible = (b: number) => counts[index * cullPass.batchCount + b]! > 0 && this.batches[b]!.material.isTransparent === stage.transparent;
+    // 透明阶段画透明的材质，再给有清漆的（不透明的）材质叠一遍清漆
+    const inStage = (material: Material) => (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
+    const visible = (b: number) => counts[index * cullPass.batchCount + b]! > 0 && inStage(this.batches[b]!.material);
     const order = stage.transparent ? this.#backToFront(context, view, cullPass.batchCount, visible) : undefined;
     if (order?.length === 0) return;
     const shadow = stage.shadowCasters ? undefined : this.system.lighting.shadow;
@@ -913,9 +973,9 @@ export class MeshRenderFeature extends RootRenderFeature {
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
-      const glassPasses = glassPassCount(stage, batch.material);
-      const pipelineOf = (glassPass?: number) => gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.mesh.data.morph !== undefined, batch.material, this.effect, glassPass);
-      if (glassPasses === 0 && (materialChanged || meshChanged)) {
+      const passes = stage.transparent ? transparentPasses(batch.material) : NO_PASSES;
+      const pipelineOf = (materialPass?: MaterialPass) => gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.mesh.data.morph !== undefined, batch.material, this.effect, materialPass);
+      if (passes.length === 0 && (materialChanged || meshChanged)) {
         // 管线也按材质分（自发光变体、两面画），同样的组合是同一条管线
         const next = pipelineOf();
         if (next !== pipeline) pass.setPipeline((pipeline = next));
@@ -933,9 +993,9 @@ export class MeshRenderFeature extends RootRenderFeature {
         pass.setVertexBuffer(0, gpuMesh.vertices);
         pass.setIndexBuffer(gpuMesh.indices, gpuMesh.indexFormat);
       }
-      // 玻璃一遍一条管线，其余只画一遍
-      for (let glassPass = 0; glassPass < Math.max(glassPasses, 1); glassPass++) {
-        if (glassPasses > 0) pass.setPipeline((pipeline = pipelineOf(glassPass)));
+      // 多遍的材质一遍一条管线，其余只画一遍
+      for (let p = 0; p < Math.max(passes.length, 1); p++) {
+        if (passes.length > 0) pass.setPipeline((pipeline = pipelineOf(passes[p])));
         pass.drawIndexed(gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first);
         this.drawCalls++;
       }
@@ -1102,7 +1162,7 @@ class Gpu {
 
   /** 着色器模块：按自发光的颜色树和网格效果分变体（两段代码是键）。 */
   #module(trees: MaterialShaderTrees | undefined, effect: MeshEffect | undefined): GPUShaderModule {
-    const key = `${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers]) : ''}|${effect?.code ?? ''}`;
+    const key = `${treesKey(trees)}|${effect?.code ?? ''}`;
     let module = this.#modules.get(key);
     if (!module) {
       const label = `MeshRenderFeature${trees ? ' (material trees)' : ''}${effect ? ' (mesh effect)' : ''}`;
@@ -1155,11 +1215,8 @@ class Gpu {
    * 阴影投射）没有片元着色器；阴影投射还不剔背面、不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor）。深度比较是 less-equal
    * （Stride 的 DepthStencilStates.Default），不透明阶段靠它复用深度预通道的结果。
    */
-  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, glassPass?: number): GPURenderPipeline {
+  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipeline {
     const { colorFormat, depthFormat } = stage.output;
-    // 玻璃的各遍（见 glassPassCount）：偶数遍是透射（乘到背景上），奇数遍是反射（加上去）；两面画时前两遍画背面
-    const transmittance = glassPass !== undefined && glassPass % 2 === 0;
-    const backFaces = glassPass !== undefined && material.doubleSided && glassPass < 2;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
     // 颜色树的变体每个阶段都用：位移贴图在只写深度的阶段也要算（深度预通道和不透明阶段的深度要一样）
@@ -1167,7 +1224,7 @@ class Gpu {
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
     const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${glassPass}:${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers]) : ''}:${effect?.code ?? ''}`;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${materialPass?.name}:${treesKey(trees)}:${effect?.code ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);
@@ -1197,14 +1254,14 @@ class Gpu {
         ...(colorFormat ? {
           fragment: {
             module,
-            entryPoint: transmittance ? 'fsGlassTransmittance' : 'fs',
-            targets: [{ format: colorFormat, ...(stage.transparent ? { blend: glassPass === undefined ? PREMULTIPLIED_ALPHA : transmittance ? GLASS_TRANSMITTANCE : GLASS_REFLECTANCE } : {}) }],
+            entryPoint: materialPass?.entryPoint ?? 'fs',
+            targets: [{ format: colorFormat, ...(stage.transparent ? { blend: materialPass?.blend ?? PREMULTIPLIED_ALPHA } : {}) }],
           },
         } : {}),
         ...(cutout ? { fragment: { module, entryPoint: 'fsCutout', targets: [] } } : {}),
         primitive: stage.shadowCasters
           ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth }
-          : { topology: 'triangle-list', cullMode: glassPass !== undefined ? (backFaces ? 'front' : 'back') : doubleSided ? 'none' : 'back', frontFace: 'ccw' },
+          : { topology: 'triangle-list', cullMode: materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
         depthStencil: { format: depthFormat, depthWriteEnabled: !stage.transparent, depthCompare: 'less-equal' },
       });
       this.#pipelines.set(key, pipeline);
@@ -1431,7 +1488,9 @@ class Gpu {
       floats.set(transparency ? [...transparency.tint, transparency.alpha] : [1, 1, 1, 1], 36);
       const codes = new Uint32Array(this.#materialData);
       codes[40] = OPERATOR_CODES[material.baseColorOperator];
-      codes[41] = (material.specular ? (material.specularEnergyConservative ? 3 : 2) : material.metalness === undefined ? 0 : 1) | (material.specularShading ? 0 : 4) | (material.diffuseShading ? 0 : 8);
+      // 清漆的两遍都是金属度工作流（各自的金属度由颜色树给）
+      const workflow = material.hasClearCoat ? 1 : material.specular ? (material.specularEnergyConservative ? 3 : 2) : material.metalness === undefined ? 0 : 1;
+      codes[41] = workflow | (material.specularShading ? 0 : 4) | (material.diffuseShading ? 0 : 8);
       codes[42] = normalMap ? 1 | (normalMap.scaleAndBias ? 2 : 0) | (normalMap.invertY ? 4 : 0) | (normalMap.isXYNormal ? 8 : 0) : 0;
       floats[43] = occlusion.directLighting;
       const gloss = material.glossinessMap;
@@ -1488,18 +1547,49 @@ class Gpu {
 }
 
 /** Stride 的 BlendStates.AlphaBlend：颜色已经乘过 alpha。 */
-/** 玻璃透射的那一遍：背景乘上着色器的输出；alpha 不动。 */
-const GLASS_TRANSMITTANCE: GPUBlendState = { color: { srcFactor: 'zero', dstFactor: 'src' }, alpha: { srcFactor: 'zero', dstFactor: 'one' } };
-/** 玻璃反射的那一遍：加到背景上（Stride 的 BlendStates.Additive：源乘它的 alpha）；alpha 不动。 */
-const GLASS_REFLECTANCE: GPUBlendState = { color: { srcFactor: 'src-alpha', dstFactor: 'one' }, alpha: { srcFactor: 'zero', dstFactor: 'one' } };
+/** 材质在透明阶段里多画的一遍：用哪个片元入口、怎么混合、剔哪一面。name 进管线的键。 */
+interface MaterialPass {
+  readonly name: string;
+  readonly entryPoint: 'fs' | 'fsGlassTransmittance' | 'fsClearCoat';
+  readonly blend: GPUBlendState;
+  readonly cullMode: GPUCullMode;
+}
+
+/** 目标的 alpha 不动。 */
+const KEEP_ALPHA: GPUBlendComponent = { srcFactor: 'zero', dstFactor: 'one' };
+/** 玻璃透射的那一遍：背景乘上着色器的输出。 */
+const GLASS_TRANSMITTANCE: GPUBlendState = { color: { srcFactor: 'zero', dstFactor: 'src' }, alpha: KEEP_ALPHA };
+/** 玻璃反射的那一遍：加到背景上（Stride 的 BlendStates.Additive：源乘它的 alpha）。 */
+const GLASS_REFLECTANCE: GPUBlendState = { color: { srcFactor: 'src-alpha', dstFactor: 'one' }, alpha: KEEP_ALPHA };
+/** 清漆的那一遍：原样加到底下一遍上（Stride 的 PremultipliedAdditive：颜色已经乘过 alpha）。 */
+const CLEAR_COAT_ADDITIVE: GPUBlendState = { color: { srcFactor: 'one', dstFactor: 'one' }, alpha: KEEP_ALPHA };
+
+const glassPass = (face: 'back' | 'front', part: 'transmittance' | 'reflectance'): MaterialPass => ({
+  name: `glass-${face}-${part}`,
+  entryPoint: part === 'transmittance' ? 'fsGlassTransmittance' : 'fs',
+  blend: part === 'transmittance' ? GLASS_TRANSMITTANCE : GLASS_REFLECTANCE,
+  // 画背面就是剔掉正面
+  cullMode: face === 'back' ? 'front' : 'back',
+});
+const GLASS_FRONT = [glassPass('front', 'transmittance'), glassPass('front', 'reflectance')];
+const GLASS_BOTH = [glassPass('back', 'transmittance'), glassPass('back', 'reflectance'), ...GLASS_FRONT];
+const CLEAR_COAT_PASSES: readonly MaterialPass[] = [{ name: 'clear-coat', entryPoint: 'fsClearCoat', blend: CLEAR_COAT_ADDITIVE, cullMode: 'back' }];
+const NO_PASSES: readonly MaterialPass[] = [];
 
 /**
- * 玻璃材质在透明阶段画几遍（别的材质是 0，照常画一遍）：透射、反射两遍；两面画时背面两遍、正面两遍。
- * 和 Stride 不同：Stride 的注释写的是先背面后正面，代码却是先正面（前两遍剔掉背面）；我们照注释的顺序，离相机远的面先画，
- * 它的反射才会被近的面挡掉一部分。
+ * 材质在透明阶段要多画的遍（空的：照常画一遍）。
+ * - 玻璃：透射、反射两遍；两面画时背面两遍、正面两遍。和 Stride 不同：Stride 的注释写的是先背面后正面，代码却是先正面
+ *   （前两遍剔掉背面）；我们照注释的顺序，离相机远的面先画，它的反射才会被近的面挡掉一部分。
+ * - 清漆：底下一遍在不透明阶段照常画过了，这里叠清漆的那一遍。
  */
-function glassPassCount(stage: RenderStage, material: Material): number {
-  return stage.transparent && material.glass ? (material.doubleSided ? 4 : 2) : 0;
+function transparentPasses(material: Material): readonly MaterialPass[] {
+  if (material.glass) return material.doubleSided ? GLASS_BOTH : GLASS_FRONT;
+  return material.hasClearCoat ? CLEAR_COAT_PASSES : NO_PASSES;
+}
+
+/** 按材质的颜色树分着色器模块和管线用的键。 */
+function treesKey(trees: MaterialShaderTrees | undefined): string {
+  return trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers, trees.clearCoat]) : '';
 }
 
 const PREMULTIPLIED_ALPHA: GPUBlendState = {

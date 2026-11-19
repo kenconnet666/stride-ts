@@ -306,10 +306,18 @@ export class ContentManager {
    * 材质的颜色树（自发光、法线贴图、位移贴图）：先加载它们引用的贴图，再用同一个编译器编译（贴图共用绑定组 3，着色器类按游戏
    * 登记的找）。一棵树都没有时是 undefined。
    */
-  async #shaderTrees({ emissiveTree: emissive, normalTree: normal, displacementTree: displacement, layers = [] }: MaterialFile): Promise<MaterialShaderTrees | undefined> {
-    if (!emissive && !normal && !displacement && layers.length === 0) return undefined;
+  async #shaderTrees({ emissiveTree: emissive, normalTree: normal, displacementTree: displacement, layers = [], clearCoat: coat }: MaterialFile): Promise<MaterialShaderTrees | undefined> {
+    if (!emissive && !normal && !displacement && layers.length === 0 && !coat) return undefined;
     const layerTrees = layers.flatMap((l) => [l.blend, l.diffuse, l.specular?.color, l.specular?.intensity, l.metalness, l.glossiness?.tree, l.normal?.tree, l.emissive?.tree]);
-    const refs = [emissive?.tree, normal?.tree, displacement?.tree, ...layerTrees].flatMap((t) => (t ? particleTextures(t) : []));
+    // 清漆的树：函数名 → 树和返回类型
+    const coatTrees: (readonly [string, ParticleModuleFile, 'vec4f' | 'f32'])[] = coat ? [
+      ['coatLodDistance', coat.lodDistance, 'f32'],
+      ['coatBaseDiffuse', coat.basePaint.diffuse, 'vec4f'], ['coatBaseGloss', coat.basePaint.glossiness, 'f32'],
+      ['coatFlakesDiffuse', coat.metalFlakes.diffuse, 'vec4f'], ['coatFlakesGloss', coat.metalFlakes.glossiness, 'f32'],
+      ['coatFlakesMetalness', coat.metalFlakes.metalness, 'f32'], ['coatFlakesNormal', coat.metalFlakes.normal.tree, 'vec4f'],
+      ['coatTopGloss', coat.coat.glossiness, 'f32'], ['coatTopMetalness', coat.coat.metalness, 'f32'], ['coatTopNormal', coat.coat.normal.tree, 'vec4f'],
+    ] : [];
+    const refs = [emissive?.tree, normal?.tree, displacement?.tree, ...layerTrees, ...coatTrees.map(([, tree]) => tree)].flatMap((t) => (t ? particleTextures(t) : []));
     const textures = new Map(await Promise.all(refs.map(async (ref) => [ref.texture, await this.#loadTextureRef(ref, ref.srgb ?? true)] as const)));
     const compiler = new ColorTreeCompiler({ texture: (path) => textures.get(path), shaderClass: (name) => this.#shaderClasses(name) }, 3);
     const functions = [
@@ -325,6 +333,7 @@ export class ContentManager {
         layer.normal && `fn layer${i}Normal() -> vec4f {\n  return ${compiler.color(layer.normal.tree)};\n}\n`,
         layer.emissive && `fn layer${i}Emissive() -> vec3f {\n  return ${compiler.color(layer.emissive.tree)}.rgb * ${layer.emissive.intensity};\n}\n`,
       ]),
+      ...coatTrees.map(([name, tree, type]) => `fn ${name}() -> ${type} {\n  return ${type === 'f32' ? compiler.scalar(tree) : compiler.color(tree)};\n}\n`),
     ];
     return {
       code: compiler.declarations + functions.filter(Boolean).join(''),
@@ -332,6 +341,13 @@ export class ContentManager {
       ...(emissive ? { emissive: { intensity: emissive.intensity, useAlpha: emissive.useAlpha } } : {}),
       ...(normal ? { normal: { scaleAndBias: normal.scaleAndBias, isXYNormal: normal.isXYNormal } } : {}),
       ...(displacement ? { displacement: { intensity: displacement.intensity, scaleAndBias: displacement.scaleAndBias } } : {}),
+      ...(coat ? {
+        clearCoat: {
+          baseInvert: coat.basePaint.invert, flakesInvert: coat.metalFlakes.invert, topInvert: coat.coat.invert,
+          flakesNormal: { scaleAndBias: coat.metalFlakes.normal.scaleAndBias, isXYNormal: coat.metalFlakes.normal.isXYNormal },
+          topNormal: { scaleAndBias: coat.coat.normal.scaleAndBias, isXYNormal: coat.coat.normal.isXYNormal },
+        },
+      } : {}),
       ...(layers.length > 0 ? {
         layers: layers.map((layer) => ({
           diffuse: layer.diffuse !== undefined, specular: layer.specular !== undefined, metalness: layer.metalness !== undefined,

@@ -105,8 +105,8 @@ export class MaterialImporter {
     if (specularModel && !glass && specularModel.$type !== 'MaterialSpecularMicrofacetModelFeature') {
       this.#context.warnings.push(`${asset.file}: specular model ${specularModel.$type} is not supported yet; using the microfacet model`);
     }
-    // 还没做的特性要说出来，不能悄悄忽略（CSharpIntermediate 的蓝箱子是清漆的车漆，现在只画它的漫反射）
-    for (const feature of ['ClearCoat', 'SubsurfaceScattering', 'Tessellation']) {
+    // 还没做的特性要说出来，不能悄悄忽略
+    for (const feature of ['SubsurfaceScattering', 'Tessellation']) {
       if (attributes[feature]) this.#context.warnings.push(`${asset.file}: material feature ${feature} is not supported yet; ignored`);
     }
     // 漫反射同理：颜色（Diffuse）和着色模型（DiffuseModel）缺一个就不算漫反射光照（只有自发光的激光、玻璃）
@@ -140,7 +140,9 @@ export class MaterialImporter {
       ...await this.#displacement(asObject(attributes['Displacement']), asset),
       ...this.#transparency(asObject(attributes['Transparency']), asset, uvScale),
       ...this.#cullMode(attributes['CullMode'], asset),
+      ...await this.#clearCoat(asObject(attributes['ClearCoat']), asset, uvScale),
     };
+    if (material.clearCoat && material.transparency) this.#context.warnings.push(`${asset.file}: clear coat on a transparent material is not supported yet; the base pass is drawn opaque`);
     const layers = [...(trees ? [trees] : []), ...await this.#layers(asset)];
     return layers.length > 0 ? { ...material, layers } : material;
   }
@@ -206,6 +208,37 @@ export class MaterialImporter {
       });
     }
     return layers;
+  }
+
+  /**
+   * 清漆（MaterialClearCoatFeature，CSharpIntermediate 的蓝箱子是这种车漆）：各个输入整棵树导出。没写的输入用 Stride 构造函数里的
+   * 默认值（颜色是黑、数是 0，过渡距离 1）；两张法线贴图的开关默认 ScaleAndBias 开、IsXYNormal 关。
+   */
+  async #clearCoat(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Promise<Pick<MaterialFile, 'clearCoat'>> {
+    if (!feature) return {};
+    if (uvScale[0] !== 1 || uvScale[1] !== 1) this.#context.warnings.push(`${asset.file}: UVScale is not applied to the clear coat color trees`);
+    const color = (key: string) => this.#colorTree(asObject(feature[key]) ?? { $type: 'ComputeColor', Value: { R: 0, G: 0, B: 0, A: 1 } }, asset, `clear coat ${key}`);
+    const scalar = (key: string, fallback = 0) => this.#colorTree(asObject(feature[key]) ?? { $type: 'ComputeFloat', Value: fallback }, asset, `clear coat ${key}`);
+    return {
+      clearCoat: {
+        lodDistance: await scalar('LODDistance', 1),
+        basePaint: { diffuse: await color('BasePaintDiffuseMap'), glossiness: await scalar('BasePaintGlossinessMap'), invert: feature['BasePaintGlossinessInvert'] === true },
+        metalFlakes: {
+          diffuse: await color('MetalFlakesDiffuseMap'),
+          glossiness: await scalar('MetalFlakesGlossinessMap'),
+          invert: feature['MetalFlakesGlossinessInvert'] === true,
+          metalness: await scalar('MetalFlakesMetalnessMap'),
+          // Stride 的属性名就拼成 MetalFlakeslIsXYNormal
+          normal: { tree: await color('MetalFlakesNormalMap'), scaleAndBias: feature['MetalFlakesScaleAndBias'] !== false, isXYNormal: feature['MetalFlakeslIsXYNormal'] === true },
+        },
+        coat: {
+          glossiness: await scalar('ClearCoatGlossinessMap'),
+          invert: feature['ClearCoatGlossinessInvert'] === true,
+          metalness: await scalar('ClearCoatMetalnessMap'),
+          normal: { tree: await color('OrangePeelNormalMap'), scaleAndBias: feature['OrangePeelScaleAndBias'] !== false, isXYNormal: feature['OrangePeelIsXYNormal'] === true },
+        },
+      },
+    };
   }
 
   /** 镜面颜色工作流（MaterialSpecularMapFeature）：镜面颜色乘强度；镜面贴图还不支持，用它的后备颜色。 */

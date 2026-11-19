@@ -531,6 +531,25 @@ export interface MaterialLayerFile {
   readonly emissive?: { readonly tree: ParticleModuleFile; readonly intensity: number };
 }
 
+/** 法线贴图的颜色树和它的两个开关（意思同 NormalMapSlot）。 */
+export interface NormalTreeFile {
+  readonly tree: ParticleModuleFile;
+  readonly scaleAndBias: boolean;
+  readonly isXYNormal: boolean;
+}
+
+/**
+ * 清漆（Stride 的 MaterialClearCoatFeature，车漆）：两遍。底下一遍是金属碎片和底漆：漫反射色和光泽度按到相机的距离从碎片过渡到
+ * 底漆（过渡量 = saturate(距离 × lodDistance)），法线是碎片的法线贴图，金属度是碎片的；上面一遍画在透明阶段、加到画面上：
+ * 材质自己的漫反射色配清漆的金属度、光泽度和橘皮法线。都是颜色树；invert 时光泽度的树存的是粗糙度。
+ */
+export interface ClearCoatFile {
+  readonly lodDistance: ParticleModuleFile;
+  readonly basePaint: { readonly diffuse: ParticleModuleFile; readonly glossiness: ParticleModuleFile; readonly invert: boolean };
+  readonly metalFlakes: { readonly diffuse: ParticleModuleFile; readonly glossiness: ParticleModuleFile; readonly invert: boolean; readonly metalness: ParticleModuleFile; readonly normal: NormalTreeFile };
+  readonly coat: { readonly glossiness: ParticleModuleFile; readonly invert: boolean; readonly metalness: ParticleModuleFile; readonly normal: NormalTreeFile };
+}
+
 export interface MaterialFile {
   readonly name: string;
   /** 线性颜色。没有贴图时就是漫反射颜色，有贴图时按 baseColorOperator 和贴图组合。 */
@@ -556,6 +575,8 @@ export interface MaterialFile {
    * 两个比例按折射率、视角和玻璃的颜色（漫反射的颜色）算。doubleSided 时背面和正面各画一次，能看到玻璃的里面。
    */
   readonly glass?: { readonly refractiveIndex: number };
+  /** 清漆，见 ClearCoatFile。 */
+  readonly clearCoat?: ClearCoatFile;
   /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。有 glossinessTexture 时不看它。 */
   readonly roughness?: number;
   /**

@@ -53,7 +53,7 @@ sealed class CaptureGame(string directory) : Game
         {
             scene++;
             frame = 0;
-            SceneSystem.SceneInstance.RootScene = Content.Load<Scene>($"Shared/{Scenes[scene]}");
+            SceneSystem.SceneInstance.RootScene = Content.Load<Scene>(Scenes[scene]);
         }
         base.Update(gameTime);
         if (scene < 0) return;

@@ -7,7 +7,7 @@ import { WebSocket } from 'ws';
 import type { CallMessage } from '@stride-ts/engine/debug-protocol';
 import { formatJson } from '../src/format.ts';
 import { decodePng, diffImages, encodePng } from '../src/png.ts';
-import { profileCallers, summarizeProfile } from '../src/profile.ts';
+import { profileCallers, profileFromTrace, summarizeProfile, type TraceEvent } from '../src/profile.ts';
 
 describe('PNG', () => {
   it('编码后解码得到同样的像素，比较能找出差的位置', () => {
@@ -27,12 +27,12 @@ describe('PNG', () => {
 });
 
 describe('CPU 剖析的汇总', () => {
-  it('自身时间按函数和类别、包含时间算到调用链上的每一层，callers 给出调用链', () => {
+  it('自身时间按函数和类别、包含时间算到调用链上的每一层，callers 给出调用链；文件名去掉查询串', () => {
     // root → frame（js） → step（wasm）；采样：frame 1 次、step 2 次，每次 1 ms（时间差从第二个开始算）
     const profile = {
       nodes: [
         { id: 1, callFrame: { functionName: '(root)', url: '' }, children: [2] },
-        { id: 2, callFrame: { functionName: 'frame', url: 'http://x/index.js' }, children: [3] },
+        { id: 2, callFrame: { functionName: 'frame', url: 'http://x/index.js?t=123' }, children: [3] },
         { id: 3, callFrame: { functionName: 'step', url: 'wasm://wasm/core' } },
       ],
       samples: [2, 3, 3],
@@ -43,6 +43,32 @@ describe('CPU 剖析的汇总', () => {
     expect(summary.selfByKind).toEqual({ wasm: 2, 'js index.js': 1 });
     expect(summary.inclusive['frame [index.js]']).toBe(3);
     expect(profileCallers(profile, /^step$/, 1)).toEqual({ 'frame [index.js] <- (root) []': 2 });
+  });
+});
+
+describe('Tracing 录的 CPU 采样', () => {
+  it('Profile 和几块 ProfileChunk 拼成一个 Profile：节点按 parent 连成 children，取主线程上的那个', () => {
+    const chunk = (pid: number, id: string, nodes: object[], samples: number[], timeDeltas: number[]): TraceEvent =>
+      ({ name: 'ProfileChunk', ph: 'P', pid, tid: 99, id, args: { data: { cpuProfile: { nodes, samples }, timeDeltas } } }) as TraceEvent;
+    const events: TraceEvent[] = [
+      { name: 'thread_name', ph: 'M', pid: 1, tid: 10, args: { name: 'CrRendererMain' } },
+      { name: 'thread_name', ph: 'M', pid: 1, tid: 11, args: { name: 'DedicatedWorker thread' } },
+      { name: 'Profile', ph: 'P', pid: 1, tid: 10, id: '0x1' },
+      { name: 'Profile', ph: 'P', pid: 1, tid: 11, id: '0x2' },
+      chunk(1, '0x1', [{ id: 1, callFrame: { functionName: '(root)' } }, { id: 2, parent: 1, callFrame: { functionName: 'update', url: 'http://x/game.ts' } }], [2, 2], [0, 100]),
+      chunk(1, '0x1', [{ id: 3, parent: 2, callFrame: { functionName: 'step', url: 'wasm://wasm/abc' } }], [3], [100]),
+      // 工作线程上的采样更多，但不是主线程
+      chunk(1, '0x2', [{ id: 1, callFrame: { functionName: '(root)' } }], [1, 1, 1, 1, 1], [0, 1, 1, 1, 1]),
+    ];
+    const profile = profileFromTrace(events);
+    expect(profile.samples).toEqual([2, 2, 3]);
+    expect(profile.timeDeltas).toEqual([0, 100, 100]);
+    expect(profile.nodes).toEqual([
+      { id: 1, callFrame: { functionName: '(root)', url: '' }, children: [2] },
+      { id: 2, callFrame: { functionName: 'update', url: 'http://x/game.ts' }, children: [3] },
+      { id: 3, callFrame: { functionName: 'step', url: 'wasm://wasm/abc' }, children: [] },
+    ]);
+    expect(() => profileFromTrace([])).toThrow(/no CPU profile/);
   });
 });
 

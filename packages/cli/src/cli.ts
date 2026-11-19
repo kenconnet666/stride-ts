@@ -7,11 +7,11 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import type { HubLogEntry, LogLevel, PageInfo } from '@stride-ts/engine/debug-protocol';
 import { CdpSession, closeBrowser, openUrl, pageTarget } from './chrome.ts';
-import { HubClient } from './client.ts';
+import { HubClient, type DevtoolsSession } from './client.ts';
 import { formatJson } from './format.ts';
 import { COLLECT_GPU_COUNTERS, INSTALL_GPU_COUNTERS } from './gpu-calls.ts';
 import { decodePng, diffImages, encodePng } from './png.ts';
-import { profileCallers, summarizeProfile, type CpuProfile } from './profile.ts';
+import { profileCallers, profileFromTrace, summarizeProfile, type CpuProfile, type TraceEvent } from './profile.ts';
 import { listHubs, readBrowser } from './state.ts';
 
 const HELP = `stride <command> [options]   (from the repository: pnpm exec stride <command>)
@@ -121,15 +121,42 @@ function parseJson(text: string): unknown {
 const vector = (text: string | undefined, what: string) => required(text, what).split(',').map(Number);
 
 /** 按键或鼠标键的动作：--hold 毫秒、--down、--up，默认按一下。 */
-/** 连到页面的 DevTools 协议（只有 stride open 启动的 Chrome 有）。 */
-async function pageCdp(command: string): Promise<{ client: HubClient; info: PageInfo; cdp: CdpSession }> {
-  const browser = readBrowser();
-  if (!browser) throw new Error(`${command} needs a Chrome started by stride open (it uses the DevTools protocol, which Chrome refuses on the default profile): run \`stride open <url> --headless\` and use that page`);
+/**
+ * 连到页面的 DevTools 协议：页面所在的浏览器装着调试桥扩展（tools/debug-bridge）时经它，否则直连 stride open 启动的 Chrome
+ * 的调试端口（Chrome 不许对默认配置文件开远程调试，用户平时的 Chrome 只能走扩展）。
+ */
+async function pageCdp(command: string): Promise<{ client: HubClient; info: PageInfo; cdp: DevtoolsSession }> {
   const client = await HubClient.find(options.hub);
   const pages = await client.pages();
   const info = page === undefined ? pages.at(-1) : pages.find((p) => p.id === page);
   if (!info) throw new Error('no page is connected');
+  const { devtoolsBridge } = (await client.call('status', {}, { page: info.id })) as { devtoolsBridge?: string | null };
+  if (devtoolsBridge) return { client, info, cdp: client.devtools(info.id) };
+  const browser = readBrowser();
+  if (!browser) {
+    throw new Error(`${command} uses the DevTools protocol: install the Stride Debug Bridge extension (tools/debug-bridge) in the page's Chrome, or run \`stride open <url> --headless\` and use that page`);
+  }
   return { client, info, cdp: await CdpSession.connect((await pageTarget(browser, info.url)).webSocketDebuggerUrl) };
+}
+
+/**
+ * 录一段 CPU 采样：用 Tracing（V8 的 cpu_profiler 分类，hires 是 0.1 ms 采样，同 DevTools 的性能面板），不用 Profiler 域——
+ * 调试桥扩展是不受信任的客户端，Chrome 不给它 Profiler。跟踪按流读回（IO.read），拼成 Profiler.Profile 的样子。
+ */
+async function recordCpuProfile(cdp: DevtoolsSession, seconds: number): Promise<CpuProfile> {
+  const categories = ['__metadata', 'disabled-by-default-v8.cpu_profiler', 'disabled-by-default-v8.cpu_profiler.hires'];
+  await cdp.send('Tracing.start', { traceConfig: { includedCategories: categories, excludedCategories: ['*'] }, transferMode: 'ReturnAsStream' });
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+  const { stream } = (await cdp.sendAndWait('Tracing.end', {}, 'Tracing.tracingComplete')) as { stream: string };
+  let text = '';
+  for (;;) {
+    const { data, eof, base64Encoded } = (await cdp.send('IO.read', { handle: stream, size: 4 << 20 })) as { data: string; eof: boolean; base64Encoded?: boolean };
+    text += base64Encoded ? Buffer.from(data, 'base64').toString('utf8') : data;
+    if (eof) break;
+  }
+  await cdp.send('IO.close', { handle: stream });
+  const trace = JSON.parse(text) as TraceEvent[] | { traceEvents: TraceEvent[] };
+  return profileFromTrace(Array.isArray(trace) ? trace : trace.traceEvents);
 }
 
 /**
@@ -253,13 +280,9 @@ const commands: Record<string, () => Promise<unknown>> = {
   async 'cpu-profile'() {
     const { client, info, cdp: session } = await pageCdp('cpu-profile');
     await using cdp = session;
-    await cdp.send('Profiler.enable');
-    await cdp.send('Profiler.setSamplingInterval', { interval: 100 });
     const frame = async () => ((await client.call('status', {}, { page: info.id })) as { frame: number }).frame;
     const first = await frame();
-    await cdp.send('Profiler.start');
-    await new Promise((resolve) => setTimeout(resolve, Number(options.seconds ?? 5) * 1000));
-    const { profile } = (await cdp.send('Profiler.stop')) as { profile: CpuProfile };
+    const profile = await recordCpuProfile(cdp, Number(options.seconds ?? 5));
     const frames = (await frame()) - first;
     if (options.out) writeFileSync(options.out, JSON.stringify(profile));
     return {

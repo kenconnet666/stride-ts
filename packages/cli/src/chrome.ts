@@ -7,6 +7,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import type { DevtoolsSession } from './client.ts';
 import { BROWSER_DIR, readBrowser, writeBrowser, type BrowserRecord } from './state.ts';
 
 const PROFILE_DIR = path.join(BROWSER_DIR, 'chrome');
@@ -152,7 +153,7 @@ export async function closeBrowser(): Promise<boolean> {
 }
 
 /** 一个 CDP 连接（Node 自带的 WebSocket）：按 id 配对命令和回复，收到的事件交给 on 登记的回调。 */
-export class CdpSession implements AsyncDisposable {
+export class CdpSession implements DevtoolsSession {
   readonly #socket: WebSocket;
   #nextId = 1;
   readonly #pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
@@ -203,6 +204,12 @@ export class CdpSession implements AsyncDisposable {
 
   on(event: string, listener: (params: unknown) => void): void {
     this.#listeners.set(event, listener);
+  }
+
+  async sendAndWait(method: string, params: Record<string, unknown>, event: string, timeout = 60_000): Promise<unknown> {
+    const received = new Promise((resolve) => this.on(event, resolve));
+    await this.send(method, params, timeout);
+    return received;
   }
 
   async [Symbol.asyncDispose](): Promise<void> {

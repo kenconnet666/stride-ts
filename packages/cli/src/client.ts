@@ -2,6 +2,13 @@
 import { DEBUG_API_PATH, DEBUG_TOKEN_HEADER, type CallResponse, type HubLogEntry, type PageInfo } from '@stride-ts/engine/debug-protocol';
 import { listHubs, type HubRecord } from './state.ts';
 
+/** 对一个页面执行 DevTools 协议命令的会话：stride 启动的 Chrome 里直连 CDP（CdpSession），别的 Chrome 经调试桥扩展。 */
+export interface DevtoolsSession extends AsyncDisposable {
+  send(method: string, params?: Record<string, unknown>, timeout?: number): Promise<unknown>;
+  /** 发命令并等它之后的 event 事件，返回事件的参数。 */
+  sendAndWait(method: string, params: Record<string, unknown>, event: string, timeout?: number): Promise<unknown>;
+}
+
 export class HubClient {
   readonly hub: HubRecord;
 
@@ -38,6 +45,15 @@ export class HubClient {
     const response = (await this.#request('POST', '/call', { command, args, ...(page === undefined ? {} : { page }), ...(timeout === undefined ? {} : { timeout }) })) as CallResponse;
     if (!response.ok) throw new Error(response.error);
     return response.value;
+  }
+
+  /** 经页面的 devtools 命令（调试桥扩展，tools/debug-bridge）对这个页面执行 DevTools 协议的命令。 */
+  devtools(page: number): DevtoolsSession {
+    return {
+      send: (method, params = {}, timeout = 60_000) => this.call('devtools', { method, params }, { page, timeout }),
+      sendAndWait: (method, params, event, timeout = 60_000) => this.call('devtools', { method, params, waitFor: event }, { page, timeout }),
+      [Symbol.asyncDispose]: async () => void (await this.call('devtools', { method: 'detach' }, { page }).catch(() => undefined)),
+    };
   }
 
   /** 日志；follow 时一直等新的，直到 signal 中止。 */

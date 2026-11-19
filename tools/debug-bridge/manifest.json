@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Stride Debug Bridge",
+  "version": "0.1.0",
+  "description": "Lets the stride-ts debug CLI send DevTools protocol commands (CPU profiling, trusted input) to localhost game pages.",
+  "permissions": ["debugger"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "service-worker.js" },
+  "content_scripts": [
+    { "matches": ["http://localhost/*", "http://127.0.0.1/*"], "js": ["content.js"], "run_at": "document_start" }
+  ]
+}

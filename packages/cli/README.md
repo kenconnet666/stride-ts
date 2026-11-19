@@ -20,13 +20,14 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 
 | 命令 | 作用 |
 |---|---|
-| `open <url> [--headless] [--size 1400x900] [--dpr 2]` | 用自己启动的 Chrome 打开（独立的用户目录 `~/.stride-ts/chrome`，装在里面的扩展会保留，比如 Claude 插件；无头的另用 `~/.stride-ts/chrome-headless`；开着 CDP 端口），等到游戏运行起来再返回；再次 open 时在同一个浏览器里开新标签。`close` 关掉这个浏览器 |
+| `open <url> [--headless] [--size 1400x900] [--dpr 2]` | 用自己启动的 Chrome 打开（独立的用户目录 `~/.stride-ts/chrome`，无头的另用 `~/.stride-ts/chrome-headless`；开着 CDP 端口），等到游戏运行起来再返回；再次 open 时在同一个浏览器里开新标签。`close` 关掉这个浏览器。平时看画面用自己的 Chrome 就行：页面经开发服务器的中枢连 CLI，开在哪个浏览器里都能用 |
 | `status` | 状态、帧号、游戏时间、帧率、画布、GPU 适配器、计数器、观察项 |
 | `entities [--name x] [--with C]`、`inspect <实体>` | 列实体；看某个实体的所有组件值和脚本属性。实体写 id 或名字 |
 | `set <实体> <组件.字段> <JSON>` | 改组件字段或脚本属性，例如 `set PlayerCharacter Character.speed 20` |
 | `pause`、`resume`、`step [n]`、`time --scale 0.5 --fixed 0.016` | 暂停（只画不更新）、单步、时间倍率、固定步长（复现用） |
 | `key KeyW --hold 1000`、`mouse move 100 0`、`mouse left` | 模拟输入（合成 DOM 事件，走 InputManager 的正常路径；拿不到指针锁定） |
-| `mouse left --trusted` | 用 DevTools 协议在画布中央真实地按一下（stride open 启动的 Chrome）：算用户操作，页面能锁定指针；锁定后 `mouse move` 的移动量照常进 `mouseDelta` |
+| `mouse left --trusted` | 用 DevTools 协议在画布中央真实地按一下：算用户操作，页面能锁定指针；锁定后 `mouse move` 的移动量照常进 `mouseDelta`。要 DevTools 协议的命令，页面所在的 Chrome 装着调试桥扩展（[tools/debug-bridge](../../tools/debug-bridge/README.md)）时经它，否则要 stride open 启动的 Chrome |
+| `cpu-profile [--seconds 5] [--out p.json] [--callers <正则>]` | 录一段 CPU 采样（Tracing 的 v8.cpu_profiler，0.1 ms），按类别、函数给每帧的自身和包含时间；`--callers` 列某些函数的调用链。同上，经调试桥扩展或 stride open 的 Chrome |
 | `shot out.png [--diff ref.png]` | 截下一帧的后备缓冲（不含页面上的文字）；和参考图逐像素比较，写放大 16 倍的差异图 |
 | `perf [--seconds 3]` | 帧时间分布、每个系统和阶段的 CPU 时间、每个渲染通道的 GPU 时间、渲染统计 |
 | `raycast <x,y,z> <dx,dy,dz>` | 物理射线 |

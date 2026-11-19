@@ -179,7 +179,7 @@ this.bullets.give(bullet);
 
 - 游戏脚本是否只用 TypeScript。
 - C# 移植版是否和这里并行推进。
-- 编辑器的前端框架、资源之间按路径还是按 id 引用、预制体在场景文件里怎么表示、SVG 精灵和几何表示的格式：见 [docs/roadmap.md](docs/roadmap.md) 末尾的"等用户定的"。
+- 预制体在场景文件里怎么表示、SVG 精灵和几何表示的格式：见 [docs/roadmap.md](docs/roadmap.md) 末尾的"等用户定的"。
 - ~~这个目录对应的 GitHub 仓库~~：2026-11-18 已建成公开仓库 [kenconnet666/stride-ts](https://github.com/kenconnet666/stride-ts)，MIT 许可证。
 
 ## 许可证

@@ -228,8 +228,10 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   out.position = view.viewProjection * worldPosition;
   out.world = worldPosition.xyz;
   out.effect = effectVarying(out.position, worldPosition.xyz, mesh.effect);
-  // 均匀缩放下法线、切线直接用世界矩阵变换；非均匀缩放要用逆转置，等材质系统一起做
-  out.normal = (world * vec4f(localNormal, 0.0)).xyz;
+  // 法线用世界矩阵的逆转置变换（Stride 的 WorldInverseTranspose）：缩放不等比时直接乘世界矩阵，斜着的法线会歪。
+  // 逆转置乘上行列式就是余子式矩阵（三次叉乘），长度反正要在片元着色器里归一；行列式是负的（镜像）时方向要反回来
+  let cofactor = mat3x3f(cross(world[1].xyz, world[2].xyz), cross(world[2].xyz, world[0].xyz), cross(world[0].xyz, world[1].xyz));
+  out.normal = cofactor * localNormal * select(-1.0, 1.0, dot(world[0].xyz, cofactor[0]) >= 0.0);
   out.uv = effectUv(meshUv, mesh.effect);
   out.depth = out.position.w;
   out.tangent = vec4f((world * vec4f(localTangent, 0.0)).xyz, tangent.w);

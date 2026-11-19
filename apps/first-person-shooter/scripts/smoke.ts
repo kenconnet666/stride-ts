@@ -62,11 +62,14 @@ check('枪口火焰、弹孔按时移除（受击拖尾 6 秒）', state().entit
 // 换弹：手臂播换弹动画，挂在骨骼上的枪相对相机移动
 const GUN = `${BY} const c = at(by('Camera')), m = at(by('Gun')); [m[0] - c[0], m[1] - c[1], m[2] - c[2]]`;
 const rest = stride('eval', GUN) as number[];
+// 在页面里逐帧看 1.5 秒取最大的位移：隔一次 CLI 调用取一个样，赶上动画的哪一刻要看帧节奏（无头浏览器里不稳）
+stride('eval', `globalThis.gunMoved = 0; (() => { const rest = ${JSON.stringify(rest)}; const end = performance.now() + 1500; const poll = () => {
+  const now = eval(${JSON.stringify(GUN)}); globalThis.gunMoved = Math.max(globalThis.gunMoved, Math.hypot(...rest.map((v, i) => v - now[i])));
+  if (performance.now() < end) requestAnimationFrame(poll); }; poll(); })(); 1`);
 stride('key', 'R');
-await sleep(700);
-const reloading = stride('eval', GUN) as number[];
-const moved = Math.hypot(...rest.map((v, i) => v - reloading[i]!));
-check('按 R 换弹：手臂播换弹动画（枪跟着骨骼动）', moved > 0.05, { rest, reloading, moved });
+await sleep(1700);
+const moved = stride('eval', 'globalThis.gunMoved') as number;
+check('按 R 换弹：手臂播换弹动画（枪跟着骨骼动）', moved > 0.05, { rest, moved });
 await sleep(1700);
 check('换弹后 9 发', state().bullets === 9, state());
 

@@ -30,15 +30,22 @@ for (let i = 0; i < 7; i++) {
   check(`${scene}：在跑`, state === 'running' && error === null, { state, error });
   stride('eval', HELPERS);
   const emitters = stride('eval', 'emitters()') as Emitter[];
-  const living = (entity: string, emitter?: string) =>
-    emitters.filter(([e, name]) => e === entity && (emitter === undefined || name === emitter)).reduce((sum, [, , n]) => sum + n, 0);
   const total = emitters.reduce((sum, [, , n]) => sum + n, 0);
   check(`${scene}：有粒子`, total > 50, { total, emitters: emitters.length });
   switch (scene) {
-    case 'ChildParticles':
-      check('ChildParticles：四组子粒子都生出来了', ['Ribbons', 'Smoke', 'Fireworks', 'Colliding Particles'].every((entity) => emitters.some(([e, , n]) => e === entity && n > 0)) && living('Ribbons', 'Child') > 0 && living('Smoke', 'Smoke') > 0,
-        emitters.map(([e, name, n]) => `${e}/${name}=${n}`));
+    case 'ChildParticles': {
+      // 子粒子由父粒子触发（Smoke 的烟在石头落地时才生），某一刻可能正好一个都没有：3 秒内每组都出现过就算
+      const most = new Map<string, number>();
+      const groupsSeen = () => ['Ribbons/', 'Smoke/', 'Fireworks/', 'Colliding Particles/', 'Ribbons/Child', 'Smoke/Smoke']
+        .every((prefix) => [...most].some(([key, n]) => key.startsWith(prefix) && n > 0));
+      for (let sample = 0, current = emitters; sample < 10; sample++, current = stride('eval', 'emitters()') as Emitter[]) {
+        for (const [e, name, n] of current) most.set(`${e}/${name}`, Math.max(most.get(`${e}/${name}`) ?? 0, n));
+        if (groupsSeen()) break;
+        await sleep(300);
+      }
+      check('ChildParticles：四组子粒子都生出来了', groupsSeen(), Object.fromEntries(most));
       break;
+    }
     case 'CustomParticles':
       check('CustomParticles：游戏自己的形状在画', emitters.length > 0 && emitters.every(([, , n, shape]) => n > 0 && shape === 'CustomParticleShape'), emitters);
       break;

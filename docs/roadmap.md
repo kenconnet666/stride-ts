@@ -383,9 +383,18 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    6. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/particles-sample`）：冒烟脚本把七个场景轮一圈（`next-scene`），查各场景演示的东西；桌面 Stride 换场景、固定种子后截七张，每通道平均差 0.70 到 2.09/255（MainScene 1.74、AnimatedParticles 0.70、ChildParticles 1.42、CustomMaterials 0.91、CustomParticles 2.09、Lasers 1.85、RibbonParticles 1.19）。比对中找到并修掉：网格材质的光泽度贴图（平台发黑）、镜面颜色工作流的能量守恒（漫反射乘 1 - 镜面，以前不变暗，平台偏亮；PhysicsSample 重比过没有变差）、换场景时后台任务的未处理拒绝（脚本的 `addTask`）。帧时间（MainScene，1280x720，不限帧率）：桌面 Stride 1.02 ms，stride-ts 0.86 ms；构建 10.6 s，页面下载 4.4 MB（brotli 2.85 MB），第一帧 1.12 s。
    - 同时做的工具改进：浏览器验证用装了 Claude 插件的 `stride open` Chrome（和 CDP 的剖析同一个浏览器）；回归用自己的状态目录和端口（`~/.stride-ts/regress`，端口加 1000），截图和测量脚本用自己的无头 Chrome（`STRIDE_BROWSER_DIR`），都不关开着的窗口。
    - 回头补：UIElementLink 场景里烟的粒子（现在有粒子系统了，重新导入、比对）。
-7. **JumpyJet**（`apps/jumpy-jet`，端口 5210）：2D 横版小游戏：点屏幕或空格让飞机往上跳，穿过不断生成的管子，撞到就结束，UI 有开始、计分、结束三个页面（用代码建）。背景是游戏自己的渲染器（JumpyJetRenderer，SceneRendererBase）用 SpriteBatch 画四层视差，飞机和管子是精灵加 Bepu 的刚体（管子是预制体），撞管子用形状的重叠查询（Simulation.Overlap），状态用事件键（GameGlobals 的 EventKey）广播。分步：
+7. ~~JumpyJet~~（2026-11-19 完成，`apps/jumpy-jet`，端口 5210）：2D 横版小游戏：点屏幕或空格让飞机往上跳，穿过不断生成的管子，撞到就结束，UI 有开始、计分、结束三个页面（用代码建）。背景是游戏自己的渲染器（JumpyJetRenderer，SceneRendererBase）用 SpriteBatch 画四层视差，飞机和管子是精灵加 Bepu 的刚体（管子是预制体），撞管子用形状的重叠查询（Simulation.Overlap），状态用事件键（GameGlobals 的 EventKey）广播。分步：
    1. ~~导入和骨架~~（2026-11-19）：`apps/jumpy-jet` 导入游戏设置和场景；合成器的根相机下面是游戏的渲染器时也按类型名建（导入器的 `gameRenderer`），渲染器的属性能引用精灵表；前向渲染器加了 `background` 钩子（清屏之后、不透明阶段之前在主画面的 pass 里画），JumpyJetRenderer 借它画视差背景、再画场景；BackgroundSection 翻译成 TS。在 Chrome 里看过：四层背景在滚，飞机画出来了。原来的计划：JumpyJetRenderer 和 BackgroundSection 翻译成 TS（视差滚动、SpriteBatch 的 VirtualResolution）；场景能看。
    2. ~~物理~~（2026-11-19）：精灵上的 Bepu 刚体（运动学）、复合碰撞体随场景和预制体导入；形状的重叠查询 `simulation.overlap`（原生 0.25.0 的 `sn_physics_overlap`，Jolt 的 CollideShape）。原生 0.26.1：运动学刚体的世界变换被物理以外改过（脚本移动了它或父实体）就在步进前移过去，这一步没动的运动学刚体不写回变换（以前每步写回，PipesScript 移动管子组的根时管子被拉回原处）；写回时父节点的世界矩阵现算。TS 里原来"挂在会动的刚体下面的运动学刚体"的跟随换成原生侧的这条通用规则，Simulation 只留骨骼节点上的刚体（`followNodeLinks`）。
    3. ~~脚本~~（2026-11-19）：CharacterScript（AsyncScript 加两个 `addTask`：空格或点击往上跳、重力、换精灵帧和角度，按碰撞体的形状查重叠：层 0 结束、层 6 的触发器计分）、PipesScript（按画布宽度实例化几组管子预制体，往左移、出了左边接到最后、高度随机）、UIScript（用代码建主菜单、计分、结束三个页面）、BackgroundScript（结束时背景停住），事件键加了 `EventReceiver.tryConsume()`（Stride 的 TryReceive）。引擎修了 Canvas 的附加属性：设相对位置时改用相对位置、设绝对位置时改用绝对位置（同 Stride 的 SetCanvasRelativePosition），UI 文件里存的 `canvasUseAbsolutePosition` 放到最后设。在 Chrome 里玩过：开始、跳、管子滚动、撞管子和落地结束、Retry。冒烟 11 项（菜单按钮的位置、计分页面、管子组移动而管子的本地位置不变、进触发器加一分、落地后结束页面和背景停住、Retry 重新开始）。
-   4. 冒烟和桌面比对（Bepu 版样例在 Stride 的 master，同 PhysicsSample 的取法）。进行中（2026-11-19）：冒烟 11 项；`tools/stride-capture/jumpy-jet` 截主菜单和游戏中两张，布局一致，平均每通道差 4.04、6.23/255，还要查剩下的差别。比对中修掉的：背景的设计分辨率取游戏设置的默认后备缓冲（`game.settings.defaultBackBufferSize`，导入器带上 GameSettings 的 RenderingSettings），页面的画布保持 640:1136；相机下面是游戏的渲染器时，借用的前向渲染器不做后处理（导入器给主画面 `postEffects: null`）。
+   4. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/jumpy-jet`）：冒烟 11 项；截主菜单和游戏中两张，布局一致，平均每通道差 4.04、5.79/255，主要来自贴图的块压缩（两边编码器不同）。帧时间两边都是 0.57 ms。比对中修掉的：异步脚本的续体在当帧画之前跑完（以前 AsyncScript 的移动晚一帧才画出来）；背景的设计分辨率取游戏设置的默认后备缓冲（`game.settings.defaultBackBufferSize`，导入器带上 GameSettings 的 RenderingSettings），页面的画布保持 640:1136；相机下面是游戏的渲染器时，借用的前向渲染器不做后处理（导入器给主画面 `postEffects: null`）。
+8. **SpaceEscape**（`apps/space-escape`，端口 5212）：3D 跑酷。
+   - 玩法：角色沿走廊往前跑，左右换道、跳、滑铲躲障碍；关卡按段程序生成、跑过去的段回收；按距离计分。
+   - UI 三个页面（主菜单、计分、结束），用代码建。
+   - 走廊往远处弯下去、远处起雾，是自定义着色器：效果 SpaceEscapeEffectMain 在 StrideForwardShadingEffect 上加 TransformationBendWorld（世界位置的 x、y 加 z² 项）和 CustomFogEffect（按深度和高度往雾色插值）。参数由渲染特性 BendFogRenderFeature 设。
 
+   分步：
+   1. 导入和骨架：`apps/space-escape` 导入游戏设置、场景（Scene、LevelBlocks）、模型、骨架、动画、材质；场景能看。
+   2. 着色器：网格材质的顶点和着色扩展点（世界位置在投影前可改、着色结果可改），游戏用 `shaderClass` 写弯曲和雾（同 ParticlesSample 的自定义着色器类）；BendFogRenderFeature 的参数（开关、雾色、弯曲系数）。
+   3. 脚本：CharacterScript（换道、跳、滑铲，动画切换，和障碍的碰撞）、BackgroundScript 加 LevelGenerator、Section、Obstacle、Hole（程序关卡）、GameScript、UIScript、PlayIdleAnimationScript；能玩。
+   4. 冒烟和桌面比对（同 JumpyJet 的取法，样例在 master 还是 4.4.2 先确认）。

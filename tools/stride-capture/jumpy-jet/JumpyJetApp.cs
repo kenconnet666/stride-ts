@@ -18,8 +18,9 @@ using Stride.Rendering.Compositing;
 
 string? Option(string name) => Array.IndexOf(args, name) is var i and >= 0 ? args[i + 1] : null;
 var capture = Option("--capture");
-// 不声明 DPI 感知时，150% 缩放下 1136 高的窗口放大到 1704 物理像素、超出屏幕，被压到屏幕高度（后备缓冲跟着变小）
-if (capture != null) SetProcessDpiAwarenessContext(-4); // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+// 截图和测帧时间时声明 DPI 感知：不声明时，150% 缩放下 1136 高的窗口放大到 1704 物理像素、超出屏幕，被压到屏幕高度
+// （后备缓冲跟着变小）
+if (capture != null || Array.IndexOf(args, "--benchmark") >= 0) SetProcessDpiAwarenessContext(-4); // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 using var game = BenchmarkGame.FromArgs(args) ?? (capture == null ? new Game() : new CaptureGame(capture));
 game.Run();
 

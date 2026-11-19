@@ -290,7 +290,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
 ### 已完成
 
-每个样例都有 `import:stride`（从 Stride 仓库导入）和 `smoke`（冒烟脚本），`pwsh tools/regress.ps1` 全部跑一遍。截图差是和桌面 Stride 比的平均每通道差（/255），做法和逐张的结果在 `tools/stride-capture/<样例>/README.md`。
+每个样例都有 `import:stride`（从 Stride 仓库导入）和 `smoke`（冒烟脚本），`pwsh tools/regress.ps1` 全部跑一遍。截图差是和桌面 Stride 比的平均每通道差（/255），做法和逐张的结果在 `tools/stride-capture/<样例>/README.md`。P1 那张表里的数当时是按"每个像素取差最大的通道"算的（偏大），而且是修正泛光权重（2026-11-19）之前截的，重截时更新。
 
 **P1 运行时补齐 3D 游戏的基础**（2026-11-19 完成）：场景脚本导入、骨骼动画，加七个样例。导入、构建、下载量、启动和帧时间的验收数字（帧时间是桌面 Stride 的 0.47 到 0.97 倍）在 progress-log.md 的"P1 收尾"。
 
@@ -308,17 +308,17 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
 | 样例 | 应用（端口） | 做了什么 | 截图差 | 没做完的 |
 |---|---|---|---|---|
-| SpriteFonts | `apps/sprite-fonts`（5198） | 矢量文字（Slug）、SpriteBatch、字体导入 | 0.25 到 1.01（六屏），对齐 2.72、抗锯齿 4.93（hinting） | UI 文字的换行和富文本、世界空间的文字（MSDF）、点存成 f16 |
+| SpriteFonts | `apps/sprite-fonts`（5198） | 矢量文字（Slug）、SpriteBatch、字体导入 | 0.21 到 0.97（六屏），对齐 2.65、抗锯齿 4.80（hinting） | UI 文字的换行和富文本、世界空间的文字（MSDF）、点存成 f16 |
 | GameMenu | `apps/game-menu`（5200） | UI 系统：导入、布局、渲染、输入 | 3.5 到 4.6（BC 压缩、hinting） | 输入框以外的无障碍树、按键的路由事件、没用到的控件（ToggleButton 等） |
 | UIElementLink | `apps/ui-element-link`（5202） | 放在 3D 里的 UI、实体跟着 UI 元素走 | 4.46 到 6.81（Stride 的 UI 被色调映射，见 decisions.md） | 场景里烟的粒子（现在有粒子系统了，重新导入、比对） |
 | UIParticles | `apps/ui-particles`（5204） | 粒子系统（CPU 模拟）、粒子画在 UI 上面 | 4.65、4.68 | |
 | SimpleAudio | `apps/simple-audio`（5206） | 声音（Web Audio） | 1.53 | |
-| ParticlesSample | `apps/particles-sample`（5208） | 曲线、飘带和拖尾、子粒子、自定义模块和材质 | 见 README | |
-| JumpyJet | `apps/jumpy-jet`（5210） | 游戏自己的渲染器、形状重叠查询 | 4.04、5.79（BC 压缩） | |
-| SpaceEscape | `apps/space-escape`（5212） | 网格效果（自定义着色器）、场景模板 | 3.14、5.30 | |
-| MaterialShader | `apps/material-shader`（5214） | 材质的法线树和位移树、游戏的着色器类 | 0.36 | |
-| CustomEffect | `apps/custom-effect`（5216） | SpriteBatch 的自定义效果 | 0.64 | |
-| MorphTargets | `apps/morph-targets`（5218） | 形变目标（原生 0.27.0）、Slider、Border | 3.98（UI 的色调映射） | |
+| ParticlesSample | `apps/particles-sample`（5208） | 曲线、飘带和拖尾、子粒子、自定义模块和材质 | 0.70 到 2.09（七个场景） | |
+| JumpyJet | `apps/jumpy-jet`（5210） | 游戏自己的渲染器、形状重叠查询 | 2.53、3.54（BC 压缩） | |
+| SpaceEscape | `apps/space-escape`（5212） | 网格效果（自定义着色器）、场景模板 | 2.04、3.45 | |
+| MaterialShader | `apps/material-shader`（5214） | 材质的法线树和位移树、游戏的着色器类 | 0.24 | |
+| CustomEffect | `apps/custom-effect`（5216） | SpriteBatch 的自定义效果 | 0.43 | |
+| MorphTargets | `apps/morph-targets`（5218） | 形变目标（原生 0.27.0）、Slider、Border | 3.88（UI 的色调映射） | |
 | FPS 的粒子和材质层 | `apps/first-person-shooter` | SpawnerBurst、SpawnerFromDistance、材质层 | 2.70 | |
 
 ### 正在做和下一步
@@ -328,8 +328,9 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    分步：
    1. ~~导入和骨架~~（2026-11-19）：导入主场景和 15 个教程场景；TutorialUI 写成 TS（按钮照占位按钮复制、加载子场景、相机 2 秒插值）。导入器补上：程序模型 Teapot、材质的贴图用到时才导入。
    2. ~~演示脚本和引擎能力~~（2026-11-19）：15 个演示脚本。引擎补上（细节见 docs/decisions.md 同日的条目）：`entity.clone()`（实体层的通用克隆）、`entity.scene`（运行时建的实体放进场景、随场景卸载）、虚拟按钮、`input.absoluteMousePosition`、C# 风格的数值文字（`formatFloat` 等）、`Quaternion.lerp`；调试文字改成按 CSS 像素和设计分辨率摆（高分屏上清楚，字跟着物体）。
-   3. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/csharp-beginner`）：冒烟 11 项（15 个教程都能进、键盘和虚拟按钮、克隆、代码加载、预制体、换一圈教程实体数不变）；截克隆、键盘、属性三个教程，UI 以下的场景平均每通道差 2.35、2.27、5.98/255，物体的位置、大小、阴影一致。顺带：调试文字加 `visible`（同 Stride 默认只在开发版画）、`stride shot --diff` 加 `--region` 和每通道平均、`tools/stop-dev.ps1`。
-   4. 下一步：属性那张差大，是近处箱子的发光标志（带材质层）光晕比 Stride 宽、亮；查是自发光的强度还是泛光的问题，修好后重截（FPS、PhysicsSample、BepuSample 里同样的箱子也会跟着变）。
+   3. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/csharp-beginner`）：冒烟 11 项（15 个教程都能进、键盘和虚拟按钮、克隆、代码加载、预制体、换一圈教程实体数不变）；截克隆、键盘、属性三个教程，物体的位置、大小、阴影一致，第一次比 UI 以下的场景平均每通道差 2.35、2.27、5.98/255（见第 4 步）。顺带：调试文字加 `visible`（同 Stride 默认只在开发版画）、`stride shot --diff` 加 `--region` 和每通道平均、`tools/stop-dev.ps1`。
+   4. ~~箱子的光晕~~（2026-11-19）：逐个效果和桌面版比，找到并修掉三处（docs/decisions.md 的"贴图的颜色键和 1 位 alpha；泛光的权重"）：泛光的权重强了 4 倍、贴图的颜色键和 `Alpha: Mask` 没导入、比对时亮度适应没关。三张降到 1.44、1.24、1.55/255；别的有截图脚本的样例重比没有变差。
+   - 回头补：P1 的七个样例（TPP、FPS、TopDownRPG 等）是修正泛光之前截的，没有 `capture-ours.ps1`，要各补一个脚本重截（预计也会降，它们和这里用的是同一套素材和合成器）。
 14. **CSharpIntermediate**（`apps/csharp-intermediate`，端口 5222）：进阶教程。主场景 IntermediateTutorials 的 TutorialUI 有"开始"和"完成"两列按钮，点一个就把根场景换成那个教程的场景；11 个主题各有 Start-、Completed- 两个场景（场景加载另有 SceneB 和一个子场景），共 26 个，脚本 23 个。
 
    分步（按主题分组，每组先看 Stride 的脚本和我们缺什么）：

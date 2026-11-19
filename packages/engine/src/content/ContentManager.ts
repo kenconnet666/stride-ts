@@ -12,7 +12,7 @@ import { AnimationComponent } from '../animation/AnimationComponent';
 import { ModelNodeLink } from '../animation/ModelNodeLink';
 import { AnimationClip, Skeleton, type AnimationNative } from '../animation/resources';
 import type { EntityManager } from '../engine/EntityManager';
-import { SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
+import { resolveSceneValues, SceneScriptBinder, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import { Collider, type ColliderShape } from '../physics/Collider';
@@ -29,7 +29,7 @@ import { Cubemap, Skybox } from '../rendering/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -90,8 +90,10 @@ interface SceneAssets {
   /** 背景和精灵的贴图（包括渲染目标贴图），按内容路径。 */
   readonly images: ReadonlyMap<string, Texture>;
   readonly spriteSheets: ReadonlyMap<string, SpriteSheet>;
-  /** 脚本属性引用的预制体。 */
+  /** 脚本属性引用的预制体、字体、贴图。 */
   readonly prefabs: ReadonlyMap<string, Prefab>;
+  readonly fonts: ReadonlyMap<string, SpriteFont>;
+  readonly textures: ReadonlyMap<string, Texture>;
 }
 
 /** 合成器里画进渲染目标贴图的相机，贴图已经建好。 */
@@ -105,6 +107,14 @@ export interface CompositorSettings extends SceneForwardRenderer {
   readonly textureCameras: readonly TextureCamera[];
   /** false 时不画阴影（见 SceneCompositor.shadows）。 */
   readonly shadows?: false;
+}
+
+/** 加载好的游戏设置（ContentManager.loadGameSettings）。 */
+export interface GameSettings {
+  readonly name: string;
+  readonly defaultScene: string | null;
+  /** 合成器的根是游戏自己的渲染器时：Stride 的类型名和加载好的属性（键名小写开头）。 */
+  readonly renderer: { readonly type: string; readonly props: Readonly<Record<string, unknown>> } | null;
 }
 
 export interface SceneInstance {
@@ -282,6 +292,37 @@ export class ContentManager {
     });
   }
 
+  /** 加载单独引用的贴图资源（脚本属性、合成器渲染器引用的）：先读它的 TextureRef，再按里面的编码和 sRGB 读贴图。 */
+  loadTextureAsset(path: string): Promise<Texture> {
+    return this.#once(path + EXTENSIONS.texture, async (url) => {
+      const ref = this.#json<TextureRef>(await this.#read(url));
+      return this.#loadTextureRef(ref, ref.srgb ?? true);
+    });
+  }
+
+  /**
+   * 加载游戏设置（.game.json）：默认场景的路径，合成器的根是游戏自己的渲染器时它的类型名和属性（属性引用的资源加载好）。
+   */
+  loadGameSettings(path: string): Promise<GameSettings> {
+    return this.#once(path + EXTENSIONS.gameSettings, async (url) => {
+      const file = this.#json<GameSettingsFile>(await this.#read(url));
+      if (!file.renderer) return { name: file.name, defaultScene: file.defaultScene, renderer: null };
+      const refs = scriptAssetRefs([file.renderer]);
+      const loaders: Readonly<Record<string, (p: string) => Promise<object>>> = {
+        model: (p) => this.loadModel(p), material: (p) => this.loadMaterial(p), animation: (p) => this.loadAnimation(p),
+        prefab: (p) => this.loadPrefab(p), font: (p) => this.loadFont(p), texture: (p) => this.loadTextureAsset(p),
+        scene: (p) => Promise.resolve({ path: p } satisfies SceneReference),
+      };
+      const loaded = new Map<string, object>(await Promise.all(refs.map(async ({ kind, path: assetPath }) => {
+        const load = loaders[kind];
+        if (!load) throw new Error(`${url.href}: renderer properties referring to ${kind} assets are not supported`);
+        return [`${kind}:${assetPath}`, await load(assetPath)] as const;
+      })));
+      const props = resolveSceneValues(file.renderer.props, { entities: new Map(), asset: (kind, assetPath) => loaded.get(`${kind}:${assetPath}`)! });
+      return { name: file.name, defaultScene: file.defaultScene, renderer: { type: file.renderer.type, props } };
+    });
+  }
+
   /** 加载字体：先只读度量和码位块的清单，字形的块用到时再下载（见 SpriteFont）。 */
   loadFont(path: string): Promise<SpriteFont> {
     return this.#once(path + EXTENSIONS.font, async (url) => {
@@ -344,7 +385,7 @@ export class ContentManager {
     const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${url.href}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
     const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets] = await Promise.all([
+    const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets, fonts, textures] = await Promise.all([
       preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => this.loadModel(p)),
       preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => this.loadMaterial(p)),
       preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => this.loadAnimation(p)),
@@ -352,13 +393,15 @@ export class ContentManager {
       preload(components.flatMap((c) => (c.background?.type === 'cubemap' ? [c.background.texture] : [])), (p) => this.loadCubemap(p)),
       preload(scriptPaths('prefab'), (p) => this.loadPrefab(p)),
       preload(components.flatMap((c) => (c.sprite && 'sheet' in c.sprite ? [c.sprite.sheet] : [])), (p) => this.loadSpriteSheet(p)),
+      preload(scriptPaths('font'), (p) => this.loadFont(p)),
+      preload(scriptPaths('texture'), (p) => this.loadTextureAsset(p)),
     ]);
     // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
     const imageRefs = components.flatMap((c) => [...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite && 'texture' in c.sprite ? [c.sprite.texture] : [])]);
     const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
       ? [ref.renderTexture, this.renderTexture(ref)] as const
       : [ref.texture, await this.#loadTextureRef(ref, true)] as const)));
-    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets };
+    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures };
   }
 
   /**
@@ -413,7 +456,7 @@ export class ContentManager {
       if (nodeLink) created.get(file.id)!.add(ModelNodeLink.with({ target: entityOf(nodeLink.target, file, 'model node link target'), nodeName: nodeLink.nodeName }));
     }
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
-    const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs };
+    const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = { model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs, font: assets.fonts, texture: assets.textures };
     const context = {
       entities: created,
       asset: (kind: string, assetPath: string): object => (kind === 'scene' ? ({ path: assetPath } satisfies SceneReference) : byKind[kind]!.get(assetPath)!),
@@ -540,7 +583,7 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
 }
 
 /** 脚本属性能引用的资源种类（model、material、animation、prefab 加载场景时预先加载，scene 只给路径）。 */
-const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab']);
+const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture']);
 
 function unionBounds(all: readonly Bounds[]): Bounds {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];

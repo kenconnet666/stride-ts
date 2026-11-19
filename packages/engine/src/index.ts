@@ -33,7 +33,7 @@ export { AnimationSystem, ModelSkeleton, type SkinnedPart } from './animation/An
 export { ModelNodeLink } from './animation/ModelNodeLink';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
 export { Prefab } from './content/Prefab';
-export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
+export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type GameSettings, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
 export type { SceneScriptMap } from './content/sceneScripts';
 export {
   decodeCubemap,
@@ -116,7 +116,7 @@ export { validator } from './engine/validator';
 export { Debug, FrameTimings, describe, type DebugHandler } from './debug/Debug';
 export { DebugText, type DebugTextLine } from './debug/DebugText';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
-export { Game, type GameOptions, type GameStatus, type HotContext } from './games/Game';
+export { Game, type GameOptions, type GameStatus, type LoadGameSettingsOptions, type HotContext } from './games/Game';
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';

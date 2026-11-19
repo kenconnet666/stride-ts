@@ -21,7 +21,7 @@ function font(kind: FontFile['kind'], extra: Partial<FontFile> = {}): { font: Sp
   const loads: number[] = [];
   const file: FontFile = {
     name: 'Test', kind, size: 20, antiAlias: 'default', ...metrics, spacing: 0, lineSpacing: 0, lineGapFactor: 1, lineGapBaseLineFactor: 1,
-    defaultCharacter: 32, blocks: [0, 0x30], kerning: [], ...extra,
+    defaultCharacter: 32, blocks: [0, 0x30], kerning: [65, 66, -0.1], ...extra,
   };
   return {
     font: new SpriteFont(file, (index) => {
@@ -61,7 +61,7 @@ describe('SpriteFont', () => {
 
 describe('文字排版', () => {
   test('运行时字体：前进宽度按字号取整，额外间距按字号缩放，\\n 换行、\\r 跳过，没有的字用默认字符（空格）', async () => {
-    const { font: f } = font('dynamic', { spacing: 1 });
+    const { font: f } = font('dynamic', { spacing: 1, kerning: [] });
     await f.ensure('AB');
     // 字号 30：A = 15，B = 18，空格 7.5 进位成 8（同 FreeType 的像素取整），额外间距 1.5
     const glyphs = layoutText(f, 'AB\r\nAC', [30, 30]);
@@ -73,18 +73,28 @@ describe('文字排版', () => {
   });
 
   test('字号超过 256 时按 256 取整再放大；编译期字体的宽度不随字号变', async () => {
-    const dynamic = font('dynamic').font;
+    const dynamic = font('dynamic', { kerning: [] }).font;
     await dynamic.ensure('B');
     // round(0.6 · 256) · 512 / 256
     expect(layoutText(dynamic, 'B', [512, 512])[0]!.nextX).toBe(154 * 2);
-    const fixed = font('static', { spacing: 2 }).font;
+    const fixed = font('static', { spacing: 2, kerning: [] }).font;
     await fixed.ensure('AB');
-    // 宽度按 size 20：A = 10；额外间距按 40 / 20 放大
-    expect(layoutText(fixed, 'AB', [40, 40]).map((g) => g.nextX)).toEqual([14, 30]);
+    // 宽度按 size 20：A = 10、B = 12，额外间距 2（SpriteBatch 给编译期字体的字号总是 size）
+    expect(layoutText(fixed, 'AB', [20, 20]).map((g) => g.nextX)).toEqual([12, 26]);
+  });
+
+  test('字距按 kern 表推后面所有的字（和 Stride 不同），换行后重新开始', async () => {
+    const { font: f } = font('dynamic');
+    await f.ensure('AB');
+    // 字号 30：A = 15，AB 之间 -0.1 em = -3，B 从 12 开始
+    const glyphs = layoutText(f, 'ABB\nB', [30, 30]);
+    expect(glyphs.map((g) => [g.x, g.nextX])).toEqual([[0, 15], [12, 30], [30, 48], [0, 18]]);
+    expect(f.kerning(65, 66)).toBeCloseTo(-0.1, 6);
+    expect(measureText(f, 'AB', [30, 30])[0]).toBe(30);
   });
 
   test('居中、右对齐：每行的起点按整段的宽度算，取整', async () => {
-    const { font: f } = font('dynamic');
+    const { font: f } = font('dynamic', { kerning: [] });
     await f.ensure('AB');
     // 字号 10：A = 5，B = 6；整段宽 11
     const center = layoutText(f, 'AB\nA', [10, 10], 'center');

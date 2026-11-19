@@ -2,7 +2,7 @@ import { createStrideNative, type NativeFeature, type StrideNative, type Transfo
 import { AnimationSystem } from '../animation/AnimationSystem';
 import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { hook } from '../engine/events';
-import { ContentManager, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
+import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
 import { DebugText } from '../debug/DebugText';
@@ -75,6 +75,11 @@ declare global {
  * 继承它并重写 loadContent 和 update（要调用 super.update，脚本和系统在里面跑）；draw 默认交给图形合成器，
  * 重写时可以不调用 super.draw，自己画。run() 初始化之后才有 `native`、`graphicsDevice` 和渲染系统。其中任何一处抛异常，或 AsyncScript 被拒绝，游戏都会停下，状态为 'failed'。
  */
+/** Game.loadGameSettings 的选项：合成器的游戏渲染器怎么建（按 Stride 的类型名），默认场景的加载选项。 */
+export interface LoadGameSettingsOptions extends LoadSceneOptions {
+  readonly renderers?: Readonly<Record<string, (props: Readonly<Record<string, unknown>>, game: Game) => SceneRenderer | Promise<SceneRenderer>>>;
+}
+
 export class Game {
   native!: StrideNative;
   /** 所有 Transform 组件的数据，在原生内存里；世界矩阵在每帧 update 之后、draw 之前算。 */
@@ -250,6 +255,23 @@ export class Game {
   }
 
   protected async loadContent(): Promise<void> {}
+
+  /**
+   * 按游戏设置启动（Stride 启动时读 GameSettings）：合成器的根是游戏自己的渲染器时，用 renderers 里同名（Stride 的类型名，带
+   * 命名空间）的工厂建它、换掉 rootRenderer（找不到时警告，留着前向渲染器）；有默认场景时设成根场景。
+   *
+   *   await this.loadGameSettings('SpriteFonts/Shared/GameSettings', { renderers: { 'SpriteFonts.FontRenderer': (props) => new FontRenderer(props) } });
+   */
+  async loadGameSettings(path: string, { renderers = {}, ...sceneOptions }: LoadGameSettingsOptions = {}): Promise<GameSettings> {
+    const settings = await this.content.loadGameSettings(path);
+    if (settings.renderer) {
+      const factory = renderers[settings.renderer.type];
+      if (factory) this.rootRenderer = await factory(settings.renderer.props, this);
+      else console.warn(`[stride] ${path}: no renderer for ${settings.renderer.type}; using the forward renderer (give one in loadGameSettings' renderers option)`);
+    }
+    if (settings.defaultScene) await this.setRootScene(settings.defaultScene, sceneOptions);
+    return settings;
+  }
 
   /**
    * 加载场景、创建它的实体（ContentManager.loadScene），场景带的仿真设置交给 simulation。场景里有物理组件时

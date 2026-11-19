@@ -13,6 +13,8 @@ import {
   plainMesh,
   VERTEX_FLOATS,
   type ColliderShapeFile,
+  type TextureRef,
+  type GameSettingsFile,
   type PrefabFile,
   type ModelMeshData,
   type SceneCharacter,
@@ -132,10 +134,30 @@ export class StrideImporter {
     return this.#skipped;
   }
 
-  /** 单独导入一个不挂在场景上的资源（比如合成器用的字体），返回它的内容路径。现在支持字体（.sdfnt）。 */
+  /**
+   * 单独导入一个不挂在场景上的资源，返回它的内容路径。现在支持字体（.sdfnt）和游戏设置（.sdgamesettings：默认场景的路径、
+   * 合成器的根是游戏自己的渲染器时它的类型名和属性，属性引用的字体、贴图一起导入；场景要另外用 importScene 导入）。
+   */
   importAsset(asset: AssetEntry): Promise<string> {
     if (asset.type === 'SpriteFont') return this.#fonts.font(asset);
+    if (asset.type === 'GameSettingsAsset') return this.#gameSettingsFile(asset);
     throw new Error(`${asset.file}: importing ${asset.type} on its own is not supported`);
+  }
+
+  async #gameSettingsFile(asset: AssetEntry): Promise<string> {
+    const sceneReference = parseAssetReference(asset.data['DefaultScene']);
+    const compositorReference = parseAssetReference(asset.data['GraphicsCompositor']);
+    const compositor = compositorReference ? importCompositor(this.#project.get(compositorReference.id, asset.file).data) : undefined;
+    const game = compositor?.gameRenderer;
+    const where = `${asset.file}: graphics compositor`;
+    const renderer = game ? await this.#script(`${game.type},`, game.settings, where, { owners: new Map(), cameraSlots: compositor.cameraSlots }) : null;
+    const file: GameSettingsFile = {
+      name: path.basename(asset.path),
+      defaultScene: sceneReference ? this.#project.get(sceneReference.id, asset.file).path : null,
+      renderer,
+    };
+    await this.#write(asset.path + EXTENSIONS.gameSettings, JSON.stringify(file, null, 1));
+    return asset.path;
   }
 
   async importScene(asset: AssetEntry): Promise<ImportResult> {
@@ -321,6 +343,8 @@ export class StrideImporter {
       Animation: ['animation', () => this.#animation(asset)],
       SceneAsset: ['scene', () => Promise.resolve(asset.path)],
       PrefabAsset: ['prefab', () => this.#prefab(asset)],
+      SpriteFont: ['font', () => this.#fonts.font(asset)],
+      Texture: ['texture', () => this.#textureDescriptor(asset)],
     };
     const kind = kinds[asset.type];
     if (!kind) {
@@ -328,6 +352,14 @@ export class StrideImporter {
       return null;
     }
     return { $asset: await kind[1](), kind: kind[0] };
+  }
+
+  /** 单独引用的贴图：导出贴图，旁边写它的 TextureRef（content.loadTexture 读）。 */
+  async #textureDescriptor(asset: AssetEntry): Promise<string> {
+    const { texture, encoding, size, srgb } = await this.#materials.texture(asset);
+    const ref: TextureRef = { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb };
+    await this.#write(asset.path + EXTENSIONS.texture, JSON.stringify(ref));
+    return asset.path;
   }
 
   /** 把一个组件写进 components；不认识的返回 false。 */

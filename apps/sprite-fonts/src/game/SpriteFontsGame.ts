@@ -1,12 +1,9 @@
-// SpriteFonts：没有场景，合成器的根渲染器是 FontRenderer（只用 SpriteBatch 画字）。字体先下载好用到的字的块，第一帧就齐。
+// SpriteFonts：没有场景，按游戏设置启动——合成器的根是 FontRenderer（只用 SpriteBatch 画字），属性里的字体和背景图随游戏设置
+// 导入、加载。
 import { Game, type GameTime } from '@stride-ts/engine';
-import { FontRenderer, type FontRendererAssets } from './FontRenderer';
+import { FontRenderer } from './FontRenderer';
 
-const FONTS = {
-  staticFont: 'StaticFont', dynamicFont: 'DynamicFont', boldFont: 'BoldFont', italicFont: 'ItalicFont', aliasedFont: 'AliasedFont',
-  antialiasedFont: 'AntialiasedFont', clearTypeFont: 'ClearTypeFont', japaneseFont: 'JapaneseFont', timesNewRoman: 'TimesNewRoman', headerFont: 'HeaderFont',
-} as const;
-const JAPANESE = 'Japanese dynamic sprite font\nあいうえおかきくけこ   天竜の\nアイウエオカキクケコ   幅八町の\n一二三四五六七八九十   梅雨濁り';
+export const GAME_SETTINGS = 'SpriteFonts/Shared/GameSettings';
 const STATS_INTERVAL = 0.25;
 
 export class SpriteFontsGame extends Game {
@@ -19,12 +16,7 @@ export class SpriteFontsGame extends Game {
   }
 
   protected override async loadContent(): Promise<void> {
-    const entries = await Promise.all(Object.entries(FONTS).map(async ([key, name]) => {
-      const font = await this.content.loadFont(`SpriteFonts/Shared/${name}`);
-      await font.ensure(key === 'japaneseFont' ? JAPANESE : 'A');
-      return [key, font] as const;
-    }));
-    this.rootRenderer = new FontRenderer(Object.fromEntries(entries) as unknown as FontRendererAssets);
+    await this.loadGameSettings(GAME_SETTINGS, { renderers: { [FontRenderer.typeName]: (props) => FontRenderer.create(props) } });
   }
 
   protected override update(time: GameTime): void {

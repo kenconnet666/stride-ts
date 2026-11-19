@@ -1,7 +1,7 @@
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { decodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, type FontFile } from '@stride-ts/engine/content-format';
+import { decodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GameSettingsFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { fontNameCandidates, slugGlyph, StrideImporter, StrideProject } from '../src/index';
@@ -117,6 +117,42 @@ Spacing: 2.0
     expect(pairs.some(([l, r]) => l === 65 && r === 86)).toBe(true);
     for (const [left, right] of pairs) expect(included(left!) && included(right!)).toBe(true);
     expect(pairs.map(([l, r]) => l! * 0x110000 + r!)).toEqual(pairs.map(([l, r]) => l! * 0x110000 + r!).sort((x, y) => x - y));
+  });
+
+  test('游戏设置：默认场景只记路径，合成器的游戏渲染器写出类型名和属性，属性引用的字体一起导入', async (context) => {
+    if (!(await exists(ARIAL))) return context.skip();
+    const assets = path.join(dir, 'GameAssets');
+    await mkdir(assets, { recursive: true });
+    await writeFile(path.join(assets, 'Font.sdfnt'), `!SpriteFont
+Id: 22222222-2222-2222-2222-222222222222
+FontSource: !SystemFontProvider
+    FontName: Arial
+FontType: !RuntimeRasterizedSpriteFontType
+    Size: 22.0
+`);
+    await writeFile(path.join(assets, 'Compositor.sdgfxcomp'), `!GraphicsCompositorAsset
+Id: 33333333-3333-3333-3333-333333333333
+Game*: !Demo.TextRenderer,Demo.Game
+    Id: 44444444-4444-4444-4444-444444444444
+    Font: 22222222-2222-2222-2222-222222222222:Font
+    Speed: 2.5
+`);
+    await writeFile(path.join(assets, 'GameSettings.sdgamesettings'), `!GameSettingsAsset
+Id: 55555555-5555-5555-5555-555555555555
+DefaultScene: null
+GraphicsCompositor: 33333333-3333-3333-3333-333333333333:Compositor
+`);
+    const project = await StrideProject.open([{ package: 'Demo', dir: assets }]);
+    const out = path.join(dir, 'game-content');
+    const importer = new StrideImporter(project, tools, out, { systemFontDirs: [path.dirname(ARIAL)] });
+    expect(await importer.importAsset(project.byPath('Demo/GameSettings')!)).toBe('Demo/GameSettings');
+    const settings = JSON.parse(await readFile(path.join(out, 'Demo/GameSettings.game.json'), 'utf8')) as GameSettingsFile;
+    expect(settings).toEqual({
+      name: 'GameSettings',
+      defaultScene: null,
+      renderer: { type: 'Demo.TextRenderer', props: { font: { $asset: 'Demo/Font', kind: 'font' }, speed: 2.5 } },
+    });
+    expect(await exists(path.join(out, 'Demo/Font.font.json'))).toBe(true);
   });
 
   test('CFF 字体（Source Han Sans）的三次曲线拆成首尾相连的二次曲线', async (context) => {

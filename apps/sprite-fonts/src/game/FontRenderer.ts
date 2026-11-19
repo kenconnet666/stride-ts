@@ -1,8 +1,8 @@
 // SpriteFonts 的 FontRenderer（Stride 里是合成器的根渲染器 SceneRendererBase）：清成绿色，用 SpriteBatch 画背景和八屏文字
 // （介绍、编译期字体、运行时字体、粗体斜体、三种抗锯齿、日文、左中右对齐、旋转缩放的动画），每屏淡入淡出、到时间换下一屏；
-// 空格或点击暂停，左右键换屏。虚拟分辨率 1920x1080。
-// 照 Stride 保留的：颜色是 Color.White * alpha（四个通道都乘）；动画那屏的原点是虚拟坐标量出来的大小的一半，Stride 把它当字体
-// 像素用（窗口不是 1920x1080 时旋转中心不在文字中间）。
+// 空格或点击暂停，左右键换屏。虚拟分辨率 1920x1080。颜色照 Stride 是 Color.White * alpha（四个通道都乘）。
+// 合成器里的类型名是 SpriteFonts.FontRenderer，属性（字体、背景图）随游戏设置导入，SpriteFontsGame 用 create 建它。
+// 和 Stride 不同的地方在 SpriteBatch 里（原点的单位、编译期字体的字号、字距），这里照原样调用。
 import { SpriteBatch, type Color, type RenderContext, type SceneRenderer, type SpriteFont, type Texture, type Vec2 } from '@stride-ts/engine';
 
 /** 每屏显示的秒数：第一个是介绍，后面依次是各组文字。 */
@@ -45,7 +45,20 @@ export interface FontRendererAssets {
   readonly headerFont: SpriteFont;
 }
 
+const JAPANESE_TEXT = 'Japanese dynamic sprite font\nあいうえおかきくけこ   天竜の\nアイウエオカキクケコ   幅八町の\n一二三四五六七八九十   梅雨濁り';
+
 export class FontRenderer implements SceneRenderer {
+  /** 合成器里的类型名（Stride 的 SpriteFonts.FontRenderer）。 */
+  static readonly typeName = 'SpriteFonts.FontRenderer';
+
+  /** 建渲染器：先把要画的字所在的块下载好，第一帧就齐。 */
+  static async create(props: Readonly<Record<string, unknown>>): Promise<FontRenderer> {
+    const assets = props as unknown as FontRendererAssets;
+    const fonts = Object.entries(assets).filter((entry): entry is [string, SpriteFont] => entry[0] !== 'background');
+    await Promise.all(fonts.map(([key, font]) => font.ensure(key === 'japaneseFont' ? JAPANESE_TEXT : 'A')));
+    return new FontRenderer(assets);
+  }
+
   readonly #assets: FontRendererAssets;
   #spriteBatch: SpriteBatch | undefined;
   readonly #screens: readonly (() => void)[];
@@ -200,7 +213,7 @@ export class FontRenderer implements SceneRenderer {
     this.#drawHeader('Support ', 'pictogram-based', ' fonts');
     const font = this.#assets.japaneseFont;
     const size = 0.8 * (DYNAMIC_FONT_CONTENT_SIZE + 15);
-    const text = 'Japanese dynamic sprite font\nあいうえおかきくけこ   天竜の\nアイウエオカキクケコ   幅八町の\n一二三四五六七八九十   梅雨濁り';
+    const text = JAPANESE_TEXT;
     const [x, y] = this.#virtual(CONTENT_POSITION);
     this.#batch.drawString(font, text, [x - this.#batch.measureString(font, text, size, this.#screenSize)[0] / 2, y], { fontSize: size, color: this.#white() });
   }

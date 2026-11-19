@@ -5,8 +5,14 @@
  * 照 Stride：
  * - 颜色当 sRGB 给，转成线性再乘（BatchBase 在线性色彩空间用 SpriteBatchShader<TSRgb>），混合是预乘 alpha；
  * - 文字的位置先取整到真实像素；运行时字体的字号乘上 真实 / 虚拟 的比例（字按真实像素的大小排版、栅格化），编译期字体按自己的
- *   字号画、不跟着虚拟分辨率缩放；每个字的原点取整到字体像素（SpriteFont.InternalDrawGlyph）。
- * 和 Stride 不同：字不是位图，是从轮廓逐像素算覆盖率（Slug，见 slug.ts），任何缩放、旋转都清晰；没有 SpriteEffects 的镜像。
+ *   字号画、不跟着虚拟分辨率缩放；每个字的原点取整到真实像素（SpriteFont.InternalDrawGlyph）。
+ * 和 Stride 不同：
+ * - 字不是位图，是从轮廓逐像素算覆盖率（Slug，见 slug.ts），任何缩放、旋转都清晰；没有 SpriteEffects 的镜像。
+ * - drawString 的原点是虚拟坐标（和 measureString 量出来的一样）。Stride 把它直接当字体像素用，窗口和虚拟分辨率不一样大时
+ *   旋转中心就偏了（SpriteFonts 的动画那屏）。
+ * - 编译期字体只有自己的字号：drawString、measureString 给别的字号也按 size。Stride 的字形不变，额外间距和行距却按给的字号
+ *   缩放；measureString 还按虚拟分辨率缩放，量出来的和画出来的不一样大（SpriteFonts 的抗锯齿那屏几行叠在一起）。
+ * - 做字距（见 layout.ts）。
  */
 import { srgbToLinear } from '../../mathematics/vectors';
 import type { GpuResources } from '../GpuResources';
@@ -36,7 +42,7 @@ export interface DrawStringOptions {
   readonly fontSize?: number;
   readonly color?: Color;
   readonly rotation?: number;
-  /** 原点，字体像素（MeasureString 量出来的那种）。 */
+  /** 旋转、缩放的原点，相对文字左上角的虚拟坐标（measureString 量出来的那种）。 */
   readonly origin?: Vec2;
   readonly scale?: Vec2;
   readonly alignment?: TextAlignment;
@@ -192,8 +198,7 @@ export class SpriteBatch {
   /** 画文字（Stride 的 DrawString）：position 是文字左上角（行顶）的虚拟坐标。 */
   drawString(font: SpriteFont, text: string, position: Vec2, { fontSize = font.size, color = WHITE, rotation = 0, origin = [0, 0], scale = [1, 1], alignment = 'left' }: DrawStringOptions = {}): void {
     const ratio = this.#ratio();
-    // 运行时字体按真实像素的字号排版；编译期字体按自己的字号（字形不随字号变）
-    const size: FontSize = font.isStatic ? [fontSize, fontSize] : [fontSize * ratio[0], fontSize * ratio[1]];
+    const size = this.#fontPixels(font, fontSize, ratio);
     const emToFont: Vec2 = font.isStatic ? [font.size, font.size] : size;
     // 字体像素到虚拟坐标的缩放，位置先取整到真实像素
     const sx = scale[0] / ratio[0], sy = scale[1] / ratio[1];
@@ -207,8 +212,8 @@ export class SpriteBatch {
     const baseOffset = font.baseOffset(size[1]);
     for (const { glyph, x, y } of layoutText(font, text, size, alignment)) {
       if (glyph.hBands === 0 || /\s/u.test(String.fromCodePoint(glyph.codepoint))) continue;
-      // 字的原点相对文字原点（字体像素），取整同 Stride
-      const gx = Math.round(x - origin[0]), gy = Math.round(y + baseOffset - origin[1]);
+      // 字的原点相对文字原点（字体像素，字体像素就是真实像素），取整同 Stride
+      const gx = Math.round(x - origin[0] * ratio[0]), gy = Math.round(y + baseOffset - origin[1] * ratio[1]);
       // em 的 x 轴、y 轴（y 向上，所以屏幕上朝上）在虚拟坐标里的向量
       const axisX: Vec2 = [emToFont[0] * sx * cos, emToFont[0] * sx * sin];
       const axisY: Vec2 = [emToFont[1] * sy * sin, -emToFont[1] * sy * cos];
@@ -226,8 +231,13 @@ export class SpriteBatch {
   measureString(font: SpriteFont, text: string, fontSize = font.size, targetSize: Vec2 = this.#targetSize): [number, number] {
     if (text === '') return [0, 0];
     const ratio = this.#ratio(targetSize);
-    const [w, h] = measureText(font, text, [fontSize * ratio[0], fontSize * ratio[1]]);
+    const [w, h] = measureText(font, text, this.#fontPixels(font, fontSize, ratio));
     return [w / ratio[0], h / ratio[1]];
+  }
+
+  /** 排版用的字号（真实像素）：运行时字体是 字号 · 真实 / 虚拟，编译期字体总是自己的 size（见文件开头）。 */
+  #fontPixels(font: SpriteFont, fontSize: number, ratio: Vec2): FontSize {
+    return font.isStatic ? [font.size, font.size] : [fontSize * ratio[0], fontSize * ratio[1]];
   }
 
   /** 把这一批画进 begin 给的 pass。 */

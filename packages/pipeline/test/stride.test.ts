@@ -740,6 +740,18 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
     expect(main?.textureCameras).toEqual([{ cameraSlot: 1, texture, clearColor: [1, 0, 0, 1], postEffects: null, transparent: false }]);
   });
 
+  test('根是游戏程序集里的渲染器时给出类型名和设置；Stride 自己的类型不算', () => {
+    const custom = importCompositor(parseStrideYaml(`!GraphicsCompositorAsset
+Id: c
+Game*: !SpriteFonts.FontRenderer,SpriteFonts.Game
+    Id: r
+    StaticFont: f1:StaticFont
+`));
+    expect(custom.gameRenderer?.type).toBe('SpriteFonts.FontRenderer');
+    expect(custom.gameRenderer?.settings['StaticFont']).toBe('f1:StaticFont');
+    expect(importCompositor(compositor).gameRenderer).toBeUndefined();
+  });
+
   test('后处理：共享的 PostProcessingEffects，没写的效果开着，ToneMap 看颜色变换组里的那一项，Antialiasing 为 null 时关', () => {
     const withEffects = (effects: string) => importCompositor(parseStrideYaml(`!GraphicsCompositorAsset
 Id: c

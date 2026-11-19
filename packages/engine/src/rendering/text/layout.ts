@@ -4,8 +4,10 @@
  * 坐标是字体像素（字号 fontSize 下的像素），y 向下，一行的 y 是行顶。
  *
  * 前进宽度照 FreeType 开着 hinting 的结果：按栅格化时的像素字号取整。运行时字体按要画的字号栅格化（最大 256，超出的部分按比例
- * 放大，同 RuntimeRasterizedSpriteFont.GetGlyph），编译期字体按自己的 size 栅格化、宽度不随字号变（额外间距和行距照样按字号缩放）。
- * 和 Stride 一样不做字距：它的两种字体都没有填 KerningMap。
+ * 放大，同 RuntimeRasterizedSpriteFont.GetGlyph）；编译期字体只有自己的 size，给别的字号也按 size 排（见 SpriteBatch）。
+ *
+ * 和 Stride 不同：做字距（kern 表，同 FreeType 的 FT_KERNING_DEFAULT 取整到像素），而且字距推后面所有的字。Stride 的两种字体
+ * 都没有填 KerningMap，字距实际上不生效；就算填了，GlyphEnumerator 也只挪这一个字、不挪后面的（下一个字的位置不含字距）。
  */
 import type { FontGlyph, SpriteFont } from './SpriteFont';
 
@@ -28,9 +30,19 @@ const MAX_RASTER_SIZE = 256;
 
 /** 字体像素下这个字的前进宽度。 */
 export function glyphAdvance(font: SpriteFont, glyph: FontGlyph, fontSize: FontSize): number {
-  if (font.isStatic) return Math.round(glyph.advance * font.size);
+  return toPixels(font, glyph.advance, fontSize);
+}
+
+/** em 换成字体像素：按栅格化的字号取整，运行时字体超过 256 的部分按比例放大。 */
+function toPixels(font: SpriteFont, em: number, fontSize: FontSize): number {
+  if (font.isStatic) return Math.round(em * font.size);
   const raster = Math.min(fontSize[0], MAX_RASTER_SIZE);
-  return Math.round(glyph.advance * raster) * (fontSize[0] / raster);
+  return Math.round(em * raster) * (fontSize[0] / raster);
+}
+
+/** 两个字之间的字距（字体像素）。 */
+function kerning(font: SpriteFont, previous: FontGlyph | undefined, glyph: FontGlyph, fontSize: FontSize): number {
+  return previous ? toPixels(font, font.kerning(previous.codepoint, glyph.codepoint), fontSize) : 0;
 }
 
 /** 排好的字（包括空格这样没有轮廓的，画的时候跳过）。 */
@@ -47,18 +59,22 @@ export function layoutText(font: SpriteFont, text: string, fontSize: FontSize, a
   const result: PositionedGlyph[] = [];
   let x = lineStart(0);
   let y = 0;
+  let previous: FontGlyph | undefined;
   characters.forEach((character, index) => {
     if (character === '\r') return;
     if (character === '\n') {
       x = lineStart(index + 1);
       y += font.totalLineSpacing(fontSize[1]);
+      previous = undefined;
       return;
     }
     const glyph = glyphOrDefault(font, character);
     if (!glyph) return;
+    x += kerning(font, previous, glyph, fontSize);
     const nextX = x + glyphAdvance(font, glyph, fontSize) + font.extraSpacing(fontSize[0]);
     result.push({ glyph, x, y, nextX, index });
     x = nextX;
+    previous = glyph;
   });
   return result;
 }
@@ -75,10 +91,13 @@ export function measureText(font: SpriteFont, text: string, fontSize: FontSize):
 
 function lineWidth(font: SpriteFont, characters: readonly string[], start: number, end: number, fontSize: FontSize): number {
   let x = 0;
+  let previous: FontGlyph | undefined;
   for (let i = start; i < end; i++) {
     if (characters[i] === '\r') continue;
     const glyph = glyphOrDefault(font, characters[i]!);
-    if (glyph) x += glyphAdvance(font, glyph, fontSize) + font.extraSpacing(fontSize[0]);
+    if (!glyph) continue;
+    x += kerning(font, previous, glyph, fontSize) + glyphAdvance(font, glyph, fontSize) + font.extraSpacing(fontSize[0]);
+    previous = glyph;
   }
   return x;
 }

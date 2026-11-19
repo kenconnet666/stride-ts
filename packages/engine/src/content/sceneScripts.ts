@@ -121,8 +121,15 @@ function resolveComponent(value: SceneScriptValue, target: unknown, context: Scr
   return found;
 }
 
+/**
+ * 一组属性值（场景脚本或合成器渲染器的）换成加载好的：实体引用换成实体 id，资源引用换成 asset 给的资源，其余原样。
+ */
+export function resolveSceneValues(props: Readonly<Record<string, SceneScriptValue>>, context: Pick<ScriptValueContext, 'entities' | 'asset'>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(props).map(([key, value]) => [key, resolveValue(value, context)]));
+}
+
 /** 场景值换成脚本属性的初始值：实体引用换成实体 id，资源引用换成加载好的资源，其余原样（数组和对象逐项换）。 */
-function resolveValue(value: SceneScriptValue, context: ScriptValueContext): unknown {
+function resolveValue(value: SceneScriptValue, context: Pick<ScriptValueContext, 'entities' | 'asset'>): unknown {
   if (value === null || typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map((item) => resolveValue(item, context));
   const object = value as Record<string, SceneScriptValue>;

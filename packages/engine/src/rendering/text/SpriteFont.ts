@@ -5,7 +5,7 @@
  *
  * 度量照 Stride：编译期字体（static）的行距 = (行间距 · LineGapFactor + 上升 + 下降) · 字号，基线 = (行间距 · LineGapFactor ·
  * LineGapBaseLineFactor + 上升) · 字号（FreeTypeFontImporter）；运行时字体（dynamic）的两个因子都按 1（FontManager.GetFontInfo）。
- * 换字号时都按 字号 / size 缩放（SpriteFont.GetFontDefaultLineSpacing 这些）。
+ * 换字号时都按 字号 / size 缩放（SpriteFont.GetFontDefaultLineSpacing 这些）。字距取 kern 表（kerning()）。
  */
 import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../../content/format';
 
@@ -44,6 +44,8 @@ export class SpriteFont {
   readonly #blocks = new Set<number>();
   readonly #loaded = new Map<number, Promise<void>>();
   readonly #glyphs = new Map<number, FontGlyph>();
+  /** kern 表：左码位 · 0x110000 + 右码位 → 调整量（em）。 */
+  readonly #kerning = new Map<number, number>();
   /** 下载并解开了的块。 */
   readonly #blockReady = new Set<number>();
   readonly #loadBlock: (block: number) => Promise<GlyphBlock>;
@@ -57,12 +59,18 @@ export class SpriteFont {
     this.antiAlias = file.antiAlias;
     this.defaultCharacter = file.defaultCharacter;
     for (const block of file.blocks) this.#blocks.add(block);
+    for (let i = 0; i + 2 < file.kerning.length; i += 3) this.#kerning.set(file.kerning[i]! * 0x110000 + file.kerning[i + 1]!, file.kerning[i + 2]!);
     this.#loadBlock = loadBlock;
   }
 
   /** 编译期字体只能按自己的字号画（Stride 的 OfflineRasterized：不跟着虚拟分辨率缩放，字形大小不随字号变）。 */
   get isStatic(): boolean {
     return this.kind === 'static';
+  }
+
+  /** 左右两个字之间的字距（em，负数是靠近）；kern 表里没有是 0。 */
+  kerning(left: number, right: number): number {
+    return this.#kerning.get(left * 0x110000 + right) ?? 0;
   }
 
   /** 字号 fontSize 时一行的高度，不含额外行距（Stride 的 GetFontDefaultLineSpacing）。 */

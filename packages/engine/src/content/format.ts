@@ -38,6 +38,9 @@ export const EXTENSIONS = {
   skeleton: '.skeleton',
   animation: '.anim',
   font: '.font.json',
+  /** 单独引用的贴图（脚本属性、合成器的渲染器）：它的 TextureRef，贴图本身在旁边。 */
+  texture: '.texture.json',
+  gameSettings: '.game.json',
   /** 字体的一个码位块（码位 >> 8）：`<字体>.<块号>.glyphs`。 */
   glyphs: '.glyphs',
 } as const;
@@ -730,7 +733,18 @@ export interface SceneAnimation {
  * scene：只记路径，不随引用它的场景加载（场景之间常常互相引用），切换时才加载（Game.setRootScene）。
  * prefab：随场景加载好（和它引用的资源一起），脚本运行中实例化。
  */
-export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab';
+export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab' | 'font' | 'texture';
+
+/**
+ * 游戏设置（Stride 的 GameSettings）：默认场景和图形合成器。合成器的根（Stride 的 GraphicsCompositor.Game）是游戏自己的渲染器时
+ * （SpriteFonts 的 FontRenderer），renderer 是它的类型名和属性，运行时按类型名对上游戏给的 TS 渲染器（Game.loadGameSettings）。
+ */
+export interface GameSettingsFile {
+  readonly name: string;
+  /** 默认场景的内容路径（只记路径，场景要另外导入）；没有时是 null（SpriteFonts）。 */
+  readonly defaultScene: string | null;
+  readonly renderer: SceneScript | null;
+}
 
 /**
  * 脚本的属性值（Stride 序列化的值换过来）：标量原样；列表是数组；Vector2、Vector3、Quaternion 是数组；别的结构是键名改成

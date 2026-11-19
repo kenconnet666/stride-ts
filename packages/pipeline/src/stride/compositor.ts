@@ -5,6 +5,7 @@
  *   的清屏色和后处理开关。
  * - 画进渲染目标贴图的相机：SceneCameraRenderer 下面是 RenderTextureSceneRenderer 的，取它的贴图和里面的前向渲染器。
  * - 阴影：ForwardLightingRenderFeature 的 ShadowMapRenderer 是 null 时整个合成器不画阴影。
+ * - 根（Game）是游戏程序集里的渲染器时（SpriteFonts 的 FontRenderer），给出它的类型名和设置，属性由导入器按脚本属性的规则换。
  * 多个相机分屏画、调试渲染器、单独的渲染阶段（UI）等以后随合成器的数据化一起做（docs/roadmap.md 的"合成器的最小数据化"）。
  */
 import type { SceneCompositor, SceneForwardRenderer, ScenePostEffects, SceneRenderTexture, SceneTextureCamera } from '@stride-ts/engine/content-format';
@@ -15,6 +16,8 @@ export interface ImportedCompositor {
   readonly cameraSlots: ReadonlyMap<string, number>;
   /** 主画面的设置；找不到前向渲染器时是 undefined（运行时用默认值）。 */
   readonly main: SceneCompositor | undefined;
+  /** 根是游戏自己的渲染器时：类型名（带命名空间，不带程序集）和它在合成器里的设置。 */
+  readonly gameRenderer: { readonly type: string; readonly settings: StrideObject } | undefined;
 }
 
 /** 渲染目标贴图资源的引用（Id）换成场景里的写法；找不到时返回 undefined。 */
@@ -43,7 +46,11 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
   const lighting = findNode(compositor?.['RenderFeatures'], (node) => node.$type?.startsWith('Stride.Rendering.Lights.ForwardLightingRenderFeature') === true);
   const shadows = lighting && lighting['ShadowMapRenderer'] === null ? { shadows: false as const } : {};
   const main = forward && { ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}), ...shadows };
-  return { cameraSlots, main };
+  const root = resolve(compositor?.['Game']);
+  const rootType = root?.$type ?? '';
+  // 游戏的类型带程序集名、不在 Stride 的命名空间里（同场景脚本）
+  const gameRenderer = rootType.includes(',') && !rootType.startsWith('Stride.') ? { type: rootType.slice(0, rootType.indexOf(',')), settings: root! } : undefined;
+  return { cameraSlots, main, gameRenderer };
 }
 
 const isForward = (node: StrideObject) => node.$type?.startsWith('Stride.Rendering.Compositing.ForwardRenderer') === true;

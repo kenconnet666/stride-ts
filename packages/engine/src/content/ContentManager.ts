@@ -20,7 +20,9 @@ import { Body, Character, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
 import type { ScriptConstructor } from '../engine/scripts';
-import { Background, Camera, Instance, Instancing, Light, Model, Sprite } from '../rendering/components';
+import { Background, Camera, Instance, Instancing, Light, Model, Skinned, Sprite } from '../rendering/components';
+import { ModelMorph, ModelSkeleton } from '../animation/AnimationSystem';
+import { Morphed } from '../animation/morphs';
 import type { EntityId } from '../data/prop';
 import { Material, type MaterialShaderTrees } from '../rendering/Material';
 import { Prefab } from './Prefab';
@@ -167,6 +169,8 @@ export class ContentManager {
   readonly #read: ContentReader;
   readonly #cache = new Map<string, Promise<unknown>>();
   readonly #renderTextures = new Map<string, Texture>();
+  /** addModel 建的多余网格的子实体，removeModel 时销毁。 */
+  readonly #modelParts = new Map<EntityId, Entity[]>();
   /** 没有材质的网格用它：白色。 */
   readonly defaultMaterial = new Material('default');
   readonly #shaderClasses: (name: string) => ShaderClass | undefined;
@@ -675,8 +679,10 @@ export class ContentManager {
    */
   addModel(entity: Entity, loaded: LoadedModel, { materials = [], isShadowCaster = true }: { materials?: readonly (Material | null)[]; isShadowCaster?: boolean } = {}): void {
     const entities = entity.manager;
+    if (entity.get(Model)) throw new Error(`entity '${entity.name}' already has a model; removeModel it first`);
     const skinned: { entity: Entity; skin: NativeSkin }[] = [];
     const morphed: Entity[] = [];
+    const parts: Entity[] = [];
     loaded.meshes.forEach(({ mesh, material: slot, skin }, i) => {
       // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
       const material = (slot === null ? null : (materials[slot] ?? loaded.materials[slot])) ?? this.defaultMaterial;
@@ -686,12 +692,24 @@ export class ContentManager {
       else {
         part = entities.create({ name: `${entity.name}/${mesh.name}`, components: [Transform, component] });
         part.require(Transform).parent = entity;
+        parts.push(part);
       }
       if (skin) skinned.push({ entity: part, skin });
       if (mesh.data.morph) morphed.push(part);
     });
     if (loaded.skeleton) entities.game.animation.attach(entity, loaded.skeleton, skinned);
     if (loaded.morphTargets) entities.game.animation.attachMorphs(entity, loaded.morphTargets, morphed);
+    if (parts.length > 0) this.#modelParts.set(entity.id, parts);
+  }
+
+  /**
+   * 去掉 addModel 挂上的模型：多出来的网格子实体、实体上的网格、骨架和形变权重（Stride 里给 ModelComponent.Model 换模型时
+   * 旧的这些都跟着换掉）。之后可以再 addModel。
+   */
+  removeModel(entity: Entity): void {
+    for (const part of this.#modelParts.get(entity.id) ?? []) part.destroy();
+    this.#modelParts.delete(entity.id);
+    for (const type of [ModelSkeleton, ModelMorph, Skinned, Morphed, Model]) if (entity.get(type)) entity.remove(type);
   }
 
   /** 渲染目标贴图（Stride 的 RenderTexture）：同一个内容路径只建一次，内容由合成器画进去。 */

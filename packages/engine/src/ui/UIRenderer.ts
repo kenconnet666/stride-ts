@@ -1,6 +1,6 @@
 /**
  * 画 UI 元素树（Stride 的 UIRenderFeature 加各元素的 DefaultXxxRenderer）：按树的顺序（面板按 ZIndex 排过）画，每个元素先画
- * 背景色，再画自己的东西（图片、九宫格的框、文字、弹窗的遮罩、滚动条）。颜色是 sRGB，乘上不透明度（四个通道都乘，同 Stride）。
+ * 背景色，再画自己的东西（图片、九宫格的框、文字、弹窗的遮罩、滚动条、边框、滑条）。颜色是 sRGB，乘上不透明度（四个通道都乘，同 Stride）。
  *
  * 和 Stride 不同：
  * - 裁剪（ClipToBounds）用剪裁矩形（元素在屏幕上的包围盒），不用模板缓冲；转了角度的元素（包括斜放在 3D 里的 UI）裁到
@@ -10,14 +10,17 @@
  */
 import type { SpriteFrame } from '../rendering/SpriteSheet';
 import type { Quad, Rect, SpriteBatch } from '../rendering/text/SpriteBatch';
+import { Border } from './controls/Border';
 import { Button } from './controls/Button';
 import { ContentDecorator } from './controls/ContentControl';
 import { EditText } from './controls/EditText';
 import { ImageElement } from './controls/ImageElement';
 import { ModalElement } from './controls/ModalElement';
 import { ScrollBar } from './controls/ScrollViewer';
+import { Slider } from './controls/Slider';
 import { TextBlock } from './controls/TextBlock';
-import type { Color, Matrix2D, UIElement } from './UIElement';
+import { spriteSize } from './sprites';
+import type { Color, Matrix2D, Thickness, UIElement } from './UIElement';
 
 export interface UIRenderContext {
   readonly batch: SpriteBatch;
@@ -65,6 +68,71 @@ function drawContent(element: UIElement, context: UIRenderContext): void {
   else if (element instanceof TextBlock) drawTextBlock(element, context);
   else if (element instanceof EditText) drawEditText(element, context);
   else if (element instanceof ScrollBar) drawScrollBar(element, context);
+  else if (element instanceof Border) drawBorder(element, context);
+  else if (element instanceof Slider) drawSlider(element, context);
+}
+
+/** 四条边（Stride 的 DefaultBorderRenderer，只有前面那四条）；透明或者没有宽度时不画。 */
+function drawBorder(border: Border, context: UIRenderContext): void {
+  const color = scale(border.borderColor, border.renderOpacity);
+  if (color.every((channel) => channel === 0)) return;
+  const [w, h] = border.renderSize;
+  const [left, top, right, bottom] = border.borderThickness;
+  const origin = offset(border.worldMatrix, -w / 2, -h / 2);
+  for (const [x, y, width, height] of [[0, 0, left, h], [w - right, 0, right, h], [0, 0, w, top], [0, h - bottom, w, bottom]] as const) {
+    if (width > 0 && height > 0) context.batch.drawQuad(null, rectQuad(origin, x, y, width, height), WHOLE, color);
+  }
+}
+
+/**
+ * 滑条（Stride 的 DefaultSliderRenderer，水平的）：轨道背景铺满；轨道前景从起点画到当前值，图按比例裁（九宫格的边框不裁过头）；
+ * 刻度；滑块。前景、刻度、滑块的高按轨道背景图的高缩放到元素的高。
+ */
+function drawSlider(slider: Slider, context: UIRenderContext): void {
+  const { batch } = context;
+  const color = scale(WHITE, slider.renderOpacity);
+  const [w, h] = slider.renderSize;
+  const m = slider.worldMatrix;
+  const range = slider.maximum - slider.minimum;
+  const ratio = range === 0 ? 0 : (slider.value - slider.minimum) / range;
+  const [startOffset, endOffset] = slider.trackStartingOffsets;
+  const gauge = w - startOffset - endOffset;
+  const reversed = slider.isDirectionReversed;
+  const track = slider.trackBackgroundSprite;
+  const heightScale = track ? h / spriteSize(track)[1] : 1;
+  if (track) drawSprite(batch, slider, track, color);
+
+  const foreground = slider.trackForegroundImage?.getSprite();
+  if (foreground) {
+    const width = ratio * gauge;
+    const leftOver = (w - width) / 2;
+    const center = reversed ? leftOver - endOffset : startOffset - leftOver;
+    const original = foreground.borders ?? [0, 0, 0, 0];
+    const [first, last] = reversed ? [2, 0] : [0, 2];
+    const borders = [...original] as [number, number, number, number];
+    borders[first] = Math.min(borders[first]!, width);
+    borders[last] = Math.max(0, width - gauge + borders[last]!);
+    const [rx, ry, rw, rh] = foreground.region;
+    const originalBorders = original[first]! + original[last]!;
+    const regionWidth = borders[first]! + borders[last]! + (rw - originalBorders) * Math.min(1, (width - borders[first]!) / (gauge - originalBorders));
+    const region = [reversed ? rx + rw - regionWidth : rx, ry, regionWidth, rh] as const;
+    drawImage(batch, offset(m, center, 0), [width, spriteSize(foreground)[1] * heightScale], foreground.texture, region, borders, color);
+  }
+
+  const tick = slider.tickImage?.getSprite();
+  if (slider.areTicksDisplayed && tick) {
+    const [tw, th] = spriteSize(tick);
+    const step = gauge / slider.tickFrequency;
+    for (let i = 0; i <= slider.tickFrequency; i++) {
+      drawImage(batch, offset(m, -gauge / 2 + i * step, slider.tickOffset * heightScale), [tw, th * heightScale], tick.texture, tick.region, tick.borders, color);
+    }
+  }
+
+  const thumb = (slider.mouseOverState === 'element' ? slider.mouseOverThumbImage : slider.thumbImage)?.getSprite();
+  if (thumb) {
+    const [tw, th] = spriteSize(thumb);
+    drawImage(batch, offset(m, ((reversed ? 1 - ratio : ratio) - 0.5) * gauge, 0), [tw, th * heightScale], thumb.texture, thumb.region, thumb.borders, color);
+  }
 }
 
 function drawTextBlock(text: TextBlock, context: UIRenderContext): void {
@@ -128,16 +196,21 @@ function drawScrollBar(bar: ScrollBar, context: UIRenderContext): void {
   context.batch.drawQuad(null, elementQuad(bar.worldMatrix, size), WHOLE, bar.barColor);
 }
 
-/** 精灵铺满元素；有九宫格的边框时四个角不拉伸（Stride 的 UIBatch.DrawImage 的 BorderRectangle）。 */
+/** 精灵铺满元素。 */
 function drawSprite(batch: SpriteBatch, element: UIElement, sprite: SpriteFrame | undefined, color: Color): void {
-  if (!sprite) return;
-  const [w, h] = element.renderSize;
+  if (sprite) drawImage(batch, element.worldMatrix, element.renderSize, sprite.texture, sprite.region, sprite.borders, color);
+}
+
+/**
+ * 贴图的 region（像素）铺满中心在 m 的原点、大小 size 的矩形；有九宫格的边框时四个角不拉伸（Stride 的 UIBatch.DrawImage 的
+ * BorderRectangle）。
+ */
+function drawImage(batch: SpriteBatch, m: Matrix2D, size: readonly [number, number], texture: SpriteFrame['texture'], region: readonly [number, number, number, number], borders: Thickness | undefined, color: Color): void {
+  const [w, h] = size;
   if (w * w + h * h < 1e-6) return;
-  const { texture, region } = sprite;
   const { width, height } = texture.data;
-  const borders = sprite.borders;
   if (!borders || borders.every((border) => border === 0)) {
-    batch.drawQuad(texture, elementQuad(element.worldMatrix, element.renderSize), [region[0] / width, region[1] / height, region[2] / width, region[3] / height], color);
+    batch.drawQuad(texture, elementQuad(m, size), [region[0] / width, region[1] / height, region[2] / width, region[3] / height], color);
     return;
   }
   const [left, top, right, bottom] = borders;
@@ -145,7 +218,6 @@ function drawSprite(batch: SpriteBatch, element: UIElement, sprite: SpriteFrame 
   const xs = [0, left, w - right, w], ys = [0, top, h - bottom, h];
   const us = [region[0], region[0] + left, region[0] + region[2] - right, region[0] + region[2]];
   const vs = [region[1], region[1] + top, region[1] + region[3] - bottom, region[1] + region[3]];
-  const m = element.worldMatrix;
   for (let row = 0; row < 3; row++) {
     for (let column = 0; column < 3; column++) {
       const cw = xs[column + 1]! - xs[column]!, ch = ys[row + 1]! - ys[row]!;

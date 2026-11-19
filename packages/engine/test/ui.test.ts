@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { UIFile } from '../src/content/format';
 import {
-  buildElement, Button, Canvas, ContentDecorator, Grid, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet, StackPanel,
+  Border, buildElement, Button, Canvas, ContentDecorator, Grid, Slider, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet, StackPanel,
   StripDefinition, TextBlock, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture,
 } from '../src/index';
 import { fullScreenTarget, hitTest, PickingState, routePointerEvents, updateMouseOver } from '../src/ui/UIPicking';
@@ -590,5 +590,63 @@ describe('UI 的指针（照 Stride 的 UIPicking）', () => {
     expect(stack.scrollPosition).toBeGreaterThan(0);
     routePointerEvents(target, state, [event('released', 250, 5)], 0, () => {});
     expect([clicks, inner.isPressed, viewer.isUserScrollingViewer]).toEqual([0, false, false]);
+  });
+});
+
+describe('滑条和边框（照 Stride 的 Slider、Border）', () => {
+  test('值钳在范围里，吸附刻度；改了才发 ValueChanged；最大值不小于最小值', () => {
+    const slider = new Slider();
+    const changes: number[] = [];
+    slider.onValueChanged((s) => changes.push(s.value));
+    slider.minimum = -1;
+    slider.maximum = 2;
+    slider.value = 5;
+    slider.value = 2;
+    expect([slider.value, changes]).toEqual([2, [2]]);
+    slider.maximum = -3;
+    expect([slider.maximum, slider.value]).toEqual([-1, -1]);
+    slider.maximum = 2;
+    slider.tickFrequency = 3;
+    slider.shouldSnapToTicks = true;
+    slider.value = 0.4;
+    expect(slider.value).toBe(0);
+    slider.increase();
+    expect(slider.value).toBe(1);
+  });
+
+  test('按下跳到指针的位置，按住拖动跟着走（扣掉两头的 trackStartingOffsets）', () => {
+    const root = new Canvas();
+    const slider = new Slider();
+    slider.width = 100;
+    slider.height = 20;
+    slider.canvasAbsolutePosition = [0, 0];
+    slider.trackStartingOffsets = [10, 10];
+    root.children.add(slider);
+    const target = fullScreenTarget(root, [400, 400]);
+    root.measure([400, 400]);
+    root.arrange([400, 400], false);
+    root.updateWorldMatrix([1, 0, 0, 1, 0, 0]);
+    root.updateElementState(0);
+    const event = (eventType: PointerEvent['eventType'], x: number): PointerEvent =>
+      ({ pointerId: 1, device: 'mouse', eventType, position: [x / 400, 10 / 400], deltaPosition: [0, 0], isDown: eventType !== 'released' });
+    const state = new PickingState();
+    routePointerEvents(target, state, [event('pressed', 30)], 0, () => {});
+    expect(slider.value).toBeCloseTo(0.25);
+    routePointerEvents(target, state, [event('moved', 90)], 0, () => {});
+    expect(slider.value).toBe(1);
+    routePointerEvents(target, state, [event('released', 90), event('moved', 50)], 0, () => {});
+    expect(slider.value).toBe(1);
+  });
+
+  test('边框：内容放在边和内边距里面', () => {
+    const border = new Border();
+    border.borderThickness = [1, 2, 3, 4];
+    border.padding = [10, 10, 10, 10];
+    const content = new Probe(30, 40);
+    border.content = content;
+    border.measure([200, 200]);
+    expect(border.desiredSize).toEqual([54, 66]);
+    border.arrange([54, 66], false);
+    expect(content.arrangeMatrix).toEqual([1, 0, 0, 1, 11 - 27, 12 - 33]);
   });
 });

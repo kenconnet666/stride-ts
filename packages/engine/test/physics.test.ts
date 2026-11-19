@@ -125,6 +125,44 @@ describe('Simulation', () => {
     expect(Math.abs(player.require(Transform).rotation.y)).toBeCloseTo(1, 3);
     game.simulation.destroy();
   });
+
+  test('setOrientation 只改朝向：每帧调也不打断位置的插值（第一人称相机转角色），实体立即跟着转', () => {
+    const walk = (turnEachFrame: boolean) => {
+      const game = createGame();
+      game.entities.create({ components: [Transform.with({ position: [0, -1, 0] }), Static.with({ collider: new Collider([{ type: 'box', size: [100, 2, 100] }]).id })] });
+      const player = game.entities.create({
+        components: [Transform.with({ position: [0, 0.05, 0] }), Character.with({ collider: new Collider([{ type: 'capsule', radius: 0.4, length: 0.5 }]).id, interpolated: true })],
+      });
+      run(game, 10);
+      player.require(Character).moveY = 1;
+      const track: number[] = [];
+      for (let frame = 0; frame < 30; frame++) {
+        if (turnEachFrame) game.simulation.body(player).setOrientation(new Quaternion());
+        run(game, 1);
+        track.push(position(player).z);
+      }
+      return { game, player, track };
+    };
+    const plain = walk(false), turning = walk(true);
+    expect(turning.track).toEqual(plain.track);
+    expect(turning.track.at(-1)).toBeGreaterThan(4);
+
+    // 转 90°：实体的旋转马上是新的，位置不变；接着走的方向跟着变（本地 +Z 转到世界 +X）
+    const { game, player } = turning;
+    const before = { ...position(player) };
+    const turned = new Quaternion().setAxisAngle({ x: 0, y: 1, z: 0 }, Math.PI / 2);
+    game.simulation.body(player).setOrientation(turned);
+    expect(player.require(Transform).rotation.y).toBeCloseTo(turned.y, 5);
+    expect(position(player)).toEqual(before);
+    // 先让原来 +Z 方向的速度转过来，再量位移
+    run(game, 30);
+    const [x, z] = [position(player).x, position(player).z];
+    run(game, 30);
+    expect(position(player).x - x).toBeGreaterThan(4);
+    expect(Math.abs(position(player).z - z)).toBeLessThan(0.05);
+    plain.game.simulation.destroy();
+    game.simulation.destroy();
+  });
 });
 
 describe('Body（Stride 的 BodyComponent）', () => {

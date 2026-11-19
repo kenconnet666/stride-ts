@@ -154,6 +154,22 @@ export class Quaternion implements QuatLike {
     return this.set(cy * sp * cr + sy * cp * sr, sy * cp * cr - cy * sp * sr, cy * cp * sr - sy * sp * cr, cy * cp * cr + sy * sp * sr);
   }
 
+  /**
+   * 拆成绕 X、Y、Z 轴的欧拉角（弧度，Stride 的 TransformComponent.RotationEulerXYZ：先绕 X 转、再绕 Y、再绕 Z）。
+   * 绕 Y 正好 ±90° 时 X 取 0，剩下的都算进 Z。
+   */
+  toEulerXYZ(): Vector3 {
+    const { x, y, z, w } = this;
+    const m11 = 1 - 2 * (y * y + z * z), m12 = 2 * (x * y + z * w), m13 = 2 * (z * x - y * w);
+    const m22 = 1 - 2 * (z * z + x * x), m23 = 2 * (y * z + x * w);
+    const m32 = 2 * (y * z - x * w), m33 = 1 - 2 * (y * y + x * x);
+    if (Math.abs(Math.abs(m13) - 1) < 1e-6) {
+      const twist = Math.atan2(-m32, m22);
+      return m13 >= 0 ? new Vector3(0, -Math.PI / 2, twist) : new Vector3(0, Math.PI / 2, -twist);
+    }
+    return new Vector3(Math.atan2(m23, m33), Math.asin(-m13), Math.atan2(m12, m11));
+  }
+
   /** this = this * q：先按 q 旋转，再按 this 旋转。 */
   multiply(q: Readonly<QuatLike>): this {
     const { x, y, z, w } = this;

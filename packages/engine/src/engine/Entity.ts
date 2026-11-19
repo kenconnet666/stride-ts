@@ -106,6 +106,11 @@ export class Entity {
     return this;
   }
 
+  /** 这个名字的直接子实体（Stride 的 Entity.FindChild），没有时是 undefined；同名的取先加上的那个。 */
+  findChild(name: string): Entity | undefined {
+    return this.get(Transform)?.children.find((child) => child.name === name);
+  }
+
   /** 把这个实体连同子实体再建一份（Stride 的 Entity.Clone），见 engine/clone.ts。 */
   clone(): Entity {
     return this.manager.clone(this);

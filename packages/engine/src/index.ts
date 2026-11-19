@@ -202,6 +202,7 @@ export { buildElement, UILibrary, UIPage, type UIResources } from './ui/UIPage';
 export { UIComponent, type ResolutionStretch } from './ui/UIComponent';
 export { UIElementLink } from './ui/UIElementLink';
 export { AudioEngine } from './audio/AudioEngine';
+export { AudioEmitterComponent, AudioEmitterSoundController, AudioListenerComponent } from './audio/AudioEmitterComponent';
 export { Sound, SoundInstance, type PlayState } from './audio/Sound';
 export { ParticleSystem } from './particles/ParticleSystem';
 export { ParticleEmitter, type SimulationSpace, type RandomSeedMethod, type SortingPolicy } from './particles/ParticleEmitter';

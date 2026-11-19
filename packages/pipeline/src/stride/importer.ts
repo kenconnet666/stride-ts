@@ -448,6 +448,26 @@ export class StrideImporter {
       case 'AnimationComponent':
         components.animation = await this.#animationComponent(component, where);
         return true;
+      case 'AudioEmitterComponent': {
+        // 引擎自带同名的脚本；Sounds 是字典（键写成 "<项的 id>~<名字>"）
+        const sounds: SceneScriptValue[] = [];
+        for (const [key, reference] of Object.entries(asObject(component['Sounds']) ?? {})) {
+          const asset = parseAssetReference(reference);
+          if (asset) sounds.push({ name: dictionaryKey(key), sound: await this.#scriptAsset(this.#project.get(asset.id, where), where) });
+        }
+        const props = {
+          sounds,
+          useHRTF: component['UseHRTF'] === true,
+          directionalFactor: asNumber(component['DirectionalFactor'], 0),
+          // HrtfEnvironment 的 Small、Medium、Large、Outdoors
+          environment: String(component['Environment'] ?? 'Small').toLowerCase(),
+        };
+        components.scripts = [...(components.scripts ?? []), { type: 'AudioEmitterComponent', props }];
+        return true;
+      }
+      case 'AudioListenerComponent':
+        components.scripts = [...(components.scripts ?? []), { type: 'AudioListenerComponent', props: {} }];
+        return true;
       case 'RecastNavigationComponent':
         // Stride.BepuPhysics.Navigation 的寻路组件是个脚本（StartupScript），引擎自带同名的脚本
         components.scripts = [...(components.scripts ?? []), { type: 'RecastNavigationComponent', props: { speed: asNumber(component['Speed'], 5) } }];

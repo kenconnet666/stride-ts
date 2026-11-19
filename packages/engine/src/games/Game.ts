@@ -16,6 +16,7 @@ import { GraphicsDevice } from '../graphics/GraphicsDevice';
 import { InputManager } from '../input/InputManager';
 import { Simulation } from '../physics/Simulation';
 import { NavigationSystem } from '../navigation/NavigationSystem';
+import { AudioEmitterComponent, AudioListenerComponent } from '../audio/AudioEmitterComponent';
 import { RecastNavigationComponent } from '../navigation/RecastNavigationComponent';
 import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
@@ -191,6 +192,8 @@ export class Game {
       this.registry.register(RecastNavigationComponent);
       this.registry.register(UIComponent);
       this.registry.register(ParticleSystemComponent);
+      this.registry.register(AudioEmitterComponent);
+      this.registry.register(AudioListenerComponent);
       this.animation = new AnimationSystem(this.native, this.entities);
       this.entities.addSystems(this.animation.system, this.animation.morphSystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui));
       this.content.animationNative ??= this.native;

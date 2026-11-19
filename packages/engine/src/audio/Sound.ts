@@ -37,9 +37,9 @@ export class Sound {
     return 'buffer' in this.#source ? this.#source.buffer.duration : NaN;
   }
 
-  /** 新的播放实例（Stride 的 CreateInstance）。 */
-  createInstance(): SoundInstance {
-    const instance = new SoundInstance(this.#engine, this, this.#source);
+  /** 新的播放实例（Stride 的 CreateInstance）。output 是接到哪里（发射器的空间化节点），默认是主音量。 */
+  createInstance(output?: AudioNode): SoundInstance {
+    const instance = new SoundInstance(this.#engine, this, this.#source, output);
     this.#instances.add(instance);
     return instance;
   }
@@ -206,13 +206,13 @@ export class SoundInstance {
   #disposed = false;
 
   /** @internal Sound.createInstance 建。 */
-  constructor(engine: AudioEngine, sound: Sound, source: SoundSource) {
+  constructor(engine: AudioEngine, sound: Sound, source: SoundSource, output: AudioNode = engine.output) {
     this.sound = sound;
     const context = engine.context;
     this.#gain = context.createGain();
     this.#panner = context.createStereoPanner();
     this.#panner.connect(this.#gain);
-    this.#gain.connect(engine.output);
+    this.#gain.connect(output);
     this.#voice = 'buffer' in source ? new BufferVoice(context, source.buffer, this.#panner) : new StreamVoice(engine, source.url, this.#panner);
   }
 

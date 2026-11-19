@@ -275,7 +275,7 @@ export class Simulation {
 
   /**
    * 动态刚体的控制（Stride 的 BodyComponent 的属性和方法）。角色也是一种刚体（Stride 的 CharacterComponent 继承
-   * BodyComponent），比如转身用 teleport 改朝向（CharacterComponent.Orientation）。物体还没建（实体这一帧才加上 Body）时
+   * BodyComponent），转身用 setOrientation（CharacterComponent.Orientation；连位置一起改用 teleport）。物体还没建（实体这一帧才加上 Body）时
    * 先建好，所以脚本的 start() 里就能用。实体没有 Body 也没有 Character 时报错。
    */
   body(entity: Entity | EntityId): BodyControl {
@@ -556,6 +556,14 @@ export class BodyControl {
   /** 瞬移到世界位姿并唤醒（Stride 的 Teleport）；实体的变换立即更新。 */
   teleport(position: Vec3Like, rotation: QuatLike): void {
     if (!this.#detached) this.#world.teleport(this.#body, [position.x, position.y, position.z], [rotation.x, rotation.y, rotation.z, rotation.w]);
+  }
+
+  /**
+   * 只改朝向并唤醒（Stride 的 SetTargetPose(Quaternion)、CharacterComponent.Orientation）：位置和它的插值不动，可以每帧调
+   * （鼠标转视角带着角色转；每帧 teleport 会让插值从头开始，位置一顿一顿）。实体的变换立即更新。
+   */
+  setOrientation(rotation: QuatLike): void {
+    if (!this.#detached) this.#world.setRotation(this.#body, [rotation.x, rotation.y, rotation.z, rotation.w]);
   }
 
   /** @internal 物体移除时（Simulation 调用）：记下设置，之后不再碰原生的物体。 */

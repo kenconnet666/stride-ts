@@ -54,6 +54,17 @@ describe('Vector3、Quaternion', () => {
     expect(Math.abs(flipped.y - half.y) < 1e-6 && Math.abs(flipped.w - half.w) < 1e-6).toBe(true);
   });
 
+  test('Quaternion.toEulerXYZ（Stride 的 RotationEulerXYZ）：单轴的旋转拆回那个角，绕 Y 的角就是偏航；±90° 时 X 取 0', () => {
+    const about = (axis: 'x' | 'y' | 'z', radians: number) => new Quaternion().setAxisAngle({ x: 0, y: 0, z: 0, [axis]: 1 }, radians);
+    const rounded = (v: Vector3) => [v.x, v.y, v.z].map((n) => Math.round(n * 1e5) / 1e5 + 0);
+    expect(rounded(about('x', 0.4).toEulerXYZ())).toEqual([0.4, 0, 0]);
+    expect(rounded(about('y', -1.2).toEulerXYZ())).toEqual([0, -1.2, 0]);
+    expect(rounded(about('z', 2).toEulerXYZ())).toEqual([0, 0, 2]);
+    // 先绕 X 再绕 Y：Y 在外面
+    expect(rounded(about('y', 0.5).multiply(about('x', 0.3)).toEulerXYZ())).toEqual([0.3, 0.5, 0]);
+    expect(rounded(about('y', Math.PI / 2).toEulerXYZ())).toEqual([0, Math.round((Math.PI / 2) * 1e5) / 1e5, 0]);
+  });
+
   test('Quaternion.lerp（Stride 的 Lerp）：线性插值再归一化，对称的一半和 slerp 一样，四分之一不一样；目标取反结果一样', () => {
     const y = { x: 0, y: 1, z: 0 };
     const to = new Quaternion().setAxisAngle(y, Math.PI / 2);

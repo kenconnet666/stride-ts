@@ -47,6 +47,7 @@ describe('Transform', () => {
     child.require(Transform).parent = root;
     expect(child.require(Transform).parent).toBe(root);
     expect(root.require(Transform).children).toEqual([child]);
+    expect([root.findChild('child'), root.findChild('nobody'), child.findChild('child')]).toEqual([child, undefined, undefined]);
 
     game.transforms.update();
     // 子实体的 (1, 0, 0) 绕 Y 转 90° 成 (0, 0, -1)

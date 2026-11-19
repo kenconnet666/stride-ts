@@ -133,6 +133,17 @@ export abstract class ScriptComponent {
   }
 
   /**
+   * 后台任务（Stride 的 Script.AddTask）：不用 await 它。任务里的 nextFrame()、delay() 在脚本移除后以中止原因拒绝，任务就此结束，
+   * 不算错误（同 AsyncScript.execute）；别的错误交给 entities.onError。
+   */
+  protected addTask(task: () => Promise<void>): void {
+    task().catch((error: unknown) => {
+      if (this.signal.aborted && error === this.signal.reason) return;
+      this.entity.manager.onError(error);
+    });
+  }
+
+  /**
    * 在当前帧末尾兑现，所以它后面的代码在下一帧的脚本和系统之前运行（Stride 的 Script.NextFrame，所有脚本都能用）。
    * 这和 Stride 不同（Stride 在下一帧的脚本阶段里继续）：Promise 的后续代码没法插进同步执行的一帧中间。脚本移除后以
    * AbortError 拒绝。

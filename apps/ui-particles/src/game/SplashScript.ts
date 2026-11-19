@@ -112,10 +112,10 @@ export class SplashScript extends UISceneBase.props({
       entity.get(ParticleSystemComponent)?.particleSystem.resetSimulation();
       place(entity, position);
     }
-    void (async () => {
+    this.addTask(async () => {
       for (let remaining = 2; remaining > 0; remaining -= this.game.updateTime.elapsed) await this.nextFrame();
       for (const entity of spawned) entity.destroy();
-    })();
+    });
   }
 
   #enterNewGame(): void {

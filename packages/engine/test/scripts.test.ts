@@ -167,6 +167,38 @@ describe('脚本', () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'boom' }));
   });
 
+  test('addTask：后台任务在脚本移除时安静地结束，别的错误交给 onError', async () => {
+    const game = new Game();
+    const onError = vi.fn();
+    game.entities.onError = onError;
+    let ticks = 0;
+    class Spawner extends SyncScript {
+      override start(): void {
+        this.addTask(async () => {
+          for (;;) {
+            await this.nextFrame();
+            ticks++;
+          }
+        });
+        this.addTask(async () => {
+          await this.nextFrame();
+          throw new Error('boom');
+        });
+      }
+    }
+    const e = game.entities.create({ components: [Spawner] });
+    frame(game);
+    await settle();
+    expect(ticks).toBe(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'boom' }));
+    e.destroy();
+    frame(game);
+    await settle();
+    expect(ticks).toBe(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+
   test('会盖掉脚本成员的属性名被拒绝', () => {
     expect(() => SyncScript.props({ update: 1 })).toThrow("'update' is reserved");
   });

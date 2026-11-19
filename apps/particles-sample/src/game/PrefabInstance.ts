@@ -39,10 +39,10 @@ export class PrefabInstance extends AsyncScript.props({
       if (this.following) transform.parent = this.entity;
       else place(entity, Matrix.multiply(new Float32Array(16), this.entity.require(Transform).world, transform.localMatrix()));
     }
-    void (async () => {
+    this.addTask(async () => {
       for (let remaining = this.instanceTimeout; remaining > 0; remaining -= this.game.updateTime.elapsed) await this.nextFrame();
       for (const entity of spawned) if (this.game.entities.isAlive(entity.id)) entity.destroy();
-    })();
+    });
   }
 }
 

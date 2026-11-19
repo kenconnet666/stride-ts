@@ -81,7 +81,8 @@ export class TutorialUI extends SyncScript.props({
     const camera = this.#camera;
     if (!this.#start || !this.#target || !camera || this.#lerpTimer >= CAMERA_LERP_TIME) return;
     this.#lerpTimer += this.game.updateTime.elapsed;
-    const t = this.#lerpTimer / CAMERA_LERP_TIME;
+    // 和 Stride 不同：Stride 不封顶，最后一帧会冲过头一点（冲多少看那一帧多长）；这里到 1 为止，相机正好停在教程的 Camera 上
+    const t = Math.min(1, this.#lerpTimer / CAMERA_LERP_TIME);
     const transform = camera.require(Transform);
     const { position, rotation } = this.#start;
     transform.position = new Vector3(position.x, position.y, position.z).lerp(this.#target.position, t);

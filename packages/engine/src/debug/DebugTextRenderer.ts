@@ -26,7 +26,7 @@ export class DebugTextRenderer {
   /** @internal 每帧画完 UI 之后。字体图第一次用到时解码，解码好之前不画。 */
   draw(game: Game): void {
     const lines = game.debugText.lines;
-    if (lines.length === 0) return;
+    if (!game.debugText.visible || lines.length === 0) return;
     const texture = this.#texture;
     if (!texture) {
       this.#loading ??= this.#load(game);

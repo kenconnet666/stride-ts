@@ -11,6 +11,8 @@ export class CSharpBeginnerGame extends Game {
   constructor(stats: HTMLElement) {
     super();
     this.stats = stats;
+    // 教程的说明都是调试文字，正式版也要显示（默认只在开发版画）
+    this.debugText.visible = true;
   }
 
   protected override async loadContent(): Promise<void> {

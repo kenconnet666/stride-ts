@@ -18,7 +18,15 @@ export interface DebugTextLine {
   readonly color?: readonly [number, number, number, number];
 }
 
+/** 开发版（Vite 的 DEV，测试里也算）。 */
+const DEV = (import.meta as { env?: { DEV?: boolean } }).env?.DEV ?? true;
+
 export class DebugText {
+  /**
+   * 画不画（Stride 的 DebugTextSystem.Visible）：默认只在开发版画，同 Stride 只在调试版显示；拿调试文字当内容的游戏
+   * （教程的说明）自己设成 true。不画的时候 print 的文字照样记在 lines 里。
+   */
+  visible = DEV;
   /** 默认的文字颜色，线性（Stride 的 TextColor，Color.LightGreen 当 Color4 用）。 */
   color: readonly [number, number, number, number] = [144 / 255, 238 / 255, 144 / 255, 1];
   /** print 的位置按这么大的画面给（见文件开头）；没设时就是画布上的 CSS 像素。 */

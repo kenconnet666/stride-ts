@@ -19,6 +19,8 @@ export class BepuSampleGame extends Game {
   constructor(stats: HTMLElement) {
     super();
     this.stats = stats;
+    // 场景的说明和操作提示都是调试文字，正式版也要显示（默认只在开发版画）
+    this.debugText.visible = true;
   }
 
   protected override async loadContent(): Promise<void> {

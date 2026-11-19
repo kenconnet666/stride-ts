@@ -11,9 +11,8 @@ import type { GpuResources } from '../rendering/GpuResources';
 import type { RenderView } from '../rendering/RenderSystem';
 import type { Vec3 } from './math';
 import type { MaterialProgram } from './material';
-import type { ParticleEmitter } from './ParticleEmitter';
 import type { ParticleSystemComponent } from './ParticleSystemComponent';
-import { buildShapes, VERTEX_FLOATS, type CameraAxes } from './shapes';
+import { buildShapes, drawOrder, VERTEX_FLOATS, type CameraAxes } from './shapes';
 
 /** 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数（WGSL 里 96 字节）；按动态偏移的 256 字节对齐。 */
 const UNIFORM_STRIDE = 256;
@@ -92,7 +91,7 @@ export class ParticleRenderer {
     if (!Matrix.invert(cameraWorld, view.view)) return;
     const right: Vec3 = [cameraWorld[0]!, cameraWorld[1]!, cameraWorld[2]!];
     const up: Vec3 = [cameraWorld[4]!, cameraWorld[5]!, cameraWorld[6]!];
-    const camera: CameraAxes = { right, up, back: [cameraWorld[8]!, cameraWorld[9]!, cameraWorld[10]!] };
+    const camera: CameraAxes = { right, up, back: [cameraWorld[8]!, cameraWorld[9]!, cameraWorld[10]!], viewProjection: view.viewProjection };
     const eye: Vec3 = [cameraWorld[12]!, cameraWorld[13]!, cameraWorld[14]!];
     // 粒子系统从远到近
     const systems = components
@@ -108,7 +107,7 @@ export class ParticleRenderer {
         const { shape, program, pool } = emitter;
         if (!shape || !program || pool.living === 0) continue;
         this.#reserve((quads + pool.living * shape.quadsPerParticle) * 4 * VERTEX_FLOATS);
-        const order = this.#order(emitter, camera);
+        const order = drawOrder(emitter, camera);
         const end = buildShapes(emitter, shape, camera, order, this.#vertices, quads * 4 * VERTEX_FLOATS, program.uv);
         const firstQuad = quads;
         quads = end / (4 * VERTEX_FLOATS);
@@ -132,16 +131,6 @@ export class ParticleRenderer {
     this.#vertexBuffer?.destroy();
     this.#indexBuffer?.destroy();
     this.#uniformBuffer?.destroy();
-  }
-
-  /** 画粒子的顺序：ByDepth 时从远到近（深度方向是相机的 Z 轴），其余按池里的顺序。 */
-  #order(emitter: ParticleEmitter, camera: CameraAxes): number[] {
-    const order = Array.from({ length: emitter.pool.living }, (_, i) => i);
-    if (emitter.sortingPolicy !== 'byDepth') return order;
-    const position = emitter.pool.field('position')!;
-    const [dx, dy, dz] = camera.back;
-    const key = (i: number) => position[i * 3]! * dx + position[i * 3 + 1]! * dy + position[i * 3 + 2]! * dz;
-    return order.sort((a, b) => key(a) - key(b));
   }
 
   /** 第 index 次绘制的参数。 */

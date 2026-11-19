@@ -165,7 +165,7 @@ describe('ContentManager', () => {
       look: prop.asset('material').optional(),
       next: prop.asset('scene').optional(),
     }) {}
-    class Renamed extends SyncScript.props({ value: prop.number().default(0) }) {}
+    class Renamed extends SyncScript.props({ value: prop.number().default(0), profiling: prop.bool().default(false).renamedFrom('enabled') }) {}
     const scene: SceneFile = {
       name: 'Scripts',
       entities: [
@@ -173,7 +173,7 @@ describe('ContentManager', () => {
           { type: 'MyGame.Ai.Follower', props: { target: { $entity: 'b' }, speed: 3, keys: ['W', 'Up'], look: { $asset: 'materials/Grid', kind: 'material' }, next: { $asset: 'scenes/Other', kind: 'scene' }, notInTs: 1 } },
           { type: 'MyGame.Missing', props: {} },
           { type: 'MyGame.Ai.Follower', props: { speed: 7 } },
-          { type: 'MyGame.OldName', props: { value: 7 } },
+          { type: 'MyGame.OldName', props: { value: 7, enabled: true } },
         ] } },
         { id: 'b', name: 'B', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} },
       ],
@@ -199,6 +199,8 @@ describe('ContentManager', () => {
       // 引用的场景只记路径，不加载（场景之间常常互相引用）
       expect(follower.next).toEqual({ path: 'scenes/Other' });
       expect(loaded.entities.get('a')!.require(Renamed).value).toBe(7);
+      // 场景里按旧名字（renamedFrom）存的值也读进来
+      expect(loaded.entities.get('a')!.require(Renamed).profiling).toBe(true);
       // 同一个实体上第二个同类脚本挂到子实体上
       const [extra] = loaded.entities.get('a')!.require(Transform).children;
       expect([extra!.name, extra!.require(Follower).speed]).toEqual(['A', 7]);

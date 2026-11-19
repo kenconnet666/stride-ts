@@ -16,7 +16,7 @@ Component: !ParticleSystemComponent
             6397977f9dff5e498be808d87893992c:
                 EmitterName: Sparks
                 ParticleLifetime: {X: 3.0, Y: 5.0}
-                ShapeBuilder: !ShapeBuilderTrail
+                ShapeBuilder: !ShapeBuilderCustom
                     Dummy: 1
                 Material: !ParticleMaterialComputeColor
                     ComputeColor: !ComputeTextureColor
@@ -31,13 +31,17 @@ Component: !ParticleSystemComponent
                     1b69e5edd8a0614c87724fee7903d49f: !Initial3DRotationSeed
                         DisplayParticleRotation: true
                         RotationQuaternionMin: {X: 0.0, Y: 0.0, Z: 0.0, W: 1.0}
-                    2b69e5edd8a0614c87724fee7903d49f: !InitialPositionArc
+                    2b69e5edd8a0614c87724fee7903d49f: !InitialPositionParent
                         Dummy: 1
+                    3b69e5edd8a0614c87724fee7903d49f: !InitialPositionArc
+                        Target: ref!! e574779f-f5b0-4272-8b43-f67704512191
+                    4b69e5edd8a0614c87724fee7903d49f: !InitialPositionArc
+                        Target: ref!! 00000000-f5b0-4272-8b43-f67704512191
                 Updaters: {}
 `;
 
 describe('粒子系统的导入', () => {
-  test('类型、属性名首字母小写，向量换成数组，集合换成数组，贴图导出，不认识的模块警告并去掉', async () => {
+  test('类型、属性名首字母小写，向量换成数组，集合换成数组，贴图导出，引用换成实体，不认识的模块警告并去掉', async () => {
     const component = asObject(parseStrideYaml(COMPONENT)['Component'])!;
     const warnings: string[] = [];
     const textures: string[] = [];
@@ -46,6 +50,7 @@ describe('粒子系统的导入', () => {
         textures.push(id);
         return { texture: 'Shared/hit_effect', srgb: true };
       },
+      entity: (id) => (id === 'e574779f-f5b0-4272-8b43-f67704512191' ? 'laser-target' : undefined),
       warn: (message) => warnings.push(message),
     });
     expect(file).toEqual({
@@ -64,14 +69,19 @@ describe('粒子系统的导入', () => {
             uvBuilder: { $type: 'uvBuilderFlipbook', xDivisions: 5 },
           },
           spawners: [{ $type: 'spawnerPerSecond', loopCondition: 'oneShot', duration: [0.2, 0.2] }],
-          initializers: [{ $type: 'initial3DRotationSeed', rotationQuaternionMin: [0, 0, 0, 1] }],
+          initializers: [
+            { $type: 'initial3DRotationSeed', rotationQuaternionMin: [0, 0, 0, 1] },
+            { $type: 'initialPositionArc', target: { $entity: 'laser-target' } },
+            { $type: 'initialPositionArc', target: null },
+          ],
           updaters: [],
         }],
       },
     });
     expect(textures).toEqual(['8b03c447-e775-437b-a178-b7c0921ebf24']);
-    expect(warnings).toHaveLength(2);
-    expect(warnings[0]).toContain('ShapeBuilderTrail');
-    expect(warnings[1]).toContain('InitialPositionArc');
+    expect(warnings).toHaveLength(3);
+    expect(warnings[0]).toContain('ShapeBuilderCustom');
+    expect(warnings[1]).toContain('InitialPositionParent');
+    expect(warnings[2]).toContain('00000000-f5b0-4272-8b43-f67704512191 is not in this scene');
   });
 });

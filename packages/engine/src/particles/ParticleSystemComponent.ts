@@ -13,8 +13,7 @@ import type { RenderView } from '../rendering/RenderSystem';
 import { Transform } from '../engine/transform';
 import { StartupScript } from '../engine/scripts';
 import { Matrix } from '../mathematics/Matrix';
-import type { Texture } from '../rendering/Texture';
-import { value } from './modules';
+import { value, type ParticleContext } from './modules';
 import { ParticleRenderer } from './ParticleRenderer';
 import { ParticleSystem } from './ParticleSystem';
 
@@ -26,9 +25,9 @@ export class ParticleSystemComponent extends StartupScript {
   /** 模拟的速度倍数。 */
   speed = 1;
 
-  /** 按导入的组件文件建粒子系统；textures 按内容路径给加载好的贴图。 */
-  load(file: ParticleModuleFile, textures?: (path: string) => Texture | undefined): void {
-    this.particleSystem = new ParticleSystem((file['particleSystem'] as ParticleModuleFile | undefined) ?? {}, textures);
+  /** 按导入的组件文件建粒子系统；context 给出贴图和场景里的实体。 */
+  load(file: ParticleModuleFile, context?: ParticleContext): void {
+    this.particleSystem = new ParticleSystem((file['particleSystem'] as ParticleModuleFile | undefined) ?? {}, context);
     this.color = [...value(file, 'color', [1, 1, 1, 1])] as [number, number, number, number];
     this.speed = value(file, 'speed', 1);
   }

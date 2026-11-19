@@ -487,7 +487,7 @@ export class ContentManager {
         entity.require(Transform).parent = parent;
       }
       created.set(file.id, entity);
-      this.#addComponents(entity, file, assets, entities);
+      this.#addComponents(entity, file, assets, entities, created);
     }
     // 约束组件引用的物体可能排在后面：实体都建好以后再挂（约束在脚本启动时加）
     for (const file of files) {
@@ -553,7 +553,8 @@ export class ContentManager {
     return created;
   }
 
-  #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager): void {
+  /** created 是这个场景里已经建好的实体（按场景文件里的 id），粒子模块引用的实体在模拟时才找。 */
+  #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager, created: ReadonlyMap<string, Entity>): void {
     const { model, camera, light, background, animation, sprite, static: collidable, character, body, instancing, particleSystem } = file.components;
     const { materials } = assets;
     const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
@@ -586,7 +587,13 @@ export class ContentManager {
     }
     if (particleSystem) {
       entity.add({ script: ParticleSystemComponent, init: {} });
-      entity.require(ParticleSystemComponent).load(particleSystem, (path) => assets.images.get(path));
+      entity.require(ParticleSystemComponent).load(particleSystem, {
+        texture: (path) => assets.images.get(path),
+        entityPosition: (id) => {
+          const world = created.get(id)?.get(Transform)?.world;
+          return world ? [world[12]!, world[13]!, world[14]!] : undefined;
+        },
+      });
     }
     if (animation) {
       entity.add({ script: AnimationComponent, init: {} });

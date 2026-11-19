@@ -7,19 +7,21 @@
  * - Hexagon：正对相机的六边形；
  * - OrientedQuad：一条边沿粒子的方向（Direction，没有时朝上）拉长（ScaleLength 时乘大小，再乘 LengthFactor），另一条在屏幕里
  *   垂直于它。
+ * Ribbon、Trail 把粒子连成带子，见 ribbons.ts。
  */
 import type { ParticleModuleFile } from '../content/format';
 import { curveSampler, type CurveSampler } from './curves';
 import { combine, normalize, rotate, type Quat, type Vec3 } from './math';
 import { value } from './modules';
 import type { ParticleEmitter } from './ParticleEmitter';
+import { buildRibbons, RibbonSettings, RIBBONS } from './ribbons';
 
 /** 每个顶点：位置 3、UV 2、颜色 4。 */
 export const VERTEX_FLOATS = 9;
 const SQRT3_HALF = 0.86602540378;
 const DEGREES = Math.PI / 180;
 
-export const SHAPES = new Set(['shapeBuilderBillboard', 'shapeBuilderQuad', 'shapeBuilderHexagon', 'shapeBuilderOrientedQuad']);
+export const SHAPES = new Set(['shapeBuilderBillboard', 'shapeBuilderQuad', 'shapeBuilderHexagon', 'shapeBuilderOrientedQuad', ...RIBBONS]);
 
 /** 发射器的形状设置（构造发射器时读一次）。 */
 export class ShapeSettings {
@@ -29,6 +31,8 @@ export class ShapeSettings {
   readonly samplerRotation: CurveSampler | undefined;
   readonly scaleLength: boolean;
   readonly lengthFactor: number;
+  /** 飘带、拖尾的设置（别的形状没有）。 */
+  readonly ribbon: RibbonSettings | undefined;
 
   constructor(file: ParticleModuleFile) {
     this.type = String(file.$type);
@@ -37,18 +41,47 @@ export class ShapeSettings {
     this.samplerRotation = curveSampler(file['samplerRotation'] as ParticleModuleFile | null | undefined);
     this.scaleLength = value(file, 'scaleLength', true);
     this.lengthFactor = value(file, 'lengthFactor', 1);
+    this.ribbon = RIBBONS.has(this.type) ? new RibbonSettings(file) : undefined;
   }
 
   get quadsPerParticle(): number {
-    return this.type === 'shapeBuilderHexagon' ? 2 : 1;
+    return this.ribbon?.sections ?? (this.type === 'shapeBuilderHexagon' ? 2 : 1);
   }
 }
 
-/** 相机的右、上、朝向自己的方向（世界空间）。 */
+/** 相机的右、上、朝向自己的方向（世界空间），和视图投影矩阵（按列存，飘带按投影到屏幕上的走向定宽度方向）。 */
 export interface CameraAxes {
   readonly right: Readonly<Vec3>;
   readonly up: Readonly<Vec3>;
   readonly back: Readonly<Vec3>;
+  readonly viewProjection: Readonly<Float32Array>;
+}
+
+/**
+ * 画粒子的顺序（Stride 的 ParticleSorter*）：ByDepth 从远到近（深度方向是相机的 Z 轴），ByAge 从新到旧，ByOrder 按生成顺序
+ * 从新到旧（飘带从发射器那头连起），没有对应的字段或 None 时按池里的顺序。
+ */
+export function drawOrder(emitter: ParticleEmitter, camera: CameraAxes): number[] {
+  const pool = emitter.pool;
+  const order = Array.from({ length: pool.living }, (_, i) => i);
+  switch (emitter.sortingPolicy) {
+    case 'byDepth': {
+      const position = pool.field('position')!;
+      const [dx, dy, dz] = camera.back;
+      const key = (i: number) => position[i * 3]! * dx + position[i * 3 + 1]! * dy + position[i * 3 + 2]! * dz;
+      return order.sort((a, b) => key(a) - key(b));
+    }
+    case 'byAge': {
+      const life = pool.field('life')!;
+      return order.sort((a, b) => life[b]! - life[a]!);
+    }
+    case 'byOrder': {
+      const spawnOrder = pool.integers('order');
+      return spawnOrder ? order.sort((a, b) => spawnOrder[b]! - spawnOrder[a]!) : order;
+    }
+    default:
+      return order;
+  }
 }
 
 /**
@@ -59,6 +92,7 @@ export function buildShapes(
   emitter: ParticleEmitter, shape: ShapeSettings, camera: CameraAxes, order: readonly number[], vertices: Float32Array, at: number,
   uv: (remainingLife: number) => readonly [number, number, number, number],
 ): number {
+  if (shape.ribbon) return buildRibbons(emitter, shape.ribbon, camera, order, vertices, at, uv);
   const pool = emitter.pool;
   const position = pool.field('position')!, size = pool.field('size'), angle = pool.field('rotation');
   const quaternion = pool.field('quaternion'), color = pool.field('color'), life = pool.field('life')!, direction = pool.field('direction');

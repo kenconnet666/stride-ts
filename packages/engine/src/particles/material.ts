@@ -5,7 +5,7 @@
  * - ComputeTextureScalar：采样贴图的一个通道（Channel，默认 R），四个分量都是它；
  * - ComputeVertexStreamColor：粒子的颜色（顶点颜色）；
  * - ComputeFloat4、ComputeFloat：常量；ComputeColor：常量颜色，换到线性空间、预乘 alpha（同 Stride 的 ToColorSpace、PremultiplyAlpha）；
- * - ComputeBinaryColor：两个子节点按 Operator 合成（现在有 Multiply、Add、Subtract，别的先当 Multiply 并警告）。
+ * - ComputeBinaryColor：两个子节点按 Operator 合成（现在有 Multiply、Add、Subtract、Overlay，别的先当 Multiply 并警告）。
  * 认不出的节点当白色。
  */
 import type { ParticleModuleFile, ParticleValue, TextureRef, TextureSampler } from '../content/format';
@@ -20,18 +20,23 @@ export interface MaterialProgram {
   readonly textures: readonly { readonly texture: Texture; readonly sampler: TextureSampler }[];
   /** 乘在 alpha 上的系数：1 - AlphaAdditive（0 就是加法混合）。 */
   readonly alphaFactor: number;
-  /** 粒子的 UV 帧 [u, v, 宽, 高]（材质的 UVBuilder；没有时整张）。 */
+  /** 粒子的 UV 帧 [u, v, 宽, 高]（材质的 UVBuilder：翻页或滚动；没有时整张）。 */
   readonly uv: (remainingLife: number) => readonly [number, number, number, number];
 }
 
 const WHOLE = [0, 0, 1, 1] as const;
 
 const WHITE = 'vec4f(1.0)';
+/** 二元运算里写成函数的（Stride 的 ComputeColorOverlay：b <= 0.5 时取 screen 那一支，照抄 Stride 的 step(b, 0.5)）。 */
+const HELPERS: Readonly<Record<string, string>> = {
+  overlay: 'fn overlay(a: vec4f, b: vec4f) -> vec4f {\n  return mix(2.0 * a * b, 1.0 - 2.0 * (1.0 - a) * (1.0 - b), step(b, vec4f(0.5)));\n}\n',
+};
 const warned = new Set<string>();
 
 /** 编译材质；textures 按内容路径给加载好的贴图。 */
 export function compileMaterial(material: ParticleModuleFile, textures: (path: string) => Texture | undefined): MaterialProgram {
   const bound: { texture: Texture; sampler: TextureSampler }[] = [];
+  const helpers = new Set<string>();
   const literal = (values: readonly number[]) => `vec4f(${values.map((v) => (Number.isInteger(v) ? `${v}.0` : `${v}`)).join(', ')})`;
 
   const sample = (node: ParticleModuleFile): string | undefined => {
@@ -76,6 +81,10 @@ export function compileMaterial(material: ParticleModuleFile, textures: (path: s
         const operator = String(file['operator'] ?? 'multiply');
         if (operator === 'add') return `(${left} + ${right})`;
         if (operator === 'subtract') return `(${left} - ${right})`;
+        if (operator in HELPERS) {
+          helpers.add(operator);
+          return `${operator}(${left}, ${right})`;
+        }
         if (operator !== 'multiply') warnOnce(`binary color operator ${operator}`);
         return `(${left} * ${right})`;
       }
@@ -88,7 +97,7 @@ export function compileMaterial(material: ParticleModuleFile, textures: (path: s
   const body = expression(material['computeColor']);
   const declarations = bound.map((_, i) => `@group(1) @binding(${i * 2}) var t${i}: texture_2d<f32>;\n@group(1) @binding(${i * 2 + 1}) var s${i}: sampler;`).join('\n');
   return {
-    code: `${declarations}\nfn materialColor(uv: vec2f, color: vec4f) -> vec4f {\n  return ${body};\n}\n`,
+    code: `${declarations}\n${[...helpers].map((name) => HELPERS[name]).join('')}fn materialColor(uv: vec2f, color: vec4f) -> vec4f {\n  return ${body};\n}\n`,
     textures: bound,
     alphaFactor: 1 - (value(material, 'alphaAdditive', 0) as number),
     uv: uvBuilder(material['uvBuilder'] as ParticleModuleFile | null | undefined),
@@ -96,7 +105,19 @@ export function compileMaterial(material: ParticleModuleFile, textures: (path: s
 }
 
 function uvBuilder(file: ParticleModuleFile | null | undefined): MaterialProgram['uv'] {
-  return file?.$type === 'uvBuilderFlipbook' ? flipbookOf(file) : () => WHOLE;
+  if (file?.$type === 'uvBuilderFlipbook') return flipbookOf(file);
+  if (file?.$type === 'uvBuilderScroll') return scrollOf(file);
+  return () => WHOLE;
+}
+
+/** UV 滚动（Stride 的 UVBuilderScroll）：按走过的寿命从 StartFrame 线性移到 EndFrame（两个都是 [左, 上, 右, 下]）。 */
+export function scrollOf(file: ParticleModuleFile): (remainingLife: number) => [number, number, number, number] {
+  const start = value(file, 'startFrame', [0, 0, 1, 1]), end = value(file, 'endFrame', [0, 1, 1, 2]);
+  return (remainingLife) => {
+    const t = 1 - remainingLife;
+    const [left, top, right, bottom] = start.map((s, k) => s + (end[k]! - s) * t) as [number, number, number, number];
+    return [left, top, right - left, bottom - top];
+  };
 }
 
 /** 翻页动画（Stride 的 UVBuilderFlipbook）：按走过的寿命取第几帧，返回这一帧在贴图上的 [u, v, 宽, 高]。 */

@@ -1,14 +1,26 @@
 /**
  * 粒子的模块（Stride 的 Spawners、Initializers），按导入的 ParticleModuleFile 建，没写的属性取 Stride 的默认值。
- * 现在有的：生成器 PerSecond、PerFrame；初始化器 SizeSeed、PositionSeed、VelocitySeed、RotationSeed、3DRotationSeed、
- * ColorSeed。更新器见 updaters.ts，力场和碰撞的形状见 fieldShapes.ts。导入器只留下运行时认识的（见 pipeline 的 particles.ts）。
+ * 现在有的：生成器 PerSecond、PerFrame；初始化器 SizeSeed、PositionSeed、PositionArc、VelocitySeed、DirectionSeed、
+ * RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder。更新器见 updaters.ts，力场和碰撞的形状见 fieldShapes.ts。导入器只留下
+ * 运行时认识的（见 pipeline 的 particles.ts）。
  */
 import type { ParticleModuleFile, ParticleValue } from '../content/format';
+import type { Texture } from '../rendering/Texture';
 import { isIdentity, normalize, rotate, slerp, combine, type Quat, type Vec3 } from './math';
 import type { ParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat, type RandomSeedGenerator } from './random';
 
 const DEGREES = Math.PI / 180;
+
+/** 建模块时要的外部东西：贴图（材质用）、场景里实体的世界位置（InitialPositionArc 的 Target 用）。 */
+export interface ParticleContext {
+  /** 按内容路径给加载好的贴图。 */
+  readonly texture: (path: string) => Texture | undefined;
+  /** 场景里的实体（id 同场景文件）现在的世界位置；不在场景里时是 undefined。 */
+  readonly entityPosition: (id: string) => Readonly<Vec3> | undefined;
+}
+
+export const NO_CONTEXT: ParticleContext = { texture: () => undefined, entityPosition: () => undefined };
 
 /** 模块文件里的值：没写时取默认值。 */
 export function value<T extends ParticleValue>(file: ParticleModuleFile | undefined, key: string, fallback: T): T {
@@ -206,6 +218,9 @@ export function forEachSpawned({ start, end, capacity }: SpawnedRange, visit: (i
 
 export abstract class ParticleInitializer extends ParticleModule {
   abstract initialize(pool: ParticlePool, range: SpawnedRange): void;
+
+  /** 重新开始模拟时清掉自己的状态（Stride 的 ResetSimulation）。 */
+  resetSimulation(): void {}
 }
 
 /** 大小在 RandomSize 之间随机（Stride 的 InitialSizeSeed），乘上世界缩放。 */
@@ -276,6 +291,62 @@ export class InitialPositionSeed extends ParticleInitializer {
   }
 }
 
+/**
+ * 位置在发射器到目标的弧线上（Stride 的 InitialPositionArc，激光用）：目标是场景里的实体（Target，没有时 FallbackTarget 是相对
+ * 发射器的位置），弧线在中间抬高 ArcHeight（沿模块的上方），再加上 PositionMin 到 PositionMax 的随机偏移（两头为 0、中间最大）。
+ * Sequential 时这一批新粒子沿弧线均匀排开（FixedLength 大于 0 时按粒子池的下标模 FixedLength 排），否则随机。
+ */
+export class InitialPositionArc extends ParticleInitializer {
+  readonly requiredFields = ['position', 'randomSeed'] as const;
+  readonly seedOffset: number;
+  readonly target: string | undefined;
+  readonly fallbackTarget: Vec3;
+  readonly arcHeight: number;
+  readonly sequential: boolean;
+  readonly fixedLength: number;
+  readonly positionMin: Vec3;
+  readonly positionMax: Vec3;
+  readonly #entityPosition: ParticleContext['entityPosition'];
+
+  constructor(file: ParticleModuleFile, context: ParticleContext) {
+    super(file);
+    this.seedOffset = value(file, 'seedOffset', 0);
+    const target = file['target'] as { readonly $entity?: string } | null | undefined;
+    this.target = target?.$entity;
+    this.fallbackTarget = vec3(file, 'fallbackTarget', [0, 0, -1]);
+    this.arcHeight = value(file, 'arcHeight', 1);
+    this.sequential = value(file, 'sequential', true);
+    this.fixedLength = value(file, 'fixedLength', 0);
+    this.positionMin = vec3(file, 'positionMin', [-0.3, -0.3, -0.3]);
+    this.positionMax = vec3(file, 'positionMax', [0.3, 0.3, 0.3]);
+    this.#entityPosition = context.entityPosition;
+  }
+
+  initialize(pool: ParticlePool, range: SpawnedRange): void {
+    const position = pool.field('position');
+    if (!position) return;
+    const seeds = pool.seeds;
+    const arc = rotate(this.worldRotation, [0, this.arcHeight, 0]);
+    const sample = randomBox(this, this.positionMin, this.positionMax, this.seedOffset, false);
+    const targetPosition = this.target === undefined ? undefined : this.#entityPosition(this.target);
+    const toTarget: Vec3 = targetPosition ? [0, 1, 2].map((k) => targetPosition[k]! - this.worldPosition[k]!) as Vec3 : [...this.fallbackTarget];
+    const { start, end, capacity } = range;
+    const lessOne = this.fixedLength > 0 ? this.fixedLength - 1 : start < end ? end - start - 1 : end - start + capacity - 1;
+    const stepSize = lessOne > 1 ? 1 / lessOne : 1;
+    let step = -stepSize;
+    const offset = new Float32Array(3);
+    forEachSpawned(range, (i) => {
+      const seed = seeds[i]!;
+      if (!this.sequential) step = seedFloat(seed, RandomOffset.offset1A + this.seedOffset);
+      else step = this.fixedLength > 0 ? (i % this.fixedLength) * stepSize : step + stepSize;
+      // 弧线的抬高和随机偏移都按 sin(π · step)：两头为 0
+      const bulge = Math.sin(step * Math.PI);
+      sample(seed, offset, 0);
+      for (let k = 0; k < 3; k++) position[i * 3 + k] = offset[k]! * bulge + toTarget[k]! * step + arc[k]! * bulge + this.worldPosition[k]!;
+    });
+  }
+}
+
 /** 速度在 VelocityMin 到 VelocityMax 的盒子里随机（Stride 的 InitialVelocitySeed）。 */
 export class InitialVelocitySeed extends ParticleInitializer {
   readonly requiredFields = ['velocity', 'randomSeed'] as const;
@@ -296,6 +367,29 @@ export class InitialVelocitySeed extends ParticleInitializer {
     const seeds = pool.seeds;
     const sample = randomBox(this, this.velocityMin, this.velocityMax, this.seedOffset, false);
     forEachSpawned(range, (i) => sample(seeds[i]!, velocity, i * 3));
+  }
+}
+
+/** 方向在 DirectionMin 到 DirectionMax 的盒子里随机（Stride 的 InitialDirectionSeed，Trail 按它定宽度）。 */
+export class InitialDirectionSeed extends ParticleInitializer {
+  readonly requiredFields = ['direction', 'randomSeed'] as const;
+  readonly seedOffset: number;
+  readonly directionMin: Vec3;
+  readonly directionMax: Vec3;
+
+  constructor(file: ParticleModuleFile) {
+    super(file);
+    this.seedOffset = value(file, 'seedOffset', 0);
+    this.directionMin = vec3(file, 'directionMin', [-1, 1, -1]);
+    this.directionMax = vec3(file, 'directionMax', [1, 1, 1]);
+  }
+
+  initialize(pool: ParticlePool, range: SpawnedRange): void {
+    const direction = pool.field('direction');
+    if (!direction) return;
+    const seeds = pool.seeds;
+    const sample = randomBox(this, this.directionMin, this.directionMax, this.seedOffset, false);
+    forEachSpawned(range, (i) => sample(seeds[i]!, direction, i * 3));
   }
 }
 
@@ -374,6 +468,28 @@ export class InitialColorSeed extends ParticleInitializer {
   }
 }
 
+/**
+ * 生成的顺序（Stride 的 InitialSpawnOrder）：每个新粒子取下一个序号（重新开始模拟时从 0 起）。飘带和拖尾按它连起来，
+ * 所以这种发射器的 SortingPolicy 一般是 ByOrder。
+ */
+export class InitialSpawnOrder extends ParticleInitializer {
+  readonly requiredFields = ['order'] as const;
+  #next = 0;
+
+  initialize(pool: ParticlePool, range: SpawnedRange): void {
+    const order = pool.integers('order');
+    if (!order) return;
+    forEachSpawned(range, (i) => {
+      order[i] = this.#next;
+      this.#next = (this.#next + 1) >>> 0;
+    });
+  }
+
+  override resetSimulation(): void {
+    this.#next = 0;
+  }
+}
+
 // —— 按文件建模块 ——
 
 export function createSpawner(file: ParticleModuleFile): ParticleSpawner | undefined {
@@ -384,11 +500,14 @@ export function createSpawner(file: ParticleModuleFile): ParticleSpawner | undef
   }
 }
 
-export function createInitializer(file: ParticleModuleFile): ParticleInitializer | undefined {
+export function createInitializer(file: ParticleModuleFile, context: ParticleContext): ParticleInitializer | undefined {
   switch (file.$type) {
     case 'initialSizeSeed': return new InitialSizeSeed(file);
     case 'initialPositionSeed': return new InitialPositionSeed(file);
+    case 'initialPositionArc': return new InitialPositionArc(file, context);
     case 'initialVelocitySeed': return new InitialVelocitySeed(file);
+    case 'initialDirectionSeed': return new InitialDirectionSeed(file);
+    case 'initialSpawnOrder': return new InitialSpawnOrder(file);
     case 'initialRotationSeed': return new InitialRotationSeed(file);
     case 'initial3DRotationSeed': return new Initial3DRotationSeed(file);
     case 'initialColorSeed': return new InitialColorSeed(file);

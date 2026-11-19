@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { CurveSampler } from '../src/particles/curves';
 import { FieldFalloff } from '../src/particles/fieldShapes';
-import { compileMaterial, flipbookOf } from '../src/particles/material';
-import { buildShapes, VERTEX_FLOATS } from '../src/particles/shapes';
+import { compileMaterial, flipbookOf, scrollOf } from '../src/particles/material';
+import { circumcenter, expandCatmullRom, expandCircular } from '../src/particles/ribbons';
+import { buildShapes, drawOrder, VERTEX_FLOATS } from '../src/particles/shapes';
 import type { Texture } from '../src/rendering/Texture';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { randomSeed, RandomSeedGenerator, seedFloat } from '../src/particles/random';
@@ -14,6 +15,7 @@ function system(emitter: ParticleModuleFile): ParticleSystem {
 }
 
 const STEP = 1 / 60;
+const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 describe('粒子的随机数（照 Stride 的 RandomSeed）', () => {
   test('和 .NET 算出来的一样（dotnet fsi 算的参考值），种子只留低 16 位', () => {
@@ -212,7 +214,7 @@ describe('粒子的形状和材质', () => {
     particles.update(STEP);
     const emitter = particles.emitters[0]!;
     const vertices = new Float32Array(4 * VERTEX_FLOATS);
-    const camera = { right: [1, 0, 0], up: [0, 1, 0], back: [0, 0, 1] } as const;
+    const camera = { right: [1, 0, 0], up: [0, 1, 0], back: [0, 0, 1], viewProjection: IDENTITY } as const;
     buildShapes(emitter, emitter.shape!, camera, [0], vertices, 0, () => [0, 0, 1, 1]);
     const y = emitter.pool.field('position')![1]!;
     // 方向是速度 (0, 2, 0)，大小 1：上下各伸出 方向 · 大小 / 2，左右各 0.5
@@ -240,6 +242,11 @@ describe('粒子的形状和材质', () => {
     const fallback = compileMaterial({ computeColor: { $type: 'computeTextureColor', fallbackValue: { value: [1, 0.5, 0, 1] } } }, () => undefined);
     expect(fallback.textures).toHaveLength(0);
     expect(fallback.code).toContain('return vec4f(1.0, 0.5, 0.0, 1.0);');
+    // Overlay 写成函数，只在用到时带上
+    const overlay = compileMaterial({ computeColor: { $type: 'computeBinaryColor', operator: 'overlay', leftChild: { $type: 'computeVertexStreamColor' }, rightChild: { $type: 'computeFloat', value: 0.25 } } }, () => undefined);
+    expect(overlay.code).toContain('fn overlay(a: vec4f, b: vec4f)');
+    expect(overlay.code).toContain('return overlay(color, vec4f(0.25, 0.25, 0.25, 0.25));');
+    expect(fallback.code).not.toContain('fn overlay');
   });
 
   test('BoundingSphereStatic：世界包围盒是位置周围 半径 · 缩放 的立方体', () => {
@@ -247,5 +254,102 @@ describe('粒子的形状和材质', () => {
     particles.translation = [1, 0, 0];
     particles.uniformScale = 2;
     expect(particles.worldBounds()).toEqual([[-3, -4, -4], [5, 4, 4]]);
+  });
+});
+
+describe('飘带和拖尾（照 Stride 的 ShapeBuilderRibbon、ShapeBuilderTrail）', () => {
+  /** 一帧生成三个粒子：生成顺序 0、1、2，按弧线（不抬高、没有偏移）排在 x = 0、1、2。 */
+  function line(shapeBuilder: ParticleModuleFile, extra: ParticleModuleFile[] = []): ParticleSystem {
+    const particles = system({
+      particleLifetime: [10, 10],
+      sortingPolicy: 'byOrder',
+      spawners: [{ ...ONE_PARTICLE, spawnCount: 3 }],
+      initializers: [
+        { $type: 'initialSpawnOrder' },
+        { $type: 'initialPositionArc', fallbackTarget: [2, 0, 0], arcHeight: 0, positionMin: [0, 0, 0], positionMax: [0, 0, 0] },
+        ...extra,
+      ],
+      shapeBuilder,
+    });
+    particles.update(STEP);
+    return particles;
+  }
+  const camera = { right: [1, 0, 0], up: [0, 1, 0], back: [0, 0, 1], viewProjection: IDENTITY } as const;
+
+  test('InitialSpawnOrder 逐个编号，ByOrder 从新到旧；InitialPositionArc 沿发射器到目标排开', () => {
+    const emitter = line({ $type: 'shapeBuilderRibbon' }).emitters[0]!;
+    expect([...emitter.pool.integers('order')!.subarray(0, 3)]).toEqual([0, 1, 2]);
+    expect([...emitter.pool.field('position')!.subarray(0, 9)]).toEqual([0, 0, 0, 1, 0, 0, 2, 0, 0]);
+    expect(drawOrder(emitter, camera)).toEqual([2, 1, 0]);
+  });
+
+  test('Ribbon：相邻两个粒子之间一个四边形，宽度是大小、在屏幕里垂直于带子，V 按 Stretched 拉满', () => {
+    const emitter = line({ $type: 'shapeBuilderRibbon', textureCoordinatePolicy: 'stretched', texCoordsFactor: 1 }).emitters[0]!;
+    const vertices = new Float32Array(3 * 4 * VERTEX_FLOATS);
+    const end = buildShapes(emitter, emitter.shape!, camera, drawOrder(emitter, camera), vertices, 0, () => [0, 0, 1, 1]);
+    expect(end).toBe(vertices.length);
+    // 第二个四边形：从 x = 2 到 x = 1，上下各 0.5（大小 1）
+    const quad = (q: number) => [0, 1, 2, 3].map((k) => [...vertices.subarray((q * 4 + k) * VERTEX_FLOATS, (q * 4 + k) * VERTEX_FLOATS + 5)].map((c) => +c.toFixed(4)));
+    expect(quad(1)).toEqual([[2, 0.5, 0, 0, 1 / 3].map((c) => +c.toFixed(4)), [2, -0.5, 0, 1, +(1 / 3).toFixed(4)], [1, -0.5, 0, 1, +(2 / 3).toFixed(4)], [1, 0.5, 0, 0, +(2 / 3).toFixed(4)]]);
+  });
+
+  test('Trail：宽度是 Direction · 大小，EdgePolicy 是 Edge 时粒子在带子的边上', () => {
+    const emitter = line(
+      { $type: 'shapeBuilderTrail', edgePolicy: 'edge' },
+      [{ $type: 'initialDirectionSeed', directionMin: [0, 0, 2], directionMax: [0, 0, 2] }],
+    ).emitters[0]!;
+    const vertices = new Float32Array(3 * 4 * VERTEX_FLOATS);
+    buildShapes(emitter, emitter.shape!, camera, drawOrder(emitter, camera), vertices, 0, () => [0, 0, 1, 1]);
+    const position = (k: number) => [...vertices.subarray((4 + k) * VERTEX_FLOATS, (4 + k) * VERTEX_FLOATS + 3)];
+    expect([position(0), position(1), position(2), position(3)]).toEqual([[2, 0, 0], [2, 0, 2], [1, 0, 2], [1, 0, 0]]);
+  });
+
+  test('平滑：Catmull-Rom 的插值点经过两头的粒子之间，宽度线性过渡；外接圆的圆心', () => {
+    const sections = 4;
+    const points = new Float64Array(3 * sections * 3);
+    points.set([0, 0, 0], 0);
+    points.set([1, 1, 0], sections * 3);
+    points.set([2, 0, 0], sections * 6);
+    const sizes = new Float64Array(3 * sections);
+    sizes[0] = 1; sizes[sections] = 3; sizes[sections * 2] = 1;
+    expandCatmullRom(points, sizes, 1, sections, 3 * sections);
+    // 第一段的中点在 (0.5, ~0.56)：比直线高（曲线经过顶点 (1, 1)）
+    expect(points[2 * 3]).toBeCloseTo(0.5);
+    expect(points[2 * 3 + 1]).toBeGreaterThan(0.5);
+    expect(sizes[2]).toBeCloseTo(2);
+    expect([...circumcenter(new Float64Array(3), [1, 0, 0], [0, 1, 0], [-1, 0, 0])].map((c) => +c.toFixed(6) + 0)).toEqual([0, 0, 0]);
+    // Best：圆上的三个点之间，插值的点也在圆上（第二段的两头和前一个点定出外接圆）
+    const arc = new Float64Array(3 * sections * 3);
+    arc.set([1, 0, 0], 0);
+    arc.set([0, 1, 0], sections * 3);
+    arc.set([-1, 0, 0], sections * 6);
+    expandCircular(arc, new Float64Array(3 * sections), 1, sections, 3 * sections);
+    for (let j = 1; j < sections; j++) expect(Math.hypot(...arc.subarray((sections + j) * 3, (sections + j) * 3 + 3))).toBeCloseTo(1, 5);
+  });
+});
+
+describe('按寿命改颜色、转角和 UV 滚动', () => {
+  test('ColorOverTime 存成预乘 alpha，RotationOverTime 的度数换成弧度', () => {
+    const color: ParticleModuleFile = {
+      $type: 'computeCurveSamplerColor4',
+      curve: { keyFrames: [{ key: 0, value: [1, 0, 0, 1] }, { key: 1, value: [1, 0, 0, 0] }] },
+    };
+    const particles = system({
+      particleLifetime: [1, 1],
+      spawners: [ONE_PARTICLE],
+      updaters: [{ $type: 'updaterColorOverTime', samplerMain: color }, { $type: 'updaterRotationOverTime', samplerMain: floatCurve([[0, 0], [1, 180]]) }],
+    });
+    for (let i = 0; i < 30; i++) particles.update(STEP);
+    const pool = particles.emitters[0]!.pool;
+    const age = 1 - pool.field('life')![0]!;
+    expect(pool.field('color')![3]).toBeCloseTo(1 - age, 2);
+    expect(pool.field('color')![0]).toBeCloseTo(1 - age, 2);
+    expect(pool.field('rotation')![0]).toBeCloseTo(age * Math.PI, 2);
+  });
+
+  test('UVBuilderScroll：按走过的寿命从 StartFrame 移到 EndFrame', () => {
+    const scroll = scrollOf({ startFrame: [0, 0, 1, 1], endFrame: [0, 1, 1, 2] });
+    expect(scroll(1)).toEqual([0, 0, 1, 1]);
+    expect(scroll(0.5)).toEqual([0, 0.5, 1, 1]);
   });
 });

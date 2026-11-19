@@ -8,10 +8,9 @@
 import type { ParticleModuleFile } from '../content/format';
 import { compileMaterial, type MaterialProgram } from './material';
 import { SHAPES, ShapeSettings } from './shapes';
-import type { Texture } from '../rendering/Texture';
-import { createInitializer, createSpawner, ParticleTransform, value, type ParticleInitializer, type ParticleSpawner, type SpawnedRange } from './modules';
+import { createInitializer, createSpawner, NO_CONTEXT, ParticleTransform, value, type ParticleContext, type ParticleInitializer, type ParticleSpawner, type SpawnedRange } from './modules';
 import { createUpdater, type ParticleUpdater } from './updaters';
-import { ParticlePool, type ParticleField } from './ParticlePool';
+import { ParticlePool, type IntegerField, type ParticleField } from './ParticlePool';
 import { RandomOffset, RandomSeedGenerator, seedFloat } from './random';
 import type { Quat, Vec3 } from './math';
 
@@ -61,8 +60,8 @@ export class ParticleEmitter {
   /** 新粒子的默认位置、旋转、大小（Stride 的 InitialDefaultFields）。 */
   #defaults = { position: [0, 0, 0] as Vec3, rotation: [0, 0, 0, 1] as Quat, scale: 1 };
 
-  /** textures 按内容路径给加载好的贴图（ContentManager 在加载场景时备好）。 */
-  constructor(file: ParticleModuleFile, textures: (path: string) => Texture | undefined = () => undefined) {
+  /** context 给出贴图和场景里的实体（ContentManager 在加载场景时备好）。 */
+  constructor(file: ParticleModuleFile, context: ParticleContext = NO_CONTEXT) {
     this.name = value(file, 'emitterName', '');
     this.enabled = value(file, 'enabled', true);
     this.maxParticlesOverride = value(file, 'maxParticlesOverride', 0);
@@ -76,11 +75,11 @@ export class ParticleEmitter {
     this.shapeBuilder = file['shapeBuilder'] === undefined ? { $type: 'shapeBuilderBillboard' } : (file['shapeBuilder'] as ParticleModuleFile | null);
     this.material = file['material'] === undefined ? { $type: 'particleMaterialComputeColor' } : (file['material'] as ParticleModuleFile | null);
     this.shape = this.shapeBuilder && SHAPES.has(String(this.shapeBuilder.$type)) ? new ShapeSettings(this.shapeBuilder) : undefined;
-    this.program = this.material ? compileMaterial(this.material, textures) : undefined;
+    this.program = this.material ? compileMaterial(this.material, context.texture) : undefined;
     const modules = <T>(key: string, create: (module: ParticleModuleFile) => T | undefined): T[] =>
       ((file[key] as readonly ParticleModuleFile[] | undefined) ?? []).map(create).filter((module): module is T => module !== undefined);
     this.spawners = modules('spawners', createSpawner);
-    this.initializers = modules('initializers', createInitializer);
+    this.initializers = modules('initializers', (module) => createInitializer(module, context));
     this.updaters = modules('updaters', createUpdater);
     const fields = new Set<ParticleField>(['life', 'randomSeed', 'position']);
     for (const module of [...this.initializers, ...this.updaters]) if (module.enabled) for (const field of module.requiredFields) fields.add(field);
@@ -131,6 +130,7 @@ export class ParticleEmitter {
     this.#poolDirty = true;
     this.pool.setCapacity(0);
     for (const spawner of this.spawners) spawner.resetSimulation();
+    for (const initializer of this.initializers) initializer.resetSimulation();
     this.#initialized = false;
   }
 
@@ -218,7 +218,7 @@ export class ParticleEmitter {
   /** 新粒子的默认值（Stride 的 InitialDefaultFields）：有哪个字段设哪个。 */
   #initializeDefaults({ start, end, capacity }: SpawnedRange): void {
     const pool = this.pool, { position, rotation, scale } = this.#defaults;
-    const fill = (field: ParticleField, values: readonly number[]) => {
+    const fill = (field: Exclude<ParticleField, IntegerField>, values: readonly number[]) => {
       const column = pool.field(field);
       if (column) for (let i = start; i !== end; i = (i + 1) % capacity) column.set(values, i * values.length);
     };

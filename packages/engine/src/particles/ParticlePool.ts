@@ -18,9 +18,14 @@ export const PARTICLE_FIELDS = {
   color: 4,
   /** 这一帧碰撞过（UpdaterCollider 写 1，Stride 的 CollisionControl 的 HasColided）。 */
   collision: 1,
+  /** 生成的顺序（Stride 的 Order）：高 16 位是组（同一组连成一条飘带），低 16 位是组里的顺序。 */
+  order: 1,
 } as const;
 
 export type ParticleField = keyof typeof PARTICLE_FIELDS;
+/** 存成 32 位无符号整数的字段（其余是 float）。 */
+export type IntegerField = 'randomSeed' | 'order';
+const INTEGER_FIELDS: ReadonlySet<ParticleField> = new Set<IntegerField>(['randomSeed', 'order']);
 
 export class ParticlePool {
   /** 能放多少个粒子。 */
@@ -37,9 +42,14 @@ export class ParticlePool {
     return this.#fields.has(field);
   }
 
-  /** 字段的列（粒子 i 的值在 [i · 宽度, (i + 1) · 宽度)）；没有这个字段时是 undefined。 */
-  field(field: ParticleField): Float32Array | undefined {
-    return field === 'randomSeed' ? undefined : (this.#fields.get(field) as Float32Array | undefined);
+  /** float 字段的列（粒子 i 的值在 [i · 宽度, (i + 1) · 宽度)）；没有这个字段时是 undefined。 */
+  field(field: Exclude<ParticleField, IntegerField>): Float32Array | undefined {
+    return this.#fields.get(field) as Float32Array | undefined;
+  }
+
+  /** 整数字段的列；没有这个字段时是 undefined。 */
+  integers(field: IntegerField): Uint32Array | undefined {
+    return this.#fields.get(field) as Uint32Array | undefined;
   }
 
   /** 每个粒子的随机种子。 */
@@ -77,6 +87,6 @@ export class ParticlePool {
 
   #allocate(field: ParticleField, capacity: number): Float32Array | Uint32Array {
     const length = capacity * PARTICLE_FIELDS[field];
-    return field === 'randomSeed' ? new Uint32Array(length) : new Float32Array(length);
+    return INTEGER_FIELDS.has(field) ? new Uint32Array(length) : new Float32Array(length);
   }
 }

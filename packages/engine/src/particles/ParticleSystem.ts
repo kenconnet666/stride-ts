@@ -3,9 +3,8 @@
  * ParticleSystemComponent 每帧按实体的世界变换设。
  */
 import type { ParticleModuleFile } from '../content/format';
-import type { Texture } from '../rendering/Texture';
 import { rotate, type Quat, type Vec3 } from './math';
-import { value } from './modules';
+import { NO_CONTEXT, value, type ParticleContext } from './modules';
 import { ParticleEmitter, type EmitterParent } from './ParticleEmitter';
 
 /** 预热时的步长（同 Stride）。 */
@@ -28,10 +27,10 @@ export class ParticleSystem implements EmitterParent {
   #started = false;
   #timeout = 0;
 
-  /** textures 按内容路径给加载好的贴图（材质用）。 */
-  constructor(file: ParticleModuleFile = {}, textures?: (path: string) => Texture | undefined) {
+  /** context 给出贴图和场景里的实体（见 ParticleContext）。 */
+  constructor(file: ParticleModuleFile = {}, context: ParticleContext = NO_CONTEXT) {
     const emitters = (file['emitters'] as readonly ParticleModuleFile[] | undefined) ?? [];
-    this.emitters = emitters.map((emitter) => new ParticleEmitter(emitter, textures));
+    this.emitters = emitters.map((emitter) => new ParticleEmitter(emitter, context));
     this.warmupTime = value(file['settings'] as ParticleModuleFile | undefined, 'warmupTime', 0);
     const shape = file['boundingShape'] as ParticleModuleFile | null | undefined;
     this.boundingBox = shape?.$type === 'boundingBoxStatic'

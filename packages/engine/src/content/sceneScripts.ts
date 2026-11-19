@@ -64,7 +64,8 @@ export class SceneScriptBinder {
   attach(entity: Entity, script: SceneScript, context: ScriptValueContext, where: string, { deferMissing = false } = {}): boolean {
     const type = this.#resolve(script.type, where);
     if (!type) return true;
-    const fields = new Map(type.schema.fields.map((field) => [field.name, field]));
+    // 场景里的属性名按旧名字（`renamedFrom`）也能找到：TS 脚本改了名（比如和脚本自己的 enabled 重名）时，场景里的值照样读进来
+    const fields = new Map(type.schema.fields.flatMap((field) => [[field.name, field] as const, ...(field.options.renamedFrom ? [[field.options.renamedFrom, field] as const] : [])]));
     const init: Record<string, unknown> = {};
     for (const [name, value] of Object.entries(script.props)) {
       // null 是 Stride 里没有设的引用：用 TS 脚本的默认值（TS 脚本没有这个属性也无所谓）
@@ -75,12 +76,12 @@ export class SceneScriptBinder {
         continue;
       }
       if (field.options.kind !== 'component') {
-        init[name] = resolveValue(value, context);
+        init[field.name] = resolveValue(value, context);
         continue;
       }
       const component = resolveComponent(value, field.options.target!(), context, `${where}: ${script.type}.${name}`, deferMissing);
       if (component === MISSING) return false;
-      init[name] = component;
+      init[field.name] = component;
     }
     (entity.get(type) ? context.extraEntity(entity) : entity).add({ script: type, init });
     return true;

@@ -1,6 +1,6 @@
 /**
  * 粒子的更新器（Stride 的 Updaters）：每帧改活着的粒子。普通的在生成新粒子之前跑，后置的（IsPostUpdater）在之后。
- * 现在有的：力场、重力、按寿命改大小、速度方向、碰撞。
+ * 现在有的：力场、重力、按寿命改大小、颜色、转角，速度方向、碰撞。
  */
 import type { ParticleModuleFile } from '../content/format';
 import { curveSampler, type CurveSampler } from './curves';
@@ -11,6 +11,7 @@ import type { ParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat } from './random';
 
 const ZERO_TOLERANCE = 1e-6;
+const DEGREES = Math.PI / 180;
 
 const vec3 = (file: ParticleModuleFile, key: string, fallback: Vec3): Vec3 => [...value(file, key, fallback)] as Vec3;
 
@@ -109,22 +110,40 @@ export class UpdaterGravity extends ParticleUpdater {
   }
 }
 
+/** 按寿命取曲线的值：有第二条曲线时两条之间按粒子的随机数插值（SizeOverTime、ColorOverTime、RotationOverTime 共用）。 */
+class OverTime {
+  readonly main: CurveSampler | undefined;
+  readonly optional: CurveSampler | undefined;
+  readonly seedOffset: number;
+
+  constructor(file: ParticleModuleFile) {
+    this.main = curveSampler(file['samplerMain'] as ParticleModuleFile | null | undefined);
+    this.optional = curveSampler(file['samplerOptional'] as ParticleModuleFile | null | undefined);
+    this.seedOffset = value(file, 'seedOffset', 0);
+  }
+
+  /** 粒子 i 的值（main 存在时才调用）。 */
+  evaluate(pool: ParticlePool, i: number, age: number): number[] {
+    const main = this.main!.evaluate(age);
+    if (!this.optional) return main;
+    const t = seedFloat(pool.seeds[i]!, RandomOffset.offset1A + this.seedOffset);
+    const optional = this.optional.evaluate(age);
+    return main.map((value, k) => value + (optional[k]! - value) * t);
+  }
+}
+
 /**
  * 按寿命改大小（Stride 的 UpdaterSizeOverTime，后置）：大小 = 世界缩放 · 曲线（走过的寿命）；有第二条曲线时两条之间按粒子
  * 的随机数插值。
  */
 export class UpdaterSizeOverTime extends ParticleUpdater {
   readonly requiredFields: readonly ParticleField[];
-  readonly main: CurveSampler | undefined;
-  readonly optional: CurveSampler | undefined;
-  readonly seedOffset: number;
+  readonly curves: OverTime;
 
   constructor(file: ParticleModuleFile) {
     super(file);
-    this.main = curveSampler(file['samplerMain'] as ParticleModuleFile | null | undefined);
-    this.optional = curveSampler(file['samplerOptional'] as ParticleModuleFile | null | undefined);
-    this.seedOffset = value(file, 'seedOffset', 0);
-    this.requiredFields = this.optional ? ['size', 'randomSeed'] : ['size'];
+    this.curves = new OverTime(file);
+    this.requiredFields = this.curves.optional ? ['size', 'randomSeed'] : ['size'];
   }
 
   override get isPostUpdater(): boolean {
@@ -133,14 +152,56 @@ export class UpdaterSizeOverTime extends ParticleUpdater {
 
   update(_dt: number, pool: ParticlePool): void {
     const size = pool.field('size'), life = pool.field('life');
-    if (!size || !life || !this.main) return;
-    const seeds = pool.seeds, scale = this.worldScale[0];
+    if (!size || !life || !this.curves.main) return;
+    const scale = this.worldScale[0];
+    for (let i = 0; i < pool.living; i++) size[i] = scale * this.curves.evaluate(pool, i, 1 - life[i]!)[0]!;
+  }
+}
+
+/** 按寿命改颜色（Stride 的 UpdaterColorOverTime，后置）：颜色 = 曲线（走过的寿命），存成预乘 alpha 的。 */
+export class UpdaterColorOverTime extends ParticleUpdater {
+  readonly requiredFields: readonly ParticleField[];
+  readonly curves: OverTime;
+
+  constructor(file: ParticleModuleFile) {
+    super(file);
+    this.curves = new OverTime(file);
+    this.requiredFields = this.curves.optional ? ['color', 'randomSeed'] : ['color'];
+  }
+
+  override get isPostUpdater(): boolean {
+    return true;
+  }
+
+  update(_dt: number, pool: ParticlePool): void {
+    const color = pool.field('color'), life = pool.field('life');
+    if (!color || !life || !this.curves.main) return;
     for (let i = 0; i < pool.living; i++) {
-      const age = 1 - life[i]!;
-      let value = this.main.evaluateFloat(age);
-      if (this.optional) value += (this.optional.evaluateFloat(age) - value) * seedFloat(seeds[i]!, RandomOffset.offset1A + this.seedOffset);
-      size[i] = scale * value;
+      const [r, g, b, a] = this.curves.evaluate(pool, i, 1 - life[i]!);
+      color[i * 4] = r! * a!; color[i * 4 + 1] = g! * a!; color[i * 4 + 2] = b! * a!; color[i * 4 + 3] = a!;
     }
+  }
+}
+
+/** 按寿命改转角（Stride 的 UpdaterRotationOverTime，后置）：转角 = 曲线（走过的寿命）的度数。 */
+export class UpdaterRotationOverTime extends ParticleUpdater {
+  readonly requiredFields: readonly ParticleField[];
+  readonly curves: OverTime;
+
+  constructor(file: ParticleModuleFile) {
+    super(file);
+    this.curves = new OverTime(file);
+    this.requiredFields = this.curves.optional ? ['rotation', 'randomSeed'] : ['rotation'];
+  }
+
+  override get isPostUpdater(): boolean {
+    return true;
+  }
+
+  update(_dt: number, pool: ParticlePool): void {
+    const rotation = pool.field('rotation'), life = pool.field('life');
+    if (!rotation || !life || !this.curves.main) return;
+    for (let i = 0; i < pool.living; i++) rotation[i] = this.curves.evaluate(pool, i, 1 - life[i]!)[0]! * DEGREES;
   }
 }
 
@@ -216,6 +277,8 @@ export function createUpdater(file: ParticleModuleFile): ParticleUpdater | undef
     case 'updaterForceField': return new UpdaterForceField(file);
     case 'updaterGravity': return new UpdaterGravity(file);
     case 'updaterSizeOverTime': return new UpdaterSizeOverTime(file);
+    case 'updaterColorOverTime': return new UpdaterColorOverTime(file);
+    case 'updaterRotationOverTime': return new UpdaterRotationOverTime(file);
     case 'updaterSpeedToDirection': return new UpdaterSpeedToDirection(file);
     case 'updaterCollider': return new UpdaterCollider(file);
     default: return undefined;

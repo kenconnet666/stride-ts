@@ -604,8 +604,12 @@ export interface SceneCompositor extends SceneForwardRenderer {
   readonly particlesOverUI?: true;
 }
 
-/** 粒子模块里的值：数字、布尔、字符串（枚举，首字母小写；名字原样）、数组（向量、四元数、颜色）、贴图、嵌套的模块、模块的列表。 */
-export type ParticleValue = number | boolean | string | null | readonly number[] | TextureRef | ParticleModuleFile | readonly ParticleModuleFile[];
+/**
+ * 粒子模块里的值：数字、布尔、字符串（枚举，首字母小写；名字原样）、数组（向量、四元数、颜色）、贴图、对实体（或它的组件）
+ * 的引用、嵌套的模块、模块的列表。
+ */
+export type ParticleValue =
+  | number | boolean | string | null | readonly number[] | TextureRef | { readonly $entity: string } | ParticleModuleFile | readonly ParticleModuleFile[];
 
 /**
  * 粒子系统里的一个对象（Stride 的 ParticleSystemComponent、ParticleSystem、发射器、生成器、初始化器、更新器、形状、材质……）：

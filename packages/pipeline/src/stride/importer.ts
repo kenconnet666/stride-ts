@@ -474,6 +474,7 @@ export class StrideImporter {
       case 'ParticleSystemComponent':
         components.particleSystem = await importParticleSystem(component, where, {
           texture: (id) => this.#textureRef(this.#project.get(id, where)),
+          entity: (id) => context.owners.get(id),
           warn: (message) => this.#warnings.push(message),
         });
         return true;

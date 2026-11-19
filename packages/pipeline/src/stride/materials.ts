@@ -467,7 +467,7 @@ export class MaterialImporter {
 }
 
 /** 材质里的贴图槽：ktx2 是默认，不写 encoding。 */
-export function textureSlot({ texture, encoding, size, srgb }: ImportedTexture, scale: readonly [number, number], offset: readonly [number, number], sampler: TextureSampler): TextureSlot {
+function textureSlot({ texture, encoding, size, srgb }: ImportedTexture, scale: readonly [number, number], offset: readonly [number, number], sampler: TextureSampler): TextureSlot {
   return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb, scale, offset, ...sampler };
 }
 

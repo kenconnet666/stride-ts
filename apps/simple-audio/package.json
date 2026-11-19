@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@stride-ts/engine": "workspace:*",
-    "@stride-ts/native": "^0.26.1"
+    "@stride-ts/native": "^0.27.0"
   },
   "devDependencies": {
     "vite": "^8.3.8"

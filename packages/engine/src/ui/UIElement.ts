@@ -26,7 +26,7 @@ export type Matrix2D = readonly [number, number, number, number, number, number]
 export const IDENTITY: Matrix2D = [1, 0, 0, 1, 0, 0];
 /** 指针在不在元素上（Stride 的 MouseOverState）：在元素本身上、在某个子元素上、不在。 */
 export type MouseOverState = 'none' | 'element' | 'child';
-export const TRANSPARENT: Color = [0, 0, 0, 0];
+const TRANSPARENT: Color = [0, 0, 0, 0];
 const NO_THICKNESS: Thickness = [0, 0, 0, 0];
 
 /** 先做 first 再做 second。 */

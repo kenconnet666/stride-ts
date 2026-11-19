@@ -11,7 +11,7 @@ import type { ParticleModuleFile, ParticleValue, TextureRef } from '@stride-ts/e
 import { lowerFirst, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
 
 /** 运行时认识的模块（Stride 的类名）。 */
-export const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
+const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
   // Stride 的类名就拼错成这样（BoundingSphereStatic 少了个 S）
   'BoundingBoxStatic', 'BoundingSpheretatic',
   'SpawnerPerSecond', 'SpawnerPerFrame', 'SpawnerFromParent', 'SpawnerBurst', 'SpawnerFromDistance',

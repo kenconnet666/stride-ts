@@ -5,7 +5,7 @@
  */
 
 /** 字段名和每个粒子占几个数（Stride 的 ParticleFields；Color 即 Stride 的 RGBA、Color4）。 */
-export const PARTICLE_FIELDS = {
+const PARTICLE_FIELDS = {
   life: 1,
   randomSeed: 1,
   position: 3,

@@ -47,11 +47,6 @@ export class TouchEventArgs extends RoutedEventArgs {
   worldTranslation: readonly [number, number] = [0, 0];
 }
 
-/** 按键事件（Stride 的 KeyEventArgs）：key 是 KeyboardEvent.code。 */
-export class KeyEventArgs extends RoutedEventArgs {
-  key = '';
-}
-
 export type RoutedEventHandler<A extends RoutedEventArgs> = (sender: UIElement, args: A) => void;
 
 interface HandlerInfo {

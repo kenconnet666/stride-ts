@@ -23,7 +23,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('entities', 'List entities. args: name (substring), with (component or script name), limit (default 200).', (args) => entities(game, args));
   debug.command('inspect', 'All component values and script properties of one entity. args: entity (id or name).', (args) => inspect(game, entityArg(game, args)));
   debug.command('set', "Set a component field or script property. args: entity, path ('Component.field' or 'Script.prop', optionally '.x'), value.", (args) => set(game, args));
-  debug.command('time', 'Pause, resume, step frames, time scale, fixed time step. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear).', (args) => time(game, args));
+  debug.command('time', 'Pause, resume, step frames, time scale, fixed time step, set the game clock. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear), total (seconds).', (args) => time(game, args));
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64.', () => screenshot(debug, game));
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
@@ -158,6 +158,8 @@ function time(game: Game, args: Args): unknown {
   if (args['resume'] === true) game.paused = false;
   if (typeof args['timeScale'] === 'number') game.timeScale = args['timeScale'];
   if ('fixedTimeStep' in args) game.fixedTimeStep = typeof args['fixedTimeStep'] === 'number' ? args['fixedTimeStep'] : undefined;
+  // 把游戏时钟拨到这个秒数（比对截图：按时间动的着色器两边在同一个时间截）
+  if (typeof args['total'] === 'number') game.updateTime.total = args['total'];
   if (typeof args['step'] === 'number') {
     if (!game.paused) throw new Error('step needs a paused game: pause first');
     game.step(args['step']);

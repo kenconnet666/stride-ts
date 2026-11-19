@@ -30,7 +30,7 @@ Game
   entities [--name <text>] [--with <Component|Script>] [--limit 200]
   inspect <entity>        all component values and script properties (entity: id or name)
   set <entity> <Component.field[.x]> <json value>
-  pause | resume | step [frames] | time [--scale <x>] [--fixed <seconds>|off]
+  pause | resume | step [frames] | time [--scale <x>] [--fixed <seconds>|off] [--total <seconds>]
   key <code> [--hold <ms> | --down | --up]          KeyboardEvent.code or Stride key name: KeyW or W, ArrowLeft or Left
   mouse move <dx> <dy> | mouse <left|middle|right> [--hold <ms> | --down | --up] [--trusted]
                                                     --trusted: a real click at the canvas center through the DevTools
@@ -81,6 +81,7 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     'no-gpu': { type: 'boolean' },
     scale: { type: 'string' },
     fixed: { type: 'string' },
+    total: { type: 'string' },
     max: { type: 'string' },
     mask: { type: 'string' },
     follow: { type: 'boolean', short: 'f' },
@@ -247,6 +248,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   time: () => call('time', {
     ...(options.scale ? { timeScale: Number(options.scale) } : {}),
     ...(options.fixed ? { fixedTimeStep: options.fixed === 'off' ? null : Number(options.fixed) } : {}),
+    ...(options.total ? { total: Number(options.total) } : {}),
   }),
   key: () => call('input', { key: required(rest[0], 'key code'), ...pressAction() }, Number(options.hold ?? 0)),
   mouse() {

@@ -24,7 +24,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `status` | 状态、帧号、游戏时间、帧率、画布、GPU 适配器、计数器、观察项 |
 | `entities [--name x] [--with C]`、`inspect <实体>` | 列实体；看某个实体的所有组件值和脚本属性。实体写 id 或名字 |
 | `set <实体> <组件.字段> <JSON>` | 改组件字段或脚本属性，例如 `set PlayerCharacter Character.speed 20` |
-| `pause`、`resume`、`step [n]`、`time --scale 0.5 --fixed 0.016` | 暂停（只画不更新）、单步、时间倍率、固定步长（复现用） |
+| `pause`、`resume`、`step [n]`、`time --scale 0.5 --fixed 0.016 --total 2` | 暂停（只画不更新）、单步、时间倍率、固定步长（复现用）、把游戏时钟拨到某个秒数（按时间动的着色器比对截图用） |
 | `key KeyW --hold 1000`、`mouse move 100 0`、`mouse left` | 模拟输入（合成 DOM 事件，走 InputManager 的正常路径；拿不到指针锁定） |
 | `mouse left --trusted` | 用 DevTools 协议在画布中央真实地按一下：算用户操作，页面能锁定指针；锁定后 `mouse move` 的移动量照常进 `mouseDelta`。要 DevTools 协议的命令，页面所在的 Chrome 装着调试桥扩展（[tools/debug-bridge](../../tools/debug-bridge/README.md)）时经它，否则要 stride open 启动的 Chrome |
 | `cpu-profile [--seconds 5] [--out p.json] [--callers <正则>]` | 录一段 CPU 采样（Tracing 的 v8.cpu_profiler，0.1 ms），按类别、函数给每帧的自身和包含时间；`--callers` 列某些函数的调用链。同上，经调试桥扩展或 stride open 的 Chrome |

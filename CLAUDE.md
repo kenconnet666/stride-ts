@@ -12,7 +12,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - [docs/vector-assets.md](docs/vector-assets.md)：资源尽量矢量化（用户 2026-11-19 的方向）的格式讨论稿：2D 矢量图、材质图、几何、地形各用什么格式，要用户定的问题，几何实验的设计和结果。
 - [docs/roadmap.md](docs/roadmap.md)：路线图（范围、原则、阶段、取舍）和末尾的"进度"；执行中自己做的决定记在 [docs/decisions.md](docs/decisions.md)，已完成各项的过程在 [docs/progress-log.md](docs/progress-log.md)。
 
-现状（2026-11-20：P1、P2 完成；P3 编辑器里和界面框架无关的部分做完，界面用 Vue 加 vue-tsx-pro（用户定了），还没做；P4 的底座在做。进度、下一步、等用户定的事见 docs/roadmap.md 末尾的"进度"，只留结论，各项的过程和验收表在 docs/progress-log.md）：
+现状（2026-11-20：P1、P2 完成；P3 编辑器的界面骨架做了（Vue 加 vue-tsx-pro），接着做场景树和资源浏览器的操作、预制体；P4 的底座在做。进度、下一步、等用户定的事见 docs/roadmap.md 末尾的"进度"，只留结论，各项的过程和验收表在 docs/progress-log.md）：
 
 - **仓库**：pnpm monorepo（见 README.md 的"开发"），`main` 分支，远程 `origin` 是公开仓库 `kenconnet666/stride-ts`（2026-11-18 建，MIT 许可证）。提交并验证后直接推送到 origin，不用先问（用户 2026-11-18）；fork 同样直接推 origin，但永远不推上游 jrouwe。
 - **引擎核心**：`Game` 循环、`GraphicsDevice`、实体核心（`prop`、数据组件和列存储、系统、脚本、按模块路径登记，见 docs/architecture.md 的"实现状态"），实体克隆（`entity.clone()`）和所在的场景（`entity.scene`）；开发时有热重载（`Game.hotEntry`）；`Transform` 的数据在 stride-native 的变换存储里（层级传播、物理写回，见"共享内存的数据模型"）。
@@ -23,7 +23,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - **动画**（`animation/`）：`AnimationComponent`、`game.animation`，ozz 在原生侧并行求值，GPU 蒙皮；形变目标（`animation/morphs.ts`：`game.animation.morphs(entity)`，剪辑里的权重曲线，顶点着色器里形变）；用代码建的属性曲线（`animation/curves.ts`：`AnimationClip.fromCurves`、`propertyCurve`，驱动数据组件的属性）。
 - **文字和 UI**：矢量文字（`rendering/text`：字形轮廓按 Slug 逐像素算覆盖率，`SpriteBatch`）；UI 系统（`ui/`：.sduipage、.sduilib 导入，Stride 的布局、控件、路由事件，`game.ui` 在场景之后画全屏 UI 和放在 3D 里的 UI（和场景比深度），UI 占着的输入对脚本藏起来（`input/capture.ts`），EditText 用隐藏的 DOM 输入框编辑，实体可以跟着 UI 元素走（`UIElementLink`）；文字的描边按到轮廓的距离画；键盘事件发给 `game.ui.focusedElement`；影子 DOM `game.ui.semantics` 把全屏 UI 的文字和控件同步成透明的 DOM 节点，读屏、Tab 键、查找、复制用）；屏幕上的调试文字（`game.debugText`，CSS 像素，按游戏设置的设计分辨率摆）。
 - **粒子和声音**：粒子（`particles/`：照 Stride 在 CPU 上模拟，生成器、初始化器、力场，Billboard/Quad/Hexagon、飘带和翻页）；声音（`audio/`：Web Audio，`game.audio`、Sound、SoundInstance，源文件原样用；`AudioEmitterComponent`、`AudioListenerComponent` 按实体的位置空间化）。
-- **编辑器**（P3；界面用 Vue 加 vue-tsx-pro（用户 2026-11-20 定），还没做；资源之间按路径引用）：
+- **编辑器**（P3；界面用 Vue 加 vue-tsx-pro（用户 2026-11-20 定），骨架做了：样例 `pnpm dev` 以后开 `/__stride/editor/`；资源之间按路径引用，移动、删除时改写引用它的文件）：
   - 引擎里的那一半（`editor/`）：场景文档 `SceneDocument`（场景文件是真相，修改、撤销重做）和 `LiveScene`（实体跟着文档，只重建变了的组件）；游戏页面带 `?stride-edit` 打开就是编辑状态（`game.editing`：不挂脚本、仿真不走），页面里的代理 `game.editor`（`EditAgent`：编辑相机、点选、选中的框、操纵器 `TransformGizmo`）；属性面板的字段描述 `editor/fields.ts`（`checkEntity` 照描述检查）。试玩是不带 `?stride-edit` 重新打开页面。
   - 后端（`packages/editor`，说明见它的 README）：Vite 插件 `strideEditor`（`strideApp` 带着），工程清单（可以没有）、资源数据库、保存接口、按内容目录生成 `src/assets.gen.ts`（`content.load(assets.prefabs.…)`）；前端的封装 `EditorClient`。
 - **P4 的底座**（docs/decisions.md 2026-11-20 的三条）：统计量和预算（`game.metrics`、`stride metrics`，显存和管线在设备上记账，每个样例的基线在 `tools/budgets.json`）；模型的管线在加载场景、预制体时后台编好（`MeshRenderFeature.warm`）；渲染图（`rendering/graph/`）：前向渲染器的一帧（阴影、渲染目标贴图的相机、主画面、后处理）都是它的通道，`ForwardRenderer.draw` 里录完当场执行；阴影图集按用到的大小建。画质档位（`rendering/Quality.ts`，`stride quality`）：低、中、高、极高，是内容要的阴影和后处理的上限。

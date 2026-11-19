@@ -14,7 +14,9 @@
  */
 import type { AssetKind, AssetReference } from '@stride-ts/engine/content-references';
 
-export const EDITOR_API_PATH = '/__stride/editor';
+export const EDITOR_API_PATH = '/__stride/editor/api';
+/** 编辑器的页面（server/vite.ts）：应用的开发服务器上的这个地址。 */
+export const EDITOR_UI_PATH = '/__stride/editor/';
 export const EDITOR_ASSETS_EVENT = 'stride:assets';
 
 /** 工程清单（工程根目录下的 PROJECT_FILE）；文件可以没有，这时都用默认值。 */

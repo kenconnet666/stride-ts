@@ -17,7 +17,10 @@
     "skipLibCheck": true,
     "noEmit": true,
     // packages/pipeline 在 Node 里直接运行 .ts，相对导入要写扩展名
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // 编辑器的界面（packages/editor/src/ui）用 Vue 加 vue-tsx-pro 写 TSX；别处没有 .tsx
+    "jsx": "preserve",
+    "jsxImportSource": "@zerodep-dev/vue-tsx-pro-tsx"
   },
   "include": ["packages/*/src", "packages/*/test", "packages/*/experiments", "apps/*/src", "apps/*/scripts", "apps/*/vite.config.ts", "tools/*.ts", "vitest.config.ts"]
 }

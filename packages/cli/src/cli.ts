@@ -203,6 +203,15 @@ function formatLog(entry: HubLogEntry): string {
   return `[${entry.seq}] ${time}${frame} p${entry.page} ${entry.level} ${entry.source}: ${entry.message}${data}`;
 }
 
+/**
+ * 打开这个地址以后，连上来的游戏页面的地址以什么开头。编辑器的页面（`/__stride/editor/`）自己不是游戏，游戏是嵌在里面的
+ * 同源 iframe（地址是应用的根加 `?debug&stride-edit`），所以只认同源。
+ */
+function gamePagePrefix(url: string): string {
+  const parsed = new URL(url);
+  return parsed.pathname.startsWith('/__stride/editor') ? `${parsed.origin}/` : url.replace(/\/$/, '');
+}
+
 /** 等到有页面连上、游戏在运行（或失败）；urlPrefix 给了时只认这个地址的页面。 */
 async function waitForGame(seconds: number, urlPrefix?: string): Promise<unknown> {
   const deadline = Date.now() + seconds * 1000;
@@ -235,7 +244,7 @@ const commands: Record<string, () => Promise<unknown>> = {
       ...(options.dpr ? { dpr: Number(options.dpr) } : {}),
       ...(options['chrome-arg'] ? { chromeArgs: options['chrome-arg'] } : {}),
     });
-    return { browser, game: await waitForGame(Number(options.timeout ?? 60), url.replace(/\/$/, '')) };
+    return { browser, game: await waitForGame(Number(options.timeout ?? 60), gamePagePrefix(url)) };
   },
   async close() {
     return { closed: await closeBrowser() };

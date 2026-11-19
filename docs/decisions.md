@@ -2,6 +2,18 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 编辑器的页面：挂在应用的开发服务器上，第二个 Vite 按需建
+
+用户定了 Vue 加 vue-tsx-pro 以后做的界面骨架（`packages/editor/src/ui`）。
+
+- **地址**：任何一个样例 `pnpm dev` 以后，开 `/__stride/editor/` 就是它的编辑器（后端的接口挪到 `/__stride/editor/api/`）。不另起服务器、不另开端口。
+- **界面由第二个 Vite 服务器提供**（中间件模式，`server/vite.ts`）：vue-tsx-pro 的编译插件会改 Vite 的全局设置（`.ts` 只交给 oxc 去类型、JSX 交给它），还要过每个脚本文件；挂进应用自己的 Vite 就是每个游戏页面的引擎源码都多过一遍。第二个服务器只管 `src/ui`，第一次有人打开编辑器时才建，不开编辑器时一点开销也没有。它的 HMR 用应用的 HTTP 服务器（Vite 按 WebSocket 的路径分，`/__stride/editor/` 和应用的 `/` 不冲突）；后端推的资源变化两边都发。
+- **同源**：编辑器的页面和嵌在 iframe 里的游戏页面在同一个源，界面直接拿 iframe 里的 `strideGame.editor`（EditAgent）把场景文档交给它，不用另做消息协议。编辑器的页面也带上应用的跨源隔离头（游戏的原生模块要 SharedArrayBuffer，iframe 里的页面要跨源隔离，外面的页面也得是）。
+- **状态**：`EditorSession`（`ui/session.ts`）拿着场景文档和撤销栈（引擎的 `SceneDocument`、`UndoStack`，只引这两个纯数据的文件：引擎加了 `./editor-document`、`./editor-fields` 两个导出，界面不把整个引擎带进来）、选中的实体、游戏页面里的代理。它自己实现 `EditableScene`，所以视口里拖操纵器的修改也经过它，面板跟着刷新。Vue 的响应式只包在这一层（文档每改一次 version 加一）。
+- **属性面板照字段描述画**（`FieldEditor.tsx`）：数、开关、文字、枚举、向量、旋转、颜色、资源、实体、列表、对象、联合、原样的 JSON 各一种控件；同一处连着改（拖数字、打字）并成撤销的一步，失去焦点结束。旋转按欧拉角显示，顺序同 Stride（先绕 Z、再绕 X、再绕 Y，`Quaternion.RotationYawPitchRoll`），万向锁时 roll 并进 yaw；颜色按取色器的 sRGB 显示、按文件里的色彩空间存。
+- **试玩**：照原来的决定，是不带 `stride-edit` 重新打开游戏页面，读的是磁盘上的文件，所以改过没存的先保存。（和 Stride 不同：Stride 试玩前要构建整个游戏；我们重新加载页面就行。）
+- 骨架里还没做的：场景树里拖动换父实体、加删实体和组件、资源字段的选择器（现在手写路径）、多选一起改、资源浏览器里的移动和删除、预制体。
+
 ## 2026-11-20 资源的移动、改名、删除：改写引用它的文件
 
 用户定了资源之间按路径引用以后做的（编辑器后端的 `moveAssets`、`deleteAsset`，接口 `POST /move`、`DELETE /asset`，命令行 `stride-editor move`、`move-folder`、`delete`）。

@@ -1,6 +1,21 @@
 # @stride-ts/editor
 
-编辑器。现在只有 Node 后端和前端调它的封装；界面（场景树、属性面板、资源浏览器）还没做。
+编辑器：Node 后端（挂在应用的开发服务器上）和界面（Vue 加 vue-tsx-pro）。任何一个样例 `pnpm dev` 以后，打开开发服务器上的 `/__stride/editor/` 就是它的编辑器，比如：
+
+```bash
+pnpm --filter @stride-ts/platformer dev
+```
+
+然后打开 `http://localhost:5184/__stride/editor/`。
+
+## 界面
+
+`src/ui`：工具条（保存、撤销、重做、试玩），左边场景树，中间视口（游戏页面本身，嵌在同源的 iframe 里，地址带 `?debug&stride-edit`），右边属性面板，下面资源浏览器。界面由第二个 Vite 服务器提供，第一次打开编辑器时才建（见 `src/server/vite.ts`），游戏页面不经过它。
+
+- 场景文档和撤销栈在界面这边（`ui/session.ts`），游戏页面里的实体跟着它；视口里拖操纵器、属性面板里改的，都是对文档的修改。
+- 属性面板照引擎的字段描述（`editor/fields.ts`）画控件；脚本的字段问游戏页面（它有脚本的类）。
+- 快捷键：Ctrl+S 保存，Ctrl+Z / Ctrl+Y 撤销重做（焦点在视口里也行）；视口里 W、E、R 换操纵器，F 聚焦。
+- 试玩是不带 `stride-edit` 重新打开游戏页面（先保存）。
 
 ## 后端
 
@@ -20,7 +35,7 @@ export default defineConfig({ plugins: [strideEditor()] });
 - **内容目录就是资源的真相**：编辑器编辑的就是运行时加载的那些 JSON（场景、预制体、材质、UI……），保存就是写回这些文件；模型、贴图这些二进制由导入器产出。
 - **资源数据库**（`AssetDatabase`）：启动时扫一遍内容目录，之后只重读变了的文件（文件变化用 Vite 自己的监视器）。每个资源记着它的文件、大小、引用了谁（和运行时加载场景时去读哪些文件是同一份逻辑，引擎的 `content/references.ts`），可以反过来查谁引用了它、哪些引用指向不存在的资源。
 - **移动、改名、删除**（`moveAssets`、`deleteAsset`）：资源之间按内容路径引用，挪一个资源时引用它的文件里的那几处一起改写（位置由引擎的 `assetReferenceSlots` 找，模型、动画的二进制文件头也改），字体连着字形块、声音连着同名的音频文件一起挪，可以整个文件夹挪。删的时候还有别的资源引用它就不删，除非 `force`。
-- **接口**（`src/protocol.ts`）：`/__stride/editor/` 下的 `GET project`、`GET assets`、`GET asset`、`PUT asset`、`DELETE asset`、`POST move`；资源变了经 Vite 的 HMR 通道推送 `stride:assets`。只认本机同源页面发的、带 `x-stride-editor` 头的请求。前端用 `EditorClient`（`@stride-ts/editor/client`）。
+- **接口**（`src/protocol.ts`）：`/__stride/editor/api/` 下的 `GET project`、`GET assets`、`GET asset`、`PUT asset`、`DELETE asset`、`POST move`；资源变了经 Vite 的 HMR 通道推送 `stride:assets`。只认本机同源页面发的、带 `x-stride-editor` 头的请求。前端用 `EditorClient`（`@stride-ts/editor/client`）。
 - **资源句柄**：按内容目录生成 `src/assets.gen.ts`（不提交），资源改名、删掉以后引用它的代码在类型检查时报错：
 
   ```ts

@@ -8,6 +8,8 @@
     "./content-format": "./src/content/format.ts",
     "./content-references": "./src/content/references.ts",
     "./debug-protocol": "./src/debug/protocol.ts",
+    "./editor-document": "./src/editor/SceneDocument.ts",
+    "./editor-fields": "./src/editor/fields.ts",
     "./math": "./src/mathematics/Matrix.ts"
   },
   "dependencies": {

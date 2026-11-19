@@ -9,7 +9,7 @@
  * 沿边搜索的步长表来自原着色器的各个预设（FXAA_QUALITY__P0..Pn）。原着色器按预设在编译期展开成嵌套的 if，这里也按预设
  * 生成展开的着色器（写成运行时的循环、按下标取步长时，TPP 上 FXAA 这一遍 0.62 ms，展开后 0.52 ms）。
  */
-import { FullscreenShader, type EffectFrame, type UniformArena } from './ImageEffect';
+import { FullscreenShader, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 
 /** 预设号到沿边搜索的步长（FXAA 3.11 的 FXAA_QUALITY__PRESET 表）。 */
 const PRESET_STEPS: Readonly<Record<number, readonly number[]>> = {
@@ -211,7 +211,7 @@ export class Fxaa {
   }
 
   /** 在 HDR 画面上做 FXAA：input 被改写（结果写回它），中间的压缩画面从池里借。 */
-  drawHdr(frame: EffectFrame, arena: UniformArena, input: GPUTexture): GPUTexture {
+  drawHdr(frame: EffectFrame, arena: UniformArena, input: Image): Image {
     const preset = this.preset;
     let fxaa = this.#fxaa.get(preset);
     if (!fxaa) {

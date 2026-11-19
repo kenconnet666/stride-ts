@@ -14,9 +14,7 @@ import { Bloom } from './Bloom';
 import { BrightFilter } from './BrightFilter';
 import { Fxaa } from './Fxaa';
 import { GaussianBlur } from './GaussianBlur';
-import { GraphTexturePool } from '../graph/GraphTexturePool';
-import { RenderGraph } from '../graph/RenderGraph';
-import { EffectFrame, UniformArena, type Image, type ImageEffectContext } from './ImageEffect';
+import { isGraphTexture, UniformArena, type EffectFrame, type Image, type ImageEffectContext } from './ImageEffect';
 import { ImageScaler } from './ImageScaler';
 import { LensFlare } from './LensFlare';
 import { LightStreak } from './LightStreak';
@@ -30,9 +28,6 @@ export class PostProcessingEffects {
   readonly lensFlare: LensFlare;
   readonly antialiasing: Fxaa;
   readonly toneMap: ToneMap;
-  /** 这一帧的后处理通道和临时目标（见 EffectFrame）；临时目标的贴图跨帧留在池里。 */
-  readonly #pool: GraphTexturePool;
-  readonly #graph: RenderGraph;
   readonly #arena: UniformArena;
   readonly #scaler: ImageScaler;
   readonly #blur: GaussianBlur;
@@ -45,8 +40,6 @@ export class PostProcessingEffects {
     this.lensFlare = new LensFlare(device, linearClamp);
     this.antialiasing = new Fxaa(device, linearClamp);
     this.toneMap = new ToneMap(device, linearClamp);
-    this.#pool = new GraphTexturePool(device);
-    this.#graph = new RenderGraph(this.#pool);
     this.#arena = new UniformArena(device);
     this.#scaler = new ImageScaler(device, linearClamp);
     this.#blur = new GaussianBlur(device, linearClamp);
@@ -64,8 +57,11 @@ export class PostProcessingEffects {
     this.antialiasing.enabled = settings.antialiasing;
   }
 
-  /** input 是 HDR 画面（rgba16float），结果写进 output；elapsed 是这一帧的秒数。 */
-  draw(encoder: GPUCommandEncoder, input: GPUTexture, output: GPUTextureView, outputFormat: GPUTextureFormat, elapsed: number): void {
+  /**
+   * 往这一帧的渲染图里加后处理的通道：input 是 HDR 画面（rgba16float；这一帧的临时贴图，或者一张真的贴图），结果写进
+   * output；elapsed 是这一帧的秒数。调用方执行完渲染图以后要调 flush（uniform 的参数那时才写进 GPU）。
+   */
+  record(frame: EffectFrame, input: Image, output: GPUTextureView, outputFormat: GPUTextureFormat, elapsed: number): void {
     this.#arena.reset();
     // GPU 耗时按效果分组（GpuProfiler 打开时）
     const profiler = GpuProfiler.of(this.#device);
@@ -74,13 +70,13 @@ export class PostProcessingEffects {
     };
     if (!this.enabled) {
       scope('Copy');
-      this.#scaler.copy(encoder, this.#arena, input, output, outputFormat);
+      frame.pass('Copy', (pass) => {
+        if (isGraphTexture(input)) pass.read(input);
+        pass.sideEffect();
+      }, (real) => this.#scaler.copy(frame.encoder, this.#arena, isGraphTexture(input) ? real.texture(input) : input, output, outputFormat));
       scope('');
-      this.#arena.flush();
       return;
     }
-    this.#graph.beginFrame();
-    const frame = new EffectFrame(encoder, this.#graph, profiler ?? undefined);
     scope('FXAA');
     const current = this.antialiasing.enabled ? this.antialiasing.drawHdr(frame, this.#arena, input) : input;
     scope('ToneMap');
@@ -109,17 +105,16 @@ export class PostProcessingEffects {
     }
     scope('ToneMap');
     this.toneMap.draw(frame, this.#arena, current, layers, output, outputFormat);
-    // 都录好了：跑（没人用的中间结果不算，临时目标轮着用），闲了太久的贴图还给系统
-    this.#graph.execute();
-    this.#pool.endFrame();
     scope('');
-    // 参数在提交之前一次写进 GPU
+  }
+
+  /** 这一帧录的通道执行完以后调：uniform 的参数在提交之前一次写进 GPU。 */
+  flush(): void {
     this.#arena.flush();
   }
 
   destroy(): void {
     this.toneMap.destroy();
-    this.#pool.destroy();
     this.#arena.destroy();
   }
 }

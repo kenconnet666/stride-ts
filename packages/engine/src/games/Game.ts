@@ -290,6 +290,9 @@ export class Game {
     const featureTotal = (key: string) => this.renderSystem.features.reduce((sum, feature) => sum + (feature.stats()[key] ?? 0), 0);
     metrics.gauge('render.drawCalls', 'count', () => featureTotal('drawCalls'));
     metrics.gauge('render.instances', 'count', () => featureTotal('drawnInstances'));
+    // 渲染图上一帧跑了几个通道、临时贴图实际占了几张
+    metrics.gauge('render.passes', 'count', () => this.graphicsCompositor.graphStats.passes.length);
+    metrics.gauge('render.targets', 'count', () => this.graphicsCompositor.graphStats.physicalTextures);
     // 管线：当场建的（着色器的编译堵住那一帧）和后台预热的各几条；预热到位的话前者在加载完以后不再涨
     metrics.gauge('gpu.pipelines.sync', 'count', () => this.graphicsDevice.pipelines.sync);
     metrics.gauge('gpu.pipelines.warmed', 'count', () => this.graphicsDevice.pipelines.warmed);

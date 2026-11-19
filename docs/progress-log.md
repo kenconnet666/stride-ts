@@ -270,5 +270,6 @@ docs/roadmap.md 的"进度"只留结论；这里是已完成各项的过程记�
 3. **渲染图**：`rendering/graph/RenderGraph.ts`、`GraphTexturePool.ts`；后处理的各效果改成往图里加通道。
    - 显存按标签分（`graphicsDevice.memory.groups()`，TPP 改之前）：阴影图集 64 MB、主画面 10.5 MB、后处理的中间贴图合计 33.8 MB（亮部 8.8、FXAA 7、光芒 6.2、镜头光晕 5.3、模糊 4、缩放 1.8……）。
    - 改之后（编辑状态、等画面稳定）：TPP、FirstPersonShooter 的截图和改之前逐像素相同；后处理的中间贴图 18 MB，贴图总量 118.9 → 103.1 MB、122.2 → 106.4 MB。
+   - 前向渲染器的一帧也接上以后：TPP 一帧 27 个通道、24 张临时贴图占 15 张真的；TPP、FirstPersonShooter、AnimatedModel、SpaceEscape 的截图逐像素相同，贴图总量不变（HDR 颜色缓冲从单独留着变成池里的）。
 4. **阴影图集按用到的大小建**：TPP、FirstPersonShooter 用的是四个 xlarge 的级联，图集照旧 4096²、截图逐像素相同；BepuSample 的图集 64 → 16 MB（贴图总量 119.8 → 55.9 MB），CSharpBeginner 184.8 → 111.3 MB。预算的基线跟着重记。
 

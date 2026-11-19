@@ -50,7 +50,7 @@ export function prefilterLayers({ frame, arena, scaler }: ImageEffectContext, la
 }
 
 /** additiveLayersShader 的绑定资源；空着的槽位绑 fallback（不会采样）。 */
-export function additiveLayerResources(arena: UniformArena, layers: readonly AdditiveLayer[], fallback: GPUTexture, sampler: GPUSampler): [GPUBufferBinding, ...Image[], GPUSampler] {
+export function additiveLayerResources(arena: UniformArena, layers: readonly AdditiveLayer[], fallback: Image, sampler: GPUSampler): [GPUBufferBinding, ...Image[], GPUSampler] {
   if (layers.length > MAX_ADDITIVE_LAYERS) throw new RangeError(`At most ${MAX_ADDITIVE_LAYERS} additive layers are supported, got ${layers.length}`);
   const parameters = new Float32Array(MAX_ADDITIVE_LAYERS * 8);
   layers.forEach(({ expanded, color = [1, 1, 1, 1] }, i) => {

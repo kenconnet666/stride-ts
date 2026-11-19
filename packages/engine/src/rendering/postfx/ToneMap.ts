@@ -12,7 +12,7 @@
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../fullscreen';
 import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
-import { isGraphTexture, type EffectFrame, type UniformArena } from './ImageEffect';
+import { isGraphTexture, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 
 const LUMINANCE_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
@@ -75,11 +75,12 @@ fn hejl2(color: vec3f, whitePoint: f32) -> vec3f {
   return vec4f(hejl2(color * exposure, settings.whitePoint), 1.0);
 }`;
 
-/** 跟着输入纹理的资源：对数亮度图（带到 1x1 的 mip 链）和每一级的绑定组。 */
+/** 跟着输入尺寸的资源：对数亮度图（带到 1x1 的 mip 链）和每一级读上一级的绑定组（第 0 级读输入，不在这里）。 */
 interface LuminanceTargets {
-  readonly input: GPUTexture;
+  readonly width: number;
+  readonly height: number;
   readonly luminance: GPUTexture;
-  readonly bindGroups: readonly GPUBindGroup[];
+  readonly bindGroups: readonly (GPUBindGroup | undefined)[];
 }
 
 export class ToneMap {
@@ -109,6 +110,7 @@ export class ToneMap {
   #current = 0;
   #reset = true;
   #targets: LuminanceTargets | undefined;
+  readonly #sourceGroups = new WeakMap<GPUTexture, GPUBindGroup>();
   /** measure 写好的适应亮度，draw 读它。 */
   #measured: GPUTexture | undefined;
 
@@ -133,7 +135,7 @@ export class ToneMap {
   }
 
   /** 量 input（rgba16float 的 HDR 画面）的平均亮度并做时间上的适应；elapsed 是这一帧的秒数。 */
-  measure(frame: EffectFrame, input: GPUTexture, elapsed: number): void {
+  measure(frame: EffectFrame, input: Image, elapsed: number): void {
     this.#device.queue.writeBuffer(this.#settings, 0, new Float32Array([this.keyValue, 2 ** this.exposure, this.autoKeyValue ? 1 : 0, this.autoExposure ? 1 : 0, this.whitePoint, this.enabled ? 1 : 0]));
     // 关掉时 draw 照样绑一张适应亮度（着色器不读它）；重新打开时从当前亮度开始适应
     if (!this.enabled) {
@@ -141,7 +143,7 @@ export class ToneMap {
       this.#reset = true;
       return;
     }
-    const targets = this.#targetsFor(input);
+    const targets = this.#targetsFor(input.width, input.height);
     const factor = this.temporalAdaptation ? 1 - Math.exp(-elapsed * this.adaptationRate) : 1;
     this.#device.queue.writeBuffer(this.#adaptUniform, 0, new Float32Array([factor, this.#reset || !this.temporalAdaptation ? 1 : 0]));
     this.#reset = false;
@@ -152,11 +154,15 @@ export class ToneMap {
     this.#current = 1 - this.#current;
     this.#measured = next;
     // 写的是自己留到下一帧的贴图（亮度的 mip 链、适应后的亮度），渲染图看不见：算副作用
-    frame.pass('ToneMap measure', (pass) => pass.sideEffect(), () => {
+    frame.pass('ToneMap measure', (pass) => {
+      if (isGraphTexture(input)) pass.read(input);
+      pass.sideEffect();
+    }, (real) => {
       const { encoder } = frame;
-      // 对数亮度和 2x2 平均链
+      // 对数亮度和 2x2 平均链；第一级读输入
+      const source = this.#sourceGroup(isGraphTexture(input) ? real.texture(input) : input);
       for (let level = 0; level < levels; level++) {
-        this.#fullscreen(encoder, level === 0 ? this.#pipelines.luminance : this.#pipelines.downscale, targets.bindGroups[level]!, targets.luminance.createView({ baseMipLevel: level, mipLevelCount: 1 }));
+        this.#fullscreen(encoder, level === 0 ? this.#pipelines.luminance : this.#pipelines.downscale, level === 0 ? source : targets.bindGroups[level]!, targets.luminance.createView({ baseMipLevel: level, mipLevelCount: 1 }));
       }
       this.#fullscreen(encoder, this.#pipelines.adapt, this.#device.createBindGroup({
         layout: this.#pipelines.adapt.getBindGroupLayout(0),
@@ -170,25 +176,27 @@ export class ToneMap {
   }
 
   /** 按 measure 量出的亮度把 input 加上 layers（已经 prefilterLayers 过）映射后画进 output。 */
-  draw(frame: EffectFrame, arena: UniformArena, input: GPUTexture, layers: readonly AdditiveLayer[], output: GPUTextureView, outputFormat: GPUTextureFormat): void {
+  draw(frame: EffectFrame, arena: UniformArena, input: Image, layers: readonly AdditiveLayer[], output: GPUTextureView, outputFormat: GPUTextureFormat): void {
     const adapted = this.#measured;
     if (!adapted) throw new Error("ToneMap.draw: call measure first in the frame");
     const tonemap = this.#tonemapPipeline(outputFormat);
     const layerResources = additiveLayerResources(arena, layers, input, this.#sampler);
     frame.pass('ToneMap', (pass) => {
-      // 叠加的各层是这一帧的临时目标；输出在渲染图外面
+      // 输入和叠加的各层可以是这一帧的临时贴图；输出在渲染图外面
+      if (isGraphTexture(input)) pass.read(input);
       for (const resource of layerResources) if (isGraphTexture(resource)) pass.read(resource);
       pass.sideEffect();
     }, (real) => {
+      const actual = <T extends object>(resource: T) => (isGraphTexture(resource) ? real.texture(resource) : resource);
       this.#fullscreen(frame.encoder, tonemap, this.#device.createBindGroup({
         layout: tonemap.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: this.#settings } },
-          { binding: 1, resource: input.createView() },
+          { binding: 1, resource: (actual(input) as GPUTexture).createView() },
           { binding: 2, resource: adapted.createView() },
           ...layerResources.map((resource, i) => {
-            const actual = isGraphTexture(resource) ? real.texture(resource) : resource;
-            return { binding: 3 + i, resource: actual instanceof GPUTexture ? actual.createView() : actual };
+            const item = actual(resource);
+            return { binding: 3 + i, resource: item instanceof GPUTexture ? item.createView() : item as GPUSampler | GPUBufferBinding };
           }),
         ],
       }), output);
@@ -229,15 +237,16 @@ export class ToneMap {
     return this.#pipelines.tonemap;
   }
 
-  /** 亮度图和各级的绑定组跟着输入纹理（画布尺寸变了就是新的）重建。 */
-  #targetsFor(input: GPUTexture): LuminanceTargets {
-    if (this.#targets?.input === input) return this.#targets;
+  /** 亮度图和它各级之间的绑定组跟着输入的尺寸（画布尺寸变了）重建。 */
+  #targetsFor(width: number, height: number): LuminanceTargets {
+    if (this.#targets?.width === width && this.#targets.height === height) return this.#targets;
     this.#targets?.luminance.destroy();
     const nextPow2 = (n: number) => 2 ** Math.ceil(Math.log2(Math.max(1, n)));
-    const size = Math.max(1, Math.min(nextPow2(input.width), nextPow2(input.height)) / 2);
+    const size = Math.max(1, Math.min(nextPow2(width), nextPow2(height)) / 2);
     const levels = Math.log2(size) + 1;
     const luminance = this.#device.createTexture({ label: 'ToneMap luminance', size: [size, size], format: 'r16float', mipLevelCount: levels, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
-    const bindGroups = [this.#device.createBindGroup({ layout: this.#pipelines.luminance.getBindGroupLayout(0), entries: [{ binding: 0, resource: input.createView() }] })];
+    // 第 0 级读输入，绑定组按输入的贴图另存（#sourceGroup）
+    const bindGroups: (GPUBindGroup | undefined)[] = [undefined];
     for (let level = 1; level < levels; level++) {
       bindGroups.push(this.#device.createBindGroup({
         layout: this.#pipelines.downscale.getBindGroupLayout(0),
@@ -248,6 +257,16 @@ export class ToneMap {
       }));
     }
     this.#reset = true;
-    return (this.#targets = { input, luminance, bindGroups });
+    return (this.#targets = { width, height, luminance, bindGroups });
+  }
+
+  /** 读这张输入贴图的绑定组。输入是池里的贴图，每帧可能不是同一张：按贴图存，贴图销毁后跟着回收。 */
+  #sourceGroup(input: GPUTexture): GPUBindGroup {
+    let group = this.#sourceGroups.get(input);
+    if (!group) {
+      group = this.#device.createBindGroup({ layout: this.#pipelines.luminance.getBindGroupLayout(0), entries: [{ binding: 0, resource: input.createView() }] });
+      this.#sourceGroups.set(input, group);
+    }
+    return group;
   }
 }

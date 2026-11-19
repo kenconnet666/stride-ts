@@ -19,9 +19,12 @@ import { Color4 } from '../mathematics/vectors';
 import { cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
 import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { GpuProfiler } from '../graphics/GpuProfiler';
+import { GraphTexturePool } from './graph/GraphTexturePool';
+import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphStats } from './graph/RenderGraph';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { Skybox } from './Skybox';
-import { UniformArena } from './postfx/ImageEffect';
+import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
 import { PostProcessingEffects } from './postfx/PostProcessingEffects';
 import { ScenePicker } from './ScenePicker';
@@ -43,15 +46,6 @@ export const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
 const CASCADE_COUNTS = { one: 1, two: 2, four: 4 } as const;
 const HDR_FORMAT: GPUTextureFormat = 'rgba16float';
 
-/** 一种尺寸的帧缓冲：深度，和用到时才建的 HDR 颜色。 */
-interface FrameTargets {
-  readonly width: number;
-  readonly height: number;
-  color: GPUTexture | undefined;
-  readonly depth: GPUTexture;
-}
-
-/** 一个视图的颜色画到哪里：目标的视图、尺寸、格式，和这种格式的不透明、透明阶段。 */
 /** 直接画进后备缓冲用的几个阶段，和它们的颜色格式。 */
 interface DirectStages {
   readonly format: GPUTextureFormat;
@@ -60,8 +54,9 @@ interface DirectStages {
   readonly wireframe: RenderStage;
 }
 
+/** 一个视图的颜色画到哪里：目标（这一帧的临时贴图，或者后备缓冲的视图）、尺寸、格式，和这种格式的不透明、透明阶段。 */
 interface ColorOutput {
-  readonly view: GPUTextureView;
+  readonly target: GraphTexture | GPUTextureView;
   readonly width: number;
   readonly height: number;
   readonly format: GPUTextureFormat;
@@ -105,7 +100,14 @@ export class ForwardRenderer {
   /** 每个画进渲染目标贴图的相机一个视图（按 textureCameras 的顺序）。 */
   readonly #textureViews: RenderView[] = [];
   /** HDR 颜色缓冲和深度缓冲，按尺寸缓存（主画面一套，每个渲染目标贴图的尺寸一套）。 */
-  readonly #targets = new Map<string, FrameTargets>();
+  /** 主画面的深度缓冲：后处理之后画的东西（场景里的 UI、调试线、粒子）还要和它比，所以不是这一帧的临时贴图。 */
+  #depth: GPUTexture | undefined;
+  /**
+   * 这一帧的渲染图（见 graph/RenderGraph）：阴影、画进渲染目标贴图的相机、主画面的各遍、后处理都是它的通道，HDR 颜色缓冲、
+   * 渲染目标贴图的相机用的缓冲、后处理的中间结果都是它的临时贴图（用到才占、用完就让给后面的）。draw 里录完当场执行。
+   */
+  readonly #graph: RenderGraph;
+  readonly #pool: GraphTexturePool;
   /** 点选（Game.pick 用它）：问主画面上某个像素最前面的是哪个实例。 */
   readonly picker: ScenePicker;
   /** 没有后处理时主画面直接画进后备缓冲（省掉 HDR 缓冲和一遍拷贝）；关掉是先画进 HDR 缓冲再拷过去，对比、排查时用。 */
@@ -206,6 +208,8 @@ export class ForwardRenderer {
     this.transparentStage = new RenderStage('Transparent', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { transparent: true });
     this.#textureCopy = { scaler: new ImageScaler(renderSystem.device, renderSystem.resources.linearClamp), arena: new UniformArena(renderSystem.device, 4096) };
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
+    this.#pool = new GraphTexturePool(renderSystem.device);
+    this.#graph = new RenderGraph(this.#pool);
     this.picker = new ScenePicker(renderSystem);
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
   }
@@ -275,21 +279,30 @@ export class ForwardRenderer {
     }
 
     const encoder = graphicsDevice.frameEncoder;
-    this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews);
+    const graph = this.#graph;
+    graph.beginFrame();
+    const frame = new EffectFrame(encoder, graph, GpuProfiler.of(renderSystem.device) ?? undefined);
+    if (shadowViews.length > 0) {
+      // 阴影图集在图外面（着色时经光照的绑定组读它）：算副作用
+      frame.pass('ShadowMapRenderer', (pass) => pass.sideEffect(), () => this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews));
+    }
     // 渲染目标贴图：画完原样拷进贴图
     const copy = this.#textureCopy;
     copy.arena.reset();
     textureCameras.forEach(({ texture, clearColor, transparent }, i) => {
       const view = this.#textureViews[i]!;
       if (!this.#found.has(view)) return;
-      const targets = this.#targetsFor(texture.data.width, texture.data.height);
-      const output = this.#hdrOutput(targets);
-      this.#drawView(context, encoder, view, output, targets.depth, clearColor, transparent, `ForwardRenderer ${texture.name}`);
-      copy.scaler.copy(encoder, copy.arena, output.texture, renderSystem.resources.texture(texture).createView(), texture.data.format);
+      const { width, height } = texture.data;
+      const color = graph.texture({ label: `${texture.name} color`, width, height, format: HDR_FORMAT });
+      const depth = graph.texture({ label: `${texture.name} depth`, width, height, format: DEPTH_FORMAT });
+      this.#viewPasses(context, frame, view, this.#hdrOutput(color), depth, clearColor, transparent, `ForwardRenderer ${texture.name}`);
+      frame.pass(`ForwardRenderer ${texture.name} copy`, (pass) => {
+        pass.read(color);
+        pass.sideEffect();
+      }, (real) => copy.scaler.copy(encoder, copy.arena, real.texture(color), renderSystem.resources.texture(texture).createView(), texture.data.format));
     });
-    copy.arena.flush();
-    const targets = this.#targetsFor(canvas.width, canvas.height);
-    this.#mainDepth = targets.depth;
+    const depth = this.#mainDepthFor(canvas.width, canvas.height);
+    this.#mainDepth = depth;
     const { r, g, b, a } = this.clearColor;
     // 场景里有 UI、或者粒子画在 UI 上面时留着深度缓冲（它们在后处理之后和它比深度），否则丢掉（分块渲染的 GPU 上省带宽）
     const particles = context.game.particles;
@@ -297,65 +310,84 @@ export class ForwardRenderer {
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
     // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
-    if (this.picker.pending) this.picker.draw(context, encoder, mainView, canvas.width, canvas.height);
-    if (!this.postEffects.enabled && this.directOutput) {
-      this.#drawView(context, encoder, mainView, this.#backBufferOutput(canvas.width, canvas.height), targets.depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
-      return;
+    if (this.picker.pending) frame.pass('ScenePicker', (pass) => pass.sideEffect(), () => this.picker.draw(context, encoder, mainView, canvas.width, canvas.height));
+    const post = this.postEffects.enabled || !this.directOutput;
+    if (post) {
+      const color = graph.texture({ label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT });
+      this.#viewPasses(context, frame, mainView, this.#hdrOutput(color), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
+      this.postEffects.record(frame, color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
+    } else {
+      this.#viewPasses(context, frame, mainView, this.#backBufferOutput(canvas.width, canvas.height), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
     }
-    const output = this.#hdrOutput(targets);
-    this.#drawView(context, encoder, mainView, output, targets.depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
-    this.postEffects.draw(encoder, output.texture, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
+    // 都录好了：跑。uniform 的参数在提交之前一次写进 GPU
+    graph.execute();
+    this.#pool.endFrame();
+    copy.arena.flush();
+    if (post) this.postEffects.flush();
   }
 
   destroy(): void {
-    for (const { color, depth } of this.#targets.values()) {
-      color?.destroy();
-      depth.destroy();
-    }
-    this.#targets.clear();
+    this.#depth?.destroy();
+    this.#depth = undefined;
+    this.#pool.destroy();
     this.#textureCopy.arena.destroy();
     this.postEffects.destroy();
     this.picker.destroy();
     this.shadowMapRenderer.destroy();
   }
 
-  /** 一个视图：深度预通道，然后不透明、（transparent 时）透明阶段画进 output。没有视图时只清屏。 */
-  #drawView(
-    context: RenderContext, encoder: GPUCommandEncoder, view: RenderView | undefined, output: ColorOutput, depthTexture: GPUTexture,
+  /**
+   * 一个视图的通道：深度预通道，然后不透明、（transparent 时）透明阶段画进 output。没有视图时只清屏。depth 是这个视图的
+   * 深度缓冲：这一帧的临时贴图（渲染目标贴图的相机），或者一张留着的贴图（主画面）。
+   */
+  #viewPasses(
+    context: RenderContext, frame: EffectFrame, view: RenderView | undefined, output: ColorOutput, depth: Image,
     clearColor: readonly number[], transparent: boolean, label: string, keepDepth = false, drawParticles = false,
   ): void {
     const { renderSystem } = this;
     const profiler = renderSystem.graphicsDevice.profiler;
-    const depth = depthTexture.createView();
+    const { encoder } = frame;
+    const { target } = output;
+    const depthView = (real: PassResources) => (isGraphTexture(depth) ? real.view(depth) : depth.createView());
     // 没有网格的画面（纯 2D：精灵、UI）深度预通道是空的，不开这一遍，深度在下面那一遍开头清
     const prepassNeeded = view !== undefined && renderSystem.drawsDepth;
     if (prepassNeeded) {
-      const prepassTimestamps = profiler.passTimestamps(`${label} depth prepass`);
-      const prepass = encoder.beginRenderPass({
-        label: `${label} depth prepass`,
-        ...(prepassTimestamps ? { timestampWrites: prepassTimestamps } : {}),
-        colorAttachments: [],
-        depthStencilAttachment: { view: depth, depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
+      frame.pass(`${label} depth prepass`, (pass) => (isGraphTexture(depth) ? pass.write(depth) : pass.sideEffect()), (real) => {
+        const prepassTimestamps = profiler.passTimestamps(`${label} depth prepass`);
+        const prepass = encoder.beginRenderPass({
+          label: `${label} depth prepass`,
+          ...(prepassTimestamps ? { timestampWrites: prepassTimestamps } : {}),
+          colorAttachments: [],
+          depthStencilAttachment: { view: depthView(real), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
+        });
+        renderSystem.draw(context, prepass, view, this.depthPrepassStage);
+        prepass.end();
       });
-      renderSystem.draw(context, prepass, view, this.depthPrepassStage);
-      prepass.end();
     }
-    const timestampWrites = profiler.passTimestamps(`${label} opaque`);
-    const pass = encoder.beginRenderPass({
-      label: `${label} opaque`,
-      ...(timestampWrites ? { timestampWrites } : {}),
-      colorAttachments: [{ view: output.view, clearValue: [...clearColor], loadOp: 'clear', storeOp: 'store' }],
-      depthStencilAttachment: { view: depth, depthClearValue: 1, depthLoadOp: prepassNeeded ? 'load' : 'clear', depthStoreOp: keepDepth ? 'store' : 'discard' },
+    frame.pass(`${label} opaque`, (pass) => {
+      if (isGraphTexture(target)) pass.write(target);
+      else pass.sideEffect();
+      if (!isGraphTexture(depth)) return;
+      if (prepassNeeded) pass.readWrite(depth);
+      else pass.write(depth);
+    }, (real) => {
+      const timestampWrites = profiler.passTimestamps(`${label} opaque`);
+      const pass = encoder.beginRenderPass({
+        label: `${label} opaque`,
+        ...(timestampWrites ? { timestampWrites } : {}),
+        colorAttachments: [{ view: isGraphTexture(target) ? real.view(target) : target, clearValue: [...clearColor], loadOp: 'clear', storeOp: 'store' }],
+        depthStencilAttachment: { view: depthView(real), depthClearValue: 1, depthLoadOp: prepassNeeded ? 'load' : 'clear', depthStoreOp: keepDepth ? 'store' : 'discard' },
+      });
+      if (view === this.#mainView) this.background?.(pass, { width: output.width, height: output.height, format: output.format, depthFormat: DEPTH_FORMAT });
+      if (view) {
+        renderSystem.draw(context, pass, view, output.opaque);
+        if (transparent) renderSystem.draw(context, pass, view, output.transparent);
+        // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
+        if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);
+        if (this.wireframe && view === this.#mainView) renderSystem.draw(context, pass, view, output.wireframe);
+      }
+      pass.end();
     });
-    if (view === this.#mainView) this.background?.(pass, { width: output.width, height: output.height, format: output.format, depthFormat: DEPTH_FORMAT });
-    if (view) {
-      renderSystem.draw(context, pass, view, output.opaque);
-      if (transparent) renderSystem.draw(context, pass, view, output.transparent);
-      // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
-      if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);
-      if (this.wireframe && view === this.#mainView) renderSystem.draw(context, pass, view, output.wireframe);
-    }
-    pass.end();
   }
 
   /** 点光、聚光的常量（Stride 的 LightPoint、LightSpot.UpdateLightCache 算的那些）；超过 MAX_LOCAL_LIGHTS 个的不画。 */
@@ -407,37 +439,25 @@ export class ForwardRenderer {
     lighting.ambient.copy(defaultLighting.ambient);
   }
 
-  /**
-   * width x height 的 HDR 颜色缓冲和深度缓冲。画布改了尺寸时旧的那套释放掉（渲染目标贴图的尺寸不变，它们的一直留着）。
-   */
-  #targetsFor(width: number, height: number): FrameTargets {
-    const key = `${width}x${height}`;
-    let targets = this.#targets.get(key);
-    if (targets) return targets;
-    const kept = new Set(this.textureCameras.map(({ texture }) => `${texture.data.width}x${texture.data.height}`));
-    for (const [oldKey, old] of this.#targets) {
-      if (kept.has(oldKey)) continue;
-      old.color?.destroy();
-      old.depth.destroy();
-      this.#targets.delete(oldKey);
-    }
-    const { device } = this.renderSystem.graphicsDevice;
-    targets = {
-      width, height, color: undefined,
-      depth: device.createTexture({ label: `ForwardRenderer depth ${key}`, size: [width, height], format: DEPTH_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT }),
-    };
-    this.#targets.set(key, targets);
-    return targets;
+  /** 上一帧的渲染图：跑了哪些通道、裁掉哪些、临时贴图声明了几张、实际占了几张（调试的 perf 命令和统计量读）。 */
+  get graphStats(): RenderGraphStats {
+    return this.#graph.stats;
   }
 
-  /** 画进 HDR 颜色缓冲（后面接后处理，或者拷进渲染目标贴图）；缓冲第一次用到时才建。 */
-  #hdrOutput(targets: FrameTargets): ColorOutput & { texture: GPUTexture } {
-    const { width, height } = targets;
-    targets.color ??= this.renderSystem.graphicsDevice.device.createTexture({
-      label: `ForwardRenderer HDR color ${width}x${height}`, size: [width, height], format: HDR_FORMAT,
-      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
-    });
-    return { texture: targets.color, view: targets.color.createView(), width, height, format: HDR_FORMAT, opaque: this.opaqueStage, transparent: this.transparentStage, wireframe: this.#wireframeStage };
+  /** 主画面的深度缓冲；画布改了尺寸时重建。 */
+  #mainDepthFor(width: number, height: number): GPUTexture {
+    if (this.#depth?.width !== width || this.#depth.height !== height) {
+      this.#depth?.destroy();
+      this.#depth = this.renderSystem.graphicsDevice.device.createTexture({
+        label: `ForwardRenderer depth ${width}x${height}`, size: [width, height], format: DEPTH_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+    }
+    return this.#depth;
+  }
+
+  /** 画进一张 HDR 颜色缓冲（后面接后处理，或者拷进渲染目标贴图）。 */
+  #hdrOutput(color: GraphTexture): ColorOutput {
+    return { target: color, width: color.width, height: color.height, format: HDR_FORMAT, opaque: this.opaqueStage, transparent: this.transparentStage, wireframe: this.#wireframeStage };
   }
 
   /**
@@ -447,7 +467,7 @@ export class ForwardRenderer {
   #backBufferOutput(width: number, height: number): ColorOutput {
     const graphicsDevice = this.renderSystem.graphicsDevice;
     const { format, opaque, transparent, wireframe } = this.#direct();
-    return { view: graphicsDevice.currentBackBufferView(), width, height, format, opaque, transparent, wireframe };
+    return { target: graphicsDevice.currentBackBufferView(), width, height, format, opaque, transparent, wireframe };
   }
 
   /** 直接画进后备缓冲用的几个阶段（颜色格式是后备缓冲的）。 */

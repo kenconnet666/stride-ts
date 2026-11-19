@@ -300,6 +300,7 @@ async function perf(debug: Debug, game: Game, args: Args): Promise<unknown> {
     nativeMsPerUpdate: Object.fromEntries(Object.entries(native.timings).sort((a, b) => b[1].ms - a[1].ms).map(([label, t]) => [label, round(perFrame(t.ms))])),
     gpu: gpu ? { totalMs: round(gpuReport.reduce((sum, [, t]) => sum + t.milliseconds, 0)), passes: Object.fromEntries(gpuReport.map(([label, t]) => [label, round(t.milliseconds)])) } : 'timestamp-query is not available',
     render: Object.fromEntries(game.renderSystem.features.map((feature) => [feature.name, feature.stats()])),
+    graph: game.graphicsCompositor.graphStats,
   };
 }
 

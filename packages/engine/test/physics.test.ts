@@ -70,6 +70,11 @@ describe('Simulation', () => {
     const above = [position(player).x, 10, position(player).z] as const;
     expect(game.simulation.rayCast(above, [0, -1, 0], 20)?.entity).toBe(player.id);
     expect(game.simulation.rayCast(above, [0, -1, 0], 20, { mask: 1 << 0 })?.entity).toBe(floor.id);
+    // 重叠查询（Stride 的 Overlap）：站着的角色和地面都碰到，按遮罩只要地面，半空里什么都不碰
+    const feet = { position: [position(player).x, 0.05, position(player).z] as [number, number, number] };
+    expect(game.simulation.overlap({ type: 'sphere', radius: 0.3 }, feet).sort()).toEqual([floor.id, player.id].sort());
+    expect(game.simulation.overlap({ type: 'box', size: [0.6, 0.6, 0.6] }, feet, { mask: 1 << 0 })).toEqual([floor.id]);
+    expect(game.simulation.overlap({ type: 'capsule', radius: 0.2, length: 0.5 }, { position: [0, 30, 0], rotation: [0, 0, 0.7071068, 0.7071068] })).toEqual([]);
     // 建了物体以后：重力能改，阻尼只能设成一样的值
     game.simulation.configure({ gravity: [0, -9, 0], linearDamping: game.simulation.settings.linearDamping });
     expect(game.simulation.settings.gravity).toEqual([0, -9, 0]);

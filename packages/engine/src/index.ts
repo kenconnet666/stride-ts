@@ -140,7 +140,7 @@ export {
   HingeConstraintComponent, LinearAxisLimitConstraintComponent, OneBodyAngularMotorConstraintComponent, OneBodyAngularServoConstraintComponent,
   OneBodyLinearServoConstraintComponent, PointOnLineConstraintComponent, SwingLimitConstraintComponent, TwistLimitConstraintComponent, WeldConstraintComponent,
 } from './physics/ConstraintComponent';
-export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type ConstraintSettingsOf, type SimulationHit, type SimulationSettings } from './physics/Simulation';
+export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type ConstraintSettingsOf, type OverlapShape, type SimulationHit, type SimulationSettings } from './physics/Simulation';
 export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './navigation/NavigationSystem';
 export { RecastNavigationComponent, type NavigationState } from './navigation/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';

@@ -59,6 +59,9 @@ export interface Constraint<S extends ConstraintSettings = ConstraintSettings> {
   remove(): void;
 }
 
+/** 重叠查询能用的形状（碰撞体的基本形状）。 */
+export type OverlapShape = Extract<ColliderShape, { type: 'box' | 'sphere' | 'capsule' | 'cylinder' }>;
+
 export interface SimulationHit {
   /** 沿方向的距离。 */
   readonly distance: number;
@@ -357,6 +360,17 @@ export class Simulation {
    */
   sphereCast(radius: number, origin: Vec3, direction: Vec3, maxDistance: number, { mask = ALL_LAYERS, ignoreInitialOverlap = false }: { mask?: number; ignoreInitialOverlap?: boolean } = {}): SimulationHit | undefined {
     return this.#result(this.#world?.sphereCast(radius, origin, direction, maxDistance, { mask, hit: this.#hit, ignoreInitialOverlap }));
+  }
+
+  /**
+   * 形状的重叠查询（Stride 的 BepuSimulation.Overlap）：shape 放在 pose（世界的位置、旋转 xyzw）上，返回和它重叠的物体所在的实体
+   * （去掉重复，触发器也算）。形状只能是盒、球、胶囊、圆柱，shape 自己的 position、rotation 不看。
+   */
+  overlap(shape: OverlapShape, pose: { readonly position: Vec3; readonly rotation?: readonly [number, number, number, number] }, { mask = ALL_LAYERS }: { mask?: number } = {}): EntityId[] {
+    if (!this.#world) return [];
+    const { position: _position, rotation: _rotation, mass: _mass, ...geometry } = shape;
+    const bodies = this.#world.overlap({ ...geometry, position: pose.position, rotation: pose.rotation ?? [0, 0, 0, 1] } as ShapeDesc, { mask });
+    return bodies.map((body) => this.#bodyEntities[body]!);
   }
 
   destroy(): void {

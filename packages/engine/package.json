@@ -10,6 +10,6 @@
     "./math": "./src/mathematics/Matrix.ts"
   },
   "dependencies": {
-    "@stride-ts/native": "^0.24.0"
+    "@stride-ts/native": "^0.25.0"
   }
 }

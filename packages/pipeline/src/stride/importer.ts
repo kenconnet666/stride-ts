@@ -6,7 +6,7 @@
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { StrideTools } from '@stride-ts/native/tools';
+import type { MeshData, StrideTools } from '@stride-ts/native/tools';
 import {
   EXTENSIONS,
   encodeModel,
@@ -41,7 +41,7 @@ import {
   type SceneScriptValue,
   type Vec3Tuple,
 } from '@stride-ts/engine/content-format';
-import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
+import { addTangents, compressMeshes, meshMorph, type SourceMesh, type SourceMorph } from '../mesh.ts';
 import { importCompositor } from './compositor.ts';
 import { FontImporter } from './fonts.ts';
 import { MaterialImporter, type ImportedTexture } from './materials.ts';
@@ -319,7 +319,7 @@ export class StrideImporter {
 
   /** 游戏的脚本组件：类型名去掉程序集，属性名改成小写开头，值按 SceneScriptValue 换过来。 */
   async #script(type: string, component: StrideObject, where: string, context: HierarchyContext): Promise<SceneScript> {
-    const name = type.slice(0, type.indexOf(','));
+    const name = type.includes(',') ? type.slice(0, type.indexOf(',')) : type;
     const props: Record<string, SceneScriptValue> = {};
     for (const [key, value] of Object.entries(component)) {
       // Priority 是 Stride 脚本基类的执行顺序，我们的脚本按挂上的顺序跑，不导入
@@ -873,20 +873,26 @@ export class StrideImporter {
     const scene = await loadSourceScene(this.#tools, sourceOf(asset));
     try {
       const meshes: SourceMesh[] = [];
+      // 模型的形变目标表：各网格同名的目标合成一个槽（同 Stride 的 ModelMorphLayout）
+      const morphTargets: string[] = [];
       for (let m = 0; m < scene.meshCount; m++) {
         const data = scene.mesh(m);
         // 没有材质的网格（OBJ 没写 usemtl）：Assimp 给它一个叫 DefaultMaterial 的材质，Stride 的模型资源里就是这个槽位
         const materialName = data.material === null ? 'DefaultMaterial' : scene.materials[data.material];
+        // Stride 的 glTF 导入把没有材质的网格放进叫 Material 的槽（FBX、OBJ 经 Assimp 是 DefaultMaterial）
         // 槽位名按 Stride 导入时的清理找：原名；Blender 导出时重名的材质带 .001 这样的后缀，Stride 的模型资源里只列了不带后缀的；
         // FBX 的命名空间（c100:chr:x），新版 Stride 只留最后一段（CleanNodeName），旧版把 : 换成 _（UIElementLink 的骑士）
-        const candidates = materialName === undefined ? [] : [materialName, materialName.replace(/\.\d{3}$/, ''), cleanNodeName(materialName), materialName.replaceAll(':', '_')];
+        const candidates = materialName === undefined ? [] : [materialName, materialName.replace(/\.\d{3}$/, ''), cleanNodeName(materialName), materialName.replaceAll(':', '_'), ...(data.material === null ? ['Material'] : [])];
         let slot = candidates.map((name) => slotNames.indexOf(name)).find((index) => index >= 0) ?? -1;
         if (slot < 0 && slots.length > 0) {
           this.#warnings.push(`${asset.file}: mesh material '${materialName}' has no slot in the model; using slot 0`);
           slot = 0;
         }
         const skin = skeleton ? meshSkin(data, scene, skeleton, modelTransform, asset.file, (message) => this.#warnings.push(message)) : undefined;
-        const mesh: SourceMesh = { name: `mesh${m}`, material: slot < 0 ? null : slot, vertices: interleave(data, pivot, scale), indices: data.indices, ...(skin ? { skin } : {}) };
+        const morph = sourceMorph(data, scale, morphTargets);
+        const mesh: SourceMesh = {
+          name: `mesh${m}`, material: slot < 0 ? null : slot, vertices: interleave(data, pivot, scale), indices: data.indices, ...(skin ? { skin } : {}), ...(morph ? { morph } : {}),
+        };
         if (slot < 0 || !normalMapped[slot]) meshes.push(mesh);
         else if (data.normals && data.uvs) meshes.push(addTangents(mesh, this.#tools));
         else {
@@ -895,9 +901,14 @@ export class StrideImporter {
         }
       }
       const encoded: ModelMeshData[] = this.#options.plain
-        ? meshes.map((mesh) => plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices, { ...(mesh.tangents ? { tangents: mesh.tangents } : {}), ...(mesh.skin ? { skin: mesh.skin } : {}) }))
+        ? meshes.map((mesh) => ({
+          ...plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices, { ...(mesh.tangents ? { tangents: mesh.tangents } : {}), ...(mesh.skin ? { skin: mesh.skin } : {}) }),
+          ...meshMorph(mesh),
+        }))
         : compressMeshes(meshes, this.#tools);
-      await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes: encoded, materials, ...(skeleton ? { skeleton: skeleton.path } : {}) }));
+      await this.#write(asset.path + EXTENSIONS.model, encodeModel({
+        meshes: encoded, materials, ...(skeleton ? { skeleton: skeleton.path } : {}), ...(morphTargets.length > 0 ? { morphTargets } : {}),
+      }));
     } finally {
       scene.destroy();
     }
@@ -937,9 +948,9 @@ export class StrideImporter {
   /** 导入动画资源（.sdanim），返回它的内容路径。 */
   #animation(asset: AssetEntry): Promise<string> {
     return once(this.#animations, asset, async () => {
+      // 没有骨架的剪辑只动形变权重（MorphTargets 的立方体）
       const reference = parseAssetReference(asset.data['Skeleton']);
-      if (!reference) throw new Error(`${asset.file}: the animation has no skeleton`);
-      await importAnimation(asset, await this.#skeleton(this.#project.get(reference.id, asset.file)), this.#animationContext);
+      await importAnimation(asset, reference ? await this.#skeleton(this.#project.get(reference.id, asset.file)) : undefined, this.#animationContext);
     });
   }
 
@@ -1030,9 +1041,13 @@ function collisionMask(value: StrideValue | undefined): number {
   return mask >>> 0;
 }
 
-/** 游戏的脚本：带程序集名、不在 Stride 的命名空间里（引擎组件要么没有命名空间，要么以 Stride. 开头）。 */
+/**
+ * 游戏的脚本：带程序集名、不在 Stride 的命名空间里（引擎组件要么没有命名空间，要么以 Stride. 开头）；或者用 DataContract
+ * 起了短名的（MorphTargets 的 `!MorphTargetsController`）：没有命名空间、名字也不以 Component 结尾（引擎组件的短名都是）。
+ */
 function isScriptType(type: string): boolean {
-  return type.includes(',') && !type.startsWith('Stride.');
+  if (type.includes(',')) return !type.startsWith('Stride.');
+  return !type.endsWith('Component');
 }
 
 
@@ -1088,6 +1103,20 @@ function cameraOf(component: StrideObject, slots: ReadonlyMap<string, number>): 
 }
 
 /** 导入的网格变成 FLOAT_LAYOUT 的交错顶点（位置减去轴心再乘缩放，同 Stride 的 PivotPosition、ScaleImport），没有的属性填 0。 */
+/** 网格的形变目标：位置增量乘导入缩放（pivot 是平移，不影响增量），目标按名字放进模型的目标表（没有的加在后面）。 */
+function sourceMorph(data: MeshData, scale: number, morphTargets: string[]): SourceMorph | undefined {
+  if (data.morphTargets.length === 0) return undefined;
+  const slots = data.morphTargets.map(({ name }) => {
+    const found = morphTargets.indexOf(name);
+    return found >= 0 ? found : morphTargets.push(name) - 1;
+  });
+  return {
+    slots,
+    positions: data.morphTargets.map(({ positions }) => (scale === 1 ? positions : positions.map((value) => value * scale))),
+    normals: data.morphTargets.map(({ normals }) => normals),
+  };
+}
+
 function interleave(
   mesh: { positions: Float32Array; normals: Float32Array | null; uvs: Float32Array | null },
   pivot: readonly [number, number, number],

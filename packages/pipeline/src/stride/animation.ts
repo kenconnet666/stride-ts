@@ -4,14 +4,15 @@
  * - 骨架：按 .sdskel 列出的节点（名字和深度，深度优先排）从源文件里取静止姿势；关节的局部变换在源文件里的父节点就是
  *   列表里的父关节时直接用，不是时（列表跳过了中间节点）由世界矩阵算。根关节带上骨架资源的导入变换（PivotPosition、
  *   ScaleImport），所以模型空间和导入后的网格一致。输出 `.skeleton`（关节名和父关节，加 ozz 的骨架档案）。
- * - 动画：源文件的第一个动画按 30 帧每秒烘焙成线性关键帧（ufbx），按关节名对上骨架；动画没碰的关节用静止姿势；
- *   根关节的键同样带上导入变换。ClipDuration 打开时只取那一段。输出 `.anim`（时长、重复方式、骨架，加 ozz 的动画档案）。
+ * - 动画：源文件的第一个动画按 30 帧每秒烘焙成线性关键帧，按关节名对上骨架；动画没碰的关节用静止姿势；
+ *   根关节的键同样带上导入变换。形变权重的曲线按目标名存（各网格同名的目标只留第一条）。ClipDuration 打开时只取那一段。
+ *   输出 `.anim`（时长、重复方式、骨架、形变权重曲线，加 ozz 的动画档案；没有骨架时档案是空的）。
  * - 蒙皮：蒙皮网格的关节按名字对上骨架，逆绑定矩阵右乘导入变换的逆（网格的顶点已经变换过）；没有蒙皮、但挂在骨架节点上
  *   的网格做成只有一个关节的刚性蒙皮，跟着那个节点动（同 Stride 里按节点变换画的网格）。
  */
-import { encodeAnimation, encodeSkeleton, EXTENSIONS, type AnimationRepeatMode } from '@stride-ts/engine/content-format';
+import { encodeAnimation, encodeSkeleton, EXTENSIONS, type AnimationRepeatMode, type MorphWeightCurve } from '@stride-ts/engine/content-format';
 import { Matrix } from '@stride-ts/engine/math';
-import type { JointDescription, JointTrack, MeshData, Scene, StrideTools } from '@stride-ts/native/tools';
+import type { BakedAnimation, JointDescription, JointTrack, MeshData, Scene, StrideTools } from '@stride-ts/native/tools';
 import { INFLUENCES, type SourceSkin } from '../mesh.ts';
 import { importTransform, loadSourceScene, sourceOf, type AssetEntry } from './project.ts';
 import { asObject } from './yaml.ts';
@@ -85,7 +86,8 @@ export async function importSkeleton(asset: AssetEntry, context: AnimationImport
   }
 }
 
-export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkeleton, context: AnimationImportContext): Promise<void> {
+/** skeleton 是 undefined 时只导入形变权重（.sdanim 的 Skeleton 是 null）。 */
+export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkeleton | undefined, context: AnimationImportContext): Promise<void> {
   const type = asObject(asset.data['Type'])?.$type;
   if (type !== undefined && type !== 'StandardAnimationAssetType') context.warn(`${asset.file}: ${type} is not supported yet; imported as a standard animation`);
   if (asset.data['RootMotion'] === true) context.warn(`${asset.file}: root motion is not supported yet; the root keeps its motion`);
@@ -93,10 +95,12 @@ export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkele
   try {
     if (scene.animations.length === 0) throw new Error(`${asset.file}: ${sourceOf(asset)} has no animation`);
     const baked = await scene.bakeAnimation(0, SAMPLE_RATE);
+    let morphWeights = morphWeightCurves(baked, scene);
+    if (!skeleton && morphWeights.length === 0) context.warn(`${asset.file}: the animation has no skeleton and no morph weights; it does nothing`);
     const nodeOf = nodesByName(scene);
     const animationTransform = importMatrix(asset);
-    if (!skeleton.joints.some((joint) => nodeOf.has(cleanNodeName(joint.name)))) context.warn(`${asset.file}: no node of ${sourceOf(asset)} matches a joint of ${skeleton.path}; the animation stays in the rest pose`);
-    let tracks: JointTrack[] = skeleton.joints.map((joint) => {
+    if (skeleton && !skeleton.joints.some((joint) => nodeOf.has(cleanNodeName(joint.name)))) context.warn(`${asset.file}: no node of ${sourceOf(asset)} matches a joint of ${skeleton.path}; the animation stays in the rest pose`);
+    let tracks: JointTrack[] = (skeleton?.joints ?? []).map((joint) => {
       const node = nodeOf.get(cleanNodeName(joint.name));
       if (node === undefined) return restTrack(joint);
       const track = baked.tracks[node]!;
@@ -112,15 +116,48 @@ export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkele
       const start = timeSpanSeconds(clip['StartAnimationTime']), end = Math.min(duration, timeSpanSeconds(clip['EndAnimationTime']));
       if (end > start) {
         tracks = tracks.map((track) => trimTrack(track, start, end));
+        morphWeights = morphWeights.map((curve) => trimCurve(curve, start, end));
         duration = end - start;
       }
     }
-    const archive = withContext(asset.file, () => context.tools.buildAnimation(Math.max(duration, 1e-3), tracks));
+    const archive = skeleton ? withContext(asset.file, () => context.tools.buildAnimation(Math.max(duration, 1e-3), tracks)) : new Uint8Array(0);
     const repeatMode = REPEAT_MODES[String(asset.data['RepeatMode'] ?? 'LoopInfinite')] ?? 'loopInfinite';
-    await context.write(asset.path + EXTENSIONS.animation, encodeAnimation({ duration, repeatMode, skeleton: skeleton.path, archive }));
+    await context.write(asset.path + EXTENSIONS.animation, encodeAnimation({
+      duration, repeatMode, ...(skeleton ? { skeleton: skeleton.path } : {}), ...(morphWeights.length > 0 ? { morphWeights } : {}), archive,
+    }));
   } finally {
     scene.destroy();
   }
+}
+
+/** 烘焙出的形变权重曲线按目标名存；动画没碰的目标没有曲线，各网格同名的目标只留第一条。 */
+function morphWeightCurves(baked: BakedAnimation, scene: Scene): MorphWeightCurve[] {
+  const names = new Map<number, string[]>();
+  const nameOf = (mesh: number, target: number) => {
+    let list = names.get(mesh);
+    if (!list) names.set(mesh, (list = scene.mesh(mesh).morphTargets.map((morph) => morph.name)));
+    return list[target]!;
+  };
+  const curves = new Map<string, MorphWeightCurve>();
+  for (const { mesh, target, keys } of baked.morphWeights) {
+    const name = nameOf(mesh, target);
+    if (keys.length === 0 || curves.has(name)) continue;
+    curves.set(name, { target: name, times: keys.map(([time]) => time), values: keys.map(([, value]) => value) });
+  }
+  return [...curves.values()];
+}
+
+/** 曲线只取 [start, end]，时间从 0 起；两端按线性插值补键。 */
+function trimCurve(curve: MorphWeightCurve, start: number, end: number): MorphWeightCurve {
+  const at = (time: number) => {
+    const next = curve.times.findIndex((t) => t >= time);
+    if (next <= 0) return curve.values[next === 0 ? 0 : curve.values.length - 1]!;
+    const t0 = curve.times[next - 1]!, t1 = curve.times[next]!;
+    return curve.values[next - 1]! + (curve.values[next]! - curve.values[next - 1]!) * ((time - t0) / (t1 - t0));
+  };
+  const inside = curve.times.map((time, k) => [time, curve.values[k]!] as const).filter(([time]) => time > start && time < end);
+  const keys = [[start, at(start)] as const, ...inside, [end, at(end)] as const];
+  return { target: curve.target, times: keys.map(([time]) => time - start), values: keys.map(([, value]) => value) };
 }
 
 /**

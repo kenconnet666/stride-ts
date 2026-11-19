@@ -18,7 +18,7 @@
  *
  * 数据流：
  * - Extract：遍历带 Model 和 Transform 的实体，按（网格，材质，是否投射阴影，是否蒙皮）分批，每批记下实体的变换槽位；
- *   蒙皮的实体（Skinned）还记下变换槽位对应的蒙皮矩阵起点。
+ *   蒙皮的实体（Skinned）还记下变换槽位对应的蒙皮矩阵起点，带形变的（Morphed）记下形变权重的起点。
  * - Cull：各批的槽位连着写进 stride-native 的剔除工作区（FrustumCuller），一次调用剔除一组视图，每批用网格的包围盒；
  *   主视图顺带量出可见物体的距离范围（阴影级联要用）。一帧剔除两次：先主视图，再阴影级联。
  * - Prepare：把变换存储的世界矩阵列整段上传（直接从 wasm 内存，只传用到的那一段），动画系统算好的蒙皮矩阵也直接从 wasm 内存上传，各次剔除的结果（每个视图一段可见槽位）
@@ -37,6 +37,7 @@ import type { EntityManager } from '../engine/EntityManager';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { BRDF } from './brdf';
+import { Morphed } from '../animation/morphs';
 import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
@@ -101,6 +102,9 @@ struct LocalLight { position: vec4f, color: vec4f, direction: vec4f, angle: vec4
 @group(0) @binding(8) var<storage, read> paletteOf: array<u32>;
 @group(0) @binding(9) var<storage, read> palettes: array<mat4x4f>;
 @group(0) @binding(10) var<storage, read> localLights: array<LocalLight>;
+// 带形变网格的实体：变换槽位 → 它的模型实例那组形变权重在 morphWeights 里的起点
+@group(0) @binding(11) var<storage, read> morphOf: array<u32>;
+@group(0) @binding(12) var<storage, read> morphWeights: array<f32>;
 
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
 // 没有贴图的槽绑一张 1x1 的白图，所以不用分支：自发光 = 贴图 · emissive，遮蔽 = dot(贴图, occlusionMask)（mask 是
@@ -147,6 +151,26 @@ struct Material {
 // effect：网格效果的参数（meshEffect.ts，Stride 的 Mesh.Parameters），没有效果时没用
 struct MeshParams { positionOffset: vec4f, positionScale: vec4f, uvTransform: vec4f, flags: u32, effect: MeshEffectParameters };
 @group(2) @binding(0) var<uniform> mesh: MeshParams;
+// 网格的形变数据（布局见 content/format.ts 的 MeshMorph）；没有形变的网格绑一个空的
+@group(2) @binding(1) var<storage, read> morphData: array<u32>;
+// 管线常量：网格有形变时为 true，没有时形变的代码整段去掉
+override MORPHED: bool = false;
+
+/** 顶点的形变增量（Stride 的 MorphTargets：按权重加各个目标的位置和法线增量），在网格空间里、蒙皮之前。 */
+struct MorphDelta { position: vec3f, normal: vec3f };
+fn morphDelta(slot: u32, vertex: u32) -> MorphDelta {
+  var delta = MorphDelta(vec3f(0.0), vec3f(0.0));
+  if (!MORPHED) { return delta; }
+  let base = morphOf[slot];
+  let first = morphData[0];
+  for (var e = morphData[1u + vertex]; e < morphData[2u + vertex]; e++) {
+    let at = first + e * 8u;
+    let w = morphWeights[base + morphData[at + 3u]];
+    delta.position += w * vec3f(bitcast<f32>(morphData[at]), bitcast<f32>(morphData[at + 1u]), bitcast<f32>(morphData[at + 2u]));
+    delta.normal += w * vec3f(bitcast<f32>(morphData[at + 4u]), bitcast<f32>(morphData[at + 5u]), bitcast<f32>(morphData[at + 6u]));
+  }
+  return delta;
+}
 
 /** 八面体编码还原成单位向量（同 meshopt 的 octahedral 滤波，资源管线的编码见 packages/pipeline/src/mesh.ts）。 */
 fn octDecode(e: vec2f) -> vec3f {
@@ -175,11 +199,15 @@ struct Varyings {
 
 const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 
-/** skin 把网格空间的顶点变到模型空间（蒙皮矩阵的加权和；不蒙皮时是单位矩阵，编译器会把它消掉）。 */
-fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, slot: u32, skin: mat4x4f) -> Varyings {
+/**
+ * skin 把网格空间的顶点变到模型空间（蒙皮矩阵的加权和；不蒙皮时是单位矩阵，编译器会把它消掉）；形变在蒙皮之前加上
+ * （同 Stride：先形变后蒙皮）。
+ */
+fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, slot: u32, vertex: u32, skin: mat4x4f) -> Varyings {
   let world = worlds[slot];
-  let local = (skin * vec4f(mesh.positionOffset.xyz + position * mesh.positionScale.xyz, 1.0)).xyz;
-  let localNormal = (skin * vec4f(select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u), 0.0)).xyz;
+  let morph = morphDelta(slot, vertex);
+  let local = (skin * vec4f(mesh.positionOffset.xyz + position * mesh.positionScale.xyz + morph.position, 1.0)).xyz;
+  let localNormal = (skin * vec4f(select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u) + morph.normal, 0.0)).xyz;
   let localTangent = (skin * vec4f(tangent.xyz, 0.0)).xyz;
   let meshUv = mesh.uvTransform.zw + uv * mesh.uvTransform.xy;
   // 材质的位移贴图：顶点沿模型空间的法线移动（Stride 的 MaterialSurfaceDisplacement，MaterialShader 的水波）
@@ -206,22 +234,22 @@ fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f) -> mat4x4f {
     + palettes[base + joints.z] * weights.z + palettes[base + joints.w] * weights.w;
 }
 
-@vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32) -> Varyings {
-  return transformVertex(position, normal, uv, vec4f(0.0), slots[instance], IDENTITY);
+@vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
+  return transformVertex(position, normal, uv, vec4f(0.0), slots[instance], vertex, IDENTITY);
 }
 
-@vertex fn vsTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @builtin(instance_index) instance: u32) -> Varyings {
-  return transformVertex(position, normal, uv, tangent, slots[instance], IDENTITY);
+@vertex fn vsTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
+  return transformVertex(position, normal, uv, tangent, slots[instance], vertex, IDENTITY);
 }
 
-@vertex fn vsSkinned(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32) -> Varyings {
+@vertex fn vsSkinned(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
   let slot = slots[instance];
-  return transformVertex(position, normal, uv, vec4f(0.0), slot, skinMatrix(slot, joints, weights));
+  return transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, skinMatrix(slot, joints, weights));
 }
 
-@vertex fn vsSkinnedTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32) -> Varyings {
+@vertex fn vsSkinnedTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
   let slot = slots[instance];
-  return transformVertex(position, normal, uv, tangent, slot, skinMatrix(slot, joints, weights));
+  return transformVertex(position, normal, uv, tangent, slot, vertex, skinMatrix(slot, joints, weights));
 }
 
 /**
@@ -682,6 +710,16 @@ export class MeshRenderFeature extends RootRenderFeature {
   /** 变换槽位 → 蒙皮矩阵的起点（只有蒙皮的槽位有意义），改了才重新上传。 */
   readonly #paletteOf = new SlotTable();
 
+  readonly #extractMorphedSystem = system('MeshRenderFeature.extractMorphed', {
+    with: { transform: Transform, morphed: Morphed },
+    update: ({ transform, morphed, count }) => {
+      for (let i = 0; i < count; i++) this.#morphOf.set(transform.slot[i]!, morphed.weights[i]!);
+    },
+  });
+
+  /** 变换槽位 → 形变权重的起点（只有带形变网格的槽位有意义）。 */
+  readonly #morphOf = new SlotTable();
+
   // 剔除：一帧里第 k 次 cull 用第 k 个工作区；视图到（剔除，视图在其中的下标）
   readonly #cullPasses: CullPass[] = [];
   #cullPassCount = 0;
@@ -694,6 +732,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     for (const batch of this.batches) batch.count = 0;
     context.game.entities.run(this.#extractSystem, context.time);
     context.game.entities.run(this.#extractSkinnedSystem, context.time);
+    context.game.entities.run(this.#extractMorphedSystem, context.time);
     this.#masters.clear();
     this.#entityManager = context.game.entities;
     context.game.entities.run(this.#extractInstancesSystem, context.time);
@@ -753,6 +792,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     const gpu = (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl));
     gpu.uploadWorlds(context.game.transforms.world, context.game.transforms.slotLimit);
     gpu.uploadSkinning(this.#paletteOf, context.game.animation);
+    gpu.uploadMorphs(this.#morphOf, context.game.animation);
     const passes = this.#cullPasses.slice(0, this.#cullPassCount);
     let offset = 0;
     for (const pass of passes) {
@@ -790,7 +830,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
       if (materialChanged || meshChanged) {
         // 管线也按材质分（自发光变体、两面画），同样的组合是同一条管线
-        const next = gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.material, this.effect);
+        const next = gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.mesh.data.morph !== undefined, batch.material, this.effect);
         if (next !== pipeline) pass.setPipeline((pipeline = next));
       }
       if (materialChanged) {
@@ -908,6 +948,10 @@ class Gpu {
   #instances: GPUBuffer | undefined;
   #paletteOf: GPUBuffer | undefined;
   #palettes: GPUBuffer | undefined;
+  #morphOf: GPUBuffer | undefined;
+  #morphWeights: GPUBuffer | undefined;
+  /** 没有形变的网格绑的空缓冲。 */
+  readonly #noMorph: GPUBuffer;
   #views: GPUBuffer | undefined;
   readonly #viewData = new Float32Array((VIEW_STRIDE / 4) * MAX_VIEWS);
   readonly #localLightData = new Float32Array(MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS);
@@ -935,6 +979,8 @@ class Gpu {
         { binding: 8, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 9, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 10, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        { binding: 11, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 12, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -953,8 +999,12 @@ class Gpu {
     });
     this.#meshLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature mesh',
-      entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }],
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+      ],
     });
+    this.#noMorph = this.#createFilled('MeshRenderFeature no morph', GPUBufferUsage.STORAGE, new Uint32Array(4));
     this.#dfgLut = createDfgLut(device);
     this.#localLights = this.#createStorage('MeshRenderFeature local lights', MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS * 4);
   }
@@ -1014,7 +1064,7 @@ class Gpu {
    * 阴影投射）没有片元着色器；阴影投射还不剔背面、不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor）。深度比较是 less-equal
    * （Stride 的 DepthStencilStates.Default），不透明阶段靠它复用深度预通道的结果。
    */
-  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, material: Material, effect: MeshEffect | undefined): GPURenderPipeline {
+  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined): GPURenderPipeline {
     const { colorFormat, depthFormat } = stage.output;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
@@ -1023,18 +1073,19 @@ class Gpu {
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
     const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${doubleSided}:${cutout}:${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement]) : ''}:${effect?.code ?? ''}`;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement]) : ''}:${effect?.code ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);
       const entryPoint = `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
       const module = this.#module(trees, effect);
       pipeline = this.device.createRenderPipeline({
-        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${trees ? ' material trees' : ''}`,
+        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${morphed ? ' morphed' : ''}${trees ? ' material trees' : ''}`,
         layout: this.#layout(trees?.textures.length ?? 0).layout,
         vertex: {
           module,
           entryPoint,
+          ...(morphed ? { constants: { MORPHED: 1 } } : {}),
           buffers: [{
             arrayStride: offsets.stride,
             attributes: [
@@ -1097,6 +1148,29 @@ class Gpu {
     }
     const palettes = this.#palettes;
     animation.forEachPalette((base, matrices) => this.device.queue.writeBuffer(palettes, base * 64, matrices));
+  }
+
+  /** 形变：槽位到权重起点的表（改了才传）和所有模型实例的权重（每帧传）。 */
+  uploadMorphs(morphOf: SlotTable, animation: AnimationSystem): void {
+    const tableBytes = morphOf.values.byteLength;
+    if (!this.#morphOf || this.#morphOf.size < tableBytes) {
+      this.#morphOf?.destroy();
+      this.#morphOf = this.#createStorage('MeshRenderFeature morphOf', capacityFor(tableBytes));
+      this.#viewBindGroups.clear();
+      morphOf.dirty = true;
+    }
+    if (morphOf.dirty) {
+      this.device.queue.writeBuffer(this.#morphOf, 0, morphOf.values);
+      morphOf.dirty = false;
+    }
+    const weightBytes = Math.max(animation.morphCapacity, 1) * 4;
+    if (!this.#morphWeights || this.#morphWeights.size < weightBytes) {
+      this.#morphWeights?.destroy();
+      this.#morphWeights = this.#createStorage('MeshRenderFeature morph weights', capacityFor(weightBytes));
+      this.#viewBindGroups.clear();
+    }
+    const weights = this.#morphWeights;
+    animation.forEachMorph((base, values) => this.device.queue.writeBuffer(weights, base * 4, values));
   }
 
   /** 各次剔除的可见槽位（每个视图一段，直接在 wasm 内存里）依次拼成实例缓冲。 */
@@ -1183,6 +1257,8 @@ class Gpu {
           { binding: 8, resource: { buffer: this.#paletteOf! } },
           { binding: 9, resource: { buffer: this.#palettes! } },
           { binding: 10, resource: { buffer: this.#localLights } },
+          { binding: 11, resource: { buffer: this.#morphOf! } },
+          { binding: 12, resource: { buffer: this.#morphWeights! } },
         ],
       });
       this.#viewBindGroups.set(atlas, group);
@@ -1203,7 +1279,14 @@ class Gpu {
         params,
         effect: undefined,
         effectVersion: -1,
-        bindGroup: this.device.createBindGroup({ label: `${mesh.name} params`, layout: this.#meshLayout, entries: [{ binding: 0, resource: { buffer: params } }] }),
+        bindGroup: this.device.createBindGroup({
+          label: `${mesh.name} params`,
+          layout: this.#meshLayout,
+          entries: [
+            { binding: 0, resource: { buffer: params } },
+            { binding: 1, resource: { buffer: mesh.data.morph ? this.#createFilled(`${mesh.name} morph`, GPUBufferUsage.STORAGE, mesh.data.morph) : this.#noMorph } },
+          ],
+        }),
         vertices: this.#createFilled(`${mesh.name} vertices`, GPUBufferUsage.VERTEX, vertices),
         indices: this.#createFilled(`${mesh.name} indices`, GPUBufferUsage.INDEX, indices),
         indexFormat: indices instanceof Uint16Array ? 'uint16' : 'uint32',
@@ -1281,7 +1364,7 @@ class Gpu {
   }
 
   destroy(): void {
-    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#localLights]) buffer?.destroy();
+    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#localLights, this.#morphOf, this.#morphWeights, this.#noMorph]) buffer?.destroy();
     for (const { params, vertices, indices } of this.#meshes.values()) {
       params.destroy();
       vertices.destroy();

@@ -8,9 +8,10 @@
  * - 切线（只有材质用法线贴图的网格有）：snorm8x4，xyz 加手性（同 meshopt、glTF-Transform 对切线的量化）。
  * - 蒙皮（只有蒙皮网格有）：关节下标 uint8x4（关节不超过 256 个时）或 uint16x4，权重 unorm8x4（四舍五入后的误差
  *   补到最大的权重上，和仍是 1）。
+ * - 形变目标（只有带形变的网格有）：不进顶点，单独存成稀疏的 float 增量（MeshMorph），跟着顶点一起重排。
  */
 import type { StrideTools } from '@stride-ts/native/tools';
-import { TANGENT_FLOATS, vertexLayoutOffsets, VERTEX_FLOATS, type Dequantize, type MeshSkin, type ModelMeshData, type VertexLayout } from '@stride-ts/engine/content-format';
+import { packMeshMorph, TANGENT_FLOATS, vertexLayoutOffsets, VERTEX_FLOATS, type Dequantize, type MeshMorph, type MeshSkin, type ModelMeshData, type MorphDelta, type VertexLayout } from '@stride-ts/engine/content-format';
 
 /** 16 位量化精度 0.1 mm 对应的最长包围盒边长（米）。 */
 export const MAX_QUANTIZED_EXTENT = 65535 * 0.0001;
@@ -31,7 +32,19 @@ export interface SourceMesh {
   readonly indices: Uint32Array;
   readonly tangents?: Float32Array;
   readonly skin?: SourceSkin;
+  readonly morph?: SourceMorph;
 }
+
+/** 网格的形变目标：每个目标一份稠密的增量（每个顶点 xyz），slots 是目标在模型目标表里的槽。 */
+export interface SourceMorph {
+  readonly slots: readonly number[];
+  readonly positions: readonly Float32Array[];
+  /** 没有法线增量时是 null。 */
+  readonly normals: readonly (Float32Array | null)[];
+}
+
+/** 增量小于这个的分量当成 0（Stride 的 MeshMorphEntry.IsZero 是精确的 0，导出工具常留下 1e-8 这样的噪声）。 */
+const MORPH_EPSILON = 1e-6;
 
 export interface SourceSkin extends MeshSkin {
   readonly joints: readonly number[];
@@ -52,6 +65,36 @@ function remapSkin(skin: SourceSkin | undefined, sources: ArrayLike<number>): So
     vertexWeights.set(skin.vertexWeights.subarray(from, from + INFLUENCES), v * INFLUENCES);
   }
   return { ...skin, vertexJoints, vertexWeights };
+}
+
+/** 按 remap（新下标 → 原下标）挑出形变增量。 */
+function remapMorph(morph: SourceMorph | undefined, sources: ArrayLike<number>): SourceMorph | undefined {
+  if (!morph) return undefined;
+  const pick = (deltas: Float32Array) => {
+    const picked = new Float32Array(sources.length * 3);
+    for (let v = 0; v < sources.length; v++) picked.set(deltas.subarray(sources[v]! * 3, sources[v]! * 3 + 3), v * 3);
+    return picked;
+  };
+  return { slots: morph.slots, positions: morph.positions.map(pick), normals: morph.normals.map((normals) => normals && pick(normals)) };
+}
+
+/** 网格的形变数据（MeshMorph 和数据区）；没有形变或者增量全是 0 时是空对象。 */
+export function meshMorph(mesh: SourceMesh): { morph?: MeshMorph; morphData?: Uint8Array } {
+  if (!mesh.morph) return {};
+  const count = mesh.vertices.length / VERTEX_FLOATS;
+  const deltas: MorphDelta[] = [];
+  const significant = (values: Float32Array | null, v: number) => values !== null && Math.max(Math.abs(values[v * 3]!), Math.abs(values[v * 3 + 1]!), Math.abs(values[v * 3 + 2]!)) > MORPH_EPSILON;
+  const vector = (values: Float32Array, v: number): [number, number, number] => [values[v * 3]!, values[v * 3 + 1]!, values[v * 3 + 2]!];
+  mesh.morph.slots.forEach((target, t) => {
+    const positions = mesh.morph!.positions[t]!, normals = mesh.morph!.normals[t] ?? null;
+    for (let v = 0; v < count; v++) {
+      if (!significant(positions, v) && !significant(normals, v)) continue;
+      deltas.push({ vertex: v, target, position: vector(positions, v), ...(normals ? { normal: vector(normals, v) } : {}) });
+    }
+  });
+  if (deltas.length === 0) return {};
+  const { morph, data } = packMeshMorph(count, deltas);
+  return { morph, morphData: data };
 }
 
 /**
@@ -84,8 +127,8 @@ export function addTangents(mesh: SourceMesh, tools: StrideTools): SourceMesh {
     }
     indices[corner] = copy.index;
   });
-  const skin = remapSkin(mesh.skin, sources);
-  return { ...mesh, vertices: new Float32Array(vertices), indices, tangents: new Float32Array(tangents), ...(skin ? { skin } : {}) };
+  const skin = remapSkin(mesh.skin, sources), morph = remapMorph(mesh.morph, sources);
+  return { ...mesh, vertices: new Float32Array(vertices), indices, tangents: new Float32Array(tangents), ...(skin ? { skin } : {}), ...(morph ? { morph } : {}) };
 }
 
 /** 一个模型的网格压缩：重排、量化、meshopt 编码。 */
@@ -135,8 +178,8 @@ function reorder(mesh: SourceMesh, tools: StrideTools): SourceMesh {
     tangents?.set(mesh.tangents!.subarray(v * TANGENT_FLOATS, (v + 1) * TANGENT_FLOATS), remap[v]! * TANGENT_FLOATS);
     sources[remap[v]!] = v;
   }
-  const skin = remapSkin(mesh.skin, sources);
-  return { ...mesh, vertices, indices, ...(tangents ? { tangents } : {}), ...(skin ? { skin } : {}) };
+  const skin = remapSkin(mesh.skin, sources), morph = remapMorph(mesh.morph, sources);
+  return { ...mesh, vertices, indices, ...(tangents ? { tangents } : {}), ...(skin ? { skin } : {}), ...(morph ? { morph } : {}) };
 }
 
 function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): ModelMeshData {
@@ -196,6 +239,7 @@ function compressMesh(mesh: SourceMesh, volume: Volume, tools: StrideTools): Mod
     indexFormat: count <= 0xffff ? 'uint16' : 'uint32',
     vertices: tools.encodeVertices(new Uint8Array(bytes.buffer), offsets.stride),
     indices: tools.encodeIndices(mesh.indices, count),
+    ...meshMorph(mesh),
   };
 }
 

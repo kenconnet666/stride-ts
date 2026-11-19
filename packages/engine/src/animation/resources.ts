@@ -3,7 +3,7 @@
  * 动画），这里记着关节名、时长、重复方式和原生对象。内容管理加载 `.skeleton`、`.anim` 时创建它们。
  */
 import type { Animation as NativeAnimation, Skeleton as NativeSkeleton, StrideNative } from '@stride-ts/native';
-import type { AnimationRepeatMode } from '../content/format';
+import type { AnimationRepeatMode, MorphWeightCurve } from '../content/format';
 
 /** 内容管理加载骨架、动画和蒙皮要用的原生功能（Game 启动时交给 ContentManager，测试里可以换成假的）。 */
 export type AnimationNative = Pick<StrideNative, 'loadSkeleton' | 'loadAnimation' | 'createSkin'>;
@@ -30,21 +30,22 @@ export class Skeleton {
   }
 }
 
-/** 动画剪辑：轨道按骨架的关节顺序。 */
+/** 动画剪辑：骨架的轨道（按关节顺序，在原生侧）和形变权重的曲线；只动形变权重的剪辑没有骨架。 */
 export class AnimationClip {
   /** 内容路径。 */
   readonly name: string;
   /** 秒。 */
   readonly duration: number;
   readonly repeatMode: AnimationRepeatMode;
-  readonly skeleton: Skeleton;
-  readonly native: NativeAnimation;
+  /** 骨架和它的轨道；只动形变权重的剪辑没有。 */
+  readonly bones: { readonly skeleton: Skeleton; readonly native: NativeAnimation } | undefined;
+  readonly morphWeights: readonly MorphWeightCurve[];
 
-  constructor(name: string, repeatMode: AnimationRepeatMode, skeleton: Skeleton, native: NativeAnimation) {
+  constructor(name: string, duration: number, repeatMode: AnimationRepeatMode, bones: AnimationClip['bones'], morphWeights: readonly MorphWeightCurve[] = []) {
     this.name = name;
-    this.duration = native.duration;
+    this.duration = duration;
     this.repeatMode = repeatMode;
-    this.skeleton = skeleton;
-    this.native = native;
+    this.bones = bones;
+    this.morphWeights = morphWeights;
   }
 }

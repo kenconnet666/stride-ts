@@ -94,6 +94,8 @@ export interface LoadedModel {
   readonly meshes: readonly { readonly mesh: Mesh; readonly material: number | null; readonly skin?: NativeSkin }[];
   readonly materials: readonly (Material | null)[];
   readonly skeleton?: Skeleton;
+  /** 形变目标的名字，按模型的目标槽排。 */
+  readonly morphTargets?: readonly string[];
 }
 
 /** 场景引用的资源，实例化之前并行加载好。 */
@@ -206,7 +208,10 @@ export class ContentManager {
       // 蒙皮网格动起来会超出绑定姿势的包围盒：剔除时用整个模型的包围盒放大一半（和 Stride 不同，Stride 每帧按骨骼算）
       const skinnedBounds = inflate(unionBounds(loaded.map(({ mesh }) => mesh.bounds)), 1.5);
       for (const part of loaded) if (part.skin) part.mesh.cullBounds = skinnedBounds;
-      return { meshes: loaded, materials, ...(skeleton ? { skeleton } : {}) };
+      // 形变把顶点推出静止的包围盒：按最大的增量放大（权重按到 2 算，MorphTargets 的滑条最大是 2）
+      for (const { mesh } of loaded) if (mesh.data.morph) mesh.cullBounds = expand(mesh.cullBounds, 2 * mesh.morphReach);
+      if (loaded.some(({ mesh }) => mesh.data.morph) && !data.morphTargets) throw new Error(`${url.href}: the model has morphed meshes but no morph targets`);
+      return { meshes: loaded, materials, ...(skeleton ? { skeleton } : {}), ...(data.morphTargets ? { morphTargets: data.morphTargets } : {}) };
     });
   }
 
@@ -220,9 +225,9 @@ export class ContentManager {
   /** 动画剪辑；它的骨架一起加载。 */
   loadAnimation(path: string): Promise<AnimationClip> {
     return this.#once(path + EXTENSIONS.animation, async (url) => {
-      const { repeatMode, skeleton, archive } = decodeAnimation(await this.#read(url), url.href);
-      const native = this.#animationNative(url);
-      return new AnimationClip(path, repeatMode, await this.loadSkeleton(skeleton), native.loadAnimation(archive));
+      const { duration, repeatMode, skeleton, morphWeights, archive } = decodeAnimation(await this.#read(url), url.href);
+      const bones = skeleton === undefined ? undefined : { skeleton: await this.loadSkeleton(skeleton), native: this.#animationNative(url).loadAnimation(archive) };
+      return new AnimationClip(path, bones?.native.duration ?? duration, repeatMode, bones, morphWeights);
     });
   }
 
@@ -248,7 +253,8 @@ export class ContentManager {
       const indices = mesh.indexFormat === 'uint16'
         ? new Uint16Array(indexBytes.buffer, indexBytes.byteOffset, mesh.indexCount)
         : new Uint32Array(indexBytes.buffer, indexBytes.byteOffset, mesh.indexCount);
-      return { vertices, indices, layout: mesh.layout, dequantize: mesh.dequantize };
+      const morph = mesh.morphData && new Uint32Array(mesh.morphData.buffer, mesh.morphData.byteOffset, mesh.morphData.byteLength / 4);
+      return { vertices, indices, layout: mesh.layout, dequantize: mesh.dequantize, ...(morph ? { morph } : {}) };
     });
   }
 
@@ -670,6 +676,7 @@ export class ContentManager {
   addModel(entity: Entity, loaded: LoadedModel, { materials = [], isShadowCaster = true }: { materials?: readonly (Material | null)[]; isShadowCaster?: boolean } = {}): void {
     const entities = entity.manager;
     const skinned: { entity: Entity; skin: NativeSkin }[] = [];
+    const morphed: Entity[] = [];
     loaded.meshes.forEach(({ mesh, material: slot, skin }, i) => {
       // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
       const material = (slot === null ? null : (materials[slot] ?? loaded.materials[slot])) ?? this.defaultMaterial;
@@ -681,8 +688,10 @@ export class ContentManager {
         part.require(Transform).parent = entity;
       }
       if (skin) skinned.push({ entity: part, skin });
+      if (mesh.data.morph) morphed.push(part);
     });
     if (loaded.skeleton) entities.game.animation.attach(entity, loaded.skeleton, skinned);
+    if (loaded.morphTargets) entities.game.animation.attachMorphs(entity, loaded.morphTargets, morphed);
   }
 
   /** 渲染目标贴图（Stride 的 RenderTexture）：同一个内容路径只建一次，内容由合成器画进去。 */
@@ -748,6 +757,11 @@ function unionBounds(all: readonly Bounds[]): Bounds {
 function inflate({ min, max }: Bounds, factor: number): Bounds {
   const at = (c: number, sign: number) => (min[c]! + max[c]!) / 2 + (sign * (max[c]! - min[c]!) * factor) / 2;
   return { min: [at(0, -1), at(1, -1), at(2, -1)], max: [at(0, 1), at(1, 1), at(2, 1)] };
+}
+
+/** 包围盒每边往外加 margin。 */
+function expand({ min, max }: Bounds, margin: number): Bounds {
+  return { min: [min[0] - margin, min[1] - margin, min[2] - margin], max: [max[0] + margin, max[1] + margin, max[2] + margin] };
 }
 
 /** 并行加载一组（去重的）路径，结果按路径放进 Map。 */

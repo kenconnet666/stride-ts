@@ -4,7 +4,7 @@
  * 着色器里做），程序化网格和 --plain 导出的模型是 32 字节的 float（FLOAT_LAYOUT）。程序化网格对应 Stride 的
  * ProceduralModels：尺寸默认 1，右手坐标系，三角形从外面看是逆时针。
  */
-import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../content/format';
+import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, MORPH_ENTRY_WORDS, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../content/format';
 import type { Branded } from '../data/prop';
 import { ResourceTable } from '../engine/ResourceTable';
 import { MESH_EFFECT_PARAMETERS } from './meshEffect';
@@ -21,6 +21,8 @@ export interface MeshData {
   readonly layout?: VertexLayout;
   /** 量化属性的还原，默认不量化。 */
   readonly dequantize?: Dequantize;
+  /** 形变数据（布局见 content/format.ts 的 MeshMorph），按 uint32 看。 */
+  readonly morph?: Uint32Array;
 }
 
 /** 轴对齐包围盒，模型空间。 */
@@ -70,6 +72,16 @@ export class Mesh {
     this.effectParameters ??= new Float32Array(MESH_EFFECT_PARAMETERS).fill(NaN);
     this.effectParameters.set(values, offset);
     this.effectVersion++;
+  }
+
+  /** 形变增量的最大长度（米），剔除时包围盒按它放大。没有形变时是 0。 */
+  get morphReach(): number {
+    const morph = this.data.morph;
+    if (!morph) return 0;
+    const floats = new Float32Array(morph.buffer, morph.byteOffset, morph.length);
+    let reach = 0;
+    for (let at = morph[0]!; at + MORPH_ENTRY_WORDS <= morph.length; at += MORPH_ENTRY_WORDS) reach = Math.max(reach, Math.hypot(floats[at]!, floats[at + 1]!, floats[at + 2]!));
+    return reach;
   }
 
   get vertexCount(): number {

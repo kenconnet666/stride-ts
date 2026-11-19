@@ -183,7 +183,7 @@ export class Game {
       this.registry.register(UIComponent);
       this.registry.register(ParticleSystemComponent);
       this.animation = new AnimationSystem(this.native, this.entities);
-      this.entities.addSystems(this.animation.system, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui));
+      this.entities.addSystems(this.animation.system, this.animation.morphSystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui));
       this.content.animationNative ??= this.native;
       this.graphicsDevice = await GraphicsDevice.create(canvas);
       // 加载内容、脚本启动时读到的就是画面的实际大小（Stride 的后备缓冲在游戏开始前就建好了）

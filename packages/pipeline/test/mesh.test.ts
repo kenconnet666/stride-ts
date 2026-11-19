@@ -1,6 +1,6 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { vertexLayoutOffsets, VERTEX_FLOATS, type ModelMeshData } from '@stride-ts/engine/content-format';
+import { MORPH_ENTRY_WORDS, vertexLayoutOffsets, VERTEX_FLOATS, type ModelMeshData } from '@stride-ts/engine/content-format';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { addTangents, compressMeshes, MAX_QUANTIZED_EXTENT, octEncode, parseStrideYaml, proceduralMesh, type ProceduralMesh, type SourceMesh } from '../src/index';
 
@@ -159,6 +159,39 @@ describe('网格压缩', () => {
     const [mesh] = compressMeshes([big], tools);
     expect([mesh!.layout, vertexLayoutOffsets(mesh!.layout).stride]).toEqual([{ position: 'float32x3', normal: 'snorm16x2', uv: 'float32x2' }, 24]);
     expectSameMesh(await restore(native, mesh!), big, { position: 0, normal: 2e-4, uv: 0 });
+  });
+
+  test('形变目标：重排、拆切线后增量仍跟着原来的顶点，只存不是 0 的；条目按顶点再按目标排，目标是模型的槽', async () => {
+    const source = randomMesh('m', 50, 1, 1, 3);
+    const count = source.vertices.length / VERTEX_FLOATS;
+    // 目标 0（模型槽 2）：每个顶点沿 +Y 移动 它的 x；目标 1（模型槽 0）：只动偶数顶点，带法线增量
+    const lift = new Float32Array(count * 3), even = new Float32Array(count * 3), evenNormals = new Float32Array(count * 3);
+    for (let v = 0; v < count; v++) {
+      lift[v * 3 + 1] = source.vertices[v * VERTEX_FLOATS]! + 2;
+      if (v % 2 === 0) { even[v * 3 + 2] = 1; evenNormals[v * 3] = 0.5; }
+    }
+    const morphed: SourceMesh = { ...source, morph: { slots: [2, 0], positions: [lift, even], normals: [null, evenNormals] } };
+    const [mesh] = compressMeshes([morphed], tools);
+    expect(mesh!.morph?.hasNormals).toBe(true);
+    expect(mesh!.morph?.entryCount).toBe(count + Math.ceil(count / 2));
+    const words = new Uint32Array(mesh!.morphData!.buffer, mesh!.morphData!.byteOffset, mesh!.morphData!.byteLength / 4);
+    const floats = new Float32Array(words.buffer, words.byteOffset, words.length);
+    const restored = await restore(native, mesh!);
+    let evenCount = 0;
+    for (let v = 0; v < restored.vertices.length; v++) {
+      const entries = Array.from({ length: words[2 + v]! - words[1 + v]! }, (_, k) => words[0]! + (words[1 + v]! + k) * MORPH_ENTRY_WORDS);
+      const slots = entries.map((at) => words[at + 3]);
+      expect(slots).toEqual([...slots].sort());
+      // 槽 2 的增量是这个顶点（重排后）原来的 x + 2
+      const lifted = entries.find((at) => words[at + 3] === 2)!;
+      expect(floats[lifted + 1]).toBeCloseTo(restored.vertices[v]![0]! + 2, 3);
+      const moved = entries.find((at) => words[at + 3] === 0);
+      if (moved !== undefined) {
+        evenCount++;
+        expect([floats[moved + 2], floats[moved + 4]]).toEqual([1, 0.5]);
+      }
+    }
+    expect(evenCount).toBe(Math.ceil(count / 2));
   });
 });
 

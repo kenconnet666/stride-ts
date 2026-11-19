@@ -5,6 +5,8 @@
  * 渲染器（MeshRenderFeature）按 Skinned.palette 找到它们直接上传。
  *
  * 带骨架的模型由内容管理挂上（attach）：模型实体加 ModelSkeleton，每个网格实体加 Skinned。实体销毁时释放原生对象。
+ * 带形变目标的模型（attachMorphs）：模型实体加 ModelMorph（权重见 morphs()），带形变的网格实体加 Morphed；剪辑里的形变曲线
+ * 和骨架的轨道走同一个混合栈（MorphStack）。没有骨架、只有形变的模型由 morphSystem 推进它的 AnimationComponent。
  *
  * 和 Stride 不同：Stride 在 Draw 里推进动画（用绘制的时间）；这里在 update 里（用更新的时间），暂停和单步因此对动画也生效。
  * 动画组件什么都没在播时 Stride 保留上一个姿势，这里也一样，只有第一次求一次静止姿势（不然蒙皮矩阵全是 0，网格看不见）。
@@ -18,10 +20,16 @@ import type { EntityManager } from '../engine/EntityManager';
 import { system } from '../engine/system';
 import { Skinned } from '../rendering/components';
 import { AnimationComponent, type AnimationBlendStack } from './AnimationComponent';
+import { ModelMorphs, Morphed, MorphStack } from './morphs';
 import type { AnimationClip, Skeleton } from './resources';
 
 /** 带骨架的模型：模型实体上，state 是动画系统里的骨架状态（从 1 开始）。 */
 export const ModelSkeleton = component('ModelSkeleton', {
+  state: prop.u32().default(0).transient(),
+});
+
+/** 带形变目标的模型：模型实体上，state 是动画系统里的形变权重（从 1 开始）。 */
+export const ModelMorph = component('ModelMorph', {
   state: prop.u32().default(0).transient(),
 });
 
@@ -52,7 +60,10 @@ export class AnimationSystem {
   readonly #batch: AnimationBatch;
   readonly #states: (SkeletonState | undefined)[] = [undefined];
   readonly #freeStates: number[] = [];
-  readonly #palettes = new PaletteSpace();
+  readonly #palettes = new SlotSpace();
+  readonly #morphs: (ModelMorphs | undefined)[] = [undefined];
+  readonly #freeMorphs: number[] = [];
+  readonly #morphSpace = new SlotSpace();
   readonly #stack: BatchStack;
 
   /** 每帧推进动画、求姿势和蒙皮矩阵（加进 EntityManager，物理之后跑）。 */
@@ -61,6 +72,17 @@ export class AnimationSystem {
     phase: 'afterPhysics',
     update: ({ skeleton, count }, time) => this.#update(skeleton.state, count, time.elapsed),
     removed: (entity) => this.#release(entity),
+  });
+
+  /** 没有骨架、只有形变的模型：推进它的动画组件，按形变曲线写权重。 */
+  readonly morphSystem = system('AnimationSystem.morphs', {
+    with: { morph: ModelMorph },
+    without: [ModelSkeleton],
+    phase: 'afterPhysics',
+    update: ({ morph, entities, count }, time) => {
+      for (let i = 0; i < count; i++) this.#animateMorphs(entities[i]!, this.#morphs[morph.state[i]!]!, time.elapsed);
+    },
+    removed: (entity) => this.#releaseMorphs(entity),
   });
 
   constructor(native: StrideNative, entities: EntityManager) {
@@ -72,6 +94,33 @@ export class AnimationSystem {
   /** 所有蒙皮矩阵连起来的关节数（渲染器按它分配 GPU 缓冲）。 */
   get paletteCapacity(): number {
     return this.#palettes.capacity;
+  }
+
+  /** 所有模型实例的形变权重连起来的个数（渲染器按它分配 GPU 缓冲）。 */
+  get morphCapacity(): number {
+    return this.#morphSpace.capacity;
+  }
+
+  /** 每个模型实例的形变权重：在连起来的缓冲里的起点和权重。 */
+  forEachMorph(visit: (base: number, weights: Float32Array) => void): void {
+    for (const morphs of this.#morphs) if (morphs) visit(morphs.base, morphs.weights);
+  }
+
+  /** 模型实体的形变权重；模型没有形变目标时是 undefined。 */
+  morphs(entity: Entity): ModelMorphs | undefined {
+    const view = entity.get(ModelMorph);
+    return view ? this.#morphs[view.state] : undefined;
+  }
+
+  /** 给模型实体挂上形变权重（targetNames 按模型的目标槽），带形变的网格实体加上 Morphed。 */
+  attachMorphs(entity: Entity, targetNames: readonly string[], parts: readonly Entity[]): ModelMorphs {
+    if (entity.get(ModelMorph)) throw new Error(`entity '${entity.name}' already has morph targets`);
+    const morphs = new ModelMorphs(targetNames, this.#morphSpace.allocate(targetNames.length));
+    for (const part of parts) part.add(Morphed.with({ weights: morphs.base }));
+    const id = this.#freeMorphs.pop() ?? this.#morphs.length;
+    this.#morphs[id] = morphs;
+    entity.add(ModelMorph.with({ state: id }));
+    return morphs;
   }
 
   /** 每个蒙皮网格的蒙皮矩阵：在连起来的缓冲里的起点（按关节数）和原生内存上的视图。 */
@@ -115,6 +164,7 @@ export class AnimationSystem {
   destroy(): void {
     for (const state of this.#states) if (state) this.#free(state);
     this.#states.length = 1;
+    this.#morphs.length = 1;
     this.#batch[Symbol.dispose]();
   }
 
@@ -123,8 +173,9 @@ export class AnimationSystem {
     const components: AnimationComponent[] = [];
     for (let i = 0; i < count; i++) {
       const state = this.#states[stateIds[i]!]!;
-      const animation = this.#entities.entity(state.entity).get(AnimationComponent);
-      this.#stack.begin(state.skeleton);
+      const entity = this.#entities.entity(state.entity);
+      const animation = entity.get(AnimationComponent);
+      this.#stack.begin(state.skeleton, this.morphs(entity));
       batch.instance(state.instance);
       let pushed = 0;
       if (animation?.blendTreeBuilder) {
@@ -134,6 +185,7 @@ export class AnimationSystem {
         pushed = animation.advanceAndBuild(elapsed, this.#stack);
         components.push(animation);
       }
+      if (pushed > 0) this.#stack.morphs.apply();
       // 什么都没压时保留上一个姿势（同 Stride），只有第一次求静止姿势
       if (pushed === 0 && state.posed) continue;
       state.posed = true;
@@ -141,6 +193,25 @@ export class AnimationSystem {
     }
     batch.evaluate();
     for (const animation of components) animation.updateWeights(elapsed);
+  }
+
+  #animateMorphs(entity: EntityId, morphs: ModelMorphs, elapsed: number): void {
+    const animation = this.#entities.entity(entity).get(AnimationComponent);
+    if (!animation) return;
+    this.#stack.begin(undefined, morphs);
+    if (animation.blendTreeBuilder) animation.blendTreeBuilder.buildBlendTree(this.#stack);
+    else animation.advanceAndBuild(elapsed, this.#stack);
+    this.#stack.morphs.apply();
+    if (!animation.blendTreeBuilder) animation.updateWeights(elapsed);
+  }
+
+  #releaseMorphs(entity: EntityId): void {
+    const id = this.#entities.entity(entity).require(ModelMorph).state;
+    const morphs = this.#morphs[id];
+    if (!morphs) return;
+    this.#morphSpace.release(morphs.base, morphs.weights.length);
+    this.#morphs[id] = undefined;
+    this.#freeMorphs.push(id);
   }
 
   #release(entity: EntityId): void {
@@ -161,9 +232,13 @@ export class AnimationSystem {
   }
 }
 
-/** 给 BlendTreeBuilder 的混合栈：直接写进原生的 AnimationBatch，检查剪辑和模型用的是同一个骨架。 */
+/**
+ * 给 BlendTreeBuilder 的混合栈：骨架的部分直接写进原生的 AnimationBatch（检查剪辑和模型用的是同一个骨架），形变的部分在
+ * MorphStack 上做。没有骨架的模型只算形变；有骨架的模型播只有形变的剪辑时报错（原生的栈会对不上）。
+ */
 class BatchStack implements AnimationBlendStack {
   readonly #batch: AnimationBatch;
+  readonly morphs = new MorphStack();
   #skeleton: Skeleton | undefined;
   pushed = 0;
 
@@ -171,38 +246,45 @@ class BatchStack implements AnimationBlendStack {
     this.#batch = batch;
   }
 
-  begin(skeleton: Skeleton): void {
+  begin(skeleton: Skeleton | undefined, morphs: ModelMorphs | undefined): void {
     this.#skeleton = skeleton;
+    this.morphs.begin(morphs);
     this.pushed = 0;
   }
 
   push(clip: AnimationClip, time: number): this {
-    if (clip.skeleton !== this.#skeleton) {
-      throw new Error(`animation '${clip.name}' is for skeleton '${clip.skeleton.name}', but the model uses '${this.#skeleton?.name}'`);
+    if (this.#skeleton) {
+      if (clip.bones?.skeleton !== this.#skeleton) {
+        throw new Error(`animation '${clip.name}' is for skeleton '${clip.bones?.skeleton.name ?? 'none'}', but the model uses '${this.#skeleton.name}'`);
+      }
+      this.#batch.push(clip.bones.native, time);
     }
-    this.#batch.push(clip.native, time);
+    this.morphs.push(clip, time);
     this.pushed++;
     return this;
   }
 
   blend(factor: number): this {
-    this.#batch.blend(factor);
+    if (this.#skeleton) this.#batch.blend(factor);
+    this.morphs.blend(factor);
     return this;
   }
 
   add(factor: number): this {
-    this.#batch.add(factor);
+    if (this.#skeleton) this.#batch.add(factor);
+    this.morphs.add(factor);
     return this;
   }
 
   subtract(factor: number): this {
-    this.#batch.subtract(factor);
+    if (this.#skeleton) this.#batch.subtract(factor);
+    this.morphs.subtract(factor);
     return this;
   }
 }
 
-/** 蒙皮矩阵在连起来的缓冲里的位置：按关节数分配，释放的按大小留着给同样大小的复用。 */
-class PaletteSpace {
+/** 连起来的缓冲里的位置（蒙皮矩阵按关节数、形变权重按目标数）：释放的按大小留着给同样大小的复用。 */
+class SlotSpace {
   #capacity = 0;
   readonly #free = new Map<number, number[]>();
 
@@ -210,17 +292,17 @@ class PaletteSpace {
     return this.#capacity;
   }
 
-  allocate(joints: number): number {
-    const reused = this.#free.get(joints)?.pop();
+  allocate(size: number): number {
+    const reused = this.#free.get(size)?.pop();
     if (reused !== undefined) return reused;
     const base = this.#capacity;
-    this.#capacity += joints;
+    this.#capacity += size;
     return base;
   }
 
-  release(base: number, joints: number): void {
-    let list = this.#free.get(joints);
-    if (!list) this.#free.set(joints, (list = []));
+  release(base: number, size: number): void {
+    let list = this.#free.get(size);
+    if (!list) this.#free.set(size, (list = []));
     list.push(base);
   }
 }

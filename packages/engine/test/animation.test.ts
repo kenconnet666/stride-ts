@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { AnimationComponent, type AnimationBlendStack, type AnimationClip } from '../src/index';
+import { AnimationComponent, evaluateMorphCurve, ModelMorphs, MorphStack, type AnimationBlendStack, type AnimationClip } from '../src/index';
+import { decodeModel, encodeModel, MORPH_ENTRY_WORDS, packMeshMorph, plainMesh } from '../src/content/format';
 
 /** 只有时长和重复方式的假剪辑：AnimationComponent 只读这几个字段。 */
 const clip = (name: string, duration: number, repeatMode: AnimationClip['repeatMode'] = 'loopInfinite') => ({ name, duration, repeatMode }) as AnimationClip;
@@ -94,5 +95,62 @@ describe('AnimationComponent（Stride 的 AnimationProcessor 规则）', () => {
 
   test('没登记的名字报错，列出有哪些', () => {
     expect(() => component(clip('idle', 1)).play('run')).toThrow(/no animation named 'run'.*idle/);
+  });
+});
+
+describe('形变权重（Stride 的 ModelComponent 的形变 API）', () => {
+  test('按名字找槽，读写权重；槽越界报错', () => {
+    const morphs = new ModelMorphs(['Bigger', 'Thicker'], 0);
+    expect(morphs.findMorphTarget('Thicker')).toBe(1);
+    expect(morphs.findMorphTarget('Wider')).toBe(-1);
+    morphs.setMorphWeight(1, 0.5);
+    expect(morphs.getMorphWeight(1)).toBe(0.5);
+    morphs.setAllMorphWeights(2);
+    expect([...morphs.weights]).toEqual([2, 2]);
+    expect(() => morphs.setMorphWeight(-1, 0)).toThrow(/out of range/);
+  });
+
+  test('曲线线性插值，两端外取端点', () => {
+    const curve = { target: 'a', times: [0, 1, 3], values: [0, 1, 0] };
+    expect([-1, 0.5, 2, 5].map((t) => evaluateMorphCurve(curve, t))).toEqual([0, 0.5, 0.5, 0]);
+  });
+
+  test('混合栈：剪辑按曲线压入，blend、add 按槽算，只有一边有的槽取那一边，都没有的槽不动', () => {
+    const morphs = new ModelMorphs(['a', 'b', 'c'], 0);
+    morphs.setMorphWeight(2, 0.7);
+    const morphClip = (name: string, curves: Record<string, number>) =>
+      ({ name, duration: 1, morphWeights: Object.entries(curves).map(([target, value]) => ({ target, times: [0], values: [value] })) }) as unknown as AnimationClip;
+    const stack = new MorphStack();
+    stack.begin(morphs);
+    stack.push(morphClip('one', { a: 1, b: 0 }), 0);
+    stack.push(morphClip('two', { a: 0, b: 1, d: 5 }), 0);
+    stack.blend(0.25);
+    stack.apply();
+    expect([...morphs.weights]).toEqual([0.75, 0.25, Math.fround(0.7)]);
+    stack.begin(morphs);
+    stack.push(morphClip('one', { a: 1 }), 0);
+    stack.push(morphClip('two', { a: 0.5, b: 0.5 }), 0);
+    stack.add(0.5);
+    stack.apply();
+    expect([...morphs.weights]).toEqual([1.25, 0.5, Math.fround(0.7)]);
+  });
+
+  test('模型文件带形变数据和目标表，往返不变；条目按顶点再按目标排', () => {
+    const vertices = new Float32Array(3 * 8);
+    const { morph, data } = packMeshMorph(3, [
+      { vertex: 2, target: 1, position: [0, 1, 0] },
+      { vertex: 0, target: 1, position: [1, 0, 0], normal: [0, 0, 1] },
+      { vertex: 0, target: 0, position: [0, 0, 2] },
+    ]);
+    expect(morph).toEqual({ entryCount: 3, hasNormals: true });
+    const words = new Uint32Array(data.buffer);
+    // 起点 5（1 + 4 个偏移），顶点 0 有两个条目，1 没有，2 一个
+    expect([...words.subarray(0, 5)]).toEqual([5, 0, 2, 2, 3]);
+    expect([words[5 + 3], words[5 + MORPH_ENTRY_WORDS + 3]]).toEqual([0, 1]);
+    const mesh = { ...plainMesh('m', null, vertices, new Uint16Array([0, 1, 2])), morph, morphData: data };
+    const decoded = decodeModel(encodeModel({ meshes: [mesh], materials: [], morphTargets: ['a', 'b'] }).slice().buffer);
+    expect(decoded.morphTargets).toEqual(['a', 'b']);
+    expect(decoded.meshes[0]!.morph).toEqual(morph);
+    expect([...decoded.meshes[0]!.morphData!]).toEqual([...data]);
   });
 });

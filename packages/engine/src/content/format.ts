@@ -136,11 +136,57 @@ export interface MeshSkin {
   readonly inverseBinds: readonly number[];
 }
 
+/**
+ * 网格的形变数据（Stride 的 MeshMorphData：只存目标真的移动了的顶点）。数据区里是一串 uint32：[0] 是第一个条目的下标 e，
+ * [1 + v] 到 [2 + v] 是顶点 v 的条目范围（vertexCount + 1 个偏移，条目从 0 数），条目从 e 起，每个 MORPH_ENTRY_WORDS 个数：
+ * 位置增量 xyz（float）、模型的目标槽（ModelHeader.morphTargets 的下标）、法线增量 xyz（float，没有时是 0）、0。
+ * 条目按顶点再按目标排；增量在网格空间里（量化之前的位置）。
+ */
+export interface MeshMorph {
+  readonly entryCount: number;
+  readonly hasNormals: boolean;
+}
+
+/** 一个形变条目几个 32 位数。 */
+export const MORPH_ENTRY_WORDS = 8;
+
+/** 一个顶点、一个目标的增量（packMeshMorph 的输入）。 */
+export interface MorphDelta {
+  readonly vertex: number;
+  /** 模型的目标槽。 */
+  readonly target: number;
+  readonly position: readonly [number, number, number];
+  readonly normal?: readonly [number, number, number];
+}
+
+/** 把增量打包成 MeshMorph 的数据区（按顶点再按目标排）。 */
+export function packMeshMorph(vertexCount: number, deltas: readonly MorphDelta[]): { morph: MeshMorph; data: Uint8Array } {
+  const sorted = [...deltas].sort((a, b) => a.vertex - b.vertex || a.target - b.target);
+  const first = 2 + vertexCount;
+  const words = new DataView(new ArrayBuffer((first + sorted.length * MORPH_ENTRY_WORDS) * 4));
+  words.setUint32(0, first, true);
+  let entry = 0;
+  for (let v = 0; v <= vertexCount; v++) {
+    while (entry < sorted.length && sorted[entry]!.vertex < v) entry++;
+    words.setUint32((1 + v) * 4, entry, true);
+  }
+  sorted.forEach(({ vertex, target, position, normal }, i) => {
+    if (vertex < 0 || vertex >= vertexCount) throw new RangeError(`morph delta for vertex ${vertex} is outside the mesh (${vertexCount} vertices)`);
+    const at = (first + i * MORPH_ENTRY_WORDS) * 4;
+    position.forEach((value, k) => words.setFloat32(at + k * 4, value, true));
+    words.setUint32(at + 12, target, true);
+    normal?.forEach((value, k) => words.setFloat32(at + 16 + k * 4, value, true));
+  });
+  return { morph: { entryCount: sorted.length, hasNormals: sorted.some((d) => d.normal !== undefined) }, data: new Uint8Array(words.buffer) };
+}
+
 export interface ModelMeshHeader {
   readonly name: string;
   /** 在模型材质槽里的下标；没有材质时是 null。 */
   readonly material: number | null;
   readonly skin?: MeshSkin;
+  /** 形变目标（数据在 morphByteOffset 起的 morphByteLength 个字节里）。 */
+  readonly morph?: MeshMorph;
   readonly layout: VertexLayout;
   readonly dequantize: Dequantize;
   readonly compression: MeshCompression;
@@ -152,6 +198,8 @@ export interface ModelMeshHeader {
   readonly vertexByteLength: number;
   readonly indexByteOffset: number;
   readonly indexByteLength: number;
+  readonly morphByteOffset?: number;
+  readonly morphByteLength?: number;
 }
 
 export interface ModelHeader {
@@ -160,18 +208,23 @@ export interface ModelHeader {
   readonly materials: readonly (string | null)[];
   /** 蒙皮网格用的骨架（内容路径）。 */
   readonly skeleton?: string;
+  /** 形变目标的名字，按模型的目标槽排（各网格同名的目标合成一个槽，同 Stride 的 ModelMorphLayout）。 */
+  readonly morphTargets?: readonly string[];
 }
 
 /** 一个网格的数据：vertices、indices 是文件里的字节（压缩时是编码后的流，解码见 ContentManager）。 */
-export interface ModelMeshData extends Omit<ModelMeshHeader, 'vertexByteOffset' | 'vertexByteLength' | 'indexByteOffset' | 'indexByteLength'> {
+export interface ModelMeshData extends Omit<ModelMeshHeader, 'vertexByteOffset' | 'vertexByteLength' | 'indexByteOffset' | 'indexByteLength' | 'morphByteOffset' | 'morphByteLength'> {
   readonly vertices: Uint8Array;
   readonly indices: Uint8Array;
+  /** 形变数据（布局见 MeshMorph）。 */
+  readonly morphData?: Uint8Array;
 }
 
 export interface ModelData {
   readonly meshes: readonly ModelMeshData[];
   readonly materials: readonly (string | null)[];
   readonly skeleton?: string;
+  readonly morphTargets?: readonly string[];
 }
 
 /** plainMesh 的可选属性。 */
@@ -228,7 +281,7 @@ const align4 = (n: number) => (n + 3) & ~3;
 
 export function encodeModel(model: ModelData): Uint8Array {
   let offset = 0;
-  const meshes: ModelMeshHeader[] = model.meshes.map(({ vertices, indices, ...mesh }) => {
+  const meshes: ModelMeshHeader[] = model.meshes.map(({ vertices, indices, morphData, ...mesh }) => {
     if (mesh.compression === 'none') {
       const stride = vertexLayoutOffsets(mesh.layout).stride;
       if (vertices.byteLength !== mesh.vertexCount * stride) throw new RangeError(`model mesh '${mesh.name}': ${mesh.vertexCount} vertices need ${mesh.vertexCount * stride} bytes, got ${vertices.byteLength}`);
@@ -239,14 +292,23 @@ export function encodeModel(model: ModelData): Uint8Array {
     offset = align4(offset + vertices.byteLength);
     const indexByteOffset = offset;
     offset = align4(offset + indices.byteLength);
-    return { ...mesh, vertexByteOffset, vertexByteLength: vertices.byteLength, indexByteOffset, indexByteLength: indices.byteLength };
+    if (!mesh.morph !== !morphData) throw new RangeError(`model mesh '${mesh.name}': morph and morphData go together`);
+    const morphByteOffset = offset;
+    if (morphData) offset = align4(offset + morphData.byteLength);
+    return {
+      ...mesh, vertexByteOffset, vertexByteLength: vertices.byteLength, indexByteOffset, indexByteLength: indices.byteLength,
+      ...(morphData ? { morphByteOffset, morphByteLength: morphData.byteLength } : {}),
+    };
   });
-  const header: ModelHeader = { meshes, materials: model.materials, ...(model.skeleton ? { skeleton: model.skeleton } : {}) };
+  const header: ModelHeader = {
+    meshes, materials: model.materials, ...(model.skeleton ? { skeleton: model.skeleton } : {}), ...(model.morphTargets ? { morphTargets: model.morphTargets } : {}),
+  };
   const { bytes, dataStart } = encodeContainer(MODEL_MAGIC, MODEL_VERSION, header, offset);
   model.meshes.forEach((mesh, i) => {
     const header = meshes[i]!;
     bytes.set(mesh.vertices, dataStart + header.vertexByteOffset);
     bytes.set(mesh.indices, dataStart + header.indexByteOffset);
+    if (mesh.morphData) bytes.set(mesh.morphData, dataStart + header.morphByteOffset!);
   });
   return bytes;
 }
@@ -257,10 +319,12 @@ export function decodeModel(buffer: ArrayBuffer, source = 'model'): ModelData {
   return {
     materials: header.materials,
     ...(header.skeleton ? { skeleton: header.skeleton } : {}),
-    meshes: header.meshes.map(({ vertexByteOffset, vertexByteLength, indexByteOffset, indexByteLength, ...mesh }) => ({
+    ...(header.morphTargets ? { morphTargets: header.morphTargets } : {}),
+    meshes: header.meshes.map(({ vertexByteOffset, vertexByteLength, indexByteOffset, indexByteLength, morphByteOffset, morphByteLength, ...mesh }) => ({
       ...mesh,
       vertices: new Uint8Array(buffer, dataStart + vertexByteOffset, vertexByteLength),
       indices: new Uint8Array(buffer, dataStart + indexByteOffset, indexByteLength),
+      ...(morphByteOffset !== undefined ? { morphData: new Uint8Array(buffer, dataStart + morphByteOffset, morphByteLength) } : {}),
     })),
   };
 }
@@ -278,13 +342,21 @@ export interface SkeletonData extends SkeletonHeader {
 /** 播放到头之后怎么办（Stride 的 AnimationRepeatMode）。 */
 export type AnimationRepeatMode = 'playOnce' | 'loopInfinite' | 'playOnceHold';
 
-/** 动画剪辑；数据区是 ozz 的动画档案，轨道按骨架的关节顺序。 */
+/** 形变权重的一条曲线：按目标名对上模型的目标表，线性插值。 */
+export interface MorphWeightCurve {
+  readonly target: string;
+  readonly times: readonly number[];
+  readonly values: readonly number[];
+}
+
+/** 动画剪辑；数据区是 ozz 的动画档案，轨道按骨架的关节顺序（只有形变权重、没有骨架的剪辑数据区是空的）。 */
 export interface AnimationHeader {
   /** 秒。 */
   readonly duration: number;
   readonly repeatMode: AnimationRepeatMode;
-  /** 剪辑对应的骨架（内容路径）。 */
-  readonly skeleton: string;
+  /** 剪辑对应的骨架（内容路径）；只动形变权重的剪辑（MorphTargets 的立方体）没有。 */
+  readonly skeleton?: string;
+  readonly morphWeights?: readonly MorphWeightCurve[];
 }
 
 export interface AnimationData extends AnimationHeader {

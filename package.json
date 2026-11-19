@@ -20,6 +20,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0",
-    "@stride-ts/cli": "workspace:*"
+    "@stride-ts/cli": "workspace:*",
+    "@stride-ts/editor": "workspace:*"
   }
 }

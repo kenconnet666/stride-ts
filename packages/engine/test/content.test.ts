@@ -3,6 +3,7 @@ import { texture } from '@stride-ts/native/texture';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
+  assetRef,
   Background,
   Camera,
   ContentManager,
@@ -157,6 +158,10 @@ describe('ContentManager', () => {
 
     await content.loadModel('models/Wall');
     expect(reads.filter((r) => r.endsWith('Wall.model'))).toHaveLength(1);
+    // 按句柄加载（生成的 assets.gen.ts 里就是这种句柄）：种类在句柄里，和按路径加载的是同一个
+    expect(await content.load(assetRef('material', 'materials/Red'))).toBe(await content.loadMaterial('materials/Red'));
+    expect((await content.load(assetRef('model', 'models/Wall'))).meshes).toHaveLength(2);
+    expect(await content.load(assetRef('scene', 'scenes/Main'))).toEqual({ path: 'scenes/Main' });
     await expect(content.loadMaterial('materials/Missing')).rejects.toThrow('no https://game.test/content/materials/Missing.material.json');
   });
 

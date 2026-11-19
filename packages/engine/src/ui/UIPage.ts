@@ -147,18 +147,3 @@ function stripDefinition({ type = 'star', sizeValue = 1, minimumSize, maximumSiz
   if (maximumSize !== undefined) strip.maximumSize = maximumSize;
   return strip;
 }
-
-/** UIFile 引用的资源路径（加载时先并行加载好）。 */
-export function uiAssetPaths(file: UIFile): { spriteSheets: string[]; fonts: string[]; textures: UISpriteValue[] } {
-  const spriteSheets = new Set<string>(), fonts = new Set<string>();
-  const textures: UISpriteValue[] = [];
-  for (const element of file.elements) {
-    for (const value of Object.values({ ...element.props, ...element.attached })) {
-      if (value === null || typeof value !== 'object' || Array.isArray(value)) continue;
-      if ('$asset' in value) fonts.add(value.$asset);
-      else if ('sheet' in value) spriteSheets.add(value.sheet);
-      else if ('texture' in value) textures.push(value);
-    }
-  }
-  return { spriteSheets: [...spriteSheets], fonts: [...fonts], textures };
-}

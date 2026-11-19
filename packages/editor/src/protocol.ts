@@ -1,0 +1,63 @@
+/**
+ * 编辑器的后端（Node，挂在开发服务器上）和前端（浏览器）之间的约定：HTTP 接口的路径、推送事件的名字、来回传的数据。
+ * 两边都导入这个文件，只有类型和常量。
+ *
+ * HTTP（都在 EDITOR_API_PATH 下面，JSON）：
+ *   GET  /project                        工程（ProjectInfo）
+ *   GET  /assets                         所有资源（AssetRecord[]）
+ *   GET  /asset?kind=&path=              一个 JSON 资源的内容
+ *   PUT  /asset?kind=&path=              保存一个 JSON 资源（请求体是它的内容），返回它的 AssetRecord
+ * 资源变了（编辑器保存的、别的程序改的、导入器写的）以后，后端经 Vite 的 HMR 通道推送 EDITOR_ASSETS_EVENT（AssetChanges）；
+ * 前端用 `import.meta.hot.on(EDITOR_ASSETS_EVENT, ...)` 收。
+ */
+import type { AssetKind, AssetReference } from '@stride-ts/engine/content-references';
+
+export const EDITOR_API_PATH = '/__stride/editor';
+export const EDITOR_ASSETS_EVENT = 'stride:assets';
+
+/** 工程清单（工程根目录下的 PROJECT_FILE）；文件可以没有，这时都用默认值。 */
+export interface ProjectManifest {
+  /** 清单的格式版本。 */
+  readonly format: 1;
+  /** 工程的名字；默认是 package.json 的 name。 */
+  readonly name: string;
+  /** 内容目录（运行时加载的资源，也是编辑器编辑的资源），相对工程根；默认 public/content。 */
+  readonly content: string;
+  /** 生成的资源句柄（见 docs/architecture.md 的"资源的强类型"），相对工程根；默认 src/assets.gen.ts。 */
+  readonly assetTypes: string;
+}
+
+export const PROJECT_FILE = 'stride.project.json';
+
+export interface ProjectInfo extends ProjectManifest {
+  /** 内容目录在开发服务器上的地址（相对站点根，比如 `content/`）；内容目录不在 public 下面时是 null。 */
+  readonly contentUrl: string | null;
+}
+
+/** 数据库里的一个资源。 */
+export interface AssetRecord {
+  readonly kind: AssetKind;
+  /** 内容路径（不带扩展名）。 */
+  readonly path: string;
+  /** 它的文件，相对内容目录（正斜杠）：第一个是主文件，字体后面跟着它的字形块。 */
+  readonly files: readonly string[];
+  /** 所有文件的字节数。 */
+  readonly bytes: number;
+  /** 最后修改的时间（毫秒时间戳，取各文件里最晚的）。 */
+  readonly modified: number;
+  /** 它引用的资源（去过重；可能指向不存在的资源）。 */
+  readonly references: readonly AssetReference[];
+  /** 代码里用哪种句柄引用它（`prop.asset`、`content.load` 的种类）；不能直接引用的没有。 */
+  readonly handle?: string;
+  /** 主文件读不了、解析不了时的原因；这时 references 是空的。 */
+  readonly error?: string;
+}
+
+/** 一批文件变化以后数据库里变了的资源。 */
+export interface AssetChanges {
+  /** 新加的和内容变了的。 */
+  readonly changed: readonly AssetRecord[];
+  readonly removed: readonly AssetReference[];
+}
+
+export type { AssetKind, AssetReference };

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./content-format": "./src/content/format.ts",
+    "./content-references": "./src/content/references.ts",
     "./debug-protocol": "./src/debug/protocol.ts",
     "./math": "./src/mathematics/Matrix.ts"
   },

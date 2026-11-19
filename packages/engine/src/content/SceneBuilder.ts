@@ -30,9 +30,10 @@ import { UIElementLink } from '../ui/UIElementLink';
 import type { UILibrary, UIPage } from '../ui/UIPage';
 import type { ContentManager, LoadedModel, LoadSceneOptions, SceneReference } from './ContentManager';
 import type { ColliderShapeFile, SceneEntityFile, SceneLightShadow, SceneLocalLightShadow, SceneUI } from './format';
-import { textureRefs, preload } from './loading';
+import { preload } from './loading';
 import type { Prefab } from './Prefab';
-import { SceneScriptBinder, scriptAssetRefs } from './sceneScripts';
+import { entityAssetReferences, type EntityAssetReference } from './references';
+import { SceneScriptBinder } from './sceneScripts';
 
 /** 场景引用的资源，实例化之前并行加载好。 */
 export interface SceneAssets {
@@ -63,35 +64,30 @@ export class SceneBuilder {
   /** 实体文件引用的资源（包括脚本属性引用的）并行加载好。 */
   async preload(files: readonly SceneEntityFile[], where: string): Promise<SceneAssets> {
     const content = this.#content;
-    const components = files.map((e) => e.components);
-    const colliderModels = components.flatMap((c) => [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? []), ...(c.body?.shapes ?? [])])
-      .flatMap((s) => (s.type === 'mesh' || s.type === 'convexHull' ? [s.model] : []));
-    const scriptAssets = scriptAssetRefs(components.flatMap((c) => c.scripts ?? []));
-    const unsupported = scriptAssets.find((ref) => !SCRIPT_ASSET_KINDS.has(ref.kind));
+    const refs = entityAssetReferences(files);
+    const unsupported = refs.find((ref) => !PRELOADED_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${where}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
-    const scriptPaths = (kind: string) => scriptAssets.filter((ref) => ref.kind === kind).map((ref) => ref.path);
+    const paths = (kind: EntityAssetReference['kind']) => refs.filter((ref) => ref.kind === kind).map((ref) => ref.path);
     const [models, materials, animations, skyboxes, cubemaps, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds] = await Promise.all([
-      preload([...components.flatMap((c) => (c.model ? [c.model.model] : [])), ...colliderModels, ...scriptPaths('model')], (p) => content.loadModel(p)),
-      preload([...components.flatMap((c) => (c.model?.materials ?? []).filter((m): m is string => m !== null)), ...scriptPaths('material')], (p) => content.loadMaterial(p)),
-      preload([...components.flatMap((c) => (c.animation?.animations ?? []).map((a) => a.clip)), ...scriptPaths('animation')], (p) => content.loadAnimation(p)),
-      preload(components.flatMap((c) => (c.light?.type === 'skybox' ? [c.light.skybox] : [])), (p) => content.loadSkybox(p)),
-      preload(components.flatMap((c) => (c.background?.type === 'cubemap' ? [c.background.texture] : [])), (p) => content.loadCubemap(p)),
-      preload(scriptPaths('prefab'), (p) => content.loadPrefab(p)),
-      preload([...components.flatMap((c) => (c.sprite && 'sheet' in c.sprite ? [c.sprite.sheet] : [])), ...scriptPaths('spriteSheet')], (p) => content.loadSpriteSheet(p)),
-      preload(scriptPaths('font'), (p) => content.loadFont(p)),
-      preload(scriptPaths('texture'), (p) => content.loadTextureAsset(p)),
-      preload([...components.flatMap((c) => (c.ui?.page ? [c.ui.page] : [])), ...scriptPaths('uiPage')], (p) => content.loadUIPage(p)),
-      preload(scriptPaths('uiLibrary'), (p) => content.loadUILibrary(p)),
-      preload(scriptPaths('sound'), (p) => content.loadSound(p)),
+      preload(paths('model'), (p) => content.loadModel(p)),
+      preload(paths('material'), (p) => content.loadMaterial(p)),
+      preload(paths('animation'), (p) => content.loadAnimation(p)),
+      preload(paths('skybox'), (p) => content.loadSkybox(p)),
+      preload(paths('cubemap'), (p) => content.loadCubemap(p)),
+      preload(paths('prefab'), (p) => content.loadPrefab(p)),
+      preload(paths('spriteSheet'), (p) => content.loadSpriteSheet(p)),
+      preload(paths('font'), (p) => content.loadFont(p)),
+      preload(paths('texture'), (p) => content.loadTextureAsset(p)),
+      preload(paths('uiPage'), (p) => content.loadUIPage(p)),
+      preload(paths('uiLibrary'), (p) => content.loadUILibrary(p)),
+      preload(paths('sound'), (p) => content.loadSound(p)),
     ]);
     // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
-    const imageRefs = components.flatMap((c) => [
-      ...(c.background?.type === '2d' ? [c.background.image] : []), ...(c.sprite && 'texture' in c.sprite ? [c.sprite.texture] : []),
-      ...(c.particleSystem ? textureRefs(c.particleSystem) : []),
-    ]);
-    const images = new Map(await Promise.all(imageRefs.map(async (ref) => 'renderTexture' in ref
-      ? [ref.renderTexture, content.renderTexture(ref)] as const
-      : [ref.texture, await content.loadTextureRef(ref, true)] as const)));
+    const images = new Map<string, Texture>();
+    await Promise.all(refs.map(async (ref) => {
+      if (ref.kind === 'renderTexture') images.set(ref.path, content.renderTexture(ref.texture));
+      else if (ref.kind === 'image') images.set(ref.path, await content.loadTextureRef(ref.texture, true));
+    }));
     return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds };
   }
 
@@ -394,8 +390,10 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
   return shape;
 }
 
-/** 脚本属性能引用的资源种类（model、material、animation、prefab 加载场景时预先加载，scene 只给路径）。 */
-const SCRIPT_ASSET_KINDS: ReadonlySet<string> = new Set(['model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary', 'sound']);
+/** 实体文件能引用的资源种类（加载场景时预先加载；scene 只给路径）。脚本属性里写了别的种类时报错。 */
+const PRELOADED_KINDS: ReadonlySet<string> = new Set<EntityAssetReference['kind']>([
+  'model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary', 'sound', 'skybox', 'cubemap', 'image', 'renderTexture',
+]);
 
 /** 场景文件里的 UIComponent。 */
 function uiComponent({ page, resolution, size, resolutionStretch, ...flags }: SceneUI, assets: SceneAssets) {

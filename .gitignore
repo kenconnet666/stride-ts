@@ -8,3 +8,6 @@ dist/
 
 # 从 Stride 仓库导入的内容（各个 app 的 pnpm import:stride）
 /apps/*/public/content/
+
+# 按内容目录生成的资源句柄（@stride-ts/editor：开发服务器启动时、`stride-editor assets-types`）
+/apps/*/src/assets.gen.ts

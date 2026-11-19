@@ -36,7 +36,7 @@ export { AnimationClip, Skeleton, type AnimationNative } from './animation/resou
 export { evaluateCurve, propertyCurve, PropertyAnimated, PropertyStack, type AnimatableKey, type CurveInterpolation, type KeyValue, type PropertyCurve } from './animation/curves';
 export { Prefab } from './content/Prefab';
 export { SceneTemplate } from './content/SceneTemplate';
-export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type GameSettings, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
+export { assetRef, ContentManager, type AssetHandle, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type GameSettings, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
 export type { SceneScriptMap } from './content/sceneScripts';
 export {
   decodeCubemap,
@@ -134,7 +134,8 @@ export { ScenePicker } from './rendering/ScenePicker';
 export { EditorCameraController, EditorCameraState } from './editor/EditorCamera';
 export { LiveScene } from './editor/LiveScene';
 export { SceneDocument, UndoStack, type EntitiesFile, type SceneEdit, type ScenePath } from './editor/SceneDocument';
-export { changedEntities } from './content/SceneBuilder';
+export { changedEntities, type EntityChanges } from './content/SceneBuilder';
+export { assetReferences, entityAssetReferences, type AssetKind, type AssetReference, type EntityAssetReference } from './content/references';
 export { DebugDraw, DEBUG_LINE_FLOATS, type DebugColor, type DebugDrawOptions, type DebugPoint } from './debug/DebugDraw';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
 export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './games/Game';

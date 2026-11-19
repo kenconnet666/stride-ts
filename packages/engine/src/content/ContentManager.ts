@@ -9,6 +9,7 @@
  */
 import type { Skin as NativeSkin } from '@stride-ts/native';
 import { AnimationClip, Skeleton, type AnimationNative } from '../animation/resources';
+import type { AssetTypes } from '../data/prop';
 import type { EntityManager } from '../engine/EntityManager';
 import { resolveSceneValues, scriptAssetRefs, type SceneScriptMap } from './sceneScripts';
 import type { Entity, EntityScene } from '../engine/Entity';
@@ -31,7 +32,8 @@ import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
 import { ColorTreeCompiler } from '../rendering/colorTree';
 import type { ShaderClass } from '../rendering/shaderClass';
-import { buildElement, uiAssetPaths, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
+import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
+import { uiAssetPaths } from './references';
 import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
 
 declare module '../data/prop' {
@@ -43,6 +45,7 @@ declare module '../data/prop' {
     prefab: Prefab;
     font: SpriteFont;
     spriteSheet: SpriteSheet;
+    texture: Texture;
     uiPage: UIPage;
     uiLibrary: UILibrary;
     sound: Sound;
@@ -52,6 +55,20 @@ declare module '../data/prop' {
 /** 脚本属性引用的场景（Stride 的 Scene 类型的属性）：只是路径，交给 Game.setRootScene 时才加载。 */
 export interface SceneReference {
   readonly path: string;
+}
+
+/**
+ * 带着种类的资源路径：`content.load(handle)` 的结果类型跟着种类走，场景的句柄可以直接交给 Game.setRootScene、loadScene。
+ * 工程里的句柄由工具按内容目录生成（`src/assets.gen.ts`，见 docs/architecture.md 的"资源的强类型"），资源改名、删掉以后
+ * 引用它的代码在类型检查时报错。
+ */
+export interface AssetHandle<K extends keyof AssetTypes = keyof AssetTypes> {
+  readonly kind: K;
+  readonly path: string;
+}
+
+export function assetRef<K extends keyof AssetTypes>(kind: K, path: string): AssetHandle<K> {
+  return { kind, path };
 }
 
 /** loadScene 的选项。 */
@@ -174,11 +191,31 @@ export class ContentManager {
   /** 解码声音；Game 启动时设置（game.audio）。 */
   audio: AudioEngine | undefined;
 
+  /** 每种资源怎么按路径加载（load 和 GameSettings 里引用的资源用）；场景只给路径。 */
+  readonly #loaders: { readonly [K in keyof AssetTypes]: (path: string) => Promise<AssetTypes[K]> } = {
+    model: (path) => this.loadModel(path),
+    material: (path) => this.loadMaterial(path),
+    animation: (path) => this.loadAnimation(path),
+    scene: (path) => Promise.resolve({ path }),
+    prefab: (path) => this.loadPrefab(path),
+    font: (path) => this.loadFont(path),
+    spriteSheet: (path) => this.loadSpriteSheet(path),
+    texture: (path) => this.loadTextureAsset(path),
+    uiPage: (path) => this.loadUIPage(path),
+    uiLibrary: (path) => this.loadUILibrary(path),
+    sound: (path) => this.loadSound(path),
+  };
+
   constructor({ root = 'content/', read = fetchReader, shaderClass = () => undefined }: ContentOptions = {}) {
     this.#shaderClasses = shaderClass;
     const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
     this.root = new URL(root, base);
     this.#read = read;
+  }
+
+  /** 按句柄加载：`const prefab = await content.load(assets.prefabs.Bullet)`。 */
+  load<K extends keyof AssetTypes>(handle: AssetHandle<K>): Promise<AssetTypes[K]> {
+    return this.#loaders[handle.kind](handle.path) as Promise<AssetTypes[K]>;
   }
 
   loadModel(path: string): Promise<LoadedModel> {
@@ -433,13 +470,8 @@ export class ContentManager {
       const common = { name: file.name, defaultScene: file.defaultScene, defaultBackBufferSize: file.defaultBackBufferSize ?? [1280, 720] } as const;
       if (!file.renderer) return { ...common, renderer: null };
       const refs = scriptAssetRefs([file.renderer]);
-      const loaders: Readonly<Record<string, (p: string) => Promise<object>>> = {
-        model: (p) => this.loadModel(p), material: (p) => this.loadMaterial(p), animation: (p) => this.loadAnimation(p),
-        prefab: (p) => this.loadPrefab(p), font: (p) => this.loadFont(p), texture: (p) => this.loadTextureAsset(p),
-        spriteSheet: (p) => this.loadSpriteSheet(p), scene: (p) => Promise.resolve({ path: p } satisfies SceneReference),
-      };
       const loaded = new Map<string, object>(await Promise.all(refs.map(async ({ kind, path: assetPath }) => {
-        const load = loaders[kind];
+        const load = (this.#loaders as Readonly<Record<string, ((p: string) => Promise<object>) | undefined>>)[kind];
         if (!load) throw new Error(`${url.href}: renderer properties referring to ${kind} assets are not supported`);
         return [`${kind}:${assetPath}`, await load(assetPath)] as const;
       })));

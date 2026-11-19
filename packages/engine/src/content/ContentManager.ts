@@ -27,8 +27,9 @@ import { Prefab } from './Prefab';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
+import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
-import { decodeAnimation, decodeCubemap, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -37,6 +38,7 @@ declare module '../data/prop' {
     animation: AnimationClip;
     scene: SceneReference;
     prefab: Prefab;
+    font: SpriteFont;
   }
 }
 
@@ -277,6 +279,17 @@ export class ContentManager {
       const file = this.#json<SpriteSheetFile>(await this.#read(url));
       const sprites = await Promise.all(file.sprites.map(async ({ texture, ...sprite }) => ({ ...sprite, texture: await this.#loadTextureRef(texture, true) })));
       return new SpriteSheet(path, sprites);
+    });
+  }
+
+  /** 加载字体：先只读度量和码位块的清单，字形的块用到时再下载（见 SpriteFont）。 */
+  loadFont(path: string): Promise<SpriteFont> {
+    return this.#once(path + EXTENSIONS.font, async (url) => {
+      const file = this.#json<FontFile>(await this.#read(url));
+      return new SpriteFont(file, async (block) => {
+        const blockUrl = new URL(`${path}.${block}${EXTENSIONS.glyphs}`, this.root);
+        return decodeGlyphBlock(await this.#read(blockUrl), blockUrl.href);
+      });
     });
   }
 

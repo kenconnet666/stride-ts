@@ -3,7 +3,7 @@ import { AnimationComponent, evaluateMorphCurve, ModelMorphs, MorphStack, type A
 import { decodeModel, encodeModel, MORPH_ENTRY_WORDS, packMeshMorph, plainMesh } from '../src/content/format';
 
 /** 只有时长和重复方式的假剪辑：AnimationComponent 只读这几个字段。 */
-const clip = (name: string, duration: number, repeatMode: AnimationClip['repeatMode'] = 'loopInfinite') => ({ name, duration, repeatMode }) as AnimationClip;
+const clip = (name: string, duration: number, repeatMode: AnimationClip['repeatMode'] = 'loopInfinite') => ({ name, duration, repeatMode, curves: [] as AnimationClip['curves'] }) as AnimationClip;
 
 /** 把混合栈记成文字：push(名字@时刻)、blend(系数)、add(系数)。 */
 class RecordingStack implements AnimationBlendStack {

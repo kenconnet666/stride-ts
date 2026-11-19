@@ -14,6 +14,7 @@
  */
 import type { AnimationRepeatMode } from '../content/format';
 import { ScriptComponent } from '../engine/scripts';
+import { PropertyAnimated } from './curves';
 import type { AnimationClip } from './resources';
 
 /** 和下面的动画怎么合成（Stride 的 AnimationBlendOperation）。 */
@@ -95,9 +96,7 @@ export class AnimationComponent extends ScriptComponent {
   /** 停掉其他动画，从头播放 name。 */
   play(name: string): PlayingAnimation {
     this.stopAll();
-    const playing = new PlayingAnimation(name, this.#clip(name));
-    this.#playing.push(playing);
-    return playing;
+    return this.#start(new PlayingAnimation(name, this.#clip(name)));
   }
 
   isPlaying(name: string): boolean {
@@ -112,8 +111,7 @@ export class AnimationComponent extends ScriptComponent {
     playing.timeFactor = timeScale;
     playing.weight = weight;
     if (repeatMode) playing.repeatMode = repeatMode;
-    this.#playing.push(playing);
-    return playing;
+    return this.#start(playing);
   }
 
   /** 其他动画在 fadeSeconds 内淡出（淡完移除），name 同时淡入。 */
@@ -136,8 +134,7 @@ export class AnimationComponent extends ScriptComponent {
     } else {
       playing.weight = weight;
     }
-    this.#playing.push(playing);
-    return playing;
+    return this.#start(playing);
   }
 
   stop(animation: PlayingAnimation): void {
@@ -205,6 +202,13 @@ export class AnimationComponent extends ScriptComponent {
       }
       if (remove) this.#removeAt(i--);
     }
+  }
+
+  #start(playing: PlayingAnimation): PlayingAnimation {
+    this.#playing.push(playing);
+    // 带属性曲线的剪辑：给实体做上记号，没有骨架、形变的实体靠它被动画系统找到
+    if (playing.clip.curves.length > 0 && !this.entity.has(PropertyAnimated)) this.entity.add(PropertyAnimated);
+    return playing;
   }
 
   #clip(name: string): AnimationClip {

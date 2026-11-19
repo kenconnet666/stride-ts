@@ -20,6 +20,7 @@ import type { EntityManager } from '../engine/EntityManager';
 import { system } from '../engine/system';
 import { Skinned } from '../rendering/components';
 import { AnimationComponent, type AnimationBlendStack } from './AnimationComponent';
+import { PropertyAnimated, PropertyStack } from './curves';
 import { ModelMorphs, Morphed, MorphStack } from './morphs';
 import type { AnimationClip, Skeleton } from './resources';
 
@@ -73,6 +74,16 @@ export class AnimationSystem {
     phase: 'afterPhysics',
     update: ({ skeleton, count }, time) => this.#update(skeleton.state, count, time.elapsed),
     removed: (entity) => this.#release(entity),
+  });
+
+  /** 没有骨架也没有形变的实体播带属性曲线的剪辑（灯、相机、普通的实体）：推进它的动画组件，把曲线的值写到组件上。 */
+  readonly propertySystem = system('AnimationSystem.properties', {
+    with: { animated: PropertyAnimated },
+    without: [ModelSkeleton, ModelMorph],
+    phase: 'afterPhysics',
+    update: ({ entities, count }, time) => {
+      for (let i = 0; i < count; i++) this.#animateMorphs(entities[i]!, undefined, time.elapsed);
+    },
   });
 
   /** 没有骨架、只有形变的模型：推进它的动画组件，按形变曲线写权重。 */
@@ -207,9 +218,12 @@ export class AnimationSystem {
         pushed = animation.advanceAndBuild(elapsed, this.#stack);
         components.push(animation);
       }
-      if (pushed > 0) this.#stack.morphs.apply();
-      // 什么都没压时保留上一个姿势（同 Stride），只有第一次求静止姿势
-      if (pushed === 0 && state.posed) continue;
+      if (pushed > 0) {
+        this.#stack.morphs.apply();
+        this.#stack.properties.apply(entity);
+      }
+      // 没压进骨架的姿势时保留上一个姿势（同 Stride），只有第一次求静止姿势
+      if (this.#stack.poses === 0 && state.posed) continue;
       state.posed = true;
       for (const part of state.parts) batch.skin(part.skin, part.palette);
     }
@@ -217,13 +231,16 @@ export class AnimationSystem {
     for (const animation of components) animation.updateWeights(elapsed);
   }
 
-  #animateMorphs(entity: EntityId, morphs: ModelMorphs, elapsed: number): void {
-    const animation = this.#entities.entity(entity).get(AnimationComponent);
+  /** 没有骨架的实体：形变权重（有的话）和属性曲线。 */
+  #animateMorphs(id: EntityId, morphs: ModelMorphs | undefined, elapsed: number): void {
+    const entity = this.#entities.entity(id);
+    const animation = entity.get(AnimationComponent);
     if (!animation) return;
     this.#stack.begin(undefined, morphs);
     if (animation.blendTreeBuilder) animation.blendTreeBuilder.buildBlendTree(this.#stack);
     else animation.advanceAndBuild(elapsed, this.#stack);
     this.#stack.morphs.apply();
+    this.#stack.properties.apply(entity);
     if (!animation.blendTreeBuilder) animation.updateWeights(elapsed);
   }
 
@@ -256,13 +273,19 @@ export class AnimationSystem {
 
 /**
  * 给 BlendTreeBuilder 的混合栈：骨架的部分直接写进原生的 AnimationBatch（检查剪辑和模型用的是同一个骨架），形变的部分在
- * MorphStack 上做。没有骨架的模型只算形变；有骨架的模型播只有形变的剪辑时报错（原生的栈会对不上）。
+ * MorphStack 上做，属性曲线的部分在 PropertyStack 上做。没有骨架的实体只算后两样。有骨架的模型也可以播没有骨架轨道的剪辑
+ * （只有形变或者属性曲线）：它不往原生的栈里压姿势，合并的时候只有一边有姿势就留那一边。
  */
 class BatchStack implements AnimationBlendStack {
   readonly #batch: AnimationBatch;
   readonly morphs = new MorphStack();
+  readonly properties = new PropertyStack();
   #skeleton: Skeleton | undefined;
+  /** 和混合栈一一对应：这一项在原生的栈里有没有姿势。 */
+  readonly #posed: boolean[] = [];
   pushed = 0;
+  /** 压进原生栈的骨架姿势的个数。 */
+  poses = 0;
 
   constructor(batch: AnimationBatch) {
     this.#batch = batch;
@@ -271,37 +294,55 @@ class BatchStack implements AnimationBlendStack {
   begin(skeleton: Skeleton | undefined, morphs: ModelMorphs | undefined): void {
     this.#skeleton = skeleton;
     this.morphs.begin(morphs);
-    this.pushed = 0;
+    this.properties.begin();
+    this.#posed.length = 0;
+    this.pushed = this.poses = 0;
   }
 
   push(clip: AnimationClip, time: number): this {
-    if (this.#skeleton) {
-      if (clip.bones?.skeleton !== this.#skeleton) {
-        throw new Error(`animation '${clip.name}' is for skeleton '${clip.bones?.skeleton.name ?? 'none'}', but the model uses '${this.#skeleton.name}'`);
+    let posed = false;
+    if (this.#skeleton && clip.bones) {
+      if (clip.bones.skeleton !== this.#skeleton) {
+        throw new Error(`animation '${clip.name}' is for skeleton '${clip.bones.skeleton.name}', but the model uses '${this.#skeleton.name}'`);
       }
       this.#batch.push(clip.bones.native, time);
+      posed = true;
+      this.poses++;
     }
+    this.#posed.push(posed);
     this.morphs.push(clip, time);
+    this.properties.push(clip.curves, Math.min(Math.max(time, 0), clip.duration));
     this.pushed++;
     return this;
   }
 
   blend(factor: number): this {
-    if (this.#skeleton) this.#batch.blend(factor);
+    if (this.#combine()) this.#batch.blend(factor);
     this.morphs.blend(factor);
+    this.properties.blend(factor);
     return this;
   }
 
   add(factor: number): this {
-    if (this.#skeleton) this.#batch.add(factor);
+    if (this.#combine()) this.#batch.add(factor);
     this.morphs.add(factor);
+    this.properties.add(factor);
     return this;
   }
 
   subtract(factor: number): this {
-    if (this.#skeleton) this.#batch.subtract(factor);
+    if (this.#combine()) this.#batch.subtract(factor);
     this.morphs.subtract(factor);
+    this.properties.subtract(factor);
     return this;
+  }
+
+  /** 合并栈顶的两项：两边都有骨架的姿势时返回 true（原生的栈上要做这次运算）；只有一边有时那个姿势原样留在原生的栈顶。 */
+  #combine(): boolean {
+    if (this.#posed.length < 2) throw new Error('animation blend stack: an operation needs two poses');
+    const b = this.#posed.pop()!, a = this.#posed.at(-1)!;
+    this.#posed[this.#posed.length - 1] = a || b;
+    return a && b;
   }
 }
 

@@ -59,6 +59,15 @@ for (let i = 0; i < 7; i++) {
         return found ? [found.name, found.isTransparent, found.doubleSided, found.transparency.alpha] : null;
       })()`) as [string, boolean, boolean, number] | null;
       check('Lasers：激光的材质（颜色树的自发光、加法透明、两面画）', material !== null && material[1] && material[2] && material[3] === 0, material);
+      // RotationScript 用代码建的动画剪辑（旋转的属性曲线）在转环
+      const ring = `(() => { const g = strideGame, type = g.registry.scriptsNamed('RotationScript')[0];
+        const e = g.entities.ids().map((i) => g.entities.entity(i)).find((e) => e.get(type));
+        const r = e.require(strideEngine.Transform).rotation, a = e.get(strideEngine.AnimationComponent);
+        return [a?.playingAnimations.map((p) => p.name).join() ?? '', +r.x.toFixed(3), +r.w.toFixed(3)]; })()`;
+      const before = stride('eval', ring) as [string, number, number];
+      await sleep(300);
+      const after = stride('eval', ring) as [string, number, number];
+      check('Lasers：环由属性曲线的动画带着转', before[0] === 'MyCustomAnimation' && (before[1] !== after[1] || before[2] !== after[2]), { before, after });
       break;
     }
     default:

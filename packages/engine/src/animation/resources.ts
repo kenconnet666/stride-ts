@@ -4,6 +4,7 @@
  */
 import type { Animation as NativeAnimation, Skeleton as NativeSkeleton, StrideNative } from '@stride-ts/native';
 import type { AnimationRepeatMode, MorphWeightCurve } from '../content/format';
+import type { PropertyCurve } from './curves';
 
 /** 内容管理加载骨架、动画和蒙皮要用的原生功能（Game 启动时交给 ContentManager，测试里可以换成假的）。 */
 export type AnimationNative = Pick<StrideNative, 'loadSkeleton' | 'loadAnimation' | 'createSkin'>;
@@ -30,7 +31,9 @@ export class Skeleton {
   }
 }
 
-/** 动画剪辑：骨架的轨道（按关节顺序，在原生侧）和形变权重的曲线；只动形变权重的剪辑没有骨架。 */
+/**
+ * 动画剪辑：骨架的轨道（按关节顺序，在原生侧）、形变权重的曲线和属性曲线（见 curves.ts）；只动形变权重或者属性的剪辑没有骨架。
+ */
 export class AnimationClip {
   /** 内容路径。 */
   readonly name: string;
@@ -40,12 +43,21 @@ export class AnimationClip {
   /** 骨架和它的轨道；只动形变权重的剪辑没有。 */
   readonly bones: { readonly skeleton: Skeleton; readonly native: NativeAnimation } | undefined;
   readonly morphWeights: readonly MorphWeightCurve[];
+  /** 属性曲线：各自驱动实体上一个组件的一个属性。 */
+  readonly curves: readonly PropertyCurve[];
 
-  constructor(name: string, duration: number, repeatMode: AnimationRepeatMode, bones: AnimationClip['bones'], morphWeights: readonly MorphWeightCurve[] = []) {
+  constructor(name: string, duration: number, repeatMode: AnimationRepeatMode, bones: AnimationClip['bones'], morphWeights: readonly MorphWeightCurve[] = [],
+    curves: readonly PropertyCurve[] = []) {
     this.name = name;
     this.duration = duration;
     this.repeatMode = repeatMode;
     this.bones = bones;
     this.morphWeights = morphWeights;
+    this.curves = curves;
+  }
+
+  /** 用代码建一个只有属性曲线的剪辑（Stride 的 new AnimationClip 加 AddCurve）；duration 是秒，重复方式默认同 Stride（播一遍）。 */
+  static fromCurves(name: string, duration: number, curves: readonly PropertyCurve[], repeatMode: AnimationRepeatMode = 'playOnce'): AnimationClip {
+    return new AnimationClip(name, duration, repeatMode, undefined, [], curves);
   }
 }

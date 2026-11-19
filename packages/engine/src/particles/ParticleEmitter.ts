@@ -3,16 +3,17 @@
  * 第一次时按 RandomSeedMethod 建种子序列 → 算模块的世界变换 → 按需要调粒子池的大小 → 按寿命删掉死了的、按速度移动 →
  * 更新器 → 生成新粒子并初始化 → 后置的更新器。顺序同 Stride，固定种子时结果一样。
  *
- * 形状（ShapeBuilder）和材质（Material）是画的时候用的：形状读成 ShapeSettings，材质编译成着色器（material.ts），见粒子的渲染。
+ * 形状（ShapeBuilder）和材质（Material）是画的时候用的：形状见 shapes.ts，材质编译成着色器（material.ts），见粒子的渲染。
+ * 场景里不是引擎的模块按类型名找游戏登记的模块类（ParticleContext.module），都没有时警告后跳过。
  * 子粒子的模块按名字连到同一个粒子系统里的父发射器（children.ts）。
  */
 import type { ParticleModuleFile } from '../content/format';
 import { compileMaterial, type MaterialProgram } from './material';
-import { SHAPES, ShapeSettings } from './shapes';
-import { createInitializer, createSpawner, NO_CONTEXT, ParticleTransform, value, type ParticleContext, type ParticleInitializer, type ParticleSpawner, type SpawnedRange } from './modules';
+import { createBuiltinShape, type ParticleShapeBuilder } from './shapes';
+import { createInitializer, createSpawner, NO_CONTEXT, ParticleTransform, value, type ParticleContext, type ParticleInitializer, type ParticleModuleKind, type ParticleSpawner, type SpawnedRange } from './modules';
 import { createUpdater, type ParticleUpdater } from './updaters';
 import { clearChildren, createChildInitializer, createChildSpawner, isChildModule, type ParentEmitter } from './children';
-import { ParticlePool, type IntegerField, type ParticleField } from './ParticlePool';
+import { ParticlePool, type AnyParticleField, type FloatField } from './ParticlePool';
 import { RandomOffset, RandomSeedGenerator, seedFloat } from './random';
 import type { Quat, Vec3 } from './math';
 
@@ -45,7 +46,7 @@ export class ParticleEmitter implements ParentEmitter {
   readonly shapeBuilder: ParticleModuleFile | null;
   readonly material: ParticleModuleFile | null;
   /** 形状的设置；形状是 null 或者还不认识时 undefined（不画）。 */
-  readonly shape: ShapeSettings | undefined;
+  readonly shape: ParticleShapeBuilder | undefined;
   /** 材质编译出来的着色器；材质是 null 时 undefined（不画）。 */
   readonly program: MaterialProgram | undefined;
   readonly spawners: readonly ParticleSpawner[];
@@ -78,14 +79,14 @@ export class ParticleEmitter implements ParentEmitter {
     this.drawPriority = value(file, 'drawPriority', 0);
     this.shapeBuilder = file['shapeBuilder'] === undefined ? { $type: 'shapeBuilderBillboard' } : (file['shapeBuilder'] as ParticleModuleFile | null);
     this.material = file['material'] === undefined ? { $type: 'particleMaterialComputeColor' } : (file['material'] as ParticleModuleFile | null);
-    this.shape = this.shapeBuilder && SHAPES.has(String(this.shapeBuilder.$type)) ? new ShapeSettings(this.shapeBuilder) : undefined;
+    this.shape = this.shapeBuilder ? createBuiltinShape(this.shapeBuilder) ?? gameModule<ParticleShapeBuilder>(this.shapeBuilder, 'shape', context) : undefined;
     this.program = this.material ? compileMaterial(this.material, context.texture) : undefined;
     const modules = <T>(key: string, create: (module: ParticleModuleFile) => T | undefined): T[] =>
       ((file[key] as readonly ParticleModuleFile[] | undefined) ?? []).map(create).filter((module): module is T => module !== undefined);
-    this.spawners = modules('spawners', (module) => createSpawner(module) ?? createChildSpawner(module));
-    this.initializers = modules('initializers', (module) => createInitializer(module, context) ?? createChildInitializer(module));
-    this.updaters = modules('updaters', createUpdater);
-    const fields = new Set<ParticleField>(['life', 'randomSeed', 'position']);
+    this.spawners = modules('spawners', (module) => createSpawner(module) ?? createChildSpawner(module) ?? gameModule(module, 'spawner', context));
+    this.initializers = modules('initializers', (module) => createInitializer(module, context) ?? createChildInitializer(module) ?? gameModule(module, 'initializer', context));
+    this.updaters = modules('updaters', (module) => createUpdater(module) ?? gameModule(module, 'updater', context));
+    const fields = new Set<AnyParticleField>(['life', 'randomSeed', 'position']);
     for (const module of [...this.initializers, ...this.updaters]) if (module.enabled) for (const field of module.requiredFields) fields.add(field);
     this.pool = new ParticlePool(fields);
   }
@@ -108,7 +109,7 @@ export class ParticleEmitter implements ParentEmitter {
   }
 
   /** 父粒子要多存的字段（子粒子的模块要的）。 */
-  requireField(field: ParticleField): void {
+  requireField(field: AnyParticleField): void {
     this.pool.addField(field);
   }
 
@@ -237,7 +238,7 @@ export class ParticleEmitter implements ParentEmitter {
   /** 新粒子的默认值（Stride 的 InitialDefaultFields）：有哪个字段设哪个。 */
   #initializeDefaults({ start, end, capacity }: SpawnedRange): void {
     const pool = this.pool, { position, rotation, scale } = this.#defaults;
-    const fill = (field: Exclude<ParticleField, IntegerField>, values: readonly number[]) => {
+    const fill = (field: FloatField, values: readonly number[]) => {
       const column = pool.field(field);
       if (column) for (let i = start; i !== end; i = (i + 1) % capacity) column.set(values, i * values.length);
     };
@@ -249,5 +250,20 @@ export class ParticleEmitter implements ParentEmitter {
     fill('velocity', [0, 0, 0]);
     fill('size', [scale]);
     fill('color', [1, 1, 1, 1]);
+    for (const field of pool.customFields) fill(field, field.defaultValue);
   }
+}
+
+const warned = new Set<string>();
+
+/** 游戏登记的模块（按 $type 找，种类要对）；没有时警告一次、跳过。 */
+function gameModule<T>(file: ParticleModuleFile, kind: ParticleModuleKind, context: ParticleContext): T | undefined {
+  const type = String(file.$type);
+  const found = context.module(type);
+  if (found?.particleModuleKind === kind) return new found(file) as T;
+  if (!warned.has(type)) {
+    warned.add(type);
+    console.warn(`[stride] particle ${kind} '${type}' is ${found ? `a ${found.particleModuleKind}` : 'not supported, and the game registered no module of that name'}; skipped`);
+  }
+  return undefined;
 }

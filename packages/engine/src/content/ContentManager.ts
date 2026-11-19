@@ -31,6 +31,7 @@ import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
+import type { ParticleModuleClass } from '../particles/modules';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import { UIElementLink } from '../ui/UIElementLink';
@@ -593,6 +594,7 @@ export class ContentManager {
           const world = created.get(id)?.get(Transform)?.world;
           return world ? [world[12]!, world[13]!, world[14]!] : undefined;
         },
+        module: (type) => entities.game.registry.particleModule(type) as ParticleModuleClass | undefined,
       });
     }
     if (animation) {

@@ -6,8 +6,8 @@ import type { ParticleModuleFile } from '../content/format';
 import { curveSampler, type CurveSampler } from './curves';
 import { createFieldShape, FieldFalloff, type FieldShape } from './fieldShapes';
 import type { Vec3 } from './math';
-import { ParticleModule, value, type ParticleTransform } from './modules';
-import type { ParticleField, ParticlePool } from './ParticlePool';
+import { ParticleModule, value, type ParticleModuleKind, type ParticleTransform } from './modules';
+import type { AnyParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat } from './random';
 
 const ZERO_TOLERANCE = 1e-6;
@@ -16,6 +16,9 @@ const DEGREES = Math.PI / 180;
 const vec3 = (file: ParticleModuleFile, key: string, fallback: Vec3): Vec3 => [...value(file, key, fallback)] as Vec3;
 
 export abstract class ParticleUpdater extends ParticleModule {
+  /** Registry 按它认出粒子模块。 */
+  static readonly particleModuleKind: ParticleModuleKind = 'updater';
+
   /** 生成新粒子之后再跑（Stride 的 IsPostUpdater）。 */
   get isPostUpdater(): boolean {
     return false;
@@ -137,7 +140,7 @@ class OverTime {
  * 的随机数插值。
  */
 export class UpdaterSizeOverTime extends ParticleUpdater {
-  readonly requiredFields: readonly ParticleField[];
+  readonly requiredFields: readonly AnyParticleField[];
   readonly curves: OverTime;
 
   constructor(file: ParticleModuleFile) {
@@ -160,7 +163,7 @@ export class UpdaterSizeOverTime extends ParticleUpdater {
 
 /** 按寿命改颜色（Stride 的 UpdaterColorOverTime，后置）：颜色 = 曲线（走过的寿命），存成预乘 alpha 的。 */
 export class UpdaterColorOverTime extends ParticleUpdater {
-  readonly requiredFields: readonly ParticleField[];
+  readonly requiredFields: readonly AnyParticleField[];
   readonly curves: OverTime;
 
   constructor(file: ParticleModuleFile) {
@@ -185,7 +188,7 @@ export class UpdaterColorOverTime extends ParticleUpdater {
 
 /** 按寿命改转角（Stride 的 UpdaterRotationOverTime，后置）：转角 = 曲线（走过的寿命）的度数。 */
 export class UpdaterRotationOverTime extends ParticleUpdater {
-  readonly requiredFields: readonly ParticleField[];
+  readonly requiredFields: readonly AnyParticleField[];
   readonly curves: OverTime;
 
   constructor(file: ParticleModuleFile) {

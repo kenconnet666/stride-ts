@@ -1,10 +1,13 @@
 /**
- * 粒子展开成四边形（Stride 的 ShapeBuilder）：每个粒子 4 个顶点（Hexagon 8 个，两个四边形），写进顶点数组。
- * 共同的部分（Stride 的 ShapeBuilderCommon）：位置加 SamplerPosition（按走过的寿命），大小乘 SamplerSize；局部模拟的粒子按粒子
- * 系统的变换换到世界；颜色是粒子的颜色（没有时白色），UV 按材质的翻页动画取帧。各形状：
+ * 粒子展开成四边形（Stride 的 ShapeBuilder）：形状按画的顺序把每个粒子写成几个四边形（每个 4 个顶点）的位置和 UV，
+ * VertexWriter 再按粒子补上颜色（没有时白色）和材质的 UV 帧（翻页、滚动），同 Stride 的形状加材质的 PatchVertexBuffer。
+ * 游戏可以继承 ParticleShapeBuilder 写自己的形状，导出就按类名登记（同脚本，见 Registry 的粒子模块）。
+ *
+ * 引擎的形状（BuiltinShape）。共同的部分（Stride 的 ShapeBuilderCommon）：位置加 SamplerPosition（按走过的寿命），大小乘
+ * SamplerSize；局部模拟的粒子按粒子系统的变换换到世界。各形状：
  * - Billboard：正对相机，按粒子的转角（加 SamplerRotation 的度数）在屏幕里转；
  * - Quad：本地 X、Z 两条边（平放），按粒子的朝向（SamplerRotation 先转）转；
- * - Hexagon：正对相机的六边形；
+ * - Hexagon：正对相机的六边形（两个四边形）；
  * - OrientedQuad：一条边沿粒子的方向（Direction，没有时朝上）拉长（ScaleLength 时乘大小，再乘 LengthFactor），另一条在屏幕里
  *   垂直于它。
  * Ribbon、Trail 把粒子连成带子，见 ribbons.ts。
@@ -20,11 +23,78 @@ import { buildRibbons, RibbonSettings, RIBBONS } from './ribbons';
 export const VERTEX_FLOATS = 9;
 const SQRT3_HALF = 0.86602540378;
 const DEGREES = Math.PI / 180;
+const clamp = (c: number) => (c < 0 ? 0 : c > 1 ? 1 : c);
 
-export const SHAPES = new Set(['shapeBuilderBillboard', 'shapeBuilderQuad', 'shapeBuilderHexagon', 'shapeBuilderOrientedQuad', ...RIBBONS]);
+/** 相机的右、上、朝向自己的方向（世界空间），和视图投影矩阵（按列存，飘带按投影到屏幕上的走向定宽度方向）。 */
+export interface CameraAxes {
+  readonly right: Readonly<Vec3>;
+  readonly up: Readonly<Vec3>;
+  readonly back: Readonly<Vec3>;
+  readonly viewProjection: Readonly<Float32Array>;
+}
 
-/** 发射器的形状设置（构造发射器时读一次）。 */
-export class ShapeSettings {
+/**
+ * 写顶点：先 particle(i) 选粒子（取它的颜色和 UV 帧），再按顺序 vertex(...) 写它的四边形，每个四边形的四个角按
+ * 左上、右上、右下、左下。uv 是四边形上的 0 到 1，写进去的是按 UV 帧变换后的。
+ */
+export class VertexWriter {
+  vertices: Float32Array;
+  /** 下一个顶点写在哪（float 的下标）。 */
+  at: number;
+  readonly #color: Float32Array | undefined;
+  readonly #life: Float32Array;
+  readonly #uv: (remainingLife: number) => readonly [number, number, number, number];
+  #r = 1; #g = 1; #b = 1; #a = 1; #u0 = 0; #v0 = 0; #us = 1; #vs = 1;
+
+  /** uv 给出粒子的 UV 帧 [u, v, 宽, 高]（材质的 UVBuilder，没有时 [0, 0, 1, 1]）。 */
+  constructor(emitter: ParticleEmitter, vertices: Float32Array, at: number, uv: (remainingLife: number) => readonly [number, number, number, number]) {
+    this.vertices = vertices;
+    this.at = at;
+    this.#color = emitter.pool.field('color');
+    this.#life = emitter.pool.field('life')!;
+    this.#uv = uv;
+  }
+
+  particle(i: number): void {
+    const color = this.#color;
+    if (color) {
+      this.#r = clamp(color[i * 4]!); this.#g = clamp(color[i * 4 + 1]!); this.#b = clamp(color[i * 4 + 2]!); this.#a = clamp(color[i * 4 + 3]!);
+    }
+    [this.#u0, this.#v0, this.#us, this.#vs] = this.#uv(this.#life[i]!);
+  }
+
+  vertex(x: number, y: number, z: number, u: number, v: number): void {
+    const out = this.vertices, at = this.at;
+    out[at] = x; out[at + 1] = y; out[at + 2] = z;
+    out[at + 3] = this.#u0 + this.#us * u; out[at + 4] = this.#v0 + this.#vs * v;
+    out[at + 5] = this.#r; out[at + 6] = this.#g; out[at + 7] = this.#b; out[at + 8] = this.#a;
+    this.at = at + VERTEX_FLOATS;
+  }
+}
+
+/** 形状（Stride 的 ShapeBuilder）。游戏的形状继承它，构造参数是场景里的属性（ParticleModuleFile）。 */
+export abstract class ParticleShapeBuilder {
+  /** Registry 按它认出粒子模块。 */
+  static readonly particleModuleKind = 'shape';
+
+  /** 每个粒子几个四边形（渲染器按它留顶点的空间）。 */
+  get quadsPerParticle(): number {
+    return 1;
+  }
+
+  /** 按 order 的顺序写出每个粒子的 quadsPerParticle 个四边形。 */
+  abstract build(emitter: ParticleEmitter, camera: CameraAxes, order: readonly number[], out: VertexWriter): void;
+}
+
+const BUILTIN_SHAPES = new Set(['shapeBuilderBillboard', 'shapeBuilderQuad', 'shapeBuilderHexagon', 'shapeBuilderOrientedQuad', ...RIBBONS]);
+
+/** 引擎的形状：文件不是这几种时是 undefined。 */
+export function createBuiltinShape(file: ParticleModuleFile): BuiltinShape | undefined {
+  return BUILTIN_SHAPES.has(String(file.$type)) ? new BuiltinShape(file) : undefined;
+}
+
+/** 引擎的形状（构造发射器时读一次设置）。 */
+export class BuiltinShape extends ParticleShapeBuilder {
   readonly type: string;
   readonly samplerPosition: CurveSampler | undefined;
   readonly samplerSize: CurveSampler | undefined;
@@ -35,6 +105,7 @@ export class ShapeSettings {
   readonly ribbon: RibbonSettings | undefined;
 
   constructor(file: ParticleModuleFile) {
+    super();
     this.type = String(file.$type);
     this.samplerPosition = curveSampler(file['samplerPosition'] as ParticleModuleFile | null | undefined);
     this.samplerSize = curveSampler(file['samplerSize'] as ParticleModuleFile | null | undefined);
@@ -44,17 +115,14 @@ export class ShapeSettings {
     this.ribbon = RIBBONS.has(this.type) ? new RibbonSettings(file) : undefined;
   }
 
-  get quadsPerParticle(): number {
+  override get quadsPerParticle(): number {
     return this.ribbon?.sections ?? (this.type === 'shapeBuilderHexagon' ? 2 : 1);
   }
-}
 
-/** 相机的右、上、朝向自己的方向（世界空间），和视图投影矩阵（按列存，飘带按投影到屏幕上的走向定宽度方向）。 */
-export interface CameraAxes {
-  readonly right: Readonly<Vec3>;
-  readonly up: Readonly<Vec3>;
-  readonly back: Readonly<Vec3>;
-  readonly viewProjection: Readonly<Float32Array>;
+  build(emitter: ParticleEmitter, camera: CameraAxes, order: readonly number[], out: VertexWriter): void {
+    if (this.ribbon) buildRibbons(emitter, this.ribbon, camera, order, out);
+    else buildQuads(emitter, this, camera, order, out);
+  }
 }
 
 /**
@@ -84,30 +152,16 @@ export function drawOrder(emitter: ParticleEmitter, camera: CameraAxes): number[
   }
 }
 
-/**
- * 按 order 的顺序把发射器的粒子写进 vertices（从 at 起），返回写完的位置。uv 给出某个粒子的 UV 帧 [u, v, 宽, 高]
- * （材质的翻页动画，没有时 [0, 0, 1, 1]）。
- */
-export function buildShapes(
-  emitter: ParticleEmitter, shape: ShapeSettings, camera: CameraAxes, order: readonly number[], vertices: Float32Array, at: number,
-  uv: (remainingLife: number) => readonly [number, number, number, number],
-): number {
-  if (shape.ribbon) return buildRibbons(emitter, shape.ribbon, camera, order, vertices, at, uv);
+/** 四边形和六边形的形状：中心 c，两条半边 a（屏幕里向右）、b（向上）。 */
+function buildQuads(emitter: ParticleEmitter, shape: BuiltinShape, camera: CameraAxes, order: readonly number[], out: VertexWriter): void {
   const pool = emitter.pool;
   const position = pool.field('position')!, size = pool.field('size'), angle = pool.field('rotation');
-  const quaternion = pool.field('quaternion'), color = pool.field('color'), life = pool.field('life')!, direction = pool.field('direction');
+  const quaternion = pool.field('quaternion'), life = pool.field('life')!, direction = pool.field('direction');
   const local = emitter.simulationSpace === 'local';
   const space = emitter.drawTransform;
-  const v = vertices;
   let cx = 0, cy = 0, cz = 0, ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0;
-  let r = 1, g = 1, b = 1, a = 1, u0 = 0, v0 = 0, us = 1, vs = 1;
-  const vertex = (sx: number, sy: number, u: number, w: number) => {
-    v[at] = cx + ax * sx + bx * sy; v[at + 1] = cy + ay * sx + by * sy; v[at + 2] = cz + az * sx + bz * sy;
-    v[at + 3] = u0 + us * u; v[at + 4] = v0 + vs * w;
-    v[at + 5] = r; v[at + 6] = g; v[at + 7] = b; v[at + 8] = a;
-    at += VERTEX_FLOATS;
-  };
-  const clamp = (c: number) => (c < 0 ? 0 : c > 1 ? 1 : c);
+  const vertex = (sx: number, sy: number, u: number, v: number) =>
+    out.vertex(cx + ax * sx + bx * sy, cy + ay * sx + by * sy, cz + az * sx + bz * sy, u, v);
   const center: Vec3 = [0, 0, 0], axisX: Vec3 = [0, 0, 0], axisY: Vec3 = [0, 0, 0];
   const q: Quat = [0, 0, 0, 1];
   const top = 0.5 - SQRT3_HALF * 0.5;
@@ -180,10 +234,7 @@ export function buildShapes(
         }
       }
     }
-    if (color) {
-      r = clamp(color[i * 4]!); g = clamp(color[i * 4 + 1]!); b = clamp(color[i * 4 + 2]!); a = clamp(color[i * 4 + 3]!);
-    }
-    [u0, v0, us, vs] = uv(life[i]!);
+    out.particle(i);
     if (shape.type === 'shapeBuilderHexagon') {
       // 两个四边形拼成六边形（Stride 的 ShapeBuilderHexagon）：上半是梯形加中线，下半同样
       vertex(-0.5, SQRT3_HALF, 0.25, top);
@@ -201,5 +252,5 @@ export function buildShapes(
       vertex(-1, -1, 0, 1);
     }
   }
-  return at;
 }
+

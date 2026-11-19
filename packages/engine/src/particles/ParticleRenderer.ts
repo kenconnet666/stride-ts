@@ -12,7 +12,7 @@ import type { RenderView } from '../rendering/RenderSystem';
 import type { Vec3 } from './math';
 import type { MaterialProgram } from './material';
 import type { ParticleSystemComponent } from './ParticleSystemComponent';
-import { buildShapes, drawOrder, VERTEX_FLOATS, type CameraAxes } from './shapes';
+import { drawOrder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from './shapes';
 
 /** 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数（WGSL 里 96 字节）；按动态偏移的 256 字节对齐。 */
 const UNIFORM_STRIDE = 256;
@@ -108,7 +108,10 @@ export class ParticleRenderer {
         if (!shape || !program || pool.living === 0) continue;
         this.#reserve((quads + pool.living * shape.quadsPerParticle) * 4 * VERTEX_FLOATS);
         const order = drawOrder(emitter, camera);
-        const end = buildShapes(emitter, shape, camera, order, this.#vertices, quads * 4 * VERTEX_FLOATS, program.uv);
+        const writer = new VertexWriter(emitter, this.#vertices, quads * 4 * VERTEX_FLOATS, program.uv);
+        shape.build(emitter, camera, order, writer);
+        // 形状写的四边形不能超过留的空间（每个粒子 quadsPerParticle 个）
+        const end = Math.min(writer.at, (quads + pool.living * shape.quadsPerParticle) * 4 * VERTEX_FLOATS);
         const firstQuad = quads;
         quads = end / (4 * VERTEX_FLOATS);
         this.#writeUniforms(draws.length, view, component, program);

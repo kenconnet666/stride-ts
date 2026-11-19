@@ -11,10 +11,8 @@ import type { ParticleModuleFile } from '../content/format';
 import { rotate, type Vec3 } from './math';
 import { value } from './modules';
 import type { ParticleEmitter } from './ParticleEmitter';
-import type { CameraAxes } from './shapes';
+import type { CameraAxes, VertexWriter } from './shapes';
 
-/** 每个顶点：位置 3、UV 2、颜色 4（同 shapes.ts）。 */
-const VERTEX_FLOATS = 9;
 const ZERO_TOLERANCE = 1e-6;
 /** 生成顺序里组的位置（Stride 的 SpawnOrderConst.GroupBitOffset）。 */
 const GROUP_BIT_OFFSET = 16;
@@ -54,21 +52,15 @@ export class RibbonSettings {
   }
 }
 
-/**
- * 按 order 的顺序把发射器的粒子连成带子写进 vertices（从 at 起），返回写完的位置。每个粒子写 sections 个四边形。
- * uv 给出某个粒子的 UV 帧 [u, v, 宽, 高]。
- */
-export function buildRibbons(
-  emitter: ParticleEmitter, ribbon: RibbonSettings, camera: CameraAxes, order: readonly number[], vertices: Float32Array, at: number,
-  uv: (remainingLife: number) => readonly [number, number, number, number],
-): number {
+/** 按 order 的顺序把发射器的粒子连成带子写进 out，每个粒子写 sections 个四边形。 */
+export function buildRibbons(emitter: ParticleEmitter, ribbon: RibbonSettings, camera: CameraAxes, order: readonly number[], out: VertexWriter): void {
   const pool = emitter.pool;
   const position = pool.field('position')!, size = pool.field('size'), direction = pool.field('direction');
   const spawnOrder = pool.integers('order');
   const local = emitter.simulationSpace === 'local';
   const space = emitter.drawTransform;
   const sections = ribbon.sections;
-  const writer = new RibbonWriter(ribbon, camera, order.length * sections, vertices, at, pool.field('color'), pool.field('life')!, uv);
+  const writer = new RibbonWriter(ribbon, camera, order.length * sections, out);
   const { points, extra, group } = writer;
   let previousGroup = 0;
   const p: Vec3 = [0, 0, 0], d: Vec3 = [0, 0, 0];
@@ -103,41 +95,27 @@ export function buildRibbons(
     else extra[slot] = particleSize;
   }
   writer.flush();
-  return writer.at;
 }
 
-/** 把一个发射器的带子一条条写进顶点数组：group 是正在攒的这一条的粒子，它们的点从 points 的开头起。 */
+/** 把一个发射器的带子一条条写出去：group 是正在攒的这一条的粒子，它们的点从 points 的开头起。 */
 class RibbonWriter {
   readonly points: Float64Array;
   readonly extra: Float64Array;
   readonly group: number[] = [];
-  at: number;
+  readonly ribbon: RibbonSettings;
+  readonly camera: CameraAxes;
+  readonly out: VertexWriter;
   /** 点投影到屏幕上的 (x, y)（Ribbon 用）。 */
   readonly #screen: Float64Array;
   readonly #width: Vec3 = [0, 0, 0];
-  #r = 1; #g = 1; #b = 1; #a = 1; #u0 = 0; #v0 = 0; #us = 1; #vs = 1;
 
-  readonly ribbon: RibbonSettings;
-  readonly camera: CameraAxes;
-  readonly vertices: Float32Array;
-  readonly color: Float32Array | undefined;
-  readonly life: Float32Array;
-  readonly uv: (remainingLife: number) => readonly [number, number, number, number];
-
-  constructor(
-    ribbon: RibbonSettings, camera: CameraAxes, capacity: number, vertices: Float32Array, at: number,
-    color: Float32Array | undefined, life: Float32Array, uv: (remainingLife: number) => readonly [number, number, number, number],
-  ) {
+  constructor(ribbon: RibbonSettings, camera: CameraAxes, capacity: number, out: VertexWriter) {
     this.ribbon = ribbon;
     this.camera = camera;
-    this.vertices = vertices;
-    this.color = color;
-    this.life = life;
-    this.uv = uv;
+    this.out = out;
     this.points = new Float64Array(capacity * 3);
     this.extra = new Float64Array(capacity * (ribbon.trail ? 3 : 1));
     this.#screen = new Float64Array(ribbon.trail ? 0 : capacity * 2);
-    this.at = at;
   }
 
   /** 写出攒好的这一条，开始下一条。 */
@@ -198,23 +176,17 @@ class RibbonWriter {
     }
   }
 
-  /** 第 k 个粒子的颜色和 UV 帧。 */
+  /** 选第 k 个粒子（颜色和 UV 帧）。 */
   #particle(k: number): void {
-    const i = this.group[k]!, color = this.color;
-    if (color) {
-      this.#r = clamp(color[i * 4]!); this.#g = clamp(color[i * 4 + 1]!); this.#b = clamp(color[i * 4 + 2]!); this.#a = clamp(color[i * 4 + 3]!);
-    }
-    [this.#u0, this.#v0, this.#us, this.#vs] = this.uv(this.life[i]!);
+    this.out.particle(this.group[k]!);
   }
 
+  /** 写一个顶点，UV 先按 UVRotate 翻转、旋转。 */
   #vertex(x: number, y: number, z: number, u: number, w: number): void {
-    const ribbon = this.ribbon, v = this.vertices, at = this.at;
-    let fu = ribbon.flipU ? 1 - u : u, fv = ribbon.flipV ? 1 - w : w;
-    if (ribbon.swapUV) [fu, fv] = [fv, fu];
-    v[at] = x; v[at + 1] = y; v[at + 2] = z;
-    v[at + 3] = this.#u0 + this.#us * fu; v[at + 4] = this.#v0 + this.#vs * fv;
-    v[at + 5] = this.#r; v[at + 6] = this.#g; v[at + 7] = this.#b; v[at + 8] = this.#a;
-    this.at = at + VERTEX_FLOATS;
+    const ribbon = this.ribbon;
+    const fu = ribbon.flipU ? 1 - u : u, fv = ribbon.flipV ? 1 - w : w;
+    if (ribbon.swapUV) this.out.vertex(x, y, z, fv, fu);
+    else this.out.vertex(x, y, z, fu, fv);
   }
 
   /** 前 count 个点投影到裁剪空间再除以 w 的 (x, y)；viewProjection 按列存。 */
@@ -336,7 +308,6 @@ export function circumcenter(out: Float64Array, a: ArrayLike<number>, b: ArrayLi
 
 const length = (x: number, y: number, z: number) => Math.sqrt(x * x + y * y + z * z);
 const distance = (a: ArrayLike<number>, b: ArrayLike<number>) => length(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
-const clamp = (c: number) => (c < 0 ? 0 : c > 1 ? 1 : c);
 
 /** 归一化（长度为 0 时原样，同 Stride 的 Normalize）。 */
 function normalize2(x: number, y: number): [number, number] {

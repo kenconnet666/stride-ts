@@ -16,7 +16,7 @@ Component: !ParticleSystemComponent
             6397977f9dff5e498be808d87893992c:
                 EmitterName: Sparks
                 ParticleLifetime: {X: 3.0, Y: 5.0}
-                ShapeBuilder: !ShapeBuilderCustom
+                ShapeBuilder: !MyGame.Particles.ShapeBuilderCustom,MyGame
                     Dummy: 1
                 Material: !ParticleMaterialComputeColor
                     ComputeColor: !ComputeTextureColor
@@ -41,7 +41,7 @@ Component: !ParticleSystemComponent
 `;
 
 describe('粒子系统的导入', () => {
-  test('类型、属性名首字母小写，向量换成数组，集合换成数组，贴图导出，引用换成实体，不认识的模块警告并去掉', async () => {
+  test('类型、属性名首字母小写，向量换成数组，集合换成数组，贴图导出，引用换成实体，引擎没有的模块警告后照样导入', async () => {
     const component = asObject(parseStrideYaml(COMPONENT)['Component'])!;
     const warnings: string[] = [];
     const textures: string[] = [];
@@ -62,7 +62,8 @@ describe('粒子系统的导入', () => {
         emitters: [{
           emitterName: 'Sparks',
           particleLifetime: [3, 5],
-          shapeBuilder: null,
+          // 游戏的模块：类型名去掉命名空间和程序集
+          shapeBuilder: { $type: 'shapeBuilderCustom', dummy: 1 },
           material: {
             $type: 'particleMaterialComputeColor',
             computeColor: { $type: 'computeTextureColor', texture: { texture: 'Shared/hit_effect', srgb: true } },
@@ -71,6 +72,7 @@ describe('粒子系统的导入', () => {
           spawners: [{ $type: 'spawnerPerSecond', loopCondition: 'oneShot', duration: [0.2, 0.2] }],
           initializers: [
             { $type: 'initial3DRotationSeed', rotationQuaternionMin: [0, 0, 0, 1] },
+            { $type: 'initialUnknownSeed', dummy: 1 },
             { $type: 'initialPositionArc', target: { $entity: 'laser-target' } },
             { $type: 'initialPositionArc', target: null },
           ],

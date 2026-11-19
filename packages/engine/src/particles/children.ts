@@ -12,7 +12,7 @@
 import type { ParticleModuleFile } from '../content/format';
 import type { Vec3 } from './math';
 import { forEachSpawned, ParticleInitializer, ParticleSpawner, randomBox, value, vec3, type SpawnedRange, type SpawnTarget } from './modules';
-import { CHILDREN_FIELDS, type ParticleField, type ParticlePool } from './ParticlePool';
+import { CHILDREN_FIELDS, type AnyParticleField, type ParticleField, type ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat } from './random';
 
 const ZERO_TOLERANCE = 1e-6;
@@ -26,7 +26,7 @@ export interface ParentEmitter {
   readonly pool: ParticlePool;
   readonly simulationSpace: 'world' | 'local';
   /** 父粒子要多存的字段。 */
-  requireField(field: ParticleField): void;
+  requireField(field: AnyParticleField): void;
   /** 寿命到了的粒子多留一帧（有子粒子生成器连着时加一）。 */
   delayParticleDeath: number;
 }

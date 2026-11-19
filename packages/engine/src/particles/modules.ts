@@ -7,20 +7,31 @@
 import type { ParticleModuleFile, ParticleValue } from '../content/format';
 import type { Texture } from '../rendering/Texture';
 import { isIdentity, normalize, rotate, slerp, combine, type Quat, type Vec3 } from './math';
-import type { ParticleField, ParticlePool } from './ParticlePool';
+import type { AnyParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat, type RandomSeedGenerator } from './random';
 
 const DEGREES = Math.PI / 180;
 
-/** 建模块时要的外部东西：贴图（材质用）、场景里实体的世界位置（InitialPositionArc 的 Target 用）。 */
+/** 粒子模块的种类：游戏的模块类继承对应的基类（ParticleSpawner、ParticleInitializer、ParticleUpdater、ParticleShapeBuilder）。 */
+export type ParticleModuleKind = 'spawner' | 'initializer' | 'updater' | 'shape';
+
+/** 游戏登记的粒子模块类：构造参数是场景里的属性。 */
+export interface ParticleModuleClass {
+  readonly particleModuleKind: ParticleModuleKind;
+  new (file: ParticleModuleFile): object;
+}
+
+/** 建模块时要的外部东西：贴图（材质用）、场景里实体的世界位置（InitialPositionArc 的 Target 用）、游戏登记的模块。 */
 export interface ParticleContext {
   /** 按内容路径给加载好的贴图。 */
   readonly texture: (path: string) => Texture | undefined;
   /** 场景里的实体（id 同场景文件）现在的世界位置；不在场景里时是 undefined。 */
   readonly entityPosition: (id: string) => Readonly<Vec3> | undefined;
+  /** 按类型名（场景文件里的 $type）找游戏登记的模块类（见 Registry.particleModule）。 */
+  readonly module: (type: string) => ParticleModuleClass | undefined;
 }
 
-export const NO_CONTEXT: ParticleContext = { texture: () => undefined, entityPosition: () => undefined };
+export const NO_CONTEXT: ParticleContext = { texture: () => undefined, entityPosition: () => undefined, module: () => undefined };
 
 /** 模块文件里的值：没写时取默认值。 */
 export function value<T extends ParticleValue>(file: ParticleModuleFile | undefined, key: string, fallback: T): T {
@@ -73,7 +84,7 @@ export class ParticleTransform {
 export abstract class ParticleModule extends ParticleTransform {
   readonly enabled: boolean;
   /** 要粒子池里有的字段。 */
-  abstract readonly requiredFields: readonly ParticleField[];
+  abstract readonly requiredFields: readonly AnyParticleField[];
 
   constructor(file: ParticleModuleFile) {
     super(file);
@@ -98,6 +109,8 @@ type SpawnerState = 'inactive' | 'rest' | 'active' | 'dead';
  * LoopingNoDelay 只在第一次休息，OneShot 活跃一次后停），活跃时按自己的规则生成粒子。时长在范围里随机，用自己的种子。
  */
 export abstract class ParticleSpawner {
+  /** Registry 按它认出粒子模块。 */
+  static readonly particleModuleKind: ParticleModuleKind = 'spawner';
   readonly enabled: boolean;
   readonly loopCondition: 'looping' | 'loopingNoDelay' | 'oneShot';
   readonly delay: [number, number];
@@ -217,6 +230,9 @@ export function forEachSpawned({ start, end, capacity }: SpawnedRange, visit: (i
 }
 
 export abstract class ParticleInitializer extends ParticleModule {
+  /** Registry 按它认出粒子模块。 */
+  static readonly particleModuleKind: ParticleModuleKind = 'initializer';
+
   abstract initialize(pool: ParticlePool, range: SpawnedRange): void;
 
   /** 重新开始模拟时清掉自己的状态（Stride 的 ResetSimulation）。 */

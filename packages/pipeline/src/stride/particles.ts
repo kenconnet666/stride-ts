@@ -4,7 +4,8 @@
  * 数组；贴图引用导出贴图，换成 TextureRef；对实体或组件的引用（`ref!! Id`）换成所在实体的 { $entity }；枚举的字符串首字母小写
  * （名字原样）。编辑器用的属性（Id、Display*）不导入。
  *
- * 运行时还不认识的模块类型（SUPPORTED 以外）记警告、去掉；去掉的是形状或材质时发射器整个不画（同 Stride 的 null）。
+ * 引擎没有的模块类型（SUPPORTED 以外，比如游戏自己的模块）记警告、照样导入（类型名去掉命名空间和程序集）：运行时按类型名找游戏
+ * 登记的模块，找不到时跳过；跳过的是形状时发射器不画（同 Stride 的 null）。
  */
 import type { ParticleModuleFile, ParticleValue, TextureRef } from '@stride-ts/engine/content-format';
 import { lowerFirst, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
@@ -74,11 +75,11 @@ async function convert(key: string, value: StrideValue | undefined, where: strin
   return convertObject(object, where, context);
 }
 
-async function convertObject(object: StrideObject, where: string, context: ParticleImportContext): Promise<ParticleModuleFile | undefined> {
-  const type = object.$type;
+async function convertObject(object: StrideObject, where: string, context: ParticleImportContext): Promise<ParticleModuleFile> {
+  // 游戏的类型可能带命名空间和程序集：`!MyGame.Particles.MySpawner,MyGame`
+  const type = object.$type?.split(',')[0]!.split('.').pop();
   if (type !== undefined && !SUPPORTED_PARTICLE_MODULES.has(type)) {
-    context.warn(`${where}: ${type} is not supported yet; it is skipped`);
-    return undefined;
+    context.warn(`${where}: ${type} is not a built-in particle module; kept for a TS module the game registers under that name (skipped otherwise)`);
   }
   const result: Record<string, ParticleValue> = type === undefined ? {} : { $type: lowerFirst(type) };
   for (const [key, value] of Object.entries(object)) {

@@ -88,6 +88,8 @@ export {
   type TextureEncoding,
   type TextureRef,
   type TextureSlot,
+  type ParticleModuleFile,
+  type ParticleValue,
 } from './content/format';
 export { Commands } from './engine/Commands';
 export {
@@ -196,6 +198,15 @@ export { Sound, SoundInstance, type PlayState } from './audio/Sound';
 export { ParticleSystem } from './particles/ParticleSystem';
 export { ParticleEmitter, type SimulationSpace, type RandomSeedMethod, type SortingPolicy } from './particles/ParticleEmitter';
 export { ParticleSystemComponent, ParticleSystems } from './particles/ParticleSystemComponent';
+// 游戏自己的粒子模块（继承这几个基类、导出，场景里按类名找到）用到的
+export {
+  forEachSpawned, ParticleInitializer, ParticleModule, ParticleSpawner, ParticleTransform, value as particleModuleValue,
+  type ParticleContext, type ParticleModuleKind, type SpawnedRange, type SpawnTarget,
+} from './particles/modules';
+export { ParticleUpdater } from './particles/updaters';
+export { ParticleShapeBuilder, VertexWriter, type CameraAxes } from './particles/shapes';
+export { particleField, ParticlePool, type AnyParticleField, type CustomParticleField, type ParticleField } from './particles/ParticlePool';
+export { RandomOffset, seedFloat } from './particles/random';
 export { UISystem } from './ui/UISystem';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';

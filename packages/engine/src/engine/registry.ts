@@ -16,12 +16,24 @@ export interface HotChange {
   readonly next: Registered;
 }
 
+/** 游戏的粒子模块类（继承 ParticleSpawner、ParticleInitializer、ParticleUpdater、ParticleShapeBuilder 的，基类上有 particleModuleKind）。 */
+export interface ParticleModuleExport {
+  readonly particleModuleKind: string;
+  new (...args: never[]): object;
+}
+
 export class Registry {
   readonly #byName = new Map<string, Registered>();
+  /** 粒子模块：导出名首字母小写（同场景文件里的 $type）→ 类。 */
+  readonly #particleModules = new Map<string, ParticleModuleExport>();
 
-  /** 登记这些模块导出的所有组件、脚本、系统。modules：路径 → 模块命名空间对象。 */
+  /**
+   * 登记这些模块导出的所有组件、脚本、系统，和粒子模块（按导出名，Stride 场景里的粒子模块按类名找它）。
+   * modules：路径 → 模块命名空间对象。
+   */
   registerModules(modules: Readonly<Record<string, unknown>>): void {
     for (const [name, value] of this.#named(modules)) this.#add(name, value);
+    this.#registerParticleModules(modules);
   }
 
   /**
@@ -29,6 +41,8 @@ export class Registry {
    * 没改的模块还是同一个对象，跳过；新出现的照常登记。
    */
   update(modules: Readonly<Record<string, unknown>>): HotChange[] {
+    // 粒子模块换成新的类，之后建的粒子系统用它（已经建好的不换）
+    this.#registerParticleModules(modules);
     const changes: HotChange[] = [];
     for (const [name, next] of this.#named(modules)) {
       const previous = this.#byName.get(name);
@@ -53,6 +67,21 @@ export class Registry {
 
   get names(): IterableIterator<string> {
     return this.#byName.keys();
+  }
+
+  /** 粒子模块类，type 是类名（首字母大小写都行）。 */
+  particleModule(type: string): ParticleModuleExport | undefined {
+    return this.#particleModules.get(type.charAt(0).toLowerCase() + type.slice(1));
+  }
+
+  #registerParticleModules(modules: Readonly<Record<string, unknown>>): void {
+    for (const module of Object.values(modules)) {
+      if (typeof module !== 'object' || module === null) continue;
+      for (const [exportName, value] of Object.entries(module)) {
+        if (typeof value !== 'function' || typeof (value as Partial<ParticleModuleExport>).particleModuleKind !== 'string') continue;
+        this.#particleModules.set(exportName.charAt(0).toLowerCase() + exportName.slice(1), value as ParticleModuleExport);
+      }
+    }
   }
 
   /** 名字是 name、或 `路径#name` 的脚本（Stride 场景里的脚本按类名找翻译过来的 TS 脚本）。 */

@@ -4,7 +4,12 @@ import { FieldFalloff, FieldShapeTorus } from '../src/particles/fieldShapes';
 import type { Vec3 } from '../src/particles/math';
 import { compileMaterial, flipbookOf, scrollOf } from '../src/particles/material';
 import { circumcenter, expandCatmullRom, expandCircular } from '../src/particles/ribbons';
-import { buildShapes, drawOrder, VERTEX_FLOATS } from '../src/particles/shapes';
+import { drawOrder, ParticleShapeBuilder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from '../src/particles/shapes';
+import { NO_CONTEXT, ParticleSpawner, type ParticleModuleClass, type SpawnTarget } from '../src/particles/modules';
+import { particleField, type ParticlePool } from '../src/particles/ParticlePool';
+import { ParticleUpdater } from '../src/particles/updaters';
+import { Registry } from '../src/engine/registry';
+import type { ParticleEmitter } from '../src/particles/ParticleEmitter';
 import type { Texture } from '../src/rendering/Texture';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { randomSeed, RandomSeedGenerator, seedFloat } from '../src/particles/random';
@@ -17,6 +22,13 @@ function system(emitter: ParticleModuleFile): ParticleSystem {
 
 const STEP = 1 / 60;
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+
+/** 用发射器的形状把 order 的粒子写进 vertices（整张 UV），返回写到哪。 */
+function build(emitter: ParticleEmitter, camera: CameraAxes, order: readonly number[], vertices: Float32Array): number {
+  const writer = new VertexWriter(emitter, vertices, 0, () => [0, 0, 1, 1]);
+  emitter.shape!.build(emitter, camera, order, writer);
+  return writer.at;
+}
 
 describe('粒子的随机数（照 Stride 的 RandomSeed）', () => {
   test('和 .NET 算出来的一样（dotnet fsi 算的参考值），种子只留低 16 位', () => {
@@ -216,7 +228,7 @@ describe('粒子的形状和材质', () => {
     const emitter = particles.emitters[0]!;
     const vertices = new Float32Array(4 * VERTEX_FLOATS);
     const camera = { right: [1, 0, 0], up: [0, 1, 0], back: [0, 0, 1], viewProjection: IDENTITY } as const;
-    buildShapes(emitter, emitter.shape!, camera, [0], vertices, 0, () => [0, 0, 1, 1]);
+    build(emitter, camera, [0], vertices);
     const y = emitter.pool.field('position')![1]!;
     // 方向是速度 (0, 2, 0)，大小 1：上下各伸出 方向 · 大小 / 2，左右各 0.5
     expect([vertices[0], vertices[1]! - y, vertices[2]].map((c) => +c!.toFixed(5))).toEqual([-0.5, 1, 0]);
@@ -287,7 +299,7 @@ describe('飘带和拖尾（照 Stride 的 ShapeBuilderRibbon、ShapeBuilderTrai
   test('Ribbon：相邻两个粒子之间一个四边形，宽度是大小、在屏幕里垂直于带子，V 按 Stretched 拉满', () => {
     const emitter = line({ $type: 'shapeBuilderRibbon', textureCoordinatePolicy: 'stretched', texCoordsFactor: 1 }).emitters[0]!;
     const vertices = new Float32Array(3 * 4 * VERTEX_FLOATS);
-    const end = buildShapes(emitter, emitter.shape!, camera, drawOrder(emitter, camera), vertices, 0, () => [0, 0, 1, 1]);
+    const end = build(emitter, camera, drawOrder(emitter, camera), vertices);
     expect(end).toBe(vertices.length);
     // 第二个四边形：从 x = 2 到 x = 1，上下各 0.5（大小 1）
     const quad = (q: number) => [0, 1, 2, 3].map((k) => [...vertices.subarray((q * 4 + k) * VERTEX_FLOATS, (q * 4 + k) * VERTEX_FLOATS + 5)].map((c) => +c.toFixed(4)));
@@ -300,7 +312,7 @@ describe('飘带和拖尾（照 Stride 的 ShapeBuilderRibbon、ShapeBuilderTrai
       [{ $type: 'initialDirectionSeed', directionMin: [0, 0, 2], directionMax: [0, 0, 2] }],
     ).emitters[0]!;
     const vertices = new Float32Array(3 * 4 * VERTEX_FLOATS);
-    buildShapes(emitter, emitter.shape!, camera, drawOrder(emitter, camera), vertices, 0, () => [0, 0, 1, 1]);
+    build(emitter, camera, drawOrder(emitter, camera), vertices);
     const position = (k: number) => [...vertices.subarray((4 + k) * VERTEX_FLOATS, (4 + k) * VERTEX_FLOATS + 3)];
     expect([position(0), position(1), position(2), position(3)]).toEqual([[2, 0, 0], [2, 0, 2], [1, 0, 2], [1, 0, 0]]);
   });
@@ -427,5 +439,82 @@ describe('子粒子（照 Stride 的 SpawnerFromParent 和 ParticleChildInitiali
     expect(torus.isPointInside([2, 0.1, 0], point, normal)).toBe(true);
     expect(point.map((c) => +c.toFixed(5) + 0)).toEqual([2, 0.5, 0]);
     expect(normal.map((c) => +c.toFixed(5) + 0)).toEqual([0, 1, 0]);
+  });
+});
+
+describe('游戏自己的粒子模块（按类名登记，同脚本）', () => {
+  const Rect = particleField('TestRect', [1, 2]);
+
+  class TestSpawner extends ParticleSpawner {
+    maxParticlesPerSecond(): number {
+      return 60;
+    }
+
+    spawn(dt: number, target: SpawnTarget): void {
+      if (this.updatedState(dt, target) === 'active') target.emit(1);
+    }
+  }
+
+  class TestUpdater extends ParticleUpdater {
+    readonly requiredFields = [Rect] as const;
+
+    update(_dt: number, pool: ParticlePool): void {
+      const rect = pool.field(Rect)!;
+      for (let i = 0; i < pool.living; i++) rect[i * 2]! += 1;
+    }
+  }
+
+  class TestShape extends ParticleShapeBuilder {
+    build(emitter: ParticleEmitter, _camera: CameraAxes, order: readonly number[], out: VertexWriter): void {
+      const rect = emitter.pool.field(Rect)!;
+      for (const i of order) {
+        out.particle(i);
+        for (let k = 0; k < 4; k++) out.vertex(rect[i * 2]!, rect[i * 2 + 1]!, 0, 0, 0);
+      }
+    }
+  }
+
+  test('Registry 按导出名认出粒子模块类（首字母大小写都行），别的导出不算', () => {
+    const registry = new Registry();
+    registry.registerModules({ './particles/test.ts': { TestSpawner, TestUpdater, TestShape, Rect } });
+    expect(registry.particleModule('TestSpawner')).toBe(TestSpawner);
+    expect(registry.particleModule('testUpdater')).toBe(TestUpdater);
+    expect(registry.particleModule('testShape')).toBe(TestShape);
+    expect(registry.particleModule('Rect')).toBeUndefined();
+  });
+
+  test('场景里的类型名找到登记的模块；游戏的字段按默认值初始化；种类不对或没登记时跳过', () => {
+    const registry = new Registry();
+    registry.registerModules({ './particles/test.ts': { TestSpawner, TestUpdater, TestShape } });
+    const context = { ...NO_CONTEXT, module: (type: string) => registry.particleModule(type) as ParticleModuleClass | undefined };
+    const warn = console.warn;
+    const warnings: string[] = [];
+    console.warn = (message: string) => void warnings.push(message);
+    let particles: ParticleSystem;
+    try {
+      particles = new ParticleSystem({
+        emitters: [{
+          randomSeedMethod: 'fixed', particleLifetime: [10, 10],
+          spawners: [{ $type: 'testSpawner' }, { $type: 'testUpdater' }, { $type: 'missingSpawner' }],
+          updaters: [{ $type: 'testUpdater' }],
+          shapeBuilder: { $type: 'testShape' },
+        }],
+      }, context);
+    } finally {
+      console.warn = warn;
+    }
+    expect(warnings).toEqual([
+      expect.stringContaining("particle spawner 'testUpdater' is a updater"),
+      expect.stringContaining("particle spawner 'missingSpawner' is not supported"),
+    ]);
+    const emitter = particles.emitters[0]!;
+    expect(emitter.spawners.map((spawner) => spawner.constructor)).toEqual([TestSpawner]);
+    particles.update(STEP);
+    particles.update(STEP);
+    // 第一帧生成的粒子：默认 (1, 2)，更新了一次（新粒子在更新器之后生成）
+    expect([...emitter.pool.field(Rect)!.subarray(0, 4)]).toEqual([2, 2, 1, 2]);
+    const vertices = new Float32Array(2 * 4 * VERTEX_FLOATS);
+    expect(build(emitter, { right: [1, 0, 0], up: [0, 1, 0], back: [0, 0, 1], viewProjection: IDENTITY }, [0, 1], vertices)).toBe(vertices.length);
+    expect([...vertices.subarray(0, 2)]).toEqual([2, 2]);
   });
 });

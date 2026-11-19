@@ -357,5 +357,10 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    5. ~~脚本翻译和冒烟~~（2026-11-19）：`apps/game-menu/src/game` 的 UISceneBase（虚拟分辨率跟着画布大小）、SplashScript、MainScript（按名字找元素、改文字和精灵表的帧、按钮的 Click、IsEnabled、弹窗显隐、UI 库实例化飞船按钮、血条：缩短精灵的区域、改网格的列宽）、InputCaptureMonitor（调试文字印出脚本看到的输入，F9 开关屏蔽）。冒烟脚本 15 项（启动页、改名字、升级、选飞船、滚轮、锁着的飞船、屏蔽、血条）。顺带修掉：`game.exit()` 在一帧里面调用（Quit 按钮）时推迟到帧末，以前这一帧剩下的部分会用到已经释放的变换存储；精灵的区域可以改（SpriteFrame.region）；冒烟脚本的输出上限放大（截图的 PNG 超过 1 MB）。
    6. ~~和桌面 Stride 比对~~（2026-11-19，`tools/stride-capture/game-menu`）：540x960 截启动页、欢迎弹窗、主菜单、选飞船的弹窗（飞船属性固定、血条一半），桌面版另外导出每个元素的布局：40 个元素的大小和位置和 Stride 一致（差不到 0.6 像素）。截图平均每通道差 3.5 到 4.6/255（关掉字距 3.4 到 4.0），来自 Stride 把精灵表压成 BC 格式（背景 2/255、细节多的图 4/255）和文字的 hinting（4 到 5/255）。比对中修掉的：Thickness、颜色里文件没写的成员保持元素类型的默认值（Stride 反序列化只覆盖写了的成员；Button 的 `Padding: {Left, Top, Bottom}` 右边是默认的 10，以前当 0，当前飞船的按钮大了 10 像素）；字体开关字距（和下完新的块一样）让文字重新量（`SpriteFont.layoutVersion`）。帧时间（启动页，640x1061，不限帧率）：桌面 Stride 0.52 ms，我们一开始 0.57 ms；场景、UI、调试文字改成录进同一个命令编码器、每帧只提交一次（`GraphicsDevice.frameEncoder`，后备缓冲的视图每帧只建一次）以后 0.43 ms（所有游戏都受益）。导入 34 s，构建 73 s，页面下载 3.8 MB（brotli 2.3 MB），第一帧 1.0 s。
    - P2 补：除输入框以外的无障碍树（按钮、文字对应 DOM 节点给读屏软件）、给有焦点元素的按键路由事件、放在 3D 场景里的 UI（下一个样例 UIElementLink 要）、Slider、ToggleButton 等没用到的控件。
-3. 接着做 **UIElementLink**：先盘点它用到的（不是全屏的 UI、UIElementLink 组件把 UI 元素挂到实体上），写分步计划。
+3. **UIElementLink**（`apps/ui-element-link`，端口 5202）：三个场景（FullScreen 默认、BillboardedScreen、TiltedScreen），点跟着走的按钮换下一个。每个场景：Splash 实体的 UIComponent（页面由 SplashScript 用代码建：Canvas 里一个左右来回移动的长按钮"ElementName"、四角各一个方按钮，图来自精灵表 SplashScreenImages），FollowingEntity 带 UIElementLinkComponent 跟着 UI 元素"ElementName"走，它的子实体是跑步的骑士（AnimationStart 脚本播动画）、程序生成的球、烟的粒子；UICamera（正交，720）。FullScreen 是全屏 UI；BillboardedScreen 是放在 3D 里、面向相机的 UI（Size 12.8x7.2），TiltedScreen 是不面向相机的倾斜 UI。分步：
+   1. 导入：UIElementLinkComponent（Target 是 UIComponent 所在实体，Camera，NodeName），粒子系统先跳过并警告（粒子在 ParticlesSample 做，做完回来补烟，同 AnimatedModel 的两次验收）；脚本用的精灵表和场景引用。
+   2. 放在 3D 里的 UI：不是全屏的 UIComponent 按 Size 和实体的世界矩阵放进场景（IsBillboard 面向相机，IsFixedSize 按距离缩放），在场景的透明阶段之后按相机画、和场景的深度比较；指针用相机的射线和 UI 平面求交，换成虚拟坐标。
+   3. UIElementLink：实体跟着 UI 元素走（照 Stride 的 UIElementTransformLink：全屏时按像素单位，3D 里按 Size / Resolution 和 UI 实体的世界矩阵），挂在变换系统里（同 ModelNodeLink）。
+   4. 脚本翻译（UISceneBase、SplashScript 用代码建 UI、AnimationStart）、冒烟（三个场景、点按钮换场景、骑士跟着按钮走）。
+   5. 和桌面 Stride 比对（两边都关掉粒子）。
 

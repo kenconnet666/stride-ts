@@ -37,6 +37,7 @@ import {
 } from '@stride-ts/engine/content-format';
 import { addTangents, compressMeshes, type SourceMesh } from '../mesh.ts';
 import { importCompositor } from './compositor.ts';
+import { FontImporter } from './fonts.ts';
 import { MaterialImporter, type ImportedTexture } from './materials.ts';
 import { proceduralMesh } from './procedural.ts';
 import { importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
@@ -75,7 +76,12 @@ export interface ImporterOptions {
    * 浏览器解码）、smallest（两者取下载小的）。要压缩、宽高又不是 4 的倍数的贴图总是编成 KTX2（要先缩放，见 #importTexture）。
    */
   readonly textureEncoding?: 'ktx2' | 'source' | 'smallest';
+  /** 找系统字体（SystemFontProvider）的目录；不给时按操作系统，同 Stride。 */
+  readonly systemFontDirs?: readonly string[];
 }
+
+/** 补上默认值的选项（材质导入也用）。 */
+export type ResolvedImporterOptions = Required<Omit<ImporterOptions, 'systemFontDirs'>>;
 
 /** 一次场景或预制体层级导入的上下文。 */
 interface HierarchyContext {
@@ -94,8 +100,9 @@ export class StrideImporter {
   readonly #project: StrideProject;
   readonly #tools: StrideTools;
   readonly #out: string;
-  readonly #options: Required<ImporterOptions>;
+  readonly #options: ResolvedImporterOptions;
   readonly #materials: MaterialImporter;
+  readonly #fonts: FontImporter;
   readonly #models = new Map<string, Promise<string>>();
   readonly #skeletons = new Map<string, Promise<ImportedSkeleton>>();
   readonly #animations = new Map<string, Promise<string>>();
@@ -105,12 +112,30 @@ export class StrideImporter {
   readonly #spriteSheets = new Map<string, Promise<string>>();
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
-  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2' }: ImporterOptions = {}) {
+  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2', systemFontDirs }: ImporterOptions = {}) {
     this.#project = project;
     this.#tools = tools;
     this.#out = out;
     this.#options = { specularCubemapSize, plain, overrides, textureEncoding };
-    this.#materials = new MaterialImporter({ project, tools, options: this.#options, warnings: this.#warnings, write: (contentPath, data) => this.#write(contentPath, data) });
+    const write = (contentPath: string, data: string | Uint8Array) => this.#write(contentPath, data);
+    this.#materials = new MaterialImporter({ project, tools, options: this.#options, warnings: this.#warnings, write });
+    this.#fonts = new FontImporter({ project, tools, warnings: this.#warnings, write, ...(systemFontDirs ? { systemFontDirs } : {}) });
+  }
+
+  /** 到现在为止的警告（各次导入累计）。 */
+  get warnings(): readonly string[] {
+    return this.#warnings;
+  }
+
+  /** 到现在为止跳过的组件（类型名到个数，各次导入累计）。 */
+  get skipped(): ReadonlyMap<string, number> {
+    return this.#skipped;
+  }
+
+  /** 单独导入一个不挂在场景上的资源（比如合成器用的字体），返回它的内容路径。现在支持字体（.sdfnt）。 */
+  importAsset(asset: AssetEntry): Promise<string> {
+    if (asset.type === 'SpriteFont') return this.#fonts.font(asset);
+    throw new Error(`${asset.file}: importing ${asset.type} on its own is not supported`);
   }
 
   async importScene(asset: AssetEntry): Promise<ImportResult> {

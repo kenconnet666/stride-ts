@@ -19,7 +19,7 @@ import {
   type Vec3Tuple,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
-import type { ImporterOptions } from './importer.ts';
+import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { asNumber, asObject, linearColor, parseAssetReference, vec2, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -27,7 +27,7 @@ import { asNumber, asObject, linearColor, parseAssetReference, vec2, type Stride
 export interface MaterialImportContext {
   readonly project: StrideProject;
   readonly tools: StrideTools;
-  readonly options: Required<ImporterOptions>;
+  readonly options: ResolvedImporterOptions;
   readonly warnings: string[];
   write(contentPath: string, data: string | Uint8Array): Promise<void>;
 }

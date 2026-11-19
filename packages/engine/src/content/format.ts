@@ -24,6 +24,8 @@ export const SKELETON_MAGIC = 0x4c4b5353; // 'SSKL'，小端
 export const SKELETON_VERSION = 1;
 export const ANIMATION_MAGIC = 0x4d4e4153; // 'SANM'，小端
 export const ANIMATION_VERSION = 1;
+export const GLYPHS_MAGIC = 0x594c4753; // 'SGLY'，小端
+export const GLYPHS_VERSION = 1;
 
 export const EXTENSIONS = {
   model: '.model',
@@ -35,6 +37,9 @@ export const EXTENSIONS = {
   skybox: '.skybox.json',
   skeleton: '.skeleton',
   animation: '.anim',
+  font: '.font.json',
+  /** 字体的一个码位块（码位 >> 8）：`<字体>.<块号>.glyphs`。 */
+  glyphs: '.glyphs',
 } as const;
 
 /**
@@ -626,6 +631,86 @@ export interface SpriteSheetFile {
     readonly center: readonly [number, number];
     readonly centerFromMiddle: boolean;
   }[];
+}
+
+/**
+ * 字体（Stride 的 SpriteFont，.sdfnt）：字形是轮廓（矢量文字，见 rendering/text），按码位分块存在旁边的 .glyphs 文件里，
+ * 用到哪块才下载哪块。长度单位都是 em（字号是 1 像素时的像素数），y 向上。
+ */
+export interface FontFile {
+  readonly name: string;
+  /**
+   * Stride 的字体类型：static 是编译期栅格化的（OfflineRasterized，只有导入时列出的字符，画的时候按 size，不能换字号），
+   * dynamic 是运行时栅格化的（RuntimeRasterized，字体里的所有字符，字号可变），sdf 是有向距离场的（字号可变）。
+   * 我们都按轮廓画，区别只在字符集和能不能换字号。
+   */
+  readonly kind: 'static' | 'dynamic' | 'sdf';
+  /** 默认字号（像素，Stride 的 Size）。 */
+  readonly size: number;
+  /** aliased 时覆盖率按 0.5 取舍（没有抗锯齿）；clearType 在 Stride 里已经升级成灰度，和 default 一样。 */
+  readonly antiAlias: 'default' | 'aliased' | 'clearType';
+  /** 字体的上升、下降（都是正数）和行间距（hhea）。 */
+  readonly ascent: number;
+  readonly descent: number;
+  readonly lineGap: number;
+  /** Stride 的 Spacing（字符之间额外的距离）和 LineSpacing（行之间额外的距离），像素，按 size 定的。 */
+  readonly spacing: number;
+  readonly lineSpacing: number;
+  /** Stride 的 LineGapFactor、LineGapBaseLineFactor。 */
+  readonly lineGapFactor: number;
+  readonly lineGapBaseLineFactor: number;
+  /** 找不到字形时用的字符（Stride 的 DefaultCharacter）。 */
+  readonly defaultCharacter: number;
+  /** 有字形的码位块（码位 >> 8），升序。 */
+  readonly blocks: readonly number[];
+  /** kern 表的字距，每三个一组：左边的码位、右边的码位、调整量（em）；按左、右码位排序。 */
+  readonly kerning: readonly number[];
+}
+
+/** 一个码位块里的字形（Slug 的数据，见 pipeline 的 font.ts）。 */
+export interface GlyphBlock {
+  /** 每个字形 GLYPH_WORDS 个字，见 GLYPH_RECORD。 */
+  readonly glyphs: ArrayBuffer;
+  readonly glyphCount: number;
+  /** 点（x、y 交替，em），字形的点从 pointStart 起。 */
+  readonly points: Float32Array;
+  /** 带的头和曲线表，字形的带从 bandStart 起，里面的偏移和点下标都相对字形。 */
+  readonly bands: Uint32Array;
+}
+
+/** 字形记录里每个字的位置（u32 和 f32 混着放）。 */
+export const GLYPH_RECORD = {
+  codepoint: 0,
+  advance: 1,
+  /** x0 y0 x1 y1，em。 */
+  bounds: 2,
+  /** 竖带、横带的 em 坐标到带下标的缩放和偏移：scaleX scaleY offsetX offsetY。 */
+  bandTransform: 6,
+  pointStart: 10,
+  bandStart: 11,
+  hBands: 12,
+  vBands: 13,
+} as const;
+export const GLYPH_WORDS = 16;
+
+export function encodeGlyphBlock({ glyphs, glyphCount, points, bands }: GlyphBlock): Uint8Array {
+  const glyphBytes = glyphCount * GLYPH_WORDS * 4;
+  const { bytes, dataStart } = encodeContainer(GLYPHS_MAGIC, GLYPHS_VERSION, { glyphCount, pointCount: points.length / 2, bandWords: bands.length }, glyphBytes + points.byteLength + bands.byteLength);
+  bytes.set(new Uint8Array(glyphs, 0, glyphBytes), dataStart);
+  bytes.set(byteView(points), dataStart + glyphBytes);
+  bytes.set(byteView(bands), dataStart + glyphBytes + points.byteLength);
+  return bytes;
+}
+
+export function decodeGlyphBlock(buffer: ArrayBuffer, source = 'glyphs'): GlyphBlock {
+  const { header, dataStart } = decodeContainer<{ glyphCount: number; pointCount: number; bandWords: number }>(buffer, GLYPHS_MAGIC, GLYPHS_VERSION, 'glyphs', source);
+  const glyphBytes = header.glyphCount * GLYPH_WORDS * 4;
+  return {
+    glyphs: buffer.slice(dataStart, dataStart + glyphBytes),
+    glyphCount: header.glyphCount,
+    points: new Float32Array(buffer.slice(dataStart + glyphBytes, dataStart + glyphBytes + header.pointCount * 8)),
+    bands: new Uint32Array(buffer.slice(dataStart + glyphBytes + header.pointCount * 8, dataStart + glyphBytes + header.pointCount * 8 + header.bandWords * 4)),
+  };
 }
 
 /**

@@ -343,5 +343,9 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 ### P2 界面、声音、效果
 
 下一步按顺序（阶段表的游戏顺序）：
-1. 接着做 **SpriteFonts**：先盘点它用到的（字体资源 .sdfnt：静态、动态、SDF；SpriteFont 的绘制、SpriteBatch），按路线图 D16 的推荐做矢量渲染的底座和字体（屏幕上的字按字形轮廓画，世界空间的字用 MSDF），写分步计划。
+1. **SpriteFonts**（`apps/sprite-fonts`，端口 5198）。样例没有场景：合成器的根是游戏自己的 `FontRenderer`（SceneRendererBase），用 SpriteBatch 画背景图和八屏文字（静态字体、动态字体、粗体斜体、三种抗锯齿、日文、左中右对齐、旋转缩放的动画），属性是 10 个 .sdfnt（Arial 的编译期和运行时字体、Times New Roman、Source Han Sans 的 OTF）和一张背景贴图。按 D16 做矢量文字：字形轮廓（二次贝塞尔，CFF 的三次曲线导入时拆成二次）在片元着色器里算覆盖率，算法用 Slug（专利 2026-03-17 捐给公有领域，参考着色器 MIT/Apache，`C:\code\refs\Slug`，分发时要署名），任何缩放都清晰；Stride 的编译期字体是位图、运行时字体用 FreeType 栅格化，画面会有差，比对时记成有意的偏差。分步：
+   1. ~~字体导入~~（2026-11-19）：stride-tools 的 `describeFont`、`fontCodepoints`、`glyphOutlines`（stb_truetype，CFF 的三次曲线按 1/4096 em 的误差拆成二次，原生 0.22.1）；管线把 .sdfnt 导入成 `.font.json` 加按码位块（码位 >> 8）分的 `.glyphs`（每个字形的点和 Slug 的横竖分带，偏移相对字形，`pipeline/src/font.ts`），系统字体照 Stride 按家族名和粗斜体在系统字体目录里找、找不到试度量兼容的替代；`import-stride --asset` 导入不挂在场景上的资源。SpriteFonts 的 10 个字体导入 31 秒；Arial 的运行时字体 30 块 3.2 MB，日文字体 384 块 118 MB（页面只下载用到的块）。
+   2. 矢量文字和 SpriteBatch：Slug 的着色器移植成 WGSL（数据放存储缓冲），`SpriteBatch`（Stride 的 API：带源矩形的贴图、`drawString`、`measureString`、虚拟分辨率、对齐、旋转缩放、颜色），字体度量和排版照 Stride 的 SpriteFont（行距、基线、字距、额外间距）。放大 1×、2×、4× 截图检查边缘过渡不超过 1 个像素。
+   3. SpriteFonts 能看：合成器的根是游戏类型的渲染器时，导入器像脚本一样写出类型名和属性（字体、贴图是新的资源种类），运行时按名字对上游戏登记的 TS 渲染器；翻译 FontRenderer；冒烟脚本走完八屏、空格暂停、左右键切换。
+   4. 和桌面 Stride 比对：位置、字号、行距、对齐要对上；Aliased 用覆盖率阈值，ClearType 先用灰度（子像素抗锯齿记成偏差）。
 

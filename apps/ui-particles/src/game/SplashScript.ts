@@ -24,7 +24,8 @@ export class SplashScript extends UISceneBase.props({
   #lifeBarGauge!: SpriteFrame;
   #currentState: GameState = 'newGame';
   #desiredState: GameState = 'newGame';
-  #fusePercentage = 1;
+  /** 导火索还剩多少（0 到 1）；比对截图时从外面定住。 */
+  fusePercentage = 1;
 
   protected override loadScene(): void {
     const font = this.#required(this.westernFont, 'WesternFont');
@@ -40,7 +41,7 @@ export class SplashScript extends UISceneBase.props({
     const confetti = imageButton(images, 'button_long', textBlock(font, 'Click here to start the game over', 24));
     confetti.gridRow = 1;
     confetti.onClick(() => {
-      this.#fusePercentage = 1;
+      this.fusePercentage = 1;
       this.#desiredState = 'newGame';
       this.#spawnParticles(confetti);
     });
@@ -119,7 +120,7 @@ export class SplashScript extends UISceneBase.props({
 
   #enterNewGame(): void {
     this.#currentState = 'newGame';
-    this.#fusePercentage = 1;
+    this.fusePercentage = 1;
     const fire = this.#named('Fire');
     if (fire) {
       place(fire, [0, 0.65, 0]);
@@ -135,8 +136,8 @@ export class SplashScript extends UISceneBase.props({
 
   /** 导火索按剩下的比例缩短（精灵的区域和网格的两列），火放在烧到的地方。 */
   #drawFuse(): void {
-    this.#fusePercentage = Math.min(1, this.#fusePercentage - this.game.updateTime.elapsed * 0.04);
-    const width = Math.max(1, this.#fusePercentage * this.#gaugeBarWidth);
+    this.fusePercentage = Math.min(1, this.fusePercentage - this.game.updateTime.elapsed * 0.04);
+    const width = Math.max(1, this.fusePercentage * this.#gaugeBarWidth);
     this.#lifeBarGauge.region[2] = width;
     const columns = this.#lifeBarGrid.columnDefinitions;
     columns.at(1)!.sizeValue = width / this.#gaugeBarWidth;
@@ -150,9 +151,10 @@ export class SplashScript extends UISceneBase.props({
     place(fire, this.#toOrthographicCamera([fireX, y - 10]));
   }
 
-  #enterEndGame(): void {
+  /** 进入结束：火停掉，大彩纸移到画面里放（点"恭喜"时；比对截图时也从外面调用）。 */
+  enterEndGame(): void {
     this.#currentState = 'endGame';
-    this.#fusePercentage = 0;
+    this.fusePercentage = 0;
     this.#drawFuse();
     const fire = this.#named('Fire');
     if (fire) {
@@ -167,9 +169,9 @@ export class SplashScript extends UISceneBase.props({
   }
 
   #newGameState(): void {
-    this.#fusePercentage = Math.min(1, this.#fusePercentage - this.game.updateTime.elapsed * 0.03);
+    this.fusePercentage = Math.min(1, this.fusePercentage - this.game.updateTime.elapsed * 0.03);
     this.#drawFuse();
-    if (this.#desiredState === 'endGame' || this.#fusePercentage <= 0) this.#enterEndGame();
+    if (this.#desiredState === 'endGame' || this.fusePercentage <= 0) this.enterEndGame();
   }
 
   #endGameState(): void {

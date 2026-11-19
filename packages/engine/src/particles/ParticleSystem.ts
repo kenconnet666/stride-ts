@@ -4,7 +4,7 @@
  */
 import type { ParticleModuleFile } from '../content/format';
 import type { Texture } from '../rendering/Texture';
-import type { Quat, Vec3 } from './math';
+import { rotate, type Quat, type Vec3 } from './math';
 import { value } from './modules';
 import { ParticleEmitter, type EmitterParent } from './ParticleEmitter';
 
@@ -15,6 +15,8 @@ export class ParticleSystem implements EmitterParent {
   readonly emitters: readonly ParticleEmitter[];
   /** 开始时先模拟这么多秒（Stride 的 Settings.WarmupTime）。 */
   readonly warmupTime: number;
+  /** 本地的包围盒（Stride 的 BoundingBoxStatic）：画的时候按它剔除，粒子飞出去也不改；没有时不剔除。 */
+  readonly boundingBox: { readonly minimum: Vec3; readonly maximum: Vec3 } | undefined;
   translation: Vec3 = [0, 0, 0];
   rotation: Quat = [0, 0, 0, 1];
   uniformScale = 1;
@@ -27,6 +29,27 @@ export class ParticleSystem implements EmitterParent {
     const emitters = (file['emitters'] as readonly ParticleModuleFile[] | undefined) ?? [];
     this.emitters = emitters.map((emitter) => new ParticleEmitter(emitter, textures));
     this.warmupTime = value(file['settings'] as ParticleModuleFile | undefined, 'warmupTime', 0);
+    const shape = file['boundingShape'] as ParticleModuleFile | null | undefined;
+    this.boundingBox = shape?.$type === 'boundingBoxStatic'
+      ? { minimum: [...value(shape, 'minimum', [-1, -1, -1])] as Vec3, maximum: [...value(shape, 'maximum', [1, 1, 1])] as Vec3 }
+      : undefined;
+  }
+
+  /** 世界里的包围盒 [最小角, 最大角]：本地包围盒的角按旋转、统一缩放、位置变换后取范围（Stride 的 GetAABB）。 */
+  worldBounds(): [Vec3, Vec3] | undefined {
+    const box = this.boundingBox;
+    if (!box) return undefined;
+    const min = box.minimum.map((m, k) => (m + box.maximum[k]!) / 2) as Vec3, max = [...min] as Vec3;
+    for (let corner = 0; corner < 8; corner++) {
+      const p: Vec3 = [0, 1, 2].map((k) => ((corner >> k) & 1 ? box.maximum[k]! : box.minimum[k]!)) as Vec3;
+      rotate(this.rotation, p);
+      for (let k = 0; k < 3; k++) {
+        min[k] = Math.min(min[k]!, p[k]!);
+        max[k] = Math.max(max[k]!, p[k]!);
+      }
+    }
+    const world = (v: Vec3) => v.map((c, k) => c * this.uniformScale + this.translation[k]!) as Vec3;
+    return [world(min), world(max)];
   }
 
   get isPaused(): boolean {

@@ -34,7 +34,7 @@ export class ParticleEmitter {
   /** 寿命的范围，秒。 */
   readonly particleLifetime: [number, number];
   readonly simulationSpace: SimulationSpace;
-  readonly randomSeedMethod: RandomSeedMethod;
+  #randomSeedMethod: RandomSeedMethod;
   readonly sortingPolicy: SortingPolicy;
   readonly drawPriority: number;
   /** 画的时候用：形状和材质（null 是不画）。 */
@@ -65,7 +65,7 @@ export class ParticleEmitter {
     // Stride 的 setter 不接受 X <= 0 或 Y < X，保留默认值
     this.particleLifetime = lifetime[0]! > 0 && lifetime[1]! >= lifetime[0]! ? [lifetime[0]!, lifetime[1]!] : [1, 1];
     this.simulationSpace = value(file, 'simulationSpace', 'world') as SimulationSpace;
-    this.randomSeedMethod = value(file, 'randomSeedMethod', 'time') as RandomSeedMethod;
+    this.#randomSeedMethod = value(file, 'randomSeedMethod', 'time') as RandomSeedMethod;
     this.sortingPolicy = value(file, 'sortingPolicy', 'none') as SortingPolicy;
     this.drawPriority = value(file, 'drawPriority', 0);
     this.shapeBuilder = file['shapeBuilder'] === undefined ? { $type: 'shapeBuilderBillboard' } : (file['shapeBuilder'] as ParticleModuleFile | null);
@@ -80,6 +80,16 @@ export class ParticleEmitter {
     const fields = new Set<ParticleField>(['life', 'randomSeed', 'position']);
     for (const module of [...this.initializers, ...this.updaters]) if (module.enabled) for (const field of module.requiredFields) fields.add(field);
     this.pool = new ParticlePool(fields);
+  }
+
+  /** 新粒子的种子从哪来：按时间、固定（0 开始）、按粒子系统的位置。改了以后下一帧重建种子序列（同 Stride）。 */
+  get randomSeedMethod(): RandomSeedMethod {
+    return this.#randomSeedMethod;
+  }
+
+  set randomSeedMethod(method: RandomSeedMethod) {
+    this.#randomSeedMethod = method;
+    this.#initialized = false;
   }
 
   /** 种子序列（Update 第一次时建）。 */
@@ -122,8 +132,8 @@ export class ParticleEmitter {
   #initialize(parent: EmitterParent): void {
     this.#initialized = true;
     let seed = 0;
-    if (this.randomSeedMethod === 'time') seed = (performance.now() * 1000) >>> 0;
-    else if (this.randomSeedMethod === 'position') {
+    if (this.#randomSeedMethod === 'time') seed = (performance.now() * 1000) >>> 0;
+    else if (this.#randomSeedMethod === 'position') {
       // 位置的三个分量按 float32 的位模式混起来（同 Stride）
       const bits = new Uint32Array(new Float32Array(parent.translation).buffer);
       seed = ((bits[0]! ^ (bits[0]! >>> 19)) ^ (bits[1]! ^ (bits[1]! >>> 8)) ^ bits[2]!) >>> 0;

@@ -66,9 +66,10 @@ export class ParticlePool {
   remove(index: number): void {
     const last = --this.living;
     if (index === last) return;
+    // 字段只有 1 到 4 个数：逐个拷比 copyWithin 快
     for (const [name, column] of this.#fields) {
       const width = PARTICLE_FIELDS[name];
-      column.copyWithin(index * width, last * width, last * width + width);
+      for (let k = 0; k < width; k++) column[index * width + k] = column[last * width + k]!;
     }
   }
 

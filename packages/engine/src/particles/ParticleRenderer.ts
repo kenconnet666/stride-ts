@@ -5,7 +5,7 @@
  *
  * 颜色照 Stride 的 ParticleComputeColorShader：组件的颜色 × 材质的颜色（贴图（按预乘 alpha 用，同 Stride 编译贴图时预乘）、
  * 粒子的颜色或常量），alpha 再乘 1 - AlphaAdditive（1 就是加法混合）；混合是预乘 alpha，和深度比较但不写深度，不剔除背面。
- * 粒子系统从远到近画，同一个系统里的发射器按 DrawPriority。粒子的顺序：SortingPolicy 是 ByDepth 时从远到近，其余按池里的顺序。
+ * 粒子系统从远到近画，同一个系统里的发射器按 DrawPriority；包围盒（BoundingBoxStatic）在视锥外的系统不画（同 Stride 的剔除）。粒子的顺序：SortingPolicy 是 ByDepth 时从远到近，其余按池里的顺序。
  */
 import type { ParticleModuleFile } from '../content/format';
 import { Matrix } from '../mathematics/Matrix';
@@ -118,7 +118,7 @@ export class ParticleRenderer {
     const eye: Vec3 = [cameraWorld[12]!, cameraWorld[13]!, cameraWorld[14]!];
     // 粒子系统从远到近
     const systems = components
-      .filter((component) => component.enabled)
+      .filter((component) => component.enabled && inFrustum(component.particleSystem.worldBounds(), view.frustumPlanes))
       .map((component) => ({ component, distance: Math.hypot(...component.particleSystem.translation.map((t, i) => t - eye[i]!)) }))
       .sort((a, b) => b.distance - a.distance);
 
@@ -171,15 +171,19 @@ export class ParticleRenderer {
     const order = this.#order(emitter, right, up);
     const v = this.#vertices;
     let at = firstQuad * 4 * VERTEX_FLOATS;
-    const vertex = (p: Readonly<Vec3>, u: number, w: number, rgba: readonly number[], uv: readonly number[]) => {
-      v[at] = p[0]; v[at + 1] = p[1]; v[at + 2] = p[2];
-      v[at + 3] = uv[0]! + uv[2]! * u; v[at + 4] = uv[1]! + uv[3]! * w;
-      v[at + 5] = rgba[0]!; v[at + 6] = rgba[1]!; v[at + 7] = rgba[2]!; v[at + 8] = rgba[3]!;
+    // 每个粒子的中心、两条半边、颜色和 UV（标量，不在循环里分配）
+    let cx = 0, cy = 0, cz = 0, ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0;
+    let r = 1, g = 1, b = 1, a = 1, u0 = 0, v0 = 0, us = 1, vs = 1;
+    const vertex = (sx: number, sy: number, u: number, w: number) => {
+      v[at] = cx + ax * sx + bx * sy; v[at + 1] = cy + ay * sx + by * sy; v[at + 2] = cz + az * sx + bz * sy;
+      v[at + 3] = u0 + us * u; v[at + 4] = v0 + vs * w;
+      v[at + 5] = r; v[at + 6] = g; v[at + 7] = b; v[at + 8] = a;
       at += VERTEX_FLOATS;
     };
-    const white = [1, 1, 1, 1];
-    const fullUv = [0, 0, 1, 1];
-    const center: Vec3 = [0, 0, 0];
+    const clamp = (c: number) => (c < 0 ? 0 : c > 1 ? 1 : c);
+    const center: Vec3 = [0, 0, 0], axisX: Vec3 = [0, 0, 0], axisY: Vec3 = [0, 0, 0];
+    const q: Quat = [0, 0, 0, 1];
+    const top = 0.5 - SQRT3_HALF * 0.5;
     for (const i of order) {
       center[0] = position[i * 3]!; center[1] = position[i * 3 + 1]!; center[2] = position[i * 3 + 2]!;
       let half = (size ? size[i]! : 1) * 0.5;
@@ -188,50 +192,50 @@ export class ParticleRenderer {
         for (let k = 0; k < 3; k++) center[k] = center[k]! * space.worldScale[0] + space.worldPosition[k]!;
         half *= space.worldScale[0];
       }
-      let ux: Vec3, uy: Vec3;
+      cx = center[0]; cy = center[1]; cz = center[2];
       if (shape === 'shapeBuilderQuad') {
-        ux = [1, 0, 0];
-        uy = [0, 0, 1];
+        axisX[0] = 1; axisX[1] = 0; axisX[2] = 0;
+        axisY[0] = 0; axisY[1] = 0; axisY[2] = 1;
         if (quaternion) {
-          const q = Array.from(quaternion.subarray(i * 4, i * 4 + 4)) as Quat;
-          rotate(q, ux);
-          rotate(q, uy);
+          q[0] = quaternion[i * 4]!; q[1] = quaternion[i * 4 + 1]!; q[2] = quaternion[i * 4 + 2]!; q[3] = quaternion[i * 4 + 3]!;
+          rotate(q, axisX);
+          rotate(q, axisY);
         }
         if (local) {
-          rotate(space.worldRotation, ux);
-          rotate(space.worldRotation, uy);
+          rotate(space.worldRotation, axisX);
+          rotate(space.worldRotation, axisY);
         }
-        ux = ux.map((c) => c * half) as Vec3;
-        uy = uy.map((c) => c * half) as Vec3;
+        ax = axisX[0] * half; ay = axisX[1] * half; az = axisX[2] * half;
+        bx = axisY[0] * half; by = axisY[1] * half; bz = axisY[2] * half;
       } else {
-        ux = right.map((c) => c * half) as Vec3;
-        uy = up.map((c) => c * half) as Vec3;
+        ax = right[0] * half; ay = right[1] * half; az = right[2] * half;
+        bx = up[0] * half; by = up[1] * half; bz = up[2] * half;
         if (angle && angle[i] !== 0) {
           const cos = Math.cos(angle[i]!), sin = Math.sin(angle[i]!);
-          const x = ux.map((c, k) => c * cos - uy[k]! * sin) as Vec3;
-          uy = uy.map((c, k) => c * cos + ux[k]! * sin) as Vec3;
-          ux = x;
+          const x0 = ax * cos - bx * sin, x1 = ay * cos - by * sin, x2 = az * cos - bz * sin;
+          bx = bx * cos + ax * sin; by = by * cos + ay * sin; bz = bz * cos + az * sin;
+          ax = x0; ay = x1; az = x2;
         }
       }
-      const rgba = color ? Array.from(color.subarray(i * 4, i * 4 + 4), (c) => Math.min(Math.max(c, 0), 1)) : white;
-      const uv = frames ? frames(life[i]!) : fullUv;
-      const p = (sx: number, sy: number): Vec3 => [center[0] + ux[0] * sx + uy[0] * sy, center[1] + ux[1] * sx + uy[1] * sy, center[2] + ux[2] * sx + uy[2] * sy];
+      if (color) {
+        r = clamp(color[i * 4]!); g = clamp(color[i * 4 + 1]!); b = clamp(color[i * 4 + 2]!); a = clamp(color[i * 4 + 3]!);
+      }
+      if (frames) [u0, v0, us, vs] = frames(life[i]!);
       if (shape === 'shapeBuilderHexagon') {
         // 两个四边形拼成六边形（Stride 的 ShapeBuilderHexagon）：上半是梯形加中线，下半同样
-        const top = 0.5 - SQRT3_HALF * 0.5;
-        vertex(p(-0.5, SQRT3_HALF), 0.25, top, rgba, uv);
-        vertex(p(0.5, SQRT3_HALF), 0.75, top, rgba, uv);
-        vertex(p(1, 0), 1, 0.5, rgba, uv);
-        vertex(p(-1, 0), 0, 0.5, rgba, uv);
-        vertex(p(1, 0), 1, 0.5, rgba, uv);
-        vertex(p(0.5, -SQRT3_HALF), 0.75, 1, rgba, uv);
-        vertex(p(-0.5, -SQRT3_HALF), 0.25, 1, rgba, uv);
-        vertex(p(-1, 0), 0, 0.5, rgba, uv);
+        vertex(-0.5, SQRT3_HALF, 0.25, top);
+        vertex(0.5, SQRT3_HALF, 0.75, top);
+        vertex(1, 0, 1, 0.5);
+        vertex(-1, 0, 0, 0.5);
+        vertex(1, 0, 1, 0.5);
+        vertex(0.5, -SQRT3_HALF, 0.75, 1);
+        vertex(-0.5, -SQRT3_HALF, 0.25, 1);
+        vertex(-1, 0, 0, 0.5);
       } else {
-        vertex(p(-1, 1), 0, 0, rgba, uv);
-        vertex(p(1, 1), 1, 0, rgba, uv);
-        vertex(p(1, -1), 1, 1, rgba, uv);
-        vertex(p(-1, -1), 0, 1, rgba, uv);
+        vertex(-1, 1, 0, 0);
+        vertex(1, 1, 1, 0);
+        vertex(1, -1, 1, 1);
+        vertex(-1, -1, 0, 1);
       }
     }
     return firstQuad + order.length * quadsPerParticle;
@@ -353,6 +357,18 @@ export class ParticleRenderer {
     }
     return group;
   }
+}
+
+/** 包围盒和视锥相交（没有包围盒时算相交）：对每个平面取最靠里的角，在平面外面就不相交。 */
+function inFrustum(bounds: [Vec3, Vec3] | undefined, planes: Readonly<Float32Array>): boolean {
+  if (!bounds) return true;
+  const [min, max] = bounds;
+  for (let o = 0; o < 24; o += 4) {
+    const nx = planes[o]!, ny = planes[o + 1]!, nz = planes[o + 2]!;
+    const distance = nx * (nx > 0 ? max[0] : min[0]) + ny * (ny > 0 ? max[1] : min[1]) + nz * (nz > 0 ? max[2] : min[2]) + planes[o + 3]!;
+    if (distance < 0) return false;
+  }
+  return true;
 }
 
 /** 翻页动画（Stride 的 UVBuilderFlipbook）：按走过的寿命取第几帧，返回这一帧在贴图上的 [u, v, 宽, 高]。 */

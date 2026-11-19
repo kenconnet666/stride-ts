@@ -7,25 +7,33 @@
  *     --package PrototypingBlocks=<Stride 仓库>/samples/Templates/Packs/PrototypingBlocks/Assets \
  *     --scene ThirdPersonPlatformer/MainScene --out apps/platformer/public/content
  *
- * --package 是"包名=资源目录"，可以给多个；--scene 是场景的内容路径（包名/相对路径），也可以给多个（共用导入过的资源）。
+ * --package 是"包名=资源目录"，可以给多个；--stride 是 Stride 仓库，给了就加上 Stride 自带的资源包（STRIDE_PACKAGES：默认字体、
+ * UI 的精灵表这些，样例的资源会引用 `/Stride.Engine/...`）；--scene 是场景的内容路径（包名/相对路径），也可以给多个（共用导入过的资源）。
  * --asset 是不挂在场景上的资源（现在是字体，比如合成器用的），也可以给多个；--scene、--asset 至少给一个。
  * --overrides 是覆盖目录：<目录>/<内容路径>.svg（或 .png、.jpg）代替资源的源图片，原样导出。
  * --textures 是没有覆盖文件的贴图怎么导出：ktx2（默认）、source（PNG/JPEG 原样复制）、smallest（取下载小的）。
  * --plain 导出不压缩的内容（float 顶点、不用 meshopt），方便查看和调试；默认量化加 meshopt。
  */
+import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { createStrideTools } from '@stride-ts/native/tools';
 import { StrideImporter } from './stride/importer.ts';
 import { StrideProject, type AssetRoot } from './stride/project.ts';
 
 const TEXTURE_POLICIES = ['ktx2', 'source', 'smallest'] as const;
-const USAGE = 'usage: cli.ts import-stride --package <name>=<assets dir> [...] [--scene <package>/<path>] [--asset <package>/<path>] --out <content dir> [--overrides <dir>] [--textures ktx2|source|smallest] [--plain]';
+/** Stride 自带的资源包：包名和在 Stride 仓库里的资源目录。 */
+const STRIDE_PACKAGES: readonly AssetRoot[] = [
+  { package: 'Stride.Engine', dir: 'sources/engine/Stride.Engine/AssetPackage/Assets/Shared' },
+  { package: 'Stride.UI.Assets', dir: 'sources/plugins/UI/Stride.UI.Assets/Assets' },
+];
+const USAGE = 'usage: cli.ts import-stride --package <name>=<assets dir> [...] [--stride <Stride repo>] [--scene <package>/<path>] [--asset <package>/<path>] --out <content dir> [--overrides <dir>] [--textures ktx2|source|smallest] [--plain]';
 
 async function importStride(args: string[]): Promise<void> {
   const { values } = parseArgs({
     args,
     options: {
       package: { type: 'string', multiple: true },
+      stride: { type: 'string' },
       scene: { type: 'string', multiple: true },
       asset: { type: 'string', multiple: true },
       out: { type: 'string' },
@@ -41,6 +49,7 @@ async function importStride(args: string[]): Promise<void> {
     if (equals <= 0) throw new Error(`--package ${spec}: expected <name>=<assets dir>`);
     return { package: spec.slice(0, equals), dir: spec.slice(equals + 1) };
   });
+  if (values.stride) roots.push(...STRIDE_PACKAGES.map((root) => ({ ...root, dir: path.join(values.stride!, root.dir) })));
 
   const started = performance.now();
   const project = await StrideProject.open(roots);

@@ -1,6 +1,6 @@
 // BepuSample 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/bepu-sample smoke [-- --hub <中枢名的一部分>]
-// 检查：Colliders 场景在跑；相机控制器（W 前进）；小键盘 * 暂停仿真；T 扔出预制体；重力枪抓起箱子；换到 Material Properties 后
+// 检查：Colliders 场景在跑；选场景的页面有七个按钮，Tab 显示、隐藏；相机控制器（W 前进）；小键盘 * 暂停仿真；T 扔出预制体；重力枪抓起箱子；换到 Material Properties 后
 // 旧场景的实体都去掉了；Constraint 的马达和铰链、Ropes 的绳子、Cube Mixer 的聚光灯；Cube Fountain 的生成器按物理时间生成预制体。
 import { startSmoke } from '../../../tools/smoke.ts';
 
@@ -12,6 +12,18 @@ stride('wait');
 await sleep(1500);
 const status = stride('status') as { status: string; error: string | null; entities: number };
 check('Colliders 在跑', status.status === 'running' && status.error === null && status.entities > 20, status);
+
+/** 页面里的表达式：选场景的页面开着没有、按钮上的字。 */
+const SELECTOR = `const g = strideGame; const ui = g.entities.ids().map((i) => g.entities.entity(i).get(strideEngine.UIComponent)).find(Boolean);
+  const panel = ui.page.rootElement.find(strideEngine.StackPanel, 'SceneStackPanel');
+  ({ enabled: ui.enabled, buttons: [...panel.children].map((b) => b.find(strideEngine.TextBlock).text) })`;
+type Selector = { enabled: boolean; buttons: string[] };
+const selector = stride('eval', SELECTOR) as Selector;
+check('选场景的页面有七个按钮（UI 库的 TextButton）', selector.enabled && selector.buttons.length === 7 && selector.buttons[0] === 'Scenes/Colliders', selector);
+// 页面藏到重力枪测完：画面中间是按钮面板的左边，鼠标按在 UI 上时脚本收不到
+stride('key', 'Tab');
+await sleep(200);
+const hidden = !(stride('eval', SELECTOR) as Selector).enabled;
 
 /** 页面里的表达式：相机实体的位置。 */
 const CAMERA = `const g = strideGame; const id = g.entities.ids().find((i) => g.entities.entity(i).has(strideEngine.Camera));
@@ -58,6 +70,9 @@ await sleep(1000);
 const lifted = heightOf();
 stride('mouse', 'left', '--up');
 check('重力枪抓住箱子，跟着相机抬高 3 米', Math.abs(lifted - resting - 3) < 0.5, { resting, lifted });
+stride('key', 'Tab');
+await sleep(200);
+check('Tab 隐藏、再按显示页面', hidden && (stride('eval', SELECTOR) as Selector).enabled, { hidden });
 
 const colliders = stride('eval', 'strideGame.entities.count') as number;
 stride('call', 'scene', '"Material"');

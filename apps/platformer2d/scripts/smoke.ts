@@ -1,6 +1,6 @@
 // Platformer2D 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 玩一遍。
 //   pnpm --filter @stride-ts/platformer2d smoke [-- --hub <中枢名的一部分>]
-// 检查：场景在跑、精灵表的帧在换（待机、金币）；按住 D 往右跑（跑步的帧）、A 转身往左（实体绕 Y 转 180°）；W 起跳（跳的帧）；
+// 检查：场景在跑、精灵表的帧在换（待机、金币）；W 起跳（跳的帧）；按住 D 往右跑（跑步的帧）、A 转身往左（实体绕 Y 转 180°）；
 // 走到右下角的金币上：精灵马上隐藏，3 秒后金币实体移除。
 import { startSmoke } from '../../../tools/smoke.ts';
 
@@ -30,7 +30,18 @@ const coinFrames = (stride('eval', COINS) as [number, number, string])[2];
 await sleep(150);
 check('金币在转（帧在换）', (stride('eval', COINS) as [number, number, string])[2] !== coinFrames, coinFrames);
 
+// 先在出生的地方跳（头顶是空的）：跑完再跳时停在哪里随帧率变，可能停在平台下面，头一碰就落下来（regress 里帧率高时就这样）
 const start = stride('eval', PLAYER) as Player;
+// 起跳后轮询：刚打开的浏览器帧率不稳，固定等一段真实时间时角色可能才刚离地
+stride('key', 'W');
+let jumping = stride('eval', PLAYER) as Player;
+for (let i = 0; i < 15 && !(jumping[1] > start[1] + 0.5); i++) {
+  await sleep(100);
+  jumping = stride('eval', PLAYER) as Player;
+}
+check('W 起跳，放跳的帧', !jumping[4] && jumping[1] > start[1] + 0.5 && jumping[3] >= 21, jumping);
+await sleep(1200);
+
 stride('key', 'D', '--down');
 await sleep(800);
 const running = stride('eval', PLAYER) as Player;
@@ -41,16 +52,6 @@ stride('key', 'A', '--hold', '400');
 await sleep(200);
 const turned = stride('eval', PLAYER) as Player;
 check('A 转身往左：绕 Y 转 180°', Math.abs(Math.abs(turned[2]) - 1) < 1e-3 && turned[0] < running[0], turned);
-
-// 起跳后轮询：刚打开的浏览器帧率不稳，固定等一段真实时间时角色可能才刚离地
-stride('key', 'W');
-let jumping = stride('eval', PLAYER) as Player;
-for (let i = 0; i < 15 && !(jumping[1] > start[1] + 0.5); i++) {
-  await sleep(100);
-  jumping = stride('eval', PLAYER) as Player;
-}
-check('W 起跳，放跳的帧', !jumping[4] && jumping[1] > start[1] + 0.5 && jumping[3] >= 21, jumping);
-await sleep(1200);
 
 // 右下角 (13, -6.5) 的金币：往右走过去
 const [coins] = stride('eval', COINS) as [number, number, string];

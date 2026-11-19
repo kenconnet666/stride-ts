@@ -55,8 +55,6 @@ export class ForwardRenderer {
   drawShadows = true;
   /** 粒子画在 UI 上面（Game 在画完 UI 之后画），而不是在透明阶段里（见 SceneCompositor.particlesOverUI）。 */
   particlesOverUI = false;
-  /** 全屏 UI 画进 HDR 缓冲、在后处理之前（见 SceneCompositor.uiBeforePostEffects）。 */
-  uiBeforePostEffects = false;
   /**
    * 主画面的背景：清屏之后、不透明阶段之前在同一个 pass 里画（Stride 的游戏渲染器先画自己的东西再画场景的阶段，比如 JumpyJet 的
    * JumpyJetRenderer 用 SpriteBatch 画视差背景）。颜色是 HDR 格式，带深度缓冲。
@@ -185,9 +183,8 @@ export class ForwardRenderer {
   }
 
   /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
-  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, uiBeforePostEffects }: CompositorSettings): void {
+  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI }: CompositorSettings): void {
     this.particlesOverUI = particlesOverUI === true;
-    this.uiBeforePostEffects = uiBeforePostEffects === true;
     this.clearColor.set(r, g, b, a);
     this.postEffects.configure(postEffects);
     this.drawTransparent = transparent;
@@ -252,7 +249,6 @@ export class ForwardRenderer {
     const keepDepth = context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0);
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     this.#drawView(context, encoder, this.hasCamera ? this.#mainView : undefined, targets, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
-    if (this.uiBeforePostEffects) context.game.ui.drawFullScreen(context.game, targets.color.createView(), HDR_FORMAT);
     this.postEffects.draw(encoder, targets.color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
   }
 

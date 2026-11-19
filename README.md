@@ -181,3 +181,7 @@ this.bullets.give(bullet);
 ## 许可证
 
 MIT，见 [LICENSE](LICENSE)。原生模块在 Jolt 的 fork [kenconnet666/JoltPhysics](https://github.com/kenconnet666/JoltPhysics) 的 `stride` 分支（Jolt 本身是 MIT）。
+
+用到的第三方代码：矢量文字的覆盖率计算移植自 Eric Lengyel 的 Slug 参考着色器（Copyright 2017 Eric Lengyel，MIT 或 Apache-2.0，
+[EricLengyel/Slug](https://github.com/EricLengyel/Slug)，`packages/engine/src/rendering/text/slug.ts`）。原生模块用到的库见 fork 的
+`StrideNative/ThirdParty/README.md`。

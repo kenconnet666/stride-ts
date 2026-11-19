@@ -27,3 +27,4 @@
 | [custom-effect/](custom-effect/README.md) | CustomEffect（取自 releases/4.4.2） | 同 material-shader：第 120 帧截一张，按同一时间比 |
 | [morph-targets/](morph-targets/README.md) | MorphTargets（master 新加的样例，包用本机编的 4.5.3-dev4） | 第 58 帧截一张；`capture-ours.ps1` 把各剪辑拨到同一时间再比 |
 | [csharp-beginner/](csharp-beginner/README.md) | CSharpBeginner（取自 Stride 源码当前分支的 Bepu 版） | 进克隆、键盘、属性三个教程，相机插值走完后各截一张；`capture-ours.ps1` 截我们这边并逐张比 |
+| [csharp-intermediate/](csharp-intermediate/README.md) | CSharpIntermediate（取自 Stride 源码当前分支的 Bepu 版，去掉导航教程） | 进射线、投影、场景加载、声音四个教程的完成版各截一张；`capture-ours.ps1` 截我们这边并逐张比 |

@@ -84,18 +84,21 @@ check('触发器：球进去、在里面、出来都打印', ['Ball entered Coll
 
 // —— 射线：两把"武器"左右各打一条，按层过滤；E 把武器抬高 ——
 load('Raycasting');
-type Rays = { single: string[]; all: string[]; raised: number };
+type Rays = { single: string[]; all: string[]; raised: number; laser: number; distance: number };
 const raysAt = (height: number) => evaluate<Rays>(`(async () => {
   const T = strideEngine.Transform, before = position('Raycast')[1];
   await hold('KeyE', 5);
   const raised = position('Raycast')[1] - before;
   for (const name of ['Raycast', 'RaycastPenetrating']) named(name)[0].require(T).position.y = ${height};
   await frames(3);
-  return { single: lines().filter((l) => l.startsWith('Raycast hit entity')), all: lines().filter((l) => l.startsWith('- ') || l.includes('object(s)')), raised };
+  return {
+    single: lines().filter((l) => l.startsWith('Raycast hit entity')), all: lines().filter((l) => l.startsWith('- ') || l.includes('object(s)')), raised,
+    laser: named('Raycast')[0].findChild('Laser').require(T).scale.z, distance: Number(lines().find((l) => l.startsWith('Raycast hit distance')).split(': ')[1]),
+  };
 })()`);
 const top = raysAt(2.06), middle = raysAt(1.06);
-check('射线：E 抬高武器；上排跳过触发器那一层打到后面的箱子，穿透的射线两个都算',
-  top.raised > 0 && top.single[0] === 'Raycast hit entity: LeftBox1 - Default'
+check('射线：E 抬高武器；上排跳过触发器那一层打到后面的箱子，激光伸到命中的地方，穿透的射线两个都算',
+  top.raised > 0 && top.single[0] === 'Raycast hit entity: LeftBox1 - Default' && Math.abs(top.laser - top.distance) < 1e-3 && top.distance > 2
   && top.all.join('|') === 'Raycast has hit 2 object(s)|- Raycast has hit: RightBox2 - Trigger|- Raycast has hit: RightBox1 - Default', top);
 check('射线：中排普通的射线打到自定义层的箱子，穿透的射线排除了那一层',
   middle.single[0] === 'Raycast hit entity: LeftBox2 - Custom Filter' && middle.all.join('|') === 'Raycast has hit 1 object(s)|- Raycast has hit: RightBox1 - Default', middle);

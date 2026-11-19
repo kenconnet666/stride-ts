@@ -1,0 +1,44 @@
+# CSharpIntermediate 的参考截图
+
+```bash
+pwsh tools/stride-capture/csharp-intermediate/setup.ps1
+C:/code/stride-csharp-intermediate/Tutorials/CSharpIntermediate/CSharpIntermediate/Bin/Windows/Release/CSharpIntermediate.Windows.exe --capture C:/code/stride-csharp-intermediate/reference
+pnpm --filter @stride-ts/csharp-intermediate dev
+pwsh tools/stride-capture/csharp-intermediate/capture-ours.ps1
+pwsh tools/stop-dev.ps1
+```
+
+`setup.ps1` 取 Stride 源码当前分支的样例（Bepu 版，stride-ts 导入的就是它）和三个资源包，改成用 4.4.2 的 nuget 包、net10.0，入口换成 `CSharpIntermediateApp.cs`。导航教程（11_Navigation）从截图工程里去掉了：它用的 Stride.BepuPhysics.Navigation 没有发布 4.4.2 的包（本机编的 4.5.3-dev4 有，但那一版的资源编译器要另外的原生库），别的教程用不到它。
+
+`--capture <目录>` 用 GameSettings 的 1280x720，不放启动画面，依次把根场景换成四个教程的完成版（同点菜单里的按钮），各等 90 帧截一张：
+
+| 图 | 教程 | 看什么 |
+|---|---|---|
+| `raycasting.png` | Raycasting | 两把武器的激光伸到命中的地方（射线的结果直接画在场景里）、三排箱子 |
+| `project.png` | Project & Unproject | 父子两个球 |
+| `scene.png` | Scene loading | 场景 A |
+| `audio.png` | Audio | 带发射器的实体和相机的位置 |
+
+选的都是不按键就不动的场景。两个相机教程没有截：Stride 的脚本一启动就锁住鼠标、按鼠标的移动转视角，截图的那一秒半里碰一下鼠标画面就变了。
+
+两边都关掉色调映射的亮度适应、不画调试文字（Stride 的调试文字只在调试版显示），只比顶上 40 像素的菜单按钮以下的部分，原因同 [csharp-beginner](../csharp-beginner/README.md)。
+
+## 2026-11-19 的结果
+
+菜单按钮以下的画面，平均每通道差（/255）和任一通道差超过 8、32 的像素的比例：
+
+| 图 | 平均差 | 超过 8 | 超过 32 |
+|---|---|---|---|
+| raycasting | 2.11 | 5.41% | 2.62% |
+| project | 0.55 | 0.21% | 0.02% |
+| scene | 0.66 | 0.58% | 0.00% |
+| audio | 1.05 | 0.81% | 0.18% |
+
+射线那张的差几乎都在两个绿色的箱子上：它们的材质是玻璃（`MaterialSpecularThinGlassModelFeature`，Stride 里能看穿），我们还没做，当不透明的画。
+
+第一次比是 25.64、60.18、67.00、47.10：木地板在我们这边是映着天空的镜面（曝光跟着整个变暗），激光是白的、没伸到命中的地方。都是材质和模型的导入问题，这个样例第一次碰到，见 docs/decisions.md 的"材质：着色模型、停用的特性、化不成固定槽的属性"：
+
+- 木地板（board1B）只有镜面颜色、没有镜面着色模型，在 Stride 里不反光；它的光泽度是"贴图 × 0.3"，以前导入成 0；
+- 激光的材质里有一个停用的自发光，以前照样导入了；
+- 激光是没给材质的程序模型（圆柱），红色的材质由实体覆盖，以前这种模型没有材质槽、覆盖用不上；
+- 脚本用 `FindChild("Laser")` 找激光，它在武器模型下面一层，以前只找直接子实体。

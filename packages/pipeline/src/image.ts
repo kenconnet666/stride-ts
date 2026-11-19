@@ -1,3 +1,5 @@
+import { crc32, deflateSync } from 'node:zlib';
+
 /**
  * 全透明像素的颜色换成最近的不透明像素的颜色（alpha 渗色，Godot 的 fix_alpha_border、Unity 的 Alpha Is Transparency）。
  * 返回新数组，没有全透明像素、或者全都透明时原样返回。
@@ -67,4 +69,27 @@ export function maskAlpha(pixels: Uint8Array, premultiplied: boolean): Uint8Arra
     }
   }
   return masked ?? pixels;
+}
+
+const PNG_SIGNATURE = Uint8Array.of(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
+
+/** RGBA8 的像素编成 PNG（不滤波）：导入时改过像素、又要留着 PNG 的贴图用。 */
+export function encodePng(pixels: Uint8Array, width: number, height: number): Uint8Array {
+  const stride = width * 4;
+  const raw = new Uint8Array((stride + 1) * height);
+  for (let y = 0; y < height; y++) raw.set(pixels.subarray(y * stride, (y + 1) * stride), y * (stride + 1) + 1);
+  const header = new DataView(new ArrayBuffer(13));
+  header.setUint32(0, width);
+  header.setUint32(4, height);
+  new Uint8Array(header.buffer).set([8, 6, 0, 0, 0], 8);
+  const chunk = (type: string, data: Uint8Array) => {
+    const out = new Uint8Array(12 + data.length);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, data.length);
+    out.set(new TextEncoder().encode(type), 4);
+    out.set(data, 8);
+    view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  };
+  return Buffer.concat([PNG_SIGNATURE, chunk('IHDR', new Uint8Array(header.buffer)), chunk('IDAT', deflateSync(raw)), chunk('IEND', new Uint8Array(0))]);
 }

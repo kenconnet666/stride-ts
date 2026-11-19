@@ -21,7 +21,7 @@ import {
   type Vec3Tuple,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
-import { applyColorKey, bleedTransparentColors, maskAlpha } from '../image.ts';
+import { applyColorKey, bleedTransparentColors, encodePng, maskAlpha } from '../image.ts';
 import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { importColorTree } from './particles.ts';
@@ -381,7 +381,10 @@ export class MaterialImporter {
     return pending;
   }
 
-  /** 有覆盖文件就原样导出它；否则按 textureEncoding：编成 KTX2（UASTC 加 mipmap），或复制 PNG/JPEG 源文件。 */
+  /**
+   * 有覆盖文件就原样导出它；否则按 textureEncoding：编成 KTX2（UASTC 加 mipmap），或者留着 PNG/JPEG（'source'：运行时不用带
+   * KTX2 的解码器）。'source' 时像素没动过的原样复制源文件，导入时改过像素的（缩放、颜色键、1 位 alpha）写成 PNG。
+   */
   async #importTexture(asset: AssetEntry): Promise<ImportedTexture> {
     const override = await this.#override(asset.path);
     const type = asObject(asset.data['Type']);
@@ -412,6 +415,7 @@ export class MaterialImporter {
     // 1 位 alpha 的贴图不渗色，透明的地方就是黑的（同 BC1）：渗进去的颜色会被压缩误差漏出来的一点 alpha 带出来，
     // 材质再乘上很大的系数（箱子标志的自发光是遮罩乘 50）就看得见了
     const pixels = alphaMask ? masked : bleedTransparentColors(masked, width, height);
+    if (policy === 'source' && sourceEncoding) return this.#copyTexture(asset.path, 'png', encodePng(pixels, width, height), srgb);
     const ktx2 = await this.#context.tools.encodeBasis(pixels, width, height, { mode: 'uastc', srgb, mipmaps: asset.data['GenerateMipmaps'] !== false });
     if (policy === 'smallest' && sourceEncoding && unchanged && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     await this.#context.write(asset.path + TEXTURE_EXTENSIONS.ktx2, ktx2);

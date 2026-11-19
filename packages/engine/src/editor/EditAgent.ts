@@ -24,6 +24,7 @@ import { Camera, Model, ModelPart } from '../rendering/components';
 import { Mesh } from '../rendering/Mesh';
 import type { DebugColor } from '../debug/DebugDraw';
 import { EditorCameraController } from './EditorCamera';
+import { scriptFields, type Field } from './fields';
 import { LiveScene, type SceneSource } from './LiveScene';
 import type { SceneEdit } from './SceneDocument';
 import { applyGizmoChange, TransformGizmo, type GizmoAxis, type GizmoHandle, type Ray } from './TransformGizmo';
@@ -163,6 +164,15 @@ export class EditAgent {
     if (!sphere) return;
     const [x, y, z] = sphere.center;
     this.camera.require(EditorCameraController).focus({ x, y, z }, sphere.radius > 0 ? sphere.radius : 0.5);
+  }
+
+  /**
+   * 场景文件里一个脚本（type 是场景里写的类型名，Stride 的带命名空间）在面板上能改的属性。按类名找 TS 脚本，同加载场景时
+   * 的规则；游戏里没有这个脚本、有几个重名的时是 undefined（面板按原样的 JSON 显示）。
+   */
+  scriptFields(type: string): Field[] | undefined {
+    const found = this.game.registry.scriptsNamed(type.slice(type.lastIndexOf('.') + 1));
+    return found.length === 1 ? scriptFields(found[0]!) : undefined;
   }
 
   /** 选中的实体里最上层的那些（祖先也被选中的不算：拖父实体时子实体跟着走，不用再各自改一遍）。 */

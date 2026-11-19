@@ -134,6 +134,7 @@ export { ScenePicker } from './rendering/ScenePicker';
 export { EditorCameraController, EditorCameraState } from './editor/EditorCamera';
 export type { EditableScene, EditAgent, WorldSphere } from './editor/EditAgent';
 export { applyGizmoChange, TransformGizmo, type GizmoAxis, type GizmoChange, type GizmoHandle, type GizmoMode } from './editor/TransformGizmo';
+export { checkEntity, checkFields, COMPONENT_FIELDS, ENTITY_FIELDS, scriptFields, TEXTURE_FIELDS, type ComponentDescription, type Field, type FieldType } from './editor/fields';
 export { LiveScene, type SceneSource } from './editor/LiveScene';
 export { SceneDocument, UndoStack, type EntitiesFile, type SceneEdit, type ScenePath } from './editor/SceneDocument';
 export { changedEntities, type EntityChanges } from './content/SceneBuilder';

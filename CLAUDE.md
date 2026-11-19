@@ -14,6 +14,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 
 约定：
 - 和用户用中文沟通。**代码注释（含文档注释、测试标题）和 git 提交信息用中文**（用户 2026-11-18 决定，覆盖全局 CLAUDE.md 的英文约定）；标识符、文件名、运行时的报错和日志文字仍用英文。jolt-native-fork 里 Jolt 上游的文件保持英文。
+- **目标是比 Stride 做得更好，不是照抄**（用户 2026-11-19）：Stride 的 bug、怪癖、难用的 API 不跟，改好并注明"和 Stride 不同：……"（改之前把受影响的情况想全，记进 docs/decisions.md）；我们比 Stride 差的限制要补掉，不能留着当完成。文档和代码边做边整理：文档只留结论，被取代的内容改写原处；整理和功能改动分开提交。见 docs/roadmap.md 的"原则"。
 - wasm 那边（jolt-native-fork 的 StrideNative）有问题、或者我们需要新能力时，直接改那边的代码，不在 TS 里绕过去；改完重编、跑原生/Node/浏览器测试，再按下一条发新版本。
 - Jolt 的 fork 是单独的仓库：`C:\Users\Administrator\CLionProjects\jolt-native-fork`（已加入本项目的工作目录）。远程 `origin` 是 `kenconnet666/JoltPhysics`，`upstream` 是 `jrouwe/JoltPhysics`（禁止推送）；工作分支 `stride`，基于上游发布标签。做法见 [docs/architecture.md](docs/architecture.md) 的"怎么 fork 和维护 Jolt"。原生 C++ 工程 `stride-native`/`stride-tools` 在这个仓库的 `StrideNative/` 目录（说明见其中的 README.md），按阶段提交到 `stride` 分支。
 - 要读的 Stride 源码在 `C:\Users\Administrator\IdeaProjects\stride`，只读，不在那边提交，除非用户要求（例如需要在那边加工具）。

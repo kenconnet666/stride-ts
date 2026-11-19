@@ -263,6 +263,9 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - 脚本引用自己或互相引用时，`props()` 里写 `prop.component(() => ScriptComponent)`，再在类体里用 `declare target: Other` 收窄：继承表达式里出现自己的类名，TS 会报循环引用（TS2506），和 easy-query-ts 把关系与实体分开定义是同一个原因。
   - `stat` 只给脚本用；数据组件的数值在系统里改。
 - **后来补上的**（2026-11-19）：资源引用 `prop.asset(kind)`（加载场景时一并加载好，种类见 `AssetTypes`，游戏可以用声明合并加种类）；预制体（`Prefab.instantiate`）；`Transform` 的 `localMatrix()`、`setLocalMatrix()`、`updateWorldMatrix()`；`Game.startup`（启动各阶段的时刻，`stride status` 报出来）。
+- **实体克隆和所在的场景**（2026-11-19，CSharpBeginner）：
+  - `entity.clone()`（`engine/clone.ts`，Stride 的 Entity.Clone）把实体连同子实体再建一份：数据组件、脚本属性照抄现在的值，子树里的实体引用和组件引用换成克隆的，资源共用。只有运行时状态的组件（字段全是 `transient`，比如 PhysicsBody、Skinned）不抄，挂它的系统在 `entities.onClone` 里给克隆重新挂；脚本属性以外的创作数据由脚本重写 `cloneFrom` 抄。克隆出来就在游戏里（和 Stride 不同）。
+  - `entity.scene`（Stride 的 Entity.Scene）：场景文件建的实体在那个场景里，别的跟着父实体；运行时建的根实体用 `clone.scene = this.entity.scene` 或 `create({ scene })` 放进场景，`game.unloadScene` 时一起销毁。
 - **还没做**（依赖后面的里程碑）：
   - 部件（`prop.parts`）、按子树生效的默认值；
 
@@ -833,7 +836,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - 挂在会动的刚体下的运动学刚体、挂在骨骼节点上的刚体每步跟着实体走；静态体三角化（`staticTriangles`）给导航用。
   - 穿透容差 1 mm（Jolt 默认 2 cm，Bepu 的软接触静止时几乎不陷进去），静止高度和 Stride 一致。
   - 导航（`game.navigation`，Stride 的 RecastMeshSystem）：运行时从物理世界的静态体建导航网格（Recast 分块并行），`RecastNavigationComponent` 寻路（Detour 的拐点）。
-  - 输入：`thumbAny`、`triggerAny`（Stride 模板的 InputManagerExtensions），指针事件，Stride 的键名。
+  - 输入：`thumbAny`、`triggerAny`（Stride 模板的 InputManagerExtensions），指针事件，Stride 的键名。虚拟按钮（`input.virtualButtonConfigSet`、`getVirtualButton`，`input/virtualButtons.ts`）；`absoluteMousePosition` 是 CSS 像素。
 - **还没做**：Bepu 接触的软度参数（SpringFrequency 等）不映射；RecastNavigationComponent 的排队寻路和直接移动；Bepu 的 2D 模式。
 
 ## 编辑器和资源管线：自己做，Node.js 加 Web（2026-11-17 用户决定）

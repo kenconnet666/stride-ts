@@ -1,9 +1,13 @@
 // 几何实验 E2（docs/vector-assets.md 的"几何"）：基础网格加位移微图，顶点着色器里按"基础三角形编号加重心坐标"现算位置，
 // 比直接画同样多三角形的静态网格慢多少。数据由 packages/pipeline/experiments/displacement-storage.ts --export 导出。
 // 两条路径画同样的三角形、同样的片元着色器（法线用屏幕导数现算），差别只在顶点怎么来：
-//   位移：一个基础三角形一个实例，顶点缓冲是细分图案的 (i, j)；顶点着色器取三个基础顶点、插值、按格点的编号取 8 位的位移；
+//   位移：一个基础三角形一个实例，顶点缓冲是细分图案的 (i, j)；顶点着色器取三个基础顶点、插值、按格点的编号取 8 位的位移
+//         （0..255 对应这一点的位移范围，范围从三个顶点各自的范围插值）；
 //   静态：重建好的顶点和下标，一个物体一个实例。
 // 先核对两条路径画出来的画面逐像素一致（格点编号算错了就不一致），再量 GPU 时间（时间戳查询，没有这个特性时退回等提交完成的墙钟时间）。
+// 第二部分（每个基础三角形各选一个级别、边上缝合）在 displacement-lod.ts。
+import { runLodExperiment, type LodResult } from './displacement-lod';
+import { COLOR_FORMAT, DEPTH_FORMAT, runBench, type GpuBench } from './gpuBench';
 
 export interface DisplacementResult {
   readonly copies: number;
@@ -12,19 +16,20 @@ export interface DisplacementResult {
   readonly staticMs: number;
 }
 
-declare global {
-  var displacementResults: { results: DisplacementResult[]; differingPixels: number; memory: Record<string, number>; timing: string } | undefined;
-  var displacementError: string | undefined;
+export interface DisplacementResults {
+  readonly results: DisplacementResult[];
+  readonly lod: LodResult[];
+  readonly differingPixels: number;
+  readonly memory: Record<string, number>;
+  readonly timing: string;
 }
 
 const WIDTH = 1280, HEIGHT = 720;
-const COLOR: GPUTextureFormat = 'rgba8unorm', DEPTH: GPUTextureFormat = 'depth24plus';
-const FRAMES = 40;
 
 const COMMON = /* wgsl */ `
 struct Scene {
   viewProjection: mat4x4f,
-  // 细分的格数 n、位移的范围、每个物体的基础三角形数、物体排成几列
+  // 细分的格数 n、不用、每个物体的基础三角形数、物体排成几列
   params: vec4f,
   // 物体之间的间距（xy），z 不用
   spacing: vec4f,
@@ -78,8 +83,10 @@ fn sampleIndex(t: Triangle, i: u32, j: u32, n: u32) -> u32 {
   let s = sampleIndex(t, ij.x, ij.y, n);
   // 位移 8 位，四个挤在一个 u32 里
   let quantized = (displacement[s >> 2u] >> ((s & 3u) * 8u)) & 0xffu;
-  let d = (f32(quantized) / 255.0 * 2.0 - 1.0) * scene.params.y;
-  let world = base + normal * d + objectOffset(instance / perObject);
+  // 这一点的位移范围：三个顶点的下界（位置的 w）、上界（法线的 w）按重心坐标插值
+  let low = dot(vec3f(positions[t.a].w, positions[t.b].w, positions[t.c].w), w);
+  let high = dot(vec3f(normals[t.a].w, normals[t.b].w, normals[t.c].w), w);
+  let world = base + normal * mix(low, high, f32(quantized) / 255.0) + objectOffset(instance / perObject);
   return Varyings(scene.viewProjection * vec4f(world, 1.0), world);
 }`;
 
@@ -89,13 +96,12 @@ const STATIC = /* wgsl */ `${COMMON}
   return Varyings(scene.viewProjection * vec4f(world, 1.0), world);
 }`;
 
-interface DisplacedMesh {
+export interface DisplacedMesh {
   readonly level: number;
   readonly vertices: number;
   readonly triangles: number;
   readonly samples: number;
   readonly microTriangles: number;
-  readonly range: number;
   readonly basePositions: Float32Array;
   readonly baseNormals: Float32Array;
   readonly layout: Uint32Array;
@@ -117,7 +123,6 @@ function parse(buffer: ArrayBuffer): DisplacedMesh {
   };
   return {
     level, vertices, triangles, samples, microTriangles,
-    range: new Float32Array(buffer, 24, 1)[0]!,
     basePositions: take((o, n) => new Float32Array(buffer, o, n), vertices * 4, 4),
     baseNormals: take((o, n) => new Float32Array(buffer, o, n), vertices * 4, 4),
     layout: take((o, n) => new Uint32Array(buffer, o, n), triangles * 8, 4),
@@ -138,7 +143,8 @@ function upright(mesh: DisplacedMesh): DisplacedMesh {
   // 新的 x、y、z 分别取原来的哪个轴
   const axes = [byExtent[1]!, byExtent[0]!, byExtent[2]!];
   const permute = (data: Float32Array, stride: number) => {
-    const out = new Float32Array(data.length);
+    // 先整份拷贝：基础顶点的第四个分量（位移范围）原样留着
+    const out = data.slice();
     for (let v = 0; v < data.length; v += stride) for (let axis = 0; axis < 3; axis++) out[v + axis] = data[v + axes[axis]!]!;
     return out;
   };
@@ -182,23 +188,14 @@ function orthographic(min: readonly number[], max: readonly number[]): Float32Ar
   return new Float32Array([2 / width, 0, 0, 0, 0, 2 / height, 0, 0, 0, 0, -1 / depth, 0, (-2 * cx) / width, (-2 * cy) / height, max[2]! / depth, 1]);
 }
 
-async function main(print: (line: string) => void): Promise<void> {
-  const adapter = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) throw new Error('WebGPU is not available');
-  const timestamps = adapter.features.has('timestamp-query');
-  const device = await adapter.requestDevice({ requiredFeatures: timestamps ? ['timestamp-query'] : [] });
+async function main(bench: GpuBench): Promise<DisplacementResults> {
+  const { device, upload, render, readPixels, print } = bench;
   // ?model=<名字>：public/content/displacement/<名字>.dmesh，默认 lucy
   const model = new URLSearchParams(location.search).get('model') ?? 'lucy';
   const mesh = upright(parse(await (await fetch(`/content/displacement/${model}.dmesh`)).arrayBuffer()));
   const n = 1 << mesh.level;
-  print(`GPU ${adapter.info.vendor} ${adapter.info.architecture} ${adapter.info.description}; timing: ${timestamps ? 'timestamp queries' : 'wall clock until the queue is done'}`);
   print(`${mesh.triangles} base triangles, level ${mesh.level} (${n * n} micro triangles each), ${mesh.samples} samples, ${mesh.microTriangles} micro triangles`);
 
-  const upload = (data: ArrayBufferView, usage: number) => {
-    const buffer = device.createBuffer({ size: (data.byteLength + 3) & ~3, usage: usage | GPUBufferUsage.COPY_DST });
-    device.queue.writeBuffer(buffer, 0, data.buffer, data.byteOffset, data.byteLength);
-    return buffer;
-  };
   const grid = pattern(n);
   const buffers = {
     scene: device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
@@ -221,30 +218,24 @@ async function main(print: (line: string) => void): Promise<void> {
   };
   print(`memory: displaced ${(memory.displacedBytes / 1024).toFixed(0)} KB, static ${(memory.staticBytes / 1024).toFixed(0)} KB (positions only) / ${(memory.staticEngineLayoutBytes / 1024).toFixed(0)} KB (engine vertex layout)`);
 
-  const depthStencil = { format: DEPTH, depthWriteEnabled: true, depthCompare: 'less' } as const;
+  const depthStencil = { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: 'less' } as const;
   const primitive = { topology: 'triangle-list', cullMode: 'none' } as const;
   const displacedModule = device.createShaderModule({ code: DISPLACED }), staticModule = device.createShaderModule({ code: STATIC });
   const displacedPipeline = await device.createRenderPipelineAsync({
     layout: 'auto', primitive, depthStencil,
     vertex: { module: displacedModule, entryPoint: 'vs', buffers: [{ arrayStride: 4, stepMode: 'vertex', attributes: [{ shaderLocation: 0, offset: 0, format: 'uint8x2' }] }] },
-    fragment: { module: displacedModule, entryPoint: 'fs', targets: [{ format: COLOR }] },
+    fragment: { module: displacedModule, entryPoint: 'fs', targets: [{ format: COLOR_FORMAT }] },
   });
   const staticPipeline = await device.createRenderPipelineAsync({
     layout: 'auto', primitive, depthStencil,
     vertex: { module: staticModule, entryPoint: 'vs', buffers: [{ arrayStride: 12, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] }] },
-    fragment: { module: staticModule, entryPoint: 'fs', targets: [{ format: COLOR }] },
+    fragment: { module: staticModule, entryPoint: 'fs', targets: [{ format: COLOR_FORMAT }] },
   });
   const displacedGroup = device.createBindGroup({
     layout: displacedPipeline.getBindGroupLayout(0),
     entries: [buffers.scene, buffers.basePositions, buffers.baseNormals, buffers.layout, buffers.displacement].map((buffer, binding) => ({ binding, resource: { buffer } })),
   });
   const staticGroup = device.createBindGroup({ layout: staticPipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: buffers.scene } }] });
-
-  const color = device.createTexture({ size: [WIDTH, HEIGHT], format: COLOR, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
-  const depth = device.createTexture({ size: [WIDTH, HEIGHT], format: DEPTH, usage: GPUTextureUsage.RENDER_ATTACHMENT });
-  const querySet = timestamps ? device.createQuerySet({ type: 'timestamp', count: 2 }) : undefined;
-  const resolved = device.createBuffer({ size: 16, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
-  const readable = device.createBuffer({ size: 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
 
   // 物体排成网格；包围盒按重建出来的顶点算
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -257,18 +248,12 @@ async function main(print: (line: string) => void): Promise<void> {
     const columns = Math.ceil(Math.sqrt(copies)), rows = Math.ceil(copies / columns);
     const data = new Float32Array(24);
     data.set(orthographic(min, [max[0]! + spacing[0]! * (columns - 1), max[1]! + spacing[1]! * (rows - 1), max[2]!]));
-    data.set([n, mesh.range, mesh.triangles, columns, spacing[0]!, spacing[1]!, 0, 0], 16);
+    data.set([n, 0, mesh.triangles, columns, spacing[0]!, spacing[1]!, 0, 0], 16);
     device.queue.writeBuffer(buffers.scene, 0, data);
   };
 
-  /** 画一帧；displaced 选哪条路径。返回 GPU 时间（毫秒）。 */
-  const frame = async (displaced: boolean, copies: number): Promise<number> => {
-    const encoder = device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [{ view: color.createView(), loadOp: 'clear', storeOp: 'store', clearValue: [0.1, 0.1, 0.1, 1] }],
-      depthStencilAttachment: { view: depth.createView(), depthLoadOp: 'clear', depthStoreOp: 'store', depthClearValue: 1 },
-      ...(querySet ? { timestampWrites: { querySet, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 } } : {}),
-    });
+  /** 两条路径各画 copies 个物体。 */
+  const frame = (displaced: boolean, copies: number) => (pass: GPURenderPassEncoder) => {
     if (displaced) {
       pass.setPipeline(displacedPipeline);
       pass.setBindGroup(0, displacedGroup);
@@ -282,39 +267,13 @@ async function main(print: (line: string) => void): Promise<void> {
       pass.setIndexBuffer(buffers.staticIndices, 'uint32');
       pass.drawIndexed(mesh.indices.length, copies);
     }
-    pass.end();
-    if (querySet) {
-      encoder.resolveQuerySet(querySet, 0, 2, resolved, 0);
-      encoder.copyBufferToBuffer(resolved, 0, readable, 0, 16);
-    }
-    const start = performance.now();
-    device.queue.submit([encoder.finish()]);
-    if (!querySet) {
-      await device.queue.onSubmittedWorkDone();
-      return performance.now() - start;
-    }
-    await readable.mapAsync(GPUMapMode.READ);
-    const times = new BigUint64Array(readable.getMappedRange().slice(0));
-    readable.unmap();
-    return Number(times[1]! - times[0]!) / 1e6;
-  };
-
-  const readPixels = async (): Promise<Uint8Array> => {
-    const buffer = device.createBuffer({ size: WIDTH * HEIGHT * 4, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-    const encoder = device.createCommandEncoder();
-    encoder.copyTextureToBuffer({ texture: color }, { buffer, bytesPerRow: WIDTH * 4 }, [WIDTH, HEIGHT]);
-    device.queue.submit([encoder.finish()]);
-    await buffer.mapAsync(GPUMapMode.READ);
-    const pixels = new Uint8Array(buffer.getMappedRange().slice(0));
-    buffer.destroy();
-    return pixels;
   };
 
   // 先核对：一个物体，两条路径的画面应该逐像素一样（同样的三角形；位置在着色器里算和在 CPU 上算有末位的差，允许差 2）
   setScene(1);
-  await frame(true, 1);
+  await render(frame(true, 1));
   const displacedPixels = await readPixels();
-  await frame(false, 1);
+  await render(frame(false, 1));
   const staticPixels = await readPixels();
   // 左上角是背景（模型没铺满画面）
   let differingPixels = 0, covered = 0;
@@ -322,39 +281,21 @@ async function main(print: (line: string) => void): Promise<void> {
     if (staticPixels[p]! !== staticPixels[0]!) covered++;
     if (Math.abs(displacedPixels[p]! - staticPixels[p]!) > 2) differingPixels++;
   }
-  // 位移那条路径的画面放到页面上，肉眼也能看一眼
-  const canvas = document.createElement('canvas');
-  [canvas.width, canvas.height] = [WIDTH, HEIGHT];
-  canvas.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(displacedPixels), WIDTH, HEIGHT), 0, 0);
-  document.body.append(canvas);
+  bench.show(displacedPixels);
   print(`same image check: ${differingPixels} of ${WIDTH * HEIGHT} pixels differ by more than 2 (${covered} pixels covered by the model)`);
 
-  const median = (values: number[]) => values.sort((a, b) => a - b)[values.length >> 1]!;
   const results: DisplacementResult[] = [];
   print('\ncopies   triangles   displaced ms   static ms   ratio');
   for (const copies of [1, 4, 16, 64]) {
     setScene(copies);
-    const measure = async (displaced: boolean) => {
-      for (let i = 0; i < 5; i++) await frame(displaced, copies);
-      const times: number[] = [];
-      for (let i = 0; i < FRAMES; i++) times.push(await frame(displaced, copies));
-      return median(times);
-    };
+    const measure = (displaced: boolean) => bench.measure(frame(displaced, copies));
     // 两条路径交替量两轮取小的，免得被别的进程的抖动偏向一边
     const displacedMs = Math.min(await measure(true), await measure(true)), staticMs = Math.min(await measure(false), await measure(false));
     results.push({ copies, triangles: mesh.microTriangles * copies, displacedMs, staticMs });
     print(`${String(copies).padStart(6)} ${String(mesh.microTriangles * copies).padStart(11)} ${displacedMs.toFixed(3).padStart(14)} ${staticMs.toFixed(3).padStart(11)} ${(displacedMs / staticMs).toFixed(2).padStart(7)}`);
   }
-  globalThis.displacementResults = { results, differingPixels, memory, timing: timestamps ? 'timestamp' : 'wall' };
-  print('\ndone');
+  const lod = await runLodExperiment(bench, { mesh, buffers, bounds: { min, max }, pattern });
+  return { results, lod, differingPixels, memory, timing: bench.timing };
 }
 
-const out = document.getElementById('out')!;
-const lines: string[] = [];
-main((line) => {
-  lines.push(line);
-  out.textContent = lines.join('\n');
-}).catch((error: unknown) => {
-  globalThis.displacementError = error instanceof Error ? (error.stack ?? error.message) : String(error);
-  out.textContent = `${lines.join('\n')}\nfailed: ${globalThis.displacementError}`;
-});
+runBench('displacement', [WIDTH, HEIGHT], main);

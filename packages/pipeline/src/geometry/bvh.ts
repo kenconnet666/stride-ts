@@ -181,13 +181,13 @@ export class TriangleBvh {
       if (d3 >= 0 && d4 <= d3) {
         v = 1; w = 0;
       } else if (vc <= 0 && d1 >= 0 && d3 <= 0) {
-        v = d1 / (d1 - d3); w = 0;
+        v = ratio(d1, d1 - d3); w = 0;
       } else if (d6 >= 0 && d5 <= d6) {
         v = 0; w = 1;
       } else if (vb <= 0 && d2 >= 0 && d6 <= 0) {
-        v = 0; w = d2 / (d2 - d6);
+        v = 0; w = ratio(d2, d2 - d6);
       } else if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
-        w = (d4 - d3) / (d4 - d3 + (d5 - d6)); v = 1 - w;
+        w = ratio(d4 - d3, d4 - d3 + (d5 - d6)); v = 1 - w;
       } else {
         // 退化的三角形（三点共线）面积是 0：上面几种情况都没中时按顶点 a 算，不除以 0
         const sum = va + vb + vc;
@@ -197,6 +197,11 @@ export class TriangleBvh {
     const dx = apx - abx * v - acx * w, dy = apy - aby * v - acy * w, dz = apz - abz * v - acz * w;
     return dx * dx + dy * dy + dz * dz;
   }
+}
+
+/** a / b；b 是 0 时（长度为 0 的边：量化以后两个顶点落在同一处）是 0，不出 NaN。 */
+function ratio(a: number, b: number): number {
+  return b === 0 ? 0 : a / b;
 }
 
 /** 把 order[start, end) 重排成第 nth 个位置上是按 key 排第 nth 的元素，前面的都不比它大（快速选择）。 */

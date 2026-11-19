@@ -32,3 +32,6 @@ pnpm exec stride shot ours.png --diff C:/code/stride-first-person-shooter/refere
 第一次比时平均差 3.98/255，地面的网格线竖直方向错开约 4 像素：桌面 Stride 的角色站在 y = 0.0497（胶囊底贴着地面），我们的
 陷进地面 2 cm（0.030），相机跟着矮 2 cm。原因是 Jolt 默认的穿透容差（`mPenetrationSlop` = 2 cm），Bepu 的软接触静止时
 几乎不陷进去。原生 0.21.1 把它降到 1 mm 后角色站在 0.049、箱子在 0.499（边长 1 m）。
+
+2026-11-19 加了粒子（SpawnerBurst、SpawnerFromDistance）和材质层（LogoA、LogoD 的箱子）之后重截：平均差 2.70/255，起始视角里没有
+带层的箱子，结果不变。

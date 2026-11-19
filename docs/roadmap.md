@@ -292,7 +292,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 4. ~~PhysicsSample~~（2026-11-19 P1 部分完成，Bepu 版，`apps/physics-sample`，端口 5188；三个场景，`?scene=PhysicsSample/VolumeTrigger` 这样选，NextSceneScript 在场景之间换）：
    - 做了：Body 组件和 `simulation.body(entity)`（运动学、唤醒、瞬移、速度、冲量、重力、睡眠阈值；物体移除后只记设置），凸包碰撞体，程序模型（照 Stride 4.4.2 生成），`screenToWorldRaySegment`；触发器和接触事件（`TriggerHandler`、`setContactHandler`），实体销毁时移除物体和连着的约束；约束（球窝、铰链、齿轮马达、点在线上、线性限位、摆动和扭转限位、焊接，语义照 Bepu，映射到 Jolt；刚性，和 Bepu 的软约束不同）；换根场景（`game.setRootScene`，`prop.asset('scene')`），运行中改重力；材质的透明混合、环境光遮蔽、镜面颜色工作流、贴图乘颜色的自发光，贴图引用记 sRGB；正交相机（`Camera.projection`、`orthographicSize`）。原生到 0.14.0。
    - 验收：和桌面 Stride（master 的样例配 4.4.2 的包）比，去掉 UI 后平均每通道差 0.13 到 1.32/255，差超过 10 的像素 0.56% 到 2.40%，都在箱子的发光标志（材质层，P2）上（`tools/stride-capture/physics-sample`）；冒烟脚本 `pnpm --filter @stride-ts/physics-sample smoke` 走完三个场景的玩法和换场景。
-   - P2 补：各场景的 UI 文字和按钮（现在用调试命令 `next`、`previous`、`next-scene`、`previous-scene` 代替），材质层（LogoD）。遗留：透明物体不投阴影、同一批的透明实例不排序。
+   - P2 补：各场景的 UI 文字和按钮（现在用调试命令 `next`、`previous`、`next-scene`、`previous-scene` 代替）。遗留：透明物体不投阴影、同一批的透明实例不排序。
 5. ~~BepuSample~~（2026-11-19 P1 部分完成，`apps/bepu-sample`，端口 5190；主场景加七个演示子场景，`?scene=Colliders` 选，或 `stride call scene '"Ropes"'`）。分步：
    1. ~~骨架~~（2026-11-19）：子场景的加载和卸载（`game.unloadScene`），模型实例化（`Instancing`、`Instance`，Stride 的 InstancingComponent、InstanceComponent），程序模型补上圆柱、圆锥，OBJ 模型（原生 0.15.0，ufbx 读），空碰撞体（EmptyCollider），贴图的采样器（Point、各向异性、寻址模式，每张贴图各自的），`Simulation.timeScale`、`enabled`，`Quaternion.slerp`，`game.debugText`（先不画，`stride call debug-text` 读），脚本属性的 Vector2 是数组；脚本 SceneSelector、FindAndAttachCamera、BasicCameraController、TimeControl、SceneDescription。Colliders、Material Properties 场景能看能飞；冒烟脚本 `pnpm --filter @stride-ts/bepu-sample smoke`。
    2. ~~预制体、生成器、重力枪~~（2026-11-19）：预制体（导入成 `.prefab.json`，`prop.asset('prefab')` 得到加载好的 `Prefab`，`instantiate` 建实体；导入器的层级上下文不再放在实例字段上），原生 0.16.0 的单体约束（线性伺服、角度伺服、角马达）、距离限制、球窝马达，约束句柄的 `enabled`、`update`，`simulation.onStep`（ISimulationUpdate），`input.mouseWheelDelta`，脚本类可以一层层 `props()`（继承基类的属性）；脚本 Spawner、SpawnerComponent、ThrowerComponent、GravityGunComponent。Cube Fountain 能玩（几百个实例化的方块 60 fps），Colliders 里能扔、能用重力枪抓；冒烟脚本覆盖。
@@ -424,11 +424,11 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    3. ~~引擎~~（2026-11-19）：`ModelMorphs`（`game.animation.morphs(entity)`：morphTargetNames、findMorphTarget、get/setMorphWeight、setAllMorphWeights），权重每个模型实例一组、连成一个缓冲上传；顶点着色器按权重加增量（管线常量 MORPHED，没有形变的网格整段去掉），先形变后蒙皮；混合栈的形变部分 `MorphStack` 和骨架的轨道一起算，只有形变的模型由 `morphSystem` 推进。在 Chrome 里看过：立方体扭、二十面球随剪辑压扁、甜甜圈骨骼和形变一起动。和 Stride 不同：Stride 在计算着色器里形变（ModelDeformationRenderer），我们在顶点着色器里（每个通道都重算，模型小时更省事）。
    4. ~~UI~~（2026-11-19）：新控件 Slider（拖动取值、吸附刻度、ValueChanged；轨道前景按比例裁、刻度、悬停的滑块；只有水平的）、Border（四条边）；`ContentManager.removeModel`（换模型：去掉网格、子实体、骨架和形变权重）。SampleUI、MorphTargetsController 写成 TS（纯色小贴图用 `new Texture(..., { format: 'rgba8unorm' })`）。冒烟 10 项（三个剪辑在播、Pause/Play、选立方体后拖滑条到头、Reset、切到 FBX 留着权重和时间、F1）。
    5. ~~桌面比对~~（2026-11-19，`tools/stride-capture/morph-targets`）：桌面用本机编的 4.5.3-dev4（NuGet 缓存里的），第 58 帧（剪辑都在 0.967 秒）截图，我们把各剪辑拨到同一时间再截，平均每通道差 3.98/255；模型的形变一致，差都在左上角的面板上：Stride 的 UI 在透明阶段里画、跟着色调映射走，我们的 UI 画在后处理之后（decisions.md 里的取舍，按钮的纯色贴图 Stride 显示 88、我们 125），加上文字的栅格化。试过照 Stride 在后处理之前画 UI（平均差降到 1.27），没有采用：和那条取舍冲突，UI 的颜色会跟着场景的自动曝光变。帧时间：桌面 4.10 ms。
-12. **FPS 的粒子和材质层**：FirstPersonShooter 在 P1 时跳过的部分。
+12. ~~FPS 的粒子和材质层~~（2026-11-19 完成）：FirstPersonShooter 在 P1 时跳过的部分。
    - 粒子：VFXPackage 的枪口火焰、弹孔用 SpawnerBurst（一次喷一批），受击拖尾用 SpawnerFromDistance（按移动距离生成），导入时现在警告后去掉。
-   - 材质层：SamplesAssetPackage 的 LogoA、LogoD（BepuSample、FPS 里的箱子）有 Layers（子材质按 BlendMap 的遮罩混进来），现在只画底层。
+   - 材质层：SamplesAssetPackage 的 LogoA、LogoD（FPS 里的箱子）有 Layers（子材质按 BlendMap 的遮罩混进来），现在只画底层。
 
    分步：
    1. ~~生成器~~（2026-11-19）：SpawnerBurst（每次活跃喷一批，Stride 的 NotifyStateSwitch 做成 `onStateSwitch`）、SpawnerFromDistance（按粒子系统移动的距离，生成器经 `SpawnTarget.systemTranslation` 拿位置），单测；FPS 冒烟加一项（三个特效的粒子都生出来）。顺手修掉：没有关键帧的曲线分量数按第一个关键帧取，颜色曲线成了 1 个分量、另外三个通道 NaN，受击拖尾画成大黑块；现在按采样器的类型定（Stride 的空曲线是 0）。
    2. ~~材质层~~（2026-11-19）：导入器把 Layers 导出成 `MaterialFile.layers`（遮罩和子材质的漫反射、镜面、金属度、光泽度、法线、自发光，都是颜色树；没写 BlendMap 是 Stride 的默认 ComputeTextureScalar，整层盖上），运行时编成 `layer{i}...` 函数，片元着色器里 `materialLayers`、`layerNormal`、`layerEmissive` 按遮罩逐层线性混合（Stride 的 MaterialStreamLinearBlend），没有层的材质这几个函数原样返回。在主 Chrome 里看过：FPS 的 BoxE（LogoD）红框里的青色面板发光。还没做：层的遮蔽、透明、UVScale 覆盖、层里再套层（记警告）。
-   3. FPS 和 BepuSample 重新比对（开枪那帧的粒子、带层的箱子），更新冒烟。
+   3. ~~比对~~（2026-11-19）：FPS 起始视角重截，平均差 2.70/255（之前 2.69，起始视角里没有带层的箱子、也没开枪）；BepuSample 其实没用材质层（之前记错了）。冒烟在第 1 步加过。

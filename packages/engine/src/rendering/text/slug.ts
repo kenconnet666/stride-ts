@@ -7,6 +7,10 @@
  * 每个像素向右打一条横的射线、向上打一条竖的射线，数轮廓曲线穿过多少次（按方向带符号），离交点不到半个像素的按距离给部分覆盖
  * （一维的抗锯齿），两条射线的结果按各自离边的距离加权合起来。横带里的曲线按最大 x 从大到小排，曲线整个在像素左边以后就不用
  * 再看了（竖带同理）。用的是非零环绕规则。
+ *
+ * 描边（slugDistance，我们加的）：采样点到轮廓的距离，看 radius 以内的带里的曲线。横带里没有横的直线（和带平行的不参与
+ * 数穿越），所以再到竖带里找它们。每条曲线上最近的点用牛顿法找（从投到弦上的位置起步）：闭式解在接近直线的曲线上
+ * 单精度不够用。
  */
 export const SLUG_WGSL = /* wgsl */ `
 struct GlyphEntry {
@@ -123,5 +127,79 @@ fn slugCoverage(coord: vec2f, emsPerPixel: vec2f, glyph: u32) -> f32 {
   // 两条射线按各自离边的距离加权；绝对值让两种环绕方向都能用
   let coverage = max(abs(xcov * xwgt + ycov * ywgt) / max(xwgt + ywgt, 1.0 / 65536.0), min(abs(xcov), abs(ycov)));
   return saturate(coverage);
+}
+
+// 原点到曲线 C(t)（三个控制点已经减去采样点）的距离的平方
+fn slugCurveDistanceSquared(p1: vec2f, p2: vec2f, p3: vec2f) -> f32 {
+  let a = p1 - p2 * 2.0 + p3;
+  let b = p2 - p1;
+  let chord = p3 - p1;
+  var t = saturate(-dot(p1, chord) / max(dot(chord, chord), 1e-12));
+  for (var i = 0; i < 4; i++) {
+    let point = (a * t + b * 2.0) * t + p1;
+    let tangent = (a * t + b) * 2.0;
+    let speed = dot(tangent, tangent);
+    // 二阶导是负的地方（离曲率中心近）牛顿法会走向最远点，退回只用一阶项
+    let curvature = speed + dot(point, a) * 2.0;
+    t = saturate(t - dot(point, tangent) / max(select(speed, curvature, curvature > 0.0), 1e-12));
+  }
+  let point = (a * t + b * 2.0) * t + p1;
+  return min(dot(point, point), min(dot(p1, p1), dot(p3, p3)));
+}
+
+// em 坐标 coord 处到字形轮廓的距离（em）；radius 以内没有轮廓时返回比 radius 大的数
+fn slugDistance(coord: vec2f, radius: f32, glyph: u32) -> f32 {
+  let entry = glyphTable[glyph];
+  let pointBase = entry.data.x;
+  let bandBase = entry.data.y;
+  let bandMax = vec2i(i32(entry.data.w) - 1, i32(entry.data.z) - 1);
+  let lo = clamp(vec2i((coord - radius) * entry.bandTransform.xy + entry.bandTransform.zw), vec2i(0), bandMax);
+  let hi = clamp(vec2i((coord + radius) * entry.bandTransform.xy + entry.bandTransform.zw), vec2i(0), bandMax);
+  var best = radius * radius * 4.0;
+
+  for (var band = lo.y; band <= hi.y; band++) {
+    let head = bandBase + u32(band) * 2u;
+    let count = glyphBands[head];
+    let list = bandBase + glyphBands[head + 1u];
+    for (var i = 0u; i < count; i++) {
+      let p = pointBase + glyphBands[list + i];
+      let p1 = glyphPoints[p] - coord;
+      let p2 = glyphPoints[p + 1u] - coord;
+      let p3 = glyphPoints[p + 2u] - coord;
+      let high = max(max(p1, p2), p3);
+      // 按最大 x 从大到小排：这条整个在 radius 以外的左边，后面的也是
+      if (high.x < -radius) {
+        break;
+      }
+      let low = min(min(p1, p2), p3);
+      if (low.x > radius || low.y > radius || high.y < -radius) {
+        continue;
+      }
+      best = min(best, slugCurveDistanceSquared(p1, p2, p3));
+    }
+  }
+
+  for (var band = lo.x; band <= hi.x; band++) {
+    let head = bandBase + (entry.data.z + u32(band)) * 2u;
+    let count = glyphBands[head];
+    let list = bandBase + glyphBands[head + 1u];
+    for (var i = 0u; i < count; i++) {
+      let p = pointBase + glyphBands[list + i];
+      let p1 = glyphPoints[p] - coord;
+      let p2 = glyphPoints[p + 1u] - coord;
+      let p3 = glyphPoints[p + 2u] - coord;
+      // 按最大 y 从大到小排
+      if (max(max(p1.y, p2.y), p3.y) < -radius) {
+        break;
+      }
+      // 只要横的直线，别的曲线横带里看过了
+      if (p1.y != p2.y || p2.y != p3.y || abs(p1.y) > radius) {
+        continue;
+      }
+      let x = clamp(0.0, min(p1.x, p3.x), max(p1.x, p3.x));
+      best = min(best, x * x + p1.y * p1.y);
+    }
+  }
+  return sqrt(best);
 }
 `;

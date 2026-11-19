@@ -21,7 +21,7 @@ import { GlyphStore } from './GlyphStore';
 import { glyphScale, layoutText, measureText, type FontSize, type TextAlignment } from './layout';
 import { SLUG_WGSL } from './slug';
 import { SPRITE_EFFECT_PARAMETERS, spriteEffectShader, type SpriteEffect } from './SpriteEffect';
-import type { SpriteFont } from './SpriteFont';
+import type { FontGlyph, SpriteFont } from './SpriteFont';
 
 export type Vec2 = readonly [number, number];
 export type Rect = readonly [x: number, y: number, width: number, height: number];
@@ -68,9 +68,11 @@ export interface DrawTextOptions {
   readonly boxWidth?: number;
   /** 文字和每个字的原点对齐到真实像素（Stride 的 SnapText，全屏的 UI 默认开）。 */
   readonly snap?: boolean;
+  /** 描边：字的轮廓往外 thickness（虚拟像素）以内涂上 color，画在字的下面。 */
+  readonly outline?: { readonly color: Color; readonly thickness: number } | undefined;
 }
 
-// 每项 16 个 float：贴图是 原点、x 边、y 边、UV、颜色；字形是 原点、x 轴、y 轴、em 范围、字形下标和是否锯齿、颜色
+// 每项 16 个 float：贴图是 原点、x 边、y 边、UV、颜色；字形是 原点、x 轴、y 轴、em 范围、字形下标（最高位是锯齿）、描边的半径、颜色
 const ITEM_FLOATS = 16;
 const WHITE: Color = [1, 1, 1, 1];
 
@@ -114,14 +116,16 @@ struct SpriteVaryings {
   return vec4f(texel.rgb * texel.a, texel.a) * in.color;
 }
 
-// 字形：a = em 原点在屏幕上的位置、em 的 x 轴，b = em 的 y 轴、em 范围的最小角，c = em 范围的最大角、字形下标、是否锯齿
+// 字形：a = em 原点在屏幕上的位置、em 的 x 轴，b = em 的 y 轴、em 范围的最小角，c = em 范围的最大角、字形下标（最高位：锯齿）、
+// 描边的半径（em；大于 0 时这一项画的是字连同它的描边）
 ${SLUG_WGSL}
 
 struct GlyphVaryings {
   @builtin(position) position: vec4f,
   @location(0) em: vec2f,
   @location(1) color: vec4f,
-  @location(2) @interpolate(flat) glyph: vec2u,
+  @location(2) @interpolate(flat) glyph: u32,
+  @location(3) @interpolate(flat) outline: f32,
 };
 
 @vertex fn vsGlyph(@builtin(vertex_index) vertex: u32, @builtin(instance_index) instance: u32) -> GlyphVaryings {
@@ -132,14 +136,23 @@ struct GlyphVaryings {
   out.position = toClip(item.a.xy + item.a.zw * em.x + item.b.xy * em.y);
   out.em = em;
   out.color = item.color;
-  out.glyph = vec2u(bitcast<u32>(item.c.z), bitcast<u32>(item.c.w));
+  out.glyph = bitcast<u32>(item.c.z);
+  out.outline = item.c.w;
   return out;
 }
 
 @fragment fn fsGlyph(in: GlyphVaryings) -> @location(0) vec4f {
-  var coverage = slugCoverage(in.em, fwidth(in.em), in.glyph.x);
+  let emsPerPixel = fwidth(in.em);
+  let glyph = in.glyph & 0x7fffffffu;
+  var coverage = slugCoverage(in.em, emsPerPixel, glyph);
+  // 描边：离轮廓不到半径的地方也算覆盖，边上按距离过渡一个像素
+  if (in.outline > 0.0 && coverage < 1.0) {
+    let pixel = max(emsPerPixel.x, emsPerPixel.y);
+    let distance = slugDistance(in.em, in.outline + pixel, glyph);
+    coverage = max(coverage, saturate((in.outline - distance) / pixel + 0.5));
+  }
   // Aliased：没有抗锯齿，覆盖一半以上的像素才画
-  if (in.glyph.y != 0u) {
+  if (in.glyph >= 0x80000000u) {
     coverage = select(0.0, 1.0, coverage >= 0.5);
   }
   return in.color * coverage;
@@ -291,7 +304,7 @@ export class SpriteBatch {
    * 运行时字体按 字号 · 真实 / 虚拟 排版（snap 时；不 snap 时按虚拟像素，同 Stride），编译期字体按要的字号；snap 时文字框的
    * 左上角和每个字的原点取整到真实像素。
    */
-  drawText(font: SpriteFont, text: string, transform: Matrix2DLike, { fontSize, color = WHITE, alignment = 'left', boxWidth, snap = true }: DrawTextOptions): void {
+  drawText(font: SpriteFont, text: string, transform: Matrix2DLike, { fontSize, color = WHITE, alignment = 'left', boxWidth, snap = true, outline }: DrawTextOptions): void {
     const ratio: Vec2 = font.isStatic || !snap ? [1, 1] : this.#ratio();
     const size: FontSize = [ratio[1] * fontSize, ratio[1] * fontSize];
     const emToFont = glyphScale(font, size);
@@ -304,25 +317,24 @@ export class SpriteBatch {
     const pixels = Math.min(Math.hypot(ux, uy) * screen[0], Math.hypot(vx, vy) * screen[1]) * Math.min(Math.abs(emToFont[0]), Math.abs(emToFont[1]));
     if (!(pixels > 0)) return;
     const dilation = 1 / pixels;
-    const aliased = font.antiAlias === 'aliased' ? 1 : 0;
+    const aliased = font.antiAlias === 'aliased';
     const baseOffset = font.baseOffset(size[1]);
     // em 的 x 轴、y 轴（y 向上，所以取反）
-    const ax = emToFont[0] * ux, ay = emToFont[0] * uy;
-    const bx = -emToFont[1] * vx, by = -emToFont[1] * vy;
-    const linear = toLinear(color);
+    const axes = [emToFont[0] * ux, emToFont[0] * uy, -emToFont[1] * vx, -emToFont[1] * vy] as const;
     const box = boxWidth === undefined ? undefined : boxWidth * ratio[0];
-    for (const { glyph, x, y } of layoutText(font, text, size, alignment, box)) {
-      if (glyph.hBands === 0) continue;
-      const gx = snap ? Math.round(x) : x, gy = snap ? Math.round(y + baseOffset) : y + baseOffset;
-      const index = this.#glyphs.glyphIndex(glyph);
-      const at = this.#reserve('glyph', undefined, linear, true);
-      const data = this.#data, bounds = glyph.bounds;
-      data[at] = ox + gx * ux + gy * vx; data[at + 1] = oy + gx * uy + gy * vy; data[at + 2] = ax; data[at + 3] = ay;
-      data[at + 4] = bx; data[at + 5] = by; data[at + 6] = bounds[0] - dilation; data[at + 7] = bounds[1] - dilation;
-      data[at + 8] = bounds[2] + dilation; data[at + 9] = bounds[3] + dilation;
-      this.#bits[at + 10] = index;
-      this.#bits[at + 11] = aliased;
-    }
+    const glyphs = layoutText(font, text, size, alignment, box);
+    // radius：描边的半径（em），0 是字本身
+    const emit = (linear: Color, radius: number): void => {
+      for (const { glyph, x, y } of glyphs) {
+        if (glyph.hBands === 0) continue;
+        const gx = snap ? Math.round(x) : x, gy = snap ? Math.round(y + baseOffset) : y + baseOffset;
+        this.#glyphItem(glyph, ox + gx * ux + gy * vx, oy + gx * uy + gy * vy, axes, dilation + radius, aliased, linear, radius);
+      }
+    };
+    // 整段文字的描边都画在字的下面：先画完所有字的描边，再画字（相邻的字的描边不盖住前一个字）
+    const emSize = Math.min(Math.hypot(axes[0], axes[1]), Math.hypot(axes[2], axes[3]));
+    if (outline && outline.thickness > 0 && outline.color[3] > 0 && emSize > 0) emit(toLinear(outline.color), outline.thickness / emSize);
+    emit(toLinear(color), 0);
   }
 
   /** 画一张贴图到 destination（虚拟坐标的矩形）。 */
@@ -354,26 +366,33 @@ export class SpriteBatch {
     const pixels = Math.min(Math.abs(emToFont[0] * sx * ratio[0]), Math.abs(emToFont[1] * sy * ratio[1]));
     if (!(pixels > 0)) return;
     const dilation = 1 / pixels;
-    const aliased = font.antiAlias === 'aliased' ? 1 : 0;
+    const aliased = font.antiAlias === 'aliased';
     const baseOffset = font.baseOffset(size[1]);
     // em 的 x 轴、y 轴（y 向上，所以屏幕上朝上）在虚拟坐标里的向量，每个字都一样
-    const ax = emToFont[0] * sx * cos, ay = emToFont[0] * sx * sin;
-    const bx = emToFont[1] * sy * sin, by = -emToFont[1] * sy * cos;
+    const axes = [emToFont[0] * sx * cos, emToFont[0] * sx * sin, emToFont[1] * sy * sin, -emToFont[1] * sy * cos] as const;
     const linear = toLinear(color);
     for (const { glyph, x, y } of layoutText(font, text, size, alignment)) {
       // 空格这样没有轮廓的字不画
       if (glyph.hBands === 0) continue;
       // 字的原点相对文字原点（字体像素，字体像素就是真实像素），取整同 Stride
       const gx = Math.round(x - origin[0] * ratio[0]), gy = Math.round(y + baseOffset - origin[1] * ratio[1]);
-      const index = this.#glyphs.glyphIndex(glyph);
-      const at = this.#reserve('glyph', undefined, linear, true);
-      const d = this.#data, bounds = glyph.bounds;
-      d[at] = px + gx * sx * cos - gy * sy * sin; d[at + 1] = py + gx * sx * sin + gy * sy * cos; d[at + 2] = ax; d[at + 3] = ay;
-      d[at + 4] = bx; d[at + 5] = by; d[at + 6] = bounds[0] - dilation; d[at + 7] = bounds[1] - dilation;
-      d[at + 8] = bounds[2] + dilation; d[at + 9] = bounds[3] + dilation;
-      this.#bits[at + 10] = index;
-      this.#bits[at + 11] = aliased;
+      this.#glyphItem(glyph, px + gx * sx * cos - gy * sy * sin, py + gx * sx * sin + gy * sy * cos, axes, dilation, aliased, linear);
     }
+  }
+
+  /**
+   * 一个字形的一项：em 原点的位置、em 的 x 轴和 y 轴（虚拟坐标），em 范围向外扩 margin（抗锯齿的边、描边不被裁掉）。
+   * outlineRadius（em）大于 0 时这一项画的是字连同它的描边。
+   */
+  #glyphItem(glyph: FontGlyph, x: number, y: number, axes: readonly [number, number, number, number], margin: number, aliased: boolean, linear: Color, outlineRadius = 0): void {
+    const index = this.#glyphs.glyphIndex(glyph);
+    const at = this.#reserve('glyph', undefined, linear, true);
+    const d = this.#data, bounds = glyph.bounds;
+    d[at] = x; d[at + 1] = y; d[at + 2] = axes[0]; d[at + 3] = axes[1];
+    d[at + 4] = axes[2]; d[at + 5] = axes[3]; d[at + 6] = bounds[0] - margin; d[at + 7] = bounds[1] - margin;
+    d[at + 8] = bounds[2] + margin; d[at + 9] = bounds[3] + margin;
+    this.#bits[at + 10] = (index | (aliased ? 0x80000000 : 0)) >>> 0;
+    d[at + 11] = outlineRadius;
   }
 
   /**

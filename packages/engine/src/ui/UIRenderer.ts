@@ -9,7 +9,7 @@
  * - EditText 的文字区域按内边距放（Stride 放在元素中心，左右、上下内边距不一样时文字偏了）。
  */
 import type { SpriteFrame } from '../rendering/SpriteSheet';
-import type { Quad, Rect, SpriteBatch } from '../rendering/text/SpriteBatch';
+import type { DrawTextOptions, Quad, Rect, SpriteBatch } from '../rendering/text/SpriteBatch';
 import { Border } from './controls/Border';
 import { Button } from './controls/Button';
 import { ScrollingText } from './controls/ScrollingText';
@@ -149,7 +149,13 @@ function drawTextBlock(text: TextBlock, context: UIRenderContext): void {
     alignment: text.textAlignment,
     boxWidth: w,
     snap: context.snapText && !text.doNotSnapText,
+    outline: textOutline(text),
   });
+}
+
+/** 文字的描边（Stride 的 OutlineColor、OutlineThickness）；没设时不画。 */
+function textOutline(text: TextBlock): DrawTextOptions['outline'] {
+  return text.outlineThickness > 0 && text.outlineColor[3] > 0 ? { color: scale(text.outlineColor, text.renderOpacity), thickness: text.outlineThickness } : undefined;
 }
 
 /** 滚动的文字（Stride 的 DefaultScrollingTextRenderer）：那串字从左边偏 scrollingOffset 的地方画起，元素范围以外的被裁掉（clipToBounds）。 */
@@ -163,6 +169,7 @@ function drawScrollingText(text: ScrollingText, context: UIRenderContext): void 
     alignment: 'left',
     boxWidth: w,
     snap: context.snapText && !text.doNotSnapText,
+    outline: textOutline(text),
   });
 }
 

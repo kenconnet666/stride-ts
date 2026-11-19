@@ -33,7 +33,10 @@ export class TextBlock extends UIElement {
   #measuredVersion = -1;
   /** 文字颜色（sRGB），默认 Stride 的 0xF0F0F0。 */
   textColor: Color = [240 / 255, 240 / 255, 240 / 255, 1];
-  /** 描边（Stride 的 OutlineColor、OutlineThickness；还不画）。 */
+  /**
+   * 描边（Stride 的 OutlineColor、OutlineThickness）：字的轮廓往外 outlineThickness 个虚拟像素以内涂上 outlineColor，画在字的下面。
+   * 和 Stride 不同：按到轮廓的距离画（圆角，粗细不限）；Stride 把整段文字往八个方向各偏移着画一遍，描边比笔画粗时会露出重影。
+   */
   outlineColor: Color = [0, 0, 0, 1];
   outlineThickness = 0;
   textAlignment: TextAlignment = 'left';

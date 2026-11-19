@@ -1,7 +1,14 @@
 // PhysicsSample 的 DemoScript（Constraints 场景）：立方体和球之间依次换六种约束——球窝、铰链、齿轮马达、滑轨、锥形扭转、焊接，
-// 每换一种就复位两个物体、给球一个冲量看效果。Stride 里用 UI 的 Next、Previous 按钮换，UI（P2）做好之前用调试命令
-// `stride call next`、`stride call previous`；现在是哪一种也用调试命令 `stride call constraint` 看。
-import { prop, Quaternion, StartupScript, Vector3, type BodyControl, type Constraint, type ConstraintSettings, type ContactHandler, type Contact } from '@stride-ts/engine';
+// 每换一种就复位两个物体、给球一个冲量看效果。画面下方是约束的名字和 Next、Previous 两个按钮。
+import {
+  Button, Canvas, prop, Quaternion, StartupScript, TextBlock, UIComponent, UIPage, Vector3,
+  type BodyControl, type Constraint, type ConstraintSettings, type ContactHandler, type Contact,
+} from '@stride-ts/engine';
+import { BUTTON_BACKGROUND } from './NextSceneScript';
+
+const WHITE = [1, 1, 1, 1] as const;
+// Stride 的 new Color(200, 200, 200, 255)
+const BUTTON_TEXT = [200 / 255, 200 / 255, 200 / 255, 1] as const;
 
 /** 每种约束：名字和怎么加（加好后给球的冲量在 setup 里）。 */
 interface Demo {
@@ -76,6 +83,7 @@ export class DemoScript
   extends StartupScript.props({
     cube: prop.entity(),
     sphere: prop.entity(),
+    font: prop.asset('font'),
   })
   implements ContactHandler
 {
@@ -83,6 +91,7 @@ export class DemoScript
   sphereBody!: BodyControl;
   isSlider = false;
   readonly #constraints: Constraint[] = [];
+  readonly #name = new TextBlock();
   #index = 0;
 
   override start(): void {
@@ -95,12 +104,39 @@ export class DemoScript
     this.sphereBody.sleepThreshold = -1;
     // 滑轨要知道球什么时候碰到立方体
     simulation.setContactHandler(this.cube, this);
-    for (const [name, offset] of [['next', 1], ['previous', -1]] as const) {
-      this.disposables.use(this.game.debug.command(name, `switch to the ${name} constraint (the UI button in Stride)`, () => this.#change(offset)));
-    }
-    this.disposables.use(this.game.debug.command('constraint', 'the constraint being shown', () => DEMOS[this.#index]!.name));
+    this.#createUI();
     this.#removeConstraints();
-    DEMOS[this.#index]!.setup(this);
+    this.#show();
+  }
+
+  /** 约束的名字在中间，Next 在右下、Previous 在左下。ConstraintName 这个名字是我们加的（冒烟脚本按它找），Stride 里没有名字。 */
+  #createUI(): void {
+    Object.assign(this.#name, {
+      name: 'ConstraintName', font: this.font, textSize: 55, textColor: WHITE,
+      canvasPinOrigin: [0.5, 0.5] as const, canvasRelativePosition: [0.5, 0.83] as const,
+    });
+    const root = new Canvas();
+    root.children.add(this.#name);
+    for (const [text, offset] of [['Next', 1], ['Previous', -1]] as const) {
+      const button = Object.assign(new Button(), {
+        name: text,
+        padding: [15, 15, 15, 15] as const,
+        horizontalAlignment: 'left' as const,
+        content: Object.assign(new TextBlock(), { text, font: this.font, textSize: 35, textColor: BUTTON_TEXT }),
+        backgroundColor: BUTTON_BACKGROUND,
+        canvasPinOrigin: [offset > 0 ? 1 : 0, 0.5] as const,
+        canvasRelativePosition: [offset > 0 ? 0.87 : 0.13, 0.93] as const,
+      });
+      button.onClick(() => this.#change(offset));
+      root.children.add(button);
+    }
+    this.entity.require(UIComponent).page = new UIPage('Constraints', root);
+  }
+
+  #show(): void {
+    const demo = DEMOS[this.#index]!;
+    this.#name.text = demo.name;
+    demo.setup(this);
   }
 
   override cancel(): void {
@@ -119,11 +155,10 @@ export class DemoScript
     this.#constraints.push(this.game.simulation!.addConstraint({ ...parameters, bodyA, bodyB } as ConstraintSettings));
   }
 
-  #change(offset: number): string {
+  #change(offset: number): void {
     this.#removeConstraints();
     this.#index = (this.#index + offset + DEMOS.length) % DEMOS.length;
-    DEMOS[this.#index]!.setup(this);
-    return DEMOS[this.#index]!.name;
+    this.#show();
   }
 
   /** 去掉约束，复位：立方体不动，球落下。 */

@@ -1,6 +1,5 @@
-// AnimatedModel 的 UIScript：角色开始跑步；Stride 里还把 UI 页面的 Idle、Run 按钮绑到淡入淡出上。
-// UI 系统（P2）做好之前，按钮先用调试命令代替：`stride call idle`、`stride call run`。
-import { AnimationComponent, prop, StartupScript } from '@stride-ts/engine';
+// AnimatedModel 的 UIScript：角色开始跑步；UI 页面的 Idle、Run 按钮把动画淡入淡出到待机、跑步。
+import { AnimationComponent, Button, prop, StartupScript, UIComponent } from '@stride-ts/engine';
 
 /** 按钮切换动画时的淡入淡出时间（秒）。 */
 const CROSSFADE = 0.25;
@@ -10,12 +9,9 @@ export class UIScript extends StartupScript.props({
 }) {
   override start(): void {
     const animation = this.game.entities.entity(this.knight).require(AnimationComponent);
-    for (const name of ['Idle', 'Run']) {
-      this.disposables.use(this.game.debug.command(name.toLowerCase(), `crossfade the knight to ${name} (the UI button in Stride)`, () => {
-        animation.crossfade(name, CROSSFADE);
-        return name;
-      }));
-    }
+    const root = this.entity.require(UIComponent).page?.rootElement;
+    if (!root) throw new Error('UIScript needs the UI page on its entity');
+    for (const name of ['Idle', 'Run']) root.find(Button, `Button${name}`)!.onClick(() => animation.crossfade(name, CROSSFADE));
     animation.play('Run');
   }
 }

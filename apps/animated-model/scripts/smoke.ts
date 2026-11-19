@@ -1,7 +1,7 @@
 // AnimatedModel 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍样例的玩法。
 //   pnpm --filter @stride-ts/animated-model smoke [-- --hub <中枢名的一部分>]
-// 每次先重新加载页面。检查：游戏在跑、没出错；开局在跑步；Idle 按钮（调试命令 idle）淡入待机、淡完只剩待机；Run 换回来；指针横向移动让角色转身。
-import { startSmoke } from '../../../tools/smoke.ts';
+// 每次先重新加载页面。检查：游戏在跑、没出错；开局在跑步；点 UI 的 Idle 按钮淡入待机、淡完只剩待机；点 Run 换回来；指针横向移动让角色转身。
+import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('animated-model');
 
@@ -18,12 +18,13 @@ const status = stride('status') as { status: string; error: string | null };
 check('游戏在跑', status.status === 'running' && status.error === null, status);
 check('开局在跑步', playing().join() === 'Run', playing());
 
-stride('call', 'idle');
+stride('eval', PAGE_HELPERS);
+stride('eval', `uiClick('ButtonIdle')`);
 await sleep(600);
-check('Idle 淡入淡出后只剩待机', playing().join() === 'Idle', playing());
-stride('call', 'run');
+check('点 Idle 按钮：淡入淡出后只剩待机', playing().join() === 'Idle', playing());
+stride('eval', `uiClick('ButtonRun')`);
 await sleep(600);
-check('Run 换回跑步', playing().join() === 'Run', playing());
+check('点 Run 按钮：换回跑步', playing().join() === 'Run', playing());
 
 const before = rotationY();
 stride('mouse', 'move', '60', '0');

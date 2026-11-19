@@ -50,11 +50,14 @@ export const PAGE_HELPERS = `(() => {
     pointer('pointerdown', x, y, button); await frames(2);
     pointer('pointerup', x, y, button, window); await frames(2);
   };
-  globalThis.uiFind = (name) => { for (const c of G.ui.components) { const e = c.page?.rootElement?.findName(name); if (e) return e; } return null; };
+  const uiLocate = (name) => { for (const c of G.ui.components) { const e = c.page?.rootElement?.findName(name); if (e) return [e, c]; } return [null, null]; };
+  globalThis.uiFind = (name) => uiLocate(name)[0];
   globalThis.uiClick = async (name) => {
-    const e = uiFind(name), s = canvas.clientWidth / canvas.width;
+    const [e, c] = uiLocate(name);
     if (!e) throw new Error('no UI element ' + name);
-    await click(e.worldPosition[0] * s, e.worldPosition[1] * s);
+    // 元素的位置是页面的虚拟分辨率里的，换到画布的 CSS 像素
+    const [vx, vy] = E.UISystem.virtualResolution(c, [canvas.width, canvas.height]);
+    await click(e.worldPosition[0] / vx * canvas.clientWidth, e.worldPosition[1] / vy * canvas.clientHeight);
   };
   return 1;
 })()`;

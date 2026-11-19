@@ -55,7 +55,7 @@ for (let i = 0; i < 7; i++) {
     case 'Lasers': {
       const material = stride('eval', `(() => {
         const found = strideGame.entities.ids().map((i) => strideGame.entities.entity(i)).flatMap((e) => { const m = e.get(strideEngine.Model); return m ? [strideEngine.Material.byId(m.material)] : []; })
-          .find((m) => m?.emissiveShader);
+          .find((m) => m?.shaderTrees?.emissive);
         return found ? [found.name, found.isTransparent, found.doubleSided, found.transparency.alpha] : null;
       })()`) as [string, boolean, boolean, number] | null;
       check('Lasers：激光的材质（颜色树的自发光、加法透明、两面画）', material !== null && material[1] && material[2] && material[3] === 0, material);

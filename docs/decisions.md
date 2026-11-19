@@ -4,7 +4,7 @@
 
 ## 2026-11-19 UIElementLink：放在 3D 里的 UI；跟着 UI 元素走
 
-- **放在 3D 里的 UI 也画在后处理之后**：Stride 在透明阶段里画，会被色调映射、泛光、FXAA 处理；我们和全屏 UI 一样画在后处理之后（UI 的颜色照原样），另外和场景的深度缓冲比较，被更近的物体挡住。为此前向渲染器在场景里有 UI 时把主画面的深度缓冲留下来（`depthStoreOp: 'store'`，平时 `discard`，分块渲染的 GPU 上省带宽）。代价：斜着的 UI 的边没有 FXAA。没选在透明阶段里画：那样 UI 的颜色被色调映射改掉，和全屏 UI 不一致。
+- **放在 3D 里的 UI 也画在后处理之后**（和桌面比对时量到的代价见 `tools/stride-capture/ui-element-link`：这个样例的场景很暗，Stride 的自动曝光把 UI 提亮很多，量平均亮度时也算上了 UI；我们的 UI 是原色，场景的曝光只看场景）：Stride 在透明阶段里画，会被色调映射、泛光、FXAA 处理；我们和全屏 UI 一样画在后处理之后（UI 的颜色照原样），另外和场景的深度缓冲比较，被更近的物体挡住。为此前向渲染器在场景里有 UI 时把主画面的深度缓冲留下来（`depthStoreOp: 'store'`，平时 `discard`，分块渲染的 GPU 上省带宽）。代价：斜着的 UI 的边没有 FXAA。没选在透明阶段里画：那样 UI 的颜色被色调映射改掉，和全屏 UI 不一致。
 - **放在 3D 里的 UI 不把文字对齐到像素，布局按虚拟像素**：Stride 按投影估计 真实 / 虚拟 的比例（RealVirtualResolutionRatio），相机一动比例就变，文字每帧重新排版；只有面向相机且固定大小时才对齐像素。我们的字是矢量的，排版不随比例变，所以比例当 1、从不对齐（对齐在透视下也没有意义）；投影估计的比例只给文字的抗锯齿边留宽度（`SpriteBatch.pixelRatio`）。
 - **UIElementLink 先布局再算**：Stride 的 UI 在画的时候才布局，UIElementTransformLink 用的是上一帧的元素位置，跟着走的实体晚一帧（按钮移动时骑士落后一点）。我们在 UIElementLink 系统里（变换更新之前）先布局这一帧的 UI（`game.ui.layout`，画的时候不再重复），跟着走的实体这一帧就对齐。没有 UIElementLink 的游戏仍在画之前布局，不受影响。面向相机的 UI 的朝向用上一帧画的时候的相机（相机的世界矩阵这时还没更新）。
 - **面向相机的 UI 按实际画它的相机算朝向**：Stride 的 UIElementLinkComponent 要另外设 Camera，没设或设的不是画 UI 的相机时，跟着走的实体和 UI 的朝向对不上；我们用画 UI 的主相机，组件上的 Camera 导入但不用。

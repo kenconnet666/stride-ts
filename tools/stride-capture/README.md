@@ -13,5 +13,6 @@
 | [platformer2d/](platformer2d/README.md) | Platformer2D（取自 releases/4.4.2） | 可以去掉脚本（精灵停在默认帧） |
 | [topdown-rpg/](topdown-rpg/README.md) | TopDownRPG（取自 Stride 源码当前分支的 Bepu 版） | 可以去掉脚本；截图工程去掉了没有 4.4.2 包的导航插件 |
 | [game-menu/](game-menu/README.md) | GameMenu（取自 releases/4.4.2） | 540x960 截启动页、欢迎弹窗、主菜单、选飞船的弹窗（飞船属性固定、血条一半），另外导出每个元素的布局（layout.txt）；`capture-ours.ps1` 截我们这边并逐张比 |
+| [ui-element-link/](ui-element-link/README.md) | UIElementLink（取自 releases/4.4.2） | 1280x720 截三个场景（全屏的 UI、倾斜的 UI、面向相机的 UI；按钮定在一处、动画停在第 0 帧、去掉烟的粒子）；`capture-ours.ps1` 截我们这边并逐张比 |
 | [sprite-fonts/](sprite-fonts/README.md) | SpriteFonts（取自 releases/4.4.2） | 八屏各截一张；不放启动画面（4.4.2 原样运行是黑屏）；`capture-ours.ps1` 截我们这边并逐屏比 |
 | [first-person-shooter/](first-person-shooter/README.md) | FirstPersonShooter（取自 Stride 源码当前分支的 Bepu 版） | 可以去掉脚本（含子实体上的）；截图后打印角色和相机的位置 |

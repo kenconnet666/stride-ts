@@ -2,9 +2,10 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { crc32, deflateSync } from 'node:zlib';
 import path from 'node:path';
-import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile, type SpriteSheetFile } from '@stride-ts/engine/content-format';
+import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile, type SpriteSheetFile, type UIFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { lowerFirst } from '../src/stride/yaml';
 import { cleanNodeName, dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
 
 describe('Stride 的 YAML', () => {
@@ -144,6 +145,9 @@ describe('导入 Stride 场景', () => {
     glass: '11111111-0000-0000-0000-00000000000d',
     glassScene: '11111111-0000-0000-0000-00000000000e',
     cratePrefab: '11111111-0000-0000-0000-00000000000f',
+    menuScene: '11111111-0000-0000-0000-0000000000f5',
+    menuPage: '11111111-0000-0000-0000-0000000000f6',
+    menuLibrary: '11111111-0000-0000-0000-0000000000f7',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
   const quadData = Buffer.from(new Float32Array([
@@ -327,6 +331,46 @@ describe('导入 Stride 场景', () => {
       '        PixelsPerUnit: 16.0', '        Center: {X: 1.0, Y: 2.0}', '        CenterFromMiddle: false',
       '    s3:', '        Source: !file ../../Resources/odd.png', '        Name: jump_0', '        TextureRegion: {X: 0, Y: 0, Width: 6, Height: 5}',
       '        PixelsPerUnit: 8.0', '        Center: {X: 0.0, Y: 0.0}', '        Borders: {X: 1.0, Y: 0.0, Z: 0.0, W: 0.0}',
+    ].join('\n'),
+    // UI 页面（GameMenu 的 Main 的缩小版）：Grid 的行定义、附加属性（行、Canvas 的相对位置带 NaN、Grid 的层不导入）、
+    // 精灵表的图片、Thickness、颜色；ContentDecorator 的内容和面板的子元素是 ref!! 引用；派生元素的覆盖标记 `*`
+    'Assets/UI/Menu.sduipage': [
+      '!UIPageAsset', `Id: ${ids.menuPage}`, 'Design:', '    Resolution: {X: 640.0, Y: 1136.0, Z: 1000.0}', 'Hierarchy:', '    RootParts:',
+      '        - !Grid ref!! g1', '    Parts:',
+      '        -   UIElement: !Grid', '                Id: g1', '                DependencyProperties: {}', '                Name: mainLayout',
+      '                Depth: 10.0', '                DepthAlignment: Stretch',
+      '                Children:', '                    a1: !ContentDecorator ref!! d1', '                    a2: !Canvas ref!! c1',
+      '                RowDefinitions:', '                    r1:', '                        MaximumSize: 150.0', '                        SizeValue: 15.0',
+      '                    r2:', '                        Type: Fixed', '                        SizeValue: 25.0', '                    r3: {}',
+      '                ColumnDefinitions:', '                    k1: {}', '                LayerDefinitions:', '                    l1: {}',
+      '        -   UIElement: !ContentDecorator', '                Id: d1', '                DependencyProperties:',
+      '                    f429*~GridBase.RowPropertyKey: 1', '                    f430~GridBase.LayerPropertyKey: 0',
+      '                BackgroundColor: {R: 0, G: 0, B: 0, A: 0}', '                DrawLayerNumber: 2', '                HorizontalAlignment: Center',
+      '                Margin: {Left: 10.0}', '                Padding: {}', '                Name*: controlStatus',
+      '                Content: !ImageElement ref!! i1',
+      '                BackgroundImage: !SpriteFromSheet', `                    Sheet: ${ids.heroSheet}:Sprites/Hero`, '                    CurrentFrame*: 2',
+      '            Base:', `                BasePartAsset: ${ids.menuLibrary}:UI/Lib`, '                BasePartId: x', '                InstanceId: y',
+      '        -   UIElement: !ImageElement', '                Id: i1', '                DependencyProperties: {}', '                StretchDirection: DownOnly',
+      '                Color: {R: 255, G: 0, B: 51, A: 255}',
+      '        -   UIElement: !Canvas', '                Id: c1', '                DependencyProperties:',
+      '                    3c3d~Canvas.PinOriginPropertyKey: {X: 1.0, Y: 0.0, Z: 0.0}', '                    6549~Canvas.RelativeSizePropertyKey: {X: NaN, Y: 0.4, Z: 1.0}',
+      '                    0184~Panel.ZIndexPropertyKey: -1', '                Visibility: Collapsed', '                Children: {}',
+    ].join('\n'),
+    // UI 库：公开的元素按名字列出
+    'Assets/UI/Lib.sduilib': [
+      '!UILibraryAsset', `Id: ${ids.menuLibrary}`, 'Design:', '    Resolution: {X: 640.0, Y: 1136.0, Z: 1000.0}', 'PublicUIElements:', '    m1: Popup',
+      'Hierarchy:', '    RootParts:', '        - !ModalElement ref!! m1', '    Parts:',
+      '        -   UIElement: !ModalElement', '                Id: m1', '                DependencyProperties: {}', '                Name: Popup',
+      '                OverlayColor: {R: 0, G: 0, B: 0, A: 153}', '                Content: null',
+    ].join('\n'),
+    'Assets/Menu.sdscene': [
+      '!SceneAsset', `Id: ${ids.menuScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: u1', '                Name: UI', '                Components:',
+      '                    t: !TransformComponent', '                        Id: tu1', '                        Children: {}',
+      '                    s: !Game.MenuScript,Game', '                        Id: su1', `                        UILibrary: ${ids.menuLibrary}:UI/Lib`,
+      `                        Images: ${ids.heroSheet}:Sprites/Hero`,
+      '                    u: !UIComponent', '                        Id: uu1', `                        Page: ${ids.menuPage}:UI/Menu`,
+      '                        Resolution: {X: 640.0, Y: 1136.0, Z: 1000.0}', '                        Size: {X: 1.0, Y: 1.0, Z: 1.0}',
+      '                        ResolutionStretch: FixedWidthFixedHeight', '                        IsBillboard: false',
     ].join('\n'),
     'Assets/Bumpy.sdscene': [
       '!SceneAsset', `Id: ${ids.bumpyScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: q1', '                Name: Quad', '                Components:',
@@ -577,7 +621,7 @@ describe('导入 Stride 场景', () => {
     const project = await writeProject();
     const out = path.join(dir, 'content-sheet');
     const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' }).importScene(project.byPath('Game/Bumpy')!);
-    expect(result.warnings).toEqual([expect.stringMatching(/Hero\.sdsheet: sprite 'jump_0' has borders \(nine-slice\); not supported yet$/)]);
+    expect(result.warnings).toEqual([]);
     const sheet = JSON.parse(await readFile(path.join(out, 'Game/Sprites/Hero.sheet.json'), 'utf8')) as SpriteSheetFile;
     expect(sheet).toEqual({
       name: 'Hero',
@@ -585,12 +629,59 @@ describe('导入 Stride 场景', () => {
         { name: 'idle_0', texture: { texture: 'Game/Sprites/Hero/checker', encoding: 'png', srgb: true }, region: [0, 0, 8, 4], pixelsPerUnit: 16, center: [0, 0], centerFromMiddle: true },
         { name: 'idle_1', texture: { texture: 'Game/Sprites/Hero/checker', encoding: 'png', srgb: true }, region: [8, 0, 8, 4], pixelsPerUnit: 16, center: [1, 2], centerFromMiddle: false },
         // 6x5 的源图要补到 8x8，编成 KTX2
-        { name: 'jump_0', texture: { texture: 'Game/Sprites/Hero/odd', encoding: 'ktx2', srgb: true }, region: [0, 0, 6, 5], pixelsPerUnit: 8, center: [0, 0], centerFromMiddle: true },
+        // 九宫格的边框：左、上、右、下
+        { name: 'jump_0', texture: { texture: 'Game/Sprites/Hero/odd', encoding: 'ktx2', srgb: true }, region: [0, 0, 6, 5], pixelsPerUnit: 8, center: [0, 0], centerFromMiddle: true, borders: [1, 0, 0, 0] },
       ],
     });
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Bumpy.scene.json'), 'utf8')) as SceneFile;
     const sprite = scene.entities.find((e) => e.name === 'Hero')!.components.sprite!;
     expect(sprite).toMatchObject({ sheet: 'Game/Sprites/Hero', frame: 1, enabled: false, isAlphaCutoff: true, sampler: 'pointClamp' });
+  });
+
+  test('UI：页面和库的元素平铺成数组，引用换成下标，属性按 UIValue 换；UIComponent 引用页面，脚本属性引用 UI 库和精灵表', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-ui');
+    const result = await new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' }).importScene(project.byPath('Game/Menu')!);
+    expect(result.warnings).toEqual([]);
+    const page = JSON.parse(await readFile(path.join(out, 'Game/UI/Menu.ui.json'), 'utf8')) as UIFile;
+    expect(page).toEqual({
+      name: 'Menu',
+      designResolution: [640, 1136],
+      root: 0,
+      elements: [
+        // 深度方向的属性和 Grid 的层不导入；行列定义只写和默认值不同的
+        {
+          type: 'Grid',
+          props: { name: 'mainLayout', rowDefinitions: [{ sizeValue: 15, maximumSize: 150 }, { type: 'fixed', sizeValue: 25 }, {}], columnDefinitions: [{}] },
+          children: [1, 3],
+        },
+        {
+          type: 'ContentDecorator',
+          props: {
+            backgroundColor: [0, 0, 0, 0], drawLayerNumber: 2, horizontalAlignment: 'center', margin: [10, 0, 0, 0], padding: [0, 0, 0, 0], name: 'controlStatus',
+            backgroundImage: { sheet: 'Game/Sprites/Hero', frame: 2 },
+          },
+          attached: { row: 1 },
+          content: 2,
+        },
+        { type: 'ImageElement', props: { stretchDirection: 'downOnly', color: [1, 0, 0.2, 1] } },
+        { type: 'Canvas', props: { visibility: 'collapsed' }, attached: { pinOrigin: [1, 0], relativeSize: [null, 0.4], zIndex: -1 }, children: [] },
+      ],
+    } satisfies UIFile);
+    const library = JSON.parse(await readFile(path.join(out, 'Game/UI/Lib.ui.json'), 'utf8')) as UIFile;
+    expect(library).toEqual({
+      name: 'Lib',
+      designResolution: [640, 1136],
+      templates: { Popup: 0 },
+      elements: [{ type: 'ModalElement', props: { name: 'Popup', overlayColor: [0, 0, 0, 0.6] } }],
+    } satisfies UIFile);
+    const scene = JSON.parse(await readFile(path.join(out, 'Game/Menu.scene.json'), 'utf8')) as SceneFile;
+    const { ui, scripts } = scene.entities[0]!.components;
+    expect(ui).toEqual({ page: 'Game/UI/Menu', resolution: [640, 1136, 1000], size: [1, 1, 1], resolutionStretch: 'fixedWidthFixedHeight', isBillboard: false });
+    expect(scripts).toEqual([{
+      type: 'Game.MenuScript',
+      props: { uiLibrary: { $asset: 'Game/UI/Lib', kind: 'uiLibrary' }, images: { $asset: 'Game/Sprites/Hero', kind: 'spriteSheet' } },
+    }]);
   });
 
   test('压缩的贴图宽高补到 4 的倍数（Lanczos3 缩放，同 Stride）；要缩放的源文件不原样复制', async () => {
@@ -801,6 +892,10 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
   test('节点名同 Stride 的 CleanNodeName：FBX 的命名空间只留最后一段，去掉 # 和 __ 之后的部分、空格', () => {
     expect(['mannequinModel:CATRigHub001', 'a:b:Hand', 'Bone#1', 'Arm__end', 'Left Hand', 'Trailing:', ''].map(cleanNodeName))
       .toEqual(['CATRigHub001', 'Hand', 'Bone', 'Arm', 'LeftHand', 'Trailing_', '']);
+  });
+
+  test('键名首字母小写：开头的缩写整个小写，后面的单词不变', () => {
+    expect(['Speed', 'UILibrary', 'IMESelectionColor', 'URL', 'AEntity', 'X', 'x'].map(lowerFirst)).toEqual(['speed', 'uiLibrary', 'imeSelectionColor', 'url', 'aEntity', 'x', 'x']);
   });
 
   test('字典的键去掉项的 id 前缀', () => {

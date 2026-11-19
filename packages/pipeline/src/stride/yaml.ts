@@ -73,6 +73,16 @@ export function dictionaryKey(key: string): string {
   return key.slice(key.indexOf('~') + 1);
 }
 
+/**
+ * 属性名、类型名改成首字母小写（导出的键名和枚举值）。开头的缩写整个小写：UILibrary → uiLibrary、IMESelectionColor →
+ * imeSelectionColor、URL → url（缩写后面的单词首字母保留大写）。
+ */
+export function lowerFirst(name: string): string {
+  const run = /^[A-Z]+/.exec(name)?.[0].length ?? 0;
+  const lower = run > 1 && run < name.length ? run - 1 : Math.max(run, 1);
+  return name.slice(0, lower).toLowerCase() + name.slice(lower);
+}
+
 export function asObject(value: StrideValue | undefined): StrideObject | undefined {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
 }

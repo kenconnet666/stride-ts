@@ -25,6 +25,7 @@ import {
   type SceneConstraint,
   type SceneRenderTexture,
   type SceneSprite,
+  type SceneUI,
   type SceneSpriteFromSheet,
   type SceneSpriteFromTexture,
   type SpriteSheetFile,
@@ -44,7 +45,8 @@ import { MaterialImporter, type ImportedTexture } from './materials.ts';
 import { proceduralMesh } from './procedural.ts';
 import { importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
 import { importTransform, once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
-import { asNumber, asObject, color4, dictionaryKey, parseAssetReference, parseObjectReference, quaternion, vec2, vec3, type StrideObject, type StrideValue } from './yaml.ts';
+import { UIImporter } from './ui.ts';
+import { asNumber, asObject, color4, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, quaternion, vec2, vec3, type StrideObject, type StrideValue } from './yaml.ts';
 
 export interface ImportResult {
   /** 场景的内容路径。 */
@@ -105,6 +107,7 @@ export class StrideImporter {
   readonly #options: ResolvedImporterOptions;
   readonly #materials: MaterialImporter;
   readonly #fonts: FontImporter;
+  readonly #ui: UIImporter;
   readonly #models = new Map<string, Promise<string>>();
   readonly #skeletons = new Map<string, Promise<ImportedSkeleton>>();
   readonly #animations = new Map<string, Promise<string>>();
@@ -122,6 +125,14 @@ export class StrideImporter {
     const write = (contentPath: string, data: string | Uint8Array) => this.#write(contentPath, data);
     this.#materials = new MaterialImporter({ project, tools, options: this.#options, warnings: this.#warnings, write });
     this.#fonts = new FontImporter({ project, tools, warnings: this.#warnings, write, ...(systemFontDirs ? { systemFontDirs } : {}) });
+    this.#ui = new UIImporter({
+      project,
+      warnings: this.#warnings,
+      write,
+      spriteSheet: (asset) => this.#spriteSheet(asset),
+      texture: (asset) => this.#materials.texture(asset),
+      font: (asset) => this.#fonts.font(asset),
+    });
   }
 
   /** 到现在为止的警告（各次导入累计）。 */
@@ -345,6 +356,9 @@ export class StrideImporter {
       PrefabAsset: ['prefab', () => this.#prefab(asset)],
       SpriteFont: ['font', () => this.#fonts.font(asset)],
       Texture: ['texture', () => this.#textureDescriptor(asset)],
+      SpriteSheet: ['spriteSheet', () => this.#spriteSheet(asset)],
+      UIPageAsset: ['uiPage', () => this.#ui.ui(asset)],
+      UILibraryAsset: ['uiLibrary', () => this.#ui.ui(asset)],
     };
     const kind = kinds[asset.type];
     if (!kind) {
@@ -411,6 +425,9 @@ export class StrideImporter {
         if (sprite) components.sprite = sprite;
         return sprite !== undefined;
       }
+      case 'UIComponent':
+        components.ui = await this.#uiComponent(component, where);
+        return true;
       case 'BackgroundComponent': {
         const texture = parseAssetReference(component['Texture']);
         if (!texture) return false;
@@ -524,6 +541,26 @@ export class StrideImporter {
     };
   }
 
+  /** Stride 的 UIComponent：页面跟着导入；和 Stride 默认值一样的不写。 */
+  async #uiComponent(component: StrideObject, where: string): Promise<SceneUI> {
+    const page = parseAssetReference(component['Page']);
+    const flag = (key: string, fallback: boolean) => (typeof component[key] === 'boolean' && component[key] !== fallback ? { [lowerFirst(key)]: component[key] } : {});
+    const sampler = SPRITE_SAMPLERS[String(component['Sampler'] ?? 'LinearClamp')] ?? 'linearClamp';
+    if (component['RenderGroup'] !== undefined && component['RenderGroup'] !== 'Group0') this.#warnings.push(`${where}: UI render group ${String(component['RenderGroup'])} is not supported; using Group0`);
+    return {
+      page: page ? await this.#ui.ui(this.#project.get(page.id, where)) : null,
+      resolution: vec3(component['Resolution'], 0, [1280, 720, 1000]),
+      size: vec3(component['Size'], 0, [1.28, 0.72, 1]),
+      resolutionStretch: lowerFirst(String(component['ResolutionStretch'] ?? 'FixedWidthAdaptableHeight')) as SceneUI['resolutionStretch'],
+      ...flag('Enabled', true),
+      ...flag('IsFullScreen', true),
+      ...flag('IsBillboard', true),
+      ...flag('IsFixedSize', false),
+      ...flag('SnapText', true),
+      ...(sampler === 'linearClamp' ? {} : { sampler }),
+    };
+  }
+
   /** Stride 的 SpriteComponent：SpriteFromTexture（贴图或渲染目标贴图）或 SpriteFromSheet（精灵表）。 */
   async #sprite(component: StrideObject, where: string): Promise<SceneSprite | undefined> {
     const provider = asObject(component['SpriteProvider']);
@@ -571,7 +608,7 @@ export class StrideImporter {
   /**
    * 导入精灵表（.sdsheet），返回它的内容路径。每张源图导出成一张贴图（内容路径是 `<精灵表>/<源图文件名>`），精灵记下
    * 它在源图上的区域；Stride 会把精灵重新打包进图集，画出来一样。贴图的设置取精灵表的（IsCompressed、UseSRgbSampling、
-   * GenerateMipmaps，默认不生成 mip）。九宫格的边框（Borders）还不支持。
+   * GenerateMipmaps，默认不生成 mip）。九宫格的边框（Borders，UI 用）记下来。
    */
   #spriteSheet(asset: AssetEntry): Promise<string> {
     return once(this.#spriteSheets, asset, async () => {
@@ -597,8 +634,8 @@ export class StrideImporter {
           textures.set(source, texture);
         }
         const region = asObject(sprite['TextureRegion']);
-        const borders = asObject(sprite['Borders']);
-        if (borders && ['X', 'Y', 'Z', 'W'].some((k) => asNumber(borders[k], 0) !== 0)) this.#warnings.push(`${asset.file}: sprite '${String(sprite['Name'])}' has borders (nine-slice); not supported yet`);
+        // Stride 的 Borders 是 X 左、Y 上、Z 右、W 下
+        const borders = ['X', 'Y', 'Z', 'W'].map((k) => asNumber(asObject(sprite['Borders'])?.[k], 0)) as [number, number, number, number];
         return {
           name: String(sprite['Name'] ?? ''),
           texture: await texture,
@@ -606,6 +643,7 @@ export class StrideImporter {
           pixelsPerUnit: asNumber(sprite['PixelsPerUnit'], 100),
           center: vec2(sprite['Center'], 0),
           centerFromMiddle: sprite['CenterFromMiddle'] !== false,
+          ...(borders.some((b) => b !== 0) ? { borders } : {}),
         };
       }));
       const file: SpriteSheetFile = { name: path.basename(asset.path), sprites };
@@ -944,9 +982,6 @@ function isScriptType(type: string): boolean {
   return type.includes(',') && !type.startsWith('Stride.');
 }
 
-function lowerFirst(name: string): string {
-  return name.charAt(0).toLowerCase() + name.slice(1);
-}
 
 /** 碰撞体的类型名，去掉命名空间和程序集（"Stride.BepuPhysics.Definitions.Colliders.BoxCollider,Stride.BepuPhysics" → "BoxCollider"）。 */
 function colliderType(collider: StrideObject | undefined): string {

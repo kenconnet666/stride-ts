@@ -41,6 +41,8 @@ export const EXTENSIONS = {
   /** 单独引用的贴图（脚本属性、合成器的渲染器）：它的 TextureRef，贴图本身在旁边。 */
   texture: '.texture.json',
   gameSettings: '.game.json',
+  /** UI 页面或 UI 库（UIFile）。 */
+  ui: '.ui.json',
   /** 字体的一个码位块（码位 >> 8）：`<字体>.<块号>.glyphs`。 */
   glyphs: '.glyphs',
 } as const;
@@ -633,6 +635,8 @@ export interface SpriteSheetFile {
     /** 原点在区域里的像素位置：centerFromMiddle 时从区域中心算，否则从左上角算。 */
     readonly center: readonly [number, number];
     readonly centerFromMiddle: boolean;
+    /** 九宫格的边框（Stride 的 Sprite.Borders），像素：左、上、右、下；没有时是 0（整张拉伸）。 */
+    readonly borders?: readonly [number, number, number, number];
   }[];
 }
 
@@ -738,7 +742,7 @@ export interface SceneAnimation {
  * scene：只记路径，不随引用它的场景加载（场景之间常常互相引用），切换时才加载（Game.setRootScene）。
  * prefab：随场景加载好（和它引用的资源一起），脚本运行中实例化。
  */
-export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab' | 'font' | 'texture';
+export type SceneAssetKind = 'model' | 'material' | 'animation' | 'scene' | 'prefab' | 'font' | 'texture' | 'spriteSheet' | 'uiPage' | 'uiLibrary';
 
 /**
  * 游戏设置（Stride 的 GameSettings）：默认场景和图形合成器。合成器的根（Stride 的 GraphicsCompositor.Game）是游戏自己的渲染器时
@@ -873,7 +877,90 @@ export interface SceneEntityFile {
     readonly scripts?: readonly SceneScript[];
     readonly animation?: SceneAnimation;
     readonly sprite?: SceneSprite;
+    readonly ui?: SceneUI;
   };
+}
+
+/** Stride 的 UIComponent：在这个实体上显示一个 UI 页面。 */
+export interface SceneUI {
+  /** UI 页面（UIFile）的内容路径；null 是还没指定（运行时由脚本设）。 */
+  readonly page: string | null;
+  /** 虚拟分辨率（页面按它布局），宽、高；深度 Z 只用于 3D 的 UI，没写是 1000。 */
+  readonly resolution: readonly [number, number, number];
+  /** 在场景里的大小（非全屏时），同 Stride 的 Size。 */
+  readonly size: readonly [number, number, number];
+  readonly resolutionStretch: 'fixedWidthFixedHeight' | 'fixedWidthAdaptableHeight' | 'fixedHeightAdaptableWidth';
+  /** 没写是 true（同 Stride）。 */
+  readonly isFullScreen?: boolean;
+  readonly isBillboard?: boolean;
+  readonly isFixedSize?: boolean;
+  readonly snapText?: boolean;
+  readonly sampler?: 'linearClamp' | 'pointClamp' | 'anisotropicClamp';
+  readonly enabled?: boolean;
+}
+
+/**
+ * UI 页面或 UI 库（Stride 的 UIPageAsset、UILibraryAsset，.sduipage、.sduilib）：元素平铺成数组，互相用下标引用。
+ * 布局只有两维（和 Stride 不同：Stride 的布局是三维的，深度方向的尺寸、对齐、Grid 的层都不导入，见 docs/decisions.md）。
+ */
+export interface UIFile {
+  readonly name: string;
+  /** 设计时的分辨率（Stride 的 Design.Resolution），宽、高。 */
+  readonly designResolution: readonly [number, number];
+  /** 页面的根元素；UI 库没有。 */
+  readonly root?: number;
+  /** UI 库公开的元素（Stride 的 UILibrary.UIElements）：名字 → 元素。 */
+  readonly templates?: Readonly<Record<string, number>>;
+  readonly elements: readonly UIElementFile[];
+}
+
+/** UI 元素的类型（Stride 的类名）。 */
+export type UIElementType =
+  | 'Border' | 'Button' | 'Canvas' | 'ContentControl' | 'ContentDecorator' | 'ContentPresenter' | 'EditText' | 'Grid'
+  | 'ImageButton' | 'ImageElement' | 'ModalElement' | 'ScrollBar' | 'ScrollingText' | 'ScrollViewer' | 'Slider' | 'StackPanel'
+  | 'TextBlock' | 'ToggleButton' | 'UniformGrid';
+
+export interface UIElementFile {
+  readonly type: UIElementType;
+  /** 元素的属性：Stride 的属性名首字母小写，值见 UIValue。没写的是 Stride 的默认值。 */
+  readonly props: Readonly<Record<string, UIValue>>;
+  /**
+   * 附加属性（Stride 的 DependencyProperties 里别的类定义的）：`row`、`column`、`rowSpan`、`columnSpan`（GridBase）、
+   * `zIndex`（Panel）、`absolutePosition`、`relativePosition`、`relativeSize`、`pinOrigin`、`useAbsolutePosition`（Canvas）。
+   */
+  readonly attached?: Readonly<Record<string, UIValue>>;
+  /** 面板的子元素（Stride 的 Panel.Children），按顺序。 */
+  readonly children?: readonly number[];
+  /** 内容控件的内容（Stride 的 ContentControl.Content）。 */
+  readonly content?: number;
+}
+
+/**
+ * UI 元素的属性值：标量原样，枚举是首字母小写的名字（'center'、'collapsed'）；颜色是 sRGB 的 [r, g, b, a]（0 到 1）；
+ * Thickness（Margin、Padding）是 [左, 上, 右, 下]；向量是数组，Stride 里的 NaN（没设）是 null；Grid 的行列定义是对象的数组；
+ * 图片是 UISpriteValue；字体是 { $asset, kind: 'font' }。
+ */
+export type UIValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly (number | null)[]
+  | UISpriteValue
+  | readonly UIStripDefinition[]
+  | { readonly $asset: string; readonly kind: 'font' };
+
+/** UI 的图片（Stride 的 ISpriteProvider）：精灵表的一帧，或者一整张贴图。 */
+export type UISpriteValue =
+  | { readonly sheet: string; readonly frame: number }
+  | { readonly texture: TextureRef };
+
+/** Grid 的一行或一列（Stride 的 StripDefinition）；没写的同 Stride 的默认值（star、1、0、无穷大）。 */
+export interface UIStripDefinition {
+  readonly type?: 'fixed' | 'auto' | 'star';
+  readonly sizeValue?: number;
+  readonly minimumSize?: number;
+  readonly maximumSize?: number;
 }
 
 export interface SceneFile {

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>stride-ts game menu</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+      /* 画布铺满窗口（同 Stride：后备缓冲就是窗口的大小） */
+      canvas { display: block; width: 100%; height: 100%; }
+      #stats {
+        position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 8px;
+        font: 12px/1.4 ui-monospace, monospace; color: #e8e8e8; background: rgb(0 0 0 / 0.5);
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <pre id="stats">starting...</pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

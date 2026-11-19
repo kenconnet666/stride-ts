@@ -2,6 +2,12 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 GameMenu：UI 的布局只做两维；UI 资源平铺成元素数组
+
+- **布局只做两维**：Stride 的 UI 布局是三维的（每个元素有 Depth、MinimumDepth、MaximumDepth、DepthAlignment，Margin 有 Front、Back，Grid 有层 LayerDefinitions），为了把 UI 放进 3D 场景时有厚度。实际用法里深度一直是默认值：GameMenu、UIElementLink、UIParticles 的页面没有一个元素设了深度（WelcomePopup 的 DepthAlignment: Stretch 在两维里没有意义）。3D 里的 UI 由 UIComponent 的世界矩阵和 Size 摆放，不靠深度布局。只做两维，每个元素的布局计算和存储少三分之一，代码更好读。导入时深度方向的属性和 Grid 的层直接不导入（不警告：它们在两维里没有对应）。代价：真要做有厚度的 3D UI（层叠的面板）时要补，目前没有样例用到。
+- **UI 资源平铺成元素数组**（`UIFile`，`.ui.json`）：元素按 Hierarchy.Parts 的顺序放进数组，Children、Content 的 `ref!!` 引用换成下标；属性名首字母小写，值换成 JSON（颜色是 0 到 1 的 sRGB，Thickness 是四元数组，NaN 是 null，枚举是首字母小写的名字）。UI 库的实例（带 Base 的元素）在 Stride 的文件里已经是完整的属性，导入时不去合并 UI 库。页面和库同一种文件，库多一个 `templates`（名字 → 元素）。
+- **键名的缩写整个小写**：脚本属性和 UI 属性的键名以前只把第一个字母改小写，`UILibrary` 变成 `uILibrary`；现在开头的缩写整个小写（`uiLibrary`、`imeSelectionColor`），后面的单词不变。已有的样例里只有 GameMenu 有这样的键。
+
 ## 2026-11-19 SpriteFonts：文字按轮廓画（Slug）；排版改掉 Stride 的两处毛病；合成器的游戏渲染器
 
 - **算法用 Slug**（Eric Lengyel，JCGT 2017）：每个像素对字形轮廓（二次贝塞尔）做横竖两条射线，按交点算覆盖率，带分块限制每个像素要看的曲线数。选它是因为数值上最稳（根的取舍按控制点的符号查表，没有浮点误差导致的漏点），2026-03-17 专利已捐给公有领域，参考着色器 MIT/Apache（要署名，见 README 的"许可证"）。考虑过 Dobbie 的网格法（精度问题多）、Loop-Blinn（要三角化轮廓）、MSDF（缩放到很大时角会圆，D16 定它只给世界空间的字）。字形在 CPU 上按真实像素外扩一个像素（SpriteBatch 只有平移、旋转、缩放，用不着参考顶点着色器那套按投影矩阵的动态外扩）。

@@ -40,7 +40,8 @@ import { BRDF } from './brdf';
 import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
-import { Material, type MaterialTexture } from './Material';
+import { Material, type EmissiveShader, type MaterialTexture } from './Material';
+import { MATERIAL_STREAMS } from './shaderClass';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
 import { Mesh } from './Mesh';
 import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
@@ -81,7 +82,7 @@ struct View {
   // 方向光：光线前进的方向、颜色乘强度
   lightDirections: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
-  // x：点光和聚光的个数（localLights 的前几个）
+  // x：点光和聚光的个数（localLights 的前几个），y：游戏开始以来的秒数（Stride 的 Global.Time，材质的颜色树用）
   locals: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
@@ -103,7 +104,8 @@ struct LocalLight { position: vec4f, color: vec4f, direction: vec4f, angle: vec4
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
 // 没有贴图的槽绑一张 1x1 的白图，所以不用分支：自发光 = 贴图 · emissive，遮蔽 = dot(贴图, occlusionMask)（mask 是
 // 通道的单位向量，没有贴图时是 (值, 0, 0, 0)）。surface：金属度、粗糙度、漫反射 cavity、镜面 cavity。
-// specular：0 没有镜面，1 金属度工作流，2 镜面颜色工作流（specularColor）。blend：透明的 tint 和 alpha（不透明是 1）。
+// specular：0 没有镜面，1 金属度工作流，2 镜面颜色工作流（specularColor）。blend：透明的 tint 和漫反射的 alpha（不透明是 1），
+// emissive.w：镜面的透明系数（Stride 的 matDiffuseSpecularAlphaBlend.y）。
 // normalFlags：第 1 位有法线贴图，第 2 位 ×2-1，第 3 位 y 取反，第 4 位由 xy 算 z。occlusionDirect：直射光受遮蔽的程度。
 struct Material {
   baseColor: vec4f,
@@ -156,6 +158,8 @@ struct Varyings {
   @location(3) depth: f32,
   // 世界空间的切线和手性；网格没有切线时是 0
   @location(4) tangent: vec4f,
+  // 模型空间的位置（材质的颜色树里的 streams.position，Stride 的 POSITION）
+  @location(5) local: vec3f,
 };
 
 const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
@@ -175,6 +179,7 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   out.uv = mesh.uvTransform.zw + uv * mesh.uvTransform.xy;
   out.depth = out.position.w;
   out.tangent = vec4f((world * vec4f(localTangent, 0.0)).xyz, tangent.w);
+  out.local = local;
   return out;
 }
 
@@ -399,10 +404,9 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let hasSpecular = material.specular != 0u;
   let metalness = material.surface.x;
   let isMetalness = material.specular == 1u;
-  let visible = material.blend.rgb * material.blend.a;
-  let diffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * visible;
+  let diffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a;
   let f0 = select(material.specularColor.rgb, mix(vec3f(0.02), albedo, metalness), isMetalness);
-  let specular = select(vec3f(0.0), f0, hasSpecular) * material.surface.w * visible;
+  let specular = select(vec3f(0.0), f0, hasSpecular) * material.surface.w * material.blend.rgb * material.emissive.w;
   // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, occlusionDirect)
   let ao = dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
   let directOcclusion = mix(1.0, ao, material.occlusionDirect);
@@ -453,10 +457,33 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let skySpecularColor = textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
   color += diffuse * skyDiffuse + environmentSpecular * skySpecularColor;
 
-  color += textureSample(emissiveTexture, emissiveSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb * material.emissive.rgb;
+  // 自发光：a 不小于 0 时输出的 alpha 用它（Stride 的 UseAlpha）
+  let emitted = emissiveColor(in);
+  color += emitted.rgb;
+  let alpha = select(base.a, emitted.a, emitted.a >= 0.0);
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用
-  return vec4f(color, saturate(base.a * material.blend.a));
+  return vec4f(color, saturate(alpha * material.blend.a));
 }`;
+
+/** 默认的自发光：贴图乘 emissive（没有贴图时是白图）。 */
+const DEFAULT_EMISSIVE = /* wgsl */ `
+fn emissiveColor(in: Varyings) -> vec4f {
+  return vec4f(textureSample(emissiveTexture, emissiveSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb * material.emissive.rgb, -1.0);
+}
+`;
+
+/** 颜色树的自发光（Material.emissiveShader）：先填共用的流，再乘强度。 */
+function treeEmissive(shader: EmissiveShader): string {
+  const intensity = Number.isInteger(shader.intensity) ? `${shader.intensity}.0` : `${shader.intensity}`;
+  return /* wgsl */ `${MATERIAL_STREAMS}
+${shader.code}
+fn emissiveColor(in: Varyings) -> vec4f {
+  streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y);
+  let e = emissiveTree();
+  return vec4f(e.rgb * ${intensity}, ${shader.useAlpha ? 'e.a' : '-1.0'});
+}
+`;
+}
 
 const DFG_LUT_WIDTH = 32;
 const DFG_LUT_HEIGHT = 64;
@@ -669,7 +696,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       offset += pass.views.length * pass.slotCount;
     }
     gpu.uploadInstances(passes, offset);
-    gpu.uploadViews(this.system.views, this.system.lighting);
+    gpu.uploadViews(this.system.views, this.system.lighting, context.game.updateTime.total);
   }
 
   /**
@@ -695,16 +722,22 @@ export class MeshRenderFeature extends RootRenderFeature {
       const count = counts[index * cullPass.batchCount + b]!;
       if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
-      if (batch.material !== material) {
+      const gpuMesh = gpu.mesh(batch.mesh);
+      const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
+      if (materialChanged || meshChanged) {
+        // 管线也按材质分（自发光变体、两面画），同样的组合是同一条管线
+        const next = gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.material);
+        if (next !== pipeline) pass.setPipeline((pipeline = next));
+      }
+      if (materialChanged) {
         material = batch.material;
         pass.setBindGroup(1, gpu.material(material));
+        const tree = gpu.treeBindGroup(material);
+        if (tree) pass.setBindGroup(3, tree);
       }
-      const gpuMesh = gpu.mesh(batch.mesh);
-      if (batch.mesh !== mesh || batch.skinned !== skinned) {
+      if (meshChanged) {
         mesh = batch.mesh;
         skinned = batch.skinned;
-        const next = gpu.pipelineFor(stage, mesh.layout, batch.skinned);
-        if (next !== pipeline) pass.setPipeline((pipeline = next));
         pass.setBindGroup(2, gpuMesh.bindGroup);
         pass.setVertexBuffer(0, gpuMesh.vertices);
         pass.setIndexBuffer(gpuMesh.indices, gpuMesh.indexFormat);
@@ -792,12 +825,16 @@ class Gpu {
   readonly device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #unclippedDepth: boolean;
-  readonly #module: GPUShaderModule;
+  /** 着色器按自发光分变体：默认的是 ''，颜色树的按它的代码。 */
+  readonly #modules = new Map<string, GPUShaderModule>();
   readonly #viewLayout: GPUBindGroupLayout;
   readonly #materialLayout: GPUBindGroupLayout;
   readonly #meshLayout: GPUBindGroupLayout;
-  readonly #pipelineLayout: GPUPipelineLayout;
+  /** 按颜色树的贴图数：0 是三个绑定组，多的再加绑定组 3。 */
+  readonly #pipelineLayouts = new Map<number, { readonly layout: GPUPipelineLayout; readonly textures?: GPUBindGroupLayout }>();
   readonly #pipelines = new Map<string, GPURenderPipeline>();
+  /** 颜色树的贴图绑定组（绑定组 3）。 */
+  readonly #treeBindGroups = new Map<Material, GPUBindGroup>();
   readonly #meshes = new Map<Mesh, GpuMesh>();
   readonly #materials = new Map<Material, GpuMaterial>();
   readonly #materialData = new ArrayBuffer(MATERIAL_BYTES);
@@ -820,7 +857,6 @@ class Gpu {
     this.device = device;
     this.#resources = resources;
     this.#unclippedDepth = unclippedDepth;
-    this.#module = device.createShaderModule({ label: 'MeshRenderFeature', code: SHADER });
     this.#viewLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature view',
       entries: [
@@ -853,29 +889,80 @@ class Gpu {
       label: 'MeshRenderFeature mesh',
       entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } }],
     });
-    this.#pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.#viewLayout, this.#materialLayout, this.#meshLayout] });
     this.#dfgLut = createDfgLut(device);
     this.#localLights = this.#createStorage('MeshRenderFeature local lights', MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS * 4);
   }
 
+  /** 自发光变体的着色器模块（颜色树的代码是键）。 */
+  #module(emissive: EmissiveShader | undefined): GPUShaderModule {
+    const key = emissive?.code ?? '';
+    let module = this.#modules.get(key);
+    if (!module) {
+      module = this.device.createShaderModule({ label: `MeshRenderFeature${emissive ? ' (emissive tree)' : ''}`, code: SHADER + (emissive ? treeEmissive(emissive) : DEFAULT_EMISSIVE) });
+      this.#modules.set(key, module);
+    }
+    return module;
+  }
+
+  /** 颜色树有 textureCount 张贴图时的管线布局（贴图在绑定组 3）。 */
+  #layout(textureCount: number): { readonly layout: GPUPipelineLayout; readonly textures?: GPUBindGroupLayout } {
+    let found = this.#pipelineLayouts.get(textureCount);
+    if (!found) {
+      const groups = [this.#viewLayout, this.#materialLayout, this.#meshLayout];
+      const textures = textureCount > 0 ? this.device.createBindGroupLayout({
+        label: `MeshRenderFeature emissive tree ${textureCount}`,
+        entries: Array.from({ length: textureCount }, (_, i) => [
+          { binding: i * 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+          { binding: i * 2 + 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        ]).flat(),
+      }) : undefined;
+      found = { layout: this.device.createPipelineLayout({ bindGroupLayouts: textures ? [...groups, textures] : groups }), ...(textures ? { textures } : {}) };
+      this.#pipelineLayouts.set(textureCount, found);
+    }
+    return found;
+  }
+
+  /** 材质的颜色树贴图的绑定组（没有颜色树或者没有贴图时是 undefined）。 */
+  treeBindGroup(material: Material): GPUBindGroup | undefined {
+    const shader = material.emissiveShader;
+    if (!shader || shader.textures.length === 0) return undefined;
+    let group = this.#treeBindGroups.get(material);
+    if (!group) {
+      group = this.device.createBindGroup({
+        label: `${material.name} emissive tree`,
+        layout: this.#layout(shader.textures.length).textures!,
+        entries: shader.textures.flatMap(({ texture, sampler }, i) => [
+          { binding: i * 2, resource: this.#resources.texture(texture).createView() },
+          { binding: i * 2 + 1, resource: this.#resources.sampler(sampler) },
+        ]),
+      });
+      this.#treeBindGroups.set(material, group);
+    }
+    return group;
+  }
+
   /**
-   * 一个阶段加一种顶点布局（再分蒙皮不蒙皮）一条管线。只有深度的阶段（深度预通道、阴影投射）没有片元着色器；阴影投射还不剔背面、
-   * 不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor）。深度比较是 less-equal（Stride 的 DepthStencilStates.Default），
-   * 不透明阶段靠它复用深度预通道的结果。
+   * 一个阶段加一种顶点布局（再分蒙皮不蒙皮）一条管线；画颜色的阶段再按材质的自发光变体和两面画分。只有深度的阶段（深度预通道、
+   * 阴影投射）没有片元着色器；阴影投射还不剔背面、不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor）。深度比较是 less-equal
+   * （Stride 的 DepthStencilStates.Default），不透明阶段靠它复用深度预通道的结果。
    */
-  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean): GPURenderPipeline {
+  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, material: Material): GPURenderPipeline {
     const { colorFormat, depthFormat } = stage.output;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}`;
+    // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
+    const emissive = colorFormat ? material.emissiveShader : undefined;
+    const doubleSided = colorFormat !== undefined && material.doubleSided;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${doubleSided}:${emissive?.code ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);
       const entryPoint = `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
+      const module = this.#module(emissive);
       pipeline = this.device.createRenderPipeline({
-        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}`,
-        layout: this.#pipelineLayout,
+        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${emissive ? ' emissive tree' : ''}`,
+        layout: this.#layout(emissive?.textures.length ?? 0).layout,
         vertex: {
-          module: this.#module,
+          module,
           entryPoint,
           buffers: [{
             arrayStride: offsets.stride,
@@ -891,10 +978,10 @@ class Gpu {
             ],
           }],
         },
-        ...(colorFormat ? { fragment: { module: this.#module, entryPoint: 'fs', targets: [{ format: colorFormat, ...(stage.transparent ? { blend: PREMULTIPLIED_ALPHA } : {}) }] } } : {}),
+        ...(colorFormat ? { fragment: { module, entryPoint: 'fs', targets: [{ format: colorFormat, ...(stage.transparent ? { blend: PREMULTIPLIED_ALPHA } : {}) }] } } : {}),
         primitive: stage.shadowCasters
           ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth }
-          : { topology: 'triangle-list', cullMode: 'back', frontFace: 'ccw' },
+          : { topology: 'triangle-list', cullMode: doubleSided ? 'none' : 'back', frontFace: 'ccw' },
         depthStencil: { format: depthFormat, depthWriteEnabled: !stage.transparent, depthCompare: 'less-equal' },
       });
       this.#pipelines.set(key, pipeline);
@@ -954,7 +1041,7 @@ class Gpu {
     }
   }
 
-  uploadViews(views: readonly RenderView[], lighting: Lighting): void {
+  uploadViews(views: readonly RenderView[], lighting: Lighting, time: number): void {
     const stride = VIEW_STRIDE / 4;
     if (views.length > MAX_VIEWS) throw new RangeError(`MeshRenderFeature supports ${MAX_VIEWS} views, got ${views.length}`);
     const { directionals, directionalCount, ambient, skybox, shadow, locals, localCount } = lighting;
@@ -985,7 +1072,7 @@ class Gpu {
         data.set([direction.x / length, direction.y / length, direction.z / length, 0], o + 156 + i * 4);
         data.set([color.r, color.g, color.b, 1], o + 172 + i * 4);
       }
-      data.set([localCount, 0, 0, 0], o + 188);
+      data.set([localCount, time, 0, 0], o + 188);
     }
     // 点光、聚光：所有视图共用一份
     const lights = this.#localLightData;
@@ -1066,7 +1153,8 @@ class Gpu {
       const { r, g, b, a } = material.baseColor;
       const uv = (texture: Required<MaterialTexture> | undefined) => [...(texture?.scale ?? [1, 1]), ...(texture?.offset ?? [0, 0])];
       const floats = new Float32Array(this.#materialData);
-      floats.set([r, g, b, a, ...uv(slot), ...material.emissive, 0]);
+      // emissive.w：镜面项的透明系数（matDiffuseSpecularAlphaBlend.y），不透明是 1
+      floats.set([r, g, b, a, ...uv(slot), ...material.emissive, transparency ? transparency.specularAlpha : 1]);
       floats.set([material.metalness ?? 0, material.roughness, material.cavity.diffuse, material.cavity.specular], 12);
       floats.set(uv(normalMap), 16);
       floats.set([...(material.specular ?? [0, 0, 0]), 0], 20);

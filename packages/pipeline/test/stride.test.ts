@@ -148,6 +148,7 @@ describe('导入 Stride 场景', () => {
     menuScene: '11111111-0000-0000-0000-0000000000f5',
     menuPage: '11111111-0000-0000-0000-0000000000f6',
     clickSound: '11111111-0000-0000-0000-0000000000a1',
+    laser: '11111111-0000-0000-0000-0000000000a2',
     menuLibrary: '11111111-0000-0000-0000-0000000000f7',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
@@ -272,11 +273,25 @@ describe('导入 Stride 场景', () => {
       '        Tint: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
       'Layers:', '    l1:', `        Material: ${ids.bumpy}:Materials/Bumpy`,
     ].join('\n'),
+    // ParticlesSample 的激光：自发光是有着色器类的颜色树（整棵导出）、加法透明、两面都画
+    'Assets/Materials/Laser.sdmat': [
+      '!MaterialAsset', `Id: ${ids.laser}`, 'Attributes:',
+      '    Emissive: !MaterialEmissiveMapFeature', '        EmissiveMap: !ComputeBinaryColor', '            Operator: Multiply',
+      '            LeftChild: !ComputeShaderClassColor', '                MixinReference: ComputeColorTextureScroll', '                Generics:',
+      '                    2c0b~UvSpeed: !ComputeColorParameterFloat', '                        Value: -0.5', '                CompositionNodes: {}',
+      '            RightChild: !ComputeTextureColor', `                Texture: ${ids.texture}:Textures/Checker`,
+      '        Intensity: !ComputeFloat', '            Value: 2.0', '        UseAlpha: true',
+      '    Transparency: !MaterialTransparencyAdditiveFeature', '        Alpha: !ComputeFloat', '            Value: 0.5',
+      '        Tint: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    CullMode: None',
+      'Layers: {}',
+    ].join('\n'),
     'Assets/Glassy.sdscene': [
       '!SceneAsset', `Id: ${ids.glassScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: g1', '                Name: Holder', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg1', '                        Children: {}',
       '                    s: !Game.Holder,Game', '                        Id: sg1', `                        Look: ${ids.glass}:Materials/Glass`, '                        Speed: {X: 5.0, Y: 2.0}',
       `                        Spawn: ${ids.cratePrefab}:Prefabs/Crate`,
+      `                        Beam: ${ids.laser}:Materials/Laser`,
       // 正交相机（PhysicsSample 的 VolumeTrigger）
       '                    c: !CameraComponent', '                        Id: cg1', '                        Projection: Orthographic', '                        OrthographicSize: 21.0',
       // 模型实例化（BepuSample）：实例引用的是 InstancingComponent 的 Id，主实体排在后面；空碰撞体的刚体
@@ -724,6 +739,21 @@ describe('导入 Stride 场景', () => {
       ambientOcclusion: { value: 1, texture: { ...checker, scale: [2, 2], channel: 'g' }, directLighting: 0.5 },
       transparency: { type: 'blend', alpha: 0.25 },
     });
+    const laser = JSON.parse(await readFile(path.join(out, 'Game/Materials/Laser.material.json'), 'utf8')) as MaterialFile;
+    expect(laser).toMatchObject({
+      emissiveTree: {
+        tree: {
+          $type: 'computeBinaryColor', operator: 'multiply',
+          leftChild: { $type: 'computeShaderClassColor', mixinReference: 'ComputeColorTextureScroll', generics: { UvSpeed: { $type: 'computeColorParameterFloat', value: -0.5 } } },
+          rightChild: { $type: 'computeTextureColor', texture: { texture: 'Game/Textures/Checker', srgb: true } },
+        },
+        intensity: 2,
+        useAlpha: true,
+      },
+      transparency: { type: 'blend', alpha: 0, specularAlpha: 1 },
+      doubleSided: true,
+    });
+    expect(laser.emissive).toBeUndefined();
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Glassy.scene.json'), 'utf8')) as SceneFile;
     expect(scene.entities[0]!.components.camera).toEqual({ verticalFieldOfView: 45, nearClipPlane: 0.1, farClipPlane: 1000, projection: 'orthographic', orthographicSize: 21 });
     // Vector2 的脚本属性是数组

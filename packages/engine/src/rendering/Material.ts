@@ -1,7 +1,8 @@
 /**
  * 材质，和 Stride 默认的 PBR 材质对应：漫反射颜色（可以带一张贴图，按运算符和颜色组合，即 Stride 材质里最常见的
  * ComputeTextureColor、ComputeBinaryColor 的形状）、金属度或镜面颜色工作流的镜面反射（GGX、Schlick、Smith-Schlick-GGX）、
- * 光泽度、自发光（可以乘一张贴图）、环境光遮蔽（可以是贴图）、cavity、法线贴图和透明混合，见 content/format.ts 的 MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
+ * 光泽度、自发光（可以乘一张贴图，或者是编译好的颜色树）、环境光遮蔽（可以是贴图）、cavity、法线贴图和透明混合，见 content/format.ts 的
+ * MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
  * 见 docs/architecture.md 的"外观：材质参数的分层"，等着色器系统一起做。和 Mesh 一样只是数据，GPU 资源由渲染特性管理。
  */
 import type { AmbientOcclusionSlot, ColorOperator, TextureSampler } from '../content/format';
@@ -37,9 +38,27 @@ export interface MaterialAmbientOcclusion extends Omit<AmbientOcclusionSlot, 'te
 }
 
 /** 透明混合（Stride 的 MaterialTransparencyBlendFeature），意思同 content/format.ts 的 TransparencyFile。 */
+/**
+ * 透明：可见的漫反射乘 alpha（输出的 alpha 也乘它），镜面乘 specularAlpha（默认同 alpha），都乘 tint（Stride 的
+ * matDiffuseSpecularAlphaBlend 的两个分量）。
+ */
 export interface MaterialTransparency {
   readonly alpha: number;
+  readonly specularAlpha?: number;
   readonly tint?: readonly [number, number, number];
+}
+
+/**
+ * 自发光是一棵颜色树（Stride 的 EmissiveMap 化不成"贴图乘颜色"时，比如有着色器类）：code 是编译好的 WGSL（见 colorTree.ts），
+ * 定义 `fn emissiveTree() -> vec4f`，贴图在绑定组 3。网格的着色器按 code 分变体。
+ */
+export interface EmissiveShader {
+  readonly code: string;
+  readonly textures: readonly { readonly texture: Texture; readonly sampler: TextureSampler }[];
+  /** 乘在颜色上的强度（Stride 的 Intensity）。 */
+  readonly intensity: number;
+  /** 输出的 alpha 用自发光的 alpha（Stride 的 UseAlpha）。 */
+  readonly useAlpha: boolean;
 }
 
 export interface MaterialDesc {
@@ -57,6 +76,10 @@ export interface MaterialDesc {
   /** 自发光，线性颜色乘强度，默认没有；有 emissiveTexture 时再乘贴图的颜色。 */
   readonly emissive?: readonly [number, number, number];
   readonly emissiveTexture?: MaterialTexture;
+  /** 自发光的颜色树；有它时不看 emissive、emissiveTexture。 */
+  readonly emissiveShader?: EmissiveShader;
+  /** 两面都画（Stride 的 CullMode 是 None），默认只画正面。 */
+  readonly doubleSided?: boolean;
   /** 环境光遮蔽，默认没有遮蔽。 */
   readonly ambientOcclusion?: MaterialAmbientOcclusion;
   /** 透明混合；有它的材质画在透明阶段（不写深度、从远到近）。 */
@@ -81,6 +104,8 @@ export class Material {
   readonly roughness: number;
   readonly emissive: readonly [number, number, number];
   readonly emissiveTexture: Required<MaterialTexture> | undefined;
+  readonly emissiveShader: EmissiveShader | undefined;
+  readonly doubleSided: boolean;
   readonly ambientOcclusion: { readonly value: number; readonly texture: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a' } | undefined; readonly directLighting: number };
   readonly transparency: Required<MaterialTransparency> | undefined;
   readonly cavity: { readonly diffuse: number; readonly specular: number };
@@ -101,13 +126,16 @@ export class Material {
     this.roughness = desc.roughness ?? 1;
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
+    this.emissiveShader = desc.emissiveShader;
+    this.doubleSided = desc.doubleSided ?? false;
     const occlusion = desc.ambientOcclusion;
     this.ambientOcclusion = {
       value: occlusion?.value ?? 1,
       texture: occlusion?.texture && { ...withTransform(occlusion.texture), channel: occlusion.texture.channel },
       directLighting: occlusion?.directLighting ?? 0,
     };
-    this.transparency = desc.transparency && { alpha: desc.transparency.alpha, tint: desc.transparency.tint ?? [1, 1, 1] };
+    const transparency = desc.transparency;
+    this.transparency = transparency && { alpha: transparency.alpha, specularAlpha: transparency.specularAlpha ?? transparency.alpha, tint: transparency.tint ?? [1, 1, 1] };
     this.cavity = desc.cavity ?? { diffuse: 1, specular: 1 };
     const normalMap = desc.normalMap;
     this.normalMap = normalMap && {

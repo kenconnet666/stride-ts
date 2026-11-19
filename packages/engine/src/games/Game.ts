@@ -107,8 +107,8 @@ export class Game {
   rootRenderer!: SceneRenderer;
   readonly updateTime = new GameTime();
   readonly registry = new Registry();
-  /** 资源管线产出的模型、材质、场景（默认从页面旁边的 content/ 加载，可以换成别的根目录）。 */
-  content = new ContentManager();
+  /** 资源管线产出的模型、材质、场景（默认从页面旁边的 content/ 加载，可以换成别的根目录）；材质颜色树里的着色器类按 registry 找。 */
+  content = new ContentManager({ shaderClass: (name) => this.registry.shaderClass(name) });
   readonly entities: EntityManager = new EntityManager(this);
   /** 脚本每帧打印的调试文字（Stride 的 DebugTextSystem）。 */
   readonly debugText = new DebugText();

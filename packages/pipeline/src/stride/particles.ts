@@ -43,6 +43,11 @@ export interface ParticleImportContext {
   readonly warn: (message: string) => void;
 }
 
+/** 导入一棵颜色树（网格材质里化不成"贴图乘颜色"的，比如有着色器类的自发光），格式同粒子材质的颜色树。 */
+export function importColorTree(node: StrideObject, where: string, context: ParticleImportContext): Promise<ParticleModuleFile> {
+  return convertObject(node, where, context);
+}
+
 /** 导入一个 ParticleSystemComponent。 */
 export async function importParticleSystem(component: StrideObject, where: string, context: ParticleImportContext): Promise<ParticleModuleFile> {
   const { $type: _, ...rest } = component;

@@ -1,5 +1,6 @@
 /**
- * Stride 的材质（.sdmat）、贴图（.sdtex）和天空盒（.sdsky）导入成运行时内容：材质的颜色树化成"一张贴图按运算符组合一个颜色"，
+ * Stride 的材质（.sdmat）、贴图（.sdtex）和天空盒（.sdsky）导入成运行时内容：材质的颜色树化成"一张贴图按运算符组合一个颜色"
+ * （有着色器类的自发光整棵树导出，运行时编译），
  * 贴图编成 KTX2（Basis UASTC）或原样复制源图，HDR 立方体贴图导出成 .cubemap，天空盒的漫反射算成球谐。同一个资源只导入一次。
  */
 import { access, readFile } from 'node:fs/promises';
@@ -21,6 +22,7 @@ import {
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
 import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
+import { importColorTree } from './particles.ts';
 import { asNumber, asObject, linearColor, parseAssetReference, vec2, type StrideObject, type StrideValue } from './yaml.ts';
 
 /** 材质导入用到的导入器的东西：工程、工具、选项，警告记到导入器的列表里，文件按内容路径写到输出目录。 */
@@ -105,6 +107,7 @@ export class MaterialImporter {
       ...await this.#occlusion(asObject(attributes['Occlusion']), asset, uvScale),
       ...await this.#normalMap(asObject(attributes['Surface']), asset, uvScale),
       ...this.#transparency(asObject(attributes['Transparency']), asset, uvScale),
+      ...this.#cullMode(attributes['CullMode'], asset),
     };
     if (asObject(asset.data['Layers']) && Object.keys(asObject(asset.data['Layers'])!).length > 0) {
       this.#context.warnings.push(`${asset.file}: material layers are not supported yet (P2 shader system); using the base material`);
@@ -120,18 +123,31 @@ export class MaterialImporter {
     return [map.color[0] * intensity, map.color[1] * intensity, map.color[2] * intensity];
   }
 
-  /** 透明（MaterialTransparencyBlendFeature）：alpha 限制在 0..1，tint 是常量颜色；别的透明特性记警告。 */
+  /**
+   * 透明：MaterialTransparencyBlendFeature 的 alpha（限制在 0..1）同时乘漫反射和镜面；MaterialTransparencyAdditiveFeature 照
+   * Stride 的 ComputeColorMaterialAlphaBlend 换成两个系数：漫反射（和输出的 alpha）乘 max(0, 2a - 1)，镜面乘 min(1, 2a)，
+   * a 是 0.5 时完全是加法。tint 是常量颜色；别的透明特性记警告。
+   */
   #transparency(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Pick<MaterialFile, 'transparency'> {
     if (!feature) return {};
-    if (feature.$type !== 'MaterialTransparencyBlendFeature') {
+    const additive = feature.$type === 'MaterialTransparencyAdditiveFeature';
+    if (feature.$type !== 'MaterialTransparencyBlendFeature' && !additive) {
       this.#context.warnings.push(`${asset.file}: transparency ${feature.$type ?? 'feature'} is not supported; the material is opaque`);
       return {};
     }
-    const alpha = Math.min(Math.max(this.#scalar(asObject(feature['Alpha']), 1, asset), 0), 1);
+    const alpha = Math.min(Math.max(this.#scalar(asObject(feature['Alpha']), additive ? 0.5 : 1, asset), 0), 1);
     const tint = this.#evaluateColor(asObject(feature['Tint']) ?? { $type: 'ComputeColor' }, asset, uvScale);
     if (tint.texture) this.#context.warnings.push(`${asset.file}: a textured transparency tint is not supported; using the color`);
     const [r, g, b] = tint.color;
-    return { transparency: { type: 'blend', alpha, ...(r === 1 && g === 1 && b === 1 ? {} : { tint: [r, g, b] }) } };
+    const factors = additive ? { alpha: Math.max(0, 2 * alpha - 1), specularAlpha: Math.min(1, 2 * alpha) } : { alpha };
+    return { transparency: { type: 'blend', ...factors, ...(r === 1 && g === 1 && b === 1 ? {} : { tint: [r, g, b] }) } };
+  }
+
+  /** CullMode：None 是两面都画；Front（只画背面）还不支持。 */
+  #cullMode(mode: StrideValue | undefined, asset: AssetEntry): Pick<MaterialFile, 'doubleSided'> {
+    if (mode === 'None') return { doubleSided: true };
+    if (mode === 'Front') this.#context.warnings.push(`${asset.file}: front-face culling is not supported; culling back faces`);
+    return {};
   }
 
   /** 法线贴图（MaterialNormalMapFeature）：开关的默认值同 Stride；InvertY 来自贴图资源的 NormalMapTextureType（默认 true）。 */
@@ -165,10 +181,24 @@ export class MaterialImporter {
    * 自发光（MaterialEmissiveMapFeature）：颜色乘强度，同 Stride 的 MaterialSurfaceEmissiveShading；颜色树化简成"贴图乘颜色"
    * （比如 PhysicsSample 的 ComputeBinaryColor：贴图乘 ComputeFloat4），贴图加颜色的记警告、只用颜色。
    */
-  async #emissive(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Promise<Pick<MaterialFile, 'emissive' | 'emissiveTexture'>> {
+  async #emissive(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Promise<Pick<MaterialFile, 'emissive' | 'emissiveTexture' | 'emissiveTree'>> {
     if (!feature) return {};
-    const map = this.#evaluateColor(asObject(feature['EmissiveMap']) ?? {}, asset, uvScale);
     const intensity = this.#scalar(asObject(feature['Intensity']), 1, asset);
+    const emissiveMap = asObject(feature['EmissiveMap']) ?? {};
+    // 有着色器类的树化不成"贴图乘颜色"：整棵导出，运行时编译（UV 缩放还不乘进树里的贴图）
+    if (hasShaderClass(emissiveMap)) {
+      if (uvScale[0] !== 1 || uvScale[1] !== 1) this.#context.warnings.push(`${asset.file}: UVScale is not applied to an emissive color tree`);
+      const tree = await importColorTree(emissiveMap, `${asset.file}: emissive`, {
+        texture: async (id) => {
+          const { texture, encoding, size, srgb } = await this.texture(this.#context.project.get(id, asset.file));
+          return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb };
+        },
+        entity: () => undefined,
+        warn: (message) => this.#context.warnings.push(message),
+      });
+      return { emissiveTree: { tree, intensity, useAlpha: feature['UseAlpha'] === true } };
+    }
+    const map = this.#evaluateColor(emissiveMap, asset, uvScale);
     const emissive: Vec3Tuple = [map.color[0] * intensity, map.color[1] * intensity, map.color[2] * intensity];
     if (map.texture && map.operator !== 'multiply') this.#context.warnings.push(`${asset.file}: emissive texture with operator ${map.operator} is not supported; using the color`);
     const texture = map.texture && map.operator === 'multiply' ? map.texture : undefined;
@@ -421,3 +451,11 @@ const BINARY_OPERATORS: Readonly<Record<string, (a: number, b: number) => number
   Screen: (a, b) => 1 - (1 - a) * (1 - b),
   Overlay: (a, b) => (a < 0.5 ? 2 * a * b : 1 - 2 * (1 - a) * (1 - b)),
 };
+
+/** 颜色树里有没有着色器类（ComputeShaderClassColor）。 */
+function hasShaderClass(node: StrideValue | undefined): boolean {
+  if (!node || typeof node !== 'object') return false;
+  if (Array.isArray(node)) return node.some(hasShaderClass);
+  if ((node as StrideObject).$type === 'ComputeShaderClassColor') return true;
+  return Object.values(node as StrideObject).some(hasShaderClass);
+}

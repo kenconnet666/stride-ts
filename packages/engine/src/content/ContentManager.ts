@@ -22,7 +22,7 @@ import type { ConstraintSettings } from '../physics/Simulation';
 import type { ScriptConstructor } from '../engine/scripts';
 import { Background, Camera, Instance, Instancing, Light, Model, Sprite } from '../rendering/components';
 import type { EntityId } from '../data/prop';
-import { Material } from '../rendering/Material';
+import { Material, type EmissiveShader } from '../rendering/Material';
 import { Prefab } from './Prefab';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
@@ -32,6 +32,8 @@ import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Te
 import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
 import type { ParticleModuleClass } from '../particles/modules';
+import { ColorTreeCompiler } from '../rendering/colorTree';
+import type { ShaderClass } from '../rendering/shaderClass';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import { UIElementLink } from '../ui/UIElementLink';
@@ -82,6 +84,8 @@ export interface ContentOptions {
   /** 内容根目录；默认是页面旁边的 `content/`。 */
   readonly root?: string | URL;
   readonly read?: ContentReader;
+  /** 按名字找游戏登记的着色器类（材质的颜色树用；Game 给的是它的 Registry）。 */
+  readonly shaderClass?: (name: string) => ShaderClass | undefined;
 }
 
 /** 加载好的模型：网格（蒙皮网格带着它的蒙皮）、材质槽（模型自带的材质，没有的槽是 null）和蒙皮网格用的骨架。 */
@@ -158,6 +162,7 @@ export class ContentManager {
   readonly #renderTextures = new Map<string, Texture>();
   /** 没有材质的网格用它：白色。 */
   readonly defaultMaterial = new Material('default');
+  readonly #shaderClasses: (name: string) => ShaderClass | undefined;
   /**
    * 把 KTX2 贴图转码成设备支持的格式；加载了原生的 texture 功能时，Game 在图形设备建好之后设置（ktx2Decoder），
    * 测试里可以换成假的。
@@ -172,7 +177,8 @@ export class ContentManager {
   /** 解码声音；Game 启动时设置（game.audio）。 */
   audio: AudioEngine | undefined;
 
-  constructor({ root = 'content/', read = fetchReader }: ContentOptions = {}) {
+  constructor({ root = 'content/', read = fetchReader, shaderClass = () => undefined }: ContentOptions = {}) {
+    this.#shaderClasses = shaderClass;
     const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
     this.root = new URL(root, base);
     this.#read = read;
@@ -248,11 +254,12 @@ export class ContentManager {
       const slot = async ({ scale, offset, filter, addressU, addressV, ...ref }: TextureSlot, srgb: boolean) =>
         ({ texture: await this.#loadTextureRef(ref, srgb), scale, offset, sampler: { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } });
       const { normalMap: normal, ambientOcclusion: occlusion } = file;
-      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture] = await Promise.all([
+      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture, emissiveShader] = await Promise.all([
         file.baseColorTexture && slot(file.baseColorTexture, true),
         file.emissiveTexture && slot(file.emissiveTexture, true),
         normal && slot(normal, false),
         occlusion?.texture && slot(occlusion.texture, false),
+        file.emissiveTree && this.#emissiveShader(file.emissiveTree),
       ]);
       return new Material(file.name, {
         baseColor: file.baseColor,
@@ -263,12 +270,22 @@ export class ContentManager {
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
         ...(file.emissive ? { emissive: file.emissive } : {}),
         ...(emissiveTexture ? { emissiveTexture } : {}),
+        ...(emissiveShader ? { emissiveShader } : {}),
+        ...(file.doubleSided ? { doubleSided: true } : {}),
         ...(occlusion ? { ambientOcclusion: { value: occlusion.value, directLighting: occlusion.directLighting, ...(occlusionTexture ? { texture: { ...occlusionTexture, channel: occlusion.texture!.channel } } : {}) } } : {}),
         ...(file.cavity ? { cavity: file.cavity } : {}),
         ...(normalTexture ? { normalMap: { ...normalTexture, scaleAndBias: normal!.scaleAndBias, isXYNormal: normal!.isXYNormal, invertY: normal!.invertY } } : {}),
-        ...(file.transparency ? { transparency: { alpha: file.transparency.alpha, ...(file.transparency.tint ? { tint: file.transparency.tint } : {}) } } : {}),
+        ...(file.transparency ? { transparency: file.transparency } : {}),
       });
     });
+  }
+
+  /** 自发光的颜色树：先加载它引用的贴图，再编译（着色器类按游戏登记的找）。 */
+  async #emissiveShader({ tree, intensity, useAlpha }: NonNullable<MaterialFile['emissiveTree']>): Promise<EmissiveShader> {
+    const textures = new Map(await Promise.all(particleTextures(tree).map(async (ref) => [ref.texture, await this.#loadTextureRef(ref, ref.srgb ?? true)] as const)));
+    const compiler = new ColorTreeCompiler({ texture: (path) => textures.get(path), shaderClass: (name) => this.#shaderClasses(name) }, 3);
+    const expression = compiler.color(tree);
+    return { code: `${compiler.declarations}fn emissiveTree() -> vec4f {\n  return ${expression};\n}\n`, textures: compiler.textures, intensity, useAlpha };
   }
 
   loadCubemap(path: string): Promise<Cubemap> {

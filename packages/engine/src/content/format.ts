@@ -450,6 +450,13 @@ export interface MaterialFile {
   /** 自发光：线性颜色乘强度；有 emissiveTexture 时再乘贴图（Stride 的 ComputeBinaryColor 乘法）。 */
   readonly emissive?: Vec3Tuple;
   readonly emissiveTexture?: TextureSlot;
+  /**
+   * 化不成"贴图乘颜色"的自发光（比如有着色器类）：整棵颜色树（格式同粒子材质的，见 ParticleModuleFile），运行时编译成 WGSL；
+   * 有它时不看 emissive、emissiveTexture。useAlpha：输出的 alpha 用自发光的 alpha（Stride 的 UseAlpha）。
+   */
+  readonly emissiveTree?: { readonly tree: ParticleModuleFile; readonly intensity: number; readonly useAlpha: boolean };
+  /** 两面都画（Stride 的 CullMode 是 None）。 */
+  readonly doubleSided?: boolean;
   /** 环境光遮蔽（Stride 的 Occlusion 特性的 AmbientOcclusionMap）。 */
   readonly ambientOcclusion?: AmbientOcclusionSlot;
   /** 透明（Stride 的 MaterialTransparencyBlendFeature）：预乘 alpha 混合，画在透明阶段。 */
@@ -471,10 +478,15 @@ export interface AmbientOcclusionSlot {
   readonly directLighting: number;
 }
 
-/** 透明混合：可见的漫反射和镜面乘 alpha 和 tint，输出的 alpha 是漫反射的 alpha 乘这个 alpha（Stride 的预乘 alpha）。 */
+/**
+ * 透明混合：可见的漫反射乘 alpha、镜面乘 specularAlpha（默认同 alpha），都乘 tint，输出的 alpha 是漫反射的 alpha 乘 alpha
+ * （Stride 的预乘 alpha 和 matDiffuseSpecularAlphaBlend）。Stride 的加法透明（MaterialTransparencyAdditiveFeature）也是它：
+ * alpha = max(0, 2a - 1)、specularAlpha = min(1, 2a)，a 是 0.5 时完全是加法。
+ */
 export interface TransparencyFile {
   readonly type: 'blend';
   readonly alpha: number;
+  readonly specularAlpha?: number;
   /** 线性颜色，默认白色。 */
   readonly tint?: Vec3Tuple;
 }

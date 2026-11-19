@@ -21,11 +21,11 @@ import {
   type Vec3Tuple,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
-import { bleedTransparentColors } from '../image.ts';
+import { applyColorKey, bleedTransparentColors, maskAlpha } from '../image.ts';
 import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { importColorTree } from './particles.ts';
-import { asNumber, asObject, linearColor, parseAssetReference, vec2, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, color4, linearColor, parseAssetReference, vec2, type StrideObject, type StrideValue } from './yaml.ts';
 
 /** 材质导入用到的导入器的东西：工程、工具、选项，警告记到导入器的列表里，文件按内容路径写到输出目录。 */
 export interface MaterialImportContext {
@@ -399,11 +399,21 @@ export class MaterialImporter {
     const width = asset.data['IsCompressed'] === false ? image.width : align4(image.width);
     const height = asset.data['IsCompressed'] === false ? image.height : align4(image.height);
     const resized = width !== image.width || height !== image.height;
-    if (policy === 'source' && sourceEncoding && !resized) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     const sized = resized ? await this.#context.tools.resizeImage(image.pixels, image.width, image.height, width, height) : image.pixels;
-    const pixels = bleedTransparentColors(sized, width, height);
+    // 颜色键（ColorTextureType 的 ColorKeyEnabled，默认品红）：等于这个颜色的像素变透明，在缩放之后做（同 Stride 的 TextureHelper）
+    const colorKey = type?.$type === 'ColorTextureType' && type['ColorKeyEnabled'] === true ? color4(type['ColorKeyColor'] ?? { R: 255, G: 0, B: 255, A: 255 }) : undefined;
+    const keyed = colorKey ? applyColorKey(sized, colorKey) : sized;
+    // Alpha: Mask 的压缩贴图在桌面上是 BC1，alpha 只有 1 位：材质按它做的（硬边的遮罩），照着做，不然半透明的边缘会多出一圈
+    const alphaMask = type?.['Alpha'] === 'Mask' && asset.data['IsCompressed'] !== false;
+    const masked = alphaMask ? maskAlpha(keyed, type['PremultiplyAlpha'] !== false) : keyed;
+    // 像素没动过的源文件才能原样用
+    const unchanged = masked === image.pixels;
+    if (policy === 'source' && sourceEncoding && unchanged) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
+    // 1 位 alpha 的贴图不渗色，透明的地方就是黑的（同 BC1）：渗进去的颜色会被压缩误差漏出来的一点 alpha 带出来，
+    // 材质再乘上很大的系数（箱子标志的自发光是遮罩乘 50）就看得见了
+    const pixels = alphaMask ? masked : bleedTransparentColors(masked, width, height);
     const ktx2 = await this.#context.tools.encodeBasis(pixels, width, height, { mode: 'uastc', srgb, mipmaps: asset.data['GenerateMipmaps'] !== false });
-    if (policy === 'smallest' && sourceEncoding && !resized && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
+    if (policy === 'smallest' && sourceEncoding && unchanged && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     await this.#context.write(asset.path + TEXTURE_EXTENSIONS.ktx2, ktx2);
     return { texture: asset.path, encoding: 'ktx2', srgb };
   }

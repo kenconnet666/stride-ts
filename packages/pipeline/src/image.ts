@@ -34,3 +34,37 @@ export function bleedTransparentColors(pixels: Uint8Array, width: number, height
   }
   return result;
 }
+
+/**
+ * 颜色键（Stride 贴图资源的 ColorKeyEnabled、ColorKeyColor，TextureConverter 的 ApplyColorKey）：四个分量都和 key 相等的像素
+ * 变成全透明的黑。没有这样的像素时原样返回 pixels，否则返回新数组。
+ */
+export function applyColorKey(pixels: Uint8Array, key: readonly [number, number, number, number]): Uint8Array {
+  let keyed: Uint8Array | undefined;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i] !== key[0] || pixels[i + 1] !== key[1] || pixels[i + 2] !== key[2] || pixels[i + 3] !== key[3]) continue;
+    keyed ??= pixels.slice();
+    keyed.fill(0, i, i + 4);
+  }
+  return keyed ?? pixels;
+}
+
+/**
+ * 1 位 alpha（Stride 贴图资源的 Alpha: Mask，桌面上压成 BC1）：alpha 不到一半的像素变成全透明的黑，其余变成不透明。
+ * premultiplied（资源的 PremultiplyAlpha，默认开）时 Stride 在压之前先把颜色乘了 alpha，留下来的半透明像素是乘过的颜色，
+ * 这里也先乘。alpha 本来就只有 0 和 255 时原样返回 pixels，否则返回新数组。
+ */
+export function maskAlpha(pixels: Uint8Array, premultiplied: boolean): Uint8Array {
+  let masked: Uint8Array | undefined;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const alpha = pixels[i + 3]!;
+    if (alpha === 0 || alpha === 255) continue;
+    masked ??= pixels.slice();
+    if (alpha < 128) masked.fill(0, i, i + 4);
+    else {
+      if (premultiplied) for (let c = 0; c < 3; c++) masked[i + c] = Math.round((pixels[i + c]! * alpha) / 255);
+      masked[i + 3] = 255;
+    }
+  }
+  return masked ?? pixels;
+}

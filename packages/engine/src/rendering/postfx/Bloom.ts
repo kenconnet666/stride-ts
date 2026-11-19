@@ -1,11 +1,13 @@
 /**
  * 泛光（Stride 的 Bloom，默认设置）：亮部图（可选先按 distortion 压扁，做变形镜头的效果）一级级缩小到 1 / 2^downScale，
  * 高斯模糊，再用 Expanded 采样放大、按 Stride 的 BlendStates.Additive 加回画面（AdditiveLayers，在色调映射里）。叠加的颜色是
- * (amount, …, amount)，Additive 又乘了一次源的 alpha（也是 amount），所以实际的权重是 amount²，同 Stride。
+ * Color4(amount)，Stride 的 ImageScaler 把它当 sRGB 颜色换到线性空间（rgb 换，alpha 不换），Additive 又乘了一次源的 alpha，
+ * 所以实际的权重是 srgbToLinear(amount) · amount（默认 0.3 时是 0.022，不是 0.09），照 Stride。
  * 模糊半径按缩小后的画面算：lerp(1, 长边 · 0.25 / 2^downScale, radius / 100)，取整，至少 1。
  * 残影（Afterimage，Stride 默认关）还没做。
  */
 import type { AdditiveLayer } from './AdditiveLayers';
+import { srgbToLinear } from '../../mathematics/vectors';
 import type { ImageEffectContext } from './ImageEffect';
 
 export class Bloom {
@@ -33,7 +35,7 @@ export class Bloom {
     const maxRadius = 0.25 * Math.max(input.width, input.height) * 2 ** -this.downScale;
     const radius = Math.max(1, Math.trunc(1 + (maxRadius - 1) * Math.max(0, this.radius / 100)));
     blur.draw(encoder, pool, arena, this.downScale > 0 ? blurred : input, blurred, radius, Math.max(1, this.sigmaRatio));
-    const a = this.amount;
-    return { texture: blurred, expanded: true, color: [a, a, a, a] };
+    const linear = srgbToLinear(this.amount);
+    return { texture: blurred, expanded: true, color: [linear, linear, linear, this.amount] };
   }
 }

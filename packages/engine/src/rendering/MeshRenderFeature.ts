@@ -40,7 +40,7 @@ import { BRDF } from './brdf';
 import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
-import { Material, type EmissiveShader, type MaterialTexture } from './Material';
+import { Material, type MaterialShaderTrees, type MaterialTexture } from './Material';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { MATERIAL_STREAMS } from './shaderClass';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
@@ -181,15 +181,18 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   let local = (skin * vec4f(mesh.positionOffset.xyz + position * mesh.positionScale.xyz, 1.0)).xyz;
   let localNormal = (skin * vec4f(select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u), 0.0)).xyz;
   let localTangent = (skin * vec4f(tangent.xyz, 0.0)).xyz;
+  let meshUv = mesh.uvTransform.zw + uv * mesh.uvTransform.xy;
+  // 材质的位移贴图：顶点沿模型空间的法线移动（Stride 的 MaterialSurfaceDisplacement，MaterialShader 的水波）
+  let displaced = local + normalize(localNormal) * treeDisplacement(meshUv, local);
   // 网格效果可以在投影前改世界位置（Stride 的 PreTransformPosition，SpaceEscape 的走廊往远处弯）
-  let worldPosition = vec4f(effectWorldPosition((world * vec4f(local, 1.0)).xyz, mesh.effect), 1.0);
+  let worldPosition = vec4f(effectWorldPosition((world * vec4f(displaced, 1.0)).xyz, mesh.effect), 1.0);
   var out: Varyings;
   out.position = view.viewProjection * worldPosition;
   out.world = worldPosition.xyz;
   out.effect = effectVarying(out.position, worldPosition.xyz, mesh.effect);
   // 均匀缩放下法线、切线直接用世界矩阵变换；非均匀缩放要用逆转置，等材质系统一起做
   out.normal = (world * vec4f(localNormal, 0.0)).xyz;
-  out.uv = effectUv(mesh.uvTransform.zw + uv * mesh.uvTransform.xy, mesh.effect);
+  out.uv = effectUv(meshUv, mesh.effect);
   out.depth = out.position.w;
   out.tangent = vec4f((world * vec4f(localTangent, 0.0)).xyz, tangent.w);
   out.local = local;
@@ -232,11 +235,14 @@ fn surfaceNormal(in: Varyings) -> vec3f {
   m.y = select(m.y, 1.0 - m.y, (flags & 4u) != 0u);
   m = select(m, 2.0 * m - 1.0, (flags & 2u) != 0u);
   m.z = select(m.z, sqrt(max(0.0, 1.0 - (m.x * m.x + m.y * m.y))), (flags & 8u) != 0u);
+  // 法线树（材质的颜色树，已经换好）优先于法线贴图
+  let tree = treeNormal(in);
+  m = select(m, tree.xyz, tree.w > 0.5);
   let tangentLength = length(in.tangent.xyz);
   let t = in.tangent.xyz / max(tangentLength, 1e-8);
   let b = in.tangent.w * cross(n, t);
   let mapped = normalize(m.x * t + m.y * b + m.z * n);
-  return select(n, mapped, (flags & 1u) != 0u && tangentLength > 0.0);
+  return select(n, mapped, ((flags & 1u) != 0u || tree.w > 0.5) && tangentLength > 0.0);
 }
 
 /** 世界方向转到天空盒的立方体贴图里：按天空盒的旋转转回去（行向量乘矩阵 = 乘转置），z 取反。 */
@@ -495,24 +501,46 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   return effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect);
 }`;
 
-/** 默认的自发光：贴图乘 emissive（没有贴图时是白图）。 */
-const DEFAULT_EMISSIVE = /* wgsl */ `
-fn emissiveColor(in: Varyings) -> vec4f {
-  return vec4f(textureSample(emissiveTexture, emissiveSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb * material.emissive.rgb, -1.0);
-}
-`;
-
-/** 颜色树的自发光（Material.emissiveShader）：先填共用的流，再乘强度。 */
-function treeEmissive(shader: EmissiveShader): string {
-  const intensity = Number.isInteger(shader.intensity) ? `${shader.intensity}.0` : `${shader.intensity}`;
-  return /* wgsl */ `${MATERIAL_STREAMS}
-${shader.code}
-fn emissiveColor(in: Varyings) -> vec4f {
-  streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y);
+/**
+ * 材质的颜色树（Material.shaderTrees）接进网格着色器的三个函数，没有对应的树时用默认：
+ * - emissiveColor：自发光（树先填共用的流，再乘强度；默认是贴图乘 emissive，没有贴图时是白图）；a 不小于 0 时输出的 alpha 用它；
+ * - treeNormal：切线空间的法线（已经按 ScaleAndBias、IsXYNormal 换好），w 为 0 时没有法线树、用法线贴图；
+ * - treeDisplacement：顶点沿模型空间的法线移动多少（顶点着色器里算）。
+ */
+function materialTreesCode(trees: MaterialShaderTrees | undefined): string {
+  const { emissive, normal, displacement } = trees ?? {};
+  const fill = (uv: string, local: string) => `streams = MaterialStreams(${uv}, ${uv}, vec4f(1.0), vec4f(1.0), ${local}, view.locals.y);`;
+  const emissiveCode = emissive
+    ? `fn emissiveColor(in: Varyings) -> vec4f {
+  ${fill('in.uv', 'in.local')}
   let e = emissiveTree();
-  return vec4f(e.rgb * ${intensity}, ${shader.useAlpha ? 'e.a' : '-1.0'});
+  return vec4f(e.rgb * ${wgslFloat(emissive.intensity)}, ${emissive.useAlpha ? 'e.a' : '-1.0'});
+}`
+    : `fn emissiveColor(in: Varyings) -> vec4f {
+  return vec4f(textureSample(emissiveTexture, emissiveSampler, in.uv * material.emissiveUvTransform.xy + material.emissiveUvTransform.zw).rgb * material.emissive.rgb, -1.0);
+}`;
+  const normalCode = normal
+    ? `fn treeNormal(in: Varyings) -> vec4f {
+  ${fill('in.uv', 'in.local')}
+  var m = normalTree().xyz;
+  ${normal.scaleAndBias ? 'm = 2.0 * m - 1.0;' : ''}
+  ${normal.isXYNormal ? 'm.z = sqrt(max(0.0, 1.0 - (m.x * m.x + m.y * m.y)));' : ''}
+  return vec4f(m, 1.0);
+}`
+    : 'fn treeNormal(in: Varyings) -> vec4f { return vec4f(0.0); }';
+  const displacementCode = displacement
+    ? `fn treeDisplacement(uv: vec2f, local: vec3f) -> f32 {
+  ${fill('uv', 'local')}
+  let d = displacementTree();
+  return ${displacement.scaleAndBias ? '(2.0 * d - 1.0)' : 'd'} * ${wgslFloat(displacement.intensity)};
+}`
+    : 'fn treeDisplacement(uv: vec2f, local: vec3f) -> f32 { return 0.0; }';
+  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode].join('\n');
 }
-`;
+
+/** WGSL 的浮点字面量（整数也带小数点）。 */
+function wgslFloat(value: number): string {
+  return Number.isInteger(value) ? `${value}.0` : `${value}`;
 }
 
 const DFG_LUT_WIDTH = 32;
@@ -932,12 +960,12 @@ class Gpu {
   }
 
   /** 着色器模块：按自发光的颜色树和网格效果分变体（两段代码是键）。 */
-  #module(emissive: EmissiveShader | undefined, effect: MeshEffect | undefined): GPUShaderModule {
-    const key = `${emissive?.code ?? ''}|${effect?.code ?? ''}`;
+  #module(trees: MaterialShaderTrees | undefined, effect: MeshEffect | undefined): GPUShaderModule {
+    const key = `${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement]) : ''}|${effect?.code ?? ''}`;
     let module = this.#modules.get(key);
     if (!module) {
-      const label = `MeshRenderFeature${emissive ? ' (emissive tree)' : ''}${effect ? ' (mesh effect)' : ''}`;
-      module = createCheckedShaderModule(this.device, label, SHADER + meshEffectCode(effect) + (emissive ? treeEmissive(emissive) : DEFAULT_EMISSIVE));
+      const label = `MeshRenderFeature${trees ? ' (material trees)' : ''}${effect ? ' (mesh effect)' : ''}`;
+      module = createCheckedShaderModule(this.device, label, SHADER + meshEffectCode(effect) + materialTreesCode(trees));
       this.#modules.set(key, module);
     }
     return module;
@@ -949,10 +977,11 @@ class Gpu {
     if (!found) {
       const groups = [this.#viewLayout, this.#materialLayout, this.#meshLayout];
       const textures = textureCount > 0 ? this.device.createBindGroupLayout({
-        label: `MeshRenderFeature emissive tree ${textureCount}`,
+        label: `MeshRenderFeature material trees ${textureCount}`,
         entries: Array.from({ length: textureCount }, (_, i) => [
-          { binding: i * 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
-          { binding: i * 2 + 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+          // 位移贴图的树在顶点着色器里采样
+          { binding: i * 2, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, texture: {} },
+          { binding: i * 2 + 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, sampler: {} },
         ]).flat(),
       }) : undefined;
       found = { layout: this.device.createPipelineLayout({ bindGroupLayouts: textures ? [...groups, textures] : groups }), ...(textures ? { textures } : {}) };
@@ -963,12 +992,12 @@ class Gpu {
 
   /** 材质的颜色树贴图的绑定组（没有颜色树或者没有贴图时是 undefined）。 */
   treeBindGroup(material: Material): GPUBindGroup | undefined {
-    const shader = material.emissiveShader;
+    const shader = material.shaderTrees;
     if (!shader || shader.textures.length === 0) return undefined;
     let group = this.#treeBindGroups.get(material);
     if (!group) {
       group = this.device.createBindGroup({
-        label: `${material.name} emissive tree`,
+        label: `${material.name} material trees`,
         layout: this.#layout(shader.textures.length).textures!,
         entries: shader.textures.flatMap(({ texture, sampler }, i) => [
           { binding: i * 2, resource: this.#resources.texture(texture).createView() },
@@ -989,19 +1018,20 @@ class Gpu {
     const { colorFormat, depthFormat } = stage.output;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
-    const emissive = colorFormat ? material.emissiveShader : undefined;
+    // 颜色树的变体每个阶段都用：位移贴图在只写深度的阶段也要算（深度预通道和不透明阶段的深度要一样）
+    const trees = material.shaderTrees;
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
     const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${doubleSided}:${cutout}:${emissive?.code ?? ''}:${effect?.code ?? ''}`;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${doubleSided}:${cutout}:${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement]) : ''}:${effect?.code ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);
       const entryPoint = `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
-      const module = this.#module(emissive, effect);
+      const module = this.#module(trees, effect);
       pipeline = this.device.createRenderPipeline({
-        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${emissive ? ' emissive tree' : ''}`,
-        layout: this.#layout(emissive?.textures.length ?? 0).layout,
+        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${trees ? ' material trees' : ''}`,
+        layout: this.#layout(trees?.textures.length ?? 0).layout,
         vertex: {
           module,
           entryPoint,

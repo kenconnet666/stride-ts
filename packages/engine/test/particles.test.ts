@@ -3,6 +3,7 @@ import { CurveSampler } from '../src/particles/curves';
 import { FieldFalloff, FieldShapeTorus } from '../src/particles/fieldShapes';
 import type { Vec3 } from '../src/particles/math';
 import { flipbookOf, MaterialCompiler, ParticleMaterialComputeColor, scrollOf, type MaterialContext } from '../src/particles/material';
+import { ColorTreeCompiler } from '../src/rendering/colorTree';
 import { shaderClass } from '../src/rendering/shaderClass';
 import { circumcenter, expandCatmullRom, expandCircular } from '../src/particles/ribbons';
 import { drawOrder, ParticleShapeBuilder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from '../src/particles/shapes';
@@ -282,6 +283,15 @@ describe('粒子的形状和材质', () => {
     expect(program.code.split('fn ComputeColorRadial').length).toBe(2);
     expect(program.code).toContain('(ComputeColorRadial(vec4f(1.5, 0.0, 1.5, 1.0), vec4f(0.0, 0.0, 0.0, 0.0)) + ComputeColorRadial(vec4f(2.0, 0.0, 1.5, 1.0), vec4f(0.0, 0.0, 0.0, 0.0)))');
     expect(compileMaterial({ computeColor: node(1) }).code).toContain('return streams.colorScale * vec4f(1.0);');
+  });
+
+  test('顶点着色器里的标量树（位移贴图）：贴图按第 0 级 mip 取，着色器类的标量取 r；片元着色器里照常 textureSample', () => {
+    const texture = {} as Texture;
+    const compiler = new ColorTreeCompiler({ texture: () => texture, shaderClass: (name) => (name === 'Wave' ? shaderClass([], 'fn Wave() -> vec4f { return vec4f(0.5); }') : undefined) }, 3);
+    const sampled: ParticleModuleFile = { $type: 'computeTextureScalar', texture: { texture: 'height' }, channel: 'g' };
+    expect(compiler.vertexScalar(sampled)).toBe('textureSampleLevel(t0, s0, streams.uv * vec2f(1.0, 1.0) + vec2f(0.0, 0.0), 0.0).g');
+    expect(compiler.scalar(sampled)).toBe('textureSample(t1, s1, streams.uv * vec2f(1.0, 1.0) + vec2f(0.0, 0.0)).g');
+    expect(compiler.vertexScalar({ $type: 'computeShaderClassScalar', mixinReference: 'Wave' })).toBe('Wave().r');
   });
 
   test('BoundingSphereStatic：世界包围盒是位置周围 半径 · 缩放 的立方体', () => {

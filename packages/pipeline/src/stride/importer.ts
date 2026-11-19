@@ -23,6 +23,7 @@ import {
   type SoundFile,
   type SceneCollidable,
   type SceneEntityFile,
+  type MaterialFile,
   type SceneBody,
   type SceneConstraint,
   type SceneRenderTexture,
@@ -863,7 +864,7 @@ export class StrideImporter {
     });
     const materials = await Promise.all(slotAssets.map((material) => (material ? this.#materials.material(material) : null)));
     // 材质用法线贴图的槽：这些网格要生成切线
-    const normalMapped = await Promise.all(slotAssets.map(async (material) => material !== null && (await this.#materials.materialFile(material)).normalMap !== undefined));
+    const normalMapped = await Promise.all(slotAssets.map(async (material) => material !== null && needsTangents(await this.#materials.materialFile(material))));
 
     const { pivot, scale } = importTransform(asset);
     const skeletonReference = parseAssetReference(asset.data['Skeleton']);
@@ -918,7 +919,7 @@ export class StrideImporter {
       vertices: interleave({ positions: generated.positions, normals: generated.normals, uvs: generated.uvs }, [0, 0, 0], 1),
       indices: generated.indices,
     };
-    if (materialAsset && (await this.#materials.materialFile(materialAsset)).normalMap !== undefined) mesh = addTangents(mesh, this.#tools);
+    if (materialAsset && needsTangents(await this.#materials.materialFile(materialAsset))) mesh = addTangents(mesh, this.#tools);
     const encoded = this.#options.plain
       ? [plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices, mesh.tangents ? { tangents: mesh.tangents } : {})]
       : compressMeshes([mesh], this.#tools);
@@ -1103,4 +1104,9 @@ function interleave(
     if (mesh.uvs) vertices.set(mesh.uvs.subarray(v * 2, v * 2 + 2), o + 6);
   }
   return vertices;
+}
+
+/** 材质有法线贴图（贴图或颜色树）：网格要有 MikkTSpace 切线。 */
+function needsTangents(material: MaterialFile): boolean {
+  return material.normalMap !== undefined || material.normalTree !== undefined;
 }

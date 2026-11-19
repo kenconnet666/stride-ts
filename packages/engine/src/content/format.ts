@@ -461,6 +461,16 @@ export interface MaterialFile {
    * 化不成"贴图乘颜色"的自发光（比如有着色器类）：整棵颜色树（格式同粒子材质的，见 ParticleModuleFile），运行时编译成 WGSL；
    * 有它时不看 emissive、emissiveTexture。useAlpha：输出的 alpha 用自发光的 alpha（Stride 的 UseAlpha）。
    */
+  /**
+   * 法线贴图是颜色树（MaterialNormalMapFeature 的 NormalMap 是着色器类这样的树，MaterialShader 的 ComputeColorWaveNormal）：
+   * 在片元着色器里算，ScaleAndBias、IsXYNormal 同 normalMap。
+   */
+  readonly normalTree?: { readonly tree: ParticleModuleFile; readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
+  /**
+   * 位移贴图（MaterialDisplacementMapFeature，Stage 是 Vertex）：顶点沿模型空间的法线移动 树的值 × intensity
+   * （scaleAndBias 时值先从 0..1 换到 -1..1）。
+   */
+  readonly displacementTree?: { readonly tree: ParticleModuleFile; readonly intensity: number; readonly scaleAndBias: boolean };
   readonly emissiveTree?: { readonly tree: ParticleModuleFile; readonly intensity: number; readonly useAlpha: boolean };
   /** 两面都画（Stride 的 CullMode 是 None）。 */
   readonly doubleSided?: boolean;

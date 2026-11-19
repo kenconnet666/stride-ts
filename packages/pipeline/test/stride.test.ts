@@ -150,6 +150,7 @@ describe('导入 Stride 场景', () => {
     clickSound: '11111111-0000-0000-0000-0000000000a1',
     laser: '11111111-0000-0000-0000-0000000000a2',
     leaf: '11111111-0000-0000-0000-0000000000a3',
+    wave: '11111111-0000-0000-0000-0000000000a4',
     menuLibrary: '11111111-0000-0000-0000-0000000000f7',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
@@ -294,6 +295,15 @@ describe('导入 Stride 场景', () => {
       '    Transparency: !MaterialTransparencyCutoffFeature', '        Alpha: !ComputeFloat', '            Value: 0.3',
       'Layers: {}',
     ].join('\n'),
+    // MaterialShader 的水面：位移贴图和法线贴图都是着色器类
+    'Assets/Materials/Wave.sdmat': [
+      '!MaterialAsset', `Id: ${ids.wave}`, 'Attributes:',
+      '    Displacement: !MaterialDisplacementMapFeature', '        DisplacementMap: !ComputeShaderClassScalar', '            MixinReference: Wave',
+      '            Generics:', '                g1~Speed: !ComputeColorParameterFloat', '                    Value: -0.03', '            CompositionNodes: {}',
+      '        Intensity: !ComputeFloat', '            Value: 2.0', '        ScaleAndBias: false', '        Stage: Vertex',
+      '    Surface: !MaterialNormalMapFeature', '        NormalMap: !ComputeShaderClassColor', '            MixinReference: WaveNormal', '            Generics: {}', '            CompositionNodes: {}',
+      'Layers: {}',
+    ].join('\n'),
     'Assets/Glassy.sdscene': [
       '!SceneAsset', `Id: ${ids.glassScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: g1', '                Name: Holder', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg1', '                        Children: {}',
@@ -301,6 +311,7 @@ describe('导入 Stride 场景', () => {
       `                        Spawn: ${ids.cratePrefab}:Prefabs/Crate`,
       `                        Beam: ${ids.laser}:Materials/Laser`,
       `                        Foliage: ${ids.leaf}:Materials/Leaf`,
+      `                        Water: ${ids.wave}:Materials/Wave`,
       // 正交相机（PhysicsSample 的 VolumeTrigger）
       '                    c: !CameraComponent', '                        Id: cg1', '                        Projection: Orthographic', '                        OrthographicSize: 21.0',
       // 模型实例化（BepuSample）：实例引用的是 InstancingComponent 的 Id，主实体排在后面；空碰撞体的刚体
@@ -766,6 +777,11 @@ describe('导入 Stride 场景', () => {
     // Alpha 裁剪不是透明混合：材质仍不透明，只记阈值
     const leaf = JSON.parse(await readFile(path.join(out, 'Game/Materials/Leaf.material.json'), 'utf8')) as MaterialFile;
     expect([leaf.alphaCutoff, leaf.transparency]).toEqual([0.3, undefined]);
+    // 着色器类的位移贴图、法线贴图整棵导出
+    const wave = JSON.parse(await readFile(path.join(out, 'Game/Materials/Wave.material.json'), 'utf8')) as MaterialFile;
+    expect(wave.displacementTree).toEqual({ tree: { $type: 'computeShaderClassScalar', mixinReference: 'Wave', generics: { Speed: { $type: 'computeColorParameterFloat', value: -0.03 } }, compositionNodes: {} }, intensity: 2, scaleAndBias: false });
+    expect(wave.normalTree).toMatchObject({ tree: { $type: 'computeShaderClassColor', mixinReference: 'WaveNormal' }, scaleAndBias: true, isXYNormal: true });
+    expect(wave.normalMap).toBeUndefined();
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Glassy.scene.json'), 'utf8')) as SceneFile;
     expect(scene.entities[0]!.components.camera).toEqual({ verticalFieldOfView: 45, nearClipPlane: 0.1, farClipPlane: 1000, projection: 'orthographic', orthographicSize: 21 });
     // Vector2 的脚本属性是数组

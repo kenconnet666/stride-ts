@@ -43,6 +43,8 @@ export class ColorTreeCompiler {
   readonly #bound: { texture: Texture; sampler: TextureSampler }[] = [];
   /** 名字 → 函数的代码（着色器类、运算符），每个只放一次。 */
   readonly #functions = new Map<string, string>();
+  /** 正在编译顶点着色器里的树：贴图按第 0 级 mip 取（顶点着色器里没有导数，不能用 textureSample）。 */
+  #vertex = false;
 
   /** group：贴图绑定在哪个绑定组（第 i 张在绑定 2i、采样器在 2i + 1）。 */
   constructor(context: MaterialContext, group: number) {
@@ -99,10 +101,21 @@ export class ColorTreeCompiler {
         return `(${left} * ${right})`;
       }
       case 'computeShaderClassColor':
+      case 'computeShaderClassScalar':
         return this.#shaderClass(file);
       default:
         warnOnce(`color node ${String(file.$type)}`);
         return WHITE;
+    }
+  }
+
+  /** 顶点着色器里的标量树（位移贴图）的 f32 表达式。 */
+  vertexScalar(node: ParticleValue | undefined): string {
+    this.#vertex = true;
+    try {
+      return this.scalar(node);
+    } finally {
+      this.#vertex = false;
     }
   }
 
@@ -132,7 +145,8 @@ export class ColorTreeCompiler {
     const i = this.#bound.push({ texture, sampler: samplerOf(node) }) - 1;
     const [sx, sy] = get(node, 'scale', [1, 1]), [ox, oy] = get(node, 'offset', [0, 0]);
     const uv = get<string>(node, 'texcoordIndex', 'texcoord0') === 'texcoord1' ? 'streams.uv1' : 'streams.uv';
-    return `textureSample(t${i}, s${i}, ${uv} * vec2f(${float(sx!)}, ${float(sy!)}) + vec2f(${float(ox!)}, ${float(oy!)}))`;
+    const at = `${uv} * vec2f(${float(sx!)}, ${float(sy!)}) + vec2f(${float(ox!)}, ${float(oy!)})`;
+    return this.#vertex ? `textureSampleLevel(t${i}, s${i}, ${at}, 0.0)` : `textureSample(t${i}, s${i}, ${at})`;
   }
 
   /** 着色器类：调用游戏登记的 WGSL 函数，泛型参数（ComputeColorParameter*）按着色器类声明的顺序传。 */

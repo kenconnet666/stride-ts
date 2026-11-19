@@ -405,5 +405,5 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
    分步：
    1. 导入和骨架：`apps/material-shader` 导入场景、材质、贴图；平面能看（暂时没有位移、法线树）。
-   2. 材质的颜色树推广到法线贴图和位移贴图：法线树在片元着色器里算，位移树在顶点着色器里算、沿法线推顶点（Intensity、ScaleAndBias）；着色器类 ComputeColorWave、ComputeColorWaveNormal 写成 WGSL。
+   2. ~~颜色树推广到法线和位移~~（2026-11-19）：材质的 `emissiveShader` 推广成 `shaderTrees`（自发光、法线、位移三棵树用同一个编译器，贴图共用绑定组 3、顶点着色器也能读）；导入器导出 `normalTree`（法线贴图是着色器类时）和 `displacementTree`（顶点阶段的位移贴图，别的阶段警告），有法线树的网格也生成切线；位移在顶点着色器里沿模型空间的法线推（深度预通道和阴影同样推），顶点阶段的贴图用第 0 级 mip。ComputeColorWave、ComputeColorWaveNormal 写成 WGSL。在 Chrome 里看过：水面一圈圈起伏、高光跟着波纹。
    3. 冒烟和桌面比对（同 SpaceEscape 的取法，固定时间截图）。

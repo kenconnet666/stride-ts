@@ -12,7 +12,7 @@ import {
   TEXTURE_EXTENSIONS,
   type ColorOperator,
   type MaterialFile,
-  type NormalMapSlot,
+  type ParticleModuleFile,
   type SkyboxFile,
   type TextureEncoding,
   type TextureSampler,
@@ -111,6 +111,7 @@ export class MaterialImporter {
       ...await this.#emissive(asObject(attributes['Emissive']), asset, uvScale),
       ...await this.#occlusion(asObject(attributes['Occlusion']), asset, uvScale),
       ...await this.#normalMap(asObject(attributes['Surface']), asset, uvScale),
+      ...await this.#displacement(asObject(attributes['Displacement']), asset),
       ...this.#transparency(asObject(attributes['Transparency']), asset, uvScale),
       ...this.#cullMode(attributes['CullMode'], asset),
     };
@@ -158,7 +159,7 @@ export class MaterialImporter {
   }
 
   /** 法线贴图（MaterialNormalMapFeature）：开关的默认值同 Stride；InvertY 来自贴图资源的 NormalMapTextureType（默认 true）。 */
-  async #normalMap(surface: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Promise<{ normalMap?: NormalMapSlot }> {
+  async #normalMap(surface: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Promise<Pick<MaterialFile, 'normalMap' | 'normalTree'>> {
     if (!surface) return {};
     if (surface.$type !== 'MaterialNormalMapFeature') {
       this.#context.warnings.push(`${asset.file}: surface ${surface.$type ?? 'feature'} is not supported; using the vertex normals`);
@@ -166,6 +167,8 @@ export class MaterialImporter {
     }
     const node = asObject(surface['NormalMap']) ?? {};
     const reference = parseAssetReference(node['Texture']);
+    const rules = { scaleAndBias: surface['ScaleAndBias'] !== false, isXYNormal: surface['IsXYNormal'] !== false };
+    if (hasShaderClass(node)) return { normalTree: { tree: await this.#colorTree(node, asset, 'normal map'), ...rules } };
     if (node.$type !== 'ComputeTextureColor' || !reference) {
       this.#context.warnings.push(`${asset.file}: normal map ${node.$type ?? 'value'} without a texture is not supported; using the vertex normals`);
       return {};
@@ -177,11 +180,37 @@ export class MaterialImporter {
     return {
       normalMap: {
         ...slot,
-        scaleAndBias: surface['ScaleAndBias'] !== false,
-        isXYNormal: surface['IsXYNormal'] !== false,
+        ...rules,
         invertY: type?.$type === 'NormalMapTextureType' && type['InvertY'] !== false,
       },
     };
+  }
+
+  /**
+   * 位移贴图（MaterialDisplacementMapFeature）：整棵树导出，运行时在顶点着色器里算（MaterialShader 的 ComputeColorWave）。只支持
+   * Stage 是 Vertex 的（细分阶段的要曲面细分，WebGPU 没有）；Intensity、ScaleAndBias 的默认值同 Stride。
+   */
+  async #displacement(feature: StrideObject | undefined, asset: AssetEntry): Promise<Pick<MaterialFile, 'displacementTree'>> {
+    if (!feature) return {};
+    const stage = String(feature['Stage'] ?? 'Vertex');
+    if (feature.$type !== 'MaterialDisplacementMapFeature' || stage !== 'Vertex') {
+      this.#context.warnings.push(`${asset.file}: displacement ${feature.$type ?? 'feature'} in stage ${stage} is not supported; no displacement`);
+      return {};
+    }
+    const tree = await this.#colorTree(asObject(feature['DisplacementMap']) ?? {}, asset, 'displacement');
+    return { displacementTree: { tree, intensity: this.#scalar(asObject(feature['Intensity']), 1, asset), scaleAndBias: feature['ScaleAndBias'] !== false } };
+  }
+
+  /** 颜色树原样导出（运行时编译），树里的贴图导出成 TextureRef。 */
+  #colorTree(node: StrideObject, asset: AssetEntry, what: string): Promise<ParticleModuleFile> {
+    return importColorTree(node, `${asset.file}: ${what}`, {
+      texture: async (id) => {
+        const { texture, encoding, size, srgb } = await this.texture(this.#context.project.get(id, asset.file));
+        return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb };
+      },
+      entity: () => undefined,
+      warn: (message) => this.#context.warnings.push(message),
+    });
   }
 
   /**
@@ -195,15 +224,7 @@ export class MaterialImporter {
     // 有着色器类的树化不成"贴图乘颜色"：整棵导出，运行时编译（UV 缩放还不乘进树里的贴图）
     if (hasShaderClass(emissiveMap)) {
       if (uvScale[0] !== 1 || uvScale[1] !== 1) this.#context.warnings.push(`${asset.file}: UVScale is not applied to an emissive color tree`);
-      const tree = await importColorTree(emissiveMap, `${asset.file}: emissive`, {
-        texture: async (id) => {
-          const { texture, encoding, size, srgb } = await this.texture(this.#context.project.get(id, asset.file));
-          return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb };
-        },
-        entity: () => undefined,
-        warn: (message) => this.#context.warnings.push(message),
-      });
-      return { emissiveTree: { tree, intensity, useAlpha: feature['UseAlpha'] === true } };
+      return { emissiveTree: { tree: await this.#colorTree(emissiveMap, asset, 'emissive'), intensity, useAlpha: feature['UseAlpha'] === true } };
     }
     const map = this.#evaluateColor(emissiveMap, asset, uvScale);
     const emissive: Vec3Tuple = [map.color[0] * intensity, map.color[1] * intensity, map.color[2] * intensity];

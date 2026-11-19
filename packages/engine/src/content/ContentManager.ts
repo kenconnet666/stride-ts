@@ -22,7 +22,7 @@ import type { ConstraintSettings } from '../physics/Simulation';
 import type { ScriptConstructor } from '../engine/scripts';
 import { Background, Camera, Instance, Instancing, Light, Model, Sprite } from '../rendering/components';
 import type { EntityId } from '../data/prop';
-import { Material, type EmissiveShader } from '../rendering/Material';
+import { Material, type MaterialShaderTrees } from '../rendering/Material';
 import { Prefab } from './Prefab';
 import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
@@ -259,12 +259,12 @@ export class ContentManager {
       const slot = async ({ scale, offset, filter, addressU, addressV, ...ref }: TextureSlot, srgb: boolean) =>
         ({ texture: await this.#loadTextureRef(ref, srgb), scale, offset, sampler: { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } });
       const { normalMap: normal, ambientOcclusion: occlusion } = file;
-      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture, emissiveShader, glossinessTexture] = await Promise.all([
+      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture, shaderTrees, glossinessTexture] = await Promise.all([
         file.baseColorTexture && slot(file.baseColorTexture, true),
         file.emissiveTexture && slot(file.emissiveTexture, true),
         normal && slot(normal, false),
         occlusion?.texture && slot(occlusion.texture, false),
-        file.emissiveTree && this.#emissiveShader(file.emissiveTree),
+        this.#shaderTrees(file),
         file.glossinessTexture && slot(file.glossinessTexture, false),
       ]);
       return new Material(file.name, {
@@ -278,7 +278,7 @@ export class ContentManager {
         ...(glossinessTexture ? { glossinessMap: { ...glossinessTexture, channel: file.glossinessTexture!.channel, invert: file.glossinessTexture!.invert } } : {}),
         ...(file.emissive ? { emissive: file.emissive } : {}),
         ...(emissiveTexture ? { emissiveTexture } : {}),
-        ...(emissiveShader ? { emissiveShader } : {}),
+        ...(shaderTrees ? { shaderTrees } : {}),
         ...(file.doubleSided ? { doubleSided: true } : {}),
         ...(occlusion ? { ambientOcclusion: { value: occlusion.value, directLighting: occlusion.directLighting, ...(occlusionTexture ? { texture: { ...occlusionTexture, channel: occlusion.texture!.channel } } : {}) } } : {}),
         ...(file.cavity ? { cavity: file.cavity } : {}),
@@ -289,12 +289,27 @@ export class ContentManager {
     });
   }
 
-  /** 自发光的颜色树：先加载它引用的贴图，再编译（着色器类按游戏登记的找）。 */
-  async #emissiveShader({ tree, intensity, useAlpha }: NonNullable<MaterialFile['emissiveTree']>): Promise<EmissiveShader> {
-    const textures = new Map(await Promise.all(particleTextures(tree).map(async (ref) => [ref.texture, await this.#loadTextureRef(ref, ref.srgb ?? true)] as const)));
+  /**
+   * 材质的颜色树（自发光、法线贴图、位移贴图）：先加载它们引用的贴图，再用同一个编译器编译（贴图共用绑定组 3，着色器类按游戏
+   * 登记的找）。一棵树都没有时是 undefined。
+   */
+  async #shaderTrees({ emissiveTree: emissive, normalTree: normal, displacementTree: displacement }: MaterialFile): Promise<MaterialShaderTrees | undefined> {
+    if (!emissive && !normal && !displacement) return undefined;
+    const refs = [emissive, normal, displacement].flatMap((t) => (t ? particleTextures(t.tree) : []));
+    const textures = new Map(await Promise.all(refs.map(async (ref) => [ref.texture, await this.#loadTextureRef(ref, ref.srgb ?? true)] as const)));
     const compiler = new ColorTreeCompiler({ texture: (path) => textures.get(path), shaderClass: (name) => this.#shaderClasses(name) }, 3);
-    const expression = compiler.color(tree);
-    return { code: `${compiler.declarations}fn emissiveTree() -> vec4f {\n  return ${expression};\n}\n`, textures: compiler.textures, intensity, useAlpha };
+    const functions = [
+      emissive && `fn emissiveTree() -> vec4f {\n  return ${compiler.color(emissive.tree)};\n}\n`,
+      normal && `fn normalTree() -> vec4f {\n  return ${compiler.color(normal.tree)};\n}\n`,
+      displacement && `fn displacementTree() -> f32 {\n  return ${compiler.vertexScalar(displacement.tree)};\n}\n`,
+    ];
+    return {
+      code: compiler.declarations + functions.filter(Boolean).join(''),
+      textures: compiler.textures,
+      ...(emissive ? { emissive: { intensity: emissive.intensity, useAlpha: emissive.useAlpha } } : {}),
+      ...(normal ? { normal: { scaleAndBias: normal.scaleAndBias, isXYNormal: normal.isXYNormal } } : {}),
+      ...(displacement ? { displacement: { intensity: displacement.intensity, scaleAndBias: displacement.scaleAndBias } } : {}),
+    };
   }
 
   loadCubemap(path: string): Promise<Cubemap> {

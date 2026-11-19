@@ -49,16 +49,19 @@ export interface MaterialTransparency {
 }
 
 /**
- * 自发光是一棵颜色树（Stride 的 EmissiveMap 化不成"贴图乘颜色"时，比如有着色器类）：code 是编译好的 WGSL（见 colorTree.ts），
- * 定义 `fn emissiveTree() -> vec4f`，贴图在绑定组 3。网格的着色器按 code 分变体。
+ * 材质里编译成 WGSL 的颜色树（Stride 的 ComputeColor 树化不成"贴图乘颜色"时，比如有着色器类；见 colorTree.ts）。code 按有的树
+ * 定义 `fn emissiveTree() -> vec4f`、`fn normalTree() -> vec4f`（片元着色器里算）、`fn displacementTree() -> f32`（顶点着色器里
+ * 算），树里的贴图在绑定组 3。网格的着色器按 code 分变体。
  */
-export interface EmissiveShader {
+export interface MaterialShaderTrees {
   readonly code: string;
   readonly textures: readonly { readonly texture: Texture; readonly sampler: TextureSampler }[];
-  /** 乘在颜色上的强度（Stride 的 Intensity）。 */
-  readonly intensity: number;
-  /** 输出的 alpha 用自发光的 alpha（Stride 的 UseAlpha）。 */
-  readonly useAlpha: boolean;
+  /** 自发光：乘在颜色上的强度（Stride 的 Intensity），输出的 alpha 用自发光的 alpha（UseAlpha）。 */
+  readonly emissive?: { readonly intensity: number; readonly useAlpha: boolean };
+  /** 法线贴图：值是 0..1 要换到 -1..1（ScaleAndBias），只存了 xy、z 现算（IsXYNormal）。 */
+  readonly normal?: { readonly scaleAndBias: boolean; readonly isXYNormal: boolean };
+  /** 位移贴图：顶点沿模型空间的法线移动 值 × intensity（scaleAndBias 时值先换到 -1..1）。 */
+  readonly displacement?: { readonly intensity: number; readonly scaleAndBias: boolean };
 }
 
 export interface MaterialDesc {
@@ -80,8 +83,8 @@ export interface MaterialDesc {
   /** 自发光，线性颜色乘强度，默认没有；有 emissiveTexture 时再乘贴图的颜色。 */
   readonly emissive?: readonly [number, number, number];
   readonly emissiveTexture?: MaterialTexture;
-  /** 自发光的颜色树；有它时不看 emissive、emissiveTexture。 */
-  readonly emissiveShader?: EmissiveShader;
+  /** 编译好的颜色树（自发光、法线贴图、位移贴图）；有自发光树时不看 emissive、emissiveTexture。 */
+  readonly shaderTrees?: MaterialShaderTrees;
   /** 两面都画（Stride 的 CullMode 是 None），默认只画正面。 */
   readonly doubleSided?: boolean;
   /** 环境光遮蔽，默认没有遮蔽。 */
@@ -115,7 +118,7 @@ export class Material {
   readonly glossinessMap: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean } | undefined;
   readonly emissive: readonly [number, number, number];
   readonly emissiveTexture: Required<MaterialTexture> | undefined;
-  readonly emissiveShader: EmissiveShader | undefined;
+  readonly shaderTrees: MaterialShaderTrees | undefined;
   readonly doubleSided: boolean;
   readonly ambientOcclusion: { readonly value: number; readonly texture: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a' } | undefined; readonly directLighting: number };
   readonly transparency: Required<MaterialTransparency> | undefined;
@@ -141,7 +144,7 @@ export class Material {
     this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert };
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
-    this.emissiveShader = desc.emissiveShader;
+    this.shaderTrees = desc.shaderTrees;
     this.doubleSided = desc.doubleSided ?? false;
     const occlusion = desc.ambientOcclusion;
     this.ambientOcclusion = {

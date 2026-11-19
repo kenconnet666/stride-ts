@@ -367,7 +367,7 @@ export class Game {
     this.rootRenderer.draw({ game: this, time });
   }
 
-  private readonly frame = (now: number): void => {
+  private readonly frame = async (now: number): Promise<void> => {
     if (this.status !== 'running') return;
     const interval = this.lastFrameTime === undefined ? 0 : now - this.lastFrameTime;
     this.lastFrameTime = now;
@@ -384,6 +384,7 @@ export class Game {
         this.input.update();
         this.debugText.beginFrame();
         this.update(this.updateTime);
+        await scriptContinuations();
         this.transforms.update();
         this.particles.update(this.updateTime.elapsed);
       }
@@ -422,4 +423,13 @@ export class Game {
     this.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
     console.error(error);
   }
+}
+
+/**
+ * 让这一帧末尾兑现的 nextFrame、delay 的续体先跑完，再算世界矩阵、画：await 之后的代码是微任务，不等的话要到这一帧画完才跑，
+ * 异步脚本做的移动晚一帧才画出来（Stride 的异步脚本在同一帧的脚本更新里恢复，当帧就画）。续体里每多套一层 async 函数，
+ * 兑现就多传一个微任务，所以多让几轮。
+ */
+async function scriptContinuations(rounds = 16): Promise<void> {
+  for (let i = 0; i < rounds; i++) await null;
 }

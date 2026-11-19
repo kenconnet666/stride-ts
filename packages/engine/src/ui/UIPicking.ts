@@ -2,8 +2,9 @@
  * UI 的指针（Stride 的 UIPicking 和 UIRenderFeature.Picking）：按上一帧画出来的样子，把这一帧的指针事件交给指针下面的元素
  * （按下、移动、松开，换了元素时发移入、移出），更新鼠标悬停的状态。
  *
- * 只有全屏的 UI：指针位置（画布里 0..1）乘上虚拟分辨率就是 UI 的坐标。找元素：可以点的（canBeHitByUser）元素里画得最靠前的
- * （Stride 按深度，再按 DepthBias；全屏 UI 的深度都一样）；ClipToBounds 的元素外面不找它的子元素。
+ * 指针位置（画布里 0..1）先换到 UI 的虚拟坐标（全屏的乘上虚拟分辨率，放在 3D 里的用相机的射线和 UI 平面求交）。找元素：
+ * 可以点的（canBeHitByUser）元素里画得最靠前的（Stride 按深度，再按 DepthBias；一个 UI 的元素都在一个平面上，深度一样）；
+ * ClipToBounds 的元素外面不找它的子元素。
  */
 import type { PointerEvent } from '../input/InputManager';
 import { TouchEventArgs, type TouchAction } from './events';
@@ -13,6 +14,14 @@ import type { UIElement } from './UIElement';
 export interface PickingTarget {
   readonly root: UIElement;
   readonly virtualResolution: readonly [number, number];
+  /** 画布里 0..1 的位置换到 UI 的虚拟坐标；对不到 UI 上时是 undefined。 */
+  readonly toVirtual: (position: readonly [number, number]) => [number, number] | undefined;
+}
+
+/** 全屏 UI 的 PickingTarget：画布里 0..1 的位置乘上虚拟分辨率。 */
+export function fullScreenTarget(root: UIElement, virtualResolution: readonly [number, number]): PickingTarget {
+  const [vx, vy] = virtualResolution;
+  return { root, virtualResolution, toVirtual: ([x, y]) => (x < 0 || x > 1 || y < 0 || y > 1 ? undefined : [x * vx, y * vy]) };
 }
 
 /** 一个 UI 的指针状态（Stride 的 RenderUIElement 上的 LastTouchedElement 这些）。 */
@@ -42,12 +51,6 @@ export function hitTest(root: UIElement, point: readonly [number, number]): UIEl
   return hit;
 }
 
-/** 画布里 0..1 的位置换到 UI 的虚拟坐标；不在 UI 里时是 undefined。 */
-function toVirtual(target: PickingTarget, position: readonly [number, number]): [number, number] | undefined {
-  if (position[0] < 0 || position[0] > 1 || position[1] < 0 || position[1] > 1) return undefined;
-  return [position[0] * target.virtualResolution[0], position[1] * target.virtualResolution[1]];
-}
-
 /** 连着的移动合成一个（位移加起来），同 Stride 的 CompactPointerEvents。 */
 function compact(events: readonly PointerEvent[]): PointerEvent[] {
   const result: PointerEvent[] = [];
@@ -75,7 +78,7 @@ export function routePointerEvents(target: PickingTarget, state: PickingState, e
   for (const event of compact(events)) {
     const last = state.lastTouchedElement;
     if (!last && event.eventType !== 'pressed') continue;
-    const position = toVirtual(target, event.position);
+    const position = target.toVirtual(event.position);
     if (!position) continue;
     const current = hitTest(target.root, position);
     const args = new TouchEventArgs();
@@ -112,7 +115,7 @@ export function routePointerEvents(target: PickingTarget, state: PickingState, e
 
 /** 更新鼠标悬停：鼠标下面的元素是 element，它的父元素是 child，之前悬停、现在不悬停的是 none。返回鼠标下面的元素。 */
 export function updateMouseOver(target: PickingTarget, state: PickingState, mousePosition: readonly [number, number] | undefined): UIElement | null {
-  const position = mousePosition && toVirtual(target, mousePosition);
+  const position = mousePosition && target.toVirtual(mousePosition);
   const element = position ? hitTest(target.root, position) : null;
   const common = commonParent(element, state.lastMouseOverElement);
   for (let parent = state.lastMouseOverElement; parent && parent !== common; parent = parent.visualParent) parent.mouseOverState = 'none';

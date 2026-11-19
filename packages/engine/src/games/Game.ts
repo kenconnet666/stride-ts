@@ -1,6 +1,7 @@
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
 import { AnimationSystem } from '../animation/AnimationSystem';
 import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
+import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { hook } from '../engine/events';
 import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import { registerGameCommands } from '../debug/commands';
@@ -170,9 +171,11 @@ export class Game {
       this.registry.register(RecastNavigationComponent);
       this.registry.register(UIComponent);
       this.animation = new AnimationSystem(this.native, this.entities);
-      this.entities.addSystems(this.animation.system, modelNodeLinkSystem(this.entities, this.transforms, this.animation));
+      this.entities.addSystems(this.animation.system, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui));
       this.content.animationNative ??= this.native;
       this.graphicsDevice = await GraphicsDevice.create(canvas);
+      // 加载内容、脚本启动时读到的就是画面的实际大小（Stride 的后备缓冲在游戏开始前就建好了）
+      this.graphicsDevice.resizeToDisplaySize();
       this.input = new InputManager(canvas);
       this.ui.attach(this);
       if (this.native.hasFeature('texture')) this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
@@ -358,6 +361,8 @@ export class Game {
     const start = performance.now();
     this.inFrame = true;
     try {
+      // 窗口大小在帧开头跟上，这一帧的脚本和绘制看到的一样大
+      this.graphicsDevice.resizeToDisplaySize();
       const updating = !this.paused || this.pendingSteps > 0;
       if (updating) {
         if (this.paused) this.pendingSteps--;
@@ -369,9 +374,8 @@ export class Game {
         this.transforms.update();
       }
       const drawStart = performance.now();
-      this.graphicsDevice.resizeToDisplaySize();
       this.draw(this.updateTime);
-      this.ui.draw(this, this.updateTime.elapsed);
+      this.ui.draw(this);
       this.debugTextRenderer.draw(this);
       this.graphicsDevice.submitFrame();
       const end = performance.now();

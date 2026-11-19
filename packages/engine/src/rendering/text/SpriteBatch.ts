@@ -11,6 +11,8 @@
  * - drawString 的原点是虚拟坐标（和 measureString 量出来的一样）。Stride 把它直接当字体像素用，窗口和虚拟分辨率不一样大时
  *   旋转中心就偏了（SpriteFonts 的动画那屏）。
  * - 做字距（见 layout.ts）。
+ *
+ * 放在 3D 里的 UI：transform 设成 虚拟坐标 → 裁剪空间 的矩阵，begin 时给深度格式就和场景的深度比较（不写深度）。
  */
 import { srgbToLinear } from '../../mathematics/vectors';
 import type { GpuResources } from '../GpuResources';
@@ -79,10 +81,10 @@ struct Item {
   color: vec4f,
 };
 @group(0) @binding(0) var<storage, read> items: array<Item>;
-@group(0) @binding(1) var<uniform> virtualSize: vec4f;
+@group(0) @binding(1) var<uniform> transform: mat4x4f;
 
 fn toClip(p: vec2f) -> vec4f {
-  return vec4f(p.x / virtualSize.x * 2.0 - 1.0, 1.0 - p.y / virtualSize.y * 2.0, 0.0, 1.0);
+  return transform * vec4f(p, 0.0, 1.0);
 }
 
 // 贴图：a = 左上角、x 边，b.xy = y 边，c = UV 的起点和大小
@@ -161,6 +163,10 @@ function white(): Texture {
 export class SpriteBatch {
   /** 虚拟分辨率：坐标按它算，画的时候拉伸到渲染目标；不设时就是渲染目标的像素。 */
   virtualResolution: Vec2 | undefined;
+  /** 虚拟坐标到裁剪空间的矩阵（列主序）；不设时按虚拟分辨率铺满渲染目标。 */
+  transform: Float32Array | undefined;
+  /** 设了 transform 时，一个虚拟单位大约多少真实像素（文字的抗锯齿边要多宽）；不设时按渲染目标和虚拟分辨率算。 */
+  pixelRatio: Vec2 | undefined;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #glyphs: GlyphStore;
@@ -179,6 +185,7 @@ export class SpriteBatch {
   #runs: Run[] = [];
   #pass: GPURenderPassEncoder | undefined;
   #format: GPUTextureFormat = 'bgra8unorm-srgb';
+  #depthFormat: GPUTextureFormat | undefined;
   #targetSize: Vec2 = [1, 1];
   #scissor: Rect | undefined;
 
@@ -201,16 +208,20 @@ export class SpriteBatch {
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
-    this.#uniform = device.createBuffer({ label: 'SpriteBatch virtual size', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#uniform = device.createBuffer({ label: 'SpriteBatch transform', size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#items = this.#createItems(this.#data.byteLength);
   }
 
-  /** 开始一批：之后的 draw、drawString 在 end() 时画进 pass（渲染目标 width x height，颜色格式 format）。 */
-  begin(pass: GPURenderPassEncoder, width: number, height: number, format: GPUTextureFormat): void {
+  /**
+   * 开始一批：之后的 draw、drawString 在 end() 时画进 pass（渲染目标 width x height，颜色格式 format）。pass 带着深度缓冲时
+   * 给它的格式 depthFormat：画的东西被深度更近的挡住。
+   */
+  begin(pass: GPURenderPassEncoder, width: number, height: number, format: GPUTextureFormat, depthFormat?: GPUTextureFormat): void {
     if (this.#pass) throw new Error('SpriteBatch.begin called twice without end');
     this.#pass = pass;
     this.#targetSize = [width, height];
     this.#format = format;
+    this.#depthFormat = depthFormat;
     this.#count = 0;
     this.#runs = [];
     this.#scissor = undefined;
@@ -219,6 +230,34 @@ export class SpriteBatch {
   /** 之后画的东西裁到 rect（真实像素，整数）里；undefined 是不裁（UI 的 ClipToBounds）。 */
   setScissor(rect: Rect | undefined): void {
     this.#scissor = rect;
+  }
+
+  /** quad 在渲染目标上的包围盒（真实像素，向外取整）；有角落在相机后面时是整个渲染目标。 */
+  screenBounds(quad: Quad): Rect {
+    const [tw, th] = this.#targetSize;
+    const corners: Vec2[] = [[0, 0], [1, 0], [0, 1], [1, 1]];
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [u, v] of corners) {
+      const pixel = this.#toPixels(quad.origin[0] + quad.axisX[0] * u + quad.axisY[0] * v, quad.origin[1] + quad.axisX[1] * u + quad.axisY[1] * v);
+      if (!pixel) return [0, 0, tw, th];
+      x0 = Math.min(x0, pixel[0]); y0 = Math.min(y0, pixel[1]); x1 = Math.max(x1, pixel[0]); y1 = Math.max(y1, pixel[1]);
+    }
+    x0 = Math.floor(x0); y0 = Math.floor(y0);
+    return [x0, y0, Math.ceil(x1) - x0, Math.ceil(y1) - y0];
+  }
+
+  /** 虚拟坐标在渲染目标上的真实像素；在相机后面时是 undefined。 */
+  #toPixels(x: number, y: number): Vec2 | undefined {
+    const [tw, th] = this.#targetSize;
+    const m = this.transform;
+    if (!m) {
+      const [vx, vy] = this.virtualResolution ?? this.#targetSize;
+      return [(x * tw) / vx, (y * th) / vy];
+    }
+    const w = m[3]! * x + m[7]! * y + m[15]!;
+    if (!(w > 0)) return undefined;
+    const cx = (m[0]! * x + m[4]! * y + m[12]!) / w, cy = (m[1]! * x + m[5]! * y + m[13]!) / w;
+    return [((cx + 1) / 2) * tw, ((1 - cy) / 2) * th];
   }
 
   /** 画一个四边形（UI）：texture 的 uv 区域（0 到 1：u、v、宽、高）铺到 quad 上；texture 是 null 时画纯色。 */
@@ -324,7 +363,7 @@ export class SpriteBatch {
    * 文字在虚拟坐标里的大小（Stride 的 SpriteBatch.MeasureString）：按 targetSize（默认是 begin 时的渲染目标）和虚拟分辨率的比例
    * 换算，字号默认是字体的 size。
    */
-  measureString(font: SpriteFont, text: string, fontSize = font.size, targetSize: Vec2 = this.#targetSize): [number, number] {
+  measureString(font: SpriteFont, text: string, fontSize = font.size, targetSize?: Vec2): [number, number] {
     if (text === '') return [0, 0];
     const ratio = this.#ratio(targetSize);
     const [w, h] = measureText(font, text, this.#fontPixels(font, fontSize, ratio));
@@ -342,8 +381,7 @@ export class SpriteBatch {
     if (!pass) throw new Error('SpriteBatch.end called without begin');
     this.#pass = undefined;
     if (this.#count === 0) return;
-    const [vx, vy] = this.virtualResolution ?? this.#targetSize;
-    this.#device.queue.writeBuffer(this.#uniform, 0, new Float32Array([vx, vy, 0, 0]));
+    this.#device.queue.writeBuffer(this.#uniform, 0, this.transform ?? this.#screenTransform());
     const bytes = this.#count * ITEM_FLOATS * 4;
     if (bytes > this.#items.size) {
       this.#items.destroy();
@@ -380,8 +418,18 @@ export class SpriteBatch {
     this.#glyphs.destroy();
   }
 
-  /** 真实像素 / 虚拟坐标。 */
-  #ratio([width, height]: Vec2 = this.#targetSize): Vec2 {
+  /** 铺满渲染目标：虚拟坐标 (0, 0) 在左上角，y 向下。 */
+  #screenTransform(): Float32Array {
+    const [vx, vy] = this.virtualResolution ?? this.#targetSize;
+    const m = new Float32Array(16);
+    m[0] = 2 / vx; m[5] = -2 / vy; m[10] = 1; m[12] = -1; m[13] = 1; m[15] = 1;
+    return m;
+  }
+
+  /** 真实像素 / 虚拟坐标；没给 targetSize 且设了 pixelRatio 时是 pixelRatio。 */
+  #ratio(targetSize?: Vec2): Vec2 {
+    if (!targetSize && this.pixelRatio) return this.pixelRatio;
+    const [width, height] = targetSize ?? this.#targetSize;
     const [vx, vy] = this.virtualResolution ?? [width, height];
     return [width / vx, height / vy];
   }
@@ -406,7 +454,8 @@ export class SpriteBatch {
   }
 
   #pipeline(kind: Run['kind']): GPURenderPipeline {
-    const key = `${kind}:${this.#format}`;
+    const depthFormat = this.#depthFormat;
+    const key = `${kind}:${this.#format}:${depthFormat ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       pipeline = this.#device.createRenderPipeline({
@@ -420,6 +469,7 @@ export class SpriteBatch {
           targets: [{ format: this.#format, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
         },
         primitive: { topology: 'triangle-strip' },
+        ...(depthFormat ? { depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' } } : {}),
       });
       this.#pipelines.set(key, pipeline);
     }

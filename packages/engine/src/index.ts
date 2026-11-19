@@ -190,6 +190,7 @@ export { EditText, type EditTextInputType } from './ui/controls/EditText';
 export { SpriteFromSheet, SpriteFromTexture, type SpriteProvider } from './ui/sprites';
 export { buildElement, UILibrary, UIPage, type UIResources } from './ui/UIPage';
 export { UIComponent, type ResolutionStretch } from './ui/UIComponent';
+export { UIElementLink } from './ui/UIElementLink';
 export { UISystem } from './ui/UISystem';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';

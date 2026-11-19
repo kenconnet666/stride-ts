@@ -64,7 +64,7 @@ export class GraphicsDevice {
   }
 
   /**
-   * 把后备缓冲调成画布显示尺寸对应的设备像素；每帧绘制前调用。超过 GPU 纹理尺寸上限时截断，
+   * 把后备缓冲调成画布显示尺寸对应的设备像素；Game 在启动时和每帧开头调用。超过 GPU 纹理尺寸上限时截断，
    * 否则在超大或高缩放比的屏幕上 getCurrentTexture 会失败。
    */
   resizeToDisplaySize(): void {

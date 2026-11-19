@@ -38,7 +38,7 @@ export function spotAngleAttenuation(angleInner: number, angleOuter: number): [s
   return [scale, -cosOuter * scale];
 }
 
-const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
+export const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
 const CASCADE_COUNTS = { one: 1, two: 2, four: 4 } as const;
 const HDR_FORMAT: GPUTextureFormat = 'rgba16float';
 
@@ -66,6 +66,7 @@ export class ForwardRenderer {
   readonly shadowMapRenderer: ShadowMapRenderer;
 
   readonly #mainView = new RenderView();
+  #mainDepth: GPUTexture | undefined;
   /** 每个画进渲染目标贴图的相机一个视图（按 textureCameras 的顺序）。 */
   readonly #textureViews: RenderView[] = [];
   /** HDR 颜色缓冲和深度缓冲，按尺寸缓存（主画面一套，每个渲染目标贴图的尺寸一套）。 */
@@ -164,6 +165,16 @@ export class ForwardRenderer {
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
   }
 
+  /** 这一帧画的主视图（找到相机时）：放在 3D 里的 UI 按它画、按它求指针的射线。 */
+  get mainView(): RenderView | undefined {
+    return this.hasCamera ? this.#mainView : undefined;
+  }
+
+  /** 这一帧主画面的深度缓冲（画布大小，格式 DEPTH_FORMAT）：放在 3D 里的 UI 和它比深度。 */
+  get mainDepth(): GPUTexture | undefined {
+    return this.hasCamera ? this.#mainDepth : undefined;
+  }
+
   /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
   configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows }: CompositorSettings): void {
     this.clearColor.set(r, g, b, a);
@@ -223,8 +234,11 @@ export class ForwardRenderer {
     });
     copy.arena.flush();
     const targets = this.#targetsFor(canvas.width, canvas.height);
+    this.#mainDepth = targets.depth;
     const { r, g, b, a } = this.clearColor;
-    this.#drawView(context, encoder, this.hasCamera ? this.#mainView : undefined, targets, [r, g, b, a], this.drawTransparent, 'ForwardRenderer');
+    // 场景里有 UI 时留着深度缓冲（UI 在后处理之后和它比深度），否则丢掉（分块渲染的 GPU 上省带宽）
+    const keepDepth = context.game.ui.drawsInScene;
+    this.#drawView(context, encoder, this.hasCamera ? this.#mainView : undefined, targets, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth);
     this.postEffects.draw(encoder, targets.color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
   }
 
@@ -242,7 +256,7 @@ export class ForwardRenderer {
   /** 一个视图：深度预通道，然后不透明、（transparent 时）透明阶段画进 HDR 颜色缓冲。没有视图时只清屏。 */
   #drawView(
     context: RenderContext, encoder: GPUCommandEncoder, view: RenderView | undefined, targets: { color: GPUTexture; depth: GPUTexture },
-    clearColor: readonly number[], transparent: boolean, label: string,
+    clearColor: readonly number[], transparent: boolean, label: string, keepDepth = false,
   ): void {
     const { renderSystem } = this;
     const profiler = renderSystem.graphicsDevice.profiler;
@@ -261,7 +275,7 @@ export class ForwardRenderer {
       label: `${label} opaque`,
       ...(timestampWrites ? { timestampWrites } : {}),
       colorAttachments: [{ view: targets.color.createView(), clearValue: [...clearColor], loadOp: 'clear', storeOp: 'store' }],
-      depthStencilAttachment: { view: depth, depthLoadOp: 'load', depthStoreOp: 'discard' },
+      depthStencilAttachment: { view: depth, depthLoadOp: 'load', depthStoreOp: keepDepth ? 'store' : 'discard' },
     });
     if (view) {
       renderSystem.draw(context, pass, view, this.opaqueStage);

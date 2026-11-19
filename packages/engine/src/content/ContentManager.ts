@@ -30,6 +30,7 @@ import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../rendering/Texture';
 import { UIComponent } from '../ui/UIComponent';
+import { UIElementLink } from '../ui/UIElementLink';
 import { buildElement, uiAssetPaths, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile } from './format';
 
@@ -490,10 +491,11 @@ export class ContentManager {
       return entity.id;
     };
     for (const file of files) {
-      const { instance, nodeLink, ui } = file.components;
+      const { instance, nodeLink, ui, uiElementLink } = file.components;
       if (ui) created.get(file.id)!.add(uiComponent(ui, assets));
       if (instance) created.get(file.id)!.add(Instance.with({ master: entityOf(instance.master, file, 'instancing master') }));
       if (nodeLink) created.get(file.id)!.add(ModelNodeLink.with({ target: entityOf(nodeLink.target, file, 'model node link target'), nodeName: nodeLink.nodeName }));
+      if (uiElementLink) created.get(file.id)!.add(UIElementLink.with({ target: entityOf(uiElementLink.target, file, 'UI element link target'), nodeName: uiElementLink.nodeName }));
     }
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
     const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = {

@@ -3,7 +3,8 @@
  * 背景色，再画自己的东西（图片、九宫格的框、文字、弹窗的遮罩、滚动条）。颜色是 sRGB，乘上不透明度（四个通道都乘，同 Stride）。
  *
  * 和 Stride 不同：
- * - 裁剪（ClipToBounds）用剪裁矩形（元素在屏幕上的包围盒），不用模板缓冲；转了角度的元素裁到包围盒，而不是本身的形状。
+ * - 裁剪（ClipToBounds）用剪裁矩形（元素在屏幕上的包围盒），不用模板缓冲；转了角度的元素（包括斜放在 3D 里的 UI）裁到
+ *   包围盒，而不是本身的形状。
  * - 不用深度缓冲排前后：画的顺序就是 Stride 的 DepthBias 的顺序。
  * - EditText 的文字区域按内边距放（Stride 放在元素中心，左右、上下内边距不一样时文字偏了）。
  */
@@ -21,7 +22,7 @@ import type { Color, Matrix2D, UIElement } from './UIElement';
 export interface UIRenderContext {
   readonly batch: SpriteBatch;
   readonly virtualResolution: readonly [number, number];
-  /** 真实像素 / 虚拟像素。 */
+  /** 真实像素 / 虚拟像素（放在 3D 里的 UI 是估计的）。 */
   readonly ratio: readonly [number, number];
   readonly snapText: boolean;
 }
@@ -39,7 +40,7 @@ function drawElement(element: UIElement, context: UIRenderContext, scissor: Rect
   if (!element.isVisible) return;
   let clip = scissor;
   if (element.clipToBounds) {
-    clip = intersect(scissor, screenBounds(element, context.ratio));
+    clip = intersect(scissor, context.batch.screenBounds(elementQuad(element.worldMatrix, element.renderSize)));
     context.batch.setScissor(clip);
   }
   drawContent(element, context);
@@ -177,15 +178,6 @@ function offset(m: Matrix2D, x: number, y: number): Matrix2D {
 
 function scale(color: Color, factor: number): Color {
   return factor === 1 ? color : [color[0] * factor, color[1] * factor, color[2] * factor, color[3] * factor];
-}
-
-/** 元素在屏幕上的包围盒，真实像素，向外取整。 */
-function screenBounds(element: UIElement, ratio: readonly [number, number]): Rect {
-  const quad = elementQuad(element.worldMatrix, element.renderSize);
-  const xs = [0, quad.axisX[0], quad.axisY[0], quad.axisX[0] + quad.axisY[0]].map((x) => (quad.origin[0] + x) * ratio[0]);
-  const ys = [0, quad.axisX[1], quad.axisY[1], quad.axisX[1] + quad.axisY[1]].map((y) => (quad.origin[1] + y) * ratio[1]);
-  const x0 = Math.floor(Math.min(...xs)), y0 = Math.floor(Math.min(...ys));
-  return [x0, y0, Math.ceil(Math.max(...xs)) - x0, Math.ceil(Math.max(...ys)) - y0];
 }
 
 function intersect(a: Rect | undefined, b: Rect): Rect {

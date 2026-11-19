@@ -4,7 +4,7 @@ import {
   buildElement, Button, Canvas, ContentDecorator, Grid, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet, StackPanel,
   StripDefinition, TextBlock, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture,
 } from '../src/index';
-import { hitTest, PickingState, routePointerEvents, updateMouseOver } from '../src/ui/UIPicking';
+import { fullScreenTarget, hitTest, PickingState, routePointerEvents, updateMouseOver } from '../src/ui/UIPicking';
 
 /** 测试用的元素（Stride 测试里的 MeasureValidator、ArrangeValidator）：量出固定的大小，记下给它的空间。 */
 class Probe extends UIElement {
@@ -482,7 +482,7 @@ describe('UI 的指针（照 Stride 的 UIPicking）', () => {
     viewer.content = stack;
     root.children.add(button);
     root.children.add(viewer);
-    const target = { root, virtualResolution: [400, 400] as const };
+    const target = fullScreenTarget(root, [400, 400]);
     const layout = () => {
       root.measure([400, 400]);
       root.arrange([400, 400], false);

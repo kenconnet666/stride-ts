@@ -833,7 +833,7 @@ export interface SceneEntityFile {
     readonly nodeLink?: { readonly target: string | null; readonly nodeName: string };
     /**
      * Stride 的 UIElementLinkComponent：跟着 UI 元素 nodeName 走。target 是带 UI 组件的实体（场景里的 id；null 是父实体），
-     * camera 是带相机的实体（面向相机的 UI 用它算朝向；null 是不用）。
+     * camera 是带相机的实体（Stride 用它算面向相机的 UI 的朝向；引擎按 UI 实际画的相机算，不用它，见 UIElementLink）。
      */
     readonly uiElementLink?: { readonly target: string | null; readonly camera: string | null; readonly nodeName: string };
     readonly model?: {

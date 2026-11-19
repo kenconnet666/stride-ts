@@ -415,7 +415,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
       - ~~用代码建的动画剪辑（属性曲线）~~（2026-11-20）：`AnimationClip.fromCurves` 加 `propertyCurve(组件, 属性, 关键帧, 插值)`，`AnimationComponent` 照常播放和混合；没有模型的实体也能播，带骨架的模型能叠播只有曲线的剪辑。ParticlesSample 的 RotationScript 换回了 Stride 的写法。见 decisions.md 的"用代码建的动画剪辑"。
       - ~~触摸手势~~（2026-11-20，`input/gestures.ts`）：照 Stride.Input 的 Gestures 移植了点、长按、拖动、轻扫、双指组合五种识别器，`game.input.gestures` 加配置、`game.input.gestureEvents` 每帧给事件；SpaceEscape 换回手势的写法。见 decisions.md 的"手势识别"。TouchInputs 样例（专门演示手势）记进 P3 之后的样例清单。
       - 没有样例用到、挪走的：分簇（P4）；画进渲染目标贴图的相机的阴影和后处理（AnimatedModel 的那台相机本来就没开，P4）；透明物体的阴影（P4）；精灵的 Swizzle（样例的资源里全是 null）；精灵组件的九宫格边框（Stride 的边框只在 UI 的图片上起作用，UI 那边已经做了；Platformer2D 的精灵表没有边框，这一条划掉）。
-      - 还没查的：同一批透明实例的排序；RecastNavigationComponent 的排队寻路和直接移动；场景父子层级的偏移累加。
+      - **透明实例的排序**（下一个做）：Stride 把透明的渲染节点逐个从远到近排；我们按批排（看每批第一个实例的距离），同一批里的实例不排、不同批的实例不能交错，重叠的透明物体混合的先后会错。做法：透明阶段把可见实例在各批自己的那段里按到相机的距离排好（上传实例缓冲之前），画的时候按距离归并成一段一段（同一批里连续的实例一次画完，`firstInstance` 指到那一段）。只在有透明的批时做。
+      - 还没查的：RecastNavigationComponent 的排队寻路和直接移动；场景父子层级的偏移累加。
    4. UI 和文字：换行和富文本、世界空间的文字（MSDF）、按键的路由事件、还没用到的控件（ToggleButton 等）、输入框以外的无障碍树（影子 DOM：选中复制、读屏、输入法）、SVG 精灵按矢量画。
    5. 导入器里报"not supported"的逐条过一遍（材质漫反射的颜色运算和两张贴图的合成、嵌套的层、凸分解、阴影的滤波和手动分割等）：有样例用到的补上，没用到的记进后面的阶段。导入的警告每次都要看：CSharpIntermediate 的木地板成了镜面，导入时其实报了警告。~~导入没有缓存，每次都重编贴图~~（2026-11-19：贴图编码的结果按内容哈希缓存在 `~/.stride-ts/cache/pipeline`，`packages/pipeline/src/cache.ts`；一张 2048 的法线贴图编成 KTX2 要两分钟，重新导入不再等）。
       - 比对时发现要查的：PrototypingBlocks 的拱（CSharpIntermediate 的 SceneB）在点光下，拱顶内侧的两边比桌面亮 12/255 左右，Stride 那边每块之间有明暗的接缝、我们是平滑的（不带阴影比也一样）：多半是模型导入的法线（平滑组）不一样。

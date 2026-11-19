@@ -95,6 +95,8 @@ export abstract class ParticleModule extends ParticleTransform {
 /** 生成器要的发射器的部分。 */
 export interface SpawnTarget {
   readonly seedGenerator: RandomSeedGenerator;
+  /** 粒子系统现在的位置（Stride 的 CachedParticleSystem.Translation）。 */
+  readonly systemTranslation: Readonly<Vec3>;
   /** 粒子池的大小要重新算。 */
   markPoolDirty(): void;
   emit(count: number): void;
@@ -157,8 +159,12 @@ export abstract class ParticleSpawner {
     return this.#state;
   }
 
+  /** 状态换了（Stride 的 NotifyStateSwitch）。 */
+  protected onStateSwitch(_state: SpawnerState): void {}
+
   #switchTo(state: SpawnerState): void {
     this.#state = state;
+    this.onStateSwitch(state);
     const random = () => seedFloat(this.#seed, this.#offset++);
     if (state === 'active') this.#stateDuration = this.duration[0] + (this.duration[1] - this.duration[0]) * random();
     else if (state === 'rest') this.#stateDuration = this.delay[0] + (this.delay[1] - this.delay[0]) * random();
@@ -211,6 +217,85 @@ export class SpawnerPerFrame extends ParticleSpawner {
     const whole = Math.floor(toSpawn);
     this.#carryOver = toSpawn - whole;
     target.emit(whole);
+  }
+}
+
+/** 每次进入活跃状态时一次生成 SpawnCount 个（Stride 的 SpawnerBurst，枪口火焰、弹孔）。 */
+export class SpawnerBurst extends ParticleSpawner {
+  readonly spawnCount: number;
+  #hasBursted = false;
+
+  constructor(file: ParticleModuleFile) {
+    super(file);
+    this.spawnCount = Math.max(1, value(file, 'spawnCount', 100));
+  }
+
+  maxParticlesPerSecond(): number {
+    const delay = Math.min(...this.delay) + Math.min(...this.duration);
+    const times = Math.max(1, delay <= 0.01 ? 100 : 1 / delay);
+    return Math.ceil(this.spawnCount * times);
+  }
+
+  spawn(dt: number, target: SpawnTarget): void {
+    if (this.updatedState(dt, target) !== 'active') {
+      this.#hasBursted = false;
+      return;
+    }
+    if (this.#hasBursted) return;
+    this.#hasBursted = true;
+    target.emit(this.spawnCount);
+  }
+
+  protected override onStateSwitch(state: SpawnerState): void {
+    if (state !== 'active') this.#hasBursted = false;
+  }
+
+  override resetSimulation(): void {
+    super.resetSimulation();
+    this.#hasBursted = false;
+  }
+}
+
+/** 粒子系统每移动一米生成 SpawnCount 个（Stride 的 SpawnerFromDistance，受击的拖尾），小数部分累积；刚活跃的那一帧只记下位置。 */
+export class SpawnerFromDistance extends ParticleSpawner {
+  readonly spawnCount: number;
+  #carryOver = 0;
+  #hasBegun = false;
+  readonly #oldPosition: Vec3 = [0, 0, 0];
+
+  constructor(file: ParticleModuleFile) {
+    super(file);
+    this.spawnCount = value(file, 'spawnCount', 100);
+  }
+
+  maxParticlesPerSecond(): number {
+    return Math.ceil(this.spawnCount);
+  }
+
+  spawn(dt: number, target: SpawnTarget): void {
+    if (this.updatedState(dt, target) !== 'active') {
+      this.#hasBegun = false;
+      return;
+    }
+    const [x, y, z] = target.systemTranslation;
+    const [ox, oy, oz] = this.#oldPosition;
+    this.#oldPosition[0] = x;
+    this.#oldPosition[1] = y;
+    this.#oldPosition[2] = z;
+    if (!this.#hasBegun) {
+      this.#hasBegun = true;
+      return;
+    }
+    const toSpawn = this.spawnCount * Math.hypot(x - ox, y - oy, z - oz) + this.#carryOver;
+    const whole = Math.floor(toSpawn);
+    this.#carryOver = toSpawn - whole;
+    target.emit(whole);
+  }
+
+  override resetSimulation(): void {
+    super.resetSimulation();
+    this.#hasBegun = false;
+    this.#carryOver = 0;
   }
 }
 
@@ -512,6 +597,8 @@ export function createSpawner(file: ParticleModuleFile): ParticleSpawner | undef
   switch (file.$type) {
     case 'spawnerPerSecond': return new SpawnerPerSecond(file);
     case 'spawnerPerFrame': return new SpawnerPerFrame(file);
+    case 'spawnerBurst': return new SpawnerBurst(file);
+    case 'spawnerFromDistance': return new SpawnerFromDistance(file);
     default: return undefined;
   }
 }

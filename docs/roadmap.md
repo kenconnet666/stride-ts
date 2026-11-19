@@ -429,6 +429,6 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    - 材质层：SamplesAssetPackage 的 LogoA、LogoD（BepuSample、FPS 里的箱子）有 Layers（子材质按 BlendMap 的遮罩混进来），现在只画底层。
 
    分步：
-   1. SpawnerBurst、SpawnerFromDistance（照 Stride 的 Spawners），单测；FPS 开枪时枪口火焰、弹孔、拖尾在 Chrome 里看到。
+   1. ~~生成器~~（2026-11-19）：SpawnerBurst（每次活跃喷一批，Stride 的 NotifyStateSwitch 做成 `onStateSwitch`）、SpawnerFromDistance（按粒子系统移动的距离，生成器经 `SpawnTarget.systemTranslation` 拿位置），单测；FPS 冒烟加一项（三个特效的粒子都生出来）。顺手修掉：没有关键帧的曲线分量数按第一个关键帧取，颜色曲线成了 1 个分量、另外三个通道 NaN，受击拖尾画成大黑块；现在按采样器的类型定（Stride 的空曲线是 0）。
    2. 材质层：导入器把 Layers 导出成子材质加遮罩的颜色树，着色器里按遮罩混合各层的属性（漫反射、金属度、光泽度、法线）；照 Stride 的 MaterialBlendLayer。
    3. FPS 和 BepuSample 重新比对（开枪那帧的粒子、带层的箱子），更新冒烟。

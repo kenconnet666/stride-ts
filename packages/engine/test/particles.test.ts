@@ -44,6 +44,14 @@ describe('粒子的随机数（照 Stride 的 RandomSeed）', () => {
   });
 });
 
+describe('粒子的曲线', () => {
+  test('没有关键帧的曲线求出 0，分量数按类型（颜色 4 个，不是 NaN）', () => {
+    expect(new CurveSampler({ $type: 'computeCurveSamplerColor4', curve: { keyFrames: [] } }).evaluate(0.5)).toEqual([0, 0, 0, 0]);
+    expect(new CurveSampler({ $type: 'computeCurveSamplerVector3', curve: { keyFrames: [] } }).evaluate(0.5)).toEqual([0, 0, 0]);
+    expect(new CurveSampler({ $type: 'computeCurveSamplerQuaternion', curve: { keyFrames: [] } }).evaluate(0.5)).toEqual([0, 0, 0, 1]);
+  });
+});
+
 describe('粒子的模拟（照 Stride 的 ParticleEmitter）', () => {
   test('PerSecond：每秒生成 SpawnCount 个，粒子池按 寿命 · 每秒个数 定大小，寿命到了删掉', () => {
     const particles = system({ particleLifetime: [1, 1], spawners: [{ $type: 'spawnerPerSecond', spawnCount: 30 }] });
@@ -55,6 +63,33 @@ describe('粒子的模拟（照 Stride 的 ParticleEmitter）', () => {
     // 稳定后活着的不超过池的大小
     expect(emitter.pool.living).toBeGreaterThan(25);
     expect(emitter.pool.living).toBeLessThanOrEqual(30);
+  });
+
+  test('Burst：每次活跃时一次喷 SpawnCount 个（休息 0.5 秒、活跃 0.25 秒循环）', () => {
+    const particles = system({ particleLifetime: [10, 10], spawners: [{ $type: 'spawnerBurst', spawnCount: 7, delay: [0.5, 0.5], duration: [0.25, 0.25] }] });
+    const emitter = particles.emitters[0]!;
+    const living = (seconds: number) => {
+      for (let t = 0; t < seconds - 1e-9; t += STEP) particles.update(STEP);
+      return emitter.pool.living;
+    };
+    expect(living(0.4)).toBe(0);
+    expect(living(0.2)).toBe(7);
+    expect(living(0.15)).toBe(7);
+    expect(living(0.6)).toBe(14);
+  });
+
+  test('FromDistance：粒子系统每移动一米生成 SpawnCount 个，小数累积；不动不生成', () => {
+    const particles = system({ particleLifetime: [10, 10], spawners: [{ $type: 'spawnerFromDistance', spawnCount: 4, duration: [100, 100] }] });
+    const emitter = particles.emitters[0]!;
+    particles.update(STEP);
+    particles.update(STEP);
+    expect(emitter.pool.living).toBe(0);
+    for (let i = 1; i <= 10; i++) {
+      particles.translation = [i * 0.25, 0, 0];
+      particles.update(STEP);
+    }
+    // 2.5 米 · 4 个每米
+    expect(emitter.pool.living).toBe(10);
   });
 
   test('OneShot 活跃一次后不再生成；MaxParticlesOverride 定池的大小', () => {

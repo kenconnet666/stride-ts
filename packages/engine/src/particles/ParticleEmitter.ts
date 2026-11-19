@@ -58,6 +58,7 @@ export class ParticleEmitter implements ParentEmitter {
   /** 寿命到了的粒子多留一帧（Stride 的 DelayParticleDeath）：连着的子粒子生成器的个数，死亡触发要看到它们。 */
   delayParticleDeath = 0;
   #seedGenerator: RandomSeedGenerator | undefined;
+  #systemTranslation: Readonly<Vec3> = [0, 0, 0];
   #initialized = false;
   #poolDirty = true;
   #toSpawn = 0;
@@ -122,6 +123,11 @@ export class ParticleEmitter implements ParentEmitter {
     this.#poolDirty = true;
   }
 
+  /** 粒子系统现在的位置（生成器用，update 时更新）。 */
+  get systemTranslation(): Readonly<Vec3> {
+    return this.#systemTranslation;
+  }
+
   /** 这一帧再生成 count 个粒子（生成器调用；不能生成时忽略）。 */
   emit(count: number): void {
     if (this.canEmitParticles) this.#toSpawn += count;
@@ -134,6 +140,7 @@ export class ParticleEmitter implements ParentEmitter {
 
   update(dt: number, parent: EmitterParent): void {
     if (!this.#initialized) this.#initialize(parent);
+    this.#systemTranslation = parent.translation;
     this.#updateLocations(parent);
     this.#ensureCapacity();
     this.#moveAndDelete(dt);

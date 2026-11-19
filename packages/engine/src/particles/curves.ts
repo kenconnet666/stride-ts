@@ -34,7 +34,8 @@ export class CurveSampler {
         };
       })
       .sort((a, b) => a.key - b.key);
-    const size = this.#kind === 'float' ? 1 : frames[0]?.value.length ?? 1;
+    // 分量数按类型（没有关键帧的曲线也要对，VFXPackage 的受击拖尾的 ColorOverTime 主曲线是空的，Stride 求出来是 0）
+    const size = this.#kind === 'float' ? 1 : this.#kind === 'quaternion' || /(Color4|Vector4)$/.test(type) ? 4 : type.endsWith('Vector3') ? 3 : type.endsWith('Vector2') ? 2 : (frames[0]?.value.length ?? 4);
     this.#baked = Array.from({ length: BAKED }, (_, i) => sampleRaw(frames, i / (BAKED - 1), size, this.#kind));
   }
 

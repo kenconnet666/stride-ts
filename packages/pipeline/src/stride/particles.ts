@@ -14,7 +14,7 @@ import { lowerFirst, parseAssetReference, parseObjectReference, type StrideObjec
 export const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
   // Stride 的类名就拼错成这样（BoundingSphereStatic 少了个 S）
   'BoundingBoxStatic', 'BoundingSpheretatic',
-  'SpawnerPerSecond', 'SpawnerPerFrame', 'SpawnerFromParent',
+  'SpawnerPerSecond', 'SpawnerPerFrame', 'SpawnerFromParent', 'SpawnerBurst', 'SpawnerFromDistance',
   'ParticleSpawnTriggerLifetime', 'ParticleSpawnTriggerDeath', 'ParticleSpawnTriggerCollision', 'ParticleSpawnTriggerDistance',
   'InitialSizeSeed', 'InitialPositionSeed', 'InitialPositionArc', 'InitialVelocitySeed', 'InitialDirectionSeed', 'InitialRotationSeed',
   'Initial3DRotationSeed', 'InitialColorSeed', 'InitialSpawnOrder',

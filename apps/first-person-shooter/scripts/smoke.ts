@@ -1,7 +1,7 @@
 // FirstPersonShooter 的冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的，1280x720），用调试 CLI 玩一遍。
 //   pnpm --filter @stride-ts/first-person-shooter smoke [-- --hub <中枢名的一部分>]
 // 检查：场景在跑、弹匣一开始是空的；真实点击锁定鼠标，第一枪先换弹、2 秒后 9 发；鼠标转视角（灵敏度同 Stride）；W 往看的方向走；
-// 瞄准箱子开枪，箱子被推走、少一发、生成枪口火焰等特效的预制体（定时移除）；按 R 换弹时手臂播换弹动画（枪跟着骨骼动）；
+// 瞄准箱子开枪，箱子被推走、少一发、生成枪口火焰等特效的预制体（粒子生出来，定时移除）；按 R 换弹时手臂播换弹动画（枪跟着骨骼动）；
 // Esc 解锁鼠标。
 import { startSmoke } from '../../../tools/smoke.ts';
 
@@ -48,12 +48,20 @@ await sleep(500);
 const box = stride('eval', BOX) as number[];
 const before = state();
 // 点完在页面里逐帧看 0.5 秒取最多的实体数：特效可能晚一帧生成，枪口火焰又很快移除，忙的时候隔一次 CLI 调用会错过
-stride('eval', `globalThis.mostEntities = 0; (() => { const end = performance.now() + 500; const poll = () => {
-  globalThis.mostEntities = Math.max(globalThis.mostEntities, strideGame.entities.ids().length); if (performance.now() < end) requestAnimationFrame(poll); }; poll(); })(); 1`);
+// 同时记下每个特效（粒子组件所在实体的名字）最多有多少个活着的粒子
+stride('eval', `globalThis.mostEntities = 0; globalThis.mostParticles = {}; (() => { const end = performance.now() + 500; const poll = () => {
+  globalThis.mostEntities = Math.max(globalThis.mostEntities, strideGame.entities.ids().length);
+  for (const c of strideGame.particles.components) {
+    const living = c.particleSystem.emitters.reduce((sum, e) => sum + e.pool.living, 0);
+    globalThis.mostParticles[c.entity.name] = Math.max(globalThis.mostParticles[c.entity.name] ?? 0, living);
+  }
+  if (performance.now() < end) requestAnimationFrame(poll); }; poll(); })(); 1`);
 stride('mouse', 'left', '--trusted');
 await sleep(700);
 const most = stride('eval', 'globalThis.mostEntities') as number;
 check('开枪生成特效的预制体（枪口火焰、弹孔、受击拖尾）', most === before.entities + 3, { before: before.entities, most });
+const particles = stride('eval', 'globalThis.mostParticles') as Record<string, number>;
+check('特效的粒子生出来了（枪口火焰、弹孔是 SpawnerBurst，受击拖尾是 SpawnerFromDistance）', ['MuzzleFlash', 'BulletImpact', 'DamagedTrail'].every((name) => (particles[name] ?? 0) > 0), particles);
 await sleep(450);
 const pushed = stride('eval', BOX) as number[];
 check('瞄准箱子开枪：箱子被推走，少一发', box[2]! - pushed[2]! > 0.2 && state().bullets === 8, { box, pushed, bullets: state().bullets });

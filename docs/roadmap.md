@@ -413,7 +413,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
       - ~~点光和聚光的阴影~~（2026-11-20，CSharpIntermediate 的 SceneB 有一盏投阴影的点光）：点光是立方体的六个面、聚光一个透视视图，和级联共用一张图集（按矩形分配）；盏数和视图数不设上限。SceneB 和桌面比 1.23，阴影对得上。做法和取舍见 decisions.md 的"点光、聚光的阴影"。
       - MSAA（只有没移植的 VRSandbox 开了）、渲染组和渲染掩码（样例的合成器全是 All；UI 上写的 Group4、Group25 没有效果）：没有样例用到，挪到后面——MSAA 进 P4，渲染掩码进 P3（编辑器的辅助图形要用）。
       - ~~用代码建的动画剪辑（属性曲线）~~（2026-11-20）：`AnimationClip.fromCurves` 加 `propertyCurve(组件, 属性, 关键帧, 插值)`，`AnimationComponent` 照常播放和混合；没有模型的实体也能播，带骨架的模型能叠播只有曲线的剪辑。ParticlesSample 的 RotationScript 换回了 Stride 的写法。见 decisions.md 的"用代码建的动画剪辑"。
-      - **触摸手势**（`Input.Gestures`）：SpaceEscape 用了拖动手势，移植时在脚本里用指针事件自己判；TouchInputs 样例（点、拖、长按、组合手势）没移植。要补：`InputManager` 的手势识别（Tap、LongPress、Drag、Flick、Composite），SpaceEscape 换回手势的写法；TouchInputs 记进 P3 之后的样例清单。排在属性曲线后面。
+      - **触摸手势**（`Input.Gestures`）：SpaceEscape 用了拖动手势，移植时在脚本里用指针事件自己判；TouchInputs 样例（点、拖、长按、组合手势）没移植。要补：`InputManager` 的手势识别（Tap、LongPress、Drag、Flick、Composite），SpaceEscape 换回手势的写法；TouchInputs 记进 P3 之后的样例清单。**下一个做**：照 Stride.Input 的 Gestures 目录移植（`GestureRecognizer` 基类按指针的按下、移动、抬起分发，位置按屏幕长宽比归一化；Tap、LongPress、Drag、Flick、Composite 五个识别器各带配置和事件），放在 `input/gestures.ts`，`InputManager.gestures` 加配置、`gestureEvents` 每帧给出事件；单测照各识别器的状态机写。
       - 没有样例用到、挪走的：分簇（P4）；画进渲染目标贴图的相机的阴影和后处理（AnimatedModel 的那台相机本来就没开，P4）；透明物体的阴影（P4）；精灵的 Swizzle（样例的资源里全是 null）；精灵组件的九宫格边框（Stride 的边框只在 UI 的图片上起作用，UI 那边已经做了；Platformer2D 的精灵表没有边框，这一条划掉）。
       - 还没查的：同一批透明实例的排序；RecastNavigationComponent 的排队寻路和直接移动；场景父子层级的偏移累加。
    4. UI 和文字：换行和富文本、世界空间的文字（MSDF）、按键的路由事件、还没用到的控件（ToggleButton 等）、输入框以外的无障碍树（影子 DOM：选中复制、读屏、输入法）、SVG 精灵按矢量画。

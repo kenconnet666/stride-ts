@@ -44,7 +44,7 @@ import {
   parseCollisionMask,
 } from '@stride-ts/engine/content-format';
 import { addTangents, compressMeshes, meshMorph, type SourceMesh, type SourceMorph } from '../mesh.ts';
-import { importCompositor } from './compositor.ts';
+import { importCompositor, renderGroupOf } from './compositor.ts';
 import { FontImporter } from './fonts.ts';
 import { MaterialImporter, type ImportedTexture } from './materials.ts';
 import { importParticleSystem } from './particles.ts';
@@ -642,13 +642,14 @@ export class StrideImporter {
     const page = parseAssetReference(component['Page']);
     const flag = (key: string, fallback: boolean) => (typeof component[key] === 'boolean' && component[key] !== fallback ? { [lowerFirst(key)]: component[key] } : {});
     const sampler = SPRITE_SAMPLERS[String(component['Sampler'] ?? 'LinearClamp')] ?? 'linearClamp';
-    if (component['RenderGroup'] !== undefined && component['RenderGroup'] !== 'Group0') this.#warnings.push(`${where}: UI render group ${String(component['RenderGroup'])} is not supported; using Group0`);
+    const renderGroup = renderGroupOf(component['RenderGroup']);
     return {
       page: page ? await this.#ui.ui(this.#project.get(page.id, where)) : null,
       resolution: vec3(component['Resolution'], 0, [1280, 720, 1000]),
       size: vec3(component['Size'], 0, [1.28, 0.72, 1]),
       resolutionStretch: lowerFirst(String(component['ResolutionStretch'] ?? 'FixedWidthAdaptableHeight')) as SceneUI['resolutionStretch'],
       ...flag('Enabled', true),
+      ...(renderGroup !== 0 ? { renderGroup } : {}),
       ...flag('IsFullScreen', true),
       ...flag('IsBillboard', true),
       ...flag('IsFixedSize', false),
@@ -910,7 +911,8 @@ export class StrideImporter {
       while (materials.length < slot) materials.push(null);
       materials[slot] = await this.#materials.material(this.#project.get(material.id, where));
     }
-    return { model, materials, ...(component['IsShadowCaster'] === false ? { isShadowCaster: false } : {}) };
+    const renderGroup = renderGroupOf(component['RenderGroup']);
+    return { model, materials, ...(component['IsShadowCaster'] === false ? { isShadowCaster: false } : {}), ...(renderGroup !== 0 ? { renderGroup } : {}) };
   }
 
   /** 导入一个模型资源（.sdm3d），返回它的内容路径。 */

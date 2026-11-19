@@ -20,6 +20,7 @@ import type { InputManager, PointerEvent } from '../input/InputManager';
 import { Transform } from '../engine/transform';
 import { Matrix, type Matrix4 } from '../mathematics/Matrix';
 import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
+import { inRenderMask, RENDER_GROUP_ALL } from '../rendering/RenderSystem';
 import { SpriteBatch } from '../rendering/text/SpriteBatch';
 import { EditText } from './controls/EditText';
 import { ScrollViewer } from './controls/ScrollViewer';
@@ -57,6 +58,8 @@ export class UISystem {
   #releaseMouseDrag = false;
   #pointersToRelease: number[] = [];
   #input: InputManager | undefined;
+  /** 主画面的渲染组掩码（attach 以后从合成器取）：UI 的渲染组不在里面的不画。 */
+  #renderMask: () => number = () => RENDER_GROUP_ALL;
   #detachInput: (() => void) | undefined;
   /** 这一帧鼠标下面可以点的元素（Stride 的 UIElementUnderMouseCursor）。 */
   elementUnderMouseCursor: UIElement | null = null;
@@ -83,6 +86,7 @@ export class UISystem {
   /** @internal Game 建好输入以后调用：每帧在脚本之前处理 UI 的输入。 */
   attach(game: Game): void {
     this.#input = game.input;
+    this.#renderMask = () => game.graphicsCompositor.renderMask;
     this.textInput = new TextInputBridge(game.graphicsDevice.canvas);
     this.semantics = new SemanticsLayer(game.graphicsDevice.canvas);
     this.#detachInput = game.input.onResolvingCapture(() => this.#resolveInput(game));
@@ -206,7 +210,8 @@ export class UISystem {
   }
 
   #visible(): UIComponent[] {
-    return [...this.#components].filter((component) => component.enabled && component.page?.rootElement);
+    const mask = this.#renderMask();
+    return [...this.#components].filter((component) => component.enabled && component.page?.rootElement && inRenderMask(mask, component.renderGroup));
   }
 
   /** @internal 每帧画完场景之后（Game.draw）。 */

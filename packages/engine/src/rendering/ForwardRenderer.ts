@@ -18,7 +18,7 @@ import { Matrix } from '../mathematics/Matrix';
 import { Color4 } from '../mathematics/vectors';
 import { cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
-import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { Skybox } from './Skybox';
 import { UniformArena } from './postfx/ImageEffect';
@@ -177,14 +177,20 @@ export class ForwardRenderer {
     return this.hasCamera ? this.#mainView : undefined;
   }
 
+  /** 主画面画哪些渲染组（合成器里相机渲染器的 RenderMask）；没有相机时也有。 */
+  get renderMask(): number {
+    return this.#mainView.cullingMask;
+  }
+
   /** 这一帧主画面的深度缓冲（画布大小，格式 DEPTH_FORMAT）：放在 3D 里的 UI 和它比深度。 */
   get mainDepth(): GPUTexture | undefined {
     return this.hasCamera ? this.#mainDepth : undefined;
   }
 
   /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
-  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI }: CompositorSettings): void {
+  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask }: CompositorSettings): void {
     this.particlesOverUI = particlesOverUI === true;
+    this.#mainView.cullingMask = renderMask ?? RENDER_GROUP_ALL;
     this.clearColor.set(r, g, b, a);
     this.postEffects.configure(postEffects);
     this.drawTransparent = transparent;
@@ -202,8 +208,9 @@ export class ForwardRenderer {
     while (this.#textureViews.length < textureCameras.length) this.#textureViews.push(Object.assign(new RenderView(), { receivesShadows: false }));
     this.#wanted.clear();
     this.#found.clear();
-    textureCameras.forEach(({ cameraSlot, texture }, i) => {
+    textureCameras.forEach(({ cameraSlot, texture, renderMask }, i) => {
       const view = this.#textureViews[i]!;
+      view.cullingMask = renderMask ?? RENDER_GROUP_ALL;
       view.width = texture.data.width;
       view.height = texture.data.height;
       if (!this.#wanted.has(cameraSlot)) this.#wanted.set(cameraSlot, view);

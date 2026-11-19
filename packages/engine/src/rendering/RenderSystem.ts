@@ -64,6 +64,14 @@ export interface Viewport {
   readonly height: number;
 }
 
+/** 所有渲染组（Stride 的 RenderGroupMask.All）。 */
+export const RENDER_GROUP_ALL = 0xffffffff;
+
+/** 渲染组 group 在不在掩码 mask 里。 */
+export function inRenderMask(mask: number, group: number): boolean {
+  return ((mask >>> group) & 1) === 1;
+}
+
 /** 一个视角：相机、阴影级联等。矩阵的布局见 mathematics/Matrix.ts。 */
 export class RenderView {
   readonly view = Matrix.identity();
@@ -84,6 +92,11 @@ export class RenderView {
   viewport: Viewport | undefined;
   /** 着色时用不用方向光的阴影；阴影级联是按主视图算的，别的相机（画进渲染目标贴图的）暂时不用。 */
   receivesShadows = true;
+  /**
+   * 画哪些渲染组（Stride 的 RenderView.CullingMask，合成器里相机渲染器的 RenderMask）：第 g 位是 1 时画第 g 组。
+   * 默认全画。
+   */
+  cullingMask = RENDER_GROUP_ALL;
   /** 朝内的视锥平面：左、右、下、上、近、远，每个 xyzw（Matrix.frustumPlanes）。update() 算。 */
   readonly frustumPlanes = new Float32Array(24);
   /**

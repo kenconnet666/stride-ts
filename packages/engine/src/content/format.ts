@@ -736,6 +736,8 @@ export interface SceneForwardRenderer {
   readonly clearColor: readonly [number, number, number, number];
   /** 后处理（Stride 的 ForwardRenderer.PostEffects）；null 是没有后处理。 */
   readonly postEffects: ScenePostEffects | null;
+  /** 这台相机画哪些渲染组（Stride 的 SceneCameraRenderer.RenderMask，第 g 位是第 g 组）；没写是全部。 */
+  readonly renderMask?: number;
   /** 画不画透明阶段（Stride 的 TransparentRenderStage 不为 null）；画进渲染目标贴图的常常不画，贴图里就不会再出现贴图自己。 */
   readonly transparent: boolean;
 }
@@ -1152,6 +1154,8 @@ export interface SceneEntityFile {
       readonly materials: readonly (string | null)[];
       /** 投下阴影；没有时是 true（同 Stride 的 ModelComponent.IsShadowCaster）。 */
       readonly isShadowCaster?: boolean;
+      /** 渲染组（Stride 的 RenderGroup，0 到 31）；没写是 0。 */
+      readonly renderGroup?: number;
     };
     /** slot：图形合成器的相机槽位下标（Stride 的 CameraComponent.Slot），默认 0。 */
     readonly camera?: {
@@ -1207,6 +1211,8 @@ export interface SceneUI {
   /** 在场景里的大小（非全屏时），同 Stride 的 Size。 */
   readonly size: readonly [number, number, number];
   readonly resolutionStretch: 'fixedWidthFixedHeight' | 'fixedWidthAdaptableHeight' | 'fixedHeightAdaptableWidth';
+  /** 渲染组（Stride 的 RenderGroup，0 到 31）；没写是 0。主相机的掩码里没有这一组时不画。 */
+  readonly renderGroup?: number;
   /** 没写是 true（同 Stride）。 */
   readonly isFullScreen?: boolean;
   readonly isBillboard?: boolean;

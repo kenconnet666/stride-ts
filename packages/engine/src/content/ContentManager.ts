@@ -724,14 +724,17 @@ export class ContentManager {
     }
     if (!model) return;
     const overrides = model.materials.map((path) => (path === null ? null : (materials.get(path) ?? null)));
-    this.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true });
+    this.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true, renderGroup: model.renderGroup ?? 0 });
   }
 
   /**
    * 给实体挂上加载好的模型（Stride 的 `new ModelComponent(model)`）：第一个网格挂在实体上，多出来的网格挂成子实体（一个实体只能
    * 有一个 Model），有骨架的接上动画。materials 按模型的材质槽覆盖（null 是用模型自带的）。
    */
-  addModel(entity: Entity, loaded: LoadedModel, { materials = [], isShadowCaster = true }: { materials?: readonly (Material | null)[]; isShadowCaster?: boolean } = {}): void {
+  addModel(
+    entity: Entity, loaded: LoadedModel,
+    { materials = [], isShadowCaster = true, renderGroup = 0 }: { materials?: readonly (Material | null)[]; isShadowCaster?: boolean; renderGroup?: number } = {},
+  ): void {
     const entities = entity.manager;
     if (entity.get(Model)) throw new Error(`entity '${entity.name}' already has a model; removeModel it first`);
     const skinned: { entity: Entity; skin: NativeSkin }[] = [];
@@ -739,7 +742,7 @@ export class ContentManager {
     loaded.meshes.forEach(({ mesh, material: slot, skin }, i) => {
       // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
       const material = (slot === null ? null : (materials[slot] ?? loaded.materials[slot])) ?? this.defaultMaterial;
-      const component = Model.with({ mesh: mesh.id, material: material.id, isShadowCaster });
+      const component = Model.with({ mesh: mesh.id, material: material.id, isShadowCaster, renderGroup });
       let part = entity;
       if (i === 0) entity.add(component);
       else {

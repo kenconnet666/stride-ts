@@ -46,7 +46,7 @@ import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshE
 import { MATERIAL_STREAMS } from './shaderClass';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
 import { Mesh } from './Mesh';
-import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { inRenderMask, MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
@@ -55,6 +55,8 @@ export interface MeshBatch {
   readonly material: Material;
   /** 这批的实体投下阴影（Model.isShadowCaster）。 */
   readonly isShadowCaster: boolean;
+  /** 这批的实体的渲染组（Model.renderGroup）。 */
+  readonly renderGroup: number;
   /** 这批的实体带 Skinned：按蒙皮矩阵画。 */
   readonly skinned: boolean;
   /** 实体的变换槽位，前 count 个有效。 */
@@ -882,7 +884,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   });
 
   /** 实例：画主实体的模型（每帧按主实体查一次）。 */
-  readonly #masters = new Map<EntityId, { mesh: number; material: number; isShadowCaster: boolean } | null>();
+  readonly #masters = new Map<EntityId, { mesh: number; material: number; isShadowCaster: boolean; renderGroup: number } | null>();
   #entityManager: EntityManager | undefined;
   readonly #extractInstancesSystem = system('MeshRenderFeature.extractInstances', {
     with: { instance: Instance, transform: Transform },
@@ -893,11 +895,11 @@ export class MeshRenderFeature extends RootRenderFeature {
         let master = masters.get(id);
         if (master === undefined) {
           const model = id >= 0 && entities.isAlive(id) ? entities.entity(id).get(Model) : undefined;
-          master = model ? { mesh: model.mesh, material: model.material, isShadowCaster: model.isShadowCaster } : null;
+          master = model ? { mesh: model.mesh, material: model.material, isShadowCaster: model.isShadowCaster, renderGroup: model.renderGroup } : null;
           masters.set(id, master);
         }
         if (!master) continue;
-        const batch = this.#batchFor(master.mesh, master.material, master.isShadowCaster, false);
+        const batch = this.#batchFor(master.mesh, master.material, master.isShadowCaster, master.renderGroup, false);
         if (batch.count === batch.slots.length) batch.slots = grow(batch.slots, batch.count * 2);
         batch.slots[batch.count++] = transform.slot[i]!;
       }
@@ -1022,7 +1024,10 @@ export class MeshRenderFeature extends RootRenderFeature {
     const counts = cullPass.culler.counts;
     // 透明阶段画透明的材质，再给有清漆的（不透明的）材质叠一遍清漆
     const inStage = (material: Material) => (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
-    const visible = (b: number) => counts[index * cullPass.batchCount + b]! > 0 && inStage(this.batches[b]!.material);
+    const visible = (b: number) => {
+      const batch = this.batches[b]!;
+      return counts[index * cullPass.batchCount + b]! > 0 && inStage(batch.material) && inRenderMask(view.cullingMask, batch.renderGroup);
+    };
     const viewOffset = cullPass.offset + index * cullPass.slotCount;
     // 透明阶段：一段一段（同一批里连着的几个实例）从远到近；其余阶段每批一段
     const runs = stage.transparent ? this.#backToFront(context, view, cullPass, index, visible) : undefined;
@@ -1106,19 +1111,21 @@ export class MeshRenderFeature extends RootRenderFeature {
 
   /** 一张表的行按批记下变换槽位。相邻的行大多是同一批，先比较上一批，省掉大部分 Map 查找。 */
   #extract(model: ColumnsOf<typeof Model>, slots: ArrayLike<number>, count: number, skinned: boolean): void {
-    const { mesh, material, isShadowCaster } = model;
+    const { mesh, material, isShadowCaster, renderGroup } = model;
     let batch: MeshBatch | undefined;
     for (let i = 0; i < count; i++) {
-      const meshId = mesh[i]!, materialId = material[i]!, caster = isShadowCaster[i] !== 0;
-      if (!batch || batch.mesh.id !== meshId || batch.material.id !== materialId || batch.isShadowCaster !== caster) batch = this.#batchFor(meshId, materialId, caster, skinned);
+      const meshId = mesh[i]!, materialId = material[i]!, caster = isShadowCaster[i] !== 0, group = renderGroup[i]!;
+      if (!batch || batch.mesh.id !== meshId || batch.material.id !== materialId || batch.isShadowCaster !== caster || batch.renderGroup !== group) {
+        batch = this.#batchFor(meshId, materialId, caster, group, skinned);
+      }
       if (batch.count === batch.slots.length) batch.slots = grow(batch.slots, batch.count * 2);
       batch.slots[batch.count++] = slots[i]!;
     }
   }
 
-  #batchFor(meshId: number, materialId: number, isShadowCaster: boolean, skinned: boolean): MeshBatch {
-    // 两个 id 都远小于 2^25，拼成一个整数键不会冲突（最大约 2^52，在双精度的整数范围里）
-    const key = ((meshId * 0x2000000 + materialId) * 2 + (isShadowCaster ? 1 : 0)) * 2 + (skinned ? 1 : 0);
+  #batchFor(meshId: number, materialId: number, isShadowCaster: boolean, renderGroup: number, skinned: boolean): MeshBatch {
+    // 两个 id 都远小于 2^22，拼成一个整数键不会冲突（最大约 2^51，在双精度的整数范围里）
+    const key = (((meshId * 0x400000 + materialId) * 32 + renderGroup) * 2 + (isShadowCaster ? 1 : 0)) * 2 + (skinned ? 1 : 0);
     let batch = this.#batchByKey.get(key);
     if (!batch) {
       const mesh = Mesh.byId(meshId);
@@ -1126,7 +1133,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       if (!mesh) throw new Error(`Model refers to mesh ${meshId}, which does not exist`);
       if (!material) throw new Error(`Model refers to material ${materialId}, which does not exist`);
       if (skinned && !mesh.layout.joints) throw new Error(`mesh '${mesh.name}' is drawn skinned but has no joints and weights`);
-      batch = { mesh, material, isShadowCaster, skinned, slots: new Uint32Array(64), count: 0, first: 0 };
+      batch = { mesh, material, isShadowCaster, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0 };
       this.#batchByKey.set(key, batch);
       this.batches.push(batch);
     }

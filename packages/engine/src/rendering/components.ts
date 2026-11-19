@@ -82,6 +82,11 @@ export const Model = component('Model', {
   material: prop.u32().brand<'MaterialId'>(),
   /** 投下阴影（Stride 的 ModelComponent.IsShadowCaster）。 */
   isShadowCaster: prop.bool().default(true),
+  /**
+   * 渲染组（Stride 的 RenderGroup，0 到 31）：视图只画它的掩码（RenderView.cullingMask）里有的组。编辑器的辅助图形、
+   * 只给某台相机看的东西放在自己的组里。
+   */
+  renderGroup: prop.u8().max(31).default(0),
 });
 
 /**

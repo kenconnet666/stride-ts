@@ -61,7 +61,7 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
   const effectName = findNode(meshes?.['RenderStageSelectors'], (node) => node.$type?.startsWith('Stride.Rendering.MeshTransparentRenderStageSelector') === true)?.['EffectName'];
   const meshEffect = typeof effectName === 'string' && effectName !== 'StrideForwardShadingEffect' ? { meshEffect: effectName } : {};
   const main = forward && {
-    ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}), ...shadows, ...(overlay ? { particlesOverUI: true as const } : {}), ...meshEffect,
+    ...forwardSettings(forward, resolve), ...renderMaskOf(camera), ...(textureCameras.length > 0 ? { textureCameras } : {}), ...shadows, ...(overlay ? { particlesOverUI: true as const } : {}), ...meshEffect,
   };
   // 游戏的类型带程序集名、不在 Stride 的命名空间里（同场景脚本）
   const isGame = (node: StrideObject | undefined) => (node?.$type ?? '').includes(',') && !(node?.$type ?? '').startsWith('Stride.');
@@ -93,11 +93,38 @@ function textureCamerasOf(
     if (child?.$type?.startsWith('Stride.Rendering.Compositing.RenderTextureSceneRenderer') && slot !== undefined) {
       const texture = renderTexture(parseAssetReference(child['RenderTexture'])?.id ?? '');
       const forward = findRenderer(resolve(child['Child']), resolve, isForward);
-      return texture && forward ? [{ cameraSlot: slot, texture, ...forwardSettings(forward, resolve) }] : [];
+      return texture && forward ? [{ cameraSlot: slot, texture, ...forwardSettings(forward, resolve), ...renderMaskOf(node) }] : [];
     }
     return [];
   }
   return Object.values(asObject(node['Children']) ?? {}).flatMap((child) => textureCamerasOf(resolve(child), resolve, cameraSlots, renderTexture));
+}
+
+/**
+ * 渲染组的掩码（Stride 的 RenderGroupMask，YAML 里写成 `All`、`None` 或者 `Group0, Group4` 这样的一串）换成位。
+ * 全部（也是没写时的默认值）返回 undefined。
+ */
+export function renderGroupMask(value: StrideValue | undefined): number | undefined {
+  if (typeof value !== 'string' || value === 'All') return undefined;
+  let mask = 0;
+  for (const name of value.split(',').map((part) => part.trim())) {
+    const group = /^Group(\d+)$/.exec(name);
+    if (group) mask |= 1 << Number(group[1]);
+    else if (name === 'All') return undefined;
+  }
+  return mask >>> 0;
+}
+
+/** 相机渲染器（SceneCameraRenderer）的 RenderMask；全部时不写。 */
+function renderMaskOf(camera: StrideObject | undefined): { renderMask?: number } {
+  const mask = renderGroupMask(camera?.['RenderMask']);
+  return mask === undefined ? {} : { renderMask: mask };
+}
+
+/** 组件的 RenderGroup（`Group4`）换成组号；没写是 0。 */
+export function renderGroupOf(value: StrideValue | undefined): number {
+  const group = typeof value === 'string' ? /^Group(\d+)$/.exec(value) : null;
+  return group ? Number(group[1]) : 0;
 }
 
 function forwardSettings(forward: StrideObject, resolve: (node: StrideValue | undefined) => StrideObject | undefined): SceneForwardRenderer {

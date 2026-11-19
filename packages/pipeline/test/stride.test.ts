@@ -7,7 +7,7 @@ import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { DerivedDataCache } from '../src/cache';
 import { lowerFirst } from '../src/stride/yaml';
-import { cleanNodeName, strideNodeNames, dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
+import { cleanNodeName, strideNodeNames, dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, renderGroupMask, renderGroupOf, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
 
 describe('Stride 的 YAML', () => {
   test('标签里的逗号（程序集限定名）、对象引用和资源引用', () => {
@@ -554,6 +554,7 @@ describe('导入 Stride 场景', () => {
       `                        Model: ${ids.model}:Models/Tri`,
       '                        Materials: {}',
       '                        IsShadowCaster: false',
+      '                        RenderGroup: Group3',
       '                    s1: !Game.Spinner,Game',
       '                        Id: sc1',
       '        -   Entity:',
@@ -647,7 +648,7 @@ describe('导入 Stride 场景', () => {
         pssmFactor: 0.5, depthRange: 'automatic', minDistance: 0, maxDistance: 50, blendCascades: true,
       },
     });
-    expect(scene.entities[1]!.components.model).toEqual({ model: 'Game/Models/Tri', materials: [], isShadowCaster: false });
+    expect(scene.entities[1]!.components.model).toEqual({ model: 'Game/Models/Tri', materials: [], isShadowCaster: false, renderGroup: 3 });
 
     const model = decodeModel((await readFile(path.join(out, 'Game/Models/Tri.model'))).buffer as ArrayBuffer);
     expect(model.materials).toEqual(['Game/Materials/Red']);
@@ -1166,6 +1167,23 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
         Id: fw
 `)).main?.meshEffect;
     expect([withEffect('SpaceEscapeEffectMain'), withEffect('StrideForwardShadingEffect')]).toEqual(['SpaceEscapeEffectMain', undefined]);
+    // 相机渲染器的 RenderMask：全部时不写，否则换成位（第 g 位是第 g 组）
+    const withMask = (mask: string) => importCompositor(parseStrideYaml(`!GraphicsCompositorAsset
+Id: c
+Cameras:
+    s0:
+        Id: slot0
+        Name: Main
+Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
+    Id: cam
+    Camera: ref!! slot0
+    RenderMask: ${mask}
+    Child: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine
+        Id: fw
+`)).main?.renderMask;
+    expect([withMask('All'), withMask('Group0, Group4'), withMask('Group31'), withMask('None')]).toEqual([undefined, 0b10001, 0x80000000, 0]);
+    expect([renderGroupOf('Group4'), renderGroupOf('Group0'), renderGroupOf(undefined)]).toEqual([4, 0, 0]);
+    expect([renderGroupMask('All'), renderGroupMask(undefined), renderGroupMask('Group1')]).toEqual([undefined, undefined, 2]);
     // 运行时借前向渲染器画场景：不做后处理（Stride 里游戏的渲染器直接画到输出上）
     expect(underCamera.main).toEqual({ clearColor: [0, 0, 0, 1], postEffects: null, transparent: true });
     expect(custom.main).toBeUndefined();

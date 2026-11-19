@@ -15,6 +15,8 @@ export class UIComponent extends StartupScript.props('UIComponent', {
   size: prop.vec3().default([1.28, 0.72, 1]),
   /** 虚拟分辨率怎么适应画面的宽高比：宽高都固定（拉伸），固定宽、高按比例，固定高、宽按比例。 */
   resolutionStretch: prop.enum(['fixedWidthFixedHeight', 'fixedWidthAdaptableHeight', 'fixedHeightAdaptableWidth']).default('fixedWidthAdaptableHeight'),
+  /** 渲染组（Stride 的 RenderGroup，0 到 31）：主相机的掩码（合成器里相机渲染器的 RenderMask）里没有这一组时不画。 */
+  renderGroup: prop.number().min(0).max(31).step(1).default(0),
   isFullScreen: prop.bool().default(true),
   /** 不是全屏时总是正对相机。 */
   isBillboard: prop.bool().default(true),

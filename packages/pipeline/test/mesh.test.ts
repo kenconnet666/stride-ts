@@ -215,6 +215,20 @@ describe('程序模型（Stride 的 GeometricPrimitive）', () => {
     expect([cone.positions.length / 3, cone.indices.length]).toEqual([2 * 17 * 17, 2 * 16 * 31 * 3]);
     expect(extent(cone)).toEqual([0.5, 0.5, 0.5]);
     for (const mesh of [plane, sphere, geo, capsule, cylinder, cone]) expect(allCounterClockwise(mesh)).toBe(true);
-    expect(generate('TorusProceduralModel\nRadius: 1.0')).toBeUndefined();
+    expect(generate('TeapotProceduralModel\nSize: 1.0')).toBeUndefined();
+  });
+
+  test('圆环：(n+1)² 个顶点，在 XZ 平面上，外半径 Radius + Thickness；法线从管的中心线指向外面', () => {
+    const torus = generate('TorusProceduralModel\nRadius: 0.875\nThickness: 0.0625\nTessellation: 8');
+    expect([torus.positions.length / 3, torus.indices.length]).toEqual([81, 6 * 81]);
+    expect(extent(torus).map((e) => +e.toFixed(4))).toEqual([0.9375, 0.0625, 0.9375]);
+    for (let v = 0; v < 81; v++) {
+      const [x, y, z] = torus.positions.subarray(v * 3, v * 3 + 3);
+      const ring = Math.hypot(x!, z!);
+      // 管的中心线上对应的点
+      const out = [x! - (x! / ring) * 0.875, y!, z! - (z! / ring) * 0.875];
+      const normal = torus.normals.subarray(v * 3, v * 3 + 3);
+      expect(out[0]! * normal[0]! + out[1]! * normal[1]! + out[2]! * normal[2]!).toBeGreaterThan(0);
+    }
   });
 });

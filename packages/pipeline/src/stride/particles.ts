@@ -49,7 +49,7 @@ async function convert(key: string, value: StrideValue | undefined, where: strin
   if (Array.isArray(value)) return (await Promise.all(value.map((item) => convert(key, item, where, context)))).filter((item) => item !== undefined) as ParticleValue;
   const object = value as StrideObject;
   if (COLLECTIONS.has(key)) {
-    const items = await Promise.all(Object.values(object).map((item) => convert('', item, `${where} ${key}`, context)));
+    const items = await Promise.all(Object.values(object).map((item) => convert('', item, where, context)));
     return items.filter((item): item is ParticleModuleFile => item !== undefined && item !== null);
   }
   const vector = asVector(object);

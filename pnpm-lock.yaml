@@ -91,6 +91,19 @@ importers:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
 
+  apps/particles-sample:
+    dependencies:
+      '@stride-ts/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@stride-ts/native':
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.24.0/stride-ts-native-0.24.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.24.0/stride-ts-native-0.24.0.tgz
+    devDependencies:
+      vite:
+        specifier: ^8.3.8
+        version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
+
   apps/physics-sample:
     dependencies:
       '@stride-ts/engine':

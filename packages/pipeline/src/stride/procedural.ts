@@ -61,6 +61,9 @@ export function proceduralMesh(type: StrideObject): ProceduralMesh | undefined {
     case 'CylinderProceduralModel':
       mesh = cylinder(asNumber(type['Height'], 1), asNumber(type['Radius'], 0.5), asNumber(type['Tessellation'], 32), uScale, vScale);
       break;
+    case 'TorusProceduralModel':
+      mesh = torus(asNumber(type['Radius'], 0.375), asNumber(type['Thickness'], 0.125), asNumber(type['Tessellation'], 32), uScale, vScale);
+      break;
     case 'ConeProceduralModel':
       mesh = cone(asNumber(type['Radius'], 0.5), asNumber(type['Height'], 1), asNumber(type['Tessellation'], 16), uScale, vScale);
       break;
@@ -240,6 +243,30 @@ function cylinder(height: number, radius: number, tessellation: number, uScale: 
     for (let i = 0; i < n; i++) {
       const c = circle(i);
       mesh.vertex([c[0] * radius, normal[1] * half, c[2] * radius], normal, uScale * (c[0] * scaleX + 0.5), vScale * (c[2] * scaleY + 0.5));
+    }
+  }
+  return mesh;
+}
+
+/**
+ * GeometricPrimitive.Torus：圆环在 XZ 平面上，中心线半径 radius，管的半径 thickness；第 i 圈是管的截面（XY 平面上的圆）先平移到
+ * (radius, 0, 0) 再绕 Y 转 i · 2π / n - π/2，接缝处的顶点重复（UV 连续）。
+ */
+function torus(radius: number, thickness: number, tessellation: number, uScale: number, vScale: number): MeshBuilder {
+  const n = Math.max(tessellation, 3);
+  const stride = n + 1;
+  const mesh = new MeshBuilder();
+  for (let i = 0; i <= n; i++) {
+    const outer = Math.fround((i * 2 * Math.PI) / n - Math.PI / 2);
+    const cos = Math.cos(outer), sin = Math.sin(outer);
+    for (let j = 0; j <= n; j++) {
+      const inner = Math.fround((j * 2 * Math.PI) / n + Math.PI);
+      const dx = Math.cos(inner), dy = Math.sin(inner);
+      // 截面上的点 (radius + dx · thickness, dy · thickness, 0) 绕 Y 转（Stride 的 RotationY，行向量）
+      const x = radius + dx * thickness;
+      mesh.vertex([x * cos, dy * thickness, -x * sin], [dx * cos, dy, -dx * sin], (i / n) * uScale, (1 - j / n) * vScale);
+      const nextI = (i + 1) % stride, nextJ = (j + 1) % stride;
+      mesh.indices.push(i * stride + j, i * stride + nextJ, nextI * stride + j, i * stride + nextJ, nextI * stride + nextJ, nextI * stride + j);
     }
   }
   return mesh;

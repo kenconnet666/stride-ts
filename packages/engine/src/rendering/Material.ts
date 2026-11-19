@@ -88,6 +88,11 @@ export interface MaterialDesc {
   readonly ambientOcclusion?: MaterialAmbientOcclusion;
   /** 透明混合；有它的材质画在透明阶段（不写深度、从远到近）。 */
   readonly transparency?: MaterialTransparency;
+  /**
+   * Alpha 裁剪（Stride 的 MaterialTransparencyCutoffFeature）：基础色的 alpha 低于它的像素丢掉，深度预通道和阴影里也丢；
+   * 材质仍画在不透明阶段。默认没有。
+   */
+  readonly alphaCutoff?: number;
   /** cavity：可见的漫反射、镜面分别乘的系数，默认 1。 */
   readonly cavity?: { readonly diffuse: number; readonly specular: number };
   /** 法线贴图；用它的网格要有切线（资源管线给这样的网格生成 MikkTSpace 切线）。 */
@@ -114,6 +119,7 @@ export class Material {
   readonly doubleSided: boolean;
   readonly ambientOcclusion: { readonly value: number; readonly texture: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a' } | undefined; readonly directLighting: number };
   readonly transparency: Required<MaterialTransparency> | undefined;
+  readonly alphaCutoff: number | undefined;
   readonly cavity: { readonly diffuse: number; readonly specular: number };
   readonly normalMap: Required<MaterialNormalMap> | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
@@ -145,6 +151,7 @@ export class Material {
     };
     const transparency = desc.transparency;
     this.transparency = transparency && { alpha: transparency.alpha, specularAlpha: transparency.specularAlpha ?? transparency.alpha, tint: transparency.tint ?? [1, 1, 1] };
+    this.alphaCutoff = desc.alphaCutoff;
     this.cavity = desc.cavity ?? { diffuse: 1, specular: 1 };
     const normalMap = desc.normalMap;
     this.normalMap = normalMap && {

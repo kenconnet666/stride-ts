@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>stride-ts space escape</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+      body { display: grid; place-items: center; }
+      /* 竖屏游戏：画布保持游戏设置的 640x1136 比例、尽量放大居中（同桌面 Stride 的窗口；UI 和背景按这个比例设计） */
+      canvas { display: block; width: min(100vw, calc(100vh * 640 / 1136)); aspect-ratio: 640 / 1136; }
+      #stats {
+        position: fixed; top: 8px; left: 8px; margin: 0; padding: 6px 8px;
+        font: 12px/1.4 ui-monospace, monospace; color: #e8e8e8; background: rgb(0 0 0 / 0.5);
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <pre id="stats">starting...</pre>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

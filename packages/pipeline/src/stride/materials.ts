@@ -131,10 +131,12 @@ export class MaterialImporter {
   /**
    * 透明：MaterialTransparencyBlendFeature 的 alpha（限制在 0..1）同时乘漫反射和镜面；MaterialTransparencyAdditiveFeature 照
    * Stride 的 ComputeColorMaterialAlphaBlend 换成两个系数：漫反射（和输出的 alpha）乘 max(0, 2a - 1)，镜面乘 min(1, 2a)，
-   * a 是 0.5 时完全是加法。tint 是常量颜色；别的透明特性记警告。
+   * a 是 0.5 时完全是加法。tint 是常量颜色；MaterialTransparencyCutoffFeature 是 Alpha 裁剪（alphaCutoff）；别的透明特性记警告。
    */
-  #transparency(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Pick<MaterialFile, 'transparency'> {
+  #transparency(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Pick<MaterialFile, 'transparency' | 'alphaCutoff'> {
     if (!feature) return {};
+    // Alpha 裁剪不混合，材质仍画在不透明阶段（Stride 的 MaterialTransparencyCutoffFeature，Alpha 默认 0.5）
+    if (feature.$type === 'MaterialTransparencyCutoffFeature') return { alphaCutoff: this.#scalar(asObject(feature['Alpha']), 0.5, asset) };
     const additive = feature.$type === 'MaterialTransparencyAdditiveFeature';
     if (feature.$type !== 'MaterialTransparencyBlendFeature' && !additive) {
       this.#context.warnings.push(`${asset.file}: transparency ${feature.$type ?? 'feature'} is not supported; the material is opaque`);

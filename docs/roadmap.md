@@ -394,7 +394,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    - 走廊往远处弯下去、远处起雾，是自定义着色器：效果 SpaceEscapeEffectMain 在 StrideForwardShadingEffect 上加 TransformationBendWorld（世界位置的 x、y 加 z² 项）和 CustomFogEffect（按深度和高度往雾色插值）。参数由渲染特性 BendFogRenderFeature 设。
 
    分步：
-   1. 导入和骨架：`apps/space-escape` 导入游戏设置、场景（Scene、LevelBlocks）、模型、骨架、动画、材质；场景能看。
+   1. ~~导入和骨架~~（2026-11-19）：`apps/space-escape` 导入游戏设置、场景（Scene、LevelBlocks）、模型、骨架、动画、材质；在 Chrome 里看过，角色画出来了。导入器补上：重名的节点照 Stride 的 GenerateUniqueNames 加 `_1`、`_2`（深度优先先序，第一个也加；以前骨架找不到 `jet_F_R_1` 这类节点，动画只对第一个同名节点），骨架、动画、蒙皮都按这个名字（`strideNodeNames`）；Alpha 裁剪（MaterialTransparencyCutoffFeature，材质的 `alphaCutoff`，不透明阶段里丢掉 alpha 低于阈值的像素，深度预通道和阴影也丢）。
    2. 着色器：网格材质的顶点和着色扩展点（世界位置在投影前可改、着色结果可改），游戏用 `shaderClass` 写弯曲和雾（同 ParticlesSample 的自定义着色器类）；BendFogRenderFeature 的参数（开关、雾色、弯曲系数）。
    3. 脚本：CharacterScript（换道、跳、滑铲，动画切换，和障碍的碰撞）、BackgroundScript 加 LevelGenerator、Section、Obstacle、Hole（程序关卡）、GameScript、UIScript、PlayIdleAnimationScript；能玩。
    4. 冒烟和桌面比对（同 JumpyJet 的取法，样例在 master 还是 4.4.2 先确认）。

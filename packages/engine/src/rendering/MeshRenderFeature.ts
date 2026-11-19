@@ -122,10 +122,11 @@ struct Material {
   specular: u32,
   normalFlags: u32,
   occlusionDirect: f32,
-  // 光泽度贴图：通道的单位向量（没有贴图时是 0）、x 为 1 时贴图存的是粗糙度（Stride 的 Invert）
+  // 光泽度贴图：通道的单位向量（没有贴图时是 0）
   glossinessMask: vec4f,
   glossinessUvTransform: vec4f,
-  glossinessFlags: vec4f,
+  // x 为 1 时光泽度贴图存的是粗糙度（Stride 的 Invert）；y 是 Alpha 裁剪的阈值，没有时是 -1
+  flags: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
@@ -398,11 +399,23 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   return result + select(vec3f(0.0), reflected * lightColorNdotL, s.hasSpecular);
 }
 
+/** Alpha 裁剪的材质在只写深度的阶段（深度预通道、阴影）：同不透明阶段一样丢掉 alpha 低于阈值的像素。 */
+@fragment fn fsCutout(in: Varyings) {
+  let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
+  let base = select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
+  if (base.a < material.flags.y) {
+    discard;
+  }
+}
+
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let n = surfaceNormal(in);
   let v = normalize(view.eye.xyz - in.world);
   let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
   let base = select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
+  if (base.a < material.flags.y) {
+    discard;
+  }
   let albedo = base.rgb;
 
   // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint
@@ -421,7 +434,7 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   // 粗糙度：常量，或者光泽度贴图的一个通道（没有贴图时 mask 是 0，取常量）
   let glossTexel = dot(textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw), material.glossinessMask);
   let hasGlossTexture = dot(material.glossinessMask, vec4f(1.0)) > 0.0;
-  let roughness = select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.glossinessFlags.x > 0.5), hasGlossTexture);
+  let roughness = select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture);
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
 
@@ -965,7 +978,9 @@ class Gpu {
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
     const emissive = colorFormat ? material.emissiveShader : undefined;
     const doubleSided = colorFormat !== undefined && material.doubleSided;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${doubleSided}:${emissive?.code ?? ''}`;
+    // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
+    const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${doubleSided}:${cutout}:${emissive?.code ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);
@@ -992,6 +1007,7 @@ class Gpu {
           }],
         },
         ...(colorFormat ? { fragment: { module, entryPoint: 'fs', targets: [{ format: colorFormat, ...(stage.transparent ? { blend: PREMULTIPLIED_ALPHA } : {}) }] } } : {}),
+        ...(cutout ? { fragment: { module, entryPoint: 'fsCutout', targets: [] } } : {}),
         primitive: stage.shadowCasters
           ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth }
           : { topology: 'triangle-list', cullMode: doubleSided ? 'none' : 'back', frontFace: 'ccw' },
@@ -1183,7 +1199,7 @@ class Gpu {
       const gloss = material.glossinessMap;
       floats.set(gloss ? CHANNELS[gloss.channel] : [0, 0, 0, 0], 44);
       floats.set(uv(gloss), 48);
-      floats.set([gloss?.invert ? 1 : 0, 0, 0, 0], 52);
+      floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, 0, 0], 52);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});

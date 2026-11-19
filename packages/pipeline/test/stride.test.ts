@@ -6,7 +6,7 @@ import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type Sc
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { lowerFirst } from '../src/stride/yaml';
-import { cleanNodeName, dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
+import { cleanNodeName, strideNodeNames, dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
 
 describe('Stride 的 YAML', () => {
   test('标签里的逗号（程序集限定名）、对象引用和资源引用', () => {
@@ -149,6 +149,7 @@ describe('导入 Stride 场景', () => {
     menuPage: '11111111-0000-0000-0000-0000000000f6',
     clickSound: '11111111-0000-0000-0000-0000000000a1',
     laser: '11111111-0000-0000-0000-0000000000a2',
+    leaf: '11111111-0000-0000-0000-0000000000a3',
     menuLibrary: '11111111-0000-0000-0000-0000000000f7',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
@@ -286,12 +287,20 @@ describe('导入 Stride 场景', () => {
       '    CullMode: None',
       'Layers: {}',
     ].join('\n'),
+    // SpaceEscape 的 ef00：Alpha 裁剪
+    'Assets/Materials/Leaf.sdmat': [
+      '!MaterialAsset', `Id: ${ids.leaf}`, 'Attributes:',
+      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    Transparency: !MaterialTransparencyCutoffFeature', '        Alpha: !ComputeFloat', '            Value: 0.3',
+      'Layers: {}',
+    ].join('\n'),
     'Assets/Glassy.sdscene': [
       '!SceneAsset', `Id: ${ids.glassScene}`, 'Hierarchy:', '    Parts:', '        -   Entity:', '                Id: g1', '                Name: Holder', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg1', '                        Children: {}',
       '                    s: !Game.Holder,Game', '                        Id: sg1', `                        Look: ${ids.glass}:Materials/Glass`, '                        Speed: {X: 5.0, Y: 2.0}',
       `                        Spawn: ${ids.cratePrefab}:Prefabs/Crate`,
       `                        Beam: ${ids.laser}:Materials/Laser`,
+      `                        Foliage: ${ids.leaf}:Materials/Leaf`,
       // 正交相机（PhysicsSample 的 VolumeTrigger）
       '                    c: !CameraComponent', '                        Id: cg1', '                        Projection: Orthographic', '                        OrthographicSize: 21.0',
       // 模型实例化（BepuSample）：实例引用的是 InstancingComponent 的 Id，主实体排在后面；空碰撞体的刚体
@@ -754,6 +763,9 @@ describe('导入 Stride 场景', () => {
       doubleSided: true,
     });
     expect(laser.emissive).toBeUndefined();
+    // Alpha 裁剪不是透明混合：材质仍不透明，只记阈值
+    const leaf = JSON.parse(await readFile(path.join(out, 'Game/Materials/Leaf.material.json'), 'utf8')) as MaterialFile;
+    expect([leaf.alphaCutoff, leaf.transparency]).toEqual([0.3, undefined]);
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Glassy.scene.json'), 'utf8')) as SceneFile;
     expect(scene.entities[0]!.components.camera).toEqual({ verticalFieldOfView: 45, nearClipPlane: 0.1, farClipPlane: 1000, projection: 'orthographic', orthographicSize: 21 });
     // Vector2 的脚本属性是数组
@@ -979,6 +991,19 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
   test('节点名同 Stride 的 CleanNodeName：FBX 的命名空间只留最后一段，去掉 # 和 __ 之后的部分、空格', () => {
     expect(['mannequinModel:CATRigHub001', 'a:b:Hand', 'Bone#1', 'Arm__end', 'Left Hand', 'Trailing:', ''].map(cleanNodeName))
       .toEqual(['CATRigHub001', 'Hand', 'Bone', 'Arm', 'LeftHand', 'Trailing_', '']);
+  });
+
+  test('重名的节点同 Stride 的 GenerateUniqueNames：深度优先先序，重名的都按顺序加 _1、_2（第一个也加）', () => {
+    // 根下面是 b、jet、c，b 下面是 jet、ns:jet。数组的顺序不是先序：先序是 0、1、2、4、3、5
+    const nodes = [
+      { name: 'root', parent: -1 },
+      { name: 'b', parent: 0 },
+      { name: 'jet', parent: 1 },
+      { name: 'jet', parent: 0 },
+      { name: 'ns:jet', parent: 1 },
+      { name: 'c', parent: 0 },
+    ];
+    expect(strideNodeNames(nodes)).toEqual(['root', 'b', 'jet_1', 'jet_3', 'jet_2', 'c']);
   });
 
   test('键名首字母小写：开头的缩写整个小写，后面的单词不变', () => {

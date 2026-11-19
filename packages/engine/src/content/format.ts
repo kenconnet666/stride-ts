@@ -468,6 +468,8 @@ export interface MaterialFile {
   readonly ambientOcclusion?: AmbientOcclusionSlot;
   /** 透明（Stride 的 MaterialTransparencyBlendFeature）：预乘 alpha 混合，画在透明阶段。 */
   readonly transparency?: TransparencyFile;
+  /** Alpha 裁剪（Stride 的 MaterialTransparencyCutoffFeature 的 Alpha）：基础色的 alpha 低于它的像素丢掉，材质仍是不透明的。 */
+  readonly alphaCutoff?: number;
   /** Stride 的 Occlusion 特性里的 cavity：漫反射和镜面的可见部分乘上这两个系数。 */
   readonly cavity?: { readonly diffuse: number; readonly specular: number };
   readonly normalMap?: NormalMapSlot;

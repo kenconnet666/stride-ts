@@ -281,6 +281,7 @@ export class ContentManager {
         ...(file.cavity ? { cavity: file.cavity } : {}),
         ...(normalTexture ? { normalMap: { ...normalTexture, scaleAndBias: normal!.scaleAndBias, isXYNormal: normal!.isXYNormal, invertY: normal!.invertY } } : {}),
         ...(file.transparency ? { transparency: file.transparency } : {}),
+        ...(file.alphaCutoff === undefined ? {} : { alphaCutoff: file.alphaCutoff }),
       });
     });
   }

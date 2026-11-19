@@ -53,7 +53,7 @@ export async function importSkeleton(asset: AssetEntry, context: AnimationImport
   const transform = importMatrix(asset);
   const scene = await context.tools.loadScene(await readFile(sourceOf(asset)));
   try {
-    const nodeOf = nodesByName(scene, asset.file, context);
+    const nodeOf = nodesByName(scene);
     // 父关节：列表是深度优先的，每个深度最近的那个就是下一层的父关节
     const lastAtDepth: number[] = [];
     const joints = listed.map(({ name, depth }, index) => {
@@ -94,7 +94,7 @@ export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkele
   try {
     if (scene.animations.length === 0) throw new Error(`${asset.file}: ${sourceOf(asset)} has no animation`);
     const baked = await scene.bakeAnimation(0, SAMPLE_RATE);
-    const nodeOf = nodesByName(scene, asset.file, context);
+    const nodeOf = nodesByName(scene);
     const animationTransform = importMatrix(asset);
     if (!skeleton.joints.some((joint) => nodeOf.has(cleanNodeName(joint.name)))) context.warn(`${asset.file}: no node of ${sourceOf(asset)} matches a joint of ${skeleton.path}; the animation stays in the rest pose`);
     let tracks: JointTrack[] = skeleton.joints.map((joint) => {
@@ -132,8 +132,9 @@ export function meshSkin(mesh: MeshData, scene: Scene, skeleton: ImportedSkeleto
   const untransform = new Float32Array(16);
   Matrix.invert(untransform, modelTransform);
   const vertexCount = mesh.positions.length / 3;
+  const names = strideNodeNames(scene.nodes);
   if (!mesh.skin) {
-    const name = cleanNodeName(scene.nodes[mesh.node]?.name);
+    const name = names[mesh.node];
     const joint = name === undefined ? undefined : skeleton.indexOf.get(name);
     if (joint === undefined) return undefined;
     const inverseBind = new Float32Array(16);
@@ -145,7 +146,7 @@ export function meshSkin(mesh: MeshData, scene: Scene, skeleton: ImportedSkeleto
   }
   const { jointNodes, inverseBinds, joints, weights } = mesh.skin;
   const mapped = Array.from(jointNodes, (node) => {
-    const name = cleanNodeName(scene.nodes[node]?.name) ?? '';
+    const name = names[node] ?? '';
     const joint = skeleton.indexOf.get(name);
     if (joint === undefined) warn(`${where}: skin joint '${name}' is not in skeleton ${skeleton.path}; bound to the root`);
     return joint ?? 0;
@@ -183,15 +184,38 @@ export function cleanNodeName<T extends string | undefined>(name: T): T {
   return clean.replaceAll(':', '_').replaceAll(' ', '') as T;
 }
 
-/** 节点名（按 cleanNodeName）到下标；重名的节点警告一次，用第一个。 */
-function nodesByName(scene: Scene, where: string, context: AnimationImportContext): Map<string, number> {
-  const nodeOf = new Map<string, number>();
-  scene.nodes.forEach((node, i) => {
-    const name = cleanNodeName(node.name);
-    if (!nodeOf.has(name)) nodeOf.set(name, i);
-    else context.warn(`${where}: several nodes are named '${name}'; joints match the first`);
-  });
-  return nodeOf;
+/**
+ * 每个节点在 Stride 里的名字（Stride.Importer.3D 的 GenerateNodeNames、GenerateUniqueNames）：按深度优先的先序数一遍，
+ * cleanNodeName 之后重名的节点全都按出现的顺序加 `_1`、`_2`……（第一个也加），骨架、动画、蒙皮都按这个名字对节点。
+ */
+export function strideNodeNames(nodes: readonly { readonly name: string; readonly parent: number }[]): string[] {
+  const children = nodes.map(() => [] as number[]);
+  const roots: number[] = [];
+  nodes.forEach((node, i) => (node.parent >= 0 ? children[node.parent]!.push(i) : roots.push(i)));
+  const order: number[] = [];
+  const visit = (i: number): void => {
+    order.push(i);
+    for (const child of children[i]!) visit(child);
+  };
+  roots.forEach(visit);
+  const clean = nodes.map((node) => cleanNodeName(node.name) ?? '');
+  const total = new Map<string, number>();
+  for (const name of clean) total.set(name, (total.get(name) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const names = [...clean];
+  for (const i of order) {
+    const name = clean[i]!;
+    if (total.get(name)! < 2) continue;
+    const count = (seen.get(name) ?? 0) + 1;
+    seen.set(name, count);
+    names[i] = `${name}_${count}`;
+  }
+  return names;
+}
+
+/** 节点的 Stride 名字（strideNodeNames）到下标。 */
+function nodesByName(scene: Scene): Map<string, number> {
+  return new Map(strideNodeNames(scene.nodes).map((name, i) => [name, i]));
 }
 
 /** 一直停在静止姿势的轨道。 */

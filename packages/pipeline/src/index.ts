@@ -7,6 +7,6 @@ export { addTangents, compressMeshes, MAX_QUANTIZED_EXTENT, MAX_QUANTIZED_UV_RAN
 export { floatToHalf, fromRgb9e5, halfToFloat, readDdsCubemap, regenerateMips, toHalf, toRgb9e5, type FloatCubemap } from './hdr.ts';
 export { StrideProject, type AssetEntry, type AssetRoot } from './stride/project.ts';
 export { asNumber, asObject, dictionaryKey, parseAssetReference, parseObjectReference, parseStrideYaml, type StrideObject, type StrideValue } from './stride/yaml.ts';
-export { cleanNodeName } from './stride/animation.ts';
+export { cleanNodeName, strideNodeNames } from './stride/animation.ts';
 export { importCompositor, type ImportedCompositor } from './stride/compositor.ts';
 export { proceduralMesh, type ProceduralMesh } from './stride/procedural.ts';

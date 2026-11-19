@@ -13,10 +13,13 @@
  * --overrides 是覆盖目录：<目录>/<内容路径>.svg（或 .png、.jpg）代替资源的源图片，原样导出。
  * --textures 是没有覆盖文件的贴图怎么导出：ktx2（默认）、source（PNG/JPEG 原样复制）、smallest（取下载小的）。
  * --plain 导出不压缩的内容（float 顶点、不用 meshopt），方便查看和调试；默认量化加 meshopt。
+ * 贴图编码的结果缓存在 ~/.stride-ts/cache/pipeline（按内容的哈希，见 cache.ts），--no-cache 不用它。
  */
+import os from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { createStrideTools } from '@stride-ts/native/tools';
+import { DerivedDataCache } from './cache.ts';
 import { StrideImporter } from './stride/importer.ts';
 import { StrideProject, type AssetRoot } from './stride/project.ts';
 
@@ -26,7 +29,7 @@ const STRIDE_PACKAGES: readonly AssetRoot[] = [
   { package: 'Stride.Engine', dir: 'sources/engine/Stride.Engine/AssetPackage/Assets/Shared' },
   { package: 'Stride.UI.Assets', dir: 'sources/plugins/UI/Stride.UI.Assets/Assets' },
 ];
-const USAGE = 'usage: cli.ts import-stride --package <name>=<assets dir> [...] [--stride <Stride repo>] [--scene <package>/<path>] [--asset <package>/<path>] --out <content dir> [--overrides <dir>] [--textures ktx2|source|smallest] [--plain]';
+const USAGE = 'usage: cli.ts import-stride --package <name>=<assets dir> [...] [--stride <Stride repo>] [--scene <package>/<path>] [--asset <package>/<path>] --out <content dir> [--overrides <dir>] [--textures ktx2|source|smallest] [--plain] [--no-cache]';
 
 async function importStride(args: string[]): Promise<void> {
   const { values } = parseArgs({
@@ -41,6 +44,7 @@ async function importStride(args: string[]): Promise<void> {
       plain: { type: 'boolean' },
       overrides: { type: 'string' },
       textures: { type: 'string' },
+      'no-cache': { type: 'boolean' },
     },
   });
   if (!values.package?.length || !(values.scene?.length || values.asset?.length) || !values.out) throw new Error(USAGE);
@@ -64,7 +68,8 @@ async function importStride(args: string[]): Promise<void> {
   try {
     const textureEncoding = TEXTURE_POLICIES.find((policy) => policy === (values.textures ?? 'ktx2'));
     if (!textureEncoding) throw new Error(`--textures ${values.textures}: expected ${TEXTURE_POLICIES.join(', ')}`);
-    const options = { plain: values.plain ?? false, textureEncoding, ...(values.overrides ? { overrides: values.overrides } : {}) };
+    const cache = values['no-cache'] ? undefined : new DerivedDataCache(path.join(os.homedir(), '.stride-ts', 'cache', 'pipeline'));
+    const options = { plain: values.plain ?? false, textureEncoding, ...(values.overrides ? { overrides: values.overrides } : {}), ...(cache ? { cache } : {}) };
     const importer = new StrideImporter(project, tools, values.out, options);
     for (const scene of scenes) {
       const result = await importer.importScene(scene);
@@ -75,6 +80,7 @@ async function importStride(args: string[]): Promise<void> {
     const { skipped, warnings } = importer;
     if (skipped.size > 0) console.log(`skipped components: ${[...skipped].map(([type, count]) => `${type} x${count}`).join(', ')}`);
     for (const warning of warnings) console.warn(`warning: ${warning}`);
+    if (cache && cache.hits + cache.misses > 0) console.log(`texture cache: ${cache.hits} reused, ${cache.misses} encoded`);
   } finally {
     tools.shutdown();
   }

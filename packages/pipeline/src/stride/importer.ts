@@ -47,6 +47,7 @@ import { importCompositor } from './compositor.ts';
 import { FontImporter } from './fonts.ts';
 import { MaterialImporter, type ImportedTexture } from './materials.ts';
 import { importParticleSystem } from './particles.ts';
+import type { DerivedDataCache } from '../cache.ts';
 import { proceduralMesh } from './procedural.ts';
 import { cleanNodeName, importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
 import { importTransform, loadSourceScene, once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
@@ -87,10 +88,12 @@ export interface ImporterOptions {
   readonly textureEncoding?: 'ktx2' | 'source' | 'smallest';
   /** 找系统字体（SystemFontProvider）的目录；不给时按操作系统，同 Stride。 */
   readonly systemFontDirs?: readonly string[];
+  /** 贵的导入结果（贴图编成 KTX2）的缓存，见 ../cache.ts；不给时每次都现算。命令行默认用 ~/.stride-ts/cache/pipeline。 */
+  readonly cache?: DerivedDataCache;
 }
 
 /** 补上默认值的选项（材质导入也用）。 */
-export type ResolvedImporterOptions = Required<Omit<ImporterOptions, 'systemFontDirs'>>;
+export type ResolvedImporterOptions = Required<Omit<ImporterOptions, 'systemFontDirs' | 'cache'>>;
 
 /** 一次场景或预制体层级导入的上下文。 */
 interface HierarchyContext {
@@ -125,13 +128,13 @@ export class StrideImporter {
   readonly #spriteSheets = new Map<string, Promise<string>>();
 
   /** out：内容根目录，导出的文件按内容路径放在下面。 */
-  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2', systemFontDirs }: ImporterOptions = {}) {
+  constructor(project: StrideProject, tools: StrideTools, out: string, { specularCubemapSize = 256, plain = false, overrides = '', textureEncoding = 'ktx2', systemFontDirs, cache }: ImporterOptions = {}) {
     this.#project = project;
     this.#tools = tools;
     this.#out = out;
     this.#options = { specularCubemapSize, plain, overrides, textureEncoding };
     const write = (contentPath: string, data: string | Uint8Array) => this.#write(contentPath, data);
-    this.#materials = new MaterialImporter({ project, tools, options: this.#options, warnings: this.#warnings, write });
+    this.#materials = new MaterialImporter({ project, tools, options: this.#options, warnings: this.#warnings, write, ...(cache ? { cache } : {}) });
     this.#fonts = new FontImporter({ project, tools, warnings: this.#warnings, write, ...(systemFontDirs ? { systemFontDirs } : {}) });
     this.#ui = new UIImporter({
       project,

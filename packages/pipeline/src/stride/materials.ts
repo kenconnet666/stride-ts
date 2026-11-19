@@ -21,6 +21,7 @@ import {
   type Vec3Tuple,
 } from '@stride-ts/engine/content-format';
 import { readDdsCubemap, regenerateMips, toRgb9e5, type FloatCubemap } from '../hdr.ts';
+import type { DerivedDataCache } from '../cache.ts';
 import { applyColorKey, bleedTransparentColors, encodePng, maskAlpha } from '../image.ts';
 import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
@@ -34,6 +35,8 @@ export interface MaterialImportContext {
   readonly options: ResolvedImporterOptions;
   readonly warnings: string[];
   write(contentPath: string, data: string | Uint8Array): Promise<void>;
+  /** 贵的结果的缓存；没有时每次都现算。 */
+  readonly cache?: DerivedDataCache;
 }
 
 /** 导出的贴图：内容路径、编码，svg 带上栅格化尺寸。 */
@@ -44,6 +47,9 @@ export interface ImportedTexture {
   /** 按 sRGB 采样（Stride 的贴图类型决定）。 */
   readonly srgb: boolean;
 }
+
+/** 贴图编成 KTX2 这个做法在缓存里的名字；换了编码器的版本或者参数的含义就改后面的数。 */
+const BASIS_RECIPE = 'basis-ktx2/1';
 
 const SOURCE_ENCODINGS: Readonly<Record<string, TextureEncoding>> = { '.svg': 'svg', '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg' };
 
@@ -457,7 +463,10 @@ export class MaterialImporter {
     // 材质再乘上很大的系数（箱子标志的自发光是遮罩乘 50）就看得见了
     const pixels = alphaMask ? masked : bleedTransparentColors(masked, width, height);
     if (policy === 'source' && sourceEncoding) return this.#copyTexture(asset.path, 'png', encodePng(pixels, width, height), srgb);
-    const ktx2 = await this.#context.tools.encodeBasis(pixels, width, height, { mode: 'uastc', srgb, mipmaps: asset.data['GenerateMipmaps'] !== false });
+    // 编 KTX2 是导入里最慢的一步（一张 2048 的法线贴图要两分钟），结果只取决于像素、尺寸和选项：按它们缓存
+    const basis = { mode: 'uastc', srgb, mipmaps: asset.data['GenerateMipmaps'] !== false } as const;
+    const encode = () => this.#context.tools.encodeBasis(pixels, width, height, basis);
+    const ktx2 = await (this.#context.cache ? this.#context.cache.get(BASIS_RECIPE, [pixels, `${width}x${height}`, JSON.stringify(basis)], encode) : encode());
     if (policy === 'smallest' && sourceEncoding && unchanged && bytes.byteLength < ktx2.byteLength) return this.#copyTexture(asset.path, sourceEncoding, bytes, srgb);
     await this.#context.write(asset.path + TEXTURE_EXTENSIONS.ktx2, ktx2);
     return { texture: asset.path, encoding: 'ktx2', srgb };

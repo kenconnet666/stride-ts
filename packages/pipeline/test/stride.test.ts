@@ -5,6 +5,7 @@ import path from 'node:path';
 import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile, type SpriteSheetFile, type UIFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { DerivedDataCache } from '../src/cache';
 import { lowerFirst } from '../src/stride/yaml';
 import { cleanNodeName, strideNodeNames, dictionaryKey, floatToHalf, fromRgb9e5, halfToFloat, importCompositor, parseAssetReference, parseObjectReference, parseStrideYaml, readDdsCubemap, regenerateMips, StrideImporter, StrideProject, svgSize, toRgb9e5 } from '../src/index';
 
@@ -804,6 +805,20 @@ describe('导入 Stride 场景', () => {
     await importer.importAsset(project.byPath('Game/Materials/Glass')!);
     const glass = JSON.parse(await readFile(path.join(out, 'Game/Materials/Glass.material.json'), 'utf8')) as MaterialFile;
     expect([glass.specular, glass.specularShading, glass.layers?.length]).toEqual([[0.5, 0.5, 0.5], undefined, 1]);
+  });
+
+  test('贴图编码的结果进缓存：第二次导入同样的贴图不再编，导出的文件一样', async () => {
+    const project = await writeProject();
+    const run = async (out: string) => {
+      const cache = new DerivedDataCache(path.join(dir, 'derived-cache'));
+      await new StrideImporter(project, tools, path.join(dir, out), { specularCubemapSize: 16, cache }).importScene(project.byPath('Game/Bumpy')!);
+      return { hits: cache.hits, misses: cache.misses, texture: await readFile(path.join(dir, out, 'Game/Textures/Bumps.ktx2')) };
+    };
+    const first = await run('content-cache-a'), second = await run('content-cache-b');
+    expect(first.hits).toBe(0);
+    expect(first.misses).toBeGreaterThan(0);
+    expect([second.hits, second.misses]).toEqual([first.misses, 0]);
+    expect(second.texture.equals(first.texture)).toBe(true);
   });
 
   test('程序模型没给材质时也有一个（空的）材质槽，实体的 Materials 才能按槽覆盖', async () => {

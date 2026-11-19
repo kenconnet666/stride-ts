@@ -18,3 +18,10 @@
 | [ui-element-link/](ui-element-link/README.md) | UIElementLink（取自 releases/4.4.2） | 1280x720 截三个场景（全屏的 UI、倾斜的 UI、面向相机的 UI；按钮定在一处、动画停在第 0 帧、去掉烟的粒子）；`capture-ours.ps1` 截我们这边并逐张比 |
 | [sprite-fonts/](sprite-fonts/README.md) | SpriteFonts（取自 releases/4.4.2） | 八屏各截一张；不放启动画面（4.4.2 原样运行是黑屏）；`capture-ours.ps1` 截我们这边并逐屏比 |
 | [first-person-shooter/](first-person-shooter/README.md) | FirstPersonShooter（取自 Stride 源码当前分支的 Bepu 版） | 可以去掉脚本（含子实体上的）；截图后打印角色和相机的位置 |
+| [particles-sample/](particles-sample/README.md) | ParticlesSample（取自 releases/4.4.2） | 七个场景，粒子固定种子后各截一张；`capture-ours.ps1` 截我们这边并逐张比 |
+| [jumpy-jet/](jumpy-jet/README.md) | JumpyJet（取自 master 的 Bepu 版） | 截主菜单和游戏中两张；`capture-ours.ps1` 截我们这边并逐张比 |
+| [space-escape/](space-escape/README.md) | SpaceEscape（取自 releases/4.4.2） | 关卡换成固定的几段，截主菜单和跑动中两张；`capture-ours.ps1` 截我们这边并逐张比 |
+| [material-shader/](material-shader/README.md) | MaterialShader（取自 releases/4.4.2） | 固定步长，第 120 帧截一张，记下那一帧的游戏时间；`capture-ours.ps1` 把我们的时钟拨到同一时间再比 |
+| [custom-effect/](custom-effect/README.md) | CustomEffect（取自 releases/4.4.2） | 同 material-shader：第 120 帧截一张，按同一时间比 |
+| [morph-targets/](morph-targets/README.md) | MorphTargets（master 新加的样例，包用本机编的 4.5.3-dev4） | 第 58 帧截一张；`capture-ours.ps1` 把各剪辑拨到同一时间再比 |
+| [csharp-beginner/](csharp-beginner/README.md) | CSharpBeginner（取自 Stride 源码当前分支的 Bepu 版） | 进克隆、键盘、属性三个教程，相机插值走完后各截一张；`capture-ours.ps1` 截我们这边并逐张比 |

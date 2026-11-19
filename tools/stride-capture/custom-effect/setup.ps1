@@ -1,6 +1,6 @@
 # 从 Stride 源码的 releases/4.4.2 标签取出 CustomEffect（那个版本已经是 4.4.2 的 nuget 包、net10.0，和 master 只差合成器
 # 资源的版本号），入口换成本目录的 CustomEffectApp.cs 再编译。在 PowerShell 里跑（Git Bash 的 tar 把 `C:` 当成远程主机）。
-# 用法：pwsh tools/stride-capture/material-shader/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>] [-Ref <git 引用>]
+# 用法：pwsh tools/stride-capture/custom-effect/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>] [-Ref <git 引用>]
 param(
     [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
     [string]$Out = 'C:\code\stride-custom-effect',

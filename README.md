@@ -1,6 +1,6 @@
 # stride-ts：Stride 的 TypeScript 孪生版
 
-目标：做一个"形状像 Stride"的浏览器游戏引擎。
+目标：做一个"形状像 Stride"、但比 Stride 做得更好的浏览器游戏引擎（2026-11-19 用户定：对齐 Stride 是底线，Stride 的毛病不跟，见 [docs/roadmap.md](docs/roadmap.md) 的"原则"）。
 - 引擎和游戏脚本用 TypeScript 写：改完几百毫秒生效，支持热重载。
 - 计算量大的部分用别人维护、预先编好的 C/C++/Rust WebAssembly 库，很少重编，按内容哈希长期缓存。
 - 能用浏览器 API 的地方直接用。
@@ -23,13 +23,15 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 | 目录 | 内容 |
 |---|---|
 | `@stride-ts/native` | 原生部分（Jolt、Recast、ozz、解码，多线程 SIMD 的 wasm 加 TS 绑定）。是 fork 仓库 `StrideNative/JS/` 里的 npm 包，还没发布到 npm，`pnpm-workspace.yaml` 的 override 让 pnpm 从 fork 的 GitHub Release 安装。更新：改 fork 的 `StrideNative/JS/package.json` 版本号 → `pwsh StrideNative/Scripts/build-wasm.ps1`（构建、测试、打包）→ 提交并推送 fork → `pwsh StrideNative/Scripts/release-native.ps1`（发布 GitHub Release `native-v<版本>`）→ 把本仓库 `pnpm-workspace.yaml` 里 override 的地址换成新版本 → `pnpm install` |
-| `packages/engine` | `@stride-ts/engine`：引擎层，目录按 Stride 的命名空间分：`data/`（`prop` 和 schema）、`engine/`（实体、列存储、系统、脚本、登记）、`games/`、`graphics/`；源码直接以 TS 导出，不单独构建。`test/` 里有运行时测试、类型测试 `types.check.ts` 和类型压力测试 `stress.check.ts` |
+| `packages/engine` | `@stride-ts/engine`：引擎层，目录按 Stride 的命名空间分：`data/`（`prop` 和 schema）、`engine/`（实体、列存储、系统、脚本、登记）、`games/`、`graphics/`、`rendering/`、`content/`、`physics/`、`navigation/`、`input/`、`animation/`、`ui/`、`particles/`、`audio/`、`mathematics/`、`values/`（Decimal、日期时间）、`debug/`；源码直接以 TS 导出，不单独构建。`test/` 里有运行时测试、类型测试 `types.check.ts` 和类型压力测试 `stress.check.ts` |
 | `apps/sandbox/src/game` | 沙盒的游戏代码，用 `import.meta.glob` 交给引擎登记：粒子组件和系统、生成粒子的 `Fountain` 脚本 |
 | `packages/pipeline` | `@stride-ts/pipeline`：资源管线（Node 直接运行 TS）。现在是 Stride 工程导入器：读 Stride 的 YAML 场景、模型、材质、贴图、天空盒，源 FBX/glTF 经 stride-tools 导入，源图片编成 KTX2（Basis），HDR 天空盒算成球谐和预滤波的立方体贴图，写出运行时内容（格式在 `packages/engine/src/content/format.ts`） |
 | `apps/platformer` | Third Person Platformer 的移植。`pnpm --filter @stride-ts/platformer import:stride` 从 Stride 仓库（默认 `~/IdeaProjects/stride`，可用 `STRIDE_REPO` 改）导入场景到 `public/content`（不提交，`content-overrides/` 里是代替源图片的 SVG），`pnpm --filter @stride-ts/platformer dev` 在 5184 端口（开发时用调试版原生模块） |
+| `apps/<样例>` | 其余 Stride 样例的移植（animated-model、physics-sample、bepu-sample、game-menu、csharp-beginner 等），用法同 `apps/platformer`：`import:stride` 导入、`dev` 运行、`smoke` 冒烟。清单、端口和验收结果见 [docs/roadmap.md](docs/roadmap.md) 的"进度" |
+| `packages/cli` | 调试 CLI `stride`：查看和操作正在运行的游戏（状态、实体、输入、截图比较、性能），见 [packages/cli/README.md](packages/cli/README.md) |
 | `apps/sandbox` | 冒烟测试页：跨源隔离、原生模块的工作线程、WebGPU、帧循环、Jolt 步进 |
 | `apps/bench` | 数据布局和跨边界开销的基准（JS 对象、JS 堆的 TypedArray、wasm 共享内存、JS 到 wasm 的调用、上传 GPU、创建和每帧更新）。`pnpm --filter @stride-ts/bench dev` 在 5182 端口，`tools/bench.cjs` 在无头 Chrome 里跑并打印结果（`?only=render` 只跑渲染提交）；`gc.html` 是 GC 场景，用 `tools/gc-trace.cjs` 跑。结论见 [docs/architecture.md](docs/architecture.md) 的"实测"各节和"复杂场景的帧预算估算" |
-| `tools/` | Playwright 脚本和原生构建脚本，见 [tools/README.md](tools/README.md) |
+| `tools/` | 回归、验证、测量的脚本，桌面 Stride 的截图工程（`tools/stride-capture`），调试桥扩展，见 [tools/README.md](tools/README.md) |
 
 ## 技术栈的组织方式（2026-11-17，用户的方向）
 

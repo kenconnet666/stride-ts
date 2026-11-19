@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest';
 import { CurveSampler } from '../src/particles/curves';
 import { FieldFalloff, FieldShapeTorus } from '../src/particles/fieldShapes';
 import type { Vec3 } from '../src/particles/math';
-import { compileMaterial, flipbookOf, scrollOf } from '../src/particles/material';
+import { flipbookOf, MaterialCompiler, ParticleMaterialComputeColor, scrollOf, type MaterialContext } from '../src/particles/material';
+import { shaderClass } from '../src/rendering/shaderClass';
 import { circumcenter, expandCatmullRom, expandCircular } from '../src/particles/ribbons';
 import { drawOrder, ParticleShapeBuilder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from '../src/particles/shapes';
 import { NO_CONTEXT, ParticleSpawner, type ParticleModuleClass, type SpawnTarget } from '../src/particles/modules';
@@ -25,7 +26,7 @@ const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 
 
 /** 用发射器的形状把 order 的粒子写进 vertices（整张 UV），返回写到哪。 */
 function build(emitter: ParticleEmitter, camera: CameraAxes, order: readonly number[], vertices: Float32Array): number {
-  const writer = new VertexWriter(emitter, vertices, 0, () => [0, 0, 1, 1]);
+  const writer = new VertexWriter(emitter, vertices, 0, { uv: () => [0, 0, 1, 1], uv1: () => [0, 0, 1, 1] });
   emitter.shape!.build(emitter, camera, order, writer);
   return writer.at;
 }
@@ -235,7 +236,11 @@ describe('粒子的形状和材质', () => {
     expect([vertices[2 * VERTEX_FLOATS], vertices[2 * VERTEX_FLOATS + 1]! - y].map((c) => +c!.toFixed(5))).toEqual([0.5, -1]);
   });
 
-  test('材质的颜色树编译成 WGSL：二元运算、贴图（预乘、缩放偏移）、粒子颜色，AlphaAdditive 换成 alpha 系数', () => {
+  /** 按引擎的 ParticleMaterialComputeColor 编译。 */
+  const compileMaterial = (material: ParticleModuleFile, context: Partial<MaterialContext> = {}) =>
+    new ParticleMaterialComputeColor(material).compile(new MaterialCompiler(material, { texture: () => undefined, shaderClass: () => undefined, ...context }));
+
+  test('材质的颜色树编译成 WGSL：二元运算、贴图（预乘、缩放偏移、第二套 UV）、粒子颜色，乘组件颜色，AlphaAdditive 换成 alpha 系数', () => {
     const texture = {} as Texture;
     const program = compileMaterial({
       $type: 'particleMaterialComputeColor',
@@ -243,23 +248,40 @@ describe('粒子的形状和材质', () => {
       computeColor: {
         $type: 'computeBinaryColor', operator: 'multiply',
         leftChild: { $type: 'computeTextureColor', texture: { texture: 'fire.ktx2' }, scale: [2, 2], offset: [0.5, 0] },
-        rightChild: { $type: 'computeVertexStreamColor' },
+        rightChild: { $type: 'computeTextureScalar', texture: { texture: 'mask.ktx2' }, texcoordIndex: 'texcoord1', channel: 'a' },
       },
-    }, (path) => (path === 'fire.ktx2' ? texture : undefined));
-    expect(program.textures).toHaveLength(1);
+    }, { texture: (path) => (path.endsWith('.ktx2') ? texture : undefined) });
+    expect(program.textures).toHaveLength(2);
     expect(program.textures[0]!.texture).toBe(texture);
     expect(program.alphaFactor).toBe(0.75);
     expect(program.code).toContain('@group(1) @binding(0) var t0: texture_2d<f32>;');
-    expect(program.code).toContain('(premultiply(textureSample(t0, s0, uv * vec2f(2, 2) + vec2f(0.5, 0))) * color)');
+    expect(program.code).toContain(
+      'return streams.colorScale * (premultiply(textureSample(t0, s0, streams.uv * vec2f(2.0, 2.0) + vec2f(0.5, 0.0))) * vec4f(textureSample(t1, s1, streams.uv1 * vec2f(1.0, 1.0) + vec2f(0.0, 0.0)).a));',
+    );
     // 没有贴图时用 FallbackValue
-    const fallback = compileMaterial({ computeColor: { $type: 'computeTextureColor', fallbackValue: { value: [1, 0.5, 0, 1] } } }, () => undefined);
+    const fallback = compileMaterial({ computeColor: { $type: 'computeTextureColor', fallbackValue: { value: [1, 0.5, 0, 1] } } });
     expect(fallback.textures).toHaveLength(0);
-    expect(fallback.code).toContain('return vec4f(1.0, 0.5, 0.0, 1.0);');
+    expect(fallback.code).toContain('return streams.colorScale * vec4f(1.0, 0.5, 0.0, 1.0);');
     // Overlay 写成函数，只在用到时带上
-    const overlay = compileMaterial({ computeColor: { $type: 'computeBinaryColor', operator: 'overlay', leftChild: { $type: 'computeVertexStreamColor' }, rightChild: { $type: 'computeFloat', value: 0.25 } } }, () => undefined);
+    const overlay = compileMaterial({ computeColor: { $type: 'computeBinaryColor', operator: 'overlay', leftChild: { $type: 'computeVertexStreamColor' }, rightChild: { $type: 'computeFloat', value: 0.25 } } });
     expect(overlay.code).toContain('fn overlay(a: vec4f, b: vec4f)');
-    expect(overlay.code).toContain('return overlay(color, vec4f(0.25, 0.25, 0.25, 0.25));');
+    expect(overlay.code).toContain('overlay(streams.color, vec4f(0.25))');
     expect(fallback.code).not.toContain('fn overlay');
+  });
+
+  test('着色器类：调用游戏登记的 WGSL 函数，泛型参数按声明的顺序传，函数只放一次；没登记的当白色', () => {
+    const radial = shaderClass(['ColorCenter', 'ColorEdge'], 'fn ComputeColorRadial(ColorCenter: vec4f, ColorEdge: vec4f) -> vec4f { return ColorCenter; }');
+    const node = (center: number): ParticleModuleFile => ({
+      $type: 'computeShaderClassColor', mixinReference: 'ComputeColorRadial',
+      generics: { ColorEdge: { $type: 'computeColorParameterFloat4', value: [0, 0, 0, 0] }, ColorCenter: { $type: 'computeColorParameterFloat4', value: [center, 0, 1.5, 1] } },
+    });
+    const program = compileMaterial(
+      { computeColor: { $type: 'computeBinaryColor', operator: 'add', leftChild: node(1.5), rightChild: node(2) } },
+      { shaderClass: (name) => (name === 'ComputeColorRadial' ? radial : undefined) },
+    );
+    expect(program.code.split('fn ComputeColorRadial').length).toBe(2);
+    expect(program.code).toContain('(ComputeColorRadial(vec4f(1.5, 0.0, 1.5, 1.0), vec4f(0.0, 0.0, 0.0, 0.0)) + ComputeColorRadial(vec4f(2.0, 0.0, 1.5, 1.0), vec4f(0.0, 0.0, 0.0, 0.0)))');
+    expect(compileMaterial({ computeColor: node(1) }).code).toContain('return streams.colorScale * vec4f(1.0);');
   });
 
   test('BoundingSphereStatic：世界包围盒是位置周围 半径 · 缩放 的立方体', () => {

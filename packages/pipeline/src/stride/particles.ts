@@ -1,7 +1,7 @@
 /**
  * 粒子系统（Stride 的 ParticleSystemComponent）导入成 ParticleModuleFile 的树：类型标签换成首字母小写的类名放进 $type，属性名
  * 首字母小写；{X, Y, Z, W}、{R, G, B, A} 换成数组；Spawners、Initializers、Updaters、Emitters 这几个集合（按 Id 的字典）换成
- * 数组；贴图引用导出贴图，换成 TextureRef；对实体或组件的引用（`ref!! Id`）换成所在实体的 { $entity }；枚举的字符串首字母小写
+ * 数组；着色器类的泛型参数（Generics）按名字；贴图引用导出贴图，换成 TextureRef；对实体或组件的引用（`ref!! Id`）换成所在实体的 { $entity }；枚举的字符串首字母小写
  * （名字原样）。编辑器用的属性（Id、Display*）不导入。
  *
  * 引擎没有的模块类型（SUPPORTED 以外，比如游戏自己的模块）记警告、照样导入（类型名去掉命名空间和程序集）：运行时按类型名找游戏
@@ -23,7 +23,8 @@ export const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
   'UpdaterCollider', 'FieldShapeSphere', 'FieldShapeCylinder', 'FieldShapeTorus',
   'ShapeBuilderBillboard', 'ShapeBuilderQuad', 'ShapeBuilderHexagon', 'ShapeBuilderOrientedQuad', 'ShapeBuilderRibbon', 'ShapeBuilderTrail',
   'ParticleMaterialComputeColor', 'ComputeTextureColor', 'ComputeTextureScalar', 'ComputeVertexStreamColor', 'ColorVertexStreamDefinition',
-  'ComputeFloat4', 'ComputeFloat', 'ComputeColor', 'ComputeBinaryColor',
+  'ComputeFloat4', 'ComputeFloat', 'ComputeColor', 'ComputeBinaryColor', 'ComputeShaderClassColor',
+  'ComputeColorParameterFloat', 'ComputeColorParameterFloat2', 'ComputeColorParameterFloat3', 'ComputeColorParameterFloat4', 'ComputeColorParameterInt',
   'UVBuilderFlipbook', 'UVBuilderScroll',
   'ComputeCurveSamplerFloat', 'ComputeCurveSamplerVector3', 'ComputeCurveSamplerColor4', 'ComputeCurveSamplerQuaternion',
   'ComputeAnimationCurveFloat', 'ComputeAnimationCurveVector3', 'ComputeAnimationCurveColor4', 'ComputeAnimationCurveQuaternion',
@@ -31,8 +32,8 @@ export const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
 
 /** 按 Id 存的集合（曲线的关键帧也是），换成数组。 */
 const COLLECTIONS = new Set(['Emitters', 'Spawners', 'Initializers', 'Updaters', 'KeyFrames']);
-/** 字符串原样的属性（名字，ParentName 按名字找发射器）；其余的字符串是枚举。 */
-const NAMES = new Set(['EmitterName', 'Name', 'ParentName']);
+/** 字符串原样的属性（名字：ParentName 按名字找发射器，MixinReference 按名字找着色器类）；其余的字符串是枚举。 */
+const NAMES = new Set(['EmitterName', 'Name', 'ParentName', 'MixinReference']);
 
 export interface ParticleImportContext {
   /** 贴图引用（Id）导出贴图。 */
@@ -69,6 +70,11 @@ async function convert(key: string, value: StrideValue | undefined, where: strin
   if (COLLECTIONS.has(key)) {
     const items = await Promise.all(Object.values(object).map((item) => convert('', item, where, context)));
     return items.filter((item): item is ParticleModuleFile => item !== undefined && item !== null);
+  }
+  // 着色器类的泛型参数：键是 `Id~名字`，换成按名字
+  if (key === 'Generics') {
+    const entries = await Promise.all(Object.entries(object).map(async ([name, item]) => [name.slice(name.indexOf('~') + 1), (await convert('', item, where, context)) ?? null] as const));
+    return Object.fromEntries(entries) as ParticleModuleFile;
   }
   const vector = asVector(object);
   if (vector) return vector;

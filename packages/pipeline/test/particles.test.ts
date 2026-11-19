@@ -23,6 +23,13 @@ Component: !ParticleSystemComponent
                         Texture: 8b03c447-e775-437b-a178-b7c0921ebf24:hit_effect
                     UVBuilder: !UVBuilderFlipbook
                         XDivisions: 5
+                Material2: !ParticleMaterialComputeColor
+                    ComputeColor: !ComputeShaderClassColor
+                        MixinReference: ComputeColorRadial
+                        Generics:
+                            96779d823ca0414b9b98d5f2a90bf640~ColorCenter: !ComputeColorParameterFloat4
+                                Value: {X: 1.5, Y: 0.0, Z: 1.5, W: 1.0}
+                        CompositionNodes: {}
                 Spawners:
                     34bb92648ec072409d8d7d9908a20023: !SpawnerPerSecond
                         LoopCondition: OneShot
@@ -68,6 +75,14 @@ describe('粒子系统的导入', () => {
             $type: 'particleMaterialComputeColor',
             computeColor: { $type: 'computeTextureColor', texture: { texture: 'Shared/hit_effect', srgb: true } },
             uvBuilder: { $type: 'uvBuilderFlipbook', xDivisions: 5 },
+          },
+          // 着色器类：名字原样，泛型参数按名字
+          material2: {
+            $type: 'particleMaterialComputeColor',
+            computeColor: {
+              $type: 'computeShaderClassColor', mixinReference: 'ComputeColorRadial',
+              generics: { ColorCenter: { $type: 'computeColorParameterFloat4', value: [1.5, 0, 1.5, 1] } }, compositionNodes: {},
+            },
           },
           spawners: [{ $type: 'spawnerPerSecond', loopCondition: 'oneShot', duration: [0.2, 0.2] }],
           initializers: [

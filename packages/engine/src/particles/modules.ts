@@ -5,15 +5,15 @@
  * 运行时认识的（见 pipeline 的 particles.ts）。
  */
 import type { ParticleModuleFile, ParticleValue } from '../content/format';
-import type { Texture } from '../rendering/Texture';
+import type { MaterialContext } from './material';
 import { isIdentity, normalize, rotate, slerp, combine, type Quat, type Vec3 } from './math';
 import type { AnyParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat, type RandomSeedGenerator } from './random';
 
 const DEGREES = Math.PI / 180;
 
-/** 粒子模块的种类：游戏的模块类继承对应的基类（ParticleSpawner、ParticleInitializer、ParticleUpdater、ParticleShapeBuilder）。 */
-export type ParticleModuleKind = 'spawner' | 'initializer' | 'updater' | 'shape';
+/** 粒子模块的种类：游戏的模块类继承对应的基类（ParticleSpawner、ParticleInitializer、ParticleUpdater、ParticleShapeBuilder、ParticleMaterial）。 */
+export type ParticleModuleKind = 'spawner' | 'initializer' | 'updater' | 'shape' | 'material';
 
 /** 游戏登记的粒子模块类：构造参数是场景里的属性。 */
 export interface ParticleModuleClass {
@@ -21,17 +21,15 @@ export interface ParticleModuleClass {
   new (file: ParticleModuleFile): object;
 }
 
-/** 建模块时要的外部东西：贴图（材质用）、场景里实体的世界位置（InitialPositionArc 的 Target 用）、游戏登记的模块。 */
-export interface ParticleContext {
-  /** 按内容路径给加载好的贴图。 */
-  readonly texture: (path: string) => Texture | undefined;
+/** 建模块时要的外部东西：贴图和着色器类（材质用）、场景里实体的世界位置（InitialPositionArc 的 Target 用）、游戏登记的模块。 */
+export interface ParticleContext extends MaterialContext {
   /** 场景里的实体（id 同场景文件）现在的世界位置；不在场景里时是 undefined。 */
   readonly entityPosition: (id: string) => Readonly<Vec3> | undefined;
   /** 按类型名（场景文件里的 $type）找游戏登记的模块类（见 Registry.particleModule）。 */
   readonly module: (type: string) => ParticleModuleClass | undefined;
 }
 
-export const NO_CONTEXT: ParticleContext = { texture: () => undefined, entityPosition: () => undefined, module: () => undefined };
+export const NO_CONTEXT: ParticleContext = { texture: () => undefined, shaderClass: () => undefined, entityPosition: () => undefined, module: () => undefined };
 
 /** 模块文件里的值：没写时取默认值。 */
 export function value<T extends ParticleValue>(file: ParticleModuleFile | undefined, key: string, fallback: T): T {

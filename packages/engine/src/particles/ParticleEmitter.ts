@@ -8,7 +8,7 @@
  * 子粒子的模块按名字连到同一个粒子系统里的父发射器（children.ts）。
  */
 import type { ParticleModuleFile } from '../content/format';
-import { compileMaterial, type MaterialProgram } from './material';
+import { MaterialCompiler, ParticleMaterialComputeColor, type MaterialProgram, type ParticleMaterial } from './material';
 import { createBuiltinShape, type ParticleShapeBuilder } from './shapes';
 import { createInitializer, createSpawner, NO_CONTEXT, ParticleTransform, value, type ParticleContext, type ParticleInitializer, type ParticleModuleKind, type ParticleSpawner, type SpawnedRange } from './modules';
 import { createUpdater, type ParticleUpdater } from './updaters';
@@ -80,7 +80,7 @@ export class ParticleEmitter implements ParentEmitter {
     this.shapeBuilder = file['shapeBuilder'] === undefined ? { $type: 'shapeBuilderBillboard' } : (file['shapeBuilder'] as ParticleModuleFile | null);
     this.material = file['material'] === undefined ? { $type: 'particleMaterialComputeColor' } : (file['material'] as ParticleModuleFile | null);
     this.shape = this.shapeBuilder ? createBuiltinShape(this.shapeBuilder) ?? gameModule<ParticleShapeBuilder>(this.shapeBuilder, 'shape', context) : undefined;
-    this.program = this.material ? compileMaterial(this.material, context.texture) : undefined;
+    this.program = this.material ? createMaterial(this.material, context)?.compile(new MaterialCompiler(this.material, context)) : undefined;
     const modules = <T>(key: string, create: (module: ParticleModuleFile) => T | undefined): T[] =>
       ((file[key] as readonly ParticleModuleFile[] | undefined) ?? []).map(create).filter((module): module is T => module !== undefined);
     this.spawners = modules('spawners', (module) => createSpawner(module) ?? createChildSpawner(module) ?? gameModule(module, 'spawner', context));
@@ -255,6 +255,11 @@ export class ParticleEmitter implements ParentEmitter {
 }
 
 const warned = new Set<string>();
+
+/** 引擎的材质（ParticleMaterialComputeColor）或者游戏登记的。 */
+function createMaterial(file: ParticleModuleFile, context: ParticleContext): ParticleMaterial | undefined {
+  return file.$type === 'particleMaterialComputeColor' ? new ParticleMaterialComputeColor(file) : gameModule<ParticleMaterial>(file, 'material', context);
+}
 
 /** 游戏登记的模块（按 $type 找，种类要对）；没有时警告一次、跳过。 */
 function gameModule<T>(file: ParticleModuleFile, kind: ParticleModuleKind, context: ParticleContext): T | undefined {

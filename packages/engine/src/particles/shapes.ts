@@ -16,11 +16,12 @@ import type { ParticleModuleFile } from '../content/format';
 import { curveSampler, type CurveSampler } from './curves';
 import { combine, normalize, rotate, type Quat, type Vec3 } from './math';
 import { value } from './modules';
+import type { UVFrame, UVFrames } from './material';
 import type { ParticleEmitter } from './ParticleEmitter';
 import { buildRibbons, RibbonSettings, RIBBONS } from './ribbons';
 
-/** 每个顶点：位置 3、UV 2、颜色 4。 */
-export const VERTEX_FLOATS = 9;
+/** 每个顶点：位置 3、UV 2、第二套 UV 2、颜色 4。 */
+export const VERTEX_FLOATS = 11;
 const SQRT3_HALF = 0.86602540378;
 const DEGREES = Math.PI / 180;
 const clamp = (c: number) => (c < 0 ? 0 : c > 1 ? 1 : c);
@@ -34,8 +35,8 @@ export interface CameraAxes {
 }
 
 /**
- * 写顶点：先 particle(i) 选粒子（取它的颜色和 UV 帧），再按顺序 vertex(...) 写它的四边形，每个四边形的四个角按
- * 左上、右上、右下、左下。uv 是四边形上的 0 到 1，写进去的是按 UV 帧变换后的。
+ * 写顶点：先 particle(i) 选粒子（取它的颜色和两套 UV 帧），再按顺序 vertex(...) 写它的四边形，每个四边形的四个角按
+ * 左上、右上、右下、左下。uv 是四边形上的 0 到 1，写进去的是按两套 UV 帧分别变换后的。
  */
 export class VertexWriter {
   vertices: Float32Array;
@@ -43,16 +44,21 @@ export class VertexWriter {
   at: number;
   readonly #color: Float32Array | undefined;
   readonly #life: Float32Array;
-  readonly #uv: (remainingLife: number) => readonly [number, number, number, number];
-  #r = 1; #g = 1; #b = 1; #a = 1; #u0 = 0; #v0 = 0; #us = 1; #vs = 1;
+  readonly #uv: UVFrame;
+  readonly #uv1: UVFrame;
+  #r = 1; #g = 1; #b = 1; #a = 1;
+  /** 两套 UV 帧：[u, v, 宽, 高]。 */
+  #frame: readonly [number, number, number, number] = [0, 0, 1, 1];
+  #frame1: readonly [number, number, number, number] = [0, 0, 1, 1];
 
-  /** uv 给出粒子的 UV 帧 [u, v, 宽, 高]（材质的 UVBuilder，没有时 [0, 0, 1, 1]）。 */
-  constructor(emitter: ParticleEmitter, vertices: Float32Array, at: number, uv: (remainingLife: number) => readonly [number, number, number, number]) {
+  /** frames 给出粒子的两套 UV 帧（材质的 UVBuilder，没有时 [0, 0, 1, 1]）。 */
+  constructor(emitter: ParticleEmitter, vertices: Float32Array, at: number, frames: UVFrames) {
     this.vertices = vertices;
     this.at = at;
     this.#color = emitter.pool.field('color');
     this.#life = emitter.pool.field('life')!;
-    this.#uv = uv;
+    this.#uv = frames.uv;
+    this.#uv1 = frames.uv1;
   }
 
   particle(i: number): void {
@@ -60,14 +66,17 @@ export class VertexWriter {
     if (color) {
       this.#r = clamp(color[i * 4]!); this.#g = clamp(color[i * 4 + 1]!); this.#b = clamp(color[i * 4 + 2]!); this.#a = clamp(color[i * 4 + 3]!);
     }
-    [this.#u0, this.#v0, this.#us, this.#vs] = this.#uv(this.#life[i]!);
+    this.#frame = this.#uv(this.#life[i]!);
+    this.#frame1 = this.#uv1(this.#life[i]!);
   }
 
   vertex(x: number, y: number, z: number, u: number, v: number): void {
     const out = this.vertices, at = this.at;
     out[at] = x; out[at + 1] = y; out[at + 2] = z;
-    out[at + 3] = this.#u0 + this.#us * u; out[at + 4] = this.#v0 + this.#vs * v;
-    out[at + 5] = this.#r; out[at + 6] = this.#g; out[at + 7] = this.#b; out[at + 8] = this.#a;
+    const f = this.#frame, f1 = this.#frame1;
+    out[at + 3] = f[0] + f[2] * u; out[at + 4] = f[1] + f[3] * v;
+    out[at + 5] = f1[0] + f1[2] * u; out[at + 6] = f1[1] + f1[3] * v;
+    out[at + 7] = this.#r; out[at + 8] = this.#g; out[at + 9] = this.#b; out[at + 10] = this.#a;
     this.at = at + VERTEX_FLOATS;
   }
 }

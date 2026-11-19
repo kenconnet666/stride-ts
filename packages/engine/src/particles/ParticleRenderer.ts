@@ -2,19 +2,21 @@
  * 画粒子（Stride 的 ParticleEmitterRenderFeature）：每帧在 CPU 上把每个发射器的粒子展开成四边形（形状见 shapes.ts），所有发射器的
  * 顶点放进一个缓冲、写一次，每个发射器画一次。材质的颜色树编译成着色器（material.ts），同样的树共用流水线。
  *
- * 颜色照 Stride 的 ParticleComputeColorShader：组件的颜色 × 材质的颜色，alpha 再乘 1 - AlphaAdditive（1 就是加法混合）；混合是
+ * 颜色照 Stride 的 ParticleBase：材质的 materialColor（Stride 的 Shading()，一般是组件的颜色 × 颜色树），alpha 再乘 1 - AlphaAdditive
+ * （1 就是加法混合）；混合是
  * 预乘 alpha，和深度比较但不写深度，不剔除背面。粒子系统从远到近画，同一个系统里的发射器按 DrawPriority；包围形状（BoundingBox、
  * BoundingSphere）在视锥外的系统不画（同 Stride 的剔除）。粒子的顺序：SortingPolicy 是 ByDepth 时从远到近，其余按池里的顺序。
  */
 import { Matrix } from '../mathematics/Matrix';
 import type { GpuResources } from '../rendering/GpuResources';
 import type { RenderView } from '../rendering/RenderSystem';
+import { MATERIAL_STREAMS } from '../rendering/shaderClass';
 import type { Vec3 } from './math';
 import type { MaterialProgram } from './material';
 import type { ParticleSystemComponent } from './ParticleSystemComponent';
 import { drawOrder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from './shapes';
 
-/** 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数（WGSL 里 96 字节）；按动态偏移的 256 字节对齐。 */
+/** 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数、时间（WGSL 里 96 字节）；按动态偏移的 256 字节对齐。 */
 const UNIFORM_STRIDE = 256;
 const UNIFORM_SIZE = 96;
 
@@ -23,30 +25,29 @@ struct Draw {
   viewProjection: mat4x4f,
   colorScale: vec4f,
   alphaFactor: f32,
+  time: f32,
 };
 @group(0) @binding(0) var<uniform> draw: Draw;
 
 struct Varyings {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
-  @location(1) color: vec4f,
+  @location(1) uv1: vec2f,
+  @location(2) color: vec4f,
 };
-
-/** 贴图按预乘 alpha 用（同 Stride 编译贴图时预乘）。 */
-fn premultiply(texel: vec4f) -> vec4f {
-  return vec4f(texel.rgb * texel.a, texel.a);
-}
-
-@vertex fn vs(@location(0) position: vec3f, @location(1) uv: vec2f, @location(2) color: vec4f) -> Varyings {
+${MATERIAL_STREAMS}
+@vertex fn vs(@location(0) position: vec3f, @location(1) uv: vec2f, @location(2) uv1: vec2f, @location(3) color: vec4f) -> Varyings {
   var out: Varyings;
   out.position = draw.viewProjection * vec4f(position, 1.0);
   out.uv = uv;
+  out.uv1 = uv1;
   out.color = color;
   return out;
 }
 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
-  var color = draw.colorScale * materialColor(in.uv, in.color);
+  streams = MaterialStreams(in.uv, in.uv1, in.color, draw.colorScale, vec3f(0.0), draw.time);
+  var color = materialColor();
   color.a *= draw.alphaFactor;
   return color;
 }
@@ -86,7 +87,7 @@ export class ParticleRenderer {
   }
 
   /** 把 components 的粒子画进 pass（颜色格式 colorFormat、深度格式 depthFormat），按 view 的相机。 */
-  draw(pass: GPURenderPassEncoder, view: RenderView, components: readonly ParticleSystemComponent[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
+  draw(pass: GPURenderPassEncoder, view: RenderView, components: readonly ParticleSystemComponent[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, time: number): void {
     const cameraWorld = new Float32Array(16);
     if (!Matrix.invert(cameraWorld, view.view)) return;
     const right: Vec3 = [cameraWorld[0]!, cameraWorld[1]!, cameraWorld[2]!];
@@ -108,13 +109,13 @@ export class ParticleRenderer {
         if (!shape || !program || pool.living === 0) continue;
         this.#reserve((quads + pool.living * shape.quadsPerParticle) * 4 * VERTEX_FLOATS);
         const order = drawOrder(emitter, camera);
-        const writer = new VertexWriter(emitter, this.#vertices, quads * 4 * VERTEX_FLOATS, program.uv);
+        const writer = new VertexWriter(emitter, this.#vertices, quads * 4 * VERTEX_FLOATS, program);
         shape.build(emitter, camera, order, writer);
         // 形状写的四边形不能超过留的空间（每个粒子 quadsPerParticle 个）
         const end = Math.min(writer.at, (quads + pool.living * shape.quadsPerParticle) * 4 * VERTEX_FLOATS);
         const firstQuad = quads;
         quads = end / (4 * VERTEX_FLOATS);
-        this.#writeUniforms(draws.length, view, component, program);
+        this.#writeUniforms(draws.length, view, component, program, time);
         draws.push({ firstQuad, quads: quads - firstQuad, program, uniformOffset: draws.length * UNIFORM_STRIDE });
       }
     }
@@ -137,7 +138,7 @@ export class ParticleRenderer {
   }
 
   /** 第 index 次绘制的参数。 */
-  #writeUniforms(index: number, view: RenderView, component: ParticleSystemComponent, program: MaterialProgram): void {
+  #writeUniforms(index: number, view: RenderView, component: ParticleSystemComponent, program: MaterialProgram, time: number): void {
     const floats = UNIFORM_STRIDE / 4;
     if ((index + 1) * floats > this.#uniforms.length) {
       const grown = new Float32Array(this.#uniforms.length * 2);
@@ -148,6 +149,7 @@ export class ParticleRenderer {
     u.set(view.viewProjection, at);
     u.set(component.color, at + 16);
     u[at + 20] = program.alphaFactor;
+    u[at + 21] = time;
   }
 
   #reserve(floats: number): void {
@@ -217,7 +219,8 @@ export class ParticleRenderer {
             attributes: [
               { shaderLocation: 0, offset: 0, format: 'float32x3' },
               { shaderLocation: 1, offset: 12, format: 'float32x2' },
-              { shaderLocation: 2, offset: 20, format: 'float32x4' },
+              { shaderLocation: 2, offset: 20, format: 'float32x2' },
+              { shaderLocation: 3, offset: 28, format: 'float32x4' },
             ],
           }],
         },

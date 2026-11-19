@@ -4,6 +4,7 @@
  * 仍是源文件路径）；场景文件、热重载、编辑器都按这些名字引用。引擎和库的组件显式给名字，登记时保留。
  */
 import { ComponentType } from './component';
+import { isShaderClass, type ShaderClass } from '../rendering/shaderClass';
 import { isScriptClass, scriptName, type ScriptConstructor } from './scripts';
 import { System } from './system';
 
@@ -26,9 +27,11 @@ export class Registry {
   readonly #byName = new Map<string, Registered>();
   /** 粒子模块：导出名首字母小写（同场景文件里的 $type）→ 类。 */
   readonly #particleModules = new Map<string, ParticleModuleExport>();
+  /** 着色器类：导出名（同 Stride 的 MixinReference）→ WGSL。 */
+  readonly #shaderClasses = new Map<string, ShaderClass>();
 
   /**
-   * 登记这些模块导出的所有组件、脚本、系统，和粒子模块（按导出名，Stride 场景里的粒子模块按类名找它）。
+   * 登记这些模块导出的所有组件、脚本、系统，和粒子模块、着色器类（按导出名，Stride 场景里的粒子模块、着色器类按类名找它）。
    * modules：路径 → 模块命名空间对象。
    */
   registerModules(modules: Readonly<Record<string, unknown>>): void {
@@ -74,10 +77,16 @@ export class Registry {
     return this.#particleModules.get(type.charAt(0).toLowerCase() + type.slice(1));
   }
 
+  /** 着色器类（名字区分大小写，同 Stride）。 */
+  shaderClass(name: string): ShaderClass | undefined {
+    return this.#shaderClasses.get(name);
+  }
+
   #registerParticleModules(modules: Readonly<Record<string, unknown>>): void {
     for (const module of Object.values(modules)) {
       if (typeof module !== 'object' || module === null) continue;
       for (const [exportName, value] of Object.entries(module)) {
+        if (isShaderClass(value)) this.#shaderClasses.set(exportName, value);
         if (typeof value !== 'function' || typeof (value as Partial<ParticleModuleExport>).particleModuleKind !== 'string') continue;
         this.#particleModules.set(exportName.charAt(0).toLowerCase() + exportName.slice(1), value as ParticleModuleExport);
       }

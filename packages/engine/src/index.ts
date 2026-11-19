@@ -205,6 +205,8 @@ export {
 } from './particles/modules';
 export { ParticleUpdater } from './particles/updaters';
 export { ParticleShapeBuilder, VertexWriter, type CameraAxes } from './particles/shapes';
+export { MaterialCompiler, ParticleMaterial, type MaterialContext, type MaterialProgram, type UVFrame, type UVFrames } from './particles/material';
+export { shaderClass, type ShaderClass } from './rendering/shaderClass';
 export { particleField, ParticlePool, type AnyParticleField, type CustomParticleField, type ParticleField } from './particles/ParticlePool';
 export { RandomOffset, seedFloat } from './particles/random';
 export { UISystem } from './ui/UISystem';

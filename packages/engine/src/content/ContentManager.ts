@@ -595,6 +595,7 @@ export class ContentManager {
           return world ? [world[12]!, world[13]!, world[14]!] : undefined;
         },
         module: (type) => entities.game.registry.particleModule(type) as ParticleModuleClass | undefined,
+        shaderClass: (name) => entities.game.registry.shaderClass(name),
       });
     }
     if (animation) {

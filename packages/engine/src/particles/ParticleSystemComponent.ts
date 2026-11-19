@@ -63,7 +63,7 @@ export class ParticleSystems {
   /** @internal 画进 pass（前向渲染器的透明阶段）。 */
   draw(game: Game, pass: GPURenderPassEncoder, view: RenderView, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     this.#renderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources);
-    this.#renderer.draw(pass, view, this.components, colorFormat, depthFormat);
+    this.#renderer.draw(pass, view, this.components, colorFormat, depthFormat, game.updateTime.total);
   }
 
   /** @internal Game 在画完 UI 之后调用：合成器要粒子画在 UI 上面时画进后备缓冲。 */

@@ -16,6 +16,7 @@ import {
   plainMesh,
   Game,
   ktx2Decoder,
+  LiveScene,
   Instance,
   Instancing,
   Light,
@@ -23,11 +24,13 @@ import {
   Mesh,
   Model,
   prop,
+  SceneDocument,
   Skybox,
   Sprite,
   SpriteSheet,
   SyncScript,
   Transform,
+  UndoStack,
   VERTEX_FLOATS,
   type GraphicsDevice,
   type MaterialFile,
@@ -157,6 +160,81 @@ describe('ContentManager', () => {
     await expect(content.loadMaterial('materials/Missing')).rejects.toThrow('no https://game.test/content/materials/Missing.material.json');
   });
 
+  test('编辑状态的场景（LiveScene）：文档改了以后只动变了的实体，位置和名字直接改、组件按种类重建，加、删、换父实体；实体还是原来的', async () => {
+    const content = new ContentManager({
+      root: 'https://game.test/content/',
+      read: async (url) => {
+        const file = files.get(url.href);
+        if (!file) throw new Error(`no ${url.href}`);
+        return file;
+      },
+    });
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(64);
+    game.content = content;
+    const original = JSON.parse(new TextDecoder().decode(files.get('https://game.test/content/scenes/Main.scene.json')!)) as SceneFile;
+    const document = new SceneDocument(original);
+    const undo = new UndoStack(document);
+    const live = await LiveScene.open(game, document);
+    expect(game.rootScene).toBe(live.instance);
+    const root = live.entity('root')!, wall = live.entity('wall')!, camera = live.entity('camera')!;
+    const count = game.entities.count;
+
+    // 位置和名字直接改：组件没动（网格的子实体还是那个）
+    const [trim] = wall.require(Transform).children;
+    undo.apply({ type: 'set', entity: 'wall', path: ['position'], value: [0, 5, 0] });
+    undo.apply({ type: 'set', entity: 'wall', path: ['name'], value: 'Big wall' });
+    await live.sync();
+    expect([wall.name, { ...wall.require(Transform).position }, wall.require(Transform).children[0]]).toEqual(['Big wall', { x: 0, y: 5, z: 0 }, trim]);
+
+    // 组件的值变了：那一种组件重建，别的不动；换材质时模型重建，多出来的网格还是一个子实体
+    undo.apply({ type: 'set', entity: 'root', path: ['components', 'light', 'intensity'], value: 9 });
+    undo.apply({ type: 'set', entity: 'wall', path: ['components', 'model', 'materials'], value: ['materials/Grid'] });
+    await live.sync();
+    expect(root.require(Light).intensity).toBe(9);
+    expect(Material.byId(wall.require(Model).material)!.name).toBe('Grid');
+    expect(wall.require(Transform).children).toHaveLength(1);
+    expect([live.entity('wall'), live.entity('root'), game.entities.count]).toEqual([wall, root, count]);
+    // 点到引擎另建的子实体算点到它挂着的那个
+    expect([live.idOf(wall.require(Transform).children[0]!), live.idOf(root), live.idOf(game.entities.create({ name: 'other' }))]).toEqual(['wall', 'root', undefined]);
+
+    // 加实体、去掉一个组件
+    const lampFile = { id: 'lamp', name: 'Lamp', parent: 'wall', position: [0, 1, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { light: { type: 'point', color: [1, 1, 1], intensity: 2, radius: 3 } } } as const;
+    undo.apply({ type: 'add', entities: [{ entity: lampFile, index: 3 }] });
+    undo.apply({ type: 'set', entity: 'camera', path: ['components', 'camera'], value: undefined });
+    await live.sync();
+    const lamp = live.entity('lamp')!;
+    expect([lamp.require(Transform).parent, lamp.scene, lamp.require(Light).radius, camera.has(Camera), live.idOf(lamp)]).toEqual([wall, live.instance, 3, false, 'lamp']);
+
+    // 换父实体（文档里是删了再加在别处）：还是那个实体
+    undo.apply({ type: 'batch', edits: [{ type: 'remove', entities: ['lamp'] }, { type: 'add', entities: [{ entity: { ...lampFile, parent: 'root' }, index: 1 }] }] });
+    await live.sync();
+    expect([live.entity('lamp'), lamp.require(Transform).parent]).toEqual([lamp, root]);
+
+    // 删一棵子树；连着两次 sync 排队，后一次没事可做
+    undo.apply(document.removeSubtree('wall'));
+    await Promise.all([live.sync(), live.sync()]);
+    expect([wall.alive, live.entity('wall'), lamp.alive, live.idOf(lamp)]).toEqual([false, undefined, true, 'lamp']);
+
+    // 新引用的资源加载不了：sync 报错，实体停在上一次的样子；改回去以后接着用
+    undo.apply({ type: 'set', entity: 'root', path: ['components', 'model'], value: { model: 'models/Missing', materials: [] } });
+    await expect(live.sync()).rejects.toThrow('no https://game.test/content/models/Missing.model');
+    expect(root.has(Model)).toBe(false);
+    undo.undo();
+    await live.sync();
+
+    // 一路撤销回最初的文档：场景回到加载时的样子
+    while (undo.undo());
+    await live.sync();
+    expect(document.file).toEqual(original);
+    const restored = live.entity('wall')!;
+    expect([restored.alive, restored.name, restored.require(Transform).parent, Material.byId(restored.require(Model).material)!.name]).toEqual([true, 'Wall', root, 'Red']);
+    expect([lamp.alive, live.entity('lamp'), root.require(Light).intensity, camera.has(Camera), game.entities.count]).toEqual([false, undefined, 5, true, count + 1]);
+    game.transforms.update();
+    expect([...restored.require(Transform).world.subarray(12, 15)]).toEqual([1, 2, 0]);
+  });
+
   test('场景里的脚本：按类名对上 TS 脚本，实体引用换成 id、资源引用换成加载好的资源；找不到的脚本和属性警告后跳过；同类的第二个挂到子实体上', async () => {
     class Follower extends SyncScript.props({
       target: prop.entity().optional(),
@@ -204,6 +282,9 @@ describe('ContentManager', () => {
       // 同一个实体上第二个同类脚本挂到子实体上
       const [extra] = loaded.entities.get('a')!.require(Transform).children;
       expect([extra!.name, extra!.require(Follower).speed]).toEqual(['A', 7]);
+      // attachScripts: false（编辑器的编辑状态）：实体照建，脚本不挂
+      const edited = await content.loadScene('scenes/Scripts', game.entities, { attachScripts: false });
+      expect([edited.entities.get('a')!.scripts.size, edited.entities.get('a')!.require(Transform).children]).toEqual([0, []]);
     } finally {
       console.warn = warn;
     }

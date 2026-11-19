@@ -4,6 +4,7 @@ import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { hook } from '../engine/events';
 import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
+import type { SceneFile } from '../content/format';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
 import { DebugText } from '../debug/DebugText';
@@ -345,10 +346,12 @@ export class Game {
    *
    *   this.child = await this.game.loadScene(this.childScene, { parent: this.entity.scene, offset: [0, 0.5, 0] });
    */
-  async loadScene(reference: string | SceneReference, options: LoadChildSceneOptions = {}): Promise<SceneInstance> {
-    const path = typeof reference === 'string' ? reference : reference.path;
+  async loadScene(reference: string | SceneReference | SceneFile, options: LoadChildSceneOptions = {}): Promise<SceneInstance> {
+    // 直接给场景文件的（编辑器，见 editor/LiveScene）不经内容路径
+    const file = typeof reference === 'object' && 'entities' in reference ? reference : undefined;
+    const path = file ? file.name : typeof reference === 'string' ? reference : (reference as SceneReference).path;
     const { parent } = options;
-    const scene = await this.content.loadScene(path, this.entities, options);
+    const scene = file ? await this.content.instantiateScene(file, this.entities, options) : await this.content.loadScene(path, this.entities, options);
     if (parent) this.#childScenes.set(parent, [...(this.#childScenes.get(parent) ?? []), scene]);
     if (scene.compositor) {
       this.graphicsCompositor.configure(scene.compositor);
@@ -369,7 +372,7 @@ export class Game {
    *
    *   override update(): void { if (this.input.isKeyPressed('N')) void this.game.setRootScene(this.nextScene); }
    */
-  setRootScene(scene: string | SceneReference, options: LoadSceneOptions = {}): Promise<SceneInstance> {
+  setRootScene(scene: string | SceneReference | SceneFile, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const change = this.rootSceneChange.catch(() => undefined).then(async () => {
       const next = await this.loadScene(scene, options);
       const previous = this.rootScene;

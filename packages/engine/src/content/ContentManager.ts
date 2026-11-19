@@ -20,7 +20,7 @@ import { Morphed } from '../animation/morphs';
 import { Material, type MaterialShaderTrees } from '../rendering/Material';
 import { preload, textureRefs } from './loading';
 import { Prefab } from './Prefab';
-import { SceneBuilder, type SceneAssets } from './SceneBuilder';
+import { changedEntities, SceneBuilder, type SceneAssets } from './SceneBuilder';
 import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
@@ -65,6 +65,8 @@ export interface LoadSceneOptions {
    * 也跟着卸载。
    */
   readonly parent?: EntityScene | undefined;
+  /** 挂不挂场景文件里的脚本，没给是挂。编辑器的编辑状态不挂（脚本不跑），见 editor/LiveScene。 */
+  readonly attachScripts?: boolean;
 }
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
@@ -477,6 +479,48 @@ export class ContentManager {
    */
   async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const { scene, assets } = await this.#sceneWithAssets(path);
+    return this.#createScene(scene, assets, entities, options, path);
+  }
+
+  /**
+   * 按给的场景文件建场景（不经内容路径，文件不进缓存；它引用的资源照常按路径加载）。编辑器里场景文件在场景文档里
+   * （editor/SceneDocument），不在内容目录里。
+   */
+  async instantiateScene(scene: SceneFile, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
+    const where = `scene ${scene.name}`;
+    return this.#createScene(scene, await this.#scenes.preload(scene.entities, where), entities, options, where);
+  }
+
+  /**
+   * 把建好的场景从 before 改成 after 的样子（编辑器改了场景文档以后）：加的实体建出来，删的销毁，变了的只改变了的部分
+   * （SceneBuilder.update）。要用的资源先加载好，然后一口气改完，中间不会画出改了一半的场景。同一个场景的两次 updateScene
+   * 不能同时进行（等上一次的 Promise，LiveScene 替你排队）。场景自己的设置（偏移、仿真、导航、合成器）变了不在这里管。
+   */
+  async updateScene(instance: SceneInstance, before: SceneFile, after: SceneFile, entities: EntityManager, options: LoadSceneOptions = {}): Promise<void> {
+    const { added, removed, changed } = changedEntities(before.entities, after.entities);
+    if (added.length + removed.length + changed.length === 0) return;
+    const where = `scene ${after.name}`;
+    // 资源：新实体的，和组件变了的实体的
+    const assets = await this.#scenes.preload([...added, ...changed.filter(([old, file]) => file.components !== old.components).map(([, file]) => file)], where);
+    // instance.entities 就是建场景时的那张表
+    const live = instance.entities as Map<string, Entity>;
+    // 先加（变了的实体可能要挂到新实体下面），再改（要留下的子实体从要删的父实体下面挪走），最后删
+    this.#scenes.instantiate(added, assets, entities, options, where, live);
+    for (const file of added) live.get(file.id)!.scene = instance;
+    for (const [old, file] of changed) {
+      const entity = live.get(file.id);
+      // 运行中被销毁了的（脚本销毁的）不管
+      if (entity?.alive) this.#scenes.update(entity, old, file, assets, live, where);
+    }
+    for (const id of removed) {
+      const entity = live.get(id);
+      live.delete(id);
+      // 父实体销毁时子实体已经跟着销毁了
+      if (entity?.alive) entity.destroy();
+    }
+  }
+
+  #createScene(scene: SceneFile, assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, path: string): SceneInstance {
     const created = this.#scenes.instantiate(scene.entities, assets, entities, options, path);
     const [x, y, z] = options.offset ?? scene.offset ?? [0, 0, 0];
     // 没有变换存储（场景里也就没有带 Transform 的实体）时只记下偏移

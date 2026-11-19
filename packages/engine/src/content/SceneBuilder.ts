@@ -1,12 +1,14 @@
 /**
  * 把场景文件、预制体文件里的实体建成运行时的实体（ContentManager 的 loadScene、loadPrefab、loadSceneTemplate 用）：
- * 先把实体文件引用的资源并行加载好（preload），再建实体和组件（instantiate）。
+ * 先把实体文件引用的资源并行加载好（preload），再建实体和组件（instantiate）；编辑器改了实体文件以后，update 把建好的实体
+ * 改成新的样子。每种组件怎么加、怎么去掉在 BUILDERS 里。
  */
 import { AnimationComponent } from '../animation/AnimationComponent';
 import { ModelNodeLink } from '../animation/ModelNodeLink';
 import type { AnimationClip } from '../animation/resources';
 import type { Sound } from '../audio/Sound';
 import type { EntityId } from '../data/prop';
+import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
 import type { EntityManager } from '../engine/EntityManager';
 import type { ScriptConstructor } from '../engine/scripts';
@@ -14,7 +16,7 @@ import { Transform } from '../engine/transform';
 import type { ParticleModuleClass } from '../particles/modules';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { Collider, type ColliderShape } from '../physics/Collider';
-import { Body, Character, Static } from '../physics/components';
+import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
 import { Background, Camera, Instance, Instancing, Light, Sprite } from '../rendering/components';
@@ -94,11 +96,16 @@ export class SceneBuilder {
   }
 
   /**
-   * 按实体文件建实体：先按顺序建实体和组件（父实体在前），再挂实例的主实体，最后挂脚本（这时所有实体都在，脚本属性里的
-   * 实体引用才解析得了）。返回按文件里的实体 id 的表；where 用在报错和警告里。
+   * 按实体文件建实体：先按顺序建实体和只管自己的组件（父实体在前），再加引用别的实体的组件（约束、实例的主实体、挂到骨骼
+   * 节点这些，目标可能排在后面），最后挂脚本（这时所有实体都在，脚本属性里的实体引用才解析得了）。返回按文件里的实体 id 的表；
+   * where 用在报错和警告里。into 是已经有实体的表（往建好的场景里加实体时给）：新建的加进去，父实体和引用也在里面找。
    */
-  instantiate(files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string): Map<string, Entity> {
-    const created = new Map<string, Entity>();
+  instantiate(
+    files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string,
+    into = new Map<string, Entity>(),
+  ): Map<string, Entity> {
+    const created = into;
+    const context = (file: SceneEntityFile): BuildContext => ({ content: this.#content, assets, manager: entities, created, file, where });
     for (const file of files) {
       const entity = entities.create({ name: file.name, components: [Transform.with({ position: file.position, rotation: file.rotation, scale: file.scale })] });
       if (file.parent !== null) {
@@ -107,43 +114,42 @@ export class SceneBuilder {
         entity.require(Transform).parent = parent;
       }
       created.set(file.id, entity);
-      this.#addComponents(entity, file, assets, entities, created);
+      addComponents(entity, EARLY_KEYS, context(file));
     }
-    // 约束组件引用的物体可能排在后面：实体都建好以后再挂（约束在脚本启动时加）
-    for (const file of files) {
-      for (const constraint of file.components.constraints ?? []) {
-        // 各种约束的组件按设置的类型参数化，这里只按基类用
-        const component = CONSTRAINT_COMPONENTS[constraint.type as keyof typeof CONSTRAINT_COMPONENTS] as unknown as ScriptConstructor<ConstraintComponentBase> | undefined;
-        if (!component) {
-          console.warn(`[stride] ${where}: ${file.name}: constraint type '${constraint.type}' is not supported; skipped`);
-          continue;
-        }
-        const body = (id: string) => {
-          const entity = created.get(id);
-          if (!entity) throw new Error(`${where}: entity '${file.name}' has a constraint on ${id}, which is not in the scene`);
-          return entity;
-        };
-        const entity = created.get(file.id)!;
-        entity.add({ script: component, init: {} });
-        const script = entity.require(component);
-        script.settings = { ...constraint.settings, type: constraint.type, bodyA: body(constraint.bodyA), ...(constraint.bodyB ? { bodyB: body(constraint.bodyB) } : {}) } as ConstraintSettings;
-        script.enabled = constraint.enabled;
-      }
+    for (const file of files) addComponents(created.get(file.id)!, LATE_KEYS, context(file));
+    if (options.attachScripts ?? true) this.#attachScripts(files, assets, entities, options, where, created);
+    return created;
+  }
+
+  /**
+   * 把建好的实体从 before 改成 after 的样子（编辑器里改了场景文档以后，见 editor/LiveScene）。名字、位置、父实体直接改；
+   * 组件只重建变了的那几种（components 里值的引用变了的键）：去掉旧的、按新的值加上。实体还是那个实体，别处引用它的不用动。
+   * 脚本不动（编辑状态不挂脚本）。assets 里要有 after 引用的资源。
+   */
+  update(entity: Entity, before: SceneEntityFile, after: SceneEntityFile, assets: SceneAssets, created: ReadonlyMap<string, Entity>, where: string): void {
+    if (before.name !== after.name) entity.name = after.name;
+    const transform = entity.require(Transform);
+    if (before.parent !== after.parent) {
+      const parent = after.parent === null ? undefined : created.get(after.parent);
+      if (after.parent !== null && !parent) throw new Error(`${where}: entity '${after.name}' has parent ${after.parent}, which is not in the scene`);
+      transform.parent = parent;
     }
-    // 实例的主实体、挂到骨骼节点的目标可能排在后面：实体都建好以后再挂
-    const entityOf = (id: string | null, file: SceneEntityFile, what: string): EntityId => {
-      if (id === null) return -1 as EntityId;
-      const entity = created.get(id);
-      if (!entity) throw new Error(`${where}: entity '${file.name}' refers to ${id} (${what}), which is not in the scene`);
-      return entity.id;
-    };
-    for (const file of files) {
-      const { instance, nodeLink, ui, uiElementLink } = file.components;
-      if (ui) created.get(file.id)!.add(uiComponent(ui, assets));
-      if (instance) created.get(file.id)!.add(Instance.with({ master: entityOf(instance.master, file, 'instancing master') }));
-      if (nodeLink) created.get(file.id)!.add(ModelNodeLink.with({ target: entityOf(nodeLink.target, file, 'model node link target'), nodeName: nodeLink.nodeName }));
-      if (uiElementLink) created.get(file.id)!.add(UIElementLink.with({ target: entityOf(uiElementLink.target, file, 'UI element link target'), nodeName: uiElementLink.nodeName }));
-    }
+    if (before.position !== after.position) Object.assign(transform.position, { x: after.position[0], y: after.position[1], z: after.position[2] });
+    if (before.rotation !== after.rotation) Object.assign(transform.rotation, { x: after.rotation[0], y: after.rotation[1], z: after.rotation[2], w: after.rotation[3] });
+    if (before.scale !== after.scale) Object.assign(transform.scale, { x: after.scale[0], y: after.scale[1], z: after.scale[2] });
+    if (before.components === after.components) return;
+    const changed = COMPONENT_KEYS.filter((key) => before.components[key] !== after.components[key]);
+    const context: BuildContext = { content: this.#content, assets, manager: entity.manager, created, file: after, where };
+    // 先按相反的顺序去掉旧的，再按建实体时的顺序加新的
+    for (const key of [...changed].reverse()) if (before.components[key] !== undefined) BUILDERS[key].remove(entity, context);
+    addComponents(entity, changed, context);
+  }
+
+  /** 挂场景文件里的脚本。脚本属性可以引用别的脚本（同一个实体上排在后面的也行）：被引用的还没挂上的推迟到下一轮。 */
+  #attachScripts(
+    files: readonly SceneEntityFile[], assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string,
+    created: ReadonlyMap<string, Entity>,
+  ): void {
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
     const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = {
       model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs, font: assets.fonts, texture: assets.textures,
@@ -159,7 +165,6 @@ export class SceneBuilder {
         return extra;
       },
     };
-    // 脚本属性可以引用别的脚本（同一个实体上排在后面的也行）：被引用的还没挂上的推迟到下一轮，一轮没有进展时按原样报错
     let pending = files.flatMap((file) => (file.components.scripts ?? []).map((script) => ({ file, script })));
     while (pending.length > 0) {
       const deferred = pending.filter(({ file, script }) => !binder.attach(created.get(file.id)!, script, context, `${where}: ${file.name}`, { deferMissing: true }));
@@ -170,44 +175,138 @@ export class SceneBuilder {
       }
       pending = deferred;
     }
-    return created;
   }
+}
 
-  /** created 是这个场景里已经建好的实体（按场景文件里的 id），粒子模块引用的实体在模拟时才找。 */
-  #addComponents(entity: Entity, file: SceneEntityFile, assets: SceneAssets, entities: EntityManager, created: ReadonlyMap<string, Entity>): void {
-    const { model, camera, light, background, animation, sprite, static: collidable, character, body, instancing, particleSystem } = file.components;
-    const { materials } = assets;
-    const collider = (shapes: readonly ColliderShapeFile[]) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
-    if (collidable) entity.add(Static.with({ collider: collider(collidable.shapes), layer: collidable.layer, friction: collidable.friction, trigger: collidable.trigger ?? false }));
-    if (character) {
-      const { shapes, trigger: _trigger, ...settings } = character;
-      entity.add(Character.with({ collider: collider(shapes), ...settings }));
+/** 两个版本的实体文件之间的差别。 */
+export interface EntityChanges {
+  /** 新加的实体，按 after 里的顺序（父实体在前）。 */
+  readonly added: readonly SceneEntityFile[];
+  /** 删掉的实体的 id。 */
+  readonly removed: readonly string[];
+  /** 内容变了的实体：原来的和现在的。 */
+  readonly changed: readonly (readonly [before: SceneEntityFile, after: SceneEntityFile])[];
+}
+
+/**
+ * 两个版本的实体文件之间变了的实体（比较对象的引用，所以改文件要拷贝着改，见 editor/SceneDocument）。最常见的修改不加不删
+ * （拖着改一个值，每帧一次）：这时两边一一对应，扫一遍引用就够了，不建表；实体有加有删时才按 id 对。
+ */
+export function changedEntities(before: readonly SceneEntityFile[], after: readonly SceneEntityFile[]): EntityChanges {
+  if (before === after) return NO_CHANGES;
+  if (before.length === after.length) {
+    const changed: [SceneEntityFile, SceneEntityFile][] = [];
+    let aligned = true;
+    for (let i = 0; i < after.length && aligned; i++) {
+      if (before[i] === after[i]) continue;
+      if (before[i]!.id === after[i]!.id) changed.push([before[i]!, after[i]!]);
+      else aligned = false;
     }
-    if (body) {
-      const { shapes, ...settings } = body;
-      entity.add(Body.with({ collider: collider(shapes), ...settings }));
-    }
-    if (camera) entity.add(Camera.with(camera));
-    if (instancing) entity.add(Instancing);
-    if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
-    else if (light?.type === 'point') {
-      entity.add(Light.with({ type: 'point', color: [...light.color, 1], intensity: light.intensity, radius: light.radius, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
-    } else if (light?.type === 'spot') {
-      const { range, angleInner, angleOuter } = light;
-      entity.add(Light.with({ type: 'spot', color: [...light.color, 1], intensity: light.intensity, range, angleInner, angleOuter, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
-    } else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
-    const backgroundGroup = { intensity: background?.intensity ?? 1, renderGroup: background?.renderGroup ?? 0 };
-    if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, ...backgroundGroup }));
-    else if (background) entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, ...backgroundGroup }));
-    if (sprite && 'sheet' in sprite) {
-      const { sheet, color, ...settings } = sprite;
-      entity.add(Sprite.with({ ...settings, sheet: assets.spriteSheets.get(sheet)!.id, color: [...color] }));
-    } else if (sprite) {
-      const { texture, center, color, ...settings } = sprite;
-      const id = assets.images.get('renderTexture' in texture ? texture.renderTexture : texture.texture)!.id;
-      entity.add(Sprite.with({ ...settings, texture: id, centerX: center[0], centerY: center[1], color: [...color] }));
-    }
-    if (particleSystem) {
+    if (aligned) return { added: [], removed: [], changed };
+  }
+  const old = new Map(before.map((entity) => [entity.id, entity]));
+  const added: SceneEntityFile[] = [], changed: [SceneEntityFile, SceneEntityFile][] = [];
+  for (const entity of after) {
+    const previous = old.get(entity.id);
+    if (!previous) added.push(entity);
+    else if (previous !== entity) changed.push([previous, entity]);
+    old.delete(entity.id);
+  }
+  return { added, removed: [...old.keys()], changed };
+}
+
+const NO_CHANGES: EntityChanges = { added: [], removed: [], changed: [] };
+
+type SceneComponents = SceneEntityFile['components'];
+/** 实体文件里的组件，脚本以外的（脚本要等所有实体都在，单独挂）。 */
+type ComponentKey = Exclude<keyof SceneComponents, 'scripts'>;
+
+interface BuildContext {
+  readonly content: ContentManager;
+  readonly assets: SceneAssets;
+  readonly manager: EntityManager;
+  /** 这个场景里已经建好的实体，按文件里的 id。 */
+  readonly created: ReadonlyMap<string, Entity>;
+  readonly file: SceneEntityFile;
+  readonly where: string;
+}
+
+/** 实体文件里的一种组件怎么加到实体上、怎么去掉（去掉以后可以按新的值再加）。 */
+interface ComponentBuilder<K extends ComponentKey> {
+  add(entity: Entity, value: NonNullable<SceneComponents[K]>, context: BuildContext): void;
+  remove(entity: Entity, context: BuildContext): void;
+}
+
+/** 去掉这几种组件、脚本里实体上有的。 */
+const drop = (...types: readonly (ComponentType<any> | ScriptConstructor)[]) => (entity: Entity): void => {
+  for (const type of types) if (entity.has(type)) entity.remove(type);
+};
+
+const collider = (shapes: readonly ColliderShapeFile[], assets: SceneAssets) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
+
+/** 引用的实体（场景里的 id）换成运行时的 id；null 是没指定。 */
+function entityRef(id: string | null, { created, file, where }: BuildContext, what: string): EntityId {
+  if (id === null) return -1 as EntityId;
+  const entity = created.get(id);
+  if (!entity) throw new Error(`${where}: entity '${file.name}' refers to ${id} (${what}), which is not in the scene`);
+  return entity.id;
+}
+
+/**
+ * 键的顺序就是加的顺序。物理组件去掉时连 PhysicsBody 一起去掉：仿真要到下一帧才发现物体没主了，不去掉的话马上加回来的
+ * 组件会接着用旧的物体（旧的形状）。
+ */
+const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
+  static: {
+    add: (entity, { shapes, layer, friction, trigger = false }, { assets }) => entity.add(Static.with({ collider: collider(shapes, assets), layer, friction, trigger })),
+    remove: drop(Static, PhysicsBody),
+  },
+  character: {
+    add: (entity, { shapes, trigger: _trigger, ...settings }, { assets }) => entity.add(Character.with({ collider: collider(shapes, assets), ...settings })),
+    remove: drop(Character, PhysicsBody),
+  },
+  body: {
+    add: (entity, { shapes, ...settings }, { assets }) => entity.add(Body.with({ collider: collider(shapes, assets), ...settings })),
+    remove: drop(Body, PhysicsBody),
+  },
+  camera: { add: (entity, camera) => entity.add(Camera.with(camera)), remove: drop(Camera) },
+  instancing: { add: (entity) => entity.add(Instancing), remove: drop(Instancing) },
+  light: {
+    add: (entity, light, { assets }) => {
+      if (light.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
+      else if (light.type === 'point') {
+        entity.add(Light.with({ type: 'point', color: [...light.color, 1], intensity: light.intensity, radius: light.radius, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
+      } else if (light.type === 'spot') {
+        const { range, angleInner, angleOuter } = light;
+        entity.add(Light.with({ type: 'spot', color: [...light.color, 1], intensity: light.intensity, range, angleInner, angleOuter, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
+      } else entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
+    },
+    remove: drop(Light),
+  },
+  background: {
+    add: (entity, background, { assets }) => {
+      const group = { intensity: background.intensity ?? 1, renderGroup: background.renderGroup ?? 0 };
+      if (background.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, ...group }));
+      else entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, ...group }));
+    },
+    remove: drop(Background),
+  },
+  sprite: {
+    add: (entity, sprite, { assets }) => {
+      if ('sheet' in sprite) {
+        const { sheet, color, ...settings } = sprite;
+        entity.add(Sprite.with({ ...settings, sheet: assets.spriteSheets.get(sheet)!.id, color: [...color] }));
+      } else {
+        const { texture, center, color, ...settings } = sprite;
+        const id = assets.images.get('renderTexture' in texture ? texture.renderTexture : texture.texture)!.id;
+        entity.add(Sprite.with({ ...settings, texture: id, centerX: center[0], centerY: center[1], color: [...color] }));
+      }
+    },
+    remove: drop(Sprite),
+  },
+  particleSystem: {
+    // 粒子模块引用的实体在模拟时才找
+    add: (entity, particleSystem, { assets, manager, created }) => {
       entity.add({ script: ParticleSystemComponent, init: {} });
       entity.require(ParticleSystemComponent).load(particleSystem, {
         texture: (path) => assets.images.get(path),
@@ -215,18 +314,75 @@ export class SceneBuilder {
           const world = created.get(id)?.get(Transform)?.world;
           return world ? [world[12]!, world[13]!, world[14]!] : undefined;
         },
-        module: (type) => entities.game.registry.particleModule(type) as ParticleModuleClass | undefined,
-        shaderClass: (name) => entities.game.registry.shaderClass(name),
+        module: (type) => manager.game.registry.particleModule(type) as ParticleModuleClass | undefined,
+        shaderClass: (name) => manager.game.registry.shaderClass(name),
       });
-    }
-    if (animation) {
+    },
+    remove: drop(ParticleSystemComponent),
+  },
+  animation: {
+    add: (entity, animation, { assets }) => {
       entity.add({ script: AnimationComponent, init: {} });
       const clips = entity.require(AnimationComponent).animations;
       for (const { name, clip } of animation.animations) clips.set(name, assets.animations.get(clip)!);
-    }
-    if (!model) return;
-    const overrides = model.materials.map((path) => (path === null ? null : (materials.get(path) ?? null)));
-    this.#content.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true, renderGroup: model.renderGroup ?? 0 });
+    },
+    remove: drop(AnimationComponent),
+  },
+  model: {
+    add: (entity, model, { content, assets }) => {
+      const overrides = model.materials.map((path) => (path === null ? null : (assets.materials.get(path) ?? null)));
+      content.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true, renderGroup: model.renderGroup ?? 0 });
+    },
+    remove: (entity, { content }) => content.removeModel(entity),
+  },
+  // 下面的引用别的实体（可能排在后面）：实体都建好以后才加
+  constraints: {
+    // 约束在脚本启动时加进仿真
+    add: (entity, constraints, context) => {
+      for (const constraint of constraints) {
+        // 各种约束的组件按设置的类型参数化，这里只按基类用
+        const component = CONSTRAINT_COMPONENTS[constraint.type as keyof typeof CONSTRAINT_COMPONENTS] as unknown as ScriptConstructor<ConstraintComponentBase> | undefined;
+        if (!component) {
+          console.warn(`[stride] ${context.where}: ${context.file.name}: constraint type '${constraint.type}' is not supported; skipped`);
+          continue;
+        }
+        const body = (id: string) => {
+          const found = context.created.get(id);
+          if (!found) throw new Error(`${context.where}: entity '${context.file.name}' has a constraint on ${id}, which is not in the scene`);
+          return found;
+        };
+        entity.add({ script: component, init: {} });
+        const script = entity.require(component);
+        script.settings = { ...constraint.settings, type: constraint.type, bodyA: body(constraint.bodyA), ...(constraint.bodyB ? { bodyB: body(constraint.bodyB) } : {}) } as ConstraintSettings;
+        script.enabled = constraint.enabled;
+      }
+    },
+    remove: drop(...(Object.values(CONSTRAINT_COMPONENTS) as unknown as ScriptConstructor[])),
+  },
+  ui: { add: (entity, ui, { assets }) => entity.add(uiComponent(ui, assets)), remove: drop(UIComponent) },
+  instance: {
+    add: (entity, instance, context) => entity.add(Instance.with({ master: entityRef(instance.master, context, 'instancing master') })),
+    remove: drop(Instance),
+  },
+  nodeLink: {
+    add: (entity, link, context) => entity.add(ModelNodeLink.with({ target: entityRef(link.target, context, 'model node link target'), nodeName: link.nodeName })),
+    remove: drop(ModelNodeLink),
+  },
+  uiElementLink: {
+    add: (entity, link, context) => entity.add(UIElementLink.with({ target: entityRef(link.target, context, 'UI element link target'), nodeName: link.nodeName })),
+    remove: drop(UIElementLink),
+  },
+};
+
+const COMPONENT_KEYS = Object.keys(BUILDERS) as ComponentKey[];
+const LATE_KEYS = COMPONENT_KEYS.slice(COMPONENT_KEYS.indexOf('constraints'));
+const EARLY_KEYS = COMPONENT_KEYS.slice(0, COMPONENT_KEYS.indexOf('constraints'));
+
+/** 把实体文件里这几种组件（有的那些）加到实体上。 */
+function addComponents(entity: Entity, keys: readonly ComponentKey[], context: BuildContext): void {
+  for (const key of keys) {
+    const value = context.file.components[key];
+    if (value !== undefined) (BUILDERS[key] as ComponentBuilder<ComponentKey>).add(entity, value, context);
   }
 }
 

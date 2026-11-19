@@ -12,7 +12,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - [docs/vector-assets.md](docs/vector-assets.md)：资源尽量矢量化（用户 2026-11-19 的方向）的格式讨论稿：2D 矢量图、材质图、几何、地形各用什么格式，要用户定的问题，几何实验的设计和结果。
 - [docs/roadmap.md](docs/roadmap.md)：路线图（范围、原则、阶段、取舍）和末尾的"进度"；执行中自己做的决定记在 [docs/decisions.md](docs/decisions.md)，已完成各项的过程在 [docs/progress-log.md](docs/progress-log.md)。
 
-现状（2026-11-19，P1 完成，正在做 P2；进度和下一步见 docs/roadmap.md 末尾的"进度"，只留结论，已完成各项的过程在 docs/progress-log.md）：
+现状（2026-11-20，P1、P2 完成，下一步是 P3 编辑器；进度和下一步见 docs/roadmap.md 末尾的"进度"，只留结论，已完成各项的过程和验收表在 docs/progress-log.md）：
 
 - **仓库**：pnpm monorepo（见 README.md 的"开发"），`main` 分支，远程 `origin` 是公开仓库 `kenconnet666/stride-ts`（2026-11-18 建，MIT 许可证）。提交并验证后直接推送到 origin，不用先问（用户 2026-11-18）；fork 同样直接推 origin，但永远不推上游 jrouwe。
 - **引擎核心**：`Game` 循环、`GraphicsDevice`、实体核心（`prop`、数据组件和列存储、系统、脚本、按模块路径登记，见 docs/architecture.md 的"实现状态"），实体克隆（`entity.clone()`）和所在的场景（`entity.scene`）；开发时有热重载（`Game.hotEntry`）；`Transform` 的数据在 stride-native 的变换存储里（层级传播、物理写回，见"共享内存的数据模型"）。
@@ -23,7 +23,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - **动画**（`animation/`）：`AnimationComponent`、`game.animation`，ozz 在原生侧并行求值，GPU 蒙皮；形变目标（`animation/morphs.ts`：`game.animation.morphs(entity)`，剪辑里的权重曲线，顶点着色器里形变）；用代码建的属性曲线（`animation/curves.ts`：`AnimationClip.fromCurves`、`propertyCurve`，驱动数据组件的属性）。
 - **文字和 UI**：矢量文字（`rendering/text`：字形轮廓按 Slug 逐像素算覆盖率，`SpriteBatch`）；UI 系统（`ui/`：.sduipage、.sduilib 导入，Stride 的布局、控件、路由事件，`game.ui` 在场景之后画全屏 UI 和放在 3D 里的 UI（和场景比深度），UI 占着的输入对脚本藏起来（`input/capture.ts`），EditText 用隐藏的 DOM 输入框编辑，实体可以跟着 UI 元素走（`UIElementLink`）；文字的描边按到轮廓的距离画；键盘事件发给 `game.ui.focusedElement`；影子 DOM `game.ui.semantics` 把全屏 UI 的文字和控件同步成透明的 DOM 节点，读屏、Tab 键、查找、复制用）；屏幕上的调试文字（`game.debugText`，CSS 像素，按游戏设置的设计分辨率摆）。
 - **粒子和声音**：粒子（`particles/`：照 Stride 在 CPU 上模拟，生成器、初始化器、力场，Billboard/Quad/Hexagon、飘带和翻页）；声音（`audio/`：Web Audio，`game.audio`、Sound、SoundInstance，源文件原样用；`AudioEmitterComponent`、`AudioListenerComponent` 按实体的位置空间化）。
-- **样例**（`apps/` 下，各自有 `import:stride` 和 `smoke`，冒烟共用的页面帮手在 `tools/smoke.ts` 的 `PAGE_HELPERS`；清单、端口和验收结果见 docs/roadmap.md 的"进度"）：P1 的七个 Stride 样例（platformer 即 TPP、animated-model、physics-sample、bepu-sample、platformer2d、topdown-rpg、first-person-shooter）都移植了，TPP 和桌面 Stride 4.4.2 的截图逐像素比对过；P2 的 sprite-fonts、game-menu、ui-element-link、ui-particles、simple-audio、particles-sample、jumpy-jet、space-escape、material-shader、custom-effect、morph-targets、csharp-beginner、csharp-intermediate（桌面比对还没做）。
+- **样例**（`apps/` 下，各自有 `import:stride` 和 `smoke`，冒烟共用的页面帮手在 `tools/smoke.ts` 的 `PAGE_HELPERS`；清单、端口和验收结果见 docs/roadmap.md 的"进度"）：P1 的七个 Stride 样例（platformer 即 TPP、animated-model、physics-sample、bepu-sample、platformer2d、topdown-rpg、first-person-shooter）都移植了，TPP 和桌面 Stride 4.4.2 的截图逐像素比对过；P2 的 sprite-fonts、game-menu、ui-element-link、ui-particles、simple-audio、particles-sample、jumpy-jet、space-escape、material-shader、custom-effect、morph-targets、csharp-beginner、csharp-intermediate。
 - **工具**：调试 CLI `stride`（`packages/cli`，`pnpm exec stride --help`）查看和操作正在运行的游戏：状态、实体、改属性、暂停单步、模拟输入、截图比较、性能、CPU 剖析、日志、原生侧的计数器；游戏和原生代码通过 `game.debug`、fork 的 `Debug.h` 埋点。`pwsh tools/regress.ps1` 把所有冒烟脚本跑一遍，`pwsh tools/measure.ps1` 测导入、构建、下载量、启动和帧时间（桌面 Stride 用截图工程的 `--benchmark`）；和桌面 Stride 的截图比对用 `tools/stride-capture`、`stride shot --diff`。
 - **参考用的开源仓库**浅克隆在 `C:\code\refs`，需要时再加：
   - glTF-Transform、three.js、PlayCanvas engine；

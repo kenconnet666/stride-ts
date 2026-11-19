@@ -367,7 +367,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | TopDownRPG | `apps/topdown-rpg`（5194） | 1.06（BC 压缩） | |
 | FirstPersonShooter | `apps/first-person-shooter`（5196） | 0.74 | |
 
-**P2 界面、声音、效果**（进行中）：
+**P2 界面、声音、效果**（2026-11-20 完成）：十四个样例加收尾（第 15 项）。验收数字在 progress-log.md 的"P2 收尾"。
 
 | 样例 | 应用（端口） | 做了什么 | 截图差 | 没做完的 |
 |---|---|---|---|---|
@@ -383,61 +383,22 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | CustomEffect | `apps/custom-effect`（5216） | SpriteBatch 的自定义效果 | 0.43 | |
 | MorphTargets | `apps/morph-targets`（5218） | 形变目标（原生 0.27.0）、Slider、Border | 3.88（UI 的色调映射） | |
 | FPS 的粒子和材质层 | `apps/first-person-shooter` | SpawnerBurst、SpawnerFromDistance、材质层 | 0.74 | |
+| CSharpBeginner | `apps/csharp-beginner`（5220） | 实体克隆、场景归属、调试文字、虚拟按钮 | 1.24 到 1.55 | |
+| CSharpIntermediate | `apps/csharp-intermediate`（5222） | 声音的发射器和听者、玻璃和清漆材质、点光的阴影、导航组件 | 0.29 到 1.05（五张） | UI 的渲染组（P3） |
 
 ### 正在做和下一步
 
-13. **CSharpBeginner**（`apps/csharp-beginner`，端口 5220）：Stride 的入门教程。主场景 MainScene 的 TutorialUI（UI 页面，按钮表从占位按钮复制出 15 个，点了把教程场景作为子场景加载、相机插值移过去，左上角回菜单）加 15 个教程场景，每个一个演示脚本（取实体、子实体、位置、属性、取组件、加组件、DeltaTime、克隆、移除、键盘、鼠标、虚拟按钮、插值、加载内容、实例化预制体），大多用 DebugText 打印。
-
-   分步：
-   1. ~~导入和骨架~~（2026-11-19）：导入主场景和 15 个教程场景；TutorialUI 写成 TS（按钮照占位按钮复制、加载子场景、相机 2 秒插值）。导入器补上：程序模型 Teapot、材质的贴图用到时才导入。
-   2. ~~演示脚本和引擎能力~~（2026-11-19）：15 个演示脚本。引擎补上（细节见 docs/decisions.md 同日的条目）：`entity.clone()`（实体层的通用克隆）、`entity.scene`（运行时建的实体放进场景、随场景卸载）、虚拟按钮、`input.absoluteMousePosition`、C# 风格的数值文字（`formatFloat` 等）、`Quaternion.lerp`；调试文字改成按 CSS 像素和设计分辨率摆（高分屏上清楚，字跟着物体）。
-   3. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/csharp-beginner`）：冒烟 11 项（15 个教程都能进、键盘和虚拟按钮、克隆、代码加载、预制体、换一圈教程实体数不变）；截克隆、键盘、属性三个教程，物体的位置、大小、阴影一致，第一次比 UI 以下的场景平均每通道差 2.35、2.27、5.98/255（见第 4 步）。顺带：调试文字加 `visible`（同 Stride 默认只在开发版画）、`stride shot --diff` 加 `--region` 和每通道平均、`tools/stop-dev.ps1`。
-   4. ~~箱子的光晕~~（2026-11-19）：逐个效果和桌面版比，找到并修掉三处（docs/decisions.md 的"贴图的颜色键和 1 位 alpha；泛光的权重"）：泛光的权重强了 4 倍、贴图的颜色键和 `Alpha: Mask` 没导入、比对时亮度适应没关。三张降到 1.44、1.24、1.55/255；别的有截图脚本的样例重比没有变差。
-   - 回头补：P1 的七个样例（TPP、FPS、TopDownRPG 等）是修正泛光之前截的，没有 `capture-ours.ps1`，要各补一个脚本重截（预计也会降，它们和这里用的是同一套素材和合成器）。
-14. **CSharpIntermediate**（`apps/csharp-intermediate`，端口 5222）：进阶教程。主场景 IntermediateTutorials 的 TutorialUI 有"开始"和"完成"两列按钮，点一个就把根场景换成那个教程的场景；11 个主题各有 Start-、Completed- 两个场景（场景加载另有 SceneB 和一个子场景），共 26 个，脚本 23 个。
-
-   分步（按主题分组，每组先看 Stride 的脚本和我们缺什么）：
-   1. ~~导入和骨架~~（2026-11-19）：26 个场景都导入了、在 Chrome 里都能进，TutorialUI 写成 TS（换根场景，`stride call tutorial`）。导入器补上：没有模型的 ModelComponent 不画（以前报错）、单独导入脚本用代码加载的资源（`--asset` 也认材质、预制体、声音等）。导入时跳过的组件：AudioListenerComponent、AudioEmitterComponent（第 3 步做）；UI 的渲染组 Group4 当 Group0 用。
-   2. ~~界面和物理~~（2026-11-19，脚本写好、场景能进，按键的玩法留到第 5 步的冒烟里走）：01 UIByCode、UIByEditor；02 CollisionTriggerDemo、Teleport；03 RaycastDemo、RaycastPenetratingDemo（原生 0.28.0 的穿透射线，`simulation.rayCastPenetrating`）；04 ProjectDemo、UnprojectDemo（`worldToScreen`，`debugText.fromScreen`）；05 AsyncCollisionTriggerDemo、AsyncWebApi（fetch）。工具脚本 ObjectSpawner、OmniDirectionMovement。
-   3. ~~场景、动画、声音~~（2026-11-19）：06 LoadScene、LoadChildScene（`game.loadScene` 的 `parent`、`offset`：子场景随父场景卸载）；07 AnimationBasics；08 AudioDemo、LoadMusic。引擎补上声音的发射器和听者（`AudioEmitterComponent`、`AudioListenerComponent`：按实体的位置空间化，指向性，HRTF 时的混响），场景里的同名组件导入成它们。
-   4. ~~相机、角色、导航~~（2026-11-19）：09 FirstPersonCamera、CharacterMovement；10 ThirdPersonCamera（相机避障的射线，Stride 的脚本会穿墙，见 docs/decisions.md）；11 NavigateCharacter（寻路、沿路径走、拐点上放球）。引擎补上：`body.setOrientation`（原生 0.29.0，只改朝向、不打断位置的插值）、`entity.findChild`、`Quaternion.toEulerXYZ`。
-   5. 冒烟和桌面比对：
-      - ~~冒烟~~（2026-11-19）：22 项。22 个教程场景都能进，11 个主题完成版的玩法各走一遍（UI 的按钮和输入框、触发器、两种射线按层过滤、投影和点地面克隆、异步脚本换材质、子场景和换根场景、动画的淡入和暂停、音乐和发射器、两个相机的锁鼠标和转视角、导航），换一圈教程实体数不变。冒烟脚本共用的页面帮手放进了 `tools/smoke.ts`（`PAGE_HELPERS`）；别的样例的冒烟还各带一份自己的，回头换成共用的。
-      - 桌面比对（`tools/stride-capture/csharp-intermediate`）：截图工程用官方 4.4.2 的包，去掉导航教程（它用的 Stride.BepuPhysics.Navigation 没有 4.4.2 的包）；截射线、投影、场景加载、声音四个教程的完成版。第一次比平均每通道差 26 到 67/255，查出材质导入的五处问题并修掉（docs/decisions.md 的"材质：着色模型、停用的特性、化不成固定槽的属性"）：没有镜面着色模型的材质不该有镜面反射（木地板成了镜面）、停用的特性照样导入了（激光发白光）、光泽度是运算时退成了 0、没给材质的程序模型没有材质槽（实体的覆盖用不上）、`findChild` 只找直接子实体（激光的长度没改）。现在投影 0.55、场景加载 0.66、声音 1.05、射线 1.71。
-      - ~~玻璃材质~~（2026-11-19，`MaterialSpecularThinGlassModelFeature`，教程里绿色的箱子）：透明阶段分两遍画（透射乘到背景上、反射加上去），两面都画时四遍；背面的法线翻过来；没有漫反射着色模型的材质不算漫反射光照。射线那张从 2.11 降到 1.71。
-      - ~~清漆材质~~（2026-11-19，`MaterialClearCoatFeature`，教程里蓝色的箱子）：两遍（金属碎片加底漆、清漆加在上面），输入都是颜色树。射线那张从 1.71 降到 1.00，蓝箱子各个面的平均颜色两边差不到 2/255。
-15. **P2 收尾**（CSharpIntermediate 是 P2 清单里最后一个样例；这一项把 P2 里记下没做完的补齐，再测一遍验收数字）。分步：
-   1. ~~重截 P1 的七个样例~~（2026-11-19）：各补了 `capture-ours.ps1`（共用 `tools/stride-capture/ours.ps1`），`capture-all.ps1` 一步跑完；按每通道平均差重记进"已完成"的表。除 TPP 的默认设置（1.84，后处理把贴图的小差放大了）外都在 1.1 以内。
-   2. 样例里记着"P2 补"的：~~AnimatedModel 的 Idle、Run 按钮和 PhysicsSample 各场景的文字、按钮~~（2026-11-19：按钮绑到 UI 上，PhysicsSample 的三个脚本照 Stride 用代码建页面，调试命令去掉，冒烟改成点真的按钮）；~~Platformer2D 拿金币的音效；TopDownRPG 的粒子特效、音乐和音效~~（2026-11-19：金币、箱子、掉落金币的音效和 MusicScript 的背景音乐接上；粒子特效的预制体原来就在放，冒烟补了检查）；~~UIElementLink 场景里烟的粒子~~（2026-11-19：重新导入就有了，冒烟检查粒子在冒；截图比对时两边都去掉）。
-   3. P2 清单里还没做的引擎能力，每项先看 Stride 怎么做、有没有样例用到（2026-11-19 查过 Stride 的全部样例）：
-      - ~~点光和聚光的阴影~~（2026-11-20，CSharpIntermediate 的 SceneB 有一盏投阴影的点光）：点光是立方体的六个面、聚光一个透视视图，和级联共用一张图集（按矩形分配）；盏数和视图数不设上限。SceneB 和桌面比 1.23，阴影对得上。做法和取舍见 decisions.md 的"点光、聚光的阴影"。
-      - MSAA（只有没移植的 VRSandbox 开了）、渲染组和渲染掩码（样例的合成器全是 All；UI 上写的 Group4、Group25 没有效果）：没有样例用到，挪到后面——MSAA 进 P4，渲染掩码进 P3（编辑器的辅助图形要用）。
-      - ~~用代码建的动画剪辑（属性曲线）~~（2026-11-20）：`AnimationClip.fromCurves` 加 `propertyCurve(组件, 属性, 关键帧, 插值)`，`AnimationComponent` 照常播放和混合；没有模型的实体也能播，带骨架的模型能叠播只有曲线的剪辑。ParticlesSample 的 RotationScript 换回了 Stride 的写法。见 decisions.md 的"用代码建的动画剪辑"。
-      - ~~触摸手势~~（2026-11-20，`input/gestures.ts`）：照 Stride.Input 的 Gestures 移植了点、长按、拖动、轻扫、双指组合五种识别器，`game.input.gestures` 加配置、`game.input.gestureEvents` 每帧给事件；SpaceEscape 换回手势的写法。见 decisions.md 的"手势识别"。TouchInputs 样例（专门演示手势）记进 P3 之后的样例清单。
-      - 没有样例用到、挪走的：分簇（P4）；画进渲染目标贴图的相机的阴影和后处理（AnimatedModel 的那台相机本来就没开，P4）；透明物体的阴影（P4）；精灵的 Swizzle（样例的资源里全是 null）；精灵组件的九宫格边框（Stride 的边框只在 UI 的图片上起作用，UI 那边已经做了；Platformer2D 的精灵表没有边框，这一条划掉）。
-      - ~~透明实例的排序~~（2026-11-20，`rendering/transparentOrder.ts`）：透明的实例逐个从远到近画，不同批的可以交错，同一批里连着的一次画完。见 decisions.md 的"透明实例逐个从远到近画"。
-      - ~~RecastNavigationComponent 的排队寻路和沿路径走~~（2026-11-20）：`setTarget`、`startFollowingPath`，见 decisions.md。
-      - ~~场景的偏移~~（2026-11-20）：场景在变换存储里占一个隐藏的根（`SceneRoot`），根实体挂在它下面，子场景的根挂在父场景的根下面；实体的本地位置不再带偏移，`scene.offset` 可以运行时改。见 decisions.md 的"场景的偏移在场景上"。
-   4. UI 和文字：换行和富文本、世界空间的文字（MSDF）、~~文字的描边~~（2026-11-20：按到轮廓的距离画，粗细不限）、~~按键的路由事件~~（2026-11-20：发给 `game.ui.focusedElement`；两项见 decisions.md 的"文字的描边按到轮廓的距离画"）、~~还没用到的控件~~（2026-11-20：ToggleButton、ImageButton、ScrollingText、ContentPresenter，Stride 能写进页面的元素类型都有了，见 decisions.md 的"UI 控件补齐"）、~~输入框以外的无障碍树（影子 DOM：选中复制、读屏）~~（2026-11-20：`game.ui.semantics`，见 decisions.md 的"影子 DOM"；放在 3D 里的 UI 还不进）。剩下的：富文本（Stride 没有，挪到 P3 之后和编辑器的文字需求一起做）；世界空间的文字不另做 MSDF（字形本来就是按轮廓现算的，放进 3D 的 UI 里任何大小都清楚）；SVG 精灵按矢量画等 [vector-assets.md](vector-assets.md) 第一节的两个问题定下来（运行时用不用"画法树加条带"的模型）。
-   5. ~~导入器里报"not supported"的逐条过一遍~~（2026-11-20）：把 20 个样例全部重新导入，收集警告（共 59 条，4 种）：
-      - 材质层的环境光遮蔽（PhysicsSample 和公共素材包的 Logo 材质）：补上了，层的遮蔽和它对直射光的影响跟别的属性一样按遮罩混。
-      - 游戏自己的渲染器引用渲染阶段（JumpyJet）：以前当成实体引用、报找不到；现在导出成阶段的名字。
-      - ~~UI 的渲染组（Group4、Group25，27 条）~~（2026-11-20）：渲染组和渲染掩码做了模型、UI 和相机的掩码这一部分，见 decisions.md 的"渲染组和渲染掩码"；精灵、粒子、背景的渲染组在 P3 和编辑器的辅助图形一起补。
-      - 粒子的自定义模块（ParticlesSample）：是提示不是缺失，游戏用 TS 登记同名的模块。
-      - 没有样例触发的那些（代码里还报警告，P4 做材质和画面时逐个补，先有用到它的内容再做）：材质——次表面散射和曲面细分、非微表面的镜面模型、镜面颜色用贴图、透明的贴图色调和别的透明类型、正面剔除、标量用贴图、颜色树里两张贴图合成和少数运算、层的 UVScale 覆盖、层的 cavity、透明、位移和嵌套的层、清漆加透明；别的——根运动和非标准的动画资源类型、凸分解、精灵的 Swizzle、手动的阴影级联分割、导航网格的别的分区方式、UI 的列表值。
-      - 导入的警告每次都要看：CSharpIntermediate 的木地板成了镜面，导入时其实报了警告。~~导入没有缓存，每次都重编贴图~~（2026-11-19：贴图编码的结果按内容哈希缓存在 `~/.stride-ts/cache/pipeline`，`packages/pipeline/src/cache.ts`；一张 2048 的法线贴图编成 KTX2 要两分钟，重新导入不再等）。
-      - ~~比对时发现要查的：SceneB 的拱顶内侧两肩比桌面亮 12/255~~（2026-11-20：拱的缩放不等比，法线要用世界矩阵的逆转置变换，以前直接乘世界矩阵；改了以后这张从 1.23 降到 0.29）。
-   6. 整理：~~各样例冒烟脚本里自带的页面帮手换成 `tools/smoke.ts` 的 `PAGE_HELPERS`~~（2026-11-20：等帧、合成指针事件、按名字找和点 UI 元素都用共用的，样例只留自己特有的；TPP 以前没有冒烟，补了一个：落地、跑、跳）；文档只留结论。
-   7. P2 的验收数字和全量回归（进行中，2026-11-20）。全部样例重截图、重测了一遍（桌面 TPP 基准 6.15 ms，没有降频）：
-      - 画面：和记录的数字一致（SpriteFonts 八屏完全相同，字形的新格式无损；SceneB 0.29）。csharp-beginner（1.38 到 1.59，原来 1.24 到 1.55）、morph-targets（4.16，原来 3.88）略升，还没查是哪次改动（怀疑是材质层的遮蔽或法线的改动影响了带标志的箱子，要 A/B）。
-      - 下载量：csharp-beginner、csharp-intermediate 的页面下载 21、22 MB（brotli 17 MB），别的样例都在 8 MB 以内，要看是哪些文件。
-      - 帧时间（验收线：不比桌面 Stride 慢）：16 个有桌面数字的样例里 5 个超了。查到两个原因，各修了一部分：
-        - 网格的着色器是一份通吃的，没用到的贴图也采样（白图）、没有的天空盒光和玻璃也照算：改成按 uniform 里的标志跳过，深度预通道之后的不透明阶段只比较深度相等。SpaceEscape 1.40 → 1.06 ms（桌面 0.91）、ParticlesSample 1.22 → 1.11（1.02）、AnimatedModel 0.94 → 0.86（0.95）、TPP 5.82 → 5.62（6.15）。
-        - 后处理：UIElementLink 2.66 ms（桌面 1.24），关掉后处理是 0.51 ms——亮部、泛光、光芒、镜头光晕四步占 1.5 ms，FXAA 0.41，色调映射 0.24。还没优化（下一步：和桌面版 `--gpu-profile` 的逐效果时间对照）。
-        - 还超的：UIElementLink 2.15 倍、JumpyJet 1.30（0.74 对 0.57 ms）、SpaceEscape 1.16、ParticlesSample 1.09、SpriteFonts 1.07。轻的样例里固定的开销占比大：没有后处理时也先画进 HDR 目标再拷一遍、深度预通道，下一步试"没有后处理时直接画到后备缓冲"。
-      - 做完以后：把第 13 到 15 项的过程挪到 progress-log.md（脚本已经写好思路：只留结论），然后进 P3（编辑器）。P3 第一步"渲染组和渲染掩码"已经做了模型、UI、相机的部分。编辑器前端用什么框架要问用户（D10：新的重型依赖）。
+15. ~~**P2 收尾**~~（2026-11-20 完成，过程和验收表在 progress-log.md 的"P2 收尾"）：重截了 P1 的七个样例；补上样例里记着的遗留（按钮、音效、粒子）；引擎补上点光和聚光的阴影、用代码建的动画剪辑、手势、透明实例的排序、排队寻路、场景的偏移；UI 和文字补上剩下的控件、文字的描边、键盘事件、影子 DOM；导入警告清查（材质层的遮蔽、渲染阶段的引用）；法线改用逆转置；字形块的文件小一半；冒烟共用页面帮手、TPP 补上冒烟；帧时间的两处优化（网格着色器、没有后处理时直接输出）。
+   - 验收：20 个样例的冒烟全过；帧时间是桌面 Stride 的 0.52 到 1.12 倍（同一时段测），17 个不慢于桌面，SimpleAudio、SpriteFonts、CustomEffect 这三个最轻的 2D 样例高 0.03 到 0.05 ms（都在每秒 2000 帧以上，我们这边剩下的时间主要是浏览器自己的帧循环）。
+   - 没查完的：csharp-beginner、morph-targets 的截图差比以前的记录高 0.04 到 0.28，要 A/B 找出是哪次改动。
+   - 挪走的：MSAA、分簇、透明物体的阴影、画进渲染目标贴图的相机的阴影和后处理、没有样例触发的材质特性（P4）；精灵、粒子、背景的渲染组，调试渲染（P3）；富文本（P3 之后）；TouchInputs 样例（P3 之后）。
+   - 等用户定的：SVG 精灵按矢量画（[vector-assets.md](vector-assets.md) 第一节的两个问题）；编辑器前端用什么框架（D10：新的重型依赖）。
 16. **几何表示的实验**（用户 2026-11-19 要求：矢量化的几何先做实验再定；和第 14、15 项穿插着做，不等 P6）。设计和判定标准在 [vector-assets.md](vector-assets.md) 的"几何"一节，结果写回那份文档：
    1. ~~E1 存储~~（2026-11-19，`packages/pipeline/experiments/displacement-storage.ts`）：七个模型（含斯坦福的两个稠密扫描），"基础网格加位移微图"是同误差普通网格的 0.5 到 0.7 倍，稠密扫描上持平。没过三分之一的线。
    2. ~~E2 运行时~~（2026-11-19，`apps/bench` 的 `displacement.html`）：顶点着色器里现算位置和静态网格一样快（1.0 倍），显存小 14 到 16 倍；每个基础三角形各选一级、边上吸附到低的一级，没有裂缝。
    3. ~~E3 程序化位移~~（2026-11-19，`apps/bench` 的 `procedural.html`）：同样画面质量下和视差遮蔽一个档次的开销，多出真的轮廓和深度。~~E4 生成器~~（`packages/pipeline/experiments/sweep-generator.ts`）：一公里的路和护栏，描述 598 字节，生成 11 毫秒，同样的网格下载要 162 毫秒。
    4. 结论（vector-assets.md 的"结论"）：任意几何的默认表示仍是簇 LOD 的网格；位移用在材质图驱动的表面和地形，规则几何用生成器。**等用户确认这个分工**，连同那四个格式问题。
+17. **P3 编辑器**（下一步）。先做和前端框架无关的部分：
+   1. 运行时这边编辑器要用的：~~渲染组和渲染掩码（模型、UI、相机）~~（2026-11-20），精灵、粒子、背景的渲染组；调试渲染（解析的抗锯齿线：线框、包围盒、物理形状、网格线、Gizmo）；视口里选物体；编辑相机；把运行时的实体写回创作格式（场景、预制体的保存）。
+   2. 工程格式和 Node 后端：工程清单、资源数据库、文件监视、和前端的接口；`assets.gen.ts`。
+   3. 前端骨架（等框架定下来）：场景树、属性面板（`prop` 的 schema 驱动）、撤销重做、Gizmo、资源浏览器、预制体、播放。

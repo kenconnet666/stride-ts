@@ -334,8 +334,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 14. **CSharpIntermediate**（`apps/csharp-intermediate`，端口 5222）：进阶教程。主场景 IntermediateTutorials 的 TutorialUI 有"开始"和"完成"两列按钮，点一个就把根场景换成那个教程的场景；11 个主题各有 Start-、Completed- 两个场景（场景加载另有 SceneB 和一个子场景），共 26 个，脚本 23 个。
 
    分步（按主题分组，每组先看 Stride 的脚本和我们缺什么）：
-   1. 导入和骨架：导入全部场景，TutorialUI 写成 TS；记下导入器不认识的组件。
-   2. 界面和物理：01 用代码建 UI、编辑器做的 UI；02 碰撞和触发、瞬移；03 射线（含穿透的 `RayCastPenetrating`）；04 投影和反投影（`Vector3.Project`、`Viewport.Unproject`）；05 异步脚本（等触发器、Web API 用 fetch）。
-   3. 场景、动画、声音：06 换根场景、加载和卸载子场景（`Content.Unload`）；07 动画的播放、交叉淡入、暂停和速度；08 声音（声像、音量，`AudioEmitterComponent`）。
-   4. 相机、角色、导航：09 第一人称相机；10 第三人称相机（相机避障的射线）和角色移动；11 导航（`RecastNavigationComponent` 的寻路、沿路径走）。
-   5. 冒烟（每个场景都能进、各主题的玩法走一遍）和几张桌面比对；回头看一遍哪里比 Stride 差、Stride 哪里有毛病。
+   1. ~~导入和骨架~~（2026-11-19）：26 个场景都导入了、在 Chrome 里都能进，TutorialUI 写成 TS（换根场景，`stride call tutorial`）。导入器补上：没有模型的 ModelComponent 不画（以前报错）、单独导入脚本用代码加载的资源（`--asset` 也认材质、预制体、声音等）。导入时跳过的组件：AudioListenerComponent、AudioEmitterComponent（第 3 步做）；UI 的渲染组 Group4 当 Group0 用。
+   2. ~~界面和物理~~（2026-11-19，脚本写好、场景能进，按键的玩法留到第 5 步的冒烟里走）：01 UIByCode、UIByEditor；02 CollisionTriggerDemo、Teleport；03 RaycastDemo、RaycastPenetratingDemo（原生 0.28.0 的穿透射线，`simulation.rayCastPenetrating`）；04 ProjectDemo、UnprojectDemo（`worldToScreen`，`debugText.fromScreen`）；05 AsyncCollisionTriggerDemo、AsyncWebApi（fetch）。工具脚本 ObjectSpawner、OmniDirectionMovement。
+   3. 场景、动画、声音：06 LoadScene、LoadChildScene（~~写好~~，`game.loadScene` 的 `parent`、`offset`：子场景随父场景卸载）；07 AnimationBasics（~~写好~~）；08 声音还没做（AudioDemo、LoadMusic：声像、音量，`AudioEmitterComponent`、`AudioListenerComponent`）。
+   4. 相机、角色、导航（还没做）：09 FirstPersonCamera、CharacterMovement；10 ThirdPersonCamera（相机避障的射线）；11 NavigateCharacter（`RecastNavigationComponent` 的寻路、沿路径走）。
+   5. 冒烟（每个场景都能进、各主题的玩法走一遍）和几张桌面比对；回头看一遍哪里比 Stride 差、Stride 哪里有毛病。桌面版的截图工程搭了一半（`tools/stride-capture/csharp-intermediate`，还没提交）：样例要 Stride.BepuPhysics.Navigation，只有本机编的 4.5.3-dev4 有这个包，而那一版的资源编译器编天空盒时要 `STRIDE_WEBGPU_NATIVE_LIBRARY`（见 stride-webprobe3 的 build/wgpu/README.md），设好再编。

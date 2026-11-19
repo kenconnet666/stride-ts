@@ -2,6 +2,18 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-19 CSharpIntermediate：预制体的实例照文件里的值；穿透的射线；投影
+
+- **预制体的实例照场景文件里的值，不和预制体合并**：场景文件里存着实例每个成员的值，改过的成员键名后面带 `*`。CSharpIntermediate 的场景里有一批实例的 `Model: null`，而且一半实例对应的预制体部件已经不存在了（预制体改过以后场景没重新保存）。试过照 Game Studio 的做法合并（没标覆盖的成员取预制体现在的值），撤掉了：
+  - Stride 的资源编译器（`dotnet build`，我们截参考图用的）不合并，照文件里的值编；合并是 Game Studio 打开工程时做的（`PackageBuilderApp.ReconcileBases` 的注释写明了）。
+  - 样例的场景文件里覆盖标记不可靠：TPP 的柱子各有各的碰撞体高度（1、2、3、4 米），都没带标记，一合并全变成预制体的 5 米。
+  - 所以照编译器：没有模型的 ModelComponent 不画（以前导入器直接报错），实体上别的组件照常。这些实体的碰撞体还在（看不见的墙），同桌面 Stride。
+  - 标题里这一项对应的代码没有留下。
+- **穿透的射线**（原生 0.28.0 的 `sn_physics_ray_cast_all`，`simulation.rayCastPenetrating`）：每个物体一个命中（进入它的那一处），从近到远；复合碰撞体的子形状只算一次。
+- **`worldToScreen`**（Stride 的 Vector3.Project）：返回按画面归一化的位置和深度；点在相机后面时返回 undefined（Stride 照样除以 w，得到镜像过去的位置，教程里的字会出现在背后物体的对面）。`debugText.fromScreen` 把归一化的位置换成 print 用的位置。
+- **`--textures source` 时改过像素的贴图写成 PNG**：这个策略的意思是运行时不用带 KTX2 的解码器；以前缩放过的贴图在这个策略下也编成 KTX2，颜色键和 1 位 alpha 加进来以后 FPS、PhysicsSample、TopDownRPG 的遮罩贴图成了 KTX2、加载失败（回归发现的）。
+- **教程里的笔误不跟**：AsyncWebApi 的提示写的是按 A，判断的却是 G；提示改成 G。
+
 ## 2026-11-19 贴图的颜色键和 1 位 alpha；泛光的权重；比对时关掉亮度适应
 
 查 CSharpBeginner 里箱子的发光标志为什么比 Stride 多一圈蓝光（带材质层的箱子第一次近距离比）：

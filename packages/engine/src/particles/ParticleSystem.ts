@@ -3,6 +3,7 @@
  * ParticleSystemComponent 每帧按实体的世界变换设。
  */
 import type { ParticleModuleFile } from '../content/format';
+import type { Texture } from '../rendering/Texture';
 import type { Quat, Vec3 } from './math';
 import { value } from './modules';
 import { ParticleEmitter, type EmitterParent } from './ParticleEmitter';
@@ -21,9 +22,10 @@ export class ParticleSystem implements EmitterParent {
   #started = false;
   #timeout = 0;
 
-  constructor(file: ParticleModuleFile = {}) {
+  /** textures 按内容路径给加载好的贴图（材质用）。 */
+  constructor(file: ParticleModuleFile = {}, textures?: (path: string) => Texture | undefined) {
     const emitters = (file['emitters'] as readonly ParticleModuleFile[] | undefined) ?? [];
-    this.emitters = emitters.map((emitter) => new ParticleEmitter(emitter));
+    this.emitters = emitters.map((emitter) => new ParticleEmitter(emitter, textures));
     this.warmupTime = value(file['settings'] as ParticleModuleFile | undefined, 'warmupTime', 0);
   }
 

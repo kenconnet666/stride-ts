@@ -116,6 +116,8 @@ export interface CompositorSettings extends SceneForwardRenderer {
   readonly textureCameras: readonly TextureCamera[];
   /** false 时不画阴影（见 SceneCompositor.shadows）。 */
   readonly shadows?: false;
+  /** 粒子画在 UI 上面（见 SceneCompositor.particlesOverUI）。 */
+  readonly particlesOverUI?: true;
 }
 
 /** 加载好的游戏设置（ContentManager.loadGameSettings）。 */
@@ -563,7 +565,7 @@ export class ContentManager {
     }
     if (particleSystem) {
       entity.add({ script: ParticleSystemComponent, init: {} });
-      entity.require(ParticleSystemComponent).load(particleSystem);
+      entity.require(ParticleSystemComponent).load(particleSystem, (path) => assets.images.get(path));
     }
     if (animation) {
       entity.add({ script: AnimationComponent, init: {} });

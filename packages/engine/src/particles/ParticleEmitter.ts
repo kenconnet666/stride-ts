@@ -5,7 +5,8 @@
  *
  * 形状（ShapeBuilder）和材质（Material）是画的时候用的，原样留着（ParticleModuleFile），见粒子的渲染。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile, TextureRef } from '../content/format';
+import type { Texture } from '../rendering/Texture';
 import { createInitializer, createSpawner, createUpdater, ParticleTransform, value, type ParticleInitializer, type ParticleSpawner, type ParticleUpdater, type SpawnedRange } from './modules';
 import { ParticlePool, type ParticleField } from './ParticlePool';
 import { RandomOffset, RandomSeedGenerator, seedFloat } from './random';
@@ -39,6 +40,8 @@ export class ParticleEmitter {
   /** 画的时候用：形状和材质（null 是不画）。 */
   readonly shapeBuilder: ParticleModuleFile | null;
   readonly material: ParticleModuleFile | null;
+  /** 材质的贴图（ComputeTextureColor 的，加载好的）。 */
+  readonly texture: Texture | undefined;
   readonly spawners: readonly ParticleSpawner[];
   readonly initializers: readonly ParticleInitializer[];
   readonly updaters: readonly ParticleUpdater[];
@@ -53,7 +56,8 @@ export class ParticleEmitter {
   /** 新粒子的默认位置、旋转、大小（Stride 的 InitialDefaultFields）。 */
   #defaults = { position: [0, 0, 0] as Vec3, rotation: [0, 0, 0, 1] as Quat, scale: 1 };
 
-  constructor(file: ParticleModuleFile) {
+  /** textures 按内容路径给加载好的贴图（ContentManager 在加载场景时备好）。 */
+  constructor(file: ParticleModuleFile, textures: (path: string) => Texture | undefined = () => undefined) {
     this.name = value(file, 'emitterName', '');
     this.enabled = value(file, 'enabled', true);
     this.maxParticlesOverride = value(file, 'maxParticlesOverride', 0);
@@ -66,6 +70,8 @@ export class ParticleEmitter {
     this.drawPriority = value(file, 'drawPriority', 0);
     this.shapeBuilder = file['shapeBuilder'] === undefined ? { $type: 'shapeBuilderBillboard' } : (file['shapeBuilder'] as ParticleModuleFile | null);
     this.material = file['material'] === undefined ? { $type: 'particleMaterialComputeColor' } : (file['material'] as ParticleModuleFile | null);
+    const textureRef = (this.material?.['computeColor'] as ParticleModuleFile | null | undefined)?.['texture'] as TextureRef | null | undefined;
+    this.texture = textureRef ? textures(textureRef.texture) : undefined;
     const modules = <T>(key: string, create: (module: ParticleModuleFile) => T | undefined): T[] =>
       ((file[key] as readonly ParticleModuleFile[] | undefined) ?? []).map(create).filter((module): module is T => module !== undefined);
     this.spawners = modules('spawners', createSpawner);

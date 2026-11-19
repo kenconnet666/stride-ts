@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { FieldFalloff } from '../src/particles/modules';
+import { flipbookOf } from '../src/particles/ParticleRenderer';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { randomSeed, RandomSeedGenerator, seedFloat } from '../src/particles/random';
 import type { ParticleModuleFile } from '../src/content/format';
@@ -120,5 +121,14 @@ describe('粒子的模拟（照 Stride 的 ParticleEmitter）', () => {
     const falloff = new FieldFalloff({ strengthInside: 1, falloffStart: 0.1, strengthOutside: 0, falloffEnd: 0.9 });
     expect(falloff.strength(0.5)).toBeCloseTo(0.5);
     expect(falloff.strength(0.95)).toBe(0);
+  });
+});
+
+describe('粒子的翻页动画（照 Stride 的 UVBuilderFlipbook）', () => {
+  test('按走过的寿命取帧：起始帧加上 走过的比例 · AnimationSpeed，按行排', () => {
+    const frame = flipbookOf({ $type: 'uvBuilderFlipbook', xDivisions: 4, yDivisions: 2, startingFrame: 1, animationSpeed: 8 });
+    expect(frame(1)).toEqual([0.25, 0, 0.25, 0.5]);
+    // 走过一半：1 + 4 = 第 5 帧，第二行第二个
+    expect(frame(0.5)).toEqual([0.25, 0.5, 0.25, 0.5]);
   });
 });

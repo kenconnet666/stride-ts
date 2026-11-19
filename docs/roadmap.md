@@ -366,7 +366,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 4. **UIParticles**（`apps/ui-particles`，端口 5204）：一个场景（SplashScene），全屏 UI 由 SplashScript 用代码建（Grid 布局：标题、"重新开始"和"恭喜"两个按钮、底部的导火索进度条），点按钮在按钮的位置生成命中特效的预制体（翻页动画，2 秒后移除）；场景里五个粒子系统（Confetti、Stars、Hit、ConfettiBig、Fire），导火索的火跟着进度条走，"恭喜"时放大彩纸。正交相机按窗口大小调。合成器：ForwardRenderer（不带后处理）之后用 SingleStageRenderer 画"Particles"阶段，粒子在 UI 上面。要做的是粒子系统（P2 的"粒子"，ParticlesSample 再补全）。分步：
    1. ~~导入~~（2026-11-19）：粒子系统组件按 Stride 的对象树原样导入（`pipeline/src/stride/particles.ts`：类型名、属性名首字母小写，向量和颜色换成数组，Spawners 这些集合换成数组，贴图导出成 TextureRef），只留运行时认识的模块类型，其余的警告后去掉（形状、材质去掉时写 null，发射器不画）；预制体里的粒子一样；合成器里粒子的透明阶段由 SingleStageRenderer 画时记 `particlesOverUI`。原生 0.24.0：图片解码支持 DDS（BC1 到 BC5、BC7、不压缩的 24、32 位，块用 basisu 的解码器；样例的爆炸贴图是 DXT1 的 .dds）。`apps/ui-particles` 导入无警告，单测 2 个。
    2. ~~粒子模拟~~（2026-11-19）：`particles/`：照 Stride 的 ParticleSystem、ParticleEmitter 在 CPU 上做（粒子池按字段分列存、Stack 策略，模块要哪些字段建哪些；每帧的顺序、生成器的状态机、种子的取法照 Stride，RandomSeed 和 .NET 算的逐位对上），生成器 PerSecond、PerFrame，初始化器 Size、Position、Velocity、3DRotation、Color 的种子，更新器力场（球形）；`ParticleSystemComponent`（播放、暂停、停止、超时、速度、颜色）和 `game.particles`（变换更新之后模拟）。单测 7 个。偏差见 decisions.md（力场衰减的毛病改掉了；组件的 Control 只在 Stride 的编辑器里起作用，不导入运行时）。
-   3. 粒子渲染：每帧把活着的粒子写进存储缓冲，顶点着色器按形状展开四边形或六边形，翻页 UV，材质颜色乘顶点颜色，从后往前排序；合成器的粒子阶段画在 UI 之后。
+   3. ~~粒子渲染~~（2026-11-19）：`particles/ParticleRenderer.ts`：照 Stride 在 CPU 上把粒子展开成顶点（Billboard、Quad 按粒子的朝向、Hexagon 两个四边形；翻页 UV；局部模拟的换到世界），所有发射器的顶点一个缓冲、每帧写一次，每个发射器画一次；颜色 = 组件颜色 × 材质（贴图按预乘用、粒子颜色或常量），alpha 乘 1 - AlphaAdditive，预乘混合、比深度不写深度；系统从远到近，发射器按 DrawPriority，ByDepth 的粒子从远到近。一般在前向渲染器的透明阶段里画，合成器的 `particlesOverUI` 时在 UI 之后画进后备缓冲（前向渲染器留着深度缓冲）。Chrome 里看过彩纸（顶点颜色的 Quad）和火（翻页、加法）。单测 1 个（翻页）。
    4. 脚本翻译（UISceneBase、SplashScript：用代码建 Grid 布局的 UI、按钮生成预制体、导火索、两种状态）、冒烟。
    5. 和桌面 Stride 比对（固定时间点、停住粒子）。
 

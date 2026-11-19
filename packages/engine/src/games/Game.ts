@@ -221,6 +221,7 @@ export class Game {
     (this.graphicsCompositor as ForwardRenderer | undefined)?.destroy();
     this.ui.destroy();
     this.debugTextRenderer.destroy();
+    this.particles.destroy();
     (this.renderSystem as RenderSystem | undefined)?.destroy();
     (this.input as InputManager | undefined)?.destroy();
     (this.graphicsDevice as GraphicsDevice | undefined)?.destroy();
@@ -381,6 +382,7 @@ export class Game {
       const drawStart = performance.now();
       this.draw(this.updateTime);
       this.ui.draw(this);
+      this.particles.drawOverUI(this);
       this.debugTextRenderer.draw(this);
       this.graphicsDevice.submitFrame();
       const end = performance.now();

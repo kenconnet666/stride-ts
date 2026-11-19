@@ -53,6 +53,8 @@ export class ForwardRenderer {
   drawTransparent = true;
   /** 画不画方向光的阴影（合成器没有阴影渲染器时关掉，见 SceneCompositor.shadows）。 */
   drawShadows = true;
+  /** 粒子画在 UI 上面（Game 在画完 UI 之后画），而不是在透明阶段里（见 SceneCompositor.particlesOverUI）。 */
+  particlesOverUI = false;
   /** 先画进渲染目标贴图的相机（场景的合成器设置，configure 设）。 */
   textureCameras: readonly TextureCamera[] = [];
   /** 线性空间的清屏色；默认是 sRGB 的 (0.1, 0.12, 0.16)。 */
@@ -176,7 +178,8 @@ export class ForwardRenderer {
   }
 
   /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
-  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows }: CompositorSettings): void {
+  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI }: CompositorSettings): void {
+    this.particlesOverUI = particlesOverUI === true;
     this.clearColor.set(r, g, b, a);
     this.postEffects.configure(postEffects);
     this.drawTransparent = transparent;
@@ -236,9 +239,11 @@ export class ForwardRenderer {
     const targets = this.#targetsFor(canvas.width, canvas.height);
     this.#mainDepth = targets.depth;
     const { r, g, b, a } = this.clearColor;
-    // 场景里有 UI 时留着深度缓冲（UI 在后处理之后和它比深度），否则丢掉（分块渲染的 GPU 上省带宽）
-    const keepDepth = context.game.ui.drawsInScene;
-    this.#drawView(context, encoder, this.hasCamera ? this.#mainView : undefined, targets, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth);
+    // 场景里有 UI、或者粒子画在 UI 上面时留着深度缓冲（它们在后处理之后和它比深度），否则丢掉（分块渲染的 GPU 上省带宽）
+    const particles = context.game.particles;
+    const keepDepth = context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0);
+    const drawParticles = !this.particlesOverUI && particles.components.length > 0;
+    this.#drawView(context, encoder, this.hasCamera ? this.#mainView : undefined, targets, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
     this.postEffects.draw(encoder, targets.color, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed);
   }
 
@@ -256,7 +261,7 @@ export class ForwardRenderer {
   /** 一个视图：深度预通道，然后不透明、（transparent 时）透明阶段画进 HDR 颜色缓冲。没有视图时只清屏。 */
   #drawView(
     context: RenderContext, encoder: GPUCommandEncoder, view: RenderView | undefined, targets: { color: GPUTexture; depth: GPUTexture },
-    clearColor: readonly number[], transparent: boolean, label: string, keepDepth = false,
+    clearColor: readonly number[], transparent: boolean, label: string, keepDepth = false, drawParticles = false,
   ): void {
     const { renderSystem } = this;
     const profiler = renderSystem.graphicsDevice.profiler;
@@ -280,6 +285,8 @@ export class ForwardRenderer {
     if (view) {
       renderSystem.draw(context, pass, view, this.opaqueStage);
       if (transparent) renderSystem.draw(context, pass, view, this.transparentStage);
+      // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
+      if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, HDR_FORMAT, DEPTH_FORMAT);
     }
     pass.end();
   }

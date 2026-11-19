@@ -7,10 +7,15 @@
  * 和 Stride 不同：组件的 Control（ResetSeconds、播放状态）只在 Stride 的编辑器里起作用，这里不导入运行时。
  */
 import type { ParticleModuleFile } from '../content/format';
+import type { Game } from '../games/Game';
+import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
+import type { RenderView } from '../rendering/RenderSystem';
 import { Transform } from '../engine/transform';
 import { StartupScript } from '../engine/scripts';
 import { Matrix } from '../mathematics/Matrix';
+import type { Texture } from '../rendering/Texture';
 import { value } from './modules';
+import { ParticleRenderer } from './ParticleRenderer';
 import { ParticleSystem } from './ParticleSystem';
 
 export class ParticleSystemComponent extends StartupScript {
@@ -21,9 +26,9 @@ export class ParticleSystemComponent extends StartupScript {
   /** 模拟的速度倍数。 */
   speed = 1;
 
-  /** 按导入的组件文件建粒子系统。 */
-  load(file: ParticleModuleFile): void {
-    this.particleSystem = new ParticleSystem((file['particleSystem'] as ParticleModuleFile | undefined) ?? {});
+  /** 按导入的组件文件建粒子系统；textures 按内容路径给加载好的贴图。 */
+  load(file: ParticleModuleFile, textures?: (path: string) => Texture | undefined): void {
+    this.particleSystem = new ParticleSystem((file['particleSystem'] as ParticleModuleFile | undefined) ?? {}, textures);
     this.color = [...value(file, 'color', [1, 1, 1, 1])] as [number, number, number, number];
     this.speed = value(file, 'speed', 1);
   }
@@ -34,9 +39,13 @@ export class ParticleSystemComponent extends StartupScript {
   }
 }
 
-/** 所有粒子系统（`game.particles`）：每帧变换更新之后模拟。 */
+/**
+ * 所有粒子系统（`game.particles`）：每帧变换更新之后模拟；在前向渲染器的透明阶段里画，合成器要粒子画在 UI 上面时
+ * （UIParticles）在 UI 之后画进画面，和场景的深度比较。
+ */
 export class ParticleSystems {
   readonly #components = new Set<ParticleSystemComponent>();
+  #renderer: ParticleRenderer | undefined;
 
   /** @internal ParticleSystemComponent 启动时登记。 */
   add(component: ParticleSystemComponent): void {
@@ -50,6 +59,33 @@ export class ParticleSystems {
 
   get components(): readonly ParticleSystemComponent[] {
     return [...this.#components];
+  }
+
+  /** @internal 画进 pass（前向渲染器的透明阶段）。 */
+  draw(game: Game, pass: GPURenderPassEncoder, view: RenderView, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
+    this.#renderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources);
+    this.#renderer.draw(pass, view, this.components, colorFormat, depthFormat);
+  }
+
+  /** @internal Game 在画完 UI 之后调用：合成器要粒子画在 UI 上面时画进后备缓冲。 */
+  drawOverUI(game: Game): void {
+    const compositor = game.graphicsCompositor;
+    const view = compositor.mainView, depth = compositor.mainDepth;
+    if (!compositor.particlesOverUI || !view || !depth || this.#components.size === 0) return;
+    const device = game.graphicsDevice;
+    const pass = device.frameEncoder.beginRenderPass({
+      label: 'Particles over UI',
+      colorAttachments: [{ view: device.currentBackBufferView(), loadOp: 'load', storeOp: 'store' }],
+      depthStencilAttachment: { view: depth.createView(), depthReadOnly: true },
+    });
+    this.draw(game, pass, view, device.backBufferViewFormat, DEPTH_FORMAT);
+    pass.end();
+  }
+
+  destroy(): void {
+    this.#renderer?.destroy();
+    this.#renderer = undefined;
+    this.#components.clear();
   }
 
   /** @internal Game 每帧在变换更新之后调用。 */

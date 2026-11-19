@@ -87,7 +87,12 @@ check('撞上障碍物：角色倒下（Crash），结束页面', crashed.dead &
 
 const retried = stride('eval', `(async () => { await seClick(0.3, 0.7); return seState(); })()`) as State;
 check('Retry：重新开始，角色回到中间道，距离从头算', retried.page === 'Canvas' && !retried.dead && retried.lane === 1 && number(retried.distance) <= 1, retried);
-const slide = stride('eval', `seKey('ArrowDown').then(() => seState())`) as State;
+// 关卡是随机生成的：接下来这两步要跑两三秒，先把已经生成的障碍物都挪走，免得中途撞上（撞上就换不了道了）
+const slide = stride('eval', `(async () => {
+  for (const entity of seEntities()) if (/^Obstacle/.test(entity.name)) entity.require(strideEngine.Transform).position.y = -1000;
+  await seKey('ArrowDown');
+  return seState();
+})()`) as State;
 check('下键：滑铲', slide.animations.includes('Slide'), slide);
 // 拖动手势（Input.Gestures）：等滑铲放完，在画布上往右划一下，换到右边的道
 const swiped = stride('eval', `(async () => {

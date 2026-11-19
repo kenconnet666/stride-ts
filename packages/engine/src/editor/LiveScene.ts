@@ -15,10 +15,14 @@ import type { SceneFile } from '../content/format';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import type { Game } from '../games/Game';
-import type { SceneDocument } from './SceneDocument';
+
+/** 场景文档里 LiveScene 要的那一点：现在的场景文件。编辑器的界面在另一个页面里时，文档也在那边，这边只读它的文件。 */
+export interface SceneSource {
+  readonly file: SceneFile;
+}
 
 export class LiveScene {
-  readonly document: SceneDocument;
+  readonly document: SceneSource;
   readonly instance: SceneInstance;
   readonly #game: Game;
   readonly #options: LoadSceneOptions;
@@ -28,7 +32,7 @@ export class LiveScene {
   /** 实体 → 文档里的 id；用到时才建，文档每跟上一次就丢掉（实体可能加了、删了）。 */
   #ids: Map<Entity, string> | undefined;
 
-  private constructor(game: Game, document: SceneDocument, instance: SceneInstance, synced: SceneFile, options: LoadSceneOptions) {
+  private constructor(game: Game, document: SceneSource, instance: SceneInstance, synced: SceneFile, options: LoadSceneOptions) {
     this.#game = game;
     this.document = document;
     this.instance = instance;
@@ -37,7 +41,7 @@ export class LiveScene {
   }
 
   /** 按文档现在的样子建场景、换成根场景（原来的根场景卸载）。 */
-  static async open(game: Game, document: SceneDocument, options: LoadSceneOptions = {}): Promise<LiveScene> {
+  static async open(game: Game, document: SceneSource, options: LoadSceneOptions = {}): Promise<LiveScene> {
     const file = document.file;
     const editing = { ...options, attachScripts: false };
     return new LiveScene(game, document, await game.setRootScene(file, editing), file, editing);

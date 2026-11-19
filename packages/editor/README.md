@@ -42,14 +42,17 @@ node packages/editor/src/server/cli.ts assets apps/platformer
 
 ## 在页面里编辑场景
 
-运行时那一半在引擎里（`@stride-ts/engine` 的 `editor/`）：`SceneDocument`（场景文件是真相，修改、撤销重做）、`LiveScene`（实体跟着文档）、`EditorCameraController`、`game.pick`。合起来：
+运行时那一半在引擎里（`@stride-ts/engine` 的 `editor/`）。游戏页面的地址带上 `?stride-edit`（开发服务器上）就开在编辑状态：游戏照自己的入口启动，但场景不挂脚本、仿真不走，`game.editor`（`EditAgent`）是编辑器在这个页面里的代理——编辑相机、让实体跟着场景文档、点选、选中的框、操纵器。场景文档（`SceneDocument`，场景文件是真相）和撤销栈在编辑器的界面那边。合起来：
 
 ```ts
+const editor = game.editor!;
 const client = new EditorClient();
-const document = new SceneDocument(await client.readAsset<SceneFile>('scene', 'Game/MainScene'));
+const document = new SceneDocument(await client.readAsset<SceneFile>('scene', editor.scenePath!));
 const undo = new UndoStack(document);
-const live = await LiveScene.open(game, document);
+await editor.open(undo);                  // 实体跟着文档；视口里拖操纵器改的也记进 undo
 undo.apply({ type: 'set', entity: id, path: ['position'], value: [0, 2, 0] });
-await live.sync();
-await client.saveAsset('scene', 'Game/MainScene', document.file);
+await editor.sync();
+await client.saveAsset('scene', editor.scenePath!, document.file);
 ```
+
+试玩是把页面不带 `?stride-edit` 重新打开。

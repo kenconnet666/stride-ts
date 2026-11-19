@@ -5,6 +5,7 @@ import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { hook } from '../engine/events';
 import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import type { SceneFile } from '../content/format';
+import type { EditAgent } from '../editor/EditAgent';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
 import { DebugText } from '../debug/DebugText';
@@ -68,6 +69,11 @@ export interface GameOptions {
   debug?: boolean | undefined;
   /** 把帧号和帧率写进这个页面元素（样例页面角上的那行字），每秒 4 次。 */
   stats?: HTMLElement;
+  /**
+   * 开在编辑状态（见 Game.editing）。undefined（默认）时：打开了 debug、页面地址又带 ?stride-edit 就是编辑状态——编辑器
+   * 这样打开游戏页面，应用的入口不用改。
+   */
+  editing?: boolean | undefined;
 }
 
 // 更长的间隔（标签页在后台、断点停住）不在一步里模拟完。
@@ -157,6 +163,13 @@ export class Game {
   readonly startup: { native?: number; content?: number; firstFrame?: number } = {};
   /** 内容加载完成（或换了根场景）时的帧号。 */
   sceneFrame: number | undefined;
+  /**
+   * 编辑状态（编辑器把游戏页面开成这样，见 editor/EditAgent）：游戏照常启动、加载它的场景，但场景文件里的脚本不挂、
+   * 仿真不走，画面由编辑相机看。run 的时候定，之后不变。
+   */
+  editing = false;
+  /** 编辑状态下编辑器在这个页面里的代理；不在编辑状态时是 undefined。 */
+  editor: EditAgent | undefined;
   /** 根场景（Stride 的 SceneSystem.SceneInstance.RootScene），setRootScene 设；loadScene 加的场景不算。 */
   rootScene: SceneInstance | undefined;
   /** loadGameSettings 读到的游戏设置（Stride 的 Game.Settings）；没读过时是 undefined。 */
@@ -189,10 +202,13 @@ export class Game {
     globalThis.strideGame = this;
     this.entities.onError = (error) => this.fail(error);
     if (options.stats) this.statsOutput = { element: options.stats, time: 0 };
-    if (options.debug ?? new URLSearchParams(location.search).has('debug')) {
+    const query = new URLSearchParams(location.search);
+    const debugging = options.debug ?? query.has('debug');
+    if (debugging) {
       registerGameCommands(this.debug, this);
       this.debug.connect();
     }
+    this.editing = options.editing ?? (debugging && query.has('stride-edit'));
     try {
       if (options.modules) this.registry.registerModules(options.modules);
       this.native = await createStrideNative({
@@ -203,6 +219,7 @@ export class Game {
       this.startup.native = performance.now();
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       if (this.native.hasFeature('physics')) this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
+      if (this.simulation && this.editing) this.simulation.enabled = false;
       if (this.simulation && this.native.hasFeature('navigation')) this.navigation = new NavigationSystem(this.native, this.simulation);
       this.registry.register(RecastNavigationComponent);
       this.registry.register(UIComponent);
@@ -231,6 +248,8 @@ export class Game {
       this.rootRenderer = this.graphicsCompositor;
       await this.loadContent();
       this.startup.content = performance.now();
+      // 编辑器的代理只在编辑状态用到：单独加载，不进游戏的主包
+      if (this.editing) this.editor = new (await import('../editor/EditAgent')).EditAgent(this);
     } catch (error) {
       this.fail(error);
       throw error;
@@ -351,7 +370,9 @@ export class Game {
     const file = typeof reference === 'object' && 'entities' in reference ? reference : undefined;
     const path = file ? file.name : typeof reference === 'string' ? reference : (reference as SceneReference).path;
     const { parent } = options;
-    const scene = file ? await this.content.instantiateScene(file, this.entities, options) : await this.content.loadScene(path, this.entities, options);
+    // 编辑状态不挂场景文件里的脚本（除非明说要挂）
+    const sceneOptions = this.editing ? { attachScripts: false, ...options } : options;
+    const scene = file ? await this.content.instantiateScene(file, this.entities, sceneOptions) : await this.content.loadScene(path, this.entities, sceneOptions);
     if (parent) this.#childScenes.set(parent, [...(this.#childScenes.get(parent) ?? []), scene]);
     if (scene.compositor) {
       this.graphicsCompositor.configure(scene.compositor);

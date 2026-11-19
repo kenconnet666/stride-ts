@@ -147,6 +147,8 @@ export interface GameSettings {
 
 export interface SceneInstance extends EntityScene {
   readonly name: string;
+  /** 场景文件的内容路径；直接给场景文件建的（instantiateScene）没有。 */
+  readonly path?: string;
   /**
    * 场景的偏移（Stride 的 Scene.Offset），相对父场景；可以直接改 x、y、z。场景里实体的世界位置带着它（和父场景的偏移），
    * 本地位置不带。
@@ -511,7 +513,7 @@ export class ContentManager {
    */
   async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const { scene, assets } = await this.#sceneWithAssets(path);
-    return this.#createScene(scene, assets, entities, options, path);
+    return this.#createScene(scene, assets, entities, options, path, path);
   }
 
   /**
@@ -552,8 +554,9 @@ export class ContentManager {
     }
   }
 
-  #createScene(scene: SceneFile, assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, path: string): SceneInstance {
-    const created = this.#scenes.instantiate(scene.entities, assets, entities, options, path);
+  /** where 用在报错里；path 是场景文件的内容路径（按路径加载的才有）。 */
+  #createScene(scene: SceneFile, assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string, path?: string): SceneInstance {
+    const created = this.#scenes.instantiate(scene.entities, assets, entities, options, where);
     const [x, y, z] = options.offset ?? scene.offset ?? [0, 0, 0];
     // 没有变换存储（场景里也就没有带 Transform 的实体）时只记下偏移
     const root = entities.game.transforms ? new SceneRoot(entities, [x, y, z], options.parent?.root) : undefined;
@@ -561,7 +564,7 @@ export class ContentManager {
       ...scene.compositor,
       textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
     };
-    const instance: SceneInstance = { name: scene.name, entities: created, root, offset: root?.offset ?? { x, y, z }, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
+    const instance: SceneInstance = { name: scene.name, ...(path !== undefined ? { path } : {}), entities: created, root, offset: root?.offset ?? { x, y, z }, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
     for (const entity of created.values()) entity.scene = instance;
     return instance;
   }

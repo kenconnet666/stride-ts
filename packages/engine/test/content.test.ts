@@ -287,9 +287,12 @@ describe('ContentManager', () => {
       // 同一个实体上第二个同类脚本挂到子实体上
       const [extra] = loaded.entities.get('a')!.require(Transform).children;
       expect([extra!.name, extra!.require(Follower).speed]).toEqual(['A', 7]);
-      // attachScripts: false（编辑器的编辑状态）：实体照建，脚本不挂
-      const edited = await content.loadScene('scenes/Scripts', game.entities, { attachScripts: false });
-      expect([edited.entities.get('a')!.scripts.size, edited.entities.get('a')!.require(Transform).children]).toEqual([0, []]);
+      // 游戏开在编辑状态时，它加载的场景照建实体、不挂脚本；场景记着是从哪个内容路径加载的
+      game.content = content;
+      game.editing = true;
+      const edited = await game.loadScene('scenes/Scripts');
+      expect([edited.entities.get('a')!.scripts.size, edited.entities.get('a')!.require(Transform).children, edited.path]).toEqual([0, [], 'scenes/Scripts']);
+      game.editing = false;
     } finally {
       console.warn = warn;
     }

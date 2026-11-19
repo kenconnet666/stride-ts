@@ -210,14 +210,17 @@ function setAt(root: unknown, path: ScenePath, value: unknown, where: string): [
  * 撤销重做：记下每次修改的逆操作。连着改同一个值（拖 Gizmo、拖滑块，每帧一次）时给同一个 mergeKey，它们并成一步，
  * 撤销回到拖之前的值。
  */
-export class UndoStack {
-  readonly #document: SceneDocument<EntitiesFile>;
+export class UndoStack<F extends EntitiesFile = SceneFile> {
+  readonly #document: SceneDocument<F>;
   #undo: { inverse: SceneEdit; mergeKey: string | undefined }[] = [];
   #redo: SceneEdit[] = [];
 
-  constructor(document: SceneDocument<any>) {
+  constructor(document: SceneDocument<F>) {
     this.#document = document;
   }
+
+  /** 文档现在的文件（所以撤销栈可以直接交给 EditAgent.open：它读文件、经 apply 和 commit 改）。 */
+  get file(): F { return this.#document.file; }
 
   get canUndo(): boolean { return this.#undo.length > 0; }
   get canRedo(): boolean { return this.#redo.length > 0; }

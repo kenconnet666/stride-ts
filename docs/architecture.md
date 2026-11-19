@@ -837,7 +837,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - 穿透容差 1 mm（Jolt 默认 2 cm，Bepu 的软接触静止时几乎不陷进去），静止高度和 Stride 一致。
   - 导航（`game.navigation`，Stride 的 RecastMeshSystem）：运行时从物理世界的静态体建导航网格（Recast 分块并行），`RecastNavigationComponent` 寻路（Detour 的拐点）。
   - 输入：`thumbAny`、`triggerAny`（Stride 模板的 InputManagerExtensions），指针事件，Stride 的键名。虚拟按钮（`input.virtualButtonConfigSet`、`getVirtualButton`，`input/virtualButtons.ts`）；`absoluteMousePosition` 是 CSS 像素。
-- **还没做**：Bepu 接触的软度参数（SpringFrequency 等）不映射；RecastNavigationComponent 的排队寻路和直接移动；Bepu 的 2D 模式。
+- **还没做**：Bepu 接触的软度参数（SpringFrequency 等）不映射；Bepu 的 2D 模式。
 
 ## 编辑器和资源管线：自己做，Node.js 加 Web（2026-11-17 用户决定）
 

@@ -27,6 +27,8 @@ export const DEFAULT_NAVIGATION_SETTINGS: NavigationSettings = {
 };
 
 const SEARCH_EXTENTS = [2, 4, 2] as const;
+/** 排队的寻路一帧最多算几条（Stride 的 RecastNavigationProcessor.Update 里的 10）。 */
+const MAX_QUEUED_PATHS_PER_FRAME = 10;
 
 export class NavigationSystem {
   settings: NavigationSettings = DEFAULT_NAVIGATION_SETTINGS;
@@ -35,6 +37,9 @@ export class NavigationSystem {
   #navMesh: NavMesh | undefined;
   /** 每次 rebuild 加一：建好时已经有更新的请求，这次的结果丢掉（同 Stride 取消上一次重建）。 */
   #generation = 0;
+  /** 排队等着算的寻路（RecastNavigationComponent.setTarget）。 */
+  readonly #queue: (() => void)[] = [];
+  #queueFrame = -1;
 
   constructor(native: StrideNative, simulation: Simulation) {
     this.#native = native;
@@ -77,6 +82,18 @@ export class NavigationSystem {
     const path: Vector3[] = [];
     for (let i = 0; i + 2 < points.length; i += 3) path.push(new Vector3(points[i]!, points[i + 1]!, points[i + 2]!));
     return path.length > 0 ? path : undefined;
+  }
+
+  /** @internal 排队算一条路：plan 在之后的某一帧调用。 */
+  queuePath(plan: () => void): void {
+    this.#queue.push(plan);
+  }
+
+  /** @internal 每帧第一次调用时算掉队里最前面的几条（寻路的组件在自己的 update 里调，一帧只算一次）。 */
+  processQueue(frame: number): void {
+    if (frame === this.#queueFrame) return;
+    this.#queueFrame = frame;
+    for (const plan of this.#queue.splice(0, MAX_QUEUED_PATHS_PER_FRAME)) plan();
   }
 
   destroy(): void {

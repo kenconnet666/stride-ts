@@ -45,6 +45,34 @@ describe('导航（Stride 的 RecastMeshSystem、RecastNavigationComponent）', 
     // 层 0 的墙在 x = -6：到 x = -8 的路直走
     expect(agent.tryFindPath({ x: -8, y: 0, z: -5 })).toBe(true);
     expect(agent.path.length).toBe(2);
+
+    // 排队寻路（setTarget）：下一帧排上，再下一帧算好
+    const frame = () => {
+      game.updateTime.advance(1 / 60);
+      game.entities.update(game.updateTime, (time) => game.simulation!.update(time));
+      game.transforms.update();
+    };
+    agent.path = [];
+    agent.setTarget({ x: -8, y: 0, z: -5 });
+    expect(agent.state).toBe('queuePathPlanning');
+    frame();
+    expect(agent.state).toBe('planningPath');
+    frame();
+    expect(agent.state).toBe('pathIsReady');
+    expect(agent.path.length).toBe(2);
+    // 沿路径走：每帧挪 speed / 60，朝着前进的方向（-X）；走完路径空了
+    agent.startFollowingPath();
+    const position = walker.require(Transform).position;
+    for (let i = 0; i < 12; i++) frame();
+    expect(position.x).toBeLessThan(-3.5);
+    expect(position.x).toBeGreaterThan(-4.2);
+    expect(position.z).toBeCloseTo(-5, 1);
+    for (let i = 0; i < 80; i++) frame();
+    expect(position.x).toBeCloseTo(-8, 1);
+    expect(agent.path).toEqual([]);
+    expect(agent.state).toBe('pathIsInvalid');
+    agent.stopFollowingPath();
+    expect(agent.isMoving).toBe(false);
     game.navigation.destroy();
     game.simulation.destroy();
   });

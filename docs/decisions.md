@@ -62,6 +62,14 @@
   - 还没做：清漆加透明（Stride 第一遍沿用材质的透明混合）报警告，第一遍按不透明画；没有切线的网格上碎片和橘皮的法线贴图不起作用（和别的法线贴图一样）。
 - 还没做的材质特性（次表面散射、曲面细分）导入时报警告，不悄悄忽略。
 
+## 2026-11-20 透明实例逐个从远到近画
+
+以前透明阶段按批排（看每批第一个实例到相机的距离），同一批里的实例不排、不同批的实例不能交错；重叠的半透明物体混合的先后会错。Stride 把透明的渲染节点逐个排。
+
+- 实例按批存在实例缓冲里，所以分两步（`rendering/transparentOrder.ts`）：剔除之后、上传之前，透明的批在每个视图里把自己可见的实例按距离排好；画的时候把各批的实例按距离归并成一段一段，同一批里连着的几个一次画完（`firstInstance` 指到那一段），不同批的交错着画。
+- 只有透明的批（和要在透明阶段叠清漆的批）做这件事；阴影视图不画透明的东西，跳过。排序在 CPU 上、每帧做，透明的实例通常很少；多了以后（成千上万）要换成按深度分桶，到时候再量。
+- 距离取物体原点到相机的距离（Stride 取包围盒中心在视图空间的深度）。两种在大物体互相穿插时都会错，要彻底对得上只有顺序无关的透明（P4）。
+
 ## 2026-11-20 手势识别（Input.Gestures）
 
 Stride 的 `Input.Gestures`、`Input.GestureEvents`：SpaceEscape 用拖动手势换道，我们移植时在脚本里用指针事件自己判。
@@ -202,7 +210,7 @@ CSharpIntermediate 的 SceneB 有一盏投阴影的点光，以前导入时报�
 
 - **导航网格的输入**：Stride 的 RecastMeshSystem 把静态碰撞体按它自己的形状缓存（ShapeCacheSystem，球和胶囊有固定的细分）转成三角形。我们直接让 Jolt 把物理世界里的静态体三角化（`Shape::GetTriangles`，复合形状先收集叶子），各种形状都覆盖，和碰撞用的是同一份几何；球、胶囊的细分和 Stride 不完全一样，导航网格的边缘可能差一两个格子。
 - **路径给拐点**：Stride 的 FindFollowPath 沿拐点按固定步长采样出一串平滑的点，我们给 Detour 的直线路径（拐点，含起点和终点）。TopDownRPG 的 PlayerController 自己按路径点走，拐点照样能用；点更少，转角处的减速逻辑按拐点算。
-- **RecastNavigationComponent 只做了寻路**：Stride 里它还能排队寻路（SetTarget，由 RecastNavigationProcessor 处理）、按 Speed 直接移动实体，样例里没用到，等场景用到时再做。BepuNavigationBoundingBoxComponent 在 Stride 里本身没实现（源码里是 #warning），导入时忽略。
+- **RecastNavigationComponent**：寻路（`tryFindPath`）之外，2026-11-20 补上了排队寻路（`setTarget`，导航系统每帧最多算 10 条）和沿路径走（`startFollowingPath`，按 `speed` 挪实体、转向前进的方向）。和 Stride 不同：一开始的状态是 pathIsInvalid（Stride 的枚举默认值是 QueuePathPlanning，每个组件一出生就排队找一条去原点的路）；排队的寻路没找到时状态是 pathIsInvalid（Stride 停在 PlanningPath）；已经站在路径点上时不转向（Stride 对零向量求朝向得到 NaN）。BepuNavigationBoundingBoxComponent 在 Stride 里本身没实现（源码里是 #warning），导入时忽略。
 - **挂到骨骼节点用变换存储的链接**：ModelNodeLink 的实体世界矩阵 = 目标的世界 × 节点矩阵 × 本地，不看父节点（Stride 的 TransformLink）。做在原生的变换存储里（`setLink`），计算顺序按链接排，帧末一次算完；别的做法是在 TS 里每帧算好世界矩阵写回本地变换，但子实体和物理都要跟着处理，容易出错。
 - **跟着实体走的刚体**：运动学刚体的世界变换被物理以外改过（脚本移动了它或它的父实体：JumpyJet 移动管子组的根，掉落金币的拾取触发器跟着金币落）、挂在骨骼节点上的刚体（出拳的碰撞体），每个物理步先瞬移到实体当前的世界位姿。Bepu 里刚体由仿真驱动变换，这些情况都停在原处（运动学的醒着时被写回、睡下后变换才跟父实体走，物理里仍在原处；出拳的碰撞体停在加进仿真时手的位置），样例的本意显然是跟着走。和 Stride 不同：运动学的在原生侧（stride-native 的 FollowMovedKinematics，按上次写回的位姿比较），骨骼节点的在 Simulation 的 followNodeLinks。
 - **设计分辨率取默认后备缓冲**（2026-11-19）：Stride 的游戏在初始化时取后备缓冲大小当设计分辨率（JumpyJetRenderer 的虚拟分辨率、PipesScript 的场景宽度），桌面上窗口一开始就是 GameSettings 的 DefaultBackBufferWidth、Height（所有样例都是 AdaptBackBufferToScreen: false）。浏览器里画布跟着窗口和像素比走，第一次画时就可能比背景图大，背景露底。所以导入器带上默认后备缓冲大小（`game.settings.defaultBackBufferSize`），这类游戏按它算设计分辨率，窗口多大都拉伸铺满；竖屏的 JumpyJet 页面让画布保持 640:1136 居中（同桌面的窗口）。和 Stride 不同的只是取值的时机，桌面上两者相同。

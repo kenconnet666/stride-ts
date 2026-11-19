@@ -124,7 +124,7 @@ const vector = (text: string | undefined, what: string) => required(text, what).
 /** 连到页面的 DevTools 协议（只有 stride open 启动的 Chrome 有）。 */
 async function pageCdp(command: string): Promise<{ client: HubClient; info: PageInfo; cdp: CdpSession }> {
   const browser = readBrowser();
-  if (!browser) throw new Error(`${command} needs a Chrome started by stride open (it uses the DevTools protocol)`);
+  if (!browser) throw new Error(`${command} needs a Chrome started by stride open (it uses the DevTools protocol, which Chrome refuses on the default profile): run \`stride open <url> --headless\` and use that page`);
   const client = await HubClient.find(options.hub);
   const pages = await client.pages();
   const info = page === undefined ? pages.at(-1) : pages.find((p) => p.id === page);

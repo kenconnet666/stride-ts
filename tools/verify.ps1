@@ -1,7 +1,7 @@
 # 耗时的验证（全量回归、截图比对、测量）放进单独的 git 工作树里跑，主检出可以接着改代码（开发服务器的热重载不会打断它）。
 # 先在主检出提交（不用推送），再用这个脚本让工作树切到那个提交、装依赖、跑脚本；通过后再推送。
 #   pwsh tools/verify.ps1                                  # 工作树切到 HEAD，跑 tools/regress.ps1
-#   pwsh tools/verify.ps1 -Ref abc123 -Arguments '-Apps','jumpy-jet,physics-sample'
+#   pwsh tools/verify.ps1 -Ref abc123 -Apps jumpy-jet,physics-sample      # 认不出的参数原样转给脚本
 #   pwsh tools/verify.ps1 -Script tools/measure.ps1
 # 工作树默认在主检出旁边（stride-ts-verify），分离头指针，第一次运行时建。导入的内容（git 忽略的 apps/*/public/content）用目录
 # 联接指向主检出：导入器改了以后先在主检出重新导入。回归用固定的 CLI 状态目录和端口（见 regress.ps1），同一时间只跑一个。
@@ -9,7 +9,7 @@ param(
     [string]$Ref = 'HEAD',
     [string]$Path,
     [string]$Script = 'tools/regress.ps1',
-    [string[]]$Arguments = @()
+    [Parameter(ValueFromRemainingArguments)][string[]]$Arguments = @()
 )
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true

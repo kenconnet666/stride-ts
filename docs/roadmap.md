@@ -415,12 +415,20 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    1. ~~导入和骨架~~（2026-11-19）：`apps/custom-effect` 导入游戏设置（渲染器的属性 Background、Logo 是贴图）。
    2. ~~SpriteBatch 的自定义效果~~（2026-11-19）：`spriteEffect`（`rendering/text/SpriteEffect.ts`）：WGSL 着色函数（`sampleTexture0` 采样正在画的贴图，同 Stride 的 Texture0，取回贴图里存的值）、16 个参数、采样器（默认线性钳位，同 Stride 的 SpriteBatch）、混合（预乘或 NonPremultiplied）；`SpriteBatch.effect`。CustomEffectRenderer 和水波纹（`WaveEffect.ts`）写成 TS，宽高比每帧按画布算（Stride 只在初始化时取一次）。在 Chrome 里看过：标志和背景一圈圈扭曲。
    3. ~~冒烟和桌面比对~~（2026-11-19，`tools/stride-capture/custom-effect`）：冒烟 5 项；第 120 帧（2.000 秒）平均每通道差 0.64/255。比对时发现标志贴图透明区里透出两条横线（UASTC 把黑白相间的透明块的 alpha 压出了误差），导入器加了 alpha 渗色（见 architecture.md 的贴图）；剩下的差在字母边缘：Stride 的边缘有一圈暗边（源图透明区是黑的，Stride 不渗色），我们没有。
-11. **MorphTargets**（`apps/morph-targets`，端口 5218）：Stride master 新加的样例（4.4.2 没有，形变也只在 master 里）。三个模型：甜甜圈（有骨骼、四个形变目标，glTF 和 FBX 两份可以切换）、立方体和二十面球（只有形变，各四个目标），各自播放形变权重的动画剪辑。左上角是代码建的 UI 面板（SampleUI）：选模型的单选按钮、每个目标一个滑条（-1 到 2，零点有刻度）、重置、播放暂停、时间轴、glTF/FBX 切换，F1 隐藏面板。
+11. ~~MorphTargets~~（2026-11-19 完成，`apps/morph-targets`，端口 5218）：Stride master 新加的样例（4.4.2 没有，形变也只在 master 里）。三个模型：甜甜圈（有骨骼、四个形变目标，glTF 和 FBX 两份可以切换）、立方体和二十面球（只有形变，各四个目标），各自播放形变权重的动画剪辑。左上角是代码建的 UI 面板（SampleUI）：选模型的单选按钮、每个目标一个滑条（-1 到 2，零点有刻度）、重置、播放暂停、时间轴、glTF/FBX 切换，F1 隐藏面板。
    - Stride 这边的 API：ModelComponent 的 MorphTargetNames、FindMorphTarget、Get/SetMorphWeight、SetAllMorphWeights；.sdm3d 的 MorphTargetNames（目标改名）；动画剪辑里的形变权重曲线；ModelDeformationRenderer 在 GPU 上形变。
 
    分步：
    1. ~~原生~~（2026-11-19，0.27.0）：场景导入读形变目标（glTF 的 targets，名字取 extras.targetNames；FBX 的 blend channel，按控制点焊接；位置和法线增量烘焙进模型空间），glTF 的动画也能烘焙（STEP、LINEAR、CUBICSPLINE 按 30 帧每秒重采样），烘焙结果带每个目标的权重曲线（glTF 的 weights、FBX 的 DeformPercent）。管线读源场景统一走 `loadSourceScene`（.gltf 的外部 .bin 换成 data URI）。
    2. ~~管线~~（2026-11-19）：模型文件带稀疏的形变增量（`MeshMorph`，float，按顶点再按目标排，跟着顶点重排、拆切线）和模型的目标表（同名目标合成一个槽；.sdm3d 的 MorphTargetNames 只是编辑器的元数据，不用）；动画剪辑可以没有骨架，带按目标名的权重曲线。顺手：DataContract 起了短名的游戏脚本（`!MorphTargetsController`）也当脚本导入，glTF 没材质的网格认 Material 槽。
    3. ~~引擎~~（2026-11-19）：`ModelMorphs`（`game.animation.morphs(entity)`：morphTargetNames、findMorphTarget、get/setMorphWeight、setAllMorphWeights），权重每个模型实例一组、连成一个缓冲上传；顶点着色器按权重加增量（管线常量 MORPHED，没有形变的网格整段去掉），先形变后蒙皮；混合栈的形变部分 `MorphStack` 和骨架的轨道一起算，只有形变的模型由 `morphSystem` 推进。在 Chrome 里看过：立方体扭、二十面球随剪辑压扁、甜甜圈骨骼和形变一起动。和 Stride 不同：Stride 在计算着色器里形变（ModelDeformationRenderer），我们在顶点着色器里（每个通道都重算，模型小时更省事）。
-   4. UI：缺的控件（Slider、Border）、代码建 UI（字体、字号、纯色精灵）、Visibility.Collapsed；SampleUI、MorphTargetsController 写成 TS。
-   5. 冒烟和桌面比对：桌面用本地编的 master 包（`bin/packages` 的 4.5.3-dev），固定时间截图（同 MaterialShader）。
+   4. ~~UI~~（2026-11-19）：新控件 Slider（拖动取值、吸附刻度、ValueChanged；轨道前景按比例裁、刻度、悬停的滑块；只有水平的）、Border（四条边）；`ContentManager.removeModel`（换模型：去掉网格、子实体、骨架和形变权重）。SampleUI、MorphTargetsController 写成 TS（纯色小贴图用 `new Texture(..., { format: 'rgba8unorm' })`）。冒烟 10 项（三个剪辑在播、Pause/Play、选立方体后拖滑条到头、Reset、切到 FBX 留着权重和时间、F1）。
+   5. ~~桌面比对~~（2026-11-19，`tools/stride-capture/morph-targets`）：桌面用本机编的 4.5.3-dev4（NuGet 缓存里的），第 58 帧（剪辑都在 0.967 秒）截图，我们把各剪辑拨到同一时间再截，平均每通道差 1.27/255；模型的形变一致，差在面板的文字（有意的偏差）和边缘。比对时改正：Stride 的合成器把 UIRenderFeature 放进主前向渲染器的阶段时，全屏 UI 画进 HDR 缓冲、跟着色调映射走（`SceneCompositor.uiBeforePostEffects`），之前画在后处理之后、面板亮一截（平均差 4.0）。帧时间：桌面 4.10 ms。
+12. **FPS 的粒子和材质层**：FirstPersonShooter 在 P1 时跳过的部分。
+   - 粒子：VFXPackage 的枪口火焰、弹孔用 SpawnerBurst（一次喷一批），受击拖尾用 SpawnerFromDistance（按移动距离生成），导入时现在警告后去掉。
+   - 材质层：SamplesAssetPackage 的 LogoA、LogoD（BepuSample、FPS 里的箱子）有 Layers（子材质按 BlendMap 的遮罩混进来），现在只画底层。
+
+   分步：
+   1. SpawnerBurst、SpawnerFromDistance（照 Stride 的 Spawners），单测；FPS 开枪时枪口火焰、弹孔、拖尾在 Chrome 里看到。
+   2. 材质层：导入器把 Layers 导出成子材质加遮罩的颜色树，着色器里按遮罩混合各层的属性（漫反射、金属度、光泽度、法线）；照 Stride 的 MaterialBlendLayer。
+   3. FPS 和 BepuSample 重新比对（开枪那帧的粒子、带层的箱子），更新冒烟。

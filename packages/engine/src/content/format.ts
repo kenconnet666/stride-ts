@@ -706,6 +706,11 @@ export interface SceneCompositor extends SceneForwardRenderer {
    */
   readonly particlesOverUI?: true;
   /**
+   * true：全屏 UI 画进主前向渲染器的 HDR 缓冲、在后处理之前（Stride 的 UIRenderFeature 进了这个渲染器的阶段，UI 跟着色调映射
+   * 一起处理）。没写时 UI 画在后处理之后的画面上。
+   */
+  readonly uiBeforePostEffects?: true;
+  /**
    * 网格用的效果（Stride 合成器里 MeshRenderFeature 的 EffectName，不是默认的 StrideForwardShadingEffect 时），运行时按名字对上
    * 游戏导出的 meshEffect（SpaceEscape 的 SpaceEscapeEffectMain）。没写是默认效果。
    */

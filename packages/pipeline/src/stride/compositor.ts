@@ -58,8 +58,14 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
   const meshes = findNode(compositor?.['RenderFeatures'], (node) => node.$type?.startsWith('Stride.Rendering.MeshRenderFeature') === true);
   const effectName = findNode(meshes?.['RenderStageSelectors'], (node) => node.$type?.startsWith('Stride.Rendering.MeshTransparentRenderStageSelector') === true)?.['EffectName'];
   const meshEffect = typeof effectName === 'string' && effectName !== 'StrideForwardShadingEffect' ? { meshEffect: effectName } : {};
+  // UI：UIRenderFeature 的阶段是主前向渲染器的阶段、渲染器又有后处理时，UI 跟着后处理（色调映射）走（MorphTargets）
+  const ui = findNode(compositor?.['RenderFeatures'], (node) => node.$type?.startsWith('Stride.Rendering.UI.UIRenderFeature') === true);
+  const uiStage = parseObjectReference(findNode(ui?.['RenderStageSelectors'], (node) => 'RenderStage' in node)?.['RenderStage']);
+  const uiBeforePostEffects = forward !== undefined && uiStage !== undefined && resolve(forward['PostEffects']) !== undefined
+    && ['OpaqueRenderStage', 'TransparentRenderStage'].some((key) => parseObjectReference(forward[key]) === uiStage);
   const main = forward && {
     ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}), ...shadows, ...(overlay ? { particlesOverUI: true as const } : {}), ...meshEffect,
+    ...(uiBeforePostEffects ? { uiBeforePostEffects: true as const } : {}),
   };
   // 游戏的类型带程序集名、不在 Stride 的命名空间里（同场景脚本）
   const isGame = (node: StrideObject | undefined) => (node?.$type ?? '').includes(',') && !(node?.$type ?? '').startsWith('Stride.');

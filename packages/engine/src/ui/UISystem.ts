@@ -51,6 +51,10 @@ export class UISystem {
   #mouseDragOwnedByUi = false;
   /** 这一帧布局过了（画完清掉）。 */
   #laidOut = false;
+  /** 这一帧已经开始画（布局好、清掉上一帧的摆法）。 */
+  #drawing = false;
+  /** 这一帧的全屏 UI 已经由前向渲染器在后处理之前画了。 */
+  #fullScreenDrawn = false;
   #releaseMouseDrag = false;
   #pointersToRelease: number[] = [];
   #input: InputManager | undefined;
@@ -190,18 +194,29 @@ export class UISystem {
     return [...this.#components].filter((component) => component.enabled && component.page?.rootElement);
   }
 
-  /** @internal 每帧画完场景之后（Game.draw）。 */
+  /** @internal 每帧画完场景之后（Game.draw）：放在 3D 里的 UI，和前向渲染器没在后处理之前画掉的全屏 UI。 */
   draw(game: Game): void {
-    this.layout(game);
-    this.#laidOut = false;
-    const visible = this.#visible();
-    this.#targets = new Map();
-    if (visible.length === 0) return;
+    this.#beginDrawing(game);
+    const device = game.graphicsDevice;
+    const inScene = this.#visible().filter((component) => !component.isFullScreen);
+    if (inScene.length > 0) this.#drawInScene(game, inScene, [device.canvas.width, device.canvas.height]);
+    if (!this.#fullScreenDrawn) this.drawFullScreen(game, device.currentBackBufferView(), device.backBufferViewFormat);
+    this.#laidOut = this.#drawing = this.#fullScreenDrawn = false;
+    // 布局之后：影子输入框跟上 EditText 的位置，选区同步回来
+    this.textInput?.update();
+  }
+
+  /**
+   * 全屏的 UI 画进 view（格式 format，大小同画布）。Stride 的合成器把 UIRenderFeature 放进前向渲染器的阶段时，UI 画进它的
+   * HDR 缓冲、跟场景一起做后处理（色调映射会改 UI 的颜色，MorphTargets 的面板）：这时由 ForwardRenderer 在后处理之前调用；
+   * 否则 draw 画进后备缓冲。
+   */
+  drawFullScreen(game: Game, view: GPUTextureView, format: GPUTextureFormat): void {
+    this.#beginDrawing(game);
+    this.#fullScreenDrawn = true;
     const device = game.graphicsDevice;
     const target: [number, number] = [device.canvas.width, device.canvas.height];
-    const inScene = visible.filter((component) => !component.isFullScreen);
-    if (inScene.length > 0) this.#drawInScene(game, inScene, target);
-    for (const component of visible) {
+    for (const component of this.#visible()) {
       if (!component.isFullScreen) continue;
       const root = component.page!.rootElement!;
       const virtual = UISystem.virtualResolution(component, target);
@@ -210,18 +225,24 @@ export class UISystem {
       const batch = this.#batch(game, component);
       const pass = device.frameEncoder.beginRenderPass({
         label: `UI ${component.entity.name}`,
-        colorAttachments: [{ view: device.currentBackBufferView(), loadOp: 'load', storeOp: 'store' }],
+        colorAttachments: [{ view, loadOp: 'load', storeOp: 'store' }],
       });
       batch.virtualResolution = virtual;
       batch.transform = undefined;
       batch.pixelRatio = undefined;
-      batch.begin(pass, target[0], target[1], device.backBufferViewFormat);
+      batch.begin(pass, target[0], target[1], format);
       drawUI(root, { batch, virtualResolution: virtual, ratio, snapText: component.snapText });
       batch.end();
       pass.end();
     }
-    // 布局之后：影子输入框跟上 EditText 的位置，选区同步回来
-    this.textInput?.update();
+  }
+
+  /** 这一帧第一次画 UI 时：布局，清掉上一帧的摆法（指针按这一帧画的样子找元素）。 */
+  #beginDrawing(game: Game): void {
+    if (this.#drawing) return;
+    this.#drawing = true;
+    this.layout(game);
+    this.#targets = new Map();
   }
 
   /** 放在 3D 里的 UI：按主相机从远到近画进一个通道，和场景的深度比较。没有相机时不画。 */

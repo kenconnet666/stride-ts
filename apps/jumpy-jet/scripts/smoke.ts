@@ -3,23 +3,16 @@
 // 检查：主菜单的按钮钉在画面的 (0.5, 0.7)；点它开始，计分页面出来，管子往左移（管子上的运动学刚体跟着管子组走）；把一组管子
 // 挪到飞机身上，飞机进了管子之间的触发器加一分；不按空格飞机落到地上，结束页面出来、分数清零、背景停住；点 Retry 重新开始；
 // 没有错误日志（finish 检查）。点击用合成的指针事件，按画布的比例算坐标。
-import { startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('jumpy-jet');
 
 /** 页面里的帮手：jjClick(x, y)（画布的比例）、jjRoot()（UI 页面的根）、jjScore()、jjEntities(name)。 */
 const HELPERS = `(() => {
   const canvas = document.querySelector('canvas');
-  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
-  const at = (type, x, y, target = canvas) => {
-    const r = canvas.getBoundingClientRect();
-    const init = { clientX: r.left + x * r.width, clientY: r.top + y * r.height, pointerId: 1, pointerType: 'mouse', bubbles: true, button: 0 };
-    target.dispatchEvent(new PointerEvent(type, init));
-    const mouse = { pointermove: 'mousemove', pointerdown: 'mousedown', pointerup: 'mouseup' }[type];
-    if (mouse) (type === 'pointerdown' ? canvas : window).dispatchEvent(new MouseEvent(mouse, init));
-  };
-  globalThis.jjFrames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
-  globalThis.jjClick = async (x, y) => { at('pointermove', x, y); await frame(); at('pointerdown', x, y); await frame(); await frame(); at('pointerup', x, y, window); await jjFrames(3); };
+  // 这里的坐标是画布的 0..1
+  const at = (type, x, y, target) => pointerAt(type, x * canvas.clientWidth, y * canvas.clientHeight, target);
+  globalThis.jjClick = async (x, y) => { at('pointermove', x, y); await frame(); at('pointerdown', x, y); await frame(); await frame(); at('pointerup', x, y, window); await frames(3); };
   globalThis.jjRoot = () => strideGame.ui.components[0].page.rootElement;
   globalThis.jjScore = () => { const root = jjRoot(); return root.constructor.name === 'Canvas' ? [...root.children][0].content.text : null; };
   globalThis.jjEntities = (name) => strideGame.entities.ids().map((id) => strideGame.entities.entity(id)).filter((e) => e.name === name);
@@ -32,6 +25,7 @@ stride('wait');
 await sleep(500);
 const status = stride('status') as { status: string; error: string | null };
 check('在跑', status.status === 'running' && status.error === null, status);
+stride('eval', PAGE_HELPERS);
 stride('eval', HELPERS);
 
 type Menu = { root: string; button: number[]; resolution: { x: number; y: number } };
@@ -62,7 +56,7 @@ const play = stride('eval', `(async () => {
   const plane = jjEntities('Character')[0].require(strideEngine.Transform).position;
   const first = sets().sort((a, b) => a.x - b.x)[0];
   first.x = plane.x - 1; first.y = plane.y;
-  await jjFrames(6);
+  await frames(6);
   return { started, before, after, pipeLocal, playing, scored: jjScore() };
 })()`) as Play;
 check('点"Touch to Start"：计分页面', play.started === 'Score :  0', play.started);

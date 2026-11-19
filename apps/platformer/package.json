@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "import:stride": "node scripts/import.ts",
+    "smoke": "node scripts/smoke.ts",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

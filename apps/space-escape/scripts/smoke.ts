@@ -2,29 +2,22 @@
 //   pnpm --filter @stride-ts/space-escape smoke [-- --hub <中枢名的一部分>]
 // 检查：主菜单（标志、开始按钮）；点开始后距离在涨、关卡往相机这边移、天空板的 UV 在滚；左键换到左边的道、下键滑铲；把一个
 // 障碍物挪到角色身上，角色倒下、结束页面出来；Retry 后距离清零、角色回到中间道；没有错误日志（finish 检查）。
-import { startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('space-escape');
 
 /** 页面里的帮手：seClick(x, y)（画布的比例）、seRoot()、seScripts()（角色、关卡、UI 脚本）、seKey(code)。 */
 const HELPERS = `(() => {
   const canvas = document.querySelector('canvas');
-  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
-  const at = (type, x, y, target = canvas) => {
-    const r = canvas.getBoundingClientRect();
-    const init = { clientX: r.left + x * r.width, clientY: r.top + y * r.height, pointerId: 1, pointerType: 'mouse', bubbles: true, button: 0 };
-    target.dispatchEvent(new PointerEvent(type, init));
-    const mouse = { pointermove: 'mousemove', pointerdown: 'mousedown', pointerup: 'mouseup' }[type];
-    if (mouse) (type === 'pointerdown' ? canvas : window).dispatchEvent(new MouseEvent(mouse, init));
-  };
-  globalThis.seFrames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
-  globalThis.seClick = async (x, y) => { at('pointermove', x, y); await frame(); at('pointerdown', x, y); await frame(); await frame(); at('pointerup', x, y, window); await seFrames(3); };
-  globalThis.seKey = async (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); await frame(); window.dispatchEvent(new KeyboardEvent('keyup', { code })); await seFrames(2); };
+  // 这里的坐标是画布的 0..1
+  const at = (type, x, y, target) => pointerAt(type, x * canvas.clientWidth, y * canvas.clientHeight, target);
+  globalThis.seClick = async (x, y) => { at('pointermove', x, y); await frame(); at('pointerdown', x, y); await frame(); await frame(); at('pointerup', x, y, window); await frames(3); };
+  globalThis.seKey = async (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); await frame(); window.dispatchEvent(new KeyboardEvent('keyup', { code })); await frames(2); };
   // 在画布上横着划：按下，挪几下，抬起
   globalThis.seSwipe = async (y, xs) => {
-    at('pointerdown', xs[0], y); await seFrames(2);
+    at('pointerdown', xs[0], y); await frames(2);
     for (const x of xs.slice(1)) { at('pointermove', x, y); await frame(); }
-    at('pointerup', xs.at(-1), y, window); await seFrames(40);
+    at('pointerup', xs.at(-1), y, window); await frames(40);
   };
   globalThis.seRoot = () => strideGame.ui.components[0].page.rootElement;
   globalThis.seEntities = () => strideGame.entities.ids().map((id) => strideGame.entities.entity(id));
@@ -54,6 +47,7 @@ stride('wait');
 await sleep(1500);
 const status = stride('status') as { status: string; error: string | null };
 check('在跑', status.status === 'running' && status.error === null, status);
+stride('eval', PAGE_HELPERS);
 stride('eval', HELPERS);
 
 type State = { page: string; distance: string | null; x: number; y: number; lane: number; dead: boolean; sections: number[]; skyU: number | null; animations: string[] };
@@ -86,7 +80,7 @@ const crashed = stride('eval', `(async () => {
   if (!obstacle) return { error: 'no obstacle' };
   const section = obstacle.require(strideEngine.Transform).parent.require(strideEngine.Transform).position;
   Object.assign(obstacle.require(strideEngine.Transform).position, { x: target.x - section.x, y: 0, z: target.z - section.z });
-  await seFrames(3);
+  await frames(3);
   return seState();
 })()`) as State;
 check('撞上障碍物：角色倒下（Crash），结束页面', crashed.dead && crashed.page === 'ModalElement' && crashed.animations.includes('Crash'), crashed);
@@ -97,7 +91,7 @@ const slide = stride('eval', `seKey('ArrowDown').then(() => seState())`) as Stat
 check('下键：滑铲', slide.animations.includes('Slide'), slide);
 // 拖动手势（Input.Gestures）：等滑铲放完，在画布上往右划一下，换到右边的道
 const swiped = stride('eval', `(async () => {
-  await seFrames(90);
+  await frames(90);
   await seSwipe(0.5, [0.5, 0.52, 0.56, 0.62]);
   return seState();
 })()`) as State;

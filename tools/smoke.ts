@@ -24,8 +24,14 @@ export interface Smoke {
  *   named(name)                      这个名字的实体（数组）
  *   position(name)、rotation(name)   第一个这个名字的实体的本地位置、旋转（数组）
  *   tap(code)、hold(code, n)          按一下键、按住 n 帧（返回按着时的调试文字）；code 是 KeyboardEvent.code
+ *   frame()                          等一帧
+ *   pointerAt(type, x, y, target?)   在画布的 (x, y)（CSS 像素）发一个合成的指针事件（连同对应的鼠标事件）；松开发给 window
  *   click(x, y, button = 0)          在画布的 (x, y)（CSS 像素）点一下鼠标（合成事件，锁不了指针）
- *   uiFind(name)、uiClick(name)       UI 元素、点它的中心
+ *   uiElements()                     所有页面的全部 UI 元素
+ *   uiFind(name)                     这个名字的 UI 元素
+ *   uiPoint(nameOrElement)           全屏 UI 的元素的中心在画布上的位置（CSS 像素）
+ *   uiClick(nameOrElement)           点它的中心
+ * 样例自己的帮手在它之后装，用这些拼。
  */
 export const PAGE_HELPERS = `(() => {
   const E = strideEngine, G = strideGame, canvas = G.graphicsDevice.canvas;
@@ -38,6 +44,8 @@ export const PAGE_HELPERS = `(() => {
     const mouse = { pointermove: 'mousemove', pointerdown: 'mousedown', pointerup: 'mouseup' }[type];
     (type === 'pointerdown' ? canvas : window).dispatchEvent(new MouseEvent(mouse, init));
   };
+  globalThis.frame = frame;
+  globalThis.pointerAt = (type, x, y, target = canvas) => pointer(type, x, y, 0, target);
   globalThis.frames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
   globalThis.lines = () => G.debugText.lines.map((l) => l.text);
   globalThis.named = (name) => G.entities.ids().map((i) => G.entities.entity(i)).filter((e) => e.name === name);
@@ -50,15 +58,19 @@ export const PAGE_HELPERS = `(() => {
     pointer('pointerdown', x, y, button); await frames(2);
     pointer('pointerup', x, y, button, window); await frames(2);
   };
-  const uiLocate = (name) => { for (const c of G.ui.components) { const e = c.page?.rootElement?.findName(name); if (e) return [e, c]; } return [null, null]; };
-  globalThis.uiFind = (name) => uiLocate(name)[0];
-  globalThis.uiClick = async (name) => {
-    const [e, c] = uiLocate(name);
-    if (!e) throw new Error('no UI element ' + name);
+  const all = (e, out = []) => { out.push(e); for (const c of e.visualChildren) all(c, out); return out; };
+  const pages = () => G.ui.components.filter((c) => c.page?.rootElement);
+  globalThis.uiElements = () => pages().flatMap((c) => all(c.page.rootElement));
+  globalThis.uiFind = (name) => { for (const c of pages()) { const e = c.page.rootElement.findName(name); if (e) return e; } return null; };
+  globalThis.uiPoint = (target) => {
+    const e = typeof target === 'string' ? uiFind(target) : target;
+    if (!e) throw new Error('no UI element ' + target);
+    const c = pages().find((c) => all(c.page.rootElement).includes(e));
     // 元素的位置是页面的虚拟分辨率里的，换到画布的 CSS 像素
     const [vx, vy] = E.UISystem.virtualResolution(c, [canvas.width, canvas.height]);
-    await click(e.worldPosition[0] / vx * canvas.clientWidth, e.worldPosition[1] / vy * canvas.clientHeight);
+    return [e.worldPosition[0] / vx * canvas.clientWidth, e.worldPosition[1] / vy * canvas.clientHeight];
   };
+  globalThis.uiClick = async (target) => click(...uiPoint(target));
   return 1;
 })()`;
 

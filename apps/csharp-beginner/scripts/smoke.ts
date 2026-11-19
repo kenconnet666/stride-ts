@@ -3,27 +3,15 @@
 // 检查：在跑；菜单里 15 个教程按钮；每个教程都能加载（标题换了、脚本打印出它的字）；键盘、虚拟按钮转茶壶；克隆出三把剑；
 // 代码加载模型后能建、清实体；预制体实例化到自定义的父实体下；时间在走；换一圈教程实体数不变；没有错误日志（finish 检查）。
 // 按键用合成的 KeyboardEvent（InputManager 在 window 上听）。
-import { startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('csharp-beginner');
 
-/** 页面里的帮手：uiFrames(n)、lines()、byName(实体名)、byNameAll(实体名)、uiElements()、rotation(实体名)、hold(键 code, 帧数)、tap(键 code)。 */
+/** 页面里的帮手：byName(实体名)、byNameAll(实体名)。 */
 const HELPERS = `(() => {
-  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
-  const E = strideEngine, G = strideGame;
-  const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, { code }));
-  globalThis.uiFrames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
-  globalThis.lines = () => G.debugText.lines.map((l) => l.text);
+  const G = strideGame;
   globalThis.byNameAll = (name) => G.entities.ids().map((i) => G.entities.entity(i)).filter((e) => e.name === name);
   globalThis.byName = (name) => byNameAll(name)[0];
-  globalThis.rotation = (name) => { const q = byName(name).require(E.Transform).rotation; return [q.x, q.y, q.z, q.w]; };
-  globalThis.hold = async (code, frames) => { key('keydown', code); await uiFrames(frames); const seen = lines(); key('keyup', code); await uiFrames(2); return seen; };
-  globalThis.tap = async (code) => { key('keydown', code); await uiFrames(2); key('keyup', code); await uiFrames(2); };
-  globalThis.uiElements = () => {
-    const all = (e, out = []) => { out.push(e); for (const c of e.visualChildren) all(c, out); return out; };
-    const root = G.ui.components.find((c) => c.page?.rootElement)?.page.rootElement;
-    return root ? all(root) : [];
-  };
   return 1;
 })()`;
 
@@ -48,7 +36,7 @@ const TUTORIALS: readonly (readonly [string, RegExp])[] = [
 
 const load = (label: string) => {
   stride('call', 'tutorial', JSON.stringify(label));
-  return stride('eval', `uiFrames(3).then(() => ({ lines: lines(), title: uiElements().find((e) => e.name === 'tutorialTitleTxt')?.text }))`) as { lines: string[]; title: string };
+  return stride('eval', `frames(3).then(() => ({ lines: lines(), title: uiElements().find((e) => e.name === 'tutorialTitleTxt')?.text }))`) as { lines: string[]; title: string };
 };
 
 stride('eval', 'location.reload()');
@@ -57,12 +45,13 @@ stride('wait');
 await sleep(1000);
 const status = stride('status') as { status: string; error: string | null };
 check('在跑', status.status === 'running' && status.error === null, status);
+stride('eval', PAGE_HELPERS);
 stride('eval', HELPERS);
 
 // 菜单的按钮（和 tutorial 命令）在 TutorialUI 的 start 里才建
 const buttons = stride('eval', `(async () => {
   const count = () => uiElements().filter((e) => e instanceof strideEngine.Button && e.isVisible && e.name !== 'BtnTutorialMenu').length;
-  for (let i = 0; i < 300 && count() === 0; i++) await uiFrames(1);
+  for (let i = 0; i < 300 && count() === 0; i++) await frames(1);
   return count();
 })()`) as number;
 check('菜单里 15 个教程按钮', buttons === 15, buttons);
@@ -105,7 +94,7 @@ load('Loading content from code');
 type Loading = { loaded: boolean; spawned: string; models: number; cleared: string };
 const loading = stride('eval', `(async () => {
   await tap('KeyL');
-  for (let i = 0; i < 300 && !lines().includes('Model is loaded'); i++) await uiFrames(1);
+  for (let i = 0; i < 300 && !lines().includes('Model is loaded'); i++) await frames(1);
   await tap('KeyS');
   const spawned = lines().find((l) => l.startsWith('Spawned'));
   const models = byNameAll('My new entity with a model component').filter((e) => e.has(strideEngine.Model)).length;
@@ -115,7 +104,7 @@ const loading = stride('eval', `(async () => {
 check('代码加载：L 加载模型，S 建一个带模型的实体，C 清掉', loading.loaded && loading.spawned === 'Spawned entities count: 1' && loading.models === 1 && loading.cleared === 'Spawned entities count: 0', loading);
 
 load('Instantiating prefabs');
-const prefab = stride('eval', `uiFrames(30).then(() => byName('PileOfBoxes2')?.require(strideEngine.Transform).children.length ?? 0)`) as number;
+const prefab = stride('eval', `frames(30).then(() => byName('PileOfBoxes2')?.require(strideEngine.Transform).children.length ?? 0)`) as number;
 check('预制体：第二份挂在 PileOfBoxes2 下', prefab > 0, prefab);
 
 load('Delta time');

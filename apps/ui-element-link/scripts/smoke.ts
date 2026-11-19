@@ -4,24 +4,16 @@
 // 元素在世界里的矩阵 × 本地变换）；骑士在跑；点角上的按钮不换场景，点跟着走的按钮换下一个；没有错误日志（finish 检查）。
 // 点击用合成的指针事件，放在 3D 里的 UI 按元素在世界里的位置投影到画面上算坐标。
 import { decodePng } from '../../../packages/cli/src/png.ts';
-import { startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('ui-element-link');
 
 /**
- * 页面里的帮手：uiClick(x, y)（画布里的 CSS 像素）、uiPoint(名字)（元素中心在画布上的 CSS 像素）、cornerPoint()（在画面里的
+ * 页面里的帮手：uiPoint(名字)（元素中心在画布上的 CSS 像素）、cornerPoint()（在画面里的
  * 第一个角上的按钮）、followGap()、runningAnimations()。
  */
 const HELPERS = `(() => {
   const canvas = document.querySelector('canvas');
-  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
-  const at = (type, x, y, target = canvas) => {
-    const r = canvas.getBoundingClientRect();
-    const init = { clientX: r.left + x, clientY: r.top + y, pointerId: 1, pointerType: 'mouse', bubbles: true, button: 0 };
-    target.dispatchEvent(new PointerEvent(type, init));
-    const mouse = { pointermove: 'mousemove', pointerdown: 'mousedown', pointerup: 'mouseup' }[type];
-    if (mouse) (type === 'pointerdown' ? canvas : window).dispatchEvent(new MouseEvent(mouse, init));
-  };
   const { Matrix, Transform, UISystem } = strideEngine;
   const named = (name) => strideGame.entities.entity(strideGame.entities.ids().find((i) => strideGame.entities.entity(i).name === name));
   const find = (name) => {
@@ -31,8 +23,6 @@ const HELPERS = `(() => {
     }
     throw new Error('no element ' + name);
   };
-  globalThis.uiFrames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
-  globalThis.uiClick = async (x, y) => { at('pointermove', x, y); await frame(); at('pointerdown', x, y); await frame(); await frame(); at('pointerup', x, y, window); await frame(); await frame(); };
   const pointOf = (component, element) => {
     if (component.isFullScreen) {
       const virtual = UISystem.virtualResolution(component, [canvas.width, canvas.height]);
@@ -80,6 +70,7 @@ function orangePixels(): number {
 
 /** 当前场景：UI 画出来了，跟着走，骑士在跑，角上的按钮不换场景，点跟着走的按钮换到 next。 */
 async function visit(name: string, next: string): Promise<void> {
+  stride('eval', PAGE_HELPERS);
   stride('eval', HELPERS);
   check(`${name}：场景对`, scene() === name, scene());
   const orange = orangePixels();
@@ -94,10 +85,10 @@ async function visit(name: string, next: string): Promise<void> {
   check(`${name}：骑士在跑`, running === 1, running);
   const smoke = stride('eval', 'strideGame.particles.components.reduce((sum, c) => sum + c.particleSystem.livingParticles, 0)') as number;
   check(`${name}：烟的粒子在冒`, smoke > 0, smoke);
-  stride('eval', 'uiClick(...cornerPoint()).then(() => 1)');
+  stride('eval', 'click(...cornerPoint()).then(() => 1)');
   await sleep(300);
   check(`${name}：点角上的按钮不换场景`, scene() === name, scene());
-  stride('eval', `uiClick(...uiPoint('ElementName')).then(() => 1)`);
+  stride('eval', `click(...uiPoint('ElementName')).then(() => 1)`);
   await sleep(1500);
   check(`${name}：点跟着走的按钮换到 ${next}`, scene() === next, scene());
 }

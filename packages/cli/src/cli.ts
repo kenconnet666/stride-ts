@@ -39,6 +39,8 @@ Game
                                                     --region: compare only that rectangle (e.g. leave out UI drawn differently)
   perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, native timings, GPU per pass
   native [--reset]                                  native counters (physics bodies, ...), timings, wasm memory
+  metrics [--over]                                  statistics and budgets: entities, draw calls, GPU and native memory, frame times
+                                                    (--over: only those over their budget)
   gpu-calls [--seconds 2]                           WebGPU calls and writeBuffer bytes per frame
   cpu-profile [--seconds 5] [--out profile.json] [--callers <regex>]
                           sample the main thread (needs a Chrome from stride open): ms per frame by kind and function
@@ -92,6 +94,7 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     since: { type: 'string' },
     level: { type: 'string' },
     source: { type: 'string' },
+    over: { type: 'boolean' },
     json: { type: 'boolean' },
     reset: { type: 'boolean' },
     out: { type: 'string' },
@@ -303,6 +306,7 @@ const commands: Record<string, () => Promise<unknown>> = {
     };
   },
   pick: () => call('pick', { x: Number(rest[0]), y: Number(rest[1]) }),
+  metrics: () => call('metrics', options.over ? { over: true } : {}),
   wireframe: () => call('wireframe', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
   raycast: () => call('raycast', {
     origin: vector(rest[0], 'origin x,y,z'),

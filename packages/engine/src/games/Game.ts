@@ -5,6 +5,7 @@ import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { hook } from '../engine/events';
 import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import type { SceneFile } from '../content/format';
+import { Metrics } from '../debug/Metrics';
 import type { EditAgent } from '../editor/EditAgent';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
@@ -82,6 +83,8 @@ const MAX_ELAPSED = 0.25;
 const STATS_INTERVAL = 0.25;
 const DEFAULT_MAX_TRANSFORMS = 65536;
 const DEFAULT_MAX_BODIES = 4096;
+/** 帧时间的统计量取最近这么多帧的平均。 */
+const METRIC_FRAMES = 60;
 /** 暂停时单步、没设 fixedTimeStep 时每步的秒数。 */
 const STEP_SECONDS = 1 / 60;
 
@@ -150,6 +153,8 @@ export class Game {
   private readonly debugDrawRenderer = new DebugDrawRenderer();
   /** 调试命令、计数器、事件和日志转发（debug/Debug.ts）。 */
   readonly debug = new Debug(() => (this.status === 'starting' ? undefined : this.frames));
+  /** 各系统的统计和预算（实体数、绘制次数、显存、内存、帧时间……），见 debug/Metrics。 */
+  readonly metrics = new Metrics();
   /** 暂停时不跑 update（脚本、系统、物理、游戏时间都停住），画面照常画；step() 单步。 */
   paused = false;
   /** 游戏时间相对真实时间的倍率。 */
@@ -245,7 +250,13 @@ export class Game {
       this.renderSystem.addFeature(new BackgroundRenderFeature());
       this.renderSystem.addFeature(new SpriteRenderFeature());
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);
+      // 预热：加载场景、预制体时，它们的模型要用的管线在后台编好（和别的资源一起等），建实体以后不用当场编译着色器
+      this.content.pipelineWarmer = (uses, postEffects) => {
+        const stages = this.graphicsCompositor.warmStages(postEffects);
+        return Promise.all(uses.map(({ mesh, material, skinned, isShadowCaster }) => this.meshes.warm(mesh, material, skinned, isShadowCaster, stages))).then(() => undefined);
+      };
       this.rootRenderer = this.graphicsCompositor;
+      this.#registerMetrics();
       await this.loadContent();
       this.startup.content = performance.now();
       // 编辑器的代理只在编辑状态用到：单独加载，不进游戏的主包
@@ -257,6 +268,36 @@ export class Game {
     this.sceneFrame = this.frames;
     this.status = 'running';
     requestAnimationFrame(this.frame);
+  }
+
+  /** 引擎自己的统计量；游戏在 loadContent 里接着登记自己的、设预算。 */
+  #registerMetrics(): void {
+    const metrics = this.metrics, memory = this.graphicsDevice.memory, frames = this.debug.frames;
+    const average = (column: Float64Array) => {
+      const recent = frames.last(METRIC_FRAMES, column);
+      return recent.length === 0 ? 0 : recent.reduce((sum, value) => sum + value, 0) / recent.length;
+    };
+    metrics.gauge('entities', 'count', () => this.entities.count);
+    // 最近一秒左右的平均
+    metrics.gauge('frame.ms', 'ms', () => average(frames.interval));
+    metrics.gauge('frame.update.ms', 'ms', () => average(frames.update));
+    metrics.gauge('frame.draw.ms', 'ms', () => average(frames.draw));
+    metrics.gauge('gpu.buffers', 'count', () => memory.buffers.count);
+    metrics.gauge('gpu.buffers.bytes', 'bytes', () => memory.buffers.bytes);
+    metrics.gauge('gpu.textures', 'count', () => memory.textures.count);
+    metrics.gauge('gpu.textures.bytes', 'bytes', () => memory.textures.bytes);
+    // 渲染特性（网格、精灵）上一帧的绘制次数和画的实例数；UI、粒子、调试线不在里面
+    const featureTotal = (key: string) => this.renderSystem.features.reduce((sum, feature) => sum + (feature.stats()[key] ?? 0), 0);
+    metrics.gauge('render.drawCalls', 'count', () => featureTotal('drawCalls'));
+    metrics.gauge('render.instances', 'count', () => featureTotal('drawnInstances'));
+    // 管线：当场建的（着色器的编译堵住那一帧）和后台预热的各几条；预热到位的话前者在加载完以后不再涨
+    metrics.gauge('gpu.pipelines.sync', 'count', () => this.graphicsDevice.pipelines.sync);
+    metrics.gauge('gpu.pipelines.warmed', 'count', () => this.graphicsDevice.pipelines.warmed);
+    metrics.gauge('native.heap.bytes', 'bytes', () => this.native.debugSnapshot().memory['heapBytes'] ?? 0);
+    metrics.gauge('native.allocated.bytes', 'bytes', () => this.native.debugSnapshot().memory['allocatedBytes'] ?? 0);
+    // Chrome 才有（不精确，够看趋势）
+    const heap = (performance as { memory?: { usedJSHeapSize: number } }).memory;
+    if (heap) metrics.gauge('js.heap.bytes', 'bytes', () => heap.usedJSHeapSize);
   }
 
   /**

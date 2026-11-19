@@ -1,3 +1,4 @@
+import { GpuMemory, PipelineCounts } from './GpuMemory';
 import type { TextureTarget } from '@stride-ts/native';
 import { GpuProfiler } from './GpuProfiler';
 
@@ -24,6 +25,10 @@ export class GraphicsDevice {
   readonly depthClipControl: boolean;
   /** 渲染通道的 GPU 耗时（开发时测量，默认关；设备不支持 timestamp-query 时打开也不记录）。 */
   readonly profiler: GpuProfiler;
+  /** 这个设备上的缓冲和贴图占了多少显存（自己记的账，见 GpuMemory）。 */
+  readonly memory: GpuMemory;
+  /** 管线里当场建的、后台编的各几条（见 PipelineCounts）。 */
+  readonly pipelines: PipelineCounts;
   private readonly context: GPUCanvasContext;
   #frameEncoder: GPUCommandEncoder | undefined;
   #viewTexture: GPUTexture | undefined;
@@ -47,6 +52,9 @@ export class GraphicsDevice {
     this.device = device;
     this.textureTarget = textureTarget;
     this.depthClipControl = depthClipControl;
+    // 先装上记账，后面建的资源（包括剖析器自己的）才都算进去
+    this.memory = new GpuMemory(device);
+    this.pipelines = new PipelineCounts(device);
     this.profiler = new GpuProfiler(device, timestampQuery);
     this.canvas = canvas;
     this.context = context;

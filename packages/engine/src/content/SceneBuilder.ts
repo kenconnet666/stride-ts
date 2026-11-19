@@ -21,6 +21,7 @@ import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/
 import type { ConstraintSettings } from '../physics/Simulation';
 import { Background, Camera, Instance, Instancing, Light, Sprite } from '../rendering/components';
 import type { Material } from '../rendering/Material';
+import type { Mesh } from '../rendering/Mesh';
 import type { Cubemap, Skybox } from '../rendering/Skybox';
 import type { SpriteSheet } from '../rendering/SpriteSheet';
 import type { SpriteFont } from '../rendering/text/SpriteFont';
@@ -54,6 +55,29 @@ export interface SceneAssets {
   readonly sounds: ReadonlyMap<string, Sound>;
 }
 
+/** 一个网格配一个材质画（预热管线用，见 ContentManager.pipelineWarmer）。 */
+export interface ModelUse {
+  readonly mesh: Mesh;
+  readonly material: Material;
+  readonly skinned: boolean;
+  readonly isShadowCaster: boolean;
+}
+
+/** 实体文件里的模型会怎么画：每个网格配哪个材质（规则同 ContentManager.addModel）。 */
+function modelUses(files: readonly SceneEntityFile[], assets: SceneAssets, defaultMaterial: Material): ModelUse[] {
+  const uses: ModelUse[] = [];
+  for (const { components: { model } } of files) {
+    const loaded = model && assets.models.get(model.model);
+    if (!loaded) continue;
+    for (const { mesh, material: slot, skin } of loaded.meshes) {
+      const override = slot === null || model.materials[slot] == null ? undefined : assets.materials.get(model.materials[slot]);
+      const material = override ?? (slot === null ? undefined : loaded.materials[slot]) ?? defaultMaterial;
+      uses.push({ mesh, material, skinned: skin !== undefined, isShadowCaster: model.isShadowCaster ?? true });
+    }
+  }
+  return uses;
+}
+
 export class SceneBuilder {
   readonly #content: ContentManager;
 
@@ -62,7 +86,7 @@ export class SceneBuilder {
   }
 
   /** 实体文件引用的资源（包括脚本属性引用的）并行加载好。 */
-  async preload(files: readonly SceneEntityFile[], where: string): Promise<SceneAssets> {
+  async preload(files: readonly SceneEntityFile[], where: string, postEffects?: boolean): Promise<SceneAssets> {
     const content = this.#content;
     const refs = entityAssetReferences(files);
     const unsupported = refs.find((ref) => !PRELOADED_KINDS.has(ref.kind));
@@ -88,7 +112,10 @@ export class SceneBuilder {
       if (ref.kind === 'renderTexture') images.set(ref.path, content.renderTexture(ref.texture));
       else if (ref.kind === 'image') images.set(ref.path, await content.loadTextureRef(ref.texture, true));
     }));
-    return { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds };
+    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds };
+    // 管线也算要等的资源：建实体之前在后台编好，第一帧和以后生成这些模型时都不用当场编译着色器
+    await content.pipelineWarmer?.(modelUses(files, assets, content.defaultMaterial), postEffects);
+    return assets;
   }
 
   /**

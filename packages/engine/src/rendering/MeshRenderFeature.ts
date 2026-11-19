@@ -1056,7 +1056,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   override prepare(context: RenderContext): void {
-    const gpu = (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl));
+    const gpu = this.#ensureGpu();
     gpu.uploadWorlds(context.game.transforms.world, context.game.transforms.slotLimit);
     gpu.uploadSkinning(this.#paletteOf, context.game.animation);
     gpu.uploadMorphs(this.#morphOf, context.game.animation);
@@ -1087,6 +1087,32 @@ export class MeshRenderFeature extends RootRenderFeature {
   override get supportsWireframe(): boolean {
     return true;
   }
+
+  /**
+   * 预热：这个网格配这个材质在 stages 这些阶段里要用的管线，没有的在后台编译；返回都编好时完成的 Promise。加载场景时对
+   * 场景里的模型调（Game.loadScene），第一帧和之后生成同样网格的实体就不用当场编译。
+   */
+  warm(mesh: Mesh, material: Material, skinned: boolean, isShadowCaster: boolean, stages: readonly RenderStage[]): Promise<void> {
+    const gpu = this.#ensureGpu();
+    const pending: Promise<void>[] = [];
+    const add = (stage: RenderStage, materialPass?: MaterialPass) => {
+      const warming = gpu.warmPipeline(stage, mesh.layout, skinned, mesh.data.morph !== undefined, material, this.effect, materialPass);
+      if (warming) pending.push(warming);
+    };
+    for (const stage of stages) {
+      if (stage.shadowCasters ? !isShadowCaster || material.isTransparent : stage.transparent ? !(material.isTransparent || material.hasClearCoat) : material.isTransparent && !stage.picking) continue;
+      const passes = stage.transparent ? transparentPasses(material) : NO_PASSES;
+      if (passes.length === 0) add(stage);
+      for (const materialPass of passes) add(stage, materialPass);
+    }
+    return Promise.all(pending).then(() => undefined);
+  }
+
+  #ensureGpu(): Gpu {
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl));
+  }
+
+
 
   override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
@@ -1250,6 +1276,8 @@ class Gpu {
   /** 按颜色树的贴图数：0 是三个绑定组，多的再加绑定组 3。 */
   readonly #pipelineLayouts = new Map<number, { readonly layout: GPUPipelineLayout; readonly textures?: GPUBindGroupLayout }>();
   readonly #pipelines = new Map<string, GPURenderPipeline>();
+  /** 正在后台编译的管线（warmPipeline）。 */
+  readonly #warming = new Map<string, Promise<void>>();
   /** 颜色树的贴图绑定组（绑定组 3）。 */
   readonly #treeBindGroups = new Map<Material, GPUBindGroup>();
   readonly #meshes = new Map<Mesh, GpuMesh>();
@@ -1384,21 +1412,55 @@ class Gpu {
    * （Stride 的 DepthStencilStates.Default），不透明阶段靠它复用深度预通道的结果。
    */
   pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipeline {
+    const key = this.#pipelineKey(stage, layout, skinned, morphed, material, effect, materialPass);
+    let pipeline = this.#pipelines.get(key);
+    if (!pipeline) {
+      // 画的时候才发现没有：当场建。着色器的编译在这一帧里做，画面会卡一下——预热（warmPipeline）就是为了不走到这里
+      pipeline = this.device.createRenderPipeline(this.#pipelineDescriptor(stage, layout, skinned, morphed, material, effect, materialPass));
+      this.#pipelines.set(key, pipeline);
+    }
+    return pipeline;
+  }
+
+  /**
+   * 预热：这条管线还没有的话在后台编译（createRenderPipelineAsync，不卡帧），好了以后放进缓存。已经有了返回 undefined，
+   * 否则返回编好时完成的 Promise。编译期间画到它的话照旧当场建一条（结果一样，只是白编了一次）。
+   */
+  warmPipeline(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): Promise<void> | undefined {
+    const key = this.#pipelineKey(stage, layout, skinned, morphed, material, effect, materialPass);
+    if (this.#pipelines.has(key)) return undefined;
+    let warming = this.#warming.get(key);
+    if (!warming) {
+      warming = this.device.createRenderPipelineAsync(this.#pipelineDescriptor(stage, layout, skinned, morphed, material, effect, materialPass)).then((pipeline) => {
+        this.#warming.delete(key);
+        if (!this.#pipelines.has(key)) this.#pipelines.set(key, pipeline);
+      });
+      this.#warming.set(key, warming);
+    }
+    return warming;
+  }
+
+  #pipelineKey(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): string {
     const { colorFormat, depthFormat } = stage.output;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
+    const doubleSided = colorFormat !== undefined && material.doubleSided;
+    const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
+    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${materialPass?.name}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
+  }
+
+  #pipelineDescriptor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipelineDescriptor {
+    const { colorFormat, depthFormat } = stage.output;
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
     // 颜色树的变体每个阶段都用：位移贴图在只写深度的阶段也要算（深度预通道和不透明阶段的深度要一样）
     const trees = material.shaderTrees;
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
     const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${materialPass?.name}:${treesKey(trees)}:${effect?.code ?? ''}`;
-    let pipeline = this.#pipelines.get(key);
-    if (!pipeline) {
+    {
       const offsets = vertexLayoutOffsets(layout);
       const entryPoint = `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
       const module = this.#module(trees, effect);
-      pipeline = this.device.createRenderPipeline({
+      return {
         label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${morphed ? ' morphed' : ''}${trees ? ' material trees' : ''}`,
         layout: this.#layout(trees?.textures.length ?? 0).layout,
         vertex: {
@@ -1437,10 +1499,8 @@ class Gpu {
         depthStencil: stage.afterDepthPrepass
           ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'equal' }
           : { format: depthFormat, depthWriteEnabled: !stage.transparent && !stage.wireframe, depthCompare: 'less-equal' },
-      });
-      this.#pipelines.set(key, pipeline);
+      };
     }
-    return pipeline;
   }
 
   /** 世界矩阵列的 1..slotLimit 段（槽位 0 是空的，一起传，下标就和槽位一致）。 */

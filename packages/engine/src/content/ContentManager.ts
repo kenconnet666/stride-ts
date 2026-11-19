@@ -21,7 +21,7 @@ import { Morphed } from '../animation/morphs';
 import { Material, type MaterialShaderTrees } from '../rendering/Material';
 import { preload, textureRefs } from './loading';
 import { Prefab } from './Prefab';
-import { changedEntities, SceneBuilder, type SceneAssets } from './SceneBuilder';
+import { changedEntities, SceneBuilder, type ModelUse, type SceneAssets } from './SceneBuilder';
 import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
@@ -118,6 +118,9 @@ export interface LoadedModel {
 }
 
 
+/** 场景开不开后处理；场景没带合成器设置（沿用现在的）时是 undefined。 */
+const postEffectsOf = (scene: SceneFile): boolean | undefined => (scene.compositor ? scene.compositor.postEffects !== null : undefined);
+
 /** 合成器里画进渲染目标贴图的相机，贴图已经建好。 */
 export interface TextureCamera extends SceneForwardRenderer {
   readonly cameraSlot: number;
@@ -190,6 +193,11 @@ export class ContentManager {
   meshoptDecoder: MeshoptDecoder | undefined;
   /** 加载骨架、动画剪辑和蒙皮；Game 启动时设置（原生模块）。 */
   animationNative: AnimationNative | undefined;
+  /**
+   * 预热管线：这些网格配这些材质要用的管线在后台编译，编好时完成；Game 启动时设置（MeshRenderFeature.warm），没设置
+   * （没有渲染）时不预热。postEffects 是要加载的场景开不开后处理（影响用哪一套管线），预制体不知道，不给。
+   */
+  pipelineWarmer: ((uses: readonly ModelUse[], postEffects: boolean | undefined) => Promise<void>) | undefined;
   /** 解码声音；Game 启动时设置（game.audio）。 */
   audio: AudioEngine | undefined;
 
@@ -522,7 +530,7 @@ export class ContentManager {
    */
   async instantiateScene(scene: SceneFile, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const where = `scene ${scene.name}`;
-    return this.#createScene(scene, await this.#scenes.preload(scene.entities, where), entities, options, where);
+    return this.#createScene(scene, await this.#scenes.preload(scene.entities, where, postEffectsOf(scene)), entities, options, where);
   }
 
   /**
@@ -580,7 +588,7 @@ export class ContentManager {
   #sceneWithAssets(path: string): Promise<{ scene: SceneFile; assets: SceneAssets }> {
     return this.#once(path + EXTENSIONS.scene, async (url) => {
       const scene = this.#json<SceneFile>(await this.#read(url));
-      return { scene, assets: await this.#scenes.preload(scene.entities, url.href) };
+      return { scene, assets: await this.#scenes.preload(scene.entities, url.href, postEffectsOf(scene)) };
     });
   }
 

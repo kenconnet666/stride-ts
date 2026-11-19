@@ -3,6 +3,7 @@
 //   smoke.check('在跑', (smoke.stride('status') as { status: string }).status === 'running', ...);
 //   smoke.finish();                                // 查本次运行以来的错误日志，按结果退出
 import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -74,6 +75,49 @@ export const PAGE_HELPERS = `(() => {
   return 1;
 })()`;
 
+interface SmokeMetric {
+  readonly name: string;
+  readonly unit: 'count' | 'bytes' | 'ms';
+  readonly value: number;
+}
+
+/** 各个样例冒烟跑完时的统计量（`stride metrics`）记下的基线，见 checkBudgets。 */
+const BUDGETS_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'budgets.json');
+/** 进基线的量：和机器快慢无关的（实体数、绘制次数、显存、原生内存）。帧时间另由 tools/measure.ps1 和桌面 Stride 比。 */
+const BUDGETED = ['entities', 'render.drawCalls', 'render.instances', 'gpu.buffers', 'gpu.buffers.bytes', 'gpu.textures', 'gpu.textures.bytes', 'gpu.pipelines.sync', 'native.allocated.bytes'];
+/** 允许比基线高多少：冒烟跑完时的状态每次略有不同（随机的关卡、还没回收的子弹），所以留得宽，抓的是成倍的退步和泄漏。 */
+const TOLERANCE = { count: { factor: 1.5, slack: 16 }, bytes: { factor: 1.3, slack: 4 * 1024 * 1024 }, ms: { factor: Infinity, slack: 0 } } as const;
+
+/** 不留余量的量。当场建的管线（卡帧的那种）：多出来的就是没预热到的，要么补上预热，要么有意地重记基线；留 2 条给时序。 */
+const EXACT: Readonly<Record<string, { factor: number; slack: number }>> = { 'gpu.pipelines.sync': { factor: 1, slack: 2 } };
+
+/**
+ * 预算：冒烟跑完时的统计量不能比记下的基线高出太多（docs/roadmap.md 的原则："预算和实测值进回归，变慢了要能自动发现"）。
+ * 环境变量 STRIDE_UPDATE_BUDGETS=1 时不比，把这次的值记成新的基线（有意的变化之后重记：
+ * `$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/regress.ps1`）；还没有基线的样例跳过。
+ */
+function checkBudgets(app: string, metrics: readonly SmokeMetric[], check: Smoke['check']): void {
+  const all = (existsSync(BUDGETS_FILE) ? JSON.parse(readFileSync(BUDGETS_FILE, 'utf8')) : {}) as Record<string, Record<string, number>>;
+  const measured = Object.fromEntries(metrics.filter((metric) => BUDGETED.includes(metric.name)).map((metric) => [metric.name, Math.round(metric.value)]));
+  if (process.env['STRIDE_UPDATE_BUDGETS']) {
+    all[app] = measured;
+    const sorted = Object.fromEntries(Object.keys(all).sort().map((key) => [key, all[key]]));
+    writeFileSync(BUDGETS_FILE, `${JSON.stringify(sorted, null, 2)}\n`);
+    console.log(`     budgets recorded for ${app}`);
+    return;
+  }
+  const baseline = all[app];
+  if (!baseline) return void console.log(`     no budgets recorded for ${app} (STRIDE_UPDATE_BUDGETS=1 records them)`);
+  const over = metrics.flatMap((metric) => {
+    const recorded = baseline[metric.name];
+    if (recorded === undefined) return [];
+    const { factor, slack } = EXACT[metric.name] ?? TOLERANCE[metric.unit];
+    const limit = recorded * factor + slack;
+    return metric.value > limit ? [`${metric.name}: ${Math.round(metric.value)} > ${Math.round(limit)} (recorded ${recorded})`] : [];
+  });
+  check('统计量在预算内（实体数、绘制次数、显存、原生内存）', over.length === 0, over);
+}
+
 export function startSmoke(defaultHub: string): Smoke {
   const hubIndex = process.argv.indexOf('--hub');
   const hub = hubIndex >= 0 ? process.argv[hubIndex + 1]! : defaultHub;
@@ -97,6 +141,7 @@ export function startSmoke(defaultHub: string): Smoke {
     finish: () => {
       const errors = run('logs', '--since', String(since), '--level', 'error').trim();
       check('没有错误日志', errors === '', errors.split('\n'));
+      checkBudgets(defaultHub, JSON.parse(run('metrics')) as SmokeMetric[], check);
       process.exit(failed > 0 ? 1 : 0);
     },
   };

@@ -52,6 +52,14 @@ interface FrameTargets {
 }
 
 /** 一个视图的颜色画到哪里：目标的视图、尺寸、格式，和这种格式的不透明、透明阶段。 */
+/** 直接画进后备缓冲用的几个阶段，和它们的颜色格式。 */
+interface DirectStages {
+  readonly format: GPUTextureFormat;
+  readonly opaque: RenderStage;
+  readonly transparent: RenderStage;
+  readonly wireframe: RenderStage;
+}
+
 interface ColorOutput {
   readonly view: GPUTextureView;
   readonly width: number;
@@ -106,7 +114,7 @@ export class ForwardRenderer {
   wireframe = false;
   readonly #wireframeStage = new RenderStage('Wireframe', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { wireframe: true });
   /** 没有后处理时主画面直接画进后备缓冲用的两个阶段（颜色格式是后备缓冲的）。 */
-  #directStages: { format: GPUTextureFormat; opaque: RenderStage; transparent: RenderStage; wireframe: RenderStage } | undefined;
+  #directStages: DirectStages | undefined;
   /** 渲染目标贴图的原样拷贝（自己的参数区：主画面的后处理每帧会重置它的参数区）。 */
   readonly #textureCopy: { scaler: ImageScaler; arena: UniformArena };
   // 找相机：每个要的槽位取第一个带 Camera 和 Transform 的实体；找到的视图记在 #found 里
@@ -438,7 +446,13 @@ export class ForwardRenderer {
    */
   #backBufferOutput(width: number, height: number): ColorOutput {
     const graphicsDevice = this.renderSystem.graphicsDevice;
-    const format = graphicsDevice.backBufferViewFormat;
+    const { format, opaque, transparent, wireframe } = this.#direct();
+    return { view: graphicsDevice.currentBackBufferView(), width, height, format, opaque, transparent, wireframe };
+  }
+
+  /** 直接画进后备缓冲用的几个阶段（颜色格式是后备缓冲的）。 */
+  #direct(): DirectStages {
+    const format = this.renderSystem.graphicsDevice.backBufferViewFormat;
     if (this.#directStages?.format !== format) {
       this.#directStages = {
         format,
@@ -447,8 +461,17 @@ export class ForwardRenderer {
         wireframe: new RenderStage('Wireframe', { colorFormat: format, depthFormat: DEPTH_FORMAT }, { wireframe: true }),
       };
     }
-    const { opaque, transparent, wireframe } = this.#directStages;
-    return { view: graphicsDevice.currentBackBufferView(), width, height, format, opaque, transparent, wireframe };
+    return this.#directStages;
+  }
+
+  /**
+   * 主画面会用到的阶段（阴影投射、深度预通道、不透明、透明）：预热管线时按它们编。主画面直接画进后备缓冲还是先画进
+   * HDR 缓冲（有后处理时），两边的颜色格式不同、管线也不同：postEffects 说要加载的场景开不开后处理，没给就按现在的。
+   */
+  warmStages(postEffects = this.postEffects.enabled): RenderStage[] {
+    const { casterStage, cubeMapCasterStage } = this.shadowMapRenderer;
+    const direct = !postEffects && this.directOutput ? this.#direct() : undefined;
+    return [casterStage, cubeMapCasterStage, this.depthPrepassStage, direct?.opaque ?? this.opaqueStage, direct?.transparent ?? this.transparentStage];
   }
 }
 

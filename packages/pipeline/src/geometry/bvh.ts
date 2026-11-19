@@ -189,8 +189,9 @@ export class TriangleBvh {
       } else if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
         w = (d4 - d3) / (d4 - d3 + (d5 - d6)); v = 1 - w;
       } else {
-        const denominator = 1 / (va + vb + vc);
-        v = vb * denominator; w = vc * denominator;
+        // 退化的三角形（三点共线）面积是 0：上面几种情况都没中时按顶点 a 算，不除以 0
+        const sum = va + vb + vc;
+        v = sum === 0 ? 0 : vb / sum; w = sum === 0 ? 0 : vc / sum;
       }
     }
     const dx = apx - abx * v - acx * w, dy = apy - aby * v - acy * w, dz = apz - abz * v - acz * w;

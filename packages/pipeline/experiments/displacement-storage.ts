@@ -337,6 +337,12 @@ const tools = await createStrideTools({ workerThreads: 2 });
 for (const file of process.argv.slice(2)) {
   const mesh = await loadMesh(tools, file);
   const frame = bounds(mesh.positions), triangles = mesh.indices.length / 3;
+  if (triangles === 0) {
+    // 压缩过的 glTF（Draco、meshopt）stride-tools 读不出几何
+    console.log(`
+== ${path.basename(file)}: no triangles could be read; skipped`);
+    continue;
+  }
   const original = { mesh, bvh: new TriangleBvh(mesh.positions, mesh.indices) };
   console.log(`\n== ${path.basename(file)}: ${triangles} triangles, ${mesh.positions.length / 3} vertices`);
   console.log('kind                         triangles       KB    rms %    max %   bits/orig-tri');

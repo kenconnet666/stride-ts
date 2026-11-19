@@ -283,6 +283,35 @@ describe('ContentManager', () => {
     expect(label!.require(Label).target).toBe(second!.id);
   });
 
+  test('场景模板（SpaceEscape 的 LevelBlocks）：不建实体；模板实体连同子实体实例化成新实体，脚本带着属性；读脚本属性时实体引用换成名字', async () => {
+    class Info extends SyncScript.props({ maxObstacles: prop.int().default(0) }) {}
+    const entity = (id: string, parent: string | null, components: SceneFile['entities'][number]['components']) =>
+      ({ id, name: id, parent, position: [0, 0, 5], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components }) as const;
+    const scene: SceneFile = {
+      name: 'Blocks',
+      entities: [
+        entity('generator', null, { scripts: [{ type: 'Game.Generator', props: { block: { $entity: 'block' }, count: 2 } }] }),
+        entity('block', null, { scripts: [{ type: 'Game.Info', props: { maxObstacles: 3 } }] }),
+        entity('part', 'block', {}),
+      ],
+    };
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    game.registry.registerModules({ './Info.ts': { Info } });
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => json(scene) });
+    const template = await content.loadSceneTemplate('Blocks');
+    expect(game.entities.count).toBe(0);
+    expect(template.scriptProps('generator', 'Generator')).toEqual({ block: 'block', count: 2 });
+    expect(template.scriptProps('block', 'Generator')).toBeUndefined();
+    const [first] = template.prefab('block').instantiate(game.entities);
+    const [second] = template.prefab('block').instantiate(game.entities);
+    expect(first!.id).not.toBe(second!.id);
+    expect([first!.name, first!.require(Transform).children.map((child) => child.name), first!.require(Info).maxObstacles]).toEqual(['block', ['part'], 3]);
+    expect(game.entities.count).toBe(4);
+    expect(() => template.prefab('missing')).toThrow(/no entity named 'missing'/);
+  });
+
   test('换根场景：新场景加载好后销毁旧根场景的实体（连同子实体），另建的实体不动；连着换按顺序来', async () => {
     const sceneFile = (name: string): SceneFile => ({
       name,

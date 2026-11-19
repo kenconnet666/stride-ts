@@ -33,6 +33,7 @@ export { AnimationSystem, ModelSkeleton, type SkinnedPart } from './animation/An
 export { ModelNodeLink } from './animation/ModelNodeLink';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
 export { Prefab } from './content/Prefab';
+export { SceneTemplate } from './content/SceneTemplate';
 export { ContentManager, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type GameSettings, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
 export type { SceneScriptMap } from './content/sceneScripts';
 export {

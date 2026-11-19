@@ -76,7 +76,9 @@ export class SceneScriptBinder {
         continue;
       }
       if (field.options.kind !== 'component') {
-        init[field.name] = resolveValue(value, context);
+        // Stride 的 YAML 把空的集合写成 {}，导入器分不清是列表还是字典：TS 脚本声明的是列表时当成空列表
+        const isEmptyObject = typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
+        init[field.name] = field.options.kind === 'list' && isEmptyObject ? [] : resolveValue(value, context);
         continue;
       }
       const component = resolveComponent(value, field.options.target!(), context, `${where}: ${script.type}.${name}`, deferMissing);

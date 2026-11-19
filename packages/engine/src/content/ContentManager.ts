@@ -24,6 +24,7 @@ import { Background, Camera, Instance, Instancing, Light, Model, Sprite } from '
 import type { EntityId } from '../data/prop';
 import { Material, type EmissiveShader } from '../rendering/Material';
 import { Prefab } from './Prefab';
+import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/Mesh';
 import { Cubemap, Skybox } from '../rendering/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
@@ -451,6 +452,19 @@ export class ContentManager {
     });
   }
 
+  /**
+   * 把场景当模板加载（见 SceneTemplate）：场景文件和它引用的资源加载好，不建实体；模板实体实例化时脚本按 options 对应，同 loadScene。
+   */
+  loadSceneTemplate(path: string, options: LoadSceneOptions = {}): Promise<SceneTemplate> {
+    return this.#once(path + EXTENSIONS.scene, 'template', async () => {
+      const { scene, assets } = await this.#sceneWithAssets(path);
+      return new SceneTemplate(path, scene.entities, (files, name) => new Prefab(name, (entities) => {
+        const created = this.#instantiate(files, assets, entities, options, name);
+        return [created.get(files[0]!.id)!];
+      }));
+    });
+  }
+
   /** 加载预制体：引用的资源先加载好，实例化时才建实体（见 Prefab）。实例化时脚本按 options 对应，同 loadScene。 */
   loadPrefab(path: string, options: LoadSceneOptions = {}): Promise<Prefab> {
     return this.#once(path + EXTENSIONS.prefab, async (url) => {
@@ -630,18 +644,25 @@ export class ContentManager {
       for (const { name, clip } of animation.animations) clips.set(name, assets.animations.get(clip)!);
     }
     if (!model) return;
-    const loaded = assets.models.get(model.model)!;
+    const overrides = model.materials.map((path) => (path === null ? null : (materials.get(path) ?? null)));
+    this.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true });
+  }
+
+  /**
+   * 给实体挂上加载好的模型（Stride 的 `new ModelComponent(model)`）：第一个网格挂在实体上，多出来的网格挂成子实体（一个实体只能
+   * 有一个 Model），有骨架的接上动画。materials 按模型的材质槽覆盖（null 是用模型自带的）。
+   */
+  addModel(entity: Entity, loaded: LoadedModel, { materials = [], isShadowCaster = true }: { materials?: readonly (Material | null)[]; isShadowCaster?: boolean } = {}): void {
+    const entities = entity.manager;
     const skinned: { entity: Entity; skin: NativeSkin }[] = [];
     loaded.meshes.forEach(({ mesh, material: slot, skin }, i) => {
       // 材质：实体按槽覆盖的，否则模型自带的，都没有时用默认材质
-      const override = slot === null ? null : (model.materials[slot] ?? null);
-      const material = (override === null ? null : materials.get(override)) ?? (slot === null ? null : loaded.materials[slot]) ?? this.defaultMaterial;
-      const component = Model.with({ mesh: mesh.id, material: material.id, isShadowCaster: model.isShadowCaster ?? true });
-      // 一个实体只能有一个 Model：多出来的网格挂成子实体
+      const material = (slot === null ? null : (materials[slot] ?? loaded.materials[slot])) ?? this.defaultMaterial;
+      const component = Model.with({ mesh: mesh.id, material: material.id, isShadowCaster });
       let part = entity;
       if (i === 0) entity.add(component);
       else {
-        part = entities.create({ name: `${file.name}/${mesh.name}`, components: [Transform, component] });
+        part = entities.create({ name: `${entity.name}/${mesh.name}`, components: [Transform, component] });
         part.require(Transform).parent = entity;
       }
       if (skin) skinned.push({ entity: part, skin });

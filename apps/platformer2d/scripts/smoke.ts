@@ -30,6 +30,17 @@ const coinFrames = (stride('eval', COINS) as [number, number, string])[2];
 await sleep(150);
 check('金币在转（帧在换）', (stride('eval', COINS) as [number, number, string])[2] !== coinFrames, coinFrames);
 
+// 点选精灵（编号缓冲）：角色所在的像素点到角色，它正上方的天空什么都点不到
+const picked = stride('eval', `(async () => {
+  const g = strideGame, all = g.entities.ids().map((i) => g.entities.entity(i));
+  const player = all.find((e) => e.name === 'Player'), camera = all.find((e) => e.has(strideEngine.Camera));
+  const at = strideEngine.worldToScreen(g, camera, player.require(strideEngine.Transform).position);
+  const c = g.graphicsDevice.canvas;
+  const name = async (x, y) => (await g.pick(c.clientWidth * x, c.clientHeight * y))?.name ?? null;
+  return [await name(at.x, at.y), await name(at.x, at.y - 0.12)];
+})()`) as (string | null)[];
+check('点选：精灵点得到，空处点不到', picked[0] === 'Player' && picked[1] === null, picked);
+
 // 先在出生的地方跳（头顶是空的）：跑完再跳时停在哪里随帧率变，可能停在平台下面，头一碰就落下来（regress 里帧率高时就这样）
 const start = stride('eval', PLAYER) as Player;
 // 起跳后轮询：刚打开的浏览器帧率不稳，固定等一段真实时间时角色可能才刚离地

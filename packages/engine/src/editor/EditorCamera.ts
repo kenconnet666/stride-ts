@@ -105,8 +105,10 @@ export class EditorCameraController extends SyncScript.props({
   readonly state = new EditorCameraState();
 
   override start(): void {
-    // 接手相机现在的位姿
-    const world = this.entity.require(Transform).world;
+    // 接手相机现在的位姿（刚建的实体世界矩阵还没算过：先算）
+    const transform = this.entity.require(Transform);
+    transform.updateWorldMatrix();
+    const world = transform.world;
     this.state.setFromPose({ x: world[12]!, y: world[13]!, z: world[14]! }, { x: -world[8]!, y: -world[9]!, z: -world[10]! });
   }
 

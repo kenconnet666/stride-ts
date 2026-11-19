@@ -59,6 +59,7 @@ interface ColorOutput {
   readonly format: GPUTextureFormat;
   readonly opaque: RenderStage;
   readonly transparent: RenderStage;
+  readonly wireframe: RenderStage;
 }
 
 export class ForwardRenderer {
@@ -101,8 +102,11 @@ export class ForwardRenderer {
   readonly picker: ScenePicker;
   /** 没有后处理时主画面直接画进后备缓冲（省掉 HDR 缓冲和一遍拷贝）；关掉是先画进 HDR 缓冲再拷过去，对比、排查时用。 */
   directOutput = true;
+  /** 调试视图：在主画面上叠画网格的线框（三角形的边）。 */
+  wireframe = false;
+  readonly #wireframeStage = new RenderStage('Wireframe', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { wireframe: true });
   /** 没有后处理时主画面直接画进后备缓冲用的两个阶段（颜色格式是后备缓冲的）。 */
-  #directStages: { format: GPUTextureFormat; opaque: RenderStage; transparent: RenderStage } | undefined;
+  #directStages: { format: GPUTextureFormat; opaque: RenderStage; transparent: RenderStage; wireframe: RenderStage } | undefined;
   /** 渲染目标贴图的原样拷贝（自己的参数区：主画面的后处理每帧会重置它的参数区）。 */
   readonly #textureCopy: { scaler: ImageScaler; arena: UniformArena };
   // 找相机：每个要的槽位取第一个带 Camera 和 Transform 的实体；找到的视图记在 #found 里
@@ -341,6 +345,7 @@ export class ForwardRenderer {
       if (transparent) renderSystem.draw(context, pass, view, output.transparent);
       // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
       if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);
+      if (this.wireframe && view === this.#mainView) renderSystem.draw(context, pass, view, output.wireframe);
     }
     pass.end();
   }
@@ -424,7 +429,7 @@ export class ForwardRenderer {
       label: `ForwardRenderer HDR color ${width}x${height}`, size: [width, height], format: HDR_FORMAT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     });
-    return { texture: targets.color, view: targets.color.createView(), width, height, format: HDR_FORMAT, opaque: this.opaqueStage, transparent: this.transparentStage };
+    return { texture: targets.color, view: targets.color.createView(), width, height, format: HDR_FORMAT, opaque: this.opaqueStage, transparent: this.transparentStage, wireframe: this.#wireframeStage };
   }
 
   /**
@@ -439,9 +444,11 @@ export class ForwardRenderer {
         format,
         opaque: new RenderStage('Opaque', { colorFormat: format, depthFormat: DEPTH_FORMAT }, { afterDepthPrepass: true }),
         transparent: new RenderStage('Transparent', { colorFormat: format, depthFormat: DEPTH_FORMAT }, { transparent: true }),
+        wireframe: new RenderStage('Wireframe', { colorFormat: format, depthFormat: DEPTH_FORMAT }, { wireframe: true }),
       };
     }
-    return { view: graphicsDevice.currentBackBufferView(), width, height, format, opaque: this.#directStages.opaque, transparent: this.#directStages.transparent };
+    const { opaque, transparent, wireframe } = this.#directStages;
+    return { view: graphicsDevice.currentBackBufferView(), width, height, format, opaque, transparent, wireframe };
   }
 }
 

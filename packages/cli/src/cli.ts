@@ -42,7 +42,8 @@ Game
   gpu-calls [--seconds 2]                           WebGPU calls and writeBuffer bytes per frame
   cpu-profile [--seconds 5] [--out profile.json] [--callers <regex>]
                           sample the main thread (needs a Chrome from stride open): ms per frame by kind and function
-  pick <x> <y>                                      entity under a canvas pixel (CSS pixels from the top-left; meshes only)
+  pick <x> <y>                                      entity under a canvas pixel (CSS pixels from the top-left; meshes and sprites)
+  wireframe [on|off]                                overlay the wireframe of the meshes on the main view (no argument toggles)
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
   logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
   eval <code | ->         run JavaScript in the page (strideGame, strideEngine are globals); - reads stdin
@@ -302,6 +303,7 @@ const commands: Record<string, () => Promise<unknown>> = {
     };
   },
   pick: () => call('pick', { x: Number(rest[0]), y: Number(rest[1]) }),
+  wireframe: () => call('wireframe', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
   raycast: () => call('raycast', {
     origin: vector(rest[0], 'origin x,y,z'),
     direction: vector(rest[1], 'direction x,y,z'),

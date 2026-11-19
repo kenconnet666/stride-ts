@@ -6,7 +6,7 @@
  * 样点到的就是什么样，不用在 CPU 上再算一遍；只画一个像素，开销就是一遍顶点着色。代价是结果要等读回（下一帧才有），
  * 所以 pick 返回 Promise。
  *
- * 现在只认网格（MeshRenderFeature）；精灵、粒子、放在场景里的 UI 还点不到。
+ * 现在认网格（MeshRenderFeature）和精灵（SpriteRenderFeature）；粒子、放在场景里的 UI 还点不到。
  */
 import { DEPTH_FORMAT } from './ForwardRenderer';
 import { RenderStage, type RenderContext, type RenderSystem, type RenderView } from './RenderSystem';

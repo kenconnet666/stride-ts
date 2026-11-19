@@ -25,7 +25,7 @@ struct SpriteInstance {
   color: vec4f,
   // xy：UV 的起点，zw：UV 的大小
   uv: vec4f,
-  // x：alpha 低于 0.1 的不画
+  // x：alpha 低于 0.1 的不画；y：实体的变换槽位加一（点选的编号缓冲写它）
   flags: vec4f,
 };
 @group(0) @binding(0) var<storage, read> sprites: array<SpriteInstance>;
@@ -60,6 +60,15 @@ struct Varyings {
     discard;
   }
   return color;
+}
+
+/** 点选的编号缓冲（ScenePicker）：写变换槽位加一；差不多全透明的地方点不到，会点到后面的东西。 */
+@fragment fn fsPick(in: Varyings) -> @location(0) u32 {
+  let sprite = sprites[in.instance];
+  if (textureSample(spriteTexture, spriteSampler, in.uv).a * sprite.color.a < 0.1) {
+    discard;
+  }
+  return u32(sprite.flags.y);
 }`;
 
 /** 一个实例：origin、axisX、axisY、color、uv、flags 各 4 个 float。 */
@@ -207,10 +216,14 @@ export class SpriteRenderFeature extends RootRenderFeature {
     if (views.length > 0) this.system.device.queue.writeBuffer(gpu.views, 0, this.#viewData, 0, views.length * (VIEW_STRIDE / 4));
   }
 
+  override get supportsPicking(): boolean {
+    return true;
+  }
+
   override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     const colorFormat = stage.output.colorFormat;
-    if (!gpu || this.#count === 0 || !stage.transparent || !colorFormat || view.index >= MAX_VIEWS) return;
+    if (!gpu || this.#count === 0 || !(stage.transparent || stage.picking) || !colorFormat || view.index >= MAX_VIEWS) return;
     const order = this.#writeInstances(context.game.transforms.world, view);
     const first = view.index * gpu.capacity;
     this.system.device.queue.writeBuffer(gpu.instances!, first * INSTANCE_FLOATS * 4, this.#instanceData, 0, this.#count * INSTANCE_FLOATS);
@@ -219,7 +232,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
     order.forEach((index, drawn) => {
       const item = this.#items[index]!;
       if (!inRenderMask(view.cullingMask, item.renderGroup)) return;
-      const nextPipeline = this.#pipelineFor(gpu, colorFormat, stage.output.depthFormat, item);
+      const nextPipeline = this.#pipelineFor(gpu, colorFormat, stage.output.depthFormat, item, stage.picking);
       if (nextPipeline !== pipeline) pass.setPipeline((pipeline = nextPipeline));
       const nextGroup = this.#textureGroup(gpu, item);
       if (nextGroup !== textureGroup) pass.setBindGroup(1, (textureGroup = nextGroup));
@@ -249,7 +262,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
       const ox = data[o]!, oy = data[o + 1]!, oz = data[o + 2]!;
       data.set(item.color, o + 12);
       data.set(item.uv, o + 16);
-      data.set([item.alphaCutoff ? 1 : 0, 0, 0, 0], o + 20);
+      data.set([item.alphaCutoff ? 1 : 0, item.slot + 1, 0, 0], o + 20);
       depths[i] = (ox - view.eye.x) * fx + (oy - view.eye.y) * fy + (oz - view.eye.z) * fz;
     }
     const order = Array.from({ length: this.#count }, (_, i) => i).sort((a, b) => depths[b]! - depths[a]!);
@@ -260,16 +273,17 @@ export class SpriteRenderFeature extends RootRenderFeature {
     return order;
   }
 
-  #pipelineFor(gpu: Gpu, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, item: SpriteItem): GPURenderPipeline {
-    const key = `${colorFormat}:${depthFormat}:${item.blend}:${item.ignoreDepth}`;
+  /** picking：画进点选的编号缓冲（不混合，写编号）。 */
+  #pipelineFor(gpu: Gpu, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, item: SpriteItem, picking: boolean): GPURenderPipeline {
+    const key = `${colorFormat}:${depthFormat}:${picking ? 'pick' : item.blend}:${item.ignoreDepth}`;
     let pipeline = gpu.pipelines.get(key);
     if (!pipeline) {
       const blend = item.blend === 'none' ? undefined : BLENDS[item.blend];
       pipeline = this.system.device.createRenderPipeline({
-        label: `SpriteRenderFeature ${item.blend}${item.ignoreDepth ? ' ignoreDepth' : ''}`,
+        label: `SpriteRenderFeature ${picking ? 'pick' : item.blend}${item.ignoreDepth ? ' ignoreDepth' : ''}`,
         layout: gpu.pipelineLayout,
         vertex: { module: gpu.module, entryPoint: 'vs' },
-        fragment: {
+        fragment: picking ? { module: gpu.module, entryPoint: 'fsPick', targets: [{ format: colorFormat }] } : {
           module: gpu.module,
           entryPoint: 'fs',
           targets: [{ format: colorFormat, ...(blend ? { blend } : {}), ...(item.blend === 'noColor' ? { writeMask: 0 } : {}) }],

@@ -550,6 +550,19 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   return in.slot + 1u;
 }
 
+struct WireOutput {
+  @location(0) color: vec4f,
+  @builtin(frag_depth) depth: f32,
+};
+
+/**
+ * 线框：一个固定的浅色。线和它所在的三角形深度几乎一样，直接比会一段有一段没有，所以把深度往相机这边挪一点再比
+ * （WebGPU 不许给线的管线设深度偏移，在这里改写出去的深度；线框的管线不写深度缓冲）。
+ */
+@fragment fn fsWire(in: Varyings) -> WireOutput {
+  return WireOutput(vec4f(0.75, 0.9, 1.0, 1.0), in.position.z * 0.9995);
+}
+
 @fragment fn fsCutout(in: Varyings) {
   let base = baseColor(in);
   if (base.a < material.flags.y) {
@@ -902,6 +915,8 @@ interface GpuMesh {
   readonly indices: GPUBuffer;
   readonly indexFormat: GPUIndexFormat;
   readonly indexCount: number;
+  /** 线框用的索引（每条边两个顶点，line-list）；第一次画线框时才建。 */
+  edges?: { readonly buffer: GPUBuffer; readonly count: number };
 }
 
 interface GpuMaterial {
@@ -1069,6 +1084,10 @@ export class MeshRenderFeature extends RootRenderFeature {
     return true;
   }
 
+  override get supportsWireframe(): boolean {
+    return true;
+  }
+
   override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     const culling = this.#viewCulling.get(view);
@@ -1076,8 +1095,8 @@ export class MeshRenderFeature extends RootRenderFeature {
     const { pass: cullPass, index } = culling;
     const counts = cullPass.culler.counts;
     // 透明阶段画透明的材质，再给有清漆的（不透明的）材质叠一遍清漆
-    // 点选的阶段透明、不透明的都画
-    const inStage = (material: Material) => stage.picking || (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
+    // 点选、线框的阶段透明、不透明的都画
+    const inStage = (material: Material) => stage.picking || stage.wireframe || (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
     const visible = (b: number) => {
       const batch = this.batches[b]!;
       return counts[index * cullPass.batchCount + b]! > 0 && inStage(batch.material) && inRenderMask(view.cullingMask, batch.renderGroup);
@@ -1115,12 +1134,13 @@ export class MeshRenderFeature extends RootRenderFeature {
         skinned = batch.skinned;
         pass.setBindGroup(2, gpuMesh.bindGroup);
         pass.setVertexBuffer(0, gpuMesh.vertices);
-        pass.setIndexBuffer(gpuMesh.indices, gpuMesh.indexFormat);
+        if (stage.wireframe) pass.setIndexBuffer(gpu.edges(batch.mesh, gpuMesh).buffer, 'uint32');
+        else pass.setIndexBuffer(gpuMesh.indices, gpuMesh.indexFormat);
       }
       // 多遍的材质一遍一条管线，其余只画一遍
       for (let p = 0; p < Math.max(passes.length, 1); p++) {
         if (passes.length > 0) pass.setPipeline((pipeline = pipelineOf(passes[p])));
-        pass.drawIndexed(gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first + first);
+        pass.drawIndexed(stage.wireframe ? gpu.edges(batch.mesh, gpuMesh).count : gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first + first);
         this.drawCalls++;
       }
       this.drawnInstances += count;
@@ -1400,21 +1420,23 @@ class Gpu {
           }],
         },
         ...(colorFormat ? {
-          fragment: stage.picking ? { module, entryPoint: 'fsPick', targets: [{ format: colorFormat }] } : {
+          fragment: stage.picking || stage.wireframe ? { module, entryPoint: stage.picking ? 'fsPick' : 'fsWire', targets: [{ format: colorFormat }] } : {
             module,
             entryPoint: materialPass?.entryPoint ?? 'fs',
             targets: [{ format: colorFormat, ...(stage.transparent ? { blend: materialPass?.blend ?? PREMULTIPLIED_ALPHA } : {}) }],
           },
         } : {}),
         ...(cutout ? { fragment: { module, entryPoint: 'fsCutout', targets: [] } } : {}),
-        primitive: stage.shadowCasters
-          ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth && !stage.depthClip }
-          : { topology: 'triangle-list', cullMode: materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
+        primitive: stage.wireframe
+          ? { topology: 'line-list' }
+          : stage.shadowCasters
+            ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth && !stage.depthClip }
+            : { topology: 'triangle-list', cullMode: materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
         // 深度预通道之后的阶段：同样的物体、同样的顶点着色器（位置是 @invariant 的）已经把深度写好了，这里只让深度相等的
         // 像素过，也不再写深度，被挡住的像素一个都不着色
         depthStencil: stage.afterDepthPrepass
           ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'equal' }
-          : { format: depthFormat, depthWriteEnabled: !stage.transparent, depthCompare: 'less-equal' },
+          : { format: depthFormat, depthWriteEnabled: !stage.transparent && !stage.wireframe, depthCompare: 'less-equal' },
       });
       this.#pipelines.set(key, pipeline);
     }
@@ -1601,6 +1623,28 @@ class Gpu {
     return group;
   }
 
+  /** 网格的边的索引（线框）：每个三角形三条边，两个三角形共用的边只留一条。 */
+  edges(mesh: Mesh, gpu: GpuMesh): { readonly buffer: GPUBuffer; readonly count: number } {
+    if (!gpu.edges) {
+      const { indices } = mesh.data;
+      // 比顶点数大的一个数（顶点至少占一个字节）：两个下标并成一个键
+      const span = mesh.data.vertices.byteLength;
+      const seen = new Set<number>();
+      const edges: number[] = [];
+      for (let t = 0; t + 2 < indices.length; t += 3) {
+        for (let e = 0; e < 3; e++) {
+          const a = indices[t + e]!, b = indices[t + ((e + 1) % 3)]!;
+          const key = Math.min(a, b) * span + Math.max(a, b);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          edges.push(a, b);
+        }
+      }
+      gpu.edges = { buffer: this.#createFilled(`${mesh.name} edges`, GPUBufferUsage.INDEX, new Uint32Array(edges)), count: edges.length };
+    }
+    return gpu.edges;
+  }
+
   mesh(mesh: Mesh, effect: MeshEffect | undefined): GpuMesh {
     let gpu = this.#meshes.get(mesh);
     if (!gpu) {
@@ -1703,10 +1747,11 @@ class Gpu {
 
   destroy(): void {
     for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#localLights, this.#morphOf, this.#morphWeights, this.#noMorph]) buffer?.destroy();
-    for (const { params, vertices, indices } of this.#meshes.values()) {
+    for (const { params, vertices, indices, edges } of this.#meshes.values()) {
       params.destroy();
       vertices.destroy();
       indices.destroy();
+      edges?.buffer.destroy();
     }
     for (const { buffer } of this.#materials.values()) buffer.destroy();
     this.#dfgLut.destroy();

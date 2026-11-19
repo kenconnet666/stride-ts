@@ -74,12 +74,21 @@ export class EditAgent {
     // 从场景原来的主相机的位置看起：打开编辑器时画面不跳
     const compositor = game.graphicsCompositor;
     const sceneCamera = game.entities.ids().map((id) => game.entities.entity(id)).find((entity) => entity.get(Camera)?.slot === compositor.cameraSlot);
-    this.camera = game.entities.create({ name: 'EditorCamera', components: [Transform, Camera.with({ slot: EDITOR_CAMERA_SLOT })] });
+    // 投影也照它的（2D 游戏的相机是正交的）
+    const lens = sceneCamera?.get(Camera);
+    this.camera = game.entities.create({
+      name: 'EditorCamera',
+      components: [Transform, Camera.with({
+        ...(lens ? { projection: lens.projection, verticalFieldOfView: lens.verticalFieldOfView, orthographicSize: lens.orthographicSize, nearClipPlane: lens.nearClipPlane, farClipPlane: lens.farClipPlane } : {}),
+        slot: EDITOR_CAMERA_SLOT,
+      })],
+    });
     this.camera.add({ script: EditorCameraController, init: {} });
     this.camera.add({ script: EditorViewport, init: {} });
     this.camera.require(EditorViewport).agent = this;
     const state = this.camera.require(EditorCameraController).state;
-    const world = sceneCamera?.get(Transform)?.world;
+    // 这时第一帧还没跑，世界矩阵还没算过
+    const world = sceneCamera?.has(Transform) ? currentWorld(sceneCamera) : undefined;
     if (world) state.setFromPose({ x: world[12]!, y: world[13]!, z: world[14]! }, { x: -world[8]!, y: -world[9]!, z: -world[10]! });
     else state.setFromPose({ x: 0, y: 5, z: 10 }, { x: 0, y: -0.4, z: -1 });
     this.camera.require(EditorCameraController).apply();

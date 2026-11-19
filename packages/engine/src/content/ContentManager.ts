@@ -41,7 +41,7 @@ import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import { UIElementLink } from '../ui/UIElementLink';
 import { buildElement, uiAssetPaths, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type ColliderShapeFile, type FontFile, type GameSettingsFile, type SceneEntityFile, type SceneFile, type SceneForwardRenderer, type SceneLightShadow, type SceneLocalLightShadow, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type SceneUI, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -675,10 +675,11 @@ export class ContentManager {
     if (camera) entity.add(Camera.with(camera));
     if (instancing) entity.add(Instancing);
     if (light?.type === 'skybox') entity.add(Light.with({ type: 'skybox', skybox: assets.skyboxes.get(light.skybox)!.id, intensity: light.intensity }));
-    else if (light?.type === 'point') entity.add(Light.with({ type: 'point', color: [...light.color, 1], intensity: light.intensity, radius: light.radius }));
-    else if (light?.type === 'spot') {
+    else if (light?.type === 'point') {
+      entity.add(Light.with({ type: 'point', color: [...light.color, 1], intensity: light.intensity, radius: light.radius, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
+    } else if (light?.type === 'spot') {
       const { range, angleInner, angleOuter } = light;
-      entity.add(Light.with({ type: 'spot', color: [...light.color, 1], intensity: light.intensity, range, angleInner, angleOuter }));
+      entity.add(Light.with({ type: 'spot', color: [...light.color, 1], intensity: light.intensity, range, angleInner, angleOuter, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
     } else if (light) entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
     if (background?.type === 'cubemap') entity.add(Background.with({ texture: assets.cubemaps.get(background.texture)!.id, intensity: background.intensity }));
     else if (background) entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, intensity: background.intensity }));
@@ -848,6 +849,10 @@ async function preload<T>(paths: readonly string[], load: (path: string) => Prom
 }
 
 /** 场景文件里的阴影设置换成 Light 组件的列。 */
+function localShadowColumns(shadow: SceneLocalLightShadow) {
+  return { shadow: true, shadowSize: shadow.size, shadowFilter: shadow.filter, shadowDepthBias: shadow.depthBias, shadowNormalOffsetScale: shadow.normalOffsetScale };
+}
+
 function shadowColumns(shadow: SceneLightShadow) {
   return {
     shadow: true,

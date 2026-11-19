@@ -35,6 +35,7 @@ import {
   type SpriteBlend,
   type SceneFile,
   type SceneLightShadow,
+  type SceneLocalLightShadow,
   type SceneNavigation,
   type ScenePhysics,
   type SceneScript,
@@ -832,11 +833,11 @@ export class StrideImporter {
       case 'LightSpot': {
         // 默认值同 Stride：点光半径 1，聚光范围 3、内外锥角 30°、35°
         const color = asObject(asObject(type['Color'])?.['Value']) ?? {};
-        if (asObject(type['Shadow'])?.['Enabled'] === true) this.#warnings.push(`${where}: shadows of ${type.$type} are not supported yet; the light casts no shadow`);
+        const shadow = this.#localShadow(asObject(type['Shadow']), where);
         const rgb: Vec3Tuple = [asNumber(color['R'], 1), asNumber(color['G'], 1), asNumber(color['B'], 1)];
         return type.$type === 'LightSpot'
-          ? { type: 'spot', color: rgb, intensity, range: asNumber(type['Range'], 3), angleInner: asNumber(type['AngleInner'], 30), angleOuter: asNumber(type['AngleOuter'], 35) }
-          : { type: 'point', color: rgb, intensity, radius: asNumber(type['Radius'], 1) };
+          ? { type: 'spot', color: rgb, intensity, range: asNumber(type['Range'], 3), angleInner: asNumber(type['AngleInner'], 30), angleOuter: asNumber(type['AngleOuter'], 35), ...(shadow ? { shadow } : {}) }
+          : { type: 'point', color: rgb, intensity, radius: asNumber(type['Radius'], 1), ...(shadow ? { shadow } : {}) };
       }
       case 'LightSkybox': {
         const skybox = parseAssetReference(type['Skybox']);
@@ -848,12 +849,28 @@ export class StrideImporter {
   }
 
   /** 方向光的阴影（LightDirectionalShadowMap）；没开时返回 undefined。没写的字段取 Stride 的默认值。 */
+  /** 点光、聚光的阴影（LightPointShadowMap、LightStandardShadowMap）：大小、滤波和两个偏移，默认值同 Stride。 */
+  #localShadow(shadow: StrideObject | undefined, where: string): SceneLocalLightShadow | undefined {
+    if (!shadow || shadow['Enabled'] !== true) return undefined;
+    const bias = asObject(shadow['BiasParameters']) ?? {};
+    return {
+      size: SHADOW_SIZES[String(shadow['Size'] ?? 'Medium')] ?? 'medium',
+      filter: this.#shadowFilter(shadow, where),
+      depthBias: asNumber(bias['DepthBias'], 0.01),
+      normalOffsetScale: asNumber(bias['NormalOffsetScale'], 10),
+    };
+  }
+
+  #shadowFilter(shadow: StrideObject, where: string): SceneLightShadow['filter'] {
+    const filter = asObject(shadow['Filter']);
+    if (filter?.$type === 'LightShadowMapFilterTypePcf') return PCF_FILTERS[String(filter['FilterSize'] ?? 'Filter3x3')] ?? 'pcf3x3';
+    if (filter) this.#warnings.push(`${where}: shadow filter ${filter.$type ?? 'value'} is not supported; using a single comparison sample`);
+    return 'none';
+  }
+
   #shadow(shadow: StrideObject | undefined, where: string): SceneLightShadow | undefined {
     if (!shadow || shadow['Enabled'] !== true) return undefined;
-    const filter = asObject(shadow['Filter']);
-    let filterName: SceneLightShadow['filter'] = 'none';
-    if (filter?.$type === 'LightShadowMapFilterTypePcf') filterName = PCF_FILTERS[String(filter['FilterSize'] ?? 'Filter3x3')] ?? 'pcf3x3';
-    else if (filter) this.#warnings.push(`${where}: shadow filter ${filter.$type ?? 'value'} is not supported; using a single comparison sample`);
+    const filterName = this.#shadowFilter(shadow, where);
     const partition = asObject(shadow['PartitionMode']);
     if (partition?.$type === 'LightDirectionalShadowMap.PartitionManual') {
       this.#warnings.push(`${where}: manual shadow cascade splits are not supported; using the logarithmic partition`);

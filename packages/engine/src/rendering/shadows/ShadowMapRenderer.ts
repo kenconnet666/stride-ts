@@ -1,12 +1,17 @@
 /**
- * 阴影图（Stride 的 ShadowMapRenderer，目前只有方向光）：主视图剔除完以后，按可见范围算出级联视图（Collect），
- * 各级联画进一张深度图集的不同方块（ShadowMapCaster 阶段，只写深度、不剔背面、不做深度裁剪），着色时按
- * lighting.shadow 采样。大小和图集的规则同 Stride：每个级联 min(1024 · 2^(档位 - 3), 画面长边的下一个 2 的幂 · 同样的倍数)，
- * 图集固定 4096²（xlarge 的两倍），每帧清一次。
+ * 阴影图（Stride 的 ShadowMapRenderer）：主视图剔除完以后算出阴影视图（Collect）——方向光按可见范围切级联，点光是立方体的
+ * 六个面，聚光一个——各画进一张深度图集里的一块（只写深度、不剔背面），着色时按 lighting.shadow、lighting.localShadows 采样。
+ * 大小和图集的规则同 Stride：每块 min(1024 · 2^(档位 - 3), 光源在画面上盖住的大小的下一个 2 的幂 · 同样的倍数)（方向光盖住整个
+ * 画面），图集固定 4096²（xlarge 的两倍），每帧清空、按矩形重排（GuillotinePacker）。
+ * 和 Stride 一样（暂时）：图集放不下的光这一帧没有阴影。
  */
 import type { GraphicsDevice } from '../../graphics/GraphicsDevice';
-import { RenderStage, type Lighting, type RenderContext, type RenderSystem, type RenderView, type ShadowMapFilter, type ShadowMapSize, type ShadowReceiver } from '../RenderSystem';
-import { DirectionalShadowCascades, type CascadeRectangle } from './DirectionalShadowCascades';
+import {
+  RenderStage, type Lighting, type LocalShadowReceiver, type RenderContext, type RenderSystem, type RenderView, type ShadowMapFilter, type ShadowMapSize, type ShadowReceiver,
+} from '../RenderSystem';
+import { DirectionalShadowCascades } from './DirectionalShadowCascades';
+import { GuillotinePacker } from './GuillotinePacker';
+import { LocalShadowViews, screenCoverage } from './LocalShadowViews';
 
 const REFERENCE_SHADOW_SIZE = 1024;
 const SIZE_INDEX: Readonly<Record<ShadowMapSize, number>> = { xsmall: 0, small: 1, medium: 2, large: 3, xlarge: 4 };
@@ -17,10 +22,16 @@ const SHADOW_ATLAS_FORMAT: GPUTextureFormat = 'depth32float';
 const ZERO_TOLERANCE = 1e-6;
 
 export class ShadowMapRenderer {
-  /** 画阴影投射者的阶段：只有深度。 */
+  /** 画阴影投射者的阶段：只有深度。方向光的级联和聚光用（不按近、远平面裁剪）。 */
   readonly casterStage = new RenderStage('ShadowMapCaster', { depthFormat: SHADOW_ATLAS_FORMAT }, { shadowCasters: true });
+  /** 点光的六个面用的阶段：按近、远平面裁剪（Stride 的 ShadowMapCasterCubeMap）。 */
+  readonly cubeMapCasterStage = new RenderStage('ShadowMapCasterCubeMap', { depthFormat: SHADOW_ATLAS_FORMAT }, { shadowCasters: true, depthClip: true });
   readonly #graphicsDevice: GraphicsDevice;
   readonly #cascades = new DirectionalShadowCascades();
+  readonly #locals = new LocalShadowViews();
+  readonly #packer = new GuillotinePacker(ATLAS_SIZE, ATLAS_SIZE);
+  /** 这一帧每个阴影视图用哪个阶段画。 */
+  readonly #stages = new Map<RenderView, RenderStage>();
   #atlas: GPUTexture | undefined;
   #receiver: ShadowReceiver | undefined;
   #warnedDepthClip = false;
@@ -30,27 +41,36 @@ export class ShadowMapRenderer {
   }
 
   /**
-   * 按剔除过的主视图算出这一帧的阴影视图，并设好 lighting.shadow；方向光不投阴影，或者主视图里什么都看不见时，
-   * lighting.shadow 是 undefined，返回空数组。
+   * 按剔除过的主视图算出这一帧的阴影视图，并设好 lighting.shadow（方向光）、lighting.localShadows 和各盏光的 shadowIndex
+   * （点光、聚光）。没有光投阴影，或者主视图里什么都看不见时返回空数组。
    */
   collect(main: RenderView, lighting: Lighting): readonly RenderView[] {
     lighting.shadow = undefined;
-    const settings = lighting.directionalShadow;
-    if (!settings) return [];
+    lighting.shadowAtlas = undefined;
+    lighting.localShadowCount = 0;
+    this.#stages.clear();
     if (Math.abs(main.minimumDistance - main.maximumDistance) < ZERO_TOLERANCE) main.maximumDistance = main.minimumDistance + ZERO_TOLERANCE;
     if (!Number.isFinite(main.minimumDistance) || !Number.isFinite(main.maximumDistance)) return [];
+    this.#packer.clear();
+    const views = [...this.#collectDirectional(main, lighting), ...this.#collectLocals(main, lighting)];
+    if (views.length > 0) lighting.shadowAtlas = this.#atlasTexture();
+    return views;
+  }
+
+  /** 方向光的级联；不投阴影时返回空数组。 */
+  #collectDirectional(main: RenderView, lighting: Lighting): readonly RenderView[] {
+    const settings = lighting.directionalShadow;
+    if (!settings) return [];
     if (!this.#graphicsDevice.depthClipControl && !this.#warnedDepthClip) {
       this.#warnedDepthClip = true;
       console.warn('This GPU has no "depth-clip-control": shadow casters in front of a shadow cascade are clipped');
     }
 
     // 方向光覆盖整个画面，按长边算（Stride 的 LightDirectional.ComputeScreenCoverage）
-    const factor = 2 ** (SIZE_INDEX[settings.size] - 3);
-    const size = Math.min(REFERENCE_SHADOW_SIZE * factor, nextPowerOfTwo(Math.max(main.width, main.height) * factor));
-    const perRow = ATLAS_SIZE / size;
-    const rectangles: CascadeRectangle[] = Array.from({ length: settings.cascadeCount }, (_, i) => ({ x: (i % perRow) * size, y: Math.floor(i / perRow) * size }));
+    const size = shadowMapSize(settings.size, Math.max(main.width, main.height));
+    const rectangles = this.#packer.insert(size, size, settings.cascadeCount);
+    if (!rectangles) return [];
     const receiver = (this.#receiver ??= {
-      atlas: this.#atlasTexture(),
       cascadeCount: 0,
       worldToShadow: new Float32Array(64),
       splits: new Float32Array(4),
@@ -67,7 +87,31 @@ export class ShadowMapRenderer {
     receiver.depthRangeAutomatic = settings.depthRange === 'automatic';
     this.#cascades.collect(main, lighting.directionals[lighting.shadowLight]!.direction, settings, size, rectangles, ATLAS_SIZE, receiver);
     lighting.shadow = receiver;
-    return this.#cascades.views.slice(0, receiver.cascadeCount);
+    const views = this.#cascades.views.slice(0, receiver.cascadeCount);
+    for (const view of views) this.#stages.set(view, this.casterStage);
+    return views;
+  }
+
+  /** 点光、聚光：每盏投阴影的光按它在画面上盖住的大小要一块（点光六块），放得下的才有阴影。 */
+  #collectLocals(main: RenderView, lighting: Lighting): RenderView[] {
+    const views: RenderView[] = [];
+    this.#locals.reset();
+    for (let i = 0; i < lighting.localCount; i++) {
+      const light = lighting.locals[i]!;
+      if (!light.castsShadow) continue;
+      const size = shadowMapSize(light.shadow.size, screenCoverage(main, light));
+      const rectangles = size > 0 ? this.#packer.insert(size, size, light.spot ? 1 : 6) : undefined;
+      if (!rectangles) continue;
+      const receiver = (lighting.localShadows[lighting.localShadowCount] ??= createLocalShadowReceiver());
+      receiver.filterSize = FILTER_SIZES[light.shadow.filter];
+      const stage = light.spot ? this.casterStage : this.cubeMapCasterStage;
+      for (const view of this.#locals.collect(light, rectangles, ATLAS_SIZE, receiver)) {
+        this.#stages.set(view, stage);
+        views.push(view);
+      }
+      light.shadowIndex = lighting.localShadowCount++;
+    }
+    return views;
   }
 
   /** 把投射者画进图集：清一次，每个级联设自己的视口。 */
@@ -83,7 +127,7 @@ export class ShadowMapRenderer {
     for (const view of views) {
       const { x, y, width, height } = view.viewport!;
       pass.setViewport(x, y, width, height, 0, 1);
-      renderSystem.draw(context, pass, view, this.casterStage);
+      renderSystem.draw(context, pass, view, this.#stages.get(view) ?? this.casterStage);
     }
     pass.end();
   }
@@ -102,6 +146,16 @@ export class ShadowMapRenderer {
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
     }));
   }
+}
+
+/** 阴影图一块的边长：档位定上限，光源在画面上盖住 coverage 像素时不用更大的（Stride 的 CollectShadowMaps）。 */
+function shadowMapSize(size: ShadowMapSize, coverage: number): number {
+  const factor = 2 ** (SIZE_INDEX[size] - 3);
+  return Math.floor(Math.min(REFERENCE_SHADOW_SIZE * factor, nextPowerOfTwo(coverage * factor)));
+}
+
+function createLocalShadowReceiver(): LocalShadowReceiver {
+  return { point: true, worldToShadow: new Float32Array(96), depthA: 0, depthB: 0, depthBias: 0, normalOffsetScale: 0, filterSize: 0 };
 }
 
 /** 不小于 size 的 2 的幂（Stride 的 MathUtil.NextPowerOfTwo）。 */

@@ -660,6 +660,12 @@ export interface SceneLightShadow {
   readonly blendCascades: boolean;
 }
 
+/**
+ * 点光、聚光的阴影设置（Stride 的 LightPointShadowMap、LightStandardShadowMap）。点光的阴影是立方体的六个面；
+ * 和 Stride 不同：Stride 可以选抛物面的画法（LightPointShadowMapType.DualParaboloid），我们都按立方体画。
+ */
+export type SceneLocalLightShadow = Pick<SceneLightShadow, 'size' | 'filter' | 'depthBias' | 'normalOffsetScale'>;
+
 /** 碰撞体里的一个形状（Stride.BepuPhysics 的 BoxCollider、CapsuleCollider…… 加 CompoundCollider 的本地位姿）。 */
 export type ColliderShapeFile = (
   | { readonly type: 'box'; /** 边长。 */ readonly size: Vec3Tuple }
@@ -1102,9 +1108,12 @@ export interface SceneEntityFile {
         readonly intensity: number;
       }
       /** 点光（Stride 的 LightPoint）。 */
-      | { readonly type: 'point'; readonly color: Vec3Tuple; readonly intensity: number; readonly radius: number }
+      | { readonly type: 'point'; readonly color: Vec3Tuple; readonly intensity: number; readonly radius: number; readonly shadow?: SceneLocalLightShadow }
       /** 聚光（Stride 的 LightSpot），锥角是度、整个锥的张角。 */
-      | { readonly type: 'spot'; readonly color: Vec3Tuple; readonly intensity: number; readonly range: number; readonly angleInner: number; readonly angleOuter: number };
+      | {
+        readonly type: 'spot'; readonly color: Vec3Tuple; readonly intensity: number; readonly range: number; readonly angleInner: number; readonly angleOuter: number;
+        readonly shadow?: SceneLocalLightShadow;
+      };
     readonly background?: SceneBackground;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;

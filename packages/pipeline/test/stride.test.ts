@@ -332,9 +332,12 @@ describe('导入 Stride 场景', () => {
       '        -   Entity:', '                Id: g3', '                Name: Master', '                Components:',
       '                    t: !TransformComponent', '                        Id: tg3', '                        Children: {}',
       '                    n: !InstancingComponent', '                        Id: ing3', '                        Type: !InstancingEntityTransform {}',
-      // 聚光（BepuSample 的 Cube Mixer）
+      // 聚光（BepuSample 的 Cube Mixer），加上阴影（CSharpIntermediate 的 SceneB 里是点光的）
       '                    l: !LightComponent', '                        Id: lg3', '                        Type: !LightSpot', '                            Color: !ColorRgbProvider',
       '                                Value: {R: 0.0, G: 0.0, B: 1.0}', '                            Range: 200.0', '                            AngleInner: 50.0', '                            AngleOuter: 90.0',
+      '                            Shadow:', '                                Enabled: true', '                                Size: Small',
+      '                                Filter: !LightShadowMapFilterTypePcf', '                                    FilterSize: Filter5x5',
+      '                                BiasParameters:', '                                    DepthBias: 0.02',
       '                        Intensity: 300.0',
     ].join('\n'),
     // 预制体：根实体带刚体，子实体带脚本（脚本属性引用同一个预制体里的根实体）
@@ -963,7 +966,10 @@ describe('导入 Stride 场景', () => {
     expect(scene.entities[1]!.components.instance).toEqual({ master: 'g3' });
     expect(scene.entities[1]!.components.body!.shapes).toEqual([{ type: 'empty', position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }]);
     expect(scene.entities[2]!.components.instancing).toEqual({});
-    expect(scene.entities[2]!.components.light).toEqual({ type: 'spot', color: [0, 0, 1], intensity: 300, range: 200, angleInner: 50, angleOuter: 90 });
+    expect(scene.entities[2]!.components.light).toEqual({
+      type: 'spot', color: [0, 0, 1], intensity: 300, range: 200, angleInner: 50, angleOuter: 90,
+      shadow: { size: 'small', filter: 'pcf5x5', depthBias: 0.02, normalOffsetScale: 10 },
+    });
     expect(scene.entities[1]!.components.constraints).toEqual([
       { type: 'oneBodyAngularMotor', enabled: false, bodyA: 'g2', settings: { targetVelocity: [0, 10, 0], motorDamping: 50, motorMaximumForce: 10000000 } },
     ]);

@@ -41,12 +41,18 @@ export class RenderStage {
   readonly shadowCasters: boolean;
   /** 透明阶段（Stride 的 Transparent）：不透明的画完之后，混合着画（精灵、以后的透明材质）。 */
   readonly transparent: boolean;
+  /**
+   * 阴影投射阶段按近、远平面裁剪（Stride 的 ShadowMeshPipelineProcessor.DepthClipping）：透视的阴影视图（点光的六个面）要裁，
+   * 方向光的级联不裁（级联前面的物体也要投下阴影）。
+   */
+  readonly depthClip: boolean;
 
-  constructor(name: string, output: RenderOutput, { shadowCasters = false, transparent = false }: { shadowCasters?: boolean; transparent?: boolean } = {}) {
+  constructor(name: string, output: RenderOutput, { shadowCasters = false, transparent = false, depthClip = false }: { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean } = {}) {
     this.name = name;
     this.output = output;
     this.shadowCasters = shadowCasters;
     this.transparent = transparent;
+    this.depthClip = depthClip;
   }
 }
 
@@ -172,14 +178,20 @@ export interface DirectionalShadowSettings {
   blendCascades: boolean;
 }
 
+/** 点光、聚光的阴影设置（Stride 的 LightPointShadowMap、LightStandardShadowMap），来自 Light 组件。 */
+export interface LocalShadowSettings {
+  size: ShadowMapSize;
+  filter: ShadowMapFilter;
+  depthBias: number;
+  normalOffsetScale: number;
+}
+
 export type ShadowMapSize = 'xsmall' | 'small' | 'medium' | 'large' | 'xlarge';
 export type ShadowMapFilter = 'none' | 'pcf3x3' | 'pcf5x5' | 'pcf7x7';
 export type ShadowStabilization = 'none' | 'viewSnapping' | 'projectionSnapping';
 
 /** 着色时要的阴影数据（Stride 的 ShadowMapReceiverDirectional 的参数），由 ShadowMapRenderer 每帧填。 */
 export interface ShadowReceiver {
-  /** 深度图集，各级联是其中一块。 */
-  readonly atlas: GPUTexture;
   cascadeCount: number;
   /** 每个级联 16 个 float：世界坐标到图集 UV（xy）和深度（z）。 */
   readonly worldToShadow: Float32Array;
@@ -191,6 +203,23 @@ export interface ShadowReceiver {
   filterSize: number;
   blendCascades: boolean;
   depthRangeAutomatic: boolean;
+}
+
+/**
+ * 着色时要的一盏点光或聚光的阴影（Stride 的 ShadowMapReceiverPointCubeMap、ShadowMapReceiverSpot 的参数），由 ShadowMapRenderer
+ * 每帧填。点光是立方体的六个面各占图集里一块，聚光只有一块。
+ */
+export interface LocalShadowReceiver {
+  point: boolean;
+  /** 每个面 16 个 float：世界坐标到图集 UV（xy）和深度（z）；聚光只用第一个。 */
+  readonly worldToShadow: Float32Array;
+  /** 点光：深度 = depthA + depthB / 沿这个面的轴到光源的距离（Stride 的 CameraKeys.ZProjectionACalculate）。 */
+  depthA: number;
+  depthB: number;
+  depthBias: number;
+  normalOffsetScale: number;
+  /** 0：单次比较采样；3、5、7：PCF 的核大小。 */
+  filterSize: number;
 }
 
 /** 最多几个方向光（Stride 的 LightDirectionalGroupRenderer 默认也是一组最多 8 个；4 个足够常见的场景）。 */
@@ -220,9 +249,27 @@ export interface LocalLight {
   readonly position: Vector3;
   readonly direction: Vector3;
   readonly color: Color4;
+  /** 点光的半径、聚光的射程。 */
+  radius: number;
   invSquareRadius: number;
   angleScale: number;
   angleOffset: number;
+  /** 聚光外锥的全角（度），阴影视图的视场角。 */
+  angleOuter: number;
+  /** 投不投阴影（Light.shadow）；投的时候 shadow 里是设置，world 是光源实体的世界矩阵（聚光的阴影视图按它摆）。 */
+  castsShadow: boolean;
+  readonly shadow: LocalShadowSettings;
+  readonly world: Float32Array;
+  /** 这一帧它的阴影在 Lighting.localShadows 里的下标；不投阴影、或者图集放不下时是 -1。ShadowMapRenderer 填。 */
+  shadowIndex: number;
+}
+
+/** 一盏还没用上的点光或聚光（Lighting.locals 预先分配）。 */
+export function createLocalLight(): LocalLight {
+  return {
+    spot: false, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
+    castsShadow: false, shadow: { size: 'medium', filter: 'none', depthBias: 0.01, normalOffsetScale: 10 }, world: new Float32Array(16), shadowIndex: -1,
+  };
 }
 
 export interface Lighting {
@@ -233,8 +280,10 @@ export interface Lighting {
   shadowLight: number;
   /** 投阴影的方向光的阴影设置；没有时是 undefined。 */
   directionalShadow: DirectionalShadowSettings | undefined;
-  /** 这一帧画好的阴影；没有时是 undefined。 */
+  /** 这一帧画好的方向光的阴影；没有时是 undefined。 */
   shadow: ShadowReceiver | undefined;
+  /** 这一帧的阴影图集（方向光、点光、聚光共用一张）；没有任何阴影时是 undefined。 */
+  shadowAtlas: GPUTexture | undefined;
   /** 环境光：线性空间的颜色乘强度。 */
   readonly ambient: Color4;
   /** 没有天空盒光时是 undefined。 */
@@ -242,6 +291,9 @@ export interface Lighting {
   /** 预先分配了 MAX_LOCAL_LIGHTS 个，前 localCount 个有效。 */
   readonly locals: readonly LocalLight[];
   localCount: number;
+  /** 这一帧画好的点光、聚光的阴影，前 localShadowCount 个有效（按需变长）。 */
+  readonly localShadows: LocalShadowReceiver[];
+  localShadowCount: number;
 }
 
 export class RenderSystem {
@@ -256,10 +308,13 @@ export class RenderSystem {
     shadowLight: -1,
     directionalShadow: undefined,
     shadow: undefined,
+    shadowAtlas: undefined,
     ambient: new Color4(),
     skybox: undefined,
-    locals: Array.from({ length: MAX_LOCAL_LIGHTS }, (): LocalLight => ({ spot: false, position: new Vector3(), direction: new Vector3(), color: new Color4(), invSquareRadius: 1, angleScale: 0, angleOffset: 1 })),
+    locals: Array.from({ length: MAX_LOCAL_LIGHTS }, createLocalLight),
     localCount: 0,
+    localShadows: [],
+    localShadowCount: 0,
   };
   /** 场景里没有 Light 组件时用的光照（直射光的漫反射要除以 π，所以强度 3 大约是满亮度）。 */
   readonly defaultLighting: Lighting = {
@@ -268,10 +323,13 @@ export class RenderSystem {
     shadowLight: -1,
     directionalShadow: undefined,
     shadow: undefined,
+    shadowAtlas: undefined,
     ambient: new Color4(0.15, 0.15, 0.18, 1),
     skybox: undefined,
     locals: [],
     localCount: 0,
+    localShadows: [],
+    localShadowCount: 0,
   };
   /** 特性共用的贴图、立方体贴图和采样器。 */
   readonly resources: GpuResources;

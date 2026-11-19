@@ -29,8 +29,10 @@ export const Camera = component('Camera', {
  * （同 Stride 的编辑器），渲染时转成线性再乘强度。天空盒光用 skybox 列（Skybox.id）的球谐和预滤波立方体贴图，
  * 跟着实体旋转；它不用 color。
  *
- * shadow 开头的列是方向光的阴影（Stride 的 LightDirectionalShadowMap），默认值同 Stride：级联阴影图，按相机的可见范围
- * 对数划分，大小按画面和 shadowSize 定（xlarge 每个级联最多 2048）。
+ * shadow 开头的列是阴影的设置，默认值同 Stride。方向光（LightDirectionalShadowMap）：级联阴影图，按相机的可见范围对数划分，
+ * 大小按画面和 shadowSize 定（xlarge 每个级联最多 2048）。点光（LightPointShadowMap）：立方体的六个面；聚光
+ * （LightStandardShadowMap）：一个透视视图；这两种只看 shadow、shadowSize、shadowFilter、shadowDepthBias、
+ * shadowNormalOffsetScale，大小按光源在画面上盖住多大定。
  */
 export const Light = component('Light', {
   type: prop.enum(['directional', 'ambient', 'skybox', 'point', 'spot']).default('directional'),

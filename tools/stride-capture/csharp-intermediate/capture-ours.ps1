@@ -1,4 +1,4 @@
-# stride-ts 这边截同样的四张（射线、投影、场景加载、声音四个教程的完成版；1280x720，不画调试文字），和桌面 Stride 的参考图逐张比，
+# stride-ts 这边截同样的五张（射线、投影、场景加载、声音四个教程的完成版，加场景加载教程的第二个场景；1280x720，不画调试文字），和桌面 Stride 的参考图逐张比，
 # 打印每张的差。先开着开发服务器（pnpm --filter @stride-ts/csharp-intermediate dev），参考图用 CSharpIntermediate.Windows.exe
 # --capture <目录> 截好。
 # 用法：pwsh tools/stride-capture/csharp-intermediate/capture-ours.ps1 [-Reference <参考图目录>] [-Out <输出目录>]
@@ -20,9 +20,15 @@ Start-Sleep -Seconds 2
 # 参考图是 Release 版截的，Stride 的调试文字只在调试版显示；色调映射的亮度适应两边都关掉（见 CSharpIntermediateApp.cs）
 pnpm exec stride eval 'strideGame.debugText.visible = false; strideGame.graphicsCompositor.postEffects.toneMap.temporalAdaptation = false' --hub csharp-intermediate | Out-Null
 
-foreach ($shot in @(@('Raycasting', 'raycasting'), @('Project & Unproject', 'project'), @('Scene loading', 'scene'), @('Audio', 'audio'))) {
-    $name = '"{0}"' -f $shot[0]
-    pnpm exec stride call tutorial $name --hub csharp-intermediate | Out-Null
+foreach ($shot in @(@('Raycasting', 'raycasting'), @('Project & Unproject', 'project'), @('Scene loading', 'scene'), @('Audio', 'audio'), @('SceneB', 'sceneb'))) {
+    if ($shot[0] -eq 'SceneB') {
+        # 场景加载教程里按键才换到的第二个场景（有一盏投阴影的点光）：直接当根场景加载，同桌面那边。放在最后：换了根场景菜单就没了
+        # 球带刚体，两边的物理引擎不同、滚到的地方不一样：停住仿真，球留在场景里摆的位置
+        pnpm exec stride eval "strideGame.simulation.enabled = false; strideGame.setRootScene('CSharpIntermediate/Scenes/06_SceneLoading/Completed-SceneB').then(() => 1)" --hub csharp-intermediate | Out-Null
+    } else {
+        $name = '"{0}"' -f $shot[0]
+        pnpm exec stride call tutorial $name --hub csharp-intermediate | Out-Null
+    }
     Start-Sleep -Milliseconds 1500
     # 顶上 40 像素是菜单的按钮：Stride 的 UI 在后处理之前画、被色调映射，我们画在后处理之后（有意的偏差），所以只比下面的场景
     $result = pnpm exec stride shot (Join-Path $Out "$($shot[1]).png") --diff (Join-Path $Reference "$($shot[1]).png") --region '0,40,1280,680' --hub csharp-intermediate | ConvertFrom-Json

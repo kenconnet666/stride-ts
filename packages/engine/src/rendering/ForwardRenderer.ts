@@ -218,6 +218,7 @@ export class ForwardRenderer {
     renderSystem.collect(views);
     this.#gatherLighting(context);
     renderSystem.lighting.shadow = undefined;
+    renderSystem.lighting.shadowAtlas = undefined;
     let shadowViews: readonly RenderView[] = [];
     if (views.length > 0) {
       renderSystem.extract(context);
@@ -309,8 +310,19 @@ export class ForwardRenderer {
     local.direction.set(-world[w + 8]!, -world[w + 9]!, -world[w + 10]!).normalize();
     local.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
     const radius = Math.max(0.001, local.spot ? light.range[i]! : light.radius[i]!);
+    local.radius = radius;
     local.invSquareRadius = 1 / (radius * radius);
+    local.shadowIndex = -1;
+    local.castsShadow = this.drawShadows && light.shadow[i] !== 0;
+    if (local.castsShadow) {
+      local.shadow.size = light.shadowSize[i]!;
+      local.shadow.filter = light.shadowFilter[i]!;
+      local.shadow.depthBias = light.shadowDepthBias[i]!;
+      local.shadow.normalOffsetScale = light.shadowNormalOffsetScale[i]!;
+      local.world.set(world.subarray(w, w + 16));
+    }
     if (!local.spot) return;
+    local.angleOuter = light.angleOuter[i]!;
     [local.angleScale, local.angleOffset] = spotAngleAttenuation(light.angleInner[i]!, light.angleOuter[i]!);
   }
 
@@ -320,6 +332,7 @@ export class ForwardRenderer {
     lighting.ambient.set(0, 0, 0, 1);
     lighting.directionalCount = 0;
     lighting.localCount = 0;
+    lighting.localShadowCount = 0;
     lighting.shadowLight = -1;
     lighting.directionalShadow = undefined;
     lighting.skybox = undefined;

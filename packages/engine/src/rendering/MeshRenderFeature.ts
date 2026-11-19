@@ -88,8 +88,16 @@ struct View {
   locals: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
-// direction 是聚光照向的方向，angle 是角度衰减的 scale、offset
+// direction 是聚光照向的方向（w：它的阴影在 localShadows 里的下标，没有阴影时 -1），angle 是角度衰减的 scale、offset
 struct LocalLight { position: vec4f, color: vec4f, direction: vec4f, angle: vec4f };
+// 一盏点光或聚光的阴影：点光是立方体的六个面（+Z、-Z、+X、-X、+Y、-Y）各一个矩阵，聚光只用第一个
+struct LocalShadow {
+  matrices: array<mat4x4f, 6>,
+  // x：深度偏移，y：法线偏移比例，zw：点光的深度 = z + w / 沿这个面的轴到光源的距离
+  params: vec4f,
+  // x：PCF 核大小（0 是一次比较采样），y：1 是点光
+  options: vec4f,
+};
 @group(0) @binding(0) var<uniform> view: View;
 @group(0) @binding(1) var<storage, read> worlds: array<mat4x4f>;
 @group(0) @binding(2) var<storage, read> slots: array<u32>;
@@ -105,6 +113,7 @@ struct LocalLight { position: vec4f, color: vec4f, direction: vec4f, angle: vec4
 // 带形变网格的实体：变换槽位 → 它的模型实例那组形变权重在 morphWeights 里的起点
 @group(0) @binding(11) var<storage, read> morphOf: array<u32>;
 @group(0) @binding(12) var<storage, read> morphWeights: array<f32>;
+@group(0) @binding(13) var<storage, read> localShadows: array<LocalShadow>;
 
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
 // 没有贴图的槽绑一张 1x1 的白图，所以不用分支：自发光 = 贴图 · emissive，遮蔽 = dot(贴图, occlusionMask)（mask 是
@@ -359,8 +368,7 @@ fn pcf7(base: vec2f, st: vec2f, depth: f32) -> f32 {
 }
 
 /** 图集里 position 处的阴影（1 是亮）：一次双线性的比较采样，或者 PCF（Stride 的 CalculatePCFKernelParameters）。 */
-fn filterShadow(position: vec2f, depth: f32) -> f32 {
-  let size = u32(view.shadow.w);
+fn filterShadow(position: vec2f, depth: f32, size: u32) -> f32 {
   if (size == 0u) {
     return textureSampleCompareLevel(shadowAtlas, shadowComparison, position, depth);
   }
@@ -381,7 +389,45 @@ fn shadowFromCascade(position: vec3f, cascade: u32) -> f32 {
   var p = view.shadowMatrices[cascade] * vec4f(position, 1.0);
   p.z -= view.shadow.y;
   let s = p.xyz / p.w;
-  return filterShadow(s.xy, s.z);
+  return filterShadow(s.xy, s.z, u32(view.shadow.w));
+}
+
+/**
+ * 点光、聚光的阴影（Stride 的 ShadowMapReceiverPointCubeMap、ShadowMapReceiverSpot 的 ComputeShadow）。index 是 localShadows
+ * 的下标，lightPosition 是光源的位置。
+ */
+fn computeLocalShadow(index: u32, position: vec3f, normal: vec3f, nDotL: f32, lightPosition: vec3f) -> f32 {
+  let params = localShadows[index].params;
+  let filterSize = u32(localShadows[index].options.x);
+  // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去
+  let p = position + 2.0 * view.shadowAtlas.x * params.y * saturate(1.0 - nDotL) * normal;
+  if (localShadows[index].options.y < 0.5) {
+    var s = localShadows[index].matrices[0] * vec4f(p, 1.0);
+    s.z -= params.x;
+    let q = s.xyz / s.w;
+    return filterShadow(q.xy, q.z, filterSize);
+  }
+  // 点光：到光源的方向里最长的那个轴定面，深度按沿这个轴的距离算（面的选择和深度都用没偏移过的位置）
+  let delta = position - lightPosition;
+  let size = abs(delta);
+  var face = 0u;
+  var axis = delta.z;
+  if (size.x >= size.y && size.x >= size.z) {
+    face = 2u;
+    axis = delta.x;
+  } else if (size.y >= size.z) {
+    face = 4u;
+    axis = delta.y;
+  }
+  if (axis < 0.0) {
+    face += 1u;
+  }
+  let projected = localShadows[index].matrices[face] * vec4f(p, 1.0);
+  let depth = params.z + params.w / (abs(axis) - params.x);
+  if (depth < 0.0 || depth > 1.0) {
+    return 1.0;
+  }
+  return filterShadow(projected.xy / projected.w, depth, filterSize);
 }
 
 const CASCADE_INDICES = vec4u(0u, 1u, 2u, 3u);
@@ -569,6 +615,10 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
     if (light.color.w > 0.5) {
       let angular = saturate(dot(-l, light.direction.xyz) * light.angle.x + light.angle.y);
       attenuation *= angular * angular;
+    }
+    // 这个视图用不用阴影看图集的尺寸（不用时是 0）
+    if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0) {
+      attenuation *= computeLocalShadow(u32(light.direction.w), in.world, n, max(dot(n, l), 0.0001), light.position.xyz);
     }
     direct += shadeLight(surface, l, light.color.rgb * attenuation * directOcclusion);
   }
@@ -763,8 +813,8 @@ const VIEW_STRIDE = 768;
 const VIEW_FLOATS = 192;
 /** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
 const LOCAL_LIGHT_FLOATS = 16;
-/** 一帧最多的视图数：主视图加 4 个阴影级联，留些余量。 */
-const MAX_VIEWS = 8;
+/** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
+const LOCAL_SHADOW_FLOATS = 104;
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
 const MATERIAL_BYTES = 224;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
@@ -961,8 +1011,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     const visible = (b: number) => counts[index * cullPass.batchCount + b]! > 0 && inStage(this.batches[b]!.material);
     const order = stage.transparent ? this.#backToFront(context, view, cullPass.batchCount, visible) : undefined;
     if (order?.length === 0) return;
-    const shadow = stage.shadowCasters ? undefined : this.system.lighting.shadow;
-    pass.setBindGroup(0, gpu.viewBindGroup(shadow?.atlas), [view.index * VIEW_STRIDE]);
+    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     const viewOffset = cullPass.offset + index * cullPass.slotCount;
     for (let i = 0, end = order?.length ?? cullPass.batchCount; i < end; i++) {
@@ -1104,9 +1153,13 @@ class Gpu {
   /** 没有形变的网格绑的空缓冲。 */
   readonly #noMorph: GPUBuffer;
   #views: GPUBuffer | undefined;
-  readonly #viewData = new Float32Array((VIEW_STRIDE / 4) * MAX_VIEWS);
+  /** 每个视图一块常量；视图多了就换大的（主视图、渲染目标贴图的相机，加上每个阴影级联、点光的每个面各一个）。 */
+  #viewData = new Float32Array((VIEW_STRIDE / 4) * 8);
   readonly #localLightData = new Float32Array(MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS);
   readonly #localLights: GPUBuffer;
+  /** 点光、聚光的阴影（LocalShadow），按需变长；没有时也留一个的位置（绑定组里的存储缓冲不能缺）。 */
+  #localShadowData = new Float32Array(LOCAL_SHADOW_FLOATS);
+  #localShadows: GPUBuffer;
   /** 视图绑定组，按绑在阴影位置上的深度图分开：画阴影图集时不能同时采样它。 */
   readonly #viewBindGroups = new Map<GPUTexture, GPUBindGroup>();
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
@@ -1132,6 +1185,7 @@ class Gpu {
         { binding: 10, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 11, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 12, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 13, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -1158,6 +1212,7 @@ class Gpu {
     this.#noMorph = this.#createFilled('MeshRenderFeature no morph', GPUBufferUsage.STORAGE, new Uint32Array(4));
     this.#dfgLut = createDfgLut(device);
     this.#localLights = this.#createStorage('MeshRenderFeature local lights', MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS * 4);
+    this.#localShadows = this.#createStorage('MeshRenderFeature local shadows', LOCAL_SHADOW_FLOATS * 4);
   }
 
   /** 着色器模块：按自发光的颜色树和网格效果分变体（两段代码是键）。 */
@@ -1260,7 +1315,7 @@ class Gpu {
         } : {}),
         ...(cutout ? { fragment: { module, entryPoint: 'fsCutout', targets: [] } } : {}),
         primitive: stage.shadowCasters
-          ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth }
+          ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth && !stage.depthClip }
           : { topology: 'triangle-list', cullMode: materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
         depthStencil: { format: depthFormat, depthWriteEnabled: !stage.transparent, depthCompare: 'less-equal' },
       });
@@ -1346,8 +1401,13 @@ class Gpu {
 
   uploadViews(views: readonly RenderView[], lighting: Lighting, time: number): void {
     const stride = VIEW_STRIDE / 4;
-    if (views.length > MAX_VIEWS) throw new RangeError(`MeshRenderFeature supports ${MAX_VIEWS} views, got ${views.length}`);
-    const { directionals, directionalCount, ambient, skybox, shadow, locals, localCount } = lighting;
+    if (views.length * stride > this.#viewData.length) {
+      this.#viewData = new Float32Array(2 ** Math.ceil(Math.log2(views.length)) * stride);
+      this.#views?.destroy();
+      this.#views = undefined;
+      this.#viewBindGroups.clear();
+    }
+    const { directionals, directionalCount, ambient, skybox, shadow, shadowAtlas, locals, localCount } = lighting;
     const data = this.#viewData;
     for (const view of views) {
       const o = view.index * stride;
@@ -1360,14 +1420,14 @@ class Gpu {
         data.set(sh ? [sh[c * 3]!, sh[c * 3 + 1]!, sh[c * 3 + 2]!, 0] : [0, 0, 0, 0], o + 28 + c * 4);
       }
       data.set(skybox ? skybox.rotation : IDENTITY, o + 64);
-      if (shadow && view.receivesShadows) {
-        const atlasSize = shadow.atlas.width;
-        data.set(shadow.worldToShadow, o + 80);
-        data.set(shadow.splits, o + 144);
-        data.set([shadow.cascadeCount, shadow.depthBias, shadow.normalOffsetScale, shadow.filterSize], o + 148);
-        data.set([1 / atlasSize, atlasSize, shadow.blendCascades ? 1 : 0, shadow.depthRangeAutomatic ? 1 : 0], o + 152);
-      } else {
-        data.fill(0, o + 80, o + 156);
+      data.fill(0, o + 80, o + 156);
+      if (shadowAtlas && view.receivesShadows) {
+        if (shadow) {
+          data.set(shadow.worldToShadow, o + 80);
+          data.set(shadow.splits, o + 144);
+          data.set([shadow.cascadeCount, shadow.depthBias, shadow.normalOffsetScale, shadow.filterSize], o + 148);
+        }
+        data.set([1 / shadowAtlas.width, shadowAtlas.width, shadow?.blendCascades ? 1 : 0, shadow?.depthRangeAutomatic ? 1 : 0], o + 152);
       }
       for (let i = 0; i < directionalCount; i++) {
         const { direction, color } = directionals[i]!;
@@ -1380,10 +1440,11 @@ class Gpu {
     // 点光、聚光：所有视图共用一份
     const lights = this.#localLightData;
     for (let i = 0; i < localCount; i++) {
-      const { position: p, color: c, direction: d, spot, invSquareRadius, angleScale, angleOffset } = locals[i]!;
-      lights.set([p.x, p.y, p.z, invSquareRadius, c.r, c.g, c.b, spot ? 1 : 0, d.x, d.y, d.z, 0, angleScale, angleOffset, 0, 0], i * LOCAL_LIGHT_FLOATS);
+      const { position: p, color: c, direction: d, spot, invSquareRadius, angleScale, angleOffset, shadowIndex } = locals[i]!;
+      lights.set([p.x, p.y, p.z, invSquareRadius, c.r, c.g, c.b, spot ? 1 : 0, d.x, d.y, d.z, shadowIndex, angleScale, angleOffset, 0, 0], i * LOCAL_LIGHT_FLOATS);
     }
     if (localCount > 0) this.device.queue.writeBuffer(this.#localLights, 0, lights, 0, localCount * LOCAL_LIGHT_FLOATS);
+    this.#uploadLocalShadows(lighting);
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
@@ -1392,6 +1453,25 @@ class Gpu {
       this.#skySpecular = skySpecular;
       this.#viewBindGroups.clear();
     }
+  }
+
+  /** 点光、聚光的阴影：所有视图共用一份。 */
+  #uploadLocalShadows({ localShadows, localShadowCount }: Lighting): void {
+    if (localShadowCount === 0) return;
+    const floats = localShadowCount * LOCAL_SHADOW_FLOATS;
+    if (floats > this.#localShadowData.length) {
+      this.#localShadowData = new Float32Array(2 ** Math.ceil(Math.log2(localShadowCount)) * LOCAL_SHADOW_FLOATS);
+      this.#localShadows.destroy();
+      this.#localShadows = this.#createStorage('MeshRenderFeature local shadows', this.#localShadowData.byteLength);
+      this.#viewBindGroups.clear();
+    }
+    const data = this.#localShadowData;
+    for (let i = 0; i < localShadowCount; i++) {
+      const shadow = localShadows[i]!, o = i * LOCAL_SHADOW_FLOATS;
+      data.set(shadow.worldToShadow, o);
+      data.set([shadow.depthBias, shadow.normalOffsetScale, shadow.depthA, shadow.depthB, shadow.filterSize, shadow.point ? 1 : 0, 0, 0], o + 96);
+    }
+    this.device.queue.writeBuffer(this.#localShadows, 0, data, 0, floats);
   }
 
   /** 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的。 */
@@ -1416,6 +1496,7 @@ class Gpu {
           { binding: 10, resource: { buffer: this.#localLights } },
           { binding: 11, resource: { buffer: this.#morphOf! } },
           { binding: 12, resource: { buffer: this.#morphWeights! } },
+          { binding: 13, resource: { buffer: this.#localShadows } },
         ],
       });
       this.#viewBindGroups.set(atlas, group);

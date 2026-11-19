@@ -19,5 +19,5 @@
     // packages/pipeline 在 Node 里直接运行 .ts，相对导入要写扩展名
     "allowImportingTsExtensions": true
   },
-  "include": ["packages/*/src", "packages/*/test", "apps/*/src", "apps/*/scripts", "apps/*/vite.config.ts", "tools/*.ts", "vitest.config.ts"]
+  "include": ["packages/*/src", "packages/*/test", "packages/*/experiments", "apps/*/src", "apps/*/scripts", "apps/*/vite.config.ts", "tools/*.ts", "vitest.config.ts"]
 }

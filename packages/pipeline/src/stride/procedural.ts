@@ -2,7 +2,7 @@
  * Stride 的程序模型（.sdpromodel，ProceduralModelAsset）：照 Stride 4.4.2 的 GeometricPrimitive 生成网格，再按
  * PrimitiveProceduralModelBase 先加 LocalOffset、再乘 Scale（法线乘缩放的逆再归一化）。
  * Stride 的三角形顺时针是正面，我们的渲染器逆时针是正面：生成后每个三角形的后两个顶点对调。
- * 现在有 Cube、Plane、Sphere、GeoSphere、Capsule、Cylinder、Cone；Disc、Torus、Teapot 用到时再加。
+ * 现在有 Cube、Plane、Sphere、GeoSphere、Capsule、Cylinder、Torus、Cone、Teapot；Disc 用到时再加。
  */
 import { asNumber, asObject, type StrideObject, type StrideValue } from './yaml.ts';
 
@@ -66,6 +66,9 @@ export function proceduralMesh(type: StrideObject): ProceduralMesh | undefined {
       break;
     case 'ConeProceduralModel':
       mesh = cone(asNumber(type['Radius'], 0.5), asNumber(type['Height'], 1), asNumber(type['Tessellation'], 16), uScale, vScale);
+      break;
+    case 'TeapotProceduralModel':
+      mesh = teapot(asNumber(type['Size'], 1), asNumber(type['Tessellation'], 8), uScale, vScale);
       break;
     default:
       return undefined;
@@ -271,6 +274,102 @@ function torus(radius: number, thickness: number, tessellation: number, uScale: 
   }
   return mesh;
 }
+
+/**
+ * GeometricPrimitive.Teapot：每个面片按 tessellation 细分（两次三次贝塞尔插值，法线是两个切线的叉积），左右对称地画两遍、
+ * mirrorZ 的再前后对称地画两遍；镜像的面片法线取反、三角形反向、U 翻过来。退化的点（顶上和底下）法线直接朝上或朝下（同 Stride）。
+ */
+function teapot(size: number, tessellation: number, uScale: number, vScale: number): MeshBuilder {
+  const n = Math.max(1, tessellation);
+  const mesh = new MeshBuilder();
+  const patchOf = (indices: readonly number[], scale: V3): V3[] => indices.map((i) => TEAPOT_CONTROL_POINTS[i]!.map((c, k) => c * scale[k]!) as V3);
+  const cubic = (p1: V3, p2: V3, p3: V3, p4: V3, t: number): V3 => {
+    const t2 = t * t, one2 = (1 - t) * (1 - t);
+    return [0, 1, 2].map((k) => p1[k]! * (1 - t) * one2 + p2[k]! * 3 * t * one2 + p3[k]! * 3 * t2 * (1 - t) + p4[k]! * t * t2) as V3;
+  };
+  const tangent = (p1: V3, p2: V3, p3: V3, p4: V3, t: number): V3 => {
+    const t2 = t * t;
+    return [0, 1, 2].map((k) => p1[k]! * (-1 + 2 * t - t2) + p2[k]! * (1 - 4 * t + 3 * t2) + p3[k]! * (2 * t - 3 * t2) + p4[k]! * t2) as V3;
+  };
+  const tessellate = (indices: readonly number[], scale: V3, mirrored: boolean) => {
+    const p = patchOf(indices, scale);
+    const base = mesh.vertexCount, stride = n + 1;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const quad = [base + i * stride + j, base + (i + 1) * stride + j, base + (i + 1) * stride + j + 1, base + i * stride + j, base + (i + 1) * stride + j + 1, base + i * stride + j + 1];
+        mesh.indices.push(...(mirrored ? quad.reverse() : quad));
+      }
+    }
+    for (let i = 0; i <= n; i++) {
+      const u = i / n;
+      for (let j = 0; j <= n; j++) {
+        const v = j / n;
+        const p1 = cubic(p[0]!, p[1]!, p[2]!, p[3]!, u), p2 = cubic(p[4]!, p[5]!, p[6]!, p[7]!, u);
+        const p3 = cubic(p[8]!, p[9]!, p[10]!, p[11]!, u), p4 = cubic(p[12]!, p[13]!, p[14]!, p[15]!, u);
+        const position = cubic(p1, p2, p3, p4, v);
+        const q1 = cubic(p[0]!, p[4]!, p[8]!, p[12]!, v), q2 = cubic(p[1]!, p[5]!, p[9]!, p[13]!, v);
+        const q3 = cubic(p[2]!, p[6]!, p[10]!, p[14]!, v), q4 = cubic(p[3]!, p[7]!, p[11]!, p[15]!, v);
+        let normal = cross(tangent(p1, p2, p3, p4, v), tangent(q1, q2, q3, q4, u));
+        if (normal.every((c) => Math.abs(c) <= 1e-7)) normal = [0, position[1] < 0 ? -1 : 1, 0];
+        else {
+          const length = Math.hypot(...normal);
+          normal = normal.map((c) => (mirrored ? -c : c) / length) as V3;
+        }
+        mesh.vertex(position, normal, (mirrored ? 1 - u : u) * uScale, v * vScale);
+      }
+    }
+  };
+  for (const { mirrorZ, indices } of TEAPOT_PATCHES) {
+    // 左右对称：只存一边，镜像 X 再画一遍；mirrorZ 的（壶身、壶盖、壶沿、底）前后也对称
+    tessellate(indices, [size, size, size], false);
+    tessellate(indices, [-size, size, size], true);
+    if (!mirrorZ) continue;
+    tessellate(indices, [size, size, -size], true);
+    tessellate(indices, [-size, size, -size], false);
+  }
+  return mesh;
+}
+
+/** Stride 的 GeometricPrimitive.Teapot（DirectXTK 的数据）：10 个贝塞尔面片，每个 16 个控制点的下标；mirrorZ 的面片前后也对称。 */
+const TEAPOT_PATCHES: readonly { readonly mirrorZ: boolean; readonly indices: readonly number[] }[] = [
+  { mirrorZ: true, indices: [102, 103, 104, 105, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] },
+  { mirrorZ: true, indices: [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27] },
+  { mirrorZ: true, indices: [24, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40] },
+  { mirrorZ: true, indices: [96, 96, 96, 96, 97, 98, 99, 100, 101, 101, 101, 101, 0, 1, 2, 3] },
+  { mirrorZ: true, indices: [0, 1, 2, 3, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117] },
+  { mirrorZ: false, indices: [41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56] },
+  { mirrorZ: false, indices: [53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 28, 65, 66, 67] },
+  { mirrorZ: false, indices: [68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83] },
+  { mirrorZ: false, indices: [80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95] },
+  { mirrorZ: true, indices: [118, 118, 118, 118, 124, 122, 119, 121, 123, 126, 125, 120, 40, 39, 38, 37] },
+];
+
+const TEAPOT_CONTROL_POINTS: readonly V3[] = [
+  [0, 0.345, -0.05], [-0.028, 0.345, -0.05], [-0.05, 0.345, -0.028], [-0.05, 0.345, -0], [0, 0.3028125, -0.334375],
+  [-0.18725, 0.3028125, -0.334375], [-0.334375, 0.3028125, -0.18725], [-0.334375, 0.3028125, -0], [0, 0.3028125, -0.359375],
+  [-0.20125, 0.3028125, -0.359375], [-0.359375, 0.3028125, -0.20125], [-0.359375, 0.3028125, -0], [0, 0.27, -0.375], [-0.21, 0.27, -0.375],
+  [-0.375, 0.27, -0.21], [-0.375, 0.27, -0], [0, 0.13875, -0.4375], [-0.245, 0.13875, -0.4375], [-0.4375, 0.13875, -0.245],
+  [-0.4375, 0.13875, -0], [0, 0.007499993, -0.5], [-0.28, 0.007499993, -0.5], [-0.5, 0.007499993, -0.28], [-0.5, 0.007499993, -0],
+  [0, -0.105, -0.5], [-0.28, -0.105, -0.5], [-0.5, -0.105, -0.28], [-0.5, -0.105, -0], [0, -0.105, 0.5], [0, -0.2175, -0.5],
+  [-0.28, -0.2175, -0.5], [-0.5, -0.2175, -0.28], [-0.5, -0.2175, -0], [0, -0.27375, -0.375], [-0.21, -0.27375, -0.375],
+  [-0.375, -0.27375, -0.21], [-0.375, -0.27375, -0], [0, -0.2925, -0.375], [-0.21, -0.2925, -0.375], [-0.375, -0.2925, -0.21],
+  [-0.375, -0.2925, -0], [0, 0.17625, 0.4], [-0.075, 0.17625, 0.4], [-0.075, 0.2325, 0.375], [0, 0.2325, 0.375], [0, 0.17625, 0.575],
+  [-0.075, 0.17625, 0.575], [-0.075, 0.2325, 0.625], [0, 0.2325, 0.625], [0, 0.17625, 0.675], [-0.075, 0.17625, 0.675],
+  [-0.075, 0.2325, 0.75], [0, 0.2325, 0.75], [0, 0.12, 0.675], [-0.075, 0.12, 0.675], [-0.075, 0.12, 0.75], [0, 0.12, 0.75],
+  [0, 0.06375, 0.675], [-0.075, 0.06375, 0.675], [-0.075, 0.007499993, 0.75], [0, 0.007499993, 0.75], [0, -0.04875001, 0.625],
+  [-0.075, -0.04875001, 0.625], [-0.075, -0.09562501, 0.6625], [0, -0.09562501, 0.6625], [-0.075, -0.105, 0.5], [-0.075, -0.18, 0.475],
+  [0, -0.18, 0.475], [0, 0.02624997, -0.425], [-0.165, 0.02624997, -0.425], [-0.165, -0.18, -0.425], [0, -0.18, -0.425],
+  [0, 0.02624997, -0.65], [-0.165, 0.02624997, -0.65], [-0.165, -0.12375, -0.775], [0, -0.12375, -0.775], [0, 0.195, -0.575],
+  [-0.0625, 0.195, -0.575], [-0.0625, 0.17625, -0.6], [0, 0.17625, -0.6], [0, 0.27, -0.675], [-0.0625, 0.27, -0.675],
+  [-0.0625, 0.27, -0.825], [0, 0.27, -0.825], [0, 0.28875, -0.7], [-0.0625, 0.28875, -0.7], [-0.0625, 0.2934375, -0.88125],
+  [0, 0.2934375, -0.88125], [0, 0.28875, -0.725], [-0.0375, 0.28875, -0.725], [-0.0375, 0.298125, -0.8625], [0, 0.298125, -0.8625],
+  [0, 0.27, -0.7], [-0.0375, 0.27, -0.7], [-0.0375, 0.27, -0.8], [0, 0.27, -0.8], [0, 0.4575, -0], [0, 0.4575, -0.2],
+  [-0.1125, 0.4575, -0.2], [-0.2, 0.4575, -0.1125], [-0.2, 0.4575, -0], [0, 0.3825, -0], [0, 0.27, -0.35], [-0.196, 0.27, -0.35],
+  [-0.35, 0.27, -0.196], [-0.35, 0.27, -0], [0, 0.3075, -0.1], [-0.056, 0.3075, -0.1], [-0.1, 0.3075, -0.056], [-0.1, 0.3075, -0],
+  [0, 0.3075, -0.325], [-0.182, 0.3075, -0.325], [-0.325, 0.3075, -0.182], [-0.325, 0.3075, -0], [0, 0.27, -0.325], [-0.182, 0.27, -0.325],
+  [-0.325, 0.27, -0.182], [-0.325, 0.27, -0], [0, -0.33, -0], [-0.1995, -0.33, -0.35625], [0, -0.31125, -0.375], [0, -0.33, -0.35625],
+  [-0.35625, -0.33, -0.1995], [-0.375, -0.31125, -0], [-0.35625, -0.33, -0], [-0.21, -0.31125, -0.375], [-0.375, -0.31125, -0.21],
+];
 
 /** GeometricPrimitive.Cone：底面在 -height/2，尖在 +height/2；锥面和底面各是一组分段的环加一排端点。 */
 function cone(radius: number, height: number, tessellation: number, uScale: number, vScale: number): MeshBuilder {

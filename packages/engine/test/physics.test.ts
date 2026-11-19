@@ -172,6 +172,17 @@ describe('Vector3、Quaternion', () => {
     const flipped = new Quaternion().slerp({ x: -to.x, y: -to.y, z: -to.z, w: -to.w }, 0.5);
     expect(Math.abs(flipped.y - half.y) < 1e-6 && Math.abs(flipped.w - half.w) < 1e-6).toBe(true);
   });
+
+  test('Quaternion.lerp（Stride 的 Lerp）：线性插值再归一化，对称的一半和 slerp 一样，四分之一不一样；目标取反结果一样', () => {
+    const y = { x: 0, y: 1, z: 0 };
+    const to = new Quaternion().setAxisAngle(y, Math.PI / 2);
+    const half = new Quaternion().lerp(to, 0.5);
+    expect(Math.abs(half.y - Math.sin(Math.PI / 8)) < 1e-6 && Math.abs(Math.hypot(half.x, half.y, half.z, half.w) - 1) < 1e-6).toBe(true);
+    const quarter = new Quaternion().lerp(to, 0.25), slerped = new Quaternion().slerp(to, 0.25);
+    expect(Math.abs(quarter.y - slerped.y)).toBeGreaterThan(1e-4);
+    const flipped = new Quaternion().lerp({ x: -to.x, y: -to.y, z: -to.z, w: -to.w }, 0.5);
+    expect(Math.abs(flipped.y - half.y) < 1e-6 && Math.abs(flipped.w - half.w) < 1e-6).toBe(true);
+  });
 });
 
 describe('Body（Stride 的 BodyComponent）', () => {

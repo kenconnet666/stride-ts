@@ -225,6 +225,13 @@ export class Quaternion implements QuatLike {
     return this.set(inverse * this.x + opposite * to.x, inverse * this.y + opposite * to.y, inverse * this.z + opposite * to.z, inverse * this.w + opposite * to.w);
   }
 
+  /** 线性插值到 to 再归一化（Stride 的 Quaternion.Lerp）：点积为负时取 to 的反面，走短的那一边。 */
+  lerp(to: Readonly<QuatLike>, t: number): this {
+    const sign = this.x * to.x + this.y * to.y + this.z * to.z + this.w * to.w >= 0 ? 1 : -1;
+    const inverse = 1 - t, opposite = t * sign;
+    return this.set(inverse * this.x + opposite * to.x, inverse * this.y + opposite * to.y, inverse * this.z + opposite * to.z, inverse * this.w + opposite * to.w).normalize();
+  }
+
   normalize(): this {
     const length = Math.hypot(this.x, this.y, this.z, this.w);
     return length > 0 ? this.set(this.x / length, this.y / length, this.z / length, this.w / length) : this.identity();

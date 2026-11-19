@@ -103,7 +103,7 @@ export class MaterialImporter {
     const material: MaterialFile = {
       name: path.basename(asset.path),
       baseColor: color,
-      ...(texture ? { baseColorTexture: textureSlot(await texture.texture, texture.scale, texture.offset, texture.sampler) } : {}),
+      ...(texture ? { baseColorTexture: textureSlot(await texture.load(), texture.scale, texture.offset, texture.sampler) } : {}),
       ...(texture && operator !== 'multiply' ? { baseColorOperator: operator } : {}),
       ...(metalness === undefined ? {} : { metalness }),
       ...(workflow === 'MaterialSpecularMapFeature' ? { specular: this.#specularColor(specular!, asset, uvScale) } : {}),
@@ -269,7 +269,7 @@ export class MaterialImporter {
     const emissive: Vec3Tuple = [map.color[0] * intensity, map.color[1] * intensity, map.color[2] * intensity];
     if (map.texture && map.operator !== 'multiply') this.#context.warnings.push(`${asset.file}: emissive texture with operator ${map.operator} is not supported; using the color`);
     const texture = map.texture && map.operator === 'multiply' ? map.texture : undefined;
-    return { emissive, ...(texture ? { emissiveTexture: textureSlot(await texture.texture, texture.scale, texture.offset, texture.sampler) } : {}) };
+    return { emissive, ...(texture ? { emissiveTexture: textureSlot(await texture.load(), texture.scale, texture.offset, texture.sampler) } : {}) };
   }
 
   /**
@@ -337,7 +337,8 @@ export class MaterialImporter {
         const reference = parseAssetReference(node['Texture']);
         if (!reference) return { color: linearColor(asObject(node['FallbackValue'])?.['Value']), operator: 'multiply' };
         const scale = vec2(node['Scale'], 1);
-        const texture = { texture: this.texture(this.#context.project.get(reference.id, asset.file)), scale: [scale[0] * uvScale[0], scale[1] * uvScale[1]], offset: vec2(node['Offset'], 0), sampler: samplerOf(node) } as const;
+        const textureAsset = this.#context.project.get(reference.id, asset.file);
+        const texture = { load: () => this.texture(textureAsset), scale: [scale[0] * uvScale[0], scale[1] * uvScale[1]], offset: vec2(node['Offset'], 0), sampler: samplerOf(node) } as const;
         return { color: WHITE, texture, operator: 'multiply' };
       }
       case 'ComputeBinaryColor': {
@@ -504,8 +505,11 @@ const WHITE: Color4Tuple = [1, 1, 1, 1];
 /** 颜色树化简后的形状：有贴图时结果 = operator(贴图采样, color)，没有贴图时就是 color。 */
 interface ColorExpression {
   readonly color: Color4Tuple;
-  /** texture 是导入中的贴图。 */
-  readonly texture?: { readonly texture: Promise<ImportedTexture>; readonly scale: readonly [number, number]; readonly offset: readonly [number, number]; readonly sampler: TextureSampler };
+  /**
+   * texture.load 导入贴图。用到时才调：调用方可能丢掉这张贴图（不支持的镜面贴图、两张贴图里的一张），提前开始的导入没人等，
+   * 命令行导完就关掉原生模块，编码任务还在跑会出错（CSharpBeginner 的 board1）。
+   */
+  readonly texture?: { readonly load: () => Promise<ImportedTexture>; readonly scale: readonly [number, number]; readonly offset: readonly [number, number]; readonly sampler: TextureSampler };
   readonly operator: ColorOperator;
 }
 

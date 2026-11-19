@@ -248,7 +248,15 @@ describe('程序模型（Stride 的 GeometricPrimitive）', () => {
     expect([cone.positions.length / 3, cone.indices.length]).toEqual([2 * 17 * 17, 2 * 16 * 31 * 3]);
     expect(extent(cone)).toEqual([0.5, 0.5, 0.5]);
     for (const mesh of [plane, sphere, geo, capsule, cylinder, cone]) expect(allCounterClockwise(mesh)).toBe(true);
-    expect(generate('TeapotProceduralModel\nSize: 1.0')).toBeUndefined();
+    expect(generate('DiscProceduralModel\nRadius: 1.0')).toBeUndefined();
+  });
+
+  test('茶壶：10 个面片，6 个前后左右对称、4 个只左右对称，共 32 块，每块 (n+1)² 个顶点；三角形都朝外', () => {
+    const teapot = generate('TeapotProceduralModel\nSize: 1.0\nTessellation: 4');
+    expect([teapot.positions.length / 3, teapot.indices.length]).toEqual([32 * 25, 32 * 16 * 6]);
+    expect(allCounterClockwise(teapot)).toBe(true);
+    // 左右对称的轴是 X（壶身半径 0.5），壶嘴、壶把沿 Z，壶盖顶在 y = 0.4575（贝塞尔曲面在控制点的凸包里，端点落在控制点上）
+    expect(extent(teapot).slice(0, 2)).toEqual([0.5, 0.4575]);
   });
 
   test('圆环：(n+1)² 个顶点，在 XZ 平面上，外半径 Radius + Thickness；法线从管的中心线指向外面', () => {

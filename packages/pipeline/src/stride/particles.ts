@@ -10,17 +10,21 @@ import { lowerFirst, parseAssetReference, type StrideObject, type StrideValue } 
 
 /** 运行时认识的模块（Stride 的类名）。 */
 export const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
-  'BoundingBoxStatic',
+  // Stride 的类名就拼错成这样（BoundingSphereStatic 少了个 S）
+  'BoundingBoxStatic', 'BoundingSpheretatic',
   'SpawnerPerSecond', 'SpawnerPerFrame',
-  'InitialSizeSeed', 'InitialPositionSeed', 'InitialVelocitySeed', 'Initial3DRotationSeed', 'InitialColorSeed',
-  'UpdaterForceField', 'FieldShapeSphere',
-  'ShapeBuilderBillboard', 'ShapeBuilderQuad', 'ShapeBuilderHexagon',
-  'ParticleMaterialComputeColor', 'ComputeTextureColor', 'ComputeVertexStreamColor', 'ColorVertexStreamDefinition', 'ComputeFloat4', 'ComputeColor',
+  'InitialSizeSeed', 'InitialPositionSeed', 'InitialVelocitySeed', 'InitialRotationSeed', 'Initial3DRotationSeed', 'InitialColorSeed',
+  'UpdaterForceField', 'UpdaterGravity', 'UpdaterSizeOverTime', 'UpdaterSpeedToDirection', 'UpdaterCollider', 'FieldShapeSphere', 'FieldShapeCylinder',
+  'ShapeBuilderBillboard', 'ShapeBuilderQuad', 'ShapeBuilderHexagon', 'ShapeBuilderOrientedQuad',
+  'ParticleMaterialComputeColor', 'ComputeTextureColor', 'ComputeTextureScalar', 'ComputeVertexStreamColor', 'ColorVertexStreamDefinition',
+  'ComputeFloat4', 'ComputeFloat', 'ComputeColor', 'ComputeBinaryColor',
   'UVBuilderFlipbook',
+  'ComputeCurveSamplerFloat', 'ComputeCurveSamplerVector3', 'ComputeCurveSamplerColor4', 'ComputeCurveSamplerQuaternion',
+  'ComputeAnimationCurveFloat', 'ComputeAnimationCurveVector3', 'ComputeAnimationCurveColor4', 'ComputeAnimationCurveQuaternion',
 ]);
 
-/** 按 Id 存的集合，换成数组。 */
-const COLLECTIONS = new Set(['Emitters', 'Spawners', 'Initializers', 'Updaters']);
+/** 按 Id 存的集合（曲线的关键帧也是），换成数组。 */
+const COLLECTIONS = new Set(['Emitters', 'Spawners', 'Initializers', 'Updaters', 'KeyFrames']);
 /** 字符串原样的属性（名字）；其余的字符串是枚举。 */
 const NAMES = new Set(['EmitterName', 'Name']);
 

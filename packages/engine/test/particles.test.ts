@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { FieldFalloff } from '../src/particles/modules';
-import { flipbookOf } from '../src/particles/ParticleRenderer';
+import { CurveSampler } from '../src/particles/curves';
+import { FieldFalloff } from '../src/particles/fieldShapes';
+import { compileMaterial, flipbookOf } from '../src/particles/material';
+import { buildShapes, VERTEX_FLOATS } from '../src/particles/shapes';
+import type { Texture } from '../src/rendering/Texture';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { randomSeed, RandomSeedGenerator, seedFloat } from '../src/particles/random';
 import type { ParticleModuleFile } from '../src/content/format';
@@ -130,5 +133,119 @@ describe('粒子的翻页动画（照 Stride 的 UVBuilderFlipbook）', () => {
     expect(frame(1)).toEqual([0.25, 0, 0.25, 0.5]);
     // 走过一半：1 + 4 = 第 5 帧，第二行第二个
     expect(frame(0.5)).toEqual([0.25, 0.5, 0.25, 0.5]);
+  });
+});
+
+/** 第一帧生成一个粒子（OneShot，活跃略长于一帧）。 */
+const ONE_PARTICLE: ParticleModuleFile = { $type: 'spawnerPerFrame', spawnCount: 1, loopCondition: 'oneShot', duration: [0.02, 0.02] };
+
+/** 线性的标量曲线采样器。 */
+function floatCurve(frames: [number, number][]): ParticleModuleFile {
+  return { $type: 'computeCurveSamplerFloat', curve: { $type: 'computeAnimationCurveFloat', keyFrames: frames.map(([key, value]) => ({ key, value, tangentType: 'linear' })) } };
+}
+
+describe('粒子的曲线（照 Stride 的 ComputeCurveSampler）', () => {
+  test('关键帧之间线性插值，两头停在端点；Constant 切线停在左边的值', () => {
+    const linear = new CurveSampler(floatCurve([[0, 0], [1, 2]]));
+    expect(linear.evaluateFloat(0)).toBeCloseTo(0);
+    expect(linear.evaluateFloat(0.5)).toBeCloseTo(1);
+    expect(linear.evaluateFloat(1)).toBeCloseTo(2);
+    const step = new CurveSampler({ $type: 'computeCurveSamplerFloat', curve: { keyFrames: [{ key: 0, value: 1, tangentType: 'constant' }, { key: 1, value: 3 }] } });
+    expect(step.evaluateFloat(0.5)).toBeCloseTo(1);
+  });
+
+  test('四元数按短的那边插值并归一化', () => {
+    const half = Math.SQRT1_2;
+    const curve = new CurveSampler({ $type: 'computeCurveSamplerQuaternion', curve: { keyFrames: [{ key: 0, value: [0, 0, 0, 1] }, { key: 1, value: [0, half, 0, half] }] } });
+    const q = curve.evaluate(0.5);
+    const angle = Math.PI / 8;
+    expect(q[1]).toBeCloseTo(Math.sin(angle), 5);
+    expect(q[3]).toBeCloseTo(Math.cos(angle), 5);
+  });
+});
+
+describe('粒子的更新器（照 Stride 的 Updaters）', () => {
+  test('重力：速度加 g · dt，位置多走 g · dt² / 2', () => {
+    const particles = system({ particleLifetime: [10, 10], spawners: [ONE_PARTICLE], updaters: [{ $type: 'updaterGravity', gravitationalAcceleration: [0, -10, 0] }] });
+    particles.update(STEP);
+    particles.update(STEP);
+    const pool = particles.emitters[0]!.pool;
+    expect(pool.field('velocity')![1]).toBeCloseTo(-10 * STEP, 6);
+    expect(pool.field('position')![1]).toBeCloseTo(-5 * STEP * STEP, 6);
+  });
+
+  test('按寿命改大小：大小是曲线在走过的寿命处的值', () => {
+    const particles = system({ particleLifetime: [1, 1], spawners: [ONE_PARTICLE], updaters: [{ $type: 'updaterSizeOverTime', samplerMain: floatCurve([[0, 1], [1, 3]]) }] });
+    for (let i = 0; i < 20; i++) particles.update(STEP);
+    const pool = particles.emitters[0]!.pool;
+    expect(pool.field('size')![0]).toBeCloseTo(1 + 2 * (1 - pool.field('life')![0]!), 2);
+  });
+
+  test('碰撞：进到球里的粒子放回表面，垂直的速度按 Restitution 反弹，记下这一帧碰过', () => {
+    const particles = system({
+      particleLifetime: [10, 10],
+      spawners: [ONE_PARTICLE],
+      initializers: [
+        { $type: 'initialPositionSeed', positionMin: [0, 0.5, 0], positionMax: [0, 0.5, 0] },
+        { $type: 'initialVelocitySeed', velocityMin: [0, -1, 0], velocityMax: [0, -1, 0] },
+      ],
+      updaters: [{ $type: 'updaterCollider', fieldShape: { $type: 'fieldShapeSphere', radius: 1 }, restitution: 0.5, friction: 0.1 }],
+    });
+    particles.update(STEP);
+    const pool = particles.emitters[0]!.pool;
+    expect([...pool.field('position')!.subarray(0, 3)].map((c) => +c.toFixed(5))).toEqual([0, 1, 0]);
+    expect(pool.field('velocity')![1]).toBeCloseTo(0.5);
+    expect(pool.field('collision')![0]).toBe(1);
+  });
+});
+
+describe('粒子的形状和材质', () => {
+  test('OrientedQuad：一条边沿速度方向拉长（长度乘大小），另一条在屏幕里垂直于它', () => {
+    const particles = system({
+      particleLifetime: [10, 10],
+      spawners: [ONE_PARTICLE],
+      initializers: [{ $type: 'initialVelocitySeed', velocityMin: [0, 2, 0], velocityMax: [0, 2, 0] }],
+      updaters: [{ $type: 'updaterSpeedToDirection' }],
+      shapeBuilder: { $type: 'shapeBuilderOrientedQuad' },
+    });
+    particles.update(STEP);
+    particles.update(STEP);
+    const emitter = particles.emitters[0]!;
+    const vertices = new Float32Array(4 * VERTEX_FLOATS);
+    const camera = { right: [1, 0, 0], up: [0, 1, 0], back: [0, 0, 1] } as const;
+    buildShapes(emitter, emitter.shape!, camera, [0], vertices, 0, () => [0, 0, 1, 1]);
+    const y = emitter.pool.field('position')![1]!;
+    // 方向是速度 (0, 2, 0)，大小 1：上下各伸出 方向 · 大小 / 2，左右各 0.5
+    expect([vertices[0], vertices[1]! - y, vertices[2]].map((c) => +c!.toFixed(5))).toEqual([-0.5, 1, 0]);
+    expect([vertices[2 * VERTEX_FLOATS], vertices[2 * VERTEX_FLOATS + 1]! - y].map((c) => +c!.toFixed(5))).toEqual([0.5, -1]);
+  });
+
+  test('材质的颜色树编译成 WGSL：二元运算、贴图（预乘、缩放偏移）、粒子颜色，AlphaAdditive 换成 alpha 系数', () => {
+    const texture = {} as Texture;
+    const program = compileMaterial({
+      $type: 'particleMaterialComputeColor',
+      alphaAdditive: 0.25,
+      computeColor: {
+        $type: 'computeBinaryColor', operator: 'multiply',
+        leftChild: { $type: 'computeTextureColor', texture: { texture: 'fire.ktx2' }, scale: [2, 2], offset: [0.5, 0] },
+        rightChild: { $type: 'computeVertexStreamColor' },
+      },
+    }, (path) => (path === 'fire.ktx2' ? texture : undefined));
+    expect(program.textures).toHaveLength(1);
+    expect(program.textures[0]!.texture).toBe(texture);
+    expect(program.alphaFactor).toBe(0.75);
+    expect(program.code).toContain('@group(1) @binding(0) var t0: texture_2d<f32>;');
+    expect(program.code).toContain('(premultiply(textureSample(t0, s0, uv * vec2f(2, 2) + vec2f(0.5, 0))) * color)');
+    // 没有贴图时用 FallbackValue
+    const fallback = compileMaterial({ computeColor: { $type: 'computeTextureColor', fallbackValue: { value: [1, 0.5, 0, 1] } } }, () => undefined);
+    expect(fallback.textures).toHaveLength(0);
+    expect(fallback.code).toContain('return vec4f(1.0, 0.5, 0.0, 1.0);');
+  });
+
+  test('BoundingSphereStatic：世界包围盒是位置周围 半径 · 缩放 的立方体', () => {
+    const particles = new ParticleSystem({ boundingShape: { $type: 'boundingSpheretatic', radius: 2 } });
+    particles.translation = [1, 0, 0];
+    particles.uniformScale = 2;
+    expect(particles.worldBounds()).toEqual([[-3, -4, -4], [5, 4, 4]]);
   });
 });

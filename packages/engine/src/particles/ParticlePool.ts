@@ -16,6 +16,8 @@ export const PARTICLE_FIELDS = {
   velocity: 3,
   size: 1,
   color: 4,
+  /** 这一帧碰撞过（UpdaterCollider 写 1，Stride 的 CollisionControl 的 HasColided）。 */
+  collision: 1,
 } as const;
 
 export type ParticleField = keyof typeof PARTICLE_FIELDS;

@@ -1,17 +1,14 @@
 /**
- * 粒子的模块（Stride 的 Spawners、Initializers、Updaters），按导入的 ParticleModuleFile 建，没写的属性取 Stride 的默认值。
- * 现在有的：生成器 PerSecond、PerFrame；初始化器 SizeSeed、PositionSeed、VelocitySeed、3DRotationSeed、ColorSeed；
- * 更新器 ForceField（球形的场）。导入器只留下这些（见 pipeline 的 particles.ts）。
- *
- * 和 Stride 不同（改掉的毛病）：力场的衰减（FieldFalloff）在 FalloffStart 到 FalloffEnd 之间线性过渡；Stride 除以的是
- * FalloffEnd / FalloffStart 而不是两者的差，过渡区里力几乎不变，到 FalloffEnd 时突然跳到 StrengthOutside。
+ * 粒子的模块（Stride 的 Spawners、Initializers），按导入的 ParticleModuleFile 建，没写的属性取 Stride 的默认值。
+ * 现在有的：生成器 PerSecond、PerFrame；初始化器 SizeSeed、PositionSeed、VelocitySeed、RotationSeed、3DRotationSeed、
+ * ColorSeed。更新器见 updaters.ts，力场和碰撞的形状见 fieldShapes.ts。导入器只留下运行时认识的（见 pipeline 的 particles.ts）。
  */
 import type { ParticleModuleFile, ParticleValue } from '../content/format';
 import { isIdentity, normalize, rotate, slerp, combine, type Quat, type Vec3 } from './math';
 import type { ParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat, type RandomSeedGenerator } from './random';
 
-const ZERO_TOLERANCE = 1e-6;
+const DEGREES = Math.PI / 180;
 
 /** 模块文件里的值：没写时取默认值。 */
 export function value<T extends ParticleValue>(file: ParticleModuleFile | undefined, key: string, fallback: T): T {
@@ -327,6 +324,29 @@ export class Initial3DRotationSeed extends ParticleInitializer {
   }
 }
 
+/** 平面内的转角在 AngularRotation（度）之间随机（Stride 的 InitialRotationSeed，Billboard、Hexagon 按它转）。 */
+export class InitialRotationSeed extends ParticleInitializer {
+  readonly requiredFields = ['rotation', 'randomSeed'] as const;
+  readonly seedOffset: number;
+  readonly angularRotation: [number, number];
+
+  constructor(file: ParticleModuleFile) {
+    super(file);
+    this.seedOffset = value(file, 'seedOffset', 0);
+    this.angularRotation = [...value(file, 'angularRotation', [-60, 60])] as [number, number];
+  }
+
+  initialize(pool: ParticlePool, range: SpawnedRange): void {
+    const rotation = pool.field('rotation');
+    if (!rotation) return;
+    const seeds = pool.seeds;
+    const start = this.angularRotation[0] * DEGREES, step = (this.angularRotation[1] - this.angularRotation[0]) * DEGREES;
+    forEachSpawned(range, (i) => {
+      rotation[i] = start + step * seedFloat(seeds[i]!, RandomOffset.offset1A + this.seedOffset);
+    });
+  }
+}
+
 /** 颜色在 ColorMin 到 ColorMax 之间线性插值（Stride 的 InitialColorSeed），存成预乘 alpha 的。 */
 export class InitialColorSeed extends ParticleInitializer {
   readonly requiredFields = ['color', 'randomSeed'] as const;
@@ -354,129 +374,6 @@ export class InitialColorSeed extends ParticleInitializer {
   }
 }
 
-// —— 更新器 ——
-
-export abstract class ParticleUpdater extends ParticleModule {
-  /** 生成新粒子之后再跑（Stride 的 IsPostUpdater）。 */
-  readonly isPostUpdater: boolean = false;
-  abstract update(dt: number, pool: ParticlePool): void;
-  /** 按父变换算世界变换（力场还要记下父变换的缩放）。 */
-  setParentTransform(parent: ParticleTransform): void {
-    this.setParent(parent);
-  }
-}
-
-/** 力场的衰减（Stride 的 FieldFalloff）：到场中心的相对距离在 FalloffStart 以内是 StrengthInside，FalloffEnd 以外是 StrengthOutside。 */
-export class FieldFalloff {
-  readonly strengthInside: number;
-  readonly falloffStart: number;
-  readonly strengthOutside: number;
-  readonly falloffEnd: number;
-
-  constructor(file: ParticleModuleFile = {}) {
-    this.strengthInside = value(file, 'strengthInside', 1);
-    this.falloffStart = value(file, 'falloffStart', 0.1);
-    this.strengthOutside = value(file, 'strengthOutside', 0);
-    this.falloffEnd = value(file, 'falloffEnd', 0.9);
-  }
-
-  strength(distance: number): number {
-    if (distance <= this.falloffStart) return this.strengthInside;
-    if (distance >= this.falloffEnd) return this.strengthOutside;
-    // 和 Stride 不同：除以区间的长度（Stride 除以 FalloffEnd / FalloffStart，见文件开头）
-    const t = (distance - this.falloffStart) / (this.falloffEnd - this.falloffStart);
-    return this.strengthInside + (this.strengthOutside - this.strengthInside) * t;
-  }
-}
-
-/** 球形的场（Stride 的 FieldShapes.Sphere）。 */
-export class FieldShapeSphere {
-  readonly radius: number;
-  #position: Vec3 = [0, 0, 0];
-  #inverseRotation: Quat = [0, 0, 0, 1];
-  #size: Vec3 = [1, 1, 1];
-  #mainAxis: Vec3 = [0, 1, 0];
-
-  constructor(file: ParticleModuleFile = {}) {
-    const radius = value(file, 'radius', 1);
-    this.radius = radius > ZERO_TOLERANCE ? radius : ZERO_TOLERANCE;
-  }
-
-  prepare(position: Readonly<Vec3>, rotation: Readonly<Quat>, size: Readonly<Vec3>): void {
-    this.#position = [...position];
-    this.#size = [...size];
-    this.#inverseRotation = [-rotation[0], -rotation[1], -rotation[2], rotation[3]];
-    this.#mainAxis = rotate(rotation, [0, 1, 0]);
-  }
-
-  /** 粒子到场中心的相对距离（1 是球面），写出沿轴、绕轴、离开中心的三个方向。 */
-  distance(position: Readonly<Vec3>, along: Vec3, around: Vec3, away: Vec3): number {
-    along.splice(0, 3, ...this.#mainAxis);
-    const local: Vec3 = [position[0] - this.#position[0], position[1] - this.#position[1], position[2] - this.#position[2]];
-    away.splice(0, 3, ...normalize([...local]));
-    around.splice(0, 3, along[1] * away[2] - along[2] * away[1], along[2] * away[0] - along[0] * away[2], along[0] * away[1] - along[1] * away[0]);
-    rotate(this.#inverseRotation, local);
-    for (let k = 0; k < 3; k++) local[k]! /= this.#size[k]!;
-    return Math.hypot(...local) / this.radius;
-  }
-}
-
-/**
- * 力场（Stride 的 UpdaterForceField）：沿场的轴（ForceDirected）、绕轴（ForceVortex）、离开中心（ForceRepulsive）和固定方向
- * （ForceFixed）的力，按场的形状和衰减算大小。EnergyConservation 是力加到速度上的比例，其余直接推位置。
- */
-export class UpdaterForceField extends ParticleUpdater {
-  readonly requiredFields = ['position', 'velocity'] as const;
-  readonly fieldShape: FieldShapeSphere | null;
-  readonly falloff: FieldFalloff;
-  readonly energyConservation: number;
-  readonly forceDirected: number;
-  readonly forceVortex: number;
-  readonly forceRepulsive: number;
-  readonly forceFixed: Vec3;
-  #parentScale = 1;
-
-  constructor(file: ParticleModuleFile) {
-    super(file);
-    const shape = file['fieldShape'] as ParticleModuleFile | null | undefined;
-    this.fieldShape = shape?.$type === 'fieldShapeSphere' ? new FieldShapeSphere(shape) : null;
-    this.falloff = new FieldFalloff((file['fieldFalloff'] as ParticleModuleFile | undefined) ?? {});
-    this.energyConservation = value(file, 'energyConservation', 0);
-    this.forceDirected = value(file, 'forceDirected', 0);
-    this.forceVortex = value(file, 'forceVortex', 1);
-    this.forceRepulsive = value(file, 'forceRepulsive', 1);
-    this.forceFixed = vec3(file, 'forceFixed', [0, 0, 0]);
-  }
-
-  override setParentTransform(parent: ParticleTransform): void {
-    super.setParentTransform(parent);
-    this.#parentScale = this.inheritScale ? parent.worldScale[0] : 1;
-  }
-
-  update(dt: number, pool: ParticlePool): void {
-    const position = pool.field('position'), velocity = pool.field('velocity');
-    if (!position || !velocity) return;
-    const toPosition = 1 - this.energyConservation;
-    this.fieldShape?.prepare(this.worldPosition, this.worldRotation, this.worldScale);
-    const along: Vec3 = [0, 1, 0], around: Vec3 = [1, 0, 0], away: Vec3 = [0, 0, 1];
-    const p: Vec3 = [0, 0, 0];
-    for (let i = 0; i < pool.living; i++) {
-      let magnitude = 1;
-      if (this.fieldShape) {
-        p[0] = position[i * 3]!; p[1] = position[i * 3 + 1]!; p[2] = position[i * 3 + 2]!;
-        magnitude = this.falloff.strength(this.fieldShape.distance(p, along, around, away));
-      }
-      magnitude *= dt * this.#parentScale;
-      for (let k = 0; k < 3; k++) {
-        const force = (this.forceFixed[k]! + along[k]! * this.forceDirected + around[k]! * this.forceVortex + away[k]! * this.forceRepulsive) * magnitude;
-        const toVelocity = force * this.energyConservation;
-        velocity[i * 3 + k]! += toVelocity;
-        position[i * 3 + k]! += toVelocity * dt * 0.5 + force * toPosition;
-      }
-    }
-  }
-}
-
 // —— 按文件建模块 ——
 
 export function createSpawner(file: ParticleModuleFile): ParticleSpawner | undefined {
@@ -492,12 +389,9 @@ export function createInitializer(file: ParticleModuleFile): ParticleInitializer
     case 'initialSizeSeed': return new InitialSizeSeed(file);
     case 'initialPositionSeed': return new InitialPositionSeed(file);
     case 'initialVelocitySeed': return new InitialVelocitySeed(file);
+    case 'initialRotationSeed': return new InitialRotationSeed(file);
     case 'initial3DRotationSeed': return new Initial3DRotationSeed(file);
     case 'initialColorSeed': return new InitialColorSeed(file);
     default: return undefined;
   }
-}
-
-export function createUpdater(file: ParticleModuleFile): ParticleUpdater | undefined {
-  return file.$type === 'updaterForceField' ? new UpdaterForceField(file) : undefined;
 }

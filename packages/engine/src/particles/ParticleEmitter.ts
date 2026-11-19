@@ -5,9 +5,12 @@
  *
  * 形状（ShapeBuilder）和材质（Material）是画的时候用的，原样留着（ParticleModuleFile），见粒子的渲染。
  */
-import type { ParticleModuleFile, TextureRef } from '../content/format';
+import type { ParticleModuleFile } from '../content/format';
+import { compileMaterial, type MaterialProgram } from './material';
+import { SHAPES, ShapeSettings } from './shapes';
 import type { Texture } from '../rendering/Texture';
-import { createInitializer, createSpawner, createUpdater, ParticleTransform, value, type ParticleInitializer, type ParticleSpawner, type ParticleUpdater, type SpawnedRange } from './modules';
+import { createInitializer, createSpawner, ParticleTransform, value, type ParticleInitializer, type ParticleSpawner, type SpawnedRange } from './modules';
+import { createUpdater, type ParticleUpdater } from './updaters';
 import { ParticlePool, type ParticleField } from './ParticlePool';
 import { RandomOffset, RandomSeedGenerator, seedFloat } from './random';
 import type { Quat, Vec3 } from './math';
@@ -40,8 +43,10 @@ export class ParticleEmitter {
   /** 画的时候用：形状和材质（null 是不画）。 */
   readonly shapeBuilder: ParticleModuleFile | null;
   readonly material: ParticleModuleFile | null;
-  /** 材质的贴图（ComputeTextureColor 的，加载好的）。 */
-  readonly texture: Texture | undefined;
+  /** 形状的设置；形状是 null 或者还不认识时 undefined（不画）。 */
+  readonly shape: ShapeSettings | undefined;
+  /** 材质编译出来的着色器；材质是 null 时 undefined（不画）。 */
+  readonly program: MaterialProgram | undefined;
   readonly spawners: readonly ParticleSpawner[];
   readonly initializers: readonly ParticleInitializer[];
   readonly updaters: readonly ParticleUpdater[];
@@ -70,8 +75,8 @@ export class ParticleEmitter {
     this.drawPriority = value(file, 'drawPriority', 0);
     this.shapeBuilder = file['shapeBuilder'] === undefined ? { $type: 'shapeBuilderBillboard' } : (file['shapeBuilder'] as ParticleModuleFile | null);
     this.material = file['material'] === undefined ? { $type: 'particleMaterialComputeColor' } : (file['material'] as ParticleModuleFile | null);
-    const textureRef = (this.material?.['computeColor'] as ParticleModuleFile | null | undefined)?.['texture'] as TextureRef | null | undefined;
-    this.texture = textureRef ? textures(textureRef.texture) : undefined;
+    this.shape = this.shapeBuilder && SHAPES.has(String(this.shapeBuilder.$type)) ? new ShapeSettings(this.shapeBuilder) : undefined;
+    this.program = this.material ? compileMaterial(this.material, textures) : undefined;
     const modules = <T>(key: string, create: (module: ParticleModuleFile) => T | undefined): T[] =>
       ((file[key] as readonly ParticleModuleFile[] | undefined) ?? []).map(create).filter((module): module is T => module !== undefined);
     this.spawners = modules('spawners', createSpawner);

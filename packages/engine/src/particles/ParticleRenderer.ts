@@ -1,49 +1,42 @@
 /**
- * 画粒子（Stride 的 ParticleEmitterRenderFeature 加各形状的 ShapeBuilder、ParticleMaterialComputeColor）：每帧在 CPU 上把每个
- * 发射器的粒子展开成四边形（Billboard 正对相机、Quad 按粒子的朝向平放、Hexagon 正对相机的六边形，两个四边形），
- * 翻页动画按剩下的寿命取帧，所有发射器的顶点放进一个缓冲、写一次，每个发射器画一次。
+ * 画粒子（Stride 的 ParticleEmitterRenderFeature）：每帧在 CPU 上把每个发射器的粒子展开成四边形（形状见 shapes.ts），所有发射器的
+ * 顶点放进一个缓冲、写一次，每个发射器画一次。材质的颜色树编译成着色器（material.ts），同样的树共用流水线。
  *
- * 颜色照 Stride 的 ParticleComputeColorShader：组件的颜色 × 材质的颜色（贴图（按预乘 alpha 用，同 Stride 编译贴图时预乘）、
- * 粒子的颜色或常量），alpha 再乘 1 - AlphaAdditive（1 就是加法混合）；混合是预乘 alpha，和深度比较但不写深度，不剔除背面。
- * 粒子系统从远到近画，同一个系统里的发射器按 DrawPriority；包围盒（BoundingBoxStatic）在视锥外的系统不画（同 Stride 的剔除）。粒子的顺序：SortingPolicy 是 ByDepth 时从远到近，其余按池里的顺序。
+ * 颜色照 Stride 的 ParticleComputeColorShader：组件的颜色 × 材质的颜色，alpha 再乘 1 - AlphaAdditive（1 就是加法混合）；混合是
+ * 预乘 alpha，和深度比较但不写深度，不剔除背面。粒子系统从远到近画，同一个系统里的发射器按 DrawPriority；包围形状（BoundingBox、
+ * BoundingSphere）在视锥外的系统不画（同 Stride 的剔除）。粒子的顺序：SortingPolicy 是 ByDepth 时从远到近，其余按池里的顺序。
  */
-import type { ParticleModuleFile } from '../content/format';
 import { Matrix } from '../mathematics/Matrix';
 import type { GpuResources } from '../rendering/GpuResources';
 import type { RenderView } from '../rendering/RenderSystem';
-import type { Texture } from '../rendering/Texture';
-import { rotate, type Quat, type Vec3 } from './math';
-import { value } from './modules';
+import type { Vec3 } from './math';
+import type { MaterialProgram } from './material';
 import type { ParticleEmitter } from './ParticleEmitter';
 import type { ParticleSystemComponent } from './ParticleSystemComponent';
+import { buildShapes, VERTEX_FLOATS, type CameraAxes } from './shapes';
 
-/** 每个顶点：位置 3、UV 2、颜色 4。 */
-const VERTEX_FLOATS = 9;
-/** 每次绘制的参数（WGSL 里 128 字节）：视图投影 16、组件颜色 4、常量颜色 4、UV 的缩放和偏移 4、模式和 alpha 系数；按动态偏移的 256 字节对齐。 */
+/** 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数（WGSL 里 96 字节）；按动态偏移的 256 字节对齐。 */
 const UNIFORM_STRIDE = 256;
-const SQRT3_HALF = 0.86602540378;
+const UNIFORM_SIZE = 96;
 
-/** 材质颜色从哪来（着色器里的 mode）。 */
-const ColorMode = { texture: 0, vertex: 1, constant: 2 } as const;
-
-const SHADER = /* wgsl */ `
+const SHADER_HEAD = /* wgsl */ `
 struct Draw {
   viewProjection: mat4x4f,
   colorScale: vec4f,
-  constant: vec4f,
-  uvTransform: vec4f,
-  mode: u32,
   alphaFactor: f32,
 };
 @group(0) @binding(0) var<uniform> draw: Draw;
-@group(1) @binding(0) var colorTexture: texture_2d<f32>;
-@group(1) @binding(1) var colorSampler: sampler;
 
 struct Varyings {
   @builtin(position) position: vec4f,
   @location(0) uv: vec2f,
   @location(1) color: vec4f,
 };
+
+/** 贴图按预乘 alpha 用（同 Stride 编译贴图时预乘）。 */
+fn premultiply(texel: vec4f) -> vec4f {
+  return vec4f(texel.rgb * texel.a, texel.a);
+}
 
 @vertex fn vs(@location(0) position: vec3f, @location(1) uv: vec2f, @location(2) color: vec4f) -> Varyings {
   var out: Varyings;
@@ -54,14 +47,7 @@ struct Varyings {
 }
 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
-  let texel = textureSample(colorTexture, colorSampler, in.uv * draw.uvTransform.xy + draw.uvTransform.zw);
-  var base = draw.constant;
-  if (draw.mode == 0u) {
-    base = vec4f(texel.rgb * texel.a, texel.a);
-  } else if (draw.mode == 1u) {
-    base = in.color;
-  }
-  var color = draw.colorScale * base;
+  var color = draw.colorScale * materialColor(in.uv, in.color);
   color.a *= draw.alphaFactor;
   return color;
 }
@@ -71,19 +57,19 @@ struct Varyings {
 interface EmitterDraw {
   readonly firstQuad: number;
   readonly quads: number;
-  readonly texture: Texture | undefined;
+  readonly program: MaterialProgram;
   readonly uniformOffset: number;
 }
 
 export class ParticleRenderer {
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
-  readonly #module: GPUShaderModule;
   readonly #drawLayout: GPUBindGroupLayout;
-  readonly #textureLayout: GPUBindGroupLayout;
-  readonly #pipelineLayout: GPUPipelineLayout;
+  /** 按贴图数的贴图绑定组布局和流水线布局。 */
+  readonly #layouts = new Map<number, { textures: GPUBindGroupLayout; pipeline: GPUPipelineLayout }>();
+  readonly #modules = new Map<string, GPUShaderModule>();
   readonly #pipelines = new Map<string, GPURenderPipeline>();
-  readonly #textureGroups = new Map<GPUTexture, GPUBindGroup>();
+  readonly #textureGroups = new WeakMap<MaterialProgram, GPUBindGroup>();
   #vertices = new Float32Array(VERTEX_FLOATS * 4 * 1024);
   #vertexBuffer: GPUBuffer | undefined;
   #indexBuffer: GPUBuffer | undefined;
@@ -94,19 +80,10 @@ export class ParticleRenderer {
   constructor(device: GPUDevice, resources: GpuResources) {
     this.#device = device;
     this.#resources = resources;
-    this.#module = device.createShaderModule({ label: 'Particles', code: SHADER });
     this.#drawLayout = device.createBindGroupLayout({
       label: 'Particles draw',
-      entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 128 } }],
+      entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: UNIFORM_SIZE } }],
     });
-    this.#textureLayout = device.createBindGroupLayout({
-      label: 'Particles texture',
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: {} },
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
-      ],
-    });
-    this.#pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.#drawLayout, this.#textureLayout] });
   }
 
   /** 把 components 的粒子画进 pass（颜色格式 colorFormat、深度格式 depthFormat），按 view 的相机。 */
@@ -115,6 +92,7 @@ export class ParticleRenderer {
     if (!Matrix.invert(cameraWorld, view.view)) return;
     const right: Vec3 = [cameraWorld[0]!, cameraWorld[1]!, cameraWorld[2]!];
     const up: Vec3 = [cameraWorld[4]!, cameraWorld[5]!, cameraWorld[6]!];
+    const camera: CameraAxes = { right, up, back: [cameraWorld[8]!, cameraWorld[9]!, cameraWorld[10]!] };
     const eye: Vec3 = [cameraWorld[12]!, cameraWorld[13]!, cameraWorld[14]!];
     // 粒子系统从远到近
     const systems = components
@@ -127,23 +105,25 @@ export class ParticleRenderer {
     for (const { component } of systems) {
       const emitters = [...component.particleSystem.emitters].filter((emitter) => emitter.enabled).sort((a, b) => a.drawPriority - b.drawPriority);
       for (const emitter of emitters) {
-        if (!emitter.shapeBuilder || !emitter.material || emitter.pool.living === 0) continue;
+        const { shape, program, pool } = emitter;
+        if (!shape || !program || pool.living === 0) continue;
+        this.#reserve((quads + pool.living * shape.quadsPerParticle) * 4 * VERTEX_FLOATS);
+        const order = this.#order(emitter, camera);
+        const end = buildShapes(emitter, shape, camera, order, this.#vertices, quads * 4 * VERTEX_FLOATS, program.uv);
         const firstQuad = quads;
-        quads = this.#buildVertices(emitter, right, up, quads);
-        if (quads === firstQuad) continue;
-        const uniformOffset = draws.length * UNIFORM_STRIDE;
-        this.#writeUniforms(draws.length, view, component, emitter);
-        draws.push({ firstQuad, quads: quads - firstQuad, texture: emitter.texture, uniformOffset });
+        quads = end / (4 * VERTEX_FLOATS);
+        this.#writeUniforms(draws.length, view, component, program);
+        draws.push({ firstQuad, quads: quads - firstQuad, program, uniformOffset: draws.length * UNIFORM_STRIDE });
       }
     }
     if (draws.length === 0) return;
     this.#upload(quads, draws.length);
-    pass.setPipeline(this.#pipeline(colorFormat, depthFormat));
     pass.setVertexBuffer(0, this.#vertexBuffer!);
     pass.setIndexBuffer(this.#indexBuffer!, 'uint32');
-    for (const { firstQuad, quads: count, texture, uniformOffset } of draws) {
+    for (const { firstQuad, quads: count, program, uniformOffset } of draws) {
+      pass.setPipeline(this.#pipeline(program, colorFormat, depthFormat));
       pass.setBindGroup(0, this.#drawGroup!, [uniformOffset]);
-      pass.setBindGroup(1, this.#textureGroup(texture ? this.#resources.texture(texture) : this.#resources.white));
+      pass.setBindGroup(1, this.#textureGroup(program));
       pass.drawIndexed(count * 6, 1, firstQuad * 6);
     }
   }
@@ -154,106 +134,18 @@ export class ParticleRenderer {
     this.#uniformBuffer?.destroy();
   }
 
-  /** 发射器的粒子展开成四边形，从第 firstQuad 个起写进顶点数组；返回写完后的四边形数。 */
-  #buildVertices(emitter: ParticleEmitter, right: Readonly<Vec3>, up: Readonly<Vec3>, firstQuad: number): number {
-    const pool = emitter.pool;
-    const shape = emitter.shapeBuilder!.$type;
-    const quadsPerParticle = shape === 'shapeBuilderHexagon' ? 2 : 1;
-    if (shape !== 'shapeBuilderBillboard' && shape !== 'shapeBuilderQuad' && shape !== 'shapeBuilderHexagon') return firstQuad;
-    this.#reserve((firstQuad + pool.living * quadsPerParticle) * 4 * VERTEX_FLOATS);
-    const position = pool.field('position')!, size = pool.field('size'), angle = pool.field('rotation');
-    const quaternion = pool.field('quaternion'), color = pool.field('color'), life = pool.field('life')!;
-    // 局部模拟时粒子的位置按粒子系统的变换换到世界
-    const local = emitter.simulationSpace === 'local';
-    const space = emitter.drawTransform;
-    const flipbook = emitter.material!['uvBuilder'] as ParticleModuleFile | null | undefined;
-    const frames = flipbook?.$type === 'uvBuilderFlipbook' ? flipbookOf(flipbook) : undefined;
-    const order = this.#order(emitter, right, up);
-    const v = this.#vertices;
-    let at = firstQuad * 4 * VERTEX_FLOATS;
-    // 每个粒子的中心、两条半边、颜色和 UV（标量，不在循环里分配）
-    let cx = 0, cy = 0, cz = 0, ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0;
-    let r = 1, g = 1, b = 1, a = 1, u0 = 0, v0 = 0, us = 1, vs = 1;
-    const vertex = (sx: number, sy: number, u: number, w: number) => {
-      v[at] = cx + ax * sx + bx * sy; v[at + 1] = cy + ay * sx + by * sy; v[at + 2] = cz + az * sx + bz * sy;
-      v[at + 3] = u0 + us * u; v[at + 4] = v0 + vs * w;
-      v[at + 5] = r; v[at + 6] = g; v[at + 7] = b; v[at + 8] = a;
-      at += VERTEX_FLOATS;
-    };
-    const clamp = (c: number) => (c < 0 ? 0 : c > 1 ? 1 : c);
-    const center: Vec3 = [0, 0, 0], axisX: Vec3 = [0, 0, 0], axisY: Vec3 = [0, 0, 0];
-    const q: Quat = [0, 0, 0, 1];
-    const top = 0.5 - SQRT3_HALF * 0.5;
-    for (const i of order) {
-      center[0] = position[i * 3]!; center[1] = position[i * 3 + 1]!; center[2] = position[i * 3 + 2]!;
-      let half = (size ? size[i]! : 1) * 0.5;
-      if (local) {
-        rotate(space.worldRotation, center);
-        for (let k = 0; k < 3; k++) center[k] = center[k]! * space.worldScale[0] + space.worldPosition[k]!;
-        half *= space.worldScale[0];
-      }
-      cx = center[0]; cy = center[1]; cz = center[2];
-      if (shape === 'shapeBuilderQuad') {
-        axisX[0] = 1; axisX[1] = 0; axisX[2] = 0;
-        axisY[0] = 0; axisY[1] = 0; axisY[2] = 1;
-        if (quaternion) {
-          q[0] = quaternion[i * 4]!; q[1] = quaternion[i * 4 + 1]!; q[2] = quaternion[i * 4 + 2]!; q[3] = quaternion[i * 4 + 3]!;
-          rotate(q, axisX);
-          rotate(q, axisY);
-        }
-        if (local) {
-          rotate(space.worldRotation, axisX);
-          rotate(space.worldRotation, axisY);
-        }
-        ax = axisX[0] * half; ay = axisX[1] * half; az = axisX[2] * half;
-        bx = axisY[0] * half; by = axisY[1] * half; bz = axisY[2] * half;
-      } else {
-        ax = right[0] * half; ay = right[1] * half; az = right[2] * half;
-        bx = up[0] * half; by = up[1] * half; bz = up[2] * half;
-        if (angle && angle[i] !== 0) {
-          const cos = Math.cos(angle[i]!), sin = Math.sin(angle[i]!);
-          const x0 = ax * cos - bx * sin, x1 = ay * cos - by * sin, x2 = az * cos - bz * sin;
-          bx = bx * cos + ax * sin; by = by * cos + ay * sin; bz = bz * cos + az * sin;
-          ax = x0; ay = x1; az = x2;
-        }
-      }
-      if (color) {
-        r = clamp(color[i * 4]!); g = clamp(color[i * 4 + 1]!); b = clamp(color[i * 4 + 2]!); a = clamp(color[i * 4 + 3]!);
-      }
-      if (frames) [u0, v0, us, vs] = frames(life[i]!);
-      if (shape === 'shapeBuilderHexagon') {
-        // 两个四边形拼成六边形（Stride 的 ShapeBuilderHexagon）：上半是梯形加中线，下半同样
-        vertex(-0.5, SQRT3_HALF, 0.25, top);
-        vertex(0.5, SQRT3_HALF, 0.75, top);
-        vertex(1, 0, 1, 0.5);
-        vertex(-1, 0, 0, 0.5);
-        vertex(1, 0, 1, 0.5);
-        vertex(0.5, -SQRT3_HALF, 0.75, 1);
-        vertex(-0.5, -SQRT3_HALF, 0.25, 1);
-        vertex(-1, 0, 0, 0.5);
-      } else {
-        vertex(-1, 1, 0, 0);
-        vertex(1, 1, 1, 0);
-        vertex(1, -1, 1, 1);
-        vertex(-1, -1, 0, 1);
-      }
-    }
-    return firstQuad + order.length * quadsPerParticle;
-  }
-
   /** 画粒子的顺序：ByDepth 时从远到近（深度方向是相机的 Z 轴），其余按池里的顺序。 */
-  #order(emitter: ParticleEmitter, right: Readonly<Vec3>, up: Readonly<Vec3>): number[] {
+  #order(emitter: ParticleEmitter, camera: CameraAxes): number[] {
     const order = Array.from({ length: emitter.pool.living }, (_, i) => i);
     if (emitter.sortingPolicy !== 'byDepth') return order;
     const position = emitter.pool.field('position')!;
-    const depth: Vec3 = [right[1] * up[2] - right[2] * up[1], right[2] * up[0] - right[0] * up[2], right[0] * up[1] - right[1] * up[0]];
-    const key = (i: number) => position[i * 3]! * depth[0] + position[i * 3 + 1]! * depth[1] + position[i * 3 + 2]! * depth[2];
+    const [dx, dy, dz] = camera.back;
+    const key = (i: number) => position[i * 3]! * dx + position[i * 3 + 1]! * dy + position[i * 3 + 2]! * dz;
     return order.sort((a, b) => key(a) - key(b));
   }
 
   /** 第 index 次绘制的参数。 */
-  #writeUniforms(index: number, view: RenderView, component: ParticleSystemComponent, emitter: ParticleEmitter): void {
-    const material = emitter.material!;
+  #writeUniforms(index: number, view: RenderView, component: ParticleSystemComponent, program: MaterialProgram): void {
     const floats = UNIFORM_STRIDE / 4;
     if ((index + 1) * floats > this.#uniforms.length) {
       const grown = new Float32Array(this.#uniforms.length * 2);
@@ -263,20 +155,7 @@ export class ParticleRenderer {
     const u = this.#uniforms, at = index * floats;
     u.set(view.viewProjection, at);
     u.set(component.color, at + 16);
-    const compute = material['computeColor'] as ParticleModuleFile | null | undefined;
-    let mode: number = ColorMode.constant, constant = [1, 1, 1, 1], uvTransform = [1, 1, 0, 0];
-    if (compute?.$type === 'computeTextureColor') {
-      if (emitter.texture) {
-        mode = ColorMode.texture;
-        const [sx, sy] = value(compute, 'scale', [1, 1]), [ox, oy] = value(compute, 'offset', [0, 0]);
-        uvTransform = [sx!, sy!, ox!, oy!];
-      } else constant = value(value(compute, 'fallbackValue', {} as ParticleModuleFile), 'value', [1, 1, 1, 1]) as number[];
-    } else if (compute?.$type === 'computeVertexStreamColor') mode = ColorMode.vertex;
-    else if (compute?.$type === 'computeFloat4' || compute?.$type === 'computeColor') constant = [...value(compute, 'value', [1, 1, 1, 1])];
-    u.set(constant, at + 20);
-    u.set(uvTransform, at + 24);
-    new Uint32Array(u.buffer, (at + 28) * 4, 1)[0] = mode;
-    u[at + 29] = 1 - value(material, 'alphaAdditive', 0);
+    u[at + 20] = program.alphaFactor;
   }
 
   #reserve(floats: number): void {
@@ -308,20 +187,38 @@ export class ParticleRenderer {
     if (!this.#uniformBuffer || this.#uniformBuffer.size < uniformBytes) {
       this.#uniformBuffer?.destroy();
       this.#uniformBuffer = device.createBuffer({ label: 'Particles draws', size: Math.max(uniformBytes, this.#uniforms.byteLength), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-      this.#drawGroup = device.createBindGroup({ layout: this.#drawLayout, entries: [{ binding: 0, resource: { buffer: this.#uniformBuffer, size: 128 } }] });
+      this.#drawGroup = device.createBindGroup({ layout: this.#drawLayout, entries: [{ binding: 0, resource: { buffer: this.#uniformBuffer, size: UNIFORM_SIZE } }] });
     }
     device.queue.writeBuffer(this.#uniformBuffer, 0, this.#uniforms.buffer, 0, uniformBytes);
   }
 
-  #pipeline(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): GPURenderPipeline {
-    const key = `${colorFormat}:${depthFormat}`;
+  #layout(textureCount: number): { textures: GPUBindGroupLayout; pipeline: GPUPipelineLayout } {
+    let layout = this.#layouts.get(textureCount);
+    if (!layout) {
+      const textures = this.#device.createBindGroupLayout({
+        label: `Particles ${textureCount} textures`,
+        entries: Array.from({ length: textureCount }, (_, i) => [
+          { binding: i * 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+          { binding: i * 2 + 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        ]).flat(),
+      });
+      layout = { textures, pipeline: this.#device.createPipelineLayout({ bindGroupLayouts: [this.#drawLayout, textures] }) };
+      this.#layouts.set(textureCount, layout);
+    }
+    return layout;
+  }
+
+  #pipeline(program: MaterialProgram, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): GPURenderPipeline {
+    const key = `${colorFormat}:${depthFormat}:${program.code}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
+      let module = this.#modules.get(program.code);
+      if (!module) this.#modules.set(program.code, (module = this.#device.createShaderModule({ label: 'Particles', code: SHADER_HEAD + program.code })));
       pipeline = this.#device.createRenderPipeline({
         label: 'Particles',
-        layout: this.#pipelineLayout,
+        layout: this.#layout(program.textures.length).pipeline,
         vertex: {
-          module: this.#module,
+          module,
           entryPoint: 'vs',
           buffers: [{
             arrayStride: VERTEX_FLOATS * 4,
@@ -333,7 +230,7 @@ export class ParticleRenderer {
           }],
         },
         fragment: {
-          module: this.#module,
+          module,
           entryPoint: 'fs',
           // 预乘 alpha（Stride 的 BlendStates.AlphaBlend）
           targets: [{ format: colorFormat, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
@@ -346,14 +243,17 @@ export class ParticleRenderer {
     return pipeline;
   }
 
-  #textureGroup(texture: GPUTexture): GPUBindGroup {
-    let group = this.#textureGroups.get(texture);
+  #textureGroup(program: MaterialProgram): GPUBindGroup {
+    let group = this.#textureGroups.get(program);
     if (!group) {
       group = this.#device.createBindGroup({
-        layout: this.#textureLayout,
-        entries: [{ binding: 0, resource: texture.createView() }, { binding: 1, resource: this.#resources.sampler({}) }],
+        layout: this.#layout(program.textures.length).textures,
+        entries: program.textures.flatMap(({ texture, sampler }, i) => [
+          { binding: i * 2, resource: this.#resources.texture(texture).createView() },
+          { binding: i * 2 + 1, resource: this.#resources.sampler(sampler) },
+        ]),
       });
-      this.#textureGroups.set(texture, group);
+      this.#textureGroups.set(program, group);
     }
     return group;
   }
@@ -369,15 +269,4 @@ function inFrustum(bounds: [Vec3, Vec3] | undefined, planes: Readonly<Float32Arr
     if (distance < 0) return false;
   }
   return true;
-}
-
-/** 翻页动画（Stride 的 UVBuilderFlipbook）：按走过的寿命取第几帧，返回这一帧在贴图上的 [u, v, 宽, 高]。 */
-export function flipbookOf(file: ParticleModuleFile): (remainingLife: number) => [number, number, number, number] {
-  const x = Math.max(1, value(file, 'xDivisions', 4)), y = Math.max(1, value(file, 'yDivisions', 4));
-  const start = Math.min(value(file, 'startingFrame', 0), x * y);
-  const speed = value(file, 'animationSpeed', 16);
-  return (remainingLife) => {
-    const frame = start + Math.trunc((1 - remainingLife) * speed);
-    return [(frame % x) / x, Math.floor(frame / x) / y, 1 / x, 1 / y];
-  };
 }

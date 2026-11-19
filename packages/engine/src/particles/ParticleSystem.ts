@@ -15,8 +15,12 @@ export class ParticleSystem implements EmitterParent {
   readonly emitters: readonly ParticleEmitter[];
   /** 开始时先模拟这么多秒（Stride 的 Settings.WarmupTime）。 */
   readonly warmupTime: number;
-  /** 本地的包围盒（Stride 的 BoundingBoxStatic）：画的时候按它剔除，粒子飞出去也不改；没有时不剔除。 */
+  /**
+   * 本地的包围形状（Stride 的 BoundingBoxStatic、BoundingSphereStatic）：画的时候按它剔除，粒子飞出去也不改；没有时不剔除。
+   * 球存成半径。
+   */
   readonly boundingBox: { readonly minimum: Vec3; readonly maximum: Vec3 } | undefined;
+  readonly boundingRadius: number | undefined;
   translation: Vec3 = [0, 0, 0];
   rotation: Quat = [0, 0, 0, 1];
   uniformScale = 1;
@@ -33,10 +37,19 @@ export class ParticleSystem implements EmitterParent {
     this.boundingBox = shape?.$type === 'boundingBoxStatic'
       ? { minimum: [...value(shape, 'minimum', [-1, -1, -1])] as Vec3, maximum: [...value(shape, 'maximum', [1, 1, 1])] as Vec3 }
       : undefined;
+    // Stride 的类名就拼错成这样
+    this.boundingRadius = shape?.$type === 'boundingSpheretatic' ? value(shape, 'radius', 1) : undefined;
   }
 
-  /** 世界里的包围盒 [最小角, 最大角]：本地包围盒的角按旋转、统一缩放、位置变换后取范围（Stride 的 GetAABB）。 */
+  /**
+   * 世界里的包围盒 [最小角, 最大角]（Stride 的 GetAABB）：包围盒的角按旋转、统一缩放、位置变换后取范围；球是位置周围
+   * 半径乘缩放的立方体。
+   */
   worldBounds(): [Vec3, Vec3] | undefined {
+    if (this.boundingRadius !== undefined) {
+      const r = this.boundingRadius * this.uniformScale;
+      return [this.translation.map((t) => t - r) as Vec3, this.translation.map((t) => t + r) as Vec3];
+    }
     const box = this.boundingBox;
     if (!box) return undefined;
     const min = box.minimum.map((m, k) => (m + box.maximum[k]!) / 2) as Vec3, max = [...min] as Vec3;

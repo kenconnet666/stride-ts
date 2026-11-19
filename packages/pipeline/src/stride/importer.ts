@@ -375,6 +375,8 @@ export class StrideImporter {
   #assetImporter(asset: AssetEntry, where: string): [SceneAssetKind, () => Promise<string>] | undefined {
     const kinds: Record<string, [SceneAssetKind, () => Promise<string>]> = {
       Model: ['model', () => this.#model(asset)],
+      // 程序模型编出来也是模型（Stride 的 Model 类型的属性可以引用它）
+      ProceduralModelAsset: ['model', () => this.#model(asset)],
       MaterialAsset: ['material', () => this.#materials.material(asset)],
       Animation: ['animation', () => this.#animation(asset)],
       SceneAsset: ['scene', () => Promise.resolve(asset.path)],
@@ -963,7 +965,8 @@ export class StrideImporter {
     const material = materialAsset ? await this.#materials.material(materialAsset) : null;
     let mesh: SourceMesh = {
       name: 'mesh0',
-      material: material === null ? null : 0,
+      // 程序模型总有一个材质槽（Stride 的 MaterialInstance）：模型自己没给材质时槽是空的，实体的 Materials 照样能按槽覆盖
+      material: 0,
       vertices: interleave({ positions: generated.positions, normals: generated.normals, uvs: generated.uvs }, [0, 0, 0], 1),
       indices: generated.indices,
     };
@@ -971,7 +974,7 @@ export class StrideImporter {
     const encoded = this.#options.plain
       ? [plainMesh(mesh.name, mesh.material, mesh.vertices, mesh.vertices.length / VERTEX_FLOATS <= 0xffff ? Uint16Array.from(mesh.indices) : mesh.indices, mesh.tangents ? { tangents: mesh.tangents } : {})]
       : compressMeshes([mesh], this.#tools);
-    await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes: encoded, materials: material === null ? [] : [material] }));
+    await this.#write(asset.path + EXTENSIONS.model, encodeModel({ meshes: encoded, materials: [material] }));
   }
 
   /** 导入骨架资源（.sdskel），同一个只导入一次。 */

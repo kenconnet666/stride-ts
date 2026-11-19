@@ -137,6 +137,9 @@ describe('导入 Stride 场景', () => {
     plain: '11111111-0000-0000-0000-0000000000f1',
     odd: '11111111-0000-0000-0000-0000000000f2',
     oddTexture: '11111111-0000-0000-0000-0000000000f3',
+    floor: '11111111-0000-0000-0000-0000000000a5',
+    muted: '11111111-0000-0000-0000-0000000000a6',
+    pipe: '11111111-0000-0000-0000-0000000000a7',
     heroSheet: '11111111-0000-0000-0000-0000000000f4',
     bumpy: '11111111-0000-0000-0000-000000000009',
     bumps: '11111111-0000-0000-0000-00000000000a',
@@ -203,7 +206,7 @@ describe('导入 Stride 场景', () => {
       '!MaterialAsset',
       `Id: ${ids.material}`,
       'Attributes:',
-      '    Diffuse: !MaterialDiffuseMapFeature',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}', '    Diffuse: !MaterialDiffuseMapFeature',
       '        DiffuseMap: !ComputeBinaryColor',
       '            Operator: Add',
       '            LeftChild: !ComputeColor',
@@ -212,7 +215,7 @@ describe('导入 Stride 场景', () => {
       `                Texture: ${ids.texture}:Textures/Checker`,
       '                Scale: {X: 2.0, Y: 2.0}',
       '                Offset: {X: 0.5, Y: 0.0}',
-      '    Specular: !MaterialMetalnessMapFeature',
+      '    SpecularModel: !MaterialSpecularMicrofacetModelFeature {}', '    Specular: !MaterialMetalnessMapFeature',
       '        MetalnessMap: !ComputeFloat',
       '            Value: 0.25',
       '    MicroSurface: !MaterialGlossinessMapFeature',
@@ -254,7 +257,7 @@ describe('导入 Stride 场景', () => {
       '            Scale: {X: 4.0, Y: 4.0}',
       '            Offset: {X: 0.0, Y: 0.0}',
       '        IsXYNormal: true',
-      '    Diffuse: !MaterialDiffuseMapFeature',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}', '    Diffuse: !MaterialDiffuseMapFeature',
       '        DiffuseMap: !ComputeColor',
       '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
     ].join('\n'),
@@ -263,8 +266,8 @@ describe('导入 Stride 场景', () => {
     // PhysicsSample 用到的材质特性：镜面颜色、遮蔽贴图（G 通道）、贴图乘 Float4 的自发光、透明混合；材质层还不支持
     'Assets/Materials/Glass.sdmat': [
       '!MaterialAsset', `Id: ${ids.glass}`, 'Attributes:',
-      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
-      '    Specular: !MaterialSpecularMapFeature', '        SpecularMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}', '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    SpecularModel: !MaterialSpecularMicrofacetModelFeature {}', '    Specular: !MaterialSpecularMapFeature', '        SpecularMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
       '        Intensity: !ComputeFloat', '            Value: 0.5',
       '    Occlusion: !MaterialOcclusionMapFeature', '        AmbientOcclusionMap: !ComputeTextureScalar', `            Texture: ${ids.texture}:Textures/Checker`,
       '            Channel: G', '            Scale: {X: 2.0, Y: 2.0}', '        DirectLightingFactor: !ComputeFloat', '            Value: 0.5',
@@ -291,7 +294,7 @@ describe('导入 Stride 场景', () => {
     // SpaceEscape 的 ef00：Alpha 裁剪
     'Assets/Materials/Leaf.sdmat': [
       '!MaterialAsset', `Id: ${ids.leaf}`, 'Attributes:',
-      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}', '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
       '    Transparency: !MaterialTransparencyCutoffFeature', '        Alpha: !ComputeFloat', '            Value: 0.3',
       'Layers: {}',
     ].join('\n'),
@@ -355,8 +358,37 @@ describe('导入 Stride 场景', () => {
     'Resources/odd.png': encodePng(6, 5, new Uint8Array(6 * 5 * 4).fill(255)),
     'Assets/Textures/Odd.sdtex': ['!Texture', `Id: ${ids.oddTexture}`, 'Source: ../../Resources/odd.png', 'Type: !ColorTextureType {}'].join('\n'),
     'Assets/Materials/Odd.sdmat': [
-      '!MaterialAsset', `Id: ${ids.odd}`, 'Attributes:', '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeTextureColor',
+      '!MaterialAsset', `Id: ${ids.odd}`, 'Attributes:', '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}', '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeTextureColor',
       `            Texture: ${ids.oddTexture}:Textures/Odd`,
+    ].join('\n'),
+    // SamplesAssetPackage 的木地板（board1B）：光泽度是"贴图 × 0.3"（反相），镜面带贴图，法线贴图乘一个数
+    'Assets/Materials/Floor.sdmat': [
+      '!MaterialAsset', `Id: ${ids.floor}`, 'Attributes:',
+      '    Surface: !MaterialNormalMapFeature', '        NormalMap: !ComputeBinaryColor', '            Operator: Multiply',
+      '            LeftChild: !ComputeTextureColor', `                Texture: ${ids.bumps}:Textures/Bumps`,
+      '            RightChild: !ComputeFloat4', '                Value: {X: 0.02, Y: 0.02, Z: 1.0, W: 1.0}',
+      '        ScaleAndBias: false', '        IsXYNormal: true',
+      '    MicroSurface: !MaterialGlossinessMapFeature', '        GlossinessMap: !ComputeBinaryScalar', '            Operator: Multiply',
+      '            LeftChild: !ComputeTextureScalar', `                Texture: ${ids.texture}:Textures/Checker`,
+      '            RightChild: !ComputeFloat', '                Value: 0.3', '        Invert: true',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}', '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    Specular: !MaterialSpecularMapFeature', '        SpecularMap: !ComputeTextureColor', `            Texture: ${ids.texture}:Textures/Checker`,
+      '        Intensity: !ComputeFloat', '            Value: 0.3',
+      'Layers: {}',
+    ].join('\n'),
+    // CSharpIntermediate 的 Red：停用的自发光（Enabled: false）；漫反射的贴图节点停用了，用后备颜色
+    'Assets/Materials/Muted.sdmat': [
+      '!MaterialAsset', `Id: ${ids.muted}`, 'Attributes:',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}',
+      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeTextureColor', `            Texture: ${ids.texture}:Textures/Checker`,
+      '            FallbackValue:', '                Value: {R: 1.0, G: 0.0, B: 0.0, A: 1.0}', '            Enabled: false',
+      '    Emissive: !MaterialEmissiveMapFeature', '        Enabled: false', '        EmissiveMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '        Intensity: !ComputeFloat', '            Value: 5.0',
+      'Layers: {}',
+    ].join('\n'),
+    // 没给材质的程序模型（CSharpIntermediate 的激光：圆柱，材质由实体的 Materials 覆盖）
+    'Assets/Models/Pipe.sdpromodel': [
+      '!ProceduralModelAsset', `Id: ${ids.pipe}`, 'Type: !CylinderProceduralModel', '    Height: 2.0', '    Radius: 0.5', '    MaterialInstance:', '        Material: null',
     ].join('\n'),
     // 精灵表（Platformer2D 的 knight_sheet）：两张源图，精灵按区域取
     'Assets/Sprites/Hero.sdsheet': [
@@ -730,6 +762,55 @@ describe('导入 Stride 场景', () => {
       props: { uiLibrary: { $asset: 'Game/UI/Lib', kind: 'uiLibrary' }, images: { $asset: 'Game/Sprites/Hero', kind: 'spriteSheet' }, click: { $asset: 'Game/Sounds/Click', kind: 'sound' } },
     }]);    expect(JSON.parse(await readFile(path.join(out, 'Game/Sounds/Click.sound.json'), 'utf8'))).toEqual({ name: 'Click', encoding: 'wav', streamFromDisk: false, spatialized: true });
     expect(await readFile(path.join(out, 'Game/Sounds/Click.wav'), 'utf8')).toBe('RIFF....WAVE');
+  });
+
+  test('材质自己的属性化不成固定槽时整棵树导出：镜面、光泽度放进最底下一层盖满的材质层，法线是 normalTree', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-surface-trees');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' });
+    await importer.importAsset(project.byPath('Game/Materials/Floor')!);
+    const floor = JSON.parse(await readFile(path.join(out, 'Game/Materials/Floor.material.json'), 'utf8')) as MaterialFile;
+    const checker = { texture: 'Game/Textures/Checker', encoding: 'png', srgb: true };
+    // 固定槽里是占位的值（镜面工作流、粗糙度不看），真的值在层里；材质没有 SpecularModel：不画镜面反射
+    expect([floor.specular, floor.glossinessTexture, floor.normalMap, floor.specularShading]).toEqual([[0, 0, 0], undefined, undefined, false]);
+    expect(floor.layers).toEqual([{
+      blend: { $type: 'computeFloat', value: 1 },
+      specular: { color: { $type: 'computeTextureColor', texture: checker }, intensity: { $type: 'computeFloat', value: 0.3 } },
+      glossiness: {
+        tree: { $type: 'computeBinaryScalar', operator: 'multiply', leftChild: { $type: 'computeTextureScalar', texture: checker }, rightChild: { $type: 'computeFloat', value: 0.3 } },
+        invert: true,
+      },
+    }]);
+    // 法线贴图的绿色通道翻转记在树里的贴图上
+    expect(floor.normalTree).toEqual({
+      tree: {
+        $type: 'computeBinaryColor', operator: 'multiply',
+        leftChild: { $type: 'computeTextureColor', texture: { texture: 'Game/Textures/Bumps', encoding: 'png', srgb: false, invertY: true } },
+        rightChild: { $type: 'computeFloat4', value: [0.02, 0.02, 1, 1] },
+      },
+      scaleAndBias: false, isXYNormal: true,
+    });
+    // 常量的镜面、光泽度照旧在固定槽里，没有多出来的层
+    await importer.importAsset(project.byPath('Game/Materials/Glass')!);
+    const glass = JSON.parse(await readFile(path.join(out, 'Game/Materials/Glass.material.json'), 'utf8')) as MaterialFile;
+    expect([glass.specular, glass.specularShading, glass.layers?.length]).toEqual([[0.5, 0.5, 0.5], undefined, 1]);
+  });
+
+  test('程序模型没给材质时也有一个（空的）材质槽，实体的 Materials 才能按槽覆盖', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-procedural');
+    await new StrideImporter(project, tools, out, { specularCubemapSize: 16 }).importAsset(project.byPath('Game/Models/Pipe')!);
+    const pipe = decodeModel((await readFile(path.join(out, 'Game/Models/Pipe.model'))).buffer as ArrayBuffer);
+    expect([pipe.materials, pipe.meshes.map((m) => m.material)]).toEqual([[null], [0]]);
+  });
+
+  test('停用的特性（Enabled: false）不导入；停用的贴图节点用后备值', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-disabled');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16, textureEncoding: 'source' });
+    await importer.importAsset(project.byPath('Game/Materials/Muted')!);
+    const muted = JSON.parse(await readFile(path.join(out, 'Game/Materials/Muted.material.json'), 'utf8')) as MaterialFile;
+    expect(muted).toEqual({ name: 'Muted', baseColor: [1, 0, 0, 1], roughness: 1 });
   });
 
   test('单独导入脚本用代码加载的资源（Content.Load 的材质）；场景不能这样导入', async () => {

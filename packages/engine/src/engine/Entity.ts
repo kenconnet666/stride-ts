@@ -106,9 +106,16 @@ export class Entity {
     return this;
   }
 
-  /** 这个名字的直接子实体（Stride 的 Entity.FindChild），没有时是 undefined；同名的取先加上的那个。 */
+  /**
+   * 子孙实体里第一个叫这个名字的（Stride 的 Entity.FindChild），没有时是 undefined。按深度优先、子实体的顺序找；要遍历整棵子树，
+   * 别每帧调。和 Stride 不同：不会找到自己（Stride 从自己找起，自己同名时返回自己），同名的先找到靠前的子实体（Stride 是靠后的）。
+   */
   findChild(name: string): Entity | undefined {
-    return this.get(Transform)?.children.find((child) => child.name === name);
+    for (const child of this.get(Transform)?.children ?? []) {
+      const found = child.name === name ? child : child.findChild(name);
+      if (found) return found;
+    }
+    return undefined;
   }
 
   /** 把这个实体连同子实体再建一份（Stride 的 Entity.Clone），见 engine/clone.ts。 */

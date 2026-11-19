@@ -1,6 +1,6 @@
 /**
  * Stride 的材质（.sdmat）、贴图（.sdtex）和天空盒（.sdsky）导入成运行时内容：材质的颜色树化成"一张贴图按运算符组合一个颜色"
- * （有着色器类的自发光整棵树导出，运行时编译），
+ * 这样固定的形状（运行时不用按材质编着色器）；化不成的（有着色器类、光泽度是运算、镜面带贴图……）整棵树导出，运行时编译，
  * 贴图编成 KTX2（Basis UASTC）或原样复制源图，HDR 立方体贴图导出成 .cubemap，天空盒的漫反射算成球谐。同一个资源只导入一次。
  */
 import { access, readFile } from 'node:fs/promises';
@@ -85,20 +85,31 @@ export class MaterialImporter {
   }
 
   async #convert(asset: AssetEntry): Promise<MaterialFile> {
-    const attributes = asObject(asset.data['Attributes']) ?? {};
+    const attributes = materialAttributes(asset);
     const diffuse = asObject(asObject(attributes['Diffuse'])?.['DiffuseMap']);
     const uvScale = vec2(asObject(attributes['Overrides'])?.['UVScale'], 1);
     const { color, texture, operator } = diffuse ? this.#evaluateColor(diffuse, asset, uvScale) : { color: WHITE, operator: 'multiply' as const };
     const specular = asObject(attributes['Specular']);
     const workflow = specular?.$type;
     if (specular && workflow !== 'MaterialMetalnessMapFeature' && workflow !== 'MaterialSpecularMapFeature') this.#context.warnings.push(`${asset.file}: specular ${workflow ?? 'feature'} is not supported; the material has no specular`);
-    const metalness = workflow === 'MaterialMetalnessMapFeature' ? this.#scalar(asObject(specular!['MetalnessMap']), 0, asset) : undefined;
+    // 镜面的颜色（Specular）和着色模型（SpecularModel）是分开的两个特性：没有模型就不画镜面反射
+    const specularModel = asObject(attributes['SpecularModel'])?.$type;
+    if (specularModel && specularModel !== 'MaterialSpecularMicrofacetModelFeature') {
+      this.#context.warnings.push(`${asset.file}: specular model ${specularModel} is not supported yet; using the microfacet model`);
+    }
+    // 漫反射同理；没有模型的（Stride 不算漫反射光照）现在只在玻璃材质里见过，照有模型画
+    if (attributes['Diffuse'] && !attributes['DiffuseModel'] && specularModel !== 'MaterialSpecularThinGlassModelFeature') {
+      this.#context.warnings.push(`${asset.file}: a material without a diffuse model is not supported yet; shading its diffuse color as Lambert`);
+    }
+    // 化不成固定槽的属性整棵树放进 trees（最底下一层盖满的材质层）；固定槽里留个占位的值，只用来定工作流
+    const trees = await this.#surfaceTrees(attributes, asset, uvScale);
+    const metalness = workflow !== 'MaterialMetalnessMapFeature' ? undefined : trees?.metalness ? 0 : this.#scalar(asObject(specular!['MetalnessMap']), 0, asset);
     const microSurface = asObject(attributes['MicroSurface']);
     const glossinessMap = asObject(microSurface?.['GlossinessMap']);
     // Invert 为真时这张图存的是粗糙度（MaterialGlossinessMapFeature.Invert）
     const invert = microSurface?.['Invert'] === true;
     const glossinessTexture = glossinessMap?.$type === 'ComputeTextureScalar' ? await this.#scalarTexture(glossinessMap, asset, uvScale) : undefined;
-    const glossiness = glossinessTexture ? 0 : this.#scalar(glossinessMap, 0, asset);
+    const glossiness = glossinessTexture || trees?.glossiness ? 0 : this.#scalar(glossinessMap, 0, asset);
     const roughness = invert ? glossiness : 1 - glossiness;
     const material: MaterialFile = {
       name: path.basename(asset.path),
@@ -106,8 +117,9 @@ export class MaterialImporter {
       ...(texture ? { baseColorTexture: textureSlot(await texture.load(), texture.scale, texture.offset, texture.sampler) } : {}),
       ...(texture && operator !== 'multiply' ? { baseColorOperator: operator } : {}),
       ...(metalness === undefined ? {} : { metalness }),
-      ...(workflow === 'MaterialSpecularMapFeature' ? { specular: this.#specularColor(specular!, asset, uvScale) } : {}),
+      ...(workflow === 'MaterialSpecularMapFeature' ? { specular: trees?.specular ? ([0, 0, 0] as const) : this.#specularColor(specular!, asset, uvScale) } : {}),
       ...(workflow === 'MaterialSpecularMapFeature' && specular!['IsEnergyConservative'] === false ? { specularEnergyConservative: false as const } : {}),
+      ...(specular && !specularModel ? { specularShading: false as const } : {}),
       roughness,
       ...(glossinessTexture ? { glossinessTexture: { ...glossinessTexture, invert } } : {}),
       ...await this.#emissive(asObject(attributes['Emissive']), asset, uvScale),
@@ -117,8 +129,32 @@ export class MaterialImporter {
       ...this.#transparency(asObject(attributes['Transparency']), asset, uvScale),
       ...this.#cullMode(attributes['CullMode'], asset),
     };
-    const layers = await this.#layers(asset);
+    const layers = [...(trees ? [trees] : []), ...await this.#layers(asset)];
     return layers.length > 0 ? { ...material, layers } : material;
+  }
+
+  /**
+   * 材质自己的金属度、镜面、光泽度里化不成固定槽的（不是常量，也不是固定槽认的那一张贴图）：整棵树放进一个遮罩是常量 1 的材质层，
+   * 运行时和材质层走同一条路径、盖住固定槽的值。SamplesAssetPackage 的木地板（board1B）是这样的：光泽度是"贴图 × 0.3"，镜面带贴图。
+   * 都化得成时是 undefined。
+   */
+  async #surfaceTrees(attributes: StrideObject, asset: AssetEntry, uvScale: readonly [number, number]): Promise<MaterialLayerFile | undefined> {
+    const tree = (node: StrideValue | undefined, what: string) => this.#colorTree(asObject(node) ?? {}, asset, what);
+    const specular = asObject(attributes['Specular']);
+    const microSurface = asObject(attributes['MicroSurface']);
+    const glossinessMap = asObject(microSurface?.['GlossinessMap']);
+    const intensity = specular?.['Intensity'] ?? { $type: 'ComputeFloat', Value: 1 };
+    const surface: Omit<MaterialLayerFile, 'blend'> = {
+      ...(specular?.$type === 'MaterialSpecularMapFeature' && !(isConstant(specular['SpecularMap']) && isConstant(intensity))
+        ? { specular: { color: await tree(specular['SpecularMap'], 'specular'), intensity: await tree(intensity, 'specular intensity') } } : {}),
+      ...(specular?.$type === 'MaterialMetalnessMapFeature' && !isConstant(specular['MetalnessMap']) ? { metalness: await tree(specular['MetalnessMap'], 'metalness') } : {}),
+      // 单独一张贴图的光泽度有固定槽（glossinessTexture）
+      ...(glossinessMap && glossinessMap.$type !== 'ComputeTextureScalar' && !isConstant(glossinessMap)
+        ? { glossiness: { tree: await tree(glossinessMap, 'glossiness'), invert: microSurface!['Invert'] === true } } : {}),
+    };
+    if (Object.keys(surface).length === 0) return undefined;
+    if (uvScale[0] !== 1 || uvScale[1] !== 1) this.#context.warnings.push(`${asset.file}: UVScale is not applied to the specular, metalness and glossiness color trees`);
+    return { blend: await tree({ $type: 'ComputeFloat', Value: 1 }, 'surface'), ...surface };
   }
 
   /**
@@ -137,7 +173,7 @@ export class MaterialImporter {
       const uvScale = vec2(asObject(layer['Overrides'])?.['UVScale'], 1);
       if (uvScale[0] !== 1 || uvScale[1] !== 1) this.#context.warnings.push(`${where}: UVScale overrides are not supported yet`);
       const sub = this.#context.project.get(reference.id, asset.file);
-      const attributes = asObject(sub.data['Attributes']) ?? {};
+      const attributes = materialAttributes(sub);
       const tree = (node: StrideValue | undefined, what: string) => this.#colorTree(asObject(node) ?? {}, sub, what);
       const diffuse = asObject(asObject(attributes['Diffuse'])?.['DiffuseMap']);
       const specular = asObject(attributes['Specular']);
@@ -207,20 +243,18 @@ export class MaterialImporter {
     const node = asObject(surface['NormalMap']) ?? {};
     const reference = parseAssetReference(node['Texture']);
     const rules = { scaleAndBias: surface['ScaleAndBias'] !== false, isXYNormal: surface['IsXYNormal'] !== false };
-    if (hasShaderClass(node)) return { normalTree: { tree: await this.#colorTree(node, asset, 'normal map'), ...rules } };
-    if (node.$type !== 'ComputeTextureColor' || !reference) {
-      this.#context.warnings.push(`${asset.file}: normal map ${node.$type ?? 'value'} without a texture is not supported; using the vertex normals`);
-      return {};
-    }
+    // 不是单独一张贴图的（着色器类、贴图乘一个数……）整棵树导出
+    if (node.$type !== undefined && node.$type !== 'ComputeTextureColor') return { normalTree: { tree: await this.#colorTree(node, asset, 'normal map'), ...rules } };
+    // 没写法线贴图，或者贴图节点里没有贴图：照顶点的法线
+    if (!reference) return {};
     const textureAsset = this.#context.project.get(reference.id, asset.file);
-    const type = asObject(textureAsset.data['Type']);
     const scale = vec2(node['Scale'], 1);
     const slot = textureSlot(await this.texture(textureAsset), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(node['Offset'], 0), samplerOf(node));
     return {
       normalMap: {
         ...slot,
         ...rules,
-        invertY: type?.$type === 'NormalMapTextureType' && type['InvertY'] !== false,
+        invertY: invertsY(textureAsset),
       },
     };
   }
@@ -244,8 +278,9 @@ export class MaterialImporter {
   #colorTree(node: StrideObject, asset: AssetEntry, what: string): Promise<ParticleModuleFile> {
     return importColorTree(node, `${asset.file}: ${what}`, {
       texture: async (id) => {
-        const { texture, encoding, size, srgb } = await this.texture(this.#context.project.get(id, asset.file));
-        return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb };
+        const textureAsset = this.#context.project.get(id, asset.file);
+        const { texture, encoding, size, srgb } = await this.texture(textureAsset);
+        return { texture, ...(encoding === 'ktx2' ? {} : { encoding }), ...(size ? { size } : {}), srgb, ...(invertsY(textureAsset) ? { invertY: true } : {}) };
       },
       entity: () => undefined,
       warn: (message) => this.#context.warnings.push(message),
@@ -548,6 +583,48 @@ const BINARY_OPERATORS: Readonly<Record<string, (a: number, b: number) => number
 };
 
 /** 颜色树里有没有着色器类（ComputeShaderClassColor）。 */
+/**
+ * 材质的 Attributes，去掉停用的东西（同 Stride 生成着色器时的做法）：停用的特性（MaterialFeature.Enabled 是 false）整个不要；
+ * 停用的贴图节点（ComputeTextureBase.Enabled 是 false）不用贴图，用它的后备值。
+ */
+function materialAttributes(asset: AssetEntry): StrideObject {
+  const features = Object.entries(asObject(asset.data['Attributes']) ?? {}).filter(([, feature]) => asObject(feature)?.['Enabled'] !== false);
+  return Object.fromEntries(features.map(([name, feature]) => [name, withoutDisabledTextures(feature)]));
+}
+
+function withoutDisabledTextures(value: StrideValue | undefined): StrideValue | undefined {
+  const node = asObject(value);
+  if (!node) return value;
+  const entries = Object.entries(node).filter(([key]) => !(key === 'Texture' && node['Enabled'] === false));
+  return Object.fromEntries(entries.map(([key, child]) => [key, withoutDisabledTextures(child)])) as StrideObject;
+}
+
+/** 法线贴图的绿色通道要不要翻转（NormalMapTextureType 的 InvertY，默认 true）。 */
+function invertsY(texture: AssetEntry): boolean {
+  const type = asObject(texture.data['Type']);
+  return type?.$type === 'NormalMapTextureType' && type['InvertY'] !== false;
+}
+
+/** 颜色树或标量树导入时就能算成常量：没有贴图、着色器类，二元运算是导入器会算的那几个。 */
+function isConstant(value: StrideValue | undefined): boolean {
+  const node = asObject(value);
+  switch (node?.$type) {
+    case undefined:
+    case 'ComputeColor':
+    case 'ComputeFloat4':
+    case 'ComputeFloat':
+      return true;
+    case 'ComputeTextureColor':
+    case 'ComputeTextureScalar':
+      return parseAssetReference(node['Texture']) === undefined;
+    case 'ComputeBinaryColor':
+    case 'ComputeBinaryScalar':
+      return String(node['Operator']) in BINARY_OPERATORS && isConstant(node['LeftChild']) && isConstant(node['RightChild']);
+    default:
+      return false;
+  }
+}
+
 function hasShaderClass(node: StrideValue | undefined): boolean {
   if (!node || typeof node !== 'object') return false;
   if (Array.isArray(node)) return node.some(hasShaderClass);

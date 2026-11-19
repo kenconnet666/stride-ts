@@ -284,6 +284,7 @@ export class ContentManager {
         ...(file.metalness === undefined ? {} : { metalness: file.metalness }),
         ...(file.specular ? { specular: file.specular } : {}),
         ...(file.specularEnergyConservative === false ? { specularEnergyConservative: false } : {}),
+        ...(file.specularShading === false ? { specularShading: false } : {}),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
         ...(glossinessTexture ? { glossinessMap: { ...glossinessTexture, channel: file.glossinessTexture!.channel, invert: file.glossinessTexture!.invert } } : {}),
         ...(file.emissive ? { emissive: file.emissive } : {}),

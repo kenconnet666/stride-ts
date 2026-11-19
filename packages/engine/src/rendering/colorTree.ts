@@ -6,7 +6,7 @@
  * - ComputeTextureScalar：采样贴图的一个通道（Channel，默认 R），四个分量都是它；
  * - ComputeVertexStreamColor：顶点颜色（粒子的颜色）；
  * - ComputeFloat4、ComputeFloat：常量；ComputeColor：常量颜色，换到线性空间、预乘 alpha（同 Stride 的 ToColorSpace、PremultiplyAlpha）；
- * - ComputeBinaryColor：两个子节点按 Operator 合成（现在有 Multiply、Add、Subtract、Overlay，别的先当 Multiply 并警告）；
+ * - ComputeBinaryColor、ComputeBinaryScalar：两个子节点按 Operator 合成（现在有 Multiply、Add、Subtract、Overlay，别的先当 Multiply 并警告）；
  * - ComputeShaderClassColor：游戏登记的着色器类（Stride 的 .sdsl 着色器类写成 WGSL），泛型参数按名字传。
  * 认不出的节点当白色。树的格式同粒子模块（ParticleModuleFile：$type 是首字母小写的类名，贴图是 TextureRef）。
  */
@@ -28,6 +28,8 @@ const WHITE = 'vec4f(1.0)';
 const OPERATORS: Readonly<Record<string, string>> = {
   overlay: 'fn overlay(a: vec4f, b: vec4f) -> vec4f {\n  return mix(2.0 * a * b, 1.0 - 2.0 * (1.0 - a) * (1.0 - b), step(b, vec4f(0.5)));\n}\n',
 };
+/** TextureRef.invertY 的贴图采样后翻转绿色通道。 */
+const FLIP_GREEN = 'fn flipGreen(texel: vec4f) -> vec4f {\n  return vec4f(texel.r, 1.0 - texel.g, texel.b, texel.a);\n}\n';
 const warned = new Set<string>();
 
 /** 节点的属性：没写时取默认值。 */
@@ -88,7 +90,8 @@ export class ColorTreeCompiler {
         const premultiply = get(file, 'premultiplyAlpha', true) ? a! : 1;
         return literal4([srgbToLinear(r!) * premultiply, srgbToLinear(g!) * premultiply, srgbToLinear(b!) * premultiply, a!]);
       }
-      case 'computeBinaryColor': {
+      case 'computeBinaryColor':
+      case 'computeBinaryScalar': {
         const left = this.color(file['leftChild']), right = this.color(file['rightChild']);
         const operator = String(file['operator'] ?? 'multiply');
         if (operator === 'add') return `(${left} + ${right})`;
@@ -147,7 +150,10 @@ export class ColorTreeCompiler {
     const [sx, sy] = get(node, 'scale', [1, 1]), [ox, oy] = get(node, 'offset', [0, 0]);
     const uv = get<string>(node, 'texcoordIndex', 'texcoord0') === 'texcoord1' ? 'streams.uv1' : 'streams.uv';
     const at = `${uv} * vec2f(${float(sx!)}, ${float(sy!)}) + vec2f(${float(ox!)}, ${float(oy!)})`;
-    return this.#vertex ? `textureSampleLevel(t${i}, s${i}, ${at}, 0.0)` : `textureSample(t${i}, s${i}, ${at})`;
+    const texel = this.#vertex ? `textureSampleLevel(t${i}, s${i}, ${at}, 0.0)` : `textureSample(t${i}, s${i}, ${at})`;
+    if (!ref!.invertY) return texel;
+    this.#functions.set('flipGreen', FLIP_GREEN);
+    return `flipGreen(${texel})`;
   }
 
   /** 着色器类：调用游戏登记的 WGSL 函数，泛型参数（ComputeColorParameter*）按着色器类声明的顺序传。 */

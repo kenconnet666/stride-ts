@@ -470,13 +470,17 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
 
   // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint
   // （PrepareMaterialForLightingAndShading；镜面项的 alpha 是 matDiffuseSpecularAlphaBlend.y）
-  let hasSpecular = material.specular != 0u;
+  // material.specular 的低两位是工作流（0 没有，1 金属度，2 镜面颜色，3 镜面颜色且能量守恒）；第 3 位（4）表示没有镜面着色模型：
+  // 不画镜面反射，可见的镜面色（matSpecularVisible）照常算，只用来折进漫反射
+  let workflow = material.specular & 3u;
+  let hasSpecular = workflow != 0u && (material.specular & 4u) == 0u;
   let metalness = layered.metalness;
-  let isMetalness = material.specular == 1u;
+  let isMetalness = workflow == 1u;
   let f0 = select(layered.specular, mix(vec3f(0.02), albedo, metalness), isMetalness);
-  let specular = select(vec3f(0.0), f0, hasSpecular) * material.surface.w * material.blend.rgb * material.emissive.w;
+  let visibleSpecular = select(vec3f(0.0), f0, workflow != 0u) * material.surface.w * material.blend.rgb * material.emissive.w;
+  let specular = select(vec3f(0.0), visibleSpecular, hasSpecular);
   // 镜面颜色工作流默认能量守恒（Stride 的 IsEnergyConservative：MaterialSurfaceShadingDiffuseLambert 的漫反射乘 1 - 镜面）
-  let conserved = select(vec3f(1.0), 1.0 - specular, material.specular == 3u);
+  let conserved = select(vec3f(1.0), 1.0 - visibleSpecular, workflow == 3u);
   let diffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a * conserved;
   // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, occlusionDirect)
   let ao = dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
@@ -1372,7 +1376,7 @@ class Gpu {
       floats.set(transparency ? [...transparency.tint, transparency.alpha] : [1, 1, 1, 1], 36);
       const codes = new Uint32Array(this.#materialData);
       codes[40] = OPERATOR_CODES[material.baseColorOperator];
-      codes[41] = material.specular ? (material.specularEnergyConservative ? 3 : 2) : material.metalness === undefined ? 0 : 1;
+      codes[41] = (material.specular ? (material.specularEnergyConservative ? 3 : 2) : material.metalness === undefined ? 0 : 1) | (material.specularShading ? 0 : 4);
       codes[42] = normalMap ? 1 | (normalMap.scaleAndBias ? 2 : 0) | (normalMap.invertY ? 4 : 0) | (normalMap.isXYNormal ? 8 : 0) : 0;
       floats[43] = occlusion.directLighting;
       const gloss = material.glossinessMap;

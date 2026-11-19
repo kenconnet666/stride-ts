@@ -331,6 +331,19 @@ describe('粒子的形状和材质', () => {
     expect(compiler.vertexScalar({ $type: 'computeTextureScalar', fallbackValue: { value: 0.5 } })).toBe('0.5');
   });
 
+  test('二元的标量树（光泽度是"贴图 × 0.3"）；法线贴图的绿色通道在采样时翻转（TextureRef.invertY）', () => {
+    const compiler = new ColorTreeCompiler({ texture: () => ({}) as Texture, shaderClass: () => undefined }, 3);
+    const gloss: ParticleModuleFile = {
+      $type: 'computeBinaryScalar', operator: 'multiply',
+      leftChild: { $type: 'computeTextureScalar', texture: { texture: 'spec' } }, rightChild: { $type: 'computeFloat', value: 0.3 },
+    };
+    expect(compiler.scalar(gloss)).toBe('(vec4f(textureSample(t0, s0, streams.uv * vec2f(1.0, 1.0) + vec2f(0.0, 0.0)).r) * vec4f(0.3)).r');
+    expect(compiler.declarations).not.toContain('flipGreen');
+    expect(compiler.color({ $type: 'computeTextureColor', texture: { texture: 'normal', invertY: true } }))
+      .toBe('premultiply(flipGreen(textureSample(t1, s1, streams.uv * vec2f(1.0, 1.0) + vec2f(0.0, 0.0))))');
+    expect(compiler.declarations).toContain('fn flipGreen(texel: vec4f) -> vec4f');
+  });
+
   test('BoundingSphereStatic：世界包围盒是位置周围 半径 · 缩放 的立方体', () => {
     const particles = new ParticleSystem({ boundingShape: { $type: 'boundingSpheretatic', radius: 2 } });
     particles.translation = [1, 0, 0];

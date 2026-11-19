@@ -23,7 +23,7 @@ const SUPPORTED_PARTICLE_MODULES: ReadonlySet<string> = new Set([
   'UpdaterCollider', 'FieldShapeSphere', 'FieldShapeCylinder', 'FieldShapeTorus',
   'ShapeBuilderBillboard', 'ShapeBuilderQuad', 'ShapeBuilderHexagon', 'ShapeBuilderOrientedQuad', 'ShapeBuilderRibbon', 'ShapeBuilderTrail',
   'ParticleMaterialComputeColor', 'ComputeTextureColor', 'ComputeTextureScalar', 'ComputeVertexStreamColor', 'ColorVertexStreamDefinition',
-  'ComputeFloat4', 'ComputeFloat', 'ComputeColor', 'ComputeBinaryColor', 'ComputeShaderClassColor', 'ComputeShaderClassScalar',
+  'ComputeFloat4', 'ComputeFloat', 'ComputeColor', 'ComputeBinaryColor', 'ComputeBinaryScalar', 'ComputeShaderClassColor', 'ComputeShaderClassScalar',
   'ComputeColorParameterFloat', 'ComputeColorParameterFloat2', 'ComputeColorParameterFloat3', 'ComputeColorParameterFloat4', 'ComputeColorParameterInt',
   'UVBuilderFlipbook', 'UVBuilderScroll',
   'ComputeCurveSamplerFloat', 'ComputeCurveSamplerVector3', 'ComputeCurveSamplerColor4', 'ComputeCurveSamplerQuaternion',

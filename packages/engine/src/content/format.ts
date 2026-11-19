@@ -479,6 +479,11 @@ export interface TextureRef {
   readonly size?: readonly [number, number];
   /** 按 sRGB 采样（Stride 的贴图类型决定）；没写时按用途：颜色贴图是，法线、遮蔽这些数据贴图不是。 */
   readonly srgb?: boolean;
+  /**
+   * 颜色树里采样时把绿色通道翻过来（g 换成 1 - g）：法线贴图的 InvertY（Stride 的 NormalMapTextureType，默认 true）。
+   * Stride 在编译贴图时翻，我们的贴图照源文件，所以在采样的地方翻；固定槽的法线贴图用 NormalMapSlot.invertY。
+   */
+  readonly invertY?: boolean;
 }
 
 /** 采样器（Stride 的 ComputeTextureBase.Filtering、AddressModeU/V）：没写的是线性三线性过滤、重复寻址。 */
@@ -539,6 +544,11 @@ export interface MaterialFile {
   readonly specular?: Vec3Tuple;
   /** 镜面工作流不守恒能量（Stride 的 IsEnergyConservative 是 false）：漫反射不乘 1 - 镜面。默认守恒。 */
   readonly specularEnergyConservative?: false;
+  /**
+   * 没有镜面着色模型（Stride 的 SpecularModel 是空的，SamplesAssetPackage 的木地板 board1B）：不画镜面反射，但金属度、镜面颜色
+   * 照常折进漫反射（金属没有漫反射、能量守恒时乘 1 - 镜面）。默认有。
+   */
+  readonly specularShading?: false;
   /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。有 glossinessTexture 时不看它。 */
   readonly roughness?: number;
   /**
@@ -564,7 +574,10 @@ export interface MaterialFile {
    */
   readonly displacementTree?: { readonly tree: ParticleModuleFile; readonly intensity: number; readonly scaleAndBias: boolean };
   readonly emissiveTree?: { readonly tree: ParticleModuleFile; readonly intensity: number; readonly useAlpha: boolean };
-  /** 材质层（Stride 的 MaterialBlendLayer），按顺序叠在这个材质上面。 */
+  /**
+   * 材质层（Stride 的 MaterialBlendLayer），按顺序叠在这个材质上面。材质自己的属性化不成上面那些固定的形状时（光泽度是
+   * "贴图乘数"、镜面带贴图……），导入器把这些属性的树放进最底下一层、遮罩是常量 1 的层里：和材质层走同一条路径，盖住固定槽的值。
+   */
   readonly layers?: readonly MaterialLayerFile[];
   /** 两面都画（Stride 的 CullMode 是 None）。 */
   readonly doubleSided?: boolean;

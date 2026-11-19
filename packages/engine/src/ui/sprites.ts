@@ -21,6 +21,13 @@ export class SpriteFromSheet implements SpriteProvider {
   getSprite(): SpriteFrame | undefined {
     return this.sheet?.frame(this.currentFrame);
   }
+
+  /** 精灵表里名字是 name 的那一帧（Stride 的 SpriteFromSheet.Create）；没有这个名字时报错。 */
+  static create(sheet: SpriteSheet, name: string): SpriteFromSheet {
+    const index = sheet.indexOf(name);
+    if (index < 0) throw new Error(`sprite sheet '${sheet.name}' has no sprite '${name}'`);
+    return new SpriteFromSheet(sheet, index);
+  }
 }
 
 export class SpriteFromTexture implements SpriteProvider {

@@ -6,14 +6,12 @@ import { UISceneBase } from './UISceneBase';
 
 /** 精灵表里名字是 name 的帧当按钮的三种图，按钮的大小是帧的像素大小。 */
 function spriteButton(sheet: SpriteSheet, name: string): Button {
-  const index = sheet.indexOf(name);
-  if (index < 0) throw new Error(`UIElementLink: sprite sheet '${sheet.name}' has no sprite '${name}'`);
-  const image = new SpriteFromSheet(sheet, index);
+  const image = SpriteFromSheet.create(sheet, name);
   const button = new Button();
   button.pressedImage = image;
   button.notPressedImage = image;
   button.mouseOverImage = image;
-  const [, , width, height] = sheet.sprites[index]!.region;
+  const [, , width, height] = image.getSprite()!.region;
   button.width = width;
   button.height = height;
   return button;

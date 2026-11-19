@@ -129,7 +129,7 @@ export { validator } from './engine/validator';
 export { Debug, FrameTimings, describe, type DebugHandler } from './debug/Debug';
 export { DebugText, type DebugTextLine } from './debug/DebugText';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
-export { Game, type GameOptions, type GameStatus, type LoadGameSettingsOptions, type HotContext } from './games/Game';
+export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './games/Game';
 export { GameTime } from './games/GameTime';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
@@ -150,7 +150,7 @@ export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings 
 export { RecastNavigationComponent, type NavigationState } from './navigation/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
 export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, Skinned, Sprite } from './rendering/components';
-export { cameraProjectionMatrix, screenToWorldRaySegment, type CameraProjection } from './rendering/cameraRays';
+export { cameraProjectionMatrix, screenToWorldRaySegment, worldToScreen, type CameraProjection } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
 export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';
 export { GpuResources } from './rendering/GpuResources';

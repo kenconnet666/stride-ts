@@ -154,13 +154,15 @@ export class StrideImporter {
   }
 
   /**
-   * 单独导入一个不挂在场景上的资源，返回它的内容路径。现在支持字体（.sdfnt）和游戏设置（.sdgamesettings：默认场景的路径、
-   * 合成器的根是游戏自己的渲染器时它的类型名和属性，属性引用的字体、贴图一起导入；场景要另外用 importScene 导入）。
+   * 单独导入一个不挂在场景上的资源，返回它的内容路径：脚本用代码加载的资源（Stride 的 Content.Load：模型、材质、动画、预制体、
+   * 字体、贴图、精灵表、UI、声音，同脚本属性能引用的那些），和游戏设置（.sdgamesettings：默认场景的路径、合成器的根是游戏自己的
+   * 渲染器时它的类型名和属性，属性引用的字体、贴图一起导入）。场景要另外用 importScene 导入。
    */
   importAsset(asset: AssetEntry): Promise<string> {
-    if (asset.type === 'SpriteFont') return this.#fonts.font(asset);
     if (asset.type === 'GameSettingsAsset') return this.#gameSettingsFile(asset);
-    throw new Error(`${asset.file}: importing ${asset.type} on its own is not supported`);
+    const importer = asset.type === 'SceneAsset' ? undefined : this.#assetImporter(asset, asset.file);
+    if (!importer) throw new Error(`${asset.file}: importing ${asset.type} on its own is not supported`);
+    return importer[1]();
   }
 
   async #gameSettingsFile(asset: AssetEntry): Promise<string> {
@@ -227,6 +229,8 @@ export class StrideImporter {
     const parts = asset.data['Hierarchy'] && asObject(asset.data['Hierarchy'])?.['Parts'];
     if (!Array.isArray(parts)) throw new Error(`${asset.file}: no Hierarchy.Parts`);
 
+    // 预制体的实例照场景文件里存的值用，不和预制体合并：Stride 的资源编译器也是这样（合并是 Game Studio 打开工程时做的），
+    // 见 docs/decisions.md 的"预制体的实例照文件里的值"
     const entities = parts.map((part) => asObject(asObject(part)?.['Entity'])).filter((e): e is StrideObject => e !== undefined);
     // 父子关系写在父实体 Transform 的 Children 里，引用的是子实体 Transform 组件的 Id
     const entityOfTransform = new Map<string, string>();
@@ -359,6 +363,16 @@ export class StrideImporter {
 
   /** 脚本属性引用的资源：能导入的种类导入并给出内容路径，别的记警告。场景只给路径，不跟着导入（要用 --scene 另外导入）。 */
   async #scriptAsset(asset: AssetEntry, where: string): Promise<SceneScriptValue> {
+    const importer = this.#assetImporter(asset, where);
+    if (!importer) {
+      this.#warnings.push(`${where}: ${asset.type} ${asset.path} is not supported in script properties; using null`);
+      return null;
+    }
+    return { $asset: await importer[1](), kind: importer[0] };
+  }
+
+  /** 按资源的类型给出它的种类和导入它的函数（返回内容路径）；不认识的类型是 undefined。 */
+  #assetImporter(asset: AssetEntry, where: string): [SceneAssetKind, () => Promise<string>] | undefined {
     const kinds: Record<string, [SceneAssetKind, () => Promise<string>]> = {
       Model: ['model', () => this.#model(asset)],
       MaterialAsset: ['material', () => this.#materials.material(asset)],
@@ -372,12 +386,7 @@ export class StrideImporter {
       UILibraryAsset: ['uiLibrary', () => this.#ui.ui(asset)],
       Sound: ['sound', () => this.#sound(asset, where)],
     };
-    const kind = kinds[asset.type];
-    if (!kind) {
-      this.#warnings.push(`${where}: ${asset.type} ${asset.path} is not supported in script properties; using null`);
-      return null;
-    }
-    return { $asset: await kind[1](), kind: kind[0] };
+    return kinds[asset.type];
   }
 
   /**
@@ -416,9 +425,11 @@ export class StrideImporter {
   /** 把一个组件写进 components；不认识的返回 false。 */
   async #component(type: string, component: StrideObject, components: Components, where: string, context: HierarchyContext): Promise<boolean> {
     switch (type) {
-      case 'ModelComponent':
-        components.model = await this.#modelComponent(component, where);
+      case 'ModelComponent': {
+        const model = await this.#modelComponent(component, where);
+        if (model) components.model = model;
         return true;
+      }
       case 'CameraComponent':
         components.camera = cameraOf(component, context.cameraSlots);
         return true;
@@ -839,9 +850,10 @@ export class StrideImporter {
     };
   }
 
-  async #modelComponent(component: StrideObject, where: string): Promise<NonNullable<SceneEntityFile['components']['model']>> {
+  /** 模型组件；没有模型（`Model: null`，Stride 里就是不画）时是 undefined。 */
+  async #modelComponent(component: StrideObject, where: string): Promise<SceneEntityFile['components']['model']> {
     const reference = parseAssetReference(component['Model']);
-    if (!reference) throw new Error(`${where}: ModelComponent has no model`);
+    if (!reference) return undefined;
     const model = await this.#model(this.#project.get(reference.id, where));
     // 按槽覆盖材质：键是 "<hash>~<槽号>"
     const materials: (string | null)[] = [];

@@ -31,16 +31,31 @@ export function cameraProjectionMatrix(out: Float32Array, camera: CameraProjecti
  * （Stride 的 ScreenToWorldRaySegment）。射线从 start 指向 end，长度就是可见范围。
  */
 export function screenToWorldRaySegment(game: Game, camera: Entity, screenX: number, screenY: number): { start: Vector3; end: Vector3 } {
-  const settings = camera.require(Camera);
-  const world = camera.require(Transform).world;
-  const { width, height } = game.graphicsDevice.canvas;
-  const view = Matrix.identity(), projection = Matrix.identity(), viewProjection = Matrix.identity();
-  if (!Matrix.invert(view, world)) throw new Error(`camera '${camera.name}' has a singular world matrix`);
-  cameraProjectionMatrix(projection, settings, width / height);
-  Matrix.multiply(viewProjection, projection, view);
   const inverse = Matrix.identity();
-  Matrix.invert(inverse, viewProjection);
+  Matrix.invert(inverse, viewProjectionMatrix(game, camera));
   // 规范化设备坐标：x、y 是 -1..1（y 向上），深度 0 是近平面、1 是远平面
   const x = screenX * 2 - 1, y = 1 - screenY * 2;
   return { start: new Vector3(...Matrix.transformPoint(inverse, x, y, 0)), end: new Vector3(...Matrix.transformPoint(inverse, x, y, 1)) };
+}
+
+/**
+ * 世界里的点落在画面的哪里（Stride 的 Vector3.Project、Viewport.Project）：x、y 按画面归一化（0..1，y 向下，同
+ * screenToWorldRaySegment 的输入），z 是深度（0 是近平面，1 是远平面）。
+ * 和 Stride 不同：点在相机后面时返回 undefined（Stride 照样除以 w，得到一个镜像过去的位置）。
+ */
+export function worldToScreen(game: Game, camera: Entity, point: { readonly x: number; readonly y: number; readonly z: number }): Vector3 | undefined {
+  const m = viewProjectionMatrix(game, camera);
+  const w = m[3]! * point.x + m[7]! * point.y + m[11]! * point.z + m[15]!;
+  if (w <= 0) return undefined;
+  const [x, y, z] = Matrix.transformPoint(m, point.x, point.y, point.z);
+  return new Vector3((x + 1) / 2, (1 - y) / 2, z);
+}
+
+/** 相机这一帧的视图投影矩阵（世界 → 裁剪空间），宽高比用画布的。 */
+function viewProjectionMatrix(game: Game, camera: Entity): Float32Array {
+  const { width, height } = game.graphicsDevice.canvas;
+  const view = Matrix.identity(), projection = Matrix.identity();
+  if (!Matrix.invert(view, camera.require(Transform).world)) throw new Error(`camera '${camera.name}' has a singular world matrix`);
+  cameraProjectionMatrix(projection, camera.require(Camera), width / height);
+  return Matrix.multiply(Matrix.identity(), projection, view);
 }

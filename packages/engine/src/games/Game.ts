@@ -9,6 +9,7 @@ import { Debug } from '../debug/Debug';
 import { DebugText } from '../debug/DebugText';
 import { DebugTextRenderer } from '../debug/DebugTextRenderer';
 import type { ScopedDefaults } from '../engine/defaults';
+import type { EntityScene } from '../engine/Entity';
 import { EntityManager } from '../engine/EntityManager';
 import { Registry } from '../engine/registry';
 import { GraphicsDevice } from '../graphics/GraphicsDevice';
@@ -82,6 +83,12 @@ declare global {
  * 继承它并重写 loadContent 和 update（要调用 super.update，脚本和系统在里面跑）；draw 默认交给图形合成器，
  * 重写时可以不调用 super.draw，自己画。run() 初始化之后才有 `native`、`graphicsDevice` 和渲染系统。其中任何一处抛异常，或 AsyncScript 被拒绝，游戏都会停下，状态为 'failed'。
  */
+/** Game.loadScene 的选项。 */
+export interface LoadChildSceneOptions extends LoadSceneOptions {
+  /** 作为这个场景的子场景（Stride 的 Scene.Parent）：父场景卸载、根场景换掉时跟着卸载。 */
+  readonly parent?: EntityScene | undefined;
+}
+
 /** Game.loadGameSettings 的选项：合成器的游戏渲染器怎么建（按 Stride 的类型名），默认场景的加载选项。 */
 export interface LoadGameSettingsOptions extends LoadSceneOptions {
   readonly renderers?: Readonly<Record<string, (props: Readonly<Record<string, unknown>>, game: Game) => SceneRenderer | Promise<SceneRenderer>>>;
@@ -143,6 +150,8 @@ export class Game {
   settings: GameSettings | undefined;
   /** 加载（loadScene）或卸载（unloadScene）了一个场景之后触发（Stride 里场景的 Children 变了，TopDownRPG 的 EnableDynamicNavigation 听它重建导航网格）。 */
   readonly scenesChanged = hook<{ readonly scene: SceneInstance; readonly loaded: boolean }>('scenesChanged');
+  /** 场景的子场景（loadScene 的 parent），unloadScene 时跟着卸载。 */
+  readonly #childScenes = new Map<EntityScene, SceneInstance[]>();
   /** 正在换的根场景：连着换几次时按顺序来。 */
   private rootSceneChange: Promise<unknown> = Promise.resolve();
 
@@ -314,10 +323,14 @@ export class Game {
 
   /**
    * 加载场景、创建它的实体（ContentManager.loadScene），场景带的仿真设置交给 simulation。场景里有物理组件时
-   * 要在 nativeFeatures 里加上 physics。
+   * 要在 nativeFeatures 里加上 physics。给了 parent 就是它的子场景（Stride 的 `scene.Parent = Entity.Scene`）：
+   *
+   *   this.child = await this.game.loadScene(this.childScene, { parent: this.entity.scene, offset: [0, 0.5, 0] });
    */
-  async loadScene(path: string, options: LoadSceneOptions = {}): Promise<SceneInstance> {
+  async loadScene(reference: string | SceneReference, { parent, ...options }: LoadChildSceneOptions = {}): Promise<SceneInstance> {
+    const path = typeof reference === 'string' ? reference : reference.path;
     const scene = await this.content.loadScene(path, this.entities, options);
+    if (parent) this.#childScenes.set(parent, [...(this.#childScenes.get(parent) ?? []), scene]);
     if (scene.compositor) {
       this.graphicsCompositor.configure(scene.compositor);
       this.meshes.effect = this.#meshEffect(scene.compositor.meshEffect, path);
@@ -333,15 +346,13 @@ export class Game {
 
   /**
    * 换根场景（Stride 里给 SceneSystem.SceneInstance.RootScene 赋值）：加载新场景，加载好后销毁旧根场景的实体
-   * （子实体、脚本、物体跟着去掉）。加载期间旧场景照常运行。和 Stride 不同：只销毁旧场景文件里的实体，脚本运行中
-   * 另建的实体不动。
+   * （它的子场景、子实体、脚本、物体跟着去掉，见 unloadScene）。加载期间旧场景照常运行。
    *
    *   override update(): void { if (this.input.isKeyPressed('N')) void this.game.setRootScene(this.nextScene); }
    */
   setRootScene(scene: string | SceneReference, options: LoadSceneOptions = {}): Promise<SceneInstance> {
-    const path = typeof scene === 'string' ? scene : scene.path;
     const change = this.rootSceneChange.catch(() => undefined).then(async () => {
-      const next = await this.loadScene(path, options);
+      const next = await this.loadScene(scene, options);
       const previous = this.rootScene;
       // 先换上新场景：旧场景的脚本在 cancel 里出错时，根场景也已经是新的
       this.rootScene = next;
@@ -362,11 +373,17 @@ export class Game {
   }
 
   /**
-   * 卸载 loadScene 加载的场景（Stride 里从 Scene.Children 去掉子场景再 Content.Unload）：销毁场景里的实体，子实体、脚本、
-   * 物体跟着去掉；已经销毁的跳过。场景里的实体是场景文件建的那些，加上脚本放进来的（`entity.scene = this.entity.scene`，
-   * 见 Entity.scene）；脚本另建、又没放进场景也没挂到场景实体下面的实体不动。
+   * 卸载 loadScene 加载的场景（Stride 里从 Scene.Children 去掉子场景再 Content.Unload）：先卸载它的子场景，再销毁场景里的
+   * 实体，子实体、脚本、物体跟着去掉；已经销毁的跳过。场景里的实体是场景文件建的那些，加上脚本放进来的
+   * （`entity.scene = this.entity.scene`，见 Entity.scene）；脚本另建、又没放进场景也没挂到场景实体下面的实体不动。
    */
   unloadScene(scene: SceneInstance): void {
+    for (const child of this.#childScenes.get(scene) ?? []) this.unloadScene(child);
+    this.#childScenes.delete(scene);
+    // 它自己是别人的子场景时，从父场景那里去掉
+    for (const [parent, children] of this.#childScenes) {
+      if (children.includes(scene)) this.#childScenes.set(parent, children.filter((child) => child !== scene));
+    }
     // 场景文件建的和运行时放进来的（Entity.scene）；销毁父实体时子实体已经跟着销毁了
     for (const entity of this.entities.inScene(scene)) {
       if (entity.alive) entity.destroy();

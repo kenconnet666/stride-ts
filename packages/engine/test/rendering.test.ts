@@ -1,8 +1,8 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  cameraProjectionMatrix, coverSource, spotAngleAttenuation, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, Transform, Vector3, transformSlot,
-  type DirectionalShadowSettings, type ShadowReceiver,
+  Camera, cameraProjectionMatrix, coverSource, spotAngleAttenuation, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, screenToWorldRaySegment, Transform, Vector3, transformSlot, worldToScreen,
+  type DirectionalShadowSettings, type GraphicsDevice, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/Mesh';
 
@@ -117,6 +117,30 @@ describe('MeshRenderFeature', () => {
     native = await createStrideNative({ workerThreads: 1 });
   });
   afterAll(() => native?.shutdown());
+
+  test('worldToScreen（Stride 的 Vector3.Project）：按画面归一化的位置和深度，和 screenToWorldRaySegment 互为反过来；相机后面的点没有', () => {
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(4);
+    game.graphicsDevice = { canvas: { width: 1600, height: 900 } } as GraphicsDevice;
+    const camera = game.entities.create({
+      components: [Transform.with({ position: [0, 0, 10] }), Camera.with({ verticalFieldOfView: 60, nearClipPlane: 1, farClipPlane: 100 })],
+    });
+    game.transforms.update();
+    // 相机朝 -Z：正前方的点在画面中间，右上方的点在右上
+    const center = worldToScreen(game, camera, { x: 0, y: 0, z: 0 })!;
+    expect([center.x, center.y].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([0.5, 0.5]);
+    const upperRight = worldToScreen(game, camera, { x: 2, y: 1, z: 0 })!;
+    expect(upperRight.x).toBeGreaterThan(0.5);
+    expect(upperRight.y).toBeLessThan(0.5);
+    expect(upperRight.z).toBeGreaterThan(0);
+    expect(upperRight.z).toBeLessThan(1);
+    // 反投影回去落在同一条射线上
+    const { start, end } = screenToWorldRaySegment(game, camera, upperRight.x, upperRight.y);
+    const t = (0 - start.z) / (end.z - start.z);
+    expect([start.x + (end.x - start.x) * t, start.y + (end.y - start.y) * t].map((v) => Math.round(v * 1e4) / 1e4)).toEqual([2, 1]);
+    expect(worldToScreen(game, camera, { x: 0, y: 0, z: 20 })).toBeUndefined();
+  });
 
   test('Extract 按（网格，材质）分批，记下实体的变换槽位', () => {
     const game = new Game();

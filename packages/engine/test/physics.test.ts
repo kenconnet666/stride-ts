@@ -70,6 +70,12 @@ describe('Simulation', () => {
     const above = [position(player).x, 10, position(player).z] as const;
     expect(game.simulation.rayCast(above, [0, -1, 0], 20)?.entity).toBe(player.id);
     expect(game.simulation.rayCast(above, [0, -1, 0], 20, { mask: 1 << 0 })?.entity).toBe(floor.id);
+    // 穿透的射线（Stride 的 RayCastPenetrating）：穿过的每个物体各一个命中，从近到远；按遮罩筛
+    const through = game.simulation.rayCastPenetrating(above, [0, -1, 0], 20);
+    expect(through.map((hit) => hit.entity)).toEqual([player.id, floor.id]);
+    expect(through[0]!.distance).toBeLessThan(through[1]!.distance);
+    expect(game.simulation.rayCastPenetrating(above, [0, -1, 0], 20, { mask: 1 << 0 }).map((hit) => hit.entity)).toEqual([floor.id]);
+    expect(game.simulation.rayCastPenetrating(above, [0, 1, 0], 20)).toEqual([]);
     // 重叠查询（Stride 的 Overlap）：站着的角色和地面都碰到，按遮罩只要地面，半空里什么都不碰
     const feet = { position: [position(player).x, 0.05, position(player).z] as [number, number, number] };
     expect(game.simulation.overlap({ type: 'sphere', radius: 0.3 }, feet).sort()).toEqual([floor.id, player.id].sort());

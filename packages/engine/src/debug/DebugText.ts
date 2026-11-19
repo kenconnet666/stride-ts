@@ -53,6 +53,12 @@ export class DebugText {
     return [this.#canvasSize()[0] / 2 + (x - virtual[0] / 2) * scale, y * scale];
   }
 
+  /** 画面上按 0..1 归一化的点（input.mousePosition、worldToScreen 的结果）换成 print 用的位置。 */
+  fromScreen([x, y]: readonly [number, number]): [number, number] {
+    const [width, height] = this.#canvasSize();
+    return this.fromCanvas([x * width, y * height]);
+  }
+
   /** toCanvas 反过来：画布上的位置（比如 input.absoluteMousePosition）换成 print 用的位置。 */
   fromCanvas([x, y]: readonly [number, number]): [number, number] {
     const virtual = this.virtualResolution;

@@ -67,6 +67,8 @@ export interface SceneReference {
 export interface LoadSceneOptions {
   /** 场景里的 Stride 脚本类型（带命名空间）显式对应到 TS 脚本；没列的按类名在登记表里找，见 sceneScripts.ts。 */
   readonly scripts?: SceneScriptMap;
+  /** 场景的偏移（Stride 的 Scene.Offset，加在根实体的位置上）；没给时用场景文件里的。 */
+  readonly offset?: readonly [number, number, number];
 }
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
@@ -470,7 +472,7 @@ export class ContentManager {
    */
   async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const { scene, assets } = await this.#sceneWithAssets(path);
-    const created = this.#instantiate(scene.entities, assets, entities, options, path, scene.offset);
+    const created = this.#instantiate(scene.entities, assets, entities, options, path, options.offset ?? scene.offset);
     const compositor = scene.compositor && {
       ...scene.compositor,
       textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),

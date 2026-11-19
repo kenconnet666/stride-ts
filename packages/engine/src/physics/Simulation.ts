@@ -341,6 +341,11 @@ export class Simulation {
     return this.#result(this.#world?.rayCast(origin, direction, maxDistance, { mask, hit: this.#hit }));
   }
 
+  /** 穿透的射线（Stride 的 RayCastPenetrating）：射线穿过的每个物体各一个命中（进入它的那一处），从近到远；mask 同 rayCast。 */
+  rayCastPenetrating(origin: Vec3, direction: Vec3, maxDistance: number, { mask = ALL_LAYERS }: { mask?: number } = {}): SimulationHit[] {
+    return (this.#world?.rayCastAll(origin, direction, maxDistance, { mask }) ?? []).map((hit) => this.#result(hit)!);
+  }
+
   /**
    * 球体扫掠（Stride 的 SweepCast 加 Sphere）。默认从一开始就重叠的物体算距离 0 的命中（同 Bepu）；ignoreInitialOverlap
    * 时跳过它们（第三人称相机用，再配一条射线防止钻进正后方的墙）。

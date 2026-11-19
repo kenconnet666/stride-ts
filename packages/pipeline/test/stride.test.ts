@@ -732,6 +732,15 @@ describe('导入 Stride 场景', () => {
     expect(await readFile(path.join(out, 'Game/Sounds/Click.wav'), 'utf8')).toBe('RIFF....WAVE');
   });
 
+  test('单独导入脚本用代码加载的资源（Content.Load 的材质）；场景不能这样导入', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-asset');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
+    expect(await importer.importAsset(project.byPath('Game/Materials/Odd')!)).toBe('Game/Materials/Odd');
+    expect(Object.keys(JSON.parse(await readFile(path.join(out, 'Game/Materials/Odd.material.json'), 'utf8')) as object)).toContain('name');
+    expect(() => importer.importAsset(project.byPath('Game/Main')!)).toThrow(/importing SceneAsset on its own is not supported/);
+  });
+
   test("压缩的贴图宽高补到 4 的倍数（Lanczos3 缩放，同 Stride）；'source' 时缩放过的不原样复制源文件，写成缩放后的 PNG", async () => {
     const project = await writeProject();
     const out = path.join(dir, 'content-odd');

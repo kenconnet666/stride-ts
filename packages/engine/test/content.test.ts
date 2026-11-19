@@ -332,6 +332,15 @@ describe('ContentManager', () => {
     expect([...first.entities.values(), ...second!.entities.values()].some((e) => game.entities.isAlive(e.id))).toBe(false);
     expect([...third!.entities.values()].map((e) => e.name)).toEqual(['Third root', 'Third child']);
     expect(game.entities.isAlive(spawned.id)).toBe(true);
+
+    // 子场景（Stride 的 scene.Parent）：带偏移加载；换根场景时跟着父场景一起卸载，自己先卸载的不再管
+    const child = await game.loadScene({ path: 'scenes/Child' }, { parent: third, offset: [0, 0.5, 0] });
+    const early = await game.loadScene('scenes/Early', { parent: third });
+    expect({ ...child.entities.get('root')!.require(Transform).position }).toEqual({ x: 0, y: 0.5, z: 0 });
+    game.unloadScene(early);
+    const fourth = await game.setRootScene('scenes/Fourth');
+    expect([...child.entities.values(), ...early.entities.values()].some((e) => game.entities.isAlive(e.id))).toBe(false);
+    expect([...fourth.entities.values()].every((e) => game.entities.isAlive(e.id))).toBe(true);
   });
 });
 

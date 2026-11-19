@@ -12,6 +12,8 @@
 - **实体所在的场景**（`entity.scene`，Stride 的 Entity.Scene）：以前卸载场景只销毁场景文件建的实体，脚本克隆、实例化到场景根的实体留在游戏里（换一圈教程实体数从 143 涨到 175）。现在运行时建的根实体可以放进一个场景（`clone.scene = this.entity.scene`，或者 `create({ scene })`），卸载时一起销毁；没放进去的跟着父实体。多网格模型多出来的网格子实体改用 `ModelPart` 标记认（以前内容管理按实体记一张表，克隆的实体不在表里）。
 - **调试文字按 CSS 像素、按设计分辨率摆**：Stride 按后备缓冲的真实像素摆，高分屏上字只有一半大，画布和设计的窗口不一样大时字和画面对不上（教程把字摆在 3D 物体旁边）。现在位置的单位是 CSS 像素，字按像素比放大整数倍（往下取整，挨着的两段字不会叠）；`debugText.virtualResolution` 设了以后位置按那么大的画面给，按高度缩放、水平居中换到画布上，`loadGameSettings` 把它设成游戏设置的后备缓冲大小，所以样例照搬 Stride 的位置就行。画布和设计的窗口一样大、像素比是 1 时和以前逐像素一样（已有的截图比对不受影响）。
   - `input.absoluteMousePosition` 跟着改成 CSS 像素（Stride 是后备缓冲的像素），`debugText.fromCanvas` 换成 print 用的位置。
+- **调试文字默认只在开发版画**（`debugText.visible`）：同 Stride 的 `DebugTextSystem.Visible = Platform.IsRunningDebugAssembly`，调试用的字不该出现在正式版里；拿它当内容的样例（CSharpBeginner 的教程说明、BepuSample 的操作提示）自己设成 true。不画的时候文字照样记在 `lines` 里，调试 CLI 读得到。
+- **相机插值封顶**：TutorialUI 的 `Vector3.Lerp(起点, 终点, 计时 / 2 秒)` 不封顶，最后一帧的系数大于 1，相机冲过头一点，冲多少看那一帧多长（帧率相关）。我们到 1 为止，相机正好停在教程的 Camera 上。
 - **教程里的笔误不跟**：InstantiatingPrefabsDemo 写的是 `Quaternion.RotationY(135)`（弧度，转出来约 175 度），按 135 度转。
 - **照 Stride 的**：`Content.Load` 是同步的，我们的 `loadModel`、`loadPrefab` 是异步的（网页上读文件只能异步），加载完之前算没加载。
 

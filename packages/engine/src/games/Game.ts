@@ -425,7 +425,7 @@ export class Game {
         if (this.paused) this.pendingSteps--;
         const real = Math.min(interval / 1000, MAX_ELAPSED) * this.timeScale;
         this.updateTime.advance(this.fixedTimeStep ?? (this.paused ? STEP_SECONDS : real));
-        this.input.update();
+        this.input.update(this.updateTime.elapsed);
         this.debugText.beginFrame();
         this.update(this.updateTime);
         this.writeStats();

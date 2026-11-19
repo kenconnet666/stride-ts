@@ -62,6 +62,15 @@
   - 还没做：清漆加透明（Stride 第一遍沿用材质的透明混合）报警告，第一遍按不透明画；没有切线的网格上碎片和橘皮的法线贴图不起作用（和别的法线贴图一样）。
 - 还没做的材质特性（次表面散射、曲面细分）导入时报警告，不悄悄忽略。
 
+## 2026-11-20 手势识别（Input.Gestures）
+
+Stride 的 `Input.Gestures`、`Input.GestureEvents`：SpaceEscape 用拖动手势换道，我们移植时在脚本里用指针事件自己判。
+
+- **照 Stride.Input 的 Gestures 移植**（`input/gestures.ts`）：点（可以多指、多次）、长按、拖动、轻扫、双指的组合（平移、旋转、缩放）五种，状态机、默认值、阈值都照各个 `GestureRecognizer`；位置归一化，量距离时按屏幕宽高比把短边换到长边的尺度。`game.input.gestures.add(Gestures.drag(…))` 加配置，每帧读 `game.input.gestureEvents`。
+- 和 Stride 不同：配置是不可变的普通对象（`Gestures.tap({ requiredNumberOfTaps: 2 })`），不是 new 出来改属性、加进集合后冻结；事件是按 `type` 区分的联合类型，不用强转；时间用秒。
+- 和 Stride 不同：被 UI 占用的指针不参与手势（Stride 的手势看所有指针事件，点按钮的同时也会触发游戏里的点手势）。
+- SpaceEscape 的 CharacterScript 换回手势的写法；冒烟加了"往右划换道"。TouchInputs 样例（专门演示手势）还没移植，记在路线图里。
+
 ## 2026-11-20 用代码建的动画剪辑（属性曲线）
 
 Stride 的 `AnimationClip.AddCurve` 可以给任意属性加曲线；ParticlesSample 的 RotationScript 用它让环转起来，我们以前只有骨骼动画，移植时改成了按时间算角度。

@@ -1,6 +1,6 @@
 // SpaceEscape 的 CharacterScript：角色在三条道上跑。左右键（或横着划）换道，下键（或往下划）滑铲；换道时按动画的进度从这条道
 // 移到那条道，滑铲的动画放完回到跑；撞上障碍物、掉进洞里时 GameScript 调 onDied。包围盒跟着状态换（滑铲时矮 0.7）。
-import { AnimationComponent, AsyncScript, prop, Sprite, Transform, type Bounds, type PlayingAnimation } from '@stride-ts/engine';
+import { AnimationComponent, AsyncScript, Gestures, prop, Sprite, Transform, type Bounds, type DragEvent, type PlayingAnimation } from '@stride-ts/engine';
 import { modelBounds } from './background/Section';
 
 type AgentState = 'run' | 'changeLaneLeft' | 'changeLaneRight' | 'slide' | 'die';
@@ -10,8 +10,6 @@ const LEFT_LANE = 0;
 const MIDDLE_LANE = 1;
 const RIGHT_LANE = 2;
 const LANE_LENGTH = 5;
-/** Stride 的 GestureConfigDrag.MinimumDragDistance（画布的比例）。 */
-const MINIMUM_DRAG_DISTANCE = 0.02;
 /** 动画名（Stride 的 AgentAnimationKeys）。 */
 const ANIMATIONS: Readonly<Record<Exclude<AgentState, 'changeLaneLeft' | 'changeLaneRight'> | 'dodgeLeft' | 'dodgeRight', string>> = {
   run: 'Active', dodgeLeft: 'DodgeLeft', dodgeRight: 'DodgeRight', slide: 'Slide', die: 'Crash',
@@ -34,8 +32,6 @@ export class CharacterScript extends AsyncScript.props({
   #normalBox!: Bounds;
   #slideBox!: Bounds;
   #activeBox!: Bounds;
-  /** 正在拖的指针：按下的位置，开始拖了没有（Stride 的拖动手势，超过 MinimumDragDistance 才算开始）。 */
-  #drag: { readonly pointerId: number; readonly start: readonly [number, number]; began: boolean } | undefined;
 
   get isDead(): boolean {
     return this.#state === 'die';
@@ -45,6 +41,9 @@ export class CharacterScript extends AsyncScript.props({
     this.#normalBox = modelBounds(this.entity);
     const { min, max } = this.#normalBox;
     this.#slideBox = { min, max: [max[0], max[1] - 0.7, max[2]] };
+    // 拖动手势控制角色（一指，拖过画布的 2% 算开始）
+    const drag = this.game.input.gestures.add(Gestures.drag('free', { minimumDragDistance: 0.02 }));
+    this.disposables.defer(() => void this.game.input.gestures.remove(drag));
     this.#started = true;
     this.#laneHeight = this.entity.require(Transform).position.y;
     this.reset();
@@ -97,28 +96,16 @@ export class CharacterScript extends AsyncScript.props({
     return 'none';
   }
 
-  /** 拖动手势开始的那一帧（拖过 MinimumDragDistance）按拖的方向给输入。 */
+  /** 拖动手势开始的那一帧按拖的方向给输入。 */
   #inputFromGesture(): InputState {
-    let result: InputState = 'none';
-    for (const event of this.game.input.pointerEvents) {
-      if (event.eventType === 'pressed' && !this.#drag) this.#drag = { pointerId: event.pointerId, start: event.position, began: false };
-      const drag = this.#drag;
-      if (!drag || event.pointerId !== drag.pointerId) continue;
-      if (event.eventType === 'released' || event.eventType === 'canceled') {
-        this.#drag = undefined;
-        continue;
-      }
-      const dx = event.position[0] - drag.start[0], dy = event.position[1] - drag.start[1];
-      if (!drag.began && Math.hypot(dx, dy) >= MINIMUM_DRAG_DISTANCE) {
-        drag.began = true;
-        if (result === 'none') result = this.#inputFromDrag(dx, dy);
-      }
+    for (const event of this.game.input.gestureEvents) {
+      if (event.type === 'drag' && event.state === 'began') return this.#inputFromDrag(event);
     }
-    return result;
+    return 'none';
   }
 
   /** 拖的方向（乘上屏幕的高宽比，y 朝上）离哪个轴近：横着的是左右，往下的是滑铲，往上的不算。 */
-  #inputFromDrag(dx: number, dy: number): InputState {
+  #inputFromDrag({ totalTranslation: [dx, dy] }: DragEvent): InputState {
     const { width, height } = this.game.graphicsDevice.canvas;
     const x = dx, y = -dy * (height / width);
     const length = Math.hypot(x, y);

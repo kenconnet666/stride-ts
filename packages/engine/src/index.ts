@@ -136,6 +136,11 @@ export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
 export { GamePadButton, InputManager, type GamePadState, type InputDevice, type MouseButton, type PointerEvent } from './input/InputManager';
 export { VirtualButton, VirtualButtonBinding, VirtualButtonConfig, type VirtualButtonInput } from './input/virtualButtons';
+export {
+  createGestureRecognizer, GestureCollection, GestureRecognizer, Gestures,
+  type CompositeConfig, type CompositeEvent, type DragConfig, type DragEvent, type FlickConfig, type FlickEvent, type GestureConfig, type GestureEvent, type GestureShape,
+  type GestureState, type LongPressConfig, type LongPressEvent, type TapConfig, type TapEvent,
+} from './input/gestures';
 export { InputCapturePriority } from './input/capture';
 export { keyCode } from './input/keys';
 export { Matrix, type Matrix4 } from './mathematics/Matrix';

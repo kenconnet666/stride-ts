@@ -14,6 +14,7 @@
  */
 
 import type { VirtualButtonConfig } from './virtualButtons';
+import { GestureCollection, type GestureEvent } from './gestures';
 import { ButtonTracker, CaptureState, InputCapturePriority } from './capture';
 import { keyCode } from './keys';
 
@@ -73,6 +74,7 @@ export interface PointerEvent {
   readonly isDown: boolean;
 }
 
+const NO_GESTURES: readonly GestureEvent[] = [];
 const POINTER_TYPES = { pointerdown: 'pressed', pointermove: 'moved', pointerup: 'released', pointercancel: 'canceled' } as const;
 
 /** 能被占用的设备。 */
@@ -93,6 +95,10 @@ export class InputManager {
   readonly virtualButtonConfigSet: VirtualButtonConfig[] = [];
 
   readonly #canvas: HTMLCanvasElement;
+  /** 要识别的手势（Stride 的 Input.Gestures）：`gestures.add(Gestures.drag())`，见 gestures.ts。 */
+  readonly gestures = new GestureCollection();
+  /** 这一帧识别到的手势事件（Stride 的 Input.GestureEvents）；被 UI 占用的指针不算。 */
+  gestureEvents: readonly GestureEvent[] = NO_GESTURES;
   readonly #capture: Readonly<Record<InputDevice, CaptureState>> = { mouse: new CaptureState(), keyboard: new CaptureState() };
   readonly #keyboard = new ButtonTracker(this.#capture.keyboard);
   readonly #mouseButtons = new ButtonTracker(this.#capture.mouse);
@@ -148,8 +154,11 @@ export class InputManager {
     }, options);
   }
 
-  /** @internal 每帧开头由 Game 调用：换上这一帧的输入，再让占用方（UI）按这一帧的输入决定占用（Stride 的 ResolvingCapture）。 */
-  update(): void {
+  /**
+   * @internal 每帧开头由 Game 调用：换上这一帧的输入，再让占用方（UI）按这一帧的输入决定占用（Stride 的 ResolvingCapture），
+   * 最后按没被占用的指针事件识别手势。elapsed 是这一帧的秒数（手势的计时用）。
+   */
+  update(elapsed = 0): void {
     this.#keyboard.update();
     this.#mouseButtons.update();
     [this.mouseDelta[0], this.mouseDelta[1]] = this.#pendingDelta;
@@ -166,6 +175,8 @@ export class InputManager {
     } finally {
       this.#resolving = false;
     }
+    const { clientWidth, clientHeight } = this.#canvas;
+    this.gestureEvents = this.gestures.size > 0 ? this.gestures.process(elapsed, this.pointerEvents, (clientWidth || 1) / (clientHeight || 1)) : NO_GESTURES;
   }
 
   /** @internal 每帧 update 时、脚本读输入之前调用 resolve（UI 在这里按指针决定占用）；返回取消登记的函数。 */

@@ -20,6 +20,12 @@ const HELPERS = `(() => {
   globalThis.seFrames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
   globalThis.seClick = async (x, y) => { at('pointermove', x, y); await frame(); at('pointerdown', x, y); await frame(); await frame(); at('pointerup', x, y, window); await seFrames(3); };
   globalThis.seKey = async (code) => { window.dispatchEvent(new KeyboardEvent('keydown', { code })); await frame(); window.dispatchEvent(new KeyboardEvent('keyup', { code })); await seFrames(2); };
+  // 在画布上横着划：按下，挪几下，抬起
+  globalThis.seSwipe = async (y, xs) => {
+    at('pointerdown', xs[0], y); await seFrames(2);
+    for (const x of xs.slice(1)) { at('pointermove', x, y); await frame(); }
+    at('pointerup', xs.at(-1), y, window); await seFrames(40);
+  };
   globalThis.seRoot = () => strideGame.ui.components[0].page.rootElement;
   globalThis.seEntities = () => strideGame.entities.ids().map((id) => strideGame.entities.entity(id));
   globalThis.seScripts = () => {
@@ -89,5 +95,12 @@ const retried = stride('eval', `(async () => { await seClick(0.3, 0.7); return s
 check('Retry：重新开始，角色回到中间道，距离从头算', retried.page === 'Canvas' && !retried.dead && retried.lane === 1 && number(retried.distance) <= 1, retried);
 const slide = stride('eval', `seKey('ArrowDown').then(() => seState())`) as State;
 check('下键：滑铲', slide.animations.includes('Slide'), slide);
+// 拖动手势（Input.Gestures）：等滑铲放完，在画布上往右划一下，换到右边的道
+const swiped = stride('eval', `(async () => {
+  await seFrames(90);
+  await seSwipe(0.5, [0.5, 0.52, 0.56, 0.62]);
+  return seState();
+})()`) as State;
+check('往右划：换到右边的道', swiped.lane === 2, swiped);
 
 finish();

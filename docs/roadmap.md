@@ -373,5 +373,5 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    1. ~~导入~~（2026-11-19）：.sdsnd 导入成 `.sound.json`（SoundFile：编码、是否流式、是否空间化），源文件是浏览器能解的格式（mp3、ogg、wav、flac、aac）时原样复制到旁边（D9 的 (c)），别的格式报错；脚本属性引用声音（kind `sound`）。`apps/simple-audio` 导入无警告，单测补在 UI 的导入测试里。
    2. ~~音频运行时~~（2026-11-19，`audio/`）：`game.audio`（AudioEngine：一个 AudioContext 加主音量；第一次点击、按键时恢复出声，之前开始放的声音恢复后接着放），`content.loadSound`、脚本属性 `prop.asset('sound')`，`Sound`（不流式的整个解码成 AudioBuffer，流式的每个实例一个 `<audio>` 元素经 Web Audio 输出），`SoundInstance`（Play、PlayExclusive、Pause、Stop、IsLooping、Volume、Pan、Pitch、PlayState、Position，语义照 Stride）。单测 4 个（假的 AudioContext：状态、位置、循环、独占、恢复出声）。
    3. ~~脚本翻译和冒烟~~（2026-11-19）：SoundScript（AsyncScript：循环放音乐，点击重放音效、波形图散开渐隐）。冒烟 8 项（UI、音乐在放、AnalyserNode 量到主音量的输出不是静音、点击后音效和波形图、音效放完停止）；`tools/regress.ps1` 开 Chrome 时带 `--autoplay-policy=no-user-gesture-required`（合成的点击不算用户操作）。
-   4. 和桌面 Stride 比对（画面截图；声音只核对播放状态和时长）。
+   4. ~~和桌面 Stride 比对~~（2026-11-19，`tools/stride-capture/simple-audio`）：1280x720 截静止和波形图不透明两张，平均每通道差 1.53/255（背景图的 BC 色带、文字的 hinting），布局一致；声音两边是同一个源文件，冒烟核对播放和输出。帧时间：桌面 Stride 0.48 ms，stride-ts 0.39 ms；导入 2.4 s，构建 7 s，页面下载 2.6 MB（brotli 1.0 MB），第一帧 1.1 s。SimpleAudio 完成。
 

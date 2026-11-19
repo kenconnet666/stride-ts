@@ -130,7 +130,7 @@ struct Material {
   // 光泽度贴图：通道的单位向量（没有贴图时是 0）
   glossinessMask: vec4f,
   glossinessUvTransform: vec4f,
-  // x 为 1 时光泽度贴图存的是粗糙度（Stride 的 Invert）；y 是 Alpha 裁剪的阈值，没有时是 -1
+  // x 为 1 时光泽度贴图存的是粗糙度（Stride 的 Invert）；y 是 Alpha 裁剪的阈值，没有时是 -1；z 是玻璃的折射率，不是玻璃时是 0
   flags: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
@@ -425,7 +425,35 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
 }
 
 /** 一个像素上着色要用的表面属性。 */
-struct Surface { n: vec3f, v: vec3f, diffuse: vec3f, specular: vec3f, hasSpecular: bool, alphaR: f32, nDotV: f32 };
+struct Surface { n: vec3f, v: vec3f, diffuse: vec3f, specular: vec3f, hasSpecular: bool, glass: bool, alphaR: f32, nDotV: f32 };
+
+/** 薄玻璃（Stride 的 MaterialTransmittanceReflectanceStream）：按折射率、视角和玻璃的颜色算光透过去的比例和反射的比例。 */
+struct Glass { transmittance: vec3f, reflectance: vec3f };
+fn thinGlass(color: vec3f, cosTheta: f32, refractiveIndex: f32) -> Glass {
+  let eta = max(refractiveIndex, 1.0001);
+  let cosRefracted = sqrt(1.0 - (1.0 - cosTheta * cosTheta) / (eta * eta));
+  let r0 = (eta * cosRefracted - cosTheta) / (eta * cosRefracted + cosTheta);
+  let r1 = (eta * cosTheta - cosRefracted) / (eta * cosTheta + cosRefracted);
+  // 进入界面时的菲涅耳反射率，剩下的透进去
+  let r = 0.5 * saturate(r0 * r0 + r1 * r1);
+  let t = 1.0 - r;
+  // 玻璃里的吸收：颜色按光在里面走的路程（1 / cos）取幂
+  let k = pow(max(color, vec3f(0.001)), vec3f(1.0 / cosRefracted));
+  let rk = r * k;
+  let transmittance = saturate(t * t * k / (1.0 - rk * rk));
+  return Glass(transmittance, saturate(rk * transmittance + r));
+}
+
+/** 背面的法线翻过来朝着相机（Stride 的 MaterialSurfaceLightingAndShading）：两面画的材质背面也按正对着算光照。 */
+fn facingNormal(n: vec3f, front: bool) -> vec3f {
+  return select(-n, n, front);
+}
+
+/** 漫反射的基础色：贴图和颜色按运算符组合。 */
+fn baseColor(in: Varyings) -> vec4f {
+  let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
+  return select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
+}
 
 /**
  * 一个光源的直射光：Lambert 漫反射加 GGX 镜面（Fresnel Schlick、Smith-Schlick-GGX 可见性），l 是指向光源的单位向量，
@@ -438,25 +466,33 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let h = normalize(s.v + l);
   let nDotH = saturate(dot(s.n, h));
   let lDotH = saturate(dot(l, h));
-  let fresnel = s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0);
+  // 玻璃的菲涅耳项就是它的反射比例（MaterialSpecularMicrofacetFresnelThinGlass），放在 s.specular 里
+  let fresnel = select(s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0), s.specular, s.glass);
   let reflected = fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0;
   return result + select(vec3f(0.0), reflected * lightColorNdotL, s.hasSpecular);
 }
 
 /** Alpha 裁剪的材质在只写深度的阶段（深度预通道、阴影）：同不透明阶段一样丢掉 alpha 低于阈值的像素。 */
 @fragment fn fsCutout(in: Varyings) {
-  let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
-  let base = select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
+  let base = baseColor(in);
   if (base.a < material.flags.y) {
     discard;
   }
 }
 
-@fragment fn fs(in: Varyings) -> @location(0) vec4f {
-  let n = surfaceNormal(in);
+/** 玻璃透射的那一遍（Stride 的 MaterialSurfaceTransmittanceShading）：输出的颜色乘到背景上（混合是 目标 × 源）。 */
+@fragment fn fsGlassTransmittance(in: Varyings, @builtin(front_facing) front: bool) -> @location(0) vec4f {
+  let n = facingNormal(surfaceNormal(in), front);
   let v = normalize(view.eye.xyz - in.world);
-  let texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
-  let base = select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
+  let base = baseColor(in);
+  let glass = thinGlass(base.rgb, max(dot(n, v), 0.0001), material.flags.z);
+  return vec4f(mix(vec3f(1.0), glass.transmittance, saturate(base.a * material.blend.a)), 1.0);
+}
+
+@fragment fn fs(in: Varyings, @builtin(front_facing) front: bool) -> @location(0) vec4f {
+  let n = facingNormal(surfaceNormal(in), front);
+  let v = normalize(view.eye.xyz - in.world);
+  let base = baseColor(in);
   if (base.a < material.flags.y) {
     discard;
   }
@@ -471,7 +507,7 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint
   // （PrepareMaterialForLightingAndShading；镜面项的 alpha 是 matDiffuseSpecularAlphaBlend.y）
   // material.specular 的低两位是工作流（0 没有，1 金属度，2 镜面颜色，3 镜面颜色且能量守恒）；第 3 位（4）表示没有镜面着色模型：
-  // 不画镜面反射，可见的镜面色（matSpecularVisible）照常算，只用来折进漫反射
+  // 不画镜面反射，可见的镜面色（matSpecularVisible）照常算，只用来折进漫反射；第 4 位（8）表示没有漫反射着色模型：不算漫反射光照
   let workflow = material.specular & 3u;
   let hasSpecular = workflow != 0u && (material.specular & 4u) == 0u;
   let metalness = layered.metalness;
@@ -481,7 +517,8 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let specular = select(vec3f(0.0), visibleSpecular, hasSpecular);
   // 镜面颜色工作流默认能量守恒（Stride 的 IsEnergyConservative：MaterialSurfaceShadingDiffuseLambert 的漫反射乘 1 - 镜面）
   let conserved = select(vec3f(1.0), 1.0 - visibleSpecular, workflow == 3u);
-  let diffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a * conserved;
+  let litDiffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a * conserved;
+  let diffuse = select(litDiffuse, vec3f(0.0), (material.specular & 8u) != 0u);
   // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, occlusionDirect)
   let ao = dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
   let directOcclusion = mix(1.0, ao, material.occlusionDirect);
@@ -490,7 +527,10 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let nDotV = max(dot(n, v), 0.0001);
 
   // 直射光（DirectLightGroup.PrepareDirectLight：光色 · 衰减 · 阴影 · N·L），逐个光源相加
-  let surface = Surface(n, v, diffuse, specular, hasSpecular, alphaR, nDotV);
+  // 玻璃：镜面的菲涅耳项和环境光的镜面系数都换成它的反射比例（Stride 的 FresnelThinGlass、EnvironmentThinGlass）
+  let isGlass = material.flags.z > 0.0;
+  let glass = thinGlass(base.rgb, nDotV, material.flags.z);
+  let surface = Surface(n, v, diffuse, select(specular, glass.reflectance, isGlass), hasSpecular, isGlass, alphaR, nDotV);
   var direct = vec3f(0.0);
   let lightCount = u32(view.sky.z);
   let shadowLight = i32(view.sky.w);
@@ -522,7 +562,7 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
 
   // 环境光：镜面项都乘 DFG（Stride 的环境 BRDF 查找表）
   let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
-  let environmentSpecular = select(vec3f(0.0), specular * dfg.x + dfg.y, hasSpecular);
+  let environmentSpecular = select(vec3f(0.0), select(specular * dfg.x + dfg.y, glass.reflectance, isGlass), hasSpecular);
   color += (diffuse * view.ambientColor.rgb + environmentSpecular * view.ambientColor.rgb) * ao;
 
   // 天空盒光：强度是 0 时贡献也是 0，不用分支
@@ -873,9 +913,11 @@ export class MeshRenderFeature extends RootRenderFeature {
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
-      if (materialChanged || meshChanged) {
+      const glassPasses = glassPassCount(stage, batch.material);
+      const pipelineOf = (glassPass?: number) => gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.mesh.data.morph !== undefined, batch.material, this.effect, glassPass);
+      if (glassPasses === 0 && (materialChanged || meshChanged)) {
         // 管线也按材质分（自发光变体、两面画），同样的组合是同一条管线
-        const next = gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.mesh.data.morph !== undefined, batch.material, this.effect);
+        const next = pipelineOf();
         if (next !== pipeline) pass.setPipeline((pipeline = next));
       }
       if (materialChanged) {
@@ -891,9 +933,13 @@ export class MeshRenderFeature extends RootRenderFeature {
         pass.setVertexBuffer(0, gpuMesh.vertices);
         pass.setIndexBuffer(gpuMesh.indices, gpuMesh.indexFormat);
       }
-      pass.drawIndexed(gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first);
+      // 玻璃一遍一条管线，其余只画一遍
+      for (let glassPass = 0; glassPass < Math.max(glassPasses, 1); glassPass++) {
+        if (glassPasses > 0) pass.setPipeline((pipeline = pipelineOf(glassPass)));
+        pass.drawIndexed(gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first);
+        this.drawCalls++;
+      }
       this.drawnInstances += count;
-      this.drawCalls++;
     }
   }
 
@@ -1109,8 +1155,11 @@ class Gpu {
    * 阴影投射）没有片元着色器；阴影投射还不剔背面、不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor）。深度比较是 less-equal
    * （Stride 的 DepthStencilStates.Default），不透明阶段靠它复用深度预通道的结果。
    */
-  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined): GPURenderPipeline {
+  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, glassPass?: number): GPURenderPipeline {
     const { colorFormat, depthFormat } = stage.output;
+    // 玻璃的各遍（见 glassPassCount）：偶数遍是透射（乘到背景上），奇数遍是反射（加上去）；两面画时前两遍画背面
+    const transmittance = glassPass !== undefined && glassPass % 2 === 0;
+    const backFaces = glassPass !== undefined && material.doubleSided && glassPass < 2;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
     // 颜色树的变体每个阶段都用：位移贴图在只写深度的阶段也要算（深度预通道和不透明阶段的深度要一样）
@@ -1118,7 +1167,7 @@ class Gpu {
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
     const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers]) : ''}:${effect?.code ?? ''}`;
+    const key = `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${glassPass}:${trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers]) : ''}:${effect?.code ?? ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const offsets = vertexLayoutOffsets(layout);
@@ -1145,11 +1194,17 @@ class Gpu {
             ],
           }],
         },
-        ...(colorFormat ? { fragment: { module, entryPoint: 'fs', targets: [{ format: colorFormat, ...(stage.transparent ? { blend: PREMULTIPLIED_ALPHA } : {}) }] } } : {}),
+        ...(colorFormat ? {
+          fragment: {
+            module,
+            entryPoint: transmittance ? 'fsGlassTransmittance' : 'fs',
+            targets: [{ format: colorFormat, ...(stage.transparent ? { blend: glassPass === undefined ? PREMULTIPLIED_ALPHA : transmittance ? GLASS_TRANSMITTANCE : GLASS_REFLECTANCE } : {}) }],
+          },
+        } : {}),
         ...(cutout ? { fragment: { module, entryPoint: 'fsCutout', targets: [] } } : {}),
         primitive: stage.shadowCasters
           ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth }
-          : { topology: 'triangle-list', cullMode: doubleSided ? 'none' : 'back', frontFace: 'ccw' },
+          : { topology: 'triangle-list', cullMode: glassPass !== undefined ? (backFaces ? 'front' : 'back') : doubleSided ? 'none' : 'back', frontFace: 'ccw' },
         depthStencil: { format: depthFormat, depthWriteEnabled: !stage.transparent, depthCompare: 'less-equal' },
       });
       this.#pipelines.set(key, pipeline);
@@ -1376,13 +1431,13 @@ class Gpu {
       floats.set(transparency ? [...transparency.tint, transparency.alpha] : [1, 1, 1, 1], 36);
       const codes = new Uint32Array(this.#materialData);
       codes[40] = OPERATOR_CODES[material.baseColorOperator];
-      codes[41] = (material.specular ? (material.specularEnergyConservative ? 3 : 2) : material.metalness === undefined ? 0 : 1) | (material.specularShading ? 0 : 4);
+      codes[41] = (material.specular ? (material.specularEnergyConservative ? 3 : 2) : material.metalness === undefined ? 0 : 1) | (material.specularShading ? 0 : 4) | (material.diffuseShading ? 0 : 8);
       codes[42] = normalMap ? 1 | (normalMap.scaleAndBias ? 2 : 0) | (normalMap.invertY ? 4 : 0) | (normalMap.isXYNormal ? 8 : 0) : 0;
       floats[43] = occlusion.directLighting;
       const gloss = material.glossinessMap;
       floats.set(gloss ? CHANNELS[gloss.channel] : [0, 0, 0, 0], 44);
       floats.set(uv(gloss), 48);
-      floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, 0, 0], 52);
+      floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, material.glass?.refractiveIndex ?? 0, 0], 52);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});
@@ -1433,6 +1488,20 @@ class Gpu {
 }
 
 /** Stride 的 BlendStates.AlphaBlend：颜色已经乘过 alpha。 */
+/** 玻璃透射的那一遍：背景乘上着色器的输出；alpha 不动。 */
+const GLASS_TRANSMITTANCE: GPUBlendState = { color: { srcFactor: 'zero', dstFactor: 'src' }, alpha: { srcFactor: 'zero', dstFactor: 'one' } };
+/** 玻璃反射的那一遍：加到背景上（Stride 的 BlendStates.Additive：源乘它的 alpha）；alpha 不动。 */
+const GLASS_REFLECTANCE: GPUBlendState = { color: { srcFactor: 'src-alpha', dstFactor: 'one' }, alpha: { srcFactor: 'zero', dstFactor: 'one' } };
+
+/**
+ * 玻璃材质在透明阶段画几遍（别的材质是 0，照常画一遍）：透射、反射两遍；两面画时背面两遍、正面两遍。
+ * 和 Stride 不同：Stride 的注释写的是先背面后正面，代码却是先正面（前两遍剔掉背面）；我们照注释的顺序，离相机远的面先画，
+ * 它的反射才会被近的面挡掉一部分。
+ */
+function glassPassCount(stage: RenderStage, material: Material): number {
+  return stage.transparent && material.glass ? (material.doubleSided ? 4 : 2) : 0;
+}
+
 const PREMULTIPLIED_ALPHA: GPUBlendState = {
   color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },
   alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' },

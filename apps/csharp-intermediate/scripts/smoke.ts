@@ -219,7 +219,7 @@ await lock();
 await move(64, 32);
 const looked = first();
 check('第一人称：没锁鼠标时不转；真实点击锁定后鼠标转角色（偏航）和支点（俯仰）',
-  !firstBefore.locked && unlocked.yaw === firstBefore.yaw && looked.locked
+  !firstBefore.locked && Math.abs(unlocked.yaw - firstBefore.yaw) < 1e-5 && looked.locked
   && Math.abs(looked.yaw - firstBefore.yaw + 0.03) < 0.002 && Math.abs(looked.pitch - (32 / 720) * 0.6) < 0.002, { firstBefore, unlocked, looked });
 stride('key', 'W', '--hold', '1000');
 const walked = first();

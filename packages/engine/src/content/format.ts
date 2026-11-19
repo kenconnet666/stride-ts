@@ -549,6 +549,13 @@ export interface MaterialFile {
    * 照常折进漫反射（金属没有漫反射、能量守恒时乘 1 - 镜面）。默认有。
    */
   readonly specularShading?: false;
+  /** 没有漫反射着色模型（Stride 的 DiffuseModel 是空的）：不算漫反射光照，漫反射的颜色只当玻璃的颜色这类用途。默认有。 */
+  readonly diffuseShading?: false;
+  /**
+   * 玻璃（Stride 的 MaterialSpecularThinGlassModelFeature）：画在透明阶段，先把透过去的比例乘到背景上，再把反射加上去；
+   * 两个比例按折射率、视角和玻璃的颜色（漫反射的颜色）算。doubleSided 时背面和正面各画一次，能看到玻璃的里面。
+   */
+  readonly glass?: { readonly refractiveIndex: number };
   /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。有 glossinessTexture 时不看它。 */
   readonly roughness?: number;
   /**

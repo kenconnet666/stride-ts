@@ -94,6 +94,10 @@ export interface MaterialDesc {
   readonly specularEnergyConservative?: boolean;
   /** 画不画镜面反射（Stride 的 SpecularModel 有没有），默认 true；false 时金属度、镜面颜色只影响漫反射。 */
   readonly specularShading?: boolean;
+  /** 算不算漫反射光照（Stride 的 DiffuseModel 有没有），默认 true。 */
+  readonly diffuseShading?: boolean;
+  /** 玻璃（意思同 content/format.ts 的 MaterialFile.glass）；有它的材质画在透明阶段。 */
+  readonly glass?: { readonly refractiveIndex: number };
   /** 粗糙度 = 1 - 光泽度，默认 1。 */
   readonly roughness?: number;
   /** 光泽度贴图（意思同 content/format.ts 的 glossinessTexture）；有它时不看 roughness。 */
@@ -133,6 +137,8 @@ export class Material {
   readonly specular: readonly [number, number, number] | undefined;
   readonly specularEnergyConservative: boolean;
   readonly specularShading: boolean;
+  readonly diffuseShading: boolean;
+  readonly glass: { readonly refractiveIndex: number } | undefined;
   readonly roughness: number;
   readonly glossinessMap: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean } | undefined;
   readonly emissive: readonly [number, number, number];
@@ -159,6 +165,8 @@ export class Material {
     this.specular = desc.specular;
     this.specularEnergyConservative = desc.specularEnergyConservative ?? true;
     this.specularShading = desc.specularShading ?? true;
+    this.diffuseShading = desc.diffuseShading ?? true;
+    this.glass = desc.glass;
     this.roughness = desc.roughness ?? 1;
     const gloss = desc.glossinessMap;
     this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert };
@@ -192,9 +200,9 @@ export class Material {
     this.version++;
   }
 
-  /** 透明材质画在透明阶段。 */
+  /** 透明混合和玻璃的材质画在透明阶段。 */
   get isTransparent(): boolean {
-    return this.transparency !== undefined;
+    return this.transparency !== undefined || this.glass !== undefined;
   }
 
   /** @internal Model 组件里存的 id 对应的材质。 */

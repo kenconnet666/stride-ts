@@ -140,6 +140,7 @@ describe('导入 Stride 场景', () => {
     floor: '11111111-0000-0000-0000-0000000000a5',
     muted: '11111111-0000-0000-0000-0000000000a6',
     pipe: '11111111-0000-0000-0000-0000000000a7',
+    pane: '11111111-0000-0000-0000-0000000000a8',
     heroSheet: '11111111-0000-0000-0000-0000000000f4',
     bumpy: '11111111-0000-0000-0000-000000000009',
     bumps: '11111111-0000-0000-0000-00000000000a',
@@ -384,6 +385,15 @@ describe('导入 Stride 场景', () => {
       '            FallbackValue:', '                Value: {R: 1.0, G: 0.0, B: 0.0, A: 1.0}', '            Enabled: false',
       '    Emissive: !MaterialEmissiveMapFeature', '        Enabled: false', '        EmissiveMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
       '        Intensity: !ComputeFloat', '            Value: 5.0',
+      'Layers: {}',
+    ].join('\n'),
+    // CSharpIntermediate 的 Transparent：玻璃的镜面模型，有漫反射的颜色（玻璃的颜色）、没有漫反射的着色模型，两面都画
+    'Assets/Materials/Pane.sdmat': [
+      '!MaterialAsset', `Id: ${ids.pane}`, 'Attributes:',
+      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 0.0, G: 1.0, B: 0.0, A: 1.0}',
+      '    Specular: !MaterialMetalnessMapFeature', '        MetalnessMap: !ComputeFloat', '            Value: 0.08',
+      '    SpecularModel: !MaterialSpecularThinGlassModelFeature', '        RefractiveIndex: 1.563',
+      '    CullMode: None',
       'Layers: {}',
     ].join('\n'),
     // 没给材质的程序模型（CSharpIntermediate 的激光：圆柱，材质由实体的 Materials 覆盖）
@@ -811,6 +821,16 @@ describe('导入 Stride 场景', () => {
     await importer.importAsset(project.byPath('Game/Materials/Muted')!);
     const muted = JSON.parse(await readFile(path.join(out, 'Game/Materials/Muted.material.json'), 'utf8')) as MaterialFile;
     expect(muted).toEqual({ name: 'Muted', baseColor: [1, 0, 0, 1], roughness: 1 });
+  });
+
+  test('玻璃的镜面模型导出折射率；漫反射缺着色模型时不算漫反射光照', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-glass');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
+    await importer.importAsset(project.byPath('Game/Materials/Pane')!);
+    expect(importer.warnings).toEqual([]);
+    const pane = JSON.parse(await readFile(path.join(out, 'Game/Materials/Pane.material.json'), 'utf8')) as MaterialFile;
+    expect(pane).toEqual({ name: 'Pane', baseColor: [0, 1, 0, 1], metalness: 0.08, diffuseShading: false, glass: { refractiveIndex: 1.563 }, roughness: 1, doubleSided: true });
   });
 
   test('单独导入脚本用代码加载的资源（Content.Load 的材质）；场景不能这样导入', async () => {

@@ -93,14 +93,18 @@ export class MaterialImporter {
     const workflow = specular?.$type;
     if (specular && workflow !== 'MaterialMetalnessMapFeature' && workflow !== 'MaterialSpecularMapFeature') this.#context.warnings.push(`${asset.file}: specular ${workflow ?? 'feature'} is not supported; the material has no specular`);
     // 镜面的颜色（Specular）和着色模型（SpecularModel）是分开的两个特性：没有模型就不画镜面反射
-    const specularModel = asObject(attributes['SpecularModel'])?.$type;
-    if (specularModel && specularModel !== 'MaterialSpecularMicrofacetModelFeature') {
-      this.#context.warnings.push(`${asset.file}: specular model ${specularModel} is not supported yet; using the microfacet model`);
+    const specularModel = asObject(attributes['SpecularModel']);
+    // 玻璃（MaterialSpecularThinGlassModelFeature）是微表面模型的一种，菲涅耳项换成按折射率算的反射比例，另外多画一遍透射
+    const glass = specularModel?.$type === 'MaterialSpecularThinGlassModelFeature';
+    if (specularModel && !glass && specularModel.$type !== 'MaterialSpecularMicrofacetModelFeature') {
+      this.#context.warnings.push(`${asset.file}: specular model ${specularModel.$type} is not supported yet; using the microfacet model`);
     }
-    // 漫反射同理；没有模型的（Stride 不算漫反射光照）现在只在玻璃材质里见过，照有模型画
-    if (attributes['Diffuse'] && !attributes['DiffuseModel'] && specularModel !== 'MaterialSpecularThinGlassModelFeature') {
-      this.#context.warnings.push(`${asset.file}: a material without a diffuse model is not supported yet; shading its diffuse color as Lambert`);
+    // 还没做的特性要说出来，不能悄悄忽略（CSharpIntermediate 的蓝箱子是清漆的车漆，现在只画它的漫反射）
+    for (const feature of ['ClearCoat', 'SubsurfaceScattering', 'Tessellation']) {
+      if (attributes[feature]) this.#context.warnings.push(`${asset.file}: material feature ${feature} is not supported yet; ignored`);
     }
+    // 漫反射同理：颜色（Diffuse）和着色模型（DiffuseModel）缺一个就不算漫反射光照（只有自发光的激光、玻璃）
+    const diffuseShading = attributes['Diffuse'] !== undefined && attributes['DiffuseModel'] !== undefined;
     // 化不成固定槽的属性整棵树放进 trees（最底下一层盖满的材质层）；固定槽里留个占位的值，只用来定工作流
     const trees = await this.#surfaceTrees(attributes, asset, uvScale);
     const metalness = workflow !== 'MaterialMetalnessMapFeature' ? undefined : trees?.metalness ? 0 : this.#scalar(asObject(specular!['MetalnessMap']), 0, asset);
@@ -120,6 +124,8 @@ export class MaterialImporter {
       ...(workflow === 'MaterialSpecularMapFeature' ? { specular: trees?.specular ? ([0, 0, 0] as const) : this.#specularColor(specular!, asset, uvScale) } : {}),
       ...(workflow === 'MaterialSpecularMapFeature' && specular!['IsEnergyConservative'] === false ? { specularEnergyConservative: false as const } : {}),
       ...(specular && !specularModel ? { specularShading: false as const } : {}),
+      ...(diffuseShading ? {} : { diffuseShading: false as const }),
+      ...(glass ? { glass: { refractiveIndex: asNumber(specularModel['RefractiveIndex'], 1.52) } } : {}),
       roughness,
       ...(glossinessTexture ? { glossinessTexture: { ...glossinessTexture, invert } } : {}),
       ...await this.#emissive(asObject(attributes['Emissive']), asset, uvScale),

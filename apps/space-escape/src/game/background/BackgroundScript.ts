@@ -4,7 +4,7 @@
 // 和 Stride 不同：LevelBlocks 场景（模板）是异步加载的，加载好之前没有关卡（Stride 在 Start 里同步加载）。
 import { prop, SyncScript, Transform, type Bounds, type Entity, type GameTime, type Mesh } from '@stride-ts/engine';
 import { ENABLE_BEND, ENABLE_TEXTURE_UV, TEXTURE_REGION } from '../SpaceEscapeEffectMain';
-import { LevelGenerator } from './LevelGenerator';
+import { BACKGROUNDS, LevelGenerator } from './LevelGenerator';
 import type { Hole, Obstacle, Section } from './Section';
 
 const GAME_SPEED = 30;
@@ -54,6 +54,7 @@ export class BackgroundScript extends SyncScript.props({
       this.#levelGenerator = new LevelGenerator(template, this.game.entities);
       this.#createStartLevelBlocks();
     });
+    this.disposables.use(this.game.debug.command('fixed-level', 'replace the random level with fixed blocks (a00, b00 with Obstacle1 in the middle lane, b01..b04) for screenshot comparisons', () => this.#fixedLevel()));
   }
 
   override cancel(): void {
@@ -106,6 +107,18 @@ export class BackgroundScript extends SyncScript.props({
       }
     }
     return undefined;
+  }
+
+  /** 关卡换成固定的几段（比对截图用，同 tools/stride-capture/space-escape 的 FixLevel）：b00 那段的中心放一个 Obstacle1。 */
+  #fixedLevel(): void {
+    const generator = this.#levelGenerator;
+    if (!generator) throw new Error('the level blocks are not loaded yet');
+    for (const block of this.#levelBlocks.splice(0)) block.rootEntity.destroy();
+    for (const background of BACKGROUNDS) {
+      const section = generator.createLevelBlock(background, 0);
+      if (background === 'background_b00') generator.addObstacle(section, 'obstacle1', 0, 0);
+      this.#addLevelBlock(section);
+    }
   }
 
   #createStartLevelBlocks(): void {

@@ -13,7 +13,7 @@ $env:STRIDE_BROWSER_DIR = Join-Path $HOME '.stride-ts\capture'
 $all = Get-ChildItem apps -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'scripts\import.ts') } | ForEach-Object Name
 $selected = $Apps ? ($Apps -split ',' | ForEach-Object Trim) : $all
 # 和桌面 Stride 的窗口一样大（GameSettings 的后备缓冲；截图工程的 README 用的也是这个尺寸），没列的是 1280x720
-$sizes = @{ 'animated-model' = '640x1061'; 'bepu-sample' = '1600x900'; 'game-menu' = '640x1061'; 'jumpy-jet' = '640x1136'; 'ui-particles' = '600x600' }
+$sizes = @{ 'animated-model' = '640x1061'; 'bepu-sample' = '1600x900'; 'game-menu' = '640x1061'; 'jumpy-jet' = '640x1136'; 'space-escape' = '640x1136'; 'ui-particles' = '600x600' }
 # 页面下载的资源：路径对到 dist 里的文件，brotli 量取旁边的 .br（没有就是压不小，按原样算）
 $resources = 'JSON.stringify([location.pathname, ...performance.getEntriesByType("resource").map((e) => new URL(e.name).pathname)])'
 

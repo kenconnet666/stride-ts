@@ -16,6 +16,7 @@ export class GameScript extends SyncScript.props({
     ui.startButton.onClick(() => this.#startGame());
     ui.retryButton.onClick(() => this.#restartGame());
     ui.menuButton.onClick(() => this.#goToMenu());
+    this.disposables.use(this.game.debug.command('start-game', 'start playing (the "Touch to Start" button)', () => this.#startGame()));
     this.#goToMenu();
   }
 

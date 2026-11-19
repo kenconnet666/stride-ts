@@ -129,6 +129,8 @@ export { SceneRoot, Transform, transformSlot, type TransformColumns, type Transf
 export { validator } from './engine/validator';
 export { Debug, FrameTimings, describe, type DebugHandler } from './debug/Debug';
 export { DebugText, type DebugTextLine } from './debug/DebugText';
+export { drawCollider } from './physics/debugShapes';
+export { DebugDraw, DEBUG_LINE_FLOATS, type DebugColor, type DebugDrawOptions, type DebugPoint } from './debug/DebugDraw';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
 export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './games/Game';
 export { GameTime } from './games/GameTime';

@@ -7,6 +7,8 @@ import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneIns
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
 import { DebugText } from '../debug/DebugText';
+import { DebugDraw } from '../debug/DebugDraw';
+import { DebugDrawRenderer } from '../debug/DebugDrawRenderer';
 import { DebugTextRenderer } from '../debug/DebugTextRenderer';
 import type { ScopedDefaults } from '../engine/defaults';
 import type { EntityScene } from '../engine/Entity';
@@ -134,6 +136,9 @@ export class Game {
   /** 用户在系统里设的偏好：少动画、高对比、深浅色。 */
   readonly userPreferences = new UserPreferences();
   private readonly debugTextRenderer = new DebugTextRenderer();
+  /** 调试用的线（线框、包围盒、网格、Gizmo）：脚本每帧调用，画在场景之后、UI 之前。 */
+  readonly debugDraw = new DebugDraw();
+  private readonly debugDrawRenderer = new DebugDrawRenderer();
   /** 调试命令、计数器、事件和日志转发（debug/Debug.ts）。 */
   readonly debug = new Debug(() => (this.status === 'starting' ? undefined : this.frames));
   /** 暂停时不跑 update（脚本、系统、物理、游戏时间都停住），画面照常画；step() 单步。 */
@@ -250,6 +255,7 @@ export class Game {
     (this.graphicsCompositor as ForwardRenderer | undefined)?.destroy();
     this.ui.destroy();
     this.debugTextRenderer.destroy();
+    this.debugDrawRenderer.destroy();
     this.particles.destroy();
     this.audio.destroy();
     (this.renderSystem as RenderSystem | undefined)?.destroy();
@@ -429,6 +435,7 @@ export class Game {
         this.updateTime.advance(this.fixedTimeStep ?? (this.paused ? STEP_SECONDS : real));
         this.input.update(this.updateTime.elapsed);
         this.debugText.beginFrame();
+        this.debugDraw.beginFrame(this.updateTime.total);
         this.update(this.updateTime);
         this.writeStats();
         await scriptContinuations();
@@ -437,6 +444,7 @@ export class Game {
       }
       const drawStart = performance.now();
       this.draw(this.updateTime);
+      this.debugDrawRenderer.draw(this);
       this.ui.draw(this);
       this.particles.drawOverUI(this);
       this.debugTextRenderer.draw(this);

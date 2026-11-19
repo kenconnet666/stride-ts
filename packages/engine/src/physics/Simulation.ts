@@ -22,6 +22,7 @@ import { Matrix } from '../mathematics/Matrix';
 import { Vector3, type QuatLike, type Vec3Like } from '../mathematics/vectors';
 import { Collider, hullPoints, triangleSoup, type ColliderShape } from './Collider';
 import { TriggerHandler, type ContactHandler } from './contacts';
+import { drawCollider } from './debugShapes';
 import { Body, Character, PhysicsBody, Static } from './components';
 
 type Vec3 = readonly [number, number, number];
@@ -79,6 +80,11 @@ export class Simulation {
   timeScale = 1;
   /** 关掉时不步进（Stride 的 BepuSimulation.Enabled）：物体停在原地，新加的物体照常建好。 */
   enabled = true;
+  /**
+   * 把所有碰撞体画成线框（game.debugDraw）：静态的灰绿、刚体橙色、角色青色。调试时打开，每帧把形状重新画一遍，
+   * 网格形状多的场景会慢。
+   */
+  showColliders = false;
   readonly settings: SimulationSettings = { gravity: [0, -9.8, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 1 / 60, maxStepsPerFrame: 3 };
   readonly #native: StrideNative;
   readonly #transforms: TransformStore;
@@ -232,6 +238,20 @@ export class Simulation {
     },
   });
 
+  /** showColliders：三种物体各一个系统，把碰撞体按实体的世界矩阵画出来（画的是上一帧末的位姿）。 */
+  readonly #drawColliders = ([[Static, [0.5, 0.8, 0.5, 1]], [Body, [1, 0.6, 0.1, 1]], [Character, [0.2, 0.9, 1, 1]]] as const).map(([component, color]) =>
+    system(`Simulation.drawColliders.${component.name}`, {
+      with: { body: component, transform: Transform },
+      update: ({ body, transform, count }) => {
+        const debugDraw = this.#entities.game.debugDraw;
+        for (let i = 0; i < count; i++) {
+          const collider = Collider.byId(body.collider[i]!);
+          const slot = transform.slot[i]! * 16;
+          if (collider) drawCollider(debugDraw, collider, transform.world.subarray(slot, slot + 16), color);
+        }
+      },
+    }));
+
   constructor(native: StrideNative, transforms: TransformStore, entities: EntityManager, maxBodies: number) {
     this.#native = native;
     this.#transforms = transforms;
@@ -256,6 +276,7 @@ export class Simulation {
 
   /** 一帧的仿真：建新物体、按固定步长步进（最多 maxStepsPerFrame 步），插值的物体写回两步之间的位姿。 */
   update(time: GameTime): void {
+    if (this.showColliders) for (const draw of this.#drawColliders) this.#entities.run(draw, time);
     this.#createPending(time);
     const entities = this.#entities;
     if (!this.#world || !this.enabled) return;

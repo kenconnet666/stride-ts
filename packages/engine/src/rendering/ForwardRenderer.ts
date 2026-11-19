@@ -277,7 +277,7 @@ export class ForwardRenderer {
     const { r, g, b, a } = this.clearColor;
     // 场景里有 UI、或者粒子画在 UI 上面时留着深度缓冲（它们在后处理之后和它比深度），否则丢掉（分块渲染的 GPU 上省带宽）
     const particles = context.game.particles;
-    const keepDepth = context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0);
+    const keepDepth = context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
     if (!this.postEffects.enabled && this.directOutput) {

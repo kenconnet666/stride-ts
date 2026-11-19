@@ -12,7 +12,7 @@ pwsh tools/stride-capture/particles-sample/capture-ours.ps1
 跑 30 帧后所有发射器改成固定种子并重置，再跑 60 帧截 `<场景名>.png`。
 
 `capture-ours.ps1` 在 stride-ts 这边暂停后换场景、单步走同样的步数再截，逐张比。它用自己的无头 Chrome（`STRIDE_BROWSER_DIR`），
-不关 `stride open` 开着的窗口。跑完以后 pwsh 可能等着 Chrome 的子进程不退出，结果（`ours/` 下的图和 `-diff.png`）已经写好了。
+不关 `stride open` 开着的窗口。结果是 `ours/` 下的图和 `-diff.png`，跑完自己关掉这个 Chrome。
 
 ## 2026-11-19 的结果
 

@@ -31,3 +31,5 @@ function Shot([string]$name, [string]$code) {
 
 Shot 'newgame' 'splash.fusePercentage = 0.5'
 Shot 'endgame' 'splash.enterEndGame()'
+# 用完就关：无头 Chrome 开着会一直按满帧率渲染
+pnpm exec stride close | Out-Null

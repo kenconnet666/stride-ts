@@ -35,7 +35,8 @@ Game
   mouse move <dx> <dy> | mouse <left|middle|right> [--hold <ms> | --down | --up] [--trusted]
                                                     --trusted: a real click at the canvas center through the DevTools
                                                     protocol (stride open's Chrome), so the page may lock the pointer
-  shot <out.png> [--diff <reference.png>] [--diff-out <file>] [--threshold 2]
+  shot <out.png> [--diff <reference.png>] [--diff-out <file>] [--threshold 2] [--region x,y,w,h]
+                                                    --region: compare only that rectangle (e.g. leave out UI drawn differently)
   perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, native timings, GPU per pass
   native [--reset]                                  native counters (physics bodies, ...), timings, wasm memory
   gpu-calls [--seconds 2]                           WebGPU calls and writeBuffer bytes per frame
@@ -77,6 +78,7 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     diff: { type: 'string' },
     'diff-out': { type: 'string' },
     threshold: { type: 'string' },
+    region: { type: 'string' },
     seconds: { type: 'string' },
     'no-gpu': { type: 'boolean' },
     scale: { type: 'string' },
@@ -263,7 +265,12 @@ const commands: Record<string, () => Promise<unknown>> = {
     const bytes = Buffer.from(png, 'base64');
     writeFileSync(file, bytes);
     if (!options.diff) return { file, ...info };
-    const diff = diffImages(decodePng(readFileSync(options.diff)), decodePng(bytes), { threshold: Number(options.threshold ?? 2) });
+    const region = options.region?.split(',').map(Number);
+    if (region && (region.length !== 4 || region.some((value) => !Number.isInteger(value)))) throw new Error(`--region takes x,y,w,h in pixels, got ${options.region}`);
+    const diff = diffImages(decodePng(readFileSync(options.diff)), decodePng(bytes), {
+      threshold: Number(options.threshold ?? 2),
+      ...(region ? { region: region as [number, number, number, number] } : {}),
+    });
     const diffFile = options['diff-out'] ?? file.replace(/\.png$/i, '') + '-diff.png';
     writeFileSync(diffFile, encodePng(diff.image));
     const { image: _, ...summary } = diff;

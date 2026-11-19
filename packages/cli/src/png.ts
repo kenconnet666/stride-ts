@@ -107,6 +107,8 @@ export interface ImageDiff {
   /** 每个像素取 RGB 三个通道里差得最多的那个（0..255），下面都按它算。 */
   readonly max: number;
   readonly mean: number;
+  /** 所有通道的差的平均（文档里说的"平均每通道差"）。 */
+  readonly meanChannel: number;
   /** 每个通道 b 减 a 的平均（有符号），看整体偏亮还是偏暗、偏哪个颜色。 */
   readonly meanSignedRgb: readonly [number, number, number];
   /** 差超过 1、2、8、32 的像素数。 */
@@ -117,22 +119,37 @@ export interface ImageDiff {
   readonly image: Image;
 }
 
+export interface DiffOptions {
+  readonly threshold?: number;
+  readonly amplify?: number;
+  /** 只比这一块 [x, y, 宽, 高]（比如去掉两边画法不同的 UI）；统计按这一块的像素数算，差异图里别处是黑的。 */
+  readonly region?: readonly [number, number, number, number];
+}
+
 /** 逐像素比较两张同样大小的图（忽略 alpha），a 是参考。 */
-export function diffImages(a: Image, b: Image, { threshold = 2, amplify = 16 } = {}): ImageDiff {
+export function diffImages(a: Image, b: Image, { threshold = 2, amplify = 16, region = [0, 0, a.width, a.height] }: DiffOptions = {}): ImageDiff {
   if (a.width !== b.width || a.height !== b.height) throw new Error(`size differs: ${a.width}x${a.height} vs ${b.width}x${b.height}`);
+  const [left, top, regionWidth, regionHeight] = region;
+  if (left < 0 || top < 0 || regionWidth <= 0 || regionHeight <= 0 || left + regionWidth > a.width || top + regionHeight > a.height) {
+    throw new Error(`region ${region.join(',')} is outside the ${a.width}x${a.height} image`);
+  }
+  const pixels = regionWidth * regionHeight;
   const data = new Uint8Array(a.data.length);
   const over = { '1': 0, '2': 0, '8': 0, '32': 0 };
-  let max = 0, sum = 0, minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
+  let max = 0, sum = 0, channelSum = 0, minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
   const signed = [0, 0, 0];
   for (let i = 0, p = 0; i < a.data.length; i += 4, p++) {
+    data[i + 3] = 255;
+    const x = p % a.width, y = Math.floor(p / a.width);
+    if (x < left || x >= left + regionWidth || y < top || y >= top + regionHeight) continue;
     let d = 0;
     for (let c = 0; c < 3; c++) {
       signed[c]! += b.data[i + c]! - a.data[i + c]!;
       const channel = Math.abs(a.data[i + c]! - b.data[i + c]!);
       data[i + c] = Math.min(255, channel * amplify);
+      channelSum += channel;
       d = Math.max(d, channel);
     }
-    data[i + 3] = 255;
     max = Math.max(max, d);
     sum += d;
     if (d > 1) over['1']++;
@@ -140,7 +157,6 @@ export function diffImages(a: Image, b: Image, { threshold = 2, amplify = 16 } =
     if (d > 8) over['8']++;
     if (d > 32) over['32']++;
     if (d > threshold) {
-      const x = p % a.width, y = Math.floor(p / a.width);
       minX = Math.min(minX, x);
       minY = Math.min(minY, y);
       maxX = Math.max(maxX, x);
@@ -151,8 +167,9 @@ export function diffImages(a: Image, b: Image, { threshold = 2, amplify = 16 } =
     width: a.width,
     height: a.height,
     max,
-    mean: sum / (a.width * a.height),
-    meanSignedRgb: signed.map((s) => s / (a.width * a.height)) as [number, number, number],
+    mean: sum / pixels,
+    meanChannel: channelSum / (pixels * 3),
+    meanSignedRgb: signed.map((s) => s / pixels) as [number, number, number],
     over,
     bounds: maxX < 0 ? null : [minX, minY, maxX - minX + 1, maxY - minY + 1],
     image: { width: a.width, height: a.height, data },

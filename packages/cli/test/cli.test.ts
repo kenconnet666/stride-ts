@@ -23,6 +23,15 @@ describe('PNG', () => {
     expect(diff.max).toBe(40);
     expect(diff.over).toEqual({ '1': 1, '2': 1, '8': 1, '32': 1 });
     expect(diff.bounds).toEqual([3, 1, 1, 1]);
+    // mean 是每个像素差最大的通道的平均，meanChannel 是所有通道的平均
+    expect([diff.mean, diff.meanChannel]).toEqual([40 / 15, 40 / 45]);
+
+    // 只比一块：统计按这一块的像素数算，块外的差不算
+    const inside = diffImages(decoded, { width, height, data: changed }, { region: [3, 0, 2, 2] });
+    expect([inside.max, inside.mean, inside.bounds]).toEqual([40, 10, [3, 1, 1, 1]]);
+    const outside = diffImages(decoded, { width, height, data: changed }, { region: [0, 0, 3, 3] });
+    expect([outside.max, outside.bounds]).toEqual([0, null]);
+    expect(() => diffImages(decoded, decoded, { region: [4, 0, 2, 1] })).toThrow('outside the 5x3 image');
   });
 });
 

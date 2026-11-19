@@ -27,3 +27,5 @@ Shot 'idle'
 pnpm exec stride pause --hub simple-audio | Out-Null
 pnpm exec stride eval "const root = strideGame.ui.components[0].page.rootElement; for (const [name, x] of [['LeftWave', 0.35], ['RightWave', 0.65]]) { const e = root.findName(name); e.canvasRelativePosition = [x, 0.5]; e.opacity = 1; } 1" --hub simple-audio | Out-Null
 Shot 'wave'
+# 用完就关：无头 Chrome 开着会一直按满帧率渲染
+pnpm exec stride close | Out-Null

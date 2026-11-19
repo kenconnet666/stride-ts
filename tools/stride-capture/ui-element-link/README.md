@@ -18,7 +18,7 @@ pwsh tools/stride-capture/ui-element-link/capture-ours.ps1
 
 每个场景换进来 5 帧后定住会动的东西：SplashScript 移除（按钮不再来回移动），跟着走的按钮放在 sin = 0.5 的位置（中心往右
 0.375 个半宽），骑士的动画停在第 0 帧，烟的粒子去掉（stride-ts 还没有粒子）；再等 60 帧截图。`capture-ours.ps1` 在 stride-ts
-这边做同样的事，逐张比。它跑完以后 pwsh 可能等着 Chrome 的子进程不退出，结果已经写好了。
+这边做同样的事，逐张比。
 
 Stride 存的 PNG 带 gAMA/iCCP 块，有的看图软件按它把图显示得发白；比的是像素值，不受影响。
 

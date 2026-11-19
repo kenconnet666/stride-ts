@@ -47,6 +47,7 @@ import { MATERIAL_STREAMS } from './shaderClass';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
 import { Mesh } from './Mesh';
 import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
 export interface MeshBatch {
@@ -991,6 +992,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     for (const pass of passes) {
       pass.offset = offset;
       offset += pass.views.length * pass.slotCount;
+      this.#sortTransparentInstances(context, pass);
     }
     gpu.uploadInstances(passes, offset);
     gpu.uploadViews(this.system.views, this.system.lighting, context.game.updateTime.total);
@@ -998,7 +1000,8 @@ export class MeshRenderFeature extends RootRenderFeature {
 
   /**
    * 不透明的批画在深度预通道、不透明和阴影阶段，透明材质的批只画在透明阶段（不投阴影，和 Stride 不同：Stride 默认按 alpha
-   * 抖动着投阴影）。透明的批按第一个实例到相机的距离从远到近画；同一批的实例不排序（和 Stride 不同：Stride 按每个物体排）。
+   * 抖动着投阴影）。透明的实例逐个按到相机的距离从远到近画（同 Stride 按每个物体排）：不同批的实例可以交错，同一批里连着的
+   * 几个一次画完。
    */
   override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
@@ -1009,15 +1012,17 @@ export class MeshRenderFeature extends RootRenderFeature {
     // 透明阶段画透明的材质，再给有清漆的（不透明的）材质叠一遍清漆
     const inStage = (material: Material) => (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
     const visible = (b: number) => counts[index * cullPass.batchCount + b]! > 0 && inStage(this.batches[b]!.material);
-    const order = stage.transparent ? this.#backToFront(context, view, cullPass.batchCount, visible) : undefined;
-    if (order?.length === 0) return;
+    const viewOffset = cullPass.offset + index * cullPass.slotCount;
+    // 透明阶段：一段一段（同一批里连着的几个实例）从远到近；其余阶段每批一段
+    const runs = stage.transparent ? this.#backToFront(context, view, cullPass, index, visible) : undefined;
+    if (runs?.length === 0) return;
     pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
-    const viewOffset = cullPass.offset + index * cullPass.slotCount;
-    for (let i = 0, end = order?.length ?? cullPass.batchCount; i < end; i++) {
-      const b = order ? order[i]! : i;
+    for (let i = 0, end = runs ? runs.length / 3 : cullPass.batchCount; i < end; i++) {
+      const b = runs ? runs[i * 3]! : i;
       const batch = this.batches[b]!;
-      const count = counts[index * cullPass.batchCount + b]!;
+      const first = runs ? runs[i * 3 + 1]! : 0;
+      const count = runs ? runs[i * 3 + 2]! : counts[index * cullPass.batchCount + b]!;
       if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
@@ -1045,7 +1050,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       // 多遍的材质一遍一条管线，其余只画一遍
       for (let p = 0; p < Math.max(passes.length, 1); p++) {
         if (passes.length > 0) pass.setPipeline((pipeline = pipelineOf(passes[p])));
-        pass.drawIndexed(gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first);
+        pass.drawIndexed(gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first + first);
         this.drawCalls++;
       }
       this.drawnInstances += count;
@@ -1059,17 +1064,33 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.#cullPasses.length = 0;
   }
 
-  /** 可见的透明批按第一个实例到相机的距离从远到近排。 */
-  #backToFront(context: RenderContext, view: RenderView, batchCount: number, visible: (b: number) => boolean): number[] {
+  /**
+   * 剔除之后、上传实例之前：每个视图里，透明的批（含要叠清漆的）可见的实例在它自己那段里按到相机的距离从远到近排好。
+   * 阴影视图不画透明的东西，跳过。
+   */
+  #sortTransparentInstances(context: RenderContext, pass: CullPass): void {
     const world = context.game.transforms.world;
-    const { x, y, z } = view.eye;
-    const distance = (b: number) => {
-      const at = this.batches[b]!.slots[0]! * 16;
-      return (world[at + 12]! - x) ** 2 + (world[at + 13]! - y) ** 2 + (world[at + 14]! - z) ** 2;
-    };
-    const order: number[] = [];
-    for (let b = 0; b < batchCount; b++) if (visible(b)) order.push(b);
-    return order.length < 2 ? order : order.map((b) => [b, distance(b)] as const).sort((p, q) => q[1] - p[1]).map(([b]) => b);
+    const { counts, visibleSlots } = pass.culler;
+    for (let b = 0; b < pass.batchCount; b++) {
+      const batch = this.batches[b]!;
+      if (!batch.material.isTransparent && !batch.material.hasClearCoat) continue;
+      pass.views.forEach((view, v) => {
+        const count = counts[v * pass.batchCount + b]!;
+        if (count < 2 || view.viewport) return;
+        const start = v * pass.slotCount + batch.first;
+        sortBackToFront(visibleSlots.subarray(start, start + count), world, view.eye);
+      });
+    }
+  }
+
+  /** 透明阶段要画的实例从远到近归并成一段一段（见 transparentOrder.ts）；各批自己那段已经排好（#sortTransparentInstances）。 */
+  #backToFront(context: RenderContext, view: RenderView, pass: CullPass, viewIndex: number, visible: (b: number) => boolean): number[] {
+    const { counts, visibleSlots } = pass.culler;
+    const batches: VisibleBatch[] = [];
+    for (let b = 0; b < pass.batchCount; b++) {
+      if (visible(b)) batches.push({ batch: b, start: viewIndex * pass.slotCount + this.batches[b]!.first, count: counts[viewIndex * pass.batchCount + b]! });
+    }
+    return backToFrontRuns(batches, visibleSlots, context.game.transforms.world, view.eye);
   }
 
   /** 一张表的行按批记下变换槽位。相邻的行大多是同一批，先比较上一批，省掉大部分 Map 查找。 */

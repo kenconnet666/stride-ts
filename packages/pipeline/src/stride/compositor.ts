@@ -4,10 +4,11 @@
  * - 主画面：从 Game 出发找到渲染槽位 0 的相机的 SceneCameraRenderer，取它下面第一个前向渲染器（不进渲染到纹理的分支）
  *   的清屏色和后处理开关。
  * - 画进渲染目标贴图的相机：SceneCameraRenderer 下面是 RenderTextureSceneRenderer 的，取它的贴图和里面的前向渲染器。
+ * - 阴影：ForwardLightingRenderFeature 的 ShadowMapRenderer 是 null 时整个合成器不画阴影。
  * 多个相机分屏画、调试渲染器、单独的渲染阶段（UI）等以后随合成器的数据化一起做（docs/roadmap.md 的"合成器的最小数据化"）。
  */
 import type { SceneCompositor, SceneForwardRenderer, ScenePostEffects, SceneRenderTexture, SceneTextureCamera } from '@stride-ts/engine/content-format';
-import { asNumber, asObject, parseAssetReference, parseObjectReference, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, parseAssetReference, parseObjectReference, srgbToLinear, type StrideObject, type StrideValue } from './yaml.ts';
 
 export interface ImportedCompositor {
   /** 相机槽位的 Id 到下标。 */
@@ -38,7 +39,10 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
     node.$type?.startsWith('Stride.Rendering.Compositing.SceneCameraRenderer') === true && parseObjectReference(node['Camera']) === mainSlot);
   const forward = camera && findRenderer(resolve(camera['Child']), resolve, isForward);
   const textureCameras = textureCamerasOf(resolve(compositor?.['Game']), resolve, cameraSlots, renderTexture);
-  const main = forward && { ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}) };
+  // 阴影由 ForwardLightingRenderFeature 的 ShadowMapRenderer 画，它是 null 时（AnimatedModel）整个合成器都不画阴影
+  const lighting = findNode(compositor?.['RenderFeatures'], (node) => node.$type?.startsWith('Stride.Rendering.Lights.ForwardLightingRenderFeature') === true);
+  const shadows = lighting && lighting['ShadowMapRenderer'] === null ? { shadows: false as const } : {};
+  const main = forward && { ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}), ...shadows };
   return { cameraSlots, main };
 }
 
@@ -96,6 +100,18 @@ function postEffectsOf(effects: StrideObject | undefined): ScenePostEffects | nu
   };
 }
 
+/** YAML 树里深度优先找第一个满足 match 的对象（渲染特性嵌在 MeshRenderFeature 的 RenderFeatures 里）。 */
+function findNode(node: StrideValue | undefined, match: (node: StrideObject) => boolean): StrideObject | undefined {
+  const object = asObject(node);
+  if (object && match(object)) return object;
+  const children = object ? Object.values(object) : Array.isArray(node) ? node : [];
+  for (const child of children) {
+    const found = findNode(child, match);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 /** 深度优先找第一个满足 match 的渲染器；不进渲染到纹理的分支（那里画的不是主画面）。 */
 function findRenderer(node: StrideObject | undefined, resolve: (node: StrideValue | undefined) => StrideObject | undefined, match: (node: StrideObject) => boolean): StrideObject | undefined {
   if (!node) return undefined;
@@ -109,4 +125,3 @@ function findRenderer(node: StrideObject | undefined, resolve: (node: StrideValu
   return undefined;
 }
 
-const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);

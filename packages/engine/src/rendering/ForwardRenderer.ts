@@ -51,6 +51,8 @@ export class ForwardRenderer {
   readonly transparentStage: RenderStage;
   /** 主画面画不画透明阶段。 */
   drawTransparent = true;
+  /** 画不画方向光的阴影（合成器没有阴影渲染器时关掉，见 SceneCompositor.shadows）。 */
+  drawShadows = true;
   /** 先画进渲染目标贴图的相机（场景的合成器设置，configure 设）。 */
   textureCameras: readonly TextureCamera[] = [];
   /** 线性空间的清屏色；默认是 sRGB 的 (0.1, 0.12, 0.16)。 */
@@ -130,7 +132,7 @@ export class ForwardRenderer {
           const w = transform.slot[i]! * 16;
           directional.direction.set(-transform.world[w + 8]!, -transform.world[w + 9]!, -transform.world[w + 10]!);
           directional.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
-          if (light.shadow[i] && lighting.shadowLight < 0) {
+          if (this.drawShadows && light.shadow[i] && lighting.shadowLight < 0) {
             lighting.shadowLight = lighting.directionalCount;
             const s = this.#shadowSettings;
             s.size = light.shadowSize[i]!;
@@ -162,11 +164,12 @@ export class ForwardRenderer {
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
   }
 
-  /** 按场景的合成器设置：主画面的清屏色、后处理开关，和先画的渲染目标贴图。 */
-  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras }: CompositorSettings): void {
+  /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
+  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows }: CompositorSettings): void {
     this.clearColor.set(r, g, b, a);
     this.postEffects.configure(postEffects);
     this.drawTransparent = transparent;
+    this.drawShadows = shadows !== false;
     this.textureCameras = textureCameras;
   }
 

@@ -101,6 +101,8 @@ export interface TextureCamera extends SceneForwardRenderer {
 /** 场景的合成器设置（贴图已经建好）：主画面的前向渲染器，和先画的渲染目标贴图。 */
 export interface CompositorSettings extends SceneForwardRenderer {
   readonly textureCameras: readonly TextureCamera[];
+  /** false 时不画阴影（见 SceneCompositor.shadows）。 */
+  readonly shadows?: false;
 }
 
 export interface SceneInstance {

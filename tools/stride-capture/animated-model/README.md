@@ -21,3 +21,6 @@ pnpm exec stride shot ours.png --diff C:/code/stride-animated-model/reference.pn
 比对中找到并修掉的：
 - 合成器的 PostEffects 是 null 时 Stride 原样拷贝 HDR 画面，我们之前还做色调映射；
 - 画进渲染目标贴图的前向渲染器没有透明阶段（TransparentRenderStage 是 null），贴图里不该再出现精灵（我们之前画了，贴图里套着贴图）。
+- （P1 收尾时测帧时间发现）合成器的 ForwardLightingRenderFeature 没有 ShadowMapRenderer（是 null），Stride 根本不画阴影，
+  我们之前照灯光的设置画了。改成按合成器关掉后，去掉 UI 按钮的区域平均差 0.083/255，差超过 10 的像素 0.105%；
+  帧时间从 1.21 ms 降到 0.82 ms（桌面 Stride 0.95 ms）。

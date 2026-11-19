@@ -704,12 +704,34 @@ Game*: !Stride.Rendering.Compositing.SceneRendererCollection,Stride.Rendering
                     f: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine ref!! main-forward
 `);
 
+  const main = (asset: ReturnType<typeof parseStrideYaml>) => importCompositor(asset).main;
+
   test('相机槽位按列表编号；主画面是槽位 0 的相机下的前向渲染器，清屏色换到线性空间', () => {
     const { cameraSlots, main } = importCompositor(compositor);
     expect([...cameraSlots]).toEqual([['main-slot', 0], ['second-slot', 1]]);
     expect(main?.postEffects).toBeNull();
     expect(main?.transparent).toBe(true);
     expect(main?.clearColor.map((c) => +c.toFixed(4))).toEqual([0.214, 0.214, 0.214, 1]);
+  });
+
+  test('阴影：ForwardLightingRenderFeature 的 ShadowMapRenderer 是 null 时整个合成器不画阴影，没写时画', () => {
+    expect(main(compositor)?.shadows).toBeUndefined();
+    const lighting = (shadowMapRenderer: string) => parseStrideYaml(`!GraphicsCompositorAsset
+Id: c
+Cameras:
+    a1:
+        Id: main-slot
+RenderFeatures:
+    r1: !Stride.Rendering.MeshRenderFeature,Stride.Rendering
+        RenderFeatures:
+            f1: !Stride.Rendering.Lights.ForwardLightingRenderFeature,Stride.Rendering
+                ShadowMapRenderer: ${shadowMapRenderer}
+Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
+    Camera: ref!! main-slot
+    Child: !Stride.Rendering.Compositing.ForwardRenderer,Stride.Engine {}
+`);
+    expect(main(lighting('null'))?.shadows).toBe(false);
+    expect(main(lighting('!Stride.Rendering.Shadows.ShadowMapRenderer,Stride.Rendering {}'))?.shadows).toBeUndefined();
   });
 
   test('相机画进渲染目标贴图的分支：槽位、贴图、里面的前向渲染器（不画透明阶段）', () => {

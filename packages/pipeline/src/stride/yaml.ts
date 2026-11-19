@@ -81,7 +81,8 @@ export function asNumber(value: StrideValue | undefined, fallback: number): numb
   return typeof value === 'number' ? value : fallback;
 }
 
-const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+/** sRGB 的一个通道换到线性空间。 */
+export const srgbToLinear = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
 
 export function vec3(value: StrideValue | undefined, fallback: number, whole?: [number, number, number]): [number, number, number] {
   const v = asObject(value);

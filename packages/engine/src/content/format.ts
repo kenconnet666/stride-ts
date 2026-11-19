@@ -569,6 +569,8 @@ export interface SceneTextureCamera extends SceneForwardRenderer {
 /** 场景用的图形合成器：主画面（槽位 0 的相机）的前向渲染器设置，和先画好的渲染目标贴图。 */
 export interface SceneCompositor extends SceneForwardRenderer {
   readonly textureCameras?: readonly SceneTextureCamera[];
+  /** false：整个合成器不画阴影（Stride 的 ForwardLightingRenderFeature 没有 ShadowMapRenderer）。没写是画。 */
+  readonly shadows?: false;
 }
 
 /** 精灵的混合方式（Stride 的 SpriteBlend；auto 是贴图透明时 alphaBlend，不透明时 none）。 */

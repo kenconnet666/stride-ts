@@ -141,6 +141,11 @@ Game*: !Demo.TextRenderer,Demo.Game
 Id: 55555555-5555-5555-5555-555555555555
 DefaultScene: null
 GraphicsCompositor: 33333333-3333-3333-3333-333333333333:Compositor
+Defaults:
+    - !Stride.Graphics.RenderingSettings,Stride.Graphics
+        DefaultBackBufferWidth: 640
+        DefaultBackBufferHeight: 1136
+        AdaptBackBufferToScreen: false
 `);
     const project = await StrideProject.open([{ package: 'Demo', dir: assets }]);
     const out = path.join(dir, 'game-content');
@@ -151,6 +156,7 @@ GraphicsCompositor: 33333333-3333-3333-3333-333333333333:Compositor
       name: 'GameSettings',
       defaultScene: null,
       renderer: { type: 'Demo.TextRenderer', props: { font: { $asset: 'Demo/Font', kind: 'font' }, speed: 2.5 } },
+      defaultBackBufferSize: [640, 1136],
     });
     expect(await exists(path.join(out, 'Demo/Font.font.json'))).toBe(true);
   });

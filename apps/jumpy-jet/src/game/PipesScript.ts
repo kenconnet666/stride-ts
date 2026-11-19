@@ -21,7 +21,8 @@ export class PipesScript extends SyncScript.props({
   override start(): void {
     const prefab = this.pipePrefabUrl;
     if (!prefab) return;
-    this.#sceneWidth = GAME_PIXEL_TO_UNIT_SCALE * this.game.graphicsDevice.canvas.width;
+    // Stride 取后备缓冲的宽度（桌面上是默认的 640），同 JumpyJetRenderer 按默认后备缓冲算
+    this.#sceneWidth = GAME_PIXEL_TO_UNIT_SCALE * (this.game.settings?.defaultBackBufferSize[0] ?? this.game.graphicsDevice.canvas.width);
     const count = Math.ceil((this.#sceneWidth + 2 * PIPE_OVERVALUED_WIDTH) / GAP_BETWEEN_PIPE);
     for (let i = 0; i < count; i++) {
       const [pipeSet] = prefab.instantiate(this.game.entities);

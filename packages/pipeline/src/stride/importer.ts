@@ -168,10 +168,13 @@ export class StrideImporter {
     const game = compositor?.gameRenderer;
     const where = `${asset.file}: graphics compositor`;
     const renderer = game ? await this.#script(`${game.type},`, game.settings, where, { owners: new Map(), cameraSlots: compositor.cameraSlots }) : null;
+    const defaults = asset.data['Defaults'];
+    const rendering = (Array.isArray(defaults) ? defaults : []).map(asObject).find((d) => d?.$type?.startsWith('Stride.Graphics.RenderingSettings')) ?? {};
     const file: GameSettingsFile = {
       name: path.basename(asset.path),
       defaultScene: sceneReference ? this.#project.get(sceneReference.id, asset.file).path : null,
       renderer,
+      defaultBackBufferSize: [asNumber(rendering['DefaultBackBufferWidth'], 1280), asNumber(rendering['DefaultBackBufferHeight'], 720)],
     };
     await this.#write(asset.path + EXTENSIONS.gameSettings, JSON.stringify(file, null, 1));
     return asset.path;

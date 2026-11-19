@@ -16,7 +16,10 @@ import { asNumber, asObject, parseAssetReference, parseObjectReference, srgbToLi
 export interface ImportedCompositor {
   /** 相机槽位的 Id 到下标。 */
   readonly cameraSlots: ReadonlyMap<string, number>;
-  /** 主画面的设置；找不到前向渲染器时是 undefined（运行时用默认值）。 */
+  /**
+   * 主画面的设置；找不到前向渲染器时是 undefined（运行时用默认值）。相机下面是游戏自己的渲染器时（JumpyJetRenderer 自己画
+   * 各个阶段），运行时借前向渲染器画场景，这里给它"不做后处理"（Stride 里游戏的渲染器直接画到输出上）。
+   */
   readonly main: SceneCompositor | undefined;
   /** 根是游戏自己的渲染器时：类型名（带命名空间，不带程序集）和它在合成器里的设置。 */
   readonly gameRenderer: { readonly type: string; readonly settings: StrideObject } | undefined;
@@ -60,7 +63,8 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
   const cameraChild = camera && resolve(camera['Child']);
   const game = isGame(root) ? root : isGame(cameraChild) ? cameraChild : undefined;
   const gameRenderer = game ? { type: game.$type!.slice(0, game.$type!.indexOf(',')), settings: game } : undefined;
-  return { cameraSlots, main, gameRenderer };
+  const borrowed = !main && game === cameraChild && game ? { clearColor: [0, 0, 0, 1] as const, postEffects: null, transparent: true } : undefined;
+  return { cameraSlots, main: main ?? borrowed, gameRenderer };
 }
 
 const isForward = (node: StrideObject) => node.$type?.startsWith('Stride.Rendering.Compositing.ForwardRenderer') === true;

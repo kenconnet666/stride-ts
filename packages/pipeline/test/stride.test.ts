@@ -899,7 +899,7 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
     expect(main?.textureCameras).toEqual([{ cameraSlot: 1, texture, clearColor: [1, 0, 0, 1], postEffects: null, transparent: false }]);
   });
 
-  test('根是游戏程序集里的渲染器时给出类型名和设置；Stride 自己的类型不算', () => {
+  test('根是游戏程序集里的渲染器时给出类型名和设置；Stride 自己的类型不算；相机下面是游戏的渲染器时主画面不做后处理', () => {
     const custom = importCompositor(parseStrideYaml(`!GraphicsCompositorAsset
 Id: c
 Game*: !SpriteFonts.FontRenderer,SpriteFonts.Game
@@ -925,6 +925,9 @@ Game*: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
 `));
     expect(underCamera.gameRenderer?.type).toBe('JumpyJet.JumpyJetRenderer');
     expect(underCamera.gameRenderer?.settings['ParallaxBackgrounds']).toBe('p1:ParallaxBackgrounds');
+    // 运行时借前向渲染器画场景：不做后处理（Stride 里游戏的渲染器直接画到输出上）
+    expect(underCamera.main).toEqual({ clearColor: [0, 0, 0, 1], postEffects: null, transparent: true });
+    expect(custom.main).toBeUndefined();
   });
 
   test('后处理：共享的 PostProcessingEffects，没写的效果开着，ToneMap 看颜色变换组里的那一项，Antialiasing 为 null 时关', () => {

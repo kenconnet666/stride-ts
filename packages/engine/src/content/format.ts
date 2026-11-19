@@ -810,6 +810,11 @@ export interface GameSettingsFile {
   /** 默认场景的内容路径（只记路径，场景要另外导入）；没有时是 null（SpriteFonts）。 */
   readonly defaultScene: string | null;
   readonly renderer: SceneScript | null;
+  /**
+   * 默认的后备缓冲大小（Stride 的 RenderingSettings.DefaultBackBufferWidth、Height）：桌面 Stride 的窗口一开始就是这么大，
+   * 游戏在初始化时取后备缓冲大小当设计分辨率（JumpyJet 的背景、管子的个数）。没写时是 Stride 的默认 1280x720。
+   */
+  readonly defaultBackBufferSize?: readonly [number, number];
 }
 
 /**

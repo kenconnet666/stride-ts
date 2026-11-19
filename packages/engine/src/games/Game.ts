@@ -136,6 +136,8 @@ export class Game {
   sceneFrame: number | undefined;
   /** 根场景（Stride 的 SceneSystem.SceneInstance.RootScene），setRootScene 设；loadScene 加的场景不算。 */
   rootScene: SceneInstance | undefined;
+  /** loadGameSettings 读到的游戏设置（Stride 的 Game.Settings）；没读过时是 undefined。 */
+  settings: GameSettings | undefined;
   /** 加载（loadScene）或卸载（unloadScene）了一个场景之后触发（Stride 里场景的 Children 变了，TopDownRPG 的 EnableDynamicNavigation 听它重建导航网格）。 */
   readonly scenesChanged = hook<{ readonly scene: SceneInstance; readonly loaded: boolean }>('scenesChanged');
   /** 正在换的根场景：连着换几次时按顺序来。 */
@@ -295,7 +297,7 @@ export class Game {
    *   await this.loadGameSettings('SpriteFonts/Shared/GameSettings', { renderers: { 'SpriteFonts.FontRenderer': (props) => new FontRenderer(props) } });
    */
   async loadGameSettings(path: string, { renderers = {}, ...sceneOptions }: LoadGameSettingsOptions = {}): Promise<GameSettings> {
-    const settings = await this.content.loadGameSettings(path);
+    const settings = (this.settings = await this.content.loadGameSettings(path));
     if (settings.renderer) {
       const factory = renderers[settings.renderer.type];
       if (factory) this.rootRenderer = await factory(settings.renderer.props, this);

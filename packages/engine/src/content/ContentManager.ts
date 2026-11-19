@@ -135,6 +135,8 @@ export interface GameSettings {
   readonly defaultScene: string | null;
   /** 合成器的根是游戏自己的渲染器时：Stride 的类型名和加载好的属性（键名小写开头）。 */
   readonly renderer: { readonly type: string; readonly props: Readonly<Record<string, unknown>> } | null;
+  /** 默认的后备缓冲大小（Stride 的 RenderingSettings.DefaultBackBufferWidth、Height），见 GameSettingsFile。 */
+  readonly defaultBackBufferSize: readonly [number, number];
 }
 
 export interface SceneInstance {
@@ -374,7 +376,8 @@ export class ContentManager {
   loadGameSettings(path: string): Promise<GameSettings> {
     return this.#once(path + EXTENSIONS.gameSettings, async (url) => {
       const file = this.#json<GameSettingsFile>(await this.#read(url));
-      if (!file.renderer) return { name: file.name, defaultScene: file.defaultScene, renderer: null };
+      const common = { name: file.name, defaultScene: file.defaultScene, defaultBackBufferSize: file.defaultBackBufferSize ?? [1280, 720] } as const;
+      if (!file.renderer) return { ...common, renderer: null };
       const refs = scriptAssetRefs([file.renderer]);
       const loaders: Readonly<Record<string, (p: string) => Promise<object>>> = {
         model: (p) => this.loadModel(p), material: (p) => this.loadMaterial(p), animation: (p) => this.loadAnimation(p),
@@ -387,7 +390,7 @@ export class ContentManager {
         return [`${kind}:${assetPath}`, await load(assetPath)] as const;
       })));
       const props = resolveSceneValues(file.renderer.props, { entities: new Map(), asset: (kind, assetPath) => loaded.get(`${kind}:${assetPath}`)! });
-      return { name: file.name, defaultScene: file.defaultScene, renderer: { type: file.renderer.type, props } };
+      return { ...common, renderer: { type: file.renderer.type, props } };
     });
   }
 

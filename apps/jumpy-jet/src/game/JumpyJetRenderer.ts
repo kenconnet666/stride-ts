@@ -1,6 +1,7 @@
 // JumpyJet 的 JumpyJetRenderer（Stride 里是合成器根相机下面的 SceneRendererBase）：先用 SpriteBatch 画四层视差背景，再画场景的
 // 不透明和透明阶段（飞机、管子这些精灵）。这里借游戏的前向渲染器画场景，背景放在它的 background 钩子里（清屏之后、不透明阶段之前，
-// 同一个画面）。虚拟分辨率是第一次画时的后备缓冲大小（同 Stride 在 InitializeCore 里取 BackBuffer 的大小）。
+// 同一个画面）。虚拟分辨率是游戏设置的默认后备缓冲大小（640x1136）：Stride 在 InitializeCore 里取 BackBuffer 的大小，桌面上
+// 窗口一开始就是这么大；这里不取画布第一次画时的大小，窗口大于背景图时背景就不会露底，窗口多大都拉伸铺满。
 // 合成器里的类型名是 JumpyJet.JumpyJetRenderer，属性 ParallaxBackgrounds（精灵表）随游戏设置导入，JumpyJetGame 用 create 建它。
 import { SpriteBatch, type RenderContext, type SceneRenderer, type SpriteSheet, type Vec2 } from '@stride-ts/engine';
 import { BackgroundSection } from './BackgroundSection';
@@ -46,7 +47,7 @@ export class JumpyJetRenderer implements SceneRenderer {
     const { game, time } = context;
     const forward = game.graphicsCompositor;
     forward.background = (pass, target) => {
-      const resolution: Vec2 = [target.width, target.height];
+      const resolution: Vec2 = [...(game.settings?.defaultBackBufferSize ?? [target.width, target.height])];
       this.#sections ??= this.#createSections(resolution);
       const batch = (this.#batch ??= Object.assign(new SpriteBatch(game.graphicsDevice.device, game.renderSystem.resources), { virtualResolution: resolution }));
       batch.begin(pass, target.width, target.height, target.format, target.depthFormat);

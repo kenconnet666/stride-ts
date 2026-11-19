@@ -6,7 +6,8 @@
  * - 画进渲染目标贴图的相机：SceneCameraRenderer 下面是 RenderTextureSceneRenderer 的，取它的贴图和里面的前向渲染器。
  * - 阴影：ForwardLightingRenderFeature 的 ShadowMapRenderer 是 null 时整个合成器不画阴影。
  * - 粒子画在 UI 上面：粒子的渲染特性把透明的粒子放进的阶段由主画面里的 SingleStageRenderer 画（不是前向渲染器的阶段）。
- * - 根（Game）是游戏程序集里的渲染器时（SpriteFonts 的 FontRenderer），给出它的类型名和设置，属性由导入器按脚本属性的规则换。
+ * - 根（Game）是游戏程序集里的渲染器时（SpriteFonts 的 FontRenderer），或者根是相机渲染器、下面是游戏的渲染器时（JumpyJet 的
+ *   JumpyJetRenderer，它借场景的前向渲染器画），给出它的类型名和设置，属性由导入器按脚本属性的规则换。
  * 多个相机分屏画、调试渲染器、别的单独的渲染阶段等以后随合成器的数据化一起做（docs/roadmap.md 的"合成器的最小数据化"）。
  */
 import type { SceneCompositor, SceneForwardRenderer, ScenePostEffects, SceneRenderTexture, SceneTextureCamera } from '@stride-ts/engine/content-format';
@@ -53,10 +54,12 @@ export function importCompositor(compositor: StrideObject | undefined, renderTex
   const main = forward && {
     ...forwardSettings(forward, resolve), ...(textureCameras.length > 0 ? { textureCameras } : {}), ...shadows, ...(overlay ? { particlesOverUI: true as const } : {}),
   };
-  const root = resolve(compositor?.['Game']);
-  const rootType = root?.$type ?? '';
   // 游戏的类型带程序集名、不在 Stride 的命名空间里（同场景脚本）
-  const gameRenderer = rootType.includes(',') && !rootType.startsWith('Stride.') ? { type: rootType.slice(0, rootType.indexOf(',')), settings: root! } : undefined;
+  const isGame = (node: StrideObject | undefined) => (node?.$type ?? '').includes(',') && !(node?.$type ?? '').startsWith('Stride.');
+  const root = resolve(compositor?.['Game']);
+  const cameraChild = camera && resolve(camera['Child']);
+  const game = isGame(root) ? root : isGame(cameraChild) ? cameraChild : undefined;
+  const gameRenderer = game ? { type: game.$type!.slice(0, game.$type!.indexOf(',')), settings: game } : undefined;
   return { cameraSlots, main, gameRenderer };
 }
 

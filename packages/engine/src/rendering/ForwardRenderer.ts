@@ -55,6 +55,11 @@ export class ForwardRenderer {
   drawShadows = true;
   /** 粒子画在 UI 上面（Game 在画完 UI 之后画），而不是在透明阶段里（见 SceneCompositor.particlesOverUI）。 */
   particlesOverUI = false;
+  /**
+   * 主画面的背景：清屏之后、不透明阶段之前在同一个 pass 里画（Stride 的游戏渲染器先画自己的东西再画场景的阶段，比如 JumpyJet 的
+   * JumpyJetRenderer 用 SpriteBatch 画视差背景）。颜色是 HDR 格式，带深度缓冲。
+   */
+  background: ((pass: GPURenderPassEncoder, target: { readonly width: number; readonly height: number; readonly format: GPUTextureFormat; readonly depthFormat: GPUTextureFormat }) => void) | undefined;
   /** 先画进渲染目标贴图的相机（场景的合成器设置，configure 设）。 */
   textureCameras: readonly TextureCamera[] = [];
   /** 线性空间的清屏色；默认是 sRGB 的 (0.1, 0.12, 0.16)。 */
@@ -282,6 +287,7 @@ export class ForwardRenderer {
       colorAttachments: [{ view: targets.color.createView(), clearValue: [...clearColor], loadOp: 'clear', storeOp: 'store' }],
       depthStencilAttachment: { view: depth, depthLoadOp: 'load', depthStoreOp: keepDepth ? 'store' : 'discard' },
     });
+    if (view === this.#mainView) this.background?.(pass, { width: targets.color.width, height: targets.color.height, format: HDR_FORMAT, depthFormat: DEPTH_FORMAT });
     if (view) {
       renderSystem.draw(context, pass, view, this.opaqueStage);
       if (transparent) renderSystem.draw(context, pass, view, this.transparentStage);

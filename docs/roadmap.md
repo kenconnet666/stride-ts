@@ -384,7 +384,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
    - 同时做的工具改进：浏览器验证用装了 Claude 插件的 `stride open` Chrome（和 CDP 的剖析同一个浏览器）；回归用自己的状态目录和端口（`~/.stride-ts/regress`，端口加 1000），截图和测量脚本用自己的无头 Chrome（`STRIDE_BROWSER_DIR`），都不关开着的窗口。
    - 回头补：UIElementLink 场景里烟的粒子（现在有粒子系统了，重新导入、比对）。
 7. **JumpyJet**（`apps/jumpy-jet`，端口 5210）：2D 横版小游戏：点屏幕或空格让飞机往上跳，穿过不断生成的管子，撞到就结束，UI 有开始、计分、结束三个页面（用代码建）。背景是游戏自己的渲染器（JumpyJetRenderer，SceneRendererBase）用 SpriteBatch 画四层视差，飞机和管子是精灵加 Bepu 的刚体（管子是预制体），撞管子用形状的重叠查询（Simulation.Overlap），状态用事件键（GameGlobals 的 EventKey）广播。分步：
-   1. 导入和骨架：场景、三个预制体、三张精灵表、字体、GameSettings 和合成器（根是游戏的渲染器：按类型名建，同 SpriteFonts），JumpyJetRenderer 和 BackgroundSection 翻译成 TS（视差滚动、SpriteBatch 的 VirtualResolution）；场景能看。
+   1. ~~导入和骨架~~（2026-11-19）：`apps/jumpy-jet` 导入游戏设置和场景；合成器的根相机下面是游戏的渲染器时也按类型名建（导入器的 `gameRenderer`），渲染器的属性能引用精灵表；前向渲染器加了 `background` 钩子（清屏之后、不透明阶段之前在主画面的 pass 里画），JumpyJetRenderer 借它画视差背景、再画场景；BackgroundSection 翻译成 TS。在 Chrome 里看过：四层背景在滚，飞机画出来了。原来的计划：JumpyJetRenderer 和 BackgroundSection 翻译成 TS（视差滚动、SpriteBatch 的 VirtualResolution）；场景能看。
    2. 物理：精灵上的 Bepu 刚体（运动学）、复合碰撞体；形状的重叠查询（胶囊、盒、球按姿态查和哪些物体重叠，原生侧在 fork 的 Physics.h 加，发新版本）。
    3. 脚本：CharacterScript（输入、跳、落、撞到结束）、PipesScript（生成和回收管子）、UIScript（三个页面、计分）、BackgroundScript，事件键；能玩。
    4. 冒烟和桌面比对（Bepu 版样例在 Stride 的 master，同 PhysicsSample 的取法）。

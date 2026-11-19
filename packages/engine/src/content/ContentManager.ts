@@ -379,7 +379,7 @@ export class ContentManager {
       const loaders: Readonly<Record<string, (p: string) => Promise<object>>> = {
         model: (p) => this.loadModel(p), material: (p) => this.loadMaterial(p), animation: (p) => this.loadAnimation(p),
         prefab: (p) => this.loadPrefab(p), font: (p) => this.loadFont(p), texture: (p) => this.loadTextureAsset(p),
-        scene: (p) => Promise.resolve({ path: p } satisfies SceneReference),
+        spriteSheet: (p) => this.loadSpriteSheet(p), scene: (p) => Promise.resolve({ path: p } satisfies SceneReference),
       };
       const loaded = new Map<string, object>(await Promise.all(refs.map(async ({ kind, path: assetPath }) => {
         const load = loaders[kind];

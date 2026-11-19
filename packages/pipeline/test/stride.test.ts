@@ -909,6 +909,22 @@ Game*: !SpriteFonts.FontRenderer,SpriteFonts.Game
     expect(custom.gameRenderer?.type).toBe('SpriteFonts.FontRenderer');
     expect(custom.gameRenderer?.settings['StaticFont']).toBe('f1:StaticFont');
     expect(importCompositor(compositor).gameRenderer).toBeUndefined();
+    // 根是主相机的 SceneCameraRenderer、下面是游戏的渲染器（JumpyJet 的 JumpyJetRenderer）
+    const underCamera = importCompositor(parseStrideYaml(`!GraphicsCompositorAsset
+Id: c
+Cameras:
+    s0:
+        Id: slot0
+        Name: Main
+Game*: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
+    Id: cam
+    Camera: ref!! slot0
+    Child*: !JumpyJet.JumpyJetRenderer,JumpyJet.Game
+        Id: r
+        ParallaxBackgrounds: p1:ParallaxBackgrounds
+`));
+    expect(underCamera.gameRenderer?.type).toBe('JumpyJet.JumpyJetRenderer');
+    expect(underCamera.gameRenderer?.settings['ParallaxBackgrounds']).toBe('p1:ParallaxBackgrounds');
   });
 
   test('后处理：共享的 PostProcessingEffects，没写的效果开着，ToneMap 看颜色变换组里的那一项，Antialiasing 为 null 时关', () => {

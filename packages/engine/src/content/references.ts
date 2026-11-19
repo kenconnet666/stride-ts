@@ -1,14 +1,14 @@
 /**
  * 资源文件引用了哪些别的资源。运行时的预加载（SceneBuilder.preload）和编辑器的资源数据库（@stride-ts/editor）都从这里取，
- * 所以"加载场景会去读哪些文件"和"数据库里谁引用了谁"是同一份逻辑。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入
- * 写了扩展名）。
+ * 所以"加载场景会去读哪些文件"和"数据库里谁引用了谁"是同一份逻辑。编辑器移动、改名资源时也照这里找到的位置改写引用它的
+ * 文件（assetReferenceSlots）。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入写了扩展名）。
  */
 import type {
-  EXTENSIONS, GameSettingsFile, ModelData, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SpriteSheetFile, TextureRef, UIFile,
+  AnimationData, EXTENSIONS, GameSettingsFile, ModelData, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SpriteSheetFile, TextureRef, UIFile,
   UISpriteValue,
 } from './format';
 import { textureRefs } from './loading.ts';
-import { scriptAssetRefs } from './sceneScripts.ts';
+import { visitScriptAssets } from './sceneScripts.ts';
 
 /**
  * 资源的种类：内容文件的种类（EXTENSIONS 的键，字形块算字体的一部分），加上贴图文件（image：.ktx2、.svg、.png、.jpg）和
@@ -31,75 +31,115 @@ export type EntityAssetReference =
   | { readonly kind: 'image'; readonly path: string; readonly texture: TextureRef }
   | { readonly kind: 'renderTexture'; readonly path: string; readonly texture: SceneRenderTexture };
 
+/** 文件里写着这个路径的地方：`owner[key]` 是那个字符串。 */
+type Place = readonly [owner: object, key: string | number];
+
 /** 实体文件引用的资源，按文件里的顺序，不去重；包括脚本属性引用的。 */
 export function entityAssetReferences(files: readonly SceneEntityFile[]): EntityAssetReference[] {
   const refs: EntityAssetReference[] = [];
+  visitEntityReferences(files, (ref) => refs.push(ref));
+  return refs;
+}
+
+/** 实体文件里的每一处引用，连同它写在哪。 */
+function visitEntityReferences(files: readonly SceneEntityFile[], visit: (ref: EntityAssetReference, ...place: Place) => void): void {
   const image = (texture: TextureRef | SceneRenderTexture): void => {
-    if ('renderTexture' in texture) refs.push({ kind: 'renderTexture', path: texture.renderTexture, texture });
-    else refs.push({ kind: 'image', path: texture.texture, texture });
+    if ('renderTexture' in texture) visit({ kind: 'renderTexture', path: texture.renderTexture, texture }, texture, 'renderTexture');
+    else visit({ kind: 'image', path: texture.texture, texture }, texture, 'texture');
   };
   for (const { components: c } of files) {
     if (c.model) {
-      refs.push({ kind: 'model', path: c.model.model });
-      for (const material of c.model.materials) if (material !== null) refs.push({ kind: 'material', path: material });
+      visit({ kind: 'model', path: c.model.model }, c.model, 'model');
+      c.model.materials.forEach((material, i) => material !== null && visit({ kind: 'material', path: material }, c.model!.materials, i));
     }
     // 网格、凸包形状的碰撞体引用模型
     for (const shape of [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? []), ...(c.body?.shapes ?? [])]) {
-      if (shape.type === 'mesh' || shape.type === 'convexHull') refs.push({ kind: 'model', path: shape.model });
+      if (shape.type === 'mesh' || shape.type === 'convexHull') visit({ kind: 'model', path: shape.model }, shape, 'model');
     }
-    for (const { clip } of c.animation?.animations ?? []) refs.push({ kind: 'animation', path: clip });
-    if (c.light?.type === 'skybox') refs.push({ kind: 'skybox', path: c.light.skybox });
-    if (c.background?.type === 'cubemap') refs.push({ kind: 'cubemap', path: c.background.texture });
+    for (const animation of c.animation?.animations ?? []) visit({ kind: 'animation', path: animation.clip }, animation, 'clip');
+    if (c.light?.type === 'skybox') visit({ kind: 'skybox', path: c.light.skybox }, c.light, 'skybox');
+    if (c.background?.type === 'cubemap') visit({ kind: 'cubemap', path: c.background.texture }, c.background, 'texture');
     else if (c.background) image(c.background.image);
-    if (c.sprite && 'sheet' in c.sprite) refs.push({ kind: 'spriteSheet', path: c.sprite.sheet });
+    if (c.sprite && 'sheet' in c.sprite) visit({ kind: 'spriteSheet', path: c.sprite.sheet }, c.sprite, 'sheet');
     else if (c.sprite) image(c.sprite.texture);
     if (c.particleSystem) textureRefs(c.particleSystem).forEach(image);
-    if (c.ui?.page) refs.push({ kind: 'uiPage', path: c.ui.page });
-    refs.push(...scriptAssetRefs(c.scripts ?? []));
+    if (c.ui?.page) visit({ kind: 'uiPage', path: c.ui.page }, c.ui, 'page');
+    visitScriptAssets(c.scripts ?? [], (value) => visit({ kind: value.kind, path: value.$asset }, value, '$asset'));
   }
-  return refs;
 }
 
 /** UI 文件引用的资源（加载时先并行加载好）。 */
 export function uiAssetPaths(file: UIFile): { spriteSheets: string[]; fonts: string[]; textures: Extract<UISpriteValue, { texture: TextureRef }>[] } {
   const spriteSheets = new Set<string>(), fonts = new Set<string>();
   const textures: Extract<UISpriteValue, { texture: TextureRef }>[] = [];
+  for (const value of uiAssetValues(file)) {
+    if ('$asset' in value) fonts.add(value.$asset);
+    else if ('sheet' in value) spriteSheets.add(value.sheet);
+    else textures.push(value);
+  }
+  return { spriteSheets: [...spriteSheets], fonts: [...fonts], textures };
+}
+
+/** UI 元素的属性里引用资源的值：字体（`$asset`）、精灵表里的精灵（`sheet`）、贴图（`texture`）。 */
+function uiAssetValues(file: UIFile): ({ $asset: string } | { sheet: string } | Extract<UISpriteValue, { texture: TextureRef }>)[] {
+  const values: ({ $asset: string } | { sheet: string } | Extract<UISpriteValue, { texture: TextureRef }>)[] = [];
   for (const element of file.elements) {
     for (const value of Object.values({ ...element.props, ...element.attached })) {
       if (value === null || typeof value !== 'object' || Array.isArray(value)) continue;
-      if ('$asset' in value) fonts.add(value.$asset);
-      else if ('sheet' in value) spriteSheets.add(value.sheet);
-      else if ('texture' in value) textures.push(value as Extract<UISpriteValue, { texture: TextureRef }>);
+      if ('$asset' in value || 'sheet' in value || 'texture' in value) values.push(value as (typeof values)[number]);
     }
   }
-  return { spriteSheets: [...spriteSheets], fonts: [...fonts], textures };
+  return values;
 }
 
 /** 脚本属性里的资源种类 → 资源文件的种类（UI 页面和 UI 库是同一种文件）。 */
 const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap'): AssetKind => (kind === 'uiPage' || kind === 'uiLibrary' ? 'ui' : kind);
 
 /**
- * 一个资源文件引用的别的资源，去过重。file 是解析好的内容：JSON 文件是它的对象，模型是 decodeModel 的结果；别的二进制
- * 文件（骨架、动画、立方体贴图、贴图、音频）不引用别的资源，不用给。path 是这个资源自己的内容路径（声音的音频文件和它同名）。
+ * 一个资源文件引用的别的资源，去过重。file 是解析好的内容：JSON 文件是它的对象，模型、动画是 decodeModel、decodeAnimation
+ * 的结果；别的二进制文件（骨架、立方体贴图、贴图、音频）不引用别的资源，不用给。path 是这个资源自己的内容路径（声音的音频文件和它同名）。
  */
 export function assetReferences(kind: AssetKind, path: string, file: unknown): AssetReference[] {
-  const refs: AssetReference[] = [];
-  const image = ({ texture }: TextureRef) => refs.push({ kind: 'image', path: texture });
-  const fromEntities = (found: readonly EntityAssetReference[]) => {
-    for (const ref of found) {
-      if (ref.kind === 'image') refs.push({ kind: 'image', path: ref.path });
-      else if (ref.kind !== 'renderTexture') refs.push({ kind: fileKind(ref.kind), path: ref.path });
-    }
-  };
+  const refs: AssetReference[] = assetReferenceSlots(kind, file).map(({ kind, path }) => ({ kind, path }));
+  // 声音的音频文件不写在文件里，和声音同名
+  if (kind === 'sound') refs.push({ kind: 'audio', path });
+  const seen = new Set<string>();
+  return refs.filter((ref) => {
+    const key = `${ref.kind}:${ref.path}`;
+    return seen.has(key) ? false : (seen.add(key), true);
+  });
+}
+
+/** 文件里的一处引用，和它写在哪：`owner[key]` 是那个路径。编辑器移动、改名资源时改写它（file 要是可以改的那份）。 */
+export interface AssetReferenceSlot extends AssetReference {
+  readonly owner: object;
+  readonly key: string | number;
+}
+
+/**
+ * 一个资源文件里的每一处引用（按文件里的顺序，不去重），参数同 assetReferences。不含不写在文件里的引用（声音和它同名的
+ * 音频文件）、不是文件的引用（渲染目标贴图）。
+ */
+export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetReferenceSlot[] {
+  const slots: AssetReferenceSlot[] = [];
+  const add = (kind: AssetKind, owner: object, key: string | number) => slots.push({ kind, path: (owner as Record<string | number, string>)[key]!, owner, key });
+  const image = (texture: TextureRef) => add('image', texture, 'texture');
   switch (kind) {
     case 'scene':
     case 'prefab':
-      fromEntities(entityAssetReferences((file as { entities: readonly SceneEntityFile[] }).entities));
+      visitEntityReferences((file as { entities: readonly SceneEntityFile[] }).entities, (ref, owner, key) => {
+        if (ref.kind !== 'renderTexture') add(ref.kind === 'image' ? 'image' : fileKind(ref.kind), owner, key);
+      });
       break;
     case 'model': {
-      const { materials, skeleton } = file as Pick<ModelData, 'materials' | 'skeleton'>;
-      for (const material of materials) if (material !== null) refs.push({ kind: 'material', path: material });
-      if (skeleton !== undefined) refs.push({ kind: 'skeleton', path: skeleton });
+      const model = file as Pick<ModelData, 'materials' | 'skeleton'>;
+      model.materials.forEach((material, i) => material !== null && add('material', model.materials, i));
+      if (model.skeleton !== undefined) add('skeleton', model, 'skeleton');
+      break;
+    }
+    case 'animation': {
+      const animation = file as Pick<AnimationData, 'skeleton'>;
+      if (animation.skeleton !== undefined) add('skeleton', animation, 'skeleton');
       break;
     }
     case 'material':
@@ -109,32 +149,25 @@ export function assetReferences(kind: AssetKind, path: string, file: unknown): A
       for (const sprite of (file as SpriteSheetFile).sprites) image(sprite.texture);
       break;
     case 'skybox':
-      refs.push({ kind: 'cubemap', path: (file as SkyboxFile).radiance });
+      add('cubemap', file as SkyboxFile, 'radiance');
       break;
-    case 'ui': {
-      const { spriteSheets, fonts, textures } = uiAssetPaths(file as UIFile);
-      for (const sheet of spriteSheets) refs.push({ kind: 'spriteSheet', path: sheet });
-      for (const font of fonts) refs.push({ kind: 'font', path: font });
-      for (const { texture } of textures) image(texture);
+    case 'ui':
+      for (const value of uiAssetValues(file as UIFile)) {
+        if ('$asset' in value) add('font', value, '$asset');
+        else if ('sheet' in value) add('spriteSheet', value, 'sheet');
+        else image(value.texture);
+      }
       break;
-    }
     case 'gameSettings': {
-      const { defaultScene, renderer } = file as GameSettingsFile;
-      if (defaultScene !== null) refs.push({ kind: 'scene', path: defaultScene });
-      if (renderer) for (const ref of scriptAssetRefs([renderer])) refs.push({ kind: fileKind(ref.kind), path: ref.path });
+      const settings = file as GameSettingsFile;
+      if (settings.defaultScene !== null) add('scene', settings, 'defaultScene');
+      if (settings.renderer) visitScriptAssets([settings.renderer], (value) => add(fileKind(value.kind), value, '$asset'));
       break;
     }
     case 'texture':
       image(file as TextureRef);
       break;
-    case 'sound':
-      refs.push({ kind: 'audio', path });
-      break;
     default:
   }
-  const seen = new Set<string>();
-  return refs.filter((ref) => {
-    const key = `${ref.kind}:${ref.path}`;
-    return seen.has(key) ? false : (seen.add(key), true);
-  });
+  return slots;
 }

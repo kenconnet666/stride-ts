@@ -19,7 +19,8 @@ export default defineConfig({ plugins: [strideEditor()] });
 
 - **内容目录就是资源的真相**：编辑器编辑的就是运行时加载的那些 JSON（场景、预制体、材质、UI……），保存就是写回这些文件；模型、贴图这些二进制由导入器产出。
 - **资源数据库**（`AssetDatabase`）：启动时扫一遍内容目录，之后只重读变了的文件（文件变化用 Vite 自己的监视器）。每个资源记着它的文件、大小、引用了谁（和运行时加载场景时去读哪些文件是同一份逻辑，引擎的 `content/references.ts`），可以反过来查谁引用了它、哪些引用指向不存在的资源。
-- **接口**（`src/protocol.ts`）：`/__stride/editor/` 下的 `GET project`、`GET assets`、`GET asset`、`PUT asset`；资源变了经 Vite 的 HMR 通道推送 `stride:assets`。只认本机同源页面发的、带 `x-stride-editor` 头的请求。前端用 `EditorClient`（`@stride-ts/editor/client`）。
+- **移动、改名、删除**（`moveAssets`、`deleteAsset`）：资源之间按内容路径引用，挪一个资源时引用它的文件里的那几处一起改写（位置由引擎的 `assetReferenceSlots` 找，模型、动画的二进制文件头也改），字体连着字形块、声音连着同名的音频文件一起挪，可以整个文件夹挪。删的时候还有别的资源引用它就不删，除非 `force`。
+- **接口**（`src/protocol.ts`）：`/__stride/editor/` 下的 `GET project`、`GET assets`、`GET asset`、`PUT asset`、`DELETE asset`、`POST move`；资源变了经 Vite 的 HMR 通道推送 `stride:assets`。只认本机同源页面发的、带 `x-stride-editor` 头的请求。前端用 `EditorClient`（`@stride-ts/editor/client`）。
 - **资源句柄**：按内容目录生成 `src/assets.gen.ts`（不提交），资源改名、删掉以后引用它的代码在类型检查时报错：
 
   ```ts
@@ -38,6 +39,20 @@ node packages/editor/src/server/cli.ts assets-types apps/platformer
 
 ```bash
 node packages/editor/src/server/cli.ts assets apps/platformer
+```
+
+移动、改名、删除（引用它的文件跟着改写）：
+
+```bash
+node packages/editor/src/server/cli.ts move apps/platformer material MyGame/Materials/Grid MyGame/Materials/Floor
+```
+
+```bash
+node packages/editor/src/server/cli.ts move-folder apps/platformer MyGame/Materials MyGame/Shared/Materials
+```
+
+```bash
+node packages/editor/src/server/cli.ts delete apps/platformer material MyGame/Materials/Floor
 ```
 
 ## 在页面里编辑场景

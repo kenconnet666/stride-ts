@@ -7,7 +7,7 @@
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, type UIFile } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, type UIFile } from '@stride-ts/engine/content-format';
 import { assetReferences, type AssetKind, type AssetReference } from '@stride-ts/engine/content-references';
 import type { AssetChanges, AssetRecord } from '../protocol.ts';
 
@@ -54,7 +54,8 @@ interface Entry {
   record: AssetRecord | undefined;
 }
 
-const keyOf = (kind: AssetKind, assetPath: string) => `${kind}:${assetPath}`;
+/** 数据库里认资源的键。 */
+export const assetKey = (kind: AssetKind, assetPath: string): string => `${kind}:${assetPath}`;
 
 export class AssetDatabase {
   readonly contentDir: string;
@@ -71,7 +72,7 @@ export class AssetDatabase {
   }
 
   get(kind: AssetKind, assetPath: string): AssetRecord | undefined {
-    const entry = this.#entries.get(keyOf(kind, assetPath));
+    const entry = this.#entries.get(assetKey(kind, assetPath));
     return entry && this.#record(entry);
   }
 
@@ -87,14 +88,14 @@ export class AssetDatabase {
       this.#referrers = new Map();
       for (const [key, entry] of this.#entries) {
         for (const reference of entry.references) {
-          const target = keyOf(reference.kind, reference.path);
+          const target = assetKey(reference.kind, reference.path);
           const list = this.#referrers.get(target);
           if (list) list.push(key);
           else this.#referrers.set(target, [key]);
         }
       }
     }
-    return (this.#referrers.get(keyOf(kind, assetPath)) ?? []).map((key) => this.#record(this.#entries.get(key)!));
+    return (this.#referrers.get(assetKey(kind, assetPath)) ?? []).map((key) => this.#record(this.#entries.get(key)!));
   }
 
   /** 指向不存在的资源的引用。 */
@@ -102,7 +103,7 @@ export class AssetDatabase {
     const found: { from: AssetReference; to: AssetReference }[] = [];
     for (const entry of this.#entries.values()) {
       for (const to of entry.references) {
-        if (!this.#entries.has(keyOf(to.kind, to.path))) found.push({ from: { kind: entry.kind, path: entry.path }, to });
+        if (!this.#entries.has(assetKey(to.kind, to.path))) found.push({ from: { kind: entry.kind, path: entry.path }, to });
       }
     }
     return found;
@@ -151,7 +152,7 @@ export class AssetDatabase {
   async #refreshFile(file: string): Promise<string | undefined> {
     const found = classifyAssetFile(file);
     if (!found) return undefined;
-    const key = keyOf(found.kind, found.path);
+    const key = assetKey(found.kind, found.path);
     const absolute = path.join(this.contentDir, file);
     const info = await stat(absolute).catch((error: NodeJS.ErrnoException) => {
       if (error.code === 'ENOENT') return undefined;
@@ -189,8 +190,9 @@ export class AssetDatabase {
     try {
       if (entry.kind === 'model') {
         const bytes = await readFile(absolute);
-        // Node 的 Buffer 可能是一块大内存里的一段：拷出自己的 ArrayBuffer 再解
-        entry.references = assetReferences('model', entry.path, decodeModel(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, absolute));
+        entry.references = assetReferences('model', entry.path, decodeModel(ownBuffer(bytes), absolute));
+      } else if (entry.kind === 'animation') {
+        entry.references = assetReferences('animation', entry.path, decodeAnimation(ownBuffer(await readFile(absolute)), absolute));
       } else if (entry.main!.endsWith('.json')) {
         const file: unknown = JSON.parse(await readFile(absolute, 'utf8'));
         entry.references = assetReferences(entry.kind, entry.path, file);
@@ -224,6 +226,9 @@ export class AssetDatabase {
 }
 
 const READ_BATCH = 64;
+
+/** Node 的 Buffer 可能是一块大内存里的一段：拷出自己的 ArrayBuffer 再解。 */
+export const ownBuffer = (bytes: Buffer): ArrayBuffer => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 
 /** 按码位比较：排序结果不随机器的语言环境变。 */
 const compare = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);

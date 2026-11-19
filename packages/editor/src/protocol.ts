@@ -7,6 +7,8 @@
  *   GET  /assets                         所有资源（AssetRecord[]）
  *   GET  /asset?kind=&path=              一个 JSON 资源的内容
  *   PUT  /asset?kind=&path=              保存一个 JSON 资源（请求体是它的内容），返回它的 AssetRecord
+ *   DELETE /asset?kind=&path=[&force=1]  删掉一个资源（DeleteResult）；有别的资源引用它时不删（409），force 时照删
+ *   POST /move                           移动、改名资源（请求体 MoveRequest，返回 MoveResult），引用它们的文件跟着改写
  * 资源变了（编辑器保存的、别的程序改的、导入器写的）以后，后端经 Vite 的 HMR 通道推送 EDITOR_ASSETS_EVENT（AssetChanges）；
  * 前端用 `import.meta.hot.on(EDITOR_ASSETS_EVENT, ...)` 收。
  */
@@ -51,6 +53,29 @@ export interface AssetRecord {
   readonly handle?: string;
   /** 主文件读不了、解析不了时的原因；这时 references 是空的。 */
   readonly error?: string;
+}
+
+/** 一个资源挪到哪：种类不变，内容路径从 from 换成 to。 */
+export interface AssetMove {
+  readonly kind: AssetKind;
+  readonly from: string;
+  readonly to: string;
+}
+
+/** 挪几个资源，或者把一个文件夹（内容路径的前缀）下面的资源整个挪走。 */
+export type MoveRequest = { readonly assets: readonly AssetMove[] } | { readonly folder: string; readonly to: string };
+
+export interface MoveResult {
+  /** 挪过去以后的资源（声音和它同名的音频文件一起挪）。 */
+  readonly moved: readonly AssetRecord[];
+  /** 引用了挪走的资源、被改写了的资源。 */
+  readonly rewritten: readonly AssetRecord[];
+}
+
+export interface DeleteResult {
+  readonly removed: readonly AssetReference[];
+  /** 还引用着删掉的资源的（force 删的时候），它们的引用断了。 */
+  readonly broken: readonly AssetRecord[];
 }
 
 /** 一批文件变化以后数据库里变了的资源。 */

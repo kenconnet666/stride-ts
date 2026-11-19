@@ -27,15 +27,20 @@ export interface ScriptAssetRef {
 /** 场景里所有脚本属性引用的资源（加载场景时先并行加载它们）。 */
 export function scriptAssetRefs(scripts: readonly SceneScript[]): ScriptAssetRef[] {
   const refs: ScriptAssetRef[] = [];
-  const visit = (value: SceneScriptValue): void => {
-    if (value === null || typeof value !== 'object') return;
-    if (Array.isArray(value)) return value.forEach(visit);
-    const object = value as Record<string, SceneScriptValue>;
-    if (typeof object['$asset'] === 'string') return void refs.push({ path: object['$asset'], kind: object['kind'] as SceneAssetKind });
-    Object.values(object).forEach(visit);
-  };
-  for (const script of scripts) Object.values(script.props).forEach(visit);
+  visitScriptAssets(scripts, (value) => refs.push({ path: value.$asset, kind: value.kind }));
   return refs;
+}
+
+/** 脚本属性里写着资源引用的那些值（`{ $asset, kind }`，文件里的那个对象本身：编辑器移动资源时改写它的 $asset）。 */
+export function visitScriptAssets(scripts: readonly SceneScript[], visit: (value: { $asset: string; kind: SceneAssetKind }) => void): void {
+  const walk = (value: SceneScriptValue): void => {
+    if (value === null || typeof value !== 'object') return;
+    if (Array.isArray(value)) return value.forEach(walk);
+    const object = value as Record<string, SceneScriptValue>;
+    if (typeof object['$asset'] === 'string') return visit(object as unknown as { $asset: string; kind: SceneAssetKind });
+    Object.values(object).forEach(walk);
+  };
+  for (const script of scripts) Object.values(script.props).forEach(walk);
 }
 
 /** 解析场景值时要用的：场景里的实体 id → 实体，按种类和路径找加载好的资源。 */

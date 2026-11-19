@@ -1,10 +1,11 @@
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { encodeModel, plainMesh, VERTEX_FLOATS, type MaterialFile, type SceneFile, type UIFile } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, plainMesh, VERTEX_FLOATS, type MaterialFile, type SceneFile, type UIFile } from '@stride-ts/engine/content-format';
 import {
   AssetDatabase, classifyAssetFile, EDITOR_API_PATH, EDITOR_HEADER, EditorBackend, generateAssetTypes, loadProject, PROJECT_FILE, projectInfo,
   type AssetChanges, type AssetRecord,
@@ -267,5 +268,78 @@ describe('后端（EditorBackend）', () => {
     expect((await api('/nope')).status).toBe(404);
     // 不是编辑器接口的请求交给后面的中间件
     expect(await (await fetch(`${base}/index.html`)).text()).toBe('next');
+  });
+});
+
+describe('移动、改名、删除资源（引用按路径，跟着改写）', () => {
+  let directory: string, contentDir: string, backend: EditorBackend;
+  const read = async (file: string) => JSON.parse(await readFile(path.join(contentDir, file), 'utf8')) as unknown;
+  const bytes = async (file: string) => {
+    const data = await readFile(path.join(contentDir, file));
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  };
+  const missing = () => backend.database.missing().map(({ from, to }) => `${from.kind} ${from.path} -> ${to.kind} ${to.path}`).sort();
+  beforeAll(async () => {
+    directory = await project('move');
+    contentDir = path.join(directory, 'public', 'content');
+    await writeFile(path.join(contentDir, 'Game/Models/Walk.anim'), encodeAnimation({ duration: 1, repeatMode: 'loopInfinite', skeleton: 'Game/Models/Wall', archive: new Uint8Array(0) }));
+    backend = await EditorBackend.open(directory, path.join(directory, 'public'));
+  });
+
+  test('挪一个资源：引用它的 JSON、模型、动画都改写成新路径，没有多出断掉的引用', async () => {
+    const before = missing();
+    const result = await backend.moveAssets({ assets: [{ kind: 'material', from: 'Game/Materials/Grid', to: 'Game/Shared/Grid' }] });
+    expect(result.moved.map((asset) => asset.files)).toEqual([['Game/Shared/Grid.material.json']]);
+    expect(result.rewritten.map((asset) => `${asset.kind} ${asset.path}`)).toEqual(['model Game/Models/Wall']);
+    expect(decodeModel(await bytes('Game/Models/Wall.model')).materials).toEqual(['Game/Shared/Grid']);
+    // 场景里的模型、骨架（动画引用它）
+    await backend.moveAssets({ assets: [{ kind: 'model', from: 'Game/Models/Wall', to: 'Game/Props/Wall' }, { kind: 'skeleton', from: 'Game/Models/Wall', to: 'Game/Props/WallSkeleton' }] });
+    expect(((await read('Game/Main.scene.json')) as SceneFile).entities[0]!.components.model!.model).toBe('Game/Props/Wall');
+    // 模型自己挪了，它里面对骨架的引用也改了
+    expect(decodeModel(await bytes('Game/Props/Wall.model')).skeleton).toBe('Game/Props/WallSkeleton');
+    expect(decodeAnimation(await bytes('Game/Models/Walk.anim')).skeleton).toBe('Game/Props/WallSkeleton');
+    expect(missing()).toEqual(before);
+  });
+
+  test('挪文件夹：下面的资源都挪，脚本属性、UI 组件里的引用都改写；声音连着它的音频文件', async () => {
+    // 断掉的引用（指向不存在的）还是那几个；引用它们的资源自己挪了，所以只比指向谁
+    const targets = () => missing().map((line) => line.slice(line.indexOf(' -> ')));
+    const before = targets();
+    const result = await backend.moveAssets({ folder: 'Game/UI', to: 'Game/Interface' });
+    expect(result.moved.map((asset) => `${asset.kind} ${asset.path}`).sort()).toEqual(['ui Game/Interface/Menu', 'ui Game/Interface/Shared']);
+    const main = (await read('Game/Main.scene.json')) as SceneFile;
+    expect(main.entities[2]!.components.ui!.page).toBe('Game/Interface/Menu');
+    expect(main.entities[3]!.components.scripts![0]!.props).toEqual({ bullet: { $asset: 'Game/Prefabs/Bullet', kind: 'prefab' }, hud: { $asset: 'Game/Interface/Shared', kind: 'uiLibrary' } });
+    // 改写的文件只动引用那几处
+    expect(main.entities.map((e) => e.name)).toEqual(scene.entities.map((e) => e.name));
+    const sound = await backend.moveAssets({ assets: [{ kind: 'sound', from: 'Game/Sounds/Jump', to: 'Game/Audio/Jump' }] });
+    expect(sound.moved.map((asset) => asset.files[0])).toEqual(['Game/Audio/Jump.sound.json', 'Game/Audio/Jump.wav']);
+    expect(targets()).toEqual(before);
+    // 挪空了的文件夹删掉
+    expect([existsSync(path.join(contentDir, 'Game/UI')), existsSync(path.join(contentDir, 'Game/Sounds'))]).toEqual([false, false]);
+    // 字体连着字形块
+    await backend.moveAssets({ assets: [{ kind: 'font', from: 'Game/Fonts/Body', to: 'Game/Fonts/Text' }] });
+    expect(backend.database.get('font', 'Game/Fonts/Text')!.files).toEqual(['Game/Fonts/Text.font.json', 'Game/Fonts/Text.0.glyphs', 'Game/Fonts/Text.37.glyphs']);
+    expect(((await read('Game/Interface/Menu.ui.json')) as UIFile).elements[0]!.props['font']).toEqual({ $asset: 'Game/Fonts/Text', kind: 'font' });
+  });
+
+  test('挪不了的：目标已经有了、要挪的不在、挪进自己里面、路径不合法', async () => {
+    const fails = (request: Parameters<EditorBackend['moveAssets']>[0]) => backend.moveAssets(request).then(() => 'ok', (error: Error) => error.message);
+    expect(await fails({ assets: [{ kind: 'material', from: 'Game/Materials/Red', to: 'Game/Shared/Grid' }] })).toBe('material Game/Shared/Grid already exists');
+    expect(await fails({ assets: [{ kind: 'material', from: 'Game/Nope', to: 'Game/Nope2' }] })).toBe('no material asset Game/Nope');
+    expect(await fails({ folder: 'Game', to: 'Game/Inner' })).toBe('cannot move the folder Game into itself (Game/Inner)');
+    expect(await fails({ assets: [{ kind: 'material', from: 'Game/Materials/Red', to: '../Red' }] })).toBe("'../Red' is not a content path");
+    expect(backend.database.get('material', 'Game/Materials/Red')).toBeDefined();
+  });
+
+  test('删除：有引用时不删（报出谁在用），force 照删；HTTP 接口', async () => {
+    const fails = await backend.deleteAsset('material', 'Game/Materials/Red').then(() => 'ok', (error: Error) => error.message);
+    expect(fails).toBe('material Game/Materials/Red is referenced by scene Game/Main (pass force to delete it anyway)');
+    const result = await backend.deleteAsset('material', 'Game/Materials/Red', { force: true });
+    expect([result.removed, result.broken.map((asset) => asset.path)]).toEqual([[{ kind: 'material', path: 'Game/Materials/Red' }], ['Game/Main']]);
+    expect(backend.database.get('material', 'Game/Materials/Red')).toBeUndefined();
+    expect(missing()).toContain('scene Game/Main -> material Game/Materials/Red');
+    // 声音连着音频一起删
+    expect((await backend.deleteAsset('sound', 'Game/Audio/Jump')).removed).toEqual([{ kind: 'sound', path: 'Game/Audio/Jump' }, { kind: 'audio', path: 'Game/Audio/Jump' }]);
   });
 });

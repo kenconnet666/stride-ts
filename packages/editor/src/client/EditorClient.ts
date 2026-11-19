@@ -1,10 +1,11 @@
 /// <reference types="vite/client" />
 /**
- * 前端这边对后端接口的封装（约定见 ../protocol.ts）：读工程、列资源、读和保存 JSON 资源，听资源的变化。
+ * 前端这边对后端接口的封装（约定见 ../protocol.ts）：读工程、列资源、读和保存 JSON 资源、移动和删除资源，听资源的变化。
  * 页面要由带着 strideEditor 插件的开发服务器提供。
  */
 import {
-  EDITOR_API_PATH, EDITOR_ASSETS_EVENT, type AssetChanges, type AssetKind, type AssetRecord, type ProjectInfo,
+  EDITOR_API_PATH, EDITOR_ASSETS_EVENT, type AssetChanges, type AssetKind, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult,
+  type ProjectInfo,
 } from '../protocol.ts';
 
 /** 每个接口请求都要带的头，同后端的 EDITOR_HEADER。 */
@@ -28,6 +29,16 @@ export class EditorClient {
   /** 保存一个 JSON 资源（新建或覆盖），返回它在数据库里的记录。 */
   saveAsset(kind: AssetKind, path: string, content: object): Promise<AssetRecord> {
     return request('PUT', assetRoute(kind, path), content);
+  }
+
+  /** 移动、改名资源（几个，或者一个文件夹下面的全部）；引用它们的文件跟着改写。 */
+  moveAssets(move: MoveRequest): Promise<MoveResult> {
+    return request('POST', '/move', move);
+  }
+
+  /** 删掉一个资源；还有别的资源引用它时报错，force 时照删（引用断掉）。 */
+  deleteAsset(kind: AssetKind, path: string, { force = false } = {}): Promise<DeleteResult> {
+    return request('DELETE', `${assetRoute(kind, path)}${force ? '&force=1' : ''}`);
   }
 
   /**

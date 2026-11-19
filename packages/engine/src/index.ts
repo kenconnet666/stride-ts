@@ -142,7 +142,7 @@ export { GpuMemory, PipelineCounts, textureBytes, type GpuResourceCount } from '
 export type { ModelUse } from './content/SceneBuilder';
 export { SceneDocument, UndoStack, type EntitiesFile, type SceneEdit, type ScenePath } from './editor/SceneDocument';
 export { changedEntities, type EntityChanges } from './content/SceneBuilder';
-export { assetReferences, entityAssetReferences, type AssetKind, type AssetReference, type EntityAssetReference } from './content/references';
+export { assetReferences, assetReferenceSlots, entityAssetReferences, type AssetKind, type AssetReference, type AssetReferenceSlot, type EntityAssetReference } from './content/references';
 export { DebugDraw, DEBUG_LINE_FLOATS, type DebugColor, type DebugDrawOptions, type DebugPoint } from './debug/DebugDraw';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
 export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './games/Game';

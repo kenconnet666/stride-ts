@@ -3,16 +3,23 @@
  * stride-editor：不开开发服务器也能用的几件事。
  *   stride-editor assets-types [工程目录]   按内容目录生成资源句柄（src/assets.gen.ts）；typecheck、build 之前跑
  *   stride-editor assets [工程目录]         列出资源和指向不存在的资源的引用
+ *   stride-editor move <工程目录> <种类> <路径> <新路径>     移动、改名一个资源，引用它的文件跟着改写
+ *   stride-editor move-folder <工程目录> <文件夹> <新文件夹>  把文件夹下面的资源整个挪走
+ *   stride-editor delete <工程目录> <种类> <路径> [--force]   删掉一个资源（有别的资源引用它时不删，除非 --force）
  */
 import path from 'node:path';
+import type { AssetKind } from '@stride-ts/engine/content-references';
+import type { MoveResult } from '../protocol.ts';
 import { AssetDatabase } from './AssetDatabase.ts';
 import { writeAssetTypes } from './assetTypes.ts';
+import { EditorBackend } from './EditorBackend.ts';
 import { loadProject } from './project.ts';
 
-const [command, directory = '.'] = process.argv.slice(2);
+const [command, directory = '.', ...rest] = process.argv.slice(2);
 const project = await loadProject(path.resolve(directory));
 const database = new AssetDatabase(project.contentDir);
 await database.scan();
+const backend = () => EditorBackend.open(project.root, path.join(project.root, 'public'));
 
 if (command === 'assets-types') {
   const written = await writeAssetTypes(project.assetTypesFile, database.list(), project.manifest.content);
@@ -22,7 +29,25 @@ if (command === 'assets-types') {
   const missing = database.missing();
   for (const { from, to } of missing) console.log(`missing: ${from.kind} ${from.path} -> ${to.kind} ${to.path}`);
   console.log(`${database.size} assets, ${missing.length} missing references`);
+} else if (command === 'move' && rest.length === 3) {
+  const [kind, from, to] = rest as [AssetKind, string, string];
+  const result = await (await backend()).moveAssets({ assets: [{ kind, from, to }] });
+  printMove(result);
+} else if (command === 'move-folder' && rest.length === 2) {
+  printMove(await (await backend()).moveAssets({ folder: rest[0]!, to: rest[1]! }));
+} else if (command === 'delete' && (rest.length === 2 || (rest.length === 3 && rest[2] === '--force'))) {
+  const result = await (await backend()).deleteAsset(rest[0] as AssetKind, rest[1]!, { force: rest[2] === '--force' });
+  for (const asset of result.removed) console.log(`removed ${asset.kind} ${asset.path}`);
+  for (const asset of result.broken) console.log(`broken reference in ${asset.kind} ${asset.path}`);
 } else {
-  console.error('usage: stride-editor <assets-types|assets> [project directory]');
+  console.error(`usage: stride-editor <assets-types|assets> [project directory]
+       stride-editor move <project> <kind> <path> <new path>
+       stride-editor move-folder <project> <folder> <new folder>
+       stride-editor delete <project> <kind> <path> [--force]`);
   process.exitCode = 1;
+}
+
+function printMove({ moved, rewritten }: MoveResult): void {
+  for (const asset of moved) console.log(`moved     ${asset.kind} ${asset.path}`);
+  for (const asset of rewritten) console.log(`rewritten ${asset.kind} ${asset.path}`);
 }

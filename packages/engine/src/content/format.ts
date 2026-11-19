@@ -443,10 +443,17 @@ export interface MaterialFile {
   readonly baseColorOperator?: ColorOperator;
   /** 金属度工作流（Stride 的 MaterialMetalnessMapFeature）；没有时材质没有镜面反射（除非有 specular）。 */
   readonly metalness?: number;
-  /** 镜面工作流（Stride 的 MaterialSpecularMapFeature）：镜面颜色乘强度，线性；和 metalness 二选一，漫反射不变暗。 */
+  /** 镜面工作流（Stride 的 MaterialSpecularMapFeature）：镜面颜色乘强度，线性；和 metalness 二选一。 */
   readonly specular?: Vec3Tuple;
-  /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。 */
+  /** 镜面工作流不守恒能量（Stride 的 IsEnergyConservative 是 false）：漫反射不乘 1 - 镜面。默认守恒。 */
+  readonly specularEnergyConservative?: false;
+  /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。有 glossinessTexture 时不看它。 */
   readonly roughness?: number;
+  /**
+   * 光泽度贴图（Stride 的 MaterialGlossinessMapFeature 的 ComputeTextureScalar）：光泽度 = 贴图的 channel 通道，粗糙度 =
+   * 1 - 光泽度；invert 时贴图存的就是粗糙度（Stride 的 Invert）。
+   */
+  readonly glossinessTexture?: TextureSlot & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean };
   /** 自发光：线性颜色乘强度；有 emissiveTexture 时再乘贴图（Stride 的 ComputeBinaryColor 乘法）。 */
   readonly emissive?: Vec3Tuple;
   readonly emissiveTexture?: TextureSlot;

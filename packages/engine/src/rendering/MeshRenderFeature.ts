@@ -104,7 +104,7 @@ struct LocalLight { position: vec4f, color: vec4f, direction: vec4f, angle: vec4
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
 // 没有贴图的槽绑一张 1x1 的白图，所以不用分支：自发光 = 贴图 · emissive，遮蔽 = dot(贴图, occlusionMask)（mask 是
 // 通道的单位向量，没有贴图时是 (值, 0, 0, 0)）。surface：金属度、粗糙度、漫反射 cavity、镜面 cavity。
-// specular：0 没有镜面，1 金属度工作流，2 镜面颜色工作流（specularColor）。blend：透明的 tint 和漫反射的 alpha（不透明是 1），
+// specular：0 没有镜面，1 金属度工作流，2 镜面颜色工作流（specularColor），3 镜面颜色工作流并且能量守恒（漫反射乘 1 - 镜面）。blend：透明的 tint 和漫反射的 alpha（不透明是 1），
 // emissive.w：镜面的透明系数（Stride 的 matDiffuseSpecularAlphaBlend.y）。
 // normalFlags：第 1 位有法线贴图，第 2 位 ×2-1，第 3 位 y 取反，第 4 位由 xy 算 z。occlusionDirect：直射光受遮蔽的程度。
 struct Material {
@@ -122,6 +122,10 @@ struct Material {
   specular: u32,
   normalFlags: u32,
   occlusionDirect: f32,
+  // 光泽度贴图：通道的单位向量（没有贴图时是 0）、x 为 1 时贴图存的是粗糙度（Stride 的 Invert）
+  glossinessMask: vec4f,
+  glossinessUvTransform: vec4f,
+  glossinessFlags: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
@@ -133,6 +137,8 @@ struct Material {
 @group(1) @binding(6) var normalSampler: sampler;
 @group(1) @binding(7) var emissiveSampler: sampler;
 @group(1) @binding(8) var occlusionSampler: sampler;
+@group(1) @binding(9) var glossinessTexture: texture_2d<f32>;
+@group(1) @binding(10) var glossinessSampler: sampler;
 
 // 网格的反量化：位置 = offset + 输入 · scale，UV = uvTransform.zw + 输入 · uvTransform.xy；flags 的第 1 位：法线是八面体编码。
 // 不量化的网格 offset 0、scale 1。unorm16 的位置读进来是 vec4f，snorm16x2 的法线是 (x, y, 0)，都按 vec3f 用。
@@ -404,13 +410,18 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
   let hasSpecular = material.specular != 0u;
   let metalness = material.surface.x;
   let isMetalness = material.specular == 1u;
-  let diffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a;
   let f0 = select(material.specularColor.rgb, mix(vec3f(0.02), albedo, metalness), isMetalness);
   let specular = select(vec3f(0.0), f0, hasSpecular) * material.surface.w * material.blend.rgb * material.emissive.w;
+  // 镜面颜色工作流默认能量守恒（Stride 的 IsEnergyConservative：MaterialSurfaceShadingDiffuseLambert 的漫反射乘 1 - 镜面）
+  let conserved = select(vec3f(1.0), 1.0 - specular, material.specular == 3u);
+  let diffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a * conserved;
   // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, occlusionDirect)
   let ao = dot(textureSample(occlusionTexture, occlusionSampler, in.uv * material.occlusionUvTransform.xy + material.occlusionUvTransform.zw), material.occlusionMask);
   let directOcclusion = mix(1.0, ao, material.occlusionDirect);
-  let roughness = material.surface.y;
+  // 粗糙度：常量，或者光泽度贴图的一个通道（没有贴图时 mask 是 0，取常量）
+  let glossTexel = dot(textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw), material.glossinessMask);
+  let hasGlossTexture = dot(material.glossinessMask, vec4f(1.0)) > 0.0;
+  let roughness = select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.glossinessFlags.x > 0.5), hasGlossTexture);
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
 
@@ -536,8 +547,8 @@ const VIEW_FLOATS = 192;
 const LOCAL_LIGHT_FLOATS = 16;
 /** 一帧最多的视图数：主视图加 4 个阴影级联，留些余量。 */
 const MAX_VIEWS = 8;
-/** 材质 uniform：baseColor、uvTransform、emissive、surface、normalUvTransform 各一个 vec4，再加三个 u32，补齐到 16 字节。 */
-const MATERIAL_BYTES = 176;
+/** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
+const MATERIAL_BYTES = 224;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 /** 网格参数的 uniform：positionOffset、positionScale、uvTransform 各一个 vec4，再加 flags，补齐到 16 字节。 */
@@ -883,6 +894,8 @@ class Gpu {
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         ...[6, 7, 8].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, sampler: {} })),
+        { binding: 9, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 10, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
     this.#meshLayout = device.createBindGroupLayout({
@@ -1164,9 +1177,13 @@ class Gpu {
       floats.set(transparency ? [...transparency.tint, transparency.alpha] : [1, 1, 1, 1], 36);
       const codes = new Uint32Array(this.#materialData);
       codes[40] = OPERATOR_CODES[material.baseColorOperator];
-      codes[41] = material.specular ? 2 : material.metalness === undefined ? 0 : 1;
+      codes[41] = material.specular ? (material.specularEnergyConservative ? 3 : 2) : material.metalness === undefined ? 0 : 1;
       codes[42] = normalMap ? 1 | (normalMap.scaleAndBias ? 2 : 0) | (normalMap.invertY ? 4 : 0) | (normalMap.isXYNormal ? 8 : 0) : 0;
       floats[43] = occlusion.directLighting;
+      const gloss = material.glossinessMap;
+      floats.set(gloss ? CHANNELS[gloss.channel] : [0, 0, 0, 0], 44);
+      floats.set(uv(gloss), 48);
+      floats.set([gloss?.invert ? 1 : 0, 0, 0, 0], 52);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});
@@ -1183,6 +1200,8 @@ class Gpu {
           { binding: 6, resource: sampler(normalMap) },
           { binding: 7, resource: sampler(emissiveTexture) },
           { binding: 8, resource: sampler(occlusion.texture) },
+          { binding: 9, resource: view(gloss) },
+          { binding: 10, resource: sampler(gloss) },
         ],
       });
       gpu.version = material.version;

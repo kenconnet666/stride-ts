@@ -92,9 +92,12 @@ export class MaterialImporter {
     if (specular && workflow !== 'MaterialMetalnessMapFeature' && workflow !== 'MaterialSpecularMapFeature') this.#context.warnings.push(`${asset.file}: specular ${workflow ?? 'feature'} is not supported; the material has no specular`);
     const metalness = workflow === 'MaterialMetalnessMapFeature' ? this.#scalar(asObject(specular!['MetalnessMap']), 0, asset) : undefined;
     const microSurface = asObject(attributes['MicroSurface']);
-    const glossiness = this.#scalar(asObject(microSurface?.['GlossinessMap']), 0, asset);
+    const glossinessMap = asObject(microSurface?.['GlossinessMap']);
     // Invert 为真时这张图存的是粗糙度（MaterialGlossinessMapFeature.Invert）
-    const roughness = microSurface?.['Invert'] === true ? glossiness : 1 - glossiness;
+    const invert = microSurface?.['Invert'] === true;
+    const glossinessTexture = glossinessMap?.$type === 'ComputeTextureScalar' ? await this.#scalarTexture(glossinessMap, asset, uvScale) : undefined;
+    const glossiness = glossinessTexture ? 0 : this.#scalar(glossinessMap, 0, asset);
+    const roughness = invert ? glossiness : 1 - glossiness;
     const material: MaterialFile = {
       name: path.basename(asset.path),
       baseColor: color,
@@ -102,7 +105,9 @@ export class MaterialImporter {
       ...(texture && operator !== 'multiply' ? { baseColorOperator: operator } : {}),
       ...(metalness === undefined ? {} : { metalness }),
       ...(workflow === 'MaterialSpecularMapFeature' ? { specular: this.#specularColor(specular!, asset, uvScale) } : {}),
+      ...(workflow === 'MaterialSpecularMapFeature' && specular!['IsEnergyConservative'] === false ? { specularEnergyConservative: false as const } : {}),
       roughness,
+      ...(glossinessTexture ? { glossinessTexture: { ...glossinessTexture, invert } } : {}),
       ...await this.#emissive(asObject(attributes['Emissive']), asset, uvScale),
       ...await this.#occlusion(asObject(attributes['Occlusion']), asset, uvScale),
       ...await this.#normalMap(asObject(attributes['Surface']), asset, uvScale),
@@ -229,6 +234,15 @@ export class MaterialImporter {
     const diffuse = lerp(this.#scalar(asObject(feature['DiffuseCavity']), 1, asset));
     const specular = lerp(this.#scalar(asObject(feature['SpecularCavity']), 1, asset));
     return { ...(ambientOcclusion ? { ambientOcclusion } : {}), ...(diffuse === 1 && specular === 1 ? {} : { cavity: { diffuse, specular } }) };
+  }
+
+  /** ComputeTextureScalar 的贴图和通道（Channel，默认 R）；没有贴图时是 undefined（用 #scalar 取后备值）。 */
+  async #scalarTexture(node: StrideObject, asset: AssetEntry, uvScale: readonly [number, number]): Promise<(TextureSlot & { channel: 'r' | 'g' | 'b' | 'a' }) | undefined> {
+    const reference = parseAssetReference(node['Texture']);
+    if (!reference) return undefined;
+    const scale = vec2(node['Scale'], 1);
+    const slot = textureSlot(await this.texture(this.#context.project.get(reference.id, asset.file)), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(node['Offset'], 0), samplerOf(node));
+    return { ...slot, channel: String(node['Channel'] ?? 'R').toLowerCase() as 'r' | 'g' | 'b' | 'a' };
   }
 
   /** ComputeFloat 的值；没有贴图的 ComputeTextureScalar 用它的 FallbackValue（Stride 也是这样）。 */

@@ -254,12 +254,13 @@ export class ContentManager {
       const slot = async ({ scale, offset, filter, addressU, addressV, ...ref }: TextureSlot, srgb: boolean) =>
         ({ texture: await this.#loadTextureRef(ref, srgb), scale, offset, sampler: { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } });
       const { normalMap: normal, ambientOcclusion: occlusion } = file;
-      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture, emissiveShader] = await Promise.all([
+      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture, emissiveShader, glossinessTexture] = await Promise.all([
         file.baseColorTexture && slot(file.baseColorTexture, true),
         file.emissiveTexture && slot(file.emissiveTexture, true),
         normal && slot(normal, false),
         occlusion?.texture && slot(occlusion.texture, false),
         file.emissiveTree && this.#emissiveShader(file.emissiveTree),
+        file.glossinessTexture && slot(file.glossinessTexture, false),
       ]);
       return new Material(file.name, {
         baseColor: file.baseColor,
@@ -267,7 +268,9 @@ export class ContentManager {
         ...(file.baseColorOperator ? { baseColorOperator: file.baseColorOperator } : {}),
         ...(file.metalness === undefined ? {} : { metalness: file.metalness }),
         ...(file.specular ? { specular: file.specular } : {}),
+        ...(file.specularEnergyConservative === false ? { specularEnergyConservative: false } : {}),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
+        ...(glossinessTexture ? { glossinessMap: { ...glossinessTexture, channel: file.glossinessTexture!.channel, invert: file.glossinessTexture!.invert } } : {}),
         ...(file.emissive ? { emissive: file.emissive } : {}),
         ...(emissiveTexture ? { emissiveTexture } : {}),
         ...(emissiveShader ? { emissiveShader } : {}),

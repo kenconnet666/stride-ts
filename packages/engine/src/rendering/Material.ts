@@ -71,8 +71,12 @@ export interface MaterialDesc {
   readonly metalness?: number;
   /** 镜面工作流的镜面颜色（线性，已乘强度）；给了就不看 metalness。 */
   readonly specular?: readonly [number, number, number];
+  /** 镜面工作流的能量守恒（漫反射乘 1 - 镜面，Stride 的 IsEnergyConservative），默认 true。 */
+  readonly specularEnergyConservative?: boolean;
   /** 粗糙度 = 1 - 光泽度，默认 1。 */
   readonly roughness?: number;
+  /** 光泽度贴图（意思同 content/format.ts 的 glossinessTexture）；有它时不看 roughness。 */
+  readonly glossinessMap?: MaterialTexture & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean };
   /** 自发光，线性颜色乘强度，默认没有；有 emissiveTexture 时再乘贴图的颜色。 */
   readonly emissive?: readonly [number, number, number];
   readonly emissiveTexture?: MaterialTexture;
@@ -101,7 +105,9 @@ export class Material {
   readonly baseColorOperator: ColorOperator;
   readonly metalness: number | undefined;
   readonly specular: readonly [number, number, number] | undefined;
+  readonly specularEnergyConservative: boolean;
   readonly roughness: number;
+  readonly glossinessMap: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean } | undefined;
   readonly emissive: readonly [number, number, number];
   readonly emissiveTexture: Required<MaterialTexture> | undefined;
   readonly emissiveShader: EmissiveShader | undefined;
@@ -123,7 +129,10 @@ export class Material {
     this.baseColorOperator = desc.baseColorOperator ?? 'multiply';
     this.metalness = desc.metalness;
     this.specular = desc.specular;
+    this.specularEnergyConservative = desc.specularEnergyConservative ?? true;
     this.roughness = desc.roughness ?? 1;
+    const gloss = desc.glossinessMap;
+    this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert };
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
     this.emissiveShader = desc.emissiveShader;

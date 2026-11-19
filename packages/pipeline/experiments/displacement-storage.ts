@@ -1,5 +1,7 @@
 // 几何实验 E1（docs/vector-assets.md 的"几何"）：同样的几何误差下，"基础网格加位移微图"比稠密网格小多少。
 //   node packages/pipeline/experiments/displacement-storage.ts <模型.glb|.ply> [...]
+//   node packages/pipeline/experiments/displacement-storage.ts <模型> --export <文件> [--base 64] [--level 3]
+//     不量大小，把这一个配置（基础网格是原来的 1/base，细分 level 级，8 位）导出给 E2 的运行时实验用（apps/bench 的 displacement 页面）。
 // 对每个模型：
 //   1. 稠密网格逐档简化（meshopt），每档记大小和到原网格的误差，得到"普通网格"的大小—误差曲线；
 //   2. 简化出几档基础网格，每个基础三角形按重心坐标细分 k 级，沿插值的法线向原网格打射线量位移，量化成 8 位、11 位，
@@ -7,7 +9,7 @@
 //   3. 每个位移的配置和曲线上误差相同的普通网格比大小。
 // 大小只算几何（位置和连接关系，位移的版本加上位移），都是量化、编码之后再 brotli；法线两边都能在加载时算出来，不计。
 // 误差：两边各取样本点量到对方表面的最近距离，报均方根和最大值，除以包围盒的对角线。
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { brotliCompressSync } from 'node:zlib';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
@@ -200,6 +202,16 @@ class MicroGrid {
     return this.#edgeStart.get(this.#edgeKey(a, b))! + (a < b ? k : this.n - k) - 1;
   }
 
+  /**
+   * 三角形的三条边（ab、ac、bc）上的点从哪个编号开始、内部的点从哪个编号开始，着色器按它算格点的编号。
+   * 边的编号最高位是 1 时，这条边在三角形里的方向和存的方向相反（第 k 格是 起点 + n - k - 1）。
+   */
+  layout(triangle: number): [number, number, number, number] {
+    const [a, b, c] = [this.#base.indices[triangle * 3]!, this.#base.indices[triangle * 3 + 1]!, this.#base.indices[triangle * 3 + 2]!];
+    const edge = (from: number, to: number) => (this.#edgeStart.get(this.#edgeKey(from, to))! | (from < to ? 0 : 0x80000000)) >>> 0;
+    return [edge(a, b), edge(a, c), edge(b, c), this.#interiorStart + triangle * this.#interiorPerTriangle];
+  }
+
   /** 三角形 triangle 的格点 (i, j) 的采样点编号。 */
   sample(triangle: number, i: number, j: number): number {
     const n = this.n, [a, b, c] = [this.#base.indices[triangle * 3]!, this.#base.indices[triangle * 3 + 1]!, this.#base.indices[triangle * 3 + 2]!];
@@ -330,11 +342,43 @@ function plainSizeAt(curve: readonly { bytes: number; rms: number }[], rms: numb
   return sorted.at(-1)!.bytes;
 }
 
+/**
+ * 导出给 E2 用的二进制（小端）：
+ *   u32 × 8   魔数 'DMSH'、细分级数、基础顶点数、基础三角形数、采样点数、微三角形数、位移的范围（f32）、保留
+ *   f32 × 4V  基础顶点的位置（xyz，w 不用）；f32 × 4V 基础顶点的法线
+ *   u32 × 8T  每个基础三角形：三个顶点、三条边的起点（MicroGrid.layout）、内部的起点、保留
+ *   u8  × S   每个采样点的位移（0..255 对应 -范围..+范围），补到 4 的倍数
+ *   f32 × 3S  重建出来的顶点位置；u32 × 3M 重建出来的三角形（对照用的静态网格）
+ */
+function exportForBench(file: string, base: Mesh, normals: Float32Array, grid: MicroGrid, level: number, displaced: Displaced, reconstructed: Mesh): void {
+  const vertices = base.positions.length / 3, triangles = base.indices.length / 3, samples = grid.sampleCount;
+  const padded = (samples + 3) & ~3;
+  const header = new Uint32Array(8);
+  header.set([0x48534d44, level, vertices, triangles, samples, reconstructed.indices.length / 3]);
+  new Float32Array(header.buffer)[6] = displaced.range;
+  const wide = (source: Float32Array) => Float32Array.from({ length: vertices * 4 }, (_, i) => (i % 4 === 3 ? 0 : source[(i >> 2) * 3 + (i % 4)]!));
+  const layout = new Uint32Array(triangles * 8);
+  for (let t = 0; t < triangles; t++) layout.set([...base.indices.subarray(t * 3, t * 3 + 3), ...grid.layout(t)], t * 8);
+  const displacement = new Uint8Array(padded);
+  displacement.set(displaced.quantized);
+  const parts = [header, wide(base.positions), wide(normals), layout, displacement, reconstructed.positions, reconstructed.indices];
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, Buffer.concat(parts.map((part) => new Uint8Array(part.buffer, part.byteOffset, part.byteLength))));
+  console.log(`exported ${file}: ${triangles} base triangles, level ${level}, ${samples} samples, ${reconstructed.indices.length / 3} micro triangles`);
+}
+
 const kb = (bytes: number) => (bytes / 1024).toFixed(1).padStart(8);
 const percent = (value: number) => (value * 100).toFixed(4).padStart(8);
 
+const option = (name: string) => {
+  const at = process.argv.indexOf(name);
+  return at < 0 ? undefined : process.argv[at + 1];
+};
+const exportFile = option('--export');
+const files = process.argv.slice(2).filter((arg, i, all) => !arg.startsWith('--') && !all[i - 1]?.startsWith('--'));
+
 const tools = await createStrideTools({ workerThreads: 2 });
-for (const file of process.argv.slice(2)) {
+for (const file of files) {
   const mesh = await loadMesh(tools, file);
   const frame = bounds(mesh.positions), triangles = mesh.indices.length / 3;
   if (triangles === 0) {
@@ -344,6 +388,15 @@ for (const file of process.argv.slice(2)) {
     continue;
   }
   const original = { mesh, bvh: new TriangleBvh(mesh.positions, mesh.indices) };
+  if (exportFile) {
+    const level = Number(option('--level') ?? 3);
+    const simplified = tools.simplifyMesh(mesh.indices, mesh.positions, Math.floor(triangles / Number(option('--base') ?? 64)) * 3, 1).indices;
+    const base = encode(tools, { positions: mesh.positions, indices: simplified }, frame).decoded;
+    const normals = vertexNormals(base), grid = new MicroGrid(base, level);
+    const displaced = bakeDisplacement(base, normals, grid, original.bvh, frame.diagonal * 0.1, 8);
+    exportForBench(exportFile, base, normals, grid, level, displaced, reconstruct(base, normals, grid, displaced, 8));
+    break;
+  }
   console.log(`\n== ${path.basename(file)}: ${triangles} triangles, ${mesh.positions.length / 3} vertices`);
   console.log('kind                         triangles       KB    rms %    max %   bits/orig-tri');
 

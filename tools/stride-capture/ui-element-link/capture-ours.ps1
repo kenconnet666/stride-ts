@@ -8,6 +8,8 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent)
+# 自己的无头 Chrome（浏览器的记录和用户目录分开），不关 `stride open` 开着的窗口
+$env:STRIDE_BROWSER_DIR = Join-Path $HOME '.stride-ts\capture'
 New-Item -ItemType Directory -Force $Out | Out-Null
 pnpm exec stride close | Out-Null
 pnpm exec stride open 'http://localhost:5202/' --headless --size 1280x720 --dpr 1 | Out-Null

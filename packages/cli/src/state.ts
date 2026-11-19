@@ -4,6 +4,8 @@
  *   残留的（进程已经不在）在列出时清理；
  * - browser.json：`stride open` 启动的 Chrome（进程号、远程调试端口）；
  * - chrome/：那个 Chrome 的用户目录（和用户自己的 Chrome 分开）。
+ * 环境变量 STRIDE_STATE_DIR 换掉整个目录（回归脚本用，自己起开发服务器）；STRIDE_BROWSER_DIR 只换浏览器的那两项，中枢照旧
+ * （截图脚本用：对着开着的开发服务器开自己的无头 Chrome，不关 `stride open` 开着的窗口）。
  */
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -11,7 +13,9 @@ import path from 'node:path';
 
 export const STATE_DIR = process.env['STRIDE_STATE_DIR'] ?? path.join(homedir(), '.stride-ts');
 const HUBS_DIR = path.join(STATE_DIR, 'hubs');
-const BROWSER_FILE = path.join(STATE_DIR, 'browser.json');
+/** 浏览器的记录和用户目录放在哪。 */
+export const BROWSER_DIR = process.env['STRIDE_BROWSER_DIR'] ?? STATE_DIR;
+const BROWSER_FILE = path.join(BROWSER_DIR, 'browser.json');
 
 export interface HubRecord {
   /** 开发服务器的地址，比如 http://localhost:5184。 */
@@ -78,7 +82,7 @@ export function readBrowser(): BrowserRecord | undefined {
 
 export function writeBrowser(record: BrowserRecord | undefined): void {
   if (!record) return void rmSync(BROWSER_FILE, { force: true });
-  mkdirSync(STATE_DIR, { recursive: true });
+  mkdirSync(BROWSER_DIR, { recursive: true });
   writeFileSync(BROWSER_FILE, JSON.stringify(record, null, 2));
 }
 

@@ -7,10 +7,10 @@
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
-import { readBrowser, STATE_DIR, writeBrowser, type BrowserRecord } from './state.ts';
+import { BROWSER_DIR, readBrowser, writeBrowser, type BrowserRecord } from './state.ts';
 
-const PROFILE_DIR = path.join(STATE_DIR, 'chrome');
-const HEADLESS_PROFILE_DIR = path.join(STATE_DIR, 'chrome-headless');
+const PROFILE_DIR = path.join(BROWSER_DIR, 'chrome');
+const HEADLESS_PROFILE_DIR = path.join(BROWSER_DIR, 'chrome-headless');
 
 const CHROME_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> = {
   win32: ['C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'],

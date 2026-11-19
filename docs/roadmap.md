@@ -353,19 +353,19 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
 ### 已完成
 
-每个样例都有 `import:stride`（从 Stride 仓库导入）和 `smoke`（冒烟脚本），`pwsh tools/regress.ps1` 全部跑一遍。截图差是和桌面 Stride 比的平均每通道差（/255），做法和逐张的结果在 `tools/stride-capture/<样例>/README.md`。P1 那张表里的数当时是按"每个像素取差最大的通道"算的（偏大），而且是修正泛光权重（2026-11-19）之前截的，重截时更新。
+每个样例都有 `import:stride`（从 Stride 仓库导入）和 `smoke`（冒烟脚本），`pwsh tools/regress.ps1` 全部跑一遍。截图差是和桌面 Stride 比的平均每通道差（/255），做法和逐张的结果在 `tools/stride-capture/<样例>/README.md`。P1 那张表里的数是 2026-11-19 用各样例的 `capture-ours.ps1` 重截的（第一次比时按"每个像素取差最大的通道"算，偏大，而且在修正泛光权重之前）。
 
 **P1 运行时补齐 3D 游戏的基础**（2026-11-19 完成）：场景脚本导入、骨骼动画，加七个样例。导入、构建、下载量、启动和帧时间的验收数字（帧时间是桌面 Stride 的 0.47 到 0.97 倍）在 progress-log.md 的"P1 收尾"。
 
 | 样例 | 应用（端口） | 截图差 | 没做完的 |
 |---|---|---|---|
-| ThirdPersonPlatformer | `apps/platformer`（5184） | ≤ 1 | |
-| AnimatedModel | `apps/animated-model`（5186） | 0.083 | UI 的 Idle、Run 按钮（现在用调试命令）；画进渲染目标贴图的相机不用阴影、不做后处理 |
-| PhysicsSample | `apps/physics-sample`（5188） | 0.13 到 1.32 | 各场景的 UI 文字和按钮（现在用调试命令）；透明物体不投阴影、同一批的透明实例不排序 |
-| BepuSample | `apps/bepu-sample`（5190） | 0.37 到 1.11 | |
-| Platformer2D | `apps/platformer2d`（5192） | 2.17（Stride 把精灵表压成 BC） | 拿金币的音效；九宫格的精灵边框 |
-| TopDownRPG | `apps/topdown-rpg`（5194） | 2.45（BC 压缩） | 粒子特效、音乐和音效；RecastNavigationComponent 的排队寻路和直接移动；场景的父子层级 |
-| FirstPersonShooter | `apps/first-person-shooter`（5196） | 2.70 | |
+| ThirdPersonPlatformer | `apps/platformer`（5184） | 1.84（关掉后处理、固定曝光 0.94；贴图的 BC 压缩和 SVG 棋盘格） | |
+| AnimatedModel | `apps/animated-model`（5186） | 0.09 | 画进渲染目标贴图的相机不用阴影、不做后处理 |
+| PhysicsSample | `apps/physics-sample`（5188） | 0.37 到 1.02（连 UI 一起比） | 透明物体不投阴影、同一批的透明实例不排序 |
+| BepuSample | `apps/bepu-sample`（5190） | 0.15 到 0.66 | |
+| Platformer2D | `apps/platformer2d`（5192） | 1.08（Stride 把精灵表压成 BC） | 拿金币的音效；九宫格的精灵边框 |
+| TopDownRPG | `apps/topdown-rpg`（5194） | 1.06（BC 压缩） | 粒子特效、音乐和音效；RecastNavigationComponent 的排队寻路和直接移动；场景的父子层级 |
+| FirstPersonShooter | `apps/first-person-shooter`（5196） | 0.74 | |
 
 **P2 界面、声音、效果**（进行中）：
 
@@ -382,7 +382,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | MaterialShader | `apps/material-shader`（5214） | 材质的法线树和位移树、游戏的着色器类 | 0.24 | |
 | CustomEffect | `apps/custom-effect`（5216） | SpriteBatch 的自定义效果 | 0.43 | |
 | MorphTargets | `apps/morph-targets`（5218） | 形变目标（原生 0.27.0）、Slider、Border | 3.88（UI 的色调映射） | |
-| FPS 的粒子和材质层 | `apps/first-person-shooter` | SpawnerBurst、SpawnerFromDistance、材质层 | 2.70 | |
+| FPS 的粒子和材质层 | `apps/first-person-shooter` | SpawnerBurst、SpawnerFromDistance、材质层 | 0.74 | |
 
 ### 正在做和下一步
 
@@ -407,8 +407,8 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
       - ~~玻璃材质~~（2026-11-19，`MaterialSpecularThinGlassModelFeature`，教程里绿色的箱子）：透明阶段分两遍画（透射乘到背景上、反射加上去），两面都画时四遍；背面的法线翻过来；没有漫反射着色模型的材质不算漫反射光照。射线那张从 2.11 降到 1.71。
       - ~~清漆材质~~（2026-11-19，`MaterialClearCoatFeature`，教程里蓝色的箱子）：两遍（金属碎片加底漆、清漆加在上面），输入都是颜色树。射线那张从 1.71 降到 1.00，蓝箱子各个面的平均颜色两边差不到 2/255。
 15. **P2 收尾**（CSharpIntermediate 是 P2 清单里最后一个样例；这一项把 P2 里记下没做完的补齐，再测一遍验收数字）。分步：
-   1. 重截 P1 的七个样例：各补一个 `capture-ours.ps1`（做法已经写在各自的 README 里），按每通道平均差重记，更新"已完成"的表。
-   2. 样例里记着"P2 补"的：AnimatedModel 的 Idle、Run 按钮和 PhysicsSample 各场景的文字、按钮（UI 页面，现在用调试命令代替）；Platformer2D 拿金币的音效；TopDownRPG 的粒子特效、音乐和音效；UIElementLink 场景里烟的粒子。
+   1. ~~重截 P1 的七个样例~~（2026-11-19）：各补了 `capture-ours.ps1`（共用 `tools/stride-capture/ours.ps1`），`capture-all.ps1` 一步跑完；按每通道平均差重记进"已完成"的表。除 TPP 的默认设置（1.84，后处理把贴图的小差放大了）外都在 1.1 以内。
+   2. 样例里记着"P2 补"的：~~AnimatedModel 的 Idle、Run 按钮和 PhysicsSample 各场景的文字、按钮~~（2026-11-19：按钮绑到 UI 上，PhysicsSample 的三个脚本照 Stride 用代码建页面，调试命令去掉，冒烟改成点真的按钮）；Platformer2D 拿金币的音效；TopDownRPG 的粒子特效、音乐和音效；UIElementLink 场景里烟的粒子。
    3. P2 清单里还没做的引擎能力，每项先看 Stride 怎么做、有没有样例用到：点光和聚光的阴影、分簇；MSAA；画进渲染目标贴图的相机（阴影、后处理）；渲染组和渲染掩码；动画剪辑的非骨骼曲线；触摸手势；透明物体的阴影和同一批里的排序；精灵的 Swizzle、九宫格边框；RecastNavigationComponent 的排队寻路和直接移动；场景父子层级的偏移累加。
    4. UI 和文字：换行和富文本、世界空间的文字（MSDF）、按键的路由事件、还没用到的控件（ToggleButton 等）、输入框以外的无障碍树（影子 DOM：选中复制、读屏、输入法）、SVG 精灵按矢量画。
    5. 导入器里报"not supported"的逐条过一遍（材质漫反射的颜色运算和两张贴图的合成、嵌套的层、凸分解、阴影的滤波和手动分割等）：有样例用到的补上，没用到的记进后面的阶段。导入的警告每次都要看：CSharpIntermediate 的木地板成了镜面，导入时其实报了警告。~~导入没有缓存，每次都重编贴图~~（2026-11-19：贴图编码的结果按内容哈希缓存在 `~/.stride-ts/cache/pipeline`，`packages/pipeline/src/cache.ts`；一张 2048 的法线贴图编成 KTX2 要两分钟，重新导入不再等）。

@@ -28,3 +28,9 @@ pnpm exec stride shot ours.png --diff C:/code/stride-platformer2d/reference.png
 平均每通道差 2.17/255，差超过 32 的像素 1.1%。精灵的形状和位置一致（按"不是天空的颜色"比，两边只差 1173 个像素，都在骑士的轮廓上），
 天空的平均差 0.07/255；差都在精灵内部（平均 9/255）：Stride 把精灵表压成 BC 格式（SpriteSheet 的 IsCompressed 默认开），
 像素画的颜色被块压缩带偏，骑士的轮廓也有一两个像素的出入；我们导入时用 `--textures source`，精灵表的源图原样用 PNG。
+
+## 2026-11-19 重截（`capture-ours.ps1`，平均每通道差）
+
+`pwsh tools/stride-capture/capture-all.ps1 -Samples platformer2d` 起开发服务器、截图、和参考图比、停服务器，一步做完。
+
+平均差 1.08，超过 8 的像素 5.61%，超过 32 的 1.77%。原因同上：差都在精灵内部（Stride 把精灵表压成 BC 格式）。

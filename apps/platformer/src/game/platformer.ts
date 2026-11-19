@@ -22,7 +22,7 @@ export class PlatformerGame extends Game {
 
   protected override async loadContent(): Promise<void> {
     const start = performance.now();
-    this.scene = await this.loadScene(SCENE);
+    this.scene = await this.setRootScene(SCENE);
     this.loadMilliseconds = performance.now() - start;
   }
 

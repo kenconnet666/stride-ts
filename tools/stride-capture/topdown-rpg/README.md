@@ -28,3 +28,9 @@ pnpm exec stride shot ours.png --diff C:/code/stride-topdown-rpg/reference.png
 平均每通道差 2.45/255，差超过 8 的像素 0.13%，超过 32 的 7 个像素。差在格子贴图的颜色上（亮格子差在红、蓝，暗格子差在绿，
 整体我们亮约 1.5/255）：Stride 把 PrototypingBlocks 的网格贴图压成 BC 格式，我们导入时用 `--textures source`，原样用 PNG。
 几何、光照、阴影、角色的静止姿势一致。
+
+## 2026-11-19 重截（`capture-ours.ps1`，平均每通道差）
+
+`pwsh tools/stride-capture/capture-all.ps1 -Samples topdown-rpg` 起开发服务器、截图、和参考图比、停服务器，一步做完。
+
+平均差 1.06，超过 8 的像素 0.04%，超过 32 的没有。原因同上（格子贴图的 BC 压缩）。

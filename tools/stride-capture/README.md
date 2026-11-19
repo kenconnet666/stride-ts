@@ -4,7 +4,10 @@
 截好的参考图不进仓库，需要时重新截。stride-ts 这边用 `stride shot --diff` 比。各工程共用 [Benchmark.cs](Benchmark.cs)：
 `--benchmark N [--gpu-profile]` 让游戏照常跑着测帧时间（TPP 有自己的静态模式），stride-ts 这边对应 `tools/measure.ps1`。
 
-各样例说明里的"平均差"是平均每通道差（/255，`stride shot --diff` 结果里的 `meanChannel`，`capture-ours.ps1` 打印的就是它）。P1 的几个（tpp、animated-model、physics-sample、bepu-sample、platformer2d、topdown-rpg、first-person-shooter）当时记的是每个像素取差最大的通道再平均，偏大，重截时换成每通道的。
+每个样例的 `capture-ours.ps1` 截我们这边同样的画面并逐张比（共用 [ours.ps1](ours.ps1) 里的几步；P2 的那些脚本还各带一份，回头换成共用的）；
+`pwsh tools/stride-capture/capture-all.ps1 [-Samples tpp,physics-sample]` 挨个起开发服务器、跑它、停服务器。
+
+各样例说明里的"平均差"是平均每通道差（/255，`stride shot --diff` 结果里的 `meanChannel`，`capture-ours.ps1` 打印的就是它）。P1 的七个样例第一次比时记的是每个像素取差最大的通道再平均（偏大），2026-11-19 都按每通道的重截过，见各自说明末尾的"重截"。
 
 | 目录 | 样例 | 说明 |
 |---|---|---|

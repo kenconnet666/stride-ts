@@ -35,3 +35,9 @@ pnpm exec stride shot ours.png --diff C:/code/stride-first-person-shooter/refere
 
 2026-11-19 加了粒子（SpawnerBurst、SpawnerFromDistance）和材质层（LogoA、LogoD 的箱子）之后重截：平均差 2.70/255，起始视角里没有
 带层的箱子，结果不变。
+
+## 2026-11-19 重截（`capture-ours.ps1`，平均每通道差）
+
+`pwsh tools/stride-capture/capture-all.ps1 -Samples first-person-shooter` 起开发服务器、截图、和参考图比、停服务器，一步做完。
+
+平均差 0.74，超过 8 的像素 0.24%，超过 32 的 0.07%。

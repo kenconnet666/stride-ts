@@ -48,3 +48,19 @@ pnpm exec stride shot ours.png --diff C:/code/stride-bepu-sample/Ropes.png
 - 桥（bridge.obj）是白色的平滑过渡，桌面版是黑色平面：OBJ 没写 `usemtl`，Assimp 给它叫 DefaultMaterial 的材质，对应模型资源里
   同名的槽位（场景把它覆盖成 QRMat），我们以前落到了默认材质；OBJ 没有法线，Assimp 生成逐面法线，我们以前让 ufbx 按平滑组生成。
 - 地板图案的边缘错开一个纹素：Github.png 是 1015x1015，Stride 压缩前用 Lanczos3 缩放到 1016（块压缩要 4 的倍数），我们以前原样用。
+
+## 2026-11-19 重截（`capture-ours.ps1`，平均每通道差）
+
+`pwsh tools/stride-capture/capture-all.ps1 -Samples bepu-sample` 起开发服务器、截图、和参考图比、停服务器，一步做完。
+
+| 场景 | 平均差 | 超过 8 | 超过 32 |
+|---|---|---|---|
+| Colliders | 0.21 | 0.49% | 0.00% |
+| Constraint | 0.24 | 0.57% | 0.00% |
+| Convex And Mesh Collider | 0.66 | 3.05% | 0.00% |
+| Cube Fountain | 0.23 | 0.51% | 0.00% |
+| Cube Mixer | 0.15 | 0.05% | 0.00% |
+| Material Properties | 0.21 | 0.47% | 0.00% |
+| Ropes | 0.20 | 0.43% | 0.01% |
+
+我们这边现在有 UI 了（选场景的按钮），截图时和桌面那边一样关掉。

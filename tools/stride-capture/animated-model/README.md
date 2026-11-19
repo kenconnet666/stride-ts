@@ -24,3 +24,10 @@ pnpm exec stride shot ours.png --diff C:/code/stride-animated-model/reference.pn
 - （P1 收尾时测帧时间发现）合成器的 ForwardLightingRenderFeature 没有 ShadowMapRenderer（是 null），Stride 根本不画阴影，
   我们之前照灯光的设置画了。改成按合成器关掉后，去掉 UI 按钮的区域平均差 0.083/255，差超过 10 的像素 0.105%；
   帧时间从 1.21 ms 降到 0.82 ms（桌面 Stride 0.95 ms）。
+
+## 2026-11-19 重截（`capture-ours.ps1`，平均每通道差）
+
+`pwsh tools/stride-capture/capture-all.ps1 -Samples animated-model` 起开发服务器、截图、和参考图比、停服务器，一步做完。
+
+去掉左边 60 像素（Idle、Run 两个按钮）：平均差 0.09，超过 8 的像素 0.14%，超过 32 的 0.03%。按钮现在两边都有（UI 页面），
+字的粗细有差（Stride 的字体光栅化带 hinting），所以仍然不比那一条。

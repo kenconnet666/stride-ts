@@ -24,7 +24,7 @@ pnpm exec stride open "http://localhost:5188/?scene=PhysicsSample/VolumeTrigger"
 pnpm exec stride shot ours.png --diff C:/code/stride-physics-sample/VolumeTrigger.png
 ```
 
-要停住物理时，在页面里暂停、重新加载场景、把固定步长设得很大，再单步几帧让脚本的 start 跑完：
+要停住物理时（`capture-ours.ps1` 就是这么做的），在页面里暂停、重新加载场景、把固定步长设得很大，再单步几帧让脚本的 start 跑完：
 
 ```bash
 pnpm exec stride pause
@@ -43,3 +43,18 @@ pnpm exec stride step 5
 | Constraints | 0.13/255（去掉两边的球） | 0.56% | 球在摆，两边相位不同；立方体上的细格线是 mip 的生成方式不同（我们在 GPU 上生成），深浅一致 |
 
 比对中找到并修掉的：VolumeTrigger 的相机是正交投影（`Camera.projection`、`orthographicSize`，Stride 的 OrthoRH），我们之前一律按透视画。
+
+## 2026-11-19 重截（`capture-ours.ps1`，平均每通道差）
+
+`pwsh tools/stride-capture/capture-all.ps1 -Samples physics-sample` 起开发服务器、截图、和参考图比、停服务器，一步做完。
+
+两边都停住物理（参考图是 `<场景>-frozen.png`）。UI（两边的 `<<`、`>>` 按钮、底下的字）现在两边都有，整张图一起比：
+
+| 场景 | 平均差 | 超过 8 | 超过 32 | 差在哪里 |
+|---|---|---|---|---|
+| Raycasting | 1.02 | 1.43% | 1.02% | 箱子正面发光的标志（LogoD 的材质层）的边缘；字的边缘 |
+| VolumeTrigger | 0.37 | 0.51% | 0.31% | 角色的胶囊两边停住的时刻不同，高度差几个像素 |
+| Constraints（只比右半边的场景） | 0.96 | 1.93% | 0.62% | 立方体上的格线（mip 的生成方式不同） |
+
+Constraints 不比左半边和底下：球在脚本的 Start 里受了一次冲量，两边停住的时刻不同，位置对不上；参考图取自 master，约束的名字
+（"Point to Point"）和我们照着移植的版本（"Ball Socket"）也不一样。

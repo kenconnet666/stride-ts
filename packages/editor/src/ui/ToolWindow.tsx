@@ -1,12 +1,13 @@
 /**
  * 工具窗口的两样东西（参考 JetBrains IDE）：
  * - ToolStripe：工作区两侧的窄竖条，上面是停在这一边的工具窗口的图标按钮（显示着的高亮），下面一组是停在下边的；
- * - ToolWindow：一个工具窗口的框，标题栏（名字、这个窗口自己的操作、收起按钮）加内容，内容铺满、自己滚。
+ * - ToolWindow：一个工具窗口的框，标题栏（名字、这个窗口自己的操作、收起按钮）加内容。内容默认放在 ScrollArea 里竖着滚
+ *   （vue-tsx-pro 的浮层滚动条，不用原生的）；scroll 是 self 时内容铺满、自己管滚动（树、时间轴、粒子这些里面有自己的滚动区域）。
  */
 import { Minus } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
+import { IconButton, ScrollArea } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { VNodeChild } from 'vue';
 import { hideToolWindow, isShown, toggleToolWindow, type ToolWindowId } from './layout';
 import { t } from './messages';
@@ -30,8 +31,8 @@ const styles = css.create({
   title: { fontWeight: '600', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   detail: { color: '_textMuted', fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginInlineStart: '_xs' },
   actions: { display: 'flex', alignItems: 'center', gap: '2px', marginInlineStart: 'auto' },
-  // 工具窗口只竖着滚（同 IDE 的面板）：横向放不下的内容自己收窄
-  body: { flex: '1', minHeight: '0', position: 'relative', overflowY: 'auto', overflowX: 'hidden' },
+  body: { flex: '1', minHeight: '0', position: 'relative' },
+  fill: { position: 'absolute', inset: '0' },
 });
 
 /** 工作区一侧的竖条：上面是这一边的工具窗口，下面（bottom）是停在下边的。 */
@@ -58,7 +59,7 @@ export const ToolStripe = _component(({ side, items, bottom = [] }: { side: 'sta
 });
 
 /** 一个工具窗口：标题栏（名字、detail 是补充说明，比如打开的时间轴的路径；actions 是它自己的按钮）加内容。 */
-export const ToolWindow = _component(({ id, detail, actions, children }: { id: ToolWindowId; detail?: string | undefined; actions?: VNodeChild; children?: VNodeChild }) => {
+export const ToolWindow = _component(({ id, detail, actions, scroll = 'area', children }: { id: ToolWindowId; detail?: string | undefined; actions?: VNodeChild; scroll?: 'area' | 'self'; children?: VNodeChild }) => {
   return () => (
     <section {...css.attrs(styles.window)} aria-label={t.toolWindows[id]}>
       <header {...css.attrs(styles.header)}>
@@ -69,7 +70,9 @@ export const ToolWindow = _component(({ id, detail, actions, children }: { id: T
           <IconButton icon={Minus} size="sm" variant="ghost" tone="neutral" aria-label={t.hideToolWindow} title={t.hideToolWindow} onClick={() => hideToolWindow(id)} />
         </span>
       </header>
-      <div {...css.attrs(styles.body)}>{children}</div>
+      {scroll === 'area'
+        ? <ScrollArea {...css.attrs(styles.body)}>{children}</ScrollArea>
+        : <div {...css.attrs(styles.body)}><div {...css.attrs(styles.fill)}>{children}</div></div>}
     </section>
   );
 });

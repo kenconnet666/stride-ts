@@ -360,6 +360,100 @@
      }
     }
    }
+  },
+  {
+   "id": "88555f53-9808-4668-953d-aaa05d11daa3",
+   "name": "Fountain Flipbook",
+   "parent": null,
+   "position": [
+    0.96,
+    0.2,
+    3
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "particleSystem": {
+     "particleSystem": {
+      "settings": {},
+      "emitters": [
+       {
+        "emitterName": "Flipbook",
+        "particleLifetime": [
+         2,
+         2
+        ],
+        "shapeBuilder": {
+         "$type": "shapeBuilderBillboard"
+        },
+        "material": {
+         "$type": "particleMaterialComputeColor",
+         "computeColor": {
+          "$type": "computeTextureColor",
+          "texture": {
+           "texture": "Textures/FountainFlipbook",
+           "encoding": "png"
+          }
+         },
+         "uvBuilder": {
+          "$type": "uvBuilderFlipbook",
+          "xDivisions": 4,
+          "yDivisions": 4,
+          "startingFrame": 0,
+          "animationSpeed": 16
+         },
+         "alphaAdditive": 0
+        },
+        "spawners": [
+         {
+          "$type": "spawnerPerSecond",
+          "spawnCount": 0.5,
+          "loopCondition": "looping"
+         }
+        ],
+        "initializers": [
+         {
+          "$type": "initialSizeSeed",
+          "randomSize": [
+           3.957,
+           3.957
+          ]
+         },
+         {
+          "$type": "initialPositionSeed",
+          "positionMin": [
+           0.041,
+           1.734,
+           -0.042
+          ],
+          "positionMax": [
+           0.041,
+           1.734,
+           -0.042
+          ]
+         }
+        ],
+        "updaters": []
+       }
+      ]
+     },
+     "color": [
+      14.773,
+      14.773,
+      14.773,
+      1
+     ]
+    }
+   }
   }
  ]
 }

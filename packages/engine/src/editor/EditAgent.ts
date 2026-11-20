@@ -21,6 +21,7 @@ import { Mesh } from '../rendering/mesh/Mesh';
 import type { Material } from '../rendering/mesh/Material';
 import { MeshPainter, type PaintTarget } from '../rendering/paint/MeshPainter';
 import { encodePng } from '../offline/png';
+import { saveImage } from './backendApi';
 import { EditorCameraController } from './EditorCamera';
 import { EditorViewport } from './EditorViewport';
 import { scriptFields, type Field } from './fields';
@@ -79,12 +80,6 @@ export const DEFAULT_PAINT_BRUSH: PaintBrush = { radius: 0.25, hardness: 0.5, st
 const PAINT_HELP = 'Paint a material layer mask on a model in the editor (the viewport page): args entity (scene file id), material and mask (content paths; '
   + 'the mask is a linear png, a layer blend of the material), points ([[x, y, z], ...] world space; dabs every quarter radius along them), '
   + 'radius (m), hardness, strength (0..1), erase. Saves the png through the editor backend.';
-
-/** 经编辑器后端写一张 png（PUT /image，同 @stride-ts/editor 的 EditorClient.saveImage）。 */
-async function saveImage(path: string, png: Uint8Array<ArrayBuffer>): Promise<void> {
-  const response = await fetch(`/__stride/editor/api/image?path=${encodeURIComponent(path)}`, { method: 'PUT', headers: { 'x-stride-editor': '1' }, body: png });
-  if (!response.ok) throw new Error(`saving ${path} failed: ${((await response.json()) as { error?: string }).error ?? `HTTP ${response.status}`}`);
-}
 
 export class EditAgent {
   readonly game: Game;

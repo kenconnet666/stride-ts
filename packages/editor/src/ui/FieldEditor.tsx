@@ -266,7 +266,6 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
             {...css.attrs(styles.json)}
             size="sm"
             rows={3}
-            maxRows={16}
             _value={JSON.stringify(value, null, 1)}
             onChange={(event: Event) => {
               try {

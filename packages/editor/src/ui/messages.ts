@@ -113,6 +113,12 @@ export interface EditorMessages {
   readonly paintLayers: string;
   readonly particleOpen: string;
   readonly particleEmitters: string;
+  readonly particleBake: string;
+  readonly particleBaking: string;
+  readonly particleBakeHint: (frames: number) => string;
+  readonly particleBaked: (path: string, frames: number, seconds: number) => string;
+  readonly particleBakeFields: { readonly columns: string; readonly rows: string; readonly size: string; readonly seconds: string; readonly start: string; readonly view: string };
+  readonly particleBakeViews: { readonly front: string; readonly side: string; readonly top: string };
   readonly particleEmitter: (n: number) => string;
   readonly particleAddEmitter: string;
   readonly particleRemoveEmitter: string;
@@ -265,6 +271,12 @@ const zhCN: EditorMessages = {
   paintLayers: '图层',
   particleOpen: '粒子编辑器',
   particleEmitters: '发射器',
+  particleBake: '烘成序列帧',
+  particleBaking: '正在烘……',
+  particleBakeHint: (frames) => `${frames} 帧排成一张图集，存进 Textures；旁边加一个放它的实体（一个粒子）`,
+  particleBaked: (path, frames, seconds) => `烘好了 ${path}（${frames} 帧，${seconds.toFixed(2)} 秒）`,
+  particleBakeFields: { columns: '列', rows: '行', size: '每格像素', seconds: '时长', start: '从第几秒', view: '方向' },
+  particleBakeViews: { front: '正面', side: '侧面', top: '顶上' },
   particleEmitter: (n) => `发射器 ${n}`,
   particleAddEmitter: '加发射器',
   particleRemoveEmitter: '删掉这个发射器',
@@ -428,6 +440,12 @@ const enUS: EditorMessages = {
   paintLayers: 'Layers',
   particleOpen: 'Particle editor',
   particleEmitters: 'Emitters',
+  particleBake: 'Bake to flipbook',
+  particleBaking: 'Baking…',
+  particleBakeHint: (frames) => `${frames} frames in one atlas, saved under Textures; an entity playing it (one particle) is added next to this one`,
+  particleBaked: (path, frames, seconds) => `Baked ${path} (${frames} frames, ${seconds.toFixed(2)} s)`,
+  particleBakeFields: { columns: 'Columns', rows: 'Rows', size: 'Pixels per frame', seconds: 'Seconds', start: 'Start at', view: 'View' },
+  particleBakeViews: { front: 'Front', side: 'Side', top: 'Top' },
   particleEmitter: (n) => `Emitter ${n}`,
   particleAddEmitter: 'Add emitter',
   particleRemoveEmitter: 'Remove this emitter',

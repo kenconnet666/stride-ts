@@ -7,7 +7,7 @@
 import { Camera, ChartSpline, CircleX, Clapperboard, Diamond, KeyRound, Pause, Play, Trash2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, IconButton, Select } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, ScrollArea, Select } from '@zerodep-dev/vue-tsx-pro-ui';
 import { onUnmounted } from 'vue';
 import type { TimelineFile, TimelineTrackFile } from '@stride-ts/engine/content-format';
 import { t } from './messages';
@@ -21,7 +21,8 @@ const styles = css.create({
   select: { width: '9em' },
   time: { fontVariantNumeric: 'tabular-nums', color: '_textMuted', marginInline: '_sm' },
   subtitle: { flex: '1', color: '_textMuted', fontStyle: 'italic', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  body: { flex: '1', minHeight: '0', overflow: 'auto', display: 'grid', gridTemplateColumns: '14em 1fr' },
+  scroll: { flex: '1', minHeight: '0' },
+  body: { display: 'grid', gridTemplateColumns: '14em 1fr' },
   label: { height: '22px', lineHeight: '22px', paddingInline: '_sm', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
   selectedLabel: { backgroundColor: '_accentSoft' },
   lanes: { position: 'relative', cursor: 'text', userSelect: 'none' },
@@ -246,7 +247,7 @@ export const TimelinePanel = _component(({ session }: { session: EditorSession }
           {session.exporting.value && <span {...css.attrs(styles.time)}>{t.timelineExporting}</span>}
           <IconButton icon={CircleX} variant="ghost" aria-label={t.timelineClose} onClick={() => session.closeTimeline()} />
         </div>
-        <div {...css.attrs(styles.body)}>
+        <ScrollArea {...css.attrs(styles.scroll)} propsContent={css.attrs(styles.body)}>
           <div>
             <div {...css.attrs(styles.label)} />
             {content.tracks.map((track, index) => (
@@ -268,7 +269,7 @@ export const TimelinePanel = _component(({ session }: { session: EditorSession }
             ) : content.tracks.map((track, index) => <div {...css.attrs(styles.lane)}>{lane(track, index)}</div>)}
             <span {...css.attrs(styles.playhead)} style={{ insetInlineStart: percent(time) }} />
           </div>
-        </div>
+        </ScrollArea>
       </div>
     );
   };

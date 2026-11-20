@@ -13,6 +13,7 @@ import { Material } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
 import { Texture, type TextureId } from '../graphics/Texture';
 import { PARTICLE_BYTES } from '../particles/gpuKernel';
+import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { Precipitation } from '../weather/Precipitation';
 import { Weather, WEATHER_PRESETS, type WeatherPreset, type WeatherTarget } from '../weather/Weather';
 import type { EntityId } from '../data/prop';
@@ -33,17 +34,27 @@ const RENDER_HELP = 'Offline render (fixed time step, sub-frame antialiasing and
   + 'timeline (entity with a TimelinePlayer, or a timeline name: restarted from 0, seconds defaults to its length), seconds, samples (sub-frames per frame, default 8), '
   + 'shutter (0..1 of the frame interval, default 0.5), format (mp4 | png), bitrate, audio (default true). In the editor it renders in a hidden play-mode page.';
 
+const BAKE_HELP = 'Bake a particle system into a flipbook atlas (columns x rows frames over some seconds, orthographic camera, alpha from a black and a white pass), '
+  + 'saved as a png in the content folder through the editor backend. args: entity, columns (default 4), rows (default 4), size (pixels per frame, default 256), '
+  + 'seconds (default 2), start (seconds simulated before the first frame), view (front | side | top), path (content path, default Textures/<entity>Flipbook). '
+  + 'Returns the atlas layout and a particleSystem file that plays it back with one particle.';
+
 export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('commands', 'List the registered commands.', () => debug.commands());
   debug.command('status', 'Game status, time, frame rate, canvas, GPU adapter, counters and watches.', () => status(debug, game));
   debug.command('entities', 'List entities. args: name (substring), with (component or script name), limit (default 200).', (args) => entities(game, args));
-  debug.command('inspect', 'All component values and script properties of one entity. args: entity (id or name).', (args) => inspect(game, entityArg(game, args)));
+  debug.command('inspect', 'All component values and script properties of one entity. args: entity (id, name, or in the editor the scene file id).', (args) => inspect(game, entityArg(game, args)));
   debug.command('set', "Set a component field or script property. args: entity, path ('Component.field' or 'Script.prop', optionally '.x'), value.", (args) => set(game, args));
   debug.command('time', 'Pause, resume, step frames, time scale, fixed time step, set the game clock. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear), total (seconds).', (args) => time(game, args));
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64. args: exact (true: that frame without the output dither, for pixel comparisons).', (args) => screenshot(debug, game, args['exact'] === true));
   // 离线渲染的几个模块（编码、封装、混音）用到时才加载，不进每个游戏页面
   debug.command('render', RENDER_HELP, async (args) => (await import('../offline/renderCommand')).renderCommand(game, args));
+  debug.command('bake', BAKE_HELP, async (args) => {
+    const component = entityArg(game, args).get(ParticleSystemComponent);
+    if (!component) throw new Error('bake: the entity has no particle system');
+    return (await import('../offline/FlipbookBaker')).bakeCommand(game, component, args);
+  });
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
   debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
   debug.command('draws', 'Draw calls of the last frame per GPU render pass (scene stages, shadows, each post-processing step, UI, debug lines), in drawing order.', () => {
@@ -483,6 +494,9 @@ function entityArg(game: Game, args: Args): Entity {
     return game.entities.entity(id);
   }
   if (typeof ref !== 'string' || ref === '') throw new Error('entity must be an id or a name');
+  // 编辑状态的页面里也认场景文件里的 id（编辑器、MCP 说的都是它）
+  const fromScene = game.editor?.live?.entity(ref);
+  if (fromScene) return fromScene;
   const all = game.entities.ids().map((id) => game.entities.entity(id));
   const exact = all.filter((e) => e.name === ref);
   const found = exact.length > 0 ? exact : all.filter((e) => e.name.toLowerCase().includes(ref.toLowerCase()));

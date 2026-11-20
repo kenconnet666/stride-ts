@@ -13,6 +13,7 @@ const styles = css.create({
   path: { flex: '1', minWidth: '0' },
   status: { flex: '1', minWidth: '0', color: '_textMuted', fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingInlineStart: '_xs' },
   tree: { flex: '1', minHeight: '0' },
+  scroll: { flex: '1', minHeight: '0' },
   kind: { color: '_textMuted', marginInlineStart: '_xs', fontSize: '0.8em' },
 });
 
@@ -192,6 +193,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
       )}
       <Tree
         {...css.attrs(styles.tree)}
+        propsScrollArea={{ sx: styles.scroll }}
         aria-label={t.assets}
         items={roots}
         getKey={(node: Node) => node.key}

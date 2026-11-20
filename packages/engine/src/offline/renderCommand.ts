@@ -7,15 +7,13 @@
  */
 import type { Game } from '../engine/Game';
 import { TimelinePlayer } from '../timeline/TimelinePlayer';
+import { saveExport } from '../editor/backendApi';
 import { exportImages, exportVideo, RENDER_PRESETS, type RenderPreset } from './VideoExport';
 
 type Args = Readonly<Record<string, unknown>>;
 
 /** 游戏跑过的帧比这少时，出片前先跑够（见 warmUp）。 */
 const WARM_UP_FRAMES = 30;
-
-/** 编辑器后端存导出文件的接口（和 @stride-ts/editor 的 EDITOR_API_PATH + '/export' 一致）。 */
-const EXPORT_API = '/__stride/editor/api/export';
 
 export interface RenderResult {
   /** 存在哪（工程里的相对路径；PNG 序列是文件夹）。 */
@@ -70,13 +68,6 @@ export async function renderCommand(game: Game, args: Args): Promise<RenderResul
   return { path, frames: Math.round(seconds * fps), seconds, width, height, fps, bytes, elapsed: (performance.now() - started) / 1000 };
 }
 
-/** 存到工程的 exports 文件夹，返回工程里的相对路径。 */
-async function saveExport(name: string, bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-  const response = await fetch(`${EXPORT_API}?name=${encodeURIComponent(name)}`, { method: 'POST', headers: { 'x-stride-editor': '1' }, body: bytes });
-  const body = await response.json() as { path?: string; error?: string };
-  if (!response.ok || !body.path) throw new Error(`saving ${name} failed: ${body.error ?? `HTTP ${response.status}`}`);
-  return body.path;
-}
 
 /** 放时间轴的播放器：按实体名（先全名再包含）或时间轴的名字找。 */
 function timelinePlayer(game: Game, name: string): TimelinePlayer {

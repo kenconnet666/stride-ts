@@ -6,16 +6,16 @@
  *
  * 每次修改是场景文档的一个修改（同属性面板：能撤销，视口里的粒子马上重建）；拖曲线的点时同一次拖并成一步。
  */
-import { ArrowDown, ArrowUp, CircleX, Plus, X } from '@lucide/icons';
+import { ArrowDown, ArrowUp, CircleX, Film, Plus, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, IconButton, Menu, MenuItem, Select, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { ParticleModuleFile, SceneEntityFile } from '@stride-ts/engine/content-format';
 import { curve, EMITTER_FIELDS, isCurve, newEmitter, PARTICLE_MODULES, type ParticleStackKind } from '@stride-ts/engine/editor-particles';
 import { ColorGradient, FloatCurve } from './CurveEditor';
 import { FieldEditor, FieldRow, type FieldContext, type ValuePath } from './FieldEditor';
 import { t } from './messages';
-import type { EditorSession } from './session';
+import type { EditorSession, FlipbookSettings } from './session';
 
 const SPECS = new Map(PARTICLE_MODULES.map((spec) => [spec.type, spec]));
 const LISTS: readonly ParticleStackKind[] = ['spawners', 'initializers', 'updaters'];
@@ -26,7 +26,8 @@ const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.8rem' },
   toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_borderMuted' },
   tabs: { flex: '1', minWidth: '0' },
-  body: { flex: '1', overflow: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '_sm', padding: '_sm', alignItems: 'start' },
+  scroll: { flex: '1', minHeight: '0' },
+  body: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '_sm', padding: '_sm', alignItems: 'start' },
   column: { display: 'flex', flexDirection: 'column', gap: '6px' },
   stackTitle: { fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', minHeight: '28px' },
   stackSelect: { flex: '1', minWidth: '0' },
@@ -36,11 +37,14 @@ const styles = css.create({
   curveRow: { display: 'grid', gridTemplateColumns: 'minmax(6em, 35%) 1fr', alignItems: 'start', gap: '_xs' },
   label: { color: '_textMuted' },
   curve: { display: 'flex', alignItems: 'flex-start', gap: '2px', minWidth: '0' },
+  bake: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '_xs', padding: '_sm', width: '20em' },
+  bakeWide: { gridColumn: '1 / -1' },
   hint: { color: '_textMuted', padding: '_sm' },
 });
 
 export const ParticlePanel = _component(({ session }: { session: EditorSession }) => {
   let emitterIndex = _state(0);
+  let bake = _state<FlipbookSettings>({ columns: 4, rows: 4, size: 256, seconds: 2, start: 0, view: 'front' });
   const context: FieldContext = { entities: [] };
 
   const entity = (): SceneEntityFile | undefined => {
@@ -138,10 +142,23 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
               ))}
             </TabList>
           </Tabs>
+          <Popover placement="bottom-end" trigger={(props) => <Button {...props} size="sm" variant="soft" tone="neutral" icon={Film} disabled={session.baking.value}>{session.baking.value ? t.particleBaking : t.particleBake}</Button>}>
+            <div {...css.attrs(styles.bake)}>
+              {(['columns', 'rows', 'size', 'seconds', 'start'] as const).map((key) => (
+                <NumberField size="sm" prefix={t.particleBakeFields[key]} aria-label={t.particleBakeFields[key]} min={key === 'start' ? 0 : key === 'seconds' ? 0.1 : 1}
+                  step={key === 'size' ? 64 : key === 'seconds' || key === 'start' ? 0.5 : 1} format={{ useGrouping: false, maximumFractionDigits: 2 }}
+                  _value={bake[key]} onUpdate:_value={(value: number | null) => value !== null && (bake = { ...bake, [key]: value })} />
+              ))}
+              <Select size="sm" aria-label={t.particleBakeFields.view} items={(['front', 'side', 'top'] as const).map((view) => ({ value: view, label: t.particleBakeViews[view] }))}
+                _value={bake.view} onUpdate:_value={(view: string | null) => view && (bake = { ...bake, view: view as FlipbookSettings['view'] })} />
+              <span {...css.attrs(styles.label, styles.bakeWide)}>{t.particleBakeHint(bake.columns * bake.rows)}</span>
+              <Button {...css.attrs(styles.bakeWide)} size="sm" icon={Film} disabled={session.baking.value} onClick={() => void session.bakeFlipbook(file.id, bake)}>{t.particleBake}</Button>
+            </div>
+          </Popover>
           <IconButton {...small} icon={CircleX} aria-label={t.particleClose} title={t.particleClose} onClick={() => session.closeParticles()} />
         </div>
         {emitter && (
-          <div {...css.attrs(styles.body)}>
+          <ScrollArea {...css.attrs(styles.scroll)} propsContent={css.attrs(styles.body)}>
             <div {...css.attrs(styles.column)}>
               <div {...css.attrs(styles.stackTitle)}>{t.particleEmitterSettings}</div>
               {EMITTER_FIELDS.map((field) => <FieldRow field={field} value={emitter[field.name]} context={context} onSet={onField([...at, field.name])} />)}
@@ -190,7 +207,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
                 </div>
               );
             })}
-          </div>
+          </ScrollArea>
         )}
       </div>
     );

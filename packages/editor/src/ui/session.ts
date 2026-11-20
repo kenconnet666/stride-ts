@@ -28,6 +28,17 @@ import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } fro
 import { t } from './messages';
 
 /** 出片的预设（引擎 offline/VideoExport.ts 的 RENDER_PRESETS 里常用的几个）。 */
+/** 序列帧烘焙的设置（引擎 bake 命令的参数）。 */
+export interface FlipbookSettings {
+  readonly columns: number;
+  readonly rows: number;
+  /** 每一格的边长（像素）。 */
+  readonly size: number;
+  readonly seconds: number;
+  readonly start: number;
+  readonly view: 'front' | 'side' | 'top';
+}
+
 export const EXPORT_PRESETS = ['landscape1080', 'vertical1080', 'square1080'] as const;
 export type ExportPreset = (typeof EXPORT_PRESETS)[number];
 
@@ -65,6 +76,8 @@ export class EditorSession implements EditableScene {
   readonly painting = shallowRef<{ readonly layer: number; readonly mask: string }>();
   /** 绘制的笔刷（半径、硬度、强度、擦除），换着画别的层时保留。 */
   readonly paintBrush = shallowRef<PaintBrush>({ radius: 0.25, hardness: 0.5, strength: 0.8, erase: false });
+  /** 正在烘序列帧（粒子窗口的"烘焙"这时不能点）。 */
+  readonly baking = shallowRef(false);
   /** 粒子面板开着时编辑的实体（场景文件里的 id）；没开时是 undefined。 */
   readonly particleEntity = shallowRef<string>();
   /** 节点图面板开着（编辑的是属性面板里正开着的材质的 graph）。 */
@@ -271,6 +284,35 @@ export class EditorSession implements EditableScene {
 
   closeParticles(): void {
     this.particleEntity.value = undefined;
+  }
+
+  /**
+   * 把实体的粒子系统烘成序列帧（游戏页面里的 bake 命令，图集存成内容目录里的 `Textures/<名字>Flipbook`），再在它旁边（往 +X 挪
+   * 一格的宽度）加一个放这张序列帧的实体，两个并排比较。烘的是游戏页面里现在的粒子系统，没存的修改也算。
+   */
+  async bakeFlipbook(entityId: string, settings: FlipbookSettings): Promise<void> {
+    const agent = this.agent.value, source = this.expanded.find((entity) => entity.id === entityId);
+    if (!agent || !source || this.baking.value) return;
+    this.baking.value = true;
+    this.notice.value = '';
+    try {
+      const result = await agent.game.debug.run('bake', { entity: entityId, ...settings, path: `Textures/${source.name || 'Particles'}Flipbook` }) as {
+        path: string; frames: number; elapsed: number; frameWorldSize: number; component: object;
+      };
+      const [x, y, z] = source.position;
+      const entity: SceneEntityFile = {
+        id: crypto.randomUUID(), name: `${source.name} Flipbook`, parent: source.parent,
+        position: [x + Math.round(result.frameWorldSize * 100) / 100, y, z], rotation: [0, 0, 0, 1], scale: [1, 1, 1],
+        components: { particleSystem: result.component } as SceneEntityFile['components'],
+      };
+      this.apply(this.#requireDocument().addChild(entity));
+      this.commit();
+      this.status.value = t.particleBaked(result.path, result.frames, result.elapsed);
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+    } finally {
+      this.baking.value = false;
+    }
   }
 
   /** 打开属性面板里那个材质的节点图（还没有图时建一个只有材质输出的空图），面板显示在下面。 */

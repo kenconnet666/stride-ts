@@ -88,12 +88,12 @@ export const App = _component(({ session }: { session: EditorSession }) => {
   const fill = (child: VNodeChild) => <div {...css.attrs(styles.fill)}>{child}</div>;
 
   const windows: Record<ToolWindowId, () => VNodeChild> = {
-    scene: () => <ToolWindow id="scene"><SceneTree session={session} /></ToolWindow>,
-    assets: () => <ToolWindow id="assets"><AssetBrowser session={session} /></ToolWindow>,
+    scene: () => <ToolWindow id="scene" scroll="self"><SceneTree session={session} /></ToolWindow>,
+    assets: () => <ToolWindow id="assets" scroll="self"><AssetBrowser session={session} /></ToolWindow>,
     inspector: () => <ToolWindow id="inspector"><Inspector session={session} /></ToolWindow>,
-    timeline: () => <ToolWindow id="timeline" detail={session.timeline.value?.path}><TimelinePanel session={session} /></ToolWindow>,
-    graph: () => <ToolWindow id="graph" detail={session.inspected.value?.path}><GraphPanel session={session} /></ToolWindow>,
-    particles: () => <ToolWindow id="particles" detail={session.expanded.find((e) => e.id === session.particleEntity.value)?.name}><ParticlePanel session={session} /></ToolWindow>,
+    timeline: () => <ToolWindow id="timeline" scroll="self" detail={session.timeline.value?.path}><TimelinePanel session={session} /></ToolWindow>,
+    graph: () => <ToolWindow id="graph" scroll="self" detail={session.inspected.value?.path}><GraphPanel session={session} /></ToolWindow>,
+    particles: () => <ToolWindow id="particles" scroll="self" detail={session.expanded.find((e) => e.id === session.particleEntity.value)?.name}><ParticlePanel session={session} /></ToolWindow>,
   };
 
   /** 左栏：上下两个工具窗口都显示时上下分开。 */

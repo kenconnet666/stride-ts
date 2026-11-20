@@ -18,6 +18,7 @@ import type { Game } from '../games/Game';
 import { NO_CONTEXT } from '../particles/modules';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { Texture } from '../rendering/Texture';
+import { PrecipitationOcclusion } from './PrecipitationOcclusion';
 
 export const Precipitation = component('Precipitation', {
   kind: prop.enum(['rain', 'snow']).default('rain'),
@@ -104,6 +105,8 @@ interface State {
 
 /** 所有雨雪（`game.precipitation`）：每帧在粒子模拟之前，让内部的发射器跟着主相机、按强度给生成数。 */
 export class PrecipitationSystem {
+  /** 屋顶下不下的深度图（有 GPU、有雨雪时才建；前向渲染器按它画，见 PrecipitationOcclusion）。 */
+  occlusion: PrecipitationOcclusion | undefined;
   readonly #states = new Map<Entity, State>();
   #game: Game | undefined;
   #dt = 0;
@@ -136,6 +139,12 @@ export class PrecipitationSystem {
     for (const state of this.#states.values()) state.seen = false;
     this.#found = [];
     game.entities.run(this.#collect, game.updateTime);
+    const device = (game.graphicsDevice as Game['graphicsDevice'] | undefined)?.device;
+    if (device && this.#found.length > 0) this.occlusion ??= new PrecipitationOcclusion(device);
+    if (this.occlusion) {
+      this.occlusion.active = this.#found.length > 0;
+      this.occlusion.commit();
+    }
     for (const { owner, kind, radius, height, intensity } of this.#found) {
       // 种类、范围变了：重建内部的发射器
       const key = `${kind}:${radius}:${height}`;
@@ -172,6 +181,8 @@ export class PrecipitationSystem {
     entity.add({ script: ParticleSystemComponent, init: {} });
     const component = entity.require(ParticleSystemComponent);
     component.load(file, { ...NO_CONTEXT, texture: (path) => (path === SOFT_DOT ? softDotTexture() : undefined) });
+    // 屋顶下不下：GPU 状态建之前挂上遮挡（粒子系统在这之后的 update 里建它）
+    for (const emitter of component.particleSystem.emitters) emitter.gpuOccluder = this.occlusion;
     const state: State = { entity, component, key, height, rate, intensity: 0, carry: 0, seen: true };
     this.#states.set(owner, state);
     return state;

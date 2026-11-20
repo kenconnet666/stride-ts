@@ -22,6 +22,7 @@ import type { ParticleEmitter } from '../ParticleEmitter';
 import { RandomOffset } from '../random';
 import { UpdaterColorOverTime, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from '../updaters';
 import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../../weather/WindField';
+import { OCCLUSION_WGSL } from '../../weather/PrecipitationOcclusion';
 
 /** 一个粒子在存储缓冲里占的字节（WGSL 的 Particle）。 */
 export const PARTICLE_BYTES = 96;
@@ -75,6 +76,8 @@ interface KernelPart {
 /** 拼好的内核。 */
 export interface GpuKernel {
   readonly code: string;
+  /** 用遮挡（绑定 2、3 是深度图和它的视图投影，见 weather/PrecipitationOcclusion）。 */
+  readonly occluded: boolean;
   /** data 里一共几个 vec4。 */
   readonly slots: number;
   /** 把各模块这一帧的数据写进 out（uniform 的 data 部分，按 vec4 排）。 */
@@ -115,6 +118,7 @@ export function buildKernel(emitter: ParticleEmitter): GpuKernel {
       .replace(/\bslot\((\d+)\)/g, (_, k: string) => `${base + Number(k)}u`);
     return { part, base, code };
   });
+  const occluded = emitter.gpuOccluder !== undefined;
   const stage = (name: KernelPart['stage']) => placed.filter(({ part }) => part.stage === name).map(({ code }) => `  {\n${code}\n  }`).join('\n');
   const code = `${PARTICLE_WGSL}
 struct Sim {
@@ -137,6 +141,7 @@ struct Sim {
 
 ${HELPERS_WGSL}
 ${WIND_WGSL}
+${occluded ? OCCLUSION_WGSL : ''}
 
 fn initialize(p: ptr<function, Particle>, spawnIndex: u32) {
 ${stage('init')}
@@ -187,12 +192,17 @@ ${stage('post')}
   let old = p.position;
   p.position += p.velocity * sim.dt;
   update(&p, sim.dt);
-  postUpdate(&p, sim.dt, old);
+  postUpdate(&p, sim.dt, old);${occluded ? `
+  // 落到遮挡的表面以下（屋顶、树冠）就死
+  if (occluded(p.position)) {
+    p.life = 0.0;
+  }` : ''}
   particles[i] = p;
 }
 `;
   return {
     code,
+    occluded,
     slots,
     pack(out) {
       for (const { part, base } of placed) part.pack(out, base);

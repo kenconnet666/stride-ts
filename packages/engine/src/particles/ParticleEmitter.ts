@@ -19,6 +19,7 @@ import { clearChildren, createChildInitializer, createChildSpawner, isChildModul
 import { ParticlePool, type AnyParticleField, type FloatField } from './ParticlePool';
 import { RandomOffset, RandomSeedGenerator, seedFloat } from './random';
 import type { Quat, Vec3 } from './math';
+import type { GpuOccluder } from '../weather/PrecipitationOcclusion';
 
 const ZERO_TOLERANCE = 1e-6;
 
@@ -58,6 +59,8 @@ export class ParticleEmitter implements ParentEmitter {
   gpuSpawn = 0;
   /** 重新开始模拟（resetSimulation）的次数：GPU 上的粒子按它知道要清掉。 */
   simulationGeneration = 0;
+  /** GPU 上模拟时的遮挡（雨雪用，weather/PrecipitationOcclusion）：到了它记的表面以下的粒子死掉。建 GPU 状态之前设。 */
+  gpuOccluder: GpuOccluder | undefined;
   /** 画的时候用：形状和材质（null 是不画）。 */
   readonly shapeBuilder: ParticleModuleFile | null;
   readonly material: ParticleModuleFile | null;

@@ -64,6 +64,8 @@ export class SpawnRing {
  */
 interface Shared {
   readonly simLayout: GPUBindGroupLayout;
+  /** 带遮挡的内核（多一张深度图和它的视图投影）。 */
+  readonly occludedSimLayout: GPUBindGroupLayout;
   /** 内核代码 → 编好的管线（还在编的是 undefined）。 */
   readonly simPipelines: Map<string, GPUComputePipeline | undefined>;
   readonly keysLayout: GPUBindGroupLayout;
@@ -87,6 +89,10 @@ function sharedFor(device: GPUDevice): Shared {
   const stepLayout = layout('GPU particles sort step', [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 8 } }, storage(1, 'storage')]);
   found = {
     simLayout: layout('GPU particles simulate', [storage(0, 'uniform'), storage(1, 'storage')]),
+    occludedSimLayout: layout('GPU particles simulate occluded', [
+      storage(0, 'uniform'), storage(1, 'storage'),
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'depth' } }, storage(3, 'uniform'),
+    ]),
     simPipelines: new Map(),
     keysLayout,
     keysPipeline: undefined,
@@ -149,11 +155,19 @@ export class GpuEmitter {
     this.#simData = new Float32Array((HEADER_VEC4S + Math.max(this.kernel.slots, 1)) * 4);
     this.#simBits = new Uint32Array(this.#simData.buffer);
     this.#sim = device.createBuffer({ label: `${label} simulate`, size: this.#simData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.#simGroup = device.createBindGroup({ label, layout: sharedGpu.simLayout, entries: [{ binding: 0, resource: { buffer: this.#sim } }, { binding: 1, resource: { buffer: this.#particles } }] });
+    const occluder = this.kernel.occluded ? emitter.gpuOccluder : undefined;
+    const simLayout = occluder ? sharedGpu.occludedSimLayout : sharedGpu.simLayout;
+    this.#simGroup = device.createBindGroup({
+      label, layout: simLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.#sim } }, { binding: 1, resource: { buffer: this.#particles } },
+        ...(occluder ? [{ binding: 2, resource: occluder.depthView }, { binding: 3, resource: { buffer: occluder.uniform } }] : []),
+      ],
+    });
     const code = this.kernel.code;
     if (!sharedGpu.simPipelines.has(code)) {
       sharedGpu.simPipelines.set(code, undefined);
-      void computeAsync(device, 'GPU particles simulate', code, 'simulate', [sharedGpu.simLayout]).then((pipeline) => sharedGpu.simPipelines.set(code, pipeline));
+      void computeAsync(device, 'GPU particles simulate', code, 'simulate', [simLayout]).then((pipeline) => sharedGpu.simPipelines.set(code, pipeline));
     }
     // 排好的下标：按深度排序的才真的排，别的只占位（画的着色器按排序方式决定读不读）
     const sorted = emitter.sortingPolicy === 'byDepth';

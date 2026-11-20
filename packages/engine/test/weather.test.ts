@@ -4,6 +4,9 @@ import { ParticlePool } from '../src/particles/ParticlePool';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { UpdaterWind } from '../src/particles/updaters';
 import { precipitationEmitter } from '../src/weather/Precipitation';
+import { occlusionCenter, PrecipitationOcclusion } from '../src/weather/PrecipitationOcclusion';
+import { Matrix } from '../src/mathematics/Matrix';
+import { fakeGpu, stubGpuGlobals } from './fakeGpu';
 import { GPU_LOCAL_WINDS, gust, packWind, WindField, type LocalWind } from '../src/weather/WindField';
 
 const still = { turbulence: 0, pulseMagnitude: 0, pulseFrequency: 0 };
@@ -89,5 +92,41 @@ describe('雨雪', () => {
     const snow = precipitationEmitter('snow', 10, 9);
     expect(((snow.file['particleSystem'] as { emitters: Record<string, { $type: string }>[] }).emitters[0]!['shapeBuilder'])!.$type).toBe('shapeBuilderBillboard');
     expect(system.emitters[0]!.updaters.some((updater) => updater instanceof UpdaterWind)).toBe(true);
+  });
+});
+
+describe('雨雪的遮挡（从上往下的深度图）', () => {
+  test('中心按格子吸附在相机上；挪出一格或者到了刷新间隔才重画，没有雨雪时不画；画完下一帧开头才交给粒子', () => {
+    stubGpuGlobals();
+    const { device, writes } = fakeGpu();
+    const occlusion = new PrecipitationOcclusion(device);
+    expect(occlusionCenter({ x: 5.9, y: 1.2, z: -2.1 }, 4)).toEqual([4, 0, -4]);
+    expect(occlusion.begin({ x: 0, y: 0, z: 0 }, 0)).toBeUndefined();
+    occlusion.active = true;
+    const view = occlusion.begin({ x: 0.5, y: 0, z: 0 }, 0)!;
+    // 正交、从上往下：中心正下方的点在画面中间
+    const c = Matrix.transformPoint(view.viewProjection, 0, 0, 0);
+    expect([+c[0].toFixed(4) + 0, +c[1].toFixed(4) + 0]).toEqual([0, 0]);
+    expect(occlusion.begin({ x: 1.5, y: 0, z: 0 }, 0.5)).toBeUndefined();
+    expect(occlusion.begin({ x: 2.5, y: 0, z: 0 }, 0.6)).toBe(view);
+    expect(occlusion.begin({ x: 2.5, y: 0, z: 0 }, 1.7)).toBe(view);
+    occlusion.finish();
+    expect(writes.filter((write) => (write.buffer as GPUBuffer).label === 'Precipitation occlusion')).toHaveLength(0);
+    occlusion.commit();
+    const [write] = writes.filter((w) => (w.buffer as GPUBuffer).label === 'Precipitation occlusion');
+    expect(new Uint32Array(write!.bytes.buffer, write!.bytes.byteOffset + 64, 1)[0]).toBe(1);
+  });
+
+  test('发射器挂了遮挡时，内核多两个绑定，活着的粒子到了表面以下就死', () => {
+    stubGpuGlobals();
+    const { device } = fakeGpu();
+    const system = new ParticleSystem({ emitters: [{ initializers: [{ $type: 'initialSizeSeed' }] }] });
+    const emitter = system.emitters[0]!;
+    expect(buildKernel(emitter).occluded).toBe(false);
+    emitter.gpuOccluder = new PrecipitationOcclusion(device);
+    const kernel = buildKernel(emitter);
+    expect(kernel.occluded).toBe(true);
+    expect(kernel.code).toContain('@group(0) @binding(2) var occlusionDepth: texture_depth_2d;');
+    expect(kernel.code).toContain('if (occluded(p.position)) {\n    p.life = 0.0;');
   });
 });

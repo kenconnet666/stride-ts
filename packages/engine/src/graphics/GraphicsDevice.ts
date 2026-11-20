@@ -53,8 +53,10 @@ export class GraphicsDevice {
 
   static async create(canvas: HTMLCanvasElement): Promise<GraphicsDevice> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
-    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    // 没有硬件适配器时（没有显卡的机器、CI 里用 SwiftShader 的 Chrome）退回软件的后备适配器：慢，但画得出来
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }) ?? await navigator.gpu.requestAdapter({ forceFallbackAdapter: true });
     if (!adapter) throw new Error('No WebGPU adapter is available');
+    if (adapter.info.isFallbackAdapter) console.warn('WebGPU: using the software fallback adapter (no hardware adapter is available); rendering is slow');
     const compression = COMPRESSION.filter(([feature]) => adapter.features.has(feature));
     const depthClipControl = adapter.features.has('depth-clip-control');
     const timestampQuery = adapter.features.has('timestamp-query');

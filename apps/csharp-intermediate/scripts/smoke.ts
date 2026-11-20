@@ -189,7 +189,8 @@ type Audio = { playing: string; volume: string[]; paused: string; gun: string[];
 const audio = evaluate<Audio>(`(async () => {
   const find = (start) => lines().find((l) => l.startsWith(start));
   const r = {};
-  await tap('Space'); await frames(10); r.playing = find('Space');
+  // 等到显示 Playing：CI 的软件渲染上一帧几百毫秒，固定等 10 帧时有时还是 Stopped
+  await tap('Space'); r.playing = await until(() => (find('Space')?.endsWith('Playing') ? find('Space') : null), 2) ?? \`\${find('Space')} (frame \${strideGame.frames})\`;
   await tap('ArrowUp'); await tap('ArrowLeft'); r.volume = [find('Up/Down'), find('Left/Right')];
   // 等到显示 Paused（CI 上偶尔没等到，结果里带上第几帧，下次失败时好查）
   await tap('Space'); r.paused = await until(() => (find('Space')?.endsWith('Paused') ? find('Space') : null), 1) ?? \`\${find('Space')} (frame \${strideGame.frames})\`;

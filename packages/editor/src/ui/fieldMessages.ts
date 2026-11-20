@@ -62,7 +62,7 @@ const zhCN: FieldMessages = {
     transparency: '透明', transparent: '画透明物体', trigger: '触发器', turbulence: '湍流', type: '类型', upperFade: '上端淡出', uvScale: 'UV 缩放',
     verticalFieldOfView: '竖直视角', windDirection: '风向', windSpeed: '风速',
     duration: '时长', frameRate: '帧率', tracks: '轨道', entity: '实体', component: '组件', property: '属性', interpolation: '插值', keys: '关键帧',
-    time: '时刻', value: '值', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
+    time: '时刻', value: '值', in: '入切线', out: '出切线', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
     "one per material slot of the model; null keeps the model's own material; omitted keeps all of them": '模型的每个材质槽一个；null 用模型自带的材质；不写时全用模型自带的',
@@ -102,6 +102,8 @@ const zhCN: FieldMessages = {
     'id of the entity in the scene file': '场景文件里的实体 id',
     'runtime component name (Transform, Light, or a game component registered by module path)': '运行时的组件名（Transform、Light，或者游戏按模块路径登记的组件）',
     'a number, or the components (xyz, xyzw, rgba)': '一个数，或者按分量（xyz、xyzw、rgba）',
+    'cubic only: slope (per second) arriving at the key, per component; unset is automatic': '只用于 cubic：进关键帧时每秒变多少，按分量；不写是自动的',
+    'cubic only: slope (per second) leaving the key, per component; unset is automatic': '只用于 cubic：出关键帧时每秒变多少，按分量；不写是自动的',
     'id of the camera entity in the scene file': '场景文件里相机实体的 id',
     'name of the clip in the AnimationComponent': 'AnimationComponent 里剪辑的名字',
   },

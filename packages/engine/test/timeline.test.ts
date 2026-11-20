@@ -60,6 +60,22 @@ describe('时间轴', () => {
     expect(() => unsorted.evaluate(0, binding)).toThrow(/not sorted/);
   });
 
+  test('cubic 按 Hermite：写了的切线照用（平的切线是缓入缓出），没写的自动按前后关键帧的斜率', () => {
+    const light = { intensity: 0 };
+    const sun = fakeEntity('Sun', new Map([[Light, light]]));
+    const at = (keys: TimelineFile['tracks'][number] & { type: 'property' } extends infer T ? T extends { keys: infer K } ? K : never : never, time: number) => {
+      new Timeline({ name: 'Ease', duration: 2, tracks: [{ type: 'property', entity: 'sun', component: 'Light', property: 'intensity', interpolation: 'cubic', keys }] })
+        .evaluate(time, { entity: () => sun, component: () => Light as never });
+      return light.intensity;
+    };
+    const flat = [{ time: 0, value: 0, out: 0 }, { time: 1, value: 1, in: 0 }] as const;
+    expect(at(flat, 0.5)).toBeCloseTo(0.5, 6);
+    // h01(0.25) = -2/64 + 3/16
+    expect(at(flat, 0.25)).toBeCloseTo(0.15625, 6);
+    // 两个关键帧、自动切线 = 直线的斜率：和线性一样
+    expect(at([{ time: 0, value: 0 }, { time: 2, value: 4 }], 0.5)).toBeCloseTo(1, 6);
+  });
+
   test('经过的声音、事件、动画剪辑：不含起点、含终点，按时刻排；往回拖没有', () => {
     const timeline = new Timeline(FILE);
     expect(timeline.crossed(0, 2).map((cue) => `${cue.type}@${cue.time}`)).toEqual(['animation@0.5', 'sound@1', 'event@2']);

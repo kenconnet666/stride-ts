@@ -92,6 +92,11 @@ export interface EditorMessages {
   readonly timelineClose: string;
   readonly timelineTracks: { readonly camera: string; readonly animation: string; readonly sound: string; readonly subtitle: string; readonly event: string };
   readonly timelineNoValue: (component: string, property: string) => string;
+  readonly timelineCurves: string;
+  readonly timelineInterpolation: string;
+  readonly timelineInterpolations: { readonly constant: string; readonly linear: string; readonly cubic: string };
+  readonly timelineAutoTangent: string;
+  readonly timelineFlatTangent: string;
   // 会话
   readonly prefabMade: (path: string) => string;
   readonly savedWithMissing: (count: number, first: readonly string[], more: boolean) => string;
@@ -180,6 +185,11 @@ const zhCN: EditorMessages = {
   timelineClose: '关掉时间轴（视口回到场景的样子）',
   timelineTracks: { camera: '相机切换', animation: '动画', sound: '声音', subtitle: '字幕', event: '事件' },
   timelineNoValue: (component, property) => `实体上没有 ${component}.${property}，加不了关键帧`,
+  timelineCurves: '曲线编辑器（选中的属性轨道按曲线显示：上下拖关键帧改值，拖手柄改切线）',
+  timelineInterpolation: '插值',
+  timelineInterpolations: { constant: '阶梯', linear: '线性', cubic: '曲线' },
+  timelineAutoTangent: '自动切线',
+  timelineFlatTangent: '平切线',
   prefabMade: (path) => `做成了预制体 ${path}，场景里换成了它的实例（保存场景以后生效）`,
   savedWithMissing: (count, first, more) => `已保存；${count} 处脚本的必填属性没设，试玩时这些脚本不挂：${first.join('、')}${more ? '……' : ''}`,
 };
@@ -267,6 +277,11 @@ const enUS: EditorMessages = {
   timelineClose: 'Close the timeline (the viewport goes back to the scene)',
   timelineTracks: { camera: 'Camera cuts', animation: 'Animation', sound: 'Sound', subtitle: 'Subtitles', event: 'Events' },
   timelineNoValue: (component, property) => `The entity has no ${component}.${property} to key`,
+  timelineCurves: 'Curve editor (the selected property track as curves: drag keys up and down to change values, drag the handles to change tangents)',
+  timelineInterpolation: 'Interpolation',
+  timelineInterpolations: { constant: 'Step', linear: 'Linear', cubic: 'Curve' },
+  timelineAutoTangent: 'Auto tangent',
+  timelineFlatTangent: 'Flat tangent',
   prefabMade: (path) => `Made prefab ${path}; the scene now has an instance of it (takes effect when the scene is saved)`,
   savedWithMissing: (count, first, more) => `Saved; ${count} required script propert${count === 1 ? 'y is' : 'ies are'} not set, so those scripts are not attached when playing: ${first.join(', ')}${more ? '…' : ''}`,
 };

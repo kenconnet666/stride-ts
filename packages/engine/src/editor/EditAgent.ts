@@ -8,7 +8,9 @@
  * 编辑器自己的相机不在场景里：单独的实体，用自己的相机槽位，主画面改画它。视口里的操作（点选、拖操纵器、快捷键）在
  * EditorViewport，挂在编辑相机的实体上。
  */
-import type { SceneFile, TimelineFile } from '../content/format';
+import type { SceneFile, TimelineFile, TimelineTrackFile } from '../content/format';
+import { evaluateCurve } from '../animation/curves';
+import { timelineCurve } from '../timeline/Timeline';
 import { sceneComponentKey } from '../content/SceneBuilder';
 import { requiredName } from '../content/sceneScripts';
 import type { Entity } from '../engine/Entity';
@@ -198,6 +200,26 @@ export class EditAgent {
   /** 结束预览：场景回到文档的样子，主画面回到编辑相机。 */
   endTimelinePreview(): void {
     this.#timelinePreview?.end();
+  }
+
+  /**
+   * 时间轴的一条属性轨道按曲线取样（曲线编辑器画线用）：从 0 到 duration 取 samples 个时刻，每个时刻按分量的值。实体或组件
+   * 找不到、轨道没有关键帧时 undefined。
+   */
+  sampleTimelineTrack(track: Extract<TimelineTrackFile, { type: 'property' }>, duration: number, samples: number): { times: number[]; values: number[][] } | undefined {
+    const entity = this.#live?.entity(track.entity);
+    const component = entity && entity.manager.componentTypes(entity.id).find((type) => type.name === track.component);
+    if (!component || track.keys.length === 0) return undefined;
+    const curve = timelineCurve('preview', track, component);
+    const value = new Float32Array(curve.size);
+    const times: number[] = [], values: number[][] = [];
+    for (let i = 0; i < samples; i++) {
+      const time = (duration * i) / (samples - 1);
+      evaluateCurve(curve, time, value);
+      times.push(time);
+      values.push([...value]);
+    }
+    return { times, values };
   }
 
   /**

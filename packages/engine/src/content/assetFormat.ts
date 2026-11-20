@@ -475,7 +475,8 @@ export type TimelineTrackFile =
   | {
     readonly type: 'property'; readonly entity: string; readonly component: string; readonly property: string;
     readonly interpolation?: TimelineInterpolation;
-    readonly keys: readonly { readonly time: number; readonly value: number | readonly number[] }[];
+    /** in、out：cubic 时关键帧两侧的切线（每秒变多少，分量同 value）；不写是自动的平滑切线。 */
+    readonly keys: readonly { readonly time: number; readonly value: number | readonly number[]; readonly in?: number | readonly number[]; readonly out?: number | readonly number[] }[];
   }
   /** 相机切换：每个切点以后主画面用哪台相机（场景里带 Camera 的实体）。 */
   | { readonly type: 'camera'; readonly cuts: readonly { readonly time: number; readonly camera: string }[] }

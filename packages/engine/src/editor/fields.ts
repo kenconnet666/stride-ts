@@ -631,7 +631,12 @@ export const TIMELINE_FIELDS = fields<TimelineFile>({
         component: { type: string, description: 'runtime component name (Transform, Light, or a game component registered by module path)' },
         property: string,
         interpolation: { type: oneOf('constant', 'linear', 'cubic'), optional: true, default: 'linear' },
-        keys: list(object([{ name: 'time', type: number({ min: 0, unit: 's' }) }, { name: 'value', type: { kind: 'json' }, description: 'a number, or the components (xyz, xyzw, rgba)' }])),
+        keys: list(object([
+          { name: 'time', type: number({ min: 0, unit: 's' }) },
+          { name: 'value', type: { kind: 'json' }, description: 'a number, or the components (xyz, xyzw, rgba)' },
+          { name: 'in', type: { kind: 'json' }, optional: true, description: 'cubic only: slope (per second) arriving at the key, per component; unset is automatic' },
+          { name: 'out', type: { kind: 'json' }, optional: true, description: 'cubic only: slope (per second) leaving the key, per component; unset is automatic' },
+        ])),
       }),
       camera: fields<{ cuts: unknown }>({ cuts: list(object([{ name: 'time', type: number({ min: 0, unit: 's' }) }, { name: 'camera', type: string, description: 'id of the camera entity in the scene file' }])) }),
       animation: fields<{ entity: unknown; clips: unknown }>({

@@ -39,6 +39,11 @@ export interface PropertyCurve {
   /** 关键帧的时刻（秒，升序）和值（每个 size 个分量）。 */
   readonly times: Float32Array;
   readonly values: Float32Array;
+  /**
+   * 关键帧两侧的切线（每秒变多少，每个关键帧 size 个分量；NaN 是自动：按前后两个关键帧的时刻算的平滑切线）。有它时 cubic
+   * 按 Hermite 插值（时间轴的曲线，曲线编辑器能拖切线）；没有时 cubic 是 Stride 的 Catmull-Rom（动画剪辑的曲线）。
+   */
+  readonly tangents?: { readonly in: Float32Array; readonly out: Float32Array };
 }
 
 /**
@@ -82,6 +87,7 @@ export function evaluateCurve(curve: PropertyCurve, time: number, out: Float32Ar
     return;
   }
   // 三次（Stride 的 Interpolator.Cubic）：前后各多看一个关键帧，没有的用端点自己
+  if (curve.tangents) return hermite(curve, curve.tangents, lo, hi, time, out);
   const before = Math.max(lo - 1, 0), after = Math.min(hi + 1, last);
   const t2 = t * t, t3 = t2 * t;
   const f0 = -t3 + 2 * t2 - t, f1 = 3 * t3 - 5 * t2 + 2, f2 = -3 * t3 + 4 * t2 + t, f3 = t3 - t2;
@@ -89,6 +95,32 @@ export function evaluateCurve(curve: PropertyCurve, time: number, out: Float32Ar
     out[c] = 0.5 * (values[before * size + c]! * f0 + values[lo * size + c]! * f1 + values[hi * size + c]! * f2 + values[after * size + c]! * f3);
   }
   if (curve.quaternion) normalize4(out);
+}
+
+/** lo、hi 两个关键帧之间按 Hermite 插值：两端的值和切线（出切线、入切线），NaN 的切线自动。 */
+function hermite(curve: PropertyCurve, tangents: NonNullable<PropertyCurve['tangents']>, lo: number, hi: number, time: number, out: Float32Array): void {
+  const { times, values, size } = curve;
+  const span = times[hi]! - times[lo]!;
+  const s = (time - times[lo]!) / span, s2 = s * s, s3 = s2 * s;
+  const h00 = 2 * s3 - 3 * s2 + 1, h10 = s3 - 2 * s2 + s, h01 = -2 * s3 + 3 * s2, h11 = s3 - s2;
+  for (let c = 0; c < size; c++) {
+    const m0 = curveTangent(curve, tangents.out, lo, c), m1 = curveTangent(curve, tangents.in, hi, c);
+    out[c] = h00 * values[lo * size + c]! + h10 * span * m0 + h01 * values[hi * size + c]! + h11 * span * m1;
+  }
+  if (curve.quaternion) normalize4(out);
+}
+
+/**
+ * 关键帧 key 第 c 个分量的切线：写了用写的；自动的（NaN）按前后两个关键帧的斜率（时刻不均匀时也平滑，同 Blender 的
+ * Auto Clamped 去掉夹紧），两端用一侧的斜率。
+ */
+export function curveTangent(curve: PropertyCurve, given: Float32Array | undefined, key: number, c: number): number {
+  const explicit = given?.[key * curve.size + c];
+  if (explicit !== undefined && !Number.isNaN(explicit)) return explicit;
+  const { times, values, size } = curve, last = times.length - 1;
+  if (last === 0) return 0;
+  const a = Math.max(key - 1, 0), b = Math.min(key + 1, last);
+  return (values[b * size + c]! - values[a * size + c]!) / (times[b]! - times[a]!);
 }
 
 /** 曲线的值（evaluateCurve 算的）写到实体上它的目标（组件的属性）；实体没有那个组件时不写，返回 false。 */

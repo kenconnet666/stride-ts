@@ -98,7 +98,7 @@ export class Timeline {
     let curve = this.#curves.get(track);
     if (curve !== undefined) return curve;
     const component = binding.component(entity, track.component);
-    curve = component && track.keys.length > 0 ? propertyCurveOf(this.name, track, component) : null;
+    curve = component && track.keys.length > 0 ? timelineCurve(this.name, track, component) : null;
     this.#curves.set(track, curve);
     return curve;
   }
@@ -110,19 +110,26 @@ export type TimelineCue =
   | { readonly type: 'event'; readonly time: number; readonly name: string }
   | { readonly type: 'animation'; readonly time: number; readonly entity: string; readonly clip: string; readonly speed: number };
 
-/** 属性轨道换成动画模块的属性曲线（求值、写回和动画剪辑里的曲线共用）。 */
-function propertyCurveOf(timeline: string, track: Track<'property'>, component: ComponentType<any, any>): PropertyCurve {
+/** 属性轨道换成动画模块的属性曲线（求值、写回和动画剪辑里的曲线共用；编辑器的曲线视图按它取样）。timeline 用在报错里。 */
+export function timelineCurve(timeline: string, track: Track<'property'>, component: ComponentType<any, any>): PropertyCurve {
   const field = component.schema.fields.find((f) => f.name === track.property);
   if (!field) throw new Error(`timeline ${timeline}: ${component.name} has no property '${track.property}'`);
   const first = track.keys[0]!.value;
   const size = typeof first === 'number' ? 1 : first.length;
   const times = new Float32Array(track.keys.length), values = new Float32Array(track.keys.length * size);
+  const tangentsIn = new Float32Array(track.keys.length * size).fill(NaN), tangentsOut = new Float32Array(track.keys.length * size).fill(NaN);
   track.keys.forEach(({ time, value }, i) => {
     if (i > 0 && time < track.keys[i - 1]!.time) throw new Error(`timeline ${timeline}: the keys of ${component.name}.${track.property} are not sorted by time`);
     const components = typeof value === 'number' ? [value] : value;
     if (components.length !== size) throw new Error(`timeline ${timeline}: the keys of ${component.name}.${track.property} have different sizes`);
     times[i] = time;
     values.set(components, i * size);
+    const key = track.keys[i]!;
+    if (key.in !== undefined) tangentsIn.set(typeof key.in === 'number' ? [key.in] : key.in, i * size);
+    if (key.out !== undefined) tangentsOut.set(typeof key.out === 'number' ? [key.out] : key.out, i * size);
   });
-  return { component, property: track.property, interpolation: track.interpolation ?? 'linear', size, quaternion: field.options.kind === 'quat', times, values };
+  return {
+    component, property: track.property, interpolation: track.interpolation ?? 'linear', size, quaternion: field.options.kind === 'quat', times, values,
+    tangents: { in: tangentsIn, out: tangentsOut },
+  };
 }

@@ -4,13 +4,14 @@
  * （吸附到帧）；点轨道名选中轨道，"加关键帧"按播放头处实体现在的值加一个（拖时间预览着的是曲线的值，刚用操纵器挪过的是
  * 挪到的位置）。关键帧的值、别的轨道的细节在属性面板里改（选中资源浏览器里的时间轴）。
  */
-import { Camera, CircleX, Diamond, KeyRound, Pause, Play, Trash2 } from '@lucide/icons';
+import { Camera, ChartSpline, CircleX, Diamond, KeyRound, Pause, Play, Trash2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { onUnmounted } from 'vue';
 import type { TimelineFile, TimelineTrackFile } from '@stride-ts/engine/content-format';
 import { t } from './messages';
+import { TimelineCurves } from './TimelineCurves';
 import type { EditorSession } from './session';
 
 const styles = css.create({
@@ -30,6 +31,7 @@ const styles = css.create({
   selectedKey: { backgroundColor: '_accent' },
   block: { position: 'absolute', top: '3px', height: '16px', borderRadius: '3px', backgroundColor: '_accentSoft', paddingInline: '3px', overflow: 'hidden', whiteSpace: 'nowrap', fontSize: '0.7rem' },
   marker: { position: 'absolute', top: '2px', width: '2px', height: '18px', backgroundColor: '_accent' },
+  curves: { height: '180px', position: 'relative' },
   playhead: { position: 'absolute', top: '0', bottom: '0', width: '1px', backgroundColor: '_danger', pointerEvents: 'none' },
 });
 
@@ -38,6 +40,8 @@ type Selected = { readonly track: number; readonly key?: number };
 export const TimelinePanel = _component(({ session }: { session: EditorSession }) => {
   let selected = _state<Selected | undefined>(undefined);
   let playing = _state(false);
+  /** 选中的属性轨道按曲线显示（曲线编辑器）。 */
+  let curves = _state(false);
   let frame = 0;
   let lanes: HTMLElement | undefined;
   onUnmounted(() => cancelAnimationFrame(frame));
@@ -136,6 +140,25 @@ export const TimelinePanel = _component(({ session }: { session: EditorSession }
     });
   };
 
+  /** 选中的关键帧的切线：自动（去掉写的切线）或者平的（缓入缓出）。 */
+  const setTangents = (mode: 'auto' | 'flat') => {
+    const current = selected;
+    const track = current?.key === undefined ? undefined : open().content.tracks[current.track];
+    if (!current || current.key === undefined || track?.type !== 'property') return;
+    setKeys(current.track, track.keys.map((key, i) => {
+      if (i !== current.key) return key;
+      const { in: _in, out: _out, ...rest } = key;
+      const zero = typeof key.value === 'number' ? 0 : key.value.map(() => 0);
+      return mode === 'auto' ? rest : { ...rest, in: zero, out: zero };
+    }));
+  };
+
+  const setInterpolation = (interpolation: 'constant' | 'linear' | 'cubic') => {
+    const index = selected?.track;
+    if (index === undefined) return;
+    session.editTimeline((file) => ({ ...file, tracks: file.tracks.map((track, i) => (i === index && track.type === 'property' ? { ...track, interpolation } : track)) }));
+  };
+
   const deleteKey = () => {
     const current = selected;
     const track = current?.key === undefined ? undefined : open().content.tracks[current.track];
@@ -205,6 +228,14 @@ export const TimelinePanel = _component(({ session }: { session: EditorSession }
           <IconButton icon={Diamond} aria-label={t.timelineAddKey} disabled={selectedTrack?.type !== 'property'} onClick={addKey} />
           <IconButton icon={KeyRound} aria-label={t.timelineKeyTransform} disabled={session.selection.value.length !== 1} onClick={keyTransform} />
           <IconButton icon={Trash2} aria-label={t.timelineDeleteKey} disabled={selected?.key === undefined} onClick={deleteKey} />
+          <IconButton icon={ChartSpline} variant={curves ? 'soft' : 'ghost'} aria-pressed={curves} aria-label={t.timelineCurves} disabled={selectedTrack?.type !== 'property'} onClick={() => (curves = !curves)} />
+          {curves && selectedTrack?.type === 'property' && [
+            <select aria-label={t.timelineInterpolation} value={selectedTrack.interpolation ?? 'linear'} onChange={(event: Event) => setInterpolation((event.target as HTMLSelectElement).value as 'constant' | 'linear' | 'cubic')}>
+              {(['constant', 'linear', 'cubic'] as const).map((mode) => <option value={mode}>{t.timelineInterpolations[mode]}</option>)}
+            </select>,
+            <button type="button" disabled={selected?.key === undefined || selectedTrack.interpolation !== 'cubic'} onClick={() => setTangents('auto')}>{t.timelineAutoTangent}</button>,
+            <button type="button" disabled={selected?.key === undefined || selectedTrack.interpolation !== 'cubic'} onClick={() => setTangents('flat')}>{t.timelineFlatTangent}</button>,
+          ]}
           <span {...css.attrs(styles.subtitle)}>{timeline.subtitle}</span>
           <IconButton icon={CircleX} variant="ghost" aria-label={t.timelineClose} onClick={() => session.closeTimeline()} />
         </div>
@@ -219,7 +250,15 @@ export const TimelinePanel = _component(({ session }: { session: EditorSession }
             <div {...css.attrs(styles.ruler)}>
               {ticks(content).map((tick) => <span {...css.attrs(styles.tick)} style={{ insetInlineStart: percent(tick) }}>{tick}s</span>)}
             </div>
-            {content.tracks.map((track, index) => <div {...css.attrs(styles.lane)}>{lane(track, index)}</div>)}
+            {curves && selectedTrack?.type === 'property' ? (
+              <div {...css.attrs(styles.curves)}>
+                <TimelineCurves
+                  session={session} track={selectedTrack} index={selected!.track} duration={content.duration} time={time} selectedKey={selected?.key}
+                  onSelectKey={(key: number) => (selected = { track: selected!.track, key })}
+                  onChangeKeys={setKeys}
+                />
+              </div>
+            ) : content.tracks.map((track, index) => <div {...css.attrs(styles.lane)}>{lane(track, index)}</div>)}
             <span {...css.attrs(styles.playhead)} style={{ insetInlineStart: percent(time) }} />
           </div>
         </div>

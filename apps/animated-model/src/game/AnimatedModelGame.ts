@@ -8,6 +8,7 @@ const SCENE = 'AnimatedModel/Scene';
 
 export class AnimatedModelGame extends Game {
   protected override async loadContent(): Promise<void> {
-    await this.loadScene(SCENE);
+    // 根场景（同 Stride：GameSettings 的默认场景）；编辑器按根场景的路径打开场景文件
+    await this.setRootScene(SCENE);
   }
 }

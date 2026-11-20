@@ -304,6 +304,30 @@ PCSS（同一天，TPP，无头 Chrome 1280x720，暂停后单步）：太阳的
 
 富文本的运行时（2026-11-20，scene-picking 分支，无头 Chrome 1280x720，SpriteFonts 的第九屏）：截图里粗体、斜体用样例自带的字体，粗斜体合成，删除线、行内代码（颜色和底色）、橙色、放大缩小、下划线、两层列表、链接都对。第一版两处不对：文字没居中（Canvas 不管子元素的对齐，样例换成 Grid）；代码的底色是实心白（UI 的颜色是预乘 alpha 的，默认值写成了不预乘的，Markdown 里写的颜色也改成画的时候预乘）。在画布上发真的指针事件点"next screen""previous screen"换到第 0、第 7 屏，点链接以外的文字照常暂停、继续；影子 DOM 里两个链接是 `role=link`，Enter 也换屏。这些都写进了 SpriteFonts 的冒烟。
 
+### P3 编辑器的验收：用编辑器打开、改、保存、试玩 P1、P2 的样例（2026-11-20）
+
+做法：每个样例的内容目录在验证工作树里临时换成拷贝（保存只写拷贝，主检出不动，验完换回联接），开发服务器 +1000 端口，无头 Chrome 1400x900 开编辑器，脚本经 CDP 操作会话：打开根场景，逐个实体选中让属性面板画一遍（看控制台有没有错），不改就保存（文件应逐字节不变），再改（根下第一个带模型的实体上移 1、改名，加子实体、给它加游戏的第一个脚本，复制粘贴这个实体，撤销到底再重做到底），保存、检查文件，重新打开、检查改动还在，依次打开资源里的其他场景各画一遍属性面板，最后试玩、检查游戏里有加的实体。另外在 Node 里用 `checkEntity` 照字段描述查了所有样例的全部场景和预制体文件（20 个样例、3000 多个实体），0 个问题。
+
+| 样例 | 场景 | 结果 |
+|---|---|---|
+| platformer（TPP） | 1 | 通过（278 个实体逐个画面板；粘贴 Wall_North 带 17 个子实体） |
+| animated-model | 1 | 第一次打不开：入口用 `loadScene` 加的场景不是根场景，编辑器不知道开哪个文件；改成 `setRootScene`（同 Stride 的默认场景）后通过。试玩时有它原来就有的警告：导入的 UIScript 的 `font` 属性 TS 脚本里没有 |
+| physics-sample | 3 | 第一次试玩起不来：加的 AutoResetRigidbody 的必填属性 triggerEntity 没设，整个场景加载失败；修了（见 decisions.md），现在这个脚本报错跳过、游戏照常，面板上标红、保存时提示 |
+| bepu-sample | 8 | 通过 |
+| platformer2d | 1 | 同 physics-sample（CoinRotation 的 sprite），修后通过 |
+| topdown-rpg | 7 | 通过（另外手动试了往实例成员下面加实体，见上） |
+| first-person-shooter | 1 | 通过 |
+| game-menu | 2 | 通过 |
+| ui-element-link、ui-particles | 3、1 | 通过（ui-particles 加的脚本要求实体上有 UIComponent，试玩时脚本自己报错，属于测试的用法） |
+| simple-audio、morph-targets | 1、1 | 通过（同上：加的脚本缺它要的声音、模型，脚本自己报错，游戏照常） |
+| particles-sample | 7 | 通过 |
+| jumpy-jet、space-escape、material-shader | 1、2、1 | 通过 |
+| csharp-beginner | 17 | 通过（同上，加的脚本要 UIComponent） |
+| csharp-intermediate | 26 | 通过（同上，加的脚本要 AnimationComponent） |
+| sprite-fonts、custom-effect | 0 | 场景是代码建的，没有场景文件，编辑器打不开（视口上显示原因）；要编辑得先把场景做成文件 |
+
+验收里顺带看到的：新起的开发服务器第一次开编辑器要预构建依赖，页面起来要一分钟左右；每个样例"不改就保存"都逐字节不变。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

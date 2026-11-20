@@ -54,7 +54,15 @@ if ($App) {
         $chromeArgs = @('--autoplay-policy=no-user-gesture-required') + @(($env:STRIDE_CHROME_ARGS ?? '') -split ' ' | Where-Object { $_ }) | ForEach-Object { "--chrome-arg=$_" }
         pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads&stride-pointer-lock=virtual" --headless --size ($env:STRIDE_REGRESS_SIZE ?? '1280x720') --dpr 1 @chromeArgs | Out-Null
         pnpm --filter "@stride-ts/$App" smoke -- --hub $App 2>&1
-        exit $LASTEXITCODE
+        $code = $LASTEXITCODE
+        # 失败时带上 Chrome 自己的日志里和 GPU 有关的行（GPU 进程崩溃、看门狗、共享内存不够这类事页面的控制台看不到）
+        $chromeLog = Join-Path $env:STRIDE_BROWSER_DIR 'chrome-headless' 'chrome.log'
+        if ($code -ne 0 -and (Test-Path $chromeLog)) {
+            $gpuLines = Select-String -Path $chromeLog -Pattern 'gpu|dawn|webgpu|vulkan|swiftshader|crash|watchdog|shared ?memory|shm|out of memory|exit_code|lost' |
+                Where-Object { $_.Line -notmatch ':CONSOLE[:(]' } | Select-Object -Last 60 | ForEach-Object Line
+            if ($gpuLines) { Write-Host "--- chrome.log (GPU-related lines)"; $gpuLines | ForEach-Object { Write-Host $_ } }
+        }
+        exit $code
     } finally {
         pnpm exec stride close | Out-Null
         # 连同 pnpm、vite 子进程一起停（taskkill /T 只有 Windows 有）

@@ -3,9 +3,10 @@
  * Chrome 分开；装在里面的扩展会保留，比如 Claude 插件），开着远程调试端口（CDP），后续的 open 在同一个浏览器里开新标签，
  * `stride close` 关掉它。无头的（回归脚本用）另用 ~/.stride-ts/chrome-headless，不加载有界面的那个目录里装的扩展。
  * 默认带 --enable-webgpu-developer-features（时间戳不量化到 100 µs，GpuProfiler 才测得细）。
+ * Chrome 自己的日志（GPU 进程崩溃、看门狗、Dawn 的报错，页面的控制台看不到）写在用户目录的 chrome.log，见 chromeLogFile。
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import type { DevtoolsSession } from './client.ts';
 import { BROWSER_DIR, readBrowser, writeBrowser, type BrowserRecord } from './state.ts';
@@ -18,6 +19,11 @@ const CHROME_PATHS: Partial<Record<NodeJS.Platform, readonly string[]>> = {
   darwin: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'],
   linux: ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium'],
 };
+
+/** stride 启动的 Chrome 的标准错误输出（--enable-logging=stderr）：每次启动重写。 */
+export function chromeLogFile(headless: boolean): string {
+  return path.join(headless ? HEADLESS_PROFILE_DIR : PROFILE_DIR, 'chrome.log');
+}
 
 export interface OpenOptions {
   readonly headless?: boolean;
@@ -104,13 +110,16 @@ async function launch(url: string, { headless = false, size, dpr, chromeArgs = [
     '--no-first-run',
     '--no-default-browser-check',
     '--enable-webgpu-developer-features',
+    '--enable-logging=stderr',
     ...(headless ? ['--headless=new'] : []),
     ...(size ? [`--window-size=${size[0]},${size[1]}`] : []),
     ...(dpr ? [`--force-device-scale-factor=${dpr}`] : []),
     ...chromeArgs,
     url,
   ];
-  const child = spawn(executable, args, { detached: true, stdio: 'ignore' });
+  const log = openSync(chromeLogFile(headless), 'w');
+  const child = spawn(executable, args, { detached: true, stdio: ['ignore', log, log] });
+  closeSync(log);
   child.unref();
   const port = await waitForPort(portFile);
   const record: BrowserRecord = { pid: child.pid!, port, headless, started: Date.now() };

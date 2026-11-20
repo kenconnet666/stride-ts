@@ -46,6 +46,11 @@ export class GraphicsDevice {
   readonly pipelines: PipelineCounts;
   /** 上一帧的绘制次数，按渲染通道分（见 DrawCounts）。 */
   readonly draws: DrawCounts;
+  /**
+   * 设备丢了（GPU 进程崩溃、驱动重置、浏览器回收；不包括自己 destroy 的）时兑现，值是说明原因的错误。丢了以后所有调用都静默
+   * 失效、什么也画不出来，Game 收到它就停下并报错（status 变成 'failed'），不留一个看着在跑的空壳。
+   */
+  readonly lost: Promise<Error>;
   private readonly context: GPUCanvasContext;
   #frameEncoder: GPUCommandEncoder | undefined;
   #viewTexture: GPUTexture | undefined;
@@ -82,9 +87,7 @@ export class GraphicsDevice {
     this.backBufferViewFormat = `${this.backBufferFormat}-srgb` as GPUTextureFormat;
     // 用 opaque：预乘 alpha 的画布在 alpha 小于 1 的地方会透出页面背景。
     context.configure({ device, format: this.backBufferFormat, alphaMode: 'opaque', viewFormats: [this.backBufferViewFormat] });
-    void device.lost.then((info) => {
-      if (info.reason !== 'destroyed') console.error(`WebGPU device lost: ${info.message}`);
-    });
+    this.lost = device.lost.then((info) => (info.reason === 'destroyed' ? new Promise<never>(() => {}) : new Error(`WebGPU device lost (${info.reason}): ${info.message || 'no message'}`)));
   }
 
   get queue(): GPUQueue {

@@ -259,6 +259,7 @@ export class Game {
       this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui));
       this.content.animationNative ??= this.native;
       this.graphicsDevice = await GraphicsDevice.create(canvas);
+      void this.graphicsDevice.lost.then((error) => this.fail(error));
       // 加载内容、脚本启动时读到的就是画面的实际大小（Stride 的后备缓冲在游戏开始前就建好了）
       this.graphicsDevice.resizeToDisplaySize();
       this.input = new InputManager(canvas);

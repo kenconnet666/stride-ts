@@ -124,3 +124,10 @@ jobs:
           STRIDE_CHROME_ARGS: --enable-unsafe-webgpu --enable-features=Vulkan --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader
           STRIDE_REGRESS_SIZE: 640x360
         run: pwsh tools/regress.ps1 -Apps "${{ matrix.apps }}" -Parallel 2
+      # 失败时看机器的内存、共享内存和有没有进程被 OOM 杀掉（GPU 进程没了，页面里只看得到"Instance reference no longer exists"）
+      - name: Machine state
+        if: failure()
+        run: |
+          free -m
+          df -h /dev/shm
+          sudo dmesg | grep -i -E 'killed process|out of memory|oom' || true

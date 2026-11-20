@@ -23,8 +23,12 @@
 import { CLUSTER_WGSL } from '../lighting/Clusters';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
-import { BRDF, FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../wgsl';
+import { BRDF, GRADIENT_NOISE } from '../wgsl';
 import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees } from './Material';
+
+/** DFG 查找表的尺寸（同 Stride 的 EnvironmentLightingDFGLUT16）。 */
+export const DFG_LUT_WIDTH = 32;
+export const DFG_LUT_HEIGHT = 64;
 
 export const MESH_SHADER = /* wgsl */ `
 ${BRDF}
@@ -84,7 +88,9 @@ struct LocalShadow {
 @group(0) @binding(1) var<storage, read> worlds: array<mat4x4f>;
 @group(0) @binding(2) var<storage, read> slots: array<u32>;
 @group(0) @binding(3) var skySpecular: texture_cube<f32>;
-@group(0) @binding(4) var dfgLut: texture_2d<f32>;
+// DFG 查找表（DFG_LUT_WIDTH x DFG_LUT_HEIGHT，按行存）：存储缓冲不是贴图——片元阶段的采样贴图默认最多 16 张，
+// 材质的颜色树还要加，固定的绑定能省就省；双线性插值自己做（dfgLookup，和 clamp 的线性采样器一样）
+@group(0) @binding(4) var<storage, read> dfgLut: array<vec2f>;
 @group(0) @binding(5) var linearClamp: sampler;
 @group(0) @binding(6) var shadowAtlas: texture_depth_2d;
 @group(0) @binding(7) var shadowComparison: sampler_comparison;
@@ -107,9 +113,11 @@ struct Probe { center: vec4f, boxMin: vec4f, boxMax: vec4f, options: vec4f };
 // 云的影子：云重复的那一个周期里地面上每个点朝主光的透射率（Clouds.shadow），采样器 repeat
 @group(0) @binding(18) var cloudShadowMap: texture_2d<f32>;
 @group(0) @binding(19) var linearRepeat: sampler;
-// 天空遮挡（weather/SkyOcclusion.ts）：从上往下看的深度图，记着头顶最高的表面；valid.x 是 0 时（没有湿和雪、还没画过）不查
+// 天空遮挡（weather/SkyOcclusion.ts）：从上往下看的深度图，记着头顶最高的表面；valid.x 是 0 时（没有湿和雪、还没画过）不查，
+// valid.y 是深度图的边长
 struct SkyOcclusion { viewProjection: mat4x4f, valid: vec4u };
-@group(0) @binding(20) var skyOcclusionDepth: texture_depth_2d;
+// 深度图拷进的缓冲（valid.y x valid.y 个，按行存）：同 DFG 表，不占采样贴图的名额；只取一个纹素，不插值
+@group(0) @binding(20) var<storage, read> skyOcclusionDepth: array<f32>;
 @group(0) @binding(21) var<uniform> skyOcclusion: SkyOcclusion;
 
 // 贴花（mesh/Decals.ts 的 packDecal）：世界到盒子（-1..1）的矩阵，颜色、法线在图集里的位置（xy 左上角，zw 大小；z 是 0 是
@@ -197,6 +205,19 @@ fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface, cluster: i32) -> Decaled
   return r;
 }
 
+/** DFG 查找表在 uv 处的值：双线性插值，边缘按 clamp（同原来的线性采样器）。 */
+fn dfgLookup(uv: vec2f) -> vec2f {
+  let size = vec2f(${DFG_LUT_WIDTH}.0, ${DFG_LUT_HEIGHT}.0);
+  let t = clamp(uv * size - 0.5, vec2f(0.0), size - 1.0);
+  let i0 = vec2u(floor(t));
+  let i1 = min(i0 + 1u, vec2u(size) - 1u);
+  let f = t - floor(t);
+  let w = ${DFG_LUT_WIDTH}u;
+  let a = mix(dfgLut[i0.y * w + i0.x], dfgLut[i0.y * w + i1.x], f.x);
+  let b = mix(dfgLut[i1.y * w + i0.x], dfgLut[i1.y * w + i1.x], f.x);
+  return mix(a, b, f.y);
+}
+
 /** world 淋不淋得到雨雪：1 是淋得到，0 是头顶有东西挡着（比深度图记的最高表面低 20 厘米以上）；图外、没有图时当淋得到。 */
 fn skyExposure(world: vec3f) -> f32 {
   if (skyOcclusion.valid.x == 0u) {
@@ -207,7 +228,9 @@ fn skyExposure(world: vec3f) -> f32 {
   if (any(uv < vec2f(0.0)) || any(uv >= vec2f(1.0))) {
     return 1.0;
   }
-  let surface = textureLoad(skyOcclusionDepth, vec2i(uv * vec2f(textureDimensions(skyOcclusionDepth))), 0);
+  let size = skyOcclusion.valid.y;
+  let texel = min(vec2u(uv * f32(size)), vec2u(size - 1u));
+  let surface = skyOcclusionDepth[texel.y * size + texel.x];
   // 深度是线性的，覆盖 450 米（SkyOcclusion 的 ABOVE + BELOW）
   return select(1.0, 0.0, surface < 1.0 && c.z > surface + 0.2 / 450.0);
 }
@@ -1080,7 +1103,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   var environmentSpecular = vec3f(0.0);
   var environment = vec3f(0.0);
   if (hasSpecular) {
-    let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
+    let dfg = dfgLookup(vec2f(1.0 - sqrt(alphaR), nDotV));
     environmentSpecular = select(specular * dfg.x + dfg.y, glass.reflectance, isGlass);
   }
   // 反射探针盖住的地方用它的镜面反射，盖不住的部分（1 - a）才用环境光和天空盒的
@@ -1242,8 +1265,6 @@ function wgslFloat(value: number): string {
   return Number.isInteger(value) ? `${value}.0` : `${value}`;
 }
 
-export const DFG_LUT_WIDTH = 32;
-export const DFG_LUT_HEIGHT = 64;
 
 /**
  * 环境 BRDF 的 DFG 查找表：x 是光泽度（1 - sqrt(alphaR)），y 是 N·V，值是 (scale, bias)，镜面项 = specular · scale + bias。
@@ -1251,11 +1272,16 @@ export const DFG_LUT_HEIGHT = 64;
  */
 export const DFG_LUT_SHADER = /* wgsl */ `
 ${BRDF}
-${FULLSCREEN_VERTEX}
 
 const SAMPLES = 1024u;
+@group(0) @binding(0) var<storage, read_write> lut: array<vec2f>;
 
-@fragment fn fs(@builtin(position) position: vec4f) -> @location(0) vec4f {
+@compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) id: vec3u) {
+  if (id.x >= ${DFG_LUT_WIDTH}u || id.y >= ${DFG_LUT_HEIGHT}u) {
+    return;
+  }
+  // 纹素的中心（原来是全屏绘制里像素的位置）
+  let position = vec2f(id.xy) + 0.5;
   let size = vec2f(${DFG_LUT_WIDTH}.0, ${DFG_LUT_HEIGHT}.0);
   let glossiness = position.x / size.x;
   let nDotV = position.y / size.y;
@@ -1282,5 +1308,5 @@ const SAMPLES = 1024u;
       bias += fc * visibility;
     }
   }
-  return vec4f(scale / f32(SAMPLES), bias / f32(SAMPLES), 0.0, 1.0);
+  lut[id.y * ${DFG_LUT_WIDTH}u + id.x] = vec2f(scale / f32(SAMPLES), bias / f32(SAMPLES));
 }`;

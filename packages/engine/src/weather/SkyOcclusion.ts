@@ -10,7 +10,8 @@
  *   redrawDistance 米才重画，两次之间贴图在世界里不动，遮挡的边缘不随相机游动；refreshInterval 秒也重画一次，跟上动的
  *   遮挡物（开着的门、移动的平台）。
  * - 没人用就不画、不建贴图：用户每帧调 use()；画质档位关掉时（skyOcclusion: false，低档）也不画。
- * - 对外给：深度贴图 depthView、世界到贴图的矩阵 worldToTexture（视图投影：xy 是 -1..1，z 是深度）、version（重画了才变）。
+ * - 对外给：深度贴图 depthView、拷进存储缓冲的同一张深度 depthBuffer（网格着色器用：不占采样贴图的名额）、世界到贴图的
+ *   矩阵 worldToTexture（视图投影：xy 是 -1..1，z 是深度）、version（重画了才变）。
  *   GPU 上的用户绑 uniform（矩阵加有效位）。前向渲染器画完的这一张，下一帧开头（begin）才换成对外的那张：这一帧的粒子
  *   模拟录在画之前，那时深度图还是旧的。
  *
@@ -23,7 +24,7 @@ import { RenderView } from '../rendering/RenderSystem';
 /** GPU 粒子的遮挡（particles/gpu 的内核按它采样）。 */
 export interface GpuOccluder {
   readonly depthView: GPUTextureView;
-  /** 视图投影（mat4）和有效位（u32，0 时不判断）。 */
+  /** 视图投影（mat4）、有效位（u32，0 时不判断）和深度图的边长（u32）。 */
   readonly uniform: GPUBuffer;
 }
 
@@ -48,6 +49,12 @@ export class SkyOcclusion implements GpuOccluder {
   readonly #device: GPUDevice;
   #texture: GPUTexture | undefined;
   #depthView: GPUTextureView | undefined;
+  /**
+   * 深度图拷进的两个存储缓冲（网格着色器按缓冲读：不占片元阶段采样贴图的名额）：画完拷进另一个，下一帧开头和矩阵一起
+   * 换上——这一帧画完以后着色的还在用旧的矩阵，读的也得是旧的深度。
+   */
+  #depthBuffers: [GPUBuffer, GPUBuffer] | undefined;
+  #published = 0;
   #uniform: GPUBuffer | undefined;
   #used = false;
   #center: [number, number, number] | undefined;
@@ -84,6 +91,12 @@ export class SkyOcclusion implements GpuOccluder {
   get uniform(): GPUBuffer {
     this.#ensure();
     return this.#uniform!;
+  }
+
+  /** 换上了的那张深度图的缓冲（边长 resolution 的 f32，按行存；网格着色器用）。重画换上以后是另一个缓冲。 */
+  get depthBuffer(): GPUBuffer {
+    this.#ensure();
+    return this.#depthBuffers![this.#published]!;
   }
 
   /**
@@ -123,14 +136,17 @@ export class SkyOcclusion implements GpuOccluder {
     });
     renderSystem.draw(context, pass, this.view, stage);
     pass.end();
+    encoder.copyTextureToBuffer({ texture: this.#texture!, aspect: 'depth-only' }, { buffer: this.#depthBuffers![1 - this.#published]!, bytesPerRow: this.resolution * 4 }, [this.resolution, this.resolution]);
     this.#pending = new Float32Array(this.view.viewProjection);
   }
 
   destroy(): void {
     this.#texture?.destroy();
     this.#uniform?.destroy();
+    for (const buffer of this.#depthBuffers ?? []) buffer.destroy();
     this.#texture = undefined;
     this.#uniform = undefined;
+    this.#depthBuffers = undefined;
   }
 
   /** 画好的那张换成对外的：矩阵、uniform、版本号。 */
@@ -140,16 +156,21 @@ export class SkyOcclusion implements GpuOccluder {
     this.#pending = undefined;
     this.#worldToTexture = pending;
     this.#version++;
+    this.#published = 1 - this.#published;
     const data = new ArrayBuffer(80);
     new Float32Array(data).set(pending);
-    new Uint32Array(data, 64, 4).set([1, 0, 0, 0]);
+    new Uint32Array(data, 64, 4).set([1, this.resolution, 0, 0]);
     this.#device.queue.writeBuffer(this.uniform, 0, data);
   }
 
   #ensure(): void {
     if (this.#texture) return;
-    this.#texture = this.#device.createTexture({ label: 'SkyOcclusion', size: [this.resolution, this.resolution], format: FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+    this.#texture = this.#device.createTexture({ label: 'SkyOcclusion', size: [this.resolution, this.resolution], format: FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC });
     this.#depthView = this.#texture.createView();
+    // 每行的字节数要是 256 的倍数：边长取 64 的倍数
+    if (this.resolution % 64 !== 0) throw new Error(`SkyOcclusion: resolution must be a multiple of 64, got ${this.resolution}`);
+    const bytes = this.resolution * this.resolution * 4;
+    this.#depthBuffers = [0, 1].map((i) => this.#device.createBuffer({ label: `SkyOcclusion depth ${i}`, size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST })) as [GPUBuffer, GPUBuffer];
     // 有效位是 0：还没画过时用户不判断
     this.#uniform = this.#device.createBuffer({ label: 'SkyOcclusion', size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   }

@@ -269,7 +269,9 @@ export class Game {
       this.animation = new AnimationSystem(this.native, this.entities);
       this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui), dayNightCycleSystem(this.entities, () => !this.editing));
       this.content.animationNative ??= this.native;
-      this.graphicsDevice = await GraphicsDevice.create(canvas);
+      // ?stride-limits=default：只要 WebGPU 的默认上限（同 CI 的软件 WebGPU，比如片元阶段最多 16 张采样贴图），本机的回归
+      // 也能查出超了上限的绑定
+      this.graphicsDevice = await GraphicsDevice.create(canvas, { defaultLimits: new URLSearchParams(location.search).get('stride-limits') === 'default' });
       void this.graphicsDevice.lost.then((error) => this.fail(error));
       // 加载内容、脚本启动时读到的就是画面的实际大小（Stride 的后备缓冲在游戏开始前就建好了）
       this.graphicsDevice.resizeToDisplaySize();

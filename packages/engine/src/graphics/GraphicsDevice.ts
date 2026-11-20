@@ -56,7 +56,8 @@ export class GraphicsDevice {
   #viewTexture: GPUTexture | undefined;
   #view: GPUTextureView | undefined;
 
-  static async create(canvas: HTMLCanvasElement): Promise<GraphicsDevice> {
+  /** defaultLimits：不要适配器能给的上限，只要 WebGPU 的默认上限（查绑定有没有超出最小的设备）。 */
+  static async create(canvas: HTMLCanvasElement, { defaultLimits = false }: { defaultLimits?: boolean } = {}): Promise<GraphicsDevice> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
     // 没有硬件适配器时（没有显卡的机器、CI 里用 SwiftShader 的 Chrome）退回软件的后备适配器：慢，但画得出来。
     // 要独立显卡：macOS、Linux 上双显卡的笔记本按它挑；Windows 上 Chrome 不理它（用哪块由系统的图形设置定，crbug.com/369219127），
@@ -69,7 +70,7 @@ export class GraphicsDevice {
     const depthClipControl = adapter.features.has('depth-clip-control');
     const timestampQuery = adapter.features.has('timestamp-query');
     const optional = [...(depthClipControl ? ['depth-clip-control' as const] : []), ...(timestampQuery ? ['timestamp-query' as const] : [])];
-    const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...optional], requiredLimits: adapterLimits(adapter) });
+    const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...optional], ...(defaultLimits ? {} : { requiredLimits: adapterLimits(adapter) }) });
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('The canvas has no WebGPU context');
     return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8', depthClipControl, timestampQuery);

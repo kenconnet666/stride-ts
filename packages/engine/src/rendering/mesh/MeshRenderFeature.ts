@@ -320,7 +320,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     if (runs?.length === 0) return;
     // 屏幕空间的遮蔽、接触阴影是主画面不透明的那些像素的：透明的、别的视图不用
     const screenSpace = !(stage.transparent || stage.shadowCasters);
-    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, stage.shadowCasters), [view.index * VIEW_STRIDE]);
+    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     for (let i = 0, end = runs ? runs.length / 3 : cullPass.batchCount; i < end; i++) {
       const b = runs ? runs[i * 3]! : i;
@@ -468,8 +468,11 @@ class Gpu {
   readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>;
   /** 视图绑定组里绑的是真的天空遮挡（有湿或雪时），还是空的；换了要重建绑定组。 */
   #occlusionBound = false;
-  /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）。 */
+  /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）和深度缓冲。 */
   readonly #noOcclusion: GPUBuffer;
+  readonly #noOcclusionDepth: GPUBuffer;
+  /** 视图绑定组里的天空遮挡深度缓冲（重画后换成另一个）；换了要重建绑定组。 */
+  #occlusionDepth: GPUBuffer | undefined;
   readonly #decals: Decals;
   readonly #clusters: Clusters;
   /** 视图绑定组里的贴花图集和缓冲；换了要重建绑定组。 */
@@ -491,7 +494,8 @@ class Gpu {
   readonly #meshes = new Map<Mesh, GpuMesh>();
   readonly #materials = new Map<Material, GpuMaterial>();
   readonly #materialData = new ArrayBuffer(MATERIAL_BYTES);
-  readonly #dfgLut: GPUTexture;
+  /** DFG 查找表（存储缓冲，见 meshShader.ts 的 dfgLookup）。 */
+  readonly #dfgLut: GPUBuffer;
 
   #worlds: GPUBuffer | undefined;
   #instances: GPUBuffer | undefined;
@@ -525,11 +529,6 @@ class Gpu {
   /** 阴影图集 → 遮蔽贴图 → 视图绑定组。 */
   /** 阴影图集 → 环境光遮蔽 → 接触阴影 → 视图绑定组。 */
   readonly #viewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>();
-  /**
-   * 画阴影投射者（阴影图集、天空遮挡的深度图）时的视图绑定组：天空遮挡绑空的——画天空遮挡时它的深度图正当着深度附件，
-   * 不能同时采样（投射者只写深度，也用不着它）。
-   */
-  readonly #casterViewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>();
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
@@ -543,6 +542,7 @@ class Gpu {
     this.#decals = decals;
     this.#clusters = clusters;
     this.#noOcclusion = device.createBuffer({ label: 'MeshRenderFeature no sky occlusion', size: 80, usage: GPUBufferUsage.UNIFORM });
+    this.#noOcclusionDepth = device.createBuffer({ label: 'MeshRenderFeature no sky occlusion depth', size: 16, usage: GPUBufferUsage.STORAGE });
     this.#unclippedDepth = unclippedDepth;
     this.#viewLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature view',
@@ -551,7 +551,7 @@ class Gpu {
         { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube' } },
-        { binding: 4, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
         { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
         { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'comparison' } },
@@ -567,7 +567,7 @@ class Gpu {
         { binding: 17, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 18, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 19, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
-        { binding: 20, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
+        { binding: 20, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 21, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         { binding: 22, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
@@ -935,11 +935,12 @@ class Gpu {
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer) {
       this.#decalAtlas = this.#decals.atlas;
       this.#decalBuffer = this.#decals.buffer;
       this.#cloudShadow = cloud?.texture;
       this.#occlusionBound = occlusion;
+      this.#occlusionDepth = occlusion ? this.#weather.skyOcclusion.depthBuffer : undefined;
       this.#skySpecular = skySpecular;
       this.#probeGeneration = probes.generation;
       this.#clearViewBindGroups();
@@ -967,15 +968,14 @@ class Gpu {
 
   /**
    * 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的；occlusion 是屏幕空间的环境光遮蔽，
-   * contact 是接触阴影，没有时都用白图；casters 是在画阴影投射者（不绑天空遮挡）。
+   * contact 是接触阴影，没有时都用白图。
    */
-  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, casters = false): GPUBindGroup {
+  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
     const ao = occlusion ?? this.#resources.white;
     const shadow = contact ?? this.#resources.white;
-    const cache = casters ? this.#casterViewBindGroups : this.#viewBindGroups;
-    let byAtlas = cache.get(atlas);
-    if (!byAtlas) cache.set(atlas, (byAtlas = new Map()));
+    let byAtlas = this.#viewBindGroups.get(atlas);
+    if (!byAtlas) this.#viewBindGroups.set(atlas, (byAtlas = new Map()));
     let groups = byAtlas.get(ao);
     if (!groups) byAtlas.set(ao, (groups = new Map()));
     let group = groups.get(shadow);
@@ -988,7 +988,7 @@ class Gpu {
           { binding: 1, resource: { buffer: this.#worlds! } },
           { binding: 2, resource: { buffer: this.#instances! } },
           { binding: 3, resource: this.#skySpecular!.createView({ dimension: 'cube' }) },
-          { binding: 4, resource: this.#dfgLut.createView() },
+          { binding: 4, resource: { buffer: this.#dfgLut } },
           { binding: 5, resource: this.#resources.linearClamp },
           { binding: 6, resource: atlas.createView() },
           { binding: 7, resource: this.#resources.shadowComparison },
@@ -1004,7 +1004,7 @@ class Gpu {
           { binding: 17, resource: { buffer: this.#probes.buffer } },
           { binding: 18, resource: (this.#cloudShadow ?? this.#resources.white).createView() },
           { binding: 19, resource: this.#resources.linearRepeat },
-          ...this.#occlusionEntries(this.#occlusionBound && !casters),
+          ...this.#occlusionEntries(),
           { binding: 22, resource: { buffer: this.#decals.buffer } },
           { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
           { binding: 24, resource: { buffer: this.#clusters.buffer } },
@@ -1018,15 +1018,14 @@ class Gpu {
   /** 视图绑定组都作废（换了天空盒、探针、云影、天空遮挡，缓冲换大了）。 */
   #clearViewBindGroups(): void {
     this.#viewBindGroups.clear();
-    this.#casterViewBindGroups.clear();
   }
 
-  /** 天空遮挡的绑定：real 时绑真的（有湿或雪；贴图第一次用时才建），否则绑空的深度图和有效位是 0 的参数。 */
-  #occlusionEntries(real: boolean): GPUBindGroupEntry[] {
+  /** 天空遮挡的绑定：有湿或雪时绑真的（第一次用时才建），否则绑空的深度缓冲和有效位是 0 的参数。 */
+  #occlusionEntries(): GPUBindGroupEntry[] {
     const sky = this.#weather.skyOcclusion;
-    return real
-      ? [{ binding: 20, resource: sky.depthView }, { binding: 21, resource: { buffer: sky.uniform } }]
-      : [{ binding: 20, resource: this.#resources.emptyShadowAtlas.createView() }, { binding: 21, resource: { buffer: this.#noOcclusion } }];
+    return this.#occlusionBound
+      ? [{ binding: 20, resource: { buffer: sky.depthBuffer } }, { binding: 21, resource: { buffer: sky.uniform } }]
+      : [{ binding: 20, resource: { buffer: this.#noOcclusionDepth } }, { binding: 21, resource: { buffer: this.#noOcclusion } }];
   }
 
   /** 网格的边的索引（线框）：每个三角形三条边，两个三角形共用的边只留一条。 */
@@ -1231,23 +1230,21 @@ const PREMULTIPLIED_ALPHA: GPUBlendState = {
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
-/** 在 GPU 上积分出 DFG 查找表（一次全屏绘制）。 */
-function createDfgLut(device: GPUDevice): GPUTexture {
-  const texture = device.createTexture({ label: 'DFG LUT', size: [DFG_LUT_WIDTH, DFG_LUT_HEIGHT], format: 'rg16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
-  const module = device.createShaderModule({ label: 'DFG LUT', code: DFG_LUT_SHADER });
-  const pipeline = device.createRenderPipeline({
-    label: 'DFG LUT',
-    layout: 'auto',
-    vertex: { module, entryPoint: 'fullscreenVertex' },
-    fragment: { module, entryPoint: 'fs', targets: [{ format: 'rg16float' }] },
+/** 在 GPU 上积分出 DFG 查找表（一次计算，写进存储缓冲）。 */
+function createDfgLut(device: GPUDevice): GPUBuffer {
+  const buffer = device.createBuffer({ label: 'DFG LUT', size: DFG_LUT_WIDTH * DFG_LUT_HEIGHT * 8, usage: GPUBufferUsage.STORAGE });
+  const pipeline = device.createComputePipeline({
+    label: 'DFG LUT', layout: 'auto',
+    compute: { module: device.createShaderModule({ label: 'DFG LUT', code: DFG_LUT_SHADER }), entryPoint: 'main' },
   });
   const encoder = device.createCommandEncoder({ label: 'DFG LUT' });
-  const pass = encoder.beginRenderPass({ colorAttachments: [{ view: texture.createView(), loadOp: 'clear', storeOp: 'store' }] });
+  const pass = encoder.beginComputePass({ label: 'DFG LUT' });
   pass.setPipeline(pipeline);
-  pass.draw(3);
+  pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer } }] }));
+  pass.dispatchWorkgroups(Math.ceil(DFG_LUT_WIDTH / 8), Math.ceil(DFG_LUT_HEIGHT / 8));
   pass.end();
   device.queue.submit([encoder.finish()]);
-  return texture;
+  return buffer;
 }
 
 /** 缓冲按 2 的幂增长，避免每多一个实体就重建。 */

@@ -25,6 +25,10 @@ import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
 import { t } from './messages';
 
+/** 出片的预设（引擎 offline/VideoExport.ts 的 RENDER_PRESETS 里常用的几个）。 */
+export const EXPORT_PRESETS = ['landscape1080', 'vertical1080', 'square1080'] as const;
+export type ExportPreset = (typeof EXPORT_PRESETS)[number];
+
 /** 编辑器里能打开的文档：场景，或者单独打开的预制体。 */
 export interface OpenedDocument {
   readonly kind: 'scene' | 'prefab';
@@ -55,6 +59,8 @@ export class EditorSession implements EditableScene {
   readonly frameGuide = shallowRef(0);
   /** 打开的时间轴（资源浏览器里打开的，下面的时间轴面板显示它）：选实体、改场景时一直开着。 */
   readonly timeline = shallowRef<OpenTimeline | undefined>();
+  /** 正在导出的时间轴（名字）；没在导出时是 undefined。 */
+  readonly exporting = shallowRef<string>();
   #timelineSave: ReturnType<typeof setTimeout> | undefined;
   /** 正在编辑的文档（场景或预制体）。 */
   readonly opened = shallowRef<OpenedDocument>();
@@ -177,6 +183,28 @@ export class EditorSession implements EditableScene {
     this.#timelineSave = setTimeout(() => {
       this.client.saveAsset('timeline', open.path, content).catch((error: unknown) => (this.notice.value = (error as Error).message));
     }, 250);
+  }
+
+  /**
+   * 把打开的时间轴出片（引擎的调试命令 render：编辑状态的页面开一个看不见的试玩页面，从头放这个时间轴、离线渲染），存进
+   * 工程的 exports 文件夹。试玩页面读的是磁盘上的文件：先把没存的场景、时间轴存了。
+   */
+  async exportTimeline(preset: ExportPreset): Promise<void> {
+    const open = this.timeline.value, agent = this.agent.value;
+    if (!open || !agent || this.exporting.value) return;
+    this.exporting.value = open.content.name;
+    this.notice.value = '';
+    try {
+      if (this.dirty.value) await this.save();
+      clearTimeout(this.#timelineSave);
+      await this.client.saveAsset('timeline', open.path, open.content);
+      const result = await agent.game.debug.run('render', { timeline: open.content.name, preset, name: `${open.content.name}-${preset}` }) as { path: string; elapsed: number };
+      this.status.value = t.timelineExported(result.path, result.elapsed);
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+    } finally {
+      this.exporting.value = undefined;
+    }
   }
 
   /** 打开别的场景或预制体：打开着的文档改过就先保存。 */

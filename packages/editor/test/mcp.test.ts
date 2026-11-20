@@ -92,7 +92,7 @@ describe('编辑器的 MCP 服务', () => {
 
   test('列出工具；读工程和资源；建材质；场景的修改照字段描述检查，过了才存', async () => {
     const tools = (await mcp.rpc('tools/list', {})).result.tools.map((tool: { name: string }) => tool.name);
-    expect(tools).toEqual(expect.arrayContaining(['project', 'list_assets', 'read_asset', 'write_asset', 'delete_asset', 'move_asset', 'import_file', 'edit_scene', 'field_schemas', 'screenshot', 'game_command']));
+    expect(tools).toEqual(expect.arrayContaining(['project', 'list_assets', 'read_asset', 'write_asset', 'delete_asset', 'move_asset', 'import_file', 'edit_scene', 'field_schemas', 'screenshot', 'render', 'game_command']));
     expect((await mcp.call('project', {})).value.assets).toMatchObject({ scene: 1 });
 
     const material = { name: 'Red', baseColor: [1, 0, 0, 1], metalness: 0, roughness: 0.5 };

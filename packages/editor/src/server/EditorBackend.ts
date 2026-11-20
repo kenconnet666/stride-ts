@@ -18,6 +18,10 @@ import { rewriteReferences } from './rewrite.ts';
 import { writeAssetTypes } from './assetTypes.ts';
 import { loadProject, projectInfo, type Project } from './project.ts';
 
+/** 导出的成片、图像序列放在工程的这个文件夹里（不提交）。 */
+export const EXPORTS_DIR = 'exports';
+const EXPORT_EXTENSIONS: ReadonlySet<string> = new Set(['mp4', 'webm', 'png']);
+
 /** 每个接口请求都要带的头（值随意）。 */
 export const EDITOR_HEADER = 'x-stride-editor';
 
@@ -334,6 +338,11 @@ export class EditorBackend {
       if (!name) throw new HttpError(400, 'name (the dropped file name) is required');
       return this.importFile(folder, name, await readBytes(request));
     }
+    if (route === 'POST /export') {
+      const name = url.searchParams.get('name');
+      if (!name) throw new HttpError(400, 'name (the file name under exports/) is required');
+      return this.saveExport(name, await readBytes(request));
+    }
     if (route === 'GET /asset' || route === 'PUT /asset' || route === 'DELETE /asset') {
       const kind = url.searchParams.get('kind'), assetPath = url.searchParams.get('path');
       if (!kind || !assetPath) throw new HttpError(400, 'kind and path are required');
@@ -342,6 +351,18 @@ export class EditorBackend {
       return this.saveAsset(kind as AssetKind, assetPath, await readJson(request), { create: url.searchParams.get('create') === '1' });
     }
     throw new HttpError(404, `no route ${route}`);
+  }
+
+  /**
+   * 存一个导出的文件（成片、图像序列的一帧，见引擎的 offline/renderCommand.ts）到工程的 EXPORTS_DIR 下；name 是那里的相对路径
+   * （可以带子文件夹），扩展名只能是 EXPORT_EXTENSIONS 里的。返回工程里的相对路径。导出的文件不是资源，不进内容目录。
+   */
+  async saveExport(name: string, bytes: Uint8Array): Promise<{ path: string; bytes: number }> {
+    const extension = path.extname(name).slice(1).toLowerCase();
+    if (!EXPORT_EXTENSIONS.has(extension)) throw new HttpError(400, `exports must be ${[...EXPORT_EXTENSIONS].join(', ')} files, got '${name}'`);
+    const file = path.join(this.project.root, EXPORTS_DIR, checkContentPath(name));
+    await writeAtomically(file, bytes);
+    return { path: path.relative(this.project.root, file).split(path.sep).join('/'), bytes: bytes.length };
   }
 
   /** 一个 JSON 资源的主文件（绝对路径）；种类不对、路径想跑出内容目录时报错。 */

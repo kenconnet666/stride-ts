@@ -227,6 +227,8 @@ export class Game {
   private pendingSteps = 0;
   /** 正在跑一帧（exit 推迟到帧末）。 */
   private inFrame = false;
+  /** 离线渲染接管着帧循环（takeOverFrames）。 */
+  private framesTakenOver = false;
   private exitRequested = false;
   /** GameOptions.stats 和上次写它的游戏时间。 */
   private statsOutput: { readonly element: HTMLElement; time: number } | undefined;
@@ -557,16 +559,52 @@ export class Game {
     if (this.status !== 'running') return;
     const interval = this.lastFrameTime === undefined ? 0 : now - this.lastFrameTime;
     this.lastFrameTime = now;
+    // 离线渲染接管着帧循环时只排下一次
+    if (!this.framesTakenOver) {
+      let advance: number | undefined;
+      if (!this.paused || this.pendingSteps > 0) {
+        if (this.paused) this.pendingSteps--;
+        const real = Math.min(interval / 1000, MAX_ELAPSED) * this.timeScale;
+        advance = this.fixedTimeStep ?? (this.paused ? STEP_SECONDS : real);
+      }
+      await this.runFrameBody(interval, advance);
+    }
+    if (this.exitRequested) {
+      this.exit();
+      return;
+    }
+    requestAnimationFrame(this.frame);
+  };
+
+  /**
+   * 离线渲染（offline/OfflineRenderer）接管帧循环：之后 requestAnimationFrame 来了不跑帧，由 runFrame 一帧一帧地跑——不受
+   * 显示器的刷新率限制，窗口被挡住、标签页在后台（浏览器把 requestAnimationFrame 降到每秒一次）时也照样快。正在跑的那一帧
+   * 跑完才兑现。返回还回去的函数。
+   */
+  async takeOverFrames(): Promise<() => void> {
+    if (this.framesTakenOver) throw new Error('Game.takeOverFrames: the frame loop is already taken over');
+    this.framesTakenOver = true;
+    while (this.inFrame) await new Promise((resolve) => setTimeout(resolve, 0));
+    return () => {
+      this.framesTakenOver = false;
+    };
+  }
+
+  /** 接管着帧循环时（takeOverFrames）：马上跑一帧，游戏时间前进 seconds 秒再画；0 时只画不更新。 */
+  runFrame(seconds: number): Promise<void> {
+    if (!this.framesTakenOver) throw new Error('Game.runFrame: call takeOverFrames() first');
+    return this.runFrameBody(0, seconds > 0 ? seconds : undefined);
+  }
+
+  /** 一帧：advance 不是 undefined 时游戏时间前进这么多秒、更新，然后画。interval 是离上一帧的毫秒数（统计用）。 */
+  private async runFrameBody(interval: number, advance: number | undefined): Promise<void> {
     const start = performance.now();
     this.inFrame = true;
     try {
       // 窗口大小在帧开头跟上，这一帧的脚本和绘制看到的一样大
       this.graphicsDevice.resizeToDisplaySize();
-      const updating = !this.paused || this.pendingSteps > 0;
-      if (updating) {
-        if (this.paused) this.pendingSteps--;
-        const real = Math.min(interval / 1000, MAX_ELAPSED) * this.timeScale;
-        this.updateTime.advance(this.fixedTimeStep ?? (this.paused ? STEP_SECONDS : real));
+      if (advance !== undefined) {
+        this.updateTime.advance(advance);
         this.input.update(this.updateTime.elapsed);
         this.debugText.beginFrame();
         this.debugDraw.beginFrame(this.updateTime.total);
@@ -589,7 +627,7 @@ export class Game {
       this.graphicsDevice.submitFrame();
       const end = performance.now();
       this.startup.firstFrame ??= end;
-      this.debug.frames.record(interval, updating ? drawStart - start : 0, end - drawStart);
+      this.debug.frames.record(interval, advance !== undefined ? drawStart - start : 0, end - drawStart);
       this.debug.endFrame();
       if (this.debug.connected) this.forwardNativeDebug();
     } catch (error) {
@@ -598,12 +636,7 @@ export class Game {
     } finally {
       this.inFrame = false;
     }
-    if (this.exitRequested) {
-      this.exit();
-      return;
-    }
-    requestAnimationFrame(this.frame);
-  };
+  }
 
   /** 调试 CLI 连着时：打开原生侧的收集（计数器、计时），原生日志转给调试桥。 */
   private forwardNativeDebug(): void {

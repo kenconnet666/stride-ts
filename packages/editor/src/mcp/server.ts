@@ -133,6 +133,23 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
     return { content: [{ type: 'image' as const, data: png, mimeType: 'image/png' }, { type: 'text' as const, text: `${width}x${height}` }] };
   });
 
+  server.registerTool('render', {
+    description: 'Offline render the running game (or, from the editor page, a hidden play-mode page) to an MP4 (H.264 + AAC) or a PNG sequence in the exports folder of the project: '
+      + 'fixed time step, sub-frame antialiasing and motion blur, the sounds played mixed in. Give a timeline entity to render a cutscene from its start (its length is the duration).',
+    inputSchema: z.object({
+      name: z.string().optional().describe('file name without extension (default "render")'),
+      preset: z.enum(['landscape1080', 'vertical1080', 'square1080', 'landscape4k']).optional(),
+      width: z.number().int().positive().optional(),
+      height: z.number().int().positive().optional(),
+      fps: z.number().positive().optional(),
+      timeline: z.string().optional().describe('entity with a TimelinePlayer script'),
+      seconds: z.number().positive().optional(),
+      samples: z.number().int().positive().optional().describe('sub-frames per frame (default 8)'),
+      shutter: z.number().min(0).max(1).optional().describe('fraction of the frame interval the shutter is open (default 0.5)'),
+      format: z.enum(['mp4', 'png']).optional(),
+    }),
+  }, async (args) => json(await (await hub()).call('render', args, { timeout: 30 * 60_000 })));
+
   server.registerTool('game_command', {
     description: 'Call a debug command on the running game page (the commands of the `stride` CLI: status, entities, inspect, set, eval, perf, ...; "commands" lists them).',
     inputSchema: z.object({ command: z.string(), args: z.record(z.string(), z.unknown()).optional() }),

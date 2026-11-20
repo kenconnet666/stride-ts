@@ -90,7 +90,8 @@ export class GraphicsDevice {
     this.backBufferFormat = navigator.gpu.getPreferredCanvasFormat();
     this.backBufferViewFormat = `${this.backBufferFormat}-srgb` as GPUTextureFormat;
     // 用 opaque：预乘 alpha 的画布在 alpha 小于 1 的地方会透出页面背景。
-    context.configure({ device, format: this.backBufferFormat, alphaMode: 'opaque', viewFormats: [this.backBufferViewFormat] });
+    // COPY_SRC：离线渲染把每个子帧的画面拷出去累积
+    context.configure({ device, format: this.backBufferFormat, alphaMode: 'opaque', viewFormats: [this.backBufferViewFormat], usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
     this.lost = device.lost.then((info) => (info.reason === 'destroyed' ? new Promise<never>(() => {}) : new Error(`WebGPU device lost (${info.reason}): ${info.message || 'no message'}`)));
   }
 
@@ -103,6 +104,13 @@ export class GraphicsDevice {
    * 否则在超大或高缩放比的屏幕上 getCurrentTexture 会失败。
    */
   resizeToDisplaySize(): void {
+    // 离线渲染（成片导出）按导出的分辨率画，不跟窗口
+    if (this.fixedSize) {
+      const [w, h] = this.fixedSize;
+      if (this.canvas.width !== w) this.canvas.width = w;
+      if (this.canvas.height !== h) this.canvas.height = h;
+      return;
+    }
     const ratio = window.devicePixelRatio;
     const limit = this.device.limits.maxTextureDimension2D;
     const width = Math.min(limit, Math.max(1, Math.round(this.canvas.clientWidth * ratio)));
@@ -110,6 +118,9 @@ export class GraphicsDevice {
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
   }
+
+  /** 画布固定成这么大（像素，离线渲染时）；undefined 是跟着窗口（resizeToDisplaySize）。 */
+  fixedSize: readonly [number, number] | undefined;
 
   /** 这一帧要画进去的纹理；每帧都是新的。 */
   currentBackBuffer(): GPUTexture {

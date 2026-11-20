@@ -26,7 +26,7 @@ import { GraphTexturePool } from './GraphTexturePool';
 import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphStats } from './RenderGraph';
 import { limitShadowCascades, limitShadowFilter, limitShadowSize, QUALITY_TIERS, type QualitySettings } from './Quality';
 import { ShadowMapRenderer } from './lighting/ShadowMapRenderer';
-import { TemporalAntialiasing } from './screenspace/TemporalAntialiasing';
+import { jitterProjection, TemporalAntialiasing } from './screenspace/TemporalAntialiasing';
 import { AmbientOcclusion } from './screenspace/AmbientOcclusion';
 import { ScreenSpaceGlobalIllumination } from './screenspace/ScreenSpaceGlobalIllumination';
 import { SubsurfaceScattering } from './screenspace/SubsurfaceScattering';
@@ -116,6 +116,9 @@ export class ForwardRenderer {
    * undefined 时按槽位。和 Stride 不同：Stride 换相机要改 CameraComponent.Slot。
    */
   mainCamera: EntityId | undefined;
+  /** 主画面的投影挪多少像素（-0.5..0.5）：离线渲染的子帧用（TAA 开着时不起作用）。 */
+  subpixelJitter: readonly [number, number] | undefined;
+  readonly #unjittered = new Float32Array(16);
   /** 这一帧用的相机实体找到了没有；没有相机时只清屏（同 Stride）。 */
   hasCamera = false;
   /** 后处理（Stride 的 ForwardRenderer.PostEffects），设置可以改，默认值同 Stride。 */
@@ -385,6 +388,13 @@ export class ForwardRenderer {
     }
     this.#lastViewProjection.set(temporal ? this.#mainView.unjitteredViewProjection : this.#mainView.viewProjection);
     this.#temporal = temporal;
+    // 离线渲染的子帧（成片导出）：主画面的投影挪亚像素，多个子帧平均就是抗锯齿；帧末挪回去
+    const jitter = !temporal && this.hasCamera ? this.subpixelJitter : undefined;
+    if (jitter) {
+      this.#unjittered.set(this.#mainView.projection);
+      jitterProjection(this.#mainView.projection, jitter[0], jitter[1], this.#mainView.width, this.#mainView.height);
+      this.#mainView.update();
+    }
     this.#mainView.screenOcclusion = undefined;
     this.#mainView.screenShadow = undefined;
     // 屏幕空间全局光照要上一帧的 HDR 画面：只在画进 HDR 缓冲时做；没做的帧以后重新开始累积。screenIndirect 要在 prepare 写视图的
@@ -520,6 +530,10 @@ export class ForwardRenderer {
     if (temporal) {
       this.temporalAntialiasing.flush();
       this.temporalAntialiasing.unjitter(this.#mainView);
+    }
+    if (jitter) {
+      this.#mainView.projection.set(this.#unjittered);
+      this.#mainView.update();
     }
   }
 

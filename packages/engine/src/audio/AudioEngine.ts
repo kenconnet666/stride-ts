@@ -5,6 +5,7 @@
  * attach，第一次操作时恢复；之前开始放的声音（比如一开始就放的背景音乐）在恢复后接着放，播放状态一直是 Playing。
  * 和 Stride 不同（浏览器的限制）：桌面版一启动就有声音。
  */
+import type { AudioRecorder } from './AudioRecorder';
 
 /** 建 AudioContext（测试里换成假的）。 */
 export type AudioContextFactory = () => AudioContext;
@@ -12,6 +13,8 @@ export type AudioContextFactory = () => AudioContext;
 const GESTURES = ['pointerdown', 'keydown', 'touchend'] as const;
 
 export class AudioEngine {
+  /** 离线渲染时设上：放的声音记到这里（见 AudioRecorder）。 */
+  recorder: AudioRecorder | undefined;
   readonly #createContext: AudioContextFactory;
   #context: AudioContext | undefined;
   #master: GainNode | undefined;

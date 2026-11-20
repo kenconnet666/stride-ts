@@ -4,7 +4,7 @@
  * （吸附到帧）；点轨道名选中轨道，"加关键帧"按播放头处实体现在的值加一个（拖时间预览着的是曲线的值，刚用操纵器挪过的是
  * 挪到的位置）。关键帧的值、别的轨道的细节在属性面板里改（选中资源浏览器里的时间轴）。
  */
-import { Camera, ChartSpline, CircleX, Diamond, KeyRound, Pause, Play, Trash2 } from '@lucide/icons';
+import { Camera, ChartSpline, CircleX, Clapperboard, Diamond, KeyRound, Pause, Play, Trash2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -12,7 +12,7 @@ import { onUnmounted } from 'vue';
 import type { TimelineFile, TimelineTrackFile } from '@stride-ts/engine/content-format';
 import { t } from './messages';
 import { TimelineCurves } from './TimelineCurves';
-import type { EditorSession } from './session';
+import { EXPORT_PRESETS, type EditorSession, type ExportPreset } from './session';
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.8rem' },
@@ -42,6 +42,7 @@ export const TimelinePanel = _component(({ session }: { session: EditorSession }
   let playing = _state(false);
   /** 选中的属性轨道按曲线显示（曲线编辑器）。 */
   let curves = _state(false);
+  let exportPreset = _state<ExportPreset>('landscape1080');
   let frame = 0;
   let lanes: HTMLElement | undefined;
   onUnmounted(() => cancelAnimationFrame(frame));
@@ -237,6 +238,11 @@ export const TimelinePanel = _component(({ session }: { session: EditorSession }
             <button type="button" disabled={selected?.key === undefined || selectedTrack.interpolation !== 'cubic'} onClick={() => setTangents('flat')}>{t.timelineFlatTangent}</button>,
           ]}
           <span {...css.attrs(styles.subtitle)}>{timeline.subtitle}</span>
+          <select aria-label={t.timelineExport} value={exportPreset} onChange={(event: Event) => (exportPreset = (event.target as HTMLSelectElement).value as ExportPreset)}>
+            {EXPORT_PRESETS.map((preset) => <option value={preset}>{t.timelineExportPresets[preset]}</option>)}
+          </select>
+          <IconButton icon={Clapperboard} aria-label={session.exporting.value ? t.timelineExporting : t.timelineExport} disabled={session.exporting.value !== undefined} onClick={() => void session.exportTimeline(exportPreset)} />
+          {session.exporting.value && <span {...css.attrs(styles.time)}>{t.timelineExporting}</span>}
           <IconButton icon={CircleX} variant="ghost" aria-label={t.timelineClose} onClick={() => session.closeTimeline()} />
         </div>
         <div {...css.attrs(styles.body)}>

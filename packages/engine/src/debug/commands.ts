@@ -25,6 +25,7 @@ import { keyCode } from '../input/keys';
 import { describe, type Debug } from './Debug';
 import { pageHelpers } from './pageHelpers';
 import { devtoolsBridgeVersion, sendDevtools } from './devtoolsBridge';
+import { RENDER_COMMAND_HELP, renderCommand } from '../offline/renderCommand';
 
 type Args = Readonly<Record<string, unknown>>;
 
@@ -37,6 +38,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('time', 'Pause, resume, step frames, time scale, fixed time step, set the game clock. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear), total (seconds).', (args) => time(game, args));
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64. args: exact (true: that frame without the output dither, for pixel comparisons).', (args) => screenshot(debug, game, args['exact'] === true));
+  debug.command('render', RENDER_COMMAND_HELP, (args) => renderCommand(game, args));
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
   debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
   debug.command('draws', 'Draw calls of the last frame per GPU render pass (scene stages, shadows, each post-processing step, UI, debug lines), in drawing order.', () => {

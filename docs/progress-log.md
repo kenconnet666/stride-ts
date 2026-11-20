@@ -419,6 +419,23 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
    - 按 60 帧跑的时候 GPU 的频率跟着负载变，同一档前后量出来差到 1.6 倍（6.5 和 10.3 ms），档位之间没法比；不限帧率（`--disable-frame-rate-limit --disable-gpu-vsync`）时两轮之间差不到 1%。
    - 第一轮高档的贴图没有变少，查出图集缩小的判断看的是"占到哪"（级联排成一行），改成在一半大的图集里试排；同时查出 `stride perf` 里阴影和主画面的耗时记在"ToneMap"名下。
 
+## 创作线 F 组（2026-11-21 起）
+
+### F4 离线渲染和成片导出（2026-11-21）
+
+在 RX 9070 GRE 上、主 Chrome 里（窗口被挡住），collect-dodge 的开场过场 Intro（6 秒，180 帧）：
+
+| 出片 | 子帧 | 渲染耗时 | 文件 |
+|---|---|---|---|
+| 横屏 1920x1080，试玩页面 | 8 | 5.7 秒 | 3.6 MB，H.264 High + AAC-LC 48 kHz 立体声 |
+| 竖屏 1080x1920，试玩页面 | 8 | 6.2 秒 | 2.6 MB |
+| 横屏，编辑器页面（看不见的试玩 iframe） | 4 | 4.9 秒 | 3.6 MB |
+| 方形 1080x1080，MCP 工具 | 4 | 4.5 秒 | 2.1 MB |
+| PNG 序列 1280x720，30 帧 | 4 | 7.2 秒（PNG 编码占大头） | 每张约 400 KB |
+
+- ffprobe 读出 180 帧、30 fps、时长 6.0 秒，音频 282 块；ffmpeg 整个解码没有报错；音量峰值 −16 dB（开门声）。抽帧看：相机绕场时墙和硬币有真的运动模糊、边缘干净，字幕在；编辑器出的和试玩页面出的第一帧一样。
+- 第一版跟着 requestAnimationFrame 走，窗口被挡住时降到每秒一帧，5 分钟没出完（CLI 的 HTTP 请求先超时了）；改成接管帧循环以后如上。编辑器里第一次出片第一帧没有天空光、没有 UI、相机不对（新开的页面一帧都没跑过），加了 30 帧预热。
+
 ## CI 的全量冒烟（2026-11-20 的记录，从 roadmap.md 的"正在做和下一步"挪过来）
 
 **CI 的全量冒烟**（2026-11-20，`.github/workflows/ci.yml`，设计见 tools/README.md 的"CI"）：SwiftShader 上 WebGPU 的上下文丢失查清修掉（缺 `--use-vulkan=swiftshader`，见 lessons.md 的 WebGPU 一节），冒烟改成一个样例一台运行器，等待改成按状态和游戏时间（lessons.md 的"冒烟测试的等待"）。8c5cda9 那次：18 个跑完的冒烟过了 16 个，没过的 simple-audio（波形图的动画按帧走，按游戏时长等不够）和 platformer2d（运行器上 Chrome 20 秒没起来）随后改了（等状态；Chrome 的启动上限放到 60 秒）。当时失败的七个都是时序类，修复分别在 701a442（bepu-sample）、ce30ce2（topdown-rpg、simple-audio）、44fd3bd（platformer2d、morph-targets）、3c6c62c（first-person-shooter、csharp-intermediate）和收尾的那次提交。没有发现引擎行为类的失败，也没有要因为 SwiftShader 本身跳过的检查。顺手修的工具缺陷：`regress.ps1` 没设 `STRIDE_CHROME_ARGS` 时丢了 `--autoplay-policy`（PowerShell 单元素数组展开成空，本地的声音检查因此失败）；`stride mouse --trusted` 固定按 100 ms，帧慢时锁不上鼠标（改成按住到游戏跑过一帧）。修复后的第一次完整运行：待确认。还没过的（fc13aa0 在验证槽位 3 上用真显卡跑全部样例，机器忙）：

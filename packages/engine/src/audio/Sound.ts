@@ -195,6 +195,8 @@ class StreamVoice implements Voice {
 
 export class SoundInstance {
   readonly sound: Sound;
+  readonly #engine: AudioEngine;
+  readonly #source: SoundSource;
   readonly #voice: Voice;
   readonly #gain: GainNode;
   readonly #panner: StereoPannerNode;
@@ -208,6 +210,8 @@ export class SoundInstance {
   /** @internal Sound.createInstance 建。 */
   constructor(engine: AudioEngine, sound: Sound, source: SoundSource, output: AudioNode = engine.output) {
     this.sound = sound;
+    this.#engine = engine;
+    this.#source = source;
     const context = engine.context;
     this.#gain = context.createGain();
     this.#panner = context.createStereoPanner();
@@ -230,6 +234,7 @@ export class SoundInstance {
   set volume(value: number) {
     this.#volume = value;
     this.#gain.gain.value = value;
+    this.#engine.recorder?.changed(this, this.#volume, this.#pan);
   }
 
   /** 左右声道，-1 全在左边，1 全在右边。 */
@@ -237,6 +242,7 @@ export class SoundInstance {
   set pan(value: number) {
     this.#pan = value;
     this.#panner.pan.value = Math.min(Math.max(value, -1), 1);
+    this.#engine.recorder?.changed(this, this.#volume, this.#pan);
   }
 
   /** 播放速度，音高跟着变（Stride 的 Pitch）。 */
@@ -260,8 +266,10 @@ export class SoundInstance {
   /** 播放；已经在放时什么也不做，暂停的从停下的地方接着放。 */
   play(): void {
     if (this.#disposed || this.playState === 'playing') return;
-    this.#voice.start(this.#state === 'paused' ? this.#pausedAt : 0);
+    const offset = this.#state === 'paused' ? this.#pausedAt : 0;
+    this.#voice.start(offset);
     this.#state = 'playing';
+    this.#engine.recorder?.started(this, this.#source, offset, this.#voice.loop, this.#pitch, this.#volume, this.#pan);
   }
 
   /** 播放，并停掉这个声音的其他实例（Stride 的 PlayExclusive）。 */
@@ -274,6 +282,7 @@ export class SoundInstance {
     if (this.playState !== 'playing') return;
     this.#pausedAt = this.#voice.halt();
     this.#state = 'paused';
+    this.#engine.recorder?.stopped(this);
   }
 
   /** 停下，下次从头放。 */
@@ -282,6 +291,7 @@ export class SoundInstance {
     this.#voice.halt();
     this.#pausedAt = 0;
     this.#state = 'stopped';
+    this.#engine.recorder?.stopped(this);
   }
 
   /** 不再用：停下、断开（Stride 的 Dispose）。 */

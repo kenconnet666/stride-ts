@@ -2,6 +2,17 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-21 离线渲染和成片导出
+
+F4 的实现部分（30 秒短片的验收另算）。参考虚幻的 Movie Render Queue（每帧累积多次子帧采样）、Unity Recorder。引擎 `offline/`。
+
+- **离线渲染接管帧循环**（`Game.takeOverFrames`、`runFrame(seconds)`）：渲染期间 requestAnimationFrame 来了只排下一次、不跑帧，离线渲染自己一帧帧地跑。第一版靠暂停加 `game.step` 跟着 requestAnimationFrame 走，窗口被别的窗口挡住时 Chrome 把它降到每秒一次，6 秒的片子 5 分钟没出完；改了以后不受刷新率和遮挡的限制，能跑多快跑多快。编辑状态的页面里开的试玩 iframe 在屏幕外、requestAnimationFrame 根本不走，也照样能出片。
+- **子帧累积**（`OfflineRenderer`）：每帧 samples 个子帧（默认 8），子帧在像素内按 Halton(2,3) 抖动（`ForwardRenderer.subpixelJitter`，不开 TAA 时作用在主视图的投影上，帧末还原），时刻在快门开着的那段里均匀分布（第 i 帧第 k 个子帧在 (i + shutter·(k+0.5)/samples)/fps，默认快门 0.5 即 180°），后备缓冲画完马上拷出来、在线性的 rgba16float 上按 1/samples 加起来，最后写成 sRGB 8 位读回。渲染期间关掉 TAA、屏幕空间的运动模糊和 FXAA（子帧做了它们的事；只有一个子帧时 FXAA 照旧）。画布按导出的分辨率画（`GraphicsDevice.fixedSize`），和窗口无关；画布配置加了 `COPY_SRC`。
+- **声音按游戏时间录、事后混**（`audio/AudioRecorder.ts`）：实时的 AudioContext 跟墙上的时钟走，和离线渲染的快慢对不上，所以渲染期间扬声器静音，`SoundInstance` 的播放、停止、音量和左右的变化按游戏时间记下来，完了用 `OfflineAudioContext` 一次混成（流式的声音下载解码）。限制：接在空间化发射器上的声音按发射器算的衰减、方位不在里面（做空间化的成片时再把发射器的增益和方位也记进去）。
+- **编码和封装**：画面用 WebCodecs 编成 H.264 High（级别按每秒宏块数挑），声音编成 AAC-LC（浏览器不支持时 Opus）；MP4 封装自己写（`offline/mp4.ts`，ftyp、mdat、moov，co64、有 B 帧时写 ctts）——就那几个盒子，比带一个封装库省事（依赖逐项替代的规矩）。不做 WebM：MP4 加 H.264、AAC 哪里都能放，短视频平台也收；要 AV1、WebM 时再加。图像序列是 PNG，编码也自己写（`offline/png.ts`，Paeth 过滤加 `CompressionStream`）：`OffscreenCanvas.convertToBlob` 在窗口被挡住时每张要一秒。
+- **入口**：调试命令 `render`（`stride call render`；参数：预设或宽高、帧率、时长、时间轴（播放器所在的实体或时间轴的名字：先跳回开头再放，时长默认是时间轴的长度）、子帧数、快门、格式），存进工程的 `exports/`（编辑器后端 `POST /export`，不进内容目录、不提交）；编辑器的 MCP 工具 `render`；时间轴面板上的"出片"按钮（预设：横屏 1080p、竖屏 9:16、方形）。编辑状态的页面（脚本不挂）在页面里开一个看不见的试玩 iframe，先跑 30 帧（让脚本开始、天空光这类后台算的东西就位），再在那里出片。预设 `RENDER_PRESETS`。渲染队列没单独做：一次一条，agent 连着调、界面一次出一个预设。
+- **和 Stride 不同**：Stride 没有离线渲染，录屏是实时的，帧率不稳时动作快慢不匀。
+
 ## 2026-11-21 时间轴：资源格式和游戏里播放
 
 F2 的前一半（编辑器的面板、曲线编辑器还没做）。参考虚幻的 Sequencer、Unity 的 Timeline：一个资源里多条轨道，游戏里当过场放，编辑器里拖时间预览，成片导出按它出帧——一套时间轴两用。

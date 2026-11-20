@@ -101,6 +101,10 @@ export interface EditorMessages {
   readonly timelineInterpolations: { readonly constant: string; readonly linear: string; readonly cubic: string };
   readonly timelineAutoTangent: string;
   readonly timelineFlatTangent: string;
+  readonly timelineExport: string;
+  readonly timelineExporting: string;
+  readonly timelineExportPresets: { readonly landscape1080: string; readonly vertical1080: string; readonly square1080: string };
+  readonly timelineExported: (path: string, seconds: number) => string;
   // 会话
   readonly prefabMade: (path: string) => string;
   readonly savedWithMissing: (count: number, first: readonly string[], more: boolean) => string;
@@ -198,6 +202,10 @@ const zhCN: EditorMessages = {
   timelineInterpolations: { constant: '阶梯', linear: '线性', cubic: '曲线' },
   timelineAutoTangent: '自动切线',
   timelineFlatTangent: '平切线',
+  timelineExport: '出片（从头离线渲染成 MP4，带声音，存进工程的 exports 文件夹）',
+  timelineExporting: '出片中…',
+  timelineExportPresets: { landscape1080: '横屏 1080p', vertical1080: '竖屏 9:16', square1080: '方形 1:1' },
+  timelineExported: (path, seconds) => `已导出 ${path}（${seconds.toFixed(0)} 秒）`,
   prefabMade: (path) => `做成了预制体 ${path}，场景里换成了它的实例（保存场景以后生效）`,
   savedWithMissing: (count, first, more) => `已保存；${count} 处脚本的必填属性没设，试玩时这些脚本不挂：${first.join('、')}${more ? '……' : ''}`,
 };
@@ -294,6 +302,10 @@ const enUS: EditorMessages = {
   timelineInterpolations: { constant: 'Step', linear: 'Linear', cubic: 'Curve' },
   timelineAutoTangent: 'Auto tangent',
   timelineFlatTangent: 'Flat tangent',
+  timelineExport: 'Render to MP4 from the start (offline, with sound) into the exports folder of the project',
+  timelineExporting: 'Rendering…',
+  timelineExportPresets: { landscape1080: 'Landscape 1080p', vertical1080: 'Vertical 9:16', square1080: 'Square 1:1' },
+  timelineExported: (path, seconds) => `Exported ${path} (${seconds.toFixed(0)} s)`,
   prefabMade: (path) => `Made prefab ${path}; the scene now has an instance of it (takes effect when the scene is saved)`,
   savedWithMissing: (count, first, more) => `Saved; ${count} required script propert${count === 1 ? 'y is' : 'ies are'} not set, so those scripts are not attached when playing: ${first.join(', ')}${more ? '…' : ''}`,
 };

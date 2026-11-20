@@ -31,6 +31,7 @@ export interface EditorMessages {
   readonly gameViewport: string;
   // 场景树
   readonly sceneEntities: string;
+  readonly documentNode: string;
   // 资源浏览器
   readonly assets: string;
   readonly pathPlaceholder: string;
@@ -112,6 +113,7 @@ const zhCN: EditorMessages = {
   openingGame: '正在打开游戏……',
   gameViewport: '游戏视口',
   sceneEntities: '场景里的实体',
+  documentNode: '场景本身：选中看场景的设置；实体拖到这里挂到根上',
   assets: '资源',
   pathPlaceholder: '新的内容路径',
   pickAsset: '选一个资源或文件夹',
@@ -189,6 +191,7 @@ const enUS: EditorMessages = {
   openingGame: 'Opening the game…',
   gameViewport: 'Game viewport',
   sceneEntities: 'Entities in the scene',
+  documentNode: 'The scene itself: select it for the scene settings; drop entities here to move them to the root',
   assets: 'Assets',
   pathPlaceholder: 'New content path',
   pickAsset: 'Pick an asset or a folder',

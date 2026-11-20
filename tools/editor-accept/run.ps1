@@ -29,7 +29,8 @@ $results = foreach ($app in $Apps) {
   $server = Start-Process -FilePath pwsh -ArgumentList '-NoProfile', '-Command', "pnpm dev --strictPort --port $port *> `"$Out\$app-dev.log`"" -WorkingDirectory (Join-Path $root 'apps' $app) -PassThru -WindowStyle Hidden
   try {
     # stride open 等到游戏页面跑起来；新起的开发服务器第一次要预构建依赖，可能要一分钟
-    pnpm exec stride open "http://localhost:$port/__stride/editor/" --headless --size 1400x900 --dpr 1 *> "$Out\$app-open.log"
+    # 界面按中文开：accept.ts 按中文的按钮名（aria-label）找按钮
+    pnpm exec stride open "http://localhost:$port/__stride/editor/?lang=zh-CN" --headless --size 1400x900 --dpr 1 *> "$Out\$app-open.log"
     node (Join-Path $PSScriptRoot 'accept.ts') $app $port $Out *> "$Out\$app.log"
   } finally {
     pnpm exec stride close *> $null

@@ -29,7 +29,7 @@ node packages/editor/src/server/cli.ts new apps/my-game
 - 复制粘贴实体：Ctrl+C 复制选中的实体（连同后代、组件），Ctrl+V 粘贴成选中的实体的兄弟（紧跟在后面），Ctrl+Shift+V 粘贴成它的子实体，Ctrl+D 复制一份放在原来的后面。新 id，拷贝之间的引用跟着换，实例还是引用加覆盖；取舍见 docs/decisions.md 的"编辑器里复制、粘贴实体"。
 - 试玩是不带 `stride-edit` 重新打开游戏页面（先保存）。
 - 验收：`pwsh tools/editor-accept/run.ps1 -Apps <样例>`（见 [tools/editor-accept](../../tools/editor-accept/README.md)）。
-- 资源浏览器：选中资源可以移动、改名、删除（引用它的文件跟着改写）；场景、预制体可以打开（双击或"打开"按钮）。"新建"在选中的文件夹里建场景、材质、基本形状的模型（JSON 写的 `.model`，引擎生成网格）、UI 页面（初始内容在 `src/newAssets.ts`），重名的加数字，建好以后选中它、路径框里改名。
+- 资源浏览器：选中资源可以移动、改名、删除（引用它的文件跟着改写）；场景、预制体可以打开（双击或"打开"按钮）。"新建"在选中的文件夹里建场景、材质、基本形状的模型（JSON 写的 `.model`，引擎生成网格）、UI 页面（初始内容在 `src/newAssets.ts`），重名的加数字，建好以后选中它、路径框里改名。从系统里拖进来的音频（mp3、ogg、wav、flac、aac）导入成声音、图片（png、jpg、svg）导入成贴图，源文件放在旁边（`POST /import`）；模型还要走导入器。
 
 ### 预制体
 

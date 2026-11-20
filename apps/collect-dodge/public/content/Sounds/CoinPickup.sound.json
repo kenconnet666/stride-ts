@@ -1,0 +1,6 @@
+{
+ "name": "CoinPickup",
+ "encoding": "wav",
+ "streamFromDisk": false,
+ "spatialized": false
+}

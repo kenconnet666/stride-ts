@@ -8,7 +8,7 @@
 import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { isProceduralModel, parseProceduralModel } from '@stride-ts/engine/content-format';
+import { isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS } from '@stride-ts/engine/content-format';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -114,6 +114,36 @@ export class EditorBackend {
       if (create && this.database.get(kind, assetPath)) throw new HttpError(409, `${kind} ${assetPath} already exists`);
       await writeAtomically(file, JSON.stringify(content, null, 1));
       await this.#refresh([this.#relative(file)]);
+      return this.database.get(kind, assetPath)!;
+    });
+  }
+
+  /**
+   * 导入一个拖进来的文件（编辑器的资源浏览器）：源文件原样放进 folder，旁边写上它的资源文件——音频（mp3、ogg、wav、flac、aac）
+   * 是声音（.sound.json，不流式、不空间化，属性面板里再改），图片（png、jpg、svg）是单独引用的贴图（.texture.json）。名字取
+   * 文件名，重名的加数字。glTF、FBX 这些模型要走导入器（原生的场景导入），还没接进来。
+   */
+  async importFile(folder: string, fileName: string, bytes: Uint8Array): Promise<AssetRecord> {
+    if (folder !== '') checkContentPath(folder);
+    const extension = path.extname(fileName).toLowerCase();
+    const base = path.basename(fileName, path.extname(fileName)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
+    const audio = ({ '.mp3': 'mp3', '.ogg': 'ogg', '.wav': 'wav', '.flac': 'flac', '.aac': 'aac' } as const)[extension as '.mp3'];
+    const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg' } as const)[extension as '.png'];
+    if (!audio && !image) throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac) and images (png, jpg, svg) can be dropped in for now; models go through the importer`);
+    const kind: AssetKind = audio ? 'sound' : 'texture';
+    return this.#enqueue(async () => {
+      let assetPath = '';
+      for (let n = 1; ; n++) {
+        assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
+        if (!this.database.get(kind, assetPath) && !this.database.get(audio ? 'audio' : 'image', assetPath)) break;
+      }
+      const source = path.join(this.project.contentDir, audio ? `${assetPath}.${audio}` : assetPath + TEXTURE_EXTENSIONS[image!]);
+      const main = path.join(this.project.contentDir, assetFileName(kind as 'sound', assetPath));
+      await writeAtomically(source, bytes);
+      await writeAtomically(main, JSON.stringify(audio
+        ? { name: path.basename(assetPath), encoding: audio, streamFromDisk: false, spatialized: false }
+        : { texture: assetPath, encoding: image }, null, 1));
+      await this.#refresh([this.#relative(source), this.#relative(main)]);
       return this.database.get(kind, assetPath)!;
     });
   }
@@ -248,6 +278,11 @@ export class EditorBackend {
       return this.database.list();
     }
     if (route === 'POST /move') return this.moveAssets(await readJson(request) as MoveRequest);
+    if (route === 'POST /import') {
+      const folder = url.searchParams.get('folder') ?? '', name = url.searchParams.get('name');
+      if (!name) throw new HttpError(400, 'name (the dropped file name) is required');
+      return this.importFile(folder, name, await readBytes(request));
+    }
     if (route === 'GET /asset' || route === 'PUT /asset' || route === 'DELETE /asset') {
       const kind = url.searchParams.get('kind'), assetPath = url.searchParams.get('path');
       if (!kind || !assetPath) throw new HttpError(400, 'kind and path are required');
@@ -325,11 +360,15 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
   }
 }
 
-function readBody(request: IncomingMessage): Promise<string> {
+async function readBody(request: IncomingMessage): Promise<string> {
+  return (await readBytes(request)).toString('utf8');
+}
+
+function readBytes(request: IncomingMessage): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     request.on('data', (chunk: Buffer) => chunks.push(chunk));
-    request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    request.on('end', () => resolve(Buffer.concat(chunks)));
     request.on('error', reject);
   });
 }

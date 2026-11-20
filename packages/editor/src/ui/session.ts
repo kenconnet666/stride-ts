@@ -142,6 +142,15 @@ export class EditorSession implements EditableScene {
     return record;
   }
 
+  /** 导入拖进来的文件（音频成声音、图片成贴图）放进 folder；返回新资源的记录（资源列表马上带上它们）。 */
+  async importFiles(folder: string, files: readonly File[]): Promise<AssetRecord[]> {
+    const records: AssetRecord[] = [];
+    for (const file of files) records.push(await this.client.importFile(folder, file));
+    const known = new Set(this.assets.value.map((asset) => `${asset.kind}:${asset.path}`));
+    this.assets.value = [...this.assets.value, ...records.filter((record) => !known.has(`${record.kind}:${record.path}`))];
+    return records;
+  }
+
   /** 删掉一个资源；还有别的资源引用它时报错（错误里列出是谁），force 照删。 */
   async deleteAsset(kind: AssetKind, path: string, force = false): Promise<void> {
     await this.client.deleteAsset(kind, path, { force });

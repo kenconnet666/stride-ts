@@ -254,6 +254,25 @@ describe('后端（EditorBackend）', () => {
     expect(((await bad.json()) as { error: string }).error).toMatch(/procedural\.type must be one of/);
   });
 
+  test('导入拖进来的文件：音频成声音、图片成贴图（源文件放在旁边），重名的加数字；不认识的拒绝', async () => {
+    const wav = new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4]);
+    const post = (folder: string, name: string, body: Uint8Array<ArrayBuffer>) => api(`/import?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(name)}`, { method: 'POST', body });
+    const first = await post('Game/Sounds', 'coin pickup.wav', wav);
+    expect(first.status).toBe(200);
+    const sound = await first.json() as AssetRecord;
+    expect([sound.kind, sound.path]).toEqual(['sound', 'Game/Sounds/coinpickup']);
+    expect(JSON.parse(await readFile(path.join(directory, 'public/content/Game/Sounds/coinpickup.sound.json'), 'utf8'))).toEqual({ name: 'coinpickup', encoding: 'wav', streamFromDisk: false, spatialized: false });
+    expect(new Uint8Array(await readFile(path.join(directory, 'public/content/Game/Sounds/coinpickup.wav')))).toEqual(wav);
+    expect(((await (await post('Game/Sounds', 'coin pickup.wav', wav)).json()) as AssetRecord).path).toBe('Game/Sounds/coinpickup2');
+    const texture = await (await post('Game/Textures', 'Coin.PNG', new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).json() as AssetRecord;
+    expect([texture.kind, texture.path]).toEqual(['texture', 'Game/Textures/Coin']);
+    expect(JSON.parse(await readFile(path.join(directory, 'public/content/Game/Textures/Coin.texture.json'), 'utf8'))).toEqual({ texture: 'Game/Textures/Coin', encoding: 'png' });
+    const model = await post('Game', 'hero.glb', new Uint8Array([1]));
+    expect(model.status).toBe(400);
+    expect(((await model.json()) as { error: string }).error).toMatch(/models go through the importer/);
+    expect((await post('../x', 'a.wav', wav)).status).toBe(400);
+  });
+
   test('别的程序改了文件（监视器报进来）：攒一批处理，通知一次；内容目录外面的不管', async () => {
     const before = events.length;
     const contentDir = path.join(directory, 'public', 'content');

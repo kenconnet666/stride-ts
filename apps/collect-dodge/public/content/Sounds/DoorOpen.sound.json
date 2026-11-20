@@ -1,0 +1,6 @@
+{
+ "name": "DoorOpen",
+ "encoding": "wav",
+ "streamFromDisk": false,
+ "spatialized": false
+}

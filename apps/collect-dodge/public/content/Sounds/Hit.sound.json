@@ -1,0 +1,6 @@
+{
+ "name": "Hit",
+ "encoding": "wav",
+ "streamFromDisk": false,
+ "spatialized": false
+}

@@ -58,7 +58,8 @@ const ICONS = { model: Box, image: Image, texture: Image, audio: Music, sound: M
 /**
  * 资源浏览器：内容目录里的资源按文件夹列出（后端推送变化时跟着变）。选中一个资源或文件夹可以改它的路径（移动、改名，
  * 引用它的文件跟着改写）、删掉它；把资源、文件夹拖进别的文件夹也是移动。"新建"在选中的文件夹（选中的是资源时是它所在的
- * 文件夹）里建场景、材质、基本形状的模型、UI 页面（newAssets.ts），建好以后选中它，路径框里改名字。
+ * 文件夹）里建场景、材质、基本形状的模型、UI 页面（newAssets.ts），建好以后选中它，路径框里改名字。从系统里拖进来的
+ * 音频、图片导入成声音、贴图，放进同一个文件夹。
  */
 export const AssetBrowser = _component(({ session }: { session: EditorSession }) => {
   const { assets } = session;
@@ -141,6 +142,22 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     });
   };
 
+  // 从系统里拖进来的文件（不是树里拖动的节点）：导入
+  const hasFiles = (event: DragEvent) => event.dataTransfer?.types.includes('Files') === true;
+  const importDropped = (event: DragEvent) => {
+    if (!hasFiles(event)) return;
+    event.preventDefault();
+    const files = [...(event.dataTransfer?.files ?? [])];
+    if (files.length === 0) return;
+    void run('导入', async () => {
+      const folder = folderForNew();
+      const records = await session.importFiles(folder, files);
+      if (folder) expanded = [...new Set([...expanded, FOLDER + folder])];
+      selected = records.slice(-1).map((record) => `${record.kind}:${record.path}`);
+      return `导入了 ${records.map((record) => `${record.kind} ${record.path}`).join('、')}`;
+    });
+  };
+
   // 拖进文件夹：新路径是那个文件夹加上自己的名字
   const dropped = ({ node, target: { parent } }: TreeMove<Node>) => {
     const folder = parent === undefined ? '' : nodes.get(parent)?.path ?? '';
@@ -149,7 +166,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
   };
 
   return () => (
-    <div {...css.attrs(styles.panel)}>
+    <div {...css.attrs(styles.panel)} onDragover={(event: DragEvent) => hasFiles(event) && event.preventDefault()} onDrop={importDropped}>
       <div {...css.attrs(styles.bar)}>
         <TextField
           {...css.attrs(styles.path)}

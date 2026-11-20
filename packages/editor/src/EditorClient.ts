@@ -36,6 +36,14 @@ export class EditorClient {
     return request('PUT', `${assetRoute(kind, path)}&create=1`, content);
   }
 
+  /** 导入一个文件（音频成声音、图片成贴图）放进 folder（内容路径，'' 是根），返回新资源的记录。 */
+  async importFile(folder: string, file: File): Promise<AssetRecord> {
+    const response = await fetch(`${EDITOR_API_PATH}/import?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: HEADERS, body: file });
+    const result = await response.json() as AssetRecord | { error: string };
+    if (!response.ok) throw new Error(`editor import ${file.name}: ${(result as { error: string }).error}`);
+    return result as AssetRecord;
+  }
+
   /** 移动、改名资源（几个，或者一个文件夹下面的全部）；引用它们的文件跟着改写。 */
   moveAssets(move: MoveRequest): Promise<MoveResult> {
     return request('POST', '/move', move);

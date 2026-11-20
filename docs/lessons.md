@@ -29,6 +29,7 @@
   - 关掉 Dawn 的 robustness（越界保护）或校验，GPU 时间不变。
   - 全屏通道的 `loadOp` 从 `clear` 换成 `load`，帧时间不变、通道时间反而多 0.5 ms。NVIDIA 对“清屏后整张覆盖”的情况有快速路径，所以全屏通道照常用 `clear`。
 - **Linux 上没有显卡时（CI、WSL、容器）WebGPU 画布要 `--use-vulkan=swiftshader`**（2026-11-20）：只给 `--use-webgpu-adapter=swiftshader` 时 Chrome 合成走 GL（ANGLE 的 SwiftShader）、Dawn 走 Vulkan，画布的交换链贴图要两边共用一份内存（外部内存对象），SwiftShader 的 GL 不支持，GPU 进程建不出这张贴图（"Could not find SharedImageBackingFactory … WebgpuSwapChainTexture"），WebGPU 的上下文随之丢掉，Dawn 的 wire 断开，所有挂着的异步调用（`createRenderPipelineAsync`、`getCompilationInfo`、`mapAsync`）都以"A valid external Instance reference no longer exists" / "Instance dropped" 结束，`mappedAtCreation` 的 `createBuffer` 报"too large for the implementation"。能用的一组：`--enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader --use-angle=swiftshader --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader`（`--use-angle=vulkan` 在本地的 Chrome 158 能用，CI 上不行）。GPU 进程这类问题看 Chrome 自己的日志（`stride open` 写在用户目录的 `chrome.log`），页面的控制台看不到；WSL 的 Debian 里装了 Linux 版 Chrome，可以在本地试参数。
+- **绑定数量按默认上限算，不按本机的**（2026-11-20）：`adapterLimits` 把适配器能给的上限都要来，这台机器每个着色阶段能绑 48 张采样贴图，CI 的 SwiftShader 和很多手机只有默认的 16。网格着色器的片元阶段固定绑 13 张以后，一个颜色树带 4 张贴图的材质（csharp-intermediate）就超了，只有 CI 报错（"The number of sampled textures (17) in the Fragment stage exceeds the maximum per-stage limit (16)"，`CreatePipelineLayout`）。查表、只取单个纹素的数据改用存储缓冲（DFG 查找表、天空遮挡的深度），贴图类的合进一张贴图数组（贴花的图集）。页面地址带 `?stride-limits=default` 时设备只要默认上限，`tools/regress.ps1` 都这么开，本机的回归也能查出来。
 
 ## 浏览器运行环境
 

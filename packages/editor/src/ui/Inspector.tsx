@@ -56,6 +56,9 @@ function addableScripts(registered: readonly string[], entities: Entities): { ty
   return registered.filter((type) => !everywhere(scriptClass(type))).map((type) => ({ type, label: counts.get(scriptClass(type))! > 1 ? type : scriptClass(type) }));
 }
 
+/** 实体上有的组件（场景文件的键，脚本不算）。 */
+const keysOf = (entity: SceneEntityFile): ComponentKey[] => (Object.keys(COMPONENT_FIELDS) as ComponentKey[]).filter((key) => entity.components[key] !== undefined);
+
 /** JSON 值（实体、场景文件）里 path 上的值（列表按下标）。 */
 function valueAt(root: unknown, path: ValuePath): unknown {
   let value: unknown = root;
@@ -157,12 +160,24 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
 
   /** 去掉组件；实体上有脚本要它（requires）时照样去掉，在工具条上提示这些脚本试玩时不挂。 */
   const removeComponent = (targets: Entities, key: ComponentKey) => {
-    const dependents = new Set(targets.flatMap((entity) => (entity.components.scripts ?? [])
-      .filter((script) => agent.value?.requiredComponents(script.type).some((entry) => entry.component === key))
-      .map((script) => scriptClass(script.type))));
+    const dependents = new Set(targets.flatMap((entity) => [
+      // 要它的脚本（requires）和要它的组件（COMPONENT_FIELDS 的 requires，日夜循环要天空）
+      ...(entity.components.scripts ?? [])
+        .filter((script) => agent.value?.requiredComponents(script.type).some((entry) => entry.component === key))
+        .map((script) => scriptClass(script.type)),
+      ...keysOf(entity).filter((other) => COMPONENT_FIELDS[other].requires?.includes(key)).map((other) => COMPONENT_FIELDS[other].label),
+    ]));
     change(targets, ({ id }) => ({ type: 'set', entity: id, path: ['components', key], value: undefined }));
-    session.notice.value = dependents.size > 0 ? `去掉了 ${COMPONENT_FIELDS[key].label}；${[...dependents].join('、')} 要它，试玩时这些脚本不挂` : '';
+    session.notice.value = dependents.size > 0 ? `去掉了 ${COMPONENT_FIELDS[key].label}；${[...dependents].join('、')} 要它，试玩时不起作用` : '';
   };
+
+  /** 加组件：它要的组件（COMPONENT_FIELDS 的 requires）实体上没有的一起加上，同一步撤销。 */
+  const addComponent = (targets: Entities, key: ComponentKey) =>
+    change(targets, ({ id, components }) => {
+      const missing = [...(COMPONENT_FIELDS[key].requires ?? []) as ComponentKey[], key].filter((needed) => components[needed] === undefined);
+      const edits: SceneEdit[] = missing.map((needed) => ({ type: 'set', entity: id, path: ['components', needed], value: structuredClone(COMPONENT_FIELDS[needed].initial) }));
+      return edits.length === 0 ? undefined : edits.length === 1 ? edits[0]! : { type: 'batch', edits };
+    });
 
   /**
    * 没选实体时：场景自己的设置（物理、导航、偏移、合成器）。写了的显示字段（× 去掉），没写的从"添加设置"里加（引擎的默认值）。
@@ -251,7 +266,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
         <select {...css.attrs(styles.add)} aria-label="添加组件" value="" onChange={(event: Event) => {
           const value = (event.target as HTMLSelectElement).value;
           if (value.startsWith(SCRIPT_OPTION)) addScript(list, value.slice(SCRIPT_OPTION.length));
-          else if (value) change(list, ({ id, components }) => (components[value as ComponentKey] !== undefined ? undefined : { type: 'set', entity: id, path: ['components', value], value: structuredClone(COMPONENT_FIELDS[value as ComponentKey].initial) }));
+          else if (value) addComponent(list, value as ComponentKey);
         }}>
           <option value="">添加组件……</option>
           {keys.filter((key) => list.some((entity) => entity.components[key] === undefined)).map((key) => <option value={key}>{COMPONENT_FIELDS[key].label}</option>)}

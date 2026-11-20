@@ -112,3 +112,10 @@ test('场景自己的设置的字段描述（SCENE_FIELDS）：添加时放进�
   const stale = { gravity: [0, -40, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 1 / 60, maxStepsPerFrame: 3 };
   expect(checkFields(stale, SCENE_FIELDS.physics.type, 'physics')).toEqual(['physics.maxStepsPerFrame: not a field of this component']);
 });
+
+test('组件之间的依赖（COMPONENT_FIELDS 的 requires）指的都是存在的组件，不指自己；日夜循环要天空', () => {
+  for (const [key, description] of Object.entries(COMPONENT_FIELDS) as [string, { requires?: readonly string[] }][]) {
+    for (const needed of description.requires ?? []) expect([key, needed in COMPONENT_FIELDS && needed !== key]).toEqual([key, true]);
+  }
+  expect(COMPONENT_FIELDS.dayNightCycle.requires).toEqual(['skyAtmosphere']);
+});

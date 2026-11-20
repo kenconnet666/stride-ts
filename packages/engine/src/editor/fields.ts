@@ -149,6 +149,8 @@ export interface ComponentDescription {
   readonly type: FieldType;
   /** "添加组件"时放进文件的值。 */
   readonly initial: unknown;
+  /** 要同一个实体上也有的组件（场景文件的键）：编辑器加这个组件时把缺的一起加上，去掉被依赖的组件时提示。 */
+  readonly requires?: readonly string[];
 }
 
 /**
@@ -266,6 +268,8 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       moonPhase: { type: number({ min: 0, max: 1 }), optional: true, default: 0.5, description: '0 new moon, 0.5 full moon' },
     })),
     initial: {},
+    // 日夜循环的系统查询的是同时有 DayNightCycle 和 SkyAtmosphere 的实体
+    requires: ['skyAtmosphere'],
   },
   windZone: {
     label: 'Wind zone',

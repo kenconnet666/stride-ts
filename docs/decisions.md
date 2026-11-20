@@ -40,6 +40,8 @@ P4 "天气系统和风场"的底座，建在 GPU 粒子上。以后天气状态�
 - **加载场景**（`SceneScriptBinder.attach`）：实体上缺了就报错（场景、实体名、脚本、缺的组件）、不挂这个脚本，游戏照常；要的是同一实体上排在后面的脚本时先推迟再试（同脚本属性引用排在后面的脚本）。用代码 `entity.add` 加的脚本不查（游戏代码自己负责，缺了 `require` 照样抛）。
 - **编辑器**：加脚本时把缺的组件一起加上，同一步撤销（`EditAgent.requiredComponents`：场景组件经 `sceneComponentKey` 反查场景文件的键，`UIComponent` → `ui`；要的是另一个游戏脚本时加那个脚本；游戏代码里加的组件场景文件里加不了，工具条上提示）。去掉一个被依赖的组件照样去掉，工具条上提示哪些脚本试玩时不挂。
 - **样例**：用到 `this.entity.require(UIComponent / AnimationComponent)` 的 14 个脚本加了 requires（AnimationStart、RotationScript 不加：它们在没有时自己加上 AnimationComponent，同 Stride 的 GetOrCreate；第一版给它们也加了，回归里骑士不跑了）；SimpleAudio 的 SoundScript、MorphTargets 的 MorphTargetsController 原来是"属性没填就在运行时 throw"，改成必填属性（加载时按"必填属性没设"报出来）。
+- 场景组件之间也有这种关系（日夜循环要同一个实体上有物理天空，系统按两个组件一起查）：写在字段描述上（`ComponentDescription.requires`，场景文件的键），编辑器加组件时把缺的一起加上、去掉被依赖的组件时提示，同脚本的 requires。
+
 ## 2026-11-20 体积云：球壳里的程序噪声，半分辨率步进加时间累积，只盖天空的像素
 
 P4 画面功能的下一项（`rendering/VolumetricClouds.ts`，`VolumetricClouds` 组件，场景文件的 `volumetricClouds`，`stride call clouds`，画质档位的 `volumetricClouds`，低档关）。Stride 没有。做法照 Schneider 2015（地平线：零之曙光的云），对照 PlayCanvas 的 dynamic-sky（它的云改自 Godot 的 sky shaders 示例）。要场景里有物理天空。

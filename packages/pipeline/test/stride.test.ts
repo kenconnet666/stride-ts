@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { crc32, deflateSync } from 'node:zlib';
 import path from 'node:path';
-import { decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile, type SpriteSheetFile, type UIFile } from '@stride-ts/engine/content-format';
+import { CEL_BLACK_AND_WHITE_RAMP, CEL_DEFAULT_RAMP, decodeCubemap, decodeModel, type MaterialFile, type PrefabFile, type SceneFile, type SkyboxFile, type SpriteSheetFile, type UIFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { DerivedDataCache } from '../src/cache';
@@ -144,6 +144,7 @@ describe('导入 Stride 场景', () => {
     pane: '11111111-0000-0000-0000-0000000000a8',
     lacquer: '11111111-0000-0000-0000-0000000000a9',
     knight: '11111111-0000-0000-0000-0000000000aa',
+    toon: '11111111-0000-0000-0000-0000000000ab',
     heroSheet: '11111111-0000-0000-0000-0000000000f4',
     bumpy: '11111111-0000-0000-0000-000000000009',
     bumps: '11111111-0000-0000-0000-00000000000a',
@@ -418,6 +419,18 @@ describe('导入 Stride 场景', () => {
       '        NormalDistribution: !MaterialSpecularMicrofacetNormalDistributionBlinnPhong {}',
       '        Environment: !MaterialSpecularMicrofacetEnvironmentThinGlass {}',
       '    Transparency: !MaterialTransparencyBlendFeature', '        Alpha: !ComputeFloat', '            Value: 0.5', '        DitheredShadows: false',
+      'Layers: {}',
+    ].join('\n'),
+    // 卡通着色：漫反射黑白两档、改了 N·L，镜面用默认的四档（带微表面的分布）
+    'Assets/Materials/Toon.sdmat': [
+      '!MaterialAsset', `Id: ${ids.toon}`, 'Attributes:',
+      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 0.5, B: 0.0, A: 1.0}',
+      '    DiffuseModel: !MaterialDiffuseCelShadingModelFeature',
+      '        FakeNDotL: 1.5', '        RampFunction: !MaterialCelShadingLightDefault', '            IsBlackAndWhite: true',
+      '    Specular: !MaterialMetalnessMapFeature', '        MetalnessMap: !ComputeFloat', '            Value: 0.0',
+      '    SpecularModel: !MaterialSpecularCelShadingModelFeature',
+      '        NormalDistribution: !MaterialSpecularMicrofacetNormalDistributionBeckmann {}',
+      '        RampFunction: !MaterialCelShadingLightDefault {}',
       'Layers: {}',
     ].join('\n'),
     // CSharpIntermediate 的 Yellow：清漆的车漆，碎片的法线贴图按随机的贴图坐标取；没写的输入用 Stride 的默认值
@@ -937,6 +950,19 @@ describe('导入 Stride 场景', () => {
     expect(importer.warnings).toEqual([expect.stringMatching(/Environment MaterialSpecularMicrofacetEnvironmentThinGlass is not supported/)]);
     const knight = JSON.parse(await readFile(path.join(out, 'Game/Materials/Knight.material.json'), 'utf8')) as MaterialFile;
     expect([knight.microfacet, knight.transparency]).toEqual([{ distribution: 'blinnPhong', visibility: 'implicit' }, { type: 'blend', alpha: 0.5, ditheredShadows: false }]);
+  });
+
+  test('卡通着色：漫反射、镜面的渐变换成节点（黑白两档、默认四档），镜面的卡通模型也带微表面的各项', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-toon');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
+    await importer.importAsset(project.byPath('Game/Materials/Toon')!);
+    expect(importer.warnings).toEqual([]);
+    const toon = JSON.parse(await readFile(path.join(out, 'Game/Materials/Toon.material.json'), 'utf8')) as MaterialFile;
+    expect([toon.celShading, toon.microfacet]).toEqual([
+      { diffuse: { ramp: CEL_BLACK_AND_WHITE_RAMP, fakeNDotL: 1.5 }, specular: { ramp: CEL_DEFAULT_RAMP } },
+      { distribution: 'beckmann' },
+    ]);
   });
 
   test('单独导入脚本用代码加载的资源（Content.Load 的材质）；场景不能这样导入', async () => {

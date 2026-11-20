@@ -170,6 +170,8 @@ export interface MaterialFile {
   readonly specularShading?: false;
   /** 微表面镜面模型的各项（Stride 的 MaterialSpecularMicrofacetModelFeature），只写和默认不同的。 */
   readonly microfacet?: MicrofacetModel;
+  /** 卡通着色（Stride 的 MaterialDiffuseCelShadingModelFeature、MaterialSpecularCelShadingModelFeature），漫反射、镜面各自可选。 */
+  readonly celShading?: CelShading;
   /** 没有漫反射着色模型（Stride 的 DiffuseModel 是空的）：不算漫反射光照，漫反射的颜色只当玻璃的颜色这类用途。默认有。 */
   readonly diffuseShading?: false;
   /**
@@ -259,6 +261,28 @@ export interface MicrofacetModel {
   readonly visibility?: 'smithSchlickGGX' | 'implicit' | 'neumann' | 'cookTorrance' | 'kelemen' | 'smithBeckmann' | 'smithGGXCorrelated' | 'smithSchlickBeckmann';
   /** 环境光的镜面系数：查 DFG 表，或 Stride 的多项式近似（GGXPolynomial）。 */
   readonly environment?: 'lut' | 'polynomial';
+}
+
+/**
+ * 卡通着色的渐变：节点 [位置, r, g, b]（线性颜色），按位置从小到大，最多 CEL_RAMP_STOPS 个；节点之间线性插值，同一位置的两个
+ * 节点是一个台阶，两头外面取端点的颜色。Stride 的默认四档、黑白两档和渐变贴图都换成这种节点（贴图在导入时化简）。
+ */
+export type CelRamp = readonly (readonly [number, number, number, number])[];
+
+/** 一个渐变最多几个节点（材质常量里留的位置）。 */
+export const CEL_RAMP_STOPS = 8;
+/** Stride 卡通着色的默认渐变（MaterialCelShadingLightDefault）：0.2、0.5、0.8 处分成 0、0.3、0.8、1 四档。 */
+export const CEL_DEFAULT_RAMP: CelRamp = [[0, 0, 0, 0], [0.2, 0, 0, 0], [0.2, 0.3, 0.3, 0.3], [0.5, 0.3, 0.3, 0.3], [0.5, 0.8, 0.8, 0.8], [0.8, 0.8, 0.8, 0.8], [0.8, 1, 1, 1], [1, 1, 1, 1]];
+/** Stride 卡通着色的黑白两档（MaterialCelShadingLightDefault 的 IsBlackAndWhite）：0.2 以下黑，以上白。 */
+export const CEL_BLACK_AND_WHITE_RAMP: CelRamp = [[0.2, 0, 0, 0], [0.2, 1, 1, 1]];
+
+/**
+ * 卡通着色。漫反射：N·L 乘光的衰减过 diffuse 渐变，阴影和遮蔽另乘；fakeNDotL 大于 0 时 N·L 先乘它（Stride 的 FakeNDotL）。镜面：
+ * 微表面的结果按亮度过 specular 渐变。环境光的漫反射也按亮度过 diffuse 渐变。
+ */
+export interface CelShading {
+  readonly diffuse?: { readonly ramp: CelRamp; readonly fakeNDotL?: number };
+  readonly specular?: { readonly ramp: CelRamp };
 }
 
 export interface TransparencyFile {

@@ -5,7 +5,7 @@
  * MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
  * 见 docs/architecture.md 的"外观：材质参数的分层"，等着色器系统一起做。和 Mesh 一样只是数据，GPU 资源由渲染特性管理。
  */
-import type { AmbientOcclusionSlot, ColorOperator, MicrofacetModel, TextureSampler } from '../../content/format';
+import { CEL_RAMP_STOPS, type AmbientOcclusionSlot, type CelShading, type ColorOperator, type MicrofacetModel, type TextureSampler } from '../../content/format';
 import type { Branded } from '../../data/prop';
 import { Color4, type ColorLike } from '../../data/vectors';
 import { ResourceTable } from '../../engine/ResourceTable';
@@ -114,6 +114,8 @@ export interface MaterialDesc {
   readonly specularShading?: boolean;
   /** 微表面镜面模型的各项（意思同 content/format.ts 的 MicrofacetModel），默认是 Stride 默认的那套。 */
   readonly microfacet?: MicrofacetModel;
+  /** 卡通着色（意思同 content/format.ts 的 CelShading；渐变用 CEL_DEFAULT_RAMP 这些现成的，或者自己给节点）。 */
+  readonly celShading?: CelShading;
   /** 算不算漫反射光照（Stride 的 DiffuseModel 有没有），默认 true。 */
   readonly diffuseShading?: boolean;
   /** 玻璃（意思同 content/format.ts 的 MaterialFile.glass）；有它的材质画在透明阶段。 */
@@ -204,6 +206,7 @@ export class Material {
   readonly specularEnergyConservative: boolean;
   readonly specularShading: boolean;
   readonly microfacet: Required<MicrofacetModel>;
+  readonly celShading: CelShading | undefined;
   readonly diffuseShading: boolean;
   readonly glass: { readonly refractiveIndex: number } | undefined;
   readonly roughness: number;
@@ -238,6 +241,10 @@ export class Material {
     this.specularEnergyConservative = desc.specularEnergyConservative ?? true;
     this.specularShading = desc.specularShading ?? true;
     this.microfacet = { fresnel: 'schlick', distribution: 'ggx', visibility: 'smithSchlickGGX', environment: 'lut', ...desc.microfacet };
+    for (const ramp of [desc.celShading?.diffuse?.ramp, desc.celShading?.specular?.ramp]) {
+      if (ramp && (ramp.length === 0 || ramp.length > CEL_RAMP_STOPS)) throw new Error(`Material ${name}: a cel shading ramp needs 1 to ${CEL_RAMP_STOPS} stops, got ${ramp.length}`);
+    }
+    this.celShading = desc.celShading;
     this.diffuseShading = desc.diffuseShading ?? true;
     this.glass = desc.glass;
     this.roughness = desc.roughness ?? 1;

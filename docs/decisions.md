@@ -13,6 +13,16 @@
 - **看过**（TPP，加一个画进 640x360 贴图的相机，`stride call lights` 铺光）：1600 盏半径 2 米的光，分簇时主画面不透明那一遍 1.01 ms、贴图相机 0.27 ms，各自建簇 0.28 ms；逐个看所有光时 28.0 ms、6.7 ms。以前定长的表有 41 个簇满了 64 个，远处的墙上沿深度分层的边界出现斜的暗块；现在每簇最多 104 个，和逐个看的画面一致。一万盏半径 3 米的光：池子从 55296 自动扩到 262144，房子那块和逐个看的最大差 1/255；建簇 1.42 ms，不透明那一遍 3.9 ms。16 个贴花分簇和不分簇的画面一致。`stride call clusters '{"stats":true}'` 看每个视图的簇里有多少光、池子要了多少。
 - **以后**：建簇是每个簇把所有的球看两遍，光上万时要先按屏幕格子粗剔（或者按球排序后二分）；放进 P4 的预算里再做。
 
+## 2026-11-20 卡通着色
+
+Stride 的 MaterialDiffuseCelShadingModelFeature、MaterialSpecularCelShadingModelFeature。没有样例用它，没法和桌面 Stride 对图，照着色器的公式做：
+
+- **漫反射**：N·L 乘光的距离、角度衰减（FakeNDotL 大于 0 时再乘它）过渐变，替代 N·L 和衰减；阴影和遮蔽另乘（所以网格着色器里直射光的衰减和阴影改成分开传）。环境光、天空盒的漫反射按亮度（Luma）过渐变、色相不变。
+- **镜面**：微表面的 F · V · D / 4 按亮度过渐变，再乘光色和 N·L；镜面的卡通模型也是微表面模型，菲涅耳、分布这些照样能换。环境光的镜面不变（同 Stride）。
+- **渐变统一成节点**（`CelRamp`：最多 8 个 [位置, r, g, b]，节点间线性插值，同一位置的两个节点是台阶）：Stride 的默认四档、黑白两档正好能精确表示（`CEL_DEFAULT_RAMP`、`CEL_BLACK_AND_WHITE_RAMP`）；渐变贴图在导入时取中间一行、换到线性，按 Douglas-Peucker 化简（硬台阶两边的纹素中心都留下，节点间的线性插值就是 Stride 线性采样的结果）。和 Stride 不同：不占贴图绑定（片元阶段的贴图已经 16 个），渐变是矢量的。8 个节点放不下的渐变（很多细节的）会有误差，最多补到 8 个点为止。
+- 材质常量从 272 字节加到 544（两条渐变各 8 个 vec4）。
+- **看过**（TPP，所有材质临时换成默认的四档）：角色、墙面成了分档的平涂；不透明那一遍 0.18 ms。
+
 ## 2026-11-20 Stride 材质特性的清单；微表面模型的各项
 
 路线图 B3：对照 Stride 的材质特性（`Stride.Rendering/Rendering/Materials` 下的 `Material*Feature`、微表面模型的各项）和导入器，
@@ -21,8 +31,8 @@
 | 特性 | 现状 | 打算 |
 |---|---|---|
 | 微表面模型的菲涅耳、分布、可见性、环境项（Fresnel None；Beckmann、Blinn-Phong；隐式、Neumann、Cook-Torrance、Kelemen、Smith-Beckmann、相关的 Smith-GGX、Smith-Schlick-Beckmann；GGXPolynomial） | 以前悄悄按默认的那套算（UIElementLink 的骑士用的是 Blinn-Phong 加隐式） | 这次做了 |
-| 卡通着色（MaterialDiffuseCelShadingModelFeature、MaterialSpecularCelShadingModelFeature：按 N·L 查一条渐变或分几档） | 按 Lambert、GGX 算，没有警告 | 做（风格化的游戏常用），先加警告 |
-| 头发（MaterialDiffuseHairModelFeature、MaterialSpecularHairModelFeature：Kajiya-Kay 加两层偏移的高光） | 同上 | 做角色时一起做，先加警告 |
+| 卡通着色（MaterialDiffuseCelShadingModelFeature、MaterialSpecularCelShadingModelFeature：按 N·L 查一条渐变或分几档） | 按 Lambert、GGX 算，没有警告 | 做了（同一天，见下面"卡通着色"） |
+| 头发（MaterialDiffuseHairModelFeature、MaterialSpecularHairModelFeature：Kajiya-Kay 或 Scheuermann 的两层偏移高光，噪声贴图，不透明加透明两遍、按 alpha 丢弃） | 导入时警告，按 Lambert、微表面算 | 一大套（多遍、噪声贴图、头发方向），做角色时一起做（放到 E） |
 | 曲面细分（Flat、PN） | 警告、忽略 | WebGPU 没有曲面细分着色器；要做就在计算着色器里细分，放到 E |
 | 贴图的镜面颜色、透明的 tint 贴图、标量贴图（金属度等几处只认常量）、两张贴图的组合、自发光贴图的非乘法运算符 | 警告、用常量或左边那张 | 有内容用到时补（颜色树已经能编任意的组合，把这几处接到颜色树上） |
 | 材质层的 UVScale、cavity、透明、位移、嵌套的层 | 警告、忽略 | 同上 |

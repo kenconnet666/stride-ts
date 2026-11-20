@@ -10,6 +10,11 @@ import {
   EXTENSIONS,
   encodeCubemap,
   TEXTURE_EXTENSIONS,
+  CEL_BLACK_AND_WHITE_RAMP,
+  CEL_DEFAULT_RAMP,
+  CEL_RAMP_STOPS,
+  type CelRamp,
+  type CelShading,
   type ColorOperator,
   type MaterialFile,
   type MaterialLayerFile,
@@ -25,8 +30,9 @@ import type { DerivedDataCache } from '../cache.ts';
 import { applyColorKey, bleedTransparentColors, encodePng, maskAlpha } from '../image.ts';
 import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
+import { simplifyRamp } from './celRamp.ts';
 import { importColorTree } from './particles.ts';
-import { asNumber, asObject, color3, color4, linearColor, parseAssetReference, vec2, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, color3, color4, linearColor, parseAssetReference, srgbToLinear, vec2, type StrideObject, type StrideValue } from './yaml.ts';
 
 /** 材质导入用到的导入器的东西：工程、工具、选项，警告记到导入器的列表里，文件按内容路径写到输出目录。 */
 export interface MaterialImportContext {
@@ -102,17 +108,20 @@ export class MaterialImporter {
     const specularModel = asObject(attributes['SpecularModel']);
     // 玻璃（MaterialSpecularThinGlassModelFeature）是微表面模型的一种，菲涅耳项换成按折射率算的反射比例，另外多画一遍透射
     const glass = specularModel?.$type === 'MaterialSpecularThinGlassModelFeature';
-    if (specularModel && !glass && specularModel.$type !== 'MaterialSpecularMicrofacetModelFeature') {
+    // 卡通着色的镜面模型（MaterialSpecularCelShadingModelFeature）是微表面模型加一条渐变
+    const microfacetModel = specularModel?.$type === 'MaterialSpecularMicrofacetModelFeature' || specularModel?.$type === 'MaterialSpecularCelShadingModelFeature';
+    if (specularModel && !glass && !microfacetModel) {
       this.#context.warnings.push(`${asset.file}: specular model ${specularModel.$type} is not supported yet; using the microfacet model`);
     }
     // 还没做的特性要说出来，不能悄悄忽略
     if (attributes['Tessellation']) this.#context.warnings.push(`${asset.file}: material feature Tessellation is not supported yet; ignored`);
     // 漫反射同理：颜色（Diffuse）和着色模型（DiffuseModel）缺一个就不算漫反射光照（只有自发光的激光、玻璃）
     const diffuseShading = attributes['Diffuse'] !== undefined && attributes['DiffuseModel'] !== undefined;
-    const diffuseModel = asObject(attributes['DiffuseModel'])?.$type;
-    if (diffuseModel && diffuseModel !== 'MaterialDiffuseLambertModelFeature') {
-      this.#context.warnings.push(`${asset.file}: diffuse model ${diffuseModel} is not supported yet; using Lambert`);
+    const diffuseModel = asObject(attributes['DiffuseModel']);
+    if (diffuseModel && diffuseModel.$type !== 'MaterialDiffuseLambertModelFeature' && diffuseModel.$type !== 'MaterialDiffuseCelShadingModelFeature') {
+      this.#context.warnings.push(`${asset.file}: diffuse model ${diffuseModel.$type} is not supported yet; using Lambert`);
     }
+    const celShading = await this.#celShading(diffuseModel, specularModel, asset);
     // 化不成固定槽的属性整棵树放进 trees（最底下一层盖满的材质层）；固定槽里留个占位的值，只用来定工作流
     const trees = await this.#surfaceTrees(attributes, asset, uvScale);
     const metalness = workflow !== 'MaterialMetalnessMapFeature' ? undefined : trees?.metalness ? 0 : this.#scalar(asObject(specular!['MetalnessMap']), 0, asset);
@@ -133,6 +142,7 @@ export class MaterialImporter {
       ...(workflow === 'MaterialSpecularMapFeature' && specular!['IsEnergyConservative'] === false ? { specularEnergyConservative: false as const } : {}),
       ...(specular && !specularModel ? { specularShading: false as const } : {}),
       ...(specularModel && !glass ? this.#microfacet(specularModel, asset) : {}),
+      ...(celShading ? { celShading } : {}),
       ...(diffuseShading ? {} : { diffuseShading: false as const }),
       ...(glass ? { glass: { refractiveIndex: asNumber(specularModel['RefractiveIndex'], 1.52) } } : {}),
       roughness,
@@ -339,6 +349,41 @@ export class MaterialImporter {
       ...(environment && environment !== 'lut' ? { environment } : {}),
     };
     return Object.keys(microfacet).length > 0 ? { microfacet } : {};
+  }
+
+  /**
+   * 卡通着色（Stride 的 MaterialDiffuseCelShadingModelFeature、MaterialSpecularCelShadingModelFeature）：渐变是默认的四档、
+   * 黑白两档（MaterialCelShadingLightDefault），或者一张渐变贴图（MaterialCelShadingLightRamp，没给贴图时同默认的四档）。
+   */
+  async #celShading(diffuseModel: StrideObject | undefined, specularModel: StrideObject | undefined, asset: AssetEntry): Promise<CelShading | undefined> {
+    const diffuse = diffuseModel?.$type === 'MaterialDiffuseCelShadingModelFeature' ? diffuseModel : undefined;
+    const specular = specularModel?.$type === 'MaterialSpecularCelShadingModelFeature' ? specularModel : undefined;
+    if (!diffuse && !specular) return undefined;
+    const fakeNDotL = asNumber(diffuse?.['FakeNDotL'], 0);
+    return {
+      ...(diffuse ? { diffuse: { ramp: await this.#celRamp(asObject(diffuse['RampFunction']), asset), ...(fakeNDotL > 0 ? { fakeNDotL } : {}) } } : {}),
+      ...(specular ? { specular: { ramp: await this.#celRamp(asObject(specular['RampFunction']), asset) } } : {}),
+    };
+  }
+
+  /** 卡通着色的渐变换成节点：渐变贴图取中间一行（Stride 在 v = 0.5 处采样），按贴图的 sRGB 设置换到线性，再化简。 */
+  async #celRamp(ramp: StrideObject | undefined, asset: AssetEntry): Promise<CelRamp> {
+    if (ramp?.$type === 'MaterialCelShadingLightDefault' && ramp['IsBlackAndWhite'] === true) return CEL_BLACK_AND_WHITE_RAMP;
+    const reference = ramp?.$type === 'MaterialCelShadingLightRamp' ? parseAssetReference(ramp['RampTexture']) : undefined;
+    if (!reference) return CEL_DEFAULT_RAMP;
+    const texture = this.#context.project.get(reference.id, asset.file);
+    const image = await this.#context.tools.decodeImage(await readFile(sourceOf(texture)));
+    const type = asObject(texture.data['Type']);
+    const srgb = type?.$type === 'ColorTextureType' && type['UseSRgbSampling'] !== false;
+    const y = Math.floor(image.height / 2);
+    const row = new Float32Array(image.width * 3);
+    for (let x = 0; x < image.width; x++) {
+      for (let c = 0; c < 3; c++) {
+        const value = image.pixels[(y * image.width + x) * 4 + c]! / 255;
+        row[x * 3 + c] = srgb ? srgbToLinear(value) : value;
+      }
+    }
+    return simplifyRamp(row, image.width, CEL_RAMP_STOPS);
   }
 
   /** CullMode：None 是两面都画；Front（只画背面）还不支持。 */

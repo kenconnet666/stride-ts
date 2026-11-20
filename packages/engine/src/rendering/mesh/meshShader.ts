@@ -18,8 +18,10 @@
  * - 法线贴图（MaterialSurfaceNormalMap、NormalUpdate）：切线空间的法线（可选 y 取反、×2-1、由 xy 算 z）乘 TBN，
  *   副切线 = w · cross(法线, 切线)；之后的光照都用这个法线。网格没有切线时用顶点法线；
  * - 自发光直接加上。
+ * 材质可以换微表面模型的各项（Material.microfacet）、用卡通着色（Material.celShading）。
  * 输出线性的 HDR 颜色，后处理和色调映射在后面（postfx/PostProcessingEffects）。
  */
+import { CEL_RAMP_STOPS } from '../../content/format';
 import { CLUSTER_WGSL } from '../lighting/Clusters';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
@@ -331,6 +333,11 @@ struct Material {
   sheen: vec4f,
   // 各向异性（Material.anisotropy）：强度（0 是没有）、方向转角的 cos、sin
   anisotropy: vec4f,
+  // 卡通着色（Material.celShading）：x、y 是漫反射、镜面渐变的节点数（0 是不用），z 是 FakeNDotL（0 是不改）
+  cel: vec4f,
+  // 两条渐变的节点（位置、线性颜色）
+  celDiffuse: array<vec4f, ${CEL_RAMP_STOPS}>,
+  celSpecular: array<vec4f, ${CEL_RAMP_STOPS}>,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
@@ -1015,13 +1022,51 @@ fn baseColor(in: Varyings) -> vec4f {
 struct Lit { diffuse: vec3f, specular: vec3f };
 
 /**
- * 一个光源的直射光：Lambert 漫反射加微表面镜面（默认菲涅耳 Schlick、GGX、Smith-Schlick-GGX，材质可以换，见 Surface.microfacet），
- * l 是指向光源的单位向量，lightColor 已经乘过衰减、阴影和遮蔽（Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet）。
+ * 卡通着色的渐变（Stride 的 IMaterialCelShadingLightFunction.Compute）：在材质的节点间按 x 线性插值，同一位置的两个节点是台阶，
+ * 两头外面取端点的颜色。diffuse 选漫反射还是镜面的那条。
  */
-fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> Lit {
+fn celRamp(diffuse: bool, x: f32) -> vec3f {
+  let count = u32(select(material.cel.y, material.cel.x, diffuse));
+  var previous = select(material.celSpecular[0], material.celDiffuse[0], diffuse);
+  if (x <= previous.x) {
+    return previous.yzw;
+  }
+  for (var i = 1u; i < count; i++) {
+    let next = select(material.celSpecular[i], material.celDiffuse[i], diffuse);
+    if (x < next.x) {
+      return mix(previous.yzw, next.yzw, (x - previous.x) / (next.x - previous.x));
+    }
+    previous = next;
+  }
+  return previous.yzw;
+}
+
+/** 颜色按亮度过渐变、色相不变（Stride 的 IMaterialCelShadingLightFunction.ComputeColor，亮度是 LuminanceUtils.Luma）。 */
+fn celColor(diffuse: bool, color: vec3f) -> vec3f {
+  let luma = max(dot(color, vec3f(0.299, 0.587, 0.114)), 0.0001);
+  return celRamp(diffuse, luma) * color / luma;
+}
+
+/** 环境光的漫反射：卡通着色的材质按亮度过渐变（MaterialSurfaceShadingDiffuseCelShading.ComputeEnvironmentLightContribution）。 */
+fn celEnvironment(color: vec3f) -> vec3f {
+  return select(color, celColor(true, color), material.cel.x > 0.0);
+}
+
+/**
+ * 一个光源的直射光：Lambert 漫反射加微表面镜面（默认菲涅耳 Schlick、GGX、Smith-Schlick-GGX，材质可以换，见 Surface.microfacet；
+ * Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet），卡通着色的材质两项各过渐变。l 是指向光源的单位向量；
+ * attenuation 是距离、角度衰减，visibility 是阴影乘遮蔽（卡通着色只让衰减进渐变）。
+ */
+fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f, attenuation: f32, visibility: f32) -> Lit {
   let nDotL = max(dot(s.n, l), 0.0001);
-  let lightColorNdotL = lightColor * nDotL;
-  var result = Lit(s.diffuse / PI * lightColorNdotL, vec3f(0.0));
+  let lightColorNdotL = lightColor * (attenuation * visibility * nDotL);
+  var diffuseLight = lightColorNdotL;
+  if (material.cel.x > 0.0) {
+    // MaterialSurfaceShadingDiffuseCelShading：N·L 乘衰减（FakeNDotL 大于 0 时再乘它）过渐变，替代 N·L 和衰减
+    let fake = material.cel.z;
+    diffuseLight = celRamp(true, nDotL * attenuation * select(1.0, fake, fake > 0.0)) * lightColor * visibility;
+  }
+  var result = Lit(s.diffuse / PI * diffuseLight, vec3f(0.0));
   let hasSheen = any(s.sheenColor > vec3f(0.0));
   if (!s.hasSpecular && !hasSheen) {
     return result;
@@ -1041,8 +1086,10 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> Lit {
       result.specular = fresnel * d * visibility * lightColorNdotL;
     } else {
       let d = microfacetDistribution((s.microfacet >> 1u) & 3u, s.alphaR, nDotH);
-      let visibility = microfacetVisibility((s.microfacet >> 3u) & 7u, s.alphaR, nDotL, s.nDotV, nDotH, dot(s.v, h));
-      result.specular = fresnel * visibility * d / 4.0 * lightColorNdotL;
+      let geometric = microfacetVisibility((s.microfacet >> 3u) & 7u, s.alphaR, nDotL, s.nDotV, nDotH, dot(s.v, h));
+      let reflected = fresnel * geometric * d / 4.0;
+      // 卡通着色（MaterialSurfaceShadingSpecularCelShading）：反射的那部分按亮度过渐变
+      result.specular = select(reflected, celColor(false, reflected), material.cel.y > 0.0) * lightColorNdotL;
     }
   }
   if (hasSheen) {
@@ -1271,7 +1318,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
       }
     }
     if (i32(i) == i32(view.cloudShadow.w)) { shadow *= cloudShadow(in.world, l); }
-    let lit = shadeLight(surface, l, view.lightColors[i].rgb * shadow * directOcclusion);
+    let lit = shadeLight(surface, l, view.lightColors[i].rgb, 1.0, shadow * directOcclusion);
     direct.diffuse += lit.diffuse;
     direct.specular += lit.specular;
   }
@@ -1297,10 +1344,11 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
       attenuation *= angular * angular;
     }
     // 这个视图用不用阴影看图集的尺寸（不用时是 0）
+    var shadow = 1.0;
     if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0) {
-      attenuation *= computeLocalShadow(u32(light.direction.w), in.world, n, max(dot(n, l), 0.0001), light.position.xyz);
+      shadow = computeLocalShadow(u32(light.direction.w), in.world, n, max(dot(n, l), 0.0001), light.position.xyz);
     }
-    let lit = shadeLight(surface, l, light.color.rgb * attenuation * directOcclusion);
+    let lit = shadeLight(surface, l, light.color.rgb, attenuation, shadow * directOcclusion);
     direct.diffuse += lit.diffuse;
     direct.specular += lit.specular;
   }
@@ -1327,11 +1375,11 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     environment = environmentSpecular * probe.rgb * ao;
   }
   if (hasAmbient || hasSky) {
-    scattered += diffuse * view.ambientColor.rgb * ao;
+    scattered += diffuse * celEnvironment(view.ambientColor.rgb) * ao;
     environment += environmentSpecular * view.ambientColor.rgb * ao * (1.0 - probe.a);
     if (hasSky) {
       let skyIntensity = view.sky.x * ao;
-      scattered += diffuse * evaluateSH(skyDirection(n)) * skyIntensity;
+      scattered += diffuse * celEnvironment(evaluateSH(skyDirection(n)) * view.sky.x) * ao;
       if (hasSpecular && probe.a < 1.0) {
         environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, skyDirection(reflection), sqrt(alphaR) * view.sky.y).rgb * skyIntensity * (1.0 - probe.a);
       }

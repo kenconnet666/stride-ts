@@ -101,6 +101,12 @@ export {
   type ParticleModuleFile,
   type ParticleValue,
   parseCollisionMask,
+  CEL_BLACK_AND_WHITE_RAMP,
+  CEL_DEFAULT_RAMP,
+  CEL_RAMP_STOPS,
+  type CelRamp,
+  type CelShading,
+  type MicrofacetModel,
 } from './content/format';
 export { Commands } from './engine/Commands';
 export {

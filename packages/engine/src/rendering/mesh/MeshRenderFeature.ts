@@ -33,7 +33,7 @@ import { Skybox } from '../lighting/Skybox';
 import type { SubsurfaceMaterials } from '../screenspace/SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER } from './meshShader';
-import { vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/format';
+import { CEL_RAMP_STOPS, vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/format';
 import { Mesh } from './Mesh';
 import { inRenderMask, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
@@ -70,7 +70,7 @@ const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
 const LOCAL_SHADOW_FLOATS = 104;
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
-const MATERIAL_BYTES = 272;
+const MATERIAL_BYTES = 544;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 const DISTRIBUTION_CODES = { ggx: 0, beckmann: 1, blinnPhong: 2 } as const;
@@ -1155,6 +1155,12 @@ class Gpu {
       const { sheen, anisotropy } = material;
       floats.set(sheen ? [...sheen.color, sheen.roughness] : [0, 0, 0, 0], 60);
       floats.set(anisotropy ? [anisotropy.strength, Math.cos(anisotropy.rotation), Math.sin(anisotropy.rotation), 0] : [0, 1, 0, 0], 64);
+      // 卡通着色：节点数（0 是不用）、FakeNDotL，再是两条渐变各 CEL_RAMP_STOPS 个节点
+      const cel = material.celShading;
+      floats.set([cel?.diffuse?.ramp.length ?? 0, cel?.specular?.ramp.length ?? 0, cel?.diffuse?.fakeNDotL ?? 0, 0], 68);
+      floats.fill(0, 72, 72 + CEL_RAMP_STOPS * 8);
+      cel?.diffuse?.ramp.forEach((stop, i) => floats.set(stop, 72 + i * 4));
+      cel?.specular?.ramp.forEach((stop, i) => floats.set(stop, 72 + CEL_RAMP_STOPS * 4 + i * 4));
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});

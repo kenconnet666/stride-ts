@@ -4,9 +4,12 @@
 name: CI
 
 on:
+  # 只改文档的不跑（同一分支上新的推送会取消正在跑的，文档的推送不该把它打断）
   push:
     branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
   pull_request:
+    paths-ignore: ['docs/**', '**/*.md']
   workflow_dispatch:
 
 permissions:

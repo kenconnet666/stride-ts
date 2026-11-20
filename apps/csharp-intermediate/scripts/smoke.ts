@@ -77,7 +77,9 @@ check('UI：点代码建的按钮显示时间；输入框的字写到文字上�
 load('Collision trigger');
 const trigger = evaluate<string[]>(`tap('Space').then(async () => {
   const seen = new Set();
-  for (let i = 0; i < 400 && !(seen.has('Ball entered CollisionTrigger') && seen.has('Ball left CollisionTrigger')); i++) { await frames(1); for (const l of lines()) seen.add(l); }
+  // 按游戏时间等（最多 10 秒），不按帧数：无头 Chrome 的帧率随显卡的负载在 60 到 130 多之间变，球落地、睡着以后才报离开
+  const start = strideGame.updateTime.total;
+  while (strideGame.updateTime.total - start < 10 && !(seen.has('Ball entered CollisionTrigger') && seen.has('Ball left CollisionTrigger'))) { await frames(1); for (const l of lines()) seen.add(l); }
   return [...seen];
 })`);
 check('触发器：球进去、在里面、出来都打印', ['Ball entered CollisionTrigger', 'Inside the trigger: Ball', 'Ball left CollisionTrigger'].every((line) => trigger.includes(line)), trigger);

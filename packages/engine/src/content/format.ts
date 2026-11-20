@@ -754,6 +754,11 @@ export interface ScenePostEffects {
   readonly antialiasing: boolean;
   /** 环境光遮蔽（AmbientOcclusion，我们用 GTAO 只乘环境光）；没写是关着。radius 是 Stride 的 ParamRadius（世界单位）。 */
   readonly ambientOcclusion?: { readonly radius: number };
+  /**
+   * 屏幕空间反射（LocalReflections，见 rendering/ScreenSpaceReflections.ts）；没写是关着。maxRoughness 是 1 减 Stride 的
+   * GlossinessThreshold，edgeFade 是它的 EdgeFadeFactor。
+   */
+  readonly localReflections?: { readonly maxRoughness: number; readonly edgeFade: number };
 }
 
 /** 渲染目标贴图（Stride 的 RenderTexture，.sdrendertex）：合成器里的相机画进去，精灵可以显示它。按内容路径区分。 */

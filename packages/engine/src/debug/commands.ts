@@ -51,6 +51,13 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     if (typeof args['radius'] === 'number') ao.radius = args['radius'];
     return { enabled: ao.enabled, radius: ao.radius, power: ao.power };
   });
+  debug.command('ssr', 'Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
+    const ssr = game.graphicsCompositor.screenSpaceReflections;
+    ssr.enabled = typeof args['on'] === 'boolean' ? args['on'] : !ssr.enabled;
+    for (const key of ['maxRoughness', 'thickness', 'maxSteps'] as const) if (typeof args[key] === 'number') ssr[key] = args[key];
+    if (args['debug'] === 'off' || args['debug'] === 'hits' || args['debug'] === 'reflection') ssr.debug = args['debug'];
+    return { enabled: ssr.enabled, maxRoughness: ssr.maxRoughness, thickness: ssr.thickness, edgeFade: ssr.edgeFade, maxSteps: ssr.maxSteps, debug: ssr.debug };
+  });
   debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false; omitted toggles).', (args) => {
     const taa = game.graphicsCompositor.temporalAntialiasing;
     taa.enabled = typeof args['on'] === 'boolean' ? args['on'] : !taa.enabled;

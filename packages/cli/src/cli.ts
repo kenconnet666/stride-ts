@@ -50,6 +50,8 @@ Game
   quality [low|medium|high|ultra]                   quality tier: caps on shadows and post effects (no argument shows the current one)
   taa [on|off]                                      temporal anti-aliasing instead of FXAA (no argument toggles)
   ao [on|off] [--radius <m>]                        screen-space ambient occlusion, GTAO (no argument toggles)
+  ssr [on|off] [--maxRoughness r] [--thickness t] [--maxSteps n] [--debug off|hits|reflection]
+                                                    screen-space reflections (no argument toggles)
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
   logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
   eval <code | ->         run JavaScript in the page (strideGame, strideEngine are globals); - reads stdin
@@ -104,6 +106,10 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     out: { type: 'string' },
     callers: { type: 'string' },
     radius: { type: 'string' },
+    maxRoughness: { type: 'string' },
+    thickness: { type: 'string' },
+    maxSteps: { type: 'string' },
+    debug: { type: 'string' },
   },
 });
 
@@ -323,6 +329,11 @@ const commands: Record<string, () => Promise<unknown>> = {
   draws: () => call('draws', {}),
   metrics: () => call('metrics', options.over ? { over: true } : {}),
   ao: () => call('ao', { ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }), ...(options.radius ? { radius: Number(options.radius) } : {}) }),
+  ssr: () => call('ssr', {
+    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...Object.fromEntries((['maxRoughness', 'thickness', 'maxSteps'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
+    ...(options.debug ? { debug: options.debug } : {}),
+  }),
   taa: () => call('taa', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
   quality: () => call('quality', rest[0] === undefined ? {} : { tier: rest[0] }),
   wireframe: () => call('wireframe', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),

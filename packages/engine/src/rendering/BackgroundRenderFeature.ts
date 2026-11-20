@@ -10,7 +10,7 @@ import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
 import { Background } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
-import { inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { colorTargets, inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 import { Cubemap } from './Skybox';
 import { Texture } from './Texture';
 
@@ -186,7 +186,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
       label: `BackgroundRenderFeature ${stage.name} ${entryPoint}`,
       layout: this.system.device.createPipelineLayout({ bindGroupLayouts: [gpu.layout] }),
       vertex: { module: gpu.module, entryPoint: 'fullscreenVertex' },
-      fragment: { module: gpu.module, entryPoint, targets: [{ format: colorFormat }] },
+      fragment: { module: gpu.module, entryPoint, targets: colorTargets(stage, { format: colorFormat }) },
       depthStencil: { format: stage.output.depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
     };
   }

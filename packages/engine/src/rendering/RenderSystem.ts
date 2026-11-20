@@ -32,6 +32,28 @@ export interface SceneRenderer {
 export interface RenderOutput {
   readonly colorFormat?: GPUTextureFormat;
   readonly depthFormat: GPUTextureFormat;
+  /**
+   * 颜色之外还要写的表面（屏幕空间反射用，见 SURFACE_FORMATS）：不透明的网格按顺序写法线和粗糙度、镜面颜色，别的特性
+   * 不写（这几个目标的写掩码是 0）。
+   */
+  readonly surfaceFormats?: readonly GPUTextureFormat[];
+}
+
+/**
+ * 屏幕空间反射要的表面（RenderOutput.surfaceFormats），合成时用反射换掉着色时加的环境镜面反射：
+ * 0. 法线（世界空间，八面体编码）、粗糙度、有没有表面（a）；
+ * 1. 环境镜面反射的权重 w（镜面颜色乘 DFG，玻璃是它的反射比例；没有镜面反射的材质是 0）；
+ * 2. 着色时加进去的环境镜面反射 E（环境光、天空盒的镜面项，已经乘过 w、遮蔽、强度）。
+ * 合成：颜色 += 命中的把握 · (w · 反射 - E)。
+ */
+export const SURFACE_FORMATS: readonly GPUTextureFormat[] = ['rgba16float', 'rgba8unorm', 'rgba16float'];
+
+/**
+ * 画进这个阶段的管线的颜色目标：主颜色，加上阶段要留的表面（RenderOutput.surfaceFormats）。表面只有不透明的网格写，别的
+ * 特性的管线也要带上这几个目标（同一个渲染通道里每个附件都要有对应的目标），写掩码给 0。
+ */
+export function colorTargets(stage: RenderStage, color: GPUColorTargetState): GPUColorTargetState[] {
+  return [color, ...(stage.output.surfaceFormats ?? []).map((format) => ({ format, writeMask: 0 }))];
 }
 
 /** 渲染阶段（Opaque、Transparent、ShadowMapCaster……）：决定用哪套管线、画进什么格式。 */

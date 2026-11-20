@@ -24,6 +24,8 @@ export interface QualitySettings {
   readonly antialiasing: boolean;
   /** 屏幕空间的环境光遮蔽（GTAO）。 */
   readonly ambientOcclusion: boolean;
+  /** 屏幕空间反射。 */
+  readonly screenSpaceReflections: boolean;
   readonly bloom: boolean;
   readonly lightStreak: boolean;
   readonly lensFlare: boolean;
@@ -37,10 +39,10 @@ export interface QualitySettings {
  * - 低：阴影图到 small、一个级联；泛光、环境光遮蔽也关掉。抗锯齿留着：一遍全屏，比它省下的锯齿便宜。
  */
 export const QUALITY_TIERS: Readonly<Record<QualityTier, QualitySettings>> = {
-  low: { shadows: true, shadowSize: 'small', shadowFilter: 'pcf3x3', shadowCascades: 1, antialiasing: true, ambientOcclusion: false, bloom: false, lightStreak: false, lensFlare: false },
-  medium: { shadows: true, shadowSize: 'medium', shadowFilter: 'pcf3x3', shadowCascades: 2, antialiasing: true, ambientOcclusion: true, bloom: true, lightStreak: false, lensFlare: false },
-  high: { shadows: true, shadowSize: 'large', shadowFilter: 'pcf5x5', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, bloom: true, lightStreak: true, lensFlare: true },
-  ultra: { shadows: true, shadowSize: 'xlarge', shadowFilter: 'pcf7x7', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, bloom: true, lightStreak: true, lensFlare: true },
+  low: { shadows: true, shadowSize: 'small', shadowFilter: 'pcf3x3', shadowCascades: 1, antialiasing: true, ambientOcclusion: false, screenSpaceReflections: false, bloom: false, lightStreak: false, lensFlare: false },
+  medium: { shadows: true, shadowSize: 'medium', shadowFilter: 'pcf3x3', shadowCascades: 2, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: false, bloom: true, lightStreak: false, lensFlare: false },
+  high: { shadows: true, shadowSize: 'large', shadowFilter: 'pcf5x5', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, bloom: true, lightStreak: true, lensFlare: true },
+  ultra: { shadows: true, shadowSize: 'xlarge', shadowFilter: 'pcf7x7', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, bloom: true, lightStreak: true, lensFlare: true },
 };
 
 const SIZES: readonly ShadowMapSize[] = ['xsmall', 'small', 'medium', 'large', 'xlarge'];

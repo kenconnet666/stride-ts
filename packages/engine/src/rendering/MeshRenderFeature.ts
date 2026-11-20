@@ -645,16 +645,46 @@ struct WireOutput {
 }
 
 @fragment fn fs(in: Varyings, @builtin(front_facing) front: bool) -> @location(0) vec4f {
-  return shade(in, front, false);
+  return shade(in, front, false).color;
 }
 
 /** 清漆叠在上面的那一遍（透明阶段，加到画面上）。 */
 @fragment fn fsClearCoat(in: Varyings, @builtin(front_facing) front: bool) -> @location(0) vec4f {
-  return shade(in, front, true);
+  return shade(in, front, true).color;
 }
 
+struct SurfaceOutput {
+  @location(0) color: vec4f,
+  @location(1) normalRoughness: vec4f,
+  @location(2) specularWeight: vec4f,
+  @location(3) environment: vec4f,
+};
+
+/** 不透明阶段给屏幕空间反射留下表面（RenderOutput.surfaceFormats、SURFACE_FORMATS）。 */
+@fragment fn fsSurface(in: Varyings, @builtin(front_facing) front: bool) -> SurfaceOutput {
+  let s = shade(in, front, false);
+  return SurfaceOutput(s.color, vec4f(octahedralEncode(s.normal), s.roughness, 1.0), vec4f(s.specularWeight, 1.0), vec4f(s.environment, 1.0));
+}
+
+/** 单位向量的八面体编码（-1..1 的两个数）：法线放进两个通道，比存 xyz 少一个通道、精度均匀。 */
+fn octahedralEncode(n: vec3f) -> vec2f {
+  let p = n.xy / (abs(n.x) + abs(n.y) + abs(n.z));
+  return select(p, (1.0 - abs(p.yx)) * select(vec2f(-1.0), vec2f(1.0), p >= vec2f(0.0)), n.z < 0.0);
+}
+
+/** 一个像素着色的结果：颜色，和屏幕空间反射要的表面（SURFACE_FORMATS）。 */
+struct Shaded {
+  color: vec4f,
+  normal: vec3f,
+  roughness: f32,
+  /** 环境镜面反射的权重（镜面颜色乘 DFG）。 */
+  specularWeight: vec3f,
+  /** 加进颜色里的环境镜面反射。 */
+  environment: vec3f,
+};
+
 /** 一个像素的光照；coatPass 为真时是清漆的那一遍。 */
-fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
+fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   let n = facingNormal(surfaceNormal(in, coatPass), front);
   let v = normalize(view.eye.xyz - in.world);
   let base = baseColor(in);
@@ -747,22 +777,25 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
   // 环境光和天空盒光都没有的场景（只有直射光）整段跳过
   let hasAmbient = any(view.ambientColor.rgb > vec3f(0.0));
   let hasSky = view.sky.x > 0.0;
+  // 环境光：镜面项都乘 DFG（Stride 的环境 BRDF 查找表）；屏幕空间反射合成时要这个权重和加进去的环境镜面反射
+  var environmentSpecular = vec3f(0.0);
+  var environment = vec3f(0.0);
+  if (hasSpecular) {
+    let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
+    environmentSpecular = select(specular * dfg.x + dfg.y, glass.reflectance, isGlass);
+  }
   if (hasAmbient || hasSky) {
-    // 环境光：镜面项都乘 DFG（Stride 的环境 BRDF 查找表）
-    var environmentSpecular = vec3f(0.0);
-    if (hasSpecular) {
-      let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
-      environmentSpecular = select(specular * dfg.x + dfg.y, glass.reflectance, isGlass);
-    }
-    color += (diffuse * view.ambientColor.rgb + environmentSpecular * view.ambientColor.rgb) * ao;
+    color += diffuse * view.ambientColor.rgb * ao;
+    environment = environmentSpecular * view.ambientColor.rgb * ao;
     if (hasSky) {
       let skyIntensity = view.sky.x * ao;
       color += diffuse * evaluateSH(skyDirection(n)) * skyIntensity;
       if (hasSpecular) {
         let reflection = skyDirection(reflect(-v, n));
-        color += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
+        environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
       }
     }
+    color += environment;
   }
 
   // 自发光：a 不小于 0 时输出的 alpha 用它（Stride 的 UseAlpha）
@@ -770,7 +803,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> vec4f {
   color += layerEmissive(in, emitted.rgb);
   let alpha = select(base.a, emitted.a, emitted.a >= 0.0);
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
-  return effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect);
+  return Shaded(effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect), n, roughness, environmentSpecular, environment);
 }`;
 
 /**
@@ -1539,7 +1572,7 @@ class Gpu {
   }
 
   #pipelineDescriptor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipelineDescriptor {
-    const { colorFormat, depthFormat } = stage.output;
+    const { colorFormat, depthFormat, surfaceFormats } = stage.output;
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
     // 颜色树的变体每个阶段都用：位移贴图在只写深度的阶段也要算（深度预通道和不透明阶段的深度要一样）
     const trees = material.shaderTrees;
@@ -1575,8 +1608,12 @@ class Gpu {
         ...(colorFormat ? {
           fragment: stage.picking || stage.wireframe || stage.velocity ? { module, entryPoint: stage.picking ? 'fsPick' : stage.wireframe ? 'fsWire' : 'fsVelocity', targets: [{ format: colorFormat }] } : {
             module,
-            entryPoint: materialPass?.entryPoint ?? 'fs',
-            targets: [{ format: colorFormat, ...(stage.transparent ? { blend: materialPass?.blend ?? PREMULTIPLIED_ALPHA } : {}) }],
+            // 要留表面的阶段（屏幕空间反射开着时的不透明阶段）：普通的材质写表面，别的那一遍不写（写掩码 0）
+            entryPoint: materialPass?.entryPoint ?? (surfaceFormats ? 'fsSurface' : 'fs'),
+            targets: [
+              { format: colorFormat, ...(stage.transparent ? { blend: materialPass?.blend ?? PREMULTIPLIED_ALPHA } : {}) },
+              ...(surfaceFormats ?? []).map((format) => ({ format, ...(materialPass ? { writeMask: 0 } : {}) })),
+            ],
           },
         } : {}),
         ...(cutout ? { fragment: { module, entryPoint: 'fsCutout', targets: [] } } : {}),

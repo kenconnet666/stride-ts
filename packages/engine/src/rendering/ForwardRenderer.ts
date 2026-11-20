@@ -19,7 +19,7 @@ import { Matrix } from '../mathematics/Matrix';
 import { Color4 } from '../mathematics/vectors';
 import { cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
-import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, SURFACE_FORMATS, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { GpuProfiler } from '../graphics/GpuProfiler';
 import { GraphTexturePool } from './graph/GraphTexturePool';
 import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphStats } from './graph/RenderGraph';
@@ -27,6 +27,7 @@ import { limitShadowCascades, limitShadowFilter, limitShadowSize, QUALITY_TIERS,
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { TemporalAntialiasing } from './TemporalAntialiasing';
 import { AmbientOcclusion } from './AmbientOcclusion';
+import { ScreenSpaceReflections } from './ScreenSpaceReflections';
 import { Skybox } from './Skybox';
 import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
@@ -71,6 +72,8 @@ interface ColorOutput {
   readonly opaque: RenderStage;
   readonly transparent: RenderStage;
   readonly wireframe: RenderStage;
+  /** 不透明阶段另外要写的表面（屏幕空间反射开着时，SURFACE_FORMATS 的顺序）；有它时 opaque 是写表面的那个阶段。 */
+  readonly surfaces?: readonly GraphTexture[];
 }
 
 export class ForwardRenderer {
@@ -90,7 +93,11 @@ export class ForwardRenderer {
    * 主画面的背景：清屏之后、不透明阶段之前在同一个 pass 里画（Stride 的游戏渲染器先画自己的东西再画场景的阶段，比如 JumpyJet 的
    * JumpyJetRenderer 用 SpriteBatch 画视差背景）。颜色是 HDR 格式，带深度缓冲。
    */
-  background: ((pass: GPURenderPassEncoder, target: { readonly width: number; readonly height: number; readonly format: GPUTextureFormat; readonly depthFormat: GPUTextureFormat }) => void) | undefined;
+  background: ((pass: GPURenderPassEncoder, target: {
+    readonly width: number; readonly height: number; readonly format: GPUTextureFormat; readonly depthFormat: GPUTextureFormat;
+    /** 屏幕空间反射开着时这一遍另外要写的表面：管线也要带上这几个目标（写掩码 0 就行，见 RenderSystem 的 colorTargets）。 */
+    readonly surfaceFormats: readonly GPUTextureFormat[];
+  }) => void) | undefined;
   /** 先画进渲染目标贴图的相机（场景的合成器设置，configure 设）。 */
   textureCameras: readonly TextureCamera[] = [];
   /** 线性空间的清屏色；默认是 sRGB 的 (0.1, 0.12, 0.16)。 */
@@ -103,6 +110,10 @@ export class ForwardRenderer {
   readonly postEffects: PostProcessingEffects;
   /** 屏幕空间的环境光遮蔽（GTAO，只乘环境光；开不开照合成器的 AmbientOcclusion，见 AmbientOcclusion.ts）。 */
   readonly ambientOcclusion: AmbientOcclusion;
+  /** 屏幕空间反射（开不开照合成器的 LocalReflections，见 ScreenSpaceReflections.ts）。 */
+  readonly screenSpaceReflections: ScreenSpaceReflections;
+  /** 屏幕空间反射开着时的不透明阶段：颜色之外写表面（法线、粗糙度、环境镜面反射）。 */
+  readonly #opaqueSurfaceStage = new RenderStage('Opaque surface', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT, surfaceFormats: SURFACE_FORMATS }, { afterDepthPrepass: true });
   /** 这一帧开着 TAA（GTAO 的噪声跟着每帧换）。 */
   #temporal = false;
   /** 时间抗锯齿（默认关，开着时代替后处理里的 FXAA；见 TemporalAntialiasing.ts）。 */
@@ -230,6 +241,7 @@ export class ForwardRenderer {
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
     this.temporalAntialiasing = new TemporalAntialiasing(renderSystem.device);
     this.ambientOcclusion = new AmbientOcclusion(renderSystem.device);
+    this.screenSpaceReflections = new ScreenSpaceReflections(renderSystem.device, renderSystem.resources.linearClamp);
     this.#pool = new GraphTexturePool(renderSystem.device);
     this.#graph = new RenderGraph(this.#pool);
     this.picker = new ScenePicker(renderSystem);
@@ -260,6 +272,10 @@ export class ForwardRenderer {
     this.postEffects.configure(postEffects);
     this.ambientOcclusion.enabled = postEffects?.ambientOcclusion !== undefined;
     this.ambientOcclusion.radius = postEffects?.ambientOcclusion?.radius ?? 1;
+    const reflections = postEffects?.localReflections;
+    this.screenSpaceReflections.enabled = reflections !== undefined;
+    if (reflections) Object.assign(this.screenSpaceReflections, { maxRoughness: reflections.maxRoughness, edgeFade: reflections.edgeFade });
+    this.screenSpaceReflections.reset();
     this.drawTransparent = transparent;
     this.drawShadows = shadows !== false;
     this.textureCameras = textureCameras;
@@ -338,16 +354,21 @@ export class ForwardRenderer {
     const { r, g, b, a } = this.clearColor;
     // 场景里有 UI、或者粒子画在 UI 上面时留着深度缓冲（它们在后处理之后和它比深度），否则丢掉（分块渲染的 GPU 上省带宽）
     const particles = context.game.particles;
-    const keepDepth = temporal || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
+    const reflect = this.hasCamera && post && this.screenSpaceReflections.enabled && this.quality.screenSpaceReflections;
+    const keepDepth = temporal || reflect || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
     // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
     if (this.picker.pending) frame.pass('ScenePicker', (pass) => pass.sideEffect(), () => this.picker.draw(context, encoder, mainView, canvas.width, canvas.height));
     if (post) {
       const color = graph.texture({ label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT });
-      this.#viewPasses(context, frame, mainView, this.#hdrOutput(color), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
+      const surfaces = reflect ? SURFACE_FORMATS.map((format, i) => graph.texture({ label: `ForwardRenderer surface ${i}`, width: canvas.width, height: canvas.height, format })) : undefined;
+      this.#viewPasses(context, frame, mainView, this.#hdrOutput(color, surfaces), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
+      const velocity = temporal ? this.#velocityPass(context, frame, depth) : undefined;
+      // 反射在后处理之前合成进画面（同 Stride 的 LocalReflections 排在后处理的最前面）
+      const reflected = surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity) : color;
       // TAA 做了抗锯齿，后处理里就不再做 FXAA
-      const input = temporal ? this.temporalAntialiasing.record(frame, color, depth, this.#mainView, this.#velocityPass(context, frame, depth)) : color;
+      const input = velocity ? this.temporalAntialiasing.record(frame, reflected, depth, this.#mainView, velocity) : reflected;
       this.postEffects.record(frame, input, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed, temporal ? { ...this.quality, antialiasing: false } : this.quality);
     } else {
       this.#viewPasses(context, frame, mainView, this.#backBufferOutput(canvas.width, canvas.height), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
@@ -358,6 +379,7 @@ export class ForwardRenderer {
     copy.arena.flush();
     if (post) this.postEffects.flush();
     if (this.#mainView.screenOcclusion) this.ambientOcclusion.flush();
+    if (reflect) this.screenSpaceReflections.flush();
     if (temporal) {
       this.temporalAntialiasing.flush();
       this.temporalAntialiasing.unjitter(this.#mainView);
@@ -372,6 +394,7 @@ export class ForwardRenderer {
     this.postEffects.destroy();
     this.temporalAntialiasing.destroy();
     this.ambientOcclusion.destroy();
+    this.screenSpaceReflections.destroy();
     this.picker.destroy();
     this.shadowMapRenderer.destroy();
   }
@@ -408,9 +431,19 @@ export class ForwardRenderer {
         view.screenOcclusion = this.ambientOcclusion.record(frame, depth, view, this.#temporal);
       }
     }
+    const surfaces = output.surfaces ?? [];
+    // 透明的、粒子、线框：没有表面时和不透明的在同一遍里画；有表面时（只有不透明的网格写表面）接着另开一遍
+    const drawRest = (pass: GPURenderPassEncoder) => {
+      if (!view) return;
+      if (transparent) renderSystem.draw(context, pass, view, output.transparent);
+      // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
+      if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);
+      if (this.wireframe && view === this.#mainView) renderSystem.draw(context, pass, view, output.wireframe);
+    };
     frame.pass(`${label} opaque`, (pass) => {
       if (isGraphTexture(target)) pass.write(target);
       else pass.sideEffect();
+      for (const surface of surfaces) pass.write(surface);
       if (!isGraphTexture(depth)) return;
       if (prepassNeeded) pass.readWrite(depth);
       else pass.write(depth);
@@ -419,17 +452,29 @@ export class ForwardRenderer {
       const pass = encoder.beginRenderPass({
         label: `${label} opaque`,
         ...(timestampWrites ? { timestampWrites } : {}),
-        colorAttachments: [{ view: isGraphTexture(target) ? real.view(target) : target, clearValue: [...clearColor], loadOp: 'clear', storeOp: 'store' }],
-        depthStencilAttachment: { view: depthView(real), depthClearValue: 1, depthLoadOp: prepassNeeded ? 'load' : 'clear', depthStoreOp: keepDepth ? 'store' : 'discard' },
+        colorAttachments: [
+          { view: isGraphTexture(target) ? real.view(target) : target, clearValue: [...clearColor], loadOp: 'clear', storeOp: 'store' },
+          ...surfaces.map((surface) => ({ view: real.view(surface), clearValue: [0, 0, 0, 0], loadOp: 'clear' as const, storeOp: 'store' as const })),
+        ],
+        depthStencilAttachment: { view: depthView(real), depthClearValue: 1, depthLoadOp: prepassNeeded ? 'load' : 'clear', depthStoreOp: keepDepth || surfaces.length > 0 ? 'store' : 'discard' },
       });
-      if (view === this.#mainView) this.background?.(pass, { width: output.width, height: output.height, format: output.format, depthFormat: DEPTH_FORMAT });
-      if (view) {
-        renderSystem.draw(context, pass, view, output.opaque);
-        if (transparent) renderSystem.draw(context, pass, view, output.transparent);
-        // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
-        if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);
-        if (this.wireframe && view === this.#mainView) renderSystem.draw(context, pass, view, output.wireframe);
-      }
+      if (view === this.#mainView) this.background?.(pass, { width: output.width, height: output.height, format: output.format, depthFormat: DEPTH_FORMAT, surfaceFormats: output.opaque.output.surfaceFormats ?? [] });
+      if (view) renderSystem.draw(context, pass, view, output.opaque);
+      if (surfaces.length === 0) drawRest(pass);
+      pass.end();
+    });
+    if (surfaces.length === 0 || !view) return;
+    frame.pass(`${label} transparent`, (pass) => {
+      if (isGraphTexture(target)) pass.readWrite(target);
+      else pass.sideEffect();
+      if (isGraphTexture(depth)) pass.readWrite(depth);
+    }, (real) => {
+      const pass = encoder.beginRenderPass({
+        label: `${label} transparent`,
+        colorAttachments: [{ view: isGraphTexture(target) ? real.view(target) : target, loadOp: 'load', storeOp: 'store' }],
+        depthStencilAttachment: { view: depthView(real), depthLoadOp: 'load', depthStoreOp: keepDepth ? 'store' : 'discard' },
+      });
+      drawRest(pass);
       pass.end();
     });
   }
@@ -520,9 +565,13 @@ export class ForwardRenderer {
     return this.#depth;
   }
 
-  /** 画进一张 HDR 颜色缓冲（后面接后处理，或者拷进渲染目标贴图）。 */
-  #hdrOutput(color: GraphTexture): ColorOutput {
-    return { target: color, width: color.width, height: color.height, format: HDR_FORMAT, opaque: this.opaqueStage, transparent: this.transparentStage, wireframe: this.#wireframeStage };
+  /** 画进一张 HDR 颜色缓冲（后面接后处理，或者拷进渲染目标贴图）；surfaces 是不透明阶段另外要写的表面（屏幕空间反射用）。 */
+  #hdrOutput(color: GraphTexture, surfaces?: readonly GraphTexture[]): ColorOutput {
+    return {
+      target: color, width: color.width, height: color.height, format: HDR_FORMAT,
+      opaque: surfaces ? this.#opaqueSurfaceStage : this.opaqueStage, transparent: this.transparentStage, wireframe: this.#wireframeStage,
+      ...(surfaces ? { surfaces } : {}),
+    };
   }
 
   /**
@@ -556,17 +605,20 @@ export class ForwardRenderer {
   warmPostEffects(settings: ScenePostEffects | null | undefined): Promise<void> | undefined {
     if (settings === undefined || (settings === null && this.directOutput)) return undefined;
     const ambientOcclusion = settings?.ambientOcclusion !== undefined && this.quality.ambientOcclusion ? this.ambientOcclusion.warm() : undefined;
-    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion]).then(() => undefined);
+    const reflections = settings?.localReflections !== undefined && this.quality.screenSpaceReflections ? this.screenSpaceReflections.warm() : undefined;
+    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections]).then(() => undefined);
   }
 
   /**
    * 主画面会用到的阶段（阴影投射、深度预通道、不透明、透明）：预热管线时按它们编。主画面直接画进后备缓冲还是先画进
    * HDR 缓冲（有后处理时），两边的颜色格式不同、管线也不同：postEffects 说要加载的场景开不开后处理，没给就按现在的。
+   * reflections：开屏幕空间反射时不透明阶段换成写表面的那个。
    */
-  warmStages(postEffects = this.postEffects.enabled): RenderStage[] {
+  warmStages(postEffects = this.postEffects.enabled, reflections = this.screenSpaceReflections.enabled): RenderStage[] {
     const { casterStage, cubeMapCasterStage } = this.shadowMapRenderer;
     const direct = !postEffects && this.directOutput ? this.#direct() : undefined;
-    return [casterStage, cubeMapCasterStage, this.depthPrepassStage, direct?.opaque ?? this.opaqueStage, direct?.transparent ?? this.transparentStage];
+    const opaque = direct?.opaque ?? (reflections && this.quality.screenSpaceReflections ? this.#opaqueSurfaceStage : this.opaqueStage);
+    return [casterStage, cubeMapCasterStage, this.depthPrepassStage, opaque, direct?.transparent ?? this.transparentStage];
   }
 }
 

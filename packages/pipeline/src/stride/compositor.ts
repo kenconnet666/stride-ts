@@ -157,6 +157,16 @@ function postEffectsOf(effects: StrideObject | undefined): ScenePostEffects | nu
     toneMap: toneMap !== undefined && enabled(colorTransforms) && enabled(toneMap),
     antialiasing: enabled(effects['Antialiasing']),
     ...(enabled(effects['AmbientOcclusion']) ? { ambientOcclusion: { radius: asNumber(asObject(effects['AmbientOcclusion'])?.['ParamRadius'], 1) } } : {}),
+    // Stride 的合成器模板里屏幕空间反射是关的：文件里写了开着才开（不同于上面那几个没写就算开着的）
+    ...(asObject(effects['LocalReflections'])?.['Enabled'] === true ? { localReflections: localReflections(asObject(effects['LocalReflections'])) } : {}),
+  };
+}
+
+/** 屏幕空间反射的设置（Stride 的 LocalReflections，默认值同它）；分辨率、步数这些我们的做法里不用。 */
+function localReflections(settings: StrideObject | undefined): NonNullable<ScenePostEffects['localReflections']> {
+  return {
+    maxRoughness: 1 - asNumber(settings?.['GlossinessThreshold'], 0.55),
+    edgeFade: asNumber(settings?.['EdgeFadeFactor'], 0.1),
   };
 }
 

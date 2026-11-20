@@ -324,7 +324,8 @@ const commands: Record<string, () => Promise<unknown>> = {
   },
   async shot() {
     const file = required(rest[0], 'output file');
-    const { png, ...info } = (await call('screenshot')) as { png: string; width: number; height: number; frame: number };
+    // 和参考图比时那一帧不加输出的抖动（每个像素 ±半个色阶的噪声）
+    const { png, ...info } = (await call('screenshot', options.diff ? { exact: true } : {})) as { png: string; width: number; height: number; frame: number };
     const bytes = Buffer.from(png, 'base64');
     writeFileSync(file, bytes);
     if (!options.diff) return { file, ...info };

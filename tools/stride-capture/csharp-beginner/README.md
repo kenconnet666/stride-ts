@@ -22,6 +22,18 @@ pwsh tools/stop-dev.ps1
 
 参考图里没有调试文字：Stride 的 `DebugTextSystem.Visible` 默认只在调试版是 true，截图工程是 Release 版。`capture-ours.ps1` 把我们的 `debugText.visible` 关掉再截。它只比顶上 100 像素的 UI 以下的部分（`stride shot --region`）：Stride 的 UI 在后处理之前画、被色调映射（白底成了灰的），我们画在后处理之后，是有意的偏差。
 
+## 2026-11-20 的结果（换了机器，RX 9070 GRE）
+
+参考图在这台机器上重截。`stride shot --diff` 那一帧不加输出的抖动。
+
+| 图 | 平均差 | 超过 8 | 超过 32 |
+|---|---|---|---|
+| cloning | 1.55 | 1.14% | 0.28% |
+| keyboard | 1.41 | 1.05% | 0.31% |
+| properties | 1.62 | 0.95% | 0.15% |
+
+比 11-19 的高 0.05 到 0.15：主要是箱子标志的遮罩贴图（有颜色键）现在无损存成 PNG，桌面 Stride 压成 BC，边缘不一样（见 docs/decisions.md 的"csharp-beginner 的截图差变大"）。
+
 ## 2026-11-19 的结果
 
 UI 以下的场景，平均每通道差（/255）和任一通道差超过 8、32 的像素的比例：

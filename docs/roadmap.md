@@ -460,7 +460,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
 **A. 稳住**
 1. CI 全绿：c614824 那次的 platformer 在 CI 上一次 eval 超过两分钟（跑、站各看 20 帧骨骼，TPP 在软件 WebGPU 上一帧几秒），改成各看 8 帧（本机每帧多忙等 1 秒也过了），看下一次完整运行；4174f30 那次五个失败是片元阶段的贴图超了默认上限（c614824 修了）；复查旧账：bepu-sample、space-escape 的预算超了，ui-particles 的"火跟着导火索往左走"。CI 的来龙去脉见 progress-log.md 的"CI 的全量冒烟"。
-2. csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，查原因（P2 收尾留下的）。
+2. ~~csharp-beginner 的截图差变大~~（2026-11-20：阴影的法线偏移按实际的图集算了，修掉；输出的抖动在比对时关掉；剩下的是有意的——颜色键的遮罩贴图无损存，见 decisions.md）。还剩：morph-targets（要先从源码编 Stride 4.5.3-dev4 再重截参考图）；茶壶背光一侧的环境镜面反射比 Stride 亮（11-19 就有）。
 3. ~~整理~~（2026-11-20）：`particles/gpu/` 的四个文件并回 `particles/`（`GpuEmitter.ts`、`gpuKernel.ts`、`gpuDraw.ts`、`gpuSort.ts`）；内核的 PCG 不换（它是一维的 u32 哈希，HASH3 是三维的，没有重复）；页面里的帮手只剩引擎的一份（`debug/pageHelpers.ts`，`stride eval` 直接能用，冒烟的 `PAGE_HELPERS` 只是把它装成全局变量）；SimpleAudio 的波形图按时间走（见 decisions.md）。
 
 **B. 补 P1、P2 落下的引擎能力**

@@ -35,7 +35,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('set', "Set a component field or script property. args: entity, path ('Component.field' or 'Script.prop', optionally '.x'), value.", (args) => set(game, args));
   debug.command('time', 'Pause, resume, step frames, time scale, fixed time step, set the game clock. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear), total (seconds).', (args) => time(game, args));
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
-  debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64.', () => screenshot(debug, game));
+  debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64. args: exact (true: that frame without the output dither, for pixel comparisons).', (args) => screenshot(debug, game, args['exact'] === true));
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
   debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
   debug.command('draws', 'Draw calls of the last frame per GPU render pass (scene stages, shadows, each post-processing step, UI, debug lines), in drawing order.', () => {
@@ -539,10 +539,16 @@ async function framesPassed(game: Game, n: number): Promise<void> {
   while (game.frames < target && performance.now() < deadline) await new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
-async function screenshot(debug: Debug, game: Game): Promise<unknown> {
+async function screenshot(debug: Debug, game: Game, exact: boolean): Promise<unknown> {
   const canvas = game.graphicsDevice.canvas;
+  // 逐像素比对（和桌面 Stride、和以前的截图）时那一帧不加输出的抖动：抖动是每个像素 ±半个色阶的噪声，平均差会多零点几
+  const toneMap = game.graphicsCompositor.postEffects.toneMap;
+  const dither = toneMap.dither;
+  if (exact) toneMap.dither = false;
   // 画完的同一个任务里拿画布内容（WebGPU 画布的当前纹理在呈现之后就失效）
-  const bitmap = await debug.afterNextDraw(() => createImageBitmap(canvas));
+  const bitmap = await debug.afterNextDraw(() => createImageBitmap(canvas)).finally(() => {
+    toneMap.dither = dither;
+  });
   const image = await bitmap;
   const offscreen = new OffscreenCanvas(image.width, image.height);
   offscreen.getContext('2d')!.drawImage(image, 0, 0);

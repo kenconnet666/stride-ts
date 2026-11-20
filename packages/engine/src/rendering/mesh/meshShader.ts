@@ -725,7 +725,7 @@ fn computeLocalShadow(index: u32, position: vec3f, normal: vec3f, nDotL: f32, li
   let params = localShadows[index].params;
   let filterSize = u32(localShadows[index].options.x);
   // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去
-  let p = position + 2.0 * view.shadowAtlas.x * params.y * saturate(1.0 - nDotL) * normal;
+  let p = position + 2.0 * SHADOW_OFFSET_TEXEL * params.y * saturate(1.0 - nDotL) * normal;
   if (localShadows[index].options.y < 0.5) {
     var s = localShadows[index].matrices[0] * vec4f(p, 1.0);
     s.z -= params.x;
@@ -771,6 +771,12 @@ fn shadowCascade(depth: f32, count: u32) -> u32 {
   return u32(dot(passed, vec4f(1.0)));
 }
 
+
+// 阴影的法线偏移、厚度那几处按世界单位挪的量，用的"图集一个像素"是 Stride 固定的 4096² 图集的（它的
+// ShadowMapTextureTexelSize 是整个图集的）：我们的图集按用到的大小建（1024² 到 4096²），按实际的算的话图集小了偏移就大了，
+// 物体自己身上的影子变淡（CSharpBeginner 的茶壶）。采样时挪的步子还是按实际的图集算。
+const SHADOW_OFFSET_TEXEL = 1.0 / 4096.0;
+
 /** 方向光的阴影（Stride 的 ShadowMapReceiverDirectional.ComputeShadow）。 */
 fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32, pixel: vec2f) -> f32 {
   let count = u32(view.shadow.x);
@@ -780,7 +786,7 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32, pixel: 
   let splits = view.shadowSplits;
   let cascade = shadowCascade(depth, count);
   // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去
-  let p = position + 2.0 * view.shadowAtlas.x * view.shadow.z * saturate(1.0 - nDotL) * normal;
+  let p = position + 2.0 * SHADOW_OFFSET_TEXEL * view.shadow.z * saturate(1.0 - nDotL) * normal;
   var shadow = shadowFromCascade(p, cascade, pixel);
   let nextSplit = component(splits, cascade);
   var splitSize = nextSplit;
@@ -825,7 +831,7 @@ fn shadowThickness(position: vec3f, normal: vec3f, depth: f32) -> f32 {
   let uvPerUnit = scale.x;
   let depthPerUnit = scale.y;
   // 1.5 · √2 个像素
-  let p = position - normal * (2.1213 * view.shadowAtlas.x / uvPerUnit);
+  let p = position - normal * (2.1213 * SHADOW_OFFSET_TEXEL / uvPerUnit);
   let s = m * vec4f(p, 1.0);
   let q = s.xyz / s.w;
   return max(q.z - shadowDepthAt(q.xy), 0.0) / depthPerUnit;

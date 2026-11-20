@@ -56,7 +56,7 @@ function toPixels(font: SpriteFont, em: number, fontSize: FontSize): number {
 }
 
 /** 两个字之间的字距（字体像素）。 */
-function kerning(font: SpriteFont, previous: FontGlyph | undefined, glyph: FontGlyph, fontSize: FontSize): number {
+export function kerning(font: SpriteFont, previous: FontGlyph | undefined, glyph: FontGlyph, fontSize: FontSize): number {
   return previous && font.useKerning ? toPixels(font, font.kerning(previous.codepoint, glyph.codepoint), fontSize) : 0;
 }
 
@@ -141,6 +141,6 @@ function lineWidth(font: SpriteFont, characters: readonly string[], start: numbe
 }
 
 /** 字体里没有（或者所在的块还在下载）时用默认字符。 */
-function glyphOrDefault(font: SpriteFont, character: string): FontGlyph | undefined {
+export function glyphOrDefault(font: SpriteFont, character: string): FontGlyph | undefined {
   return font.glyph(character.codePointAt(0)!) ?? font.glyph(font.defaultCharacter) ?? undefined;
 }

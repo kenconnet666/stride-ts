@@ -12,6 +12,7 @@ import type { SpriteFrame } from '../rendering/SpriteSheet';
 import type { DrawTextOptions, Quad, Rect, SpriteBatch } from '../rendering/text/SpriteBatch';
 import { Border } from './controls/Border';
 import { Button } from './controls/Button';
+import { RichTextBlock } from './controls/RichTextBlock';
 import { ScrollingText } from './controls/ScrollingText';
 import { ToggleButton } from './controls/ToggleButton';
 import { ContentDecorator } from './controls/ContentControl';
@@ -71,6 +72,7 @@ function drawContent(element: UIElement, context: UIRenderContext): void {
   else if (element instanceof Button) drawSprite(batch, element, element.buttonImage, scale(element.color, opacity));
   else if (element instanceof ToggleButton) drawSprite(batch, element, element.toggleButtonImage, scale(element.color, opacity));
   else if (element instanceof ScrollingText) drawScrollingText(element, context);
+  else if (element instanceof RichTextBlock) drawRichTextBlock(element, context);
   else if (element instanceof TextBlock) drawTextBlock(element, context);
   else if (element instanceof EditText) drawEditText(element, context);
   else if (element instanceof ScrollBar) drawScrollBar(element, context);
@@ -154,6 +156,22 @@ function drawTextBlock(text: TextBlock, context: UIRenderContext): void {
     snap: context.snapText && !text.doNotSnapText,
     outline: textOutline(text),
     selection: selected ? { start: selected[0], end: selected[1], color: scale(text.selectionColor, text.renderOpacity) } : undefined,
+  });
+}
+
+/** 富文本：排好的样子按元素的宽对齐，颜色乘不透明度。 */
+function drawRichTextBlock(text: RichTextBlock, context: UIRenderContext): void {
+  const layout = text.richLayout;
+  if (!layout) return;
+  const [w, h] = text.renderSize;
+  const opacity = text.renderOpacity;
+  context.batch.drawRichText(layout, offset(text.worldMatrix, -w / 2, -h / 2), {
+    colorOf: (style) => scale(text.colorOf(style), opacity),
+    codeBackground: scale(text.codeBackgroundColor, opacity),
+    alignment: text.textAlignment,
+    boxWidth: w,
+    snap: context.snapText && !text.doNotSnapText,
+    outline: textOutline(text),
   });
 }
 

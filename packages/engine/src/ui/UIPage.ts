@@ -16,6 +16,7 @@ import { EditText } from './controls/EditText';
 import { ImageElement } from './controls/ImageElement';
 import { ModalElement } from './controls/ModalElement';
 import { ScrollBar, ScrollViewer } from './controls/ScrollViewer';
+import { RichTextBlock } from './controls/RichTextBlock';
 import { TextBlock } from './controls/TextBlock';
 import { Canvas } from './panels/Canvas';
 import { Grid, StripDefinition } from './panels/Grid';
@@ -71,7 +72,7 @@ export interface UIResources {
 }
 
 const ELEMENT_TYPES: Readonly<Record<UIElementType, new () => UIElement>> = {
-  Border, Button, Canvas, ContentDecorator, ContentPresenter, EditText, Grid, ImageButton, ImageElement, ModalElement, ScrollBar, ScrollingText, ScrollViewer, Slider,
+  Border, Button, Canvas, ContentDecorator, ContentPresenter, EditText, Grid, ImageButton, ImageElement, ModalElement, RichTextBlock, ScrollBar, ScrollingText, ScrollViewer, Slider,
   StackPanel, TextBlock, ToggleButton, UniformGrid,
 };
 

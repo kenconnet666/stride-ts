@@ -199,10 +199,12 @@ export {
 } from './rendering/Material';
 export { SpriteSheet, type SpriteFrame, type SpriteSheetId } from './rendering/SpriteSheet';
 export { SpriteFont, type FontGlyph, type LoadedGlyphBlock } from './rendering/text/SpriteFont';
-export { SpriteBatch, type Color, type DrawOptions, type DrawStringOptions, type Rect, type Vec2 } from './rendering/text/SpriteBatch';
+export { SpriteBatch, type Color, type DrawOptions, type DrawRichTextOptions, type DrawStringOptions, type Rect, type Vec2 } from './rendering/text/SpriteBatch';
 export { spriteEffect, SPRITE_EFFECT_PARAMETERS, type SpriteEffect } from './rendering/text/SpriteEffect';
 export { GlyphStore } from './rendering/text/GlyphStore';
 export { glyphAdvance, glyphScale, layoutText, measureText, type FontSize, type PositionedGlyph, type TextAlignment } from './rendering/text/layout';
+export { parseColor, parseMarkdown, plainText, type RichBlock, type RichColor, type RichDocument, type RichRun, type RichStyle } from './rendering/text/markdown';
+export { layoutRichText, lineOffset, type RichDecoration, type RichFonts, type RichGlyph, type RichLayoutOptions, type RichLine, type RichTextLayout } from './rendering/text/richLayout';
 export {
   UIElement, multiply as multiplyMatrix2D, translation as translationMatrix2D,
   type HorizontalAlignment, type LayoutingContext, type Matrix2D, type Thickness, type VerticalAlignment, type Visibility,
@@ -221,6 +223,7 @@ export { ScrollingText } from './ui/controls/ScrollingText';
 export { Slider } from './ui/controls/Slider';
 export { ImageElement, imageSize, type StretchDirection, type StretchType } from './ui/controls/ImageElement';
 export { TextBlock } from './ui/controls/TextBlock';
+export { LinkEventArgs, RichTextBlock } from './ui/controls/RichTextBlock';
 export { ModalElement } from './ui/controls/ModalElement';
 export { ScrollBar, ScrollViewer, type Orientation, type ScrollInfo, type ScrollingMode } from './ui/controls/ScrollViewer';
 export { EditText, type EditTextInputType } from './ui/controls/EditText';

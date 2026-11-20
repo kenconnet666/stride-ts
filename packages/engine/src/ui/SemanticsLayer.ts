@@ -14,9 +14,10 @@
  */
 import { ButtonBase } from './controls/Button';
 import { EditText } from './controls/EditText';
+import { RichTextBlock } from './controls/RichTextBlock';
 import { Slider } from './controls/Slider';
 import type { TextBlock } from './controls/TextBlock';
-import { collectSemantics, semanticsKey, type SemanticsNode } from './semantics';
+import { collectSemantics, semanticsKey, type SemanticsLine, type SemanticsNode } from './semantics';
 import type { UIElement, Vec2 } from './UIElement';
 
 /** 一棵全屏的 UI 和它的虚拟分辨率。 */
@@ -38,6 +39,8 @@ const STYLE = `
 .stride-semantics > div { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .stride-semantics .node { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; font: inherit; overflow: visible; }
 .stride-semantics .node span { position: absolute; white-space: pre; transform-origin: 0 0; user-select: text; }
+.stride-semantics .node span span { position: static; }
+.stride-semantics .node [role=link]:focus-visible { outline: 2px solid Highlight; outline: 2px auto -webkit-focus-ring-color; outline-offset: 1px; }
 .stride-semantics .node.selectable span { pointer-events: auto; cursor: text; }
 .stride-semantics ::selection { background: transparent; color: transparent; }
 .stride-semantics .node:focus-visible { outline: 2px solid Highlight; outline: 2px auto -webkit-focus-ring-color; outline-offset: 2px; }
@@ -195,6 +198,20 @@ export class SemanticsLayer {
         if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
       }, { signal });
     }
+    if (element instanceof RichTextBlock) {
+      // 富文本里的链接（setSegments 建的 role=link 的段）：读屏软件的点击、Enter 发 LinkClicked
+      const linkOf = (event: Event) => (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-link]')?.dataset['link'];
+      dom.addEventListener('click', (event) => {
+        const link = linkOf(event);
+        if (link !== undefined) element.activateLink(Number(link));
+      }, { signal });
+      dom.addEventListener('keydown', (event) => {
+        const link = linkOf(event);
+        if (link === undefined || event.key !== 'Enter') return;
+        element.activateLink(Number(link));
+        event.stopPropagation();
+      }, { signal });
+    }
     if (element instanceof EditText) {
       // 走到输入框上（Tab、读屏软件的点击）就开始编辑：真的输入框（TextInputBridge）接手焦点，这个节点下次同步时拿掉
       const activate = () => {
@@ -243,11 +260,13 @@ export class SemanticsLayer {
     text.lines.forEach((line, i) => {
       const span = dom.children[i] as HTMLElement;
       // 行尾带上换行，复制出来的文字分行
-      const content = i < text.lines.length - 1 ? `${line.text}\n` : line.text;
-      if (span.textContent !== content) span.textContent = content;
+      const newline = i < text.lines.length - 1 ? '\n' : '';
+      if (line.segments) setSegments(span, line.segments, newline);
+      else if (span.textContent !== line.text + newline) span.textContent = line.text + newline;
       const natural = this.#naturalWidth(line.text, text.fontSize);
+      const height = line.height ?? text.lineHeight;
       Object.assign(span.style, {
-        left: `${line.x}px`, top: `${line.y}px`, fontSize: `${text.fontSize}px`, lineHeight: `${text.lineHeight}px`, height: `${text.lineHeight}px`,
+        left: `${line.x}px`, top: `${line.y}px`, fontSize: `${text.fontSize}px`, lineHeight: `${height}px`, height: `${height}px`,
         transform: natural > 0 && line.width > 0 ? `scaleX(${line.width / natural})` : '',
       });
     });
@@ -291,6 +310,23 @@ export class SemanticsLayer {
     }
     this.#selection = result;
   }
+}
+
+/** 富文本的一行：每段一个 span，链接的段是能 Tab 到的 role=link（data-link 是第几个链接）。内容没变时不动 DOM。 */
+function setSegments(span: HTMLElement, segments: NonNullable<SemanticsLine['segments']>, newline: string): void {
+  const key = JSON.stringify([segments, newline]);
+  if (span.dataset['segments'] === key) return;
+  span.dataset['segments'] = key;
+  span.replaceChildren(...segments.map((segment, i) => {
+    const part = document.createElement('span');
+    part.textContent = segment.text + (i === segments.length - 1 ? newline : '');
+    if (segment.link !== undefined) {
+      part.setAttribute('role', 'link');
+      part.tabIndex = 0;
+      part.dataset['link'] = String(segment.link);
+    }
+    return part;
+  }));
 }
 
 function setAttribute(dom: HTMLElement, name: string, value: string | undefined): void {

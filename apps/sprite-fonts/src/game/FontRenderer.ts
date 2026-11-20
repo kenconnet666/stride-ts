@@ -1,12 +1,15 @@
 // SpriteFonts 的 FontRenderer（Stride 里是合成器的根渲染器 SceneRendererBase）：清成绿色，用 SpriteBatch 画背景和八屏文字
-// （介绍、编译期字体、运行时字体、粗体斜体、三种抗锯齿、日文、左中右对齐、旋转缩放的动画），每屏淡入淡出、到时间换下一屏；
+// （介绍、编译期字体、运行时字体、粗体斜体、三种抗锯齿、日文、左中右对齐、旋转缩放的动画），加上我们的第九屏（UI 里的富文本，
+// 见 RichTextScreen.ts，这一屏只画标题，正文是 UI），每屏淡入淡出、到时间换下一屏；
 // 空格或点击暂停，左右键换屏。虚拟分辨率 1920x1080。颜色照 Stride 是 Color.White * alpha（四个通道都乘）。
 // 合成器里的类型名是 SpriteFonts.FontRenderer，属性（字体、背景图）随游戏设置导入，SpriteFontsGame 用 create 建它。
 // 和 Stride 不同的地方在 SpriteBatch 里（原点的单位、字距），这里照原样调用。
-import { SpriteBatch, type Color, type RenderContext, type SceneRenderer, type SpriteFont, type Texture, type Vec2 } from '@stride-ts/engine';
+import { SpriteBatch, type Color, type RenderContext, type SceneRenderer, type SpriteFont, type Texture, type UIElement, type Vec2 } from '@stride-ts/engine';
 
 /** 每屏显示的秒数：第一个是介绍，后面依次是各组文字。 */
-const TIME_TO_DISPLAY = [3, 5, 5, 4, 5, 5, 5, 10];
+const TIME_TO_DISPLAY = [3, 5, 5, 4, 5, 5, 5, 10, 8];
+/** 富文本那一屏。 */
+export const RICH_TEXT_SCREEN = 8;
 const FADE_IN = 1;
 const FADE_OUT = 1;
 const DYNAMIC_FONT_CONTENT_SIZE = 50;
@@ -60,6 +63,10 @@ export class FontRenderer implements SceneRenderer {
   }
 
   readonly #assets: FontRendererAssets;
+  /** 游戏设置里给的字体和背景图。 */
+  get assets(): FontRendererAssets {
+    return this.#assets;
+  }
   #spriteBatch: SpriteBatch | undefined;
   readonly #screens: readonly (() => void)[];
   #screenSize: Vec2 = [1, 1];
@@ -70,12 +77,15 @@ export class FontRenderer implements SceneRenderer {
   isPlaying = true;
   currentScreen = 0;
   currentTime = 0;
+  /** 富文本那一屏的 UI（SpriteFontsGame 建好给它）：只在那一屏显示，跟着淡入淡出。 */
+  richText: UIElement | undefined;
 
   constructor(assets: FontRendererAssets) {
     this.#assets = assets;
     this.#screens = [
       () => this.#drawIntroduction(), () => this.#drawStatic(), () => this.#drawDynamic(), () => this.#drawStyle(),
       () => this.#drawAlias(), () => this.#drawLanguage(), () => this.#drawAlignment(), () => this.#drawAnimation(),
+      () => this.#drawHeader('Rich text in ', 'Markdown', ''),
     ];
   }
 
@@ -87,6 +97,11 @@ export class FontRenderer implements SceneRenderer {
     this.#updateInput(game.input);
     this.#updateCurrentScreen();
     if (this.isPlaying) this.currentTime += time.elapsed;
+    // UI 在这之后画（Game 画完场景才画 UI），这一帧就跟上
+    if (this.richText) {
+      this.richText.visibility = this.currentScreen === RICH_TEXT_SCREEN ? 'visible' : 'collapsed';
+      this.richText.opacity = this.#interpolatedAlpha();
+    }
 
     const encoder = device.device.createCommandEncoder({ label: 'FontRenderer' });
     const pass = encoder.beginRenderPass({
@@ -250,11 +265,14 @@ export class FontRenderer implements SceneRenderer {
     if (input.isKeyPressed('Space') || input.pointerEvents.some((event) => event.eventType === 'pressed')) {
       this.isPlaying = !this.isPlaying;
     } else if (input.isKeyPressed('Left') || input.isKeyPressed('Right')) {
-      // 暂停时跳过淡入，换过去的屏马上看得清
-      this.currentTime = this.isPlaying ? 0 : FADE_IN;
-      const step = input.isKeyPressed('Left') ? -1 : 1;
-      this.currentScreen = (this.currentScreen + step + this.#screens.length) % this.#screens.length;
+      this.step(input.isKeyPressed('Left') ? -1 : 1);
     }
+  }
+
+  /** 往后（-1 往前）换一屏，循环；暂停时跳过淡入，换过去的屏马上看得清。 */
+  step(direction: 1 | -1): void {
+    this.currentTime = this.isPlaying ? 0 : FADE_IN;
+    this.currentScreen = (this.currentScreen + direction + this.#screens.length) % this.#screens.length;
   }
 
   #updateCurrentScreen(): void {

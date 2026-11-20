@@ -300,6 +300,8 @@ PCSS（同一天，TPP，无头 Chrome 1280x720，暂停后单步）：太阳的
 
 往实例的成员下面加实体（同一天，TopDownRPG 的编辑器，内容目录在工作树里换成拷贝再保存）：选中 CoinGold 实例的成员 Point light，工具条的"加实体"加出 UnderTorchLight（场景文件里父实体是 `<实例>/<成员>`，排在实例后面），再把一个 Box3x1x1 实例 Ctrl+Shift+V 粘贴到它下面、位置设成 (0, 1, 0)，视口里箱子出现在火把上方；保存、重新打开编辑器，层级原样；试玩时游戏里的层级是 Box3x1x1 → UnderTorchLight → Point light → CoinGold。主检出的场景文件没动。
 
+富文本的运行时（2026-11-20，scene-picking 分支，无头 Chrome 1280x720，SpriteFonts 的第九屏）：截图里粗体、斜体用样例自带的字体，粗斜体合成，删除线、行内代码（颜色和底色）、橙色、放大缩小、下划线、两层列表、链接都对。第一版两处不对：文字没居中（Canvas 不管子元素的对齐，样例换成 Grid）；代码的底色是实心白（UI 的颜色是预乘 alpha 的，默认值写成了不预乘的，Markdown 里写的颜色也改成画的时候预乘）。在画布上发真的指针事件点"next screen""previous screen"换到第 0、第 7 屏，点链接以外的文字照常暂停、继续；影子 DOM 里两个链接是 `role=link`，Enter 也换屏。这些都写进了 SpriteFonts 的冒烟。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

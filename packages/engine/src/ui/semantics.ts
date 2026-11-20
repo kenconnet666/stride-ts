@@ -8,6 +8,8 @@
 import { ButtonBase } from './controls/Button';
 import { EditText } from './controls/EditText';
 import { ModalElement } from './controls/ModalElement';
+import { RichTextBlock } from './controls/RichTextBlock';
+import { lineOffset } from '../rendering/text/richLayout';
 import { ScrollingText } from './controls/ScrollingText';
 import { Slider } from './controls/Slider';
 import { TextBlock } from './controls/TextBlock';
@@ -23,6 +25,10 @@ export interface SemanticsLine {
   readonly y: number;
   readonly width: number;
   readonly start: number;
+  /** 这一行的高；没有时是整段的 lineHeight（富文本的行高各不一样）。 */
+  readonly height?: number;
+  /** 富文本的一行按链接分的段（link 是 RichTextBlock 里第几个链接）；没有时整行是 text。 */
+  readonly segments?: readonly { readonly text: string; readonly link?: number }[];
 }
 
 export interface SemanticsNode {
@@ -84,6 +90,23 @@ function visit(element: UIElement, insideControl: boolean, nodes: SemanticsNode[
     nodes.push({ ...base, role: 'textbox', label: nameOf(element), hidden: element.isSelectionActive, value, readOnly: element.isReadOnly });
     return;
   }
+  if (element instanceof RichTextBlock) {
+    const layout = element.richLayout;
+    if (!layout) return;
+    let start = 0;
+    const lines = layout.lines.map((line): SemanticsLine => {
+      const result = { text: line.text, x: lineOffset(line, element.textAlignment, w), y: line.y, width: line.width, start, height: line.height, segments: line.segments };
+      start += [...line.text].length + 1;
+      return result;
+    });
+    const label = lines.map((line) => line.text).join('\n');
+    if (label.trim() === '') return;
+    nodes.push({
+      ...base, role: 'text', label, hidden: insideControl,
+      text: { lines, fontSize: element.actualTextSize, lineHeight: layout.lines[0]?.height ?? element.actualTextSize, selectable: false },
+    });
+    return;
+  }
   if (element instanceof TextBlock) {
     const marquee = element instanceof ScrollingText;
     // 滚动的文字给读屏软件的是整段，不是这一帧露出来的那几个字
@@ -121,7 +144,8 @@ function nameOf(element: UIElement, fromContent = false): string {
 function contentText(element: UIElement, out: string[] = []): string[] {
   for (const child of element.visualChildren) {
     if (!child.isVisible) continue;
-    if (child instanceof TextBlock) out.push((child.text ?? '').trim());
+    // 富文本的 text 是 Markdown 源文，读去掉标记的
+    if (child instanceof TextBlock) out.push((child instanceof RichTextBlock ? child.textToDisplay : child.text ?? '').trim());
     else contentText(child, out);
   }
   return out;
@@ -146,6 +170,8 @@ function textLines(text: TextBlock): SemanticsLine[] {
 export function semanticsKey(node: SemanticsNode): string {
   const { role, label, matrix, size, disabled, hidden, blocked, checked, range, text, value, readOnly } = node;
   const numbers = [...matrix, ...size].map((value) => Math.round(value * 100) / 100).join(',');
-  const lines = text ? `${text.fontSize},${text.lineHeight},${text.selectable},${text.lines.map((line) => `${line.x},${line.y},${line.width}`).join(';')}` : '';
+  const lines = text
+    ? `${text.fontSize},${text.lineHeight},${text.selectable},${text.lines.map((line) => `${line.x},${line.y},${line.width},${line.height ?? ''},${line.segments?.map((segment) => `${[...segment.text].length}:${segment.link ?? ''}`).join('/') ?? ''}`).join(';')}`
+    : '';
   return `${role}|${label}|${numbers}|${disabled}|${hidden}|${blocked}|${value ?? ''}|${readOnly ?? ''}|${checked ?? ''}|${range ? `${range.min},${range.max},${range.value}` : ''}|${lines}`;
 }

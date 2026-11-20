@@ -22,6 +22,8 @@ import type { GpuResources } from '../GpuResources';
 import { Texture } from '../Texture';
 import { GlyphStore } from './GlyphStore';
 import { glyphScale, layoutText, measureText, type FontSize, type TextAlignment } from './layout';
+import type { RichStyle } from './markdown';
+import { lineOffset, SYNTHETIC_BOLD_EM, SYNTHETIC_ITALIC_SLANT, type RichTextLayout } from './richLayout';
 import { SLUG_WGSL } from './slug';
 import { SPRITE_EFFECT_PARAMETERS, spriteEffectShader, type SpriteEffect } from './SpriteEffect';
 import type { FontGlyph, SpriteFont } from './SpriteFont';
@@ -59,6 +61,21 @@ export interface Quad {
   readonly origin: Vec2;
   readonly axisX: Vec2;
   readonly axisY: Vec2;
+}
+
+/** drawRichText 的选项。 */
+export interface DrawRichTextOptions {
+  /** 一段文字的颜色（sRGB）：按样式选（链接、代码、写了颜色的）。下划线、删除线同色。 */
+  readonly colorOf: (style: RichStyle) => Color;
+  /** 行内代码的底色（sRGB）；没有时不画。 */
+  readonly codeBackground?: Color | undefined;
+  readonly alignment?: TextAlignment;
+  /** 对齐用的框宽，虚拟像素；不给时是最宽那一行。 */
+  readonly boxWidth?: number;
+  /** 字的原点对齐到真实像素（同 drawText）。 */
+  readonly snap?: boolean;
+  /** 描边，同 drawText。 */
+  readonly outline?: { readonly color: Color; readonly thickness: number } | undefined;
 }
 
 /** drawText 的选项（Stride 的 SpriteFont.InternalUIDrawCommand）。 */
@@ -383,6 +400,66 @@ export class SpriteBatch {
     const emSize = Math.min(Math.hypot(axes[0], axes[1]), Math.hypot(axes[2], axes[3]));
     if (outline && outline.thickness > 0 && outline.color[3] > 0 && emSize > 0) emit(toLinear(outline.color), outline.thickness / emSize);
     emit(toLinear(color), 0);
+  }
+
+  /**
+   * 画排好的富文本（richLayout.ts）：transform 同 drawText，把文字框的局部坐标（虚拟像素，左上角是原点）换到屏幕的虚拟坐标。
+   * 每个字按自己的字体和字号画；合成的粗体是轮廓往外扩（和描边同一套，按到轮廓的距离），合成的斜体是把字的 y 轴往右斜切。
+   * 先画代码的底色，再画描边、字，最后画下划线和删除线。
+   */
+  drawRichText(layout: RichTextLayout, transform: Matrix2DLike, { colorOf, codeBackground, alignment = 'left', boxWidth, snap = true, outline }: DrawRichTextOptions): void {
+    const [a, b, c, d, e, f] = transform;
+    const screen = this.#ratio();
+    const ox = snap ? Math.round(e * screen[0]) / screen[0] : e, oy = snap ? Math.round(f * screen[1]) / screen[1] : f;
+    const offsets = layout.lines.map((line) => lineOffset(line, alignment, boxWidth ?? layout.size[0]));
+    // 文字框里的矩形（虚拟像素）换到屏幕
+    const rect = (x: number, y: number, width: number, height: number, color: Color) =>
+      this.drawQuad(null, { origin: [ox + x * a + y * c, oy + x * b + y * d], axisX: [width * a, width * b], axisY: [height * c, height * d] }, [0, 0, 1, 1], color);
+    if (codeBackground && codeBackground[3] > 0) {
+      for (const deco of layout.decorations) if (deco.kind === 'code') rect(deco.x + offsets[deco.line]!, deco.y, deco.width, deco.height, codeBackground);
+    }
+    const linear = new Map<RichStyle, Color>();
+    const colorFor = (style: RichStyle): Color => {
+      let color = linear.get(style);
+      if (!color) linear.set(style, (color = toLinear(colorOf(style))));
+      return color;
+    };
+    // radius：描边的半径（虚拟像素），0 是字本身
+    const emit = (outlineColor: Color | undefined, radius: number): void => {
+      for (const glyph of layout.glyphs) {
+        if (glyph.glyph.hBands === 0) continue;
+        const { font, fontPx, unit } = glyph;
+        const emToFont = glyphScale(font, [fontPx, fontPx]);
+        const ux = a * unit, uy = b * unit, vx = c * unit, vy = d * unit;
+        const axes: [number, number, number, number] = [emToFont[0] * ux, emToFont[0] * uy, -emToFont[1] * vx, -emToFont[1] * vy];
+        if (glyph.syntheticItalic) {
+          axes[2] += SYNTHETIC_ITALIC_SLANT * emToFont[0] * ux;
+          axes[3] += SYNTHETIC_ITALIC_SLANT * emToFont[0] * uy;
+        }
+        const pixels = Math.min(Math.hypot(ux, uy) * screen[0], Math.hypot(vx, vy) * screen[1]) * Math.min(Math.abs(emToFont[0]), Math.abs(emToFont[1]));
+        if (!(pixels > 0)) continue;
+        const emSize = Math.min(Math.hypot(axes[0], axes[1]), Math.hypot(axes[2], axes[3]));
+        const bold = glyph.syntheticBold ? SYNTHETIC_BOLD_EM : 0;
+        const outlineEm = radius > 0 && emSize > 0 ? radius / emSize : 0;
+        if (radius > 0 && outlineEm === 0) continue;
+        // 合成粗体往两边各扩 bold em，前进宽度里多算了两份：字往右挪一份居中
+        let x = glyph.x + offsets[glyph.line]! + bold * emToFont[0] * unit, y = glyph.y;
+        // 原点按字体像素取整（同 drawText；运行时字体的字体像素就是真实像素）
+        if (snap) {
+          x = Math.round(x / unit) * unit;
+          y = Math.round(y / unit) * unit;
+        }
+        const total = bold + outlineEm;
+        this.#glyphItem(glyph.glyph, ox + x * a + y * c, oy + x * b + y * d, axes, 1 / pixels + total, font.antiAlias === 'aliased', outlineColor ?? colorFor(glyph.style), total);
+      }
+    };
+    if (outline && outline.thickness > 0 && outline.color[3] > 0) emit(toLinear(outline.color), outline.thickness);
+    emit(undefined, 0);
+    for (const deco of layout.decorations) {
+      if (deco.kind === 'code') continue;
+      // 线至少一个真实像素粗
+      rect(deco.x + offsets[deco.line]!, deco.y, deco.width, Math.max(deco.height, 1 / screen[1]), colorOf(deco.style));
+    }
   }
 
   /** 画一张贴图到 destination（虚拟坐标的矩形）。 */

@@ -183,10 +183,12 @@ export function warmFullscreenPipeline(device: GPUDevice, label: string, code: s
     (pipeline) => {
       if (pipelines.get(key) === pending) pipelines.set(key, pipeline);
     },
-    (error: unknown) => {
-      // 编不出来：去掉，用到时当场编会把错误报在那一帧
+    async (error: unknown) => {
+      // 编不出来：去掉，用到时当场编会把错误报在那一帧。WGSL 写错时管线的错误只说模块无效，行号和原因在模块的编译信息里
       if (pipelines.get(key) === pending) pipelines.delete(key);
-      console.warn(`${label}: warming the pipeline failed`, error);
+      const messages = await fullscreenCache(device).modules.get(code)?.getCompilationInfo().then((info) => info.messages.filter((m) => m.type === 'error'));
+      const details = messages?.length ? `\n${messages.map((m) => `  line ${m.lineNum}:${m.linePos} ${m.message}`).join('\n')}` : '';
+      console.warn(`${label}: warming the pipeline failed${details}`, error);
     },
   );
 }

@@ -11,15 +11,15 @@
     "render.instances": 64
   },
   "bepu-sample": {
-    "entities": 192,
-    "gpu.buffers": 56,
-    "gpu.buffers.bytes": 752316,
-    "gpu.pipelines.sync": 20,
-    "gpu.textures": 28,
-    "gpu.textures.bytes": 58653776,
-    "native.allocated.bytes": 190555480,
+    "entities": 197,
+    "gpu.buffers": 58,
+    "gpu.buffers.bytes": 891068,
+    "gpu.pipelines.sync": 23,
+    "gpu.textures": 32,
+    "gpu.textures.bytes": 63031376,
+    "native.allocated.bytes": 190557760,
     "render.drawCalls": 6,
-    "render.instances": 1080
+    "render.instances": 1094
   },
   "csharp-beginner": {
     "entities": 143,

@@ -8,8 +8,8 @@
  *   每张贴图最长边缩到 MAX_TILE 以内，按行装箱，四周留 PADDING 像素重复边缘的颜色（mip 不串色）；装不下时图集翻倍，到
  *   MAX_ATLAS 还装不下的贴花跳过并警告一次。贴图的集合变了才重建图集。
  * - 每个贴花 DECAL_FLOATS 个数：世界到盒子（-1..1）的矩阵、颜色和法线在图集里的位置、颜色乘数和不透明度、几种淡出、
- *   盒子的三个轴（世界里，法线贴图的切线空间）。内容没变时不重传。
- * - 分簇（lighting/Clusters.ts）：主视图里像素只看所在那一簇的贴花（每簇最多 MAX_CLUSTER_DECALS 个）。
+ *   盒子的三个轴（世界里，法线贴图的切线空间）。个数不设上限，缓冲按 2 的幂变大；内容没变时不重传。
+ * - 分簇（lighting/Clusters.ts）：每个要着色的视图里像素只看所在那一簇的贴花。
  * - 没做：只投到某些渲染组上（Godot 的 cull mask）、粗糙度和金属度的
  *   贴图、自发光、按距离淡出。
  */
@@ -22,8 +22,6 @@ import { Decal } from '../components';
 import type { RenderContext } from '../RenderSystem';
 import { FULLSCREEN_VERTEX } from '../wgsl';
 
-/** 一帧最多画的贴花（多了的跳过）：缓冲按它建；每个像素只看所在那一簇的。 */
-export const MAX_DECALS = 256;
 /** 每个贴花的数（12 个 vec4，见文件头）。 */
 export const DECAL_FLOATS = 48;
 const MIN_ATLAS = 1024;
@@ -86,32 +84,55 @@ const NONE: AtlasRect = [0, 0, 0, 0];
 
 /** 贴花盒子的包围球：球心是实体的位置，半径是盒子（带实体的缩放）半个对角线。 */
 export function decalBounds(world: Readonly<Matrix4>, size: readonly [number, number, number]): [number, number, number, number] {
+  const out = new Float32Array(4);
+  writeDecalBounds(world, size, out, 0);
+  return [out[0]!, out[1]!, out[2]!, out[3]!];
+}
+
+/** 包围球写进 out[offset..offset + 4]（每帧给所有贴花算，不分配）。 */
+function writeDecalBounds(world: Readonly<Matrix4>, size: readonly [number, number, number], out: Float32Array, offset: number): void {
   let squared = 0;
   for (let axis = 0; axis < 3; axis++) {
     const half = (size[axis]! / 2) * Math.hypot(world[axis * 4]!, world[axis * 4 + 1]!, world[axis * 4 + 2]!);
     squared += half * half;
   }
-  return [world[12]!, world[13]!, world[14]!, Math.sqrt(squared)];
+  out[offset] = world[12]!;
+  out[offset + 1] = world[13]!;
+  out[offset + 2] = world[14]!;
+  out[offset + 3] = Math.sqrt(squared);
 }
+
+// packDecal 的临时矩阵（每帧给所有贴花算，不分配）
+const INVERSE = Matrix.identity();
+const SCALE = Matrix.identity();
+const TO_BOX = Matrix.identity();
 
 /** 一个贴花写进 out[offset..]（布局见 meshShader.ts 的 struct Decal）。 */
 export function packDecal(decal: DecalInstance, out: Float32Array, offset: number): void {
-  const inverse = Matrix.identity();
-  Matrix.invert(inverse, decal.world);
+  Matrix.invert(INVERSE, decal.world);
   // 盒子是本地 ±size/2：再缩到 ±1
-  const [sx, sy, sz] = decal.size.map((s) => 2 / Math.max(s, 1e-4)) as [number, number, number];
-  const toBox = Matrix.multiply(Matrix.identity(), Matrix.scaleTranslation(Matrix.identity(), sx, sy, sz, 0, 0, 0), inverse);
-  out.set(toBox, offset);
+  const [x, y, z] = decal.size;
+  Matrix.scaleTranslation(SCALE, 2 / Math.max(x, 1e-4), 2 / Math.max(y, 1e-4), 2 / Math.max(z, 1e-4), 0, 0, 0);
+  out.set(Matrix.multiply(TO_BOX, SCALE, INVERSE), offset);
   out.set(decal.albedo ?? NONE, offset + 16);
   out.set(decal.normal ?? NONE, offset + 20);
-  out.set([...decal.color, decal.opacity], offset + 24);
-  out.set([decal.albedoMix, decal.normalFade, decal.upperFade, decal.lowerFade], offset + 28);
+  out[offset + 24] = decal.color[0];
+  out[offset + 25] = decal.color[1];
+  out[offset + 26] = decal.color[2];
+  out[offset + 27] = decal.opacity;
+  out[offset + 28] = decal.albedoMix;
+  out[offset + 29] = decal.normalFade;
+  out[offset + 30] = decal.upperFade;
+  out[offset + 31] = decal.lowerFade;
   // 盒子的轴（世界，单位向量）：x 是贴图的 u，y 是投影的反方向（贴花的"上"），z 是贴图的 v
   const w = decal.world;
   for (let axis = 0; axis < 3; axis++) {
     const x = w[axis * 4]!, y = w[axis * 4 + 1]!, z = w[axis * 4 + 2]!;
     const length = Math.hypot(x, y, z) || 1;
-    out.set([x / length, y / length, z / length, 0], offset + 32 + axis * 4);
+    out[offset + 32 + axis * 4] = x / length;
+    out[offset + 33 + axis * 4] = y / length;
+    out[offset + 34 + axis * 4] = z / length;
+    out[offset + 35 + axis * 4] = 0;
   }
   out.fill(0, offset + 44, offset + DECAL_FLOATS);
 }
@@ -134,6 +155,28 @@ fn encodeSrgb(c: vec3f) -> vec3f {
   return select(c, vec4f(encodeSrgb(max(c.rgb, vec3f(0.0))), c.a), blit.encodeSrgb == 1u);
 }`;
 
+/** 一个找到的贴花（组件的值、世界矩阵、它的贴图在图集里的位置）。 */
+interface FoundDecal extends DecalInstance {
+  readonly world: Float32Array;
+  readonly size: [number, number, number];
+  readonly color: [number, number, number];
+  albedoId: number;
+  normalId: number;
+  albedo: AtlasRect | undefined;
+  normal: AtlasRect | undefined;
+  opacity: number;
+  albedoMix: number;
+  normalFade: number;
+  upperFade: number;
+  lowerFade: number;
+  /** 和上一帧比变了，要重新打包。 */
+  dirty: boolean;
+}
+
+function createFoundDecal(): FoundDecal {
+  return { world: new Float32Array(16), size: [0, 0, 0], color: [0, 0, 0], albedoId: 0, normalId: 0, albedo: undefined, normal: undefined, opacity: 0, albedoMix: 0, normalFade: 0, upperFade: 0, lowerFade: 0, dirty: true };
+}
+
 interface Entry {
   readonly texture: Texture;
   readonly layer: 0 | 1;
@@ -143,11 +186,13 @@ interface Entry {
 export class Decals {
   /** 这一帧的贴花个数。 */
   count = 0;
-  /** 每个贴花的包围球（世界坐标的球心、半径，4 个数一个；分簇用）。 */
-  readonly bounds = new Float32Array(MAX_DECALS * 4);
+  /** 每个贴花的包围球（世界坐标的球心、半径，4 个数一个，前 count 个有效；分簇用）。贴花多了换成更大的数组。 */
+  bounds = new Float32Array(64 * 4);
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
-  readonly #data = new Float32Array(MAX_DECALS * DECAL_FLOATS);
+  #data = new Float32Array(64 * DECAL_FLOATS);
+  /** 上一次打包的贴花个数（个数变了，下标对应的实体可能都换了：全部重新打包）。 */
+  #packedCount = 0;
   #buffer: GPUBuffer | undefined;
   #atlas: GPUTexture | undefined;
   /** 还没有贴花时绑的：1x1x2 的空图集、一个贴花大小的空缓冲。 */
@@ -156,24 +201,47 @@ export class Decals {
   /** 图集里的贴图（颜色、法线分开记：同一张贴图两种用法各放一块）→ 位置；贴图的集合变了才重建。 */
   #rects = new Map<string, AtlasRect>();
   #atlasKey = '';
-  #uploadedKey = '';
-  #warned = false;
   #pipeline: GPURenderPipeline | undefined;
-  #found: { world: Float32Array; size: [number, number, number]; albedo: number; normal: number; color: [number, number, number]; opacity: number; albedoMix: number; normalFade: number; upperFade: number; lowerFade: number }[] = [];
+  /** 这一帧找到的贴花：前 #foundCount 个有效，记录跨帧复用（每帧给所有贴花填一遍，不分配）。 */
+  readonly #found: FoundDecal[] = [];
+  #foundCount = 0;
 
   readonly #collect = system('Decals.collect', {
     with: { decal: Decal, transform: Transform },
     update: ({ decal, transform, count }) => {
+      // 列在循环外取一次（列的属性是取值函数）
+      const { slot, world } = transform;
+      const { size, color, albedo, normal, opacity, albedoMix, normalFade, upperFade, lowerFade } = decal;
       for (let i = 0; i < count; i++) {
-        const w = transform.slot[i]! * 16;
-        this.#found.push({
-          world: transform.world.slice(w, w + 16),
-          size: [decal.size[i * 3]!, decal.size[i * 3 + 1]!, decal.size[i * 3 + 2]!],
-          albedo: decal.albedo[i]!, normal: decal.normal[i]!,
-          color: [decal.color[i * 3]!, decal.color[i * 3 + 1]!, decal.color[i * 3 + 2]!],
-          opacity: decal.opacity[i]!, albedoMix: decal.albedoMix[i]!,
-          normalFade: decal.normalFade[i]!, upperFade: decal.upperFade[i]!, lowerFade: decal.lowerFade[i]!,
-        });
+        const found = (this.#found[this.#foundCount++] ??= createFoundDecal());
+        // 和上一帧这个位置的贴花比：一样就不重新打包（没变就不做）
+        let changed = false;
+        const w = slot[i]! * 16;
+        for (let k = 0; k < 16; k++) {
+          if (found.world[k] !== world[w + k]) {
+            found.world[k] = world[w + k]!;
+            changed = true;
+          }
+        }
+        for (let c = 0; c < 3; c++) {
+          if (found.size[c] !== size[i * 3 + c] || found.color[c] !== color[i * 3 + c]) {
+            found.size[c] = size[i * 3 + c]!;
+            found.color[c] = color[i * 3 + c]!;
+            changed = true;
+          }
+        }
+        if (found.albedoId !== albedo[i] || found.normalId !== normal[i] || found.opacity !== opacity[i] || found.albedoMix !== albedoMix[i]
+          || found.normalFade !== normalFade[i] || found.upperFade !== upperFade[i] || found.lowerFade !== lowerFade[i]) {
+          found.albedoId = albedo[i]!;
+          found.normalId = normal[i]!;
+          found.opacity = opacity[i]!;
+          found.albedoMix = albedoMix[i]!;
+          found.normalFade = normalFade[i]!;
+          found.upperFade = upperFade[i]!;
+          found.lowerFade = lowerFade[i]!;
+          changed = true;
+        }
+        if (changed) found.dirty = true;
       }
     },
   });
@@ -183,7 +251,7 @@ export class Decals {
     this.#resources = resources;
   }
 
-  /** 贴花的缓冲（MAX_DECALS 个；还没有贴花时是一个空的小缓冲）。 */
+  /** 贴花的缓冲（还没有贴花时是一个空的小缓冲）；贴花多了换成更大的，用它的绑定组要重建（看 buffer 变没变）。 */
   get buffer(): GPUBuffer {
     return this.#buffer ?? (this.#emptyBuffer ??= this.#device.createBuffer({ label: 'Decals empty', size: DECAL_FLOATS * 4, usage: GPUBufferUsage.STORAGE }));
   }
@@ -195,47 +263,65 @@ export class Decals {
 
   /** @internal 前向渲染器每帧收集光照时调用：找贴花、需要时重建图集、内容变了才上传。 */
   apply(context: RenderContext): void {
-    this.#found = [];
+    this.#foundCount = 0;
     context.game.entities.run(this.#collect, context.time);
-    const found = this.#found.slice(0, MAX_DECALS);
-    if (this.#found.length > MAX_DECALS && !this.#warned) {
-      this.#warned = true;
-      console.warn(`Decals: ${this.#found.length} decals, only the first ${MAX_DECALS} are drawn`);
+    const count = (this.count = this.#foundCount);
+    if (count === 0) {
+      this.#packedCount = 0;
+      return;
     }
-    this.count = found.length;
-    if (found.length === 0) return;
-    const entries: Entry[] = [];
-    for (const decal of found) {
-      for (const [id, layer] of [[decal.albedo, 0], [decal.normal, 1]] as const) {
-        const texture = id ? Texture.byId(id) : undefined;
-        if (texture && !entries.some((e) => e.texture === texture && e.layer === layer)) entries.push({ texture, layer });
+    // 用到的贴图（颜色、法线各一层）：贴图的种类远少于贴花，按键去重
+    const entries: Entry[] = [], seen = new Set<number>();
+    for (let i = 0; i < count; i++) {
+      const decal = this.#found[i]!;
+      for (const layer of [0, 1] as const) {
+        const id = layer === 0 ? decal.albedoId : decal.normalId;
+        if (!id || seen.has(id * 2 + layer)) continue;
+        seen.add(id * 2 + layer);
+        const texture = Texture.byId(id);
+        if (texture) entries.push({ texture, layer });
       }
     }
-    this.#ensureAtlas(entries);
-    const rect = (id: number, layer: number) => (id ? this.#rects.get(`${layer}:${id}`) : undefined);
-    found.forEach((decal, i) => {
-      packDecal({ ...decal, albedo: rect(decal.albedo, 0), normal: rect(decal.normal, 1) }, this.#data, i * DECAL_FLOATS);
-      this.bounds.set(decalBounds(decal.world, decal.size), i * 4);
-    });
-    const floats = found.length * DECAL_FLOATS;
-    const key = this.#data.subarray(0, floats).join(',');
-    if (key === this.#uploadedKey && this.#buffer) return;
-    this.#uploadedKey = key;
+    // 图集重建了：贴图的位置都可能变了，全部重新打包
+    const atlasChanged = this.#ensureAtlas(entries);
+    let all = atlasChanged || count !== this.#packedCount;
+    if (count * DECAL_FLOATS > this.#data.length) {
+      const capacity = 2 ** Math.ceil(Math.log2(count));
+      this.#data = new Float32Array(capacity * DECAL_FLOATS);
+      this.bounds = new Float32Array(capacity * 4);
+      this.#buffer?.destroy();
+      this.#buffer = undefined;
+      all = true;
+    }
+    let first = count, last = -1;
+    for (let i = 0; i < count; i++) {
+      const decal = this.#found[i]!;
+      if (!decal.dirty && !all) continue;
+      decal.dirty = false;
+      decal.albedo = decal.albedoId ? this.#rects.get(`0:${decal.albedoId}`) : undefined;
+      decal.normal = decal.normalId ? this.#rects.get(`1:${decal.normalId}`) : undefined;
+      packDecal(decal, this.#data, i * DECAL_FLOATS);
+      writeDecalBounds(decal.world, decal.size, this.bounds, i * 4);
+      first = Math.min(first, i);
+      last = i;
+    }
+    this.#packedCount = count;
     this.#buffer ??= this.#device.createBuffer({ label: 'Decals', size: this.#data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-    this.#device.queue.writeBuffer(this.#buffer, 0, this.#data, 0, floats);
+    // 只传变了的那一段
+    if (last >= first) this.#device.queue.writeBuffer(this.#buffer, first * DECAL_FLOATS * 4, this.#data, first * DECAL_FLOATS, (last - first + 1) * DECAL_FLOATS);
   }
 
   destroy(): void {
     for (const resource of [this.#buffer, this.#atlas, this.#emptyAtlas, this.#emptyBuffer]) resource?.destroy();
   }
 
-  /** 图集里放着这些贴图；集合变了才重建（重新装箱、画进去、生成 mip）。 */
-  #ensureAtlas(entries: readonly Entry[]): void {
+  /** 图集里放着这些贴图；集合变了才重建（重新装箱、画进去、生成 mip），返回重建了没有。 */
+  #ensureAtlas(entries: readonly Entry[]): boolean {
     const key = entries.map((e) => `${e.layer}:${e.texture.id}`).sort().join(',');
-    if (key === this.#atlasKey && (this.#atlas || entries.length === 0)) return;
+    if (key === this.#atlasKey && (this.#atlas || entries.length === 0)) return false;
     this.#atlasKey = key;
     this.#rects.clear();
-    if (entries.length === 0) return;
+    if (entries.length === 0) return true;
     const sizes = entries.map((e) => tileSize(e.texture.data.width, e.texture.data.height));
     // 两层各自装箱，图集的大小取两层都装得下的
     let size = MIN_ATLAS, placed: ([number, number, number, number] | undefined)[] = [];
@@ -265,6 +351,7 @@ export class Decals {
       });
     }
     this.#draw(entries, placed, size);
+    return true;
   }
 
   /** 每张贴图画进它的那块（连同留边：边缘的颜色往外延），再逐级生成 mip。 */

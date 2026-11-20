@@ -24,7 +24,8 @@ $results = foreach ($app in $Apps) {
   Write-Host "===== $app"
   $port = $offset + [int](Select-String -Path "apps\$app\vite.config.ts" -Pattern 'strideApp\((\d+)').Matches.Groups[1].Value
   Remove-Item (Join-Path $Out "$app.json") -ErrorAction SilentlyContinue
-  pwsh (Join-Path $PSScriptRoot 'content.ps1') protect $app
+  # 输出送到屏幕上：留在管道里会混进 $results（字符串没有 Passed，最后被当成没通过、退出码成了 1）
+  pwsh (Join-Path $PSScriptRoot 'content.ps1') protect $app | Out-Host
   $server = Start-Process -FilePath pwsh -ArgumentList '-NoProfile', '-Command', "pnpm dev --strictPort --port $port *> `"$Out\$app-dev.log`"" -WorkingDirectory (Join-Path $root 'apps' $app) -PassThru -WindowStyle Hidden
   try {
     # stride open 等到游戏页面跑起来；新起的开发服务器第一次要预构建依赖，可能要一分钟
@@ -33,7 +34,7 @@ $results = foreach ($app in $Apps) {
   } finally {
     pnpm exec stride close *> $null
     taskkill /T /F /PID $server.Id *> $null
-    pwsh (Join-Path $PSScriptRoot 'content.ps1') restore $app
+    pwsh (Join-Path $PSScriptRoot 'content.ps1') restore $app | Out-Host
   }
   $file = Join-Path $Out "$app.json"
   $report = (Test-Path $file) ? (Get-Content $file -Raw | ConvertFrom-Json) : $null

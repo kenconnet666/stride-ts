@@ -1,5 +1,6 @@
-# CI：每次推送 main、每个 PR 跑。GitHub 自带的运行器没有显卡，WebGPU 用 Chrome 带的 SwiftShader（软件）。
-# 真实显卡上才验证得了的（帧时间、和桌面 Stride 的截图比对、测量）在本地的验证工作树里跑（tools/verify.ps1）。
+# CI：每次推送 main、每个 PR 跑（分层测试的第 3 层：本地只跑快检和改动影响到的样例，全量在这里）。
+# GitHub 自带的运行器没有显卡，WebGPU 用 Chrome 带的 SwiftShader（软件，Linux 上才有）：冒烟的功能检查和预算里的计数都验证得了，
+# 帧时间、和桌面 Stride 的截图比对、测量在本地的验证工作树里跑（tools/verify.ps1 槽位 3）。
 name: CI
 
 on:
@@ -15,8 +16,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # 样例的内容从用户 fork 的 Stride 导入（这个分支的样例换成了 BepuPhysics 的组件，见 docs/handover.md）
+  STRIDE_FORK: https://github.com/kenconnet666/stride
+  STRIDE_BRANCH: web-experiment-base
+
 jobs:
-  # 快检：类型检查和单测
+  # 第 1 层：类型检查和单测
   check:
     runs-on: ubuntu-latest
     steps:
@@ -30,9 +36,72 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
-  # 探测：这台运行器上的 Chrome 拿不拿得到 SwiftShader 的 WebGPU 适配器（冒烟能不能在 CI 上跑的前提）
-  webgpu-probe:
+  # 导入样例的内容（apps/*/public/content，不提交）：导入器、样例的导入脚本、依赖和 Stride 的提交都没变时用缓存
+  content:
     runs-on: ubuntu-latest
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Content cache key
+        id: key
+        run: |
+          stride=$(git ls-remote "$STRIDE_FORK" "refs/heads/$STRIDE_BRANCH" | cut -f1)
+          echo "stride=$stride" >> "$GITHUB_OUTPUT"
+          echo "key=content-${{ hashFiles('packages/pipeline/src/**', 'packages/engine/src/content/**', 'apps/*/scripts/import.ts', 'apps/*/content-overrides/**', 'pnpm-lock.yaml', 'pnpm-workspace.yaml') }}-$stride" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        id: cached
+        with:
+          path: apps/*/public/content
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
+      - uses: pnpm/action-setup@v4
+        if: steps.cached.outputs.cache-hit != 'true'
+      - uses: actions/setup-node@v4
+        if: steps.cached.outputs.cache-hit != 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+      - if: steps.cached.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+      # Stride 的样例：稀疏、浅克隆，只拉 samples 的 LFS 文件（约 190 MB）；LFS 对象按 Stride 的提交另外缓存，导入器改了也不用重新下
+      - if: steps.cached.outputs.cache-hit != 'true'
+        name: Check out the Stride samples
+        env:
+          GIT_LFS_SKIP_SMUDGE: '1'
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse -b "$STRIDE_BRANCH" "$STRIDE_FORK" "$RUNNER_TEMP/stride"
+          git -C "$RUNNER_TEMP/stride" sparse-checkout set samples
+      - if: steps.cached.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/stride/.git/lfs
+          key: stride-lfs-${{ steps.key.outputs.stride }}
+      - if: steps.cached.outputs.cache-hit != 'true'
+        run: git -C "$RUNNER_TEMP/stride" lfs pull --include "samples/**"
+      - if: steps.cached.outputs.cache-hit != 'true'
+        name: Import
+        env:
+          STRIDE_REPO: ${{ runner.temp }}/stride
+        run: pwsh tools/import-all.ps1 -Parallel 2
+      - if: steps.cached.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: apps/*/public/content
+          key: ${{ steps.key.outputs.key }}
+
+  # 第 3 层：全部样例的冒烟（软件 WebGPU），四组在四台运行器上同时跑；按本地的耗时分得差不多
+  smoke:
+    needs: content
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        apps:
+          - csharp-intermediate,sprite-fonts,platformer,simple-audio,material-shader
+          - topdown-rpg,first-person-shooter,jumpy-jet,space-escape,custom-effect
+          - bepu-sample,ui-element-link,platformer2d,morph-targets,animated-model
+          - csharp-beginner,particles-sample,physics-sample,ui-particles,game-menu
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -41,27 +110,13 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Probe WebGPU on SwiftShader
-        run: |
-          mkdir -p probe
-          cat > probe/index.html <<'EOF'
-          <!doctype html><meta charset="utf-8"><pre id="out">probing</pre>
-          <script type="module">
-            const out = {};
-            try {
-              out.gpu = !!navigator.gpu;
-              for (const [name, options] of [['default', {}], ['fallback', { forceFallbackAdapter: true }]]) {
-                const adapter = navigator.gpu ? await navigator.gpu.requestAdapter(options) : null;
-                out[name] = adapter && { vendor: adapter.info.vendor, architecture: adapter.info.architecture, description: adapter.info.description, fallback: adapter.info.isFallbackAdapter, features: [...adapter.features].sort() };
-              }
-              document.getElementById('out').textContent = JSON.stringify(out, null, 2);
-              globalThis.probeResult = out;
-            } catch (error) {
-              globalThis.probeError = String(error);
-            }
-          </script>
-          EOF
-          (cd probe && python3 -m http.server 8123 &) && sleep 1
-          node tools/run-page.ts http://localhost:8123/ probeResult --error probeError --timeout 60 \
-            --chrome-arg=--enable-unsafe-webgpu --chrome-arg=--enable-features=Vulkan \
-            --chrome-arg=--use-webgpu-adapter=swiftshader --chrome-arg=--enable-unsafe-swiftshader
+      - uses: actions/cache/restore@v4
+        with:
+          path: apps/*/public/content
+          key: ${{ needs.content.outputs.key }}
+          fail-on-cache-miss: true
+      - name: Smoke
+        env:
+          STRIDE_CHROME_ARGS: --enable-unsafe-webgpu --enable-features=Vulkan --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader
+          STRIDE_REGRESS_SIZE: 640x360
+        run: pwsh tools/regress.ps1 -Apps "${{ matrix.apps }}" -Parallel 2

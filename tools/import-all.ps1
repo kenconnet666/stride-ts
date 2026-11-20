@@ -10,11 +10,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path $PSScriptRoot -Parent
-$all = Get-ChildItem (Join-Path $root 'apps') -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'scripts\import.ts') } | ForEach-Object Name
+$all = Get-ChildItem (Join-Path $root 'apps') -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'scripts' 'import.ts') } | ForEach-Object Name
 $selected = $Apps ? ($Apps -split ',' | ForEach-Object Trim) : $all
 $results = $selected | ForEach-Object -ThrottleLimit $Parallel -Parallel {
     $started = Get-Date
-    $output = pnpm --dir (Join-Path $using:root "apps\$_") -s import:stride 2>&1
+    $output = pnpm --dir (Join-Path $using:root 'apps' $_) -s import:stride 2>&1
     [pscustomobject]@{ App = $_; Passed = $LASTEXITCODE -eq 0; Seconds = [int]((Get-Date) - $started).TotalSeconds; Output = $output }
 } | ForEach-Object {
     Write-Host "===== $($_.App) ($($_.Seconds) s)"

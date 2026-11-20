@@ -4,6 +4,7 @@
  * 角色、约束，GameSettings 里的仿真和碰撞矩阵）、导航设置，以及游戏脚本的属性。材质、贴图、天空盒在 materials.ts。
  * 还不认识的组件（音频等）跳过并计数。
  */
+import { convertInstances, type ConvertedPrefab, type StrideBase } from './instances.ts';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { MeshData, StrideTools } from '@stride-ts/native/tools';
@@ -127,6 +128,8 @@ export class StrideImporter {
   readonly #skipped = new Map<string, number>();
   readonly #warnings: string[] = [];
   readonly #prefabs = new Map<string, Promise<string>>();
+  /** 转好的预制体（内容路径 → 实体和改了名的 id），场景里的实例转成引用时和它比。 */
+  readonly #convertedPrefabs = new Map<string, ConvertedPrefab>();
   readonly #sounds = new Map<string, Promise<string>>();
   readonly #spriteSheets = new Map<string, Promise<string>>();
 
@@ -196,7 +199,7 @@ export class StrideImporter {
       const texture = this.#project.get(id, asset.file);
       return texture.type === 'RenderTexture' ? renderTextureOf(texture) : undefined;
     });
-    const files = await this.#hierarchy(asset, compositor.cameraSlots);
+    const files = (await this.#hierarchy(asset, compositor.cameraSlots)).entities;
     const usesPhysics = files.some((file) => file.components.static || file.components.character || file.components.body);
     const navigation = this.#navigationSettings(asset);
     const offset = vec3(asset.data['Offset'], 0);
@@ -222,7 +225,9 @@ export class StrideImporter {
   /** 导入预制体（.sdprefab），返回它的内容路径；脚本属性引用预制体时用，同一个只导入一次。 */
   #prefab(asset: AssetEntry): Promise<string> {
     return once(this.#prefabs, asset, async () => {
-      const prefab: PrefabFile = { name: path.basename(asset.path), entities: await this.#hierarchy(asset, new Map()) };
+      const { entities, renamed } = await this.#hierarchy(asset, new Map());
+      this.#convertedPrefabs.set(asset.path, { entities, renamed });
+      const prefab: PrefabFile = { name: path.basename(asset.path), entities };
       await this.#write(asset.path + EXTENSIONS.prefab, JSON.stringify(prefab, null, 1));
     });
   }
@@ -230,13 +235,14 @@ export class StrideImporter {
   /**
    * 场景或预制体的实体层级（Hierarchy.Parts），父实体排在前面。cameraSlots 是合成器的相机槽位（预制体没有）。
    * 场景导入途中会导入脚本属性引用的预制体，所以层级里的引用表都放在这次调用的上下文里，不放在导入器上。
+   * 预制体的实例转成引用（instances.ts）：renamed 是实例成员在 Stride 里的 id → 新 id。
    */
-  async #hierarchy(asset: AssetEntry, cameraSlots: ReadonlyMap<string, number>): Promise<SceneEntityFile[]> {
+  async #hierarchy(asset: AssetEntry, cameraSlots: ReadonlyMap<string, number>): Promise<{ entities: SceneEntityFile[]; renamed: ReadonlyMap<string, string> }> {
     const parts = asset.data['Hierarchy'] && asObject(asset.data['Hierarchy'])?.['Parts'];
     if (!Array.isArray(parts)) throw new Error(`${asset.file}: no Hierarchy.Parts`);
 
-    // 预制体的实例照场景文件里存的值用，不和预制体合并：Stride 的资源编译器也是这样（合并是 Game Studio 打开工程时做的），
-    // 见 docs/decisions.md 的"预制体的实例照文件里的值"
+    // 预制体的实例照场景文件里存的值（不和预制体合并，同 Stride 的资源编译器，见 docs/decisions.md 的"预制体的实例照文件里
+    // 的值"），转成引用时这些值全部当覆盖，和预制体相同的去掉
     const entities = parts.map((part) => asObject(asObject(part)?.['Entity'])).filter((e): e is StrideObject => e !== undefined);
     // 父子关系写在父实体 Transform 的 Children 里，引用的是子实体 Transform 组件的 Id
     const entityOfTransform = new Map<string, string>();
@@ -264,7 +270,20 @@ export class StrideImporter {
     }
     const context: HierarchyContext = { owners, cameraSlots };
     const files = await Promise.all(entities.map((entity) => this.#entity(entity, parentOf.get(entity['Id'] as string) ?? null, asset, context)));
-    return parentsFirst(files);
+    // 实例的成员：Base 记着来自哪个预制体、对应预制体里的哪个实体、属于哪个实例；用到的预制体先导入（连嵌套的）
+    const bases = new Map<string, StrideBase>();
+    for (const part of parts) {
+      const base = asObject(asObject(part)?.['Base']);
+      const id = asObject(asObject(part)?.['Entity'])?.['Id'];
+      if (!base || typeof id !== 'string') continue;
+      const reference = String(base['BasePartAsset']);
+      const prefab = this.#project.get(reference.slice(0, reference.indexOf(':')), asset.file);
+      await this.#prefab(prefab);
+      bases.set(id, { prefab: prefab.path, part: String(base['BasePartId']), instance: String(base['InstanceId']) });
+    }
+    const converted = convertInstances(parentsFirst(files), bases, this.#convertedPrefabs);
+    if (converted.failure) this.#warnings.push(`${asset.file}: prefab instances kept expanded (${converted.failure})`);
+    return { entities: [...converted.entities], renamed: converted.renamed };
   }
 
   async #entity(entity: StrideObject, parent: string | null, scene: AssetEntry, context: HierarchyContext): Promise<SceneEntityFile> {

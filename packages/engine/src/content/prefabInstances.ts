@@ -90,8 +90,8 @@ function instanceOf(instance: SceneEntityFile, prefabs: ReadonlyMap<string, Enti
   return result;
 }
 
-/** 组件里对别的实体的引用（约束、实例化、两种 link、脚本属性的 `$entity`）照 rename 换掉；没有要换的原样返回。 */
-function renameReferences(entity: SceneEntityFile, rename: (id: string | null) => string | null): SceneEntityFile {
+/** 组件里对别的实体的引用（约束、实例化、两种 link、脚本属性的 `$entity`）照 rename 换掉（导入器转换实例时也用）。 */
+export function renameReferences(entity: SceneEntityFile, rename: (id: string | null) => string | null): SceneEntityFile {
   const c = entity.components;
   const components: Record<string, unknown> = { ...c };
   if (c.constraints) components['constraints'] = c.constraints.map((constraint) => ({ ...constraint, bodyA: rename(constraint.bodyA)!, ...(constraint.bodyB !== undefined ? { bodyB: rename(constraint.bodyB)! } : {}) }));

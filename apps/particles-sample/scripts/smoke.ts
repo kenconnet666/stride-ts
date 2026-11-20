@@ -86,7 +86,8 @@ check('七个场景都到过，又回到 MainScene', new Set(seen).size === 7 &&
 
 // GPU 粒子（Stride 没有）：能放到 GPU 上的发射器都放上去以后照样在画、点得到，没有报错
 stride('eval', 'strideGame.particles.simulation = "gpu"; 1');
-await sleep(2000);
+// 换到 GPU 上从头模拟，管线在后台编：按游戏时间等粒子长出来（墙钟的 2 秒在 CI 上只有几帧）
+stride('eval', '(async () => { await seconds(2); await frames(5); return 1; })()');
 const onGpu = stride('eval', 'strideGame.particles.components.flatMap((c) => c.particleSystem.emitters).filter((e) => e.onGpu).length') as number;
 check('GPU 粒子：MainScene 里火、喷泉这些发射器到了 GPU 上', onGpu >= 5, onGpu);
 const picked = stride('pick', '630', '230') as { entity: { name: string } | null };

@@ -62,3 +62,5 @@ game.debug.event('player.jump', { height });              // 进日志；没连�
 ```
 
 渲染特性重写 `stats()`，`perf` 里就有它的统计；`EntityManager.timings` 打开时按系统和阶段计 CPU 时间（`perf` 采样时自动打开）。
+
+命令超时：页面命令默认等 120 秒，`--timeout <秒>` 或环境变量 `STRIDE_TIMEOUT` 改它（CI 的软件 WebGPU 上一帧零点几秒，工作流里设成 300）。

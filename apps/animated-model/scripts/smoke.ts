@@ -28,7 +28,8 @@ check('点 Run 按钮：换回跑步', playing().join() === 'Run', playing());
 
 const before = rotationY();
 stride('mouse', 'move', '60', '0');
-await sleep(500);
+// 按游戏帧等（墙钟的 0.5 秒在 CI 的软件 WebGPU 上可能一帧都不到）
+stride('eval', '(async () => { await frames(5); return 1; })()');
 const after = rotationY();
 check('指针横向移动让角色转身', Math.abs(after - before) > 0.1, { before, after });
 

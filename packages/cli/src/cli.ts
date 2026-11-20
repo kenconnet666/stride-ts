@@ -73,7 +73,7 @@ Game
 Common options
   --hub <text>            pick a hub by name or url (default: the one whose page connected last)
   --page <id>             pick a page of the hub (default: the last connected)
-  --timeout <seconds>     how long a page command may take (default 120)
+  --timeout <seconds>     how long a page command may take (default 120, or STRIDE_TIMEOUT)
 `;
 
 // 负数（-5、-5,0,1）是位置参数，不是选项：先换个前缀藏起来，解析完再换回
@@ -141,7 +141,9 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
 const positionals = rawPositionals.map((arg) => (arg.startsWith(NEGATIVE) ? arg.slice(1) : arg));
 const [command, ...rest] = positionals;
 const page = options.page === undefined ? undefined : Number(options.page);
-const timeout = options.timeout === undefined ? undefined : Number(options.timeout) * 1000;
+// 没给 --timeout 时看环境变量 STRIDE_TIMEOUT（秒）：CI 的软件 WebGPU 上一帧零点几秒，按帧等的命令要更久
+const timeoutSeconds = options.timeout ?? process.env['STRIDE_TIMEOUT'];
+const timeout = timeoutSeconds === undefined ? undefined : Number(timeoutSeconds) * 1000;
 
 /** 调页面命令的简写。 */
 async function call(name: string, args: Record<string, unknown> = {}, extraTimeout = 0): Promise<unknown> {

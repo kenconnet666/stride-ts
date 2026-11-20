@@ -125,6 +125,8 @@ jobs:
         # … WebgpuSwapChainTexture"），WebGPU 的上下文随之丢掉，页面里就是"A valid external Instance reference no longer exists"。让 Chrome 自己的
         # Vulkan 也用 SwiftShader，交换链贴图走 Vulkan 的后端（ExternalVkImageBacking）。
         # 画面用默认的 1280x720：冒烟的点击坐标、UI 的布局（GameMenu 的虚拟分辨率跟着后备缓冲走）都是按这个大小写的
+        # 软件 WebGPU 上一帧零点几秒到一秒：冒烟里按帧、按游戏时间等的命令给 300 秒（本机默认 120 秒）
         env:
           STRIDE_CHROME_ARGS: --enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader --use-angle=swiftshader --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader
+          STRIDE_TIMEOUT: '300'
         run: pwsh tools/regress.ps1 -Apps ${{ matrix.app }} -Parallel 1

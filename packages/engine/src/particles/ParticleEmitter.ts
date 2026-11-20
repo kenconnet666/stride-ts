@@ -6,6 +6,9 @@
  * 形状（ShapeBuilder）和材质（Material）是画的时候用的：形状见 shapes.ts，材质编译成着色器（material.ts），见粒子的渲染。
  * 场景里不是引擎的模块按类型名找游戏登记的模块类（ParticleContext.module），都没有时警告后跳过。
  * 子粒子的模块按名字连到同一个粒子系统里的父发射器（children.ts）。
+ *
+ * 模拟可以放到 GPU 上（particles/gpu，`simulation`）：那时 update 只跑生成器（这一帧生成几个），粒子在 GPU 上初始化、更新，
+ * 粒子池是空的。
  */
 import type { ParticleModuleFile } from '../content/format';
 import { MaterialCompiler, ParticleMaterialComputeColor, type MaterialProgram, type ParticleMaterial } from './material';
@@ -22,6 +25,11 @@ const ZERO_TOLERANCE = 1e-6;
 export type SimulationSpace = 'world' | 'local';
 export type RandomSeedMethod = 'time' | 'fixed' | 'position';
 export type SortingPolicy = 'none' | 'byDepth' | 'byAge' | 'byOrder';
+/**
+ * 在哪里模拟（Stride 没有）：auto 时模块都有 GPU 版、粒子数够多（见 ParticleSystems）才放到 GPU 上；gpu 时能放就放，不能时
+ * 警告、留在 CPU 上。
+ */
+export type ParticleSimulation = 'auto' | 'cpu' | 'gpu';
 
 /** 发射器所在的粒子系统的世界变换（Stride 的 ParticleSystem.Translation、Rotation、UniformScale）。 */
 export interface EmitterParent {
@@ -42,6 +50,14 @@ export class ParticleEmitter implements ParentEmitter {
   #randomSeedMethod: RandomSeedMethod;
   readonly sortingPolicy: SortingPolicy;
   readonly drawPriority: number;
+  /** 在哪里模拟；改了以后由 ParticleSystems 下一帧切换（从头模拟）。 */
+  simulation: ParticleSimulation;
+  /** @internal 现在在 GPU 上模拟（ParticleSystems 定）。 */
+  onGpu = false;
+  /** @internal GPU 上模拟时：这一帧要生成几个（update 里生成器给的，ParticleSystems 取走）。 */
+  gpuSpawn = 0;
+  /** 重新开始模拟（resetSimulation）的次数：GPU 上的粒子按它知道要清掉。 */
+  simulationGeneration = 0;
   /** 画的时候用：形状和材质（null 是不画）。 */
   readonly shapeBuilder: ParticleModuleFile | null;
   readonly material: ParticleModuleFile | null;
@@ -58,6 +74,7 @@ export class ParticleEmitter implements ParentEmitter {
   /** 寿命到了的粒子多留一帧（Stride 的 DelayParticleDeath）：连着的子粒子生成器的个数，死亡触发要看到它们。 */
   delayParticleDeath = 0;
   #seedGenerator: RandomSeedGenerator | undefined;
+  #initialSeed = 0;
   #systemTranslation: Readonly<Vec3> = [0, 0, 0];
   #initialized = false;
   #poolDirty = true;
@@ -78,6 +95,7 @@ export class ParticleEmitter implements ParentEmitter {
     this.#randomSeedMethod = value(file, 'randomSeedMethod', 'time') as RandomSeedMethod;
     this.sortingPolicy = value(file, 'sortingPolicy', 'none') as SortingPolicy;
     this.drawPriority = value(file, 'drawPriority', 0);
+    this.simulation = value(file, 'simulation', 'auto') as ParticleSimulation;
     this.shapeBuilder = file['shapeBuilder'] === undefined ? { $type: 'shapeBuilderBillboard' } : (file['shapeBuilder'] as ParticleModuleFile | null);
     this.material = file['material'] === undefined ? { $type: 'particleMaterialComputeColor' } : (file['material'] as ParticleModuleFile | null);
     this.shape = this.shapeBuilder ? createBuiltinShape(this.shapeBuilder) ?? gameModule<ParticleShapeBuilder>(this.shapeBuilder, 'shape', context) : undefined;
@@ -123,6 +141,23 @@ export class ParticleEmitter implements ParentEmitter {
     this.#poolDirty = true;
   }
 
+  /** 粒子池该多大（Stride 的规则：MaxParticlesOverride，或者 最长寿命 · 生成器每秒最多生成的个数之和）。 */
+  get targetCapacity(): number {
+    if (this.maxParticlesOverride > 0) return this.maxParticlesOverride;
+    const perSecond = this.spawners.reduce((sum, spawner) => sum + spawner.maxParticlesPerSecond(), 0);
+    return Math.ceil(this.particleLifetime[1] * perSecond);
+  }
+
+  /** 新粒子的默认位置、旋转、大小（局部模拟时是单位变换）。 */
+  get defaultFields(): { readonly position: Readonly<Vec3>; readonly rotation: Readonly<Quat>; readonly scale: number } {
+    return this.#defaults;
+  }
+
+  /** 种子序列的起点（GPU 的粒子从它开始数）。 */
+  get initialSeed(): number {
+    return this.#initialSeed;
+  }
+
   /** 粒子系统现在的位置（生成器用，update 时更新）。 */
   get systemTranslation(): Readonly<Vec3> {
     return this.#systemTranslation;
@@ -142,6 +177,13 @@ export class ParticleEmitter implements ParentEmitter {
     if (!this.#initialized) this.#initialize(parent);
     this.#systemTranslation = parent.translation;
     this.#updateLocations(parent);
+    if (this.onGpu) {
+      // 粒子在 GPU 上：只算这一帧生成几个
+      for (const spawner of this.spawners) if (spawner.enabled) spawner.spawn(dt, this);
+      this.gpuSpawn += this.#toSpawn;
+      this.#toSpawn = 0;
+      return;
+    }
     this.#ensureCapacity();
     this.#moveAndDelete(dt);
     for (const updater of this.updaters) if (updater.enabled && !updater.isPostUpdater) updater.update(dt, this.pool);
@@ -152,6 +194,8 @@ export class ParticleEmitter implements ParentEmitter {
   /** 清空粒子，下一帧从头开始（Stride 的 ResetSimulation）。 */
   resetSimulation(): void {
     this.#poolDirty = true;
+    this.gpuSpawn = 0;
+    this.simulationGeneration++;
     this.pool.setCapacity(0);
     for (const spawner of this.spawners) spawner.resetSimulation();
     for (const initializer of this.initializers) initializer.resetSimulation();
@@ -167,6 +211,7 @@ export class ParticleEmitter implements ParentEmitter {
       const bits = new Uint32Array(new Float32Array(parent.translation).buffer);
       seed = ((bits[0]! ^ (bits[0]! >>> 19)) ^ (bits[1]! ^ (bits[1]! >>> 8)) ^ bits[2]!) >>> 0;
     }
+    this.#initialSeed = seed;
     this.#seedGenerator = new RandomSeedGenerator(seed);
   }
 
@@ -187,12 +232,7 @@ export class ParticleEmitter implements ParentEmitter {
   #ensureCapacity(): void {
     if (!this.#poolDirty) return;
     this.#poolDirty = false;
-    if (this.maxParticlesOverride > 0) {
-      this.pool.setCapacity(this.maxParticlesOverride);
-      return;
-    }
-    const perSecond = this.spawners.reduce((sum, spawner) => sum + spawner.maxParticlesPerSecond(), 0);
-    this.pool.setCapacity(Math.ceil(this.particleLifetime[1] * perSecond));
+    this.pool.setCapacity(this.targetCapacity);
   }
 
   /** 寿命按 dt / 这个粒子的寿命减少，到 0 的删掉（连着子粒子生成器时多留一帧，寿命停在接近 0）；按速度移动。 */

@@ -78,4 +78,14 @@ for (let i = 0; i < 7; i++) {
 }
 check('七个场景都到过，又回到 MainScene', new Set(seen).size === 7 && status().scene === 'MainScene', seen);
 
+// GPU 粒子（Stride 没有）：能放到 GPU 上的发射器都放上去以后照样在画、点得到，没有报错
+stride('eval', 'strideGame.particles.simulation = "gpu"; 1');
+await sleep(2000);
+const onGpu = stride('eval', 'strideGame.particles.components.flatMap((c) => c.particleSystem.emitters).filter((e) => e.onGpu).length') as number;
+check('GPU 粒子：MainScene 里火、喷泉这些发射器到了 GPU 上', onGpu >= 5, onGpu);
+const picked = stride('pick', '630', '230') as { entity: { name: string } | null };
+check('GPU 粒子：画出来了，点选点得到大火', picked.entity?.name === 'Big Fire', picked);
+check('GPU 粒子：还在跑', status().status === 'running' && status().error === null, status());
+stride('eval', 'strideGame.particles.simulation = "auto"; 1');
+
 finish();

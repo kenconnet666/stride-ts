@@ -18,10 +18,16 @@ import type { Vec3 } from './math';
 import type { MaterialProgram } from './material';
 import type { ParticleSystemComponent } from './ParticleSystemComponent';
 import { drawOrder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from './shapes';
+import { GPU_DRAW_WGSL, verticesPerParticle } from './gpu/draw';
+import { gpuDrawLayout, type GpuEmitter } from './gpu/GpuEmitter';
+import type { ParticleEmitter } from './ParticleEmitter';
 
-/** 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数、时间、点选的编号（WGSL 里 96 字节）；按动态偏移的 256 字节对齐。 */
+/**
+ * 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数、时间、点选的编号，GPU 粒子还要相机的三个轴、粒子系统的变换、环的头和
+ * 容量（WGSL 里 192 字节）；按动态偏移的 256 字节对齐。
+ */
 const UNIFORM_STRIDE = 256;
-const UNIFORM_SIZE = 96;
+const UNIFORM_SIZE = 192;
 
 const SHADER_HEAD = /* wgsl */ `
 struct Draw {
@@ -31,6 +37,13 @@ struct Draw {
   time: f32,
   // 点选的编号缓冲写的数：实体的变换槽位加一
   pickId: u32,
+  // 以下只有 GPU 上的粒子用（particles/gpu/draw.ts）：相机的右、上、朝后，粒子系统的位置和统一缩放、旋转，环的头和容量
+  cameraRight: vec4f,
+  cameraUp: vec4f,
+  cameraBack: vec4f,
+  spacePosition: vec4f,
+  spaceRotation: vec4f,
+  ring: vec4u,
 };
 @group(0) @binding(0) var<uniform> draw: Draw;
 
@@ -68,17 +81,20 @@ ${MATERIAL_STREAMS}
 }
 `;
 
-/** 一个发射器这一帧的绘制。 */
+/** 一个发射器这一帧的绘制：CPU 上的是顶点缓冲里的一段四边形，GPU 上的是它的粒子缓冲。 */
 interface EmitterDraw {
   readonly firstQuad: number;
   readonly quads: number;
   readonly program: MaterialProgram;
   readonly uniformOffset: number;
+  readonly gpu?: GpuEmitter;
 }
 
 export class ParticleRenderer {
   /** 给了时画进点选的编号缓冲（颜色格式是 r32uint），每个粒子系统写它给的编号（大于 0）。 */
   readonly #pickId: ((component: ParticleSystemComponent) => number) | undefined;
+  /** 在 GPU 上模拟的发射器的状态（ParticleSystems 管）。 */
+  readonly #gpuOf: (emitter: ParticleEmitter) => GpuEmitter | undefined;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #drawLayout: GPUBindGroupLayout;
@@ -86,6 +102,8 @@ export class ParticleRenderer {
   readonly #layouts = new Map<number, { textures: GPUBindGroupLayout; pipeline: GPUPipelineLayout }>();
   readonly #modules = new Map<string, GPUShaderModule>();
   readonly #pipelines = new Map<string, GPURenderPipeline>();
+  /** 正在后台编的 GPU 粒子的管线（键同 #pipelines）。 */
+  readonly #warming = new Set<string>();
   readonly #textureGroups = new WeakMap<MaterialProgram, GPUBindGroup>();
   #vertices = new Float32Array(VERTEX_FLOATS * 4 * 1024);
   #vertexBuffer: GPUBuffer | undefined;
@@ -96,8 +114,9 @@ export class ParticleRenderer {
   #uniformBuffer: GPUBuffer | undefined;
   #drawGroup: GPUBindGroup | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, { pickId }: { pickId?: (component: ParticleSystemComponent) => number } = {}) {
+  constructor(device: GPUDevice, resources: GpuResources, { pickId, gpu }: { pickId?: (component: ParticleSystemComponent) => number; gpu?: (emitter: ParticleEmitter) => GpuEmitter | undefined } = {}) {
     this.#pickId = pickId;
+    this.#gpuOf = gpu ?? (() => undefined);
     this.#device = device;
     this.#resources = resources;
     this.#drawLayout = device.createBindGroupLayout({
@@ -126,7 +145,15 @@ export class ParticleRenderer {
       const emitters = [...component.particleSystem.emitters].filter((emitter) => emitter.enabled).sort((a, b) => a.drawPriority - b.drawPriority);
       for (const emitter of emitters) {
         const { shape, program, pool } = emitter;
-        if (!shape || !program || pool.living === 0) continue;
+        if (!shape || !program) continue;
+        if (emitter.onGpu) {
+          const gpu = this.#gpuOf(emitter);
+          if (!gpu) continue;
+          this.#writeUniforms(draws.length, view, component, program, time, camera, gpu);
+          draws.push({ firstQuad: 0, quads: 0, program, uniformOffset: draws.length * UNIFORM_STRIDE, gpu });
+          continue;
+        }
+        if (pool.living === 0) continue;
         this.#reserve((quads + pool.living * shape.quadsPerParticle) * 4 * VERTEX_FLOATS);
         const order = drawOrder(emitter, camera);
         const writer = new VertexWriter(emitter, this.#vertices, quads * 4 * VERTEX_FLOATS, program);
@@ -135,7 +162,7 @@ export class ParticleRenderer {
         const end = Math.min(writer.at, (quads + pool.living * shape.quadsPerParticle) * 4 * VERTEX_FLOATS);
         const firstQuad = quads;
         quads = end / (4 * VERTEX_FLOATS);
-        this.#writeUniforms(draws.length, view, component, program, time);
+        this.#writeUniforms(draws.length, view, component, program, time, camera);
         draws.push({ firstQuad, quads: quads - firstQuad, program, uniformOffset: draws.length * UNIFORM_STRIDE });
       }
     }
@@ -143,11 +170,19 @@ export class ParticleRenderer {
     this.#upload(quads, draws.length);
     pass.setVertexBuffer(0, this.#vertexBuffer!);
     pass.setIndexBuffer(this.#indexBuffer!, 'uint32');
-    for (const { firstQuad, quads: count, program, uniformOffset } of draws) {
-      pass.setPipeline(this.#pipeline(program, colorFormat, depthFormat));
+    for (const { firstQuad, quads: count, program, uniformOffset, gpu } of draws) {
+      const pipeline = this.#pipeline(program, colorFormat, depthFormat, gpu !== undefined);
+      if (!pipeline) continue;
+      pass.setPipeline(pipeline);
       pass.setBindGroup(0, this.#drawGroup!, [uniformOffset]);
       pass.setBindGroup(1, this.#textureGroup(program));
-      pass.drawIndexed(count * 6, 1, firstQuad * 6);
+      if (gpu) {
+        // 每个槽一个实例，死了的在顶点着色器里扔掉
+        pass.setBindGroup(2, gpu.drawGroup);
+        pass.draw(verticesPerParticle(gpu.emitter), gpu.capacity);
+      } else {
+        pass.drawIndexed(count * 6, 1, firstQuad * 6);
+      }
     }
   }
 
@@ -157,8 +192,8 @@ export class ParticleRenderer {
     this.#uniformBuffer?.destroy();
   }
 
-  /** 第 index 次绘制的参数。 */
-  #writeUniforms(index: number, view: RenderView, component: ParticleSystemComponent, program: MaterialProgram, time: number): void {
+  /** 第 index 次绘制的参数（gpu 给了时加上 GPU 粒子要的相机、变换和环）。 */
+  #writeUniforms(index: number, view: RenderView, component: ParticleSystemComponent, program: MaterialProgram, time: number, camera: CameraAxes, gpu?: GpuEmitter): void {
     const floats = UNIFORM_STRIDE / 4;
     if ((index + 1) * floats > this.#uniforms.length) {
       const grown = new Float32Array(this.#uniforms.length * 2);
@@ -172,6 +207,15 @@ export class ParticleRenderer {
     u[at + 20] = program.alphaFactor;
     u[at + 21] = time;
     this.#uniformBits[at + 22] = this.#pickId?.(component) ?? 0;
+    if (!gpu) return;
+    u.set(camera.right, at + 24);
+    u.set(camera.up, at + 28);
+    u.set(camera.back, at + 32);
+    const space = gpu.emitter.drawTransform;
+    u.set(space.worldPosition, at + 36);
+    u[at + 39] = space.worldScale[0];
+    u.set(space.worldRotation, at + 40);
+    this.#uniformBits.set([gpu.ring.head, gpu.capacity, 0, 0], at + 44);
   }
 
   #reserve(floats: number): void {
@@ -224,42 +268,59 @@ export class ParticleRenderer {
     return layout;
   }
 
-  #pipeline(program: MaterialProgram, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): GPURenderPipeline {
-    const key = `${colorFormat}:${depthFormat}:${program.code}`;
-    let pipeline = this.#pipelines.get(key);
-    if (!pipeline) {
-      let module = this.#modules.get(program.code);
-      if (!module) this.#modules.set(program.code, (module = this.#device.createShaderModule({ label: 'Particles', code: SHADER_HEAD + program.code })));
-      const picking = this.#pickId !== undefined;
-      pipeline = this.#device.createRenderPipeline({
-        label: picking ? 'Particles picking' : 'Particles',
-        layout: this.#layout(program.textures.length).pipeline,
-        vertex: {
-          module,
-          entryPoint: 'vs',
-          buffers: [{
-            arrayStride: VERTEX_FLOATS * 4,
-            attributes: [
-              { shaderLocation: 0, offset: 0, format: 'float32x3' },
-              { shaderLocation: 1, offset: 12, format: 'float32x2' },
-              { shaderLocation: 2, offset: 20, format: 'float32x2' },
-              { shaderLocation: 3, offset: 28, format: 'float32x4' },
-            ],
-          }],
-        },
-        fragment: picking ? { module, entryPoint: 'fsPick', targets: [{ format: colorFormat }] } : {
-          module,
-          entryPoint: 'fs',
-          // 预乘 alpha（Stride 的 BlendStates.AlphaBlend）
-          targets: [{ format: colorFormat, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
-        },
-        primitive: { topology: 'triangle-list', cullMode: 'none' },
-        // 点选时写深度：后画的 UI、别的粒子系统和它比远近
-        depthStencil: { format: depthFormat, depthWriteEnabled: picking, depthCompare: 'less-equal' },
-      });
+  /**
+   * gpu：画 GPU 上的粒子（顶点着色器读粒子缓冲，见 particles/gpu/draw.ts），片元着色器同一份。GPU 的这条在后台编
+   * （createRenderPipelineAsync），编好之前是 undefined、这个发射器先不画：切到 GPU 时不卡那一帧。点选是一次性的请求、
+   * 等不了，点选用的当场编。
+   */
+  #pipeline(program: MaterialProgram, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, gpu = false): GPURenderPipeline | undefined {
+    const key = `${colorFormat}:${depthFormat}:${gpu}:${program.code}`;
+    const found = this.#pipelines.get(key);
+    if (found) return found;
+    if (!gpu || this.#pickId !== undefined) {
+      const pipeline = this.#device.createRenderPipeline(this.#descriptor(program, colorFormat, depthFormat, gpu));
       this.#pipelines.set(key, pipeline);
+      return pipeline;
     }
-    return pipeline;
+    if (!this.#warming.has(key)) {
+      this.#warming.add(key);
+      void this.#device.createRenderPipelineAsync(this.#descriptor(program, colorFormat, depthFormat, true)).then((pipeline) => this.#pipelines.set(key, pipeline));
+    }
+    return undefined;
+  }
+
+  #descriptor(program: MaterialProgram, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, gpu: boolean): GPURenderPipelineDescriptor {
+    const code = gpu ? SHADER_HEAD + GPU_DRAW_WGSL + program.code : SHADER_HEAD + program.code;
+    let module = this.#modules.get(code);
+    if (!module) this.#modules.set(code, (module = this.#device.createShaderModule({ label: gpu ? 'GPU particles' : 'Particles', code })));
+    const picking = this.#pickId !== undefined;
+    const layouts = this.#layout(program.textures.length);
+    return {
+      label: `${gpu ? 'GPU particles' : 'Particles'}${picking ? ' picking' : ''}`,
+      layout: gpu ? this.#device.createPipelineLayout({ bindGroupLayouts: [this.#drawLayout, layouts.textures, gpuDrawLayout(this.#device)] }) : layouts.pipeline,
+      vertex: gpu ? { module, entryPoint: 'vsGpu' } : {
+        module,
+        entryPoint: 'vs',
+        buffers: [{
+          arrayStride: VERTEX_FLOATS * 4,
+          attributes: [
+            { shaderLocation: 0, offset: 0, format: 'float32x3' },
+            { shaderLocation: 1, offset: 12, format: 'float32x2' },
+            { shaderLocation: 2, offset: 20, format: 'float32x2' },
+            { shaderLocation: 3, offset: 28, format: 'float32x4' },
+          ],
+        }],
+      },
+      fragment: picking ? { module, entryPoint: 'fsPick', targets: [{ format: colorFormat }] } : {
+        module,
+        entryPoint: 'fs',
+        // 预乘 alpha（Stride 的 BlendStates.AlphaBlend）
+        targets: [{ format: colorFormat, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
+      },
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
+      // 点选时写深度：后画的 UI、别的粒子系统和它比远近
+      depthStencil: { format: depthFormat, depthWriteEnabled: picking, depthCompare: 'less-equal' },
+    };
   }
 
   #textureGroup(program: MaterialProgram): GPUBindGroup {

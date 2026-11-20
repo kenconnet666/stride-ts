@@ -16,10 +16,21 @@ export type { MaterialContext } from '../rendering/colorTree';
 /** 粒子的 UV 帧 [u, v, 宽, 高]（按剩下的寿命，材质的 UVBuilder：翻页或滚动）。 */
 export type UVFrame = (remainingLife: number) => readonly [number, number, number, number];
 
+/**
+ * UVBuilder 的参数（GPU 的粒子在顶点着色器里算 UV 帧，见 particles/gpu）：整张、翻页（每行几帧、几行、起始帧、速度）、
+ * 滚动（起止帧的 [左, 上, 右, 下]）。
+ */
+export type UVBuilderParams =
+  | { readonly kind: 'whole' }
+  | { readonly kind: 'flipbook'; readonly x: number; readonly y: number; readonly start: number; readonly speed: number }
+  | { readonly kind: 'scroll'; readonly start: readonly [number, number, number, number]; readonly end: readonly [number, number, number, number] };
+
 /** 两套 UV 的帧（顶点里的 TEXCOORD0、TEXCOORD1，都从形状给的 UV 变换出来）。 */
 export interface UVFrames {
   readonly uv: UVFrame;
   readonly uv1: UVFrame;
+  /** 同样的两套帧的参数；游戏自己的材质拼的程序可以没有（这样的发射器只能在 CPU 上画）。 */
+  readonly uvParams?: { readonly uv: UVBuilderParams; readonly uv1: UVBuilderParams };
 }
 
 /** 一个材质编译出来的着色器片段和它用到的贴图（按绑定的顺序）。 */
@@ -50,6 +61,7 @@ export class MaterialCompiler extends ColorTreeCompiler {
       alphaFactor: 1 - value(this.#material, 'alphaAdditive', 0),
       uv: uvBuilder(uvBuilders.uv0),
       uv1: uvBuilder(uvBuilders.uv1),
+      uvParams: { uv: uvBuilderParams(uvBuilders.uv0), uv1: uvBuilderParams(uvBuilders.uv1) },
     };
   }
 }
@@ -73,6 +85,19 @@ export class ParticleMaterialComputeColor extends ParticleMaterial {
     const body = `  return streams.colorScale * ${compiler.color(this.file['computeColor'])};`;
     return compiler.program(body, { uv0: this.file['uvBuilder'] as ParticleModuleFile | null | undefined });
   }
+}
+
+/** UVBuilder 的参数（默认值同 flipbookOf、scrollOf）。 */
+export function uvBuilderParams(file: ParticleModuleFile | null | undefined): UVBuilderParams {
+  if (file?.$type === 'uvBuilderFlipbook') {
+    const x = Math.max(1, value(file, 'xDivisions', 4)), y = Math.max(1, value(file, 'yDivisions', 4));
+    return { kind: 'flipbook', x, y, start: Math.min(value(file, 'startingFrame', 0), x * y), speed: value(file, 'animationSpeed', 16) };
+  }
+  if (file?.$type === 'uvBuilderScroll') {
+    const quad = (key: string, fallback: [number, number, number, number]) => [...value(file, key, fallback)] as unknown as [number, number, number, number];
+    return { kind: 'scroll', start: quad('startFrame', [0, 0, 1, 1]), end: quad('endFrame', [0, 1, 1, 2]) };
+  }
+  return { kind: 'whole' };
 }
 
 function uvBuilder(file: ParticleModuleFile | null | undefined): UVFrame {

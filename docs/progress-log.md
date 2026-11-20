@@ -332,6 +332,8 @@ PCSS（同一天，TPP，无头 Chrome 1280x720，暂停后单步）：太阳的
 
 验收里顺带看到的：新起的开发服务器第一次开编辑器要预构建依赖，页面起来要一分钟左右；每个样例"不改就保存"都逐字节不变。
 
+GPU 粒子（2026-11-20，scene-picking 分支，无头 Chrome 1280x720）：particles-sample 的 MainScene 里 `game.particles.simulation = 'gpu'` 以后，火、篝火、大火的烟（按深度排序）、喷泉六个发射器到了 GPU 上，单独的烟和碰撞的那组留在 CPU 上（力场、碰撞没有 GPU 版）；截图和切换前看不出差别，点选点到大火。运行时加一个 20 万粒子的发射器对比 CPU 和 GPU（数字见 decisions.md）。第一版的管线是同步编的，冒烟的统计量超了预算，改成后台编；点选那条后台编时第一次点不到，改回当场编。这些写进了 particles-sample 的冒烟。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

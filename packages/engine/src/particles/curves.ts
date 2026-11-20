@@ -49,6 +49,16 @@ export class CurveSampler {
     return interpolate(a, b, lerp, this.#kind);
   }
 
+  /** 烘焙好的 32 个均匀采样点（t = i / 31），每个是一组分量（GPU 的粒子打包给着色器）。 */
+  get samples(): readonly (readonly number[])[] {
+    return this.#baked;
+  }
+
+  /** 是不是四元数曲线（按归一化的线性插值求值）。 */
+  get isQuaternion(): boolean {
+    return this.#kind === 'quaternion';
+  }
+
   /** 标量曲线的值。 */
   evaluateFloat(t: number): number {
     return this.evaluate(t)[0]!;

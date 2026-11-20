@@ -346,16 +346,25 @@ export class InitialSizeSeed extends ParticleInitializer {
   }
 }
 
-/** 在 min 到 max 的盒子里随机一个向量：盒子按模块的世界缩放、旋转变换（PositionSeed、VelocitySeed 共用）。 */
-export function randomBox(module: ParticleTransform, min: Readonly<Vec3>, max: Readonly<Vec3>, seedOffset: number, translate: boolean) {
+/**
+ * min 到 max 的盒子按模块的世界缩放、旋转（translate 时再加位置）变换以后：一个角和三条边。盒子里的随机点是
+ * 角 + 边 · 随机数（randomBox；GPU 的粒子把角和边打包给着色器）。
+ */
+export function boxFrame(module: ParticleTransform, min: Readonly<Vec3>, max: Readonly<Vec3>, translate: boolean): { corner: Vec3; axes: [Vec3, Vec3, Vec3] } {
   const scale = module.worldScale;
   const corner: Vec3 = [min[0] * scale[0], min[1] * scale[1], min[2] * scale[2]];
-  const axes: Vec3[] = [[max[0] * scale[0] - corner[0], 0, 0], [0, max[1] * scale[1] - corner[1], 0], [0, 0, max[2] * scale[2] - corner[2]]];
+  const axes: [Vec3, Vec3, Vec3] = [[max[0] * scale[0] - corner[0], 0, 0], [0, max[1] * scale[1] - corner[1], 0], [0, 0, max[2] * scale[2] - corner[2]]];
   if (!isIdentity(module.worldRotation)) {
     rotate(module.worldRotation, corner);
     for (const axis of axes) rotate(module.worldRotation, axis);
   }
   if (translate) for (let k = 0; k < 3; k++) corner[k]! += module.worldPosition[k]!;
+  return { corner, axes };
+}
+
+/** 在 min 到 max 的盒子里随机一个向量：盒子按模块的世界缩放、旋转变换（PositionSeed、VelocitySeed 共用）。 */
+export function randomBox(module: ParticleTransform, min: Readonly<Vec3>, max: Readonly<Vec3>, seedOffset: number, translate: boolean) {
+  const { corner, axes } = boxFrame(module, min, max, translate);
   const offsets = [RandomOffset.offset3A, RandomOffset.offset3B, RandomOffset.offset3C];
   return (seed: number, out: Float32Array, at: number) => {
     const r = offsets.map((offset) => seedFloat(seed, offset + seedOffset));

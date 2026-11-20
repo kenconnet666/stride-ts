@@ -16,6 +16,12 @@ import { Matrix } from '../mathematics/Matrix';
 import { value, type ParticleContext } from './modules';
 import { ParticleRenderer } from './ParticleRenderer';
 import { ParticleSystem } from './ParticleSystem';
+import type { ParticleEmitter, ParticleSimulation } from './ParticleEmitter';
+import { GpuEmitter } from './gpu/GpuEmitter';
+import { gpuUnsupported } from './gpu/kernel';
+
+/** simulation 是 auto 时，粒子池至少这么大的发射器放到 GPU 上（小的在 CPU 上更省：不用派发、不用排序的固定开销）。 */
+export const AUTO_GPU_CAPACITY = 4096;
 
 export class ParticleSystemComponent extends StartupScript {
   static override scriptName = 'ParticleSystemComponent';
@@ -56,11 +62,23 @@ export class ParticleSystemComponent extends StartupScript {
 /**
  * 所有粒子系统（`game.particles`）：每帧变换更新之后模拟；在前向渲染器的透明阶段里画，合成器要粒子画在 UI 上面时
  * （UIParticles）在 UI 之后画进画面，和场景的深度比较。
+ *
+ * 发射器可以放到 GPU 上模拟（particles/gpu）：每帧先定每个发射器在哪（emitter.simulation，是 auto 时看这里的 simulation），
+ * CPU 的照常 update；GPU 的 update 只算生成几个，之后在一个计算通道里派发模拟、按深度排序（排序用的相机是上一帧的主视图）。
+ * 换地方时从头模拟。
  */
 export class ParticleSystems {
   readonly #components = new Set<ParticleSystemComponent>();
   #renderer: ParticleRenderer | undefined;
   #pickingRenderer: ParticleRenderer | undefined;
+  /**
+   * 发射器的 simulation 是 auto 时放在哪（调试、对比用，`game.particles.simulation = 'gpu'`）：auto 是能放到 GPU 上、粒子池
+   * 至少 AUTO_GPU_CAPACITY 个的放到 GPU 上，cpu、gpu 是都放到那边（gpu 时放不了的仍在 CPU 上）。
+   */
+  simulation: ParticleSimulation = 'auto';
+  readonly #gpu = new Map<ParticleEmitter, { readonly state: GpuEmitter; readonly generation: number }>();
+  readonly #warned = new Set<ParticleEmitter>();
+  readonly #gpuOf = (emitter: ParticleEmitter): GpuEmitter | undefined => this.#gpu.get(emitter)?.state;
 
   /** @internal ParticleSystemComponent 启动时登记。 */
   add(component: ParticleSystemComponent): void {
@@ -78,14 +96,14 @@ export class ParticleSystems {
 
   /** @internal 画进 pass（前向渲染器的透明阶段）。 */
   draw(game: Game, pass: GPURenderPassEncoder, view: RenderView, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
-    this.#renderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources);
+    this.#renderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources, { gpu: this.#gpuOf });
     this.#renderer.draw(pass, view, this.components, colorFormat, depthFormat, game.updateTime.total);
   }
 
   /** @internal 画进点选的编号缓冲（ScenePicker，颜色格式 r32uint）：写粒子系统所在实体的变换槽位加一。 */
   drawPicking(game: Game, pass: GPURenderPassEncoder, view: RenderView, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     if (this.#components.size === 0) return;
-    this.#pickingRenderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources, { pickId: (component) => transformSlot(component.entity) + 1 });
+    this.#pickingRenderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources, { pickId: (component) => transformSlot(component.entity) + 1, gpu: this.#gpuOf });
     this.#pickingRenderer.draw(pass, view, this.components, colorFormat, depthFormat, game.updateTime.total);
   }
 
@@ -109,19 +127,118 @@ export class ParticleSystems {
     this.#renderer = undefined;
     this.#pickingRenderer?.destroy();
     this.#pickingRenderer = undefined;
+    for (const { state } of this.#gpu.values()) state.destroy();
+    this.#gpu.clear();
     this.#components.clear();
+  }
+
+  /** 发射器在 GPU 上的状态（还没建、不在 GPU 上时是 undefined）。 */
+  gpuEmitter(emitter: ParticleEmitter): GpuEmitter | undefined {
+    return this.#gpuOf(emitter);
   }
 
   /** @internal Game 每帧在变换更新之后调用。 */
   update(dt: number): void {
+    let game: Game | undefined;
+    const live = new Set<ParticleEmitter>();
     for (const component of this.#components) {
       if (!component.enabled) continue;
+      game ??= component.game;
+      const device = gpuDevice(component.game);
       const system = component.particleSystem;
+      for (const emitter of system.emitters) {
+        this.#place(emitter, device);
+        live.add(emitter);
+      }
       const { translation, rotation, scale } = Matrix.decompose(component.entity.require(Transform).world);
       system.translation = translation;
       system.rotation = rotation;
       system.uniformScale = scale[0];
       system.update(dt * component.speed);
     }
+    // 不在了的（组件移除、换场景）发射器的 GPU 缓冲还掉
+    for (const [emitter, { state }] of this.#gpu) {
+      if (live.has(emitter)) continue;
+      state.destroy();
+      this.#gpu.delete(emitter);
+    }
+    if (game) this.#simulateOnGpu(game, dt);
   }
+
+  /** 定发射器在哪模拟；变了就从头模拟（GPU 的状态在 #simulateOnGpu 里按代数重建）。 */
+  #place(emitter: ParticleEmitter, device: GPUDevice | undefined): void {
+    const wanted = device !== undefined && this.#wantsGpu(emitter);
+    if (wanted === emitter.onGpu) return;
+    emitter.onGpu = wanted;
+    emitter.resetSimulation();
+    if (!wanted) {
+      this.#gpu.get(emitter)?.state.destroy();
+      this.#gpu.delete(emitter);
+    }
+  }
+
+  #wantsGpu(emitter: ParticleEmitter): boolean {
+    const mode = emitter.simulation === 'auto' ? this.simulation : emitter.simulation;
+    if (mode === 'cpu') return false;
+    const reason = gpuUnsupported(emitter);
+    if (reason !== undefined) {
+      if (emitter.simulation === 'gpu' && !this.#warned.has(emitter)) {
+        this.#warned.add(emitter);
+        console.warn(`[stride] particle emitter '${emitter.name}' asked for GPU simulation but stays on the CPU: ${reason}`);
+      }
+      return false;
+    }
+    return mode === 'gpu' || emitter.targetCapacity >= AUTO_GPU_CAPACITY;
+  }
+
+  /** GPU 上的发射器：一个计算通道里派发模拟，按深度排序的再排序。 */
+  #simulateOnGpu(game: Game, dt: number): void {
+    const device = gpuDevice(game);
+    if (!device) return;
+    const back = cameraBack(game);
+    let pass: GPUComputePassEncoder | undefined;
+    for (const component of this.#components) {
+      const system = component.particleSystem;
+      if (!component.enabled || system.isPaused) continue;
+      for (const emitter of system.emitters) {
+        if (!emitter.onGpu || !emitter.enabled) continue;
+        const state = this.#stateFor(emitter, device);
+        if (!state) continue;
+        if (!pass) {
+          const timestampWrites = game.graphicsDevice.profiler.passTimestamps('GPU particles');
+          pass = game.graphicsDevice.frameEncoder.beginComputePass({ label: 'GPU particles', ...(timestampWrites ? { timestampWrites } : {}) });
+        }
+        state.simulate(pass, dt * component.speed, emitter.gpuSpawn);
+        emitter.gpuSpawn = 0;
+        if (back && emitter.sortingPolicy === 'byDepth') state.sort(pass, back);
+      }
+    }
+    pass?.end();
+  }
+
+  /** 发射器的 GPU 状态：没有、重新开始过模拟、粒子池的大小变了时重建。粒子池是 0 时没有。 */
+  #stateFor(emitter: ParticleEmitter, device: GPUDevice): GpuEmitter | undefined {
+    const entry = this.#gpu.get(emitter);
+    const capacity = emitter.targetCapacity;
+    if (entry && entry.generation === emitter.simulationGeneration && entry.state.capacity === Math.max(1, capacity)) return entry.state;
+    entry?.state.destroy();
+    this.#gpu.delete(emitter);
+    if (capacity <= 0) return undefined;
+    const state = new GpuEmitter(device, emitter, capacity, emitter.initialSeed);
+    this.#gpu.set(emitter, { state, generation: emitter.simulationGeneration });
+    return state;
+  }
+}
+
+/** 游戏的 GPU 设备；还没 run（单测里）时是 undefined。 */
+function gpuDevice(game: Game): GPUDevice | undefined {
+  return (game.graphicsDevice as Game['graphicsDevice'] | undefined)?.device;
+}
+
+/** 主视图的相机朝后的方向（世界）；还没有主视图时是 undefined。 */
+function cameraBack(game: Game): [number, number, number] | undefined {
+  const view = (game.graphicsCompositor as Game['graphicsCompositor'] | undefined)?.mainView;
+  const world = new Float32Array(16);
+  if (!view || !Matrix.invert(world, view.view)) return undefined;
+  return [world[8]!, world[9]!, world[10]!];
 }

@@ -2,6 +2,27 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 GPU 粒子：环形缓冲、按模块拼计算着色器、bitonic 排序
+
+P4 的"GPU 粒子"第一步（`particles/gpu/`）：粒子从几千到几十万不掉帧，和 Stride 的粒子资源兼容，同一个发射器按需放 CPU 或 GPU。
+
+- **看过的做法**：Unity VFX Graph、UE Niagara 的 GPU 模拟用死亡列表加存活列表（原子计数、每帧压缩、间接绘制），能处理寿命差得很远的粒子；Babylon 的 WebGPU 计算粒子（`ComputeShaderParticleSystem`，C:\code\refs\Babylon.js）用环形缓冲加 emitIndex/emitCount，新粒子写在环上接着的槽里，没有原子操作和压缩；PlayCanvas 的 GPU 粒子在片元着色器里更新贴图。选环形缓冲：Stride 的粒子池本来就按环形下标生成新粒子（`SpawnedRange` 的 start、end、capacity），容量也是按"最长寿命 × 每秒最多生成数"定的，环上被覆盖的槽里的粒子一定已经死了，所以不需要死亡列表；省掉原子计数和每帧压缩。
+- **不读回存活数**：CPU 按生成的历史算上限（最近"最长寿命"秒里生成的个数），这一帧最多再生成 容量 - 上限 个，同 CPU 的池满了不生成（`SpawnRing`）。
+- **模拟**：生成器照旧在 CPU 上算这一帧生成几个（所以 Burst、PerSecond、FromDistance 这些都不用改）；初始化器、更新器按发射器用到的模块拼成一个计算着色器（`kernel.ts`），同样的组合拼出同样的代码，按设备加代码共用一条管线；参数和模块的世界变换每帧打包进 uniform，参数变了不重编。一次派发处理所有槽：新生成的设默认值、初始化、后置更新器；活着的照 CPU 的顺序减寿命、移动、更新器、后置更新器。曲线用 CPU 烘焙好的 32 个采样点。
+- **和 Stride（CPU 的粒子）不同**：随机数是 PCG 哈希。Stride 的 RandomSeed 是对大整数取 sin、cos，GPU 的 f32 在这么大的参数上算不准，所以分布一样、具体取值不同，GPU 上的发射器和桌面 Stride 逐粒子比不了（画面比的样例仍在 CPU 上）。
+- **哪些能上 GPU**（`gpuUnsupported`，不能的留在 CPU 上，说明原因）：初始化器 SizeSeed、PositionSeed、VelocitySeed、DirectionSeed、RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder；更新器 Gravity、Size/Color/RotationOverTime、SpeedToDirection；形状 Billboard、Quad、Hexagon、OrientedQuad。留在 CPU 上的：飘带和拖尾、子粒子（父子都是）、按生成顺序排序、PositionArc、力场、碰撞、游戏自己的模块。力场和碰撞要把场的形状搬进着色器，深度缓冲碰撞、网格粒子是之后的事。
+- **选在哪模拟**：发射器的 `simulation`（场景文件里的 `simulation`，Stride 没有）是 auto、cpu、gpu；auto 时看 `game.particles.simulation`（默认 auto：能上 GPU、粒子池至少 4096 个才上，小的在 CPU 上更省，没有派发、排序的固定开销）。换地方时从头模拟；GPU 上的发射器在 `resetSimulation` 以后重建缓冲。
+- **排序和画**：ByDepth 先一遍算键（深度和下标，死了的排到最后），再 bitonic 排序（n 补到 2 的幂，m(m+1)/2 步，每步一次派发，k、j 按动态偏移从预先写好的 uniform 里取）；排序用上一帧的主视图（模拟在画之前，这一帧的视图还没算），差一帧看不出来。ByAge 不用排，按环的头往回画。画的时候顶点着色器读粒子缓冲按形状展开（`draw.ts`，同 shapes.ts），片元着色器和 CPU 的粒子是同一份材质代码，点选也走这条路。每个槽一个实例，死了的输出到裁剪范围外。
+- **不卡帧**：模拟、排序、GPU 绘制的管线都在后台编（`createComputePipelineAsync`、`createRenderPipelineAsync`），编好之前那个发射器先不模拟、不画；点选是一次性的请求，点选用的那条当场编。第一版是同步编的，particles-sample 的冒烟切到 GPU 时同步编的管线 37 → 43 条，超了预算。
+- **量的**（particles-sample 的 MainScene 加一个 20 万粒子的发射器，每秒生成 8 万，寿命 2 到 3 秒，无头 Chrome 1280x720，RX 9070 GRE）：
+
+| 20 万个粒子 | 帧时间 | update | 绘制（CPU） | GPU 上粒子的计算通道 |
+|---|---|---|---|---|
+| CPU 模拟 | 122 ms（8 fps） | 49 ms | 73 ms | — |
+| GPU 模拟，不排序 | 8.3 ms（120 fps，垂直同步） | 0.6 ms | 0.6 ms | 0.095 ms |
+| GPU 模拟，按深度排序 | 8.3 ms | 0.7 ms | 0.6 ms | 0.47 ms |
+
+- 还没做的：力场、碰撞（包括深度缓冲碰撞）、子粒子、飘带上 GPU；GPU 上的预热（WarmupTime 的几步合成一次生成）；间接绘制（现在按容量画，死了的槽在顶点着色器里扔掉，粒子少、容量大时白跑顶点）；排序里 j 不超过工作组大小的那些步放进工作组共享内存一次做完（现在每步一次派发）。
 ## 2026-11-20 操纵器的吸附：工具条上的开关和步长，拖的时候按住 Ctrl 反过来
 
 工具条上一个吸附开关、移动（米）、旋转（度）、缩放（倍数）三个步长，默认关、1 米、15 度、0.1 倍（Stride 编辑器的默认值）。拖操纵器时按住 Ctrl 反过来：开着时临时不吸，关着时临时吸（Godot 的做法；Unity 只有"按住 Ctrl 吸"，Stride 只有开关）。两种用法都顺手：大部分时候自由摆、偶尔对齐的按 Ctrl，搭关卡时一直开着、偶尔微调的也按 Ctrl。设置记在编辑器的会话里（`EditorSession.snap`），换场景、试玩回来、游戏页面重新加载以后都还在；不进工程文件（是个人习惯，不是工程的设置）。实现：`SnapSettings`、`applySnap`（`editor/TransformGizmo.ts`），视口每帧照设置和 Ctrl 设操纵器的步长，拖到一半按下、松开 Ctrl 也跟着变。

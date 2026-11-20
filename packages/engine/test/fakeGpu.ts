@@ -59,6 +59,15 @@ export function fakeGpu(): { device: GPUDevice; pass: GPURenderPassEncoder; call
       calls.push({ method: 'createBuffer', args: [descriptor] });
       return { label: descriptor.label, size: descriptor.size, destroy: () => {} };
     },
+    // 异步建管线：下一个微任务就编好
+    createRenderPipelineAsync: (descriptor: GPURenderPipelineDescriptor) => {
+      calls.push({ method: 'createRenderPipelineAsync', args: [descriptor] });
+      return Promise.resolve(recorder(calls));
+    },
+    createComputePipelineAsync: (descriptor: GPUComputePipelineDescriptor) => {
+      calls.push({ method: 'createComputePipelineAsync', args: [descriptor] });
+      return Promise.resolve(recorder(calls));
+    },
   });
   // queue 是属性不是方法
   const withQueue = new Proxy(device as object, { get: (target, key) => (key === 'queue' ? queue : Reflect.get(target, key)) }) as GPUDevice;

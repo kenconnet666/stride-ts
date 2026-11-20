@@ -9,6 +9,21 @@ const COMPRESSION: readonly (readonly [GPUFeatureName, TextureTarget])[] = [
   ['texture-compression-etc2', 'etc2rgba8'],
 ];
 
+/**
+ * 适配器能给的全部限制。不要的话设备只有规范的默认值（存储缓冲单次绑定 128 MB、单个缓冲 256 MB、2D 贴图 8192、贴图数组 256 层、
+ * 每个阶段 16 张采样贴图），桌面显卡大得多（RX 9070 GRE 上 2 GB、2 GB、16384、2048、48）；GPU 驱动的场景数据、虚拟贴图的页图集、
+ * 代替 bindless 的贴图数组都会先撞上默认值。要得到的都是适配器给的，手机和集显上自然小，渲染器按 device.limits 选路径。
+ */
+function adapterLimits(adapter: GPUAdapter): Record<string, number> {
+  const limits: Record<string, number> = {};
+  // GPUSupportedLimits 的属性在原型上（for...in 列得出来）；只会有这个浏览器认识的名字
+  for (const name in adapter.limits) {
+    const value = adapter.limits[name as keyof GPUSupportedLimits];
+    if (typeof value === 'number') limits[name] = value;
+  }
+  return limits;
+}
+
 /** WebGPU 设备和它呈现到的画布（对应 Stride 的 GraphicsDevice 和 GraphicsPresenter）。 */
 export class GraphicsDevice {
   readonly device: GPUDevice;
@@ -44,7 +59,7 @@ export class GraphicsDevice {
     const depthClipControl = adapter.features.has('depth-clip-control');
     const timestampQuery = adapter.features.has('timestamp-query');
     const optional = [...(depthClipControl ? ['depth-clip-control' as const] : []), ...(timestampQuery ? ['timestamp-query' as const] : [])];
-    const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...optional] });
+    const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...optional], requiredLimits: adapterLimits(adapter) });
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('The canvas has no WebGPU context');
     return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8', depthClipControl, timestampQuery);

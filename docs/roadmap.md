@@ -159,7 +159,7 @@
     - `primitive-index`：片元着色器里拿三角形编号，可见性缓冲的硬件光栅那一半不用另外传；
     - 立即数（WGSL 的 `immediate_address_space`，`maxImmediateSize` 64 字节）：相当于 push constants，每次绘制的编号不用再走动态偏移；
     - `indirect-first-instance`（间接绘制带 firstInstance，GPU 驱动的实例化要它）、`clip-distances`、`dual-source-blending`、`float32-filterable`、`float32-blendable`、`texture-formats-tier1/2`、`texture-component-swizzle`、`rg11b10ufloat-renderable`、`bgra8unorm-storage`。
-  - 限制按适配器给，比规范的默认值大得多（这块卡：单个缓冲和单次绑定的存储缓冲 2 GB，默认 256 MB / 128 MB；2D 贴图 16384，默认 8192；贴图数组 2048 层，默认 256；每个着色器阶段 48 张采样贴图、16 个存储缓冲，默认 16、8；工作组共享内存 32 KB；每个绑定组 1000 个绑定）。**引擎现在只要了几个特性、没要 `requiredLimits`，拿到的是默认值**：GPU 驱动的场景数据、虚拟贴图的页图集、代替 bindless 的贴图数组都会先撞上默认限制。做 P4/P6 的这些功能前，`GraphicsDevice` 要按适配器要限制和特性，渲染器按拿到的档位选路径（手机和集显的限制小，默认值是保底）。
+  - 限制按适配器给，比规范的默认值大得多（这块卡：单个缓冲和单次绑定的存储缓冲 2 GB，默认 256 MB / 128 MB；2D 贴图 16384，默认 8192；贴图数组 2048 层，默认 256；每个着色器阶段 48 张采样贴图、16 个存储缓冲，默认 16、8；工作组共享内存 32 KB；每个绑定组 1000 个绑定）。`GraphicsDevice` 要的是适配器给的全部限制（2026-11-20 起；之前只拿到默认值，GPU 驱动的场景数据、虚拟贴图的页图集、代替 bindless 的贴图数组都会先撞上），渲染器按 `device.limits` 选路径（手机和集显的限制小，默认值是保底）。可选特性（`shader-f16`、`subgroups`、`atomic-vec2u-min-max`……）等用到它们的功能时再要。
 - **没有，要绕开**：
   - 硬件光追（规范里还没有）：用计算着色器遍历 BVH；
   - bindless（还是提案）：贴图图集、贴图数组（上面的 2048 层、48 张），或按材质分批；

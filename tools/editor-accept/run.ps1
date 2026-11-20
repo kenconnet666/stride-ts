@@ -40,7 +40,7 @@ $results = foreach ($app in $Apps) {
   $first = $report ? "$(@($report.problems)[0])" : '(no report)'
   [pscustomobject]@{
     App      = $app
-    Passed   = [bool]$report?.passed
+    Passed   = $report ? [bool]$report.passed : $false
     Scenes   = $report ? @($report.scenes).Count : 0
     Problems = $report ? @($report.problems).Count : 0
     First    = $first.Substring(0, [Math]::Min(100, $first.Length))
@@ -49,3 +49,4 @@ $results = foreach ($app in $Apps) {
 $results | Format-Table -AutoSize | Out-String -Width 200
 "reports and screenshots: $Out"
 if ($results | Where-Object { -not $_.Passed }) { exit 1 }
+exit 0

@@ -9,7 +9,7 @@
 - **写法**：`SyncScript.props({ ... }, { requires: [() => UIComponent] })`，和 `variants` 同一个选项对象；写成函数（延迟引用），同 `prop.component(() => X)`，互相引用的类加载时可能还没定义。子类再调 props() 时接在基类的后面（`UISceneBase` 声明一次，下面的场景脚本都有）。类型全靠推导，不做代码生成。
 - **加载场景**（`SceneScriptBinder.attach`）：实体上缺了就报错（场景、实体名、脚本、缺的组件）、不挂这个脚本，游戏照常；要的是同一实体上排在后面的脚本时先推迟再试（同脚本属性引用排在后面的脚本）。用代码 `entity.add` 加的脚本不查（游戏代码自己负责，缺了 `require` 照样抛）。
 - **编辑器**：加脚本时把缺的组件一起加上，同一步撤销（`EditAgent.requiredComponents`：场景组件经 `sceneComponentKey` 反查场景文件的键，`UIComponent` → `ui`；要的是另一个游戏脚本时加那个脚本；游戏代码里加的组件场景文件里加不了，工具条上提示）。去掉一个被依赖的组件照样去掉，工具条上提示哪些脚本试玩时不挂。
-- **样例**：用到 `this.entity.require(UIComponent / AnimationComponent)` 的 16 个脚本加了 requires；SimpleAudio 的 SoundScript、MorphTargets 的 MorphTargetsController 原来是"属性没填就在运行时 throw"，改成必填属性（加载时按"必填属性没设"报出来）。
+- **样例**：用到 `this.entity.require(UIComponent / AnimationComponent)` 的 14 个脚本加了 requires（AnimationStart、RotationScript 不加：它们在没有时自己加上 AnimationComponent，同 Stride 的 GetOrCreate；第一版给它们也加了，回归里骑士不跑了）；SimpleAudio 的 SoundScript、MorphTargets 的 MorphTargetsController 原来是"属性没填就在运行时 throw"，改成必填属性（加载时按"必填属性没设"报出来）。
 
 ## 2026-11-20 GPU 粒子：环形缓冲、按模块拼计算着色器、bitonic 排序
 

@@ -77,7 +77,6 @@ const INSTANCE_FLOATS = 24;
 /** 视图的 uniform 按 256 字节对齐（动态偏移）。 */
 const VIEW_STRIDE = 256;
 /** 最多几个视图（同 MeshRenderFeature）。 */
-const MAX_VIEWS = 8;
 
 type Blend = 'none' | 'premultiplied' | 'nonPremultiplied' | 'additive' | 'noColor';
 
@@ -116,7 +115,7 @@ interface Gpu {
   readonly instanceLayout: GPUBindGroupLayout;
   readonly textureLayout: GPUBindGroupLayout;
   readonly pipelineLayout: GPUPipelineLayout;
-  readonly views: GPUBuffer;
+  views: GPUBuffer;
   readonly samplers: Record<SpriteItem['sampler'], GPUSampler>;
   readonly pipelines: Map<string, GPURenderPipeline>;
   /** 正在后台编的（warmFiles）。 */
@@ -126,6 +125,12 @@ interface Gpu {
   instanceGroup: GPUBindGroup | undefined;
   /** 每个视图能放几个实例。 */
   capacity: number;
+  /** 能放几个视图（实例缓冲、视图缓冲按视图的下标分段；视图多了跟着变大，不设上限）。 */
+  viewCapacity: number;
+}
+
+function createViewBuffer(device: GPUDevice, views: number): GPUBuffer {
+  return device.createBuffer({ label: 'SpriteRenderFeature views', size: VIEW_STRIDE * Math.max(views, 1), usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 }
 
 export class SpriteRenderFeature extends RootRenderFeature {
@@ -134,7 +139,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
   #count = 0;
   #gpu: Gpu | undefined;
   #instanceData = new Float32Array(0);
-  readonly #viewData = new Float32Array((VIEW_STRIDE / 4) * MAX_VIEWS);
+  #viewData = new Float32Array(0);
   readonly #cameraWorld = new Float32Array(16);
   #drawCalls = 0;
 
@@ -202,11 +207,20 @@ export class SpriteRenderFeature extends RootRenderFeature {
   override prepare(): void {
     if (this.#count === 0) return;
     const gpu = (this.#gpu ??= this.#createGpu());
-    // 实例缓冲按这一帧的精灵数增长（只在 prepare 里重建：draw 时已经有绘制引用着它）
+    const views = this.system.views;
+    // 视图缓冲按这一帧的视图数增长
+    if (gpu.viewCapacity < views.length) {
+      gpu.viewCapacity = 2 ** Math.ceil(Math.log2(Math.max(views.length, 8)));
+      gpu.views.destroy();
+      gpu.views = createViewBuffer(this.system.device, gpu.viewCapacity);
+      this.#viewData = new Float32Array((VIEW_STRIDE / 4) * gpu.viewCapacity);
+      gpu.capacity = 0;
+    }
+    // 实例缓冲按这一帧的精灵数和视图数增长（只在 prepare 里重建：draw 时已经有绘制引用着它）
     if (gpu.capacity < this.#count) {
       gpu.capacity = 2 ** Math.ceil(Math.log2(this.#count));
       gpu.instances?.destroy();
-      gpu.instances = this.system.device.createBuffer({ label: 'SpriteRenderFeature instances', size: gpu.capacity * MAX_VIEWS * INSTANCE_FLOATS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      gpu.instances = this.system.device.createBuffer({ label: 'SpriteRenderFeature instances', size: gpu.capacity * gpu.viewCapacity * INSTANCE_FLOATS * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
       gpu.instanceGroup = this.system.device.createBindGroup({
         label: 'SpriteRenderFeature instances',
         layout: gpu.instanceLayout,
@@ -214,7 +228,6 @@ export class SpriteRenderFeature extends RootRenderFeature {
       });
       this.#instanceData = new Float32Array(gpu.capacity * INSTANCE_FLOATS);
     }
-    const views = this.system.views.slice(0, MAX_VIEWS);
     for (const view of views) this.#viewData.set(view.viewProjection, view.index * (VIEW_STRIDE / 4));
     if (views.length > 0) this.system.device.queue.writeBuffer(gpu.views, 0, this.#viewData, 0, views.length * (VIEW_STRIDE / 4));
   }
@@ -226,7 +239,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
   override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     const colorFormat = stage.output.colorFormat;
-    if (!gpu || this.#count === 0 || !(stage.transparent || stage.picking) || !colorFormat || view.index >= MAX_VIEWS) return;
+    if (!gpu || this.#count === 0 || !(stage.transparent || stage.picking) || !colorFormat) return;
     const order = this.#writeInstances(context.game.transforms.world, view);
     const first = view.index * gpu.capacity;
     this.system.device.queue.writeBuffer(gpu.instances!, first * INSTANCE_FLOATS * 4, this.#instanceData, 0, this.#count * INSTANCE_FLOATS);
@@ -374,7 +387,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
       instanceLayout,
       textureLayout,
       pipelineLayout: device.createPipelineLayout({ bindGroupLayouts: [instanceLayout, textureLayout] }),
-      views: device.createBuffer({ label: 'SpriteRenderFeature views', size: VIEW_STRIDE * MAX_VIEWS, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+      views: createViewBuffer(device, 0),
       samplers: {
         linearClamp: this.system.resources.linearClamp,
         pointClamp: device.createSampler({ label: 'point clamp', magFilter: 'nearest', minFilter: 'nearest', mipmapFilter: 'nearest' }),
@@ -386,6 +399,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
       instances: undefined,
       instanceGroup: undefined,
       capacity: 0,
+      viewCapacity: 0,
     };
   }
 }

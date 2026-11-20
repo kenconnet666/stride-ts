@@ -66,9 +66,6 @@ const VIEW_STRIDE = 1024;
  * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32。
  */
 const VIEW_FLOATS = 256;
-/** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
-/** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
-const LOCAL_SHADOW_FLOATS = 104;
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
 const MATERIAL_BYTES = 544;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
@@ -220,7 +217,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.#cullPassCount++;
     const { culler } = pass;
     const slotCount = this.#instanceCount, batchCount = this.batches.length;
-    culler.reserve(slotCount, batchCount);
+    culler.reserve(slotCount, batchCount, views.length);
     const { slots, batchEnds, bounds } = culler;
     this.batches.forEach((batch, b) => {
       slots.set(batch.slots.subarray(0, batch.count), batch.first);
@@ -532,9 +529,6 @@ class Gpu {
   #morphOfWrites = 0;
   /** 视图常量里的各缓冲这一帧、上一帧的起点（View.bases）。 */
   readonly #frameBases = new Uint32Array(12);
-  /** 点光、聚光的阴影（LocalShadow），按需变长；没有时也留一个的位置（绑定组里的存储缓冲不能缺）。 */
-  #localShadowData = new Float32Array(LOCAL_SHADOW_FLOATS);
-  #localShadows: GPUBuffer;
   /** 绑定组里的簇表缓冲；视图多了 Clusters 会换一个更大的，要重建绑定组。 */
   #clusterBuffer: GPUBuffer | undefined;
   /**
@@ -564,7 +558,7 @@ class Gpu {
         { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube' } },
-        { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
         { binding: 6, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
         { binding: 7, visibility: GPUShaderStage.FRAGMENT, sampler: { type: 'comparison' } },
@@ -573,7 +567,6 @@ class Gpu {
         { binding: 10, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 11, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 12, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-        { binding: 13, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 14, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 15, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 16, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube-array' } },
@@ -610,7 +603,6 @@ class Gpu {
     });
     this.#noMorph = this.#createFilled('MeshRenderFeature no morph', GPUBufferUsage.STORAGE, new Uint32Array(4));
     this.#dfgLut = createDfgLut(device);
-    this.#localShadows = this.#createStorage('MeshRenderFeature local shadows', LOCAL_SHADOW_FLOATS * 4);
   }
 
   /** 着色器模块：按自发光的颜色树和网格效果分变体（两段代码是键）。 */
@@ -937,7 +929,6 @@ class Gpu {
       data.set([this.#decals.count, 0, 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
     }
-    this.#uploadLocalShadows(lighting);
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
@@ -954,25 +945,6 @@ class Gpu {
       this.#probeGeneration = probes.generation;
       this.#clearViewBindGroups();
     }
-  }
-
-  /** 点光、聚光的阴影：所有视图共用一份。 */
-  #uploadLocalShadows({ localShadows, localShadowCount }: Lighting): void {
-    if (localShadowCount === 0) return;
-    const floats = localShadowCount * LOCAL_SHADOW_FLOATS;
-    if (floats > this.#localShadowData.length) {
-      this.#localShadowData = new Float32Array(2 ** Math.ceil(Math.log2(localShadowCount)) * LOCAL_SHADOW_FLOATS);
-      this.#localShadows.destroy();
-      this.#localShadows = this.#createStorage('MeshRenderFeature local shadows', this.#localShadowData.byteLength);
-      this.#clearViewBindGroups();
-    }
-    const data = this.#localShadowData;
-    for (let i = 0; i < localShadowCount; i++) {
-      const shadow = localShadows[i]!, o = i * LOCAL_SHADOW_FLOATS;
-      data.set(shadow.worldToShadow, o);
-      data.set([shadow.depthBias, shadow.normalOffsetScale, shadow.depthA, shadow.depthB, shadow.filterSize, shadow.point ? 1 : 0, 0, 0], o + 96);
-    }
-    this.device.queue.writeBuffer(this.#localShadows, 0, data, 0, floats);
   }
 
   /**
@@ -1006,7 +978,6 @@ class Gpu {
           { binding: 10, resource: { buffer: this.#localLights.buffer } },
           { binding: 11, resource: { buffer: this.#morphOf! } },
           { binding: 12, resource: { buffer: this.#morphWeights! } },
-          { binding: 13, resource: { buffer: this.#localShadows } },
           { binding: 14, resource: ao.createView() },
           { binding: 15, resource: shadow.createView() },
           { binding: 16, resource: this.#probes.cubes.createView({ dimension: 'cube-array' }) },
@@ -1248,9 +1219,9 @@ const PREMULTIPLIED_ALPHA: GPUBlendState = {
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
-/** 在 GPU 上积分出 DFG 查找表（一次计算，写进存储缓冲）。 */
+/** 在 GPU 上积分出 DFG 查找表（一次计算，按存储缓冲写；着色时按 uniform 读）。 */
 function createDfgLut(device: GPUDevice): GPUBuffer {
-  const buffer = device.createBuffer({ label: 'DFG LUT', size: DFG_LUT_WIDTH * DFG_LUT_HEIGHT * 16, usage: GPUBufferUsage.STORAGE });
+  const buffer = device.createBuffer({ label: 'DFG LUT', size: DFG_LUT_WIDTH * DFG_LUT_HEIGHT * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM });
   const pipeline = device.createComputePipeline({
     label: 'DFG LUT', layout: 'auto',
     compute: { module: device.createShaderModule({ label: 'DFG LUT', code: DFG_LUT_SHADER }), entryPoint: 'main' },

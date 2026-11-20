@@ -54,7 +54,7 @@ struct View {
   // 方向光：光线前进的方向（w：投阴影的那个是 PCSS 的光源角半径的正切）、颜色乘强度
   lightDirections: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
-  // x：点光和聚光的个数（localLights 的前几个），y：游戏开始以来的秒数（Stride 的 Global.Time，材质的颜色树用），
+  // x：点光和聚光的个数（localLightData 里的光），y：游戏开始以来的秒数（Stride 的 Global.Time，材质的颜色树用），
   // z：screenOcclusion 是屏幕空间全局光照的（1）还是 GTAO 的（0），w：反射探针的个数（probes 的前几个）
 
   locals: vec4f,
@@ -76,35 +76,27 @@ struct View {
   cluster: vec4f,
   clusterView: vec4f,
 };
-// 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
-// direction 是聚光照向的方向（w：它的阴影在 localShadows 里的下标，没有阴影时 -1），angle 是角度衰减的 scale、offset
+// 点光、聚光（Stride 的 LightPoint、LightSpot）和它们的阴影（点光是立方体的六个面 +Z、-Z、+X、-X、+Y、-Y 各一个矩阵，
+// 聚光只用第一个），在一个缓冲里，见 lighting/LocalLights.ts
 ${LOCAL_LIGHT_WGSL}
-// 一盏点光或聚光的阴影：点光是立方体的六个面（+Z、-Z、+X、-X、+Y、-Y）各一个矩阵，聚光只用第一个
-struct LocalShadow {
-  matrices: array<mat4x4f, 6>,
-  // x：深度偏移，y：法线偏移比例，zw：点光的深度 = z + w / 沿这个面的轴到光源的距离
-  params: vec4f,
-  // x：PCF 核大小（0 是一次比较采样），y：1 是点光
-  options: vec4f,
-};
 @group(0) @binding(0) var<uniform> view: View;
 @group(0) @binding(1) var<storage, read> worlds: array<mat4x4f>;
 @group(0) @binding(2) var<storage, read> slots: array<u32>;
 @group(0) @binding(3) var skySpecular: texture_cube<f32>;
-// DFG 查找表（DFG_LUT_WIDTH x DFG_LUT_HEIGHT，按行存）：存储缓冲不是贴图——片元阶段的采样贴图默认最多 16 张，
-// 材质的颜色树还要加，固定的绑定能省就省；双线性插值自己做（dfgLookup，和 clamp 的线性采样器一样）
-@group(0) @binding(4) var<storage, read> dfgLut: array<vec4f>;
+// DFG 查找表（DFG_LUT_WIDTH x DFG_LUT_HEIGHT，按行存）：缓冲不是贴图——片元阶段的采样贴图默认最多 16 张，材质的颜色树
+// 还要加，固定的绑定能省就省；双线性插值自己做（dfgLookup，和 clamp 的线性采样器一样）。32 KB 放得进 uniform 缓冲，也不占
+// 片元阶段的存储缓冲（默认最多 8 个）
+@group(0) @binding(4) var<uniform> dfgLut: array<vec4f, ${DFG_LUT_WIDTH * DFG_LUT_HEIGHT}>;
 @group(0) @binding(5) var linearClamp: sampler;
 @group(0) @binding(6) var shadowAtlas: texture_depth_2d;
 @group(0) @binding(7) var shadowComparison: sampler_comparison;
 // 蒙皮：按变换槽位找这个实体的蒙皮矩阵起点，蒙皮矩阵是所有蒙皮网格的连在一起
 @group(0) @binding(8) var<storage, read> paletteOf: array<u32>;
 @group(0) @binding(9) var<storage, read> palettes: array<mat4x4f>;
-@group(0) @binding(10) var<storage, read> localLights: array<LocalLight>;
+@group(0) @binding(10) var<storage, read> localLightData: array<vec4f>;
 // 带形变网格的实体：变换槽位 → 它的模型实例那组形变权重在 morphWeights 里的起点
 @group(0) @binding(11) var<storage, read> morphOf: array<u32>;
 @group(0) @binding(12) var<storage, read> morphWeights: array<f32>;
-@group(0) @binding(13) var<storage, read> localShadows: array<LocalShadow>;
 // 屏幕空间的环境光遮蔽，半分辨率，只乘环境光；没有时是 1x1 的白图。GTAO（AmbientOcclusion.ts）的在 r 里；view.locals.z 是 1 时是
 // 屏幕空间全局光照（ScreenSpaceGlobalIllumination.ts）的：rgb 是间接光（乘漫反射颜色加上），a 是遮蔽
 @group(0) @binding(14) var screenOcclusion: texture_2d<f32>;
@@ -833,16 +825,18 @@ fn pcssShadow(s: vec3f, scale: vec2f, tangent: f32, pixel: vec2f) -> f32 {
 }
 
 /**
- * 点光、聚光的阴影（Stride 的 ShadowMapReceiverPointCubeMap、ShadowMapReceiverSpot 的 ComputeShadow）。index 是 localShadows
- * 的下标，lightPosition 是光源的位置。
+ * 点光、聚光的阴影（Stride 的 ShadowMapReceiverPointCubeMap、ShadowMapReceiverSpot 的 ComputeShadow）。index 是阴影的下标
+ * （光的 direction.w），lightPosition 是光源的位置。
  */
 fn computeLocalShadow(index: u32, position: vec3f, normal: vec3f, nDotL: f32, lightPosition: vec3f) -> f32 {
-  let params = localShadows[index].params;
-  let filterSize = u32(localShadows[index].options.x);
+  let start = localShadowStart(index);
+  let params = localShadowParams(start);
+  let options = localShadowOptions(start);
+  let filterSize = u32(options.x);
   // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去
   let p = position + 2.0 * SHADOW_OFFSET_TEXEL * params.y * saturate(1.0 - nDotL) * normal;
-  if (localShadows[index].options.y < 0.5) {
-    var s = localShadows[index].matrices[0] * vec4f(p, 1.0);
+  if (options.y < 0.5) {
+    var s = localShadowMatrix(start, 0u) * vec4f(p, 1.0);
     s.z -= params.x;
     let q = s.xyz / s.w;
     return filterShadow(q.xy, q.z, filterSize);
@@ -862,7 +856,7 @@ fn computeLocalShadow(index: u32, position: vec3f, normal: vec3f, nDotL: f32, li
   if (axis < 0.0) {
     face += 1u;
   }
-  let projected = localShadows[index].matrices[face] * vec4f(p, 1.0);
+  let projected = localShadowMatrix(start, face) * vec4f(p, 1.0);
   let depth = params.z + params.w / (abs(axis) - params.x);
   if (depth < 0.0 || depth > 1.0) {
     return 1.0;
@@ -1429,7 +1423,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     firstLight = clusters[u32(cluster)];
   }
   for (var k = 0u; k < localCount; k++) {
-    let light = localLights[select(k, clusters[firstLight + k], clustered)];
+    let light = localLight(select(k, clusters[firstLight + k], clustered));
     let at = localLightAt(light, in.world);
     let l = at.xyz;
     let attenuation = at.w;

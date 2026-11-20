@@ -49,11 +49,15 @@ struct Uniforms {
 const UNIFORM_FLOATS = 44;
 /** 每个视图一块 uniform，动态偏移要按 256 字节对齐。 */
 const VIEW_STRIDE = 256;
-/** 最多几个视图（同 MeshRenderFeature）。 */
-const MAX_VIEWS = 8;
+/** 一开始留几个视图的位置；多了缓冲跟着变大（不设上限）。 */
+const INITIAL_VIEWS = 8;
+
+function createViewBuffer(device: GPUDevice, views: number): GPUBuffer {
+  return device.createBuffer({ label: 'BackgroundRenderFeature', size: VIEW_STRIDE * views, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+}
 
 interface Gpu {
-  readonly buffer: GPUBuffer;
+  buffer: GPUBuffer;
   readonly layout: GPUBindGroupLayout;
   readonly module: GPUShaderModule;
   readonly pipelines: Map<string, GPURenderPipeline>;
@@ -68,7 +72,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
   #image: Texture | undefined;
   #intensity = 1;
   readonly #rotation = Matrix.identity();
-  readonly #uniforms = new Float32Array((VIEW_STRIDE / 4) * MAX_VIEWS);
+  #uniforms = new Float32Array((VIEW_STRIDE / 4) * INITIAL_VIEWS);
   #gpu: Gpu | undefined;
   #bindGroup: GPUBindGroup | undefined;
   #bound: GPUTexture | undefined;
@@ -97,6 +101,15 @@ export class BackgroundRenderFeature extends RootRenderFeature {
     const resources = this.system.resources;
     // 用不到的那个贴图位置绑一张占位的
     const texture = this.#image ? resources.texture(this.#image) : resources.cubemap(this.#cubemap!);
+    // 视图多了（渲染目标贴图的相机多、阴影多）：缓冲跟着变大，绑定组重建
+    const views = this.system.views;
+    if (views.length * (VIEW_STRIDE / 4) > this.#uniforms.length) {
+      const capacity = 2 ** Math.ceil(Math.log2(views.length));
+      this.#uniforms = new Float32Array((VIEW_STRIDE / 4) * capacity);
+      gpu.buffer.destroy();
+      gpu.buffer = createViewBuffer(this.system.device, capacity);
+      this.#bound = undefined;
+    }
     if (texture !== this.#bound) {
       this.#bound = texture;
       this.#bindGroup = this.system.device.createBindGroup({
@@ -111,7 +124,6 @@ export class BackgroundRenderFeature extends RootRenderFeature {
       });
     }
     // 每个视图一块（阴影级联也占一块，用不到）
-    const views = this.system.views.slice(0, MAX_VIEWS);
     const uniforms = this.#uniforms;
     for (const view of views) {
       const o = view.index * (VIEW_STRIDE / 4);
@@ -127,7 +139,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
   override draw(_context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     // 只有深度的阶段（阴影投射）没有颜色可画；背景画在不透明阶段
     const colorFormat = stage.output.colorFormat;
-    if ((!this.#cubemap && !this.#image) || !this.#bindGroup || !colorFormat || stage.transparent || view.index >= MAX_VIEWS) return;
+    if ((!this.#cubemap && !this.#image) || !this.#bindGroup || !colorFormat || stage.transparent) return;
     if (!inRenderMask(view.cullingMask, this.#renderGroup)) return;
     pass.setPipeline(this.#pipelineFor(stage, colorFormat, this.#image ? 'fs2D' : 'fs'));
     pass.setBindGroup(0, this.#bindGroup, [view.index * VIEW_STRIDE]);
@@ -150,8 +162,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} },
       ],
     });
-    const buffer = device.createBuffer({ label: 'BackgroundRenderFeature', size: VIEW_STRIDE * MAX_VIEWS, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    return { buffer, layout, module: device.createShaderModule({ label: 'BackgroundRenderFeature', code: SHADER }), pipelines: new Map(), warming: new Map() };
+    return { buffer: createViewBuffer(device, INITIAL_VIEWS), layout, module: device.createShaderModule({ label: 'BackgroundRenderFeature', code: SHADER }), pipelines: new Map(), warming: new Map() };
   }
 
   /** 背景画在有颜色、不透明的阶段（同 draw）：立方体贴图用 fs，平面图片用 fs2D。 */

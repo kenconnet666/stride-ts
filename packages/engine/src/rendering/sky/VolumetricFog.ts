@@ -93,7 +93,7 @@ ${LOCAL_LIGHT_WGSL}
 @group(0) @binding(7) var linearRepeat: sampler;
 // 主视图的簇（lighting/Clusters.ts）和点光、聚光（lighting/LocalLights.ts）
 @group(0) @binding(8) var<storage, read> clusters: array<u32>;
-@group(0) @binding(9) var<storage, read> localLights: array<LocalLight>;
+@group(0) @binding(9) var<storage, read> localLightData: array<vec4f>;
 ${GRADIENT_NOISE}
 
 /** 体素所在的主视图的簇的簇头（同网格着色器的 clusterOf，屏幕位置用体素的 uv）；没分簇时是 -1。 */
@@ -120,7 +120,7 @@ fn localScattering(world: vec3f, uv: vec2f, direction: vec3f) -> vec3f {
   }
   var sum = vec3f(0.0);
   for (var k = 0u; k < count; k++) {
-    let light = localLights[select(k, clusters[first + k], clustered)];
+    let light = localLight(select(k, clusters[first + k], clustered));
     let at = localLightAt(light, world);
     if (at.w > 0.0) {
       sum += light.color.rgb * at.w * henyeyGreenstein(dot(direction, at.xyz), fog.albedo.w);

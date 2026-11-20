@@ -64,8 +64,8 @@ export class SpawnRing {
  */
 interface Shared {
   readonly simLayout: GPUBindGroupLayout;
-  /** 带遮挡的内核（多一张深度图和它的视图投影）。 */
-  readonly occludedSimLayout: GPUBindGroupLayout;
+  /** 带深度碰撞的内核（多一张深度图和它的 uniform）。 */
+  readonly surfaceSimLayout: GPUBindGroupLayout;
   /** 内核代码 → 编好的管线（还在编的是 undefined）。 */
   readonly simPipelines: Map<string, GPUComputePipeline | undefined>;
   readonly keysLayout: GPUBindGroupLayout;
@@ -90,7 +90,7 @@ function sharedFor(device: GPUDevice): Shared {
   found = {
     // 4、5：间接绘制的参数和存活列表
     simLayout: layout('GPU particles simulate', [storage(0, 'uniform'), storage(1, 'storage'), storage(4, 'storage'), storage(5, 'storage')]),
-    occludedSimLayout: layout('GPU particles simulate occluded', [
+    surfaceSimLayout: layout('GPU particles simulate with depth collision', [
       storage(0, 'uniform'), storage(1, 'storage'),
       { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'depth' } }, storage(3, 'uniform'),
       storage(4, 'storage'), storage(5, 'storage'),
@@ -136,7 +136,9 @@ export class GpuEmitter {
   readonly #sim: GPUBuffer;
   readonly #simData: Float32Array;
   readonly #simBits: Uint32Array;
-  readonly #simGroup: GPUBindGroup;
+  #simGroup: GPUBindGroup | undefined;
+  /** 绑定组里的深度表面的图和 uniform（换了要重建绑定组：主画面的深度随画布的尺寸换）。 */
+  #boundSurface: { readonly view: GPUTextureView; readonly uniform: GPUBuffer } | undefined;
   /** 间接绘制的参数（顶点数、实例数 = 活着的粒子数、0、0），模拟时数出来。 */
   readonly #drawArgs: GPUBuffer;
   /** 活着的粒子的槽号（不排序的发射器按它画）。 */
@@ -167,16 +169,7 @@ export class GpuEmitter {
     this.#vertices = verticesPerParticle(emitter);
     this.#drawArgs = device.createBuffer({ label: `${label} draw`, size: 16, usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     this.#alive = device.createBuffer({ label: `${label} alive`, size: size * 4, usage: GPUBufferUsage.STORAGE });
-    const occluder = this.kernel.occluded ? emitter.gpuOccluder : undefined;
-    const simLayout = occluder ? sharedGpu.occludedSimLayout : sharedGpu.simLayout;
-    this.#simGroup = device.createBindGroup({
-      label, layout: simLayout,
-      entries: [
-        { binding: 0, resource: { buffer: this.#sim } }, { binding: 1, resource: { buffer: this.#particles } },
-        ...(occluder ? [{ binding: 2, resource: occluder.depthView }, { binding: 3, resource: { buffer: occluder.uniform } }] : []),
-        { binding: 4, resource: { buffer: this.#drawArgs } }, { binding: 5, resource: { buffer: this.#alive } },
-      ],
-    });
+    const simLayout = this.kernel.collider ? sharedGpu.surfaceSimLayout : sharedGpu.simLayout;
     const code = this.kernel.code;
     if (!sharedGpu.simPipelines.has(code)) {
       sharedGpu.simPipelines.set(code, undefined);
@@ -214,7 +207,8 @@ export class GpuEmitter {
   /** 这一帧的模拟：dt 秒、要生成 wanted 个，time 是游戏时间。录进 pass。管线还在编时什么都不做（这几帧生成的丢掉）。 */
   simulate(pass: GPUComputePassEncoder, dt: number, wanted: number, time = 0): void {
     const pipeline = this.#shared.simPipelines.get(this.kernel.code);
-    if (!pipeline) return;
+    const group = this.#simBindGroup();
+    if (!pipeline || !group) return;
     const emitter = this.emitter;
     // 留两帧的余量：寿命正好到期的粒子要在窗口里被判死，不能先掉出窗口
     const spawn = this.ring.advance(dt, wanted, emitter.particleLifetime[1] + 2 * dt);
@@ -239,7 +233,7 @@ export class GpuEmitter {
     // 活着的粒子数从 0 数起（模拟里每个活着的加一）
     this.#device.queue.writeBuffer(this.#drawArgs, 0, new Uint32Array([this.#vertices, 0, 0, 0]));
     pass.setPipeline(pipeline);
-    pass.setBindGroup(0, this.#simGroup);
+    pass.setBindGroup(0, group);
     if (window > 0) pass.dispatchWorkgroups(Math.ceil(window / WORKGROUP_SIZE));
   }
 
@@ -296,6 +290,24 @@ export class GpuEmitter {
     this.#alive.destroy();
     this.#sortView?.destroy();
     this.#shape.destroy();
+  }
+
+  /** 模拟的绑定组；有深度碰撞时按它这一帧的深度表面（换了就重建），还没有表面时是 undefined（不模拟）。 */
+  #simBindGroup(): GPUBindGroup | undefined {
+    const collider = this.kernel.collider;
+    const surface = collider?.depthSurface;
+    if (collider && !surface) return undefined;
+    const bound = surface && { view: surface.depthView, uniform: surface.uniform };
+    if (this.#simGroup && bound?.view === this.#boundSurface?.view && bound?.uniform === this.#boundSurface?.uniform) return this.#simGroup;
+    this.#boundSurface = bound;
+    return (this.#simGroup = this.#device.createBindGroup({
+      label: `GPU particles ${this.emitter.name || 'emitter'}`, layout: bound ? this.#shared.surfaceSimLayout : this.#shared.simLayout,
+      entries: [
+        { binding: 0, resource: { buffer: this.#sim } }, { binding: 1, resource: { buffer: this.#particles } },
+        ...(bound ? [{ binding: 2, resource: bound.view }, { binding: 3, resource: { buffer: bound.uniform } }] : []),
+        { binding: 4, resource: { buffer: this.#drawArgs } }, { binding: 5, resource: { buffer: this.#alive } },
+      ],
+    }));
   }
 
   /** 这个大小的排序每一步的参数（同样大小的发射器共用一块）。 */

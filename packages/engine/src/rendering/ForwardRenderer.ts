@@ -36,6 +36,7 @@ import { Skybox } from './lighting/Skybox';
 import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
 import { PostProcessingEffects } from './postfx/PostProcessingEffects';
+import { ViewDepthSurface } from './DepthSurface';
 import { ScenePicker } from './ScenePicker';
 
 const DEGREES = Math.PI / 180;
@@ -147,6 +148,8 @@ export class ForwardRenderer {
   /** 点光、聚光的包围球（分簇用，每帧重用）。 */
   #lightSpheres = new Float32Array(64);
   #mainDepth: GPUTexture | undefined;
+  /** 画布改尺寸时换下来的主深度，下一帧销毁。 */
+  #retiredDepth: GPUTexture | undefined;
   /** 每个画进渲染目标贴图的相机一个视图（按 textureCameras 的顺序）。 */
   readonly #textureViews: RenderView[] = [];
   /** HDR 颜色缓冲和深度缓冲，按尺寸缓存（主画面一套，每个渲染目标贴图的尺寸一套）。 */
@@ -161,6 +164,8 @@ export class ForwardRenderer {
   readonly #pool: GraphTexturePool;
   /** 点选（Game.pick 用它）：问主画面上某个像素最前面的是哪个实例。 */
   readonly picker: ScenePicker;
+  /** 主视图上一帧的深度（GPU 粒子按它碰撞，rendering/DepthSurface.ts）：有人用的帧把主画面的深度留下来。 */
+  readonly viewDepth: ViewDepthSurface;
   /** 没有后处理时主画面直接画进后备缓冲（省掉 HDR 缓冲和一遍拷贝）；关掉是先画进 HDR 缓冲再拷过去，对比、排查时用。 */
   directOutput = true;
   /** 调试视图：在主画面上叠画网格的线框（三角形的边）。 */
@@ -278,6 +283,7 @@ export class ForwardRenderer {
     this.#pool = new GraphTexturePool(renderSystem.device);
     this.#graph = new RenderGraph(this.#pool);
     this.picker = new ScenePicker(renderSystem);
+    this.viewDepth = new ViewDepthSurface(renderSystem.device);
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
     this.#backBufferViewFormat = renderSystem.graphicsDevice.backBufferViewFormat;
   }
@@ -445,7 +451,7 @@ export class ForwardRenderer {
     const reflect = this.hasCamera && post && this.screenSpaceReflections.enabled && this.quality.screenSpaceReflections;
     // 次表面散射要表面里的槽位和强度：场景里有散射材质才开（同屏幕空间反射，用写表面的不透明阶段）
     this.#scatter = this.hasCamera && post && this.subsurfaceScattering.enabled && this.quality.subsurfaceScattering && renderSystem.subsurfaceMaterials.count > 0;
-    const keepDepth = temporal || reflect || blur || renderSystem.atmosphere.aerialPerspective || renderSystem.clouds.active || renderSystem.fog.active || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
+    const keepDepth = temporal || reflect || blur || renderSystem.atmosphere.aerialPerspective || renderSystem.clouds.active || renderSystem.fog.active || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0 || this.viewDepth.wanted;
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
     // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
@@ -468,6 +474,8 @@ export class ForwardRenderer {
     }
     // 都录好了：跑。uniform 的参数在提交之前一次写进 GPU
     graph.execute();
+    // 主画面的深度和这一帧（挪过亚像素的）矩阵记下来，下一帧的粒子模拟碰撞用
+    this.viewDepth.finish(mainView, depth);
     this.#pool.endFrame();
     copy.arena.flush();
     if (post) this.postEffects.flush();
@@ -487,6 +495,8 @@ export class ForwardRenderer {
   destroy(): void {
     this.#depth?.destroy();
     this.#depth = undefined;
+    this.#retiredDepth?.destroy();
+    this.#retiredDepth = undefined;
     this.#pool.destroy();
     this.#textureCopy.arena.destroy();
     this.postEffects.destroy();
@@ -499,6 +509,7 @@ export class ForwardRenderer {
     this.contactShadows.destroy();
     this.motionBlur.destroy();
     this.picker.destroy();
+    this.viewDepth.destroy();
     this.shadowMapRenderer.destroy();
   }
 
@@ -741,11 +752,15 @@ export class ForwardRenderer {
     return velocity;
   }
 
-  /** 主画面的深度缓冲；画布改了尺寸时重建。 */
+  /**
+   * 主画面的深度缓冲；画布改了尺寸时重建。换下来的晚一帧才销毁：这一帧的粒子模拟可能还绑着它（viewDepth 是上一帧的深度）。
+   */
   #mainDepthFor(width: number, height: number): GPUTexture {
+    this.#retiredDepth?.destroy();
+    this.#retiredDepth = undefined;
     if (this.#depth?.width !== width || this.#depth.height !== height) {
-      this.#depth?.destroy();
-      this.#depth = this.renderSystem.graphicsDevice.device.createTexture({
+      this.#retiredDepth = this.#depth;
+      this.#depth =this.renderSystem.graphicsDevice.device.createTexture({
         // TAA 读它重投影
         label: `ForwardRenderer depth ${width}x${height}`, size: [width, height], format: DEPTH_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
       });

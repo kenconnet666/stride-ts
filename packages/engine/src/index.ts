@@ -260,14 +260,15 @@ export { GpuEmitter, SpawnRing } from './particles/GpuEmitter';
 export { gust, packWind, turbulenceAt, WindField, WindZone, GPU_LOCAL_WINDS, type GlobalWind, type LocalWind } from './weather/WindField';
 export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitationEmitter } from './weather/Precipitation';
 export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './weather/Weather';
-export { SkyOcclusion, skyOcclusionCenter, type GpuOccluder } from './weather/SkyOcclusion';
+export { SkyOcclusion, skyOcclusionCenter } from './weather/SkyOcclusion';
+export { packDepthSurface, ViewDepthSurface, type GpuDepthSurface } from './rendering/DepthSurface';
 export { buildKernel, gpuUnsupported, type GpuKernel } from './particles/gpuKernel';
 // 游戏自己的粒子模块（继承这几个基类、导出，场景里按类名找到）用到的
 export {
   forEachSpawned, ParticleInitializer, ParticleModule, ParticleSpawner, ParticleTransform, value as particleModuleValue,
   type ParticleContext, type ParticleModuleKind, type SpawnedRange, type SpawnTarget,
 } from './particles/modules';
-export { ParticleUpdater, UpdaterWind } from './particles/updaters';
+export { ParticleUpdater, UpdaterDepthCollision, UpdaterWind } from './particles/updaters';
 export { ParticleShapeBuilder, VertexWriter, type CameraAxes } from './particles/shapes';
 export { MaterialCompiler, ParticleMaterial, type MaterialContext, type MaterialProgram, type UVBuilderParams, type UVFrame, type UVFrames } from './particles/material';
 export { shaderClass, type ShaderClass } from './rendering/shaderClass';

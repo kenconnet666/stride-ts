@@ -1,7 +1,7 @@
 /**
  * 天空遮挡（Stride 没有）：一张从上往下看的深度图，跟着相机，记着"头顶有没有东西挡着天"。Godot 的
- * GPUParticlesCollisionHeightField3D、别处的 rain occlusion map 都是这个。雨雪是第一个用户（GPU 粒子到了表面以下就死，屋里、
- * 桥下不下雨），以后地面的湿润、积水积雪查"哪里淋得到"也用它。`renderSystem.skyOcclusion`。
+ * GPUParticlesCollisionHeightField3D、别处的 rain occlusion map 都是这个。雨雪用它（GPU 粒子按它碰撞：雪落上去就没了，雨点
+ * 溅起来；屋里、桥下不下雨），地面的湿润、积雪查"哪里淋得到"也用它。`renderSystem.skyOcclusion`。
  *
  * - 只有能挡阳光的才挡天：用阴影投射者的阶段画（ShadowMapRenderer.casterStage，不透明、投阴影的网格；透明的、不投阴影的、
  *   粒子、精灵不画），管线和阴影共用、加载时就预热了。蒙皮的网格（角色、动物）也不画：它们一直在动，脚下不该留一块不湿、
@@ -11,22 +11,16 @@
  *   遮挡物（开着的门、移动的平台）。
  * - 没人用就不画、不建贴图：用户每帧调 use()；画质档位关掉时（skyOcclusion: false，低档）也不画。
  * - 对外给：深度贴图 depthView、拷进存储缓冲的同一张深度 depthBuffer（网格着色器用：不占采样贴图的名额）、世界到贴图的
- *   矩阵 worldToTexture（视图投影：xy 是 -1..1，z 是深度）、version（重画了才变）。
- *   GPU 上的用户绑 uniform（矩阵加有效位）。前向渲染器画完的这一张，下一帧开头（begin）才换成对外的那张：这一帧的粒子
+ *   矩阵 worldToTexture（视图投影：xy 是 -1..1，z 是深度）、version（重画了才变）。它是一个深度表面（rendering/DepthSurface.ts）：
+ *   GPU 上的用户绑 uniform（矩阵、有效位、逆矩阵、视线方向；网格着色器只读前两个）。前向渲染器画完的这一张，下一帧开头（begin）才换成对外的那张：这一帧的粒子
  *   模拟录在画之前，那时深度图还是旧的。
  *
  * 只能表示"头顶最高的表面"：悬空的结构下面一样算挡着，斜着吹的雨照竖直判断。
  */
 import { Matrix } from '../data/Matrix';
+import { DEPTH_SURFACE_BYTES, packDepthSurface, type GpuDepthSurface } from '../rendering/DepthSurface';
 import type { RenderContext, RenderStage, RenderSystem } from '../rendering/RenderSystem';
 import { RenderView } from '../rendering/RenderSystem';
-
-/** GPU 粒子的遮挡（particles/gpuKernel.ts 的内核按它采样）。 */
-export interface GpuOccluder {
-  readonly depthView: GPUTextureView;
-  /** 视图投影（mat4）、有效位（u32，0 时不判断）和深度图的边长（u32）。 */
-  readonly uniform: GPUBuffer;
-}
 
 /** 阴影投射者阶段的深度格式（ShadowMapRenderer 的 SHADOW_ATLAS_FORMAT）。 */
 const FORMAT: GPUTextureFormat = 'depth32float';
@@ -34,7 +28,7 @@ const FORMAT: GPUTextureFormat = 'depth32float';
 const ABOVE = 150;
 const BELOW = 300;
 
-export class SkyOcclusion implements GpuOccluder {
+export class SkyOcclusion implements GpuDepthSurface {
   /** 覆盖的边长，米。 */
   size = 64;
   /** 深度图的边长，像素（64 米、512 像素是一格 12.5 厘米，深度图 1 MB）。在第一次用之前改。 */
@@ -59,8 +53,8 @@ export class SkyOcclusion implements GpuOccluder {
   #used = false;
   #center: [number, number, number] | undefined;
   #drawnAt = -Infinity;
-  /** 画好了、还没换成对外那张的视图投影。 */
-  #pending: Float32Array<ArrayBuffer> | undefined;
+  /** 画好了、还没换成对外那张的视图投影和 uniform。 */
+  #pending: { readonly worldToTexture: Float32Array<ArrayBuffer>; readonly uniform: ArrayBuffer } | undefined;
   #worldToTexture: Float32Array<ArrayBuffer> = new Float32Array(16);
   #version = 0;
 
@@ -137,7 +131,7 @@ export class SkyOcclusion implements GpuOccluder {
     renderSystem.draw(context, pass, this.view, stage);
     pass.end();
     encoder.copyTextureToBuffer({ texture: this.#texture!, aspect: 'depth-only' }, { buffer: this.#depthBuffers![1 - this.#published]!, bytesPerRow: this.resolution * 4 }, [this.resolution, this.resolution]);
-    this.#pending = new Float32Array(this.view.viewProjection);
+    this.#pending = { worldToTexture: new Float32Array(this.view.viewProjection), uniform: packDepthSurface(this.view, this.resolution, this.resolution) };
   }
 
   destroy(): void {
@@ -154,13 +148,10 @@ export class SkyOcclusion implements GpuOccluder {
     const pending = this.#pending;
     if (!pending) return;
     this.#pending = undefined;
-    this.#worldToTexture = pending;
+    this.#worldToTexture = pending.worldToTexture;
     this.#version++;
     this.#published = 1 - this.#published;
-    const data = new ArrayBuffer(80);
-    new Float32Array(data).set(pending);
-    new Uint32Array(data, 64, 4).set([1, this.resolution, 0, 0]);
-    this.#device.queue.writeBuffer(this.uniform, 0, data);
+    this.#device.queue.writeBuffer(this.uniform, 0, pending.uniform);
   }
 
   #ensure(): void {
@@ -172,7 +163,7 @@ export class SkyOcclusion implements GpuOccluder {
     const bytes = this.resolution * this.resolution * 4;
     this.#depthBuffers = [0, 1].map((i) => this.#device.createBuffer({ label: `SkyOcclusion depth ${i}`, size: bytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST })) as [GPUBuffer, GPUBuffer];
     // 有效位是 0：还没画过时用户不判断
-    this.#uniform = this.#device.createBuffer({ label: 'SkyOcclusion', size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#uniform = this.#device.createBuffer({ label: 'SkyOcclusion', size: DEPTH_SURFACE_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   }
 }
 
@@ -181,28 +172,3 @@ export function skyOcclusionCenter(eye: { readonly x: number; readonly y: number
   const cell = (c: number) => Math.round(c / texel) * texel;
   return [cell(eye.x), cell(eye.y), cell(eye.z)];
 }
-
-/** 内核里的遮挡判断（particles/gpuKernel.ts 在发射器有遮挡时拼进去）：粒子在深度图记的表面以下时是 true。 */
-export const OCCLUSION_WGSL = /* wgsl */ `
-struct Occlusion {
-  viewProjection: mat4x4f,
-  valid: vec4u,
-};
-@group(0) @binding(2) var occlusionDepth: texture_depth_2d;
-@group(0) @binding(3) var<uniform> occlusion: Occlusion;
-
-fn occluded(p: vec3f) -> bool {
-  if (occlusion.valid.x == 0u) {
-    return false;
-  }
-  let c = occlusion.viewProjection * vec4f(p, 1.0);
-  let uv = vec2f(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
-  if (any(uv < vec2f(0.0)) || any(uv >= vec2f(1.0))) {
-    return false;
-  }
-  let size = vec2f(textureDimensions(occlusionDepth));
-  let surface = textureLoad(occlusionDepth, vec2i(uv * size), 0);
-  // 深度从上往下增大：比表面深就是在它下面（留一点余量，表面本身不算）
-  return surface < 1.0 && c.z > surface + 0.0005;
-}
-`;

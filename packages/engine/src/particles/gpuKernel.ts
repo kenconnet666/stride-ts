@@ -12,7 +12,8 @@
  *
  * 支持的模块（其余的发射器留在 CPU 上，见 gpuUnsupported）：初始化器 SizeSeed、PositionSeed、VelocitySeed、DirectionSeed、
  * RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder；更新器 Gravity、SizeOverTime、ColorOverTime、RotationOverTime、
- * SpeedToDirection、Wind（风场的全局风和离发射器最近的 GPU_LOCAL_WINDS 个局部风源，见 weather/WindField.ts）。
+ * SpeedToDirection、Wind（风场的全局风和离发射器最近的 GPU_LOCAL_WINDS 个局部风源，见 weather/WindField.ts）、DepthCollision
+ * （只在 GPU 上；按深度表面碰撞，见 rendering/DepthSurface.ts，一个发射器最多一个）。
  */
 import { CurveSampler } from './curves';
 import { BuiltinShape } from './shapes';
@@ -21,9 +22,9 @@ import { boxFrame, Initial3DRotationSeed, InitialColorSeed, InitialDirectionSeed
 import type { ParticleModule } from './modules';
 import type { ParticleEmitter } from './ParticleEmitter';
 import { RandomOffset } from './random';
-import { UpdaterColorOverTime, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from './updaters';
+import { UpdaterColorOverTime, UpdaterDepthCollision, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from './updaters';
 import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../weather/WindField';
-import { OCCLUSION_WGSL } from '../weather/SkyOcclusion';
+import { DEPTH_SURFACE_WGSL } from '../rendering/DepthSurface';
 
 /** 一个粒子在存储缓冲里占的字节（WGSL 的 Particle）。 */
 export const PARTICLE_BYTES = 96;
@@ -49,7 +50,8 @@ struct Particle {
   rotation: f32,
   seed: u32,
   order: u32,
-  pad: u32,
+  // 撞过几次（UpdaterDepthCollision）
+  bounces: u32,
 };
 
 // PCG 哈希（Jarzynski、Olano 的 "Hash Functions for GPU Rendering"）
@@ -77,8 +79,8 @@ interface KernelPart {
 /** 拼好的内核。 */
 export interface GpuKernel {
   readonly code: string;
-  /** 用遮挡（绑定 2、3 是深度图和它的视图投影，见 weather/SkyOcclusion）。 */
-  readonly occluded: boolean;
+  /** 按深度表面碰撞的更新器（绑定 2、3 是它的深度图和 uniform，见 rendering/DepthSurface.ts）；没有时是 undefined。 */
+  readonly collider: UpdaterDepthCollision | undefined;
   /** data 里一共几个 vec4。 */
   readonly slots: number;
   /** 把各模块这一帧的数据写进 out（uniform 的 data 部分，按 vec4 排）。 */
@@ -98,7 +100,13 @@ export function gpuUnsupported(emitter: ParticleEmitter): string | undefined {
     if (!module.enabled) continue;
     if (!partFor(module)) return `${module.constructor.name} has no GPU version`;
   }
+  if (emitter.updaters.filter((module) => module.enabled && module instanceof UpdaterDepthCollision).length > 1) return 'it has more than one depth collision';
   return undefined;
+}
+
+/** 发射器的按深度表面碰撞的更新器（GPU 上一个发射器最多一个）。 */
+export function depthCollider(emitter: ParticleEmitter): UpdaterDepthCollision | undefined {
+  return emitter.updaters.find((module): module is UpdaterDepthCollision => module.enabled && module instanceof UpdaterDepthCollision);
 }
 
 /** 按发射器的模块拼内核（先用 gpuUnsupported 检查过）。 */
@@ -119,7 +127,7 @@ export function buildKernel(emitter: ParticleEmitter): GpuKernel {
       .replace(/\bslot\((\d+)\)/g, (_, k: string) => `${base + Number(k)}u`);
     return { part, base, code };
   });
-  const occluded = emitter.gpuOccluder !== undefined;
+  const collider = depthCollider(emitter);
   const stage = (name: KernelPart['stage']) => placed.filter(({ part }) => part.stage === name).map(({ code }) => `  {\n${code}\n  }`).join('\n');
   const code = `${PARTICLE_WGSL}
 struct Sim {
@@ -161,7 +169,7 @@ fn markAlive(i: u32) {
 
 ${HELPERS_WGSL}
 ${WIND_WGSL}
-${occluded ? OCCLUSION_WGSL : ''}
+${collider ? DEPTH_SURFACE_WGSL : ''}
 
 fn initialize(p: ptr<function, Particle>, spawnIndex: u32) {
 ${stage('init')}
@@ -196,6 +204,7 @@ ${stage('post')}
     p.size = sim.defaultScale;
     p.color = vec4f(1.0);
     p.order = seed;
+    p.bounces = 0u;
     initialize(&p, spawnIndex);
     postUpdate(&p, sim.dt, p.position);
     particles[i] = p;
@@ -213,11 +222,7 @@ ${stage('post')}
   let old = p.position;
   p.position += p.velocity * sim.dt;
   update(&p, sim.dt);
-  postUpdate(&p, sim.dt, old);${occluded ? `
-  // 落到遮挡的表面以下（屋顶、树冠）就死
-  if (occluded(p.position)) {
-    p.life = 0.0;
-  }` : ''}
+  postUpdate(&p, sim.dt, old);
   particles[i] = p;
   if (p.life > 0.0) {
     markAlive(i);
@@ -226,7 +231,7 @@ ${stage('post')}
 `;
   return {
     code,
-    occluded,
+    collider,
     slots,
     pack(out) {
       for (const { part, base } of placed) part.pack(out, base);
@@ -410,6 +415,37 @@ function partFor(module: ParticleModule): KernelPart | undefined {
         if (module.field) packWind(module.field, module.worldPosition, out, base);
         else out.fill(0, base * 4, (base + windSlots) * 4);
         write(out, base + windSlots, [module.drag, ...module.terminalVelocity]);
+      },
+    };
+  }
+  if (module instanceof UpdaterDepthCollision) {
+    // d(0)：恢复系数、摩擦、撞上就死、厚度；d(1)：散开、撞上以后最多活几秒
+    return {
+      stage: 'post', slots: 2,
+      code: `    let hit = surfaceHit((*p).position, d(0).w);
+    if (hit.hit) {
+      if (d(0).z > 0.5) {
+        (*p).life = 0.0;
+      } else {
+        let n = hit.normal;
+        (*p).position += n * (hit.depth + 0.002);
+        let v = (*p).velocity;
+        let vertical = dot(v, n);
+        if (vertical < 0.0) {
+          // 同 UpdaterCollider：法向的反弹、切向的减速；再往切向随机散开（每次撞换一组随机数）
+          let r = vec3f(seedFloat((*p).seed, 7001u + (*p).bounces * 3u), seedFloat((*p).seed, 7002u + (*p).bounces * 3u), seedFloat((*p).seed, 7003u + (*p).bounces * 3u)) * 2.0 - 1.0;
+          let side = r - n * dot(r, n);
+          (*p).velocity = (v - n * vertical) * (1.0 - d(0).y) + side * (length(v) * d(1).x) - n * (vertical * d(0).x);
+        }
+        if ((*p).bounces == 0u && d(1).y > 0.0) {
+          (*p).life = min((*p).life, d(1).y * (*p).invLifetime);
+        }
+        (*p).bounces += 1u;
+      }
+    }`,
+      pack: (out, base) => {
+        write(out, base, [module.restitution, module.friction, module.killParticles ? 1 : 0, module.thickness]);
+        write(out, base + 1, [module.spread, module.bounceLifetime, 0, 0]);
       },
     };
   }

@@ -18,8 +18,9 @@ import { ParticleRenderer } from './ParticleRenderer';
 import { ParticleSystem } from './ParticleSystem';
 import type { ParticleEmitter, ParticleSimulation } from './ParticleEmitter';
 import { GpuEmitter } from './GpuEmitter';
-import { gpuUnsupported } from './gpuKernel';
-import { UpdaterWind } from './updaters';
+import { depthCollider, gpuUnsupported } from './gpuKernel';
+import type { GpuDepthSurface } from '../rendering/DepthSurface';
+import { UpdaterDepthCollision, UpdaterWind } from './updaters';
 
 /** simulation 是 auto 时，粒子池至少这么大的发射器放到 GPU 上（小的在 CPU 上更省：不用派发、不用排序的固定开销）。 */
 export const AUTO_GPU_CAPACITY = 4096;
@@ -150,7 +151,10 @@ export class ParticleSystems {
       for (const emitter of system.emitters) {
         this.#place(emitter, device);
         live.add(emitter);
-        for (const updater of emitter.updaters) if (updater instanceof UpdaterWind) updater.field = component.game.wind;
+        for (const updater of emitter.updaters) {
+          if (updater instanceof UpdaterWind) updater.field = component.game.wind;
+          if (updater instanceof UpdaterDepthCollision) updater.depthSurface = depthSurface(component.game, updater.surface);
+        }
       }
       const { translation, rotation, scale } = Matrix.decompose(component.entity.require(Transform).world);
       system.translation = translation;
@@ -190,7 +194,8 @@ export class ParticleSystems {
       }
       return false;
     }
-    return mode === 'gpu' || emitter.targetCapacity >= AUTO_GPU_CAPACITY;
+    // 按深度表面碰撞只在 GPU 上有：auto 时有它的总放到 GPU 上
+    return mode === 'gpu' || emitter.targetCapacity >= AUTO_GPU_CAPACITY || depthCollider(emitter) !== undefined;
   }
 
   /** GPU 上的发射器：一个计算通道里派发模拟，按深度排序的再排序。 */
@@ -230,6 +235,13 @@ export class ParticleSystems {
     this.#gpu.set(emitter, { state, generation: emitter.simulationGeneration });
     return state;
   }
+}
+
+/** 碰撞用的深度表面，这一帧要用（天空遮挡、主视图的深度没人用时不画、不留）；还没 run 时是 undefined。 */
+function depthSurface(game: Game, kind: 'sky' | 'view'): GpuDepthSurface | undefined {
+  const surface = kind === 'sky' ? (game.renderSystem as Game['renderSystem'] | undefined)?.skyOcclusion : (game.graphicsCompositor as Game['graphicsCompositor'] | undefined)?.viewDepth;
+  surface?.use();
+  return surface;
 }
 
 /** 游戏的 GPU 设备；还没 run（单测里）时是 undefined。 */

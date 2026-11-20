@@ -8,8 +8,9 @@
  * 盒子里的位置、下落速度、风（UpdaterWind：风速加上下落的终端速度）、速度方向（雨按它拉长成线）。生成数不走生成器，每帧按
  * 强度 · 密度 · 面积 · dt 直接给。强度由外面给（以后天气状态驱动它，和云量、雾一起），这里不读天空。
  *
- * 被屋顶挡住的地方不下：用天空遮挡（weather/SkyOcclusion，`renderSystem.skyOcclusion`，从上往下的深度图），GPU 粒子落到它记的
- * 表面以下就死。有雨雪时每帧 use() 它，没有时它不画。
+ * 被屋顶挡住的地方不下：GPU 粒子按天空遮挡（weather/SkyOcclusion，`renderSystem.skyOcclusion`，从上往下的深度图）碰撞
+ * （UpdaterDepthCollision）：雪落上去就没了；雨点溅起来，往上弹、往四周散开，再活零点几秒（落在屋顶上的在屋顶上溅）。有雨雪
+ * 时每帧 use() 它，没有时它不画。
  */
 import { prop } from '../data/prop';
 import { component } from '../engine/component';
@@ -32,10 +33,13 @@ export const Precipitation = component('Precipitation', {
   height: prop.f32().default(12).min(1),
 });
 
-/** 每种的预设：强度 1 时每秒每平方米落几个、下落速度（米每秒）、往风速靠的快慢、大小、颜色（预乘前的 sRGB 和 alpha）。 */
+/**
+ * 每种的预设：强度 1 时每秒每平方米落几个、下落速度（米每秒）、往风速靠的快慢、大小、颜色（预乘前的 sRGB 和 alpha），落地
+ * 溅起（splash，没有时落地就没了）：反弹的恢复系数、往四周散开的比例、溅起以后再活几秒。
+ */
 export const PRECIPITATION_PRESETS = {
-  rain: { density: 20, fallSpeed: 9, drag: 0.8, width: 0.012, streak: 0.45, color: [0.75, 0.8, 0.9, 0.35] },
-  snow: { density: 6, fallSpeed: 1.2, drag: 1.5, width: 0.04, streak: 0, color: [1, 1, 1, 0.9] },
+  rain: { density: 20, fallSpeed: 9, drag: 0.8, width: 0.012, streak: 0.45, color: [0.75, 0.8, 0.9, 0.35], splash: { restitution: 0.25, spread: 0.35, lifetime: 0.3 } },
+  snow: { density: 6, fallSpeed: 1.2, drag: 1.5, width: 0.04, streak: 0, color: [1, 1, 1, 0.9], splash: undefined },
 } as const;
 
 type Kind = keyof typeof PRECIPITATION_PRESETS;
@@ -89,6 +93,10 @@ export function precipitationEmitter(kind: Kind, radius: number, height: number)
     updaters: [
       { $type: 'updaterWind', drag: preset.drag, terminalVelocity: [0, -preset.fallSpeed, 0] },
       ...(rain ? [{ $type: 'updaterSpeedToDirection' }] : []),
+      // 撞天空遮挡的表面：表面以下都算实心（厚度不限），生成在屋顶以下的落到屋顶上
+      preset.splash
+        ? { $type: 'updaterDepthCollision', surface: 'sky', thickness: 1e6, restitution: preset.splash.restitution, friction: 0.5, spread: preset.splash.spread, bounceLifetime: preset.splash.lifetime }
+        : { $type: 'updaterDepthCollision', surface: 'sky', thickness: 1e6, killParticles: true },
     ],
   };
   return { file: { particleSystem: { emitters: [file] } }, rate };
@@ -180,9 +188,6 @@ export class PrecipitationSystem {
     entity.add({ script: ParticleSystemComponent, init: {} });
     const component = entity.require(ParticleSystemComponent);
     component.load(file, { ...NO_CONTEXT, texture: (path) => (path === SOFT_DOT ? softDotTexture() : undefined) });
-    // 屋顶下不下：GPU 状态建之前挂上遮挡（粒子系统在这之后的 update 里建它）
-    const sky = (game.renderSystem as Game['renderSystem'] | undefined)?.skyOcclusion;
-    for (const emitter of component.particleSystem.emitters) emitter.gpuOccluder = sky;
     const state: State = { entity, component, key, height, fallTime: height / PRECIPITATION_PRESETS[kind].fallSpeed, rate, intensity: 0, carry: 0, seen: true };
     this.#states.set(owner, state);
     return state;

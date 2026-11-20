@@ -1,6 +1,6 @@
 /**
  * 粒子的更新器（Stride 的 Updaters）：每帧改活着的粒子。普通的在生成新粒子之前跑，后置的（IsPostUpdater）在之后。
- * 现在有的：力场、重力、按寿命改大小、颜色、转角，速度方向、碰撞。
+ * 现在有的：力场、重力、按寿命改大小、颜色、转角，速度方向、碰撞；Stride 没有的：风、按深度表面碰撞（只在 GPU 上）。
  */
 import type { ParticleModuleFile } from '../content/format';
 import { curveSampler, type CurveSampler } from './curves';
@@ -10,6 +10,7 @@ import { ParticleModule, value, type ParticleModuleKind, type ParticleTransform 
 import type { AnyParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat } from './random';
 import type { WindField } from '../weather/WindField';
+import type { GpuDepthSurface } from '../rendering/DepthSurface';
 
 const ZERO_TOLERANCE = 1e-6;
 const DEGREES = Math.PI / 180;
@@ -308,6 +309,47 @@ export class UpdaterWind extends ParticleUpdater {
   }
 }
 
+/**
+ * 按深度表面碰撞（Stride 没有；Godot 的高度场碰撞、Unity VFX Graph 的按深度缓冲碰撞，后置）：surface 是 'sky' 时撞天空遮挡
+ * （从上往下的高度场，屏幕外也有），'view' 时撞主视图上一帧的深度（只有看得见的表面）。粒子落到表面后面（沿视线不超过
+ * thickness 米）就沿法线推回表面，速度同 UpdaterCollider：法向的按 restitution 反弹、切向的按 friction 减速，再按 spread 往切向
+ * 随机散开；killParticles 时直接死；第一次撞上时剩下的寿命最多 bounceLifetime 秒（0 是不变，溅起的水花用）。
+ *
+ * 只在 GPU 上：深度表面在 GPU 上，CPU 的模拟里它什么都不做（有它的发射器 auto 时总是放到 GPU 上）。
+ */
+export class UpdaterDepthCollision extends ParticleUpdater {
+  readonly requiredFields = ['position', 'velocity', 'life'] as const;
+  readonly surface: 'sky' | 'view';
+  readonly restitution: number;
+  readonly friction: number;
+  readonly killParticles: boolean;
+  /** 在表面后面多深以内算撞上，米（再深的是在物体后面）。 */
+  readonly thickness: number;
+  /** 反弹以后往切向随机散开，按速度的比例。 */
+  readonly spread: number;
+  /** 第一次撞上以后最多再活几秒；0 是不变。 */
+  readonly bounceLifetime: number;
+  /** @internal 深度表面（ParticleSystems 每帧给）；没有时不碰撞。 */
+  depthSurface: GpuDepthSurface | undefined;
+
+  constructor(file: ParticleModuleFile) {
+    super(file);
+    this.surface = value(file, 'surface', 'view') as 'sky' | 'view';
+    this.restitution = value(file, 'restitution', 0.5);
+    this.friction = value(file, 'friction', 0.1);
+    this.killParticles = value(file, 'killParticles', false);
+    this.thickness = value(file, 'thickness', 0.5);
+    this.spread = value(file, 'spread', 0);
+    this.bounceLifetime = value(file, 'bounceLifetime', 0);
+  }
+
+  override get isPostUpdater(): boolean {
+    return true;
+  }
+
+  update(): void {}
+}
+
 export function createUpdater(file: ParticleModuleFile): ParticleUpdater | undefined {
   switch (file.$type) {
     case 'updaterWind': return new UpdaterWind(file);
@@ -318,6 +360,7 @@ export function createUpdater(file: ParticleModuleFile): ParticleUpdater | undef
     case 'updaterRotationOverTime': return new UpdaterRotationOverTime(file);
     case 'updaterSpeedToDirection': return new UpdaterSpeedToDirection(file);
     case 'updaterCollider': return new UpdaterCollider(file);
+    case 'updaterDepthCollision': return new UpdaterDepthCollision(file);
     default: return undefined;
   }
 }

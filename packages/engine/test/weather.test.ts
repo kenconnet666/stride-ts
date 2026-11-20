@@ -8,10 +8,12 @@ import { Precipitation, precipitationEmitter } from '../src/weather/Precipitatio
 import { fogDensity, Weather, WEATHER_PRESETS, WeatherSystem } from '../src/weather/Weather';
 import { VolumetricClouds, VolumetricFog } from '../src/rendering/components';
 import { GPU_LOCAL_WINDS, gust, type LocalWind, packWind, WindField, WindZone } from '../src/weather/WindField';
-import { buildKernel } from '../src/particles/gpuKernel';
+import { buildKernel, gpuUnsupported } from '../src/particles/gpuKernel';
 import { ParticlePool } from '../src/particles/ParticlePool';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
-import { UpdaterWind } from '../src/particles/updaters';
+import { UpdaterDepthCollision, UpdaterWind } from '../src/particles/updaters';
+import { packDepthSurface } from '../src/rendering/DepthSurface';
+import { RenderView } from '../src/rendering/RenderSystem';
 import { SkyOcclusion, skyOcclusionCenter } from '../src/weather/SkyOcclusion';
 import { Matrix } from '../src/data/Matrix';
 import { fakeGpu, stubGpuGlobals } from './fakeGpu';
@@ -144,17 +146,35 @@ describe('天空遮挡（从上往下的深度图）', () => {
     expect(sky.begin({ x: 100, y: 0, z: 0 }, 5)).toBeUndefined();
   });
 
-  test('发射器挂了遮挡时，内核多两个绑定，活着的粒子到了表面以下就死', () => {
-    stubGpuGlobals();
-    const { device } = fakeGpu();
-    const system = new ParticleSystem({ emitters: [{ initializers: [{ $type: 'initialSizeSeed' }] }] });
-    const emitter = system.emitters[0]!;
-    expect(buildKernel(emitter).occluded).toBe(false);
-    emitter.gpuOccluder = new SkyOcclusion(device);
+  test('按深度表面碰撞：内核多两个绑定（深度图、它的 uniform）和碰撞的代码；一个发射器两个时不上 GPU', () => {
+    const plain = new ParticleSystem({ emitters: [{ initializers: [{ $type: 'initialSizeSeed' }] }] }).emitters[0]!;
+    expect(buildKernel(plain).collider).toBeUndefined();
+    const collision = { $type: 'updaterDepthCollision', surface: 'sky', restitution: 0.25, spread: 0.3, bounceLifetime: 0.3 };
+    const emitter = new ParticleSystem({ emitters: [{ updaters: [collision] }] }).emitters[0]!;
     const kernel = buildKernel(emitter);
-    expect(kernel.occluded).toBe(true);
-    expect(kernel.code).toContain('@group(0) @binding(2) var occlusionDepth: texture_depth_2d;');
-    expect(kernel.code).toContain('if (occluded(p.position)) {\n    p.life = 0.0;');
+    expect(kernel.collider).toBeInstanceOf(UpdaterDepthCollision);
+    expect(kernel.collider!.surface).toBe('sky');
+    expect(kernel.code).toContain('@group(0) @binding(2) var surfaceDepth: texture_depth_2d;');
+    expect(kernel.code).toContain('let hit = surfaceHit((*p).position, ');
+    const data = new Float32Array(kernel.slots * 4);
+    kernel.pack(data);
+    // 恢复系数、摩擦（默认 0.1）、撞上不死、厚度（默认 0.5），散开、撞上以后最多活几秒
+    expect(Array.from(data.subarray(0, 6))).toEqual([0.25, Math.fround(0.1), 0, 0.5, Math.fround(0.3), Math.fround(0.3)]);
+    const twice = new ParticleSystem({ emitters: [{ updaters: [collision, collision] }] }).emitters[0]!;
+    expect(gpuUnsupported(twice)).toBe('it has more than one depth collision');
+  });
+
+  test('深度表面的 uniform：视图投影、有效位和尺寸、逆矩阵、视线方向（单位向量）、相机位置', () => {
+    const view = new RenderView();
+    Matrix.lookAtRH(view.view, [0, 10, 0], [0, 0, 0], [0, 0, -1]);
+    Matrix.orthoOffCenterRH(view.projection, -5, 5, -5, 5, 0, 20);
+    view.update();
+    const data = packDepthSurface(view, 256, 128);
+    const f32 = new Float32Array(data);
+    expect(Array.from(new Uint32Array(data, 64, 3))).toEqual([1, 256, 128]);
+    expect(Array.from(f32.subarray(36, 39)).map((v) => Math.round(v * 1000) / 1000 + 0)).toEqual([0, -1, 0]);
+    expect(Array.from(f32.subarray(40, 43)).map((v) => Math.round(v * 1000) / 1000 + 0)).toEqual([0, 10, 0]);
+    expect(Array.from(f32.subarray(20, 36))).toEqual(Array.from(view.inverseViewProjection));
   });
 });
 

@@ -63,7 +63,13 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     for (const key of ['length', 'steps', 'thickness'] as const) if (typeof args[key] === 'number') contact[key] = args[key];
     return { enabled: contact.enabled, length: contact.length, steps: contact.steps, thickness: contact.thickness };
   });
-  debug.command('ssr', 'Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
+  debug.command('ssgi', 'Screen-space global illumination of the main view (indirect diffuse light and occlusion; replaces GTAO while on). args: on (true/false; omitted toggles), radius, thickness (world units), intensity, feedback.', (args) => {
+    const gi = game.graphicsCompositor.globalIllumination;
+    gi.enabled = typeof args['on'] === 'boolean' ? args['on'] : !gi.enabled;
+    for (const key of ['radius', 'thickness', 'intensity', 'feedback'] as const) if (typeof args[key] === 'number') gi[key] = args[key];
+    return { enabled: gi.enabled, radius: gi.radius, thickness: gi.thickness, intensity: gi.intensity, feedback: gi.feedback };
+  });
+  debug.command('ssr','Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
     const ssr = game.graphicsCompositor.screenSpaceReflections;
     ssr.enabled = typeof args['on'] === 'boolean' ? args['on'] : !ssr.enabled;
     for (const key of ['maxRoughness', 'thickness', 'maxSteps'] as const) if (typeof args[key] === 'number') ssr[key] = args[key];

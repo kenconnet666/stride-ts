@@ -87,7 +87,9 @@ struct View {
   // 方向光：光线前进的方向、颜色乘强度
   lightDirections: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
-  // x：点光和聚光的个数（localLights 的前几个），y：游戏开始以来的秒数（Stride 的 Global.Time，材质的颜色树用）
+  // x：点光和聚光的个数（localLights 的前几个），y：游戏开始以来的秒数（Stride 的 Global.Time，材质的颜色树用），
+  // z：screenOcclusion 是屏幕空间全局光照的（1）还是 GTAO 的（0）
+
   locals: vec4f,
   // 世界矩阵、蒙皮、形变的缓冲各分两半，每帧轮着写（另一半留着上一帧的，运动向量用）：这一帧和上一帧各自的起点。
   // [0]：世界矩阵（槽位）这一帧、上一帧，蒙皮表（槽位）这一帧、上一帧；[1]：蒙皮矩阵、形变表；[2].xy：形变权重
@@ -123,13 +125,16 @@ struct LocalShadow {
 @group(0) @binding(11) var<storage, read> morphOf: array<u32>;
 @group(0) @binding(12) var<storage, read> morphWeights: array<f32>;
 @group(0) @binding(13) var<storage, read> localShadows: array<LocalShadow>;
-// 屏幕空间的环境光遮蔽（GTAO，AmbientOcclusion.ts）：半分辨率，只乘环境光；没有时是 1x1 的白图
+// 屏幕空间的环境光遮蔽，半分辨率，只乘环境光；没有时是 1x1 的白图。GTAO（AmbientOcclusion.ts）的在 r 里；view.locals.z 是 1 时是
+// 屏幕空间全局光照（ScreenSpaceGlobalIllumination.ts）的：rgb 是间接光（乘漫反射颜色加上），a 是遮蔽
 @group(0) @binding(14) var screenOcclusion: texture_2d<f32>;
 @group(0) @binding(15) var screenShadow: texture_2d<f32>;
 
-fn screenAmbientOcclusion(position: vec4f) -> f32 {
+/** xyz：屏幕空间的间接光（没有时是 0），w：环境光遮蔽。 */
+fn screenAmbient(position: vec4f) -> vec4f {
   let size = textureDimensions(screenOcclusion);
-  return textureLoad(screenOcclusion, min(vec2u(position.xy) / 2u, size - 1u), 0).r;
+  let texel = textureLoad(screenOcclusion, min(vec2u(position.xy) / 2u, size - 1u), 0);
+  return select(vec4f(0.0, 0.0, 0.0, texel.r), texel, view.locals.z != 0.0);
 }
 
 /** 投阴影的方向光的接触阴影（ContactShadows，全分辨率；没开时是白图）。 */
@@ -733,7 +738,8 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   let occlusion = layerOcclusion(in, vec2f(occlusionBase, material.occlusionDirect));
   // 屏幕空间的遮蔽只算进环境光（直射光的遮蔽是有没有影子，不归它管）
-  let ao = occlusion.x * screenAmbientOcclusion(in.position);
+  let screen = screenAmbient(in.position);
+  let ao = occlusion.x * screen.w;
   let directOcclusion = mix(1.0, occlusion.x, occlusion.y);
   let roughness = layered.roughness;
   let alphaR = max(roughness * roughness, 0.001);
@@ -804,6 +810,8 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     }
     color += environment;
   }
+  // 屏幕空间的间接光（近处表面反射过来的漫反射光；材质自己的遮蔽照样乘）
+  color += diffuse * screen.xyz * occlusion.x;
 
   // 自发光：a 不小于 0 时输出的 alpha 用它（Stride 的 UseAlpha）
   let emitted = emissiveColor(in);
@@ -1787,7 +1795,7 @@ class Gpu {
         data.set([direction.x / length, direction.y / length, direction.z / length, 0], o + 156 + i * 4);
         data.set([color.r, color.g, color.b, 1], o + 172 + i * 4);
       }
-      data.set([localCount, time, 0, 0], o + 188);
+      data.set([localCount, time, view.screenIndirect ? 1 : 0, 0], o + 188);
       words.set(this.#frameBases, o + 192);
       data.set(view.unjitteredViewProjection, o + 204);
       data.set(view.previousViewProjection, o + 220);

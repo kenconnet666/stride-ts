@@ -124,8 +124,13 @@ export class RenderView {
   readonly viewProjection = Matrix.identity();
   /** 背景用它把屏幕坐标变回世界方向。 */
   readonly inverseViewProjection = Matrix.identity();
-  /** 屏幕空间的环境光遮蔽（AmbientOcclusion.record 的结果），着色时乘环境光；只有主画面有。 */
+  /**
+   * 屏幕空间的环境光遮蔽，着色时乘环境光；只有主画面有。GTAO（AmbientOcclusion.record）的是 r 通道的遮蔽；screenIndirect 时是
+   * 屏幕空间全局光照（ScreenSpaceGlobalIllumination.record）的：rgb 间接光（着色时乘漫反射颜色加上）、a 遮蔽。screenIndirect 在写
+   * 视图的 uniform（prepare）之前就要定下来，贴图在深度预通道之后才有。
+   */
   screenOcclusion: GPUTexture | undefined;
+  screenIndirect = false;
   /** 投阴影的方向光的接触阴影（ContactShadows.record 的结果），着色时乘那盏光；只有主画面有。 */
   screenShadow: GPUTexture | undefined;
   /** 运动向量用（TemporalAntialiasing.jitter 设）：这一帧没挪过亚像素的视图投影、上一帧的。 */

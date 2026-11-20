@@ -16,7 +16,10 @@ describe('画质档位（Quality）', () => {
       // 在高一档的上限里再套低一档的上限，结果还是低一档的：低档的每一项都不超过高档
       expect([limitShadowSize(lower.shadowSize, higher), limitShadowFilter(lower.shadowFilter, higher), limitShadowCascades(lower.shadowCascades, higher)])
         .toEqual([lower.shadowSize, lower.shadowFilter, lower.shadowCascades]);
-      for (const effect of ['shadows', 'antialiasing', 'ambientOcclusion', 'bloom', 'lightStreak', 'lensFlare'] as const) expect([order[i], effect, lower[effect] && !higher[effect]]).toEqual([order[i], effect, false]);
+      // 所有开关（以后加的效果也自动算进来）：低一档开着的，高一档一定开着
+      const effects = (Object.keys(higher) as (keyof typeof higher)[]).filter((key) => typeof higher[key] === 'boolean');
+      expect(effects).toContain('globalIllumination');
+      for (const effect of effects) expect([order[i], effect, lower[effect] === true && higher[effect] === false]).toEqual([order[i], effect, false]);
     }
     expect([limitShadowSize('xlarge', QUALITY_TIERS.ultra), limitShadowFilter('pcf7x7', QUALITY_TIERS.ultra), limitShadowCascades(4, QUALITY_TIERS.ultra)]).toEqual(['xlarge', 'pcf7x7', 4]);
   });

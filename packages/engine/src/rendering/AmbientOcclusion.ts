@@ -16,10 +16,12 @@ import { Matrix } from '../mathematics/Matrix';
 import { FullscreenShader, UniformArena, type EffectFrame } from './postfx/ImageEffect';
 import type { RenderView } from './RenderSystem';
 
-const POSITION_FORMAT: GPUTextureFormat = 'rgba32float';
+/** 半分辨率的视图空间位置（POSITIONS_SHADER 的输出，屏幕空间全局光照也用）。 */
+export const POSITION_FORMAT: GPUTextureFormat = 'rgba32float';
 const AO_FORMAT: GPUTextureFormat = 'r8unorm';
 
-const PREFILTER_SHADER = /* wgsl */ `
+/** 深度缓冲 → 半分辨率的视图空间位置（x 向右、y 向下、z 向前为正，天空的 w 是 0）。uniform 是这一帧主画面投影的逆。 */
+export const POSITIONS_SHADER = /* wgsl */ `
 // 裁剪坐标 → 视图空间（这一帧主画面的投影的逆）
 struct Prefilter { inverseProjection: mat4x4f };
 @group(0) @binding(0) var<uniform> prefilter: Prefilter;
@@ -179,7 +181,7 @@ export class AmbientOcclusion {
 
   constructor(device: GPUDevice) {
     this.#device = device;
-    this.#prefilter = new FullscreenShader(device, 'GTAO positions', PREFILTER_SHADER);
+    this.#prefilter = new FullscreenShader(device, 'GTAO positions', POSITIONS_SHADER);
     this.#gtao = new FullscreenShader(device, 'GTAO', GTAO_SHADER);
     this.#blur = new FullscreenShader(device, 'GTAO blur', BLUR_SHADER);
     this.#arena = new UniformArena(device, 2048);

@@ -27,6 +27,7 @@ import { limitShadowCascades, limitShadowFilter, limitShadowSize, QUALITY_TIERS,
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { TemporalAntialiasing } from './TemporalAntialiasing';
 import { AmbientOcclusion } from './AmbientOcclusion';
+import { ScreenSpaceGlobalIllumination } from './ScreenSpaceGlobalIllumination';
 import { ScreenSpaceReflections } from './ScreenSpaceReflections';
 import { ContactShadows } from './ContactShadows';
 import { MotionBlur } from './MotionBlur';
@@ -112,6 +113,8 @@ export class ForwardRenderer {
   readonly postEffects: PostProcessingEffects;
   /** 屏幕空间的环境光遮蔽（GTAO，只乘环境光；开不开照合成器的 AmbientOcclusion，见 AmbientOcclusion.ts）。 */
   readonly ambientOcclusion: AmbientOcclusion;
+  /** 屏幕空间的全局光照（默认关，开着时代替 GTAO；见 ScreenSpaceGlobalIllumination.ts）。 */
+  readonly globalIllumination: ScreenSpaceGlobalIllumination;
   /** 运动模糊（默认关，见 MotionBlur.ts）。 */
   readonly motionBlur: MotionBlur;
   /** 主画面上一帧的视图投影（不开 TAA 时运动向量用；开着时 TAA 自己记）。 */
@@ -124,6 +127,8 @@ export class ForwardRenderer {
   readonly #opaqueSurfaceStage = new RenderStage('Opaque surface', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT, surfaceFormats: SURFACE_FORMATS }, { afterDepthPrepass: true });
   /** 这一帧开着 TAA（GTAO 的噪声跟着每帧换）。 */
   #temporal = false;
+  /** 这一帧算屏幕空间的全局光照。 */
+  #indirect = false;
   /** 时间抗锯齿（默认关，开着时代替后处理里的 FXAA；见 TemporalAntialiasing.ts）。 */
   readonly temporalAntialiasing: TemporalAntialiasing;
   readonly shadowMapRenderer: ShadowMapRenderer;
@@ -249,6 +254,7 @@ export class ForwardRenderer {
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
     this.temporalAntialiasing = new TemporalAntialiasing(renderSystem.device);
     this.ambientOcclusion = new AmbientOcclusion(renderSystem.device);
+    this.globalIllumination = new ScreenSpaceGlobalIllumination(renderSystem.device);
     this.screenSpaceReflections = new ScreenSpaceReflections(renderSystem.device, renderSystem.resources.linearClamp);
     this.contactShadows = new ContactShadows(renderSystem.device);
     this.motionBlur = new MotionBlur(renderSystem.device);
@@ -330,6 +336,11 @@ export class ForwardRenderer {
     this.#temporal = temporal;
     this.#mainView.screenOcclusion = undefined;
     this.#mainView.screenShadow = undefined;
+    // 屏幕空间全局光照要上一帧的 HDR 画面：只在画进 HDR 缓冲时做；没做的帧以后重新开始累积。screenIndirect 要在 prepare 写视图的
+    // uniform 之前定下来（着色器按它解读 screenOcclusion），贴图本身在深度预通道之后才算出来
+    this.#indirect = this.hasCamera && post && this.globalIllumination.enabled && this.quality.globalIllumination;
+    this.#mainView.screenIndirect = this.#indirect;
+    if (!this.#indirect) this.globalIllumination.reset();
     const views = [...(this.hasCamera ? [this.#mainView] : []), ...this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view))];
 
     renderSystem.collect(views);
@@ -384,6 +395,7 @@ export class ForwardRenderer {
       const color = graph.texture({ label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT });
       const surfaces = reflect ? SURFACE_FORMATS.map((format, i) => graph.texture({ label: `ForwardRenderer surface ${i}`, width: canvas.width, height: canvas.height, format })) : undefined;
       this.#viewPasses(context, frame, mainView, this.#hdrOutput(color, surfaces), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
+      if (this.#indirect) this.globalIllumination.capture(frame, color);
       const velocity = temporal || blur ? this.#velocityPass(context, frame, depth) : undefined;
       // 反射在后处理之前合成进画面（同 Stride 的 LocalReflections 排在后处理的最前面）
       const reflected = surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity) : color;
@@ -400,7 +412,8 @@ export class ForwardRenderer {
     this.#pool.endFrame();
     copy.arena.flush();
     if (post) this.postEffects.flush();
-    if (this.#mainView.screenOcclusion) this.ambientOcclusion.flush();
+    if (this.#mainView.screenOcclusion && !this.#mainView.screenIndirect) this.ambientOcclusion.flush();
+    if (this.#mainView.screenIndirect) this.globalIllumination.flush();
     if (reflect) this.screenSpaceReflections.flush();
     if (this.#mainView.screenShadow) this.contactShadows.flush();
     if (blur) this.motionBlur.flush();
@@ -418,6 +431,7 @@ export class ForwardRenderer {
     this.postEffects.destroy();
     this.temporalAntialiasing.destroy();
     this.ambientOcclusion.destroy();
+    this.globalIllumination.destroy();
     this.screenSpaceReflections.destroy();
     this.contactShadows.destroy();
     this.motionBlur.destroy();
@@ -452,8 +466,10 @@ export class ForwardRenderer {
         renderSystem.draw(context, prepass, view, this.depthPrepassStage);
         prepass.end();
       });
-      // 主画面：深度有了，算屏幕空间的环境光遮蔽，着色时乘环境光
-      if (view === this.#mainView && !isGraphTexture(depth) && this.ambientOcclusion.enabled && this.quality.ambientOcclusion) {
+      // 主画面：深度有了，算屏幕空间的全局光照（连遮蔽一起）或者只算环境光遮蔽，着色时用
+      if (view === this.#mainView && !isGraphTexture(depth) && this.#indirect) {
+        view.screenOcclusion = this.globalIllumination.record(frame, depth, view);
+      } else if (view === this.#mainView && !isGraphTexture(depth) && this.ambientOcclusion.enabled && this.quality.ambientOcclusion) {
         view.screenOcclusion = this.ambientOcclusion.record(frame, depth, view, this.#temporal);
       }
       // 接触阴影：投阴影的那盏方向光（没有就不算）
@@ -641,9 +657,10 @@ export class ForwardRenderer {
     const ambientOcclusion = settings?.ambientOcclusion !== undefined && this.quality.ambientOcclusion ? this.ambientOcclusion.warm() : undefined;
     const reflections = settings?.localReflections !== undefined && this.quality.screenSpaceReflections ? this.screenSpaceReflections.warm() : undefined;
     const temporal = this.quality.antialiasing ? this.temporalAntialiasing.warm() : undefined;
+    const indirect = this.quality.globalIllumination ? this.globalIllumination.warm() : undefined;
     const contact = this.quality.contactShadows ? this.contactShadows.warm() : undefined;
     const blur = this.quality.motionBlur ? this.motionBlur.warm() : undefined;
-    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, contact, blur]).then(() => undefined);
+    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, indirect, contact, blur]).then(() => undefined);
   }
 
   /**

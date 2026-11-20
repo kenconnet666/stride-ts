@@ -32,6 +32,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `perf [--seconds 3]` | 帧时间分布、每个系统和阶段的 CPU 时间、每个渲染通道的 GPU 时间、渲染统计 |
 | `blur [on\|off] [--shutter s] [--maxPixels n]` | 运动模糊：开关、快门（一帧的比例）、最长几个像素 |
 | `contact [on\|off] [--length m] [--steps n] [--thickness t]` | 接触阴影（投阴影的方向光，屏幕空间）：开关、参数 |
+| `ssgi [on\|off] [--radius m] [--thickness m] [--intensity x] [--feedback f]` | 屏幕空间全局光照（近处表面反射的漫反射光和遮蔽，开着时代替 GTAO）：开关、参数 |
 | `ssr [on\|off] [--maxRoughness r] [--thickness t] [--maxSteps n] [--debug off\|hits\|reflection]` | 屏幕空间反射：开关、参数，调试视图（命中的把握、累积后的反射） |
 | `draws` | 上一帧的绘制次数，按 GPU 的渲染通道分（场景的各阶段、阴影、后处理的每一步、UI、调试线），按画的顺序 |
 | `metrics [--over]` | 各系统的统计量和预算（`game.metrics`）：实体数、绘制次数、显存（缓冲、贴图的个数和字节）、原生内存、帧时间，加上游戏自己登记的；`--over` 只列超了预算的 |

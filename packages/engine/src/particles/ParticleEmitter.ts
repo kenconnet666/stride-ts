@@ -56,6 +56,11 @@ export class ParticleEmitter implements ParentEmitter {
   onGpu = false;
   /** @internal GPU 上模拟时：这一帧要生成几个（update 里生成器给的，ParticleSystems 取走）。 */
   gpuSpawn = 0;
+  /**
+   * @internal GPU 上模拟时预热（ParticleSystem 的 warmupTime）的每一步：[步长, 生成几个]。ParticleSystems 在 GPU 状态和管线
+   * 都好了以后一步一次派发，派发完清空。
+   */
+  gpuWarmup: [number, number][] = [];
   /** 重新开始模拟（resetSimulation）的次数：GPU 上的粒子按它知道要清掉。 */
   simulationGeneration = 0;
   /** 画的时候用：形状和材质（null 是不画）。 */
@@ -195,6 +200,7 @@ export class ParticleEmitter implements ParentEmitter {
   resetSimulation(): void {
     this.#poolDirty = true;
     this.gpuSpawn = 0;
+    this.gpuWarmup = [];
     this.simulationGeneration++;
     this.pool.setCapacity(0);
     for (const spawner of this.spawners) spawner.resetSimulation();

@@ -115,9 +115,18 @@ export class ParticleSystem implements EmitterParent {
     }
     if (!this.#started) {
       this.#started = true;
-      for (let remaining = this.warmupTime; remaining > 0; remaining -= WARMUP_STEP) {
+      // 余数到 1e-6 以下就停（0.1 减三次 1/30 剩 1e-17，不然多一个长度为 0 的步）
+      for (let remaining = this.warmupTime; remaining > 1e-6; remaining -= WARMUP_STEP) {
         const step = Math.min(remaining, WARMUP_STEP);
-        for (const emitter of this.emitters) if (emitter.enabled) emitter.update(step, this);
+        for (const emitter of this.emitters) {
+          if (!emitter.enabled) continue;
+          emitter.update(step, this);
+          // GPU 上的发射器每一步的生成数分开记（攒在一起的话预热的粒子全在同一时刻生成）
+          if (emitter.onGpu) {
+            emitter.gpuWarmup.push([step, emitter.gpuSpawn]);
+            emitter.gpuSpawn = 0;
+          }
+        }
       }
     }
     for (const emitter of this.emitters) if (emitter.enabled) emitter.update(dt, this);

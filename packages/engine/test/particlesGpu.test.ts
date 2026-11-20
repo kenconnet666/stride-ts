@@ -97,6 +97,20 @@ describe('GPU 粒子：模拟内核', () => {
   });
 });
 
+describe('GPU 粒子：预热', () => {
+  test('GPU 上的发射器预热时每一步（1/30 秒）的生成数分开记，这一帧的另算；从头模拟时清掉', () => {
+    const system = new ParticleSystem({ settings: { warmupTime: 0.1 }, emitters: [{ randomSeedMethod: 'fixed', spawners: [{ $type: 'spawnerPerSecond', spawnCount: 300 }] }] });
+    const emitter = system.emitters[0]!;
+    emitter.onGpu = true;
+    system.update(0.02);
+    expect(emitter.gpuWarmup.map(([dt]) => +dt.toFixed(4))).toEqual([0.0333, 0.0333, 0.0333]);
+    expect(emitter.gpuWarmup.reduce((sum, [, count]) => sum + count, 0)).toBe(30);
+    expect(emitter.gpuSpawn).toBe(6);
+    system.resetSimulation();
+    expect(emitter.gpuWarmup).toEqual([]);
+  });
+});
+
 describe('GPU 粒子：环形生成的记账', () => {
   test('新粒子接着环的头写，种子逐个加一；最近"最长寿命"秒里生成的个数不超过容量，早于它的不算', () => {
     const ring = new SpawnRing(10, 100);

@@ -211,6 +211,8 @@ export class ParticleSystems {
         if (!emitter.onGpu || !emitter.enabled) continue;
         const state = this.#stateFor(emitter, device);
         if (!state) continue;
+        // 预热：一步一次派发、马上提交（在这一帧的模拟之前）；管线还在编时留到下一帧
+        if (emitter.gpuWarmup.length > 0 && state.warmup(emitter.gpuWarmup, game.updateTime.total)) emitter.gpuWarmup = [];
         if (!pass) {
           const timestampWrites = game.graphicsDevice.profiler.passTimestamps('GPU particles');
           pass = game.graphicsDevice.frameEncoder.beginComputePass({ label: 'GPU particles', ...(timestampWrites ? { timestampWrites } : {}) });

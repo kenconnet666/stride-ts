@@ -209,6 +209,46 @@ export class GpuEmitter {
     const pipeline = this.#shared.simPipelines.get(this.kernel.code);
     const group = this.#simBindGroup();
     if (!pipeline || !group) return;
+    const window = this.#packStep(dt, wanted, time);
+    this.#device.queue.writeBuffer(this.#sim, 0, this.#simData);
+    // 活着的粒子数从 0 数起（模拟里每个活着的加一）
+    this.#device.queue.writeBuffer(this.#drawArgs, 0, new Uint32Array([this.#vertices, 0, 0, 0]));
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, group);
+    if (window > 0) pass.dispatchWorkgroups(Math.ceil(window / WORKGROUP_SIZE));
+  }
+
+  /**
+   * 预热（ParticleSystem 的 warmupTime）：steps 是每一步的 [步长, 生成几个]，time 是预热完的那一刻的游戏时间。一步一次派发，
+   * 用自己的命令编码器马上提交（在这一帧的模拟之前）：每步要自己的 uniform（同一次提交里写同一个缓冲，最后一次会盖掉前面的），
+   * 每步之前存活数清零。管线还在编、深度表面还没有时返回 false（下一帧再试），做完返回 true。
+   */
+  warmup(steps: readonly (readonly [number, number])[], time: number): boolean {
+    const pipeline = this.#shared.simPipelines.get(this.kernel.code);
+    if (!pipeline || !this.#simBindGroup()) return false;
+    const encoder = this.#device.createCommandEncoder({ label: 'GPU particles warmup' });
+    const uniforms: GPUBuffer[] = [];
+    let elapsed = steps.reduce((sum, [dt]) => sum + dt, 0);
+    for (const [dt, wanted] of steps) {
+      elapsed -= dt;
+      const window = this.#packStep(dt, wanted, time - elapsed);
+      const uniform = this.#device.createBuffer({ label: 'GPU particles warmup step', size: this.#simData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      this.#device.queue.writeBuffer(uniform, 0, this.#simData);
+      uniforms.push(uniform);
+      encoder.clearBuffer(this.#drawArgs, 4, 4);
+      const pass = encoder.beginComputePass({ label: 'GPU particles warmup' });
+      pass.setPipeline(pipeline);
+      pass.setBindGroup(0, this.#simBindGroupWith(uniform));
+      if (window > 0) pass.dispatchWorkgroups(Math.ceil(window / WORKGROUP_SIZE));
+      pass.end();
+    }
+    this.#device.queue.submit([encoder.finish()]);
+    for (const uniform of uniforms) uniform.destroy();
+    return true;
+  }
+
+  /** 一步的 uniform 写进 #simData（生成的记账往前走）；返回这一步要处理的那段环有多长。 */
+  #packStep(dt: number, wanted: number, time: number): number {
     const emitter = this.emitter;
     // 留两帧的余量：寿命正好到期的粒子要在窗口里被判死，不能先掉出窗口
     const spawn = this.ring.advance(dt, wanted, emitter.particleLifetime[1] + 2 * dt);
@@ -229,12 +269,7 @@ export class GpuEmitter {
     bits[16] = (this.ring.head + capacity - window) % capacity;
     bits[17] = window;
     this.kernel.pack(data.subarray(HEADER_VEC4S * 4));
-    this.#device.queue.writeBuffer(this.#sim, 0, data);
-    // 活着的粒子数从 0 数起（模拟里每个活着的加一）
-    this.#device.queue.writeBuffer(this.#drawArgs, 0, new Uint32Array([this.#vertices, 0, 0, 0]));
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, group);
-    if (window > 0) pass.dispatchWorkgroups(Math.ceil(window / WORKGROUP_SIZE));
+    return window;
   }
 
   /**
@@ -300,14 +335,20 @@ export class GpuEmitter {
     const bound = surface && { view: surface.depthView, uniform: surface.uniform };
     if (this.#simGroup && bound?.view === this.#boundSurface?.view && bound?.uniform === this.#boundSurface?.uniform) return this.#simGroup;
     this.#boundSurface = bound;
-    return (this.#simGroup = this.#device.createBindGroup({
+    return (this.#simGroup = this.#simBindGroupWith(this.#sim));
+  }
+
+  /** 模拟的绑定组，uniform 用给的缓冲（预热每一步一个）；深度表面用 #simBindGroup 定下的那个。 */
+  #simBindGroupWith(uniform: GPUBuffer): GPUBindGroup {
+    const bound = this.#boundSurface;
+    return this.#device.createBindGroup({
       label: `GPU particles ${this.emitter.name || 'emitter'}`, layout: bound ? this.#shared.surfaceSimLayout : this.#shared.simLayout,
       entries: [
-        { binding: 0, resource: { buffer: this.#sim } }, { binding: 1, resource: { buffer: this.#particles } },
+        { binding: 0, resource: { buffer: uniform } }, { binding: 1, resource: { buffer: this.#particles } },
         ...(bound ? [{ binding: 2, resource: bound.view }, { binding: 3, resource: { buffer: bound.uniform } }] : []),
         { binding: 4, resource: { buffer: this.#drawArgs } }, { binding: 5, resource: { buffer: this.#alive } },
       ],
-    }));
+    });
   }
 
   /** 这个大小的排序每一步的参数（同样大小的发射器共用一块）。 */

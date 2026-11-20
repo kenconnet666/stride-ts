@@ -160,18 +160,19 @@ const animation = evaluate<Animation>(`(async () => {
   const component = named('AnimationBasics')[0].require(strideEngine.AnimationComponent);
   const playing = () => component.playingAnimations.map((p) => [p.name, p.weight, p.enabled, p.repeatMode]);
   // 按游戏时间等（seconds）：CI 的软件 WebGPU 上一帧几百毫秒，墙钟的 0.8 秒淡入还没走完。固定步长：帧慢时一帧走几百毫秒的
-  // 游戏时间，淡入、出拳在一帧里就完了，看不到中间的状态（本机用 regress.ps1 -Slow 300 复现）
+  // 游戏时间，淡入、出拳在一帧里就完了，看不到中间的状态（本机用 regress.ps1 -Slow 300 复现）。步长 1/30（出拳的淡入 0.1 秒
+  // 还有三帧），等的都是"状态出现就往下走"：CI 上一帧几百毫秒，1/60 加固定的等待要三百多帧，超过 eval 的 120 秒
   const r = {};
-  strideGame.fixedTimeStep = 1 / 60;
+  strideGame.fixedTimeStep = 1 / 30;
   try {
   await tap('KeyE'); r.speed = lines().find((l) => l.startsWith('Q and E'));
   // 淡入和出拳都是一会儿的状态：每帧看一次，记下第一次出现的那一刻（帧慢时隔几帧再看，淡入已经完了、拳已经出完了）
   const first = (want, s) => until(() => { const p = playing(); return p.map(([name]) => name).join() === want ? p : null; }, s).then((p) => p ?? playing());
   await tap('KeyR'); r.fading = await first('Idle,Run', 1);
-  await seconds(0.8); r.run = playing();
+  r.run = await first('Run', 1.5);
   await tap('KeyP'); r.punch = await first('Punch', 1);
   await tap('KeyS'); r.paused = playing(); await tap('KeyS');
-  await seconds(2.5); r.idle = playing();
+  r.idle = await first('Idle', 3);
   } finally {
     strideGame.fixedTimeStep = undefined;
   }

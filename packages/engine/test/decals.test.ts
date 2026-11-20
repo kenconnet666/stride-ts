@@ -74,7 +74,7 @@ describe('分簇', () => {
   test('没分簇的视图参数全是 0；分了的：每格的像素比例、层的比例、视图的前方', () => {
     const v = view();
     expect(clusterParams(v)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
-    v.clustered = true;
+    v.clusterSlot = 0;
     const [sx, sy, scale, on, fx, fy, fz, logNear] = clusterParams(v);
     expect([sx, sy, on]).toEqual([16 / 1600, 9 / 900, 1]);
     expect(scale).toBeCloseTo(CLUSTER_GRID[2] / Math.log(10000), 6);
@@ -84,7 +84,7 @@ describe('分簇', () => {
 
   test('像素和深度到簇：左上角最近的是 0，层按深度指数地分，右下角最远的是最后一个', () => {
     const v = view();
-    v.clustered = true;
+    v.clusterSlot = 0;
     expect(clusterIndex(v, 0, 0, 0.1)).toBe(0);
     expect(clusterIndex(v, 1599, 899, 1000)).toBe(CLUSTER_GRID[0] * CLUSTER_GRID[1] * CLUSTER_GRID[2] - 1);
     // 1 米：ln(1 / 0.1) / ln(10000) · 24 = 6 层

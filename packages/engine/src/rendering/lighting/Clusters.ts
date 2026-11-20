@@ -1,28 +1,34 @@
 /**
- * 分簇（Olsson 2012 "Clustered Deferred and Forward Shading"，Doom 2016 的分簇前向）：主视图按屏幕分成 16x9 格、沿视线按
+ * 分簇（Olsson 2012 "Clustered Deferred and Forward Shading"，Doom 2016 的分簇前向）：视图按屏幕分成 16x9 格、沿视线按
  * 指数分 24 层，每一簇记下和它相交的点光、聚光、贴花（按包围球）。网格着色时像素只看自己那一簇的，不再把所有的都看一遍。
  *
- * - 一帧一次，在主视图不透明的那一遍之前（ForwardRenderer）：CPU 把光和贴花的包围球（世界坐标的球心、半径）传上去，计算
- *   着色器每个线程一个簇，算簇在视图空间里的包围盒，和每个球比，按下标从小到大写进这一簇的表（贴花的先后不变）。
- * - 每簇的表：光的个数、贴花的个数，再是最多 MAX_CLUSTER_LIGHTS 个光、MAX_CLUSTER_DECALS 个贴花的下标；多了的丢掉。
+ * - 要着色的视图（主画面、反射探针的面、渲染目标贴图的相机）各占一个槽（RenderView.clusterSlot），每个视图在它不透明的那一遍
+ *   之前算一次（ForwardRenderer）。CPU 每帧把光和贴花的包围球（世界坐标的球心、半径）传上去一次，所有视图共用。
+ * - 计算着色器每个线程一个簇：算簇在视图空间里的包围盒，先数和它相交的光、贴花，原子加从这个视图的索引池里拿一段，再按下标
+ *   从小到大写进去（贴花的先后不变）。每簇的个数不设上限；池子放不下时这一帧截断（先保光），读回这一帧要了多少，下一帧把池子
+ *   扩大（按 2 的幂）。
+ * - 缓冲的布局（u32）：先是各槽的簇头，每槽 HEADER_WORDS 个（第 0 个是池子的计数器，然后每簇两个：这一簇的索引在整个缓冲里
+ *   的起点、光数 | 贴花数 << 16），再是各槽的索引池，每槽 capacity 个。网格着色器绑整个缓冲。
  * - 层的深度：第 k 层到 near · (far / near)^((k + 1) / 24)，near、far 是视图的近、远平面。着色器按像素到相机的视线方向的
  *   距离（世界坐标和视图的前方点乘）算层：clusterParams 给的两个 vec4 放在视图常量里。
- * - 只给主视图分簇（RenderView.clustered）；别的视图（渲染目标贴图的相机、反射探针的面）还是看所有的。没有光和贴花时不分。
+ * - 没有光和贴花时不分。点光、聚光因此不设总数的上限。
  */
 import { Matrix } from '../../data/Matrix';
 import type { RenderView } from '../RenderSystem';
 
 /** 簇的格子：屏幕横、竖几格，沿视线几层。 */
 export const CLUSTER_GRID = [16, 9, 24] as const;
-export const MAX_CLUSTER_LIGHTS = 64;
-export const MAX_CLUSTER_DECALS = 32;
-/** 每簇在缓冲里占几个 u32。 */
-export const CLUSTER_STRIDE = 2 + MAX_CLUSTER_LIGHTS + MAX_CLUSTER_DECALS;
 const CLUSTER_COUNT = CLUSTER_GRID[0] * CLUSTER_GRID[1] * CLUSTER_GRID[2];
+/** 一个槽的簇头占几个 u32：计数器加每簇两个，补到 64 的倍数（按槽绑定时偏移要对齐 256 字节）。 */
+const HEADER_WORDS = Math.ceil((1 + 2 * CLUSTER_COUNT) / 64) * 64;
+/** 每个槽的索引池一开始的大小（平均每簇 16 个），不够时按 2 的幂变大。 */
+const INITIAL_CAPACITY = CLUSTER_COUNT * 16;
+/** 最多几个槽（视图）；再多的视图不分簇（看所有的光和贴花），第一次超出时警告。 */
+const MAX_TABLES = 64;
 const WORKGROUP = 64;
 
 /**
- * 视图常量里的分簇参数（两个 vec4）：(格数 / 视图宽、格数 / 视图高、层数 / ln(far / near)、分不分簇)，(视图的前方, ln near)。
+ * 视图常量里的分簇参数（两个 vec4）：(格数 / 视图宽、格数 / 视图高、层数 / ln(far / near)、槽 + 1)，(视图的前方, ln near)。
  * 没分簇时第一个的 w 是 0。
  */
 export function clusterParams(view: RenderView): [number, number, number, number, number, number, number, number] {
@@ -31,7 +37,7 @@ export function clusterParams(view: RenderView): [number, number, number, number
   // 视图矩阵的第三行是视图空间的 +Z（相机朝 -Z 看）
   const v = view.view;
   return [
-    CLUSTER_GRID[0] / Math.max(1, view.width), CLUSTER_GRID[1] / Math.max(1, view.height), CLUSTER_GRID[2] / Math.log(far / near), 1,
+    CLUSTER_GRID[0] / Math.max(1, view.width), CLUSTER_GRID[1] / Math.max(1, view.height), CLUSTER_GRID[2] / Math.log(far / near), view.clusterSlot + 1,
     -v[2]!, -v[6]!, -v[10]!, Math.log(near),
   ];
 }
@@ -42,7 +48,7 @@ export function clusterDepthRange(view: RenderView): { near: number; far: number
   return { near, far: Math.max(view.farClipPlane, near * 2) };
 }
 
-/** 像素所在的簇（单测用，和着色器的 clusterOf 同一个算法）：x、y 是视图里的像素，depth 是沿视线的距离。 */
+/** 像素所在的簇在这个视图里的下标（单测用，和着色器的 clusterOf 同一个算法）：x、y 是视图里的像素，depth 是沿视线的距离。 */
 export function clusterIndex(view: RenderView, x: number, y: number, depth: number): number {
   const [sx, sy, scale, , , , , logNear] = clusterParams(view);
   const slice = Math.min(CLUSTER_GRID[2] - 1, Math.max(0, Math.floor((Math.log(Math.max(depth, 1e-4)) - logNear) * scale)));
@@ -50,14 +56,12 @@ export function clusterIndex(view: RenderView, x: number, y: number, depth: numb
   return (slice * CLUSTER_GRID[1] + ty) * CLUSTER_GRID[0] + tx;
 }
 
-/** 着色器里的 clusterOf：网格着色器、计算着色器共用的常量。 */
+/** 网格着色器的 clusterOf 用的常量。 */
 export const CLUSTER_WGSL = /* wgsl */ `
 const CLUSTER_X = ${CLUSTER_GRID[0]}u;
 const CLUSTER_Y = ${CLUSTER_GRID[1]}u;
 const CLUSTER_Z = ${CLUSTER_GRID[2]}u;
-const CLUSTER_STRIDE = ${CLUSTER_STRIDE}u;
-const MAX_CLUSTER_LIGHTS = ${MAX_CLUSTER_LIGHTS}u;
-const MAX_CLUSTER_DECALS = ${MAX_CLUSTER_DECALS}u;
+const CLUSTER_HEADER_WORDS = ${HEADER_WORDS}u;
 `;
 
 const BUILD_SHADER = /* wgsl */ `
@@ -67,11 +71,20 @@ struct Build {
   view: mat4x4f,
   // x：光的个数，y：贴花的个数，z：近平面的视线距离，w：远平面的
   counts: vec4f,
+  // x：这个槽的索引池在整个缓冲里的起点（u32 的下标），y：池子的大小
+  pool: vec4u,
+};
+struct Header {
+  // 这一帧要了多少个下标（截断之前），CPU 读回来定池子的大小
+  requested: atomic<u32>,
+  // 每簇两个：起点、光数 | 贴花数 << 16
+  entries: array<u32>,
 };
 @group(0) @binding(0) var<uniform> build: Build;
 // 先光后贴花：球心（世界）和半径
 @group(0) @binding(1) var<storage, read> spheres: array<vec4f>;
-@group(0) @binding(2) var<storage, read_write> clusters: array<u32>;
+@group(0) @binding(2) var<storage, read_write> header: Header;
+@group(0) @binding(3) var<storage, read_write> pool: array<u32>;
 
 /** 屏幕上 ndc 那一点、沿视线距离 depth 处的视图空间坐标（透视、正交都对：在近、远平面上各取一点，按距离插值）。 */
 fn pointAt(ndc: vec2f, depth: f32) -> vec3f {
@@ -81,6 +94,17 @@ fn pointAt(ndc: vec2f, depth: f32) -> vec3f {
   let p1 = b.xyz / b.w;
   let t = (depth + p0.z) / (p0.z - p1.z);
   return mix(p0, p1, t);
+}
+
+var<private> lo: vec3f;
+var<private> hi: vec3f;
+
+/** 第 i 个球和这一簇的包围盒相不相交。 */
+fn touches(i: u32) -> bool {
+  let sphere = spheres[i];
+  let center = (build.view * vec4f(sphere.xyz, 1.0)).xyz;
+  let offset = center - clamp(center, lo, hi);
+  return dot(offset, offset) <= sphere.w * sphere.w;
 }
 
 @compute @workgroup_size(${WORKGROUP}) fn main(@builtin(global_invocation_id) id: vec3u) {
@@ -98,99 +122,225 @@ fn pointAt(ndc: vec2f, depth: f32) -> vec3f {
   let d1 = near * pow(far / near, f32(z + 1u) / f32(CLUSTER_Z));
   let ndcMin = vec2f(f32(x) / f32(CLUSTER_X) * 2.0 - 1.0, 1.0 - f32(y + 1u) / f32(CLUSTER_Y) * 2.0);
   let ndcMax = vec2f(f32(x + 1u) / f32(CLUSTER_X) * 2.0 - 1.0, 1.0 - f32(y) / f32(CLUSTER_Y) * 2.0);
-  var lo = vec3f(1e30);
-  var hi = vec3f(-1e30);
+  lo = vec3f(1e30);
+  hi = vec3f(-1e30);
   for (var corner = 0u; corner < 8u; corner++) {
     let ndc = vec2f(select(ndcMin.x, ndcMax.x, (corner & 1u) != 0u), select(ndcMin.y, ndcMax.y, (corner & 2u) != 0u));
     let p = pointAt(ndc, select(d0, d1, (corner & 4u) != 0u));
     lo = min(lo, p);
     hi = max(hi, p);
   }
-  let base = index * CLUSTER_STRIDE;
   let lightCount = u32(build.counts.x);
-  let decalCount = u32(build.counts.y);
+  let total = lightCount + u32(build.counts.y);
+  // 先数，再从池子里拿一段（个数各自不超过 16 位）
   var lights = 0u;
   var decals = 0u;
-  for (var i = 0u; i < lightCount + decalCount; i++) {
-    let sphere = spheres[i];
-    let center = (build.view * vec4f(sphere.xyz, 1.0)).xyz;
-    let nearest = clamp(center, lo, hi);
-    let offset = center - nearest;
-    if (dot(offset, offset) > sphere.w * sphere.w) {
+  for (var i = 0u; i < total; i++) {
+    if (touches(i)) {
+      if (i < lightCount) { lights++; } else { decals++; }
+    }
+  }
+  lights = min(lights, 0xffffu);
+  decals = min(decals, 0xffffu);
+  let offset = atomicAdd(&header.requested, lights + decals);
+  // 池子不够时截断：先保光
+  let room = select(0u, build.pool.y - offset, offset < build.pool.y);
+  let keptLights = min(lights, room);
+  let keptDecals = min(decals, room - keptLights);
+  var writtenLights = 0u;
+  var writtenDecals = 0u;
+  for (var i = 0u; i < total && writtenLights + writtenDecals < keptLights + keptDecals; i++) {
+    if (!touches(i)) {
       continue;
     }
     if (i < lightCount) {
-      if (lights < MAX_CLUSTER_LIGHTS) {
-        clusters[base + 2u + lights] = i;
-        lights++;
+      if (writtenLights < keptLights) {
+        pool[offset + writtenLights] = i;
+        writtenLights++;
       }
-    } else if (decals < MAX_CLUSTER_DECALS) {
-      clusters[base + 2u + MAX_CLUSTER_LIGHTS + decals] = i - lightCount;
-      decals++;
+    } else if (writtenDecals < keptDecals) {
+      pool[offset + keptLights + writtenDecals] = i - lightCount;
+      writtenDecals++;
     }
   }
-  clusters[base] = lights;
-  clusters[base + 1u] = decals;
+  header.entries[index * 2u] = build.pool.x + offset;
+  header.entries[index * 2u + 1u] = keptLights | (keptDecals << 16u);
 }
 `;
 
-/** 主视图的簇（渲染系统一份）：record 在主视图不透明的那一遍之前算，网格着色时绑 buffer。 */
+/**
+ * 各视图的簇（渲染系统一份）：reserve 定这一帧要几个槽，upload 传光和贴花的包围球，再在各视图不透明的那一遍之前 record；
+ * 网格着色时绑 buffer、按视图常量里的槽号找自己的簇头。
+ */
 export class Clusters {
-  /** 每簇的光和贴花的下标（CLUSTER_STRIDE 个 u32 一簇）。 */
-  readonly buffer: GPUBuffer;
+  /** 簇头和索引池（布局见文件头）；槽多了、池子不够时换一个更大的。 */
+  buffer: GPUBuffer;
   readonly #device: GPUDevice;
-  readonly #uniforms: GPUBuffer;
-  readonly #uniformData = new Float32Array(36);
+  /** 缓冲按几个槽、每槽多大的池子建的。 */
+  #tables = 0;
+  #capacity = INITIAL_CAPACITY;
+  /** 读回的这几帧里某个槽要的最多的下标数；超过 #capacity 时下一次 reserve 扩大池子。 */
+  #requested = 0;
+  readonly #uniforms: GPUBuffer[] = [];
+  readonly #groups: (GPUBindGroup | undefined)[] = [];
+  readonly #uniformData = new Float32Array(40);
+  #counts: [number, number] = [0, 0];
   #spheres: GPUBuffer | undefined;
   #sphereData = new Float32Array(0);
   #pipeline: GPUComputePipeline | undefined;
-  #group: GPUBindGroup | undefined;
+  /** 每槽的计数器读回来（MAP_READ）；还在 map 的那一帧不再写。 */
+  readonly #readback: GPUBuffer;
+  #readbackBusy = false;
+  /** 这一帧拷进读回缓冲的槽数（0 是这一帧还没拷）。 */
+  #readbackSlots = 0;
+  #warned = false;
 
   constructor(device: GPUDevice) {
     this.#device = device;
-    this.buffer = device.createBuffer({ label: 'Clusters', size: CLUSTER_COUNT * CLUSTER_STRIDE * 4, usage: GPUBufferUsage.STORAGE });
-    this.#uniforms = device.createBuffer({ label: 'Clusters build', size: this.#uniformData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.buffer = this.#createBuffer(1);
+    this.#readback = device.createBuffer({ label: 'Clusters requested', size: MAX_TABLES * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+  }
+
+  /** 这一帧要 count 个槽：缓冲不够（槽数或池子）时换大的；返回实际能用的槽数（最多 MAX_TABLES）。 */
+  reserve(count: number): number {
+    if (count > MAX_TABLES && !this.#warned) {
+      this.#warned = true;
+      console.warn(`Clusters: ${count} views need clustering; only ${MAX_TABLES} get clusters, the rest shade every light and decal`);
+    }
+    const tables = Math.min(count, MAX_TABLES);
+    const capacity = this.#requested > this.#capacity ? this.#fitCapacity(this.#requested, Math.max(tables, this.#tables)) : this.#capacity;
+    if (tables > this.#tables || capacity > this.#capacity) {
+      this.#capacity = capacity;
+      this.buffer.destroy();
+      this.buffer = this.#createBuffer(Math.max(tables, this.#tables));
+      this.#groups.fill(undefined);
+    }
+    while (this.#uniforms.length < tables) {
+      this.#uniforms.push(this.#device.createBuffer({ label: `Clusters build ${this.#uniforms.length}`, size: this.#uniformData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
+    }
+    this.#readbackSlots = 0;
+    return tables;
   }
 
   /**
-   * 算 view 的簇。lights、decals 是包围球（每个 4 个数：世界坐标的球心、半径），各 lightCount、decalCount 个；下标和着色器里
-   * localLights、decals 的一致。
+   * 这一帧的包围球（每个 4 个数：世界坐标的球心、半径）：先 lightCount 个光，再 decalCount 个贴花；下标和着色器里 localLights、
+   * decals 的一致。所有视图共用。
    */
-  record(encoder: GPUCommandEncoder, view: RenderView, lights: Float32Array, lightCount: number, decals: Float32Array, decalCount: number, timestampWrites?: GPUComputePassTimestampWrites): void {
+  upload(lights: Float32Array, lightCount: number, decals: Float32Array, decalCount: number): void {
     const floats = (lightCount + decalCount) * 4;
     if (this.#sphereData.length < Math.max(floats, 4)) {
       this.#sphereData = new Float32Array(2 ** Math.ceil(Math.log2(Math.max(floats, 4))));
       this.#spheres?.destroy();
       this.#spheres = this.#device.createBuffer({ label: 'Clusters spheres', size: this.#sphereData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-      this.#group = undefined;
+      this.#groups.fill(undefined);
     }
     this.#sphereData.set(lights.subarray(0, lightCount * 4), 0);
     this.#sphereData.set(decals.subarray(0, decalCount * 4), lightCount * 4);
     if (floats > 0) this.#device.queue.writeBuffer(this.#spheres!, 0, this.#sphereData, 0, floats);
+    this.#counts = [lightCount, decalCount];
+  }
+
+  /** 算 view 的簇（写进它那个槽的簇头和索引池）。 */
+  record(encoder: GPUCommandEncoder, view: RenderView, timestampWrites?: GPUComputePassTimestampWrites): void {
+    const slot = view.clusterSlot;
+    const uniforms = this.#uniforms[slot];
+    if (!uniforms || !this.#spheres) return;
     const { near, far } = clusterDepthRange(view);
     const data = this.#uniformData;
     Matrix.invert(data.subarray(0, 16) as never, view.projection);
     data.set(view.view, 16);
-    data.set([lightCount, decalCount, near, far], 32);
-    this.#device.queue.writeBuffer(this.#uniforms, 0, data);
+    data.set([...this.#counts, near, far], 32);
+    new Uint32Array(data.buffer, 36 * 4, 4).set([this.#poolStart(slot), this.#capacity, 0, 0]);
+    // 每个槽自己的常量缓冲：同一帧里几个视图的写入都在提交之前，共用一个的话最后一次写的会盖掉前面的
+    this.#device.queue.writeBuffer(uniforms, 0, data);
     const pipeline = (this.#pipeline ??= this.#device.createComputePipeline({
       label: 'Clusters build', layout: 'auto',
       compute: { module: this.#device.createShaderModule({ label: 'Clusters build', code: BUILD_SHADER }), entryPoint: 'main' },
     }));
-    this.#group ??= this.#device.createBindGroup({
-      label: 'Clusters build', layout: pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.#uniforms } }, { binding: 1, resource: { buffer: this.#spheres! } }, { binding: 2, resource: { buffer: this.buffer } }],
-    });
+    const group = (this.#groups[slot] ??= this.#device.createBindGroup({
+      label: `Clusters build ${slot}`, layout: pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: uniforms } },
+        { binding: 1, resource: { buffer: this.#spheres } },
+        { binding: 2, resource: { buffer: this.buffer, offset: slot * HEADER_WORDS * 4, size: HEADER_WORDS * 4 } },
+        { binding: 3, resource: { buffer: this.buffer, offset: this.#poolStart(slot) * 4, size: this.#capacity * 4 } },
+      ],
+    }));
+    // 计数器清零（簇头的第 0 个）
+    encoder.clearBuffer(this.buffer, slot * HEADER_WORDS * 4, 4);
     const pass = encoder.beginComputePass({ label: 'Clusters build', ...(timestampWrites ? { timestampWrites } : {}) });
     pass.setPipeline(pipeline);
-    pass.setBindGroup(0, this.#group);
+    pass.setBindGroup(0, group);
     pass.dispatchWorkgroups(Math.ceil(CLUSTER_COUNT / WORKGROUP));
     pass.end();
+    this.#copyRequested(encoder, slot);
+  }
+
+  /** 调试用：读回一个槽的簇头，统计每簇的光数，以及池子要了多少、放得下多少（要的多于放得下时这一帧有光被截掉）。 */
+  async occupancy(slot: number): Promise<{ lit: number; max: number; mean: number; requested: number; capacity: number }> {
+    const read = this.#device.createBuffer({ label: 'Clusters occupancy', size: HEADER_WORDS * 4, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const encoder = this.#device.createCommandEncoder({ label: 'Clusters occupancy' });
+    encoder.copyBufferToBuffer(this.buffer, slot * HEADER_WORDS * 4, read, 0, HEADER_WORDS * 4);
+    this.#device.queue.submit([encoder.finish()]);
+    await read.mapAsync(GPUMapMode.READ);
+    const words = new Uint32Array(read.getMappedRange().slice(0));
+    read.destroy();
+    let lit = 0, max = 0, sum = 0;
+    for (let i = 0; i < CLUSTER_COUNT; i++) {
+      const lights = words[2 + i * 2]! & 0xffff;
+      if (lights > 0) lit++;
+      max = Math.max(max, lights);
+      sum += lights;
+    }
+    return { lit, max, mean: lit > 0 ? sum / lit : 0, requested: words[0]!, capacity: this.#capacity };
+  }
+
+  /** 槽 slot 的索引池在整个缓冲里的起点（u32 的下标）：所有槽的簇头在前。 */
+  #poolStart(slot: number): number {
+    return this.#tables * HEADER_WORDS + slot * this.#capacity;
+  }
+
+  /** 放得下 requested 个下标的池子（2 的幂、64 的倍数），整个缓冲不超过一次能绑定的大小。 */
+  #fitCapacity(requested: number, tables: number): number {
+    const limit = Math.floor((this.#device.limits.maxStorageBufferBindingSize / tables / 4 - HEADER_WORDS) / 64) * 64;
+    return Math.min(limit, Math.max(INITIAL_CAPACITY, 2 ** Math.ceil(Math.log2(requested * 1.25))));
+  }
+
+  /** 把这个槽的计数器拷进读回缓冲；这一帧第一次拷时排一次读回（提交之后才能 map：放到微任务里，同 GpuProfiler）。 */
+  #copyRequested(encoder: GPUCommandEncoder, slot: number): void {
+    if (this.#readbackBusy && this.#readbackSlots === 0) return;
+    encoder.copyBufferToBuffer(this.buffer, slot * HEADER_WORDS * 4, this.#readback, slot * 4, 4);
+    if (this.#readbackSlots === 0) {
+      this.#readbackBusy = true;
+      queueMicrotask(() => void this.#collectRequested());
+    }
+    this.#readbackSlots = Math.max(this.#readbackSlots, slot + 1);
+  }
+
+  async #collectRequested(): Promise<void> {
+    const slots = this.#readbackSlots;
+    try {
+      await this.#readback.mapAsync(GPUMapMode.READ, 0, slots * 4);
+    } catch {
+      this.#readbackBusy = false; // 设备销毁时 map 会失败
+      return;
+    }
+    const requested = new Uint32Array(this.#readback.getMappedRange(0, slots * 4));
+    this.#requested = Math.max(...requested);
+    this.#readback.unmap();
+    this.#readbackBusy = false;
+  }
+
+  #createBuffer(tables: number): GPUBuffer {
+    this.#tables = tables;
+    const words = tables * (HEADER_WORDS + this.#capacity);
+    return this.#device.createBuffer({ label: `Clusters ×${tables}`, size: words * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST });
   }
 
   destroy(): void {
     this.buffer.destroy();
-    this.#uniforms.destroy();
+    for (const uniforms of this.#uniforms) uniforms.destroy();
     this.#spheres?.destroy();
+    this.#readback.destroy();
   }
 }

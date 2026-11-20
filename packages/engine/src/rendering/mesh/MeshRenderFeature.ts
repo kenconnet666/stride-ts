@@ -35,7 +35,7 @@ import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshE
 import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER } from './meshShader';
 import { vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/format';
 import { Mesh } from './Mesh';
-import { inRenderMask, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
+import { inRenderMask, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
@@ -529,14 +529,17 @@ class Gpu {
   #morphOfWrites = 0;
   /** 视图常量里的各缓冲这一帧、上一帧的起点（View.bases）。 */
   readonly #frameBases = new Uint32Array(12);
-  readonly #localLightData = new Float32Array(MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS);
-  readonly #localLights: GPUBuffer;
-  /** 点光、聚光的阴影（LocalShadow），按需变长；没有时也留一个的位置（绑定组里的存储缓冲不能缺）。 */
+  /** 点光、聚光（LocalLight），按需变长；没有时也留一个的位置（绑定组里的存储缓冲不能缺）。 */
+  #localLightData = new Float32Array(LOCAL_LIGHT_FLOATS);
+  #localLights: GPUBuffer;
+  /** 点光、聚光的阴影（LocalShadow），按需变长；没有时也留一个的位置。 */
   #localShadowData = new Float32Array(LOCAL_SHADOW_FLOATS);
   #localShadows: GPUBuffer;
-  /** 视图绑定组，按绑在阴影位置上的深度图分开：画阴影图集时不能同时采样它。 */
-  /** 阴影图集 → 遮蔽贴图 → 视图绑定组。 */
-  /** 阴影图集 → 环境光遮蔽 → 接触阴影 → 视图绑定组。 */
+  /** 绑定组里的簇表缓冲；视图多了 Clusters 会换一个更大的，要重建绑定组。 */
+  #clusterBuffer: GPUBuffer | undefined;
+  /**
+   * 视图绑定组：阴影图集 → 环境光遮蔽 → 接触阴影 → 绑定组。按绑在阴影位置上的深度图分开：画阴影图集时不能同时采样它。
+   */
   readonly #viewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>();
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
@@ -606,7 +609,7 @@ class Gpu {
     });
     this.#noMorph = this.#createFilled('MeshRenderFeature no morph', GPUBufferUsage.STORAGE, new Uint32Array(4));
     this.#dfgLut = createDfgLut(device);
-    this.#localLights = this.#createStorage('MeshRenderFeature local lights', MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS * 4);
+    this.#localLights = this.#createStorage('MeshRenderFeature local lights', this.#localLightData.byteLength);
     this.#localShadows = this.#createStorage('MeshRenderFeature local shadows', LOCAL_SHADOW_FLOATS * 4);
   }
 
@@ -934,11 +937,21 @@ class Gpu {
       data.set([this.#decals.count, 0, 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
     }
-    // 点光、聚光：所有视图共用一份
+    // 点光、聚光：所有视图共用一份，个数不设上限（缓冲按 2 的幂变大）
+    if (localCount * LOCAL_LIGHT_FLOATS > this.#localLightData.length) {
+      this.#localLightData = new Float32Array(2 ** Math.ceil(Math.log2(localCount)) * LOCAL_LIGHT_FLOATS);
+      this.#localLights.destroy();
+      this.#localLights = this.#createStorage('MeshRenderFeature local lights', this.#localLightData.byteLength);
+      this.#clearViewBindGroups();
+    }
     const lights = this.#localLightData;
     for (let i = 0; i < localCount; i++) {
       const { position: p, color: c, direction: d, spot, invSquareRadius, angleScale, angleOffset, shadowIndex } = locals[i]!;
-      lights.set([p.x, p.y, p.z, invSquareRadius, c.r, c.g, c.b, spot ? 1 : 0, d.x, d.y, d.z, shadowIndex, angleScale, angleOffset, 0, 0], i * LOCAL_LIGHT_FLOATS);
+      const o = i * LOCAL_LIGHT_FLOATS;
+      lights[o] = p.x; lights[o + 1] = p.y; lights[o + 2] = p.z; lights[o + 3] = invSquareRadius;
+      lights[o + 4] = c.r; lights[o + 5] = c.g; lights[o + 6] = c.b; lights[o + 7] = spot ? 1 : 0;
+      lights[o + 8] = d.x; lights[o + 9] = d.y; lights[o + 10] = d.z; lights[o + 11] = shadowIndex;
+      lights[o + 12] = angleScale; lights[o + 13] = angleOffset;
     }
     if (localCount > 0) this.device.queue.writeBuffer(this.#localLights, 0, lights, 0, localCount * LOCAL_LIGHT_FLOATS);
     this.#uploadLocalShadows(lighting);
@@ -946,7 +959,8 @@ class Gpu {
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer) {
+      this.#clusterBuffer = this.#clusters.buffer;
       this.#decalAtlas = this.#decals.atlas;
       this.#decalBuffer = this.#decals.buffer;
       this.#cloudShadow = cloud?.texture;

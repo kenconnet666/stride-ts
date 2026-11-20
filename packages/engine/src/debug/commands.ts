@@ -269,10 +269,15 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     }
     return { lights: n * n, local: game.renderSystem.lighting.localCount };
   });
-  debug.command('clusters', 'Clustered shading of point lights, spot lights and decals on the main view (lighting/Clusters.ts). args: on (true/false; omitted toggles). Turn it off to compare the picture and the cost.', (args) => {
+  debug.command('clusters', 'Clustered shading of point lights, spot lights and decals (lighting/Clusters.ts): the main view, reflection probe faces and render-texture cameras each get a cluster table. args: on (true/false; omitted toggles, unless stats is given). stats (true): per view, clusters with lights, most and mean lights per cluster, and the index pool (requested > capacity means lights were cut this frame; the pool grows the next frame). Turn it off to compare the picture and the cost. Reports the state of the last frame.', async (args) => {
     const renderer = game.graphicsCompositor;
-    renderer.clustering = typeof args['on'] === 'boolean' ? args['on'] : !renderer.clustering;
-    return { clustering: renderer.clustering, clustered: renderer.mainView?.clustered ?? false, lights: game.renderSystem.lighting.localCount, decals: game.renderSystem.decals.count };
+    if (typeof args['on'] === 'boolean') renderer.clustering = args['on'];
+    else if (args['stats'] !== true) renderer.clustering = !renderer.clustering;
+    const views = game.renderSystem.views.filter((view) => view.clustered);
+    const clusteredViews = await Promise.all(views.map(async (view) => ({
+      slot: view.clusterSlot, size: [view.width, view.height], ...(args['stats'] === true ? await game.renderSystem.clusters.occupancy(view.clusterSlot) : {}),
+    })));
+    return { clustering: renderer.clustering, clusteredViews, lights: game.renderSystem.lighting.localCount, decals: game.renderSystem.decals.count };
   });
   debug.command('weather', `Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
     const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Weather));

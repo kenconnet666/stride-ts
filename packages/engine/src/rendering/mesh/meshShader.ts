@@ -130,7 +130,7 @@ struct Decal { toBox: mat4x4f, albedo: vec4f, normal: vec4f, color: vec4f, fade:
 @group(0) @binding(24) var<storage, read> clusters: array<u32>;
 ${CLUSTER_WGSL}
 
-/** 像素所在的簇在 clusters 里的起点；视图没分簇时是 -1（看所有的光和贴花）。 */
+/** 像素所在的簇的簇头在 clusters 里的下标；视图没分簇时是 -1（看所有的光和贴花）。 */
 fn clusterOf(position: vec4f, world: vec3f) -> i32 {
   if (view.cluster.w == 0.0) {
     return -1;
@@ -138,7 +138,15 @@ fn clusterOf(position: vec4f, world: vec3f) -> i32 {
   let depth = max(dot(world - view.eye.xyz, view.clusterView.xyz), 1e-4);
   let slice = u32(clamp((log(depth) - view.clusterView.w) * view.cluster.z, 0.0, f32(CLUSTER_Z - 1u)));
   let tile = min(vec2u(position.xy * view.cluster.xy), vec2u(CLUSTER_X - 1u, CLUSTER_Y - 1u));
-  return i32(((slice * CLUSTER_Y + tile.y) * CLUSTER_X + tile.x) * CLUSTER_STRIDE);
+  // cluster.w 是这个视图的槽 + 1；槽的簇头在缓冲的前面，一个槽 CLUSTER_HEADER_WORDS 个（第 0 个是计数器，然后每簇两个）
+  let slot = u32(view.cluster.w) - 1u;
+  return i32(slot * CLUSTER_HEADER_WORDS + 1u + ((slice * CLUSTER_Y + tile.y) * CLUSTER_X + tile.x) * 2u);
+}
+
+/** 这一簇的光、贴花的个数（簇头的第二个数：光数 | 贴花数 << 16）。 */
+fn clusterCounts(cluster: i32) -> vec2u {
+  let packed = clusters[u32(cluster) + 1u];
+  return vec2u(packed & 0xffffu, packed >> 16u);
 }
 
 /** 贴花改过的表面和法线。 */
@@ -158,13 +166,19 @@ fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface, cluster: i32) -> Decaled
   if (u32(view.decal.x) == 0u) {
     return r;
   }
-  // 分了簇时只看这一簇的贴花（下标从小到大，先后不变）
-  let base = u32(max(cluster, 0));
-  let count = select(u32(view.decal.x), min(clusters[base + 1u], MAX_CLUSTER_DECALS), cluster >= 0);
+  // 分了簇时只看这一簇的贴花（下标从小到大，先后不变；在这一簇的光的后面）
+  let clustered = cluster >= 0;
+  var count = u32(view.decal.x);
+  var first = 0u;
+  if (clustered) {
+    let counts = clusterCounts(cluster);
+    count = counts.y;
+    first = clusters[u32(cluster)] + counts.x;
+  }
   let dx = dpdx(world);
   let dy = dpdy(world);
   for (var k = 0u; k < count; k++) {
-    let i = select(k, clusters[base + 2u + MAX_CLUSTER_LIGHTS + k], cluster >= 0);
+    let i = select(k, clusters[first + k], clustered);
     let d = decals[i];
     let p = (d.toBox * vec4f(world, 1.0)).xyz;
     if (any(abs(p) > vec3f(1.0))) {
@@ -1263,10 +1277,15 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   // 点光、聚光：距离衰减（LightUtil.GetDistanceAttenuation），聚光再乘角度衰减（GetAngularAttenuation）
   // 分了簇时只看这一簇的光
-  let clusterBase = u32(max(cluster, 0));
-  let localCount = select(u32(view.locals.x), min(clusters[clusterBase], MAX_CLUSTER_LIGHTS), cluster >= 0);
+  let clustered = cluster >= 0;
+  var localCount = u32(view.locals.x);
+  var firstLight = 0u;
+  if (clustered) {
+    localCount = clusterCounts(cluster).x;
+    firstLight = clusters[u32(cluster)];
+  }
   for (var k = 0u; k < localCount; k++) {
-    let light = localLights[select(k, clusters[clusterBase + 2u + k], cluster >= 0)];
+    let light = localLights[select(k, clusters[firstLight + k], clustered)];
     let toLight = light.position.xyz - in.world;
     let distance = length(toLight);
     let l = toLight / distance;

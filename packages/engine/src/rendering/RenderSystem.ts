@@ -161,8 +161,15 @@ export class RenderView {
   receivesShadows = true;
   /** 这个视图自己的方向光级联（ShadowMapRenderer.collect 给每个接收阴影的视图各算一套）；没有方向光阴影时是 undefined。 */
   shadow: ShadowReceiver | undefined;
-  /** 分簇（lighting/Clusters.ts）：主视图有点光、聚光或贴花时前向渲染器设上，着色时只看像素所在那一簇的。 */
-  clustered = false;
+  /**
+   * 分簇（lighting/Clusters.ts）：这个视图的簇表在 Clusters 里的槽，-1 是不分簇（看所有的点光、聚光、贴花）。场景里有点光、
+   * 聚光或贴花时前向渲染器给要着色的视图（主画面、反射探针的面、渲染目标贴图的相机）各分一槽。
+   */
+  clusterSlot = -1;
+
+  get clustered(): boolean {
+    return this.clusterSlot >= 0;
+  }
   /** 不画蒙皮的网格（角色、动物）：天空遮挡的视图用，一直在动的角色不该在脚下留一块不湿、不积雪的地。 */
   skipsSkinned = false;
   /**
@@ -361,13 +368,6 @@ export interface DirectionalLight {
 }
 
 /**
- * 这一帧的光照：最多 MAX_DIRECTIONAL_LIGHTS 个方向光、环境光和一个天空盒光（点光源以后加）。
- * 和 Stride 不同（暂时）：只有一个方向光能投阴影（第一个打开阴影的），其余的不投。
- */
-/** 一帧最多这么多个点光和聚光（超出的不画）。 */
-export const MAX_LOCAL_LIGHTS = 256;
-
-/**
  * 点光或聚光（Stride 的 LightPoint、LightSpot）：位置、颜色乘强度、半径平方的倒数（距离衰减到 0 的地方）；聚光还有照向的
  * 方向和角度衰减的 scale、offset（saturate(dot(-L, direction) · scale + offset)²）。
  */
@@ -391,7 +391,7 @@ export interface LocalLight {
   shadowIndex: number;
 }
 
-/** 一盏还没用上的点光或聚光（Lighting.locals 预先分配）。 */
+/** 一盏还没用上的点光或聚光（Lighting.locals 按需变长，变长的部分留着下一帧复用）。 */
 export function createLocalLight(): LocalLight {
   return {
     spot: false, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
@@ -399,6 +399,10 @@ export function createLocalLight(): LocalLight {
   };
 }
 
+/**
+ * 这一帧的光照：最多 MAX_DIRECTIONAL_LIGHTS 个方向光、环境光、一个天空盒光，点光和聚光不限个数（着色时分簇，像素只看所在
+ * 那一簇的）。
+ */
 export interface Lighting {
   /** 预先分配了 MAX_DIRECTIONAL_LIGHTS 个，前 directionalCount 个有效（颜色是黑的不算，排在后面）。 */
   readonly directionals: DirectionalLight[];
@@ -415,8 +419,8 @@ export interface Lighting {
   readonly ambient: Color4;
   /** 没有天空盒光时是 undefined。 */
   skybox: SkyboxLight | undefined;
-  /** 预先分配了 MAX_LOCAL_LIGHTS 个，前 localCount 个有效。 */
-  readonly locals: readonly LocalLight[];
+  /** 前 localCount 个有效（按需变长）。 */
+  readonly locals: LocalLight[];
   localCount: number;
   /** 这一帧画好的点光、聚光的阴影，前 localShadowCount 个有效（按需变长）。 */
   readonly localShadows: LocalShadowReceiver[];
@@ -440,7 +444,7 @@ export class RenderSystem {
     shadowAtlas: undefined,
     ambient: new Color4(),
     skybox: undefined,
-    locals: Array.from({ length: MAX_LOCAL_LIGHTS }, createLocalLight),
+    locals: [],
     localCount: 0,
     localShadows: [],
     localShadowCount: 0,

@@ -19,7 +19,7 @@ import { Matrix } from '../data/Matrix';
 import { Color4 } from '../data/vectors';
 import { cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
-import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, SURFACE_FORMATS, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { createLocalLight, MAX_DIRECTIONAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, SURFACE_FORMATS, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { GpuProfiler } from '../graphics/GpuProfiler';
 import { GraphTexturePool } from './GraphTexturePool';
 import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphStats } from './RenderGraph';
@@ -377,6 +377,7 @@ export class ForwardRenderer {
 
     renderSystem.collect(views);
     this.#gatherLighting(context);
+    this.#assignClusters(views.filter((view) => view !== skyView));
     // 光照变了（太阳转了、落山了）：只拍一次的探针重拍
     probes.watchLighting(renderSystem.lighting);
     renderSystem.lighting.shadow = undefined;
@@ -501,16 +502,24 @@ export class ForwardRenderer {
     this.shadowMapRenderer.destroy();
   }
 
-  /** 算 view 的簇：光的包围球按光照里的顺序（和着色器的 localLights 一致），贴花的按 Decals 的顺序。 */
-  #recordClusters(encoder: GPUCommandEncoder, view: RenderView): void {
-    const { lighting, decals, clusters, graphicsDevice } = this.renderSystem;
+  /**
+   * 分簇：场景里有点光、聚光或贴花时，要着色的视图（主画面、反射探针的面、渲染目标贴图的相机）各占簇表的一槽，再把光和
+   * 贴花的包围球传上去（光按光照里的顺序，和着色器的 localLights 一致；贴花按 Decals 的顺序）。各视图的簇在它不透明的那一遍
+   * 之前算。要在 prepare 写视图常量之前定下来。
+   */
+  #assignClusters(views: readonly RenderView[]): void {
+    const { lighting, decals, clusters } = this.renderSystem;
     const count = lighting.localCount;
+    const clustered = this.clustering && count + decals.count > 0;
+    const tables = clustered ? clusters.reserve(views.length) : 0;
+    views.forEach((view, i) => (view.clusterSlot = i < tables ? i : -1));
+    if (!clustered) return;
     if (this.#lightSpheres.length < count * 4) this.#lightSpheres = new Float32Array(2 ** Math.ceil(Math.log2(count * 4)));
     for (let i = 0; i < count; i++) {
       const { position, radius } = lighting.locals[i]!;
       this.#lightSpheres.set([position.x, position.y, position.z, radius], i * 4);
     }
-    clusters.record(encoder, view, this.#lightSpheres, count, decals.bounds, decals.count, graphicsDevice.profiler.passTimestamps('Clusters'));
+    clusters.upload(this.#lightSpheres, count, decals.bounds, decals.count);
   }
 
   /**
@@ -565,7 +574,7 @@ export class ForwardRenderer {
     };
     // 分簇：着色时像素只看所在那一簇的点光、聚光、贴花
     if (view?.clustered) {
-      frame.pass(`${label} clusters`, (pass) => pass.sideEffect(), () => this.#recordClusters(encoder, view));
+      frame.pass(`${label} clusters`, (pass) => pass.sideEffect(), () => renderSystem.clusters.record(encoder, view, profiler.passTimestamps(`${label} clusters`)));
     }
     frame.pass(`${label} opaque`, (pass) => {
       if (isGraphTexture(target)) pass.write(target);
@@ -631,10 +640,10 @@ export class ForwardRenderer {
     });
   }
 
-  /** 点光、聚光的常量（Stride 的 LightPoint、LightSpot.UpdateLightCache 算的那些）；超过 MAX_LOCAL_LIGHTS 个的不画。 */
+  /** 点光、聚光的常量（Stride 的 LightPoint、LightSpot.UpdateLightCache 算的那些）。 */
   #collectLocal(light: ColumnsOf<typeof Light>, transform: TransformColumns, i: number, color: Color4, intensity: number): void {
     const lighting = this.renderSystem.lighting;
-    if (lighting.localCount >= MAX_LOCAL_LIGHTS) return;
+    if (lighting.localCount === lighting.locals.length) lighting.locals.push(createLocalLight());
     const local = lighting.locals[lighting.localCount++]!;
     const w = transform.slot[i]! * 16, world = transform.world;
     local.spot = light.type[i] === 'spot';
@@ -688,8 +697,6 @@ export class ForwardRenderer {
     this.renderSystem.clouds.apply(context, this.quality.volumetricClouds);
     this.renderSystem.fog.apply(context, this.quality.volumetricFog);
     this.renderSystem.decals.apply(context);
-    // 主视图有点光、聚光或贴花时分簇（这一帧不透明的那一遍之前算）
-    this.#mainView.clustered = this.clustering && this.renderSystem.lighting.localCount + this.renderSystem.decals.count > 0;
     this.#dropBlackDirectionals(lighting);
     // 投阴影的是第一盏要投的：太阳落山以后它是黑的、被丢掉了，轮到月亮
     lighting.shadowLight = lighting.directionals.findIndex((light, i) => i < lighting.directionalCount && light.shadow !== undefined);

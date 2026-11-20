@@ -68,21 +68,21 @@ jobs:
           cache: pnpm
       - if: steps.cached.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
-      # Stride 的样例：稀疏、浅克隆，只拉 samples 的 LFS 文件（约 190 MB）；LFS 对象按 Stride 的提交另外缓存，导入器改了也不用重新下
+      # Stride 的样例：稀疏、浅克隆，只拉 samples 和导入器要的引擎自带资源包（packages/pipeline/src/cli.ts 的 STRIDE_PACKAGES）的 LFS 文件（约 190 MB）；LFS 对象按 Stride 的提交另外缓存，导入器改了也不用重新下
       - if: steps.cached.outputs.cache-hit != 'true'
         name: Check out the Stride samples
         env:
           GIT_LFS_SKIP_SMUDGE: '1'
         run: |
           git clone --depth 1 --filter=blob:none --sparse -b "$STRIDE_BRANCH" "$STRIDE_FORK" "$RUNNER_TEMP/stride"
-          git -C "$RUNNER_TEMP/stride" sparse-checkout set samples
+          git -C "$RUNNER_TEMP/stride" sparse-checkout set samples sources/engine/Stride.Engine/AssetPackage sources/plugins/UI/Stride.UI.Assets/Assets
       - if: steps.cached.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/stride/.git/lfs
           key: stride-lfs-${{ steps.key.outputs.stride }}
       - if: steps.cached.outputs.cache-hit != 'true'
-        run: git -C "$RUNNER_TEMP/stride" lfs pull --include "samples/**"
+        run: git -C "$RUNNER_TEMP/stride" lfs pull --include "samples/**,sources/engine/Stride.Engine/AssetPackage/**,sources/plugins/UI/Stride.UI.Assets/Assets/**"
       - if: steps.cached.outputs.cache-hit != 'true'
         name: Import
         env:

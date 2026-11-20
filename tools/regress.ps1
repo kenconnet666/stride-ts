@@ -5,11 +5,13 @@
 # 两个槽位的回归可以同时跑。
 # 几个样例同时跑（-Parallel，默认每 8 个逻辑核一路、最多 4 路）：每个样例在自己的子进程里跑，状态目录和端口各不相同。冒烟只看功能和
 # 计数，不看帧时间，显卡够用时并行不影响结果；测帧时间用 measure.ps1，它一个一个来。
-# 用法：pwsh tools/regress.ps1 [-Apps physics-sample,topdown-rpg | -Changed] [-Parallel 4]
-#   -Changed：只跑改动影响到的样例（和 origin/main 比，见 tools/affected.ts），推送前的第 2 层测试；全量在 CI 里跑
+# 用法：pwsh tools/regress.ps1 [-Apps physics-sample,topdown-rpg | -Changed [-Base HEAD~1]] [-Parallel 4]
+#   -Changed：只跑改动影响到的样例（和 -Base 比，默认 origin/main，见 tools/affected.ts），第 2 层测试；全量在 CI 里跑。
+#   提交后马上推送了的，用 -Base 指推送前的提交（例如 HEAD~1）
 param(
     [string[]]$Apps,
     [switch]$Changed,
+    [string]$Base = 'origin/main',
     [int]$Parallel = [Math]::Clamp([Math]::Floor([Environment]::ProcessorCount / 8), 1, 4),
     # 内部用：只跑这一个样例（并行时每个子进程跑一个）
     [string]$App
@@ -62,7 +64,7 @@ if ($App) {
 
 $all = Get-ChildItem apps -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'scripts' 'smoke.ts') } | ForEach-Object Name
 # pwsh -File 把 `-Apps a,b` 当成一个字符串传进来，自己按逗号拆；-Changed 按改动挑（tools/affected.ts）
-$selected = if ($Changed) { (node (Join-Path $root 'tools' 'affected.ts')) -split ',' | Where-Object { $_ } }
+$selected = if ($Changed) { (node (Join-Path $root 'tools' 'affected.ts') $Base) -split ',' | Where-Object { $_ } }
     elseif ($Apps) { $Apps -split ',' | ForEach-Object Trim }
     else { $all }
 if ($selected.Count -eq 0) {

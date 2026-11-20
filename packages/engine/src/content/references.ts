@@ -56,7 +56,8 @@ function visitEntityReferences(files: readonly SceneEntityFile[], visit: (ref: E
     if (entity.prefab) visitOverrideReferences(entity.prefab, visit);
     if (c.model) {
       if (typeof c.model.model === 'string') visit({ kind: 'model', path: c.model.model }, c.model, 'model');
-      c.model.materials?.forEach((material, i) => typeof material === 'string' && visit({ kind: 'material', path: material }, c.model!.materials, i));
+      const materials = c.model.materials;
+      materials?.forEach((material, i) => typeof material === 'string' && visit({ kind: 'material', path: material }, materials, i));
     }
     // 网格、凸包形状的碰撞体引用模型
     for (const shape of [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? []), ...(c.body?.shapes ?? [])]) {

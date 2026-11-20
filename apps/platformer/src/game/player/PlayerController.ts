@@ -18,7 +18,7 @@ export class PlayerController extends SyncScript.props({
   maxRunSpeed: prop.number().min(0).default(8.5),
   /** Stride 的 JumpReactionThreshold：离开地面后这么多秒内还能起跳。 */
   jumpReactionThreshold: prop.number().min(0).default(0.15),
-}) {
+}, { requires: [() => Character] }) {
   #moveDirection = new Vector3();
   #yawOrientation = 0;
   #jumpReactionRemaining = 0;
@@ -28,7 +28,6 @@ export class PlayerController extends SyncScript.props({
 
   override start(): void {
     this.#jumpReactionRemaining = this.jumpReactionThreshold;
-    if (!this.entity.get(Character)) throw new Error('PlayerController needs a Character on the same entity');
     this.#model = this.entity.require(Transform).children[0];
   }
 

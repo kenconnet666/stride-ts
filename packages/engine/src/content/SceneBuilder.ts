@@ -74,7 +74,8 @@ function modelUses(files: readonly SceneEntityFile[], assets: SceneAssets, defau
     const loaded = model && assets.models.get(model.model);
     if (!loaded) continue;
     for (const { mesh, material: slot, skin } of loaded.meshes) {
-      const override = slot === null || model.materials[slot] == null ? undefined : assets.materials.get(model.materials[slot]);
+      const path = slot === null ? undefined : model.materials?.[slot];
+      const override = path == null ? undefined : assets.materials.get(path);
       const material = override ?? (slot === null ? undefined : loaded.materials[slot]) ?? defaultMaterial;
       uses.push({ mesh, material, skinned: skin !== undefined, isShadowCaster: model.isShadowCaster ?? true });
     }
@@ -405,7 +406,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   },
   model: {
     add: (entity, model, { content, assets }) => {
-      const overrides = model.materials.map((path) => (path === null ? null : (assets.materials.get(path) ?? null)));
+      const overrides = (model.materials ?? []).map((path) => (path === null ? null : (assets.materials.get(path) ?? null)));
       content.addModel(entity, assets.models.get(model.model)!, { materials: overrides, isShadowCaster: model.isShadowCaster ?? true, renderGroup: model.renderGroup ?? 0 });
     },
     remove: (entity, { content }) => content.removeModel(entity),

@@ -458,8 +458,8 @@ export interface SceneEntityFile {
     readonly model?: {
       /** 模型的内容路径。 */
       readonly model: string;
-      /** 按槽覆盖模型的材质；null 表示用模型自带的。 */
-      readonly materials: readonly (string | null)[];
+      /** 按槽覆盖模型的材质；null 表示用模型自带的。没写是都不覆盖。 */
+      readonly materials?: readonly (string | null)[];
       /** 投下阴影；没有时是 true（同 Stride 的 ModelComponent.IsShadowCaster）。 */
       readonly isShadowCaster?: boolean;
       /** 渲染组（Stride 的 RenderGroup，0 到 31）；没写是 0。 */

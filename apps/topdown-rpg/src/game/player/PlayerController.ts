@@ -21,7 +21,7 @@ export class PlayerController extends SyncScript.props({
   punchCollision: prop.entity(),
   attackDistance: prop.number().default(1),
   attackCooldown: prop.number().default(0.65),
-}) {
+}, { requires: [() => RecastNavigationComponent] }) {
   #moveDirection = new Vector3();
   #isRunning = false;
   #punchEntity!: Entity;
@@ -41,9 +41,7 @@ export class PlayerController extends SyncScript.props({
   }
 
   override start(): void {
-    const navigation = this.entity.get(RecastNavigationComponent);
-    if (!navigation) throw new Error('PlayerController needs a RecastNavigationComponent on the same entity');
-    this.#navigation = navigation;
+    this.#navigation = this.entity.require(RecastNavigationComponent);
     void this.game.navigation!.rebuild();
     if (!this.entity.get(Character)) throw new Error('Please add a Character to the entity containing PlayerController!');
     this.#modelChild = this.entity.require(Transform).children[0]!;

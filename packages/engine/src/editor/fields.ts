@@ -162,11 +162,11 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     label: 'Model',
     type: object(fields<NonNullable<Components['model']>>({
       model: asset('model'),
-      materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'one per material slot of the model; null keeps the model\'s own material' },
+      materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, optional: true, default: [], description: 'one per material slot of the model; null keeps the model\'s own material; omitted keeps all of them' },
       isShadowCaster: optional(bool, true),
       renderGroup,
     })),
-    initial: { model: '', materials: [] },
+    initial: { model: '' },
   },
   camera: {
     label: 'Camera',

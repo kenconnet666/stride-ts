@@ -47,19 +47,19 @@ Game
   cpu-profile [--seconds 5] [--out profile.json] [--callers <regex>]
                           sample the main thread (needs a Chrome from stride open): ms per frame by kind and function
   pick <x> <y>                                      entity under a canvas pixel (CSS pixels from the top-left; meshes and sprites)
-  wireframe [on|off]                                overlay the wireframe of the meshes on the main view (no argument toggles)
+  wireframe [on|off|toggle]                                overlay the wireframe of the meshes on the main view (no argument reports; toggle flips)
   quality [low|medium|high|ultra]                   quality tier: caps on shadows and post effects (no argument shows the current one)
-  taa [on|off]                                      temporal anti-aliasing instead of FXAA (no argument toggles)
-  ao [on|off] [--radius <m>]                        screen-space ambient occlusion, GTAO (no argument toggles)
-  blur [on|off] [--shutter s] [--maxPixels n]       motion blur (no argument toggles)
-  sss [on|off] [--entity e] [--width m] [--translucency t]
-                                                    subsurface scattering blur; --entity gives that entity's models skin scattering (no argument toggles)
-  ssgi [on|off] [--radius m] [--thickness m] [--intensity x] [--feedback f]
+  taa [on|off|toggle]                                      temporal anti-aliasing instead of FXAA (no argument reports; toggle flips)
+  ao [on|off|toggle] [--radius <m>]                        screen-space ambient occlusion, GTAO (no argument reports; toggle flips)
+  blur [on|off|toggle] [--shutter s] [--maxPixels n]       motion blur (no argument reports; toggle flips)
+  sss [on|off|toggle] [--entity e] [--width m] [--translucency t]
+                                                    subsurface scattering blur; --entity gives that entity's models skin scattering (no argument reports; toggle flips)
+  ssgi [on|off|toggle] [--radius m] [--thickness m] [--intensity x] [--feedback f]
                                                     screen-space global illumination (indirect diffuse light, replaces GTAO; no argument toggles)
-  contact [on|off] [--length m] [--steps n] [--thickness t]
-                                                    contact shadows of the shadow-casting directional light (no argument toggles)
-  ssr [on|off] [--maxRoughness r] [--thickness t] [--maxSteps n] [--debug off|hits|reflection]
-                                                    screen-space reflections (no argument toggles)
+  contact [on|off|toggle] [--length m] [--steps n] [--thickness t]
+                                                    contact shadows of the shadow-casting directional light (no argument reports; toggle flips)
+  ssr [on|off|toggle] [--maxRoughness r] [--thickness t] [--maxSteps n] [--debug off|hits|reflection]
+                                                    screen-space reflections (no argument reports; toggle flips)
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
   logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
   eval <code | -> | --file <script.js>
@@ -369,32 +369,32 @@ const commands: Record<string, () => Promise<unknown>> = {
   pick: () => call('pick', { x: Number(rest[0]), y: Number(rest[1]) }),
   draws: () => call('draws', {}),
   metrics: () => call('metrics', options.over ? { over: true } : {}),
-  ao: () => call('ao', { ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }), ...(options.radius ? { radius: Number(options.radius) } : {}) }),
+  ao: () => call('ao', { ...switchArgs(rest[0]), ...(options.radius ? { radius: Number(options.radius) } : {}) }),
   blur: () => call('blur', {
-    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...switchArgs(rest[0]),
     ...Object.fromEntries((['shutter', 'maxPixels'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
   }),
   contact: () => call('contact', {
-    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...switchArgs(rest[0]),
     ...Object.fromEntries((['length', 'steps', 'thickness'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
   }),
   sss: () => call('sss', {
-    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...switchArgs(rest[0]),
     ...(options.entity ? { entity: options.entity } : {}),
     ...Object.fromEntries((['width', 'translucency'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
   }),
   ssgi: () => call('ssgi', {
-    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...switchArgs(rest[0]),
     ...Object.fromEntries((['radius', 'thickness', 'intensity', 'feedback'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
   }),
   ssr: () => call('ssr', {
-    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...switchArgs(rest[0]),
     ...Object.fromEntries((['maxRoughness', 'thickness', 'maxSteps'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
     ...(options.debug ? { debug: options.debug } : {}),
   }),
-  taa: () => call('taa', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+  taa: () => call('taa', switchArgs(rest[0])),
   quality: () => call('quality', rest[0] === undefined ? {} : { tier: rest[0] }),
-  wireframe: () => call('wireframe', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+  wireframe: () => call('wireframe', switchArgs(rest[0])),
   raycast: () => call('raycast', {
     origin: vector(rest[0], 'origin x,y,z'),
     direction: vector(rest[1], 'direction x,y,z'),
@@ -438,3 +438,11 @@ main().catch((error: unknown) => {
   console.error(`stride ${command ?? ''}: ${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;
 });
+
+/** 开关类命令的第一个参数：on、off、toggle（翻过来）；没给时不改，只报告现在的状态。 */
+function switchArgs(word: string | undefined): { on?: boolean | 'toggle' } {
+  if (word === undefined) return {};
+  if (word === 'toggle') return { on: 'toggle' };
+  if (word !== 'on' && word !== 'off') throw new Error(`expected on, off or toggle, got '${word}'`);
+  return { on: word === 'on' };
+}

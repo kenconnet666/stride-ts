@@ -54,33 +54,33 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const current = game.graphicsCompositor.quality;
     return { tier: Object.entries(QUALITY_TIERS).find(([, settings]) => settings === current)?.[0] ?? 'custom', ...current };
   });
-  debug.command('ao', 'Screen-space ambient occlusion (GTAO) of the main view. args: on (true/false; omitted toggles), radius (world units).', (args) => {
+  debug.command('ao', 'Screen-space ambient occlusion (GTAO) of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), radius (world units).', (args) => {
     const ao = game.graphicsCompositor.ambientOcclusion;
-    ao.enabled = typeof args['on'] === 'boolean' ? args['on'] : !ao.enabled;
+    ao.enabled = switchArg(args, ao.enabled);
     if (typeof args['radius'] === 'number') ao.radius = args['radius'];
     return { enabled: ao.enabled, radius: ao.radius, power: ao.power };
   });
-  debug.command('blur', 'Motion blur of the main view. args: on (true/false; omitted toggles), shutter (fraction of a frame), maxPixels.', (args) => {
+  debug.command('blur', 'Motion blur of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), shutter (fraction of a frame), maxPixels.', (args) => {
     const blur = game.graphicsCompositor.motionBlur;
-    blur.enabled = typeof args['on'] === 'boolean' ? args['on'] : !blur.enabled;
+    blur.enabled = switchArg(args, blur.enabled);
     for (const key of ['shutter', 'maxPixels'] as const) if (typeof args[key] === 'number') blur[key] = args[key];
     return { enabled: blur.enabled, shutter: blur.shutter, maxPixels: blur.maxPixels };
   });
-  debug.command('contact', 'Contact shadows (screen-space shadows of the shadow-casting directional light). args: on (true/false; omitted toggles), length (world units), steps, thickness.', (args) => {
+  debug.command('contact', 'Contact shadows (screen-space shadows of the shadow-casting directional light). args: on (true/false, or "toggle"; omitted keeps it and just reports), length (world units), steps, thickness.', (args) => {
     const contact = game.graphicsCompositor.contactShadows;
-    contact.enabled = typeof args['on'] === 'boolean' ? args['on'] : !contact.enabled;
+    contact.enabled = switchArg(args, contact.enabled);
     for (const key of ['length', 'steps', 'thickness'] as const) if (typeof args[key] === 'number') contact[key] = args[key];
     return { enabled: contact.enabled, length: contact.length, steps: contact.steps, thickness: contact.thickness };
   });
-  debug.command('ssgi', 'Screen-space global illumination of the main view (indirect diffuse light and occlusion; replaces GTAO while on). args: on (true/false; omitted toggles), radius, thickness (world units), intensity, feedback.', (args) => {
+  debug.command('ssgi', 'Screen-space global illumination of the main view (indirect diffuse light and occlusion; replaces GTAO while on). args: on (true/false, or "toggle"; omitted keeps it and just reports), radius, thickness (world units), intensity, feedback.', (args) => {
     const gi = game.graphicsCompositor.globalIllumination;
-    gi.enabled = typeof args['on'] === 'boolean' ? args['on'] : !gi.enabled;
+    gi.enabled = switchArg(args, gi.enabled);
     for (const key of ['radius', 'thickness', 'intensity', 'feedback'] as const) if (typeof args[key] === 'number') gi[key] = args[key];
     return { enabled: gi.enabled, radius: gi.radius, thickness: gi.thickness, intensity: gi.intensity, feedback: gi.feedback };
   });
-  debug.command('sss', 'Subsurface scattering blur of the main view (compositor switch). args: on (true/false; omitted toggles), entity (id or name): the models of this entity and its children get Stride\'s skin scattering while on (width, translucency override it) and lose it while off.', (args) => {
+  debug.command('sss', 'Subsurface scattering blur of the main view (compositor switch). args: on (true/false, or "toggle"; omitted keeps it and just reports), entity (id or name): the models of this entity and its children get Stride\'s skin scattering while on (width, translucency override it) and lose it while off.', (args) => {
     const sss = game.graphicsCompositor.subsurfaceScattering;
-    sss.enabled = typeof args['on'] === 'boolean' ? args['on'] : !sss.enabled;
+    sss.enabled = switchArg(args, sss.enabled);
     const materials = new Set<string>();
     if (args['entity'] !== undefined) {
       const root = entityArg(game, args);
@@ -181,9 +181,9 @@ export function registerGameCommands(debug: Debug, game: Game): void {
       ...(cycle ? { cycle: { timeOfDay: cycle.timeOfDay, dayLength: cycle.dayLength, dayOfYear: cycle.dayOfYear, latitude: cycle.latitude, north: cycle.north, moonPhase: cycle.moonPhase } } : {}),
     };
   });
-  debug.command('ssr','Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
+  debug.command('ssr','Screen-space reflections of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
     const ssr = game.graphicsCompositor.screenSpaceReflections;
-    ssr.enabled = typeof args['on'] === 'boolean' ? args['on'] : !ssr.enabled;
+    ssr.enabled = switchArg(args, ssr.enabled);
     for (const key of ['maxRoughness', 'thickness', 'maxSteps'] as const) if (typeof args[key] === 'number') ssr[key] = args[key];
     if (args['debug'] === 'off' || args['debug'] === 'hits' || args['debug'] === 'reflection') ssr.debug = args['debug'];
     return { enabled: ssr.enabled, maxRoughness: ssr.maxRoughness, thickness: ssr.thickness, edgeFade: ssr.edgeFade, maxSteps: ssr.maxSteps, debug: ssr.debug };
@@ -270,10 +270,10 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     }
     return { lights: n * n, local: game.renderSystem.lighting.localCount };
   });
-  debug.command('clusters', 'Clustered shading of point lights, spot lights and decals (lighting/Clusters.ts): the main view, reflection probe faces and render-texture cameras each get a cluster table. args: on (true/false; omitted toggles, unless stats is given). stats (true): per view, clusters with lights, most and mean lights per cluster, and the index pool (requested > capacity means lights were cut this frame; the pool grows the next frame). Turn it off to compare the picture and the cost. Reports the state of the last frame.', async (args) => {
+  debug.command('clusters', 'Clustered shading of point lights, spot lights and decals (lighting/Clusters.ts): the main view, reflection probe faces and render-texture cameras each get a cluster table. args: on (true/false, or "toggle"; omitted keeps it and just reports). stats (true): per view, clusters with lights, most and mean lights per cluster, and the index pool (requested > capacity means lights were cut this frame; the pool grows the next frame). Turn it off to compare the picture and the cost. Reports the state of the last frame.', async (args) => {
     const renderer = game.graphicsCompositor;
     if (typeof args['on'] === 'boolean') renderer.clustering = args['on'];
-    else if (args['stats'] !== true) renderer.clustering = !renderer.clustering;
+    else if (args['on'] === 'toggle') renderer.clustering = !renderer.clustering;
     const views = game.renderSystem.views.filter((view) => view.clustered);
     const clusteredViews = await Promise.all(views.map(async (view) => ({
       slot: view.clusterSlot, size: [view.width, view.height], ...(args['stats'] === true ? await game.renderSystem.clusters.occupancy(view.clusterSlot) : {}),
@@ -294,19 +294,19 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const current = game.weather.current;
     return { ...(weather ? { target: Object.fromEntries(Object.keys(WEATHER_PRESETS.clear).map((key) => [key, weather[key as keyof WeatherTarget]])) } : {}), ...(current ? { current: { ...current } } : {}) };
   });
-  debug.command('dither', 'Dithering of the 8-bit output in the tone mapping pass (hides the banding of dark gradients). args: on (true/false; omitted toggles). Turn it off to compare screenshots pixel by pixel with desktop Stride.', (args) => {
+  debug.command('dither', 'Dithering of the 8-bit output in the tone mapping pass (hides the banding of dark gradients). args: on (true/false, or "toggle"; omitted keeps it and just reports). Turn it off to compare screenshots pixel by pixel with desktop Stride.', (args) => {
     const toneMap = game.graphicsCompositor.postEffects.toneMap;
-    toneMap.dither = typeof args['on'] === 'boolean' ? args['on'] : !toneMap.dither;
+    toneMap.dither = switchArg(args, toneMap.dither);
     return { dither: toneMap.dither };
   });
-  debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false; omitted toggles).', (args) => {
+  debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
     const taa = game.graphicsCompositor.temporalAntialiasing;
-    taa.enabled = typeof args['on'] === 'boolean' ? args['on'] : !taa.enabled;
+    taa.enabled = switchArg(args, taa.enabled);
     return { enabled: taa.enabled, feedback: taa.feedback, clipSigma: taa.clipSigma, sharpness: taa.sharpness };
   });
-  debug.command('wireframe', 'Overlay the wireframe of the meshes on the main view. args: on (boolean; omitted toggles).', (args) => {
+  debug.command('wireframe', 'Overlay the wireframe of the meshes on the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
     const compositor = game.graphicsCompositor;
-    compositor.wireframe = typeof args['on'] === 'boolean' ? args['on'] : !compositor.wireframe;
+    compositor.wireframe = switchArg(args, compositor.wireframe);
     return { wireframe: compositor.wireframe };
   });
   debug.command('pick', 'Entity under a canvas pixel (GPU id buffer). args: x, y in CSS pixels from the top-left of the canvas.', async (args) => {
@@ -742,4 +742,13 @@ function testDecalTexture(kind: 'ring' | 'bumps'): Texture {
   texture = new Texture(`test decal ${kind}`, { format: kind === 'ring' ? 'rgba8unorm-srgb' : 'rgba8unorm', width: size, height: size, levels: [pixels] });
   testDecalTextures.set(kind, texture);
   return texture;
+}
+
+/**
+ * 开关类命令的 on 参数：true、false 设成它，"toggle" 翻过来，没给时不变（只报告现在的状态）。以前没给时翻转，加别的参数、
+ * 只想看状态时会把功能悄悄关掉。
+ */
+function switchArg(args: Readonly<Record<string, unknown>>, current: boolean): boolean {
+  if (args['on'] === 'toggle') return !current;
+  return typeof args['on'] === 'boolean' ? args['on'] : current;
 }

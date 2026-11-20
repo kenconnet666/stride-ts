@@ -64,6 +64,8 @@ export class EditorSession implements EditableScene {
   readonly snap = shallowRef<SnapSettings>();
   /** 最近一次操作做不了的原因（工具条上显示），下一次操作成功时清掉。 */
   readonly notice = shallowRef('');
+  /** 最近一次操作做成了什么（工具条上不显眼地显示；有 notice 时让给它）。 */
+  readonly status = shallowRef('');
   #document: SceneDocument | undefined;
   /** 最近一次修改以后游戏页面里的实体跟上了。 */
   #synced: Promise<void> = Promise.resolve();
@@ -237,6 +239,7 @@ export class EditorSession implements EditableScene {
    * 改实例成员的换成实例上的覆盖。
    */
   apply(edit: SceneEdit, mergeKey?: string): void {
+    this.status.value = '';
     this.#require().apply(toDocumentEdit(this.file, this.#prefabs, edit), mergeKey);
     this.#changed();
   }
@@ -362,7 +365,8 @@ export class EditorSession implements EditableScene {
     this.commit();
     await this.#synced;
     this.select([id]);
-    this.notice.value = `做成了预制体 ${path}，场景里换成了它的实例（保存场景以后生效）`;
+    this.notice.value = '';
+    this.status.value = `做成了预制体 ${path}，场景里换成了它的实例（保存场景以后生效）`;
   }
 
   /** 把实体连同后代挪到 parent 下面（null 是最上层），排在新的兄弟里的第 position 个。 */

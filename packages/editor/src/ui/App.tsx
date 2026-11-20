@@ -101,7 +101,9 @@ export const App = _component(({ session }: { session: EditorSession }) => {
           <IconButton icon={playing ? Square : Play} aria-label={playing ? '停止试玩' : '试玩'} onClick={() => void togglePlay()} />
           {snapControls()}
           <span {...css.attrs(styles.title)}>{opened.value ? `${opened.value.kind === 'prefab' ? '预制体 ' : ''}${opened.value.path}` : '……'}{dirty.value ? ' *' : ''}</span>
-          {session.notice.value && <span {...css.attrs(styles.notice)} role="status" title={session.notice.value}>{session.notice.value}</span>}
+          {session.notice.value
+            ? <span {...css.attrs(styles.notice)} role="status" title={session.notice.value}>{session.notice.value}</span>
+            : session.status.value && <span {...css.attrs(styles.title)} role="status" title={session.status.value}>{session.status.value}</span>}
           {opened.value?.kind === 'prefab' && scene.value && (
             <Button size="sm" variant="ghost" disabled={playing} onClick={() => void session.openAsset(scene.value!)}>回到场景 {scene.value.path.slice(scene.value.path.lastIndexOf('/') + 1)}</Button>
           )}

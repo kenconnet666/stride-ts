@@ -6,8 +6,8 @@
  * - 对数划分：均匀和对数分布按 pssmFactor 插值。
  * - 级联用切出来的视锥段的外接球定大小，投影按阴影图的像素对齐（ProjectionSnapping），相机转动、移动时阴影边缘不闪。
  */
-import { Matrix } from '../../mathematics/Matrix';
-import type { Vector3 } from '../../mathematics/vectors';
+import { Matrix } from '../../data/Matrix';
+import type { Vector3 } from '../../data/vectors';
 import { RenderView, type DirectionalShadowSettings, type ShadowReceiver } from '../RenderSystem';
 
 const DEPTH_INCREASE_THRESHOLD = 1.1;

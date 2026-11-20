@@ -23,7 +23,7 @@ import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
 import { SkyAtmosphere } from '../components';
 import { AERIAL_COMPOSITE_SHADER, AERIAL_SHADER, MULTI_SCATTERING_SHADER, SH_SHADER, SKY_CUBE_SHADER, SKY_SHADER, SKY_VIEW_SHADER, TRANSMITTANCE_SHADER } from './atmosphereShaders';
-import type { GpuResources } from '../GpuResources';
+import type { GpuResources } from '../../graphics/GpuResources';
 import type { DirectionalLight, Lighting, RenderContext, RenderView, SkyboxLight } from '../RenderSystem';
 
 /** 大气的物理参数（SkyAtmosphere 组件的列；距离是千米，系数是每千米）。 */

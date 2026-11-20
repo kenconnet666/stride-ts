@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { TriangleBvh } from '../src/geometry/bvh.ts';
+import { TriangleBvh } from '../src/bvh.ts';
 
 /** 中心在原点、边长 2 的立方体：8 个顶点、12 个三角形。 */
 function cube(): { positions: Float32Array; indices: Uint32Array } {

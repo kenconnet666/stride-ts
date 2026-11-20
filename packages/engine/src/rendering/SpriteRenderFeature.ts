@@ -11,12 +11,12 @@
 import type { SceneEntityFile } from '../content/format';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
-import { Matrix } from '../mathematics/Matrix';
-import { srgbToLinear } from '../mathematics/vectors';
+import { Matrix } from '../data/Matrix';
+import { srgbToLinear } from '../data/vectors';
 import { Sprite } from './components';
 import { inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
 import { SpriteSheet } from './SpriteSheet';
-import { Texture } from './Texture';
+import { Texture } from '../graphics/Texture';
 
 const SHADER = /* wgsl */ `
 struct SpriteInstance {

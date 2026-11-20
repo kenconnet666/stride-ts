@@ -7,7 +7,7 @@
  * 残影（Afterimage，Stride 默认关）还没做。
  */
 import type { AdditiveLayer } from './AdditiveLayers';
-import { srgbToLinear } from '../../mathematics/vectors';
+import { srgbToLinear } from '../../data/vectors';
 import type { Image, ImageEffectContext } from './ImageEffect';
 
 export class Bloom {

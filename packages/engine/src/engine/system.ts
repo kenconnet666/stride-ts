@@ -13,7 +13,7 @@
  *   });
  */
 import type { EntityId } from '../data/prop';
-import type { GameTime } from '../games/GameTime';
+import type { GameTime } from './GameTime';
 import type { Commands } from './Commands';
 import type { ColumnsOf, ComponentType } from './component';
 import type { Table } from './storage';

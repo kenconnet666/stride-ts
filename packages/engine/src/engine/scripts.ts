@@ -14,8 +14,8 @@
  */
 import type { InheritedOf, InitOf, ScriptValues, Shape, StatKeys } from '../data/prop';
 import { createSchema, type Schema } from '../data/schema';
-import type { Game } from '../games/Game';
-import type { GameTime } from '../games/GameTime';
+import type { Game } from './Game';
+import type { GameTime } from './GameTime';
 import { checkVariants, variantValues, type ComponentType } from './component';
 import type { Entity } from './Entity';
 import type { EventKey, EventReceiver, Hook, HookHandler } from './events';

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { GraphTexturePool } from '../src/rendering/graph/GraphTexturePool';
-import { RenderGraph, type GraphTextureDesc, type TextureAllocator } from '../src/rendering/graph/RenderGraph';
+import { GraphTexturePool } from '../src/rendering/GraphTexturePool';
+import { RenderGraph, type GraphTextureDesc, type TextureAllocator } from '../src/rendering/RenderGraph';
 
 // 渲染图的逻辑：不碰 GPU，贴图是假的。
 

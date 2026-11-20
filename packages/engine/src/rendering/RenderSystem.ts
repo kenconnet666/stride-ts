@@ -6,16 +6,16 @@
  */
 import type { SceneEntityFile } from '../content/format';
 import type { EntityId } from '../data/prop';
-import type { Game } from '../games/Game';
-import type { GameTime } from '../games/GameTime';
+import type { Game } from '../engine/Game';
+import type { GameTime } from '../engine/GameTime';
 import type { GraphicsDevice } from '../graphics/GraphicsDevice';
-import { Matrix } from '../mathematics/Matrix';
-import { Color4, Vector3 } from '../mathematics/vectors';
-import { GpuResources } from './GpuResources';
-import { ReflectionProbes } from './environment/ReflectionProbes';
+import { Matrix } from '../data/Matrix';
+import { Color4, Vector3 } from '../data/vectors';
+import { GpuResources } from '../graphics/GpuResources';
+import { ReflectionProbes } from './lighting/ReflectionProbes';
 import { Atmosphere, type DynamicSky } from './sky/Atmosphere';
 import { Clouds } from './sky/VolumetricClouds';
-import type { Skybox } from './environment/Skybox';
+import type { Skybox } from './lighting/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 import { SkyOcclusion } from '../weather/SkyOcclusion';
 
@@ -124,7 +124,7 @@ export function inRenderMask(mask: number, group: number): boolean {
   return ((mask >>> group) & 1) === 1;
 }
 
-/** 一个视角：相机、阴影级联等。矩阵的布局见 mathematics/Matrix.ts。 */
+/** 一个视角：相机、阴影级联等。矩阵的布局见 data/Matrix.ts。 */
 export class RenderView {
   readonly view = Matrix.identity();
   readonly projection = Matrix.identity();

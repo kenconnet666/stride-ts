@@ -16,7 +16,7 @@ import type { CompositorSettings, LoadSceneOptions, SceneInstance } from '../con
 import type { SceneFile } from '../content/format';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
-import type { Game } from '../games/Game';
+import type { Game } from '../engine/Game';
 
 /** 场景文件没写合成器时的设置（同前向渲染器建好时的默认值）：去掉了合成器的场景配回它。 */
 const DEFAULT_COMPOSITOR: CompositorSettings = { clearColor: [0.01, 0.0134, 0.022, 1], postEffects: null, transparent: true, textureCameras: [] };

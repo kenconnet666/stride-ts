@@ -14,7 +14,7 @@ import { Bloom } from './Bloom';
 import { BrightFilter } from './BrightFilter';
 import { Fxaa } from './Fxaa';
 import { GaussianBlur } from './GaussianBlur';
-import { RenderGraph } from '../graph/RenderGraph';
+import { RenderGraph } from '../RenderGraph';
 import { EffectFrame, isGraphTexture, UniformArena, type Image, type ImageEffectContext } from './ImageEffect';
 import { ImageScaler } from './ImageScaler';
 import { LensFlare } from './LensFlare';

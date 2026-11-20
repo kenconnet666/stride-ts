@@ -6,8 +6,8 @@
  */
 import { ENCODED_KINDS, fromCell, toCell } from '../data/cells';
 import type { EntityId } from '../data/prop';
-import type { Game } from '../games/Game';
-import type { GameTime } from '../games/GameTime';
+import type { Game } from './Game';
+import type { GameTime } from './GameTime';
 import { cloneEntity, type CloneHandler } from './clone';
 import { syncSceneRoot } from './transform';
 import { Commands } from './Commands';

@@ -6,7 +6,7 @@
  * 全分辨率（半分辨率时接触处的边缘发糊，正好是要补的地方），结果 r8unorm：1 是亮，0 是被挡住。着色时只乘那盏光的直射项
  * （见 MeshRenderFeature 的 screenContactShadow）。深度预通道之后、不透明阶段之前算，同 GTAO。
  */
-import { GRADIENT_NOISE } from '../shaders/noise';
+import { GRADIENT_NOISE } from '../wgsl';
 import type { RenderView } from '../RenderSystem';
 import { FullscreenShader, UniformArena, type EffectFrame } from '../postfx/ImageEffect';
 

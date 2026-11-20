@@ -3,9 +3,7 @@
  * 三张查找表的计算着色器（透射率、多次散射、天空视图），天空的环境光（立方体、球谐），画天空的片段着色器（圆盘、月面、
  * 星星和银河），空气透视的体素表和合成。
  */
-import { CUBE_FACE_DIRECTION } from '../shaders/cubemap';
-import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
-import { HASH3 } from '../shaders/noise';
+import { CUBE_FACE_DIRECTION, FULLSCREEN_VERTEX, HASH3 } from '../wgsl';
 
 /** 着色器共用的大气参数和函数（Hillaire 2020；Babylon 的 atmosphereFunctions 的移植）。 */
 export const ATMOSPHERE_WGSL = /* wgsl */ `

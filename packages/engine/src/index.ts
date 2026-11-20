@@ -150,9 +150,9 @@ export { changedEntities, type EntityChanges } from './content/SceneBuilder';
 export { assetReferences, assetReferenceSlots, entityAssetReferences, type AssetKind, type AssetReference, type AssetReferenceSlot, type EntityAssetReference } from './content/references';
 export { DebugDraw, DEBUG_LINE_FLOATS, type DebugColor, type DebugDrawOptions, type DebugPoint } from './debug/DebugDraw';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
-export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './games/Game';
-export { GameTime } from './games/GameTime';
-export { UserPreferences } from './games/UserPreferences';
+export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './engine/Game';
+export { GameTime } from './engine/GameTime';
+export { UserPreferences } from './engine/UserPreferences';
 export { GraphicsDevice } from './graphics/GraphicsDevice';
 export { GpuProfiler, type GpuTiming } from './graphics/GpuProfiler';
 export { GamePadButton, InputManager, type GamePadState, type InputDevice, type MouseButton, type PointerEvent } from './input/InputManager';
@@ -164,7 +164,7 @@ export {
 } from './input/gestures';
 export { InputCapturePriority } from './input/capture';
 export { keyCode } from './input/keys';
-export { Matrix, type Matrix4 } from './mathematics/Matrix';
+export { Matrix, type Matrix4 } from './data/Matrix';
 export { Collider, hullPoints, type ColliderId, type ColliderShape, type HullTransform } from './physics/Collider';
 export { Body, Character, Static } from './physics/components';
 export {
@@ -173,20 +173,20 @@ export {
   OneBodyLinearServoConstraintComponent, PointOnLineConstraintComponent, SwingLimitConstraintComponent, TwistLimitConstraintComponent, WeldConstraintComponent,
 } from './physics/ConstraintComponent';
 export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type ConstraintSettingsOf, type OverlapShape, type SimulationHit, type SimulationSettings } from './physics/Simulation';
-export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './navigation/NavigationSystem';
-export { RecastNavigationComponent, type NavigationState } from './navigation/RecastNavigationComponent';
+export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './physics/NavigationSystem';
+export { RecastNavigationComponent, type NavigationState } from './physics/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
 export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, ReflectionProbe, Skinned, SkyAtmosphere, Sprite, VolumetricClouds } from './rendering/components';
 export { Clouds, type CloudSettings } from './rendering/sky/VolumetricClouds';
 export { Atmosphere, DynamicSky, EARTH_ATMOSPHERE, sunTransmittance, type AtmosphereSettings, type CelestialBody } from './rendering/sky/Atmosphere';
 export { celestialState, DayNightCycle, lightRotationTowards, type CelestialState } from './rendering/sky/DayNightCycle';
 export { AtmosphereRenderFeature } from './rendering/sky/AtmosphereRenderFeature';
-export { MAX_REFLECTION_PROBES, ReflectionProbes } from './rendering/environment/ReflectionProbes';
+export { MAX_REFLECTION_PROBES, ReflectionProbes } from './rendering/lighting/ReflectionProbes';
 export { cameraProjectionMatrix, screenToWorldRaySegment, worldToScreen, type CameraProjection } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
-export { BackgroundRenderFeature, coverSource } from './rendering/environment/BackgroundRenderFeature';
-export { GpuResources } from './rendering/GpuResources';
-export { Cubemap, Skybox, type CubemapId, type SkyboxId } from './rendering/environment/Skybox';
+export { BackgroundRenderFeature, coverSource } from './rendering/sky/BackgroundRenderFeature';
+export { GpuResources } from './graphics/GpuResources';
+export { Cubemap, Skybox, type CubemapId, type SkyboxId } from './rendering/lighting/Skybox';
 export { Bloom } from './rendering/postfx/Bloom';
 export { BrightFilter } from './rendering/postfx/BrightFilter';
 export { Fxaa, type FxaaDither } from './rendering/postfx/Fxaa';
@@ -266,19 +266,19 @@ export { UISystem } from './ui/UISystem';
 export { collectSemantics, semanticsKey, type SemanticsLine, type SemanticsNode, type SemanticsRole } from './ui/semantics';
 export { SemanticsLayer } from './ui/SemanticsLayer';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/mesh/Mesh';
-export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';
-export { MipmapGenerator } from './rendering/MipmapGenerator';
+export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './graphics/Texture';
+export { MipmapGenerator } from './graphics/MipmapGenerator';
 export { MeshRenderFeature, type MeshBatch } from './rendering/mesh/MeshRenderFeature';
 export {
   inRenderMask, MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalLight, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
   type LocalLight, type SceneRenderer, type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,
 } from './rendering/RenderSystem';
-export { DirectionalShadowCascades, type CascadeRectangle } from './rendering/shadows/DirectionalShadowCascades';
-export { ShadowMapRenderer } from './rendering/shadows/ShadowMapRenderer';
-export { Color4, Quaternion, srgbToLinear, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './mathematics/vectors';
-export { formatBool, formatColor, formatFloat, formatVector } from './mathematics/format';
-export { Decimal, type Rounding } from './values/Decimal';
-export { civilFromDays, daysFromCivil, Instant, LocalDate, LocalDateTime, LocalTime } from './values/temporal';
+export { DirectionalShadowCascades, type CascadeRectangle } from './rendering/lighting/DirectionalShadowCascades';
+export { ShadowMapRenderer } from './rendering/lighting/ShadowMapRenderer';
+export { Color4, Quaternion, srgbToLinear, Vector3, type ColorLike, type QuatLike, type Vec3Like } from './data/vectors';
+export { formatBool, formatColor, formatFloat, formatVector } from './data/numberFormat';
+export { Decimal, type Rounding } from './data/Decimal';
+export { civilFromDays, daysFromCivil, Instant, LocalDate, LocalDateTime, LocalTime } from './data/temporal';
 export {
   decodeBase64,
   encodeBase64,
@@ -292,4 +292,4 @@ export {
   type Json,
   type WireReader,
   type WireType,
-} from './values/wire';
+} from './data/wire';

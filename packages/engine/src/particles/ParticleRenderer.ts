@@ -10,8 +10,8 @@
  * 点选（ScenePicker）用另一个给了 pickId 的实例（缓冲和流水线自己一份，不改主画面这一帧写好的数据）：同样的四边形，写
  * pickId 给的编号；差不多看不见的地方不写（见 fsPick），深度照写，前后靠深度测试。
  */
-import { Matrix } from '../mathematics/Matrix';
-import type { GpuResources } from '../rendering/GpuResources';
+import { Matrix } from '../data/Matrix';
+import type { GpuResources } from '../graphics/GpuResources';
 import { inRenderMask, type RenderView } from '../rendering/RenderSystem';
 import { MATERIAL_STREAMS } from '../rendering/shaderClass';
 import type { Vec3 } from './math';

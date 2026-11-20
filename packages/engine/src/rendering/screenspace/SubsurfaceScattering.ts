@@ -12,7 +12,7 @@
  *   （version 变了）就重新生成、上传。
  */
 import type { Material, MaterialSubsurfaceScattering } from '../mesh/Material';
-import { Matrix } from '../../mathematics/Matrix';
+import { Matrix } from '../../data/Matrix';
 import { FullscreenShader, UniformArena, type EffectFrame, type Image } from '../postfx/ImageEffect';
 import type { RenderView } from '../RenderSystem';
 

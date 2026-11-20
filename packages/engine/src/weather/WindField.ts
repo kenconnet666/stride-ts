@@ -14,7 +14,7 @@ import { prop } from '../data/prop';
 import { component } from '../engine/component';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
-import type { Game } from '../games/Game';
+import type { Game } from '../engine/Game';
 
 /** 风源（Stride 没有）。 */
 export const WindZone = component('WindZone', {

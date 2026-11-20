@@ -9,7 +9,7 @@
  * - 缩放：三根轴（沿这根轴缩放）、中间的方块（三个方向一起）。
  * 操纵器在画面上的大小不变：size 是它在世界里的长度，由调用方按到相机的距离算好。
  */
-import { Quaternion, Vector3, type QuatLike, type Vec3Like } from '../mathematics/vectors';
+import { Quaternion, Vector3, type QuatLike, type Vec3Like } from '../data/vectors';
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale';
 export type GizmoAxis = 'x' | 'y' | 'z';

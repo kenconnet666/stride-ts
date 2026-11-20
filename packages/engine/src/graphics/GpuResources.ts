@@ -4,8 +4,8 @@
  */
 import { CUBEMAP_TEXEL_BYTES, type TextureSampler } from '../content/format';
 import { MipmapGenerator } from './MipmapGenerator';
-import type { Cubemap, Skybox } from './environment/Skybox';
-import { CubemapPrefilter, prefilterSkybox } from './environment/CubemapPrefilter';
+import type { Cubemap, Skybox } from '../rendering/lighting/Skybox';
+import { CubemapPrefilter, prefilterSkybox } from '../rendering/lighting/CubemapPrefilter';
 import type { Texture } from './Texture';
 
 export class GpuResources {

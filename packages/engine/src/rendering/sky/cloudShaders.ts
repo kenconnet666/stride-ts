@@ -1,8 +1,7 @@
 /**
  * 体积云的着色器源码（VolumetricClouds.ts 用；说明见那边的文件头）：生成噪声贴图的计算着色器，步进（和上一帧混合），合成。
  */
-import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
-import { GRADIENT_NOISE, HASH3 } from '../shaders/noise';
+import { FULLSCREEN_VERTEX, GRADIENT_NOISE, HASH3 } from '../wgsl';
 import { ATMOSPHERE_WGSL, SKY_VIEW_WGSL } from './atmosphereShaders';
 
 /** 噪声贴图：每个纹素算一遍。坐标 0..1，三个方向首尾相接（格子按周期取模）。 */

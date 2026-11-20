@@ -7,9 +7,9 @@
  */
 import type { AmbientOcclusionSlot, ColorOperator, TextureSampler } from '../../content/format';
 import type { Branded } from '../../data/prop';
-import { Color4, type ColorLike } from '../../mathematics/vectors';
+import { Color4, type ColorLike } from '../../data/vectors';
 import { ResourceTable } from '../../engine/ResourceTable';
-import type { Texture } from '../Texture';
+import type { Texture } from '../../graphics/Texture';
 
 export type MaterialId = Branded<number, 'MaterialId'>;
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import { Matrix } from '../src/mathematics/Matrix';
+import { Matrix } from '../src/data/Matrix';
 import { createLocalLight, RenderView, type LocalShadowReceiver } from '../src/rendering/RenderSystem';
-import { LocalShadowViews, screenCoverage } from '../src/rendering/shadows/LocalShadowViews';
+import { LocalShadowViews, screenCoverage } from '../src/rendering/lighting/LocalShadowViews';
 
 const ATLAS = 4096, SIZE = 256;
 const receiver = (): LocalShadowReceiver => ({ point: false, worldToShadow: new Float32Array(96), depthA: 0, depthB: 0, depthBias: 0, normalOffsetScale: 0, filterSize: 0 });

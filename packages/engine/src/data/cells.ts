@@ -2,8 +2,8 @@
  * bigint、小数、日期时间这几种属性在三个地方的样子：init 里传的写法、脚本拿到的值对象、数据组件列里的原始值
  * （int64 或 int32，和 wasm 那边 StrideNative/Values.h 的布局相同）。这里负责它们之间的检查和换算。
  */
-import { Decimal } from '../values/Decimal';
-import { Instant, LocalDate, LocalDateTime, LocalTime } from '../values/temporal';
+import { Decimal } from './Decimal';
+import { Instant, LocalDate, LocalDateTime, LocalTime } from './temporal';
 import type { PropKind, PropOptions } from './prop';
 
 /** 在列里要编码存放的种类：脚本和视图看到值对象，系统看到原始的 int64 / int32。 */

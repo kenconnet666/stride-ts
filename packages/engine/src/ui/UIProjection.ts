@@ -5,7 +5,7 @@
  * UI 的虚拟坐标 (0, 0) 在左上角、y 向下；摆进场景时 UI 的中心在实体的位置，x 沿实体的 X 轴，y 向下变成沿 -Y，
  * 整个 UI 的大小是 Size（世界单位）。
  */
-import type { Matrix4 } from '../mathematics/Matrix';
+import type { Matrix4 } from '../data/Matrix';
 
 type Vec2 = readonly [number, number];
 

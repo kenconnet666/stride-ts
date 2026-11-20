@@ -14,8 +14,8 @@
  *
  * 开着它时不再算 GTAO（遮蔽它自己就有）。默认关，画质档位高、极高才允许。
  */
-import { GRADIENT_NOISE } from '../shaders/noise';
-import { Matrix } from '../../mathematics/Matrix';
+import { GRADIENT_NOISE } from '../wgsl';
+import { Matrix } from '../../data/Matrix';
 import { POSITION_FORMAT, POSITIONS_SHADER } from './AmbientOcclusion';
 import { FullscreenShader, UniformArena, type EffectFrame, type Image } from '../postfx/ImageEffect';
 import type { RenderView } from '../RenderSystem';

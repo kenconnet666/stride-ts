@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { Matrix } from '../src/mathematics/Matrix';
+import { Matrix } from '../src/data/Matrix';
 import { halton, jitterProjection } from '../src/rendering/screenspace/TemporalAntialiasing';
 
 describe('时间抗锯齿的抖动', () => {

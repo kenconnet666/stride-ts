@@ -6,9 +6,9 @@
  */
 import { prop, type EntityId } from '../data/prop';
 import { component, tag } from '../engine/component';
-import type { CubemapId, SkyboxId } from './environment/Skybox';
+import type { CubemapId, SkyboxId } from './lighting/Skybox';
 import type { SpriteSheetId } from './SpriteSheet';
-import type { TextureId } from './Texture';
+import type { TextureId } from '../graphics/Texture';
 
 /** 透视相机，看向本地 -Z。默认值和 Stride 一样：竖直视角 45°，近裁剪面 0.1，远裁剪面 1000。 */
 export const Camera = component('Camera', {

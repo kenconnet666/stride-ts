@@ -8,7 +8,7 @@
  */
 import type { ParticleModuleFile, TextureSampler } from '../content/format';
 import { ColorTreeCompiler, type MaterialContext } from '../rendering/mesh/colorTree';
-import type { Texture } from '../rendering/Texture';
+import type { Texture } from '../graphics/Texture';
 import { value, type ParticleModuleKind } from './modules';
 
 export type { MaterialContext } from '../rendering/mesh/colorTree';

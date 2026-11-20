@@ -12,8 +12,8 @@
  *
  * Stride 的样例都用 FXAA，所以默认还是 FXAA（照内容画），TAA 是选项。
  */
-import { Matrix } from '../../mathematics/Matrix';
-import type { GraphTexture } from '../graph/RenderGraph';
+import { Matrix } from '../../data/Matrix';
+import type { GraphTexture } from '../RenderGraph';
 import { FullscreenShader, UniformArena, type EffectFrame, type Image } from '../postfx/ImageEffect';
 import type { RenderView } from '../RenderSystem';
 

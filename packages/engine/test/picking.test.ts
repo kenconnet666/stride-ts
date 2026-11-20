@@ -1,9 +1,9 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { Game } from '../src/games/Game';
-import { Matrix } from '../src/mathematics/Matrix';
+import { Game } from '../src/engine/Game';
+import { Matrix } from '../src/data/Matrix';
 import { Transform, transformSlot } from '../src/engine/transform';
-import type { GpuResources } from '../src/rendering/GpuResources';
+import type { GpuResources } from '../src/graphics/GpuResources';
 import { RenderView } from '../src/rendering/RenderSystem';
 import { SpriteBatch } from '../src/rendering/text/SpriteBatch';
 import type { UIComponent } from '../src/ui/UIComponent';

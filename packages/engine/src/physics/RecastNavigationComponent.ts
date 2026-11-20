@@ -14,9 +14,9 @@
 import { prop } from '../data/prop';
 import { SyncScript } from '../engine/scripts';
 import { Transform } from '../engine/transform';
-import type { GameTime } from '../games/GameTime';
-import { Matrix } from '../mathematics/Matrix';
-import { Quaternion, Vector3, type Vec3Like } from '../mathematics/vectors';
+import type { GameTime } from '../engine/GameTime';
+import { Matrix } from '../data/Matrix';
+import { Quaternion, Vector3, type Vec3Like } from '../data/vectors';
 
 /** Stride 的 NavigationState。 */
 export type NavigationState = 'queuePathPlanning' | 'planningPath' | 'pathIsReady' | 'pathIsInvalid';

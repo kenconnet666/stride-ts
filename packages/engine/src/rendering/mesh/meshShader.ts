@@ -22,9 +22,7 @@
  */
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
-import { BRDF } from '../shaders/brdf';
-import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
-import { GRADIENT_NOISE } from '../shaders/noise';
+import { BRDF, FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../wgsl';
 import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees } from './Material';
 
 export const MESH_SHADER = /* wgsl */ `

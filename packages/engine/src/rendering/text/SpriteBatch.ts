@@ -17,9 +17,9 @@
  * 点选（ScenePicker）：设了 pickId 时画进编号缓冲（r32uint），画法和平常一样（贴图、字形的覆盖率），差不多全透明的地方不画，
  * 画到的写 pickId；自定义效果不用。clip 把整批限制在一块里（点选只画被点的那个像素）。
  */
-import { srgbToLinear } from '../../mathematics/vectors';
-import type { GpuResources } from '../GpuResources';
-import { Texture } from '../Texture';
+import { srgbToLinear } from '../../data/vectors';
+import type { GpuResources } from '../../graphics/GpuResources';
+import { Texture } from '../../graphics/Texture';
 import { GlyphStore } from './GlyphStore';
 import { glyphScale, layoutText, measureText, type FontSize, type TextAlignment } from './layout';
 import type { RichStyle } from './markdown';

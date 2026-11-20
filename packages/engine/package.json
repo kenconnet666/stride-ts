@@ -13,7 +13,7 @@
     "./editor-fields": "./src/editor/fields.ts",
     "./editor-prefabs": "./src/editor/prefabEdits.ts",
     "./editor-copy": "./src/editor/copyEntities.ts",
-    "./math": "./src/mathematics/Matrix.ts"
+    "./math": "./src/data/Matrix.ts"
   },
   "dependencies": {
     "@stride-ts/native": "^0.29.0"

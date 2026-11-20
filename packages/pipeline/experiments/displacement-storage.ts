@@ -14,7 +14,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { brotliCompressSync } from 'node:zlib';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { TriangleBvh } from '../src/geometry/bvh.ts';
+import { TriangleBvh } from '../src/bvh.ts';
 
 interface Mesh {
   positions: Float32Array;

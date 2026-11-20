@@ -6,8 +6,8 @@
  *   和 Stride 不同：Stride 的 FindFollowPath 沿拐点按固定步长采样出平滑的点，这里直接给拐点（跟随路径的脚本照样能用）。
  */
 import { NativeError, type NavConfig, type NavMesh, type StrideNative } from '@stride-ts/native';
-import { Vector3, type Vec3Like } from '../mathematics/vectors';
-import type { Simulation } from '../physics/Simulation';
+import { Vector3, type Vec3Like } from '../data/vectors';
+import type { Simulation } from './Simulation';
 
 /** 导航的设置（Stride 的 RecastNavigationConfiguration）。 */
 export interface NavigationSettings {

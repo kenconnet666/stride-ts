@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { Matrix } from '../src/mathematics/Matrix';
+import { Matrix } from '../src/data/Matrix';
 import { pointerToVirtual, projectedPixelRatio, uiWorldMatrix } from '../src/ui/UIProjection';
 
 const VIRTUAL = [1280, 720] as const;

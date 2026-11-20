@@ -7,7 +7,7 @@
  *
  * 没变就不做：线没变（DebugDraw.version 没动）就不重新上传；一条线都没有时什么都不做。
  */
-import type { Game } from '../games/Game';
+import type { Game } from '../engine/Game';
 import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
 import { DEBUG_LINE_FLOATS } from './DebugDraw';
 

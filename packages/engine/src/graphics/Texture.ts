@@ -6,7 +6,7 @@
 import type { StrideNative, TextureTarget } from '@stride-ts/native';
 import type { Branded } from '../data/prop';
 import { ResourceTable } from '../engine/ResourceTable';
-import type { GraphicsDevice } from '../graphics/GraphicsDevice';
+import type { GraphicsDevice } from './GraphicsDevice';
 
 export type TextureId = Branded<number, 'TextureId'>;
 

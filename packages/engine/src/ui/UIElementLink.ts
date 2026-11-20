@@ -15,7 +15,7 @@ import { component } from '../engine/component';
 import type { EntityManager } from '../engine/EntityManager';
 import { system } from '../engine/system';
 import { Transform, transformSlot } from '../engine/transform';
-import { Matrix } from '../mathematics/Matrix';
+import { Matrix } from '../data/Matrix';
 import { UIComponent } from './UIComponent';
 import type { UIElement } from './UIElement';
 import type { UISystem } from './UISystem';

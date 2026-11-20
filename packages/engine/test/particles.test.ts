@@ -12,13 +12,13 @@ import { particleField, type ParticlePool } from '../src/particles/ParticlePool'
 import { ParticleUpdater } from '../src/particles/updaters';
 import { Registry } from '../src/engine/registry';
 import type { ParticleEmitter } from '../src/particles/ParticleEmitter';
-import type { Texture } from '../src/rendering/Texture';
+import type { Texture } from '../src/graphics/Texture';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { randomSeed, RandomSeedGenerator, seedFloat } from '../src/particles/random';
 import type { ParticleModuleFile } from '../src/content/format';
 import { ParticleRenderer } from '../src/particles/ParticleRenderer';
 import type { ParticleSystemComponent } from '../src/particles/ParticleSystemComponent';
-import type { GpuResources } from '../src/rendering/GpuResources';
+import type { GpuResources } from '../src/graphics/GpuResources';
 import { RenderView } from '../src/rendering/RenderSystem';
 import { fakeGpu, firstArgs, stubGpuGlobals } from './fakeGpu';
 

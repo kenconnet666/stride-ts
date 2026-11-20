@@ -3,7 +3,7 @@
  * （SpriteFromTexture）。元素每帧取一次精灵，换了就重新布局。
  */
 import type { SpriteFrame, SpriteSheet } from '../rendering/SpriteSheet';
-import type { Texture } from '../rendering/Texture';
+import type { Texture } from '../graphics/Texture';
 
 export interface SpriteProvider {
   getSprite(): SpriteFrame | undefined;

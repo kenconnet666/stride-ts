@@ -12,7 +12,7 @@
  * 和 Stride 不同：目标写组件类型和属性名（类型检查得到），不是 "[TransformComponent.Key].Rotation" 这样的字符串路径；
  * 四元数的三次插值 Stride 没实现（抛 NotImplementedException），这里按分量做同样的三次插值再归一化。
  */
-import type { ColorLike, QuatLike, Vec3Like } from '../mathematics/vectors';
+import type { ColorLike, QuatLike, Vec3Like } from '../data/vectors';
 import { tag, type ComponentType, type ViewOf } from '../engine/component';
 import type { Entity } from '../engine/Entity';
 

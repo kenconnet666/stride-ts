@@ -11,9 +11,9 @@
  * 认不出的节点当白色。树的格式同粒子模块（ParticleModuleFile：$type 是首字母小写的类名，贴图是 TextureRef）。
  */
 import type { ParticleModuleFile, ParticleValue, TextureRef, TextureSampler } from '../../content/format';
-import { srgbToLinear } from '../../mathematics/vectors';
+import { srgbToLinear } from '../../data/vectors';
 import type { ShaderClass } from '../shaderClass';
-import type { Texture } from '../Texture';
+import type { Texture } from '../../graphics/Texture';
 
 /** 编译颜色树要的外部东西。 */
 export interface MaterialContext {

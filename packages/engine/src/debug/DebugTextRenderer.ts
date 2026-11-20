@@ -5,9 +5,9 @@
  *
  * 和 Stride 不同：Stride 的每个字以给的位置为中心（四边形从 x - 4、y - 8 开始），整段字偏向左上半个字；这里按左上角摆。
  */
-import type { Game } from '../games/Game';
+import type { Game } from '../engine/Game';
 import { SpriteBatch } from '../rendering/text/SpriteBatch';
-import { Texture } from '../rendering/Texture';
+import { Texture } from '../graphics/Texture';
 import { DEBUG_FONT_PNG, DEBUG_GLYPH_HEIGHT, DEBUG_GLYPH_WIDTH } from './debugFont';
 
 const COLUMNS = 32;

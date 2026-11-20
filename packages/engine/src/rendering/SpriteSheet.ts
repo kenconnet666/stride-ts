@@ -4,7 +4,7 @@
  */
 import type { Branded } from '../data/prop';
 import { ResourceTable } from '../engine/ResourceTable';
-import type { Texture } from './Texture';
+import type { Texture } from '../graphics/Texture';
 
 export type SpriteSheetId = Branded<number, 'SpriteSheetId'>;
 

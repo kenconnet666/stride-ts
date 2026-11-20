@@ -5,7 +5,7 @@
 import type { UIElementFile, UIElementType, UIFile, UISpriteValue, UIStripDefinition, UIValue } from '../content/format';
 import type { SpriteSheet } from '../rendering/SpriteSheet';
 import type { SpriteFont } from '../rendering/text/SpriteFont';
-import type { Texture } from '../rendering/Texture';
+import type { Texture } from '../graphics/Texture';
 import { Border } from './controls/Border';
 import { ScrollingText } from './controls/ScrollingText';
 import { Slider } from './controls/Slider';

@@ -15,7 +15,7 @@
  *
  * 只能表示"头顶最高的表面"：悬空的结构下面一样算挡着，斜着吹的雨照竖直判断。
  */
-import { Matrix } from '../mathematics/Matrix';
+import { Matrix } from '../data/Matrix';
 import type { RenderContext, RenderStage, RenderSystem } from '../rendering/RenderSystem';
 import { RenderView } from '../rendering/RenderSystem';
 

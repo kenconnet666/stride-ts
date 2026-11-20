@@ -15,10 +15,10 @@ import type { Entity } from '../engine/Entity';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import type { ParticleModuleFile } from '../content/format';
-import type { Game } from '../games/Game';
+import type { Game } from '../engine/Game';
 import { NO_CONTEXT } from '../particles/modules';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
-import { Texture } from '../rendering/Texture';
+import { Texture } from '../graphics/Texture';
 
 export const Precipitation = component('Precipitation', {
   kind: prop.enum(['rain', 'snow']).default('rain'),

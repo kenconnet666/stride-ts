@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { GuillotinePacker, type PackedRectangle } from '../src/rendering/shadows/GuillotinePacker';
+import { GuillotinePacker, type PackedRectangle } from '../src/rendering/lighting/GuillotinePacker';
 
 const overlaps = (a: PackedRectangle, b: PackedRectangle) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 

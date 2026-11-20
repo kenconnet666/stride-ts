@@ -7,12 +7,12 @@
 import type { SceneEntityFile } from '../../content/format';
 import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
-import { Matrix } from '../../mathematics/Matrix';
+import { Matrix } from '../../data/Matrix';
 import { Background } from '../components';
-import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
+import { FULLSCREEN_VERTEX } from '../wgsl';
 import { colorTargets, inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
-import { Cubemap } from './Skybox';
-import { Texture } from '../Texture';
+import { Cubemap } from '../lighting/Skybox';
+import { Texture } from '../../graphics/Texture';
 
 const SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}

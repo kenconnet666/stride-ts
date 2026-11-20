@@ -11,9 +11,8 @@
  * 和 Stride 不同：输出是 8 位的 sRGB 时加不到一个灰阶的抖动（dither，默认开）。暗的渐变（夜空、雾）量化成 8 位以后相邻的带只差
  * 一个灰阶，是一圈圈看得见的色带；抖动把它打散成看不出来的噪声。图案是固定的（按像素坐标），画面不动时每帧一样。
  */
-import { GRADIENT_NOISE } from '../shaders/noise';
+import { FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../wgsl';
 import { GpuProfiler } from '../../graphics/GpuProfiler';
-import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
 import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
 import { fullscreenPipeline, isGraphTexture, warmFullscreenPipeline, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 

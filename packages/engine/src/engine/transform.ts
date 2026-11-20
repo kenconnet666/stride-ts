@@ -13,8 +13,8 @@
 import type { TransformSlot, TransformStore } from '@stride-ts/native';
 import { prop, type DataValues, type EntityId } from '../data/prop';
 import { createSchema, type Column } from '../data/schema';
-import { Matrix, type Matrix4 } from '../mathematics/Matrix';
-import type { Vec3Like } from '../mathematics/vectors';
+import { Matrix, type Matrix4 } from '../data/Matrix';
+import type { Vec3Like } from '../data/vectors';
 import { ComponentType, type ExternalStorage } from './component';
 import type { Entity } from './Entity';
 import type { EntityManager } from './EntityManager';

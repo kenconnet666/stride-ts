@@ -10,7 +10,7 @@
  *
  * 颜色按 sRGB 写（同 UI 的颜色），存的时候换成线性。这里只管攒线（可以单测），画在 DebugDrawRenderer。
  */
-import { srgbToLinear, type Vec3Like } from '../mathematics/vectors';
+import { srgbToLinear, type Vec3Like } from '../data/vectors';
 
 /** 一个点：{ x, y, z } 或者 [x, y, z]。 */
 export type DebugPoint = Vec3Like | readonly [number, number, number];

@@ -1,12 +1,12 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { Transform } from '../src/engine/transform';
-import { Game } from '../src/games/Game';
+import { Game } from '../src/engine/Game';
 import { ContentManager } from '../src/content/ContentManager';
 import type { SceneFile } from '../src/content/format';
 import { SkyAtmosphere, VolumetricClouds } from '../src/rendering/components';
 import { celestialState, DayNightCycle, dayNightCycleSystem, lightRotationTowards } from '../src/rendering/sky/DayNightCycle';
-import { Vector3 } from '../src/mathematics/vectors';
+import { Vector3 } from '../src/data/vectors';
 
 const DEGREES = Math.PI / 180;
 const elevation = (direction: readonly number[]) => Math.asin(direction[1]!) / DEGREES;

@@ -12,11 +12,11 @@
  */
 import type { EntityId } from '../../data/prop';
 import { system } from '../../engine/system';
-import { Matrix } from '../../mathematics/Matrix';
+import { Matrix } from '../../data/Matrix';
 import { Transform } from '../../engine/transform';
 import { ReflectionProbe } from '../components';
-import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
-import type { GpuResources } from '../GpuResources';
+import { FULLSCREEN_VERTEX } from '../wgsl';
+import type { GpuResources } from '../../graphics/GpuResources';
 import { RenderView, type RenderContext } from '../RenderSystem';
 
 /** 同时在用的探针最多几个（再多的按体积小的优先，其余的不用）。 */

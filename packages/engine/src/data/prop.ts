@@ -2,9 +2,9 @@
  * 属性声明：`prop.f32().min(0).default(100)`。Prop 不可变，每个修饰方法都返回新对象，并把改了什么记在
  * 类型参数里；脚本字段、组件、init 对象、视图和列的 TS 类型都只从声明推导出来（做法同 easy-query-ts 的列）。
  */
-import type { Color4, ColorLike, Quaternion, QuatLike, Vec3Like, Vector3 } from '../mathematics/vectors';
-import type { Decimal } from '../values/Decimal';
-import type { Instant, LocalDate, LocalDateTime, LocalTime } from '../values/temporal';
+import type { Color4, ColorLike, Quaternion, QuatLike, Vec3Like, Vector3 } from './vectors';
+import type { Decimal } from './Decimal';
+import type { Instant, LocalDate, LocalDateTime, LocalTime } from './temporal';
 
 /** 数据组件能存的种类：每个字段一列（向量按行交错存放，每行 3 或 4 个 float）。 */
 export type ColumnKind =

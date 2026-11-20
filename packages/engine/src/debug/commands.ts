@@ -14,7 +14,7 @@ import type { EntityId } from '../data/prop';
 import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
 import { scriptName, type ScriptComponent, type ScriptConstructor } from '../engine/scripts';
-import type { Game } from '../games/Game';
+import type { Game } from '../engine/Game';
 import type { MouseButton } from '../input/InputManager';
 import { keyCode } from '../input/keys';
 import { describe, type Debug } from './Debug';

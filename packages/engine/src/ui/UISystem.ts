@@ -17,11 +17,11 @@
  * - 放在 3D 里的 UI 不把文字对齐到像素，布局按虚拟像素（真实 / 虚拟 的比例当 1）：Stride 按投影估计这个比例，相机一动
  *   文字就重新排版；我们的字是矢量的，不随比例变，没必要。
  */
-import type { Game } from '../games/Game';
+import type { Game } from '../engine/Game';
 import { InputCapturePriority } from '../input/capture';
 import type { InputManager, PointerEvent } from '../input/InputManager';
 import { Transform, transformSlot } from '../engine/transform';
-import { Matrix, type Matrix4 } from '../mathematics/Matrix';
+import { Matrix, type Matrix4 } from '../data/Matrix';
 import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
 import { inRenderMask, RENDER_GROUP_ALL, type RenderView } from '../rendering/RenderSystem';
 import { SpriteBatch, type Rect } from '../rendering/text/SpriteBatch';

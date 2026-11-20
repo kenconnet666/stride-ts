@@ -15,7 +15,7 @@
  *   穿过云的光柱（体积光那一项）。
  */
 import { system } from '../../engine/system';
-import type { GameTime } from '../../games/GameTime';
+import type { GameTime } from '../../engine/GameTime';
 import type { Atmosphere } from './Atmosphere';
 import { COMPOSITE_SHADER, MARCH_SHADER, NOISE_SHADER } from './cloudShaders';
 import { VolumetricClouds } from '../components';

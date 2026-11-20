@@ -10,9 +10,9 @@
  * 运动按快门（默认半帧，180 度快门）缩放，最长 32 像素。运动向量那一遍（ForwardRenderer 的 velocity）本来是 TAA 用的，开着
  * 运动模糊时不开 TAA 也画。没画到的像素（天空）按深度和上一帧的视图投影算（相机转动时天空也糊）。
  */
-import { Matrix } from '../../mathematics/Matrix';
+import { Matrix } from '../../data/Matrix';
 import { FullscreenShader, UniformArena, type EffectFrame, type Image } from '../postfx/ImageEffect';
-import type { GraphTexture } from '../graph/RenderGraph';
+import type { GraphTexture } from '../RenderGraph';
 import type { RenderView } from '../RenderSystem';
 
 const TILE = 16;

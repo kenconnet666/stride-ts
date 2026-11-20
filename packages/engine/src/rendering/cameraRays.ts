@@ -4,9 +4,9 @@
  */
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
-import type { Game } from '../games/Game';
-import { Matrix } from '../mathematics/Matrix';
-import { Vector3 } from '../mathematics/vectors';
+import type { Game } from '../engine/Game';
+import { Matrix } from '../data/Matrix';
+import { Vector3 } from '../data/vectors';
 import { Camera } from './components';
 
 /** Camera 组件里定投影的那几项。 */

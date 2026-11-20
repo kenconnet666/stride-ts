@@ -18,8 +18,8 @@ import { component } from '../../engine/component';
 import type { EntityManager } from '../../engine/EntityManager';
 import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
-import type { GameTime } from '../../games/GameTime';
-import { Quaternion } from '../../mathematics/vectors';
+import type { GameTime } from '../../engine/GameTime';
+import { Quaternion } from '../../data/vectors';
 import { SkyAtmosphere } from '../components';
 
 export const DayNightCycle = component('DayNightCycle', {

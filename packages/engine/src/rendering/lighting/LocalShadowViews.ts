@@ -5,7 +5,7 @@
  * - 聚光：一个透视视图，按光源实体的世界矩阵摆，视场角是外锥的全角；近平面 0.01，远平面是射程的两倍。
  * 阴影图的大小按光源在主视图上盖住多大算（ComputeScreenCoverage）。
  */
-import { Matrix, type Matrix4 } from '../../mathematics/Matrix';
+import { Matrix, type Matrix4 } from '../../data/Matrix';
 import { RenderView, type LocalLight, type LocalShadowReceiver } from '../RenderSystem';
 import type { PackedRectangle } from './GuillotinePacker';
 

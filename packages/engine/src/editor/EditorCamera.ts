@@ -12,9 +12,9 @@
 import { prop } from '../data/prop';
 import { SyncScript } from '../engine/scripts';
 import { Transform } from '../engine/transform';
-import type { GameTime } from '../games/GameTime';
+import type { GameTime } from '../engine/GameTime';
 import { Camera } from '../rendering/components';
-import { Quaternion, Vector3, type Vec3Like } from '../mathematics/vectors';
+import { Quaternion, Vector3, type Vec3Like } from '../data/vectors';
 
 /** 俯仰不到正上、正下：留一点，朝向才不会翻过去。 */
 const MAX_PITCH = Math.PI / 2 - 0.001;

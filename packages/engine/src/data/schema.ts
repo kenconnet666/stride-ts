@@ -3,7 +3,7 @@
  * 校验，以及每个 schema 只生成一次的初始化函数。生成的初始化函数逐个字段直接赋值；在 apps/bench 里，
  * 按键名循环赋值要慢 17 倍。
  */
-import { Color4, Quaternion, Vector3 } from '../mathematics/vectors';
+import { Color4, Quaternion, Vector3 } from './vectors';
 import { cellIssue, ENCODED_KINDS, toCell, toValue } from './cells';
 import { prop, Prop, type AnyProp, type PropKind, type PropOptions, type Shape, type StandardIssue } from './prop';
 

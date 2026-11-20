@@ -1,9 +1,9 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { Game, Transform } from '../src/index';
-import { GpuResources } from '../src/rendering/GpuResources';
+import { GpuResources } from '../src/graphics/GpuResources';
 import { ReflectionProbe } from '../src/rendering/components';
-import { PROBE_FLOATS, ReflectionProbes } from '../src/rendering/environment/ReflectionProbes';
+import { PROBE_FLOATS, ReflectionProbes } from '../src/rendering/lighting/ReflectionProbes';
 import type { RenderContext } from '../src/rendering/RenderSystem';
 import { fakeGpu, stubGpuGlobals } from './fakeGpu';
 

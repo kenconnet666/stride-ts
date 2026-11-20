@@ -80,6 +80,10 @@ $all = Get-ChildItem apps -Directory | Where-Object { Test-Path (Join-Path $_.Fu
 $selected = if ($Changed) { (node (Join-Path $root 'tools' 'affected.ts') $Base) -split ',' | Where-Object { $_ } }
     elseif ($Apps) { $Apps -split ',' | ForEach-Object Trim }
     else { $all }
+# 没有冒烟脚本的样例（新建的工程还没写）不跑，说一声
+$missing = @($selected | Where-Object { $_ -notin $all })
+if ($missing.Count -gt 0) { Write-Host "no smoke test (scripts/smoke.ts) in: $($missing -join ', ')" }
+$selected = @($selected | Where-Object { $_ -in $all })
 if ($selected.Count -eq 0) {
     Write-Host 'no smoke test is affected by the changes'
     exit 0

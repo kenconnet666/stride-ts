@@ -3,6 +3,7 @@
  *
  * - 工程：package.json、vite.config.ts（仓库的 tools/vite-app.ts：跨源隔离、调试中枢、编辑器）、index.html、src/main.ts（入口，
  *   开发时热重载）、src/game/<名字>Game.ts（加载 MainScene），端口取仓库里各个应用用过的最大端口 + 2。
+ * - 冒烟测试 scripts/smoke.ts（tools/regress.ps1、CI 都跑它）：主场景跑起来、有实体、没有错误日志。游戏搭起来以后往里加检查。
  * - 场景 public/content/MainScene.scene.json：相机、投阴影的太阳、物理天空（太阳跟着它）、地面（JSON 写的平面模型、
  *   一个材质、静态的盒子碰撞体）。空场景里什么都看不见，搭东西也没有参照，所以带上这几样（同 Stride 新建工程的默认场景）。
  * - 这个工程的内容是手搭的、要提交：仓库的 .gitignore 忽略 apps/星号/public/content/（导入的内容），给它加一行例外。
@@ -38,13 +39,14 @@ export async function createProject(root: string, { port }: NewProjectOptions = 
       private: true,
       license: 'MIT',
       type: 'module',
-      scripts: { dev: 'vite', build: 'vite build', preview: 'vite preview' },
+      scripts: { smoke: 'node scripts/smoke.ts', dev: 'vite', build: 'vite build', preview: 'vite preview' },
       dependencies: { '@stride-ts/engine': 'workspace:*', '@stride-ts/native': nativeVersion },
       devDependencies: { vite: '^8.3.8' },
     }),
     'vite.config.ts': `import { strideApp } from '../../tools/vite-app.ts';\n\nexport default strideApp(${devPort});\n`,
     'index.html': indexHtml(name),
     'src/main.ts': mainTs(name),
+    'scripts/smoke.ts': smokeTs(folder),
     [`src/game/${name}Game.ts`]: gameTs(name),
     'public/content/MainScene.scene.json': json(mainScene()),
     'public/content/Models/Ground.model': json({ format: 1, procedural: { type: 'plane', size: [1000, 1000], uvScale: [500, 500] }, materials: ['Materials/Ground'] }),
@@ -163,6 +165,22 @@ if (created) {
     stats.textContent = \`failed: \${error instanceof Error ? error.message : String(error)}\`;
   });
 }
+`;
+}
+
+function smokeTs(folder: string): string {
+  return `// 冒烟测试：对着正在运行的页面（开发服务器或 preview，\`stride open\` 打开的），用调试 CLI 走一遍。
+//   pnpm --filter @stride-ts/${folder} smoke [-- --hub <中枢名的一部分>]
+// 检查：主场景跑起来了、有实体；没有错误日志（finish 检查）。游戏搭起来以后在这里加玩法的检查。
+import { startSmoke } from '../../../tools/smoke.ts';
+
+const { stride, check, finish } = startSmoke('${folder}');
+
+stride('wait');
+const status = stride('status') as { scene: string | null; error: string | null; entities: number };
+check('主场景跑起来了，有实体', status.scene === 'MainScene' && status.error === null && status.entities > 0, status);
+
+finish();
 `;
 }
 

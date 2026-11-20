@@ -72,8 +72,11 @@ const jump = stride('eval', `(async () => {
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
   await frames(2);
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
-  const end = strideGame.updateTime.total + 2;
-  while (strideGame.updateTime.total < end) { await frame(); top = Math.max(top, playerAt()[1]); }
+  // 等到跳过最高点又落回来：慢的机器（CI 的软件 WebGPU）上一帧很长，物理每帧补的步数有上限，仿真比游戏时间走得慢，
+  // 所以不按固定的时长等；最多等 8 秒游戏时间
+  const end = strideGame.updateTime.total + 8;
+  const landed = () => top - ground > 0.5 && Math.abs(playerAt()[1] - ground) < 0.05;
+  while (strideGame.updateTime.total < end && !landed()) { await frame(); top = Math.max(top, playerAt()[1]); }
   return { ground, top, landed: playerAt()[1] };
 })()`) as { ground: number; top: number; landed: number };
 check('空格跳起来', jump.top - jump.ground > 0.5, jump);

@@ -120,9 +120,13 @@ jobs:
           key: ${{ needs.content.outputs.key }}
           fail-on-cache-miss: true
       - name: Smoke
+        # --use-vulkan=swiftshader 不能少：Linux 上 Chrome 合成用 GL（ANGLE 的 SwiftShader）、Dawn 用 Vulkan 时，WebGPU 画布的交换链贴图要两边
+        # 共用一份内存（外部内存对象），SwiftShader 的 GL 不支持，GPU 进程建不出这张贴图（chrome.log 里"Could not find SharedImageBackingFactory
+        # … WebgpuSwapChainTexture"），WebGPU 的上下文随之丢掉，页面里就是"A valid external Instance reference no longer exists"。让 Chrome 自己的
+        # Vulkan 也用 SwiftShader，交换链贴图走 Vulkan 的后端（ExternalVkImageBacking）。
+        # 画面用默认的 1280x720：冒烟的点击坐标、UI 的布局（GameMenu 的虚拟分辨率跟着后备缓冲走）都是按这个大小写的
         env:
-          STRIDE_CHROME_ARGS: --enable-unsafe-webgpu --enable-features=Vulkan --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader
-          STRIDE_REGRESS_SIZE: 640x360
+          STRIDE_CHROME_ARGS: --enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader --use-angle=swiftshader --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader
         run: pwsh tools/regress.ps1 -Apps "${{ matrix.apps }}" -Parallel 2
       # 失败时看机器的内存、共享内存和有没有进程被 OOM 杀掉（GPU 进程没了，页面里只看得到"Instance reference no longer exists"）
       - name: Machine state

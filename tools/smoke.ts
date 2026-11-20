@@ -140,7 +140,8 @@ export function startSmoke(defaultHub: string): Smoke {
     if (!ok) failed++;
   };
   return {
-    stride: (...args) => JSON.parse(run(...args)),
+    // wait 默认等 30 秒；CI 的软件 WebGPU 上重新加载页面、编着色器要久得多（只在慢的时候多等，快的机器上照样马上返回）
+    stride: (...args) => JSON.parse(run(...args, ...(args[0] === 'wait' && !args.includes('--timeout') ? ['--timeout', '180'] : []))),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     check,
     finish: () => {

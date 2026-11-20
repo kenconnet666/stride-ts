@@ -22,5 +22,5 @@
     "jsx": "preserve",
     "jsxImportSource": "@zerodep-dev/vue-tsx-pro-tsx"
   },
-  "include": ["packages/*/src", "packages/*/test", "packages/*/experiments", "apps/*/src", "apps/*/scripts", "apps/*/vite.config.ts", "tools/*.ts", "vitest.config.ts"]
+  "include": ["packages/*/src", "packages/*/test", "packages/*/experiments", "apps/*/src", "apps/*/scripts", "apps/*/vite.config.ts", "tools/*.ts", "tools/editor-accept/*.ts", "vitest.config.ts"]
 }

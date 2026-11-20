@@ -123,12 +123,18 @@ Spacing: 2.0
     if (!(await exists(ARIAL))) return context.skip();
     const assets = path.join(dir, 'GameAssets');
     await mkdir(assets, { recursive: true });
+    // 只看引用怎么写，字体用只有一个字符的编译期字体：运行时字体要导入整套字形（Arial 要 5 秒多，机器忙时超过默认的超时）
     await writeFile(path.join(assets, 'Font.sdfnt'), `!SpriteFont
 Id: 22222222-2222-2222-2222-222222222222
 FontSource: !SystemFontProvider
     FontName: Arial
-FontType: !RuntimeRasterizedSpriteFontType
+FontType: !OfflineRasterizedSpriteFontType
     Size: 22.0
+    CharacterSet: null
+    CharacterRegions:
+        a1:
+            Start: 'A'
+            End: 'A'
 `);
     await writeFile(path.join(assets, 'Compositor.sdgfxcomp'), `!GraphicsCompositorAsset
 Id: 33333333-3333-3333-3333-333333333333

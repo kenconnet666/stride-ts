@@ -138,7 +138,27 @@ export interface MaterialDesc {
   readonly cavity?: { readonly diffuse: number; readonly specular: number };
   /** 法线贴图；用它的网格要有切线（资源管线给这样的网格生成 MikkTSpace 切线）。 */
   readonly normalMap?: MaterialNormalMap;
+  /** 次表面散射（Stride 的 MaterialSubsurfaceScatteringFeature），默认没有；没写的字段用 Stride 皮肤的默认值。 */
+  readonly subsurfaceScattering?: Partial<MaterialSubsurfaceScattering>;
 }
+
+/**
+ * 次表面散射（Stride 的 MaterialSubsurfaceScatteringFeature 和它的皮肤散射核）：光从表面进去、在里面散开、从旁边出来，
+ * 皮肤、蜡、玉石这类东西的漫反射看起来柔和。着色后在屏幕空间按 Jimenez 的可分离核横竖各模糊一遍（SubsurfaceScattering.ts）。
+ */
+export interface MaterialSubsurfaceScattering {
+  /** 光散开多远（世界单位，米），Stride 默认 0.015。 */
+  readonly width: number;
+  /** 透光的程度（0 到 1），乘在模糊的步长上，Stride 默认 0.83。 */
+  readonly translucency: number;
+  /** 每个颜色通道散开的比例（0 到 1），Stride 皮肤的默认 (0.48, 0.41, 0.28)。 */
+  readonly strength: readonly [number, number, number];
+  /** 每个颜色通道散开的距离（相对 width），Stride 皮肤的默认 (1, 0.37, 0.3)：红光走得最远。 */
+  readonly falloff: readonly [number, number, number];
+}
+
+/** Stride 皮肤的默认值（MaterialSubsurfaceScatteringFeature、MaterialSubsurfaceScatteringScatteringKernelSkin）。 */
+export const SKIN_SUBSURFACE_SCATTERING: MaterialSubsurfaceScattering = { width: 0.015, translucency: 0.83, strength: [0.48, 0.41, 0.28], falloff: [1, 0.37, 0.3] };
 
 const materials = new ResourceTable<Material>();
 
@@ -166,6 +186,8 @@ export class Material {
   readonly alphaCutoff: number | undefined;
   readonly cavity: { readonly diffuse: number; readonly specular: number };
   readonly normalMap: Required<MaterialNormalMap> | undefined;
+  /** 次表面散射；改它用 setSubsurfaceScattering。 */
+  subsurfaceScattering: MaterialSubsurfaceScattering | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
   version = 0;
 
@@ -207,7 +229,14 @@ export class Material {
       isXYNormal: normalMap.isXYNormal ?? true,
       invertY: normalMap.invertY ?? false,
     };
+    this.subsurfaceScattering = desc.subsurfaceScattering && { ...SKIN_SUBSURFACE_SCATTERING, ...desc.subsurfaceScattering };
     this.id = materials.add(this) as MaterialId;
+  }
+
+  /** 加上、改掉或去掉次表面散射（没写的字段用 Stride 皮肤的默认值），并让渲染特性重新上传。 */
+  setSubsurfaceScattering(value: Partial<MaterialSubsurfaceScattering> | undefined): void {
+    this.subsurfaceScattering = value && { ...SKIN_SUBSURFACE_SCATTERING, ...value };
+    this.version++;
   }
 
   /** 改基础色并让渲染特性重新上传。 */

@@ -134,6 +134,8 @@ function forwardSettings(forward: StrideObject, resolve: (node: StrideValue | un
     clearColor: [srgbToLinear(asNumber(color?.['R'], 0.4)), srgbToLinear(asNumber(color?.['G'], 0.4)), srgbToLinear(asNumber(color?.['B'], 0.4)), asNumber(color?.['A'], 1)],
     postEffects: postEffectsOf(resolve(forward['PostEffects'])),
     transparent: forward['TransparentRenderStage'] !== null,
+    // Stride 的合成器模板里是 null：写了才开
+    ...(asObject(forward['SubsurfaceScatteringBlurEffect']) ? { subsurfaceScattering: true as const } : {}),
   };
 }
 

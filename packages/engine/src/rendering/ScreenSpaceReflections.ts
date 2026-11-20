@@ -348,14 +348,15 @@ const COMBINE_SHADER = /* wgsl */ `
   if (debug.x == 2.0) {
     return vec4f(select(vec3f(0.0), r.rgb / max(r.a, 0.0001), r.a > 0.0) * 4.0, 1.0);
   }
-  if (r.a <= 0.0) {
+  // a 不小于 1 的是次表面散射的像素，rgb 存的不是环境镜面反射（SubsurfaceScattering），不做反射
+  let e = textureLoad(environment, pixel, 0);
+  if (r.a <= 0.0 || e.a >= 1.0) {
     return base;
   }
   let compressed = r.rgb / r.a;
   let reflected = compressed / max(1.0 - max(max(compressed.r, compressed.g), compressed.b), 0.0001);
   let w = textureLoad(specularWeight, pixel, 0).rgb;
-  let e = textureLoad(environment, pixel, 0).rgb;
-  return vec4f(base.rgb + r.a * (w * reflected - e), base.a);
+  return vec4f(base.rgb + r.a * (w * reflected - e.rgb), base.a);
 }`;
 
 /** 各个参数（默认值同 Stride 的 LocalReflections）。 */

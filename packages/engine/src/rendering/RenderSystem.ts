@@ -12,6 +12,7 @@ import { Matrix } from '../mathematics/Matrix';
 import { Color4, Vector3 } from '../mathematics/vectors';
 import { GpuResources } from './GpuResources';
 import type { Skybox } from './Skybox';
+import { SubsurfaceMaterials } from './SubsurfaceScattering';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -43,7 +44,8 @@ export interface RenderOutput {
  * 屏幕空间反射要的表面（RenderOutput.surfaceFormats），合成时用反射换掉着色时加的环境镜面反射：
  * 0. 法线（世界空间，八面体编码）、粗糙度、有没有表面（a）；
  * 1. 环境镜面反射的权重 w（镜面颜色乘 DFG，玻璃是它的反射比例；没有镜面反射的材质是 0）；
- * 2. 着色时加进去的环境镜面反射 E（环境光、天空盒的镜面项，已经乘过 w、遮蔽、强度）。
+ * 2. 着色时加进去的环境镜面反射 E（环境光、天空盒的镜面项，已经乘过 w、遮蔽、强度）；a 是次表面散射的槽位 + 强度（没有是 0，
+ *    见 SubsurfaceScattering.ts）。散射材质的像素 rgb 换成颜色里不散射的部分，不做反射。
  * 合成：颜色 += 命中的把握 · (w · 反射 - E)。
  */
 export const SURFACE_FORMATS: readonly GPUTextureFormat[] = ['rgba16float', 'rgba8unorm', 'rgba16float'];
@@ -393,6 +395,8 @@ export interface Lighting {
 export class RenderSystem {
   readonly graphicsDevice: GraphicsDevice;
   readonly features: RootRenderFeature[] = [];
+  /** 场景里用到的次表面散射材质（网格特性上传材质时登记槽位，合成器做模糊时读核）。 */
+  readonly subsurfaceMaterials = new SubsurfaceMaterials();
   /** 这一帧的视图，由合成器在 Collect 时填。 */
   readonly views: RenderView[] = [];
   /** 这一帧的光照，由合成器在 Collect 时从 Light 组件收集。 */

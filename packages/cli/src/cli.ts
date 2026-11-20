@@ -51,6 +51,8 @@ Game
   taa [on|off]                                      temporal anti-aliasing instead of FXAA (no argument toggles)
   ao [on|off] [--radius <m>]                        screen-space ambient occlusion, GTAO (no argument toggles)
   blur [on|off] [--shutter s] [--maxPixels n]       motion blur (no argument toggles)
+  sss [on|off] [--entity e] [--width m] [--translucency t]
+                                                    subsurface scattering blur; --entity gives that entity's models skin scattering (no argument toggles)
   ssgi [on|off] [--radius m] [--thickness m] [--intensity x] [--feedback f]
                                                     screen-space global illumination (indirect diffuse light, replaces GTAO; no argument toggles)
   contact [on|off] [--length m] [--steps n] [--thickness t]
@@ -111,6 +113,9 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     out: { type: 'string' },
     callers: { type: 'string' },
     radius: { type: 'string' },
+    entity: { type: 'string' },
+    width: { type: 'string' },
+    translucency: { type: 'string' },
     maxRoughness: { type: 'string' },
     thickness: { type: 'string' },
     maxSteps: { type: 'string' },
@@ -347,6 +352,11 @@ const commands: Record<string, () => Promise<unknown>> = {
   contact: () => call('contact', {
     ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
     ...Object.fromEntries((['length', 'steps', 'thickness'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
+  }),
+  sss: () => call('sss', {
+    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...(options.entity ? { entity: options.entity } : {}),
+    ...Object.fromEntries((['width', 'translucency'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
   }),
   ssgi: () => call('ssgi', {
     ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),

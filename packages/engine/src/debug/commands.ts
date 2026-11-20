@@ -6,6 +6,9 @@
  * （`路径#导出名`）或 # 后面的部分找。
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
+import { Model } from '../rendering/components';
+import { Material } from '../rendering/Material';
+import { Transform } from '../engine/transform';
 import type { EntityId } from '../data/prop';
 import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
@@ -69,7 +72,27 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     for (const key of ['radius', 'thickness', 'intensity', 'feedback'] as const) if (typeof args[key] === 'number') gi[key] = args[key];
     return { enabled: gi.enabled, radius: gi.radius, thickness: gi.thickness, intensity: gi.intensity, feedback: gi.feedback };
   });
-  debug.command('ssr','Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
+  debug.command('sss', 'Subsurface scattering blur of the main view (compositor switch). args: on (true/false; omitted toggles), entity (id or name): the models of this entity and its children get Stride\'s skin scattering while on (width, translucency override it) and lose it while off.', (args) => {
+    const sss = game.graphicsCompositor.subsurfaceScattering;
+    sss.enabled = typeof args['on'] === 'boolean' ? args['on'] : !sss.enabled;
+    const materials = new Set<string>();
+    if (args['entity'] !== undefined) {
+      const root = entityArg(game, args);
+      const under = (entity: Entity) => {
+        for (let at: Entity | undefined = entity; at; at = (at.get(Transform) as { parent?: Entity } | undefined)?.parent) if (at === root) return true;
+        return false;
+      };
+      const settings = Object.fromEntries((['width', 'translucency'] as const).filter((key) => typeof args[key] === 'number').map((key) => [key, args[key] as number]));
+      for (const entity of game.entities.ids().map((id) => game.entities.entity(id)).filter(under)) {
+        const material = Material.byId(entity.get(Model)?.material ?? 0);
+        if (!material) continue;
+        material.setSubsurfaceScattering(sss.enabled ? settings : undefined);
+        materials.add(material.name);
+      }
+    }
+    return { enabled: sss.enabled, materials: [...materials], scatteringMaterials: game.renderSystem.subsurfaceMaterials.count };
+  });
+  debug.command('ssr', 'Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
     const ssr = game.graphicsCompositor.screenSpaceReflections;
     ssr.enabled = typeof args['on'] === 'boolean' ? args['on'] : !ssr.enabled;
     for (const key of ['maxRoughness', 'thickness', 'maxSteps'] as const) if (typeof args[key] === 'number') ssr[key] = args[key];

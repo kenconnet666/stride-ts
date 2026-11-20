@@ -119,6 +119,12 @@ export function color4(value: StrideValue | undefined): [number, number, number,
   return [asNumber(c['R'], 1), asNumber(c['G'], 1), asNumber(c['B'], 1), asNumber(c['A'], 1)];
 }
 
+/** Color3（{R, G, B}，原样不换色彩空间）；没写的通道用 fallback 里的。 */
+export function color3(value: StrideValue | undefined, fallback: readonly [number, number, number]): [number, number, number] {
+  const c = asObject(value) ?? {};
+  return [asNumber(c['R'], fallback[0]), asNumber(c['G'], fallback[1]), asNumber(c['B'], fallback[2])];
+}
+
 export function vec2(value: StrideValue | undefined, fallback: number): [number, number] {
   const v = asObject(value) ?? {};
   return [asNumber(v['X'], fallback), asNumber(v['Y'], fallback)];

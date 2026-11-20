@@ -323,6 +323,7 @@ export class ContentManager {
         ...(file.specularShading === false ? { specularShading: false } : {}),
         ...(file.diffuseShading === false ? { diffuseShading: false } : {}),
         ...(file.glass ? { glass: file.glass } : {}),
+        ...(file.subsurfaceScattering ? { subsurfaceScattering: file.subsurfaceScattering } : {}),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
         ...(glossinessTexture ? { glossinessMap: { ...glossinessTexture, channel: file.glossinessTexture!.channel, invert: file.glossinessTexture!.invert } } : {}),
         ...(file.emissive ? { emissive: file.emissive } : {}),

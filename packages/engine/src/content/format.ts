@@ -583,6 +583,11 @@ export interface MaterialFile {
   readonly glass?: { readonly refractiveIndex: number };
   /** 清漆，见 ClearCoatFile。 */
   readonly clearCoat?: ClearCoatFile;
+  /**
+   * 次表面散射（Stride 的 MaterialSubsurfaceScatteringFeature 和皮肤散射核）：width 是散射宽度（世界单位），translucency 是
+   * 透光度，strength、falloff 是散射核的强度和衰减（各通道）。意思同 rendering/Material.ts 的 MaterialSubsurfaceScattering。
+   */
+  readonly subsurfaceScattering?: { readonly width: number; readonly translucency: number; readonly strength: Vec3Tuple; readonly falloff: Vec3Tuple };
   /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。有 glossinessTexture 时不看它。 */
   readonly roughness?: number;
   /**
@@ -740,6 +745,8 @@ export interface SceneForwardRenderer {
   readonly renderMask?: number;
   /** 画不画透明阶段（Stride 的 TransparentRenderStage 不为 null）；画进渲染目标贴图的常常不画，贴图里就不会再出现贴图自己。 */
   readonly transparent: boolean;
+  /** 次表面散射的模糊（Stride 的 ForwardRenderer.SubsurfaceScatteringBlurEffect 不为 null）；没写是关着。 */
+  readonly subsurfaceScattering?: true;
 }
 
 /** 后处理里各效果开不开（Stride 的 PostProcessingEffects 下各效果的 Enabled），只有运行时有的效果。 */

@@ -42,6 +42,7 @@ import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
 import { Material, type MaterialShaderClearCoat, type MaterialShaderLayer, type MaterialShaderTrees, type MaterialTexture } from './Material';
+import type { SubsurfaceMaterials } from './SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { MATERIAL_STREAMS } from './shaderClass';
 import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
@@ -172,6 +173,8 @@ struct Material {
   // x 为 1 时光泽度贴图存的是粗糙度（Stride 的 Invert）；y 是 Alpha 裁剪的阈值，没有时是 -1；z 是玻璃的折射率，不是玻璃时是 0；
   // w 的各位：1 有漫反射贴图，2 有自发光贴图，4 有遮蔽贴图（法线贴图看 normalFlags，光泽度贴图看 glossinessMask）
   flags: vec4f,
+  // 次表面散射：x 是槽位（RenderSystem.subsurfaceMaterials，0 是没有），y 是强度（透光度），z 是散射宽度
+  subsurface: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
@@ -602,17 +605,19 @@ fn baseColor(in: Varyings) -> vec4f {
  * 一个光源的直射光：Lambert 漫反射加 GGX 镜面（Fresnel Schlick、Smith-Schlick-GGX 可见性），l 是指向光源的单位向量，
  * lightColor 已经乘过衰减、阴影和遮蔽（Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet）。
  */
-fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> vec3f {
+/** 一个光源照出来的漫反射和镜面反射（分开是因为次表面散射只模糊漫反射）。 */
+struct Lit { diffuse: vec3f, specular: vec3f };
+fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> Lit {
   let nDotL = max(dot(s.n, l), 0.0001);
   let lightColorNdotL = lightColor * nDotL;
-  var result = s.diffuse / PI * lightColorNdotL;
+  var result = Lit(s.diffuse / PI * lightColorNdotL, vec3f(0.0));
   if (s.hasSpecular) {
     let h = normalize(s.v + l);
     let nDotH = saturate(dot(s.n, h));
     let lDotH = saturate(dot(l, h));
     // 玻璃的菲涅耳项就是它的反射比例（MaterialSpecularMicrofacetFresnelThinGlass），放在 s.specular 里
     let fresnel = select(s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0), s.specular, s.glass);
-    result += fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0 * lightColorNdotL;
+    result.specular = fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0 * lightColorNdotL;
   }
   return result;
 }
@@ -675,7 +680,12 @@ struct SurfaceOutput {
 /** 不透明阶段给屏幕空间反射留下表面（RenderOutput.surfaceFormats、SURFACE_FORMATS）。 */
 @fragment fn fsSurface(in: Varyings, @builtin(front_facing) front: bool) -> SurfaceOutput {
   let s = shade(in, front, false);
-  return SurfaceOutput(s.color, vec4f(octahedralEncode(s.normal), s.roughness, 1.0), vec4f(s.specularWeight, 1.0), vec4f(s.environment, 1.0));
+  // 第 3 张表面的 a：次表面散射的槽位 + 强度（强度的小数部分到 0.99 为止，整数部分不会进位）。散射材质的 rgb 换成颜色里
+  // 不散射的部分（镜面反射、自发光），模糊时只糊剩下的漫反射光；这些像素不做屏幕空间反射
+  let scatters = material.subsurface.x > 0.0;
+  let scattering = select(0.0, material.subsurface.x + clamp(material.subsurface.y, 0.0, 0.99), scatters);
+  let kept = select(s.environment, s.color.rgb - s.scattered, scatters);
+  return SurfaceOutput(s.color, vec4f(octahedralEncode(s.normal), s.roughness, 1.0), vec4f(s.specularWeight, 1.0), vec4f(kept, scattering));
 }
 
 /** 单位向量的八面体编码（-1..1 的两个数）：法线放进两个通道，比存 xyz 少一个通道、精度均匀。 */
@@ -693,6 +703,8 @@ struct Shaded {
   specularWeight: vec3f,
   /** 加进颜色里的环境镜面反射。 */
   environment: vec3f,
+  /** 加进颜色里的漫反射光（直射、环境、天空、屏幕空间的间接光）。 */
+  scattered: vec3f,
 };
 
 /** 一个像素的光照；coatPass 为真时是清漆的那一遍。 */
@@ -754,7 +766,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     glass = thinGlass(base.rgb, nDotV, material.flags.z);
   }
   let surface = Surface(n, v, diffuse, select(specular, glass.reflectance, isGlass), hasSpecular, isGlass, alphaR, nDotV);
-  var direct = vec3f(0.0);
+  var direct = Lit(vec3f(0.0), vec3f(0.0));
   let lightCount = u32(view.sky.z);
   let shadowLight = i32(view.sky.w);
   for (var i = 0u; i < lightCount; i++) {
@@ -763,7 +775,9 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     if (i32(i) == shadowLight) {
       shadow = computeShadow(in.world, n, max(dot(n, l), 0.0001), in.depth) * screenContactShadow(in.position);
     }
-    direct += shadeLight(surface, l, view.lightColors[i].rgb * shadow * directOcclusion);
+    let lit = shadeLight(surface, l, view.lightColors[i].rgb * shadow * directOcclusion);
+    direct.diffuse += lit.diffuse;
+    direct.specular += lit.specular;
   }
   // 点光、聚光：距离衰减（LightUtil.GetDistanceAttenuation），聚光再乘角度衰减（GetAngularAttenuation）
   for (var i = 0u; i < u32(view.locals.x); i++) {
@@ -782,10 +796,13 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0) {
       attenuation *= computeLocalShadow(u32(light.direction.w), in.world, n, max(dot(n, l), 0.0001), light.position.xyz);
     }
-    direct += shadeLight(surface, l, light.color.rgb * attenuation * directOcclusion);
+    let lit = shadeLight(surface, l, light.color.rgb * attenuation * directOcclusion);
+    direct.diffuse += lit.diffuse;
+    direct.specular += lit.specular;
   }
-  // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致
-  var color = direct * PI;
+  // 直射光的总和乘 π（MaterialSurfaceLightingAndShading："*PI over hemisphere"），光源强度因此和 Stride 的场景一致。
+  // scattered 是所有漫反射光（次表面散射模糊的就是它），镜面反射和自发光另加
+  var scattered = direct.diffuse * PI;
 
   // 环境光和天空盒光都没有的场景（只有直射光）整段跳过
   let hasAmbient = any(view.ambientColor.rgb > vec3f(0.0));
@@ -798,27 +815,26 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     environmentSpecular = select(specular * dfg.x + dfg.y, glass.reflectance, isGlass);
   }
   if (hasAmbient || hasSky) {
-    color += diffuse * view.ambientColor.rgb * ao;
+    scattered += diffuse * view.ambientColor.rgb * ao;
     environment = environmentSpecular * view.ambientColor.rgb * ao;
     if (hasSky) {
       let skyIntensity = view.sky.x * ao;
-      color += diffuse * evaluateSH(skyDirection(n)) * skyIntensity;
+      scattered += diffuse * evaluateSH(skyDirection(n)) * skyIntensity;
       if (hasSpecular) {
         let reflection = skyDirection(reflect(-v, n));
         environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
       }
     }
-    color += environment;
   }
   // 屏幕空间的间接光（近处表面反射过来的漫反射光；材质自己的遮蔽照样乘）
-  color += diffuse * screen.xyz * occlusion.x;
+  scattered += diffuse * screen.xyz * occlusion.x;
 
   // 自发光：a 不小于 0 时输出的 alpha 用它（Stride 的 UseAlpha）
   let emitted = emissiveColor(in);
-  color += layerEmissive(in, emitted.rgb);
+  let color = scattered + direct.specular * PI + environment + layerEmissive(in, emitted.rgb);
   let alpha = select(base.a, emitted.a, emitted.a >= 0.0);
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
-  return Shaded(effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect), n, roughness, environmentSpecular, environment);
+  return Shaded(effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect), n, roughness, environmentSpecular, environment, scattered);
 }`;
 
 /**
@@ -1005,7 +1021,7 @@ const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
 const LOCAL_SHADOW_FLOATS = 104;
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
-const MATERIAL_BYTES = 224;
+const MATERIAL_BYTES = 240;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 /** 网格参数的 uniform：positionOffset、positionScale、uvTransform 各一个 vec4，再加 flags，补齐到 16 字节。 */
@@ -1231,7 +1247,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials));
   }
 
 
@@ -1391,6 +1407,8 @@ function grow(array: Uint32Array, capacity: number): Uint32Array<ArrayBuffer> {
 class Gpu {
   readonly device: GPUDevice;
   readonly #resources: GpuResources;
+  /** 上传材质时给次表面散射的材质登记槽位（RenderSystem.subsurfaceMaterials）。 */
+  readonly #subsurface: SubsurfaceMaterials;
   readonly #unclippedDepth: boolean;
   /** 着色器按自发光分变体：默认的是 ''，颜色树的按它的代码。 */
   readonly #modules = new Map<string, GPUShaderModule>();
@@ -1444,9 +1462,10 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials) {
     this.device = device;
     this.#resources = resources;
+    this.#subsurface = subsurface;
     this.#unclippedDepth = unclippedDepth;
     this.#viewLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature view',
@@ -1975,6 +1994,8 @@ class Gpu {
       floats.set(uv(gloss), 48);
       const textures = (slot ? 1 : 0) | (emissiveTexture ? 2 : 0) | (occlusion.texture ? 4 : 0);
       floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, material.glass?.refractiveIndex ?? 0, textures], 52);
+      const scattering = material.subsurfaceScattering;
+      floats.set([this.#subsurface.slotOf(material), scattering?.translucency ?? 0, scattering?.width ?? 0, 0], 56);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});

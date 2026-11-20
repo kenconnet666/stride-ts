@@ -26,7 +26,7 @@ import { applyColorKey, bleedTransparentColors, encodePng, maskAlpha } from '../
 import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { importColorTree } from './particles.ts';
-import { asNumber, asObject, color4, linearColor, parseAssetReference, vec2, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, color3, color4, linearColor, parseAssetReference, vec2, type StrideObject, type StrideValue } from './yaml.ts';
 
 /** 材质导入用到的导入器的东西：工程、工具、选项，警告记到导入器的列表里，文件按内容路径写到输出目录。 */
 export interface MaterialImportContext {
@@ -106,9 +106,7 @@ export class MaterialImporter {
       this.#context.warnings.push(`${asset.file}: specular model ${specularModel.$type} is not supported yet; using the microfacet model`);
     }
     // 还没做的特性要说出来，不能悄悄忽略
-    for (const feature of ['SubsurfaceScattering', 'Tessellation']) {
-      if (attributes[feature]) this.#context.warnings.push(`${asset.file}: material feature ${feature} is not supported yet; ignored`);
-    }
+    if (attributes['Tessellation']) this.#context.warnings.push(`${asset.file}: material feature Tessellation is not supported yet; ignored`);
     // 漫反射同理：颜色（Diffuse）和着色模型（DiffuseModel）缺一个就不算漫反射光照（只有自发光的激光、玻璃）
     const diffuseShading = attributes['Diffuse'] !== undefined && attributes['DiffuseModel'] !== undefined;
     // 化不成固定槽的属性整棵树放进 trees（最底下一层盖满的材质层）；固定槽里留个占位的值，只用来定工作流
@@ -141,6 +139,7 @@ export class MaterialImporter {
       ...this.#transparency(asObject(attributes['Transparency']), asset, uvScale),
       ...this.#cullMode(attributes['CullMode'], asset),
       ...await this.#clearCoat(asObject(attributes['ClearCoat']), asset, uvScale),
+      ...this.#subsurfaceScattering(asObject(attributes['SubsurfaceScattering']), asset),
     };
     if (material.clearCoat && material.transparency) this.#context.warnings.push(`${asset.file}: clear coat on a transparent material is not supported yet; the base pass is drawn opaque`);
     const layers = [...(trees ? [trees] : []), ...await this.#layers(asset)];
@@ -247,6 +246,27 @@ export class MaterialImporter {
           metalness: await scalar('ClearCoatMetalnessMap'),
           normal: { tree: await color('OrangePeelNormalMap'), scaleAndBias: feature['OrangePeelScaleAndBias'] !== false, isXYNormal: feature['OrangePeelIsXYNormal'] === true },
         },
+      },
+    };
+  }
+
+  /**
+   * 次表面散射（MaterialSubsurfaceScatteringFeature）：散射宽度、透光度和皮肤散射核的强度、衰减，没写的用 Stride 的默认值。
+   * 透光度贴图（TranslucencyMap）还不支持：没有贴图、后备值是 1 的（Stride 的默认）不起作用，别的才报。
+   */
+  #subsurfaceScattering(feature: StrideObject | undefined, asset: AssetEntry): Pick<MaterialFile, 'subsurfaceScattering'> {
+    if (!feature) return {};
+    const map = asObject(feature['TranslucencyMap']);
+    if (map && (parseAssetReference(map['Texture']) || this.#scalar(map, 1, asset) !== 1)) this.#context.warnings.push(`${asset.file}: subsurface scattering TranslucencyMap is not supported yet; using Translucency`);
+    const profile = asObject(feature['ProfileFunction']);
+    if (profile && profile.$type !== 'MaterialSubsurfaceScatteringScatteringProfileSkin') this.#context.warnings.push(`${asset.file}: subsurface scattering profile ${profile.$type} is not supported yet; using the skin profile`);
+    const kernel = asObject(feature['KernelFunction']);
+    return {
+      subsurfaceScattering: {
+        width: asNumber(feature['ScatteringWidth'], 0.015),
+        translucency: asNumber(feature['Translucency'], 0.83),
+        strength: color3(kernel?.['Strength'], [0.48, 0.41, 0.28]),
+        falloff: color3(kernel?.['Falloff'], [1, 0.37, 0.3]),
       },
     };
   }

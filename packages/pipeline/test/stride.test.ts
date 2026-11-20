@@ -158,6 +158,7 @@ describe('导入 Stride 场景', () => {
     leaf: '11111111-0000-0000-0000-0000000000a3',
     wave: '11111111-0000-0000-0000-0000000000a4',
     menuLibrary: '11111111-0000-0000-0000-0000000000f7',
+    skin: '11111111-0000-0000-0000-0000000000b1',
   };
   // 法线贴图用：一个带法线和 UV 的四边形（两个三角形，z = 0，法线 +Z）
   const quadData = Buffer.from(new Float32Array([
@@ -418,6 +419,17 @@ describe('导入 Stride 场景', () => {
       '            Scale: {X: 128.0, Y: 128.0}', '            UseRandomTextureCoordinates: true',
       '        ClearCoatGlossinessMap: !ComputeFloat', '            Value: 1.0',
       '        OrangePeelScaleAndBias: false', '        OrangePeelIsXYNormal: true',
+      'Layers: {}',
+    ].join('\n'),
+    // 次表面散射：宽度和核的强度写了，透光度、衰减用 Stride 的默认值
+    'Assets/Materials/Skin.sdmat': [
+      '!MaterialAsset', `Id: ${ids.skin}`, 'Attributes:',
+      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 0.8, B: 0.7, A: 1.0}',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}',
+      '    SubsurfaceScattering: !MaterialSubsurfaceScatteringFeature', '        ScatteringWidth: 0.03',
+      '        TranslucencyMap: !ComputeTextureScalar', '            FallbackValue: {Value: 1.0}',
+      '        ProfileFunction: !MaterialSubsurfaceScatteringScatteringProfileSkin {}',
+      '        KernelFunction: !MaterialSubsurfaceScatteringScatteringKernelSkin', '            Strength: {R: 0.5, G: 0.4, B: 0.3}',
       'Layers: {}',
     ].join('\n'),
     // 没给材质的程序模型（CSharpIntermediate 的激光：圆柱，材质由实体的 Materials 覆盖）
@@ -880,6 +892,16 @@ describe('导入 Stride 场景', () => {
       },
       coat: { glossiness: float(1), invert: false, metalness: float(0), normal: { tree: { $type: 'computeColor', value: [0, 0, 0, 1] }, scaleAndBias: false, isXYNormal: true } },
     });
+  });
+
+  test('次表面散射导出宽度、透光度和散射核，没写的用 Stride 皮肤的默认值', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-skin');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
+    await importer.importAsset(project.byPath('Game/Materials/Skin')!);
+    expect(importer.warnings).toEqual([]);
+    const skin = JSON.parse(await readFile(path.join(out, 'Game/Materials/Skin.material.json'), 'utf8')) as MaterialFile;
+    expect(skin.subsurfaceScattering).toEqual({ width: 0.03, translucency: 0.83, strength: [0.5, 0.4, 0.3], falloff: [1, 0.37, 0.3] });
   });
 
   test('玻璃的镜面模型导出折射率；漫反射缺着色模型时不算漫反射光照', async () => {

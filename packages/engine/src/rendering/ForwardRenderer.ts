@@ -28,6 +28,7 @@ import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { TemporalAntialiasing } from './TemporalAntialiasing';
 import { AmbientOcclusion } from './AmbientOcclusion';
 import { ScreenSpaceGlobalIllumination } from './ScreenSpaceGlobalIllumination';
+import { SubsurfaceScattering } from './SubsurfaceScattering';
 import { ScreenSpaceReflections } from './ScreenSpaceReflections';
 import { ContactShadows } from './ContactShadows';
 import { MotionBlur } from './MotionBlur';
@@ -115,6 +116,8 @@ export class ForwardRenderer {
   readonly ambientOcclusion: AmbientOcclusion;
   /** 屏幕空间的全局光照（默认关，开着时代替 GTAO；见 ScreenSpaceGlobalIllumination.ts）。 */
   readonly globalIllumination: ScreenSpaceGlobalIllumination;
+  /** 次表面散射的模糊（开不开照合成器的 SubsurfaceScatteringBlurEffect；见 SubsurfaceScattering.ts）。 */
+  readonly subsurfaceScattering: SubsurfaceScattering;
   /** 运动模糊（默认关，见 MotionBlur.ts）。 */
   readonly motionBlur: MotionBlur;
   /** 主画面上一帧的视图投影（不开 TAA 时运动向量用；开着时 TAA 自己记）。 */
@@ -129,6 +132,8 @@ export class ForwardRenderer {
   #temporal = false;
   /** 这一帧算屏幕空间的全局光照。 */
   #indirect = false;
+  /** 这一帧做次表面散射。 */
+  #scatter = false;
   /** 时间抗锯齿（默认关，开着时代替后处理里的 FXAA；见 TemporalAntialiasing.ts）。 */
   readonly temporalAntialiasing: TemporalAntialiasing;
   readonly shadowMapRenderer: ShadowMapRenderer;
@@ -255,6 +260,7 @@ export class ForwardRenderer {
     this.temporalAntialiasing = new TemporalAntialiasing(renderSystem.device);
     this.ambientOcclusion = new AmbientOcclusion(renderSystem.device);
     this.globalIllumination = new ScreenSpaceGlobalIllumination(renderSystem.device);
+    this.subsurfaceScattering = new SubsurfaceScattering(renderSystem.device);
     this.screenSpaceReflections = new ScreenSpaceReflections(renderSystem.device, renderSystem.resources.linearClamp);
     this.contactShadows = new ContactShadows(renderSystem.device);
     this.motionBlur = new MotionBlur(renderSystem.device);
@@ -281,7 +287,8 @@ export class ForwardRenderer {
   }
 
   /** 按场景的合成器设置：主画面的清屏色、后处理开关、画不画阴影，和先画的渲染目标贴图。 */
-  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask }: CompositorSettings): void {
+  configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask, subsurfaceScattering }: CompositorSettings): void {
+    this.subsurfaceScattering.enabled = subsurfaceScattering === true;
     this.particlesOverUI = particlesOverUI === true;
     this.#mainView.cullingMask = renderMask ?? RENDER_GROUP_ALL;
     this.clearColor.set(r, g, b, a);
@@ -386,19 +393,21 @@ export class ForwardRenderer {
     // 场景里有 UI、或者粒子画在 UI 上面时留着深度缓冲（它们在后处理之后和它比深度），否则丢掉（分块渲染的 GPU 上省带宽）
     const particles = context.game.particles;
     const reflect = this.hasCamera && post && this.screenSpaceReflections.enabled && this.quality.screenSpaceReflections;
-    const keepDepth = temporal || reflect || blur || blur || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
+    // 次表面散射要表面里的槽位和强度：场景里有散射材质才开（同屏幕空间反射，用写表面的不透明阶段）
+    this.#scatter = this.hasCamera && post && this.subsurfaceScattering.enabled && this.quality.subsurfaceScattering && renderSystem.subsurfaceMaterials.count > 0;
+    const keepDepth = temporal || reflect || blur || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
     // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
     if (this.picker.pending) frame.pass('ScenePicker', (pass) => pass.sideEffect(), () => this.picker.draw(context, encoder, mainView, canvas.width, canvas.height));
     if (post) {
       const color = graph.texture({ label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT });
-      const surfaces = reflect ? SURFACE_FORMATS.map((format, i) => graph.texture({ label: `ForwardRenderer surface ${i}`, width: canvas.width, height: canvas.height, format })) : undefined;
+      const surfaces = reflect || this.#scatter ? SURFACE_FORMATS.map((format, i) => graph.texture({ label: `ForwardRenderer surface ${i}`, width: canvas.width, height: canvas.height, format })) : undefined;
       this.#viewPasses(context, frame, mainView, this.#hdrOutput(color, surfaces), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
       if (this.#indirect) this.globalIllumination.capture(frame, color);
       const velocity = temporal || blur ? this.#velocityPass(context, frame, depth) : undefined;
       // 反射在后处理之前合成进画面（同 Stride 的 LocalReflections 排在后处理的最前面）
-      const reflected = surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity) : color;
+      const reflected = reflect && surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity) : color;
       // TAA 做了抗锯齿，后处理里就不再做 FXAA
       const antialiased = temporal ? this.temporalAntialiasing.record(frame, reflected, depth, this.#mainView, velocity!) : reflected;
       // 运动模糊在抗锯齿之后、泛光这些之前（亮的东西糊开以后再泛光）
@@ -415,6 +424,7 @@ export class ForwardRenderer {
     if (this.#mainView.screenOcclusion && !this.#mainView.screenIndirect) this.ambientOcclusion.flush();
     if (this.#mainView.screenIndirect) this.globalIllumination.flush();
     if (reflect) this.screenSpaceReflections.flush();
+    if (this.#scatter) this.subsurfaceScattering.flush();
     if (this.#mainView.screenShadow) this.contactShadows.flush();
     if (blur) this.motionBlur.flush();
     if (temporal) {
@@ -432,6 +442,7 @@ export class ForwardRenderer {
     this.temporalAntialiasing.destroy();
     this.ambientOcclusion.destroy();
     this.globalIllumination.destroy();
+    this.subsurfaceScattering.destroy();
     this.screenSpaceReflections.destroy();
     this.contactShadows.destroy();
     this.motionBlur.destroy();
@@ -513,6 +524,10 @@ export class ForwardRenderer {
       pass.end();
     });
     if (surfaces.length === 0 || !view) return;
+    // 次表面散射：不透明的画完、透明的画上去之前，把散射材质的漫反射光糊开（第 3 张表面里有槽位和强度）
+    if (view === this.#mainView && this.#scatter && isGraphTexture(target) && !isGraphTexture(depth)) {
+      this.subsurfaceScattering.record(frame, target, surfaces[2]!, depth, view, renderSystem.subsurfaceMaterials);
+    }
     frame.pass(`${label} transparent`, (pass) => {
       if (isGraphTexture(target)) pass.readWrite(target);
       else pass.sideEffect();
@@ -658,9 +673,10 @@ export class ForwardRenderer {
     const reflections = settings?.localReflections !== undefined && this.quality.screenSpaceReflections ? this.screenSpaceReflections.warm() : undefined;
     const temporal = this.quality.antialiasing ? this.temporalAntialiasing.warm() : undefined;
     const indirect = this.quality.globalIllumination ? this.globalIllumination.warm() : undefined;
+    const scatter = this.subsurfaceScattering.enabled && this.quality.subsurfaceScattering ? this.subsurfaceScattering.warm() : undefined;
     const contact = this.quality.contactShadows ? this.contactShadows.warm() : undefined;
     const blur = this.quality.motionBlur ? this.motionBlur.warm() : undefined;
-    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, indirect, contact, blur]).then(() => undefined);
+    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, indirect, scatter, contact, blur]).then(() => undefined);
   }
 
   /**

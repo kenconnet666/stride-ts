@@ -22,7 +22,7 @@ import type { ParticleEmitter } from '../ParticleEmitter';
 import { RandomOffset } from '../random';
 import { UpdaterColorOverTime, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from '../updaters';
 import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../../weather/WindField';
-import { OCCLUSION_WGSL } from '../../weather/PrecipitationOcclusion';
+import { OCCLUSION_WGSL } from '../../weather/SkyOcclusion';
 
 /** 一个粒子在存储缓冲里占的字节（WGSL 的 Particle）。 */
 export const PARTICLE_BYTES = 96;
@@ -76,7 +76,7 @@ interface KernelPart {
 /** 拼好的内核。 */
 export interface GpuKernel {
   readonly code: string;
-  /** 用遮挡（绑定 2、3 是深度图和它的视图投影，见 weather/PrecipitationOcclusion）。 */
+  /** 用遮挡（绑定 2、3 是深度图和它的视图投影，见 weather/SkyOcclusion）。 */
   readonly occluded: boolean;
   /** data 里一共几个 vec4。 */
   readonly slots: number;

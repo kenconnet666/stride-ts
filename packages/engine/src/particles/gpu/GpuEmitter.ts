@@ -151,7 +151,8 @@ export class GpuEmitter {
     const label = `GPU particles ${emitter.name || 'emitter'}`;
     const size = this.ring.capacity;
     // 新建的缓冲是 0：life 是 0，都是死的
-    this.#particles = device.createBuffer({ label, size: size * PARTICLE_BYTES, usage: GPUBufferUsage.STORAGE });
+    // COPY_SRC：调试时读回（read）
+    this.#particles = device.createBuffer({ label, size: size * PARTICLE_BYTES, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     this.#simData = new Float32Array((HEADER_VEC4S + Math.max(this.kernel.slots, 1)) * 4);
     this.#simBits = new Uint32Array(this.#simData.buffer);
     this.#sim = device.createBuffer({ label: `${label} simulate`, size: this.#simData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -241,6 +242,20 @@ export class GpuEmitter {
       pass.setBindGroup(0, this.#stepGroup, [i * STAGE_STRIDE]);
       pass.dispatchWorkgroups(Math.ceil(this.#sortSize / WORKGROUP_SIZE));
     }
+  }
+
+  /** 调试、测试用：把粒子缓冲读回来（每个粒子 PARTICLE_BYTES / 4 个数，排法见 PARTICLE_WGSL：位置 0..2、寿命 3、速度 4..6）。 */
+  async read(): Promise<Float32Array> {
+    const size = this.ring.capacity * PARTICLE_BYTES;
+    const staging = this.#device.createBuffer({ label: 'GPU particles readback', size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const encoder = this.#device.createCommandEncoder({ label: 'GPU particles readback' });
+    encoder.copyBufferToBuffer(this.#particles, 0, staging, 0, size);
+    this.#device.queue.submit([encoder.finish()]);
+    await staging.mapAsync(GPUMapMode.READ);
+    const data = new Float32Array(staging.getMappedRange().slice(0));
+    staging.unmap();
+    staging.destroy();
+    return data;
   }
 
   destroy(): void {

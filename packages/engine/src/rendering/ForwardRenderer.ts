@@ -356,9 +356,14 @@ export class ForwardRenderer {
     const probes = renderSystem.reflectionProbes;
     probes.enabled = this.quality.reflectionProbes;
     const probeView = this.hasCamera ? probes.begin(context) : undefined;
+    // 天空遮挡（从上往下的深度图，雨雪等用）：有人用、要重画的帧当作一个视图，和主画面一起剔除
+    const sky = renderSystem.skyOcclusion;
+    sky.enabled = this.quality.skyOcclusion;
+    const skyView = this.hasCamera ? sky.begin(this.#mainView.eye, context.time.total) : undefined;
     const views = [
       ...(this.hasCamera ? [this.#mainView] : []),
       ...(probeView ? [probeView] : []),
+      ...(skyView ? [skyView] : []),
       ...this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view)),
     ];
 
@@ -384,6 +389,8 @@ export class ForwardRenderer {
       // 阴影图集在图外面（着色时经光照的绑定组读它）：算副作用
       frame.pass('ShadowMapRenderer', (pass) => pass.sideEffect(), () => this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews));
     }
+    // 天空遮挡：能挡阳光的才挡天，用阴影投射者的阶段画（管线和阴影共用）；贴图在图外面，算副作用
+    if (skyView) frame.pass('SkyOcclusion', (pass) => pass.sideEffect(), () => sky.draw(context, encoder, renderSystem, this.shadowMapRenderer.casterStage));
     const probeTarget = probeView && probes.captureTarget();
     if (probeView && probeTarget) {
       const size = probeView.width;

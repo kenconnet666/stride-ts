@@ -1088,6 +1088,24 @@ export interface SceneDayNightCycle {
   readonly moonPhase?: number;
 }
 
+/** 风源（Stride 没有，见 weather/WindField.ts 的 WindZone 组件）：没写的用组件的默认值。 */
+export interface SceneWindZone {
+  readonly mode?: 'directional' | 'spherical';
+  readonly strength?: number;
+  readonly turbulence?: number;
+  readonly pulseMagnitude?: number;
+  readonly pulseFrequency?: number;
+  readonly radius?: number;
+}
+
+/** 雨雪（Stride 没有，见 weather/Precipitation.ts）：没写的用组件的默认值；强度以后由天气状态给。 */
+export interface ScenePrecipitation {
+  readonly kind?: 'rain' | 'snow';
+  readonly intensity?: number;
+  readonly radius?: number;
+  readonly height?: number;
+}
+
 /** Stride 的 AnimationComponent：按名字列出的剪辑（内容路径），脚本按名字播放。 */
 export interface SceneAnimation {
   readonly animations: readonly { readonly name: string; readonly clip: string }[];
@@ -1285,6 +1303,8 @@ export interface SceneEntityFile {
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     readonly dayNightCycle?: SceneDayNightCycle;
     readonly volumetricClouds?: SceneVolumetricClouds;
+    readonly windZone?: SceneWindZone;
+    readonly precipitation?: ScenePrecipitation;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;

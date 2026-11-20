@@ -1,10 +1,17 @@
-import { describe, expect, test } from 'vitest';
+import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { ContentManager } from '../src/content/ContentManager';
+import type { SceneFile } from '../src/content/format';
+import { checkEntity } from '../src/editor/fields';
+import { Game } from '../src/games/Game';
+import { Precipitation } from '../src/weather/Precipitation';
+import { WindZone } from '../src/weather/WindField';
 import { buildKernel } from '../src/particles/gpu/kernel';
 import { ParticlePool } from '../src/particles/ParticlePool';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { UpdaterWind } from '../src/particles/updaters';
 import { precipitationEmitter } from '../src/weather/Precipitation';
-import { occlusionCenter, PrecipitationOcclusion } from '../src/weather/PrecipitationOcclusion';
+import { SkyOcclusion, skyOcclusionCenter } from '../src/weather/SkyOcclusion';
 import { Matrix } from '../src/mathematics/Matrix';
 import { fakeGpu, stubGpuGlobals } from './fakeGpu';
 import { GPU_LOCAL_WINDS, gust, packWind, WindField, type LocalWind } from '../src/weather/WindField';
@@ -95,26 +102,38 @@ describe('雨雪', () => {
   });
 });
 
-describe('雨雪的遮挡（从上往下的深度图）', () => {
-  test('中心按格子吸附在相机上；挪出一格或者到了刷新间隔才重画，没有雨雪时不画；画完下一帧开头才交给粒子', () => {
+describe('天空遮挡（从上往下的深度图）', () => {
+  test('没人用就不画、不建贴图；中心按纹素吸附；走远了或者到了刷新间隔才重画；画完下一帧开头才换成对外那张、版本号加一', () => {
     stubGpuGlobals();
-    const { device, writes } = fakeGpu();
-    const occlusion = new PrecipitationOcclusion(device);
-    expect(occlusionCenter({ x: 5.9, y: 1.2, z: -2.1 }, 4)).toEqual([4, 0, -4]);
-    expect(occlusion.begin({ x: 0, y: 0, z: 0 }, 0)).toBeUndefined();
-    occlusion.active = true;
-    const view = occlusion.begin({ x: 0.5, y: 0, z: 0 }, 0)!;
+    const { device, calls, writes } = fakeGpu();
+    const sky = new SkyOcclusion(device);
+    Object.assign(sky, { size: 64, resolution: 512, redrawDistance: 8, refreshInterval: 1 });
+    expect(skyOcclusionCenter({ x: 5.06, y: 1.2, z: -2.1 }, 0.125)).toEqual([5.0, 1.25, -2.125]);
+    expect(sky.begin({ x: 0, y: 0, z: 0 }, 0)).toBeUndefined();
+    expect(calls.some((call) => call.method === 'createTexture')).toBe(false);
+    sky.use();
+    const view = sky.begin({ x: 0.3, y: 0, z: 0 }, 0)!;
     // 正交、从上往下：中心正下方的点在画面中间
-    const c = Matrix.transformPoint(view.viewProjection, 0, 0, 0);
+    const c = Matrix.transformPoint(view.viewProjection, 0.25, 0, 0);
     expect([+c[0].toFixed(4) + 0, +c[1].toFixed(4) + 0]).toEqual([0, 0]);
-    expect(occlusion.begin({ x: 1.5, y: 0, z: 0 }, 0.5)).toBeUndefined();
-    expect(occlusion.begin({ x: 2.5, y: 0, z: 0 }, 0.6)).toBe(view);
-    expect(occlusion.begin({ x: 2.5, y: 0, z: 0 }, 1.7)).toBe(view);
-    occlusion.finish();
-    expect(writes.filter((write) => (write.buffer as GPUBuffer).label === 'Precipitation occlusion')).toHaveLength(0);
-    occlusion.commit();
-    const [write] = writes.filter((w) => (w.buffer as GPUBuffer).label === 'Precipitation occlusion');
+    sky.use();
+    expect(sky.begin({ x: 5, y: 0, z: 0 }, 0.5)).toBeUndefined();
+    sky.use();
+    expect(sky.begin({ x: 9, y: 0, z: 0 }, 0.6)).toBe(view);
+    sky.use();
+    expect(sky.begin({ x: 9, y: 0, z: 0 }, 1.7)).toBe(view);
+    // 画完：这一帧还是旧的，下一帧 begin 时换上
+    const pass = { end: () => {} } as unknown as GPURenderPassEncoder;
+    const encoder = { beginRenderPass: () => pass } as unknown as GPUCommandEncoder;
+    sky.draw({} as never, encoder, { draw: () => {}, graphicsDevice: { profiler: { passTimestamps: () => undefined } } } as never, {} as never);
+    expect(sky.version).toBe(0);
+    sky.begin({ x: 9, y: 0, z: 0 }, 1.8);
+    expect(sky.version).toBe(1);
+    const [write] = writes.filter((w) => (w.buffer as GPUBuffer).label === 'SkyOcclusion');
     expect(new Uint32Array(write!.bytes.buffer, write!.bytes.byteOffset + 64, 1)[0]).toBe(1);
+    sky.use();
+    sky.enabled = false;
+    expect(sky.begin({ x: 100, y: 0, z: 0 }, 5)).toBeUndefined();
   });
 
   test('发射器挂了遮挡时，内核多两个绑定，活着的粒子到了表面以下就死', () => {
@@ -123,10 +142,39 @@ describe('雨雪的遮挡（从上往下的深度图）', () => {
     const system = new ParticleSystem({ emitters: [{ initializers: [{ $type: 'initialSizeSeed' }] }] });
     const emitter = system.emitters[0]!;
     expect(buildKernel(emitter).occluded).toBe(false);
-    emitter.gpuOccluder = new PrecipitationOcclusion(device);
+    emitter.gpuOccluder = new SkyOcclusion(device);
     const kernel = buildKernel(emitter);
     expect(kernel.occluded).toBe(true);
     expect(kernel.code).toContain('@group(0) @binding(2) var occlusionDepth: texture_depth_2d;');
     expect(kernel.code).toContain('if (occluded(p.position)) {\n    p.life = 0.0;');
+  });
+});
+
+describe('风场和雨雪写在场景文件里', () => {
+  let native: StrideNative;
+  beforeAll(async () => {
+    native = await createStrideNative({ workerThreads: 1 });
+  });
+  afterAll(() => native?.shutdown());
+
+  test('windZone、precipitation 加出组件，没写的字段用默认值；编辑器的字段描述照它们检查', async () => {
+    const scene: SceneFile = {
+      name: 'Weather',
+      entities: [
+        { id: 'wind', name: 'Wind', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { windZone: { mode: 'spherical', strength: 5, radius: 3 } } },
+        { id: 'rain', name: 'Rain', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { precipitation: { kind: 'snow' } } },
+      ],
+    };
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => new TextEncoder().encode(JSON.stringify(scene)).buffer as ArrayBuffer });
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    const loaded = await content.loadScene('scenes/Weather', game.entities);
+    const zone = loaded.entities.get('wind')!.require(WindZone);
+    expect([zone.mode, zone.strength, zone.radius, zone.turbulence]).toEqual(['spherical', 5, 3, 0.5]);
+    const precipitation = loaded.entities.get('rain')!.require(Precipitation);
+    expect([precipitation.kind, precipitation.intensity, precipitation.radius]).toEqual(['snow', 1, 20]);
+    expect(checkEntity(scene.entities[0]!)).toEqual([]);
+    expect(checkEntity({ ...scene.entities[1]!, components: { precipitation: { intensity: 3 } } }).length).toBeGreaterThan(0);
   });
 });

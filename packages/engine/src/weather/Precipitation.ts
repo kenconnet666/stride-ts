@@ -6,7 +6,8 @@
  * 盒子里的位置、下落速度、风（UpdaterWind：风速加上下落的终端速度）、速度方向（雨按它拉长成线）。生成数不走生成器，每帧按
  * 强度 · 密度 · 面积 · dt 直接给。强度由外面给（以后天气状态驱动它，和云量、雾一起），这里不读天空。
  *
- * 被屋顶挡住的地方不下：见 PrecipitationOcclusion（从上往下的深度图）。
+ * 被屋顶挡住的地方不下：用天空遮挡（weather/SkyOcclusion，`renderSystem.skyOcclusion`，从上往下的深度图），GPU 粒子落到它记的
+ * 表面以下就死。有雨雪时每帧 use() 它，没有时它不画。
  */
 import { prop } from '../data/prop';
 import { component } from '../engine/component';
@@ -18,7 +19,6 @@ import type { Game } from '../games/Game';
 import { NO_CONTEXT } from '../particles/modules';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { Texture } from '../rendering/Texture';
-import { PrecipitationOcclusion } from './PrecipitationOcclusion';
 
 export const Precipitation = component('Precipitation', {
   kind: prop.enum(['rain', 'snow']).default('rain'),
@@ -105,8 +105,6 @@ interface State {
 
 /** 所有雨雪（`game.precipitation`）：每帧在粒子模拟之前，让内部的发射器跟着主相机、按强度给生成数。 */
 export class PrecipitationSystem {
-  /** 屋顶下不下的深度图（有 GPU、有雨雪时才建；前向渲染器按它画，见 PrecipitationOcclusion）。 */
-  occlusion: PrecipitationOcclusion | undefined;
   readonly #states = new Map<Entity, State>();
   #game: Game | undefined;
   #dt = 0;
@@ -139,12 +137,8 @@ export class PrecipitationSystem {
     for (const state of this.#states.values()) state.seen = false;
     this.#found = [];
     game.entities.run(this.#collect, game.updateTime);
-    const device = (game.graphicsDevice as Game['graphicsDevice'] | undefined)?.device;
-    if (device && this.#found.length > 0) this.occlusion ??= new PrecipitationOcclusion(device);
-    if (this.occlusion) {
-      this.occlusion.active = this.#found.length > 0;
-      this.occlusion.commit();
-    }
+    const sky = (game.renderSystem as Game['renderSystem'] | undefined)?.skyOcclusion;
+    if (this.#found.length > 0) sky?.use();
     for (const { owner, kind, radius, height, intensity } of this.#found) {
       // 种类、范围变了：重建内部的发射器
       const key = `${kind}:${radius}:${height}`;
@@ -182,7 +176,8 @@ export class PrecipitationSystem {
     const component = entity.require(ParticleSystemComponent);
     component.load(file, { ...NO_CONTEXT, texture: (path) => (path === SOFT_DOT ? softDotTexture() : undefined) });
     // 屋顶下不下：GPU 状态建之前挂上遮挡（粒子系统在这之后的 update 里建它）
-    for (const emitter of component.particleSystem.emitters) emitter.gpuOccluder = this.occlusion;
+    const sky = (game.renderSystem as Game['renderSystem'] | undefined)?.skyOcclusion;
+    for (const emitter of component.particleSystem.emitters) emitter.gpuOccluder = sky;
     const state: State = { entity, component, key, height, rate, intensity: 0, carry: 0, seen: true };
     this.#states.set(owner, state);
     return state;

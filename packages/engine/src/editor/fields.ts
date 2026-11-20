@@ -10,7 +10,7 @@
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
 import type {
-  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds,
+  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
@@ -264,6 +264,28 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       latitude: optional(number({ min: -90, max: 90, unit: 'deg' }), 35),
       north: optional(number({ unit: 'deg' }), 0),
       moonPhase: { type: number({ min: 0, max: 1 }), optional: true, default: 0.5, description: '0 new moon, 0.5 full moon' },
+    })),
+    initial: {},
+  },
+  windZone: {
+    label: 'Wind zone',
+    type: object(fields<SceneWindZone>({
+      mode: { type: oneOf('directional', 'spherical'), optional: true, default: 'directional', description: 'directional blows everywhere along the entity\'s -Z; spherical blows outward within the radius' },
+      strength: optional(number({ unit: 'm/s' }), 3),
+      turbulence: optional(number({ min: 0, unit: 'm/s' }), 0.5),
+      pulseMagnitude: { type: number({ min: 0 }), optional: true, default: 0.5, description: 'gusts swing the strength by 1 ± this' },
+      pulseFrequency: optional(number({ min: 0, unit: 'Hz' }), 0.2),
+      radius: optional(number({ min: 0, unit: 'm' }), 10),
+    })),
+    initial: {},
+  },
+  precipitation: {
+    label: 'Precipitation',
+    type: object(fields<ScenePrecipitation>({
+      kind: optional(oneOf('rain', 'snow'), 'rain'),
+      intensity: { type: number({ min: 0, max: 1 }), optional: true, default: 1, description: 'set by the weather; 0 stops it' },
+      radius: { type: number({ min: 1, unit: 'm' }), optional: true, default: 20, description: 'half size of the volume around the camera' },
+      height: { type: number({ min: 1, unit: 'm' }), optional: true, default: 12, description: 'how far above the camera it starts falling' },
     })),
     initial: {},
   },

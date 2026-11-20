@@ -21,6 +21,8 @@ import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/
 import type { ConstraintSettings } from '../physics/Simulation';
 import { Background, Camera, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds } from '../rendering/components';
 import { DayNightCycle } from '../rendering/sky/DayNightCycle';
+import { Precipitation } from '../weather/Precipitation';
+import { WindZone } from '../weather/WindField';
 import type { Material } from '../rendering/mesh/Material';
 import type { Mesh } from '../rendering/mesh/Mesh';
 import type { Cubemap, Skybox } from '../rendering/environment/Skybox';
@@ -349,6 +351,9 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
     },
     remove: drop(ReflectionProbe),
   },
+  // 风场和雨雪（Stride 没有）：没写的字段用组件的默认值
+  windZone: { add: (entity, zone) => entity.add(WindZone.with({ ...zone })), remove: drop(WindZone) },
+  precipitation: { add: (entity, precipitation) => entity.add(Precipitation.with({ ...precipitation })), remove: drop(Precipitation) },
   sprite: {
     add: (entity, sprite, { assets }) => {
       if ('sheet' in sprite) {

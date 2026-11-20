@@ -17,6 +17,7 @@ import { Atmosphere, type DynamicSky } from './sky/Atmosphere';
 import { Clouds } from './sky/VolumetricClouds';
 import type { Skybox } from './environment/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
+import { SkyOcclusion } from '../weather/SkyOcclusion';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -452,6 +453,8 @@ export class RenderSystem {
   readonly atmosphere: Atmosphere;
   /** 场景的体积云（VolumetricClouds 组件）。 */
   readonly clouds: Clouds;
+  /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
+  readonly skyOcclusion: SkyOcclusion;
 
   constructor(graphicsDevice: GraphicsDevice) {
     this.graphicsDevice = graphicsDevice;
@@ -459,6 +462,7 @@ export class RenderSystem {
     this.reflectionProbes = new ReflectionProbes(graphicsDevice.device, this.resources);
     this.atmosphere = new Atmosphere(graphicsDevice.device, this.resources);
     this.clouds = new Clouds(graphicsDevice.device, this.atmosphere);
+    this.skyOcclusion = new SkyOcclusion(graphicsDevice.device);
   }
 
   get device(): GPUDevice {
@@ -518,6 +522,7 @@ export class RenderSystem {
     this.reflectionProbes.destroy();
     this.clouds.destroy();
     this.atmosphere.destroy();
+    this.skyOcclusion.destroy();
     this.resources.destroy();
   }
 }

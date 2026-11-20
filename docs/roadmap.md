@@ -434,6 +434,13 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 2. **P3 的界面**（用户 2026-11-20 定了 Vue 加 vue-tsx-pro、资源按路径引用；骨架、场景树和资源浏览器的操作做了）：多选一起改、复制粘贴实体、加脚本组件，预制体的编辑（加载器、导入器的转换、改和删实例的成员、单独打开预制体编辑）都做了、往预制体成员下面加实体都做了；用编辑器把 P1、P2 的样例打开、改、保存、播放一遍的验收做了（2026-11-20，结果在 progress-log.md；sprite-fonts、custom-effect 的场景是代码建的，编辑器打不开）。
 3. **遗留的小项**（用到时做）：~~粒子、场景里的 UI 的点选~~（2026-11-20：点到粒子、放在 3D 里的 UI 画出来的地方返回它们的实体，全屏 UI 不参加，编辑器的选中框跟上，见 decisions.md 的"点选认粒子和放在 3D 里的 UI"）；富文本（用户定了：Markdown，编辑器里有对应的可视化编辑器）：~~运行时~~（2026-11-20：`RichTextBlock`，Markdown 子集加 Pandoc 的方括号属性，见 decisions.md 的"富文本的写法和排版"），剩编辑器里的所见即所得编辑；TouchInputs 样例（P3 之后）；P2 收尾时挪到 P4 的 MSAA、分簇、透明物体的阴影、画进渲染目标贴图的相机的阴影和后处理、没有样例触发的材质特性；csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，原因没查完（见 progress-log.md 的"P2 收尾的验收"）。
 
+4. **CI 的全量冒烟**（2026-11-20，`.github/workflows/ci.yml`，设计见 tools/README.md 的"CI"）：SwiftShader 上 WebGPU 的上下文丢失查清修掉（缺 `--use-vulkan=swiftshader`，见 lessons.md 的 WebGPU 一节），冒烟改成一个样例一台运行器，等待改成按状态和游戏时间（lessons.md 的"冒烟测试的等待"）。8c5cda9 那次：18 个跑完的冒烟过了 16 个，没过的 simple-audio（波形图的动画按帧走，按游戏时长等不够）和 platformer2d（运行器上 Chrome 20 秒没起来）随后改了（等状态；Chrome 的启动上限放到 60 秒）。当时失败的七个都是时序类，修复分别在 701a442（bepu-sample）、ce30ce2（topdown-rpg、simple-audio）、44fd3bd（platformer2d、morph-targets）、3c6c62c（first-person-shooter、csharp-intermediate）和收尾的那次提交。没有发现引擎行为类的失败，也没有要因为 SwiftShader 本身跳过的检查。顺手修的工具缺陷：`regress.ps1` 没设 `STRIDE_CHROME_ARGS` 时丢了 `--autoplay-policy`（PowerShell 单元素数组展开成空，本地的声音检查因此失败）；`stride mouse --trusted` 固定按 100 ms，帧慢时锁不上鼠标（改成按住到游戏跑过一帧）。修复后的第一次完整运行：待确认。还没过的（fc13aa0 在验证槽位 3 上用真显卡跑全部样例，机器忙）：
+   - platformer2d："W 起跳，放跳的帧"、"碰到金币：精灵马上隐藏"、"拿到的那个金币放了音效"——收尾的提交改了（等离地且换到跳的帧；按住 D 到拿到金币为止再读），本地真显卡和 SwiftShader 都过；
+   - first-person-shooter："枪口火焰、弹孔按时移除（受击拖尾 6 秒）"——收尾的提交改了（开枪以后在一次 eval 里等完、读完），本地真显卡和 SwiftShader 都过；
+   - bepu-sample 的预算（entities 457 > 366、render.instances 2522 > 2023）、space-escape 的预算（render.instances 130 > 127）——没人看过；可能是冒烟改成按游戏时间、状态等以后量预算的时刻变了，也可能和物理一帧补 0.25 秒有关；
+   - ui-particles："火跟着导火索往左走"（fire1 = [10,0,0]）——没人看过；
+   - csharp-intermediate：收尾的提交改了动画（淡入、出拳逐帧看）和导航（按游戏时间等）的等法，本地真显卡过，SwiftShader 上没跑完。下一步：看最新一次完整运行，还有失败就照 lessons.md 的做法改等法；样例里按帧走的动画（SimpleAudio 的波形图，同 Stride）以后可以改成按时间走（和 Stride 不同，要记进 decisions.md）。
+
 ### 等用户定的
 
 - 没有（2026-11-20 用户把预制体、矢量图、材质、几何的问题都照推荐定了，见 decisions.md）。

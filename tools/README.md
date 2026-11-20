@@ -49,3 +49,11 @@ StrideNative 的两个模块（`stride-native`、`stride-tools`）用 fork 仓�
 - 无头 Chrome 的帧节奏固定在 60 Hz 左右，和显示器无关；测上限要加上面的不限帧率参数。
 - 测量时机器上不要跑别的重任务，否则数字不可信。
 - 应用内置浏览器的面板隐藏时 `requestAnimationFrame` 不触发：看帧循环用 `stride open` 启动的 Chrome。
+
+## CI（`.github/workflows/ci.yml`）
+
+- **作业**：`check`（类型检查、单测）、`content`（导入样例的内容，有缓存）、`smoke`（每个样例一台运行器，矩阵从 `apps/*/scripts/smoke.ts` 生成，`regress.ps1 -Apps <样例> -Parallel 1`）。公开仓库的运行器不计时长；SwiftShader 在 4 核的运行器上画 1280x720 一帧要几百毫秒，两个样例抢一台时有的冒烟一帧都走不动。
+- **并发**：main 上同一时间只跑一次，排队的只留最新的一次（并发组 `ci-<分支>`，不取消正在跑的）；中间的提交被取消是预期的，最新的提交总会跑完整一次。PR 上新的推送取消旧的。
+- **内容的缓存键**：`content-<tools/content-key.ts 的哈希>-<Stride 分支的提交>`，只算导入实际读到的文件（`node tools/content-key.ts --list`），引擎里别的改动不重新导入。
+- **软件 WebGPU 的参数**：`STRIDE_CHROME_ARGS` 里的 `--use-vulkan=swiftshader` 不能少（为什么见 ci.yml 的注释和 docs/lessons.md 的 WebGPU 一节）。失败的样例后面附 Chrome 自己的日志里和 GPU 有关的行。
+- **作业的日志**：整次运行跑完以前 `gh run view --log` 拿不到；单个作业跑完就能拿：`gh api --allow-escape-sequences repos/<仓库>/actions/jobs/<作业 id>/logs`。

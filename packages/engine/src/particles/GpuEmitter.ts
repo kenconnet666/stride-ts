@@ -6,10 +6,10 @@
  * 上限：最近"最长寿命"秒里生成的个数（之前生成的一定死了）。这一帧最多再生成 容量 - 上限 个，多出来的丢掉，同 CPU 的粒子池满了
  * 不生成。
  */
-import type { ParticleEmitter } from '../ParticleEmitter';
-import { buildKernel, HEADER_VEC4S, PARTICLE_BYTES, WORKGROUP_SIZE, type GpuKernel } from './kernel';
-import { packShape, verticesPerParticle } from './draw';
-import { bitonicStages, SORT_KEYS_WGSL, SORT_STEP_WGSL, sortSize, STAGE_STRIDE } from './sort';
+import type { ParticleEmitter } from './ParticleEmitter';
+import { buildKernel, HEADER_VEC4S, PARTICLE_BYTES, WORKGROUP_SIZE, type GpuKernel } from './gpuKernel';
+import { packShape, verticesPerParticle } from './gpuDraw';
+import { bitonicStages, SORT_KEYS_WGSL, SORT_STEP_WGSL, sortSize, STAGE_STRIDE } from './gpuSort';
 
 /** 生成的历史：每帧一条（生成了几个，过了多久）。 */
 interface SpawnRecord {

@@ -250,12 +250,12 @@ export { Sound, SoundInstance, type PlayState } from './audio/Sound';
 export { ParticleSystem } from './particles/ParticleSystem';
 export { ParticleEmitter, type ParticleSimulation, type SimulationSpace, type RandomSeedMethod, type SortingPolicy } from './particles/ParticleEmitter';
 export { AUTO_GPU_CAPACITY, ParticleSystemComponent, ParticleSystems } from './particles/ParticleSystemComponent';
-export { GpuEmitter, SpawnRing } from './particles/gpu/GpuEmitter';
+export { GpuEmitter, SpawnRing } from './particles/GpuEmitter';
 export { gust, packWind, turbulenceAt, WindField, WindZone, GPU_LOCAL_WINDS, type GlobalWind, type LocalWind } from './weather/WindField';
 export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitationEmitter } from './weather/Precipitation';
 export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './weather/Weather';
 export { SkyOcclusion, skyOcclusionCenter, type GpuOccluder } from './weather/SkyOcclusion';
-export { buildKernel, gpuUnsupported, type GpuKernel } from './particles/gpu/kernel';
+export { buildKernel, gpuUnsupported, type GpuKernel } from './particles/gpuKernel';
 // 游戏自己的粒子模块（继承这几个基类、导出，场景里按类名找到）用到的
 export {
   forEachSpawned, ParticleInitializer, ParticleModule, ParticleSpawner, ParticleTransform, value as particleModuleValue,
@@ -269,6 +269,7 @@ export { meshEffect, MESH_EFFECT_PARAMETERS, type MeshEffect } from './rendering
 export { particleField, ParticlePool, type AnyParticleField, type CustomParticleField, type ParticleField } from './particles/ParticlePool';
 export { RandomOffset, seedFloat } from './particles/random';
 export { UISystem } from './ui/UISystem';
+export { pageHelpers, type PageHelpers } from './debug/pageHelpers';
 export { collectSemantics, semanticsKey, type SemanticsLine, type SemanticsNode, type SemanticsRole } from './ui/semantics';
 export { SemanticsLayer } from './ui/SemanticsLayer';
 export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/mesh/Mesh';

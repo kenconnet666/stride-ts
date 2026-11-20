@@ -1,10 +1,10 @@
 // SimpleAudio 的 SoundScript：一开始循环放背景音乐；每次点击（任何指针按下）重放音效，左右两个波形图回到中间、变成不透明，
-// 之后每帧往两边移开、渐隐（按帧，不按时间，同 Stride）。
+// 之后往两边移开、渐隐。和 Stride 不同：按时间走（Stride 按帧，120 Hz 的屏幕上快一倍）；60 帧每秒时和 Stride 一样。
 import { AsyncScript, ImageElement, prop, type SoundInstance } from '@stride-ts/engine';
 
-/** 每帧波形图移开的距离（相对 Canvas 的宽度）和保留的不透明度。 */
-const STEP = 0.0025;
-const FADE = 0.93;
+/** 波形图每秒移开的距离（相对 Canvas 的宽度；Stride 是每帧 0.0025）和每秒保留的不透明度（Stride 是每帧 0.93）。 */
+const SPEED = 0.0025 * 60;
+const FADE_PER_SECOND = 0.93 ** 60;
 
 export class SoundScript extends AsyncScript.props({
   page: prop.asset('uiPage').optional(),
@@ -41,9 +41,10 @@ export class SoundScript extends AsyncScript.props({
         effect.stop();
         effect.play();
       } else if (left && right) {
-        left.canvasRelativePosition = [left.canvasRelativePosition[0] - STEP, left.canvasRelativePosition[1]];
-        right.canvasRelativePosition = [right.canvasRelativePosition[0] + STEP, right.canvasRelativePosition[1]];
-        fontColor *= FADE;
+        const dt = this.game.updateTime.elapsed;
+        left.canvasRelativePosition = [left.canvasRelativePosition[0] - SPEED * dt, left.canvasRelativePosition[1]];
+        right.canvasRelativePosition = [right.canvasRelativePosition[0] + SPEED * dt, right.canvasRelativePosition[1]];
+        fontColor *= FADE_PER_SECOND ** dt;
         left.opacity = fontColor;
         right.opacity = fontColor;
       }

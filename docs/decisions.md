@@ -2,6 +2,12 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 整理：页面里的帮手只留一份；SimpleAudio 的波形图按时间走
+
+- **页面里的帮手**（等一帧、按游戏时间等、等到某个状态、按键、点击、找 UI 元素……）原来有两份：冒烟的 `PAGE_HELPERS`（一段装全局变量的字符串）和 `stride eval` 自带的几个。现在只有引擎的 `debug/pageHelpers.ts` 一份：`stride eval` 的代码里直接能用，冒烟的 `PAGE_HELPERS` 只是 `Object.assign(globalThis, strideEngine.pageHelpers(strideGame))`。`frame()` 换成等游戏的帧号变（原来等下一次 requestAnimationFrame）；游戏没在跑时退回 requestAnimationFrame，调用方的循环不会空转。
+- **SimpleAudio 的波形图**：和 Stride 不同，按时间走（每秒移开 0.15 个画布宽、不透明度每秒乘 0.93^60），60 帧每秒时和 Stride 一样；Stride 按帧走，120 Hz 的屏幕上快一倍，CI 的软件 WebGPU 上慢得冒烟要等很久。
+- **GPU 粒子的四个文件并回 `particles/`**（`GpuEmitter.ts`、`gpuKernel.ts`、`gpuDraw.ts`、`gpuSort.ts`）：目录扁平，一个模块一个文件夹。内核里的 PCG 哈希不换成 `rendering/wgsl.ts` 的 HASH3：一个是一维的 u32 哈希，一个是三维的，不是重复的代码。
+
 ## 2026-11-20 用户定的：落下的事的顺序、验收游戏、透明物体的阴影、MSAA
 
 把各阶段落下的事并成一张有序的清单（roadmap.md 的"正在做和下一步"），问了用户四件事：
@@ -183,7 +189,7 @@ P4 画面功能的下一项（`rendering/DayNightCycle.ts`、`Atmosphere.ts`，`
 
 ## 2026-11-20 GPU 粒子：环形缓冲、按模块拼计算着色器、bitonic 排序
 
-P4 的"GPU 粒子"第一步（`particles/gpu/`）：粒子从几千到几十万不掉帧，和 Stride 的粒子资源兼容，同一个发射器按需放 CPU 或 GPU。
+P4 的"GPU 粒子"第一步（`particles/GpuEmitter.ts`、`gpuKernel.ts`）：粒子从几千到几十万不掉帧，和 Stride 的粒子资源兼容，同一个发射器按需放 CPU 或 GPU。
 
 - **看过的做法**：Unity VFX Graph、UE Niagara 的 GPU 模拟用死亡列表加存活列表（原子计数、每帧压缩、间接绘制），能处理寿命差得很远的粒子；Babylon 的 WebGPU 计算粒子（`ComputeShaderParticleSystem`，C:\code\refs\Babylon.js）用环形缓冲加 emitIndex/emitCount，新粒子写在环上接着的槽里，没有原子操作和压缩；PlayCanvas 的 GPU 粒子在片元着色器里更新贴图。选环形缓冲：Stride 的粒子池本来就按环形下标生成新粒子（`SpawnedRange` 的 start、end、capacity），容量也是按"最长寿命 × 每秒最多生成数"定的，环上被覆盖的槽里的粒子一定已经死了，所以不需要死亡列表；省掉原子计数和每帧压缩。
 - **不读回存活数**：CPU 按生成的历史算上限（最近"最长寿命"秒里生成的个数），这一帧最多再生成 容量 - 上限 个，同 CPU 的池满了不生成（`SpawnRing`）。

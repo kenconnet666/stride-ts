@@ -5,7 +5,7 @@
  * bitonic 排序每一步是一次派发（k、j 两个参数，按动态偏移从一块预先写好的 uniform 里取，同样的大小共用一块），
  * n = 2^m 个元素要 m(m+1)/2 步：26 万个粒子 171 步。每步每个线程比较、交换一对。
  */
-import { PARTICLE_WGSL, WORKGROUP_SIZE } from './kernel';
+import { PARTICLE_WGSL, WORKGROUP_SIZE } from './gpuKernel';
 
 /** 动态偏移的对齐。 */
 export const STAGE_STRIDE = 256;

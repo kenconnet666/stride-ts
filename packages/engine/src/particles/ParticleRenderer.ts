@@ -18,8 +18,8 @@ import type { Vec3 } from './math';
 import type { MaterialProgram } from './material';
 import type { ParticleSystemComponent } from './ParticleSystemComponent';
 import { drawOrder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from './shapes';
-import { GPU_DRAW_WGSL } from './gpu/draw';
-import { gpuDrawLayout, type GpuEmitter } from './gpu/GpuEmitter';
+import { GPU_DRAW_WGSL } from './gpuDraw';
+import { gpuDrawLayout, type GpuEmitter } from './GpuEmitter';
 import type { ParticleEmitter } from './ParticleEmitter';
 
 /**
@@ -37,7 +37,7 @@ struct Draw {
   time: f32,
   // 点选的编号缓冲写的数：实体的变换槽位加一
   pickId: u32,
-  // 以下只有 GPU 上的粒子用（particles/gpu/draw.ts）：相机的右、上、朝后，粒子系统的位置和统一缩放、旋转，环的头和容量
+  // 以下只有 GPU 上的粒子用（particles/gpuDraw.ts）：相机的右、上、朝后，粒子系统的位置和统一缩放、旋转，环的头和容量
   cameraRight: vec4f,
   cameraUp: vec4f,
   cameraBack: vec4f,
@@ -268,7 +268,7 @@ export class ParticleRenderer {
   }
 
   /**
-   * gpu：画 GPU 上的粒子（顶点着色器读粒子缓冲，见 particles/gpu/draw.ts），片元着色器同一份。GPU 的这条在后台编
+   * gpu：画 GPU 上的粒子（顶点着色器读粒子缓冲，见 particles/gpuDraw.ts），片元着色器同一份。GPU 的这条在后台编
    * （createRenderPipelineAsync），编好之前是 undefined、这个发射器先不画：切到 GPU 时不卡那一帧。点选是一次性的请求、
    * 等不了，点选用的当场编。
    */

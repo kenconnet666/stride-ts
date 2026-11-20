@@ -7,10 +7,10 @@
  * GpuEmitter.draw（间接绘制，按活着的粒子数）；还是碰到死了的槽时输出到裁剪范围以外。画的顺序：存活列表的顺序（不排序）、
  * 从新到旧（环的头往回）或者按深度排好的（sort.ts）。
  */
-import type { UVBuilderParams } from '../material';
-import type { ParticleEmitter } from '../ParticleEmitter';
-import { BuiltinShape } from '../shapes';
-import { packCurve, PARTICLE_WGSL } from './kernel';
+import type { UVBuilderParams } from './material';
+import type { ParticleEmitter } from './ParticleEmitter';
+import { BuiltinShape } from './shapes';
+import { packCurve, PARTICLE_WGSL } from './gpuKernel';
 
 const SHAPE_KINDS: Readonly<Record<string, number>> = { shapeBuilderBillboard: 0, shapeBuilderQuad: 1, shapeBuilderHexagon: 2, shapeBuilderOrientedQuad: 3 };
 const UV_KINDS: Readonly<Record<UVBuilderParams['kind'], number>> = { whole: 0, flipbook: 1, scroll: 2 };

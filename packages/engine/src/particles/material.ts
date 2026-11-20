@@ -17,7 +17,7 @@ export type { MaterialContext } from '../rendering/mesh/colorTree';
 export type UVFrame = (remainingLife: number) => readonly [number, number, number, number];
 
 /**
- * UVBuilder 的参数（GPU 的粒子在顶点着色器里算 UV 帧，见 particles/gpu）：整张、翻页（每行几帧、几行、起始帧、速度）、
+ * UVBuilder 的参数（GPU 的粒子在顶点着色器里算 UV 帧，见 particles/GpuEmitter.ts）：整张、翻页（每行几帧、几行、起始帧、速度）、
  * 滚动（起止帧的 [左, 上, 右, 下]）。
  */
 export type UVBuilderParams =

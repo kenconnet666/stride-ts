@@ -17,8 +17,8 @@ import { value, type ParticleContext } from './modules';
 import { ParticleRenderer } from './ParticleRenderer';
 import { ParticleSystem } from './ParticleSystem';
 import type { ParticleEmitter, ParticleSimulation } from './ParticleEmitter';
-import { GpuEmitter } from './gpu/GpuEmitter';
-import { gpuUnsupported } from './gpu/kernel';
+import { GpuEmitter } from './GpuEmitter';
+import { gpuUnsupported } from './gpuKernel';
 import { UpdaterWind } from './updaters';
 
 /** simulation 是 auto 时，粒子池至少这么大的发射器放到 GPU 上（小的在 CPU 上更省：不用派发、不用排序的固定开销）。 */
@@ -64,7 +64,7 @@ export class ParticleSystemComponent extends StartupScript {
  * 所有粒子系统（`game.particles`）：每帧变换更新之后模拟；在前向渲染器的透明阶段里画，合成器要粒子画在 UI 上面时
  * （UIParticles）在 UI 之后画进画面，和场景的深度比较。
  *
- * 发射器可以放到 GPU 上模拟（particles/gpu）：每帧先定每个发射器在哪（emitter.simulation，是 auto 时看这里的 simulation），
+ * 发射器可以放到 GPU 上模拟（particles/GpuEmitter.ts）：每帧先定每个发射器在哪（emitter.simulation，是 auto 时看这里的 simulation），
  * CPU 的照常 update；GPU 的 update 只算生成几个，之后在一个计算通道里派发模拟、按深度排序（排序用的相机是上一帧的主视图）。
  * 换地方时从头模拟。
  */

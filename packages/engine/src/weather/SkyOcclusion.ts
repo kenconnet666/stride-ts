@@ -21,7 +21,7 @@ import { Matrix } from '../data/Matrix';
 import type { RenderContext, RenderStage, RenderSystem } from '../rendering/RenderSystem';
 import { RenderView } from '../rendering/RenderSystem';
 
-/** GPU 粒子的遮挡（particles/gpu 的内核按它采样）。 */
+/** GPU 粒子的遮挡（particles/gpuKernel.ts 的内核按它采样）。 */
 export interface GpuOccluder {
   readonly depthView: GPUTextureView;
   /** 视图投影（mat4）、有效位（u32，0 时不判断）和深度图的边长（u32）。 */
@@ -182,7 +182,7 @@ export function skyOcclusionCenter(eye: { readonly x: number; readonly y: number
   return [cell(eye.x), cell(eye.y), cell(eye.z)];
 }
 
-/** 内核里的遮挡判断（particles/gpu/kernel.ts 在发射器有遮挡时拼进去）：粒子在深度图记的表面以下时是 true。 */
+/** 内核里的遮挡判断（particles/gpuKernel.ts 在发射器有遮挡时拼进去）：粒子在深度图记的表面以下时是 true。 */
 export const OCCLUSION_WGSL = /* wgsl */ `
 struct Occlusion {
   viewProjection: mat4x4f,

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { packShape, SHAPE_FLAGS, SHAPE_VEC4S } from '../src/particles/gpu/draw';
-import { GpuEmitter, SpawnRing } from '../src/particles/gpu/GpuEmitter';
-import { buildKernel, gpuUnsupported, HEADER_VEC4S, WORKGROUP_SIZE } from '../src/particles/gpu/kernel';
-import { bitonicStages, sortSize } from '../src/particles/gpu/sort';
+import { packShape, SHAPE_FLAGS, SHAPE_VEC4S } from '../src/particles/gpuDraw';
+import { GpuEmitter, SpawnRing } from '../src/particles/GpuEmitter';
+import { buildKernel, gpuUnsupported, HEADER_VEC4S, WORKGROUP_SIZE } from '../src/particles/gpuKernel';
+import { bitonicStages, sortSize } from '../src/particles/gpuSort';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import type { ParticleModuleFile } from '../src/content/format';
 import { fakeGpu, stubGpuGlobals, type BufferWrite } from './fakeGpu';

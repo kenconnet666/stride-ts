@@ -7,7 +7,7 @@
  * 场景里不是引擎的模块按类型名找游戏登记的模块类（ParticleContext.module），都没有时警告后跳过。
  * 子粒子的模块按名字连到同一个粒子系统里的父发射器（children.ts）。
  *
- * 模拟可以放到 GPU 上（particles/gpu，`simulation`）：那时 update 只跑生成器（这一帧生成几个），粒子在 GPU 上初始化、更新，
+ * 模拟可以放到 GPU 上（particles/GpuEmitter.ts，`simulation`）：那时 update 只跑生成器（这一帧生成几个），粒子在 GPU 上初始化、更新，
  * 粒子池是空的。
  */
 import type { ParticleModuleFile } from '../content/format';

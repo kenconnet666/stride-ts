@@ -14,16 +14,16 @@
  * RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder；更新器 Gravity、SizeOverTime、ColorOverTime、RotationOverTime、
  * SpeedToDirection、Wind（风场的全局风和离发射器最近的 GPU_LOCAL_WINDS 个局部风源，见 weather/WindField.ts）。
  */
-import { CurveSampler } from '../curves';
-import { BuiltinShape } from '../shapes';
-import { isChildModule } from '../children';
-import { boxFrame, Initial3DRotationSeed, InitialColorSeed, InitialDirectionSeed, InitialPositionSeed, InitialRotationSeed, InitialSizeSeed, InitialSpawnOrder, InitialVelocitySeed } from '../modules';
-import type { ParticleModule } from '../modules';
-import type { ParticleEmitter } from '../ParticleEmitter';
-import { RandomOffset } from '../random';
-import { UpdaterColorOverTime, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from '../updaters';
-import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../../weather/WindField';
-import { OCCLUSION_WGSL } from '../../weather/SkyOcclusion';
+import { CurveSampler } from './curves';
+import { BuiltinShape } from './shapes';
+import { isChildModule } from './children';
+import { boxFrame, Initial3DRotationSeed, InitialColorSeed, InitialDirectionSeed, InitialPositionSeed, InitialRotationSeed, InitialSizeSeed, InitialSpawnOrder, InitialVelocitySeed } from './modules';
+import type { ParticleModule } from './modules';
+import type { ParticleEmitter } from './ParticleEmitter';
+import { RandomOffset } from './random';
+import { UpdaterColorOverTime, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from './updaters';
+import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../weather/WindField';
+import { OCCLUSION_WGSL } from '../weather/SkyOcclusion';
 
 /** 一个粒子在存储缓冲里占的字节（WGSL 的 Particle）。 */
 export const PARTICLE_BYTES = 96;

@@ -8,7 +8,7 @@ import { Precipitation, precipitationEmitter } from '../src/weather/Precipitatio
 import { fogDensity, Weather, WEATHER_PRESETS, WeatherSystem } from '../src/weather/Weather';
 import { VolumetricClouds, VolumetricFog } from '../src/rendering/components';
 import { GPU_LOCAL_WINDS, gust, type LocalWind, packWind, WindField, WindZone } from '../src/weather/WindField';
-import { buildKernel } from '../src/particles/gpu/kernel';
+import { buildKernel } from '../src/particles/gpuKernel';
 import { ParticlePool } from '../src/particles/ParticlePool';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { UpdaterWind } from '../src/particles/updaters';

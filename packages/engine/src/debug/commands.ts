@@ -11,7 +11,7 @@ import { DayNightCycle, lightRotationTowards } from '../rendering/sky/DayNightCy
 import { Material } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
 import { Texture, type TextureId } from '../graphics/Texture';
-import { PARTICLE_BYTES } from '../particles/gpu/kernel';
+import { PARTICLE_BYTES } from '../particles/gpuKernel';
 import { Precipitation } from '../weather/Precipitation';
 import { Weather, WEATHER_PRESETS, type WeatherPreset, type WeatherTarget } from '../weather/Weather';
 import type { EntityId } from '../data/prop';
@@ -22,6 +22,7 @@ import type { Game } from '../engine/Game';
 import type { MouseButton } from '../input/InputManager';
 import { keyCode } from '../input/keys';
 import { describe, type Debug } from './Debug';
+import { pageHelpers } from './pageHelpers';
 import { devtoolsBridgeVersion, sendDevtools } from './devtoolsBridge';
 
 type Args = Readonly<Record<string, unknown>>;
@@ -627,35 +628,16 @@ function vector(value: unknown, name: string): [number, number, number] {
 
 /**
  * 页面里跑一段代码（`stride eval`），结果等到 Promise 落定。能用的名字：game、engine（样例的 main.ts 挂的 strideEngine，
- * 引擎的全部导出）、entity(名字或 id)、named(名字)、frames(n)、seconds(s)（按游戏时间等）；后三个页面自己有的（冒烟的
- * PAGE_HELPERS，意思一样）用页面的。
+ * 引擎的全部导出），加上 pageHelpers 的那些（entity、named、frames、seconds、until、tap、click……，见 debug/pageHelpers.ts）。
  * - 一个表达式：结果是它的值，能直接 await。
  * - 几条语句：包进一个块里间接 eval（块里先声明上面那些名字），结果是最后一条语句的值；块里的 const、let 不留到下一次。
  *   语句里有顶层 await 时间接 eval 不支持，改成异步函数体跑，结果要用 return 给。
+ * game 不用页面的同名全局变量：画布的 id 常是 game，浏览器会把它挂成全局的 window.game。
  */
 async function evaluate(game: Game, { code }: Args): Promise<unknown> {
   if (typeof code !== 'string') throw new Error('code must be a string');
-  const all = () => game.entities.ids().map((id) => game.entities.entity(id));
-  const named = (name: string) => all().filter((entity) => entity.name === name);
-  const entity = (key: string | number) => {
-    const found = typeof key === 'number' || /^\d+$/.test(key) ? all().find((e) => e.id === Number(key)) : named(key)[0];
-    if (!found) throw new Error(`no entity ${key}`);
-    return found;
-  };
-  const frame = () => new Promise<void>((resolve) => {
-    const start = game.frames;
-    const next = () => (game.frames > start || game.status !== 'running' ? resolve() : requestAnimationFrame(next));
-    requestAnimationFrame(next);
-  });
-  const frames = async (count: number) => { for (let i = 0; i < count; i++) await frame(); };
-  const seconds = async (s: number) => {
-    // 墙钟的上限只防游戏停着时卡死
-    const end = game.updateTime.total + s, wall = performance.now() + 100000;
-    while (game.updateTime.total < end && performance.now() < wall && game.status === 'running') await frame();
-  };
-  const scope: Record<string, unknown> = { game, engine: (globalThis as { strideEngine?: unknown }).strideEngine, entity, named, frames, seconds };
-  // game 不让给页面：画布的 id 常是 game，浏览器会把它挂成全局的 window.game
-  const names = ['game', 'engine', 'entity', ...['named', 'frames', 'seconds'].filter((name) => !(name in globalThis))];
+  const scope: Record<string, unknown> = { game, engine: (globalThis as { strideEngine?: unknown }).strideEngine, ...pageHelpers(game) };
+  const names = Object.keys(scope);
   const values = names.map((name) => scope[name]);
   const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (...args: string[]) => (...values: unknown[]) => Promise<unknown>;
   try {

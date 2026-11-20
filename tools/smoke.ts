@@ -19,7 +19,8 @@ export interface Smoke {
 }
 
 /**
- * 页面里的帮手：冒烟脚本开头 `stride('eval', PAGE_HELPERS)` 装一次，之后的 eval 里直接用。
+ * 页面里的帮手：冒烟脚本开头 `stride('eval', PAGE_HELPERS)` 把它们装成页面的全局变量，之后的 eval 里直接用（实现只有一份，在引擎的
+ * debug/pageHelpers.ts；`stride eval` 不装也能用）。entity(名字或 id) 也有。
  *   frames(n)                        等 n 帧（只用来等事件传到下一帧；表示一段时间用 seconds）
  *   seconds(s)                       等游戏时间走过 s 秒：帧率随机器变（无头 Chrome 在有的机器上 60、有的 120 fps），按帧数等的时长跟着变
  *   lines()                          屏幕上的调试文字
@@ -41,64 +42,7 @@ export interface Smoke {
  *   uiClick(nameOrElement)           点它的中心
  * 样例自己的帮手在它之后装，用这些拼。
  */
-export const PAGE_HELPERS = `(() => {
-  const E = strideEngine, G = strideGame, canvas = G.graphicsDevice.canvas;
-  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
-  const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, { code }));
-  const pointer = (type, x, y, button, target = canvas) => {
-    const r = canvas.getBoundingClientRect();
-    const init = { clientX: r.left + x, clientY: r.top + y, pointerId: 1, pointerType: 'mouse', bubbles: true, button };
-    target.dispatchEvent(new PointerEvent(type, init));
-    const mouse = { pointermove: 'mousemove', pointerdown: 'mousedown', pointerup: 'mouseup' }[type];
-    (type === 'pointerdown' ? canvas : window).dispatchEvent(new MouseEvent(mouse, init));
-  };
-  globalThis.frame = frame;
-  globalThis.pointerAt = (type, x, y, target = canvas) => pointer(type, x, y, 0, target);
-  globalThis.frames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
-  globalThis.seconds = async (s) => { const end = G.updateTime.total + s; while (G.updateTime.total < end) await frame(); };
-  globalThis.until = async (fn, s) => {
-    // 墙钟的上限只是防止游戏停着时卡死（hub 的 eval 两分钟超时）
-    const end = G.updateTime.total + s, wall = performance.now() + 100000;
-    for (let value = fn(); ; value = fn()) {
-      if (value || G.updateTime.total >= end || performance.now() > wall) return value;
-      await frame();
-    }
-  };
-  globalThis.sceneChanged = async (from) => {
-    // 上限只是防止卡死（hub 的 eval 两分钟超时）；正常是换完就返回
-    const end = performance.now() + 100000;
-    while ((G.rootScene?.name === from || G.sceneFrame === undefined || G.frames <= G.sceneFrame) && performance.now() < end) await frame();
-    return G.rootScene?.name ?? null;
-  };
-  globalThis.lines = () => G.debugText.lines.map((l) => l.text);
-  globalThis.named = (name) => G.entities.ids().map((i) => G.entities.entity(i)).filter((e) => e.name === name);
-  globalThis.position = (name) => { const p = named(name)[0].require(E.Transform).position; return [p.x, p.y, p.z]; };
-  globalThis.rotation = (name) => { const q = named(name)[0].require(E.Transform).rotation; return [q.x, q.y, q.z, q.w]; };
-  globalThis.tap = async (code) => { key('keydown', code); await frames(2); key('keyup', code); await frames(2); };
-  globalThis.hold = async (code, n) => { key('keydown', code); await frames(n); const seen = lines(); key('keyup', code); await frames(2); return seen; };
-  globalThis.holdFor = async (code, s, sample) => { key('keydown', code); await seconds(s); const seen = sample?.(); key('keyup', code); await frames(2); return seen; };
-  globalThis.click = async (x, y, button = 0, during) => {
-    pointer('pointermove', x, y, button); await frame();
-    pointer('pointerdown', x, y, button); await frame();
-    const seen = await during?.(); await frame();
-    pointer('pointerup', x, y, button, window); await frames(2);
-    return seen;
-  };
-  const all = (e, out = []) => { out.push(e); for (const c of e.visualChildren) all(c, out); return out; };
-  const pages = () => G.ui.components.filter((c) => c.page?.rootElement);
-  globalThis.uiElements = () => pages().flatMap((c) => all(c.page.rootElement));
-  globalThis.uiFind = (name) => { for (const c of pages()) { const e = c.page.rootElement.findName(name); if (e) return e; } return null; };
-  globalThis.uiPoint = (target) => {
-    const e = typeof target === 'string' ? uiFind(target) : target;
-    if (!e) throw new Error('no UI element ' + target);
-    const c = pages().find((c) => all(c.page.rootElement).includes(e));
-    // 元素的位置是页面的虚拟分辨率里的，换到画布的 CSS 像素
-    const [vx, vy] = E.UISystem.virtualResolution(c, [canvas.width, canvas.height]);
-    return [e.worldPosition[0] / vx * canvas.clientWidth, e.worldPosition[1] / vy * canvas.clientHeight];
-  };
-  globalThis.uiClick = async (target) => click(...uiPoint(target));
-  return 1;
-})()`;
+export const PAGE_HELPERS = `(() => { Object.assign(globalThis, strideEngine.pageHelpers(strideGame)); return 1; })()`;
 
 interface SmokeMetric {
   readonly name: string;

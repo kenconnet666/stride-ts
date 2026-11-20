@@ -439,7 +439,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | 接触阴影 | `rendering/screenspace/ContactShadows.ts`、`stride contact` | 投阴影的方向光，全分辨率，沿深度缓冲朝光源走 16 步，只乘那盏光的直射项；起点沿重建的法线抬起、背光的面不算、挡住要靠前一点（掠射的面上不自遮挡）；Stride 没有，默认关（开了和桌面 Stride 的截图不再逐像素一致），画质档位高、极高才允许 |
 | 屏幕空间反射 | `rendering/screenspace/ScreenSpaceReflections.ts`、`stride ssr` | Hi-Z 分层步进（照 FidelityFX SSSR）、GGX 随机方向、空间上复用邻居的光线、时间累积；不透明阶段另写表面，合成时用反射换掉环境镜面反射（和 Stride 不同：它直接加，天空盒的镜面算两遍）；照合成器的 LocalReflections 开，BepuSample 开着；TPP 上看过（地面映出墙和角色，没有噪声和块状瑕疵）。还没做：粗糙表面按锥角取颜色的 mip |
 | 画质档位 | `rendering/Quality.ts`、`stride quality` | 低、中、高、极高四档，是内容要的阴影和后处理的上限，默认极高（照内容画）；TPP 的 GPU 每帧 5.07 / 4.5 / 3.1 / 2.6 ms，贴图 108 / 58 / 36 / 34 MB |
-| GPU 粒子 | `particles/gpu/`，发射器的 `simulation`、`game.particles.simulation` | 做了：环形缓冲（不读回存活数）、按模块拼计算着色器（管线后台编）、bitonic 按深度排序、间接绘制（按活着的粒子数画，派发只跑可能活着的那段环）、点选；20 万粒子 CPU 8 fps → GPU 120 fps，容量 50 万、粒子少时计算通道 0.007 ms。没做：深度缓冲碰撞（雨点落地溅起要用）、力场、碰撞体碰撞、子粒子、飘带和拖尾、按生成顺序排序、PositionArc、游戏自己的模块（这些发射器留在 CPU 上）；GPU 上的预热（WarmupTime）；排序里 j 小的步放进工作组共享内存；`kernel.ts` 自己的 PCG 哈希换成 `rendering/wgsl.ts` 共用的；`particles/gpu/` 四个文件并回 `particles/` |
+| GPU 粒子 | `particles/GpuEmitter.ts`、`gpuKernel.ts`，发射器的 `simulation`、`game.particles.simulation` | 做了：环形缓冲（不读回存活数）、按模块拼计算着色器（管线后台编）、bitonic 按深度排序、间接绘制（按活着的粒子数画，派发只跑可能活着的那段环）、点选；20 万粒子 CPU 8 fps → GPU 120 fps，容量 50 万、粒子少时计算通道 0.007 ms。没做：深度缓冲碰撞（雨点落地溅起要用）、力场、碰撞体碰撞、子粒子、飘带和拖尾、按生成顺序排序、PositionArc、游戏自己的模块（这些发射器留在 CPU 上）；GPU 上的预热（WarmupTime）；排序里 j 小的步放进工作组共享内存 |
 | 风场 | `weather/WindField.ts`：`game.wind`、`WindZone` 组件、粒子的 `UpdaterWind` | 做了：全局方向风加球形的局部风区（空间哈希），阵风和湍流 CPU、WGSL 同一个公式；GPU 粒子最多 8 个局部风区；能写进场景文件、编辑器有字段；天气状态给的风算进全局风。没做：风接植被、布料、按高度变的风速剖面、风区的盒子形状 |
 | 雨雪 | `weather/Precipitation.ts`：`Precipitation` 组件 | 做了：跟着相机的 GPU 粒子（雨、雪两套预设，强度、半宽可调），受风吹（体积往上风挪），屋檐下不下；能写进场景文件；有天气状态时种类和强度由它给。没做：落地溅起和水花（要深度缓冲碰撞）、积水的水洼、雨打水面的涟漪、雨幕、声音（地面变湿、积雪见天气状态那一行） |
 | 天气状态 | `weather/Weather.ts`：`Weather` 组件、`game.weather` | 做了：想要的天气慢慢过渡（时间常数），接管体积云、体积雾、雨雪、全局风的几个字段；七种预设；地面的湿和积雪按降水慢慢变，网格着色时淋得到的表面变湿（变暗、变光滑）、朝上的积雪（按天空遮挡判断淋不淋得到）；能写进场景文件、编辑器有字段，`stride call weather`。没做：水洼、雪的斑驳和厚度、角色身上不积雪、区域天气（几套天气在空间里混合）、闪电和雷声、天气自己随时间变（随机的天气序列） |
@@ -458,9 +458,9 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 把各阶段落下的事并成一张有序的清单，定时续跑照它从上往下做（做完的划掉、写一句结论）。顺序（用户 2026-11-20 定）：A 稳住（CI 不绿，新的回归就藏在旧的失败里）→ B 补前面阶段落下的、比 Stride 差的地方（原则：比 Stride 差的限制要补掉，不能留着当完成）→ D 把 P4 开了头的画面功能补完整 → C P3 的验收（用编辑器从零搭一个 3D 收集加躲避的小游戏）→ E 接着往下做新的。各项的过程照旧记在 progress-log.md。
 
 **A. 稳住**
-1. CI 全绿：c614824 那次的 platformer 在 CI 上一次 eval 超过两分钟（跑、站各看 20 帧骨骼，TPP 在软件 WebGPU 上一帧几秒），改成各看 8 帧，看下一次完整运行；4174f30 那次五个失败是片元阶段的贴图超了默认上限（c614824 修了）；复查旧账：bepu-sample、space-escape 的预算超了，ui-particles 的"火跟着导火索往左走"。CI 的来龙去脉见 progress-log.md 的"CI 的全量冒烟"。
+1. CI 全绿：c614824 那次的 platformer 在 CI 上一次 eval 超过两分钟（跑、站各看 20 帧骨骼，TPP 在软件 WebGPU 上一帧几秒），改成各看 8 帧（本机每帧多忙等 1 秒也过了），看下一次完整运行；4174f30 那次五个失败是片元阶段的贴图超了默认上限（c614824 修了）；复查旧账：bepu-sample、space-escape 的预算超了，ui-particles 的"火跟着导火索往左走"。CI 的来龙去脉见 progress-log.md 的"CI 的全量冒烟"。
 2. csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，查原因（P2 收尾留下的）。
-3. 整理（和功能分开提交）：`particles/gpu/` 的四个文件并回 `particles/`（目录扁平）；`kernel.ts` 自己的 PCG 哈希换成 `rendering/wgsl.ts` 的 HASH3；冒烟的 `PAGE_HELPERS` 和 `stride eval` 自带的帮手（named、frames、seconds）合成一份；SimpleAudio 的波形图按时间走（和 Stride 不同，记进 decisions.md）。
+3. ~~整理~~（2026-11-20）：`particles/gpu/` 的四个文件并回 `particles/`（`GpuEmitter.ts`、`gpuKernel.ts`、`gpuDraw.ts`、`gpuSort.ts`）；内核的 PCG 不换（它是一维的 u32 哈希，HASH3 是三维的，没有重复）；页面里的帮手只剩引擎的一份（`debug/pageHelpers.ts`，`stride eval` 直接能用，冒烟的 `PAGE_HELPERS` 只是把它装成全局变量）；SimpleAudio 的波形图按时间走（见 decisions.md）。
 
 **B. 补 P1、P2 落下的引擎能力**
 1. 画进渲染目标贴图的相机用阴影和后处理（AnimatedModel 的电视屏幕）；顺带这些视图也分簇，然后放开点光、聚光的上限（现在 256）。

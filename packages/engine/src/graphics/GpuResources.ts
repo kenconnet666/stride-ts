@@ -16,6 +16,8 @@ export class GpuResources {
   readonly blackCube: GPUTexture;
   /** 立方体贴图和查找表用（Stride 的 LinearSampler）。 */
   readonly linearClamp: GPUSampler;
+  /** 线性过滤、三个方向都重复：周期的贴图（云的影子图）用。 */
+  readonly linearRepeat: GPUSampler;
   /** 1x1 的深度图（值 1）：没有阴影、或者正在画阴影图集时，阴影的绑定位置绑它。 */
   readonly emptyShadowAtlas: GPUTexture;
   /** 阴影图的比较采样（Stride 的 LinearClampCompareLessEqualSampler）：参考深度 <= 图里的深度时是亮的，双线性插值比较结果。 */
@@ -34,6 +36,7 @@ export class GpuResources {
     this.blackCube = device.createTexture({ label: 'black cube', size: [1, 1, 6], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     device.queue.writeTexture({ texture: this.blackCube }, new Uint16Array(6 * 4), { bytesPerRow: 8, rowsPerImage: 1 }, [1, 1, 6]);
     this.linearClamp = device.createSampler({ label: 'linear clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
+    this.linearRepeat = device.createSampler({ label: 'linear repeat', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat', addressModeW: 'repeat' });
     this.emptyShadowAtlas = device.createTexture({ label: 'empty shadow atlas', size: [1, 1], format: 'depth32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
     clearDepth(device, this.emptyShadowAtlas);
     this.shadowComparison = device.createSampler({ label: 'shadow comparison', magFilter: 'linear', minFilter: 'linear', compare: 'less-equal' });

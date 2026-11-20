@@ -56,6 +56,9 @@ struct View {
   // 运动向量：这一帧没挪过亚像素的视图投影、上一帧的
   unjitteredViewProjection: mat4x4f,
   previousViewProjection: mat4x4f,
+  // 云的影子（cloudShadowMap）：x：地面点的水平位置（米）到贴图坐标的比例，yz：贴图坐标的偏移（风吹着走），
+  // w：被云挡着的方向光的下标（没有云时 -1）
+  cloudShadow: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
 // direction 是聚光照向的方向（w：它的阴影在 localShadows 里的下标，没有阴影时 -1），angle 是角度衰减的 scale、offset
@@ -92,6 +95,15 @@ struct Probe { center: vec4f, boxMin: vec4f, boxMax: vec4f, options: vec4f };
 @group(0) @binding(16) var probeCubes: texture_cube_array<f32>;
 @group(0) @binding(17) var<storage, read> probes: array<Probe>;
 @group(0) @binding(15) var screenShadow: texture_2d<f32>;
+// 云的影子：云重复的那一个周期里地面上每个点朝主光的透射率（Clouds.shadow），采样器 repeat
+@group(0) @binding(18) var cloudShadowMap: texture_2d<f32>;
+@group(0) @binding(19) var linearRepeat: sampler;
+
+/** 云的影子：从 world 朝光（toLight）看过去被云挡掉多少。先沿光线退到地面（y = 0）上的那个点，影子图是按地面上的点存的。 */
+fn cloudShadow(world: vec3f, toLight: vec3f) -> f32 {
+  let ground = world.xz - toLight.xz * (world.y / max(toLight.y, 0.05));
+  return textureSampleLevel(cloudShadowMap, linearRepeat, ground * view.cloudShadow.x + view.cloudShadow.yz, 0.0).r;
+}
 
 /** xyz：屏幕空间的间接光（没有时是 0），w：环境光遮蔽。 */
 fn screenAmbient(position: vec4f) -> vec4f {
@@ -883,6 +895,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
         direct.diffuse += transmittance(shadowThickness(in.world, n, in.depth), n, l, view.lightColors[i].rgb * directOcclusion, diffuse);
       }
     }
+    if (i32(i) == i32(view.cloudShadow.w)) { shadow *= cloudShadow(in.world, l); }
     let lit = shadeLight(surface, l, view.lightColors[i].rgb * shadow * directOcclusion);
     direct.diffuse += lit.diffuse;
     direct.specular += lit.specular;

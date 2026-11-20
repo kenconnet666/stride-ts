@@ -125,6 +125,8 @@ export class DynamicSky {
 export interface CelestialBody {
   /** 场景里有没有它（对应的方向光在这一帧的光照里）。 */
   present: boolean;
+  /** 它那盏方向光的实体；没有时是 -1。 */
+  entity: EntityId;
   /** 朝它的方向（世界，单位向量）。 */
   readonly direction: [number, number, number];
   /** 大气层顶的照度（光的颜色 · 强度；月亮的乘了月相）。 */
@@ -134,7 +136,7 @@ export interface CelestialBody {
 }
 
 function celestialBody(): CelestialBody {
-  return { present: false, direction: [0, 1, 0], illuminance: [0, 0, 0], angularRadius: 0.00465 };
+  return { present: false, entity: -1 as EntityId, direction: [0, 1, 0], illuminance: [0, 0, 0], angularRadius: 0.00465 };
 }
 
 /** 落到地平线以下这么多（sin 高度角）以后不再算它的散射：天文昏影（-18°）已经结束，贡献是 0。 */
@@ -370,6 +372,7 @@ export class Atmosphere {
 /** 把这一帧的方向光记成天体：朝它的方向、大气层顶的照度、角半径。没有这盏光时照度是 0，方向留着上一帧的。 */
 function place(body: CelestialBody, light: DirectionalLight | undefined): void {
   body.present = light !== undefined;
+  body.entity = light?.entity ?? (-1 as EntityId);
   if (!light) {
     body.illuminance.fill(0);
     return;

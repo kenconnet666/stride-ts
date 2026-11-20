@@ -26,6 +26,7 @@ import { Instance, Instancing, Model, Skinned } from '../components';
 import type { GpuResources } from '../../graphics/GpuResources';
 import { Material, type MaterialShaderTrees, type MaterialTexture } from './Material';
 import type { ReflectionProbes } from '../lighting/ReflectionProbes';
+import type { Clouds } from '../sky/VolumetricClouds';
 import { Skybox } from '../lighting/Skybox';
 import type { SubsurfaceMaterials } from '../screenspace/SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
@@ -61,7 +62,7 @@ const VIEW_STRIDE = 1024;
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
  * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32。
  */
-const VIEW_FLOATS = 236;
+const VIEW_FLOATS = 240;
 /** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
 const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
@@ -293,7 +294,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds));
   }
 
 
@@ -458,6 +459,9 @@ class Gpu {
   readonly #probes: ReflectionProbes;
   /** 视图绑定组里的反射探针是哪一代（ReflectionProbes.generation）；换了要重建绑定组。 */
   #probeGeneration = -1;
+  readonly #clouds: Clouds;
+  /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
+  #cloudShadow: GPUTexture | undefined;
   readonly #unclippedDepth: boolean;
   /** 着色器按自发光分变体：默认的是 ''，颜色树的按它的代码。 */
   readonly #modules = new Map<string, GPUShaderModule>();
@@ -511,11 +515,12 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds) {
     this.device = device;
     this.#resources = resources;
     this.#subsurface = subsurface;
     this.#probes = probes;
+    this.#clouds = clouds;
     this.#unclippedDepth = unclippedDepth;
     this.#viewLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature view',
@@ -538,6 +543,8 @@ class Gpu {
         { binding: 15, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 16, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube-array' } },
         { binding: 17, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        { binding: 18, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 19, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -847,6 +854,9 @@ class Gpu {
     }
     const { directionals, directionalCount, ambient, skybox, shadow, shadowAtlas, locals, localCount } = lighting;
     const probes = this.#probes;
+    // 云的影子落在哪盏方向光上（光照里按实体找；那盏光是黑的、被拿掉了时没有影子）
+    const cloud = this.#clouds.shadow;
+    const cloudLight = cloud ? directionals.findIndex((light, i) => i < directionalCount && light.entity === cloud.lightEntity) : -1;
     const data = this.#viewData, words = new Uint32Array(data.buffer);
     for (const view of views) {
       const o = view.index * stride;
@@ -879,6 +889,7 @@ class Gpu {
       words.set(this.#frameBases, o + 192);
       data.set(view.unjitteredViewProjection, o + 204);
       data.set(view.previousViewProjection, o + 220);
+      data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
     }
     // 点光、聚光：所有视图共用一份
     const lights = this.#localLightData;
@@ -892,7 +903,8 @@ class Gpu {
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow) {
+      this.#cloudShadow = cloud?.texture;
       this.#skySpecular = skySpecular;
       this.#probeGeneration = probes.generation;
       this.#viewBindGroups.clear();
@@ -954,6 +966,8 @@ class Gpu {
           { binding: 15, resource: shadow.createView() },
           { binding: 16, resource: this.#probes.cubes.createView({ dimension: 'cube-array' }) },
           { binding: 17, resource: { buffer: this.#probes.buffer } },
+          { binding: 18, resource: (this.#cloudShadow ?? this.#resources.white).createView() },
+          { binding: 19, resource: this.#resources.linearRepeat },
         ],
       });
       groups.set(shadow, group);

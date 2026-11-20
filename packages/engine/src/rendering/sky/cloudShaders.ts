@@ -111,14 +111,85 @@ struct Clouds {
   size: vec4f,
 };`;
 
-/** 步进：每个半分辨率的像素沿视线积分，和上一帧的结果混合，写进这一帧的云缓冲（rgb 云的散射，a 云的透射；2 是没算）。 */
-export const MARCH_SHADER = /* wgsl */ `
-${FULLSCREEN_VERTEX}
-${ATMOSPHERE_WGSL}
+/** 云的密度（步进和影子图共用）：云的参数、噪声贴图，高度上的轮廓和密度的函数。 */
+const CLOUD_DENSITY = /* wgsl */ `
 ${CLOUDS_STRUCT}
 @group(0) @binding(1) var<uniform> clouds: Clouds;
 @group(0) @binding(2) var noise: texture_3d<f32>;
 @group(0) @binding(3) var noiseSampler: sampler;
+
+// 天气噪声的频率是形状的八分之一：整片云在水平方向上每 8 个形状的周期重复一次（影子图存的就是这一个周期）
+const WEATHER_SCALE = 0.125;
+
+/** 高度上的轮廓（Schneider 的三种云的梯度）：h 是 0（云底）到 1（云顶）。 */
+fn heightGradient(h: f32, kind: f32) -> f32 {
+  let g = vec4f(0.02, 0.05, 0.09, 0.11) * saturate(1.0 - kind * 2.0)
+    + vec4f(0.02, 0.2, 0.48, 0.625) * (1.0 - abs(kind - 0.5) * 2.0)
+    + vec4f(0.01, 0.0625, 0.78, 1.0) * saturate(kind - 0.5) * 2.0;
+  return smoothstep(g.x, g.y, h) - smoothstep(g.z, g.w, h);
+}
+
+/**
+ * 噪声空间里 at 处云的密度（0..1）。at：x、z 是水平位置（千米，已经加了风吹出来的偏移），y 是海拔。detail 为假时不啃边
+ * （朝光走的那几步、影子图用）。
+ */
+fn cloudDensityAt(at: vec3f, detail: bool) -> f32 {
+  let h = (at.y - clouds.layer.x) / (clouds.layer.y - clouds.layer.x);
+  if (h <= 0.0 || h >= 1.0) { return 0.0; }
+  let q = at * clouds.shape.x;
+  // 这一带有多少云：覆盖越大，天气噪声里够得着的地方越多
+  let weather = textureSampleLevel(noise, noiseSampler, vec3f(q.x * WEATHER_SCALE, 0.5, q.z * WEATHER_SCALE), 0.0).b;
+  let threshold = mix(0.8, 0.0, clouds.layer.z);
+  let cover = smoothstep(threshold, threshold + 0.25, weather);
+  if (cover <= 0.0) { return 0.0; }
+  let shape = textureSampleLevel(noise, noiseSampler, q, 0.0).r * heightGradient(h, clouds.shape.z);
+  var density = saturate((shape - (1.0 - cover)) / cover);
+  if (detail && density > 0.0) {
+    let d = textureSampleLevel(noise, noiseSampler, q * clouds.shape.y + vec3f(clouds.wind.z, 0.0, clouds.wind.w), 0.0).g;
+    // 云底啃成一缕一缕的，往上啃成鼓起来的
+    let erosion = mix(d, 1.0 - d, saturate(h * 5.0)) * 0.35;
+    density = saturate((density - erosion) / (1.0 - erosion));
+  }
+  return density;
+}
+
+/** 世界里 p 处云的密度：p 的 x、z 是水平位置，y 是海拔（千米）。 */
+fn cloudDensity(p: vec3f, detail: bool) -> f32 {
+  return cloudDensityAt(vec3f(p.x + clouds.wind.x, p.y, p.z + clouds.wind.y), detail);
+}
+`;
+
+/**
+ * 云的影子图：云重复的那一个周期里，地面上每个点朝主光看过去的透射率（r 通道）。u、v 是噪声空间里的 x、z 除以周期；
+ * 用的时候世界的水平位置加上风的偏移再除以周期，采样器 repeat。风吹着云走只是偏移在变，这张图不用重画。
+ */
+export const SHADOW_SHADER = /* wgsl */ `
+${FULLSCREEN_VERTEX}
+${CLOUD_DENSITY}
+
+@fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
+  let period = 1.0 / (clouds.shape.x * WEATHER_SCALE);
+  // 光贴着地平线时按 3° 算（同网格着色器里找地面点的写法）：再低路径太长，步子太稀
+  let toLight = vec3f(clouds.light.x, max(clouds.light.y, 0.05), clouds.light.z);
+  let ground = vec3f(in.uv.x * period, 0.0, in.uv.y * period);
+  let start = clouds.layer.x / toLight.y;
+  let end = clouds.layer.y / toLight.y;
+  const STEPS = 16.0;
+  let dt = (end - start) / STEPS;
+  var depth = 0.0;
+  for (var i = 0.5; i < STEPS; i += 1.0) {
+    depth += cloudDensityAt(ground + toLight * (start + dt * i), false);
+  }
+  depth *= clouds.layer.w * dt * length(toLight);
+  // 穿过云的直射光大多是往前散射的、还朝着原来的方向：按消光的三成算，最暗留一点（厚云底下不是全黑）
+  return vec4f(max(exp(-depth * 0.3), 0.06), 0.0, 0.0, 1.0);
+}`;
+
+/** 步进：每个半分辨率的像素沿视线积分，和上一帧的结果混合，写进这一帧的云缓冲（rgb 云的散射，a 云的透射；2 是没算）。 */
+export const MARCH_SHADER = /* wgsl */ `
+${FULLSCREEN_VERTEX}
+${ATMOSPHERE_WGSL}
+${CLOUD_DENSITY}
 @group(0) @binding(4) var skyViewLut: texture_2d<f32>;
 @group(0) @binding(5) var skySampler: sampler;
 @group(0) @binding(6) var depth: texture_depth_2d;
@@ -138,36 +209,6 @@ fn heightCrossings(a: f32, b: f32, eyeHeight: f32, height: f32) -> vec2f {
   let r1 = q / a;
   let r2 = select(c / q, r1, abs(q) < 1e-12);
   return vec2f(min(r1, r2), max(r1, r2));
-}
-
-/** 高度上的轮廓（Schneider 的三种云的梯度）：h 是 0（云底）到 1（云顶）。 */
-fn heightGradient(h: f32, kind: f32) -> f32 {
-  let g = vec4f(0.02, 0.05, 0.09, 0.11) * saturate(1.0 - kind * 2.0)
-    + vec4f(0.02, 0.2, 0.48, 0.625) * (1.0 - abs(kind - 0.5) * 2.0)
-    + vec4f(0.01, 0.0625, 0.78, 1.0) * saturate(kind - 0.5) * 2.0;
-  return smoothstep(g.x, g.y, h) - smoothstep(g.z, g.w, h);
-}
-
-/** p 处云的密度（0..1）。p：x、z 是世界里的水平位置，y 是海拔（千米）。detail 为假时不啃边（朝光走的那几步用）。 */
-fn cloudDensity(p: vec3f, detail: bool) -> f32 {
-  let h = (p.y - clouds.layer.x) / (clouds.layer.y - clouds.layer.x);
-  if (h <= 0.0 || h >= 1.0) { return 0.0; }
-  let frequency = clouds.shape.x;
-  let q = vec3f(p.x + clouds.wind.x, p.y, p.z + clouds.wind.y) * frequency;
-  // 这一带有多少云：覆盖越大，天气噪声里够得着的地方越多
-  let weather = textureSampleLevel(noise, noiseSampler, vec3f(q.x * 0.11, 0.5, q.z * 0.11), 0.0).b;
-  let threshold = mix(0.8, 0.0, clouds.layer.z);
-  let cover = smoothstep(threshold, threshold + 0.25, weather);
-  if (cover <= 0.0) { return 0.0; }
-  let shape = textureSampleLevel(noise, noiseSampler, q, 0.0).r * heightGradient(h, clouds.shape.z);
-  var density = saturate((shape - (1.0 - cover)) / cover);
-  if (detail && density > 0.0) {
-    let d = textureSampleLevel(noise, noiseSampler, q * clouds.shape.y + vec3f(clouds.wind.z, 0.0, clouds.wind.w), 0.0).g;
-    // 云底啃成一缕一缕的，往上啃成鼓起来的
-    let erosion = mix(d, 1.0 - d, saturate(h * 5.0)) * 0.35;
-    density = saturate((density - erosion) / (1.0 - erosion));
-  }
-  return density;
 }
 
 fn henyeyGreenstein(cosTheta: f32, g: f32) -> f32 {

@@ -21,6 +21,7 @@ export class AtmosphereRenderFeature extends RootRenderFeature {
   override prepare(): void {
     const atmosphere = this.system.atmosphere;
     atmosphere.update();
+    this.system.clouds.prepare();
     const gpu = atmosphere.gpu;
     if (!gpu) return;
     const device = this.system.device;

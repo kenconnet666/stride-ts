@@ -13,6 +13,9 @@
  * - 做字距（见 layout.ts）。
  *
  * 放在 3D 里的 UI：transform 设成 虚拟坐标 → 裁剪空间 的矩阵，begin 时给深度格式就和场景的深度比较（不写深度）。
+ *
+ * 点选（ScenePicker）：设了 pickId 时画进编号缓冲（r32uint），画法和平常一样（贴图、字形的覆盖率），差不多全透明的地方不画，
+ * 画到的写 pickId；自定义效果不用。clip 把整批限制在一块里（点选只画被点的那个像素）。
  */
 import { srgbToLinear } from '../../mathematics/vectors';
 import type { GpuResources } from '../GpuResources';
@@ -86,10 +89,15 @@ struct Item {
   color: vec4f,
 };
 @group(0) @binding(0) var<storage, read> items: array<Item>;
-@group(0) @binding(1) var<uniform> transform: mat4x4f;
+struct Batch {
+  transform: mat4x4f,
+  // 点选的编号缓冲写的数（SpriteBatch.pickId）
+  pickId: u32,
+};
+@group(0) @binding(1) var<uniform> batch: Batch;
 
 fn toClip(p: vec2f) -> vec4f {
-  return transform * vec4f(p, 0.0, 1.0);
+  return batch.transform * vec4f(p, 0.0, 1.0);
 }
 
 // 贴图：a = 左上角、x 边，b.xy = y 边，c = UV 的起点和大小
@@ -118,6 +126,14 @@ struct SpriteVaryings {
   return vec4f(texel.rgb * texel.a, texel.a) * in.color;
 }
 
+// 点选：差不多全透明的地方点不到，会点到后面的东西（同 SpriteRenderFeature 的 fsPick）
+@fragment fn fsSpritePick(in: SpriteVaryings) -> @location(0) u32 {
+  if (textureSample(spriteTexture, spriteSampler, in.uv).a * in.color.a < 0.1) {
+    discard;
+  }
+  return batch.pickId;
+}
+
 // 字形：a = em 原点在屏幕上的位置、em 的 x 轴，b = em 的 y 轴、em 范围的最小角，c = em 范围的最大角、字形下标（最高位：锯齿）、
 // 描边的半径（em；大于 0 时这一项画的是字连同它的描边）
 ${SLUG_WGSL}
@@ -143,7 +159,7 @@ struct GlyphVaryings {
   return out;
 }
 
-@fragment fn fsGlyph(in: GlyphVaryings) -> @location(0) vec4f {
+fn glyphCoverage(in: GlyphVaryings) -> f32 {
   let emsPerPixel = fwidth(in.em);
   let glyph = in.glyph & 0x7fffffffu;
   var coverage = slugCoverage(in.em, emsPerPixel, glyph);
@@ -157,7 +173,18 @@ struct GlyphVaryings {
   if (in.glyph >= 0x80000000u) {
     coverage = select(0.0, 1.0, coverage >= 0.5);
   }
-  return in.color * coverage;
+  return coverage;
+}
+
+@fragment fn fsGlyph(in: GlyphVaryings) -> @location(0) vec4f {
+  return in.color * glyphCoverage(in);
+}
+
+@fragment fn fsGlyphPick(in: GlyphVaryings) -> @location(0) u32 {
+  if (in.color.a * glyphCoverage(in) < 0.1) {
+    discard;
+  }
+  return batch.pickId;
 }
 `;
 
@@ -185,6 +212,11 @@ export class SpriteBatch {
   pixelRatio: Vec2 | undefined;
   /** 自定义效果（见 SpriteEffect）：begin 时取，这一批的贴图都用它画；没有时照常画。 */
   effect: SpriteEffect | undefined;
+  /** 设了时画进点选的编号缓冲（颜色格式 r32uint）：画到的像素写这个数（大于 0），不混合；begin 时取。 */
+  pickId: number | undefined;
+  /** 整批的剪裁矩形（真实像素，整数）：元素的剪裁矩形和它取交集，end 后恢复成它；不设时是整个渲染目标。 */
+  clip: Rect | undefined;
+  #activePickId: number | undefined;
   #activeEffect: SpriteEffect | undefined;
   readonly #effectLayout: GPUBindGroupLayout;
   readonly #effectBuffer: GPUBuffer;
@@ -221,7 +253,7 @@ export class SpriteBatch {
       label: 'SpriteBatch items',
       entries: [
         { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-        { binding: 1, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
     this.#textureLayout = device.createBindGroupLayout({
@@ -231,7 +263,8 @@ export class SpriteBatch {
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
-    this.#uniform = device.createBuffer({ label: 'SpriteBatch transform', size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    // Batch：变换矩阵 64 字节、pickId，按 16 字节对齐
+    this.#uniform = device.createBuffer({ label: 'SpriteBatch transform', size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#effectLayout = device.createBindGroupLayout({
       label: 'SpriteBatch effect',
       entries: [
@@ -256,7 +289,8 @@ export class SpriteBatch {
     this.#count = 0;
     this.#runs = [];
     this.#scissor = undefined;
-    this.#activeEffect = this.effect;
+    this.#activePickId = this.pickId;
+    this.#activeEffect = this.pickId === undefined ? this.effect : undefined;
   }
 
   /** 之后画的东西裁到 rect（真实像素，整数）里；undefined 是不裁（UI 的 ClipToBounds）。 */
@@ -432,6 +466,7 @@ export class SpriteBatch {
     this.#pass = undefined;
     if (this.#count === 0) return;
     this.#device.queue.writeBuffer(this.#uniform, 0, this.transform ?? this.#screenTransform());
+    this.#device.queue.writeBuffer(this.#uniform, 64, new Uint32Array([this.#activePickId ?? 0]));
     const bytes = this.#count * ITEM_FLOATS * 4;
     if (bytes > this.#items.size) {
       this.#items.destroy();
@@ -450,21 +485,26 @@ export class SpriteBatch {
       this.#device.queue.writeBuffer(this.#effectBuffer, 0, effect.parameters);
       pass.setBindGroup(2, this.#effectGroup(effect));
     }
+    // 剪裁矩形要在整批的 clip 里（clip 默认是整个渲染目标）；pass 开始时的剪裁矩形就是 clip
+    const clip = this.#clip();
     let scissor: Rect | undefined;
     for (const run of this.#runs) {
       if (run.scissor !== scissor) {
-        // 剪裁矩形要在渲染目标里面
-        const [tw, th] = this.#targetSize;
-        const [x, y, w, h] = run.scissor ?? [0, 0, tw, th];
-        const x0 = Math.min(Math.max(x, 0), tw), y0 = Math.min(Math.max(y, 0), th);
-        pass.setScissorRect(x0, y0, Math.max(0, Math.min(x + w, tw) - x0), Math.max(0, Math.min(y + h, th) - y0));
+        pass.setScissorRect(...intersect(run.scissor ?? clip, clip));
         scissor = run.scissor;
       }
       pass.setPipeline(this.#pipeline(run.kind));
       pass.setBindGroup(1, run.kind === 'glyph' ? this.#glyphs.bindGroup() : this.#textureGroup(run.texture!));
       pass.draw(4, run.count, 0, run.first);
     }
-    if (scissor) pass.setScissorRect(0, 0, this.#targetSize[0], this.#targetSize[1]);
+    if (scissor) pass.setScissorRect(...clip);
+  }
+
+  /** 整批的剪裁矩形，限制在渲染目标里。 */
+  #clip(): [number, number, number, number] {
+    const [tw, th] = this.#targetSize;
+    const target: Rect = [0, 0, tw, th];
+    return this.clip ? intersect(this.clip, target) : [0, 0, tw, th];
   }
 
   destroy(): void {
@@ -513,17 +553,18 @@ export class SpriteBatch {
     const depthFormat = this.#depthFormat;
     // 自定义效果只换贴图的片元着色器，文字照常画
     const effect = kind === 'sprite' ? this.#activeEffect : undefined;
-    const key = `${kind}:${this.#format}:${depthFormat ?? ''}:${effect ? `${effect.blend}:${effect.code}` : ''}`;
+    const picking = this.#activePickId !== undefined;
+    const key = `${kind}:${this.#format}:${depthFormat ?? ''}:${picking ? 'pick' : ''}:${effect ? `${effect.blend}:${effect.code}` : ''}`;
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       const groups = [this.#itemLayout, kind === 'glyph' ? this.#glyphs.layout : this.#textureLayout, ...(effect ? [this.#effectLayout] : [])];
       // 预乘 alpha（Stride 的 BlendStates.AlphaBlend）；效果可以要 NonPremultiplied（颜色乘源的 alpha）
       const source: GPUBlendFactor = effect?.blend === 'nonPremultiplied' ? 'src-alpha' : 'one';
       pipeline = this.#device.createRenderPipeline({
-        label: `SpriteBatch ${kind}${effect ? ' effect' : ''}`,
+        label: `SpriteBatch ${kind}${effect ? ' effect' : ''}${picking ? ' picking' : ''}`,
         layout: this.#device.createPipelineLayout({ bindGroupLayouts: groups }),
         vertex: { module: this.#module, entryPoint: kind === 'glyph' ? 'vsGlyph' : 'vsSprite' },
-        fragment: {
+        fragment: picking ? { module: this.#module, entryPoint: kind === 'glyph' ? 'fsGlyphPick' : 'fsSpritePick', targets: [{ format: this.#format }] } : {
           module: effect ? this.#effectModule(effect) : this.#module,
           entryPoint: kind === 'glyph' ? 'fsGlyph' : effect ? 'fsEffect' : 'fsSprite',
           targets: [{ format: this.#format, blend: { color: { srcFactor: source, dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
@@ -577,6 +618,12 @@ export class SpriteBatch {
   #createItems(size: number): GPUBuffer {
     return this.#device.createBuffer({ label: 'SpriteBatch items', size, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   }
+}
+
+/** 两个矩形（x、y、宽、高）的交集；不相交时宽或高是 0，位置仍在 b 里（剪裁矩形不能超出渲染目标）。 */
+function intersect([x, y, w, h]: Rect, [bx, by, bw, bh]: Rect): [number, number, number, number] {
+  const x0 = Math.min(Math.max(x, bx), bx + bw), y0 = Math.min(Math.max(y, by), by + bh);
+  return [x0, y0, Math.max(0, Math.min(x + w, bx + bw) - x0), Math.max(0, Math.min(y + h, by + bh) - y0)];
 }
 
 /** 颜色当 sRGB 给（同 Stride 的 SpriteBatch），转成线性；alpha 不变。 */

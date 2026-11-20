@@ -8,6 +8,9 @@
  * （InputManager.maskCapturedInput）。按下之前游戏里已经按着鼠标拖动的不占（拖过 UI 也不打断）。
  * 和 Stride 不同（多做的）：鼠标滚轮在 ScrollViewer 上时滚动它（Stride 桌面版的 UI 不处理滚轮）。
  *
+ * 点选（`game.pick`、编辑器选物体，见 ScenePicker）：放在 3D 里的 UI 照画面上的样子画进编号缓冲，点到它画出来的地方就是点到
+ * UI 的实体；全屏的 UI 不参加（它不在场景里，点它的元素由上面的输入处理，见 docs/decisions.md 2026-11-20）。
+ *
  * 和 Stride 不同：
  * - UI 画在整个画面（包括后处理）之后。Stride 的 UI 在前向渲染器的透明阶段里画，会被泛光、色调映射处理；UI 的颜色应该照
  *   原样显示，所以放到最后。放在 3D 里的 UI 也一样（和场景的深度缓冲比较），所以它的边没有 FXAA。
@@ -17,11 +20,11 @@
 import type { Game } from '../games/Game';
 import { InputCapturePriority } from '../input/capture';
 import type { InputManager, PointerEvent } from '../input/InputManager';
-import { Transform } from '../engine/transform';
+import { Transform, transformSlot } from '../engine/transform';
 import { Matrix, type Matrix4 } from '../mathematics/Matrix';
 import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
-import { inRenderMask, RENDER_GROUP_ALL } from '../rendering/RenderSystem';
-import { SpriteBatch } from '../rendering/text/SpriteBatch';
+import { inRenderMask, RENDER_GROUP_ALL, type RenderView } from '../rendering/RenderSystem';
+import { SpriteBatch, type Rect } from '../rendering/text/SpriteBatch';
 import { EditText } from './controls/EditText';
 import { ScrollViewer } from './controls/ScrollViewer';
 import { IDENTITY, type UIElement } from './UIElement';
@@ -43,10 +46,22 @@ interface DrawnUI extends PickingTarget {
   readonly uiWorld?: Matrix4;
 }
 
+/** 按一个相机摆好的、放在 3D 里的 UI。 */
+interface PlacedUI {
+  readonly component: UIComponent;
+  readonly virtual: [number, number];
+  /** 虚拟坐标 → 世界坐标（见 uiWorldMatrix）。 */
+  readonly uiWorld: Matrix4;
+  /** 虚拟坐标 → 裁剪空间。 */
+  readonly transform: Matrix4;
+}
+
 export class UISystem {
   readonly #components = new Set<UIComponent>();
   /** 每个 UI 一个：SpriteBatch 的数据在 end() 时用 writeBuffer 写，同一帧里一个缓冲只能写一份（见 GraphicsDevice.frameEncoder）。 */
   readonly #batches = new Map<UIComponent, SpriteBatch>();
+  /** 点选用的，每个 UI 一个：和 #batches 分开，主画面这一帧写好的数据不能被点选的那一遍盖掉（同上）。 */
+  readonly #pickingBatches = new Map<UIComponent, SpriteBatch>();
   /** 上一帧画出来的 UI。 */
   #targets = new Map<UIComponent, DrawnUI>();
   readonly #states = new WeakMap<UIComponent, PickingState>();
@@ -81,6 +96,8 @@ export class UISystem {
     this.#components.delete(component);
     this.#batches.get(component)?.destroy();
     this.#batches.delete(component);
+    this.#pickingBatches.get(component)?.destroy();
+    this.#pickingBatches.delete(component);
   }
 
   /** @internal Game 建好输入以后调用：每帧在脚本之前处理 UI 的输入。 */
@@ -255,14 +272,34 @@ export class UISystem {
     this.semantics?.update(pages);
   }
 
-  /** 放在 3D 里的 UI：按主相机从远到近画进一个通道，和场景的深度比较。没有相机时不画。 */
-  #drawInScene(game: Game, components: readonly UIComponent[], target: [number, number]): void {
-    const compositor = game.graphicsCompositor;
-    const view = compositor.mainView, depth = compositor.mainDepth;
+  /**
+   * @internal 点选的编号缓冲（ScenePicker）：放在 3D 里的 UI 按 view 的相机照画面上的样子画进 pass（渲染目标 target 大，
+   * 剪裁到 clip，就是被点的那个像素），画到的地方写 UI 实体的变换槽位加一，被场景里更近的东西挡住。全屏的 UI 不画（见文件开头）。
+   */
+  drawPicking(game: Game, pass: GPURenderPassEncoder, view: RenderView, target: readonly [number, number], clip: Rect, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
+    const inScene = this.#visible().filter((component) => !component.isFullScreen);
+    if (inScene.length === 0) return;
+    // 点选在画场景时，UI 还没画；这一帧已经布局过时什么都不做
+    this.layout(game);
+    for (const { component, virtual, transform } of this.#placeInScene(inScene, view)) {
+      let batch = this.#pickingBatches.get(component);
+      if (!batch) this.#pickingBatches.set(component, (batch = new SpriteBatch(game.graphicsDevice.device, game.renderSystem.resources)));
+      const pixelRatio = projectedPixelRatio(transform, virtual, target) ?? [1, 1];
+      batch.virtualResolution = virtual;
+      batch.transform = transform;
+      batch.pixelRatio = pixelRatio;
+      batch.pickId = transformSlot(component.entity) + 1;
+      batch.clip = clip;
+      batch.begin(pass, target[0], target[1], colorFormat, depthFormat);
+      drawUI(component.page!.rootElement!, { batch, virtualResolution: virtual, ratio: pixelRatio, snapText: false });
+      batch.end();
+    }
+  }
+
+  /** 放在 3D 里的 UI 按 view 的相机摆好，从远到近排；相机的矩阵不可逆时是空的。 */
+  #placeInScene(components: readonly UIComponent[], view: RenderView): PlacedUI[] {
     const cameraWorld = new Float32Array(16);
-    if (!view || !depth || !Matrix.invert(cameraWorld, view.view)) return;
-    // 指针在下一帧开头按这一帧画出来的样子找元素，那时相机的矩阵可能已经变了，所以拷一份
-    const inverseViewProjection = new Float32Array(view.inverseViewProjection);
+    if (!Matrix.invert(cameraWorld, view.view)) return [];
     const placed = components.map((component) => {
       const virtual: [number, number] = [component.resolution.x, component.resolution.y];
       const uiWorld = uiWorldMatrix(new Float32Array(16), component, virtual, component.entity.require(Transform).world, cameraWorld, view.projection);
@@ -271,7 +308,18 @@ export class UISystem {
       const distance = transform[3]! * (virtual[0] / 2) + transform[7]! * (virtual[1] / 2) + transform[15]!;
       return { component, virtual, uiWorld, transform, distance };
     });
-    placed.sort((a, b) => b.distance - a.distance);
+    return placed.sort((a, b) => b.distance - a.distance);
+  }
+
+  /** 放在 3D 里的 UI：按主相机从远到近画进一个通道，和场景的深度比较。没有相机时不画。 */
+  #drawInScene(game: Game, components: readonly UIComponent[], target: [number, number]): void {
+    const compositor = game.graphicsCompositor;
+    const view = compositor.mainView, depth = compositor.mainDepth;
+    if (!view || !depth) return;
+    const placed = this.#placeInScene(components, view);
+    if (placed.length === 0) return;
+    // 指针在下一帧开头按这一帧画出来的样子找元素，那时相机的矩阵可能已经变了，所以拷一份
+    const inverseViewProjection = new Float32Array(view.inverseViewProjection);
     const device = game.graphicsDevice;
     const pass = device.frameEncoder.beginRenderPass({
       label: 'UI in scene',
@@ -339,8 +387,9 @@ export class UISystem {
     this.textInput = undefined;
     this.semantics?.destroy();
     this.semantics = undefined;
-    for (const batch of this.#batches.values()) batch.destroy();
+    for (const batch of [...this.#batches.values(), ...this.#pickingBatches.values()]) batch.destroy();
     this.#batches.clear();
+    this.#pickingBatches.clear();
     this.#components.clear();
     this.#targets.clear();
   }

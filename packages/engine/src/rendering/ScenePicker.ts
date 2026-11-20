@@ -6,8 +6,8 @@
  * 样点到的就是什么样，不用在 CPU 上再算一遍；只画一个像素，开销就是一遍顶点着色。代价是结果要等读回（下一帧才有），
  * 所以 pick 返回 Promise。
  *
- * 认网格（MeshRenderFeature）、精灵（SpriteRenderFeature）和粒子（不是渲染特性，`game.particles.drawPicking` 在它们之后画，
- * 写粒子系统所在的实体）；放在场景里的 UI 还点不到。
+ * 认网格（MeshRenderFeature）、精灵（SpriteRenderFeature），还有不是渲染特性的粒子和放在 3D 里的 UI：它们在网格、精灵之后
+ * 画（`game.particles.drawPicking`、`game.ui.drawPicking`），写粒子系统、UI 所在的实体。全屏的 UI 不参加（见 UISystem）。
  */
 import { DEPTH_FORMAT } from './ForwardRenderer';
 import { RenderStage, type RenderContext, type RenderSystem, type RenderView } from './RenderSystem';
@@ -76,6 +76,7 @@ export class ScenePicker {
       pass.setScissorRect(x, y, 1, 1);
       this.#renderSystem.draw(context, pass, view, this.stage);
       context.game.particles.drawPicking(context.game, pass, view, ID_FORMAT, DEPTH_FORMAT);
+      context.game.ui.drawPicking(context.game, pass, view, [width, height], [x, y, 1, 1], ID_FORMAT, DEPTH_FORMAT);
       pass.end();
       const buffer = this.#freeBuffers.pop() ?? device.createBuffer({ label: 'ScenePicker readback', size: 4, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
       encoder.copyTextureToBuffer({ texture: targets.id, origin: [x, y] }, { buffer }, [1, 1]);

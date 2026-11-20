@@ -16,6 +16,8 @@ import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-pr
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
 import { copyEntities, duplicateEntities, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
+import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
+import { freeAssetPath } from '../newAssets';
 import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
 import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
@@ -326,6 +328,32 @@ export class EditorSession implements EditableScene {
     this.commit();
     await this.#synced;
     this.select(made.roots);
+  }
+
+  /**
+   * 选中的一个实体连同后代做成预制体（存到 Prefabs/<名字>，重名的加数字），场景里原地换成它的实例，一步撤销（预制体文件留着）。
+   * 做不了（选中的是实例、实例的成员）时记进 notice。
+   */
+  async makePrefabFromSelection(): Promise<void> {
+    const [id] = this.selection.value;
+    if (this.selection.value.length !== 1 || id === undefined) return;
+    const root = this.file.entities.find((entity) => entity.id === id);
+    const name = (root?.name ?? '').replace(/[^A-Za-z0-9_-]+/g, '') || 'Prefab';
+    const path = freeAssetPath('Prefabs', name, 'prefab', new Set(this.assets.value.map((asset) => `${asset.kind}:${asset.path}`)));
+    let made: ReturnType<typeof makePrefab>;
+    try {
+      made = makePrefab(this.file, id, path);
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+      return;
+    }
+    await this.createAsset('prefab', path, made.prefab);
+    this.#prefabs = new Map([...this.#prefabs, [path, made.prefab.entities]]);
+    this.apply(made.edit);
+    this.commit();
+    await this.#synced;
+    this.select([id]);
+    this.notice.value = `做成了预制体 ${path}，场景里换成了它的实例（保存场景以后生效）`;
   }
 
   /** 把实体连同后代挪到 parent 下面（null 是最上层），排在新的兄弟里的第 position 个。 */

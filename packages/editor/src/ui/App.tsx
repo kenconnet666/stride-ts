@@ -1,4 +1,4 @@
-import { ClipboardPaste, Copy, CopyPlus, Magnet, Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
+import { ClipboardPaste, Copy, CopyPlus, Magnet, Package, Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, Splitter } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -97,6 +97,7 @@ export const App = _component(({ session }: { session: EditorSession }) => {
           <IconButton icon={Copy} aria-label="复制选中的实体（Ctrl+C）" disabled={session.selection.value.length === 0 || playing} onClick={() => session.copySelection()} />
           <IconButton icon={ClipboardPaste} aria-label="粘贴到选中的实体后面（Ctrl+V；Ctrl+Shift+V 粘贴成它的子实体）" disabled={!session.clipboard.value || playing} onClick={() => void session.paste()} />
           <IconButton icon={CopyPlus} aria-label="复制一份（Ctrl+D）" disabled={session.selection.value.length === 0 || playing} onClick={() => void session.duplicateSelection()} />
+          <IconButton icon={Package} aria-label="做成预制体（选中的一个实体连同后代，场景里换成它的实例）" disabled={session.selection.value.length !== 1 || playing} onClick={() => void session.makePrefabFromSelection()} />
           <IconButton icon={playing ? Square : Play} aria-label={playing ? '停止试玩' : '试玩'} onClick={() => void togglePlay()} />
           {snapControls()}
           <span {...css.attrs(styles.title)}>{opened.value ? `${opened.value.kind === 'prefab' ? '预制体 ' : ''}${opened.value.path}` : '……'}{dirty.value ? ' *' : ''}</span>

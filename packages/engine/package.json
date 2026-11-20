@@ -13,6 +13,7 @@
     "./editor-fields": "./src/editor/fields.ts",
     "./editor-prefabs": "./src/editor/prefabEdits.ts",
     "./editor-copy": "./src/editor/copyEntities.ts",
+    "./editor-make-prefab": "./src/editor/makePrefab.ts",
     "./math": "./src/data/Matrix.ts"
   },
   "dependencies": {

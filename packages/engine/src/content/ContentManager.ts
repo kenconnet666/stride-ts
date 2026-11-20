@@ -200,7 +200,7 @@ export class ContentManager {
    * （没有渲染）时不预热。postEffects 是要加载的场景的后处理设置（影响用哪一套管线，后处理的管线也一起预热；null 是不做后
    * 处理），预制体不知道，不给。
    */
-  pipelineWarmer: ((uses: readonly ModelUse[], postEffects: ScenePostEffects | null | undefined) => Promise<void>) | undefined;
+  pipelineWarmer: ((uses: readonly ModelUse[], postEffects: ScenePostEffects | null | undefined, files: readonly SceneEntityFile[]) => Promise<void>) | undefined;
   /** 解码声音；Game 启动时设置（game.audio）。 */
   audio: AudioEngine | undefined;
 

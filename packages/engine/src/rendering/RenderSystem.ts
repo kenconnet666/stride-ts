@@ -4,6 +4,7 @@
  * 和 Stride 不同的地方：没有通用的 RenderObject / RenderNode 列表，每个特性直接按列遍历实体（数据导向），
  * 剔除也由特性自己做（Cull，在 stride-native 里），还没有排列组合（效果系统等内容管线）。
  */
+import type { SceneEntityFile } from '../content/format';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
 import type { GraphicsDevice } from '../graphics/GraphicsDevice';
@@ -201,6 +202,13 @@ export abstract class RootRenderFeature {
   /** 上一帧的统计（调试的 perf 命令读），比如画了多少实例、多少次绘制。 */
   stats(): Record<string, number> {
     return {};
+  }
+  /**
+   * 预热：要加载的这些实体会让这个特性在 stages 里画东西时要的管线，在后台编好（ContentManager.pipelineWarmer）。返回编着的；
+   * 网格要按加载好的模型算，走 MeshRenderFeature.warm。
+   */
+  warmFiles(_files: readonly SceneEntityFile[], _stages: readonly RenderStage[]): Promise<void>[] {
+    return [];
   }
   destroy(): void {}
 }

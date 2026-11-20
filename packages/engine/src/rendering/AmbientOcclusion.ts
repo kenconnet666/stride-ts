@@ -207,6 +207,11 @@ export class AmbientOcclusion {
     return result;
   }
 
+  /** 在后台编三步的管线（加载开着 GTAO 的场景时，见 ForwardRenderer.warmPostEffects）；目标格式是固定的。 */
+  warm(): Promise<void> {
+    return Promise.all([this.#prefilter.warm([POSITION_FORMAT]), this.#gtao.warm([AO_FORMAT]), this.#blur.warm([AO_FORMAT])]).then(() => undefined);
+  }
+
   /** 这一帧录的通道执行完以后调。 */
   flush(): void {
     this.#arena.flush();

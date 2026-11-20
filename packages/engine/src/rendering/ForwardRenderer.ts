@@ -550,12 +550,13 @@ export class ForwardRenderer {
   }
 
   /**
-   * 预热后处理的管线（PostProcessingEffects.warm）：settings 是要加载的场景的后处理设置；没给（不知道）、不做后处理又直接画进
-   * 后备缓冲时不用预热。
+   * 预热后处理的管线（PostProcessingEffects.warm）和场景开着的 GTAO 的：settings 是要加载的场景的后处理设置；没给（不知道）、
+   * 不做后处理又直接画进后备缓冲时不用预热。
    */
   warmPostEffects(settings: ScenePostEffects | null | undefined): Promise<void> | undefined {
     if (settings === undefined || (settings === null && this.directOutput)) return undefined;
-    return this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality);
+    const ambientOcclusion = settings?.ambientOcclusion !== undefined && this.quality.ambientOcclusion ? this.ambientOcclusion.warm() : undefined;
+    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion]).then(() => undefined);
   }
 
   /**

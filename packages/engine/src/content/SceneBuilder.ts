@@ -114,7 +114,7 @@ export class SceneBuilder {
     }));
     const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds };
     // 管线也算要等的资源：建实体之前在后台编好，第一帧和以后生成这些模型时都不用当场编译着色器
-    await content.pipelineWarmer?.(modelUses(files, assets, content.defaultMaterial), postEffects);
+    await content.pipelineWarmer?.(modelUses(files, assets, content.defaultMaterial), postEffects, files);
     return assets;
   }
 

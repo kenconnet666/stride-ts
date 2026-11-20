@@ -4,6 +4,7 @@
  * - 平面图片（Is2D，Draw2D 那条路）：保持图片比例铺满视图，多出的部分两边对称裁掉；只采样第 0 级（Stride 的背景图不生成 mip）。
  * 画在网格之后（加到渲染系统里的顺序），深度测试 less-equal、不写深度，三角形在远平面上。
  */
+import type { SceneEntityFile } from '../content/format';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
@@ -56,6 +57,8 @@ interface Gpu {
   readonly layout: GPUBindGroupLayout;
   readonly module: GPUShaderModule;
   readonly pipelines: Map<string, GPURenderPipeline>;
+  /** 正在后台编的（warmFiles）。 */
+  readonly warming: Map<string, Promise<void>>;
 }
 
 export class BackgroundRenderFeature extends RootRenderFeature {
@@ -148,22 +151,52 @@ export class BackgroundRenderFeature extends RootRenderFeature {
       ],
     });
     const buffer = device.createBuffer({ label: 'BackgroundRenderFeature', size: VIEW_STRIDE * MAX_VIEWS, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    return { buffer, layout, module: device.createShaderModule({ label: 'BackgroundRenderFeature', code: SHADER }), pipelines: new Map() };
+    return { buffer, layout, module: device.createShaderModule({ label: 'BackgroundRenderFeature', code: SHADER }), pipelines: new Map(), warming: new Map() };
+  }
+
+  /** 背景画在有颜色、不透明的阶段（同 draw）：立方体贴图用 fs，平面图片用 fs2D。 */
+  override warmFiles(files: readonly SceneEntityFile[], stages: readonly RenderStage[]): Promise<void>[] {
+    const entryPoints = new Set(files.flatMap(({ components: { background } }) => (background ? [background.type === 'cubemap' ? 'fs' as const : 'fs2D' as const] : [])));
+    const gpu = (this.#gpu ??= this.#createGpu());
+    const pending: Promise<void>[] = [];
+    for (const stage of stages) {
+      const colorFormat = stage.output.colorFormat;
+      if (!colorFormat || stage.transparent) continue;
+      for (const entryPoint of entryPoints) {
+        const key = this.#pipelineKey(stage, colorFormat, entryPoint);
+        if (gpu.pipelines.has(key) || gpu.warming.has(key)) continue;
+        const warming = this.system.device.createRenderPipelineAsync(this.#pipelineDescriptor(stage, colorFormat, entryPoint)).then((pipeline) => {
+          gpu.warming.delete(key);
+          if (!gpu.pipelines.has(key)) gpu.pipelines.set(key, pipeline);
+        });
+        gpu.warming.set(key, warming);
+        pending.push(warming);
+      }
+    }
+    return pending;
+  }
+
+  #pipelineKey(stage: RenderStage, colorFormat: GPUTextureFormat, entryPoint: 'fs' | 'fs2D'): string {
+    return `${stage.name}:${colorFormat}:${stage.output.depthFormat}:${entryPoint}`;
+  }
+
+  #pipelineDescriptor(stage: RenderStage, colorFormat: GPUTextureFormat, entryPoint: 'fs' | 'fs2D'): GPURenderPipelineDescriptor {
+    const gpu = this.#gpu!;
+    return {
+      label: `BackgroundRenderFeature ${stage.name} ${entryPoint}`,
+      layout: this.system.device.createPipelineLayout({ bindGroupLayouts: [gpu.layout] }),
+      vertex: { module: gpu.module, entryPoint: 'fullscreenVertex' },
+      fragment: { module: gpu.module, entryPoint, targets: [{ format: colorFormat }] },
+      depthStencil: { format: stage.output.depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
+    };
   }
 
   #pipelineFor(stage: RenderStage, colorFormat: GPUTextureFormat, entryPoint: 'fs' | 'fs2D'): GPURenderPipeline {
     const gpu = this.#gpu!;
-    const { depthFormat } = stage.output;
-    const key = `${stage.name}:${colorFormat}:${depthFormat}:${entryPoint}`;
+    const key = this.#pipelineKey(stage, colorFormat, entryPoint);
     let pipeline = gpu.pipelines.get(key);
     if (!pipeline) {
-      pipeline = this.system.device.createRenderPipeline({
-        label: `BackgroundRenderFeature ${stage.name} ${entryPoint}`,
-        layout: this.system.device.createPipelineLayout({ bindGroupLayouts: [gpu.layout] }),
-        vertex: { module: gpu.module, entryPoint: 'fullscreenVertex' },
-        fragment: { module: gpu.module, entryPoint, targets: [{ format: colorFormat }] },
-        depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
-      });
+      pipeline = this.system.device.createRenderPipeline(this.#pipelineDescriptor(stage, colorFormat, entryPoint));
       gpu.pipelines.set(key, pipeline);
     }
     return pipeline;

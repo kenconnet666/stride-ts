@@ -15,9 +15,10 @@ on:
 permissions:
   contents: read
 
-# PR 上新的推送取消旧的运行；main 上几路会话都在推，每次都跑完（不然一直被下一次推送打断，全量永远跑不完）
+# PR 上新的推送取消旧的运行。main 上几路会话都在推：正在跑的跑完（不然一直被下一次推送打断，全量永远跑不完），排队的只留最新的
+# 一次（GitHub 的并发组里新排进来的顶掉还没开始的），一次运行有二十多个作业，每次推送都跑会把运行器排满
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:

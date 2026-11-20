@@ -110,7 +110,8 @@ check('预制体：第二份挂在 PileOfBoxes2 下', prefab > 0, prefab);
 load('Delta time');
 const time = () => Number((stride('eval', `lines().find((l) => l.startsWith('Total time'))`) as string).split(': ')[1]);
 const t0 = time();
-await sleep(500);
+// 按游戏时间等：CI 的软件 WebGPU 上半秒墙钟可能一帧都没走
+stride('eval', 'seconds(0.5).then(() => 1)');
 const t1 = time();
 check('Delta time：总时间在走', t1 > t0, { t0, t1 });
 

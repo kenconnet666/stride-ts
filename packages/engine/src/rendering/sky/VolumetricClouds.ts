@@ -13,14 +13,16 @@
  *   画面：只画在天空的像素上（深度是 1），颜色 = 天空 · 云的透射 + 云的散射。云到相机之间的大气按平均距离淡向天空的颜色。
  * - 云在地面上的影子：云重复的那一个周期画成一张透射率的图（影子图，朝主光走 16 步），网格着色时按地面点的位置查，乘在
  *   主光上。云的图案在水平方向上是周期的，所以一张图管整个世界；风吹着走只改采样的偏移，云和光的方向变了才重画。
- * - 还没做：云进环境光和反射探针、相机在云里或者云上面时地面的物体不被云挡（云只盖天空的像素）、
+ * - 环境光里的云：从相机的位置把云画进一张 64² 的立方体（步数比画面的少），大气合成天空的环境光时叠上去，所以球谐和
+ *   镜面（包括反射探针拍到的天空）里都有云：阴天时环境光是云的灰白色。云、主光变了或者风吹了几秒才重画。
+ * - 还没做：相机在云里或者云上面时地面的物体不被云挡（云只盖天空的像素）、
  *   穿过云的光柱（体积光那一项）。
  */
 import type { EntityId } from '../../data/prop';
 import { system } from '../../engine/system';
 import type { GameTime } from '../../engine/GameTime';
 import type { Atmosphere } from './Atmosphere';
-import { COMPOSITE_SHADER, MARCH_SHADER, NOISE_SHADER, SHADOW_SHADER } from './cloudShaders';
+import { COMPOSITE_SHADER, ENVIRONMENT_SHADER, MARCH_SHADER, NOISE_SHADER, SHADOW_SHADER } from './cloudShaders';
 import { VolumetricClouds } from '../components';
 import type { RenderContext, RenderView } from '../RenderSystem';
 
@@ -40,6 +42,11 @@ const FORMAT: GPUTextureFormat = 'rgba16float';
 /** 云在水平方向上每几个形状的周期重复一次（着色器里的 1 / WEATHER_SCALE），和影子图的边长（一个周期 72 km 时一个纹素 140 m）。 */
 const SHAPE_PERIODS = 8;
 const SHADOW_SIZE = 512;
+/** 环境光里的云：立方体的边长，一条视线走几步、朝光走几步（比画面的少：只要大致的明暗和颜色），风吹着走时隔几秒重画。 */
+const ENVIRONMENT_SIZE = 64;
+const ENVIRONMENT_STEPS = 24;
+const ENVIRONMENT_LIGHT_STEPS = 3;
+const ENVIRONMENT_INTERVAL = 5;
 
 /** 云在地面上的影子（网格的着色器用，见 Clouds.shadow）。 */
 export interface CloudShadow {
@@ -85,6 +92,12 @@ export class Clouds {
   #light: { direction: readonly number[]; color: readonly number[]; entity: EntityId } = { direction: [0, 1, 0], color: [0, 0, 0], entity: -1 as EntityId };
   /** 上次画影子图时的云和光；没变就不重画。 */
   #shadowKey = '';
+  /** 上次画环境光里的云时的云、光、相机的高度和时间段；版本号每重画一次加一（大气据此重算环境光）。 */
+  #environmentKey = '';
+  #environmentVersion = 0;
+  /** 主相机的位置（米；步进时记下，环境光里的云从这里看）和游戏时间。 */
+  readonly #eye: [number, number, number] = [0, 0, 0];
+  #time = 0;
 
   readonly #collect = system('Clouds.collect', {
     with: { clouds: VolumetricClouds },
@@ -113,8 +126,12 @@ export class Clouds {
     this.#found = false;
     if (enabled && this.#atmosphere.active) context.game.entities.run(this.#collect, context.time);
     this.active = this.#found && this.settings.coverage > 0 && this.settings.density > 0;
-    if (!this.active) return;
+    if (!this.active) {
+      this.#atmosphere.environmentOverlay = undefined;
+      return;
+    }
     this.#drift(context.time);
+    this.#time = context.time.total;
     this.#light = this.#mainLight();
   }
 
@@ -127,12 +144,38 @@ export class Clouds {
     if (!this.active || !gpu?.ready) return;
     const s = this.settings;
     // 光的方向约 0.3° 一档：日夜循环时隔几帧画一次
+    this.#prepareEnvironment(gpu);
     const key = JSON.stringify([s.coverage, s.density, s.bottom, s.thickness, s.cloudType, s.scale, this.#light.direction.map((v) => Math.round(v * 200))]);
     if (key === this.#shadowKey) return;
     this.#shadowKey = key;
     const encoder = this.#device.createCommandEncoder({ label: 'Clouds shadow' });
     gpu.recordShadow(encoder, this.#uniforms(undefined, true));
     this.#device.queue.submit([encoder.finish()]);
+  }
+
+  /**
+   * 环境光里的云（在大气重算环境光之前调）：云、主光、相机的高度变了，或者风吹了一阵子，就从相机的位置重画云的立方体，
+   * 版本号加一，大气跟着重算环境光（球谐和镜面）。阴天时环境光是云的灰白色，不再是晴天的蓝。
+   */
+  #prepareEnvironment(gpu: CloudsGpu): void {
+    const atmosphere = this.#atmosphere.gpu;
+    if (!atmosphere) return;
+    const s = this.settings;
+    const level = (value: number) => Math.round(Math.log(Math.max(value, 1e-5)) * 10);
+    const key = JSON.stringify([
+      s.coverage, s.density, s.bottom, s.thickness, s.cloudType, s.scale,
+      this.#light.direction.map((v) => Math.round(v * 50)), this.#light.color.map(level),
+      // 相机的高度 100 米一档；云在动的时候隔几秒重画一次（环境光只看大致的分布）
+      Math.round(this.#eye[1] / 100), s.windSpeed > 0 ? Math.floor(this.#time / ENVIRONMENT_INTERVAL) : 0,
+    ]);
+    if (key !== this.#environmentKey) {
+      this.#environmentKey = key;
+      this.#environmentVersion++;
+      const encoder = this.#device.createCommandEncoder({ label: 'Clouds environment' });
+      gpu.recordEnvironment(encoder, atmosphere, this.#uniforms(undefined, true, { steps: ENVIRONMENT_STEPS, lightSteps: ENVIRONMENT_LIGHT_STEPS }));
+      this.#device.queue.submit([encoder.finish()]);
+    }
+    this.#atmosphere.environmentOverlay = { cube: gpu.environment, version: this.#environmentVersion };
   }
 
   /** 云在地面上的影子；不画云、影子图还没画过时是 undefined。 */
@@ -182,8 +225,8 @@ export class Clouds {
     this.offset[3] = (this.offset[3] + z * 0.3) % 1;
   }
 
-  /** 着色器的参数；view 没给时（画影子图，不看相机）相机那几项是 0。 */
-  #uniforms(view: RenderView | undefined, firstFrame: boolean): Float32Array {
+  /** 着色器的参数；view 没给时（画影子图、环境光里的云）相机的位置是上次步进时记下的，别的相机的项是 0。quality 换步数。 */
+  #uniforms(view: RenderView | undefined, firstFrame: boolean, quality = { steps: VIEW_STEPS, lightSteps: LIGHT_STEPS }): Float32Array {
     const s = this.settings;
     const atmosphere = this.#atmosphere;
     const bottom = s.bottom / 1000, top = (s.bottom + s.thickness) / 1000;
@@ -194,11 +237,14 @@ export class Clouds {
       data.set(view.previousViewProjection, 16);
       data.set([view.eye.x, view.eye.y, view.eye.z, this.#frame], 32);
       data.set([Math.ceil(view.width / 2), Math.ceil(view.height / 2), view.width, view.height], 64);
+      this.#eye.splice(0, 3, view.eye.x, view.eye.y, view.eye.z);
+    } else {
+      data.set([...this.#eye, 0], 32);
     }
     data.set([bottom, top, s.coverage, EXTINCTION_PER_KM * s.density], 36);
-    data.set([1 / (SHAPE_PERIOD_KM * s.scale), 7, s.cloudType, VIEW_STEPS], 40);
+    data.set([1 / (SHAPE_PERIOD_KM * s.scale), 7, s.cloudType, quality.steps], 40);
     data.set(this.offset, 44);
-    data.set([...light.direction, LIGHT_STEPS], 48);
+    data.set([...light.direction, quality.lightSteps], 48);
     data.set([...light.color, firstFrame ? 1 : HISTORY_BLEND], 52);
     data.set(atmosphere.skyRadiance(true), 56);
     data.set(atmosphere.skyRadiance(false), 60);
@@ -212,6 +258,10 @@ class CloudsGpu {
   readonly #noise: GPUTexture;
   readonly #noiseSampler: GPUSampler;
   readonly #uniforms: GPUBuffer;
+  /** 环境光里的云：立方体（每级 mip 各算一遍）、参数和计算管线。 */
+  readonly environment: GPUTexture;
+  readonly #environmentUniforms: GPUBuffer;
+  readonly #environmentPipeline: GPUComputePipeline;
   /** 云在地面上的影子图、画它用的参数（和步进的分开：画的时机不同）和管线。 */
   readonly shadow: GPUTexture;
   readonly #shadowUniforms: GPUBuffer;
@@ -241,6 +291,15 @@ class CloudsGpu {
       vertex: { module: march, entryPoint: 'fullscreenVertex' },
       fragment: { module: march, entryPoint: 'fs', targets: [{ format: FORMAT }] },
     });
+    this.environment = device.createTexture({
+      label: 'Clouds environment', size: [ENVIRONMENT_SIZE, ENVIRONMENT_SIZE, 6], format: FORMAT, mipLevelCount: Math.log2(ENVIRONMENT_SIZE) + 1,
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.#environmentUniforms = device.createBuffer({ label: 'Clouds environment', size: UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#environmentPipeline = device.createComputePipeline({
+      label: 'Clouds environment', layout: 'auto',
+      compute: { module: device.createShaderModule({ label: 'Clouds environment', code: ENVIRONMENT_SHADER }), entryPoint: 'main' },
+    });
     this.shadow = device.createTexture({ label: 'Clouds shadow', size: [SHADOW_SIZE, SHADOW_SIZE], format: 'r8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
     this.#shadowUniforms = device.createBuffer({ label: 'Clouds shadow', size: UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const shadow = device.createShaderModule({ label: 'Clouds shadow', code: SHADOW_SHADER });
@@ -262,6 +321,31 @@ class CloudsGpu {
   /** 噪声贴图生成完了（影子图、步进都要它）。 */
   get ready(): boolean {
     return this.#noiseSlices >= NOISE_SIZE;
+  }
+
+  /** 画环境光里的云：立方体的每一级 mip 各步进一遍。 */
+  recordEnvironment(encoder: GPUCommandEncoder, atmosphere: AtmosphereResources, uniforms: Float32Array): void {
+    this.#device.queue.writeBuffer(this.#environmentUniforms, 0, uniforms as Float32Array<ArrayBuffer>);
+    const layout = this.#environmentPipeline.getBindGroupLayout(0);
+    for (let level = 0; level < this.environment.mipLevelCount; level++) {
+      const size = Math.max(1, ENVIRONMENT_SIZE >> level);
+      const pass = encoder.beginComputePass({ label: `Clouds environment level ${level}` });
+      pass.setPipeline(this.#environmentPipeline);
+      pass.setBindGroup(0, this.#device.createBindGroup({
+        layout,
+        entries: [
+          { binding: 0, resource: { buffer: atmosphere.uniforms } },
+          { binding: 1, resource: { buffer: this.#environmentUniforms } },
+          { binding: 2, resource: this.#noise.createView() },
+          { binding: 3, resource: this.#noiseSampler },
+          { binding: 4, resource: atmosphere.skyView.createView() },
+          { binding: 5, resource: atmosphere.skySampler },
+          { binding: 6, resource: this.environment.createView({ dimension: '2d-array', baseMipLevel: level, mipLevelCount: 1 }) },
+        ],
+      }));
+      pass.dispatchWorkgroups(Math.ceil(size / 8), Math.ceil(size / 8), 6);
+      pass.end();
+    }
   }
 
   /** 画影子图（一个周期，512²）：uniforms 同步进的那份，只用到云层、形状和主光的方向。 */
@@ -331,6 +415,8 @@ class CloudsGpu {
 
   destroy(): void {
     this.#noise.destroy();
+    this.environment.destroy();
+    this.#environmentUniforms.destroy();
     this.shadow.destroy();
     this.#shadowUniforms.destroy();
     this.#uniforms.destroy();

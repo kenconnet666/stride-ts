@@ -158,6 +158,11 @@ export class Atmosphere {
   cameraHeight = 0;
   /** 空气透视的距离倍数（SkyAtmosphere.aerialPerspectiveScale）；0 是不做。 */
   aerialPerspectiveScale = 1;
+  /**
+   * 叠在天空的环境光上的东西（体积云每帧设）：一张立方体（rgb 散射，a 透射，Stride 的立方体约定）和它的版本号，版本变了
+   * 环境光重算。没有时是 undefined。
+   */
+  environmentOverlay: { readonly cube: GPUTexture; readonly version: number } | undefined;
   /** 星星的亮度（SkyAtmosphere.starsIntensity，白天淡到 0）。 */
   starsIntensity = 0;
   readonly #device: GPUDevice;
@@ -269,13 +274,14 @@ export class Atmosphere {
     const sky = [lutKey, Math.round(this.cameraHeight * 1000), s.skyIntensity, Math.round(this.starsIntensity * 20)];
     const bodies = [this.sun, this.moon].map((body) => ({ direction: body.direction, illuminance: this.#scattering(body) }));
     const skyKey = JSON.stringify([...sky, bodies.map((body) => [body.direction.map((v) => Math.round(v * 1000)), body.illuminance])]);
-    const lightingKey = JSON.stringify([...sky, bodies.map((body) => [body.direction.map((v) => Math.round(v * 100)), body.illuminance.map((v) => Math.round(Math.log(Math.max(v, 1e-6)) * 50))])]);
-    if (lutKey === this.#lutKey && skyKey === this.#skyKey) return;
+    const lightingKey = JSON.stringify([...sky, this.environmentOverlay?.version ?? -1, bodies.map((body) => [body.direction.map((v) => Math.round(v * 100)), body.illuminance.map((v) => Math.round(Math.log(Math.max(v, 1e-6)) * 50))])]);
+    const skyChanged = lutKey !== this.#lutKey || skyKey !== this.#skyKey;
+    const lighting = lightingKey !== this.#lightingKey;
+    if (!skyChanged && !lighting) return;
     const encoder = this.#device.createCommandEncoder({ label: 'Atmosphere' });
     if (lutKey !== this.#lutKey) gpu.recordLuts(encoder);
-    gpu.recordSkyView(encoder);
-    const lighting = lightingKey !== this.#lightingKey;
-    if (lighting) gpu.recordLighting(encoder, this.#sky!);
+    if (skyChanged) gpu.recordSkyView(encoder);
+    if (lighting) gpu.recordLighting(encoder, this.#sky!, this.environmentOverlay?.cube);
     this.#device.queue.submit([encoder.finish()]);
     this.#lutKey = lutKey;
     this.#skyKey = skyKey;
@@ -405,6 +411,8 @@ export class AtmosphereGpu {
   readonly skyBindGroup: GPUBindGroup;
   /** 查天空视图表用：u 是方位角，首尾相接。 */
   readonly skySampler: GPUSampler;
+  /** 环境光上没有叠东西时绑的立方体：1x1，(0, 0, 0, 1)（什么都不加、什么都不挡）。 */
+  readonly #noOverlay: GPUTexture;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #pipelines: Record<ComputeName, GPUComputePipeline>;
@@ -419,6 +427,8 @@ export class AtmosphereGpu {
     this.#device = device;
     this.#resources = resources;
     const storage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
+    this.#noOverlay = device.createTexture({ label: 'Atmosphere no overlay', size: [1, 1, 6], format: FORMAT, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    for (let face = 0; face < 6; face++) device.queue.writeTexture({ texture: this.#noOverlay, origin: [0, 0, face] }, new Uint16Array([0, 0, 0, 0x3c00]), {}, [1, 1]);
     this.skySampler = device.createSampler({ label: 'Atmosphere sky view', magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'clamp-to-edge' });
     this.uniforms = device.createBuffer({ label: 'Atmosphere', size: ATMOSPHERE_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.transmittance = device.createTexture({ label: 'Atmosphere transmittance', size: [256, 64], format: FORMAT, usage: storage });
@@ -500,7 +510,8 @@ export class AtmosphereGpu {
   }
 
   /** 环境光：天空立方体（每级 mip），球谐，镜面预滤波。天空视图表要先算好。 */
-  recordLighting(encoder: GPUCommandEncoder, sky: DynamicSky): void {
+  recordLighting(encoder: GPUCommandEncoder, sky: DynamicSky, overlay?: GPUTexture): void {
+    const clouds = (overlay ?? this.#noOverlay).createView({ dimension: 'cube' });
     for (let level = 0; level < this.skyCube.mipLevelCount; level++) {
       const size = Math.max(1, SKY_CUBE_SIZE >> level);
       this.#dispatch(encoder, 'skyCube', [
@@ -508,6 +519,7 @@ export class AtmosphereGpu {
         { binding: 1, resource: this.skyCube.createView({ dimension: '2d-array', baseMipLevel: level, mipLevelCount: 1 }) },
         { binding: 2, resource: this.skyView.createView() },
         { binding: 3, resource: this.skySampler },
+        { binding: 4, resource: clouds },
       ], [Math.ceil(size / 8), Math.ceil(size / 8), 6]);
     }
     this.#dispatch(encoder, 'sh', [
@@ -546,7 +558,7 @@ export class AtmosphereGpu {
   }
 
   destroy(): void {
-    for (const texture of [this.transmittance, this.multiScattering, this.skyView, this.skyCube, this.aerial]) texture.destroy();
+    for (const texture of [this.transmittance, this.multiScattering, this.skyView, this.skyCube, this.aerial, this.#noOverlay]) texture.destroy();
     for (const buffer of [this.uniforms, this.shResult, this.shReadback, this.camera]) buffer.destroy();
   }
 

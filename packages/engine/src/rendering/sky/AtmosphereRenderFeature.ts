@@ -20,8 +20,9 @@ export class AtmosphereRenderFeature extends RootRenderFeature {
 
   override prepare(): void {
     const atmosphere = this.system.atmosphere;
-    atmosphere.update();
+    // 先让云准备：环境光里的云重画了的话，大气这一帧就跟着重算环境光
     this.system.clouds.prepare();
+    atmosphere.update();
     const gpu = atmosphere.gpu;
     if (!gpu) return;
     const device = this.system.device;

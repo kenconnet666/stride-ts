@@ -286,6 +286,8 @@ ${ATMOSPHERE_WGSL}
 @group(0) @binding(1) var output: texture_storage_2d_array<rgba16float, write>;
 @group(0) @binding(2) var skyViewLut: texture_2d<f32>;
 @group(0) @binding(3) var skySampler: sampler;
+// 环境光里的云（rgb 散射，a 透射；没有云时是一张 1x1 的 (0, 0, 0, 1)）
+@group(0) @binding(4) var cloudCube: texture_cube<f32>;
 ${SKY_VIEW_WGSL}
 
 ${CUBE_FACE_DIRECTION}
@@ -304,7 +306,11 @@ ${CUBE_FACE_DIRECTION}
       sum += textureSampleLevel(skyViewLut, skySampler, skyViewUv(vec3f(c.xy, -c.z)), 0.0).rgb + nightGlow() * smoothstep(-0.1, 0.1, c.y);
     }
   }
-  textureStore(output, id.xy, id.z, vec4f(sum / 16.0, 1.0));
+  // 云盖在天空上：按这一级纹素的大小取云的立方体里差不多大的那一级
+  let center = normalize(faceDirection(id.z, (vec2f(id.xy) + 0.5) / vec2f(size) * 2.0 - 1.0));
+  let level = log2(f32(textureDimensions(cloudCube).x) / f32(size.x));
+  let cloud = textureSampleLevel(cloudCube, skySampler, center, max(level, 0.0));
+  textureStore(output, id.xy, id.z, vec4f(sum / 16.0 * cloud.a + cloud.rgb, 1.0));
 }`;
 
 /** 立方体贴图投影成 3 阶球谐，乘 Lambert 余弦核和基函数常数（同资源管线的 st_cubemap_sh_lambert）。一个工作组算完。 */

@@ -1,7 +1,7 @@
 /**
  * 体积云的着色器源码（VolumetricClouds.ts 用；说明见那边的文件头）：生成噪声贴图的计算着色器，步进（和上一帧混合），合成。
  */
-import { FULLSCREEN_VERTEX, GRADIENT_NOISE, HASH3 } from '../wgsl';
+import { CUBE_FACE_DIRECTION, FULLSCREEN_VERTEX, GRADIENT_NOISE, HASH3 } from '../wgsl';
 import { ATMOSPHERE_WGSL, SKY_VIEW_WGSL } from './atmosphereShaders';
 
 /** 噪声贴图：每个纹素算一遍。坐标 0..1，三个方向首尾相接（格子按周期取模）。 */
@@ -185,19 +185,16 @@ ${CLOUD_DENSITY}
   return vec4f(max(exp(-depth * 0.3), 0.06), 0.0, 0.0, 1.0);
 }`;
 
-/** 步进：每个半分辨率的像素沿视线积分，和上一帧的结果混合，写进这一帧的云缓冲（rgb 云的散射，a 云的透射；2 是没算）。 */
-export const MARCH_SHADER = /* wgsl */ `
-${FULLSCREEN_VERTEX}
+/**
+ * 沿一条视线步进（画面和环境光共用）：大气的参数、云的密度、天空视图表，求视线和云层的交点、朝主光算透射、积分散射。
+ * 绑定：0 大气，1 云的参数，2、3 噪声贴图和采样器，4、5 天空视图表和采样器。
+ */
+const CLOUD_MARCH = /* wgsl */ `
 ${ATMOSPHERE_WGSL}
 ${CLOUD_DENSITY}
 @group(0) @binding(4) var skyViewLut: texture_2d<f32>;
 @group(0) @binding(5) var skySampler: sampler;
-@group(0) @binding(6) var depth: texture_depth_2d;
-@group(0) @binding(7) var history: texture_2d<f32>;
 ${SKY_VIEW_WGSL}
-
-/** 没算的像素（整块都被物体挡着）的标记。 */
-const NOT_MARCHED = 2.0;
 
 /** 沿视线走 t 千米以后的海拔 = c + b·t + a·t²（a 是曲率）；等于 height 的两个 t（小的在前）。没有时 x 大于 y。 */
 fn heightCrossings(a: f32, b: f32, eyeHeight: f32, height: f32) -> vec2f {
@@ -215,8 +212,6 @@ fn henyeyGreenstein(cosTheta: f32, g: f32) -> f32 {
   let g2 = g * g;
   return (1.0 - g2) / (4.0 * PI * pow(max(1.0 + g2 - 2.0 * g * cosTheta, 1e-4), 1.5));
 }
-
-${GRADIENT_NOISE}
 
 struct Marched { scattered: vec3f, transmittance: f32, distance: f32, height: f32 };
 
@@ -329,6 +324,45 @@ fn march(direction: vec3f, jitter: f32) -> Marched {
   return result;
 }
 
+/** 一条视线上的云：rgb 是散射（云到相机之间的大气算进去了），a 是透射。没有云时是 (0, 0, 0, 1)。 */
+fn cloudsAlong(direction: vec3f, jitter: f32) -> vec4f {
+  let marched = march(direction, jitter);
+  if (marched.transmittance >= 1.0) { return vec4f(0.0, 0.0, 0.0, 1.0); }
+  // 云到相机之间的大气：按平均距离、相机和云之间的平均高度上的消光，淡向这个方向的天空的颜色
+  let middle = 0.5 * (max(clouds.eye.y / 1000.0, 0.0) + marched.height);
+  let fade = exp(-sampleMedium(middle).extinction * marched.distance);
+  let sky = textureSampleLevel(skyViewLut, skySampler, skyViewUv(direction), 0.0).rgb;
+  return vec4f(marched.scattered * fade + sky * (1.0 - fade) * (1.0 - marched.transmittance), marched.transmittance);
+}
+`;
+
+/**
+ * 环境光里的云：从相机的位置朝立方体每个面的每个纹素步进一次（步数比画面的少），写进云的立方体（rgb 散射，a 透射；
+ * Stride 的立方体约定，同天空的立方体）。每一级 mip 各算一遍。天空的环境光合成时叠上去（atmosphereShaders 的 SKY_CUBE_SHADER）。
+ */
+export const ENVIRONMENT_SHADER = /* wgsl */ `
+${CLOUD_MARCH}
+${CUBE_FACE_DIRECTION}
+@group(0) @binding(6) var output: texture_storage_2d_array<rgba16float, write>;
+
+@compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) id: vec3u) {
+  let size = textureDimensions(output);
+  if (any(id.xy >= size)) { return; }
+  let c = normalize(faceDirection(id.z, (vec2f(id.xy) + 0.5) / vec2f(size) * 2.0 - 1.0));
+  textureStore(output, id.xy, id.z, cloudsAlong(vec3f(c.xy, -c.z), 0.5));
+}`;
+
+/** 步进：每个半分辨率的像素沿视线积分，和上一帧的结果混合，写进这一帧的云缓冲（rgb 云的散射，a 云的透射；2 是没算）。 */
+export const MARCH_SHADER = /* wgsl */ `
+${FULLSCREEN_VERTEX}
+${CLOUD_MARCH}
+@group(0) @binding(6) var depth: texture_depth_2d;
+@group(0) @binding(7) var history: texture_2d<f32>;
+${GRADIENT_NOISE}
+
+/** 没算的像素（整块都被物体挡着）的标记。 */
+const NOT_MARCHED = 2.0;
+
 /** 上一帧的云缓冲里 uv 处的值：四个纹素按双线性的权重混合，没算的不参加；可用的权重不到一半时 a 是 NOT_MARCHED。 */
 fn sampleHistory(uv: vec2f) -> vec4f {
   let size = vec2f(textureDimensions(history));
@@ -363,16 +397,7 @@ fn sampleHistory(uv: vec2f) -> vec4f {
   let direction = normalize(far.xyz / far.w - clouds.eye.xyz);
   // 每帧换一个抖动（黄金分割的步子），十几帧里把一步的长度铺满
   let jitter = fract(gradientNoise(in.position.xy) + clouds.eye.w * 0.61803399);
-  let marched = march(direction, jitter);
-  var current = vec4f(marched.scattered, marched.transmittance);
-  if (marched.transmittance < 1.0) {
-    // 云到相机之间的大气：按平均距离、相机和云之间的平均高度上的消光，淡向这个方向的天空的颜色
-    let middle = 0.5 * (max(clouds.eye.y / 1000.0, 0.0) + marched.height);
-    let medium = sampleMedium(middle);
-    let fade = exp(-medium.extinction * marched.distance);
-    let sky = textureSampleLevel(skyViewLut, skySampler, skyViewUv(direction), 0.0).rgb;
-    current = vec4f(marched.scattered * fade + sky * (1.0 - fade) * (1.0 - marched.transmittance), marched.transmittance);
-  }
+  let current = cloudsAlong(direction, jitter);
 
   // 上一帧同一个方向上的结果（云远，相机挪动带来的视差不管）
   let previous = clouds.previousViewProjection * vec4f(clouds.eye.xyz + direction * 1e5, 1.0);

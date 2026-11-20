@@ -6,7 +6,8 @@
  * （`路径#导出名`）或 # 后面的部分找。
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
-import { Decal, Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, VolumetricFog } from '../rendering/components';
+import { Camera, Decal, Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, VolumetricFog } from '../rendering/components';
+import { cameraVerticalFieldOfView } from '../rendering/cameraRays';
 import { DayNightCycle, lightRotationTowards } from '../rendering/sky/DayNightCycle';
 import { Material } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
@@ -65,6 +66,25 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     blur.enabled = switchArg(args, blur.enabled);
     for (const key of ['shutter', 'maxPixels'] as const) if (typeof args[key] === 'number') blur[key] = args[key];
     return { enabled: blur.enabled, shutter: blur.shutter, maxPixels: blur.maxPixels };
+  });
+  debug.command('lens', 'Physical camera of the main view (Camera component: physical, focal length, aperture, focus, shutter, exposure, depth of field). args: physical, depthOfField (true/false), focalLength (mm), aperture (f-number), focusDistance (m), focusOn (entity name: focus at its distance), shutterAngle (deg), exposureCompensation (EV). Reports the camera and its vertical field of view.', (args) => {
+    const compositor = game.graphicsCompositor;
+    const cameras = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.has(Camera));
+    const entity = cameras.find((e) => e.id === compositor.mainCamera) ?? cameras.find((e) => e.require(Camera).slot === compositor.cameraSlot);
+    if (!entity) throw new Error('no camera renders the main view');
+    const camera = entity.require(Camera);
+    for (const key of ['physical', 'depthOfField'] as const) if (typeof args[key] === 'boolean') camera[key] = args[key];
+    for (const key of ['focalLength', 'aperture', 'focusDistance', 'shutterAngle', 'exposureCompensation'] as const) if (typeof args[key] === 'number') camera[key] = args[key];
+    if (typeof args['focusOn'] === 'string') {
+      const target = entityArg(game, { entity: args['focusOn'] });
+      const [a, b] = [entity.require(Transform).world, target.require(Transform).world];
+      camera.focusDistance = Math.hypot(a[12]! - b[12]!, a[13]! - b[13]!, a[14]! - b[14]!);
+    }
+    const { physical, focalLength, aperture, focusDistance, shutterAngle, exposureCompensation, depthOfField, sensorWidth, sensorHeight } = camera;
+    return {
+      camera: entity.name, physical, focalLength, aperture, focusDistance, shutterAngle, exposureCompensation, depthOfField, sensor: [sensorWidth, sensorHeight],
+      verticalFieldOfView: cameraVerticalFieldOfView({ ...camera, projection: camera.projection }),
+    };
   });
   debug.command('contact', 'Contact shadows (screen-space shadows of the shadow-casting directional light). args: on (true/false, or "toggle"; omitted keeps it and just reports), length (world units), steps, thickness.', (args) => {
     const contact = game.graphicsCompositor.contactShadows;

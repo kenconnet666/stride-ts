@@ -129,6 +129,17 @@ export function inRenderMask(mask: number, group: number): boolean {
 }
 
 /** 一个视角：相机、阴影级联等。矩阵的布局见 data/Matrix.ts。 */
+/** 物理相机的镜头参数（Camera 组件的那几列，长度单位：焦距、传感器毫米，对焦距离米）。 */
+export interface CameraLens {
+  readonly focalLength: number;
+  readonly aperture: number;
+  readonly focusDistance: number;
+  readonly sensorHeight: number;
+  readonly shutterAngle: number;
+  readonly exposureCompensation: number;
+  readonly depthOfField: boolean;
+}
+
 export class RenderView {
   readonly view = Matrix.identity();
   readonly projection = Matrix.identity();
@@ -160,6 +171,8 @@ export class RenderView {
   viewport: Viewport | undefined;
   /** 着色时用不用阴影（方向光的级联、点光聚光的阴影）。 */
   receivesShadows = true;
+  /** 物理相机的镜头（主画面的相机开着 physical 时）：景深、运动模糊的快门、曝光补偿用；undefined 是普通相机。 */
+  lens: CameraLens | undefined;
   /** 这个视图自己的方向光级联（ShadowMapRenderer.collect 给每个接收阴影的视图各算一套）；没有方向光阴影时是 undefined。 */
   shadow: ShadowReceiver | undefined;
   /**

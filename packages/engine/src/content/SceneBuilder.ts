@@ -322,7 +322,13 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
     add: (entity, { shapes, ...settings }, { assets }) => entity.add(Body.with({ collider: collider(shapes, assets), ...settings })),
     remove: drop(Body, PhysicsBody),
   },
-  camera: { add: (entity, camera) => entity.add(Camera.with(camera)), remove: drop(Camera) },
+  camera: {
+    add: (entity, { physical, ...camera }) => entity.add(Camera.with({
+      ...camera,
+      ...(physical ? { physical: true, ...physical, ...(physical.sensor ? { sensorWidth: physical.sensor[0], sensorHeight: physical.sensor[1] } : {}) } : {}),
+    })),
+    remove: drop(Camera),
+  },
   instancing: { add: (entity) => entity.add(Instancing), remove: drop(Instancing) },
   light: {
     add: (entity, light, { assets }) => {

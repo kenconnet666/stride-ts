@@ -32,6 +32,7 @@ import { ScreenSpaceGlobalIllumination } from './screenspace/ScreenSpaceGlobalIl
 import { SubsurfaceScattering } from './screenspace/SubsurfaceScattering';
 import { ScreenSpaceReflections } from './screenspace/ScreenSpaceReflections';
 import { ContactShadows } from './screenspace/ContactShadows';
+import { DepthOfField } from './screenspace/DepthOfField';
 import { MotionBlur } from './screenspace/MotionBlur';
 import { Skybox } from './lighting/Skybox';
 import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
@@ -127,6 +128,8 @@ export class ForwardRenderer {
   readonly subsurfaceScattering: SubsurfaceScattering;
   /** 运动模糊（默认关，见 MotionBlur.ts）。 */
   readonly motionBlur: MotionBlur;
+  /** 景深（主画面的相机是物理相机、开着 depthOfField 时）。 */
+  readonly depthOfField: DepthOfField;
   /** 主画面上一帧的视图投影（不开 TAA 时运动向量用；开着时 TAA 自己记）。 */
   readonly #lastViewProjection = Matrix.identity();
   /** 接触阴影（投阴影的方向光，屏幕空间；默认关，见 ContactShadows.ts）。 */
@@ -203,13 +206,19 @@ export class ForwardRenderer {
         if (!Matrix.invert(view.view, transform.world.subarray(slot * 16, slot * 16 + 16))) Matrix.setIdentity(view.view);
         view.nearClipPlane = camera.nearClipPlane[row]!;
         view.farClipPlane = camera.farClipPlane[row]!;
+        const physical = camera.physical[row] === 1;
         cameraProjectionMatrix(view.projection, {
           projection: camera.projection[row]!,
           verticalFieldOfView: camera.verticalFieldOfView[row]!,
           orthographicSize: camera.orthographicSize[row]!,
           nearClipPlane: view.nearClipPlane,
           farClipPlane: view.farClipPlane,
+          physical, sensorHeight: camera.sensorHeight[row]!, focalLength: camera.focalLength[row]!,
         }, view.width / view.height);
+        view.lens = physical ? {
+          focalLength: camera.focalLength[row]!, aperture: camera.aperture[row]!, focusDistance: camera.focusDistance[row]!, sensorHeight: camera.sensorHeight[row]!,
+          shutterAngle: camera.shutterAngle[row]!, exposureCompensation: camera.exposureCompensation[row]!, depthOfField: camera.depthOfField[row] === 1,
+        } : undefined;
         view.update();
       }
     },
@@ -290,6 +299,7 @@ export class ForwardRenderer {
     this.screenSpaceReflections = new ScreenSpaceReflections(renderSystem.device, renderSystem.resources.linearClamp);
     this.contactShadows = new ContactShadows(renderSystem.device);
     this.motionBlur = new MotionBlur(renderSystem.device);
+    this.depthOfField = new DepthOfField(renderSystem.device);
     this.#pool = new GraphTexturePool(renderSystem.device);
     this.#graph = new RenderGraph(this.#pool);
     this.picker = new ScenePicker(renderSystem);
@@ -358,6 +368,11 @@ export class ForwardRenderer {
     const post = this.postEffects.enabled || !this.directOutput;
     const temporal = this.hasCamera && post && this.temporalAntialiasing.enabled && this.postEffects.antialiasing.enabled && this.quality.antialiasing;
     const blur = this.hasCamera && post && this.motionBlur.enabled && this.quality.motionBlur;
+    // 物理相机：景深按镜头，运动模糊的快门按快门角，曝光加上补偿
+    const lens = this.hasCamera ? this.#mainView.lens : undefined;
+    const focus = post && lens?.depthOfField === true && this.quality.depthOfField;
+    if (lens) this.motionBlur.shutter = lens.shutterAngle / 360;
+    this.postEffects.toneMap.exposureCompensation = lens?.exposureCompensation ?? 0;
     if (temporal) this.temporalAntialiasing.jitter(this.#mainView);
     else {
       this.temporalAntialiasing.reset();
@@ -479,8 +494,9 @@ export class ForwardRenderer {
       const reflected = reflect && surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity) : color;
       // TAA 做了抗锯齿，后处理里就不再做 FXAA
       const antialiased = temporal ? this.temporalAntialiasing.record(frame, reflected, depth, this.#mainView, velocity!) : reflected;
-      // 运动模糊在抗锯齿之后、泛光这些之前（亮的东西糊开以后再泛光）
-      const input = blur ? this.motionBlur.record(frame, antialiased, depth, velocity!, this.#mainView) : antialiased;
+      // 景深、运动模糊在抗锯齿之后、泛光这些之前（亮的东西糊开以后再泛光）；景深在前（同虚幻）
+      const focused = focus ? this.depthOfField.record(frame, antialiased, depth, this.#mainView, lens!) : antialiased;
+      const input = blur ? this.motionBlur.record(frame, focused, depth, velocity!, this.#mainView) : focused;
       this.postEffects.record(frame, input, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed, temporal ? { ...this.quality, antialiasing: false } : this.quality);
     } else {
       this.#viewPasses(context, frame, mainView, this.#backBufferOutput(canvas.width, canvas.height), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
@@ -499,6 +515,7 @@ export class ForwardRenderer {
     if (this.#scatter) this.subsurfaceScattering.flush();
     if (this.#mainView.screenShadow) this.contactShadows.flush();
     if (blur) this.motionBlur.flush();
+    if (focus) this.depthOfField.flush();
     if (temporal) {
       this.temporalAntialiasing.flush();
       this.temporalAntialiasing.unjitter(this.#mainView);
@@ -521,6 +538,7 @@ export class ForwardRenderer {
     this.screenSpaceReflections.destroy();
     this.contactShadows.destroy();
     this.motionBlur.destroy();
+    this.depthOfField.destroy();
     this.picker.destroy();
     this.viewDepth.destroy();
     this.shadowMapRenderer.destroy();
@@ -828,7 +846,8 @@ export class ForwardRenderer {
     const scatter = this.subsurfaceScattering.enabled && this.quality.subsurfaceScattering ? this.subsurfaceScattering.warm() : undefined;
     const contact = this.quality.contactShadows ? this.contactShadows.warm() : undefined;
     const blur = this.quality.motionBlur ? this.motionBlur.warm() : undefined;
-    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, indirect, scatter, contact, blur]).then(() => undefined);
+    const focus = this.quality.depthOfField ? this.depthOfField.warm() : undefined;
+    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, indirect, scatter, contact, blur, focus]).then(() => undefined);
   }
 
   /**

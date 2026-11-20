@@ -30,6 +30,8 @@ export interface QualitySettings {
   readonly contactShadows: boolean;
   /** 运动模糊（开着时才算）。 */
   readonly motionBlur: boolean;
+  /** 物理相机的景深（相机开着 depthOfField 时）。 */
+  readonly depthOfField: boolean;
   /** 屏幕空间的全局光照（开着时才算，代替 GTAO）。 */
   readonly globalIllumination: boolean;
   /** 次表面散射的模糊（场景里有散射材质、合成器开着时才算）。 */
@@ -55,10 +57,10 @@ export interface QualitySettings {
  * - 低：阴影图到 small、一个级联；泛光、环境光遮蔽、反射探针、天空遮挡也关掉。抗锯齿留着：一遍全屏，比它省下的锯齿便宜。
  */
 export const QUALITY_TIERS: Readonly<Record<QualityTier, QualitySettings>> = {
-  low: { shadows: true, shadowSize: 'small', shadowFilter: 'pcf3x3', shadowCascades: 1, antialiasing: true, ambientOcclusion: false, screenSpaceReflections: false, contactShadows: false, motionBlur: false, globalIllumination: false, subsurfaceScattering: false, reflectionProbes: false, volumetricClouds: false, volumetricFog: false, skyOcclusion: false, bloom: false, lightStreak: false, lensFlare: false },
-  medium: { shadows: true, shadowSize: 'medium', shadowFilter: 'pcf3x3', shadowCascades: 2, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: false, contactShadows: false, motionBlur: false, globalIllumination: false, subsurfaceScattering: true, reflectionProbes: true, volumetricClouds: true, volumetricFog: true, skyOcclusion: true, bloom: true, lightStreak: false, lensFlare: false },
-  high: { shadows: true, shadowSize: 'large', shadowFilter: 'pcf5x5', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, reflectionProbes: true, volumetricClouds: true, volumetricFog: true, skyOcclusion: true, bloom: true, lightStreak: true, lensFlare: true },
-  ultra: { shadows: true, shadowSize: 'xlarge', shadowFilter: 'pcss', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, reflectionProbes: true, volumetricClouds: true, volumetricFog: true, skyOcclusion: true, bloom: true, lightStreak: true, lensFlare: true },
+  low: { shadows: true, shadowSize: 'small', shadowFilter: 'pcf3x3', shadowCascades: 1, antialiasing: true, ambientOcclusion: false, screenSpaceReflections: false, contactShadows: false, motionBlur: false, depthOfField: false, globalIllumination: false, subsurfaceScattering: false, reflectionProbes: false, volumetricClouds: false, volumetricFog: false, skyOcclusion: false, bloom: false, lightStreak: false, lensFlare: false },
+  medium: { shadows: true, shadowSize: 'medium', shadowFilter: 'pcf3x3', shadowCascades: 2, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: false, contactShadows: false, motionBlur: false, depthOfField: true, globalIllumination: false, subsurfaceScattering: true, reflectionProbes: true, volumetricClouds: true, volumetricFog: true, skyOcclusion: true, bloom: true, lightStreak: false, lensFlare: false },
+  high: { shadows: true, shadowSize: 'large', shadowFilter: 'pcf5x5', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, depthOfField: true, globalIllumination: true, subsurfaceScattering: true, reflectionProbes: true, volumetricClouds: true, volumetricFog: true, skyOcclusion: true, bloom: true, lightStreak: true, lensFlare: true },
+  ultra: { shadows: true, shadowSize: 'xlarge', shadowFilter: 'pcss', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, depthOfField: true, globalIllumination: true, subsurfaceScattering: true, reflectionProbes: true, volumetricClouds: true, volumetricFog: true, skyOcclusion: true, bloom: true, lightStreak: true, lensFlare: true },
 };
 
 const SIZES: readonly ShadowMapSize[] = ['xsmall', 'small', 'medium', 'large', 'xlarge'];

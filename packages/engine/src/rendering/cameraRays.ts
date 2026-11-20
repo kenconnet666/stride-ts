@@ -16,6 +16,16 @@ export interface CameraProjection {
   readonly orthographicSize: number;
   readonly nearClipPlane: number;
   readonly farClipPlane: number;
+  /** 物理相机：竖直视角按焦距和传感器的高算。 */
+  readonly physical?: boolean;
+  readonly sensorHeight?: number;
+  readonly focalLength?: number;
+}
+
+/** 相机的竖直视角（度）：物理相机按焦距和传感器的高（2·atan(高 / 2·焦距)），否则是 verticalFieldOfView。 */
+export function cameraVerticalFieldOfView(camera: CameraProjection): number {
+  if (!camera.physical || !camera.sensorHeight || !camera.focalLength) return camera.verticalFieldOfView;
+  return (2 * Math.atan(camera.sensorHeight / (2 * camera.focalLength)) * 180) / Math.PI;
 }
 
 /** 相机的投影矩阵（Stride 的 CameraComponent.Update）：透视按竖直视角，正交看到 orthographicSize 高、按宽高比的宽。 */
@@ -23,7 +33,7 @@ export function cameraProjectionMatrix(out: Float32Array, camera: CameraProjecti
   const { nearClipPlane: near, farClipPlane: far } = camera;
   return camera.projection === 'orthographic'
     ? Matrix.orthoRH(out, aspectRatio * camera.orthographicSize, camera.orthographicSize, near, far)
-    : Matrix.perspectiveFovRH(out, (camera.verticalFieldOfView * Math.PI) / 180, aspectRatio, near, far);
+    : Matrix.perspectiveFovRH(out, (cameraVerticalFieldOfView(camera) * Math.PI) / 180, aspectRatio, near, far);
 }
 
 /**

@@ -62,7 +62,8 @@ const zhCN: FieldMessages = {
     transparency: '透明', transparent: '画透明物体', trigger: '触发器', turbulence: '湍流', type: '类型', upperFade: '上端淡出', uvScale: 'UV 缩放',
     verticalFieldOfView: '竖直视角', windDirection: '风向', windSpeed: '风速',
     duration: '时长', frameRate: '帧率', tracks: '轨道', entity: '实体', component: '组件', property: '属性', interpolation: '插值', keys: '关键帧',
-    time: '时刻', value: '值', in: '入切线', out: '出切线', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
+    time: '时刻', value: '值', in: '入切线', out: '出切线',
+    physical: '物理相机', sensor: '传感器', focalLength: '焦距', aperture: '光圈', focusDistance: '对焦距离', shutterAngle: '快门角', exposureCompensation: '曝光补偿', depthOfField: '景深', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
     "one per material slot of the model; null keeps the model's own material; omitted keeps all of them": '模型的每个材质槽一个；null 用模型自带的材质；不写时全用模型自带的',
@@ -105,6 +106,12 @@ const zhCN: FieldMessages = {
     'cubic only: slope (per second) arriving at the key, per component; unset is automatic': '只用于 cubic：进关键帧时每秒变多少，按分量；不写是自动的',
     'cubic only: slope (per second) leaving the key, per component; unset is automatic': '只用于 cubic：出关键帧时每秒变多少，按分量；不写是自动的',
     'id of the camera entity in the scene file': '场景文件里相机实体的 id',
+    'sensor width and height; 36x24 is full frame': '传感器的宽、高；36x24 是全画幅',
+    'replaces verticalFieldOfView': '代替竖直视角',
+    'f-number; smaller is a shallower depth of field': 'f 值；越小景深越浅',
+    'motion blur: 180 exposes half a frame': '运动模糊：180 是曝光半帧',
+    'blur by aperture, focal length and focus distance (needs post effects)': '按光圈、焦距、对焦距离模糊（要开后处理）',
+    'physical camera: focal length, aperture, focus, shutter, exposure (main view only)': '物理相机：焦距、光圈、对焦、快门、曝光（只对主画面）',
     'name of the clip in the AnimationComponent': 'AnimationComponent 里剪辑的名字',
   },
 };

@@ -474,6 +474,16 @@ export interface SceneEntityFile {
       /** 没写是透视。 */
       readonly projection?: 'orthographic';
       readonly orthographicSize?: number;
+      /** 物理相机（Stride 没有，见 Camera 组件）：写了就开着；没写的项用组件的默认值。 */
+      readonly physical?: {
+        readonly sensor?: readonly [number, number];
+        readonly focalLength?: number;
+        readonly aperture?: number;
+        readonly focusDistance?: number;
+        readonly shutterAngle?: number;
+        readonly exposureCompensation?: number;
+        readonly depthOfField?: boolean;
+      };
     };
     readonly light?:
       | {

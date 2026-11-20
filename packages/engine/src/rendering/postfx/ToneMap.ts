@@ -52,7 +52,7 @@ struct Adapt { factor: f32, reset: f32 };
 
 const TONEMAP_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
-struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32 };
+struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32, compensation: f32 };
 @group(0) @binding(0) var<uniform> settings: Settings;
 @group(0) @binding(1) var hdr: texture_2d<f32>;
 @group(0) @binding(2) var adapted: texture_2d<f32>;
@@ -86,7 +86,7 @@ fn dither(color: vec3f, pixel: vec2f) -> vec3f {
     let luminance = max(textureLoad(adapted, vec2u(0u), 0).r, 0.0001);
     let keyValue = select(settings.keyValue, 1.03 - 2.0 / (2.0 + log2(luminance + 1.0) / log2(10.0)), settings.autoKeyValue > 0.5);
     let exposure = select(settings.exposure, max(keyValue / luminance, 0.0001), settings.autoExposure > 0.5);
-    color = hejl2(color * exposure, settings.whitePoint);
+    color = hejl2(color * exposure * settings.compensation, settings.whitePoint);
   }
   if (settings.dither != 0.0) { color = dither(color, in.position.xy); }
   return vec4f(color, 1.0);
@@ -126,6 +126,8 @@ export class ToneMap {
   whitePoint = 5;
   /** 输出是 8 位的 sRGB 时加抖动（见文件头）。和桌面 Stride 的截图逐像素比对时关掉。 */
   dither = true;
+  /** 曝光补偿（档，自动曝光之后再乘 2^它）：物理相机的 exposureCompensation。 */
+  exposureCompensation = 0;
 
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
@@ -152,6 +154,7 @@ export class ToneMap {
   /** 量 input（rgba16float 的 HDR 画面）的平均亮度并做时间上的适应；elapsed 是这一帧的秒数。 */
   measure(frame: EffectFrame, input: Image, elapsed: number): void {
     this.#device.queue.writeBuffer(this.#settings, 0, new Float32Array([this.keyValue, 2 ** this.exposure, this.autoKeyValue ? 1 : 0, this.autoExposure ? 1 : 0, this.whitePoint, this.enabled ? 1 : 0]));
+    this.#device.queue.writeBuffer(this.#settings, 28, new Float32Array([2 ** this.exposureCompensation]));
     // 关掉时 draw 照样绑一张适应亮度（着色器不读它）；重新打开时从当前亮度开始适应
     if (!this.enabled) {
       this.#measured = this.#adapted[this.#current];

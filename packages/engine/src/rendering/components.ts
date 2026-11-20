@@ -22,6 +22,24 @@ export const Camera = component('Camera', {
   farClipPlane: prop.f32().default(1000).min(0),
   /** 图形合成器的相机槽位（Stride 的 CameraComponent.Slot，按合成器的 Cameras 列表编号）；0 是主画面用的那个。 */
   slot: prop.u32().default(0),
+  /**
+   * 物理相机（Stride 没有；照虚幻的 CineCamera、Unity 的 Physical Camera）：开着时竖直视角按焦距和传感器的高算（verticalFieldOfView
+   * 不用），景深按光圈、对焦距离算，运动模糊的快门按快门角，曝光加上补偿。只对主画面的相机起作用。
+   */
+  physical: prop.bool().default(false),
+  /** 传感器（画幅）的宽、高，毫米；默认是全画幅 36x24。 */
+  sensorWidth: prop.f32().default(36).min(1).unit('mm'),
+  sensorHeight: prop.f32().default(24).min(1).unit('mm'),
+  focalLength: prop.f32().default(50).min(1).unit('mm'),
+  /** 光圈（f 值）：越小景深越浅。 */
+  aperture: prop.f32().default(2.8).min(0.5),
+  focusDistance: prop.f32().default(10).min(0.01).unit('m'),
+  /** 快门角：360 是快门开着一整帧（运动模糊最长），180 是半帧（电影的常用值）。 */
+  shutterAngle: prop.f32().default(180).min(0).max(360).unit('deg'),
+  /** 曝光补偿（EV）：画面亮度乘 2 的这么多次方。 */
+  exposureCompensation: prop.f32().default(0).unit('EV'),
+  /** 按光圈、焦距、对焦距离算景深（要后处理开着）。 */
+  depthOfField: prop.bool().default(false),
 });
 
 /**

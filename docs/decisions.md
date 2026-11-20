@@ -13,6 +13,15 @@ F2 的前一半（编辑器的面板、曲线编辑器还没做）。参考虚�
 - **相机切换**：`ForwardRenderer.mainCamera`（实体 id）设了而且它带相机时主画面用它，不按槽位找。和 Stride 不同：Stride 换相机要改 CameraComponent.Slot。
 - **看过**：collect-dodge 的开场过场（`Cutscenes/Intro`，6 秒：过场相机绕场地飞一圈落到跟随相机的位置，两条字幕，开门声，结尾发 introDone），用编辑器的 MCP 服务建的；无头 Chrome 里拖到 1.2、3.5、5.5 秒截图，相机和字幕对；冒烟加了一条检查（放的时候是过场相机、有字幕，放完还回跟随相机、收到 introDone）。
 
+## 2026-11-21 物理相机和景深
+
+F3 的第一步。参考虚幻的 CineCamera、Unity HDRP 的 Physical Camera、Filament 的相机模型。
+
+- **相机**（Camera 组件加 `physical` 和镜头的几列，场景文件里 `camera.physical: { sensor, focalLength, aperture, focusDistance, shutterAngle, exposureCompensation, depthOfField }`）：开着时竖直视角 = 2·atan(传感器高 / 2·焦距)（`cameraVerticalFieldOfView`，投影、点选、屏幕到世界的射线共用）；快门角驱动运动模糊的快门（180 度是半帧）；曝光补偿乘在自动曝光之后（ToneMap 的 `exposureCompensation`，2 的 EV 次方）。只对主画面的相机起作用（`RenderView.lens`）。曝光没有按光圈、快门、ISO 算：灯光的强度是 Stride 的单位不是光度学的，按物理算的曝光对不上，等灯光换物理单位（P5）时再接。
+- **景深**（`rendering/screenspace/DepthOfField.ts`）：弥散圆按薄透镜（孔径 = 焦距 / 光圈，直径 = 孔径 · 焦距 / (对焦距离 − 焦距) · |z − 对焦距离| / z，按传感器的高换成像素）。做法照 Dennis Gustafsson 的单遍散景：半分辨率降采样（按亮度压，四个像素里取最大的弥散圆），黄金角螺旋上 48 个样本"散射当收集"（样本的弥散圆盖得到才算，比这个像素远的样本限在它的两倍以内，清楚的前景不被背景糊上），全分辨率按弥散圆合成，近处的模糊盖过清楚的背景。在运动模糊之前（同虚幻）。画质档位 low 关。和 Stride 不同：Stride 的景深是手调的清楚距离范围，不跟镜头参数走。
+- **耗时**：1280x720 的 RX 9070 上 0.054 毫秒（降采样 0.006、散景 0.037、合成 0.011）。
+- **看过**：collect-dodge 里把跟随相机设成物理相机（`stride call lens`）：50 毫米 f/2 对焦在玩家上，玩家清楚、远处的影子和近处的墙糊开；对焦 4 米时 12 米外的玩家糊成圆的光斑；曝光补偿 +0.5 亮了。
+
 ## 2026-11-21 时间轴的曲线编辑器
 
 F2 的最后一步。关键帧可以带切线（`in`、`out`：每秒变多少，按分量），时间轴的曲线在 cubic 时按 Hermite 插值；没写切线的是自动切线——前后两个关键帧的斜率（按时刻算，关键帧不等距时也平滑，同 Blender 的 Auto 去掉夹紧），两端用一侧的。动画剪辑里的属性曲线没有切线，cubic 仍是 Stride 的 Catmull-Rom（按下标、不看时刻），和桌面 Stride 一样。

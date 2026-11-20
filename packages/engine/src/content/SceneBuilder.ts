@@ -20,6 +20,7 @@ import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
+import { CameraRig } from '../rendering/CameraRig';
 import { Background, Camera, Decal, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { DayNightCycle } from '../rendering/sky/DayNightCycle';
 import { Precipitation } from '../weather/Precipitation';
@@ -456,6 +457,16 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   uiElementLink: {
     add: (entity, link, context) => entity.add(UIElementLink.with({ target: entityRef(link.target, context, 'UI element link target'), nodeName: link.nodeName })),
     remove: drop(UIElementLink),
+  },
+  cameraRig: {
+    add: (entity, { follow, lookAt, offset, lookOffset, ...rig }, context) => entity.add(CameraRig.with({
+      ...rig,
+      ...(offset ? { offset: [...offset] } : {}),
+      ...(lookOffset ? { lookOffset: [...lookOffset] } : {}),
+      follow: entityRef(follow ?? null, context, 'camera rig follow target'),
+      lookAt: entityRef(lookAt ?? null, context, 'camera rig look-at target'),
+    })),
+    remove: drop(CameraRig),
   },
   skyAtmosphere: {
     // 没写的字段用组件的默认值（地球）；三维的数组拷一份，组件不留场景文件的引用

@@ -512,6 +512,18 @@ export interface SceneEntityFile {
     readonly background?: SceneBackground;
     readonly reflectionProbe?: SceneReflectionProbe;
     readonly skyAtmosphere?: SceneSkyAtmosphere;
+    /** 镜头系统（Stride 没有，见 CameraRig 组件）：跟随、注视的实体是场景文件里的 id；没写的项用组件的默认值。 */
+    readonly cameraRig?: {
+      readonly follow?: string;
+      readonly offset?: Vec3Tuple;
+      readonly followDamping?: number;
+      readonly lookAt?: string;
+      readonly lookOffset?: Vec3Tuple;
+      readonly lookDamping?: number;
+      readonly shakeRotation?: number;
+      readonly shakePosition?: number;
+      readonly shakeFrequency?: number;
+    };
     readonly dayNightCycle?: SceneDayNightCycle;
     readonly volumetricClouds?: SceneVolumetricClouds;
     readonly volumetricFog?: SceneVolumetricFog;

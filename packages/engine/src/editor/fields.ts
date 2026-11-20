@@ -237,6 +237,22 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: { size: [10, 10, 10] },
   },
+  cameraRig: {
+    label: 'Camera rig',
+    type: object(fields<NonNullable<Components['cameraRig']>>({
+      follow: { type: entity, optional: true, description: 'entity to follow; unset keeps the position' },
+      offset: optional(vector(3, 'm'), [0, 2, 6]),
+      followDamping: { type: number({ min: 0, unit: 's' }), optional: true, default: 0.2, description: 'half-life of the smoothing; 0 snaps' },
+      lookAt: { type: entity, optional: true, description: 'entity to look at; unset keeps the rotation' },
+      lookOffset: optional(vector(3, 'm'), [0, 1, 0]),
+      lookDamping: { type: number({ min: 0, unit: 's' }), optional: true, default: 0.05, description: 'half-life of the smoothing; 0 snaps' },
+      shakeRotation: { type: number({ min: 0, unit: 'deg' }), optional: true, default: 0, description: 'handheld shake' },
+      shakePosition: optional(number({ min: 0, unit: 'm' }), 0),
+      shakeFrequency: optional(number({ min: 0, unit: 'Hz' }), 1),
+    })),
+    initial: { offset: [0, 2, 6] },
+    requires: ['camera'],
+  },
   skyAtmosphere: {
     label: 'Sky atmosphere',
     type: object(fields<SceneSkyAtmosphere>({

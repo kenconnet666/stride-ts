@@ -26,6 +26,7 @@ import { Simulation } from '../physics/Simulation';
 import { NavigationSystem } from '../physics/NavigationSystem';
 import { AudioEmitterComponent, AudioListenerComponent } from '../audio/AudioEmitterComponent';
 import { TimelinePlayer } from '../timeline/TimelinePlayer';
+import { cameraRigSystem } from '../rendering/CameraRig';
 import { RecastNavigationComponent } from '../physics/RecastNavigationComponent';
 import { AtmosphereRenderFeature } from '../rendering/sky/AtmosphereRenderFeature';
 import { BackgroundRenderFeature } from '../rendering/sky/BackgroundRenderFeature';
@@ -269,7 +270,7 @@ export class Game {
       this.registry.register(AudioListenerComponent);
       this.registry.register(TimelinePlayer);
       this.animation = new AnimationSystem(this.native, this.entities);
-      this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui), dayNightCycleSystem(this.entities, () => !this.editing));
+      this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui), dayNightCycleSystem(this.entities, () => !this.editing), cameraRigSystem(this.entities, () => this.editing));
       this.content.animationNative ??= this.native;
       // ?stride-limits=default：只要 WebGPU 的默认上限（同 CI 的软件 WebGPU，比如片元阶段最多 16 张采样贴图），本机的回归
       // 也能查出超了上限的绑定

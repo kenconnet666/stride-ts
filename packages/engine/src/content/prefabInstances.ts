@@ -127,7 +127,7 @@ function reuse(previous: Entities | undefined, next: readonly SceneEntityFile[])
   });
 }
 
-/** 组件里对别的实体的引用（约束、实例化、两种 link、物理天空的太阳和月亮、脚本属性的 `$entity`）照 rename 换掉（导入器转换实例时也用）。 */
+/** 组件里对别的实体的引用（约束、实例化、两种 link、物理天空的太阳和月亮、镜头系统的跟随和注视、脚本属性的 `$entity`）照 rename 换掉（导入器转换实例时也用）。 */
 export function renameReferences(entity: SceneEntityFile, rename: (id: string | null) => string | null): SceneEntityFile {
   const c = entity.components;
   const components: Record<string, unknown> = { ...c };
@@ -138,6 +138,10 @@ export function renameReferences(entity: SceneEntityFile, rename: (id: string | 
   if (c.skyAtmosphere) {
     const { sun, moon } = c.skyAtmosphere;
     components['skyAtmosphere'] = { ...c.skyAtmosphere, ...(sun !== undefined ? { sun: rename(sun)! } : {}), ...(moon !== undefined ? { moon: rename(moon)! } : {}) };
+  }
+  if (c.cameraRig) {
+    const { follow, lookAt } = c.cameraRig;
+    components['cameraRig'] = { ...c.cameraRig, ...(follow !== undefined ? { follow: rename(follow)! } : {}), ...(lookAt !== undefined ? { lookAt: rename(lookAt)! } : {}) };
   }
   if (c.scripts) components['scripts'] = c.scripts.map((script) => ({ ...script, props: renameScriptValue(script.props, rename) as typeof script.props }));
   return { ...entity, components: components as SceneEntityFile['components'] };

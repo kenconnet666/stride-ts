@@ -8,6 +8,7 @@
  *   混合；additiveBlend 是 src·alpha + dst。深度测试并写入，ignoreDepth 时都不做；不剔背面。
  * 和 Stride 不同（暂时）：没有 Swizzle、billboard 的 RotationEulerZ 和精灵的九宫格边框（Borders）。
  */
+import type { SceneEntityFile } from '../content/format';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Matrix } from '../mathematics/Matrix';
@@ -118,6 +119,8 @@ interface Gpu {
   readonly views: GPUBuffer;
   readonly samplers: Record<SpriteItem['sampler'], GPUSampler>;
   readonly pipelines: Map<string, GPURenderPipeline>;
+  /** 正在后台编的（warmFiles）。 */
+  readonly warming: Map<string, Promise<void>>;
   readonly textureGroups: Map<string, GPUBindGroup>;
   instances: GPUBuffer | undefined;
   instanceGroup: GPUBindGroup | undefined;
@@ -273,29 +276,64 @@ export class SpriteRenderFeature extends RootRenderFeature {
     return order;
   }
 
-  /** picking：画进点选的编号缓冲（不混合，写编号）。 */
+  /** picking：画进点选的编号缓冲（不混合，写编号）。预热过的（warmFiles）直接用，没有的当场建。 */
   #pipelineFor(gpu: Gpu, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, item: SpriteItem, picking: boolean): GPURenderPipeline {
-    const key = `${colorFormat}:${depthFormat}:${picking ? 'pick' : item.blend}:${item.ignoreDepth}`;
+    const key = pipelineKey(colorFormat, depthFormat, picking ? 'pick' : item.blend, item.ignoreDepth);
     let pipeline = gpu.pipelines.get(key);
     if (!pipeline) {
-      const blend = item.blend === 'none' ? undefined : BLENDS[item.blend];
-      pipeline = this.system.device.createRenderPipeline({
-        label: `SpriteRenderFeature ${picking ? 'pick' : item.blend}${item.ignoreDepth ? ' ignoreDepth' : ''}`,
-        layout: gpu.pipelineLayout,
-        vertex: { module: gpu.module, entryPoint: 'vs' },
-        fragment: picking ? { module: gpu.module, entryPoint: 'fsPick', targets: [{ format: colorFormat }] } : {
-          module: gpu.module,
-          entryPoint: 'fs',
-          targets: [{ format: colorFormat, ...(blend ? { blend } : {}), ...(item.blend === 'noColor' ? { writeMask: 0 } : {}) }],
-        },
-        primitive: { topology: 'triangle-strip', cullMode: 'none' },
-        depthStencil: item.ignoreDepth
-          ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'always' }
-          : { format: depthFormat, depthWriteEnabled: true, depthCompare: 'less-equal' },
-      });
+      pipeline = this.system.device.createRenderPipeline(this.#pipelineDescriptor(gpu, colorFormat, depthFormat, picking ? 'pick' : item.blend, item.ignoreDepth));
       gpu.pipelines.set(key, pipeline);
     }
     return pipeline;
+  }
+
+  #pipelineDescriptor(gpu: Gpu, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, blendOrPick: Blend | 'pick', ignoreDepth: boolean): GPURenderPipelineDescriptor {
+    const blend = blendOrPick === 'none' || blendOrPick === 'pick' ? undefined : BLENDS[blendOrPick];
+    return {
+      label: `SpriteRenderFeature ${blendOrPick}${ignoreDepth ? ' ignoreDepth' : ''}`,
+      layout: gpu.pipelineLayout,
+      vertex: { module: gpu.module, entryPoint: 'vs' },
+      fragment: blendOrPick === 'pick' ? { module: gpu.module, entryPoint: 'fsPick', targets: [{ format: colorFormat }] } : {
+        module: gpu.module,
+        entryPoint: 'fs',
+        targets: [{ format: colorFormat, ...(blend ? { blend } : {}), ...(blendOrPick === 'noColor' ? { writeMask: 0 } : {}) }],
+      },
+      primitive: { topology: 'triangle-strip', cullMode: 'none' },
+      depthStencil: ignoreDepth
+        ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'always' }
+        : { format: depthFormat, depthWriteEnabled: true, depthCompare: 'less-equal' },
+    };
+  }
+
+  /**
+   * 场景文件里的精灵要用的管线在后台编好：混合方式由文件里的 blendMode、isTransparent、premultipliedAlpha 定（同 draw 时的 blendOf），
+   * 画在透明阶段。脚本运行中换的贴图、改的设置照旧当场建。
+   */
+  override warmFiles(files: readonly SceneEntityFile[], stages: readonly RenderStage[]): Promise<void>[] {
+    const variants = new Map<string, readonly [Blend, boolean]>();
+    for (const { components: { sprite } } of files) {
+      if (!sprite) continue;
+      const blend = blendOf(sprite.blendMode, sprite.isTransparent, sprite.premultipliedAlpha);
+      variants.set(`${blend}:${sprite.ignoreDepth}`, [blend, sprite.ignoreDepth]);
+    }
+    if (variants.size === 0) return [];
+    const gpu = (this.#gpu ??= this.#createGpu());
+    const pending: Promise<void>[] = [];
+    for (const stage of stages) {
+      const colorFormat = stage.output.colorFormat;
+      if (!colorFormat || !stage.transparent || stage.picking) continue;
+      for (const [blend, ignoreDepth] of variants.values()) {
+        const key = pipelineKey(colorFormat, stage.output.depthFormat, blend, ignoreDepth);
+        if (gpu.pipelines.has(key) || gpu.warming.has(key)) continue;
+        const warming = this.system.device.createRenderPipelineAsync(this.#pipelineDescriptor(gpu, colorFormat, stage.output.depthFormat, blend, ignoreDepth)).then((pipeline) => {
+          gpu.warming.delete(key);
+          if (!gpu.pipelines.has(key)) gpu.pipelines.set(key, pipeline);
+        });
+        gpu.warming.set(key, warming);
+        pending.push(warming);
+      }
+    }
+    return pending;
   }
 
   #textureGroup(gpu: Gpu, item: SpriteItem): GPUBindGroup {
@@ -343,6 +381,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
         anisotropicClamp: device.createSampler({ label: 'anisotropic clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear', maxAnisotropy: 16 }),
       },
       pipelines: new Map(),
+      warming: new Map(),
       textureGroups: new Map(),
       instances: undefined,
       instanceGroup: undefined,
@@ -384,6 +423,10 @@ export function spriteQuad(out: Float32Array, offset: number, world: Float32Arra
     ax * sizeX, ay * sizeX, az * sizeX, 0,
     bx * sizeY, by * sizeY, bz * sizeY, 0,
   ], offset);
+}
+
+function pipelineKey(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat, blendOrPick: Blend | 'pick', ignoreDepth: boolean): string {
+  return `${colorFormat}:${depthFormat}:${blendOrPick}:${ignoreDepth}`;
 }
 
 /** Stride 的 SpriteBlend 换成混合方式：auto 看贴图透不透明，alphaBlend 看是不是预乘的。 */

@@ -632,28 +632,32 @@ export class ForwardRenderer {
   }
 
   /**
-   * 预热后处理的管线（PostProcessingEffects.warm）和场景开着的 GTAO 的：settings 是要加载的场景的后处理设置；没给（不知道）、
-   * 不做后处理又直接画进后备缓冲时不用预热。
+   * 预热后处理的管线（PostProcessingEffects.warm）、场景开着的 GTAO 和屏幕空间反射的，以及画质档位允许的 TAA、接触阴影、
+   * 运动模糊的：这三个是运行中打开的（画质设置里一开），不先编好的话打开的那一帧要当场编译。都在后台编，不挡加载。
+   * settings 是要加载的场景的后处理设置；没给（不知道）、不做后处理又直接画进后备缓冲时不用预热。
    */
   warmPostEffects(settings: ScenePostEffects | null | undefined): Promise<void> | undefined {
     if (settings === undefined || (settings === null && this.directOutput)) return undefined;
     const ambientOcclusion = settings?.ambientOcclusion !== undefined && this.quality.ambientOcclusion ? this.ambientOcclusion.warm() : undefined;
     const reflections = settings?.localReflections !== undefined && this.quality.screenSpaceReflections ? this.screenSpaceReflections.warm() : undefined;
-    const contact = this.contactShadows.enabled && this.quality.contactShadows ? this.contactShadows.warm() : undefined;
-    const blur = this.motionBlur.enabled && this.quality.motionBlur ? this.motionBlur.warm() : undefined;
-    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, contact, blur]).then(() => undefined);
+    const temporal = this.quality.antialiasing ? this.temporalAntialiasing.warm() : undefined;
+    const contact = this.quality.contactShadows ? this.contactShadows.warm() : undefined;
+    const blur = this.quality.motionBlur ? this.motionBlur.warm() : undefined;
+    return Promise.all([this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality), ambientOcclusion, reflections, temporal, contact, blur]).then(() => undefined);
   }
 
   /**
    * 主画面会用到的阶段（阴影投射、深度预通道、不透明、透明）：预热管线时按它们编。主画面直接画进后备缓冲还是先画进
    * HDR 缓冲（有后处理时），两边的颜色格式不同、管线也不同：postEffects 说要加载的场景开不开后处理，没给就按现在的。
-   * reflections：开屏幕空间反射时不透明阶段换成写表面的那个。
+   * reflections：开屏幕空间反射时不透明阶段换成写表面的那个。有后处理、画质档位允许 TAA 或运动模糊时，加上画运动向量的阶段
+   * （它们是运行中打开的，见 warmPostEffects）。
    */
   warmStages(postEffects = this.postEffects.enabled, reflections = this.screenSpaceReflections.enabled): RenderStage[] {
     const { casterStage, cubeMapCasterStage } = this.shadowMapRenderer;
     const direct = !postEffects && this.directOutput ? this.#direct() : undefined;
     const opaque = direct?.opaque ?? (reflections && this.quality.screenSpaceReflections ? this.#opaqueSurfaceStage : this.opaqueStage);
-    return [casterStage, cubeMapCasterStage, this.depthPrepassStage, opaque, direct?.transparent ?? this.transparentStage];
+    const velocity = !direct && (this.quality.antialiasing || this.quality.motionBlur) ? [this.#velocityStage] : [];
+    return [casterStage, cubeMapCasterStage, this.depthPrepassStage, opaque, direct?.transparent ?? this.transparentStage, ...velocity];
   }
 }
 

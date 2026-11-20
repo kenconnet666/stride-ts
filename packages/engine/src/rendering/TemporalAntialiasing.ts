@@ -273,6 +273,11 @@ export class TemporalAntialiasing {
     this.#arena.flush();
   }
 
+  /** 在后台编好两条管线（运行中打开 TAA 的那一帧不用当场编译）。 */
+  warm(): Promise<void> {
+    return Promise.all([this.#resolve.warm([HISTORY_FORMAT]), this.#sharpen.warm([HISTORY_FORMAT])]).then(() => undefined);
+  }
+
   destroy(): void {
     this.#history?.forEach((texture) => texture.destroy());
     this.#history = undefined;

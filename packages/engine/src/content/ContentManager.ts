@@ -20,6 +20,7 @@ import { ModelMorph, ModelSkeleton } from '../animation/AnimationSystem';
 import { Morphed } from '../animation/morphs';
 import { Material, type MaterialShaderTrees } from '../rendering/Material';
 import { preload, textureRefs } from './loading';
+import { expandPrefabInstances, prefabPaths } from './prefabInstances';
 import { Prefab } from './Prefab';
 import { changedEntities, SceneBuilder, type ModelUse, type SceneAssets } from './SceneBuilder';
 import { SceneTemplate } from './SceneTemplate';
@@ -34,7 +35,7 @@ import { ColorTreeCompiler } from '../rendering/colorTree';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { uiAssetPaths } from './references';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -528,8 +529,9 @@ export class ContentManager {
    * 按给的场景文件建场景（不经内容路径，文件不进缓存；它引用的资源照常按路径加载）。编辑器里场景文件在场景文档里
    * （editor/SceneDocument），不在内容目录里。
    */
-  async instantiateScene(scene: SceneFile, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
-    const where = `scene ${scene.name}`;
+  async instantiateScene(file: SceneFile, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
+    const where = `scene ${file.name}`;
+    const scene = { ...file, entities: await this.#expandInstances(file.entities, where) };
     return this.#createScene(scene, await this.#scenes.preload(scene.entities, where, postEffectsOf(scene)), entities, options, where);
   }
 
@@ -539,9 +541,11 @@ export class ContentManager {
    * 不能同时进行（等上一次的 Promise，LiveScene 替你排队）。场景自己的设置（偏移、仿真、导航、合成器）变了不在这里管。
    */
   async updateScene(instance: SceneInstance, before: SceneFile, after: SceneFile, entities: EntityManager, options: LoadSceneOptions = {}): Promise<void> {
-    const { added, removed, changed } = changedEntities(before.entities, after.entities);
-    if (added.length + removed.length + changed.length === 0) return;
+    if (before.entities === after.entities) return;
     const where = `scene ${after.name}`;
+    // 实例展开以后再比（没变的实例展开出同一批对象，见 prefabInstances.ts）
+    const { added, removed, changed } = changedEntities(await this.#expandInstances(before.entities, where), await this.#expandInstances(after.entities, where));
+    if (added.length + removed.length + changed.length === 0) return;
     // 资源：新实体的，和组件变了的实体的
     const assets = await this.#scenes.preload([...added, ...changed.filter(([old, file]) => file.components !== old.components).map(([, file]) => file)], where);
     // instance.entities 就是建场景时的那张表
@@ -560,6 +564,26 @@ export class ContentManager {
       // 父实体销毁时子实体已经跟着销毁了
       if (entity?.alive) entity.destroy();
     }
+  }
+
+  /**
+   * 实体列表里的预制体实例展开成普通实体（prefabInstances.ts）：用到的预制体文件（连嵌套的）先加载好。指不到的覆盖记警告。
+   */
+  async #expandInstances(entities: readonly SceneEntityFile[], where: string): Promise<readonly SceneEntityFile[]> {
+    if (!entities.some((entity) => entity.prefab)) return entities;
+    const prefabs = new Map<string, readonly SceneEntityFile[]>();
+    let pending = prefabPaths(entities);
+    while (pending.length > 0) {
+      const files = await Promise.all(pending.map((path) => this.#prefabFile(path)));
+      pending.forEach((path, i) => prefabs.set(path, files[i]!.entities));
+      pending = [...new Set(files.flatMap((file) => prefabPaths(file.entities)))].filter((path) => !prefabs.has(path));
+    }
+    return expandPrefabInstances(entities, prefabs, (message) => console.warn(`${where}: ${message}`));
+  }
+
+  /** 预制体文件本身（没展开、不加载它引用的资源）：展开实例用。 */
+  #prefabFile(path: string): Promise<PrefabFile> {
+    return this.#once(path + EXTENSIONS.prefab, 'file', async (url) => this.#json<PrefabFile>(await this.#read(url)));
   }
 
   /** where 用在报错里；path 是场景文件的内容路径（按路径加载的才有）。 */
@@ -587,7 +611,8 @@ export class ContentManager {
 
   #sceneWithAssets(path: string): Promise<{ scene: SceneFile; assets: SceneAssets }> {
     return this.#once(path + EXTENSIONS.scene, async (url) => {
-      const scene = this.#json<SceneFile>(await this.#read(url));
+      const file = this.#json<SceneFile>(await this.#read(url));
+      const scene = { ...file, entities: await this.#expandInstances(file.entities, url.href) };
       return { scene, assets: await this.#scenes.preload(scene.entities, url.href, postEffectsOf(scene)) };
     });
   }
@@ -608,7 +633,8 @@ export class ContentManager {
   /** 加载预制体：引用的资源先加载好，实例化时才建实体（见 Prefab）。实例化时脚本按 options 对应，同 loadScene。 */
   loadPrefab(path: string, options: LoadSceneOptions = {}): Promise<Prefab> {
     return this.#once(path + EXTENSIONS.prefab, async (url) => {
-      const file = this.#json<PrefabFile>(await this.#read(url));
+      const raw = this.#json<PrefabFile>(await this.#read(url));
+      const file = { ...raw, entities: await this.#expandInstances(raw.entities, url.href) };
       const assets = await this.#scenes.preload(file.entities, url.href);
       const roots = file.entities.filter((entity) => entity.parent === null).map((entity) => entity.id);
       return new Prefab(file.name, (entities) => {

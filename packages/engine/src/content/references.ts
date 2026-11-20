@@ -126,11 +126,15 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
   const image = (texture: TextureRef) => add('image', texture, 'texture');
   switch (kind) {
     case 'scene':
-    case 'prefab':
-      visitEntityReferences((file as { entities: readonly SceneEntityFile[] }).entities, (ref, owner, key) => {
+    case 'prefab': {
+      const entities = (file as { entities: readonly SceneEntityFile[] }).entities;
+      visitEntityReferences(entities, (ref, owner, key) => {
         if (ref.kind !== 'renderTexture') add(ref.kind === 'image' ? 'image' : fileKind(ref.kind), owner, key);
       });
+      // 预制体实例引用它的预制体（覆盖的值里的资源路径还不算：要照字段描述认出哪些值是路径）
+      for (const entity of entities) if (entity.prefab) add('prefab', entity.prefab, 'path');
       break;
+    }
     case 'model': {
       const model = file as Pick<ModelData, 'materials' | 'skeleton'>;
       model.materials.forEach((material, i) => material !== null && add('material', model.materials, i));

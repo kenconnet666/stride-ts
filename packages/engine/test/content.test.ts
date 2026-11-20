@@ -400,6 +400,33 @@ describe('ContentManager', () => {
     expect(label!.require(Label).target).toBe(second!.id);
   });
 
+  test('场景里的预制体实例（docs/prefabs.md）：加载时展开成成员实体，id 拼出来，覆盖照用，成员之间的引用指向这一组', async () => {
+    class Label extends SyncScript.props({ target: prop.entity().optional(), size: prop.number().default(1) }) {}
+    const entity = (id: string, parent: string | null, components: SceneFile['entities'][number]['components'], extra = {}) =>
+      ({ id, name: id, parent, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components, ...extra }) as const;
+    const prefab: PrefabFile = { name: 'Crate', entities: [entity('crate', null, {}), entity('label', 'crate', { scripts: [{ type: 'Game.Label', props: { target: { $entity: 'crate' }, size: 1 } }] })] };
+    const scene: SceneFile = {
+      name: 'Instances', entities: [
+        entity('a', null, {}, { position: [3, 0, 0], prefab: { path: 'prefabs/Crate', set: [{ entity: 'label', path: ['components', 'scripts', 'Game.Label', 'props', 'size'], value: 5 }] } }),
+        entity('b', null, {}, { prefab: { path: 'prefabs/Crate', removed: ['label'] } }),
+        entity('extra', 'a/crate', {}),
+      ],
+    };
+    const files: Record<string, unknown> = { 'prefabs/Crate.prefab.json': prefab, 'scenes/Instances.scene.json': scene };
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    game.registry.registerModules({ './Label.ts': { Label } });
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async (url) => json(files[url.pathname.slice('/content/'.length)]) });
+    const loaded = await content.loadScene('scenes/Instances', game.entities);
+    expect([...loaded.entities.keys()]).toEqual(['a', 'a/crate', 'a/label', 'b', 'b/crate', 'extra']);
+    const label = loaded.entities.get('a/label')!.require(Label);
+    expect([label.size, label.target]).toEqual([5, loaded.entities.get('a/crate')!.id]);
+    // 实例是容器：成员的根挂在它下面；场景里加的实体挂在成员下面
+    expect(loaded.entities.get('a/crate')!.require(Transform).parent).toBe(loaded.entities.get('a'));
+    expect(loaded.entities.get('extra')!.require(Transform).parent).toBe(loaded.entities.get('a/crate'));
+  });
+
   test('场景模板（SpaceEscape 的 LevelBlocks）：不建实体；模板实体连同子实体实例化成新实体，脚本带着属性；读脚本属性时实体引用换成名字', async () => {
     class Info extends SyncScript.props({ maxObstacles: prop.int().default(0) }) {}
     const entity = (id: string, parent: string | null, components: SceneFile['entities'][number]['components']) =>

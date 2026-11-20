@@ -308,10 +308,12 @@ fn rippleGradient(p: vec2f, time: f32, rain: f32) -> vec2f {
  * - 湿：淋得到的非金属吸了水变暗（金属不吸水），表面一层水膜变光滑（朝上的更光滑）；
  * - 水洼：积了水以后，平的、淋得到的地方按世界 xz 的低频噪声积出一片片水（积得越多越大）：上面是一层平的水面——很光滑、
  *   按水的非金属算、底下的颜色更暗，法线朝上；下雨时有涟漪（rippleGradient）；
- * - 雪：淋得到、朝上的面积起来，积得越多越往斜面上长；雪是白的、粗糙的非金属，盖在水洼上面。
+ * - 雪：淋得到、朝上的面积起来，积得越多越往斜面上长；积得不满时按世界 xz 的噪声一块一块的（满了就盖满）；雪是白的、
+ *   粗糙的非金属，盖在水洼上面，把法线贴图的细节盖平（法线往几何法线 geometric 靠）。蒙皮的网格（skinned：角色、动物）一直
+ *   在动，身上不积雪（湿照样湿）。
  * 竖着的面按往外 30 厘米的那一点判断淋不淋得到：墙面自己正上方是墙头，按自己的位置查总是被挡着。
  */
-fn weatherSurface(world: vec3f, n: vec3f, s: LayerSurface) -> Decaled {
+fn weatherSurface(world: vec3f, n: vec3f, geometric: vec3f, skinned: bool, s: LayerSurface) -> Decaled {
   let wetness = view.weather.x;
   let snowCover = view.weather.y;
   let puddles = view.weather.z;
@@ -341,13 +343,19 @@ fn weatherSurface(world: vec3f, n: vec3f, s: LayerSurface) -> Decaled {
       result.normal = normalize(mix(n, normalize(vec3f(-g.x, 1.0, -g.y)), water));
     }
   }
-  // 积雪 0 时一点不积（以前写成 up · 1.2 - (1 - 积雪)，没雪时朝上的面也算出 0.9 的雪，下雨的地面成了白的），1 时朝上 0.2 以上都积满
-  let snow = exposure * smoothstep(0.0, 0.25, 1.2 * (up - 1.0 + snowCover));
+  // 积雪 0 时一点不积（以前写成 up · 1.2 - (1 - 积雪)，没雪时朝上的面也算出 0.9 的雪，下雨的地面成了白的），1 时朝上 0.2 以上都积满；
+  // 不满时加上两层噪声（一米多和几十厘米的斑块），积得越多噪声越弱
+  var snow = 0.0;
+  if (snowCover > 0.0 && !skinned) {
+    let patches = valueNoise(world.xz * 0.6 + 41.3) * 0.6 + valueNoise(world.xz * 2.3 + 5.1) * 0.4 - 0.5;
+    snow = exposure * smoothstep(0.0, 0.25, 1.2 * (up - 1.0 + snowCover) + patches * (1.0 - snowCover));
+  }
   r.albedo = mix(r.albedo, vec3f(0.9), snow);
   r.metalness = mix(r.metalness, 0.0, snow);
   r.specular = mix(r.specular, vec3f(0.02), snow);
   r.roughness = mix(r.roughness, 0.75, snow);
-  result.normal = normalize(mix(result.normal, n, snow));
+  // 雪盖住了表面的细节（法线贴图、水洼的涟漪）
+  result.normal = normalize(mix(result.normal, normalize(mix(n, geometric, 0.8)), snow));
   result.surface = r;
   return result;
 }
@@ -482,6 +490,8 @@ struct Varyings {
   @location(6) effect: vec4f,
   // 实例的变换槽位（点选的编号缓冲写它）
   @location(7) @interpolate(flat) slot: u32,
+  // 1 是蒙皮的网格（角色、动物：一直在动，身上不积雪）
+  @location(8) @interpolate(flat) skinned: u32,
 };
 
 const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
@@ -490,7 +500,7 @@ const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 
  * skin 把网格空间的顶点变到模型空间（蒙皮矩阵的加权和；不蒙皮时是单位矩阵，编译器会把它消掉）；形变在蒙皮之前加上
  * （同 Stride：先形变后蒙皮）。
  */
-fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, slot: u32, vertex: u32, skin: mat4x4f) -> Varyings {
+fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, slot: u32, vertex: u32, skin: mat4x4f, skinned: bool) -> Varyings {
   let world = worlds[frameBase(0u, false) + slot];
   let morph = morphDelta(slot, vertex, false);
   let local = (skin * vec4f(mesh.positionOffset.xyz + position * mesh.positionScale.xyz + morph.position, 1.0)).xyz;
@@ -514,6 +524,7 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   out.tangent = vec4f((world * vec4f(localTangent, 0.0)).xyz, tangent.w);
   out.local = local;
   out.slot = slot;
+  out.skinned = select(0u, 1u, skinned);
   return out;
 }
 
@@ -538,21 +549,21 @@ fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f, previous: bool) -> mat4x
 }
 
 @vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
-  return transformVertex(position, normal, uv, vec4f(0.0), slots[instance], vertex, IDENTITY);
+  return transformVertex(position, normal, uv, vec4f(0.0), slots[instance], vertex, IDENTITY, false);
 }
 
 @vertex fn vsTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
-  return transformVertex(position, normal, uv, tangent, slots[instance], vertex, IDENTITY);
+  return transformVertex(position, normal, uv, tangent, slots[instance], vertex, IDENTITY, false);
 }
 
 @vertex fn vsSkinned(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
   let slot = slots[instance];
-  return transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, skinMatrix(slot, joints, weights, false));
+  return transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, skinMatrix(slot, joints, weights, false), true);
 }
 
 @vertex fn vsSkinnedTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
   let slot = slots[instance];
-  return transformVertex(position, normal, uv, tangent, slot, vertex, skinMatrix(slot, joints, weights, false));
+  return transformVertex(position, normal, uv, tangent, slot, vertex, skinMatrix(slot, joints, weights, false), true);
 }
 
 // 运动向量（RenderStage.velocity）：位置和别的阶段一样算（@invariant，深度相等的比较才对得上），另外带上这一帧、上一帧
@@ -564,7 +575,7 @@ struct VelocityVaryings {
 };
 
 fn velocityVertex(position: vec3f, normal: vec3f, uv: vec2f, slot: u32, vertex: u32, skin: mat4x4f, previousSkin: mat4x4f) -> VelocityVaryings {
-  let now = transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, skin);
+  let now = transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, skin, false);
   var out: VelocityVaryings;
   out.position = now.position;
   out.current = view.unjitteredViewProjection * vec4f(now.world, 1.0);
@@ -1312,7 +1323,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   let decaled = applyDecals(in.world, n, coatSurface(in, layers, coatPass), cluster);
   n = decaled.normal;
   // 水洼的水面是平的（下雨时有涟漪）：天气也可能换法线
-  let weathered = weatherSurface(in.world, n, decaled.surface);
+  let weathered = weatherSurface(in.world, n, facingNormal(normalize(in.normal), front), in.skinned != 0u, decaled.surface);
   n = weathered.normal;
   let layered = weathered.surface;
   let albedo = layered.albedo;

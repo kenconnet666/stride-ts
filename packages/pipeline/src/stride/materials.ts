@@ -109,6 +109,10 @@ export class MaterialImporter {
     if (attributes['Tessellation']) this.#context.warnings.push(`${asset.file}: material feature Tessellation is not supported yet; ignored`);
     // 漫反射同理：颜色（Diffuse）和着色模型（DiffuseModel）缺一个就不算漫反射光照（只有自发光的激光、玻璃）
     const diffuseShading = attributes['Diffuse'] !== undefined && attributes['DiffuseModel'] !== undefined;
+    const diffuseModel = asObject(attributes['DiffuseModel'])?.$type;
+    if (diffuseModel && diffuseModel !== 'MaterialDiffuseLambertModelFeature') {
+      this.#context.warnings.push(`${asset.file}: diffuse model ${diffuseModel} is not supported yet; using Lambert`);
+    }
     // 化不成固定槽的属性整棵树放进 trees（最底下一层盖满的材质层）；固定槽里留个占位的值，只用来定工作流
     const trees = await this.#surfaceTrees(attributes, asset, uvScale);
     const metalness = workflow !== 'MaterialMetalnessMapFeature' ? undefined : trees?.metalness ? 0 : this.#scalar(asObject(specular!['MetalnessMap']), 0, asset);
@@ -128,6 +132,7 @@ export class MaterialImporter {
       ...(workflow === 'MaterialSpecularMapFeature' ? { specular: trees?.specular ? ([0, 0, 0] as const) : this.#specularColor(specular!, asset, uvScale) } : {}),
       ...(workflow === 'MaterialSpecularMapFeature' && specular!['IsEnergyConservative'] === false ? { specularEnergyConservative: false as const } : {}),
       ...(specular && !specularModel ? { specularShading: false as const } : {}),
+      ...(specularModel && !glass ? this.#microfacet(specularModel, asset) : {}),
       ...(diffuseShading ? {} : { diffuseShading: false as const }),
       ...(glass ? { glass: { refractiveIndex: asNumber(specularModel['RefractiveIndex'], 1.52) } } : {}),
       roughness,
@@ -306,6 +311,34 @@ export class MaterialImporter {
         ...(feature['DitheredShadows'] === false ? { ditheredShadows: false } : {}),
       },
     };
+  }
+
+  /**
+   * 微表面模型的四项（Fresnel、NormalDistribution、Visibility、Environment），只记和默认（Schlick、GGX、Smith-Schlick-GGX、
+   * GGXLUT）不同的；ThinGlass 的菲涅耳和环境项只在玻璃模型里有意义，在普通的微表面模型里记警告、按默认的算。
+   */
+  #microfacet(model: StrideObject, asset: AssetEntry): Pick<MaterialFile, 'microfacet'> {
+    const pick = <T extends string>(key: string, prefix: string, names: Record<string, T>): T | undefined => {
+      const type = asObject(model[key])?.$type;
+      if (!type) return undefined;
+      const name = names[type.slice(prefix.length)];
+      if (!type.startsWith(prefix) || !name) this.#context.warnings.push(`${asset.file}: ${key} ${type} is not supported; using the default`);
+      return name;
+    };
+    const fresnel = pick('Fresnel', 'MaterialSpecularMicrofacetFresnel', { Schlick: 'schlick', None: 'none' } as const);
+    const distribution = pick('NormalDistribution', 'MaterialSpecularMicrofacetNormalDistribution', { GGX: 'ggx', Beckmann: 'beckmann', BlinnPhong: 'blinnPhong' } as const);
+    const visibility = pick('Visibility', 'MaterialSpecularMicrofacetVisibility', {
+      SmithSchlickGGX: 'smithSchlickGGX', Implicit: 'implicit', Neumann: 'neumann', CookTorrance: 'cookTorrance', Kelemen: 'kelemen',
+      SmithBeckmann: 'smithBeckmann', SmithGGXCorrelated: 'smithGGXCorrelated', SmithSchlickBeckmann: 'smithSchlickBeckmann',
+    } as const);
+    const environment = pick('Environment', 'MaterialSpecularMicrofacetEnvironment', { GGXLUT: 'lut', GGXPolynomial: 'polynomial' } as const);
+    const microfacet = {
+      ...(fresnel && fresnel !== 'schlick' ? { fresnel } : {}),
+      ...(distribution && distribution !== 'ggx' ? { distribution } : {}),
+      ...(visibility && visibility !== 'smithSchlickGGX' ? { visibility } : {}),
+      ...(environment && environment !== 'lut' ? { environment } : {}),
+    };
+    return Object.keys(microfacet).length > 0 ? { microfacet } : {};
   }
 
   /** CullMode：None 是两面都画；Front（只画背面）还不支持。 */

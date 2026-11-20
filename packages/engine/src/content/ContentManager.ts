@@ -321,6 +321,7 @@ export class ContentManager {
         ...(file.specular ? { specular: file.specular } : {}),
         ...(file.specularEnergyConservative === false ? { specularEnergyConservative: false } : {}),
         ...(file.specularShading === false ? { specularShading: false } : {}),
+        ...(file.microfacet ? { microfacet: file.microfacet } : {}),
         ...(file.diffuseShading === false ? { diffuseShading: false } : {}),
         ...(file.glass ? { glass: file.glass } : {}),
         ...(file.subsurfaceScattering ? { subsurfaceScattering: file.subsurfaceScattering } : {}),

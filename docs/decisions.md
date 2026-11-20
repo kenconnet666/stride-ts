@@ -2,6 +2,26 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 Stride 材质特性的清单；微表面模型的各项
+
+路线图 B3：对照 Stride 的材质特性（`Stride.Rendering/Rendering/Materials` 下的 `Material*Feature`、微表面模型的各项）和导入器，
+没做的：
+
+| 特性 | 现状 | 打算 |
+|---|---|---|
+| 微表面模型的菲涅耳、分布、可见性、环境项（Fresnel None；Beckmann、Blinn-Phong；隐式、Neumann、Cook-Torrance、Kelemen、Smith-Beckmann、相关的 Smith-GGX、Smith-Schlick-Beckmann；GGXPolynomial） | 以前悄悄按默认的那套算（UIElementLink 的骑士用的是 Blinn-Phong 加隐式） | 这次做了 |
+| 卡通着色（MaterialDiffuseCelShadingModelFeature、MaterialSpecularCelShadingModelFeature：按 N·L 查一条渐变或分几档） | 按 Lambert、GGX 算，没有警告 | 做（风格化的游戏常用），先加警告 |
+| 头发（MaterialDiffuseHairModelFeature、MaterialSpecularHairModelFeature：Kajiya-Kay 加两层偏移的高光） | 同上 | 做角色时一起做，先加警告 |
+| 曲面细分（Flat、PN） | 警告、忽略 | WebGPU 没有曲面细分着色器；要做就在计算着色器里细分，放到 E |
+| 贴图的镜面颜色、透明的 tint 贴图、标量贴图（金属度等几处只认常量）、两张贴图的组合、自发光贴图的非乘法运算符 | 警告、用常量或左边那张 | 有内容用到时补（颜色树已经能编任意的组合，把这几处接到颜色树上） |
+| 材质层的 UVScale、cavity、透明、位移、嵌套的层 | 警告、忽略 | 同上 |
+| 次表面散射的 TranslucencyMap 和皮肤以外的散射剖面 | 警告，用常量和皮肤的 | 同上 |
+| 只画背面（CullMode Front）、透明材质上的清漆 | 警告 | 同上 |
+
+微表面模型的各项：资源格式 `MaterialFile.microfacet`（只写和默认不同的），材质 `Material.microfacet`；打包进材质常量里本来就有的 specular 码的高位，着色器按材质常量分支（同一批里所有像素走同一支，不加管线变体）。公式照 Stride 的 BRDFMicrofacet.sdsl，两处和 Stride 不同：Smith-Beckmann 的有理近似 Stride 把分母的 2.577 写成了 2577（可见性几乎是 0，这个选项在 Stride 里等于没有镜面），我们按 Walter 2007 改正；Cook-Torrance、Kelemen 里除以 V·H 的地方给 V·H 加下限（Stride 在 V·H 是 0 时除出无穷大）。各向异性的材质仍按 Filament 的各向异性 GGX，不看这几项。ThinGlass 的菲涅耳和环境项只属于玻璃模型，出现在普通的微表面模型里时警告、按默认算。
+
+看过（UIElementLink 的 TiltedScreen，骑士定住）：导入的 Blinn-Phong 加隐式和默认的那套在骑士区域平均差 2.4/255，换成别的组合差 0.75 到 3.9，都没有黑块或亮斑。和桌面 Stride 比不了：4.4.2 的样例把骑士的法线贴图当成 sRGB 的颜色贴图，骑士几乎是黑的（见 tools/stride-capture/ui-element-link/README.md）。
+
 ## 2026-11-20 透明物体投阴影：按 alpha 抖动，同 Stride
 
 用户定的（带颜色的半透明阴影不做）。和 Stride 一样，投阴影的模型不管材质透不透明都进阴影投射的阶段，只写深度的片元着色器按材质选（`Material.depthFragment`）：

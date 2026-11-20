@@ -5,7 +5,7 @@
  * MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
  * 见 docs/architecture.md 的"外观：材质参数的分层"，等着色器系统一起做。和 Mesh 一样只是数据，GPU 资源由渲染特性管理。
  */
-import type { AmbientOcclusionSlot, ColorOperator, TextureSampler } from '../../content/format';
+import type { AmbientOcclusionSlot, ColorOperator, MicrofacetModel, TextureSampler } from '../../content/format';
 import type { Branded } from '../../data/prop';
 import { Color4, type ColorLike } from '../../data/vectors';
 import { ResourceTable } from '../../engine/ResourceTable';
@@ -112,6 +112,8 @@ export interface MaterialDesc {
   readonly specularEnergyConservative?: boolean;
   /** 画不画镜面反射（Stride 的 SpecularModel 有没有），默认 true；false 时金属度、镜面颜色只影响漫反射。 */
   readonly specularShading?: boolean;
+  /** 微表面镜面模型的各项（意思同 content/format.ts 的 MicrofacetModel），默认是 Stride 默认的那套。 */
+  readonly microfacet?: MicrofacetModel;
   /** 算不算漫反射光照（Stride 的 DiffuseModel 有没有），默认 true。 */
   readonly diffuseShading?: boolean;
   /** 玻璃（意思同 content/format.ts 的 MaterialFile.glass）；有它的材质画在透明阶段。 */
@@ -201,6 +203,7 @@ export class Material {
   readonly specular: readonly [number, number, number] | undefined;
   readonly specularEnergyConservative: boolean;
   readonly specularShading: boolean;
+  readonly microfacet: Required<MicrofacetModel>;
   readonly diffuseShading: boolean;
   readonly glass: { readonly refractiveIndex: number } | undefined;
   readonly roughness: number;
@@ -234,6 +237,7 @@ export class Material {
     this.specular = desc.specular;
     this.specularEnergyConservative = desc.specularEnergyConservative ?? true;
     this.specularShading = desc.specularShading ?? true;
+    this.microfacet = { fresnel: 'schlick', distribution: 'ggx', visibility: 'smithSchlickGGX', environment: 'lut', ...desc.microfacet };
     this.diffuseShading = desc.diffuseShading ?? true;
     this.glass = desc.glass;
     this.roughness = desc.roughness ?? 1;

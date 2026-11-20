@@ -33,7 +33,7 @@ import { Skybox } from '../lighting/Skybox';
 import type { SubsurfaceMaterials } from '../screenspace/SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER } from './meshShader';
-import { vertexLayoutOffsets, type VertexLayout } from '../../content/format';
+import { vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/format';
 import { Mesh } from './Mesh';
 import { inRenderMask, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
@@ -73,7 +73,16 @@ const LOCAL_SHADOW_FLOATS = 104;
 const MATERIAL_BYTES = 272;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
-/** 网格参数的 uniform：positionOffset、positionScale、uvTransform 各一个 vec4，再加 flags，补齐到 16 字节。 */
+const DISTRIBUTION_CODES = { ggx: 0, beckmann: 1, blinnPhong: 2 } as const;
+const VISIBILITY_CODES = { smithSchlickGGX: 0, implicit: 1, neumann: 2, cookTorrance: 3, kelemen: 4, smithBeckmann: 5, smithGGXCorrelated: 6, smithSchlickBeckmann: 7 } as const;
+
+/**
+ * 微表面模型的各项打包进材质的 specular 码的高位（着色器的 microfacetSpecular 拆开）：第 4 位菲涅耳为 none，第 5、6 位分布，
+ * 第 7 到 9 位可见性，第 10 位环境项用多项式。全 0 是默认的那套。
+ */
+function microfacetBits(model: Required<MicrofacetModel>): number {
+  return (model.fresnel === 'none' ? 16 : 0) | (DISTRIBUTION_CODES[model.distribution] << 5) | (VISIBILITY_CODES[model.visibility] << 7) | (model.environment === 'polynomial' ? 1024 : 0);
+}
 /** 反量化参数和 flags（64 字节），加上网格效果的 16 个参数。 */
 const MESH_PARAMS_BYTES = 64 + MESH_EFFECT_PARAMETERS * 4;
 
@@ -1119,7 +1128,7 @@ class Gpu {
       codes[40] = OPERATOR_CODES[material.baseColorOperator];
       // 清漆的两遍都是金属度工作流（各自的金属度由颜色树给）
       const workflow = material.hasClearCoat ? 1 : material.specular ? (material.specularEnergyConservative ? 3 : 2) : material.metalness === undefined ? 0 : 1;
-      codes[41] = workflow | (material.specularShading ? 0 : 4) | (material.diffuseShading ? 0 : 8);
+      codes[41] = workflow | (material.specularShading ? 0 : 4) | (material.diffuseShading ? 0 : 8) | microfacetBits(material.microfacet);
       codes[42] = normalMap ? 1 | (normalMap.scaleAndBias ? 2 : 0) | (normalMap.invertY ? 4 : 0) | (normalMap.isXYNormal ? 8 : 0) : 0;
       floats[43] = occlusion.directLighting;
       const gloss = material.glossinessMap;

@@ -168,6 +168,8 @@ export interface MaterialFile {
    * 照常折进漫反射（金属没有漫反射、能量守恒时乘 1 - 镜面）。默认有。
    */
   readonly specularShading?: false;
+  /** 微表面镜面模型的各项（Stride 的 MaterialSpecularMicrofacetModelFeature），只写和默认不同的。 */
+  readonly microfacet?: MicrofacetModel;
   /** 没有漫反射着色模型（Stride 的 DiffuseModel 是空的）：不算漫反射光照，漫反射的颜色只当玻璃的颜色这类用途。默认有。 */
   readonly diffuseShading?: false;
   /**
@@ -246,6 +248,19 @@ export interface AmbientOcclusionSlot {
  * （Stride 的预乘 alpha 和 matDiffuseSpecularAlphaBlend）。Stride 的加法透明（MaterialTransparencyAdditiveFeature）也是它：
  * alpha = max(0, 2a - 1)、specularAlpha = min(1, 2a)，a 是 0.5 时完全是加法。
  */
+/**
+ * 微表面镜面模型的各项，名字同 Stride 的 MaterialSpecularMicrofacet* 各类（Stride 的公式见 BRDFMicrofacet.sdsl）。默认是
+ * Stride 默认的那套：菲涅耳 Schlick、分布 GGX、可见性 Smith-Schlick-GGX、环境光查 DFG 表（GGXLUT）。玻璃的菲涅耳和环境项
+ * （ThinGlass）跟着 MaterialFile.glass，不在这里。
+ */
+export interface MicrofacetModel {
+  readonly fresnel?: 'schlick' | 'none';
+  readonly distribution?: 'ggx' | 'beckmann' | 'blinnPhong';
+  readonly visibility?: 'smithSchlickGGX' | 'implicit' | 'neumann' | 'cookTorrance' | 'kelemen' | 'smithBeckmann' | 'smithGGXCorrelated' | 'smithSchlickBeckmann';
+  /** 环境光的镜面系数：查 DFG 表，或 Stride 的多项式近似（GGXPolynomial）。 */
+  readonly environment?: 'lut' | 'polynomial';
+}
+
 export interface TransparencyFile {
   readonly type: 'blend';
   readonly alpha: number;

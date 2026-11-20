@@ -861,8 +861,71 @@ fn transmittance(thickness: f32, n: vec3f, l: vec3f, lightColor: vec3f, albedo: 
  */
 struct Surface {
   n: vec3f, v: vec3f, diffuse: vec3f, specular: vec3f, hasSpecular: bool, glass: bool, alphaR: f32, nDotV: f32,
-  sheenColor: vec3f, sheenAlpha: f32, sheenScaling: f32, anisotropy: f32, t: vec3f, b: vec3f,
+  sheenColor: vec3f, sheenAlpha: f32, sheenScaling: f32, anisotropy: f32, t: vec3f, b: vec3f, microfacet: u32,
 };
+
+/**
+ * 微表面模型的分布项（Stride 的 MaterialSpecularMicrofacetNormalDistribution*，公式同 BRDFMicrofacet.sdsl）：
+ * kind 0 GGX、1 Beckmann、2 Blinn-Phong。
+ */
+fn microfacetDistribution(kind: u32, alphaR: f32, nDotH: f32) -> f32 {
+  if (kind == 0u) {
+    return normalDistributionGGX(alphaR, nDotH);
+  }
+  // Beckmann、Blinn-Phong 的 alpha² 有下限，免得指数太大
+  let alphaR2 = max(alphaR * alphaR, 0.1);
+  if (kind == 1u) {
+    let nDotH2 = max(nDotH * nDotH, 0.0001);
+    return exp((nDotH2 - 1.0) / (alphaR2 * nDotH2)) / (PI * alphaR2 * nDotH2 * nDotH2);
+  }
+  return pow(max(nDotH, 0.00001), 2.0 / alphaR2 - 2.0) / (PI * alphaR2);
+}
+
+/** Smith-Beckmann 的单向项（Walter 2007 的有理近似）。和 Stride 不同：Stride 的分母写成了 2577·c²（应为 2.577·c²）。 */
+fn visibilityBeckmann(alphaR: f32, nDotX: f32) -> f32 {
+  let c = nDotX / (alphaR * sqrt(max(1.0 - nDotX * nDotX, 1e-8)));
+  return select(1.0, (3.535 * c + 2.181 * c * c) / (1.0 + 2.276 * c + 2.577 * c * c), c < 1.6);
+}
+
+fn visibilityGGXCorrelated(alphaR: f32, nDotX: f32) -> f32 {
+  let nDotX2 = nDotX * nDotX;
+  return sqrt(1.0 + alphaR * alphaR * (1.0 - nDotX2) / nDotX2);
+}
+
+fn visibilitySchlickBeckmann(alphaR: f32, nDotX: f32) -> f32 {
+  let k = alphaR * sqrt(2.0 / PI);
+  return nDotX / (nDotX * (1.0 - k) + k);
+}
+
+/**
+ * 微表面模型的可见性项 V = G / (N·L · N·V)（Stride 的 MaterialSpecularMicrofacetVisibility*）：kind 0 Smith-Schlick-GGX、
+ * 1 隐式、2 Neumann、3 Cook-Torrance、4 Kelemen、5 Smith-Beckmann、6 相关的 Smith-GGX、7 Smith-Schlick-Beckmann。
+ * V·H 有下限（和 Stride 不同：Stride 在 V·H 是 0 时除出无穷大）。
+ */
+fn microfacetVisibility(kind: u32, alphaR: f32, nDotL: f32, nDotV: f32, nDotH: f32, vDotH: f32) -> f32 {
+  let vh = max(vDotH, 0.0001);
+  switch (kind) {
+    case 1u: { return 1.0; }
+    case 2u: { return 1.0 / max(nDotL, nDotV); }
+    case 3u: { return min(1.0, min(2.0 * nDotH * nDotV / vh, 2.0 * nDotH * nDotL / vh)) / (nDotL * nDotV); }
+    case 4u: { return 1.0 / (vh * vh); }
+    case 5u: { return visibilityBeckmann(alphaR, nDotL) * visibilityBeckmann(alphaR, nDotV) / (nDotL * nDotV); }
+    case 6u: { return 2.0 / (visibilityGGXCorrelated(alphaR, nDotL) + visibilityGGXCorrelated(alphaR, nDotV)) / (nDotL * nDotV); }
+    case 7u: { return visibilitySchlickBeckmann(alphaR, nDotL) * visibilitySchlickBeckmann(alphaR, nDotV) / (nDotL * nDotV); }
+    default: { return visibilitySmithSchlickGGX(alphaR, nDotL, nDotV); }
+  }
+}
+
+/** 环境光镜面系数的多项式近似（Stride 的 MaterialSpecularMicrofacetEnvironmentGGXPolynomial，Lazarov 2013 的拟合）。 */
+fn environmentDfgPolynomial(specularColor: vec3f, alphaR: f32, nDotV: f32) -> vec3f {
+  let x = 1.0 - alphaR;
+  let y = nDotV;
+  var bias = saturate(min(-0.1688 * x + 1.895 * x * x, 0.9903 - 4.853 * y + 8.404 * y * y - 5.069 * y * y * y));
+  let delta = saturate(0.6045 + 1.699 * x - 0.5228 * y - 3.603 * x * x + 1.404 * x * y + 0.1939 * y * y + 2.661 * x * x * x);
+  let scale = delta - bias;
+  bias *= saturate(50.0 * specularColor.y);
+  return specularColor * scale + bias;
+}
 
 /** 光泽的分布（Estevez、Kulla 2017 的 Charlie，Filament 的 D_Charlie）：alpha 是光泽粗糙度的平方。 */
 fn distributionCharlie(alpha: f32, nDotH: f32) -> f32 {
@@ -934,12 +997,13 @@ fn baseColor(in: Varyings) -> vec4f {
   return select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
 }
 
-/**
- * 一个光源的直射光：Lambert 漫反射加 GGX 镜面（Fresnel Schlick、Smith-Schlick-GGX 可见性），l 是指向光源的单位向量，
- * lightColor 已经乘过衰减、阴影和遮蔽（Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet）。
- */
 /** 一个光源照出来的漫反射和镜面反射（分开是因为次表面散射只模糊漫反射）。 */
 struct Lit { diffuse: vec3f, specular: vec3f };
+
+/**
+ * 一个光源的直射光：Lambert 漫反射加微表面镜面（默认菲涅耳 Schlick、GGX、Smith-Schlick-GGX，材质可以换，见 Surface.microfacet），
+ * l 是指向光源的单位向量，lightColor 已经乘过衰减、阴影和遮蔽（Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet）。
+ */
 fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> Lit {
   let nDotL = max(dot(s.n, l), 0.0001);
   let lightColorNdotL = lightColor * nDotL;
@@ -952,8 +1016,8 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> Lit {
   let nDotH = saturate(dot(s.n, h));
   if (s.hasSpecular) {
     let lDotH = saturate(dot(l, h));
-    // 玻璃的菲涅耳项就是它的反射比例（MaterialSpecularMicrofacetFresnelThinGlass），放在 s.specular 里
-    let fresnel = select(s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0), s.specular, s.glass);
+    // 玻璃的菲涅耳项就是它的反射比例（MaterialSpecularMicrofacetFresnelThinGlass），放在 s.specular 里；菲涅耳为 none 时就是 f0
+    let fresnel = select(s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0), s.specular, s.glass || (s.microfacet & 1u) != 0u);
     if (s.anisotropy != 0.0) {
       // 各向异性（Filament）：切线、副切线方向的粗糙度不同，可见性用相关的 Smith（已经含 1 / (4 · N·L · N·V)）
       let at = max(s.alphaR * (1.0 + s.anisotropy), 0.001);
@@ -962,7 +1026,9 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> Lit {
       let visibility = visibilityGGXAnisotropic(at, ab, dot(s.t, s.v), dot(s.b, s.v), dot(s.t, l), dot(s.b, l), s.nDotV, nDotL);
       result.specular = fresnel * d * visibility * lightColorNdotL;
     } else {
-      result.specular = fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0 * lightColorNdotL;
+      let d = microfacetDistribution((s.microfacet >> 1u) & 3u, s.alphaR, nDotH);
+      let visibility = microfacetVisibility((s.microfacet >> 3u) & 7u, s.alphaR, nDotL, s.nDotV, nDotH, dot(s.v, h));
+      result.specular = fresnel * visibility * d / 4.0 * lightColorNdotL;
     }
   }
   if (hasSheen) {
@@ -1171,8 +1237,10 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   if (isGlass) {
     glass = thinGlass(base.rgb, nDotV, material.flags.z);
   }
+  // 微表面模型的各项在 material.specular 的第 4 位往上（MeshRenderFeature 的 microfacetBits）
+  let microfacet = material.specular >> 4u;
   let surface = Surface(n, v, diffuse, select(specular, glass.reflectance, isGlass), hasSpecular, isGlass, alphaR, nDotV,
-    sheenColor, sheenRoughness * sheenRoughness, sheenScaling, anisotropy, anisotropicT, anisotropicB);
+    sheenColor, sheenRoughness * sheenRoughness, sheenScaling, anisotropy, anisotropicT, anisotropicB, microfacet);
   var direct = Lit(vec3f(0.0), vec3f(0.0));
   // 次表面散射的材质（有槽位）算透射
   let scatters = material.subsurface.x > 0.0;
@@ -1229,8 +1297,9 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   var environment = vec3f(0.0);
   if (hasSpecular) {
     let dfg = dfgLookup(vec2f(1.0 - sqrt(alphaR), nDotV));
+    let layerSpecular = select(specular * dfg.x + dfg.y, environmentDfgPolynomial(specular, alphaR, nDotV), (microfacet & 64u) != 0u);
     // 光泽：底下那层乘剩下的比例，加上光泽自己的（环境光的方向、粗糙度按底下那层的取，Filament 另按光泽粗糙度取一次）
-    environmentSpecular = select((specular * dfg.x + dfg.y) * sheenScaling + sheenColor * sheenDfg, glass.reflectance, isGlass);
+    environmentSpecular = select(layerSpecular * sheenScaling + sheenColor * sheenDfg, glass.reflectance, isGlass);
   }
   // 反射探针盖住的地方用它的镜面反射，盖不住的部分（1 - a）才用环境光和天空盒的
   var probe = vec4f(0.0);

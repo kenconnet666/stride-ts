@@ -143,6 +143,7 @@ describe('导入 Stride 场景', () => {
     pipe: '11111111-0000-0000-0000-0000000000a7',
     pane: '11111111-0000-0000-0000-0000000000a8',
     lacquer: '11111111-0000-0000-0000-0000000000a9',
+    knight: '11111111-0000-0000-0000-0000000000aa',
     heroSheet: '11111111-0000-0000-0000-0000000000f4',
     bumpy: '11111111-0000-0000-0000-000000000009',
     bumps: '11111111-0000-0000-0000-00000000000a',
@@ -403,6 +404,20 @@ describe('导入 Stride 场景', () => {
       '    Specular: !MaterialMetalnessMapFeature', '        MetalnessMap: !ComputeFloat', '            Value: 0.08',
       '    SpecularModel: !MaterialSpecularThinGlassModelFeature', '        RefractiveIndex: 1.563',
       '    CullMode: None',
+      'Layers: {}',
+    ].join('\n'),
+    // UIElementLink 的骑士那样的微表面模型（Blinn-Phong、隐式可见性），加一个不认识的环境项和关了抖动阴影的透明
+    'Assets/Materials/Knight.sdmat': [
+      '!MaterialAsset', `Id: ${ids.knight}`, 'Attributes:',
+      '    Diffuse: !MaterialDiffuseMapFeature', '        DiffuseMap: !ComputeColor', '            Value: {R: 1.0, G: 1.0, B: 1.0, A: 1.0}',
+      '    DiffuseModel: !MaterialDiffuseLambertModelFeature {}',
+      '    Specular: !MaterialMetalnessMapFeature', '        MetalnessMap: !ComputeFloat', '            Value: 0.0',
+      '    SpecularModel: !MaterialSpecularMicrofacetModelFeature',
+      '        Fresnel: !MaterialSpecularMicrofacetFresnelSchlick {}',
+      '        Visibility: !MaterialSpecularMicrofacetVisibilityImplicit {}',
+      '        NormalDistribution: !MaterialSpecularMicrofacetNormalDistributionBlinnPhong {}',
+      '        Environment: !MaterialSpecularMicrofacetEnvironmentThinGlass {}',
+      '    Transparency: !MaterialTransparencyBlendFeature', '        Alpha: !ComputeFloat', '            Value: 0.5', '        DitheredShadows: false',
       'Layers: {}',
     ].join('\n'),
     // CSharpIntermediate 的 Yellow：清漆的车漆，碎片的法线贴图按随机的贴图坐标取；没写的输入用 Stride 的默认值
@@ -912,6 +927,16 @@ describe('导入 Stride 场景', () => {
     expect(importer.warnings).toEqual([]);
     const pane = JSON.parse(await readFile(path.join(out, 'Game/Materials/Pane.material.json'), 'utf8')) as MaterialFile;
     expect(pane).toEqual({ name: 'Pane', baseColor: [0, 1, 0, 1], metalness: 0.08, diffuseShading: false, glass: { refractiveIndex: 1.563 }, roughness: 1, doubleSided: true });
+  });
+
+  test('微表面模型只记和默认不同的项，不认识的项警告；透明关了抖动阴影时记下', async () => {
+    const project = await writeProject();
+    const out = path.join(dir, 'content-knight');
+    const importer = new StrideImporter(project, tools, out, { specularCubemapSize: 16 });
+    await importer.importAsset(project.byPath('Game/Materials/Knight')!);
+    expect(importer.warnings).toEqual([expect.stringMatching(/Environment MaterialSpecularMicrofacetEnvironmentThinGlass is not supported/)]);
+    const knight = JSON.parse(await readFile(path.join(out, 'Game/Materials/Knight.material.json'), 'utf8')) as MaterialFile;
+    expect([knight.microfacet, knight.transparency]).toEqual([{ distribution: 'blinnPhong', visibility: 'implicit' }, { type: 'blend', alpha: 0.5, ditheredShadows: false }]);
   });
 
   test('单独导入脚本用代码加载的资源（Content.Load 的材质）；场景不能这样导入', async () => {

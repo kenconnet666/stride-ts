@@ -2,6 +2,13 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 GPU 粒子的力场
+
+路线图 D1 的"GPU 粒子的力场"：Stride 的 UpdaterForceField 有了 GPU 版，带力场的发射器（ParticlesSample 的 Smoke、FPS 和 TopDownRPG 的特效预制体、UIParticles 的开场）能放到 GPU 上。
+
+- 照 CPU 的 `UpdaterForceField.update` 逐行搬（`particles/gpuKernel.ts`）：形状（球、圆柱、圆环、没有形状）按发射器固定，拼进内核代码（`fieldSphere`、`fieldCylinder`、`fieldTorus`，同 `particles/fieldShapes.ts` 的 distance：到中心的相对距离和沿轴、绕轴、离开中心三个方向），衰减同 FieldFalloff（我们改过的线性过渡）；位置和父缩放、旋转、缩放和形状参数、衰减、四种力每帧打包进 uniform（6 个 vec4）。和 CPU 一样，力乘 dt，能量守恒的那部分加到速度上，其余直接推位置。
+- **看过**（ParticlesSample 的页面，同一个发射器文件建两个，一个 `simulation: 'cpu'`、一个 `'gpu'`，每秒 800 个、寿命 3 秒，圆柱、球、圆环、没有形状各跑 4 秒）：活着的个数、到中心的平均水平距离、平均和最大高度、绕轴转的方向两边一致（差在第二位小数：随机数不同）；圆柱的平均距离 1.81 和 1.82、平均高度 1.32 和 1.31。
+
 ## 2026-11-20 水洼和雨打水面的涟漪；积雪公式的 bug
 
 路线图 D1 的水洼。参考 Lagarde 2013 的 "Water drop 2 - Wet surfaces"、"Water drop 3 - Physically based wet surfaces"。

@@ -77,6 +77,24 @@ describe('GPU 粒子：模拟内核', () => {
     const color = packed({ updaters: [{ $type: 'updaterColorOverTime', samplerMain: { $type: 'computeCurveSamplerColor4', curve: { keyFrames: [{ key: 0, value: [1, 0, 0, 1] }, { key: 1, value: [0, 0, 1, 0] }] } } }] });
     expect([color.kernel.slots, color.vec4(0), color.vec4(31)]).toEqual([32, [1, 0, 0, 1], [0, 0, 1, 0]]);
   });
+
+  test('力场：形状拼进代码（球、圆柱、圆环，没有形状时不算距离）；位置、父缩放、旋转、缩放和形状参数、衰减、四种力打包', () => {
+    const field = (shape: ParticleModuleFile | undefined) => ({
+      $type: 'updaterForceField', ...(shape ? { fieldShape: shape } : {}), forceDirected: 2, forceVortex: 3, forceRepulsive: 4, energyConservation: 0.25,
+      forceFixed: [0, 1, 0], fieldFalloff: { strengthInside: 1, falloffStart: 0.2, strengthOutside: 0.5, falloffEnd: 0.8 },
+    });
+    expect(gpuUnsupported(emitter({ updaters: [field({ $type: 'fieldShapeTorus' })] }))).toBeUndefined();
+    const sphere = packed({ updaters: [field({ $type: 'fieldShapeSphere', radius: 3 })] }, [5, 0, 0], 2);
+    expect(sphere.kernel.slots).toBe(6);
+    expect(sphere.kernel.code).toContain('field = fieldSphere((*p).position, sim.data[0].xyz, sim.data[1], sim.data[2], sim.data[5].w);');
+    // 位置、父缩放；旋转；缩放、半径；衰减；沿轴、绕轴、离开、能量守恒；固定的力
+    expect([0, 1, 2, 3, 4, 5].map(sphere.vec4)).toEqual([[5, 0, 0, 2], [0, 0, 0, 1], [2, 2, 2, 3], [1, 0.2, 0.5, 0.8], [2, 3, 4, 0.25], [0, 1, 0, 0]]);
+    expect(packed({ updaters: [field({ $type: 'fieldShapeCylinder', halfHeight: 2, radius: 0.5 })] }).vec4(2)[3]).toBe(2);
+    expect(packed({ updaters: [field({ $type: 'fieldShapeCylinder', halfHeight: 2, radius: 0.5 })] }).vec4(5)[3]).toBe(0.5);
+    // 圆环的缩放乘过 BigRadius（同 CPU 的 prepare）
+    expect(packed({ updaters: [field({ $type: 'fieldShapeTorus', bigRadius: 4, smallRadius: 0.25 })] }).vec4(2)).toEqual([4, 4, 4, 0.25]);
+    expect(packed({ updaters: [field(undefined)] }).kernel.code).not.toContain('field = field');
+  });
 });
 
 describe('GPU 粒子：环形生成的记账', () => {

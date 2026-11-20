@@ -71,6 +71,11 @@ export class UpdaterForceField extends ParticleUpdater {
     this.#parentScale = this.inheritScale ? parent.worldScale[0] : 1;
   }
 
+  /** 力乘的父缩放（GPU 的内核打包用）。 */
+  get parentScale(): number {
+    return this.#parentScale;
+  }
+
   update(dt: number, pool: ParticlePool): void {
     const position = pool.field('position'), velocity = pool.field('velocity');
     if (!position || !velocity) return;

@@ -11,18 +11,20 @@
  * 分布、不同的取值；种子是发射器生成的第几个粒子加上起始种子（同 Stride 的 RandomSeedGenerator），存 32 位。
  *
  * 支持的模块（其余的发射器留在 CPU 上，见 gpuUnsupported）：初始化器 SizeSeed、PositionSeed、VelocitySeed、DirectionSeed、
- * RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder；更新器 Gravity、SizeOverTime、ColorOverTime、RotationOverTime、
+ * RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder；更新器 Gravity、ForceField（球、圆柱、圆环或没有形状，同 fieldShapes.ts）、
+ * SizeOverTime、ColorOverTime、RotationOverTime、
  * SpeedToDirection、Wind（风场的全局风和离发射器最近的 GPU_LOCAL_WINDS 个局部风源，见 weather/WindField.ts）、DepthCollision
  * （只在 GPU 上；按深度表面碰撞，见 rendering/DepthSurface.ts，一个发射器最多一个）。
  */
 import { CurveSampler } from './curves';
 import { BuiltinShape } from './shapes';
+import { FieldShapeCylinder, FieldShapeSphere, FieldShapeTorus } from './fieldShapes';
 import { isChildModule } from './children';
 import { boxFrame, Initial3DRotationSeed, InitialColorSeed, InitialDirectionSeed, InitialPositionSeed, InitialRotationSeed, InitialSizeSeed, InitialSpawnOrder, InitialVelocitySeed } from './modules';
 import type { ParticleModule } from './modules';
 import type { ParticleEmitter } from './ParticleEmitter';
 import { RandomOffset } from './random';
-import { UpdaterColorOverTime, UpdaterDepthCollision, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from './updaters';
+import { UpdaterColorOverTime, UpdaterDepthCollision, UpdaterForceField, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from './updaters';
 import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../weather/WindField';
 import { DEPTH_SURFACE_WGSL } from '../rendering/DepthSurface';
 
@@ -273,6 +275,70 @@ fn normalizeSafe(q: vec4f) -> vec4f {
   return select(q, q / l, l > 1e-6);
 }
 
+// 力场（UpdaterForceField，同 particles/fieldShapes.ts）：到中心的相对距离（1 在表面上）和沿轴、绕轴、离开中心三个方向
+struct FieldDirections {
+  distance: f32,
+  along: vec3f,
+  around: vec3f,
+  away: vec3f,
+};
+
+fn rotateByQuat(q: vec4f, v: vec3f) -> vec3f {
+  let t = 2.0 * cross(q.xyz, v);
+  return v + q.w * t + cross(q.xyz, t);
+}
+
+// 长度为 0 时原样（同 CPU 的 normalize）
+fn normalizeOrZero(v: vec3f) -> vec3f {
+  let l = length(v);
+  return select(v, v / l, l > 1e-6);
+}
+
+// 粒子相对中心、转回形状本地的位置
+fn fieldLocal(p: vec3f, center: vec3f, q: vec4f) -> vec3f {
+  return rotateByQuat(vec4f(-q.xyz, q.w), p - center);
+}
+
+// 球：shape.xyz 是缩放，w 是半径
+fn fieldSphere(p: vec3f, center: vec3f, q: vec4f, shape: vec4f, extra: f32) -> FieldDirections {
+  let along = rotateByQuat(q, vec3f(0.0, 1.0, 0.0));
+  let away = normalizeOrZero(p - center);
+  let local = fieldLocal(p, center, q) / shape.xyz;
+  return FieldDirections(length(local) / shape.w, along, cross(along, away), away);
+}
+
+// 圆柱：沿本地 Y，w 是半高，extra 是半径；离开中心的方向是水平的
+fn fieldCylinder(p: vec3f, center: vec3f, q: vec4f, shape: vec4f, extra: f32) -> FieldDirections {
+  let along = rotateByQuat(q, vec3f(0.0, 1.0, 0.0));
+  let away = normalizeOrZero(vec3f(p.x - center.x, 0.0, p.z - center.z));
+  let local = fieldLocal(p, center, q) / shape.xyz;
+  let distance = select(length(local.xz) / extra, 1.0, abs(local.y) >= shape.w);
+  return FieldDirections(distance, along, cross(along, away), away);
+}
+
+// 圆环：shape.xyz 是乘过 BigRadius 的缩放，w 是管子半径（相对 BigRadius）；沿轴是绕圆环的切线，离开中心是离开中心线
+fn fieldTorus(p: vec3f, center: vec3f, q: vec4f, shape: vec4f, extra: f32) -> FieldDirections {
+  let local = fieldLocal(p, center, q) / shape.xyz;
+  let f = length(local.xz);
+  let squared = 1.0 + f * f - 2.0 * f + local.y * local.y;
+  let distance = select(sqrt(squared) / shape.w, 1.0, squared >= shape.w * shape.w);
+  let along = normalizeOrZero(rotateByQuat(q, vec3f(local.z, 0.0, -local.x)));
+  let onCircle = select(vec3f(local.x, 0.0, local.z), vec3f(local.x / f, 0.0, local.z / f), f > 0.0);
+  let away = normalizeOrZero(-rotateByQuat(q, (onCircle - local) * shape.xyz));
+  return FieldDirections(distance, along, cross(along, away), away);
+}
+
+// 衰减（FieldFalloff）：f 是里面的强度、开始、外面的强度、结束
+fn fieldFalloff(distance: f32, f: vec4f) -> f32 {
+  if (distance <= f.y) {
+    return f.x;
+  }
+  if (distance >= f.w) {
+    return f.z;
+  }
+  return f.x + (f.z - f.x) * (distance - f.y) / (f.w - f.y);
+}
+
 // 按寿命取曲线（CurveSampler.evaluate）：32 个采样点之间线性插值。标量的从 first 起每个 vec4 放 4 个，向量的每个 vec4 一个
 fn curveScalar(age: f32, first: u32) -> f32 {
   let at = clamp(age, 0.0, 1.0) * 31.0;
@@ -415,6 +481,35 @@ function partFor(module: ParticleModule): KernelPart | undefined {
         if (module.field) packWind(module.field, module.worldPosition, out, base);
         else out.fill(0, base * 4, (base + windSlots) * 4);
         write(out, base + windSlots, [module.drag, ...module.terminalVelocity]);
+      },
+    };
+  }
+  if (module instanceof UpdaterForceField) {
+    // 同 CPU 的 UpdaterForceField.update：形状按发射器固定，拼进代码；d(0)：位置、父缩放，d(1)：旋转，d(2)：缩放（圆环乘过
+    // BigRadius）、形状的参数，d(3)：衰减（里面的强度、开始、外面的强度、结束），d(4)：沿轴、绕轴、离开、能量守恒，d(5)：固定的力
+    const shape = module.fieldShape;
+    const kind = shape instanceof FieldShapeSphere ? 'fieldSphere' : shape instanceof FieldShapeCylinder ? 'fieldCylinder' : shape instanceof FieldShapeTorus ? 'fieldTorus' : undefined;
+    return {
+      stage: 'update', slots: 6,
+      code: `    var field = FieldDirections(1.0, vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), vec3f(0.0, 0.0, 1.0));
+    ${kind ? `field = ${kind}((*p).position, d(0).xyz, d(1), d(2), d(5).w);
+    field.distance = fieldFalloff(field.distance, d(3));` : ''}
+    let magnitude = field.distance * dt * d(0).w;
+    let force = (d(5).xyz + field.along * d(4).x + field.around * d(4).y + field.away * d(4).z) * magnitude;
+    let toVelocity = force * d(4).w;
+    (*p).velocity += toVelocity;
+    (*p).position += toVelocity * dt * 0.5 + force * (1.0 - d(4).w);`,
+      pack: (out, base) => {
+        const torus = shape instanceof FieldShapeTorus;
+        write(out, base, [...module.worldPosition, module.parentScale]);
+        write(out, base + 1, module.worldRotation);
+        const size = module.worldScale.map((s) => (torus ? s * shape.bigRadius : s));
+        const parameter = shape instanceof FieldShapeSphere ? [shape.radius, 0] : shape instanceof FieldShapeCylinder ? [shape.halfHeight, shape.radius] : torus ? [shape.smallRadius, 0] : [0, 0];
+        write(out, base + 2, [size[0]!, size[1]!, size[2]!, parameter[0]!]);
+        const { falloff } = module;
+        write(out, base + 3, [falloff.strengthInside, falloff.falloffStart, falloff.strengthOutside, falloff.falloffEnd]);
+        write(out, base + 4, [module.forceDirected, module.forceVortex, module.forceRepulsive, module.energyConservation]);
+        write(out, base + 5, [...module.forceFixed, parameter[1]!]);
       },
     };
   }

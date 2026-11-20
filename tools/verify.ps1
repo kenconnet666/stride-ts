@@ -40,7 +40,8 @@ $env:STRIDE_PORT_OFFSET = 1000 * $Slot
 
 Push-Location $Path
 try {
-    pnpm install --frozen-lockfile --reporter=silent
+    # 工作树挪过位置或换过 pnpm 版本时 pnpm 要清掉 node_modules 重装，后台没有终端让它问：工作树可丢弃，不问直接清
+    pnpm install --frozen-lockfile --reporter=silent --config.confirmModulesPurge=false
     foreach ($content in Get-ChildItem (Join-Path $main 'apps\*\public\content') -Directory) {
         $app = $content.Parent.Parent.Name
         $target = Join-Path $Path "apps\$app\public\content"

@@ -25,6 +25,7 @@ import { Simulation } from '../physics/Simulation';
 import { NavigationSystem } from '../navigation/NavigationSystem';
 import { AudioEmitterComponent, AudioListenerComponent } from '../audio/AudioEmitterComponent';
 import { RecastNavigationComponent } from '../navigation/RecastNavigationComponent';
+import { AtmosphereRenderFeature } from '../rendering/AtmosphereRenderFeature';
 import { BackgroundRenderFeature } from '../rendering/BackgroundRenderFeature';
 import { ForwardRenderer } from '../rendering/ForwardRenderer';
 import { MeshRenderFeature } from '../rendering/MeshRenderFeature';
@@ -274,6 +275,7 @@ export class Game {
       this.meshes = this.renderSystem.addFeature(new MeshRenderFeature());
       // 背景画在网格之后，只落在没画到的地方
       this.renderSystem.addFeature(new BackgroundRenderFeature());
+      this.renderSystem.addFeature(new AtmosphereRenderFeature());
       this.renderSystem.addFeature(new SpriteRenderFeature());
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);
       // 预热：加载场景、预制体时，它们的模型要用的管线在后台编好（和别的资源一起等），建实体以后不用当场编译着色器

@@ -1047,6 +1047,19 @@ export interface SceneReflectionProbe {
   readonly refresh?: 'once' | 'everyFrame';
 }
 
+/** 物理天空（Stride 没有）：各字段的意思见 SkyAtmosphere 组件；没写的用地球的默认值。 */
+export interface SceneSkyAtmosphere {
+  readonly planetRadius?: number;
+  readonly atmosphereHeight?: number;
+  readonly rayleighScattering?: Vec3Tuple;
+  readonly mieScattering?: number;
+  readonly mieAbsorption?: number;
+  readonly miePhaseG?: number;
+  readonly ozoneAbsorption?: Vec3Tuple;
+  readonly groundAlbedo?: Vec3Tuple;
+  readonly skyIntensity?: number;
+}
+
 /** Stride 的 AnimationComponent：按名字列出的剪辑（内容路径），脚本按名字播放。 */
 export interface SceneAnimation {
   readonly animations: readonly { readonly name: string; readonly clip: string }[];
@@ -1238,6 +1251,7 @@ export interface SceneEntityFile {
       };
     readonly background?: SceneBackground;
     readonly reflectionProbe?: SceneReflectionProbe;
+    readonly skyAtmosphere?: SceneSkyAtmosphere;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;

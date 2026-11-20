@@ -10,7 +10,7 @@
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
 import type {
-  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneEntityFile, SceneLightShadow, SceneReflectionProbe,
+  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneEntityFile, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef,
 } from '../content/format';
 import type { AssetKind } from '../content/references';
@@ -219,6 +219,21 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       refresh: optional(oneOf('once', 'everyFrame'), 'once'),
     })),
     initial: { size: [10, 10, 10] },
+  },
+  skyAtmosphere: {
+    label: 'Sky atmosphere',
+    type: object(fields<SceneSkyAtmosphere>({
+      planetRadius: optional(number({ min: 1, unit: 'km' }), 6360),
+      atmosphereHeight: optional(number({ min: 0.1, unit: 'km' }), 100),
+      rayleighScattering: optional(vector(3, '1/km'), [0.005802, 0.013558, 0.0331]),
+      mieScattering: optional(number({ min: 0, unit: '1/km' }), 0.003996),
+      mieAbsorption: optional(number({ min: 0, unit: '1/km' }), 0.000444),
+      miePhaseG: optional(number({ min: -0.99, max: 0.99 }), 0.8),
+      ozoneAbsorption: optional(vector(3, '1/km'), [0.00065, 0.001881, 0.000085]),
+      groundAlbedo: optional(vector(3), [0.3, 0.3, 0.3]),
+      skyIntensity: optional(number({ min: 0 }), 1),
+    })),
+    initial: {},
   },
   sprite: {
     label: 'Sprite',

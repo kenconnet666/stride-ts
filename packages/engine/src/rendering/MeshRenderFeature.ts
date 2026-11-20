@@ -43,6 +43,7 @@ import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
 import { Material, type MaterialShaderClearCoat, type MaterialShaderLayer, type MaterialShaderTrees, type MaterialTexture } from './Material';
 import type { ReflectionProbes } from './ReflectionProbes';
+import { Skybox } from './Skybox';
 import type { SubsurfaceMaterials } from './SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { MATERIAL_STREAMS } from './shaderClass';
@@ -1998,7 +1999,7 @@ class Gpu {
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
-    const skySpecular = skybox ? this.#resources.skyboxSpecular(skybox.skybox) : this.#resources.blackCube;
+    const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
     if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration) {
       this.#skySpecular = skySpecular;
       this.#probeGeneration = probes.generation;

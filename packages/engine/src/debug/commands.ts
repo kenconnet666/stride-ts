@@ -6,7 +6,7 @@
  * （`路径#导出名`）或 # 后面的部分找。
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
-import { Model, ReflectionProbe } from '../rendering/components';
+import { Light, Model, ReflectionProbe, SkyAtmosphere } from '../rendering/components';
 import { Material } from '../rendering/Material';
 import { Transform } from '../engine/transform';
 import type { EntityId } from '../data/prop';
@@ -116,6 +116,25 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     }
     const entities = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(ReflectionProbe));
     return { enabled: probes.enabled, inUse: probes.count, probes: entities.map(describe) };
+  });
+  debug.command('sky', 'Physical sky (SkyAtmosphere). args: on (true/false) adds or removes an atmosphere entity, elevation and azimuth (degrees) turn the sun (the shadow-casting directional light, else the first one), intensity scales the sky. Returns the sun direction and its color at the camera.', (args) => {
+    const atmospheres = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(SkyAtmosphere));
+    if (args['on'] === true && atmospheres.length === 0) atmospheres.push(game.entities.create({ name: 'Sky atmosphere', components: [Transform, SkyAtmosphere] }));
+    if (args['on'] === false) for (const entity of atmospheres.splice(0)) entity.destroy();
+    if (typeof args['intensity'] === 'number') for (const entity of atmospheres) entity.require(SkyAtmosphere).skyIntensity = args['intensity'];
+    if (typeof args['elevation'] === 'number' || typeof args['azimuth'] === 'number') {
+      const lights = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Light)?.type === 'directional');
+      const sun = lights.find((entity) => entity.get(Light)?.shadow) ?? lights[0];
+      if (!sun) throw new Error('sky: the scene has no directional light to turn');
+      // 光照向本地 -Z：先绕 X 转 -高度角（朝下），再绕 Y 转方位角；朝太阳的方向是 (cos 高 · sin 方, sin 高, cos 高 · cos 方)
+      const elevation = ((typeof args['elevation'] === 'number' ? args['elevation'] : 45) * Math.PI) / 180;
+      const azimuth = ((typeof args['azimuth'] === 'number' ? args['azimuth'] : 0) * Math.PI) / 180;
+      const sy = Math.sin(azimuth / 2), cy = Math.cos(azimuth / 2), sx = Math.sin(-elevation / 2), cx = Math.cos(-elevation / 2);
+      sun.require(Transform).rotation = { x: cy * sx, y: sy * cx, z: -sy * sx, w: cy * cx };
+    }
+    const { atmosphere, lighting } = game.renderSystem;
+    const sun = lighting.directionals[Math.max(lighting.shadowLight, 0)]!.color;
+    return { active: atmosphere.active, directionToSun: atmosphere.directionToSun, sunAtCamera: [sun.r, sun.g, sun.b] };
   });
   debug.command('ssr','Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
     const ssr = game.graphicsCompositor.screenSpaceReflections;

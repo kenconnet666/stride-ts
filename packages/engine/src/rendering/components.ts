@@ -81,6 +81,26 @@ export const ReflectionProbe = component('ReflectionProbe', {
 });
 
 /**
+ * 物理天空（Stride 没有；Hillaire 2020 的大气散射，见 Atmosphere.ts）：场景里有它时画天空、太阳圆盘，太阳（投阴影的方向光）的
+ * 颜色按大气的透射率变（日出日落变红变暗），天空盒光换成大气算出来的。默认是地球的大气；距离是千米，散射、吸收系数是每千米。
+ * 转太阳的实体就是日夜变化。场景里只用第一个。
+ */
+export const SkyAtmosphere = component('SkyAtmosphere', {
+  planetRadius: prop.f32().default(6360).min(1).unit('km'),
+  atmosphereHeight: prop.f32().default(100).min(0.1).unit('km'),
+  rayleighScattering: prop.vec3().default([0.005802, 0.013558, 0.0331]),
+  mieScattering: prop.f32().default(0.003996).min(0),
+  mieAbsorption: prop.f32().default(0.000444).min(0),
+  /** 米氏相函数的不对称参数（越接近 1 太阳周围的光晕越集中）。 */
+  miePhaseG: prop.f32().default(0.8).min(-0.99).max(0.99),
+  ozoneAbsorption: prop.vec3().default([0.00065, 0.001881, 0.000085]),
+  /** 地面的反照率（多次散射里算地面反射回去的光）。 */
+  groundAlbedo: prop.vec3().default([0.3, 0.3, 0.3]),
+  /** 天空和环境光的亮度倍数（太阳的直射光不变）。 */
+  skyIntensity: prop.f32().default(1).min(0),
+});
+
+/**
  * 背景（Stride 的 BackgroundComponent）：在没画到的地方画立方体贴图（texture，Cubemap.id，跟着实体旋转），或者平面图片
  * （image，Texture.id，Stride 的 Is2D：保持比例铺满画面，多出的部分两边对称裁掉），乘强度。两个都设时用 image。
  */

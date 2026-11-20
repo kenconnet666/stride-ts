@@ -601,6 +601,8 @@ export class ForwardRenderer {
     lighting.skybox = undefined;
     this.#lightFound = false;
     context.game.entities.run(this.#collectLights, context.time);
+    // 物理天空：太阳的颜色按大气的透射率变，天空盒光换成大气的
+    if (this.#lightFound) this.renderSystem.atmosphere.apply(context, lighting, this.#mainView.eye, lighting.shadowLight >= 0 ? this.#shadowSettings.lightAngle : 0.53);
     if (this.#lightFound) return;
     defaultLighting.directionals.forEach((light, i) => {
       lighting.directionals[i]!.direction.copy(light.direction);

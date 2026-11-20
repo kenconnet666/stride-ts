@@ -19,7 +19,7 @@ import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
-import { Background, Camera, Instance, Instancing, Light, ReflectionProbe, Sprite } from '../rendering/components';
+import { Background, Camera, Instance, Instancing, Light, ReflectionProbe, SkyAtmosphere, Sprite } from '../rendering/components';
 import type { Material } from '../rendering/Material';
 import type { Mesh } from '../rendering/Mesh';
 import type { Cubemap, Skybox } from '../rendering/Skybox';
@@ -325,6 +325,11 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
       }));
     },
     remove: drop(ReflectionProbe),
+  },
+  skyAtmosphere: {
+    // 没写的字段用组件的默认值（地球）；三维的数组拷一份，组件不留场景文件的引用
+    add: (entity, sky) => entity.add(SkyAtmosphere.with(Object.fromEntries(Object.entries(sky).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value])))),
+    remove: drop(SkyAtmosphere),
   },
   sprite: {
     add: (entity, sprite, { assets }) => {

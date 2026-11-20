@@ -12,6 +12,7 @@ import { Matrix } from '../mathematics/Matrix';
 import { Color4, Vector3 } from '../mathematics/vectors';
 import { GpuResources } from './GpuResources';
 import { ReflectionProbes } from './ReflectionProbes';
+import { Atmosphere, type DynamicSky } from './Atmosphere';
 import type { Skybox } from './Skybox';
 import { SubsurfaceMaterials } from './SubsurfaceScattering';
 
@@ -247,9 +248,9 @@ export abstract class RootRenderFeature {
 
 const CAMERA_WORLD = Matrix.identity();
 
-/** 天空盒光：天空盒、强度和实体的旋转。 */
+/** 天空盒光：天空盒（或者物理天空算出来的 DynamicSky）、强度和实体的旋转。 */
 export interface SkyboxLight {
-  skybox: Skybox;
+  skybox: Skybox | DynamicSky;
   intensity: number;
   /** 天空盒实体世界矩阵的旋转部分（列主序 4x4，平移为 0）。 */
   readonly rotation: Float32Array;
@@ -439,11 +440,14 @@ export class RenderSystem {
   readonly resources: GpuResources;
   /** 反射探针（合成器每帧拍、网格特性着色时用）。 */
   readonly reflectionProbes: ReflectionProbes;
+  /** 物理天空（场景里有 SkyAtmosphere 时；合成器收集光照时用，AtmosphereRenderFeature 画天空）。 */
+  readonly atmosphere: Atmosphere;
 
   constructor(graphicsDevice: GraphicsDevice) {
     this.graphicsDevice = graphicsDevice;
     this.resources = new GpuResources(graphicsDevice.device);
     this.reflectionProbes = new ReflectionProbes(graphicsDevice.device, this.resources);
+    this.atmosphere = new Atmosphere(graphicsDevice.device, this.resources);
   }
 
   get device(): GPUDevice {
@@ -501,6 +505,7 @@ export class RenderSystem {
   destroy(): void {
     for (const feature of this.features) feature.destroy();
     this.reflectionProbes.destroy();
+    this.atmosphere.destroy();
     this.resources.destroy();
   }
 }

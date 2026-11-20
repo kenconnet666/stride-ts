@@ -117,11 +117,12 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const entities = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(ReflectionProbe));
     return { enabled: probes.enabled, inUse: probes.count, probes: entities.map(describe) };
   });
-  debug.command('sky', 'Physical sky (SkyAtmosphere). args: on (true/false) adds or removes an atmosphere entity, elevation and azimuth (degrees) turn the sun (the shadow-casting directional light, else the first one), intensity scales the sky. Returns the sun direction and its color at the camera.', (args) => {
+  debug.command('sky', 'Physical sky (SkyAtmosphere). args: on (true/false) adds or removes an atmosphere entity, elevation and azimuth (degrees) turn the sun (the shadow-casting directional light, else the first one), intensity scales the sky, aerial scales the distances of aerial perspective (0 turns it off). Returns the sun direction and its color at the camera.', (args) => {
     const atmospheres = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(SkyAtmosphere));
     if (args['on'] === true && atmospheres.length === 0) atmospheres.push(game.entities.create({ name: 'Sky atmosphere', components: [Transform, SkyAtmosphere] }));
     if (args['on'] === false) for (const entity of atmospheres.splice(0)) entity.destroy();
     if (typeof args['intensity'] === 'number') for (const entity of atmospheres) entity.require(SkyAtmosphere).skyIntensity = args['intensity'];
+    if (typeof args['aerial'] === 'number') for (const entity of atmospheres) entity.require(SkyAtmosphere).aerialPerspectiveScale = args['aerial'];
     if (typeof args['elevation'] === 'number' || typeof args['azimuth'] === 'number') {
       const lights = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Light)?.type === 'directional');
       const sun = lights.find((entity) => entity.get(Light)?.shadow) ?? lights[0];

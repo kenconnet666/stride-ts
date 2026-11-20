@@ -413,7 +413,7 @@ export class ForwardRenderer {
     const reflect = this.hasCamera && post && this.screenSpaceReflections.enabled && this.quality.screenSpaceReflections;
     // 次表面散射要表面里的槽位和强度：场景里有散射材质才开（同屏幕空间反射，用写表面的不透明阶段）
     this.#scatter = this.hasCamera && post && this.subsurfaceScattering.enabled && this.quality.subsurfaceScattering && renderSystem.subsurfaceMaterials.count > 0;
-    const keepDepth = temporal || reflect || blur || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
+    const keepDepth = temporal || reflect || blur || renderSystem.atmosphere.aerialPerspective || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
     // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
@@ -541,6 +541,13 @@ export class ForwardRenderer {
       if (surfaces.length === 0) drawRest(pass);
       pass.end();
     });
+    // 空气透视：不透明的画完（没有表面时透明的也在同一遍里），按深度把大气的散射和透射合成进画面
+    const atmosphere = renderSystem.atmosphere;
+    if (view === this.#mainView && !isGraphTexture(depth) && atmosphere.aerialPerspective) {
+      frame.pass(`${label} aerial perspective`, (pass) => (isGraphTexture(target) ? pass.readWrite(target) : pass.sideEffect()), (real) => {
+        atmosphere.gpu!.recordAerialPerspective(encoder, view, atmosphere.aerialPerspectiveScale, isGraphTexture(target) ? real.view(target) : target, output.format, depth);
+      });
+    }
     if (surfaces.length === 0 || !view) return;
     // 次表面散射：不透明的画完、透明的画上去之前，把散射材质的漫反射光糊开（第 3 张表面里有槽位和强度）
     if (view === this.#mainView && this.#scatter && isGraphTexture(target) && !isGraphTexture(depth)) {

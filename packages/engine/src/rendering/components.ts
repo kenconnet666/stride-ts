@@ -98,6 +98,8 @@ export const SkyAtmosphere = component('SkyAtmosphere', {
   groundAlbedo: prop.vec3().default([0.3, 0.3, 0.3]),
   /** 天空和环境光的亮度倍数（太阳的直射光不变）。 */
   skyIntensity: prop.f32().default(1).min(0),
+  /** 空气透视（远处的东西被大气染色、变淡）的距离倍数：1 是真实的，几十米的小场景要看出效果可以调大；0 关掉。 */
+  aerialPerspectiveScale: prop.f32().default(1).min(0),
 });
 
 /**

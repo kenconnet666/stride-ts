@@ -232,6 +232,7 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       ozoneAbsorption: optional(vector(3, '1/km'), [0.00065, 0.001881, 0.000085]),
       groundAlbedo: optional(vector(3), [0.3, 0.3, 0.3]),
       skyIntensity: optional(number({ min: 0 }), 1),
+      aerialPerspectiveScale: optional(number({ min: 0 }), 1),
     })),
     initial: {},
   },

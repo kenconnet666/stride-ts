@@ -69,6 +69,9 @@ export interface MeshBatch {
   first: number;
 }
 
+/** 阴影投射的按坡度深度偏移（GPU 的 depthBiasSlopeScale，乘三角形在阴影图里的最大深度斜率）。 */
+const SHADOW_SLOPE_BIAS = 1.5;
+
 const SHADER = /* wgsl */ `
 ${BRDF}
 
@@ -1829,7 +1832,14 @@ class Gpu {
         // 像素过，也不再写深度，被挡住的像素一个都不着色
         depthStencil: stage.afterDepthPrepass
           ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'equal' }
-          : { format: depthFormat, depthWriteEnabled: !stage.transparent && !stage.wireframe, depthCompare: 'less-equal' },
+          : {
+            format: depthFormat,
+            depthWriteEnabled: !stage.transparent && !stage.wireframe,
+            depthCompare: 'less-equal',
+            // 和 Stride 不同：阴影投射另加按坡度的深度偏移。只有常量偏移加法线偏移时，太阳低（20° 左右）、光掠过地面，
+            // 阴影图的深度量化在受光面上成了一圈圈的痤疮（日夜循环里常见）
+            ...(stage.shadowCasters ? { depthBiasSlopeScale: SHADOW_SLOPE_BIAS, depthBiasClamp: 0.01 } : {}),
+          },
       };
     }
   }

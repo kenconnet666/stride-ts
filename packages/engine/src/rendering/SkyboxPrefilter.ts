@@ -104,9 +104,10 @@ export class CubemapPrefilter {
 
   /**
    * 把 source（立方体贴图，带 mip）预滤波进 output 从 firstLayer 起的六层（output 是立方体贴图时 firstLayer 是 0，立方体数组时
-   * 是 6 · 第几个立方体）。output 的每一级 mip 都写。
+   * 是 6 · 第几个立方体）。output 的每一级 mip 都写。samples 是每个纹素的采样数：一个数，或者按级给（粗糙度低的级别波瓣窄、
+   * 又是从带 mip 的源上按立体角取，少量采样就够；纹素多的正是这些级别，按级给能省掉大部分开销）。
    */
-  record(encoder: GPUCommandEncoder, source: GPUTexture, output: GPUTexture, firstLayer: number, samples: number): void {
+  record(encoder: GPUCommandEncoder, source: GPUTexture, output: GPUTexture, firstLayer: number, samples: number | readonly number[]): void {
     const levels = output.mipLevelCount;
     const bindGroup = this.#device.createBindGroup({
       layout: this.#layout,
@@ -134,15 +135,16 @@ export class CubemapPrefilter {
   }
 
   /** 每个（级别，面）的参数：面、粗糙度、最高一级只重采样、采样数。 */
-  #paramsFor(levels: number, samples: number): GPUBuffer {
-    const key = `${levels}:${samples}`;
+  #paramsFor(levels: number, samples: number | readonly number[]): GPUBuffer {
+    const perLevel = (level: number) => (typeof samples === 'number' ? samples : samples[Math.min(level, samples.length - 1)]!);
+    const key = `${levels}:${typeof samples === 'number' ? samples : samples.join('/')}`;
     let buffer = this.#params.get(key);
     if (buffer) return buffer;
     const params = new ArrayBuffer(levels * 6 * PARAMS_STRIDE);
     for (let level = 0; level < levels; level++) {
       for (let face = 0; face < 6; face++) {
         const offset = (level * 6 + face) * PARAMS_STRIDE;
-        new Uint32Array(params, offset, 4).set([face, 0, level === 0 ? 1 : 0, samples]);
+        new Uint32Array(params, offset, 4).set([face, 0, level === 0 ? 1 : 0, perLevel(level)]);
         new Float32Array(params, offset + 4, 1)[0] = levels > 1 ? level / (levels - 1) : 0;
       }
     }

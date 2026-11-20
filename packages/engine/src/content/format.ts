@@ -1058,6 +1058,7 @@ export interface SceneSkyAtmosphere {
   readonly ozoneAbsorption?: Vec3Tuple;
   readonly groundAlbedo?: Vec3Tuple;
   readonly skyIntensity?: number;
+  readonly aerialPerspectiveScale?: number;
 }
 
 /** Stride 的 AnimationComponent：按名字列出的剪辑（内容路径），脚本按名字播放。 */

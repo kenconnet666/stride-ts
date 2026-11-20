@@ -18,7 +18,7 @@ import { Transform } from '../engine/transform';
 import { SkyAtmosphere } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
-import type { Lighting, RenderContext, SkyboxLight } from './RenderSystem';
+import type { Lighting, RenderContext, RenderView, SkyboxLight } from './RenderSystem';
 
 /** 大气的物理参数（SkyAtmosphere 组件的列；距离是千米，系数是每千米）。 */
 export interface AtmosphereSettings {
@@ -211,12 +211,17 @@ struct Scattered { radiance: vec3f, transmittance: vec3f, multi: vec3f };
 
 ${uniformPhase ? '' : /* wgsl */ `@group(0) @binding(4) var multiScatteringLut: texture_2d<f32>;`}
 
-fn integrate(origin: vec3f, direction: vec3f, directionToSun: vec3f, steps: f32) -> Scattered {
+/**
+ * 从 origin 沿 direction 积分到大气层顶或地面，最远 limit 千米。ignoreGround 时不管地面（空气透视：视线停在场景里的物体上，
+ * 物体自己就是"地面"）。
+ */
+fn integrate(origin: vec3f, direction: vec3f, directionToSun: vec3f, steps: f32, limit: f32, ignoreGround: bool) -> Scattered {
   var result = Scattered(vec3f(0.0), vec3f(1.0), vec3f(0.0));
-  let tBottom = raySphere(origin, direction, planetRadius());
+  let tBottom = select(raySphere(origin, direction, planetRadius()), -1.0, ignoreGround);
   let tTop = raySphere(origin, direction, topRadius());
   var tMax = tTop;
   if (tBottom > 0.0) { tMax = select(tBottom, min(tBottom, tTop), tTop > 0.0); }
+  tMax = min(tMax, limit);
   if (tMax <= 0.0) { return result; }
   let cosTheta = dot(direction, directionToSun);
   let phaseRayleigh = rayleighPhase(cosTheta);
@@ -277,7 +282,7 @@ ${integrate(true)}
       let azimuth = 2.0 * PI / AZIMUTHS * i;
       let inclination = PI / INCLINATIONS * j;
       let direction = vec3f(sin(inclination) * sin(azimuth), cos(inclination), sin(inclination) * cos(azimuth));
-      let scattered = integrate(origin, direction, directionToSun, 20.0);
+      let scattered = integrate(origin, direction, directionToSun, 20.0, 1e9, false);
       let weight = abs(sin(inclination)) * step / (4.0 * PI);
       total += scattered.multi * weight;
       inscattered += scattered.radiance * weight;
@@ -315,7 +320,7 @@ ${integrate(false)}
   let up = vec3f(0.0, 1.0, 0.0);
   let cosSunZenith = dot(atmosphere.sun.xyz, up);
   let directionToSun = vec3f(sqrt(max(0.0, 1.0 - cosSunZenith * cosSunZenith)), cosSunZenith, 0.0);
-  let scattered = integrate(vec3f(0.0, radius, 0.0), direction, directionToSun, 30.0);
+  let scattered = integrate(vec3f(0.0, radius, 0.0), direction, directionToSun, 30.0, 1e9, false);
   textureStore(output, id.xy, vec4f(scattered.radiance * atmosphere.sunIlluminance.rgb, 1.0));
 }`;
 
@@ -366,9 +371,17 @@ fn faceDirection(face: u32, p: vec2f) -> vec3f {
 @compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) id: vec3u) {
   let size = textureDimensions(output);
   if (any(id.xy >= size)) { return; }
-  let c = normalize(faceDirection(id.z, (vec2f(id.xy) + 0.5) / vec2f(size) * 2.0 - 1.0));
-  let world = vec3f(c.xy, -c.z);
-  textureStore(output, id.xy, id.z, vec4f(textureSampleLevel(skyViewLut, linearClamp, skyViewUv(world), 0.0).rgb, 1.0));
+  // 纹素覆盖的范围里取 4x4 个点求平均：每级 mip 都是区域的平均（预滤波按立体角从 mip 里取，逐点求值的 mip 会让地平线那条
+  // 硬边在反射里变成一圈圈的环）
+  var sum = vec3f(0.0);
+  for (var j = 0u; j < 4u; j++) {
+    for (var i = 0u; i < 4u; i++) {
+      let p = (vec2f(id.xy) + (vec2f(f32(i), f32(j)) + 0.5) / 4.0) / vec2f(size) * 2.0 - 1.0;
+      let c = normalize(faceDirection(id.z, p));
+      sum += textureSampleLevel(skyViewLut, linearClamp, skyViewUv(vec3f(c.xy, -c.z)), 0.0).rgb;
+    }
+  }
+  textureStore(output, id.xy, id.z, vec4f(sum / 16.0, 1.0));
 }`;
 
 /** 立方体贴图投影成 3 阶球谐，乘 Lambert 余弦核和基函数常数（同资源管线的 st_cubemap_sh_lambert）。一个工作组算完。 */
@@ -452,13 +465,93 @@ ${SAMPLE_SKY}
   return vec4f(color, 1.0);
 }`;
 
+/** 空气透视的体素表：屏幕上 32x32 格，32 层距离（第 i 层到 ((i + 1) / 32)² · 32 · 4 km，近处层密）。 */
+const AERIAL = /* wgsl */ `
+const AERIAL_SIZE = 32.0;
+const AERIAL_KM_PER_SLICE = 4.0;
+// 相机：视图投影的逆（屏幕 → 世界）、位置（米）、w 是距离的倍数（小场景放大效果）
+struct Camera { inverseViewProjection: mat4x4f, eye: vec4f };
+`;
+
+const AERIAL_SHADER = /* wgsl */ `
+${COMMON}
+@group(0) @binding(1) var output: texture_storage_3d<rgba16float, write>;
+${integrate(false)}
+${AERIAL}
+@group(0) @binding(5) var<uniform> camera: Camera;
+
+// 每个线程一列：沿视线走一遍，每层接着上一层积分（各层单独从相机积分时采样数不同，层和层之间的误差不连续，画面上是一圈圈的环）
+@compute @workgroup_size(8, 8, 1) fn main(@builtin(global_invocation_id) id: vec3u) {
+  if (any(vec2f(id.xy) >= vec2f(AERIAL_SIZE))) { return; }
+  let uv = (vec2f(id.xy) + 0.5) / AERIAL_SIZE;
+  let far = camera.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 1.0, 1.0);
+  let direction = normalize(far.xyz / far.w - camera.eye.xyz);
+  let origin = vec3f(0.0, atmosphere.ground.w, 0.0);
+  let toSun = atmosphere.sun.xyz;
+  let cosTheta = dot(direction, toSun);
+  let phaseRayleigh = rayleighPhase(cosTheta);
+  let phaseMie = miePhase(cosTheta);
+  var radiance = vec3f(0.0);
+  var transmittance = vec3f(1.0);
+  var t = 0.0;
+  const SUBSTEPS = 4.0;
+  for (var slice = 0u; slice < u32(AERIAL_SIZE); slice++) {
+    let layer = (f32(slice) + 1.0) / AERIAL_SIZE;
+    let end = layer * layer * AERIAL_SIZE * AERIAL_KM_PER_SLICE;
+    let dt = (end - t) / SUBSTEPS;
+    for (var k = 0.0; k < SUBSTEPS; k += 1.0) {
+      let p = origin + direction * (t + (k + 0.5) * dt);
+      let medium = sampleMedium(length(p) - planetRadius());
+      let multi = textureSampleLevel(multiScatteringLut, linearClamp, multiScatteringUv(length(p), dot(normalize(p), toSun)), 0.0).rgb;
+      let inscatter = transmittanceToSun(p, toSun) * (medium.scatteringRayleigh * phaseRayleigh + medium.scatteringMie * phaseMie)
+        + multi * (medium.scatteringRayleigh + medium.scatteringMie);
+      let extinction = max(medium.extinction, vec3f(1e-7));
+      let stepTransmittance = exp(-medium.extinction * dt);
+      radiance += transmittance * (inscatter - inscatter * stepTransmittance) / extinction;
+      transmittance *= stepTransmittance;
+    }
+    t = end;
+    textureStore(output, vec3u(id.xy, slice), vec4f(radiance * atmosphere.sunIlluminance.rgb, 1.0 - dot(transmittance, vec3f(1.0 / 3.0))));
+  }
+}`;
+
+/**
+ * 空气透视合成：按深度查体素表，颜色 = 颜色 · 透射 + 散射（混合：src + dst · srcAlpha，alpha 是平均透射率，各通道的透射率差别
+ * 只在很远处明显，先不用双源混合）。天空（深度 1）不动，它自己带着大气。
+ */
+const AERIAL_COMPOSITE_SHADER = /* wgsl */ `
+${FULLSCREEN_VERTEX}
+${AERIAL}
+@group(0) @binding(0) var aerial: texture_3d<f32>;
+@group(0) @binding(1) var depth: texture_depth_2d;
+@group(0) @binding(2) var linearClamp: sampler;
+@group(0) @binding(3) var<uniform> camera: Camera;
+
+@fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
+  let d = textureLoad(depth, vec2i(in.position.xy), 0);
+  if (d >= 1.0) { discard; }
+  let world = camera.inverseViewProjection * vec4f(in.ndc, d, 1.0);
+  let distance = length(world.xyz / world.w - camera.eye.xyz) / 1000.0 * camera.eye.w;
+  // 层号的反函数：第 i 层的中心在 sqrt(距离 / 总长) - 0.5 / 层数；比第一层还近的按距离淡到 0
+  let w = sqrt(distance / (AERIAL_SIZE * AERIAL_KM_PER_SLICE));
+  let z = w - 0.5 / AERIAL_SIZE;
+  let fade = saturate(w * AERIAL_SIZE);
+  let s = textureSampleLevel(aerial, linearClamp, vec3f(in.uv, max(z, 0.5 / AERIAL_SIZE)), 0.0) * fade;
+  return vec4f(s.rgb, 1.0 - s.a);
+}`;
+
 /** uniform Atmosphere 的大小（6 个 vec4）。 */
 const ATMOSPHERE_FLOATS = 24;
-const SKY_CUBE_SIZE = 64;
-const SPECULAR_SIZE = 64;
-/** 球谐用的那一级（16²）。 */
+/**
+ * 天空立方体和镜面贴图的边长。64 不够：粗糙度 0.5 的表面落在第 3、4 级（每面 8²、4²），双线性插值的折线在地面的反射里成了
+ * 一圈圈的环。
+ */
+const SKY_CUBE_SIZE = 128;
+const SPECULAR_SIZE = 128;
+/** 球谐用的那一级（32²）。 */
 const SH_LEVEL = 2;
-const PREFILTER_SAMPLES = 128;
+/** 预滤波每级的采样数（第 0 级只重采样）：粗糙度低的级别纹素多、波瓣窄，少采；粗糙的级别纹素少，多采。 */
+const PREFILTER_SAMPLES = [1, 32, 64, 128, 256];
 const FORMAT: GPUTextureFormat = 'rgba16float';
 
 /** 大气算出来的天空光（代替场景的天空盒光，见 SkyboxLight.skybox）：镜面立方体贴图和漫反射的球谐。 */
@@ -489,6 +582,8 @@ export class Atmosphere {
   sunAngularRadius = 0.00465;
   /** 相机离地面的高度（千米）。 */
   cameraHeight = 0;
+  /** 空气透视的距离倍数（SkyAtmosphere.aerialPerspectiveScale）；0 是不做。 */
+  aerialPerspectiveScale = 1;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   #gpu: AtmosphereGpu | undefined;
@@ -515,6 +610,7 @@ export class Atmosphere {
       s.ozoneAbsorption = [atmosphere.ozoneAbsorption[0]!, atmosphere.ozoneAbsorption[1]!, atmosphere.ozoneAbsorption[2]!];
       s.groundAlbedo = [atmosphere.groundAlbedo[0]!, atmosphere.groundAlbedo[1]!, atmosphere.groundAlbedo[2]!];
       s.skyIntensity = atmosphere.skyIntensity[0]!;
+      this.aerialPerspectiveScale = atmosphere.aerialPerspectiveScale[0]!;
     },
   });
 
@@ -574,6 +670,11 @@ export class Atmosphere {
     if (lighting) this.#readSphericalHarmonics(gpu);
   }
 
+  /** 这一帧做不做空气透视（前向渲染器据此留着深度缓冲、在不透明的之后合成）。 */
+  get aerialPerspective(): boolean {
+    return this.active && this.aerialPerspectiveScale > 0 && this.#gpu !== undefined;
+  }
+
   /** 画天空用的（AtmosphereRenderFeature）。 */
   get gpu(): AtmosphereGpu | undefined {
     return this.active ? this.#gpu : undefined;
@@ -614,7 +715,7 @@ export class Atmosphere {
   }
 }
 
-type ComputeName = 'transmittance' | 'multiScattering' | 'skyView' | 'skyCube' | 'sh';
+type ComputeName = 'transmittance' | 'multiScattering' | 'skyView' | 'skyCube' | 'sh' | 'aerial';
 
 /** 大气的 GPU 资源：查找表、计算管线、画天空的管线。 */
 export class AtmosphereGpu {
@@ -632,6 +733,12 @@ export class AtmosphereGpu {
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #pipelines: Record<ComputeName, GPUComputePipeline>;
+  /** 空气透视的体素表和这一帧的相机。 */
+  readonly aerial: GPUTexture;
+  readonly camera: GPUBuffer;
+  readonly #compositeModule: GPUShaderModule;
+  readonly #compositeLayout: GPUBindGroupLayout;
+  readonly #composites = new Map<GPUTextureFormat, GPURenderPipeline>();
 
   constructor(device: GPUDevice, resources: GpuResources) {
     this.#device = device;
@@ -651,7 +758,20 @@ export class AtmosphereGpu {
       skyView: compute('sky view', SKY_VIEW_SHADER),
       skyCube: compute('sky cube', SKY_CUBE_SHADER),
       sh: compute('spherical harmonics', SH_SHADER),
+      aerial: compute('aerial perspective', AERIAL_SHADER),
     };
+    this.aerial = device.createTexture({ label: 'Atmosphere aerial perspective', size: [32, 32, 32], dimension: '3d', format: FORMAT, usage: storage });
+    this.camera = device.createBuffer({ label: 'Atmosphere camera', size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#compositeModule = device.createShaderModule({ label: 'Atmosphere aerial perspective composite', code: AERIAL_COMPOSITE_SHADER });
+    this.#compositeLayout = device.createBindGroupLayout({
+      label: 'Atmosphere aerial perspective composite',
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '3d' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      ],
+    });
     this.skyModule = device.createShaderModule({ label: 'Atmosphere sky', code: SKY_SHADER });
     this.skyLayout = device.createBindGroupLayout({
       label: 'Atmosphere sky',
@@ -720,9 +840,56 @@ export class AtmosphereGpu {
     this.#resources.prefilter.record(encoder, this.skyCube, sky.specular, 0, PREFILTER_SAMPLES);
   }
 
+  /**
+   * 空气透视（录进这一帧的编码器）：按 view 的相机算体素表，再按 depth 合成进 target（不透明的画完之后）。scale 是距离的倍数。
+   */
+  recordAerialPerspective(encoder: GPUCommandEncoder, view: RenderView, scale: number, target: GPUTextureView, format: GPUTextureFormat, depth: GPUTexture): void {
+    this.#device.queue.writeBuffer(this.camera, 0, new Float32Array([...view.inverseViewProjection, view.eye.x, view.eye.y, view.eye.z, scale]));
+    this.#dispatch(encoder, 'aerial', [
+      { binding: 0, resource: { buffer: this.uniforms } },
+      { binding: 1, resource: this.aerial.createView() },
+      { binding: 2, resource: this.transmittance.createView() },
+      { binding: 3, resource: this.#resources.linearClamp },
+      { binding: 4, resource: this.multiScattering.createView() },
+      { binding: 5, resource: { buffer: this.camera } },
+    ], [4, 4, 1]);
+    const pass = encoder.beginRenderPass({ label: 'Atmosphere aerial perspective', colorAttachments: [{ view: target, loadOp: 'load', storeOp: 'store' }] });
+    pass.setPipeline(this.#compositeFor(format));
+    pass.setBindGroup(0, this.#device.createBindGroup({
+      layout: this.#compositeLayout,
+      entries: [
+        { binding: 0, resource: this.aerial.createView() },
+        { binding: 1, resource: depth.createView() },
+        { binding: 2, resource: this.#resources.linearClamp },
+        { binding: 3, resource: { buffer: this.camera } },
+      ],
+    }));
+    pass.draw(3);
+    pass.end();
+  }
+
   destroy(): void {
-    for (const texture of [this.transmittance, this.multiScattering, this.skyView, this.skyCube]) texture.destroy();
-    for (const buffer of [this.uniforms, this.shResult, this.shReadback]) buffer.destroy();
+    for (const texture of [this.transmittance, this.multiScattering, this.skyView, this.skyCube, this.aerial]) texture.destroy();
+    for (const buffer of [this.uniforms, this.shResult, this.shReadback, this.camera]) buffer.destroy();
+  }
+
+  /** 合成的管线：颜色 = 散射 + 颜色 · 透射（alpha）。 */
+  #compositeFor(format: GPUTextureFormat): GPURenderPipeline {
+    let pipeline = this.#composites.get(format);
+    if (!pipeline) {
+      pipeline = this.#device.createRenderPipeline({
+        label: `Atmosphere aerial perspective ${format}`,
+        layout: this.#device.createPipelineLayout({ bindGroupLayouts: [this.#compositeLayout] }),
+        vertex: { module: this.#compositeModule, entryPoint: 'fullscreenVertex' },
+        fragment: {
+          module: this.#compositeModule,
+          entryPoint: 'fs',
+          targets: [{ format, blend: { color: { srcFactor: 'one', dstFactor: 'src-alpha', operation: 'add' }, alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' } } }],
+        },
+      });
+      this.#composites.set(format, pipeline);
+    }
+    return pipeline;
   }
 
   #dispatch(encoder: GPUCommandEncoder, name: ComputeName, entries: GPUBindGroupEntry[], groups: [number, number, number]): void {

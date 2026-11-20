@@ -51,13 +51,13 @@ const run = stride('eval', `(async () => {
   const before = playerAt();
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
   await seconds(0.67);
-  // 跑和站着各看 20 帧的骨骼变化，比的是两者之比，帧率不影响
-  const running = await poseChange(20);
+  // 跑和站着各看 8 帧的骨骼变化，比的是两者之比，帧率不影响（CI 的软件 WebGPU 上 TPP 一帧要几秒，各看 20 帧这一次 eval 超过两分钟）
+  const running = await poseChange(8);
   const during = playerAt();
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
   await seconds(1);
   const stopped = playerAt();
-  const idle = await poseChange(20);
+  const idle = await poseChange(8);
   return { before, during, running, idle, stopped, after: playerAt() };
 })()`) as { before: Point; during: Point; running: number; idle: number; stopped: Point; after: Point };
 const moved = Math.hypot(run.during[0] - run.before[0], run.during[2] - run.before[2]);

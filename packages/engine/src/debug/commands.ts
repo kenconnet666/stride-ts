@@ -198,12 +198,13 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const { active, settings } = game.renderSystem.clouds;
     return { active, ...(clouds ? { settings: { ...settings } } : {}) };
   });
-  debug.command('fog', 'Volumetric fog and light shafts (VolumetricFog). args: on (true/false) adds or removes a fog entity; density (extinction per meter), heightFalloff, baseHeight, anisotropy, distance (m), ambient.', (args) => {
+  debug.command('fog', 'Volumetric fog and light shafts (VolumetricFog). args: on (true/false) adds or removes a fog entity; density (extinction per meter), heightFalloff, baseHeight, anisotropy, distance (m), ambient, noise (0..1), noiseScale (m); farFog (true/false).', (args) => {
     const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(VolumetricFog));
     if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Fog', components: [Transform, VolumetricFog] }));
     if (args['on'] === false) for (const entity of all.splice(0)) entity.destroy();
     const fog = all[0]?.require(VolumetricFog);
-    if (fog) for (const key of ['density', 'heightFalloff', 'baseHeight', 'anisotropy', 'distance', 'ambient'] as const) if (typeof args[key] === 'number') fog[key] = args[key];
+    if (fog) for (const key of ['density', 'heightFalloff', 'baseHeight', 'anisotropy', 'distance', 'ambient', 'noise', 'noiseScale'] as const) if (typeof args[key] === 'number') fog[key] = args[key];
+    if (fog && typeof args['farFog'] === 'boolean') fog.farFog = args['farFog'];
     const { active, settings } = game.renderSystem.fog;
     return { active, ...(fog ? { settings: { ...settings } } : {}) };
   });

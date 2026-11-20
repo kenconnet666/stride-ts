@@ -18,6 +18,7 @@ import { Clouds } from './sky/VolumetricClouds';
 import { Fog } from './sky/VolumetricFog';
 import { Decals } from './mesh/Decals';
 import { Clusters } from './lighting/Clusters';
+import { LocalLightBuffer } from './lighting/LocalLights';
 import type { Skybox } from './lighting/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 import { SkyOcclusion } from '../weather/SkyOcclusion';
@@ -478,6 +479,8 @@ export class RenderSystem {
   readonly decals: Decals;
   /** 主视图的簇（点光、聚光、贴花按屏幕格子和深度分好）。 */
   readonly clusters: Clusters;
+  /** 这一帧的点光、聚光在 GPU 上的那一份（网格、体积雾读；前向渲染器在 prepare 之前上传）。 */
+  readonly localLights: LocalLightBuffer;
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
   /**
@@ -495,6 +498,7 @@ export class RenderSystem {
     this.fog = new Fog(graphicsDevice.device, this.resources);
     this.decals = new Decals(graphicsDevice.device, this.resources);
     this.clusters = new Clusters(graphicsDevice.device);
+    this.localLights = new LocalLightBuffer(graphicsDevice.device);
     this.skyOcclusion = new SkyOcclusion(graphicsDevice.device);
   }
 
@@ -557,6 +561,7 @@ export class RenderSystem {
     this.fog.destroy();
     this.decals.destroy();
     this.clusters.destroy();
+    this.localLights.destroy();
     this.atmosphere.destroy();
     this.skyOcclusion.destroy();
     this.resources.destroy();

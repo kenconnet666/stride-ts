@@ -16,6 +16,7 @@
  */
 import type { Decals } from './Decals';
 import { clusterParams, type Clusters } from '../lighting/Clusters';
+import type { LocalLightBuffer } from '../lighting/LocalLights';
 import type { FrustumCuller } from '@stride-ts/native';
 import type { AnimationSystem } from '../../animation/AnimationSystem';
 import type { EntityId } from '../../data/prop';
@@ -66,7 +67,6 @@ const VIEW_STRIDE = 1024;
  */
 const VIEW_FLOATS = 256;
 /** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
-const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
 const LOCAL_SHADOW_FLOATS = 104;
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
@@ -305,7 +305,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters, this.system.localLights));
   }
 
 
@@ -484,6 +484,9 @@ class Gpu {
   #occlusionDepth: GPUBuffer | undefined;
   readonly #decals: Decals;
   readonly #clusters: Clusters;
+  /** 点光、聚光（渲染系统一份，前向渲染器上传）；换了缓冲要重建绑定组。 */
+  readonly #localLights: LocalLightBuffer;
+  #localLightBuffer: GPUBuffer | undefined;
   /** 视图绑定组里的贴花图集和缓冲；换了要重建绑定组。 */
   #decalAtlas: GPUTexture | undefined;
   #decalBuffer: GPUBuffer | undefined;
@@ -529,10 +532,7 @@ class Gpu {
   #morphOfWrites = 0;
   /** 视图常量里的各缓冲这一帧、上一帧的起点（View.bases）。 */
   readonly #frameBases = new Uint32Array(12);
-  /** 点光、聚光（LocalLight），按需变长；没有时也留一个的位置（绑定组里的存储缓冲不能缺）。 */
-  #localLightData = new Float32Array(LOCAL_LIGHT_FLOATS);
-  #localLights: GPUBuffer;
-  /** 点光、聚光的阴影（LocalShadow），按需变长；没有时也留一个的位置。 */
+  /** 点光、聚光的阴影（LocalShadow），按需变长；没有时也留一个的位置（绑定组里的存储缓冲不能缺）。 */
   #localShadowData = new Float32Array(LOCAL_SHADOW_FLOATS);
   #localShadows: GPUBuffer;
   /** 绑定组里的簇表缓冲；视图多了 Clusters 会换一个更大的，要重建绑定组。 */
@@ -544,7 +544,7 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals, clusters: Clusters) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer) {
     this.device = device;
     this.#resources = resources;
     this.#subsurface = subsurface;
@@ -553,6 +553,7 @@ class Gpu {
     this.#weather = weather;
     this.#decals = decals;
     this.#clusters = clusters;
+    this.#localLights = localLights;
     this.#noOcclusion = device.createBuffer({ label: 'MeshRenderFeature no sky occlusion', size: 80, usage: GPUBufferUsage.UNIFORM });
     this.#noOcclusionDepth = device.createBuffer({ label: 'MeshRenderFeature no sky occlusion depth', size: 16, usage: GPUBufferUsage.STORAGE });
     this.#unclippedDepth = unclippedDepth;
@@ -609,7 +610,6 @@ class Gpu {
     });
     this.#noMorph = this.#createFilled('MeshRenderFeature no morph', GPUBufferUsage.STORAGE, new Uint32Array(4));
     this.#dfgLut = createDfgLut(device);
-    this.#localLights = this.#createStorage('MeshRenderFeature local lights', this.#localLightData.byteLength);
     this.#localShadows = this.#createStorage('MeshRenderFeature local shadows', LOCAL_SHADOW_FLOATS * 4);
   }
 
@@ -891,7 +891,7 @@ class Gpu {
       this.#views = undefined;
       this.#clearViewBindGroups();
     }
-    const { directionals, directionalCount, ambient, skybox, shadowAtlas, locals, localCount } = lighting;
+    const { directionals, directionalCount, ambient, skybox, shadowAtlas, localCount } = lighting;
     const probes = this.#probes;
     // 云的影子落在哪盏方向光上（光照里按实体找；那盏光是黑的、被拿掉了时没有影子）
     const cloud = this.#clouds.shadow;
@@ -937,30 +937,14 @@ class Gpu {
       data.set([this.#decals.count, 0, 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
     }
-    // 点光、聚光：所有视图共用一份，个数不设上限（缓冲按 2 的幂变大）
-    if (localCount * LOCAL_LIGHT_FLOATS > this.#localLightData.length) {
-      this.#localLightData = new Float32Array(2 ** Math.ceil(Math.log2(localCount)) * LOCAL_LIGHT_FLOATS);
-      this.#localLights.destroy();
-      this.#localLights = this.#createStorage('MeshRenderFeature local lights', this.#localLightData.byteLength);
-      this.#clearViewBindGroups();
-    }
-    const lights = this.#localLightData;
-    for (let i = 0; i < localCount; i++) {
-      const { position: p, color: c, direction: d, spot, invSquareRadius, angleScale, angleOffset, shadowIndex } = locals[i]!;
-      const o = i * LOCAL_LIGHT_FLOATS;
-      lights[o] = p.x; lights[o + 1] = p.y; lights[o + 2] = p.z; lights[o + 3] = invSquareRadius;
-      lights[o + 4] = c.r; lights[o + 5] = c.g; lights[o + 6] = c.b; lights[o + 7] = spot ? 1 : 0;
-      lights[o + 8] = d.x; lights[o + 9] = d.y; lights[o + 10] = d.z; lights[o + 11] = shadowIndex;
-      lights[o + 12] = angleScale; lights[o + 13] = angleOffset;
-    }
-    if (localCount > 0) this.device.queue.writeBuffer(this.#localLights, 0, lights, 0, localCount * LOCAL_LIGHT_FLOATS);
     this.#uploadLocalShadows(lighting);
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer) {
       this.#clusterBuffer = this.#clusters.buffer;
+      this.#localLightBuffer = this.#localLights.buffer;
       this.#decalAtlas = this.#decals.atlas;
       this.#decalBuffer = this.#decals.buffer;
       this.#cloudShadow = cloud?.texture;
@@ -1019,7 +1003,7 @@ class Gpu {
           { binding: 7, resource: this.#resources.shadowComparison },
           { binding: 8, resource: { buffer: this.#paletteOf! } },
           { binding: 9, resource: { buffer: this.#palettes! } },
-          { binding: 10, resource: { buffer: this.#localLights } },
+          { binding: 10, resource: { buffer: this.#localLights.buffer } },
           { binding: 11, resource: { buffer: this.#morphOf! } },
           { binding: 12, resource: { buffer: this.#morphWeights! } },
           { binding: 13, resource: { buffer: this.#localShadows } },
@@ -1187,7 +1171,7 @@ class Gpu {
   }
 
   destroy(): void {
-    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#localLights, this.#morphOf, this.#morphWeights, this.#noMorph]) buffer?.destroy();
+    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#morphOf, this.#morphWeights, this.#noMorph]) buffer?.destroy();
     for (const { params, vertices, indices, edges } of this.#meshes.values()) {
       params.destroy();
       vertices.destroy();

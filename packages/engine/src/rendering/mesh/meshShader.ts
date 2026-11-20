@@ -23,6 +23,7 @@
  */
 import { CEL_RAMP_STOPS } from '../../content/format';
 import { CLUSTER_WGSL } from '../lighting/Clusters';
+import { LOCAL_LIGHT_WGSL } from '../lighting/LocalLights';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
 import { BRDF, GRADIENT_NOISE } from '../wgsl';
@@ -77,7 +78,7 @@ struct View {
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
 // direction 是聚光照向的方向（w：它的阴影在 localShadows 里的下标，没有阴影时 -1），angle 是角度衰减的 scale、offset
-struct LocalLight { position: vec4f, color: vec4f, direction: vec4f, angle: vec4f };
+${LOCAL_LIGHT_WGSL}
 // 一盏点光或聚光的阴影：点光是立方体的六个面（+Z、-Z、+X、-X、+Y、-Y）各一个矩阵，聚光只用第一个
 struct LocalShadow {
   matrices: array<mat4x4f, 6>,
@@ -1418,16 +1419,9 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   for (var k = 0u; k < localCount; k++) {
     let light = localLights[select(k, clusters[firstLight + k], clustered)];
-    let toLight = light.position.xyz - in.world;
-    let distance = length(toLight);
-    let l = toLight / distance;
-    let d2 = distance * distance;
-    let falloff = saturate(1.0 - pow(d2 * light.position.w, 2.0));
-    var attenuation = falloff * falloff / max(d2, 0.0001);
-    if (light.color.w > 0.5) {
-      let angular = saturate(dot(-l, light.direction.xyz) * light.angle.x + light.angle.y);
-      attenuation *= angular * angular;
-    }
+    let at = localLightAt(light, in.world);
+    let l = at.xyz;
+    let attenuation = at.w;
     // 这个视图用不用阴影看图集的尺寸（不用时是 0）
     var shadow = 1.0;
     if (light.direction.w >= 0.0 && view.shadowAtlas.y > 0.0 && attenuation > 0.0) {

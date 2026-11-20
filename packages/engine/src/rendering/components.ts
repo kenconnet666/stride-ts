@@ -136,8 +136,9 @@ export const VolumetricClouds = component('VolumetricClouds', {
 });
 
 /**
- * 体积雾和体积光（Stride 没有；见 sky/VolumetricFog.ts）：跟着相机的一块雾，越高越稀，被主光（投阴影的方向光）和环境光
- * 照着；物体的影子在雾里是一道道的光柱。场景里只用第一个。
+ * 体积雾和体积光（Stride 没有；见 sky/VolumetricFog.ts）：跟着相机的一块雾，越高越稀，被主光（投阴影的方向光）、点光、聚光
+ * 和环境光照着；物体的影子在雾里是一道道的光柱。可以带噪声（一团一团，被风吹着走）；distance 以外接一段解析的高度雾。
+ * 场景里只用第一个。
  */
 export const VolumetricFog = component('VolumetricFog', {
   /** 雾有多浓：baseHeight 那个高度上每米的消光系数（0.02 大约能看 150 米，0.1 大约 30 米）。 */
@@ -153,6 +154,12 @@ export const VolumetricFog = component('VolumetricFog', {
   distance: prop.f32().default(120).min(1).unit('m'),
   /** 环境光照进雾里的倍数。 */
   ambient: prop.f32().default(1).min(0),
+  /** 雾里的噪声：0 是均匀的，1 是一团一团、团之间几乎没有；跟着全局风（`game.wind`）飘。 */
+  noise: prop.f32().default(0).min(0).max(1),
+  /** 噪声的团有多大。 */
+  noiseScale: prop.f32().default(8).min(0.1).unit('m'),
+  /** distance 以外接一段解析的高度雾（远处的物体、天空也有雾；没有阴影和噪声）。 */
+  farFog: prop.bool().default(true),
 });
 
 /**

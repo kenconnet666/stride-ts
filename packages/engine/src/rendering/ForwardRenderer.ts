@@ -396,6 +396,8 @@ export class ForwardRenderer {
       if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, renderSystem.lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows));
       renderSystem.addViews(shadowViews);
       renderSystem.cull(context, shadowViews);
+      // 点光、聚光的阴影下标在阴影收集时才定，之后上传（网格、雾都读）
+      renderSystem.localLights.upload(renderSystem.lighting);
       renderSystem.prepare(context);
     }
 
@@ -628,7 +630,7 @@ export class ForwardRenderer {
     const fog = renderSystem.fog;
     if (view === this.#mainView && !isGraphTexture(depth) && fog.active) {
       frame.pass(`${label} fog`, (pass) => (isGraphTexture(target) ? pass.readWrite(target) : pass.sideEffect()), (real) => {
-        fog.record(encoder, view, renderSystem.lighting, clouds.shadow, isGraphTexture(target) ? real.view(target) : target, output.format, depth, (name) => renderSystem.graphicsDevice.profiler.passTimestamps(name));
+        fog.record(encoder, view, renderSystem.lighting, clouds.shadow, isGraphTexture(target) ? real.view(target) : target, output.format, depth, { clusters: renderSystem.clusters.buffer, localLights: renderSystem.localLights.buffer }, (name) => renderSystem.graphicsDevice.profiler.passTimestamps(name));
       });
     }
     if (surfaces.length === 0 || !view) return;

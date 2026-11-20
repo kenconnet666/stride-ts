@@ -246,6 +246,9 @@ export interface SceneVolumetricFog {
   readonly anisotropy?: number;
   readonly distance?: number;
   readonly ambient?: number;
+  readonly noise?: number;
+  readonly noiseScale?: number;
+  readonly farFog?: boolean;
 }
 
 /** 日夜循环（Stride 没有）：和 skyAtmosphere 在同一个实体上，各字段的意思见 DayNightCycle 组件；没写的用默认值。 */

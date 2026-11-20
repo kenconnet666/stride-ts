@@ -41,16 +41,22 @@ export function entityAssetReferences(files: readonly SceneEntityFile[]): Entity
   return refs;
 }
 
-/** 实体文件里的每一处引用，连同它写在哪。 */
+/**
+ * 实体文件里的每一处引用，连同它写在哪；包括预制体实例的覆盖里的（visitOverrideReferences）。组件可以不全（覆盖只写了
+ * 改的那一处）：缺的部分跳过。
+ */
 function visitEntityReferences(files: readonly SceneEntityFile[], visit: (ref: EntityAssetReference, ...place: Place) => void): void {
-  const image = (texture: TextureRef | SceneRenderTexture): void => {
+  const image = (texture: TextureRef | SceneRenderTexture | undefined): void => {
+    if (!texture) return;
     if ('renderTexture' in texture) visit({ kind: 'renderTexture', path: texture.renderTexture, texture }, texture, 'renderTexture');
     else visit({ kind: 'image', path: texture.texture, texture }, texture, 'texture');
   };
-  for (const { components: c } of files) {
+  for (const entity of files) {
+    const c = entity.components;
+    if (entity.prefab) visitOverrideReferences(entity.prefab, visit);
     if (c.model) {
-      visit({ kind: 'model', path: c.model.model }, c.model, 'model');
-      c.model.materials.forEach((material, i) => material !== null && visit({ kind: 'material', path: material }, c.model!.materials, i));
+      if (typeof c.model.model === 'string') visit({ kind: 'model', path: c.model.model }, c.model, 'model');
+      c.model.materials?.forEach((material, i) => typeof material === 'string' && visit({ kind: 'material', path: material }, c.model!.materials, i));
     }
     // 网格、凸包形状的碰撞体引用模型
     for (const shape of [...(c.static?.shapes ?? []), ...(c.character?.shapes ?? []), ...(c.body?.shapes ?? [])]) {
@@ -65,6 +71,40 @@ function visitEntityReferences(files: readonly SceneEntityFile[], visit: (ref: E
     if (c.particleSystem) textureRefs(c.particleSystem).forEach(image);
     if (c.ui?.page) visit({ kind: 'uiPage', path: c.ui.page }, c.ui, 'page');
     visitScriptAssets(c.scripts ?? [], (value) => visit({ kind: value.kind, path: value.$asset }, value, '$asset'));
+  }
+}
+
+/**
+ * 预制体实例的覆盖里的资源路径（换材质、换模型、脚本属性引用的资源）：覆盖的值按它的路径放进一个只有这一处的实体，照实体的
+ * 规则找；值本身就是路径时，找到的位置换回覆盖上（`override.value`），所以移动资源时改写的是覆盖。
+ */
+function visitOverrideReferences(prefab: NonNullable<SceneEntityFile['prefab']>, visit: (ref: EntityAssetReference, ...place: Place) => void): void {
+  for (const override of prefab.set ?? []) {
+    const { path } = override;
+    if (path[0] !== 'components' || path.length < 2) continue;
+    const probe: Record<string | number, unknown> = {};
+    let node: Record<string | number, unknown> | unknown[] = probe;
+    for (let i = 0; i < path.length - 1; i++) {
+      const key = path[i]!;
+      // 覆盖的路径里脚本按类型名指：放成只有这一个脚本的列表
+      if (Array.isArray(node) && path[i - 1] === 'scripts') {
+        const script = { type: key, props: {} };
+        node.push(script);
+        node = script;
+        continue;
+      }
+      const child = key === 'scripts' || typeof path[i + 1] === 'number' ? [] : {};
+      (node as Record<string | number, unknown>)[key] = child;
+      node = child;
+    }
+    const last = path.at(-1)!;
+    if (Array.isArray(node) && path.at(-2) === 'scripts') node.push(override.value);
+    else (node as Record<string | number, unknown>)[last] = override.value;
+    const leaf = node;
+    visitEntityReferences([{ components: probe['components'] } as unknown as SceneEntityFile], (ref, owner, key) => {
+      if (owner === leaf && key === last) visit(ref, override, 'value');
+      else visit(ref, owner, key);
+    });
   }
 }
 
@@ -131,7 +171,7 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
       visitEntityReferences(entities, (ref, owner, key) => {
         if (ref.kind !== 'renderTexture') add(ref.kind === 'image' ? 'image' : fileKind(ref.kind), owner, key);
       });
-      // 预制体实例引用它的预制体（覆盖的值里的资源路径还不算：要照字段描述认出哪些值是路径）
+      // 预制体实例引用它的预制体（覆盖的值里的资源路径在上面，visitEntityReferences 一起找了）
       for (const entity of entities) if (entity.prefab) add('prefab', entity.prefab, 'path');
       break;
     }

@@ -1,7 +1,7 @@
 import { Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton, Splitter } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, Splitter } from '@zerodep-dev/vue-tsx-pro-ui';
 import { onMounted, onUnmounted } from 'vue';
 import { AssetBrowser } from './AssetBrowser';
 import { Inspector } from './Inspector';
@@ -21,7 +21,7 @@ const styles = css.create({
 /** 编辑器的整个界面：工具条；左边场景树，中间视口（游戏页面），右边属性面板；下面资源。 */
 export const App = _component(({ session }: { session: EditorSession }) => {
   let playing = _state(false);
-  const { dirty, scenePath, version } = session;
+  const { dirty, opened, scene, version } = session;
 
   const shortcut = (event: KeyboardEvent) => {
     // 在输入框里按 Delete 是删字
@@ -62,7 +62,10 @@ export const App = _component(({ session }: { session: EditorSession }) => {
           <IconButton icon={Plus} aria-label="加实体（选中的实体下面）" disabled={!session.agent.value || playing || session.selection.value.some((id) => session.isMember(id))} onClick={() => void session.addEntity(session.selection.value.length === 1 ? session.selection.value[0]! : null)} />
           <IconButton icon={Trash2} aria-label="删掉选中的实体（Delete）" disabled={session.selection.value.length === 0 || playing} onClick={() => session.deleteSelection()} />
           <IconButton icon={playing ? Square : Play} aria-label={playing ? '停止试玩' : '试玩'} onClick={() => void togglePlay()} />
-          <span {...css.attrs(styles.title)}>{scenePath.value ?? '……'}{dirty.value ? ' *' : ''}</span>
+          <span {...css.attrs(styles.title)}>{opened.value ? `${opened.value.kind === 'prefab' ? '预制体 ' : ''}${opened.value.path}` : '……'}{dirty.value ? ' *' : ''}</span>
+          {opened.value?.kind === 'prefab' && scene.value && (
+            <Button size="sm" variant="ghost" disabled={playing} onClick={() => void session.openAsset(scene.value!)}>回到场景 {scene.value.path.slice(scene.value.path.lastIndexOf('/') + 1)}</Button>
+          )}
           <span {...css.attrs(styles.spacer)} />
         </div>
         <Splitter

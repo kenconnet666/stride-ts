@@ -5,7 +5,10 @@
  * 视口里拖操纵器改的经撤销栈记下，界面跟着刷新。Vue 的响应式只包在这一层：文档本身不可变，每改一次 version 加一。
  *
  * 预制体的实例：界面和视口看到、改的是展开以后的场景（`expanded`，成员也是实体），修改经 toDocumentEdit 换成文档上的
- * （成员的值成实例的覆盖），见 engine 的 editor/prefabEdits.ts。
+ * （成员的值成实例的覆盖），见 engine 的 editor/prefabEdits.ts。游戏页面拿到的就是展开好的场景（`#view`），不自己读
+ * 预制体文件：这里的预制体换了（单独打开预制体改完保存），场景里的实例马上跟着变。
+ *
+ * 打开的文档可以是场景，也可以是单独打开的预制体（`openAsset`）：预制体在视口里只有它自己，加上预览用的灯（不在文档里）。
  */
 import { shallowRef, triggerRef } from 'vue';
 import type { PrefabFile, SceneEntityFile, SceneFile } from '@stride-ts/engine/content-format';
@@ -15,6 +18,18 @@ import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/
 import type { EditAgent, EditableScene, Game } from '@stride-ts/engine';
 import { EditorClient } from '../client/EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
+
+/** 编辑器里能打开的文档：场景，或者单独打开的预制体。 */
+export interface OpenedDocument {
+  readonly kind: 'scene' | 'prefab';
+  readonly path: string;
+}
+
+/** 单独打开预制体时视口里的灯（预制体自己一般不带灯）：方向光加环境光，id 不会和文件里的重。 */
+const PREVIEW_LIGHTS: readonly SceneEntityFile[] = [
+  { id: 'stride-editor:preview-sun', name: 'Preview light', parent: null, position: [0, 10, 0], rotation: [-0.4247, 0.2185, 0.1047, 0.8728], scale: [1, 1, 1], components: { light: { type: 'directional', color: [1, 1, 1], intensity: 3 } } },
+  { id: 'stride-editor:preview-ambient', name: 'Preview ambient', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { light: { type: 'ambient', color: [1, 1, 1], intensity: 0.4 } } },
+];
 
 export class EditorSession implements EditableScene {
   readonly client = new EditorClient();
@@ -30,14 +45,28 @@ export class EditorSession implements EditableScene {
   readonly dirty = shallowRef(false);
   /** 游戏页面里的代理；页面还没起来、重新加载时是 undefined。 */
   readonly agent = shallowRef<EditAgent>();
-  /** 正在编辑的场景的内容路径。 */
-  readonly scenePath = shallowRef<string>();
+  /** 正在编辑的文档（场景或预制体）。 */
+  readonly opened = shallowRef<OpenedDocument>();
+  /** 最近打开的场景：单独打开预制体以后回到它。 */
+  readonly scene = shallowRef<OpenedDocument>();
   #document: SceneDocument | undefined;
   /** 最近一次修改以后游戏页面里的实体跟上了。 */
   #synced: Promise<void> = Promise.resolve();
   #undo: UndoStack<SceneFile> | undefined;
-  /** 场景用到的预制体（连嵌套的），打开场景时加载。 */
+  /** 文档用到的预制体（连嵌套的），打开文档、预制体文件改了时加载。 */
   #prefabs: ReadonlyMap<string, readonly SceneEntityFile[]> = new Map();
+  #viewCache: { readonly file: SceneFile; readonly prefabs: ReadonlyMap<string, readonly SceneEntityFile[]>; readonly view: SceneFile } | undefined;
+  /** 交给游戏页面的文档：展开好的场景，修改转回这里（修改本来就是对展开的场景说的）。 */
+  readonly #view: EditableScene = (() => {
+    const session = this;
+    return {
+      get file(): SceneFile {
+        return session.#viewFile();
+      },
+      apply: (edit: SceneEdit, mergeKey?: string) => session.apply(edit, mergeKey),
+      commit: () => session.commit(),
+    };
+  })();
 
   async start(): Promise<void> {
     const [project, assets] = await Promise.all([this.client.project(), this.client.assets()]);
@@ -47,17 +76,33 @@ export class EditorSession implements EditableScene {
       const gone = new Set([...changed, ...removed].map((asset) => `${asset.kind}:${asset.path}`));
       this.assets.value = [...this.assets.value.filter((asset) => !gone.has(`${asset.kind}:${asset.path}`)), ...changed]
         .sort((a, b) => (a.kind === b.kind ? (a.path < b.path ? -1 : 1) : a.kind < b.kind ? -1 : 1));
+      // 用到的预制体改了（单独打开它改完保存了，或者在别处改了）：重新加载，实例跟着变
+      if ([...changed, ...removed].some((asset) => asset.kind === 'prefab' && this.#prefabs.has(asset.path))) void this.#reloadPrefabs();
     });
   }
 
-  /** 游戏页面起来了：读它加载的根场景，交给它的代理，之后实体跟着这里的文档。 */
+  /**
+   * 游戏页面起来了：打开它加载的根场景（试玩回来、页面重新加载时打开原来在编辑的文档），交给它的代理，之后实体跟着这里
+   * 的文档。
+   */
   async attach(game: Game): Promise<void> {
     const agent = game.editor;
     if (!agent) throw new Error('the game page is not in edit mode (open it with ?debug&stride-edit)');
     const path = agent.scenePath;
-    if (!path) throw new Error('the game did not load its root scene from a content path; the editor cannot tell which scene file to open');
+    const document = this.opened.value ?? (path ? { kind: 'scene' as const, path } : undefined);
+    if (!document) throw new Error('the game did not load its root scene from a content path; the editor cannot tell which scene file to open');
     agent.onSelectionChanged = (ids) => (this.selection.value = ids);
-    await this.#open(agent, path);
+    await this.#open(agent, document);
+  }
+
+  /** 打开别的场景或预制体：打开着的文档改过就先保存。 */
+  async openAsset(document: OpenedDocument): Promise<void> {
+    const agent = this.agent.value;
+    if (!agent) throw new Error('the game page is not ready yet');
+    if (this.dirty.value) await this.save();
+    await this.#open(agent, document);
+    // 预制体在原点附近，编辑相机原来看着场景里的别处
+    if (document.kind === 'prefab') agent.focus(this.file.entities.filter((entity) => entity.parent === null).map((entity) => entity.id));
   }
 
   /**
@@ -67,10 +112,10 @@ export class EditorSession implements EditableScene {
   async moveAssets(request: MoveRequest): Promise<MoveResult> {
     if (this.dirty.value) await this.save();
     const result = await this.client.moveAssets(request);
-    const agent = this.agent.value, path = this.scenePath.value;
-    if (agent && path) {
-      const moved = movedPath(request, path);
-      if (moved !== path || result.rewritten.some((asset) => asset.kind === 'scene' && asset.path === moved)) await this.#open(agent, moved);
+    const agent = this.agent.value, opened = this.opened.value;
+    if (agent && opened) {
+      const moved = movedPath(request, opened);
+      if (moved !== opened.path || result.rewritten.some((asset) => asset.kind === opened.kind && asset.path === moved)) await this.#open(agent, { kind: opened.kind, path: moved });
     }
     return result;
   }
@@ -80,17 +125,45 @@ export class EditorSession implements EditableScene {
     await this.client.deleteAsset(kind, path, { force });
   }
 
-  async #open(agent: EditAgent, path: string): Promise<void> {
-    const file = await this.client.readAsset<SceneFile>('scene', path);
-    this.#prefabs = await loadPrefabs(file.entities, async (prefab) => (await this.client.readAsset<PrefabFile>('prefab', prefab)).entities);
+  async #open(agent: EditAgent, document: OpenedDocument): Promise<void> {
+    // 预制体文件也是一列实体（名字加实体），当成没有场景设置的场景打开
+    const file: SceneFile = await this.client.readAsset<SceneFile | PrefabFile>(document.kind, document.path);
+    this.#prefabs = await this.#loadPrefabs(file);
     this.#document = new SceneDocument(file);
     this.#undo = new UndoStack(this.#document);
-    this.scenePath.value = path;
+    this.opened.value = document;
+    if (document.kind === 'scene') this.scene.value = document;
     this.dirty.value = false;
     this.selection.value = [];
-    await agent.open(this);
+    await agent.open(this.#view);
     this.agent.value = agent;
     this.#changed(false);
+  }
+
+  #loadPrefabs(file: SceneFile): Promise<Map<string, readonly SceneEntityFile[]>> {
+    return loadPrefabs(file.entities, async (prefab) => (await this.client.readAsset<PrefabFile>('prefab', prefab)).entities);
+  }
+
+  async #reloadPrefabs(): Promise<void> {
+    if (!this.#document) return;
+    try {
+      this.#prefabs = await this.#loadPrefabs(this.file);
+    } catch (error) {
+      // 预制体删了、挪了：实例展开不了，等用户改引用；界面照旧显示上一次的
+      console.error(`${this.file.name}: reloading prefabs failed`, error);
+      return;
+    }
+    this.#changed(false);
+  }
+
+  /** 交给游戏页面的文件：展开好的实体（单独打开预制体时加上预览的灯）；文档和预制体都没变时是同一个对象。 */
+  #viewFile(): SceneFile {
+    const file = this.file;
+    if (this.#viewCache?.file === file && this.#viewCache.prefabs === this.#prefabs) return this.#viewCache.view;
+    const entities = this.opened.value?.kind === 'prefab' ? [...this.expanded, ...PREVIEW_LIGHTS] : this.expanded;
+    const view = entities === file.entities ? file : { ...file, entities };
+    this.#viewCache = { file, prefabs: this.#prefabs, view };
+    return view;
   }
 
   /** 游戏页面要重新加载了（试玩回来、HMR 整页刷新）：代理作废。 */
@@ -188,9 +261,9 @@ export class EditorSession implements EditableScene {
   }
 
   async save(): Promise<void> {
-    const path = this.scenePath.value;
-    if (!path) return;
-    await this.client.saveAsset('scene', path, this.file);
+    const opened = this.opened.value;
+    if (!opened) return;
+    await this.client.saveAsset(opened.kind, opened.path, this.file);
     this.dirty.value = false;
   }
 
@@ -213,8 +286,8 @@ export class EditorSession implements EditableScene {
   }
 }
 
-/** 这次移动以后场景 path 在哪（没挪它就是原样）。 */
-function movedPath(request: MoveRequest, path: string): string {
+/** 这次移动以后打开着的文档在哪（没挪它就是原样）。 */
+function movedPath(request: MoveRequest, { kind, path }: OpenedDocument): string {
   if ('folder' in request) return path.startsWith(`${request.folder}/`) ? request.to + path.slice(request.folder.length) : path;
-  return request.assets.find((move) => move.kind === 'scene' && move.from === path)?.to ?? path;
+  return request.assets.find((move) => move.kind === kind && move.from === path)?.to ?? path;
 }

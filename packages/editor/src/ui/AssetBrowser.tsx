@@ -108,6 +108,14 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     return `删掉了 ${asset.kind} ${asset.path}`;
   });
 
+  /** 场景、预制体可以在编辑器里打开（双击也行）。 */
+  const openable = (node: Node | undefined) => node?.asset?.kind === 'scene' || node?.asset?.kind === 'prefab';
+  const open = (node: Node) => run('打开', async () => {
+    const { kind, path } = node.asset!;
+    await session.openAsset({ kind: kind as 'scene' | 'prefab', path });
+    return `打开了 ${kind} ${path}`;
+  });
+
   // 拖进文件夹：新路径是那个文件夹加上自己的名字
   const dropped = ({ node, target: { parent } }: TreeMove<Node>) => {
     const folder = parent === undefined ? '' : nodes.get(parent)?.path ?? '';
@@ -126,6 +134,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         />
         <Button disabled={!current || busy || target === current.path || !target} onClick={() => current && void move(current, target)}>移动 / 改名</Button>
         <Button disabled={!current?.asset || busy} onClick={() => current && void remove(current)}>删除</Button>
+        <Button disabled={!openable(current) || busy} onClick={() => current && void open(current)}>打开</Button>
         <span {...css.attrs(styles.status)} title={status}>{status}</span>
       </div>
       <Tree
@@ -138,7 +147,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         hasChildren={(node: Node) => !node.asset}
         getIcon={(node: Node, open: boolean) => (node.asset ? (ICONS as Record<string, typeof File>)[node.asset.kind] ?? File : open ? FolderOpen : Folder)}
         renderItem={(node: Node) => (
-          <span>
+          <span onDblclick={() => openable(node) && void open(node)}>
             {node.name}
             {node.asset && <span {...css.attrs(styles.kind)}>{node.asset.kind}</span>}
           </span>

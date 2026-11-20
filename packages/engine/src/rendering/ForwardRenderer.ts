@@ -139,6 +139,10 @@ export class ForwardRenderer {
   readonly shadowMapRenderer: ShadowMapRenderer;
 
   readonly #mainView = new RenderView();
+  /** 主视图分不分簇（lighting/Clusters.ts；关掉时每个像素看所有的点光、聚光、贴花，比对、量耗时用，`stride call clusters`）。 */
+  clustering = true;
+  /** 点光、聚光的包围球（分簇用，每帧重用）。 */
+  #lightSpheres = new Float32Array(64);
   #mainDepth: GPUTexture | undefined;
   /** 每个画进渲染目标贴图的相机一个视图（按 textureCameras 的顺序）。 */
   readonly #textureViews: RenderView[] = [];
@@ -480,6 +484,18 @@ export class ForwardRenderer {
     this.shadowMapRenderer.destroy();
   }
 
+  /** 算 view 的簇：光的包围球按光照里的顺序（和着色器的 localLights 一致），贴花的按 Decals 的顺序。 */
+  #recordClusters(encoder: GPUCommandEncoder, view: RenderView): void {
+    const { lighting, decals, clusters, graphicsDevice } = this.renderSystem;
+    const count = lighting.localCount;
+    if (this.#lightSpheres.length < count * 4) this.#lightSpheres = new Float32Array(2 ** Math.ceil(Math.log2(count * 4)));
+    for (let i = 0; i < count; i++) {
+      const { position, radius } = lighting.locals[i]!;
+      this.#lightSpheres.set([position.x, position.y, position.z, radius], i * 4);
+    }
+    clusters.record(encoder, view, this.#lightSpheres, count, decals.bounds, decals.count, graphicsDevice.profiler.passTimestamps('Clusters'));
+  }
+
   /**
    * 一个视图的通道：深度预通道，然后不透明、（transparent 时）透明阶段画进 output。没有视图时只清屏。depth 是这个视图的
    * 深度缓冲：这一帧的临时贴图（渲染目标贴图的相机），或者一张留着的贴图（主画面）。
@@ -530,6 +546,10 @@ export class ForwardRenderer {
       if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);
       if (this.wireframe && view === this.#mainView) renderSystem.draw(context, pass, view, output.wireframe);
     };
+    // 分簇：着色时像素只看所在那一簇的点光、聚光、贴花
+    if (view?.clustered) {
+      frame.pass(`${label} clusters`, (pass) => pass.sideEffect(), () => this.#recordClusters(encoder, view));
+    }
     frame.pass(`${label} opaque`, (pass) => {
       if (isGraphTexture(target)) pass.write(target);
       else pass.sideEffect();
@@ -651,6 +671,8 @@ export class ForwardRenderer {
     this.renderSystem.clouds.apply(context, this.quality.volumetricClouds);
     this.renderSystem.fog.apply(context, this.quality.volumetricFog);
     this.renderSystem.decals.apply(context);
+    // 主视图有点光、聚光或贴花时分簇（这一帧不透明的那一遍之前算）
+    this.#mainView.clustered = this.clustering && this.renderSystem.lighting.localCount + this.renderSystem.decals.count > 0;
     this.#dropBlackDirectionals(lighting);
     // 投阴影的是第一盏要投的：太阳落山以后它是黑的、被丢掉了，轮到月亮
     lighting.shadowLight = lighting.directionals.findIndex((light, i) => i < lighting.directionalCount && light.shadow !== undefined);

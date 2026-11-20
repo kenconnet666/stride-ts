@@ -17,6 +17,7 @@ import { Atmosphere, type DynamicSky } from './sky/Atmosphere';
 import { Clouds } from './sky/VolumetricClouds';
 import { Fog } from './sky/VolumetricFog';
 import { Decals } from './mesh/Decals';
+import { Clusters } from './lighting/Clusters';
 import type { Skybox } from './lighting/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 import { SkyOcclusion } from '../weather/SkyOcclusion';
@@ -158,6 +159,8 @@ export class RenderView {
   viewport: Viewport | undefined;
   /** 着色时用不用方向光的阴影；阴影级联是按主视图算的，别的相机（画进渲染目标贴图的）暂时不用。 */
   receivesShadows = true;
+  /** 分簇（lighting/Clusters.ts）：主视图有点光、聚光或贴花时前向渲染器设上，着色时只看像素所在那一簇的。 */
+  clustered = false;
   /** 不画蒙皮的网格（角色、动物）：天空遮挡的视图用，一直在动的角色不该在脚下留一块不湿、不积雪的地。 */
   skipsSkinned = false;
   /**
@@ -463,6 +466,8 @@ export class RenderSystem {
   readonly fog: Fog;
   /** 场景的贴花（Decal 组件；网格着色时查）。 */
   readonly decals: Decals;
+  /** 主视图的簇（点光、聚光、贴花按屏幕格子和深度分好）。 */
+  readonly clusters: Clusters;
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
   /**
@@ -479,6 +484,7 @@ export class RenderSystem {
     this.clouds = new Clouds(graphicsDevice.device, this.atmosphere);
     this.fog = new Fog(graphicsDevice.device, this.resources);
     this.decals = new Decals(graphicsDevice.device, this.resources);
+    this.clusters = new Clusters(graphicsDevice.device);
     this.skyOcclusion = new SkyOcclusion(graphicsDevice.device);
   }
 
@@ -540,6 +546,7 @@ export class RenderSystem {
     this.clouds.destroy();
     this.fog.destroy();
     this.decals.destroy();
+    this.clusters.destroy();
     this.atmosphere.destroy();
     this.skyOcclusion.destroy();
     this.resources.destroy();

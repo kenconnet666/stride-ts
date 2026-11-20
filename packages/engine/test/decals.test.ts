@@ -3,7 +3,9 @@ import { entityAssetReferences } from '../src/content/references';
 import { checkEntity } from '../src/editor/fields';
 import type { SceneEntityFile } from '../src/content/format';
 import { Matrix } from '../src/data/Matrix';
-import { DECAL_FLOATS, packAtlas, packDecal, tileSize } from '../src/rendering/mesh/Decals';
+import { DECAL_FLOATS, decalBounds, packAtlas, packDecal, tileSize } from '../src/rendering/mesh/Decals';
+import { CLUSTER_GRID, clusterIndex, clusterParams } from '../src/rendering/lighting/Clusters';
+import { RenderView } from '../src/rendering/RenderSystem';
 
 describe('贴花', () => {
   test('图集按行装箱：高的先放，四周留边，装不下返回 undefined', () => {
@@ -53,5 +55,48 @@ describe('贴花', () => {
     ]);
     expect(checkEntity(entity)).toEqual([]);
     expect(checkEntity({ ...entity, components: { decal: { opacity: 2 } } }).length).toBeGreaterThan(0);
+  });
+});
+
+describe('分簇', () => {
+  const view = () => {
+    const v = new RenderView();
+    Matrix.lookAtRH(v.view, [0, 0, 0], [0, 0, -1], [0, 1, 0]);
+    Matrix.perspectiveFovRH(v.projection, Math.PI / 3, 16 / 9, 0.1, 1000);
+    v.nearClipPlane = 0.1;
+    v.farClipPlane = 1000;
+    v.width = 1600;
+    v.height = 900;
+    v.update();
+    return v;
+  };
+
+  test('没分簇的视图参数全是 0；分了的：每格的像素比例、层的比例、视图的前方', () => {
+    const v = view();
+    expect(clusterParams(v)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    v.clustered = true;
+    const [sx, sy, scale, on, fx, fy, fz, logNear] = clusterParams(v);
+    expect([sx, sy, on]).toEqual([16 / 1600, 9 / 900, 1]);
+    expect(scale).toBeCloseTo(CLUSTER_GRID[2] / Math.log(10000), 6);
+    expect([fx, fy, fz].map((c) => +c.toFixed(6) + 0)).toEqual([0, 0, -1]);
+    expect(logNear).toBeCloseTo(Math.log(0.1), 6);
+  });
+
+  test('像素和深度到簇：左上角最近的是 0，层按深度指数地分，右下角最远的是最后一个', () => {
+    const v = view();
+    v.clustered = true;
+    expect(clusterIndex(v, 0, 0, 0.1)).toBe(0);
+    expect(clusterIndex(v, 1599, 899, 1000)).toBe(CLUSTER_GRID[0] * CLUSTER_GRID[1] * CLUSTER_GRID[2] - 1);
+    // 1 米：ln(1 / 0.1) / ln(10000) · 24 = 6 层
+    expect(Math.floor(clusterIndex(v, 0, 0, 1.0001) / (CLUSTER_GRID[0] * CLUSTER_GRID[1]))).toBe(6);
+    expect(clusterIndex(v, 150, 0, 0.1)).toBe(1);
+  });
+
+  test('贴花的包围球：球心是实体的位置，半径是带缩放的盒子的半个对角线', () => {
+    const world = Matrix.compose(Matrix.identity(), [1, 2, 3], [0, 0, 0, 1], [2, 1, 1]);
+    const [x, y, z, r] = decalBounds(world, [1, 2, 2]);
+    expect([x, y, z]).toEqual([1, 2, 3]);
+    // 半边长 (1, 1, 1)
+    expect(r).toBeCloseTo(Math.sqrt(3), 6);
   });
 });

@@ -20,6 +20,7 @@
  * - 自发光直接加上。
  * 输出线性的 HDR 颜色，后处理和色调映射在后面（postfx/PostProcessingEffects）。
  */
+import { CLUSTER_WGSL } from '../lighting/Clusters';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
 import { BRDF, FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../wgsl';
@@ -63,6 +64,10 @@ struct View {
   weather: vec4f,
   // x：贴花的个数（decals 的前几个）
   decal: vec4f,
+  // 分簇（lighting/Clusters.ts 的 clusterParams）：(格数 / 视图宽、格数 / 视图高、层数 / ln(far / near)、分不分簇)，
+  // (视图的前方, ln near)
+  cluster: vec4f,
+  clusterView: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
 // direction 是聚光照向的方向（w：它的阴影在 localShadows 里的下标，没有阴影时 -1），angle 是角度衰减的 scale、offset
@@ -113,6 +118,20 @@ struct Decal { toBox: mat4x4f, albedo: vec4f, normal: vec4f, color: vec4f, fade:
 @group(0) @binding(22) var<storage, read> decals: array<Decal>;
 // 图集：第 0 层颜色（存的是 sRGB 编码过的值），第 1 层法线
 @group(0) @binding(23) var decalAtlas: texture_2d_array<f32>;
+// 每簇：光的个数、贴花的个数，再是光的下标、贴花的下标（lighting/Clusters.ts）
+@group(0) @binding(24) var<storage, read> clusters: array<u32>;
+${CLUSTER_WGSL}
+
+/** 像素所在的簇在 clusters 里的起点；视图没分簇时是 -1（看所有的光和贴花）。 */
+fn clusterOf(position: vec4f, world: vec3f) -> i32 {
+  if (view.cluster.w == 0.0) {
+    return -1;
+  }
+  let depth = max(dot(world - view.eye.xyz, view.clusterView.xyz), 1e-4);
+  let slice = u32(clamp((log(depth) - view.clusterView.w) * view.cluster.z, 0.0, f32(CLUSTER_Z - 1u)));
+  let tile = min(vec2u(position.xy * view.cluster.xy), vec2u(CLUSTER_X - 1u, CLUSTER_Y - 1u));
+  return i32(((slice * CLUSTER_Y + tile.y) * CLUSTER_X + tile.x) * CLUSTER_STRIDE);
+}
 
 /** 贴花改过的表面和法线。 */
 struct Decaled { surface: LayerSurface, normal: vec3f };
@@ -126,15 +145,18 @@ fn decodeSrgb(c: vec3f) -> vec3f {
  * （x 轴是 u，-z 轴是贴图的上方，y 轴是法线）换算到世界再混进去；按表面和投影方向的夹角、在盒子里的高度淡出。后面的贴花
  * 盖在前面的上面。导数在循环外算（循环里是非一致的控制流）。
  */
-fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface) -> Decaled {
+fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface, cluster: i32) -> Decaled {
   var r = Decaled(s, n);
-  let count = u32(view.decal.x);
-  if (count == 0u) {
+  if (u32(view.decal.x) == 0u) {
     return r;
   }
+  // 分了簇时只看这一簇的贴花（下标从小到大，先后不变）
+  let base = u32(max(cluster, 0));
+  let count = select(u32(view.decal.x), min(clusters[base + 1u], MAX_CLUSTER_DECALS), cluster >= 0);
   let dx = dpdx(world);
   let dy = dpdy(world);
-  for (var i = 0u; i < count; i++) {
+  for (var k = 0u; k < count; k++) {
+    let i = select(k, clusters[base + 2u + MAX_CLUSTER_LIGHTS + k], cluster >= 0);
     let d = decals[i];
     let p = (d.toBox * vec4f(world, 1.0)).xyz;
     if (any(abs(p) > vec3f(1.0))) {
@@ -959,7 +981,8 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture)));
   // 清漆把漫反射色、金属度、粗糙度换成这一遍的（没有清漆时原样）
   // 贴花盖在材质上，天气（湿、雪）再盖在贴花上
-  let decaled = applyDecals(in.world, n, coatSurface(in, layers, coatPass));
+  let cluster = clusterOf(in.position, in.world);
+  let decaled = applyDecals(in.world, n, coatSurface(in, layers, coatPass), cluster);
   n = decaled.normal;
   let layered = weatherSurface(in.world, n, decaled.surface);
   let albedo = layered.albedo;
@@ -1023,8 +1046,11 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     direct.specular += lit.specular;
   }
   // 点光、聚光：距离衰减（LightUtil.GetDistanceAttenuation），聚光再乘角度衰减（GetAngularAttenuation）
-  for (var i = 0u; i < u32(view.locals.x); i++) {
-    let light = localLights[i];
+  // 分了簇时只看这一簇的光
+  let clusterBase = u32(max(cluster, 0));
+  let localCount = select(u32(view.locals.x), min(clusters[clusterBase], MAX_CLUSTER_LIGHTS), cluster >= 0);
+  for (var k = 0u; k < localCount; k++) {
+    let light = localLights[select(k, clusters[clusterBase + 2u + k], cluster >= 0)];
     let toLight = light.position.xyz - in.world;
     let distance = length(toLight);
     let l = toLight / distance;

@@ -15,6 +15,7 @@
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
 import type { Decals } from './Decals';
+import { clusterParams, type Clusters } from '../lighting/Clusters';
 import type { FrustumCuller } from '@stride-ts/native';
 import type { AnimationSystem } from '../../animation/AnimationSystem';
 import type { EntityId } from '../../data/prop';
@@ -63,7 +64,7 @@ const VIEW_STRIDE = 1024;
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
  * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32。
  */
-const VIEW_FLOATS = 248;
+const VIEW_FLOATS = 256;
 /** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
 const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
@@ -295,7 +296,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters));
   }
 
 
@@ -470,6 +471,7 @@ class Gpu {
   /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）。 */
   readonly #noOcclusion: GPUBuffer;
   readonly #decals: Decals;
+  readonly #clusters: Clusters;
   /** 视图绑定组里的贴花图集和缓冲；换了要重建绑定组。 */
   #decalAtlas: GPUTexture | undefined;
   #decalBuffer: GPUBuffer | undefined;
@@ -531,7 +533,7 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals, clusters: Clusters) {
     this.device = device;
     this.#resources = resources;
     this.#subsurface = subsurface;
@@ -539,6 +541,7 @@ class Gpu {
     this.#clouds = clouds;
     this.#weather = weather;
     this.#decals = decals;
+    this.#clusters = clusters;
     this.#noOcclusion = device.createBuffer({ label: 'MeshRenderFeature no sky occlusion', size: 80, usage: GPUBufferUsage.UNIFORM });
     this.#unclippedDepth = unclippedDepth;
     this.#viewLayout = device.createBindGroupLayout({
@@ -568,6 +571,7 @@ class Gpu {
         { binding: 21, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         { binding: 22, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
+        { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -917,6 +921,7 @@ class Gpu {
       data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
       data.set([wetness, snowCover, 0, 0], o + 240);
       data.set([this.#decals.count, 0, 0, 0], o + 244);
+      data.set(clusterParams(view), o + 248);
     }
     // 点光、聚光：所有视图共用一份
     const lights = this.#localLightData;
@@ -1002,6 +1007,7 @@ class Gpu {
           ...this.#occlusionEntries(this.#occlusionBound && !casters),
           { binding: 22, resource: { buffer: this.#decals.buffer } },
           { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
+          { binding: 24, resource: { buffer: this.#clusters.buffer } },
         ],
       });
       groups.set(shadow, group);

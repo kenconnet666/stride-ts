@@ -9,7 +9,8 @@
  *   MAX_ATLAS 还装不下的贴花跳过并警告一次。贴图的集合变了才重建图集。
  * - 每个贴花 DECAL_FLOATS 个数：世界到盒子（-1..1）的矩阵、颜色和法线在图集里的位置、颜色乘数和不透明度、几种淡出、
  *   盒子的三个轴（世界里，法线贴图的切线空间）。内容没变时不重传。
- * - 没做：分簇（现在每个像素看所有贴花，最多 MAX_DECALS 个）、只投到某些渲染组上（Godot 的 cull mask）、粗糙度和金属度的
+ * - 分簇（lighting/Clusters.ts）：主视图里像素只看所在那一簇的贴花（每簇最多 MAX_CLUSTER_DECALS 个）。
+ * - 没做：只投到某些渲染组上（Godot 的 cull mask）、粗糙度和金属度的
  *   贴图、自发光、按距离淡出。
  */
 import { Matrix, type Matrix4 } from '../../data/Matrix';
@@ -21,7 +22,7 @@ import { Decal } from '../components';
 import type { RenderContext } from '../RenderSystem';
 import { FULLSCREEN_VERTEX } from '../wgsl';
 
-/** 一帧最多画的贴花（多了的跳过）；分簇以后放开。 */
+/** 一帧最多画的贴花（多了的跳过）：缓冲按它建；每个像素只看所在那一簇的。 */
 export const MAX_DECALS = 256;
 /** 每个贴花的数（12 个 vec4，见文件头）。 */
 export const DECAL_FLOATS = 48;
@@ -83,6 +84,16 @@ export interface DecalInstance {
 
 const NONE: AtlasRect = [0, 0, 0, 0];
 
+/** 贴花盒子的包围球：球心是实体的位置，半径是盒子（带实体的缩放）半个对角线。 */
+export function decalBounds(world: Readonly<Matrix4>, size: readonly [number, number, number]): [number, number, number, number] {
+  let squared = 0;
+  for (let axis = 0; axis < 3; axis++) {
+    const half = (size[axis]! / 2) * Math.hypot(world[axis * 4]!, world[axis * 4 + 1]!, world[axis * 4 + 2]!);
+    squared += half * half;
+  }
+  return [world[12]!, world[13]!, world[14]!, Math.sqrt(squared)];
+}
+
 /** 一个贴花写进 out[offset..]（布局见 meshShader.ts 的 struct Decal）。 */
 export function packDecal(decal: DecalInstance, out: Float32Array, offset: number): void {
   const inverse = Matrix.identity();
@@ -132,6 +143,8 @@ interface Entry {
 export class Decals {
   /** 这一帧的贴花个数。 */
   count = 0;
+  /** 每个贴花的包围球（世界坐标的球心、半径，4 个数一个；分簇用）。 */
+  readonly bounds = new Float32Array(MAX_DECALS * 4);
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #data = new Float32Array(MAX_DECALS * DECAL_FLOATS);
@@ -200,7 +213,10 @@ export class Decals {
     }
     this.#ensureAtlas(entries);
     const rect = (id: number, layer: number) => (id ? this.#rects.get(`${layer}:${id}`) : undefined);
-    found.forEach((decal, i) => packDecal({ ...decal, albedo: rect(decal.albedo, 0), normal: rect(decal.normal, 1) }, this.#data, i * DECAL_FLOATS));
+    found.forEach((decal, i) => {
+      packDecal({ ...decal, albedo: rect(decal.albedo, 0), normal: rect(decal.normal, 1) }, this.#data, i * DECAL_FLOATS);
+      this.bounds.set(decalBounds(decal.world, decal.size), i * 4);
+    });
     const floats = found.length * DECAL_FLOATS;
     const key = this.#data.subarray(0, floats).join(',');
     if (key === this.#uploadedKey && this.#buffer) return;

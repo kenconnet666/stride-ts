@@ -232,7 +232,31 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     }
     return { decals: tests().length, drawn: game.renderSystem.decals.count };
   });
-  debug.command('weather',`Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
+  debug.command('lights', 'Test point lights: an n x n grid of colored point lights 1 m above the ground, spacing m apart, around at [x, z] (default: below the camera). args: count (n; 0 removes them), radius (m), intensity, spacing (m), at.', (args) => {
+    for (const entity of game.entities.ids().map((id) => game.entities.entity(id)).filter((e) => e.name === 'Test light')) entity.destroy();
+    const n = Math.max(0, Math.round(Number(args['count'] ?? 4)));
+    const spacing = Number(args['spacing'] ?? 3), radius = Number(args['radius'] ?? 4), intensity = Number(args['intensity'] ?? 4);
+    const eye = game.graphicsCompositor.mainView?.eye;
+    const at = Array.isArray(args['at']) ? (args['at'] as number[]) : [eye?.x ?? 0, (eye?.z ?? 0) - 6];
+    for (let i = 0; i < n * n; i++) {
+      const entity = game.entities.create({ name: 'Test light', components: [Transform, Light] });
+      Object.assign(entity.require(Transform).position, { x: at[0]! + ((i % n) - (n - 1) / 2) * spacing, y: 1, z: at[1]! + (Math.floor(i / n) - (n - 1) / 2) * spacing });
+      const light = entity.require(Light);
+      light.type = 'point';
+      light.radius = radius;
+      light.intensity = intensity;
+      // 色相按下标转一圈
+      const hue = (i * 0.618) % 1;
+      light.color = { r: 0.5 + 0.5 * Math.cos(2 * Math.PI * hue), g: 0.5 + 0.5 * Math.cos(2 * Math.PI * (hue - 1 / 3)), b: 0.5 + 0.5 * Math.cos(2 * Math.PI * (hue - 2 / 3)), a: 1 };
+    }
+    return { lights: n * n, local: game.renderSystem.lighting.localCount };
+  });
+  debug.command('clusters', 'Clustered shading of point lights, spot lights and decals on the main view (lighting/Clusters.ts). args: on (true/false; omitted toggles). Turn it off to compare the picture and the cost.', (args) => {
+    const renderer = game.graphicsCompositor;
+    renderer.clustering = typeof args['on'] === 'boolean' ? args['on'] : !renderer.clustering;
+    return { clustering: renderer.clustering, clustered: renderer.mainView?.clustered ?? false, lights: game.renderSystem.lighting.localCount, decals: game.renderSystem.decals.count };
+  });
+  debug.command('weather', `Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
     const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Weather));
     if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Weather', components: [Transform, Weather, Precipitation] }));
     if (args['on'] === false) for (const entity of all.splice(0)) entity.destroy();

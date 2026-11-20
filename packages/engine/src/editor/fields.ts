@@ -11,8 +11,9 @@
  */
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere,
-  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef,
+  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects,
 } from '../content/format';
+import type { SceneSettingKey } from './SceneDocument';
 import type { AssetKind } from '../content/references';
 import type { PropOptions } from '../data/prop';
 import type { ScriptConstructor } from '../engine/scripts';
@@ -353,6 +354,83 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     label: 'UI element link',
     type: object(fields<NonNullable<Components['uiElementLink']>>({ target: nullable(entity), camera: nullable(entity), nodeName: string })),
     initial: { target: null, camera: null, nodeName: '' },
+  },
+};
+
+/** 场景的后处理（合成器的 postEffects）：ambientOcclusion、localReflections 写了就是开着。 */
+const postEffects = fields<ScenePostEffects>({
+  brightFilter: bool,
+  bloom: bool,
+  lightStreak: bool,
+  lensFlare: bool,
+  toneMap: bool,
+  antialiasing: bool,
+  ambientOcclusion: optional(object([{ name: 'radius', type: number({ min: 0, unit: 'm' }) }])),
+  localReflections: optional(object([{ name: 'maxRoughness', type: number({ min: 0, max: 1 }) }, { name: 'edgeFade', type: number({ min: 0, max: 1 }) }])),
+});
+
+/**
+ * 场景自己的设置（场景文件里实体以外的那几个键，'scene' 修改改它们）：面板上没选实体时显示。initial 是"添加"时放进去的值
+ * （同引擎没写时用的默认值）。编辑状态下合成器、偏移改了马上看得见，物理、导航试玩时才用上（见 LiveScene）。
+ */
+export const SCENE_FIELDS: { readonly [K in SceneSettingKey]: ComponentDescription } = {
+  physics: {
+    label: 'Physics',
+    type: object(fields<ScenePhysics>({
+      gravity: vector(3, 'm/s²'),
+      linearDamping: number({ min: 0, max: 1 }),
+      angularDamping: number({ min: 0, max: 1 }),
+      fixedTimeStep: number({ min: 0.001, unit: 's' }),
+      maximumTimeToProcess: optional(number({ min: 0, unit: 's' }), 0.25),
+      dropPostponedTicks: optional(bool, false),
+      collisionMasks: optional(list(integer(0))),
+    })),
+    initial: { gravity: [0, -9.8, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 1 / 60 },
+  },
+  navigation: {
+    label: 'Navigation',
+    type: object(fields<SceneNavigation>({
+      build: object(fields<SceneNavigation['build']>({
+        cellSize: number({ min: 0.01, unit: 'm' }),
+        cellHeight: number({ min: 0.01, unit: 'm' }),
+        agentHeight: number({ min: 0, unit: 'm' }),
+        agentRadius: number({ min: 0, unit: 'm' }),
+        agentMaxClimb: number({ min: 0, unit: 'm' }),
+        agentMaxSlopeDegrees: number({ min: 0, max: 90, unit: '°' }),
+        tileSize: integer(1),
+        maxEdgeLength: number({ min: 0 }),
+        maxSimplificationError: number({ min: 0 }),
+        minRegionSize: number({ min: 0 }),
+        mergeRegionSize: number({ min: 0 }),
+        detailSampleDistance: number({ min: 0 }),
+        detailSampleMaxError: number({ min: 0 }),
+      })),
+      includedLayers: integer(0),
+    })),
+    initial: {
+      build: {
+        cellSize: 0.3, cellHeight: 0.2, agentHeight: 2, agentRadius: 0.6, agentMaxClimb: 0.9, agentMaxSlopeDegrees: 45, tileSize: 32,
+        maxEdgeLength: 12, maxSimplificationError: 1.3, minRegionSize: 8, mergeRegionSize: 20, detailSampleDistance: 6, detailSampleMaxError: 1,
+      },
+      includedLayers: 0xffffffff,
+    },
+  },
+  offset: { label: 'Offset', type: vector(3, 'm'), initial: [0, 0, 0] },
+  compositor: {
+    label: 'Compositor',
+    type: object(fields<SceneCompositor>({
+      clearColor: { kind: 'color', alpha: true, space: 'linear' },
+      postEffects: nullable(object(postEffects)),
+      renderMask: optional(integer(0)),
+      transparent: bool,
+      subsurfaceScattering: optional(bool, false),
+      // 渲染目标贴图的相机：形状多（各带一套前向渲染器的设置），先按 JSON 改
+      textureCameras: optional({ kind: 'json' }),
+      shadows: optional(bool, true),
+      particlesOverUI: optional(bool, false),
+      meshEffect: optional(string),
+    })),
+    initial: { clearColor: [0.01, 0.0134, 0.022, 1], postEffects: null, transparent: true },
   },
 };
 

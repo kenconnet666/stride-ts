@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { colorToHex, eulerToQuaternion, hasMixed, hexToColor, mergeValues, MIXED, quaternionToEuler } from '../src/ui/values.ts';
+import { colorToHex, eulerToQuaternion, hasMixed, hexToColor, mergeValues, MIXED, quaternionToEuler, withPath } from '../src/ui/values.ts';
 
 // 属性面板上的值和文件里的值之间的换算。
 
@@ -52,4 +52,13 @@ describe('多选：几个实体的值并成一个', () => {
     expect(mergeValues([0, '0'])).toBe(MIXED);
     expect([hasMixed({ a: [1, MIXED] }), hasMixed({ a: [1, 2] }), hasMixed(MIXED)]).toEqual([true, false, true]);
   });
+});
+
+test('withPath：不改原值，路径上缺的对象、列表补上', () => {
+  const original = { a: { b: 1 }, list: [1, 2] };
+  expect(withPath(original, ['a', 'c'], 2)).toEqual({ a: { b: 1, c: 2 }, list: [1, 2] });
+  expect(withPath(original, ['list', 1], 5)).toEqual({ a: { b: 1 }, list: [1, 5] });
+  expect(withPath(undefined, ['radius'], 3)).toEqual({ radius: 3 });
+  expect(withPath(undefined, [0, 'x'], 1)).toEqual([{ x: 1 }]);
+  expect(original).toEqual({ a: { b: 1 }, list: [1, 2] });
 });

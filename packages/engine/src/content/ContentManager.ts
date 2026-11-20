@@ -583,16 +583,21 @@ export class ContentManager {
     return this.#once(path + EXTENSIONS.prefab, 'file', async (url) => this.#json<PrefabFile>(await this.#read(url)));
   }
 
+  /** 场景文件里的合成器设置换成图形合成器要的（渲染目标贴图换成贴图）；场景没写时是 undefined。 */
+  compositorSettings(scene: SceneFile): CompositorSettings | undefined {
+    return scene.compositor && {
+      ...scene.compositor,
+      textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
+    };
+  }
+
   /** where 用在报错里；path 是场景文件的内容路径（按路径加载的才有）。 */
   #createScene(scene: SceneFile, assets: SceneAssets, entities: EntityManager, options: LoadSceneOptions, where: string, path?: string): SceneInstance {
     const created = this.#scenes.instantiate(scene.entities, assets, entities, options, where);
     const [x, y, z] = options.offset ?? scene.offset ?? [0, 0, 0];
     // 没有变换存储（场景里也就没有带 Transform 的实体）时只记下偏移
     const root = entities.game.transforms ? new SceneRoot(entities, [x, y, z], options.parent?.root) : undefined;
-    const compositor = scene.compositor && {
-      ...scene.compositor,
-      textureCameras: (scene.compositor.textureCameras ?? []).map(({ texture, ...camera }) => ({ ...camera, texture: this.renderTexture(texture) })),
-    };
+    const compositor = this.compositorSettings(scene);
     const instance: SceneInstance = { name: scene.name, ...(path !== undefined ? { path } : {}), entities: created, root, offset: root?.offset ?? { x, y, z }, ...(scene.physics ? { physics: scene.physics } : {}), ...(scene.navigation ? { navigation: scene.navigation } : {}), ...(compositor ? { compositor } : {}) };
     for (const entity of created.values()) entity.scene = instance;
     return instance;

@@ -7,14 +7,19 @@
  *   await live.sync();
  *
  * 场景按文档建成根场景，不挂场景文件里的脚本（编辑状态脚本不跑；要试玩时另按文档建一份带脚本的）。文档改了以后调 sync：
- * 只有变了的实体会动（ContentManager.updateScene），实体还是原来的实体，选中的东西、别处对它的引用都不用换。
+ * 只有变了的实体会动（ContentManager.updateScene），实体还是原来的实体，选中的东西、别处对它的引用都不用换。场景自己的设置里
+ * 编辑时看得见的也跟着变：合成器（清屏色、后处理……）重新配置，偏移直接改；物理、导航在编辑状态不起作用（仿真不走），
+ * 试玩时重新打开页面才用上。
  * 仿真要不要停（`game.simulation.enabled`）、用什么相机看由编辑器定，不在这里管。
  */
-import type { LoadSceneOptions, SceneInstance } from '../content/ContentManager';
+import type { CompositorSettings, LoadSceneOptions, SceneInstance } from '../content/ContentManager';
 import type { SceneFile } from '../content/format';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import type { Game } from '../games/Game';
+
+/** 场景文件没写合成器时的设置（同前向渲染器建好时的默认值）：去掉了合成器的场景配回它。 */
+const DEFAULT_COMPOSITOR: CompositorSettings = { clearColor: [0.01, 0.0134, 0.022, 1], postEffects: null, transparent: true, textureCameras: [] };
 
 /** 场景文档里 LiveScene 要的那一点：现在的场景文件。编辑器的界面在另一个页面里时，文档也在那边，这边只读它的文件。 */
 export interface SceneSource {
@@ -62,6 +67,18 @@ export class LiveScene {
     return undefined;
   }
 
+  /** 场景自己的设置里编辑时看得见的那些跟上：合成器、偏移（比对象是不是同一个，文档的修改只换改了的那一支）。 */
+  #syncSettings(before: SceneFile, after: SceneFile): void {
+    if (after.compositor !== before.compositor) {
+      // 去掉了合成器：照没写合成器的场景，用引擎的默认值
+      this.#game.configureCompositor(this.#game.content.compositorSettings(after) ?? DEFAULT_COMPOSITOR, after.name);
+    }
+    if (after.offset !== before.offset) {
+      const [x, y, z] = after.offset ?? [0, 0, 0];
+      Object.assign(this.instance.offset, { x, y, z });
+    }
+  }
+
   /**
    * 让实体跟上文档现在的样子。连着调用会排队；排到的时候文档又改过了就直接跟到最新的。返回的 Promise 在这一次跟上以后完成，
    * 出错（比如新引用的资源加载不了）时拒绝，实体停在上一次跟上的样子。
@@ -71,6 +88,7 @@ export class LiveScene {
       const target = this.document.file;
       if (target === this.#synced) return;
       await this.#game.content.updateScene(this.instance, this.#synced, target, this.#game.entities, this.#options);
+      this.#syncSettings(this.#synced, target);
       this.#synced = target;
       this.#ids = undefined;
     });

@@ -111,3 +111,13 @@ export function hasMixed(value: unknown): boolean {
 }
 
 const isObject = (value: unknown): boolean => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** 不改原值，把 JSON 值里 path 上的值设成 value，返回新的根；路径上缺的对象、列表按下一段的键补上。 */
+export function withPath(root: unknown, path: readonly (string | number)[], value: unknown): unknown {
+  if (path.length === 0) return value;
+  const [key, ...rest] = path as [string | number, ...(string | number)[]];
+  const container = root !== null && typeof root === 'object' ? root : typeof key === 'number' ? [] : {};
+  const copy = (Array.isArray(container) ? container.slice() : { ...container }) as Record<string | number, unknown>;
+  copy[key] = withPath(copy[key], rest, value);
+  return copy;
+}

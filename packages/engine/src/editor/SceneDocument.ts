@@ -3,7 +3,7 @@
  * 照着文档更新，保存就是把文档写出去。不从运行时的实体反推文件：运行时里资源已经换成了 id、合并过默认值，推不回去，
  * 而且脚本运行中改的状态不该进文件。
  *
- * 修改只有三种：改一个实体里某条路径上的值、加实体、删实体；`apply` 返回把它撤回去的那个修改，撤销重做（UndoStack）
+ * 修改是这几种：改一个实体里某条路径上的值、加实体、删实体，和改场景自己的设置（物理、导航、偏移、合成器）；`apply` 返回把它撤回去的那个修改，撤销重做（UndoStack）
  * 就建在这上面。文档是不可变的：每次修改得到新的对象，没动的实体还是原来那个对象，所以"哪些实体变了"比较引用就知道
  * （content/SceneBuilder 的 changedEntities），界面和运行时（LiveScene）都只更新变了的。
  *
@@ -35,8 +35,17 @@ export type SceneEdit =
   | { readonly type: 'add'; readonly entities: readonly { readonly entity: SceneEntityFile; readonly index: number }[] }
   /** 删实体；留下的实体里不能还有它们的子实体（删一棵子树用 removeSubtree 给出全部）。 */
   | { readonly type: 'remove'; readonly entities: readonly string[] }
+  /**
+   * 改场景自己的设置（SCENE_SETTING_KEYS：物理、导航、偏移、合成器）里 path 上的值；value 是 undefined 时删掉。规则同 set。
+   * 预制体文件没有这些设置。
+   */
+  | { readonly type: 'scene'; readonly path: ScenePath; readonly value: unknown }
   /** 几个修改当成一个（一起做、一起撤销）；换父实体就是删了再加在别处。 */
   | { readonly type: 'batch'; readonly edits: readonly SceneEdit[] };
+
+/** 场景文件里场景自己的设置（不是实体）：'scene' 修改只能改这几个键下面的值。 */
+export const SCENE_SETTING_KEYS = ['physics', 'navigation', 'offset', 'compositor'] as const;
+export type SceneSettingKey = (typeof SCENE_SETTING_KEYS)[number];
 
 export class SceneDocument<F extends EntitiesFile = SceneFile> {
   #file: F;
@@ -207,6 +216,13 @@ function applyEdit<F extends EntitiesFile>(file: F, edit: SceneEdit): [F, SceneE
         inverses.unshift(inverse);
       }
       return [current, { type: 'batch', edits: inverses }];
+    }
+    case 'scene': {
+      const key = edit.path[0];
+      if (!(SCENE_SETTING_KEYS as readonly unknown[]).includes(key)) throw new Error(`${where}: ${String(key)} is not a scene setting; use one of ${SCENE_SETTING_KEYS.join(', ')}`);
+      const [updated, previous] = setAt(file, edit.path, edit.value, where);
+      // 实体列表没变：下标的表接着用（新文件里还是同一个数组）
+      return [updated as F, { type: 'scene', path: edit.path, value: previous }];
     }
     case 'set': {
       const index = indexOf(file.entities, edit.entity);

@@ -4,7 +4,7 @@ import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { dayNightCycleSystem } from '../rendering/DayNightCycle';
 import { hook } from '../engine/events';
-import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
+import { ContentManager, type CompositorSettings, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import type { SceneFile } from '../content/format';
 import { Metrics } from '../debug/Metrics';
 import type { EditAgent } from '../editor/EditAgent';
@@ -458,10 +458,7 @@ export class Game {
     const sceneOptions = this.editing ? { attachScripts: false, ...options } : options;
     const scene = file ? await this.content.instantiateScene(file, this.entities, sceneOptions) : await this.content.loadScene(path, this.entities, sceneOptions);
     if (parent) this.#childScenes.set(parent, [...(this.#childScenes.get(parent) ?? []), scene]);
-    if (scene.compositor) {
-      this.graphicsCompositor.configure(scene.compositor);
-      this.meshes.effect = this.#meshEffect(scene.compositor.meshEffect, path);
-    }
+    if (scene.compositor) this.configureCompositor(scene.compositor, path);
     if (scene.physics) {
       if (!this.simulation) throw new Error(`scene '${path}' has physics; run the game with nativeFeatures: [physics] (import { physics } from '@stride-ts/native/physics')`);
       this.simulation.configure(scene.physics);
@@ -492,6 +489,12 @@ export class Game {
   }
 
   /** 合成器指定的网格效果：按名字找游戏导出的 meshEffect，找不到时警告、用默认效果。 */
+  /** 按场景的合成器设置配置主画面（loadScene 时；编辑器里场景的合成器改了以后 LiveScene 也调）。where 用在报错里。 */
+  configureCompositor(compositor: CompositorSettings, where: string): void {
+    this.graphicsCompositor.configure(compositor);
+    this.meshes.effect = this.#meshEffect(compositor.meshEffect, where);
+  }
+
   #meshEffect(name: string | undefined, where: string): MeshEffect | undefined {
     if (name === undefined) return undefined;
     const effect = this.registry.meshEffect(name);

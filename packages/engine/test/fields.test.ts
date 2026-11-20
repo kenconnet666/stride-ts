@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { SceneEntityFile } from '../src/content/format';
-import { checkEntity, checkFields, COMPONENT_FIELDS, scriptFields } from '../src/editor/fields';
+import { checkEntity, checkFields, COMPONENT_FIELDS, SCENE_FIELDS, scriptFields } from '../src/editor/fields';
 import { prop, SyncScript } from '../src/index';
 
 // 属性面板要的字段描述，和照着它做的检查。
@@ -105,4 +105,10 @@ describe('字段描述（editor/fields）', () => {
     expect(issues.slice(0, 20)).toEqual([]);
     console.info(`checked ${entities} entities in ${files} scene and prefab files`);
   });
+});
+
+test('场景自己的设置的字段描述（SCENE_FIELDS）：添加时放进去的值照描述没问题；格式里删掉的字段报出来', () => {
+  for (const [key, description] of Object.entries(SCENE_FIELDS)) expect(checkFields(description.initial, description.type, key)).toEqual([]);
+  const stale = { gravity: [0, -40, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 1 / 60, maxStepsPerFrame: 3 };
+  expect(checkFields(stale, SCENE_FIELDS.physics.type, 'physics')).toEqual(['physics.maxStepsPerFrame: not a field of this component']);
 });

@@ -3,7 +3,7 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { NumberField, Switch, TextField } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { Field, FieldType } from '@stride-ts/engine/editor-fields';
 import { sameValue } from '@stride-ts/engine/content-prefabs';
-import { colorToHex, emptyValue, eulerToQuaternion, hasMixed, hexToColor, MIXED, quaternionToEuler } from './values';
+import { colorToHex, emptyValue, eulerToQuaternion, hasMixed, hexToColor, MIXED, quaternionToEuler, withPath } from './values';
 
 /** 文件里一个值的路径（相对 FieldEditor 拿到的值）。 */
 export type ValuePath = readonly (string | number)[];
@@ -45,6 +45,8 @@ const styles = css.create({
   color: { display: 'flex', gap: '_xs', alignItems: 'center' },
   mixed: { color: '_textMuted', fontStyle: 'italic' },
   required: { color: '_dangerText' },
+  value: { display: 'flex', alignItems: 'flex-start', gap: '_xs', minWidth: '0' },
+  grow: { flex: '1', minWidth: '0' },
 });
 
 /** 多选时值不一样的地方。 */
@@ -59,11 +61,19 @@ const NUMBER_FORMAT = { useGrouping: false, maximumFractionDigits: 6 } as const;
  */
 export const FieldRow = _component(({ field, value, context, onSet }: { field: Field; value: unknown; context: FieldContext; onSet: FieldEditorProps['onSet'] }) => {
   const collapse = (next: unknown) => (field.optional && field.default !== undefined && sameValue(next, field.default) ? undefined : next);
-  const set = (path: ValuePath, next: unknown) =>
+  const set = (path: ValuePath, next: unknown) => {
+    // 没写的可选对象（后处理的 ambientOcclusion 这类）里改一个值：整个写进去，从默认值（或空值）开始
+    if (path.length > 0 && value === undefined) {
+      const base = structuredClone(field.default ?? emptyValue(field.type));
+      return onSet([], withPath(base, path, typeof next === 'function' ? (next as ValueUpdate)(undefined) : next));
+    }
     onSet(path, path.length > 0 ? next : typeof next === 'function' ? (current: unknown) => collapse((next as ValueUpdate)(current)) : collapse(next));
+  };
   return () => {
     const missing = value === undefined;
     const shown = missing ? field.default : value;
+    // 写了的可选字段（没有默认值的）、不是 null 的可空字段能去掉：可选的去掉这个键，可空的设回 null
+    const clearable = (field.optional && field.default === undefined && !missing) || (field.nullable === true && value !== null && !missing);
     // 必填的还没设（脚本的引用没选、null 也算没设）：试玩时这个脚本不挂
     const unsetRequired = !field.optional && (missing || (value === null && !field.nullable));
     return (
@@ -73,6 +83,15 @@ export const FieldRow = _component(({ field, value, context, onSet }: { field: F
         </span>
         {field.nullable && shown === null ? (
           <button type="button" onClick={() => onSet([], emptyValue(field.type))}>设置</button>
+        ) : missing && field.default === undefined && (field.type.kind === 'object' || field.type.kind === 'union') ? (
+          // 没写的可选对象（后处理里的 ambientOcclusion 这类，写了就是开着）：先加上再改里面的值
+          <button type="button" onClick={() => onSet([], emptyValue(field.type))}>添加</button>
+        ) : clearable ? (
+          // 编辑器占满剩下的宽度，× 跟在后面
+          <span {...css.attrs(styles.value)}>
+            <span {...css.attrs(styles.grow)}><FieldEditor type={field.type} value={shown} context={context} onSet={set} /></span>
+            <button type="button" title={field.nullable ? `${field.name} 设成 null` : `去掉 ${field.name}`} aria-label={`去掉 ${field.name}`} onClick={() => onSet([], field.nullable ? null : undefined)}>×</button>
+          </span>
         ) : (
           <FieldEditor type={field.type} value={shown} context={context} onSet={set} />
         )}

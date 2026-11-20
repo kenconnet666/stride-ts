@@ -3,8 +3,8 @@ import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
-import type { SceneEdit } from '@stride-ts/engine/editor-document';
-import { COMPONENT_FIELDS, ENTITY_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
+import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@stride-ts/engine/editor-document';
+import { COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
 import { assetListId, FieldEditor, FieldRow, type FieldContext, type ValuePath, type ValueUpdate } from './FieldEditor';
 import type { EditorSession } from './session';
 import { mergeValues } from './values';
@@ -56,9 +56,9 @@ function addableScripts(registered: readonly string[], entities: Entities): { ty
   return registered.filter((type) => !everywhere(scriptClass(type))).map((type) => ({ type, label: counts.get(scriptClass(type))! > 1 ? type : scriptClass(type) }));
 }
 
-/** 实体里 path 上的值（列表按下标）。 */
-function valueAt(entity: SceneEntityFile, path: ValuePath): unknown {
-  let value: unknown = entity;
+/** JSON 值（实体、场景文件）里 path 上的值（列表按下标）。 */
+function valueAt(root: unknown, path: ValuePath): unknown {
+  let value: unknown = root;
   for (const key of path) value = value !== null && typeof value === 'object' ? (value as Record<string | number, unknown>)[key] : undefined;
   return value;
 }
@@ -164,10 +164,51 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     session.notice.value = dependents.size > 0 ? `去掉了 ${COMPONENT_FIELDS[key].label}；${[...dependents].join('、')} 要它，试玩时这些脚本不挂` : '';
   };
 
+  /**
+   * 没选实体时：场景自己的设置（物理、导航、偏移、合成器）。写了的显示字段（× 去掉），没写的从"添加设置"里加（引擎的默认值）。
+   * 改一个值是一次 'scene' 修改，连着改并成一步；合成器、偏移在视口里马上看得见，物理、导航试玩时用上。
+   */
+  const sceneSettings = () => {
+    const file = session.file as unknown as Record<SceneSettingKey, unknown>;
+    const setSetting = (key: SceneSettingKey) => (path: ValuePath, value: unknown) => {
+      const full = [key, ...path];
+      const next = typeof value === 'function' ? (value as ValueUpdate)(valueAt(file, full)) : value;
+      session.apply({ type: 'scene', path: full, value: next }, `scene/${full.join('/')}`);
+    };
+    const change = (key: SceneSettingKey, value: unknown) => {
+      session.apply({ type: 'scene', path: [key], value });
+      session.commit();
+    };
+    return (
+      <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
+        <div {...css.attrs(styles.hint)}>场景 {session.file.name} 的设置（在场景树或视口里选实体看实体的）。合成器、偏移改了马上看得见；物理、导航试玩时用上。</div>
+        {SCENE_SETTING_KEYS.filter((key) => file[key] !== undefined).map((key) => (
+          <section {...css.attrs(styles.section)}>
+            <div {...css.attrs(styles.heading)}>
+              {SCENE_FIELDS[key].label}
+              <IconButton icon={X} variant="ghost" aria-label={`去掉 ${SCENE_FIELDS[key].label}`} onClick={() => change(key, undefined)} />
+            </div>
+            <FieldEditor type={SCENE_FIELDS[key].type} value={file[key]} context={context} onSet={setSetting(key)} />
+          </section>
+        ))}
+        <select {...css.attrs(styles.add)} aria-label="添加设置" value="" onChange={(event: Event) => {
+          const key = (event.target as HTMLSelectElement).value as SceneSettingKey;
+          if (key) change(key, structuredClone(SCENE_FIELDS[key].initial));
+        }}>
+          <option value="">添加设置……</option>
+          {SCENE_SETTING_KEYS.filter((key) => file[key] === undefined).map((key) => <option value={key}>{SCENE_FIELDS[key].label}</option>)}
+        </select>
+      </div>
+    );
+  };
+
   return () => {
     const list = entities;
     if (!agent.value) return <div {...css.attrs(styles.hint)}>场景还没打开</div>;
-    if (list.length === 0) return <div {...css.attrs(styles.hint)}>在场景树或视口里选一个实体（Ctrl、Shift 多选）</div>;
+    if (list.length === 0) {
+      void version.value;
+      return session.opened.value?.kind === 'scene' ? sceneSettings() : <div {...css.attrs(styles.hint)}>在场景树或视口里选一个实体（Ctrl、Shift 多选）</div>;
+    }
     const merged = (read: (entity: SceneEntityFile) => unknown) => mergeValues(list.map(read));
     const keys = Object.keys(COMPONENT_FIELDS) as ComponentKey[];
     return (

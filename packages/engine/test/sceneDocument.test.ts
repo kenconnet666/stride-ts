@@ -171,4 +171,21 @@ describe('场景文档（SceneDocument）', () => {
     expect(() => document.addChild(entity('x', 'a/body'))).toThrow(/no entity a\/body/);
     expect(document.owner('i/weapon/inner')?.id).toBe('i');
   });
+
+  test('改场景自己的设置（物理、导航、偏移、合成器）：只换改了的那一支，实体列表还是原来的；撤销回去；别的键报错', () => {
+    const file: SceneFile = { ...scene(), physics: { gravity: [0, -9.8, 0], linearDamping: 0, angularDamping: 0, fixedTimeStep: 1 / 60 } };
+    const document = new SceneDocument(file);
+    const undo = new UndoStack(document);
+    undo.apply({ type: 'scene', path: ['physics', 'gravity', 1], value: -3 });
+    undo.apply({ type: 'scene', path: ['offset'], value: [1, 2, 3] });
+    expect([document.file.physics!.gravity, document.file.offset]).toEqual([[0, -3, 0], [1, 2, 3]]);
+    expect(document.file.entities).toBe(file.entities);
+    expect(document.entity('b')).toBe(file.entities[1]);
+    undo.undo();
+    expect('offset' in document.file).toBe(false);
+    undo.undo();
+    expect(document.file).toEqual(file);
+    expect(() => document.apply({ type: 'scene', path: ['entities'], value: [] })).toThrow(/not a scene setting/);
+    expect(() => document.apply({ type: 'scene', path: ['name'], value: 'X' })).toThrow(/not a scene setting/);
+  });
 });

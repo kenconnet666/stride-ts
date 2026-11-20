@@ -6,6 +6,7 @@
  * 全分辨率（半分辨率时接触处的边缘发糊，正好是要补的地方），结果 r8unorm：1 是亮，0 是被挡住。着色时只乘那盏光的直射项
  * （见 MeshRenderFeature 的 screenContactShadow）。深度预通道之后、不透明阶段之前算，同 GTAO。
  */
+import { GRADIENT_NOISE } from '../shaders/noise';
 import type { RenderView } from '../RenderSystem';
 import { FullscreenShader, UniformArena, type EffectFrame } from '../postfx/ImageEffect';
 
@@ -26,6 +27,8 @@ struct Contact {
 /** 起点沿法线抬起多少、挡住至少要靠前多少（都按到相机的距离的比例）：深度缓冲按像素取样有量化误差，光线贴着表面走时会"撞"上表面自己。 */
 const NORMAL_OFFSET = 0.002;
 const MIN_OCCLUDER_GAP = 0.0005;
+
+${GRADIENT_NOISE}
 
 fn worldAt(uv: vec2f, z: f32) -> vec3f {
   let clip = contact.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, z, 1.0);
@@ -57,7 +60,7 @@ fn worldAt(uv: vec2f, z: f32) -> vec3f {
   let steps = i32(contact.params.x);
   let stepLength = contact.light.w / f32(steps);
   // 起点按像素错开一点（交错梯度噪声），走的步数少时也不出条纹
-  let jitter = fract(52.9829189 * fract(dot(vec2f(pixel), vec2f(0.06711056, 0.00583715))));
+  let jitter = gradientNoise(vec2f(pixel));
   var lit = 1.0;
   for (var i = 1; i <= steps; i++) {
     let p = start + contact.light.xyz * stepLength * (f32(i) - jitter);

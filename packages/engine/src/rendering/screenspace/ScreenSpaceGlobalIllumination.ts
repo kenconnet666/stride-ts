@@ -14,6 +14,7 @@
  *
  * 开着它时不再算 GTAO（遮蔽它自己就有）。默认关，画质档位高、极高才允许。
  */
+import { GRADIENT_NOISE } from '../shaders/noise';
 import { Matrix } from '../../mathematics/Matrix';
 import { POSITION_FORMAT, POSITIONS_SHADER } from './AmbientOcclusion';
 import { FullscreenShader, UniformArena, type EffectFrame, type Image } from '../postfx/ImageEffect';
@@ -72,9 +73,7 @@ const STEPS = 8u;
 /** 半径在画面上最多这么多（半分辨率的）像素：近处再大采样太散。 */
 const MAX_RADIUS_PIXELS = 128.0;
 
-fn noise(pixel: vec2f) -> f32 {
-  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));
-}
+${GRADIENT_NOISE}
 
 /** 这个位置在上一帧的画面上的颜色；投影到画面外或没有上一帧时是黑的。 */
 fn previousRadiance(position: vec3f) -> vec3f {
@@ -109,7 +108,7 @@ fn sectorBits(low: f32, high: f32) -> u32 {
   if (radiusPixels < 1.0) { return vec4f(0.0, 0.0, 0.0, 1.0); }
   // 离中心太近（不到 1.3 个像素）的采样只是自己
   let minS = 1.3 / radiusPixels;
-  let jitter = noise(in.position.xy + trace.params.w);
+  let jitter = gradientNoise(in.position.xy + trace.params.w);
   let stepJitter = fract(jitter + 0.5 * f32((pixel.x + pixel.y) & 1));
 
   var visible = 0.0;

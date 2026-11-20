@@ -12,6 +12,7 @@
  * 和 Stride 不同：Stride 的 AmbientOcclusion（SAO 那一类）在后处理里把整个画面乘上遮蔽，太阳照着的地方也变暗；我们只乘
  * 环境光。效果开不开、半径照合成器里的 AmbientOcclusion（Enabled、ParamRadius）。
  */
+import { GRADIENT_NOISE } from '../shaders/noise';
 import { Matrix } from '../../mathematics/Matrix';
 import { FullscreenShader, UniformArena, type EffectFrame } from '../postfx/ImageEffect';
 import type { RenderView } from '../RenderSystem';
@@ -69,9 +70,7 @@ fn positionAt(pixel: vec2i) -> vec3f {
   return textureLoad(positions, clamp(pixel, vec2i(0), size - 1), 0).xyz;
 }
 
-fn noise(pixel: vec2f) -> f32 {
-  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));
-}
+${GRADIENT_NOISE}
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let pixel = vec2i(in.position.xy);
@@ -96,7 +95,7 @@ fn noise(pixel: vec2f) -> f32 {
   let falloffRange = 0.615 * gtao.params.x;
   let falloffMul = -1.0 / falloffRange;
   let falloffAdd = (gtao.params.x - falloffRange) / falloffRange + 1.0;
-  let jitter = noise(in.position.xy + gtao.params.w);
+  let jitter = gradientNoise(in.position.xy + gtao.params.w);
   let stepJitter = fract(jitter + 0.5 * f32((pixel.x + pixel.y) & 1));
 
   var visibility = 0.0;

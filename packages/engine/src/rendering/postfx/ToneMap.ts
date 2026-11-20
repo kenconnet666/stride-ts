@@ -11,6 +11,7 @@
  * 和 Stride 不同：输出是 8 位的 sRGB 时加不到一个灰阶的抖动（dither，默认开）。暗的渐变（夜空、雾）量化成 8 位以后相邻的带只差
  * 一个灰阶，是一圈圈看得见的色带；抖动把它打散成看不出来的噪声。图案是固定的（按像素坐标），画面不动时每帧一样。
  */
+import { GRADIENT_NOISE } from '../shaders/noise';
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
 import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
@@ -66,10 +67,7 @@ fn hejl2(color: vec3f, whitePoint: f32) -> vec3f {
   return vf / w;
 }
 
-/** Jimenez 的 interleaved gradient noise：0..1，相邻像素的值差得远，没有成片的低频。 */
-fn gradientNoise(pixel: vec2f) -> f32 {
-  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));
-}
+${GRADIENT_NOISE}
 
 /**
  * 输出的抖动：在 sRGB 编码后的值上加 ±半个灰阶的噪声（三个通道各用一份，不相关），再换回线性（目标是 sRGB 视图，写进去时

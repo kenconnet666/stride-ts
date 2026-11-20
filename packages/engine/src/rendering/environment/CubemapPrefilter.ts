@@ -4,6 +4,7 @@
  * 其余每个纹素做若干次 GGX 重要性采样，按采样的立体角从源贴图合适的 mip 里取（包括 Stride 按 N·L 算 pdf 的写法，保持结果一致）。
  * 源贴图要带 mip。每个（级别，面）一次全屏绘制。
  */
+import { CUBE_FACE_DIRECTION } from '../shaders/cubemap';
 import { BRDF } from '../shaders/brdf';
 import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
 
@@ -19,17 +20,7 @@ struct Params { face: u32, roughness: f32, resample: u32, samples: u32 };
 @group(0) @binding(1) var source: texture_cube<f32>;
 @group(0) @binding(2) var linearClamp: sampler;
 
-/** 面上的坐标（-1..1，v 向下）到方向（WebGPU 立方体贴图的面的约定），同 Stride 的 CubemapUtils.ConvertTexcoordsNoFlip。 */
-fn faceDirection(face: u32, p: vec2f) -> vec3f {
-  switch face {
-    case 0u: { return vec3f(1.0, -p.y, -p.x); }
-    case 1u: { return vec3f(-1.0, -p.y, p.x); }
-    case 2u: { return vec3f(p.x, 1.0, p.y); }
-    case 3u: { return vec3f(p.x, -1.0, -p.y); }
-    case 4u: { return vec3f(p.x, -p.y, 1.0); }
-    default: { return vec3f(-p.x, -p.y, -1.0); }
-  }
-}
+${CUBE_FACE_DIRECTION}
 
 /** GGX 重要性采样的半角向量，同 Stride 的 ImportanceSamplingGGX.GetSample（a = 粗糙度²）。 */
 fn sampleGGX(xi: vec2f, roughness: f32, n: vec3f) -> vec3f {

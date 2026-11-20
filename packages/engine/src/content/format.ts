@@ -585,7 +585,7 @@ export interface MaterialFile {
   readonly clearCoat?: ClearCoatFile;
   /**
    * 次表面散射（Stride 的 MaterialSubsurfaceScatteringFeature 和皮肤散射核）：width 是散射宽度（世界单位），translucency 是
-   * 透光度，strength、falloff 是散射核的强度和衰减（各通道）。意思同 rendering/Material.ts 的 MaterialSubsurfaceScattering。
+   * 透光度，strength、falloff 是散射核的强度和衰减（各通道）。意思同 rendering/mesh/Material.ts 的 MaterialSubsurfaceScattering。
    */
   readonly subsurfaceScattering?: { readonly width: number; readonly translucency: number; readonly strength: Vec3Tuple; readonly falloff: Vec3Tuple };
   /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。有 glossinessTexture 时不看它。 */
@@ -764,7 +764,7 @@ export interface ScenePostEffects {
   /** 环境光遮蔽（AmbientOcclusion，我们用 GTAO 只乘环境光）；没写是关着。radius 是 Stride 的 ParamRadius（世界单位）。 */
   readonly ambientOcclusion?: { readonly radius: number };
   /**
-   * 屏幕空间反射（LocalReflections，见 rendering/ScreenSpaceReflections.ts）；没写是关着。maxRoughness 是 1 减 Stride 的
+   * 屏幕空间反射（LocalReflections，见 rendering/screenspace/ScreenSpaceReflections.ts）；没写是关着。maxRoughness 是 1 减 Stride 的
    * GlossinessThreshold，edgeFade 是它的 EdgeFadeFactor。
    */
   readonly localReflections?: { readonly maxRoughness: number; readonly edgeFade: number };

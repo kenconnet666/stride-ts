@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { Matrix } from '../src/mathematics/Matrix';
-import { halton, jitterProjection } from '../src/rendering/TemporalAntialiasing';
+import { halton, jitterProjection } from '../src/rendering/screenspace/TemporalAntialiasing';
 
 describe('时间抗锯齿的抖动', () => {
   test('Halton(2, 3) 的前几项', () => {

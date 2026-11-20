@@ -4,8 +4,8 @@
  * 其余每个纹素做若干次 GGX 重要性采样，按采样的立体角从源贴图合适的 mip 里取（包括 Stride 按 N·L 算 pdf 的写法，保持结果一致）。
  * 源贴图要带 mip。每个（级别，面）一次全屏绘制。
  */
-import { BRDF } from './brdf';
-import { FULLSCREEN_VERTEX } from './fullscreen';
+import { BRDF } from '../shaders/brdf';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
 
 /** 天空盒每个纹素的 GGX 采样数，同 Stride 的 RadiancePrefilteringGGX 默认值。 */
 export const SKYBOX_PREFILTER_SAMPLES = 1024;

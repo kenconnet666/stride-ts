@@ -3,7 +3,7 @@ import { Debug, FrameTimings, describe } from '../src/debug/Debug';
 import { DebugDraw, DEBUG_LINE_FLOATS } from '../src/debug/DebugDraw';
 import { Collider } from '../src/physics/Collider';
 import { drawCollider } from '../src/physics/debugShapes';
-import { Mesh } from '../src/rendering/Mesh';
+import { Mesh } from '../src/rendering/mesh/Mesh';
 import { DebugText } from '../src/debug/DebugText';
 
 group('describe', () => {

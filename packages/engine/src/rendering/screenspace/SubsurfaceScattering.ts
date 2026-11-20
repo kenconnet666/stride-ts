@@ -11,10 +11,10 @@
  * - 散射核在 CPU 上按材质的强度、衰减生成（scatteringKernel，同 Stride 的 SubsurfaceScatteringKernelGenerator），材质改了
  *   （version 变了）就重新生成、上传。
  */
-import type { Material, MaterialSubsurfaceScattering } from './Material';
-import { Matrix } from '../mathematics/Matrix';
-import { FullscreenShader, UniformArena, type EffectFrame, type Image } from './postfx/ImageEffect';
-import type { RenderView } from './RenderSystem';
+import type { Material, MaterialSubsurfaceScattering } from '../mesh/Material';
+import { Matrix } from '../../mathematics/Matrix';
+import { FullscreenShader, UniformArena, type EffectFrame, type Image } from '../postfx/ImageEffect';
+import type { RenderView } from '../RenderSystem';
 
 /** 每个核的采样数（Stride 的默认 KernelLength 25）。 */
 export const KERNEL_LENGTH = 25;

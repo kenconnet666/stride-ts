@@ -12,7 +12,7 @@
  * 一个灰阶，是一圈圈看得见的色带；抖动把它打散成看不出来的噪声。图案是固定的（按像素坐标），画面不动时每帧一样。
  */
 import { GpuProfiler } from '../../graphics/GpuProfiler';
-import { FULLSCREEN_VERTEX } from '../fullscreen';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
 import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
 import { fullscreenPipeline, isGraphTexture, warmFullscreenPipeline, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 

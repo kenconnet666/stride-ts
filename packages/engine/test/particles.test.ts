@@ -3,7 +3,7 @@ import { CurveSampler } from '../src/particles/curves';
 import { FieldFalloff, FieldShapeTorus } from '../src/particles/fieldShapes';
 import type { Vec3 } from '../src/particles/math';
 import { flipbookOf, MaterialCompiler, ParticleMaterialComputeColor, scrollOf, type MaterialContext } from '../src/particles/material';
-import { ColorTreeCompiler } from '../src/rendering/colorTree';
+import { ColorTreeCompiler } from '../src/rendering/mesh/colorTree';
 import { shaderClass } from '../src/rendering/shaderClass';
 import { circumcenter, expandCatmullRom, expandCircular } from '../src/particles/ribbons';
 import { drawOrder, ParticleShapeBuilder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from '../src/particles/shapes';

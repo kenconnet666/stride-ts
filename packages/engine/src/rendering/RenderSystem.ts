@@ -12,11 +12,11 @@ import type { GraphicsDevice } from '../graphics/GraphicsDevice';
 import { Matrix } from '../mathematics/Matrix';
 import { Color4, Vector3 } from '../mathematics/vectors';
 import { GpuResources } from './GpuResources';
-import { ReflectionProbes } from './ReflectionProbes';
-import { Atmosphere, type DynamicSky } from './Atmosphere';
-import { Clouds } from './VolumetricClouds';
-import type { Skybox } from './Skybox';
-import { SubsurfaceMaterials } from './SubsurfaceScattering';
+import { ReflectionProbes } from './environment/ReflectionProbes';
+import { Atmosphere, type DynamicSky } from './sky/Atmosphere';
+import { Clouds } from './sky/VolumetricClouds';
+import type { Skybox } from './environment/Skybox';
+import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {

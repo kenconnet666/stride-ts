@@ -4,15 +4,15 @@
  * - 平面图片（Is2D，Draw2D 那条路）：保持图片比例铺满视图，多出的部分两边对称裁掉；只采样第 0 级（Stride 的背景图不生成 mip）。
  * 画在网格之后（加到渲染系统里的顺序），深度测试 less-equal、不写深度，三角形在远平面上。
  */
-import type { SceneEntityFile } from '../content/format';
-import { system } from '../engine/system';
-import { Transform } from '../engine/transform';
-import { Matrix } from '../mathematics/Matrix';
-import { Background } from './components';
-import { FULLSCREEN_VERTEX } from './fullscreen';
-import { colorTargets, inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import type { SceneEntityFile } from '../../content/format';
+import { system } from '../../engine/system';
+import { Transform } from '../../engine/transform';
+import { Matrix } from '../../mathematics/Matrix';
+import { Background } from '../components';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
+import { colorTargets, inRenderMask, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
 import { Cubemap } from './Skybox';
-import { Texture } from './Texture';
+import { Texture } from '../Texture';
 
 const SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}

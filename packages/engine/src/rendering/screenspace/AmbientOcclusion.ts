@@ -12,9 +12,9 @@
  * 和 Stride 不同：Stride 的 AmbientOcclusion（SAO 那一类）在后处理里把整个画面乘上遮蔽，太阳照着的地方也变暗；我们只乘
  * 环境光。效果开不开、半径照合成器里的 AmbientOcclusion（Enabled、ParamRadius）。
  */
-import { Matrix } from '../mathematics/Matrix';
-import { FullscreenShader, UniformArena, type EffectFrame } from './postfx/ImageEffect';
-import type { RenderView } from './RenderSystem';
+import { Matrix } from '../../mathematics/Matrix';
+import { FullscreenShader, UniformArena, type EffectFrame } from '../postfx/ImageEffect';
+import type { RenderView } from '../RenderSystem';
 
 /** 半分辨率的视图空间位置（POSITIONS_SHADER 的输出，屏幕空间全局光照也用）。 */
 export const POSITION_FORMAT: GPUTextureFormat = 'rgba32float';

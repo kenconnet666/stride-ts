@@ -30,26 +30,26 @@
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
 import type { FrustumCuller } from '@stride-ts/native';
-import type { AnimationSystem } from '../animation/AnimationSystem';
-import type { EntityId } from '../data/prop';
-import type { ColumnsOf } from '../engine/component';
-import type { EntityManager } from '../engine/EntityManager';
-import { system } from '../engine/system';
-import { Transform } from '../engine/transform';
-import { BRDF } from './brdf';
-import { Morphed } from '../animation/morphs';
-import { Instance, Instancing, Model, Skinned } from './components';
-import { FULLSCREEN_VERTEX } from './fullscreen';
-import type { GpuResources } from './GpuResources';
+import type { AnimationSystem } from '../../animation/AnimationSystem';
+import type { EntityId } from '../../data/prop';
+import type { ColumnsOf } from '../../engine/component';
+import type { EntityManager } from '../../engine/EntityManager';
+import { system } from '../../engine/system';
+import { Transform } from '../../engine/transform';
+import { BRDF } from '../shaders/brdf';
+import { Morphed } from '../../animation/morphs';
+import { Instance, Instancing, Model, Skinned } from '../components';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
+import type { GpuResources } from '../GpuResources';
 import { Material, type MaterialShaderClearCoat, type MaterialShaderLayer, type MaterialShaderTrees, type MaterialTexture } from './Material';
-import type { ReflectionProbes } from './ReflectionProbes';
-import { Skybox } from './Skybox';
-import type { SubsurfaceMaterials } from './SubsurfaceScattering';
+import type { ReflectionProbes } from '../environment/ReflectionProbes';
+import { Skybox } from '../environment/Skybox';
+import type { SubsurfaceMaterials } from '../screenspace/SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
-import { MATERIAL_STREAMS } from './shaderClass';
-import { vertexLayoutOffsets, type VertexLayout } from '../content/format';
+import { MATERIAL_STREAMS } from '../shaderClass';
+import { vertexLayoutOffsets, type VertexLayout } from '../../content/format';
 import { Mesh } from './Mesh';
-import { inRenderMask, MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { inRenderMask, MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */

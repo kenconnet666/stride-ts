@@ -4,9 +4,9 @@
  * 着色器里做），程序化网格和 --plain 导出的模型是 32 字节的 float（FLOAT_LAYOUT）。程序化网格对应 Stride 的
  * ProceduralModels：尺寸默认 1，右手坐标系，三角形从外面看是逆时针。
  */
-import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, MORPH_ENTRY_WORDS, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../content/format';
-import type { Branded } from '../data/prop';
-import { ResourceTable } from '../engine/ResourceTable';
+import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, MORPH_ENTRY_WORDS, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../../content/format';
+import type { Branded } from '../../data/prop';
+import { ResourceTable } from '../../engine/ResourceTable';
 import { MESH_EFFECT_PARAMETERS } from './meshEffect';
 
 export { VERTEX_FLOATS };

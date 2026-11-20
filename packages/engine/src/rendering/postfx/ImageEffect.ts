@@ -7,7 +7,7 @@
  *   加载场景时可以先在后台编好（RenderGraph.warm、PostProcessingEffects.warm）。
  */
 import { GpuProfiler } from '../../graphics/GpuProfiler';
-import { FULLSCREEN_VERTEX } from '../fullscreen';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
 import type { GraphTexture, PassBuilder, PassResources, RenderGraph } from '../graph/RenderGraph';
 import type { GaussianBlur } from './GaussianBlur';
 import type { ImageScaler } from './ImageScaler';

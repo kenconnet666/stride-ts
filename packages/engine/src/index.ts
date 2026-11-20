@@ -177,16 +177,16 @@ export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings 
 export { RecastNavigationComponent, type NavigationState } from './navigation/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
 export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, ReflectionProbe, Skinned, SkyAtmosphere, Sprite, VolumetricClouds } from './rendering/components';
-export { Clouds, type CloudSettings } from './rendering/VolumetricClouds';
-export { Atmosphere, DynamicSky, EARTH_ATMOSPHERE, sunTransmittance, type AtmosphereSettings, type CelestialBody } from './rendering/Atmosphere';
-export { celestialState, DayNightCycle, lightRotationTowards, type CelestialState } from './rendering/DayNightCycle';
-export { AtmosphereRenderFeature } from './rendering/AtmosphereRenderFeature';
-export { MAX_REFLECTION_PROBES, ReflectionProbes } from './rendering/ReflectionProbes';
+export { Clouds, type CloudSettings } from './rendering/sky/VolumetricClouds';
+export { Atmosphere, DynamicSky, EARTH_ATMOSPHERE, sunTransmittance, type AtmosphereSettings, type CelestialBody } from './rendering/sky/Atmosphere';
+export { celestialState, DayNightCycle, lightRotationTowards, type CelestialState } from './rendering/sky/DayNightCycle';
+export { AtmosphereRenderFeature } from './rendering/sky/AtmosphereRenderFeature';
+export { MAX_REFLECTION_PROBES, ReflectionProbes } from './rendering/environment/ReflectionProbes';
 export { cameraProjectionMatrix, screenToWorldRaySegment, worldToScreen, type CameraProjection } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
-export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';
+export { BackgroundRenderFeature, coverSource } from './rendering/environment/BackgroundRenderFeature';
 export { GpuResources } from './rendering/GpuResources';
-export { Cubemap, Skybox, type CubemapId, type SkyboxId } from './rendering/Skybox';
+export { Cubemap, Skybox, type CubemapId, type SkyboxId } from './rendering/environment/Skybox';
 export { Bloom } from './rendering/postfx/Bloom';
 export { BrightFilter } from './rendering/postfx/BrightFilter';
 export { Fxaa, type FxaaDither } from './rendering/postfx/Fxaa';
@@ -204,7 +204,7 @@ export {
   type MaterialNormalMap,
   type MaterialTexture,
   type MaterialTransparency,
-} from './rendering/Material';
+} from './rendering/mesh/Material';
 export { SpriteSheet, type SpriteFrame, type SpriteSheetId } from './rendering/SpriteSheet';
 export { SpriteFont, type FontGlyph, type LoadedGlyphBlock } from './rendering/text/SpriteFont';
 export { SpriteBatch, type Color, type DrawOptions, type DrawRichTextOptions, type DrawStringOptions, type Rect, type Vec2 } from './rendering/text/SpriteBatch';
@@ -258,16 +258,16 @@ export { ParticleUpdater, UpdaterWind } from './particles/updaters';
 export { ParticleShapeBuilder, VertexWriter, type CameraAxes } from './particles/shapes';
 export { MaterialCompiler, ParticleMaterial, type MaterialContext, type MaterialProgram, type UVBuilderParams, type UVFrame, type UVFrames } from './particles/material';
 export { shaderClass, type ShaderClass } from './rendering/shaderClass';
-export { meshEffect, MESH_EFFECT_PARAMETERS, type MeshEffect } from './rendering/meshEffect';
+export { meshEffect, MESH_EFFECT_PARAMETERS, type MeshEffect } from './rendering/mesh/meshEffect';
 export { particleField, ParticlePool, type AnyParticleField, type CustomParticleField, type ParticleField } from './particles/ParticlePool';
 export { RandomOffset, seedFloat } from './particles/random';
 export { UISystem } from './ui/UISystem';
 export { collectSemantics, semanticsKey, type SemanticsLine, type SemanticsNode, type SemanticsRole } from './ui/semantics';
 export { SemanticsLayer } from './ui/SemanticsLayer';
-export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/Mesh';
+export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/mesh/Mesh';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './rendering/Texture';
 export { MipmapGenerator } from './rendering/MipmapGenerator';
-export { MeshRenderFeature, type MeshBatch } from './rendering/MeshRenderFeature';
+export { MeshRenderFeature, type MeshBatch } from './rendering/mesh/MeshRenderFeature';
 export {
   inRenderMask, MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalLight, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
   type LocalLight, type SceneRenderer, type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,

@@ -10,14 +10,14 @@
  * - 着色用的表（buffer）：拍好的探针按盒子的体积从小到大排（小的盖住大的），每个四个 vec4（见 PROBE_FLOATS）。
  * - 立方体数组按探针数取 2 的幂（最多 MAX_REFLECTION_PROBES），不够了换大的、全部重拍。
  */
-import type { EntityId } from '../data/prop';
-import { system } from '../engine/system';
-import { Matrix } from '../mathematics/Matrix';
-import { Transform } from '../engine/transform';
-import { ReflectionProbe } from './components';
-import { FULLSCREEN_VERTEX } from './fullscreen';
-import type { GpuResources } from './GpuResources';
-import { RenderView, type RenderContext } from './RenderSystem';
+import type { EntityId } from '../../data/prop';
+import { system } from '../../engine/system';
+import { Matrix } from '../../mathematics/Matrix';
+import { Transform } from '../../engine/transform';
+import { ReflectionProbe } from '../components';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
+import type { GpuResources } from '../GpuResources';
+import { RenderView, type RenderContext } from '../RenderSystem';
 
 /** 同时在用的探针最多几个（再多的按体积小的优先，其余的不用）。 */
 export const MAX_REFLECTION_PROBES = 16;

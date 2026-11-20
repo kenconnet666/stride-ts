@@ -5,7 +5,7 @@ import { Game } from '../src/games/Game';
 import { ContentManager } from '../src/content/ContentManager';
 import type { SceneFile } from '../src/content/format';
 import { SkyAtmosphere, VolumetricClouds } from '../src/rendering/components';
-import { celestialState, DayNightCycle, dayNightCycleSystem, lightRotationTowards } from '../src/rendering/DayNightCycle';
+import { celestialState, DayNightCycle, dayNightCycleSystem, lightRotationTowards } from '../src/rendering/sky/DayNightCycle';
 import { Vector3 } from '../src/mathematics/vectors';
 
 const DEGREES = Math.PI / 180;

@@ -7,8 +7,8 @@
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
 import { Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds } from '../rendering/components';
-import { DayNightCycle, lightRotationTowards } from '../rendering/DayNightCycle';
-import { Material } from '../rendering/Material';
+import { DayNightCycle, lightRotationTowards } from '../rendering/sky/DayNightCycle';
+import { Material } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
 import type { EntityId } from '../data/prop';
 import type { ComponentType } from '../engine/component';

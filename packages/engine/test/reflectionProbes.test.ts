@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { Game, Transform } from '../src/index';
 import { GpuResources } from '../src/rendering/GpuResources';
 import { ReflectionProbe } from '../src/rendering/components';
-import { PROBE_FLOATS, ReflectionProbes } from '../src/rendering/ReflectionProbes';
+import { PROBE_FLOATS, ReflectionProbes } from '../src/rendering/environment/ReflectionProbes';
 import type { RenderContext } from '../src/rendering/RenderSystem';
 import { fakeGpu, stubGpuGlobals } from './fakeGpu';
 

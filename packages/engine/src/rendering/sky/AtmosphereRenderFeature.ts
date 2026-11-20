@@ -3,7 +3,7 @@
  * RenderSystem 的 RootRenderFeature，放在一起会循环引用。
  */
 import type { AtmosphereGpu } from './Atmosphere';
-import { colorTargets, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from './RenderSystem';
+import { colorTargets, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
 /** 每个视图一块 uniform（视图投影的逆、相机位置），动态偏移按 256 字节对齐。 */
 const VIEW_STRIDE = 256;
 const MAX_VIEWS = 8;

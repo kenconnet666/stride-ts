@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { EARTH_ATMOSPHERE, mediumDensity, sunTransmittance } from '../src/rendering/Atmosphere';
+import { EARTH_ATMOSPHERE, mediumDensity, sunTransmittance } from '../src/rendering/sky/Atmosphere';
 
 describe('物理天空（Atmosphere）', () => {
   const ground: [number, number, number] = [0, EARTH_ATMOSPHERE.planetRadius + 0.001, 0];

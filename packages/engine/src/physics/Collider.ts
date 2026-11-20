@@ -5,7 +5,7 @@
  */
 import type { Branded } from '../data/prop';
 import { ResourceTable } from '../engine/ResourceTable';
-import type { Mesh } from '../rendering/Mesh';
+import type { Mesh } from '../rendering/mesh/Mesh';
 
 export type ColliderId = Branded<number, 'ColliderId'>;
 

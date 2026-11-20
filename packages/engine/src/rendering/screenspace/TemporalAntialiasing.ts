@@ -12,10 +12,10 @@
  *
  * Stride 的样例都用 FXAA，所以默认还是 FXAA（照内容画），TAA 是选项。
  */
-import { Matrix } from '../mathematics/Matrix';
-import type { GraphTexture } from './graph/RenderGraph';
-import { FullscreenShader, UniformArena, type EffectFrame, type Image } from './postfx/ImageEffect';
-import type { RenderView } from './RenderSystem';
+import { Matrix } from '../../mathematics/Matrix';
+import type { GraphTexture } from '../graph/RenderGraph';
+import { FullscreenShader, UniformArena, type EffectFrame, type Image } from '../postfx/ImageEffect';
+import type { RenderView } from '../RenderSystem';
 
 const HISTORY_FORMAT: GPUTextureFormat = 'rgba16float';
 /** 抖动的点数：Halton(2, 3) 的前 8 个，8 帧一轮。 */

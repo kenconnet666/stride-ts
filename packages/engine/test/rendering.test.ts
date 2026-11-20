@@ -4,7 +4,7 @@ import {
   Camera, cameraProjectionMatrix, entityAtSlot, inRenderMask, RENDER_GROUP_ALL, coverSource, spotAngleAttenuation, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, screenToWorldRaySegment, Transform, Vector3, transformSlot, worldToScreen,
   type DirectionalShadowSettings, type GraphicsDevice, type ShadowReceiver,
 } from '../src/index';
-import { VERTEX_FLOATS } from '../src/rendering/Mesh';
+import { VERTEX_FLOATS } from '../src/rendering/mesh/Mesh';
 
 /** 交错顶点里第 v 个顶点从 offset 起的 size 个 float。 */
 const attribute = (vertices: Float32Array | Uint8Array, v: number, offset: number, size: number) => [...(vertices as Float32Array).subarray(v * VERTEX_FLOATS + offset, v * VERTEX_FLOATS + offset + size)];

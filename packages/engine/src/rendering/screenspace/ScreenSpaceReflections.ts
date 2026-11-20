@@ -16,11 +16,11 @@
  * 只做粗糙度不超过 maxRoughness 的表面（Stride 的 GlossinessThreshold 0.55，即粗糙度 0.45）；更粗糙的反射在屏幕上没多少
  * 可看的，照旧用环境光。
  */
-import { Matrix } from '../mathematics/Matrix';
-import { FULLSCREEN_VERTEX } from './fullscreen';
-import type { GraphTexture } from './graph/RenderGraph';
-import { fullscreenPipeline, FullscreenShader, UniformArena, warmFullscreenPipeline, type EffectFrame } from './postfx/ImageEffect';
-import type { RenderView } from './RenderSystem';
+import { Matrix } from '../../mathematics/Matrix';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
+import type { GraphTexture } from '../graph/RenderGraph';
+import { fullscreenPipeline, FullscreenShader, UniformArena, warmFullscreenPipeline, type EffectFrame } from '../postfx/ImageEffect';
+import type { RenderView } from '../RenderSystem';
 
 const HIZ_FORMAT: GPUTextureFormat = 'r32float';
 const TRACE_FORMAT: GPUTextureFormat = 'rgba16float';

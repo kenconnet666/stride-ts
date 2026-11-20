@@ -4,7 +4,7 @@
  * 仍是源文件路径）；场景文件、热重载、编辑器都按这些名字引用。引擎和库的组件显式给名字，登记时保留。
  */
 import { ComponentType } from './component';
-import { isMeshEffect, type MeshEffect } from '../rendering/meshEffect';
+import { isMeshEffect, type MeshEffect } from '../rendering/mesh/meshEffect';
 import { isShaderClass, type ShaderClass } from '../rendering/shaderClass';
 import { isScriptClass, scriptName, type ScriptConstructor } from './scripts';
 import { System } from './system';

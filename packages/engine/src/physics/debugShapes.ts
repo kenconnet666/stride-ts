@@ -5,7 +5,7 @@
  * 基本形状不随实体的缩放变（同物理里的形状），网格和凸包按实体的世界缩放。
  */
 import type { DebugColor, DebugDraw, DebugDrawOptions } from '../debug/DebugDraw';
-import type { Mesh } from '../rendering/Mesh';
+import type { Mesh } from '../rendering/mesh/Mesh';
 import type { Collider, ColliderShape } from './Collider';
 
 type Triple = readonly [number, number, number];

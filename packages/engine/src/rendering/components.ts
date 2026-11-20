@@ -6,7 +6,7 @@
  */
 import { prop, type EntityId } from '../data/prop';
 import { component, tag } from '../engine/component';
-import type { CubemapId, SkyboxId } from './Skybox';
+import type { CubemapId, SkyboxId } from './environment/Skybox';
 import type { SpriteSheetId } from './SpriteSheet';
 import type { TextureId } from './Texture';
 

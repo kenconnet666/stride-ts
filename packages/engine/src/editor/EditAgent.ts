@@ -24,7 +24,7 @@ import { Matrix, type Matrix4 } from '../mathematics/Matrix';
 import { Quaternion, Vector3 } from '../mathematics/vectors';
 import { screenToWorldRaySegment, worldToScreen } from '../rendering/cameraRays';
 import { Camera, Model, ModelPart, ReflectionProbe } from '../rendering/components';
-import { Mesh } from '../rendering/Mesh';
+import { Mesh } from '../rendering/mesh/Mesh';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import type { DebugColor } from '../debug/DebugDraw';
@@ -296,7 +296,7 @@ function selectionBoxes(game: Game, entity: Entity): WorldBox[] {
 }
 
 /**
- * 反射探针影响的盒子（同 rendering/ReflectionProbes 的算法）：以实体为中心、按世界的轴摆，边长是 size 乘实体的缩放；blend 是
+ * 反射探针影响的盒子（同 rendering/environment/ReflectionProbes 的算法）：以实体为中心、按世界的轴摆，边长是 size 乘实体的缩放；blend 是
  * 过渡距离（离盒子的面这么近以内淡出）。实体上没有探针时是 undefined。
  */
 function probeBoxes(entity: Entity): { matrix: Matrix4; halfExtents: [number, number, number]; blend: number } | undefined {

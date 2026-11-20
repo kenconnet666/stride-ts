@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
-import { Material, SKIN_SUBSURFACE_SCATTERING } from '../src/rendering/Material';
-import { KERNEL_LENGTH, MAX_SUBSURFACE_MATERIALS, scatteringKernel, SubsurfaceMaterials } from '../src/rendering/SubsurfaceScattering';
+import { Material, SKIN_SUBSURFACE_SCATTERING } from '../src/rendering/mesh/Material';
+import { KERNEL_LENGTH, MAX_SUBSURFACE_MATERIALS, scatteringKernel, SubsurfaceMaterials } from '../src/rendering/screenspace/SubsurfaceScattering';
 
 describe('次表面散射', () => {
   test('散射核：第 0 个是中心，各通道的权重加起来是 1，偏移左右对称，红光散得最远', () => {

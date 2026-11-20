@@ -7,11 +7,11 @@
  * 用 MaterialCompiler 把颜色树编成表达式（节点见 colorTree.ts）、拼自己的函数体。
  */
 import type { ParticleModuleFile, TextureSampler } from '../content/format';
-import { ColorTreeCompiler, type MaterialContext } from '../rendering/colorTree';
+import { ColorTreeCompiler, type MaterialContext } from '../rendering/mesh/colorTree';
 import type { Texture } from '../rendering/Texture';
 import { value, type ParticleModuleKind } from './modules';
 
-export type { MaterialContext } from '../rendering/colorTree';
+export type { MaterialContext } from '../rendering/mesh/colorTree';
 
 /** 粒子的 UV 帧 [u, v, 宽, 高]（按剩下的寿命，材质的 UVBuilder：翻页或滚动）。 */
 export type UVFrame = (remainingLife: number) => readonly [number, number, number, number];

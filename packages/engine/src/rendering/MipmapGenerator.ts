@@ -3,7 +3,7 @@
  * 2x2 个纹素中间，一次采样就是平均）。sRGB 格式的视图读的时候解码、写的时候编码，平均在线性空间里做。
  * 做法同 PlayCanvas 的 WebgpuMipmapRenderer（盒式滤波那条路）。贴图要带 RENDER_ATTACHMENT 用途。
  */
-import { FULLSCREEN_VERTEX } from './fullscreen';
+import { FULLSCREEN_VERTEX } from './shaders/fullscreen';
 
 const SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}

@@ -18,13 +18,13 @@
  * - 空气透视：屏幕上 32x32 格、32 层的体素表，不透明的画完以后按深度合成。
  * - 还没做：云。
  */
-import type { EntityId } from '../data/prop';
-import { system } from '../engine/system';
-import { Transform } from '../engine/transform';
-import { SkyAtmosphere } from './components';
-import { FULLSCREEN_VERTEX } from './fullscreen';
-import type { GpuResources } from './GpuResources';
-import type { DirectionalLight, Lighting, RenderContext, RenderView, SkyboxLight } from './RenderSystem';
+import type { EntityId } from '../../data/prop';
+import { system } from '../../engine/system';
+import { Transform } from '../../engine/transform';
+import { SkyAtmosphere } from '../components';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
+import type { GpuResources } from '../GpuResources';
+import type { DirectionalLight, Lighting, RenderContext, RenderView, SkyboxLight } from '../RenderSystem';
 
 /** 大气的物理参数（SkyAtmosphere 组件的列；距离是千米，系数是每千米）。 */
 export interface AtmosphereSettings {

@@ -5,11 +5,11 @@
  * MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
  * 见 docs/architecture.md 的"外观：材质参数的分层"，等着色器系统一起做。和 Mesh 一样只是数据，GPU 资源由渲染特性管理。
  */
-import type { AmbientOcclusionSlot, ColorOperator, TextureSampler } from '../content/format';
-import type { Branded } from '../data/prop';
-import { Color4, type ColorLike } from '../mathematics/vectors';
-import { ResourceTable } from '../engine/ResourceTable';
-import type { Texture } from './Texture';
+import type { AmbientOcclusionSlot, ColorOperator, TextureSampler } from '../../content/format';
+import type { Branded } from '../../data/prop';
+import { Color4, type ColorLike } from '../../mathematics/vectors';
+import { ResourceTable } from '../../engine/ResourceTable';
+import type { Texture } from '../Texture';
 
 export type MaterialId = Branded<number, 'MaterialId'>;
 

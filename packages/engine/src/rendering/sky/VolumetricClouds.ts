@@ -14,12 +14,12 @@
  * - 还没做：云在地面上的影子、云进环境光和反射探针、相机在云里或者云上面时地面的物体不被云挡（云只盖天空的像素）、
  *   穿过云的光柱（体积光那一项）。
  */
-import { system } from '../engine/system';
-import type { GameTime } from '../games/GameTime';
+import { system } from '../../engine/system';
+import type { GameTime } from '../../games/GameTime';
 import { ATMOSPHERE_WGSL, SKY_VIEW_WGSL, type Atmosphere } from './Atmosphere';
-import { VolumetricClouds } from './components';
-import { FULLSCREEN_VERTEX } from './fullscreen';
-import type { RenderContext, RenderView } from './RenderSystem';
+import { VolumetricClouds } from '../components';
+import { FULLSCREEN_VERTEX } from '../shaders/fullscreen';
+import type { RenderContext, RenderView } from '../RenderSystem';
 
 /** 噪声贴图的边长（64 时小块的云看得出一个个纹素），和一帧生成几层（分几帧算完，不在一帧里卡一下）。 */
 const NOISE_SIZE = 128;

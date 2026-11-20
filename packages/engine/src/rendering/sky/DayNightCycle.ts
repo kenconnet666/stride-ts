@@ -13,14 +13,14 @@
  *
  * 太阳、月亮的实体不要挂在转过的父实体下面：这里设的是它们的本地旋转。
  */
-import { prop } from '../data/prop';
-import { component } from '../engine/component';
-import type { EntityManager } from '../engine/EntityManager';
-import { system } from '../engine/system';
-import { Transform } from '../engine/transform';
-import type { GameTime } from '../games/GameTime';
-import { Quaternion } from '../mathematics/vectors';
-import { SkyAtmosphere } from './components';
+import { prop } from '../../data/prop';
+import { component } from '../../engine/component';
+import type { EntityManager } from '../../engine/EntityManager';
+import { system } from '../../engine/system';
+import { Transform } from '../../engine/transform';
+import type { GameTime } from '../../games/GameTime';
+import { Quaternion } from '../../mathematics/vectors';
+import { SkyAtmosphere } from '../components';
 
 export const DayNightCycle = component('DayNightCycle', {
   /** 一天里的时刻（小时，0 到 24；12 是正午）。 */

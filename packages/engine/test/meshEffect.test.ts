@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { Registry } from '../src/engine/registry';
-import { Mesh } from '../src/rendering/Mesh';
-import { MESH_EFFECT_PARAMETERS, meshEffect, meshEffectCode } from '../src/rendering/meshEffect';
+import { Mesh } from '../src/rendering/mesh/Mesh';
+import { MESH_EFFECT_PARAMETERS, meshEffect, meshEffectCode } from '../src/rendering/mesh/meshEffect';
 
 /** 一个三角形（每个顶点 8 个 float：位置、法线、UV）。 */
 function triangle(): Mesh {

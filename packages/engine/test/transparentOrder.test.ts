@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { backToFrontRuns, sortBackToFront } from '../src/rendering/transparentOrder';
+import { backToFrontRuns, sortBackToFront } from '../src/rendering/mesh/transparentOrder';
 
 /** 每个槽位一个只有平移的世界矩阵：物体在 z 轴上的位置。 */
 const worldAt = (...zs: number[]) => {

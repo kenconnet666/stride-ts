@@ -302,6 +302,8 @@ PCSS（同一天，TPP，无头 Chrome 1280x720，暂停后单步）：太阳的
 
 分簇（同一天，TPP，`stride call lights '{"count":16}'` 摆 256 个彩色点光，`stride call decal '{"on":true,"count":16}'` 摆 256 个贴花）：开、关分簇（`stride call clusters`）各截一张图逐像素比，只有角色和它的影子不同（待机动画在动），墙、地面、所有的光和贴花都一样。不透明的那一遍：不分簇 4.393 ms，分簇 0.29 ms，分簇的计算 0.059 ms；场景里没有光和贴花时 0.09 ms（不分簇、不算）。帧时间都是 8.33 ms（120 Hz 的垂直同步）。
 
+光泽和各向异性（同一天，TPP，按默认上限开的页面，`stride call lights '{"count":3}'` 摆三个点光）：`stride call material '{"name":"GridMTx10","anisotropy":[0.8,0]}'` 地面的点光高光拉成长条，转 90° 以后条换了方向；`stride call material '{"name":"Wall","sheen":[1,1,1,0.4]}'` 墙在掠射角上亮一层（房子的侧面、远处的墙）。控制台没有着色器的报错。不透明的那一遍 0.145 ms，满屏的地面各向异性 0.163 ms，墙上光泽 0.146 ms。
+
 顺带发现场景树单击选不中（vue-tsx-pro 的拖动工具按下就捕获指针，click 落在树的根上），在 vue-tsx-pro 里修了，随 0.30.0 发布；升级以后在 TPP 的编辑器里真点场景树选中了 Wall_South，拖动换父实体也照常（撤销回去）。
 
 回归里遇到的两件事：

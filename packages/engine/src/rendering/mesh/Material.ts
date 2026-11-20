@@ -140,6 +140,32 @@ export interface MaterialDesc {
   readonly normalMap?: MaterialNormalMap;
   /** 次表面散射（Stride 的 MaterialSubsurfaceScatteringFeature），默认没有；没写的字段用 Stride 皮肤的默认值。 */
   readonly subsurfaceScattering?: Partial<MaterialSubsurfaceScattering>;
+  /** 光泽（布料、天鹅绒），默认没有。 */
+  readonly sheen?: MaterialSheen;
+  /** 各向异性（拉丝金属、头发），默认没有。 */
+  readonly anisotropy?: MaterialAnisotropy;
+}
+
+/**
+ * 光泽（Stride 没有；glTF 的 KHR_materials_sheen，着色照 Filament）：表面上一层朝外的细绒毛，掠射角上亮一圈，布料、天鹅绒、
+ * 桃子皮这一类。Charlie 分布加 Neubelt 可见性；底下那层按光泽反射走的能量变暗。
+ */
+export interface MaterialSheen {
+  /** 光泽的颜色（线性，0 到 1）；全 0 是没有。 */
+  readonly color: readonly [number, number, number];
+  /** 光泽的粗糙度（0 到 1，感知的）。 */
+  readonly roughness: number;
+}
+
+/**
+ * 各向异性（Stride 没有；glTF 的 KHR_materials_anisotropy，着色照 Filament）：高光沿一个方向拉长，拉丝金属、头发、光盘。
+ * 方向是网格的切线（没有切线的网格按贴图坐标的导数算），绕法线转 rotation。
+ */
+export interface MaterialAnisotropy {
+  /** -1 到 1：正的沿切线方向拉长，负的沿副切线方向，0 是没有。 */
+  readonly strength: number;
+  /** 方向绕法线转的角度（弧度）。 */
+  readonly rotation?: number;
 }
 
 /**
@@ -188,6 +214,9 @@ export class Material {
   readonly normalMap: Required<MaterialNormalMap> | undefined;
   /** 次表面散射；改它用 setSubsurfaceScattering。 */
   subsurfaceScattering: MaterialSubsurfaceScattering | undefined;
+  /** 光泽、各向异性；改它们用 setSheen、setAnisotropy。 */
+  sheen: MaterialSheen | undefined;
+  anisotropy: Required<MaterialAnisotropy> | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
   version = 0;
 
@@ -230,7 +259,21 @@ export class Material {
       invertY: normalMap.invertY ?? false,
     };
     this.subsurfaceScattering = desc.subsurfaceScattering && { ...SKIN_SUBSURFACE_SCATTERING, ...desc.subsurfaceScattering };
+    this.sheen = desc.sheen;
+    this.anisotropy = desc.anisotropy && { rotation: 0, ...desc.anisotropy };
     this.id = materials.add(this) as MaterialId;
+  }
+
+  /** 加上、改掉或去掉光泽，并让渲染特性重新上传。 */
+  setSheen(value: MaterialSheen | undefined): void {
+    this.sheen = value;
+    this.version++;
+  }
+
+  /** 加上、改掉或去掉各向异性，并让渲染特性重新上传。 */
+  setAnisotropy(value: MaterialAnisotropy | undefined): void {
+    this.anisotropy = value && { rotation: 0, ...value };
+    this.version++;
   }
 
   /** 加上、改掉或去掉次表面散射（没写的字段用 Stride 皮肤的默认值），并让渲染特性重新上传。 */

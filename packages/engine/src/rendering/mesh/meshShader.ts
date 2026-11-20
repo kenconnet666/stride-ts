@@ -90,7 +90,7 @@ struct LocalShadow {
 @group(0) @binding(3) var skySpecular: texture_cube<f32>;
 // DFG 查找表（DFG_LUT_WIDTH x DFG_LUT_HEIGHT，按行存）：存储缓冲不是贴图——片元阶段的采样贴图默认最多 16 张，
 // 材质的颜色树还要加，固定的绑定能省就省；双线性插值自己做（dfgLookup，和 clamp 的线性采样器一样）
-@group(0) @binding(4) var<storage, read> dfgLut: array<vec2f>;
+@group(0) @binding(4) var<storage, read> dfgLut: array<vec4f>;
 @group(0) @binding(5) var linearClamp: sampler;
 @group(0) @binding(6) var shadowAtlas: texture_depth_2d;
 @group(0) @binding(7) var shadowComparison: sampler_comparison;
@@ -205,8 +205,8 @@ fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface, cluster: i32) -> Decaled
   return r;
 }
 
-/** DFG 查找表在 uv 处的值：双线性插值，边缘按 clamp（同原来的线性采样器）。 */
-fn dfgLookup(uv: vec2f) -> vec2f {
+/** DFG 查找表在 uv 处的值（x、y：GGX 的 scale、bias，z：光泽的）：双线性插值，边缘按 clamp（同原来的线性采样器）。 */
+fn dfgLookup(uv: vec2f) -> vec4f {
   let size = vec2f(${DFG_LUT_WIDTH}.0, ${DFG_LUT_HEIGHT}.0);
   let t = clamp(uv * size - 0.5, vec2f(0.0), size - 1.0);
   let i0 = vec2u(floor(t));
@@ -313,6 +313,10 @@ struct Material {
   flags: vec4f,
   // 次表面散射：x 是槽位（RenderSystem.subsurfaceMaterials，0 是没有），y 是强度（透光度），z 是散射宽度
   subsurface: vec4f,
+  // 光泽（Material.sheen）：颜色、粗糙度（感知的）；颜色全 0 是没有
+  sheen: vec4f,
+  // 各向异性（Material.anisotropy）：强度（0 是没有）、方向转角的 cos、sin
+  anisotropy: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
@@ -845,8 +849,53 @@ fn transmittance(thickness: f32, n: vec3f, l: vec3f, lightColor: vec3f, albedo: 
   return skinTransmittanceProfile(-d * d) * saturate(0.3 + dot(l, -n)) * lightColor * albedo;
 }
 
-/** 一个像素上着色要用的表面属性。 */
-struct Surface { n: vec3f, v: vec3f, diffuse: vec3f, specular: vec3f, hasSpecular: bool, glass: bool, alphaR: f32, nDotV: f32 };
+/**
+ * 一个像素上着色要用的表面属性。光泽：颜色（全 0 是没有）、alpha、底下那层剩下的比例（直射光、环境光都乘）；各向异性：强度
+ * （0 是没有）、切线和副切线（世界，已经按材质转过）。
+ */
+struct Surface {
+  n: vec3f, v: vec3f, diffuse: vec3f, specular: vec3f, hasSpecular: bool, glass: bool, alphaR: f32, nDotV: f32,
+  sheenColor: vec3f, sheenAlpha: f32, sheenScaling: f32, anisotropy: f32, t: vec3f, b: vec3f,
+};
+
+/** 光泽的分布（Estevez、Kulla 2017 的 Charlie，Filament 的 D_Charlie）：alpha 是光泽粗糙度的平方。 */
+fn distributionCharlie(alpha: f32, nDotH: f32) -> f32 {
+  let invAlpha = 1.0 / alpha;
+  let sin2h = max(1.0 - nDotH * nDotH, 0.0078125);
+  return (2.0 + invAlpha) * pow(sin2h, invAlpha * 0.5) / (2.0 * PI);
+}
+
+/** 光泽的可见性（Neubelt、Pettineo 2013，Filament 的 V_Neubelt）：已经除以 4 · N·L · N·V。 */
+fn visibilityNeubelt(nDotV: f32, nDotL: f32) -> f32 {
+  return saturate(1.0 / (4.0 * (nDotL + nDotV - nDotL * nDotV)));
+}
+
+/** 各向异性的 GGX 分布（Filament 的 D_GGX_Anisotropic）：at、ab 是切线、副切线方向的 alpha。 */
+fn distributionGGXAnisotropic(at: f32, ab: f32, tDotH: f32, bDotH: f32, nDotH: f32) -> f32 {
+  let a2 = at * ab;
+  let d = vec3f(ab * tDotH, at * bDotH, a2 * nDotH);
+  let b2 = a2 / dot(d, d);
+  return a2 * b2 * b2 / PI;
+}
+
+/** 各向异性的相关 Smith 可见性（Heitz 2014，Filament 的 V_SmithGGXCorrelated_Anisotropic）：已经除以 4 · N·L · N·V。 */
+fn visibilityGGXAnisotropic(at: f32, ab: f32, tDotV: f32, bDotV: f32, tDotL: f32, bDotL: f32, nDotV: f32, nDotL: f32) -> f32 {
+  let lambdaV = nDotL * length(vec3f(at * tDotV, ab * bDotV, nDotV));
+  let lambdaL = nDotV * length(vec3f(at * tDotL, ab * bDotL, nDotL));
+  return saturate(0.5 / (lambdaV + lambdaL));
+}
+
+/**
+ * 没有顶点切线的网格的切线（Schüler 2006 的余切框架）：按世界坐标和贴图坐标在屏幕上的导数算 u 增大的方向。导数要在一致的
+ * 控制流里取（调用的地方只按材质的常量分支）。
+ */
+fn derivativeTangent(world: vec3f, uv: vec2f, n: vec3f) -> vec3f {
+  let dp1 = dpdx(world);
+  let dp2 = dpdy(world);
+  let duv1 = dpdx(uv);
+  let duv2 = dpdy(uv);
+  return cross(dp2, n) * duv1.x + cross(n, dp1) * duv2.x;
+}
 
 /** 薄玻璃（Stride 的 MaterialTransmittanceReflectanceStream）：按折射率、视角和玻璃的颜色算光透过去的比例和反射的比例。 */
 struct Glass { transmittance: vec3f, reflectance: vec3f };
@@ -889,13 +938,30 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> Lit {
   let nDotL = max(dot(s.n, l), 0.0001);
   let lightColorNdotL = lightColor * nDotL;
   var result = Lit(s.diffuse / PI * lightColorNdotL, vec3f(0.0));
+  let hasSheen = any(s.sheenColor > vec3f(0.0));
+  if (!s.hasSpecular && !hasSheen) {
+    return result;
+  }
+  let h = normalize(s.v + l);
+  let nDotH = saturate(dot(s.n, h));
   if (s.hasSpecular) {
-    let h = normalize(s.v + l);
-    let nDotH = saturate(dot(s.n, h));
     let lDotH = saturate(dot(l, h));
     // 玻璃的菲涅耳项就是它的反射比例（MaterialSpecularMicrofacetFresnelThinGlass），放在 s.specular 里
     let fresnel = select(s.specular + (1.0 - s.specular) * pow(1.0 - lDotH, 5.0), s.specular, s.glass);
-    result.specular = fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0 * lightColorNdotL;
+    if (s.anisotropy != 0.0) {
+      // 各向异性（Filament）：切线、副切线方向的粗糙度不同，可见性用相关的 Smith（已经含 1 / (4 · N·L · N·V)）
+      let at = max(s.alphaR * (1.0 + s.anisotropy), 0.001);
+      let ab = max(s.alphaR * (1.0 - s.anisotropy), 0.001);
+      let d = distributionGGXAnisotropic(at, ab, dot(s.t, h), dot(s.b, h), nDotH);
+      let visibility = visibilityGGXAnisotropic(at, ab, dot(s.t, s.v), dot(s.b, s.v), dot(s.t, l), dot(s.b, l), s.nDotV, nDotL);
+      result.specular = fresnel * d * visibility * lightColorNdotL;
+    } else {
+      result.specular = fresnel * visibilitySmithSchlickGGX(s.alphaR, nDotL, s.nDotV) * normalDistributionGGX(s.alphaR, nDotH) / 4.0 * lightColorNdotL;
+    }
+  }
+  if (hasSheen) {
+    // 光泽在底下那层的上面：底下的镜面按光泽反射走的能量变暗（漫反射在 s.diffuse 里已经乘过）
+    result.specular = result.specular * s.sheenScaling + s.sheenColor * distributionCharlie(s.sheenAlpha, nDotH) * visibilityNeubelt(s.nDotV, nDotL) * lightColorNdotL;
   }
   return result;
 }
@@ -1024,7 +1090,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   // 镜面颜色工作流默认能量守恒（Stride 的 IsEnergyConservative：MaterialSurfaceShadingDiffuseLambert 的漫反射乘 1 - 镜面）
   let conserved = select(vec3f(1.0), 1.0 - visibleSpecular, workflow == 3u);
   let litDiffuse = select(albedo, albedo * (1.0 - metalness), isMetalness) * material.surface.z * material.blend.rgb * material.blend.a * conserved;
-  let diffuse = select(litDiffuse, vec3f(0.0), (material.specular & 8u) != 0u);
+  let baseDiffuse = select(litDiffuse, vec3f(0.0), (material.specular & 8u) != 0u);
   // 环境光遮蔽：环境光全乘，直射光乘 lerp(1, ao, 直射光受影响的程度)；材质层可以把这两个数换成自己的
   var occlusionBase = material.occlusionMask.x;
   if ((u32(material.flags.w) & 4u) != 0u) {
@@ -1039,6 +1105,36 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   let alphaR = max(roughness * roughness, 0.001);
   let nDotV = max(dot(n, v), 0.0001);
 
+  // 扩展材质（Stride 没有）：光泽在底下那层的上面，底下那层按光泽反射走的能量（查找表的 z）变暗
+  let sheenColor = material.sheen.rgb;
+  let sheenRoughness = clamp(material.sheen.w, 0.07, 1.0);
+  var sheenDfg = 0.0;
+  if (any(sheenColor > vec3f(0.0))) {
+    sheenDfg = dfgLookup(vec2f(1.0 - sheenRoughness, nDotV)).z;
+  }
+  let sheenScaling = 1.0 - max(sheenColor.r, max(sheenColor.g, sheenColor.b)) * sheenDfg;
+  let diffuse = baseDiffuse * sheenScaling;
+  // 各向异性的方向：顶点切线（没有时按贴图坐标的导数算），转材质给的角度。导数在按材质常量的分支里取（一致的控制流）
+  let anisotropy = clamp(material.anisotropy.x, -0.99, 0.99);
+  var anisotropicT = vec3f(1.0, 0.0, 0.0);
+  var anisotropicB = vec3f(0.0, 0.0, 1.0);
+  if (anisotropy != 0.0) {
+    let derived = derivativeTangent(in.world, in.uv, n);
+    let vertexTangent = dot(in.tangent.xyz, in.tangent.xyz) > 1e-12;
+    var t = select(derived, in.tangent.xyz, vertexTangent);
+    t = normalize(t - n * dot(n, t) + vec3f(1e-6, 0.0, 0.0));
+    let b = cross(n, t) * select(1.0, in.tangent.w, vertexTangent && in.tangent.w != 0.0);
+    anisotropicT = normalize(t * material.anisotropy.y + b * material.anisotropy.z);
+    anisotropicB = normalize(cross(n, anisotropicT));
+  }
+  // 环境光的反射方向：各向异性时按 Filament 把法线往"沿拉长方向的法线"弯过去
+  var reflection = reflect(-v, n);
+  if (anisotropy != 0.0) {
+    let direction = select(anisotropicT, anisotropicB, anisotropy >= 0.0);
+    let bentNormal = normalize(mix(n, cross(cross(direction, v), direction), abs(anisotropy)));
+    reflection = reflect(-v, bentNormal);
+  }
+
   // 直射光（DirectLightGroup.PrepareDirectLight：光色 · 衰减 · 阴影 · N·L），逐个光源相加
   // 玻璃：镜面的菲涅耳项和环境光的镜面系数都换成它的反射比例（Stride 的 FresnelThinGlass、EnvironmentThinGlass）
   let isGlass = material.flags.z > 0.0;
@@ -1047,7 +1143,8 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   if (isGlass) {
     glass = thinGlass(base.rgb, nDotV, material.flags.z);
   }
-  let surface = Surface(n, v, diffuse, select(specular, glass.reflectance, isGlass), hasSpecular, isGlass, alphaR, nDotV);
+  let surface = Surface(n, v, diffuse, select(specular, glass.reflectance, isGlass), hasSpecular, isGlass, alphaR, nDotV,
+    sheenColor, sheenRoughness * sheenRoughness, sheenScaling, anisotropy, anisotropicT, anisotropicB);
   var direct = Lit(vec3f(0.0), vec3f(0.0));
   // 次表面散射的材质（有槽位）算透射
   let scatters = material.subsurface.x > 0.0;
@@ -1104,12 +1201,13 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   var environment = vec3f(0.0);
   if (hasSpecular) {
     let dfg = dfgLookup(vec2f(1.0 - sqrt(alphaR), nDotV));
-    environmentSpecular = select(specular * dfg.x + dfg.y, glass.reflectance, isGlass);
+    // 光泽：底下那层乘剩下的比例，加上光泽自己的（环境光的方向、粗糙度按底下那层的取，Filament 另按光泽粗糙度取一次）
+    environmentSpecular = select((specular * dfg.x + dfg.y) * sheenScaling + sheenColor * sheenDfg, glass.reflectance, isGlass);
   }
   // 反射探针盖住的地方用它的镜面反射，盖不住的部分（1 - a）才用环境光和天空盒的
   var probe = vec4f(0.0);
   if (hasSpecular && view.locals.w > 0.0) {
-    probe = probeSpecular(in.world, reflect(-v, n), sqrt(alphaR));
+    probe = probeSpecular(in.world, reflection, sqrt(alphaR));
     environment = environmentSpecular * probe.rgb * ao;
   }
   if (hasAmbient || hasSky) {
@@ -1119,8 +1217,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
       let skyIntensity = view.sky.x * ao;
       scattered += diffuse * evaluateSH(skyDirection(n)) * skyIntensity;
       if (hasSpecular && probe.a < 1.0) {
-        let reflection = skyDirection(reflect(-v, n));
-        environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity * (1.0 - probe.a);
+        environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, skyDirection(reflection), sqrt(alphaR) * view.sky.y).rgb * skyIntensity * (1.0 - probe.a);
       }
     }
   }
@@ -1274,7 +1371,34 @@ export const DFG_LUT_SHADER = /* wgsl */ `
 ${BRDF}
 
 const SAMPLES = 1024u;
-@group(0) @binding(0) var<storage, read_write> lut: array<vec2f>;
+@group(0) @binding(0) var<storage, read_write> lut: array<vec4f>;
+
+/**
+ * 光泽的 DFG（Filament 的 DFV_Charlie_Uniform）：Charlie 分布乘 Ashikhmin 的可见性，半球上均匀采样（Charlie 的峰不尖，重要性
+ * 采样没必要）。alpha 是光泽粗糙度的平方。
+ */
+fn sheenDfg(nDotV: f32, alpha: f32) -> f32 {
+  let v = vec3f(sqrt(1.0 - nDotV * nDotV), 0.0, nDotV);
+  var sum = 0.0;
+  for (var i = 0u; i < SAMPLES; i++) {
+    let xi = vec2f(f32(reverseBits(i)) * 2.3283064365386963e-10, (f32(i) + 0.5) / f32(SAMPLES));
+    let phi = 2.0 * PI * xi.x;
+    let cosTheta = 1.0 - xi.y;
+    let sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+    let h = vec3f(sinTheta * cos(phi), sinTheta * sin(phi), cosTheta);
+    let vDotH = saturate(dot(v, h));
+    let l = 2.0 * dot(v, h) * h - v;
+    let nDotL = saturate(l.z);
+    if (nDotL > 0.0) {
+      let visibility = 1.0 / (4.0 * (nDotL + nDotV - nDotL * nDotV));
+      let invAlpha = 1.0 / alpha;
+      let sin2h = max(1.0 - h.z * h.z, 0.0078125);
+      let d = (2.0 + invAlpha) * pow(sin2h, invAlpha * 0.5) / (2.0 * PI);
+      sum += visibility * d * nDotL * vDotH;
+    }
+  }
+  return sum * 4.0 * 2.0 * PI / f32(SAMPLES);
+}
 
 @compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) id: vec3u) {
   if (id.x >= ${DFG_LUT_WIDTH}u || id.y >= ${DFG_LUT_HEIGHT}u) {
@@ -1308,5 +1432,5 @@ const SAMPLES = 1024u;
       bias += fc * visibility;
     }
   }
-  lut[id.y * ${DFG_LUT_WIDTH}u + id.x] = vec2f(scale / f32(SAMPLES), bias / f32(SAMPLES));
+  lut[id.y * ${DFG_LUT_WIDTH}u + id.x] = vec4f(scale / f32(SAMPLES), bias / f32(SAMPLES), sheenDfg(nDotV, alphaR), 0.0);
 }`;

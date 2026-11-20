@@ -70,7 +70,7 @@ const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
 const LOCAL_SHADOW_FLOATS = 104;
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
-const MATERIAL_BYTES = 240;
+const MATERIAL_BYTES = 272;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 /** 网格参数的 uniform：positionOffset、positionScale、uvTransform 各一个 vec4，再加 flags，补齐到 16 字节。 */
@@ -1127,6 +1127,9 @@ class Gpu {
       floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, material.glass?.refractiveIndex ?? 0, textures], 52);
       const scattering = material.subsurfaceScattering;
       floats.set([this.#subsurface.slotOf(material), scattering?.translucency ?? 0, scattering?.width ?? 0, 0], 56);
+      const { sheen, anisotropy } = material;
+      floats.set(sheen ? [...sheen.color, sheen.roughness] : [0, 0, 0, 0], 60);
+      floats.set(anisotropy ? [anisotropy.strength, Math.cos(anisotropy.rotation), Math.sin(anisotropy.rotation), 0] : [0, 1, 0, 0], 64);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});
@@ -1232,7 +1235,7 @@ const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 
 
 /** 在 GPU 上积分出 DFG 查找表（一次计算，写进存储缓冲）。 */
 function createDfgLut(device: GPUDevice): GPUBuffer {
-  const buffer = device.createBuffer({ label: 'DFG LUT', size: DFG_LUT_WIDTH * DFG_LUT_HEIGHT * 8, usage: GPUBufferUsage.STORAGE });
+  const buffer = device.createBuffer({ label: 'DFG LUT', size: DFG_LUT_WIDTH * DFG_LUT_HEIGHT * 16, usage: GPUBufferUsage.STORAGE });
   const pipeline = device.createComputePipeline({
     label: 'DFG LUT', layout: 'auto',
     compute: { module: device.createShaderModule({ label: 'DFG LUT', code: DFG_LUT_SHADER }), entryPoint: 'main' },

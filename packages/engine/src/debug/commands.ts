@@ -232,6 +232,23 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     }
     return { decals: tests().length, drawn: game.renderSystem.decals.count };
   });
+  debug.command('material', 'Materials by name (part of it; without name lists them): extended shading. args: name; sheen [r, g, b, roughness] (null removes); anisotropy [strength, rotation in degrees] (null removes).', (args) => {
+    const all: Material[] = [];
+    for (let id = 1; Material.byId(id); id++) all.push(Material.byId(id)!);
+    const name = typeof args['name'] === 'string' ? args['name'] : undefined;
+    const matched = name === undefined ? all : all.filter((material) => material.name.includes(name));
+    if (name !== undefined) {
+      for (const material of matched) {
+        const sheen = args['sheen'] as number[] | null | undefined;
+        if (sheen === null) material.setSheen(undefined);
+        else if (Array.isArray(sheen)) material.setSheen({ color: [sheen[0]!, sheen[1]!, sheen[2]!], roughness: sheen[3] ?? 0.5 });
+        const anisotropy = args['anisotropy'] as number[] | null | undefined;
+        if (anisotropy === null) material.setAnisotropy(undefined);
+        else if (Array.isArray(anisotropy)) material.setAnisotropy({ strength: anisotropy[0]!, rotation: ((anisotropy[1] ?? 0) * Math.PI) / 180 });
+      }
+    }
+    return matched.map((material) => ({ id: material.id, name: material.name, metalness: material.metalness, roughness: material.roughness, sheen: material.sheen, anisotropy: material.anisotropy }));
+  });
   debug.command('lights', 'Test point lights: an n x n grid of colored point lights 1 m above the ground, spacing m apart, around at [x, z] (default: below the camera). args: count (n; 0 removes them), radius (m), intensity, spacing (m), at.', (args) => {
     for (const entity of game.entities.ids().map((id) => game.entities.entity(id)).filter((e) => e.name === 'Test light')) entity.destroy();
     const n = Math.max(0, Math.round(Number(args['count'] ?? 4)));

@@ -92,7 +92,10 @@ async function allowContent(repo: string, folder: string): Promise<void> {
   const lines = text.split(/\r?\n/);
   const at = lines.indexOf(ignored);
   if (at < 0) throw new Error(`stride-editor new: ${file} has no '${ignored}' line to add the exception after`);
-  lines.splice(at + 1, 0, `${line.replace(/^!/, '# 手搭的工程，内容要提交\n!')}`);
+  // 例外们放在同一行注释下面
+  const comment = '# 手搭的工程，内容要提交';
+  if (lines[at + 1] === comment) lines.splice(at + 2, 0, line);
+  else lines.splice(at + 1, 0, comment, line);
   await writeFile(file, lines.join('\n'));
 }
 

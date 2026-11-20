@@ -1,0 +1,261 @@
+{
+ "name": "MainScene",
+ "compositor": {
+  "clearColor": [
+   0.1,
+   0.1,
+   0.12,
+   1
+  ],
+  "postEffects": {
+   "brightFilter": true,
+   "bloom": true,
+   "lightStreak": false,
+   "lensFlare": false,
+   "toneMap": true,
+   "antialiasing": true
+  },
+  "transparent": true
+ },
+ "entities": [
+  {
+   "id": "f3c92827-23b0-4706-a95e-572c27875814",
+   "name": "Camera",
+   "parent": null,
+   "position": [
+    0,
+    4,
+    10
+   ],
+   "rotation": [
+    -0.104528,
+    0,
+    0,
+    0.994522
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.1,
+     "farClipPlane": 1000
+    }
+   }
+  },
+  {
+   "id": "45837ae1-a26f-4479-8283-321473318a5b",
+   "name": "Sun",
+   "parent": null,
+   "position": [
+    0,
+    10,
+    0
+   ],
+   "rotation": [
+    -0.408218,
+    -0.23457,
+    -0.109382,
+    0.875426
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "directional",
+     "color": [
+      1,
+      0.98,
+      0.94
+     ],
+     "intensity": 8,
+     "shadow": {
+      "size": "large",
+      "filter": "pcf5x5",
+      "cascadeCount": "four",
+      "depthBias": 0.0015,
+      "normalOffsetScale": 10,
+      "stabilization": "projectionSnapping",
+      "pssmFactor": 0.5,
+      "depthRange": "automatic",
+      "minDistance": 0,
+      "maxDistance": 60,
+      "blendCascades": true
+     }
+    }
+   }
+  },
+  {
+   "id": "54eecb29-d013-4960-a15a-c5b733019f42",
+   "name": "Sky",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "skyAtmosphere": {
+     "sun": "45837ae1-a26f-4479-8283-321473318a5b"
+    }
+   }
+  },
+  {
+   "id": "dfbdf007-3abc-4e1b-86f2-0ba58d7ea02c",
+   "name": "Ground",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Ground",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1000,
+        1,
+        1000
+       ],
+       "position": [
+        0,
+        -0.5,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  },
+  {
+   "id": "6d448502-8d19-4823-8463-f901a8da8a68",
+   "name": "Robot",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Characters/RobotExpressive",
+     "materials": []
+    },
+    "animation": {
+     "animations": [
+      {
+       "name": "Dance",
+       "clip": "Characters/RobotExpressive/Animations/Dance"
+      },
+      {
+       "name": "Death",
+       "clip": "Characters/RobotExpressive/Animations/Death"
+      },
+      {
+       "name": "Idle",
+       "clip": "Characters/RobotExpressive/Animations/Idle"
+      },
+      {
+       "name": "Jump",
+       "clip": "Characters/RobotExpressive/Animations/Jump"
+      },
+      {
+       "name": "No",
+       "clip": "Characters/RobotExpressive/Animations/No"
+      },
+      {
+       "name": "Punch",
+       "clip": "Characters/RobotExpressive/Animations/Punch"
+      },
+      {
+       "name": "Running",
+       "clip": "Characters/RobotExpressive/Animations/Running"
+      },
+      {
+       "name": "Sitting",
+       "clip": "Characters/RobotExpressive/Animations/Sitting"
+      },
+      {
+       "name": "Standing",
+       "clip": "Characters/RobotExpressive/Animations/Standing"
+      },
+      {
+       "name": "ThumbsUp",
+       "clip": "Characters/RobotExpressive/Animations/ThumbsUp"
+      },
+      {
+       "name": "Walking",
+       "clip": "Characters/RobotExpressive/Animations/Walking"
+      },
+      {
+       "name": "WalkJump",
+       "clip": "Characters/RobotExpressive/Animations/WalkJump"
+      },
+      {
+       "name": "Wave",
+       "clip": "Characters/RobotExpressive/Animations/Wave"
+      },
+      {
+       "name": "Yes",
+       "clip": "Characters/RobotExpressive/Animations/Yes"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

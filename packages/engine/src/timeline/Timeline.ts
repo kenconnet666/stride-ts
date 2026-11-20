@@ -1,13 +1,14 @@
 /**
  * 时间轴（content/assetFormat.ts 的 TimelineFile）在运行时：某个时刻各条轨道是什么样。求值是无状态的——给一个时刻就能把
- * 场景摆成那一刻的样子（属性、相机、字幕），所以编辑器里拖时间、成片逐帧出、游戏里按帧播放都走同一个 `evaluate`；
- * 声音、事件、动画剪辑这些"经过某个时刻才发生"的由播放的一方按前后两个时刻比较（`crossed`）。
+ * 场景摆成那一刻的样子（属性、相机、字幕、角色在放哪个动画剪辑的第几秒），所以编辑器里拖时间、成片逐帧出、游戏里按帧播放
+ * 都走同一个 `evaluate`；声音、事件这些"经过某个时刻才发生"的由播放的一方按前后两个时刻比较（`crossed`）。
  *
  *   const timeline = await game.content.loadTimeline('Cutscenes/Intro');
  *   timeline.evaluate(2.5, binding);   // binding 把文件里的实体 id、组件名对上这个场景
  */
 import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
+import { AnimationComponent } from '../animation/AnimationComponent';
 import { evaluateCurve, writeCurveValue, type PropertyCurve } from '../animation/curves';
 import type { TimelineFile, TimelineTrackFile } from '../content/format';
 import type { Sound } from '../audio/Sound';
@@ -74,12 +75,17 @@ export class Timeline {
         case 'subtitle':
           for (const cue of track.cues) if (cue.start <= time && time < cue.end) subtitles.push(cue.text);
           break;
+        case 'animation': {
+          const component = binding.entity(track.entity)?.get(AnimationComponent);
+          if (component) poseAnimation(component, animationAt(track, time), this.name);
+          break;
+        }
       }
     }
     return { camera, subtitle: subtitles.join('\n') };
   }
 
-  /** 从 from 到 to（不含 from，含 to）之间开始的声音、事件、动画剪辑，按时刻排好。拖回去（to < from）时没有。 */
+  /** 从 from 到 to（不含 from，含 to）之间开始的声音、事件，按时刻排好。拖回去（to < from）时没有。 */
   crossed(from: number, to: number): TimelineCue[] {
     if (!(to > from)) return [];
     const cues: TimelineCue[] = [];
@@ -87,9 +93,6 @@ export class Timeline {
     for (const track of this.file.tracks) {
       if (track.type === 'sound') for (const clip of track.clips) if (inside(clip.start)) cues.push({ type: 'sound', time: clip.start, sound: clip.sound, volume: clip.volume ?? 1 });
       if (track.type === 'event') for (const event of track.events) if (inside(event.time)) cues.push({ type: 'event', time: event.time, name: event.name });
-      if (track.type === 'animation') {
-        for (const clip of track.clips) if (inside(clip.start)) cues.push({ type: 'animation', time: clip.start, entity: track.entity, clip: clip.clip, speed: clip.speed ?? 1 });
-      }
     }
     return cues.sort((a, b) => a.time - b.time);
   }
@@ -107,8 +110,54 @@ export class Timeline {
 /** 播放经过的一件事。 */
 export type TimelineCue =
   | { readonly type: 'sound'; readonly time: number; readonly sound: string; readonly volume: number }
-  | { readonly type: 'event'; readonly time: number; readonly name: string }
-  | { readonly type: 'animation'; readonly time: number; readonly entity: string; readonly clip: string; readonly speed: number };
+  | { readonly type: 'event'; readonly time: number; readonly name: string };
+
+/** 动画轨道在某一刻放的剪辑：名字、剪辑里的第几秒、权重（交叉淡化时两个）。 */
+interface AnimationSample {
+  readonly name: string;
+  readonly time: number;
+  readonly weight: number;
+}
+
+/** 动画轨道在 time 秒：最近开始的片段（之前的停在第一个片段的第一帧）；在它的过渡时间里，前一个片段接着放、权重渐少。 */
+export function animationAt(track: Track<'animation'>, time: number): AnimationSample[] {
+  const clips = [...track.clips].sort((a, b) => a.start - b.start);
+  if (clips.length === 0) return [];
+  let index = 0;
+  for (let i = 0; i < clips.length; i++) if (clips[i]!.start <= time) index = i;
+  const clip = clips[index]!;
+  const local = (c: (typeof clips)[number]) => Math.max(0, time - c.start) * (c.speed ?? 1);
+  const current = { name: clip.clip, time: local(clip), weight: 1 };
+  const blend = clip.blend ?? 0, into = time - clip.start;
+  if (index === 0 || blend <= 0 || into >= blend || into < 0) return [current];
+  const t = into / blend;
+  // 平滑的过渡（smoothstep），开头结尾不突变
+  const weight = t * t * (3 - 2 * t);
+  const previous = clips[index - 1]!;
+  return [{ name: previous.clip, time: local(previous), weight: 1 - weight }, { ...current, weight }];
+}
+
+/**
+ * 把动画组件摆成这几个剪辑在这几个时刻（时间由时间轴给，动画系统不推进它们）。正在放的和要放的名字一样时只改时刻和权重，
+ * 不一样时换掉。剪辑不在组件的 animations 里时报错（带时间轴的名字）。
+ */
+function poseAnimation(component: AnimationComponent, samples: readonly AnimationSample[], timeline: string): void {
+  const playing = component.playingAnimations;
+  if (playing.length !== samples.length || samples.some((sample, i) => playing[i]!.name !== sample.name)) {
+    component.stopAll();
+    for (const sample of samples) {
+      if (!component.animations.has(sample.name)) throw new Error(`timeline ${timeline}: the AnimationComponent has no clip named '${sample.name}' (it has: ${[...component.animations.keys()].join(', ') || 'none'})`);
+      component.blend(sample.name, sample.weight, 0);
+    }
+  }
+  samples.forEach((sample, i) => {
+    const animation = component.playingAnimations[i]!;
+    animation.enabled = false;
+    animation.weight = sample.weight;
+    const duration = animation.clip.duration;
+    animation.currentTime = animation.repeatMode === 'loopInfinite' && duration > 0 ? sample.time % duration : Math.min(sample.time, duration);
+  });
+}
 
 /** 属性轨道换成动画模块的属性曲线（求值、写回和动画剪辑里的曲线共用；编辑器的曲线视图按它取样）。timeline 用在报错里。 */
 export function timelineCurve(timeline: string, track: Track<'property'>, component: ComponentType<any, any>): PropertyCurve {

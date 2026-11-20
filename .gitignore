@@ -9,6 +9,7 @@ dist/
 # 从 Stride 仓库导入的内容（各个 app 的 pnpm import:stride）
 /apps/*/public/content/
 # 手搭的工程，内容要提交
+!/apps/short-film/public/content/
 !/apps/collect-dodge/public/content/
 
 # 按内容目录生成的资源句柄（@stride-ts/editor：开发服务器启动时、`stride-editor assets-types`）

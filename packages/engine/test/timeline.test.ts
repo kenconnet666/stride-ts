@@ -3,7 +3,7 @@ import type { TimelineFile } from '../src/content/format';
 import type { Entity } from '../src/engine/Entity';
 import { Light } from '../src/rendering/components';
 import { Transform } from '../src/engine/transform';
-import { Timeline, type TimelineBinding } from '../src/timeline/Timeline';
+import { animationAt, Timeline, type TimelineBinding } from '../src/timeline/Timeline';
 
 /** 假的实体：get 返回一个普通对象当组件的视图，写进去的值能读出来。 */
 function fakeEntity(name: string, views: Map<unknown, Record<string, unknown>>): Entity {
@@ -76,13 +76,24 @@ describe('时间轴', () => {
     expect(at([{ time: 0, value: 0 }, { time: 2, value: 4 }], 0.5)).toBeCloseTo(1, 6);
   });
 
-  test('经过的声音、事件、动画剪辑：不含起点、含终点，按时刻排；往回拖没有', () => {
+  test('经过的声音、事件：不含起点、含终点，按时刻排；往回拖没有', () => {
     const timeline = new Timeline(FILE);
-    expect(timeline.crossed(0, 2).map((cue) => `${cue.type}@${cue.time}`)).toEqual(['animation@0.5', 'sound@1', 'event@2']);
+    expect(timeline.crossed(0, 2).map((cue) => `${cue.type}@${cue.time}`)).toEqual(['sound@1', 'event@2']);
     expect(timeline.crossed(1, 3)).toEqual([
       { type: 'event', time: 2, name: 'door' },
       { type: 'sound', time: 3, sound: 'Sounds/Hit', volume: 0.5 },
     ]);
     expect(timeline.crossed(3, 1)).toEqual([]);
+  });
+
+  test('动画轨道的某一刻：最近开始的片段按速度算剪辑里的时刻；第一个之前停在第一帧；过渡时间里前一个片段的权重平滑地减到 0', () => {
+    const track = { type: 'animation' as const, entity: 'hero', clips: [{ start: 4, clip: 'Wave', blend: 1 }, { start: 1, clip: 'Idle', speed: 2 }] };
+    expect(animationAt(track, 0)).toEqual([{ name: 'Idle', time: 0, weight: 1 }]);
+    expect(animationAt(track, 2)).toEqual([{ name: 'Idle', time: 2, weight: 1 }]);
+    const middle = animationAt(track, 4.5);
+    expect(middle.map(({ name, time }) => [name, time])).toEqual([['Idle', 7], ['Wave', 0.5]]);
+    expect(middle[0]!.weight).toBeCloseTo(0.5, 6);
+    expect(middle[1]!.weight).toBeCloseTo(0.5, 6);
+    expect(animationAt(track, 5)).toEqual([{ name: 'Wave', time: 1, weight: 1 }]);
   });
 });

@@ -31,7 +31,7 @@ const zhCN: FieldMessages = {
     albedoMix: '颜色的比例', alphaCutoff: '透明裁剪阈值', ambient: '环境光', ambientOcclusion: '环境光遮蔽', angleInner: '内锥角', angleOuter: '外锥角',
     angularDamping: '角阻尼', animations: '动画剪辑', anisotropy: '各向异性', antialiasing: '抗锯齿', atmosphereHeight: '大气层厚度', backFace: '背面',
     baseColor: '基础色', baseColorOperator: '基础色的混合', baseColorTexture: '基础色贴图', baseHeight: '基准高度', blendCascades: '级联之间过渡',
-    blendDistance: '过渡距离', blendMode: '混合模式', bloom: '泛光', bodyA: '物体 A', bodyB: '物体 B', bottom: '底部高度', boxProjection: '盒投影',
+    blendDistance: '过渡距离', blendMode: '混合模式', blend: '过渡', bloom: '泛光', bodyA: '物体 A', bodyB: '物体 B', bottom: '底部高度', boxProjection: '盒投影',
     brightFilter: '亮部提取', build: '生成设置', camera: '相机', cascadeCount: '级联数', cavity: '缝隙遮蔽', celShading: '卡通着色', cellHeight: '体素高度',
     cellSize: '体素大小', center: '中心', centerFromMiddle: '从中间算中心', clearCoat: '清漆层', clearColor: '清屏色', clip: '剪辑', cloudCoverage: '云量',
     cloudType: '云的类型', collisionMasks: '碰撞遮罩', color: '颜色', coverage: '覆盖率', dayLength: '一天的长度', dayOfYear: '一年中的第几天', density: '密度',
@@ -118,6 +118,7 @@ const zhCN: FieldMessages = {
     'motion blur: 180 exposes half a frame': '运动模糊：180 是曝光半帧',
     'blur by aperture, focal length and focus distance (needs post effects)': '按光圈、焦距、对焦距离模糊（要开后处理）',
     'physical camera: focal length, aperture, focus, shutter, exposure (main view only)': '物理相机：焦距、光圈、对焦、快门、曝光（只对主画面）',
+    'seconds of crossfade from the previous clip': '从前一个片段过渡过来的秒数（交叉淡化）',
     'name of the clip in the AnimationComponent': 'AnimationComponent 里剪辑的名字',
   },
 };

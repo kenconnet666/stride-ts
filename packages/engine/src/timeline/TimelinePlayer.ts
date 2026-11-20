@@ -1,12 +1,11 @@
 /**
- * 在游戏里放时间轴（过场）：每帧把时间往前走，场景摆成那一刻的样子（属性、主画面的相机、字幕），经过的声音、动画剪辑、
+ * 在游戏里放时间轴（过场）：每帧把时间往前走，场景摆成那一刻的样子（属性、主画面的相机、字幕、动画剪辑），经过的声音、
  * 事件在经过时触发。场景里加在一个实体上（实体文件里的 id 按这个实体所在的场景找）：
  *
  *   scripts: [{ type: 'TimelinePlayer', props: { timeline: { $asset: 'Cutscenes/Intro', kind: 'timeline' }, subtitleFont: { … } } }]
  *
  * 游戏的脚本接事件：`this.receive(player.events)`（值是事件的名字），或者 `await player.finished()`。
  */
-import { AnimationComponent } from '../animation/AnimationComponent';
 import { prop, type EntityId } from '../data/prop';
 import type { Entity } from '../engine/Entity';
 import { EventKey } from '../engine/events';
@@ -132,9 +131,8 @@ export class TimelinePlayer extends SyncScript.props('TimelinePlayer', {
     if (this.#subtitleText) this.#subtitleText.text = state.subtitle;
   }
 
-  /** from 到 to 之间开始的声音、动画剪辑、事件。 */
+  /** from 到 to 之间开始的声音、事件。 */
   #fire(from: number, to: number): void {
-    const binding = this.#binding();
     for (const cue of this.timeline.crossed(from, to)) {
       if (cue.type === 'sound') {
         const instance = this.timeline.sounds.get(cue.sound)?.createInstance();
@@ -142,9 +140,6 @@ export class TimelinePlayer extends SyncScript.props('TimelinePlayer', {
         instance.volume = cue.volume;
         instance.play();
         this.#sounds.push(instance);
-      } else if (cue.type === 'animation') {
-        const playing = binding.entity(cue.entity)?.get(AnimationComponent)?.play(cue.clip);
-        if (playing) playing.timeFactor = cue.speed;
       } else {
         this.events.broadcast(cue.name);
       }

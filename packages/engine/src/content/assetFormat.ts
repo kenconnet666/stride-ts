@@ -480,8 +480,11 @@ export type TimelineTrackFile =
   }
   /** 相机切换：每个切点以后主画面用哪台相机（场景里带 Camera 的实体）。 */
   | { readonly type: 'camera'; readonly cuts: readonly { readonly time: number; readonly camera: string }[] }
-  /** 动画剪辑：实体的 AnimationComponent 从 start 起放这个剪辑（剪辑在组件的 animations 里的名字）。 */
-  | { readonly type: 'animation'; readonly entity: string; readonly clips: readonly { readonly start: number; readonly clip: string; readonly speed?: number }[] }
+  /**
+   * 动画剪辑：实体的 AnimationComponent 从 start 起放这个剪辑（剪辑在组件的 animations 里的名字），放到下一个片段开始；第一个片段
+   * 之前停在它的第一帧。speed 没写是 1；blend 是从前一个片段过渡过来的秒数（交叉淡化），没写是直接切。
+   */
+  | { readonly type: 'animation'; readonly entity: string; readonly clips: readonly { readonly start: number; readonly clip: string; readonly speed?: number; readonly blend?: number }[] }
   /** 声音：从 start 起放（声音资源的内容路径），volume 没写是 1。 */
   | { readonly type: 'sound'; readonly clips: readonly { readonly start: number; readonly sound: string; readonly volume?: number }[] }
   /** 字幕：start 到 end 之间显示 text。 */

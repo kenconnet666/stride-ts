@@ -10,7 +10,7 @@
  *   补到最大的权重上，和仍是 1）。
  * - 形变目标（只有带形变的网格有）：不进顶点，单独存成稀疏的 float 增量（MeshMorph），跟着顶点一起重排。
  */
-import type { StrideTools } from '@stride-ts/native/tools';
+import type { MeshData, StrideTools } from '@stride-ts/native/tools';
 import { packMeshMorph, TANGENT_FLOATS, vertexLayoutOffsets, VERTEX_FLOATS, type Dequantize, type MeshMorph, type MeshSkin, type ModelMeshData, type MorphDelta, type VertexLayout } from '@stride-ts/engine/content-format';
 
 /** 16 位量化精度 0.1 mm 对应的最长包围盒边长（米）。 */
@@ -281,4 +281,18 @@ export function octEncode(x: number, y: number, z: number): [number, number] {
     u = flippedU;
   }
   return [u, v];
+}
+
+/** 网格的形变目标（MeshData.morphTargets）：按名字合进模型的目标表 morphTargets（新名字加在后面），位置增量乘导入的缩放。 */
+export function sourceMorph(data: MeshData, scale: number, morphTargets: string[]): SourceMorph | undefined {
+  if (data.morphTargets.length === 0) return undefined;
+  const slots = data.morphTargets.map(({ name }) => {
+    const found = morphTargets.indexOf(name);
+    return found >= 0 ? found : morphTargets.push(name) - 1;
+  });
+  return {
+    slots,
+    positions: data.morphTargets.map(({ positions }) => (scale === 1 ? positions : positions.map((value) => value * scale))),
+    normals: data.morphTargets.map(({ normals }) => normals),
+  };
 }

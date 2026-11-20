@@ -131,7 +131,7 @@ export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkele
 }
 
 /** 烘焙出的形变权重曲线按目标名存；动画没碰的目标没有曲线，各网格同名的目标只留第一条。 */
-function morphWeightCurves(baked: BakedAnimation, scene: Scene): MorphWeightCurve[] {
+export function morphWeightCurves(baked: BakedAnimation, scene: Scene): MorphWeightCurve[] {
   const names = new Map<number, string[]>();
   const nameOf = (mesh: number, target: number) => {
     let list = names.get(mesh);

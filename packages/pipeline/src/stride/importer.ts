@@ -7,7 +7,7 @@
 import { convertInstances, type ConvertedPrefab, type StrideBase } from './instances.ts';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { MeshData, StrideTools } from '@stride-ts/native/tools';
+import type { StrideTools } from '@stride-ts/native/tools';
 import {
   EXTENSIONS,
   encodeModel,
@@ -44,7 +44,7 @@ import {
   type Vec3Tuple,
   parseCollisionMask,
 } from '@stride-ts/engine/content-format';
-import { addTangents, compressMeshes, meshMorph, type SourceMesh, type SourceMorph } from '../mesh.ts';
+import { addTangents, compressMeshes, meshMorph, sourceMorph, type SourceMesh } from '../mesh.ts';
 import { importCompositor, renderGroupOf } from './compositor.ts';
 import { FontImporter } from './fonts.ts';
 import { MaterialImporter, type ImportedTexture } from './materials.ts';
@@ -1181,20 +1181,6 @@ function cameraOf(component: StrideObject, slots: ReadonlyMap<string, number>): 
 }
 
 /** 导入的网格变成 FLOAT_LAYOUT 的交错顶点（位置减去轴心再乘缩放，同 Stride 的 PivotPosition、ScaleImport），没有的属性填 0。 */
-/** 网格的形变目标：位置增量乘导入缩放（pivot 是平移，不影响增量），目标按名字放进模型的目标表（没有的加在后面）。 */
-function sourceMorph(data: MeshData, scale: number, morphTargets: string[]): SourceMorph | undefined {
-  if (data.morphTargets.length === 0) return undefined;
-  const slots = data.morphTargets.map(({ name }) => {
-    const found = morphTargets.indexOf(name);
-    return found >= 0 ? found : morphTargets.push(name) - 1;
-  });
-  return {
-    slots,
-    positions: data.morphTargets.map(({ positions }) => (scale === 1 ? positions : positions.map((value) => value * scale))),
-    normals: data.morphTargets.map(({ normals }) => normals),
-  };
-}
-
 function interleave(
   mesh: { positions: Float32Array; normals: Float32Array | null; uvs: Float32Array | null },
   pivot: readonly [number, number, number],

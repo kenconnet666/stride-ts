@@ -675,6 +675,7 @@ export const TIMELINE_FIELDS = fields<TimelineFile>({
           { name: 'start', type: number({ min: 0, unit: 's' }) },
           { name: 'clip', type: string, description: 'name of the clip in the AnimationComponent' },
           { name: 'speed', type: number(), optional: true, default: 1 },
+          { name: 'blend', type: number({ min: 0, unit: 's' }), optional: true, description: 'seconds of crossfade from the previous clip' },
         ])),
       }),
       sound: fields<{ clips: unknown }>({

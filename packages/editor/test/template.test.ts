@@ -43,6 +43,9 @@ describe('stride-editor new', () => {
 
     const ignore = await readFile(path.join(repo, '.gitignore'), 'utf8');
     expect(ignore).toContain('/apps/*/public/content/\n# 手搭的工程，内容要提交\n!/apps/coin-run/public/content/\n');
+    // 再建一个：例外放在同一行注释下面，不再重复注释
+    await createProject(path.join(repo, 'apps', 'coin-dash'));
+    expect(await readFile(path.join(repo, '.gitignore'), 'utf8')).toContain('/apps/*/public/content/\n# 手搭的工程，内容要提交\n!/apps/coin-dash/public/content/\n!/apps/coin-run/public/content/\n');
   });
 
   test('目录已经有了、不在 apps 下面、名字不是小写加横线时拒绝', async () => {

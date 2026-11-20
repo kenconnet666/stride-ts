@@ -5,12 +5,15 @@
  *
  * 放在哪：`<文件夹>/<名字>.model`，材质在 `<文件夹>/<名字>/Materials/`，贴图在 `<文件夹>/<名字>/Textures/`。
  *
- * 现在只导入静态网格（节点的世界变换已经烘进顶点）；带骨骼、形变、动画的模型先当静态导入并记一条警告。材质照 glTF 的金属度
- * 工作流：金属度粗糙度贴图进 glossinessTexture（G 通道反着读成粗糙度，B 通道是金属度、乘系数）。
+ * 网格的顶点在模型空间（节点的世界变换已经烘进去）。有蒙皮或动画时，文件里的全部节点按深度优先排成一副骨架（`<名字>/<名字>.skeleton`，
+ * 关节名同 Stride 导入时起的名字），蒙皮的网格按关节名绑上去，没蒙皮的网格刚性地挂在它所在的节点上（节点动画也带得动）；
+ * 每个动画（glTF 的动画、FBX 的动画栈）按 30 帧每秒烘焙成一个剪辑（`<名字>/Animations/<动画名>.anim`），连同形变权重的曲线。
+ * 形变目标照导入（按名字合成模型的目标表）。材质照 glTF 的金属度工作流：金属度粗糙度贴图进 glossinessTexture（G 通道反着读成粗糙度，B 通道是金属度、乘系数）。
  */
-import { EXTENSIONS, encodeModel, TEXTURE_EXTENSIONS, VERTEX_FLOATS, type MaterialFile, type TextureEncoding, type TextureSlot } from '@stride-ts/engine/content-format';
-import type { MaterialInfo, StrideTools, TextureSlot as NativeTextureSlot } from '@stride-ts/native/tools';
-import { addTangents, compressMeshes, type SourceMesh } from './mesh.ts';
+import { EXTENSIONS, encodeAnimation, encodeModel, encodeSkeleton, TEXTURE_EXTENSIONS, VERTEX_FLOATS, type MaterialFile, type TextureEncoding, type TextureSlot } from '@stride-ts/engine/content-format';
+import type { MaterialInfo, Scene, StrideTools, TextureSlot as NativeTextureSlot } from '@stride-ts/native/tools';
+import { addTangents, compressMeshes, sourceMorph, type SourceMesh } from './mesh.ts';
+import { meshSkin, morphWeightCurves, strideNodeNames, type ImportedSkeleton } from './stride/animation.ts';
 
 export interface SourceModelOptions {
   /** 拖进来的文件名（认格式、起名字）。 */
@@ -24,6 +27,8 @@ export interface SourceModelOptions {
 export interface ImportedSourceModel {
   /** 模型的内容路径。 */
   readonly model: string;
+  /** 动画剪辑：名字（文件里的动画名）和内容路径；没有动画时是空的。 */
+  readonly animations: readonly { readonly name: string; readonly clip: string }[];
   /** 要写的文件：相对内容目录的路径和内容。 */
   readonly files: readonly { readonly path: string; readonly content: Uint8Array | string }[];
   readonly warnings: readonly string[];
@@ -74,19 +79,23 @@ export async function importSourceModel(tools: StrideTools, bytes: Uint8Array, {
     });
     const normalMapped = scene.materialInfos.map((info) => info.normalTexture.image !== null);
 
-    const meshes: SourceMesh[] = [];
-    let animated = scene.animations.length > 0;
-    for (let m = 0; m < scene.meshCount; m++) {
-      const data = scene.mesh(m);
-      if (data.skin || data.morphTargets.length > 0) animated = true;
-      const mesh: SourceMesh = { name: `mesh${m}`, material: data.material, vertices: interleave(data.positions, data.normals, data.uvs), indices: data.indices };
-      if (data.material !== null && normalMapped[data.material] && data.normals && data.uvs) meshes.push(addTangents(mesh, tools));
-      else meshes.push(mesh);
-    }
-    if (meshes.length === 0) throw new Error(`${fileName}: the file has no meshes`);
-    if (animated) warnings.push(`${fileName}: skeletons, morph targets and animations are not imported yet; imported as a static model`);
-    files.push({ path: root + EXTENSIONS.model, content: encodeModel({ meshes: compressMeshes(meshes, tools), materials: materialPaths }) });
-    return { model: root, files, warnings };
+    const sources = Array.from({ length: scene.meshCount }, (_, m) => scene.mesh(m));
+    if (sources.length === 0) throw new Error(`${fileName}: the file has no meshes`);
+    const skeleton = sources.some((data) => data.skin) || scene.animations.length > 0 ? sceneSkeleton(scene, `${root}/${base}`, tools, files) : undefined;
+    const identity = Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+    const morphTargets: string[] = [];
+    const meshes = sources.map((data, m) => {
+      const skin = skeleton ? meshSkin(data, scene, skeleton, identity, fileName, (message) => warnings.push(message)) : undefined;
+      const morph = sourceMorph(data, 1, morphTargets);
+      const mesh: SourceMesh = { name: `mesh${m}`, material: data.material, vertices: interleave(data.positions, data.normals, data.uvs), indices: data.indices, ...(skin ? { skin } : {}), ...(morph ? { morph } : {}) };
+      return data.material !== null && normalMapped[data.material] && data.normals && data.uvs ? addTangents(mesh, tools) : mesh;
+    });
+    const animations = await sceneAnimations(scene, skeleton, `${root}/Animations`, files, tools);
+    files.push({
+      path: root + EXTENSIONS.model,
+      content: encodeModel({ meshes: compressMeshes(meshes, tools), materials: materialPaths, ...(skeleton ? { skeleton: skeleton.path } : {}), ...(morphTargets.length > 0 ? { morphTargets } : {}) }),
+    });
+    return { model: root, animations, files, warnings };
   } finally {
     scene.destroy();
   }
@@ -116,6 +125,52 @@ function materialFile(name: string, info: MaterialInfo, texture: (slot: NativeTe
     ...(info.alphaMode === 'blend' ? { transparency: { type: 'blend', alpha: 1 } } : {}),
     ...(info.doubleSided ? { doubleSided: true } : {}),
   };
+}
+
+/** 动画烘焙的采样率（每秒关键帧数，同 Stride 工程的导入）。 */
+const ANIMATION_SAMPLE_RATE = 30;
+
+/** 文件里的全部节点按深度优先排成骨架（父关节在前），写出 `.skeleton`。关节名同 Stride 导入时起的名字（strideNodeNames）。 */
+function sceneSkeleton(scene: Scene, path: string, tools: StrideTools, files: { path: string; content: Uint8Array | string }[]): ImportedSkeleton & { readonly nodes: readonly number[] } {
+  const names = strideNodeNames(scene.nodes);
+  const children = scene.nodes.map(() => [] as number[]);
+  const roots: number[] = [];
+  scene.nodes.forEach((node, i) => (node.parent >= 0 ? children[node.parent]!.push(i) : roots.push(i)));
+  const nodes: number[] = [];
+  const visit = (i: number): void => {
+    nodes.push(i);
+    for (const child of children[i]!) visit(child);
+  };
+  roots.forEach(visit);
+  const jointOf = new Map(nodes.map((node, joint) => [node, joint]));
+  const joints = nodes.map((node) => {
+    const { parent, translation, rotation, scale } = scene.nodes[node]!;
+    return { name: names[node]!, parent: parent < 0 ? -1 : jointOf.get(parent)!, translation, rotation, scale };
+  });
+  files.push({ path: path + EXTENSIONS.skeleton, content: encodeSkeleton({ joints: joints.map(({ name, parent }) => ({ name, parent })), archive: tools.buildSkeleton(joints) }) });
+  return { path, joints, nodes, indexOf: new Map(joints.map((joint, i) => [joint.name, i])), transform: Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) };
+}
+
+/** 每个动画烘焙成一个剪辑（骨架的关节轨道加形变权重的曲线），写出 `.anim`；名字重复、不能做内容路径的换掉。 */
+async function sceneAnimations(
+  scene: Scene, skeleton: (ImportedSkeleton & { readonly nodes: readonly number[] }) | undefined, folder: string, files: { path: string; content: Uint8Array | string }[], tools: StrideTools,
+): Promise<{ name: string; clip: string }[]> {
+  const used = new Set<string>();
+  const animations: { name: string; clip: string }[] = [];
+  for (let i = 0; i < scene.animations.length; i++) {
+    const baked = await scene.bakeAnimation(i, ANIMATION_SAMPLE_RATE);
+    const name = scene.animations[i] || `Animation${i}`;
+    let file = name.replace(/[^A-Za-z0-9_-]+/g, '') || `Animation${i}`;
+    for (let k = 2; used.has(file); k++) file = `${file}${k}`;
+    used.add(file);
+    const duration = Math.max(baked.duration, 1e-3);
+    const morphWeights = morphWeightCurves(baked, scene);
+    const archive = skeleton ? tools.buildAnimation(duration, skeleton.nodes.map((node) => baked.tracks[node]!)) : new Uint8Array(0);
+    const clip = `${folder}/${file}`;
+    files.push({ path: clip + EXTENSIONS.animation, content: encodeAnimation({ duration, repeatMode: 'loopInfinite', ...(skeleton ? { skeleton: skeleton.path } : {}), ...(morphWeights.length > 0 ? { morphWeights } : {}), archive }) });
+    animations.push({ name, clip });
+  }
+  return animations;
 }
 
 /** 位置、法线、UV 交错成 FLOAT_LAYOUT 的顶点（没有法线、UV 的补 0）。 */

@@ -1,6 +1,7 @@
 /**
- * 编辑器里拖时间轴预览：把视口里的场景摆成时间轴某一刻的样子（属性、可选的"从镜头里看"），只改运行时的实体，不改场景文档；
- * 第一次改某个属性前记下它原来的值，结束预览时（或者时间轴不再有这条轨道时）写回去，场景回到文档的样子。
+ * 编辑器里拖时间轴预览：把视口里的场景摆成时间轴某一刻的样子（属性、角色的动画剪辑、可选的"从镜头里看"），只改运行时的
+ * 实体，不改场景文档；第一次改某个属性前记下它原来的值，结束预览时（或者时间轴不再有这条轨道时）写回去、摆上的动画停掉，
+ * 场景回到文档的样子。
  *
  *   const preview = new TimelinePreview(game, (id) => live.entity(id));
  *   preview.show(file, 2.5, { throughCamera: true });
@@ -10,6 +11,7 @@ import type { TimelineFile } from '../content/format';
 import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
 import type { Game } from '../engine/Game';
+import { AnimationComponent } from '../animation/AnimationComponent';
 import { Timeline, type TimelineBinding } from '../timeline/Timeline';
 
 /** 预览的这一刻：相机（场景文件里的实体 id）和字幕。 */
@@ -27,6 +29,8 @@ export class TimelinePreview {
   /** 改过的属性原来的值：实体、组件、属性名 → 值的拷贝。 */
   readonly #saved = new Map<string, { readonly entity: Entity; readonly component: ComponentType<any, any>; readonly property: string; readonly value: unknown }>();
   #cameraSet = false;
+  /** 动画轨道摆过的实体（结束时停掉它们的动画，回到静止姿势）。 */
+  readonly #animated = new Set<Entity>();
 
   constructor(game: Game, entity: (id: string) => Entity | undefined) {
     this.#game = game;
@@ -49,6 +53,10 @@ export class TimelinePreview {
         return component;
       },
     };
+    for (const track of file.tracks) {
+      const entity = track.type === 'animation' ? this.#entity(track.entity) : undefined;
+      if (entity) this.#animated.add(entity);
+    }
     const state = this.#timeline!.evaluate(time, binding);
     const compositor = this.#game.graphicsCompositor;
     if (compositor) {
@@ -93,5 +101,7 @@ export class TimelinePreview {
       if (view) view[property] = value;
     }
     this.#saved.clear();
+    for (const entity of this.#animated) if (this.#game.entities.isAlive(entity.id)) entity.get(AnimationComponent)?.stopAll();
+    this.#animated.clear();
   }
 }

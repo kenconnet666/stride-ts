@@ -123,14 +123,22 @@ describe('天空遮挡（从上往下的深度图）', () => {
     sky.use();
     expect(sky.begin({ x: 9, y: 0, z: 0 }, 1.7)).toBe(view);
     // 画完：这一帧还是旧的，下一帧 begin 时换上
+    // 深度拷进还没换上的那个缓冲（网格着色器读缓冲），下一帧开头和矩阵一起换上
     const pass = { end: () => {} } as unknown as GPURenderPassEncoder;
-    const encoder = { beginRenderPass: () => pass } as unknown as GPUCommandEncoder;
+    const copies: GPUBuffer[] = [];
+    const encoder = { beginRenderPass: () => pass, copyTextureToBuffer: (_: unknown, { buffer }: { buffer: GPUBuffer }) => copies.push(buffer) } as unknown as GPUCommandEncoder;
+    const before = sky.depthBuffer;
     sky.draw({} as never, encoder, { draw: () => {}, graphicsDevice: { profiler: { passTimestamps: () => undefined } } } as never, {} as never);
     expect(sky.version).toBe(0);
+    expect(copies).toHaveLength(1);
+    expect(copies[0]).not.toBe(before);
+    expect(sky.depthBuffer).toBe(before);
     sky.begin({ x: 9, y: 0, z: 0 }, 1.8);
     expect(sky.version).toBe(1);
+    expect(sky.depthBuffer).toBe(copies[0]);
     const [write] = writes.filter((w) => (w.buffer as GPUBuffer).label === 'SkyOcclusion');
-    expect(new Uint32Array(write!.bytes.buffer, write!.bytes.byteOffset + 64, 1)[0]).toBe(1);
+    // 有效位、深度图的边长
+    expect(Array.from(new Uint32Array(write!.bytes.buffer, write!.bytes.byteOffset + 64, 2))).toEqual([1, 512]);
     sky.use();
     sky.enabled = false;
     expect(sky.begin({ x: 100, y: 0, z: 0 }, 5)).toBeUndefined();

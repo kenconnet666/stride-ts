@@ -255,8 +255,11 @@ export function registerGameCommands(debug: Debug, game: Game): void {
           slowing = false;
           return;
         }
-        const end = performance.now() + slowMs;
-        while (performance.now() < end);
+        // 游戏跑起来以后才慢：加载、连中枢的时候忙等会把它们饿死（CI 上慢的是每一帧的画，不是加载）
+        if (game.status === 'running' && game.frames > 0) {
+          const end = performance.now() + slowMs;
+          while (performance.now() < end);
+        }
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
@@ -555,30 +558,15 @@ function vector(value: unknown, name: string): [number, number, number] {
 }
 
 /**
- * 页面里跑一段代码（`stride eval`），结果等到 Promise 落定：
- * - 一个表达式：结果是它的值，能直接 await；能用 game、engine（样例的 main.ts 挂的 strideEngine，引擎的全部导出）、
- *   entity(名字或 id)、named(名字)、frames(n)、seconds(s)（按游戏时间等）。页面自己有同名全局变量的（冒烟的 PAGE_HELPERS）
- *   用页面的。
- * - 几条语句：照旧在全局作用域里间接 eval，结果是最后一个表达式的值（只有全局的 strideGame、strideEngine）；语句里有
- *   顶层 await 时间接 eval 不支持，改成异步函数体跑，上面那些名字能用，结果要用 return 给。
+ * 页面里跑一段代码（`stride eval`），结果等到 Promise 落定。能用的名字：game、engine（样例的 main.ts 挂的 strideEngine，
+ * 引擎的全部导出）、entity(名字或 id)、named(名字)、frames(n)、seconds(s)（按游戏时间等）；后三个页面自己有的（冒烟的
+ * PAGE_HELPERS，意思一样）用页面的。
+ * - 一个表达式：结果是它的值，能直接 await。
+ * - 几条语句：包进一个块里间接 eval（块里先声明上面那些名字），结果是最后一条语句的值；块里的 const、let 不留到下一次。
+ *   语句里有顶层 await 时间接 eval 不支持，改成异步函数体跑，结果要用 return 给。
  */
 async function evaluate(game: Game, { code }: Args): Promise<unknown> {
   if (typeof code !== 'string') throw new Error('code must be a string');
-  const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (...args: string[]) => (...values: unknown[]) => Promise<unknown>;
-  const scope = ['game', 'engine', 'entity', 'named', 'frames', 'seconds'];
-  const names = scope.filter((name) => !(name in globalThis));
-  let run: (...values: unknown[]) => Promise<unknown>;
-  try {
-    run = new AsyncFunction(...names, `return (${code}\n);`);
-  } catch {
-    try {
-      return await (0, eval)(code);
-    } catch (error) {
-      if (!(error instanceof SyntaxError)) throw error;
-      // 多半是顶层 await：当异步函数体跑
-      run = new AsyncFunction(...names, code);
-    }
-  }
   const all = () => game.entities.ids().map((id) => game.entities.entity(id));
   const named = (name: string) => all().filter((entity) => entity.name === name);
   const entity = (key: string | number) => {
@@ -597,8 +585,27 @@ async function evaluate(game: Game, { code }: Args): Promise<unknown> {
     const end = game.updateTime.total + s, wall = performance.now() + 100000;
     while (game.updateTime.total < end && performance.now() < wall && game.status === 'running') await frame();
   };
-  const values: Record<string, unknown> = { game, engine: (globalThis as { strideEngine?: unknown }).strideEngine, entity, named, frames, seconds };
-  return await run(...names.map((name) => values[name]));
+  const scope: Record<string, unknown> = { game, engine: (globalThis as { strideEngine?: unknown }).strideEngine, entity, named, frames, seconds };
+  // game 不让给页面：画布的 id 常是 game，浏览器会把它挂成全局的 window.game
+  const names = ['game', 'engine', 'entity', ...['named', 'frames', 'seconds'].filter((name) => !(name in globalThis))];
+  const values = names.map((name) => scope[name]);
+  const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (...args: string[]) => (...values: unknown[]) => Promise<unknown>;
+  try {
+    return await new AsyncFunction(...names, `return (${code}\n);`)(...values);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+  }
+  const global = globalThis as { __strideEval?: Record<string, unknown> };
+  global.__strideEval = scope;
+  try {
+    return await (0, eval)(`{ const { ${names.join(', ')} } = globalThis.__strideEval;\n${code}\n}`);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+  } finally {
+    delete global.__strideEval;
+  }
+  // 多半是顶层 await：当异步函数体跑
+  return await new AsyncFunction(...names, code)(...values);
 }
 
 /**

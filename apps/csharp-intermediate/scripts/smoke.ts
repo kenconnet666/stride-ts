@@ -159,8 +159,11 @@ type Animation = { speed: string; fading: Playing; run: Playing; punch: Playing;
 const animation = evaluate<Animation>(`(async () => {
   const component = named('AnimationBasics')[0].require(strideEngine.AnimationComponent);
   const playing = () => component.playingAnimations.map((p) => [p.name, p.weight, p.enabled, p.repeatMode]);
-  // 按游戏时间等（seconds）：CI 的软件 WebGPU 上一帧几百毫秒，墙钟的 0.8 秒淡入还没走完
+  // 按游戏时间等（seconds）：CI 的软件 WebGPU 上一帧几百毫秒，墙钟的 0.8 秒淡入还没走完。固定步长：帧慢时一帧走几百毫秒的
+  // 游戏时间，淡入、出拳在一帧里就完了，看不到中间的状态（本机用 regress.ps1 -Slow 300 复现）
   const r = {};
+  strideGame.fixedTimeStep = 1 / 60;
+  try {
   await tap('KeyE'); r.speed = lines().find((l) => l.startsWith('Q and E'));
   // 淡入和出拳都是一会儿的状态：每帧看一次，记下第一次出现的那一刻（帧慢时隔几帧再看，淡入已经完了、拳已经出完了）
   const first = (want, s) => until(() => { const p = playing(); return p.map(([name]) => name).join() === want ? p : null; }, s).then((p) => p ?? playing());
@@ -169,6 +172,9 @@ const animation = evaluate<Animation>(`(async () => {
   await tap('KeyP'); r.punch = await first('Punch', 1);
   await tap('KeyS'); r.paused = playing(); await tap('KeyS');
   await seconds(2.5); r.idle = playing();
+  } finally {
+    strideGame.fixedTimeStep = undefined;
+  }
   return r;
 })()`);
 const names = (playing: Playing) => playing.map(([name]) => name).join();

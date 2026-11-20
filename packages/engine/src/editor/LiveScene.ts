@@ -14,6 +14,7 @@
  */
 import type { CompositorSettings, LoadSceneOptions, SceneInstance } from '../content/ContentManager';
 import type { SceneFile } from '../content/format';
+import { entityAssetReferences } from '../content/references';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
@@ -77,6 +78,29 @@ export class LiveScene {
       const [x, y, z] = after.offset ?? [0, 0, 0];
       Object.assign(this.instance.offset, { x, y, z });
     }
+  }
+
+  /**
+   * 资源热重载：paths 里的资源（内容路径）的文件改了。忘掉它们加载过的结果，引用它们的实体重建（只重建这些）。编辑器给的
+   * 是改了的资源加上间接用到它们的（材质改了，用这个材质的模型也算），所以这里只看实体直接引用的。
+   */
+  reloadAssets(paths: readonly string[]): Promise<void> {
+    const changed = new Set(paths);
+    const marked = this.#syncing.then(() => {
+      this.#game.content.evict(changed);
+      // 重建：把这些实体在"已经跟上的版本"里换成拷贝（组件也拷一层：updateScene 按组件对象是不是同一个决定重载哪些），
+      // 下一次 sync 比较时它们的组件就算变了，资源重新加载
+      const synced = this.#synced;
+      const stale = (entity: SceneFile['entities'][number]) => entityAssetReferences([entity]).some((ref) => changed.has(ref.path));
+      if (!synced.entities.some(stale)) return;
+      const copy = (value: unknown) => (Array.isArray(value) ? [...value] : value !== null && typeof value === 'object' ? { ...value } : value);
+      this.#synced = {
+        ...synced,
+        entities: synced.entities.map((entity) => (stale(entity) ? { ...entity, components: Object.fromEntries(Object.entries(entity.components).map(([key, value]) => [key, copy(value)])) } : entity)),
+      };
+    });
+    this.#syncing = marked.catch(() => undefined);
+    return marked.then(() => this.sync());
   }
 
   /**

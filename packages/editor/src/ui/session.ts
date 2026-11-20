@@ -95,6 +95,9 @@ export class EditorSession implements EditableScene {
         .sort((a, b) => (a.kind === b.kind ? (a.path < b.path ? -1 : 1) : a.kind < b.kind ? -1 : 1));
       // 用到的预制体改了（单独打开它改完保存了，或者在别处改了）：重新加载，实例跟着变
       if ([...changed, ...removed].some((asset) => asset.kind === 'prefab' && this.#prefabs.has(asset.path))) void this.#reloadPrefabs();
+      // 别的资源（材质、模型、贴图、UI、声音……）改了：视口里用到它们的实体重建（热重载）
+      const reloaded = assetsToReload(this.assets.value, changed.filter((asset) => asset.kind !== 'scene' && asset.kind !== 'prefab'));
+      if (reloaded.length > 0) void this.agent.value?.reloadAssets(reloaded).catch((error: unknown) => console.error('reloading assets failed', error));
     });
   }
 
@@ -426,4 +429,23 @@ export class EditorSession implements EditableScene {
 function movedPath(request: MoveRequest, { kind, path }: OpenedDocument): string {
   if ('folder' in request) return path.startsWith(`${request.folder}/`) ? request.to + path.slice(request.folder.length) : path;
   return request.assets.find((move) => move.kind === kind && move.from === path)?.to ?? path;
+}
+
+/**
+ * 热重载要重新加载的内容路径：改了的资源，加上直接、间接引用它们的（材质改了，引用它的模型、模型的贴图……一路往上），场景和
+ * 预制体除外（它们是文档，另有一套跟上的办法）。
+ */
+export function assetsToReload(assets: readonly AssetRecord[], changed: readonly AssetRecord[]): string[] {
+  const reload = new Set(changed.map((asset) => asset.path));
+  const pending = [...changed];
+  while (pending.length > 0) {
+    const asset = pending.pop()!;
+    for (const referrer of assets) {
+      if (referrer.kind === 'scene' || referrer.kind === 'prefab' || reload.has(referrer.path)) continue;
+      if (!referrer.references.some((ref) => ref.kind === asset.kind && ref.path === asset.path)) continue;
+      reload.add(referrer.path);
+      pending.push(referrer);
+    }
+  }
+  return [...reload];
 }

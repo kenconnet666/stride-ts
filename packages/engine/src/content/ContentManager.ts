@@ -226,6 +226,23 @@ export class ContentManager {
     this.#read = read;
   }
 
+  /**
+   * 忘掉这些资源（内容路径）已经加载的结果，下次用到时重新读文件：编辑器里资源改了（热重载，LiveScene.reloadAssets）。
+   * 已经建出来的对象不动，用它们的实体要重建才换上新的。返回丢掉了几项。
+   */
+  evict(paths: Iterable<string>): number {
+    let removed = 0;
+    for (const path of paths) {
+      const prefix = new URL(`${path}.`, this.root).href;
+      for (const key of [...this.#cache.keys()]) {
+        if (!key.startsWith(prefix)) continue;
+        this.#cache.delete(key);
+        removed++;
+      }
+    }
+    return removed;
+  }
+
   /** 按句柄加载：`const prefab = await content.load(assets.prefabs.Bullet)`。 */
   load<K extends keyof AssetTypes>(handle: AssetHandle<K>): Promise<AssetTypes[K]> {
     return this.#loaders[handle.kind](handle.path) as Promise<AssetTypes[K]>;

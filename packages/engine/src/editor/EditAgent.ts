@@ -115,6 +115,12 @@ export class EditAgent {
     this.selection = this.#selection;
   }
 
+  /** 资源的文件改了（编辑器给出改了的和间接用到它们的内容路径）：引用它们的实体重建（见 LiveScene.reloadAssets）。 */
+  async reloadAssets(paths: readonly string[]): Promise<void> {
+    await this.#live?.reloadAssets(paths);
+    this.selection = this.#selection;
+  }
+
   /** 文档改了：让实体跟上（见 LiveScene.sync）。 */
   async sync(): Promise<void> {
     const live = this.#require();

@@ -23,6 +23,7 @@ import { system } from '../../engine/system';
 import type { GameTime } from '../../engine/GameTime';
 import type { Atmosphere } from './Atmosphere';
 import { COMPOSITE_SHADER, ENVIRONMENT_SHADER, MARCH_SHADER, NOISE_SHADER, SHADOW_SHADER } from './cloudShaders';
+import { IRRADIANCE_PER_INTENSITY } from './lightUnits';
 import { VolumetricClouds } from '../components';
 import type { RenderContext, RenderView } from '../RenderSystem';
 
@@ -205,7 +206,8 @@ export class Clouds {
     const luminance = (color: readonly number[]) => 0.2126 * color[0]! + 0.7152 * color[1]! + 0.0722 * color[2]!;
     const [sun, moon] = [atmosphere.sun, atmosphere.moon].map((body) => {
       const transmittance = atmosphere.transmittanceTo(body, height);
-      return { direction: body.direction, color: body.illuminance.map((v, c) => v * transmittance[c]!), entity: body.entity };
+      // 云按物理量散射：光的强度换成照度
+      return { direction: body.direction, color: body.illuminance.map((v, c) => v * IRRADIANCE_PER_INTENSITY * transmittance[c]!), entity: body.entity };
     });
     return luminance(sun!.color) >= luminance(moon!.color) ? sun! : moon!;
   }

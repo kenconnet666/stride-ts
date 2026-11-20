@@ -19,6 +19,7 @@ import { clusterParams, CLUSTER_WGSL } from '../lighting/Clusters';
 import { LOCAL_LIGHT_WGSL } from '../lighting/LocalLights';
 import type { Lighting, RenderContext, RenderView } from '../RenderSystem';
 import { FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../wgsl';
+import { IRRADIANCE_PER_INTENSITY } from './lightUnits';
 import type { CloudShadow } from './VolumetricClouds';
 
 /** 体素表的大小：屏幕上横、竖几格，沿视线几层。 */
@@ -135,7 +136,8 @@ fn localScattering(world: vec3f, uv: vec2f, direction: vec3f) -> vec3f {
         visibility = textureSampleCompareLevel(shadowAtlas, shadowComparison, coord.xy, coord.z);
       }
     }
-    sum += light.color.rgb * at.w * visibility * henyeyGreenstein(dot(direction, at.xyz), fog.albedo.w);
+    // 强度换成发光强度（同 lightUnits.ts 的 IRRADIANCE_PER_INTENSITY）
+    sum += light.color.rgb * PI * at.w * visibility * henyeyGreenstein(dot(direction, at.xyz), fog.albedo.w);
   }
   return sum;
 }
@@ -417,7 +419,8 @@ export class Fog {
     if (light) {
       const length = Math.hypot(light.direction.x, light.direction.y, light.direction.z) || 1;
       data.set([-light.direction.x / length, -light.direction.y / length, -light.direction.z / length, shadow?.cascadeCount ?? 0], 136);
-      data.set([light.color.r, light.color.g, light.color.b], 140);
+      // 雾按物理量散射：光的强度换成照度（点光、聚光在着色器里乘同一个数）
+      data.set([light.color.r * IRRADIANCE_PER_INTENSITY, light.color.g * IRRADIANCE_PER_INTENSITY, light.color.b * IRRADIANCE_PER_INTENSITY], 140);
     } else {
       data.set([0, 1, 0, 0], 136);
     }

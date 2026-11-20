@@ -22,6 +22,7 @@ import type { EntityId } from '../../data/prop';
 import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
 import { SkyAtmosphere } from '../components';
+import { IRRADIANCE_PER_INTENSITY } from './lightUnits';
 import { AERIAL_COMPOSITE_SHADER, AERIAL_SHADER, MULTI_SCATTERING_SHADER, SH_SHADER, SKY_CUBE_SHADER, SKY_SHADER, SKY_VIEW_SHADER, TRANSMITTANCE_SHADER } from './atmosphereShaders';
 import type { GpuResources } from '../../graphics/GpuResources';
 import type { DirectionalLight, Lighting, RenderContext, RenderView, SkyboxLight } from '../RenderSystem';
@@ -244,7 +245,7 @@ export class Atmosphere {
     const [sun, moon] = [this.sun.direction, this.moon.direction];
     this.moonPhase = sunLight ? (1 - (sun[0] * moon[0] + sun[1] * moon[1] + sun[2] * moon[2])) / 2 : 1;
     for (let c = 0; c < 3; c++) {
-      this.#moonDisk[c] = this.moon.illuminance[c]! * this.#moonDiskIntensity;
+      this.#moonDisk[c] = this.moon.illuminance[c]! * IRRADIANCE_PER_INTENSITY * this.#moonDiskIntensity;
       this.moon.illuminance[c]! *= this.moonPhase;
     }
     for (const [body, light] of [[this.sun, sunLight], [this.moon, moonLight]] as const) {
@@ -334,10 +335,14 @@ export class Atmosphere {
     return [r * visible, g * visible, b * visible];
   }
 
-  /** body 照进大气散射的照度（乘了天空的亮度）：没有它、或者落到地平线以下很多时是 0，着色器就不算它。 */
+  /**
+   * body 照进大气散射的照度（光的强度换成照度，乘了天空的亮度）：没有它、或者落到地平线以下很多时是 0，着色器就不算它。
+   * 和 Stride 不同（它没有物理天空）：天空按物理量算，光的强度先换成照度（IRRADIANCE_PER_INTENSITY），天空给的环境光才和被
+   * 直射光照亮的表面对得上。
+   */
   #scattering(body: CelestialBody): number[] {
     const lit = body.present && body.direction[1] > NO_SCATTERING_BELOW;
-    return body.illuminance.map((v) => (lit ? v * this.settings.skyIntensity : 0));
+    return body.illuminance.map((v) => (lit ? v * IRRADIANCE_PER_INTENSITY * this.settings.skyIntensity : 0));
   }
 
   #uniforms(): Float32Array {

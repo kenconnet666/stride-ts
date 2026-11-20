@@ -8,7 +8,9 @@
  *    穿过去。命中以后按深度差、离屏幕边缘多近、粗糙度定"把握"（0 到 1）。
  * 3. 解析：先在空间上复用周围像素的光线（同一块表面上的，半径按粗糙度），命中处取这一帧画好的 HDR 颜色（反射里的反射晚
  *    一帧，同 Stride）；再和上一帧的结果在时间上累积（按运动向量或深度重投影，夹在空间解析结果的邻域范围里），随机方向的
- *    噪声就平均掉了。
+ *    噪声就平均掉了。粗糙的表面按锥角取颜色的 mip（Stachowiak 2015 的做法）：反射的波瓣是一个锥，命中处锥的截面有多大，就
+ *    到颜色金字塔（这一帧的 HDR 画面一级级缩小的 mip 链，每级 4 个双线性样本的帐篷滤波）里取那么粗的一级，一个样本就是
+ *    那一片的平均，噪声少得多，远处的反射也按距离变糊。
  * 4. 合成：用反射换掉着色时加的环境镜面反射（不透明阶段留下的表面，见 RenderSystem 的 SURFACE_FORMATS）：
  *    颜色 += 把握 · (w · 反射 - E)。和 Stride 不同：Stride 把反射直接加上去，天空盒的镜面反射就算了两遍，开了 SSR 的表面
  *    整体变亮。
@@ -17,6 +19,7 @@
  * 可看的，照旧用环境光。
  */
 import { Matrix } from '../../data/Matrix';
+import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../wgsl';
 import type { GraphTexture } from '../RenderGraph';
 import { fullscreenPipeline, FullscreenShader, UniformArena, warmFullscreenPipeline, type EffectFrame } from '../postfx/ImageEffect';
@@ -26,6 +29,10 @@ const HIZ_FORMAT: GPUTextureFormat = 'r32float';
 const TRACE_FORMAT: GPUTextureFormat = 'rgba16float';
 const REFLECTION_FORMAT: GPUTextureFormat = 'rgba16float';
 const HDR_FORMAT: GPUTextureFormat = 'rgba16float';
+/** 颜色金字塔（第 0 级是半分辨率）。 */
+const PYRAMID_FORMAT: GPUTextureFormat = 'rgba16float';
+/** 锥角里去掉的波瓣尾巴（Stachowiak 2015 的 BRDF bias）：尾巴里的光线少，按整个波瓣算截面会糊过头。 */
+const CONE_BIAS = 0.7;
 /** 运动向量里"这个像素没画"的标记（同 ForwardRenderer）。 */
 const NO_VELOCITY = 4;
 
@@ -85,6 +92,21 @@ fn at(p: vec2i, size: vec2i) -> f32 {
   if (lastY) { m = min(m, min(at(p + vec2i(0, 2), size), at(p + vec2i(1, 2), size))); }
   if (lastX && lastY) { m = min(m, at(p + vec2i(2, 2), size)); }
   return vec4f(m, 0.0, 0.0, 1.0);
+}`;
+
+/**
+ * 颜色金字塔往下一级：目标像素盖住上一级的 2x2，四个双线性样本取在离中心 0.75 纹素处，合起来是 4x4 的帐篷滤波
+ * （每轴权重 1、3、3、1），一级级缩下去比 2x2 的盒子平滑，糊的反射里看不出方块。
+ */
+const PYRAMID_SHADER = /* wgsl */ `${FULLSCREEN_VERTEX}
+@group(0) @binding(0) var source: texture_2d<f32>;
+@group(0) @binding(1) var linearClamp: sampler;
+@fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
+  let texel = 1.0 / vec2f(textureDimensions(source));
+  let uv = in.position.xy * 2.0 * texel;
+  let d = 0.75 * texel;
+  return 0.25 * (textureSampleLevel(source, linearClamp, uv + vec2f(-d.x, -d.y), 0.0) + textureSampleLevel(source, linearClamp, uv + vec2f(d.x, -d.y), 0.0)
+    + textureSampleLevel(source, linearClamp, uv + vec2f(-d.x, d.y), 0.0) + textureSampleLevel(source, linearClamp, uv + vec2f(d.x, d.y), 0.0));
 }`;
 
 /** 追踪：输出命中的 uv、把握（0 是没命中）。 */
@@ -233,6 +255,8 @@ const SPATIAL_SHADER = /* wgsl */ `${COMMON}
 @group(0) @binding(3) var surface: texture_2d<f32>;
 @group(0) @binding(4) var depth: texture_depth_2d;
 @group(0) @binding(5) var linearClamp: sampler;
+@group(0) @binding(6) var pyramid: texture_2d<f32>;
+@group(0) @binding(7) var trilinearClamp: sampler;
 
 /** 单位圆里的 8 个点（泊松盘），每个像素每帧转一个随机角度。 */
 const DISK = array<vec2f, 8>(
@@ -240,12 +264,39 @@ const DISK = array<vec2f, 8>(
   vec2f(0.962, -0.195), vec2f(0.473, -0.480), vec2f(0.519, 0.767), vec2f(0.185, -0.893),
 );
 
-fn sampleAt(pixel: vec2i) -> vec4f {
+/**
+ * 命中处的颜色，mip 是按整个画面算的级数（0 是原画面，k 是金字塔的第 k - 1 级）：0 到 1 之间在原画面和金字塔第 0 级之间
+ * 插值，再往上三线性地取金字塔。
+ */
+fn colorAt(uv: vec2f, mip: f32) -> vec3f {
+  if (mip <= 0.0) {
+    return textureSampleLevel(color, linearClamp, uv, 0.0).rgb;
+  }
+  let blurred = textureSampleLevel(pyramid, trilinearClamp, uv, max(mip - 1.0, 0.0)).rgb;
+  if (mip >= 1.0) {
+    return blurred;
+  }
+  return mix(textureSampleLevel(color, linearClamp, uv, 0.0).rgb, blurred, mip);
+}
+
+/**
+ * 反射波瓣的锥角的正切（Stachowiak 2015 的近似，按感知粗糙度和 n·v）：越粗糙、越正对着看锥越宽；掠射角时波瓣被拉长，
+ * 截面按 n·v 收窄一些。
+ */
+fn coneTangent(roughness: f32, nv: f32) -> f32 {
+  let tangent = mix(0.0, roughness * (1.0 - ${CONE_BIAS}), nv * sqrt(roughness));
+  return tangent * mix(saturate(nv * 2.0), 1.0, sqrt(roughness));
+}
+
+/** 一条光线的样本；cone 是这个表面的锥角正切，uv 是这个像素（锥从这里出发，到命中处的屏幕距离定截面多大）。 */
+fn sampleAt(pixel: vec2i, uv: vec2f, cone: f32) -> vec4f {
   let hit = textureLoad(trace, pixel, 0);
   if (hit.z <= 0.0) {
     return vec4f(0.0);
   }
-  let reflected = textureSampleLevel(color, linearClamp, hit.xy, 0.0).rgb;
+  let radius = cone * length((hit.xy - uv) * ssr.size.xy);
+  let mip = clamp(log2(max(radius, 1e-4)), 0.0, f32(textureNumLevels(pyramid)));
+  let reflected = colorAt(hit.xy, mip);
   // 太亮的点（太阳的高光）压一下，免得随机方向偶尔碰上它时一闪一闪（Stride 的 ReduceHighlights）
   let compressed = reflected / (1.0 + max(max(reflected.r, reflected.g), reflected.b));
   return vec4f(compressed * hit.z, hit.z);
@@ -263,11 +314,12 @@ fn sampleAt(pixel: vec2i) -> vec4f {
   let uv = (vec2f(pixel) + 0.5) / ssr.size.xy;
   let world = worldPosition(ssr, uv, z);
   let distanceToEye = length(ssr.eye.xyz - world);
+  let cone = coneTangent(here.z, saturate(dot(n, (ssr.eye.xyz - world) / distanceToEye)));
   // 半径：镜面（粗糙度 0）只看自己附近 1 像素，到最大粗糙度时 8 像素
   let radius = mix(1.0, 8.0, saturate(here.z / max(ssr.params.x, 0.0001)));
   let angle = fract(sin(dot(vec2f(pixel), vec2f(12.9898, 78.233)) + ssr.eye.w * 0.618) * 43758.547) * 6.2831853;
   let rotation = mat2x2f(cos(angle), sin(angle), -sin(angle), cos(angle));
-  var sum = sampleAt(pixel);
+  var sum = sampleAt(pixel, uv, cone);
   var weight = 1.0;
   for (var k = 0; k < 8; k++) {
     let p = pixel + vec2i(round(rotation * DISK[k] * radius));
@@ -277,7 +329,7 @@ fn sampleAt(pixel: vec2i) -> vec4f {
     if (other.w < 0.5 || dot(octahedralDecode(other.xy), n) < 0.9) { continue; }
     let otherWorld = worldPosition(ssr, (vec2f(p) + 0.5) / ssr.size.xy, textureLoad(depth, p, 0));
     if (abs(dot(otherWorld - world, n)) > 0.02 * distanceToEye) { continue; }
-    sum += sampleAt(p);
+    sum += sampleAt(p, uv, cone);
     weight += 1.0;
   }
   return sum / weight;
@@ -375,6 +427,7 @@ export class ScreenSpaceReflections {
 
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
+  readonly #trilinear: GPUSampler;
   readonly #arena: UniformArena;
   readonly #trace: FullscreenShader;
   readonly #spatial: FullscreenShader;
@@ -392,6 +445,7 @@ export class ScreenSpaceReflections {
   constructor(device: GPUDevice, linearClamp: GPUSampler) {
     this.#device = device;
     this.#sampler = linearClamp;
+    this.#trilinear = device.createSampler({ label: 'SSR trilinear clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
     this.#arena = new UniformArena(device, 4096);
     this.#trace = new FullscreenShader(device, 'SSR trace', TRACE_SHADER);
     this.#spatial = new FullscreenShader(device, 'SSR spatial', SPATIAL_SHADER);
@@ -427,7 +481,8 @@ export class ScreenSpaceReflections {
     const trace = frame.acquire(width, height, TRACE_FORMAT, 'SSR trace');
     this.#trace.draw(frame, trace, [parameters, depth, hiz, normalRoughness]);
     const spatial = frame.acquire(width, height, REFLECTION_FORMAT, 'SSR spatial');
-    this.#spatial.draw(frame, spatial, [parameters, trace, color, normalRoughness, depth, this.#sampler]);
+    const pyramid = this.#recordPyramid(frame, color);
+    this.#spatial.draw(frame, spatial, [parameters, trace, color, normalRoughness, depth, this.#sampler, pyramid, this.#trilinear]);
     // 时间上的解析写进自己留到下一帧的贴图（图外面的）：算副作用
     const resolved = frame.graph.import({ label: 'SSR history', width, height, format: REFLECTION_FORMAT }, next.createView(), { texture: next });
     this.#temporal.draw(frame, resolved, [parameters, spatial, previous, velocity ?? previous, depth, this.#sampler]);
@@ -453,6 +508,7 @@ export class ScreenSpaceReflections {
       this.#trace.warm([TRACE_FORMAT]), this.#spatial.warm([REFLECTION_FORMAT]), this.#temporal.warm([REFLECTION_FORMAT]), this.#combine.warm([HDR_FORMAT]),
       warmFullscreenPipeline(this.#device, 'SSR Hi-Z copy', HIZ_COPY_SHADER, [HIZ_FORMAT]),
       warmFullscreenPipeline(this.#device, 'SSR Hi-Z', HIZ_DOWNSAMPLE_SHADER, [HIZ_FORMAT]),
+      warmFullscreenPipeline(this.#device, 'SSR color pyramid', PYRAMID_SHADER, [PYRAMID_FORMAT]),
     ]).then(() => undefined);
   }
 
@@ -475,8 +531,10 @@ export class ScreenSpaceReflections {
       for (let level = 0; level < hiz.mipLevelCount; level++) {
         const pipeline = level === 0 ? copy : down;
         const source = level === 0 ? depth.createView() : hiz.createView({ baseMipLevel: level - 1, mipLevelCount: 1 });
+        const timestampWrites = GpuProfiler.of(this.#device)?.passTimestamps('SSR Hi-Z');
         const pass = frame.encoder.beginRenderPass({
           label: 'SSR Hi-Z',
+          ...(timestampWrites ? { timestampWrites } : {}),
           colorAttachments: [{ view: hiz.createView({ baseMipLevel: level, mipLevelCount: 1 }), loadOp: 'clear', storeOp: 'store' }],
         });
         pass.setPipeline(pipeline);
@@ -485,6 +543,38 @@ export class ScreenSpaceReflections {
         pass.end();
       }
     }, warm);
+  }
+
+  /**
+   * 颜色金字塔：第 0 级是画面的一半大，往下每级再缩一半，到大约 8 像素见方（同 Hi-Z）。临时贴图（渲染图的），每级一次全屏绘制，
+   * 读上一级（第 0 级读画面）。
+   */
+  #recordPyramid(frame: EffectFrame, color: GraphTexture): GraphTexture {
+    const width = Math.max(1, color.width >> 1), height = Math.max(1, color.height >> 1);
+    const levels = Math.max(1, Math.floor(Math.log2(Math.max(width, height))) - 2);
+    const pyramid = frame.graph.texture({ label: 'SSR color pyramid', width, height, format: PYRAMID_FORMAT, mipLevelCount: levels });
+    const label = 'SSR color pyramid';
+    frame.pass(label, (pass) => {
+      pass.read(color);
+      pass.write(pyramid);
+    }, (real) => {
+      const pipeline = fullscreenPipeline(this.#device, label, PYRAMID_SHADER, [PYRAMID_FORMAT]);
+      const target = real.texture(pyramid);
+      for (let level = 0; level < levels; level++) {
+        const source = level === 0 ? real.view(color) : target.createView({ baseMipLevel: level - 1, mipLevelCount: 1 });
+        const timestampWrites = GpuProfiler.of(this.#device)?.passTimestamps(label);
+        const pass = frame.encoder.beginRenderPass({
+          label,
+          ...(timestampWrites ? { timestampWrites } : {}),
+          colorAttachments: [{ view: target.createView({ baseMipLevel: level, mipLevelCount: 1 }), loadOp: 'clear', storeOp: 'store' }],
+        });
+        pass.setPipeline(pipeline);
+        pass.setBindGroup(0, this.#device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: source }, { binding: 1, resource: this.#sampler }] }));
+        pass.draw(3);
+        pass.end();
+      }
+    }, () => warmFullscreenPipeline(this.#device, label, PYRAMID_SHADER, [PYRAMID_FORMAT]));
+    return pyramid;
   }
 
   #hizFor(width: number, height: number): GPUTexture {

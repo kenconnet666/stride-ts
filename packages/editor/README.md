@@ -29,6 +29,7 @@ node packages/editor/src/server/cli.ts new apps/my-game
 - 多选：场景树里 Ctrl+单击加减、Shift+单击选一段（视口里 Ctrl+单击）。属性面板显示选中的实体都有的组件，值不一样的显示"多个值"；改一处改所有选中的，一步撤销。
 - 复制粘贴实体：Ctrl+C 复制选中的实体（连同后代、组件），Ctrl+V 粘贴成选中的实体的兄弟（紧跟在后面），Ctrl+Shift+V 粘贴成它的子实体，Ctrl+D 复制一份放在原来的后面。新 id，拷贝之间的引用跟着换，实例还是引用加覆盖；取舍见 docs/decisions.md 的"编辑器里复制、粘贴实体"。
 - 试玩是不带 `stride-edit` 重新打开游戏页面（先保存）。
+- agent 工具：`node packages/editor/src/server/cli.ts mcp apps/<工程>` 用 stdio 起 MCP 服务（`src/mcp/server.ts`），工具有资源的读写、新建、删除、移动、导入，场景和预制体的修改（`edit_scene`，照字段描述检查），字段描述的 JSON Schema，截图和页面命令（要开发服务器开着）。在 Claude Code 里登记：`{ "mcpServers": { "stride-editor": { "command": "node", "args": ["packages/editor/src/server/cli.ts", "mcp", "apps/collect-dodge"] } } }`（放进 `.mcp.json`）。
 - 多语言：界面文字在 `src/ui/messages.ts`（界面）和 `src/ui/fieldMessages.ts`（组件、字段的名字和说明，按英语原文翻）里，自带简体中文和英语；`?lang=`、工具条右边的下拉框换语言。加字段描述时一起翻（`test/i18n.test.ts` 查）。
 - 验收：`pwsh tools/editor-accept/run.ps1 -Apps <样例>`（见 [tools/editor-accept](../../tools/editor-accept/README.md)）。
 - 编辑资源：资源浏览器里选中材质、JSON 写的模型，属性面板显示资源自己的字段（引擎 `editor/fields.ts` 的 `ASSET_FIELDS`：材质的常用字段有控件，颜色树、材质层这类按 JSON 改；模型按形状换字段），改了稍等一下就存进资源文件，视口里用到它的实体热重载。选实体时回到实体的字段。

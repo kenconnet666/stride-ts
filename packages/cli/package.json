@@ -9,7 +9,8 @@
   },
   "exports": {
     "./vite": "./src/vite.ts",
-    "./hub": "./src/hub.ts"
+    "./hub": "./src/hub.ts",
+    "./client": "./src/client.ts"
   },
   "dependencies": {
     "@stride-ts/engine": "workspace:*",

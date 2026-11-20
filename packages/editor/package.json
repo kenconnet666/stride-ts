@@ -15,6 +15,8 @@
   },
   "dependencies": {
     "@lucide/icons": "^1.76.0",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@stride-ts/cli": "workspace:*",
     "@stride-ts/engine": "workspace:*",
     "@stride-ts/native": "^0.29.0",
     "@stride-ts/pipeline": "workspace:*",

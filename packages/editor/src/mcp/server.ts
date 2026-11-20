@@ -1,0 +1,142 @@
+/**
+ * 编辑器的 MCP 服务（路线图 F1）：agent 工具不点界面也能做编辑器里人能做的事。`stride-editor mcp [工程目录]` 用 stdio 起服务，
+ * 在自己的进程里开一个 EditorBackend（不用开发服务器）：资源的读写、新建、删除、移动、导入，场景和预制体的修改（场景文档的
+ * SceneEdit，照字段描述检查），字段描述的 JSON Schema。开发服务器开着时，它的监视器看到文件变了，编辑器和游戏页面照常热重载；
+ * 截图、页面命令经开发服务器的调试中枢（stride CLI 的那个）。
+ *
+ * 工具的名字、参数和编辑器的 HTTP 接口（protocol.ts）、`stride` CLI 的命令一一对应；新的创作功能同时加界面和这里的工具。
+ */
+import { McpServer } from '@modelcontextprotocol/server';
+import { HubClient } from '@stride-ts/cli/client';
+import { EXTENSIONS } from '@stride-ts/engine/content-format';
+import { SceneDocument, type EntitiesFile, type SceneEdit } from '@stride-ts/engine/editor-document';
+import { assetSchemas, componentSchemas, entitySchema, sceneSettingSchemas } from '@stride-ts/engine/editor-field-schema';
+import { checkEntity } from '@stride-ts/engine/editor-fields';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import * as z from 'zod';
+import type { AssetKind, AssetRecord } from '../protocol.ts';
+import type { EditorBackend } from '../server/EditorBackend.ts';
+
+/** 资源的种类：内容格式的扩展名表里的（字形块算字体的），加上源图片、源音频。 */
+const ASSET_KINDS = [...Object.keys(EXTENSIONS).filter((key) => key !== 'glyphs'), 'image', 'audio'] as unknown as [AssetKind, ...AssetKind[]];
+const kind = z.enum(ASSET_KINDS).describe('asset kind');
+const assetPath = z.string().describe('content path of the asset, without extension (e.g. "Materials/Ground")');
+
+/** 结果写成 JSON 文本（agent 读得懂，也能原样转给别的工具）。 */
+const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value, null, 1) }] });
+/** 资源的记录去掉 agent 用不着的（修改时间、字节数）。 */
+const brief = (record: AssetRecord) => ({ kind: record.kind, path: record.path, ...(record.references.length > 0 ? { references: record.references } : {}), ...(record.error ? { error: record.error } : {}) });
+
+export function createEditorMcpServer(backend: EditorBackend): McpServer {
+  const server = new McpServer({ name: 'stride-editor', version: '0.1.0' });
+  const database = backend.database;
+
+  server.registerTool('project', {
+    description: 'The stride-ts project this server edits: name, folders, how many assets of each kind, broken references.',
+    inputSchema: z.object({}),
+  }, async () => {
+    const counts: Record<string, number> = {};
+    for (const asset of database.list()) counts[asset.kind] = (counts[asset.kind] ?? 0) + 1;
+    const { project } = backend;
+    return json({ name: project.manifest.name, root: project.root, content: project.contentDir, assets: counts, missingReferences: database.missing() });
+  });
+
+  server.registerTool('list_assets', {
+    description: 'Assets in the content folder (kind, content path, what each refers to). Filter by kind and folder.',
+    inputSchema: z.object({ kind: kind.optional(), folder: z.string().optional().describe('only assets under this content folder') }),
+  }, async ({ kind, folder }) => json(database.list()
+    .filter((asset) => (!kind || asset.kind === kind) && (!folder || asset.path.startsWith(`${folder}/`)))
+    .map(brief)));
+
+  server.registerTool('read_asset', {
+    description: 'The JSON content of an asset file (scene, prefab, material, JSON model, UI page, sound, ...). Binary assets (compiled models, textures) cannot be read.',
+    inputSchema: z.object({ kind, path: assetPath }),
+  }, async ({ kind, path }) => json(await backend.readAsset(kind, path)));
+
+  server.registerTool('write_asset', {
+    description: 'Write the whole JSON content of an asset (create: only create a new one, fail if it exists). Field shapes: field_schemas. Editors and the running game hot reload it.',
+    inputSchema: z.object({ kind, path: assetPath, content: z.unknown().describe('the JSON content'), create: z.boolean().optional() }),
+  }, async ({ kind, path, content, create }) => json(brief(await backend.saveAsset(kind, path, content, { create: create ?? false }))));
+
+  server.registerTool('delete_asset', {
+    description: 'Delete an asset and its files. Refuses while other assets refer to it, unless force (their references break).',
+    inputSchema: z.object({ kind, path: assetPath, force: z.boolean().optional() }),
+  }, async ({ kind, path, force }) => json(await backend.deleteAsset(kind, path, { force: force ?? false })));
+
+  server.registerTool('move_asset', {
+    description: 'Move or rename an asset (give kind) or a whole folder (no kind); files that refer to them are rewritten.',
+    inputSchema: z.object({ kind: kind.optional(), from: z.string(), to: z.string() }),
+  }, async ({ kind, from, to }) => {
+    const result = await backend.moveAssets(kind ? { assets: [{ kind, from, to }] } : { folder: from, to });
+    return json({ moved: result.moved.map(brief), rewritten: result.rewritten.map(brief) });
+  });
+
+  server.registerTool('import_file', {
+    description: 'Import a file from disk into a content folder: audio (mp3, ogg, wav, flac, aac) becomes a sound, images (png, jpg, webp, svg) a texture, glb/gltf/fbx/obj a model with materials and textures, ttf/otf/ttc a font.',
+    inputSchema: z.object({ file: z.string().describe('absolute path of the file on disk'), folder: z.string().describe('content folder to put it in ("" is the root)') }),
+  }, async ({ file, folder }) => {
+    const result = await backend.importFile(folder, path.basename(file), new Uint8Array(await readFile(file)));
+    return json({ asset: brief(result.asset), warnings: result.warnings });
+  });
+
+  server.registerTool('edit_scene', {
+    description: [
+      'Apply edits to a scene or prefab file and save it (one step; editors and the game hot reload). Each edit is one of:',
+      '{type:"set", entity:<id>, path:[...keys], value} sets a value inside an entity (path like ["components","light","intensity"] or ["position"]; value undefined removes the key);',
+      '{type:"add", entities:[{entity:<SceneEntityFile>, index}]} adds entities (parents before children);',
+      '{type:"remove", entities:[ids]} removes entities (give whole subtrees);',
+      '{type:"scene", path:["physics"|"navigation"|"offset"|"compositor", ...keys], value} sets a scene setting (scenes only);',
+      '{type:"batch", edits:[...]}.',
+      'Changed entities are checked against the field descriptions (field_schemas); with problems nothing is saved unless force.',
+    ].join(' '),
+    inputSchema: z.object({
+      kind: z.enum(['scene', 'prefab']),
+      path: assetPath,
+      edits: z.array(z.record(z.string(), z.unknown())).describe('SceneEdit objects, applied in order'),
+      force: z.boolean().optional().describe('save even if the changed entities do not match the field descriptions'),
+    }),
+  }, async ({ kind, path, edits, force }) => {
+    const document = new SceneDocument(await backend.readAsset(kind, path) as EntitiesFile);
+    const before = document.file.entities;
+    document.apply({ type: 'batch', edits: edits as unknown as SceneEdit[] });
+    const previous = new Set(before);
+    const changed = document.file.entities.filter((entity) => !previous.has(entity));
+    const issues = changed.flatMap((entity) => checkEntity(entity));
+    if (issues.length > 0 && !force) throw new Error(`not saved; the edits leave problems:\n${issues.join('\n')}`);
+    await backend.saveAsset(kind, path, document.file);
+    const kept = new Set(document.file.entities.map((entity) => entity.id));
+    const removed = before.filter((entity) => !kept.has(entity.id)).map((entity) => ({ id: entity.id, name: entity.name }));
+    return json({ saved: `${kind} ${path}`, changed: changed.map((entity) => ({ id: entity.id, name: entity.name })), removed, issues });
+  });
+
+  server.registerTool('field_schemas', {
+    description: 'JSON Schemas of what scene files may contain: components (the keys under an entity\'s "components"), scene settings, the entity\'s own fields, and assets edited by fields (material, JSON model). Give name for one of them.',
+    inputSchema: z.object({ of: z.enum(['components', 'sceneSettings', 'entity', 'assets']), name: z.string().optional().describe('one component, setting or asset kind') }),
+  }, async ({ of, name }) => {
+    if (of === 'entity') return json(entitySchema());
+    const all = of === 'components' ? componentSchemas() : of === 'sceneSettings' ? sceneSettingSchemas() : assetSchemas();
+    if (name === undefined) return json(all);
+    const schema = all[name];
+    if (!schema) throw new Error(`no ${of} named '${name}'; there are: ${Object.keys(all).join(', ')}`);
+    return json(schema);
+  });
+
+  // 下面两个要游戏页面开着（开发服务器起着、浏览器里开着游戏或编辑器）
+  const hub = () => HubClient.find(backend.project.manifest.name);
+
+  server.registerTool('screenshot', {
+    description: 'A PNG of the running game page (needs the project\'s dev server and the game or the editor open in a browser).',
+    inputSchema: z.object({}),
+  }, async () => {
+    const { png, width, height } = await (await hub()).call('screenshot') as { png: string; width: number; height: number };
+    return { content: [{ type: 'image' as const, data: png, mimeType: 'image/png' }, { type: 'text' as const, text: `${width}x${height}` }] };
+  });
+
+  server.registerTool('game_command', {
+    description: 'Call a debug command on the running game page (the commands of the `stride` CLI: status, entities, inspect, set, eval, perf, ...; "commands" lists them).',
+    inputSchema: z.object({ command: z.string(), args: z.record(z.string(), z.unknown()).optional() }),
+  }, async ({ command, args }) => json(await (await hub()).call(command, args ?? {})));
+
+  return server;
+}

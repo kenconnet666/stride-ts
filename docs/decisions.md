@@ -2,6 +2,16 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-21 编辑器的 MCP 服务
+
+F1（用户 2026-11-21："方便 agent 工具创作"）。`stride-editor mcp [工程目录]` 用 stdio 起服务（官方的 `@modelcontextprotocol/server` 2.4，工具的参数用 zod 写，SDK 由它生成给模型看的 JSON Schema、校验参数）。
+
+- **在自己的进程里开 EditorBackend**，不经开发服务器的 HTTP 接口：不开开发服务器也能用；开着时它的监视器看到文件变了，编辑器和游戏页面照常热重载。MCP 进程自己也监视内容目录（`fs.watch` 递归），编辑器里存的、手改的，数据库跟上。Windows 上递归监视要用真实的长路径：临时目录这类 8.3 短路径（`LIONHE~1`）会让进程直接崩掉（0xC0000409）。
+- **工具**：`project`、`list_assets`、`read_asset`、`write_asset`（`create` 只新建）、`delete_asset`、`move_asset`、`import_file`（磁盘上的文件）、`edit_scene`（场景文档的 SceneEdit，一次修改存一次；改动的实体照字段描述检查，有问题不存，`force` 照存）、`field_schemas`（组件、场景设置、实体、资源的 JSON Schema）、`screenshot` 和 `game_command`（经开发服务器的调试中枢，按工程名找；就是 `stride` CLI 的那些页面命令）。名字、参数和编辑器的 HTTP 接口、CLI 对应。
+- **字段描述导出成 JSON Schema**（引擎 `editor/fieldSchema.ts`，`@stride-ts/engine/editor-field-schema`）：和 checkFields 同一套规则——可选的不进 required，可空的加 null，对象不许多键；按种类分的组件（光、背景、精灵）是 oneOf，种类是只有一个值的 enum。
+- **测试**：`editor/test/mcp.test.ts` 在临时仓库里用模板建工程，起 `stride-editor mcp`，按 JSON-RPC 列工具、建材质、改场景（错的值不存、加实体、删实体）、取 schema。手上在 collect-dodge 上试过截图（960×540 的 PNG）和页面命令（`rules`）。
+- **还没做**：让开着的编辑器界面打开某个场景（要经开发服务器推给前端）。
+
 ## 2026-11-21 天空、云的管线加载时预热
 
 collect-dodge 记预算时看到 `gpu.pipelines.sync` 是 16：第一帧当场编了大气的六条计算管线和合成、画天空的、体积云的五条、预滤波、DFG 表、文字。以前只有网格、背景、精灵、后处理在加载场景时预热。

@@ -343,6 +343,12 @@ importers:
       '@lucide/icons':
         specifier: ^1.76.0
         version: 1.76.0
+      '@modelcontextprotocol/server':
+        specifier: ^2.4.0
+        version: 2.4.0
+      '@stride-ts/cli':
+        specifier: workspace:*
+        version: link:../cli
       '@stride-ts/engine':
         specifier: workspace:*
         version: link:../engine
@@ -542,6 +548,14 @@ packages:
 
   '@lucide/icons@1.76.0':
     resolution: {integrity: sha512-orIdyKiUHgg2XG81K/V1cP8v+z4Gr4bHt6uYnR9s6Miz7rFLrHTVZ/AzkyZ76/Q6nJh2Zc5tVKh9Pm15r8o2RA==}
+
+  '@modelcontextprotocol/core@2.4.0':
+    resolution: {integrity: sha512-z8QBKqdfXLPzkLQuG4xp8hrVEMm1PZ1IgxMN2sMbJiFiAKOWXnAzogXn2W4aqIBlP1ea6U5yiqVquvUNM1Cj6Q==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/server@2.4.0':
+    resolution: {integrity: sha512-rgR9yxSaAJ+bcsi/XroT/S2AfPiIWloXAnrdfYSCms9ivVju0ishu/wW0J21Ho6+ZOR1r7RyeRbjiRuF87ix5Q==}
+    engines: {node: '>=20'}
 
   '@napi-rs/wasm-runtime@1.2.6':
     resolution: {integrity: sha512-mRyDmEw9/fCDXCGfL1sbgIw/GUK0PVxRW4YwgPN61F3LQ+fSyoBFarJVzgGyhF6kRzEQZ0FejDqm4WLXSeqQmw==}
@@ -1536,6 +1550,15 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@lucide/icons@1.76.0': {}
+
+  '@modelcontextprotocol/core@2.4.0':
+    dependencies:
+      zod: 4.6.7
+
+  '@modelcontextprotocol/server@2.4.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.4.0
+      zod: 4.6.7
 
   '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
     dependencies:

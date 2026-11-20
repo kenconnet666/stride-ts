@@ -1,4 +1,4 @@
-import { ClipboardPaste, Copy, CopyPlus, Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
+import { ClipboardPaste, Copy, CopyPlus, Magnet, Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, Splitter } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -15,6 +15,8 @@ const styles = css.create({
   notice: { marginInlineStart: '_sm', color: '_dangerText', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   title: { marginInlineStart: '_sm', color: '_textMuted', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   spacer: { flex: '1' },
+  snap: { display: 'flex', alignItems: 'center', gap: '_sm', marginInlineStart: '_sm', color: '_textMuted', fontSize: '0.8rem' },
+  step: { width: '3.6em', marginInlineStart: '_xs' },
   body: { flex: '1', minHeight: '0' },
   // 分栏里套的分栏铺满那一栏：栏里的滚动区域的内容层按内容定高，height: 100% 撑不住，长的属性面板会把整排（场景树、视口）
   // 一起撑高、一起滚；绝对定位到滚动区域（它是 relative）上，各栏自己滚
@@ -59,6 +61,29 @@ export const App = _component(({ session }: { session: EditorSession }) => {
     playing = !playing;
   };
 
+  /** 吸附：开关（拖操纵器时按住 Ctrl 反过来）和移动、旋转、缩放的步长。 */
+  const snapControls = () => {
+    const snap = session.snap.value;
+    if (!snap) return undefined;
+    const step = (key: 'translate' | 'rotate' | 'scale', label: string, title: string, min: number) => (
+      <label title={title}>
+        {label}
+        <input {...css.attrs(styles.step)} type="number" min={min} step="any" value={snap[key]} onChange={(event: Event) => {
+          const value = Number((event.target as HTMLInputElement).value);
+          if (Number.isFinite(value) && value > 0) session.setSnap({ [key]: value });
+        }} />
+      </label>
+    );
+    return (
+      <span {...css.attrs(styles.snap)} role="group" aria-label="吸附">
+        <IconButton icon={Magnet} variant={snap.enabled ? 'soft' : 'ghost'} aria-pressed={snap.enabled} aria-label={snap.enabled ? '吸附开着（拖的时候按住 Ctrl 临时不吸）' : '吸附关着（拖的时候按住 Ctrl 临时吸附）'} onClick={() => session.setSnap({ enabled: !snap.enabled })} />
+        {step('translate', '移动', '移动的步长（米）', 0.001)}
+        {step('rotate', '旋转', '旋转的步长（度）', 0.01)}
+        {step('scale', '缩放', '缩放的步长（倍数）', 0.001)}
+      </span>
+    );
+  };
+
   return () => {
     void version.value;
     return (
@@ -73,6 +98,7 @@ export const App = _component(({ session }: { session: EditorSession }) => {
           <IconButton icon={ClipboardPaste} aria-label="粘贴到选中的实体后面（Ctrl+V；Ctrl+Shift+V 粘贴成它的子实体）" disabled={!session.clipboard.value || playing} onClick={() => void session.paste()} />
           <IconButton icon={CopyPlus} aria-label="复制一份（Ctrl+D）" disabled={session.selection.value.length === 0 || playing} onClick={() => void session.duplicateSelection()} />
           <IconButton icon={playing ? Square : Play} aria-label={playing ? '停止试玩' : '试玩'} onClick={() => void togglePlay()} />
+          {snapControls()}
           <span {...css.attrs(styles.title)}>{opened.value ? `${opened.value.kind === 'prefab' ? '预制体 ' : ''}${opened.value.path}` : '……'}{dirty.value ? ' *' : ''}</span>
           {session.notice.value && <span {...css.attrs(styles.notice)} role="status" title={session.notice.value}>{session.notice.value}</span>}
           {opened.value?.kind === 'prefab' && scene.value && (

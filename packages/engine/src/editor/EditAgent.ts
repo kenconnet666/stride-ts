@@ -26,11 +26,12 @@ import { Mesh } from '../rendering/Mesh';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
 import type { DebugColor } from '../debug/DebugDraw';
+import type { PointerEvent } from '../input/InputManager';
 import { EditorCameraController } from './EditorCamera';
 import { scriptFields, type Field } from './fields';
 import { LiveScene, type SceneSource } from './LiveScene';
 import type { SceneEdit } from './SceneDocument';
-import { applyGizmoChange, TransformGizmo, type GizmoAxis, type GizmoHandle, type Ray } from './TransformGizmo';
+import { applyGizmoChange, applySnap, DEFAULT_SNAP, TransformGizmo, type GizmoAxis, type GizmoHandle, type Ray, type SnapSettings } from './TransformGizmo';
 
 /** 编辑相机用的相机槽位（场景里的相机用 0 起的小数字）。 */
 export const EDITOR_CAMERA_SLOT = 0xed17;
@@ -66,6 +67,8 @@ export class EditAgent {
   readonly gizmo = new TransformGizmo();
   /** 移动、旋转的操纵器按世界的轴还是按选中实体自己的轴（缩放总是按自己的轴）。 */
   gizmoSpace: 'world' | 'local' = 'world';
+  /** 吸附：步长和"一直吸附"，拖操纵器时按住 Ctrl 反过来。编辑器的界面记着它，页面重新加载以后再设回来。 */
+  snap: SnapSettings = DEFAULT_SNAP;
   /** 用户在视口里点选以后调（参数是新的选中）。 */
   onSelectionChanged: ((ids: readonly string[]) => void) | undefined;
   #live: LiveScene | undefined;
@@ -313,24 +316,38 @@ class EditorViewport extends SyncScript {
     const pixel = input.absoluteMousePosition;
     const roots = agent.editable ? agent.selectionRoots() : [];
     const gizmo = agent.gizmo;
+    // 拖的中途按下、松开 Ctrl 也跟着变
+    applySnap(gizmo, agent.snap, input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
     if (roots.length > 0) this.#placeGizmo(agent, roots[0]!);
     else if (this.#drag) this.#endDrag(agent);
 
     if (roots.length > 0 && !this.#drag) this.#hover = navigating ? undefined : gizmo.pick(pixel, this.#project);
     if (input.isMouseButtonPressed('left') && !navigating) {
-      if (roots.length > 0 && this.#hover && gizmo.begin(this.#hover, this.#ray(pixel), pixel)) {
+      // 帧率低（标签页在后台、机器卡）时按下、拖动、松开可能落在同一帧：按下用按下那一刻的位置（指针事件里记着），
+      // 不用这一帧鼠标最后在的地方，不然点不到把手、点选点错地方
+      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
+      const handle = roots.length > 0 ? gizmo.pick(at, this.#project) : undefined;
+      if (handle && gizmo.begin(handle, this.#ray(at), at)) {
         this.#drag = { starts: roots.map((entity) => this.#dragStart(live, entity)), key: `gizmo:${++this.#drags}` };
       } else {
-        this.#pressed = pixel;
+        this.#pressed = at;
       }
     }
-    if (this.#drag && input.isMouseButtonDown('left')) this.#applyDrag(agent, pixel);
+    // 同一帧里松开的也先拖到松开的位置再结束
+    if (this.#drag && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) this.#applyDrag(agent, pixel);
     if (input.isMouseButtonReleased('left')) {
       if (this.#drag) this.#endDrag(agent);
       else if (this.#pressed && Math.hypot(pixel[0] - this.#pressed[0], pixel[1] - this.#pressed[1]) < CLICK_PIXELS) this.#click(agent, pixel, input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
       this.#pressed = undefined;
     }
     if (roots.length > 0) this.#drawGizmo(gizmo);
+  }
+
+  /** 这一帧里鼠标按下那一刻在画布上的位置（像素）；这一帧没有按下事件时是 undefined。 */
+  #pressPixel(events: readonly PointerEvent[]): readonly [number, number] | undefined {
+    const press = events.find((event) => event.device === 'mouse' && event.eventType === 'pressed');
+    const canvas = this.game.graphicsDevice.canvas;
+    return press && [press.position[0] * canvas.clientWidth, press.position[1] * canvas.clientHeight];
   }
 
   /** 操纵器放在第一个选中的实体上，大小按它到相机的距离算（画面上一样大）。 */

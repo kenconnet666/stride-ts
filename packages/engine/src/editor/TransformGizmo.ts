@@ -66,6 +66,29 @@ export function rayPlane(ray: Ray, point: Readonly<Vec3Like>, normal: Readonly<V
   return t < 0 ? undefined : new Vector3().copy(ray.origin).addScaled(ray.direction, t);
 }
 
+/** 编辑器的吸附设置：三种操纵的步长和"一直吸附"。旋转按度（界面上的单位），操纵器里换成弧度。 */
+export interface SnapSettings {
+  /** 一直吸附；拖的时候按住 Ctrl 反过来（开着时临时不吸、关着时临时吸）。 */
+  readonly enabled: boolean;
+  /** 移动的步长（世界单位）。 */
+  readonly translate: number;
+  /** 旋转的步长（度）。 */
+  readonly rotate: number;
+  /** 缩放的步长（倍数）。 */
+  readonly scale: number;
+}
+
+/** 默认的吸附：关着；步长 1 米、15 度、0.1 倍（Stride 编辑器的默认值）。 */
+export const DEFAULT_SNAP: SnapSettings = { enabled: false, translate: 1, rotate: 15, scale: 0.1 };
+
+/** 照吸附设置和"Ctrl 按着没有"设操纵器的步长（不吸附时是 0）。 */
+export function applySnap(gizmo: TransformGizmo, settings: SnapSettings, invert: boolean): void {
+  const on = settings.enabled !== invert;
+  gizmo.translateSnap = on ? settings.translate : 0;
+  gizmo.rotateSnap = on ? (settings.rotate * Math.PI) / 180 : 0;
+  gizmo.scaleSnap = on ? settings.scale : 0;
+}
+
 export class TransformGizmo {
   mode: GizmoMode = 'translate';
   /** 枢轴（世界坐标）：操纵器画在这里，旋转绕着它。 */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { applyGizmoChange, closestOnAxis, rayPlane, TransformGizmo, type GizmoChange, type Ray } from '../src/editor/TransformGizmo';
+import { applyGizmoChange, applySnap, closestOnAxis, DEFAULT_SNAP, rayPlane, TransformGizmo, type GizmoChange, type Ray } from '../src/editor/TransformGizmo';
 import { Quaternion, Vector3 } from '../src/mathematics/vectors';
 
 // 操纵器的几何：不碰输入、实体和绘制。
@@ -108,5 +108,22 @@ describe('操纵器的几何（TransformGizmo）', () => {
     gizmo.begin(pick(471, 229)!, front(1, 0), [500, 300]);
     const change = gizmo.drag(front(0, 1), [400, 200])!;
     expect(change.type === 'rotate' && round(new Vector3(1, 0, 0).rotate(change.rotation))).toEqual([0, 1, 0]);
+  });
+
+  test('吸附设置：开着时用步长（旋转换成弧度），按住 Ctrl 反过来；关着时按住 Ctrl 临时吸附', () => {
+    const gizmo = new TransformGizmo();
+    const steps = () => [gizmo.translateSnap, +gizmo.rotateSnap.toFixed(6), gizmo.scaleSnap];
+    applySnap(gizmo, DEFAULT_SNAP, false);
+    expect(steps()).toEqual([0, 0, 0]);
+    applySnap(gizmo, DEFAULT_SNAP, true);
+    expect(steps()).toEqual([1, +(Math.PI / 12).toFixed(6), 0.1]);
+    applySnap(gizmo, { enabled: true, translate: 0.5, rotate: 90, scale: 0.25 }, false);
+    expect(steps()).toEqual([0.5, +(Math.PI / 2).toFixed(6), 0.25]);
+    applySnap(gizmo, { enabled: true, translate: 0.5, rotate: 90, scale: 0.25 }, true);
+    expect(steps()).toEqual([0, 0, 0]);
+    // 吸附到 0.5：拖了 0.7 走 0.5
+    applySnap(gizmo, { enabled: true, translate: 0.5, rotate: 90, scale: 0.25 }, false);
+    gizmo.begin({ kind: 'axis', axis: 'x' }, down(0.3, 0.2), [0, 0]);
+    expect(delta(gizmo.drag(down(1.0, 0.2), [0, 0]))).toEqual([0.5, 0, 0]);
   });
 });

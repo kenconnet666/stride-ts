@@ -397,7 +397,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | 部分 | 在哪 | 没做的 |
 |---|---|---|
 | 渲染组和渲染掩码、调试渲染、网格线框、点选（网格、精灵、粒子、放在 3D 里的 UI；全屏 UI 不参加） | 引擎的 `rendering/`、`debug/` | |
-| 编辑相机、操纵器（移动、旋转、缩放） | `editor/EditorCamera.ts`、`editor/TransformGizmo.ts` | 吸附没接按键和界面 |
+| 编辑相机、操纵器（移动、旋转、缩放） | `editor/EditorCamera.ts`、`editor/TransformGizmo.ts` | 吸附：工具条上的开关和步长，拖的时候按住 Ctrl 反过来 |
 | 场景文档（修改、撤销重做）、实体跟着文档 | `editor/SceneDocument.ts`、`editor/LiveScene.ts` | 场景自己的设置（偏移、仿真、合成器）改了要重新打开 |
 | 编辑状态（`?stride-edit`）和页面里的代理 | `Game.editing`、`editor/EditAgent.ts` | 多个场景同时打开 |
 | 属性面板的字段描述、照描述检查 | `editor/fields.ts` | 粒子的模块、约束的设置还是按 JSON 改 |

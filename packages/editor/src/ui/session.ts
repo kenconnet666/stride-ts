@@ -16,7 +16,7 @@ import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-pr
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
 import { copyEntities, duplicateEntities, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
-import type { EditAgent, EditableScene, Game } from '@stride-ts/engine';
+import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
 import { EditorClient } from '../client/EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
 
@@ -55,6 +55,11 @@ export class EditorSession implements EditableScene {
    * 编辑器拿不到）。
    */
   readonly clipboard = shallowRef<readonly SceneEntityFile[]>();
+  /**
+   * 操纵器的吸附（步长、一直吸附）。记在会话里：换着打开场景、预制体，试玩回来、页面重新加载以后都还是这个；第一次用游戏
+   * 页面里的默认值（不在界面这边引入引擎的值）。
+   */
+  readonly snap = shallowRef<SnapSettings>();
   /** 最近一次操作做不了的原因（工具条上显示），下一次操作成功时清掉。 */
   readonly notice = shallowRef('');
   #document: SceneDocument | undefined;
@@ -144,6 +149,8 @@ export class EditorSession implements EditableScene {
     this.dirty.value = false;
     this.selection.value = [];
     await agent.open(this.#view);
+    if (this.snap.value) agent.snap = this.snap.value;
+    else this.snap.value = agent.snap;
     this.agent.value = agent;
     this.#changed(false);
   }
@@ -254,6 +261,15 @@ export class EditorSession implements EditableScene {
     this.apply({ type: 'remove', entities: ids });
     this.commit();
     this.select([]);
+  }
+
+  /** 改吸附设置（一项或几项），游戏页面里的操纵器马上用上。 */
+  setSnap(change: Partial<SnapSettings>): void {
+    const current = this.snap.value;
+    if (!current) return;
+    this.snap.value = { ...current, ...change };
+    const agent = this.agent.value;
+    if (agent) agent.snap = this.snap.value;
   }
 
   /** 复制选中的实体（连同后代、组件）。 */

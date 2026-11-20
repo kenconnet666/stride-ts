@@ -51,7 +51,6 @@ stride('eval', PAGE_HELPERS);
 stride('eval', HELPERS);
 
 type State = { page: string; distance: string | null; x: number; y: number; lane: number; dead: boolean; sections: number[]; skyU: number | null; animations: string[] };
-const state = () => stride('eval', 'seState()') as State;
 // 关卡在加载后的头几帧里生成；慢的机器（CI 的软件 WebGPU）上那几帧很长，等它生成完，最多 10 秒游戏时间
 const menu = stride('eval', `(async () => {
   const end = strideGame.updateTime.total + 10;

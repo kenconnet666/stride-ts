@@ -43,7 +43,7 @@ export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
 
 export interface GameOptions {
   /**
-   * 原生模块任务系统的工作线程数；默认 hardwareConcurrency - 1。调试时页面地址的 `?stride-workers=N` 也能给（同一个标签页里
+   * 原生模块任务系统的工作线程数；默认 hardwareConcurrency - 1、最多 8（多了只多占 CPU，见 docs/decisions.md）。调试时页面地址的 `?stride-workers=N` 也能给（同一个标签页里
    * 一直有效），回归用它固定线程数：每个线程的栈算在原生内存里，线程数随机器变的话 `native.allocated.bytes` 的预算就没法比。
    */
   workerThreads?: number;

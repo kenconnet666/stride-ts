@@ -5,7 +5,7 @@
 // - ChildParticles：四组子粒子都生出来了；CustomMaterials：着色器类和自定义材质的发射器在画；
 // - CustomParticles：游戏自己的生成器、形状；Lasers：闪电弧，激光的网格材质是颜色树的自发光、加法透明、两面画。
 // 最后回到 MainScene，没有错误日志（finish 检查）。
-import { startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('particles-sample');
 
@@ -21,29 +21,36 @@ const status = () => stride('status') as { status: string; error: string | null;
 stride('eval', 'location.href = location.origin + "/"');
 await sleep(1500);
 stride('wait');
-await sleep(2000);
+stride('eval', PAGE_HELPERS);
+stride('eval', HELPERS);
+// 等待都按游戏时间和状态：CI 的软件 WebGPU 上一帧要几百毫秒，换场景（加载、编管线）要几十秒
+stride('eval', 'seconds(2).then(() => 1)');
 
 const seen: string[] = [];
 for (let i = 0; i < 7; i++) {
   const { status: state, error, scene } = status();
   seen.push(scene);
   check(`${scene}：在跑`, state === 'running' && error === null, { state, error });
-  stride('eval', HELPERS);
   const emitters = stride('eval', 'emitters()') as Emitter[];
   const total = emitters.reduce((sum, [, , n]) => sum + n, 0);
   check(`${scene}：有粒子`, total > 50, { total, emitters: emitters.length });
   switch (scene) {
     case 'ChildParticles': {
-      // 子粒子由父粒子触发（Smoke 的烟在石头落地时才生），某一刻可能正好一个都没有：3 秒内每组都出现过就算
-      const most = new Map<string, number>();
-      const groupsSeen = () => ['Ribbons/', 'Smoke/', 'Fireworks/', 'Colliding Particles/', 'Ribbons/Child', 'Smoke/Smoke']
-        .every((prefix) => [...most].some(([key, n]) => key.startsWith(prefix) && n > 0));
-      for (let sample = 0, current = emitters; sample < 10; sample++, current = stride('eval', 'emitters()') as Emitter[]) {
-        for (const [e, name, n] of current) most.set(`${e}/${name}`, Math.max(most.get(`${e}/${name}`) ?? 0, n));
-        if (groupsSeen()) break;
-        await sleep(300);
-      }
-      check('ChildParticles：四组子粒子都生出来了', groupsSeen(), Object.fromEntries(most));
+      // 子粒子由父粒子触发（Smoke 的烟在石头落地时才生），某一刻可能正好一个都没有：3 秒游戏时间内每组都出现过就算
+      const most = stride('eval', `(async () => {
+        const most = {}, prefixes = ['Ribbons/', 'Smoke/', 'Fireworks/', 'Colliding Particles/', 'Ribbons/Child', 'Smoke/Smoke'];
+        const seen = () => prefixes.every((prefix) => Object.entries(most).some(([key, n]) => key.startsWith(prefix) && n > 0));
+        const end = strideGame.updateTime.total + 3;
+        do {
+          for (const [e, name, n] of emitters()) most[e + '/' + name] = Math.max(most[e + '/' + name] ?? 0, n);
+          if (seen()) break;
+          await frame();
+        } while (strideGame.updateTime.total < end);
+        return most;
+      })()`) as Record<string, number>;
+      const groupsSeen = ['Ribbons/', 'Smoke/', 'Fireworks/', 'Colliding Particles/', 'Ribbons/Child', 'Smoke/Smoke']
+        .every((prefix) => Object.entries(most).some(([key, n]) => key.startsWith(prefix) && n > 0));
+      check('ChildParticles：四组子粒子都生出来了', groupsSeen, most);
       break;
     }
     case 'CustomParticles':
@@ -64,9 +71,7 @@ for (let i = 0; i < 7; i++) {
         const e = g.entities.ids().map((i) => g.entities.entity(i)).find((e) => e.get(type));
         const r = e.require(strideEngine.Transform).rotation, a = e.get(strideEngine.AnimationComponent);
         return [a?.playingAnimations.map((p) => p.name).join() ?? '', +r.x.toFixed(3), +r.w.toFixed(3)]; })()`;
-      const before = stride('eval', ring) as [string, number, number];
-      await sleep(300);
-      const after = stride('eval', ring) as [string, number, number];
+      const [before, after] = stride('eval', `(async () => { const before = ${ring}; await seconds(0.3); return [before, ${ring}]; })()`) as [[string, number, number], [string, number, number]];
       check('Lasers：环由属性曲线的动画带着转', before[0] === 'MyCustomAnimation' && (before[1] !== after[1] || before[2] !== after[2]), { before, after });
       break;
     }
@@ -74,7 +79,8 @@ for (let i = 0; i < 7; i++) {
       break;
   }
   stride('call', 'next-scene');
-  await sleep(2500);
+  // 换好以后等粒子生出来
+  stride('eval', `sceneChanged(${JSON.stringify(scene)}).then(() => seconds(2)).then(() => 1)`);
 }
 check('七个场景都到过，又回到 MainScene', new Set(seen).size === 7 && status().scene === 'MainScene', seen);
 

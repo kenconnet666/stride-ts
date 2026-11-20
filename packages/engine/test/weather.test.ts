@@ -105,11 +105,17 @@ describe('雨雪', () => {
 });
 
 describe('天空遮挡（从上往下的深度图）', () => {
-  test('没人用就不画、不建贴图；中心按纹素吸附；走远了或者到了刷新间隔才重画；画完下一帧开头才换成对外那张、版本号加一', () => {
+  let native: StrideNative;
+  beforeAll(async () => {
+    native = await createStrideNative({ workerThreads: 1 });
+  });
+  afterAll(() => native?.shutdown());
+
+  test('没人用就不画、不建贴图；中心按纹素吸附；走远了才重画（没变的遮挡物不重画）；画完下一帧开头才换成对外那张、版本号加一', () => {
     stubGpuGlobals();
     const { device, calls, writes } = fakeGpu();
     const sky = new SkyOcclusion(device);
-    Object.assign(sky, { size: 64, resolution: 512, redrawDistance: 8, refreshInterval: 1 });
+    Object.assign(sky, { size: 64, resolution: 512, redrawDistance: 8 });
     expect(skyOcclusionCenter({ x: 5.06, y: 1.2, z: -2.1 }, 0.125)).toEqual([5.0, 1.25, -2.125]);
     expect(sky.begin({ x: 0, y: 0, z: 0 }, 0)).toBeUndefined();
     expect(calls.some((call) => call.method === 'createTexture')).toBe(false);
@@ -123,7 +129,7 @@ describe('天空遮挡（从上往下的深度图）', () => {
     sky.use();
     expect(sky.begin({ x: 9, y: 0, z: 0 }, 0.6)).toBe(view);
     sky.use();
-    expect(sky.begin({ x: 9, y: 0, z: 0 }, 1.7)).toBe(view);
+    expect(sky.begin({ x: 9, y: 0, z: 0 }, 1.7)).toBeUndefined();
     // 画完：这一帧还是旧的，下一帧 begin 时换上
     // 深度拷进还没换上的那个缓冲（网格着色器读缓冲），下一帧开头和矩阵一起换上
     const pass = { end: () => {} } as unknown as GPURenderPassEncoder;
@@ -144,6 +150,59 @@ describe('天空遮挡（从上往下的深度图）', () => {
     sky.use();
     sky.enabled = false;
     expect(sky.begin({ x: 100, y: 0, z: 0 }, 5)).toBeUndefined();
+  });
+
+  test('遮挡物在画的范围里动了、加了、删了才重画；范围外的、蒙皮的、透明的、不投阴影的动了不算；暂停的帧不重复算；停用过再用先重画', () => {
+    stubGpuGlobals();
+    const sky = new SkyOcclusion(fakeGpu().device);
+    using transforms = native.createTransforms(16);
+    const [near, far, skinned, glass, extra] = transforms.allocate(5);
+    transforms.position[far! * 3] = 500;
+    const mesh = { cullBounds: { min: [-1, -1, -1], max: [1, 1, 1] } };
+    const batch = (slots: number[], options: { skinned?: boolean; transparent?: boolean; caster?: boolean } = {}) =>
+      ({ mesh, material: { isTransparent: options.transparent ?? false }, isShadowCaster: options.caster ?? true, skinned: options.skinned ?? false, slots: Uint32Array.from(slots), count: slots.length }) as never;
+    let batches = [batch([near!, far!]), batch([skinned!], { skinned: true }), batch([glass!], { transparent: true })];
+    let frame = 0, time = 0;
+    /** 一帧：动 move 里的槽位、update、begin、watch；返回这一帧画没画。 */
+    const step = (move: (() => void) | undefined = undefined, options: { paused?: boolean } = {}) => {
+      if (!options.paused) {
+        move?.();
+        transforms.update();
+        frame++;
+      }
+      time += 0.5;
+      sky.use();
+      const drawn = sky.begin({ x: 0, y: 0, z: 0 }, time) !== undefined;
+      sky.watch(batches, transforms, frame);
+      return drawn;
+    };
+    expect(step()).toBe(true);
+    expect(step()).toBe(false);
+    // 范围外的、蒙皮的、透明的动了不算
+    expect(step(() => { transforms.position[far! * 3 + 2] = 3; transforms.position[skinned! * 3] = 1; transforms.position[glass! * 3] = 1; })).toBe(false);
+    expect(step()).toBe(false);
+    // 范围里的动了：下一帧重画
+    expect(step(() => { transforms.position[near! * 3] = 2; })).toBe(false);
+    expect(step()).toBe(true);
+    expect(step()).toBe(false);
+    // 暂停的帧：变了的槽位还是上一次的，不再算一次
+    expect(step(() => { transforms.position[near! * 3] = 3; })).toBe(false);
+    expect(step()).toBe(true);
+    expect(step(undefined, { paused: true })).toBe(false);
+    expect(step(undefined, { paused: true })).toBe(false);
+    // 瞬移出范围：按原来的位置算
+    expect(step(() => { transforms.position[near! * 3] = 1000; })).toBe(false);
+    expect(step()).toBe(true);
+    // 加了一个范围里的遮挡物、删了一个
+    batches = [...batches, batch([extra!])];
+    expect(step()).toBe(false);
+    expect(step()).toBe(true);
+    batches = batches.slice(0, -1);
+    expect(step()).toBe(false);
+    expect(step()).toBe(true);
+    // 停用过：接着用时先重画
+    sky.begin({ x: 0, y: 0, z: 0 }, (time += 0.5));
+    expect(step()).toBe(true);
   });
 
   test('按深度表面碰撞：内核多两个绑定（深度图、它的 uniform）和碰撞的代码；一个发射器两个时不上 GPU', () => {

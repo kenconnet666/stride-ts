@@ -391,6 +391,7 @@ export class ForwardRenderer {
     let shadowViews: readonly RenderView[] = [];
     if (views.length > 0) {
       renderSystem.extract(context);
+      sky.watch(context.game.meshes.batches, context.game.transforms, context.game.frames);
       renderSystem.cull(context, views);
       // 画进渲染目标贴图的相机也接收阴影：各自一套方向光的级联（同 Stride：每个相机的前向渲染器各算各的）
       if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, renderSystem.lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows));

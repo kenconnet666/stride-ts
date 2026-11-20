@@ -7,8 +7,10 @@
  *   粒子、精灵不画），管线和阴影共用、加载时就预热了。蒙皮的网格（角色、动物）也不画：它们一直在动，脚下不该留一块不湿、
  *   不积雪的地，雨点穿过角色看不出来。
  * - 正交视图从相机上方往下看，覆盖 size 米见方、resolution 像素。中心按纹素吸附（size / resolution 米一格），相机走远了
- *   redrawDistance 米才重画，两次之间贴图在世界里不动，遮挡的边缘不随相机游动；refreshInterval 秒也重画一次，跟上动的
- *   遮挡物（开着的门、移动的平台）。
+ *   redrawDistance 米才重画，两次之间贴图在世界里不动，遮挡的边缘不随相机游动。
+ * - 没变就不重画：遮挡物（开着的门、移动的平台）动了、加了、删了，而且在画的范围里，才重画（变换存储报的变了的槽位，
+ *   TransformStore.changedSlots；一直有东西在动时最多每 minRedrawInterval 秒一次）。范围外的东西动不算：开放世界里远处
+ *   的车、门不让它重画。
  * - 没人用就不画、不建贴图：用户每帧调 use()；画质档位关掉时（skyOcclusion: false，低档）也不画。
  * - 对外给：深度贴图 depthView、拷进存储缓冲的同一张深度 depthBuffer（网格着色器用：不占采样贴图的名额）、世界到贴图的
  *   矩阵 worldToTexture（视图投影：xy 是 -1..1，z 是深度）、version（重画了才变）。它是一个深度表面（rendering/DepthSurface.ts）：
@@ -21,6 +23,8 @@ import { Matrix } from '../data/Matrix';
 import { DEPTH_SURFACE_BYTES, packDepthSurface, type GpuDepthSurface } from '../rendering/DepthSurface';
 import type { RenderContext, RenderStage, RenderSystem } from '../rendering/RenderSystem';
 import { RenderView } from '../rendering/RenderSystem';
+import type { MeshBatch } from '../rendering/mesh/MeshRenderFeature';
+import type { TransformStore } from '@stride-ts/native';
 
 /** 阴影投射者阶段的深度格式（ShadowMapRenderer 的 SHADOW_ATLAS_FORMAT）。 */
 const FORMAT: GPUTextureFormat = 'depth32float';
@@ -35,8 +39,8 @@ export class SkyOcclusion implements GpuDepthSurface {
   resolution = 512;
   /** 相机离上次画的中心多远才重画，米。 */
   redrawDistance = 8;
-  /** 多久重画一次，秒（动的遮挡物）。 */
-  refreshInterval = 1;
+  /** 遮挡物动了时两次重画至少隔多久，秒（一直在动的平台不让它每帧重画）。 */
+  minRedrawInterval = 0.2;
   /** 画质档位开着（前向渲染器每帧设）。 */
   enabled = true;
   readonly view = Object.assign(new RenderView(), { receivesShadows: false, skipsSkinned: true, skipsTransparent: true });
@@ -53,6 +57,19 @@ export class SkyOcclusion implements GpuDepthSurface {
   #used = false;
   #center: [number, number, number] | undefined;
   #drawnAt = -Infinity;
+  /** 这一帧在画（begin 给了视图）。 */
+  #drawing = false;
+  /** 上一帧有人用：中间停过的话，停的时候动了什么不知道，接着用时先重画一次。 */
+  #watched = false;
+  /** 画过以后，画的范围里的遮挡物变了。 */
+  #dirty = false;
+  /** 槽位 → 遮挡物的包围半径（本地，乘缩放前；0 是不是遮挡物），这一帧的和上一帧的。 */
+  #occluders = new Float32Array(0);
+  #previousOccluders = new Float32Array(0);
+  /** 处理过的变换存储的帧（暂停的帧不算一次 update，变了的槽位还是上一次的）。 */
+  #checkedFrame = -1;
+  /** 槽位 → 遮挡物上一次记下的位置和最大的缩放（xyz、s）。 */
+  #positions = new Float32Array(0);
   /** 画好了、还没换成对外那张的视图投影和 uniform。 */
   #pending: { readonly worldToTexture: Float32Array<ArrayBuffer>; readonly uniform: ArrayBuffer } | undefined;
   #worldToTexture: Float32Array<ArrayBuffer> = new Float32Array(16);
@@ -99,11 +116,15 @@ export class SkyOcclusion implements GpuDepthSurface {
    */
   begin(eye: { readonly x: number; readonly y: number; readonly z: number }, time: number): RenderView | undefined {
     this.#commit();
-    const used = this.#used;
+    const used = this.#used && this.enabled, resumed = !this.#watched;
     this.#used = false;
-    if (!used || !this.enabled) return undefined;
+    this.#watched = used;
+    this.#drawing = false;
+    if (!used) return undefined;
     const far = !this.#center || Math.hypot(eye.x - this.#center[0], eye.z - this.#center[2]) > this.redrawDistance || Math.abs(eye.y - this.#center[1]) > this.redrawDistance;
-    if (!far && time - this.#drawnAt < this.refreshInterval) return undefined;
+    if (!far && !resumed && !(this.#dirty && time - this.#drawnAt >= this.minRedrawInterval)) return undefined;
+    this.#drawing = true;
+    this.#dirty = false;
     const center = skyOcclusionCenter(eye, this.size / this.resolution);
     this.#center = center;
     this.#drawnAt = time;
@@ -117,6 +138,54 @@ export class SkyOcclusion implements GpuDepthSurface {
     view.width = view.height = this.resolution;
     view.update();
     return view;
+  }
+
+  /**
+   * @internal 前向渲染器在提取之后调用（有人用的帧）：看这一帧的遮挡物（投阴影、不透明、不蒙皮的网格批次）比上一帧加了、删了
+   * 哪些，变换存储报的变了的槽位里哪些是遮挡物；在画的范围里就记下"要重画"，下一帧 begin 时重画。这一帧在画就不用记：画的
+   * 就是这一帧的样子。
+   */
+  watch(batches: readonly MeshBatch[], transforms: TransformStore, frame: number): void {
+    if (!this.#watched) return;
+    const limit = transforms.slotLimit + 1;
+    [this.#previousOccluders, this.#occluders] = [this.#occluders, this.#previousOccluders];
+    if (this.#occluders.length < limit) this.#occluders = new Float32Array(Math.max(limit, this.#occluders.length * 2));
+    else this.#occluders.fill(0, 0, limit);
+    const occluders = this.#occluders, previous = this.#previousOccluders;
+    let dirty = false;
+    for (const batch of batches) {
+      if (!batch.isShadowCaster || batch.skinned || batch.material.isTransparent || batch.count === 0) continue;
+      const { min, max } = batch.mesh.cullBounds;
+      let center = 0, half = 0;
+      for (let c = 0; c < 3; c++) {
+        center += ((min[c]! + max[c]!) / 2) ** 2;
+        half += ((max[c]! - min[c]!) / 2) ** 2;
+      }
+      const radius = Math.sqrt(center) + Math.sqrt(half);
+      for (let i = 0; i < batch.count; i++) {
+        const slot = batch.slots[i]!;
+        occluders[slot] = radius;
+        if (previous[slot]! > 0) continue;
+        // 新出现的遮挡物
+        this.#remember(transforms.world, slot);
+        if (!dirty) dirty = this.#covers(transforms.world, slot, radius);
+      }
+    }
+    // 不再是遮挡物的（删了、换了不投阴影的材质）：按它最后的世界矩阵看（释放的槽位矩阵还留着）
+    for (let slot = 1; !dirty && slot < Math.min(limit, previous.length); slot++) {
+      if (previous[slot]! > 0 && !(occluders[slot]! > 0)) dirty = this.#covers(transforms.world, slot, previous[slot]!);
+    }
+    if (frame !== this.#checkedFrame) {
+      this.#checkedFrame = frame;
+      // 动了的遮挡物：动之前或之后在范围里都算（瞬移出范围的那一下，新位置不在范围里，旧位置的影子还画着）
+      for (const slot of transforms.changedSlots()) {
+        const radius = Math.max(occluders[slot] ?? 0, previous[slot] ?? 0);
+        if (!(radius > 0)) continue;
+        if (!dirty) dirty = this.#covers(transforms.world, slot, radius) || this.#coveredBefore(slot, radius);
+        this.#remember(transforms.world, slot);
+      }
+    }
+    if (dirty && !this.#drawing) this.#dirty = true;
   }
 
   /** @internal 前向渲染器在阴影之后调用：用阴影投射者的阶段 stage 把 begin 给的视图画进深度图。 */
@@ -143,6 +212,39 @@ export class SkyOcclusion implements GpuDepthSurface {
     this.#depthBuffers = undefined;
   }
 
+  /** 槽位的包围球（世界矩阵的平移为球心，本地半径乘最大的缩放）和画的范围相交。 */
+  #covers(world: Float32Array, slot: number, radius: number): boolean {
+    const o = slot * 16;
+    return this.#overlaps(world[o + 12]!, world[o + 13]!, world[o + 14]!, radius * maxScale(world, o));
+  }
+
+  /** 按记下的上一个位置看（半径按记下的缩放）。 */
+  #coveredBefore(slot: number, radius: number): boolean {
+    const p = this.#positions, o = slot * 4;
+    return o + 3 < p.length && this.#overlaps(p[o]!, p[o + 1]!, p[o + 2]!, radius * p[o + 3]!);
+  }
+
+  #overlaps(x: number, y: number, z: number, radius: number): boolean {
+    const center = this.#center;
+    if (!center) return false;
+    const half = this.size / 2 + radius;
+    return Math.abs(x - center[0]) <= half && Math.abs(z - center[2]) <= half && y + radius >= center[1] - BELOW && y - radius <= center[1] + ABOVE;
+  }
+
+  /** 记下槽位现在的位置和最大的缩放（动了以后看它是不是从范围里离开的）。 */
+  #remember(world: Float32Array, slot: number): void {
+    if (this.#positions.length < slot * 4 + 4) {
+      const grown = new Float32Array(Math.max(slot * 4 + 4, this.#positions.length * 2));
+      grown.set(this.#positions);
+      this.#positions = grown;
+    }
+    const o = slot * 16, p = this.#positions;
+    p[slot * 4] = world[o + 12]!;
+    p[slot * 4 + 1] = world[o + 13]!;
+    p[slot * 4 + 2] = world[o + 14]!;
+    p[slot * 4 + 3] = maxScale(world, o);
+  }
+
   /** 画好的那张换成对外的：矩阵、uniform、版本号。 */
   #commit(): void {
     const pending = this.#pending;
@@ -165,6 +267,12 @@ export class SkyOcclusion implements GpuDepthSurface {
     // 有效位是 0：还没画过时用户不判断
     this.#uniform = this.#device.createBuffer({ label: 'SkyOcclusion', size: DEPTH_SURFACE_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   }
+}
+
+/** 列主序矩阵（world 从 o 起）三根轴里最长的那根。 */
+function maxScale(world: Float32Array, o: number): number {
+  const axis = (a: number) => world[a]! ** 2 + world[a + 1]! ** 2 + world[a + 2]! ** 2;
+  return Math.sqrt(Math.max(axis(o), axis(o + 4), axis(o + 8)));
 }
 
 /** 视图的中心：相机的位置吸附到 texel 米的格子上（纹素对齐，重画以后遮挡的边缘落在同样的位置）。 */

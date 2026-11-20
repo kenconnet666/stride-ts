@@ -632,11 +632,14 @@ function vector(value: unknown, name: string): [number, number, number] {
  * - 一个表达式：结果是它的值，能直接 await。
  * - 几条语句：包进一个块里间接 eval（块里先声明上面那些名字），结果是最后一条语句的值；块里的 const、let 不留到下一次。
  *   语句里有顶层 await 时间接 eval 不支持，改成异步函数体跑，结果要用 return 给。
- * game 不用页面的同名全局变量：画布的 id 常是 game，浏览器会把它挂成全局的 window.game。
+ * 页面自己有同名全局变量的帮手用页面的（样例的冒烟会换掉其中几个）；game 不用页面的：画布的 id 常是 game，浏览器会把它挂成
+ * 全局的 window.game。
  */
 async function evaluate(game: Game, { code }: Args): Promise<unknown> {
   if (typeof code !== 'string') throw new Error('code must be a string');
-  const scope: Record<string, unknown> = { game, engine: (globalThis as { strideEngine?: unknown }).strideEngine, ...pageHelpers(game) };
+  // 页面自己有同名全局变量的帮手用页面的：样例的冒烟会换掉其中几个（比如按坐标点的 uiClick），不能被这里的盖住
+  const helpers = Object.fromEntries(Object.entries(pageHelpers(game)).filter(([name]) => !(name in globalThis)));
+  const scope: Record<string, unknown> = { game, engine: (globalThis as { strideEngine?: unknown }).strideEngine, ...helpers };
   const names = Object.keys(scope);
   const values = names.map((name) => scope[name]);
   const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (...args: string[]) => (...values: unknown[]) => Promise<unknown>;

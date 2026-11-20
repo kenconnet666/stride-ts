@@ -7,7 +7,7 @@ export class AnimationStart extends StartupScript.props({
     blendOperation: prop.enum(['LinearBlend', 'Add']).default('LinearBlend'),
     startTime: prop.number().default(0),
   })).default([]),
-}, { requires: [() => AnimationComponent] }) {
+}) {
   override start(): void {
     if (!this.entity.has(AnimationComponent)) this.entity.add(AnimationComponent);
     const component = this.entity.require(AnimationComponent);

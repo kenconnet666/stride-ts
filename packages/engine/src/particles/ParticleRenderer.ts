@@ -18,7 +18,7 @@ import type { Vec3 } from './math';
 import type { MaterialProgram } from './material';
 import type { ParticleSystemComponent } from './ParticleSystemComponent';
 import { drawOrder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from './shapes';
-import { GPU_DRAW_WGSL, verticesPerParticle } from './gpu/draw';
+import { GPU_DRAW_WGSL } from './gpu/draw';
 import { gpuDrawLayout, type GpuEmitter } from './gpu/GpuEmitter';
 import type { ParticleEmitter } from './ParticleEmitter';
 
@@ -177,9 +177,8 @@ export class ParticleRenderer {
       pass.setBindGroup(0, this.#drawGroup!, [uniformOffset]);
       pass.setBindGroup(1, this.#textureGroup(program));
       if (gpu) {
-        // 每个槽一个实例，死了的在顶点着色器里扔掉
         pass.setBindGroup(2, gpu.drawGroup);
-        pass.draw(verticesPerParticle(gpu.emitter), gpu.capacity);
+        gpu.draw(pass);
       } else {
         pass.drawIndexed(count * 6, 1, firstQuad * 6);
       }

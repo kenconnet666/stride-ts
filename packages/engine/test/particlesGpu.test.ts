@@ -119,7 +119,7 @@ describe('GPU 粒子：排序和形状的参数', () => {
 });
 
 describe('GPU 粒子：发射器', () => {
-  test('管线在后台编，编好之前不模拟；之后每帧把头、生成的范围、种子、寿命、默认值和模块的数据写进 uniform，按 64 一组派发', async () => {
+  test('管线在后台编，编好之前不模拟；之后每帧把头、生成的范围、种子、寿命、默认值、要处理的那段环和模块的数据写进 uniform，按 64 一组派发那一段', async () => {
     stubGpuGlobals();
     const { device, calls, writes } = fakeGpu();
     const source = emitter({ maxParticlesOverride: 1000, particleLifetime: [1, 2], initializers: [{ $type: 'initialSizeSeed' }] }, [3, 4, 5], 2);
@@ -137,7 +137,29 @@ describe('GPU 粒子：发射器', () => {
     // 默认位置是粒子系统的位置、默认大小是它的缩放
     expect([...f32.subarray(8, 12)]).toEqual([3, 4, 5, 2]);
     expect(f32.length).toBe((HEADER_VEC4S + 1) * 4);
-    expect(calls.filter((call) => call.method === 'dispatch').map((call) => call.args[0])).toEqual([Math.ceil(1000 / WORKGROUP_SIZE)]);
+    // 只派发可能活着的那一段环：这一帧生成的 30 个，从槽 0 起
+    expect([u32[16], u32[17]]).toEqual([0, 30]);
+    expect(calls.filter((call) => call.method === 'dispatch').map((call) => call.args[0])).toEqual([Math.ceil(30 / WORKGROUP_SIZE)]);
     expect(gpu.ring.head).toBe(30);
+  });
+});
+
+describe('GPU 粒子：间接绘制', () => {
+  test('模拟时活着的粒子数从 0 数起；不排序、按深度排序的间接绘制，按新旧画的只画最近生成的那段环', async () => {
+    stubGpuGlobals();
+    const { device, calls, writes } = fakeGpu();
+    const make = (sortingPolicy: string) => new GpuEmitter(device, emitter({ maxParticlesOverride: 1000, sortingPolicy, initializers: [{ $type: 'initialSizeSeed' }] }), 1000, 0);
+    const none = make('none'), byAge = make('byAge');
+    await Promise.resolve();
+    const pass = { setPipeline: () => {}, setBindGroup: () => {}, dispatchWorkgroups: () => {} } as unknown as GPUComputePassEncoder;
+    byAge.simulate(pass, 0.1, 40);
+    const args = writes.filter((write) => (write.buffer as GPUBuffer).label?.endsWith(' draw')).at(-1)!;
+    expect([...new Uint32Array(args.bytes.buffer, args.bytes.byteOffset, 4)]).toEqual([6, 0, 0, 0]);
+    expect(buildKernel(none.emitter).code).toContain('markAlive(i);');
+    const render = { draw: (...args: number[]) => calls.push({ method: 'draw', args }), drawIndirect: (...args: unknown[]) => calls.push({ method: 'drawIndirect', args }) } as unknown as GPURenderPassEncoder;
+    none.draw(render);
+    byAge.draw(render);
+    expect(calls.filter((call) => call.method === 'drawIndirect')).toHaveLength(1);
+    expect(calls.find((call) => call.method === 'draw')!.args).toEqual([6, 40]);
   });
 });

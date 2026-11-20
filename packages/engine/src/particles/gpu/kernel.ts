@@ -3,7 +3,8 @@
  * 模块的参数和世界变换每帧打包进 uniform（pack），不用重编着色器。
  *
  * 粒子放在一块存储缓冲里（Particle，96 字节），按环形下标生成：这一帧新粒子是从 spawnStart 起的 spawnCount 个槽（CPU 记着
- * 环的头，见 GpuEmitter）。一次派发处理所有槽，每个槽：新生成的设默认值、跑初始化器、跑后置更新器；活着的照 CPU
+ * 环的头，见 GpuEmitter）。一次派发处理可能活着的那一段环（windowStart 起 windowCount 个：最近"最长寿命"秒里生成的，
+ * 更早的一定死了），粒子少、容量大时不白跑。每个槽：新生成的设默认值、跑初始化器、跑后置更新器；活着的照 CPU
  * （ParticleEmitter.update）的顺序：减寿命（到了就死）、按速度移动、更新器、后置更新器。
  *
  * 和 Stride（CPU 的粒子）不同：随机数是 PCG 哈希（Stride 的 RandomSeed 对大整数取 sin、cos，GPU 的 f32 算不准），同样的
@@ -27,7 +28,7 @@ import { OCCLUSION_WGSL } from '../../weather/SkyOcclusion';
 /** 一个粒子在存储缓冲里占的字节（WGSL 的 Particle）。 */
 export const PARTICLE_BYTES = 96;
 /** uniform 开头的固定部分（Sim 的 data 之前），vec4 的个数。 */
-export const HEADER_VEC4S = 4;
+export const HEADER_VEC4S = 5;
 export const WORKGROUP_SIZE = 64;
 const CURVE_SAMPLES = 32;
 const DEGREES = Math.PI / 180;
@@ -134,10 +135,29 @@ struct Sim {
   defaultPosition: vec3f,
   defaultScale: f32,
   defaultRotation: vec4f,
+  // 这一帧要处理的槽：从 windowStart 起 windowCount 个（最近"最长寿命"秒里生成的，别的一定死了，不用看）
+  windowStart: u32,
+  windowCount: u32,
+  pad0: u32,
+  pad1: u32,
   data: array<vec4f, ${Math.max(slots, 1)}>,
 };
 @group(0) @binding(0) var<uniform> sim: Sim;
 @group(0) @binding(1) var<storage, read_write> particles: array<Particle>;
+
+// 间接绘制的参数：实例数是这一帧活着的粒子数（每个活着的粒子加一），alive 是它们的槽号（顺序不定）
+struct DrawArgs {
+  vertexCount: u32,
+  instanceCount: atomic<u32>,
+  firstVertex: u32,
+  firstInstance: u32,
+};
+@group(0) @binding(4) var<storage, read_write> drawArgs: DrawArgs;
+@group(0) @binding(5) var<storage, read_write> alive: array<u32>;
+
+fn markAlive(i: u32) {
+  alive[atomicAdd(&drawArgs.instanceCount, 1u)] = i;
+}
 
 ${HELPERS_WGSL}
 ${WIND_WGSL}
@@ -156,10 +176,10 @@ ${stage('post')}
 }
 
 @compute @workgroup_size(${WORKGROUP_SIZE}) fn simulate(@builtin(global_invocation_id) id: vec3u) {
-  let i = id.x;
-  if (i >= sim.capacity) {
+  if (id.x >= sim.windowCount) {
     return;
   }
+  let i = (sim.windowStart + id.x) % sim.capacity;
   var p = particles[i];
   let spawnIndex = (i + sim.capacity - sim.spawnStart) % sim.capacity;
   if (spawnIndex < sim.spawnCount) {
@@ -179,6 +199,7 @@ ${stage('post')}
     initialize(&p, spawnIndex);
     postUpdate(&p, sim.dt, p.position);
     particles[i] = p;
+    markAlive(i);
     return;
   }
   if (p.life <= 0.0) {
@@ -198,6 +219,9 @@ ${stage('post')}
     p.life = 0.0;
   }` : ''}
   particles[i] = p;
+  if (p.life > 0.0) {
+    markAlive(i);
+  }
 }
 `;
   return {

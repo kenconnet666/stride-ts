@@ -350,6 +350,8 @@ GPU 粒子（2026-11-20，scene-picking 分支，无头 Chrome 1280x720）：par
 
 天空遮挡（同一天，TPP，无头 Chrome 1280x720）：遮挡第一版叫 PrecipitationOcclusion、挂在雨雪上，主会话要求名字取宽（以后湿润、积水积雪也查它）、按阴影投射者筛选、按纹素吸附、没人用不画、画质档位能关，改成 `renderSystem.skyOcclusion`。在角色旁边用代码搭一块悬空的板当屋檐，下雨：从截图看不清板子正下方（被板子挡着，地上的深色是太阳投的影子，不在正下方），所以给 GPU 发射器加了调试用的读回（`GpuEmitter.read`），数板子下面和旁边活着的雨点：0 和 27。
 
+GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x720）：先只做了间接绘制，容量 50 万、每秒 5000 个时主画面不再随容量变，但粒子的计算通道还是 0.102 ms（一次派发跑满容量），于是派发也只跑最近"最长寿命"秒生成的那段环（寿命正好到期的粒子要在窗口里判死，窗口多留两帧）。改完 0.007 ms；不排序、按深度、按新旧三种排序各截图看过，画面和改之前一样，控制台没有报错。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

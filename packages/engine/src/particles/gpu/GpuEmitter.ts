@@ -8,7 +8,7 @@
  */
 import type { ParticleEmitter } from '../ParticleEmitter';
 import { buildKernel, HEADER_VEC4S, PARTICLE_BYTES, WORKGROUP_SIZE, type GpuKernel } from './kernel';
-import { packShape } from './draw';
+import { packShape, verticesPerParticle } from './draw';
 import { bitonicStages, SORT_KEYS_WGSL, SORT_STEP_WGSL, sortSize, STAGE_STRIDE } from './sort';
 
 /** 生成的历史：每帧一条（生成了几个，过了多久）。 */
@@ -88,10 +88,12 @@ function sharedFor(device: GPUDevice): Shared {
   const keysLayout = layout('GPU particles sort keys', [storage(0, 'uniform'), storage(1, 'read-only-storage'), storage(2, 'storage')]);
   const stepLayout = layout('GPU particles sort step', [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 8 } }, storage(1, 'storage')]);
   found = {
-    simLayout: layout('GPU particles simulate', [storage(0, 'uniform'), storage(1, 'storage')]),
+    // 4、5：间接绘制的参数和存活列表
+    simLayout: layout('GPU particles simulate', [storage(0, 'uniform'), storage(1, 'storage'), storage(4, 'storage'), storage(5, 'storage')]),
     occludedSimLayout: layout('GPU particles simulate occluded', [
       storage(0, 'uniform'), storage(1, 'storage'),
       { binding: 2, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: 'depth' } }, storage(3, 'uniform'),
+      storage(4, 'storage'), storage(5, 'storage'),
     ]),
     simPipelines: new Map(),
     keysLayout,
@@ -103,6 +105,7 @@ function sharedFor(device: GPUDevice): Shared {
       storage(0, 'read-only-storage', GPUShaderStage.VERTEX),
       storage(1, 'read-only-storage', GPUShaderStage.VERTEX),
       { binding: 2, visibility: GPUShaderStage.VERTEX, buffer: { type: 'uniform' } },
+      storage(3, 'read-only-storage', GPUShaderStage.VERTEX),
     ]),
   };
   shared.set(device, found);
@@ -134,6 +137,11 @@ export class GpuEmitter {
   readonly #simData: Float32Array;
   readonly #simBits: Uint32Array;
   readonly #simGroup: GPUBindGroup;
+  /** 间接绘制的参数（顶点数、实例数 = 活着的粒子数、0、0），模拟时数出来。 */
+  readonly #drawArgs: GPUBuffer;
+  /** 活着的粒子的槽号（不排序的发射器按它画）。 */
+  readonly #alive: GPUBuffer;
+  readonly #vertices: number;
   readonly #sortSize: number;
   readonly #keys: GPUBuffer;
   readonly #sortView: GPUBuffer | undefined;
@@ -156,6 +164,9 @@ export class GpuEmitter {
     this.#simData = new Float32Array((HEADER_VEC4S + Math.max(this.kernel.slots, 1)) * 4);
     this.#simBits = new Uint32Array(this.#simData.buffer);
     this.#sim = device.createBuffer({ label: `${label} simulate`, size: this.#simData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#vertices = verticesPerParticle(emitter);
+    this.#drawArgs = device.createBuffer({ label: `${label} draw`, size: 16, usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+    this.#alive = device.createBuffer({ label: `${label} alive`, size: size * 4, usage: GPUBufferUsage.STORAGE });
     const occluder = this.kernel.occluded ? emitter.gpuOccluder : undefined;
     const simLayout = occluder ? sharedGpu.occludedSimLayout : sharedGpu.simLayout;
     this.#simGroup = device.createBindGroup({
@@ -163,6 +174,7 @@ export class GpuEmitter {
       entries: [
         { binding: 0, resource: { buffer: this.#sim } }, { binding: 1, resource: { buffer: this.#particles } },
         ...(occluder ? [{ binding: 2, resource: occluder.depthView }, { binding: 3, resource: { buffer: occluder.uniform } }] : []),
+        { binding: 4, resource: { buffer: this.#drawArgs } }, { binding: 5, resource: { buffer: this.#alive } },
       ],
     });
     const code = this.kernel.code;
@@ -183,7 +195,10 @@ export class GpuEmitter {
     device.queue.writeBuffer(this.#shape, 0, packShape(emitter));
     this.drawGroup = device.createBindGroup({
       label, layout: sharedGpu.drawLayout,
-      entries: [{ binding: 0, resource: { buffer: this.#particles } }, { binding: 1, resource: { buffer: this.#keys } }, { binding: 2, resource: { buffer: this.#shape } }],
+      entries: [
+        { binding: 0, resource: { buffer: this.#particles } }, { binding: 1, resource: { buffer: this.#keys } },
+        { binding: 2, resource: { buffer: this.#shape } }, { binding: 3, resource: { buffer: this.#alive } },
+      ],
     });
   }
 
@@ -201,7 +216,9 @@ export class GpuEmitter {
     const pipeline = this.#shared.simPipelines.get(this.kernel.code);
     if (!pipeline) return;
     const emitter = this.emitter;
-    const spawn = this.ring.advance(dt, wanted, emitter.particleLifetime[1]);
+    // 留两帧的余量：寿命正好到期的粒子要在窗口里被判死，不能先掉出窗口
+    const spawn = this.ring.advance(dt, wanted, emitter.particleLifetime[1] + 2 * dt);
+    const capacity = this.ring.capacity, window = Math.min(capacity, this.ring.aliveBound);
     const data = this.#simData, bits = this.#simBits;
     const { position, rotation, scale } = emitter.defaultFields;
     data[0] = dt;
@@ -215,11 +232,24 @@ export class GpuEmitter {
     data.set(position, 8);
     data[11] = scale;
     data.set(rotation, 12);
+    bits[16] = (this.ring.head + capacity - window) % capacity;
+    bits[17] = window;
     this.kernel.pack(data.subarray(HEADER_VEC4S * 4));
     this.#device.queue.writeBuffer(this.#sim, 0, data);
+    // 活着的粒子数从 0 数起（模拟里每个活着的加一）
+    this.#device.queue.writeBuffer(this.#drawArgs, 0, new Uint32Array([this.#vertices, 0, 0, 0]));
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, this.#simGroup);
-    pass.dispatchWorkgroups(Math.ceil(this.ring.capacity / WORKGROUP_SIZE));
+    if (window > 0) pass.dispatchWorkgroups(Math.ceil(window / WORKGROUP_SIZE));
+  }
+
+  /**
+   * 画（渲染器设好管线和绑定组以后调用）：按新旧画的（ByAge，要环的顺序）画最近"最长寿命"秒里生成的那一段环，别的按模拟时
+   * 数出来的活着的粒子数间接绘制（不排序的按存活列表，按深度排序的死了的排在最后）。容量大、粒子少时不白跑顶点。
+   */
+  draw(pass: GPURenderPassEncoder): void {
+    if (this.emitter.sortingPolicy === 'byAge') pass.draw(this.#vertices, Math.min(this.ring.capacity, this.ring.aliveBound));
+    else pass.drawIndirect(this.#drawArgs, 0);
   }
 
   /** 按深度排序（只有 ByDepth 的发射器）：back 是相机的朝后方向（世界）。录进 pass。 */
@@ -262,6 +292,8 @@ export class GpuEmitter {
     this.#particles.destroy();
     this.#sim.destroy();
     this.#keys.destroy();
+    this.#drawArgs.destroy();
+    this.#alive.destroy();
     this.#sortView?.destroy();
     this.#shape.destroy();
   }

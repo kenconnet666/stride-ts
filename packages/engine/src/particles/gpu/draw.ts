@@ -3,8 +3,9 @@
  * Hexagon、OrientedQuad，位置、大小、转角的曲线，局部模拟换到世界），UV 帧按寿命在着色器里算（同 material.ts 的翻页、滚动）。
  * 片元着色器和 CPU 的粒子是同一份（材质的 materialColor），所以画出来的样子一样。
  *
- * 每个粒子一个实例：Billboard 等 6 个顶点（两个三角形，同 CPU 的下标 0 1 2 0 2 3），Hexagon 12 个。死了的槽输出到裁剪
- * 范围以外。画的顺序：按槽、从新到旧（环的头往回）或者按深度排好的（sort.ts）。
+ * 每个粒子一个实例：Billboard 等 6 个顶点（两个三角形，同 CPU 的下标 0 1 2 0 2 3），Hexagon 12 个。画几个实例见
+ * GpuEmitter.draw（间接绘制，按活着的粒子数）；还是碰到死了的槽时输出到裁剪范围以外。画的顺序：存活列表的顺序（不排序）、
+ * 从新到旧（环的头往回）或者按深度排好的（sort.ts）。
  */
 import type { UVBuilderParams } from '../material';
 import type { ParticleEmitter } from '../ParticleEmitter';
@@ -73,6 +74,8 @@ struct Shape {
 @group(2) @binding(0) var<storage, read> particles: array<Particle>;
 @group(2) @binding(1) var<storage, read> sorted: array<vec2u>;
 @group(2) @binding(2) var<uniform> shape: Shape;
+// 活着的粒子的槽号（模拟时数出来的，不排序的按它画）
+@group(2) @binding(3) var<storage, read> aliveSlots: array<u32>;
 
 const SQRT3_HALF = 0.86602540378;
 const HEX_TOP = 0.5 - SQRT3_HALF * 0.5;
@@ -137,7 +140,7 @@ fn slotOf(instance: u32) -> u32 {
   switch shape.info.w {
     case 1u: { return (draw.ring.x + capacity - 1u - instance % capacity) % capacity; }
     case 2u: { return sorted[instance].y; }
-    default: { return instance; }
+    default: { return aliveSlots[instance]; }
   }
 }
 

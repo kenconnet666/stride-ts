@@ -52,7 +52,7 @@
 
 ## 2026-11-20 接触硬化的软阴影（PCSS）：方向光按角大小算半影
 
-P4 画面功能的下一项（endering/MeshRenderFeature.ts 的 pcssShadow；Light 的 shadowFilter: 'pcss'、shadowLightAngle，场景文件的 ilter: 'pcss'、lightAngle）。Stride 没有。
+P4 画面功能的下一项（`rendering/MeshRenderFeature.ts` 的 `pcssShadow`；Light 的 `shadowFilter: 'pcss'`、`shadowLightAngle`，场景文件的 `filter: 'pcss'`、`lightAngle`）。Stride 没有。
 
 - **做法**（Fernando 2005）：在级联的阴影图里按遮挡物最远可能在的地方（级联的近平面）定搜的范围，16 个点找比这里离光近的深度取平均；半影的半径 = 平均深度差（换成世界单位）× tan(角半径)，换成图集的 UV；在这么大的圆盘里 16 次比较采样。和 Babylon 不同：方向光的半影直接按深度差和角大小算，不除深度、没有经验系数，角直径默认 0.53°（太阳）。
 - 半影最小 1.5 个像素（接触处不出锯齿）、最大 24 个像素（搜的范围也到这里）；采样点用 Vogel 圆盘，按像素的交错梯度噪声转，噪声留给 TAA 和画面的模糊。大角度时 16 个采样有颗粒，以后可以按半影大小加采样数、开 TAA 时每帧换噪声。

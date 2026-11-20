@@ -80,14 +80,22 @@ const weld = separation();
 check('焊接：球停在立方体左边 4 米', Math.abs(weld[0] + 4) < 0.1 && Math.abs(weld[1]) < 0.1 && Math.abs(weld[2]) < 0.1, weld);
 
 // ---- 换场景
-const sceneStatus = () => stride('status') as { scene: string; entities: number; error: string | null };
+const sceneStatus = () => stride('status') as { scene: string; entities: number; error: string | null; frame: number; sceneFrame: number | null };
+/** 等到换了场景、新场景跑过几帧（软件 WebGPU 上几帧一秒，加载新场景要好几秒：不按墙钟等固定的时间）。 */
+async function switchedFrom(from: string): Promise<ReturnType<typeof sceneStatus>> {
+  let now = sceneStatus();
+  for (let tries = 0; tries < 600 && !(now.scene !== from && now.sceneFrame !== null && now.frame - now.sceneFrame > 5); tries++) {
+    await sleep(100);
+    now = sceneStatus();
+  }
+  return now;
+}
 const startScene = sceneStatus();
 const visited: string[] = [];
 for (let i = 0; i < 3; i++) {
   const from = sceneStatus().scene;
   stride('eval', `uiClick('>>')`);
-  await sleep(1500);
-  const now = sceneStatus();
+  const now = await switchedFrom(from);
   check(`点 >> 按钮：从 ${from} 换到 ${now.scene}`, now.scene !== from && now.error === null, now);
   visited.push(now.scene);
 }

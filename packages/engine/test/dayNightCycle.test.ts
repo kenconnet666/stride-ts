@@ -2,7 +2,9 @@ import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { Transform } from '../src/engine/transform';
 import { Game } from '../src/games/Game';
-import { SkyAtmosphere } from '../src/rendering/components';
+import { ContentManager } from '../src/content/ContentManager';
+import type { SceneFile } from '../src/content/format';
+import { SkyAtmosphere, VolumetricClouds } from '../src/rendering/components';
 import { celestialState, DayNightCycle, dayNightCycleSystem, lightRotationTowards } from '../src/rendering/DayNightCycle';
 import { Vector3 } from '../src/mathematics/vectors';
 
@@ -17,6 +19,36 @@ beforeAll(async () => {
 });
 
 afterAll(() => native?.shutdown());
+
+describe('场景文件里的天空', () => {
+  test('skyAtmosphere 的太阳、月亮引用排在它后面的实体；dayNightCycle、volumetricClouds 照写的值建，没写的是默认值', async () => {
+    const scene: SceneFile = {
+      name: 'Sky',
+      entities: [
+        { id: 'sky', name: 'Sky', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {
+          skyAtmosphere: { sun: 'sun', moon: 'moon', starsIntensity: 2 },
+          dayNightCycle: { timeOfDay: 6, dayLength: 600 },
+          volumetricClouds: { coverage: 0.3, bottom: 2000 },
+        } },
+        { id: 'sun', name: 'Sun', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { light: { type: 'directional', color: [1, 1, 1], intensity: 5 } } },
+        { id: 'moon', name: 'Moon', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { light: { type: 'directional', color: [0.6, 0.7, 1], intensity: 0.2 } } },
+      ],
+    };
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => new TextEncoder().encode(JSON.stringify(scene)).buffer as ArrayBuffer });
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    const loaded = await content.loadScene('scenes/Sky', game.entities);
+    const byName = (name: string) => loaded.entities.get(name.toLowerCase())!;
+    const sky = byName('Sky').require(SkyAtmosphere);
+    expect([sky.sun, sky.moon]).toEqual([byName('Sun').id, byName('Moon').id]);
+    expect([sky.starsIntensity, sky.moonDiskIntensity, sky.planetRadius]).toEqual([2, 1, 6360]);
+    const cycle = byName('Sky').require(DayNightCycle);
+    expect([cycle.timeOfDay, cycle.dayLength, cycle.latitude, cycle.moonPhase]).toEqual([6, 600, 35, 0.5]);
+    const clouds = byName('Sky').require(VolumetricClouds);
+    expect([clouds.coverage, clouds.bottom, clouds.thickness]).toEqual([expect.closeTo(0.3, 6), 2000, 2500]);
+  });
+});
 
 describe('日夜循环（DayNightCycle）', () => {
   test('春分、北纬 35°：正午太阳在正南 55° 高，早上六点在正东的地平线上，傍晚六点在正西', () => {

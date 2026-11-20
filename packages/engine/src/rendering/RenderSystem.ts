@@ -14,6 +14,7 @@ import { Color4, Vector3 } from '../mathematics/vectors';
 import { GpuResources } from './GpuResources';
 import { ReflectionProbes } from './ReflectionProbes';
 import { Atmosphere, type DynamicSky } from './Atmosphere';
+import { Clouds } from './VolumetricClouds';
 import type { Skybox } from './Skybox';
 import { SubsurfaceMaterials } from './SubsurfaceScattering';
 
@@ -449,12 +450,15 @@ export class RenderSystem {
   readonly reflectionProbes: ReflectionProbes;
   /** 物理天空（场景里有 SkyAtmosphere 时；合成器收集光照时用，AtmosphereRenderFeature 画天空）。 */
   readonly atmosphere: Atmosphere;
+  /** 场景的体积云（VolumetricClouds 组件）。 */
+  readonly clouds: Clouds;
 
   constructor(graphicsDevice: GraphicsDevice) {
     this.graphicsDevice = graphicsDevice;
     this.resources = new GpuResources(graphicsDevice.device);
     this.reflectionProbes = new ReflectionProbes(graphicsDevice.device, this.resources);
     this.atmosphere = new Atmosphere(graphicsDevice.device, this.resources);
+    this.clouds = new Clouds(graphicsDevice.device, this.atmosphere);
   }
 
   get device(): GPUDevice {
@@ -512,6 +516,7 @@ export class RenderSystem {
   destroy(): void {
     for (const feature of this.features) feature.destroy();
     this.reflectionProbes.destroy();
+    this.clouds.destroy();
     this.atmosphere.destroy();
     this.resources.destroy();
   }

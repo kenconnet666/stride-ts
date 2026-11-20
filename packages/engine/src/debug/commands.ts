@@ -6,7 +6,7 @@
  * （`路径#导出名`）或 # 后面的部分找。
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
-import { Light, Model, ReflectionProbe, SkyAtmosphere } from '../rendering/components';
+import { Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds } from '../rendering/components';
 import { DayNightCycle, lightRotationTowards } from '../rendering/DayNightCycle';
 import { Material } from '../rendering/Material';
 import { Transform } from '../engine/transform';
@@ -182,6 +182,16 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     for (const key of ['maxRoughness', 'thickness', 'maxSteps'] as const) if (typeof args[key] === 'number') ssr[key] = args[key];
     if (args['debug'] === 'off' || args['debug'] === 'hits' || args['debug'] === 'reflection') ssr.debug = args['debug'];
     return { enabled: ssr.enabled, maxRoughness: ssr.maxRoughness, thickness: ssr.thickness, edgeFade: ssr.edgeFade, maxSteps: ssr.maxSteps, debug: ssr.debug };
+  });
+  debug.command('clouds', 'Volumetric clouds (VolumetricClouds; needs the physical sky, see sky). args: on (true/false) adds or removes a cloud entity; coverage (0..1), density, bottom and thickness (m), type (0 stratus .. 1 cumulus), scale, windSpeed (m/s), windDirection (degrees).', (args) => {
+    const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(VolumetricClouds));
+    if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Clouds', components: [Transform, VolumetricClouds] }));
+    if (args['on'] === false) for (const entity of all.splice(0)) entity.destroy();
+    const clouds = all[0]?.require(VolumetricClouds);
+    const names = { coverage: 'coverage', density: 'density', bottom: 'bottom', thickness: 'thickness', type: 'cloudType', scale: 'scale', windSpeed: 'windSpeed', windDirection: 'windDirection' } as const;
+    if (clouds) for (const [key, field] of Object.entries(names) as [keyof typeof names, (typeof names)[keyof typeof names]][]) if (typeof args[key] === 'number') clouds[field] = args[key];
+    const { active, settings } = game.renderSystem.clouds;
+    return { active, ...(clouds ? { settings: { ...settings } } : {}) };
   });
   debug.command('dither', 'Dithering of the 8-bit output in the tone mapping pass (hides the banding of dark gradients). args: on (true/false; omitted toggles). Turn it off to compare screenshots pixel by pixel with desktop Stride.', (args) => {
     const toneMap = game.graphicsCompositor.postEffects.toneMap;

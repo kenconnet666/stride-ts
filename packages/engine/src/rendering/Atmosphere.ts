@@ -95,7 +95,7 @@ function rayHitsSphere(origin: readonly number[], direction: readonly number[], 
 }
 
 /** 着色器共用的大气参数和函数（Hillaire 2020；Babylon 的 atmosphereFunctions 的移植）。 */
-const COMMON = /* wgsl */ `
+export const ATMOSPHERE_WGSL = /* wgsl */ `
 const PI = 3.14159265;
 struct Body {
   // xyz 朝它的方向（世界），w 圆盘角半径的余弦（没有这个天体时大于 1）
@@ -178,7 +178,7 @@ fn transmittanceUv(radius: f32, cosZenith: f32) -> vec2f {
 
 /** 透射率表：每个纹素是（高度，天顶角）到大气层顶的透射率。 */
 const TRANSMITTANCE_SHADER = /* wgsl */ `
-${COMMON}
+${ATMOSPHERE_WGSL}
 @group(0) @binding(1) var output: texture_storage_2d<rgba16float, write>;
 
 @compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) id: vec3u) {
@@ -276,7 +276,7 @@ fn multiScatteringUv(radius: f32, cosSunZenith: f32) -> vec2f {
 
 /** 多次散射表（Hillaire 2020 第 5.5 节）：每个（太阳天顶角，高度）的二阶以上散射，按无穷级数 1 / (1 - f) 求和。 */
 const MULTI_SCATTERING_SHADER = /* wgsl */ `
-${COMMON}
+${ATMOSPHERE_WGSL}
 @group(0) @binding(1) var output: texture_storage_2d<rgba16float, write>;
 ${integrate(true)}
 
@@ -311,7 +311,7 @@ ${integrate(true)}
  * 夹角存半圈，那样只能有一盏光）。
  */
 const SKY_VIEW_SHADER = /* wgsl */ `
-${COMMON}
+${ATMOSPHERE_WGSL}
 @group(0) @binding(1) var output: texture_storage_2d<rgba16float, write>;
 ${integrate(false)}
 
@@ -342,7 +342,7 @@ ${integrate(false)}
 }`;
 
 /** 按世界的视线方向查天空视图表（圆盘、星星另加）。采样器在 u 上要 repeat（AtmosphereGpu 的 skySampler）。 */
-const SAMPLE_SKY = /* wgsl */ `
+export const SKY_VIEW_WGSL = /* wgsl */ `
 fn skyViewUv(direction: vec3f) -> vec2f {
   let radius = atmosphere.ground.w;
   let up = vec3f(0.0, 1.0, 0.0);
@@ -363,11 +363,11 @@ fn skyViewUv(direction: vec3f) -> vec2f {
 
 /** 环境光用的天空立方体贴图（Stride 的立方体贴图约定：方向 z 取反，同 MeshRenderFeature 的 skyDirection）：每级 mip 直接按方向查。 */
 const SKY_CUBE_SHADER = /* wgsl */ `
-${COMMON}
+${ATMOSPHERE_WGSL}
 @group(0) @binding(1) var output: texture_storage_2d_array<rgba16float, write>;
 @group(0) @binding(2) var skyViewLut: texture_2d<f32>;
 @group(0) @binding(3) var skySampler: sampler;
-${SAMPLE_SKY}
+${SKY_VIEW_WGSL}
 
 fn faceDirection(face: u32, p: vec2f) -> vec3f {
   switch face {
@@ -522,14 +522,14 @@ fn milkyWay(c: vec3f) -> vec3f {
 /** 画天空：视线方向查天空视图表，再加太阳的圆盘（按透射率表变红变暗）、月面、星星和银河。 */
 const SKY_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
-${COMMON}
+${ATMOSPHERE_WGSL}
 struct View { inverseViewProjection: mat4x4f, eye: vec4f };
 @group(1) @binding(0) var<uniform> view: View;
 @group(0) @binding(1) var skyViewLut: texture_2d<f32>;
 @group(0) @binding(2) var transmittanceLut: texture_2d<f32>;
 @group(0) @binding(3) var linearClamp: sampler;
 @group(0) @binding(4) var skySampler: sampler;
-${SAMPLE_SKY}
+${SKY_VIEW_WGSL}
 ${NIGHT}
 
 const LUMINANCE = vec3f(0.2126, 0.7152, 0.0722);
@@ -599,7 +599,7 @@ struct Camera { inverseViewProjection: mat4x4f, eye: vec4f };
 `;
 
 const AERIAL_SHADER = /* wgsl */ `
-${COMMON}
+${ATMOSPHERE_WGSL}
 @group(0) @binding(1) var output: texture_storage_3d<rgba16float, write>;
 ${integrate(false)}
 ${AERIAL}
@@ -822,7 +822,7 @@ export class Atmosphere {
     }
     for (const [body, light] of [[this.sun, sunLight], [this.moon, moonLight]] as const) {
       if (!light) continue;
-      const [r, g, b] = this.#transmittanceTo(body);
+      const [r, g, b] = this.transmittanceTo(body, this.cameraHeight);
       light.color.set(body.illuminance[0] * r, body.illuminance[1] * g, body.illuminance[2] * b, 1);
     }
     // 星星：太阳在地平线上下 6° 之间淡入淡出（再往后天空亮的地方由着色器按对比度盖掉），白天不画
@@ -860,6 +860,18 @@ export class Atmosphere {
     if (lighting) this.#readSphericalHarmonics(gpu);
   }
 
+  /**
+   * 天空朝上（或者朝下）的半球的平均亮度（环境光的球谐在正上、正下方的值；云的环境光用）。球谐还没读回来时是 0。
+   * 第四个数是 0（凑成 vec4）。
+   */
+  skyRadiance(up: boolean): [number, number, number, number] {
+    const sh = this.#sky?.diffuseSH;
+    if (!sh) return [0, 0, 0, 0];
+    // evaluateSH 在 (0, ±1, 0)：c0 ± c1 - c6 - c8
+    const value = (c: number) => Math.max(sh[c]! + (up ? 1 : -1) * sh[3 + c]! - sh[18 + c]! - sh[24 + c]!, 0);
+    return [value(0), value(1), value(2), 0];
+  }
+
   /** 这一帧做不做空气透视（前向渲染器据此留着深度缓冲、在不透明的之后合成）。 */
   get aerialPerspective(): boolean {
     return this.active && this.aerialPerspectiveScale > 0 && this.#gpu !== undefined;
@@ -876,11 +888,11 @@ export class Atmosphere {
   }
 
   /**
-   * 相机处朝 body 的透射率，乘圆盘露在地平线上面的比例（圆盘沉下去的那一两分钟里平滑地暗掉，不是圆心一过地平线就黑）。
-   * 圆心已经在地平线下面时按贴着地平线的方向算。
+   * 海拔 height（千米）处朝 body 的透射率，乘圆盘露在地平线上面的比例（圆盘沉下去的那一两分钟里平滑地暗掉，不是圆心一过
+   * 地平线就黑）。圆心已经在地平线下面时按贴着地平线的方向算。越高地平线越低：云在地面天黑以后还被照着。
    */
-  #transmittanceTo(body: CelestialBody): [number, number, number] {
-    const radius = this.settings.planetRadius + this.cameraHeight;
+  transmittanceTo(body: CelestialBody, height: number): [number, number, number] {
+    const radius = this.settings.planetRadius + height;
     const horizon = -Math.acos(Math.min(this.settings.planetRadius / radius, 1));
     const [x, y, z] = body.direction;
     const elevation = Math.asin(Math.min(Math.max(y, -1), 1));
@@ -968,7 +980,7 @@ export class AtmosphereGpu {
   readonly viewLayout: GPUBindGroupLayout;
   readonly skyBindGroup: GPUBindGroup;
   /** 查天空视图表用：u 是方位角，首尾相接。 */
-  readonly #skySampler: GPUSampler;
+  readonly skySampler: GPUSampler;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #pipelines: Record<ComputeName, GPUComputePipeline>;
@@ -983,7 +995,7 @@ export class AtmosphereGpu {
     this.#device = device;
     this.#resources = resources;
     const storage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
-    this.#skySampler = device.createSampler({ label: 'Atmosphere sky view', magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'clamp-to-edge' });
+    this.skySampler = device.createSampler({ label: 'Atmosphere sky view', magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'clamp-to-edge' });
     this.uniforms = device.createBuffer({ label: 'Atmosphere', size: ATMOSPHERE_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.transmittance = device.createTexture({ label: 'Atmosphere transmittance', size: [256, 64], format: FORMAT, usage: storage });
     this.multiScattering = device.createTexture({ label: 'Atmosphere multiple scattering', size: [32, 32], format: FORMAT, usage: storage });
@@ -1031,7 +1043,7 @@ export class AtmosphereGpu {
         { binding: 1, resource: this.skyView.createView() },
         { binding: 2, resource: this.transmittance.createView() },
         { binding: 3, resource: resources.linearClamp },
-        { binding: 4, resource: this.#skySampler },
+        { binding: 4, resource: this.skySampler },
       ],
     });
   }
@@ -1071,7 +1083,7 @@ export class AtmosphereGpu {
         { binding: 0, resource: { buffer: this.uniforms } },
         { binding: 1, resource: this.skyCube.createView({ dimension: '2d-array', baseMipLevel: level, mipLevelCount: 1 }) },
         { binding: 2, resource: this.skyView.createView() },
-        { binding: 3, resource: this.#skySampler },
+        { binding: 3, resource: this.skySampler },
       ], [Math.ceil(size / 8), Math.ceil(size / 8), 6]);
     }
     this.#dispatch(encoder, 'sh', [

@@ -114,6 +114,28 @@ export const SkyAtmosphere = component('SkyAtmosphere', {
 });
 
 /**
+ * 体积云（Stride 没有；见 VolumetricClouds.ts）：一层按星球的曲率弯下去的云，程序生成，被太阳或者月亮照着。要场景里有
+ * SkyAtmosphere。场景里只用第一个。
+ */
+export const VolumetricClouds = component('VolumetricClouds', {
+  /** 天上有多少云：0 没有，1 满天。 */
+  coverage: prop.f32().default(0.5).min(0).max(1),
+  /** 云有多浓（消光系数的倍数）：小了透光、发灰，大了边缘硬、底下暗。 */
+  density: prop.f32().default(1).min(0),
+  /** 云底的海拔。 */
+  bottom: prop.f32().default(1500).min(0).unit('m'),
+  /** 云层的厚度。 */
+  thickness: prop.f32().default(2500).min(10).unit('m'),
+  /** 云的种类：0 层云（薄的一层），0.5 层积云，1 积云（一朵一朵、往上鼓）。 */
+  cloudType: prop.f32().default(0.7).min(0).max(1),
+  /** 云的大小的倍数。 */
+  scale: prop.f32().default(1).min(0.05),
+  /** 云飘的速度，和吹向的方位（绕 Y 的角度：0 朝 +Z，90 朝 +X）。 */
+  windSpeed: prop.f32().default(10).min(0).unit('m/s'),
+  windDirection: prop.f32().default(0).unit('deg'),
+});
+
+/**
  * 背景（Stride 的 BackgroundComponent）：在没画到的地方画立方体贴图（texture，Cubemap.id，跟着实体旋转），或者平面图片
  * （image，Texture.id，Stride 的 Is2D：保持比例铺满画面，多出的部分两边对称裁掉），乘强度。两个都设时用 image。
  */

@@ -10,7 +10,7 @@
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
 import type {
-  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere,
+  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
@@ -238,6 +238,20 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       moon: { type: entity, optional: true, description: 'entity with the directional light of the moon (its color and intensity are those of the full moon)' },
       moonDiskIntensity: optional(number({ min: 0 }), 1),
       starsIntensity: optional(number({ min: 0 }), 1),
+    })),
+    initial: {},
+  },
+  volumetricClouds: {
+    label: 'Volumetric clouds',
+    type: object(fields<SceneVolumetricClouds>({
+      coverage: optional(number({ min: 0, max: 1 }), 0.5),
+      density: optional(number({ min: 0 }), 1),
+      bottom: optional(number({ min: 0, unit: 'm' }), 1500),
+      thickness: optional(number({ min: 10, unit: 'm' }), 2500),
+      cloudType: { type: number({ min: 0, max: 1 }), optional: true, default: 0.7, description: '0 stratus, 0.5 stratocumulus, 1 cumulus' },
+      scale: optional(number({ min: 0.05 }), 1),
+      windSpeed: optional(number({ min: 0, unit: 'm/s' }), 10),
+      windDirection: { type: number({ unit: 'deg' }), optional: true, default: 0, description: 'where the wind blows to, around Y: 0 is +Z, 90 is +X' },
     })),
     initial: {},
   },

@@ -1066,6 +1066,18 @@ export interface SceneSkyAtmosphere {
   readonly starsIntensity?: number;
 }
 
+/** 体积云（Stride 没有）：各字段的意思见 VolumetricClouds 组件；没写的用默认值。 */
+export interface SceneVolumetricClouds {
+  readonly coverage?: number;
+  readonly density?: number;
+  readonly bottom?: number;
+  readonly thickness?: number;
+  readonly cloudType?: number;
+  readonly scale?: number;
+  readonly windSpeed?: number;
+  readonly windDirection?: number;
+}
+
 /** 日夜循环（Stride 没有）：和 skyAtmosphere 在同一个实体上，各字段的意思见 DayNightCycle 组件；没写的用默认值。 */
 export interface SceneDayNightCycle {
   readonly timeOfDay?: number;
@@ -1272,6 +1284,7 @@ export interface SceneEntityFile {
     readonly reflectionProbe?: SceneReflectionProbe;
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     readonly dayNightCycle?: SceneDayNightCycle;
+    readonly volumetricClouds?: SceneVolumetricClouds;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;

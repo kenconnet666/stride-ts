@@ -8,8 +8,8 @@ $ErrorActionPreference = 'Stop'
 
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
-# 自己的无头 Chrome（浏览器的记录和用户目录分开），不关 `stride open` 开着的窗口
-$env:STRIDE_BROWSER_DIR = Join-Path $HOME '.stride-ts\capture'
+# 自己的无头 Chrome（浏览器的记录和用户目录分开），不关 `stride open` 开着的窗口；verify.ps1 按槽位给
+$env:STRIDE_BROWSER_DIR ??= Join-Path $HOME '.stride-ts\capture'
 $all = Get-ChildItem apps -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'scripts\import.ts') } | ForEach-Object Name
 $selected = $Apps ? ($Apps -split ',' | ForEach-Object Trim) : $all
 # 和桌面 Stride 的窗口一样大（GameSettings 的后备缓冲；截图工程的 README 用的也是这个尺寸），没列的是 1280x720

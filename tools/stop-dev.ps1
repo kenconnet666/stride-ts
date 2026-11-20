@@ -12,8 +12,8 @@ $ErrorActionPreference = 'Stop'
 
 $found = @()
 foreach ($process in Get-CimInstance Win32_Process -Filter "Name='node.exe'") {
-    if ($process.CommandLine -notmatch 'stride-ts(-verify)?\\apps\\([\w-]+)\\node_modules\\.bin\\\\\.\.\\vite\\bin\\vite\.js') { continue }
-    $regress = $Matches[1] -eq '-verify'
+    if ($process.CommandLine -notmatch 'stride-ts(-verify(?:-\d+)?)?\\apps\\([\w-]+)\\node_modules\\.bin\\\\\.\.\\vite\\bin\\vite\.js') { continue }
+    $regress = [bool]$Matches[1]
     $found += [pscustomobject]@{ Kind = 'dev server'; Name = $Matches[2]; Regress = $regress; Id = $process.ProcessId; Started = $process.CreationDate }
 }
 foreach ($process in Get-CimInstance Win32_Process -Filter "Name='chrome.exe'") {

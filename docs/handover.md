@@ -60,7 +60,7 @@
 
    导入时的警告里**不应该有** `prefab instances kept expanded`（有的话是预制体实例没转成引用，见 decisions.md 的预制体那条）。粒子样例有几条"不是内置的粒子模块"的警告，是正常的。
 3. **检查**：`pnpm typecheck`、`pnpm test`（engine 336 个、pipeline 63 个、editor 17 个单测）。
-4. **回归**：`pwsh tools/verify.ps1`（建一个 git 工作树 `../stride-ts-verify`，切到当前提交、装依赖、把主检出导入的内容联接过去，跑 `tools/regress.ps1`：20 个样例的冒烟，每个起开发服务器和无头 Chrome，最后和 `tools/budgets.json` 的预算比）。旧机器上一遍 20 分钟左右，最后打出每个样例 `True`/`False` 的表。
+4. **回归**：`pwsh tools/verify.ps1`（建 git 工作树 `../stride-ts-verify-1`（`-Slot 2` 用 `-2`，可以和 1 同时跑），切到当前提交、装依赖、把主检出导入的内容联接过去，跑 `tools/regress.ps1`：20 个样例的冒烟，每个起开发服务器和无头 Chrome，最后和 `tools/budgets.json` 的预算比）。旧机器上一遍 20 分钟左右，最后打出每个样例 `True`/`False` 的表。
    - **预算基线是旧机器记的**：实体数、绘制次数、显存、当场建的管线这些和机器无关；帧时间会变。新机器上只有帧时间超了的话，重记：`$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/verify.ps1`，再把 `../stride-ts-verify/tools/budgets.json` 拷回主检出、单独提交（"预算的基线：……"）。
 5. **Chrome**：
    - 装 **Claude in Chrome** 插件：看画面、点按钮、读控制台都用它（用户的主 Chrome 一直登录着）。一个开发服务器只留一个游戏标签页（CLI 连最后连上的那个）。
@@ -166,7 +166,7 @@
 - **改文件的 Python 脚本写成文件再跑**：Git Bash 的 heredoc（`python - <<'EOF'`）会把反斜杠、`\U` 这类吃掉或报错。Windows 上 Python 以文本模式写文件会把换行写成 CRLF：一律 `open(p, 'w', encoding='utf-8', newline='')`。
 - **Chrome 标签在后台时不画帧**：`stride shot` 会一直等下一帧直到超时。先用插件截一张（把标签带到前台），再 `stride shot`；脚本里给它套 `timeout 60`。
 - **改了引擎里登记调试命令的代码**（`debug/commands.ts`）以后，Vite 的热更新不会重新登记命令：重新加载页面。
-- **停后台验证**：`TaskStop` 只停最外层的 pwsh，`tools/regress.ps1` 和它的 node 子进程还在跑、和下一次抢资源（表现是下一次冒烟里 `no page is connected to this hub`）。停的时候按命令行找：`Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='pwsh.exe'" | Where-Object { $_.CommandLine -match 'stride-ts-verify' } | Stop-Process`，再 `pwsh tools/stop-dev.ps1 -All`。不要用 `&` 在 Bash 里起验证（收不到结束的通知）。
+- **停后台验证**：`TaskStop` 只停最外层的 pwsh，`tools/regress.ps1` 和它的 node 子进程还在跑、和下一次抢资源（表现是下一次冒烟里 `no page is connected to this hub`）。停的时候按命令行找（槽位 2 换成 `stride-ts-verify-2`）：`Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='pwsh.exe'" | Where-Object { $_.CommandLine -match 'stride-ts-verify-1' } | Stop-Process`，再 `pwsh tools/stop-dev.ps1 -All`。不要用 `&` 在 Bash 里起验证（收不到结束的通知）。
 - **编辑器页面**：会话对象在 `document.querySelector('#app').__vue_app__._instance.props.session`（JS 里查状态、模拟操作用）；编辑器的场景树和视口都要等游戏页面起来（几秒），太早点会点在加载中的骨架上。
 - **场景树单击选不中**：是 vue-tsx-pro 0.29 的 bug（拖动时按下就捕获指针），0.30.0 修了。
 - **样例导入的 Stride 内容里有过时的预制体引用**（CSharpIntermediate 的 DefaultScenery、FPS 的 Stairs1x1x2：成员的 `Base` 指着预制体里删掉的实体）：导入器把这样的成员当普通实体，别的照常转成引用。

@@ -17,11 +17,15 @@ struct Contact {
   viewProjection: mat4x4f,
   /** xyz：从表面指向光源的方向（世界空间）；w：走多远（世界单位）。 */
   light: vec4f,
-  /** x：走几步；y：厚度（挡在前面的东西至少这么厚才算，按到相机的距离的比例）；zw：宽高。 */
+  /** x：走几步；y：厚度（挡在前面的东西被当作多厚，按到相机的距离的比例）；zw：宽高。 */
   params: vec4f,
 };
 @group(0) @binding(0) var<uniform> contact: Contact;
 @group(0) @binding(1) var depth: texture_depth_2d;
+
+/** 起点沿法线抬起多少、挡住至少要靠前多少（都按到相机的距离的比例）：深度缓冲按像素取样有量化误差，光线贴着表面走时会"撞"上表面自己。 */
+const NORMAL_OFFSET = 0.002;
+const MIN_OCCLUDER_GAP = 0.0005;
 
 fn worldAt(uv: vec2f, z: f32) -> vec3f {
   let clip = contact.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, z, 1.0);
@@ -31,20 +35,32 @@ fn worldAt(uv: vec2f, z: f32) -> vec3f {
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let pixel = vec2i(in.position.xy);
   let z = textureLoad(depth, pixel, 0);
-  if (z >= 1.0) {
-    return vec4f(1.0);
-  }
   let size = contact.params.zw;
   let uv = (vec2f(pixel) + 0.5) / size;
   let origin = worldAt(uv, z);
-  let eyeDistance = distance(origin, worldAt(uv, 0.0));
+  let eye = worldAt(uv, 0.0);
+  // 法线由深度重建（导数要在分支之前取）；朝向相机那一面
+  var normal = normalize(cross(dpdy(origin), dpdx(origin)));
+  if (dot(normal, eye - origin) < 0.0) {
+    normal = -normal;
+  }
+  if (z >= 1.0) {
+    return vec4f(1.0);
+  }
+  // 背光的面直射项本来就是 0，不用再算；掠射的面上光线贴着表面走，最容易把自己当成挡住的东西
+  if (dot(normal, contact.light.xyz) <= 0.0) {
+    return vec4f(1.0);
+  }
+  let eyeDistance = distance(origin, eye);
+  let start = origin + normal * eyeDistance * NORMAL_OFFSET;
+  let startDepth = (contact.viewProjection * vec4f(start, 1.0)).w;
   let steps = i32(contact.params.x);
   let stepLength = contact.light.w / f32(steps);
   // 起点按像素错开一点（交错梯度噪声），走的步数少时也不出条纹
   let jitter = fract(52.9829189 * fract(dot(vec2f(pixel), vec2f(0.06711056, 0.00583715))));
   var lit = 1.0;
   for (var i = 1; i <= steps; i++) {
-    let p = origin + contact.light.xyz * stepLength * (f32(i) - jitter);
+    let p = start + contact.light.xyz * stepLength * (f32(i) - jitter);
     let clip = contact.viewProjection * vec4f(p, 1.0);
     let ndc = clip.xyz / clip.w;
     let sampleUv = vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
@@ -52,15 +68,14 @@ fn worldAt(uv: vec2f, z: f32) -> vec3f {
       break;
     }
     let sceneZ = textureLoad(depth, vec2i(sampleUv * size), 0);
-    if (sceneZ < ndc.z) {
-      // 挡在前面的东西离光线多远（世界空间）：太远是背景前的另一个物体，不算挡住
-      let gap = distance(worldAt(sampleUv, sceneZ), p);
-      if (gap < contact.params.y * eyeDistance) {
-        // 越靠近终点越淡，免得走到头时一刀切
-        lit = f32(i) / f32(steps);
-        lit = lit * lit;
-        break;
-      }
+    // 线性深度（clip.w）比：挡住的东西要比光线上的点靠前，但不能太靠前（那是背景前的另一个物体，光线从它后面过去）
+    let sceneDepth = (contact.viewProjection * vec4f(worldAt(sampleUv, sceneZ), 1.0)).w;
+    let gap = clip.w - sceneDepth;
+    if (gap > MIN_OCCLUDER_GAP * startDepth && gap < contact.params.y * startDepth) {
+      // 越靠近终点越淡，免得走到头时一刀切
+      lit = f32(i) / f32(steps);
+      lit = lit * lit;
+      break;
     }
   }
   return vec4f(lit, 0.0, 0.0, 1.0);
@@ -73,7 +88,7 @@ export class ContactShadows {
   length = 0.3;
   /** 走几步。 */
   steps = 16;
-  /** 挡在前面的东西离光线多远以内算挡住（按到相机的距离的比例）。 */
+  /** 挡在前面的东西被当作多厚：比光线上的点靠前这么多以内才算挡住（按到相机的距离的比例），再靠前是光线从它后面过去。 */
   thickness = 0.005;
 
   readonly #device: GPUDevice;

@@ -37,12 +37,12 @@ const target = stride('eval', `${BODIES} const w = g.entities.entity(ids[0]).req
   const m = g.renderSystem.views[0].viewProjection; const c = g.graphicsDevice.canvas;
   const x = m[0] * w[12] + m[4] * w[13] + m[8] * w[14] + m[12], y = m[1] * w[12] + m[5] * w[13] + m[9] * w[14] + m[13], h = m[3] * w[12] + m[7] * w[13] + m[11] * w[14] + m[15];
   ({ id: ids[0], dx: (x / h) * c.clientWidth / 2, dy: (-y / h) * c.clientHeight / 2 })`) as { id: number; dx: number; dy: number };
-const heightOf = (id: number) => stride('eval', `strideGame.entities.entity(${id}).require(strideEngine.Transform).world[13]`) as number;
-const before = heightOf(target.id);
-stride('mouse', 'move', String(Math.round(target.dx)), String(Math.round(target.dy)));
-stride('mouse', 'left');
-await sleep(250);
-check('点中的箱子被推起来', heightOf(target.id) > before + 0.1, { before, after: heightOf(target.id) });
+// 点和等都在页面里（游戏时间 0.25 秒）：分成几条 CLI 命令时，单核慢、负载重的机器上命令之间隔得太久
+const pushed = stride('eval', `(async () => { const height = () => strideGame.entities.entity(${target.id}).require(strideEngine.Transform).world[13];
+  const c = strideGame.graphicsDevice.canvas, before = height();
+  await click(c.clientWidth / 2 + ${target.dx}, c.clientHeight / 2 + ${target.dy}); await seconds(0.25);
+  return { before, after: height() }; })()`) as { before: number; after: number };
+check('点中的箱子被推起来', pushed.after > pushed.before + 0.1, pushed);
 
 // ---- VolumeTrigger
 await openScene('PhysicsSample/VolumeTrigger');

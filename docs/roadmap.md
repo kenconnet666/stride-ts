@@ -416,13 +416,13 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | TAA 加锐化、运动向量 | `rendering/TemporalAntialiasing.ts`、`stride taa`、`RenderStage.velocity` | 默认关（样例照内容用 FXAA）；网格有运动向量（世界矩阵、蒙皮、形变的上一帧，缓冲分两半轮着写），天空按深度重投影；TPP 上开 TAA 多 1 ms |
 | GTAO | `rendering/AmbientOcclusion.ts`、`stride ao` | 半分辨率，只乘环境光（和 Stride 不同：它乘整个画面）；照合成器开，BepuSample 开着；TPP 上 0.3 ms |
 | 运动模糊 | `rendering/MotionBlur.ts`、`stride blur` | McGuire 2012 的重建滤波（块里最长的运动、3x3 邻块、按深度分前景背景加权），快门半帧、最长 32 像素；不开 TAA 也画运动向量；Stride 没有，默认关，画质档位高、极高才允许 |
-| 接触阴影 | `rendering/ContactShadows.ts`、`stride contact` | 投阴影的方向光，全分辨率，沿深度缓冲朝光源走 16 步，只乘那盏光的直射项；Stride 没有，默认关（开了和桌面 Stride 的截图不再逐像素一致），画质档位高、极高才允许 |
+| 接触阴影 | `rendering/ContactShadows.ts`、`stride contact` | 投阴影的方向光，全分辨率，沿深度缓冲朝光源走 16 步，只乘那盏光的直射项；起点沿重建的法线抬起、背光的面不算、挡住要靠前一点（掠射的面上不自遮挡）；Stride 没有，默认关（开了和桌面 Stride 的截图不再逐像素一致），画质档位高、极高才允许 |
 | 屏幕空间反射 | `rendering/ScreenSpaceReflections.ts`、`stride ssr` | Hi-Z 分层步进（照 FidelityFX SSSR）、GGX 随机方向、空间上复用邻居的光线、时间累积；不透明阶段另写表面，合成时用反射换掉环境镜面反射（和 Stride 不同：它直接加，天空盒的镜面算两遍）；照合成器的 LocalReflections 开，BepuSample 开着；TPP 上看过（地面映出墙和角色，没有噪声和块状瑕疵）。还没做：粗糙表面按锥角取颜色的 mip |
 | 画质档位 | `rendering/Quality.ts`、`stride quality` | 低、中、高、极高四档，是内容要的阴影和后处理的上限，默认极高（照内容画）；TPP 的 GPU 每帧 5.07 / 4.5 / 3.1 / 2.6 ms，贴图 108 / 58 / 36 / 34 MB |
 
 ### 正在做和下一步
 
-2026-11-20 换机器：交接见 [handover.md](handover.md)（新机器上的准备；没收尾的：接触阴影和运动模糊还没在 Chrome 里看过画面）。
+2026-11-20 换机器：交接见 [handover.md](handover.md)。新机器上一轮整理（native 0.30.0 默认最多 8 个工作线程；冒烟按游戏时间等待；回归 4 路并行、固定线程数、模拟指针锁；预算重记）做完；接触阴影修了掠射面的自遮挡，接触阴影和运动模糊的画面看过了（progress-log.md）。
 
 1. **P4 底座接着做**：
    1. 底座剩下的小项：~~后处理的管线一起预热~~（2026-11-20：TPP 当场建的管线 22 → 5 条）；~~绘制次数按通道数~~（2026-11-20：`stride draws`，`render.drawCalls` 算上所有通道）；~~GTAO、背景的管线也预热~~（2026-11-20：渲染特性的 `warmFiles`，按要加载的实体文件预热）；精灵（透不透明要看贴图）、TAA（运行中才打开）的还是当场建。

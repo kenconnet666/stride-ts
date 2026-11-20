@@ -7,6 +7,8 @@ import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@strid
 import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
 import { assetListId, FieldEditor, FieldRow, type FieldContext, type ValuePath, type ValueUpdate } from './FieldEditor';
 import type { EditorSession } from './session';
+import { labelText } from './fieldMessages';
+import { t } from './messages';
 import { mergeValues } from './values';
 
 const styles = css.create({
@@ -21,7 +23,6 @@ type ComponentKey = keyof typeof COMPONENT_FIELDS;
 type Entities = readonly SceneEntityFile[];
 
 /** 属性面板能编辑的资源种类的名字。 */
-const ASSET_LABELS: Readonly<Record<keyof typeof ASSET_FIELDS, string>> = { material: '材质', model: '模型' };
 
 /** "添加组件"下拉框里脚本的值的前缀（组件的值是 COMPONENT_FIELDS 的键）。 */
 const SCRIPT_OPTION = 'script:';
@@ -75,10 +76,10 @@ function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
   if (!target) return undefined;
   const { path, set = [], removed = [] } = target.instance.prefab!;
   const own = set.filter((override) => override.entity === target.member).length;
-  const where = target.instance.id === id ? `预制体 ${path} 的实例` : `预制体 ${path} 的实例 ${target.instance.name} 里的 ${name || target.member}`;
+  const where = target.instance.id === id ? t.instanceOf(path) : t.memberOf(path, target.instance.name, name || target.member);
   return (
     <div {...css.attrs(styles.hint)}>
-      {where}{own > 0 ? `，这个实体改了 ${own} 处` : ''}{target.instance.id === id && removed.length > 0 ? `，去掉了 ${removed.length} 个实体` : ''}。改的值记在实例上，和预制体一样时不记。
+      {where}{t.instanceChanges(own, target.instance.id === id ? removed.length : 0)}
     </div>
   );
 }
@@ -147,7 +148,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
   const addScript = (targets: Entities, type: string) => {
     const required = agent.value?.requiredComponents(type) ?? [];
     const unavailable = required.filter((entry) => !entry.component && !entry.script).map((entry) => entry.name);
-    session.notice.value = unavailable.length > 0 ? `${scriptClass(type)} 要实体上有 ${unavailable.join('、')}，场景文件里加不了，试玩时这个脚本不挂` : '';
+    session.notice.value = unavailable.length > 0 ? t.scriptNeedsComponents(scriptClass(type), unavailable) : '';
     change(targets, (entity) => {
       if (scriptIndex(entity, scriptClass(type), 0) >= 0) return undefined;
       const edits: SceneEdit[] = [];
@@ -174,7 +175,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       ...keysOf(entity).filter((other) => COMPONENT_FIELDS[other].requires?.includes(key)).map((other) => COMPONENT_FIELDS[other].label),
     ]));
     change(targets, ({ id }) => ({ type: 'set', entity: id, path: ['components', key], value: undefined }));
-    session.notice.value = dependents.size > 0 ? `去掉了 ${COMPONENT_FIELDS[key].label}；${[...dependents].join('、')} 要它，试玩时不起作用` : '';
+    session.notice.value = dependents.size > 0 ? t.removedRequired(labelText(COMPONENT_FIELDS[key].label), [...dependents]) : '';
   };
 
   /** 加组件：它要的组件（COMPONENT_FIELDS 的 requires）实体上没有的一起加上，同一步撤销。 */
@@ -202,22 +203,22 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     };
     return (
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
-        <div {...css.attrs(styles.hint)}>场景 {session.file.name} 的设置（在场景树或视口里选实体看实体的）。合成器、偏移改了马上看得见；物理、导航试玩时用上。</div>
+        <div {...css.attrs(styles.hint)}>{t.sceneSettingsHint(session.file.name)}</div>
         {SCENE_SETTING_KEYS.filter((key) => file[key] !== undefined).map((key) => (
           <section {...css.attrs(styles.section)}>
             <div {...css.attrs(styles.heading)}>
-              {SCENE_FIELDS[key].label}
-              <IconButton icon={X} variant="ghost" aria-label={`去掉 ${SCENE_FIELDS[key].label}`} onClick={() => change(key, undefined)} />
+              {labelText(SCENE_FIELDS[key].label)}
+              <IconButton icon={X} variant="ghost" aria-label={t.remove(labelText(SCENE_FIELDS[key].label))} onClick={() => change(key, undefined)} />
             </div>
             <FieldEditor type={SCENE_FIELDS[key].type} value={file[key]} context={context} onSet={setSetting(key)} />
           </section>
         ))}
-        <select {...css.attrs(styles.add)} aria-label="添加设置" value="" onChange={(event: Event) => {
+        <select {...css.attrs(styles.add)} aria-label={t.addSetting} value="" onChange={(event: Event) => {
           const key = (event.target as HTMLSelectElement).value as SceneSettingKey;
           if (key) change(key, structuredClone(SCENE_FIELDS[key].initial));
         }}>
-          <option value="">添加设置……</option>
-          {SCENE_SETTING_KEYS.filter((key) => file[key] === undefined).map((key) => <option value={key}>{SCENE_FIELDS[key].label}</option>)}
+          <option value="">{t.addSettingMenu}</option>
+          {SCENE_SETTING_KEYS.filter((key) => file[key] === undefined).map((key) => <option value={key}>{labelText(SCENE_FIELDS[key].label)}</option>)}
         </select>
       </div>
     );
@@ -227,7 +228,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
   const assetInspector = (asset: NonNullable<typeof session.inspected.value>) => (
     <div {...css.attrs(styles.panel)}>
       {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
-      <div {...css.attrs(styles.hint)}>{ASSET_LABELS[asset.kind]} {asset.path}：改了马上存进资源文件，视口里用到它的实体跟着变。</div>
+      <div {...css.attrs(styles.hint)}>{t.assetHint(t.assetLabels[asset.kind], asset.path)}</div>
       <FieldEditor type={{ kind: 'object', fields: ASSET_FIELDS[asset.kind] }} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
     </div>
   );
@@ -236,10 +237,10 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     const list = entities;
     const inspected = session.inspected.value;
     if (inspected) return assetInspector(inspected);
-    if (!agent.value) return <div {...css.attrs(styles.hint)}>场景还没打开</div>;
+    if (!agent.value) return <div {...css.attrs(styles.hint)}>{t.sceneNotOpen}</div>;
     if (list.length === 0) {
       void version.value;
-      return session.opened.value?.kind === 'scene' ? sceneSettings() : <div {...css.attrs(styles.hint)}>在场景树或视口里选一个实体（Ctrl、Shift 多选）</div>;
+      return session.opened.value?.kind === 'scene' ? sceneSettings() : <div {...css.attrs(styles.hint)}>{t.pickEntity}</div>;
     }
     const merged = (read: (entity: SceneEntityFile) => unknown) => mergeValues(list.map(read));
     const keys = Object.keys(COMPONENT_FIELDS) as ComponentKey[];
@@ -248,7 +249,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
         {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
         {list.length === 1
           ? instanceHint(session, list[0]!)
-          : <div {...css.attrs(styles.hint)}>选中了 {list.length} 个实体：显示它们都有的组件，值不一样的显示"多个值"；改一处改所有的，一步撤销。</div>}
+          : <div {...css.attrs(styles.hint)}>{t.multiSelection(list.length)}</div>}
         <section {...css.attrs(styles.section)}>
           {ENTITY_FIELDS.map((field) => (
             <FieldRow field={field} value={merged((entity) => (entity as unknown as Record<string, unknown>)[field.name])} context={context} onSet={setter(list, () => [field.name])} />
@@ -257,8 +258,8 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
         {keys.filter((key) => list.every((entity) => entity.components[key] !== undefined)).map((key) => (
           <section {...css.attrs(styles.section)}>
             <div {...css.attrs(styles.heading)}>
-              {COMPONENT_FIELDS[key].label}
-              <IconButton icon={X} variant="ghost" aria-label={`去掉 ${COMPONENT_FIELDS[key].label}`} onClick={() => removeComponent(list, key)} />
+              {labelText(COMPONENT_FIELDS[key].label)}
+              <IconButton icon={X} variant="ghost" aria-label={t.remove(labelText(COMPONENT_FIELDS[key].label))} onClick={() => removeComponent(list, key)} />
             </div>
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key])} context={context} onSet={setter(list, () => ['components', key])} />
           </section>
@@ -271,7 +272,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             <section {...css.attrs(styles.section)}>
               <div {...css.attrs(styles.heading)} title={type}>
                 {name}
-                <IconButton icon={X} variant="ghost" aria-label="去掉这个脚本" onClick={() => change(list, (entity) => {
+                <IconButton icon={X} variant="ghost" aria-label={t.removeScript} onClick={() => change(list, (entity) => {
                   const rest = (entity.components.scripts ?? []).filter((_, j) => j !== index(entity));
                   return { type: 'set', entity: entity.id, path: ['components', 'scripts'], value: rest.length > 0 ? rest : undefined };
                 })} />
@@ -280,14 +281,14 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             </section>
           );
         })}
-        <select {...css.attrs(styles.add)} aria-label="添加组件" value="" onChange={(event: Event) => {
+        <select {...css.attrs(styles.add)} aria-label={t.addComponent} value="" onChange={(event: Event) => {
           const value = (event.target as HTMLSelectElement).value;
           if (value.startsWith(SCRIPT_OPTION)) addScript(list, value.slice(SCRIPT_OPTION.length));
           else if (value) addComponent(list, value as ComponentKey);
         }}>
-          <option value="">添加组件……</option>
-          {keys.filter((key) => list.some((entity) => entity.components[key] === undefined)).map((key) => <option value={key}>{COMPONENT_FIELDS[key].label}</option>)}
-          <optgroup label="脚本">
+          <option value="">{t.addComponentMenu}</option>
+          {keys.filter((key) => list.some((entity) => entity.components[key] === undefined)).map((key) => <option value={key}>{labelText(COMPONENT_FIELDS[key].label)}</option>)}
+          <optgroup label={t.scripts}>
             {addableScripts(agent.value.scriptTypes(), list).map(({ type, label }) => <option value={SCRIPT_OPTION + type} title={type}>{label}</option>)}
           </optgroup>
         </select>

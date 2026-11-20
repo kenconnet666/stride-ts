@@ -23,6 +23,7 @@ import { freeAssetPath } from '../newAssets';
 import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
 import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
+import { t } from './messages';
 
 /** 编辑器里能打开的文档：场景，或者单独打开的预制体。 */
 export interface OpenedDocument {
@@ -417,7 +418,7 @@ export class EditorSession implements EditableScene {
     await this.#synced;
     this.select([id]);
     this.notice.value = '';
-    this.status.value = `做成了预制体 ${path}，场景里换成了它的实例（保存场景以后生效）`;
+    this.status.value = t.prefabMade(path);
   }
 
   /** 把实体连同后代挪到 parent 下面（null 是最上层），排在新的兄弟里的第 position 个。 */
@@ -440,7 +441,7 @@ export class EditorSession implements EditableScene {
     await this.client.saveAsset(opened.kind, opened.path, this.file);
     this.dirty.value = false;
     const missing = this.missingRequiredProps();
-    this.notice.value = missing.length === 0 ? '' : `已保存；${missing.length} 处脚本的必填属性没设，试玩时这些脚本不挂：${missing.slice(0, 3).join('、')}${missing.length > 3 ? '……' : ''}`;
+    this.notice.value = missing.length === 0 ? '' : t.savedWithMissing(missing.length, missing.slice(0, 3), missing.length > 3);
   }
 
   /** 展开的场景里，脚本的必填属性（没有默认值的）没设或者是 null 的地方：`实体名 脚本类名.属性`。游戏里没有的脚本不查。 */

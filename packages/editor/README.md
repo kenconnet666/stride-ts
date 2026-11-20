@@ -28,6 +28,7 @@ node packages/editor/src/server/cli.ts new apps/my-game
 - 多选：场景树里 Ctrl+单击加减、Shift+单击选一段（视口里 Ctrl+单击）。属性面板显示选中的实体都有的组件，值不一样的显示"多个值"；改一处改所有选中的，一步撤销。
 - 复制粘贴实体：Ctrl+C 复制选中的实体（连同后代、组件），Ctrl+V 粘贴成选中的实体的兄弟（紧跟在后面），Ctrl+Shift+V 粘贴成它的子实体，Ctrl+D 复制一份放在原来的后面。新 id，拷贝之间的引用跟着换，实例还是引用加覆盖；取舍见 docs/decisions.md 的"编辑器里复制、粘贴实体"。
 - 试玩是不带 `stride-edit` 重新打开游戏页面（先保存）。
+- 多语言：界面文字在 `src/ui/messages.ts`（界面）和 `src/ui/fieldMessages.ts`（组件、字段的名字和说明，按英语原文翻）里，自带简体中文和英语；`?lang=`、工具条右边的下拉框换语言。加字段描述时一起翻（`test/i18n.test.ts` 查）。
 - 验收：`pwsh tools/editor-accept/run.ps1 -Apps <样例>`（见 [tools/editor-accept](../../tools/editor-accept/README.md)）。
 - 编辑资源：资源浏览器里选中材质、JSON 写的模型，属性面板显示资源自己的字段（引擎 `editor/fields.ts` 的 `ASSET_FIELDS`：材质的常用字段有控件，颜色树、材质层这类按 JSON 改；模型按形状换字段），改了稍等一下就存进资源文件，视口里用到它的实体热重载。选实体时回到实体的字段。
 - 资源浏览器：选中资源可以移动、改名、删除（引用它的文件跟着改写）；场景、预制体可以打开（双击或"打开"按钮）。"新建"在选中的文件夹里建场景、材质、基本形状的模型（JSON 写的 `.model`，引擎生成网格）、UI 页面（初始内容在 `src/newAssets.ts`），重名的加数字，建好以后选中它、路径框里改名。从系统里拖进来的音频（mp3、ogg、wav、flac、aac）导入成声音、图片（png、jpg、webp、svg）导入成贴图，源文件放在旁边；模型（glb、gltf、fbx、obj）经导入器（pipeline 的 `importSourceModel`）成模型、材质、贴图（`POST /import`，带骨骼、动画的现在当静态导入）；字体（ttf、otf、ttc）编成运行时字体（pipeline 的 `importFontFile`，字形轮廓按码位分块，用到哪块下哪块）。

@@ -3,11 +3,13 @@
  * 地址是 EDITOR_UI_PATH；游戏页面嵌在里面的 iframe 里，和这个页面同源。
  */
 import { createApp } from 'vue';
-import { createUi, darkTheme, lightTheme } from '@zerodep-dev/vue-tsx-pro-ui';
+import { createUi, darkTheme, enUS, lightTheme, zhCN } from '@zerodep-dev/vue-tsx-pro-ui';
 import { App } from './App';
+import { locale } from './i18n';
 import { EditorSession } from './session';
 
 const session = new EditorSession();
 createApp(App, { session })
-  .use(createUi({ theme: { light: lightTheme, dark: darkTheme } }))
+  // vue-tsx-pro 自己的文案（确定、取消……）跟着编辑器的语言
+  .use(createUi({ theme: { light: lightTheme, dark: darkTheme }, lang: () => (locale.value === 'zh-CN' ? zhCN : enUS) }))
   .mount('#app');

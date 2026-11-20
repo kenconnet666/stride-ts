@@ -7,33 +7,29 @@ import type { AssetKind } from './protocol.ts';
 
 export type ProceduralShapeType = (typeof PROCEDURAL_SHAPES)[number];
 
-/** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容。 */
+/** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容（菜单里的文字在界面的翻译表里，按 id 和 shape 取）。 */
 export interface NewAssetOption {
-  readonly id: string;
-  readonly label: string;
+  readonly id: 'scene' | 'material' | 'ui' | `model:${ProceduralShapeType}`;
   readonly kind: AssetKind;
+  /** 基本形状的模型是哪种形状。 */
+  readonly shape?: ProceduralShapeType;
   /** 默认的名字（同一个文件夹里重了就加数字）。 */
   readonly name: string;
   readonly content: (name: string) => object;
 }
 
-const SHAPE_LABELS: Readonly<Record<ProceduralShapeType, string>> = {
-  cube: '立方体', plane: '平面', sphere: '球', geoSphere: '测地球', capsule: '胶囊', cylinder: '圆柱', torus: '圆环', cone: '圆锥', teapot: '茶壶',
-};
-
 export const NEW_ASSET_OPTIONS: readonly NewAssetOption[] = [
-  { id: 'scene', label: '场景', kind: 'scene', name: 'NewScene', content: (name): SceneFile => ({ name, entities: [] }) },
-  { id: 'material', label: '材质', kind: 'material', name: 'NewMaterial', content: (name): MaterialFile => ({ name, baseColor: [0.8, 0.8, 0.8, 1], metalness: 0, roughness: 0.5 }) },
+  { id: 'scene', kind: 'scene', name: 'NewScene', content: (name): SceneFile => ({ name, entities: [] }) },
+  { id: 'material', kind: 'material', name: 'NewMaterial', content: (name): MaterialFile => ({ name, baseColor: [0.8, 0.8, 0.8, 1], metalness: 0, roughness: 0.5 }) },
   ...PROCEDURAL_SHAPES.map((type): NewAssetOption => ({
     id: `model:${type}`,
-    label: `基本形状：${SHAPE_LABELS[type]}`,
     kind: 'model',
+    shape: type,
     name: type[0]!.toUpperCase() + type.slice(1),
     content: (): ProceduralModelFile => ({ format: 1, procedural: { type } as ProceduralModelFile['procedural'], materials: [] }),
   })),
   {
     id: 'ui',
-    label: 'UI 页面',
     kind: 'ui',
     name: 'NewPage',
     content: (name): UIFile => ({ name, designResolution: [1280, 720], root: 0, elements: [{ type: 'Canvas', props: {} }] }),

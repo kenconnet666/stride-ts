@@ -3,6 +3,7 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
 import { watch } from 'vue';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
+import { t } from './messages';
 import type { EditorSession } from './session';
 
 const styles = css.create({
@@ -113,7 +114,7 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
     <div {...css.attrs(styles.tree)} ref={listen}>
     <Tree
       {...css.attrs(styles.tree)}
-      aria-label="场景里的实体"
+      aria-label={t.sceneEntities}
       items={roots}
       getKey={(node: Node) => node.entity.id}
       getLabel={(node: Node) => node.entity.name || '(unnamed)'}

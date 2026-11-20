@@ -4,7 +4,9 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, Splitter } from '@zerodep-dev/vue-tsx-pro-ui';
 import { onMounted, onUnmounted } from 'vue';
 import { AssetBrowser } from './AssetBrowser';
+import { LOCALES, locale, setLocale, type Locale } from './i18n';
 import { Inspector } from './Inspector';
+import { t } from './messages';
 import { SceneTree } from './SceneTree';
 import type { EditorSession } from './session';
 import { Viewport } from './Viewport';
@@ -17,6 +19,7 @@ const styles = css.create({
   spacer: { flex: '1' },
   snap: { display: 'flex', alignItems: 'center', gap: '_sm', marginInlineStart: '_sm', color: '_textMuted', fontSize: '0.8rem' },
   step: { width: '3.6em', marginInlineStart: '_xs' },
+  language: { fontSize: '0.8rem' },
   body: { flex: '1', minHeight: '0' },
   // 分栏里套的分栏铺满那一栏：栏里的滚动区域的内容层按内容定高，height: 100% 撑不住，长的属性面板会把整排（场景树、视口）
   // 一起撑高、一起滚；绝对定位到滚动区域（它是 relative）上，各栏自己滚
@@ -65,9 +68,9 @@ export const App = _component(({ session }: { session: EditorSession }) => {
   const snapControls = () => {
     const snap = session.snap.value;
     if (!snap) return undefined;
-    const step = (key: 'translate' | 'rotate' | 'scale', label: string, title: string, min: number) => (
-      <label title={title}>
-        {label}
+    const step = (key: 'translate' | 'rotate' | 'scale', min: number) => (
+      <label title={t.snapStep[key].title}>
+        {t.snapStep[key].label}
         <input {...css.attrs(styles.step)} type="number" min={min} step="any" value={snap[key]} onChange={(event: Event) => {
           const value = Number((event.target as HTMLInputElement).value);
           if (Number.isFinite(value) && value > 0) session.setSnap({ [key]: value });
@@ -75,11 +78,11 @@ export const App = _component(({ session }: { session: EditorSession }) => {
       </label>
     );
     return (
-      <span {...css.attrs(styles.snap)} role="group" aria-label="吸附">
-        <IconButton icon={Magnet} variant={snap.enabled ? 'soft' : 'ghost'} aria-pressed={snap.enabled} aria-label={snap.enabled ? '吸附开着（拖的时候按住 Ctrl 临时不吸）' : '吸附关着（拖的时候按住 Ctrl 临时吸附）'} onClick={() => session.setSnap({ enabled: !snap.enabled })} />
-        {step('translate', '移动', '移动的步长（米）', 0.001)}
-        {step('rotate', '旋转', '旋转的步长（度）', 0.01)}
-        {step('scale', '缩放', '缩放的步长（倍数）', 0.001)}
+      <span {...css.attrs(styles.snap)} role="group" aria-label={t.snap}>
+        <IconButton icon={Magnet} variant={snap.enabled ? 'soft' : 'ghost'} aria-pressed={snap.enabled} aria-label={snap.enabled ? t.snapOn : t.snapOff} onClick={() => session.setSnap({ enabled: !snap.enabled })} />
+        {step('translate', 0.001)}
+        {step('rotate', 0.01)}
+        {step('scale', 0.001)}
       </span>
     );
   };
@@ -89,25 +92,28 @@ export const App = _component(({ session }: { session: EditorSession }) => {
     return (
       <div {...css.attrs(styles.app)}>
         <div {...css.attrs(styles.toolbar)} role="toolbar">
-          <IconButton icon={Save} aria-label="保存（Ctrl+S）" disabled={!dirty.value || playing} onClick={() => void session.save()} />
-          <IconButton icon={Undo2} aria-label="撤销（Ctrl+Z）" disabled={!session.canUndo || playing} onClick={() => session.undo()} />
-          <IconButton icon={Redo2} aria-label="重做（Ctrl+Y）" disabled={!session.canRedo || playing} onClick={() => session.redo()} />
-          <IconButton icon={Plus} aria-label="加实体（选中的实体下面）" disabled={!session.agent.value || playing} onClick={() => void session.addEntity(session.selection.value.length === 1 ? session.selection.value[0]! : null)} />
-          <IconButton icon={Trash2} aria-label="删掉选中的实体（Delete）" disabled={session.selection.value.length === 0 || playing} onClick={() => session.deleteSelection()} />
-          <IconButton icon={Copy} aria-label="复制选中的实体（Ctrl+C）" disabled={session.selection.value.length === 0 || playing} onClick={() => session.copySelection()} />
-          <IconButton icon={ClipboardPaste} aria-label="粘贴到选中的实体后面（Ctrl+V；Ctrl+Shift+V 粘贴成它的子实体）" disabled={!session.clipboard.value || playing} onClick={() => void session.paste()} />
-          <IconButton icon={CopyPlus} aria-label="复制一份（Ctrl+D）" disabled={session.selection.value.length === 0 || playing} onClick={() => void session.duplicateSelection()} />
-          <IconButton icon={Package} aria-label="做成预制体（选中的一个实体连同后代，场景里换成它的实例）" disabled={session.selection.value.length !== 1 || playing} onClick={() => void session.makePrefabFromSelection()} />
-          <IconButton icon={playing ? Square : Play} aria-label={playing ? '停止试玩' : '试玩'} onClick={() => void togglePlay()} />
+          <IconButton icon={Save} aria-label={t.save} disabled={!dirty.value || playing} onClick={() => void session.save()} />
+          <IconButton icon={Undo2} aria-label={t.undo} disabled={!session.canUndo || playing} onClick={() => session.undo()} />
+          <IconButton icon={Redo2} aria-label={t.redo} disabled={!session.canRedo || playing} onClick={() => session.redo()} />
+          <IconButton icon={Plus} aria-label={t.addEntity} disabled={!session.agent.value || playing} onClick={() => void session.addEntity(session.selection.value.length === 1 ? session.selection.value[0]! : null)} />
+          <IconButton icon={Trash2} aria-label={t.deleteSelection} disabled={session.selection.value.length === 0 || playing} onClick={() => session.deleteSelection()} />
+          <IconButton icon={Copy} aria-label={t.copySelection} disabled={session.selection.value.length === 0 || playing} onClick={() => session.copySelection()} />
+          <IconButton icon={ClipboardPaste} aria-label={t.paste} disabled={!session.clipboard.value || playing} onClick={() => void session.paste()} />
+          <IconButton icon={CopyPlus} aria-label={t.duplicate} disabled={session.selection.value.length === 0 || playing} onClick={() => void session.duplicateSelection()} />
+          <IconButton icon={Package} aria-label={t.makePrefab} disabled={session.selection.value.length !== 1 || playing} onClick={() => void session.makePrefabFromSelection()} />
+          <IconButton icon={playing ? Square : Play} aria-label={playing ? t.stopPlaying : t.play} onClick={() => void togglePlay()} />
           {snapControls()}
-          <span {...css.attrs(styles.title)}>{opened.value ? `${opened.value.kind === 'prefab' ? '预制体 ' : ''}${opened.value.path}` : '……'}{dirty.value ? ' *' : ''}</span>
+          <span {...css.attrs(styles.title)}>{opened.value ? (opened.value.kind === 'prefab' ? t.prefabTitle(opened.value.path) : opened.value.path) : '……'}{dirty.value ? ' *' : ''}</span>
           {session.notice.value
             ? <span {...css.attrs(styles.notice)} role="status" title={session.notice.value}>{session.notice.value}</span>
             : session.status.value && <span {...css.attrs(styles.title)} role="status" title={session.status.value}>{session.status.value}</span>}
           {opened.value?.kind === 'prefab' && scene.value && (
-            <Button size="sm" variant="ghost" disabled={playing} onClick={() => void session.openAsset(scene.value!)}>回到场景 {scene.value.path.slice(scene.value.path.lastIndexOf('/') + 1)}</Button>
+            <Button size="sm" variant="ghost" disabled={playing} onClick={() => void session.openAsset(scene.value!)}>{t.backToScene(scene.value.path.slice(scene.value.path.lastIndexOf('/') + 1))}</Button>
           )}
           <span {...css.attrs(styles.spacer)} />
+          <select {...css.attrs(styles.language)} aria-label={t.language} title={t.language} value={locale.value} onChange={(event: Event) => setLocale((event.target as HTMLSelectElement).value as Locale)}>
+            {(Object.keys(LOCALES) as Locale[]).map((code) => <option value={code}>{LOCALES[code]}</option>)}
+          </select>
         </div>
         <Splitter
           {...css.attrs(styles.body)}

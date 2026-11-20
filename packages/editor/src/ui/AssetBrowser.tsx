@@ -4,6 +4,7 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, TextField, Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
 import { freeAssetPath, NEW_ASSET_OPTIONS } from '../newAssets';
 import type { AssetRecord, MoveRequest } from '../protocol';
+import { newAssetLabel, t } from './messages';
 import type { EditorSession } from './session';
 
 const styles = css.create({
@@ -82,7 +83,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
 
   const run = async (label: string, work: () => Promise<string>) => {
     busy = true;
-    status = `${label}……`;
+    status = t.working(label);
     try {
       status = await work();
     } catch (error) {
@@ -92,29 +93,29 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     }
   };
 
-  const move = (node: Node, to: string) => run('移动', async () => {
+  const move = (node: Node, to: string) => run(t.moveRename, async () => {
     const request: MoveRequest = node.asset ? { assets: [{ kind: node.asset.kind, from: node.path, to }] } : { folder: node.path, to };
     const result = await session.moveAssets(request);
     selected = [node.asset ? `${node.asset.kind}:${to}` : FOLDER + to];
-    return `挪了 ${result.moved.length} 个资源，改写了 ${result.rewritten.length} 个引用它们的文件`;
+    return t.moved(result.moved.length, result.rewritten.length);
   });
 
-  const remove = (node: Node) => run('删除', async () => {
+  const remove = (node: Node) => run(t.delete, async () => {
     const asset = node.asset!;
     try {
       await session.deleteAsset(asset.kind, asset.path);
     } catch (error) {
       // 还有别的资源引用它：问一下要不要照删（引用会断）
-      if (!window.confirm(`${(error as Error).message}\n\n仍然删除？引用它的地方会断掉。`)) return '没有删除';
+      if (!window.confirm(t.deleteAnyway((error as Error).message))) return t.notDeleted;
       await session.deleteAsset(asset.kind, asset.path, true);
     }
     selected = [];
-    return `删掉了 ${asset.kind} ${asset.path}`;
+    return t.deleted(asset.kind, asset.path);
   });
 
   /** 场景、预制体可以在编辑器里打开（双击也行）。 */
   const openable = (node: Node | undefined) => node?.asset?.kind === 'scene' || node?.asset?.kind === 'prefab';
-  const open = (node: Node) => run('打开', async () => {
+  const open = (node: Node) => run(t.open, async () => {
     const { kind, path } = node.asset!;
     await session.openAsset({ kind: kind as 'scene' | 'prefab', path });
     return `打开了 ${kind} ${path}`;
@@ -131,14 +132,14 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
   const create = (id: string) => {
     const option = NEW_ASSET_OPTIONS.find((candidate) => candidate.id === id);
     if (!option) return;
-    void run('新建', async () => {
+    void run(t.newAsset, async () => {
       const folder = folderForNew();
       const path = freeAssetPath(folder, option.name, option.kind, new Set(assets.value.map((asset) => `${asset.kind}:${asset.path}`)));
       await session.createAsset(option.kind, path, option.content(path.slice(path.lastIndexOf('/') + 1)));
       if (folder) expanded = [...new Set([...expanded, FOLDER + folder])];
       selected = [`${option.kind}:${path}`];
       target = path;
-      return `建了 ${option.kind} ${path}（路径框里可以改名）`;
+      return t.created(option.kind, path);
     });
   };
 
@@ -149,12 +150,12 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     event.preventDefault();
     const files = [...(event.dataTransfer?.files ?? [])];
     if (files.length === 0) return;
-    void run('导入', async () => {
+    void run(t.importing, async () => {
       const folder = folderForNew();
       const records = await session.importFiles(folder, files);
       if (folder) expanded = [...new Set([...expanded, FOLDER + folder])];
       selected = records.slice(-1).map((record) => `${record.kind}:${record.path}`);
-      return `导入了 ${records.map((record) => `${record.kind} ${record.path}`).join('、')}`;
+      return t.imported(records.map((record) => `${record.kind} ${record.path}`));
     });
   };
 
@@ -171,21 +172,21 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         <TextField
           {...css.attrs(styles.path)}
           _value={target}
-          placeholder={current ? '新的内容路径' : '选一个资源或文件夹'}
+          placeholder={current ? t.pathPlaceholder : t.pickAsset}
           disabled={!current || busy}
         />
-        <Button disabled={!current || busy || target === current.path || !target} onClick={() => current && void move(current, target)}>移动 / 改名</Button>
-        <Button disabled={!current?.asset || busy} onClick={() => current && void remove(current)}>删除</Button>
-        <Button disabled={!openable(current) || busy} onClick={() => current && void open(current)}>打开</Button>
-        <select {...css.attrs(styles.create)} aria-label="新建资源" value="" disabled={busy} onChange={(event: Event) => create((event.target as HTMLSelectElement).value)}>
-          <option value="">新建……</option>
-          {NEW_ASSET_OPTIONS.map((option) => <option value={option.id}>{option.label}</option>)}
+        <Button disabled={!current || busy || target === current.path || !target} onClick={() => current && void move(current, target)}>{t.moveRename}</Button>
+        <Button disabled={!current?.asset || busy} onClick={() => current && void remove(current)}>{t.delete}</Button>
+        <Button disabled={!openable(current) || busy} onClick={() => current && void open(current)}>{t.open}</Button>
+        <select {...css.attrs(styles.create)} aria-label={t.newAsset} value="" disabled={busy} onChange={(event: Event) => create((event.target as HTMLSelectElement).value)}>
+          <option value="">{t.newAssetMenu}</option>
+          {NEW_ASSET_OPTIONS.map((option) => <option value={option.id}>{newAssetLabel(option)}</option>)}
         </select>
         <span {...css.attrs(styles.status)} title={status}>{status}</span>
       </div>
       <Tree
         {...css.attrs(styles.tree)}
-        aria-label="资源"
+        aria-label={t.assets}
         items={roots}
         getKey={(node: Node) => node.key}
         getLabel={(node: Node) => node.name}

@@ -3,6 +3,8 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { NumberField, Switch, TextField } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { Field, FieldType } from '@stride-ts/engine/editor-fields';
 import { sameValue } from '@stride-ts/engine/content-prefabs';
+import { fieldDescription, fieldName } from './fieldMessages';
+import { t } from './messages';
 import { colorToHex, emptyValue, eulerToQuaternion, hasMixed, hexToColor, MIXED, quaternionToEuler, withPath } from './values';
 
 /** 文件里一个值的路径（相对 FieldEditor 拿到的值）。 */
@@ -49,9 +51,6 @@ const styles = css.create({
   grow: { flex: '1', minWidth: '0' },
 });
 
-/** 多选时值不一样的地方。 */
-const MIXED_LABEL = '多个值';
-
 /** 数不分千位（2000 不写成 2,000），小数留到六位：引擎的值不是金额。 */
 const NUMBER_FORMAT = { useGrouping: false, maximumFractionDigits: 6 } as const;
 
@@ -78,19 +77,19 @@ export const FieldRow = _component(({ field, value, context, onSet }: { field: F
     const unsetRequired = !field.optional && (missing || (value === null && !field.nullable));
     return (
       <div {...css.attrs(styles.row)}>
-        <span {...css.attrs(styles.label, missing && styles.unset, unsetRequired && styles.required)} title={unsetRequired ? `${field.name}：必填，还没设` : field.description ?? field.name}>
-          {field.label ?? field.name}{unsetRequired ? ' *' : ''}
+        <span {...css.attrs(styles.label, missing && styles.unset, unsetRequired && styles.required)} title={unsetRequired ? t.requiredUnset(fieldName(field)) : fieldDescription(field)}>
+          {fieldName(field)}{unsetRequired ? ' *' : ''}
         </span>
         {field.nullable && shown === null ? (
-          <button type="button" onClick={() => onSet([], emptyValue(field.type))}>设置</button>
+          <button type="button" onClick={() => onSet([], emptyValue(field.type))}>{t.setValue}</button>
         ) : missing && field.default === undefined && (field.type.kind === 'object' || field.type.kind === 'union') ? (
           // 没写的可选对象（后处理里的 ambientOcclusion 这类，写了就是开着）：先加上再改里面的值
-          <button type="button" onClick={() => onSet([], emptyValue(field.type))}>添加</button>
+          <button type="button" onClick={() => onSet([], emptyValue(field.type))}>{t.add}</button>
         ) : clearable ? (
           // 编辑器占满剩下的宽度，× 跟在后面
           <span {...css.attrs(styles.value)}>
             <span {...css.attrs(styles.grow)}><FieldEditor type={field.type} value={shown} context={context} onSet={set} /></span>
-            <button type="button" title={field.nullable ? `${field.name} 设成 null` : `去掉 ${field.name}`} aria-label={`去掉 ${field.name}`} onClick={() => onSet([], field.nullable ? null : undefined)}>×</button>
+            <button type="button" title={field.nullable ? t.setNull(fieldName(field)) : t.removeField(fieldName(field))} aria-label={t.removeField(fieldName(field))} onClick={() => onSet([], field.nullable ? null : undefined)}>×</button>
           </span>
         ) : (
           <FieldEditor type={field.type} value={shown} context={context} onSet={set} />
@@ -108,7 +107,7 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
       stepper={!options.compact}
       format={NUMBER_FORMAT}
       _value={typeof current === 'number' ? current : null}
-      {...(current === MIXED ? { placeholder: options.compact ? '—' : MIXED_LABEL, title: MIXED_LABEL } : {})}
+      {...(current === MIXED ? { placeholder: options.compact ? '—' : t.mixed, title: t.mixed } : {})}
       {...(options.min !== undefined ? { min: options.min } : {})}
       {...(options.max !== undefined ? { max: options.max } : {})}
       step={options.step ?? 0.1}
@@ -118,7 +117,7 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
 
   return () => {
     // 多选时整个列表、对象不一样（长短不同、有的没写）：不逐项改
-    if (value === MIXED && (type.kind === 'list' || type.kind === 'object' || type.kind === 'json')) return <span {...css.attrs(styles.mixed)}>{MIXED_LABEL}</span>;
+    if (value === MIXED && (type.kind === 'list' || type.kind === 'object' || type.kind === 'json')) return <span {...css.attrs(styles.mixed)}>{t.mixed}</span>;
     switch (type.kind) {
       case 'number':
         return number(value, (next) => onSet([], type.integer ? Math.round(next) : next), { ...type, step: type.step ?? (type.integer ? 1 : 0.1) });
@@ -126,15 +125,15 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
         return (
           <span {...css.attrs(styles.color)}>
             <Switch _checked={value === true} onUpdate:_checked={(next: boolean) => onSet([], next)} />
-            {value === MIXED && <span {...css.attrs(styles.mixed)}>{MIXED_LABEL}</span>}
+            {value === MIXED && <span {...css.attrs(styles.mixed)}>{t.mixed}</span>}
           </span>
         );
       case 'string':
-        return <TextField _value={typeof value === 'string' ? value : ''} {...(value === MIXED ? { placeholder: MIXED_LABEL } : {})} onUpdate:_value={(next: string) => onSet([], next)} />;
+        return <TextField _value={typeof value === 'string' ? value : ''} {...(value === MIXED ? { placeholder: t.mixed } : {})} onUpdate:_value={(next: string) => onSet([], next)} />;
       case 'enum':
         return (
           <select {...css.attrs(styles.select)} value={value === MIXED ? '' : String(value)} onChange={(event: Event) => onSet([], (event.target as HTMLSelectElement).value)}>
-            {value === MIXED && <option value="" disabled>{MIXED_LABEL}</option>}
+            {value === MIXED && <option value="" disabled>{t.mixed}</option>}
             {type.values.map((option) => <option value={option}>{option}</option>)}
           </select>
         );
@@ -152,7 +151,7 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
         const setAngle = (i: number, next: number) => (current: unknown) =>
           eulerToQuaternion(quaternionToEuler(Array.isArray(current) ? (current as number[]) : [0, 0, 0, 1]).map((angle, j) => (j === i ? next : angle)));
         return (
-          <div {...css.attrs(styles.vector)} title="角度（度），先绕 Z、再绕 X、再绕 Y（同 Stride）">
+          <div {...css.attrs(styles.vector)} title={t.eulerHint}>
             {euler.map((angle, i) => number(angle, (next) => onSet([], setAngle(i, next)), { step: 1, compact: true }))}
           </div>
         );
@@ -164,7 +163,7 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
           <div {...css.attrs(styles.color)}>
             <input type="color" value={colorToHex(rgbMixed ? [0, 0, 0] : (channels as number[]), type.space)}
               onInput={(event: Event) => onSet([], (current: unknown) => hexToColor((event.target as HTMLInputElement).value, type.space, Array.isArray(current) ? (current as number[]) : []))} />
-            {rgbMixed && <span {...css.attrs(styles.mixed)}>{MIXED_LABEL}</span>}
+            {rgbMixed && <span {...css.attrs(styles.mixed)}>{t.mixed}</span>}
             {type.alpha && number(channels[3], (next) => onSet([3], next), { min: 0, max: 1, step: 0.01 })}
           </div>
         );
@@ -177,7 +176,7 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
             {...css.attrs(styles.select)}
             list={assetListId(type.asset)}
             value={path === MIXED ? '' : path ?? ''}
-            placeholder={path === MIXED ? MIXED_LABEL : type.asset}
+            placeholder={path === MIXED ? t.mixed : type.asset}
             onChange={(event: Event) => onSet(type.form === 'ref' ? ['$asset'] : [], (event.target as HTMLInputElement).value)}
           />
         );
@@ -187,14 +186,14 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
         return (
           <select
             {...css.attrs(styles.select)}
-            value={id === MIXED ? MIXED_LABEL : id ?? ''}
+            value={id === MIXED ? t.mixed : id ?? ''}
             onChange={(event: Event) => {
               const next = (event.target as HTMLSelectElement).value || null;
               onSet([], type.form === 'ref' ? (next === null ? null : { $entity: next }) : next);
             }}
           >
-            {id === MIXED && <option value={MIXED_LABEL} disabled>{MIXED_LABEL}</option>}
-            <option value="">（无）</option>
+            {id === MIXED && <option value={t.mixed} disabled>{t.mixed}</option>}
+            <option value="">{t.none}</option>
             {context.entities.map((entity) => <option value={entity.id}>{entity.name || entity.id}</option>)}
           </select>
         );
@@ -206,12 +205,12 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
             {items.map((item, i) => (
               <div {...css.attrs(styles.item)}>
                 <span>{i}</span>
-                {item === null && type.nullableItems ? <span>（默认）</span> : <FieldEditor type={type.item} value={item} context={context} onSet={(path: ValuePath, next: unknown) => onSet([i, ...path], next)} />}
+                {item === null && type.nullableItems ? <span>{t.defaultItem}</span> : <FieldEditor type={type.item} value={item} context={context} onSet={(path: ValuePath, next: unknown) => onSet([i, ...path], next)} />}
               </div>
             ))}
             <div {...css.attrs(styles.item)}>
-              <button type="button" onClick={() => onSet([items.length], emptyValue(type.item))}>添加</button>
-              {items.length > 0 && <button type="button" onClick={() => onSet([items.length - 1], undefined)}>去掉最后一项</button>}
+              <button type="button" onClick={() => onSet([items.length], emptyValue(type.item))}>{t.add}</button>
+              {items.length > 0 && <button type="button" onClick={() => onSet([items.length - 1], undefined)}>{t.removeLast}</button>}
             </div>
           </div>
         );
@@ -227,7 +226,7 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
       case 'union': {
         // 多选时种类不一样：只显示共有的字段
         const object = (value === MIXED ? { [type.tag]: MIXED } : value ?? {}) as Record<string, unknown>;
-        const tag = object[type.tag] === MIXED ? MIXED_LABEL : String(object[type.tag]);
+        const tag = object[type.tag] === MIXED ? t.mixed : String(object[type.tag]);
         const fields = [...(type.common ?? []), ...(type.variants[tag] ?? [])];
         return (
           <div {...css.attrs(styles.nested)}>
@@ -244,7 +243,7 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
                 });
               }}
             >
-              {tag === MIXED_LABEL && <option value={MIXED_LABEL} disabled>{MIXED_LABEL}</option>}
+              {tag === t.mixed && <option value={t.mixed} disabled>{t.mixed}</option>}
               {Object.keys(type.variants).map((variant) => <option value={variant}>{variant}</option>)}
             </select>
             {fields.map((field) => <FieldRow field={field} value={object[field.name]} context={context} onSet={(path: ValuePath, next: unknown) => onSet([field.name, ...path], next)} />)}

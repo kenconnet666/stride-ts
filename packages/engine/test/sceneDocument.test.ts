@@ -162,5 +162,13 @@ describe('场景文档（SceneDocument）', () => {
     document.apply(document.addChild(entity('n', 'a')));
     expect(document.file.entities.map((e) => e.id)).toEqual(['a', 'i', 'g', 'n', 'z']);
     expect(() => document.apply({ type: 'add', entities: [{ entity: entity('m', 'i/body'), index: 0 }] })).toThrow(/after its parent/);
+    // 加在成员下面（紧跟实例）、挪到成员下面；挪实例到自己的成员下面报错，父实体是不在文档里的实例的"成员"也报错
+    document.apply(document.addChild(entity('m', 'i/body')));
+    expect(document.file.entities.map((e) => e.id)).toEqual(['a', 'i', 'm', 'g', 'n', 'z']);
+    document.apply(document.moveSubtree('z', 'i/weapon', Infinity));
+    expect(document.file.entities.map((e) => e.id)).toEqual(['a', 'i', 'm', 'g', 'z', 'n']);
+    expect(() => document.moveSubtree('i', 'i/body', 0)).toThrow(/under itself/);
+    expect(() => document.addChild(entity('x', 'a/body'))).toThrow(/no entity a\/body/);
+    expect(document.owner('i/weapon/inner')?.id).toBe('i');
   });
 });

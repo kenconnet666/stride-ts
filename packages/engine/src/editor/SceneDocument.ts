@@ -55,6 +55,14 @@ export class SceneDocument<F extends EntitiesFile = SceneFile> {
     return this.#file.entities[indexOf(this.#file.entities, id)];
   }
 
+  /**
+   * 文件里代表 id 的实体：就是它，或者 id 是预制体实例的成员（`<实例>/<预制体里的 id>`，成员不在文件里）时是那个实例。
+   * 能当父实体的 id 都有。文件里没有预制体的内容，成员在不在预制体里由调用方（展开以后的场景）查。
+   */
+  owner(id: string): SceneEntityFile | undefined {
+    return ownerOf(id, (candidate) => this.entity(candidate));
+  }
+
   /** 实体的直接子实体，按文件里的顺序。 */
   children(id: string | null): SceneEntityFile[] {
     return this.#file.entities.filter((entity) => entity.parent === id);
@@ -94,8 +102,8 @@ export class SceneDocument<F extends EntitiesFile = SceneFile> {
   moveSubtree(id: string, parent: string | null, position: number): SceneEdit {
     const remove = this.removeSubtree(id) as Extract<SceneEdit, { type: 'remove' }>;
     const moving = new Set(remove.entities);
-    if (parent !== null && moving.has(parent)) throw new Error(`scene ${this.#file.name}: cannot move entity ${id} under itself or its descendant ${parent}`);
-    if (parent !== null) this.#require(parent);
+    // 挪到自己的成员下面也算挪到自己下面
+    if (parent !== null && moving.has(this.#requireParent(parent).id)) throw new Error(`scene ${this.#file.name}: cannot move entity ${id} under itself or its descendant ${parent}`);
     const rest = this.#file.entities.filter((entity) => !moving.has(entity.id));
     const subtree = this.#file.entities.filter((entity) => moving.has(entity.id)).map((entity) => (entity.id === id ? { ...entity, parent } : entity));
     const at = insertionIndex(rest, parent, position);
@@ -116,9 +124,16 @@ export class SceneDocument<F extends EntitiesFile = SceneFile> {
     const parents = new Set(entities.filter((entity) => entity.parent === null || !ownerOf(entity.parent, (id) => byId.get(id))).map((entity) => entity.parent));
     if (parents.size !== 1) throw new Error(`scene ${this.#file.name}: the added subtrees must share one parent, got ${[...parents].join(', ') || 'none'}`);
     const parent = [...parents][0] as string | null;
-    if (parent !== null) this.#require(parent);
+    if (parent !== null) this.#requireParent(parent);
     const at = insertionIndex(this.#file.entities, parent, position);
     return { type: 'add', entities: entities.map((entity, k) => ({ entity, index: at + k })) };
+  }
+
+  /** 父实体（可以是实例的成员）落在文件里的哪个实体上；落不到时报错。 */
+  #requireParent(parent: string): SceneEntityFile {
+    const owner = this.owner(parent);
+    if (!owner) throw new Error(`scene ${this.#file.name}: no entity ${parent}`);
+    return owner;
   }
 
   #require(id: string): SceneEntityFile {
@@ -143,15 +158,15 @@ function indexOf(entities: readonly SceneEntityFile[], id: string): number {
   return indices.get(id) ?? -1;
 }
 
-/**
- * 父实体 id 在文件里落在哪个实体上：就是它自己，或者它是预制体实例的成员（`<实例>/<预制体里的 id>`，不在文件里）时是那个
- * 实例。都不是时是 undefined。
- */
 /** 父实体 id 在实体列表里落在哪个实体上（见 ownerOf）；落不到时原样。 */
 function ownerId(entities: readonly SceneEntityFile[], parent: string): string {
   return ownerOf(parent, (id) => entities[indexOf(entities, id)])?.id ?? parent;
 }
 
+/**
+ * 父实体 id 在文件里落在哪个实体上：就是它自己，或者它是预制体实例的成员（`<实例>/<预制体里的 id>`，不在文件里）时是那个
+ * 实例。都不是时是 undefined。
+ */
 function ownerOf(parent: string, find: (id: string) => SceneEntityFile | undefined): SceneEntityFile | undefined {
   const own = find(parent);
   if (own) return own;
@@ -164,13 +179,14 @@ function ownerOf(parent: string, find: (id: string) => SceneEntityFile | undefin
 
 /**
  * 要在 parent 的子实体里排第 position 个，新实体放在列表的哪个下标：排在原来第 position 个兄弟的前面；排最后的话放在最后
- * 一个兄弟和紧跟着它的后代后面（子树在文件里连着的，不把它拆开）；没有兄弟就紧跟父实体，最上层就放到最后。父实体总在前面。
+ * 一个兄弟和紧跟着它的后代后面（子树在文件里连着的，不把它拆开）；没有兄弟就紧跟父实体（父实体是实例的成员时紧跟实例），
+ * 最上层就放到最后。父实体总在前面。
  */
 function insertionIndex(entities: readonly SceneEntityFile[], parent: string | null, position: number): number {
   const siblings: number[] = [];
   entities.forEach((entity, index) => entity.parent === parent && siblings.push(index));
   if (position < siblings.length) return siblings[Math.max(0, position)]!;
-  if (siblings.length === 0) return parent === null ? entities.length : indexOf(entities, parent) + 1;
+  if (siblings.length === 0) return parent === null ? entities.length : indexOf(entities, ownerId(entities, parent)) + 1;
   const last = siblings.at(-1)!;
   const subtree = new Set([entities[last]!.id]);
   let at = last + 1;

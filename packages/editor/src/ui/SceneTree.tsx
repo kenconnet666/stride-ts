@@ -1,6 +1,6 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Tree, type TreeMove, type TreeMoveTarget } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
 import { watch } from 'vue';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import type { EditorSession } from './session';
@@ -55,7 +55,7 @@ function prefabLabel(session: EditorSession, id: string) {
 
 /**
  * 场景树：场景里的实体按父子关系列出（预制体的实例展开着，成员用斜体）；选中和视口里的选中是同一个，Ctrl、Shift 多选。拖动换父实体、
- * 换顺序（本地的变换不变）；成员不在文档里，不能拖，也不能当拖去的父实体。
+ * 换顺序（本地的变换不变）；成员跟着预制体，不能拖，但可以当拖去的父实体（拖进去的实体在文档里挂在成员下面）。
  */
 export const SceneTree = _component(({ session }: { session: EditorSession }) => {
   const { version, selection, agent } = session;
@@ -129,7 +129,7 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       _expanded={expanded}
       _selected={[...selection.value]}
       onUpdate:_selected={choose}
-      canDrop={(node: Node, target: TreeMoveTarget) => !session.isMember(node.entity.id) && (target.parent == null || !session.isMember(target.parent))}
+      canDrop={(node: Node) => !session.isMember(node.entity.id)}
       onMove={move}
       loading={!agent.value}
     />

@@ -193,7 +193,7 @@ export class EditorSession implements EditableScene {
     return instanceMember(this.file, this.#prefabs, id);
   }
 
-  /** 是实例的成员（不是根）：它不在文档里，能改值、删，不能挪、往下面加实体。 */
+  /** 是实例的成员（不是根）：它不在文档里，能改值、删、往下面加实体，不能挪（它跟着预制体）。 */
   isMember(id: string): boolean {
     const member = this.instanceMember(id);
     return member !== undefined && member.instance.id !== id;

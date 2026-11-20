@@ -38,11 +38,11 @@ export function copyEntities(file: EntitiesFile, prefabs: ReadonlyMap<string, En
   return copied;
 }
 
-/** 粘贴 copied（copyEntities 的结果）到 target：一个 add 修改，和新的根的 id（按 copied 里的顺序）。 */
+/**
+ * 粘贴 copied（copyEntities 的结果）到 target：一个 add 修改，和新的根的 id（按 copied 里的顺序）。target.parent 可以是
+ * 实例的成员；文档里没有它（也不是文档里的实例的成员）时报错。
+ */
 export function pasteEntities(file: EntitiesFile, copied: Entities, target: PasteTarget, newId: () => string = () => crypto.randomUUID()): { edit: SceneEdit; roots: string[] } {
-  if (target.parent !== null && !file.entities.some((entity) => entity.id === target.parent)) {
-    throw new Error(`scene ${file.name}: cannot paste under ${target.parent}; it is not in the document (a member of a prefab instance?)`);
-  }
   const ids = new Map(copied.map((entity) => [entity.id, newId()]));
   const instances = copied.filter((entity) => entity.prefab);
   const rename = (id: string | null): string | null => {
@@ -65,8 +65,8 @@ export function pasteEntities(file: EntitiesFile, copied: Entities, target: Past
 }
 
 /**
- * 复制一份（Ctrl+D）：每个选中的（最上面的）实体拷一份，放在原来的那个后面、同一个父实体下。一个修改，和新的根的 id。
- * 原来的实体是实例的成员时拷贝放在成员的父实体下（父实体也是成员时放不进文档，报错）。
+ * 复制一份（Ctrl+D）：每个选中的（最上面的）实体拷一份，放在原来的那个后面、同一个父实体下（原来的是实例的成员时，拷贝
+ * 是挂在成员的父实体下的普通实体）。一个修改，和新的根的 id。
  */
 export function duplicateEntities(file: EntitiesFile, prefabs: ReadonlyMap<string, Entities>, ids: readonly string[], newId?: () => string): { edit: SceneEdit; roots: string[] } {
   const scratch = new SceneDocument(file);

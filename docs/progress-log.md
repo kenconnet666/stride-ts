@@ -294,6 +294,8 @@ docs/roadmap.md 的"进度"只留结论；这里是已完成各项的过程记�
 - **编辑器**（无头 Chrome 1600x900，在视口的画布上派发真的鼠标事件）：particles-sample 里点选 Big Fire、Burning Fire、Simple Fountain，选中框是包围形状；Lasers 场景里点中飘带 Lightning Arc White，没有包围形状的拖尾按活着的粒子画出了框。simple-audio 的全屏 UI 点不到；在编辑器里把它改成放在 3D 里（不保存）以后点它选中 UIText，框是 Size 那块板。这时发现选中框和操纵器被 3D UI 盖住（调试线在 UI 之前画），改成调试线在 UI 之后画（同调试文字）。
 - 样例里放在 3D 里的 UI 都是脚本运行时建的页面（ui-element-link），编辑状态不挂脚本，所以编辑器里看不到也点不到它们；animated-model 按代码加载根场景，编辑器打不开它。这两件都和点选无关，没改。
 
+往实例的成员下面加实体（同一天，TopDownRPG 的编辑器，内容目录在工作树里换成拷贝再保存）：选中 CoinGold 实例的成员 Point light，工具条的"加实体"加出 UnderTorchLight（场景文件里父实体是 `<实例>/<成员>`，排在实例后面），再把一个 Box3x1x1 实例 Ctrl+Shift+V 粘贴到它下面、位置设成 (0, 1, 0)，视口里箱子出现在火把上方；保存、重新打开编辑器，层级原样；试玩时游戏里的层级是 Box3x1x1 → UnderTorchLight → Point light → CoinGold。主检出的场景文件没动。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

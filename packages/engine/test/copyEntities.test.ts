@@ -55,7 +55,7 @@ describe('复制、粘贴实体', () => {
     expect(document.entity('b')).toBe(file.entities[1]);
   });
 
-  test('粘贴到兄弟里的第几个；粘贴到实例的成员下面报错；撤销一步回去', () => {
+  test('粘贴到兄弟里的第几个；撤销一步回去；父实体不在文档里（也不是文档里的实例的成员）时报错', () => {
     const file = scene();
     const document = new SceneDocument(file);
     const undo = new UndoStack(document);
@@ -66,7 +66,8 @@ describe('复制、粘贴实体', () => {
     expect(ids(document.file.entities)).toEqual(['a', 'b', 'c', 'p1', 'd', 'e1', 'g']);
     undo.undo();
     expect(document.file).toEqual(file);
-    expect(() => pasteEntities(file, copied, { parent: 'e1/weapon', position: 0 })).toThrow(/not in the document/);
+    expect(() => pasteEntities(file, copied, { parent: 'nope', position: 0 })).toThrow(/no entity nope/);
+    expect(() => pasteEntities(file, copied, { parent: 'a/weapon', position: 0 })).toThrow(/no entity a\/weapon/);
   });
 
   test('复制实例还是引用加覆盖：成员不拷，挂在成员下面的文档实体跟着；覆盖里指着拷贝的引用跟着换', () => {
@@ -107,5 +108,21 @@ describe('复制、粘贴实体', () => {
     expect(document.entity('p2')!.parent).toBe('p1');
     undo.undo();
     expect(document.file).toEqual(file);
+  });
+
+  test('粘贴到实例的成员下面：文档里的普通实体，父实体写成员的 id，展开时挂在成员上', () => {
+    const file = scene();
+    const document = new SceneDocument(file);
+    const { edit, roots } = pasteEntities(file, copyEntities(file, prefabs, ['b']), { parent: 'e1/body', position: Infinity }, counter());
+    document.apply(edit);
+    expect(roots).toEqual(['p1']);
+    // 成员下面还没有文档实体：紧跟实例
+    expect(ids(document.file.entities)).toEqual(['a', 'b', 'c', 'd', 'e1', 'p1', 'p2', 'g']);
+    const expanded = expandPrefabInstances(document.file.entities, prefabs, (message) => { throw new Error(message); });
+    expect(expanded.find((e) => e.id === 'p1')!.parent).toBe('e1/body');
+    // 复制一份挂在成员下面的实体：还在这个成员下面，排在原来的后面
+    const twice = duplicateEntities(document.file, prefabs, ['p1'], () => 'q' + Math.random().toString(36).slice(2, 6));
+    document.apply(twice.edit);
+    expect(document.file.entities.filter((e) => e.parent === 'e1/body').map((e) => e.id)).toEqual(['p1', twice.roots[0]]);
   });
 });

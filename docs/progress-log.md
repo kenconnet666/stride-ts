@@ -280,6 +280,8 @@ docs/roadmap.md 的"进度"只留结论；这里是已完成各项的过程记�
 - space-escape 的冒烟"往右划换道"偶尔失败：关卡是随机生成的，等滑铲放完的那两三秒里角色可能撞上障碍物。脚本改成先把已经生成的障碍物挪走。
 - 2D 样例进编辑状态时画面是空的：编辑相机没照场景相机的正交投影，接手位姿时第一帧还没跑、世界矩阵还没算过（相机落在原点，精灵全在近平面以内）。两处都改了，Platformer2D 的冒烟加了精灵的点选。
 
+复制、粘贴实体（2026-11-20，p3-editor 分支，无头 Chrome 1400x900 上的 TPP 编辑器，页面里发 Ctrl+键）：Ctrl+D 复制 Wall_South 下的 Wall0x2x5Window (3)（带一个预制体实例子实体），文档 278 → 280 个实体，复制的排在原来的后面，实例还是引用（`prefab.path`），游戏页面里的实体 294 → 296；复制一个墙的实例，Ctrl+Shift+V 粘贴成刚复制的那个的子实体，再 Ctrl+V 粘贴成兄弟紧跟在后面；撤销、重做各一步；焦点在输入框里时 Ctrl+V 不粘贴实体。粘贴出来的实体选中了但场景树没展开到它，加了"选中变了就展开祖先"。TPP 的预制体都只有一个实体（没有成员），拷成员、粘贴到成员下面报错只在单测里测。验证时没保存（内容目录联接着主检出）。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

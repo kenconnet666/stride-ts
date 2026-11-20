@@ -150,4 +150,17 @@ describe('场景文档（SceneDocument）', () => {
     undo.apply({ type: 'set', entity: 'a', path: ['name'], value: 'Moon' });
     expect(undo.canRedo).toBe(false);
   });
+
+  test('挂在预制体实例成员下面的实体（父实体是 `<实例>/<成员>`）算实例的后代：挪、删、加在后面都带着它', () => {
+    const file: SceneFile = { name: 'Test', entities: [entity('a'), entity('i', null, { prefab: { path: 'Game/Enemy' } }), entity('g', 'i/weapon'), entity('z')] };
+    const document = new SceneDocument(file);
+    expect(document.removeSubtree('i')).toEqual({ type: 'remove', entities: ['i', 'g'] });
+    expect(() => document.apply({ type: 'remove', entities: ['i'] })).toThrow(/still has children/);
+    document.apply(document.moveSubtree('i', 'a', 0));
+    expect(document.file.entities.map((e) => e.id)).toEqual(['a', 'i', 'g', 'z']);
+    // 加在 i 后面的兄弟排在 g 后面；成员下面的实体要排在实例后面
+    document.apply(document.addChild(entity('n', 'a')));
+    expect(document.file.entities.map((e) => e.id)).toEqual(['a', 'i', 'g', 'n', 'z']);
+    expect(() => document.apply({ type: 'add', entities: [{ entity: entity('m', 'i/body'), index: 0 }] })).toThrow(/after its parent/);
+  });
 });

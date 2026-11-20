@@ -30,7 +30,7 @@ export type SceneEdit =
   | { readonly type: 'set'; readonly entity: string; readonly path: ScenePath; readonly value: unknown }
   /**
    * 加实体（一个，或者一棵子树、一次粘贴的全部）。index 是加完以后它在实体列表里的位置，按从小到大给；父实体必须排在它前面
-   * （可以是同一次加的）。
+   * （可以是同一次加的；父实体是预制体实例的成员时排在实例后面）。
    */
   | { readonly type: 'add'; readonly entities: readonly { readonly entity: SceneEntityFile; readonly index: number }[] }
   /** 删实体；留下的实体里不能还有它们的子实体（删一棵子树用 removeSubtree 给出全部）。 */
@@ -83,7 +83,7 @@ export class SceneDocument<F extends EntitiesFile = SceneFile> {
     this.#require(id);
     // 父实体排在前面：顺着扫一遍，后代都收得到
     const ids = new Set([id]);
-    for (const entity of this.#file.entities) if (entity.parent !== null && ids.has(entity.parent)) ids.add(entity.id);
+    for (const entity of this.#file.entities) if (entity.parent !== null && ids.has(ownerId(this.#file.entities, entity.parent))) ids.add(entity.id);
     return { type: 'remove', entities: [...ids] };
   }
 
@@ -104,8 +104,21 @@ export class SceneDocument<F extends EntitiesFile = SceneFile> {
 
   /** 加一个实体，排在它的父实体（entity.parent）的子实体的最后。 */
   addChild(entity: SceneEntityFile): SceneEdit {
-    if (entity.parent !== null) this.#require(entity.parent);
-    return { type: 'add', entities: [{ entity, index: insertionIndex(this.#file.entities, entity.parent, Infinity) }] };
+    return this.addSubtrees([entity]);
+  }
+
+  /**
+   * 加几棵子树（一次粘贴）：entities 里父实体排在前面，父实体不在 entities 里的是根，根的父实体要是同一个。整块连着放，
+   * 排在那个父实体的子实体里的第 position 个（按现在的兄弟算，超出是最后）。
+   */
+  addSubtrees(entities: readonly SceneEntityFile[], position = Infinity): SceneEdit {
+    const byId = new Map(entities.map((entity) => [entity.id, entity]));
+    const parents = new Set(entities.filter((entity) => entity.parent === null || !ownerOf(entity.parent, (id) => byId.get(id))).map((entity) => entity.parent));
+    if (parents.size !== 1) throw new Error(`scene ${this.#file.name}: the added subtrees must share one parent, got ${[...parents].join(', ') || 'none'}`);
+    const parent = [...parents][0] as string | null;
+    if (parent !== null) this.#require(parent);
+    const at = insertionIndex(this.#file.entities, parent, position);
+    return { type: 'add', entities: entities.map((entity, k) => ({ entity, index: at + k })) };
   }
 
   #require(id: string): SceneEntityFile {
@@ -131,6 +144,25 @@ function indexOf(entities: readonly SceneEntityFile[], id: string): number {
 }
 
 /**
+ * 父实体 id 在文件里落在哪个实体上：就是它自己，或者它是预制体实例的成员（`<实例>/<预制体里的 id>`，不在文件里）时是那个
+ * 实例。都不是时是 undefined。
+ */
+/** 父实体 id 在实体列表里落在哪个实体上（见 ownerOf）；落不到时原样。 */
+function ownerId(entities: readonly SceneEntityFile[], parent: string): string {
+  return ownerOf(parent, (id) => entities[indexOf(entities, id)])?.id ?? parent;
+}
+
+function ownerOf(parent: string, find: (id: string) => SceneEntityFile | undefined): SceneEntityFile | undefined {
+  const own = find(parent);
+  if (own) return own;
+  for (let slash = parent.indexOf('/'); slash >= 0; slash = parent.indexOf('/', slash + 1)) {
+    const instance = find(parent.slice(0, slash));
+    if (instance?.prefab) return instance;
+  }
+  return undefined;
+}
+
+/**
  * 要在 parent 的子实体里排第 position 个，新实体放在列表的哪个下标：排在原来第 position 个兄弟的前面；排最后的话放在最后
  * 一个兄弟和紧跟着它的后代后面（子树在文件里连着的，不把它拆开）；没有兄弟就紧跟父实体，最上层就放到最后。父实体总在前面。
  */
@@ -142,7 +174,7 @@ function insertionIndex(entities: readonly SceneEntityFile[], parent: string | n
   const last = siblings.at(-1)!;
   const subtree = new Set([entities[last]!.id]);
   let at = last + 1;
-  while (at < entities.length && entities[at]!.parent !== null && subtree.has(entities[at]!.parent!)) subtree.add(entities[at++]!.id);
+  while (at < entities.length && entities[at]!.parent !== null && subtree.has(ownerId(entities, entities[at]!.parent!))) subtree.add(entities[at++]!.id);
   return at;
 }
 
@@ -194,11 +226,14 @@ function applyEdit<F extends EntitiesFile>(file: F, edit: SceneEdit): [F, SceneE
         }
         return at + low;
       };
+      const addedById = new Map(additions.map(({ entity }) => [entity.id, entity]));
+      const find = (id: string) => addedById.get(id) ?? file.entities[indexOf(file.entities, id)];
       for (const { entity, index } of additions) {
         if (indexOf(file.entities, entity.id) >= 0) throw new Error(`${where}: entity ${entity.id} already exists`);
         if (entity.parent === null) continue;
-        const existing = indexOf(file.entities, entity.parent);
-        const parent = added.get(entity.parent) ?? (existing < 0 ? Infinity : shifted(existing));
+        // 父实体可以是实例的成员：那就要排在实例后面
+        const owner = ownerOf(entity.parent, find);
+        const parent = owner === undefined ? Infinity : added.get(owner.id) ?? shifted(indexOf(file.entities, owner.id));
         if (parent >= index) throw new Error(`${where}: entity ${entity.id} must come after its parent ${entity.parent}`);
       }
       return [{ ...file, entities }, { type: 'remove', entities: additions.map(({ entity }) => entity.id) }];
@@ -211,7 +246,7 @@ function applyEdit<F extends EntitiesFile>(file: F, edit: SceneEdit): [F, SceneE
       const removed: { entity: SceneEntityFile; index: number }[] = [];
       file.entities.forEach((entity, index) => {
         if (removing.has(entity.id)) removed.push({ entity, index });
-        else if (entity.parent !== null && removing.has(entity.parent)) throw new Error(`${where}: entity ${entity.parent} still has children`);
+        else if (entity.parent !== null && removing.has(ownerId(file.entities, entity.parent))) throw new Error(`${where}: entity ${entity.parent} still has children`);
         else entities.push(entity);
       });
       return [{ ...file, entities }, { type: 'add', entities: removed }];

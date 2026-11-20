@@ -1,4 +1,4 @@
-import { Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
+import { ClipboardPaste, Copy, CopyPlus, Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, Splitter } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -12,6 +12,7 @@ import { Viewport } from './Viewport';
 const styles = css.create({
   app: { display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '_background', color: '_text' },
   toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_sm', paddingBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
+  notice: { marginInlineStart: '_sm', color: '_dangerText', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   title: { marginInlineStart: '_sm', color: '_textMuted', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   spacer: { flex: '1' },
   body: { flex: '1', minHeight: '0' },
@@ -33,7 +34,12 @@ export const App = _component(({ session }: { session: EditorSession }) => {
     }
     if (!(event.ctrlKey || event.metaKey)) return;
     const key = event.key.toLowerCase();
+    // 复制粘贴实体：在输入框里是复制粘贴文字
+    if ((key === 'c' || key === 'v' || key === 'd') && (typing || playing)) return;
     if (key === 's') void session.save();
+    else if (key === 'c') session.copySelection();
+    else if (key === 'v') void session.paste(event.shiftKey);
+    else if (key === 'd') void session.duplicateSelection();
     else if (key === 'z' && !event.shiftKey) session.undo();
     else if (key === 'y' || (key === 'z' && event.shiftKey)) session.redo();
     else return;
@@ -61,8 +67,12 @@ export const App = _component(({ session }: { session: EditorSession }) => {
           <IconButton icon={Redo2} aria-label="重做（Ctrl+Y）" disabled={!session.canRedo || playing} onClick={() => session.redo()} />
           <IconButton icon={Plus} aria-label="加实体（选中的实体下面）" disabled={!session.agent.value || playing || session.selection.value.some((id) => session.isMember(id))} onClick={() => void session.addEntity(session.selection.value.length === 1 ? session.selection.value[0]! : null)} />
           <IconButton icon={Trash2} aria-label="删掉选中的实体（Delete）" disabled={session.selection.value.length === 0 || playing} onClick={() => session.deleteSelection()} />
+          <IconButton icon={Copy} aria-label="复制选中的实体（Ctrl+C）" disabled={session.selection.value.length === 0 || playing} onClick={() => session.copySelection()} />
+          <IconButton icon={ClipboardPaste} aria-label="粘贴到选中的实体后面（Ctrl+V；Ctrl+Shift+V 粘贴成它的子实体）" disabled={!session.clipboard.value || playing} onClick={() => void session.paste()} />
+          <IconButton icon={CopyPlus} aria-label="复制一份（Ctrl+D）" disabled={session.selection.value.length === 0 || playing} onClick={() => void session.duplicateSelection()} />
           <IconButton icon={playing ? Square : Play} aria-label={playing ? '停止试玩' : '试玩'} onClick={() => void togglePlay()} />
           <span {...css.attrs(styles.title)}>{opened.value ? `${opened.value.kind === 'prefab' ? '预制体 ' : ''}${opened.value.path}` : '……'}{dirty.value ? ' *' : ''}</span>
+          {session.notice.value && <span {...css.attrs(styles.notice)} role="status" title={session.notice.value}>{session.notice.value}</span>}
           {opened.value?.kind === 'prefab' && scene.value && (
             <Button size="sm" variant="ghost" disabled={playing} onClick={() => void session.openAsset(scene.value!)}>回到场景 {scene.value.path.slice(scene.value.path.lastIndexOf('/') + 1)}</Button>
           )}

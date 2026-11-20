@@ -8,7 +8,7 @@
  *
  * - 删成员记进实例的 `prefab.removed`（连后代）。
  *
- * 加实体照原样交给文档：成员不在文档里，往成员下面加实体还不支持（文档报"没有这个实体"）。
+ * 加实体照原样交给文档：成员不在文档里，往成员下面加实体还不支持（文档报"没有这个实体"）；复制粘贴见 copyEntities.ts。
  */
 import type { SceneEntityFile } from '../content/format';
 import { expandPrefabInstances, getPath, sameValue, setPath } from '../content/prefabInstances';

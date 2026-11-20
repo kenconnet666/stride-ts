@@ -15,6 +15,7 @@ import type { PrefabFile, SceneEntityFile, SceneFile } from '@stride-ts/engine/c
 import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
+import { copyEntities, duplicateEntities, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import type { EditAgent, EditableScene, Game } from '@stride-ts/engine';
 import { EditorClient } from '../client/EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
@@ -49,6 +50,13 @@ export class EditorSession implements EditableScene {
   readonly opened = shallowRef<OpenedDocument>();
   /** 最近打开的场景：单独打开预制体以后回到它。 */
   readonly scene = shallowRef<OpenedDocument>();
+  /**
+   * 复制的实体（copyEntities 的结果）。放在会话里，所以换着打开场景、预制体以后还能粘贴；不进系统剪贴板（别的标签页里的
+   * 编辑器拿不到）。
+   */
+  readonly clipboard = shallowRef<readonly SceneEntityFile[]>();
+  /** 最近一次操作做不了的原因（工具条上显示），下一次操作成功时清掉。 */
+  readonly notice = shallowRef('');
   #document: SceneDocument | undefined;
   /** 最近一次修改以后游戏页面里的实体跟上了。 */
   #synced: Promise<void> = Promise.resolve();
@@ -246,6 +254,55 @@ export class EditorSession implements EditableScene {
     this.apply({ type: 'remove', entities: ids });
     this.commit();
     this.select([]);
+  }
+
+  /** 复制选中的实体（连同后代、组件）。 */
+  copySelection(): void {
+    if (this.selection.value.length === 0) return;
+    this.clipboard.value = copyEntities(this.file, this.#prefabs, this.selection.value);
+    this.notice.value = '';
+  }
+
+  /**
+   * 粘贴复制的实体（新 id，一步撤销），选中粘贴出来的。默认粘贴成选中的最后一个实体的兄弟，紧跟在它后面；asChild 时粘贴成
+   * 它的最后的子实体；没选中时放在最上层的最后。
+   */
+  async paste(asChild = false): Promise<void> {
+    const copied = this.clipboard.value;
+    if (!copied) return;
+    // 别的文档里复制来的实例可能用到这里还没加载的预制体
+    const missing = await this.#loadPrefabs({ ...this.file, entities: copied.filter((entity) => entity.prefab && !this.#prefabs.has(entity.prefab.path)) });
+    if (missing.size > 0) this.#prefabs = new Map([...this.#prefabs, ...missing]);
+    await this.#insert(() => pasteEntities(this.file, copied, this.#pasteTarget(asChild)));
+  }
+
+  /** 复制一份选中的实体（Ctrl+D）：每个放在原来的后面，一步撤销，选中复制出来的。 */
+  async duplicateSelection(): Promise<void> {
+    if (this.selection.value.length === 0) return;
+    await this.#insert(() => duplicateEntities(this.file, this.#prefabs, this.selection.value));
+  }
+
+  #pasteTarget(asChild: boolean): PasteTarget {
+    const selected = new Set(this.selection.value);
+    const anchor = this.expanded.findLast((entity) => selected.has(entity.id));
+    if (!anchor) return { parent: null, position: Infinity };
+    return asChild ? { parent: anchor.id, position: Infinity } : { parent: anchor.parent, position: positionAfter(this.file, anchor) };
+  }
+
+  /** 做一次加实体的修改，选中加出来的根；做不了（例如要放进实例的成员下面）时记进 notice。 */
+  async #insert(make: () => { edit: SceneEdit; roots: string[] }): Promise<void> {
+    let made: { edit: SceneEdit; roots: string[] };
+    try {
+      made = make();
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+      return;
+    }
+    this.notice.value = '';
+    this.apply(made.edit);
+    this.commit();
+    await this.#synced;
+    this.select(made.roots);
   }
 
   /** 把实体连同后代挪到 parent 下面（null 是最上层），排在新的兄弟里的第 position 个。 */

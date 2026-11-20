@@ -1,6 +1,7 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Tree, type TreeMove, type TreeMoveTarget } from '@zerodep-dev/vue-tsx-pro-ui';
+import { watch } from 'vue';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import type { EditorSession } from './session';
 
@@ -63,6 +64,14 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
     session.moveEntity(key, parent, position);
   };
   let expanded = _state<string[]>([]);
+  // 选中的实体（粘贴、复制出来的，视口里点到的）在树里看得见：展开它们的祖先
+  watch(selection, (ids) => {
+    if (!agent.value) return;
+    const parentOf = new Map(session.expanded.map((entity) => [entity.id, entity.parent]));
+    const open = new Set(expanded);
+    for (const id of ids) for (let parent = parentOf.get(id) ?? null; parent !== null; parent = parentOf.get(parent) ?? null) open.add(parent);
+    if (open.size !== expanded.length) expanded = [...open];
+  });
 
   return () => (
     <Tree

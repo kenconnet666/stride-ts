@@ -47,18 +47,19 @@ stride('mouse', 'move', '-64', '76');
 await sleep(500);
 const box = stride('eval', BOX) as number[];
 const before = state();
-// 点完在页面里逐帧看 0.5 秒取最多的实体数：特效可能晚一帧生成，枪口火焰又很快移除，忙的时候隔一次 CLI 调用会错过
-// 同时记下每个特效（粒子组件所在实体的名字）最多有多少个活着的粒子
-stride('eval', `globalThis.mostEntities = 0; globalThis.mostParticles = {}; (() => { const end = performance.now() + 500; const poll = () => {
+// 在页面里逐帧看、取最多的实体数：特效可能晚一帧生成，枪口火焰又很快移除，忙的时候隔一次 CLI 调用会错过。同时记下每个特效
+// （粒子组件所在实体的名字）最多有多少个活着的粒子。一直看到读完结果再停：开枪的 CLI 命令是个新进程，慢的机器上要将近一秒才点下去，
+// 按墙钟时间提前定好的窗口会在开枪之前就结束
+stride('eval', `globalThis.mostEntities = 0; globalThis.mostParticles = {}; globalThis.watching = true; (() => { const poll = () => {
   globalThis.mostEntities = Math.max(globalThis.mostEntities, strideGame.entities.ids().length);
   for (const c of strideGame.particles.components) {
     const living = c.particleSystem.emitters.reduce((sum, e) => sum + e.pool.living, 0);
     globalThis.mostParticles[c.entity.name] = Math.max(globalThis.mostParticles[c.entity.name] ?? 0, living);
   }
-  if (performance.now() < end) requestAnimationFrame(poll); }; poll(); })(); 1`);
+  if (globalThis.watching) requestAnimationFrame(poll); }; poll(); })(); 1`);
 stride('mouse', 'left', '--trusted');
 await sleep(700);
-const most = stride('eval', 'globalThis.mostEntities') as number;
+const most = stride('eval', 'globalThis.watching = false; globalThis.mostEntities') as number;
 check('开枪生成特效的预制体（枪口火焰、弹孔、受击拖尾）', most === before.entities + 3, { before: before.entities, most });
 const particles = stride('eval', 'globalThis.mostParticles') as Record<string, number>;
 check('特效的粒子生出来了（枪口火焰、弹孔是 SpawnerBurst，受击拖尾是 SpawnerFromDistance）', ['MuzzleFlash', 'BulletImpact', 'DamagedTrail'].every((name) => (particles[name] ?? 0) > 0), particles);
@@ -70,13 +71,13 @@ check('枪口火焰、弹孔按时移除（受击拖尾 6 秒）', state().entit
 // 换弹：手臂播换弹动画，挂在骨骼上的枪相对相机移动
 const GUN = `${BY} const c = at(by('Camera')), m = at(by('Gun')); [m[0] - c[0], m[1] - c[1], m[2] - c[2]]`;
 const rest = stride('eval', GUN) as number[];
-// 在页面里逐帧看 1.5 秒取最大的位移：隔一次 CLI 调用取一个样，赶上动画的哪一刻要看帧节奏（无头浏览器里不稳）
-stride('eval', `globalThis.gunMoved = 0; (() => { const rest = ${JSON.stringify(rest)}; const end = performance.now() + 1500; const poll = () => {
+// 在页面里逐帧看、取最大的位移：隔一次 CLI 调用取一个样，赶上动画的哪一刻要看帧节奏（无头浏览器里不稳）。看到读完结果再停（同上）
+stride('eval', `globalThis.gunMoved = 0; globalThis.watching = true; (() => { const rest = ${JSON.stringify(rest)}; const poll = () => {
   const now = eval(${JSON.stringify(GUN)}); globalThis.gunMoved = Math.max(globalThis.gunMoved, Math.hypot(...rest.map((v, i) => v - now[i])));
-  if (performance.now() < end) requestAnimationFrame(poll); }; poll(); })(); 1`);
+  if (globalThis.watching) requestAnimationFrame(poll); }; poll(); })(); 1`);
 stride('key', 'R');
 await sleep(1700);
-const moved = stride('eval', 'globalThis.gunMoved') as number;
+const moved = stride('eval', 'globalThis.watching = false; globalThis.gunMoved') as number;
 check('按 R 换弹：手臂播换弹动画（枪跟着骨骼动）', moved > 0.05, { rest, moved });
 await sleep(1700);
 check('换弹后 9 发', state().bullets === 9, state());

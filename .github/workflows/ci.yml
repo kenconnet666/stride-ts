@@ -122,7 +122,7 @@ jobs:
       # 手搭的工程（collect-dodge、short-film、greybox）的内容是提交在仓库里的：缓存的键只看导入器的输入，它们改了键不变，
       # 恢复缓存会拿旧的盖掉刚检出的。按仓库里的还原回来（导入的、不提交的文件不受影响）
       - name: Restore committed content
-        run: git restore --source=HEAD --worktree -- 'apps/*/public/content'
+        run: git restore --source=HEAD --worktree -- ':(glob)apps/*/public/content/**'
       - name: Smoke
         # --use-vulkan=swiftshader 不能少：Linux 上 Chrome 合成用 GL（ANGLE 的 SwiftShader）、Dawn 用 Vulkan 时，WebGPU 画布的交换链贴图要两边
         # 共用一份内存（外部内存对象），SwiftShader 的 GL 不支持，GPU 进程建不出这张贴图（chrome.log 里"Could not find SharedImageBackingFactory

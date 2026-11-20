@@ -32,6 +32,28 @@ const view = (name: string) => ({ of: name }) as unknown as GPUTextureView;
 const nameOf = (texture: GPUTexture) => (texture as unknown as FakeTexture).name;
 
 describe('渲染图（RenderGraph）', () => {
+  test('预热：只调会跑的通道的 warm，不执行、不要贴图；都编好了才完成', async () => {
+    const { allocator, created } = fakeAllocator();
+    const graph = new RenderGraph(allocator);
+    graph.beginFrame();
+    const backBuffer = graph.import(desc('back buffer', 'bgra8unorm-srgb'), view('back buffer'));
+    const unused = graph.texture(desc('unused'));
+    const color = graph.texture(desc('color'));
+    const warmed: string[] = [];
+    let finish = () => {};
+    const slow = new Promise<void>((resolve) => (finish = resolve));
+    graph.pass('unused', (pass) => pass.write(unused), () => { throw new Error('executed'); }, () => void warmed.push('unused'));
+    graph.pass('scene', (pass) => pass.write(color), () => { throw new Error('executed'); }, () => (warmed.push('scene'), slow));
+    graph.pass('tone map', (pass) => { pass.read(color); pass.write(backBuffer); }, () => { throw new Error('executed'); }, () => (warmed.push('tone map'), undefined));
+    let done = false;
+    const warming = graph.warm().then(() => (done = true));
+    await Promise.resolve();
+    expect([warmed, done]).toEqual([['scene', 'tone map'], false]);
+    finish();
+    await warming;
+    expect([done, created]).toEqual([true, []]);
+  });
+
   test('通道按加进来的顺序跑；结果没人用的裁掉，它读的东西也不算有人读；有副作用的照跑', () => {
     const { allocator } = fakeAllocator();
     const graph = new RenderGraph(allocator);

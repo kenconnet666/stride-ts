@@ -252,8 +252,11 @@ export class Game {
       this.graphicsCompositor = new ForwardRenderer(this.renderSystem);
       // 预热：加载场景、预制体时，它们的模型要用的管线在后台编好（和别的资源一起等），建实体以后不用当场编译着色器
       this.content.pipelineWarmer = (uses, postEffects) => {
-        const stages = this.graphicsCompositor.warmStages(postEffects);
-        return Promise.all(uses.map(({ mesh, material, skinned, isShadowCaster }) => this.meshes.warm(mesh, material, skinned, isShadowCaster, stages))).then(() => undefined);
+        const stages = this.graphicsCompositor.warmStages(postEffects === undefined ? undefined : postEffects !== null);
+        return Promise.all([
+          ...uses.map(({ mesh, material, skinned, isShadowCaster }) => this.meshes.warm(mesh, material, skinned, isShadowCaster, stages)),
+          this.graphicsCompositor.warmPostEffects(postEffects),
+        ]).then(() => undefined);
       };
       this.rootRenderer = this.graphicsCompositor;
       this.#registerMetrics();

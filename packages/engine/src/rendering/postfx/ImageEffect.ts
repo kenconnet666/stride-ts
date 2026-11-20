@@ -3,7 +3,8 @@
  * - RenderTargetPool：每帧借用的临时渲染目标（Stride 的 NewScopedRenderTarget2D），尺寸和格式不变时每帧拿回同一批纹理；
  * - UniformArena：一帧里每次绘制的参数各占一段（256 字节对齐）。同一个缓冲在提交前写两次，两次绘制读到的都是后写的值
  *   （docs/lessons.md 的 writeBuffer 生效时机），所以参数不共用缓冲；
- * - FullscreenShader：一个全屏着色器按目标格式和混合方式缓存管线。
+ * - FullscreenShader：一个全屏着色器按目标格式和混合方式缓存管线（按设备共用，fullscreenPipeline），录通道时顺便说出要哪条，
+ *   加载场景时可以先在后台编好（RenderGraph.warm、PostProcessingEffects.warm）。
  */
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../fullscreen';
@@ -46,12 +47,12 @@ export class EffectFrame {
   }
 
   /**
-   * 加一个通道（同 RenderGraph.pass）；GPU 耗时的分组（GpuProfiler.scope）按加的时候的算，执行时换过去、执行完换回来
-   * （不换回来的话，最后一个通道的分组会留到下一帧，下一帧先加的通道就记到它名下）。
+   * 加一个通道（同 RenderGraph.pass，warm 是它要的管线的预热）；GPU 耗时的分组（GpuProfiler.scope）按加的时候的算，执行时
+   * 换过去、执行完换回来（不换回来的话，最后一个通道的分组会留到下一帧，下一帧先加的通道就记到它名下）。
    */
-  pass(name: string, setup: (builder: PassBuilder) => void, execute: (resources: PassResources) => void): void {
+  pass(name: string, setup: (builder: PassBuilder) => void, execute: (resources: PassResources) => void, warm?: () => Promise<void> | undefined): void {
     const profiler = this.#profiler;
-    if (!profiler) return this.graph.pass(name, setup, execute);
+    if (!profiler) return this.graph.pass(name, setup, execute, warm);
     const scope = profiler.scope;
     this.graph.pass(name, setup, (resources) => {
       const outer = profiler.scope;
@@ -61,7 +62,7 @@ export class EffectFrame {
       } finally {
         profiler.scope = outer;
       }
-    });
+    }, warm);
   }
 }
 
@@ -126,40 +127,97 @@ export type FullscreenResource = GPUTexture | GPUSampler | GPUBufferBinding | GP
 /** 录制时给的资源：还可以是这一帧的临时目标。 */
 export type RecordedResource = FullscreenResource | GraphTexture;
 
+/**
+ * 全屏管线按设备缓存：着色器代码、目标格式、混合方式一样就是同一条（模块也按代码共用）。所以预热时另建的一份后处理
+ * （PostProcessingEffects.warm）编好的，真的那份直接用上。还在后台编的是 Promise。
+ */
+interface FullscreenCache {
+  readonly modules: Map<string, GPUShaderModule>;
+  readonly pipelines: Map<string, GPURenderPipeline | Promise<GPURenderPipeline>>;
+}
+const FULLSCREEN_CACHE = new WeakMap<GPUDevice, FullscreenCache>();
+
+function fullscreenCache(device: GPUDevice): FullscreenCache {
+  let cache = FULLSCREEN_CACHE.get(device);
+  if (!cache) FULLSCREEN_CACHE.set(device, (cache = { modules: new Map(), pipelines: new Map() }));
+  return cache;
+}
+
+function fullscreenDescriptor(device: GPUDevice, label: string, code: string, formats: readonly GPUTextureFormat[], blend: GPUBlendState | undefined): [key: string, descriptor: GPURenderPipelineDescriptor] {
+  const { modules } = fullscreenCache(device);
+  let module = modules.get(code);
+  if (!module) modules.set(code, (module = device.createShaderModule({ label, code })));
+  return [
+    `${code}\n${formats.join(',')}\n${blend ? JSON.stringify(blend) : ''}`,
+    {
+      label,
+      layout: 'auto',
+      vertex: { module, entryPoint: 'fullscreenVertex' },
+      fragment: { module, entryPoint: 'fs', targets: formats.map((format) => ({ format, ...(blend ? { blend } : {}) })) },
+    },
+  ];
+}
+
+/**
+ * 全屏着色器（code 里有入口 fullscreenVertex 和 fs）画进 formats 这几个目标的管线。没编过（也没在后台编完）时当场编：
+ * 这一帧会卡一下，预热（warmFullscreenPipeline）就是为了不走到这里。
+ */
+export function fullscreenPipeline(device: GPUDevice, label: string, code: string, formats: readonly GPUTextureFormat[], blend?: GPUBlendState): GPURenderPipeline {
+  const [key, descriptor] = fullscreenDescriptor(device, label, code, formats, blend);
+  const { pipelines } = fullscreenCache(device);
+  const cached = pipelines.get(key);
+  if (cached && !(cached instanceof Promise)) return cached;
+  const pipeline = device.createRenderPipeline(descriptor);
+  pipelines.set(key, pipeline);
+  return pipeline;
+}
+
+/** 在后台编这条管线（createRenderPipelineAsync，不卡帧），编好放进缓存；已经有了（或者正在编）时返回 undefined。 */
+export function warmFullscreenPipeline(device: GPUDevice, label: string, code: string, formats: readonly GPUTextureFormat[], blend?: GPUBlendState): Promise<void> | undefined {
+  const [key, descriptor] = fullscreenDescriptor(device, label, code, formats, blend);
+  const { pipelines } = fullscreenCache(device);
+  if (pipelines.has(key)) return undefined;
+  const pending = device.createRenderPipelineAsync(descriptor);
+  pipelines.set(key, pending);
+  return pending.then(
+    (pipeline) => {
+      if (pipelines.get(key) === pending) pipelines.set(key, pipeline);
+    },
+    (error: unknown) => {
+      // 编不出来：去掉，用到时当场编会把错误报在那一帧
+      if (pipelines.get(key) === pending) pipelines.delete(key);
+      console.warn(`${label}: warming the pipeline failed`, error);
+    },
+  );
+}
+
 /** 绑定组缓存的上限：池里的纹理换了（画布尺寸变了）以后，旧的键不会再命中，到上限就清空。 */
 const MAX_CACHED_BIND_GROUPS = 512;
 
 /**
- * 一个全屏着色器（入口 fullscreenVertex 和 fs），按目标格式和混合方式缓存管线。绑定组按资源缓存：池里的纹理每帧是同一批，
- * uniform 每帧写在同样的偏移上，所以每帧的绘制都能复用上一帧的绑定组；有临时视图（后备缓冲）时不缓存。
+ * 一个全屏着色器（入口 fullscreenVertex 和 fs），管线按目标格式和混合方式缓存（fullscreenPipeline）。绑定组按资源缓存：池里的
+ * 纹理每帧是同一批，uniform 每帧写在同样的偏移上，所以每帧的绘制都能复用上一帧的绑定组；有临时视图（后备缓冲）时不缓存。
  */
 export class FullscreenShader {
   readonly device: GPUDevice;
-  readonly #module: GPUShaderModule;
+  readonly #code: string;
   readonly #label: string;
-  readonly #pipelines = new Map<string, GPURenderPipeline>();
   readonly #bindGroups = new Map<string, GPUBindGroup>();
 
   constructor(device: GPUDevice, label: string, code: string) {
     this.device = device;
     this.#label = label;
-    this.#module = device.createShaderModule({ label, code: `${FULLSCREEN_VERTEX}\n${code}` });
+    this.#code = `${FULLSCREEN_VERTEX}\n${code}`;
   }
 
   /** formats 是各渲染目标（@location 0、1、…）的格式，混合方式各目标相同。 */
   pipeline(formats: readonly GPUTextureFormat[], blend?: GPUBlendState): GPURenderPipeline {
-    const key = `${formats.join(',')}:${blend ? idOf(blend) : ''}`;
-    let pipeline = this.#pipelines.get(key);
-    if (!pipeline) {
-      pipeline = this.device.createRenderPipeline({
-        label: this.#label,
-        layout: 'auto',
-        vertex: { module: this.#module, entryPoint: 'fullscreenVertex' },
-        fragment: { module: this.#module, entryPoint: 'fs', targets: formats.map((format) => ({ format, ...(blend ? { blend } : {}) })) },
-      });
-      this.#pipelines.set(key, pipeline);
-    }
-    return pipeline;
+    return fullscreenPipeline(this.device, this.#label, this.#code, formats, blend);
+  }
+
+  /** 在后台编这条管线（同 warmFullscreenPipeline）。 */
+  warm(formats: readonly GPUTextureFormat[], blend?: GPUBlendState): Promise<void> | undefined {
+    return warmFullscreenPipeline(this.device, this.#label, this.#code, formats, blend);
   }
 
   /**
@@ -169,6 +227,7 @@ export class FullscreenShader {
    */
   draw(frame: EffectFrame, target: Image | GPUTextureView | readonly Image[], resources: readonly RecordedResource[], options: { blend?: GPUBlendState; load?: boolean; format?: GPUTextureFormat } = {}): void {
     const targets: readonly (Image | GPUTextureView)[] = Array.isArray(target) ? target : [target as Image | GPUTextureView];
+    const formats = targets.map((item) => ('format' in item ? item.format : options.format));
     frame.pass(this.#label, (pass) => {
       for (const item of targets) {
         if (!isGraphTexture(item)) pass.sideEffect();
@@ -183,7 +242,7 @@ export class FullscreenShader {
         resources.map((resource) => (isGraphTexture(resource) ? real.texture(resource) : resource)),
         options,
       );
-    });
+    }, () => (formats.every((format) => format !== undefined) ? this.warm(formats as GPUTextureFormat[], options.blend) : undefined));
   }
 
   /** 马上录进 encoder（不经渲染图）：画一次全屏三角形，参数同 draw，但都是真的贴图。 */

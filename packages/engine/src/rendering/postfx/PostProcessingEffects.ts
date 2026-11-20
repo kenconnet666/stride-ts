@@ -14,12 +14,21 @@ import { Bloom } from './Bloom';
 import { BrightFilter } from './BrightFilter';
 import { Fxaa } from './Fxaa';
 import { GaussianBlur } from './GaussianBlur';
-import { isGraphTexture, UniformArena, type EffectFrame, type Image, type ImageEffectContext } from './ImageEffect';
+import { RenderGraph } from '../graph/RenderGraph';
+import { EffectFrame, isGraphTexture, UniformArena, type Image, type ImageEffectContext } from './ImageEffect';
 import { ImageScaler } from './ImageScaler';
 import { LensFlare } from './LensFlare';
 import { LightStreak } from './LightStreak';
 import { QUALITY_TIERS, type QualitySettings } from '../Quality';
 import { ToneMap } from './ToneMap';
+
+/** 只录不执行的渲染图用：不会去要贴图。 */
+const NO_ALLOCATOR = {
+  acquire(): never {
+    throw new Error('post-processing warm: the recorded frame is not executed');
+  },
+  release(): void {},
+};
 
 export class PostProcessingEffects {
   enabled = true;
@@ -33,9 +42,11 @@ export class PostProcessingEffects {
   readonly #scaler: ImageScaler;
   readonly #blur: GaussianBlur;
   readonly #device: GPUDevice;
+  readonly #linearClamp: GPUSampler;
 
   constructor(device: GPUDevice, linearClamp: GPUSampler) {
     this.#device = device;
+    this.#linearClamp = linearClamp;
     this.brightFilter = new BrightFilter(device);
     this.lightStreak = new LightStreak(device, linearClamp);
     this.lensFlare = new LensFlare(device, linearClamp);
@@ -74,7 +85,7 @@ export class PostProcessingEffects {
       frame.pass('Copy', (pass) => {
         if (isGraphTexture(input)) pass.read(input);
         pass.sideEffect();
-      }, (real) => this.#scaler.copy(frame.encoder, this.#arena, isGraphTexture(input) ? real.texture(input) : input, output, outputFormat));
+      }, (real) => this.#scaler.copy(frame.encoder, this.#arena, isGraphTexture(input) ? real.texture(input) : input, output, outputFormat), () => this.#scaler.warmCopy(outputFormat));
       scope('');
       return;
     }
@@ -109,6 +120,30 @@ export class PostProcessingEffects {
     scope('ToneMap');
     this.toneMap.draw(frame, this.#arena, current, layers, output, outputFormat);
     scope('');
+  }
+
+  /**
+   * 加载场景时预热：照 settings（场景合成器的后处理，null 是不做后处理只拷贝）空录一帧，会跑的通道要的管线在后台编好
+   * （全屏管线按设备共用，见 ImageEffect.ts 的 fullscreenPipeline），第一次真画时不用当场编译着色器。空录用另一份效果，
+   * 有状态的（色调映射的适应亮度）不受影响；录的东西不执行。
+   */
+  async warm(settings: ScenePostEffects | null, inputFormat: GPUTextureFormat, outputFormat: GPUTextureFormat, quality: QualitySettings): Promise<void> {
+    const probe = new PostProcessingEffects(this.#device, this.#linearClamp);
+    // 输出的视图只在执行时用到；给一张 1x1 的，空录完就销毁
+    const output = this.#device.createTexture({ label: 'post-processing warm output', size: [1, 1], format: outputFormat, usage: GPUTextureUsage.RENDER_ATTACHMENT });
+    try {
+      probe.configure(settings);
+      const graph = new RenderGraph(NO_ALLOCATOR);
+      graph.beginFrame();
+      // 不执行：encoder 用不到
+      const frame = new EffectFrame(undefined as unknown as GPUCommandEncoder, graph, undefined);
+      const input = graph.texture({ label: 'post-processing warm input', width: 256, height: 256, format: inputFormat });
+      probe.record(frame, input, output.createView(), outputFormat, 0, quality);
+      await graph.warm();
+    } finally {
+      probe.destroy();
+      output.destroy();
+    }
   }
 
   /** 这一帧录的通道执行完以后调：uniform 的参数在提交之前一次写进 GPU。 */

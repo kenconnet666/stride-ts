@@ -404,7 +404,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | 部分 | 在哪 | 结论 |
 |---|---|---|
 | 统计量和预算 | `game.metrics`、`stride metrics`、`tools/budgets.json` | 实体数、绘制次数、显存、原生内存、当场建的管线数；每个样例的基线进回归 |
-| 管线的预热 | `MeshRenderFeature.warm`、`ContentManager.pipelineWarmer` | 模型的管线在加载时后台编好；TPP 启动后的停顿 1.05 秒 → 0.38 秒；后处理、背景的管线还是当场建 |
+| 管线的预热 | `MeshRenderFeature.warm`、`ContentManager.pipelineWarmer`、`PostProcessingEffects.warm`、`RenderGraph.warm` | 模型的管线在加载时后台编好；TPP 启动后的停顿 1.05 秒 → 0.38 秒；后处理的管线照场景的设置空录一帧、从渲染图里列出来一起预热，TPP 当场建的管线 22 → 5 条；背景、精灵、TAA、GTAO 的还是当场建 |
 | 渲染图 | `rendering/graph/` | 前向渲染器的一帧（阴影、渲染目标贴图的相机、点选、主画面、后处理）都是图的通道；后处理的中间贴图 33.8 MB → 18 MB，截图逐像素不变；场景之后画的 UI、调试线不在图里（见 decisions.md） |
 | 阴影图集按用到的大小建 | `rendering/shadows/ShadowMapRenderer.ts` | 从 1024² 起、放不下才翻倍，一半大也放得下时缩小（和 Stride 不同：它固定 4096²，64 MB）；BepuSample 的贴图 119.8 → 55.9 MB |
 | TAA 加锐化、运动向量 | `rendering/TemporalAntialiasing.ts`、`stride taa`、`RenderStage.velocity` | 默认关（样例照内容用 FXAA）；网格有运动向量（世界矩阵、蒙皮、形变的上一帧，缓冲分两半轮着写），天空按深度重投影；TPP 上开 TAA 多 1 ms |
@@ -414,7 +414,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 ### 正在做和下一步
 
 1. **P4 底座接着做**：
-   1. 底座剩下的小项：从渲染图里列出全屏效果的管线一起预热（现在第一次开后处理时当场编 12 条）；绘制次数按通道数。
+   1. 底座剩下的小项：~~后处理的管线一起预热~~（2026-11-20：TPP 当场建的管线 22 → 5 条）；剩下的当场建的（背景、精灵、TAA、GTAO）同样接到预热上；绘制次数按通道数。
    2. P4 的画面功能：画质档位、TAA 和运动向量、GTAO 做了；接着照第三节的阶段表往下（随机 SSR：BepuSample 的合成器开着 LocalReflections，SSGI、接触阴影……）。
 2. **P3 的界面**（用户 2026-11-20 定了 Vue 加 vue-tsx-pro、资源按路径引用；骨架、场景树和资源浏览器的操作做了）：多选一起改、复制粘贴实体、加脚本组件，预制体的编辑（加载器、导入器的转换、改和删实例的成员、单独打开预制体编辑都做了）；然后用编辑器把 P1、P2 的每个样例打开、改、保存、播放一遍当验收。
 3. **遗留的小项**（用到时做）：粒子、场景里的 UI 的点选；富文本（用户定了：Markdown，编辑器里有对应的可视化编辑器，见 decisions.md）；TouchInputs 样例（P3 之后）；P2 收尾时挪到 P4 的 MSAA、分簇、透明物体的阴影、画进渲染目标贴图的相机的阴影和后处理、没有样例触发的材质特性；csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，原因没查完（见 progress-log.md 的"P2 收尾的验收"）。

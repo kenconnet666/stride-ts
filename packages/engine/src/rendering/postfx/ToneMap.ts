@@ -12,7 +12,7 @@
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../fullscreen';
 import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
-import { isGraphTexture, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
+import { fullscreenPipeline, isGraphTexture, warmFullscreenPipeline, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 
 const LUMINANCE_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
@@ -80,8 +80,18 @@ interface LuminanceTargets {
   readonly width: number;
   readonly height: number;
   readonly luminance: GPUTexture;
-  readonly bindGroups: readonly (GPUBindGroup | undefined)[];
+  /** 第 1 级起各级读上一级的绑定组；执行时才建（要 downscale 的管线，录制时它可能还在后台编）。 */
+  bindGroups: readonly (GPUBindGroup | undefined)[] | undefined;
 }
+
+type ToneMapStep = 'luminance' | 'downscale' | 'adapt' | 'tonemap';
+/** 各步的着色器和目标格式（映射这一步画进后备缓冲，格式用到时才知道）。 */
+const STEPS: Record<ToneMapStep, readonly [label: string, code: string, format: GPUTextureFormat | undefined]> = {
+  luminance: ['ToneMap luminance', LUMINANCE_SHADER, 'r16float'],
+  downscale: ['ToneMap downscale', DOWNSCALE_SHADER, 'r16float'],
+  adapt: ['ToneMap adapt', ADAPT_SHADER, 'r32float'],
+  tonemap: ['ToneMap', TONEMAP_SHADER, undefined],
+};
 
 export class ToneMap {
   /** 关掉时（Stride 的 ToneMap.Enabled）不量亮度、不曝光也不映射，只加上叠加层。 */
@@ -100,9 +110,6 @@ export class ToneMap {
 
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
-  readonly #pipelines: { luminance: GPURenderPipeline; downscale: GPURenderPipeline; adapt: GPURenderPipeline; tonemap: GPURenderPipeline | undefined };
-  readonly #tonemapModule: GPUShaderModule;
-  #tonemapFormat: GPUTextureFormat | undefined;
   readonly #settings: GPUBuffer;
   readonly #adaptUniform: GPUBuffer;
   /** 两张 1x1 的适应亮度，轮流读写。 */
@@ -117,17 +124,6 @@ export class ToneMap {
   constructor(device: GPUDevice, sampler: GPUSampler) {
     this.#device = device;
     this.#sampler = sampler;
-    const pipeline = (label: string, code: string, format: GPUTextureFormat) => {
-      const module = device.createShaderModule({ label, code });
-      return device.createRenderPipeline({ label, layout: 'auto', vertex: { module, entryPoint: 'fullscreenVertex' }, fragment: { module, entryPoint: 'fs', targets: [{ format }] } });
-    };
-    this.#pipelines = {
-      luminance: pipeline('ToneMap luminance', LUMINANCE_SHADER, 'r16float'),
-      downscale: pipeline('ToneMap downscale', DOWNSCALE_SHADER, 'r16float'),
-      adapt: pipeline('ToneMap adapt', ADAPT_SHADER, 'r32float'),
-      tonemap: undefined,
-    };
-    this.#tonemapModule = device.createShaderModule({ label: 'ToneMap', code: TONEMAP_SHADER });
     this.#settings = device.createBuffer({ label: 'ToneMap settings', size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#adaptUniform = device.createBuffer({ label: 'ToneMap adapt', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const adapted = () => device.createTexture({ label: 'ToneMap adapted luminance', size: [1, 1], format: 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
@@ -159,27 +155,27 @@ export class ToneMap {
       pass.sideEffect();
     }, (real) => {
       const { encoder } = frame;
+      const luminance = this.#pipeline('luminance'), downscale = this.#pipeline('downscale'), adapt = this.#pipeline('adapt');
       // 对数亮度和 2x2 平均链；第一级读输入
       const source = this.#sourceGroup(isGraphTexture(input) ? real.texture(input) : input);
       for (let level = 0; level < levels; level++) {
-        this.#fullscreen(encoder, level === 0 ? this.#pipelines.luminance : this.#pipelines.downscale, level === 0 ? source : targets.bindGroups[level]!, targets.luminance.createView({ baseMipLevel: level, mipLevelCount: 1 }));
+        this.#fullscreen(encoder, level === 0 ? luminance : downscale, level === 0 ? source : this.#levelGroups(targets, downscale)[level]!, targets.luminance.createView({ baseMipLevel: level, mipLevelCount: 1 }));
       }
-      this.#fullscreen(encoder, this.#pipelines.adapt, this.#device.createBindGroup({
-        layout: this.#pipelines.adapt.getBindGroupLayout(0),
+      this.#fullscreen(encoder, adapt, this.#device.createBindGroup({
+        layout: adapt.getBindGroupLayout(0),
         entries: [
           { binding: 0, resource: { buffer: this.#adaptUniform } },
           { binding: 1, resource: targets.luminance.createView() },
           { binding: 2, resource: previous.createView() },
         ],
       }), next.createView());
-    });
+    }, () => this.#warm(['luminance', 'downscale', 'adapt']));
   }
 
   /** 按 measure 量出的亮度把 input 加上 layers（已经 prefilterLayers 过）映射后画进 output。 */
   draw(frame: EffectFrame, arena: UniformArena, input: Image, layers: readonly AdditiveLayer[], output: GPUTextureView, outputFormat: GPUTextureFormat): void {
     const adapted = this.#measured;
     if (!adapted) throw new Error("ToneMap.draw: call measure first in the frame");
-    const tonemap = this.#tonemapPipeline(outputFormat);
     const layerResources = additiveLayerResources(arena, layers, input, this.#sampler);
     frame.pass('ToneMap', (pass) => {
       // 输入和叠加的各层可以是这一帧的临时贴图；输出在渲染图外面
@@ -187,6 +183,7 @@ export class ToneMap {
       for (const resource of layerResources) if (isGraphTexture(resource)) pass.read(resource);
       pass.sideEffect();
     }, (real) => {
+      const tonemap = this.#pipeline('tonemap', outputFormat);
       const actual = <T extends object>(resource: T) => (isGraphTexture(resource) ? real.texture(resource) : resource);
       this.#fullscreen(frame.encoder, tonemap, this.#device.createBindGroup({
         layout: tonemap.getBindGroupLayout(0),
@@ -200,7 +197,7 @@ export class ToneMap {
           }),
         ],
       }), output);
-    });
+    }, () => this.#warm(['tonemap'], outputFormat));
   }
 
   /** 下一帧重新从当前亮度开始适应（比如切场景）。 */
@@ -224,17 +221,18 @@ export class ToneMap {
     pass.end();
   }
 
-  #tonemapPipeline(format: GPUTextureFormat): GPURenderPipeline {
-    if (!this.#pipelines.tonemap || this.#tonemapFormat !== format) {
-      this.#tonemapFormat = format;
-      this.#pipelines.tonemap = this.#device.createRenderPipeline({
-        label: 'ToneMap',
-        layout: 'auto',
-        vertex: { module: this.#tonemapModule, entryPoint: 'fullscreenVertex' },
-        fragment: { module: this.#tonemapModule, entryPoint: 'fs', targets: [{ format }] },
-      });
-    }
-    return this.#pipelines.tonemap;
+  /** 一步的管线（全屏管线按设备共用，见 fullscreenPipeline）；映射这一步画进 outputFormat。 */
+  #pipeline(step: ToneMapStep, outputFormat?: GPUTextureFormat): GPURenderPipeline {
+    const [label, code, format] = STEPS[step];
+    return fullscreenPipeline(this.#device, label, code, [format ?? outputFormat!]);
+  }
+
+  #warm(steps: readonly ToneMapStep[], outputFormat?: GPUTextureFormat): Promise<void> | undefined {
+    const pending = steps.map((step) => {
+      const [label, code, format] = STEPS[step];
+      return warmFullscreenPipeline(this.#device, label, code, [format ?? outputFormat!]);
+    }).filter((warming) => warming !== undefined);
+    return pending.length > 0 ? Promise.all(pending).then(() => undefined) : undefined;
   }
 
   /** 亮度图和它各级之间的绑定组跟着输入的尺寸（画布尺寸变了）重建。 */
@@ -245,26 +243,31 @@ export class ToneMap {
     const size = Math.max(1, Math.min(nextPow2(width), nextPow2(height)) / 2);
     const levels = Math.log2(size) + 1;
     const luminance = this.#device.createTexture({ label: 'ToneMap luminance', size: [size, size], format: 'r16float', mipLevelCount: levels, usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
-    // 第 0 级读输入，绑定组按输入的贴图另存（#sourceGroup）
+    this.#reset = true;
+    return (this.#targets = { width, height, luminance, bindGroups: undefined });
+  }
+
+  /** 各级读上一级的绑定组（第 0 级读输入，绑定组按输入的贴图另存，见 #sourceGroup）。 */
+  #levelGroups(targets: LuminanceTargets, downscale: GPURenderPipeline): readonly (GPUBindGroup | undefined)[] {
+    if (targets.bindGroups) return targets.bindGroups;
     const bindGroups: (GPUBindGroup | undefined)[] = [undefined];
-    for (let level = 1; level < levels; level++) {
+    for (let level = 1; level < targets.luminance.mipLevelCount; level++) {
       bindGroups.push(this.#device.createBindGroup({
-        layout: this.#pipelines.downscale.getBindGroupLayout(0),
+        layout: downscale.getBindGroupLayout(0),
         entries: [
-          { binding: 0, resource: luminance.createView({ baseMipLevel: level - 1, mipLevelCount: 1 }) },
+          { binding: 0, resource: targets.luminance.createView({ baseMipLevel: level - 1, mipLevelCount: 1 }) },
           { binding: 1, resource: this.#sampler },
         ],
       }));
     }
-    this.#reset = true;
-    return (this.#targets = { width, height, luminance, bindGroups });
+    return (targets.bindGroups = bindGroups);
   }
 
   /** 读这张输入贴图的绑定组。输入是池里的贴图，每帧可能不是同一张：按贴图存，贴图销毁后跟着回收。 */
   #sourceGroup(input: GPUTexture): GPUBindGroup {
     let group = this.#sourceGroups.get(input);
     if (!group) {
-      group = this.#device.createBindGroup({ layout: this.#pipelines.luminance.getBindGroupLayout(0), entries: [{ binding: 0, resource: input.createView() }] });
+      group = this.#device.createBindGroup({ layout: this.#pipeline('luminance').getBindGroupLayout(0), entries: [{ binding: 0, resource: input.createView() }] });
       this.#sourceGroups.set(input, group);
     }
     return group;

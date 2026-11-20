@@ -30,7 +30,7 @@ import { UIComponent } from '../ui/UIComponent';
 import { UIElementLink } from '../ui/UIElementLink';
 import type { UILibrary, UIPage } from '../ui/UIPage';
 import type { ContentManager, LoadedModel, LoadSceneOptions, SceneReference } from './ContentManager';
-import type { ColliderShapeFile, SceneEntityFile, SceneLightShadow, SceneLocalLightShadow, SceneUI } from './format';
+import type { ColliderShapeFile, SceneEntityFile, SceneLightShadow, SceneLocalLightShadow, ScenePostEffects, SceneUI } from './format';
 import { preload } from './loading';
 import type { Prefab } from './Prefab';
 import { entityAssetReferences, type EntityAssetReference } from './references';
@@ -86,7 +86,7 @@ export class SceneBuilder {
   }
 
   /** 实体文件引用的资源（包括脚本属性引用的）并行加载好。 */
-  async preload(files: readonly SceneEntityFile[], where: string, postEffects?: boolean): Promise<SceneAssets> {
+  async preload(files: readonly SceneEntityFile[], where: string, postEffects?: ScenePostEffects | null): Promise<SceneAssets> {
     const content = this.#content;
     const refs = entityAssetReferences(files);
     const unsupported = refs.find((ref) => !PRELOADED_KINDS.has(ref.kind));

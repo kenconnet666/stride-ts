@@ -17,6 +17,9 @@
  * - 临时贴图只在第一次用到最后一次用之间占着一张真的贴图；两张描述相同、用的时间不重叠的临时贴图共用一张
  *   （后处理的一串中间结果就是这样省下显存的）。真的贴图跨帧留在池里，连着几帧没人用才销毁。
  *
+ * - 预热（warm）：录好的一帧不执行，只把会跑的通道要的管线在后台编好（通道加的时候给 warm）。加载场景时先空录一帧，第一次
+ *   真画的时候就不用当场编译着色器。
+ *
  * 只有图的逻辑，不认识渲染器；贴图由 TextureAllocator 建（真的那个在 GraphTexturePool.ts，单测里换成假的）。
  */
 
@@ -85,6 +88,7 @@ interface Pass {
   readonly readWrites: GraphTexture[];
   sideEffect: boolean;
   readonly execute: (resources: PassResources) => void;
+  readonly warm: (() => Promise<void> | undefined) | undefined;
 }
 
 interface Imported {
@@ -134,9 +138,12 @@ export class RenderGraph {
     return handle;
   }
 
-  /** 加一个通道：setup 里声明读写（马上调用），execute 在 execute() 时、轮到它而且没被裁掉才调用。 */
-  pass(name: string, setup: (builder: PassBuilder) => void, execute: (resources: PassResources) => void): void {
-    const pass: Pass = { name, reads: [], writes: [], readWrites: [], sideEffect: false, execute };
+  /**
+   * 加一个通道：setup 里声明读写（马上调用），execute 在 execute() 时、轮到它而且没被裁掉才调用。warm 在后台编它要的管线
+   * （已经有了返回 undefined），warm() 时调用。
+   */
+  pass(name: string, setup: (builder: PassBuilder) => void, execute: (resources: PassResources) => void, warm?: () => Promise<void> | undefined): void {
+    const pass: Pass = { name, reads: [], writes: [], readWrites: [], sideEffect: false, execute, warm };
     setup({
       read: (texture) => void pass.reads.push(texture),
       write: (texture) => void pass.writes.push(texture),
@@ -207,6 +214,12 @@ export class RenderGraph {
       transientTextures: physical.size,
       physicalTextures: acquired.size,
     };
+  }
+
+  /** 不执行这一帧，只在后台编会跑的通道（裁掉的不算）要的管线；都编好了 Promise 才完成。 */
+  async warm(): Promise<void> {
+    const live = this.#cull();
+    await Promise.all(this.#passes.filter((_, index) => live[index]).map((pass) => pass.warm?.()));
   }
 
   /** 哪些通道要跑：从后往前，写了"后面有人要"的贴图的、有副作用的。 */

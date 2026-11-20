@@ -11,6 +11,7 @@
  * 每个像素只做一次完整的着色（TPP 的不透明通道 3.0 → 0.9 ms 量级的差别就在这里）。
  */
 import type { CompositorSettings, TextureCamera } from '../content/ContentManager';
+import type { ScenePostEffects } from '../content/format';
 import type { ColumnsOf } from '../engine/component';
 import { system } from '../engine/system';
 import { Transform, type TransformColumns } from '../engine/transform';
@@ -120,6 +121,7 @@ export class ForwardRenderer {
    * 渲染目标贴图的相机用的缓冲、后处理的中间结果都是它的临时贴图（用到才占、用完就让给后面的）。draw 里录完当场执行。
    */
   readonly #graph: RenderGraph;
+  readonly #backBufferViewFormat: GPUTextureFormat;
   readonly #pool: GraphTexturePool;
   /** 点选（Game.pick 用它）：问主画面上某个像素最前面的是哪个实例。 */
   readonly picker: ScenePicker;
@@ -232,6 +234,7 @@ export class ForwardRenderer {
     this.#graph = new RenderGraph(this.#pool);
     this.picker = new ScenePicker(renderSystem);
     this.shadowMapRenderer = new ShadowMapRenderer(renderSystem.graphicsDevice);
+    this.#backBufferViewFormat = renderSystem.graphicsDevice.backBufferViewFormat;
   }
 
   /** 这一帧画的主视图（找到相机时）：放在 3D 里的 UI 按它画、按它求指针的射线。 */
@@ -544,6 +547,15 @@ export class ForwardRenderer {
       };
     }
     return this.#directStages;
+  }
+
+  /**
+   * 预热后处理的管线（PostProcessingEffects.warm）：settings 是要加载的场景的后处理设置；没给（不知道）、不做后处理又直接画进
+   * 后备缓冲时不用预热。
+   */
+  warmPostEffects(settings: ScenePostEffects | null | undefined): Promise<void> | undefined {
+    if (settings === undefined || (settings === null && this.directOutput)) return undefined;
+    return this.postEffects.warm(settings, HDR_FORMAT, this.#backBufferViewFormat, this.quality);
   }
 
   /**

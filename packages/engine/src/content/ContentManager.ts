@@ -35,7 +35,7 @@ import { ColorTreeCompiler } from '../rendering/colorTree';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { uiAssetPaths } from './references';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -120,7 +120,8 @@ export interface LoadedModel {
 
 
 /** 场景开不开后处理；场景没带合成器设置（沿用现在的）时是 undefined。 */
-const postEffectsOf = (scene: SceneFile): boolean | undefined => (scene.compositor ? scene.compositor.postEffects !== null : undefined);
+/** 场景合成器的后处理设置（null 是不做后处理）；场景没有合成器时不知道。 */
+const postEffectsOf = (scene: SceneFile): ScenePostEffects | null | undefined => scene.compositor?.postEffects;
 
 /** 合成器里画进渲染目标贴图的相机，贴图已经建好。 */
 export interface TextureCamera extends SceneForwardRenderer {
@@ -196,9 +197,10 @@ export class ContentManager {
   animationNative: AnimationNative | undefined;
   /**
    * 预热管线：这些网格配这些材质要用的管线在后台编译，编好时完成；Game 启动时设置（MeshRenderFeature.warm），没设置
-   * （没有渲染）时不预热。postEffects 是要加载的场景开不开后处理（影响用哪一套管线），预制体不知道，不给。
+   * （没有渲染）时不预热。postEffects 是要加载的场景的后处理设置（影响用哪一套管线，后处理的管线也一起预热；null 是不做后
+   * 处理），预制体不知道，不给。
    */
-  pipelineWarmer: ((uses: readonly ModelUse[], postEffects: boolean | undefined) => Promise<void>) | undefined;
+  pipelineWarmer: ((uses: readonly ModelUse[], postEffects: ScenePostEffects | null | undefined) => Promise<void>) | undefined;
   /** 解码声音；Game 启动时设置（game.audio）。 */
   audio: AudioEngine | undefined;
 

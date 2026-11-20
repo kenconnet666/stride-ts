@@ -66,6 +66,11 @@ export class ImageScaler {
     this.#shader.drawNow(encoder, output, [parameters, input, this.#sampler], { format });
   }
 
+  /** 在后台编 copy 画进 format 要的管线。 */
+  warmCopy(format: GPUTextureFormat): Promise<void> | undefined {
+    return this.#shader.warm([format]);
+  }
+
   /** 一级级减半（Expanded）直到输出的尺寸（Stride 的 ImageMultiScaler 往下缩），中间各级从池里借。 */
   multiScale(frame: EffectFrame, arena: UniformArena, input: Image, output: Image): void {
     let previous = input;

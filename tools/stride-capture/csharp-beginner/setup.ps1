@@ -3,7 +3,7 @@
 # nuget.org，入口换成本目录的 CSharpBeginnerApp.cs。
 # 用法：pwsh tools/stride-capture/csharp-beginner/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>]
 param(
-    [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
+    [string]$Stride = ($env:STRIDE_REPO ?? (Join-Path $HOME 'IdeaProjects\stride')),
     [string]$Out = 'C:\code\stride-csharp-beginner'
 )
 $ErrorActionPreference = 'Stop'

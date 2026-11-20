@@ -1,14 +1,15 @@
 // 从 Stride 仓库导入 CSharpIntermediate 教程：游戏设置、主场景和 Scenes 下各主题的场景（Start-、Completed- 等，共 25 个），
 // 用到的 PrototypingBlocks、SamplesAssetPackage、mannequinModel 资源包和 Stride 自带的包（UI 库），写进 public/content（不提交）。
-// Stride 仓库默认在 ~/IdeaProjects/stride（和 ~/WebstormProjects 并列），可以用 STRIDE_REPO 改。
+// Stride 仓库默认在 ~/IdeaProjects/stride，可以用 STRIDE_REPO 改。
 //   pnpm --filter @stride-ts/csharp-intermediate import:stride
 import { execFileSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const stride = process.env.STRIDE_REPO ?? path.resolve(app, '..', '..', '..', '..', 'IdeaProjects', 'stride');
+const stride = process.env.STRIDE_REPO ?? path.join(os.homedir(), 'IdeaProjects', 'stride');
 const cli = path.resolve(app, '..', '..', 'packages', 'pipeline', 'src', 'cli.ts');
 const tutorial = path.join(stride, 'samples', 'Tutorials', 'CSharpIntermediate', 'CSharpIntermediate', 'Assets');
 const packs = path.join(stride, 'samples', 'Templates', 'Packs');

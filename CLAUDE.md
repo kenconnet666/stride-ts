@@ -40,16 +40,16 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - 看浏览器实际生成的着色器：Chrome 加 `--enable-unsafe-webgpu --enable-dawn-features=dump_shaders,disable_symbol_renaming`，见 docs/lessons.md。
 
 约定：
-- 和用户用中文沟通。**代码注释（含文档注释、测试标题）和 git 提交信息用中文**（用户 2026-11-18 决定，覆盖全局 CLAUDE.md 的英文约定）；标识符、文件名、运行时的报错和日志文字仍用英文。jolt-native-fork 里 Jolt 上游的文件保持英文。
+- 和用户用中文沟通。**代码注释（含文档注释、测试标题）和 git 提交信息用中文**（用户 2026-11-18 决定，覆盖全局 CLAUDE.md 的英文约定）；标识符、文件名、运行时的报错和日志文字仍用英文。Jolt 的 fork 里 Jolt 上游的文件保持英文。
 - **引擎要有做 3A 开放世界的潜力，性能靠算法不靠降分辨率**（用户 2026-11-19）：选数据结构和接口时不给规模设上限（世界大小、实体数量、内容体量、团队规模）；性能优化是少做没用的功、把同样的功做得更快、不卡顿，每个系统有预算、先测再改；上采样和动态分辨率只是玩家的可选项。要用的技术和阶段见 docs/roadmap.md 第二节的"做 3A 开放世界还缺什么"。
 - **没变就不做**（用户 2026-11-19，从浏览器的渲染管线学的，见 docs/roadmap.md 第二节的同名小节）：引擎要记得上一帧算过什么、哪些输入变了。新加组件、系统、渲染特性时就带上"我变了"的版本号或脏标记，上传给 GPU 的数据只传变了的部分，算过的结果（阴影、UI、程序化生成的页）缓存着；能声明的动画放进着色器或成批算，不逐个对象用脚本驱动。
 - **目标是比 Stride 做得更好，不是照抄**（用户 2026-11-19）：Stride 的 bug、怪癖、难用的 API 不跟，改好并注明"和 Stride 不同：……"（改之前把受影响的情况想全，记进 docs/decisions.md）；我们比 Stride 差的限制要补掉，不能留着当完成。文档和代码边做边整理：文档只留结论，被取代的内容改写原处；整理和功能改动分开提交。见 docs/roadmap.md 的"原则"。
-- wasm 那边（jolt-native-fork 的 StrideNative）有问题、或者我们需要新能力时，直接改那边的代码，不在 TS 里绕过去；改完重编、跑原生/Node/浏览器测试，再按下一条发新版本。
-- Jolt 的 fork 是单独的仓库：`C:\Users\Administrator\CLionProjects\jolt-native-fork`（已加入本项目的工作目录）。远程 `origin` 是 `kenconnet666/JoltPhysics`，`upstream` 是 `jrouwe/JoltPhysics`（禁止推送）；工作分支 `stride`，基于上游发布标签。做法见 [docs/architecture.md](docs/architecture.md) 的"怎么 fork 和维护 Jolt"。原生 C++ 工程 `stride-native`/`stride-tools` 在这个仓库的 `StrideNative/` 目录（说明见其中的 README.md），按阶段提交到 `stride` 分支。
-- 要读的 Stride 源码在 `C:\Users\Administrator\IdeaProjects\stride`，只读，不在那边提交，除非用户要求（例如需要在那边加工具）。
+- wasm 那边（Jolt 的 fork 里的 StrideNative）有问题、或者我们需要新能力时，直接改那边的代码，不在 TS 里绕过去；改完重编、跑原生/Node/浏览器测试，再按下一条发新版本。
+- Jolt 的 fork 是单独的仓库：`C:\code\JoltPhysics`（已加入本项目的工作目录）。远程 `origin` 是 `kenconnet666/JoltPhysics`，`upstream` 是 `jrouwe/JoltPhysics`（禁止推送）；工作分支 `stride`，基于上游发布标签。做法见 [docs/architecture.md](docs/architecture.md) 的"怎么 fork 和维护 Jolt"。原生 C++ 工程 `stride-native`/`stride-tools` 在这个仓库的 `StrideNative/` 目录（说明见其中的 README.md），按阶段提交到 `stride` 分支。
+- 要读的 Stride 源码在 `~\IdeaProjects\stride`，只读，不在那边提交，除非用户要求（例如需要在那边加工具）。
 - 在 Chrome 里实际跑过、看过结果，才能说某件事完成了；用调试 CLI（[packages/cli](packages/cli/README.md)）试玩和测量，其余脚本在 [tools/](tools/README.md)。应用内置浏览器的面板隐藏时 `requestAnimationFrame` 不触发，不用它看帧循环。看画面、点按钮、读控制台用用户的主 Chrome 里的 Claude in Chrome 插件（用户 2026-11-19 定：主 Chrome 一直登录着，`stride open` 起的 Chrome 一重启插件就要重新认证）：插件开游戏页面，CLI 经开发服务器的中枢连到这个页面；同一个开发服务器只留一个页面（CLI 对最后连上的页面，后台标签会被节流）。要 DevTools 协议的 `cpu-profile`、`mouse --trusted` 经主 Chrome 里装的调试桥扩展（[tools/debug-bridge](tools/debug-bridge/README.md)，`chrome.debugger`；Chrome 136 起默认配置文件不能开远程调试端口），没装扩展的浏览器里用 `stride open <url> --headless` 起的 Chrome。插件掉线、要登录这类事叫用户帮忙。
 - 本仓库通过 `pnpm-workspace.yaml` 的 override 从 GitHub Release 安装 `@stride-ts/native`（各包的 package.json 照常写 `^0.1.0`）。原生部分改了以后：改 fork 的 `StrideNative/JS/package.json` 版本号 → `pwsh StrideNative/Scripts/build-wasm.ps1`（构建、测试、打包）→ 提交并推送 fork → `pwsh StrideNative/Scripts/release-native.ps1`（发布 GitHub Release `native-v<版本>`）→ 把本仓库 `pnpm-workspace.yaml` 里 override 的地址换成新版本 → `pnpm install`。不要改成 `file:` 指向本地 tgz：pnpm 给它建的目录名带 `..`，JetBrains 的 IDE 就解析不出这个包的类型（用户 2026-11-18 定用 GitHub Release，以后发布到 npm 再删掉 override）。
 - 耗时的验证（全量回归、截图比对、测量）在 git 工作树里挂后台跑，主线程接着写（用户 2026-11-19）：先本地提交，`pwsh tools/verify.ps1`（工作树切到那个提交、装依赖、联接导入的内容，再跑 `tools/regress.ps1` 或 `-Script` 给的脚本），通过后再推送；失败就在主检出修、再提交、再验证。回归直接在主检出跑的时候（`pwsh tools/regress.ps1`），它的开发服务器会热更新工作区里的改动：跑完之前不要改 `packages/`、`apps/` 的源码。
 - **后台的东西用完就停**（用户 2026-11-19）：开发服务器、无头 Chrome、主 Chrome 里开的游戏标签页，做完这个样例的验证就停掉（`pwsh tools/stop-dev.ps1`，`-Keep` 留下还在用的；标签页用插件关），不留到下一个样例。停后台任务不会带走它的 vite 子进程，要用这个脚本按进程停。几个页面同时按满帧率渲染会把显卡吃满，帧时间和冒烟的时序都不可信。
 - 调研自己做，不派子代理。
-- TS API 的写法参考用户自己的 easy-query-ts（`C:\code\easy-query-ts`，只读）：带幻影类型参数的不可变 builder、类型全靠推导不做代码生成、核心零依赖并通过 Standard Schema 对接校验库、`*.check.ts` 类型测试。属性的分层合并和转发参考 vue-tsx-pro（`C:\Users\Administrator\IdeaProjects\vue-tsx-pro`，只读）的 `packages/ui/src/utils/props.ts` 和 `COMPONENTS.md` §2，它是 Vue 和 DOM 的体系，只借鉴规则和类型做法。
+- TS API 的写法参考用户自己的 easy-query-ts（`~\IdeaProjects\easy-query-ts`，只读）：带幻影类型参数的不可变 builder、类型全靠推导不做代码生成、核心零依赖并通过 Standard Schema 对接校验库、`*.check.ts` 类型测试。属性的分层合并和转发参考 vue-tsx-pro（`~\IdeaProjects\vue-tsx-pro`，只读）的 `packages/ui/src/utils/props.ts` 和 `COMPONENTS.md` §2，它是 Vue 和 DOM 的体系，只借鉴规则和类型做法。

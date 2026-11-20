@@ -2,7 +2,7 @@
 # ParticlesSampleApp.cs，用官方 nuget 包编译。在 PowerShell 里跑（Git Bash 的 tar 把 `C:` 当成远程主机）。
 # 用法：pwsh tools/stride-capture/particles-sample/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>]
 param(
-    [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
+    [string]$Stride = ($env:STRIDE_REPO ?? (Join-Path $HOME 'IdeaProjects\stride')),
     [string]$Out = 'C:\code\stride-particles-sample'
 )
 $ErrorActionPreference = 'Stop'

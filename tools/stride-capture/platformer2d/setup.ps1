@@ -2,7 +2,7 @@
 # Stride.BepuPhysics（标签里的模板工程没有列出这个包），入口换成本目录的 Platformer2DApp.cs 再编译。
 # 用法：pwsh tools/stride-capture/platformer2d/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>] [-Ref <git 引用>]
 param(
-    [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
+    [string]$Stride = ($env:STRIDE_REPO ?? (Join-Path $HOME 'IdeaProjects\stride')),
     [string]$Out = 'C:\code\stride-platformer2d',
     [string]$Ref = 'releases/4.4.2'
 )

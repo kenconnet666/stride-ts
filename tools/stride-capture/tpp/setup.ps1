@@ -3,7 +3,7 @@
 # GraphicsCompositor 取 releases/4.4.2 标签里的版本，nuget 源只用 nuget.org（不用本机编的开发版包），入口换成本目录的 ThirdPersonPlatformerApp.cs。
 # 用法：pwsh tools/stride-capture/tpp/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>]
 param(
-    [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
+    [string]$Stride = ($env:STRIDE_REPO ?? (Join-Path $HOME 'IdeaProjects\stride')),
     [string]$Out = 'C:\code\stride-tpp'
 )
 $ErrorActionPreference = 'Stop'

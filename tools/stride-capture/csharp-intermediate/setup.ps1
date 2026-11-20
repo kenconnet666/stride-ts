@@ -4,7 +4,7 @@
 # 导航教程（11_Navigation）去掉：它用的 Stride.BepuPhysics.Navigation 没有发布 4.4.2 的包，别的教程用不到它。
 # 用法：pwsh tools/stride-capture/csharp-intermediate/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>]
 param(
-    [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
+    [string]$Stride = ($env:STRIDE_REPO ?? (Join-Path $HOME 'IdeaProjects\stride')),
     [string]$Out = 'C:\code\stride-csharp-intermediate'
 )
 $ErrorActionPreference = 'Stop'

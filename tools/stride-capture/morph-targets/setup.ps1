@@ -3,7 +3,7 @@
 # 把 `C:` 当成远程主机）。
 # 用法：pwsh tools/stride-capture/morph-targets/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>] [-Ref <git 引用>] [-Version <包版本>]
 param(
-    [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
+    [string]$Stride = ($env:STRIDE_REPO ?? (Join-Path $HOME 'IdeaProjects\stride')),
     [string]$Out = 'C:\code\stride-morph-targets',
     [string]$Ref = 'HEAD',
     [string]$Version = '4.5.3-dev4'

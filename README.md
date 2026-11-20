@@ -13,11 +13,11 @@
 - **P4 现代画面**：画质档位、管线预热、渲染图；TAA 和运动向量、GTAO、屏幕空间反射、接触阴影、运动模糊。
 - 进度和下一步见 [docs/roadmap.md](docs/roadmap.md) 末尾的"进度"；换机器、新环境上手见 [docs/handover.md](docs/handover.md)。
 
-来由：Stride 的 C# 网页移植（`C:\Users\Administrator\IdeaProjects\stride`，fork `kenconnet666/stride` 的 `web-experiment-base` 分支）能跑，但浏览器里的 .NET 没有 JIT，每次改动都要 AOT 编译，迭代慢，而且引擎和游戏被链接进同一个 wasm，没法分开缓存。2026-11-16 决定暂停那条线，转做这个。调研全文见 [docs/research.md](docs/research.md)，历史经验见 [docs/lessons.md](docs/lessons.md)。
+来由：Stride 的 C# 网页移植（`~\IdeaProjects\stride`，fork `kenconnet666/stride` 的 `web-experiment-base` 分支）能跑，但浏览器里的 .NET 没有 JIT，每次改动都要 AOT 编译，迭代慢，而且引擎和游戏被链接进同一个 wasm，没法分开缓存。2026-11-16 决定暂停那条线，转做这个。调研全文见 [docs/research.md](docs/research.md)，历史经验见 [docs/lessons.md](docs/lessons.md)。
 
 ## 开发
 
-需要 Node 22+ 和 pnpm 10，浏览器要支持 WebGPU（Chrome）。原生模块（`@stride-ts/native`）由 `pnpm install` 从 Jolt fork 的 GitHub Release 装，不用自己编；只有改原生部分时才要在 `jolt-native-fork` 里用 `StrideNative/Scripts/build-wasm.ps1` 编（流程见下表的第一行）。
+需要 Node 22+ 和 pnpm 10，浏览器要支持 WebGPU（Chrome）。原生模块（`@stride-ts/native`）由 `pnpm install` 从 Jolt fork 的 GitHub Release 装，不用自己编；只有改原生部分时才要在 Jolt 的 fork（`C:\code\JoltPhysics`）里用 `StrideNative/Scripts/build-wasm.ps1` 编（流程见下表的第一行）。
 
 ```bash
 pnpm install

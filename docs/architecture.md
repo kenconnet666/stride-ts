@@ -274,7 +274,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 
 ### bigint、小数、日期时间（2026-11-18 用户要求，已实现）
 
-要求：原生支持 bigint、decimal、日期这类 JSON 装不下的值，像 json-wire（`C:\Users\Administrator\IdeaProjects\json-wire`）给 JSON 加的支持那样，而且要方便和 wasm 那边互相操作。用户定的做法：不依赖 json-wire，自己实现一套适合引擎的。
+要求：原生支持 bigint、decimal、日期这类 JSON 装不下的值，像 json-wire（`~\IdeaProjects\json-wire`）给 JSON 加的支持那样，而且要方便和 wasm 那边互相操作。用户定的做法：不依赖 json-wire，自己实现一套适合引擎的。
 
 | 属性 | 脚本、视图里的值 | 数据组件的列 | C 侧（`StrideNative/Values.h`） | 线上（json-wire 的种类） |
 |---|---|---|---|---|
@@ -532,7 +532,7 @@ this.services.navigation;               // typed
 ### 属性的分层、合并和转发
 
 参考两处：
-- **vue-tsx-pro**（`C:\Users\Administrator\IdeaProjects\vue-tsx-pro`，`packages/ui/src/utils/props.ts`、`config/defaults.ts`，规范见 `packages/ui/COMPONENTS.md` §2）：UI 组件的值来自好几层（组件默认、`createUi`、`Provider`、使用方、组件受管），逐层合并后再转发给内部部件（`propsXxx`）。它的体系是 Vue 和 DOM，和我们不同；借鉴的是合并规则和类型做法。
+- **vue-tsx-pro**（`~\IdeaProjects\vue-tsx-pro`，`packages/ui/src/utils/props.ts`、`config/defaults.ts`，规范见 `packages/ui/COMPONENTS.md` §2）：UI 组件的值来自好几层（组件默认、`createUi`、`Provider`、使用方、组件受管），逐层合并后再转发给内部部件（`propsXxx`）。它的体系是 Vue 和 DOM，和我们不同；借鉴的是合并规则和类型做法。
 - **Stride 自己的资源继承**：`OverrideType` 有 Base、New、Sealed 三种，集合的每一项带稳定的 `ItemId`（`Stride.Core.Assets/Reflection`）。
 
 **一个属性的值从哪里来**（上面的层覆盖下面的层）：

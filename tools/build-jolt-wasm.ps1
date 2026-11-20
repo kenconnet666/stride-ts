@@ -4,8 +4,9 @@
 param(
     [ValidateSet('Debug', 'Release', 'Distribution')]
     [string] $Config = 'Distribution',
-    [string] $JoltDir = 'C:\Users\Administrator\CLionProjects\jolt-native-fork',
-    [string] $Emsdk = 'C:\Users\Administrator\emsdk'
+    # 默认取和本仓库并列的 JoltPhysics 目录
+    [string] $JoltDir = (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'JoltPhysics'),
+    [string] $Emsdk = ($env:EMSDK ?? (Join-Path $HOME 'emsdk'))
 )
 
 $ErrorActionPreference = 'Stop'

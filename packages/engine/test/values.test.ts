@@ -42,7 +42,7 @@ describe('Decimal', () => {
 });
 
 describe('日期和时间', () => {
-  // 和 jolt-native-fork 的 RuntimeTests.cpp 用同一组对照值（由 JS 的 Date 独立算出），两边算法一致
+  // 和 Jolt 的 fork 里 StrideNative 的 RuntimeTests.cpp 用同一组对照值（由 JS 的 Date 独立算出），两边算法一致
   const cases: [number, number, number, number][] = [
     [1970, 1, 1, 0], [1969, 12, 31, -1], [2000, 3, 1, 11017], [2024, 1, 31, 19753], [2024, 2, 29, 19782],
     [1900, 3, 1, -25508], [1600, 2, 29, -135081], [-1, 12, 31, -719529], [9999, 12, 31, 2932896],

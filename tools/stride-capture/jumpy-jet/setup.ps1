@@ -2,7 +2,7 @@
 # net10.0（同 physics-sample），入口换成本目录的 JumpyJetApp.cs 再编译。在 PowerShell 里跑（Git Bash 的 tar 把 `C:` 当成远程主机）。
 # 用法：pwsh tools/stride-capture/jumpy-jet/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>] [-Ref <git 引用>]
 param(
-    [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
+    [string]$Stride = ($env:STRIDE_REPO ?? (Join-Path $HOME 'IdeaProjects\stride')),
     [string]$Out = 'C:\code\stride-jumpy-jet',
     [string]$Ref = 'master'
 )

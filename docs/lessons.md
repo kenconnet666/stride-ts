@@ -1,6 +1,6 @@
 # 从 Stride C# 网页移植里学到的经验
 
-来源：2026-11 在 Stride 仓库（`C:\Users\Administrator\IdeaProjects\stride`，分支 `web-experiment-base`）把引擎用 .NET 11 WebAssembly 加 WebGPU 搬进浏览器，并用十几个官方样例和模板游戏验证。下面只列对 TypeScript 引擎同样有用的部分；细节和提交记录在那边的 `docs/browser/ROADMAP.md` 和 git 历史里。
+来源：2026-11 在 Stride 仓库（`~\IdeaProjects\stride`，分支 `web-experiment-base`）把引擎用 .NET 11 WebAssembly 加 WebGPU 搬进浏览器，并用十几个官方样例和模板游戏验证。下面只列对 TypeScript 引擎同样有用的部分；细节和提交记录在那边的 `docs/browser/ROADMAP.md` 和 git 历史里。
 
 ## WebGPU
 
@@ -79,9 +79,9 @@
 ## 参考位置
 
 - 调研全文：本仓库 [research.md](research.md)。
-- Stride 仓库：`C:\Users\Administrator\IdeaProjects\stride`。
+- Stride 仓库：`~\IdeaProjects\stride`。
   - 网页移植的构建脚本：`build/browser`（`Stride.Browser.Game.targets`、`PrepareGameContent.ps1`、`MonoAotCache`、`validate-sample.cjs`）。
   - 路线图和决策：`docs/browser/ROADMAP.md`。
   - 原型要用的游戏：`samples/Templates/ThirdPersonPlatformer`（已转换为 Bepu）。
-- 已经打好包、可以直接跑的 C# 版游戏副本：`C:\Users\Administrator\IdeaProjects\stride-games`（`aot/` 下是 AOT 发布输出）。
+- 已经打好包、可以直接跑的 C# 版游戏副本：旧机器上的 `C:\Users\Administrator\IdeaProjects\stride-games`（没带到新机器；`aot/` 下是 AOT 发布输出）。
 - 试玩和测量脚本：本仓库 [`tools/`](../tools/README.md)。

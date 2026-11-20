@@ -3,7 +3,7 @@
 目的：做一个比 Stride 更好的引擎（用户 2026-11-19 把目标从"对齐 Stride"改成"比 Stride 做得更好"），并且有做 3A 开放世界游戏的潜力（用户 2026-11-19：GTA 6、荒野大镖客 2、赛博朋克 2077 这一类，见第二节的"做 3A 开放世界还缺什么"）。范围一次定下来，之后无人值守地持续执行，用复刻开源游戏和技术演示级的切片来验证。本文件列出 Stride 的全部内容、超出 Stride 要加的功能、每项做不做、按什么顺序做、怎样算完成；取舍见第四节，2026-11-19 全部按推荐定下，执行中的决定记在 docs/decisions.md。
 
 盘点依据：
-- Stride：`C:\Users\Administrator\IdeaProjects\stride` 的 `sources/`（engine、plugins、editor、assets、shaders、tools）和 `samples/`。
+- Stride：`~\IdeaProjects\stride` 的 `sources/`（engine、plugins、editor、assets、shaders、tools）和 `samples/`。
 - 别的引擎：虚幻 5.7、Unity 6、Godot 4.6 的公开文档。
 - Web 上的现成做法：`C:\code\refs` 里 three.js（2026-11-18 的版本）、Babylon.js、Filament 的 WebGPU 实现，以及 WebGPU 规范的提案状态。
 

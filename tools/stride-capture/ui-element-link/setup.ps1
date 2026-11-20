@@ -2,7 +2,7 @@
 # UIElementLinkApp.cs，用官方 nuget 包编译。
 # 用法：pwsh tools/stride-capture/ui-element-link/setup.ps1 [-Stride <Stride 源码目录>] [-Out <输出目录>]
 param(
-    [string]$Stride = 'C:\Users\Administrator\IdeaProjects\stride',
+    [string]$Stride = ($env:STRIDE_REPO ?? (Join-Path $HOME 'IdeaProjects\stride')),
     [string]$Out = 'C:\code\stride-ui-element-link'
 )
 $ErrorActionPreference = 'Stop'

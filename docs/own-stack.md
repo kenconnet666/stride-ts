@@ -24,10 +24,10 @@
 
 ### 结构（2026-11-17 已建，放在 Jolt fork 仓库里）
 
-用户决定原生代码放进 `jolt-native-fork`，不在 stride-ts 仓库里建 `native/`。Jolt 上游的文件留在根目录不动，我们的代码全在顶层目录 `StrideNative/`，以后 rebase 到新的 Jolt 标签不会冲突。详细说明见该目录的 `README.md`。
+用户决定原生代码放进 Jolt 的 fork（本地目录 `JoltPhysics`），不在 stride-ts 仓库里建 `native/`。Jolt 上游的文件留在根目录不动，我们的代码全在顶层目录 `StrideNative/`，以后 rebase 到新的 Jolt 标签不会冲突。详细说明见该目录的 `README.md`。
 
 ```
-jolt-native-fork/
+JoltPhysics/
   Jolt/ Build/ ...          upstream Jolt, unchanged
   StrideNative/
     CMakeLists.txt          the only build file; Jolt comes in through ../Build/CMakeLists.txt
@@ -81,7 +81,7 @@ jolt-native-fork/
 
 | 部分 | 做法 | 原因 |
 |---|---|---|
-| Jolt | 独立的 fork 仓库（`jolt-native-fork`），持续同步上游 | 求解器复杂、还在快速演进 |
+| Jolt | 独立的 fork 仓库（`JoltPhysics`），持续同步上游 | 求解器复杂、还在快速演进 |
 | 引擎层、渲染器、编辑器、资源管线（TS 和 Node） | 自己写；设计和算法参考 Stride 源码（MIT，可以直接移植成 TS），WebGPU 的做法参考 three.js、Babylon.js、PlayCanvas | 我们是 Stride 的孪生，移植它的光照、阴影级联、后处理是对齐最直接的路 |
 | meshoptimizer v1.3 | 复制一次（运行时只用解码器，管线用完整版） | 代码小，格式固定 |
 | Basis Universal v2_50 | 复制一次（运行时是精简的转码器，管线用编码器） | 格式稳定 |
@@ -99,7 +99,7 @@ jolt-native-fork/
 
 ### 维护上游（Jolt）
 
-- Jolt 是单独的 fork 仓库（本地 `C:\Users\Administrator\CLionProjects\jolt-native-fork`，远程 `origin` 为 `kenconnet666/JoltPhysics`，`upstream` 为 `jrouwe/JoltPhysics`），工作分支 `stride` 固定在上游的发布标签上（当前 `v5.7.0`）。布局和升级方式见 [architecture.md](architecture.md) 的"怎么 fork 和维护 Jolt"。
+- Jolt 是单独的 fork 仓库（本地 `C:\code\JoltPhysics`，远程 `origin` 为 `kenconnet666/JoltPhysics`，`upstream` 为 `jrouwe/JoltPhysics`），工作分支 `stride` 固定在上游的发布标签上（当前 `v5.7.0`）。布局和升级方式见 [architecture.md](architecture.md) 的"怎么 fork 和维护 Jolt"。
 - 我们的改动尽量放在 `StrideNative/` 里，不改 Jolt；非改不可的，作为少量独立提交留在 `stride` 分支上，升级时 rebase 到新标签。
 - 升级按计划做（例如跟随 Jolt 的发布），升级后跑物理和导航的回归测试。
 - 代价：上游的修复不再自动到手，要自己合并。Jolt 发布频繁，这是最主要的维护成本。

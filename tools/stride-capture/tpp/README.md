@@ -8,7 +8,7 @@
 pwsh tools/stride-capture/tpp/setup.ps1
 ```
 
-从 `C:\Users\Administrator\IdeaProjects\stride` 的 `samples/Templates` 拷出模板和两个素材包到 `C:\code\stride-tpp`，改成 4.4.2 / net10.0，换上截图用的入口 `ThirdPersonPlatformerApp.cs`，再编 Release。参考图不进仓库（每张约 1 MB），需要时重新截。
+从 `~\IdeaProjects\stride`（`STRIDE_REPO`） 的 `samples/Templates` 拷出模板和两个素材包到 `C:\code\stride-tpp`，改成 4.4.2 / net10.0，换上截图用的入口 `ThirdPersonPlatformerApp.cs`，再编 Release。参考图不进仓库（每张约 1 MB），需要时重新截。
 
 ## 截图
 

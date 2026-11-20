@@ -2,7 +2,7 @@
  * typed JSON：bigint、小数、日期、时间、时刻、字节这类 JSON 装不下（或 JS 读了会丢精度）的值写成文字，
  * 根对象上的 `$types` 记下它们的位置和种类，读的一方据此还原。场景文件、编辑器和 Node 后端之间的消息都用它。
  *
- * 格式和 json-wire（C:\Users\Administrator\IdeaProjects\json-wire，docs/format.md）一致，能和用它的 Java、TS 后端互通；
+ * 格式和 json-wire（~\IdeaProjects\json-wire，docs/format.md）一致，能和用它的 Java、TS 后端互通；
  * 实现是自己的、零依赖，值还原成本引擎的类型（Decimal、LocalDate、LocalTime、LocalDateTime、Instant）：
  *
  *   toWire({ id: 9007199254740993n, price: Decimal.parse('12.50'), on: LocalDate.of(2024, 1, 31) })

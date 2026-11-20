@@ -25,7 +25,7 @@ stride cpu-profile ──▶ 开发服务器的调试中枢 ──▶ 页面（�
 
 1. 在 Chrome 地址栏打开 `chrome://extensions`。
 2. 打开右上角的"开发者模式"开关。
-3. 点左上角的"加载已解压的扩展程序"，选这个目录：`C:\Users\Administrator\WebstormProjects\stride-ts\tools\debug-bridge`。
+3. 点左上角的"加载已解压的扩展程序"，选这个目录：本仓库的 `tools\debug-bridge`。
 4. 列表里出现"Stride Debug Bridge"就装好了。已经开着的游戏页面要刷新一次，内容脚本才会注入。
 
 改了扩展的文件以后，在 `chrome://extensions` 里点它卡片上的刷新按钮（↻），再刷新游戏页面。卡片上的"Service Worker（无效）"不是出错：MV3 的后台脚本空闲约 30 秒就被停掉，页面发消息时会自动醒来。

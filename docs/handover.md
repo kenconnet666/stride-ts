@@ -16,7 +16,9 @@
 
 ### 1.1 仓库和路径
 
-旧机器是 Windows 11，用户 `Administrator`。新机器路径不同时，下表的"环境变量"一栏说怎么改。
+旧机器是 Windows 11，用户 `Administrator`。新机器路径不同时，下表的"说明"一栏说怎么改。
+
+新机器（2026-11-20 搭好）上的位置：本仓库 `C:\code\stride-ts`；Jolt 的 fork `C:\code\JoltPhysics`（`build-wasm.ps1`、`tools/build-jolt-wasm.ps1` 默认找和本仓库并列的它）；Stride 源码 `~\IdeaProjects\stride`（stride3d/stride 的 master，浅克隆）；emsdk 6.0.8 在 `~\emsdk`（脚本先看 `$env:EMSDK`）；vue-tsx-pro、easy-query-ts、json-wire 在 `~\IdeaProjects\` 下；参考仓库 `C:\code\refs`（PlayCanvas 的目录叫 `playcanvas-engine`）。Python 3 用 scoop 装的（带 Pillow）。
 
 | 什么 | 旧机器上的位置 | 怎么来 | 说明 |
 |---|---|---|---|

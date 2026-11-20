@@ -28,6 +28,7 @@
 - **测过但没用的**：
   - 关掉 Dawn 的 robustness（越界保护）或校验，GPU 时间不变。
   - 全屏通道的 `loadOp` 从 `clear` 换成 `load`，帧时间不变、通道时间反而多 0.5 ms。NVIDIA 对“清屏后整张覆盖”的情况有快速路径，所以全屏通道照常用 `clear`。
+- **Linux 上没有显卡时（CI、WSL、容器）WebGPU 画布要 `--use-vulkan=swiftshader`**（2026-11-20）：只给 `--use-webgpu-adapter=swiftshader` 时 Chrome 合成走 GL（ANGLE 的 SwiftShader）、Dawn 走 Vulkan，画布的交换链贴图要两边共用一份内存（外部内存对象），SwiftShader 的 GL 不支持，GPU 进程建不出这张贴图（"Could not find SharedImageBackingFactory … WebgpuSwapChainTexture"），WebGPU 的上下文随之丢掉，Dawn 的 wire 断开，所有挂着的异步调用（`createRenderPipelineAsync`、`getCompilationInfo`、`mapAsync`）都以"A valid external Instance reference no longer exists" / "Instance dropped" 结束，`mappedAtCreation` 的 `createBuffer` 报"too large for the implementation"。能用的一组：`--enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader --use-angle=swiftshader --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader`（`--use-angle=vulkan` 在本地的 Chrome 158 能用，CI 上不行）。GPU 进程这类问题看 Chrome 自己的日志（`stride open` 写在用户目录的 `chrome.log`），页面的控制台看不到；WSL 的 Debian 里装了 Linux 版 Chrome，可以在本地试参数。
 
 ## 浏览器运行环境
 
@@ -37,7 +38,6 @@
 - **按下时就 `setPointerCapture` 到祖先元素，单击就点不到按下的那个元素**（2026-11-20，vue-tsx-pro 的 Tree）：捕获着松开时，click 发给按下的元素和捕获元素的公共祖先。要区分单击和拖动的，过了阈值再捕获，事件在 window 上收。
 - **后台标签页不画帧**：`requestAnimationFrame` 停了，等"下一帧"的调用（截图）会一直等。自动化截图前先把标签带到前台。
 - **手柄**：Gamepad API 只能每帧轮询；`vibrationActuator`（`dual-rumble`）的单次震动有时长上限，要持续震动就得定时重新触发。
-- **Linux 上没有显卡时（CI）WebGPU 画布要 `--use-vulkan=swiftshader`**（2026-11-20）：只给 `--use-webgpu-adapter=swiftshader` 时 Chrome 合成用 GL、Dawn 用 Vulkan，画布的交换链贴图建不出来，WebGPU 上下文丢掉，页面里只看得到"A valid external Instance reference no longer exists"。完整参数和原因见 `.github/workflows/ci.yml`；GPU 进程这类问题看 Chrome 自己的日志（`stride open` 写在用户目录的 `chrome.log`），页面的控制台看不到。WSL 的 Debian 里装了 Linux 版 Chrome，可以在本地试参数。
 - **无头 Chrome 的帧节奏固定在 60 Hz 左右**：测性能要加 `--disable-frame-rate-limit` 和 `--disable-gpu-vsync`。
 - **SharedArrayBuffer 和 wasm 多线程需要跨源隔离**（COOP/COEP 响应头）。有的托管平台设不了这两个头，所以不能作为默认依赖。（2026-11-17 用户决定 stride-ts 只用多线程版，接受这个部署约束，见 [architecture.md](architecture.md)。）
 - **大的 wasm 模块编译慢、启动慢**：262 MB 的模块就有明显的启动代价，体积不能完全不管。

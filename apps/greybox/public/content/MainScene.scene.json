@@ -1,0 +1,170 @@
+{
+ "name": "MainScene",
+ "compositor": {
+  "clearColor": [
+   0.1,
+   0.1,
+   0.12,
+   1
+  ],
+  "postEffects": {
+   "brightFilter": true,
+   "bloom": true,
+   "lightStreak": false,
+   "lensFlare": false,
+   "toneMap": true,
+   "antialiasing": true
+  },
+  "transparent": true
+ },
+ "entities": [
+  {
+   "id": "d366145d-71b7-4690-9aa4-6488042771af",
+   "name": "Camera",
+   "parent": null,
+   "position": [
+    9,
+    9,
+    13
+   ],
+   "rotation": [
+    -0.2457,
+    0.2706,
+    0.0723,
+    0.9278
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.1,
+     "farClipPlane": 1000
+    }
+   }
+  },
+  {
+   "id": "4f653699-de93-44c8-bf22-1b739f799178",
+   "name": "Sun",
+   "parent": null,
+   "position": [
+    0,
+    10,
+    0
+   ],
+   "rotation": [
+    -0.408218,
+    -0.23457,
+    -0.109382,
+    0.875426
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "directional",
+     "color": [
+      1,
+      0.98,
+      0.94
+     ],
+     "intensity": 8,
+     "shadow": {
+      "size": "large",
+      "filter": "pcf5x5",
+      "cascadeCount": "four",
+      "depthBias": 0.0015,
+      "normalOffsetScale": 10,
+      "stabilization": "projectionSnapping",
+      "pssmFactor": 0.5,
+      "depthRange": "automatic",
+      "minDistance": 0,
+      "maxDistance": 60,
+      "blendCascades": true
+     }
+    }
+   }
+  },
+  {
+   "id": "d9c66973-6e83-48f1-af23-ac82ed2920f2",
+   "name": "Sky",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "skyAtmosphere": {
+     "sun": "4f653699-de93-44c8-bf22-1b739f799178"
+    }
+   }
+  },
+  {
+   "id": "f3be4f14-d0fa-4229-8165-9c2693f8d00a",
+   "name": "Room",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Level/Room",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "mesh",
+       "model": "Level/Room",
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  }
+ ]
+}

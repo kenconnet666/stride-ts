@@ -1,0 +1,23 @@
+{
+ "name": "Floor",
+ "baseColor": [
+  0.55,
+  0.56,
+  0.6,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.85,
+ "baseColorTexture": {
+  "texture": "Level/Textures/Grid",
+  "encoding": "svg",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ }
+}

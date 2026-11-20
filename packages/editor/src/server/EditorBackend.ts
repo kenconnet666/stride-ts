@@ -8,9 +8,9 @@
 import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS } from '@stride-ts/engine/content-format';
+import { EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
+import { bakeBrushModel, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -30,7 +30,7 @@ const CHANGE_DELAY = 50;
 
 /** 能经接口读写内容的种类：主文件是 JSON 的。 */
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -49,6 +49,8 @@ export class EditorBackend {
   /** 原生的导入工具（第一次导入模型时建）。 */
   #tools: Promise<StrideTools> | undefined;
   #timer: NodeJS.Timeout | undefined;
+  /** 每个白盒最近一次烘焙时的内容（JSON 文本）：文件监视报它变了时，内容一样（自己刚存、刚烘的）就不再烘。 */
+  readonly #brushBakes = new Map<string, string>();
   /** 上一批变化处理到哪了：保存、下一批都排在它后面，数据库不会被两处同时改。 */
   #work: Promise<unknown> = Promise.resolve();
 
@@ -120,8 +122,12 @@ export class EditorBackend {
     }
     return this.#enqueue(async () => {
       if (create && this.database.get(kind, assetPath)) throw new HttpError(409, `${kind} ${assetPath} already exists`);
+      // 白盒先烘：笔刷不对时报错、什么也不写（不留一个烘不出模型的源文件）
+      const model = kind === 'brush' ? await this.#bakeBrush(assetPath, content as BrushFile).catch((error: unknown) => {
+        throw new HttpError(400, (error as Error).message);
+      }) : undefined;
       await writeAtomically(file, JSON.stringify(content, null, 1));
-      await this.#refresh([this.#relative(file)]);
+      await this.#refresh([this.#relative(file), ...(model ? [model] : [])]);
       return this.database.get(kind, assetPath)!;
     });
   }
@@ -309,10 +315,10 @@ export class EditorBackend {
     }
   }
 
-  /** 跟着这个资源一起挪、一起删的资源：声音和它同名的音频文件。 */
+  /** 跟着这个资源一起挪、一起删的资源：声音和它同名的音频文件，白盒和它烘出的模型。 */
   #companions(record: AssetRecord): AssetRecord[] {
-    const audio = record.kind === 'sound' ? this.database.get('audio', record.path) : undefined;
-    return audio ? [audio] : [];
+    const companion = record.kind === 'sound' ? this.database.get('audio', record.path) : record.kind === 'brush' ? this.database.get('model', record.path) : undefined;
+    return companion ? [companion] : [];
   }
 
   /** HTTP 接口；不是编辑器接口的请求交给 next。 */
@@ -384,6 +390,32 @@ export class EditorBackend {
     if (changes.changed.length + changes.removed.length === 0) return;
     await this.#writeAssetTypes();
     for (const listener of this.#listeners) listener(changes);
+    // 别处（agent 直接改文件、git 切分支）改了的白盒：重新烘它的模型
+    const baked: string[] = [];
+    for (const record of changes.changed) {
+      if (record.kind !== 'brush') continue;
+      try {
+        const text = await readFile(path.join(this.project.contentDir, assetFileName('brush', record.path)), 'utf8');
+        if (JSON.stringify(JSON.parse(text)) === this.#brushBakes.get(record.path)) continue;
+        baked.push(await this.#bakeBrush(record.path, JSON.parse(text) as BrushFile));
+      } catch (error) {
+        console.warn(`[stride-editor] brush ${record.path}: ${(error as Error).message}; its model is left as it was`);
+      }
+    }
+    if (baked.length > 0) await this.#refresh(baked);
+  }
+
+  /**
+   * 把白盒烘成同名的模型（pipeline 的 bakeBrushModel，原生工具模块里的 Manifold），写好模型文件，返回它的相对路径（还没刷新
+   * 数据库）。笔刷不对时报错。
+   */
+  async #bakeBrush(assetPath: string, content: BrushFile): Promise<string> {
+    const tools = await (this.#tools ??= createStrideTools());
+    const bytes = await bakeBrushModel(tools, content, `brush ${assetPath}`);
+    const model = assetPath + EXTENSIONS.model;
+    await writeAtomically(path.join(this.project.contentDir, model), bytes);
+    this.#brushBakes.set(assetPath, JSON.stringify(content));
+    return model;
   }
 
   #writeAssetTypes(): Promise<boolean> {

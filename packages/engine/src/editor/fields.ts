@@ -11,7 +11,7 @@
  */
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
-  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile,
+  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
 import type { AssetKind } from '../content/references';
@@ -694,7 +694,39 @@ export const TIMELINE_FIELDS = fields<TimelineFile>({
 });
 
 /** 属性面板能编辑的资源（选中资源浏览器里的它时）：种类 → 字段。模型只有 JSON 写的那种能编辑。 */
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS } as const;
+/** 关卡白盒（BrushFile）：笔刷按形状分；改了马上存，编辑器后端烘成同名的模型，视口里热重载。 */
+export const BRUSH_FIELDS = fields<BrushFile>({
+  name: string,
+  materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'material slots; a brush picks one by index' },
+  uvScale: { type: number({ min: 0.01, step: 0.25, unit: 'm' }), optional: true, default: 1, description: 'automatic UVs: one texture repeat per this many meters' },
+  brushes: list({
+    kind: 'union',
+    tag: 'kind',
+    variants: {
+      box: fields<{ size: unknown }>({ size: { type: vector(3, 'm') } }),
+      prism: fields<{ points: unknown; height: unknown }>({
+        points: { type: { kind: 'json' }, description: 'polygon in the XZ plane as [x, z] pairs (may be concave), extruded up from the position' },
+        height: { type: positiveNumber() },
+      }),
+      cylinder: fields<{ height: unknown; radius: unknown; topRadius: unknown; segments: unknown }>({
+        height: { type: positiveNumber() },
+        radius: { type: positiveNumber() },
+        topRadius: { type: positiveNumber(), optional: true, description: 'unset: same as radius; 0 makes a cone' },
+        segments: { type: integer(3, 256), optional: true, default: 32 },
+      }),
+      sphere: fields<{ radius: unknown; segments: unknown }>({ radius: { type: positiveNumber() }, segments: { type: integer(3, 256), optional: true, default: 32 } }),
+    },
+    common: fields<{ name: unknown; operation: unknown; position: unknown; rotation: unknown; material: unknown }>({
+      name: { type: string, optional: true },
+      operation: { type: oneOf('add', 'subtract', 'intersect') },
+      position: { type: vector(3, 'm') },
+      rotation: { type: rotation, optional: true, default: [0, 0, 0, 1] },
+      material: { type: integer(0, 255), optional: true, default: 0, description: 'index into materials' },
+    }),
+  }),
+});
+
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS } as const;
 
 const INTEGER_KINDS: ReadonlySet<string> = new Set(['int', 'u8', 'u32']);
 

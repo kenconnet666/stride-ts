@@ -1,4 +1,4 @@
-// 资源管线（Node）：现在有 Stride 工程导入器，把 Stride 的场景、模型、材质转成运行时内容。
+// 资源管线（Node）：Stride 工程导入器（把 Stride 的场景、模型、材质转成运行时内容），源模型、字体的导入，关卡白盒的烘焙。
 export { StrideImporter, type ImporterOptions, type ImportResult } from './stride/importer.ts';
 export { DerivedDataCache } from './cache.ts';
 export { svgSize } from './stride/materials.ts';
@@ -13,3 +13,4 @@ export { importCompositor, renderGroupMask, renderGroupOf, type ImportedComposit
 export { proceduralMesh, type ProceduralMesh } from './stride/procedural.ts';
 export { importSourceModel, isSourceModel, type ImportedSourceModel, type SourceModelOptions } from './sourceModel.ts';
 export { encodeFont, importFontFile, isFontFile, type EncodedFont, type FontSettings } from './fontAsset.ts';
+export { bakeBrushModel } from './brushModel.ts';

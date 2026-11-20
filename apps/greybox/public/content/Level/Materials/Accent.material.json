@@ -1,0 +1,23 @@
+{
+ "name": "Accent",
+ "baseColor": [
+  1,
+  0.55,
+  0.2,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.85,
+ "baseColorTexture": {
+  "texture": "Level/Textures/Grid",
+  "encoding": "svg",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ }
+}

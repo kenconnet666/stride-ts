@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, plainMesh, VERTEX_FLOATS, type MaterialFile, type SceneFile, type UIFile } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, plainMesh, VERTEX_FLOATS, type BrushFile, type MaterialFile, type SceneFile, type UIFile } from '@stride-ts/engine/content-format';
 import {
   AssetDatabase, classifyAssetFile, EDITOR_API_PATH, EDITOR_HEADER, EditorBackend, generateAssetTypes, loadProject, PROJECT_FILE, projectInfo,
   type AssetChanges, type AssetRecord,
@@ -397,5 +397,43 @@ describe('移动、改名、删除资源（引用按路径，跟着改写）', (
     expect(missing()).toContain('scene Game/Main -> material Game/Materials/Red');
     // 声音连着音频一起删
     expect((await backend.deleteAsset('sound', 'Game/Audio/Jump')).removed).toEqual([{ kind: 'sound', path: 'Game/Audio/Jump' }, { kind: 'audio', path: 'Game/Audio/Jump' }]);
+  });
+});
+
+describe('关卡白盒：存下就烘成同名的模型', () => {
+  let directory: string, contentDir: string, backend: EditorBackend;
+  beforeAll(async () => {
+    directory = await project('brush');
+    contentDir = path.join(directory, 'public', 'content');
+    backend = await EditorBackend.open(directory, path.join(directory, 'public'));
+  });
+  afterAll(() => backend.close());
+
+  const room: BrushFile = {
+    name: 'Room', materials: ['Game/Materials/Grid', null],
+    brushes: [
+      { kind: 'box', operation: 'add', position: [0, -0.25, 0], size: [8, 0.5, 8] },
+      { kind: 'box', operation: 'add', position: [0, 1.5, -3.75], size: [8, 3, 0.5], material: 1 },
+      { kind: 'box', operation: 'subtract', position: [0, 1, -3.75], size: [1.2, 2, 1], material: 1 },
+    ],
+  };
+
+  test('存白盒：同名的模型烘出来，材质槽照白盒的；模型引用材质', async () => {
+    await backend.saveAsset('brush', 'Game/Level/Room', room, { create: true });
+    const data = await readFile(path.join(contentDir, 'Game/Level/Room.model'));
+    const model = decodeModel(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+    expect(model.materials).toEqual(['Game/Materials/Grid', null]);
+    expect(model.meshes.map((mesh) => mesh.material)).toEqual([0, 1]);
+    expect(backend.database.get('brush', 'Game/Level/Room')!.references).toEqual([{ kind: 'material', path: 'Game/Materials/Grid' }]);
+    expect(backend.database.get('model', 'Game/Level/Room')).toBeDefined();
+  });
+
+  test('笔刷不对时报 400、什么也不写；挪白盒时模型跟着挪', async () => {
+    const bad = { ...room, brushes: [{ kind: 'box', operation: 'add', position: [0, 0, 0], size: [1, 1, 1], material: 5 }] };
+    const error = await backend.saveAsset('brush', 'Game/Level/Room', bad).then(() => undefined, (e: Error & { status?: number }) => e);
+    expect([error?.status, error?.message]).toEqual([400, 'brush Game/Level/Room: brush 0 uses material slot 5, but there are 2 slots']);
+    expect((JSON.parse(await readFile(path.join(contentDir, 'Game/Level/Room.brush.json'), 'utf8')) as BrushFile).brushes).toHaveLength(3);
+    const moved = await backend.moveAssets({ assets: [{ kind: 'brush', from: 'Game/Level/Room', to: 'Game/Level/Hall' }] });
+    expect(moved.moved.map((asset) => `${asset.kind} ${asset.path}`)).toEqual(['brush Game/Level/Hall', 'model Game/Level/Hall']);
   });
 });

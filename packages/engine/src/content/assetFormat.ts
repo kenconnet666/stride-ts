@@ -25,6 +25,8 @@ export const EXTENSIONS = {
   sound: '.sound.json',
   /** 时间轴（TimelineFile）。 */
   timeline: '.timeline.json',
+  /** 关卡白盒（BrushFile）：笔刷的列表，编辑器后端把它烘成同名的模型（.model）。 */
+  brush: '.brush.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */
@@ -450,6 +452,42 @@ export interface UIStripDefinition {
   readonly minimumSize?: number;
   readonly maximumSize?: number;
 }
+
+/**
+ * 关卡白盒（Stride 没有；照虚幻 Modeling Mode 的 CubeGrid、Godot 的 CSG 节点、Unity 的 ProBuilder）：一串笔刷——方块、挤出的
+ * 多边形、圆柱、球——按顺序加上、减掉或求交，编辑器后端（Manifold，原生工具模块的 st_brush_csg）烘成同名的模型：平直的法线，
+ * 按朝向投影的世界坐标 UV（uvScale 米一个周期，贴网格图时各个面接得上），每个笔刷的面用它的材质槽。场景引用的是烘出的模型，
+ * 运行时不做布尔运算；这个文件是源头，随时能回来改参数（和直接改网格的建模不同）。
+ */
+export interface BrushFile {
+  readonly name: string;
+  /** 材质槽（内容路径；null 是默认材质）；笔刷的 material 是这里的下标。 */
+  readonly materials: readonly (string | null)[];
+  /** 自动 UV：多少米一个贴图周期（默认 1）。 */
+  readonly uvScale?: number;
+  /** 按顺序合成（第一个应该是 add）。 */
+  readonly brushes: readonly BrushShapeFile[];
+}
+
+/** 一个笔刷：形状、运算、放在哪（相对模型的原点）、用哪个材质槽。 */
+export type BrushShapeFile = {
+  /** 编辑器里显示的名字。 */
+  readonly name?: string;
+  readonly operation: 'add' | 'subtract' | 'intersect';
+  readonly position: Vec3Tuple;
+  /** 四元数 xyzw；没写是不转。 */
+  readonly rotation?: readonly [number, number, number, number];
+  /** 材质槽的下标，没写是 0。 */
+  readonly material?: number;
+} & (
+  /** 方块：中心在 position。 */
+  | { readonly kind: 'box'; readonly size: Vec3Tuple }
+  /** 挤出的多边形：XZ 平面上的简单多边形（可以是凹的，点是 [x, z]），从 position 往上挤出 height。 */
+  | { readonly kind: 'prism'; readonly points: readonly (readonly [number, number])[]; readonly height: number }
+  /** 圆柱（顶面半径不同时是圆台、为 0 是圆锥）：轴是 Y，中心在 position。 */
+  | { readonly kind: 'cylinder'; readonly height: number; readonly radius: number; readonly topRadius?: number; readonly segments?: number }
+  | { readonly kind: 'sphere'; readonly radius: number; readonly segments?: number }
+);
 
 /**
  * 时间轴（Stride 没有；照虚幻的 Sequencer、Unity 的 Timeline）：一段时间里各条轨道上的东西。游戏里当过场放（TimelinePlayer

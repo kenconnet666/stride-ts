@@ -157,8 +157,10 @@ export class RenderView {
   height = 1;
   /** 画进目标的哪一块（阴影图集里的一个级联）；undefined 是整个目标。 */
   viewport: Viewport | undefined;
-  /** 着色时用不用方向光的阴影；阴影级联是按主视图算的，别的相机（画进渲染目标贴图的）暂时不用。 */
+  /** 着色时用不用阴影（方向光的级联、点光聚光的阴影）。 */
   receivesShadows = true;
+  /** 这个视图自己的方向光级联（ShadowMapRenderer.collect 给每个接收阴影的视图各算一套）；没有方向光阴影时是 undefined。 */
+  shadow: ShadowReceiver | undefined;
   /** 分簇（lighting/Clusters.ts）：主视图有点光、聚光或贴花时前向渲染器设上，着色时只看像素所在那一簇的。 */
   clustered = false;
   /** 不画蒙皮的网格（角色、动物）：天空遮挡的视图用，一直在动的角色不该在脚下留一块不湿、不积雪的地。 */

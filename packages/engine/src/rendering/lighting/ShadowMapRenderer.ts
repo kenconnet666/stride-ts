@@ -4,7 +4,11 @@
  * 大小和图集的规则同 Stride：每块 min(1024 · 2^(档位 - 3), 光源在画面上盖住的大小的下一个 2 的幂 · 同样的倍数)（方向光盖住整个
  * 画面），每帧清空、按矩形重排（GuillotinePacker）。和 Stride 不同：图集不是固定的 4096²，从 1024² 起、放不下才翻倍（最大 4096²），
  * 一直用不到一半时缩回去，见 collect。
- * 和 Stride 一样（暂时）：最大的图集也放不下的光这一帧没有阴影。
+ * 和 Stride 不同：最大的图集也放不下时，所有阴影图按一半、四分之一……的边长重排（最多缩三次），不让哪盏光、哪个视图这一帧
+ * 没有阴影（Stride 是放不下的光没有阴影）。比如 TPP 的方向光是最大的档位，主视图的四个级联就占满了 4096²，画进渲染目标贴图的
+ * 相机的级联放不下。
+ * 方向光的级联按视图切：主视图和每个接收阴影的视图（画进渲染目标贴图的相机）各一套，都放进同一张图集（同 Stride：每个
+ * 相机的 ForwardRenderer 各算自己的级联）；点光、聚光的阴影和视图无关，大家共用。
  */
 import type { GraphicsDevice } from '../../graphics/GraphicsDevice';
 import {
@@ -20,6 +24,8 @@ const SIZE_INDEX: Readonly<Record<ShadowMapSize, number>> = { xsmall: 0, small: 
 const MAX_ATLAS_SIZE = REFERENCE_SHADOW_SIZE * 2 ** (SIZE_INDEX.xlarge - 3) * 2;
 /** 图集从这么大起，不够了翻倍。和 Stride 不同：Stride 一上来就建最大的（4096x4096 的 depth32float 是 64 MB），不管用了多少。 */
 const MIN_ATLAS_SIZE = 1024;
+/** 最大的图集放不下时阴影图最多缩几次（每次边长减半）。 */
+const MAX_DOWNSCALE = 3;
 /** 连着这么多帧在一半大的图集里也放得下才缩小（相机转一下就够用、再转回来又不够的时候不来回重建）。 */
 const SHRINK_FRAMES = 300;
 /** 着色器里的滤波编号（ShadowReceiver.filterSize）；PCSS 只有方向光有，点光、聚光按 7x7。 */
@@ -34,7 +40,9 @@ export class ShadowMapRenderer {
   /** 点光的六个面用的阶段：按近、远平面裁剪（Stride 的 ShadowMapCasterCubeMap）。 */
   readonly cubeMapCasterStage = new RenderStage('ShadowMapCasterCubeMap', { depthFormat: SHADOW_ATLAS_FORMAT }, { shadowCasters: true, depthClip: true });
   readonly #graphicsDevice: GraphicsDevice;
-  readonly #cascades = new DirectionalShadowCascades();
+  /** 每个接收阴影的视图一套级联（按 collect 给的顺序：主视图在前）。 */
+  readonly #cascades: DirectionalShadowCascades[] = [];
+  readonly #receivers: ShadowReceiver[] = [];
   readonly #locals = new LocalShadowViews();
   /** 图集现在的边长：按这一帧要放的阴影图够用的最小的 2 的幂（见 collect）。 */
   #atlasSize = MIN_ATLAS_SIZE;
@@ -45,10 +53,12 @@ export class ShadowMapRenderer {
   readonly #requests: { size: number; count: number }[] = [];
   /** 连着多少帧在一半大的图集里也放得下。 */
   #roomyFrames = 0;
+  /** 这一帧阴影图的边长缩了几次（最大的图集放不下时，见 collect）。 */
+  #downscale = 0;
+  #warnedDownscale = false;
   /** 这一帧每个阴影视图用哪个阶段画。 */
   readonly #stages = new Map<RenderView, RenderStage>();
   #atlas: GPUTexture | undefined;
-  #receiver: ShadowReceiver | undefined;
   #warnedDepthClip = false;
 
   constructor(graphicsDevice: GraphicsDevice) {
@@ -56,19 +66,24 @@ export class ShadowMapRenderer {
   }
 
   /**
-   * 按剔除过的主视图算出这一帧的阴影视图，并设好 lighting.shadow（方向光）、lighting.localShadows 和各盏光的 shadowIndex
-   * （点光、聚光）。没有光投阴影，或者主视图里什么都看不见时返回空数组。
+   * 按剔除过的视图算出这一帧的阴影视图：主视图和 others（别的接收阴影的视图，比如画进渲染目标贴图的相机）各一套方向光的
+   * 级联（设进各自的 view.shadow，主视图的也设进 lighting.shadow，体积雾用），点光、聚光的阴影共用（lighting.localShadows 和
+   * 各盏光的 shadowIndex，按主视图上盖住的大小定分辨率）。没有光投阴影，或者主视图里什么都看不见时返回空数组。
    */
-  collect(main: RenderView, lighting: Lighting): readonly RenderView[] {
+  collect(main: RenderView, lighting: Lighting, others: readonly RenderView[] = []): readonly RenderView[] {
     lighting.shadow = undefined;
     lighting.shadowAtlas = undefined;
     lighting.localShadowCount = 0;
     this.#stages.clear();
+    for (const view of [main, ...others]) view.shadow = undefined;
     if (Math.abs(main.minimumDistance - main.maximumDistance) < ZERO_TOLERANCE) main.maximumDistance = main.minimumDistance + ZERO_TOLERANCE;
     if (!Number.isFinite(main.minimumDistance) || !Number.isFinite(main.maximumDistance)) return [];
+    // 别的视图里什么都看不见（可见范围不是有限的）时不给它切级联
+    const receivers = [main, ...others.filter((view) => Number.isFinite(view.minimumDistance) && Number.isFinite(view.maximumDistance))];
     // 一直有富余：缩一半（在这一帧开始排之前换，排出来的位置才对得上图集的大小）
     if (this.#roomyFrames >= SHRINK_FRAMES) this.#resize(this.#atlasSize / 2);
     let views: RenderView[];
+    this.#downscale = 0;
     for (;;) {
       this.#packer.clear();
       this.#stages.clear();
@@ -76,18 +91,25 @@ export class ShadowMapRenderer {
       this.#requests.length = 0;
       lighting.shadow = undefined;
       lighting.localShadowCount = 0;
-      views = [...this.#collectDirectional(main, lighting), ...this.#collectLocals(main, lighting)];
-      if (!this.#full || this.#atlasSize >= MAX_ATLAS_SIZE) break;
-      // 放不下：图集翻倍，这一帧重新排（阴影图在图集里的位置、采样用的变换都跟着图集的大小）
-      this.#resize(this.#atlasSize * 2);
+      views = [...receivers.flatMap((view, i) => this.#collectDirectional(view, i, lighting)), ...this.#collectLocals(main, lighting)];
+      lighting.shadow = main.shadow;
+      if (!this.#full) break;
+      // 放不下：图集翻倍，这一帧重新排（阴影图在图集里的位置、采样用的变换都跟着图集的大小）；已经最大了就把阴影图都缩一半
+      if (this.#atlasSize < MAX_ATLAS_SIZE) this.#resize(this.#atlasSize * 2);
+      else if (this.#downscale < MAX_DOWNSCALE) this.#downscale++;
+      else break;
+    }
+    if (this.#downscale > 0 && !this.#warnedDownscale) {
+      this.#warnedDownscale = true;
+      console.warn(`Shadow maps do not fit into a ${MAX_ATLAS_SIZE}x${MAX_ATLAS_SIZE} atlas; they are drawn at 1/${2 ** this.#downscale} of their size`);
     }
     this.#roomyFrames = views.length > 0 && this.#atlasSize > MIN_ATLAS_SIZE && this.#fitsHalf() ? this.#roomyFrames + 1 : 0;
     if (views.length > 0) lighting.shadowAtlas = this.#atlasTexture();
     return views;
   }
 
-  /** 方向光的级联；不投阴影时返回空数组。 */
-  #collectDirectional(main: RenderView, lighting: Lighting): readonly RenderView[] {
+  /** view 的方向光级联（index 是它在这一帧的接收者里排第几，各用自己的一套）；不投阴影时返回空数组。 */
+  #collectDirectional(view: RenderView, index: number, lighting: Lighting): readonly RenderView[] {
     const settings = lighting.directionalShadow;
     if (!settings) return [];
     if (!this.#graphicsDevice.depthClipControl && !this.#warnedDepthClip) {
@@ -96,10 +118,11 @@ export class ShadowMapRenderer {
     }
 
     // 方向光覆盖整个画面，按长边算（Stride 的 LightDirectional.ComputeScreenCoverage）
-    const size = shadowMapSize(settings.size, Math.max(main.width, main.height));
+    const size = shadowMapSize(settings.size, Math.max(view.width, view.height)) >> this.#downscale;
     const rectangles = this.#insert(size, settings.cascadeCount);
     if (!rectangles) return [];
-    const receiver = (this.#receiver ??= {
+    const cascades = (this.#cascades[index] ??= new DirectionalShadowCascades());
+    const receiver = (this.#receivers[index] ??= {
       cascadeCount: 0,
       worldToShadow: new Float32Array(64),
       splits: new Float32Array(4),
@@ -117,10 +140,10 @@ export class ShadowMapRenderer {
     receiver.penumbraTangent = Math.tan((settings.lightAngle / 2) * (Math.PI / 180));
     receiver.blendCascades = settings.blendCascades;
     receiver.depthRangeAutomatic = settings.depthRange === 'automatic';
-    this.#cascades.collect(main, lighting.directionals[lighting.shadowLight]!.direction, settings, size, rectangles, this.#atlasSize, receiver);
-    lighting.shadow = receiver;
-    const views = this.#cascades.views.slice(0, receiver.cascadeCount);
-    for (const view of views) this.#stages.set(view, this.casterStage);
+    cascades.collect(view, lighting.directionals[lighting.shadowLight]!.direction, settings, size, rectangles, this.#atlasSize, receiver);
+    view.shadow = receiver;
+    const views = cascades.views.slice(0, receiver.cascadeCount);
+    for (const cascade of views) this.#stages.set(cascade, this.casterStage);
     return views;
   }
 
@@ -131,7 +154,7 @@ export class ShadowMapRenderer {
     for (let i = 0; i < lighting.localCount; i++) {
       const light = lighting.locals[i]!;
       if (!light.castsShadow) continue;
-      const size = shadowMapSize(light.shadow.size, screenCoverage(main, light));
+      const size = shadowMapSize(light.shadow.size, screenCoverage(main, light)) >> this.#downscale;
       const rectangles = size > 0 ? this.#insert(size, light.spot ? 1 : 6) : undefined;
       if (!rectangles) continue;
       const receiver = (lighting.localShadows[lighting.localShadowCount] ??= createLocalShadowReceiver());
@@ -167,7 +190,7 @@ export class ShadowMapRenderer {
   destroy(): void {
     this.#atlas?.destroy();
     this.#atlas = undefined;
-    this.#receiver = undefined;
+    this.#receivers.length = 0;
   }
 
   /** 在图集里要 count 块 size 见方的地方；放不下时记下来（collect 会把图集翻倍重排），返回 undefined。 */

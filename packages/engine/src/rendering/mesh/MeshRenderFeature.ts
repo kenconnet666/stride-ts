@@ -879,7 +879,7 @@ class Gpu {
       this.#views = undefined;
       this.#clearViewBindGroups();
     }
-    const { directionals, directionalCount, ambient, skybox, shadow, shadowAtlas, locals, localCount } = lighting;
+    const { directionals, directionalCount, ambient, skybox, shadowAtlas, locals, localCount } = lighting;
     const probes = this.#probes;
     // 云的影子落在哪盏方向光上（光照里按实体找；那盏光是黑的、被拿掉了时没有影子）
     const cloud = this.#clouds.shadow;
@@ -889,6 +889,8 @@ class Gpu {
     const occlusion = wetness > 0 || snowCover > 0;
     for (const view of views) {
       const o = view.index * stride;
+      // 方向光的级联是这个视图自己的（ShadowMapRenderer 给每个接收阴影的视图各算一套）
+      const shadow = view.receivesShadows ? view.shadow : undefined;
       data.set(view.viewProjection, o);
       data.set([view.eye.x, view.eye.y, view.eye.z, 1], o + 16);
       data.set([ambient.r, ambient.g, ambient.b, 1], o + 20);

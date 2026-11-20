@@ -139,6 +139,9 @@ export class ForwardRenderer {
   readonly shadowMapRenderer: ShadowMapRenderer;
 
   readonly #mainView = new RenderView();
+  /** 画进渲染目标贴图的相机各自的后处理（按 textureCameras 的下标，用到时才建）和这一帧用了的那些（执行完渲染图后 flush）。 */
+  readonly #texturePost: (PostProcessingEffects | undefined)[] = [];
+  readonly #texturePostUsed: PostProcessingEffects[] = [];
   /** 主视图分不分簇（lighting/Clusters.ts；关掉时每个像素看所有的点光、聚光、贴花，比对、量耗时用，`stride call clusters`）。 */
   clustering = true;
   /** 点光、聚光的包围球（分簇用，每帧重用）。 */
@@ -325,6 +328,7 @@ export class ForwardRenderer {
     textureCameras.forEach(({ cameraSlot, texture, renderMask }, i) => {
       const view = this.#textureViews[i]!;
       view.cullingMask = renderMask ?? RENDER_GROUP_ALL;
+      view.receivesShadows = this.drawShadows;
       view.width = texture.data.width;
       view.height = texture.data.height;
       if (!this.#wanted.has(cameraSlot)) this.#wanted.set(cameraSlot, view);
@@ -381,7 +385,8 @@ export class ForwardRenderer {
     if (views.length > 0) {
       renderSystem.extract(context);
       renderSystem.cull(context, views);
-      if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, renderSystem.lighting);
+      // 画进渲染目标贴图的相机也接收阴影：各自一套方向光的级联（同 Stride：每个相机的前向渲染器各算各的）
+      if (this.hasCamera) shadowViews = this.shadowMapRenderer.collect(this.#mainView, renderSystem.lighting, this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view) && view.receivesShadows));
       renderSystem.addViews(shadowViews);
       renderSystem.cull(context, shadowViews);
       renderSystem.prepare(context);
@@ -409,13 +414,23 @@ export class ForwardRenderer {
     // 渲染目标贴图：画完原样拷进贴图
     const copy = this.#textureCopy;
     copy.arena.reset();
-    textureCameras.forEach(({ texture, clearColor, transparent }, i) => {
+    this.#texturePostUsed.length = 0;
+    textureCameras.forEach(({ texture, clearColor, transparent, postEffects }, i) => {
       const view = this.#textureViews[i]!;
       if (!this.#found.has(view)) return;
       const { width, height } = texture.data;
       const color = graph.texture({ label: `${texture.name} color`, width, height, format: HDR_FORMAT });
       const depth = graph.texture({ label: `${texture.name} depth`, width, height, format: DEPTH_FORMAT });
       this.#viewPasses(context, frame, view, this.#hdrOutput(color), depth, clearColor, transparent, `ForwardRenderer ${texture.name}`);
+      // 这个相机自己的后处理（Stride 的 RenderTextureSceneRenderer 下面的 ForwardRenderer.PostEffects）：每个相机一套，亮度适应、
+      // 泛光这些有状态的效果互不干扰；没有时 HDR 画面原样拷进贴图
+      if (postEffects) {
+        const post = (this.#texturePost[i] ??= new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp));
+        post.configure(postEffects);
+        post.record(frame, color, renderSystem.resources.texture(texture).createView(), texture.data.format, context.time.elapsed, this.quality);
+        this.#texturePostUsed.push(post);
+        return;
+      }
       frame.pass(`ForwardRenderer ${texture.name} copy`, (pass) => {
         pass.read(color);
         pass.sideEffect();
@@ -455,6 +470,7 @@ export class ForwardRenderer {
     this.#pool.endFrame();
     copy.arena.flush();
     if (post) this.postEffects.flush();
+    for (const textureCameraPost of this.#texturePostUsed) textureCameraPost.flush();
     if (this.#mainView.screenOcclusion && !this.#mainView.screenIndirect) this.ambientOcclusion.flush();
     if (this.#mainView.screenIndirect) this.globalIllumination.flush();
     if (reflect) this.screenSpaceReflections.flush();
@@ -473,6 +489,7 @@ export class ForwardRenderer {
     this.#pool.destroy();
     this.#textureCopy.arena.destroy();
     this.postEffects.destroy();
+    for (const textureCameraPost of this.#texturePost) textureCameraPost?.destroy();
     this.temporalAntialiasing.destroy();
     this.ambientOcclusion.destroy();
     this.globalIllumination.destroy();

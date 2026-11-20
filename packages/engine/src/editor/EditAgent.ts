@@ -16,7 +16,11 @@ import { requiredName } from '../content/sceneScripts';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
-import { Camera } from '../rendering/components';
+import { Camera, Model, ModelPart } from '../rendering/components';
+import { Mesh } from '../rendering/mesh/Mesh';
+import type { Material } from '../rendering/mesh/Material';
+import { MeshPainter, type PaintTarget } from '../rendering/paint/MeshPainter';
+import { encodePng } from '../offline/png';
 import { EditorCameraController } from './EditorCamera';
 import { EditorViewport } from './EditorViewport';
 import { scriptFields, type Field } from './fields';
@@ -52,6 +56,36 @@ export interface EditableScene extends SceneSource {
   commit(): void;
 }
 
+/** 绘制模式的笔刷设置（半径米，硬度、强度 0..1；erase 是画 0）。 */
+export interface PaintBrush {
+  readonly radius: number;
+  readonly hardness: number;
+  readonly strength: number;
+  readonly erase: boolean;
+}
+
+/** 在模型上画贴图：画哪个实体上用这个材质的网格，画进哪张遮罩。 */
+export interface PaintSession {
+  readonly entity: string;
+  readonly material: Material;
+  /** 遮罩贴图的内容路径（线性的 png）。 */
+  readonly mask: string;
+  readonly painter: MeshPainter;
+  brush: PaintBrush;
+}
+
+export const DEFAULT_PAINT_BRUSH: PaintBrush = { radius: 0.25, hardness: 0.5, strength: 0.8, erase: false };
+
+const PAINT_HELP = 'Paint a material layer mask on a model in the editor (the viewport page): args entity (scene file id), material and mask (content paths; '
+  + 'the mask is a linear png, a layer blend of the material), points ([[x, y, z], ...] world space; dabs every quarter radius along them), '
+  + 'radius (m), hardness, strength (0..1), erase. Saves the png through the editor backend.';
+
+/** 经编辑器后端写一张 png（PUT /image，同 @stride-ts/editor 的 EditorClient.saveImage）。 */
+async function saveImage(path: string, png: Uint8Array<ArrayBuffer>): Promise<void> {
+  const response = await fetch(`/__stride/editor/api/image?path=${encodeURIComponent(path)}`, { method: 'PUT', headers: { 'x-stride-editor': '1' }, body: png });
+  if (!response.ok) throw new Error(`saving ${path} failed: ${((await response.json()) as { error?: string }).error ?? `HTTP ${response.status}`}`);
+}
+
 export class EditAgent {
   readonly game: Game;
   /** 编辑相机所在的实体。 */
@@ -62,6 +96,10 @@ export class EditAgent {
   gizmoSpace: 'world' | 'local' = 'world';
   /** 吸附：步长和"一直吸附"，拖操纵器时按住 Ctrl 反过来。编辑器的界面记着它，页面重新加载以后再设回来。 */
   snap: SnapSettings = DEFAULT_SNAP;
+  /** 在模型上画贴图（S2）：开着时视口里左键拖是画，不是点选、拖操纵器（见 EditorViewport）。 */
+  paint: PaintSession | undefined;
+  /** 一笔画完（松开左键）以后调：遮罩的内容路径和读回的像素（编辑器存成 png）。 */
+  onPaintStroke: ((mask: string, image: { readonly width: number; readonly height: number; readonly rgba: Uint8Array<ArrayBuffer> }) => void) | undefined;
   /** 用户在视口里点选以后调（参数是新的选中）。 */
   onSelectionChanged: ((ids: readonly string[]) => void) | undefined;
   #live: LiveScene | undefined;
@@ -95,6 +133,73 @@ export class EditAgent {
     else state.setFromPose({ x: 0, y: 5, z: 10 }, { x: 0, y: -0.4, z: -1 });
     this.camera.require(EditorCameraController).apply();
     compositor.cameraSlot = EDITOR_CAMERA_SLOT;
+    game.debug.command('paint', PAINT_HELP, (args) => this.#paintCommand(args));
+  }
+
+  /**
+   * 调试命令 paint（agent 不点界面也能在模型上画）：沿着点列（世界坐标）每隔半径的四分之一落一笔，画完经编辑器后端存成 png。
+   * 编辑器里正开着绘制模式时用它的设置画同一张遮罩。
+   */
+  async #paintCommand(args: Readonly<Record<string, unknown>>): Promise<unknown> {
+    const { entity, material, mask } = args as { entity?: string; material?: string; mask?: string };
+    const points = args['points'] as readonly (readonly [number, number, number])[] | undefined;
+    if (typeof entity !== 'string' || typeof material !== 'string' || typeof mask !== 'string' || !Array.isArray(points) || points.length === 0) {
+      throw new Error('paint needs entity (scene file id), material and mask (content paths) and points ([[x, y, z], ...] in world space)');
+    }
+    const brush: PaintBrush = {
+      radius: Number(args['radius'] ?? DEFAULT_PAINT_BRUSH.radius), hardness: Number(args['hardness'] ?? DEFAULT_PAINT_BRUSH.hardness),
+      strength: Number(args['strength'] ?? DEFAULT_PAINT_BRUSH.strength), erase: args['erase'] === true,
+    };
+    const reuse = this.paint?.entity === entity && this.paint.mask === mask;
+    if (!reuse) await this.beginPaint(entity, material, mask, brush);
+    const paint = this.paint!;
+    const targets = this.paintTargets();
+    if (targets.length === 0) throw new Error(`entity ${entity} has no mesh with material ${material}`);
+    let dabs = 0;
+    const dab = (center: readonly [number, number, number]) => {
+      paint.painter.dab(targets, { center, radius: brush.radius, hardness: brush.hardness, strength: brush.strength, value: brush.erase ? [0, 0, 0, 1] : [1, 1, 1, 1] });
+      dabs++;
+    };
+    dab(points[0]!);
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1]!, b = points[i]!;
+      const gap = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      const steps = Math.max(1, Math.ceil(gap / (brush.radius * 0.25)));
+      for (let k = 1; k <= steps; k++) dab([a[0] + ((b[0] - a[0]) * k) / steps, a[1] + ((b[1] - a[1]) * k) / steps, a[2] + ((b[2] - a[2]) * k) / steps]);
+    }
+    paint.painter.commit();
+    const image = await paint.painter.read();
+    if (this.onPaintStroke && reuse) this.onPaintStroke(mask, image);
+    else await saveImage(mask, await encodePng(image.rgba, image.width, image.height));
+    if (!reuse) this.endPaint();
+    return { dabs, mask };
+  }
+
+  /**
+   * 开始在模型上画：实体（场景文件里的 id）上用 material 这个材质的网格，画进 mask（材质层遮罩用的线性 png，内容路径）。
+   * 之前开着的先结束。
+   */
+  async beginPaint(entity: string, material: string, mask: string, brush: PaintBrush = this.paint?.brush ?? DEFAULT_PAINT_BRUSH): Promise<void> {
+    this.endPaint();
+    const [loaded, texture] = await Promise.all([this.game.content.loadMaterial(material), this.game.content.loadTextureRef({ texture: mask, encoding: 'png', srgb: false }, false)]);
+    this.paint = { entity, material: loaded, mask, painter: new MeshPainter(this.game.renderSystem.resources, texture), brush };
+  }
+
+  endPaint(): void {
+    this.paint?.painter.destroy();
+    this.paint = undefined;
+  }
+
+  /** @internal 正在画的实体上用那个材质的网格和它们现在的世界矩阵（模型多出来的网格在子实体 ModelPart 上）。 */
+  paintTargets(): PaintTarget[] {
+    const paint = this.paint, entity = paint && this.#live?.entity(paint.entity);
+    if (!paint || !entity?.alive) return [];
+    const parts = [entity, ...entity.require(Transform).children.filter((child) => child.has(ModelPart))];
+    return parts.flatMap((part) => {
+      const model = part.get(Model);
+      const mesh = model && model.material === paint.material.id ? Mesh.byId(model.mesh) : undefined;
+      return mesh ? [{ mesh, world: new Float32Array(currentWorld(part)) }] : [];
+    });
   }
 
   /** 游戏自己启动时加载的根场景的内容路径（编辑器按它去读场景文件）；根场景不是按路径加载的时是 undefined。 */

@@ -20,6 +20,7 @@ import type { LiveScene } from './LiveScene';
 import type { SceneEdit } from './SceneDocument';
 import { applyGizmoChange, applySnap, type GizmoAxis, type GizmoHandle, type Ray, type TransformGizmo } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
+import { raycastMesh } from '../rendering/paint/MeshPainter';
 
 /** 选中的东西的框的颜色（线性）。 */
 const SELECTION_COLOR: DebugColor = [1, 0.55, 0.1, 1];
@@ -28,6 +29,9 @@ const PROBE_COLOR: DebugColor = [0.2, 0.85, 1, 1];
 const PROBE_BLEND_COLOR: DebugColor = [0.2, 0.85, 1, 0.35];
 const AXIS_COLORS: Readonly<Record<GizmoAxis, DebugColor>> = { x: [1, 0.15, 0.15, 1], y: [0.25, 0.9, 0.2, 1], z: [0.2, 0.4, 1, 1] };
 const ACTIVE_COLOR: DebugColor = [1, 0.9, 0.2, 1];
+/** 绘制模式的笔刷：画是白的，擦是红的。 */
+const BRUSH_COLOR: DebugColor = [1, 1, 1, 0.9];
+const ERASE_COLOR: DebugColor = [1, 0.3, 0.3, 0.9];
 /** 操纵器的轴在画面上有多长（画面高度的倍数）。 */
 const GIZMO_SCREEN_SIZE = 0.14;
 /** 按下到松开鼠标挪了不到这么多像素算点一下。 */
@@ -54,6 +58,8 @@ export class EditorViewport extends SyncScript {
   #drag: { readonly starts: readonly DragStart[]; readonly key: string } | undefined;
   #pressed: readonly [number, number] | undefined;
   #drags = 0;
+  /** 绘制模式里正在画的一笔：上一笔落在哪（世界坐标），画没画上。 */
+  #stroke: { last: [number, number, number] | undefined; painted: boolean } | undefined;
 
   override update(): void {
     const agent = this.agent, live = agent?.live;
@@ -83,6 +89,11 @@ export class EditorViewport extends SyncScript {
     }
 
     const pixel = input.absoluteMousePosition;
+    // 在模型上画贴图：左键拖是画，不点选、不拖操纵器
+    if (agent.paint) {
+      this.#paint(agent, pixel, navigating);
+      return;
+    }
     const roots = agent.editable ? agent.selectionRoots() : [];
     const gizmo = agent.gizmo;
     // 拖的中途按下、松开 Ctrl 也跟着变
@@ -110,6 +121,46 @@ export class EditorViewport extends SyncScript {
       this.#pressed = undefined;
     }
     if (roots.length > 0) this.#drawGizmo(gizmo);
+  }
+
+  /**
+   * 绘制模式的一帧：光标下最近的网格面上画出笔刷的球；左键按着时每挪过笔刷半径的四分之一落一笔（拖得快时中间补上），画完
+   * 拷回贴图（视口马上看到）；松开时读回像素交给 agent.onPaintStroke 存盘。
+   */
+  #paint(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
+    const paint = agent.paint!;
+    const input = this.game.input;
+    const ray = this.#ray(pixel);
+    const origin = [ray.origin.x, ray.origin.y, ray.origin.z], direction = [ray.direction.x, ray.direction.y, ray.direction.z];
+    const targets = agent.paintTargets();
+    let hit: ReturnType<typeof raycastMesh>;
+    for (const { mesh, world } of targets) {
+      const found = raycastMesh(mesh, world, origin, direction);
+      if (found && (!hit || found.distance < hit.distance)) hit = found;
+    }
+    const { brush } = paint;
+    if (hit) this.game.debugDraw.sphere(hit.point, brush.radius, brush.erase ? ERASE_COLOR : BRUSH_COLOR, { width: 1, segments: 24 });
+    if (input.isMouseButtonPressed('left') && !navigating) this.#stroke = { last: undefined, painted: false };
+    const stroke = this.#stroke;
+    if (stroke && input.isMouseButtonDown('left') && hit) {
+      const spacing = brush.radius * 0.25;
+      const from = stroke.last ?? hit.point;
+      const gap = Math.hypot(hit.point[0] - from[0], hit.point[1] - from[1], hit.point[2] - from[2]);
+      // 第一笔落在按下的地方；之后按间距补上中间的点
+      const steps = stroke.last ? Math.floor(gap / spacing) : 1;
+      for (let i = 1; i <= steps; i++) {
+        const t = stroke.last ? (i * spacing) / gap : 1;
+        const center: [number, number, number] = [from[0] + (hit.point[0] - from[0]) * t, from[1] + (hit.point[1] - from[1]) * t, from[2] + (hit.point[2] - from[2]) * t];
+        paint.painter.dab(targets, { center, radius: brush.radius, hardness: brush.hardness, strength: brush.strength, value: brush.erase ? [0, 0, 0, 1] : [1, 1, 1, 1] });
+        stroke.last = center;
+        stroke.painted = true;
+      }
+      paint.painter.commit();
+    }
+    if (input.isMouseButtonReleased('left') && stroke) {
+      this.#stroke = undefined;
+      if (stroke.painted) void paint.painter.read().then((image) => agent.onPaintStroke?.(paint.mask, image));
+    }
   }
 
   /** 这一帧里鼠标按下那一刻在画布上的位置（像素）；这一帧没有按下事件时是 undefined。 */

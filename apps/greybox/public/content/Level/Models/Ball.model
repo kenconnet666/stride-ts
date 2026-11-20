@@ -1,0 +1,11 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "sphere",
+  "radius": 0.8,
+  "tessellation": 48
+ },
+ "materials": [
+  "Level/Materials/Painted"
+ ]
+}

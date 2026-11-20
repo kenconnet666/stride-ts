@@ -13,6 +13,7 @@
     "./editor-fields": "./src/editor/fields.ts",
     "./material-graph": "./src/rendering/mesh/materialGraph.ts",
     "./node-graph": "./src/graph/nodeGraph.ts",
+    "./png": "./src/offline/png.ts",
     "./editor-field-schema": "./src/editor/fieldSchema.ts",
     "./editor-prefabs": "./src/editor/prefabEdits.ts",
     "./editor-copy": "./src/editor/copyEntities.ts",

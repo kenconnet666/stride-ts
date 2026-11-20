@@ -84,7 +84,8 @@ export class GpuResources {
     if (!gpu) {
       const { format, width, height, levels, generateMipmaps } = texture.data;
       const mipLevelCount = generateMipmaps ? Math.floor(Math.log2(Math.max(width, height))) + 1 : levels.length;
-      const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | (generateMipmaps ? GPUTextureUsage.RENDER_ATTACHMENT : 0);
+      // 在 GPU 上生成 mip 的（浏览器解码的图片）还能拷出去：在模型上画贴图时从它拷初始内容（MeshPainter）
+      const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | (generateMipmaps ? GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC : 0);
       const target = this.device.createTexture({ label: texture.name, size: [width, height], format, mipLevelCount, usage });
       const block = texture.blockBytes;
       levels.forEach((data, mipLevel) => {
@@ -97,6 +98,19 @@ export class GpuResources {
       this.#textures.set(texture, (gpu = target));
     }
     return gpu;
+  }
+
+  /**
+   * 用 source（同格式、同大小、单级）换掉贴图第 0 级的内容，再在 GPU 上重建 mip 链（在模型上画贴图时，每一笔画完拷回材质用的
+   * 那张，视口马上看到）。贴图要是只给了第 0 级、在 GPU 上生成 mip 的那种（浏览器解码的 png、jpeg）。
+   */
+  replaceLevel0(texture: Texture, source: GPUTexture): void {
+    const target = this.texture(texture);
+    if (!texture.data.generateMipmaps) throw new Error(`replaceLevel0: texture '${texture.name}' does not generate its mipmaps on the GPU`);
+    const encoder = this.device.createCommandEncoder({ label: `replace ${texture.name}` });
+    encoder.copyTextureToTexture({ texture: source }, { texture: target }, [target.width, target.height]);
+    this.device.queue.submit([encoder.finish()]);
+    this.#mipmaps.generate(target);
   }
 
   /** 立方体贴图的 GPU 纹理（6 层的 2D 数组，用 'cube' 视图采样）；第一次用到时上传所有 mip。 */

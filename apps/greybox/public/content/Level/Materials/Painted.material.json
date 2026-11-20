@@ -1,0 +1,44 @@
+{
+ "name": "Painted",
+ "baseColor": [
+  0.75,
+  0.72,
+  0.66,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.5,
+ "layers": [
+  {
+   "blend": {
+    "$type": "computeTextureScalar",
+    "texture": {
+     "texture": "Level/Materials/Masks/PaintedLayer1",
+     "encoding": "png",
+     "srgb": false
+    },
+    "channel": "r"
+   },
+   "diffuse": {
+    "$type": "computeColor",
+    "value": [
+     0.8,
+     0.12549019607843137,
+     0.12549019607843137,
+     1
+    ]
+   },
+   "metalness": {
+    "$type": "computeFloat",
+    "value": 0
+   },
+   "glossiness": {
+    "tree": {
+     "$type": "computeFloat",
+     "value": 0.6
+    },
+    "invert": true
+   }
+  }
+ ]
+}

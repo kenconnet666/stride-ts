@@ -106,6 +106,21 @@ export interface EditorMessages {
   readonly timelineExportPresets: { readonly landscape1080: string; readonly vertical1080: string; readonly square1080: string };
   readonly timelineExported: (path: string, seconds: number) => string;
   readonly graphOpen: string;
+  readonly paintLayers: string;
+  readonly paintAddLayer: string;
+  readonly paintLayer: (n: number) => string;
+  readonly paintColor: string;
+  readonly paintRoughness: string;
+  readonly paintMetalness: string;
+  readonly paintStart: string;
+  readonly paintStop: string;
+  readonly paintRadius: string;
+  readonly paintHardness: string;
+  readonly paintStrength: string;
+  readonly paintErase: string;
+  readonly paintHint: string;
+  readonly paintSelectEntity: string;
+  readonly paintNoMask: string;
   readonly graphTitle: (path: string) => string;
   readonly graphAddNode: string;
   readonly graphHint: string;
@@ -219,6 +234,21 @@ const zhCN: EditorMessages = {
   timelineExportPresets: { landscape1080: '横屏 1080p', vertical1080: '竖屏 9:16', square1080: '方形 1:1' },
   timelineExported: (path, seconds) => `已导出 ${path}（${seconds.toFixed(0)} 秒）`,
   graphOpen: '节点图',
+  paintLayers: '图层',
+  paintAddLayer: '加绘制层',
+  paintLayer: (n) => `图层 ${n}`,
+  paintColor: '这一层的颜色',
+  paintRoughness: '粗糙度',
+  paintMetalness: '金属度',
+  paintStart: '画',
+  paintStop: '停止画',
+  paintRadius: '半径',
+  paintHardness: '硬度',
+  paintStrength: '强度',
+  paintErase: '擦除',
+  paintHint: '在视口里按住左键在选中的实体上画（Alt、右键照常转相机）；每一笔画完存进遮罩',
+  paintSelectEntity: '先在场景里选中要画的实体（它要用这个材质）',
+  paintNoMask: '这一层的遮罩不是一张图，画不了（加一个绘制层）',
   graphTitle: (path) => `节点图：${path}`,
   graphAddNode: '加节点……',
   graphHint: '拖标题移动，拖空白处平移，滚轮缩放；从输出口拖到输入口连线，点连着的输入口断开；选中节点按 Delete 删除',
@@ -335,6 +365,21 @@ const enUS: EditorMessages = {
   timelineExportPresets: { landscape1080: 'Landscape 1080p', vertical1080: 'Vertical 9:16', square1080: 'Square 1:1' },
   timelineExported: (path, seconds) => `Exported ${path} (${seconds.toFixed(0)} s)`,
   graphOpen: 'Node graph',
+  paintLayers: 'Layers',
+  paintAddLayer: 'Add paint layer',
+  paintLayer: (n) => `Layer ${n}`,
+  paintColor: 'Color of this layer',
+  paintRoughness: 'Roughness',
+  paintMetalness: 'Metalness',
+  paintStart: 'Paint',
+  paintStop: 'Stop painting',
+  paintRadius: 'Radius',
+  paintHardness: 'Hardness',
+  paintStrength: 'Strength',
+  paintErase: 'Erase',
+  paintHint: 'Hold the left button in the viewport to paint on the selected entity (Alt and the right button still move the camera); each stroke is saved into the mask',
+  paintSelectEntity: 'Select the entity to paint in the scene first (it must use this material)',
+  paintNoMask: 'The mask of this layer is not an image, so it cannot be painted (add a paint layer)',
   graphTitle: (path) => `Node graph: ${path}`,
   graphAddNode: 'Add node…',
   graphHint: 'Drag a title to move, drag the background to pan, wheel to zoom; drag from an output to an input to link, click a linked input to unlink; Delete removes the selected node',

@@ -13,6 +13,7 @@
 import { shallowRef, triggerRef } from 'vue';
 import type { PrefabFile, SceneEntityFile, SceneFile, TimelineFile } from '@stride-ts/engine/content-format';
 import type { GraphFile } from '@stride-ts/engine/node-graph';
+import { encodePng } from '@stride-ts/engine/png';
 import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
@@ -21,7 +22,7 @@ import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
 import { withPath } from './values';
 import { freeAssetPath } from '../newAssets';
-import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
+import type { EditAgent, EditableScene, Game, PaintBrush, SnapSettings } from '@stride-ts/engine';
 import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
 import { t } from './messages';
@@ -60,6 +61,10 @@ export class EditorSession implements EditableScene {
   readonly frameGuide = shallowRef(0);
   /** 打开的时间轴（资源浏览器里打开的，下面的时间轴面板显示它）：选实体、改场景时一直开着。 */
   readonly timeline = shallowRef<OpenTimeline | undefined>();
+  /** 正在画的材质层（属性面板里开着的材质的第几层、它的遮罩）；没在画时是 undefined。 */
+  readonly painting = shallowRef<{ readonly layer: number; readonly mask: string }>();
+  /** 绘制的笔刷（半径、硬度、强度、擦除），换着画别的层时保留。 */
+  readonly paintBrush = shallowRef<PaintBrush>({ radius: 0.25, hardness: 0.5, strength: 0.8, erase: false });
   /** 节点图面板开着（编辑的是属性面板里正开着的材质的 graph）。 */
   readonly graphOpen = shallowRef(false);
   /** 正在导出的时间轴（名字）；没在导出时是 undefined。 */
@@ -89,7 +94,8 @@ export class EditorSession implements EditableScene {
    * 变化以后视口里用到它的实体热重载。选了实体时清掉。
    */
   readonly inspected = shallowRef<InspectedAsset | undefined>();
-  #inspectedSave: ReturnType<typeof setTimeout> | undefined;
+  /** 属性面板里的资源还没存的修改（连着改只存最后一次）。 */
+  #inspectedSave: { readonly asset: InspectedAsset; readonly timer: ReturnType<typeof setTimeout> } | undefined;
   #document: SceneDocument | undefined;
   /** 最近一次修改以后游戏页面里的实体跟上了。 */
   #synced: Promise<void> = Promise.resolve();
@@ -120,7 +126,9 @@ export class EditorSession implements EditableScene {
       // 用到的预制体改了（单独打开它改完保存了，或者在别处改了）：重新加载，实例跟着变
       if ([...changed, ...removed].some((asset) => asset.kind === 'prefab' && this.#prefabs.has(asset.path))) void this.#reloadPrefabs();
       // 别的资源（材质、模型、贴图、UI、声音……）改了：视口里用到它们的实体重建（热重载）
-      const reloaded = assetsToReload(this.assets.value, changed.filter((asset) => asset.kind !== 'scene' && asset.kind !== 'prefab'));
+      // 正在画的遮罩是自己刚存的：视口里已经是这个样子，重新加载会让材质换成一张新贴图，后面画的就看不到了
+      const painting = this.painting.value?.mask;
+      const reloaded = assetsToReload(this.assets.value, changed.filter((asset) => asset.kind !== 'scene' && asset.kind !== 'prefab' && !(asset.kind === 'image' && asset.path === painting)));
       if (reloaded.length > 0) void this.agent.value?.reloadAssets(reloaded).catch((error: unknown) => console.error('reloading assets failed', error));
       void this.#reloadChangedElsewhere(changed);
     });
@@ -188,6 +196,70 @@ export class EditorSession implements EditableScene {
     const content = inspected?.kind === 'timeline' && inspected.path === path ? inspected.content as unknown as TimelineFile : await this.client.readAsset<TimelineFile>('timeline', path);
     this.timeline.value = { path, content, time: 0, throughCamera: false, camera: undefined, subtitle: '' };
     this.seekTimeline(0);
+  }
+
+  /**
+   * 给属性面板里开着的材质加一个绘制层：一张全黑的遮罩（1024 x 1024 的线性 png，放在材质旁边的 Masks 文件夹），材质层的 blend
+   * 采样它的 r，填充是深灰色、粗糙度 0.6（之后在图层栏里改）。返回新层的下标。
+   */
+  async addPaintLayer(): Promise<number | undefined> {
+    const inspected = this.inspected.value;
+    if (inspected?.kind !== 'material') return undefined;
+    const layers = (inspected.content['layers'] as unknown[] | undefined) ?? [];
+    const folder = inspected.path.includes('/') ? inspected.path.slice(0, inspected.path.lastIndexOf('/')) : '';
+    const base = inspected.path.slice(inspected.path.lastIndexOf('/') + 1);
+    const taken = new Set(this.assets.value.map((asset) => `${asset.kind}:${asset.path}`));
+    const mask = freeAssetPath(folder ? `${folder}/Masks` : 'Masks', `${base}Layer${layers.length + 1}`, 'image', taken);
+    const size = 1024;
+    const rgba = new Uint8Array(size * size * 4);
+    for (let i = 3; i < rgba.length; i += 4) rgba[i] = 255;
+    await this.client.saveImage(mask, await encodePng(rgba, size, size));
+    this.editInspected(['layers'], [...layers, {
+      blend: { $type: 'computeTextureScalar', texture: { texture: mask, encoding: 'png', srgb: false }, channel: 'r' },
+      diffuse: { $type: 'computeColor', value: [0.25, 0.25, 0.25, 1] },
+      metalness: { $type: 'computeFloat', value: 0 },
+      glossiness: { tree: { $type: 'computeFloat', value: 0.6 }, invert: true },
+    }]);
+    return layers.length;
+  }
+
+  /**
+   * 在视口里开始画第 layer 层的遮罩：画选中的实体上用这个材质的网格。一笔画完存 png（覆盖遮罩）。层的遮罩要是线性的 png
+   * （addPaintLayer 建的那种）。
+   */
+  async startPainting(layer: number): Promise<void> {
+    const inspected = this.inspected.value, agent = this.agent.value;
+    const entity = this.selection.value[0];
+    if (inspected?.kind !== 'material' || !agent) return;
+    if (!entity) {
+      this.notice.value = t.paintSelectEntity;
+      return;
+    }
+    const blend = ((inspected.content['layers'] as { blend?: { texture?: { texture?: string } } }[] | undefined) ?? [])[layer]?.blend;
+    const mask = blend?.texture?.texture;
+    if (!mask) {
+      this.notice.value = t.paintNoMask;
+      return;
+    }
+    // 存过还没刷新的材质先存下来：视口里的材质要有这一层
+    await this.#flushInspected();
+    await agent.beginPaint(entity, inspected.path, mask, this.paintBrush.value);
+    agent.onPaintStroke = (path, image) => {
+      void encodePng(image.rgba, image.width, image.height).then((png) => this.client.saveImage(path, png)).catch((error: unknown) => (this.notice.value = (error as Error).message));
+    };
+    this.painting.value = { layer, mask };
+    this.notice.value = '';
+  }
+
+  stopPainting(): void {
+    this.agent.value?.endPaint();
+    this.painting.value = undefined;
+  }
+
+  setPaintBrush(brush: PaintBrush): void {
+    this.paintBrush.value = brush;
+    const paint = this.agent.value?.paint;
+    if (paint) paint.brush = brush;
   }
 
   /** 打开属性面板里那个材质的节点图（还没有图时建一个只有材质输出的空图），面板显示在下面。 */
@@ -345,11 +417,18 @@ export class EditorSession implements EditableScene {
     }
     const edited = { ...now, content: withPath(now.content, path, next) as Record<string, unknown> };
     this.inspected.value = edited;
-    clearTimeout(this.#inspectedSave);
-    this.#inspectedSave = setTimeout(() => {
-      this.#inspectedSave = undefined;
-      this.client.saveAsset(edited.kind, edited.path, edited.content).catch((error: unknown) => (this.notice.value = (error as Error).message));
-    }, INSPECTED_SAVE_DELAY);
+    clearTimeout(this.#inspectedSave?.timer);
+    this.#inspectedSave = { asset: edited, timer: setTimeout(() => void this.#flushInspected(), INSPECTED_SAVE_DELAY) };
+  }
+
+  /** 属性面板里的资源还有没存的修改时马上存（开始画之前：视口里的材质要是改过的样子）。 */
+  async #flushInspected(): Promise<void> {
+    const pending = this.#inspectedSave;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.#inspectedSave = undefined;
+    const { kind, path, content } = pending.asset;
+    await this.client.saveAsset(kind, path, content).catch((error: unknown) => (this.notice.value = (error as Error).message));
   }
 
   /** 删掉一个资源；还有别的资源引用它时报错（错误里列出是谁），force 照删。 */

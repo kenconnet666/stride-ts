@@ -105,6 +105,21 @@ export class Mesh {
     return out;
   }
 
+  /** 顶点的 UV（量化的已经反量化），在模型上画贴图（rendering/paint/MeshPainter.ts）用。 */
+  uvs(): Float32Array {
+    const { vertices } = this.data;
+    const offset = vertexLayoutOffsets(this.layout).uv;
+    const view = new DataView(vertices.buffer, vertices.byteOffset, vertices.byteLength);
+    const out = new Float32Array(this.vertexCount * 2);
+    const quantized = this.layout.uv === 'unorm16x2';
+    const { uvOffset: o, uvScale: s } = this.dequantize;
+    for (let v = 0; v < this.vertexCount; v++) {
+      const at = v * this.vertexStride + offset;
+      for (let k = 0; k < 2; k++) out[v * 2 + k] = quantized ? o[k]! + (view.getUint16(at + k * 2, true) / 65535) * s[k]! : view.getFloat32(at + k * 4, true);
+    }
+    return out;
+  }
+
   /** @internal Model 组件里存的 id 对应的网格。 */
   static byId(id: number): Mesh | undefined {
     return meshes.get(id);

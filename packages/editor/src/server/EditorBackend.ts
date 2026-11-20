@@ -348,6 +348,11 @@ export class EditorBackend {
       if (!name) throw new HttpError(400, 'name (the dropped file name) is required');
       return this.importFile(folder, name, await readBytes(request));
     }
+    if (route === 'PUT /image') {
+      const assetPath = url.searchParams.get('path');
+      if (!assetPath) throw new HttpError(400, 'path (the content path of the image, without extension) is required');
+      return this.saveImage(assetPath, await readBytes(request));
+    }
     if (route === 'POST /export') {
       const name = url.searchParams.get('name');
       if (!name) throw new HttpError(400, 'name (the file name under exports/) is required');
@@ -361,6 +366,20 @@ export class EditorBackend {
       return this.saveAsset(kind as AssetKind, assetPath, await readJson(request), { create: url.searchParams.get('create') === '1' });
     }
     throw new HttpError(404, `no route ${route}`);
+  }
+
+  /**
+   * 写一张 png 图片（建新的或者覆盖）：在模型上画贴图时每一笔画完存遮罩。内容要是 png（看文件头）。返回图片资源的记录。
+   */
+  async saveImage(assetPath: string, bytes: Uint8Array): Promise<AssetRecord> {
+    checkContentPath(assetPath);
+    if (!(bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)) throw new HttpError(400, `${assetPath}: the body is not a PNG file`);
+    return this.#enqueue(async () => {
+      const file = path.join(this.project.contentDir, assetPath + TEXTURE_EXTENSIONS.png);
+      await writeAtomically(file, bytes);
+      await this.#refresh([this.#relative(file)]);
+      return this.database.get('image', assetPath)!;
+    });
   }
 
   /**

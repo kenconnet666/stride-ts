@@ -369,6 +369,8 @@ export class ForwardRenderer {
 
     renderSystem.collect(views);
     this.#gatherLighting(context);
+    // 光照变了（太阳转了、落山了）：只拍一次的探针重拍
+    probes.watchLighting(renderSystem.lighting);
     renderSystem.lighting.shadow = undefined;
     renderSystem.lighting.shadowAtlas = undefined;
     let shadowViews: readonly RenderView[] = [];

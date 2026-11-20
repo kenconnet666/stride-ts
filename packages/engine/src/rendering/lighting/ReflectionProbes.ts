@@ -5,8 +5,8 @@
  * - 拍：每帧最多拍一个面（不卡顿），用前向渲染器画进 capture（6 层的 2D 数组）的那一层；视图不用方向光的阴影（级联是按主画面
  *   算的）。右手系的相机拍出来的画面和 WebGPU 立方体贴图的面左右相反，六个面齐了以后翻正画进 radiance、逐级缩小出 mip，再用
  *   CubemapPrefilter 预滤波进 cubes（立方体数组，每个探针占一个立方体）。拍的画面里照样有别的探针的反射，几次以后就是多次反射。
- * - 什么时候拍：refresh 是 once 的在加进来、挪了、改了设置、或者调 refresh() 以后拍一次；everyFrame 的拍完一轮接着拍。没拍完的
- *   探针着色时不用。
+ * - 什么时候拍：refresh 是 once 的在加进来、挪了、改了设置、光照变了（watchLighting：太阳转了、落山了）或者调 refresh() 以后
+ *   拍一次；everyFrame 的拍完一轮接着拍。第一次没拍完的探针着色时不用，重拍的时候接着用旧的。
  * - 着色用的表（buffer）：拍好的探针按盒子的体积从小到大排（小的盖住大的），每个四个 vec4（见 PROBE_FLOATS）。
  * - 立方体数组按探针数取 2 的幂（最多 MAX_REFLECTION_PROBES），不够了换大的、全部重拍。
  */
@@ -17,7 +17,7 @@ import { Transform } from '../../engine/transform';
 import { ReflectionProbe } from '../components';
 import { FULLSCREEN_VERTEX } from '../wgsl';
 import type { GpuResources } from '../../graphics/GpuResources';
-import { RenderView, type RenderContext } from '../RenderSystem';
+import { RenderView, type Lighting, type RenderContext } from '../RenderSystem';
 
 /** 同时在用的探针最多几个（再多的按体积小的优先，其余的不用）。 */
 export const MAX_REFLECTION_PROBES = 16;
@@ -88,6 +88,8 @@ export class ReflectionProbes {
   count = 0;
   /** 绑定的贴图或缓冲换了就加一（MeshRenderFeature 据此重建绑定组）。 */
   generation = 0;
+  /** 上一次看到的光照的签名（取整过的），见 watchLighting。 */
+  #lightingKey = '';
 
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
@@ -155,9 +157,34 @@ export class ReflectionProbes {
     return this.#buffer;
   }
 
-  /** 所有探针（refresh 是 once 的）下一轮重拍：场景里的东西挪了、灯变了以后调。 */
+  /** 所有探针（refresh 是 once 的）下一轮重拍：场景里的东西挪了以后调。重拍完之前着色接着用旧的。 */
   refresh(): void {
     for (const state of this.#states.values()) state.nextFace = 0;
+  }
+
+  /**
+   * 光照变了就重拍（前向渲染器每帧收集完光照以后调）：方向光转了约 3°、亮度变了约一成，环境光变了，天空盒光换了。比较的是
+   * 取整以后的签名，所以日夜循环时太阳一直在动，探针是隔一会儿重拍一轮（一帧一个面），不是每帧；光照不动就什么都不做。
+   * 点光、聚光的变化不看（数量多、常常在动），要的话调 refresh() 或者把探针设成 everyFrame。
+   */
+  watchLighting(lighting: Lighting): void {
+    if (!this.enabled || this.#states.size === 0) {
+      this.#lightingKey = '';
+      return;
+    }
+    const level = (value: number) => Math.round(Math.log(Math.max(value, 1e-4)) * 10);
+    const key = JSON.stringify([
+      lighting.directionals.slice(0, lighting.directionalCount).map(({ direction, color }) => {
+        const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
+        return [Math.round((direction.x / length) * 20), Math.round((direction.y / length) * 20), Math.round((direction.z / length) * 20), level(color.r), level(color.g), level(color.b)];
+      }),
+      [level(lighting.ambient.r), level(lighting.ambient.g), level(lighting.ambient.b)],
+      lighting.skybox ? [lighting.skybox.skybox.name, level(lighting.skybox.intensity)] : null,
+    ]);
+    if (key === this.#lightingKey) return;
+    // 第一次（刚有探针）只记下：探针本来就要拍
+    if (this.#lightingKey !== '') this.refresh();
+    this.#lightingKey = key;
   }
 
   /**

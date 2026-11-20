@@ -4,7 +4,9 @@ import { Game, Transform } from '../src/index';
 import { GpuResources } from '../src/graphics/GpuResources';
 import { ReflectionProbe } from '../src/rendering/components';
 import { PROBE_FLOATS, ReflectionProbes } from '../src/rendering/lighting/ReflectionProbes';
-import type { RenderContext } from '../src/rendering/RenderSystem';
+import type { EntityId } from '../src/data/prop';
+import { Color4, Vector3 } from '../src/data/vectors';
+import type { Lighting, RenderContext } from '../src/rendering/RenderSystem';
 import { fakeGpu, stubGpuGlobals } from './fakeGpu';
 
 describe('反射探针（ReflectionProbes）', () => {
@@ -79,5 +81,36 @@ describe('反射探针（ReflectionProbes）', () => {
     probes.enabled = false;
     expect(frame()).toBeUndefined();
     expect(probes.count).toBe(0);
+  });
+
+  test('光照变了就重拍只拍一次的探针：太阳转一点点不拍，转得多、落山了才拍；重拍的时候接着用旧的', () => {
+    const { game, probes, frame } = setup();
+    game.entities.create({ components: [Transform, ReflectionProbe.with({ size: [4, 4, 4] })] });
+    const sun = { direction: new Vector3(0, -1, 0), color: new Color4(5, 5, 5, 1), entity: -1 as EntityId, angle: 0.53, shadow: undefined };
+    const lighting = { directionals: [sun], directionalCount: 1, ambient: new Color4(0, 0, 0, 1), skybox: undefined } as unknown as Lighting;
+    const framesToSettle = () => {
+      let frames = 0;
+      for (;;) {
+        const view = frame();
+        probes.watchLighting(lighting);
+        if (!view) return frames;
+        frames++;
+      }
+    };
+    expect(framesToSettle()).toBe(6);
+    expect(probes.count).toBe(1);
+    // 转了不到 1°：不重拍
+    sun.direction.set(0.01, -1, 0);
+    expect(framesToSettle()).toBe(0);
+    // 转了十几度：重拍六个面，这期间探针照用
+    sun.direction.set(0.3, -1, 0);
+    probes.watchLighting(lighting);
+    expect(frame()).toBeDefined();
+    expect(probes.count).toBe(1);
+    expect(framesToSettle()).toBe(5);
+    // 太阳落山（从光照里拿掉了）：再拍一轮
+    lighting.directionalCount = 0;
+    probes.watchLighting(lighting);
+    expect(framesToSettle()).toBe(6);
   });
 });

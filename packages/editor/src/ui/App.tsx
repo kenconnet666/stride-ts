@@ -16,7 +16,9 @@ const styles = css.create({
   title: { marginInlineStart: '_sm', color: '_textMuted', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   spacer: { flex: '1' },
   body: { flex: '1', minHeight: '0' },
-  fill: { height: '100%' },
+  // 分栏里套的分栏铺满那一栏：栏里的滚动区域的内容层按内容定高，height: 100% 撑不住，长的属性面板会把整排（场景树、视口）
+  // 一起撑高、一起滚；绝对定位到滚动区域（它是 relative）上，各栏自己滚
+  fill: { position: 'absolute', inset: '0' },
 });
 
 /** 编辑器的整个界面：工具条；左边场景树，中间视口（游戏页面），右边属性面板；下面资源。 */

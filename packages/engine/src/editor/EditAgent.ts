@@ -180,12 +180,17 @@ export class EditAgent {
   }
 
   /**
-   * 场景文件里一个脚本（type 是场景里写的类型名，Stride 的带命名空间）在面板上能改的属性。按类名找 TS 脚本，同加载场景时
-   * 的规则；游戏里没有这个脚本、有几个重名的时是 undefined（面板按原样的 JSON 显示）。
+   * 场景文件里一个脚本（type 是场景里写的类型名：登记的名字，或 Stride 的带命名空间的）在面板上能改的属性。找 TS 脚本的
+   * 规则同加载场景（Registry.scriptsForType）；游戏里没有这个脚本、有几个重名的时是 undefined（面板按原样的 JSON 显示）。
    */
   scriptFields(type: string): Field[] | undefined {
-    const found = this.game.registry.scriptsNamed(type.slice(type.lastIndexOf('.') + 1));
+    const found = this.game.registry.scriptsForType(type);
     return found.length === 1 ? scriptFields(found[0]!) : undefined;
+  }
+
+  /** 游戏登记的脚本（"添加组件"列出来的），按名字排；加到实体上时 type 就写这个名字。 */
+  scriptTypes(): string[] {
+    return this.game.registry.gameScriptNames().sort();
   }
 
   /** 选中的实体里最上层的那些（祖先也被选中的不算：拖父实体时子实体跟着走，不用再各自改一遍）。 */

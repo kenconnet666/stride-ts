@@ -17,6 +17,20 @@ const styles = css.create({
 
 type ComponentKey = keyof typeof COMPONENT_FIELDS;
 
+/** "添加组件"下拉框里脚本的值的前缀（组件的值是 COMPONENT_FIELDS 的键）。 */
+const SCRIPT_OPTION = 'script:';
+
+/** 脚本的类名：登记的名字（`gameplay/player#Player`、`Gameplay.Boss`）或 Stride 的类型名的最后一段。 */
+const scriptClass = (type: string): string => type.slice(Math.max(type.lastIndexOf('.'), type.lastIndexOf('#')) + 1);
+
+/** 能加的脚本：游戏登记的、这个实体上还没有的（按类名比，导入的场景里写的是 Stride 的类型名）。重名的类显示全名。 */
+function addableScripts(registered: readonly string[], present: readonly { readonly type: string }[]): { type: string; label: string }[] {
+  const have = new Set(present.map((script) => scriptClass(script.type)));
+  const counts = new Map<string, number>();
+  for (const type of registered) counts.set(scriptClass(type), (counts.get(scriptClass(type)) ?? 0) + 1);
+  return registered.filter((type) => !have.has(scriptClass(type))).map((type) => ({ type, label: counts.get(scriptClass(type))! > 1 ? type : scriptClass(type) }));
+}
+
 /** 实例的根、成员上的说明：属于哪个预制体，这个实体上有几处覆盖。 */
 function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
   const target = session.instanceMember(id);
@@ -33,7 +47,8 @@ function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
 
 /**
  * 属性面板：选中的实体的名字、变换和每个组件的字段，照着引擎的字段描述（editor/fields.ts）画；脚本的字段问游戏页面
- * （它有脚本的类，见 EditAgent.scriptFields），游戏里没有这个脚本时按原样的 JSON 改。改一个值是对场景文档的一次 set，
+ * （它有脚本的类，见 EditAgent.scriptFields），游戏里没有这个脚本时按原样的 JSON 改。"添加组件"里也列出游戏登记的脚本
+ * （EditAgent.scriptTypes），加上的脚本 type 写登记的名字、属性先都用脚本的默认值。改一个值是对场景文档的一次 set，
  * 连着改同一个值（拖数字、打字）并成撤销的一步。
  */
 export const Inspector = _component(({ session }: { session: EditorSession }) => {
@@ -58,6 +73,13 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
   /** 加上、去掉（undefined）一个组件：单独一步撤销。 */
   const setComponent = (id: string, key: string, value: unknown) => {
     session.apply({ type: 'set', entity: id, path: ['components', key], value });
+    session.commit();
+  };
+
+  /** 加一个脚本（属性都用脚本的默认值）：加在脚本列表的最后，单独一步撤销。 */
+  const addScript = (id: string, scripts: readonly unknown[], type: string) => {
+    const script = { type, props: {} };
+    session.apply({ type: 'set', entity: id, path: scripts.length > 0 ? ['components', 'scripts', scripts.length] : ['components', 'scripts'], value: scripts.length > 0 ? script : [script] });
     session.commit();
   };
 
@@ -96,7 +118,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
           return (
             <section {...css.attrs(styles.section)}>
               <div {...css.attrs(styles.heading)} title={script.type}>
-                {script.type.slice(script.type.lastIndexOf('.') + 1)}
+                {scriptClass(script.type)}
                 <IconButton icon={X} variant="ghost" aria-label="去掉这个脚本" onClick={() => {
                   const rest = (components.scripts ?? []).filter((_, j) => j !== i);
                   setComponent(id, 'scripts', rest.length > 0 ? rest : undefined);
@@ -106,12 +128,16 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             </section>
           );
         })}
-        <select {...css.attrs(styles.add)} value="" onChange={(event: Event) => {
-          const key = (event.target as HTMLSelectElement).value as ComponentKey;
-          if (key) setComponent(id, key, structuredClone(COMPONENT_FIELDS[key].initial));
+        <select {...css.attrs(styles.add)} aria-label="添加组件" value="" onChange={(event: Event) => {
+          const value = (event.target as HTMLSelectElement).value;
+          if (value.startsWith(SCRIPT_OPTION)) addScript(id, components.scripts ?? [], value.slice(SCRIPT_OPTION.length));
+          else if (value) setComponent(id, value, structuredClone(COMPONENT_FIELDS[value as ComponentKey].initial));
         }}>
           <option value="">添加组件……</option>
           {(Object.keys(COMPONENT_FIELDS) as ComponentKey[]).filter((key) => components[key] === undefined).map((key) => <option value={key}>{COMPONENT_FIELDS[key].label}</option>)}
+          <optgroup label="脚本">
+            {addableScripts(agent.value.scriptTypes(), components.scripts ?? []).map(({ type, label }) => <option value={SCRIPT_OPTION + type} title={type}>{label}</option>)}
+          </optgroup>
         </select>
       </div>
     );

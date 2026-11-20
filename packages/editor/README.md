@@ -13,7 +13,7 @@ pnpm --filter @stride-ts/platformer dev
 `src/ui`：工具条（保存、撤销、重做、试玩），左边场景树，中间视口（游戏页面本身，嵌在同源的 iframe 里，地址带 `?debug&stride-edit`），右边属性面板，下面资源浏览器。界面由第二个 Vite 服务器提供，第一次打开编辑器时才建（见 `src/server/vite.ts`），游戏页面不经过它。
 
 - 场景文档和撤销栈在界面这边（`ui/session.ts`），游戏页面里的实体跟着它；视口里拖操纵器、属性面板里改的，都是对文档的修改。
-- 属性面板照引擎的字段描述（`editor/fields.ts`）画控件；脚本的字段问游戏页面（它有脚本的类）。
+- 属性面板照引擎的字段描述（`editor/fields.ts`）画控件；脚本的字段问游戏页面（它有脚本的类）。"添加组件"里也列出游戏登记的脚本，加上的脚本 `type` 写登记的名字（`game/player/PlayerInput#PlayerInput`）。
 - 快捷键：Ctrl+S 保存，Ctrl+Z / Ctrl+Y 撤销重做（焦点在视口里也行）；视口里 W、E、R 换操纵器，F 聚焦。
 - 复制粘贴实体：Ctrl+C 复制选中的实体（连同后代、组件），Ctrl+V 粘贴成选中的实体的兄弟（紧跟在后面），Ctrl+Shift+V 粘贴成它的子实体，Ctrl+D 复制一份放在原来的后面。新 id，拷贝之间的引用跟着换，实例还是引用加覆盖；取舍见 docs/decisions.md 的"编辑器里复制、粘贴实体"。
 - 试玩是不带 `stride-edit` 重新打开游戏页面（先保存）。

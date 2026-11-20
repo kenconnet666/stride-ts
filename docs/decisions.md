@@ -2,6 +2,14 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 编辑器里加脚本组件：type 写登记的名字
+
+属性面板的"添加组件"下面列出游戏登记的脚本（`EditAgent.scriptTypes`，`Registry.gameScriptNames`），选了加在实体的脚本列表最后，单独一步撤销；属性先都不写（用脚本的默认值，面板上淡色显示），字段照 `scriptFields` 画。
+
+- **type 写什么**：写登记的名字（`game/camera/ThirdPersonCamera#ThirdPersonCamera`，或脚本 `props('Gameplay.Boss', …)` 给的显式名字），不写 Stride 那种带命名空间的类型名（游戏里没有命名空间这回事）。找脚本的规则统一成 `Registry.scriptsForType`：整个 type 是登记的名字就是它，否则按最后一段的类名找（导入的 Stride 场景）。加载场景（`SceneScriptBinder`）和面板（`EditAgent.scriptFields`）都用它。原来只按类名找，显式名字带点的脚本（`Gameplay.Boss`）按最后一段 `Boss` 找不到，也一并修了。
+- **列哪些**：只列游戏的模块里的（`registerModules` 登记的）；引擎自己 `register` 的脚本（UI、粒子、声音的发射器和听者、导航）是场景组件的实现，场景文件里是专门的组件，不列。实体上已经有的脚本（按类名比）不再列：同一种脚本挂两个在 Stride 里能做，但实例的覆盖按类型名指脚本，挂两个就分不清；要的时候再说。
+- 预制体实例上加脚本记成实例的覆盖（整个脚本列表，`toDocumentEdit` 原有的规则）。
+
 ## 2026-11-20 点选认粒子和放在 3D 里的 UI；全屏的 UI 不参加点选
 
 路线图遗留的小项"粒子、场景里的 UI 的点选"（`game.pick`、`stride pick`、编辑器的视口选物体都走 `ScenePicker`）。
@@ -11,6 +19,7 @@
 - **数据不互相盖**：点选和主画面在同一帧里录命令，`queue.writeBuffer` 都在提交之前生效，共用缓冲的话后写的会盖掉主画面的数据。所以粒子用另一个 `ParticleRenderer` 实例，UI 每个组件另有一个点选用的 `SpriteBatch`（都是第一次点选时才建）。考虑过在 CPU 上拿射线和 UI 平面求交：要再拿到那个像素的深度才能和场景比远近，也做不到"透明的地方点不到"，不做。
 - **全屏的 UI 不参加点选**：`game.pick` 和编辑器点到全屏 UI 时，返回的是它后面场景里的东西。理由：全屏 UI 不在场景里，不随相机走，盖满整个画面；点它的元素是 UI 自己的输入处理（`UIPicking`、`elementUnderMouseCursor`，UI 占着的输入脚本看不到）。编辑器的视口里它要是能点中，透过 HUD 就选不到场景里的东西了；要选 UI 的实体在场景树里点，编辑 UI 的元素以后是 UI 页面编辑器的事（Stride 也是单独的 UI 编辑器）。
 - 实测（ui-element-link 的倾斜场景、particles-sample，无头 Chrome）：点 3D UI 的面板、按钮返回 UI 的实体，按钮前面的球、跟着的骑士、烟各自返回自己的实体，UI 页面中间透明的地方点空；全屏场景里点按钮返回它后面的球。
+
 ## 2026-11-20 编辑器里复制、粘贴实体：粘贴成兄弟，引用跟着拷贝走
 
 场景树、视口里 Ctrl+C / Ctrl+V / Ctrl+D（工具条上也有），实现在引擎的 `editor/copyEntities.ts`，剪贴板在界面的会话里。

@@ -282,6 +282,8 @@ docs/roadmap.md 的"进度"只留结论；这里是已完成各项的过程记�
 
 复制、粘贴实体（2026-11-20，p3-editor 分支，无头 Chrome 1400x900 上的 TPP 编辑器，页面里发 Ctrl+键）：Ctrl+D 复制 Wall_South 下的 Wall0x2x5Window (3)（带一个预制体实例子实体），文档 278 → 280 个实体，复制的排在原来的后面，实例还是引用（`prefab.path`），游戏页面里的实体 294 → 296；复制一个墙的实例，Ctrl+Shift+V 粘贴成刚复制的那个的子实体，再 Ctrl+V 粘贴成兄弟紧跟在后面；撤销、重做各一步；焦点在输入框里时 Ctrl+V 不粘贴实体。粘贴出来的实体选中了但场景树没展开到它，加了"选中变了就展开祖先"。TPP 的预制体都只有一个实体（没有成员），拷成员、粘贴到成员下面报错只在单测里测。验证时没保存（内容目录联接着主检出）。
 
+加脚本组件（同一天，同样在 TPP 的编辑器里）：Wall_North 上从"添加组件"选 ThirdPersonCamera，场景文档里多了 `{ type: 'game/camera/ThirdPersonCamera#ThirdPersonCamera', props: {} }`，面板照脚本的 9 个属性画（没写的淡色显示默认值），改 defaultDistance 写进 props；墙的实例上加 PlayerInput 记成实例 `prefab.set` 里整个脚本列表的覆盖，Ctrl+Z 撤回。第一版的列表里混着引擎自己登记的 AudioEmitterComponent、UIComponent 这些（场景组件的实现），改成只列游戏模块里的。看截图时发现属性面板一长，场景树、视口跟着整排一起滚（分栏里套的分栏按内容定高），套着的分栏改成绝对定位铺满那一栏，各栏自己滚。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

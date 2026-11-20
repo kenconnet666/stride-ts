@@ -26,6 +26,8 @@ export interface ParticleModuleExport {
 
 export class Registry {
   readonly #byName = new Map<string, Registered>();
+  /** 游戏的模块里登记的名字（registerModules、update）；引擎自己的场景组件（register）不在里面。 */
+  readonly #fromModules = new Set<string>();
   /** 粒子模块：导出名首字母小写（同场景文件里的 $type）→ 类。 */
   readonly #particleModules = new Map<string, ParticleModuleExport>();
   /** 着色器类：导出名（同 Stride 的 MixinReference）→ WGSL。 */
@@ -39,7 +41,10 @@ export class Registry {
    * modules：路径 → 模块命名空间对象。
    */
   registerModules(modules: Readonly<Record<string, unknown>>): void {
-    for (const [name, value] of this.#named(modules)) this.#add(name, value);
+    for (const [name, value] of this.#named(modules)) {
+      this.#add(name, value);
+      this.#fromModules.add(name);
+    }
     this.#registerParticleModules(modules);
   }
 
@@ -54,6 +59,7 @@ export class Registry {
     for (const [name, next] of this.#named(modules)) {
       const previous = this.#byName.get(name);
       this.#byName.set(name, next);
+      this.#fromModules.add(name);
       if (previous === undefined || previous === next) continue;
       if (kindOf(previous) !== kindOf(next)) throw new Error(`hot update: '${name}' changed from a ${kindOf(previous)} to a ${kindOf(next)}; reload the page`);
       changes.push({ name, previous, next });
@@ -101,6 +107,24 @@ export class Registry {
         this.#particleModules.set(exportName.charAt(0).toLowerCase() + exportName.slice(1), value as ParticleModuleExport);
       }
     }
+  }
+
+  /**
+   * 场景文件里脚本的 type 指的脚本：登记的名字（编辑器加的脚本这样写），或者 Stride 的带命名空间的类型名（按最后一段的
+   * 类名找，导入的场景这样写）。多于一个是重名。
+   */
+  scriptsForType(type: string): ScriptConstructor[] {
+    const exact = this.#byName.get(type);
+    if (exact !== undefined && kindOf(exact) === 'script') return [exact as ScriptConstructor];
+    return this.scriptsNamed(type.slice(type.lastIndexOf('.') + 1));
+  }
+
+  /**
+   * 游戏的模块里的脚本的名字（编辑器"添加组件"列的）。引擎自己登记的脚本（UI、粒子、声音这些场景组件的实现）不算：
+   * 场景文件里它们是专门的组件。
+   */
+  gameScriptNames(): string[] {
+    return [...this.#fromModules].filter((name) => kindOf(this.#byName.get(name)!) === 'script');
   }
 
   /** 名字是 name、或 `路径#name` 的脚本（Stride 场景里的脚本按类名找翻译过来的 TS 脚本）。 */

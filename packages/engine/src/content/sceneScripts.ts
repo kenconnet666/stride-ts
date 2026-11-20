@@ -97,7 +97,7 @@ export class SceneScriptBinder {
   #resolve(type: string, where: string): ScriptConstructor | undefined {
     if (Object.hasOwn(this.#explicit, type)) return this.#explicit[type] ?? undefined;
     const className = type.slice(type.lastIndexOf('.') + 1);
-    const found = this.#registry.scriptsNamed(className);
+    const found = this.#registry.scriptsForType(type);
     if (found.length === 1) return found[0];
     if (found.length > 1) throw new Error(`${where}: several scripts are named ${className}; map '${type}' in loadScene's scripts option`);
     this.#warnOnce(type, `${where}: no TS script named ${className} for ${type}; skipped (export one, or map it in loadScene's scripts option)`);

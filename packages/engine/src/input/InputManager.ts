@@ -48,8 +48,10 @@ const STANDARD_BUTTONS: readonly number[] = [
 ];
 
 export interface GamePadState {
-  /** GamePadButton 的位或。 */
+  /** 按着的键，GamePadButton 的位或。 */
   buttons: number;
+  /** 这一帧刚按下的键（上一帧没按着）。 */
+  pressedButtons: number;
   /** 左摇杆，x 向右、y 向上，-1..1。 */
   readonly leftThumb: [number, number];
   readonly rightThumb: [number, number];
@@ -360,6 +362,11 @@ export class InputManager {
     return this.gamePads.some((pad) => (pad.buttons & button) === button);
   }
 
+  /** 这一帧至少一个手柄刚按下这个键。 */
+  isGamePadButtonPressedAny(button: number): boolean {
+    return this.gamePads.some((pad) => (pad.pressedButtons & button) === button);
+  }
+
   /** 超过死区的摇杆取平均（Stride 模板的 InputManagerExtensions.GetLeftThumbAny、GetRightThumbAny）。 */
   thumbAny(thumb: 'leftThumb' | 'rightThumb', deadZone: number): [number, number] {
     let count = 0, x = 0, y = 0;
@@ -404,11 +411,13 @@ export class InputManager {
     let count = 0;
     for (const pad of pads) {
       if (!pad || !pad.connected) continue;
-      const state = (this.gamePads[count++] ??= { buttons: 0, leftThumb: [0, 0], rightThumb: [0, 0], leftTrigger: 0, rightTrigger: 0 });
+      const state = (this.gamePads[count++] ??= { buttons: 0, pressedButtons: 0, leftThumb: [0, 0], rightThumb: [0, 0], leftTrigger: 0, rightTrigger: 0 });
+      const previous = state.buttons;
       state.buttons = 0;
       pad.buttons.forEach((button, i) => {
         if (button.pressed) state.buttons |= STANDARD_BUTTONS[i] ?? 0;
       });
+      state.pressedButtons = state.buttons & ~previous;
       // 浏览器的摇杆 y 向下为正，Stride 向上为正
       state.leftThumb[0] = pad.axes[0] ?? 0;
       state.leftThumb[1] = -(pad.axes[1] ?? 0);

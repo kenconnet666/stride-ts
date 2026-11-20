@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { InputCapturePriority, InputManager, keyCode, VirtualButton, VirtualButtonBinding, VirtualButtonConfig } from '../src/index';
+import { GamePadButton, InputCapturePriority, InputManager, keyCode, VirtualButton, VirtualButtonBinding, VirtualButtonConfig } from '../src/index';
 
 describe('按键名', () => {
   it('Stride 的 Keys 名字换成 KeyboardEvent.code，已经是 code 的原样返回', () => {
@@ -199,7 +199,7 @@ describe('虚拟按钮（Stride 的 VirtualButtonConfigSet）', () => {
       new VirtualButtonBinding('Fire', VirtualButton.mouse('left')),
     ));
     input.update();
-    input.gamePads[0] = { buttons: 0, leftThumb: [0, 0], rightThumb: [0, 0], leftTrigger: 0.25, rightTrigger: 0 };
+    input.gamePads[0] = { buttons: 0, pressedButtons: 0, leftThumb: [0, 0], rightThumb: [0, 0], leftTrigger: 0.25, rightTrigger: 0 };
     expect(input.getVirtualButton(0, 'Forward')).toBe(0.25);
     win.dispatchEvent(Object.assign(new Event('keydown'), { code: 'KeyW', key: 'w', repeat: false }));
     input.update();
@@ -209,6 +209,28 @@ describe('虚拟按钮（Stride 的 VirtualButtonConfigSet）', () => {
     win.dispatchEvent(Object.assign(new Event('mousemove'), { clientX: 100, clientY: 50, movementX: 0, movementY: 0 }));
     input.update();
     expect(input.absoluteMousePosition).toEqual([100, 50]);
+    input.destroy();
+  });
+});
+
+describe('手柄', () => {
+  it('按着的键和这一帧刚按下的键（A 是标准布局的第 0 个键）', () => {
+    const canvas = Object.assign(new EventTarget(), { clientWidth: 200, clientHeight: 100, getBoundingClientRect: () => ({ left: 0, top: 0, width: 200, height: 100 }) });
+    (globalThis as { window?: EventTarget }).window = new EventTarget();
+    (globalThis as { document?: object }).document = { pointerLockElement: null };
+    const buttons = Array.from({ length: 16 }, () => ({ pressed: false, value: 0 }));
+    const pad = { connected: true, buttons, axes: [0, 0, 0, 0] };
+    const navigator = { getGamepads: () => [pad] };
+    Object.defineProperty(globalThis, 'navigator', { value: navigator, configurable: true });
+    const input = new InputManager(canvas as unknown as HTMLCanvasElement);
+    const a = () => [input.isGamePadButtonDownAny(GamePadButton.a), input.isGamePadButtonPressedAny(GamePadButton.a)];
+    input.update();
+    expect(a()).toEqual([false, false]);
+    buttons[0]!.pressed = true;
+    input.update();
+    expect(a()).toEqual([true, true]);
+    input.update();
+    expect(a()).toEqual([true, false]);
     input.destroy();
   });
 });

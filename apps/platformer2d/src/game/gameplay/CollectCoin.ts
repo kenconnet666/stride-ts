@@ -1,5 +1,5 @@
 // Platformer2D 的 CollectCoin：金币的碰撞体是 Trigger，玩家（带 PlayerController 的实体）碰到后隐藏精灵、放音效，3 秒后移出场景。
-import { AsyncScript, prop, Sprite, TriggerHandler, type SoundInstance } from '@stride-ts/engine';
+import { AsyncScript, prop, Sprite, type SoundInstance } from '@stride-ts/engine';
 import { PlayerController } from '../player/PlayerController';
 
 export class CollectCoin extends AsyncScript.props({
@@ -10,8 +10,7 @@ export class CollectCoin extends AsyncScript.props({
   sfxInstance: SoundInstance | undefined;
 
   override async execute(): Promise<void> {
-    const trigger = this.game.simulation!.contactHandler(this.staticColliderComponent);
-    if (!(trigger instanceof TriggerHandler)) throw new Error(`entity '${this.entity.name}' has no Trigger contact handler`);
+    const trigger = this.game.simulation!.trigger(this.staticColliderComponent);
     let collected = false;
     this.disposables.use(trigger.onEnter(({ other }) => {
       collected ||= this.game.entities.entity(other).get(PlayerController) !== undefined;

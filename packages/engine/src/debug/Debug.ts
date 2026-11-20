@@ -91,6 +91,13 @@ export class Debug {
     return { [Symbol.dispose]: () => this.#commands.delete(name) };
   }
 
+  /** 在页面里调一条命令（同 `stride call`）：冒烟脚本的 eval、页面里的代码用。没有这条命令时报错。 */
+  run(name: string, args: Readonly<Record<string, unknown>> = {}): unknown {
+    const entry = this.#commands.get(name);
+    if (!entry) throw new Error(`unknown command '${name}'; 'commands' lists them`);
+    return entry.handler(args);
+  }
+
   commands(): CommandInfo[] {
     return [...this.#commands].map(([name, { description }]) => ({ name, description })).sort((a, b) => a.name.localeCompare(b.name));
   }
@@ -189,10 +196,8 @@ export class Debug {
   }
 
   async #call({ id, command, args }: CallMessage): Promise<void> {
-    const entry = this.#commands.get(command);
     try {
-      if (!entry) throw new Error(`unknown command '${command}'; 'commands' lists them`);
-      this.#send({ type: 'result', id, ok: true, value: describe(await entry.handler(args)) });
+      this.#send({ type: 'result', id, ok: true, value: describe(await this.run(command, args)) });
     } catch (error) {
       this.#send({ type: 'result', id, ok: false, error: error instanceof Error ? (error.stack ?? error.message) : String(error) });
     }

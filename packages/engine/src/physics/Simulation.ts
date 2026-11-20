@@ -331,6 +331,14 @@ export class Simulation {
     return this.#handlers.get(this.#bodyOf(entity));
   }
 
+  /** 触发器（Static、Body 的 trigger 开着的碰撞体）的 TriggerHandler；不是触发器时报错。 */
+  trigger(entity: Entity | EntityId): TriggerHandler {
+    const handler = this.contactHandler(entity);
+    if (handler instanceof TriggerHandler) return handler;
+    const name = typeof entity === 'number' ? this.#entities.entity(entity).name : entity.name;
+    throw new Error(`entity '${name}' is not a trigger (turn on trigger on its Static or Body)`);
+  }
+
   /**
    * 设碰撞体的接触处理器（Stride 的 ContactEventHandler），undefined 取消。handler.noContactResponse 为真时物体变成只检测、
    * 不挡东西。物体还没建时先建好。

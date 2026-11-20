@@ -22,8 +22,6 @@ export class PlayerInput extends SyncScript.props({
   keysDown: prop.list(prop.string()).default(['KeyS', 'ArrowDown']),
   keysJump: prop.list(prop.string()).default(['Space']),
 }) {
-  #jumpButtonDown = false;
-
   override update(time: GameTime): void {
     const input = this.game.input;
 
@@ -59,11 +57,7 @@ export class PlayerInput extends SyncScript.props({
     CameraDirectionEventKey.broadcast(camera);
 
     // 起跳：手柄 A 刚按下，或者跳跃键刚按下
-    const jumpDown = input.isGamePadButtonDownAny(GamePadButton.a);
-    let didJump = !this.#jumpButtonDown && jumpDown;
-    this.#jumpButtonDown = jumpDown;
-    didJump ||= this.keysJump.some((key) => input.isKeyPressed(key));
-    JumpEventKey.broadcast(didJump);
+    JumpEventKey.broadcast(input.isGamePadButtonPressedAny(GamePadButton.a) || this.keysJump.some((key) => input.isKeyPressed(key)));
   }
 
   /** TPP 的 Utils.LogicDirectionToWorldDirection：前 = up × 相机的右方，右 = 前 × up，结果归一化。 */

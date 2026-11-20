@@ -1,15 +1,17 @@
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { decodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GameSettingsFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { fontNameCandidates, slugGlyph, StrideImporter, StrideProject } from '../src/index';
+import { fontNameCandidates, importFontFile, isFontFile, slugGlyph, StrideImporter, StrideProject } from '../src/index';
 
 const exists = (file: string) => access(file).then(() => true, () => false);
 const ARIAL = 'C:/Windows/Fonts/arial.ttf';
-// Stride 仓库里 SpriteFonts 样例带的 CFF 字体（有三次曲线）
-const CFF_FONT = path.resolve(import.meta.dirname, '../../../../../IdeaProjects/stride/samples/Graphics/SpriteFonts/Resources/Fonts/SourceHanSans-Light.otf');
+// Stride 仓库（~/IdeaProjects/stride，没有时跳过）里 SpriteFonts 样例带的 CFF 字体（有三次曲线）
+const CFF_FONT = path.join(homedir(), 'IdeaProjects/stride/samples/Graphics/SpriteFonts/Resources/Fonts/SourceHanSans-Light.otf');
+// CSharpBeginner 样例带的 Open Sans（字形不多，整套导入一两秒）
+const OPEN_SANS = path.join(homedir(), 'IdeaProjects/stride/samples/Tutorials/CSharpBeginner/CSharpBeginner/Resources/UI/OpenSans/OpenSans-Regular.ttf');
 
 describe('slugGlyph', () => {
   // 边长 1 的正方形（逆时针）：四条直线，直线写成控制点等于终点的二次曲线
@@ -166,6 +168,19 @@ Defaults:
     });
     expect(await exists(path.join(out, 'Demo/Font.font.json'))).toBe(true);
   });
+
+  test('编辑器导入字体文件：运行时字体，字体里的字符全要、按码位分块，路径按文件夹和文件名', async (context) => {
+    if (!(await exists(OPEN_SANS))) return context.skip();
+    expect([isFontFile('a.TTF'), isFontFile('a.otf'), isFontFile('a.woff')]).toEqual([true, true, false]);
+    const { font, files } = await importFontFile(tools, await readFile(OPEN_SANS), { fileName: 'Open Sans-Regular.ttf', folder: 'UI/Fonts' });
+    expect(font).toBe('UI/Fonts/OpenSans-Regular');
+    const main = files.find((file) => file.path === `${font}.font.json`)!;
+    const file = JSON.parse(main.content as string) as FontFile;
+    expect(file).toMatchObject({ name: 'OpenSans-Regular', kind: 'dynamic', size: 24, defaultCharacter: 32 });
+    // 拉丁、希腊、西里尔字母都在，每块一个文件
+    expect(file.blocks).toEqual(expect.arrayContaining([0, 1, 3, 4]));
+    expect(files.filter((f) => f.path.endsWith('.glyphs')).map((f) => f.path).sort()).toEqual(file.blocks.map((b) => `${font}.${b}.glyphs`).sort());
+  }, 30_000);
 
   test('CFF 字体（Source Han Sans）的三次曲线拆成首尾相连的二次曲线', async (context) => {
     if (!(await exists(CFF_FONT))) return context.skip();

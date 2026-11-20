@@ -5,8 +5,7 @@ const YELLOW = 'CSharpIntermediate/Materials/Yellow';
 
 export class AsyncCollisionTriggerDemo extends AsyncScript {
   override async execute(): Promise<void> {
-    const trigger = this.game.simulation!.contactHandler(this.entity);
-    if (!(trigger instanceof TriggerHandler)) throw new Error(`entity '${this.entity.name}' has no Trigger contact handler`);
+    const trigger = this.game.simulation!.trigger(this.entity);
     const yellow = await this.game.content.loadMaterial(YELLOW);
     for (;;) {
       const ball = await this.#next(trigger.onEnter.bind(trigger), () => true);

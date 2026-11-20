@@ -1,14 +1,13 @@
 // CSharpIntermediate 的 CollisionTriggerDemo：实体的静态碰撞体是触发器（Trigger 处理器），有物体进出时记下来，
 // 把现在在里面的物体和最近一次进出打印出来。
-import { SyncScript, TriggerHandler, type EntityId } from '@stride-ts/engine';
+import { SyncScript, type EntityId } from '@stride-ts/engine';
 
 export class CollisionTriggerDemo extends SyncScript {
   #collisionStatus = '';
   readonly #inside = new Set<EntityId>();
 
   override start(): void {
-    const trigger = this.game.simulation!.contactHandler(this.entity);
-    if (!(trigger instanceof TriggerHandler)) throw new Error(`entity '${this.entity.name}' has no Trigger contact handler`);
+    const trigger = this.game.simulation!.trigger(this.entity);
     const name = (entity: EntityId) => this.game.entities.entity(entity).name;
     // 脚本移除时一起取消（Stride 在 Cancel 里 -= 掉）
     this.disposables.use(trigger.onEnter(({ other }) => {

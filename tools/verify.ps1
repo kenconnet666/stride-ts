@@ -25,6 +25,10 @@ $dirty = git -C $main status --porcelain --untracked-files=no
 if ($Ref -eq 'HEAD' -and $dirty) { Write-Warning "uncommitted changes in $main are not verified (commit them first)" }
 
 if (Test-Path $Path) {
+    # 工作树被拿去开发了（在分支上、或有没提交的改动）时不动它：下面的强制切换和清理会把那些工作丢掉
+    $branch = git -C $Path symbolic-ref --quiet --short HEAD 2>$null
+    $changes = git -C $Path status --porcelain --untracked-files=no
+    if ($branch -or $changes) { throw "$Path is in use for development (branch '$branch'$(if ($changes) { ', uncommitted changes' })); run tools/regress.ps1 there instead, or use the other slot" }
     # 工作树只用来验证，丢掉上次留下的改动
     git -C $Path checkout --quiet --force --detach $commit
     git -C $Path clean --quiet -fd

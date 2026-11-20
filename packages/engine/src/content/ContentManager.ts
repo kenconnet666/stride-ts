@@ -35,7 +35,7 @@ import { ColorTreeCompiler } from '../rendering/mesh/colorTree';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { uiAssetPaths } from './references';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeModel, decodeSkeleton, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -233,7 +233,7 @@ export class ContentManager {
 
   loadModel(path: string): Promise<LoadedModel> {
     return this.#once(path + EXTENSIONS.model, async (url) => {
-      const data = decodeModel(await this.#read(url), url.href);
+      const data = readModelFile(await this.#read(url), url.href);
       const [meshes, materials, skeleton] = await Promise.all([
         this.#decodeMeshes(data.meshes, url),
         Promise.all(data.materials.map((material) => (material === null ? null : this.loadMaterial(material)))),

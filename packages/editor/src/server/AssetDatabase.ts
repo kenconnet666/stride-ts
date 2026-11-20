@@ -7,7 +7,7 @@
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { decodeAnimation, decodeModel, EXTENSIONS, TEXTURE_EXTENSIONS, type UIFile } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type UIFile } from '@stride-ts/engine/content-format';
 import { assetReferences, type AssetKind, type AssetReference } from '@stride-ts/engine/content-references';
 import type { AssetChanges, AssetRecord } from '../protocol.ts';
 
@@ -190,7 +190,9 @@ export class AssetDatabase {
     try {
       if (entry.kind === 'model') {
         const bytes = await readFile(absolute);
-        entry.references = assetReferences('model', entry.path, decodeModel(ownBuffer(bytes), absolute));
+        // 两种写法：JSON 的（程序生成的形状）只有材质槽，二进制的材质、骨架在文件头里
+        const model = isProceduralModel(bytes) ? { materials: parseProceduralModel(bytes, absolute).materials ?? [] } : decodeModel(ownBuffer(bytes), absolute);
+        entry.references = assetReferences('model', entry.path, model);
       } else if (entry.kind === 'animation') {
         entry.references = assetReferences('animation', entry.path, decodeAnimation(ownBuffer(await readFile(absolute)), absolute));
       } else if (entry.main!.endsWith('.json')) {

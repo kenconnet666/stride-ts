@@ -4,7 +4,7 @@
  * 只改那几处；JSON 照导入器的格式（缩进 1 格）写回。
  */
 import { readFile } from 'node:fs/promises';
-import { decodeAnimation, decodeModel, encodeAnimation, encodeModel } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, isProceduralModel, parseProceduralModel } from '@stride-ts/engine/content-format';
 import { assetReferenceSlots, type AssetKind } from '@stride-ts/engine/content-references';
 import { assetKey, ownBuffer } from './AssetDatabase.ts';
 
@@ -18,7 +18,14 @@ export type PathChanges = ReadonlyMap<string, string>;
 export async function rewriteReferences(kind: AssetKind, file: string, changes: PathChanges): Promise<Uint8Array | string | undefined> {
   // 二进制的两种：引用在文件头里，解开、改、再编回去（材质表拷一份，解出来的是只读的类型）
   if (kind === 'model') {
-    const model = decodeModel(ownBuffer(await readFile(file)), file);
+    const bytes = await readFile(file);
+    // JSON 写的（程序生成的形状）：材质槽就在 JSON 里，照 JSON 改
+    if (isProceduralModel(bytes)) {
+      const content = { ...parseProceduralModel(bytes, file) };
+      const slots = { materials: [...(content.materials ?? [])] };
+      return apply(kind, slots, changes) ? JSON.stringify({ ...content, materials: slots.materials }, null, 1) : undefined;
+    }
+    const model = decodeModel(ownBuffer(bytes), file);
     const mutable = { ...model, materials: [...model.materials] };
     return apply(kind, mutable, changes) ? encodeModel(mutable) : undefined;
   }

@@ -140,9 +140,10 @@ fn clusterOf(position: vec4f, world: vec3f) -> i32 {
   let depth = max(dot(world - view.eye.xyz, view.clusterView.xyz), 1e-4);
   let slice = u32(clamp((log(depth) - view.clusterView.w) * view.cluster.z, 0.0, f32(CLUSTER_Z - 1u)));
   let tile = min(vec2u(position.xy * view.cluster.xy), vec2u(CLUSTER_X - 1u, CLUSTER_Y - 1u));
-  // cluster.w 是这个视图的槽 + 1；槽的簇头在缓冲的前面，一个槽 CLUSTER_HEADER_WORDS 个（第 0 个是计数器，然后每簇两个）
+  // cluster.w 是这个视图的槽 + 1；槽的簇头在缓冲的前面，一个槽 CLUSTER_HEADER_WORDS 个（第 0 个是计数器，然后每簇
+  // CLUSTER_HEADER 个：起点、光数 | 贴花数 << 16、探针数）
   let slot = u32(view.cluster.w) - 1u;
-  return i32(slot * CLUSTER_HEADER_WORDS + 1u + ((slice * CLUSTER_Y + tile.y) * CLUSTER_X + tile.x) * 2u);
+  return i32(slot * CLUSTER_HEADER_WORDS + 1u + ((slice * CLUSTER_Y + tile.y) * CLUSTER_X + tile.x) * CLUSTER_HEADER);
 }
 
 /** 这一簇的光、贴花的个数（簇头的第二个数：光数 | 贴花数 << 16）。 */
@@ -622,11 +623,21 @@ fn surfaceNormal(in: Varyings, coatPass: bool) -> vec3f {
  * 排，前面的先占：权重是到盒子的面的距离 / 过渡距离（盒子外是 0），乘还没被占的比例。视差校正：反射光线从这里出发打到盒子的
  * 内壁，用拍的位置到那一点的方向取（Lagarde 2012 的 box projection）。粗糙度 i / (级数 - 1) 在第 i 级。
  */
-fn probeSpecular(position: vec3f, r: vec3f, roughness: f32) -> vec4f {
+fn probeSpecular(position: vec3f, r: vec3f, roughness: f32, cluster: i32) -> vec4f {
   var sum = vec3f(0.0);
   var weight = 0.0;
   let maxLevel = f32(textureNumLevels(probeCubes) - 1u);
-  for (var i = 0u; i < u32(view.locals.w); i++) {
+  // 分了簇时只看这一簇的探针（在这一簇的光、贴花后面，下标从小到大：小的盒子先占）
+  let clustered = cluster >= 0;
+  var count = u32(view.locals.w);
+  var first = 0u;
+  if (clustered) {
+    let counts = clusterCounts(cluster);
+    count = clusters[u32(cluster) + 2u];
+    first = clusters[u32(cluster)] + counts.x + counts.y;
+  }
+  for (var k = 0u; k < count; k++) {
+    let i = select(k, clusters[first + k], clustered);
     let p = probes[i];
     let inside = min(position - p.boxMin.xyz, p.boxMax.xyz - position);
     let distance = min(min(inside.x, inside.y), inside.z);
@@ -1445,7 +1456,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   // 反射探针盖住的地方用它的镜面反射，盖不住的部分（1 - a）才用环境光和天空盒的
   var probe = vec4f(0.0);
   if (hasSpecular && view.locals.w > 0.0) {
-    probe = probeSpecular(in.world, reflection, sqrt(alphaR));
+    probe = probeSpecular(in.world, reflection, sqrt(alphaR), cluster);
     environment = environmentSpecular * probe.rgb * ao;
   }
   if (hasAmbient || hasSky) {

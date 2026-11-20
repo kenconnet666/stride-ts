@@ -514,14 +514,14 @@ export class ForwardRenderer {
   }
 
   /**
-   * 分簇：场景里有点光、聚光或贴花时，要着色的视图（主画面、反射探针的面、渲染目标贴图的相机）各占簇表的一槽，再把光和
-   * 贴花的包围球传上去（光按光照里的顺序，和着色器的 localLights 一致；贴花按 Decals 的顺序）。各视图的簇在它不透明的那一遍
-   * 之前算。要在 prepare 写视图常量之前定下来。
+   * 分簇：场景里有点光、聚光、贴花或反射探针时，要着色的视图（主画面、反射探针的面、渲染目标贴图的相机）各占簇表的一槽，再把
+   * 它们的包围球传上去（光按光照里的顺序，和着色器的 localLights 一致；贴花按 Decals 的顺序；探针按 ReflectionProbes 的表）。
+   * 各视图的簇在它不透明的那一遍之前算。要在 prepare 写视图常量之前定下来。
    */
   #assignClusters(views: readonly RenderView[]): void {
-    const { lighting, decals, clusters } = this.renderSystem;
+    const { lighting, decals, clusters, reflectionProbes: probes } = this.renderSystem;
     const count = lighting.localCount;
-    const clustered = this.clustering && count + decals.count > 0;
+    const clustered = this.clustering && count + decals.count + probes.count > 0;
     const tables = clustered ? clusters.reserve(views.length) : 0;
     views.forEach((view, i) => (view.clusterSlot = i < tables ? i : -1));
     if (!clustered) return;
@@ -530,7 +530,7 @@ export class ForwardRenderer {
       const { position, radius } = lighting.locals[i]!;
       this.#lightSpheres.set([position.x, position.y, position.z, radius], i * 4);
     }
-    clusters.upload(this.#lightSpheres, count, decals.bounds, decals.count);
+    clusters.upload(this.#lightSpheres, count, decals.bounds, decals.count, probes.bounds, probes.count);
   }
 
   /**

@@ -1,14 +1,14 @@
 /**
  * 分簇（Olsson 2012 "Clustered Deferred and Forward Shading"，Doom 2016 的分簇前向）：视图按屏幕分成 16x9 格、沿视线按
- * 指数分 24 层，每一簇记下和它相交的点光、聚光、贴花（按包围球）。网格着色时像素只看自己那一簇的，不再把所有的都看一遍。
+ * 指数分 24 层，每一簇记下和它相交的点光、聚光、贴花、反射探针（按包围球）。网格着色时像素只看自己那一簇的，不再把所有的都看一遍。
  *
  * - 要着色的视图（主画面、反射探针的面、渲染目标贴图的相机）各占一个槽（RenderView.clusterSlot），每个视图在它不透明的那一遍
- *   之前算一次（ForwardRenderer）。CPU 每帧把光和贴花的包围球（世界坐标的球心、半径）传上去一次，所有视图共用。
- * - 计算着色器每个线程一个簇：算簇在视图空间里的包围盒，先数和它相交的光、贴花，原子加从这个视图的索引池里拿一段，再按下标
- *   从小到大写进去（贴花的先后不变）。每簇的个数不设上限；池子放不下时这一帧截断（先保光），读回这一帧要了多少，下一帧把池子
- *   扩大（按 2 的幂）。
- * - 缓冲的布局（u32）：先是各槽的簇头，每槽 HEADER_WORDS 个（第 0 个是池子的计数器，然后每簇两个：这一簇的索引在整个缓冲里
- *   的起点、光数 | 贴花数 << 16），再是各槽的索引池，每槽 capacity 个。网格着色器绑整个缓冲。
+ *   之前算一次（ForwardRenderer）。CPU 每帧把光、贴花、反射探针的包围球（世界坐标的球心、半径）传上去一次，所有视图共用。
+ * - 计算着色器每个线程一个簇：算簇在视图空间里的包围盒，先数和它相交的光、贴花、探针，原子加从这个视图的索引池里拿一段，再按
+ *   下标从小到大写进去（贴花的先后、探针从小到大的先后不变）。每簇的个数不设上限；池子放不下时这一帧截断（先保光，再贴花），
+ *   读回这一帧要了多少，下一帧把池子扩大（按 2 的幂）。
+ * - 缓冲的布局（u32）：先是各槽的簇头，每槽 HEADER_WORDS 个（第 0 个是池子的计数器，然后每簇三个：这一簇的索引在整个缓冲里
+ *   的起点、光数 | 贴花数 << 16、探针数；索引按光、贴花、探针排），再是各槽的索引池，每槽 capacity 个。网格着色器绑整个缓冲。
  * - 层的深度：第 k 层到 near · (far / near)^((k + 1) / 24)，near、far 是视图的近、远平面。着色器按像素到相机的视线方向的
  *   距离（世界坐标和视图的前方点乘）算层：clusterParams 给的两个 vec4 放在视图常量里。
  * - 没有光和贴花时不分。点光、聚光因此不设总数的上限。
@@ -19,8 +19,10 @@ import type { RenderView } from '../RenderSystem';
 /** 簇的格子：屏幕横、竖几格，沿视线几层。 */
 export const CLUSTER_GRID = [16, 9, 24] as const;
 const CLUSTER_COUNT = CLUSTER_GRID[0] * CLUSTER_GRID[1] * CLUSTER_GRID[2];
-/** 一个槽的簇头占几个 u32：计数器加每簇两个，补到 64 的倍数（按槽绑定时偏移要对齐 256 字节）。 */
-const HEADER_WORDS = Math.ceil((1 + 2 * CLUSTER_COUNT) / 64) * 64;
+/** 每簇的簇头几个 u32：起点、光数 | 贴花数 << 16、探针数。 */
+const CLUSTER_HEADER = 3;
+/** 一个槽的簇头占几个 u32：计数器加每簇 CLUSTER_HEADER 个，补到 64 的倍数（按槽绑定时偏移要对齐 256 字节）。 */
+const HEADER_WORDS = Math.ceil((1 + CLUSTER_HEADER * CLUSTER_COUNT) / 64) * 64;
 /** 每个槽的索引池一开始的大小（平均每簇 16 个），不够时按 2 的幂变大。 */
 const INITIAL_CAPACITY = CLUSTER_COUNT * 16;
 /** 最多几个槽（视图）；再多的视图不分簇（看所有的光和贴花），第一次超出时警告。 */
@@ -62,6 +64,7 @@ const CLUSTER_X = ${CLUSTER_GRID[0]}u;
 const CLUSTER_Y = ${CLUSTER_GRID[1]}u;
 const CLUSTER_Z = ${CLUSTER_GRID[2]}u;
 const CLUSTER_HEADER_WORDS = ${HEADER_WORDS}u;
+const CLUSTER_HEADER = ${CLUSTER_HEADER}u;
 `;
 
 const BUILD_SHADER = /* wgsl */ `
@@ -71,13 +74,13 @@ struct Build {
   view: mat4x4f,
   // x：光的个数，y：贴花的个数，z：近平面的视线距离，w：远平面的
   counts: vec4f,
-  // x：这个槽的索引池在整个缓冲里的起点（u32 的下标），y：池子的大小
+  // x：这个槽的索引池在整个缓冲里的起点（u32 的下标），y：池子的大小，z：探针的个数（球排在贴花后面）
   pool: vec4u,
 };
 struct Header {
   // 这一帧要了多少个下标（截断之前），CPU 读回来定池子的大小
   requested: atomic<u32>,
-  // 每簇两个：起点、光数 | 贴花数 << 16
+  // 每簇 CLUSTER_HEADER 个：起点、光数 | 贴花数 << 16、探针数
   entries: array<u32>,
 };
 @group(0) @binding(0) var<uniform> build: Build;
@@ -131,25 +134,29 @@ fn touches(i: u32) -> bool {
     hi = max(hi, p);
   }
   let lightCount = u32(build.counts.x);
-  let total = lightCount + u32(build.counts.y);
-  // 先数，再从池子里拿一段（个数各自不超过 16 位）
+  let decalEnd = lightCount + u32(build.counts.y);
+  let total = decalEnd + build.pool.z;
+  // 先数，再从池子里拿一段（光、贴花的个数各自不超过 16 位）
   var lights = 0u;
   var decals = 0u;
+  var probes = 0u;
   for (var i = 0u; i < total; i++) {
     if (touches(i)) {
-      if (i < lightCount) { lights++; } else { decals++; }
+      if (i < lightCount) { lights++; } else if (i < decalEnd) { decals++; } else { probes++; }
     }
   }
   lights = min(lights, 0xffffu);
   decals = min(decals, 0xffffu);
-  let offset = atomicAdd(&header.requested, lights + decals);
-  // 池子不够时截断：先保光
+  let offset = atomicAdd(&header.requested, lights + decals + probes);
+  // 池子不够时截断：先保光，再贴花
   let room = select(0u, build.pool.y - offset, offset < build.pool.y);
   let keptLights = min(lights, room);
   let keptDecals = min(decals, room - keptLights);
+  let keptProbes = min(probes, room - keptLights - keptDecals);
   var writtenLights = 0u;
   var writtenDecals = 0u;
-  for (var i = 0u; i < total && writtenLights + writtenDecals < keptLights + keptDecals; i++) {
+  var writtenProbes = 0u;
+  for (var i = 0u; i < total && writtenLights + writtenDecals + writtenProbes < keptLights + keptDecals + keptProbes; i++) {
     if (!touches(i)) {
       continue;
     }
@@ -158,13 +165,19 @@ fn touches(i: u32) -> bool {
         pool[offset + writtenLights] = i;
         writtenLights++;
       }
-    } else if (writtenDecals < keptDecals) {
-      pool[offset + keptLights + writtenDecals] = i - lightCount;
-      writtenDecals++;
+    } else if (i < decalEnd) {
+      if (writtenDecals < keptDecals) {
+        pool[offset + keptLights + writtenDecals] = i - lightCount;
+        writtenDecals++;
+      }
+    } else if (writtenProbes < keptProbes) {
+      pool[offset + keptLights + keptDecals + writtenProbes] = i - decalEnd;
+      writtenProbes++;
     }
   }
-  header.entries[index * 2u] = build.pool.x + offset;
-  header.entries[index * 2u + 1u] = keptLights | (keptDecals << 16u);
+  header.entries[index * CLUSTER_HEADER] = build.pool.x + offset;
+  header.entries[index * CLUSTER_HEADER + 1u] = keptLights | (keptDecals << 16u);
+  header.entries[index * CLUSTER_HEADER + 2u] = keptProbes;
 }
 `;
 
@@ -184,7 +197,8 @@ export class Clusters {
   readonly #uniforms: GPUBuffer[] = [];
   readonly #groups: (GPUBindGroup | undefined)[] = [];
   readonly #uniformData = new Float32Array(40);
-  #counts: [number, number] = [0, 0];
+  /** 这一帧的光、贴花、探针的个数（包围球按这个顺序排）。 */
+  #counts: [number, number, number] = [0, 0, 0];
   #spheres: GPUBuffer | undefined;
   #sphereData = new Float32Array(0);
   #pipeline: GPUComputePipeline | undefined;
@@ -223,11 +237,11 @@ export class Clusters {
   }
 
   /**
-   * 这一帧的包围球（每个 4 个数：世界坐标的球心、半径）：先 lightCount 个光，再 decalCount 个贴花；下标和着色器里 localLights、
-   * decals 的一致。所有视图共用。
+   * 这一帧的包围球（每个 4 个数：世界坐标的球心、半径）：先 lightCount 个光，再 decalCount 个贴花，再 probeCount 个反射探针；
+   * 下标和着色器里 localLights、decals、probes 的一致。所有视图共用。
    */
-  upload(lights: Float32Array, lightCount: number, decals: Float32Array, decalCount: number): void {
-    const floats = (lightCount + decalCount) * 4;
+  upload(lights: Float32Array, lightCount: number, decals: Float32Array, decalCount: number, probes: Float32Array, probeCount: number): void {
+    const floats = (lightCount + decalCount + probeCount) * 4;
     if (this.#sphereData.length < Math.max(floats, 4)) {
       this.#sphereData = new Float32Array(2 ** Math.ceil(Math.log2(Math.max(floats, 4))));
       this.#spheres?.destroy();
@@ -236,8 +250,9 @@ export class Clusters {
     }
     this.#sphereData.set(lights.subarray(0, lightCount * 4), 0);
     this.#sphereData.set(decals.subarray(0, decalCount * 4), lightCount * 4);
+    this.#sphereData.set(probes.subarray(0, probeCount * 4), (lightCount + decalCount) * 4);
     if (floats > 0) this.#device.queue.writeBuffer(this.#spheres!, 0, this.#sphereData, 0, floats);
-    this.#counts = [lightCount, decalCount];
+    this.#counts = [lightCount, decalCount, probeCount];
   }
 
   /** 算 view 的簇（写进它那个槽的簇头和索引池）。 */
@@ -249,8 +264,8 @@ export class Clusters {
     const data = this.#uniformData;
     Matrix.invert(data.subarray(0, 16) as never, view.projection);
     data.set(view.view, 16);
-    data.set([...this.#counts, near, far], 32);
-    new Uint32Array(data.buffer, 36 * 4, 4).set([this.#poolStart(slot), this.#capacity, 0, 0]);
+    data.set([this.#counts[0], this.#counts[1], near, far], 32);
+    new Uint32Array(data.buffer, 36 * 4, 4).set([this.#poolStart(slot), this.#capacity, this.#counts[2], 0]);
     // 每个槽自己的常量缓冲：同一帧里几个视图的写入都在提交之前，共用一个的话最后一次写的会盖掉前面的
     this.#device.queue.writeBuffer(uniforms, 0, data);
     const pipeline = (this.#pipeline ??= this.#device.createComputePipeline({
@@ -287,7 +302,7 @@ export class Clusters {
     read.destroy();
     let lit = 0, max = 0, sum = 0;
     for (let i = 0; i < CLUSTER_COUNT; i++) {
-      const lights = words[2 + i * 2]! & 0xffff;
+      const lights = words[2 + i * CLUSTER_HEADER]! & 0xffff;
       if (lights > 0) lit++;
       max = Math.max(max, lights);
       sum += lights;

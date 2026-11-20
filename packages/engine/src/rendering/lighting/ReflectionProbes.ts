@@ -7,7 +7,8 @@
  *   CubemapPrefilter 预滤波进 cubes（立方体数组，每个探针占一个立方体）。拍的画面里照样有别的探针的反射，几次以后就是多次反射。
  * - 什么时候拍：refresh 是 once 的在加进来、挪了、改了设置、光照变了（watchLighting：太阳转了、落山了）或者调 refresh() 以后
  *   拍一次；everyFrame 的拍完一轮接着拍。第一次没拍完的探针着色时不用，重拍的时候接着用旧的。
- * - 着色用的表（buffer）：拍好的探针按盒子的体积从小到大排（小的盖住大的），每个四个 vec4（见 PROBE_FLOATS）。
+ * - 着色用的表（buffer）：拍好的探针按盒子的体积从小到大排（小的盖住大的），每个四个 vec4（见 PROBE_FLOATS）；同样顺序的
+ *   盒子的外接球（bounds）给分簇用，像素只看所在那一簇的探针。
  * - 立方体数组按探针数取 2 的幂（最多 MAX_REFLECTION_PROBES），不够了换大的、全部重拍。
  */
 import type { EntityId } from '../../data/prop';
@@ -86,6 +87,8 @@ export class ReflectionProbes {
   /** 着色用的探针表和个数（MeshRenderFeature 绑定）。 */
   readonly data = new Float32Array(MAX_REFLECTION_PROBES * PROBE_FLOATS);
   count = 0;
+  /** 同样顺序的盒子的外接球（每个 4 个数：球心、半径），分簇用（lighting/Clusters.ts）。 */
+  readonly bounds = new Float32Array(MAX_REFLECTION_PROBES * 4);
   /** 绑定的贴图或缓冲换了就加一（MeshRenderFeature 据此重建绑定组）。 */
   generation = 0;
   /** 上一次看到的光照的签名（取整过的），见 watchLighting。 */
@@ -310,6 +313,8 @@ export class ReflectionProbes {
       for (const state of [...this.#states.values()].sort((a, b) => volume(a) - volume(b))) {
         if (!state.captured || state.cube < 0) continue;
         data.set([...state.center, state.cube, ...state.min, state.blendDistance, ...state.max, state.intensity, state.boxProjection ? 1 : 0, 0, 0, 0], count * PROBE_FLOATS);
+        const half = [0, 1, 2].map((k) => (state.max[k]! - state.min[k]!) / 2);
+        this.bounds.set([...[0, 1, 2].map((k) => state.min[k]! + half[k]!), Math.hypot(...half)], count * 4);
         count++;
       }
     }

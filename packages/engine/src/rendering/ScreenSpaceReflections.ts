@@ -6,8 +6,9 @@
  * 2. 追踪：每个像素按 GGX 的可见法线分布（Heitz 2018）随机取一个反射方向，在屏幕空间里沿 Hi-Z 分层步进——前面是空的就跳到
  *    更粗的一级、一次跨过一大片，碰到东西再退回细的一级——比 Stride 的定步长（默认 60 步）走得远、步数少，薄的东西也不容易
  *    穿过去。命中以后按深度差、离屏幕边缘多近、粗糙度定"把握"（0 到 1）。
- * 3. 解析：命中处取这一帧画好的 HDR 颜色（反射里的反射晚一帧，同 Stride），和上一帧的结果在时间上累积（按运动向量或深度
- *    重投影，按邻域夹住），随机方向的噪声就平均掉了。
+ * 3. 解析：先在空间上复用周围像素的光线（同一块表面上的，半径按粗糙度），命中处取这一帧画好的 HDR 颜色（反射里的反射晚
+ *    一帧，同 Stride）；再和上一帧的结果在时间上累积（按运动向量或深度重投影，夹在空间解析结果的邻域范围里），随机方向的
+ *    噪声就平均掉了。
  * 4. 合成：用反射换掉着色时加的环境镜面反射（不透明阶段留下的表面，见 RenderSystem 的 SURFACE_FORMATS）：
  *    颜色 += 把握 · (w · 反射 - E)。和 Stride 不同：Stride 把反射直接加上去，天空盒的镜面反射就算了两遍，开了 SSR 的表面
  *    整体变亮。
@@ -220,17 +221,26 @@ fn hierarchicalMarch(origin: vec3f, direction: vec3f) -> vec4f {
   return vec4f(hit.xy, edgeFade * roughnessFade, 1.0);
 }`;
 
-/** 解析：命中处的颜色，和上一帧的结果在时间上累积。输出 rgb 是乘过把握的反射，a 是把握。 */
-const RESOLVE_SHADER = /* wgsl */ `${COMMON}
+/**
+ * 空间上的解析：自己和周围几个像素的光线都用上（随机 SSR 的光线复用，Stachowiak 2015）——周围的表面差不多（深度、法线相近）
+ * 时，它命中的东西也是这里的反射的一个样本。半径按粗糙度：越粗糙反射越模糊，取得越开。输出 rgb 是乘过把握的反射（亮度压过），
+ * a 是把握。
+ */
+const SPATIAL_SHADER = /* wgsl */ `${COMMON}
 @group(0) @binding(0) var<uniform> ssr: Ssr;
 @group(0) @binding(1) var trace: texture_2d<f32>;
 @group(0) @binding(2) var color: texture_2d<f32>;
-@group(0) @binding(3) var history: texture_2d<f32>;
-@group(0) @binding(4) var velocity: texture_2d<f32>;
-@group(0) @binding(5) var depth: texture_depth_2d;
-@group(0) @binding(6) var linearClamp: sampler;
+@group(0) @binding(3) var surface: texture_2d<f32>;
+@group(0) @binding(4) var depth: texture_depth_2d;
+@group(0) @binding(5) var linearClamp: sampler;
 
-fn current(pixel: vec2i) -> vec4f {
+/** 单位圆里的 8 个点（泊松盘），每个像素每帧转一个随机角度。 */
+const DISK = array<vec2f, 8>(
+  vec2f(-0.326, -0.406), vec2f(-0.840, -0.074), vec2f(-0.696, 0.457), vec2f(-0.203, 0.621),
+  vec2f(0.962, -0.195), vec2f(0.473, -0.480), vec2f(0.519, 0.767), vec2f(0.185, -0.893),
+);
+
+fn sampleAt(pixel: vec2i) -> vec4f {
   let hit = textureLoad(trace, pixel, 0);
   if (hit.z <= 0.0) {
     return vec4f(0.0);
@@ -244,14 +254,54 @@ fn current(pixel: vec2i) -> vec4f {
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let pixel = vec2i(in.position.xy);
   let size = vec2i(ssr.size.xy);
-  let now = current(pixel);
-  // 邻域的范围：上一帧的结果夹在里面（场景变了、遮挡变了时不拖影）
+  let here = textureLoad(surface, pixel, 0);
+  if (here.w < 0.5 || here.z > ssr.params.x) {
+    return vec4f(0.0);
+  }
+  let n = octahedralDecode(here.xy);
+  let z = textureLoad(depth, pixel, 0);
+  let uv = (vec2f(pixel) + 0.5) / ssr.size.xy;
+  let world = worldPosition(ssr, uv, z);
+  let distanceToEye = length(ssr.eye.xyz - world);
+  // 半径：镜面（粗糙度 0）只看自己附近 1 像素，到最大粗糙度时 8 像素
+  let radius = mix(1.0, 8.0, saturate(here.z / max(ssr.params.x, 0.0001)));
+  let angle = fract(sin(dot(vec2f(pixel), vec2f(12.9898, 78.233)) + ssr.eye.w * 0.618) * 43758.547) * 6.2831853;
+  let rotation = mat2x2f(cos(angle), sin(angle), -sin(angle), cos(angle));
+  var sum = sampleAt(pixel);
+  var weight = 1.0;
+  for (var k = 0; k < 8; k++) {
+    let p = pixel + vec2i(round(rotation * DISK[k] * radius));
+    if (any(p < vec2i(0)) || any(p >= size)) { continue; }
+    // 只用同一块表面上的：法线相近、深度相近（按到相机的距离的比例）
+    let other = textureLoad(surface, p, 0);
+    if (other.w < 0.5 || dot(octahedralDecode(other.xy), n) < 0.9) { continue; }
+    let otherWorld = worldPosition(ssr, (vec2f(p) + 0.5) / ssr.size.xy, textureLoad(depth, p, 0));
+    if (abs(dot(otherWorld - world, n)) > 0.02 * distanceToEye) { continue; }
+    sum += sampleAt(p);
+    weight += 1.0;
+  }
+  return sum / weight;
+}`;
+
+/** 时间上的解析：和上一帧的结果累积，上一帧的夹在这一帧空间解析结果的 3x3 邻域范围里（场景变了、遮挡变了时不拖影）。 */
+const TEMPORAL_SHADER = /* wgsl */ `${COMMON}
+@group(0) @binding(0) var<uniform> ssr: Ssr;
+@group(0) @binding(1) var spatial: texture_2d<f32>;
+@group(0) @binding(2) var history: texture_2d<f32>;
+@group(0) @binding(3) var velocity: texture_2d<f32>;
+@group(0) @binding(4) var depth: texture_depth_2d;
+@group(0) @binding(5) var linearClamp: sampler;
+
+@fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
+  let pixel = vec2i(in.position.xy);
+  let size = vec2i(ssr.size.xy);
+  let now = textureLoad(spatial, pixel, 0);
   var low = now;
   var high = now;
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
       if (x == 0 && y == 0) { continue; }
-      let neighbor = current(clamp(pixel + vec2i(x, y), vec2i(0), size - 1));
+      let neighbor = textureLoad(spatial, clamp(pixel + vec2i(x, y), vec2i(0), size - 1), 0);
       low = min(low, neighbor);
       high = max(high, neighbor);
     }
@@ -326,7 +376,8 @@ export class ScreenSpaceReflections {
   readonly #sampler: GPUSampler;
   readonly #arena: UniformArena;
   readonly #trace: FullscreenShader;
-  readonly #resolve: FullscreenShader;
+  readonly #spatial: FullscreenShader;
+  readonly #temporal: FullscreenShader;
   readonly #combine: FullscreenShader;
   readonly #uniforms = new Float32Array(60);
   #hiz: GPUTexture | undefined;
@@ -342,7 +393,8 @@ export class ScreenSpaceReflections {
     this.#sampler = linearClamp;
     this.#arena = new UniformArena(device, 4096);
     this.#trace = new FullscreenShader(device, 'SSR trace', TRACE_SHADER);
-    this.#resolve = new FullscreenShader(device, 'SSR resolve', RESOLVE_SHADER);
+    this.#spatial = new FullscreenShader(device, 'SSR spatial', SPATIAL_SHADER);
+    this.#temporal = new FullscreenShader(device, 'SSR temporal', TEMPORAL_SHADER);
     this.#combine = new FullscreenShader(device, 'SSR combine', COMBINE_SHADER);
   }
 
@@ -373,9 +425,11 @@ export class ScreenSpaceReflections {
     const [normalRoughness, specularWeight, environment] = surfaces as [GraphTexture, GraphTexture, GraphTexture];
     const trace = frame.acquire(width, height, TRACE_FORMAT, 'SSR trace');
     this.#trace.draw(frame, trace, [parameters, depth, hiz, normalRoughness]);
-    // 解析写进自己留到下一帧的贴图（图外面的）：算副作用
+    const spatial = frame.acquire(width, height, REFLECTION_FORMAT, 'SSR spatial');
+    this.#spatial.draw(frame, spatial, [parameters, trace, color, normalRoughness, depth, this.#sampler]);
+    // 时间上的解析写进自己留到下一帧的贴图（图外面的）：算副作用
     const resolved = frame.graph.import({ label: 'SSR history', width, height, format: REFLECTION_FORMAT }, next.createView(), { texture: next });
-    this.#resolve.draw(frame, resolved, [parameters, trace, color, previous, velocity ?? previous, depth, this.#sampler]);
+    this.#temporal.draw(frame, resolved, [parameters, spatial, previous, velocity ?? previous, depth, this.#sampler]);
     const combined = frame.acquire(width, height, HDR_FORMAT, 'SSR combined');
     const debug = this.#arena.push([{ off: 0, hits: 1, reflection: 2 }[this.debug], 0, 0, 0]);
     this.#combine.draw(frame, combined, [color, resolved, specularWeight, environment, trace, debug]);
@@ -395,7 +449,7 @@ export class ScreenSpaceReflections {
   /** 在后台编各步的管线（加载开着 SSR 的场景时，见 ForwardRenderer.warmPostEffects）；目标格式是固定的。 */
   warm(): Promise<void> {
     return Promise.all([
-      this.#trace.warm([TRACE_FORMAT]), this.#resolve.warm([REFLECTION_FORMAT]), this.#combine.warm([HDR_FORMAT]),
+      this.#trace.warm([TRACE_FORMAT]), this.#spatial.warm([REFLECTION_FORMAT]), this.#temporal.warm([REFLECTION_FORMAT]), this.#combine.warm([HDR_FORMAT]),
       warmFullscreenPipeline(this.#device, 'SSR Hi-Z copy', HIZ_COPY_SHADER, [HIZ_FORMAT]),
       warmFullscreenPipeline(this.#device, 'SSR Hi-Z', HIZ_DOWNSAMPLE_SHADER, [HIZ_FORMAT]),
     ]).then(() => undefined);

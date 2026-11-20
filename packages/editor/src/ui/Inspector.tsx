@@ -17,6 +17,20 @@ const styles = css.create({
 
 type ComponentKey = keyof typeof COMPONENT_FIELDS;
 
+/** 实例的根、成员上的说明：属于哪个预制体，这个实体上有几处覆盖。 */
+function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
+  const target = session.instanceMember(id);
+  if (!target) return undefined;
+  const { path, set = [], removed = [] } = target.instance.prefab!;
+  const own = set.filter((override) => override.entity === target.member).length;
+  const where = target.instance.id === id ? `预制体 ${path} 的实例` : `预制体 ${path} 的实例 ${target.instance.name} 里的 ${name || target.member}`;
+  return (
+    <div {...css.attrs(styles.hint)}>
+      {where}{own > 0 ? `，这个实体改了 ${own} 处` : ''}{target.instance.id === id && removed.length > 0 ? `，去掉了 ${removed.length} 个实体` : ''}。改的值记在实例上，和预制体一样时不记。
+    </div>
+  );
+}
+
 /**
  * 属性面板：选中的实体的名字、变换和每个组件的字段，照着引擎的字段描述（editor/fields.ts）画；脚本的字段问游戏页面
  * （它有脚本的类，见 EditAgent.scriptFields），游戏里没有这个脚本时按原样的 JSON 改。改一个值是对场景文档的一次 set，
@@ -30,14 +44,15 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     for (const asset of assets.value) byKind.set(asset.kind, [...(byKind.get(asset.kind) ?? []), asset.path]);
     return [...byKind];
   });
+  // 显示的是展开以后的实体：实例的根带着预制体的组件，成员也能选
   const entity = _derived.by((): SceneEntityFile | undefined => {
     void version.value;
     const ids = selection.value;
-    return agent.value && ids.length === 1 ? session.file.entities.find((candidate) => candidate.id === ids[0]) : undefined;
+    return agent.value && ids.length === 1 ? session.expanded.find((candidate) => candidate.id === ids[0]) : undefined;
   });
   const context = _derived.by((): FieldContext => {
     void version.value;
-    return { entities: agent.value ? session.file.entities.map(({ id, name }) => ({ id, name })) : [] };
+    return { entities: agent.value ? session.expanded.map(({ id, name }) => ({ id, name })) : [] };
   });
 
   /** 加上、去掉（undefined）一个组件：单独一步撤销。 */
@@ -62,7 +77,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     return (
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
         {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
-        {entity.prefab && <div {...css.attrs(styles.hint)}>预制体 {entity.prefab.path} 的实例{entity.prefab.set?.length ? `，改了 ${entity.prefab.set.length} 处` : ''}{entity.prefab.removed?.length ? `，去掉了 ${entity.prefab.removed.length} 个实体` : ''}</div>}
+        {instanceHint(session, entity)}
         <section {...css.attrs(styles.section)}>
           {ENTITY_FIELDS.map((field) => <FieldRow field={field} value={record[field.name]} context={context} onSet={setter(id, [field.name])} />)}
         </section>

@@ -3,10 +3,15 @@
  *
  * 场景文档（SceneDocument，文件是真相）在界面这边；游戏页面里的实体跟着它（EditAgent.open 拿到的是这里的撤销栈）。
  * 视口里拖操纵器改的经撤销栈记下，界面跟着刷新。Vue 的响应式只包在这一层：文档本身不可变，每改一次 version 加一。
+ *
+ * 预制体的实例：界面和视口看到、改的是展开以后的场景（`expanded`，成员也是实体），修改经 toDocumentEdit 换成文档上的
+ * （成员的值成实例的覆盖），见 engine 的 editor/prefabEdits.ts。
  */
 import { shallowRef, triggerRef } from 'vue';
-import type { SceneEntityFile, SceneFile } from '@stride-ts/engine/content-format';
+import type { PrefabFile, SceneEntityFile, SceneFile } from '@stride-ts/engine/content-format';
+import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
+import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
 import type { EditAgent, EditableScene, Game } from '@stride-ts/engine';
 import { EditorClient } from '../client/EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
@@ -31,6 +36,8 @@ export class EditorSession implements EditableScene {
   /** 最近一次修改以后游戏页面里的实体跟上了。 */
   #synced: Promise<void> = Promise.resolve();
   #undo: UndoStack<SceneFile> | undefined;
+  /** 场景用到的预制体（连嵌套的），打开场景时加载。 */
+  #prefabs: ReadonlyMap<string, readonly SceneEntityFile[]> = new Map();
 
   async start(): Promise<void> {
     const [project, assets] = await Promise.all([this.client.project(), this.client.assets()]);
@@ -74,7 +81,9 @@ export class EditorSession implements EditableScene {
   }
 
   async #open(agent: EditAgent, path: string): Promise<void> {
-    this.#document = new SceneDocument(await this.client.readAsset<SceneFile>('scene', path));
+    const file = await this.client.readAsset<SceneFile>('scene', path);
+    this.#prefabs = await loadPrefabs(file.entities, async (prefab) => (await this.client.readAsset<PrefabFile>('prefab', prefab)).entities);
+    this.#document = new SceneDocument(file);
     this.#undo = new UndoStack(this.#document);
     this.scenePath.value = path;
     this.dirty.value = false;
@@ -93,6 +102,22 @@ export class EditorSession implements EditableScene {
     return this.#require().file;
   }
 
+  /** 展开以后的实体（实例换成根和成员，同游戏里的）：场景树、属性面板显示的是它。 */
+  get expanded(): readonly SceneEntityFile[] {
+    return expandPrefabInstances(this.file.entities, this.#prefabs, (message) => console.warn(`${this.file.name}: ${message}`));
+  }
+
+  /** 展开的场景里的实体属于哪个实例（实例的根和成员）；普通实体是 undefined。 */
+  instanceMember(id: string): InstanceMember | undefined {
+    return instanceMember(this.file, this.#prefabs, id);
+  }
+
+  /** 是实例的成员（不是根）：它不在文档里，能改值、删，不能挪、往下面加实体。 */
+  isMember(id: string): boolean {
+    const member = this.instanceMember(id);
+    return member !== undefined && member.instance.id !== id;
+  }
+
   get canUndo(): boolean {
     return this.#undo?.canUndo ?? false;
   }
@@ -101,9 +126,12 @@ export class EditorSession implements EditableScene {
     return this.#undo?.canRedo ?? false;
   }
 
-  /** 做一个修改（EditableScene）；mergeKey 相同的连着的修改并成撤销的一步（拖动、连续输入）。 */
+  /**
+   * 做一个修改（EditableScene）；mergeKey 相同的连着的修改并成撤销的一步（拖动、连续输入）。修改是对展开的场景说的，
+   * 改实例成员的换成实例上的覆盖。
+   */
   apply(edit: SceneEdit, mergeKey?: string): void {
-    this.#require().apply(edit, mergeKey);
+    this.#require().apply(toDocumentEdit(this.file, this.#prefabs, edit), mergeKey);
     this.#changed();
   }
 
@@ -130,17 +158,19 @@ export class EditorSession implements EditableScene {
     this.select([entity.id]);
   }
 
-  /** 删掉选中的实体和它们的后代（一步撤销）。 */
+  /** 删掉选中的实体和它们的后代（一步撤销）；实例的成员记成实例去掉了它。 */
   deleteSelection(): void {
-    const document = this.#requireDocument();
-    const selected = new Set(this.selection.value);
-    // 祖先也选中了的不用单独删：删祖先时一起删了
-    const roots = [...selected].filter((id) => {
-      for (let parent = document.entity(id)?.parent ?? null; parent !== null; parent = document.entity(parent)?.parent ?? null) if (selected.has(parent)) return false;
-      return document.entity(id) !== undefined;
-    });
-    if (roots.length === 0) return;
-    this.apply({ type: 'batch', edits: roots.map((id) => document.removeSubtree(id)) });
+    // 展开的场景里父实体排在前面：顺着扫一遍收全后代（包括挂在成员下面的文档实体）
+    const removing = new Set(this.selection.value);
+    const parentOf = new Map<string, string | null>();
+    for (const entity of this.expanded) {
+      parentOf.set(entity.id, entity.parent);
+      if (entity.parent !== null && removing.has(entity.parent)) removing.add(entity.id);
+    }
+    // 成员只记最上面的那个（去掉的成员连后代）
+    const ids = [...removing].filter((id) => parentOf.has(id) && !(this.isMember(id) && removing.has(parentOf.get(id) ?? '')));
+    if (ids.length === 0) return;
+    this.apply({ type: 'remove', entities: ids });
     this.commit();
     this.select([]);
   }

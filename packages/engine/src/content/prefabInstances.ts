@@ -21,13 +21,30 @@ type Entities = readonly SceneEntityFile[];
 /** 实例成员在场景里的 id。 */
 export const memberId = (instance: string, entity: string): string => `${instance}/${entity}`;
 
-/** 实体列表（连同它引用的预制体，一层层往下）里用到的预制体路径。 */
+/** 实体列表里的实例用到的预制体路径（不往下找）。 */
 export function prefabPaths(entities: Entities): string[] {
   return [...new Set(entities.flatMap((entity) => (entity.prefab ? [entity.prefab.path] : [])))];
 }
 
+/** 加载实体列表用到的预制体（连同它们里面的实例用到的，一层层往下）：路径 → 预制体的实体列表，给 expandPrefabInstances。 */
+export async function loadPrefabs(entities: Entities, read: (path: string) => Promise<Entities>): Promise<Map<string, Entities>> {
+  const prefabs = new Map<string, Entities>();
+  let pending = prefabPaths(entities);
+  while (pending.length > 0) {
+    const files = await Promise.all(pending.map(read));
+    pending.forEach((path, i) => prefabs.set(path, files[i]!));
+    pending = [...new Set(files.flatMap(prefabPaths))].filter((path) => !prefabs.has(path));
+  }
+  return prefabs;
+}
+
 /** 实例 → 展开的实体（根在前，连同当时的预制体，预制体换了就重新展开）。 */
 const CACHE = new WeakMap<SceneEntityFile, { readonly prefab: Entities; readonly entities: Entities }>();
+/**
+ * 预制体 → 实例 id → 上一次展开的实体：编辑器里改了实例的一处覆盖（实例是新对象，CACHE 里没有）时，没变的成员、变换、
+ * 组件还用上一次的对象，跟着文档的实体（SceneBuilder 按对象比）只重建变了的组件。
+ */
+const PREVIOUS = new WeakMap<Entities, Map<string, Entities>>();
 
 /**
  * 把实体列表里的实例展开成普通实体（实例换成合并好的根，成员紧跟在后面，父实体都在前面）。prefabs 是用到的预制体（路径 →
@@ -86,8 +103,28 @@ function instanceOf(instance: SceneEntityFile, prefabs: ReadonlyMap<string, Enti
   for (const override of set) {
     if (!inside.has(override.entity)) warn(`instance ${instance.id} of prefab ${path} overrides entity ${override.entity}, which is not a member`);
   }
-  CACHE.set(instance, { prefab: source, entities: result });
-  return result;
+  let previous = PREVIOUS.get(source);
+  if (!previous) PREVIOUS.set(source, (previous = new Map()));
+  const shared = reuse(previous.get(instance.id), result);
+  previous.set(instance.id, shared);
+  CACHE.set(instance, { prefab: source, entities: shared });
+  return shared;
+}
+
+/** next 里和 previous 里同一个实体相同的部分换回 previous 的对象。 */
+function reuse(previous: Entities | undefined, next: readonly SceneEntityFile[]): Entities {
+  if (!previous) return next;
+  const byId = new Map(previous.map((entity) => [entity.id, entity]));
+  const same = <T>(old: T, value: T): T => (sameValue(old, value) ? old : value);
+  return next.map((entity) => {
+    const old = byId.get(entity.id);
+    if (!old) return entity;
+    if (sameValue(old, entity)) return old;
+    const components = sameValue(old.components, entity.components)
+      ? old.components
+      : Object.fromEntries(Object.entries(entity.components).map(([key, value]) => [key, same((old.components as Record<string, unknown>)[key], value)])) as SceneEntityFile['components'];
+    return { ...entity, position: same(old.position, entity.position), rotation: same(old.rotation, entity.rotation), scale: same(old.scale, entity.scale), components };
+  });
 }
 
 /** 组件里对别的实体的引用（约束、实例化、两种 link、脚本属性的 `$entity`）照 rename 换掉（导入器转换实例时也用）。 */
@@ -115,6 +152,32 @@ function renameScriptValue(value: SceneScriptValue, rename: (id: string | null) 
  * （换成它在列表里的下标）。
  */
 export function setPath(entity: SceneEntityFile, path: readonly (string | number)[], value: unknown): SceneEntityFile | undefined {
+  const resolved = resolvePath(entity, path);
+  return resolved && assign(entity, resolved, value) as SceneEntityFile;
+}
+
+/** 实体里 path 上的值（脚本按类型名指，同 setPath）；路径走不通时是 undefined。 */
+export function getPath(entity: SceneEntityFile, path: readonly (string | number)[]): unknown {
+  const resolved = resolvePath(entity, path);
+  if (!resolved) return undefined;
+  let node: unknown = entity;
+  for (const key of resolved) node = (node as Record<string | number, unknown>)[key];
+  return node;
+}
+
+/** 两个 JSON 值相同（值是 undefined 的键当没有）。 */
+export function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keysA = Object.keys(a).filter((key) => (a as Record<string, unknown>)[key] !== undefined);
+  const keysB = Object.keys(b).filter((key) => (b as Record<string, unknown>)[key] !== undefined);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every((key) => sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
+}
+
+/** path 里脚本的类型名换成下标；除了最后一段，路径上的每一层都要在。 */
+function resolvePath(entity: SceneEntityFile, path: readonly (string | number)[]): (string | number)[] | undefined {
   const resolved: (string | number)[] = [];
   let node: unknown = entity;
   for (let i = 0; i < path.length; i++) {
@@ -130,8 +193,7 @@ export function setPath(entity: SceneEntityFile, path: readonly (string | number
     node = (node as Record<string | number, unknown>)[key];
     if (node === undefined) return undefined;
   }
-  if (node === null || typeof node !== 'object') return undefined;
-  return assign(entity, resolved, value) as SceneEntityFile;
+  return node !== null && typeof node === 'object' ? resolved : undefined;
 }
 
 function assign(root: unknown, path: readonly (string | number)[], value: unknown): unknown {

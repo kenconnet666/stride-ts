@@ -59,7 +59,7 @@ export const App = _component(({ session }: { session: EditorSession }) => {
           <IconButton icon={Save} aria-label="保存（Ctrl+S）" disabled={!dirty.value || playing} onClick={() => void session.save()} />
           <IconButton icon={Undo2} aria-label="撤销（Ctrl+Z）" disabled={!session.canUndo || playing} onClick={() => session.undo()} />
           <IconButton icon={Redo2} aria-label="重做（Ctrl+Y）" disabled={!session.canRedo || playing} onClick={() => session.redo()} />
-          <IconButton icon={Plus} aria-label="加实体（选中的实体下面）" disabled={!session.agent.value || playing} onClick={() => void session.addEntity(session.selection.value.length === 1 ? session.selection.value[0]! : null)} />
+          <IconButton icon={Plus} aria-label="加实体（选中的实体下面）" disabled={!session.agent.value || playing || session.selection.value.some((id) => session.isMember(id))} onClick={() => void session.addEntity(session.selection.value.length === 1 ? session.selection.value[0]! : null)} />
           <IconButton icon={Trash2} aria-label="删掉选中的实体（Delete）" disabled={session.selection.value.length === 0 || playing} onClick={() => session.deleteSelection()} />
           <IconButton icon={playing ? Square : Play} aria-label={playing ? '停止试玩' : '试玩'} onClick={() => void togglePlay()} />
           <span {...css.attrs(styles.title)}>{scenePath.value ?? '……'}{dirty.value ? ' *' : ''}</span>

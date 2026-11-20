@@ -20,7 +20,7 @@ import { ModelMorph, ModelSkeleton } from '../animation/AnimationSystem';
 import { Morphed } from '../animation/morphs';
 import { Material, type MaterialShaderTrees } from '../rendering/Material';
 import { preload, textureRefs } from './loading';
-import { expandPrefabInstances, prefabPaths } from './prefabInstances';
+import { expandPrefabInstances, loadPrefabs } from './prefabInstances';
 import { Prefab } from './Prefab';
 import { changedEntities, SceneBuilder, type ModelUse, type SceneAssets } from './SceneBuilder';
 import { SceneTemplate } from './SceneTemplate';
@@ -571,13 +571,7 @@ export class ContentManager {
    */
   async #expandInstances(entities: readonly SceneEntityFile[], where: string): Promise<readonly SceneEntityFile[]> {
     if (!entities.some((entity) => entity.prefab)) return entities;
-    const prefabs = new Map<string, readonly SceneEntityFile[]>();
-    let pending = prefabPaths(entities);
-    while (pending.length > 0) {
-      const files = await Promise.all(pending.map((path) => this.#prefabFile(path)));
-      pending.forEach((path, i) => prefabs.set(path, files[i]!.entities));
-      pending = [...new Set(files.flatMap((file) => prefabPaths(file.entities)))].filter((path) => !prefabs.has(path));
-    }
+    const prefabs = await loadPrefabs(entities, async (path) => (await this.#prefabFile(path)).entities);
     return expandPrefabInstances(entities, prefabs, (message) => console.warn(`${where}: ${message}`));
   }
 

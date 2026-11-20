@@ -2,6 +2,7 @@ import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { NumberField, Switch, TextField } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { Field, FieldType } from '@stride-ts/engine/editor-fields';
+import { sameValue } from '@stride-ts/engine/content-prefabs';
 import { colorToHex, emptyValue, eulerToQuaternion, hexToColor, quaternionToEuler } from './values';
 
 /** 文件里一个值的路径（相对 FieldEditor 拿到的值）。 */
@@ -38,8 +39,13 @@ const styles = css.create({
 /** 数不分千位（2000 不写成 2,000），小数留到六位：引擎的值不是金额。 */
 const NUMBER_FORMAT = { useGrouping: false, maximumFractionDigits: 6 } as const;
 
-/** 一行：名字加它的编辑器。文件里没写（可选、用默认值）的名字淡一点。 */
+/**
+ * 一行：名字加它的编辑器。文件里没写（可选、用默认值）的名字淡一点。可选的字段设回默认值时不写（同导入器写的文件；
+ * 预制体的实例上也就不留和预制体一样的覆盖）。
+ */
 export const FieldRow = _component(({ field, value, context, onSet }: { field: Field; value: unknown; context: FieldContext; onSet: FieldEditorProps['onSet'] }) => {
+  const set = (path: ValuePath, next: unknown) =>
+    onSet(path, path.length === 0 && field.optional && field.default !== undefined && sameValue(next, field.default) ? undefined : next);
   return () => {
     const missing = value === undefined;
     const shown = missing ? field.default : value;
@@ -49,7 +55,7 @@ export const FieldRow = _component(({ field, value, context, onSet }: { field: F
         {field.nullable && shown === null ? (
           <button type="button" onClick={() => onSet([], emptyValue(field.type))}>设置</button>
         ) : (
-          <FieldEditor type={field.type} value={shown} context={context} onSet={onSet} />
+          <FieldEditor type={field.type} value={shown} context={context} onSet={set} />
         )}
       </div>
     );

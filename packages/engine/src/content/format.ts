@@ -1130,8 +1130,11 @@ export interface PrefabInstanceFile {
   readonly path: string;
   /** 放的是预制体的哪个根（预制体里的 id）；预制体只有一个根时不用写。 */
   readonly root?: string;
-  /** 在预制体某个实体（预制体里的 id）的某条路径上改成的值；脚本组件在路径里按类型名指（`scripts`, `Game.Health`）。 */
-  readonly set?: readonly { readonly entity: string; readonly path: readonly (string | number)[]; readonly value: unknown }[];
+  /**
+   * 在预制体某个实体（预制体里的 id）的某条路径上改成的值；脚本组件在路径里按类型名指（`scripts`, `Game.Health`）。没有 value
+   * 是去掉这个键（例如去掉根上的一个组件）。
+   */
+  readonly set?: readonly { readonly entity: string; readonly path: readonly (string | number)[]; readonly value?: unknown }[];
   /** 这个实例不要的预制体实体（连后代），预制体里的 id。 */
   readonly removed?: readonly string[];
 }

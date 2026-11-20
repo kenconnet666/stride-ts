@@ -12,7 +12,7 @@
  * 纯函数：预制体由调用方先转好（连嵌套的）。
  */
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
-import { expandPrefabInstances, memberId, renameReferences } from '@stride-ts/engine/content-prefabs';
+import { expandPrefabInstances, memberId, renameReferences, sameValue } from '@stride-ts/engine/content-prefabs';
 
 /** 场景实体的 Base：来自哪个预制体（内容路径）、预制体里的哪个实体（Stride 的 id）、属于哪个实例。 */
 export interface StrideBase {
@@ -150,14 +150,4 @@ function diff(expected: unknown, actual: unknown, path: (string | number)[], ign
     }
   }
   report(path, actual);
-}
-
-function sameValue(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-  if (Array.isArray(a) !== Array.isArray(b)) return false;
-  const keysA = Object.keys(a).filter((key) => (a as Record<string, unknown>)[key] !== undefined);
-  const keysB = Object.keys(b).filter((key) => (b as Record<string, unknown>)[key] !== undefined);
-  if (keysA.length !== keysB.length) return false;
-  return keysA.every((key) => sameValue((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
 }

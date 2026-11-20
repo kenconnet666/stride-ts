@@ -1,12 +1,13 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Tree, type TreeMove, type TreeMoveTarget } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import type { EditorSession } from './session';
 
 const styles = css.create({
   tree: { height: '100%' },
   prefab: { color: '_textMuted', fontSize: '0.85em' },
+  member: { fontStyle: 'italic' },
 });
 
 interface Node {
@@ -25,13 +26,42 @@ function buildTree(entities: readonly SceneEntityFile[]): Node[] {
   return roots;
 }
 
-/** 场景树：场景里的实体按父子关系列出；选中和视口里的选中是同一个。拖动换父实体、换顺序（本地的变换不变）。 */
+function findNode(nodes: readonly Node[], id: string): Node | undefined {
+  for (const node of nodes) {
+    if (node.entity.id === id) return node;
+    const found = findNode(node.children, id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** 实例的根后面标出预制体的名字。 */
+function prefabLabel(session: EditorSession, id: string) {
+  const target = session.instanceMember(id);
+  if (!target || target.instance.id !== id) return undefined;
+  const { path } = target.instance.prefab!;
+  return <span {...css.attrs(styles.prefab)} title={path}> ⟨{path.slice(path.lastIndexOf('/') + 1)}⟩</span>;
+}
+
+/**
+ * 场景树：场景里的实体按父子关系列出（预制体的实例展开着，成员用斜体）；选中和视口里的选中是同一个。拖动换父实体、
+ * 换顺序（本地的变换不变）；成员不在文档里，不能拖，也不能当拖去的父实体。
+ */
 export const SceneTree = _component(({ session }: { session: EditorSession }) => {
   const { version, selection, agent } = session;
   const roots = _derived.by(() => {
     void version.value;
-    return agent.value ? buildTree(session.file.entities) : [];
+    return agent.value ? buildTree(session.expanded) : [];
   });
+
+  /** 树里的位置（兄弟里有成员）换成文档里兄弟的位置。 */
+  const move = ({ key, target }: TreeMove<Node>) => {
+    const parent = target.parent ?? null;
+    const siblings = buildTree(session.expanded);
+    const list = parent === null ? siblings : findNode(siblings, parent)?.children ?? [];
+    const position = list.filter((node) => node.entity.id !== key).slice(0, target.index).filter((node) => !session.isMember(node.entity.id)).length;
+    session.moveEntity(key, parent, position);
+  };
   let expanded = _state<string[]>([]);
 
   return () => (
@@ -42,9 +72,9 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       getKey={(node: Node) => node.entity.id}
       getLabel={(node: Node) => node.entity.name || '(unnamed)'}
       renderItem={(node: Node) => (
-        <span>
+        <span {...css.attrs(session.isMember(node.entity.id) && styles.member)}>
           {node.entity.name || '(unnamed)'}
-          {node.entity.prefab && <span {...css.attrs(styles.prefab)} title={node.entity.prefab.path}> ⟨{node.entity.prefab.path.slice(node.entity.prefab.path.lastIndexOf('/') + 1)}⟩</span>}
+          {prefabLabel(session, node.entity.id)}
         </span>
       )}
       getChildren={(node: Node) => node.children}
@@ -53,7 +83,8 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       _expanded={expanded}
       _selected={[...selection.value]}
       onUpdate:_selected={(ids: string[]) => session.select(ids)}
-      onMove={(move: TreeMove<Node>) => session.moveEntity(move.key, move.target.parent ?? null, move.target.index)}
+      canDrop={(node: Node, target: TreeMoveTarget) => !session.isMember(node.entity.id) && (target.parent == null || !session.isMember(target.parent))}
+      onMove={move}
       loading={!agent.value}
     />
   );

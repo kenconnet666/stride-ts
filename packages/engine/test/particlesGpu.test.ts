@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { packShape, SHAPE_FLAGS, SHAPE_VEC4S } from '../src/particles/gpuDraw';
 import { GpuEmitter, SpawnRing } from '../src/particles/GpuEmitter';
 import { buildKernel, gpuUnsupported, HEADER_VEC4S, WORKGROUP_SIZE } from '../src/particles/gpuKernel';
-import { bitonicStages, sortSize } from '../src/particles/gpuSort';
+import { SORT_BLOCK, sortPasses, sortSize } from '../src/particles/gpuSort';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import type { ParticleModuleFile } from '../src/content/format';
 import { fakeGpu, stubGpuGlobals, type BufferWrite } from './fakeGpu';
@@ -125,10 +125,47 @@ describe('GPU 粒子：环形生成的记账', () => {
 });
 
 describe('GPU 粒子：排序和形状的参数', () => {
-  test('bitonic 排序的步骤：n = 2^m 有 m(m+1)/2 步；大小补到 2 的幂', () => {
-    expect(bitonicStages(8)).toEqual([[2, 1], [4, 2], [4, 1], [8, 4], [8, 2], [8, 1]]);
-    expect(bitonicStages(262144)).toHaveLength(171);
+  test('排序的派发：先一块一块在共享内存里排好，之后每个 k 是 j ≥ 块大小的全局步加一次块内的；照着色器的逻辑模拟能排对；大小补到 2 的幂', () => {
+    expect(sortPasses(512)).toEqual([{ k: 0, j: 0, block: true }]);
+    expect(sortPasses(2048)).toEqual([
+      { k: 0, j: 0, block: true },
+      { k: 1024, j: 512, block: false }, { k: 1024, j: 256, block: true },
+      { k: 2048, j: 1024, block: false }, { k: 2048, j: 512, block: false }, { k: 2048, j: 256, block: true },
+    ]);
+    // 26 万个粒子：以前 171 次派发
+    expect(sortPasses(262144)).toHaveLength(55);
     expect([sortSize(1), sortSize(5), sortSize(200000)]).toEqual([2, 8, 262144]);
+    // 同 SORT_STEP_WGSL 的 sortStep、sortBlock
+    const run = (keys: number[]) => {
+      const n = keys.length;
+      const exchange = (i: number, l: number, k: number) => {
+        if ((keys[i]! > keys[l]!) === ((i & k) === 0)) [keys[i], keys[l]] = [keys[l]!, keys[i]!];
+      };
+      for (const { k, j, block } of sortPasses(n)) {
+        if (!block) {
+          for (let i = 0; i < n; i++) if ((i ^ j) > i) exchange(i, i ^ j, k);
+          continue;
+        }
+        const size = Math.min(SORT_BLOCK, n);
+        for (let base = 0; base < n; base += SORT_BLOCK) {
+          for (let kk = k === 0 ? 2 : k; kk <= (k === 0 ? size : k); kk *= 2) {
+            for (let jj = k === 0 ? kk / 2 : SORT_BLOCK / 2; jj >= 1; jj /= 2) {
+              for (let t = 0; t < SORT_BLOCK / 2; t++) {
+                const i = 2 * jj * Math.floor(t / jj) + (t % jj);
+                if (i + jj < size) exchange(base + i, base + i + jj, kk);
+              }
+            }
+          }
+        }
+      }
+      return keys;
+    };
+    let seed = 1;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (const n of [2, 8, 512, 2048, 8192]) {
+      const keys = Array.from({ length: n }, random);
+      expect(run([...keys])).toEqual([...keys].sort((a, b) => a - b));
+    }
   });
 
   test('形状：种类、标志（局部模拟、曲线、字段有没有）、排序方式、两套 UV 的参数', () => {

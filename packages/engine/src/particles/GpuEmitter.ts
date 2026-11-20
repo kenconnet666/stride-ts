@@ -9,7 +9,7 @@
 import type { ParticleEmitter } from './ParticleEmitter';
 import { buildKernel, HEADER_VEC4S, PARTICLE_BYTES, WORKGROUP_SIZE, type GpuKernel } from './gpuKernel';
 import { packShape, verticesPerParticle } from './gpuDraw';
-import { bitonicStages, SORT_KEYS_WGSL, SORT_STEP_WGSL, sortSize, STAGE_STRIDE } from './gpuSort';
+import { SORT_BLOCK, SORT_KEYS_WGSL, SORT_STEP_WGSL, sortPasses, sortSize, STAGE_STRIDE } from './gpuSort';
 
 /** 生成的历史：每帧一条（生成了几个，过了多久）。 */
 interface SpawnRecord {
@@ -72,6 +72,8 @@ interface Shared {
   keysPipeline: GPUComputePipeline | undefined;
   readonly stepLayout: GPUBindGroupLayout;
   stepPipeline: GPUComputePipeline | undefined;
+  /** 块内的排序（共享内存里做完步距小的那些步），和 stepPipeline 同一个布局。 */
+  blockPipeline: GPUComputePipeline | undefined;
   /** 排序每一步的 [k, j]，按排序的大小。 */
   readonly stageBuffers: Map<number, GPUBuffer>;
   /** 画的时候的第 2 个绑定组（粒子、排好的下标、形状）。 */
@@ -100,6 +102,7 @@ function sharedFor(device: GPUDevice): Shared {
     keysPipeline: undefined,
     stepLayout,
     stepPipeline: undefined,
+    blockPipeline: undefined,
     stageBuffers: new Map(),
     drawLayout: layout('GPU particles draw', [
       storage(0, 'read-only-storage', GPUShaderStage.VERTEX),
@@ -112,6 +115,7 @@ function sharedFor(device: GPUDevice): Shared {
   const ready = found;
   void computeAsync(device, 'GPU particles sort keys', SORT_KEYS_WGSL, 'sortKeys', [keysLayout]).then((pipeline) => (ready.keysPipeline = pipeline));
   void computeAsync(device, 'GPU particles sort step', SORT_STEP_WGSL, 'sortStep', [stepLayout]).then((pipeline) => (ready.stepPipeline = pipeline));
+  void computeAsync(device, 'GPU particles sort block', SORT_STEP_WGSL, 'sortBlock', [stepLayout]).then((pipeline) => (ready.blockPipeline = pipeline));
   return found;
 }
 
@@ -178,7 +182,8 @@ export class GpuEmitter {
     // 排好的下标：按深度排序的才真的排，别的只占位（画的着色器按排序方式决定读不读）
     const sorted = emitter.sortingPolicy === 'byDepth';
     this.#sortSize = sorted ? sortSize(size) : 1;
-    this.#keys = device.createBuffer({ label: `${label} sort`, size: this.#sortSize * 8, usage: GPUBufferUsage.STORAGE });
+    // COPY_SRC：调试时读回（readSortKeys）
+    this.#keys = device.createBuffer({ label: `${label} sort`, size: this.#sortSize * 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     if (sorted) {
       this.#sortView = device.createBuffer({ label: `${label} sort view`, size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.#keysGroup = device.createBindGroup({ layout: sharedGpu.keysLayout, entries: [{ binding: 0, resource: { buffer: this.#sortView } }, { binding: 1, resource: { buffer: this.#particles } }, { binding: 2, resource: { buffer: this.#keys } }] });
@@ -283,8 +288,8 @@ export class GpuEmitter {
 
   /** 按深度排序（只有 ByDepth 的发射器）：back 是相机的朝后方向（世界）。录进 pass。 */
   sort(pass: GPUComputePassEncoder, back: readonly [number, number, number]): void {
-    const { keysPipeline, stepPipeline } = this.#shared;
-    if (!this.#sortView || !this.#keysGroup || !this.#stepGroup || !keysPipeline || !stepPipeline) return;
+    const { keysPipeline, stepPipeline, blockPipeline } = this.#shared;
+    if (!this.#sortView || !this.#keysGroup || !this.#stepGroup || !keysPipeline || !stepPipeline || !blockPipeline) return;
     const view = new ArrayBuffer(64), f32 = new Float32Array(view), u32 = new Uint32Array(view);
     const space = this.emitter.drawTransform;
     f32.set([...back, 0], 0);
@@ -295,12 +300,12 @@ export class GpuEmitter {
     pass.setPipeline(keysPipeline);
     pass.setBindGroup(0, this.#keysGroup);
     pass.dispatchWorkgroups(Math.ceil(this.#sortSize / WORKGROUP_SIZE));
-    pass.setPipeline(stepPipeline);
-    const stages = bitonicStages(this.#sortSize).length;
-    for (let i = 0; i < stages; i++) {
-      pass.setBindGroup(0, this.#stepGroup, [i * STAGE_STRIDE]);
-      pass.dispatchWorkgroups(Math.ceil(this.#sortSize / WORKGROUP_SIZE));
-    }
+    // 步距小的步在共享内存里一块一块做（一个工作组 SORT_BLOCK 个），大的一步一次全局派发
+    sortPasses(this.#sortSize).forEach(({ block }, i) => {
+      pass.setPipeline(block ? blockPipeline : stepPipeline);
+      pass.setBindGroup(0, this.#stepGroup!, [i * STAGE_STRIDE]);
+      pass.dispatchWorkgroups(Math.ceil(this.#sortSize / (block ? SORT_BLOCK : WORKGROUP_SIZE)));
+    });
   }
 
   /** 调试、测试用：把粒子缓冲读回来（每个粒子 PARTICLE_BYTES / 4 个数，排法见 PARTICLE_WGSL：位置 0..2、寿命 3、速度 4..6）。 */
@@ -315,6 +320,26 @@ export class GpuEmitter {
     staging.unmap();
     staging.destroy();
     return data;
+  }
+
+  /** 调试、测试用：把排好的键读回来（每个两个 u32：深度的位、槽号；按深度排序的发射器才有意义）。 */
+  async readSortKeys(): Promise<{ depth: Float32Array; slot: Uint32Array }> {
+    const size = this.#sortSize * 8;
+    const staging = this.#device.createBuffer({ label: 'GPU particles sort readback', size, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const encoder = this.#device.createCommandEncoder({ label: 'GPU particles sort readback' });
+    encoder.copyBufferToBuffer(this.#keys, 0, staging, 0, size);
+    this.#device.queue.submit([encoder.finish()]);
+    await staging.mapAsync(GPUMapMode.READ);
+    const words = new Uint32Array(staging.getMappedRange().slice(0));
+    staging.unmap();
+    staging.destroy();
+    const depth = new Float32Array(this.#sortSize), slot = new Uint32Array(this.#sortSize);
+    const bits = new Float32Array(words.buffer);
+    for (let i = 0; i < this.#sortSize; i++) {
+      depth[i] = bits[i * 2]!;
+      slot[i] = words[i * 2 + 1]!;
+    }
+    return { depth, slot };
   }
 
   destroy(): void {
@@ -351,14 +376,14 @@ export class GpuEmitter {
     });
   }
 
-  /** 这个大小的排序每一步的参数（同样大小的发射器共用一块）。 */
+  /** 这个大小的排序每一次派发的参数（同样大小的发射器共用一块）。 */
   #stages(): GPUBuffer {
     const n = this.#sortSize;
     let buffer = this.#shared.stageBuffers.get(n);
     if (!buffer) {
-      const stages = bitonicStages(n);
-      const data = new Uint32Array((stages.length * STAGE_STRIDE) / 4);
-      stages.forEach(([k, j], i) => data.set([k, j], (i * STAGE_STRIDE) / 4));
+      const passes = sortPasses(n);
+      const data = new Uint32Array((passes.length * STAGE_STRIDE) / 4);
+      passes.forEach(({ k, j }, i) => data.set([k, j], (i * STAGE_STRIDE) / 4));
       buffer = this.#device.createBuffer({ label: `GPU particles sort stages ${n}`, size: data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       this.#device.queue.writeBuffer(buffer, 0, data);
       this.#shared.stageBuffers.set(n, buffer);

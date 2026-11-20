@@ -6,7 +6,7 @@
 |---|---|
 | 打开并等游戏跑起来 | `stride open http://localhost:5184/ --headless --size 1280x720`（preview 的地址加 `?debug`） |
 | 试玩 | `stride key KeyW --hold 1500`、`stride key Space`、`stride mouse move 200 0`、`stride inspect PlayerCharacter` |
-| 和桌面 Stride 比画面 | `stride eval '<关效果、固定曝光的设置>'`，再 `stride shot ours.png --diff stride-capture/<参考>.png`（`meanSignedRgb` 是我们减 Stride，看整体偏亮偏暗）；偏亮偏暗时 `node tools/hdr-ratio.ts <参考.png> ours.png` 看是倍数差还是随角度的差 |
+| 和桌面 Stride 比画面 | `stride eval '<关效果、固定曝光的设置>'`、`stride call dither '{"on":false}'`（输出的抖动会让每个像素差一个灰阶），再 `stride shot ours.png --diff stride-capture/<参考>.png`（`meanSignedRgb` 是我们减 Stride，看整体偏亮偏暗）；偏亮偏暗时 `node tools/hdr-ratio.ts <参考.png> ours.png` 看是倍数差还是随角度的差 |
 | 帧时间、各通道 GPU 耗时、各系统 CPU 耗时 | `stride perf --seconds 5`；不限帧率测：`stride open <地址> --headless --chrome-arg=--disable-frame-rate-limit --chrome-arg=--disable-gpu-vsync` |
 | CPU 剖析 | `stride cpu-profile --seconds 5 [--callers <函数名正则>] [--out profile.json]` |
 | WebGPU 调用次数 | `stride gpu-calls` |

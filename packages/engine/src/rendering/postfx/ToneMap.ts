@@ -8,6 +8,8 @@
  * - 曝光（AutoExposure、AutoKeyValue）：key = 1.03 - 2 / (2 + log10(adapted + 1))，曝光 = key / adapted；
  * - 算子：Hejl2（白点 5）。亮度、对比度是 0 时只剩 max(color, 0.0001)。
  * 泛光等效果的层在映射之前加上（见 AdditiveLayers.ts）。
+ * 和 Stride 不同：输出是 8 位的 sRGB 时加不到一个灰阶的抖动（dither，默认开）。暗的渐变（夜空、雾）量化成 8 位以后相邻的带只差
+ * 一个灰阶，是一圈圈看得见的色带；抖动把它打散成看不出来的噪声。图案是固定的（按像素坐标），画面不动时每帧一样。
  */
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { FULLSCREEN_VERTEX } from '../fullscreen';
@@ -50,7 +52,7 @@ struct Adapt { factor: f32, reset: f32 };
 
 const TONEMAP_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
-struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32 };
+struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32 };
 @group(0) @binding(0) var<uniform> settings: Settings;
 @group(0) @binding(1) var hdr: texture_2d<f32>;
 @group(0) @binding(2) var adapted: texture_2d<f32>;
@@ -64,15 +66,33 @@ fn hejl2(color: vec3f, whitePoint: f32) -> vec3f {
   return vf / w;
 }
 
+/** Jimenez 的 interleaved gradient noise：0..1，相邻像素的值差得远，没有成片的低频。 */
+fn gradientNoise(pixel: vec2f) -> f32 {
+  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));
+}
+
+/**
+ * 输出的抖动：在 sRGB 编码后的值上加 ±半个灰阶的噪声（三个通道各用一份，不相关），再换回线性（目标是 sRGB 视图，写进去时
+ * GPU 再编码一次）。要在编码后的空间里加：一个灰阶在线性空间里的大小暗处和亮处差几十倍。
+ */
+fn dither(color: vec3f, pixel: vec2f) -> vec3f {
+  let c = saturate(color);
+  let encoded = select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308));
+  let noise = vec3f(gradientNoise(pixel), gradientNoise(pixel + vec2f(47.0, 17.0)), gradientNoise(pixel + vec2f(101.0, 59.0))) - 0.5;
+  let e = saturate(encoded + noise / 255.0);
+  return select(pow((e + 0.055) / 1.055, vec3f(2.4)), e / 12.92, e <= vec3f(0.04045));
+}
+
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  let color = max(textureLoad(hdr, vec2u(in.position.xy), 0).rgb + additiveLayers(in.uv), vec3f(0.0001));
-  if (settings.enabled == 0.0) {
-    return vec4f(color, 1.0);
+  var color = max(textureLoad(hdr, vec2u(in.position.xy), 0).rgb + additiveLayers(in.uv), vec3f(0.0001));
+  if (settings.enabled != 0.0) {
+    let luminance = max(textureLoad(adapted, vec2u(0u), 0).r, 0.0001);
+    let keyValue = select(settings.keyValue, 1.03 - 2.0 / (2.0 + log2(luminance + 1.0) / log2(10.0)), settings.autoKeyValue > 0.5);
+    let exposure = select(settings.exposure, max(keyValue / luminance, 0.0001), settings.autoExposure > 0.5);
+    color = hejl2(color * exposure, settings.whitePoint);
   }
-  let luminance = max(textureLoad(adapted, vec2u(0u), 0).r, 0.0001);
-  let keyValue = select(settings.keyValue, 1.03 - 2.0 / (2.0 + log2(luminance + 1.0) / log2(10.0)), settings.autoKeyValue > 0.5);
-  let exposure = select(settings.exposure, max(keyValue / luminance, 0.0001), settings.autoExposure > 0.5);
-  return vec4f(hejl2(color * exposure, settings.whitePoint), 1.0);
+  if (settings.dither != 0.0) { color = dither(color, in.position.xy); }
+  return vec4f(color, 1.0);
 }`;
 
 /** 跟着输入尺寸的资源：对数亮度图（带到 1x1 的 mip 链）和每一级读上一级的绑定组（第 0 级读输入，不在这里）。 */
@@ -107,6 +127,8 @@ export class ToneMap {
   adaptationRate = 1;
   /** Hejl2 算子的白点。 */
   whitePoint = 5;
+  /** 输出是 8 位的 sRGB 时加抖动（见文件头）。和桌面 Stride 的截图逐像素比对时关掉。 */
+  dither = true;
 
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
@@ -184,6 +206,8 @@ export class ToneMap {
       pass.sideEffect();
     }, (real) => {
       const tonemap = this.#pipeline('tonemap', outputFormat);
+      // 抖动只对 8 位的 sRGB 输出做（后备缓冲、8 位的渲染目标）；浮点的输出没有量化
+      this.#device.queue.writeBuffer(this.#settings, 24, new Float32Array([this.dither && /8unorm-srgb$/.test(outputFormat) ? 1 : 0]));
       const actual = <T extends object>(resource: T) => (isGraphTexture(resource) ? real.texture(resource) : resource);
       this.#fullscreen(frame.encoder, tonemap, this.#device.createBindGroup({
         layout: tonemap.getBindGroupLayout(0),

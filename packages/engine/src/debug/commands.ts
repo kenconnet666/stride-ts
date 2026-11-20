@@ -183,6 +183,11 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     if (args['debug'] === 'off' || args['debug'] === 'hits' || args['debug'] === 'reflection') ssr.debug = args['debug'];
     return { enabled: ssr.enabled, maxRoughness: ssr.maxRoughness, thickness: ssr.thickness, edgeFade: ssr.edgeFade, maxSteps: ssr.maxSteps, debug: ssr.debug };
   });
+  debug.command('dither', 'Dithering of the 8-bit output in the tone mapping pass (hides the banding of dark gradients). args: on (true/false; omitted toggles). Turn it off to compare screenshots pixel by pixel with desktop Stride.', (args) => {
+    const toneMap = game.graphicsCompositor.postEffects.toneMap;
+    toneMap.dither = typeof args['on'] === 'boolean' ? args['on'] : !toneMap.dither;
+    return { dither: toneMap.dither };
+  });
   debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false; omitted toggles).', (args) => {
     const taa = game.graphicsCompositor.temporalAntialiasing;
     taa.enabled = typeof args['on'] === 'boolean' ? args['on'] : !taa.enabled;

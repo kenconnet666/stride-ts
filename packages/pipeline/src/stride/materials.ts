@@ -282,7 +282,7 @@ export class MaterialImporter {
   /**
    * 透明：MaterialTransparencyBlendFeature 的 alpha（限制在 0..1）同时乘漫反射和镜面；MaterialTransparencyAdditiveFeature 照
    * Stride 的 ComputeColorMaterialAlphaBlend 换成两个系数：漫反射（和输出的 alpha）乘 max(0, 2a - 1)，镜面乘 min(1, 2a)，
-   * a 是 0.5 时完全是加法。tint 是常量颜色；MaterialTransparencyCutoffFeature 是 Alpha 裁剪（alphaCutoff）；别的透明特性记警告。
+   * a 是 0.5 时完全是加法。tint 是常量颜色；DitheredShadows（默认 true，阴影按 alpha 抖动）关掉时记下；MaterialTransparencyCutoffFeature 是 Alpha 裁剪（alphaCutoff）；别的透明特性记警告。
    */
   #transparency(feature: StrideObject | undefined, asset: AssetEntry, uvScale: readonly [number, number]): Pick<MaterialFile, 'transparency' | 'alphaCutoff'> {
     if (!feature) return {};
@@ -298,7 +298,14 @@ export class MaterialImporter {
     if (tint.texture) this.#context.warnings.push(`${asset.file}: a textured transparency tint is not supported; using the color`);
     const [r, g, b] = tint.color;
     const factors = additive ? { alpha: Math.max(0, 2 * alpha - 1), specularAlpha: Math.min(1, 2 * alpha) } : { alpha };
-    return { transparency: { type: 'blend', ...factors, ...(r === 1 && g === 1 && b === 1 ? {} : { tint: [r, g, b] }) } };
+    return {
+      transparency: {
+        type: 'blend',
+        ...factors,
+        ...(r === 1 && g === 1 && b === 1 ? {} : { tint: [r, g, b] }),
+        ...(feature['DitheredShadows'] === false ? { ditheredShadows: false } : {}),
+      },
+    };
   }
 
   /** CullMode：None 是两面都画；Front（只画背面）还不支持。 */

@@ -46,6 +46,8 @@ export interface MaterialTransparency {
   readonly alpha: number;
   readonly specularAlpha?: number;
   readonly tint?: readonly [number, number, number];
+  /** 阴影按 alpha 抖动（Stride 的 DitheredShadows），默认 true；false 时整块投，只丢掉 alpha 小于 0.1 的像素。 */
+  readonly ditheredShadows?: boolean;
 }
 
 /**
@@ -248,7 +250,7 @@ export class Material {
       directLighting: occlusion?.directLighting ?? 0,
     };
     const transparency = desc.transparency;
-    this.transparency = transparency && { alpha: transparency.alpha, specularAlpha: transparency.specularAlpha ?? transparency.alpha, tint: transparency.tint ?? [1, 1, 1] };
+    this.transparency = transparency && { alpha: transparency.alpha, specularAlpha: transparency.specularAlpha ?? transparency.alpha, tint: transparency.tint ?? [1, 1, 1], ditheredShadows: transparency.ditheredShadows ?? true };
     this.alphaCutoff = desc.alphaCutoff;
     this.cavity = desc.cavity ?? { diffuse: 1, specular: 1 };
     const normalMap = desc.normalMap;
@@ -296,6 +298,16 @@ export class Material {
   /** 透明混合和玻璃的材质画在透明阶段。 */
   get isTransparent(): boolean {
     return this.transparency !== undefined || this.glass !== undefined;
+  }
+
+  /**
+   * 只写深度的阶段（阴影投射、深度预通道）用的片元着色器，undefined 是不要片元着色器（整块写深度）。同 Stride：Alpha 裁剪的丢掉
+   * 被裁的像素；透明混合的按 alpha 抖动着投阴影（ditheredShadows 关了时丢掉 alpha 小于 0.1 的）；只有玻璃的照不透明的投。
+   */
+  get depthFragment(): 'fsCutout' | 'fsDitheredShadow' | undefined {
+    if (this.alphaCutoff !== undefined) return 'fsCutout';
+    if (!this.transparency) return undefined;
+    return this.transparency.ditheredShadows ? 'fsDitheredShadow' : 'fsCutout';
   }
 
   /** @internal Model 组件里存的 id 对应的材质。 */

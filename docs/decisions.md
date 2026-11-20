@@ -2,6 +2,17 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 透明物体投阴影：按 alpha 抖动，同 Stride
+
+用户定的（带颜色的半透明阴影不做）。和 Stride 一样，投阴影的模型不管材质透不透明都进阴影投射的阶段，只写深度的片元着色器按材质选（`Material.depthFragment`）：
+
+- **透明混合（含加法）**：按 alpha 抖动（Stride 的 ShadowMapCasterAlphaDithered：4x4 的 Bayer 矩阵，`-1.01 + bayer + alpha × 1.01 < 0` 的像素丢掉）。alpha 是漫反射的 alpha 乘透明的系数，同颜色那一遍；加法透明的系数是 max(0, 2a - 1)，所以 a 是 0.5 的激光不投影。PCF 一滤就是半透明的影子，不滤时能看出网格纹（Stride 一样）。
+- **关了抖动**（Stride 材质的 `DitheredShadows: false`，导入成 `transparency.ditheredShadows: false`）：整块投，只丢掉 alpha 小于 0.1 的像素（Stride 的 matAlphaDiscard 默认值）。
+- **只有玻璃、没有透明混合的**：照不透明的投（Stride 的薄玻璃特性不开抖动）。
+- 屋檐下不下雨的天空遮挡也用阴影投射的阶段，但不画透明的（`RenderView.skipsTransparent`）：抖动着挡雨雪，地面会一格湿一格干。所以透明的屋顶还是不挡雨；要挡得另想（比如按材质整块挡），等有内容需要时再做。
+
+看过（PhysicsSample 的 VolumeTrigger，临时加一盏 PCF 7x7 的方向光，合成器打开阴影）：alpha 0.23 的触发器盒子投出淡影；和整块投比，影子那一块平均差 34/255，和不投比差 8.8，深浅约是整块的四分之一。
+
 ## 2026-11-20 csharp-beginner 的截图差变大：查清了，修掉一处
 
 P2 收尾时记下的"csharp-beginner、morph-targets 的截图差比以前的记录高 0.04 到 0.28"。在这台机器上装了 .NET 10 SDK，重编桌面 Stride 的 CSharpBeginner、重截参考图；验证槽位 2 检出 2026-11-19 的提交、用那时的管线重新导入内容，和现在的引擎在同一套参考图上比：

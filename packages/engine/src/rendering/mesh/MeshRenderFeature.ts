@@ -287,7 +287,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       if (warming) pending.push(warming);
     };
     for (const stage of stages) {
-      if (stage.shadowCasters ? !isShadowCaster || material.isTransparent : stage.transparent ? !(material.isTransparent || material.hasClearCoat) : material.isTransparent && !stage.picking) continue;
+      if (stage.shadowCasters ? !isShadowCaster : stage.transparent ? !(material.isTransparent || material.hasClearCoat) : material.isTransparent && !stage.picking) continue;
       const passes = stage.transparent ? transparentPasses(material) : NO_PASSES;
       if (passes.length === 0) add(stage);
       for (const materialPass of passes) add(stage, materialPass);
@@ -308,8 +308,8 @@ export class MeshRenderFeature extends RootRenderFeature {
     const { pass: cullPass, index } = culling;
     const counts = cullPass.culler.counts;
     // 透明阶段画透明的材质，再给有清漆的（不透明的）材质叠一遍清漆
-    // 点选、线框的阶段透明、不透明的都画
-    const inStage = (material: Material) => stage.picking || stage.wireframe || (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
+    // 点选、线框、阴影投射的阶段透明、不透明的都画（透明的按 alpha 抖动着投阴影，见 Material.depthFragment）
+    const inStage = (material: Material) => stage.picking || stage.wireframe || stage.shadowCasters || (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
     const visible = (b: number) => {
       const batch = this.batches[b]!;
       return counts[index * cullPass.batchCount + b]! > 0 && inStage(batch.material) && inRenderMask(view.cullingMask, batch.renderGroup);
@@ -327,7 +327,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       const batch = this.batches[b]!;
       const first = runs ? runs[i * 3 + 1]! : 0;
       const count = runs ? runs[i * 3 + 2]! : counts[index * cullPass.batchCount + b]!;
-      if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster) || (view.skipsSkinned && batch.skinned)) continue;
+      if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
@@ -689,8 +689,8 @@ class Gpu {
     const { colorFormat, depthFormat } = stage.output;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
     const doubleSided = colorFormat !== undefined && material.doubleSided;
-    const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
-    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${cutout}:${materialPass?.name}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
+    const depthFragment = colorFormat === undefined ? material.depthFragment : undefined;
+    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${depthFragment}:${materialPass?.name}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
   }
 
   #pipelineDescriptor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipelineDescriptor {
@@ -699,8 +699,8 @@ class Gpu {
     // 颜色树的变体每个阶段都用：位移贴图在只写深度的阶段也要算（深度预通道和不透明阶段的深度要一样）
     const trees = material.shaderTrees;
     const doubleSided = colorFormat !== undefined && material.doubleSided;
-    // Alpha 裁剪的材质在只写深度的阶段也要片元着色器（丢掉被裁的像素），别的材质那里不要
-    const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
+    // Alpha 裁剪、透明混合的材质在只写深度的阶段也要片元着色器（丢掉被裁的、抖动掉的像素），别的材质那里不要
+    const depthFragment = colorFormat === undefined ? material.depthFragment : undefined;
     {
       const offsets = vertexLayoutOffsets(layout);
       // 运动向量阶段不要切线（只算位置），用自己的顶点着色器
@@ -738,7 +738,7 @@ class Gpu {
             ],
           },
         } : {}),
-        ...(cutout ? { fragment: { module, entryPoint: 'fsCutout', targets: [] } } : {}),
+        ...(depthFragment ? { fragment: { module, entryPoint: depthFragment, targets: [] } } : {}),
         primitive: stage.wireframe
           ? { topology: 'line-list' }
           : stage.shadowCasters

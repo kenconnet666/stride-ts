@@ -252,6 +252,8 @@ export interface TransparencyFile {
   readonly specularAlpha?: number;
   /** 线性颜色，默认白色。 */
   readonly tint?: Vec3Tuple;
+  /** 阴影按 alpha 抖动（Stride 的 DitheredShadows），默认 true。 */
+  readonly ditheredShadows?: boolean;
 }
 
 /**

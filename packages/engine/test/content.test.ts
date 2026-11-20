@@ -698,7 +698,8 @@ describe('贴图', () => {
       return { format: srgb ? 'rgba8unorm-srgb' : 'rgba8unorm', width: 1, height: 1, levels: [new Uint8Array(4)], generateMipmaps: false };
     };
     const glow = await content.loadMaterial('materials/Glow');
-    expect([glow.specular, glow.isTransparent, glow.transparency, glow.emissive]).toEqual([[0.2, 0.2, 0.2], true, { alpha: 0.25, specularAlpha: 0.25, tint: [1, 1, 1] }, [5, 9, 50]]);
+    expect([glow.specular, glow.isTransparent, glow.transparency, glow.emissive]).toEqual([[0.2, 0.2, 0.2], true, { alpha: 0.25, specularAlpha: 0.25, tint: [1, 1, 1], ditheredShadows: true }, [5, 9, 50]]);
+    expect(glow.depthFragment).toBe('fsDitheredShadow');
     expect(glow.emissiveTexture!.texture.data.format).toBe('rgba8unorm-srgb');
     expect(glow.ambientOcclusion.texture).toMatchObject({ channel: 'a' });
     expect(glow.ambientOcclusion.texture!.texture.data.format).toBe('rgba8unorm');

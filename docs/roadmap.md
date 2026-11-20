@@ -367,7 +367,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 |---|---|---|---|
 | ThirdPersonPlatformer | `apps/platformer`（5184） | 1.84（关掉后处理、固定曝光 0.94；贴图的 BC 压缩和 SVG 棋盘格） | |
 | AnimatedModel | `apps/animated-model`（5186） | 0.09 | |
-| PhysicsSample | `apps/physics-sample`（5188） | 0.37 到 1.02（连 UI 一起比） | 透明物体不投阴影（P4） |
+| PhysicsSample | `apps/physics-sample`（5188） | 0.37 到 1.02（连 UI 一起比） | |
 | BepuSample | `apps/bepu-sample`（5190） | 0.15 到 0.66 | |
 | Platformer2D | `apps/platformer2d`（5192） | 1.08（Stride 把精灵表压成 BC） | |
 | TopDownRPG | `apps/topdown-rpg`（5194） | 1.06（BC 压缩） | |
@@ -465,7 +465,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
 **B. 补 P1、P2 落下的引擎能力**
 1. ~~画进渲染目标贴图的相机用阴影和后处理~~（2026-11-20：各自的方向光级联、各自的后处理；最大的图集放不下时阴影图一起缩一半，见 decisions.md）。还剩：这些视图也分簇，然后放开点光、聚光的上限（现在 256）。
-2. 透明物体投阴影（PhysicsSample）：按 alpha 抖动着投，同 Stride 的默认（用户 2026-11-20 定；带颜色的半透明阴影不做）。
+2. ~~透明物体投阴影~~（2026-11-20：按 alpha 抖动着投，同 Stride，材质可以关掉抖动；见 decisions.md）。
 3. 没有样例触发的 Stride 材质特性：先列出来（对照 Stride 的材质特性清单），再按用处补。
 4. csharp-intermediate 的 UI 渲染组。
 

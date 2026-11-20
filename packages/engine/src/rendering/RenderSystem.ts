@@ -166,6 +166,10 @@ export class RenderView {
   /** 不画蒙皮的网格（角色、动物）：天空遮挡的视图用，一直在动的角色不该在脚下留一块不湿、不积雪的地。 */
   skipsSkinned = false;
   /**
+   * 阴影投射的阶段里不画透明的材质：天空遮挡的视图用，透明的东西按 alpha 抖动着投阴影，拿来挡雨雪会让地面一格湿一格干。
+   */
+  skipsTransparent = false;
+  /**
    * 画哪些渲染组（Stride 的 RenderView.CullingMask，合成器里相机渲染器的 RenderMask）：第 g 位是 1 时画第 g 组。
    * 默认全画。
    */

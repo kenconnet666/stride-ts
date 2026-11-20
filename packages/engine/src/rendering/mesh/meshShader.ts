@@ -972,7 +972,6 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f) -> Lit {
   return result;
 }
 
-/** Alpha 裁剪的材质在只写深度的阶段（深度预通道、阴影）：同不透明阶段一样丢掉 alpha 低于阈值的像素。 */
 /** 点选的编号缓冲：写实例的变换槽位加一（0 留给"什么都没有"）；Alpha 裁剪掉的像素点不到。 */
 @fragment fn fsPick(in: Varyings) -> @location(0) u32 {
   let base = baseColor(in);
@@ -995,9 +994,32 @@ struct WireOutput {
   return WireOutput(vec4f(0.75, 0.9, 1.0, 1.0), in.position.z * 0.9995);
 }
 
+/**
+ * 只写深度的阶段里丢掉被裁的像素：Alpha 裁剪按材质的阈值；关了抖动阴影的透明混合同 Stride 丢掉 alpha 小于 0.1 的
+ * （matAlphaDiscard 的默认值；没有裁剪时 flags.y 是 -1）。
+ */
 @fragment fn fsCutout(in: Varyings) {
-  let base = baseColor(in);
-  if (base.a < material.flags.y) {
+  let threshold = select(0.1, material.flags.y, material.flags.y >= 0.0);
+  if (baseColor(in).a * material.blend.a < threshold) {
+    discard;
+  }
+}
+
+/** 4x4 的 Bayer 矩阵，同 Stride 的 ShadowMapCasterAlphaDithered。 */
+const BAYER_4X4 = array<f32, 16>(
+  0.0, 0.53333336, 0.13333334, 0.6666667,
+  0.8, 0.26666668, 0.9333333, 0.4,
+  0.2, 0.73333335, 0.06666667, 0.6,
+  1.0, 0.4666667, 0.8666667, 0.33333334);
+
+/**
+ * 透明混合的材质投阴影：按 alpha 在阴影图上抖动着丢像素（同 Stride 的 ShadowMapCasterAlphaDithered），PCF 一滤就是半透明的影子。
+ * alpha 同颜色那一遍（漫反射的 alpha 乘透明的系数）。
+ */
+@fragment fn fsDitheredShadow(in: Varyings) {
+  let alpha = saturate(baseColor(in).a * material.blend.a);
+  let cell = vec2u(in.position.xy) % 4u;
+  if (-1.01 + BAYER_4X4[cell.x + cell.y * 4u] + alpha * 1.01 < 0.0) {
     discard;
   }
 }

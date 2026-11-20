@@ -11,7 +11,7 @@
  * 打开的文档可以是场景，也可以是单独打开的预制体（`openAsset`）：预制体在视口里只有它自己，加上预览用的灯（不在文档里）。
  */
 import { shallowRef, triggerRef } from 'vue';
-import type { PrefabFile, SceneEntityFile, SceneFile } from '@stride-ts/engine/content-format';
+import type { PrefabFile, SceneEntityFile, SceneFile, TimelineFile } from '@stride-ts/engine/content-format';
 import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
@@ -51,6 +51,9 @@ export class EditorSession implements EditableScene {
   readonly dirty = shallowRef(false);
   /** 游戏页面里的代理；页面还没起来、重新加载时是 undefined。 */
   readonly agent = shallowRef<EditAgent>();
+  /** 打开的时间轴（资源浏览器里打开的，下面的时间轴面板显示它）：选实体、改场景时一直开着。 */
+  readonly timeline = shallowRef<OpenTimeline | undefined>();
+  #timelineSave: ReturnType<typeof setTimeout> | undefined;
   /** 正在编辑的文档（场景或预制体）。 */
   readonly opened = shallowRef<OpenedDocument>();
   /** 最近打开的场景：单独打开预制体以后回到它。 */
@@ -125,6 +128,53 @@ export class EditorSession implements EditableScene {
       if (ids.length > 0) this.inspected.value = undefined;
     };
     await this.#open(agent, document);
+    // 试玩回来（视口重新打开）：时间轴开着就接着预览
+    const timeline = this.timeline.value;
+    if (timeline) this.seekTimeline(timeline.time);
+  }
+
+  /** 打开时间轴：面板显示它，视口摆成第 0 秒的样子。 */
+  async openTimeline(path: string): Promise<void> {
+    const content = await this.client.readAsset<TimelineFile>('timeline', path);
+    this.timeline.value = { path, content, time: 0, throughCamera: false, camera: undefined, subtitle: '' };
+    this.seekTimeline(0);
+  }
+
+  /** 关掉时间轴：视口回到场景文档的样子。 */
+  closeTimeline(): void {
+    clearTimeout(this.#timelineSave);
+    this.agent.value?.endTimelinePreview();
+    this.timeline.value = undefined;
+  }
+
+  /** 拖到 time 秒：视口按时间轴预览（不改场景文档）。 */
+  seekTimeline(time: number): void {
+    const open = this.timeline.value;
+    if (!open) return;
+    const clamped = Math.min(Math.max(time, 0), open.content.duration);
+    const state = this.agent.value?.previewTimeline(open.content, clamped, { throughCamera: open.throughCamera });
+    this.timeline.value = { ...open, time: clamped, camera: state?.camera, subtitle: state?.subtitle ?? '' };
+  }
+
+  /** 从时间轴的相机里看（相机轨道那一刻的相机），或者回到编辑相机。 */
+  setTimelineCamera(throughCamera: boolean): void {
+    const open = this.timeline.value;
+    if (!open) return;
+    this.timeline.value = { ...open, throughCamera };
+    this.seekTimeline(open.time);
+  }
+
+  /** 改时间轴：马上按新的预览，稍等一下再存（连着拖关键帧只存最后一次）；编辑器的 HTTP 接口存，游戏里放的也跟着热重载。 */
+  editTimeline(change: (file: TimelineFile) => TimelineFile): void {
+    const open = this.timeline.value;
+    if (!open) return;
+    const content = change(open.content);
+    this.timeline.value = { ...open, content };
+    this.seekTimeline(open.time);
+    clearTimeout(this.#timelineSave);
+    this.#timelineSave = setTimeout(() => {
+      this.client.saveAsset('timeline', open.path, content).catch((error: unknown) => (this.notice.value = (error as Error).message));
+    }, 250);
   }
 
   /** 打开别的场景或预制体：打开着的文档改过就先保存。 */
@@ -514,3 +564,13 @@ const isInspectable = (kind: AssetKind): kind is InspectableKind => Object.hasOw
 
 /** 资源改了以后等这么久（毫秒）再存：拖数字、取色时不每一下都写文件。 */
 const INSPECTED_SAVE_DELAY = 250;
+
+/** 打开着的时间轴：内容（改了就是新对象）、预览到的时刻、是不是从时间轴的相机里看，那一刻的相机（场景文件里的 id）和字幕。 */
+export interface OpenTimeline {
+  readonly path: string;
+  readonly content: TimelineFile;
+  readonly time: number;
+  readonly throughCamera: boolean;
+  readonly camera: string | undefined;
+  readonly subtitle: string;
+}

@@ -114,10 +114,11 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
   });
 
   /** 场景、预制体可以在编辑器里打开（双击也行）。 */
-  const openable = (node: Node | undefined) => node?.asset?.kind === 'scene' || node?.asset?.kind === 'prefab';
+  const openable = (node: Node | undefined) => node?.asset?.kind === 'scene' || node?.asset?.kind === 'prefab' || node?.asset?.kind === 'timeline';
   const open = (node: Node) => run(t.open, async () => {
     const { kind, path } = node.asset!;
-    await session.openAsset({ kind: kind as 'scene' | 'prefab', path });
+    if (kind === 'timeline') await session.openTimeline(path);
+    else await session.openAsset({ kind: kind as 'scene' | 'prefab', path });
     return `打开了 ${kind} ${path}`;
   });
 

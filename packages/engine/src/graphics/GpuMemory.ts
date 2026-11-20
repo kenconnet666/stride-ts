@@ -72,12 +72,28 @@ export class PipelineCounts {
  * 不只数渲染特性的。和管线一样在设备上套一层（每个编码器的 beginRenderPass），所以谁画的都数得到；一个渲染通道里的
  * draw、drawIndexed、两种 indirect 各算一次。
  */
+const RECENT_FRAMES = 64;
+
 export class DrawCounts {
   /** 上一帧的总数（endFrame 时换过来）。 */
   total = 0;
   /** 上一帧按通道标签的次数，按第一次画的顺序；没有标签的在 (unlabeled) 上。 */
   byPass: ReadonlyMap<string, number> = new Map();
   #current = new Map<string, number>();
+  /** 最近几帧的总数（环形），算中位数用。 */
+  readonly #recent = new Float64Array(RECENT_FRAMES);
+  #frames = 0;
+
+  /**
+   * 最近约一秒（RECENT_FRAMES 帧）每帧总数的中位数：平常一帧画多少。偶尔一帧的大活（天空的环境光重算预滤波、探针重拍）
+   * 不算进去，预算按它比（上一帧的 total 碰上那一帧会忽高忽低）。
+   */
+  get median(): number {
+    const count = Math.min(this.#frames, RECENT_FRAMES);
+    if (count === 0) return 0;
+    const sorted = this.#recent.slice(0, count).sort();
+    return sorted[count >> 1]!;
+  }
 
   constructor(device: GPUDevice) {
     const createEncoder = device.createCommandEncoder.bind(device);
@@ -93,6 +109,7 @@ export class DrawCounts {
   endFrame(): void {
     this.byPass = this.#current;
     this.total = [...this.#current.values()].reduce((sum, count) => sum + count, 0);
+    this.#recent[this.#frames++ % RECENT_FRAMES] = this.total;
     this.#current = new Map();
   }
 

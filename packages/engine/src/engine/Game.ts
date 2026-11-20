@@ -332,10 +332,10 @@ export class Game {
     metrics.gauge('gpu.buffers.bytes', 'bytes', () => memory.buffers.bytes);
     metrics.gauge('gpu.textures', 'count', () => memory.textures.count);
     metrics.gauge('gpu.textures.bytes', 'bytes', () => memory.textures.bytes);
-    // 上一帧的绘制次数：所有渲染通道的（场景、阴影、后处理、UI、粒子、调试线），按通道分的见 stride draws；画的实例数是
-    // 渲染特性（网格、精灵）的
+    // 每帧的绘制次数（最近约一秒的中位数，偶尔一帧的大活不算）：所有渲染通道的（场景、阴影、后处理、UI、粒子、调试线），
+    // 按通道分的见 stride draws；画的实例数是渲染特性（网格、精灵）上一帧的
     const featureTotal = (key: string) => this.renderSystem.features.reduce((sum, feature) => sum + (feature.stats()[key] ?? 0), 0);
-    metrics.gauge('render.drawCalls', 'count', () => this.graphicsDevice.draws.total);
+    metrics.gauge('render.drawCalls', 'count', () => this.graphicsDevice.draws.median);
     metrics.gauge('render.instances', 'count', () => featureTotal('drawnInstances'));
     // 渲染图上一帧跑了几个通道、临时贴图实际占了几张
     metrics.gauge('render.passes', 'count', () => this.graphicsCompositor.graphStats.passes.length);

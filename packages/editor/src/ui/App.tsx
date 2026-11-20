@@ -8,6 +8,7 @@ import { LOCALES, locale, setLocale, type Locale } from './i18n';
 import { Inspector } from './Inspector';
 import { t } from './messages';
 import { SceneTree } from './SceneTree';
+import { TimelinePanel } from './TimelinePanel';
 import type { EditorSession } from './session';
 import { Viewport } from './Viewport';
 
@@ -136,7 +137,9 @@ export const App = _component(({ session }: { session: EditorSession }) => {
               }
             />
           }
-          end={<AssetBrowser session={session} />}
+          end={session.timeline.value ? (
+            <Splitter {...css.attrs(styles.fill)} _size={30} minSize={15} start={<AssetBrowser session={session} />} end={<TimelinePanel session={session} />} />
+          ) : <AssetBrowser session={session} />}
         />
       </div>
     );

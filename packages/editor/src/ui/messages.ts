@@ -82,6 +82,16 @@ export interface EditorMessages {
   readonly none: string;
   readonly defaultItem: string;
   readonly removeLast: string;
+  // 时间轴面板
+  readonly timelinePlay: string;
+  readonly timelinePause: string;
+  readonly timelineThroughCamera: string;
+  readonly timelineAddKey: string;
+  readonly timelineKeyTransform: string;
+  readonly timelineDeleteKey: string;
+  readonly timelineClose: string;
+  readonly timelineTracks: { readonly camera: string; readonly animation: string; readonly sound: string; readonly subtitle: string; readonly event: string };
+  readonly timelineNoValue: (component: string, property: string) => string;
   // 会话
   readonly prefabMade: (path: string) => string;
   readonly savedWithMissing: (count: number, first: readonly string[], more: boolean) => string;
@@ -161,6 +171,15 @@ const zhCN: EditorMessages = {
   none: '（无）',
   defaultItem: '（默认）',
   removeLast: '去掉最后一项',
+  timelinePlay: '播放（预览）',
+  timelinePause: '暂停',
+  timelineThroughCamera: '从时间轴的相机里看（相机轨道那一刻的相机）',
+  timelineAddKey: '在播放头给选中的轨道加关键帧（取实体现在的值）',
+  timelineKeyTransform: '在播放头给选中的实体的位置、旋转加关键帧（没有轨道就加上）',
+  timelineDeleteKey: '删掉选中的关键帧',
+  timelineClose: '关掉时间轴（视口回到场景的样子）',
+  timelineTracks: { camera: '相机切换', animation: '动画', sound: '声音', subtitle: '字幕', event: '事件' },
+  timelineNoValue: (component, property) => `实体上没有 ${component}.${property}，加不了关键帧`,
   prefabMade: (path) => `做成了预制体 ${path}，场景里换成了它的实例（保存场景以后生效）`,
   savedWithMissing: (count, first, more) => `已保存；${count} 处脚本的必填属性没设，试玩时这些脚本不挂：${first.join('、')}${more ? '……' : ''}`,
 };
@@ -239,6 +258,15 @@ const enUS: EditorMessages = {
   none: '(none)',
   defaultItem: '(default)',
   removeLast: 'Remove the last one',
+  timelinePlay: 'Play (preview)',
+  timelinePause: 'Pause',
+  timelineThroughCamera: 'Look through the timeline camera (the camera track at this time)',
+  timelineAddKey: "Add a key to the selected track at the playhead (the entity's current value)",
+  timelineKeyTransform: "Key the selected entity's position and rotation at the playhead (adds the tracks if missing)",
+  timelineDeleteKey: 'Delete the selected key',
+  timelineClose: 'Close the timeline (the viewport goes back to the scene)',
+  timelineTracks: { camera: 'Camera cuts', animation: 'Animation', sound: 'Sound', subtitle: 'Subtitles', event: 'Events' },
+  timelineNoValue: (component, property) => `The entity has no ${component}.${property} to key`,
   prefabMade: (path) => `Made prefab ${path}; the scene now has an instance of it (takes effect when the scene is saved)`,
   savedWithMissing: (count, first, more) => `Saved; ${count} required script propert${count === 1 ? 'y is' : 'ies are'} not set, so those scripts are not attached when playing: ${first.join(', ')}${more ? '…' : ''}`,
 };

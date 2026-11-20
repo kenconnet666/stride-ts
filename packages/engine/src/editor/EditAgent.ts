@@ -8,7 +8,7 @@
  * 编辑器自己的相机不在场景里：单独的实体，用自己的相机槽位，主画面改画它。视口里的操作（点选、拖操纵器、快捷键）在
  * EditorViewport，挂在编辑相机的实体上。
  */
-import type { SceneFile } from '../content/format';
+import type { SceneFile, TimelineFile } from '../content/format';
 import { sceneComponentKey } from '../content/SceneBuilder';
 import { requiredName } from '../content/sceneScripts';
 import type { Entity } from '../engine/Entity';
@@ -19,6 +19,7 @@ import { EditorCameraController } from './EditorCamera';
 import { EditorViewport } from './EditorViewport';
 import { scriptFields, type Field } from './fields';
 import { LiveScene, type SceneSource } from './LiveScene';
+import { TimelinePreview, type TimelinePreviewState } from './TimelinePreview';
 import type { SceneEdit } from './SceneDocument';
 import { DEFAULT_SNAP, TransformGizmo, type SnapSettings } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
@@ -62,6 +63,7 @@ export class EditAgent {
   /** 用户在视口里点选以后调（参数是新的选中）。 */
   onSelectionChanged: ((ids: readonly string[]) => void) | undefined;
   #live: LiveScene | undefined;
+  #timelinePreview: TimelinePreview | undefined;
   #target: EditableScene | undefined;
   #selection: readonly string[] = [];
   /** 反射探针上次重拍时的文档（sync 里比，文档变了就重拍）。 */
@@ -182,6 +184,34 @@ export class EditAgent {
     if (min[0] === Infinity) return undefined;
     const center = [(min[0]! + max[0]!) / 2, (min[1]! + max[1]!) / 2, (min[2]! + max[2]!) / 2] as const;
     return { center, radius: Math.hypot(max[0]! - center[0], max[1]! - center[1], max[2]! - center[2]) };
+  }
+
+  /**
+   * 时间轴的预览（编辑器里拖时间）：视口里的场景摆成 file 在 time 秒的样子，不改场景文档；throughCamera 时从时间轴那一刻的
+   * 相机里看。返回那一刻的相机（场景文件里的 id）和字幕。
+   */
+  previewTimeline(file: TimelineFile, time: number, options: { readonly throughCamera?: boolean } = {}): TimelinePreviewState {
+    this.#timelinePreview ??= new TimelinePreview(this.game, (id) => this.#live?.entity(id));
+    return this.#timelinePreview.show(file, time, options);
+  }
+
+  /** 结束预览：场景回到文档的样子，主画面回到编辑相机。 */
+  endTimelinePreview(): void {
+    this.#timelinePreview?.end();
+  }
+
+  /**
+   * 运行时实体（场景文件里的 id）上一个组件属性现在的值：数，或者按分量的数组（向量 xyz、四元数 xyzw、颜色 rgba）。
+   * 时间轴面板"加关键帧"用：拖时间预览着的是曲线的值，刚用操纵器挪过的是挪到的位置。没有时 undefined。
+   */
+  readProperty(id: string, component: string, property: string): number | number[] | undefined {
+    const entity = this.#live?.entity(id);
+    const type = entity && entity.manager.componentTypes(entity.id).find((candidate) => candidate.name === component);
+    const value = type && (entity.get(type) as Record<string, unknown>)[property];
+    if (typeof value === 'number') return value;
+    if (value === null || typeof value !== 'object') return undefined;
+    const v = value as Record<string, number>;
+    return 'r' in v ? [v['r']!, v['g']!, v['b']!, v['a']!] : 'w' in v ? [v['x']!, v['y']!, v['z']!, v['w']!] : [v['x']!, v['y']!, v['z']!];
   }
 
   /** 把这些实体（默认是选中的）放到画面中间；没有模型的（包围球是一个点）按 1 个单位的大小看。 */

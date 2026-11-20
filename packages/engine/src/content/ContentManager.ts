@@ -35,7 +35,8 @@ import { ColorTreeCompiler } from '../rendering/mesh/colorTree';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { uiAssetPaths } from './references';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './format';
+import { Timeline } from '../timeline/Timeline';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -50,6 +51,7 @@ declare module '../data/prop' {
     uiPage: UIPage;
     uiLibrary: UILibrary;
     sound: Sound;
+    timeline: Timeline;
   }
 }
 
@@ -217,6 +219,7 @@ export class ContentManager {
     uiPage: (path) => this.loadUIPage(path),
     uiLibrary: (path) => this.loadUILibrary(path),
     sound: (path) => this.loadSound(path),
+    timeline: (path) => this.loadTimeline(path),
   };
 
   constructor({ root = 'content/', read = fetchReader, shaderClass = () => undefined }: ContentOptions = {}) {
@@ -518,6 +521,16 @@ export class ContentManager {
   /**
    * 加载声音：不流式的下载并整个解码，流式的只记下音频文件的地址（实例播放时边下边放）。
    */
+  /** 时间轴（TimelineFile）和它的声音轨道用到的声音（播放到时不用等加载）。 */
+  loadTimeline(path: string): Promise<Timeline> {
+    return this.#once(path + EXTENSIONS.timeline, async (url) => {
+      const file = this.#json<TimelineFile>(await this.#read(url));
+      const paths = [...new Set(file.tracks.flatMap((track) => (track.type === 'sound' ? track.clips.map((clip) => clip.sound) : [])))];
+      const sounds = new Map(await Promise.all(paths.map(async (sound) => [sound, await this.loadSound(sound)] as const)));
+      return new Timeline(file, sounds);
+    });
+  }
+
   loadSound(path: string): Promise<Sound> {
     return this.#once(path + EXTENSIONS.sound, async (url) => {
       const file = this.#json<SoundFile>(await this.#read(url));

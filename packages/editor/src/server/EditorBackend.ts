@@ -26,7 +26,7 @@ const CHANGE_DELAY = 50;
 
 /** 能经接口读写内容的种类：主文件是 JSON 的。 */
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline']);
 
 class HttpError extends Error {
   readonly status: number;

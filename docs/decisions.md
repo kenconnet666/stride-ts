@@ -2,6 +2,17 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-21 时间轴：资源格式和游戏里播放
+
+F2 的前一半（编辑器的面板、曲线编辑器还没做）。参考虚幻的 Sequencer、Unity 的 Timeline：一个资源里多条轨道，游戏里当过场放，编辑器里拖时间预览，成片导出按它出帧——一套时间轴两用。
+
+- **格式**（`.timeline.json`，`TimelineFile`）：时长、帧率（编辑器吸附用）、轨道：属性（实体上一个运行时组件的一个属性按关键帧走，插值 constant、linear、cubic）、相机切换、动画剪辑、声音、字幕、事件。实体写场景文件里的实体 id（时间轴配着一个场景用），按实体所在场景的 `entities` 表找（`EntityScene.entities`，按文件建的场景才有）；组件按实体自己身上的组件名找（同调试命令），不要求引擎的组件登记名字。字段描述（`TIMELINE_FIELDS`）、JSON Schema、编辑器的"新建"、改名时改写引用（声音轨道引用声音）都认它。
+- **求值无状态**（`Timeline.evaluate(time, binding)`）：给一个时刻，属性写好、返回那一刻的相机和字幕——拖时间、逐帧出片、游戏里每帧放都走它。声音、事件、动画剪辑这些"经过才发生"的由播放的一方按前后两个时刻取（`crossed(from, to)`，不含起点、含终点）。属性轨道换成动画模块的属性曲线（`PropertyCurve`、`evaluateCurve`，写回抽成 `writeCurveValue`）。
+- **写回要整体赋值**：以前 PropertyStack 是往属性读出来的对象上 `Object.assign`，数据组件的视图是活的所以没出事；Transform 存在原生内存里，读出来是拷贝，改了白改——时间轴移动相机时才发现。现在整体赋值，两种都对。
+- **游戏里播放**（`TimelinePlayer`，引擎带的脚本，场景里 `{ type: 'TimelinePlayer', props: { timeline: { $asset, kind: 'timeline' } } }`）：autoplay、loop、speed、seek、play、pause，`events`（EventKey，值是事件名）、`finished()`；给了 subtitleFont 时屏幕下方显示字幕。加载时间轴时一起加载它用到的声音。放完（不循环）把主画面还给场景的相机、收起字幕（同 Unity Timeline 默认的放完行为）。
+- **相机切换**：`ForwardRenderer.mainCamera`（实体 id）设了而且它带相机时主画面用它，不按槽位找。和 Stride 不同：Stride 换相机要改 CameraComponent.Slot。
+- **看过**：collect-dodge 的开场过场（`Cutscenes/Intro`，6 秒：过场相机绕场地飞一圈落到跟随相机的位置，两条字幕，开门声，结尾发 introDone），用编辑器的 MCP 服务建的；无头 Chrome 里拖到 1.2、3.5、5.5 秒截图，相机和字幕对；冒烟加了一条检查（放的时候是过场相机、有字幕，放完还回跟随相机、收到 introDone）。
+
 ## 2026-11-21 编辑器的 MCP 服务
 
 F1（用户 2026-11-21："方便 agent 工具创作"）。`stride-editor mcp [工程目录]` 用 stdio 起服务（官方的 `@modelcontextprotocol/server` 2.4，工具的参数用 zod 写，SDK 由它生成给模型看的 JSON Schema、校验参数）。

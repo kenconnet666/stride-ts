@@ -16,6 +16,8 @@ export interface EntityScene {
   readonly name: string;
   /** 场景在变换存储里的根：场景的偏移、和父场景的关系（见 SceneRoot）。没有时场景里的实体就按自己的位置摆。 */
   readonly root?: SceneRoot | undefined;
+  /** 场景文件里的实体 id → 实体（按场景文件建的场景才有；时间轴按它找轨道的实体）。 */
+  readonly entities?: ReadonlyMap<string, Entity>;
 }
 
 export class Entity {

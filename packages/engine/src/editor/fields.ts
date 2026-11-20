@@ -11,7 +11,7 @@
  */
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
-  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot,
+  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
 import type { AssetKind } from '../content/references';
@@ -617,8 +617,48 @@ export const PROCEDURAL_MODEL_FIELDS = fields<ProceduralModelFile>({
   materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, optional: true, default: [], description: 'material per slot (a procedural model has one slot)' },
 });
 
+/** 时间轴（TimelineFile）：轨道按种类分；关键帧的值是数或按分量的数组，按 JSON 改。 */
+export const TIMELINE_FIELDS = fields<TimelineFile>({
+  name: string,
+  duration: { type: number({ min: 0, unit: 's' }) },
+  frameRate: { type: number({ min: 1 }), optional: true, default: 30, description: 'frames per second for snapping and display in the editor' },
+  tracks: list({
+    kind: 'union',
+    tag: 'type',
+    variants: {
+      property: fields<{ entity: unknown; component: unknown; property: unknown; interpolation: unknown; keys: unknown }>({
+        entity: { type: string, description: 'id of the entity in the scene file' },
+        component: { type: string, description: 'runtime component name (Transform, Light, or a game component registered by module path)' },
+        property: string,
+        interpolation: { type: oneOf('constant', 'linear', 'cubic'), optional: true, default: 'linear' },
+        keys: list(object([{ name: 'time', type: number({ min: 0, unit: 's' }) }, { name: 'value', type: { kind: 'json' }, description: 'a number, or the components (xyz, xyzw, rgba)' }])),
+      }),
+      camera: fields<{ cuts: unknown }>({ cuts: list(object([{ name: 'time', type: number({ min: 0, unit: 's' }) }, { name: 'camera', type: string, description: 'id of the camera entity in the scene file' }])) }),
+      animation: fields<{ entity: unknown; clips: unknown }>({
+        entity: string,
+        clips: list(object([
+          { name: 'start', type: number({ min: 0, unit: 's' }) },
+          { name: 'clip', type: string, description: 'name of the clip in the AnimationComponent' },
+          { name: 'speed', type: number(), optional: true, default: 1 },
+        ])),
+      }),
+      sound: fields<{ clips: unknown }>({
+        clips: list(object([
+          { name: 'start', type: number({ min: 0, unit: 's' }) },
+          { name: 'sound', type: asset('sound') },
+          { name: 'volume', type: number({ min: 0 }), optional: true, default: 1 },
+        ])),
+      }),
+      subtitle: fields<{ cues: unknown }>({
+        cues: list(object([{ name: 'start', type: number({ min: 0, unit: 's' }) }, { name: 'end', type: number({ min: 0, unit: 's' }) }, { name: 'text', type: string }])),
+      }),
+      event: fields<{ events: unknown }>({ events: list(object([{ name: 'time', type: number({ min: 0, unit: 's' }) }, { name: 'name', type: string }])) }),
+    } satisfies Record<TimelineFile['tracks'][number]['type'], readonly Field[]>,
+  }),
+});
+
 /** 属性面板能编辑的资源（选中资源浏览器里的它时）：种类 → 字段。模型只有 JSON 写的那种能编辑。 */
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS } as const;
 
 const INTEGER_KINDS: ReadonlySet<string> = new Set(['int', 'u8', 'u32']);
 

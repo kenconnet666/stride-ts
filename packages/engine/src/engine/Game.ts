@@ -25,6 +25,7 @@ import { InputManager } from '../input/InputManager';
 import { Simulation } from '../physics/Simulation';
 import { NavigationSystem } from '../physics/NavigationSystem';
 import { AudioEmitterComponent, AudioListenerComponent } from '../audio/AudioEmitterComponent';
+import { TimelinePlayer } from '../timeline/TimelinePlayer';
 import { RecastNavigationComponent } from '../physics/RecastNavigationComponent';
 import { AtmosphereRenderFeature } from '../rendering/sky/AtmosphereRenderFeature';
 import { BackgroundRenderFeature } from '../rendering/sky/BackgroundRenderFeature';
@@ -266,6 +267,7 @@ export class Game {
       this.registry.register(ParticleSystemComponent);
       this.registry.register(AudioEmitterComponent);
       this.registry.register(AudioListenerComponent);
+      this.registry.register(TimelinePlayer);
       this.animation = new AnimationSystem(this.native, this.entities);
       this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui), dayNightCycleSystem(this.entities, () => !this.editing));
       this.content.animationNative ??= this.native;

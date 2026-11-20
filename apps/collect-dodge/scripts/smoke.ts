@@ -1,12 +1,14 @@
 // 冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/collect-dodge smoke [-- --hub <中枢名的一部分>]
-// 检查：主场景跑起来了；按 W 玩家朝前走；吃金币加分、金币消失；被障碍撞到回到出生点；金币吃完门升起来；走进终点赢了。
+// 检查：主场景跑起来了；开场过场放完；按 W 玩家朝前走；吃金币加分、金币消失；被障碍撞到回到出生点；金币吃完门升起来；走进终点赢了。
 // 金币和终点用瞬移过去（障碍来回走，走过去撞不撞到看时机）；撞障碍是把障碍挪到玩家身上。没有错误日志（finish 检查）。
 import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
-const { stride, check, finish } = startSmoke('collect-dodge');
+const { stride, sleep, check, finish } = startSmoke('collect-dodge');
 
 stride('eval', 'location.reload()');
+// 等旧页面断开，否则 wait 可能还对着它就返回了
+await sleep(1500);
 stride('wait');
 const status = stride('status') as { scene: string | null; error: string | null; entities: number };
 check('主场景跑起来了，有实体', status.scene === 'MainScene' && status.error === null && status.entities > 0, status);
@@ -19,6 +21,16 @@ stride('eval', `(() => {
   globalThis.teleportPlayer = (x, y, z) => g.simulation.body(entity('Player')).teleport({ x, y, z }, { x: 0, y: 0, z: 0, w: 1 });
   return 1;
 })()`);
+
+// 开场过场（时间轴 Cutscenes/Intro）：放的时候主画面是过场相机、有字幕；放完发 introDone，主画面还给跟随相机
+const intro = stride('eval', `(async () => {
+  const player = entity('Intro').get(strideEngine.TimelinePlayer);
+  const events = player.events.receiver();
+  const during = await until(() => player.subtitle && [player.subtitle, strideGame.graphicsCompositor.mainCamera === entity('CutsceneCamera').id], 6);
+  await until(() => !player.playing, 10);
+  return { during, ended: [player.time, strideGame.graphicsCompositor.mainCamera ?? null, events.drain()] };
+})()`) as { during: [string, boolean] | false; ended: [number, number | null, string[]] };
+check('开场过场：过场相机、字幕；放完还回跟随相机，发 introDone', intro.during !== false && intro.during[1] && intro.ended[0] === 6 && intro.ended[1] === null && intro.ended[2].includes('introDone'), intro);
 
 const start = stride('eval', `(async () => { await seconds(0.5); return rules(); })()`) as { total: number; collected: number };
 check('开局：关卡里 5 个金币，一个没吃', start.total === 5 && start.collected === 0, start);

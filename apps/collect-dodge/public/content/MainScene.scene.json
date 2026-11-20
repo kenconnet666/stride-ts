@@ -1046,6 +1046,73 @@
      }
     ]
    }
+  },
+  {
+   "id": "cutscene-camera",
+   "name": "CutsceneCamera",
+   "parent": null,
+   "position": [
+    0,
+    14,
+    -34
+   ],
+   "rotation": [
+    0,
+    0.9361,
+    0.35173,
+    0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.1,
+     "farClipPlane": 1000,
+     "slot": 1
+    }
+   }
+  },
+  {
+   "id": "intro",
+   "name": "Intro",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "scripts": [
+     {
+      "type": "TimelinePlayer",
+      "props": {
+       "timeline": {
+        "$asset": "Cutscenes/Intro",
+        "kind": "timeline"
+       },
+       "subtitleFont": {
+        "$asset": "UI/OpenSans-Regular",
+        "kind": "font"
+       }
+      }
+     }
+    ]
+   }
   }
  ]
 }

@@ -1,0 +1,134 @@
+{
+ "name": "Intro",
+ "duration": 6,
+ "tracks": [
+  {
+   "type": "camera",
+   "cuts": [
+    {
+     "time": 0,
+     "camera": "cutscene-camera"
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "cutscene-camera",
+   "component": "Transform",
+   "property": "position",
+   "interpolation": "cubic",
+   "keys": [
+    {
+     "time": 0,
+     "value": [
+      0,
+      14,
+      -34
+     ]
+    },
+    {
+     "time": 2.5,
+     "value": [
+      -18,
+      10,
+      -6
+     ]
+    },
+    {
+     "time": 5,
+     "value": [
+      -10,
+      9,
+      14
+     ]
+    },
+    {
+     "time": 6,
+     "value": [
+      0,
+      10,
+      13
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "cutscene-camera",
+   "component": "Transform",
+   "property": "rotation",
+   "keys": [
+    {
+     "time": 0,
+     "value": [
+      0,
+      0.9361,
+      0.35173,
+      0
+     ]
+    },
+    {
+     "time": 2.5,
+     "value": [
+      -0.17737,
+      -0.6845,
+      -0.17737,
+      0.6845
+     ]
+    },
+    {
+     "time": 5,
+     "value": [
+      -0.23519,
+      -0.37008,
+      -0.09742,
+      0.89344
+     ]
+    },
+    {
+     "time": 6,
+     "value": [
+      -0.43935,
+      0,
+      0,
+      0.89832
+     ]
+    }
+   ]
+  },
+  {
+   "type": "subtitle",
+   "cues": [
+    {
+     "start": 0.3,
+     "end": 2.6,
+     "text": "Collect all five coins to open the door"
+    },
+    {
+     "start": 2.8,
+     "end": 5.6,
+     "text": "Watch out for the red blocks!"
+    }
+   ]
+  },
+  {
+   "type": "sound",
+   "clips": [
+    {
+     "start": 5.8,
+     "sound": "Sounds/DoorOpen",
+     "volume": 0.6
+    }
+   ]
+  },
+  {
+   "type": "event",
+   "events": [
+    {
+     "time": 6,
+     "name": "introDone"
+    }
+   ]
+  }
+ ]
+}

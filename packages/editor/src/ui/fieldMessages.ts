@@ -23,7 +23,7 @@ const zhCN: FieldMessages = {
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
-    'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质',
+    'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴',
   },
   names: {
     addressU: 'U 方向寻址', addressV: 'V 方向寻址', aerialPerspectiveScale: '空气透视的距离倍数', agentHeight: '代理的高度', agentMaxClimb: '代理能迈的高度',
@@ -61,6 +61,8 @@ const zhCN: FieldMessages = {
     textureCameras: '画进贴图的相机', thickness: '厚度', tileSize: '分块大小', timeOfDay: '时刻', toneMap: '色调映射', transitionTime: '过渡时间',
     transparency: '透明', transparent: '画透明物体', trigger: '触发器', turbulence: '湍流', type: '类型', upperFade: '上端淡出', uvScale: 'UV 缩放',
     verticalFieldOfView: '竖直视角', windDirection: '风向', windSpeed: '风速',
+    duration: '时长', frameRate: '帧率', tracks: '轨道', entity: '实体', component: '组件', property: '属性', interpolation: '插值', keys: '关键帧',
+    time: '时刻', value: '值', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
     "one per material slot of the model; null keeps the model's own material; omitted keeps all of them": '模型的每个材质槽一个；null 用模型自带的材质；不写时全用模型自带的',
@@ -96,6 +98,12 @@ const zhCN: FieldMessages = {
     'pixels with a base color alpha below it are discarded': '基础色的 alpha 低于它的像素丢掉',
     'file format version': '文件格式的版本',
     'material per slot (a procedural model has one slot)': '每个槽的材质（基本形状的模型只有一个槽）',
+    'frames per second for snapping and display in the editor': '编辑器里吸附和显示用的每秒帧数',
+    'id of the entity in the scene file': '场景文件里的实体 id',
+    'runtime component name (Transform, Light, or a game component registered by module path)': '运行时的组件名（Transform、Light，或者游戏按模块路径登记的组件）',
+    'a number, or the components (xyz, xyzw, rgba)': '一个数，或者按分量（xyz、xyzw、rgba）',
+    'id of the camera entity in the scene file': '场景文件里相机实体的 id',
+    'name of the clip in the AnimationComponent': 'AnimationComponent 里剪辑的名字',
   },
 };
 

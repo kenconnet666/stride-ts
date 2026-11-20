@@ -33,7 +33,9 @@ export { AnimationSystem, ModelMorph, ModelSkeleton, type SkinnedPart } from './
 export { evaluateMorphCurve, ModelMorphs, Morphed, MorphStack } from './animation/morphs';
 export { ModelNodeLink } from './animation/ModelNodeLink';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
-export { evaluateCurve, propertyCurve, PropertyAnimated, PropertyStack, type AnimatableKey, type CurveInterpolation, type KeyValue, type PropertyCurve } from './animation/curves';
+export { evaluateCurve, propertyCurve, PropertyAnimated, PropertyStack, writeCurveValue, type AnimatableKey, type CurveInterpolation, type KeyValue, type PropertyCurve } from './animation/curves';
+export { Timeline, type TimelineBinding, type TimelineCue, type TimelineState } from './timeline/Timeline';
+export { TimelinePlayer } from './timeline/TimelinePlayer';
 export { Prefab } from './content/Prefab';
 export { SceneTemplate } from './content/SceneTemplate';
 export { assetRef, ContentManager, type AssetHandle, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type GameSettings, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';

@@ -91,6 +91,18 @@ export function evaluateCurve(curve: PropertyCurve, time: number, out: Float32Ar
   if (curve.quaternion) normalize4(out);
 }
 
+/** 曲线的值（evaluateCurve 算的）写到实体上它的目标（组件的属性）；实体没有那个组件时不写，返回 false。 */
+export function writeCurveValue(entity: Entity, curve: PropertyCurve, value: Float32Array): boolean {
+  const view = entity.get(curve.component) as Record<string, unknown> | undefined;
+  if (!view) return false;
+  // 整体赋值：数据组件的视图逐分量拷进列里；Transform 这种存在原生内存里的，读出来是拷贝，只有赋值写得回去
+  if (curve.size === 1) view[curve.property] = value[0]!;
+  else if (curve.size === 3) view[curve.property] = { x: value[0]!, y: value[1]!, z: value[2]! };
+  else if (curve.quaternion) view[curve.property] = { x: value[0]!, y: value[1]!, z: value[2]!, w: value[3]! };
+  else view[curve.property] = { r: value[0]!, g: value[1]!, b: value[2]!, a: value[3]! };
+  return true;
+}
+
 /** 球面线性插值（走最短的弧），a、b 是两个数组里从各自的偏移开始的四个数。 */
 function slerp(out: Float32Array, a: ArrayLike<number>, ao: number, b: ArrayLike<number>, bo: number, t: number): void {
   let dot = a[ao]! * b[bo]! + a[ao + 1]! * b[bo + 1]! + a[ao + 2]! * b[bo + 2]! + a[ao + 3]! * b[bo + 3]!;
@@ -163,14 +175,7 @@ export class PropertyStack {
   /** 栈顶的结果写到实体的组件上；实体没有那个组件的曲线跳过。 */
   apply(entity: Entity): void {
     if (this.#depth === 0) return;
-    for (const { curve, value } of this.#entries[this.#depth - 1]!.values()) {
-      const view = entity.get(curve.component) as Record<string, unknown> | undefined;
-      if (!view) continue;
-      if (curve.size === 1) view[curve.property] = value[0]!;
-      else if (curve.size === 3) Object.assign(view[curve.property] as object, { x: value[0]!, y: value[1]!, z: value[2]! });
-      else if (curve.quaternion) Object.assign(view[curve.property] as object, { x: value[0]!, y: value[1]!, z: value[2]!, w: value[3]! });
-      else Object.assign(view[curve.property] as object, { r: value[0]!, g: value[1]!, b: value[2]!, a: value[3]! });
-    }
+    for (const { curve, value } of this.#entries[this.#depth - 1]!.values()) writeCurveValue(entity, curve, value);
   }
 
   #combine(operation: (a: Float32Array, b: Float32Array, quaternion: boolean) => void): void {

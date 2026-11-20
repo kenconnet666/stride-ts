@@ -23,6 +23,8 @@ export const EXTENSIONS = {
   glyphs: '.glyphs',
   /** 声音（SoundFile），音频文件在旁边。 */
   sound: '.sound.json',
+  /** 时间轴（TimelineFile）。 */
+  timeline: '.timeline.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */
@@ -448,3 +450,40 @@ export interface UIStripDefinition {
   readonly minimumSize?: number;
   readonly maximumSize?: number;
 }
+
+/**
+ * 时间轴（Stride 没有；照虚幻的 Sequencer、Unity 的 Timeline）：一段时间里各条轨道上的东西。游戏里当过场放（TimelinePlayer
+ * 脚本），编辑器里拖时间预览，成片导出按它出帧。轨道里的实体写场景文件里的实体 id（时间轴配着一个场景用），时刻都是秒。
+ */
+export interface TimelineFile {
+  readonly name: string;
+  /** 长度（秒）。 */
+  readonly duration: number;
+  /** 编辑器里吸附、显示用的帧率；没写是 30。 */
+  readonly frameRate?: number;
+  readonly tracks: readonly TimelineTrackFile[];
+}
+
+/** 关键帧之间怎么插值：constant 取前一个关键帧的值，linear 线性（四元数走球面），cubic 过四个点的 Catmull-Rom。 */
+export type TimelineInterpolation = 'constant' | 'linear' | 'cubic';
+
+export type TimelineTrackFile =
+  /**
+   * 属性：实体上一个组件（运行时的组件名，比如 Transform、Light、游戏的 `gameplay/health#Health`）的一个属性按关键帧走。
+   * 值是数，或者按分量的数组（向量 xyz、四元数 xyzw、颜色 rgba）。
+   */
+  | {
+    readonly type: 'property'; readonly entity: string; readonly component: string; readonly property: string;
+    readonly interpolation?: TimelineInterpolation;
+    readonly keys: readonly { readonly time: number; readonly value: number | readonly number[] }[];
+  }
+  /** 相机切换：每个切点以后主画面用哪台相机（场景里带 Camera 的实体）。 */
+  | { readonly type: 'camera'; readonly cuts: readonly { readonly time: number; readonly camera: string }[] }
+  /** 动画剪辑：实体的 AnimationComponent 从 start 起放这个剪辑（剪辑在组件的 animations 里的名字）。 */
+  | { readonly type: 'animation'; readonly entity: string; readonly clips: readonly { readonly start: number; readonly clip: string; readonly speed?: number }[] }
+  /** 声音：从 start 起放（声音资源的内容路径），volume 没写是 1。 */
+  | { readonly type: 'sound'; readonly clips: readonly { readonly start: number; readonly sound: string; readonly volume?: number }[] }
+  /** 字幕：start 到 end 之间显示 text。 */
+  | { readonly type: 'subtitle'; readonly cues: readonly { readonly start: number; readonly end: number; readonly text: string }[] }
+  /** 事件：播放经过 time 时通知（TimelinePlayer 的 events），游戏的脚本按名字接。 */
+  | { readonly type: 'event'; readonly events: readonly { readonly time: number; readonly name: string }[] };

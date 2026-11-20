@@ -10,6 +10,7 @@
  * 深度预通道同 Stride 默认合成器的 GBuffer 阶段（ZPrepass 效果）：先只画深度，不透明阶段用 less-equal 复用它，
  * 每个像素只做一次完整的着色（TPP 的不透明通道 3.0 → 0.9 ms 量级的差别就在这里）。
  */
+import type { EntityId } from '../data/prop';
 import type { CompositorSettings, TextureCamera } from '../content/ContentManager';
 import type { ScenePostEffects } from '../content/format';
 import type { ColumnsOf } from '../engine/component';
@@ -109,6 +110,11 @@ export class ForwardRenderer {
   readonly clearColor = new Color4(0.01, 0.0134, 0.022, 1);
   /** 用哪个相机槽位的相机（Camera.slot，Stride 的 SceneCameraRenderer.Camera）；默认 0。 */
   cameraSlot = 0;
+  /**
+   * 主画面用的相机实体（时间轴的相机切换、过场）：设了而且它带 Camera 和 Transform 时，主画面用它，不按 cameraSlot 找；
+   * undefined 时按槽位。和 Stride 不同：Stride 换相机要改 CameraComponent.Slot。
+   */
+  mainCamera: EntityId | undefined;
   /** 这一帧用的相机实体找到了没有；没有相机时只清屏（同 Stride）。 */
   hasCamera = false;
   /** 后处理（Stride 的 ForwardRenderer.PostEffects），设置可以改，默认值同 Stride。 */
@@ -184,10 +190,14 @@ export class ForwardRenderer {
   readonly #found = new Set<RenderView>();
   readonly #findCameras = system('ForwardRenderer.cameras', {
     with: { camera: Camera, transform: Transform },
-    update: ({ camera, transform, count }) => {
+    update: ({ camera, transform, count, entities }) => {
+      // 指定了主画面的相机（时间轴的相机切换）而且它在：主画面只用它，不按槽位找
+      const override = this.mainCamera;
+      let overridden = false;
+      if (override !== undefined) for (let row = 0; row < count && !overridden; row++) overridden = entities[row] === override;
       for (let row = 0; row < count; row++) {
-        const view = this.#wanted.get(camera.slot[row]!);
-        if (!view || this.#found.has(view)) continue;
+        const view = overridden && entities[row] === override ? this.#mainView : this.#wanted.get(camera.slot[row]!);
+        if (!view || this.#found.has(view) || (overridden && view === this.#mainView && entities[row] !== override)) continue;
         this.#found.add(view);
         const slot = transform.slot[row]!;
         if (!Matrix.invert(view.view, transform.world.subarray(slot * 16, slot * 16 + 16))) Matrix.setIdentity(view.view);

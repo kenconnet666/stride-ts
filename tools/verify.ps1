@@ -1,15 +1,17 @@
-# 耗时的验证（全量回归、截图比对、测量）放进单独的 git 工作树里跑，主检出可以接着改代码（开发服务器的热重载不会打断它）。
-# 先在主检出提交（不用推送），再用这个脚本让工作树切到那个提交、装依赖、跑脚本；通过后再推送。
-#   pwsh tools/verify.ps1                                  # 槽位 1 的工作树切到 HEAD，跑 tools/regress.ps1
-#   pwsh tools/verify.ps1 -Slot 2 -Ref abc123 -Apps jumpy-jet,physics-sample   # 认不出的参数原样转给脚本
+# 耗时的验证放进单独的 git 工作树里跑，主检出可以接着改代码（开发服务器的热重载不会打断它）。全量冒烟交给 CI（软件 WebGPU），
+# 这里跑 CI 验证不了的：真实显卡上的回归、截图比对、测量（tools/measure.ps1）。先在主检出提交，再用这个脚本让工作树切到那个
+# 提交、装依赖、跑脚本。
+#   pwsh tools/verify.ps1                                  # 槽位 3 的工作树切到 HEAD，跑 tools/regress.ps1
+#   pwsh tools/verify.ps1 -Ref abc123 -Apps jumpy-jet,physics-sample   # 认不出的参数原样转给脚本
 #   pwsh tools/verify.ps1 -Script tools/measure.ps1
-# 两个槽位（-Slot 1、2）各有一个工作树（主检出旁边的 stride-ts-verify-<槽位>，分离头指针，第一次运行时建），可以同时跑：
-# 每个槽位的 CLI 状态（中枢、无头 Chrome 的用户目录）在 ~/.stride-ts/regress-<槽位>，开发服务器的端口加 1000 × 槽位，互不抢。
+# 三个槽位（-Slot 1、2、3）各有一个工作树（主检出旁边的 stride-ts-verify-<槽位>，分离头指针，第一次运行时建）。1、2 可以被拿去
+# 开发（在分支上时这个脚本不碰它），3 专门验证。每个槽位的 CLI 状态（中枢、无头 Chrome 的用户目录）在 ~/.stride-ts/regress-<槽位>，
+# 开发服务器的端口加 10000 + 1000 × 槽位，互不抢。
 # 工作树和主检出是同一个仓库，主检出提交了工作树就能切过去，不用推送。导入的内容（git 忽略的 apps/*/public/content）用目录
 # 联接指向主检出：导入器改了以后先在主检出重新导入。
 param(
-    [ValidateSet(1, 2)]
-    [int]$Slot = 1,
+    [ValidateSet(1, 2, 3)]
+    [int]$Slot = 3,
     [string]$Ref = 'HEAD',
     [string]$Path,
     [string]$Script = 'tools/regress.ps1',
@@ -40,7 +42,8 @@ Write-Host "verifying $(git -C $Path log --oneline -1) in $Path (slot $Slot)"
 # 脚本（regress.ps1、measure.ps1）照这两个变量放 CLI 状态、挑端口
 $env:STRIDE_STATE_DIR = Join-Path $HOME ".stride-ts\regress-$Slot"
 $env:STRIDE_BROWSER_DIR = $env:STRIDE_STATE_DIR
-$env:STRIDE_PORT_OFFSET = 1000 * $Slot
+# 10000 起：+1000 到 +5000 留给拿工作树去开发的会话自己的开发服务器和回归
+$env:STRIDE_PORT_OFFSET = 10000 + 1000 * $Slot
 
 Push-Location $Path
 try {

@@ -10,6 +10,7 @@ Stride 的 TypeScript 孪生版起步的**一站式创作工作台**（用户 20
 - [docs/positioning.md](docs/positioning.md)：和 Babylon.js、PlayCanvas、three.js、Cocos、Unity、Godot、Needle 的对比（预估），特色和短板，要实测的性能点。
 - [docs/research.md](docs/research.md)：依赖逐项替代、库选型、线程模型和 API 取舍。
 - [docs/vector-assets.md](docs/vector-assets.md)：资源尽量矢量化（用户 2026-11-19 的方向）的格式讨论稿：2D 矢量图、材质图、几何、地形各用什么格式，要用户定的问题，几何实验的设计和结果。
+- [docs/creation-tools.md](docs/creation-tools.md)：资源创作工具的调研（2026-11-21）：材质、模型、地形、植被、角色、动画、特效、分镜剪辑、声音、AI 生成各类业界工具的要点功能、我们拿什么、不做什么；做创作线（S1–S5）的每个工具前先读对应的一节。
 - [docs/prefabs.md](docs/prefabs.md)：预制体在场景文件里怎么表示（2026-11-20 用户定了：场景里只存引用和差异）。
 - [docs/handover.md](docs/handover.md)：**换机器的交接**（2026-11-20）：新机器上的准备、做到哪了、没收尾的。
 - [docs/roadmap.md](docs/roadmap.md)：路线图（范围、原则、阶段、取舍）和末尾的"进度"；执行中自己做的决定记在 [docs/decisions.md](docs/decisions.md)，已完成各项的过程在 [docs/progress-log.md](docs/progress-log.md)。

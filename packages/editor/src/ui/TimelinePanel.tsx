@@ -7,7 +7,7 @@
 import { Camera, ChartSpline, CircleX, Clapperboard, Diamond, KeyRound, Pause, Play, Trash2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, Select } from '@zerodep-dev/vue-tsx-pro-ui';
 import { onUnmounted } from 'vue';
 import type { TimelineFile, TimelineTrackFile } from '@stride-ts/engine/content-format';
 import { t } from './messages';
@@ -18,6 +18,7 @@ const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.8rem' },
   toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_sm', paddingBlock: '2px', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
   name: { fontWeight: '600', marginInlineEnd: '_sm' },
+  select: { width: '9em' },
   time: { fontVariantNumeric: 'tabular-nums', color: '_textMuted', marginInline: '_sm' },
   subtitle: { flex: '1', color: '_textMuted', fontStyle: 'italic', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
   body: { flex: '1', minHeight: '0', overflow: 'auto', display: 'grid', gridTemplateColumns: '14em 1fr' },
@@ -231,16 +232,16 @@ export const TimelinePanel = _component(({ session }: { session: EditorSession }
           <IconButton icon={Trash2} aria-label={t.timelineDeleteKey} disabled={selected?.key === undefined} onClick={deleteKey} />
           <IconButton icon={ChartSpline} variant={curves ? 'soft' : 'ghost'} aria-pressed={curves} aria-label={t.timelineCurves} disabled={selectedTrack?.type !== 'property'} onClick={() => (curves = !curves)} />
           {curves && selectedTrack?.type === 'property' && [
-            <select aria-label={t.timelineInterpolation} value={selectedTrack.interpolation ?? 'linear'} onChange={(event: Event) => setInterpolation((event.target as HTMLSelectElement).value as 'constant' | 'linear' | 'cubic')}>
-              {(['constant', 'linear', 'cubic'] as const).map((mode) => <option value={mode}>{t.timelineInterpolations[mode]}</option>)}
-            </select>,
-            <button type="button" disabled={selected?.key === undefined || selectedTrack.interpolation !== 'cubic'} onClick={() => setTangents('auto')}>{t.timelineAutoTangent}</button>,
-            <button type="button" disabled={selected?.key === undefined || selectedTrack.interpolation !== 'cubic'} onClick={() => setTangents('flat')}>{t.timelineFlatTangent}</button>,
+            <Select {...css.attrs(styles.select)} size="sm" aria-label={t.timelineInterpolation}
+              items={(['constant', 'linear', 'cubic'] as const).map((mode) => ({ value: mode, label: t.timelineInterpolations[mode] }))}
+              _value={selectedTrack.interpolation ?? 'linear'} onUpdate:_value={(mode: string | null) => mode && setInterpolation(mode as 'constant' | 'linear' | 'cubic')} />,
+            <Button size="sm" variant="soft" tone="neutral" disabled={selected?.key === undefined || selectedTrack.interpolation !== 'cubic'} onClick={() => setTangents('auto')}>{t.timelineAutoTangent}</Button>,
+            <Button size="sm" variant="soft" tone="neutral" disabled={selected?.key === undefined || selectedTrack.interpolation !== 'cubic'} onClick={() => setTangents('flat')}>{t.timelineFlatTangent}</Button>,
           ]}
           <span {...css.attrs(styles.subtitle)}>{timeline.subtitle}</span>
-          <select aria-label={t.timelineExport} value={exportPreset} onChange={(event: Event) => (exportPreset = (event.target as HTMLSelectElement).value as ExportPreset)}>
-            {EXPORT_PRESETS.map((preset) => <option value={preset}>{t.timelineExportPresets[preset]}</option>)}
-          </select>
+          <Select {...css.attrs(styles.select)} size="sm" aria-label={t.timelineExport}
+            items={EXPORT_PRESETS.map((preset) => ({ value: preset, label: t.timelineExportPresets[preset] }))}
+            _value={exportPreset} onUpdate:_value={(preset: string | null) => preset && (exportPreset = preset as ExportPreset)} />
           <IconButton icon={Clapperboard} aria-label={session.exporting.value ? t.timelineExporting : t.timelineExport} disabled={session.exporting.value !== undefined} onClick={() => void session.exportTimeline(exportPreset)} />
           {session.exporting.value && <span {...css.attrs(styles.time)}>{t.timelineExporting}</span>}
           <IconButton icon={CircleX} variant="ghost" aria-label={t.timelineClose} onClick={() => session.closeTimeline()} />

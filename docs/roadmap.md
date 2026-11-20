@@ -445,7 +445,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 |---|---|---|
 | 渲染组和渲染掩码、调试渲染、网格线框、点选（网格、精灵、粒子、放在 3D 里的 UI；全屏 UI 不参加） | 引擎的 `rendering/`、`debug/` | |
 | 编辑状态（`?stride-edit`）和页面里的代理 | `Game.editing`、`editor/EditAgent.ts`；视口里的操作 `editor/EditorViewport.ts`，选中框的几何 `editor/worldBoxes.ts` | 游戏照自己的入口启动，不挂脚本、仿真不走；试玩是不带 stride-edit 重新打开 |
-| 编辑相机、操纵器（移动、旋转、缩放）、吸附 | `editor/EditorCamera.ts`、`editor/TransformGizmo.ts` | 吸附：工具条上的开关和三个步长，拖的时候按住 Ctrl 反过来；低帧率下按下、松开在同一帧也能拖 |
+| 编辑相机、操纵器（移动、旋转、缩放）、吸附 | `editor/EditorCamera.ts`、`editor/TransformGizmo.ts` | 吸附：视口工具条上的开关和三个步长，拖的时候按住 Ctrl 反过来；低帧率下按下、松开在同一帧也能拖 |
 | 场景文档（修改、撤销重做）、实体跟着文档 | `editor/SceneDocument.ts`、`editor/LiveScene.ts` | 实体的 set、add、remove，场景设置的 scene，batch；场景设置里合成器、偏移改了马上生效，物理、导航试玩时用上 |
 | 预制体：场景里只存引用和差异；编辑器里改、删成员记成覆盖；单独打开预制体编辑；成员下面能加、粘贴、拖进实体 | `content/prefabInstances.ts`、`pipeline/src/stride/instances.ts`、`editor/prefabEdits.ts` | 预制体删了成员时，挂在它下面的实体加载时挂到实例上（警告），不让场景打不开 |
 | 场景树：加、删、拖动换父实体，Ctrl/Shift 多选，复制粘贴、复制一份（Ctrl+C/V/D） | `editor/copyEntities.ts`、`packages/editor/src/ui/SceneTree.tsx` | 粘贴成兄弟（Ctrl+Shift+V 成子实体），新 id，拷贝之间的引用跟着换 |
@@ -535,6 +535,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 3. 场景是代码建的样例（sprite-fonts、custom-effect）的场景做成文件，编辑器能打开。**等用户定方向**（2026-11-21 查了）：Stride 的这两个样例本来就没有场景，内容全在合成器的根渲染器里（游戏设置引用的 GraphicsCompositor，FontRenderer、CustomEffectRenderer 的属性是字体和贴图）。两条路：A 改写成场景（自定义效果的精灵加 UI 文字页，样例的结构和 Stride 不一样了，桌面 Stride 的截图比对要重做）；B 编辑器能打开、编辑游戏设置和合成器（根渲染器的属性按字段描述改，P3 清单里"按 JSON 改的那几种"的一部分），样例不动。推荐 B：别的游戏也会有不靠场景的根渲染器，编辑器认它比改样例有用。先接着做 F 组。
 4. ~~编辑器的多语言~~（2026-11-21 做了，见 decisions.md；按这一项说的，先于 C2、C3 做）（P3 清单第 14 项，用户 2026-11-20 加的）：界面文字走翻译表，自带英语和中文。排在从零搭小游戏之后、别的编辑器功能之前——界面的文字越来越多，越晚改越费事。
 5. P3 清单其余各项按用处排在后面（多场景、按 JSON 改的那几种、剪贴板、吸附到表面、按需渲染、各种子编辑器）。
+6. ~~编辑器的布局照 JetBrains IDE 重排~~（2026-11-21，用户要的：主工具条、停在四周的工具窗口和两侧的图标竖条、文档页签、视口工具条、状态栏；控件全换成 vue-tsx-pro 的；见 decisions.md）。还剩：工具窗口拖到别的边、浮动窗口、搜索和命令面板。
 
 **F. 创作线：镜头、时间轴、成片，然后是资源的创作工具**（用户 2026-11-21 加，见第三节的"创作线"；每一项同时给人的界面和 agent 的接口）
 1. ~~编辑器的 MCP 服务和命令行的底座~~（2026-11-21：`stride-editor mcp [工程]`，工具是资源的读写、新建、删除、移动、导入，场景和预制体的修改（照字段描述检查），字段描述的 JSON Schema（引擎 `editor/fieldSchema.ts`），截图和页面命令（经调试中枢）；见 decisions.md。还剩：让开着的编辑器界面打开某个场景）：现有的编辑器接口（资源的读写、新建、导入）加上场景文档的修改、打开场景、预览截图；字段描述导出成 JSON Schema。后面每一项的操作都挂在它上面。

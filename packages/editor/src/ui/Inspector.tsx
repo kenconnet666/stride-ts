@@ -1,6 +1,6 @@
-import { X } from '@lucide/icons';
+import { Plus, Sparkles, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
-import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, Menu, MenuGroup, MenuItem } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@stride-ts/engine/editor-document';
@@ -17,16 +17,11 @@ const styles = css.create({
   section: { display: 'flex', flexDirection: 'column', gap: '2px' },
   heading: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: '600', marginBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
   hint: { color: '_textMuted', padding: '_sm' },
-  add: { marginBlockStart: '_sm' },
+  add: { marginBlockStart: '_sm', alignSelf: 'flex-start' },
 });
 
 type ComponentKey = keyof typeof COMPONENT_FIELDS;
 type Entities = readonly SceneEntityFile[];
-
-/** 属性面板能编辑的资源种类的名字。 */
-
-/** "添加组件"下拉框里脚本的值的前缀（组件的值是 COMPONENT_FIELDS 的键）。 */
-const SCRIPT_OPTION = 'script:';
 
 /** 脚本的类名：登记的名字（`gameplay/player#Player`、`Gameplay.Boss`）或 Stride 的类型名的最后一段。 */
 const scriptClass = (type: string): string => type.slice(Math.max(type.lastIndexOf('.'), type.lastIndexOf('#')) + 1);
@@ -214,13 +209,11 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             <FieldEditor type={SCENE_FIELDS[key].type} value={file[key]} context={context} onSet={setSetting(key)} />
           </section>
         ))}
-        <select {...css.attrs(styles.add)} aria-label={t.addSetting} value="" onChange={(event: Event) => {
-          const key = (event.target as HTMLSelectElement).value as SceneSettingKey;
-          if (key) change(key, structuredClone(SCENE_FIELDS[key].initial));
-        }}>
-          <option value="">{t.addSettingMenu}</option>
-          {SCENE_SETTING_KEYS.filter((key) => file[key] === undefined).map((key) => <option value={key}>{labelText(SCENE_FIELDS[key].label)}</option>)}
-        </select>
+        <Menu trigger={(props) => <Button {...props} {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Plus} aria-label={t.addSetting}>{t.addSettingMenu}</Button>}>
+          {SCENE_SETTING_KEYS.filter((key) => file[key] === undefined).map((key: SceneSettingKey) => (
+            <MenuItem onAction={() => change(key, structuredClone(SCENE_FIELDS[key].initial))}>{labelText(SCENE_FIELDS[key].label)}</MenuItem>
+          ))}
+        </Menu>
       </div>
     );
   };
@@ -230,7 +223,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     <div {...css.attrs(styles.panel)}>
       {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
       <div {...css.attrs(styles.hint)}>{t.assetHint(t.assetLabels[asset.kind], asset.path)}</div>
-      {asset.kind === 'material' && <button type="button" onClick={() => session.openMaterialGraph()}>{t.graphOpen}</button>}
+      {asset.kind === 'material' && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Workflow} onClick={() => session.openMaterialGraph()}>{t.graphOpen}</Button>}
       {asset.kind === 'material' && <PaintLayers session={session} />}
       <FieldEditor type={{ kind: 'object', fields: ASSET_FIELDS[asset.kind] }} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
     </div>
@@ -264,7 +257,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
               {labelText(COMPONENT_FIELDS[key].label)}
               <IconButton icon={X} variant="ghost" aria-label={t.remove(labelText(COMPONENT_FIELDS[key].label))} onClick={() => removeComponent(list, key)} />
             </div>
-            {key === 'particleSystem' && list.length === 1 && <button type="button" onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</button>}
+            {key === 'particleSystem' && list.length === 1 && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Sparkles} onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</Button>}
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key])} context={context} onSet={setter(list, () => ['components', key])} />
           </section>
         ))}
@@ -285,17 +278,14 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             </section>
           );
         })}
-        <select {...css.attrs(styles.add)} aria-label={t.addComponent} value="" onChange={(event: Event) => {
-          const value = (event.target as HTMLSelectElement).value;
-          if (value.startsWith(SCRIPT_OPTION)) addScript(list, value.slice(SCRIPT_OPTION.length));
-          else if (value) addComponent(list, value as ComponentKey);
-        }}>
-          <option value="">{t.addComponentMenu}</option>
-          {keys.filter((key) => list.some((entity) => entity.components[key] === undefined)).map((key) => <option value={key}>{labelText(COMPONENT_FIELDS[key].label)}</option>)}
-          <optgroup label={t.scripts}>
-            {addableScripts(agent.value.scriptTypes(), list).map(({ type, label }) => <option value={SCRIPT_OPTION + type} title={type}>{label}</option>)}
-          </optgroup>
-        </select>
+        <Menu trigger={(props) => <Button {...props} {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Plus} aria-label={t.addComponent}>{t.addComponentMenu}</Button>}>
+          {keys.filter((key) => list.some((entity) => entity.components[key] === undefined)).map((key) => (
+            <MenuItem onAction={() => addComponent(list, key)}>{labelText(COMPONENT_FIELDS[key].label)}</MenuItem>
+          ))}
+          <MenuGroup label={t.scripts}>
+            {addableScripts(agent.value.scriptTypes(), list).map(({ type, label }) => <MenuItem title={type} onAction={() => addScript(list, type)}>{label}</MenuItem>)}
+          </MenuGroup>
+        </Menu>
       </div>
     );
   };

@@ -6,6 +6,8 @@
  */
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
+import { Trash2 } from '@lucide/icons';
+import { ColorField, IconButton, NumberField } from '@zerodep-dev/vue-tsx-pro-ui';
 import { t } from './messages';
 
 const WIDTH = 220;
@@ -20,13 +22,14 @@ interface KeyFrame {
 type CurveFile = { readonly $type: string; readonly curve: { readonly $type?: string; readonly keyFrames: readonly KeyFrame[] } };
 
 const styles = css.create({
-  box: { display: 'flex', flexDirection: 'column', gap: '2px' },
+  box: { display: 'flex', flexDirection: 'column', gap: '2px', flex: '1', minWidth: '0' },
   svg: { backgroundColor: '_surfaceMuted', borderRadius: '4px', cursor: 'crosshair', touchAction: 'none' },
   bar: { position: 'relative', height: '18px', borderRadius: '3px', cursor: 'copy' },
   stops: { position: 'relative', height: '12px' },
   stop: { position: 'absolute', top: '0', width: '10px', height: '10px', marginInlineStart: '-5px', borderWidth: '1px', borderStyle: 'solid', borderColor: '_text', cursor: 'ew-resize' },
   selected: { borderColor: '_accent', borderWidth: '2px' },
-  row: { display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.8em' },
+  row: { display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' },
+  alpha: { width: '6.5em' },
 });
 
 const keysOf = (file: CurveFile) => [...file.curve.keyFrames].sort((a, b) => a.key - b.key);
@@ -120,11 +123,11 @@ export const ColorGradient = _component(({ value, onChange }: { value: CurveFile
         </div>
         {current && (
           <div {...css.attrs(styles.row)}>
-            <input type="color" aria-label={t.particleStopColor} value={hex(color(current))}
-              onInput={(event: Event) => { const h = (event.target as HTMLInputElement).value; setColor([1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).concat(color(current)[3] ?? 1)); }} />
-            <label>{t.particleStopAlpha}<input type="number" min="0" max="1" step="0.05" style={{ width: '4em' }} value={color(current)[3] ?? 1}
-              onChange={(event: Event) => setColor([...color(current).slice(0, 3), Number((event.target as HTMLInputElement).value)])} /></label>
-            {keys.length > 1 && <button type="button" onClick={() => { onChange(withKeys(value, keys.filter((k) => k !== current)), true); selected = 0; }}>{t.particleStopRemove}</button>}
+            <ColorField size="sm" aria-label={t.particleStopColor} _value={hex(color(current))}
+              onUpdate:_value={(h: string) => setColor([1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).concat(color(current)[3] ?? 1))} />
+            <NumberField {...css.attrs(styles.alpha)} size="sm" prefix={t.particleStopAlpha} aria-label={t.particleStopAlpha} min={0} max={1} step={0.05} format={{ useGrouping: false, maximumFractionDigits: 3 }}
+              _value={color(current)[3] ?? 1} onUpdate:_value={(alpha: number | null) => alpha !== null && setColor([...color(current).slice(0, 3), alpha])} />
+            {keys.length > 1 && <IconButton icon={Trash2} size="sm" variant="ghost" tone="neutral" aria-label={t.particleStopRemove} title={t.particleStopRemove} onClick={() => { onChange(withKeys(value, keys.filter((k) => k !== current)), true); selected = 0; }} />}
           </div>
         )}
       </div>

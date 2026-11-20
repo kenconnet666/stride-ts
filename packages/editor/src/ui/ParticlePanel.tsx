@@ -6,10 +6,10 @@
  *
  * 每次修改是场景文档的一个修改（同属性面板：能撤销，视口里的粒子马上重建）；拖曲线的点时同一次拖并成一步。
  */
-import { CircleX } from '@lucide/icons';
+import { ArrowDown, ArrowUp, CircleX, Plus, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, Menu, MenuItem, Select, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { ParticleModuleFile, SceneEntityFile } from '@stride-ts/engine/content-format';
 import { curve, EMITTER_FIELDS, isCurve, newEmitter, PARTICLE_MODULES, type ParticleStackKind } from '@stride-ts/engine/editor-particles';
 import { ColorGradient, FloatCurve } from './CurveEditor';
@@ -20,20 +20,22 @@ import type { EditorSession } from './session';
 const SPECS = new Map(PARTICLE_MODULES.map((spec) => [spec.type, spec]));
 const LISTS: readonly ParticleStackKind[] = ['spawners', 'initializers', 'updaters'];
 const SINGLES: readonly ParticleStackKind[] = ['shapeBuilder', 'material'];
+const small = { size: 'sm', variant: 'ghost', tone: 'neutral' } as const;
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.8rem' },
-  toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_sm', paddingBlock: '2px', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border', flexWrap: 'wrap' },
-  tab: { paddingInline: '8px' },
-  activeTab: { fontWeight: '700', borderBlockEndWidth: '2px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_accent' },
+  toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_borderMuted' },
+  tabs: { flex: '1', minWidth: '0' },
   body: { flex: '1', overflow: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '_sm', padding: '_sm', alignItems: 'start' },
   column: { display: 'flex', flexDirection: 'column', gap: '6px' },
-  stackTitle: { fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' },
-  card: { borderWidth: '1px', borderStyle: 'solid', borderColor: '_border', borderRadius: '6px', padding: '4px 6px', display: 'flex', flexDirection: 'column', gap: '2px' },
-  cardHeader: { display: 'flex', alignItems: 'center', gap: '4px', fontWeight: '600' },
+  stackTitle: { fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', minHeight: '28px' },
+  stackSelect: { flex: '1', minWidth: '0' },
+  card: { borderWidth: '1px', borderStyle: 'solid', borderColor: '_borderMuted', borderRadius: '6px', padding: '4px 6px', display: 'flex', flexDirection: 'column', gap: '2px', backgroundColor: '_surfaceMuted' },
+  cardHeader: { display: 'flex', alignItems: 'center', gap: '2px', fontWeight: '600' },
   grow: { flex: '1' },
   curveRow: { display: 'grid', gridTemplateColumns: 'minmax(6em, 35%) 1fr', alignItems: 'start', gap: '_xs' },
   label: { color: '_textMuted' },
+  curve: { display: 'flex', alignItems: 'flex-start', gap: '2px', minWidth: '0' },
   hint: { color: '_textMuted', padding: '_sm' },
 });
 
@@ -66,7 +68,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
 
   const curveEditor = (at: ValuePath, value: unknown, kind: 'Float' | 'Vector4') => {
     if (!isCurve(value)) {
-      return <button type="button" onClick={() => set(at, curve(kind, kind === 'Float' ? [[0, 1], [1, 1]] : [[0, [1, 1, 1, 1]], [1, [1, 1, 1, 0]]]))}>{t.particleAddCurve}</button>;
+      return <Button size="sm" variant="soft" tone="neutral" icon={Plus} onClick={() => set(at, curve(kind, kind === 'Float' ? [[0, 1], [1, 1]] : [[0, [1, 1, 1, 1]], [1, [1, 1, 1, 0]]]))}>{t.particleAddCurve}</Button>;
     }
     // 拖一个点的一路修改并成撤销的一步，松手时结束
     const change = (next: unknown, done: boolean) => {
@@ -74,9 +76,9 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
       if (done) session.commit();
     };
     return (
-      <span>
+      <span {...css.attrs(styles.curve)}>
         {String(value.$type).endsWith('Float') ? <FloatCurve value={value as never} onChange={change} /> : <ColorGradient value={value as never} onChange={change} />}
-        <button type="button" onClick={() => set(at, null)} title={t.particleRemoveCurve}>×</button>
+        <IconButton {...small} icon={X} aria-label={t.particleRemoveCurve} title={t.particleRemoveCurve} onClick={() => set(at, null)} />
       </span>
     );
   };
@@ -88,9 +90,9 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
       <div {...css.attrs(styles.card)}>
         <div {...css.attrs(styles.cardHeader)}>
           <span {...css.attrs(styles.grow)}>{t.particleModules[String(module.$type)] ?? String(module.$type)}</span>
-          {actions.up && <button type="button" title={t.particleUp} onClick={actions.up}>↑</button>}
-          {actions.down && <button type="button" title={t.particleDown} onClick={actions.down}>↓</button>}
-          {actions.remove && <button type="button" title={t.particleRemove} onClick={actions.remove}>×</button>}
+          {actions.up && <IconButton {...small} icon={ArrowUp} aria-label={t.particleUp} title={t.particleUp} onClick={actions.up} />}
+          {actions.down && <IconButton {...small} icon={ArrowDown} aria-label={t.particleDown} title={t.particleDown} onClick={actions.down} />}
+          {actions.remove && <IconButton {...small} icon={X} aria-label={t.particleRemove} title={t.particleRemove} onClick={actions.remove} />}
         </div>
         {spec
           ? spec.fields.map((field) => (field.type.kind === 'json' && field.name.startsWith('sampler')
@@ -123,16 +125,20 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
     return (
       <div {...css.attrs(styles.panel)}>
         <div {...css.attrs(styles.toolbar)}>
-          <strong>{t.particleTitle(file.name)}</strong>
-          {list.map((e, i) => (
-            <button type="button" {...css.attrs(styles.tab, i === index && styles.activeTab)} onClick={() => (emitterIndex = i)}>
-              {String(e['emitterName'] || t.particleEmitter(i + 1))}
-            </button>
-          ))}
-          <button type="button" onClick={() => { set(base, [...list, newEmitter(t.particleEmitter(list.length + 1))]); emitterIndex = list.length; }}>{t.particleAddEmitter}</button>
-          {emitter && <button type="button" onClick={() => set(base, list.filter((_, i) => i !== index))}>{t.particleRemoveEmitter}</button>}
-          <span {...css.attrs(styles.grow)} />
-          <IconButton icon={CircleX} variant="ghost" aria-label={t.particleClose} onClick={() => session.closeParticles()} />
+          <Tabs {...css.attrs(styles.tabs)} size="sm" _value={String(index)} onUpdate:_value={(value: string) => (emitterIndex = Number(value))}>
+            <TabList
+              aria-label={t.particleEmitters}
+              propsAdd={{ 'aria-label': t.particleAddEmitter }}
+              onAdd={() => { set(base, [...list, newEmitter(t.particleEmitter(list.length + 1))]); emitterIndex = list.length; }}
+            >
+              {list.map((e, i) => (
+                <Tab value={String(i)} propsClose={{ 'aria-label': t.particleRemoveEmitter }} onClose={() => set(base, list.filter((_, j) => j !== i))}>
+                  {String(e['emitterName'] || t.particleEmitter(i + 1))}
+                </Tab>
+              ))}
+            </TabList>
+          </Tabs>
+          <IconButton {...small} icon={CircleX} aria-label={t.particleClose} title={t.particleClose} onClick={() => session.closeParticles()} />
         </div>
         {emitter && (
           <div {...css.attrs(styles.body)}>
@@ -146,13 +152,18 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
                   <div {...css.attrs(styles.column)}>
                     <div {...css.attrs(styles.stackTitle)}>
                       {t.particleStacks[stack]}
-                      <select value={String(module?.$type ?? '')} onChange={(event: Event) => {
-                        const type = (event.target as HTMLSelectElement).value;
-                        // 换形状时留着大小、旋转的曲线
-                        set([...at, stack], { ...SPECS.get(type)!.initial, ...(stack === 'shapeBuilder' && module ? { samplerSize: module['samplerSize'] ?? null, samplerRotation: module['samplerRotation'] ?? null } : {}) });
-                      }}>
-                        {choices.map((spec) => <option value={spec.type}>{t.particleModules[spec.type] ?? spec.type}</option>)}
-                      </select>
+                      <Select
+                        {...css.attrs(styles.stackSelect)}
+                        size="sm"
+                        aria-label={t.particleStacks[stack]}
+                        items={choices.map((spec) => ({ value: spec.type, label: t.particleModules[spec.type] ?? spec.type }))}
+                        _value={String(module?.$type ?? '')}
+                        onUpdate:_value={(type: string | null) => {
+                          if (!type || type === module?.$type) return;
+                          // 换形状时留着大小、旋转的曲线
+                          set([...at, stack], { ...SPECS.get(type)!.initial, ...(stack === 'shapeBuilder' && module ? { samplerSize: module['samplerSize'] ?? null, samplerRotation: module['samplerRotation'] ?? null } : {}) });
+                        }}
+                      />
                     </div>
                     {module && card(module, [...at, stack], {})}
                   </div>
@@ -165,14 +176,11 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
                 <div {...css.attrs(styles.column)}>
                   <div {...css.attrs(styles.stackTitle)}>
                     {t.particleStacks[stack]}
-                    <select value="" onChange={(event: Event) => {
-                      const select = event.target as HTMLSelectElement;
-                      if (select.value) set([...at, stack], [...modules, SPECS.get(select.value)!.initial]);
-                      select.value = '';
-                    }}>
-                      <option value="">{t.particleAddModule}</option>
-                      {PARTICLE_MODULES.filter((spec) => spec.stack === stack).map((spec) => <option value={spec.type}>{t.particleModules[spec.type] ?? spec.type}</option>)}
-                    </select>
+                    <Menu trigger={(props) => <IconButton {...props} {...small} icon={Plus} aria-label={t.particleAddModule} title={t.particleAddModule} />}>
+                      {PARTICLE_MODULES.filter((spec) => spec.stack === stack).map((spec) => (
+                        <MenuItem onAction={() => set([...at, stack], [...modules, spec.initial])}>{t.particleModules[spec.type] ?? spec.type}</MenuItem>
+                      ))}
+                    </Menu>
                   </div>
                   {modules.map((module, i) => card(module, [...at, stack, i], {
                     ...(i > 0 ? { up: () => set([...at, stack], moved(modules, i, i - 1)) } : {}),

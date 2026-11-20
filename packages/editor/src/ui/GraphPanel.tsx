@@ -7,10 +7,10 @@
  * 每次修改经 session.editMaterialGraph 存（同属性面板，稍等一下存），材质热重载，视口里马上看到。节点的布局是定的（行高固定），
  * 端口的位置按节点的位置算，不量 DOM。
  */
-import { CircleX } from '@lucide/icons';
+import { CircleX, Plus } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, Menu, MenuGroup, MenuItem } from '@zerodep-dev/vue-tsx-pro-ui';
 import { onMounted, onUnmounted, type VNode } from 'vue';
 import type { GraphFile, GraphLink, GraphNodeFile, NodeSpec } from '@stride-ts/engine/node-graph';
 import { MATERIAL_GRAPH_OUTPUTS, MATERIAL_NODE_SPECS } from '@stride-ts/engine/material-graph';
@@ -28,7 +28,6 @@ const OUTPUT_PORTS = Object.entries(MATERIAL_GRAPH_OUTPUTS).map(([name, type]) =
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.75rem' },
   toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_sm', paddingBlock: '2px', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
-  name: { fontWeight: '600', marginInlineEnd: '_sm' },
   grow: { flex: '1', color: '_textMuted' },
   canvas: { flex: '1', position: 'relative', overflow: 'hidden', minHeight: '0', backgroundColor: '_background', cursor: 'grab', touchAction: 'none', userSelect: 'none' },
   layer: { position: 'absolute', left: '0', top: '0', transformOrigin: '0 0' },
@@ -220,15 +219,13 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     return (
       <div {...css.attrs(styles.panel)}>
         <div {...css.attrs(styles.toolbar)}>
-          <span {...css.attrs(styles.name)}>{t.graphTitle(inspected.path)}</span>
-          <select aria-label={t.graphAddNode} value="" onChange={(event: Event) => { const select = event.target as HTMLSelectElement; if (select.value) add(select.value); select.value = ''; }}>
-            <option value="">{t.graphAddNode}</option>
+          <Menu trigger={(props) => <Button {...props} size="sm" variant="soft" tone="neutral" icon={Plus}>{t.graphAddNode}</Button>}>
             {[...new Set(MATERIAL_NODE_SPECS.map((spec) => spec.category))].map((category) => (
-              <optgroup label={t.graphCategories[category] ?? category}>
-                {MATERIAL_NODE_SPECS.filter((spec) => spec.category === category).map((spec) => <option value={spec.type}>{t.graphNodes[spec.type] ?? spec.type}</option>)}
-              </optgroup>
+              <MenuGroup label={t.graphCategories[category] ?? category}>
+                {MATERIAL_NODE_SPECS.filter((spec) => spec.category === category).map((spec) => <MenuItem onAction={() => add(spec.type)}>{t.graphNodes[spec.type] ?? spec.type}</MenuItem>)}
+              </MenuGroup>
             ))}
-          </select>
+          </Menu>
           <span {...css.attrs(styles.grow)}>{t.graphHint}</span>
           <IconButton icon={CircleX} variant="ghost" aria-label={t.graphClose} onClick={() => session.closeMaterialGraph()} />
         </div>

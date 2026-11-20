@@ -1,7 +1,7 @@
-import { Box, File, Folder, FolderOpen, Image, Music, Type } from '@lucide/icons';
+import { Box, Check, ExternalLink, File, Folder, FolderOpen, Image, Music, Plus, Trash2, Type } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, TextField, Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
+import { IconButton, Menu, MenuItem, TextField, Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
 import { freeAssetPath, NEW_ASSET_OPTIONS } from '../newAssets';
 import type { AssetRecord, MoveRequest } from '../protocol';
 import { newAssetLabel, t } from './messages';
@@ -9,10 +9,9 @@ import type { EditorSession } from './session';
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%' },
-  bar: { display: 'flex', gap: '_xs', alignItems: 'center', paddingInline: '_sm', paddingBlock: '_xs' },
-  path: { flex: '1' },
-  create: { maxWidth: '9em' },
-  status: { color: '_textMuted', fontSize: '0.85em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '40%' },
+  bar: { display: 'flex', gap: '2px', alignItems: 'center', paddingInline: '_xs', paddingBlock: '2px' },
+  path: { flex: '1', minWidth: '0' },
+  status: { flex: '1', minWidth: '0', color: '_textMuted', fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingInlineStart: '_xs' },
   tree: { flex: '1', minHeight: '0' },
   kind: { color: '_textMuted', marginInlineStart: '_xs', fontSize: '0.8em' },
 });
@@ -119,7 +118,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     const { kind, path } = node.asset!;
     if (kind === 'timeline') await session.openTimeline(path);
     else await session.openAsset({ kind: kind as 'scene' | 'prefab', path });
-    return `打开了 ${kind} ${path}`;
+    return t.opened(kind, path);
   });
 
   /** 新建资源的文件夹：选中的文件夹，或者选中的资源所在的文件夹；没选时是内容目录的根。 */
@@ -169,22 +168,28 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
 
   return () => (
     <div {...css.attrs(styles.panel)} onDragover={(event: DragEvent) => hasFiles(event) && event.preventDefault()} onDrop={importDropped}>
-      <div {...css.attrs(styles.bar)}>
-        <TextField
-          {...css.attrs(styles.path)}
-          _value={target}
-          placeholder={current ? t.pathPlaceholder : t.pickAsset}
-          disabled={!current || busy}
-        />
-        <Button disabled={!current || busy || target === current.path || !target} onClick={() => current && void move(current, target)}>{t.moveRename}</Button>
-        <Button disabled={!current?.asset || busy} onClick={() => current && void remove(current)}>{t.delete}</Button>
-        <Button disabled={!openable(current) || busy} onClick={() => current && void open(current)}>{t.open}</Button>
-        <select {...css.attrs(styles.create)} aria-label={t.newAsset} value="" disabled={busy} onChange={(event: Event) => create((event.target as HTMLSelectElement).value)}>
-          <option value="">{t.newAssetMenu}</option>
-          {NEW_ASSET_OPTIONS.map((option) => <option value={option.id}>{newAssetLabel(option)}</option>)}
-        </select>
+      <div {...css.attrs(styles.bar)} role="toolbar" aria-label={t.assets}>
+        <Menu trigger={(props) => <IconButton {...props} icon={Plus} size="sm" variant="ghost" tone="neutral" aria-label={t.newAsset} title={t.newAsset} disabled={busy} />}>
+          {NEW_ASSET_OPTIONS.map((option) => <MenuItem onAction={() => create(option.id)}>{newAssetLabel(option)}</MenuItem>)}
+        </Menu>
+        <IconButton icon={ExternalLink} size="sm" variant="ghost" tone="neutral" aria-label={t.open} title={t.open} disabled={!openable(current) || busy} onClick={() => current && void open(current)} />
+        <IconButton icon={Trash2} size="sm" variant="ghost" tone="neutral" aria-label={t.delete} title={t.delete} disabled={!current?.asset || busy} onClick={() => current && void remove(current)} />
         <span {...css.attrs(styles.status)} title={status}>{status}</span>
       </div>
+      {current && (
+        <div {...css.attrs(styles.bar)}>
+          <TextField
+            {...css.attrs(styles.path)}
+            size="sm"
+            _value={target}
+            aria-label={t.moveRename}
+            placeholder={t.pathPlaceholder}
+            disabled={busy}
+            onKeydown={(event: KeyboardEvent) => event.key === 'Enter' && target && target !== current.path && void move(current, target)}
+          />
+          <IconButton icon={Check} size="sm" variant="ghost" tone="neutral" aria-label={t.moveRename} title={t.moveRename} disabled={busy || target === current.path || !target} onClick={() => void move(current, target)} />
+        </div>
+      )}
       <Tree
         {...css.attrs(styles.tree)}
         aria-label={t.assets}

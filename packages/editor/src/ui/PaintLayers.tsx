@@ -5,6 +5,8 @@
  */
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
+import { Brush, Plus, Square } from '@lucide/icons';
+import { Button, Checkbox, ColorField, NumberField } from '@zerodep-dev/vue-tsx-pro-ui';
 import { t } from './messages';
 import type { EditorSession } from './session';
 
@@ -13,13 +15,19 @@ const styles = css.create({
   title: { fontWeight: '600' },
   row: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
   active: { outlineWidth: '1px', outlineStyle: 'solid', outlineColor: '_accent', borderRadius: '4px', padding: '2px' },
-  small: { width: '4.5em' },
+  small: { width: '7.5em' },
   hint: { color: '_textMuted', fontSize: '0.8em' },
 });
 
 /** 颜色树里的常量颜色（computeColor，sRGB）和 #rrggbb 互换。 */
 const toHex = (value: unknown) => `#${((Array.isArray(value) ? value : [0.5, 0.5, 0.5]) as number[]).slice(0, 3).map((c) => Math.round(Math.min(Math.max(c, 0), 1) * 255).toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).concat(1);
+
+/** 一个 0..max 的小数输入框（前面是名字）。 */
+const amount = (label: string, value: number, change: (next: number) => void, { min = 0, max = 1, step = 0.05 } = {}) => (
+  <NumberField {...css.attrs(styles.small)} size="sm" prefix={label} min={min} max={max} step={step} format={{ useGrouping: false, maximumFractionDigits: 3 }}
+    _value={value} onUpdate:_value={(next: number | null) => next !== null && change(next)} />
+);
 
 interface LayerFile {
   readonly diffuse?: { readonly $type?: string; readonly value?: unknown };
@@ -30,7 +38,6 @@ interface LayerFile {
 
 export const PaintLayers = _component(({ session }: { session: EditorSession }) => {
   const number = (value: unknown, fallback: number) => (typeof value === 'number' ? value : fallback);
-  const input = (event: Event) => (event.target as HTMLInputElement).value;
 
   return () => {
     const inspected = session.inspected.value;
@@ -42,7 +49,7 @@ export const PaintLayers = _component(({ session }: { session: EditorSession }) 
       <div {...css.attrs(styles.box)}>
         <div {...css.attrs(styles.row)}>
           <span {...css.attrs(styles.title)}>{t.paintLayers}</span>
-          <button type="button" onClick={() => void session.addPaintLayer()}>{t.paintAddLayer}</button>
+          <Button size="sm" variant="soft" tone="neutral" icon={Plus} onClick={() => void session.addPaintLayer()}>{t.paintAddLayer}</Button>
         </div>
         {layers.map((layer, i) => {
           const paintable = Boolean(layer.blend?.texture?.texture);
@@ -50,29 +57,27 @@ export const PaintLayers = _component(({ session }: { session: EditorSession }) 
             <div {...css.attrs(styles.row, painting?.layer === i && styles.active)}>
               <span>{t.paintLayer(i + 1)}</span>
               {layer.diffuse?.$type === 'computeColor' && (
-                <input type="color" aria-label={t.paintColor} title={t.paintColor} value={toHex(layer.diffuse.value)}
-                  onInput={(event: Event) => session.editInspected(['layers', i, 'diffuse', 'value'], fromHex(input(event)))} />
+                <ColorField size="sm" aria-label={t.paintColor} title={t.paintColor} _value={toHex(layer.diffuse.value)}
+                  onUpdate:_value={(hex: string) => session.editInspected(['layers', i, 'diffuse', 'value'], fromHex(hex))} />
               )}
               {layer.glossiness?.tree?.$type === 'computeFloat' && (
-                <label>{t.paintRoughness}<input {...css.attrs(styles.small)} type="number" min="0" max="1" step="0.05" value={number(layer.glossiness.tree.value, 0.5)}
-                  onChange={(event: Event) => session.editInspected(['layers', i, 'glossiness', 'tree', 'value'], Number(input(event)))} /></label>
+                amount(t.paintRoughness, number(layer.glossiness.tree.value, 0.5), (value) => session.editInspected(['layers', i, 'glossiness', 'tree', 'value'], value))
               )}
               {layer.metalness?.$type === 'computeFloat' && (
-                <label>{t.paintMetalness}<input {...css.attrs(styles.small)} type="number" min="0" max="1" step="0.05" value={number(layer.metalness.value, 0)}
-                  onChange={(event: Event) => session.editInspected(['layers', i, 'metalness', 'value'], Number(input(event)))} /></label>
+                amount(t.paintMetalness, number(layer.metalness.value, 0), (value) => session.editInspected(['layers', i, 'metalness', 'value'], value))
               )}
               {paintable && (painting?.layer === i
-                ? <button type="button" onClick={() => session.stopPainting()}>{t.paintStop}</button>
-                : <button type="button" onClick={() => void session.startPainting(i)}>{t.paintStart}</button>)}
+                ? <Button size="sm" variant="solid" tone="accent" icon={Square} onClick={() => session.stopPainting()}>{t.paintStop}</Button>
+                : <Button size="sm" variant="soft" tone="neutral" icon={Brush} onClick={() => void session.startPainting(i)}>{t.paintStart}</Button>)}
             </div>
           );
         })}
         {painting && (
           <div {...css.attrs(styles.row)}>
-            <label>{t.paintRadius}<input {...css.attrs(styles.small)} type="number" min="0.01" step="0.05" value={brush.radius} onChange={(event: Event) => session.setPaintBrush({ ...brush, radius: Number(input(event)) })} /></label>
-            <label>{t.paintHardness}<input {...css.attrs(styles.small)} type="number" min="0" max="1" step="0.1" value={brush.hardness} onChange={(event: Event) => session.setPaintBrush({ ...brush, hardness: Number(input(event)) })} /></label>
-            <label>{t.paintStrength}<input {...css.attrs(styles.small)} type="number" min="0" max="1" step="0.1" value={brush.strength} onChange={(event: Event) => session.setPaintBrush({ ...brush, strength: Number(input(event)) })} /></label>
-            <label><input type="checkbox" checked={brush.erase} onChange={(event: Event) => session.setPaintBrush({ ...brush, erase: (event.target as HTMLInputElement).checked })} />{t.paintErase}</label>
+            {amount(t.paintRadius, brush.radius, (radius) => radius > 0 && session.setPaintBrush({ ...brush, radius }), { min: 0.01, max: 100 })}
+            {amount(t.paintHardness, brush.hardness, (hardness) => session.setPaintBrush({ ...brush, hardness }), { step: 0.1 })}
+            {amount(t.paintStrength, brush.strength, (strength) => session.setPaintBrush({ ...brush, strength }), { step: 0.1 })}
+            <Checkbox size="sm" _checked={brush.erase} onUpdate:_checked={(erase: boolean) => session.setPaintBrush({ ...brush, erase })}>{t.paintErase}</Checkbox>
           </div>
         )}
         {painting && <div {...css.attrs(styles.hint)}>{t.paintHint}</div>}

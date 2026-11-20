@@ -24,7 +24,13 @@ export interface EditorMessages {
   readonly snapOff: string;
   readonly snapStep: { readonly [K in 'translate' | 'rotate' | 'scale']: { readonly label: string; readonly title: string } };
   readonly prefabTitle: (path: string) => string;
-  readonly backToScene: (name: string) => string;
+  readonly mainToolbar: string;
+  readonly viewportToolbar: string;
+  readonly openDocuments: string;
+  readonly selectedCount: (n: number) => string;
+  readonly toolStripe: string;
+  readonly hideToolWindow: string;
+  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string };
   readonly language: string;
   readonly frameGuide: string;
   readonly frameGuideOff: string;
@@ -39,12 +45,10 @@ export interface EditorMessages {
   // 资源浏览器
   readonly assets: string;
   readonly pathPlaceholder: string;
-  readonly pickAsset: string;
   readonly moveRename: string;
   readonly delete: string;
   readonly open: string;
   readonly newAsset: string;
-  readonly newAssetMenu: string;
   readonly newAssetLabels: { readonly scene: string; readonly material: string; readonly ui: string; readonly timeline: string; readonly brush: string; readonly shape: (shape: string) => string };
   readonly shapes: Readonly<Record<ProceduralShapeType, string>>;
   readonly importing: string;
@@ -108,7 +112,7 @@ export interface EditorMessages {
   readonly graphOpen: string;
   readonly paintLayers: string;
   readonly particleOpen: string;
-  readonly particleTitle: (name: string) => string;
+  readonly particleEmitters: string;
   readonly particleEmitter: (n: number) => string;
   readonly particleAddEmitter: string;
   readonly particleRemoveEmitter: string;
@@ -142,7 +146,6 @@ export interface EditorMessages {
   readonly paintHint: string;
   readonly paintSelectEntity: string;
   readonly paintNoMask: string;
-  readonly graphTitle: (path: string) => string;
   readonly graphAddNode: string;
   readonly graphHint: string;
   readonly graphClose: string;
@@ -179,7 +182,13 @@ const zhCN: EditorMessages = {
     scale: { label: '缩放', title: '缩放的步长（倍数）' },
   },
   prefabTitle: (path) => `预制体 ${path}`,
-  backToScene: (name) => `回到场景 ${name}`,
+  mainToolbar: '主工具条',
+  viewportToolbar: '视口工具条',
+  openDocuments: '打开的文档',
+  selectedCount: (n) => `选中 ${n} 个`,
+  toolStripe: '工具窗口',
+  hideToolWindow: '收起',
+  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子' },
   language: '界面语言',
   frameGuide: '画幅参考线（视口上框出画幅和安全框，构图用）',
   frameGuideOff: '画幅：关',
@@ -191,12 +200,10 @@ const zhCN: EditorMessages = {
   documentNode: '场景本身：选中看场景的设置；实体拖到这里挂到根上',
   assets: '资源',
   pathPlaceholder: '新的内容路径',
-  pickAsset: '选一个资源或文件夹',
   moveRename: '移动 / 改名',
   delete: '删除',
   open: '打开',
   newAsset: '新建资源',
-  newAssetMenu: '新建……',
   newAssetLabels: { scene: '场景', material: '材质', ui: 'UI 页面', timeline: '时间轴', brush: '白盒（布尔建模）', shape: (shape) => `基本形状：${shape}` },
   shapes: { cube: '立方体', plane: '平面', sphere: '球', geoSphere: '测地球', capsule: '胶囊', cylinder: '圆柱', torus: '圆环', cone: '圆锥', teapot: '茶壶' },
   importing: '导入',
@@ -257,14 +264,14 @@ const zhCN: EditorMessages = {
   graphOpen: '节点图',
   paintLayers: '图层',
   particleOpen: '粒子编辑器',
-  particleTitle: (name) => `粒子：${name}`,
+  particleEmitters: '发射器',
   particleEmitter: (n) => `发射器 ${n}`,
   particleAddEmitter: '加发射器',
   particleRemoveEmitter: '删掉这个发射器',
   particleClose: '关掉粒子编辑器',
   particleNoSystem: '选中一个有粒子系统的实体，在属性面板上点"粒子编辑器"',
   particleEmitterSettings: '发射器',
-  particleAddModule: '加模块……',
+  particleAddModule: '加模块',
   particleUp: '往上挪',
   particleDown: '往下挪',
   particleRemove: '删掉这个模块',
@@ -299,7 +306,6 @@ const zhCN: EditorMessages = {
   paintHint: '在视口里按住左键在选中的实体上画（Alt、右键照常转相机）；每一笔画完存进遮罩',
   paintSelectEntity: '先在场景里选中要画的实体（它要用这个材质）',
   paintNoMask: '这一层的遮罩不是一张图，画不了（加一个绘制层）',
-  graphTitle: (path) => `节点图：${path}`,
   graphAddNode: '加节点……',
   graphHint: '拖标题移动，拖空白处平移，滚轮缩放；从输出口拖到输入口连线，点连着的输入口断开；选中节点按 Delete 删除',
   graphClose: '关掉节点图',
@@ -339,7 +345,13 @@ const enUS: EditorMessages = {
     scale: { label: 'Scale', title: 'Scale step (factor)' },
   },
   prefabTitle: (path) => `Prefab ${path}`,
-  backToScene: (name) => `Back to scene ${name}`,
+  mainToolbar: 'Main toolbar',
+  viewportToolbar: 'Viewport toolbar',
+  openDocuments: 'Open documents',
+  selectedCount: (n) => `${n} selected`,
+  toolStripe: 'Tool windows',
+  hideToolWindow: 'Hide',
+  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles' },
   language: 'Interface language',
   frameGuide: 'Frame guide (the frame and safe areas over the viewport, for composing shots)',
   frameGuideOff: 'Frame: off',
@@ -351,12 +363,10 @@ const enUS: EditorMessages = {
   documentNode: 'The scene itself: select it for the scene settings; drop entities here to move them to the root',
   assets: 'Assets',
   pathPlaceholder: 'New content path',
-  pickAsset: 'Pick an asset or a folder',
   moveRename: 'Move / rename',
   delete: 'Delete',
   open: 'Open',
   newAsset: 'New asset',
-  newAssetMenu: 'New…',
   newAssetLabels: { scene: 'Scene', material: 'Material', ui: 'UI page', timeline: 'Timeline', brush: 'Greybox (CSG)', shape: (shape) => `Shape: ${shape}` },
   shapes: { cube: 'Cube', plane: 'Plane', sphere: 'Sphere', geoSphere: 'Geosphere', capsule: 'Capsule', cylinder: 'Cylinder', torus: 'Torus', cone: 'Cone', teapot: 'Teapot' },
   importing: 'Import',
@@ -417,14 +427,14 @@ const enUS: EditorMessages = {
   graphOpen: 'Node graph',
   paintLayers: 'Layers',
   particleOpen: 'Particle editor',
-  particleTitle: (name) => `Particles: ${name}`,
+  particleEmitters: 'Emitters',
   particleEmitter: (n) => `Emitter ${n}`,
   particleAddEmitter: 'Add emitter',
   particleRemoveEmitter: 'Remove this emitter',
   particleClose: 'Close the particle editor',
   particleNoSystem: 'Select an entity with a particle system and click "Particle editor" in the inspector',
   particleEmitterSettings: 'Emitter',
-  particleAddModule: 'Add module…',
+  particleAddModule: 'Add module',
   particleUp: 'Move up',
   particleDown: 'Move down',
   particleRemove: 'Remove this module',
@@ -451,7 +461,6 @@ const enUS: EditorMessages = {
   paintHint: 'Hold the left button in the viewport to paint on the selected entity (Alt and the right button still move the camera); each stroke is saved into the mask',
   paintSelectEntity: 'Select the entity to paint in the scene first (it must use this material)',
   paintNoMask: 'The mask of this layer is not an image, so it cannot be painted (add a paint layer)',
-  graphTitle: (path) => `Node graph: ${path}`,
   graphAddNode: 'Add node…',
   graphHint: 'Drag a title to move, drag the background to pan, wheel to zoom; drag from an output to an input to link, click a linked input to unlink; Delete removes the selected node',
   graphClose: 'Close the node graph',

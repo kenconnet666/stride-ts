@@ -1219,14 +1219,20 @@ Game: !Stride.Rendering.Compositing.SceneCameraRenderer,Stride.Engine
                 t2: !FilmGrain
                     Enabled*: false
         Antialiasing: !FXAAEffect
-            Quality*: 8`)).toEqual({ brightFilter: true, bloom: true, lightStreak: true, lensFlare: true, toneMap: false, antialiasing: true });
+            Quality*: 8`)).toEqual({ brightFilter: true, bloom: true, lightStreak: true, lensFlare: true, toneMap: false, antialiasing: true, ambientOcclusion: { radius: 1 } });
     expect(withEffects(`        Bloom:
             Enabled: false
         ColorTransforms:
             Transforms:
                 t1: !ToneMap
                     Operator: !ToneMapHejl2Operator {}
-        Antialiasing: null`)).toEqual({ brightFilter: true, bloom: false, lightStreak: true, lensFlare: true, toneMap: true, antialiasing: false });
+        Antialiasing: null`)).toEqual({ brightFilter: true, bloom: false, lightStreak: true, lensFlare: true, toneMap: true, antialiasing: false, ambientOcclusion: { radius: 1 } });
+    // 环境光遮蔽：Stride 默认开着（样例里关着的都写了 Enabled: false），带上半径
+    expect(withEffects(`        AmbientOcclusion:
+            Enabled: false`)?.ambientOcclusion).toBeUndefined();
+    expect(withEffects(`        AmbientOcclusion:
+            Enabled*: true
+            ParamRadius*: 2.5`)?.ambientOcclusion).toEqual({ radius: 2.5 });
     // 颜色变换组里没有 ToneMap 就不做色调映射
     expect(withEffects('        Fog: {}')?.toneMap).toBe(false);
   });

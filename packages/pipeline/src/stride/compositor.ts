@@ -140,7 +140,8 @@ function forwardSettings(forward: StrideObject, resolve: (node: StrideValue | un
 /**
  * 后处理里各效果开不开（Stride 的 PostProcessingEffects）：效果的 Enabled 默认是 true；色调映射是颜色变换组
  * （ColorTransforms）里的一项，组的 Transforms 默认是空的，没有 ToneMap 这一项就不做；Antialiasing 是 null 就不做抗锯齿。
- * 我们还没有的效果（环境光遮蔽、屏幕空间反射、景深、雾、描边、胶片颗粒、暗角）不导入，见 docs/roadmap.md 的 P4。
+ * 环境光遮蔽带上半径（ParamRadius，默认 1）。我们还没有的效果（屏幕空间反射、景深、雾、描边、胶片颗粒、暗角）不导入，见
+ * docs/roadmap.md 的 P4。
  */
 function postEffectsOf(effects: StrideObject | undefined): ScenePostEffects | null {
   if (!effects) return null;
@@ -155,6 +156,7 @@ function postEffectsOf(effects: StrideObject | undefined): ScenePostEffects | nu
     lensFlare: enabled(effects['LensFlare']),
     toneMap: toneMap !== undefined && enabled(colorTransforms) && enabled(toneMap),
     antialiasing: enabled(effects['Antialiasing']),
+    ...(enabled(effects['AmbientOcclusion']) ? { ambientOcclusion: { radius: asNumber(asObject(effects['AmbientOcclusion'])?.['ParamRadius'], 1) } } : {}),
   };
 }
 

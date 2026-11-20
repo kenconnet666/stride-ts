@@ -407,13 +407,14 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | 渲染图 | `rendering/graph/` | 前向渲染器的一帧（阴影、渲染目标贴图的相机、点选、主画面、后处理）都是图的通道；后处理的中间贴图 33.8 MB → 18 MB，截图逐像素不变；场景之后画的 UI、调试线不在图里（见 decisions.md） |
 | 阴影图集按用到的大小建 | `rendering/shadows/ShadowMapRenderer.ts` | 从 1024² 起、放不下才翻倍，一半大也放得下时缩小（和 Stride 不同：它固定 4096²，64 MB）；BepuSample 的贴图 119.8 → 55.9 MB |
 | TAA 加锐化、运动向量 | `rendering/TemporalAntialiasing.ts`、`stride taa`、`RenderStage.velocity` | 默认关（样例照内容用 FXAA）；网格有运动向量（世界矩阵、蒙皮、形变的上一帧，缓冲分两半轮着写），天空按深度重投影；TPP 上开 TAA 多 1 ms |
+| GTAO | `rendering/AmbientOcclusion.ts`、`stride ao` | 半分辨率，只乘环境光（和 Stride 不同：它乘整个画面）；照合成器开，BepuSample 开着；TPP 上 0.3 ms |
 | 画质档位 | `rendering/Quality.ts`、`stride quality` | 低、中、高、极高四档，是内容要的阴影和后处理的上限，默认极高（照内容画）；TPP 的 GPU 每帧 5.07 / 4.5 / 3.1 / 2.6 ms，贴图 108 / 58 / 36 / 34 MB |
 
 ### 正在做和下一步
 
 1. **P4 底座接着做**：
    1. 底座剩下的小项：从渲染图里列出全屏效果的管线一起预热（现在第一次开后处理时当场编 12 条）；绘制次数按通道数。
-   2. P4 的画面功能：画质档位、TAA 和运动向量做了；接着照第三节的阶段表往下（GTAO、SSR……）。
+   2. P4 的画面功能：画质档位、TAA 和运动向量、GTAO 做了；接着照第三节的阶段表往下（随机 SSR：BepuSample 的合成器开着 LocalReflections，SSGI、接触阴影……）。
 2. **P3 的界面**（用户 2026-11-20 定了 Vue 加 vue-tsx-pro、资源按路径引用；骨架、场景树和资源浏览器的操作做了）：多选一起改、复制粘贴实体、加脚本组件，预制体（格式定了，见 prefabs.md：场景里只存引用和差异；加载器、编辑器、导入器的转换）；然后用编辑器把 P1、P2 的每个样例打开、改、保存、播放一遍当验收。
 3. **遗留的小项**（用到时做）：粒子、场景里的 UI 的点选；富文本（用户定了：Markdown，编辑器里有对应的可视化编辑器，见 decisions.md）；TouchInputs 样例（P3 之后）；P2 收尾时挪到 P4 的 MSAA、分簇、透明物体的阴影、画进渲染目标贴图的相机的阴影和后处理、没有样例触发的材质特性；csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，原因没查完（见 progress-log.md 的"P2 收尾的验收"）。
 

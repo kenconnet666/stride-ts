@@ -25,6 +25,7 @@ import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphSta
 import { limitShadowCascades, limitShadowFilter, limitShadowSize, QUALITY_TIERS, type QualitySettings } from './Quality';
 import { ShadowMapRenderer } from './shadows/ShadowMapRenderer';
 import { TemporalAntialiasing } from './TemporalAntialiasing';
+import { AmbientOcclusion } from './AmbientOcclusion';
 import { Skybox } from './Skybox';
 import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
@@ -99,6 +100,10 @@ export class ForwardRenderer {
   hasCamera = false;
   /** 后处理（Stride 的 ForwardRenderer.PostEffects），设置可以改，默认值同 Stride。 */
   readonly postEffects: PostProcessingEffects;
+  /** 屏幕空间的环境光遮蔽（GTAO，只乘环境光；开不开照合成器的 AmbientOcclusion，见 AmbientOcclusion.ts）。 */
+  readonly ambientOcclusion: AmbientOcclusion;
+  /** 这一帧开着 TAA（GTAO 的噪声跟着每帧换）。 */
+  #temporal = false;
   /** 时间抗锯齿（默认关，开着时代替后处理里的 FXAA；见 TemporalAntialiasing.ts）。 */
   readonly temporalAntialiasing: TemporalAntialiasing;
   readonly shadowMapRenderer: ShadowMapRenderer;
@@ -222,6 +227,7 @@ export class ForwardRenderer {
     this.#textureCopy = { scaler: new ImageScaler(renderSystem.device, renderSystem.resources.linearClamp), arena: new UniformArena(renderSystem.device, 4096) };
     this.postEffects = new PostProcessingEffects(renderSystem.device, renderSystem.resources.linearClamp);
     this.temporalAntialiasing = new TemporalAntialiasing(renderSystem.device);
+    this.ambientOcclusion = new AmbientOcclusion(renderSystem.device);
     this.#pool = new GraphTexturePool(renderSystem.device);
     this.#graph = new RenderGraph(this.#pool);
     this.picker = new ScenePicker(renderSystem);
@@ -249,6 +255,8 @@ export class ForwardRenderer {
     this.#mainView.cullingMask = renderMask ?? RENDER_GROUP_ALL;
     this.clearColor.set(r, g, b, a);
     this.postEffects.configure(postEffects);
+    this.ambientOcclusion.enabled = postEffects?.ambientOcclusion !== undefined;
+    this.ambientOcclusion.radius = postEffects?.ambientOcclusion?.radius ?? 1;
     this.drawTransparent = transparent;
     this.drawShadows = shadows !== false;
     this.textureCameras = textureCameras;
@@ -281,6 +289,8 @@ export class ForwardRenderer {
     const temporal = this.hasCamera && post && this.temporalAntialiasing.enabled && this.postEffects.antialiasing.enabled && this.quality.antialiasing;
     if (temporal) this.temporalAntialiasing.jitter(this.#mainView);
     else this.temporalAntialiasing.reset();
+    this.#temporal = temporal;
+    this.#mainView.screenOcclusion = undefined;
     const views = [...(this.hasCamera ? [this.#mainView] : []), ...this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view))];
 
     renderSystem.collect(views);
@@ -344,6 +354,7 @@ export class ForwardRenderer {
     this.#pool.endFrame();
     copy.arena.flush();
     if (post) this.postEffects.flush();
+    if (this.#mainView.screenOcclusion) this.ambientOcclusion.flush();
     if (temporal) {
       this.temporalAntialiasing.flush();
       this.temporalAntialiasing.unjitter(this.#mainView);
@@ -357,6 +368,7 @@ export class ForwardRenderer {
     this.#textureCopy.arena.destroy();
     this.postEffects.destroy();
     this.temporalAntialiasing.destroy();
+    this.ambientOcclusion.destroy();
     this.picker.destroy();
     this.shadowMapRenderer.destroy();
   }
@@ -388,6 +400,10 @@ export class ForwardRenderer {
         renderSystem.draw(context, prepass, view, this.depthPrepassStage);
         prepass.end();
       });
+      // 主画面：深度有了，算屏幕空间的环境光遮蔽，着色时乘环境光
+      if (view === this.#mainView && !isGraphTexture(depth) && this.ambientOcclusion.enabled && this.quality.ambientOcclusion) {
+        view.screenOcclusion = this.ambientOcclusion.record(frame, depth, view, this.#temporal);
+      }
     }
     frame.pass(`${label} opaque`, (pass) => {
       if (isGraphTexture(target)) pass.write(target);

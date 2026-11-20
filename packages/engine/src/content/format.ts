@@ -752,6 +752,8 @@ export interface ScenePostEffects {
   readonly toneMap: boolean;
   /** FXAA（Antialiasing）。 */
   readonly antialiasing: boolean;
+  /** 环境光遮蔽（AmbientOcclusion，我们用 GTAO 只乘环境光）；没写是关着。radius 是 Stride 的 ParamRadius（世界单位）。 */
+  readonly ambientOcclusion?: { readonly radius: number };
 }
 
 /** 渲染目标贴图（Stride 的 RenderTexture，.sdrendertex）：合成器里的相机画进去，精灵可以显示它。按内容路径区分。 */

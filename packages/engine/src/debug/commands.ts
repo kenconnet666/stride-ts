@@ -41,6 +41,12 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const current = game.graphicsCompositor.quality;
     return { tier: Object.entries(QUALITY_TIERS).find(([, settings]) => settings === current)?.[0] ?? 'custom', ...current };
   });
+  debug.command('ao', 'Screen-space ambient occlusion (GTAO) of the main view. args: on (true/false; omitted toggles), radius (world units).', (args) => {
+    const ao = game.graphicsCompositor.ambientOcclusion;
+    ao.enabled = typeof args['on'] === 'boolean' ? args['on'] : !ao.enabled;
+    if (typeof args['radius'] === 'number') ao.radius = args['radius'];
+    return { enabled: ao.enabled, radius: ao.radius, power: ao.power };
+  });
   debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false; omitted toggles).', (args) => {
     const taa = game.graphicsCompositor.temporalAntialiasing;
     taa.enabled = typeof args['on'] === 'boolean' ? args['on'] : !taa.enabled;

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * stride-editor：不开开发服务器也能用的几件事。
+ *   stride-editor new <apps/目录> [--port <端口>]  新建工程：能跑的空游戏，主场景里有相机、太阳、天空、地面（template.ts）
  *   stride-editor assets-types [工程目录]   按内容目录生成资源句柄（src/assets.gen.ts）；typecheck、build 之前跑
  *   stride-editor assets [工程目录]         列出资源和指向不存在的资源的引用
  *   stride-editor move <工程目录> <种类> <路径> <新路径>     移动、改名一个资源，引用它的文件跟着改写
@@ -14,8 +15,16 @@ import { AssetDatabase } from './AssetDatabase.ts';
 import { writeAssetTypes } from './assetTypes.ts';
 import { EditorBackend } from './EditorBackend.ts';
 import { loadProject } from './project.ts';
+import { createProject } from './template.ts';
 
 const [command, directory = '.', ...rest] = process.argv.slice(2);
+if (command === 'new') {
+  const portAt = rest.indexOf('--port');
+  const created = await createProject(path.resolve(directory), portAt >= 0 ? { port: Number(rest[portAt + 1]) } : {});
+  for (const file of created.files) console.log(`created ${path.join(directory, file)}`);
+  console.log(`next: pnpm install, then pnpm --filter ${path.basename(created.root)} dev and open http://localhost:${created.port}/__stride/editor/`);
+  process.exit(0);
+}
 const project = await loadProject(path.resolve(directory));
 const database = new AssetDatabase(project.contentDir);
 await database.scan();
@@ -40,7 +49,8 @@ if (command === 'assets-types') {
   for (const asset of result.removed) console.log(`removed ${asset.kind} ${asset.path}`);
   for (const asset of result.broken) console.log(`broken reference in ${asset.kind} ${asset.path}`);
 } else {
-  console.error(`usage: stride-editor <assets-types|assets> [project directory]
+  console.error(`usage: stride-editor new <apps/folder> [--port <port>]
+       stride-editor <assets-types|assets> [project directory]
        stride-editor move <project> <kind> <path> <new path>
        stride-editor move-folder <project> <folder> <new folder>
        stride-editor delete <project> <kind> <path> [--force]`);

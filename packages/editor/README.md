@@ -8,6 +8,14 @@ pnpm --filter @stride-ts/platformer dev
 
 然后打开 `http://localhost:5184/__stride/editor/`。
 
+新建工程（仓库的 `apps/` 下面一个能跑的空游戏，主场景里有相机、投阴影的太阳、物理天空、地面）：
+
+```bash
+node packages/editor/src/server/cli.ts new apps/my-game
+```
+
+然后 `pnpm install`、`pnpm --filter my-game dev`，打开它打印的编辑器地址。端口接着仓库里已有的往后排；手搭的工程内容要提交，`.gitignore` 里给它加一行例外（模板在 `src/server/template.ts`）。
+
 ## 界面
 
 `src/ui`：工具条（保存、撤销、重做、试玩、吸附），左边场景树，中间视口（游戏页面本身，嵌在同源的 iframe 里，地址带 `?debug&stride-edit`），右边属性面板，下面资源浏览器。界面由第二个 Vite 服务器提供，第一次打开编辑器时才建（见 `src/server/vite.ts`），游戏页面不经过它。`src/` 根上是前后端共用的接口（`protocol.ts`）和前端的封装（`EditorClient.ts`），`src/server` 是后端。

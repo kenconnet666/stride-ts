@@ -1,0 +1,174 @@
+{
+ "name": "MainScene",
+ "compositor": {
+  "clearColor": [
+   0.1,
+   0.1,
+   0.12,
+   1
+  ],
+  "postEffects": {
+   "brightFilter": true,
+   "bloom": true,
+   "lightStreak": false,
+   "lensFlare": false,
+   "toneMap": true,
+   "antialiasing": true
+  },
+  "transparent": true
+ },
+ "entities": [
+  {
+   "id": "f372dac7-0344-4ba6-b9be-a7befad91363",
+   "name": "Camera",
+   "parent": null,
+   "position": [
+    0,
+    4,
+    10
+   ],
+   "rotation": [
+    -0.104528,
+    0,
+    0,
+    0.994522
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.1,
+     "farClipPlane": 1000
+    }
+   }
+  },
+  {
+   "id": "82826420-3698-4d3f-a6d5-4c3f90b8f996",
+   "name": "Sun",
+   "parent": null,
+   "position": [
+    0,
+    10,
+    0
+   ],
+   "rotation": [
+    -0.408218,
+    -0.23457,
+    -0.109382,
+    0.875426
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "directional",
+     "color": [
+      1,
+      0.98,
+      0.94
+     ],
+     "intensity": 8,
+     "shadow": {
+      "size": "large",
+      "filter": "pcf5x5",
+      "cascadeCount": "four",
+      "depthBias": 0.0015,
+      "normalOffsetScale": 10,
+      "stabilization": "projectionSnapping",
+      "pssmFactor": 0.5,
+      "depthRange": "automatic",
+      "minDistance": 0,
+      "maxDistance": 60,
+      "blendCascades": true
+     }
+    }
+   }
+  },
+  {
+   "id": "3d10a132-f647-4f5c-b0af-10439ce1ae63",
+   "name": "Sky",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "skyAtmosphere": {
+     "sun": "82826420-3698-4d3f-a6d5-4c3f90b8f996"
+    }
+   }
+  },
+  {
+   "id": "11adad5d-9c2a-4f09-97c7-9298383316a7",
+   "name": "Ground",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Ground",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1000,
+        1,
+        1000
+       ],
+       "position": [
+        0,
+        -0.5,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  }
+ ]
+}

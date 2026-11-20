@@ -32,7 +32,10 @@ const start = stride('eval', PLAYER) as Vec;
 stride('mouse', 'move', '250', '120');
 stride('mouse', 'left');
 const walked = stride('eval', `(async () => { const start = ${JSON.stringify(start)}, now = () => (0, eval)(${JSON.stringify(PLAYER)});
-  await until(() => Math.hypot(now()[0] - start[0], now()[2] - start[2]) > 2, 6); return now(); })()`) as Vec;
+  await until(() => Math.hypot(now()[0] - start[0], now()[2] - start[2]) > 2, 6); const walked = now();
+  // 等走到、相机跟稳了再往下（下面按屏幕位置指箱子；CI 上一帧几百毫秒，CLI 两次调用之间游戏只走了几帧）
+  for (let i = 0, last = now(); i < 40; i++) { await seconds(0.2); const p = now(); if (Math.hypot(p[0] - last[0], p[2] - last[2]) < 0.01) break; last = p; }
+  return walked; })()`) as Vec;
 check('点地面：角色寻路走过去', Math.hypot(walked[0] - start[0], walked[2] - start[2]) > 2, { start, walked });
 
 // 指着右下角的箱子：高亮实体换成箱子的模型、摆到箱子上

@@ -23,7 +23,8 @@ const COINS = `const g = strideGame; const coins = g.entities.ids().map((i) => g
 type Player = [number, number, number, number, boolean];
 
 // 等待都按游戏时间和状态（tools/smoke.ts 的 seconds、until、holdFor）：CI 的软件 WebGPU 上一帧要几百毫秒
-const idleFrames = new Set<number>(stride('eval', `(async () => { const seen = []; for (let i = 0; i < 6; i++) { seen.push(player2d()[3]); await seconds(0.22); } return seen; })()`) as number[]);
+// 玩家出生在半空：先等落地（CI 上开头的一秒墙钟只够几帧，还在播下落的帧）
+const idleFrames = new Set<number>(stride('eval', `(async () => { await until(() => player2d()[4], 10); await seconds(0.3); const seen = []; for (let i = 0; i < 6; i++) { seen.push(player2d()[3]); await seconds(0.22); } return seen; })()`) as number[]);
 check('待机时在 0-3 帧之间换', idleFrames.size > 1 && [...idleFrames].every((f) => f >= 0 && f < 4), [...idleFrames]);
 const coinFrames = stride('eval', `(async () => { const frames = () => (0, eval)(${JSON.stringify(COINS)})[2]; const before = frames(); await seconds(0.15); return [before, frames()]; })()`) as [string, string];
 check('金币在转（帧在换）', coinFrames[1] !== coinFrames[0], coinFrames);

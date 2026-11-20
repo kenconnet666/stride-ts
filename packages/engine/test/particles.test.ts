@@ -365,6 +365,21 @@ describe('粒子的形状和材质', () => {
     particles.uniformScale = 2;
     expect(particles.worldBounds()).toEqual([[-3, -4, -4], [5, 4, 4]]);
   });
+
+  test('活着的粒子占的范围（编辑器的选中框）：位置加减半个大小；本地空间的按粒子系统的位置、缩放换到世界；没有粒子时没有', () => {
+    const emitter = (simulationSpace: string) => ({ randomSeedMethod: 'fixed', simulationSpace, particleLifetime: [10, 10], spawners: [{ $type: 'spawnerBurst', spawnCount: 2 }] });
+    const particles = new ParticleSystem({ emitters: [emitter('world'), emitter('local')] });
+    expect(particles.particleBounds()).toBeUndefined();
+    particles.translation = [10, 0, 0];
+    particles.uniformScale = 2;
+    particles.update(STEP);
+    const [world, local] = particles.emitters;
+    expect([world!.pool.living, local!.pool.living]).toEqual([2, 2]);
+    world!.pool.field('position')!.set([0, 0, 0, 1, 2, 3]);
+    local!.pool.field('position')!.set([0, 0, 0, 0, -1, 0]);
+    // 没有大小的初始化器时大小是 1：世界的两个粒子半个大小 0.5；本地的 (0, 0, 0)、(0, -1, 0) 换到世界是 (10, 0, 0)、(10, -2, 0)，半个大小 1
+    expect(particles.particleBounds()).toEqual([[-0.5, -3, -1], [11, 2.5, 3.5]]);
+  });
 });
 
 describe('飘带和拖尾（照 Stride 的 ShapeBuilderRibbon、ShapeBuilderTrail）', () => {

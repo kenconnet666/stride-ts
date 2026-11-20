@@ -8,7 +8,8 @@
  * 编辑器自己的相机不在场景里：单独的实体，用自己的相机槽位，主画面改画它。
  *
  * 视口里的操作（EditorViewport，挂在编辑相机的实体上）：
- * - 左键点一下：选中点到的实体（Ctrl 是加选、再点去掉），点空处取消选中；
+ * - 左键点一下：选中点到的实体（Ctrl 是加选、再点去掉），点空处取消选中；点得到网格、精灵、粒子、放在 3D 里的 UI（见
+ *   Game.pick），全屏的 UI 点不到；选中的框是它们的包围盒、UI 的那块板；
  * - 左键拖操纵器的把手：改选中的实体的位置、旋转、缩放，每帧一个修改（同一次拖并成撤销的一步）；
  * - W、E、R：移动、旋转、缩放；F：把选中的东西放到画面中间；相机的操作见 EditorCamera。
  */
@@ -22,6 +23,8 @@ import { Quaternion, Vector3 } from '../mathematics/vectors';
 import { screenToWorldRaySegment, worldToScreen } from '../rendering/cameraRays';
 import { Camera, Model, ModelPart } from '../rendering/components';
 import { Mesh } from '../rendering/Mesh';
+import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
+import { UIComponent } from '../ui/UIComponent';
 import type { DebugColor } from '../debug/DebugDraw';
 import { EditorCameraController } from './EditorCamera';
 import { scriptFields, type Field } from './fields';
@@ -143,7 +146,7 @@ export class EditAgent {
     this.#selection = live ? ids.filter((id) => live.entity(id)?.alive) : [];
   }
 
-  /** 这些实体（默认是选中的）的包围球：它们的模型的包围盒合起来；没有模型的按位置算一个点。都不在时是 undefined。 */
+  /** 这些实体（默认是选中的）的包围球：它们的选中框（见 selectionBoxes）合起来；没有选中框的按位置算一个点。都不在时是 undefined。 */
   bounds(ids: readonly string[] = this.#selection): WorldSphere | undefined {
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
     const include = (x: number, y: number, z: number) => {
@@ -156,7 +159,7 @@ export class EditAgent {
     for (const id of ids) {
       const entity = this.#live?.entity(id);
       if (!entity?.alive) continue;
-      const boxes = modelBoxes(entity);
+      const boxes = selectionBoxes(this.game, entity);
       const world = currentWorld(entity);
       if (boxes.length === 0) include(world[12]!, world[13]!, world[14]!);
       for (const { matrix, halfExtents: [hx, hy, hz] } of boxes) {
@@ -220,10 +223,37 @@ function currentWorld(entity: Entity): Float32Array {
   return transform.world;
 }
 
-/** 实体的模型（它自己的和引擎给多出来的网格建的子实体的）在世界里的包围盒：盒子的矩阵（中心在原点）和半边长。 */
-function modelBoxes(entity: Entity): { matrix: Matrix4; halfExtents: [number, number, number] }[] {
+/** 世界里的一个盒子：矩阵（中心在原点）和半边长。 */
+interface WorldBox {
+  readonly matrix: Matrix4;
+  readonly halfExtents: readonly [number, number, number];
+}
+
+/**
+ * 实体在视口里的选中框（点选能点到的那些东西）：模型（它自己的和引擎给多出来的网格建的子实体的）的包围盒；粒子系统的包围
+ * 形状，没有时是活着的粒子占的范围；放在 3D 里的 UI 的那块板。
+ */
+function selectionBoxes(game: Game, entity: Entity): WorldBox[] {
+  const boxes = modelBoxes(entity);
+  const particles = entity.get(ParticleSystemComponent)?.particleSystem;
+  const bounds = particles && (particles.worldBounds() ?? particles.particleBounds());
+  if (bounds) {
+    const [min, max] = bounds;
+    boxes.push({
+      matrix: Matrix.scaleTranslation(new Float32Array(16), 1, 1, 1, (min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2),
+      halfExtents: [(max[0] - min[0]) / 2, (max[1] - min[1]) / 2, (max[2] - min[2]) / 2],
+    });
+  }
+  const ui = entity.get(UIComponent);
+  const board = ui && game.ui.worldBox(ui);
+  if (board) boxes.push(board);
+  return boxes;
+}
+
+/** 实体的模型（它自己的和引擎给多出来的网格建的子实体的）在世界里的包围盒。 */
+function modelBoxes(entity: Entity): WorldBox[] {
   const parts = [entity, ...entity.require(Transform).children.filter((child) => child.has(ModelPart))];
-  const boxes: { matrix: Matrix4; halfExtents: [number, number, number] }[] = [];
+  const boxes: WorldBox[] = [];
   for (const part of parts) {
     const mesh = Mesh.byId(part.get(Model)?.mesh ?? -1);
     if (!mesh) continue;
@@ -266,7 +296,7 @@ class EditorViewport extends SyncScript {
     for (const id of agent.selection) {
       const entity = live.entity(id);
       if (!entity?.alive) continue;
-      const boxes = modelBoxes(entity);
+      const boxes = selectionBoxes(this.game, entity);
       for (const { matrix, halfExtents } of boxes) draw.box(matrix, halfExtents, SELECTION_COLOR, { width: 2, depthTest: false });
       if (boxes.length === 0) draw.axes(currentWorld(entity), 0.5, { width: 2, depthTest: false });
     }

@@ -65,6 +65,36 @@ export class ParticleSystem implements EmitterParent {
     return [world(min), world(max)];
   }
 
+  /**
+   * 活着的粒子在世界里占的范围 [最小角, 最大角]：每个粒子的位置前后左右各加半个大小（不算形状的旋转、拉长和位置曲线）；没有粒子时
+   * 是 undefined。编辑器在没有包围形状时拿它当选中框。
+   */
+  particleBounds(): [Vec3, Vec3] | undefined {
+    const min: Vec3 = [Infinity, Infinity, Infinity], max: Vec3 = [-Infinity, -Infinity, -Infinity];
+    const p: Vec3 = [0, 0, 0];
+    for (const emitter of this.emitters) {
+      const { pool } = emitter;
+      const position = pool.field('position'), size = pool.field('size');
+      if (!emitter.enabled || !position) continue;
+      // 本地空间的粒子按发射器画的时候的变换换到世界（同 shapes.ts）
+      const space = emitter.simulationSpace === 'local' ? emitter.drawTransform : undefined;
+      for (let i = 0; i < pool.living; i++) {
+        p[0] = position[i * 3]!; p[1] = position[i * 3 + 1]!; p[2] = position[i * 3 + 2]!;
+        let half = (size ? size[i]! : 1) / 2;
+        if (space) {
+          rotate(space.worldRotation, p);
+          for (let k = 0; k < 3; k++) p[k] = p[k]! * space.worldScale[0] + space.worldPosition[k]!;
+          half *= space.worldScale[0];
+        }
+        for (let k = 0; k < 3; k++) {
+          min[k] = Math.min(min[k]!, p[k]! - half);
+          max[k] = Math.max(max[k]!, p[k]! + half);
+        }
+      }
+    }
+    return min[0] === Infinity ? undefined : [min, max];
+  }
+
   get isPaused(): boolean {
     return this.#paused;
   }

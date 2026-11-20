@@ -65,28 +65,66 @@ describe('UI 的点选（UISystem.drawPicking）', () => {
   });
   afterAll(() => native?.shutdown());
 
-  test('只画放在 3D 里的 UI，从远到近，写各自实体的变换槽位加一，剪裁到被点的像素；全屏的 UI 不画', () => {
-    stubGpuGlobals();
+  /** 带原生变换存储的游戏；ui 里加一个 100x100 虚拟像素、1x1 米的 UI，放在 z 处。 */
+  function placeUI(game: Game, ui: UISystem, name: string, z: number, isFullScreen: boolean) {
+    const root = new Canvas();
+    root.backgroundColor = [1, 1, 1, 1];
+    const entity = game.entities.create({ name, components: [Transform.with({ position: [0, 0, z] })] });
+    const component = { entity, enabled: true, renderGroup: 0, isFullScreen, isBillboard: false, isFixedSize: false, page: { rootElement: root }, resolution: { x: 100, y: 100, z: 100 }, size: { x: 1, y: 1, z: 1 } } as unknown as UIComponent;
+    ui.add(component);
+    return { entity, component };
+  }
+
+  function createGame(): Game {
     const game = new Game();
     game.native = native;
     game.transforms = native.createTransforms(16);
+    return game;
+  }
+
+  /** 看向 -Z 的透视相机。 */
+  function cameraView(): RenderView {
+    const view = new RenderView();
+    Matrix.perspectiveFovRH(view.projection, Math.PI / 3, 16 / 9, 0.1, 100);
+    Matrix.multiply(view.viewProjection, view.projection, view.view);
+    return view;
+  }
+
+  test('编辑器的选中框（worldBox）：上一帧画的那块板，中心在实体上、大小是 Size；全屏的、还没画的没有', () => {
+    stubGpuGlobals();
+    const game = createGame();
+    const { device, pass } = fakeGpu();
+    const view = cameraView();
+    const host = {
+      graphicsDevice: { device, canvas: { width: 320, height: 180 }, frameEncoder: { beginRenderPass: () => pass }, currentBackBufferView: () => ({}), backBufferViewFormat: 'bgra8unorm' },
+      graphicsCompositor: { mainView: view, mainDepth: { createView: () => ({}) } },
+      renderSystem: { resources: RESOURCES },
+      updateTime: { elapsed: 0 },
+    } as unknown as Game;
+    const ui = new UISystem();
+    const board = placeUI(game, ui, 'board', -2, false), hud = placeUI(game, ui, 'hud', 0, true);
+    game.transforms.update();
+    expect(ui.worldBox(board.component)).toBeUndefined();
+    ui.draw(host);
+    const box = ui.worldBox(board.component)!;
+    const [hx, hy, hz] = box.halfExtents;
+    expect(hz).toBe(0);
+    const corner = (sx: number, sy: number) => Matrix.transformPoint(box.matrix, sx * hx, sy * hy, 0).map((c) => +c.toFixed(5) + 0);
+    expect([corner(-1, -1), corner(1, 1)]).toEqual([[-0.5, 0.5, -2], [0.5, -0.5, -2]]);
+    expect(ui.worldBox(hud.component)).toBeUndefined();
+  });
+
+  test('只画放在 3D 里的 UI，从远到近，写各自实体的变换槽位加一，剪裁到被点的像素；全屏的 UI 不画', () => {
+    stubGpuGlobals();
+    const game = createGame();
     const { device, pass, calls, writes } = fakeGpu();
     // drawPicking 只用到游戏的这几样
     const host = { graphicsDevice: { device, canvas: { width: 320, height: 180 } }, renderSystem: { resources: RESOURCES }, updateTime: { elapsed: 0 } } as unknown as Game;
     const ui = new UISystem();
-    const place = (name: string, z: number, isFullScreen: boolean) => {
-      const root = new Canvas();
-      root.backgroundColor = [1, 1, 1, 1];
-      const entity = game.entities.create({ name, components: [Transform.with({ position: [0, 0, z] })] });
-      const component = { entity, enabled: true, renderGroup: 0, isFullScreen, isBillboard: false, isFixedSize: false, page: { rootElement: root }, resolution: { x: 100, y: 100, z: 100 }, size: { x: 1, y: 1, z: 1 } };
-      ui.add(component as unknown as UIComponent);
-      return entity;
-    };
+    const place = (name: string, z: number, isFullScreen: boolean) => placeUI(game, ui, name, z, isFullScreen).entity;
     const near = place('near', -2, false), hud = place('hud', 0, true), far = place('far', -5, false);
     game.transforms.update();
-    const view = new RenderView();
-    Matrix.perspectiveFovRH(view.projection, Math.PI / 3, 16 / 9, 0.1, 100);
-    Matrix.multiply(view.viewProjection, view.projection, view.view);
+    const view = cameraView();
     ui.drawPicking(host, pass, view, [320, 180], [160, 90, 1, 1], 'r32uint', 'depth32float');
     expect(pickIds(writes)).toEqual([transformSlot(far) + 1, transformSlot(near) + 1]);
     expect(pickIds(writes)).not.toContain(transformSlot(hud) + 1);

@@ -342,6 +342,18 @@ export class UISystem {
   }
 
   /**
+   * 放在 3D 里的 UI 上一帧画在世界里的那块板：盒子的矩阵（虚拟像素 → 世界，原点在板的中心）和半边长（虚拟像素，厚度 0）；
+   * 全屏的、上一帧没画的是 undefined。编辑器拿它当选中框。
+   */
+  worldBox(component: UIComponent): { matrix: Matrix4; halfExtents: [number, number, number] } | undefined {
+    const drawn = this.#targets.get(component);
+    if (!drawn?.uiWorld) return undefined;
+    const [vx, vy] = drawn.virtualResolution;
+    // uiWorld 的原点在 UI 的左上角，挪到中心
+    return { matrix: Matrix.multiply(new Float32Array(16), drawn.uiWorld, Matrix.scaleTranslation(new Float32Array(16), 1, 1, 1, vx / 2, vy / 2, 0)), halfExtents: [vx / 2, vy / 2, 0] };
+  }
+
+  /**
    * 元素在世界里的矩阵（Stride 的 UIElementTransformLink），按元素现在的布局和 UI 上一帧画的摆法写进 out；这个 UI 上一帧没画、或者元素不在
    * 它里面时返回 false。放在 3D 里的 UI：UI 实际的摆法（包括面向相机）乘上元素的变换，元素的位移换成世界单位（旋转、缩放
    * 不变）。全屏的 UI：元素的变换按虚拟像素放在世界原点（UI 的中心在原点，y 向上），不看 UI 实体的变换。

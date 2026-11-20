@@ -1,5 +1,5 @@
 /**
- * 把 game.debugDraw 的线画到后备缓冲上（场景和后处理之后、UI 之前）：每条线一个四边形，顶点着色器里在屏幕上沿线的法线撑开成
+ * 把 game.debugDraw 的线画到后备缓冲上（场景、后处理和 UI 之后，编辑器的选中框、操纵器不被 UI 盖住）：每条线一个四边形，顶点着色器里在屏幕上沿线的法线撑开成
  * 固定的像素宽度，片元着色器按到线段的距离算覆盖率（解析的抗锯齿，两头是圆的）。宽度是整数个设备像素，不随距离、分辨率变糊。
  *
  * 用主相机的视图；和场景比深度的线读主画面的深度缓冲（只读），所以有这种线的时候前向渲染器要把深度留着
@@ -101,7 +101,7 @@ export class DebugDrawRenderer {
   #uploaded = -1;
   readonly #frame = new Float32Array(24);
 
-  /** @internal 每帧画完场景之后、UI 之前。 */
+  /** @internal 每帧画完场景和 UI 之后。 */
   draw(game: Game): void {
     const debugDraw = game.debugDraw;
     const { tested, overlay } = debugDraw;

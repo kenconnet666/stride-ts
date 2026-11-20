@@ -557,9 +557,10 @@ export class Game {
       }
       const drawStart = performance.now();
       this.draw(this.updateTime);
-      this.debugDrawRenderer.draw(this);
       this.ui.draw(this);
       this.particles.drawOverUI(this);
+      // 调试线和调试文字画在 UI 上面：编辑器的选中框、操纵器不能被放在 3D 里的 UI 盖住
+      this.debugDrawRenderer.draw(this);
       this.debugTextRenderer.draw(this);
       this.graphicsDevice.submitFrame();
       const end = performance.now();

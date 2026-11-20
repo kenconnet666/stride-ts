@@ -395,3 +395,11 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
    - 按 60 帧跑的时候 GPU 的频率跟着负载变，同一档前后量出来差到 1.6 倍（6.5 和 10.3 ms），档位之间没法比；不限帧率（`--disable-frame-rate-limit --disable-gpu-vsync`）时两轮之间差不到 1%。
    - 第一轮高档的贴图没有变少，查出图集缩小的判断看的是"占到哪"（级联排成一行），改成在一半大的图集里试排；同时查出 `stride perf` 里阴影和主画面的耗时记在"ToneMap"名下。
 
+## CI 的全量冒烟（2026-11-20 的记录，从 roadmap.md 的"正在做和下一步"挪过来）
+
+**CI 的全量冒烟**（2026-11-20，`.github/workflows/ci.yml`，设计见 tools/README.md 的"CI"）：SwiftShader 上 WebGPU 的上下文丢失查清修掉（缺 `--use-vulkan=swiftshader`，见 lessons.md 的 WebGPU 一节），冒烟改成一个样例一台运行器，等待改成按状态和游戏时间（lessons.md 的"冒烟测试的等待"）。8c5cda9 那次：18 个跑完的冒烟过了 16 个，没过的 simple-audio（波形图的动画按帧走，按游戏时长等不够）和 platformer2d（运行器上 Chrome 20 秒没起来）随后改了（等状态；Chrome 的启动上限放到 60 秒）。当时失败的七个都是时序类，修复分别在 701a442（bepu-sample）、ce30ce2（topdown-rpg、simple-audio）、44fd3bd（platformer2d、morph-targets）、3c6c62c（first-person-shooter、csharp-intermediate）和收尾的那次提交。没有发现引擎行为类的失败，也没有要因为 SwiftShader 本身跳过的检查。顺手修的工具缺陷：`regress.ps1` 没设 `STRIDE_CHROME_ARGS` 时丢了 `--autoplay-policy`（PowerShell 单元素数组展开成空，本地的声音检查因此失败）；`stride mouse --trusted` 固定按 100 ms，帧慢时锁不上鼠标（改成按住到游戏跑过一帧）。修复后的第一次完整运行：待确认。还没过的（fc13aa0 在验证槽位 3 上用真显卡跑全部样例，机器忙）：
+   - platformer2d："W 起跳，放跳的帧"、"碰到金币：精灵马上隐藏"、"拿到的那个金币放了音效"——收尾的提交改了（等离地且换到跳的帧；按住 D 到拿到金币为止再读），本地真显卡和 SwiftShader 都过；
+   - first-person-shooter："枪口火焰、弹孔按时移除（受击拖尾 6 秒）"——收尾的提交改了（开枪以后在一次 eval 里等完、读完），本地真显卡和 SwiftShader 都过；
+   - bepu-sample 的预算（entities 457 > 366、render.instances 2522 > 2023）、space-escape 的预算（render.instances 130 > 127）——没人看过；可能是冒烟改成按游戏时间、状态等以后量预算的时刻变了，也可能和物理一帧补 0.25 秒有关；
+   - ui-particles："火跟着导火索往左走"（fire1 = [10,0,0]）——没人看过；
+   - csharp-intermediate：收尾的提交改了动画（淡入、出拳逐帧看）和导航（按游戏时间等）的等法，本地真显卡过，SwiftShader 上没跑完。下一步：看最新一次完整运行，还有失败就照 lessons.md 的做法改等法；样例里按帧走的动画（SimpleAudio 的波形图，同 Stride）以后可以改成按时间走（和 Stride 不同，要记进 decisions.md）。

@@ -2,16 +2,15 @@
  * 时间抗锯齿（TAA）加锐化：主画面的投影每帧挪一个亚像素（Halton(2, 3) 的 8 个点），把这一帧和重投影过来的历史画面混合，
  * 几帧下来每个像素就是多个采样点的平均。混合完再锐化一遍（历史里存的是没锐化的，锐化不会一帧帧累积）。
  *
- * - 重投影：按深度缓冲把像素还原到世界里，用上一帧的（没挪过的）视图投影矩阵投回去，只跟相机的运动。会动的物体（角色、
- *   动画）还没有逐物体的运动向量，靠邻域裁剪压住拖影；运动向量是下一步（docs/roadmap.md 的 P4）。
+ * - 重投影：网格画了运动向量（RenderStage.velocity：世界矩阵、蒙皮、形变都按上一帧的再算一次位置），会动的、蒙皮的物体
+ *   都跟得上；没画运动向量的像素（天空）按深度缓冲还原到世界、用上一帧的视图投影投回去，只跟相机。
  * - 邻域裁剪：历史的颜色裁进这一帧 3x3 邻域的方差包围盒（YCoCg 空间，Salvi 2016 的 variance clipping），物体移开、
  *   被遮住的地方历史作废，不拖影。深度取 3x3 里最近的（边缘上用前景的运动）。
  * - 历史按 Catmull-Rom 采样（5 次双线性，Jimenez 2016），比双线性少糊。
  * - 混合在压缩过的颜色空间里做（c / (1 + 亮度)，Karis 2014）：特别亮的像素不会一闪一闪。
  * - 锐化：照 AMD 的 CAS（对比度自适应锐化）的做法，按邻域的对比度定锐化的量，平坦的地方不放大噪点。
  *
- * 和 Stride 不同：Stride 的 TemporalAntiAliasEffect 要速度缓冲（逐物体的运动向量），没有速度缓冲时它的样例都不开 TAA，
- * 用 FXAA；我们先按深度重投影，所有内容都能开。Stride 的样例都用 FXAA，所以默认还是 FXAA（照内容画），TAA 是选项。
+ * Stride 的样例都用 FXAA，所以默认还是 FXAA（照内容画），TAA 是选项。
  */
 import { Matrix } from '../mathematics/Matrix';
 import type { GraphTexture } from './graph/RenderGraph';
@@ -38,6 +37,9 @@ struct Taa {
 @group(0) @binding(2) var depth: texture_depth_2d;
 @group(0) @binding(3) var history: texture_2d<f32>;
 @group(0) @binding(4) var linearClamp: sampler;
+// 运动向量：上一帧的 UV 减这一帧的；没画的像素（天空）是 NO_VELOCITY
+@group(0) @binding(5) var velocity: texture_2d<f32>;
+const NO_VELOCITY = 4.0;
 
 fn luma(c: vec3f) -> f32 { return dot(c, vec3f(0.2126, 0.7152, 0.0722)); }
 // 压缩：亮的像素在混合、裁剪里不占太大分量（Karis 2014）
@@ -92,25 +94,37 @@ fn clipToBox(previous: vec3f, low: vec3f, high: vec3f) -> vec3f {
   var m1 = vec3f(0.0);
   var m2 = vec3f(0.0);
   var closest = 1.0;
+  var closestPixel = pixel;
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
-      let p = pixel + vec2i(x, y);
+      let p = clamp(pixel + vec2i(x, y), vec2i(0), size - 1);
       let c = toYCoCg(compress(load(p)));
       m1 += c;
       m2 += c * c;
-      closest = min(closest, textureLoad(depth, clamp(p, vec2i(0), size - 1), 0));
+      let d = textureLoad(depth, p, 0);
+      if (d < closest) {
+        closest = d;
+        closestPixel = p;
+      }
     }
   }
   let centerColor = load(pixel);
   if (taa.params.w > 0.5) { return vec4f(centerColor, 1.0); }
 
-  // 重投影
-  let ndc = vec2f(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0);
-  let world = taa.inverseViewProjection * vec4f(ndc, closest, 1.0);
-  let previous = taa.previousViewProjection * vec4f(world.xyz / world.w, 1.0);
-  let previousNdc = previous.xy / previous.w;
-  let previousUv = vec2f(previousNdc.x * 0.5 + 0.5, 0.5 - previousNdc.y * 0.5);
-  if (previous.w <= 0.0 || any(previousUv < vec2f(0.0)) || any(previousUv > vec2f(1.0))) { return vec4f(centerColor, 1.0); }
+  // 重投影：画了运动向量的像素（网格，连会动的、蒙皮的）照它，3x3 里最近的那个（边缘上跟前景走）；别的按深度还原到世界、
+  // 投回上一帧（只跟相机）
+  let motion = textureLoad(velocity, closestPixel, 0).xy;
+  var previousUv = in.uv + motion;
+  var behind = false;
+  if (motion.x >= NO_VELOCITY * 0.5) {
+    let ndc = vec2f(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0);
+    let world = taa.inverseViewProjection * vec4f(ndc, closest, 1.0);
+    let previous = taa.previousViewProjection * vec4f(world.xyz / world.w, 1.0);
+    let previousNdc = previous.xy / previous.w;
+    previousUv = vec2f(previousNdc.x * 0.5 + 0.5, 0.5 - previousNdc.y * 0.5);
+    behind = previous.w <= 0.0;
+  }
+  if (behind || any(previousUv < vec2f(0.0)) || any(previousUv > vec2f(1.0))) { return vec4f(centerColor, 1.0); }
 
   let mean = m1 / 9.0;
   let sigma = sqrt(max(m2 / 9.0 - mean * mean, vec3f(0.0)));
@@ -213,6 +227,9 @@ export class TemporalAntialiasing {
     this.#previousViewProjection.set(this.#viewProjection);
     this.#viewProjection.set(view.viewProjection);
     this.#projection.set(view.projection);
+    // 运动向量用这两个（不带亚像素的抖动，否则静止的画面也有运动）
+    view.unjitteredViewProjection.set(this.#viewProjection);
+    view.previousViewProjection.set(this.#previousViewProjection);
     const index = (this.#frame++ % JITTER_SAMPLES) + 1;
     jitterProjection(view.projection, halton(index, 2) - 0.5, halton(index, 3) - 0.5, view.width, view.height);
     view.update();
@@ -226,9 +243,9 @@ export class TemporalAntialiasing {
 
   /**
    * 往这一帧的渲染图里加 TAA 的通道：color 是主画面（挪过的投影画的），depth 是它的深度缓冲（要带 TEXTURE_BINDING），
-   * view 是主视图（jitter 之后的矩阵）。返回抗锯齿、锐化过的画面，交给后处理。
+   * view 是主视图（jitter 之后的矩阵），velocity 是运动向量（ForwardRenderer 画的）。返回抗锯齿、锐化过的画面，交给后处理。
    */
-  record(frame: EffectFrame, color: GraphTexture, depth: GPUTexture, view: RenderView): Image {
+  record(frame: EffectFrame, color: GraphTexture, depth: GPUTexture, view: RenderView, velocity: GraphTexture): Image {
     this.#arena.reset();
     const { width, height } = color;
     if (this.#history?.[0].width !== width || this.#history[0].height !== height) {
@@ -244,7 +261,7 @@ export class TemporalAntialiasing {
     parameters.set(this.#previousViewProjection, 16);
     parameters.set([1 / width, 1 / height, this.feedback, this.#reset ? 1 : 0, this.clipSigma, 0, 0, 0], 32);
     this.#reset = false;
-    this.#resolve.draw(frame, write, [this.#arena.push(parameters), color, depth, read, this.#sampler]);
+    this.#resolve.draw(frame, write, [this.#arena.push(parameters), color, depth, read, this.#sampler, velocity]);
     if (this.sharpness <= 0) return write;
     const sharpened = frame.acquire(width, height, HISTORY_FORMAT, 'TAA sharpened');
     this.#sharpen.draw(frame, sharpened, [this.#arena.push([this.sharpness, 0, 0, 0]), write]);

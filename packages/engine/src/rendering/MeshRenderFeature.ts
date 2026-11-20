@@ -89,6 +89,12 @@ struct View {
   lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   // x：点光和聚光的个数（localLights 的前几个），y：游戏开始以来的秒数（Stride 的 Global.Time，材质的颜色树用）
   locals: vec4f,
+  // 世界矩阵、蒙皮、形变的缓冲各分两半，每帧轮着写（另一半留着上一帧的，运动向量用）：这一帧和上一帧各自的起点。
+  // [0]：世界矩阵（槽位）这一帧、上一帧，蒙皮表（槽位）这一帧、上一帧；[1]：蒙皮矩阵、形变表；[2].xy：形变权重
+  bases: array<vec4u, 3>,
+  // 运动向量：这一帧没挪过亚像素的视图投影、上一帧的
+  unjitteredViewProjection: mat4x4f,
+  previousViewProjection: mat4x4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
 // direction 是聚光照向的方向（w：它的阴影在 localShadows 里的下标，没有阴影时 -1），angle 是角度衰减的 scale、offset
@@ -173,10 +179,16 @@ override MORPHED: bool = false;
 
 /** 顶点的形变增量（Stride 的 MorphTargets：按权重加各个目标的位置和法线增量），在网格空间里、蒙皮之前。 */
 struct MorphDelta { position: vec3f, normal: vec3f };
-fn morphDelta(slot: u32, vertex: u32) -> MorphDelta {
+/** 第 kind 种缓冲（0 世界矩阵，1 蒙皮表，2 蒙皮矩阵，3 形变表，4 形变权重）这一帧或上一帧的那一半从哪起。 */
+fn frameBase(kind: u32, previous: bool) -> u32 {
+  let k = kind * 2u + select(0u, 1u, previous);
+  return view.bases[k / 4u][k % 4u];
+}
+
+fn morphDelta(slot: u32, vertex: u32, previous: bool) -> MorphDelta {
   var delta = MorphDelta(vec3f(0.0), vec3f(0.0));
   if (!MORPHED) { return delta; }
-  let base = morphOf[slot];
+  let base = morphOf[frameBase(3u, previous) + slot] + frameBase(4u, previous);
   let first = morphData[0];
   for (var e = morphData[1u + vertex]; e < morphData[2u + vertex]; e++) {
     let at = first + e * 8u;
@@ -221,8 +233,8 @@ const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 
  * （同 Stride：先形变后蒙皮）。
  */
 fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, slot: u32, vertex: u32, skin: mat4x4f) -> Varyings {
-  let world = worlds[slot];
-  let morph = morphDelta(slot, vertex);
+  let world = worlds[frameBase(0u, false) + slot];
+  let morph = morphDelta(slot, vertex, false);
   let local = (skin * vec4f(mesh.positionOffset.xyz + position * mesh.positionScale.xyz + morph.position, 1.0)).xyz;
   let localNormal = (skin * vec4f(select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u) + morph.normal, 0.0)).xyz;
   let localTangent = (skin * vec4f(tangent.xyz, 0.0)).xyz;
@@ -247,9 +259,22 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   return out;
 }
 
-/** 顶点的蒙皮矩阵：4 个关节的蒙皮矩阵按权重相加（Stride 的 TransformationSkinning）。 */
-fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f) -> mat4x4f {
-  let base = paletteOf[slot];
+/**
+ * 上一帧这个顶点在世界里的位置（运动向量用）：同 transformVertex 的位置，只是世界矩阵、蒙皮、形变都取上一帧的。
+ * 网格效果（随时间变的）按这一帧算。
+ */
+fn previousWorldPosition(position: vec3f, normal: vec3f, uv: vec2f, slot: u32, vertex: u32, skin: mat4x4f) -> vec4f {
+  let world = worlds[frameBase(0u, true) + slot];
+  let morph = morphDelta(slot, vertex, true);
+  let local = (skin * vec4f(mesh.positionOffset.xyz + position * mesh.positionScale.xyz + morph.position, 1.0)).xyz;
+  let localNormal = (skin * vec4f(select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u) + morph.normal, 0.0)).xyz;
+  let displaced = local + normalize(localNormal) * treeDisplacement(mesh.uvTransform.zw + uv * mesh.uvTransform.xy, local);
+  return vec4f(effectWorldPosition((world * vec4f(displaced, 1.0)).xyz, mesh.effect), 1.0);
+}
+
+/** 顶点的蒙皮矩阵：4 个关节的蒙皮矩阵按权重相加（Stride 的 TransformationSkinning）；previous 取上一帧的。 */
+fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f, previous: bool) -> mat4x4f {
+  let base = paletteOf[frameBase(1u, previous) + slot] + frameBase(2u, previous);
   return palettes[base + joints.x] * weights.x + palettes[base + joints.y] * weights.y
     + palettes[base + joints.z] * weights.z + palettes[base + joints.w] * weights.w;
 }
@@ -264,12 +289,45 @@ fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f) -> mat4x4f {
 
 @vertex fn vsSkinned(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
   let slot = slots[instance];
-  return transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, skinMatrix(slot, joints, weights));
+  return transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, skinMatrix(slot, joints, weights, false));
 }
 
 @vertex fn vsSkinnedTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
   let slot = slots[instance];
-  return transformVertex(position, normal, uv, tangent, slot, vertex, skinMatrix(slot, joints, weights));
+  return transformVertex(position, normal, uv, tangent, slot, vertex, skinMatrix(slot, joints, weights, false));
+}
+
+// 运动向量（RenderStage.velocity）：位置和别的阶段一样算（@invariant，深度相等的比较才对得上），另外带上这一帧、上一帧
+// 没挪过亚像素的裁剪坐标，片元着色器相减
+struct VelocityVaryings {
+  @invariant @builtin(position) position: vec4f,
+  @location(0) current: vec4f,
+  @location(1) previous: vec4f,
+};
+
+fn velocityVertex(position: vec3f, normal: vec3f, uv: vec2f, slot: u32, vertex: u32, skin: mat4x4f, previousSkin: mat4x4f) -> VelocityVaryings {
+  let now = transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, skin);
+  var out: VelocityVaryings;
+  out.position = now.position;
+  out.current = view.unjitteredViewProjection * vec4f(now.world, 1.0);
+  out.previous = view.previousViewProjection * previousWorldPosition(position, normal, uv, slot, vertex, previousSkin);
+  return out;
+}
+
+@vertex fn vsVelocity(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> VelocityVaryings {
+  return velocityVertex(position, normal, uv, slots[instance], vertex, IDENTITY, IDENTITY);
+}
+
+@vertex fn vsVelocitySkinned(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> VelocityVaryings {
+  let slot = slots[instance];
+  return velocityVertex(position, normal, uv, slot, vertex, skinMatrix(slot, joints, weights, false), skinMatrix(slot, joints, weights, true));
+}
+
+/** 这个像素上一帧在画面上的位置减这一帧的（UV 单位，y 朝下）。 */
+@fragment fn fsVelocity(in: VelocityVaryings) -> @location(0) vec4f {
+  let current = in.current.xy / in.current.w;
+  let previous = in.previous.xy / in.previous.w;
+  return vec4f((previous - current) * vec2f(0.5, -0.5), 0.0, 1.0);
 }
 
 /**
@@ -880,9 +938,12 @@ const SAMPLES = 1024u;
 }`;
 
 /** 每个视图的常量占一块：uniform 的动态偏移必须是 minUniformBufferOffsetAlignment（256）的整数倍。 */
-const VIEW_STRIDE = 768;
-/** View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4。 */
-const VIEW_FLOATS = 192;
+const VIEW_STRIDE = 1024;
+/**
+ * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
+ * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32。
+ */
+const VIEW_FLOATS = 236;
 /** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
 const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
@@ -1057,6 +1118,7 @@ export class MeshRenderFeature extends RootRenderFeature {
 
   override prepare(context: RenderContext): void {
     const gpu = this.#ensureGpu();
+    gpu.nextFrame();
     gpu.uploadWorlds(context.game.transforms.world, context.game.transforms.slotLimit);
     gpu.uploadSkinning(this.#paletteOf, context.game.animation);
     gpu.uploadMorphs(this.#morphOf, context.game.animation);
@@ -1081,6 +1143,10 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   override get supportsPicking(): boolean {
+    return true;
+  }
+
+  override get supportsVelocity(): boolean {
     return true;
   }
 
@@ -1296,6 +1362,18 @@ class Gpu {
   #views: GPUBuffer | undefined;
   /** 每个视图一块常量；视图多了就换大的（主视图、渲染目标贴图的相机，加上每个阴影级联、点光的每个面各一个）。 */
   #viewData = new Float32Array((VIEW_STRIDE / 4) * 8);
+  /**
+   * 世界矩阵、蒙皮、形变的缓冲各分两半，每帧轮着写，另一半留着上一帧的（运动向量要上一帧的位置）；不另建缓冲：顶点着色器
+   * 能绑的存储缓冲只有 8 个，已经用了 7 个。parity 是这一帧写哪一半。
+   */
+  #parity = 0;
+  /** 各缓冲一半的大小（世界矩阵、两张表按槽位，蒙皮矩阵按矩阵，形变权重按个）。 */
+  #halves = { worlds: 0, paletteOf: 0, palettes: 0, morphOf: 0, morphWeights: 0 };
+  /** 两张表改了以后两半都要写一遍（另一半是上一帧的，下一帧轮到它时也得是新的）。 */
+  #paletteOfWrites = 0;
+  #morphOfWrites = 0;
+  /** 视图常量里的各缓冲这一帧、上一帧的起点（View.bases）。 */
+  readonly #frameBases = new Uint32Array(12);
   readonly #localLightData = new Float32Array(MAX_LOCAL_LIGHTS * LOCAL_LIGHT_FLOATS);
   readonly #localLights: GPUBuffer;
   /** 点光、聚光的阴影（LocalShadow），按需变长；没有时也留一个的位置（绑定组里的存储缓冲不能缺）。 */
@@ -1458,7 +1536,8 @@ class Gpu {
     const cutout = colorFormat === undefined && material.alphaCutoff !== undefined;
     {
       const offsets = vertexLayoutOffsets(layout);
-      const entryPoint = `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
+      // 运动向量阶段不要切线（只算位置），用自己的顶点着色器
+      const entryPoint = stage.velocity ? `vsVelocity${skinned ? 'Skinned' : ''}` : `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
       const module = this.#module(trees, effect);
       return {
         label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${morphed ? ' morphed' : ''}${trees ? ' material trees' : ''}`,
@@ -1473,7 +1552,7 @@ class Gpu {
               { shaderLocation: 0, offset: offsets.position, format: layout.position },
               { shaderLocation: 1, offset: offsets.normal, format: layout.normal },
               { shaderLocation: 2, offset: offsets.uv, format: layout.uv },
-              ...(layout.tangent ? [{ shaderLocation: 3, offset: offsets.tangent!, format: layout.tangent }] : []),
+              ...(layout.tangent && !stage.velocity ? [{ shaderLocation: 3, offset: offsets.tangent!, format: layout.tangent }] : []),
               ...(skinned ? [
                 { shaderLocation: 4, offset: offsets.joints!, format: layout.joints! },
                 { shaderLocation: 5, offset: offsets.weights!, format: layout.weights! },
@@ -1482,7 +1561,7 @@ class Gpu {
           }],
         },
         ...(colorFormat ? {
-          fragment: stage.picking || stage.wireframe ? { module, entryPoint: stage.picking ? 'fsPick' : 'fsWire', targets: [{ format: colorFormat }] } : {
+          fragment: stage.picking || stage.wireframe || stage.velocity ? { module, entryPoint: stage.picking ? 'fsPick' : stage.wireframe ? 'fsWire' : 'fsVelocity', targets: [{ format: colorFormat }] } : {
             module,
             entryPoint: materialPass?.entryPoint ?? 'fs',
             targets: [{ format: colorFormat, ...(stage.transparent ? { blend: materialPass?.blend ?? PREMULTIPLIED_ALPHA } : {}) }],
@@ -1503,16 +1582,30 @@ class Gpu {
     }
   }
 
-  /** 世界矩阵列的 1..slotLimit 段（槽位 0 是空的，一起传，下标就和槽位一致）。 */
+  /** 新的一帧：换写另一半。 */
+  nextFrame(): void {
+    this.#parity = 1 - this.#parity;
+  }
+
+  /** 这一帧、上一帧的一半从哪起（单位同 half）。 */
+  #bases(half: number): [current: number, previous: number] {
+    return [this.#parity * half, (1 - this.#parity) * half];
+  }
+
+  /** 世界矩阵列的 1..slotLimit 段（槽位 0 是空的，一起传，下标就和槽位一致），写进这一帧的那一半。 */
   uploadWorlds(world: Float32Array, slotLimit: number): void {
     const floats = (slotLimit + 1) * 16;
-    if (!this.#worlds || this.#worlds.size < floats * 4) {
+    if (!this.#worlds || this.#halves.worlds * 64 < floats * 4) {
       this.#worlds?.destroy();
-      this.#worlds = this.#createStorage('MeshRenderFeature worlds', capacityFor(floats * 4));
+      const half = capacityFor(floats * 4);
+      this.#worlds = this.#createStorage('MeshRenderFeature worlds', half * 2);
+      this.#halves.worlds = half / 64;
       this.#viewBindGroups.clear();
     }
+    const [current, previous] = this.#bases(this.#halves.worlds);
+    this.#frameBases.set([current, previous], 0);
     // 直接从 wasm 的共享内存上传，不经过 JS 数组
-    this.device.queue.writeBuffer(this.#worlds, 0, world, 0, floats);
+    this.device.queue.writeBuffer(this.#worlds, current * 64, world, 0, floats);
   }
 
   /**
@@ -1521,47 +1614,69 @@ class Gpu {
    */
   uploadSkinning(paletteOf: SlotTable, animation: AnimationSystem): void {
     const tableBytes = paletteOf.values.byteLength;
-    if (!this.#paletteOf || this.#paletteOf.size < tableBytes) {
+    if (!this.#paletteOf || this.#halves.paletteOf * 4 < tableBytes) {
       this.#paletteOf?.destroy();
-      this.#paletteOf = this.#createStorage('MeshRenderFeature paletteOf', capacityFor(tableBytes));
+      const half = capacityFor(tableBytes);
+      this.#paletteOf = this.#createStorage('MeshRenderFeature paletteOf', half * 2);
+      this.#halves.paletteOf = half / 4;
       this.#viewBindGroups.clear();
       paletteOf.dirty = true;
     }
+    const [table, previousTable] = this.#bases(this.#halves.paletteOf);
     if (paletteOf.dirty) {
-      this.device.queue.writeBuffer(this.#paletteOf, 0, paletteOf.values);
+      this.#paletteOfWrites = 2;
       paletteOf.dirty = false;
     }
+    if (this.#paletteOfWrites > 0) {
+      this.device.queue.writeBuffer(this.#paletteOf, table * 4, paletteOf.values);
+      this.#paletteOfWrites--;
+    }
     const paletteBytes = Math.max(animation.paletteCapacity, 1) * 64;
-    if (!this.#palettes || this.#palettes.size < paletteBytes) {
+    if (!this.#palettes || this.#halves.palettes * 64 < paletteBytes) {
       this.#palettes?.destroy();
-      this.#palettes = this.#createStorage('MeshRenderFeature palettes', capacityFor(paletteBytes));
+      const half = capacityFor(paletteBytes);
+      this.#palettes = this.#createStorage('MeshRenderFeature palettes', half * 2);
+      this.#halves.palettes = half / 64;
       this.#viewBindGroups.clear();
     }
+    const [current, previous] = this.#bases(this.#halves.palettes);
+    this.#frameBases.set([table, previousTable, current, previous], 2);
     const palettes = this.#palettes;
-    animation.forEachPalette((base, matrices) => this.device.queue.writeBuffer(palettes, base * 64, matrices));
+    animation.forEachPalette((base, matrices) => this.device.queue.writeBuffer(palettes, (current + base) * 64, matrices));
   }
 
   /** 形变：槽位到权重起点的表（改了才传）和所有模型实例的权重（每帧传）。 */
   uploadMorphs(morphOf: SlotTable, animation: AnimationSystem): void {
     const tableBytes = morphOf.values.byteLength;
-    if (!this.#morphOf || this.#morphOf.size < tableBytes) {
+    if (!this.#morphOf || this.#halves.morphOf * 4 < tableBytes) {
       this.#morphOf?.destroy();
-      this.#morphOf = this.#createStorage('MeshRenderFeature morphOf', capacityFor(tableBytes));
+      const half = capacityFor(tableBytes);
+      this.#morphOf = this.#createStorage('MeshRenderFeature morphOf', half * 2);
+      this.#halves.morphOf = half / 4;
       this.#viewBindGroups.clear();
       morphOf.dirty = true;
     }
+    const [table, previousTable] = this.#bases(this.#halves.morphOf);
     if (morphOf.dirty) {
-      this.device.queue.writeBuffer(this.#morphOf, 0, morphOf.values);
+      this.#morphOfWrites = 2;
       morphOf.dirty = false;
     }
+    if (this.#morphOfWrites > 0) {
+      this.device.queue.writeBuffer(this.#morphOf, table * 4, morphOf.values);
+      this.#morphOfWrites--;
+    }
     const weightBytes = Math.max(animation.morphCapacity, 1) * 4;
-    if (!this.#morphWeights || this.#morphWeights.size < weightBytes) {
+    if (!this.#morphWeights || this.#halves.morphWeights * 4 < weightBytes) {
       this.#morphWeights?.destroy();
-      this.#morphWeights = this.#createStorage('MeshRenderFeature morph weights', capacityFor(weightBytes));
+      const half = capacityFor(weightBytes);
+      this.#morphWeights = this.#createStorage('MeshRenderFeature morph weights', half * 2);
+      this.#halves.morphWeights = half / 4;
       this.#viewBindGroups.clear();
     }
+    const [current, previous] = this.#bases(this.#halves.morphWeights);
+    this.#frameBases.set([table, previousTable, current, previous], 6);
     const weights = this.#morphWeights;
-    animation.forEachMorph((base, values) => this.device.queue.writeBuffer(weights, base * 4, values));
+    animation.forEachMorph((base, values) => this.device.queue.writeBuffer(weights, (current + base) * 4, values));
   }
 
   /** 各次剔除的可见槽位（每个视图一段，直接在 wasm 内存里）依次拼成实例缓冲。 */
@@ -1587,7 +1702,7 @@ class Gpu {
       this.#viewBindGroups.clear();
     }
     const { directionals, directionalCount, ambient, skybox, shadow, shadowAtlas, locals, localCount } = lighting;
-    const data = this.#viewData;
+    const data = this.#viewData, words = new Uint32Array(data.buffer);
     for (const view of views) {
       const o = view.index * stride;
       data.set(view.viewProjection, o);
@@ -1615,6 +1730,9 @@ class Gpu {
         data.set([color.r, color.g, color.b, 1], o + 172 + i * 4);
       }
       data.set([localCount, time, 0, 0], o + 188);
+      words.set(this.#frameBases, o + 192);
+      data.set(view.unjitteredViewProjection, o + 204);
+      data.set(view.previousViewProjection, o + 220);
     }
     // 点光、聚光：所有视图共用一份
     const lights = this.#localLightData;

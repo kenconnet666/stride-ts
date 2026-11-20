@@ -45,6 +45,10 @@ export function spotAngleAttenuation(angleInner: number, angleOuter: number): [s
 }
 
 export const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
+/** 运动向量：UV 的差，两个半精度。 */
+const VELOCITY_FORMAT: GPUTextureFormat = 'rg16float';
+/** 没画运动向量的像素（清屏的值）：比任何画面里的差都大，TAA 看到它就按深度重投影（TemporalAntialiasing.ts 里同一个数）。 */
+const NO_VELOCITY = 4;
 const CASCADE_COUNTS = { one: 1, two: 2, four: 4 } as const;
 const HDR_FORMAT: GPUTextureFormat = 'rgba16float';
 
@@ -121,6 +125,8 @@ export class ForwardRenderer {
   /** 画质档位：内容要的阴影、后处理不超过它给的上限（见 Quality.ts）；默认极高，就是照内容写的画。 */
   quality: QualitySettings = QUALITY_TIERS.ultra;
   readonly #wireframeStage = new RenderStage('Wireframe', { colorFormat: HDR_FORMAT, depthFormat: DEPTH_FORMAT }, { wireframe: true });
+  /** 运动向量（TAA 用）：不透明的画完以后再画一遍，深度相等的像素写上一帧的位置减这一帧的。 */
+  readonly #velocityStage = new RenderStage('Velocity', { colorFormat: VELOCITY_FORMAT, depthFormat: DEPTH_FORMAT }, { afterDepthPrepass: true, velocity: true });
   /** 没有后处理时主画面直接画进后备缓冲用的两个阶段（颜色格式是后备缓冲的）。 */
   #directStages: DirectStages | undefined;
   /** 渲染目标贴图的原样拷贝（自己的参数区：主画面的后处理每帧会重置它的参数区）。 */
@@ -328,7 +334,7 @@ export class ForwardRenderer {
       const color = graph.texture({ label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT });
       this.#viewPasses(context, frame, mainView, this.#hdrOutput(color), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
       // TAA 做了抗锯齿，后处理里就不再做 FXAA
-      const input = temporal ? this.temporalAntialiasing.record(frame, color, depth, this.#mainView) : color;
+      const input = temporal ? this.temporalAntialiasing.record(frame, color, depth, this.#mainView, this.#velocityPass(context, frame, depth)) : color;
       this.postEffects.record(frame, input, graphicsDevice.currentBackBufferView(), graphicsDevice.backBufferViewFormat, context.time.elapsed, temporal ? { ...this.quality, antialiasing: false } : this.quality);
     } else {
       this.#viewPasses(context, frame, mainView, this.#backBufferOutput(canvas.width, canvas.height), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
@@ -461,6 +467,26 @@ export class ForwardRenderer {
   /** 上一帧的渲染图：跑了哪些通道、裁掉哪些、临时贴图声明了几张、实际占了几张（调试的 perf 命令和统计量读）。 */
   get graphStats(): RenderGraphStats {
     return this.#graph.stats;
+  }
+
+  /**
+   * 主画面的运动向量：会画运动向量的特性（网格）按深度相等再画一遍不透明的；没画到的像素（天空、精灵、粒子）是
+   * NO_VELOCITY，TAA 在那里按深度重投影。
+   */
+  #velocityPass(context: RenderContext, frame: EffectFrame, depth: GPUTexture): GraphTexture {
+    const velocity = frame.graph.texture({ label: 'ForwardRenderer velocity', width: depth.width, height: depth.height, format: VELOCITY_FORMAT });
+    frame.pass('ForwardRenderer velocity', (pass) => pass.write(velocity), (real) => {
+      const timestampWrites = this.renderSystem.graphicsDevice.profiler.passTimestamps('ForwardRenderer velocity');
+      const pass = frame.encoder.beginRenderPass({
+        label: 'ForwardRenderer velocity',
+        ...(timestampWrites ? { timestampWrites } : {}),
+        colorAttachments: [{ view: real.view(velocity), clearValue: { r: NO_VELOCITY, g: NO_VELOCITY, b: 0, a: 0 }, loadOp: 'clear', storeOp: 'store' }],
+        depthStencilAttachment: { view: depth.createView(), depthReadOnly: true },
+      });
+      this.renderSystem.draw(context, pass, this.#mainView, this.#velocityStage);
+      pass.end();
+    });
+    return velocity;
   }
 
   /** 主画面的深度缓冲；画布改了尺寸时重建。 */

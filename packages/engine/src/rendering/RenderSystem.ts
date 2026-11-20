@@ -55,12 +55,18 @@ export class RenderStage {
   readonly picking: boolean;
   /** 线框（调试视图）：网格的三角形的边画成线，叠在画好的场景上面；透明、不透明的都画，只有网格画。 */
   readonly wireframe: boolean;
+  /**
+   * 运动向量（TAA 用）：每个像素上一帧在画面上的位置减这一帧的（UV）。只画不透明的、supportsVelocity 的特性，比较深度相等
+   * （不透明的已经画完、深度写好了）。
+   */
+  readonly velocity: boolean;
 
   constructor(
     name: string, output: RenderOutput,
-    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false, picking = false, wireframe = false }:
-    { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean; picking?: boolean; wireframe?: boolean } = {},
+    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false, picking = false, wireframe = false, velocity = false }:
+    { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean; picking?: boolean; wireframe?: boolean; velocity?: boolean } = {},
   ) {
+    this.velocity = velocity;
     this.picking = picking;
     this.wireframe = wireframe;
     this.name = name;
@@ -95,6 +101,9 @@ export class RenderView {
   readonly viewProjection = Matrix.identity();
   /** 背景用它把屏幕坐标变回世界方向。 */
   readonly inverseViewProjection = Matrix.identity();
+  /** 运动向量用（TemporalAntialiasing.jitter 设）：这一帧没挪过亚像素的视图投影、上一帧的。 */
+  readonly unjitteredViewProjection = Matrix.identity();
+  readonly previousViewProjection = Matrix.identity();
   /** 相机在世界空间的位置（镜面反射要用视线方向）。 */
   readonly eye = new Vector3();
   nearClipPlane = 0.1;
@@ -169,6 +178,11 @@ export abstract class RootRenderFeature {
   get supportsPicking(): boolean {
     return false;
   }
+  /** 会不会画运动向量（RenderStage.velocity）；不会的特性在那个阶段不被调用（那里按深度重投影）。 */
+  get supportsVelocity(): boolean {
+    return false;
+  }
+
   /** 会不会画线框（RenderStage.wireframe）；不会的特性在那个阶段不被调用。 */
   get supportsWireframe(): boolean {
     return false;
@@ -423,7 +437,7 @@ export class RenderSystem {
 
   draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     for (const feature of this.features) {
-      if ((!stage.picking || feature.supportsPicking) && (!stage.wireframe || feature.supportsWireframe)) feature.draw(context, pass, view, stage);
+      if ((!stage.picking || feature.supportsPicking) && (!stage.wireframe || feature.supportsWireframe) && (!stage.velocity || feature.supportsVelocity)) feature.draw(context, pass, view, stage);
     }
   }
 

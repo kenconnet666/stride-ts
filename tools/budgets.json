@@ -6,20 +6,20 @@
     "gpu.pipelines.sync": 10,
     "gpu.textures": 14,
     "gpu.textures.bytes": 31768640,
-    "native.allocated.bytes": 58152624,
+    "native.allocated.bytes": 50738432,
     "render.drawCalls": 73,
     "render.instances": 64
   },
   "bepu-sample": {
-    "entities": 195,
+    "entities": 233,
     "gpu.buffers": 61,
     "gpu.buffers.bytes": 897212,
     "gpu.pipelines.sync": 6,
     "gpu.textures": 39,
     "gpu.textures.bytes": 108496776,
-    "native.allocated.bytes": 190556944,
+    "native.allocated.bytes": 183162240,
     "render.drawCalls": 61,
-    "render.instances": 1076
+    "render.instances": 1338
   },
   "csharp-beginner": {
     "entities": 143,
@@ -28,9 +28,9 @@
     "gpu.pipelines.sync": 7,
     "gpu.textures": 43,
     "gpu.textures.bytes": 126888078,
-    "native.allocated.bytes": 87916480,
-    "render.drawCalls": 160,
-    "render.instances": 429
+    "native.allocated.bytes": 80505960,
+    "render.drawCalls": 136,
+    "render.instances": 357
   },
   "csharp-intermediate": {
     "entities": 99,
@@ -39,7 +39,7 @@
     "gpu.pipelines.sync": 87,
     "gpu.textures": 31,
     "gpu.textures.bytes": 143712454,
-    "native.allocated.bytes": 88313800,
+    "native.allocated.bytes": 80903216,
     "render.drawCalls": 185,
     "render.instances": 345
   },
@@ -50,7 +50,7 @@
     "gpu.pipelines.sync": 1,
     "gpu.textures": 7,
     "gpu.textures.bytes": 5898368,
-    "native.allocated.bytes": 73205224,
+    "native.allocated.bytes": 65791032,
     "render.drawCalls": 0,
     "render.instances": 0
   },
@@ -61,7 +61,7 @@
     "gpu.pipelines.sync": 13,
     "gpu.textures": 40,
     "gpu.textures.bytes": 123370858,
-    "native.allocated.bytes": 72939312,
+    "native.allocated.bytes": 65528640,
     "render.drawCalls": 230,
     "render.instances": 612
   },
@@ -72,7 +72,7 @@
     "gpu.pipelines.sync": 7,
     "gpu.textures": 14,
     "gpu.textures.bytes": 49274908,
-    "native.allocated.bytes": 57873880,
+    "native.allocated.bytes": 50459688,
     "render.drawCalls": 22,
     "render.instances": 0
   },
@@ -83,8 +83,8 @@
     "gpu.pipelines.sync": 5,
     "gpu.textures": 13,
     "gpu.textures.bytes": 22149060,
-    "native.allocated.bytes": 87862512,
-    "render.drawCalls": 12,
+    "native.allocated.bytes": 80452440,
+    "render.drawCalls": 15,
     "render.instances": 0
   },
   "material-shader": {
@@ -94,7 +94,7 @@
     "gpu.pipelines.sync": 1,
     "gpu.textures": 9,
     "gpu.textures.bytes": 8238512,
-    "native.allocated.bytes": 73209888,
+    "native.allocated.bytes": 65795680,
     "render.drawCalls": 3,
     "render.instances": 2
   },
@@ -105,18 +105,18 @@
     "gpu.pipelines.sync": 3,
     "gpu.textures": 33,
     "gpu.textures.bytes": 47440622,
-    "native.allocated.bytes": 57898448,
+    "native.allocated.bytes": 50484264,
     "render.drawCalls": 87,
     "render.instances": 17
   },
   "particles-sample": {
     "entities": 15,
     "gpu.buffers": 143,
-    "gpu.buffers.bytes": 2520036,
+    "gpu.buffers.bytes": 2524852,
     "gpu.pipelines.sync": 37,
     "gpu.textures": 37,
     "gpu.textures.bytes": 24230004,
-    "native.allocated.bytes": 73367984,
+    "native.allocated.bytes": 65953832,
     "render.drawCalls": 14,
     "render.instances": 10
   },
@@ -127,7 +127,7 @@
     "gpu.pipelines.sync": 16,
     "gpu.textures": 13,
     "gpu.textures.bytes": 31613020,
-    "native.allocated.bytes": 72533288,
+    "native.allocated.bytes": 65122368,
     "render.drawCalls": 14,
     "render.instances": 4
   },
@@ -138,9 +138,9 @@
     "gpu.pipelines.sync": 8,
     "gpu.textures": 32,
     "gpu.textures.bytes": 115451938,
-    "native.allocated.bytes": 73141352,
-    "render.drawCalls": 214,
-    "render.instances": 424
+    "native.allocated.bytes": 65730704,
+    "render.drawCalls": 204,
+    "render.instances": 384
   },
   "platformer2d": {
     "entities": 69,
@@ -149,7 +149,7 @@
     "gpu.pipelines.sync": 4,
     "gpu.textures": 28,
     "gpu.textures.bytes": 38088060,
-    "native.allocated.bytes": 72537712,
+    "native.allocated.bytes": 65127208,
     "render.drawCalls": 91,
     "render.instances": 0
   },
@@ -160,20 +160,20 @@
     "gpu.pipelines.sync": 4,
     "gpu.textures": 10,
     "gpu.textures.bytes": 27549756,
-    "native.allocated.bytes": 57873856,
+    "native.allocated.bytes": 50459664,
     "render.drawCalls": 4,
     "render.instances": 0
   },
   "space-escape": {
-    "entities": 75,
+    "entities": 69,
     "gpu.buffers": 169,
-    "gpu.buffers.bytes": 1311064,
+    "gpu.buffers.bytes": 1310256,
     "gpu.pipelines.sync": 9,
     "gpu.textures": 21,
     "gpu.textures.bytes": 7294596,
-    "native.allocated.bytes": 73377312,
-    "render.drawCalls": 69,
-    "render.instances": 80
+    "native.allocated.bytes": 65957816,
+    "render.drawCalls": 80,
+    "render.instances": 74
   },
   "sprite-fonts": {
     "entities": 0,
@@ -182,7 +182,7 @@
     "gpu.pipelines.sync": 3,
     "gpu.textures": 6,
     "gpu.textures.bytes": 22369684,
-    "native.allocated.bytes": 57873504,
+    "native.allocated.bytes": 50459312,
     "render.drawCalls": 0,
     "render.instances": 0
   },
@@ -193,7 +193,7 @@
     "gpu.pipelines.sync": 4,
     "gpu.textures": 32,
     "gpu.textures.bytes": 110875338,
-    "native.allocated.bytes": 73111960,
+    "native.allocated.bytes": 65701392,
     "render.drawCalls": 129,
     "render.instances": 111
   },
@@ -204,18 +204,18 @@
     "gpu.pipelines.sync": 8,
     "gpu.textures": 30,
     "gpu.textures.bytes": 132021646,
-    "native.allocated.bytes": 57991648,
+    "native.allocated.bytes": 50577456,
     "render.drawCalls": 65,
     "render.instances": 28
   },
   "ui-particles": {
-    "entities": 8,
+    "entities": 7,
     "gpu.buffers": 30,
     "gpu.buffers.bytes": 629600,
     "gpu.pipelines.sync": 6,
     "gpu.textures": 12,
     "gpu.textures.bytes": 34452912,
-    "native.allocated.bytes": 73205672,
+    "native.allocated.bytes": 65791480,
     "render.drawCalls": 9,
     "render.instances": 0
   }

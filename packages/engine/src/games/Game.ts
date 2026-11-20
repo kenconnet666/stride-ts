@@ -516,8 +516,9 @@ export class Game {
 
   /** 画一帧：世界矩阵这时已经算好。默认交给图形合成器。 */
   /**
-   * 点选：画布上 (x, y)（CSS 像素，左上角是原点）最前面的网格属于哪个实体；那里没有网格时是 undefined。结果要等画一两帧
-   * （在 GPU 上画编号、读回，见 ScenePicker）。模型多出来的网格挂在子实体上，点到它们算点到模型所在的实体。
+   * 点选：画布上 (x, y)（CSS 像素，左上角是原点）最前面的东西（网格、精灵、粒子）属于哪个实体；那里什么都没有时是 undefined。
+   * 结果要等画一两帧（在 GPU 上画编号、读回，见 ScenePicker）。模型多出来的网格挂在子实体上，点到它们算点到模型所在的实体；
+   * 点到粒子算点到粒子系统所在的实体。
    */
   async pick(x: number, y: number): Promise<Entity | undefined> {
     const canvas = this.graphicsDevice.canvas;

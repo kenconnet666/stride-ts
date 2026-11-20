@@ -10,7 +10,7 @@ import type { ParticleModuleFile } from '../content/format';
 import type { Game } from '../games/Game';
 import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
 import type { RenderView } from '../rendering/RenderSystem';
-import { Transform } from '../engine/transform';
+import { Transform, transformSlot } from '../engine/transform';
 import { StartupScript } from '../engine/scripts';
 import { Matrix } from '../mathematics/Matrix';
 import { value, type ParticleContext } from './modules';
@@ -60,6 +60,7 @@ export class ParticleSystemComponent extends StartupScript {
 export class ParticleSystems {
   readonly #components = new Set<ParticleSystemComponent>();
   #renderer: ParticleRenderer | undefined;
+  #pickingRenderer: ParticleRenderer | undefined;
 
   /** @internal ParticleSystemComponent 启动时登记。 */
   add(component: ParticleSystemComponent): void {
@@ -81,6 +82,13 @@ export class ParticleSystems {
     this.#renderer.draw(pass, view, this.components, colorFormat, depthFormat, game.updateTime.total);
   }
 
+  /** @internal 画进点选的编号缓冲（ScenePicker，颜色格式 r32uint）：写粒子系统所在实体的变换槽位加一。 */
+  drawPicking(game: Game, pass: GPURenderPassEncoder, view: RenderView, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
+    if (this.#components.size === 0) return;
+    this.#pickingRenderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources, { pickId: (component) => transformSlot(component.entity) + 1 });
+    this.#pickingRenderer.draw(pass, view, this.components, colorFormat, depthFormat, game.updateTime.total);
+  }
+
   /** @internal Game 在画完 UI 之后调用：合成器要粒子画在 UI 上面时画进后备缓冲。 */
   drawOverUI(game: Game): void {
     const compositor = game.graphicsCompositor;
@@ -99,6 +107,8 @@ export class ParticleSystems {
   destroy(): void {
     this.#renderer?.destroy();
     this.#renderer = undefined;
+    this.#pickingRenderer?.destroy();
+    this.#pickingRenderer = undefined;
     this.#components.clear();
   }
 

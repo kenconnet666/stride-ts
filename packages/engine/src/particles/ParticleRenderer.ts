@@ -6,6 +6,9 @@
  * （1 就是加法混合）；混合是
  * 预乘 alpha，和深度比较但不写深度，不剔除背面。粒子系统从远到近画，同一个系统里的发射器按 DrawPriority；包围形状（BoundingBox、
  * BoundingSphere）在视锥外的系统不画（同 Stride 的剔除）。粒子的顺序：SortingPolicy 是 ByDepth 时从远到近，其余按池里的顺序。
+ *
+ * 点选（ScenePicker）用另一个给了 pickId 的实例（缓冲和流水线自己一份，不改主画面这一帧写好的数据）：同样的四边形，写
+ * pickId 给的编号；差不多看不见的地方不写（见 fsPick），深度照写，前后靠深度测试。
  */
 import { Matrix } from '../mathematics/Matrix';
 import type { GpuResources } from '../rendering/GpuResources';
@@ -16,7 +19,7 @@ import type { MaterialProgram } from './material';
 import type { ParticleSystemComponent } from './ParticleSystemComponent';
 import { drawOrder, VERTEX_FLOATS, VertexWriter, type CameraAxes } from './shapes';
 
-/** 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数、时间（WGSL 里 96 字节）；按动态偏移的 256 字节对齐。 */
+/** 每次绘制的参数：视图投影 16、组件颜色 4、alpha 系数、时间、点选的编号（WGSL 里 96 字节）；按动态偏移的 256 字节对齐。 */
 const UNIFORM_STRIDE = 256;
 const UNIFORM_SIZE = 96;
 
@@ -26,6 +29,8 @@ struct Draw {
   colorScale: vec4f,
   alphaFactor: f32,
   time: f32,
+  // 点选的编号缓冲写的数：实体的变换槽位加一
+  pickId: u32,
 };
 @group(0) @binding(0) var<uniform> draw: Draw;
 
@@ -51,6 +56,16 @@ ${MATERIAL_STREAMS}
   color.a *= draw.alphaFactor;
   return color;
 }
+
+// 点选：颜色是预乘的，画上去加的是 rgb、挡住后面的是 a·alphaFactor，两样都差不多是 0 的地方看不见，点不到（加法混合的粒子靠 rgb）
+@fragment fn fsPick(in: Varyings) -> @location(0) u32 {
+  streams = MaterialStreams(in.uv, in.uv1, in.color, draw.colorScale, vec3f(0.0), draw.time);
+  let color = materialColor();
+  if (max(color.a * draw.alphaFactor, max(color.r, max(color.g, color.b))) < 0.1) {
+    discard;
+  }
+  return draw.pickId;
+}
 `;
 
 /** 一个发射器这一帧的绘制。 */
@@ -62,6 +77,8 @@ interface EmitterDraw {
 }
 
 export class ParticleRenderer {
+  /** 给了时画进点选的编号缓冲（颜色格式是 r32uint），每个粒子系统写它给的编号（大于 0）。 */
+  readonly #pickId: ((component: ParticleSystemComponent) => number) | undefined;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #drawLayout: GPUBindGroupLayout;
@@ -74,10 +91,13 @@ export class ParticleRenderer {
   #vertexBuffer: GPUBuffer | undefined;
   #indexBuffer: GPUBuffer | undefined;
   #uniforms = new Float32Array((UNIFORM_STRIDE / 4) * 16);
+  /** 同一块内存按 u32 看（pickId）。 */
+  #uniformBits = new Uint32Array(this.#uniforms.buffer);
   #uniformBuffer: GPUBuffer | undefined;
   #drawGroup: GPUBindGroup | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources) {
+  constructor(device: GPUDevice, resources: GpuResources, { pickId }: { pickId?: (component: ParticleSystemComponent) => number } = {}) {
+    this.#pickId = pickId;
     this.#device = device;
     this.#resources = resources;
     this.#drawLayout = device.createBindGroupLayout({
@@ -144,12 +164,14 @@ export class ParticleRenderer {
       const grown = new Float32Array(this.#uniforms.length * 2);
       grown.set(this.#uniforms);
       this.#uniforms = grown;
+      this.#uniformBits = new Uint32Array(grown.buffer);
     }
     const u = this.#uniforms, at = index * floats;
     u.set(view.viewProjection, at);
     u.set(component.color, at + 16);
     u[at + 20] = program.alphaFactor;
     u[at + 21] = time;
+    this.#uniformBits[at + 22] = this.#pickId?.(component) ?? 0;
   }
 
   #reserve(floats: number): void {
@@ -208,8 +230,9 @@ export class ParticleRenderer {
     if (!pipeline) {
       let module = this.#modules.get(program.code);
       if (!module) this.#modules.set(program.code, (module = this.#device.createShaderModule({ label: 'Particles', code: SHADER_HEAD + program.code })));
+      const picking = this.#pickId !== undefined;
       pipeline = this.#device.createRenderPipeline({
-        label: 'Particles',
+        label: picking ? 'Particles picking' : 'Particles',
         layout: this.#layout(program.textures.length).pipeline,
         vertex: {
           module,
@@ -224,14 +247,15 @@ export class ParticleRenderer {
             ],
           }],
         },
-        fragment: {
+        fragment: picking ? { module, entryPoint: 'fsPick', targets: [{ format: colorFormat }] } : {
           module,
           entryPoint: 'fs',
           // 预乘 alpha（Stride 的 BlendStates.AlphaBlend）
           targets: [{ format: colorFormat, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
         },
         primitive: { topology: 'triangle-list', cullMode: 'none' },
-        depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
+        // 点选时写深度：后画的 UI、别的粒子系统和它比远近
+        depthStencil: { format: depthFormat, depthWriteEnabled: picking, depthCompare: 'less-equal' },
       });
       this.#pipelines.set(key, pipeline);
     }

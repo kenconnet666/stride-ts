@@ -16,6 +16,11 @@ import type { Texture } from '../src/rendering/Texture';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { randomSeed, RandomSeedGenerator, seedFloat } from '../src/particles/random';
 import type { ParticleModuleFile } from '../src/content/format';
+import { ParticleRenderer } from '../src/particles/ParticleRenderer';
+import type { ParticleSystemComponent } from '../src/particles/ParticleSystemComponent';
+import type { GpuResources } from '../src/rendering/GpuResources';
+import { RenderView } from '../src/rendering/RenderSystem';
+import { fakeGpu, firstArgs, stubGpuGlobals } from './fakeGpu';
 
 /** 一个发射器的粒子系统，种子固定。 */
 function system(emitter: ParticleModuleFile): ParticleSystem {
@@ -608,5 +613,44 @@ describe('游戏自己的粒子模块（按类名登记，同脚本）', () => {
     const vertices = new Float32Array(2 * 4 * VERTEX_FLOATS);
     expect(build(emitter, { right: [1, 0, 0], up: [0, 1, 0], back: [0, 0, 1], viewProjection: IDENTITY }, [0, 1], vertices)).toBe(vertices.length);
     expect([...vertices.subarray(0, 2)]).toEqual([2, 2]);
+  });
+});
+
+describe('粒子的点选（ScenePicker 的编号缓冲）', () => {
+  /** 一个 billboard 粒子系统，模拟到有粒子；用点选（编号 42）或普通的渲染器画一遍，返回录下的东西和写进去的编号。 */
+  function drawOnce(picking: boolean) {
+    stubGpuGlobals();
+    const particleSystem = new ParticleSystem({
+      emitters: [{ randomSeedMethod: 'fixed', particleLifetime: [1, 1], shapeBuilder: { $type: 'shapeBuilderBillboard' }, spawners: [{ $type: 'spawnerPerSecond', spawnCount: 30 }] }],
+    });
+    particleSystem.translation = [0, 0, -5];
+    for (let i = 0; i < 10; i++) particleSystem.update(STEP);
+    const component = { enabled: true, renderGroup: 0, color: [1, 1, 1, 1], particleSystem } as unknown as ParticleSystemComponent;
+    const gpu = fakeGpu();
+    const renderer = new ParticleRenderer(gpu.device, {} as GpuResources, picking ? { pickId: (drawn) => (drawn === component ? 42 : 0) } : {});
+    renderer.draw(gpu.pass, new RenderView(), [component], picking ? 'r32uint' : 'rgba16float', 'depth32float', 0);
+    const uniforms = gpu.writes.find((write) => (write.buffer as GPUBuffer).label === 'Particles draws')!;
+    return { ...gpu, pickId: new Uint32Array(uniforms.bytes.buffer, uniforms.bytes.byteOffset, uniforms.bytes.byteLength / 4)[22] };
+  }
+
+  test('点选的渲染器写给的编号，不混合、写深度，片元着色器丢掉差不多看不见的地方', () => {
+    const { calls, pickId } = drawOnce(true);
+    expect(pickId).toBe(42);
+    const [pipeline] = firstArgs<GPURenderPipelineDescriptor>(calls, 'createRenderPipeline');
+    expect(pipeline!.label).toBe('Particles picking');
+    expect(pipeline!.fragment!.entryPoint).toBe('fsPick');
+    expect(pipeline!.fragment!.targets).toEqual([{ format: 'r32uint' }]);
+    expect(pipeline!.depthStencil).toMatchObject({ depthWriteEnabled: true, depthCompare: 'less-equal' });
+    const [module] = firstArgs<GPUShaderModuleDescriptor>(calls, 'createShaderModule');
+    expect(module!.code).toContain('if (max(color.a * draw.alphaFactor, max(color.r, max(color.g, color.b))) < 0.1) {\n    discard;');
+    expect(calls.filter((call) => call.method === 'drawIndexed')).toHaveLength(1);
+  });
+
+  test('普通的渲染器照旧：预乘 alpha 混合、不写深度，编号是 0', () => {
+    const { calls, pickId } = drawOnce(false);
+    expect(pickId).toBe(0);
+    const [pipeline] = firstArgs<GPURenderPipelineDescriptor>(calls, 'createRenderPipeline');
+    expect([pipeline!.label, pipeline!.fragment!.entryPoint, pipeline!.depthStencil!.depthWriteEnabled]).toEqual(['Particles', 'fs', false]);
+    expect(pipeline!.fragment!.targets).toEqual([{ format: 'rgba16float', blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }]);
   });
 });

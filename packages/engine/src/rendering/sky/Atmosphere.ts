@@ -263,7 +263,8 @@ export class Atmosphere {
     const lutKey = JSON.stringify([s.planetRadius, s.atmosphereHeight, s.rayleighScattering, s.mieScattering, s.mieAbsorption, s.miePhaseG, s.ozoneAbsorption, s.groundAlbedo]);
     // 看得见的天空：太阳、月亮的方向变化约 0.05° 以内、相机高度变化 1 m 以内、亮度不变时不重算。环境光（立方体、球谐、预滤波，
     // 约 1 ms）粗一档：动了约 0.5°、亮度变了 2% 才重算，日夜循环时不每帧都算
-    const sky = [lutKey, Math.round(this.cameraHeight * 1000), s.skyIntensity];
+    // 星星的亮度带着夜空的底光（进天空的环境光），黄昏时一点点亮起来：按 5% 一档
+    const sky = [lutKey, Math.round(this.cameraHeight * 1000), s.skyIntensity, Math.round(this.starsIntensity * 20)];
     const bodies = [this.sun, this.moon].map((body) => ({ direction: body.direction, illuminance: this.#scattering(body) }));
     const skyKey = JSON.stringify([...sky, bodies.map((body) => [body.direction.map((v) => Math.round(v * 1000)), body.illuminance])]);
     const lightingKey = JSON.stringify([...sky, bodies.map((body) => [body.direction.map((v) => Math.round(v * 100)), body.illuminance.map((v) => Math.round(Math.log(Math.max(v, 1e-6)) * 50))])]);

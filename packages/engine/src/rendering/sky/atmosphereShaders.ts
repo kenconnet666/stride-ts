@@ -71,6 +71,14 @@ fn miePhase(cosTheta: f32) -> f32 {
   return 3.0 / (8.0 * PI) * (1.0 - g2) * (1.0 + cosTheta * cosTheta) / ((2.0 + g2) * pow(1.0 + g2 - 2.0 * g * cosTheta, 1.5));
 }
 
+/**
+ * 夜空的底光（大气辉光和合起来的星光）：没有月亮的夜里天空和环境光不是纯黑。很暗（有月亮时被月光下的天空盖过去），跟着星星的
+ * 亮度走；画面开着自动曝光时地面看得出轮廓，没开时接近全黑，要亮一点把 starsIntensity 调大或者加环境光。
+ */
+fn nightGlow() -> vec3f {
+  return vec3f(0.0018, 0.00225, 0.003) * atmosphere.night.w;
+}
+
 /** 透射率查找表的坐标（Bruneton 的参数化：u 是到大气层顶的距离，v 是到地平线的距离）。 */
 fn transmittanceUv(radius: f32, cosZenith: f32) -> vec2f {
   let r2 = radius * radius;
@@ -292,7 +300,8 @@ ${CUBE_FACE_DIRECTION}
     for (var i = 0u; i < 4u; i++) {
       let p = (vec2f(id.xy) + (vec2f(f32(i), f32(j)) + 0.5) / 4.0) / vec2f(size) * 2.0 - 1.0;
       let c = normalize(faceDirection(id.z, p));
-      sum += textureSampleLevel(skyViewLut, skySampler, skyViewUv(vec3f(c.xy, -c.z)), 0.0).rgb;
+      // 夜空的底光只在地平线以上
+      sum += textureSampleLevel(skyViewLut, skySampler, skyViewUv(vec3f(c.xy, -c.z)), 0.0).rgb + nightGlow() * smoothstep(-0.1, 0.1, c.y);
     }
   }
   textureStore(output, id.xy, id.z, vec4f(sum / 16.0, 1.0));
@@ -400,8 +409,9 @@ fn milkyWay(c: vec3f) -> vec3f {
   let band = exp(-latitude * latitude / 0.03);
   if (band < 0.01) { return vec3f(0.0); }
   let clouds = fbm(c * 5.0 + 3.0);
-  let dust = smoothstep(0.35, 0.6, fbm(c * 11.0 + 9.0) + abs(latitude) * 2.0);
-  return vec3f(0.62, 0.72, 1.0) * (band * (0.25 + clouds) * mix(0.25, 1.0, dust) * 0.012);
+  // 尘埃带淡一点、边缘宽一点：对比太强、边缘太硬时是一团团的墨迹
+  let dust = smoothstep(0.25, 0.75, fbm(c * 11.0 + 9.0) + abs(latitude) * 2.0);
+  return vec3f(0.62, 0.72, 1.0) * (band * (0.25 + clouds) * mix(0.55, 1.0, dust) * 0.008);
 }
 `;
 
@@ -467,6 +477,7 @@ const LUMINANCE = vec3f(0.2126, 0.7152, 0.0722);
   }
 
   if (atmosphere.night.w > 0.0) {
+    color += nightGlow();
     let c = vec3f(dot(atmosphere.celestial[0].xyz, direction), dot(atmosphere.celestial[1].xyz, direction), dot(atmosphere.celestial[2].xyz, direction));
     let night = (stars(c, pixel) + milkyWay(c)) * atmosphere.night.w * transmittance * (1.0 - moonCoverage);
     // 比天空暗得多的星星被盖过去：黄昏时亮的先出来，有月亮的夜里暗的看不见

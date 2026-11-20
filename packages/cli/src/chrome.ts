@@ -128,7 +128,8 @@ async function launch(url: string, { headless = false, size, dpr, chromeArgs = [
 }
 
 async function waitForPort(file: string): Promise<number> {
-  const deadline = Date.now() + 20_000;
+  // CI 的运行器上冷启动偶尔要二十多秒；正常几百毫秒就写出来了
+  const deadline = Date.now() + 60_000;
   while (Date.now() < deadline) {
     try {
       const port = Number(readFileSync(file, 'utf8').split('\n')[0]);
@@ -138,7 +139,7 @@ async function waitForPort(file: string): Promise<number> {
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error('Chrome did not start (no DevToolsActivePort after 20 s)');
+  throw new Error('Chrome did not start (no DevToolsActivePort after 60 s)');
 }
 
 /** 关掉 stride 启动的 Chrome；没有时返回 false。 */

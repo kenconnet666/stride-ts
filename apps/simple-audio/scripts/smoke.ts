@@ -62,11 +62,15 @@ check('真的有声音（主音量的输出不是静音）', loud > 0.001, loud)
 
 const clicked = stride('eval', 'uiClick(640, 360, () => ({ sounds: sounds(), waves: waves() }))') as { sounds: Sounds; waves: [number, number][] };
 check('点一下：音效在放，两个波形图回到中间、不透明', clicked.sounds.effect === 'playing' && clicked.waves.every(([, opacity]) => opacity > 0.5), clicked);
-// 波形图的动画按游戏时间走：CI 的软件 WebGPU 上一帧几百毫秒，按墙钟等动画走不完。声音按真实时间放，下面那段仍按墙钟等
-const later = stride('eval', `(async () => { const end = strideGame.updateTime.total + 1.5; while (strideGame.updateTime.total < end) await new Promise((r) => requestAnimationFrame(r)); return waves(); })()`) as [number, number][];
+// 波形图的动画是每帧走一步（同 Stride 的样例，和帧率有关）：等到淡没了（最多 30 秒游戏时间），不按墙钟也不按固定的时长等
+const later = stride('eval', `(async () => {
+  const end = strideGame.updateTime.total + 30;
+  while (!waves().every(([, opacity]) => opacity < 0.05) && strideGame.updateTime.total < end) await new Promise((r) => requestAnimationFrame(r));
+  return waves();
+})()`) as [number, number][];
 check('之后波形图往两边移开、渐隐', later[0]![0] < clicked.waves[0]![0] && later[1]![0] > clicked.waves[1]![0] && later.every(([, opacity]) => opacity < 0.05), { clicked: clicked.waves, later });
-await sleep(1500);
-const done = stride('eval', 'sounds()') as Sounds;
+// 等音效放完（按真实时间放；最多 10 秒）
+const done = stride('eval', `(async () => { const end = performance.now() + 10000; while (sounds().effect !== 'stopped' && performance.now() < end) await new Promise((r) => requestAnimationFrame(r)); return sounds(); })()`) as Sounds;
 check('音效放完变回停止，音乐接着放', done.effect === 'stopped' && done.music === 'playing', done);
 
 finish();

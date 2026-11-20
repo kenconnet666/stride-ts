@@ -162,9 +162,11 @@ const animation = evaluate<Animation>(`(async () => {
   // 按游戏时间等（seconds）：CI 的软件 WebGPU 上一帧几百毫秒，墙钟的 0.8 秒淡入还没走完
   const r = {};
   await tap('KeyE'); r.speed = lines().find((l) => l.startsWith('Q and E'));
-  await tap('KeyR'); await frames(5); r.fading = playing();
+  // 淡入和出拳都是一会儿的状态：每帧看一次，记下第一次出现的那一刻（帧慢时隔几帧再看，淡入已经完了、拳已经出完了）
+  const first = (want, s) => until(() => { const p = playing(); return p.map(([name]) => name).join() === want ? p : null; }, s).then((p) => p ?? playing());
+  await tap('KeyR'); r.fading = await first('Idle,Run', 1);
   await seconds(0.8); r.run = playing();
-  await tap('KeyP'); await seconds(0.3); r.punch = playing();
+  await tap('KeyP'); r.punch = await first('Punch', 1);
   await tap('KeyS'); r.paused = playing(); await tap('KeyS');
   await seconds(2.5); r.idle = playing();
   return r;
@@ -263,10 +265,11 @@ type Navigation = { before: number; spheres: number; walking: string | undefined
 const navigation = evaluate<Navigation>(`(async () => {
   const r = { before: strideGame.entities.count, start: position('RegularCharacater') };
   // 导航网格在脚本启动时才开始建，建好之前点了找不到路
-  for (let i = 0; i < 100 && strideGame.entities.count === r.before; i++) { await click(400, 420); await frames(5); }
+  // 次数和时长都按游戏时间算：帧慢时（CI 的软件 WebGPU）按帧数等会超过 eval 的两分钟
+  for (const end = strideGame.updateTime.total + 20; strideGame.entities.count === r.before && strideGame.updateTime.total < end;) { await click(400, 420); await seconds(0.1); }
   r.spheres = strideGame.entities.count - r.before;
   r.walking = lines().find((l) => l.startsWith('Distance to waypoint'));
-  for (let i = 0; i < 900 && !lines().includes('No target'); i++) await frames(1);
+  await until(() => lines().includes('No target'), 15);
   return { ...r, end: position('RegularCharacater'), after: strideGame.entities.count };
 })()`);
 const travelled = Math.hypot(navigation.end[0]! - navigation.start[0]!, navigation.end[2]! - navigation.start[2]!);

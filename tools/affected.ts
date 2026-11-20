@@ -14,6 +14,7 @@ const REPRESENTATIVE = ['platformer', 'bepu-sample', 'particles-sample', 'platfo
 
 /** 引擎的模块 → 用得最多的样例（顺序是先匹配先用）。 */
 const AREAS: readonly (readonly [RegExp, readonly string[]])[] = [
+  [/^packages\/engine\/src\/physics\/(NavigationSystem|RecastNavigation)/, ['csharp-intermediate', 'topdown-rpg']],
   [/^packages\/engine\/src\/physics\//, ['physics-sample', 'bepu-sample', 'platformer', 'first-person-shooter', 'topdown-rpg']],
   [/^packages\/engine\/src\/(animation|engine\/transform)/, ['animated-model', 'morph-targets', 'platformer', 'first-person-shooter']],
   [/^packages\/engine\/src\/ui\//, ['game-menu', 'ui-element-link', 'ui-particles', 'sprite-fonts', 'jumpy-jet']],
@@ -23,7 +24,6 @@ const AREAS: readonly (readonly [RegExp, readonly string[]])[] = [
   [/^packages\/engine\/src\/rendering\/text\//, ['sprite-fonts', 'game-menu', 'csharp-beginner']],
   [/^packages\/engine\/src\/rendering\/(Sprite|SpriteSheet)/, ['platformer2d', 'jumpy-jet', 'space-escape', 'sprite-fonts']],
   [/^packages\/engine\/src\/(rendering|graphics)\//, ['platformer', 'bepu-sample', 'material-shader', 'custom-effect', 'particles-sample', 'platformer2d']],
-  [/^packages\/engine\/src\/navigation\//, ['csharp-intermediate', 'topdown-rpg']],
   [/^packages\/engine\/src\/editor\/|^packages\/editor\//, ['platformer', 'topdown-rpg']],
 ];
 

@@ -41,8 +41,8 @@ check('点选：精灵点得到，空处点不到', picked[0] === 'Player' && pi
 
 // 先在出生的地方跳（头顶是空的）：跑完再跳时停在哪里随帧率变，可能停在平台下面，头一碰就落下来（regress 里帧率高时就这样）
 const start = stride('eval', PLAYER) as Player;
-// 起跳后等它离地半米（最多 1.5 秒游戏时间），再等落地站稳
-const jumping = stride('eval', `tap('KeyW').then(() => until(() => player2d()[1] > ${start[1] + 0.5}, 1.5)).then(player2d)`) as Player;
+// 起跳后等它离地半米、精灵换到跳的帧（最多 1.5 秒游戏时间；高帧率下离地那一帧精灵可能还没换），再等落地站稳
+const jumping = stride('eval', `tap('KeyW').then(() => until(() => { const p = player2d(); return p[1] > ${start[1] + 0.5} && p[3] >= 21; }, 1.5)).then(player2d)`) as Player;
 check('W 起跳，放跳的帧', !jumping[4] && jumping[1] > start[1] + 0.5 && jumping[3] >= 21, jumping);
 stride('eval', `until(() => player2d()[4], 3).then(() => seconds(0.3)).then(() => 1)`);
 
@@ -64,8 +64,14 @@ check('A 转身往左：绕 Y 转 180°', Math.abs(Math.abs(turned[1][2]) - 1) <
 
 // 右下角 (13, -6.5) 的金币：往右走过去
 const [coins] = stride('eval', COINS) as [number, number, string];
-stride('eval', `holdFor('KeyD', 3.2)`);
-const collected = stride('eval', COINS) as [number, number, string];
+// 按住 D 到拿到金币为止（最多 5 秒游戏时间）：跑多久才到随起点变，按固定时长跑的话拿到得早时金币 3 秒后就移除了，音效也跟着没了
+const collected = stride('eval', `(async () => {
+  const coins = () => (0, eval)(${JSON.stringify(COINS)});
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD' }));
+  await until(() => coins()[1] < ${coins}, 5);
+  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD' }));
+  return coins();
+})()`) as [number, number, string];
 check('碰到金币：精灵马上隐藏', collected[0] === coins && collected[1] === coins - 1, { coins, collected });
 const sounds = stride('eval', `const type = strideGame.registry.scriptsNamed('CollectCoin')[0];
   [...strideGame.rootScene.entities.values()].map((e) => e.get(type)?.sfxInstance?.playState).filter(Boolean)`) as string[];

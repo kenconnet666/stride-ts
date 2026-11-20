@@ -62,15 +62,19 @@ stride('eval', `globalThis.mostEntities = 0; globalThis.mostParticles = {}; glob
   }
   if (globalThis.watching) requestAnimationFrame(poll); }; poll(); })(); 1`);
 stride('mouse', 'left', '--trusted');
-stride('eval', 'seconds(0.7).then(() => 1)');
-const most = stride('eval', 'globalThis.watching = false; globalThis.mostEntities') as number;
-check('开枪生成特效的预制体（枪口火焰、弹孔、受击拖尾）', most === before.entities + 3, { before: before.entities, most });
-const particles = stride('eval', 'globalThis.mostParticles') as Record<string, number>;
-check('特效的粒子生出来了（枪口火焰、弹孔是 SpawnerBurst，受击拖尾是 SpawnerFromDistance）', ['MuzzleFlash', 'BulletImpact', 'DamagedTrail'].every((name) => (particles[name] ?? 0) > 0), particles);
-stride('eval', 'seconds(0.45).then(() => 1)');
-const pushed = stride('eval', BOX) as number[];
-check('瞄准箱子开枪：箱子被推走，少一发', box[2]! - pushed[2]! > 0.2 && state().bullets === 8, { box, pushed, bullets: state().bullets });
-check('枪口火焰、弹孔按时移除（受击拖尾 6 秒）', state().entities === before.entities + 1, { before: before.entities, now: state().entities });
+// 开枪以后在页面里一次读完：受击拖尾 6 秒后移除，隔几次 CLI 调用（机器忙时一次一两秒）再看就可能已经没了
+type Shot = { most: number; particles: Record<string, number>; pushed: number[]; state: State };
+const shot = stride('eval', `(async () => {
+  await seconds(0.7);
+  globalThis.watching = false;
+  const most = globalThis.mostEntities, particles = globalThis.mostParticles;
+  await seconds(0.45);
+  return { most, particles, pushed: (0, eval)(${JSON.stringify(BOX)}), state: (0, eval)(${JSON.stringify(STATE)}) };
+})()`) as Shot;
+check('开枪生成特效的预制体（枪口火焰、弹孔、受击拖尾）', shot.most === before.entities + 3, { before: before.entities, most: shot.most });
+check('特效的粒子生出来了（枪口火焰、弹孔是 SpawnerBurst，受击拖尾是 SpawnerFromDistance）', ['MuzzleFlash', 'BulletImpact', 'DamagedTrail'].every((name) => (shot.particles[name] ?? 0) > 0), shot.particles);
+check('瞄准箱子开枪：箱子被推走，少一发', box[2]! - shot.pushed[2]! > 0.2 && shot.state.bullets === 8, { box, pushed: shot.pushed, bullets: shot.state.bullets });
+check('枪口火焰、弹孔按时移除（受击拖尾 6 秒）', shot.state.entities === before.entities + 1, { before: before.entities, now: shot.state.entities });
 
 // 换弹：手臂播换弹动画，挂在骨骼上的枪相对相机移动
 const GUN = `${BY} const c = at(by('Camera')), m = at(by('Gun')); [m[0] - c[0], m[1] - c[1], m[2] - c[2]]`;

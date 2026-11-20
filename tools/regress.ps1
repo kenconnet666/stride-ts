@@ -55,7 +55,8 @@ if ($App) {
         # STRIDE_CHROME_ARGS（空格分开）：CI 里用软件 WebGPU。画面固定 1280x720：冒烟的点击坐标、按后备缓冲布局的 UI 都按这个大小写
         # 外面的 @() 不能少：只有一个元素时管道的结果是字符串，@chromeArgs 展开字符串什么也不传（本地不设 STRIDE_CHROME_ARGS 时自动播放的参数就丢了）
         $chromeArgs = @(@('--autoplay-policy=no-user-gesture-required') + @(($env:STRIDE_CHROME_ARGS ?? '') -split ' ' | Where-Object { $_ }) | ForEach-Object { "--chrome-arg=$_" })
-        pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads&stride-pointer-lock=virtual$($Slow -gt 0 ? "&stride-slow=$Slow" : "")" --headless --size 1280x720 --dpr 1 @chromeArgs | Out-Null
+        $slowQuery = $Slow -gt 0 ? "&stride-slow=$Slow" : ''
+        pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads&stride-pointer-lock=virtual$slowQuery" --headless --size 1280x720 --dpr 1 @chromeArgs | Out-Null
         pnpm --filter "@stride-ts/$App" smoke -- --hub $App 2>&1
         $code = $LASTEXITCODE
         # 失败时带上 Chrome 自己的日志里和 GPU 有关的行（GPU 进程崩溃、看门狗、共享内存不够这类事页面的控制台看不到）

@@ -4,7 +4,8 @@
  * 桥下不下雨），以后地面的湿润、积水积雪查"哪里淋得到"也用它。`renderSystem.skyOcclusion`。
  *
  * - 只有能挡阳光的才挡天：用阴影投射者的阶段画（ShadowMapRenderer.casterStage，不透明、投阴影的网格；透明的、不投阴影的、
- *   粒子、精灵不画），管线和阴影共用、加载时就预热了。
+ *   粒子、精灵不画），管线和阴影共用、加载时就预热了。蒙皮的网格（角色、动物）也不画：它们一直在动，脚下不该留一块不湿、
+ *   不积雪的地，雨点穿过角色看不出来。
  * - 正交视图从相机上方往下看，覆盖 size 米见方、resolution 像素。中心按纹素吸附（size / resolution 米一格），相机走远了
  *   redrawDistance 米才重画，两次之间贴图在世界里不动，遮挡的边缘不随相机游动；refreshInterval 秒也重画一次，跟上动的
  *   遮挡物（开着的门、移动的平台）。
@@ -43,7 +44,7 @@ export class SkyOcclusion implements GpuOccluder {
   refreshInterval = 1;
   /** 画质档位开着（前向渲染器每帧设）。 */
   enabled = true;
-  readonly view = Object.assign(new RenderView(), { receivesShadows: false });
+  readonly view = Object.assign(new RenderView(), { receivesShadows: false, skipsSkinned: true });
   readonly #device: GPUDevice;
   #texture: GPUTexture | undefined;
   #depthView: GPUTextureView | undefined;

@@ -59,6 +59,8 @@ struct View {
   // 云的影子（cloudShadowMap）：x：地面点的水平位置（米）到贴图坐标的比例，yz：贴图坐标的偏移（风吹着走），
   // w：被云挡着的方向光的下标（没有云时 -1）
   cloudShadow: vec4f,
+  // 天气（RenderSystem.surfaceWeather）：x：地面多湿，y：积了多少雪（都是 0 到 1）
+  weather: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
 // direction 是聚光照向的方向（w：它的阴影在 localShadows 里的下标，没有阴影时 -1），angle 是角度衰减的 scale、offset
@@ -98,6 +100,53 @@ struct Probe { center: vec4f, boxMin: vec4f, boxMax: vec4f, options: vec4f };
 // 云的影子：云重复的那一个周期里地面上每个点朝主光的透射率（Clouds.shadow），采样器 repeat
 @group(0) @binding(18) var cloudShadowMap: texture_2d<f32>;
 @group(0) @binding(19) var linearRepeat: sampler;
+// 天空遮挡（weather/SkyOcclusion.ts）：从上往下看的深度图，记着头顶最高的表面；valid.x 是 0 时（没有湿和雪、还没画过）不查
+struct SkyOcclusion { viewProjection: mat4x4f, valid: vec4u };
+@group(0) @binding(20) var skyOcclusionDepth: texture_depth_2d;
+@group(0) @binding(21) var<uniform> skyOcclusion: SkyOcclusion;
+
+/** world 淋不淋得到雨雪：1 是淋得到，0 是头顶有东西挡着（比深度图记的最高表面低 20 厘米以上）；图外、没有图时当淋得到。 */
+fn skyExposure(world: vec3f) -> f32 {
+  if (skyOcclusion.valid.x == 0u) {
+    return 1.0;
+  }
+  let c = skyOcclusion.viewProjection * vec4f(world, 1.0);
+  let uv = vec2f(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+  if (any(uv < vec2f(0.0)) || any(uv >= vec2f(1.0))) {
+    return 1.0;
+  }
+  let surface = textureLoad(skyOcclusionDepth, vec2i(uv * vec2f(textureDimensions(skyOcclusionDepth))), 0);
+  // 深度是线性的，覆盖 450 米（SkyOcclusion 的 ABOVE + BELOW）
+  return select(1.0, 0.0, surface < 1.0 && c.z > surface + 0.2 / 450.0);
+}
+
+/**
+ * 天气改表面（Lagarde 2013 "Water drop 2 - Wet surfaces" 的做法简化）：
+ * - 湿：淋得到的非金属吸了水变暗（金属不吸水），表面一层水膜变光滑（朝上的更光滑）；积水的水洼还没做；
+ * - 雪：淋得到、朝上的面积起来，积得越多越往斜面上长；雪是白的、粗糙的非金属。
+ * 竖着的面按往外 30 厘米的那一点判断淋不淋得到：墙面自己正上方是墙头，按自己的位置查总是被挡着。
+ */
+fn weatherSurface(world: vec3f, n: vec3f, s: LayerSurface) -> LayerSurface {
+  let wetness = view.weather.x;
+  let snowCover = view.weather.y;
+  if (wetness <= 0.0 && snowCover <= 0.0) {
+    return s;
+  }
+  let exposure = skyExposure(world + vec3f(n.x, 0.0, n.z) * 0.3);
+  let up = saturate(n.y);
+  var r = s;
+  let wet = wetness * exposure;
+  r.albedo *= mix(1.0, 0.45, wet * (1.0 - s.metalness));
+  // 水膜让表面光滑一些，但保留材质自己粗糙度的变化（全压到一个很小的值，地面就成了一面映着天的镜子，贴图都看不见了）
+  // 金属不吸水，水在上面成珠、不成一层均匀的膜：光滑得少（不然半金属的地面成了映着阴天的镜子）
+  r.roughness = mix(s.roughness, max(s.roughness * 0.35, 0.1), wet * mix(0.6, 1.0, up) * (1.0 - 0.75 * s.metalness));
+  let snow = exposure * smoothstep(0.0, 0.25, up * 1.2 - (1.0 - snowCover));
+  r.albedo = mix(r.albedo, vec3f(0.9), snow);
+  r.metalness = mix(r.metalness, 0.0, snow);
+  r.specular = mix(r.specular, vec3f(0.02), snow);
+  r.roughness = mix(r.roughness, 0.75, snow);
+  return r;
+}
 
 /** 云的影子：从 world 朝光（toLight）看过去被云挡掉多少。先沿光线退到地面（y = 0）上的那个点，影子图是按地面上的点存的。 */
 fn cloudShadow(world: vec3f, toLight: vec3f) -> f32 {
@@ -839,7 +888,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb,
     select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture)));
   // 清漆把漫反射色、金属度、粗糙度换成这一遍的（没有清漆时原样）
-  let layered = coatSurface(in, layers, coatPass);
+  let layered = weatherSurface(in.world, n, coatSurface(in, layers, coatPass));
   let albedo = layered.albedo;
 
   // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint
@@ -958,7 +1007,8 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
 
   // 自发光：a 不小于 0 时输出的 alpha 用它（Stride 的 UseAlpha）
   let emitted = emissiveColor(in);
-  let color = scattered + direct.specular * PI + environment + layerEmissive(in, emitted.rgb);
+  // 限在 float16 的上限以内：很光滑的表面（湿的地面）对着太阳的高光能超过 65504，变成无穷大，泛光把它摊成整帧的 NaN
+  let color = min(scattered + direct.specular * PI + environment + layerEmissive(in, emitted.rgb), vec3f(60000.0));
   let alpha = select(base.a, emitted.a, emitted.a >= 0.0);
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
   return Shaded(effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect), n, roughness, environmentSpecular, environment, scattered);

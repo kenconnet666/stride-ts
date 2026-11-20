@@ -157,6 +157,8 @@ export class RenderView {
   viewport: Viewport | undefined;
   /** 着色时用不用方向光的阴影；阴影级联是按主视图算的，别的相机（画进渲染目标贴图的）暂时不用。 */
   receivesShadows = true;
+  /** 不画蒙皮的网格（角色、动物）：天空遮挡的视图用，一直在动的角色不该在脚下留一块不湿、不积雪的地。 */
+  skipsSkinned = false;
   /**
    * 画哪些渲染组（Stride 的 RenderView.CullingMask，合成器里相机渲染器的 RenderMask）：第 g 位是 1 时画第 g 组。
    * 默认全画。
@@ -460,6 +462,11 @@ export class RenderSystem {
   readonly fog: Fog;
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
+  /**
+   * 地面多湿、积了多少雪（0 到 1；天气状态 weather/Weather.ts 每帧写，没有天气时是 0）：网格着色时淋得到的表面变湿、
+   * 朝上的积雪。大于 0 时写的人每帧 skyOcclusion.use()（屋檐下的不湿）。
+   */
+  readonly surfaceWeather = { wetness: 0, snowCover: 0 };
 
   constructor(graphicsDevice: GraphicsDevice) {
     this.graphicsDevice = graphicsDevice;

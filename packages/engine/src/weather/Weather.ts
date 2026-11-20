@@ -8,7 +8,8 @@
  * - 风（`game.wind` 的全局风）：风速、方向、阵风和湍流，和场景里 directional 的 WindZone 加在一起。
  *
  * 只驱动场景里有的：没有体积云就只是不画云，想要的东西（以及它们没被天气接管的字段：云底、雾的高度衰减、雨的范围）照常
- * 写在各自的组件上。地面多湿、积了多少雪（wetness、snowCover）跟着降水慢慢变，留给材质用。
+ * 写在各自的组件上。地面多湿、积了多少雪（wetness、snowCover）跟着降水慢慢变，写给渲染系统（`renderSystem.surfaceWeather`）：
+ * 网格着色时淋得到的表面变湿（变暗、变光滑），朝上的积雪。
  *
  * 风向和体积云的 windDirection 一样是吹向的方位（度，0 是 +Z，90 是 +X）。编辑状态下（`game.editing`）不过渡，直接是想要的
  * 天气，地面的湿和雪也直接是下了很久以后的样子。场景里有几个 Weather 时只用第一个。
@@ -161,14 +162,22 @@ export class WeatherSystem {
     this.#target = undefined;
     game.entities.run(this.#collect, game.updateTime);
     const target = this.#target as (WeatherTarget & { transitionTime: number }) | undefined;
+    const surface = (game.renderSystem as Game['renderSystem'] | undefined)?.surfaceWeather;
     if (!target) {
       this.current = undefined;
       game.wind.weather = undefined;
+      if (surface) Object.assign(surface, { wetness: 0, snowCover: 0 });
       return;
     }
     this.advance(target, game.editing ? undefined : game.updateTime.elapsed);
     for (const run of [this.#clouds, this.#fog, this.#precipitation]) game.entities.run(run, game.updateTime);
     game.wind.weather = weatherWind(this.current!);
+    // 材质的湿和雪：淋不淋得到看天空遮挡
+    if (surface) {
+      const { wetness, snowCover } = this.current!;
+      Object.assign(surface, { wetness, snowCover });
+      if (wetness > 0 || snowCover > 0) game.renderSystem.skyOcclusion.use();
+    }
   }
 
   /**

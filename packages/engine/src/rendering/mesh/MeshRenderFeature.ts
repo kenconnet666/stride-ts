@@ -33,7 +33,7 @@ import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshE
 import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER } from './meshShader';
 import { vertexLayoutOffsets, type VertexLayout } from '../../content/format';
 import { Mesh } from './Mesh';
-import { inRenderMask, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
+import { inRenderMask, MAX_LOCAL_LIGHTS, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
@@ -62,7 +62,7 @@ const VIEW_STRIDE = 1024;
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
  * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32。
  */
-const VIEW_FLOATS = 240;
+const VIEW_FLOATS = 244;
 /** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
 const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
@@ -294,7 +294,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system));
   }
 
 
@@ -318,14 +318,14 @@ export class MeshRenderFeature extends RootRenderFeature {
     if (runs?.length === 0) return;
     // 屏幕空间的遮蔽、接触阴影是主画面不透明的那些像素的：透明的、别的视图不用
     const screenSpace = !(stage.transparent || stage.shadowCasters);
-    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined), [view.index * VIEW_STRIDE]);
+    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, stage.shadowCasters), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     for (let i = 0, end = runs ? runs.length / 3 : cullPass.batchCount; i < end; i++) {
       const b = runs ? runs[i * 3]! : i;
       const batch = this.batches[b]!;
       const first = runs ? runs[i * 3 + 1]! : 0;
       const count = runs ? runs[i * 3 + 2]! : counts[index * cullPass.batchCount + b]!;
-      if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster)) continue;
+      if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster) || (view.skipsSkinned && batch.skinned)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
@@ -462,6 +462,12 @@ class Gpu {
   readonly #clouds: Clouds;
   /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
   #cloudShadow: GPUTexture | undefined;
+  /** 地面的湿和雪、判断淋不淋得到的天空遮挡（RenderSystem 的）。 */
+  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>;
+  /** 视图绑定组里绑的是真的天空遮挡（有湿或雪时），还是空的；换了要重建绑定组。 */
+  #occlusionBound = false;
+  /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）。 */
+  readonly #noOcclusion: GPUBuffer;
   readonly #unclippedDepth: boolean;
   /** 着色器按自发光分变体：默认的是 ''，颜色树的按它的代码。 */
   readonly #modules = new Map<string, GPUShaderModule>();
@@ -512,15 +518,22 @@ class Gpu {
   /** 阴影图集 → 遮蔽贴图 → 视图绑定组。 */
   /** 阴影图集 → 环境光遮蔽 → 接触阴影 → 视图绑定组。 */
   readonly #viewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>();
+  /**
+   * 画阴影投射者（阴影图集、天空遮挡的深度图）时的视图绑定组：天空遮挡绑空的——画天空遮挡时它的深度图正当着深度附件，
+   * 不能同时采样（投射者只写深度，也用不着它）。
+   */
+  readonly #casterViewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>();
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>) {
     this.device = device;
     this.#resources = resources;
     this.#subsurface = subsurface;
     this.#probes = probes;
     this.#clouds = clouds;
+    this.#weather = weather;
+    this.#noOcclusion = device.createBuffer({ label: 'MeshRenderFeature no sky occlusion', size: 80, usage: GPUBufferUsage.UNIFORM });
     this.#unclippedDepth = unclippedDepth;
     this.#viewLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature view',
@@ -545,6 +558,8 @@ class Gpu {
         { binding: 17, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 18, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 19, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        { binding: 20, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
+        { binding: 21, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -751,7 +766,7 @@ class Gpu {
       const half = capacityFor(floats * 4);
       this.#worlds = this.#createStorage('MeshRenderFeature worlds', half * 2);
       this.#halves.worlds = half / 64;
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
     }
     const [current, previous] = this.#bases(this.#halves.worlds);
     this.#frameBases.set([current, previous], 0);
@@ -770,7 +785,7 @@ class Gpu {
       const half = capacityFor(tableBytes);
       this.#paletteOf = this.#createStorage('MeshRenderFeature paletteOf', half * 2);
       this.#halves.paletteOf = half / 4;
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
       paletteOf.dirty = true;
     }
     const [table, previousTable] = this.#bases(this.#halves.paletteOf);
@@ -788,7 +803,7 @@ class Gpu {
       const half = capacityFor(paletteBytes);
       this.#palettes = this.#createStorage('MeshRenderFeature palettes', half * 2);
       this.#halves.palettes = half / 64;
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
     }
     const [current, previous] = this.#bases(this.#halves.palettes);
     this.#frameBases.set([table, previousTable, current, previous], 2);
@@ -804,7 +819,7 @@ class Gpu {
       const half = capacityFor(tableBytes);
       this.#morphOf = this.#createStorage('MeshRenderFeature morphOf', half * 2);
       this.#halves.morphOf = half / 4;
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
       morphOf.dirty = true;
     }
     const [table, previousTable] = this.#bases(this.#halves.morphOf);
@@ -822,7 +837,7 @@ class Gpu {
       const half = capacityFor(weightBytes);
       this.#morphWeights = this.#createStorage('MeshRenderFeature morph weights', half * 2);
       this.#halves.morphWeights = half / 4;
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
     }
     const [current, previous] = this.#bases(this.#halves.morphWeights);
     this.#frameBases.set([table, previousTable, current, previous], 6);
@@ -836,7 +851,7 @@ class Gpu {
     if (!this.#instances || this.#instances.size < bytes) {
       this.#instances?.destroy();
       this.#instances = this.#createStorage('MeshRenderFeature instances', capacityFor(bytes));
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
     }
     for (const pass of passes) {
       const length = pass.views.length * pass.slotCount;
@@ -850,7 +865,7 @@ class Gpu {
       this.#viewData = new Float32Array(2 ** Math.ceil(Math.log2(views.length)) * stride);
       this.#views?.destroy();
       this.#views = undefined;
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
     }
     const { directionals, directionalCount, ambient, skybox, shadow, shadowAtlas, locals, localCount } = lighting;
     const probes = this.#probes;
@@ -858,6 +873,8 @@ class Gpu {
     const cloud = this.#clouds.shadow;
     const cloudLight = cloud ? directionals.findIndex((light, i) => i < directionalCount && light.entity === cloud.lightEntity) : -1;
     const data = this.#viewData, words = new Uint32Array(data.buffer);
+    const { wetness, snowCover } = this.#weather.surfaceWeather;
+    const occlusion = wetness > 0 || snowCover > 0;
     for (const view of views) {
       const o = view.index * stride;
       data.set(view.viewProjection, o);
@@ -890,6 +907,7 @@ class Gpu {
       data.set(view.unjitteredViewProjection, o + 204);
       data.set(view.previousViewProjection, o + 220);
       data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
+      data.set([wetness, snowCover, 0, 0], o + 240);
     }
     // 点光、聚光：所有视图共用一份
     const lights = this.#localLightData;
@@ -903,11 +921,12 @@ class Gpu {
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound) {
       this.#cloudShadow = cloud?.texture;
+      this.#occlusionBound = occlusion;
       this.#skySpecular = skySpecular;
       this.#probeGeneration = probes.generation;
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
     }
   }
 
@@ -919,7 +938,7 @@ class Gpu {
       this.#localShadowData = new Float32Array(2 ** Math.ceil(Math.log2(localShadowCount)) * LOCAL_SHADOW_FLOATS);
       this.#localShadows.destroy();
       this.#localShadows = this.#createStorage('MeshRenderFeature local shadows', this.#localShadowData.byteLength);
-      this.#viewBindGroups.clear();
+      this.#clearViewBindGroups();
     }
     const data = this.#localShadowData;
     for (let i = 0; i < localShadowCount; i++) {
@@ -932,14 +951,15 @@ class Gpu {
 
   /**
    * 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的；occlusion 是屏幕空间的环境光遮蔽，
-   * contact 是接触阴影，没有时都用白图。
+   * contact 是接触阴影，没有时都用白图；casters 是在画阴影投射者（不绑天空遮挡）。
    */
-  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture): GPUBindGroup {
+  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, casters = false): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
     const ao = occlusion ?? this.#resources.white;
     const shadow = contact ?? this.#resources.white;
-    let byAtlas = this.#viewBindGroups.get(atlas);
-    if (!byAtlas) this.#viewBindGroups.set(atlas, (byAtlas = new Map()));
+    const cache = casters ? this.#casterViewBindGroups : this.#viewBindGroups;
+    let byAtlas = cache.get(atlas);
+    if (!byAtlas) cache.set(atlas, (byAtlas = new Map()));
     let groups = byAtlas.get(ao);
     if (!groups) byAtlas.set(ao, (groups = new Map()));
     let group = groups.get(shadow);
@@ -968,11 +988,26 @@ class Gpu {
           { binding: 17, resource: { buffer: this.#probes.buffer } },
           { binding: 18, resource: (this.#cloudShadow ?? this.#resources.white).createView() },
           { binding: 19, resource: this.#resources.linearRepeat },
+          ...this.#occlusionEntries(this.#occlusionBound && !casters),
         ],
       });
       groups.set(shadow, group);
     }
     return group;
+  }
+
+  /** 视图绑定组都作废（换了天空盒、探针、云影、天空遮挡，缓冲换大了）。 */
+  #clearViewBindGroups(): void {
+    this.#viewBindGroups.clear();
+    this.#casterViewBindGroups.clear();
+  }
+
+  /** 天空遮挡的绑定：real 时绑真的（有湿或雪；贴图第一次用时才建），否则绑空的深度图和有效位是 0 的参数。 */
+  #occlusionEntries(real: boolean): GPUBindGroupEntry[] {
+    const sky = this.#weather.skyOcclusion;
+    return real
+      ? [{ binding: 20, resource: sky.depthView }, { binding: 21, resource: { buffer: sky.uniform } }]
+      : [{ binding: 20, resource: this.#resources.emptyShadowAtlas.createView() }, { binding: 21, resource: { buffer: this.#noOcclusion } }];
   }
 
   /** 网格的边的索引（线框）：每个三角形三条边，两个三角形共用的边只留一条。 */

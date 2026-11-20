@@ -243,8 +243,16 @@ describe('风场和雨雪写在场景文件里', () => {
     game.wind.update(game);
     expect(game.wind.global.velocity.map((v) => +v.toFixed(4) + 0)).toEqual([0, 0, 3]);
     expect(checkEntity({ ...scene.entities[0]!, components: { weather: WEATHER_PRESETS.storm } })).toEqual([]);
+    // 地面的湿和雪写给渲染系统，有湿或雪时要天空遮挡（屋檐下的不湿）
+    let used = 0;
+    const surfaceWeather = { wetness: 0, snowCover: 0 };
+    game.renderSystem = { surfaceWeather, skyOcclusion: { use: () => used++ } } as never;
+    game.weather.update(game);
+    expect(surfaceWeather).toEqual({ wetness: 0, snowCover: 1 });
+    expect(used).toBe(1);
     sky.remove(Weather);
     game.weather.update(game);
+    expect(surfaceWeather).toEqual({ wetness: 0, snowCover: 0 });
     game.wind.update(game);
     expect(game.weather.current).toBeUndefined();
     expect(game.wind.global.velocity).toEqual([0, 0, 0]);

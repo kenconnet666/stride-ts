@@ -2,7 +2,7 @@
  * Stride 的程序模型（.sdpromodel，ProceduralModelAsset）：把 YAML 里的 Type 换成引擎的 ProceduralModel，网格由引擎生成
  * （rendering/mesh/procedural.ts，运行时读 JSON 写的 .model 也用它）。Disc 用到时再加。
  */
-import { generateProceduralMesh, type ProceduralMesh, type ProceduralModel } from '@stride-ts/engine';
+import { generateProceduralMesh, type ProceduralMesh, type ProceduralModel } from '@stride-ts/engine/content-format';
 import { asNumber, asObject, type StrideObject, type StrideValue } from './yaml.ts';
 
 export type { ProceduralMesh };

@@ -2,6 +2,17 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-21 编辑器里导入 glTF、FBX、OBJ
+
+C1 第 3 步的最后一件。
+
+- **原生**（StrideNative 0.33.0、0.34.0）：场景导入以前只报材质名。加了 `st_scene_material_info`（基础色、金属度、粗糙度、自发光乘强度、alpha 模式和阈值、两面、法线强度，五个贴图槽：图片下标加 UV 变换）和 `st_scene_image`（嵌在文件里的图片给字节，外部文件给相对路径）。glTF 照规范（KHR_texture_transform、KHR_materials_emissive_strength；只有 EXT_texture_webp、KHR_texture_basisu 的图也算），FBX、OBJ 经 ufbx 的 PBR 映射。
+- **导入器**（`pipeline/src/sourceModel.ts`，`importSourceModel`）：静态网格（节点变换烘进顶点，法线贴图的材质生成 MikkTSpace 切线，量化加 meshopt），每个材质一个 `.material.json`，嵌入的图片原样写出（PNG、JPEG、WebP）。带骨骼、形变、动画的先当静态导入、给警告。和 Stride 工程的导入器共用原生导入、切线和压缩。
+- **编辑器**：拖进资源浏览器（或 `POST /import`）的 glb、gltf、fbx、obj 走它；后端第一次用时建原生工具、关服务器时放掉。返回 `{ asset, warnings }`，警告显示在工具条上。
+- **补的两处**：贴图编码加了 WebP（浏览器直接解码；three.js 的样例模型只带 WebP）；glTF 的金属度粗糙度贴图里的金属度（B 通道）——我们的材质只有金属度常量，加了 `glossinessTexture.metalnessChannel`：同一张贴图一次采样读两个值，不多占片元阶段的贴图绑定（Stride 是两张贴图两个槽）。
+- **顺手修的**：编辑器里刚加上 Model 组件时模型路径是空串，视口去加载 `content/.model` 报错；空路径现在不算引用（不加载、不报断了的引用）。
+- **看过**（collect-dodge）：three.js 的 BoomBox.glb（四张 WebP：颜色、金属度粗糙度和遮蔽、法线、自发光）经接口导入 0.6 秒，编辑器里加实体、填上模型：白色塑料、黑色网罩、天线、阴影都对。
+
 ## 2026-11-21 目标扩成一站式创作工作台
 
 用户 2026-11-21：当前架构要是一站式创作工作台，既能产出大型 3A 游戏，也能方便地做短视频、电视剧这类内容（3A 风格即可），里面要用到的各种元素都能一站式创作；还要方便 agent 工具创作。路线图改了目的、原则（"游戏和线性内容同一套"、"方便 agent 工具创作"）、第二节加了"一站式创作工作台还缺什么"、第三节加了创作线 S1–S5（和游戏线 P1–P10 交错）、第四节加了 D19–D23（按推荐定）：

@@ -123,7 +123,7 @@ export interface MaterialDesc {
   /** 粗糙度 = 1 - 光泽度，默认 1。 */
   readonly roughness?: number;
   /** 光泽度贴图（意思同 content/format.ts 的 glossinessTexture）；有它时不看 roughness。 */
-  readonly glossinessMap?: MaterialTexture & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean };
+  readonly glossinessMap?: MaterialTexture & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean; readonly metalnessChannel?: 'r' | 'g' | 'b' | 'a' };
   /** 自发光，线性颜色乘强度，默认没有；有 emissiveTexture 时再乘贴图的颜色。 */
   readonly emissive?: readonly [number, number, number];
   readonly emissiveTexture?: MaterialTexture;
@@ -210,7 +210,7 @@ export class Material {
   readonly diffuseShading: boolean;
   readonly glass: { readonly refractiveIndex: number } | undefined;
   readonly roughness: number;
-  readonly glossinessMap: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean } | undefined;
+  readonly glossinessMap: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean; readonly metalnessChannel?: 'r' | 'g' | 'b' | 'a' } | undefined;
   readonly emissive: readonly [number, number, number];
   readonly emissiveTexture: Required<MaterialTexture> | undefined;
   readonly shaderTrees: MaterialShaderTrees | undefined;
@@ -249,7 +249,7 @@ export class Material {
     this.glass = desc.glass;
     this.roughness = desc.roughness ?? 1;
     const gloss = desc.glossinessMap;
-    this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert };
+    this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert, ...(gloss.metalnessChannel ? { metalnessChannel: gloss.metalnessChannel } : {}) };
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
     this.shaderTrees = desc.shaderTrees;

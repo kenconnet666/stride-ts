@@ -158,10 +158,16 @@ export class EditorSession implements EditableScene {
     return record;
   }
 
-  /** 导入拖进来的文件（音频成声音、图片成贴图）放进 folder；返回新资源的记录（资源列表马上带上它们）。 */
+  /** 导入拖进来的文件（音频成声音、图片成贴图、模型成模型加材质加贴图）放进 folder；返回新资源（资源列表马上带上），警告记进 notice。 */
   async importFiles(folder: string, files: readonly File[]): Promise<AssetRecord[]> {
     const records: AssetRecord[] = [];
-    for (const file of files) records.push(await this.client.importFile(folder, file));
+    const warnings: string[] = [];
+    for (const file of files) {
+      const result = await this.client.importFile(folder, file);
+      records.push(result.asset);
+      warnings.push(...result.warnings);
+    }
+    this.notice.value = warnings.join('；');
     const known = new Set(this.assets.value.map((asset) => `${asset.kind}:${asset.path}`));
     this.assets.value = [...this.assets.value, ...records.filter((record) => !known.has(`${record.kind}:${record.path}`))];
     return records;

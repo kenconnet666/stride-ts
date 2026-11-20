@@ -57,23 +57,23 @@ export class Texture {
 export type TextureDecoder = (bytes: Uint8Array) => Promise<TextureData>;
 
 export interface ImageDecodeOptions {
-  readonly encoding: 'svg' | 'png' | 'jpeg';
+  readonly encoding: 'svg' | 'png' | 'jpeg' | 'webp';
   /** 颜色贴图是 sRGB（rgba8unorm-srgb），法线这类数据贴图不是。 */
   readonly srgb: boolean;
   /** svg 栅格化的尺寸；不给时用 SVG 的 width、height。png、jpeg 忽略它。 */
   readonly size?: readonly [number, number];
 }
 
-/** 把 SVG、PNG、JPEG 文件解成 RGBA8 的 TextureData（只有第 0 级，generateMipmaps）。 */
+/** 把 SVG、PNG、JPEG、WebP 文件解成 RGBA8 的 TextureData（只有第 0 级，generateMipmaps）。 */
 export type ImageDecoder = (bytes: Uint8Array, options: ImageDecodeOptions) => Promise<TextureData>;
 
 /**
- * 用浏览器解码：PNG、JPEG 用 createImageBitmap；SVG 用 Image 加 OffscreenCanvas 按目标尺寸栅格化（矢量按目标尺寸画，
+ * 用浏览器解码：PNG、JPEG、WebP 用 createImageBitmap；SVG 用 Image 加 OffscreenCanvas 按目标尺寸栅格化（矢量按目标尺寸画，
  * 不是先按原尺寸画再缩放；Chrome 的 createImageBitmap 不接受 SVG）。像素按 sRGB、不预乘读出来。只能在主线程用。
  */
 export function browserImageDecoder(): ImageDecoder {
   return async (bytes, { encoding, srgb, size }) => {
-    const type = encoding === 'svg' ? 'image/svg+xml' : encoding === 'png' ? 'image/png' : 'image/jpeg';
+    const type = { svg: 'image/svg+xml', png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' }[encoding];
     const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type });
     let source: HTMLImageElement | ImageBitmap, width: number, height: number;
     if (encoding === 'svg') {

@@ -83,7 +83,7 @@ const sampler = oneOf('linearClamp', 'pointClamp', 'anisotropicClamp');
 /** 一张贴图文件，或者（精灵、背景）一张渲染目标贴图。 */
 const textureRef = fields<TextureRef>({
   texture: asset('image'),
-  encoding: optional(oneOf('ktx2', 'svg', 'png', 'jpeg'), 'ktx2'),
+  encoding: optional(oneOf('ktx2', 'svg', 'png', 'jpeg', 'webp'), 'ktx2'),
   size: optional(vector(2, 'px')),
   srgb: optional(bool),
   invertY: optional(bool, false),

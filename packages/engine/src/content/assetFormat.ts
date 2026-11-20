@@ -60,9 +60,9 @@ export type ColorOperator = 'multiply' | 'add';
  * 贴图文件的编码：ktx2（Basis，运行时转码成 GPU 压缩格式），svg（矢量，加载时栅格化），png、jpeg（浏览器解码）。
  * 后三种在显存里是未压缩的 RGBA8，换来的是更小的下载。
  */
-export type TextureEncoding = 'ktx2' | 'svg' | 'png' | 'jpeg';
+export type TextureEncoding = 'ktx2' | 'svg' | 'png' | 'jpeg' | 'webp';
 
-export const TEXTURE_EXTENSIONS: Readonly<Record<TextureEncoding, string>> = { ktx2: '.ktx2', svg: '.svg', png: '.png', jpeg: '.jpg' };
+export const TEXTURE_EXTENSIONS: Readonly<Record<TextureEncoding, string>> = { ktx2: '.ktx2', svg: '.svg', png: '.png', jpeg: '.jpg', webp: '.webp' };
 
 /** 一张贴图文件：内容路径和编码。 */
 export interface TextureRef {
@@ -196,7 +196,15 @@ export interface MaterialFile {
    * 光泽度贴图（Stride 的 MaterialGlossinessMapFeature 的 ComputeTextureScalar）：光泽度 = 贴图的 channel 通道，粗糙度 =
    * 1 - 光泽度；invert 时贴图存的就是粗糙度（Stride 的 Invert）。
    */
-  readonly glossinessTexture?: TextureSlot & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean };
+  readonly glossinessTexture?: TextureSlot & {
+    readonly channel: 'r' | 'g' | 'b' | 'a';
+    readonly invert: boolean;
+    /**
+     * 同一张贴图的另一个通道是金属度（glTF 的金属度粗糙度贴图：G 粗糙度、B 金属度），乘到 metalness 上。Stride 是两张贴图
+     * 两个槽；这里一次采样两个值，不多占片元阶段的贴图绑定。
+     */
+    readonly metalnessChannel?: 'r' | 'g' | 'b' | 'a';
+  };
   /** 自发光：线性颜色乘强度；有 emissiveTexture 时再乘贴图（Stride 的 ComputeBinaryColor 乘法）。 */
   readonly emissive?: Vec3Tuple;
   readonly emissiveTexture?: TextureSlot;

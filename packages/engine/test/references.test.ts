@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { SceneEntityFile } from '../src/content/format';
-import { assetReferenceSlots, assetReferences } from '../src/content/references';
+import { assetReferenceSlots, assetReferences, entityAssetReferences } from '../src/content/references';
 
 const instance: SceneEntityFile = {
   id: 'e1', name: 'Enemy', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {},
@@ -39,4 +39,9 @@ describe('预制体实例的覆盖里的资源路径', () => {
     expect(set[3]!.value).toEqual({ type: 'Game.Hud', props: { page: { $asset: 'Moved/UI/Hud', kind: 'uiPage' } } });
     expect(file.entities[0]!.prefab!.path).toBe('Moved/Enemy');
   });
+});
+
+test('空路径（编辑器里刚加上、还没选资源的槽）不算引用', () => {
+  const entity: SceneEntityFile = { id: 'e', name: 'e', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { model: { model: '', materials: ['', 'Materials/Red'] } } };
+  expect(entityAssetReferences([entity])).toEqual([{ kind: 'material', path: 'Materials/Red' }]);
 });

@@ -43,9 +43,12 @@ export function entityAssetReferences(files: readonly SceneEntityFile[]): Entity
 
 /**
  * 实体文件里的每一处引用，连同它写在哪；包括预制体实例的覆盖里的（visitOverrideReferences）。组件可以不全（覆盖只写了
- * 改的那一处）：缺的部分跳过。
+ * 改的那一处）：缺的部分跳过。空路径（编辑器里刚加上、还没选资源的槽）不算引用：不加载、不报断了的引用。
  */
-function visitEntityReferences(files: readonly SceneEntityFile[], visit: (ref: EntityAssetReference, ...place: Place) => void): void {
+function visitEntityReferences(files: readonly SceneEntityFile[], visitAny: (ref: EntityAssetReference, ...place: Place) => void): void {
+  const visit = (ref: EntityAssetReference, ...place: Place) => {
+    if (ref.path !== '') visitAny(ref, ...place);
+  };
   const image = (texture: TextureRef | SceneRenderTexture | undefined): void => {
     if (!texture) return;
     if ('renderTexture' in texture) visit({ kind: 'renderTexture', path: texture.renderTexture, texture }, texture, 'renderTexture');

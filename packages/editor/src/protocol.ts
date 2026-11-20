@@ -9,7 +9,8 @@
  *   PUT  /asset?kind=&path=[&create=1]   保存一个 JSON 资源（请求体是它的内容），返回它的 AssetRecord；create 时只新建（已有的 409）。
  *                                        模型只认 JSON 写的那种（程序生成的形状）
  *   DELETE /asset?kind=&path=[&force=1]  删掉一个资源（DeleteResult）；有别的资源引用它时不删（409），force 时照删
- *   POST /import?folder=&name=           导入拖进来的文件（请求体是文件的字节，name 是文件名）：音频成声音、图片成贴图，返回它的 AssetRecord
+ *   POST /import?folder=&name=           导入拖进来的文件（请求体是文件的字节，name 是文件名）：音频成声音、图片成贴图、模型（glb、gltf、fbx、obj）
+ *                                        成模型加材质加贴图，返回 ImportResult
  *   POST /move                           移动、改名资源（请求体 MoveRequest，返回 MoveResult），引用它们的文件跟着改写
  * 资源变了（编辑器保存的、别的程序改的、导入器写的）以后，后端经 Vite 的 HMR 通道推送 EDITOR_ASSETS_EVENT（AssetChanges）；
  * 前端用 `import.meta.hot.on(EDITOR_ASSETS_EVENT, ...)` 收。
@@ -80,6 +81,12 @@ export interface DeleteResult {
   readonly removed: readonly AssetReference[];
   /** 还引用着删掉的资源的（force 删的时候），它们的引用断了。 */
   readonly broken: readonly AssetRecord[];
+}
+
+/** 导入一个文件的结果：新资源（模型导入时是模型；材质、贴图也写了，经推送到前端），和导入时的警告。 */
+export interface ImportResult {
+  readonly asset: AssetRecord;
+  readonly warnings: readonly string[];
 }
 
 /** 一批文件变化以后数据库里变了的资源。 */

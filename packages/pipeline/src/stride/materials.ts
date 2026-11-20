@@ -57,7 +57,7 @@ export interface ImportedTexture {
 /** 贴图编成 KTX2 这个做法在缓存里的名字；换了编码器的版本或者参数的含义就改后面的数。 */
 const BASIS_RECIPE = 'basis-ktx2/1';
 
-const SOURCE_ENCODINGS: Readonly<Record<string, TextureEncoding>> = { '.svg': 'svg', '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg' };
+const SOURCE_ENCODINGS: Readonly<Record<string, TextureEncoding>> = { '.svg': 'svg', '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.webp': 'webp' };
 
 /** 补到 4 的倍数（块压缩格式的整块）。 */
 const align4 = (n: number) => (n + 3) & ~3;

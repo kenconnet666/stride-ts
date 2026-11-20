@@ -10,6 +10,7 @@ import {
   AssetDatabase, classifyAssetFile, EDITOR_API_PATH, EDITOR_HEADER, EditorBackend, generateAssetTypes, loadProject, PROJECT_FILE, projectInfo,
   type AssetChanges, type AssetRecord,
 } from '../src/server/index.ts';
+import type { ImportResult } from '../src/protocol.ts';
 
 // 编辑器的后端：工程清单、资源数据库、资源句柄的生成、HTTP 接口。用临时目录里的真文件。
 
@@ -259,17 +260,40 @@ describe('后端（EditorBackend）', () => {
     const post = (folder: string, name: string, body: Uint8Array<ArrayBuffer>) => api(`/import?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(name)}`, { method: 'POST', body });
     const first = await post('Game/Sounds', 'coin pickup.wav', wav);
     expect(first.status).toBe(200);
-    const sound = await first.json() as AssetRecord;
+    const sound = (await first.json() as ImportResult).asset;
     expect([sound.kind, sound.path]).toEqual(['sound', 'Game/Sounds/coinpickup']);
     expect(JSON.parse(await readFile(path.join(directory, 'public/content/Game/Sounds/coinpickup.sound.json'), 'utf8'))).toEqual({ name: 'coinpickup', encoding: 'wav', streamFromDisk: false, spatialized: false });
     expect(new Uint8Array(await readFile(path.join(directory, 'public/content/Game/Sounds/coinpickup.wav')))).toEqual(wav);
-    expect(((await (await post('Game/Sounds', 'coin pickup.wav', wav)).json()) as AssetRecord).path).toBe('Game/Sounds/coinpickup2');
-    const texture = await (await post('Game/Textures', 'Coin.PNG', new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).json() as AssetRecord;
+    expect(((await (await post('Game/Sounds', 'coin pickup.wav', wav)).json()) as ImportResult).asset.path).toBe('Game/Sounds/coinpickup2');
+    const texture = (await (await post('Game/Textures', 'Coin.PNG', new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).json() as ImportResult).asset;
     expect([texture.kind, texture.path]).toEqual(['texture', 'Game/Textures/Coin']);
     expect(JSON.parse(await readFile(path.join(directory, 'public/content/Game/Textures/Coin.texture.json'), 'utf8'))).toEqual({ texture: 'Game/Textures/Coin', encoding: 'png' });
-    const model = await post('Game', 'hero.glb', new Uint8Array([1]));
-    expect(model.status).toBe(400);
-    expect(((await model.json()) as { error: string }).error).toMatch(/models go through the importer/);
+    // 模型：一个三角形、一个带嵌入贴图的材质 → 模型、材质、贴图三个文件
+    const positions = Buffer.from(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer).toString('base64');
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64');
+    const gltf = {
+      asset: { version: '2.0' },
+      buffers: [{ byteLength: 36, uri: `data:application/octet-stream;base64,${positions}` }],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }],
+      accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }],
+      images: [{ uri: `data:image/png;base64,${png}` }],
+      textures: [{ source: 0 }],
+      materials: [{ name: 'Red Paint', pbrMetallicRoughness: { baseColorFactor: [1, 0, 0, 1], metallicFactor: 0, roughnessFactor: 0.4, baseColorTexture: { index: 0 } } }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+      nodes: [{ mesh: 0 }],
+      scenes: [{ nodes: [0] }],
+    };
+    const imported = await post('Game/Props', 'crate.gltf', new TextEncoder().encode(JSON.stringify(gltf)));
+    expect(imported.status).toBe(200);
+    const { asset: model } = await imported.json() as ImportResult;
+    expect([model.kind, model.path, model.references]).toEqual(['model', 'Game/Props/crate', [{ kind: 'material', path: 'Game/Props/crate/Materials/RedPaint' }]]);
+    const material = JSON.parse(await readFile(path.join(directory, 'public/content/Game/Props/crate/Materials/RedPaint.material.json'), 'utf8'));
+    expect(material).toMatchObject({ name: 'Red Paint', baseColor: [1, 0, 0, 1], metalness: 0, roughness: expect.closeTo(0.4, 5), baseColorTexture: { texture: 'Game/Props/crate/Textures/image0', encoding: 'png', srgb: true } });
+    expect(existsSync(path.join(directory, 'public/content/Game/Props/crate/Textures/image0.png'))).toBe(true);
+    // 同名的再导一次加数字；不是模型也不是音频、图片的拒绝
+    expect(((await (await post('Game/Props', 'crate.gltf', new TextEncoder().encode(JSON.stringify(gltf)))).json()) as ImportResult).asset.path).toBe('Game/Props/crate2');
+    const unknown = await post('Game', 'notes.txt', new Uint8Array([1]));
+    expect(unknown.status).toBe(400);
     expect((await post('../x', 'a.wav', wav)).status).toBe(400);
   });
 

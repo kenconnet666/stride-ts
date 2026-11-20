@@ -1103,7 +1103,9 @@ class Gpu {
       const gloss = material.glossinessMap;
       floats.set(gloss ? CHANNELS[gloss.channel] : [0, 0, 0, 0], 44);
       floats.set(uv(gloss), 48);
-      const textures = (slot ? 1 : 0) | (emissiveTexture ? 2 : 0) | (occlusion.texture ? 4 : 0);
+      // 第 3..5 位：光泽度贴图里金属度的通道 + 1（0 是没有）
+      const metalnessChannel = gloss?.metalnessChannel ? 'rgba'.indexOf(gloss.metalnessChannel) + 1 : 0;
+      const textures = (slot ? 1 : 0) | (emissiveTexture ? 2 : 0) | (occlusion.texture ? 4 : 0) | (metalnessChannel << 3);
       floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, material.glass?.refractiveIndex ?? 0, textures], 52);
       const scattering = material.subsurfaceScattering;
       floats.set([this.#subsurface.slotOf(material), scattering?.translucency ?? 0, scattering?.width ?? 0, 0], 56);

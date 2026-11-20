@@ -398,7 +398,8 @@ struct Material {
   glossinessMask: vec4f,
   glossinessUvTransform: vec4f,
   // x 为 1 时光泽度贴图存的是粗糙度（Stride 的 Invert）；y 是 Alpha 裁剪的阈值，没有时是 -1；z 是玻璃的折射率，不是玻璃时是 0；
-  // w 的各位：1 有漫反射贴图，2 有自发光贴图，4 有遮蔽贴图（法线贴图看 normalFlags，光泽度贴图看 glossinessMask）
+  // w 的各位：1 有漫反射贴图，2 有自发光贴图，4 有遮蔽贴图（法线贴图看 normalFlags，光泽度贴图看 glossinessMask）；第 3..5 位是
+  // 光泽度贴图里金属度的通道 + 1（glTF 的金属度粗糙度贴图，0 是没有）
   flags: vec4f,
   // 次表面散射：x 是槽位（RenderSystem.subsurfaceMaterials，0 是没有），y 是强度（透光度），z 是散射宽度
   subsurface: vec4f,
@@ -1280,11 +1281,18 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   // 粗糙度：常量，或者光泽度贴图的一个通道（没有贴图时 mask 是 0，取常量）
   let hasGlossTexture = dot(material.glossinessMask, vec4f(1.0)) > 0.0;
   var glossTexel = 0.0;
+  var metalnessScale = 1.0;
   if (hasGlossTexture) {
-    glossTexel = dot(textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw), material.glossinessMask);
+    let texel = textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw);
+    glossTexel = dot(texel, material.glossinessMask);
+    // 同一张贴图里的金属度（不用动态下标取向量的分量：DXC 会先存进局部数组）
+    let metalnessChannel = (u32(material.flags.w) >> 3u) & 7u;
+    if (metalnessChannel > 0u) {
+      metalnessScale = dot(texel, select(vec4f(0.0), vec4f(1.0), vec4u(1u, 2u, 3u, 4u) == vec4u(metalnessChannel)));
+    }
   }
   // 材质层按遮罩混进各个属性（没有层时原样）
-  let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb,
+  let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x * metalnessScale, material.specularColor.rgb,
     select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture)));
   // 清漆把漫反射色、金属度、粗糙度换成这一遍的（没有清漆时原样）
   // 贴花盖在材质上，天气（湿、雪）再盖在贴花上

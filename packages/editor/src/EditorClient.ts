@@ -4,7 +4,7 @@
  * 页面要由带着 strideEditor 插件的开发服务器提供。
  */
 import {
-  EDITOR_API_PATH, EDITOR_ASSETS_EVENT, type AssetChanges, type AssetKind, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult,
+  EDITOR_API_PATH, EDITOR_ASSETS_EVENT, type AssetChanges, type AssetKind, type AssetRecord, type DeleteResult, type ImportResult, type MoveRequest, type MoveResult,
   type ProjectInfo,
 } from './protocol.ts';
 
@@ -36,12 +36,12 @@ export class EditorClient {
     return request('PUT', `${assetRoute(kind, path)}&create=1`, content);
   }
 
-  /** 导入一个文件（音频成声音、图片成贴图）放进 folder（内容路径，'' 是根），返回新资源的记录。 */
-  async importFile(folder: string, file: File): Promise<AssetRecord> {
+  /** 导入一个文件（音频成声音、图片成贴图、模型成模型加材质加贴图）放进 folder（内容路径，'' 是根）。 */
+  async importFile(folder: string, file: File): Promise<ImportResult> {
     const response = await fetch(`${EDITOR_API_PATH}/import?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: HEADERS, body: file });
-    const result = await response.json() as AssetRecord | { error: string };
+    const result = await response.json() as ImportResult | { error: string };
     if (!response.ok) throw new Error(`editor import ${file.name}: ${(result as { error: string }).error}`);
-    return result as AssetRecord;
+    return result as ImportResult;
   }
 
   /** 移动、改名资源（几个，或者一个文件夹下面的全部）；引用它们的文件跟着改写。 */

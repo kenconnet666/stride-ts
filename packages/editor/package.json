@@ -16,6 +16,8 @@
   "dependencies": {
     "@lucide/icons": "^1.76.0",
     "@stride-ts/engine": "workspace:*",
+    "@stride-ts/native": "^0.29.0",
+    "@stride-ts/pipeline": "workspace:*",
     "@zerodep-dev/vue-tsx-pro-tsx": "^0.30.0",
     "@zerodep-dev/vue-tsx-pro-ui": "^0.30.0",
     "vue": "^3.5.45",

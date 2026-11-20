@@ -35,7 +35,10 @@ export function strideEditor(): Plugin {
         server.ws.send(EDITOR_ASSETS_EVENT, changes);
         void ui?.then((child) => child.ws.send(EDITOR_ASSETS_EVENT, changes));
       });
-      server.httpServer?.once('close', () => void ui?.then((child) => child.close()));
+      server.httpServer?.once('close', () => {
+        void ui?.then((child) => child.close());
+        void backend.close();
+      });
     },
   };
 }

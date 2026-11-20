@@ -1,0 +1,67 @@
+# CI：每次推送 main、每个 PR 跑。GitHub 自带的运行器没有显卡，WebGPU 用 Chrome 带的 SwiftShader（软件）。
+# 真实显卡上才验证得了的（帧时间、和桌面 Stride 的截图比对、测量）在本地的验证工作树里跑（tools/verify.ps1）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 快检：类型检查和单测
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  # 探测：这台运行器上的 Chrome 拿不拿得到 SwiftShader 的 WebGPU 适配器（冒烟能不能在 CI 上跑的前提）
+  webgpu-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Probe WebGPU on SwiftShader
+        run: |
+          mkdir -p probe
+          cat > probe/index.html <<'EOF'
+          <!doctype html><meta charset="utf-8"><pre id="out">probing</pre>
+          <script type="module">
+            const out = {};
+            try {
+              out.gpu = !!navigator.gpu;
+              for (const [name, options] of [['default', {}], ['fallback', { forceFallbackAdapter: true }]]) {
+                const adapter = navigator.gpu ? await navigator.gpu.requestAdapter(options) : null;
+                out[name] = adapter && { vendor: adapter.info.vendor, architecture: adapter.info.architecture, description: adapter.info.description, fallback: adapter.info.isFallbackAdapter, features: [...adapter.features].sort() };
+              }
+              document.getElementById('out').textContent = JSON.stringify(out, null, 2);
+              globalThis.probeResult = out;
+            } catch (error) {
+              globalThis.probeError = String(error);
+            }
+          </script>
+          EOF
+          (cd probe && python3 -m http.server 8123 &) && sleep 1
+          node tools/run-page.ts http://localhost:8123/ probeResult --error probeError --timeout 60 \
+            --chrome-arg=--enable-unsafe-webgpu --chrome-arg=--enable-features=Vulkan \
+            --chrome-arg=--use-webgpu-adapter=swiftshader --chrome-arg=--enable-unsafe-swiftshader

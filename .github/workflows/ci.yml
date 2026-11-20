@@ -75,14 +75,14 @@ jobs:
           GIT_LFS_SKIP_SMUDGE: '1'
         run: |
           git clone --depth 1 --filter=blob:none --sparse -b "$STRIDE_BRANCH" "$STRIDE_FORK" "$RUNNER_TEMP/stride"
-          git -C "$RUNNER_TEMP/stride" sparse-checkout set samples sources/engine/Stride.Engine/AssetPackage sources/plugins/UI/Stride.UI.Assets/Assets
+          git -C "$RUNNER_TEMP/stride" sparse-checkout set samples sources/engine/Stride.Engine/AssetPackage sources/plugins/UI/Stride.UI.Assets
       - if: steps.cached.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/stride/.git/lfs
           key: stride-lfs-${{ steps.key.outputs.stride }}
       - if: steps.cached.outputs.cache-hit != 'true'
-        run: git -C "$RUNNER_TEMP/stride" lfs pull --include "samples/**,sources/engine/Stride.Engine/AssetPackage/**,sources/plugins/UI/Stride.UI.Assets/Assets/**"
+        run: git -C "$RUNNER_TEMP/stride" lfs pull --include "samples/**,sources/engine/Stride.Engine/AssetPackage/**,sources/plugins/UI/Stride.UI.Assets/**"
       - if: steps.cached.outputs.cache-hit != 'true'
         name: Import
         env:

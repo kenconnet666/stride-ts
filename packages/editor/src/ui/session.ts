@@ -17,7 +17,7 @@ import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/edit
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
 import { copyEntities, duplicateEntities, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
-import { EditorClient } from '../client/EditorClient.ts';
+import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
 
 /** 编辑器里能打开的文档：场景，或者单独打开的预制体。 */

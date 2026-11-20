@@ -11,7 +11,7 @@
     "./vite": "./src/server/vite.ts",
     "./server": "./src/server/index.ts",
     "./protocol": "./src/protocol.ts",
-    "./client": "./src/client/EditorClient.ts"
+    "./client": "./src/EditorClient.ts"
   },
   "dependencies": {
     "@lucide/icons": "^1.76.0",

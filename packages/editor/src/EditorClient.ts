@@ -6,7 +6,7 @@
 import {
   EDITOR_API_PATH, EDITOR_ASSETS_EVENT, type AssetChanges, type AssetKind, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult,
   type ProjectInfo,
-} from '../protocol.ts';
+} from './protocol.ts';
 
 /** 每个接口请求都要带的头，同后端的 EDITOR_HEADER。 */
 const HEADERS = { 'x-stride-editor': '1' };

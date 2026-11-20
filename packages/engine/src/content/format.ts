@@ -659,7 +659,7 @@ export interface TransparencyFile {
 /** 方向光的阴影设置（Stride 的 LightDirectionalShadowMap），各字段的意思见 Light 组件。 */
 export interface SceneLightShadow {
   readonly size: 'xsmall' | 'small' | 'medium' | 'large' | 'xlarge';
-  readonly filter: 'none' | 'pcf3x3' | 'pcf5x5' | 'pcf7x7';
+  readonly filter: 'none' | 'pcf3x3' | 'pcf5x5' | 'pcf7x7' | 'pcss';
   readonly cascadeCount: 'one' | 'two' | 'four';
   readonly depthBias: number;
   readonly normalOffsetScale: number;
@@ -669,6 +669,8 @@ export interface SceneLightShadow {
   readonly minDistance: number;
   readonly maxDistance: number;
   readonly blendCascades: boolean;
+  /** 光源的角直径（度），pcss 用；没写是 0.53（太阳）。Stride 没有。 */
+  readonly lightAngle?: number;
 }
 
 /**

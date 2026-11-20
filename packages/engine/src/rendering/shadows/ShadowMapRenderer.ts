@@ -22,7 +22,8 @@ const MAX_ATLAS_SIZE = REFERENCE_SHADOW_SIZE * 2 ** (SIZE_INDEX.xlarge - 3) * 2;
 const MIN_ATLAS_SIZE = 1024;
 /** 连着这么多帧在一半大的图集里也放得下才缩小（相机转一下就够用、再转回来又不够的时候不来回重建）。 */
 const SHRINK_FRAMES = 300;
-const FILTER_SIZES: Readonly<Record<ShadowMapFilter, number>> = { none: 0, pcf3x3: 3, pcf5x5: 5, pcf7x7: 7 };
+/** 着色器里的滤波编号（ShadowReceiver.filterSize）；PCSS 只有方向光有，点光、聚光按 7x7。 */
+const FILTER_SIZES: Readonly<Record<ShadowMapFilter, number>> = { none: 0, pcf3x3: 3, pcf5x5: 5, pcf7x7: 7, pcss: 1 };
 const SHADOW_ATLAS_FORMAT: GPUTextureFormat = 'depth32float';
 /** Stride 的 MathUtil.ZeroTolerance。 */
 const ZERO_TOLERANCE = 1e-6;
@@ -105,12 +106,14 @@ export class ShadowMapRenderer {
       depthBias: 0,
       normalOffsetScale: 0,
       filterSize: 0,
+      penumbraTangent: 0,
       blendCascades: true,
       depthRangeAutomatic: true,
     });
     receiver.depthBias = settings.depthBias;
     receiver.normalOffsetScale = settings.normalOffsetScale;
     receiver.filterSize = FILTER_SIZES[settings.filter];
+    receiver.penumbraTangent = Math.tan((settings.lightAngle / 2) * (Math.PI / 180));
     receiver.blendCascades = settings.blendCascades;
     receiver.depthRangeAutomatic = settings.depthRange === 'automatic';
     this.#cascades.collect(main, lighting.directionals[lighting.shadowLight]!.direction, settings, size, rectangles, this.#atlasSize, receiver);
@@ -131,7 +134,7 @@ export class ShadowMapRenderer {
       const rectangles = size > 0 ? this.#insert(size, light.spot ? 1 : 6) : undefined;
       if (!rectangles) continue;
       const receiver = (lighting.localShadows[lighting.localShadowCount] ??= createLocalShadowReceiver());
-      receiver.filterSize = FILTER_SIZES[light.shadow.filter];
+      receiver.filterSize = FILTER_SIZES[light.shadow.filter === 'pcss' ? 'pcf7x7' : light.shadow.filter];
       const stage = light.spot ? this.casterStage : this.cubeMapCasterStage;
       for (const view of this.#locals.collect(light, rectangles, this.#atlasSize, receiver)) {
         this.#stages.set(view, stage);

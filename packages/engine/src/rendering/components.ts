@@ -48,8 +48,8 @@ export const Light = component('Light', {
   skybox: prop.u32().brand<'SkyboxId'>().default(0 as SkyboxId),
   shadow: prop.bool().default(false).group('Shadow'),
   shadowSize: prop.enum(['xsmall', 'small', 'medium', 'large', 'xlarge']).default('medium').group('Shadow'),
-  /** none 是一次比较采样，pcfNxN 是 Stride 的 PCF 核。 */
-  shadowFilter: prop.enum(['none', 'pcf3x3', 'pcf5x5', 'pcf7x7']).default('none').group('Shadow'),
+  /** none 是一次比较采样，pcfNxN 是 Stride 的 PCF 核，pcss 是接触硬化的软阴影（方向光；Stride 没有，点光、聚光按 pcf7x7）。 */
+  shadowFilter: prop.enum(['none', 'pcf3x3', 'pcf5x5', 'pcf7x7', 'pcss']).default('none').group('Shadow'),
   shadowCascadeCount: prop.enum(['one', 'two', 'four']).default('four').group('Shadow'),
   shadowDepthBias: prop.f32().default(0.01).min(0).group('Shadow'),
   shadowNormalOffsetScale: prop.f32().default(10).min(0).group('Shadow'),
@@ -61,6 +61,8 @@ export const Light = component('Light', {
   shadowMinDistance: prop.f32().default(0).min(0).group('Shadow'),
   shadowMaxDistance: prop.f32().default(50).min(0).group('Shadow'),
   shadowBlendCascades: prop.bool().default(true).group('Shadow'),
+  /** 方向光的角直径（太阳约 0.53°）：shadowFilter 是 pcss 时离遮挡物越远影子越软，半影按它算。Stride 没有。 */
+  shadowLightAngle: prop.f32().default(0.53).min(0).max(20).unit('deg').group('Shadow'),
 });
 
 /**

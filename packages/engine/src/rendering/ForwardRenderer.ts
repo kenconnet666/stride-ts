@@ -198,7 +198,7 @@ export class ForwardRenderer {
   #skyboxLight: SkyboxLight | undefined;
   readonly #shadowSettings: DirectionalShadowSettings = {
     size: 'medium', filter: 'none', cascadeCount: 4, depthBias: 0, normalOffsetScale: 0, stabilization: 'projectionSnapping',
-    pssmFactor: 0.5, depthRange: 'automatic', minDistance: 0, maxDistance: 50, blendCascades: true,
+    pssmFactor: 0.5, depthRange: 'automatic', minDistance: 0, maxDistance: 50, blendCascades: true, lightAngle: 0.53,
   };
   readonly #lightColor = new Color4();
   readonly #collectLights = system('ForwardRenderer.lights', {
@@ -242,6 +242,7 @@ export class ForwardRenderer {
             s.minDistance = light.shadowMinDistance[i]!;
             s.maxDistance = light.shadowMaxDistance[i]!;
             s.blendCascades = light.shadowBlendCascades[i] !== 0;
+            s.lightAngle = light.shadowLightAngle[i]!;
             lighting.directionalShadow = s;
           }
           lighting.directionalCount++;

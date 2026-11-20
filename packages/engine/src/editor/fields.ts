@@ -116,13 +116,13 @@ const collidable = {
 
 const localShadow = fields<SceneLocalLightShadow>({
   size: oneOf('xsmall', 'small', 'medium', 'large', 'xlarge'),
-  filter: oneOf('none', 'pcf3x3', 'pcf5x5', 'pcf7x7'),
+  filter: oneOf('none', 'pcf3x3', 'pcf5x5', 'pcf7x7', 'pcss'),
   depthBias: number(),
   normalOffsetScale: number(),
 });
 const directionalShadow = fields<SceneLightShadow>({
   size: oneOf('xsmall', 'small', 'medium', 'large', 'xlarge'),
-  filter: oneOf('none', 'pcf3x3', 'pcf5x5', 'pcf7x7'),
+  filter: oneOf('none', 'pcf3x3', 'pcf5x5', 'pcf7x7', 'pcss'),
   cascadeCount: oneOf('one', 'two', 'four'),
   depthBias: number(),
   normalOffsetScale: number(),
@@ -132,6 +132,7 @@ const directionalShadow = fields<SceneLightShadow>({
   minDistance: number({ min: 0, unit: 'm' }),
   maxDistance: number({ min: 0, unit: 'm' }),
   blendCascades: bool,
+  lightAngle: optional(number({ min: 0, max: 20, unit: 'deg' }), 0.53),
 });
 /** 光的颜色按 sRGB 存（同 Stride 的编辑器）。 */
 const lightColor: Field = { name: 'color', type: { kind: 'color', alpha: false, space: 'srgb' } };

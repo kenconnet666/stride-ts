@@ -272,6 +272,8 @@ export interface DirectionalShadowSettings {
   maxDistance: number;
   /** 相邻级联在交界处混合。 */
   blendCascades: boolean;
+  /** 光源的角直径（度，太阳约 0.53）：pcss 的半影按它算。 */
+  lightAngle: number;
 }
 
 /** 点光、聚光的阴影设置（Stride 的 LightPointShadowMap、LightStandardShadowMap），来自 Light 组件。 */
@@ -283,7 +285,8 @@ export interface LocalShadowSettings {
 }
 
 export type ShadowMapSize = 'xsmall' | 'small' | 'medium' | 'large' | 'xlarge';
-export type ShadowMapFilter = 'none' | 'pcf3x3' | 'pcf5x5' | 'pcf7x7';
+/** none 是一次比较采样，pcfNxN 是 Stride 的 PCF 核，pcss 是接触硬化的软阴影（方向光；点光、聚光按 pcf7x7）。 */
+export type ShadowMapFilter = 'none' | 'pcf3x3' | 'pcf5x5' | 'pcf7x7' | 'pcss';
 export type ShadowStabilization = 'none' | 'viewSnapping' | 'projectionSnapping';
 
 /** 着色时要的阴影数据（Stride 的 ShadowMapReceiverDirectional 的参数），由 ShadowMapRenderer 每帧填。 */
@@ -295,8 +298,10 @@ export interface ShadowReceiver {
   readonly splits: Float32Array;
   depthBias: number;
   normalOffsetScale: number;
-  /** 0：单次比较采样；3、5、7：PCF 的核大小。 */
+  /** 0：单次比较采样；3、5、7：PCF 的核大小；1：PCSS。 */
   filterSize: number;
+  /** PCSS 用：光源角半径的正切（半影的半径 = 遮挡物到这里的距离 × 它）。 */
+  penumbraTangent: number;
   blendCascades: boolean;
   depthRangeAutomatic: boolean;
 }

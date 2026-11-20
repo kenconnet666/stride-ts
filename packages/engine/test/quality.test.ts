@@ -6,6 +6,8 @@ describe('画质档位（Quality）', () => {
     const { low, medium, ultra } = QUALITY_TIERS;
     expect([limitShadowSize('xlarge', medium), limitShadowSize('xsmall', medium), limitShadowSize('large', ultra)]).toEqual(['medium', 'xsmall', 'large']);
     expect([limitShadowFilter('pcf7x7', low), limitShadowFilter('none', low), limitShadowFilter('pcf5x5', ultra)]).toEqual(['pcf3x3', 'none', 'pcf5x5']);
+    // PCSS 只有极高给，高档降成 5x5
+    expect([limitShadowFilter('pcss', ultra), limitShadowFilter('pcss', QUALITY_TIERS.high)]).toEqual(['pcss', 'pcf5x5']);
     expect([limitShadowCascades(4, low), limitShadowCascades(4, medium), limitShadowCascades(1, medium), limitShadowCascades(4, ultra)]).toEqual([1, 2, 1, 4]);
   });
 
@@ -21,6 +23,6 @@ describe('画质档位（Quality）', () => {
       expect(effects).toContain('globalIllumination');
       for (const effect of effects) expect([order[i], effect, lower[effect] === true && higher[effect] === false]).toEqual([order[i], effect, false]);
     }
-    expect([limitShadowSize('xlarge', QUALITY_TIERS.ultra), limitShadowFilter('pcf7x7', QUALITY_TIERS.ultra), limitShadowCascades(4, QUALITY_TIERS.ultra)]).toEqual(['xlarge', 'pcf7x7', 4]);
+    expect([limitShadowSize('xlarge', QUALITY_TIERS.ultra), limitShadowFilter('pcss', QUALITY_TIERS.ultra), limitShadowCascades(4, QUALITY_TIERS.ultra)]).toEqual(['xlarge', 'pcss', 4]);
   });
 });

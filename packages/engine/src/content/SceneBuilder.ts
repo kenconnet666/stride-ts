@@ -452,5 +452,6 @@ function shadowColumns(shadow: SceneLightShadow) {
     shadowMinDistance: shadow.minDistance,
     shadowMaxDistance: shadow.maxDistance,
     shadowBlendCascades: shadow.blendCascades,
+    shadowLightAngle: shadow.lightAngle ?? 0.53,
   } as const;
 }

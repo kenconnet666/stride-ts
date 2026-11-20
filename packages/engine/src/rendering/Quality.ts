@@ -42,7 +42,7 @@ export interface QualitySettings {
 /**
  * 各档给什么（自己定的，Stride 没有档位）：
  * - 极高：不设上限；
- * - 高：阴影图到 large（每块 1024，极高的 xlarge 是 2048，图集小到四分之一）、滤波到 5x5；
+ * - 高：阴影图到 large（每块 1024，极高的 xlarge 是 2048，图集小到四分之一）、滤波到 5x5（内容要 PCSS 的也降成 5x5）；
  * - 中：阴影图到 medium、3x3、两个级联；光芒和镜头光晕关掉（各要好几遍全屏的通道）；
  * - 低：阴影图到 small、一个级联；泛光、环境光遮蔽也关掉。抗锯齿留着：一遍全屏，比它省下的锯齿便宜。
  */
@@ -50,11 +50,11 @@ export const QUALITY_TIERS: Readonly<Record<QualityTier, QualitySettings>> = {
   low: { shadows: true, shadowSize: 'small', shadowFilter: 'pcf3x3', shadowCascades: 1, antialiasing: true, ambientOcclusion: false, screenSpaceReflections: false, contactShadows: false, motionBlur: false, globalIllumination: false, subsurfaceScattering: false, bloom: false, lightStreak: false, lensFlare: false },
   medium: { shadows: true, shadowSize: 'medium', shadowFilter: 'pcf3x3', shadowCascades: 2, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: false, contactShadows: false, motionBlur: false, globalIllumination: false, subsurfaceScattering: true, bloom: true, lightStreak: false, lensFlare: false },
   high: { shadows: true, shadowSize: 'large', shadowFilter: 'pcf5x5', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, bloom: true, lightStreak: true, lensFlare: true },
-  ultra: { shadows: true, shadowSize: 'xlarge', shadowFilter: 'pcf7x7', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, bloom: true, lightStreak: true, lensFlare: true },
+  ultra: { shadows: true, shadowSize: 'xlarge', shadowFilter: 'pcss', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, bloom: true, lightStreak: true, lensFlare: true },
 };
 
 const SIZES: readonly ShadowMapSize[] = ['xsmall', 'small', 'medium', 'large', 'xlarge'];
-const FILTERS: readonly ShadowMapFilter[] = ['none', 'pcf3x3', 'pcf5x5', 'pcf7x7'];
+const FILTERS: readonly ShadowMapFilter[] = ['none', 'pcf3x3', 'pcf5x5', 'pcf7x7', 'pcss'];
 
 /** 内容要的阴影图大小，不超过这一档的上限。 */
 export const limitShadowSize = (wanted: ShadowMapSize, { shadowSize }: QualitySettings): ShadowMapSize =>

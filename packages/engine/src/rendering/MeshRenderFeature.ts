@@ -81,11 +81,11 @@ struct View {
   // 方向光的阴影：每个级联从世界坐标到图集 UV 和深度的矩阵、各级联结束处的视图深度
   shadowMatrices: array<mat4x4f, 4>,
   shadowSplits: vec4f,
-  // x：级联数（0 是没有阴影），y：深度偏移，z：法线偏移比例，w：PCF 核大小（0 是一次比较采样）
+  // x：级联数（0 是没有阴影），y：深度偏移，z：法线偏移比例，w：PCF 核大小（0 是一次比较采样，1 是 PCSS）
   shadow: vec4f,
   // x：图集一个像素的大小（1 / 尺寸），y：图集尺寸，z：级联交界处混合，w：深度范围是自动的
   shadowAtlas: vec4f,
-  // 方向光：光线前进的方向、颜色乘强度
+  // 方向光：光线前进的方向（w：投阴影的那个是 PCSS 的光源角半径的正切）、颜色乘强度
   lightDirections: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   // x：点光和聚光的个数（localLights 的前几个），y：游戏开始以来的秒数（Stride 的 Global.Time，材质的颜色树用），
@@ -479,11 +479,72 @@ fn filterShadow(position: vec2f, depth: f32, size: u32) -> f32 {
   return pcf7(base, st, depth);
 }
 
-fn shadowFromCascade(position: vec3f, cascade: u32) -> f32 {
-  var p = view.shadowMatrices[cascade] * vec4f(position, 1.0);
+fn shadowFromCascade(position: vec3f, cascade: u32, pixel: vec2f) -> f32 {
+  let m = view.shadowMatrices[cascade];
+  var p = m * vec4f(position, 1.0);
   p.z -= view.shadow.y;
   let s = p.xyz / p.w;
-  return filterShadow(s.xy, s.z, u32(view.shadow.w));
+  let filterKind = u32(view.shadow.w);
+  if (filterKind == 1u) {
+    return pcssShadow(s, cascadeScale(m), view.lightDirections[u32(view.sky.w)].w, pixel);
+  }
+  return filterShadow(s.xy, s.z, filterKind);
+}
+
+/** 级联的矩阵（正交投影）把一个世界单位换成多少图集 UV（x）、多少深度（y）：前三列里那一行的长度。 */
+fn cascadeScale(m: mat4x4f) -> vec2f {
+  return vec2f(length(vec3f(m[0].x, m[1].x, m[2].x)), length(vec3f(m[0].z, m[1].z, m[2].z)));
+}
+
+/** Vogel 圆盘上 count 个点的第 i 个（单位圆里均匀铺开），整体转 angle。 */
+fn vogelDisk(i: u32, count: u32, angle: f32) -> vec2f {
+  let r = sqrt((f32(i) + 0.5) / f32(count));
+  let theta = f32(i) * 2.39996323 + angle;
+  return r * vec2f(cos(theta), sin(theta));
+}
+
+/** 交错梯度噪声（Jimenez 2014）：按屏幕像素的 0..1 噪声，相邻像素的值错开，模糊或 TAA 以后不留规则的纹理。 */
+fn interleavedGradientNoise(pixel: vec2f) -> f32 {
+  return fract(52.9829189 * fract(dot(pixel, vec2f(0.06711056, 0.00583715))));
+}
+
+const PCSS_BLOCKER_TAPS = 16u;
+const PCSS_FILTER_TAPS = 16u;
+/** 半影最大多少个图集像素（搜遮挡物的范围也到这里为止）。 */
+const PCSS_MAX_TEXELS = 24.0;
+
+/**
+ * 接触硬化的软阴影（PCSS，Fernando 2005）：方向光有角大小，半影的半径 = 遮挡物到这里的距离 × tan(角半径)，所以影子在
+ * 接触处硬、离得越远越软。s 是这个像素在图集里的位置和深度，scale 是 cascadeScale，tangent 是角半径的正切。
+ * 1. 按遮挡物最远可能在的地方（级联的近平面）定搜的范围，找比这里离光近的深度，取平均；没有遮挡物就是亮的；
+ * 2. 按平均的距离算半影，在这么大的圆盘里做比较采样（至少 1.5 个像素，接触处也不出锯齿）。
+ * 和 Babylon 不同：方向光的半影直接按深度差和角大小算（不除深度、没有经验系数）。采样点按像素的噪声转，噪声留给 TAA 和画面的模糊。
+ */
+fn pcssShadow(s: vec3f, scale: vec2f, tangent: f32, pixel: vec2f) -> f32 {
+  let texel = view.shadowAtlas.x;
+  let angle = interleavedGradientNoise(pixel) * 6.28318531;
+  let toUv = tangent * scale.x / scale.y;
+  let searchRadius = clamp(s.z * toUv, texel, PCSS_MAX_TEXELS * texel);
+  var blockers = 0.0;
+  var blockerDepth = 0.0;
+  let last = vec2i(i32(view.shadowAtlas.y) - 1);
+  for (var i = 0u; i < PCSS_BLOCKER_TAPS; i++) {
+    let uv = s.xy + vogelDisk(i, PCSS_BLOCKER_TAPS, angle) * searchRadius;
+    let d = textureLoad(shadowAtlas, clamp(vec2i(uv * view.shadowAtlas.y), vec2i(0), last), 0);
+    if (d < s.z) {
+      blockers += 1.0;
+      blockerDepth += d;
+    }
+  }
+  if (blockers == 0.0) {
+    return 1.0;
+  }
+  let penumbra = clamp((s.z - blockerDepth / blockers) * toUv, 1.5 * texel, PCSS_MAX_TEXELS * texel);
+  var lit = 0.0;
+  for (var i = 0u; i < PCSS_FILTER_TAPS; i++) {
+    lit += textureSampleCompareLevel(shadowAtlas, shadowComparison, s.xy + vogelDisk(i, PCSS_FILTER_TAPS, angle) * penumbra, s.z);
+  }
+  return lit / f32(PCSS_FILTER_TAPS);
 }
 
 /**
@@ -541,7 +602,7 @@ fn shadowCascade(depth: f32, count: u32) -> u32 {
 }
 
 /** 方向光的阴影（Stride 的 ShadowMapReceiverDirectional.ComputeShadow）。 */
-fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 {
+fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32, pixel: vec2f) -> f32 {
   let count = u32(view.shadow.x);
   if (count == 0u) {
     return 1.0;
@@ -550,7 +611,7 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
   let cascade = shadowCascade(depth, count);
   // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去
   let p = position + 2.0 * view.shadowAtlas.x * view.shadow.z * saturate(1.0 - nDotL) * normal;
-  var shadow = shadowFromCascade(p, cascade);
+  var shadow = shadowFromCascade(p, cascade, pixel);
   let nextSplit = component(splits, cascade);
   var splitSize = nextSplit;
   if (cascade > 0u) {
@@ -565,7 +626,7 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
         shadow = mix(1.0, shadow, amount);
       }
     } else if (view.shadowAtlas.z != 0.0) {
-      shadow = mix(shadowFromCascade(p, cascade + 1u), shadow, amount);
+      shadow = mix(shadowFromCascade(p, cascade + 1u, pixel), shadow, amount);
     }
   }
   return shadow;
@@ -587,12 +648,12 @@ fn shadowDepthAt(uv: vec2f) -> f32 {
 /**
  * 方向光穿过这个像素所在物体的厚度（世界单位；Stride 的 ShadowMapFilterBase.SampleThickness）：阴影图里离光最近的表面到这里的
  * 距离。先往表面里缩 1.5 个阴影图像素的对角线，避开表面自己（同 Stride 的 CalculateAdjustedShadowSpacePixelPosition）。
- * 级联是正交投影：世界单位换到图集的 UV、深度的比例是矩阵前三列的那一行的长度。
  */
 fn shadowThickness(position: vec3f, normal: vec3f, depth: f32) -> f32 {
   let m = view.shadowMatrices[shadowCascade(depth, u32(view.shadow.x))];
-  let uvPerUnit = length(vec3f(m[0].x, m[1].x, m[2].x));
-  let depthPerUnit = length(vec3f(m[0].z, m[1].z, m[2].z));
+  let scale = cascadeScale(m);
+  let uvPerUnit = scale.x;
+  let depthPerUnit = scale.y;
   // 1.5 · √2 个像素
   let p = position - normal * (2.1213 * view.shadowAtlas.x / uvPerUnit);
   let s = m * vec4f(p, 1.0);
@@ -826,7 +887,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     let l = -view.lightDirections[i].xyz;
     var shadow = 1.0;
     if (i32(i) == shadowLight) {
-      shadow = computeShadow(in.world, n, max(dot(n, l), 0.0001), in.depth) * screenContactShadow(in.position);
+      shadow = computeShadow(in.world, n, max(dot(n, l), 0.0001), in.depth, in.position.xy) * screenContactShadow(in.position);
       // 和 Stride 不同：没有阴影图的光不算透射（不知道厚度；Stride 当厚度是 0，被照到的地方都透亮）
       if (scatters && view.shadow.x > 0.0) {
         direct.diffuse += transmittance(shadowThickness(in.world, n, in.depth), n, l, view.lightColors[i].rgb * directOcclusion, diffuse);
@@ -1868,7 +1929,8 @@ class Gpu {
       for (let i = 0; i < directionalCount; i++) {
         const { direction, color } = directionals[i]!;
         const length = Math.hypot(direction.x, direction.y, direction.z) || 1;
-        data.set([direction.x / length, direction.y / length, direction.z / length, 0], o + 156 + i * 4);
+        const penumbra = shadow && i === lighting.shadowLight ? shadow.penumbraTangent : 0;
+        data.set([direction.x / length, direction.y / length, direction.z / length, penumbra], o + 156 + i * 4);
         data.set([color.r, color.g, color.b, 1], o + 172 + i * 4);
       }
       data.set([localCount, time, view.screenIndirect ? 1 : 0, 0], o + 188);

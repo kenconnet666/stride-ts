@@ -436,6 +436,20 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - ffprobe 读出 180 帧、30 fps、时长 6.0 秒，音频 282 块；ffmpeg 整个解码没有报错；音量峰值 −16 dB（开门声）。抽帧看：相机绕场时墙和硬币有真的运动模糊、边缘干净，字幕在；编辑器出的和试玩页面出的第一帧一样。
 - 第一版跟着 requestAnimationFrame 走，窗口被挡住时降到每秒一帧，5 分钟没出完（CLI 的 HTTP 请求先超时了）；改成接管帧循环以后如上。编辑器里第一次出片第一帧没有天空光、没有 UI、相机不对（新开的页面一帧都没跑过），加了 30 帧预热。
 
+### F4 验收：30 秒短片《Evening》（2026-11-21）
+
+`apps/short-film`，1920x1080 和 1080x1920，30 fps，900 帧，主 Chrome 里（窗口被挡住）：
+
+| 出片 | 子帧 | 渲染耗时 | 文件 |
+|---|---|---|---|
+| 草稿（MCP） | 2 | 17.0 秒 | 38 MB |
+| 横屏 1080p（MCP） | 8 | 28.3 秒 | 39 MB，H.264 + AAC，音量峰值 −6.6 dB |
+| 竖屏 9:16（MCP） | 8 | 29.1 秒 | 41 MB |
+| 竖屏 9:16（编辑器的"出片"，看不见的试玩页面） | 8 | 27 秒 | 41 MB |
+
+- 第一次出草稿机器人只露出腿：RobotExpressive 高 4.44 米，缩到 0.3；第二次跟拍太近、结尾特写太紧，调了机位。第一次出正式版没有音轨（从 0 秒开始的配乐不放），修了重出。
+- 抽帧看：远景里路灯亮着、太阳在落、挥手；跟拍走路；环绕跳舞；特写竖大拇指和挥手，片段之间平滑过渡；景深、体积云和雾都在。冒烟按时刻检查机位、剪辑、位置和字幕。
+
 ## CI 的全量冒烟（2026-11-20 的记录，从 roadmap.md 的"正在做和下一步"挪过来）
 
 **CI 的全量冒烟**（2026-11-20，`.github/workflows/ci.yml`，设计见 tools/README.md 的"CI"）：SwiftShader 上 WebGPU 的上下文丢失查清修掉（缺 `--use-vulkan=swiftshader`，见 lessons.md 的 WebGPU 一节），冒烟改成一个样例一台运行器，等待改成按状态和游戏时间（lessons.md 的"冒烟测试的等待"）。8c5cda9 那次：18 个跑完的冒烟过了 16 个，没过的 simple-audio（波形图的动画按帧走，按游戏时长等不够）和 platformer2d（运行器上 Chrome 20 秒没起来）随后改了（等状态；Chrome 的启动上限放到 60 秒）。当时失败的七个都是时序类，修复分别在 701a442（bepu-sample）、ce30ce2（topdown-rpg、simple-audio）、44fd3bd（platformer2d、morph-targets）、3c6c62c（first-person-shooter、csharp-intermediate）和收尾的那次提交。没有发现引擎行为类的失败，也没有要因为 SwiftShader 本身跳过的检查。顺手修的工具缺陷：`regress.ps1` 没设 `STRIDE_CHROME_ARGS` 时丢了 `--autoplay-policy`（PowerShell 单元素数组展开成空，本地的声音检查因此失败）；`stride mouse --trusted` 固定按 100 ms，帧慢时锁不上鼠标（改成按住到游戏跑过一帧）。修复后的第一次完整运行：待确认。还没过的（fc13aa0 在验证槽位 3 上用真显卡跑全部样例，机器忙）：

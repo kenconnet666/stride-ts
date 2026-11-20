@@ -44,6 +44,8 @@ export class TimelinePlayer extends SyncScript.props('TimelinePlayer', {
   /** 这个播放器设的主画面相机（放完、移除时还回去，别人后来设的不动）。 */
   #camera: EntityId | undefined;
   #finished: (() => void)[] = [];
+  /** 刚跳过（seek）：下一次推进时正好在起点的声音、事件也算经过。 */
+  #fromSeek = false;
   /** 正在放的声音（放完的每帧去掉）。 */
   readonly #sounds: SoundInstance[] = [];
 
@@ -67,9 +69,10 @@ export class TimelinePlayer extends SyncScript.props('TimelinePlayer', {
     this.playing = false;
   }
 
-  /** 跳到 time 秒（不触发经过的声音、事件），场景摆成那一刻的样子。 */
+  /** 跳到 time 秒（不触发经过的声音、事件），场景摆成那一刻的样子；接着放的时候正好在这一刻的声音、事件也触发。 */
   seek(time: number): void {
     this.time = Math.min(Math.max(time, 0), this.timeline.duration);
+    this.#fromSeek = true;
     this.#apply();
   }
 
@@ -83,12 +86,14 @@ export class TimelinePlayer extends SyncScript.props('TimelinePlayer', {
     if (!this.playing) return;
     const { duration } = this.timeline;
     const from = this.time;
+    const includeFrom = this.#fromSeek;
+    this.#fromSeek = false;
     let to = from + time.elapsed * this.speed;
     if (to >= duration) {
       if (this.loop && duration > 0) {
-        this.#fire(from, duration);
+        this.#fire(from, duration, includeFrom);
         to %= duration;
-        this.#fire(-1, to);
+        this.#fire(0, to, true);
         this.time = to;
         this.#apply();
         return;
@@ -96,7 +101,7 @@ export class TimelinePlayer extends SyncScript.props('TimelinePlayer', {
       to = duration;
       this.playing = false;
     }
-    this.#fire(from, to);
+    this.#fire(from, to, includeFrom);
     this.time = to;
     this.#apply();
     if (!this.playing) this.#finish();
@@ -132,8 +137,8 @@ export class TimelinePlayer extends SyncScript.props('TimelinePlayer', {
   }
 
   /** from 到 to 之间开始的声音、事件。 */
-  #fire(from: number, to: number): void {
-    for (const cue of this.timeline.crossed(from, to)) {
+  #fire(from: number, to: number, includeFrom: boolean): void {
+    for (const cue of this.timeline.crossed(from, to, includeFrom)) {
       if (cue.type === 'sound') {
         const instance = this.timeline.sounds.get(cue.sound)?.createInstance();
         if (!instance) continue;

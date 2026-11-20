@@ -1,0 +1,11 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "sphere",
+  "radius": 0.22,
+  "tessellation": 24
+ },
+ "materials": [
+  "Materials/Lamp"
+ ]
+}

@@ -1,0 +1,16 @@
+{
+ "name": "Lamp",
+ "baseColor": [
+  1,
+  0.85,
+  0.6,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.4,
+ "emissive": [
+  6,
+  4.2,
+  2.2
+ ]
+}

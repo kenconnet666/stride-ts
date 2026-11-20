@@ -47,6 +47,8 @@ describe('字段描述（editor/fields）', () => {
       'entity E.components.ui.resolutionStretch: expected one of fixedWidthFixedHeight, fixedWidthAdaptableHeight, fixedHeightAdaptableWidth, got "stretch"',
       'entity E.components.wheel: not a component',
     ]);
+    // 写错了地方的键（脚本应该在 components.scripts 里）
+    expect(checkEntity({ ...entity({}), scripts: [] } as never)).toEqual(['entity E.scripts: not an entity field (scripts go in components.scripts)']);
   });
 
   test('脚本的字段从 prop 的声明来：范围、单位、枚举、引用的写法、嵌套；运行时状态和藏起来的不算', () => {

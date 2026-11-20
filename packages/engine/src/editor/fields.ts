@@ -657,7 +657,7 @@ export const TIMELINE_FIELDS = fields<TimelineFile>({
     tag: 'type',
     variants: {
       property: fields<{ entity: unknown; component: unknown; property: unknown; interpolation: unknown; keys: unknown }>({
-        entity: { type: string, description: 'id of the entity in the scene file' },
+        entity: { type: entity, description: 'id of the entity in the scene file' },
         component: { type: string, description: 'runtime component name (Transform, Light, or a game component registered by module path)' },
         property: string,
         interpolation: { type: oneOf('constant', 'linear', 'cubic'), optional: true, default: 'linear' },
@@ -668,9 +668,9 @@ export const TIMELINE_FIELDS = fields<TimelineFile>({
           { name: 'out', type: { kind: 'json' }, optional: true, description: 'cubic only: slope (per second) leaving the key, per component; unset is automatic' },
         ])),
       }),
-      camera: fields<{ cuts: unknown }>({ cuts: list(object([{ name: 'time', type: number({ min: 0, unit: 's' }) }, { name: 'camera', type: string, description: 'id of the camera entity in the scene file' }])) }),
+      camera: fields<{ cuts: unknown }>({ cuts: list(object([{ name: 'time', type: number({ min: 0, unit: 's' }) }, { name: 'camera', type: entity, description: 'id of the camera entity in the scene file' }])) }),
       animation: fields<{ entity: unknown; clips: unknown }>({
-        entity: string,
+        entity: { type: entity, description: 'id of the entity in the scene file' },
         clips: list(object([
           { name: 'start', type: number({ min: 0, unit: 's' }) },
           { name: 'clip', type: string, description: 'name of the clip in the AnimationComponent' },
@@ -835,11 +835,18 @@ function checkObject(value: unknown, of: readonly Field[], where: string, issues
 }
 
 /** 检查一个实体文件：名字、变换和每种组件（脚本不查，要脚本的类）。 */
+/** 场景文件里一个实体能有的键（SceneEntityFile）。 */
+const ENTITY_KEYS: ReadonlySet<string> = new Set(['id', 'name', 'parent', 'prefab', 'position', 'rotation', 'scale', 'components'] satisfies (keyof SceneEntityFile)[]);
+
 export function checkEntity(entity: SceneEntityFile): string[] {
   const where = `entity ${entity.name}`;
   const issues: string[] = [];
+  // 实体自己的字段以外的键：写错了地方的（比如脚本写在实体上，应该在 components.scripts 里）加载时会被悄悄忽略
+  for (const key of Object.keys(entity)) {
+    if (!ENTITY_KEYS.has(key)) issues.push(`${where}.${key}: not an entity field${key === 'scripts' ? ' (scripts go in components.scripts)' : ''}`);
+  }
   checkObject({ name: entity.name, position: entity.position, rotation: entity.rotation, scale: entity.scale }, ENTITY_FIELDS, where, issues);
-  for (const [key, value] of Object.entries(entity.components)) {
+  for (const [key, value] of Object.entries(entity.components ?? {})) {
     if (key === 'scripts') continue;
     const description = (COMPONENT_FIELDS as Readonly<Record<string, ComponentDescription | undefined>>)[key];
     if (!description) issues.push(`${where}.components.${key}: not a component`);

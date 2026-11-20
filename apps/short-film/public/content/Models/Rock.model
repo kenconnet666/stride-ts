@@ -1,0 +1,16 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "sphere",
+  "radius": 0.7,
+  "tessellation": 16,
+  "scale": [
+   1.3,
+   0.55,
+   1
+  ]
+ },
+ "materials": [
+  "Materials/Rock"
+ ]
+}

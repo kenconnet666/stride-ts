@@ -89,6 +89,8 @@ export interface DeleteResult {
 export interface ImportResult {
   readonly asset: AssetRecord;
   readonly warnings: readonly string[];
+  /** 导入带动画的模型时：动画剪辑（文件里的动画名和剪辑的内容路径），场景的 AnimationComponent 按这个名字登记。 */
+  readonly animations?: readonly { readonly name: string; readonly clip: string }[];
 }
 
 /** 一批文件变化以后数据库里变了的资源。 */

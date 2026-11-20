@@ -136,8 +136,8 @@ export class EditorBackend {
     if (folder !== '') checkContentPath(folder);
     if (isSourceModel(fileName)) {
       return this.#importConverted('model', folder, fileName, async (tools, name) => {
-        const { model, files, warnings } = await importSourceModel(tools, bytes, { fileName, folder, name });
-        return { asset: model, files, warnings };
+        const { model, animations, files, warnings } = await importSourceModel(tools, bytes, { fileName, folder, name });
+        return { asset: model, files, warnings, animations };
       });
     }
     if (isFontFile(fileName)) {
@@ -178,7 +178,10 @@ export class EditorBackend {
     kind: AssetKind,
     folder: string,
     fileName: string,
-    convert: (tools: StrideTools, name: string) => Promise<{ readonly asset: string; readonly files: readonly { readonly path: string; readonly content: Uint8Array | string }[]; readonly warnings: readonly string[] }>,
+    convert: (tools: StrideTools, name: string) => Promise<{
+      readonly asset: string; readonly files: readonly { readonly path: string; readonly content: Uint8Array | string }[]; readonly warnings: readonly string[];
+      readonly animations?: ImportResult['animations'];
+    }>,
   ): Promise<ImportResult> {
     const tools = await (this.#tools ??= createStrideTools());
     return this.#enqueue(async () => {
@@ -193,7 +196,8 @@ export class EditorBackend {
       }
       for (const file of converted.files) await writeAtomically(path.join(this.project.contentDir, file.path), file.content);
       await this.#refresh(converted.files.map((file) => file.path));
-      return { asset: this.database.get(kind, converted.asset)!, warnings: [...converted.warnings] };
+      const animations = converted.animations ?? [];
+      return { asset: this.database.get(kind, converted.asset)!, warnings: [...converted.warnings], ...(animations.length > 0 ? { animations } : {}) };
     });
   }
 

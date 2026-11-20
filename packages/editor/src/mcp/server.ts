@@ -77,7 +77,7 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
     inputSchema: z.object({ file: z.string().describe('absolute path of the file on disk'), folder: z.string().describe('content folder to put it in ("" is the root)') }),
   }, async ({ file, folder }) => {
     const result = await backend.importFile(folder, path.basename(file), new Uint8Array(await readFile(file)));
-    return json({ asset: brief(result.asset), warnings: result.warnings });
+    return json({ asset: brief(result.asset), warnings: result.warnings, ...(result.animations ? { animations: result.animations } : {}) });
   });
 
   server.registerTool('edit_scene', {

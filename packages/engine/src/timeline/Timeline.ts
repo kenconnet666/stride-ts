@@ -85,11 +85,14 @@ export class Timeline {
     return { camera, subtitle: subtitles.join('\n') };
   }
 
-  /** 从 from 到 to（不含 from，含 to）之间开始的声音、事件，按时刻排好。拖回去（to < from）时没有。 */
-  crossed(from: number, to: number): TimelineCue[] {
+  /**
+   * 从 from 到 to（含 to；不含 from，除非 includeFrom）之间开始的声音、事件，按时刻排好。拖回去（to < from）时没有。
+   * 一帧接一帧地放时不含起点（上一帧已经含过）；刚跳到 from、从 from 开始放时含起点，正好在那一刻的也算经过。
+   */
+  crossed(from: number, to: number, includeFrom = false): TimelineCue[] {
     if (!(to > from)) return [];
     const cues: TimelineCue[] = [];
-    const inside = (time: number) => time > from && time <= to;
+    const inside = (time: number) => (includeFrom ? time >= from : time > from) && time <= to;
     for (const track of this.file.tracks) {
       if (track.type === 'sound') for (const clip of track.clips) if (inside(clip.start)) cues.push({ type: 'sound', time: clip.start, sound: clip.sound, volume: clip.volume ?? 1 });
       if (track.type === 'event') for (const event of track.events) if (inside(event.time)) cues.push({ type: 'event', time: event.time, name: event.name });

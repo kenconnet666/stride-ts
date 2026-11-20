@@ -11,7 +11,7 @@ import { exportImages, exportVideo, RENDER_PRESETS, type RenderPreset } from './
 
 type Args = Readonly<Record<string, unknown>>;
 
-/** 编辑状态下开的试玩页面出片前先跑几帧（见 warmUp）。 */
+/** 游戏跑过的帧比这少时，出片前先跑够（见 warmUp）。 */
 const WARM_UP_FRAMES = 30;
 
 /** 编辑器后端存导出文件的接口（和 @stride-ts/editor 的 EDITOR_API_PATH + '/export' 一致）。 */
@@ -37,6 +37,8 @@ export const RENDER_COMMAND_HELP = 'Offline render (fixed time step, sub-frame a
 
 export async function renderCommand(game: Game, args: Args): Promise<RenderResult> {
   if (game.editing) return renderInPlayPage(args);
+  // 刚打开的页面（或者窗口被挡住、一直没跑帧的页面）：先跑几帧，脚本开始了、后台算的东西就位了再出片
+  if (game.frames < WARM_UP_FRAMES) await warmUp(game);
   const preset = args['preset'] === undefined ? undefined : RENDER_PRESETS[args['preset'] as RenderPreset];
   if (args['preset'] !== undefined && !preset) throw new Error(`unknown preset '${String(args['preset'])}'; presets: ${Object.keys(RENDER_PRESETS).join(', ')}`);
   const width = numberArg(args, 'width') ?? preset?.width ?? 1920;
@@ -112,7 +114,6 @@ async function renderInPlayPage(args: Args): Promise<RenderResult> {
   document.body.append(frame);
   try {
     const game = await playingGame(frame);
-    await warmUp(game);
     return await game.debug.run('render', args) as RenderResult;
   } finally {
     frame.remove();
@@ -132,13 +133,13 @@ async function playingGame(frame: HTMLIFrameElement): Promise<Game> {
 }
 
 /**
- * 刚打开的页面一帧都还没跑过：脚本没开始、天空光这类第一次用到时在后台算的东西还没好。先跑半秒（游戏时间）再出片，每帧之后
- * 等 GPU 做完，后台的编译、计算有机会完成。
+ * 刚打开的页面一帧都还没跑过：脚本没开始、天空光这类第一次用到时在后台算的东西还没好。先跑到 WARM_UP_FRAMES 帧（每帧 1/60 秒
+ * 游戏时间），每帧之后等 GPU 做完，后台的编译、计算有机会完成。
  */
 async function warmUp(game: Game): Promise<void> {
   const release = await game.takeOverFrames();
   try {
-    for (let i = 0; i < WARM_UP_FRAMES; i++) {
+    while (game.frames < WARM_UP_FRAMES) {
       await game.runFrame(1 / 60);
       await game.graphicsDevice.device.queue.onSubmittedWorkDone();
     }

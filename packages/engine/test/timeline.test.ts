@@ -84,6 +84,8 @@ describe('时间轴', () => {
       { type: 'sound', time: 3, sound: 'Sounds/Hit', volume: 0.5 },
     ]);
     expect(timeline.crossed(3, 1)).toEqual([]);
+    // 刚跳到 1 秒、从这里放：正好在 1 秒的声音也算
+    expect(timeline.crossed(1, 2, true).map((cue) => `${cue.type}@${cue.time}`)).toEqual(['sound@1', 'event@2']);
   });
 
   test('动画轨道的某一刻：最近开始的片段按速度算剪辑里的时刻；第一个之前停在第一帧；过渡时间里前一个片段的权重平滑地减到 0', () => {

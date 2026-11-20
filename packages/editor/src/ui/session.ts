@@ -61,7 +61,8 @@ export class EditorSession implements EditableScene {
   readonly timeline = shallowRef<OpenTimeline | undefined>();
   /** 正在导出的时间轴（名字）；没在导出时是 undefined。 */
   readonly exporting = shallowRef<string>();
-  #timelineSave: ReturnType<typeof setTimeout> | undefined;
+  /** 还没存的时间轴修改（连着拖关键帧只存最后一次）。 */
+  #timelineSave: { readonly path: string; readonly content: TimelineFile; readonly timer: ReturnType<typeof setTimeout> } | undefined;
   /** 正在编辑的文档（场景或预制体）。 */
   readonly opened = shallowRef<OpenedDocument>();
   /** 最近打开的场景：单独打开预制体以后回到它。 */
@@ -118,6 +119,7 @@ export class EditorSession implements EditableScene {
       // 别的资源（材质、模型、贴图、UI、声音……）改了：视口里用到它们的实体重建（热重载）
       const reloaded = assetsToReload(this.assets.value, changed.filter((asset) => asset.kind !== 'scene' && asset.kind !== 'prefab'));
       if (reloaded.length > 0) void this.agent.value?.reloadAssets(reloaded).catch((error: unknown) => console.error('reloading assets failed', error));
+      void this.#reloadChangedElsewhere(changed);
     });
   }
 
@@ -141,16 +143,53 @@ export class EditorSession implements EditableScene {
     if (timeline) this.seekTimeline(timeline.time);
   }
 
+  /**
+   * 打开着的时间轴、属性面板里的资源在别处改了（agent 经 MCP、别的程序）：没有还没存的修改时从磁盘重读，不然下次在这里改、
+   * 导出时会拿旧的那份把别处的修改盖掉。自己刚存的那次回声读出来和手上的一样，不动。
+   */
+  async #reloadChangedElsewhere(changed: readonly AssetRecord[]): Promise<void> {
+    const isChanged = (kind: string, path: string) => changed.some((asset) => asset.kind === kind && asset.path === path);
+    const open = this.timeline.value;
+    if (open && this.#timelineSave === undefined && isChanged('timeline', open.path)) {
+      const content = await this.client.readAsset<TimelineFile>('timeline', open.path);
+      const now = this.timeline.value;
+      if (now?.path === open.path && this.#timelineSave === undefined && JSON.stringify(content) !== JSON.stringify(now.content)) {
+        this.timeline.value = { ...now, content };
+        const inspected = this.inspected.value;
+        if (inspected?.kind === 'timeline' && inspected.path === now.path) this.inspected.value = { ...inspected, content: content as unknown as Record<string, unknown> };
+        this.seekTimeline(now.time);
+      }
+    }
+    const inspected = this.inspected.value;
+    if (inspected && inspected.kind !== 'timeline' && this.#inspectedSave === undefined && isChanged(inspected.kind, inspected.path)) {
+      const content = await this.client.readAsset<Record<string, unknown>>(inspected.kind, inspected.path);
+      const now = this.inspected.value;
+      if (now?.kind === inspected.kind && now.path === inspected.path && this.#inspectedSave === undefined && JSON.stringify(content) !== JSON.stringify(now.content)) {
+        this.inspected.value = { ...now, content };
+      }
+    }
+  }
+
+  /** 时间轴还有没存的修改时马上存（关时间轴、出片之前；不然最后那一下改动会丢）。 */
+  async #flushTimelineSave(): Promise<void> {
+    const pending = this.#timelineSave;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.#timelineSave = undefined;
+    await this.client.saveAsset('timeline', pending.path, pending.content).catch((error: unknown) => (this.notice.value = (error as Error).message));
+  }
+
   /** 打开时间轴：面板显示它，视口摆成第 0 秒的样子。 */
   async openTimeline(path: string): Promise<void> {
-    const content = await this.client.readAsset<TimelineFile>('timeline', path);
+    const inspected = this.inspected.value;
+    const content = inspected?.kind === 'timeline' && inspected.path === path ? inspected.content as unknown as TimelineFile : await this.client.readAsset<TimelineFile>('timeline', path);
     this.timeline.value = { path, content, time: 0, throughCamera: false, camera: undefined, subtitle: '' };
     this.seekTimeline(0);
   }
 
   /** 关掉时间轴：视口回到场景文档的样子。 */
   closeTimeline(): void {
-    clearTimeout(this.#timelineSave);
+    void this.#flushTimelineSave();
     this.agent.value?.endTimelinePreview();
     this.timeline.value = undefined;
   }
@@ -178,11 +217,12 @@ export class EditorSession implements EditableScene {
     if (!open) return;
     const content = change(open.content);
     this.timeline.value = { ...open, content };
+    // 属性面板正开着同一个时间轴：同一份内容（不然两边各存各的，后存的把先改的盖掉）
+    const inspected = this.inspected.value;
+    if (inspected?.kind === 'timeline' && inspected.path === open.path) this.inspected.value = { ...inspected, content: content as unknown as Record<string, unknown> };
     this.seekTimeline(open.time);
-    clearTimeout(this.#timelineSave);
-    this.#timelineSave = setTimeout(() => {
-      this.client.saveAsset('timeline', open.path, content).catch((error: unknown) => (this.notice.value = (error as Error).message));
-    }, 250);
+    clearTimeout(this.#timelineSave?.timer);
+    this.#timelineSave = { path: open.path, content, timer: setTimeout(() => void this.#flushTimelineSave(), 250) };
   }
 
   /**
@@ -196,8 +236,7 @@ export class EditorSession implements EditableScene {
     this.notice.value = '';
     try {
       if (this.dirty.value) await this.save();
-      clearTimeout(this.#timelineSave);
-      await this.client.saveAsset('timeline', open.path, open.content);
+      await this.#flushTimelineSave();
       const result = await agent.game.debug.run('render', { timeline: open.content.name, preset, name: `${open.content.name}-${preset}` }) as { path: string; elapsed: number };
       this.status.value = t.timelineExported(result.path, result.elapsed);
     } catch (error) {
@@ -261,7 +300,8 @@ export class EditorSession implements EditableScene {
       return;
     }
     try {
-      const content = await this.client.readAsset<Record<string, unknown>>(kind, path);
+      const open = this.timeline.value;
+      const content = kind === 'timeline' && open?.path === path ? open.content as unknown as Record<string, unknown> : await this.client.readAsset<Record<string, unknown>>(kind, path);
       this.inspected.value = { kind, path, content };
     } catch (error) {
       // 二进制的模型（导入的）读不了：面板上不显示，说明一下
@@ -277,10 +317,17 @@ export class EditorSession implements EditableScene {
     let current: unknown = now.content;
     for (const key of path) current = current !== null && typeof current === 'object' ? (current as Record<string | number, unknown>)[key] : undefined;
     const next = typeof value === 'function' ? (value as (previous: unknown) => unknown)(current) : value;
+    // 时间轴面板正开着同一个时间轴：改的是同一份（预览跟着变，由它存）
+    const open = this.timeline.value;
+    if (now.kind === 'timeline' && open?.path === now.path) {
+      this.editTimeline((file) => withPath(file, path, next) as TimelineFile);
+      return;
+    }
     const edited = { ...now, content: withPath(now.content, path, next) as Record<string, unknown> };
     this.inspected.value = edited;
     clearTimeout(this.#inspectedSave);
     this.#inspectedSave = setTimeout(() => {
+      this.#inspectedSave = undefined;
       this.client.saveAsset(edited.kind, edited.path, edited.content).catch((error: unknown) => (this.notice.value = (error as Error).message));
     }, INSPECTED_SAVE_DELAY);
   }

@@ -37,11 +37,14 @@ export interface FieldEditorProps {
 
 const styles = css.create({
   row: { display: 'grid', gridTemplateColumns: 'minmax(6em, 35%) 1fr', alignItems: 'center', gap: '_xs', minHeight: '1.9em' },
+  // 复合的字段（对象、列表、联合）：名字一行，内容在下面占满整宽——不然每嵌一层都按比例切一刀，嵌深了输入框就没宽度了
+  stacked: { display: 'flex', flexDirection: 'column', gap: '2px', minHeight: '1.9em' },
   label: { color: '_textMuted', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   unset: { opacity: '0.6' },
   vector: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(3.5em, 1fr))', gap: '2px' },
   nested: { display: 'flex', flexDirection: 'column', gap: '2px', paddingInlineStart: '_sm', borderInlineStartWidth: '1px', borderInlineStartStyle: 'solid', borderInlineStartColor: '_border' },
   item: { display: 'flex', gap: '_xs', alignItems: 'center' },
+  index: { color: '_textMuted', minWidth: '1.2em' },
   json: { width: '100%', minHeight: '4em', fontFamily: 'monospace', fontSize: '0.85em' },
   select: { width: '100%' },
   color: { display: 'flex', gap: '_xs', alignItems: 'center' },
@@ -75,8 +78,9 @@ export const FieldRow = _component(({ field, value, context, onSet }: { field: F
     const clearable = (field.optional && field.default === undefined && !missing) || (field.nullable === true && value !== null && !missing);
     // 必填的还没设（脚本的引用没选、null 也算没设）：试玩时这个脚本不挂
     const unsetRequired = !field.optional && (missing || (value === null && !field.nullable));
+    const compound = field.type.kind === 'object' || field.type.kind === 'list' || field.type.kind === 'union';
     return (
-      <div {...css.attrs(styles.row)}>
+      <div {...css.attrs(compound ? styles.stacked : styles.row)}>
         <span {...css.attrs(styles.label, missing && styles.unset, unsetRequired && styles.required)} title={unsetRequired ? t.requiredUnset(fieldName(field)) : fieldDescription(field)}>
           {fieldName(field)}{unsetRequired ? ' *' : ''}
         </span>
@@ -204,8 +208,10 @@ export const FieldEditor = _component(({ type, value, context, onSet }: FieldEdi
           <div {...css.attrs(styles.nested)}>
             {items.map((item, i) => (
               <div {...css.attrs(styles.item)}>
-                <span>{i}</span>
-                {item === null && type.nullableItems ? <span>{t.defaultItem}</span> : <FieldEditor type={type.item} value={item} context={context} onSet={(path: ValuePath, next: unknown) => onSet([i, ...path], next)} />}
+                <span {...css.attrs(styles.index)}>{i}</span>
+                <span {...css.attrs(styles.grow)}>
+                  {item === null && type.nullableItems ? <span>{t.defaultItem}</span> : <FieldEditor type={type.item} value={item} context={context} onSet={(path: ValuePath, next: unknown) => onSet([i, ...path], next)} />}
+                </span>
               </div>
             ))}
             <div {...css.attrs(styles.item)}>

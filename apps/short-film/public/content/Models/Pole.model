@@ -1,0 +1,17 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "cylinder",
+  "height": 3,
+  "radius": 0.06,
+  "tessellation": 24,
+  "localOffset": [
+   0,
+   1.5,
+   0
+  ]
+ },
+ "materials": [
+  "Materials/Metal"
+ ]
+}

@@ -1,0 +1,689 @@
+{
+ "name": "Evening",
+ "duration": 30,
+ "frameRate": 30,
+ "tracks": [
+  {
+   "type": "camera",
+   "cuts": [
+    {
+     "time": 0,
+     "camera": "fe251179-c0af-408f-832c-759d279153bd"
+    },
+    {
+     "time": 9,
+     "camera": "cc029fd8-54ae-45ed-9926-6f3a45b9dbda"
+    },
+    {
+     "time": 16.5,
+     "camera": "c50679e5-7faa-4891-92d2-3833f13d5b39"
+    },
+    {
+     "time": 24,
+     "camera": "278746a1-3ee7-4133-ad09-aecda1b92be8"
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "fe251179-c0af-408f-832c-759d279153bd",
+   "component": "Transform",
+   "property": "position",
+   "interpolation": "cubic",
+   "keys": [
+    {
+     "time": 0,
+     "value": [
+      -1,
+      1.4,
+      7.5
+     ]
+    },
+    {
+     "time": 9,
+     "value": [
+      -1.9,
+      1.1,
+      4.4
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "fe251179-c0af-408f-832c-759d279153bd",
+   "component": "Transform",
+   "property": "rotation",
+   "interpolation": "linear",
+   "keys": [
+    {
+     "time": 0,
+     "value": [
+      -0.0379,
+      0.1421,
+      0.0054,
+      0.9891
+     ]
+    },
+    {
+     "time": 9,
+     "value": [
+      -0.0323,
+      0.1431,
+      0.0047,
+      0.9892
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "cc029fd8-54ae-45ed-9926-6f3a45b9dbda",
+   "component": "Transform",
+   "property": "position",
+   "interpolation": "cubic",
+   "keys": [
+    {
+     "time": 9,
+     "value": [
+      -3.8,
+      0.95,
+      4.4
+     ]
+    },
+    {
+     "time": 9.95,
+     "value": [
+      -3.3037,
+      0.95,
+      4.5103
+     ]
+    },
+    {
+     "time": 10.9,
+     "value": [
+      -2.675,
+      0.95,
+      4.65
+     ]
+    },
+    {
+     "time": 11.85,
+     "value": [
+      -2.0463,
+      0.95,
+      4.7897
+     ]
+    },
+    {
+     "time": 12.8,
+     "value": [
+      -1.4176,
+      0.95,
+      4.9294
+     ]
+    },
+    {
+     "time": 13.75,
+     "value": [
+      -0.789,
+      0.95,
+      5.0691
+     ]
+    },
+    {
+     "time": 14.7,
+     "value": [
+      -0.1603,
+      0.95,
+      5.2088
+     ]
+    },
+    {
+     "time": 15.65,
+     "value": [
+      0.4684,
+      0.95,
+      5.3485
+     ]
+    },
+    {
+     "time": 16.6,
+     "value": [
+      0.7,
+      0.95,
+      5.4
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "cc029fd8-54ae-45ed-9926-6f3a45b9dbda",
+   "component": "Transform",
+   "property": "rotation",
+   "interpolation": "linear",
+   "keys": [
+    {
+     "time": 9,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    },
+    {
+     "time": 9.95,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    },
+    {
+     "time": 10.9,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    },
+    {
+     "time": 11.85,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    },
+    {
+     "time": 12.8,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    },
+    {
+     "time": 13.75,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    },
+    {
+     "time": 14.7,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    },
+    {
+     "time": 15.65,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    },
+    {
+     "time": 16.6,
+     "value": [
+      -0.0333,
+      -0.0898,
+      -0.003,
+      0.9954
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "c50679e5-7faa-4891-92d2-3833f13d5b39",
+   "component": "Transform",
+   "property": "position",
+   "interpolation": "cubic",
+   "keys": [
+    {
+     "time": 16.5,
+     "value": [
+      3.5649,
+      0.9,
+      3.9489
+     ]
+    },
+    {
+     "time": 17.438,
+     "value": [
+      2.9844,
+      0.9875,
+      4.1834
+     ]
+    },
+    {
+     "time": 18.375,
+     "value": [
+      2.3865,
+      1.075,
+      4.3083
+     ]
+    },
+    {
+     "time": 19.312,
+     "value": [
+      1.7909,
+      1.1625,
+      4.3248
+     ]
+    },
+    {
+     "time": 20.25,
+     "value": [
+      1.2167,
+      1.25,
+      4.2376
+     ]
+    },
+    {
+     "time": 21.188,
+     "value": [
+      0.6815,
+      1.3375,
+      4.0547
+     ]
+    },
+    {
+     "time": 22.125,
+     "value": [
+      0.2004,
+      1.425,
+      3.7869
+     ]
+    },
+    {
+     "time": 23.062,
+     "value": [
+      -0.2136,
+      1.5125,
+      3.4472
+     ]
+    },
+    {
+     "time": 24,
+     "value": [
+      -0.5506,
+      1.6,
+      3.0506
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "c50679e5-7faa-4891-92d2-3833f13d5b39",
+   "component": "Transform",
+   "property": "rotation",
+   "interpolation": "linear",
+   "keys": [
+    {
+     "time": 16.5,
+     "value": [
+      -0.0331,
+      0.3005,
+      0.0104,
+      0.9531
+     ]
+    },
+    {
+     "time": 17.438,
+     "value": [
+      -0.0467,
+      0.2162,
+      0.0104,
+      0.9752
+     ]
+    },
+    {
+     "time": 18.375,
+     "value": [
+      -0.0612,
+      0.1303,
+      0.0081,
+      0.9896
+     ]
+    },
+    {
+     "time": 19.312,
+     "value": [
+      -0.076,
+      0.0435,
+      0.0033,
+      0.9962
+     ]
+    },
+    {
+     "time": 20.25,
+     "value": [
+      -0.0911,
+      -0.0434,
+      -0.004,
+      0.9949
+     ]
+    },
+    {
+     "time": 21.188,
+     "value": [
+      -0.1059,
+      -0.1298,
+      -0.0139,
+      0.9858
+     ]
+    },
+    {
+     "time": 22.125,
+     "value": [
+      -0.1202,
+      -0.2148,
+      -0.0267,
+      0.9689
+     ]
+    },
+    {
+     "time": 23.062,
+     "value": [
+      -0.1336,
+      -0.2977,
+      -0.0421,
+      0.9443
+     ]
+    },
+    {
+     "time": 24,
+     "value": [
+      -0.1456,
+      -0.3779,
+      -0.0603,
+      0.9123
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "278746a1-3ee7-4133-ad09-aecda1b92be8",
+   "component": "Transform",
+   "property": "position",
+   "interpolation": "cubic",
+   "keys": [
+    {
+     "time": 24,
+     "value": [
+      1.2,
+      0.95,
+      4.2
+     ]
+    },
+    {
+     "time": 30,
+     "value": [
+      1.35,
+      0.95,
+      3.1
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "278746a1-3ee7-4133-ad09-aecda1b92be8",
+   "component": "Transform",
+   "property": "rotation",
+   "interpolation": "linear",
+   "keys": [
+    {
+     "time": 24,
+     "value": [
+      -0.031,
+      -0.0467,
+      -0.0015,
+      0.9984
+     ]
+    },
+    {
+     "time": 30,
+     "value": [
+      -0.0473,
+      -0.0356,
+      -0.0017,
+      0.9982
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "6d448502-8d19-4823-8463-f901a8da8a68",
+   "component": "Transform",
+   "property": "position",
+   "interpolation": "linear",
+   "keys": [
+    {
+     "time": 0,
+     "value": [
+      -3,
+      0,
+      0
+     ]
+    },
+    {
+     "time": 9.2,
+     "value": [
+      -3,
+      0,
+      0
+     ]
+    },
+    {
+     "time": 16,
+     "value": [
+      1.5,
+      0,
+      1
+     ]
+    },
+    {
+     "time": 30,
+     "value": [
+      1.5,
+      0,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "6d448502-8d19-4823-8463-f901a8da8a68",
+   "component": "Transform",
+   "property": "rotation",
+   "interpolation": "linear",
+   "keys": [
+    {
+     "time": 0,
+     "value": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "time": 8.6,
+     "value": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "time": 9.2,
+     "value": [
+      0,
+      0.6257,
+      0,
+      0.78
+     ]
+    },
+    {
+     "time": 16,
+     "value": [
+      0,
+      0.6257,
+      0,
+      0.78
+     ]
+    },
+    {
+     "time": 16.6,
+     "value": [
+      0,
+      0,
+      0,
+      1
+     ]
+    },
+    {
+     "time": 30,
+     "value": [
+      0,
+      0,
+      0,
+      1
+     ]
+    }
+   ]
+  },
+  {
+   "type": "property",
+   "entity": "54eecb29-d013-4960-a15a-c5b733019f42",
+   "component": "DayNightCycle",
+   "property": "timeOfDay",
+   "interpolation": "linear",
+   "keys": [
+    {
+     "time": 0,
+     "value": 17.9
+    },
+    {
+     "time": 30,
+     "value": 18.55
+    }
+   ]
+  },
+  {
+   "type": "animation",
+   "entity": "6d448502-8d19-4823-8463-f901a8da8a68",
+   "clips": [
+    {
+     "start": 0,
+     "clip": "Idle"
+    },
+    {
+     "start": 4.5,
+     "clip": "Wave",
+     "blend": 0.4
+    },
+    {
+     "start": 7.4,
+     "clip": "Idle",
+     "blend": 0.5
+    },
+    {
+     "start": 9,
+     "clip": "Walking",
+     "blend": 0.4
+    },
+    {
+     "start": 16,
+     "clip": "Idle",
+     "blend": 0.4
+    },
+    {
+     "start": 16.8,
+     "clip": "Dance",
+     "blend": 0.5
+    },
+    {
+     "start": 24.2,
+     "clip": "ThumbsUp",
+     "blend": 0.4
+    },
+    {
+     "start": 27,
+     "clip": "Wave",
+     "blend": 0.5
+    }
+   ]
+  },
+  {
+   "type": "sound",
+   "clips": [
+    {
+     "start": 0,
+     "sound": "Music/Theme",
+     "volume": 0.85
+    }
+   ]
+  },
+  {
+   "type": "subtitle",
+   "cues": [
+    {
+     "start": 1,
+     "end": 4.4,
+     "text": "Every evening, the little robot waits for the sunset."
+    },
+    {
+     "start": 5,
+     "end": 8.4,
+     "text": "Hello, sun!"
+    },
+    {
+     "start": 10,
+     "end": 15,
+     "text": "But today, it has somewhere to be."
+    },
+    {
+     "start": 17.5,
+     "end": 23,
+     "text": "Because today is a good day to dance."
+    },
+    {
+     "start": 25,
+     "end": 29.4,
+     "text": "See you tomorrow, sun!"
+    }
+   ]
+  },
+  {
+   "type": "event",
+   "events": [
+    {
+     "time": 30,
+     "name": "end"
+    }
+   ]
+  }
+ ]
+}

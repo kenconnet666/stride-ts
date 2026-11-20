@@ -114,6 +114,40 @@
    "components": {
     "skyAtmosphere": {
      "sun": "45837ae1-a26f-4479-8283-321473318a5b"
+    },
+    "dayNightCycle": {
+     "timeOfDay": 18,
+     "dayLength": 0,
+     "dayOfYear": 172,
+     "latitude": 35,
+     "north": 0,
+     "moonPhase": 0.5
+    },
+    "volumetricClouds": {
+     "coverage": 0.42,
+     "density": 1,
+     "bottom": 1500,
+     "thickness": 2500,
+     "cloudType": 0.7,
+     "scale": 1,
+     "windSpeed": 10,
+     "windDirection": 30
+    },
+    "volumetricFog": {
+     "density": 0.012,
+     "heightFalloff": 0.12,
+     "baseHeight": 0,
+     "color": [
+      1,
+      1,
+      1
+     ],
+     "anisotropy": 0.7,
+     "distance": 120,
+     "ambient": 1,
+     "noise": 0,
+     "noiseScale": 8,
+     "farFog": true
     }
    }
   },
@@ -175,7 +209,7 @@
    "name": "Robot",
    "parent": null,
    "position": [
-    0,
+    -3,
     0,
     0
    ],
@@ -186,9 +220,9 @@
     1
    ],
    "scale": [
-    1,
-    1,
-    1
+    0.3,
+    0.3,
+    0.3
    ],
    "components": {
     "model": {
@@ -255,6 +289,416 @@
       }
      ]
     }
+   }
+  },
+  {
+   "id": "fe251179-c0af-408f-832c-759d279153bd",
+   "name": "CamWide",
+   "parent": null,
+   "position": [
+    -1.2,
+    1.5,
+    8
+   ],
+   "rotation": [
+    -0.030259186619416043,
+    0.11038033348683804,
+    0.003362131846601782,
+    0.9934230013815423
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.05,
+     "farClipPlane": 2000,
+     "slot": 1,
+     "physical": {
+      "focalLength": 35,
+      "aperture": 4,
+      "focusDistance": 6.5,
+      "shutterAngle": 180,
+      "depthOfField": true
+     }
+    }
+   }
+  },
+  {
+   "id": "cc029fd8-54ae-45ed-9926-6f3a45b9dbda",
+   "name": "CamTrack",
+   "parent": null,
+   "position": [
+    -3,
+    1.1,
+    4.2
+   ],
+   "rotation": [
+    -0.023789307215243104,
+    0,
+    0,
+    0.9997169943850204
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.05,
+     "farClipPlane": 2000,
+     "slot": 1,
+     "physical": {
+      "focalLength": 45,
+      "aperture": 2.8,
+      "focusDistance": 4.5,
+      "shutterAngle": 180,
+      "depthOfField": true
+     }
+    }
+   }
+  },
+  {
+   "id": "c50679e5-7faa-4891-92d2-3833f13d5b39",
+   "name": "CamOrbit",
+   "parent": null,
+   "position": [
+    1.5,
+    1.6,
+    5.5
+   ],
+   "rotation": [
+    -0.05530038574178801,
+    0,
+    0,
+    0.9984697628555456
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.05,
+     "farClipPlane": 2000,
+     "slot": 1,
+     "physical": {
+      "focalLength": 40,
+      "aperture": 2.8,
+      "focusDistance": 3.4,
+      "shutterAngle": 180,
+      "depthOfField": true
+     }
+    }
+   }
+  },
+  {
+   "id": "278746a1-3ee7-4133-ad09-aecda1b92be8",
+   "name": "CamClose",
+   "parent": null,
+   "position": [
+    1.5,
+    1.75,
+    3.4
+   ],
+   "rotation": [
+    -0.05187287879625624,
+    0,
+    0,
+    0.9986536959554042
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.05,
+     "farClipPlane": 2000,
+     "slot": 1,
+     "physical": {
+      "focalLength": 50,
+      "aperture": 2,
+      "focusDistance": 2.6,
+      "shutterAngle": 180,
+      "depthOfField": true
+     }
+    }
+   }
+  },
+  {
+   "id": "fc805a9f-d4e9-49c7-9cec-5a4505b5d591",
+   "name": "LampPost",
+   "parent": null,
+   "position": [
+    -4.2,
+    0,
+    -1.2
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Pole",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "70d3cc72-9ea4-4d82-b0d1-003028918520",
+   "name": "LampGlobe",
+   "parent": null,
+   "position": [
+    -4.2,
+    3.05,
+    -1.2
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Globe",
+     "materials": [],
+     "isShadowCaster": false
+    },
+    "light": {
+     "type": "point",
+     "color": [
+      1,
+      0.72,
+      0.42
+     ],
+     "intensity": 6,
+     "radius": 9
+    }
+   }
+  },
+  {
+   "id": "76fa7fc9-ba25-4bc1-82c5-838850316eee",
+   "name": "Crate1",
+   "parent": null,
+   "position": [
+    3.3,
+    0,
+    -1.8
+   ],
+   "rotation": [
+    0,
+    0.17364817766693033,
+    0,
+    0.984807753012208
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Crate",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "ac81cd22-a910-4101-aac9-d6dd2a98c83b",
+   "name": "Crate2",
+   "parent": null,
+   "position": [
+    4.1,
+    0,
+    -1
+   ],
+   "rotation": [
+    0,
+    -0.13052619222005157,
+    0,
+    0.9914448613738104
+   ],
+   "scale": [
+    0.7,
+    0.7,
+    0.7
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Crate",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "b3e8075f-3c67-49a1-82bb-08f63cae8407",
+   "name": "Crate3",
+   "parent": null,
+   "position": [
+    3.6,
+    0.8,
+    -1.6
+   ],
+   "rotation": [
+    0,
+    0.3420201433256687,
+    0,
+    0.9396926207859084
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Crate",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "48f8c5f2-54ba-4a40-9dbc-aee6c283096d",
+   "name": "Rock1",
+   "parent": null,
+   "position": [
+    -6,
+    0.1,
+    -3
+   ],
+   "rotation": [
+    0,
+    0.08715574274765817,
+    0,
+    0.9961946980917455
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Rock",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "a00a0cc3-6ad2-4971-a1b8-cbb0df4845d5",
+   "name": "Rock2",
+   "parent": null,
+   "position": [
+    5.5,
+    0.05,
+    2.5
+   ],
+   "rotation": [
+    0,
+    0.573576436351046,
+    0,
+    0.8191520442889918
+   ],
+   "scale": [
+    0.7,
+    0.7,
+    0.7
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Rock",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "d8e5ed93-29d3-4393-800c-285db2817a87",
+   "name": "Rock3",
+   "parent": null,
+   "position": [
+    -1.5,
+    0.05,
+    -4
+   ],
+   "rotation": [
+    0,
+    -0.25881904510252074,
+    0,
+    0.9659258262890683
+   ],
+   "scale": [
+    1.4,
+    1.2,
+    1.4
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Rock",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "9af0aa92-8eaf-44ff-925c-e0664be45ce4",
+   "name": "Film",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "scripts": [
+     {
+      "type": "TimelinePlayer",
+      "props": {
+       "timeline": {
+        "$asset": "Films/Evening",
+        "kind": "timeline"
+       },
+       "subtitleFont": {
+        "$asset": "Fonts/OpenSans-Regular",
+        "kind": "font"
+       },
+       "subtitleSize": 36
+      }
+     }
+    ]
    }
   }
  ]

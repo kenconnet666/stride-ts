@@ -44,6 +44,7 @@ const styles = css.create({
   select: { width: '100%' },
   color: { display: 'flex', gap: '_xs', alignItems: 'center' },
   mixed: { color: '_textMuted', fontStyle: 'italic' },
+  required: { color: '_dangerText' },
 });
 
 /** 多选时值不一样的地方。 */
@@ -63,9 +64,13 @@ export const FieldRow = _component(({ field, value, context, onSet }: { field: F
   return () => {
     const missing = value === undefined;
     const shown = missing ? field.default : value;
+    // 必填的还没设（脚本的引用没选、null 也算没设）：试玩时这个脚本不挂
+    const unsetRequired = !field.optional && (missing || (value === null && !field.nullable));
     return (
       <div {...css.attrs(styles.row)}>
-        <span {...css.attrs(styles.label, missing && styles.unset)} title={field.description ?? field.name}>{field.label ?? field.name}</span>
+        <span {...css.attrs(styles.label, missing && styles.unset, unsetRequired && styles.required)} title={unsetRequired ? `${field.name}：必填，还没设` : field.description ?? field.name}>
+          {field.label ?? field.name}{unsetRequired ? ' *' : ''}
+        </span>
         {field.nullable && shown === null ? (
           <button type="button" onClick={() => onSet([], emptyValue(field.type))}>设置</button>
         ) : (

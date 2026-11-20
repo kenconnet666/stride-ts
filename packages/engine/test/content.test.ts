@@ -36,6 +36,7 @@ import {
   type GraphicsDevice,
   type MaterialFile,
   type PrefabFile,
+  type SceneEntityFile,
   type SceneFile,
   type SpriteSheetFile,
   type SkyboxFile,
@@ -320,6 +321,43 @@ describe('ContentManager', () => {
     const a = loaded.entities.get('a')!;
     expect(a.require(Listener).source).toBe(a.require(Signal));
     await expect(load(scene([{ type: 'G.Listener', props: { source: { $entity: 'a' } } }]))).rejects.toThrow(/has no Signal/);
+  });
+
+  test('和 Stride 不同：必填属性没设的脚本报错、不挂，场景照常加载；父实体不在场景里时警告，挂到还在的那一层实例上或最上层', async () => {
+    class Trigger extends SyncScript.props({ target: prop.entity(), speed: prop.number().default(1) }) {}
+    const entity = (id: string, parent: string | null, components: SceneEntityFile['components'] = {}): SceneEntityFile =>
+      ({ id, name: id.toUpperCase(), parent, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components });
+    const scene: SceneFile = {
+      name: 'Robust',
+      entities: [
+        entity('a', null, { scripts: [{ type: 'G.Trigger', props: { speed: 2 } }] }),
+        entity('b', null, { scripts: [{ type: 'G.Trigger', props: { target: { $entity: 'a' } } }] }),
+        // 预制体删掉了成员 a/weapon 以后，挂在它下面的实体；父实体完全不在的实体
+        entity('c', 'a/weapon'),
+        entity('d', 'gone'),
+      ],
+    };
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(8);
+    game.registry.registerModules({ './Trigger.ts': { Trigger } });
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => json(scene) });
+    const messages: string[] = [];
+    const [warn, error] = [console.warn, console.error];
+    console.warn = console.error = (message: string) => void messages.push(message);
+    try {
+      const loaded = await content.loadScene('scenes/Robust', game.entities);
+      const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((id) => loaded.entities.get(id)!);
+      expect([a!.get(Trigger), b!.require(Trigger).target]).toEqual([undefined, a!.id]);
+      expect([c!.require(Transform).parent, d!.require(Transform).parent]).toEqual([a, undefined]);
+    } finally {
+      [console.warn, console.error] = [warn, error];
+    }
+    expect(messages).toEqual([
+      expect.stringContaining("entity 'C' has parent a/weapon, which is not in the scene (removed from its prefab?); attached to 'A'"),
+      expect.stringContaining("entity 'D' has parent gone, which is not in the scene; placed at the top level"),
+      expect.stringMatching(/A: script G\.Trigger is skipped: G\.Trigger\.target .*required/),
+    ]);
   });
 
   test('场景的偏移（Stride 的 Scene.Offset）在场景上：实体的世界位置带着它，本地位置不带；可以运行时改；子场景的偏移接在父场景后面', async () => {

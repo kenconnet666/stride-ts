@@ -129,12 +129,12 @@ export class SceneBuilder {
   ): Map<string, Entity> {
     const created = into;
     const context = (file: SceneEntityFile): BuildContext => ({ content: this.#content, assets, manager: entities, created, file, where });
+    const listed = new Set(files.map((file) => file.id));
     for (const file of files) {
       const entity = entities.create({ name: file.name, components: [Transform.with({ position: file.position, rotation: file.rotation, scale: file.scale })] });
       if (file.parent !== null) {
-        const parent = created.get(file.parent);
-        if (!parent) throw new Error(`${where}: entity '${file.name}' comes before its parent ${file.parent}`);
-        entity.require(Transform).parent = parent;
+        if (!created.has(file.parent) && listed.has(file.parent)) throw new Error(`${where}: entity '${file.name}' comes before its parent ${file.parent}`);
+        entity.require(Transform).parent = parentOf(file, created, where);
       }
       created.set(file.id, entity);
       addComponents(entity, EARLY_KEYS, context(file));
@@ -152,11 +152,7 @@ export class SceneBuilder {
   update(entity: Entity, before: SceneEntityFile, after: SceneEntityFile, assets: SceneAssets, created: ReadonlyMap<string, Entity>, where: string): void {
     if (before.name !== after.name) entity.name = after.name;
     const transform = entity.require(Transform);
-    if (before.parent !== after.parent) {
-      const parent = after.parent === null ? undefined : created.get(after.parent);
-      if (after.parent !== null && !parent) throw new Error(`${where}: entity '${after.name}' has parent ${after.parent}, which is not in the scene`);
-      transform.parent = parent;
-    }
+    if (before.parent !== after.parent) transform.parent = after.parent === null ? undefined : parentOf(after, created, where);
     if (before.position !== after.position) Object.assign(transform.position, { x: after.position[0], y: after.position[1], z: after.position[2] });
     if (before.rotation !== after.rotation) Object.assign(transform.rotation, { x: after.rotation[0], y: after.rotation[1], z: after.rotation[2], w: after.rotation[3] });
     if (before.scale !== after.scale) Object.assign(transform.scale, { x: after.scale[0], y: after.scale[1], z: after.scale[2] });
@@ -199,6 +195,25 @@ export class SceneBuilder {
       pending = deferred;
     }
   }
+}
+
+/**
+ * 实体的父实体。父实体不在场景里时警告，挂到它所在的预制体实例上（父实体是 `<实例>/<预制体里的 id>`、预制体改了删掉了这个
+ * 成员时：挂到还在的、最近的那一层实例上），都没有就放在最上层；不让整个场景加载不了。
+ */
+function parentOf(file: SceneEntityFile, created: ReadonlyMap<string, Entity>, where: string): Entity | undefined {
+  const parent = file.parent!;
+  const found = created.get(parent);
+  if (found) return found;
+  for (let slash = parent.lastIndexOf('/'); slash > 0; slash = parent.lastIndexOf('/', slash - 1)) {
+    const instance = created.get(parent.slice(0, slash));
+    if (instance) {
+      console.warn(`[stride] ${where}: entity '${file.name}' has parent ${parent}, which is not in the scene (removed from its prefab?); attached to '${instance.name}' instead`);
+      return instance;
+    }
+  }
+  console.warn(`[stride] ${where}: entity '${file.name}' has parent ${parent}, which is not in the scene; placed at the top level`);
+  return undefined;
 }
 
 /** 两个版本的实体文件之间的差别。 */

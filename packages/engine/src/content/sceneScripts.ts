@@ -63,7 +63,8 @@ export class SceneScriptBinder {
   }
 
   /**
-   * 把 script 挂到 entity 上；找不到对应的 TS 脚本时警告并跳过。where 用在警告里（场景和实体名）。
+   * 把 script 挂到 entity 上；找不到对应的 TS 脚本时警告并跳过，属性的值不对（必填的没设、类型不对）时报错并跳过。where 用在
+   * 警告里（场景和实体名）。
    * deferMissing 时，引用的组件或脚本还没挂上（比如同一个实体上排在后面的脚本）就不挂，返回 false，调用方之后再试。
    */
   attach(entity: Entity, script: SceneScript, context: ScriptValueContext, where: string, { deferMissing = false } = {}): boolean {
@@ -89,6 +90,13 @@ export class SceneScriptBinder {
       const component = resolveComponent(value, field.options.target!(), context, `${where}: ${script.type}.${name}`, deferMissing);
       if (component === MISSING) return false;
       init[field.name] = component;
+    }
+    // 和 Stride 不同：属性不对的脚本不挂、游戏照常启动（Stride 照挂，脚本用到没设的引用时才抛 NullReferenceException；
+    // 我们的脚本属性在构造时校验，抛出来整个场景就加载不了）。在编辑器里加了脚本、还没填必填的属性时常见
+    const issues = type.schema.validate(init);
+    if (issues.length > 0) {
+      console.error(`[stride] ${where}: script ${script.type} is skipped: ${issues.map((issue) => `${[script.type, ...issue.path].join('.')} ${issue.message}`).join('; ')}`);
+      return true;
     }
     (entity.get(type) ? context.extraEntity(entity) : entity).add({ script: type, init });
     return true;

@@ -317,11 +317,26 @@ export class EditorSession implements EditableScene {
     if (agent) agent.selection = ids;
   }
 
+  /** 保存；有脚本的必填属性没设时照样保存，在 notice 里列出来（试玩时这些脚本不挂）。 */
   async save(): Promise<void> {
     const opened = this.opened.value;
     if (!opened) return;
     await this.client.saveAsset(opened.kind, opened.path, this.file);
     this.dirty.value = false;
+    const missing = this.missingRequiredProps();
+    this.notice.value = missing.length === 0 ? '' : `已保存；${missing.length} 处脚本的必填属性没设，试玩时这些脚本不挂：${missing.slice(0, 3).join('、')}${missing.length > 3 ? '……' : ''}`;
+  }
+
+  /** 展开的场景里，脚本的必填属性（没有默认值的）没设或者是 null 的地方：`实体名 脚本类名.属性`。游戏里没有的脚本不查。 */
+  missingRequiredProps(): string[] {
+    const agent = this.agent.value;
+    if (!agent) return [];
+    return this.expanded.flatMap((entity) => (entity.components.scripts ?? []).flatMap((script) => {
+      const fields = agent.scriptFields(script.type) ?? [];
+      const props = script.props as Readonly<Record<string, unknown>>;
+      const name = script.type.slice(Math.max(script.type.lastIndexOf('.'), script.type.lastIndexOf('#')) + 1);
+      return fields.filter((field) => !field.optional && props[field.name] == null).map((field) => `${entity.name || entity.id} ${name}.${field.name}`);
+    }));
   }
 
   #changed(dirty = true): void {

@@ -159,14 +159,14 @@ type Animation = { speed: string; fading: Playing; run: Playing; punch: Playing;
 const animation = evaluate<Animation>(`(async () => {
   const component = named('AnimationBasics')[0].require(strideEngine.AnimationComponent);
   const playing = () => component.playingAnimations.map((p) => [p.name, p.weight, p.enabled, p.repeatMode]);
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // 按游戏时间等（seconds）：CI 的软件 WebGPU 上一帧几百毫秒，墙钟的 0.8 秒淡入还没走完
   const r = {};
   await tap('KeyE'); r.speed = lines().find((l) => l.startsWith('Q and E'));
   await tap('KeyR'); await frames(5); r.fading = playing();
-  await wait(800); r.run = playing();
-  await tap('KeyP'); await wait(300); r.punch = playing();
+  await seconds(0.8); r.run = playing();
+  await tap('KeyP'); await seconds(0.3); r.punch = playing();
   await tap('KeyS'); r.paused = playing(); await tap('KeyS');
-  await wait(2500); r.idle = playing();
+  await seconds(2.5); r.idle = playing();
   return r;
 })()`);
 const names = (playing: Playing) => playing.map(([name]) => name).join();
@@ -185,7 +185,8 @@ const audio = evaluate<Audio>(`(async () => {
   await tap('Space'); r.paused = find('Space');
   const gun = named('AudioDemo')[0].require(strideEngine.AudioEmitterComponent).controller('Gun');
   r.gun = [gun.playState];
-  await click(640, 360, 2); r.gun.push(gun.playState);
+  // 按着右键的时候看：帧慢时松开以后再看，枪声可能已经放完了
+  r.gun.push(await click(640, 360, 2, () => until(() => gun.playState === 'playing', 1).then(() => gun.playState)));
   await tap('KeyU');
   const l = strideGame.audio.context.listener;
   r.listener = [l.positionX.value, l.positionY.value, l.positionZ.value];
@@ -205,14 +206,17 @@ const pose = (character: string, pivot: string) => evaluate<Pose>(`(() => {
     position: position('${character}'), camera: named('ThirdPersonPivot').length ? position('ThirdPersonPivot') : [],
   };
 })()`);
+// 锁鼠标、移动、按键都等游戏处理过（until、frames、holdFor 按游戏时间），不按墙钟等
 const lock = async () => {
   stride('mouse', 'left', '--trusted');
-  await sleep(300);
+  stride('eval', 'until(() => strideGame.input.isMousePositionLocked, 3).then(() => frames(2)).then(() => 1)');
 };
 const move = async (dx: number, dy: number) => {
   stride('mouse', 'move', String(dx), String(dy));
-  await sleep(300);
+  stride('eval', 'frames(3).then(() => 1)');
 };
+const hold = (code: string, s: number) => stride('eval', `holdFor('${code}', ${s}).then(() => 1)`);
+const escape = () => stride('eval', `tap('Escape').then(() => 1)`);
 
 // —— 第一人称相机：真实点击锁鼠标；鼠标转角色和相机的支点（灵敏度同 Stride），俯仰有上限；W 往看的方向走；Esc 解锁 ——
 load('First person camera');
@@ -227,7 +231,7 @@ const looked = first();
 check('第一人称：没锁鼠标时不转；真实点击锁定后鼠标转角色（偏航）和支点（俯仰）',
   !firstBefore.locked && Math.abs(unlocked.yaw - firstBefore.yaw) < 1e-5 && looked.locked
   && Math.abs(looked.yaw - firstBefore.yaw + 0.03) < 0.002 && Math.abs(looked.pitch - (32 / 720) * 0.6) < 0.002, { firstBefore, unlocked, looked });
-stride('key', 'W', '--hold', '1000');
+hold('KeyW', 1);
 const walked = first();
 const dx = walked.position[0]! - looked.position[0]!, dz = walked.position[2]! - looked.position[2]!;
 // 角色的前方是本地 +Z：偏航 θ 时朝 (sin θ, cos θ)，前进速度 4 米每秒
@@ -235,7 +239,7 @@ check('第一人称：W 往角色面对的方向走', Math.hypot(dx, dz) > 3 && 
 await move(0, 3000);
 const down = first();
 check('第一人称：俯仰最多 50°', Math.abs(down.pitch - (50 * Math.PI) / 180) < 1e-3, down);
-stride('key', 'Escape');
+escape();
 check('第一人称：Esc 解锁鼠标', !first().locked, first());
 
 // —— 第三人称相机：相机在角色后面 3 米；退到墙边时不穿墙，退回第一人称的位置；离墙远一点时贴在墙前 ——
@@ -245,13 +249,13 @@ await lock();
 await move(128, 0);
 const turned = third();
 check('第三人称：鼠标转角色，相机在后面 3 米', turned.locked && Math.abs(turned.yaw + 0.06) < 0.002 && turned.camera.join() === '0,0,-3', turned);
-stride('key', 'S', '--hold', '2500');
+hold('KeyS', 2.5);
 const atWall = third();
 check('第三人称：退到墙边，相机退回第一人称的位置（Stride 的脚本在这里会穿墙）', atWall.position[2]! < -4 && atWall.camera.join() === '0,0,0', atWall);
-stride('key', 'W', '--hold', '500');
+hold('KeyW', 0.5);
 const nearWall = third();
 check('第三人称：往前走开一点，相机贴在墙前', nearWall.camera[2]! < -1.4 && nearWall.camera[2]! > -2.9, nearWall);
-stride('key', 'Escape');
+escape();
 
 // —— 导航：点地面，角色沿寻到的路走过去，拐点上各放一个球，到了以后清掉 ——
 load('Navigation');

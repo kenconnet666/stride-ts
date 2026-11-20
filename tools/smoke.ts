@@ -33,7 +33,8 @@ export interface Smoke {
  *                                    不按墙钟等（CI 的软件 WebGPU 上一帧几百毫秒），也不按帧数等（帧率随机器变）
  *   sceneChanged(from)               等根场景从 from 换掉、新场景画过一帧（换场景要加载、编管线，慢的机器上几秒到几十秒）；返回新场景的名字
  *   pointerAt(type, x, y, target?)   在画布的 (x, y)（CSS 像素）发一个合成的指针事件（连同对应的鼠标事件）；松开发给 window
- *   click(x, y, button = 0)          在画布的 (x, y)（CSS 像素）点一下鼠标（合成事件，锁不了指针）
+ *   click(x, y, button = 0, during?) 在画布的 (x, y)（CSS 像素）点一下鼠标（合成事件，锁不了指针）；给了 during 时按下一帧后 await 它、
+ *                                    再松开，返回它的值（看"按着的时候"的状态：帧慢时松开以后再看，短的音效可能已经放完）
  *   uiElements()                     所有页面的全部 UI 元素
  *   uiFind(name)                     这个名字的 UI 元素
  *   uiPoint(nameOrElement)           全屏 UI 的元素的中心在画布上的位置（CSS 像素）
@@ -76,10 +77,12 @@ export const PAGE_HELPERS = `(() => {
   globalThis.tap = async (code) => { key('keydown', code); await frames(2); key('keyup', code); await frames(2); };
   globalThis.hold = async (code, n) => { key('keydown', code); await frames(n); const seen = lines(); key('keyup', code); await frames(2); return seen; };
   globalThis.holdFor = async (code, s, sample) => { key('keydown', code); await seconds(s); const seen = sample?.(); key('keyup', code); await frames(2); return seen; };
-  globalThis.click = async (x, y, button = 0) => {
+  globalThis.click = async (x, y, button = 0, during) => {
     pointer('pointermove', x, y, button); await frame();
-    pointer('pointerdown', x, y, button); await frames(2);
+    pointer('pointerdown', x, y, button); await frame();
+    const seen = await during?.(); await frame();
     pointer('pointerup', x, y, button, window); await frames(2);
+    return seen;
   };
   const all = (e, out = []) => { out.push(e); for (const c of e.visualChildren) all(c, out); return out; };
   const pages = () => G.ui.components.filter((c) => c.page?.rootElement);

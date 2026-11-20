@@ -196,8 +196,16 @@ async function recordCpuProfile(cdp: DevtoolsSession, seconds: number): Promise<
 
 /**
  * 在画布中央真实地按一下鼠标（DevTools 协议的 Input.dispatchMouseEvent）：和合成的 DOM 事件不同，它算用户操作，页面能拿到指针
- * 锁定。--hold 按住这么久，--down、--up 只按下或只松开；默认按下 100 ms（游戏至少跑过几帧）再松开。
+ * 锁定。--hold 按住这么久，--down、--up 只按下或只松开；默认按住到游戏跑过一帧（至少 100 ms）再松开：按下、松开落在同一帧里时
+ * 脚本的 isMouseButtonDown 一直是 false（帧很慢的机器上，比如 CI 的软件 WebGPU，100 ms 不到一帧）；只多按一帧，按住连发的枪不会多打一发。
  */
+/** 页面里等 100 ms、再等游戏的帧号走过一帧（页面里没有游戏时只等 100 ms；暂停时帧号不走，最多等 5 秒）。 */
+const HOLD_ONE_FRAME = `new Promise((resolve) => setTimeout(() => {
+  const game = globalThis.strideGame, start = game?.frames ?? 0, end = performance.now() + 5000;
+  const next = () => (!game || game.frames >= start + 1 || performance.now() > end ? resolve(1) : requestAnimationFrame(next));
+  next();
+}, 100))`;
+
 async function trustedClick(button: string): Promise<unknown> {
   if (!['left', 'middle', 'right'].includes(button)) throw new Error(`button must be left, middle or right, got '${button}'`);
   const { cdp: session } = await pageCdp('mouse --trusted');
@@ -210,7 +218,10 @@ async function trustedClick(button: string): Promise<unknown> {
   const send = (type: 'mousePressed' | 'mouseReleased') => cdp.send('Input.dispatchMouseEvent', { type, x, y, button, clickCount: 1 });
   if (!options.up) await send('mousePressed');
   if (options.down) return { pressed: [x, y] };
-  if (!options.up) await new Promise((resolve) => setTimeout(resolve, Number(options.hold ?? 100)));
+  if (!options.up) {
+    if (options.hold !== undefined) await new Promise((resolve) => setTimeout(resolve, Number(options.hold)));
+    else await cdp.send('Runtime.evaluate', { expression: HOLD_ONE_FRAME, awaitPromise: true });
+  }
   await send('mouseReleased');
   return { clicked: [x, y] };
 }

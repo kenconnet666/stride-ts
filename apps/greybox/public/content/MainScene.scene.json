@@ -192,6 +192,174 @@
      "materials": []
     }
    }
+  },
+  {
+   "id": "bf4537f0-32a0-4ea8-86c3-dfb6294b7e56",
+   "name": "Fountain",
+   "parent": null,
+   "position": [
+    -3,
+    0.2,
+    3
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "particleSystem": {
+     "particleSystem": {
+      "settings": {},
+      "emitters": [
+       {
+        "emitterName": "Sparks",
+        "particleLifetime": [
+         1.5,
+         2.5
+        ],
+        "shapeBuilder": {
+         "$type": "shapeBuilderBillboard"
+        },
+        "material": {
+         "$type": "particleMaterialComputeColor",
+         "computeColor": {
+          "$type": "computeSoftCircle",
+          "hardness": 0
+         },
+         "alphaAdditive": 1
+        },
+        "spawners": [
+         {
+          "$type": "spawnerPerSecond",
+          "spawnCount": 80
+         }
+        ],
+        "initializers": [
+         {
+          "$type": "initialSizeSeed",
+          "randomSize": [
+           0.3,
+           0.5
+          ]
+         },
+         {
+          "$type": "initialVelocitySeed",
+          "velocityMin": [
+           -0.5,
+           2,
+           -0.5
+          ],
+          "velocityMax": [
+           0.5,
+           3,
+           0.5
+          ]
+         },
+         {
+          "$type": "initialColorSeed",
+          "colorMin": [
+           1,
+           1,
+           1,
+           1
+          ],
+          "colorMax": [
+           1,
+           1,
+           1,
+           1
+          ]
+         }
+        ],
+        "updaters": [
+         {
+          "$type": "updaterColorOverTime",
+          "samplerMain": {
+           "$type": "computeCurveSamplerVector4",
+           "curve": {
+            "$type": "computeAnimationCurveVector4",
+            "keyFrames": [
+             {
+              "key": 0,
+              "value": [
+               0.18823529411764706,
+               0.5019607843137255,
+               1,
+               1
+              ],
+              "tangentType": "linear"
+             },
+             {
+              "key": 0.5,
+              "value": [
+               1,
+               0.4,
+               0.1,
+               1
+              ],
+              "tangentType": "linear"
+             },
+             {
+              "key": 1,
+              "value": [
+               0.2,
+               0.2,
+               0.2,
+               0
+              ],
+              "tangentType": "linear"
+             }
+            ]
+           }
+          }
+         },
+         {
+          "$type": "updaterSizeOverTime",
+          "samplerMain": {
+           "$type": "computeCurveSamplerFloat",
+           "curve": {
+            "$type": "computeAnimationCurveFloat",
+            "keyFrames": [
+             {
+              "key": 0,
+              "value": 0.3,
+              "tangentType": "linear"
+             },
+             {
+              "key": 0.3,
+              "value": 1,
+              "tangentType": "linear"
+             },
+             {
+              "key": 1,
+              "value": 0,
+              "tangentType": "linear"
+             }
+            ]
+           }
+          }
+         },
+         {
+          "$type": "updaterGravity",
+          "gravitationalAcceleration": [
+           0,
+           -1,
+           0
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    }
+   }
   }
  ]
 }

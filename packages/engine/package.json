@@ -13,6 +13,7 @@
     "./editor-fields": "./src/editor/fields.ts",
     "./material-graph": "./src/rendering/mesh/materialGraph.ts",
     "./node-graph": "./src/graph/nodeGraph.ts",
+    "./editor-particles": "./src/editor/particleModules.ts",
     "./png": "./src/offline/png.ts",
     "./editor-field-schema": "./src/editor/fieldSchema.ts",
     "./editor-prefabs": "./src/editor/prefabEdits.ts",

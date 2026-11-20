@@ -7,6 +7,7 @@
  * - ComputeVertexStreamColor：顶点颜色（粒子的颜色）；
  * - ComputeFloat4、ComputeFloat：常量；ComputeColor：常量颜色，换到线性空间、预乘 alpha（同 Stride 的 ToColorSpace、PremultiplyAlpha）；
  * - ComputeBinaryColor、ComputeBinaryScalar：两个子节点按 Operator 合成（现在有 Multiply、Add、Subtract、Overlay，别的先当 Multiply 并警告）；
+ * - ComputeSoftCircle（我们加的）：柔和的圆点，粒子的默认材质用；
  * - ComputeShaderClassColor：游戏登记的着色器类（Stride 的 .sdsl 着色器类写成 WGSL），泛型参数按名字传。
  * 认不出的节点当白色。树的格式同粒子模块（ParticleModuleFile：$type 是首字母小写的类名，贴图是 TextureRef）。
  */
@@ -100,6 +101,12 @@ export class ColorTreeCompiler {
       }
       case 'computeVertexStreamColor':
         return 'streams.color';
+      case 'computeSoftCircle': {
+        // 和 Stride 不同（我们加的）：UV 中心到边上从 1 渐变到 0 的圆点，按预乘 alpha 输出（粒子不用另带一张圆点贴图）；
+        // hardness 越大中间实的越多
+        const hardness = Math.min(Math.max(get(file, 'hardness', 0), 0), 0.99);
+        return `vec4f(1.0 - smoothstep(${float(hardness)}, 1.0, length(streams.uv * 2.0 - 1.0)))`;
+      }
       case 'computeFloat4':
         return literal4(get(file, 'value', [1, 1, 1, 1]));
       case 'computeFloat':

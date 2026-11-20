@@ -264,6 +264,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
               {labelText(COMPONENT_FIELDS[key].label)}
               <IconButton icon={X} variant="ghost" aria-label={t.remove(labelText(COMPONENT_FIELDS[key].label))} onClick={() => removeComponent(list, key)} />
             </div>
+            {key === 'particleSystem' && list.length === 1 && <button type="button" onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</button>}
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key])} context={context} onSet={setter(list, () => ['components', key])} />
           </section>
         ))}

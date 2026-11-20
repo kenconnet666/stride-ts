@@ -65,6 +65,8 @@ export class EditorSession implements EditableScene {
   readonly painting = shallowRef<{ readonly layer: number; readonly mask: string }>();
   /** 绘制的笔刷（半径、硬度、强度、擦除），换着画别的层时保留。 */
   readonly paintBrush = shallowRef<PaintBrush>({ radius: 0.25, hardness: 0.5, strength: 0.8, erase: false });
+  /** 粒子面板开着时编辑的实体（场景文件里的 id）；没开时是 undefined。 */
+  readonly particleEntity = shallowRef<string>();
   /** 节点图面板开着（编辑的是属性面板里正开着的材质的 graph）。 */
   readonly graphOpen = shallowRef(false);
   /** 正在导出的时间轴（名字）；没在导出时是 undefined。 */
@@ -260,6 +262,15 @@ export class EditorSession implements EditableScene {
     this.paintBrush.value = brush;
     const paint = this.agent.value?.paint;
     if (paint) paint.brush = brush;
+  }
+
+  /** 打开粒子面板，编辑这个实体的粒子系统（底部显示）。 */
+  openParticles(entity: string): void {
+    this.particleEntity.value = entity;
+  }
+
+  closeParticles(): void {
+    this.particleEntity.value = undefined;
   }
 
   /** 打开属性面板里那个材质的节点图（还没有图时建一个只有材质输出的空图），面板显示在下面。 */

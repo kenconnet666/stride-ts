@@ -107,6 +107,27 @@ export interface EditorMessages {
   readonly timelineExported: (path: string, seconds: number) => string;
   readonly graphOpen: string;
   readonly paintLayers: string;
+  readonly particleOpen: string;
+  readonly particleTitle: (name: string) => string;
+  readonly particleEmitter: (n: number) => string;
+  readonly particleAddEmitter: string;
+  readonly particleRemoveEmitter: string;
+  readonly particleClose: string;
+  readonly particleNoSystem: string;
+  readonly particleEmitterSettings: string;
+  readonly particleAddModule: string;
+  readonly particleUp: string;
+  readonly particleDown: string;
+  readonly particleRemove: string;
+  readonly particleAddCurve: string;
+  readonly particleRemoveCurve: string;
+  readonly particleGradientHint: string;
+  readonly particleStopColor: string;
+  readonly particleStopAlpha: string;
+  readonly particleStopRemove: string;
+  readonly particleStacks: { readonly spawners: string; readonly initializers: string; readonly updaters: string; readonly shapeBuilder: string; readonly material: string };
+  readonly particleModules: Readonly<Record<string, string>>;
+  readonly particleFields: Readonly<Record<string, string>>;
   readonly paintAddLayer: string;
   readonly paintLayer: (n: number) => string;
   readonly paintColor: string;
@@ -235,6 +256,35 @@ const zhCN: EditorMessages = {
   timelineExported: (path, seconds) => `已导出 ${path}（${seconds.toFixed(0)} 秒）`,
   graphOpen: '节点图',
   paintLayers: '图层',
+  particleOpen: '粒子编辑器',
+  particleTitle: (name) => `粒子：${name}`,
+  particleEmitter: (n) => `发射器 ${n}`,
+  particleAddEmitter: '加发射器',
+  particleRemoveEmitter: '删掉这个发射器',
+  particleClose: '关掉粒子编辑器',
+  particleNoSystem: '选中一个有粒子系统的实体，在属性面板上点"粒子编辑器"',
+  particleEmitterSettings: '发射器',
+  particleAddModule: '加模块……',
+  particleUp: '往上挪',
+  particleDown: '往下挪',
+  particleRemove: '删掉这个模块',
+  particleAddCurve: '加曲线',
+  particleRemoveCurve: '去掉曲线',
+  particleGradientHint: '双击加一个色标；拖色标挪位置，点选中改颜色',
+  particleStopColor: '色标的颜色',
+  particleStopAlpha: '透明度',
+  particleStopRemove: '删掉色标',
+  particleStacks: { spawners: '生成', initializers: '初始化', updaters: '更新', shapeBuilder: '形状', material: '材质' },
+  particleModules: {
+    spawnerPerSecond: '每秒生成', spawnerBurst: '一次爆发', spawnerPerFrame: '每帧生成', spawnerFromDistance: '按移动距离生成',
+    initialSizeSeed: '随机大小', initialPositionSeed: '随机位置', initialVelocitySeed: '随机速度', initialDirectionSeed: '随机方向', initialRotationSeed: '随机旋转',
+    initialColorSeed: '随机颜色', initialSpawnOrder: '生成顺序', initialPositionArc: '弧线位置', initial3DRotationSeed: '随机三维旋转',
+    updaterGravity: '重力', updaterSizeOverTime: '大小随寿命', updaterColorOverTime: '颜色随寿命', updaterRotationOverTime: '旋转随寿命', updaterSpeedToDirection: '朝向速度',
+    updaterWind: '风', updaterForceField: '力场', updaterCollider: '碰撞', updaterDepthCollision: '按深度碰撞',
+    shapeBuilderBillboard: '公告板', shapeBuilderQuad: '方片', shapeBuilderOrientedQuad: '朝速度的方片', shapeBuilderHexagon: '六边形',
+    particleMaterialComputeColor: '颜色材质',
+  },
+  particleFields: { samplerMain: '曲线', samplerOptional: '第二条曲线', samplerSize: '大小曲线', samplerRotation: '旋转曲线' },
   paintAddLayer: '加绘制层',
   paintLayer: (n) => `图层 ${n}`,
   paintColor: '这一层的颜色',
@@ -366,6 +416,27 @@ const enUS: EditorMessages = {
   timelineExported: (path, seconds) => `Exported ${path} (${seconds.toFixed(0)} s)`,
   graphOpen: 'Node graph',
   paintLayers: 'Layers',
+  particleOpen: 'Particle editor',
+  particleTitle: (name) => `Particles: ${name}`,
+  particleEmitter: (n) => `Emitter ${n}`,
+  particleAddEmitter: 'Add emitter',
+  particleRemoveEmitter: 'Remove this emitter',
+  particleClose: 'Close the particle editor',
+  particleNoSystem: 'Select an entity with a particle system and click "Particle editor" in the inspector',
+  particleEmitterSettings: 'Emitter',
+  particleAddModule: 'Add module…',
+  particleUp: 'Move up',
+  particleDown: 'Move down',
+  particleRemove: 'Remove this module',
+  particleAddCurve: 'Add curve',
+  particleRemoveCurve: 'Remove the curve',
+  particleGradientHint: 'Double-click to add a stop; drag a stop to move it, click it to edit its color',
+  particleStopColor: 'Stop color',
+  particleStopAlpha: 'Alpha',
+  particleStopRemove: 'Remove stop',
+  particleStacks: { spawners: 'Spawn', initializers: 'Initialize', updaters: 'Update', shapeBuilder: 'Shape', material: 'Material' },
+  particleModules: {},
+  particleFields: {},
   paintAddLayer: 'Add paint layer',
   paintLayer: (n) => `Layer ${n}`,
   paintColor: 'Color of this layer',

@@ -2,6 +2,10 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 编辑器里的反射探针：画盒子，场景一改就重拍
+
+选中带 ReflectionProbe 的实体时，视口里画它影响的盒子（以实体为中心、按世界的轴、边长乘实体的缩放，同 ReflectionProbes 的算法）和外面一圈过渡距离（淡色），关掉深度测试（盒子常常埋在墙里）；F 聚焦把这个盒子算进包围盒。编辑状态下场景文档每变一次，所有 refresh 是 once 的探针重拍（`EditAgent.sync` 里 `renderSystem.reflectionProbes.refresh()`）：游戏运行时 once 的探针只在自己加进来、挪了、改设置时拍，编辑时改灯光、天空、物体以后反射里会留着旧的样子（实测：太阳调到傍晚，探针盒子里的地面还是中午的亮）。重拍每次六帧加预滤波，只在编辑状态做；拖动中每帧都在重新开始，松手以后拍完。
+
 ## 2026-11-20 风场和雨雪的底座（`weather/`，Stride 没有）
 
 P4 "天气系统和风场"的底座，建在 GPU 粒子上。以后天气状态（云量、雾、雨雪）一起驱动，现在雨雪的强度由外面给，不读天空。
@@ -12,6 +16,7 @@ P4 "天气系统和风场"的底座，建在 GPU 粒子上。以后天气状态�
 - **屋顶下不下**：要一张从上往下的深度图（各家都是这么做的，Godot 叫 heightfield、别处叫 rain occlusion map），跟着相机、按格子吸附、挪出一格才重画；GPU 内核按粒子的 xz 采样，落到深度图记的高度以下就死掉。要在前向渲染器里加一个俯视视图和一个深度通道（同反射探针的做法），在和主会话确认改 ForwardRenderer。
 - **还不能写进场景文件**：WindZone、Precipitation 要进 `content/format.ts` 的组件类型和 `SceneBuilder` 才能从场景文件加载、在编辑器里改，这两个文件现在主会话在改，之后补。现在用代码建（`entities.create({ components: [Transform, Precipitation.with({ kind: 'snow' })] })`）。
 - **量的**（particles-sample 的 MainScene，无头 Chrome 1280x720，RX 9070 GRE）：雨，强度 1，半宽 20 米（容量 9.4 万）：粒子的计算通道 0.049 ms，帧时间不变（120 fps，垂直同步）；雪容量 21 万。
+
 ## 2026-11-20 脚本声明要实体上有的组件（requires）
 
 编辑器验收时好几个样例的脚本加到不合适的实体上只在运行时报错（`this.entity.require(UIComponent)`、`require(AnimationComponent)` 在 start 里抛）。和 Stride 不同（它没有），照 Unity 的 RequireComponent：

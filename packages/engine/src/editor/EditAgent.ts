@@ -23,7 +23,7 @@ import type { Game } from '../games/Game';
 import { Matrix, type Matrix4 } from '../mathematics/Matrix';
 import { Quaternion, Vector3 } from '../mathematics/vectors';
 import { screenToWorldRaySegment, worldToScreen } from '../rendering/cameraRays';
-import { Camera, Model, ModelPart } from '../rendering/components';
+import { Camera, Model, ModelPart, ReflectionProbe } from '../rendering/components';
 import { Mesh } from '../rendering/Mesh';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
@@ -40,6 +40,9 @@ export const EDITOR_CAMERA_SLOT = 0xed17;
 
 /** 选中的东西的框的颜色（线性）。 */
 const SELECTION_COLOR: DebugColor = [1, 0.55, 0.1, 1];
+/** 反射探针的盒子，和外面一圈过渡距离（淡出的范围）。 */
+const PROBE_COLOR: DebugColor = [0.2, 0.85, 1, 1];
+const PROBE_BLEND_COLOR: DebugColor = [0.2, 0.85, 1, 0.35];
 const AXIS_COLORS: Readonly<Record<GizmoAxis, DebugColor>> = { x: [1, 0.15, 0.15, 1], y: [0.25, 0.9, 0.2, 1], z: [0.2, 0.4, 1, 1] };
 const ACTIVE_COLOR: DebugColor = [1, 0.9, 0.2, 1];
 /** 操纵器的轴在画面上有多长（画面高度的倍数）。 */
@@ -85,6 +88,8 @@ export class EditAgent {
   #live: LiveScene | undefined;
   #target: EditableScene | undefined;
   #selection: readonly string[] = [];
+  /** 反射探针上次重拍时的文档（sync 里比，文档变了就重拍）。 */
+  #probesFile: SceneFile | undefined;
 
   constructor(game: Game) {
     this.game = game;
@@ -136,8 +141,15 @@ export class EditAgent {
 
   /** 文档改了：让实体跟上（见 LiveScene.sync）。 */
   async sync(): Promise<void> {
-    await this.#require().sync();
+    const live = this.#require();
+    await live.sync();
     this.selection = this.#selection;
+    // 场景改了（挪了东西、改了灯和天空）：反射探针重拍。游戏里 refresh 是 once 的探针只在自己加进来、挪了、改了设置时拍，
+    // 编辑时拍的是改之前的样子，反射里留着旧的灯光
+    if (live.document.file !== this.#probesFile) {
+      this.#probesFile = live.document.file;
+      this.game.renderSystem.reflectionProbes.refresh();
+    }
   }
 
   /**
@@ -173,7 +185,9 @@ export class EditAgent {
     for (const id of ids) {
       const entity = this.#live?.entity(id);
       if (!entity?.alive) continue;
-      const boxes = selectionBoxes(this.game, entity);
+      // 反射探针按它影响的盒子算（探针实体自己一般没有模型，按一个点看会贴得太近）
+      const probe = probeBoxes(entity);
+      const boxes = [...selectionBoxes(this.game, entity), ...(probe ? [probe] : [])];
       const world = currentWorld(entity);
       if (boxes.length === 0) include(world[12]!, world[13]!, world[14]!);
       for (const { matrix, halfExtents: [hx, hy, hz] } of boxes) {
@@ -281,6 +295,21 @@ function selectionBoxes(game: Game, entity: Entity): WorldBox[] {
   return boxes;
 }
 
+/**
+ * 反射探针影响的盒子（同 rendering/ReflectionProbes 的算法）：以实体为中心、按世界的轴摆，边长是 size 乘实体的缩放；blend 是
+ * 过渡距离（离盒子的面这么近以内淡出）。实体上没有探针时是 undefined。
+ */
+function probeBoxes(entity: Entity): { matrix: Matrix4; halfExtents: [number, number, number]; blend: number } | undefined {
+  const probe = entity.get(ReflectionProbe);
+  if (!probe) return undefined;
+  const { translation, scale } = Matrix.decompose(currentWorld(entity));
+  return {
+    matrix: Matrix.scaleTranslation(new Float32Array(16), 1, 1, 1, ...translation),
+    halfExtents: [Math.abs(probe.size.x * scale[0]) / 2, Math.abs(probe.size.y * scale[1]) / 2, Math.abs(probe.size.z * scale[2]) / 2],
+    blend: probe.blendDistance,
+  };
+}
+
 /** 实体的模型（它自己的和引擎给多出来的网格建的子实体的）在世界里的包围盒。 */
 function modelBoxes(entity: Entity): WorldBox[] {
   const parts = [entity, ...entity.require(Transform).children.filter((child) => child.has(ModelPart))];
@@ -329,7 +358,13 @@ class EditorViewport extends SyncScript {
       if (!entity?.alive) continue;
       const boxes = selectionBoxes(this.game, entity);
       for (const { matrix, halfExtents } of boxes) draw.box(matrix, halfExtents, SELECTION_COLOR, { width: 2, depthTest: false });
-      if (boxes.length === 0) draw.axes(currentWorld(entity), 0.5, { width: 2, depthTest: false });
+      const probe = probeBoxes(entity);
+      if (probe) {
+        // 盒子挡在墙里也要看得见（深度测试关掉）；过渡距离那一圈淡一点
+        draw.box(probe.matrix, probe.halfExtents, PROBE_COLOR, { width: 2, depthTest: false });
+        if (probe.blend > 0) draw.box(probe.matrix, probe.halfExtents.map((half) => half + probe.blend) as [number, number, number], PROBE_BLEND_COLOR, { width: 1, depthTest: false });
+      }
+      if (boxes.length === 0 && !probe) draw.axes(currentWorld(entity), 0.5, { width: 2, depthTest: false });
     }
 
     const alt = input.isKeyDown('AltLeft') || input.isKeyDown('AltRight');

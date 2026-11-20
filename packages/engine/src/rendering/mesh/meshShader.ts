@@ -830,38 +830,13 @@ fn pcssShadow(s: vec3f, scale: vec2f, tangent: f32, pixel: vec2f) -> f32 {
  */
 fn computeLocalShadow(index: u32, position: vec3f, normal: vec3f, nDotL: f32, lightPosition: vec3f) -> f32 {
   let start = localShadowStart(index);
-  let params = localShadowParams(start);
-  let options = localShadowOptions(start);
-  let filterSize = u32(options.x);
-  // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去
-  let p = position + 2.0 * SHADOW_OFFSET_TEXEL * params.y * saturate(1.0 - nDotL) * normal;
-  if (options.y < 0.5) {
-    var s = localShadowMatrix(start, 0u) * vec4f(p, 1.0);
-    s.z -= params.x;
-    let q = s.xyz / s.w;
-    return filterShadow(q.xy, q.z, filterSize);
-  }
-  // 点光：到光源的方向里最长的那个轴定面，深度按沿这个轴的距离算（面的选择和深度都用没偏移过的位置）
-  let delta = position - lightPosition;
-  let size = abs(delta);
-  var face = 0u;
-  var axis = delta.z;
-  if (size.x >= size.y && size.x >= size.z) {
-    face = 2u;
-    axis = delta.x;
-  } else if (size.y >= size.z) {
-    face = 4u;
-    axis = delta.y;
-  }
-  if (axis < 0.0) {
-    face += 1u;
-  }
-  let projected = localShadowMatrix(start, face) * vec4f(p, 1.0);
-  let depth = params.z + params.w / (abs(axis) - params.x);
-  if (depth < 0.0 || depth > 1.0) {
+  // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去（点光选面、算深度用没偏移过的位置）
+  let p = position + 2.0 * SHADOW_OFFSET_TEXEL * localShadowParams(start).y * saturate(1.0 - nDotL) * normal;
+  let coord = localShadowCoord(start, p, position, lightPosition);
+  if (coord.w == 0.0) {
     return 1.0;
   }
-  return filterShadow(projected.xy / projected.w, depth, filterSize);
+  return filterShadow(coord.xy, coord.z, u32(localShadowOptions(start).x));
 }
 
 const CASCADE_INDICES = vec4u(0u, 1u, 2u, 3u);

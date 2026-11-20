@@ -108,7 +108,10 @@ fn froxelCluster(world: vec3f, uv: vec2f) -> i32 {
   return i32(slot * CLUSTER_HEADER_WORDS + 1u + ((slice * CLUSTER_Y + tile.y) * CLUSTER_X + tile.x) * CLUSTER_HEADER);
 }
 
-/** 点光、聚光照进这一点的光（乘相函数，不算阴影）。 */
+/**
+ * 点光、聚光照进这一点的光（乘相函数）。投阴影的光按它的阴影取一次比较样本（不做 PCF：体素本来就糊，还和上一帧混合），
+ * 雾里有点光、聚光被东西挡出来的暗影和光柱。
+ */
 fn localScattering(world: vec3f, uv: vec2f, direction: vec3f) -> vec3f {
   let cluster = froxelCluster(world, uv);
   let clustered = cluster >= 0;
@@ -122,9 +125,17 @@ fn localScattering(world: vec3f, uv: vec2f, direction: vec3f) -> vec3f {
   for (var k = 0u; k < count; k++) {
     let light = localLight(select(k, clusters[first + k], clustered));
     let at = localLightAt(light, world);
-    if (at.w > 0.0) {
-      sum += light.color.rgb * at.w * henyeyGreenstein(dot(direction, at.xyz), fog.albedo.w);
+    if (at.w <= 0.0) {
+      continue;
     }
+    var visibility = 1.0;
+    if (light.direction.w >= 0.0) {
+      let coord = localShadowCoord(localShadowStart(u32(light.direction.w)), world, world, light.position.xyz);
+      if (coord.w > 0.0) {
+        visibility = textureSampleCompareLevel(shadowAtlas, shadowComparison, coord.xy, coord.z);
+      }
+    }
+    sum += light.color.rgb * at.w * visibility * henyeyGreenstein(dot(direction, at.xyz), fog.albedo.w);
   }
   return sum;
 }
@@ -375,7 +386,7 @@ export class Fog {
     const lit = lighting.directionalCount > 0 && light !== undefined;
     const shadow = lit && lighting.shadowLight >= 0 ? lighting.shadow : undefined;
     const clouds = lit && cloud?.lightEntity === light.entity ? cloud : undefined;
-    gpu.record(encoder, this.#uniforms(view, lighting, lit ? light : undefined, shadow !== undefined, clouds), shadow ? lighting.shadowAtlas : undefined, clouds?.texture, target, format, depth, lights, timestamps);
+    gpu.record(encoder, this.#uniforms(view, lighting, lit ? light : undefined, shadow !== undefined, clouds), shadow || lighting.localShadowCount > 0 ? lighting.shadowAtlas : undefined, clouds?.texture, target, format, depth, lights, timestamps);
     this.#previousEye = [view.eye.x, view.eye.y, view.eye.z];
     this.#frame = (this.#frame + 1) % 1024;
   }

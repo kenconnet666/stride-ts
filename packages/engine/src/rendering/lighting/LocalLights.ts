@@ -52,6 +52,38 @@ fn localShadowOptions(start: u32) -> vec4f {
   return localLightData[start + 25u];
 }
 
+/**
+ * 阴影图集里比较的位置（Stride 的 ShadowMapReceiverPointCubeMap、ShadowMapReceiverSpot）：xy 是图集的 uv，z 是比较的深度；
+ * w 是 0 时在这个阴影的深度范围外（当作照得到）。start 是 localShadowStart，position 是取阴影的位置（网格着色时沿法线偏移过），
+ * unbiased 是没偏移的位置（点光按它到光源的方向选立方体的面、算深度）。
+ */
+fn localShadowCoord(start: u32, position: vec3f, unbiased: vec3f, lightPosition: vec3f) -> vec4f {
+  let params = localShadowParams(start);
+  if (localShadowOptions(start).y < 0.5) {
+    var s = localShadowMatrix(start, 0u) * vec4f(position, 1.0);
+    s.z -= params.x;
+    return vec4f(s.xyz / s.w, 1.0);
+  }
+  // 点光：到光源的方向里最长的那个轴定面（+Z、-Z、+X、-X、+Y、-Y），深度按沿这个轴的距离算
+  let delta = unbiased - lightPosition;
+  let size = abs(delta);
+  var face = 0u;
+  var axis = delta.z;
+  if (size.x >= size.y && size.x >= size.z) {
+    face = 2u;
+    axis = delta.x;
+  } else if (size.y >= size.z) {
+    face = 4u;
+    axis = delta.y;
+  }
+  if (axis < 0.0) {
+    face += 1u;
+  }
+  let projected = localShadowMatrix(start, face) * vec4f(position, 1.0);
+  let depth = params.z + params.w / (abs(axis) - params.x);
+  return vec4f(projected.xy / projected.w, depth, select(0.0, 1.0, depth >= 0.0 && depth <= 1.0));
+}
+
 fn localLightAt(light: LocalLight, world: vec3f) -> vec4f {
   let toLight = light.position.xyz - world;
   let distance = length(toLight);

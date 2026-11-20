@@ -65,6 +65,7 @@ export {
   type SceneDayNightCycle,
   type SceneSkyAtmosphere,
   type SceneVolumetricClouds,
+  type SceneVolumetricFog,
   type SceneBody,
   type SceneCharacter,
   type SceneCollidable,
@@ -176,7 +177,8 @@ export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type
 export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './physics/NavigationSystem';
 export { RecastNavigationComponent, type NavigationState } from './physics/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
-export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, ReflectionProbe, Skinned, SkyAtmosphere, Sprite, VolumetricClouds } from './rendering/components';
+export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, ReflectionProbe, Skinned, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from './rendering/components';
+export { Fog, type FogSettings } from './rendering/sky/VolumetricFog';
 export { Clouds, type CloudSettings } from './rendering/sky/VolumetricClouds';
 export { Atmosphere, DynamicSky, EARTH_ATMOSPHERE, sunTransmittance, type AtmosphereSettings, type CelestialBody } from './rendering/sky/Atmosphere';
 export { celestialState, DayNightCycle, lightRotationTowards, type CelestialState } from './rendering/sky/DayNightCycle';

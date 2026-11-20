@@ -103,6 +103,7 @@ export class ShadowMapRenderer {
       cascadeCount: 0,
       worldToShadow: new Float32Array(64),
       splits: new Float32Array(4),
+      rectangles: new Float32Array(16),
       depthBias: 0,
       normalOffsetScale: 0,
       filterSize: 0,

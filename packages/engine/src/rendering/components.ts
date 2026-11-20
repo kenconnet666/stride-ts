@@ -136,6 +136,26 @@ export const VolumetricClouds = component('VolumetricClouds', {
 });
 
 /**
+ * 体积雾和体积光（Stride 没有；见 sky/VolumetricFog.ts）：跟着相机的一块雾，越高越稀，被主光（投阴影的方向光）和环境光
+ * 照着；物体的影子在雾里是一道道的光柱。场景里只用第一个。
+ */
+export const VolumetricFog = component('VolumetricFog', {
+  /** 雾有多浓：baseHeight 那个高度上每米的消光系数（0.02 大约能看 150 米，0.1 大约 30 米）。 */
+  density: prop.f32().default(0.02).min(0),
+  /** 往上每米稀多少（密度 · exp(-heightFalloff · (高度 - baseHeight))）；0 是不随高度变。 */
+  heightFalloff: prop.f32().default(0.1).min(0),
+  baseHeight: prop.f32().default(0).unit('m'),
+  /** 雾的颜色（散射的反照率）。 */
+  color: prop.vec3().default([1, 1, 1]),
+  /** 相函数的不对称参数：越接近 1，朝着光看时越亮、光柱越明显。 */
+  anisotropy: prop.f32().default(0.6).min(-0.9).max(0.9),
+  /** 体素表盖多远；天空和更远的物体按这个距离上的雾算。 */
+  distance: prop.f32().default(120).min(1).unit('m'),
+  /** 环境光照进雾里的倍数。 */
+  ambient: prop.f32().default(1).min(0),
+});
+
+/**
  * 背景（Stride 的 BackgroundComponent）：在没画到的地方画立方体贴图（texture，Cubemap.id，跟着实体旋转），或者平面图片
  * （image，Texture.id，Stride 的 Is2D：保持比例铺满画面，多出的部分两边对称裁掉），乘强度。两个都设时用 image。
  */

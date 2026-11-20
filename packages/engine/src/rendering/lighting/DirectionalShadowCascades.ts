@@ -141,6 +141,7 @@ export class DirectionalShadowCascades {
       Matrix.scaleTranslation(this.#adjustment, half, -half, 1, (rect.x + size / 2) / atlasSize, (rect.y + size / 2) / atlasSize, 0);
       Matrix.multiply(receiver.worldToShadow.subarray(level * 16, level * 16 + 16), this.#adjustment, view.viewProjection);
       receiver.splits[level] = near + (far - near) * this.#splitRatios[level]!;
+      receiver.rectangles.set([rect.x / atlasSize, rect.y / atlasSize, (rect.x + size) / atlasSize, (rect.y + size) / atlasSize], level * 4);
     }
   }
 

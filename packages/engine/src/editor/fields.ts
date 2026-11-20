@@ -10,7 +10,7 @@
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
 import type {
-  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds,
+  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
@@ -254,6 +254,19 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       scale: optional(number({ min: 0.05 }), 1),
       windSpeed: optional(number({ min: 0, unit: 'm/s' }), 10),
       windDirection: { type: number({ unit: 'deg' }), optional: true, default: 0, description: 'where the wind blows to, around Y: 0 is +Z, 90 is +X' },
+    })),
+    initial: {},
+  },
+  volumetricFog: {
+    label: 'Volumetric fog',
+    type: object(fields<SceneVolumetricFog>({
+      density: { type: number({ min: 0, unit: '1/m' }), optional: true, default: 0.02, description: 'extinction per meter at the base height' },
+      heightFalloff: optional(number({ min: 0, unit: '1/m' }), 0.1),
+      baseHeight: optional(number({ unit: 'm' }), 0),
+      color: optional(vector(3), [1, 1, 1]),
+      anisotropy: optional(number({ min: -0.9, max: 0.9 }), 0.6),
+      distance: optional(number({ min: 1, unit: 'm' }), 120),
+      ambient: optional(number({ min: 0 }), 1),
     })),
     initial: {},
   },

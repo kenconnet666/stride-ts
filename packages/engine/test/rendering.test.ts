@@ -238,7 +238,7 @@ describe('DirectionalShadowCascades', () => {
     pssmFactor: 0.5, depthRange: 'automatic', minDistance: 0, maxDistance: 50, blendCascades: true, lightAngle: 0.53,
   };
   const receiver = (): ShadowReceiver => ({
-    cascadeCount: 0, worldToShadow: new Float32Array(64), splits: new Float32Array(4),
+    cascadeCount: 0, worldToShadow: new Float32Array(64), splits: new Float32Array(4), rectangles: new Float32Array(16),
     depthBias: 0, normalOffsetScale: 0, filterSize: 0, penumbraTangent: 0, blendCascades: true, depthRangeAutomatic: true,
   });
   const camera = () => {

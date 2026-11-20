@@ -425,7 +425,7 @@ export class ForwardRenderer {
     const reflect = this.hasCamera && post && this.screenSpaceReflections.enabled && this.quality.screenSpaceReflections;
     // 次表面散射要表面里的槽位和强度：场景里有散射材质才开（同屏幕空间反射，用写表面的不透明阶段）
     this.#scatter = this.hasCamera && post && this.subsurfaceScattering.enabled && this.quality.subsurfaceScattering && renderSystem.subsurfaceMaterials.count > 0;
-    const keepDepth = temporal || reflect || blur || renderSystem.atmosphere.aerialPerspective || renderSystem.clouds.active || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
+    const keepDepth = temporal || reflect || blur || renderSystem.atmosphere.aerialPerspective || renderSystem.clouds.active || renderSystem.fog.active || context.game.ui.drawsInScene || (this.particlesOverUI && particles.components.length > 0) || context.game.debugDraw.tested.count > 0;
     const drawParticles = !this.particlesOverUI && particles.components.length > 0;
     const mainView = this.hasCamera ? this.#mainView : undefined;
     // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
@@ -567,6 +567,13 @@ export class ForwardRenderer {
         clouds.record(encoder, view, isGraphTexture(target) ? real.view(target) : target, output.format, depth, renderSystem.graphicsDevice.profiler.passTimestamps('Clouds march'));
       });
     }
+    // 体积雾：盖在所有不透明的东西和天空上（主光的阴影图这时已经画好了）
+    const fog = renderSystem.fog;
+    if (view === this.#mainView && !isGraphTexture(depth) && fog.active) {
+      frame.pass(`${label} fog`, (pass) => (isGraphTexture(target) ? pass.readWrite(target) : pass.sideEffect()), (real) => {
+        fog.record(encoder, view, renderSystem.lighting, clouds.shadow, isGraphTexture(target) ? real.view(target) : target, output.format, depth, (name) => renderSystem.graphicsDevice.profiler.passTimestamps(name));
+      });
+    }
     if (surfaces.length === 0 || !view) return;
     // 次表面散射：不透明的画完、透明的画上去之前，把散射材质的漫反射光糊开（第 3 张表面里有槽位和强度）
     if (view === this.#mainView && this.#scatter && isGraphTexture(target) && !isGraphTexture(depth)) {
@@ -642,6 +649,7 @@ export class ForwardRenderer {
     // 物理天空：太阳、月亮的颜色按大气的透射率变（落到地平线以下是黑的），天空盒光换成大气的
     this.renderSystem.atmosphere.apply(context, lighting, this.#mainView.eye);
     this.renderSystem.clouds.apply(context, this.quality.volumetricClouds);
+    this.renderSystem.fog.apply(context, this.quality.volumetricFog);
     this.#dropBlackDirectionals(lighting);
     // 投阴影的是第一盏要投的：太阳落山以后它是黑的、被丢掉了，轮到月亮
     lighting.shadowLight = lighting.directionals.findIndex((light, i) => i < lighting.directionalCount && light.shadow !== undefined);

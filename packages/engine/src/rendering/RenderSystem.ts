@@ -15,6 +15,7 @@ import { GpuResources } from '../graphics/GpuResources';
 import { ReflectionProbes } from './lighting/ReflectionProbes';
 import { Atmosphere, type DynamicSky } from './sky/Atmosphere';
 import { Clouds } from './sky/VolumetricClouds';
+import { Fog } from './sky/VolumetricFog';
 import type { Skybox } from './lighting/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 import { SkyOcclusion } from '../weather/SkyOcclusion';
@@ -301,6 +302,8 @@ export interface ShadowReceiver {
   readonly worldToShadow: Float32Array;
   /** 每个级联的结束距离（视图空间的深度）。 */
   readonly splits: Float32Array;
+  /** 每个级联在图集里占的那一块（UV：最小 u、v，最大 u、v）：不贴着表面取阴影的（体积雾的体素）落在外面时当作没被挡。 */
+  readonly rectangles: Float32Array;
   depthBias: number;
   normalOffsetScale: number;
   /** 0：单次比较采样；3、5、7：PCF 的核大小；1：PCSS。 */
@@ -453,6 +456,8 @@ export class RenderSystem {
   readonly atmosphere: Atmosphere;
   /** 场景的体积云（VolumetricClouds 组件）。 */
   readonly clouds: Clouds;
+  /** 场景的体积雾（VolumetricFog 组件）。 */
+  readonly fog: Fog;
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
 
@@ -462,6 +467,7 @@ export class RenderSystem {
     this.reflectionProbes = new ReflectionProbes(graphicsDevice.device, this.resources);
     this.atmosphere = new Atmosphere(graphicsDevice.device, this.resources);
     this.clouds = new Clouds(graphicsDevice.device, this.atmosphere);
+    this.fog = new Fog(graphicsDevice.device, this.resources);
     this.skyOcclusion = new SkyOcclusion(graphicsDevice.device);
   }
 
@@ -521,6 +527,7 @@ export class RenderSystem {
     for (const feature of this.features) feature.destroy();
     this.reflectionProbes.destroy();
     this.clouds.destroy();
+    this.fog.destroy();
     this.atmosphere.destroy();
     this.skyOcclusion.destroy();
     this.resources.destroy();

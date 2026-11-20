@@ -19,7 +19,7 @@ import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
-import { Background, Camera, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds } from '../rendering/components';
+import { Background, Camera, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { DayNightCycle } from '../rendering/sky/DayNightCycle';
 import { Precipitation } from '../weather/Precipitation';
 import { WindZone } from '../weather/WindField';
@@ -446,6 +446,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   },
   dayNightCycle: { add: (entity, cycle) => entity.add(DayNightCycle.with({ ...cycle })), remove: drop(DayNightCycle) },
   volumetricClouds: { add: (entity, clouds) => entity.add(VolumetricClouds.with({ ...clouds })), remove: drop(VolumetricClouds) },
+  volumetricFog: { add: (entity, { color, ...fog }) => entity.add(VolumetricFog.with({ ...fog, ...(color ? { color: [...color] } : {}) })), remove: drop(VolumetricFog) },
 };
 
 const COMPONENT_KEYS = Object.keys(BUILDERS) as ComponentKey[];

@@ -6,7 +6,7 @@
  * （`路径#导出名`）或 # 后面的部分找。
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
-import { Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds } from '../rendering/components';
+import { Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { DayNightCycle, lightRotationTowards } from '../rendering/sky/DayNightCycle';
 import { Material } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
@@ -192,6 +192,15 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     if (clouds) for (const [key, field] of Object.entries(names) as [keyof typeof names, (typeof names)[keyof typeof names]][]) if (typeof args[key] === 'number') clouds[field] = args[key];
     const { active, settings } = game.renderSystem.clouds;
     return { active, ...(clouds ? { settings: { ...settings } } : {}) };
+  });
+  debug.command('fog', 'Volumetric fog and light shafts (VolumetricFog). args: on (true/false) adds or removes a fog entity; density (extinction per meter), heightFalloff, baseHeight, anisotropy, distance (m), ambient.', (args) => {
+    const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(VolumetricFog));
+    if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Fog', components: [Transform, VolumetricFog] }));
+    if (args['on'] === false) for (const entity of all.splice(0)) entity.destroy();
+    const fog = all[0]?.require(VolumetricFog);
+    if (fog) for (const key of ['density', 'heightFalloff', 'baseHeight', 'anisotropy', 'distance', 'ambient'] as const) if (typeof args[key] === 'number') fog[key] = args[key];
+    const { active, settings } = game.renderSystem.fog;
+    return { active, ...(fog ? { settings: { ...settings } } : {}) };
   });
   debug.command('dither', 'Dithering of the 8-bit output in the tone mapping pass (hides the banding of dark gradients). args: on (true/false; omitted toggles). Turn it off to compare screenshots pixel by pixel with desktop Stride.', (args) => {
     const toneMap = game.graphicsCompositor.postEffects.toneMap;

@@ -237,6 +237,17 @@ export interface SceneVolumetricClouds {
   readonly windDirection?: number;
 }
 
+/** 体积雾（Stride 没有）：各字段的意思见 VolumetricFog 组件；没写的用默认值。 */
+export interface SceneVolumetricFog {
+  readonly density?: number;
+  readonly heightFalloff?: number;
+  readonly baseHeight?: number;
+  readonly color?: Vec3Tuple;
+  readonly anisotropy?: number;
+  readonly distance?: number;
+  readonly ambient?: number;
+}
+
 /** 日夜循环（Stride 没有）：和 skyAtmosphere 在同一个实体上，各字段的意思见 DayNightCycle 组件；没写的用默认值。 */
 export interface SceneDayNightCycle {
   readonly timeOfDay?: number;
@@ -462,6 +473,7 @@ export interface SceneEntityFile {
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     readonly dayNightCycle?: SceneDayNightCycle;
     readonly volumetricClouds?: SceneVolumetricClouds;
+    readonly volumetricFog?: SceneVolumetricFog;
     readonly windZone?: SceneWindZone;
     readonly precipitation?: ScenePrecipitation;
     /** Stride.BepuPhysics 的 StaticComponent。 */

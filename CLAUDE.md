@@ -10,7 +10,7 @@ Stride 的 TypeScript 孪生版：一个"形状像 Stride"的浏览器游戏引�
 - [docs/positioning.md](docs/positioning.md)：和 Babylon.js、PlayCanvas、three.js、Cocos、Unity、Godot、Needle 的对比（预估），特色和短板，要实测的性能点。
 - [docs/research.md](docs/research.md)：依赖逐项替代、库选型、线程模型和 API 取舍。
 - [docs/vector-assets.md](docs/vector-assets.md)：资源尽量矢量化（用户 2026-11-19 的方向）的格式讨论稿：2D 矢量图、材质图、几何、地形各用什么格式，要用户定的问题，几何实验的设计和结果。
-- [docs/prefabs.md](docs/prefabs.md)：预制体在场景文件里怎么表示的方案（2026-11-20，等用户定）。
+- [docs/prefabs.md](docs/prefabs.md)：预制体在场景文件里怎么表示（2026-11-20 用户定了：场景里只存引用和差异）。
 - [docs/roadmap.md](docs/roadmap.md)：路线图（范围、原则、阶段、取舍）和末尾的"进度"；执行中自己做的决定记在 [docs/decisions.md](docs/decisions.md)，已完成各项的过程在 [docs/progress-log.md](docs/progress-log.md)。
 
 现状（2026-11-20：P1、P2 完成；P3 编辑器的界面骨架做了（Vue 加 vue-tsx-pro），接着做场景树和资源浏览器的操作、预制体；P4 的底座在做。进度、下一步、等用户定的事见 docs/roadmap.md 末尾的"进度"，只留结论，各项的过程和验收表在 docs/progress-log.md）：

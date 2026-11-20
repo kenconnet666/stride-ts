@@ -2,7 +2,7 @@
 // 布局），第一次 update 之前建好场景（LoadScene），之后每帧 UpdateScene。Stride 在窗口大小变了的事件里改分辨率，我们每帧比一下。
 import { SyncScript, UIComponent, type GameTime } from '@stride-ts/engine';
 
-export abstract class UISceneBase extends SyncScript {
+export abstract class UISceneBase extends SyncScript.props({}, { requires: [() => UIComponent] }) {
   protected isRunning = false;
   #sceneCreated = false;
 

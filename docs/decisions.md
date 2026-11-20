@@ -2,6 +2,15 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 脚本声明要实体上有的组件（requires）
+
+编辑器验收时好几个样例的脚本加到不合适的实体上只在运行时报错（`this.entity.require(UIComponent)`、`require(AnimationComponent)` 在 start 里抛）。和 Stride 不同（它没有），照 Unity 的 RequireComponent：
+
+- **写法**：`SyncScript.props({ ... }, { requires: [() => UIComponent] })`，和 `variants` 同一个选项对象；写成函数（延迟引用），同 `prop.component(() => X)`，互相引用的类加载时可能还没定义。子类再调 props() 时接在基类的后面（`UISceneBase` 声明一次，下面的场景脚本都有）。类型全靠推导，不做代码生成。
+- **加载场景**（`SceneScriptBinder.attach`）：实体上缺了就报错（场景、实体名、脚本、缺的组件）、不挂这个脚本，游戏照常；要的是同一实体上排在后面的脚本时先推迟再试（同脚本属性引用排在后面的脚本）。用代码 `entity.add` 加的脚本不查（游戏代码自己负责，缺了 `require` 照样抛）。
+- **编辑器**：加脚本时把缺的组件一起加上，同一步撤销（`EditAgent.requiredComponents`：场景组件经 `sceneComponentKey` 反查场景文件的键，`UIComponent` → `ui`；要的是另一个游戏脚本时加那个脚本；游戏代码里加的组件场景文件里加不了，工具条上提示）。去掉一个被依赖的组件照样去掉，工具条上提示哪些脚本试玩时不挂。
+- **样例**：用到 `this.entity.require(UIComponent / AnimationComponent)` 的 16 个脚本加了 requires；SimpleAudio 的 SoundScript、MorphTargets 的 MorphTargetsController 原来是"属性没填就在运行时 throw"，改成必填属性（加载时按"必填属性没设"报出来）。
+
 ## 2026-11-20 GPU 粒子：环形缓冲、按模块拼计算着色器、bitonic 排序
 
 P4 的"GPU 粒子"第一步（`particles/gpu/`）：粒子从几千到几十万不掉帧，和 Stride 的粒子资源兼容，同一个发射器按需放 CPU 或 GPU。
@@ -23,6 +32,7 @@ P4 的"GPU 粒子"第一步（`particles/gpu/`）：粒子从几千到几十万�
 | GPU 模拟，按深度排序 | 8.3 ms | 0.7 ms | 0.6 ms | 0.47 ms |
 
 - 还没做的：力场、碰撞（包括深度缓冲碰撞）、子粒子、飘带上 GPU；GPU 上的预热（WarmupTime 的几步合成一次生成）；间接绘制（现在按容量画，死了的槽在顶点着色器里扔掉，粒子少、容量大时白跑顶点）；排序里 j 不超过工作组大小的那些步放进工作组共享内存一次做完（现在每步一次派发）。
+
 ## 2026-11-20 操纵器的吸附：工具条上的开关和步长，拖的时候按住 Ctrl 反过来
 
 工具条上一个吸附开关、移动（米）、旋转（度）、缩放（倍数）三个步长，默认关、1 米、15 度、0.1 倍（Stride 编辑器的默认值）。拖操纵器时按住 Ctrl 反过来：开着时临时不吸，关着时临时吸（Godot 的做法；Unity 只有"按住 Ctrl 吸"，Stride 只有开关）。两种用法都顺手：大部分时候自由摆、偶尔对齐的按 Ctrl，搭关卡时一直开着、偶尔微调的也按 Ctrl。设置记在编辑器的会话里（`EditorSession.snap`），换场景、试玩回来、游戏页面重新加载以后都还在；不进工程文件（是个人习惯，不是工程的设置）。实现：`SnapSettings`、`applySnap`（`editor/TransformGizmo.ts`），视口每帧照设置和 Ctrl 设操纵器的步长，拖到一半按下、松开 Ctrl 也跟着变。

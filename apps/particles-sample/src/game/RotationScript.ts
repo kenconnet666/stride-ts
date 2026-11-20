@@ -8,7 +8,7 @@ const rotationX = (angle: number) => [Math.sin(angle / 2), 0, 0, Math.cos(angle 
 
 export class RotationScript extends StartupScript.props({
   timeFactor: prop.number().default(1),
-}) {
+}, { requires: [() => AnimationComponent] }) {
   override start(): void {
     const clip = AnimationClip.fromCurves(ANIMATION, 1, [
       propertyCurve(Transform, 'rotation', [

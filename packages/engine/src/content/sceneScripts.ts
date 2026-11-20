@@ -13,6 +13,7 @@ import type { SceneAssetKind, SceneScript, SceneScriptValue } from './format';
 import type { EntityId } from '../data/prop';
 import type { Entity } from '../engine/Entity';
 import type { Registry } from '../engine/registry';
+import type { ComponentType } from '../engine/component';
 import type { ScriptConstructor } from '../engine/scripts';
 
 /** loadScene 的选项里，Stride 类型名（带命名空间，不带程序集）到 TS 脚本的显式对应。 */
@@ -70,6 +71,13 @@ export class SceneScriptBinder {
   attach(entity: Entity, script: SceneScript, context: ScriptValueContext, where: string, { deferMissing = false } = {}): boolean {
     const type = this.#resolve(script.type, where);
     if (!type) return true;
+    // 要的组件（requires）还没有：可能是同一个实体上排在后面的脚本，先推迟；最后还是没有就报错、不挂
+    const missing = type.requires.map((required) => required()).filter((required) => !entity.has(required));
+    if (missing.length > 0) {
+      if (deferMissing) return false;
+      console.error(`[stride] ${where}: script ${script.type} is skipped: it requires ${missing.map(requiredName).join(', ')} on the entity`);
+      return true;
+    }
     // 场景里的属性名按旧名字（`renamedFrom`）也能找到：TS 脚本改了名（比如和脚本自己的 enabled 重名）时，场景里的值照样读进来
     const fields = new Map(type.schema.fields.flatMap((field) => [[field.name, field] as const, ...(field.options.renamedFrom ? [[field.options.renamedFrom, field] as const] : [])]));
     const init: Record<string, unknown> = {};
@@ -156,4 +164,9 @@ function resolveValue(value: SceneScriptValue, context: Pick<ScriptValueContext,
   }
   if (typeof object['$asset'] === 'string') return context.asset(object['kind'] as SceneAssetKind, object['$asset']);
   return Object.fromEntries(Object.entries(object).map(([key, item]) => [key, resolveValue(item, context)]));
+}
+
+/** requires 里的一种组件或脚本的名字（报错用）。 */
+export function requiredName(type: ComponentType<any> | ScriptConstructor): string {
+  return 'scriptName' in type ? type.scriptName ?? type.name : type.name;
 }

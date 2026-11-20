@@ -35,7 +35,7 @@ interface CameraPose {
 
 export class TutorialUI extends SyncScript.props({
   camera: prop.entity().optional(),
-}) {
+}, { requires: [() => UIComponent] }) {
   #tutorialScene: SceneInstance | undefined;
   #pending: Promise<unknown> = Promise.resolve();
   #buttons!: StackPanel;

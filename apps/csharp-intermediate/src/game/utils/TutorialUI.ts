@@ -24,7 +24,7 @@ const scenePath = (stage: Stage, topic: string, scene: string) => `CSharpInterme
 
 export class TutorialUI extends StartupScript.props({
   showMenuOnSceneLoad: prop.bool().default(false),
-}) {
+}, { requires: [() => UIComponent] }) {
   override start(): void {
     const root = this.entity.require(UIComponent).page?.rootElement;
     if (!root) throw new Error('TutorialUI needs the UI page on its entity');

@@ -4,7 +4,7 @@ import { Button, EditText, prop, StartupScript, TextBlock, UIComponent } from '@
 
 export class UIByEditor extends StartupScript.props({
   font: prop.asset('font').optional(),
-}) {
+}, { requires: [() => UIComponent] }) {
   override start(): void {
     const root = this.entity.require(UIComponent).page?.rootElement;
     if (!root) throw new Error('UIByEditor needs the UI page on its entity');

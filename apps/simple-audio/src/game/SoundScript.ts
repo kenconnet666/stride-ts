@@ -8,8 +8,8 @@ const FADE = 0.93;
 
 export class SoundScript extends AsyncScript.props({
   page: prop.asset('uiPage').optional(),
-  soundMusic: prop.asset('sound').optional(),
-  soundEffect: prop.asset('sound').optional(),
+  soundMusic: prop.asset('sound'),
+  soundEffect: prop.asset('sound'),
 }) {
   music: SoundInstance | undefined;
   effect: SoundInstance | undefined;
@@ -18,7 +18,6 @@ export class SoundScript extends AsyncScript.props({
     const root = this.page?.rootElement;
     const left = root?.find(ImageElement, 'LeftWave') ?? null;
     const right = root?.find(ImageElement, 'RightWave') ?? null;
-    if (!this.soundMusic || !this.soundEffect) throw new Error('SimpleAudio: SoundScript needs SoundMusic and SoundEffect');
     const music = (this.music = this.soundMusic.createInstance());
     const effect = (this.effect = this.soundEffect.createInstance());
     this.disposables.defer(() => {

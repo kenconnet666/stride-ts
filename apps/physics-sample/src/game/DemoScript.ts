@@ -84,7 +84,7 @@ export class DemoScript
     cube: prop.entity(),
     sphere: prop.entity(),
     font: prop.asset('font'),
-  })
+  }, { requires: [() => UIComponent] })
   implements ContactHandler
 {
   cubeBody!: BodyControl;

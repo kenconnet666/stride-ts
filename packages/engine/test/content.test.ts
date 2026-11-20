@@ -21,6 +21,9 @@ import {
   Instance,
   Instancing,
   Light,
+  Static,
+  UIComponent,
+  type Entity,
   Material,
   Mesh,
   Model,
@@ -41,6 +44,7 @@ import {
   type SpriteSheetFile,
   type SkyboxFile,
 } from '../src/index';
+import { sceneComponentKey } from '../src/content/SceneBuilder';
 
 // 内容格式和加载：不碰 GPU。读文件换成从内存里的 Map 取。
 
@@ -358,6 +362,47 @@ describe('ContentManager', () => {
       expect.stringContaining("entity 'D' has parent gone, which is not in the scene; placed at the top level"),
       expect.stringMatching(/A: script G\.Trigger is skipped: G\.Trigger\.target .*required/),
     ]);
+  });
+
+  test('和 Stride 不同（同 Unity 的 RequireComponent）：脚本要的组件（requires）实体上没有时报错、不挂；要的是同一实体上排在后面的脚本也行；场景组件能反查回场景文件的键', async () => {
+    class Speaker extends SyncScript {}
+    class NeedsLight extends SyncScript.props({}, { requires: [() => Light] }) {}
+    class NeedsSpeaker extends SyncScript.props({ volume: prop.number().default(1) }, { requires: [() => Speaker] }) {}
+    class NeedsBoth extends NeedsSpeaker.props({}, { requires: [() => Camera] }) {}
+    const entity = (id: string, components: SceneEntityFile['components']): SceneEntityFile =>
+      ({ id, name: id.toUpperCase(), parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components });
+    const scene: SceneFile = {
+      name: 'Requires',
+      entities: [
+        entity('lit', { light: { type: 'point', color: [1, 1, 1], intensity: 1 }, scripts: [{ type: 'G.NeedsLight', props: {} }] } as unknown as SceneEntityFile['components']),
+        entity('dark', { scripts: [{ type: 'G.NeedsLight', props: {} }] }),
+        // 要的脚本排在后面：推迟到它挂上以后
+        entity('both', { scripts: [{ type: 'G.NeedsSpeaker', props: {} }, { type: 'G.Speaker', props: {} }] }),
+        // 子类的 requires 接在基类后面：Speaker 有、Camera 没有
+        entity('sub', { scripts: [{ type: 'G.Speaker', props: {} }, { type: 'G.NeedsBoth', props: {} }] }),
+      ],
+    };
+    expect(NeedsBoth.requires.map((required) => required())).toEqual([Speaker, Camera]);
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(8);
+    game.registry.registerModules({ './Requires.ts': { Speaker, NeedsLight, NeedsSpeaker, NeedsBoth } });
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => json(scene) });
+    const errors: string[] = [];
+    const error = console.error;
+    console.error = (message: string) => void errors.push(message);
+    try {
+      const loaded = await content.loadScene('scenes/Requires', game.entities);
+      const has = (id: string, type: Parameters<Entity['has']>[0]) => loaded.entities.get(id)!.has(type);
+      expect([has('lit', NeedsLight), has('dark', NeedsLight), has('both', NeedsSpeaker), has('sub', NeedsBoth)]).toEqual([true, false, true, false]);
+    } finally {
+      console.error = error;
+    }
+    expect(errors).toEqual([
+      expect.stringContaining('DARK: script G.NeedsLight is skipped: it requires Light on the entity'),
+      expect.stringContaining('SUB: script G.NeedsBoth is skipped: it requires Camera on the entity'),
+    ]);
+    expect([sceneComponentKey(Light), sceneComponentKey(Model), sceneComponentKey(UIComponent), sceneComponentKey(Static), sceneComponentKey(Speaker)]).toEqual(['light', 'model', 'ui', 'static', undefined]);
   });
 
   test('场景的偏移（Stride 的 Scene.Offset）在场景上：实体的世界位置带着它，本地位置不带；可以运行时改；子场景的偏移接在父场景后面', async () => {

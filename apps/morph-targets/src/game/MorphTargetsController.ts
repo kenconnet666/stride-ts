@@ -24,7 +24,7 @@ export class MorphTargetsController extends SyncScript.props({
   icosphere: prop.entity().optional(),
   cubeAnimation: prop.asset('animation').optional(),
   icosphereAnimation: prop.asset('animation').optional(),
-  model: prop.asset('model').optional(),
+  model: prop.asset('model'),
   animation: prop.asset('animation').optional(),
   /** 同一个甜甜圈的 FBX 导入，和它自己的剪辑。 */
   fbxModel: prop.asset('model').optional(),
@@ -66,7 +66,6 @@ export class MorphTargetsController extends SyncScript.props({
   }
 
   override start(): void {
-    if (!this.model) throw new Error('Assign Model on the MorphTargetsController.');
     if (this.donut === undefined) throw new Error('Assign Donut on the MorphTargetsController.');
     const entity = (id: EntityId | undefined) => (id === undefined ? undefined : this.game.entities.entity(id));
     this.#donut = entity(this.donut)!;
@@ -289,7 +288,7 @@ export class MorphTargetsController extends SyncScript.props({
     transport.children.add((this.#timeLabel = ui.text(formatTime(0), 13, MUTED, [8, 0, 0, 0])));
     this.#animationControls.children.add(transport);
     this.#animationControls.children.add((this.#sourceHost = Object.assign(new StackPanel(), { orientation: 'vertical' as const })));
-    const fbxModel = this.fbxModel, model = this.model!;
+    const fbxModel = this.fbxModel, model = this.model;
     if (fbxModel) ui.radioGroup(this.#sourceHost, 'Source', ['glTF', 'FBX'], 0, (index) => this.#setSource(index === 0 ? model : fbxModel, index === 0 ? this.animation : this.fbxAnimation));
     panel.children.add(this.#animationControls);
 

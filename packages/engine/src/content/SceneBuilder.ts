@@ -19,7 +19,7 @@ import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
-import { Background, Camera, Instance, Instancing, Light, ReflectionProbe, SkyAtmosphere, Sprite } from '../rendering/components';
+import { Background, Camera, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite } from '../rendering/components';
 import type { Material } from '../rendering/Material';
 import type { Mesh } from '../rendering/Mesh';
 import type { Cubemap, Skybox } from '../rendering/Skybox';
@@ -276,8 +276,15 @@ interface ComponentBuilder<K extends ComponentKey> {
 }
 
 /** 去掉这几种组件、脚本里实体上有的。 */
-const drop = (...types: readonly (ComponentType<any> | ScriptConstructor)[]) => (entity: Entity): void => {
-  for (const type of types) if (entity.has(type)) entity.remove(type);
+/** 场景组件的 remove → 它去掉的组件类型（第一个是主要的那个），反查场景文件的键用（sceneComponentKey）。 */
+const DROPPED = new WeakMap<object, readonly (ComponentType<any> | ScriptConstructor)[]>();
+
+const drop = (...types: readonly (ComponentType<any> | ScriptConstructor)[]) => {
+  const remove = (entity: Entity): void => {
+    for (const type of types) if (entity.has(type)) entity.remove(type);
+  };
+  DROPPED.set(remove, types);
+  return remove;
 };
 
 const collider = (shapes: readonly ColliderShapeFile[], assets: SceneAssets) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
@@ -430,6 +437,15 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
 };
 
 const COMPONENT_KEYS = Object.keys(BUILDERS) as ComponentKey[];
+
+/**
+ * 场景文件里加出 type 这种组件的键（`UIComponent` → `ui`，`Model` → `model`）：编辑器给脚本补上它要的组件（requires）时用。
+ * 不是从场景文件加的（游戏自己的组件、脚本）是 undefined。
+ */
+export function sceneComponentKey(type: ComponentType<any> | ScriptConstructor): ComponentKey | undefined {
+  if (type === Model) return 'model';
+  return COMPONENT_KEYS.find((key) => DROPPED.get(BUILDERS[key].remove)?.[0] === type);
+}
 const LATE_KEYS = COMPONENT_KEYS.slice(COMPONENT_KEYS.indexOf('constraints'));
 const EARLY_KEYS = COMPONENT_KEYS.slice(0, COMPONENT_KEYS.indexOf('constraints'));
 

@@ -131,13 +131,38 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
   };
 
   /** 在没有这个脚本的实体上加一个（属性都用脚本的默认值），加在脚本列表的最后。 */
-  const addScript = (targets: Entities, type: string) =>
+  /**
+   * 在没有这个脚本的实体上加一个（属性都用脚本的默认值），加在脚本列表的最后；脚本要的组件（requires）实体上没有的一起加上，
+   * 同一步撤销。场景文件里加不了的（游戏代码里加的组件）在工具条上提示。
+   */
+  const addScript = (targets: Entities, type: string) => {
+    const required = agent.value?.requiredComponents(type) ?? [];
+    const unavailable = required.filter((entry) => !entry.component && !entry.script).map((entry) => entry.name);
+    session.notice.value = unavailable.length > 0 ? `${scriptClass(type)} 要实体上有 ${unavailable.join('、')}，场景文件里加不了，试玩时这个脚本不挂` : '';
     change(targets, (entity) => {
       if (scriptIndex(entity, scriptClass(type), 0) >= 0) return undefined;
-      const scripts = entity.components.scripts ?? [];
-      const script = { type, props: {} };
-      return { type: 'set', entity: entity.id, path: scripts.length > 0 ? ['components', 'scripts', scripts.length] : ['components', 'scripts'], value: scripts.length > 0 ? script : [script] };
+      const edits: SceneEdit[] = [];
+      const scripts = [...(entity.components.scripts ?? [])];
+      for (const { component, script } of required) {
+        if (component && (entity.components as Record<string, unknown>)[component] === undefined) {
+          edits.push({ type: 'set', entity: entity.id, path: ['components', component], value: structuredClone(COMPONENT_FIELDS[component as ComponentKey]?.initial ?? {}) });
+        }
+        if (script && !scripts.some((existing) => scriptClass(existing.type) === scriptClass(script))) scripts.push({ type: script, props: {} });
+      }
+      scripts.push({ type, props: {} });
+      edits.push({ type: 'set', entity: entity.id, path: ['components', 'scripts'], value: scripts });
+      return edits.length === 1 ? edits[0]! : { type: 'batch', edits };
     });
+  };
+
+  /** 去掉组件；实体上有脚本要它（requires）时照样去掉，在工具条上提示这些脚本试玩时不挂。 */
+  const removeComponent = (targets: Entities, key: ComponentKey) => {
+    const dependents = new Set(targets.flatMap((entity) => (entity.components.scripts ?? [])
+      .filter((script) => agent.value?.requiredComponents(script.type).some((entry) => entry.component === key))
+      .map((script) => scriptClass(script.type))));
+    change(targets, ({ id }) => ({ type: 'set', entity: id, path: ['components', key], value: undefined }));
+    session.notice.value = dependents.size > 0 ? `去掉了 ${COMPONENT_FIELDS[key].label}；${[...dependents].join('、')} 要它，试玩时这些脚本不挂` : '';
+  };
 
   return () => {
     const list = entities;
@@ -160,7 +185,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
           <section {...css.attrs(styles.section)}>
             <div {...css.attrs(styles.heading)}>
               {COMPONENT_FIELDS[key].label}
-              <IconButton icon={X} variant="ghost" aria-label={`去掉 ${COMPONENT_FIELDS[key].label}`} onClick={() => change(list, ({ id }) => ({ type: 'set', entity: id, path: ['components', key], value: undefined }))} />
+              <IconButton icon={X} variant="ghost" aria-label={`去掉 ${COMPONENT_FIELDS[key].label}`} onClick={() => removeComponent(list, key)} />
             </div>
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key])} context={context} onSet={setter(list, () => ['components', key])} />
           </section>

@@ -120,6 +120,7 @@ export {
   ScriptComponent,
   StartupScript,
   SyncScript,
+  type RequiredComponent,
   type ScriptConstructor,
   type ScriptInit,
   type ScriptOptions,
@@ -134,7 +135,7 @@ export { DebugText, type DebugTextLine } from './debug/DebugText';
 export { drawCollider } from './physics/debugShapes';
 export { ScenePicker } from './rendering/ScenePicker';
 export { EditorCameraController, EditorCameraState } from './editor/EditorCamera';
-export type { EditableScene, EditAgent, WorldSphere } from './editor/EditAgent';
+export type { EditableScene, EditAgent, RequiredComponentEntry, WorldSphere } from './editor/EditAgent';
 export { applyGizmoChange, applySnap, DEFAULT_SNAP, TransformGizmo, type GizmoAxis, type GizmoChange, type GizmoHandle, type GizmoMode, type SnapSettings } from './editor/TransformGizmo';
 export { checkEntity, checkFields, COMPONENT_FIELDS, ENTITY_FIELDS, scriptFields, TEXTURE_FIELDS, type ComponentDescription, type Field, type FieldType } from './editor/fields';
 export { LiveScene, type SceneSource } from './editor/LiveScene';

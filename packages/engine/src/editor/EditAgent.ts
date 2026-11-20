@@ -14,6 +14,8 @@
  * - W、E、R：移动、旋转、缩放；F：把选中的东西放到画面中间；相机的操作见 EditorCamera。
  */
 import type { SceneFile } from '../content/format';
+import { sceneComponentKey } from '../content/SceneBuilder';
+import { requiredName } from '../content/sceneScripts';
 import type { Entity } from '../engine/Entity';
 import { SyncScript } from '../engine/scripts';
 import { Transform } from '../engine/transform';
@@ -44,6 +46,15 @@ const ACTIVE_COLOR: DebugColor = [1, 0.9, 0.2, 1];
 const GIZMO_SCREEN_SIZE = 0.14;
 /** 按下到松开鼠标挪了不到这么多像素算点一下。 */
 const CLICK_PIXELS = 4;
+
+/** 脚本要的一种组件在场景文件里怎么加（EditAgent.requiredComponents）。 */
+export interface RequiredComponentEntry {
+  readonly name: string;
+  /** 场景文件里的组件键（`ui`、`model`……）。 */
+  readonly component?: string;
+  /** 游戏登记的脚本名（要的是另一个脚本时）。 */
+  readonly script?: string;
+}
 
 export interface WorldSphere {
   readonly center: readonly [number, number, number];
@@ -192,6 +203,23 @@ export class EditAgent {
   scriptFields(type: string): Field[] | undefined {
     const found = this.game.registry.scriptsForType(type);
     return found.length === 1 ? scriptFields(found[0]!) : undefined;
+  }
+
+  /**
+   * 脚本（type 同 scriptFields）要实体上有的组件（脚本的 requires），各自在场景文件里怎么加：component 是场景文件的组件键，
+   * script 是游戏登记的脚本名；都没有的（游戏代码里加的组件）只有名字，编辑器加不了。
+   */
+  requiredComponents(type: string): RequiredComponentEntry[] {
+    const found = this.game.registry.scriptsForType(type);
+    if (found.length !== 1) return [];
+    return found[0]!.requires.map((required): RequiredComponentEntry => {
+      const value = required();
+      const name = requiredName(value);
+      const component = sceneComponentKey(value);
+      if (component) return { name, component };
+      const script = 'scriptName' in value && value.scriptName !== undefined && this.game.registry.get(value.scriptName) === value ? value.scriptName : undefined;
+      return script ? { name, script } : { name };
+    });
   }
 
   /** 游戏登记的脚本（"添加组件"列出来的），按名字排；加到实体上时 type 就写这个名字。 */

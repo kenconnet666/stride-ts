@@ -6,7 +6,7 @@ const CROSSFADE = 0.25;
 
 export class UIScript extends StartupScript.props({
   knight: prop.entity(),
-}) {
+}, { requires: [() => UIComponent] }) {
   override start(): void {
     const animation = this.game.entities.entity(this.knight).require(AnimationComponent);
     const root = this.entity.require(UIComponent).page?.rootElement;

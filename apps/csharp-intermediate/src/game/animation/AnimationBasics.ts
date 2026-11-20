@@ -4,7 +4,7 @@ import { AnimationComponent, prop, SyncScript, type PlayingAnimation } from '@st
 
 export class AnimationBasics extends SyncScript.props({
   animationSpeed: prop.f32().default(1),
-}) {
+}, { requires: [() => AnimationComponent] }) {
   #animation!: AnimationComponent;
   #latest!: PlayingAnimation;
 

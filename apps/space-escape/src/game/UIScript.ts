@@ -23,7 +23,7 @@ interface Pages {
 export class UIScript extends StartupScript.props({
   font: prop.asset('font').optional(),
   uiImages: prop.asset('spriteSheet').optional(),
-}) {
+}, { requires: [() => UIComponent] }) {
   #pages: Pages | undefined;
 
   get startButton(): Button {

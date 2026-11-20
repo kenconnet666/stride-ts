@@ -16,7 +16,7 @@ import type { InheritedOf, InitOf, ScriptValues, Shape, StatKeys } from '../data
 import { createSchema, type Schema } from '../data/schema';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
-import { checkVariants, variantValues } from './component';
+import { checkVariants, variantValues, type ComponentType } from './component';
 import type { Entity } from './Entity';
 import type { EventKey, EventReceiver, Hook, HookHandler } from './events';
 import type { Stat } from './stats';
@@ -32,7 +32,11 @@ export type ScriptConstructor<T extends ScriptComponent = ScriptComponent> = (ab
   readonly schema: Schema;
   readonly variants: Readonly<Record<string, object>>;
   readonly scriptName: string | undefined;
+  readonly requires: readonly RequiredComponent[];
 };
+
+/** 脚本要实体上有的一种组件或脚本。写成函数（延迟引用）：互相引用的类在模块加载时可能还没定义，同 prop.component。 */
+export type RequiredComponent = () => ComponentType<any> | ScriptConstructor;
 
 /** 脚本类用 props() 声明的 shape；没有时是 {}。 */
 export type ShapeOfScript<C> = C extends { readonly __shape: infer S extends Shape } ? S : {};
@@ -50,6 +54,11 @@ export type BareScript = ScriptConstructor & { readonly __bare: true };
 
 export interface ScriptOptions<S extends Shape, V extends string> {
   readonly variants?: { readonly [K in V]: Partial<InitOf<S, 'script'>> };
+  /**
+   * 这个脚本要实体上有的组件（`[() => UIComponent]`）。和 Stride 不同（它没有），同 Unity 的 RequireComponent：加载场景时实体上
+   * 缺了就报错、不挂这个脚本；编辑器加这个脚本时把缺的一起加上。子类的接在基类的后面。
+   */
+  readonly requires?: readonly RequiredComponent[];
 }
 
 /** script.stats：每个标了 .stat() 的属性一个 Stat。 */
@@ -81,6 +90,8 @@ export abstract class ScriptComponent {
   static variants: Readonly<Record<string, object>> = {};
   /** @internal 传给 props() 的名字，或游戏登记模块后得出的 `路径#导出名`。 */
   static scriptName: string | undefined;
+  /** 要实体上有的组件（props() 的 requires 选项）。 */
+  static requires: readonly RequiredComponent[] = [];
 
   /** start() 之前设好；脚本被移除之前一直属于这个实体。 */
   entity!: Entity;
@@ -180,6 +191,7 @@ export abstract class ScriptComponent {
     Object.defineProperty(Props, 'schema', { value: schema });
     Object.defineProperty(Props, 'variants', { value: checkVariants(schema, options?.variants ?? {}) });
     Object.defineProperty(Props, 'scriptName', { value: name, writable: true });
+    Object.defineProperty(Props, 'requires', { value: [...this.requires, ...(options?.requires ?? [])] });
     return Props;
   }
 

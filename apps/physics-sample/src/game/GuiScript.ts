@@ -5,7 +5,7 @@ const WHITE = [1, 1, 1, 1] as const;
 
 export class GuiScript extends StartupScript.props({
   font: prop.asset('font'),
-}) {
+}, { requires: [() => UIComponent] }) {
   override start(): void {
     const text = Object.assign(new TextBlock(), {
       text: 'Shoot the cubes!', font: this.font, textColor: WHITE, textSize: 60,

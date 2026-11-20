@@ -12,7 +12,7 @@ const CENTER = [0.5, 0.5] as const;
 export class UIScript extends SyncScript.props({
   font: prop.asset('font').optional(),
   uiImages: prop.asset('spriteSheet').optional(),
-}) {
+}, { requires: [() => UIComponent] }) {
   #gameOver = this.receive(GameOverEventKey);
   #pipePassed = this.receive(PipePassedEventKey);
   #mainMenuRoot!: ModalElement;

@@ -8,6 +8,7 @@
 import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
+import { isProceduralModel, parseProceduralModel } from '@stride-ts/engine/content-format';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -22,7 +23,8 @@ export const EDITOR_HEADER = 'x-stride-editor';
 const CHANGE_DELAY = 50;
 
 /** 能经接口读写内容的种类：主文件是 JSON 的。 */
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound']);
+/** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -85,7 +87,9 @@ export class EditorBackend {
   async readAsset(kind: AssetKind, assetPath: string): Promise<unknown> {
     const file = this.#jsonFile(kind, assetPath);
     try {
-      return JSON.parse(await readFile(file, 'utf8')) as unknown;
+      const bytes = await readFile(file);
+      if (kind === 'model' && !isProceduralModel(bytes)) throw new HttpError(400, `model ${assetPath} is a binary model (imported); only JSON models (procedural shapes) can be read and saved`);
+      return JSON.parse(bytes.toString('utf8')) as unknown;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new HttpError(404, `no ${kind} asset ${assetPath}`);
       throw error;
@@ -93,13 +97,21 @@ export class EditorBackend {
   }
 
   /**
-   * 保存一个 JSON 资源（新建或者覆盖）：先写到旁边的临时文件再改名，读的人不会读到写了一半的；然后更新数据库、通知前端。
-   * 格式同导入器写的（缩进 1 格），文件的差别只在改了的地方。
+   * 保存一个 JSON 资源（新建或者覆盖；create 时只新建，已经有了报 409）：先写到旁边的临时文件再改名，读的人不会读到写了一半的；
+   * 然后更新数据库、通知前端。格式同导入器写的（缩进 1 格），文件的差别只在改了的地方。模型要是合法的 JSON 模型。
    */
-  async saveAsset(kind: AssetKind, assetPath: string, content: unknown): Promise<AssetRecord> {
+  async saveAsset(kind: AssetKind, assetPath: string, content: unknown, { create = false }: { readonly create?: boolean } = {}): Promise<AssetRecord> {
     const file = this.#jsonFile(kind, assetPath);
     if (content === null || typeof content !== 'object') throw new HttpError(400, `the content of a ${kind} asset must be a JSON object`);
+    if (kind === 'model') {
+      try {
+        parseProceduralModel(new TextEncoder().encode(JSON.stringify(content)), assetPath);
+      } catch (error) {
+        throw new HttpError(400, (error as Error).message);
+      }
+    }
     return this.#enqueue(async () => {
+      if (create && this.database.get(kind, assetPath)) throw new HttpError(409, `${kind} ${assetPath} already exists`);
       await writeAtomically(file, JSON.stringify(content, null, 1));
       await this.#refresh([this.#relative(file)]);
       return this.database.get(kind, assetPath)!;
@@ -241,7 +253,7 @@ export class EditorBackend {
       if (!kind || !assetPath) throw new HttpError(400, 'kind and path are required');
       if (request.method === 'GET') return this.readAsset(kind as AssetKind, assetPath);
       if (request.method === 'DELETE') return this.deleteAsset(kind as AssetKind, assetPath, { force: url.searchParams.get('force') === '1' });
-      return this.saveAsset(kind as AssetKind, assetPath, await readJson(request));
+      return this.saveAsset(kind as AssetKind, assetPath, await readJson(request), { create: url.searchParams.get('create') === '1' });
     }
     throw new HttpError(404, `no route ${route}`);
   }

@@ -2,6 +2,7 @@ import { Box, File, Folder, FolderOpen, Image, Music, Type } from '@lucide/icons
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, TextField, Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
+import { freeAssetPath, NEW_ASSET_OPTIONS } from '../newAssets';
 import type { AssetRecord, MoveRequest } from '../protocol';
 import type { EditorSession } from './session';
 
@@ -9,6 +10,7 @@ const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%' },
   bar: { display: 'flex', gap: '_xs', alignItems: 'center', paddingInline: '_sm', paddingBlock: '_xs' },
   path: { flex: '1' },
+  create: { maxWidth: '9em' },
   status: { color: '_textMuted', fontSize: '0.85em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '40%' },
   tree: { flex: '1', minHeight: '0' },
   kind: { color: '_textMuted', marginInlineStart: '_xs', fontSize: '0.8em' },
@@ -55,7 +57,8 @@ const ICONS = { model: Box, image: Image, texture: Image, audio: Music, sound: M
 
 /**
  * 资源浏览器：内容目录里的资源按文件夹列出（后端推送变化时跟着变）。选中一个资源或文件夹可以改它的路径（移动、改名，
- * 引用它的文件跟着改写）、删掉它；把资源、文件夹拖进别的文件夹也是移动。
+ * 引用它的文件跟着改写）、删掉它；把资源、文件夹拖进别的文件夹也是移动。"新建"在选中的文件夹（选中的是资源时是它所在的
+ * 文件夹）里建场景、材质、基本形状的模型、UI 页面（newAssets.ts），建好以后选中它，路径框里改名字。
  */
 export const AssetBrowser = _component(({ session }: { session: EditorSession }) => {
   const { assets } = session;
@@ -116,6 +119,28 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     return `打开了 ${kind} ${path}`;
   });
 
+  /** 新建资源的文件夹：选中的文件夹，或者选中的资源所在的文件夹；没选时是内容目录的根。 */
+  const folderForNew = () => {
+    const node = current;
+    if (!node) return '';
+    if (!node.asset) return node.path;
+    const slash = node.path.lastIndexOf('/');
+    return slash < 0 ? '' : node.path.slice(0, slash);
+  };
+  const create = (id: string) => {
+    const option = NEW_ASSET_OPTIONS.find((candidate) => candidate.id === id);
+    if (!option) return;
+    void run('新建', async () => {
+      const folder = folderForNew();
+      const path = freeAssetPath(folder, option.name, option.kind, new Set(assets.value.map((asset) => `${asset.kind}:${asset.path}`)));
+      await session.createAsset(option.kind, path, option.content(path.slice(path.lastIndexOf('/') + 1)));
+      if (folder) expanded = [...new Set([...expanded, FOLDER + folder])];
+      selected = [`${option.kind}:${path}`];
+      target = path;
+      return `建了 ${option.kind} ${path}（路径框里可以改名）`;
+    });
+  };
+
   // 拖进文件夹：新路径是那个文件夹加上自己的名字
   const dropped = ({ node, target: { parent } }: TreeMove<Node>) => {
     const folder = parent === undefined ? '' : nodes.get(parent)?.path ?? '';
@@ -135,6 +160,10 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         <Button disabled={!current || busy || target === current.path || !target} onClick={() => current && void move(current, target)}>移动 / 改名</Button>
         <Button disabled={!current?.asset || busy} onClick={() => current && void remove(current)}>删除</Button>
         <Button disabled={!openable(current) || busy} onClick={() => current && void open(current)}>打开</Button>
+        <select {...css.attrs(styles.create)} aria-label="新建资源" value="" disabled={busy} onChange={(event: Event) => create((event.target as HTMLSelectElement).value)}>
+          <option value="">新建……</option>
+          {NEW_ASSET_OPTIONS.map((option) => <option value={option.id}>{option.label}</option>)}
+        </select>
         <span {...css.attrs(styles.status)} title={status}>{status}</span>
       </div>
       <Tree

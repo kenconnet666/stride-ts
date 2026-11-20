@@ -133,6 +133,13 @@ export class EditorSession implements EditableScene {
     return result;
   }
 
+  /** 新建一个 JSON 资源（已经有了报错）；返回它的记录，资源列表也马上带上它（不等后端推送）。 */
+  async createAsset(kind: AssetKind, path: string, content: object): Promise<AssetRecord> {
+    const record = await this.client.createAsset(kind, path, content);
+    if (!this.assets.value.some((asset) => asset.kind === kind && asset.path === path)) this.assets.value = [...this.assets.value, record];
+    return record;
+  }
+
   /** 删掉一个资源；还有别的资源引用它时报错（错误里列出是谁），force 照删。 */
   async deleteAsset(kind: AssetKind, path: string, force = false): Promise<void> {
     await this.client.deleteAsset(kind, path, { force });

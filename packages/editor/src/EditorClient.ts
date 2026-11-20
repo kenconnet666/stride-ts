@@ -31,6 +31,11 @@ export class EditorClient {
     return request('PUT', assetRoute(kind, path), content);
   }
 
+  /** 新建一个 JSON 资源；已经有了时报错（不覆盖）。 */
+  createAsset(kind: AssetKind, path: string, content: object): Promise<AssetRecord> {
+    return request('PUT', `${assetRoute(kind, path)}&create=1`, content);
+  }
+
   /** 移动、改名资源（几个，或者一个文件夹下面的全部）；引用它们的文件跟着改写。 */
   moveAssets(move: MoveRequest): Promise<MoveResult> {
     return request('POST', '/move', move);

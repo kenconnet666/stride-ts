@@ -6,7 +6,8 @@
  *   GET  /project                        工程（ProjectInfo）
  *   GET  /assets                         所有资源（AssetRecord[]）
  *   GET  /asset?kind=&path=              一个 JSON 资源的内容
- *   PUT  /asset?kind=&path=              保存一个 JSON 资源（请求体是它的内容），返回它的 AssetRecord
+ *   PUT  /asset?kind=&path=[&create=1]   保存一个 JSON 资源（请求体是它的内容），返回它的 AssetRecord；create 时只新建（已有的 409）。
+ *                                        模型只认 JSON 写的那种（程序生成的形状）
  *   DELETE /asset?kind=&path=[&force=1]  删掉一个资源（DeleteResult）；有别的资源引用它时不删（409），force 时照删
  *   POST /move                           移动、改名资源（请求体 MoveRequest，返回 MoveResult），引用它们的文件跟着改写
  * 资源变了（编辑器保存的、别的程序改的、导入器写的）以后，后端经 Vite 的 HMR 通道推送 EDITOR_ASSETS_EVENT（AssetChanges）；

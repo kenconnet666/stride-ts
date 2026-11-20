@@ -241,6 +241,19 @@ describe('后端（EditorBackend）', () => {
     expect(await readFile(path.join(directory, 'src', 'assets.gen.ts'), 'utf8')).toContain("Bullet: assetRef('prefab', \"Game/Prefabs/Bullet\"),");
   });
 
+  test('新建资源（create=1）：已经有了的不覆盖（409）；JSON 写的模型能建、能读回来，参数不对的拒绝', async () => {
+    const box = { format: 1, procedural: { type: 'cube', size: [1, 2, 1] }, materials: ['Game/Materials/Red'] };
+    const created = await api('/asset?kind=model&path=Game/Models/Box&create=1', { method: 'PUT', body: JSON.stringify(box) });
+    expect(created.status).toBe(200);
+    expect(((await created.json()) as AssetRecord).references).toEqual([{ kind: 'material', path: 'Game/Materials/Red' }]);
+    expect(await (await api('/asset?kind=model&path=Game/Models/Box')).json()).toEqual(box);
+    expect((await api('/asset?kind=model&path=Game/Models/Box&create=1', { method: 'PUT', body: JSON.stringify(box) })).status).toBe(409);
+    expect((await api('/asset?kind=scene&path=Game/Main&create=1', { method: 'PUT', body: JSON.stringify(scene) })).status).toBe(409);
+    const bad = await api('/asset?kind=model&path=Game/Models/Bad&create=1', { method: 'PUT', body: JSON.stringify({ format: 1, procedural: { type: 'donut' } }) });
+    expect(bad.status).toBe(400);
+    expect(((await bad.json()) as { error: string }).error).toMatch(/procedural\.type must be one of/);
+  });
+
   test('别的程序改了文件（监视器报进来）：攒一批处理，通知一次；内容目录外面的不管', async () => {
     const before = events.length;
     const contentDir = path.join(directory, 'public', 'content');

@@ -1,52 +1,182 @@
 # 交接（2026-11-20，换机器）
 
-用户要换一台性能好一点的电脑继续。这一页说新机器上怎么接着做：先把环境搭起来，再从路线图的"进度"接着做。项目怎么做、为什么这样做，都在别的文档里（[CLAUDE.md](../CLAUDE.md) 的开工必读、[roadmap.md](roadmap.md) 末尾的"进度"、[decisions.md](decisions.md)），这里不重复。
+用户要换一台性能好一点的电脑继续。这一页是给新机器上接手的人（或新会话里的 Claude）的：**先照第 1 节把环境搭起来、确认能跑，再照第 2 节的顺序接着做**。项目的设计和"为什么"在别的文档里，这里只给入口和结论：
+
+| 先读 | 讲什么 |
+|---|---|
+| [CLAUDE.md](../CLAUDE.md) | 项目一页纸：做什么、各模块在哪、约定（中文注释和提交、推送规则、验证方式） |
+| [roadmap.md](roadmap.md) 末尾的"进度" | 各阶段做到哪了、**正在做和下一步**、等用户定的事 |
+| [decisions.md](decisions.md) | 执行中自己做的决定（按时间倒序，最上面几条是这一轮的） |
+| [progress-log.md](progress-log.md) | 做完的各项的过程和验收（截图比对、数字） |
+| [architecture.md](architecture.md)、[lessons.md](lessons.md) | 已定的架构；WebGPU 和浏览器的坑 |
+
+---
 
 ## 1. 新机器上的准备
 
-**仓库和路径**（Windows，用户 `Administrator`；路径不同时按下面的环境变量改）：
+### 1.1 仓库和路径
 
-| 什么 | 原来在哪 | 说明 |
+旧机器是 Windows 11，用户 `Administrator`。新机器路径不同时，下表的"环境变量"一栏说怎么改。
+
+| 什么 | 旧机器上的位置 | 怎么来 | 说明 |
+|---|---|---|---|
+| **本仓库** | `C:\Users\Administrator\WebstormProjects\stride-ts` | `git clone https://github.com/kenconnet666/stride-ts`，`main` | 推送到 `origin` 不用先问用户（提交并验证以后） |
+| **Jolt 的 fork**（原生部分 StrideNative：物理、导航、动画、贴图解码编成 wasm） | `C:\Users\Administrator\CLionProjects\jolt-native-fork` | `git clone https://github.com/kenconnet666/JoltPhysics jolt-native-fork`，分支 `stride` | `upstream` 是 `jrouwe/JoltPhysics`，**永远不推**。只在要改原生部分时需要；平时本仓库从 fork 的 GitHub Release 装编好的包 |
+| **Stride 源码**（只读：导入样例、对照实现） | `C:\Users\Administrator\IdeaProjects\stride` | `git clone https://github.com/stride3d/stride` | 导入脚本默认找 `~/IdeaProjects/stride`，别处用环境变量 `STRIDE_REPO`。不在那边提交 |
+| **vue-tsx-pro**（编辑器界面的组件库，用户自己的） | `C:\Users\Administrator\IdeaProjects\vue-tsx-pro` | 用户的仓库 | 本仓库从 npm 装 `@zerodep-dev/vue-tsx-pro-tsx`、`-ui`（现在 `^0.30.0`）。只有要改组件库时才需要源码；它的约定见那边的 HANDOFF.md：`node scripts/dev/check.mjs` 过了再提交，`node scripts/release.mjs <版本> --wait` 发版（等 CI，打标签以后 CI 发 npm） |
+| 参考用的开源仓库（浅克隆） | `C:\code\refs` | 用到时 `git clone --depth 1` | 清单见 CLAUDE.md 的"参考用的开源仓库"（glTF-Transform、three.js、PlayCanvas、dawn、wgpu、Babylon.js、filament……） |
+| 用户的 easy-query-ts（只读参考） | `C:\code\easy-query-ts` | 用户的仓库 | TS API 写法的参考（不可变 builder、类型推导） |
+| 测试数据 | `C:\code\testdata` | 公开数据集，直接下载 | 下了什么事后告诉用户就行 |
+| 桌面 Stride 的截图工程 | 本仓库 `tools/stride-capture` | 本仓库 | 和桌面 Stride 4.4.2 逐像素比对用（要装 .NET 和 Stride） |
+
+### 1.2 工具和版本
+
+| 工具 | 旧机器上的版本 | 用途 |
 |---|---|---|
-| 本仓库 | `C:\Users\Administrator\WebstormProjects\stride-ts` | `git clone https://github.com/kenconnet666/stride-ts`，`main` 分支 |
-| Jolt 的 fork（原生部分 StrideNative） | `C:\Users\Administrator\CLionProjects\jolt-native-fork` | 远程 `origin` 是 `kenconnet666/JoltPhysics`，工作分支 `stride`；`upstream` 是 `jrouwe/JoltPhysics`，**永远不推** |
-| Stride 源码（导入样例用，只读） | `C:\Users\Administrator\IdeaProjects\stride` | 导入脚本默认找 `~/IdeaProjects/stride`，别处用 `STRIDE_REPO` |
-| vue-tsx-pro（编辑器界面的组件库，用户自己的） | `C:\Users\Administrator\IdeaProjects\vue-tsx-pro` | 本仓库从 npm 装 `@zerodep-dev/vue-tsx-pro-*`（现在 0.30.0）；只有要改组件库时才需要它，约定见它的 HANDOFF.md |
-| 参考用的开源仓库（浅克隆） | `C:\code\refs` | 清单见 CLAUDE.md；用到时再克隆 |
-| 用户的 easy-query-ts（只读参考） | `C:\code\easy-query-ts` | TS API 的写法参考 |
-| 测试数据 | `C:\code\testdata` | 公开数据集，可以直接下载 |
+| Node.js | 24.12.0（要 22 以上） | 构建、导入器、调试 CLI（Node 直接跑 TS） |
+| pnpm | 10.34.5 | monorepo |
+| PowerShell | 7.6（`pwsh`，不是 Windows PowerShell 5.1） | `tools/*.ps1`：验证、回归、停后台进程 |
+| Git Bash | Git for Windows 自带 | 日常命令 |
+| Python 3 | 3.14（带 Pillow） | 改文件的脚本、截图裁切比较 |
+| GitHub CLI `gh` | keyring 登录（没有设 `GITHUB_TOKEN`） | 看 CI、发 Release |
+| Chrome | 稳定版，WebGPU 开着 | 跑游戏、验收画面 |
+| 改原生部分时 | emsdk、CMake、Ninja（见 fork 的 `StrideNative/README.md`） | `StrideNative/Scripts/build-wasm.ps1` |
+| 截图比对桌面 Stride 时 | .NET 8+、Stride 4.4.2 | `tools/stride-capture` |
 
-**工具**：Node 24（22 以上）、pnpm 10.34、PowerShell 7.6（`pwsh`）、Git Bash、Python 3（改文件的脚本写成文件再跑，见 CLAUDE.md）、`gh`（keyring 登录）。改原生部分时还要 fork 里 `StrideNative/README.md` 说的 emsdk 和 CMake。
+旧机器的显卡是 RTX 3050 笔记本（性能模式下才可信，静音模式会降频四倍左右）。
 
-**步骤**：
+### 1.3 第一次跑起来
 
-1. `pnpm install`（原生包从 fork 的 GitHub Release 装，`pnpm-workspace.yaml` 的 override，不用先编原生部分）。
-2. 每个样例导入 Stride 的内容（不提交）：`pnpm --filter @stride-ts/<样例> import:stride`。全部导一遍：对 `apps/` 下有 `import:stride` 脚本的样例逐个跑。导入时 `prefab instances kept expanded` 的警告应该一个都没有。
-3. `pnpm typecheck`、`pnpm test`，然后 `pwsh tools/regress.ps1`（或 `pwsh tools/verify.ps1`）把 20 个样例的冒烟跑一遍，确认新机器上都过。预算基线（`tools/budgets.json`）是在旧机器（RTX 3050 笔记本）上记的：显存、绘制次数这些和机器无关，帧时间会变——要是只有帧时间超了，在验证工作树里重记（`$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/verify.ps1`，再把工作树里的 `tools/budgets.json` 拷回来提交）。
-4. Chrome：装 Claude in Chrome 插件（看画面、点按钮用，主 Chrome 一直登录着）；要 `stride cpu-profile`、`mouse --trusted` 时再装调试桥扩展（`tools/debug-bridge`，见它的 README）。
-5. Claude Code 的记忆（用户的工作偏好：推送不用问、长任务放验证工作树、用完停掉开发服务器……）在旧机器的 `C:\Users\Administrator\.claude\projects\C--Users-Administrator-WebstormProjects-stride-ts\memory\`，要的话整个拷到新机器同样的位置（工作目录的路径不同时，目录名跟着路径变）。要点 CLAUDE.md 里都写了。
-6. 定时任务：旧机器上的已经停了。要接着无人值守，在新机器上用 CronCreate 建一个每 15 分钟的任务，提示词照抄下面第 4 节。
+1. **装依赖**：`pnpm install`。原生包 `@stride-ts/native` 经 `pnpm-workspace.yaml` 的 override 从 fork 的 GitHub Release（`native-v<版本>`）下 tgz，不用先编原生部分。**不要**改成 `file:` 指向本地 tgz（JetBrains 认不出类型）。
+2. **导入每个样例的内容**（`public/content/`，不提交）：
 
-## 2. 现在做到哪了
+   ```bash
+   for app in animated-model bepu-sample csharp-beginner csharp-intermediate custom-effect first-person-shooter game-menu jumpy-jet material-shader morph-targets particles-sample physics-sample platformer platformer2d simple-audio space-escape sprite-fonts topdown-rpg ui-element-link ui-particles; do
+     (cd apps/$app && pnpm -s import:stride) || echo "FAILED $app"
+   done
+   ```
 
-最新的提交都在 `main` 上（推送到 origin 的最后一个见 `git log origin/main`）。路线图的"进度"一节是准的，下一步也写在那里。这一轮（2026-11-20）做完的：
+   导入时的警告里**不应该有** `prefab instances kept expanded`（有的话是预制体实例没转成引用，见 decisions.md 的预制体那条）。粒子样例有几条"不是内置的粒子模块"的警告，是正常的。
+3. **检查**：`pnpm typecheck`、`pnpm test`（engine 336 个、pipeline 63 个、editor 17 个单测）。
+4. **回归**：`pwsh tools/verify.ps1`（建一个 git 工作树 `../stride-ts-verify`，切到当前提交、装依赖、把主检出导入的内容联接过去，跑 `tools/regress.ps1`：20 个样例的冒烟，每个起开发服务器和无头 Chrome，最后和 `tools/budgets.json` 的预算比）。旧机器上一遍 20 分钟左右，最后打出每个样例 `True`/`False` 的表。
+   - **预算基线是旧机器记的**：实体数、绘制次数、显存、当场建的管线这些和机器无关；帧时间会变。新机器上只有帧时间超了的话，重记：`$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/verify.ps1`，再把 `../stride-ts-verify/tools/budgets.json` 拷回主检出、单独提交（"预算的基线：……"）。
+5. **Chrome**：
+   - 装 **Claude in Chrome** 插件：看画面、点按钮、读控制台都用它（用户的主 Chrome 一直登录着）。一个开发服务器只留一个游戏标签页（CLI 连最后连上的那个）。
+   - 要 `stride cpu-profile`、`stride mouse left --trusted`（真实点击、指针锁定）时，装调试桥扩展 `tools/debug-bridge`（见它的 README）；或者用 `pnpm exec stride open <url> --headless` 自己起的 Chrome。
+6. **Claude Code 的记忆**（用户的工作偏好）在旧机器的 `C:\Users\Administrator\.claude\projects\C--Users-Administrator-WebstormProjects-stride-ts\memory\`，要的话整个拷到新机器同样的位置（工作目录的路径不同时，目录名跟着路径变：盘符和路径里的 `\`、`:` 都换成 `-`）。要点都在 CLAUDE.md 和下面第 3 节里。
+7. **定时任务**：旧机器上的已经停了（2026-11-20）。要接着无人值守，在新机器上建一个，见第 6 节。
 
-- **预制体**：场景里只存引用和差异；导入器把 Stride 的实例转成引用；编辑器里改、删实例的成员落成覆盖，单独打开预制体编辑，覆盖里的资源路径随移动改写。
-- **P4 底座**：后处理、GTAO、背景的管线在加载时预热（TPP 当场建的管线 22 → 5）；绘制次数按渲染通道数（`stride draws`）。
-- **P4 画面**：屏幕空间反射（Hi-Z、GGX、空间复用、时间累积，TPP 上看过画面）；接触阴影、运动模糊（都默认关）。
-- **编辑器**：升级到 vue-tsx-pro 0.30.0（场景树单击能选中了）。
+### 1.4 各样例的端口
 
-## 3. 没收尾的
+开发服务器：`pnpm --filter @stride-ts/<样例> dev`（或在 `apps/<样例>` 里 `pnpm dev`），页面 `http://localhost:<端口>/?debug`（带 `?debug` 才连调试 CLI），编辑器 `http://localhost:<端口>/__stride/editor/`。
 
-- **接触阴影、运动模糊**（提交 `a2792fe`）：单测、类型检查过了，全量回归见下一条；**还没在 Chrome 里看过画面**。下一步：TPP 上 `pnpm exec stride contact on`（看角色脚下、墙根的影子有没有贴上去，`--length`、`--thickness` 调参）；`pnpm exec stride blur on` 加移动相机（`stride input`）看糊得对不对，静止时画面应该和关着时一样。看过以后把结果补进 progress-log.md，有问题就修。
-- 全量回归的结果：见第 5 节（交接时写上）。
+| 样例 | 端口 | 样例 | 端口 |
+|---|---|---|---|
+| platformer（TPP） | 5184 | space-escape | 5212 |
+| animated-model | 5186 | material-shader | 5214 |
+| physics-sample | 5188 | custom-effect | 5216 |
+| bepu-sample | 5190 | morph-targets | 5218 |
+| platformer2d | 5192 | csharp-beginner | 5220 |
+| topdown-rpg | 5194 | csharp-intermediate | 5222 |
+| first-person-shooter | 5196 | game-menu | 5200 |
+| sprite-fonts | 5198 | ui-element-link | 5202 |
+| ui-particles | 5204 | simple-audio | 5206 |
+| particles-sample | 5208 | jumpy-jet | 5210 |
 
-## 4. 定时任务的提示词
+另外：`apps/sandbox`（5180，冒烟页）、`apps/bench`（5182，基准）。
+
+---
+
+## 2. 现在做到哪了，接着做什么
+
+### 2.1 各阶段
+
+- **P1、P2**（Stride 样例的运行时）：完成。20 个样例都移植了，TPP 和桌面 Stride 逐像素比对过。
+- **P3 编辑器**：界面（Vue 加 vue-tsx-pro）、场景树（加删、拖动换父实体）、属性面板（照字段描述画，加删组件）、视口（点选、操纵器）、资源浏览器（移动、改名、删除，改写引用它的文件）、撤销重做、试玩都做了；**预制体**这一轮做完了：场景里只存引用和差异、导入器把 Stride 的实例转成引用、编辑器里改删实例的成员落成覆盖、单独打开预制体编辑、覆盖里的资源路径随移动改写。
+- **P4 现代画面**：底座（统计量和预算、管线预热、渲染图、阴影图集按需、画质档位）做了；画面功能做了 TAA 加运动向量、GTAO、屏幕空间反射、接触阴影、运动模糊。
+
+### 2.2 这一轮（2026-11-20 下午）新做的，按提交
+
+| 提交 | 内容 | 验证 |
+|---|---|---|
+| `d5d39a2`、`78ed87e` | 预制体实例就是预制体的根；导入器把 Stride 的实例转成引用（TPP 134 个，场景文件 194 → 101 KB） | 全量回归通过，已推送 |
+| `9d5be40` | 编辑器里改、删实例的成员（`editor/prefabEdits.ts`） | 全量回归通过，Chrome 里在 TopDownRPG 上验过，已推送 |
+| `8c6fea7` | 单独打开预制体编辑；覆盖里的资源路径算引用 | Chrome 里在 TPP 上验过（改了再改回，文件 SHA-1 不变），已推送 |
+| `406457e`、`aee40c7` | 后处理、GTAO、背景的管线加载时预热（TPP 当场建的管线 22 → 5） | 全量回归通过，已推送 |
+| `1b9adeb` | 绘制次数按渲染通道数（`stride draws`） | 全量回归通过，已推送 |
+| `0039cd1`、`c5e2115` | 屏幕空间反射第一版 | 全量回归通过，已推送 |
+| `8749132` | 编辑器升级到 vue-tsx-pro 0.30.0（场景树单击能选中了） | Chrome 里验过；全量回归见 2.4 |
+| `9c2cdde` | 屏幕空间反射：空间上复用邻居的光线（粗糙表面上不再满是黑点） | Chrome 里在 TPP 上看过；全量回归见 2.4 |
+| `a2792fe` | 接触阴影、运动模糊（默认关） | 单测、类型检查过；**没在 Chrome 里看过画面**；全量回归见 2.4 |
+
+同一天在 vue-tsx-pro 那边修了两件事并发了 0.30.0：`css` 改成只有静态方法的类（JetBrains 里按类着色）；拖动工具 `startMove` 设了阈值时过了阈值才捕获指针（能拖动的 Tree 里单击选不中）。
+
+### 2.3 接着做什么（按顺序）
+
+1. **看接触阴影和运动模糊的画面**（`a2792fe`，第一件事）：
+   - TPP（5184）上 `pnpm exec stride contact on`：看角色脚下、墙根、台阶边上的影子是不是贴上去了、没有漏光；不对就调 `--length`（默认 0.3 世界单位）、`--thickness`（默认 0.005）、`--steps`（16）。开关各截一张做差：`pnpm exec stride pause`，`stride contact off`，`stride shot off.png`，`stride contact on`，`stride shot on.png --diff off.png`。
+   - `pnpm exec stride blur on`：静止时画面应该和关着时一样（差 0）；按住方向键跑动、转相机（`stride key KeyW --hold 1000`、`stride mouse move 300 0`）时角色和背景糊得对不对，轮廓不该把背景糊进前景。
+   - 看过以后把结果写进 progress-log.md（"同一天"那一段后面），有问题就修；然后更新 roadmap 进度里的"运动模糊""接触阴影"两行。
+2. **P4 画面功能接着往下**（roadmap 第三节的阶段表）：SSGI、屏幕空间次表面散射；然后阴影（PCSS、缓存的级联）、大气和天气、材质扩展、GPU 粒子……每项照"做法：先读 Stride 的实现和参考仓库 → 写 → 单测 → Chrome 里看 → 回归 → 推送 → 更新进度"。
+3. **P4 底座的剩余**：精灵、TAA 的管线还是第一次用时当场建（精灵透不透明要看贴图，从文件推不出来；TAA 运行中才打开）。
+4. **P3 编辑器的剩余**：多选一起改、复制粘贴实体、加脚本组件、往预制体成员下面加实体；然后用编辑器把 P1、P2 的每个样例打开、改、保存、试玩一遍当验收。
+5. **遗留的小项**（roadmap 进度第 3 条）：粒子和场景里 UI 的点选、富文本（Markdown 加可视化编辑器）、TouchInputs 样例、MSAA、分簇光照、透明物体的阴影……；csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，原因没查完。
+
+### 2.4 交接时没跑完的
+
+- **全量回归**（`8749132`、`9c2cdde`、`a2792fe` 和这份文档，带 `STRIDE_UPDATE_BUDGETS=1`）：交接时在旧机器上后台跑着，结果见第 7 节。新机器上第一次 `pwsh tools/verify.ps1` 也就是再确认一遍。
+
+---
+
+## 3. 怎么干活（约定和惯例）
+
+完整的在 CLAUDE.md 的"约定"，这里是最常用到的：
+
+- **语言**：和用户中文；代码注释（含文档注释、测试标题）、提交信息中文；标识符、文件名、报错和日志英文。
+- **提交**：`git add` 写明路径（不 `git add -A`）；提交信息末尾 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`；整理和功能改动分开提交。
+- **验证和推送**：本地提交 → `pwsh tools/verify.ps1` 后台跑（在工作树里，不挡主线程）→ 通过再 `git push origin main`。预算有意变了就带 `STRIDE_UPDATE_BUDGETS=1` 跑，把工作树里的 `tools/budgets.json` 拷回来单独提交。fork 也直接推 origin，**永远不推 upstream**。不 force push。
+- **"做完"的标准**：在 Chrome 里实际跑过、看过；用调试 CLI 量。改了画面的功能开关各截一张做差（`stride shot --diff`）。
+- **后台的东西用完就停**：`pwsh tools/stop-dev.ps1`（`-All` 全停，`-Keep` 留下在用的）；游戏标签页用插件关。几个页面同时满帧渲染会把显卡吃满，帧时间和冒烟的时序都不可信。
+- **回归在主检出跑时**（`pwsh tools/regress.ps1`）开发服务器会热更新工作区：跑完之前不改 `packages/`、`apps/`。验证工作树里跑的不受影响。
+- **验证期间**不在主检出重新导入内容（工作树联接的是主检出的 `public/content`），也不开浏览器、不占显卡。
+- **Stride 的 bug 不跟**：比 Stride 做得好，改了的地方注明"和 Stride 不同：……"并记进 decisions.md。默认关掉 Stride 没有的效果（接触阴影、运动模糊），免得和桌面 Stride 的截图比对对不上。
+- **原生部分有问题直接改 fork**，不在 TS 里绕：改 `StrideNative/JS/package.json` 的版本 → `pwsh StrideNative/Scripts/build-wasm.ps1` → 提交推送 fork → `pwsh StrideNative/Scripts/release-native.ps1` → 本仓库 `pnpm-workspace.yaml` 的 override 换成新地址 → `pnpm install`。
+
+## 4. 调试 CLI 常用命令
+
+在仓库根目录 `pnpm exec stride <命令>`（全部见 [packages/cli/README.md](../packages/cli/README.md)）。页面要带 `?debug`。
+
+| 命令 | 用途 |
+|---|---|
+| `status`、`entities --name X`、`inspect <实体>` | 看状态、实体 |
+| `set <实体> <组件.字段> <JSON>` | 改值 |
+| `pause`、`resume`、`step 1` | 暂停、单步（截图比较前先暂停） |
+| `key KeyW --hold 1000`、`mouse move 100 0` | 模拟输入 |
+| `shot out.png --diff ref.png` | 截图、和参考比较（输出每通道平均差、超阈值的像素数） |
+| `perf --seconds 3`、`metrics`、`draws` | 帧时间和 GPU 每通道耗时、统计量和预算、按通道的绘制次数 |
+| `quality low\|medium\|high\|ultra` | 画质档位 |
+| `ao`、`taa`、`ssr`、`contact`、`blur`（`on`/`off`/参数） | 屏幕空间效果的开关；`ssr --debug hits\|reflection` 看命中和反射 |
+| `eval "<JS>"` | 在页面里执行（全局 `strideGame`），比如 `strideGame.graphicsCompositor.graphStats.passes` 看这一帧跑了哪些通道，`strideGame.graphicsDevice.pipelines.recentSync` 看最近当场建的管线 |
+| `logs -f` | 页面的 console 和引擎日志 |
+
+## 5. 这一轮踩过的坑（新机器上也会遇到）
+
+- **改文件的 Python 脚本写成文件再跑**：Git Bash 的 heredoc（`python - <<'EOF'`）会把反斜杠、`\U` 这类吃掉或报错。Windows 上 Python 以文本模式写文件会把换行写成 CRLF：一律 `open(p, 'w', encoding='utf-8', newline='')`。
+- **Chrome 标签在后台时不画帧**：`stride shot` 会一直等下一帧直到超时。先用插件截一张（把标签带到前台），再 `stride shot`；脚本里给它套 `timeout 60`。
+- **改了引擎里登记调试命令的代码**（`debug/commands.ts`）以后，Vite 的热更新不会重新登记命令：重新加载页面。
+- **停后台验证**：`TaskStop` 只停最外层的 pwsh，`tools/regress.ps1` 和它的 node 子进程还在跑、和下一次抢资源（表现是下一次冒烟里 `no page is connected to this hub`）。停的时候按命令行找：`Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='pwsh.exe'" | Where-Object { $_.CommandLine -match 'stride-ts-verify' } | Stop-Process`，再 `pwsh tools/stop-dev.ps1 -All`。不要用 `&` 在 Bash 里起验证（收不到结束的通知）。
+- **编辑器页面**：会话对象在 `document.querySelector('#app').__vue_app__._instance.props.session`（JS 里查状态、模拟操作用）；编辑器的场景树和视口都要等游戏页面起来（几秒），太早点会点在加载中的骨架上。
+- **场景树单击选不中**：是 vue-tsx-pro 0.29 的 bug（拖动时按下就捕获指针），0.30.0 修了。
+- **样例导入的 Stride 内容里有过时的预制体引用**（CSharpIntermediate 的 DefaultScenery、FPS 的 Stairs1x1x2：成员的 `Base` 指着预制体里删掉的实体）：导入器把这样的成员当普通实体，别的照常转成引用。
+
+## 6. 定时任务（无人值守续跑）
+
+在新机器上用 CronCreate 建一个每 15 分钟的任务，提示词照抄下面这段（"创建于"改成新的日期，"7 天后"那句的日期跟着改）：
 
 > 【无人值守续跑】继续执行 stride-ts 的路线图 docs/roadmap.md（取舍已全部按推荐定，见 docs/decisions.md）。先读路线图末尾的"进度"一节，从记录的下一步接着做；如果上一轮做到一半（工作区有未提交的改动），先把它做完。按路线图第五节的流程推进：缺什么补什么、写单测、用调试 CLI（pnpm exec stride …）在 Chrome 里验证、提交并推送、更新"进度"。长任务放后台跑。只有遇到 D10 里"停下来问"的情况才停下来问用户，其他情况不要停，也不要只汇报不干活。路线图全部完成后，在"进度"里写明，并用 CronDelete 删掉这个定时任务。这个定时任务创建于 2026-11-19，7 天后会自动过期：如果今天已经是 2026-11-25 或更晚，并且路线图还没做完，就用 CronCreate 新建一个同样的任务（每 15 分钟，提示词照抄这段）。
 
-（在新机器上建时，"创建于"那一句改成新的日期。）
+## 7. 交接时的状态
 
-## 5. 交接时的状态
-
-（交接的最后一步填）
+- 定时任务：已停（2026-11-20 10:40 左右）。
+- 推送：交接时把 `main` 全部推到了 origin（用户要求），包括还在跑全量回归的 `8749132`、`9c2cdde`、`a2792fe`。
+- 全量回归：（跑完以后补在这里；没补上的话，新机器上第一件事就是 `pwsh tools/verify.ps1`。）

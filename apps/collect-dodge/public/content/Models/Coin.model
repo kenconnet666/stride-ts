@@ -1,0 +1,16 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "sphere",
+  "radius": 0.4,
+  "tessellation": 24,
+  "scale": [
+   1,
+   1,
+   0.25
+  ]
+ },
+ "materials": [
+  "Materials/Coin"
+ ]
+}

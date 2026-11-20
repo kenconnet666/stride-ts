@@ -1,0 +1,11 @@
+{
+ "name": "Obstacle",
+ "baseColor": [
+  0.8,
+  0.08,
+  0.05,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.5
+}

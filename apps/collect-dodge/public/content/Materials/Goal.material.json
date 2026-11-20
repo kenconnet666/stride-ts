@@ -1,0 +1,16 @@
+{
+ "name": "Goal",
+ "baseColor": [
+  0.1,
+  0.8,
+  0.3,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.4,
+ "emissive": [
+  0.2,
+  2,
+  0.6
+ ]
+}

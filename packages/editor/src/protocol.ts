@@ -10,7 +10,7 @@
  *                                        模型只认 JSON 写的那种（程序生成的形状）
  *   DELETE /asset?kind=&path=[&force=1]  删掉一个资源（DeleteResult）；有别的资源引用它时不删（409），force 时照删
  *   POST /import?folder=&name=           导入拖进来的文件（请求体是文件的字节，name 是文件名）：音频成声音、图片成贴图、模型（glb、gltf、fbx、obj）
- *                                        成模型加材质加贴图，返回 ImportResult
+ *                                        成模型加材质加贴图、字体（ttf、otf、ttc）成运行时字体，返回 ImportResult
  *   POST /move                           移动、改名资源（请求体 MoveRequest，返回 MoveResult），引用它们的文件跟着改写
  * 资源变了（编辑器保存的、别的程序改的、导入器写的）以后，后端经 Vite 的 HMR 通道推送 EDITOR_ASSETS_EVENT（AssetChanges）；
  * 前端用 `import.meta.hot.on(EDITOR_ASSETS_EVENT, ...)` 收。

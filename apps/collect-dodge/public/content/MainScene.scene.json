@@ -24,8 +24,8 @@
    "parent": null,
    "position": [
     0,
-    4,
-    10
+    10,
+    13
    ],
    "rotation": [
     -0.104528,
@@ -43,7 +43,22 @@
      "verticalFieldOfView": 45,
      "nearClipPlane": 0.1,
      "farClipPlane": 1000
-    }
+    },
+    "scripts": [
+     {
+      "type": "game/FollowCamera#FollowCamera",
+      "props": {
+       "target": {
+        "$entity": "8b6c7a55-4ab9-46da-9020-99c61f4d08d9"
+       },
+       "offset": [
+        0,
+        10,
+        7
+       ]
+      }
+     }
+    ]
    }
   },
   {
@@ -114,6 +129,13 @@
    "components": {
     "skyAtmosphere": {
      "sun": "82826420-3698-4d3f-a6d5-4c3f90b8f996"
+    },
+    "volumetricClouds": {},
+    "weather": {
+     "cloudCoverage": 0.35,
+     "cloudType": 0.8,
+     "windSpeed": 3,
+     "transitionTime": 0
     }
    }
   },
@@ -168,6 +190,861 @@
      "layer": 0,
      "friction": 0.5
     }
+   }
+  },
+  {
+   "id": "8b6c7a55-4ab9-46da-9020-99c61f4d08d9",
+   "name": "Player",
+   "parent": null,
+   "position": [
+    0,
+    1,
+    6
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Player",
+     "materials": []
+    },
+    "character": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "capsule",
+       "radius": 0.4,
+       "length": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "speed": 6,
+     "jumpForce": 5,
+     "maximumHorizontalForce": 200,
+     "maximumVerticalForce": 1000,
+     "slopeAngle": 50,
+     "airControlForceScale": 0.2,
+     "airControlScale": 0.2,
+     "gravity": true,
+     "interpolated": true
+    },
+    "scripts": [
+     {
+      "type": "game/PlayerController#PlayerController",
+      "props": {
+       "camera": {
+        "$entity": "f372dac7-0344-4ba6-b9be-a7befad91363"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "f7b8878f-2275-40e4-a63a-0566bb0936e3",
+   "name": "WallSouth",
+   "parent": null,
+   "position": [
+    0,
+    1,
+    10.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/WallSouth",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        22,
+        2,
+        1
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  },
+  {
+   "id": "ac31d1dd-6add-4cc8-ab9a-4fa347765d0e",
+   "name": "WallWest",
+   "parent": null,
+   "position": [
+    -10.5,
+    1,
+    -4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/WallSide",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        1,
+        2,
+        30
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  },
+  {
+   "id": "3cda30b6-2031-4540-ae96-683255eded38",
+   "name": "WallEast",
+   "parent": null,
+   "position": [
+    10.5,
+    1,
+    -4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/WallSide",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        1,
+        2,
+        30
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  },
+  {
+   "id": "94405663-635d-467b-844d-ef496302bb39",
+   "name": "WallNorthLeft",
+   "parent": null,
+   "position": [
+    -6.5,
+    1,
+    -18.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/WallNorth",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        9,
+        2,
+        1
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  },
+  {
+   "id": "b266bf4a-4c26-44b3-9b6f-101720309f33",
+   "name": "WallNorthRight",
+   "parent": null,
+   "position": [
+    6.5,
+    1,
+    -18.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/WallNorth",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        9,
+        2,
+        1
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  },
+  {
+   "id": "7a8fd389-8f4e-47db-9101-b11075b64891",
+   "name": "Door",
+   "parent": null,
+   "position": [
+    0,
+    1.5,
+    -18.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Door",
+     "materials": []
+    },
+    "body": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        4,
+        3,
+        1
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": true,
+     "gravity": false,
+     "sleepThreshold": -1,
+     "interpolated": false
+    },
+    "scripts": [
+     {
+      "type": "game/Door#Door",
+      "props": {
+       "openHeight": 3.2
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "13b5eef5-91ab-4507-99a8-4edbbe466f87",
+   "name": "Goal",
+   "parent": null,
+   "position": [
+    0,
+    0.05,
+    -23
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Goal",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        1,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "cylinder",
+       "radius": 1.5,
+       "length": 2
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "trigger": true
+    },
+    "scripts": [
+     {
+      "type": "game/Goal#Goal",
+      "props": {}
+     }
+    ]
+   }
+  },
+  {
+   "id": "484b6b78-c0b6-43bb-8c8c-2e6267c12627",
+   "name": "Coin1",
+   "parent": null,
+   "position": [
+    -6,
+    1,
+    4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Coin"
+   }
+  },
+  {
+   "id": "074e0854-3bad-4e0b-ba49-b62aef95d3ef",
+   "name": "Coin2",
+   "parent": null,
+   "position": [
+    6,
+    1,
+    4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Coin"
+   }
+  },
+  {
+   "id": "030714d5-d333-4f36-9bd5-2dbcbf4e4e2d",
+   "name": "Coin3",
+   "parent": null,
+   "position": [
+    -6,
+    1,
+    -8
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Coin"
+   }
+  },
+  {
+   "id": "016e1bf0-3c40-4ccc-80ed-5a3c0f628146",
+   "name": "Coin4",
+   "parent": null,
+   "position": [
+    6,
+    1,
+    -8
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Coin"
+   }
+  },
+  {
+   "id": "5ca2dcf0-bc17-4974-b1c1-7e84dd62b6f8",
+   "name": "Coin5",
+   "parent": null,
+   "position": [
+    0,
+    1,
+    -14
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {},
+   "prefab": {
+    "path": "Prefabs/Coin"
+   }
+  },
+  {
+   "id": "90d64404-1570-477b-87d8-4e1094519553",
+   "name": "Obstacle1",
+   "parent": null,
+   "position": [
+    -7,
+    0.75,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Obstacle",
+     "materials": []
+    },
+    "body": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        1.5,
+        1.5,
+        1.5
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": true,
+     "gravity": false,
+     "sleepThreshold": -1,
+     "interpolated": false
+    },
+    "scripts": [
+     {
+      "type": "game/MovingObstacle#MovingObstacle",
+      "props": {
+       "offset": [
+        14,
+        0,
+        0
+       ],
+       "period": 4,
+       "phase": 0
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "8e22f005-68e0-43a9-9f0e-dc7c52e458a7",
+   "name": "Obstacle2",
+   "parent": null,
+   "position": [
+    7,
+    0.75,
+    -4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Obstacle",
+     "materials": []
+    },
+    "body": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        1.5,
+        1.5,
+        1.5
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": true,
+     "gravity": false,
+     "sleepThreshold": -1,
+     "interpolated": false
+    },
+    "scripts": [
+     {
+      "type": "game/MovingObstacle#MovingObstacle",
+      "props": {
+       "offset": [
+        -14,
+        0,
+        0
+       ],
+       "period": 3.5,
+       "phase": 0.25
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "f253cea9-df7d-46d0-89c3-e0b592cec966",
+   "name": "Obstacle3",
+   "parent": null,
+   "position": [
+    -7,
+    0.75,
+    -11
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Obstacle",
+     "materials": []
+    },
+    "body": {
+     "shapes": [
+      {
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1,
+       "type": "box",
+       "size": [
+        1.5,
+        1.5,
+        1.5
+       ]
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": true,
+     "gravity": false,
+     "sleepThreshold": -1,
+     "interpolated": false
+    },
+    "scripts": [
+     {
+      "type": "game/MovingObstacle#MovingObstacle",
+      "props": {
+       "offset": [
+        14,
+        0,
+        0
+       ],
+       "period": 3,
+       "phase": 0.5
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "b890e6da-6c2a-4328-8ce2-d5f3e22f2f39",
+   "name": "Rules",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "ui": {
+     "page": null,
+     "resolution": [
+      1280,
+      720,
+      1000
+     ],
+     "size": [
+      1,
+      1,
+      1
+     ],
+     "resolutionStretch": "fixedHeightAdaptableWidth",
+     "isFullScreen": true
+    },
+    "scripts": [
+     {
+      "type": "game/GameRules#GameRules",
+      "props": {
+       "font": {
+        "$asset": "UI/OpenSans-Regular",
+        "kind": "font"
+       },
+       "coinSound": {
+        "$asset": "Sounds/CoinPickup",
+        "kind": "sound"
+       },
+       "hitSound": {
+        "$asset": "Sounds/Hit",
+        "kind": "sound"
+       },
+       "doorSound": {
+        "$asset": "Sounds/DoorOpen",
+        "kind": "sound"
+       }
+      }
+     }
+    ]
    }
   }
  ]

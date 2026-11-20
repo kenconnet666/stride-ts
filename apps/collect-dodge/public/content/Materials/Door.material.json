@@ -1,0 +1,11 @@
+{
+ "name": "Door",
+ "baseColor": [
+  0.4,
+  0.24,
+  0.1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.7
+}

@@ -1,0 +1,11 @@
+{
+ "name": "Player",
+ "baseColor": [
+  0.08,
+  0.3,
+  0.85,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.45
+}

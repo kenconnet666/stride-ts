@@ -1,0 +1,16 @@
+{
+ "name": "Coin",
+ "baseColor": [
+  1,
+  0.72,
+  0.18,
+  1
+ ],
+ "metalness": 1,
+ "roughness": 0.25,
+ "emissive": [
+  0.25,
+  0.16,
+  0.02
+ ]
+}

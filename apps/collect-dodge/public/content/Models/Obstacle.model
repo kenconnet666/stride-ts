@@ -1,0 +1,14 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "cube",
+  "size": [
+   1.5,
+   1.5,
+   1.5
+  ]
+ },
+ "materials": [
+  "Materials/Obstacle"
+ ]
+}

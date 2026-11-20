@@ -1,0 +1,12 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "capsule",
+  "length": 1,
+  "radius": 0.4,
+  "tessellation": 12
+ },
+ "materials": [
+  "Materials/Player"
+ ]
+}

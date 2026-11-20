@@ -10,7 +10,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { importSourceModel, isSourceModel } from '@stride-ts/pipeline';
+import { importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -125,17 +125,30 @@ export class EditorBackend {
   /**
    * 导入一个拖进来的文件（编辑器的资源浏览器）：源文件原样放进 folder，旁边写上它的资源文件——音频（mp3、ogg、wav、flac、aac）
    * 是声音（.sound.json，不流式、不空间化，属性面板里再改），图片（png、jpg、svg）是单独引用的贴图（.texture.json）；模型
-   * （glb、gltf、fbx、obj）经导入器（pipeline 的 importSourceModel，原生的场景导入）成模型、材质、贴图。名字取文件名，重名的
-   * 加数字。返回新资源和导入时的警告。
+   * （glb、gltf、fbx、obj）经导入器（pipeline 的 importSourceModel，原生的场景导入）成模型、材质、贴图；字体（ttf、otf、ttc）
+   * 编成运行时字体（pipeline 的 importFontFile，字形轮廓按码位分块）。名字取文件名，重名的加数字。返回新资源和导入时的警告。
    */
   async importFile(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
     if (folder !== '') checkContentPath(folder);
-    if (isSourceModel(fileName)) return this.#importModel(folder, fileName, bytes);
+    if (isSourceModel(fileName)) {
+      return this.#importConverted('model', folder, fileName, async (tools, name) => {
+        const { model, files, warnings } = await importSourceModel(tools, bytes, { fileName, folder, name });
+        return { asset: model, files, warnings };
+      });
+    }
+    if (isFontFile(fileName)) {
+      return this.#importConverted('font', folder, fileName, async (tools, name) => {
+        const { font, files } = await importFontFile(tools, bytes, { fileName, folder, name });
+        return { asset: font, files, warnings: [] };
+      });
+    }
     const extension = path.extname(fileName).toLowerCase();
     const base = path.basename(fileName, path.extname(fileName)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
     const audio = ({ '.mp3': 'mp3', '.ogg': 'ogg', '.wav': 'wav', '.flac': 'flac', '.aac': 'aac' } as const)[extension as '.mp3'];
     const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg', '.webp': 'webp' } as const)[extension as '.png'];
-    if (!audio && !image) throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg) and models (glb, gltf, fbx, obj) can be imported`);
+    if (!audio && !image) {
+      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), models (glb, gltf, fbx, obj) and fonts (ttf, otf, ttc) can be imported`);
+    }
     const kind: AssetKind = audio ? 'sound' : 'texture';
     return this.#enqueue(async () => {
       let assetPath = '';
@@ -154,26 +167,33 @@ export class EditorBackend {
     });
   }
 
-  /** 模型文件：导入器在内存里做好模型、材质、贴图，名字不和已有的模型重复，一起写进内容目录。 */
-  async #importModel(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
+  /**
+   * 要转换的文件（模型、字体）：convert 用原生的导入工具在内存里做好资源的全部文件，名字不和已有的同类资源重复，一起写进内容目录。
+   */
+  async #importConverted(
+    kind: AssetKind,
+    folder: string,
+    fileName: string,
+    convert: (tools: StrideTools, name: string) => Promise<{ readonly asset: string; readonly files: readonly { readonly path: string; readonly content: Uint8Array | string }[]; readonly warnings: readonly string[] }>,
+  ): Promise<ImportResult> {
     const tools = await (this.#tools ??= createStrideTools());
     return this.#enqueue(async () => {
-      const base = fileName.slice(0, fileName.length - path.extname(fileName).length).replace(/[^A-Za-z0-9_-]+/g, '') || 'Model';
+      const base = fileName.slice(0, fileName.length - path.extname(fileName).length).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
       let name = base;
-      for (let n = 2; this.database.get('model', folder ? `${folder}/${name}` : name); n++) name = `${base}${n}`;
-      let imported;
+      for (let n = 2; this.database.get(kind, folder ? `${folder}/${name}` : name); n++) name = `${base}${n}`;
+      let converted;
       try {
-        imported = await importSourceModel(tools, bytes, { fileName, folder, name });
+        converted = await convert(tools, name);
       } catch (error) {
         throw new HttpError(400, (error as Error).message);
       }
-      for (const file of imported.files) await writeAtomically(path.join(this.project.contentDir, file.path), file.content);
-      await this.#refresh(imported.files.map((file) => file.path));
-      return { asset: this.database.get('model', imported.model)!, warnings: [...imported.warnings] };
+      for (const file of converted.files) await writeAtomically(path.join(this.project.contentDir, file.path), file.content);
+      await this.#refresh(converted.files.map((file) => file.path));
+      return { asset: this.database.get(kind, converted.asset)!, warnings: [...converted.warnings] };
     });
   }
 
-  /** 关掉后端时调：放掉原生的导入工具（用过模型导入时才有）。 */
+  /** 关掉后端时调：放掉原生的导入工具（导入过模型、字体时才有）。 */
   async close(): Promise<void> {
     (await this.#tools)?.shutdown();
     this.#tools = undefined;

@@ -1,0 +1,11 @@
+{
+ "name": "Wall",
+ "baseColor": [
+  0.45,
+  0.45,
+  0.5,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.8
+}

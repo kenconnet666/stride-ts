@@ -4,14 +4,14 @@
  *   找不到时依次试度量兼容的字体（Arial、Liberation Sans……，同 Stride 的 GetFontNameCandidates），用了替代的记警告。
  * - 字符：编译期字体（OfflineRasterized、SignedDistanceField）只要 CharacterRegions 和 CharacterSet 列出的字符，运行时
  *   字体（RuntimeRasterized）要字体里所有的字符（大的 CJK 字体分成很多块，运行时用到哪块下哪块）。
- * - 字形是轮廓：stride-tools 读出二次曲线（CFF 的三次曲线拆成二次），整理成 Slug 的点和带（../font.ts）。
+ * - 字形的编码和编辑器导入字体文件共用（../fontAsset.ts）。
  */
 import { readdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { EXTENSIONS, encodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, glyphPointStep, snapGlyphPoints, type FontFile } from '@stride-ts/engine/content-format';
-import { slugGlyph } from '../font.ts';
+import type { FontFile } from '@stride-ts/engine/content-format';
+import { encodeFont } from '../fontAsset.ts';
 import { once, type AssetEntry, type StrideProject } from './project.ts';
 import { asNumber, asObject, type StrideObject } from './yaml.ts';
 
@@ -54,85 +54,25 @@ export class FontImporter {
   }
 
   async #import(asset: AssetEntry): Promise<void> {
-    const { tools } = this.#context;
     const fontType = asObject(asset.data['FontType']) ?? {};
     const kind = FONT_TYPES[fontType.$type ?? 'OfflineRasterizedSpriteFontType'];
     if (!kind) throw new Error(`${asset.file}: font type ${fontType.$type} is not supported`);
     const bytes = await this.#source(asset);
-    const description = tools.describeFont(bytes);
-    const em = description.unitsPerEm;
-    const mapping = await tools.fontCodepoints(bytes);
-    const glyphOf = new Map<number, number>();
-    mapping.codepoints.forEach((codepoint, i) => glyphOf.set(codepoint, mapping.glyphs[i]!));
-
     const defaultCharacter = typeof asset.data['DefaultCharacter'] === 'string' ? asset.data['DefaultCharacter'].codePointAt(0)! : 32;
-    const wanted = kind === 'dynamic' ? [...mapping.codepoints] : await this.#characters(asset, fontType, defaultCharacter);
-    const codepoints = wanted.filter((codepoint) => glyphOf.has(codepoint)).sort((a, b) => a - b);
-    // 控制字符（区段常写到 0x7F）字体里本来就没有，不算缺字
-    const missing = wanted.filter((codepoint) => !glyphOf.has(codepoint) && !isControl(codepoint)).length;
-    if (missing > 0 && kind !== 'dynamic') this.#context.warnings.push(`${asset.file}: ${missing} characters are not in the font; they use the default character`);
-
-    const glyphs = [...new Set(codepoints.map((codepoint) => glyphOf.get(codepoint)!))];
-
-    const outlines = new Map((await tools.glyphOutlines(bytes, glyphs, { tolerance: em / 4096 })).map((outline) => [outline.glyph, outline]));
-
-    // 按码位块（码位 >> 8）分文件
-    const blocks = new Map<number, number[]>();
-    for (const codepoint of codepoints) {
-      const block = codepoint >> 8;
-      const list = blocks.get(block) ?? [];
-      list.push(codepoint);
-      blocks.set(block, list);
-    }
-    // 点存在字体网格的四分之一上（TrueType 的点和中点正好在上面）；有坐标大到 16 位放不下的字体就用粗一些的网格
-    let largest = 0;
-    for (const outline of outlines.values()) for (const v of outline.curves) largest = Math.max(largest, Math.abs(v / em));
-    const pointStep = glyphPointStep(1 / (4 * em), largest);
-    for (const [block, list] of blocks) {
-      const records = new ArrayBuffer(list.length * GLYPH_WORDS * 4);
-      const u32 = new Uint32Array(records);
-      const f32 = new Float32Array(records);
-      const points: number[] = [];
-      const bands: number[] = [];
-      list.forEach((codepoint, i) => {
-        const outline = outlines.get(glyphOf.get(codepoint)!)!;
-        const bounds = outline.bounds.map((v) => v / em) as [number, number, number, number];
-        // 曲线先对齐到文件里的网格，再分带
-        const slug = slugGlyph(snapGlyphPoints(outline.curves.map((v) => v / em), pointStep), bounds);
-        const r = i * GLYPH_WORDS;
-        u32[r + GLYPH_RECORD.codepoint] = codepoint;
-        f32[r + GLYPH_RECORD.advance] = outline.advance / em;
-        f32.set(bounds, r + GLYPH_RECORD.bounds);
-        f32.set([...slug.bandScale, ...slug.bandOffset], r + GLYPH_RECORD.bandTransform);
-        u32[r + GLYPH_RECORD.pointStart] = points.length / 2;
-        u32[r + GLYPH_RECORD.bandStart] = bands.length;
-        u32[r + GLYPH_RECORD.hBands] = slug.hBands;
-        u32[r + GLYPH_RECORD.vBands] = slug.vBands;
-        for (const v of slug.points) points.push(v);
-        for (const v of slug.bands) bands.push(v);
-      });
-      const data = encodeGlyphBlock({ glyphs: records, glyphCount: list.length, points: Float32Array.from(points), bands: Uint32Array.from(bands), pointStep });
-      await this.#context.write(`${asset.path}.${block}${EXTENSIONS.glyphs}`, data);
-    }
-
-    const file: FontFile = {
+    const characters = kind === 'dynamic' ? undefined : await this.#characters(asset, fontType, defaultCharacter);
+    const { files, missing } = await encodeFont(this.#context.tools, bytes, asset.path, {
       name: path.basename(asset.path),
       kind,
       size: asNumber(fontType['Size'], 20),
       antiAlias: ANTI_ALIAS[String(fontType['AntiAlias'] ?? 'Default')] ?? 'default',
-      integerPpem: (description.headFlags & 8) !== 0,
-      ascent: description.ascent / em,
-      descent: -description.descent / em,
-      lineGap: description.lineGap / em,
       spacing: asNumber(asset.data['Spacing'], 0),
       lineSpacing: asNumber(asset.data['LineSpacing'], 0),
       lineGapFactor: asNumber(asset.data['LineGapFactor'], 1),
       lineGapBaseLineFactor: asNumber(asset.data['LineGapBaseLineFactor'], 1),
       defaultCharacter,
-      blocks: [...blocks.keys()].sort((a, b) => a - b),
-      kerning: kerningPairs(mapping.kerning, codepoints, glyphOf, em),
-    };
-    await this.#context.write(asset.path + EXTENSIONS.font, JSON.stringify(file));
+    }, characters);
+    if (missing > 0 && characters) this.#context.warnings.push(`${asset.file}: ${missing} characters are not in the font; they use the default character`);
+    for (const file of files) await this.#context.write(file.path, file.content);
   }
 
   /** 编译期字体的字符：CharacterRegions（含两端）加 CharacterSet 文件里的字符，再加默认字符。 */
@@ -197,10 +137,6 @@ export class FontImporter {
   }
 }
 
-function isControl(codepoint: number): boolean {
-  return codepoint < 0x20 || (codepoint >= 0x7f && codepoint < 0xa0);
-}
-
 /** 家族名完全相同的优先，其次是包含（"Liberation" 匹配 "Liberation Sans"），粗斜体要一致（同 Stride 的 ResolveFont）。 */
 function findFont(fonts: readonly InstalledFont[], name: string, bold: boolean, italic: boolean): string | undefined {
   const lower = name.toLowerCase();
@@ -230,20 +166,4 @@ function systemFontDirs(): string[] {
   if (process.platform === 'win32') return [path.join(process.env['WINDIR'] ?? 'C:\\Windows', 'Fonts')];
   if (process.platform === 'darwin') return [path.join(home, 'Library/Fonts'), '/Library/Fonts', '/System/Library/Fonts'];
   return ['/usr/share/fonts', '/usr/local/share/fonts', path.join(home, '.local/share/fonts')];
-}
-
-/** kern 表的字形对换成码位对（一个字形对应几个码位时每个都写），调整量换成 em，按左、右码位排序。 */
-function kerningPairs(kerning: Int32Array, codepoints: readonly number[], glyphOf: ReadonlyMap<number, number>, em: number): number[] {
-  const codepointsOf = new Map<number, number[]>();
-  for (const codepoint of codepoints) {
-    const glyph = glyphOf.get(codepoint)!;
-    codepointsOf.set(glyph, [...(codepointsOf.get(glyph) ?? []), codepoint]);
-  }
-  const pairs: [number, number, number][] = [];
-  for (let i = 0; i < kerning.length; i += 3) {
-    for (const left of codepointsOf.get(kerning[i]!) ?? []) {
-      for (const right of codepointsOf.get(kerning[i + 1]!) ?? []) pairs.push([left, right, kerning[i + 2]! / em]);
-    }
-  }
-  return pairs.sort((a, b) => a[0] - b[0] || a[1] - b[1]).flat();
 }

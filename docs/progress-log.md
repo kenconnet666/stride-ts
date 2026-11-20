@@ -380,6 +380,20 @@ GPU 粒子（2026-11-20，scene-picking 分支，无头 Chrome 1280x720）：par
 
 GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x720）：先只做了间接绘制，容量 50 万、每秒 5000 个时主画面不再随容量变，但粒子的计算通道还是 0.102 ms（一次派发跑满容量），于是派发也只跑最近"最长寿命"秒生成的那段环（寿命正好到期的粒子要在窗口里判死，窗口多留两帧）。改完 0.007 ms；不排序、按深度、按新旧三种排序各截图看过，画面和改之前一样，控制台没有报错。
 
+### P3 编辑器的验收：用编辑器从零搭一个小游戏（C1，2026-11-20 到 11-21）
+
+`apps/collect-dodge`（端口 5224）。缺什么补什么，每步在 Chrome 里用编辑器走一遍，结论在 decisions.md：
+
+| 步 | 做了什么 | 看过、测过 |
+| --- | --- | --- |
+| 1 | JSON 写的 `.model`（基本形状，运行时生成网格） | 立方体、球、地面在视口里 |
+| 2 | 新建工程的模板 `stride-editor new` | 模板场景（相机、太阳、天空、1000 m 的地面）、冒烟 |
+| 3 | 资源浏览器的新建、做成预制体、导入声音和图片、资源热重载、属性面板编辑材质和模型、导入 glTF/FBX/OBJ（原生 0.33、0.34） | 改材质颜色视口跟着变；BoomBox.glb 0.6 秒导入 |
+| 4 | 玩法脚本：PlayerController、FollowCamera、Coin、MovingObstacle、Door、Goal、GameRules；导入字体（Open Sans） | 无头 Chrome 里按键、瞬移走完一局 |
+| 5 | 用编辑器的接口搭关卡（材质 6 个、模型 8 个、21 个实体、金币的预制体、体积云和天气）；冒烟加玩法检查 | 冒烟 8 项连过三遍；编辑器里打开、选中金币看属性面板 |
+
+搭的时候发现、修掉的：大气、云、雾的光照单位（暗了 π 倍，阴影全黑）；角色不能设速度（原生 0.35）；睡着时挂起的接触醒来后不报结束、触发器失灵（原生 0.36）；触发器的取法七处重复（`simulation.trigger`）；手柄没有"刚按下"；字体单测一直跳过。主 Chrome 的标签页这次只有 1～4 fps（窗口被挡着时 Chrome 节流），试玩和冒烟在无头 Chrome 里跑，编辑器的界面在主 Chrome 里看。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

@@ -12,3 +12,4 @@ export { cleanNodeName, strideNodeNames } from './stride/animation.ts';
 export { importCompositor, renderGroupMask, renderGroupOf, type ImportedCompositor } from './stride/compositor.ts';
 export { proceduralMesh, type ProceduralMesh } from './stride/procedural.ts';
 export { importSourceModel, isSourceModel, type ImportedSourceModel, type SourceModelOptions } from './sourceModel.ts';
+export { encodeFont, importFontFile, isFontFile, type EncodedFont, type FontSettings } from './fontAsset.ts';

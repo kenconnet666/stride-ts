@@ -1,0 +1,14 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "cube",
+  "size": [
+   9,
+   2,
+   1
+  ]
+ },
+ "materials": [
+  "Materials/Wall"
+ ]
+}

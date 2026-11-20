@@ -37,11 +37,13 @@ const target = stride('eval', `${BODIES} const w = g.entities.entity(ids[0]).req
   const m = g.renderSystem.views[0].viewProjection; const c = g.graphicsDevice.canvas;
   const x = m[0] * w[12] + m[4] * w[13] + m[8] * w[14] + m[12], y = m[1] * w[12] + m[5] * w[13] + m[9] * w[14] + m[13], h = m[3] * w[12] + m[7] * w[13] + m[11] * w[14] + m[15];
   ({ id: ids[0], dx: (x / h) * c.clientWidth / 2, dy: (-y / h) * c.clientHeight / 2 })`) as { id: number; dx: number; dy: number };
-// 点和等都在页面里（游戏时间 0.25 秒）：分成几条 CLI 命令时，单核慢、负载重的机器上命令之间隔得太久
+// 点和等都在页面里：分成几条 CLI 命令时，单核慢、负载重的机器上命令之间隔得太久。等到箱子升高（最多 2 秒游戏时间）：
+// CI 的软件 WebGPU 上一帧就超过 0.25 秒，物理一帧走的步数有上限，固定等 0.25 秒时箱子可能还没被推起来
 const pushed = stride('eval', `(async () => { const height = () => strideGame.entities.entity(${target.id}).require(strideEngine.Transform).world[13];
   const c = strideGame.graphicsDevice.canvas, before = height();
-  await click(c.clientWidth / 2 + ${target.dx}, c.clientHeight / 2 + ${target.dy}); await seconds(0.25);
-  return { before, after: height() }; })()`) as { before: number; after: number };
+  await click(c.clientWidth / 2 + ${target.dx}, c.clientHeight / 2 + ${target.dy});
+  await until(() => height() > before + 0.1, 2);
+  return { before, after: height(), frames: strideGame.frames }; })()`) as { before: number; after: number };
 check('点中的箱子被推起来', pushed.after > pushed.before + 0.1, pushed);
 
 // ---- VolumeTrigger

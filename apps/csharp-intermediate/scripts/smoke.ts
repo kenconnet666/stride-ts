@@ -191,7 +191,8 @@ const audio = evaluate<Audio>(`(async () => {
   const r = {};
   await tap('Space'); await frames(10); r.playing = find('Space');
   await tap('ArrowUp'); await tap('ArrowLeft'); r.volume = [find('Up/Down'), find('Left/Right')];
-  await tap('Space'); r.paused = find('Space');
+  // 等到显示 Paused（CI 上偶尔没等到，结果里带上第几帧，下次失败时好查）
+  await tap('Space'); r.paused = await until(() => (find('Space')?.endsWith('Paused') ? find('Space') : null), 1) ?? \`\${find('Space')} (frame \${strideGame.frames})\`;
   const gun = named('AudioDemo')[0].require(strideEngine.AudioEmitterComponent).controller('Gun');
   r.gun = [gun.playState];
   // 按着右键的时候看：帧慢时松开以后再看，枪声可能已经放完了

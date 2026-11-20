@@ -4,6 +4,7 @@
  * 其余每个纹素做若干次 GGX 重要性采样，按采样的立体角从源贴图合适的 mip 里取（包括 Stride 按 N·L 算 pdf 的写法，保持结果一致）。
  * 源贴图要带 mip。每个（级别，面）一次全屏绘制。
  */
+import { pipelineCache } from '../../graphics/PipelineCache';
 import { BRDF, CUBE_FACE_DIRECTION, FULLSCREEN_VERTEX } from '../wgsl';
 
 /** 天空盒每个纹素的 GGX 采样数，同 Stride 的 RadiancePrefilteringGGX 默认值。 */
@@ -61,14 +62,14 @@ const PARAMS_STRIDE = 256;
 const FORMAT: GPUTextureFormat = 'rgba16float';
 
 /**
- * 预滤波器：管线建一次，参数按（级数，采样数）缓存。record 把命令录进给的编码器，调用方负责提交；
+ * 预滤波器：管线在设备的 pipelineCache 里（建好时就在后台编，天空、反射探针、天空盒第一次用时不卡帧），参数按（级数，采样数）缓存。record 把命令录进给的编码器，调用方负责提交；
  * 输出贴图要 rgba16float、带 RENDER_ATTACHMENT 用途。
  */
 export class CubemapPrefilter {
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
   readonly #layout: GPUBindGroupLayout;
-  readonly #pipeline: GPURenderPipeline;
+  readonly #describe: () => GPURenderPipelineDescriptor;
   readonly #params = new Map<string, GPUBuffer>();
 
   constructor(device: GPUDevice, sampler: GPUSampler) {
@@ -83,12 +84,13 @@ export class CubemapPrefilter {
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
-    this.#pipeline = device.createRenderPipeline({
+    this.#describe = () => ({
       label: 'CubemapPrefilter',
       layout: device.createPipelineLayout({ bindGroupLayouts: [this.#layout] }),
       vertex: { module, entryPoint: 'fullscreenVertex' },
       fragment: { module, entryPoint: 'fs', targets: [{ format: FORMAT }] },
     });
+    void pipelineCache(device).warmRender('CubemapPrefilter', this.#describe);
   }
 
   /**
@@ -98,6 +100,7 @@ export class CubemapPrefilter {
    */
   record(encoder: GPUCommandEncoder, source: GPUTexture, output: GPUTexture, firstLayer: number, samples: number | readonly number[]): void {
     const levels = output.mipLevelCount;
+    const pipeline = pipelineCache(this.#device).render('CubemapPrefilter', this.#describe);
     const bindGroup = this.#device.createBindGroup({
       layout: this.#layout,
       entries: [
@@ -110,7 +113,7 @@ export class CubemapPrefilter {
       for (let face = 0; face < 6; face++) {
         const view = output.createView({ dimension: '2d', baseMipLevel: level, mipLevelCount: 1, baseArrayLayer: firstLayer + face, arrayLayerCount: 1 });
         const pass = encoder.beginRenderPass({ label: `CubemapPrefilter ${output.label} level ${level} face ${face}`, colorAttachments: [{ view, loadOp: 'clear', storeOp: 'store' }] });
-        pass.setPipeline(this.#pipeline);
+        pass.setPipeline(pipeline);
         pass.setBindGroup(0, bindGroup, [(level * 6 + face) * PARAMS_STRIDE]);
         pass.draw(3);
         pass.end();

@@ -2,6 +2,8 @@
  * 画物理天空的根渲染特性（Atmosphere.ts 的大气）。单独一个文件：RenderSystem 引用 Atmosphere，这个类在模块加载时要继承
  * RenderSystem 的 RootRenderFeature，放在一起会循环引用。
  */
+import type { SceneEntityFile } from '../../content/format';
+import { pipelineCache } from '../../graphics/PipelineCache';
 import type { AtmosphereGpu } from './Atmosphere';
 import { colorTargets, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';
 /** 每个视图一块 uniform（视图投影的逆、相机位置），动态偏移按 256 字节对齐；视图多了缓冲跟着变大（不设上限）。 */
@@ -13,7 +15,6 @@ export class AtmosphereRenderFeature extends RootRenderFeature {
   #views = new Float32Array(0);
   #viewBuffer: GPUBuffer | undefined;
   #viewBindGroup: GPUBindGroup | undefined;
-  readonly #pipelines = new Map<string, GPURenderPipeline>();
 
   override extract(): void {}
 
@@ -55,19 +56,37 @@ export class AtmosphereRenderFeature extends RootRenderFeature {
     this.#viewBuffer?.destroy();
   }
 
-  #pipelineFor(gpu: AtmosphereGpu, stage: RenderStage, colorFormat: GPUTextureFormat): GPURenderPipeline {
-    const key = `${stage.name}:${colorFormat}:${stage.output.depthFormat}`;
-    let pipeline = this.#pipelines.get(key);
-    if (!pipeline) {
-      pipeline = this.system.device.createRenderPipeline({
-        label: `AtmosphereRenderFeature ${stage.name}`,
-        layout: this.system.device.createPipelineLayout({ bindGroupLayouts: [gpu.skyLayout, gpu.viewLayout] }),
-        vertex: { module: gpu.skyModule, entryPoint: 'fullscreenVertex' },
-        fragment: { module: gpu.skyModule, entryPoint: 'fs', targets: colorTargets(stage, { format: colorFormat }) },
-        depthStencil: { format: stage.output.depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
-      });
-      this.#pipelines.set(key, pipeline);
+  /**
+   * 加载有物理天空的场景时在后台编它要的管线：大气的查找表和合成、画天空的（每个不透明的阶段）、体积云的（场景里有体积云时），
+   * 第一帧不用当场编译（以前十几条，见 decisions.md）。
+   */
+  override warmFiles(files: readonly SceneEntityFile[], stages: readonly RenderStage[]): Promise<void>[] {
+    if (!files.some((file) => file.components.skyAtmosphere)) return [];
+    const clouds = files.some((file) => file.components.volumetricClouds);
+    const atmosphere = this.system.atmosphere;
+    const pending: (Promise<void> | undefined)[] = [];
+    for (const stage of stages) {
+      const colorFormat = stage.output.colorFormat;
+      if (!colorFormat || stage.transparent) continue;
+      const gpu = atmosphere.warmGpu();
+      pending.push(gpu.warm(colorFormat), pipelineCache(this.system.device).warmRender(...this.#skyPipeline(gpu, stage, colorFormat)));
+      if (clouds) pending.push(this.system.clouds.warm(colorFormat));
     }
-    return pipeline;
+    return pending.filter((promise) => promise !== undefined);
+  }
+
+  #pipelineFor(gpu: AtmosphereGpu, stage: RenderStage, colorFormat: GPUTextureFormat): GPURenderPipeline {
+    return pipelineCache(this.system.device).render(...this.#skyPipeline(gpu, stage, colorFormat));
+  }
+
+  #skyPipeline(gpu: AtmosphereGpu, stage: RenderStage, colorFormat: GPUTextureFormat): [string, () => GPURenderPipelineDescriptor] {
+    const label = `AtmosphereRenderFeature ${stage.name}`;
+    return [`${label} ${colorFormat} ${stage.output.depthFormat}`, () => ({
+      label,
+      layout: this.system.device.createPipelineLayout({ bindGroupLayouts: [gpu.skyLayout, gpu.viewLayout] }),
+      vertex: { module: gpu.skyModule, entryPoint: 'fullscreenVertex' },
+      fragment: { module: gpu.skyModule, entryPoint: 'fs', targets: colorTargets(stage, { format: colorFormat }) },
+      depthStencil: { format: stage.output.depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
+    })];
   }
 }

@@ -22,6 +22,7 @@ import type { EntityId } from '../../data/prop';
 import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
 import { SkyAtmosphere } from '../components';
+import { pipelineCache } from '../../graphics/PipelineCache';
 import { IRRADIANCE_PER_INTENSITY } from './lightUnits';
 import { AERIAL_COMPOSITE_SHADER, AERIAL_SHADER, MULTI_SCATTERING_SHADER, SH_SHADER, SKY_CUBE_SHADER, SKY_SHADER, SKY_VIEW_SHADER, TRANSMITTANCE_SHADER } from './atmosphereShaders';
 import type { GpuResources } from '../../graphics/GpuResources';
@@ -262,10 +263,15 @@ export class Atmosphere {
     lighting.skybox = this.#skyLight;
   }
 
+  /** 大气的 GPU 资源（第一次用时建）；预热管线（AtmosphereRenderFeature.warmFiles）也从这里拿。 */
+  warmGpu(): AtmosphereGpu {
+    return (this.#gpu ??= new AtmosphereGpu(this.#device, this.#resources));
+  }
+
   /** 该重算的查找表、天空光录进一个编码器提交（在这一帧的画面之前执行）。 */
   update(): void {
     if (!this.active) return;
-    const gpu = (this.#gpu ??= new AtmosphereGpu(this.#device, this.#resources));
+    const gpu = this.warmGpu();
     gpu.writeUniforms(this.#uniforms());
     const s = this.settings;
     const lutKey = JSON.stringify([s.planetRadius, s.atmosphereHeight, s.rayleighScattering, s.mieScattering, s.mieAbsorption, s.miePhaseG, s.ozoneAbsorption, s.groundAlbedo]);
@@ -420,13 +426,13 @@ export class AtmosphereGpu {
   readonly #noOverlay: GPUTexture;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
-  readonly #pipelines: Record<ComputeName, GPUComputePipeline>;
+  /** 计算管线的描述（管线在 pipelineCache 里，用到时或预热时建）。 */
+  readonly #computes: Record<ComputeName, readonly [label: string, describe: () => GPUComputePipelineDescriptor]>;
   /** 空气透视的体素表和这一帧的相机。 */
   readonly aerial: GPUTexture;
   readonly camera: GPUBuffer;
   readonly #compositeModule: GPUShaderModule;
   readonly #compositeLayout: GPUBindGroupLayout;
-  readonly #composites = new Map<GPUTextureFormat, GPURenderPipeline>();
 
   constructor(device: GPUDevice, resources: GpuResources) {
     this.#device = device;
@@ -442,8 +448,11 @@ export class AtmosphereGpu {
     this.skyCube = device.createTexture({ label: 'Atmosphere sky cube', size: [SKY_CUBE_SIZE, SKY_CUBE_SIZE, 6], format: FORMAT, mipLevelCount: Math.log2(SKY_CUBE_SIZE) + 1, usage: storage });
     this.shResult = device.createBuffer({ label: 'Atmosphere SH', size: 28 * 4, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     this.shReadback = device.createBuffer({ label: 'Atmosphere SH readback', size: 28 * 4, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-    const compute = (label: string, code: string) => device.createComputePipeline({ label: `Atmosphere ${label}`, layout: 'auto', compute: { module: device.createShaderModule({ label: `Atmosphere ${label}`, code }), entryPoint: 'main' } });
-    this.#pipelines = {
+    const compute = (name: string, code: string) => {
+      const label = `Atmosphere ${name}`;
+      return [label, (): GPUComputePipelineDescriptor => ({ label, layout: 'auto', compute: { module: device.createShaderModule({ label, code }), entryPoint: 'main' } })] as const;
+    };
+    this.#computes = {
       transmittance: compute('transmittance', TRANSMITTANCE_SHADER),
       multiScattering: compute('multiple scattering', MULTI_SCATTERING_SHADER),
       skyView: compute('sky view', SKY_VIEW_SHADER),
@@ -567,27 +576,36 @@ export class AtmosphereGpu {
     for (const buffer of [this.uniforms, this.shResult, this.shReadback, this.camera]) buffer.destroy();
   }
 
+  /** 在后台编全部的计算管线和画进 format 的合成管线（加载有物理天空的场景时）。 */
+  warm(format: GPUTextureFormat): Promise<void> {
+    const cache = pipelineCache(this.#device);
+    return Promise.all([
+      ...Object.values(this.#computes).map(([label, describe]) => cache.warmCompute(label, describe)),
+      cache.warmRender(...this.#composite(format)),
+    ]).then(() => undefined);
+  }
+
   /** 合成的管线：颜色 = 散射 + 颜色 · 透射（alpha）。 */
   #compositeFor(format: GPUTextureFormat): GPURenderPipeline {
-    let pipeline = this.#composites.get(format);
-    if (!pipeline) {
-      pipeline = this.#device.createRenderPipeline({
-        label: `Atmosphere aerial perspective ${format}`,
-        layout: this.#device.createPipelineLayout({ bindGroupLayouts: [this.#compositeLayout] }),
-        vertex: { module: this.#compositeModule, entryPoint: 'fullscreenVertex' },
-        fragment: {
-          module: this.#compositeModule,
-          entryPoint: 'fs',
-          targets: [{ format, blend: { color: { srcFactor: 'one', dstFactor: 'src-alpha', operation: 'add' }, alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' } } }],
-        },
-      });
-      this.#composites.set(format, pipeline);
-    }
-    return pipeline;
+    return pipelineCache(this.#device).render(...this.#composite(format));
+  }
+
+  #composite(format: GPUTextureFormat): [string, () => GPURenderPipelineDescriptor] {
+    const label = `Atmosphere aerial perspective ${format}`;
+    return [label, () => ({
+      label,
+      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [this.#compositeLayout] }),
+      vertex: { module: this.#compositeModule, entryPoint: 'fullscreenVertex' },
+      fragment: {
+        module: this.#compositeModule,
+        entryPoint: 'fs',
+        targets: [{ format, blend: { color: { srcFactor: 'one', dstFactor: 'src-alpha', operation: 'add' }, alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' } } }],
+      },
+    })];
   }
 
   #dispatch(encoder: GPUCommandEncoder, name: ComputeName, entries: GPUBindGroupEntry[], groups: [number, number, number]): void {
-    const pipeline = this.#pipelines[name];
+    const pipeline = pipelineCache(this.#device).compute(...this.#computes[name]);
     const pass = encoder.beginComputePass({ label: `Atmosphere ${name}` });
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, this.#device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries }));

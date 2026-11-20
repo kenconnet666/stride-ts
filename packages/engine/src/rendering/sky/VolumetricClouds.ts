@@ -23,6 +23,7 @@ import { system } from '../../engine/system';
 import type { GameTime } from '../../engine/GameTime';
 import type { Atmosphere } from './Atmosphere';
 import { COMPOSITE_SHADER, ENVIRONMENT_SHADER, MARCH_SHADER, NOISE_SHADER, SHADOW_SHADER } from './cloudShaders';
+import { pipelineCache } from '../../graphics/PipelineCache';
 import { IRRADIANCE_PER_INTENSITY } from './lightUnits';
 import { VolumetricClouds } from '../components';
 import type { RenderContext, RenderView } from '../RenderSystem';
@@ -140,6 +141,11 @@ export class Clouds {
    * 画面之前（AtmosphereRenderFeature 的 prepare 里）：云或者主光的方向变了就重画影子图，录进自己的编码器提交。
    * 风吹着云走不用重画（只是采样的偏移在变）。噪声贴图还没生成完时不画。
    */
+  /** 在后台编云的管线，合成画进 format（加载有体积云的场景时，见 AtmosphereRenderFeature.warmFiles）。 */
+  warm(format: GPUTextureFormat): Promise<void> {
+    return (this.#gpu ??= new CloudsGpu(this.#device)).warm(format);
+  }
+
   prepare(): void {
     const gpu = this.#gpu;
     if (!this.active || !gpu?.ready) return;
@@ -263,20 +269,18 @@ class CloudsGpu {
   /** 环境光里的云：立方体（每级 mip 各算一遍）、参数和计算管线。 */
   readonly environment: GPUTexture;
   readonly #environmentUniforms: GPUBuffer;
-  readonly #environmentPipeline: GPUComputePipeline;
   /** 云在地面上的影子图、画它用的参数（和步进的分开：画的时机不同）和管线。 */
   readonly shadow: GPUTexture;
   readonly #shadowUniforms: GPUBuffer;
-  readonly #shadowPipeline: GPURenderPipeline;
-  readonly #march: GPURenderPipeline;
+  /** 管线的描述（管线在 pipelineCache 里，用到时或预热时建）。 */
+  readonly #renders: Readonly<Record<'march' | 'shadow', readonly [string, () => GPURenderPipelineDescriptor]>>;
+  readonly #computes: Readonly<Record<'environment' | 'noise', readonly [string, () => GPUComputePipelineDescriptor]>>;
   readonly #compositeModule: GPUShaderModule;
   readonly #compositeLayout: GPUBindGroupLayout;
-  readonly #composites = new Map<GPUTextureFormat, GPURenderPipeline>();
   #buffers: [GPUTexture, GPUTexture] | undefined;
   #current = 0;
   /** 噪声算到第几层了；到 NOISE_SIZE 就是算完了，生成用的管线和缓冲随即丢掉。 */
   #noiseSlices = 0;
-  #noisePipeline: GPUComputePipeline | undefined;
   #noiseUniform: GPUBuffer | undefined;
 
   constructor(device: GPUDevice) {
@@ -287,29 +291,20 @@ class CloudsGpu {
     });
     this.#noiseSampler = device.createSampler({ label: 'Clouds noise', magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat', addressModeW: 'repeat' });
     this.#uniforms = device.createBuffer({ label: 'Clouds', size: UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const march = device.createShaderModule({ label: 'Clouds march', code: MARCH_SHADER });
-    this.#march = device.createRenderPipeline({
-      label: 'Clouds march', layout: 'auto',
-      vertex: { module: march, entryPoint: 'fullscreenVertex' },
-      fragment: { module: march, entryPoint: 'fs', targets: [{ format: FORMAT }] },
-    });
+    const fullscreen = (label: string, code: string, format: GPUTextureFormat) => [label, () => {
+      const module = device.createShaderModule({ label, code });
+      return { label, layout: 'auto', vertex: { module, entryPoint: 'fullscreenVertex' }, fragment: { module, entryPoint: 'fs', targets: [{ format }] } } satisfies GPURenderPipelineDescriptor;
+    }] as const;
+    const compute = (label: string, code: string) => [label, () => ({ label, layout: 'auto', compute: { module: device.createShaderModule({ label, code }), entryPoint: 'main' } }) satisfies GPUComputePipelineDescriptor] as const;
+    this.#renders = { march: fullscreen('Clouds march', MARCH_SHADER, FORMAT), shadow: fullscreen('Clouds shadow', SHADOW_SHADER, 'r8unorm') };
+    this.#computes = { environment: compute('Clouds environment', ENVIRONMENT_SHADER), noise: compute('Clouds noise', NOISE_SHADER) };
     this.environment = device.createTexture({
       label: 'Clouds environment', size: [ENVIRONMENT_SIZE, ENVIRONMENT_SIZE, 6], format: FORMAT, mipLevelCount: Math.log2(ENVIRONMENT_SIZE) + 1,
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
     });
     this.#environmentUniforms = device.createBuffer({ label: 'Clouds environment', size: UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.#environmentPipeline = device.createComputePipeline({
-      label: 'Clouds environment', layout: 'auto',
-      compute: { module: device.createShaderModule({ label: 'Clouds environment', code: ENVIRONMENT_SHADER }), entryPoint: 'main' },
-    });
     this.shadow = device.createTexture({ label: 'Clouds shadow', size: [SHADOW_SIZE, SHADOW_SIZE], format: 'r8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
     this.#shadowUniforms = device.createBuffer({ label: 'Clouds shadow', size: UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const shadow = device.createShaderModule({ label: 'Clouds shadow', code: SHADOW_SHADER });
-    this.#shadowPipeline = device.createRenderPipeline({
-      label: 'Clouds shadow', layout: 'auto',
-      vertex: { module: shadow, entryPoint: 'fullscreenVertex' },
-      fragment: { module: shadow, entryPoint: 'fs', targets: [{ format: 'r8unorm' }] },
-    });
     this.#compositeModule = device.createShaderModule({ label: 'Clouds composite', code: COMPOSITE_SHADER });
     this.#compositeLayout = device.createBindGroupLayout({
       label: 'Clouds composite',
@@ -427,45 +422,63 @@ class CloudsGpu {
   }
 
   #generateNoise(encoder: GPUCommandEncoder): void {
-    this.#noisePipeline ??= this.#device.createComputePipeline({
-      label: 'Clouds noise', layout: 'auto',
-      compute: { module: this.#device.createShaderModule({ label: 'Clouds noise', code: NOISE_SHADER }), entryPoint: 'main' },
-    });
+    const noisePipeline = pipelineCache(this.#device).compute(...this.#computes.noise);
     this.#noiseUniform ??= this.#device.createBuffer({ label: 'Clouds noise slices', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#device.queue.writeBuffer(this.#noiseUniform, 0, new Uint32Array([this.#noiseSlices, 0, 0, 0]));
     const pass = encoder.beginComputePass({ label: 'Clouds noise' });
-    pass.setPipeline(this.#noisePipeline);
+    pass.setPipeline(noisePipeline);
     pass.setBindGroup(0, this.#device.createBindGroup({
-      layout: this.#noisePipeline.getBindGroupLayout(0),
+      layout: noisePipeline.getBindGroupLayout(0),
       entries: [{ binding: 0, resource: this.#noise.createView() }, { binding: 1, resource: { buffer: this.#noiseUniform } }],
     }));
     pass.dispatchWorkgroups(NOISE_SIZE / 4, NOISE_SIZE / 4, NOISE_SLICES_PER_FRAME / 4);
     pass.end();
     this.#noiseSlices += NOISE_SLICES_PER_FRAME;
     if (this.#noiseSlices >= NOISE_SIZE) {
-      this.#noisePipeline = undefined;
       // 这一帧的命令还引用着它：销毁排在提交之后也可以，交给垃圾回收更省事
       this.#noiseUniform = undefined;
     }
   }
 
+  /** 在后台编全部的管线和画进 format 的合成管线（加载有体积云的场景时）。 */
+  warm(format: GPUTextureFormat): Promise<void> {
+    const cache = pipelineCache(this.#device);
+    return Promise.all([
+      ...Object.values(this.#renders).map(([label, describe]) => cache.warmRender(label, describe)),
+      ...Object.values(this.#computes).map(([label, describe]) => cache.warmCompute(label, describe)),
+      cache.warmRender(...this.#composite(format)),
+    ]).then(() => undefined);
+  }
+
+  get #march(): GPURenderPipeline {
+    return pipelineCache(this.#device).render(...this.#renders.march);
+  }
+
+  get #shadowPipeline(): GPURenderPipeline {
+    return pipelineCache(this.#device).render(...this.#renders.shadow);
+  }
+
+  get #environmentPipeline(): GPUComputePipeline {
+    return pipelineCache(this.#device).compute(...this.#computes.environment);
+  }
+
   /** 合成的管线：颜色 = 云的散射 + 颜色 · 云的透射（alpha）。 */
   #compositeFor(format: GPUTextureFormat): GPURenderPipeline {
-    let pipeline = this.#composites.get(format);
-    if (!pipeline) {
-      pipeline = this.#device.createRenderPipeline({
-        label: `Clouds composite ${format}`,
-        layout: this.#device.createPipelineLayout({ bindGroupLayouts: [this.#compositeLayout] }),
-        vertex: { module: this.#compositeModule, entryPoint: 'fullscreenVertex' },
-        fragment: {
-          module: this.#compositeModule,
-          entryPoint: 'fs',
-          targets: [{ format, blend: { color: { srcFactor: 'one', dstFactor: 'src-alpha', operation: 'add' }, alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' } } }],
-        },
-      });
-      this.#composites.set(format, pipeline);
-    }
-    return pipeline;
+    return pipelineCache(this.#device).render(...this.#composite(format));
+  }
+
+  #composite(format: GPUTextureFormat): [string, () => GPURenderPipelineDescriptor] {
+    const label = `Clouds composite ${format}`;
+    return [label, () => ({
+      label,
+      layout: this.#device.createPipelineLayout({ bindGroupLayouts: [this.#compositeLayout] }),
+      vertex: { module: this.#compositeModule, entryPoint: 'fullscreenVertex' },
+      fragment: {
+        module: this.#compositeModule,
+        entryPoint: 'fs',
+        targets: [{ format, blend: { color: { srcFactor: 'one', dstFactor: 'src-alpha', operation: 'add' }, alpha: { srcFactor: 'zero', dstFactor: 'one', operation: 'add' } } }],
+      },
+    })];
   }
 }
 

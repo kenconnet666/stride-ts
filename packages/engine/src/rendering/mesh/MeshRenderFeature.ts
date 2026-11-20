@@ -1221,13 +1221,20 @@ const PREMULTIPLIED_ALPHA: GPUBlendState = {
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
-/** 在 GPU 上积分出 DFG 查找表（一次计算，按存储缓冲写；着色时按 uniform 读）。 */
+/**
+ * 在 GPU 上积分出 DFG 查找表（一次计算，按存储缓冲写；着色时按 uniform 读）。管线在后台编（引擎启动时建，加载内容要几秒，
+ * 第一帧之前早就算好了），编好再算。
+ */
 function createDfgLut(device: GPUDevice): GPUBuffer {
   const buffer = device.createBuffer({ label: 'DFG LUT', size: DFG_LUT_WIDTH * DFG_LUT_HEIGHT * 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.UNIFORM });
-  const pipeline = device.createComputePipeline({
+  void device.createComputePipelineAsync({
     label: 'DFG LUT', layout: 'auto',
     compute: { module: device.createShaderModule({ label: 'DFG LUT', code: DFG_LUT_SHADER }), entryPoint: 'main' },
-  });
+  }).then((pipeline) => integrateDfg(device, pipeline, buffer));
+  return buffer;
+}
+
+function integrateDfg(device: GPUDevice, pipeline: GPUComputePipeline, buffer: GPUBuffer): void {
   const encoder = device.createCommandEncoder({ label: 'DFG LUT' });
   const pass = encoder.beginComputePass({ label: 'DFG LUT' });
   pass.setPipeline(pipeline);
@@ -1235,7 +1242,6 @@ function createDfgLut(device: GPUDevice): GPUBuffer {
   pass.dispatchWorkgroups(Math.ceil(DFG_LUT_WIDTH / 8), Math.ceil(DFG_LUT_HEIGHT / 8));
   pass.end();
   device.queue.submit([encoder.finish()]);
-  return buffer;
 }
 
 /** 缓冲按 2 的幂增长，避免每多一个实体就重建。 */

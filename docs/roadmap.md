@@ -390,7 +390,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | MorphTargets | `apps/morph-targets`（5218） | 形变目标（原生 0.27.0）、Slider、Border | 3.88（UI 的色调映射） | |
 | FPS 的粒子和材质层 | `apps/first-person-shooter` | SpawnerBurst、SpawnerFromDistance、材质层 | 0.74 | |
 | CSharpBeginner | `apps/csharp-beginner`（5220） | 实体克隆、场景归属、调试文字、虚拟按钮 | 1.24 到 1.55 | |
-| CSharpIntermediate | `apps/csharp-intermediate`（5222） | 声音的发射器和听者、玻璃和清漆材质、点光的阴影、导航组件 | 0.29 到 1.05（五张） | UI 的渲染组（P3） |
+| CSharpIntermediate | `apps/csharp-intermediate`（5222） | 声音的发射器和听者、玻璃和清漆材质、点光的阴影、导航组件 | 0.29 到 1.05（五张） | |
 
 **P3 编辑器**（进行中，2026-11-20 这一轮停在这里）：编辑器能打开 P1、P2 有场景文件的样例（17 个），改、保存、重新打开、试玩（验收见 progress-log.md 的"P3 编辑器的验收"，复跑用 `tools/editor-accept`）。每一步的过程在 progress-log.md 的"P3 编辑器"，取舍在 decisions.md 2026-11-20 的各条。
 
@@ -467,7 +467,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 1. ~~画进渲染目标贴图的相机用阴影和后处理~~（2026-11-20：各自的方向光级联、各自的后处理；最大的图集放不下时阴影图一起缩一半，见 decisions.md）。还剩：这些视图也分簇，然后放开点光、聚光的上限（现在 256）。
 2. ~~透明物体投阴影~~（2026-11-20：按 alpha 抖动着投，同 Stride，材质可以关掉抖动；见 decisions.md）。
 3. Stride 材质特性：清单在 decisions.md 的"Stride 材质特性的清单"。~~微表面模型的各项~~（2026-11-20）。还剩：卡通着色、头发着色（先加导入警告）；贴图的镜面颜色这类"只认常量"的槽接到颜色树上（有内容用到时）；曲面细分放到 E。
-4. csharp-intermediate 的 UI 渲染组。
+4. ~~csharp-intermediate 的 UI 渲染组~~（2026-11-20 核对：已经由"渲染组和渲染掩码"做了，`DefaultScenery` 预制体里 UI 的 Group4 导入成 `renderGroup: 4`，导入没有警告）。
 
 **D. 把 P4 开了头的功能补完整**（上表"没做"的那些）
 1. GPU 粒子的深度缓冲碰撞，接着雨点落地溅起、水洼；GPU 粒子的力场、预热，排序进工作组共享内存。

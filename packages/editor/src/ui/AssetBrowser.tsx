@@ -203,7 +203,11 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         _selected={selected}
         onUpdate:_selected={(keys: string[]) => {
           selected = keys;
-          target = keys.length === 1 ? nodes.get(keys[0]!)?.path ?? '' : '';
+          const node = keys.length === 1 ? nodes.get(keys[0]!) : undefined;
+          target = node?.path ?? '';
+          // 选中材质、JSON 写的模型：属性面板里编辑它（别的种类清掉面板上的资源）
+          if (node?.asset) void session.inspectAsset(node.asset.kind, node.asset.path);
+          else session.inspected.value = undefined;
         }}
         onMove={dropped}
         canDrop={(_: Node, drop: { parent: string | undefined }) => drop.parent === undefined || drop.parent.startsWith(FOLDER)}

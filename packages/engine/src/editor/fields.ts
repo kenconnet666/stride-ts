@@ -11,7 +11,7 @@
  */
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
-  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects,
+  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
 import type { AssetKind } from '../content/references';
@@ -530,6 +530,95 @@ export const ENTITY_FIELDS: readonly Field[] = [
 
 /** 背景的平面图片、精灵的贴图可以写成的两种形状（面板给 'json' 的 texture 字段选形状时用）。 */
 export const TEXTURE_FIELDS = { file: textureRef, renderTexture } as const;
+
+/** 材质的贴图槽（颜色、自发光）：贴图加采样方式和 UV 的缩放、偏移。 */
+const textureSlot = fields<TextureSlot>({
+  ...Object.fromEntries(textureRef.map((field) => [field.name, field])) as Record<keyof TextureRef, Field>,
+  filter: optional(oneOf('point', 'anisotropic')),
+  addressU: optional(oneOf('clamp', 'mirror')),
+  addressV: optional(oneOf('clamp', 'mirror')),
+  scale: { type: vector(2), optional: true, default: [1, 1] },
+  offset: { type: vector(2), optional: true, default: [0, 0] },
+});
+const colorLinear3: FieldType = { kind: 'color', alpha: false, space: 'linear' };
+/** 编辑器里还没有专门控件的复杂部分（颜色树、材质层……）：按原样的 JSON 改。 */
+const json: FieldType = { kind: 'json' };
+
+/**
+ * 材质文件（MaterialFile）的字段：常用的（基础色、金属度、粗糙度、自发光、两面、透明、裁剪）有控件，颜色树、材质层这类
+ * 导入的复杂结构先按 JSON 改。
+ */
+export const MATERIAL_FIELDS = fields<MaterialFile>({
+  name: string,
+  baseColor: { type: { kind: 'color', alpha: true, space: 'linear' }, group: 'base', description: 'linear base color; multiplied with (or added to) the texture' },
+  baseColorTexture: { type: object(textureSlot), optional: true, group: 'base' },
+  baseColorOperator: { type: oneOf('multiply', 'add'), optional: true, default: 'multiply', group: 'base' },
+  metalness: { type: number({ min: 0, max: 1, step: 0.01 }), optional: true, group: 'surface', description: 'metalness workflow; leave unset for the specular workflow' },
+  roughness: { type: number({ min: 0, max: 1, step: 0.01 }), optional: true, default: 1, group: 'surface' },
+  specular: { type: colorLinear3, optional: true, group: 'surface', description: 'specular workflow (instead of metalness)' },
+  specularEnergyConservative: { type: json, optional: true, group: 'advanced' },
+  specularShading: { type: json, optional: true, group: 'advanced' },
+  diffuseShading: { type: json, optional: true, group: 'advanced' },
+  glossinessTexture: { type: json, optional: true, group: 'advanced' },
+  emissive: { type: colorLinear3, optional: true, group: 'emissive', description: 'linear color times intensity (can exceed 1 for bloom)' },
+  emissiveTexture: { type: object(textureSlot), optional: true, group: 'emissive' },
+  emissiveTree: { type: json, optional: true, group: 'advanced' },
+  normalMap: { type: json, optional: true, group: 'advanced' },
+  normalTree: { type: json, optional: true, group: 'advanced' },
+  displacementTree: { type: json, optional: true, group: 'advanced' },
+  ambientOcclusion: { type: json, optional: true, group: 'advanced' },
+  cavity: { type: object(fields<NonNullable<MaterialFile['cavity']>>({ diffuse: number({ min: 0, max: 1 }), specular: number({ min: 0, max: 1 }) })), optional: true, group: 'advanced' },
+  doubleSided: { type: bool, optional: true, default: false, group: 'surface' },
+  alphaCutoff: { type: number({ min: 0, max: 1, step: 0.01 }), optional: true, group: 'surface', description: 'pixels with a base color alpha below it are discarded' },
+  transparency: { type: json, optional: true, group: 'surface' },
+  microfacet: { type: json, optional: true, group: 'advanced' },
+  celShading: { type: json, optional: true, group: 'advanced' },
+  glass: { type: object(fields<NonNullable<MaterialFile['glass']>>({ refractiveIndex: number({ min: 1, max: 3, step: 0.01 }) })), optional: true, group: 'advanced' },
+  clearCoat: { type: json, optional: true, group: 'advanced' },
+  subsurfaceScattering: { type: json, optional: true, group: 'advanced' },
+  sheen: { type: object(fields<NonNullable<MaterialFile['sheen']>>({ color: colorLinear3, roughness: number({ min: 0, max: 1, step: 0.01 }) })), optional: true, group: 'advanced' },
+  anisotropy: { type: object(fields<NonNullable<MaterialFile['anisotropy']>>({ strength: number({ min: -1, max: 1, step: 0.01 }), rotation: { type: number({ unit: 'rad' }), optional: true, default: 0 } })), optional: true, group: 'advanced' },
+  layers: { type: json, optional: true, group: 'advanced' },
+});
+
+const positiveNumber = (step = 0.05): FieldType => number({ min: 0, step });
+const tessellation = (fallback: number): FieldSpec => ({ type: integer(1, 256), optional: true, default: fallback });
+
+/** JSON 写的模型（ProceduralModelFile）：形状和它的参数（默认值同 Stride），共有的 UV 缩放、平移、缩放，材质槽。 */
+export const PROCEDURAL_MODEL_FIELDS = fields<ProceduralModelFile>({
+  format: { type: integer(1, 1), description: 'file format version' },
+  procedural: {
+    type: {
+      kind: 'union',
+      tag: 'type',
+      variants: {
+        cube: fields<{ size: unknown }>({ size: { type: vector(3, 'm'), optional: true, default: [1, 1, 1] } }),
+        plane: fields<{ size: unknown; tessellation: unknown; backFace: unknown; normal: unknown }>({
+          size: { type: vector(2, 'm'), optional: true, default: [1, 1] },
+          tessellation: { type: vector(2), optional: true, default: [1, 1] },
+          backFace: { type: bool, optional: true, default: false },
+          normal: { type: oneOf('x', 'y', 'z'), optional: true, default: 'y' },
+        }),
+        sphere: fields<{ radius: unknown; tessellation: unknown }>({ radius: { type: positiveNumber(), optional: true, default: 0.5 }, tessellation: tessellation(16) }),
+        geoSphere: fields<{ radius: unknown; tessellation: unknown }>({ radius: { type: positiveNumber(), optional: true, default: 0.5 }, tessellation: { type: integer(0, 8), optional: true, default: 3 } }),
+        capsule: fields<{ length: unknown; radius: unknown; tessellation: unknown }>({ length: { type: positiveNumber(), optional: true, default: 0.5 }, radius: { type: positiveNumber(), optional: true, default: 0.35 }, tessellation: tessellation(8) }),
+        cylinder: fields<{ height: unknown; radius: unknown; tessellation: unknown }>({ height: { type: positiveNumber(), optional: true, default: 1 }, radius: { type: positiveNumber(), optional: true, default: 0.5 }, tessellation: tessellation(32) }),
+        torus: fields<{ radius: unknown; thickness: unknown; tessellation: unknown }>({ radius: { type: positiveNumber(), optional: true, default: 0.375 }, thickness: { type: positiveNumber(0.01), optional: true, default: 0.125 }, tessellation: tessellation(32) }),
+        cone: fields<{ radius: unknown; height: unknown; tessellation: unknown }>({ radius: { type: positiveNumber(), optional: true, default: 0.5 }, height: { type: positiveNumber(), optional: true, default: 1 }, tessellation: tessellation(16) }),
+        teapot: fields<{ size: unknown; tessellation: unknown }>({ size: { type: positiveNumber(), optional: true, default: 1 }, tessellation: tessellation(8) }),
+      },
+      common: fields<{ uvScale: unknown; localOffset: unknown; scale: unknown }>({
+        uvScale: { type: vector(2), optional: true, default: [1, 1] },
+        localOffset: { type: vector(3, 'm'), optional: true, default: [0, 0, 0] },
+        scale: { type: vector(3), optional: true, default: [1, 1, 1] },
+      }),
+    },
+  },
+  materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, optional: true, default: [], description: 'material per slot (a procedural model has one slot)' },
+});
+
+/** 属性面板能编辑的资源（选中资源浏览器里的它时）：种类 → 字段。模型只有 JSON 写的那种能编辑。 */
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS } as const;
 
 const INTEGER_KINDS: ReadonlySet<string> = new Set(['int', 'u8', 'u32']);
 

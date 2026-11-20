@@ -4,7 +4,7 @@ import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@stride-ts/engine/editor-document';
-import { COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
+import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
 import { assetListId, FieldEditor, FieldRow, type FieldContext, type ValuePath, type ValueUpdate } from './FieldEditor';
 import type { EditorSession } from './session';
 import { mergeValues } from './values';
@@ -19,6 +19,9 @@ const styles = css.create({
 
 type ComponentKey = keyof typeof COMPONENT_FIELDS;
 type Entities = readonly SceneEntityFile[];
+
+/** 属性面板能编辑的资源种类的名字。 */
+const ASSET_LABELS: Readonly<Record<keyof typeof ASSET_FIELDS, string>> = { material: '材质', model: '模型' };
 
 /** "添加组件"下拉框里脚本的值的前缀（组件的值是 COMPONENT_FIELDS 的键）。 */
 const SCRIPT_OPTION = 'script:';
@@ -88,6 +91,9 @@ function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
  *
  * 选了几个实体时显示它们都有的组件和脚本，值不一样的地方显示"多个值"（mergeValues）；改一处是对每个实体各一次 set，
  * 一起做、一起撤销；加、去掉组件也是对每个实体。
+ *
+ * 资源浏览器里选中材质、JSON 写的模型时显示资源自己的字段（引擎的 ASSET_FIELDS）：改了直接存进资源文件，视口里用到它的实体
+ * 热重载（session.editInspected）。
  */
 export const Inspector = _component(({ session }: { session: EditorSession }) => {
   const { version, selection, agent, assets } = session;
@@ -217,8 +223,19 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     );
   };
 
+  /** 资源浏览器里选中的资源（材质、JSON 写的模型）的字段。 */
+  const assetInspector = (asset: NonNullable<typeof session.inspected.value>) => (
+    <div {...css.attrs(styles.panel)}>
+      {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
+      <div {...css.attrs(styles.hint)}>{ASSET_LABELS[asset.kind]} {asset.path}：改了马上存进资源文件，视口里用到它的实体跟着变。</div>
+      <FieldEditor type={{ kind: 'object', fields: ASSET_FIELDS[asset.kind] }} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
+    </div>
+  );
+
   return () => {
     const list = entities;
+    const inspected = session.inspected.value;
+    if (inspected) return assetInspector(inspected);
     if (!agent.value) return <div {...css.attrs(styles.hint)}>场景还没打开</div>;
     if (list.length === 0) {
       void version.value;

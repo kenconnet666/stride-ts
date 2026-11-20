@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { SceneEntityFile } from '../src/content/format';
-import { checkEntity, checkFields, COMPONENT_FIELDS, SCENE_FIELDS, scriptFields } from '../src/editor/fields';
+import { ASSET_FIELDS, checkEntity, checkFields, COMPONENT_FIELDS, SCENE_FIELDS, scriptFields } from '../src/editor/fields';
 import { prop, SyncScript } from '../src/index';
 
 // 属性面板要的字段描述，和照着它做的检查。
@@ -118,4 +118,21 @@ test('组件之间的依赖（COMPONENT_FIELDS 的 requires）指的都是存在
     for (const needed of description.requires ?? []) expect([key, needed in COMPONENT_FIELDS && needed !== key]).toEqual([key, true]);
   }
   expect(COMPONENT_FIELDS.dayNightCycle.requires).toEqual(['skyAtmosphere']);
+});
+
+describe('资源的字段描述（属性面板编辑选中的资源）', () => {
+  const object = (fields: (typeof ASSET_FIELDS)[keyof typeof ASSET_FIELDS]) => ({ kind: 'object', fields }) as const;
+  test('材质：模板的地面、带贴图和清漆的导入材质都过；颜色写错了报出字段', () => {
+    expect(checkFields({ name: 'Ground', baseColor: [0.16, 0.22, 0.12, 1], metalness: 0, roughness: 0.9 }, object(ASSET_FIELDS.material), 'Ground')).toEqual([]);
+    const imported = { name: 'Brick', baseColor: [1, 1, 1, 1], baseColorTexture: { texture: 'T/Brick', encoding: 'png', scale: [2, 2], offset: [0, 0] }, roughness: 0.4, clearCoat: { any: 'json' }, doubleSided: true };
+    expect(checkFields(imported, object(ASSET_FIELDS.material), 'Brick')).toEqual([]);
+    expect(checkFields({ name: 'X', baseColor: [1, 1] }, object(ASSET_FIELDS.material), 'X').join()).toMatch(/baseColor/);
+  });
+
+  test('JSON 写的模型：每种形状的参数按形状检查；不认识的形状报出来', () => {
+    const type = object(ASSET_FIELDS.model);
+    expect(checkFields({ format: 1, procedural: { type: 'cube', size: [2, 1, 2] }, materials: ['M'] }, type, 'Box')).toEqual([]);
+    expect(checkFields({ format: 1, procedural: { type: 'torus', radius: 0.5, thickness: 0.1, uvScale: [2, 1] } }, type, 'Ring')).toEqual([]);
+    expect(checkFields({ format: 1, procedural: { type: 'donut' } }, type, 'Bad').length).toBeGreaterThan(0);
+  });
 });

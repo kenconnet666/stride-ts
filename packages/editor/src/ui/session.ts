@@ -17,6 +17,8 @@ import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/edit
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
 import { copyEntities, duplicateEntities, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
+import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
+import { withPath } from './values';
 import { freeAssetPath } from '../newAssets';
 import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
 import { EditorClient } from '../EditorClient.ts';
@@ -66,6 +68,12 @@ export class EditorSession implements EditableScene {
   readonly notice = shallowRef('');
   /** 最近一次操作做成了什么（工具条上不显眼地显示；有 notice 时让给它）。 */
   readonly status = shallowRef('');
+  /**
+   * 属性面板正在编辑的资源（资源浏览器里选中的材质、JSON 写的模型）：改了马上存（稍等一下，连着拖只存最后一次），后端推送
+   * 变化以后视口里用到它的实体热重载。选了实体时清掉。
+   */
+  readonly inspected = shallowRef<InspectedAsset | undefined>();
+  #inspectedSave: ReturnType<typeof setTimeout> | undefined;
   #document: SceneDocument | undefined;
   /** 最近一次修改以后游戏页面里的实体跟上了。 */
   #synced: Promise<void> = Promise.resolve();
@@ -111,7 +119,10 @@ export class EditorSession implements EditableScene {
     const path = agent.scenePath;
     const document = this.opened.value ?? (path ? { kind: 'scene' as const, path } : undefined);
     if (!document) throw new Error('the game did not load its root scene from a content path; the editor cannot tell which scene file to open');
-    agent.onSelectionChanged = (ids) => (this.selection.value = ids);
+    agent.onSelectionChanged = (ids) => {
+      this.selection.value = ids;
+      if (ids.length > 0) this.inspected.value = undefined;
+    };
     await this.#open(agent, document);
   }
 
@@ -154,6 +165,37 @@ export class EditorSession implements EditableScene {
     const known = new Set(this.assets.value.map((asset) => `${asset.kind}:${asset.path}`));
     this.assets.value = [...this.assets.value, ...records.filter((record) => !known.has(`${record.kind}:${record.path}`))];
     return records;
+  }
+
+  /** 在属性面板里编辑这个资源（能编辑的：材质、JSON 写的模型）；别的种类、二进制的模型清掉面板。 */
+  async inspectAsset(kind: AssetKind, path: string): Promise<void> {
+    if (!isInspectable(kind)) {
+      this.inspected.value = undefined;
+      return;
+    }
+    try {
+      const content = await this.client.readAsset<Record<string, unknown>>(kind, path);
+      this.inspected.value = { kind, path, content };
+    } catch (error) {
+      // 二进制的模型（导入的）读不了：面板上不显示，说明一下
+      this.inspected.value = undefined;
+      this.status.value = (error as Error).message;
+    }
+  }
+
+  /** 改正在编辑的资源里 path 上的值（ValueUpdate 按现在的值算）；稍等一下再存，连着改只存最后一次。 */
+  editInspected(path: readonly (string | number)[], value: unknown): void {
+    const now = this.inspected.value;
+    if (!now) return;
+    let current: unknown = now.content;
+    for (const key of path) current = current !== null && typeof current === 'object' ? (current as Record<string | number, unknown>)[key] : undefined;
+    const next = typeof value === 'function' ? (value as (previous: unknown) => unknown)(current) : value;
+    const edited = { ...now, content: withPath(now.content, path, next) as Record<string, unknown> };
+    this.inspected.value = edited;
+    clearTimeout(this.#inspectedSave);
+    this.#inspectedSave = setTimeout(() => {
+      this.client.saveAsset(edited.kind, edited.path, edited.content).catch((error: unknown) => (this.notice.value = (error as Error).message));
+    }, INSPECTED_SAVE_DELAY);
   }
 
   /** 删掉一个资源；还有别的资源引用它时报错（错误里列出是谁），force 照删。 */
@@ -380,6 +422,7 @@ export class EditorSession implements EditableScene {
 
   select(ids: readonly string[]): void {
     this.selection.value = ids;
+    if (ids.length > 0) this.inspected.value = undefined;
     const agent = this.agent.value;
     if (agent) agent.selection = ids;
   }
@@ -449,3 +492,18 @@ export function assetsToReload(assets: readonly AssetRecord[], changed: readonly
   }
   return [...reload];
 }
+
+/** 属性面板能编辑的资源种类（引擎的 ASSET_FIELDS）。 */
+export type InspectableKind = keyof typeof ASSET_FIELDS;
+
+/** 属性面板正在编辑的资源和它现在的内容。 */
+export interface InspectedAsset {
+  readonly kind: InspectableKind;
+  readonly path: string;
+  readonly content: Record<string, unknown>;
+}
+
+const isInspectable = (kind: AssetKind): kind is InspectableKind => Object.hasOwn(ASSET_FIELDS, kind);
+
+/** 资源改了以后等这么久（毫秒）再存：拖数字、取色时不每一下都写文件。 */
+const INSPECTED_SAVE_DELAY = 250;

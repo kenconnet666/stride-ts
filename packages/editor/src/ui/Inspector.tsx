@@ -62,6 +62,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     return (
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
         {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
+        {entity.prefab && <div {...css.attrs(styles.hint)}>预制体 {entity.prefab.path} 的实例{entity.prefab.set?.length ? `，改了 ${entity.prefab.set.length} 处` : ''}{entity.prefab.removed?.length ? `，去掉了 ${entity.prefab.removed.length} 个实体` : ''}</div>}
         <section {...css.attrs(styles.section)}>
           {ENTITY_FIELDS.map((field) => <FieldRow field={field} value={record[field.name]} context={context} onSet={setter(id, [field.name])} />)}
         </section>

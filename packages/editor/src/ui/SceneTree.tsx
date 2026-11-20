@@ -6,6 +6,7 @@ import type { EditorSession } from './session';
 
 const styles = css.create({
   tree: { height: '100%' },
+  prefab: { color: '_textMuted', fontSize: '0.85em' },
 });
 
 interface Node {
@@ -40,6 +41,12 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       items={roots}
       getKey={(node: Node) => node.entity.id}
       getLabel={(node: Node) => node.entity.name || '(unnamed)'}
+      renderItem={(node: Node) => (
+        <span>
+          {node.entity.name || '(unnamed)'}
+          {node.entity.prefab && <span {...css.attrs(styles.prefab)} title={node.entity.prefab.path}> ⟨{node.entity.prefab.path.slice(node.entity.prefab.path.lastIndexOf('/') + 1)}⟩</span>}
+        </span>
+      )}
       getChildren={(node: Node) => node.children}
       hasChildren={(node: Node) => node.children.length > 0}
       selectionMode="multiple"

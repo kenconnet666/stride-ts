@@ -123,10 +123,14 @@ export class EditAgent {
     this.selection = this.#selection;
   }
 
-  /** 画布上 (x, y)（CSS 像素）最前面的是文档里的哪个实体；没点到东西、点到的不在场景里时是 undefined。 */
+  /**
+   * 画布上 (x, y)（CSS 像素）最前面的是文档里的哪个实体；没点到东西、点到的不在场景里时是 undefined。点到预制体实例的成员时
+   * 是那个实例（成员不在文档里，id 是 `实例/预制体里的 id`，见 content/prefabInstances.ts）。
+   */
   async pick(x: number, y: number): Promise<string | undefined> {
     const entity = await this.game.pick(x, y);
-    return entity && this.#require().idOf(entity);
+    const id = entity && this.#require().idOf(entity);
+    return id === undefined ? undefined : id.slice(0, id.includes('/') ? id.indexOf('/') : undefined);
   }
 
   /** 选中的实体（文档里的 id），画面上给它们画框；设的时候去掉场景里没有的。 */

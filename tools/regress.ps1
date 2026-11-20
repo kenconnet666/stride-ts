@@ -24,6 +24,8 @@ if ($App) {
     # 自己的进程，环境变量随便设：中枢、无头 Chrome 都按样例分开
     $env:STRIDE_STATE_DIR = Join-Path $stateRoot $App
     $env:STRIDE_BROWSER_DIR = $env:STRIDE_STATE_DIR
+    # 上一轮强杀（taskkill /F）的开发服务器来不及删中枢的登记；这个目录只有这个样例用，开始前清掉
+    Remove-Item (Join-Path $env:STRIDE_STATE_DIR 'hubs') -Recurse -Force -ErrorAction SilentlyContinue
     $port = $portOffset + [int]([regex]::Match((Get-Content -Raw "apps\$App\vite.config.ts"), 'strideApp\((\d+)').Groups[1].Value)
     $server = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "Set-Location apps\$App; pnpm dev --force --strictPort --port $port" -PassThru -WindowStyle Hidden
     try {

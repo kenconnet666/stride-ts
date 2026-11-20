@@ -84,6 +84,12 @@ export class HubClient {
     }
     const text = await response.text();
     if (response.status === 404 && !text.startsWith('{')) throw new Error(`${this.hub.url} has no debug hub (an old dev server? restart it)`);
+    // 中枢的调用结果（含页面里报的错）都是 200；别的状态是中枢自己拒了，比如过期的登记文件指着别的服务器（强杀的开发服务器
+    // 没来得及删登记，Windows 又把进程号给了别的进程），令牌对不上是 403
+    if (!response.ok) {
+      const error = text.startsWith('{') ? (JSON.parse(text) as { error?: string }).error : text;
+      throw new Error(`debug hub ${this.hub.name} at ${this.hub.url}: ${response.status} ${error ?? ''}`.trimEnd());
+    }
     return JSON.parse(text);
   }
 }

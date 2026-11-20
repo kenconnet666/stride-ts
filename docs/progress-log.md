@@ -320,6 +320,8 @@ PCSS（同一天，TPP，无头 Chrome 1280x720，暂停后单步）：太阳的
 
 日夜循环和夜空在编辑器里（同一天，用户的主 Chrome，TPP，没保存）：新建实体 Sky，"添加组件"选 Day-night cycle，Sky atmosphere 一起加上（组件之间的依赖，`COMPONENT_FIELDS` 的 requires）；天空的 sun 下拉选 Directional light，timeOfDay 打 17.3：太阳低、光偏暖、影子拉长，方向光的朝向由日夜循环驱动（文档里的旋转不变）；18.6 点太阳落山、没设月亮，画面全黑。去掉 Sky atmosphere 时工具条提示 Day-night cycle 要它。
 
+这一轮收尾（同一天）：EditAgent 拆出视口的操作（`EditorViewport.ts`）和选中框的几何（`worldBoxes.ts`），编辑器的 `client/` 并到 `src` 根上（用户定了文件夹要扁平，只有几个文件的不单独成文件夹）；拆完用 `tools/editor-accept` 在 platformer、topdown-rpg 上复跑。回归里 simple-audio、csharp-intermediate 的声音两条一度失败，是 `regress.ps1` 拼 Chrome 参数时 `--autoplay-policy` 没传进去（ce30ce2 修了），不是机器的声音设备；修后重跑都过。没做完的清单在 roadmap.md"进度"的 P3 那一条。
+
 ### P3 编辑器的验收：用编辑器打开、改、保存、试玩 P1、P2 的样例（2026-11-20）
 
 做法：每个样例的内容目录在验证工作树里临时换成拷贝（保存只写拷贝，主检出不动，验完换回联接），开发服务器 +1000 端口，无头 Chrome 1400x900 开编辑器，脚本经 CDP 操作会话：打开根场景，逐个实体选中让属性面板画一遍（看控制台有没有错），不改就保存（文件应逐字节不变），再改（根下第一个带模型的实体上移 1、改名，加子实体、给它加游戏的第一个脚本，复制粘贴这个实体，撤销到底再重做到底），保存、检查文件，重新打开、检查改动还在，依次打开资源里的其他场景各画一遍属性面板，最后试玩、检查游戏里有加的实体。另外在 Node 里用 `checkEntity` 照字段描述查了所有样例的全部场景和预制体文件（20 个样例、3000 多个实体），0 个问题。

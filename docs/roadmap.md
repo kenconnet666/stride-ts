@@ -392,18 +392,38 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 | CSharpBeginner | `apps/csharp-beginner`（5220） | 实体克隆、场景归属、调试文字、虚拟按钮 | 1.24 到 1.55 | |
 | CSharpIntermediate | `apps/csharp-intermediate`（5222） | 声音的发射器和听者、玻璃和清漆材质、点光的阴影、导航组件 | 0.29 到 1.05（五张） | UI 的渲染组（P3） |
 
-**P3 编辑器**（进行中）：和界面框架无关的部分、界面（Vue 加 vue-tsx-pro）的场景树、属性面板、资源浏览器、预制体、复制粘贴、加脚本、多选都做了（2026-11-20）。每一步的过程在 progress-log.md 的"P3 编辑器"，取舍在 decisions.md 2026-11-20 的各条。
+**P3 编辑器**（进行中，2026-11-20 这一轮停在这里）：编辑器能打开 P1、P2 有场景文件的样例（17 个），改、保存、重新打开、试玩（验收见 progress-log.md 的"P3 编辑器的验收"，复跑用 `tools/editor-accept`）。每一步的过程在 progress-log.md 的"P3 编辑器"，取舍在 decisions.md 2026-11-20 的各条。
 
-| 部分 | 在哪 | 没做的 |
+做了的：
+
+| 部分 | 在哪 | 结论 |
 |---|---|---|
 | 渲染组和渲染掩码、调试渲染、网格线框、点选（网格、精灵、粒子、放在 3D 里的 UI；全屏 UI 不参加） | 引擎的 `rendering/`、`debug/` | |
-| 编辑相机、操纵器（移动、旋转、缩放） | `editor/EditorCamera.ts`、`editor/TransformGizmo.ts` | 吸附：工具条上的开关和步长，拖的时候按住 Ctrl 反过来 |
-| 场景文档（修改、撤销重做）、实体跟着文档 | `editor/SceneDocument.ts`、`editor/LiveScene.ts` | 场景自己的设置（物理、导航、偏移、合成器）在面板上改，合成器、偏移马上生效，物理、导航试玩时用上 |
-| 编辑状态（`?stride-edit`）和页面里的代理 | `Game.editing`、`editor/EditAgent.ts` | 多个场景同时打开 |
-| 属性面板的字段描述、照描述检查 | `editor/fields.ts` | 粒子的模块、约束的设置还是按 JSON 改 |
-| 工程清单、资源数据库、保存接口、资源句柄（`assets.gen.ts`）、资源的移动和删除（改写引用它的文件） | `packages/editor` | 源文件（glTF、PNG）的导入设置；句柄里的结构类型 |
-| 界面：工具条（保存、撤销重做、试玩）、场景树（换父实体、加删实体）、视口、属性面板（照字段描述画，加删组件）、资源浏览器（移动、改名、删除） | `packages/editor/src/ui`，开发服务器上的 `/__stride/editor/` | Vue 加 vue-tsx-pro；复制、粘贴、复制一份（Ctrl+C / V / D，粘贴成兄弟，引用跟着拷贝走）；加脚本组件（列游戏登记的脚本）；多选一起改（Ctrl、Shift 多选，值不同的显示"多个值"，改一处改所有、一步撤销） |
-| 预制体实例：场景里只存引用和差异 | `content/prefabInstances.ts`（加载时展开）、`pipeline/src/stride/instances.ts`（导入时转） | 实例就是预制体的根；Stride 的实例导入时全部转成引用（TPP 134 个，场景文件 194 → 101 KB，截图逐像素不变）；编辑器里显示展开的场景，改、删成员落成实例的覆盖；单独打开预制体编辑；覆盖里的资源路径跟着移动改写；成员下面可以加实体（场景里的普通实体，父实体写成员的 id） |
+| 编辑状态（`?stride-edit`）和页面里的代理 | `Game.editing`、`editor/EditAgent.ts`；视口里的操作 `editor/EditorViewport.ts`，选中框的几何 `editor/worldBoxes.ts` | 游戏照自己的入口启动，不挂脚本、仿真不走；试玩是不带 stride-edit 重新打开 |
+| 编辑相机、操纵器（移动、旋转、缩放）、吸附 | `editor/EditorCamera.ts`、`editor/TransformGizmo.ts` | 吸附：工具条上的开关和三个步长，拖的时候按住 Ctrl 反过来；低帧率下按下、松开在同一帧也能拖 |
+| 场景文档（修改、撤销重做）、实体跟着文档 | `editor/SceneDocument.ts`、`editor/LiveScene.ts` | 实体的 set、add、remove，场景设置的 scene，batch；场景设置里合成器、偏移改了马上生效，物理、导航试玩时用上 |
+| 预制体：场景里只存引用和差异；编辑器里改、删成员记成覆盖；单独打开预制体编辑；成员下面能加、粘贴、拖进实体 | `content/prefabInstances.ts`、`pipeline/src/stride/instances.ts`、`editor/prefabEdits.ts` | 预制体删了成员时，挂在它下面的实体加载时挂到实例上（警告），不让场景打不开 |
+| 场景树：加、删、拖动换父实体，Ctrl/Shift 多选，复制粘贴、复制一份（Ctrl+C/V/D） | `editor/copyEntities.ts`、`packages/editor/src/ui/SceneTree.tsx` | 粘贴成兄弟（Ctrl+Shift+V 成子实体），新 id，拷贝之间的引用跟着换 |
+| 属性面板：照字段描述画控件，加删组件、加脚本，多选一起改（"多个值"），场景自己的设置；必填属性没设的标红，组件和脚本的依赖（requires）一起加上 | `editor/fields.ts`（COMPONENT_FIELDS、SCENE_FIELDS、scriptFields）、`packages/editor/src/ui/Inspector.tsx`、`FieldEditor.tsx` | 脚本缺必填属性、缺要的组件时加载时报错跳过，游戏照常 |
+| 反射探针、物理天空、日夜循环在编辑器里 | `editor/EditorViewport.ts`、`editor/worldBoxes.ts` | 选中探针画盒子和过渡距离；编辑时场景一改探针就重拍 |
+| 工程清单、资源数据库、保存接口、资源句柄（`assets.gen.ts`）、资源的移动和删除（改写引用它的文件） | `packages/editor` | |
+| 编辑器验收 | `tools/editor-accept` | 打开、逐个实体画面板、不改就保存（逐字节不变）、改、保存、重开、其他场景、试玩；字段描述对所有样例的场景文件 |
+
+没做的（按大致的先后）：
+
+1. 用编辑器从零搭一个小游戏（P3 验收标准的第二条）。
+2. 场景树、视口里没有"选中场景本身"的入口：现在是不选实体时属性面板显示场景设置。
+3. 多个场景同时打开（子场景、TopDownRPG 的分块场景只能一个个打开）。
+4. 场景是代码建的样例（sprite-fonts、custom-effect）编辑器打不开：要先把场景做成文件。
+5. 按 JSON 改的：粒子的模块、约束的设置、合成器的 textureCameras。
+6. 源文件（glTF、PNG）的导入设置；资源句柄里的结构类型。
+7. 剪贴板不进系统剪贴板（另一个标签页里的编辑器拿不到）。
+8. 多选时旋转有一处不同三个角都显示"多个值"；数值的相对改（都加 1）、按比例拖。
+9. 吸附只有步长：没有吸附到表面、顶点、别的物体。
+10. 预制体删了成员后挂在下面的实体，编辑器里没有提示用户去挪。
+11. 编辑器验收没接进 regress（要在同一个开发服务器上多开一个页面、改内容目录）；`editor/fields.ts`（600 多行）等组件描述的改动落地后再拆。
+12. 按需渲染（编辑器视口静止时不出帧，见第二节"没有变化就不出帧"）。
+13. 第一节编辑器表里的 UI 编辑器、粒子编辑器、曲线编辑器、精灵表编辑器，模板和新建工程。
 
 **P4 现代画面**（底座进行中；界面等用户期间先做，它不依赖编辑器）。过程在 progress-log.md 的"P4 底座"。
 
@@ -431,7 +451,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 1. **P4 底座接着做**：
    1. 底座剩下的小项：~~后处理的管线一起预热~~（2026-11-20：TPP 当场建的管线 22 → 5 条）；~~绘制次数按通道数~~（2026-11-20：`stride draws`，`render.drawCalls` 算上所有通道）；~~GTAO、背景的管线也预热~~（2026-11-20：渲染特性的 `warmFiles`，按要加载的实体文件预热）；~~精灵、TAA 和运行中打开的效果~~（2026-11-20：精灵的混合方式从场景文件推得出来，按文件预热；TAA、接触阴影、运动模糊和运动向量的阶段按画质档位允许就预热。platformer2d 加载后、TPP 运行中打开这三个效果后都没有当场建的模型、精灵、后处理管线，只剩加载时用一次的 DFG LUT、天空盒预滤波、mipmap 生成）。
    2. P4 的画面功能：画质档位、TAA 和运动向量、GTAO 做了，屏幕空间反射、接触阴影、运动模糊做了，屏幕空间全局光照做了（2026-11-20，位掩码，`stride ssgi`，默认关）；屏幕空间次表面散射和方向光的透射做了（2026-11-20，只糊漫反射光，`stride sss`，材质和合成器导入）；GPU 粒子、风场、雨雪、天空遮挡的底座做了（2026-11-20，上表各行写了做了什么、没做什么，取舍见 decisions.md；GPU 粒子接下来是深度缓冲碰撞，然后雨点落地溅起；天气状态驱动雨雪、云、雾是之后的事）；PCSS 做了（2026-11-20，方向光，`shadowFilter: 'pcss'`、`shadowLightAngle`）；反射探针做了（2026-11-20，盒子探针、视差校正、一帧拍一个面，`ReflectionProbe` 组件）；物理天空和空气透视做了（2026-11-20，Hillaire 2020，`SkyAtmosphere` 组件）；日夜循环和夜空做了（2026-11-20，`DayNightCycle` 组件按时刻、日期、纬度转太阳、月亮和星空；月亮是第二盏方向光，月相是算出来的；程序生成的星星和银河）；输出加了抖动（2026-11-20，色调映射里，`stride call dither`；暗的渐变不再有色带）；体积云做了第一步（2026-11-20，`VolumetricClouds` 组件，`stride call clouds`；只盖天空的像素，云在地面上的影子、云进环境光还没做）；接着照第三节的阶段表往下：云的影子和环境光、体积雾和体积光（平面反射要镜像相机、所有管线加剔除翻转的变体，用处窄，往后放）。
-2. **P3 的界面**（用户 2026-11-20 定了 Vue 加 vue-tsx-pro、资源按路径引用；骨架、场景树和资源浏览器的操作做了）：多选一起改、复制粘贴实体、加脚本组件，预制体的编辑（加载器、导入器的转换、改和删实例的成员、单独打开预制体编辑）都做了、往预制体成员下面加实体都做了；用编辑器把 P1、P2 的样例打开、改、保存、播放一遍的验收做了（2026-11-20，结果在 progress-log.md；sprite-fonts、custom-effect 的场景是代码建的，编辑器打不开）。
+2. **P3 编辑器**：这一轮做到的和没做的清单见上面"进度"里 P3 那一条；接着做先看清单的第 1、2 项。
 3. **遗留的小项**（用到时做）：~~粒子、场景里的 UI 的点选~~（2026-11-20：点到粒子、放在 3D 里的 UI 画出来的地方返回它们的实体，全屏 UI 不参加，编辑器的选中框跟上，见 decisions.md 的"点选认粒子和放在 3D 里的 UI"）；富文本（用户定了：Markdown，编辑器里有对应的可视化编辑器）：~~运行时~~（2026-11-20：`RichTextBlock`，Markdown 子集加 Pandoc 的方括号属性，见 decisions.md 的"富文本的写法和排版"），剩编辑器里的所见即所得编辑；TouchInputs 样例（P3 之后）；P2 收尾时挪到 P4 的 MSAA、分簇、透明物体的阴影、画进渲染目标贴图的相机的阴影和后处理、没有样例触发的材质特性；csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，原因没查完（见 progress-log.md 的"P2 收尾的验收"）。
 
 4. **CI 的全量冒烟**（2026-11-20，`.github/workflows/ci.yml`，设计见 tools/README.md 的"CI"）：SwiftShader 上 WebGPU 的上下文丢失查清修掉（缺 `--use-vulkan=swiftshader`，见 lessons.md 的 WebGPU 一节），冒烟改成一个样例一台运行器，等待改成按状态和游戏时间（lessons.md 的"冒烟测试的等待"）。8c5cda9 那次：18 个跑完的冒烟过了 16 个，没过的 simple-audio（波形图的动画按帧走，按游戏时长等不够）和 platformer2d（运行器上 Chrome 20 秒没起来）随后改了（等状态；Chrome 的启动上限放到 60 秒）。当时失败的七个都是时序类，修复分别在 701a442（bepu-sample）、ce30ce2（topdown-rpg、simple-audio）、44fd3bd（platformer2d、morph-targets）、3c6c62c（first-person-shooter、csharp-intermediate）和收尾的那次提交。没有发现引擎行为类的失败，也没有要因为 SwiftShader 本身跳过的检查。顺手修的工具缺陷：`regress.ps1` 没设 `STRIDE_CHROME_ARGS` 时丢了 `--autoplay-policy`（PowerShell 单元素数组展开成空，本地的声音检查因此失败）；`stride mouse --trusted` 固定按 100 ms，帧慢时锁不上鼠标（改成按住到游戏跑过一帧）。修复后的第一次完整运行：待确认。还没过的（fc13aa0 在验证槽位 3 上用真显卡跑全部样例，机器忙）：

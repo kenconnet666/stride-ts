@@ -103,6 +103,7 @@ export class OfflineRenderer {
       masterVolume: game.audio.masterVolume,
     };
     game.graphicsDevice.fixedSize = [this.width, this.height];
+    game.graphicsDevice.backBufferCopySource = true;
     compositor.temporalAntialiasing.enabled = false;
     if (this.samples > 1) {
       compositor.motionBlur.enabled = false;
@@ -150,6 +151,7 @@ export class OfflineRenderer {
     const compositor = game.graphicsCompositor;
     compositor.subpixelJitter = undefined;
     saved.releaseFrames();
+    game.graphicsDevice.backBufferCopySource = false;
     game.graphicsDevice.fixedSize = saved.fixedSize;
     compositor.temporalAntialiasing.enabled = saved.temporal;
     compositor.motionBlur.enabled = saved.motionBlur;

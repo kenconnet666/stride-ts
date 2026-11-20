@@ -89,10 +89,31 @@ export class GraphicsDevice {
     this.context = context;
     this.backBufferFormat = navigator.gpu.getPreferredCanvasFormat();
     this.backBufferViewFormat = `${this.backBufferFormat}-srgb` as GPUTextureFormat;
-    // 用 opaque：预乘 alpha 的画布在 alpha 小于 1 的地方会透出页面背景。
-    // COPY_SRC：离线渲染把每个子帧的画面拷出去累积
-    context.configure({ device, format: this.backBufferFormat, alphaMode: 'opaque', viewFormats: [this.backBufferViewFormat], usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+    this.#configure(false);
     this.lost = device.lost.then((info) => (info.reason === 'destroyed' ? new Promise<never>(() => {}) : new Error(`WebGPU device lost (${info.reason}): ${info.message || 'no message'}`)));
+  }
+
+  /**
+   * 后备缓冲能不能拷出去（COPY_SRC）：离线渲染（offline/OfflineRenderer）把每个子帧的画面拷出去累积时打开，平时关着——
+   * 画布纹理带 COPY_SRC 时浏览器可能走不了直接呈现的路（CI 的软件 WebGPU 上每帧都慢了一半）。改了以后从下一帧起生效。
+   */
+  get backBufferCopySource(): boolean {
+    return this.#copySource;
+  }
+
+  set backBufferCopySource(enabled: boolean) {
+    if (enabled !== this.#copySource) this.#configure(enabled);
+  }
+
+  #copySource = false;
+
+  #configure(copySource: boolean): void {
+    this.#copySource = copySource;
+    // 用 opaque：预乘 alpha 的画布在 alpha 小于 1 的地方会透出页面背景
+    this.context.configure({
+      device: this.device, format: this.backBufferFormat, alphaMode: 'opaque', viewFormats: [this.backBufferViewFormat],
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | (copySource ? GPUTextureUsage.COPY_SRC : 0),
+    });
   }
 
   get queue(): GPUQueue {

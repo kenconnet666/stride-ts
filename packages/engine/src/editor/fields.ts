@@ -10,7 +10,7 @@
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
 import type {
-  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneEntityFile, SceneLightShadow,
+  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneEntityFile, SceneLightShadow, SceneReflectionProbe,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef,
 } from '../content/format';
 import type { AssetKind } from '../content/references';
@@ -208,6 +208,17 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       common: [intensity, { name: 'renderGroup', type: integer(0, 31), optional: true, default: 0 }],
     },
     initial: { type: 'cubemap', texture: '', intensity: 1 },
+  },
+  reflectionProbe: {
+    label: 'Reflection probe',
+    type: object(fields<SceneReflectionProbe>({
+      size: vector(3, 'm'),
+      blendDistance: optional(number({ min: 0, unit: 'm' }), 1),
+      boxProjection: optional(bool, true),
+      intensity: optional(number({ min: 0 }), 1),
+      refresh: optional(oneOf('once', 'everyFrame'), 'once'),
+    })),
+    initial: { size: [10, 10, 10] },
   },
   sprite: {
     label: 'Sprite',

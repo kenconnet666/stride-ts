@@ -42,6 +42,7 @@ import { Instance, Instancing, Model, Skinned } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
 import { Material, type MaterialShaderClearCoat, type MaterialShaderLayer, type MaterialShaderTrees, type MaterialTexture } from './Material';
+import type { ReflectionProbes } from './ReflectionProbes';
 import type { SubsurfaceMaterials } from './SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { MATERIAL_STREAMS } from './shaderClass';
@@ -89,7 +90,7 @@ struct View {
   lightDirections: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
   // x：点光和聚光的个数（localLights 的前几个），y：游戏开始以来的秒数（Stride 的 Global.Time，材质的颜色树用），
-  // z：screenOcclusion 是屏幕空间全局光照的（1）还是 GTAO 的（0）
+  // z：screenOcclusion 是屏幕空间全局光照的（1）还是 GTAO 的（0），w：反射探针的个数（probes 的前几个）
 
   locals: vec4f,
   // 世界矩阵、蒙皮、形变的缓冲各分两半，每帧轮着写（另一半留着上一帧的，运动向量用）：这一帧和上一帧各自的起点。
@@ -129,6 +130,10 @@ struct LocalShadow {
 // 屏幕空间的环境光遮蔽，半分辨率，只乘环境光；没有时是 1x1 的白图。GTAO（AmbientOcclusion.ts）的在 r 里；view.locals.z 是 1 时是
 // 屏幕空间全局光照（ScreenSpaceGlobalIllumination.ts）的：rgb 是间接光（乘漫反射颜色加上），a 是遮蔽
 @group(0) @binding(14) var screenOcclusion: texture_2d<f32>;
+// 反射探针（ReflectionProbes.ts）：每个探针一个立方体；center.w 是第几个立方体，boxMin.w 过渡距离，boxMax.w 强度，options.x 视差校正
+struct Probe { center: vec4f, boxMin: vec4f, boxMax: vec4f, options: vec4f };
+@group(0) @binding(16) var probeCubes: texture_cube_array<f32>;
+@group(0) @binding(17) var<storage, read> probes: array<Probe>;
 @group(0) @binding(15) var screenShadow: texture_2d<f32>;
 
 /** xyz：屏幕空间的间接光（没有时是 0），w：环境光遮蔽。 */
@@ -381,6 +386,37 @@ fn surfaceNormal(in: Varyings, coatPass: bool) -> vec3f {
   let b = in.tangent.w * cross(n, t);
   let mapped = normalize(m.x * t + m.y * b + m.z * n);
   return select(n, mapped, (hasBase || layered.w > 0.5 || coat.w > 0.5) && tangentLength > 0.0);
+}
+
+/**
+ * 反射探针的环境镜面反射（ReflectionProbes.ts）：rgb 是各探针按权重加起来的光（已乘强度），a 是探针盖住的比例。探针按盒子从小到大
+ * 排，前面的先占：权重是到盒子的面的距离 / 过渡距离（盒子外是 0），乘还没被占的比例。视差校正：反射光线从这里出发打到盒子的
+ * 内壁，用拍的位置到那一点的方向取（Lagarde 2012 的 box projection）。粗糙度 i / (级数 - 1) 在第 i 级。
+ */
+fn probeSpecular(position: vec3f, r: vec3f, roughness: f32) -> vec4f {
+  var sum = vec3f(0.0);
+  var weight = 0.0;
+  let maxLevel = f32(textureNumLevels(probeCubes) - 1u);
+  for (var i = 0u; i < u32(view.locals.w); i++) {
+    let p = probes[i];
+    let inside = min(position - p.boxMin.xyz, p.boxMax.xyz - position);
+    let distance = min(min(inside.x, inside.y), inside.z);
+    if (distance <= 0.0) {
+      continue;
+    }
+    let w = select(1.0, saturate(distance / p.boxMin.w), p.boxMin.w > 0.0) * (1.0 - weight);
+    var direction = r;
+    if (p.options.x > 0.5) {
+      let far = max((p.boxMax.xyz - position) / r, (p.boxMin.xyz - position) / r);
+      direction = position + r * min(min(far.x, far.y), far.z) - p.center.xyz;
+    }
+    sum += w * p.boxMax.w * textureSampleLevel(probeCubes, linearClamp, direction, i32(p.center.w), roughness * maxLevel).rgb;
+    weight += w;
+    if (weight >= 0.999) {
+      break;
+    }
+  }
+  return vec4f(sum, weight);
 }
 
 /** 世界方向转到天空盒的立方体贴图里：按天空盒的旋转转回去（行向量乘矩阵 = 乘转置），z 取反。 */
@@ -932,15 +968,21 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     let dfg = textureSampleLevel(dfgLut, linearClamp, vec2f(1.0 - sqrt(alphaR), nDotV), 0.0).rg;
     environmentSpecular = select(specular * dfg.x + dfg.y, glass.reflectance, isGlass);
   }
+  // 反射探针盖住的地方用它的镜面反射，盖不住的部分（1 - a）才用环境光和天空盒的
+  var probe = vec4f(0.0);
+  if (hasSpecular && view.locals.w > 0.0) {
+    probe = probeSpecular(in.world, reflect(-v, n), sqrt(alphaR));
+    environment = environmentSpecular * probe.rgb * ao;
+  }
   if (hasAmbient || hasSky) {
     scattered += diffuse * view.ambientColor.rgb * ao;
-    environment = environmentSpecular * view.ambientColor.rgb * ao;
+    environment += environmentSpecular * view.ambientColor.rgb * ao * (1.0 - probe.a);
     if (hasSky) {
       let skyIntensity = view.sky.x * ao;
       scattered += diffuse * evaluateSH(skyDirection(n)) * skyIntensity;
-      if (hasSpecular) {
+      if (hasSpecular && probe.a < 1.0) {
         let reflection = skyDirection(reflect(-v, n));
-        environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity;
+        environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, reflection, sqrt(alphaR) * view.sky.y).rgb * skyIntensity * (1.0 - probe.a);
       }
     }
   }
@@ -1365,7 +1407,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes));
   }
 
 
@@ -1527,6 +1569,9 @@ class Gpu {
   readonly #resources: GpuResources;
   /** 上传材质时给次表面散射的材质登记槽位（RenderSystem.subsurfaceMaterials）。 */
   readonly #subsurface: SubsurfaceMaterials;
+  readonly #probes: ReflectionProbes;
+  /** 视图绑定组里的反射探针是哪一代（ReflectionProbes.generation）；换了要重建绑定组。 */
+  #probeGeneration = -1;
   readonly #unclippedDepth: boolean;
   /** 着色器按自发光分变体：默认的是 ''，颜色树的按它的代码。 */
   readonly #modules = new Map<string, GPUShaderModule>();
@@ -1580,10 +1625,11 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes) {
     this.device = device;
     this.#resources = resources;
     this.#subsurface = subsurface;
+    this.#probes = probes;
     this.#unclippedDepth = unclippedDepth;
     this.#viewLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature view',
@@ -1604,6 +1650,8 @@ class Gpu {
         { binding: 13, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 14, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 15, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 16, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube-array' } },
+        { binding: 17, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -1905,6 +1953,7 @@ class Gpu {
       this.#viewBindGroups.clear();
     }
     const { directionals, directionalCount, ambient, skybox, shadow, shadowAtlas, locals, localCount } = lighting;
+    const probes = this.#probes;
     const data = this.#viewData, words = new Uint32Array(data.buffer);
     for (const view of views) {
       const o = view.index * stride;
@@ -1933,7 +1982,7 @@ class Gpu {
         data.set([direction.x / length, direction.y / length, direction.z / length, penumbra], o + 156 + i * 4);
         data.set([color.r, color.g, color.b, 1], o + 172 + i * 4);
       }
-      data.set([localCount, time, view.screenIndirect ? 1 : 0, 0], o + 188);
+      data.set([localCount, time, view.screenIndirect ? 1 : 0, probes.count], o + 188);
       words.set(this.#frameBases, o + 192);
       data.set(view.unjitteredViewProjection, o + 204);
       data.set(view.previousViewProjection, o + 220);
@@ -1950,8 +1999,9 @@ class Gpu {
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = skybox ? this.#resources.skyboxSpecular(skybox.skybox) : this.#resources.blackCube;
-    if (skySpecular !== this.#skySpecular) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration) {
       this.#skySpecular = skySpecular;
+      this.#probeGeneration = probes.generation;
       this.#viewBindGroups.clear();
     }
   }
@@ -2009,6 +2059,8 @@ class Gpu {
           { binding: 13, resource: { buffer: this.#localShadows } },
           { binding: 14, resource: ao.createView() },
           { binding: 15, resource: shadow.createView() },
+          { binding: 16, resource: this.#probes.cubes.createView({ dimension: 'cube-array' }) },
+          { binding: 17, resource: { buffer: this.#probes.buffer } },
         ],
       });
       groups.set(shadow, group);

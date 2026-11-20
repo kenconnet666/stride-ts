@@ -6,7 +6,7 @@
  * （`路径#导出名`）或 # 后面的部分找。
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
-import { Model } from '../rendering/components';
+import { Model, ReflectionProbe } from '../rendering/components';
 import { Material } from '../rendering/Material';
 import { Transform } from '../engine/transform';
 import type { EntityId } from '../data/prop';
@@ -92,7 +92,32 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     }
     return { enabled: sss.enabled, materials: [...materials], scatteringMaterials: game.renderSystem.subsurfaceMaterials.count };
   });
-  debug.command('ssr', 'Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
+  debug.command('probe', 'Reflection probes. args: at "x,y,z" adds a probe there (size: edge length, default 10; blend; box: false turns off box projection; everyFrame: true), clear removes all probes, refresh re-captures them, on (true/false) switches them. Returns the probes in use.', (args) => {
+    const probes = game.renderSystem.reflectionProbes;
+    if (typeof args['on'] === 'boolean') game.graphicsCompositor.quality = { ...game.graphicsCompositor.quality, reflectionProbes: args['on'] };
+    if (args['clear'] === true) for (const id of game.entities.ids()) if (game.entities.entity(id).get(ReflectionProbe)) game.entities.destroy(id);
+    if (args['refresh'] === true) probes.refresh();
+    if (typeof args['at'] === 'string') {
+      const position = args['at'].split(',').map(Number);
+      if (position.length !== 3 || position.some((value) => !Number.isFinite(value))) throw new Error(`probe: at takes "x,y,z", got '${args['at']}'`);
+      const size = typeof args['size'] === 'number' ? args['size'] : 10;
+      game.entities.create({
+        name: 'Reflection probe',
+        components: [
+          Transform.with({ position: [position[0]!, position[1]!, position[2]!] }),
+          ReflectionProbe.with({
+            size: [size, size, size],
+            blendDistance: typeof args['blend'] === 'number' ? args['blend'] : 1,
+            boxProjection: args['box'] !== false,
+            refresh: args['everyFrame'] === true ? 'everyFrame' : 'once',
+          }),
+        ],
+      });
+    }
+    const entities = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(ReflectionProbe));
+    return { enabled: probes.enabled, inUse: probes.count, probes: entities.map(describe) };
+  });
+  debug.command('ssr','Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
     const ssr = game.graphicsCompositor.screenSpaceReflections;
     ssr.enabled = typeof args['on'] === 'boolean' ? args['on'] : !ssr.enabled;
     for (const key of ['maxRoughness', 'thickness', 'maxSteps'] as const) if (typeof args[key] === 'number') ssr[key] = args[key];

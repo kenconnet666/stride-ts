@@ -19,7 +19,7 @@ import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
-import { Background, Camera, Instance, Instancing, Light, Sprite } from '../rendering/components';
+import { Background, Camera, Instance, Instancing, Light, ReflectionProbe, Sprite } from '../rendering/components';
 import type { Material } from '../rendering/Material';
 import type { Mesh } from '../rendering/Mesh';
 import type { Cubemap, Skybox } from '../rendering/Skybox';
@@ -313,6 +313,18 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
       else entity.add(Background.with({ image: assets.images.get(background.image.texture)!.id, ...group }));
     },
     remove: drop(Background),
+  },
+  reflectionProbe: {
+    add: (entity, probe) => {
+      entity.add(ReflectionProbe.with({
+        size: [...probe.size],
+        ...(probe.blendDistance === undefined ? {} : { blendDistance: probe.blendDistance }),
+        ...(probe.boxProjection === undefined ? {} : { boxProjection: probe.boxProjection }),
+        ...(probe.intensity === undefined ? {} : { intensity: probe.intensity }),
+        ...(probe.refresh === undefined ? {} : { refresh: probe.refresh }),
+      }));
+    },
+    remove: drop(ReflectionProbe),
   },
   sprite: {
     add: (entity, sprite, { assets }) => {

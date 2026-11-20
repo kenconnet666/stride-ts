@@ -349,7 +349,15 @@ export class ForwardRenderer {
     this.#indirect = this.hasCamera && post && this.globalIllumination.enabled && this.quality.globalIllumination;
     this.#mainView.screenIndirect = this.#indirect;
     if (!this.#indirect) this.globalIllumination.reset();
-    const views = [...(this.hasCamera ? [this.#mainView] : []), ...this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view))];
+    // 反射探针：这一帧要拍的面（一帧最多一个）当作一个视图，和主画面一起剔除
+    const probes = renderSystem.reflectionProbes;
+    probes.enabled = this.quality.reflectionProbes;
+    const probeView = this.hasCamera ? probes.begin(context) : undefined;
+    const views = [
+      ...(this.hasCamera ? [this.#mainView] : []),
+      ...(probeView ? [probeView] : []),
+      ...this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view)),
+    ];
 
     renderSystem.collect(views);
     this.#gatherLighting(context);
@@ -372,6 +380,15 @@ export class ForwardRenderer {
     if (shadowViews.length > 0) {
       // 阴影图集在图外面（着色时经光照的绑定组读它）：算副作用
       frame.pass('ShadowMapRenderer', (pass) => pass.sideEffect(), () => this.shadowMapRenderer.draw(context, encoder, renderSystem, shadowViews));
+    }
+    const probeTarget = probeView && probes.captureTarget();
+    if (probeView && probeTarget) {
+      const size = probeView.width;
+      const depth = graph.texture({ label: 'ReflectionProbes depth', width: size, height: size, format: DEPTH_FORMAT });
+      const output: ColorOutput = { target: probeTarget, width: size, height: size, format: HDR_FORMAT, opaque: this.opaqueStage, transparent: this.transparentStage, wireframe: this.#wireframeStage };
+      this.#viewPasses(context, frame, probeView, output, depth, [this.clearColor.r, this.clearColor.g, this.clearColor.b, this.clearColor.a], this.drawTransparent, 'ReflectionProbes face');
+      // 六个面齐了：翻正、出 mip、预滤波进探针的立方体数组（画进的是图外面的贴图，算副作用）
+      frame.pass('ReflectionProbes filter', (pass) => pass.sideEffect(), () => probes.finish(encoder));
     }
     // 渲染目标贴图：画完原样拷进贴图
     const copy = this.#textureCopy;

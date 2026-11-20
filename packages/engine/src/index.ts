@@ -61,6 +61,7 @@ export {
   type AnimationRepeatMode,
   type ColliderShapeFile,
   type SceneBackground,
+  type SceneReflectionProbe,
   type SceneBody,
   type SceneCharacter,
   type SceneCollidable,
@@ -171,7 +172,8 @@ export { BodyControl, Simulation, type Constraint, type ConstraintSettings, type
 export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './navigation/NavigationSystem';
 export { RecastNavigationComponent, type NavigationState } from './navigation/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
-export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, Skinned, Sprite } from './rendering/components';
+export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, ReflectionProbe, Skinned, Sprite } from './rendering/components';
+export { MAX_REFLECTION_PROBES, ReflectionProbes } from './rendering/ReflectionProbes';
 export { cameraProjectionMatrix, screenToWorldRaySegment, worldToScreen, type CameraProjection } from './rendering/cameraRays';
 export { SpriteRenderFeature, spriteQuad, type SpriteShape } from './rendering/SpriteRenderFeature';
 export { BackgroundRenderFeature, coverSource } from './rendering/BackgroundRenderFeature';

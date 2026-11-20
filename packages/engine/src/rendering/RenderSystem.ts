@@ -11,6 +11,7 @@ import type { GraphicsDevice } from '../graphics/GraphicsDevice';
 import { Matrix } from '../mathematics/Matrix';
 import { Color4, Vector3 } from '../mathematics/vectors';
 import { GpuResources } from './GpuResources';
+import { ReflectionProbes } from './ReflectionProbes';
 import type { Skybox } from './Skybox';
 import { SubsurfaceMaterials } from './SubsurfaceScattering';
 
@@ -436,10 +437,13 @@ export class RenderSystem {
   };
   /** 特性共用的贴图、立方体贴图和采样器。 */
   readonly resources: GpuResources;
+  /** 反射探针（合成器每帧拍、网格特性着色时用）。 */
+  readonly reflectionProbes: ReflectionProbes;
 
   constructor(graphicsDevice: GraphicsDevice) {
     this.graphicsDevice = graphicsDevice;
     this.resources = new GpuResources(graphicsDevice.device);
+    this.reflectionProbes = new ReflectionProbes(graphicsDevice.device, this.resources);
   }
 
   get device(): GPUDevice {
@@ -496,6 +500,7 @@ export class RenderSystem {
 
   destroy(): void {
     for (const feature of this.features) feature.destroy();
+    this.reflectionProbes.destroy();
     this.resources.destroy();
   }
 }

@@ -34,6 +34,8 @@ export interface QualitySettings {
   readonly globalIllumination: boolean;
   /** 次表面散射的模糊（场景里有散射材质、合成器开着时才算）。 */
   readonly subsurfaceScattering: boolean;
+  /** 反射探针（场景里有 ReflectionProbe 时才拍、才用）。 */
+  readonly reflectionProbes: boolean;
   readonly bloom: boolean;
   readonly lightStreak: boolean;
   readonly lensFlare: boolean;
@@ -44,13 +46,13 @@ export interface QualitySettings {
  * - 极高：不设上限；
  * - 高：阴影图到 large（每块 1024，极高的 xlarge 是 2048，图集小到四分之一）、滤波到 5x5（内容要 PCSS 的也降成 5x5）；
  * - 中：阴影图到 medium、3x3、两个级联；光芒和镜头光晕关掉（各要好几遍全屏的通道）；
- * - 低：阴影图到 small、一个级联；泛光、环境光遮蔽也关掉。抗锯齿留着：一遍全屏，比它省下的锯齿便宜。
+ * - 低：阴影图到 small、一个级联；泛光、环境光遮蔽、反射探针也关掉。抗锯齿留着：一遍全屏，比它省下的锯齿便宜。
  */
 export const QUALITY_TIERS: Readonly<Record<QualityTier, QualitySettings>> = {
-  low: { shadows: true, shadowSize: 'small', shadowFilter: 'pcf3x3', shadowCascades: 1, antialiasing: true, ambientOcclusion: false, screenSpaceReflections: false, contactShadows: false, motionBlur: false, globalIllumination: false, subsurfaceScattering: false, bloom: false, lightStreak: false, lensFlare: false },
-  medium: { shadows: true, shadowSize: 'medium', shadowFilter: 'pcf3x3', shadowCascades: 2, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: false, contactShadows: false, motionBlur: false, globalIllumination: false, subsurfaceScattering: true, bloom: true, lightStreak: false, lensFlare: false },
-  high: { shadows: true, shadowSize: 'large', shadowFilter: 'pcf5x5', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, bloom: true, lightStreak: true, lensFlare: true },
-  ultra: { shadows: true, shadowSize: 'xlarge', shadowFilter: 'pcss', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, bloom: true, lightStreak: true, lensFlare: true },
+  low: { shadows: true, shadowSize: 'small', shadowFilter: 'pcf3x3', shadowCascades: 1, antialiasing: true, ambientOcclusion: false, screenSpaceReflections: false, contactShadows: false, motionBlur: false, globalIllumination: false, subsurfaceScattering: false, reflectionProbes: false, bloom: false, lightStreak: false, lensFlare: false },
+  medium: { shadows: true, shadowSize: 'medium', shadowFilter: 'pcf3x3', shadowCascades: 2, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: false, contactShadows: false, motionBlur: false, globalIllumination: false, subsurfaceScattering: true, reflectionProbes: true, bloom: true, lightStreak: false, lensFlare: false },
+  high: { shadows: true, shadowSize: 'large', shadowFilter: 'pcf5x5', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, reflectionProbes: true, bloom: true, lightStreak: true, lensFlare: true },
+  ultra: { shadows: true, shadowSize: 'xlarge', shadowFilter: 'pcss', shadowCascades: 4, antialiasing: true, ambientOcclusion: true, screenSpaceReflections: true, contactShadows: true, motionBlur: true, globalIllumination: true, subsurfaceScattering: true, reflectionProbes: true, bloom: true, lightStreak: true, lensFlare: true },
 };
 
 const SIZES: readonly ShadowMapSize[] = ['xsmall', 'small', 'medium', 'large', 'xlarge'];

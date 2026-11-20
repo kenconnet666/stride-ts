@@ -66,6 +66,21 @@ export const Light = component('Light', {
 });
 
 /**
+ * 反射探针（Stride 没有；同 Unity、Godot 的 Reflection Probe）：在实体的位置拍一张立方体贴图，盒子里的表面的环境镜面反射用它
+ * 代替天空盒（ReflectionProbes.ts）。盒子以实体为中心，边长是 size 乘实体的缩放（不跟旋转，同 Unity 的盒子按世界的轴摆）；
+ * 离盒子的面 blendDistance 以内淡出，几个盒子重叠时小的优先。boxProjection 开着时按盒子做视差校正（室内、走廊这类近处的
+ * 墙），关着时当作无穷远（室外）。refresh：once 是加进场景、改了设置或者调 ReflectionProbes.refresh 时拍，everyFrame 一直
+ * 轮着拍（贵，一帧只拍一个面）。
+ */
+export const ReflectionProbe = component('ReflectionProbe', {
+  size: prop.vec3().default([10, 10, 10]),
+  blendDistance: prop.f32().default(1).min(0),
+  boxProjection: prop.bool().default(true),
+  intensity: prop.f32().default(1).min(0),
+  refresh: prop.enum(['once', 'everyFrame']).default('once'),
+});
+
+/**
  * 背景（Stride 的 BackgroundComponent）：在没画到的地方画立方体贴图（texture，Cubemap.id，跟着实体旋转），或者平面图片
  * （image，Texture.id，Stride 的 Is2D：保持比例铺满画面，多出的部分两边对称裁掉），乘强度。两个都设时用 image。
  */

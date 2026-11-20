@@ -1038,6 +1038,15 @@ export type SceneBackground =
   | { readonly type: 'cubemap'; readonly texture: string; readonly intensity: number; readonly renderGroup?: number }
   | { readonly type: '2d'; readonly image: TextureRef; readonly intensity: number; readonly renderGroup?: number };
 
+/** 反射探针（Stride 没有）：各字段的意思见 ReflectionProbe 组件；没写的用组件的默认值。 */
+export interface SceneReflectionProbe {
+  readonly size: Vec3Tuple;
+  readonly blendDistance?: number;
+  readonly boxProjection?: boolean;
+  readonly intensity?: number;
+  readonly refresh?: 'once' | 'everyFrame';
+}
+
 /** Stride 的 AnimationComponent：按名字列出的剪辑（内容路径），脚本按名字播放。 */
 export interface SceneAnimation {
   readonly animations: readonly { readonly name: string; readonly clip: string }[];
@@ -1228,6 +1237,7 @@ export interface SceneEntityFile {
         readonly shadow?: SceneLocalLightShadow;
       };
     readonly background?: SceneBackground;
+    readonly reflectionProbe?: SceneReflectionProbe;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;

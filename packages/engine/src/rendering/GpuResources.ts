@@ -5,7 +5,7 @@
 import { CUBEMAP_TEXEL_BYTES, type TextureSampler } from '../content/format';
 import { MipmapGenerator } from './MipmapGenerator';
 import type { Cubemap, Skybox } from './Skybox';
-import { prefilterSkybox } from './SkyboxPrefilter';
+import { CubemapPrefilter, prefilterSkybox } from './SkyboxPrefilter';
 import type { Texture } from './Texture';
 
 export class GpuResources {
@@ -24,6 +24,8 @@ export class GpuResources {
   readonly #cubemaps = new Map<Cubemap, GPUTexture>();
   readonly #skyboxSpecular = new Map<Skybox, GPUTexture>();
   readonly #mipmaps: MipmapGenerator;
+  /** 立方体贴图的镜面预滤波（天空盒、反射探针共用一份管线）。 */
+  readonly prefilter: CubemapPrefilter;
 
   constructor(device: GPUDevice) {
     this.device = device;
@@ -36,6 +38,7 @@ export class GpuResources {
     clearDepth(device, this.emptyShadowAtlas);
     this.shadowComparison = device.createSampler({ label: 'shadow comparison', magFilter: 'linear', minFilter: 'linear', compare: 'less-equal' });
     this.#mipmaps = new MipmapGenerator(device);
+    this.prefilter = new CubemapPrefilter(device, this.linearClamp);
   }
 
   readonly #samplers = new Map<string, GPUSampler>();
@@ -112,7 +115,7 @@ export class GpuResources {
   skyboxSpecular(skybox: Skybox): GPUTexture {
     let gpu = this.#skyboxSpecular.get(skybox);
     if (!gpu) {
-      gpu = prefilterSkybox(this.device, this.cubemap(skybox.radiance), skybox.specularSize, this.linearClamp, `${skybox.name} specular`);
+      gpu = prefilterSkybox(this.prefilter, this.device, this.cubemap(skybox.radiance), skybox.specularSize, `${skybox.name} specular`);
       this.#skyboxSpecular.set(skybox, gpu);
     }
     return gpu;
@@ -120,6 +123,7 @@ export class GpuResources {
 
   destroy(): void {
     for (const texture of [...this.#textures.values(), ...this.#cubemaps.values(), ...this.#skyboxSpecular.values(), this.white, this.blackCube, this.emptyShadowAtlas]) texture.destroy();
+    this.prefilter.destroy();
   }
 }
 

@@ -58,12 +58,12 @@ describe('富文本的 Markdown 子集', () => {
     expect([parseColor('#12345'), parseColor('chartreuse')]).toEqual([undefined, undefined]);
   });
 
-  test('解析一段 4 KB 的文字不到 1 毫秒量级（只在文字变了时解析）', () => {
+  // 耗时（2 KB 约 0.3 毫秒）记在 decisions.md，不在单测里断言：机器忙时会误报
+  test('一长串列表项：每项一块，链接按出现的顺序编号', () => {
     const source = Array.from({ length: 40 }, (_, i) => `- 第 ${i} 项：**粗体** *斜体* \`代码\` [链接](#${i}) [彩色]{color=#f80}`).join('\n');
-    parseMarkdown(source);
-    const start = performance.now();
-    for (let i = 0; i < 20; i++) parseMarkdown(source);
-    expect((performance.now() - start) / 20).toBeLessThan(5);
+    const document = parseMarkdown(source);
+    expect(document.blocks).toHaveLength(40);
+    expect(document.links.map((link) => link.href)).toEqual(Array.from({ length: 40 }, (_, i) => `#${i}`));
   });
 });
 

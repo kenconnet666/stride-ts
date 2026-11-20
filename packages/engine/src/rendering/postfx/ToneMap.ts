@@ -52,7 +52,7 @@ struct Adapt { factor: f32, reset: f32 };
 
 const TONEMAP_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
-struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32, compensation: f32 };
+struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32, compensation: f32, gate: vec4f };
 @group(0) @binding(0) var<uniform> settings: Settings;
 @group(0) @binding(1) var hdr: texture_2d<f32>;
 @group(0) @binding(2) var adapted: texture_2d<f32>;
@@ -81,6 +81,9 @@ fn dither(color: vec3f, pixel: vec2f) -> vec3f {
 }
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
+  // 画幅以外是黑边
+  let frameUv = in.position.xy / vec2f(textureDimensions(hdr));
+  if (any(frameUv < settings.gate.xy) || any(frameUv > settings.gate.zw)) { return vec4f(0.0, 0.0, 0.0, 1.0); }
   var color = max(textureLoad(hdr, vec2u(in.position.xy), 0).rgb + additiveLayers(in.uv), vec3f(0.0001));
   if (settings.enabled != 0.0) {
     let luminance = max(textureLoad(adapted, vec2u(0u), 0).r, 0.0001);
@@ -128,6 +131,8 @@ export class ToneMap {
   dither = true;
   /** 曝光补偿（档，自动曝光之后再乘 2^它）：物理相机的 exposureCompensation。 */
   exposureCompensation = 0;
+  /** 画幅在画面里的位置（uv：左、上、右、下），以外画黑边；主画面相机的 aspectRatio 定。 */
+  gate: readonly [number, number, number, number] = [0, 0, 1, 1];
 
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
@@ -145,7 +150,7 @@ export class ToneMap {
   constructor(device: GPUDevice, sampler: GPUSampler) {
     this.#device = device;
     this.#sampler = sampler;
-    this.#settings = device.createBuffer({ label: 'ToneMap settings', size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#settings = device.createBuffer({ label: 'ToneMap settings', size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#adaptUniform = device.createBuffer({ label: 'ToneMap adapt', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const adapted = () => device.createTexture({ label: 'ToneMap adapted luminance', size: [1, 1], format: 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
     this.#adapted = [adapted(), adapted()];
@@ -154,7 +159,7 @@ export class ToneMap {
   /** 量 input（rgba16float 的 HDR 画面）的平均亮度并做时间上的适应；elapsed 是这一帧的秒数。 */
   measure(frame: EffectFrame, input: Image, elapsed: number): void {
     this.#device.queue.writeBuffer(this.#settings, 0, new Float32Array([this.keyValue, 2 ** this.exposure, this.autoKeyValue ? 1 : 0, this.autoExposure ? 1 : 0, this.whitePoint, this.enabled ? 1 : 0]));
-    this.#device.queue.writeBuffer(this.#settings, 28, new Float32Array([2 ** this.exposureCompensation]));
+    this.#device.queue.writeBuffer(this.#settings, 28, new Float32Array([2 ** this.exposureCompensation, ...this.gate]));
     // 关掉时 draw 照样绑一张适应亮度（着色器不读它）；重新打开时从当前亮度开始适应
     if (!this.enabled) {
       this.#measured = this.#adapted[this.#current];

@@ -20,6 +20,22 @@ export interface CameraProjection {
   readonly physical?: boolean;
   readonly sensorHeight?: number;
   readonly focalLength?: number;
+  /** 画幅（宽 / 高）：大于 0 时画面框成这个宽高比，多出来的是黑边（见 cameraGate）；0 或没有是整个画布。 */
+  readonly aspectRatio?: number;
+}
+
+/**
+ * 画幅在画布里的位置（uv：左、上、右、下）：画幅比画布宽时上下留黑边（视角是画幅的，画布的竖直视角相应加大），比画布窄时
+ * 左右留黑边。没有画幅时是整个画布。
+ */
+export function cameraGate(gate: number, canvasAspect: number): [number, number, number, number] {
+  if (!(gate > 0)) return [0, 0, 1, 1];
+  if (gate > canvasAspect) {
+    const bar = (1 - canvasAspect / gate) / 2;
+    return [0, bar, 1, 1 - bar];
+  }
+  const bar = (1 - gate / canvasAspect) / 2;
+  return [bar, 0, 1 - bar, 1];
 }
 
 /** 相机的竖直视角（度）：物理相机按焦距和传感器的高（2·atan(高 / 2·焦距)），否则是 verticalFieldOfView。 */
@@ -31,9 +47,12 @@ export function cameraVerticalFieldOfView(camera: CameraProjection): number {
 /** 相机的投影矩阵（Stride 的 CameraComponent.Update）：透视按竖直视角，正交看到 orthographicSize 高、按宽高比的宽。 */
 export function cameraProjectionMatrix(out: Float32Array, camera: CameraProjection, aspectRatio: number): Float32Array {
   const { nearClipPlane: near, farClipPlane: far } = camera;
+  // 画幅比画布宽（上下黑边）：画幅的视角不变，画布的竖直方向按比例多看一些
+  const gate = camera.aspectRatio ?? 0;
+  const stretch = gate > aspectRatio ? gate / aspectRatio : 1;
   return camera.projection === 'orthographic'
-    ? Matrix.orthoRH(out, aspectRatio * camera.orthographicSize, camera.orthographicSize, near, far)
-    : Matrix.perspectiveFovRH(out, (cameraVerticalFieldOfView(camera) * Math.PI) / 180, aspectRatio, near, far);
+    ? Matrix.orthoRH(out, aspectRatio * camera.orthographicSize * stretch, camera.orthographicSize * stretch, near, far)
+    : Matrix.perspectiveFovRH(out, 2 * Math.atan(Math.tan((cameraVerticalFieldOfView(camera) * Math.PI) / 360) * stretch), aspectRatio, near, far);
 }
 
 /**

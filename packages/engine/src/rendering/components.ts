@@ -40,6 +40,8 @@ export const Camera = component('Camera', {
   exposureCompensation: prop.f32().default(0).unit('EV'),
   /** 按光圈、焦距、对焦距离算景深（要后处理开着）。 */
   depthOfField: prop.bool().default(false),
+  /** 画幅（宽 / 高，比如 2.39、16/9、9/16）：主画面框成这个宽高比，多出来的画黑边；0 是整个画布。和物理相机无关，都能用。 */
+  aspectRatio: prop.f32().default(0).min(0),
 });
 
 /**

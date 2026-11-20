@@ -1,6 +1,7 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { Game } from '@stride-ts/engine';
+import type { CSSProperties } from 'vue';
 import { t } from './messages';
 import type { EditorSession } from './session';
 
@@ -8,7 +9,25 @@ const styles = css.create({
   frame: { display: 'block', width: '100%', height: '100%', borderWidth: '0', backgroundColor: 'black' },
   status: { position: 'absolute', insetInlineStart: '_sm', insetBlockStart: '_sm', color: '_textMuted' },
   wrap: { position: 'relative', height: '100%' },
+  guide: { position: 'absolute', inset: '0', pointerEvents: 'none', display: 'grid', placeItems: 'center', overflow: 'hidden' },
 });
+
+/**
+ * 画幅参考线：画面里框出 aspect（宽 / 高）的画幅（以外压暗），里面是动作安全框（93%）和字幕安全框（90%）——拍短片时构图用。
+ * 只是编辑器的叠加层，不进画面；容器查询的单位让框按视口大小贴合（比视口宽时上下留边，窄时左右留边）。
+ */
+function frameGuide(aspect: number) {
+  const box: CSSProperties = { width: `min(100cqw, ${aspect} * 100cqh)`, height: `min(100cqh, 100cqw / ${aspect})`, position: 'relative', boxShadow: '0 0 0 100vmax rgba(0, 0, 0, 0.55)', outline: '1px solid rgba(255, 255, 255, 0.8)' };
+  const safe = (percent: number): CSSProperties => ({ position: 'absolute', inset: `${(100 - percent) / 2}%`, border: '1px dashed rgba(255, 255, 255, 0.45)' });
+  return (
+    <div {...css.attrs(styles.guide)} style={{ containerType: 'size' }}>
+      <div style={box}>
+        <div style={safe(93)} title={t.actionSafe} />
+        <div style={safe(90)} title={t.titleSafe} />
+      </div>
+    </div>
+  );
+}
 
 /** 等游戏页面起来的间隔（毫秒）：它要建设备、加载场景。 */
 const POLL_MS = 100;
@@ -49,6 +68,7 @@ export const Viewport = _component(({ session, playing, onShortcut }: { session:
   return () => (
     <div {...css.attrs(styles.wrap)}>
       <iframe {...css.attrs(styles.frame)} src={playing ? '/?debug' : '/?debug&stride-edit'} title={t.gameViewport} onLoad={(event: Event) => void loaded(event)} />
+      {session.frameGuide.value > 0 && frameGuide(session.frameGuide.value)}
       {status && <span {...css.attrs(styles.status)}>{status === OPENING ? t.openingGame : status}</span>}
     </div>
   );

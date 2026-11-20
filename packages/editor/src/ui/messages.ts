@@ -26,6 +26,10 @@ export interface EditorMessages {
   readonly prefabTitle: (path: string) => string;
   readonly backToScene: (name: string) => string;
   readonly language: string;
+  readonly frameGuide: string;
+  readonly frameGuideOff: string;
+  readonly actionSafe: string;
+  readonly titleSafe: string;
   // 视口
   readonly openingGame: string;
   readonly gameViewport: string;
@@ -125,6 +129,10 @@ const zhCN: EditorMessages = {
   prefabTitle: (path) => `预制体 ${path}`,
   backToScene: (name) => `回到场景 ${name}`,
   language: '界面语言',
+  frameGuide: '画幅参考线（视口上框出画幅和安全框，构图用）',
+  frameGuideOff: '画幅：关',
+  actionSafe: '动作安全框（93%）',
+  titleSafe: '字幕安全框（90%）',
   openingGame: '正在打开游戏……',
   gameViewport: '游戏视口',
   sceneEntities: '场景里的实体',
@@ -217,6 +225,10 @@ const enUS: EditorMessages = {
   prefabTitle: (path) => `Prefab ${path}`,
   backToScene: (name) => `Back to scene ${name}`,
   language: 'Interface language',
+  frameGuide: 'Frame guide (the frame and safe areas over the viewport, for composing shots)',
+  frameGuideOff: 'Frame: off',
+  actionSafe: 'Action safe (93%)',
+  titleSafe: 'Title safe (90%)',
   openingGame: 'Opening the game…',
   gameViewport: 'Game viewport',
   sceneEntities: 'Entities in the scene',

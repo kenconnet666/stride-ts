@@ -474,6 +474,8 @@ export interface SceneEntityFile {
       /** 没写是透视。 */
       readonly projection?: 'orthographic';
       readonly orthographicSize?: number;
+      /** 画幅（宽 / 高）；没写或 0 是整个画布。 */
+      readonly aspectRatio?: number;
       /** 物理相机（Stride 没有，见 Camera 组件）：写了就开着；没写的项用组件的默认值。 */
       readonly physical?: {
         readonly sensor?: readonly [number, number];

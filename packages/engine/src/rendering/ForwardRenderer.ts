@@ -18,7 +18,7 @@ import { system } from '../engine/system';
 import { Transform, type TransformColumns } from '../engine/transform';
 import { Matrix } from '../data/Matrix';
 import { Color4 } from '../data/vectors';
-import { cameraProjectionMatrix } from './cameraRays';
+import { cameraGate, cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
 import { createLocalLight, MAX_DIRECTIONAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, SURFACE_FORMATS, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { GpuProfiler } from '../graphics/GpuProfiler';
@@ -213,8 +213,9 @@ export class ForwardRenderer {
           orthographicSize: camera.orthographicSize[row]!,
           nearClipPlane: view.nearClipPlane,
           farClipPlane: view.farClipPlane,
-          physical, sensorHeight: camera.sensorHeight[row]!, focalLength: camera.focalLength[row]!,
+          physical, sensorHeight: camera.sensorHeight[row]!, focalLength: camera.focalLength[row]!, aspectRatio: camera.aspectRatio[row]!,
         }, view.width / view.height);
+        if (view === this.#mainView) this.postEffects.toneMap.gate = cameraGate(camera.aspectRatio[row]!, view.width / view.height);
         view.lens = physical ? {
           focalLength: camera.focalLength[row]!, aperture: camera.aperture[row]!, focusDistance: camera.focusDistance[row]!, sensorHeight: camera.sensorHeight[row]!,
           shutterAngle: camera.shutterAngle[row]!, exposureCompensation: camera.exposureCompensation[row]!, depthOfField: camera.depthOfField[row] === 1,

@@ -177,6 +177,7 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       slot: optional(integer(0), 0),
       projection: optional(oneOf('orthographic')),
       orthographicSize: optional(number({ min: 0, unit: 'm' }), 10),
+      aspectRatio: { type: number({ min: 0 }), optional: true, default: 0, description: 'frame width / height (2.39, 1.778, 0.5625); bars outside it; 0 fills the canvas' },
       physical: {
         type: object(fields<NonNullable<NonNullable<Components['camera']>['physical']>>({
           sensor: { type: vector(2, 'mm'), optional: true, default: [36, 24], description: 'sensor width and height; 36x24 is full frame' },

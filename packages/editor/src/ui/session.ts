@@ -51,6 +51,8 @@ export class EditorSession implements EditableScene {
   readonly dirty = shallowRef(false);
   /** 游戏页面里的代理；页面还没起来、重新加载时是 undefined。 */
   readonly agent = shallowRef<EditAgent>();
+  /** 视口上的画幅参考线：画幅的宽高比，0 是不显示（见 Viewport 的 frameGuide）。 */
+  readonly frameGuide = shallowRef(0);
   /** 打开的时间轴（资源浏览器里打开的，下面的时间轴面板显示它）：选实体、改场景时一直开着。 */
   readonly timeline = shallowRef<OpenTimeline | undefined>();
   #timelineSave: ReturnType<typeof setTimeout> | undefined;

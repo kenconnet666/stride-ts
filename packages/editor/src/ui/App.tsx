@@ -12,6 +12,9 @@ import { TimelinePanel } from './TimelinePanel';
 import type { EditorSession } from './session';
 import { Viewport } from './Viewport';
 
+/** 画幅参考线的选项：名字和宽高比（0 是关）。 */
+const FRAME_GUIDES: readonly (readonly [string, number])[] = [['', 0], ['16:9', 16 / 9], ['9:16', 9 / 16], ['2.39:1', 2.39], ['1.85:1', 1.85], ['4:3', 4 / 3], ['1:1', 1]];
+
 const styles = css.create({
   app: { display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '_background', color: '_text' },
   toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_sm', paddingBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
@@ -112,6 +115,9 @@ export const App = _component(({ session }: { session: EditorSession }) => {
             <Button size="sm" variant="ghost" disabled={playing} onClick={() => void session.openAsset(scene.value!)}>{t.backToScene(scene.value.path.slice(scene.value.path.lastIndexOf('/') + 1))}</Button>
           )}
           <span {...css.attrs(styles.spacer)} />
+          <select {...css.attrs(styles.language)} aria-label={t.frameGuide} title={t.frameGuide} value={String(session.frameGuide.value)} onChange={(event: Event) => (session.frameGuide.value = Number((event.target as HTMLSelectElement).value))}>
+            {FRAME_GUIDES.map(([label, aspect]) => <option value={String(aspect)}>{aspect === 0 ? t.frameGuideOff : label}</option>)}
+          </select>
           <select {...css.attrs(styles.language)} aria-label={t.language} title={t.language} value={locale.value} onChange={(event: Event) => setLocale((event.target as HTMLSelectElement).value as Locale)}>
             {(Object.keys(LOCALES) as Locale[]).map((code) => <option value={code}>{LOCALES[code]}</option>)}
           </select>

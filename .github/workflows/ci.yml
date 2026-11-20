@@ -40,19 +40,25 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
 
-  # 导入样例的内容（apps/*/public/content，不提交）：导入器、样例的导入脚本、依赖和 Stride 的提交都没变时用缓存
+  # 导入样例的内容（apps/*/public/content，不提交）：导入实际读到的文件（tools/content-key.ts：导入器、它 import 的引擎文件、样例的导入脚本、
+  # 内容的覆盖文件、锁文件）和 Stride 的提交都没变时用缓存。顺带列出有冒烟脚本的样例给 smoke 的矩阵
   content:
     runs-on: ubuntu-latest
     outputs:
       key: ${{ steps.key.outputs.key }}
+      apps: ${{ steps.key.outputs.apps }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - name: Content cache key
         id: key
         run: |
           stride=$(git ls-remote "$STRIDE_FORK" "refs/heads/$STRIDE_BRANCH" | cut -f1)
           echo "stride=$stride" >> "$GITHUB_OUTPUT"
-          echo "key=content-${{ hashFiles('packages/pipeline/src/**', 'packages/engine/src/content/**', 'apps/*/scripts/import.ts', 'apps/*/content-overrides/**', 'pnpm-lock.yaml', 'pnpm-workspace.yaml') }}-$stride" >> "$GITHUB_OUTPUT"
+          echo "key=content-$(node tools/content-key.ts)-$stride" >> "$GITHUB_OUTPUT"
+          echo "apps=$(ls apps/*/scripts/smoke.ts | cut -d/ -f2 | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
         id: cached
         with:
@@ -61,11 +67,6 @@ jobs:
           lookup-only: true
       - uses: pnpm/action-setup@v4
         if: steps.cached.outputs.cache-hit != 'true'
-      - uses: actions/setup-node@v4
-        if: steps.cached.outputs.cache-hit != 'true'
-        with:
-          node-version: 24
-          cache: pnpm
       - if: steps.cached.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
       # Stride 的样例：稀疏、浅克隆，只拉 samples 和导入器要的引擎自带资源包（packages/pipeline/src/cli.ts 的 STRIDE_PACKAGES）的 LFS 文件（约 190 MB）；LFS 对象按 Stride 的提交另外缓存，导入器改了也不用重新下
@@ -94,18 +95,16 @@ jobs:
           path: apps/*/public/content
           key: ${{ steps.key.outputs.key }}
 
-  # 第 3 层：全部样例的冒烟（软件 WebGPU），四组在四台运行器上同时跑；按本地的耗时分得差不多
+  # 第 3 层：全部样例的冒烟（软件 WebGPU），一个样例一台运行器（公开仓库的运行器不计时长）：SwiftShader 在 4 核的运行器上画
+  # 1280x720 一帧要几百毫秒，两个样例抢一台时有的冒烟一帧都走不动
   smoke:
     needs: content
     runs-on: ubuntu-latest
+    name: smoke (${{ matrix.app }})
     strategy:
       fail-fast: false
       matrix:
-        apps:
-          - csharp-intermediate,sprite-fonts,platformer,simple-audio,material-shader
-          - topdown-rpg,first-person-shooter,jumpy-jet,space-escape,custom-effect
-          - bepu-sample,ui-element-link,platformer2d,morph-targets,animated-model
-          - csharp-beginner,particles-sample,physics-sample,ui-particles,game-menu
+        app: ${{ fromJson(needs.content.outputs.apps) }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -127,11 +126,4 @@ jobs:
         # 画面用默认的 1280x720：冒烟的点击坐标、UI 的布局（GameMenu 的虚拟分辨率跟着后备缓冲走）都是按这个大小写的
         env:
           STRIDE_CHROME_ARGS: --enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader --use-angle=swiftshader --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader
-        run: pwsh tools/regress.ps1 -Apps "${{ matrix.apps }}" -Parallel 2
-      # 失败时看机器的内存、共享内存和有没有进程被 OOM 杀掉（GPU 进程没了，页面里只看得到"Instance reference no longer exists"）
-      - name: Machine state
-        if: failure()
-        run: |
-          free -m
-          df -h /dev/shm
-          sudo dmesg | grep -i -E 'killed process|out of memory|oom' || true
+        run: pwsh tools/regress.ps1 -Apps ${{ matrix.app }} -Parallel 1

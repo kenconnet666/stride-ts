@@ -28,7 +28,7 @@ const AREAS: readonly (readonly [RegExp, readonly string[]])[] = [
 ];
 
 /** 不影响任何样例的。 */
-const IGNORED = /^(docs\/|.*\.md$|\.github\/|tools\/(budgets\.json|stride-capture\/|debug-bridge\/|measure\.ps1|verify\.ps1|import-all\.ps1|affected\.ts)|packages\/[^/]+\/test\/|apps\/[^/]+\/scripts\/import\.ts$)/;
+const IGNORED = /^(docs\/|.*\.md$|\.github\/|tools\/(budgets\.json|stride-capture\/|debug-bridge\/|measure\.ps1|verify\.ps1|import-all\.ps1|affected\.ts|content-key\.ts)|packages\/[^/]+\/test\/|apps\/[^/]+\/scripts\/import\.ts$)/;
 
 const base = process.argv[2] ?? 'origin/main';
 const git = (...args: string[]) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean);

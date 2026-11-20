@@ -15,6 +15,18 @@ interface GrowingBuffer {
   used: number;
 }
 
+/** 绑定组的布局，同一个设备上的 GlyphStore 共用（SpriteBatch 的管线也就能共用）。 */
+const layouts = new WeakMap<GPUDevice, GPUBindGroupLayout>();
+
+function glyphLayout(device: GPUDevice): GPUBindGroupLayout {
+  let layout = layouts.get(device);
+  if (!layout) {
+    const entry = (binding: number): GPUBindGroupLayoutEntry => ({ binding, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } });
+    layouts.set(device, (layout = device.createBindGroupLayout({ label: 'GlyphStore', entries: [entry(0), entry(1), entry(2)] })));
+  }
+  return layout;
+}
+
 export class GlyphStore {
   readonly device: GPUDevice;
   readonly layout: GPUBindGroupLayout;
@@ -31,8 +43,7 @@ export class GlyphStore {
     this.#points = create('GlyphStore points');
     this.#bands = create('GlyphStore bands');
     this.#glyphs = create('GlyphStore glyphs');
-    const entry = (binding: number): GPUBindGroupLayoutEntry => ({ binding, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } });
-    this.layout = device.createBindGroupLayout({ label: 'GlyphStore', entries: [entry(0), entry(1), entry(2)] });
+    this.layout = glyphLayout(device);
   }
 
   /** 字形在字形表里的下标；所在的块还没上传时现在上传。 */

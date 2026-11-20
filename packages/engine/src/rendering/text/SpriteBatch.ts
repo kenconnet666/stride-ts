@@ -220,6 +220,47 @@ function white(): Texture {
   return (whiteTexture ??= new Texture('white', { format: 'rgba8unorm', width: 1, height: 1, levels: [new Uint8Array([255, 255, 255, 255])] }));
 }
 
+/**
+ * 同一个设备上所有 SpriteBatch 共用的：着色器模块、绑定组布局、建好的管线（UI 每个组件一个 SpriteBatch，点选又各有一个，
+ * 各建一套一样的管线是白费，而且是当场同步编的）。缓冲、绑定组、字形是每个 SpriteBatch 自己的（同一帧里各写各的数据）。
+ */
+interface SharedGpu {
+  readonly module: GPUShaderModule;
+  readonly itemLayout: GPUBindGroupLayout;
+  readonly textureLayout: GPUBindGroupLayout;
+  readonly effectLayout: GPUBindGroupLayout;
+  readonly pipelines: Map<string, GPURenderPipeline>;
+  readonly effectModules: Map<string, GPUShaderModule>;
+}
+
+const shared = new WeakMap<GPUDevice, SharedGpu>();
+
+function sharedGpu(device: GPUDevice): SharedGpu {
+  let gpu = shared.get(device);
+  if (!gpu) {
+    const layout = (label: string, entries: GPUBindGroupLayoutEntry[]) => device.createBindGroupLayout({ label, entries });
+    gpu = {
+      module: device.createShaderModule({ label: 'SpriteBatch', code: SHADER }),
+      itemLayout: layout('SpriteBatch items', [
+        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+      ]),
+      textureLayout: layout('SpriteBatch texture', [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+      ]),
+      effectLayout: layout('SpriteBatch effect', [
+        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+      ]),
+      pipelines: new Map(),
+      effectModules: new Map(),
+    };
+    shared.set(device, gpu);
+  }
+  return gpu;
+}
+
 export class SpriteBatch {
   /** 虚拟分辨率：坐标按它算，画的时候拉伸到渲染目标；不设时就是渲染目标的像素。 */
   virtualResolution: Vec2 | undefined;
@@ -237,7 +278,7 @@ export class SpriteBatch {
   #activeEffect: SpriteEffect | undefined;
   readonly #effectLayout: GPUBindGroupLayout;
   readonly #effectBuffer: GPUBuffer;
-  readonly #effectModules = new Map<string, GPUShaderModule>();
+  readonly #effectModules: Map<string, GPUShaderModule>;
   readonly #effectGroups = new WeakMap<SpriteEffect, GPUBindGroup>();
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
@@ -245,7 +286,7 @@ export class SpriteBatch {
   readonly #module: GPUShaderModule;
   readonly #itemLayout: GPUBindGroupLayout;
   readonly #textureLayout: GPUBindGroupLayout;
-  readonly #pipelines = new Map<string, GPURenderPipeline>();
+  readonly #pipelines: Map<string, GPURenderPipeline>;
   readonly #textureGroups = new Map<Texture, GPUBindGroup>();
   readonly #uniform: GPUBuffer;
   #items: GPUBuffer;
@@ -265,30 +306,15 @@ export class SpriteBatch {
     this.#device = device;
     this.#resources = resources;
     this.#glyphs = new GlyphStore(device);
-    this.#module = device.createShaderModule({ label: 'SpriteBatch', code: SHADER });
-    this.#itemLayout = device.createBindGroupLayout({
-      label: 'SpriteBatch items',
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
-        { binding: 1, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-      ],
-    });
-    this.#textureLayout = device.createBindGroupLayout({
-      label: 'SpriteBatch texture',
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.FRAGMENT, texture: {} },
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
-      ],
-    });
+    const shared = sharedGpu(device);
+    this.#module = shared.module;
+    this.#itemLayout = shared.itemLayout;
+    this.#textureLayout = shared.textureLayout;
+    this.#effectLayout = shared.effectLayout;
+    this.#pipelines = shared.pipelines;
+    this.#effectModules = shared.effectModules;
     // Batch：变换矩阵 64 字节、pickId，按 16 字节对齐
     this.#uniform = device.createBuffer({ label: 'SpriteBatch transform', size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.#effectLayout = device.createBindGroupLayout({
-      label: 'SpriteBatch effect',
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-        { binding: 1, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
-      ],
-    });
     this.#effectBuffer = device.createBuffer({ label: 'SpriteBatch effect parameters', size: SPRITE_EFFECT_PARAMETERS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#items = this.#createItems(this.#data.byteLength);
   }

@@ -42,6 +42,19 @@ describe('SpriteBatch 画进点选的编号缓冲', () => {
     expect(scissors(calls)).toEqual([[100, 50, 1, 1], [100, 50, 0, 0], [100, 50, 1, 1]]);
   });
 
+  test('同一个设备上的 SpriteBatch 共用着色器模块、布局和管线（UI 每个组件一个，不各编一套）', () => {
+    stubGpuGlobals();
+    const { device, pass, calls } = fakeGpu();
+    for (let i = 0; i < 3; i++) {
+      const batch = new SpriteBatch(device, RESOURCES);
+      batch.begin(pass, 200, 100, 'rgba8unorm');
+      batch.drawQuad(null, { origin: [0, 0], axisX: [10, 0], axisY: [0, 10] }, [0, 0, 1, 1], [1, 1, 1, 1]);
+      batch.end();
+    }
+    const count = (method: string) => calls.filter((call) => call.method === method).length;
+    expect([count('createShaderModule'), count('createRenderPipeline'), count('createBindGroupLayout')]).toEqual([1, 1, 4]);
+  });
+
   test('没设 pickId 照常画：预乘 alpha 混合，编号写 0，剪裁矩形限制在渲染目标里', () => {
     stubGpuGlobals();
     const { device, pass, calls, writes } = fakeGpu();

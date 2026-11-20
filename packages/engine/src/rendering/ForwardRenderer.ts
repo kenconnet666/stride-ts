@@ -650,6 +650,7 @@ export class ForwardRenderer {
     this.renderSystem.atmosphere.apply(context, lighting, this.#mainView.eye);
     this.renderSystem.clouds.apply(context, this.quality.volumetricClouds);
     this.renderSystem.fog.apply(context, this.quality.volumetricFog);
+    this.renderSystem.decals.apply(context);
     this.#dropBlackDirectionals(lighting);
     // 投阴影的是第一盏要投的：太阳落山以后它是黑的、被丢掉了，轮到月亮
     lighting.shadowLight = lighting.directionals.findIndex((light, i) => i < lighting.directionalCount && light.shadow !== undefined);

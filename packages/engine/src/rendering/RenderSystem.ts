@@ -16,6 +16,7 @@ import { ReflectionProbes } from './lighting/ReflectionProbes';
 import { Atmosphere, type DynamicSky } from './sky/Atmosphere';
 import { Clouds } from './sky/VolumetricClouds';
 import { Fog } from './sky/VolumetricFog';
+import { Decals } from './mesh/Decals';
 import type { Skybox } from './lighting/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 import { SkyOcclusion } from '../weather/SkyOcclusion';
@@ -460,6 +461,8 @@ export class RenderSystem {
   readonly clouds: Clouds;
   /** 场景的体积雾（VolumetricFog 组件）。 */
   readonly fog: Fog;
+  /** 场景的贴花（Decal 组件；网格着色时查）。 */
+  readonly decals: Decals;
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
   /**
@@ -475,6 +478,7 @@ export class RenderSystem {
     this.atmosphere = new Atmosphere(graphicsDevice.device, this.resources);
     this.clouds = new Clouds(graphicsDevice.device, this.atmosphere);
     this.fog = new Fog(graphicsDevice.device, this.resources);
+    this.decals = new Decals(graphicsDevice.device, this.resources);
     this.skyOcclusion = new SkyOcclusion(graphicsDevice.device);
   }
 
@@ -535,6 +539,7 @@ export class RenderSystem {
     this.reflectionProbes.destroy();
     this.clouds.destroy();
     this.fog.destroy();
+    this.decals.destroy();
     this.atmosphere.destroy();
     this.skyOcclusion.destroy();
     this.resources.destroy();

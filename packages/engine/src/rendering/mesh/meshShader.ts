@@ -61,6 +61,8 @@ struct View {
   cloudShadow: vec4f,
   // 天气（RenderSystem.surfaceWeather）：x：地面多湿，y：积了多少雪（都是 0 到 1）
   weather: vec4f,
+  // x：贴花的个数（decals 的前几个）
+  decal: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）：position.w 是半径平方的倒数，color.w 为 1 是聚光，
 // direction 是聚光照向的方向（w：它的阴影在 localShadows 里的下标，没有阴影时 -1），angle 是角度衰减的 scale、offset
@@ -104,6 +106,74 @@ struct Probe { center: vec4f, boxMin: vec4f, boxMax: vec4f, options: vec4f };
 struct SkyOcclusion { viewProjection: mat4x4f, valid: vec4u };
 @group(0) @binding(20) var skyOcclusionDepth: texture_depth_2d;
 @group(0) @binding(21) var<uniform> skyOcclusion: SkyOcclusion;
+
+// 贴花（mesh/Decals.ts 的 packDecal）：世界到盒子（-1..1）的矩阵，颜色、法线在图集里的位置（xy 左上角，zw 大小；z 是 0 是
+// 没有），颜色乘数和不透明度，淡出（颜色换掉多少、法线、顶部、底部），盒子的三个轴（世界）
+struct Decal { toBox: mat4x4f, albedo: vec4f, normal: vec4f, color: vec4f, fade: vec4f, axisX: vec4f, axisY: vec4f, axisZ: vec4f, pad: vec4f };
+@group(0) @binding(22) var<storage, read> decals: array<Decal>;
+// 图集：第 0 层颜色（存的是 sRGB 编码过的值），第 1 层法线
+@group(0) @binding(23) var decalAtlas: texture_2d_array<f32>;
+
+/** 贴花改过的表面和法线。 */
+struct Decaled { surface: LayerSurface, normal: vec3f };
+
+fn decodeSrgb(c: vec3f) -> vec3f {
+  return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045));
+}
+
+/**
+ * 贴花（Godot 的做法）：world 落在哪个贴花的盒子里，就按盒子里的 xz 查贴图，颜色按 alpha 混进去，法线按贴花的切线空间
+ * （x 轴是 u，-z 轴是贴图的上方，y 轴是法线）换算到世界再混进去；按表面和投影方向的夹角、在盒子里的高度淡出。后面的贴花
+ * 盖在前面的上面。导数在循环外算（循环里是非一致的控制流）。
+ */
+fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface) -> Decaled {
+  var r = Decaled(s, n);
+  let count = u32(view.decal.x);
+  if (count == 0u) {
+    return r;
+  }
+  let dx = dpdx(world);
+  let dy = dpdy(world);
+  for (var i = 0u; i < count; i++) {
+    let d = decals[i];
+    let p = (d.toBox * vec4f(world, 1.0)).xyz;
+    if (any(abs(p) > vec3f(1.0))) {
+      continue;
+    }
+    // 淡出：背着投影方向的面、盒子的顶部和底部
+    var fade = d.color.w;
+    if (d.fade.y > 0.0) {
+      fade *= smoothstep(d.fade.y, min(d.fade.y + 0.3, 1.0), dot(n, d.axisY.xyz));
+    }
+    if (d.fade.z > 0.0) {
+      fade *= saturate((1.0 - p.y) * 0.5 / d.fade.z);
+    }
+    if (d.fade.w > 0.0) {
+      fade *= saturate((p.y + 1.0) * 0.5 / d.fade.w);
+    }
+    if (fade <= 0.0) {
+      continue;
+    }
+    let uv = p.xz * 0.5 + 0.5;
+    let duvx = (d.toBox * vec4f(dx, 0.0)).xz * 0.5;
+    let duvy = (d.toBox * vec4f(dy, 0.0)).xz * 0.5;
+    var alpha = fade;
+    var albedo = d.color.rgb;
+    if (d.albedo.z > 0.0) {
+      let texel = textureSampleGrad(decalAtlas, linearClamp, d.albedo.xy + uv * d.albedo.zw, 0, duvx * d.albedo.zw, duvy * d.albedo.zw);
+      albedo *= decodeSrgb(texel.rgb);
+      alpha *= texel.a;
+    }
+    r.surface.albedo = mix(r.surface.albedo, albedo, alpha * d.fade.x);
+    if (d.normal.z > 0.0) {
+      let t = textureSampleGrad(decalAtlas, linearClamp, d.normal.xy + uv * d.normal.zw, 1, duvx * d.normal.zw, duvy * d.normal.zw).xyz * 2.0 - 1.0;
+      let decalNormal = normalize(d.axisX.xyz * t.x - d.axisZ.xyz * t.y + d.axisY.xyz * max(t.z, 0.0));
+      // 贴花的法线是相对一个平面的：按表面的法线转过去（平面上的凸起跟着表面走）
+      r.normal = normalize(mix(r.normal, normalize(r.normal + decalNormal - d.axisY.xyz), alpha));
+    }
+  }
+  return r;
+}
 
 /** world 淋不淋得到雨雪：1 是淋得到，0 是头顶有东西挡着（比深度图记的最高表面低 20 厘米以上）；图外、没有图时当淋得到。 */
 fn skyExposure(world: vec3f) -> f32 {
@@ -872,7 +942,7 @@ struct Shaded {
 
 /** 一个像素的光照；coatPass 为真时是清漆的那一遍。 */
 fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
-  let n = facingNormal(surfaceNormal(in, coatPass), front);
+  var n = facingNormal(surfaceNormal(in, coatPass), front);
   let v = normalize(view.eye.xyz - in.world);
   let base = baseColor(in);
   if (base.a < material.flags.y) {
@@ -888,7 +958,10 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb,
     select(material.surface.y, select(1.0 - glossTexel, glossTexel, material.flags.x > 0.5), hasGlossTexture)));
   // 清漆把漫反射色、金属度、粗糙度换成这一遍的（没有清漆时原样）
-  let layered = weatherSurface(in.world, n, coatSurface(in, layers, coatPass));
+  // 贴花盖在材质上，天气（湿、雪）再盖在贴花上
+  let decaled = applyDecals(in.world, n, coatSurface(in, layers, coatPass));
+  n = decaled.normal;
+  let layered = weatherSurface(in.world, n, decaled.surface);
   let albedo = layered.albedo;
 
   // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint

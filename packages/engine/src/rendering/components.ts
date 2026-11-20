@@ -156,6 +156,28 @@ export const VolumetricFog = component('VolumetricFog', {
 });
 
 /**
+ * 贴花（Stride 没有；做法照 Godot 的 Decal，见 mesh/Decals.ts）：实体的位置、旋转定一个盒子（size 是三边长，米），沿本地的
+ * -Y 往下投，盒子里的表面换上贴花的颜色（albedo，Texture.id，按 sRGB 读，alpha 是遮罩）和法线（normal，Texture.id，切线
+ * 空间，OpenGL 的绿色朝上）。两张贴图都可以没有：只有颜色乘数时是一块纯色。
+ */
+export const Decal = component('Decal', {
+  size: prop.vec3().default([2, 2, 2]),
+  albedo: prop.u32().brand<'TextureId'>().default(0 as TextureId),
+  normal: prop.u32().brand<'TextureId'>().default(0 as TextureId),
+  /** 乘在颜色贴图上的颜色。 */
+  color: prop.vec3().default([1, 1, 1]),
+  /** 不透明度（乘在颜色贴图的 alpha 上）。 */
+  opacity: prop.f32().default(1).min(0).max(1),
+  /** 颜色换掉多少（0 是只改法线）。 */
+  albedoMix: prop.f32().default(1).min(0).max(1),
+  /** 表面越偏离投影方向越淡：0 是不淡，0.3 是和投影方向夹角大于 70° 左右的面看不到。 */
+  normalFade: prop.f32().default(0.3).min(0).max(1),
+  /** 盒子顶部、底部多大的一段里渐渐淡出（盒子高度的比例）。 */
+  upperFade: prop.f32().default(0.3).min(0).max(1),
+  lowerFade: prop.f32().default(0.3).min(0).max(1),
+});
+
+/**
  * 背景（Stride 的 BackgroundComponent）：在没画到的地方画立方体贴图（texture，Cubemap.id，跟着实体旋转），或者平面图片
  * （image，Texture.id，Stride 的 Is2D：保持比例铺满画面，多出的部分两边对称裁掉），乘强度。两个都设时用 image。
  */

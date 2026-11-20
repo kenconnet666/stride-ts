@@ -281,6 +281,19 @@ export interface SceneWeather {
   readonly transitionTime?: number;
 }
 
+/** 贴花（Stride 没有，见 Decal 组件）：颜色、法线贴图（法线没写 srgb 时按线性读）；没写的用默认值。 */
+export interface SceneDecal {
+  readonly size?: Vec3Tuple;
+  readonly albedo?: TextureRef;
+  readonly normal?: TextureRef;
+  readonly color?: Vec3Tuple;
+  readonly opacity?: number;
+  readonly albedoMix?: number;
+  readonly normalFade?: number;
+  readonly upperFade?: number;
+  readonly lowerFade?: number;
+}
+
 /** 雨雪（Stride 没有，见 weather/Precipitation.ts）：没写的用组件的默认值；场景里有天气状态时种类和强度由它给。 */
 export interface ScenePrecipitation {
   readonly kind?: 'rain' | 'snow';
@@ -490,6 +503,7 @@ export interface SceneEntityFile {
     readonly windZone?: SceneWindZone;
     readonly precipitation?: ScenePrecipitation;
     readonly weather?: SceneWeather;
+    readonly decal?: SceneDecal;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;

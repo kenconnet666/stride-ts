@@ -66,6 +66,9 @@ function visitEntityReferences(files: readonly SceneEntityFile[], visit: (ref: E
     if (c.light?.type === 'skybox') visit({ kind: 'skybox', path: c.light.skybox }, c.light, 'skybox');
     if (c.background?.type === 'cubemap') visit({ kind: 'cubemap', path: c.background.texture }, c.background, 'texture');
     else if (c.background) image(c.background.image);
+    if (c.decal?.albedo) image(c.decal.albedo);
+    // 法线贴图默认按线性读（同材质的法线贴图）
+    if (c.decal?.normal) visit({ kind: 'image', path: c.decal.normal.texture, texture: { srgb: false, ...c.decal.normal } }, c.decal.normal, 'texture');
     if (c.sprite && 'sheet' in c.sprite) visit({ kind: 'spriteSheet', path: c.sprite.sheet }, c.sprite, 'sheet');
     else if (c.sprite) image(c.sprite.texture);
     if (c.particleSystem) textureRefs(c.particleSystem).forEach(image);

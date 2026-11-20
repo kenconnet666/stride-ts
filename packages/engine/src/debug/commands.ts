@@ -6,10 +6,11 @@
  * （`路径#导出名`）或 # 后面的部分找。
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
-import { Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, VolumetricFog } from '../rendering/components';
+import { Decal, Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { DayNightCycle, lightRotationTowards } from '../rendering/sky/DayNightCycle';
 import { Material } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
+import { Texture, type TextureId } from '../graphics/Texture';
 import { PARTICLE_BYTES } from '../particles/gpu/kernel';
 import { Precipitation } from '../weather/Precipitation';
 import { Weather, WEATHER_PRESETS, type WeatherPreset, type WeatherTarget } from '../weather/Weather';
@@ -205,7 +206,33 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const { active, settings } = game.renderSystem.fog;
     return { active, ...(fog ? { settings: { ...settings } } : {}) };
   });
-  debug.command('weather', `Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
+  debug.command('decal', 'Decals (Decal). args: on (true adds test decals, false removes them); at [x, y, z] (default: in front of the camera on the ground); size [x, y, z] (m); count (n: an n x n grid of decals 3 m apart, to measure the cost); color [r, g, b]; opacity; albedoMix; normalFade; pattern ("ring" draws a ring with an alpha mask, "none" a solid box); bumps (true adds a normal map of round bumps). Without on, changes the test decals.', (args) => {
+    const tests = () => game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.name === 'Test decal');
+    if (args['on'] === false) for (const entity of tests()) entity.destroy();
+    if (args['on'] === true) {
+      for (const entity of tests()) entity.destroy();
+      const eye = game.graphicsCompositor.mainView?.eye;
+      const at = Array.isArray(args['at']) ? (args['at'] as number[]) : [eye?.x ?? 0, 0, (eye?.z ?? 0) - 6];
+      const n = Math.max(1, Math.round(Number(args['count'] ?? 1)));
+      for (let i = 0; i < n * n; i++) {
+        const entity = game.entities.create({ name: 'Test decal', components: [Transform, Decal] });
+        Object.assign(entity.require(Transform).position, { x: at[0]! + ((i % n) - (n - 1) / 2) * 3, y: at[1]!, z: at[2]! + (Math.floor(i / n) - (n - 1) / 2) * 3 });
+      }
+    }
+    for (const entity of tests()) {
+      const decal = entity.require(Decal);
+      const vec3 = (value: unknown) => { const [x, y, z] = value as number[]; return { x: x!, y: y!, z: z! }; };
+      if (Array.isArray(args['size'])) decal.size = vec3(args['size']);
+      if (Array.isArray(args['color'])) decal.color = vec3(args['color']);
+      for (const key of ['opacity', 'albedoMix', 'normalFade'] as const) if (typeof args[key] === 'number') decal[key] = args[key];
+      if (args['pattern'] === 'ring' || (args['on'] === true && args['pattern'] === undefined)) decal.albedo = testDecalTexture('ring').id;
+      if (args['pattern'] === 'none') decal.albedo = 0 as TextureId;
+      if (args['bumps'] === true) decal.normal = testDecalTexture('bumps').id;
+      if (args['bumps'] === false) decal.normal = 0 as TextureId;
+    }
+    return { decals: tests().length, drawn: game.renderSystem.decals.count };
+  });
+  debug.command('weather',`Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
     const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Weather));
     if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Weather', components: [Transform, Weather, Precipitation] }));
     if (args['on'] === false) for (const entity of all.splice(0)) entity.destroy();
@@ -651,4 +678,30 @@ async function particles(game: Game, { name }: Args): Promise<unknown> {
     }
   }
   return rows;
+}
+
+/** 试贴花用的程序生成的贴图（`stride call decal`）：ring 是一个带 alpha 遮罩的橙色圆环，bumps 是一片圆凸起的法线贴图。 */
+const testDecalTextures = new Map<string, Texture>();
+function testDecalTexture(kind: 'ring' | 'bumps'): Texture {
+  let texture = testDecalTextures.get(kind);
+  if (texture) return texture;
+  const size = 256, pixels = new Uint8Array(size * size * 4);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const u = (x + 0.5) / size * 2 - 1, v = (y + 0.5) / size * 2 - 1;
+    if (kind === 'ring') {
+      const r = Math.hypot(u, v);
+      const alpha = Math.max(0, Math.min(1, (0.12 - Math.abs(r - 0.7)) * 40));
+      pixels.set([240, 120, 30, Math.round(alpha * 255)], (y * size + x) * 4);
+    } else {
+      // 4x4 个半球形的凸起：法线 = 球面的法线，切线空间（绿色朝上，所以 y 取反）
+      const cu = ((u + 1) * 2) % 1 * 2 - 1, cv = ((v + 1) * 2) % 1 * 2 - 1;
+      const d = Math.hypot(cu, cv);
+      const [nx, ny, nz] = d < 0.8 ? [cu / 0.8 * 0.7, -cv / 0.8 * 0.7, 0] : [0, 0, 1];
+      const z = d < 0.8 ? Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny)) : nz;
+      pixels.set([(nx * 0.5 + 0.5) * 255, (ny * 0.5 + 0.5) * 255, (z * 0.5 + 0.5) * 255, 255].map(Math.round), (y * size + x) * 4);
+    }
+  }
+  texture = new Texture(`test decal ${kind}`, { format: kind === 'ring' ? 'rgba8unorm-srgb' : 'rgba8unorm', width: size, height: size, levels: [pixels] });
+  testDecalTextures.set(kind, texture);
+  return texture;
 }

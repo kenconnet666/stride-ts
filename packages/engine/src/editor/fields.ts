@@ -10,7 +10,7 @@
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
 import type {
-  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
+  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
@@ -303,6 +303,21 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       intensity: { type: number({ min: 0, max: 1 }), optional: true, default: 1, description: 'set by the weather; 0 stops it' },
       radius: { type: number({ min: 1, unit: 'm' }), optional: true, default: 20, description: 'half size of the volume around the camera' },
       height: { type: number({ min: 1, unit: 'm' }), optional: true, default: 12, description: 'how far above the camera it starts falling' },
+    })),
+    initial: {},
+  },
+  decal: {
+    label: 'Decal',
+    type: object(fields<SceneDecal>({
+      size: { type: vector(3), optional: true, default: [2, 2, 2], description: 'box size in meters; projects along the entity\'s -Y' },
+      albedo: { type: object(textureRef), optional: true, description: 'color texture (sRGB); its alpha masks the decal' },
+      normal: { type: object(textureRef), optional: true, description: 'tangent-space normal map (green up)' },
+      color: optional(vector(3), [1, 1, 1]),
+      opacity: optional(number({ min: 0, max: 1 }), 1),
+      albedoMix: { type: number({ min: 0, max: 1 }), optional: true, default: 1, description: 'how much of the color is replaced; 0 keeps only the normal' },
+      normalFade: { type: number({ min: 0, max: 1 }), optional: true, default: 0.3, description: 'fade surfaces that face away from the projection' },
+      upperFade: optional(number({ min: 0, max: 1 }), 0.3),
+      lowerFade: optional(number({ min: 0, max: 1 }), 0.3),
     })),
     initial: {},
   },

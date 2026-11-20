@@ -19,7 +19,7 @@ import { Collider, type ColliderShape } from '../physics/Collider';
 import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
-import { Background, Camera, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from '../rendering/components';
+import { Background, Camera, Decal, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { DayNightCycle } from '../rendering/sky/DayNightCycle';
 import { Precipitation } from '../weather/Precipitation';
 import { Weather } from '../weather/Weather';
@@ -356,6 +356,16 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   windZone: { add: (entity, zone) => entity.add(WindZone.with({ ...zone })), remove: drop(WindZone) },
   precipitation: { add: (entity, precipitation) => entity.add(Precipitation.with({ ...precipitation })), remove: drop(Precipitation) },
   weather: { add: (entity, weather) => entity.add(Weather.with({ ...weather })), remove: drop(Weather) },
+  decal: {
+    add: (entity, { size, albedo, normal, color, ...decal }, { assets }) => entity.add(Decal.with({
+      ...decal,
+      ...(size ? { size: [...size] } : {}),
+      ...(color ? { color: [...color] } : {}),
+      ...(albedo ? { albedo: assets.images.get(albedo.texture)!.id } : {}),
+      ...(normal ? { normal: assets.images.get(normal.texture)!.id } : {}),
+    })),
+    remove: drop(Decal),
+  },
   sprite: {
     add: (entity, sprite, { assets }) => {
       if ('sheet' in sprite) {

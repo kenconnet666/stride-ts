@@ -14,6 +14,7 @@
  *   （GPU 蒙皮，Stride 的 TransformationSkinning），再乘世界矩阵。阴影投射阶段只画投射阴影的批次，管线只写深度。
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
+import type { Decals } from './Decals';
 import type { FrustumCuller } from '@stride-ts/native';
 import type { AnimationSystem } from '../../animation/AnimationSystem';
 import type { EntityId } from '../../data/prop';
@@ -62,7 +63,7 @@ const VIEW_STRIDE = 1024;
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
  * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32。
  */
-const VIEW_FLOATS = 244;
+const VIEW_FLOATS = 248;
 /** 一个点光或聚光在存储缓冲里的 float 数（LocalLight）。 */
 const LOCAL_LIGHT_FLOATS = 16;
 /** 一盏点光或聚光的阴影在存储缓冲里的 float 数（LocalShadow：六个矩阵加两个 vec4）。 */
@@ -294,7 +295,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals));
   }
 
 
@@ -468,6 +469,10 @@ class Gpu {
   #occlusionBound = false;
   /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）。 */
   readonly #noOcclusion: GPUBuffer;
+  readonly #decals: Decals;
+  /** 视图绑定组里的贴花图集和缓冲；换了要重建绑定组。 */
+  #decalAtlas: GPUTexture | undefined;
+  #decalBuffer: GPUBuffer | undefined;
   readonly #unclippedDepth: boolean;
   /** 着色器按自发光分变体：默认的是 ''，颜色树的按它的代码。 */
   readonly #modules = new Map<string, GPUShaderModule>();
@@ -526,13 +531,14 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals) {
     this.device = device;
     this.#resources = resources;
     this.#subsurface = subsurface;
     this.#probes = probes;
     this.#clouds = clouds;
     this.#weather = weather;
+    this.#decals = decals;
     this.#noOcclusion = device.createBuffer({ label: 'MeshRenderFeature no sky occlusion', size: 80, usage: GPUBufferUsage.UNIFORM });
     this.#unclippedDepth = unclippedDepth;
     this.#viewLayout = device.createBindGroupLayout({
@@ -560,6 +566,8 @@ class Gpu {
         { binding: 19, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
         { binding: 20, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
         { binding: 21, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 22, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -908,6 +916,7 @@ class Gpu {
       data.set(view.previousViewProjection, o + 220);
       data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
       data.set([wetness, snowCover, 0, 0], o + 240);
+      data.set([this.#decals.count, 0, 0, 0], o + 244);
     }
     // 点光、聚光：所有视图共用一份
     const lights = this.#localLightData;
@@ -921,7 +930,9 @@ class Gpu {
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer) {
+      this.#decalAtlas = this.#decals.atlas;
+      this.#decalBuffer = this.#decals.buffer;
       this.#cloudShadow = cloud?.texture;
       this.#occlusionBound = occlusion;
       this.#skySpecular = skySpecular;
@@ -989,6 +1000,8 @@ class Gpu {
           { binding: 18, resource: (this.#cloudShadow ?? this.#resources.white).createView() },
           { binding: 19, resource: this.#resources.linearRepeat },
           ...this.#occlusionEntries(this.#occlusionBound && !casters),
+          { binding: 22, resource: { buffer: this.#decals.buffer } },
+          { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
         ],
       });
       groups.set(shadow, group);

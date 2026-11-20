@@ -268,7 +268,20 @@ export interface SceneWindZone {
   readonly radius?: number;
 }
 
-/** 雨雪（Stride 没有，见 weather/Precipitation.ts）：没写的用组件的默认值；强度以后由天气状态给。 */
+/** 天气状态（Stride 没有，见 weather/Weather.ts）：想要的天气；没写的用组件的默认值。 */
+export interface SceneWeather {
+  readonly cloudCoverage?: number;
+  readonly cloudType?: number;
+  readonly precipitation?: number;
+  readonly temperature?: number;
+  readonly fog?: number;
+  readonly windSpeed?: number;
+  readonly windDirection?: number;
+  readonly gustiness?: number;
+  readonly transitionTime?: number;
+}
+
+/** 雨雪（Stride 没有，见 weather/Precipitation.ts）：没写的用组件的默认值；场景里有天气状态时种类和强度由它给。 */
 export interface ScenePrecipitation {
   readonly kind?: 'rain' | 'snow';
   readonly intensity?: number;
@@ -476,6 +489,7 @@ export interface SceneEntityFile {
     readonly volumetricFog?: SceneVolumetricFog;
     readonly windZone?: SceneWindZone;
     readonly precipitation?: ScenePrecipitation;
+    readonly weather?: SceneWeather;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;

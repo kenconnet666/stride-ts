@@ -22,6 +22,7 @@ Browser and connection
   close                   close the stride-launched Chrome
   hubs                    running debug hubs (dev and preview servers) and their pages
   wait [--timeout 30]     wait until a page is connected and its game is running
+  wait --game <seconds>   wait until the game time has advanced that much (slow frames, paused tabs: not wall-clock)
 
 Game
   status                  status, frame, time, fps, canvas, GPU adapter, counters, watches
@@ -61,7 +62,11 @@ Game
                                                     screen-space reflections (no argument toggles)
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
   logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
-  eval <code | ->         run JavaScript in the page (strideGame, strideEngine are globals); - reads stdin
+  eval <code | -> | --file <script.js>
+                          run JavaScript in the page: an expression, or statements that return the result; await works.
+                          In scope: game, engine, entity(name | id), named(name), frames(n), seconds(s) (game time).
+                          - reads stdin; --file reads a file (no shell quoting)
+  particles [--name <text>]                         particle emitters: CPU or GPU, pool size, living particles and where they are
 
 Common options
   --hub <text>            pick a hub by name or url (default: the one whose page connected last)
@@ -97,6 +102,8 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     threshold: { type: 'string' },
     region: { type: 'string' },
     seconds: { type: 'string' },
+    game: { type: 'string' },
+    file: { type: 'string' },
     'no-gpu': { type: 'boolean' },
     scale: { type: 'string' },
     fixed: { type: 'string' },
@@ -289,7 +296,8 @@ const commands: Record<string, () => Promise<unknown>> = {
   async hubs() {
     return Promise.all(listHubs().map(async (hub) => ({ name: hub.name, url: hub.url, pid: hub.pid, pages: await new HubClient(hub).pages().catch((error: unknown) => String(error)) })));
   },
-  wait: () => waitForGame(Number(options.timeout ?? 30)),
+  wait: () => (options.game === undefined ? waitForGame(Number(options.timeout ?? 30)) : call('eval', { code: `(async () => { const start = game.updateTime.total; await seconds(${Number(options.game)}); return { waited: game.updateTime.total - start, total: game.updateTime.total }; })()` })),
+  particles: () => call('particles', options.name ? { name: options.name } : {}),
   status: () => call('status'),
   commands: () => call('commands'),
   call: () => call(required(rest[0], 'command'), rest[1] === undefined ? {} : (JSON.parse(rest[1]) as Record<string, unknown>)),
@@ -397,7 +405,7 @@ const commands: Record<string, () => Promise<unknown>> = {
     return undefined;
   },
   async eval() {
-    const code = rest[0] === '-' ? readFileSync(0, 'utf8') : rest.join(' ');
+    const code = options.file ? readFileSync(options.file, 'utf8') : rest[0] === '-' ? readFileSync(0, 'utf8') : rest.join(' ');
     return call('eval', { code: required(code || undefined, 'code') });
   },
 };

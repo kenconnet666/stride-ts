@@ -1,6 +1,8 @@
 /**
  * 雨雪（Stride 没有，新加的）：带 Precipitation 组件的实体让主相机周围下雨或下雪。不是整个世界撒，而是跟着相机的一块体积：
  * 在相机上方 height 米、半径 radius 米的方形里生成，落到相机下方差不多同样深的地方寿命到了；体积跟着相机走，雨点留在世界里。
+ * 有风时体积往上风挪"落到相机的高度要的时间 · 全局风速"：雪落得慢（12 米要 10 秒），不挪的话风一吹，相机周围的雪全在
+ * 下风几十米外，看得见的都还在头顶上。
  *
  * 用 GPU 粒子（particles/gpu）：每个组件在里面建一个发射器（一个内部的实体，名字是"组件实体名 (precipitation)"），模块是现成的：
  * 盒子里的位置、下落速度、风（UpdaterWind：风速加上下落的终端速度）、速度方向（雨按它拉长成线）。生成数不走生成器，每帧按
@@ -97,6 +99,8 @@ interface State {
   readonly component: ParticleSystemComponent;
   readonly key: string;
   readonly height: number;
+  /** 从生成的高度落到相机的高度要几秒（体积往上风挪多少按它算）。 */
+  readonly fallTime: number;
   rate: number;
   intensity: number;
   carry: number;
@@ -158,8 +162,9 @@ export class PrecipitationSystem {
         this.#states.delete(owner);
         continue;
       }
-      // 体积跟着相机（上一帧的主视图）；生成数按强度，小数部分攒到下一帧
-      if (eye) Object.assign(state.entity.require(Transform).position, { x: eye.x, y: eye.y + state.height, z: eye.z });
+      // 体积跟着相机（上一帧的主视图），往上风挪；生成数按强度，小数部分攒到下一帧
+      const [windX, , windZ] = game.wind.global.velocity;
+      if (eye) Object.assign(state.entity.require(Transform).position, { x: eye.x - windX * state.fallTime, y: eye.y + state.height, z: eye.z - windZ * state.fallTime });
       const wanted = state.rate * state.intensity * this.#dt + state.carry;
       const whole = Math.floor(wanted);
       state.carry = wanted - whole;
@@ -178,7 +183,7 @@ export class PrecipitationSystem {
     // 屋顶下不下：GPU 状态建之前挂上遮挡（粒子系统在这之后的 update 里建它）
     const sky = (game.renderSystem as Game['renderSystem'] | undefined)?.skyOcclusion;
     for (const emitter of component.particleSystem.emitters) emitter.gpuOccluder = sky;
-    const state: State = { entity, component, key, height, rate, intensity: 0, carry: 0, seen: true };
+    const state: State = { entity, component, key, height, fallTime: height / PRECIPITATION_PRESETS[kind].fallSpeed, rate, intensity: 0, carry: 0, seen: true };
     this.#states.set(owner, state);
     return state;
   }

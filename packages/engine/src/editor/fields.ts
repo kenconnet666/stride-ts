@@ -10,7 +10,7 @@
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
 import type {
-  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
+  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
@@ -303,6 +303,21 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       intensity: { type: number({ min: 0, max: 1 }), optional: true, default: 1, description: 'set by the weather; 0 stops it' },
       radius: { type: number({ min: 1, unit: 'm' }), optional: true, default: 20, description: 'half size of the volume around the camera' },
       height: { type: number({ min: 1, unit: 'm' }), optional: true, default: 12, description: 'how far above the camera it starts falling' },
+    })),
+    initial: {},
+  },
+  weather: {
+    label: 'Weather',
+    type: object(fields<SceneWeather>({
+      cloudCoverage: optional(number({ min: 0, max: 1 }), 0.3),
+      cloudType: { type: number({ min: 0, max: 1 }), optional: true, default: 0.7, description: '0 layered stratus, 1 towering cumulonimbus' },
+      precipitation: { type: number({ min: 0, max: 1 }), optional: true, default: 0, description: 'rain or snow (by temperature); 1 is a downpour' },
+      temperature: { type: number({ unit: '°C' }), optional: true, default: 15, description: 'below 1 °C it snows' },
+      fog: optional(number({ min: 0, max: 1 }), 0),
+      windSpeed: optional(number({ min: 0, unit: 'm/s' }), 3),
+      windDirection: { type: number({ unit: 'deg' }), optional: true, default: 0, description: 'where the wind blows to, around Y: 0 is +Z, 90 is +X' },
+      gustiness: optional(number({ min: 0, max: 1 }), 0.3),
+      transitionTime: { type: number({ min: 0, unit: 's' }), optional: true, default: 30, description: 'how fast the current weather follows; 0 changes at once' },
     })),
     initial: {},
   },

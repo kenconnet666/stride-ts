@@ -5,6 +5,8 @@ import type { SceneFile } from '../src/content/format';
 import { checkEntity } from '../src/editor/fields';
 import { Game } from '../src/engine/Game';
 import { Precipitation, precipitationEmitter } from '../src/weather/Precipitation';
+import { fogDensity, Weather, WEATHER_PRESETS, WeatherSystem } from '../src/weather/Weather';
+import { VolumetricClouds, VolumetricFog } from '../src/rendering/components';
 import { GPU_LOCAL_WINDS, gust, type LocalWind, packWind, WindField, WindZone } from '../src/weather/WindField';
 import { buildKernel } from '../src/particles/gpu/kernel';
 import { ParticlePool } from '../src/particles/ParticlePool';
@@ -148,6 +150,48 @@ describe('天空遮挡（从上往下的深度图）', () => {
   });
 });
 
+describe('天气状态', () => {
+  const rain = { ...WEATHER_PRESETS.rain, transitionTime: 30 };
+  const clear = { ...WEATHER_PRESETS.clear, transitionTime: 30 };
+
+  test('第一次直接到想要的天气（下了很久的样子）；之后按时间常数指数地靠过去，帧率不同走的一样', () => {
+    const weather = new WeatherSystem();
+    expect(weather.advance(rain, 0.016)).toMatchObject({ cloudCoverage: 0.95, precipitation: 0.6, wetness: 1, snowCover: 0 });
+    // 一个时间常数走完 63%
+    weather.advance(clear, 30);
+    expect(weather.current!.cloudCoverage).toBeCloseTo(0.95 + (0.15 - 0.95) * (1 - Math.exp(-1)), 5);
+    const coarse = new WeatherSystem(), fine = new WeatherSystem();
+    coarse.advance(rain, undefined);
+    fine.advance(rain, undefined);
+    coarse.advance(clear, 1);
+    for (let i = 0; i < 100; i++) fine.advance(clear, 0.01);
+    expect(fine.current!.cloudCoverage).toBeCloseTo(coarse.current!.cloudCoverage, 5);
+    // 过渡时间 0：马上变
+    expect(weather.advance({ ...rain, transitionTime: 0 }, 0.016).cloudCoverage).toBe(0.95);
+  });
+
+  test('风向走近的那一边；雨停了地面慢慢干，下雪积雪，气温高了雪化', () => {
+    const weather = new WeatherSystem();
+    weather.advance({ ...clear, windDirection: 350 }, undefined);
+    weather.advance({ ...clear, windDirection: 10, transitionTime: 1 }, 100);
+    expect(weather.current!.windDirection).toBeCloseTo(10, 3);
+    weather.advance({ ...clear, windDirection: 350 }, undefined);
+    weather.advance({ ...clear, windDirection: 10 }, 30);
+    // 从 350 往上走过 0 到 10，不是往回走 340 度
+    expect(weather.current!.windDirection < 10 || weather.current!.windDirection > 350).toBe(true);
+    weather.advance(rain, undefined);
+    weather.advance({ ...clear, transitionTime: 0 }, 150);
+    expect(weather.current!.wetness).toBeCloseTo(0.5, 5);
+    const snow = { ...WEATHER_PRESETS.snow, transitionTime: 0 };
+    weather.advance({ ...clear, transitionTime: 0 }, undefined);
+    weather.advance(snow, 100);
+    expect(weather.current!.snowCover).toBeCloseTo((0.6 / 600) * 100, 5);
+    expect(weather.current!.wetness).toBe(0);
+    weather.advance({ ...snow, temperature: 10, precipitation: 0 }, 10);
+    expect(weather.current!.snowCover).toBeLessThan((0.6 / 600) * 100);
+  });
+});
+
 describe('风场和雨雪写在场景文件里', () => {
   let native: StrideNative;
   beforeAll(async () => {
@@ -174,5 +218,35 @@ describe('风场和雨雪写在场景文件里', () => {
     expect([precipitation.kind, precipitation.intensity, precipitation.radius]).toEqual(['snow', 1, 20]);
     expect(checkEntity(scene.entities[0]!)).toEqual([]);
     expect(checkEntity({ ...scene.entities[1]!, components: { precipitation: { intensity: 3 } } }).length).toBeGreaterThan(0);
+  });
+
+  test('weather 加出 Weather；天气把当前的值写给云、雾、雨雪和全局风，没有天气时不接管', async () => {
+    const scene: SceneFile = {
+      name: 'Weather',
+      entities: [
+        { id: 'sky', name: 'Sky', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { weather: { ...WEATHER_PRESETS.snow }, volumetricClouds: {}, volumetricFog: {}, precipitation: {} } },
+      ],
+    };
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => new TextEncoder().encode(JSON.stringify(scene)).buffer as ArrayBuffer });
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    const loaded = await content.loadScene('scenes/Weather', game.entities);
+    const sky = loaded.entities.get('sky')!;
+    expect(sky.require(Weather).temperature).toBe(-5);
+    game.weather.update(game);
+    expect(sky.require(VolumetricClouds).coverage).toBeCloseTo(0.9, 5);
+    expect(sky.require(VolumetricClouds).windSpeed).toBeCloseTo(9, 5);
+    expect(sky.require(VolumetricFog).density).toBeCloseTo(fogDensity(WEATHER_PRESETS.snow), 5);
+    expect([sky.require(Precipitation).kind, sky.require(Precipitation).intensity]).toEqual(['snow', expect.closeTo(0.6, 5)]);
+    // 风吹向 0 度（+Z），3 米每秒
+    game.wind.update(game);
+    expect(game.wind.global.velocity.map((v) => +v.toFixed(4) + 0)).toEqual([0, 0, 3]);
+    expect(checkEntity({ ...scene.entities[0]!, components: { weather: WEATHER_PRESETS.storm } })).toEqual([]);
+    sky.remove(Weather);
+    game.weather.update(game);
+    game.wind.update(game);
+    expect(game.weather.current).toBeUndefined();
+    expect(game.wind.global.velocity).toEqual([0, 0, 0]);
   });
 });

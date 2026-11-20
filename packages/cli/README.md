@@ -44,7 +44,9 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `wireframe [on\|off]` | 在主画面上叠画网格的线框（三角形的边）；不带参数是切换（`game.graphicsCompositor.wireframe`） |
 | `raycast <x,y,z> <dx,dy,dz>` | 物理射线 |
 | `logs [-f] [--level warn]` | 页面的 console 输出、未捕获的异常、引擎日志、埋的事件 |
-| `eval <代码>` | 在页面里执行（`strideGame`、`strideEngine` 是全局变量） |
+| `eval <代码 \| -> \| --file <脚本>` | 在页面里执行：一个表达式就是结果，几条语句用 return；能直接 await。作用域里有 `game`、`engine`（样例挂的 `strideEngine`）、`entity(名字或 id)`、`named(名字)`、`frames(n)`、`seconds(s)`（按游戏时间等）。`-` 从标准输入读，`--file` 从文件读（PowerShell 里不用转义） |
+| `wait --game <秒>` | 等游戏时间走这么多（不是墙钟：CI 的软件 WebGPU、后台标签上一帧可能几百毫秒）；不带 `--game` 是等页面连上、游戏跑起来 |
+| `particles [--name x]` | 每个粒子发射器：在 CPU 还是 GPU 上、粒子池多大、活着几个、活着的粒子在世界里的范围（GPU 上的读回来数）。粒子看不见时先看这个 |
 | `commands`、`call <命令> <JSON>` | 列出页面登记的命令；调任意命令（游戏自己加的也行） |
 
 **测性能前**：确认笔记本的电源模式（静谧模式下 GPU 慢好几倍），`status` 里的 `gpu.description` 记下了适配器。

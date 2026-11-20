@@ -38,6 +38,7 @@ import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleSystemComponent';
 import { WindField } from '../weather/WindField';
 import { PrecipitationSystem } from '../weather/Precipitation';
+import { WeatherSystem } from '../weather/Weather';
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
@@ -171,8 +172,10 @@ export class Game {
   readonly audio = new AudioEngine();
   /** 风场（Stride 没有）：WindZone 组件的风，`game.wind.sample(x, y, z)` 取某一点的风；粒子的 UpdaterWind 用它。 */
   readonly wind = new WindField();
-  /** 雨雪（Stride 没有）：Precipitation 组件让主相机周围下雨下雪（GPU 粒子），强度由外面给。 */
+  /** 雨雪（Stride 没有）：Precipitation 组件让主相机周围下雨下雪（GPU 粒子），强度由外面给（天气状态）。 */
   readonly precipitation = new PrecipitationSystem();
+  /** 天气状态（Stride 没有）：Weather 组件想要的天气慢慢过渡，驱动云、雾、风和雨雪；`game.weather.current` 是当前的天气。 */
+  readonly weather = new WeatherSystem();
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
   readonly particles = new ParticleSystems();
   /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
@@ -566,6 +569,7 @@ export class Game {
         this.writeStats();
         await scriptContinuations();
         this.transforms.update();
+        this.weather.update(this);
         this.wind.update(this);
         this.precipitation.update(this);
         this.particles.update(this.updateTime.elapsed);

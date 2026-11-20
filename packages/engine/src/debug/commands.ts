@@ -10,6 +10,9 @@ import { Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, Volumet
 import { DayNightCycle, lightRotationTowards } from '../rendering/sky/DayNightCycle';
 import { Material } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
+import { PARTICLE_BYTES } from '../particles/gpu/kernel';
+import { Precipitation } from '../weather/Precipitation';
+import { Weather, WEATHER_PRESETS, type WeatherPreset, type WeatherTarget } from '../weather/Weather';
 import type { EntityId } from '../data/prop';
 import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
@@ -202,6 +205,20 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const { active, settings } = game.renderSystem.fog;
     return { active, ...(fog ? { settings: { ...settings } } : {}) };
   });
+  debug.command('weather', `Weather state (Weather): drives clouds, fog, wind and precipitation that are in the scene. args: on (true/false) adds a weather entity with precipitation, or removes it; preset (${Object.keys(WEATHER_PRESETS).join(', ')}); cloudCoverage, cloudType, precipitation, temperature (°C), fog, windSpeed (m/s), windDirection (degrees), gustiness, transitionTime (s); instant (true) jumps to the target.`, (args) => {
+    const all = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Weather));
+    if (args['on'] === true && all.length === 0) all.push(game.entities.create({ name: 'Weather', components: [Transform, Weather, Precipitation] }));
+    if (args['on'] === false) for (const entity of all.splice(0)) entity.destroy();
+    const weather = all[0]?.require(Weather);
+    if (weather) {
+      const preset = WEATHER_PRESETS[args['preset'] as WeatherPreset] as WeatherTarget | undefined;
+      if (preset) Object.assign(weather, preset);
+      for (const key of ['cloudCoverage', 'cloudType', 'precipitation', 'temperature', 'fog', 'windSpeed', 'windDirection', 'gustiness', 'transitionTime'] as const) if (typeof args[key] === 'number') weather[key] = args[key];
+      if (args['instant'] === true) game.weather.current = undefined;
+    }
+    const current = game.weather.current;
+    return { ...(weather ? { target: Object.fromEntries(Object.keys(WEATHER_PRESETS.clear).map((key) => [key, weather[key as keyof WeatherTarget]])) } : {}), ...(current ? { current: { ...current } } : {}) };
+  });
   debug.command('dither', 'Dithering of the 8-bit output in the tone mapping pass (hides the banding of dark gradients). args: on (true/false; omitted toggles). Turn it off to compare screenshots pixel by pixel with desktop Stride.', (args) => {
     const toneMap = game.graphicsCompositor.postEffects.toneMap;
     toneMap.dither = typeof args['on'] === 'boolean' ? args['on'] : !toneMap.dither;
@@ -225,7 +242,8 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('debug-text', 'Lines the scripts printed with game.debugText in the last frame.', () => game.debugText.lines);
   debug.command('devtools', "Run a DevTools protocol command on this tab through the Stride Debug Bridge extension (tools/debug-bridge). args: method ('detach' ends debugging), params, waitFor (an event to wait for after the command; returns its params).", (args) =>
     sendDevtools(String(args['method']), (args['params'] ?? {}) as Readonly<Record<string, unknown>>, args['waitFor'] === undefined ? undefined : String(args['waitFor'])));
-  debug.command('eval', 'Evaluate JavaScript in the page (globalThis.strideGame is the game); awaits promises. args: code.', (args) => evaluate(args));
+  debug.command('eval', 'Evaluate JavaScript in the page: an expression, or statements that return the result; await works. In scope: game, engine, entity(name | id), named(name), frames(n), seconds(s) (game time). args: code.', (args) => evaluate(game, args));
+  debug.command('particles', 'Particle emitters: where they simulate, pool size, living particles and their world bounds (GPU ones are read back). args: name (part of the entity name).', (args) => particles(game, args));
 }
 
 function status(debug: Debug, game: Game): unknown {
@@ -514,8 +532,84 @@ function vector(value: unknown, name: string): [number, number, number] {
   return value as [number, number, number];
 }
 
-async function evaluate({ code }: Args): Promise<unknown> {
+/**
+ * 页面里跑一段代码（`stride eval`）：一个表达式（结果就是它的值）或几条语句（用 return 给结果），都能直接 await。能用的
+ * 名字：game、engine（样例的 main.ts 挂的 strideEngine，引擎的全部导出）、entity(名字或 id)、named(名字)、frames(n)、
+ * seconds(s)（按游戏时间等），全局的照常能用。
+ */
+async function evaluate(game: Game, { code }: Args): Promise<unknown> {
   if (typeof code !== 'string') throw new Error('code must be a string');
-  // 间接 eval：在全局作用域执行，globalThis.strideGame、strideEngine 都能用
-  return await (0, eval)(code);
+  const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (...args: string[]) => (...values: unknown[]) => Promise<unknown>;
+  const names = ['game', 'engine', 'entity', 'named', 'frames', 'seconds'];
+  let run: (...values: unknown[]) => Promise<unknown>;
+  try {
+    run = new AsyncFunction(...names, `return (${code}\n);`);
+  } catch {
+    // 不是一个表达式：当语句跑
+    run = new AsyncFunction(...names, code);
+  }
+  const all = () => game.entities.ids().map((id) => game.entities.entity(id));
+  const named = (name: string) => all().filter((entity) => entity.name === name);
+  const entity = (key: string | number) => {
+    const found = typeof key === 'number' || /^\d+$/.test(key) ? all().find((e) => e.id === Number(key)) : named(key)[0];
+    if (!found) throw new Error(`no entity ${key}`);
+    return found;
+  };
+  const frame = () => new Promise<void>((resolve) => {
+    const start = game.frames;
+    const next = () => (game.frames > start || game.status !== 'running' ? resolve() : requestAnimationFrame(next));
+    requestAnimationFrame(next);
+  });
+  const frames = async (count: number) => { for (let i = 0; i < count; i++) await frame(); };
+  const seconds = async (s: number) => {
+    // 墙钟的上限只防游戏停着时卡死
+    const end = game.updateTime.total + s, wall = performance.now() + 100000;
+    while (game.updateTime.total < end && performance.now() < wall && game.status === 'running') await frame();
+  };
+  return await run(game, (globalThis as { strideEngine?: unknown }).strideEngine, entity, named, frames, seconds);
+}
+
+/**
+ * 所有粒子发射器（`stride particles`）：在哪模拟、粒子池多大、活着几个、活着的粒子在世界里的范围（GPU 上的读回来数）。
+ * 粒子看不见时先看这个：没生成、全死了，还是跑到了别处。
+ */
+async function particles(game: Game, { name }: Args): Promise<unknown> {
+  const rows = [];
+  for (const component of game.particles.components) {
+    const owner = component.entity;
+    if (typeof name === 'string' && !(owner.name ?? '').includes(name)) continue;
+    for (const emitter of component.particleSystem.emitters) {
+      const gpu = emitter.onGpu ? game.particles.gpuEmitter(emitter) : undefined;
+      let positions: ArrayLike<number> = [], stride = 3, lifeAt = -1, count = 0;
+      if (gpu) {
+        positions = await gpu.read();
+        stride = PARTICLE_BYTES / 4;
+        lifeAt = 3;
+        count = gpu.capacity;
+      } else {
+        positions = emitter.pool.field('position') ?? [];
+        count = emitter.pool.living;
+      }
+      const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+      let alive = 0;
+      for (let i = 0; i < count; i++) {
+        if (lifeAt >= 0 && !(positions[i * stride + lifeAt]! > 0)) continue;
+        alive++;
+        for (let c = 0; c < 3; c++) {
+          const v = positions[i * stride + c]!;
+          min[c] = Math.min(min[c]!, v);
+          max[c] = Math.max(max[c]!, v);
+        }
+      }
+      const round = (v: number[]) => v.map((x) => Math.round(x * 100) / 100);
+      const at = owner.get(Transform)?.position;
+      rows.push({
+        entity: describe(owner), emitter: emitter.name, enabled: emitter.enabled, simulation: emitter.onGpu ? 'gpu' : 'cpu', space: emitter.simulationSpace,
+        ...(at ? { position: round([at.x, at.y, at.z]) } : {}),
+        capacity: gpu ? gpu.capacity : emitter.pool.capacity, alive,
+        ...(alive > 0 ? { min: round(min), max: round(max) } : {}),
+      });
+    }
+  }
+  return rows;
 }

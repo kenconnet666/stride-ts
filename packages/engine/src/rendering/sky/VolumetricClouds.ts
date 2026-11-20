@@ -143,9 +143,9 @@ export class Clouds {
     const gpu = this.#gpu;
     if (!this.active || !gpu?.ready) return;
     const s = this.settings;
-    // 光的方向约 0.3° 一档：日夜循环时隔几帧画一次
     this.#prepareEnvironment(gpu);
-    const key = JSON.stringify([s.coverage, s.density, s.bottom, s.thickness, s.cloudType, s.scale, this.#light.direction.map((v) => Math.round(v * 200))]);
+    // 光的方向约 0.3° 一档：日夜循环时隔几帧画一次；云量、密度、种类 0.01 一档：天气慢慢变的时候也是隔几帧画一次
+    const key = JSON.stringify([...steps(s, 100), s.bottom, s.thickness, s.scale, this.#light.direction.map((v) => Math.round(v * 200))]);
     if (key === this.#shadowKey) return;
     this.#shadowKey = key;
     const encoder = this.#device.createCommandEncoder({ label: 'Clouds shadow' });
@@ -163,7 +163,7 @@ export class Clouds {
     const s = this.settings;
     const level = (value: number) => Math.round(Math.log(Math.max(value, 1e-5)) * 10);
     const key = JSON.stringify([
-      s.coverage, s.density, s.bottom, s.thickness, s.cloudType, s.scale,
+      ...steps(s, 50), s.bottom, s.thickness, s.scale,
       this.#light.direction.map((v) => Math.round(v * 50)), this.#light.color.map(level),
       // 相机的高度 100 米一档；云在动的时候隔几秒重画一次（环境光只看大致的分布）
       Math.round(this.#eye[1] / 100), s.windSpeed > 0 ? Math.floor(this.#time / ENVIRONMENT_INTERVAL) : 0,
@@ -472,4 +472,9 @@ interface AtmosphereResources {
   readonly uniforms: GPUBuffer;
   readonly skyView: GPUTexture;
   readonly skySampler: GPUSampler;
+}
+
+/** 缓存键里云量、密度、种类按 1 / perUnit 一档（天气过渡时这几项每帧都在变）。 */
+function steps(s: CloudSettings, perUnit: number): number[] {
+  return [s.coverage, s.density, s.cloudType].map((value) => Math.round(value * perUnit));
 }

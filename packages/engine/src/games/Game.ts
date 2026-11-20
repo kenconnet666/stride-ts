@@ -110,15 +110,20 @@ export interface LoadGameSettingsOptions extends LoadSceneOptions {
 }
 
 /**
- * 原生模块的工作线程数：选项优先，其次是调试时页面地址的 `?stride-workers=N`；都没有就不传，用原生模块的默认值。
- * 地址里的值记进 sessionStorage，同一个标签页后来的重载和跳转（冒烟脚本会换 `?scene=…`）沿用它。
+ * 调试时页面地址里的开关（`?stride-workers=4`、`?stride-pointer-lock=virtual`），回归和测量用。地址里的值记进 sessionStorage，
+ * 同一个标签页后来的重载和跳转（冒烟脚本会换 `?scene=…`）沿用它。不在调试时一律没有。
  */
+function debugSwitch(debugQuery: URLSearchParams | null, name: string): string | null {
+  if (!debugQuery) return null;
+  const fromQuery = debugQuery.get(name);
+  if (fromQuery != null) sessionStorage.setItem(name, fromQuery);
+  return fromQuery ?? sessionStorage.getItem(name);
+}
+
+/** 原生模块的工作线程数：选项优先，其次是调试开关 `stride-workers`；都没有就不传，用原生模块的默认值。 */
 function workerThreadsOption(options: GameOptions, debugQuery: URLSearchParams | null): { workerThreads?: number } {
   if (options.workerThreads !== undefined) return { workerThreads: options.workerThreads };
-  if (!debugQuery) return {};
-  const fromQuery = debugQuery.get('stride-workers');
-  if (fromQuery != null) sessionStorage.setItem('stride-workers', fromQuery);
-  const text = fromQuery ?? sessionStorage.getItem('stride-workers');
+  const text = debugSwitch(debugQuery, 'stride-workers');
   if (text == null) return {};
   const count = Number(text);
   if (!Number.isInteger(count) || count < 1) throw new Error(`?stride-workers must be a positive integer, got '${text}'`);
@@ -257,6 +262,7 @@ export class Game {
       // 加载内容、脚本启动时读到的就是画面的实际大小（Stride 的后备缓冲在游戏开始前就建好了）
       this.graphicsDevice.resizeToDisplaySize();
       this.input = new InputManager(canvas);
+      if (debugSwitch(debugging ? query : null, 'stride-pointer-lock') === 'virtual') this.input.simulatePointerLock();
       this.ui.attach(this);
       if (this.native.hasFeature('texture')) this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
       this.content.meshoptDecoder ??= (requests) => this.native.decodeMeshoptBatch(requests);

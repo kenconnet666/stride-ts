@@ -119,6 +119,8 @@ export class InputManager {
   /** 每个指针上一个事件的位置和是否按着。 */
   readonly #pointers = new Map<number, { x: number; y: number; down: boolean }>();
   readonly #abort = new AbortController();
+  /** 模拟的指针锁（simulatePointerLock 以后）：锁没锁只记在这里；null 是用浏览器的指针锁。 */
+  #virtualLock: boolean | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.#canvas = canvas;
@@ -127,6 +129,8 @@ export class InputManager {
       // key 是一个字符时就是打出来的字（Enter、ArrowLeft 这些是名字）；带 Ctrl、Meta 的是快捷键
       if (!event.isComposing && !event.ctrlKey && !event.metaKey && [...event.key].length === 1) this.#pendingText.push(event.key);
       if (event.repeat) return;
+      // 浏览器的指针锁按 Esc 就解开，模拟的也一样
+      if (event.code === 'Escape' && this.#virtualLock) this.#virtualLock = false;
       this.#keyboard.press(event.code);
     }, options);
     window.addEventListener('keyup', (event) => this.#keyboard.release(event.code), options);
@@ -310,18 +314,32 @@ export class InputManager {
   }
 
   get isMousePositionLocked(): boolean {
-    return document.pointerLockElement === this.#canvas;
+    return this.#virtualLock ?? document.pointerLockElement === this.#canvas;
   }
 
   /** 锁定鼠标并隐藏指针（Stride 的 LockMousePosition 加 Game.IsMouseVisible = false）。 */
   lockMousePosition(): void {
     if (this.isMousePositionLocked) return;
+    if (this.#virtualLock !== null) {
+      // 同浏览器：要有用户操作（刚点过、按过键）才锁得上
+      if (navigator.userActivation?.isActive ?? true) this.#virtualLock = true;
+      return;
+    }
     // 没有用户操作时浏览器会拒绝；拒绝不算错误，下次点击再试
     void Promise.resolve(this.#canvas.requestPointerLock()).catch(() => {});
   }
 
   unlockMousePosition(): void {
-    if (this.isMousePositionLocked) document.exitPointerLock();
+    if (this.#virtualLock !== null) this.#virtualLock = false;
+    else if (this.isMousePositionLocked) document.exitPointerLock();
+  }
+
+  /**
+   * 调试用（Game.run 的 `?stride-pointer-lock=virtual`）：锁定鼠标只在引擎里记着，不调浏览器的指针锁，游戏照常收到相对移动。
+   * 无头 Chrome 在 Windows 上也有一个看不见的窗口，真的锁上时它会把系统的鼠标限制在那个窗口的范围里，回归时用户的鼠标就动不了了。
+   */
+  simulatePointerLock(): void {
+    this.#virtualLock = false;
   }
 
   /**

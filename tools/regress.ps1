@@ -33,8 +33,9 @@ if ($App) {
             Start-Sleep -Milliseconds 500
         }
         pnpm exec stride close | Out-Null
-        # 工作线程数固定：每个线程的栈算在原生内存里，预算（budgets.json）才和机器的核数无关
-        pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads" --headless --size 1280x720 --dpr 1 --chrome-arg=--autoplay-policy=no-user-gesture-required | Out-Null
+        # 工作线程数固定：每个线程的栈算在原生内存里，预算（budgets.json）才和机器的核数无关。
+        # 指针锁用模拟的：无头 Chrome 真锁上时会把用户的系统鼠标限制在它那个看不见的窗口（屏幕左上角）里
+        pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads&stride-pointer-lock=virtual" --headless --size 1280x720 --dpr 1 --chrome-arg=--autoplay-policy=no-user-gesture-required | Out-Null
         pnpm --filter "@stride-ts/$App" smoke -- --hub $App 2>&1
         exit $LASTEXITCODE
     } finally {

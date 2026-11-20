@@ -47,6 +47,31 @@ describe('指针事件（Stride 的 PointerEvents）', () => {
     input.destroy();
   });
 
+  it('模拟的指针锁：同浏览器要有用户操作才锁得上，按 Esc 解开，不碰浏览器的指针锁', () => {
+    const { win, input } = setup();
+    const activation = { isActive: false };
+    Object.defineProperty(globalThis.navigator, 'userActivation', { value: activation, configurable: true });
+    const document = globalThis.document as { pointerLockElement: unknown; exitPointerLock?: () => void };
+    document.exitPointerLock = () => { throw new Error('the browser pointer lock must not be used'); };
+    try {
+      input.simulatePointerLock();
+      input.lockMousePosition();
+      expect(input.isMousePositionLocked).toBe(false);
+      activation.isActive = true;
+      input.lockMousePosition();
+      expect(input.isMousePositionLocked).toBe(true);
+      win.dispatchEvent(Object.assign(new Event('keydown'), { code: 'Escape', key: 'Escape', repeat: false, ctrlKey: false, metaKey: false, isComposing: false }));
+      expect(input.isMousePositionLocked).toBe(false);
+      input.lockMousePosition();
+      input.unlockMousePosition();
+      expect(input.isMousePositionLocked).toBe(false);
+    } finally {
+      delete (globalThis.navigator as { userActivation?: unknown }).userActivation;
+      delete document.exitPointerLock;
+      input.destroy();
+    }
+  });
+
   it('键盘的原始状态和打出来的字：不管占用都读得到；带 Ctrl 的、输入法拼字中的、Enter 这类不是字', () => {
     const { win, input } = setup();
     const key = (type: string, code: string, text: string, extra: object = {}) =>

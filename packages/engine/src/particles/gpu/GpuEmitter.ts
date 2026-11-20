@@ -181,8 +181,8 @@ export class GpuEmitter {
     return this.ring.capacity * PARTICLE_BYTES + this.#sortSize * 8;
   }
 
-  /** 这一帧的模拟：dt 秒、要生成 wanted 个。录进 pass。管线还在编时什么都不做（这几帧生成的丢掉）。 */
-  simulate(pass: GPUComputePassEncoder, dt: number, wanted: number): void {
+  /** 这一帧的模拟：dt 秒、要生成 wanted 个，time 是游戏时间。录进 pass。管线还在编时什么都不做（这几帧生成的丢掉）。 */
+  simulate(pass: GPUComputePassEncoder, dt: number, wanted: number, time = 0): void {
     const pipeline = this.#shared.simPipelines.get(this.kernel.code);
     if (!pipeline) return;
     const emitter = this.emitter;
@@ -196,6 +196,7 @@ export class GpuEmitter {
     bits[4] = spawn.seed;
     data[5] = emitter.particleLifetime[0];
     data[6] = emitter.particleLifetime[1];
+    data[7] = time;
     data.set(position, 8);
     data[11] = scale;
     data.set(rotation, 12);

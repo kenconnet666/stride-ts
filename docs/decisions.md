@@ -2,6 +2,16 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+## 2026-11-20 风场和雨雪的底座（`weather/`，Stride 没有）
+
+P4 "天气系统和风场"的底座，建在 GPU 粒子上。以后天气状态（云量、雾、雨雪）一起驱动，现在雨雪的强度由外面给，不读天空。
+
+- **风场**（`weather/WindField.ts`，`game.wind`）：组件 `WindZone`（参考 Unity 的同名组件）有两种：directional 是全局风，方向是实体的 -Z（Stride 的前方）；spherical 是局部风源，从实体往外吹、在半径里线性衰减。都有阵风（强度在 1 ± 幅度里起伏，几个不成整数倍的正弦叠起来）和湍流（按位置、时间变的正弦扰动）。`game.wind.sample(x, y, z)` 取一点的风。局部风源放进按格子（默认 32 米）分的哈希表，取风只看那一格，个数不设上限；每帧收集，内容没变时 `version` 不变。阵风、湍流是时间和位置的确定函数，CPU 和 WGSL 写的是同一个公式（`WIND_WGSL`），粒子在哪边模拟吹出来都一样。
+- **粒子用风**：新的更新器 `UpdaterWind`（场景文件里 `updaterWind`，Stride 没有）：速度往 风速 + 终端速度 靠，像空气阻力（v += (风 + 终端速度 - v) · min(1, drag · dt)）。终端速度是风吹不动的那部分（雨的下落速度），没有它的话风会让雨停在半空。CPU 上逐粒子调 `sample`；GPU 上把全局风和离发射器最近的 8 个局部风源打包进内核的 uniform（这个 uniform 本来每帧就写），内核头里加了游戏时间。局部模拟的发射器按粒子的局部位置取风会偏，雨雪是世界模拟。
+- **雨雪**（`weather/Precipitation.ts`，组件 `Precipitation`，`game.precipitation`）：种类（雨、雪）、强度 0 到 1、体积的半宽、生成高度。看了 Godot（`GPUParticlesCollisionHeightField3D` 可以跟着相机，文档说它适合雨雪）、Unreal 论坛和 OpenMW、Unity 插件的做法：都不在整个世界撒，而是跟着相机的一块体积。照做：在相机上方 height 米、半宽 radius 米的方形里生成，寿命是落下两倍高度的时间；体积跟着相机（上一帧的主视图），雨点留在世界里。每个组件在里面建一个 GPU 发射器（一个内部实体，名字后面带 "(precipitation)"），用现成的模块：盒子里的位置、下落速度、风、速度方向；生成数不走生成器，每帧按 强度 · 密度 · 面积 · dt 直接给，小数部分攒到下一帧。雨是沿速度拉长的线（OrientedQuad），雪是正对相机的点；材质是粒子颜色乘一张运行时生成的软圆点（雪花圆、雨线两头软）。预设（强度 1）：雨每秒每平方米 20 个、9 米每秒，雪 6 个、1.2 米每秒。
+- **屋顶下不下**：要一张从上往下的深度图（各家都是这么做的，Godot 叫 heightfield、别处叫 rain occlusion map），跟着相机、按格子吸附、挪出一格才重画；GPU 内核按粒子的 xz 采样，落到深度图记的高度以下就死掉。要在前向渲染器里加一个俯视视图和一个深度通道（同反射探针的做法），在和主会话确认改 ForwardRenderer。
+- **还不能写进场景文件**：WindZone、Precipitation 要进 `content/format.ts` 的组件类型和 `SceneBuilder` 才能从场景文件加载、在编辑器里改，这两个文件现在主会话在改，之后补。现在用代码建（`entities.create({ components: [Transform, Precipitation.with({ kind: 'snow' })] })`）。
+- **量的**（particles-sample 的 MainScene，无头 Chrome 1280x720，RX 9070 GRE）：雨，强度 1，半宽 20 米（容量 9.4 万）：粒子的计算通道 0.049 ms，帧时间不变（120 fps，垂直同步）；雪容量 21 万。
 ## 2026-11-20 脚本声明要实体上有的组件（requires）
 
 编辑器验收时好几个样例的脚本加到不合适的实体上只在运行时报错（`this.entity.require(UIComponent)`、`require(AnimationComponent)` 在 start 里抛）。和 Stride 不同（它没有），照 Unity 的 RequireComponent：

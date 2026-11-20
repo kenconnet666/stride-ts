@@ -338,6 +338,8 @@ PCSS（同一天，TPP，无头 Chrome 1280x720，暂停后单步）：太阳的
 
 GPU 粒子（2026-11-20，scene-picking 分支，无头 Chrome 1280x720）：particles-sample 的 MainScene 里 `game.particles.simulation = 'gpu'` 以后，火、篝火、大火的烟（按深度排序）、喷泉六个发射器到了 GPU 上，单独的烟和碰撞的那组留在 CPU 上（力场、碰撞没有 GPU 版）；截图和切换前看不出差别，点选点到大火。运行时加一个 20 万粒子的发射器对比 CPU 和 GPU（数字见 decisions.md）。第一版的管线是同步编的，冒烟的统计量超了预算，改成后台编；点选那条后台编时第一次点不到，改回当场编。这些写进了 particles-sample 的冒烟。
 
+风场和雨雪（2026-11-20，无头 Chrome 1280x720，particles-sample 的 MainScene，代码里建 Precipitation 和 WindZone）：第一次建内部发射器是在系统遍历时建实体，报错停了，改成遍历时只记下、遍历完再建。雨下起来以后风吹向 +X 看着没斜，一查是相机正对 +X、风顺着视线；改成沿相机右边吹，雨往右斜。雪第一版是方块（没有贴图的四边形是实心的），加了运行时生成的软圆点贴图。截图看过雨、雪、风吹斜，量了耗时（见 decisions.md）。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

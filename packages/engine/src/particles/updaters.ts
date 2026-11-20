@@ -9,6 +9,7 @@ import type { Vec3 } from './math';
 import { ParticleModule, value, type ParticleModuleKind, type ParticleTransform } from './modules';
 import type { AnyParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat } from './random';
+import type { WindField } from '../weather/WindField';
 
 const ZERO_TOLERANCE = 1e-6;
 const DEGREES = Math.PI / 180;
@@ -275,8 +276,41 @@ export class UpdaterCollider extends ParticleUpdater {
   }
 }
 
+/**
+ * 风（Stride 没有）：速度往 风速 + terminalVelocity 靠，像空气阻力：v += (风 + 终端速度 - v) · min(1, drag · dt)。终端速度是
+ * 风吹不动的那部分（雨、雪的下落速度），没有时是 0。风取 `game.wind`（ParticleSystems 每帧把它交给 field），按粒子的世界位置取；
+ * 局部模拟的发射器的粒子位置是相对发射器的，取到的风会偏（雨雪这类用世界模拟）。
+ */
+export class UpdaterWind extends ParticleUpdater {
+  readonly requiredFields = ['position', 'velocity'] as const;
+  /** 往风速靠的快慢，每秒。 */
+  readonly drag: number;
+  /** 风吹不动的速度，米每秒。 */
+  readonly terminalVelocity: Vec3;
+  /** @internal 风场（ParticleSystems 每帧给）；没有时不动。 */
+  field: WindField | undefined;
+  readonly #wind: Vec3 = [0, 0, 0];
+
+  constructor(file: ParticleModuleFile) {
+    super(file);
+    this.drag = value(file, 'drag', 1);
+    this.terminalVelocity = vec3(file, 'terminalVelocity', [0, 0, 0]);
+  }
+
+  update(dt: number, pool: ParticlePool): void {
+    const position = pool.field('position'), velocity = pool.field('velocity'), field = this.field;
+    if (!position || !velocity || !field) return;
+    const k = Math.min(1, this.drag * dt), wind = this.#wind;
+    for (let i = 0; i < pool.living; i++) {
+      field.sample(position[i * 3]!, position[i * 3 + 1]!, position[i * 3 + 2]!, wind);
+      for (let c = 0; c < 3; c++) velocity[i * 3 + c]! += (wind[c]! + this.terminalVelocity[c]! - velocity[i * 3 + c]!) * k;
+    }
+  }
+}
+
 export function createUpdater(file: ParticleModuleFile): ParticleUpdater | undefined {
   switch (file.$type) {
+    case 'updaterWind': return new UpdaterWind(file);
     case 'updaterForceField': return new UpdaterForceField(file);
     case 'updaterGravity': return new UpdaterGravity(file);
     case 'updaterSizeOverTime': return new UpdaterSizeOverTime(file);

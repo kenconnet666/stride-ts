@@ -19,6 +19,7 @@ import { ParticleSystem } from './ParticleSystem';
 import type { ParticleEmitter, ParticleSimulation } from './ParticleEmitter';
 import { GpuEmitter } from './gpu/GpuEmitter';
 import { gpuUnsupported } from './gpu/kernel';
+import { UpdaterWind } from './updaters';
 
 /** simulation 是 auto 时，粒子池至少这么大的发射器放到 GPU 上（小的在 CPU 上更省：不用派发、不用排序的固定开销）。 */
 export const AUTO_GPU_CAPACITY = 4096;
@@ -149,6 +150,7 @@ export class ParticleSystems {
       for (const emitter of system.emitters) {
         this.#place(emitter, device);
         live.add(emitter);
+        for (const updater of emitter.updaters) if (updater instanceof UpdaterWind) updater.field = component.game.wind;
       }
       const { translation, rotation, scale } = Matrix.decompose(component.entity.require(Transform).world);
       system.translation = translation;
@@ -208,7 +210,7 @@ export class ParticleSystems {
           const timestampWrites = game.graphicsDevice.profiler.passTimestamps('GPU particles');
           pass = game.graphicsDevice.frameEncoder.beginComputePass({ label: 'GPU particles', ...(timestampWrites ? { timestampWrites } : {}) });
         }
-        state.simulate(pass, dt * component.speed, emitter.gpuSpawn);
+        state.simulate(pass, dt * component.speed, emitter.gpuSpawn, game.updateTime.total);
         emitter.gpuSpawn = 0;
         if (back && emitter.sortingPolicy === 'byDepth') state.sort(pass, back);
       }

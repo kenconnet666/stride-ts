@@ -36,6 +36,8 @@ import { RenderSystem, type SceneRenderer } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../rendering/Texture';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleSystemComponent';
+import { WindField } from '../weather/WindField';
+import { PrecipitationSystem } from '../weather/Precipitation';
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
@@ -167,6 +169,10 @@ export class Game {
   readonly debugText = new DebugText(() => [this.graphicsDevice.canvas.clientWidth, this.graphicsDevice.canvas.clientHeight]);
   /** 音频（Stride 的 AudioEngine）：Web Audio，用户第一次操作页面后出声。 */
   readonly audio = new AudioEngine();
+  /** 风场（Stride 没有）：WindZone 组件的风，`game.wind.sample(x, y, z)` 取某一点的风；粒子的 UpdaterWind 用它。 */
+  readonly wind = new WindField();
+  /** 雨雪（Stride 没有）：Precipitation 组件让主相机周围下雨下雪（GPU 粒子），强度由外面给。 */
+  readonly precipitation = new PrecipitationSystem();
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
   readonly particles = new ParticleSystems();
   /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
@@ -557,6 +563,8 @@ export class Game {
         this.writeStats();
         await scriptContinuations();
         this.transforms.update();
+        this.wind.update(this);
+        this.precipitation.update(this);
         this.particles.update(this.updateTime.elapsed);
       }
       const drawStart = performance.now();

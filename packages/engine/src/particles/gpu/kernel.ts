@@ -11,7 +11,7 @@
  *
  * 支持的模块（其余的发射器留在 CPU 上，见 gpuUnsupported）：初始化器 SizeSeed、PositionSeed、VelocitySeed、DirectionSeed、
  * RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder；更新器 Gravity、SizeOverTime、ColorOverTime、RotationOverTime、
- * SpeedToDirection。
+ * SpeedToDirection、Wind（风场的全局风和离发射器最近的 GPU_LOCAL_WINDS 个局部风源，见 weather/WindField.ts）。
  */
 import { CurveSampler } from '../curves';
 import { BuiltinShape } from '../shapes';
@@ -20,7 +20,8 @@ import { boxFrame, Initial3DRotationSeed, InitialColorSeed, InitialDirectionSeed
 import type { ParticleModule } from '../modules';
 import type { ParticleEmitter } from '../ParticleEmitter';
 import { RandomOffset } from '../random';
-import { UpdaterColorOverTime, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection } from '../updaters';
+import { UpdaterColorOverTime, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from '../updaters';
+import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../../weather/WindField';
 
 /** 一个粒子在存储缓冲里占的字节（WGSL 的 Particle）。 */
 export const PARTICLE_BYTES = 96;
@@ -124,7 +125,8 @@ struct Sim {
   seedBase: u32,
   lifeMin: f32,
   lifeMax: f32,
-  pad: u32,
+  // 游戏时间，秒（风的阵风、湍流按它变）
+  time: f32,
   defaultPosition: vec3f,
   defaultScale: f32,
   defaultRotation: vec4f,
@@ -134,6 +136,7 @@ struct Sim {
 @group(0) @binding(1) var<storage, read_write> particles: array<Particle>;
 
 ${HELPERS_WGSL}
+${WIND_WGSL}
 
 fn initialize(p: ptr<function, Particle>, spawnIndex: u32) {
 ${stage('init')}
@@ -361,6 +364,19 @@ function partFor(module: ParticleModule): KernelPart | undefined {
     let c = ${curves.value};
     (*p).color = vec4f(c.rgb * c.a, c.a);`,
       pack: (out, base) => curves.pack(out, base),
+    };
+  }
+  if (module instanceof UpdaterWind) {
+    // 风 2 + 2 · GPU_LOCAL_WINDS 个 vec4，最后一个放 drag 和终端速度
+    const windSlots = 2 + 2 * GPU_LOCAL_WINDS;
+    return {
+      stage: 'update', slots: windSlots + 1,
+      code: `    (*p).velocity += (windAt((*p).position, sim.time, slot(0)) + d(${windSlots}).yzw - (*p).velocity) * min(1.0, d(${windSlots}).x * dt);`,
+      pack: (out, base) => {
+        if (module.field) packWind(module.field, module.worldPosition, out, base);
+        else out.fill(0, base * 4, (base + windSlots) * 4);
+        write(out, base + windSlots, [module.drag, ...module.terminalVelocity]);
+      },
     };
   }
   if (module instanceof UpdaterSpeedToDirection) {

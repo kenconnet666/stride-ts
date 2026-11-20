@@ -140,3 +140,12 @@ export function linearColor(value: StrideValue | undefined): [number, number, nu
   const c = asObject(value) ?? {};
   return [srgbToLinear(asNumber(c['R'], 1)), srgbToLinear(asNumber(c['G'], 1)), srgbToLinear(asNumber(c['B'], 1)), asNumber(c['A'], 1)];
 }
+
+/** Stride 的 TimeSpan 写法（"d:hh:mm:ss.fffffff" 或 "hh:mm:ss.fffffff"）换成秒。 */
+export function timeSpanSeconds(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return 0;
+  const parts = value.split(':').map(Number);
+  const [seconds = 0, minutes = 0, hours = 0, days = 0] = parts.reverse();
+  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
+}

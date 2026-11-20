@@ -15,7 +15,7 @@ import { Matrix } from '@stride-ts/engine/math';
 import type { BakedAnimation, JointDescription, JointTrack, MeshData, Scene, StrideTools } from '@stride-ts/native/tools';
 import { INFLUENCES, type SourceSkin } from '../mesh.ts';
 import { importTransform, loadSourceScene, sourceOf, type AssetEntry } from './project.ts';
-import { asObject } from './yaml.ts';
+import { asObject, timeSpanSeconds } from './yaml.ts';
 
 /** 烘焙动画的采样率（每秒关键帧数，同 ufbx 和 Stride 的默认）。 */
 const SAMPLE_RATE = 30;
@@ -309,12 +309,3 @@ function sample(keys: readonly (readonly number[])[] | undefined, time: number, 
 }
 
 const REPEAT_MODES: Readonly<Record<string, AnimationRepeatMode>> = { PlayOnce: 'playOnce', LoopInfinite: 'loopInfinite', PlayOnceHold: 'playOnceHold' };
-
-/** Stride 的 TimeSpan 写法（"d:hh:mm:ss.fffffff" 或 "hh:mm:ss.fffffff"）换成秒。 */
-function timeSpanSeconds(value: unknown): number {
-  if (typeof value === 'number') return value;
-  if (typeof value !== 'string') return 0;
-  const parts = value.split(':').map(Number);
-  const [seconds = 0, minutes = 0, hours = 0, days = 0] = parts.reverse();
-  return days * 86400 + hours * 3600 + minutes * 60 + seconds;
-}

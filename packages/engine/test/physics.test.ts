@@ -85,7 +85,35 @@ describe('Simulation', () => {
     game.simulation.configure({ gravity: [0, -9, 0], linearDamping: game.simulation.settings.linearDamping });
     expect(game.simulation.settings.gravity).toEqual([0, -9, 0]);
     expect(() => game.simulation.configure({ angularDamping: 0.5 })).toThrow(/angularDamping must be set before the first physics body/);
-    game.simulation.configure({ maxStepsPerFrame: 2 });
+    game.simulation.configure({ maximumTimeToProcess: 0.1 });
+    game.simulation.destroy();
+  });
+
+  test('慢帧：物理补到和游戏时间对上；一帧补的时间有上限，补不完的留到后面或者丢掉', () => {
+    const game = createGame();
+    game.entities.create({ components: [Transform.with({ position: [0, -1, 0] }), Static.with({ collider: new Collider([{ type: 'box', size: [10, 2, 10] }]).id })] });
+    let steps = 0;
+    using _ = game.simulation.onStep(() => void steps++);
+    const frame = (seconds: number) => {
+      steps = 0;
+      game.updateTime.advance(seconds);
+      game.entities.update(game.updateTime, (time) => game.simulation.update(time));
+      return steps;
+    };
+    frame(1 / 60);
+    // 默认的上限和 Game 一帧最长的间隔一样（0.25 秒）：4 帧每秒时一帧补 15 步，物理不比游戏时间慢
+    expect(frame(0.25)).toBe(15);
+    expect(frame(0.25)).toBe(15);
+    // 上限 0.1 秒是 6 步；补不完的 9 步留到后面的帧
+    game.simulation.configure({ maximumTimeToProcess: 0.1 });
+    expect(frame(0.25)).toBe(6);
+    expect(frame(1 / 60)).toBe(6);
+    expect(frame(1 / 60)).toBe(5);
+    expect(frame(1 / 60)).toBe(1);
+    // 丢掉：只补上限以内的，之后照常一帧一步
+    game.simulation.configure({ dropPostponedTicks: true });
+    expect(frame(0.25)).toBe(6);
+    expect(frame(1 / 60)).toBe(1);
     game.simulation.destroy();
   });
 

@@ -1137,7 +1137,10 @@ export interface ScenePhysics {
   readonly angularDamping: number;
   /** 秒。 */
   readonly fixedTimeStep: number;
-  readonly maxStepsPerFrame: number;
+  /** 秒；一帧最多补多少仿真时间，没写是 0.25。 */
+  readonly maximumTimeToProcess?: number;
+  /** 一帧补不完的时间丢掉，不留到后面的帧；没写是不丢。 */
+  readonly dropPostponedTicks?: true;
   /** 碰撞矩阵（Stride 的 Layer0 到 Layer31）：collisionMasks[a] 的第 b 位为 1 表示层 a 和层 b 碰撞；没写是全部碰撞。 */
   readonly collisionMasks?: readonly number[];
 }

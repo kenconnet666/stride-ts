@@ -54,7 +54,7 @@ import { proceduralMesh } from './procedural.ts';
 import { cleanNodeName, importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
 import { importTransform, loadSourceScene, once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { UIImporter } from './ui.ts';
-import { asNumber, asObject, color4, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, quaternion, vec2, vec3, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, color4, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, quaternion, timeSpanSeconds, vec2, vec3, type StrideObject, type StrideValue } from './yaml.ts';
 
 export interface ImportResult {
   /** 场景的内容路径。 */
@@ -804,7 +804,9 @@ export class StrideImporter {
       linearDamping: asNumber(simulation['PoseLinearDamping'], 0.05),
       angularDamping: asNumber(simulation['PoseAngularDamping'], 0.05),
       fixedTimeStep: asNumber(simulation['FixedTimeStepSeconds'], 1 / 60),
-      maxStepsPerFrame: asNumber(simulation['MaxStepPerFrame'], 3),
+      // Stride 4.4 的 MaxStepPerFrame 不导入：4.5.2 换成了 MaximumTimeSpanToProcess，没有对应关系（它的升级器也是直接删掉）
+      ...(typeof simulation['MaximumTimeSpanToProcess'] === 'string' ? { maximumTimeToProcess: timeSpanSeconds(simulation['MaximumTimeSpanToProcess']) } : {}),
+      ...(simulation['DropPostponedTicks'] === true ? { dropPostponedTicks: true as const } : {}),
       ...collisionMatrix(simulation),
     };
   }

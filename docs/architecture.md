@@ -472,7 +472,7 @@ override start(): void {
 2. 拾取和输入事件的派发（见下文"事件"）。
 3. 待启动脚本的 `start()`（异步脚本是 `execute()`），然后同步脚本的 `update`。异步脚本 `await nextFrame()` 之后的代码在上一帧结束后、这一帧开始前运行（见上文"实现状态"）。
 4. 系统：物理之前的阶段。
-5. 固定步长的物理（每帧 0 到 4 步），步进结束后派发接触事件。
+5. 固定步长的物理（补到和游戏时间对上，一帧最多 0.25 秒），每步结束后派发接触事件。
 6. 系统：物理之后的阶段。
 7. stride-native 里做变换传播、动画求值。
 8. 渲染：收集、提取、准备、绘制。
@@ -826,7 +826,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
     - 能不能站立按 `SlopeAngle`，地面状态用 Jolt 的 `PostSimulation`。
 - **引擎**：
   - 组件：`Static`、`Character`。碰撞体是 `Collider` 资源，网格形状引用渲染网格，位置从量化数据反量化出来。
-  - `Simulation` 同 Stride 的 BepuSimulation：固定步长，每帧最多 3 步，单帧最多处理 0.25 秒。`Game` 在“物理前”和“物理后”两组系统之间调用它；有 physics 原生功能时自动建。
+  - `Simulation` 同 Stride 的 BepuSimulation：固定步长，一帧最多补 0.25 秒（`maximumTimeToProcess`，同 Stride 4.5.2 的 MaximumTimeSpanToProcess，和 `Game` 一帧最长的间隔一样）。`Game` 在“物理前”和“物理后”两组系统之间调用它；有 physics 原生功能时自动建。
   - 角色的移动照 Stride：脚本写 `moveX`、`moveY`（MoveVector，在角色的基里）和 `jump`，仿真后读 `grounded`。
   - `InputManager` 是 Stride InputManager 的常用部分：键盘（KeyboardEvent.code）、鼠标（移动量按画布归一化，Pointer Lock）、手柄（标准布局，摇杆 y 向上为正）。
 - **资源管线**：导入 `StaticComponent`、`CharacterComponent` 的复合碰撞体和网格碰撞体、碰撞层、摩擦、角色参数，以及 GameSettings 里 BepuConfiguration 的仿真设置（重力、阻尼、步长）。凸包碰撞体还不支持，导入时警告。

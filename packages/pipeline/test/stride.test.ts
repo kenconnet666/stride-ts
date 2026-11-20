@@ -695,7 +695,7 @@ describe('导入 Stride 场景', () => {
     const scene = JSON.parse(await readFile(path.join(out, 'Game/Physics.scene.json'), 'utf8')) as SceneFile;
     const others = (0xffffffff & ~(1 << 4) & ~(1 << 15)) >>> 0;
     expect(scene.physics).toEqual({
-      gravity: [0, -40, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 0.02, maxStepsPerFrame: 3,
+      gravity: [0, -40, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 0.02,
       collisionMasks: Array.from({ length: 32 }, (_, layer) => (layer === 4 || layer === 15 ? 1 << 5 : layer === 5 ? 0xffffffff : others)),
     });
     expect(scene.offset).toEqual([-20, 0, 0]);

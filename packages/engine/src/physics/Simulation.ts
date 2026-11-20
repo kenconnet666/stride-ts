@@ -34,7 +34,13 @@ export interface SimulationSettings {
   angularDamping: number;
   /** 秒。 */
   fixedTimeStep: number;
-  maxStepsPerFrame: number;
+  /**
+   * 一帧最多补多少秒的仿真（Stride 4.5.2 的 MaximumTimeSpanToProcess，按固定步长向下取整）。默认 0.25 秒，和 Game 一帧最长的
+   * 间隔一样，所以帧再慢，物理也和游戏时间对得上；仿真本身是瓶颈时调小，免得越补越慢。
+   */
+  maximumTimeToProcess: number;
+  /** 一帧补不完的时间：false（默认）留到后面的帧接着补，true 丢掉整步（物理时间从此比游戏时间少）。 */
+  dropPostponedTicks: boolean;
   /** 碰撞矩阵：collisionMasks[a] 的第 b 位为 1 表示层 a 和层 b 相互碰撞；默认全部碰撞。 */
   collisionMasks?: readonly number[];
 }
@@ -71,8 +77,6 @@ export interface SimulationHit {
   readonly entity: EntityId;
 }
 
-/** Stride 的 MaximumTimeSpanToProcess：一帧最多处理这么长的时间，卡顿后不追赶。 */
-const MAX_FRAME_TIME = 0.25;
 const ALL_LAYERS = 0xffffffff;
 
 export class Simulation {
@@ -85,7 +89,7 @@ export class Simulation {
    * 网格形状多的场景会慢。
    */
   showColliders = false;
-  readonly settings: SimulationSettings = { gravity: [0, -9.8, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 1 / 60, maxStepsPerFrame: 3 };
+  readonly settings: SimulationSettings = { gravity: [0, -9.8, 0], linearDamping: 0.05, angularDamping: 0.05, fixedTimeStep: 1 / 60, maximumTimeToProcess: 0.25, dropPostponedTicks: false };
   readonly #native: StrideNative;
   readonly #transforms: TransformStore;
   readonly #entities: EntityManager;
@@ -274,23 +278,28 @@ export class Simulation {
     Object.assign(this.settings, settings);
   }
 
-  /** 一帧的仿真：建新物体、按固定步长步进（最多 maxStepsPerFrame 步），插值的物体写回两步之间的位姿。 */
+  /** 一帧的仿真：建新物体、按固定步长步进（一帧最多补 maximumTimeToProcess 秒），插值的物体写回两步之间的位姿。 */
   update(time: GameTime): void {
     if (this.showColliders) for (const draw of this.#drawColliders) this.#entities.run(draw, time);
     this.#createPending(time);
     const entities = this.#entities;
     if (!this.#world || !this.enabled) return;
     entities.run(this.#moveCharacters, time);
-    const { fixedTimeStep: step, maxStepsPerFrame } = this.settings;
-    this.#remaining += Math.min(time.elapsed, MAX_FRAME_TIME) * this.timeScale;
-    for (let steps = 0; this.#remaining >= step && steps < maxStepsPerFrame; steps++) {
+    const { fixedTimeStep: step, maximumTimeToProcess, dropPostponedTicks } = this.settings;
+    // 容差：0.25 / (1 / 60) 这类商在浮点里可能差一点点不到整数
+    const maxSteps = Math.floor(maximumTimeToProcess / step + 1e-6);
+    this.#remaining += time.elapsed * this.timeScale;
+    // 丢就丢整步，不到一步的零头留着：物理和游戏时间差的总是步长的整数倍
+    if (dropPostponedTicks && this.#remaining > maxSteps * step) this.#remaining = maxSteps * step + (this.#remaining % step);
+    for (let steps = 0; this.#remaining >= step && steps < maxSteps; steps++) {
       for (const listener of this.#stepListeners) listener(step);
       entities.run(this.#followNodeLinks, time);
       this.#world.step(step);
       this.#remaining -= step;
       this.#dispatchContacts();
     }
-    this.#world.interpolate(this.#remaining / step);
+    // 还有没补完的整步时（留到后面的帧），画最新的一步，不往前外推
+    this.#world.interpolate(Math.min(this.#remaining / step, 1));
     entities.run(this.#readGrounded, time);
   }
 

@@ -10,7 +10,7 @@
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
 import type {
-  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneEntityFile, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere,
+  ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef,
 } from '../content/format';
 import type { AssetKind } from '../content/references';
@@ -233,6 +233,22 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       groundAlbedo: optional(vector(3), [0.3, 0.3, 0.3]),
       skyIntensity: optional(number({ min: 0 }), 1),
       aerialPerspectiveScale: optional(number({ min: 0 }), 1),
+      sun: { type: entity, optional: true, description: 'entity with the directional light of the sun; unset uses the shadow-casting directional light' },
+      moon: { type: entity, optional: true, description: 'entity with the directional light of the moon (its color and intensity are those of the full moon)' },
+      moonDiskIntensity: optional(number({ min: 0 }), 1),
+      starsIntensity: optional(number({ min: 0 }), 1),
+    })),
+    initial: {},
+  },
+  dayNightCycle: {
+    label: 'Day-night cycle',
+    type: object(fields<SceneDayNightCycle>({
+      timeOfDay: optional(number({ min: 0, max: 24, unit: 'h' }), 12),
+      dayLength: { type: number({ min: 0, unit: 's' }), optional: true, default: 0, description: 'game seconds per day; 0 keeps the time still' },
+      dayOfYear: optional(number({ min: 1, max: 365 }), 80),
+      latitude: optional(number({ min: -90, max: 90, unit: 'deg' }), 35),
+      north: optional(number({ unit: 'deg' }), 0),
+      moonPhase: { type: number({ min: 0, max: 1 }), optional: true, default: 0.5, description: '0 new moon, 0.5 full moon' },
     })),
     initial: {},
   },

@@ -100,6 +100,17 @@ export const SkyAtmosphere = component('SkyAtmosphere', {
   skyIntensity: prop.f32().default(1).min(0),
   /** 空气透视（远处的东西被大气染色、变淡）的距离倍数：1 是真实的，几十米的小场景要看出效果可以调大；0 关掉。 */
   aerialPerspectiveScale: prop.f32().default(1).min(0),
+  /** 太阳：带方向光的实体。没设时是要投阴影的那盏方向光（没有时是第一盏）。 */
+  sun: prop.entity().default(-1 as EntityId).group('Night'),
+  /**
+   * 月亮：带方向光的实体，没设就没有月亮。光的颜色 · 强度是满月时的照度（实际的再乘月相：月亮和太阳的夹角算出来的被照亮的
+   * 比例），角直径是 Light.shadowLightAngle。太阳落山以后轮到它投阴影（它的 Light.shadow 开着的话）。
+   */
+  moon: prop.entity().default(-1 as EntityId).group('Night'),
+  /** 月面被照亮的地方的亮度是月光的颜色 · 强度的多少倍（太大了月面一片白，看不出月海）。 */
+  moonDiskIntensity: prop.f32().default(1).min(0).group('Night'),
+  /** 星星和银河的亮度；0 不画。星空跟着这个实体的旋转转（DayNightCycle 按时刻转它）。 */
+  starsIntensity: prop.f32().default(1).min(0).group('Night'),
 });
 
 /**

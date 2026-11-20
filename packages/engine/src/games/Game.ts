@@ -2,6 +2,7 @@ import { createStrideNative, type NativeFeature, type StrideNative, type Transfo
 import { AnimationSystem } from '../animation/AnimationSystem';
 import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { uiElementLinkSystem } from '../ui/UIElementLink';
+import { dayNightCycleSystem } from '../rendering/DayNightCycle';
 import { hook } from '../engine/events';
 import { ContentManager, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import type { SceneFile } from '../content/format';
@@ -257,7 +258,7 @@ export class Game {
       this.registry.register(AudioEmitterComponent);
       this.registry.register(AudioListenerComponent);
       this.animation = new AnimationSystem(this.native, this.entities);
-      this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui));
+      this.entities.addSystems(this.animation.system, this.animation.morphSystem, this.animation.propertySystem, modelNodeLinkSystem(this.entities, this.transforms, this.animation), uiElementLinkSystem(this.entities, this.transforms, this.ui), dayNightCycleSystem(this.entities, () => !this.editing));
       this.content.animationNative ??= this.native;
       this.graphicsDevice = await GraphicsDevice.create(canvas);
       void this.graphicsDevice.lost.then((error) => this.fail(error));

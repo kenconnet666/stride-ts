@@ -1059,6 +1059,21 @@ export interface SceneSkyAtmosphere {
   readonly groundAlbedo?: Vec3Tuple;
   readonly skyIntensity?: number;
   readonly aerialPerspectiveScale?: number;
+  /** 太阳、月亮：带方向光的实体（场景里的 id）。太阳没写是要投阴影的那盏方向光，月亮没写就没有。 */
+  readonly sun?: string;
+  readonly moon?: string;
+  readonly moonDiskIntensity?: number;
+  readonly starsIntensity?: number;
+}
+
+/** 日夜循环（Stride 没有）：和 skyAtmosphere 在同一个实体上，各字段的意思见 DayNightCycle 组件；没写的用默认值。 */
+export interface SceneDayNightCycle {
+  readonly timeOfDay?: number;
+  readonly dayLength?: number;
+  readonly dayOfYear?: number;
+  readonly latitude?: number;
+  readonly north?: number;
+  readonly moonPhase?: number;
 }
 
 /** Stride 的 AnimationComponent：按名字列出的剪辑（内容路径），脚本按名字播放。 */
@@ -1256,6 +1271,7 @@ export interface SceneEntityFile {
     readonly background?: SceneBackground;
     readonly reflectionProbe?: SceneReflectionProbe;
     readonly skyAtmosphere?: SceneSkyAtmosphere;
+    readonly dayNightCycle?: SceneDayNightCycle;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;
     readonly character?: SceneCharacter;

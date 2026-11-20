@@ -4,21 +4,27 @@
  *
  * - 大气是包着星球的一层（默认地球：半径 6360 km、厚 100 km），瑞利散射、米氏散射和臭氧吸收按高度指数衰减。场景的世界原点在
  *   星球表面（北极），Y 向上，世界单位是米，大气的计算用千米。
- * - 太阳：投阴影的那盏方向光（没有时是第一盏），它的颜色 · 强度是大气层顶的照度。地面上的颜色 = 它 · 相机处朝太阳方向的透射率
- *   （CPU 上积分，sunTransmittance），所以太阳落山时直射光自己变红变暗。
- * - 查找表（计算着色器）：透射率（256x64，大气参数变了才算）、多次散射（32x32，同上）、天空视图（192x108，太阳方向或相机高度
- *   变了才算）。天空画在网格没画到的地方（AtmosphereRenderFeature），太阳圆盘按光源的角直径（Light.shadowLightAngle）。
- * - 环境光：天空变了以后把天空视图画进一张 64² 的立方体贴图（不含太阳圆盘，太阳是直射光），镜面用 CubemapPrefilter 预滤波，
+ * - 太阳和月亮是两盏方向光（SkyAtmosphere.sun、moon；太阳没设时是要投阴影的那盏，没有时是第一盏），颜色 · 强度是大气层顶的
+ *   照度（月亮的是满月时的，再乘月相：被太阳照亮的那部分的比例）。地面上的颜色 = 它 · 相机处朝它的透射率（CPU 上积分，
+ *   sunTransmittance），所以落山时直射光自己变红变暗，圆盘沉到地平线以下就是黑的（前向渲染器把黑的光丢掉，阴影轮到下一盏）。
+ * - 查找表（计算着色器）：透射率（256x64，大气参数变了才算）、多次散射（32x32，同上）、天空视图（192x108，太阳、月亮的方向或
+ *   相机高度变了才算；两盏光各积分一遍加起来）。天空画在网格没画到的地方（AtmosphereRenderFeature），圆盘按光源的角直径
+ *   （Light.shadowLightAngle）。
+ * - 夜空：月面是一个被太阳照着的球（月相是几何算出来的，月海是噪声），星星和银河是程序生成的，跟着 SkyAtmosphere 所在实体的
+ *   旋转转（DayNightCycle 按时刻转它）；天空亮的时候暗的星星先被盖过去。
+ * - 环境光：天空变了以后把天空视图画进一张 128² 的立方体贴图（不含圆盘和星星），镜面用 CubemapPrefilter 预滤波，
  *   漫反射在 GPU 上投影成 3 阶球谐（同资源管线的 st_cubemap_sh_lambert），读回来晚一两帧用上。当作天空盒光
  *   （SkyboxLight，见 DynamicSky），场景里原来的天空盒光被它代替。
- * - 还没做：空气透视（远处物体的雾化，Hillaire 的体素查找表）、夜空（月亮、星星）、云。
+ * - 空气透视：屏幕上 32x32 格、32 层的体素表，不透明的画完以后按深度合成。
+ * - 还没做：云。
  */
+import type { EntityId } from '../data/prop';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { SkyAtmosphere } from './components';
 import { FULLSCREEN_VERTEX } from './fullscreen';
 import type { GpuResources } from './GpuResources';
-import type { Lighting, RenderContext, RenderView, SkyboxLight } from './RenderSystem';
+import type { DirectionalLight, Lighting, RenderContext, RenderView, SkyboxLight } from './RenderSystem';
 
 /** 大气的物理参数（SkyAtmosphere 组件的列；距离是千米，系数是每千米）。 */
 export interface AtmosphereSettings {
@@ -91,6 +97,12 @@ function rayHitsSphere(origin: readonly number[], direction: readonly number[], 
 /** 着色器共用的大气参数和函数（Hillaire 2020；Babylon 的 atmosphereFunctions 的移植）。 */
 const COMMON = /* wgsl */ `
 const PI = 3.14159265;
+struct Body {
+  // xyz 朝它的方向（世界），w 圆盘角半径的余弦（没有这个天体时大于 1）
+  direction: vec4f,
+  // rgb 大气层顶的照度乘天空亮度（月亮的乘了月相；落到地平线以下很多时是 0，不再算它的散射），w 圆盘的亮度上限（照度的倍数）
+  illuminance: vec4f,
+};
 struct Atmosphere {
   // xyz 瑞利散射（每千米），w 星球半径
   rayleigh: vec4f,
@@ -100,10 +112,12 @@ struct Atmosphere {
   ozone: vec4f,
   // xyz 地面反照率，w 相机到星球中心的距离（千米）
   ground: vec4f,
-  // xyz 朝太阳的方向（世界），w 太阳圆盘角半径的余弦
-  sun: vec4f,
-  // rgb 大气层顶的太阳照度乘天空亮度，w 太阳圆盘的亮度上限（照度的倍数）
-  sunIlluminance: vec4f,
+  // 0 太阳，1 月亮
+  bodies: array<Body, 2>,
+  // rgb 月面被照亮的地方的亮度，w 星星的亮度（0 不画）
+  night: vec4f,
+  // 世界到天球坐标的旋转（三行）：星空跟着 SkyAtmosphere 的实体转
+  celestial: array<vec4f, 3>,
 };
 @group(0) @binding(0) var<uniform> atmosphere: Atmosphere;
 
@@ -293,7 +307,8 @@ ${integrate(true)}
 
 /**
  * 天空视图表（Hillaire 2020 第 5.3 节）：从相机所在的高度往各个方向看到的天空的光。v：下半是地面（0 是正下方），上半是天空
- * （0.5 是地平线，靠近地平线的分辨率高）；u：和太阳的方位角（0 是朝着太阳）。
+ * （0.5 是地平线，靠近地平线的分辨率高）；u：世界里的方位角，绕 Y 一整圈（同 Unreal；Hillaire 的示例和 Babylon 按和太阳的
+ * 夹角存半圈，那样只能有一盏光）。
  */
 const SKY_VIEW_SHADER = /* wgsl */ `
 ${COMMON}
@@ -302,29 +317,31 @@ ${integrate(false)}
 
 @compute @workgroup_size(8, 8) fn main(@builtin(global_invocation_id) id: vec3u) {
   if (any(vec2f(id.xy) >= SKY_VIEW_SIZE)) { return; }
-  let unit = (vec2f(id.xy) + 0.5 - 0.5) / (SKY_VIEW_SIZE - 1.0);
+  let v = f32(id.y) / (SKY_VIEW_SIZE.y - 1.0);
   let radius = atmosphere.ground.w;
   let cosHorizon = -sqrt(max(0.0, 1.0 - min(1.0, planetRadius() / radius) * min(1.0, planetRadius() / radius)));
   var cosViewZenith: f32;
-  if (unit.y < 0.5) {
-    let coord = 2.0 * unit.y;
+  if (v < 0.5) {
+    let coord = 2.0 * v;
     cosViewZenith = mix(-1.0, cosHorizon, coord * coord);
   } else {
-    let coord = 2.0 * unit.y - 1.0;
+    let coord = 2.0 * v - 1.0;
     cosViewZenith = mix(cosHorizon, 1.0, coord * coord);
   }
-  let cosViewSun = 1.0 - 2.0 * unit.x;
+  // 方位角上首尾相接（采样时 repeat），纹素中心不落在接缝上
+  let azimuth = (f32(id.x) + 0.5) / SKY_VIEW_SIZE.x * 2.0 * PI;
   let sinViewZenith = sqrt(max(0.0, 1.0 - cosViewZenith * cosViewZenith));
-  let direction = vec3f(sinViewZenith * cosViewSun, cosViewZenith, sinViewZenith * sqrt(max(0.0, 1.0 - cosViewSun * cosViewSun)));
-  // 太阳在 xy 平面里（相机在北极，天顶是 +y）
-  let up = vec3f(0.0, 1.0, 0.0);
-  let cosSunZenith = dot(atmosphere.sun.xyz, up);
-  let directionToSun = vec3f(sqrt(max(0.0, 1.0 - cosSunZenith * cosSunZenith)), cosSunZenith, 0.0);
-  let scattered = integrate(vec3f(0.0, radius, 0.0), direction, directionToSun, 30.0, 1e9, false);
-  textureStore(output, id.xy, vec4f(scattered.radiance * atmosphere.sunIlluminance.rgb, 1.0));
+  let direction = vec3f(sinViewZenith * cos(azimuth), cosViewZenith, sinViewZenith * sin(azimuth));
+  var radiance = vec3f(0.0);
+  for (var b = 0u; b < 2u; b++) {
+    let body = atmosphere.bodies[b];
+    if (all(body.illuminance.rgb <= vec3f(0.0))) { continue; }
+    radiance += integrate(vec3f(0.0, radius, 0.0), direction, body.direction.xyz, 30.0, 1e9, false).radiance * body.illuminance.rgb;
+  }
+  textureStore(output, id.xy, vec4f(radiance, 1.0));
 }`;
 
-/** 按世界的视线方向查天空视图表（太阳圆盘另加）。 */
+/** 按世界的视线方向查天空视图表（圆盘、星星另加）。采样器在 u 上要 repeat（AtmosphereGpu 的 skySampler）。 */
 const SAMPLE_SKY = /* wgsl */ `
 fn skyViewUv(direction: vec3f) -> vec2f {
   let radius = atmosphere.ground.w;
@@ -337,15 +354,10 @@ fn skyViewUv(direction: vec3f) -> vec2f {
   } else {
     v = 0.5 + 0.5 * sqrt(saturate((cosViewZenith - cosHorizon) / (1.0 - cosHorizon)));
   }
-  // 视线和太阳在水平面上的夹角
-  let flatView = vec2f(direction.x, direction.z);
-  let flatSun = vec2f(atmosphere.sun.x, atmosphere.sun.z);
-  var cosViewSun = 1.0;
-  if (dot(flatView, flatView) > 1e-8 && dot(flatSun, flatSun) > 1e-8) {
-    cosViewSun = dot(normalize(flatView), normalize(flatSun));
-  }
-  let unit = vec2f(0.5 - 0.5 * cosViewSun, v);
-  return unit * (SKY_VIEW_SIZE - 1.0) / SKY_VIEW_SIZE + 0.5 / SKY_VIEW_SIZE;
+  // 正上、正下方的方位角没有意义（那一行纹素都一样）
+  let flat = direction.xz;
+  let azimuth = select(0.0, atan2(flat.y, flat.x), dot(flat, flat) > 1e-12);
+  return vec2f(azimuth / (2.0 * PI), v * (SKY_VIEW_SIZE.y - 1.0) / SKY_VIEW_SIZE.y + 0.5 / SKY_VIEW_SIZE.y);
 }
 `;
 
@@ -354,7 +366,7 @@ const SKY_CUBE_SHADER = /* wgsl */ `
 ${COMMON}
 @group(0) @binding(1) var output: texture_storage_2d_array<rgba16float, write>;
 @group(0) @binding(2) var skyViewLut: texture_2d<f32>;
-@group(0) @binding(3) var linearClamp: sampler;
+@group(0) @binding(3) var skySampler: sampler;
 ${SAMPLE_SKY}
 
 fn faceDirection(face: u32, p: vec2f) -> vec3f {
@@ -378,7 +390,7 @@ fn faceDirection(face: u32, p: vec2f) -> vec3f {
     for (var i = 0u; i < 4u; i++) {
       let p = (vec2f(id.xy) + (vec2f(f32(i), f32(j)) + 0.5) / 4.0) / vec2f(size) * 2.0 - 1.0;
       let c = normalize(faceDirection(id.z, p));
-      sum += textureSampleLevel(skyViewLut, linearClamp, skyViewUv(vec3f(c.xy, -c.z)), 0.0).rgb;
+      sum += textureSampleLevel(skyViewLut, skySampler, skyViewUv(vec3f(c.xy, -c.z)), 0.0).rgb;
     }
   }
   textureStore(output, id.xy, id.z, vec4f(sum / 16.0, 1.0));
@@ -438,7 +450,76 @@ fn faceDirection(face: u32, p: vec2f) -> vec3f {
 }
 const PI_ = 3.14159265;`;
 
-/** 画天空：视线方向查天空视图表，再加太阳圆盘（按透射率表变红变暗）。 */
+/** 夜空：星星、银河、月面的噪声。方向都是天球坐标（跟着 SkyAtmosphere 的实体转）。 */
+const NIGHT = /* wgsl */ `
+/** 格子到三个 0..1 的随机数（pcg3d，Jarzynski、Olano 2020）。 */
+fn hash3(cell: vec3i) -> vec3f {
+  var v = bitcast<vec3u>(cell) * 1664525u + 1013904223u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  v ^= v >> vec3u(16u);
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  return vec3f(v) * (1.0 / 4294967296.0);
+}
+
+fn valueNoise(p: vec3f) -> f32 {
+  let cell = vec3i(floor(p));
+  let f = fract(p);
+  let u = f * f * (3.0 - 2.0 * f);
+  let x00 = mix(hash3(cell).x, hash3(cell + vec3i(1, 0, 0)).x, u.x);
+  let x10 = mix(hash3(cell + vec3i(0, 1, 0)).x, hash3(cell + vec3i(1, 1, 0)).x, u.x);
+  let x01 = mix(hash3(cell + vec3i(0, 0, 1)).x, hash3(cell + vec3i(1, 0, 1)).x, u.x);
+  let x11 = mix(hash3(cell + vec3i(0, 1, 1)).x, hash3(cell + vec3i(1, 1, 1)).x, u.x);
+  return mix(mix(x00, x10, u.y), mix(x01, x11, u.y), u.z);
+}
+
+/** 三个倍频的噪声，0..1。 */
+fn fbm(p: vec3f) -> f32 {
+  return (valueNoise(p) * 4.0 + valueNoise(p * 2.03 + 17.0) * 2.0 + valueNoise(p * 4.11 + 31.0)) / 7.0;
+}
+
+// 星星：把方向放大成格子，每格一颗候选的星星（位置随机），只留离球面近的那些（投到球面上以后，还在像素要查的 2x2x2 格里）
+const STAR_CELLS = 48.0;
+const STAR_SHELL = 0.25;
+// 留下的比例：全天约六千颗（肉眼能看到的数量级）
+const STAR_DENSITY = 0.42;
+// 最暗的那档星星的光量（亮度 · 立体角）
+const STAR_FLUX = 7e-8;
+
+/** 方向 c 处星星的亮度。pixel 是一个像素的张角（弧度）：星星画成一个像素大小的高斯，总光量和分辨率无关。 */
+fn stars(c: vec3f, pixel: f32) -> vec3f {
+  let p = c * STAR_CELLS;
+  let base = vec3i(floor(p - 0.5));
+  // 上限：三倍标准差要落在查的格子里
+  let sigma = clamp(pixel * 0.7, 2e-4, STAR_SHELL / (3.0 * STAR_CELLS));
+  var sum = vec3f(0.0);
+  for (var k = 0u; k < 8u; k++) {
+    let cell = base + vec3i(vec3u(k & 1u, (k >> 1u) & 1u, k >> 2u));
+    let q = vec3f(cell) + hash3(cell);
+    let distance = length(q);
+    let random = hash3(cell + vec3i(131, 71, 37));
+    if (abs(distance - STAR_CELLS) > STAR_SHELL || random.x > STAR_DENSITY) { continue; }
+    let d = c - q / distance;
+    // 亮度的分布：比某个亮度亮的星星的数量 ∝ 亮度^-1.1（每暗一个星等多 2.8 倍）
+    let flux = min(pow(max(random.y, 1e-4), -0.9), 600.0);
+    // 颜色：偏红的到偏蓝的
+    let tint = mix(vec3f(1.0, 0.78, 0.6), vec3f(0.72, 0.84, 1.0), random.z);
+    sum += tint * flux * exp(-dot(d, d) / (2.0 * sigma * sigma));
+  }
+  return sum * STAR_FLUX / (2.0 * PI * sigma * sigma);
+}
+
+/** 银河：斜着的一条带子，带暗的尘埃带。 */
+fn milkyWay(c: vec3f) -> vec3f {
+  let latitude = dot(c, vec3f(0.4558, 0.4695, -0.7562));
+  let band = exp(-latitude * latitude / 0.03);
+  if (band < 0.01) { return vec3f(0.0); }
+  let clouds = fbm(c * 5.0 + 3.0);
+  let dust = smoothstep(0.35, 0.6, fbm(c * 11.0 + 9.0) + abs(latitude) * 2.0);
+  return vec3f(0.62, 0.72, 1.0) * (band * (0.25 + clouds) * mix(0.25, 1.0, dust) * 0.012);
+}
+`;
+
+/** 画天空：视线方向查天空视图表，再加太阳的圆盘（按透射率表变红变暗）、月面、星星和银河。 */
 const SKY_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
 ${COMMON}
@@ -447,20 +528,64 @@ struct View { inverseViewProjection: mat4x4f, eye: vec4f };
 @group(0) @binding(1) var skyViewLut: texture_2d<f32>;
 @group(0) @binding(2) var transmittanceLut: texture_2d<f32>;
 @group(0) @binding(3) var linearClamp: sampler;
+@group(0) @binding(4) var skySampler: sampler;
 ${SAMPLE_SKY}
+${NIGHT}
+
+const LUMINANCE = vec3f(0.2126, 0.7152, 0.0722);
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let far = view.inverseViewProjection * vec4f(in.ndc, 1.0, 1.0);
   let direction = normalize(far.xyz / far.w - view.eye.xyz);
-  var color = textureSampleLevel(skyViewLut, linearClamp, skyViewUv(direction), 0.0).rgb;
-  let cosToSun = dot(direction, atmosphere.sun.xyz);
+  // 一个像素的张角：导数要在分支之外取
+  let pixel = max(length(dpdx(direction)), length(dpdy(direction)));
+  var color = textureSampleLevel(skyViewLut, skySampler, skyViewUv(direction), 0.0).rgb;
   let position = vec3f(0.0, atmosphere.ground.w, 0.0);
-  if (cosToSun > atmosphere.sun.w && raySphere(position, direction, planetRadius()) < 0.0) {
+  // 朝着地面的视线上没有天体
+  if (raySphere(position, direction, planetRadius()) >= 0.0) { return vec4f(color, 1.0); }
+  let transmittance = textureSampleLevel(transmittanceLut, linearClamp, transmittanceUv(atmosphere.ground.w, direction.y), 0.0).rgb;
+
+  let sun = atmosphere.bodies[0];
+  let cosToSun = dot(direction, sun.direction.xyz);
+  if (cosToSun > sun.direction.w) {
     // 圆盘的亮度 = 照度 / 立体角，限个上限免得泛光炸开；边缘按距离中心淡一点（临边昏暗的近似）
-    let solidAngle = 2.0 * PI * (1.0 - atmosphere.sun.w);
-    let limb = sqrt(saturate((cosToSun - atmosphere.sun.w) / max(1.0 - atmosphere.sun.w, 1e-6)));
-    let transmittance = textureSampleLevel(transmittanceLut, linearClamp, transmittanceUv(atmosphere.ground.w, direction.y), 0.0).rgb;
-    color += transmittance * atmosphere.sunIlluminance.rgb * min(1.0 / solidAngle, atmosphere.sunIlluminance.w) * mix(0.6, 1.0, limb);
+    let solidAngle = 2.0 * PI * (1.0 - sun.direction.w);
+    let limb = sqrt(saturate((cosToSun - sun.direction.w) / max(1.0 - sun.direction.w, 1e-6)));
+    color += transmittance * sun.illuminance.rgb * min(1.0 / solidAngle, sun.illuminance.w) * mix(0.6, 1.0, limb);
+  }
+
+  // 月面：一个球，被太阳照着（太阳远，照月亮的方向就是照我们的方向），所以月相、亮的那一边朝哪都是对的
+  let moon = atmosphere.bodies[1];
+  var moonCoverage = 0.0;
+  if (moon.direction.w < 1.0) {
+    let m = moon.direction.xyz;
+    let moonRadius = acos(moon.direction.w);
+    // 边缘按一个像素淡出
+    moonCoverage = saturate((moonRadius - length(direction - m)) / max(pixel, 1e-7) + 0.5);
+    if (moonCoverage > 0.0) {
+      let offset = (direction - m * dot(direction, m)) / sin(moonRadius);
+      let r2 = min(dot(offset, offset), 1.0);
+      let z = sqrt(1.0 - r2);
+      let normal = offset - m * z;
+      // Lommel-Seeliger：满月是平的一片亮，不像 Lambert 的球那样边上暗
+      let nl = saturate(dot(normal, sun.direction.xyz));
+      let lit = min(2.0 * nl / max(nl + z, 1e-3), 1.5);
+      let axis = select(vec3f(0.0, 1.0, 0.0), vec3f(1.0, 0.0, 0.0), abs(m.y) > 0.99);
+      let x = normalize(cross(axis, m));
+      let surface = vec3f(dot(offset, x), dot(offset, cross(m, x)), z);
+      let albedo = mix(0.4, 1.0, smoothstep(0.38, 0.58, fbm(surface * 2.6 + 7.0)));
+      // 背着太阳的那部分是地球反照：月亮越靠近太阳（蛾眉月），从月亮上看地球越圆，反照越亮
+      let towardSun = 0.5 + 0.5 * dot(sun.direction.xyz, m);
+      color += transmittance * atmosphere.night.rgb * (lit * albedo + 0.01 * towardSun * towardSun) * moonCoverage;
+    }
+  }
+
+  if (atmosphere.night.w > 0.0) {
+    let c = vec3f(dot(atmosphere.celestial[0].xyz, direction), dot(atmosphere.celestial[1].xyz, direction), dot(atmosphere.celestial[2].xyz, direction));
+    let night = (stars(c, pixel) + milkyWay(c)) * atmosphere.night.w * transmittance * (1.0 - moonCoverage);
+    // 比天空暗得多的星星被盖过去：黄昏时亮的先出来，有月亮的夜里暗的看不见
+    let own = dot(night, LUMINANCE);
+    color += night * own / max(own + 4.0 * dot(color, LUMINANCE), 1e-9);
   }
   return vec4f(color, 1.0);
 }`;
@@ -487,10 +612,13 @@ ${AERIAL}
   let far = camera.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 1.0, 1.0);
   let direction = normalize(far.xyz / far.w - camera.eye.xyz);
   let origin = vec3f(0.0, atmosphere.ground.w, 0.0);
-  let toSun = atmosphere.sun.xyz;
-  let cosTheta = dot(direction, toSun);
-  let phaseRayleigh = rayleighPhase(cosTheta);
-  let phaseMie = miePhase(cosTheta);
+  var phaseRayleigh: array<f32, 2>;
+  var phaseMie: array<f32, 2>;
+  for (var b = 0u; b < 2u; b++) {
+    let cosTheta = dot(direction, atmosphere.bodies[b].direction.xyz);
+    phaseRayleigh[b] = rayleighPhase(cosTheta);
+    phaseMie[b] = miePhase(cosTheta);
+  }
   var radiance = vec3f(0.0);
   var transmittance = vec3f(1.0);
   var t = 0.0;
@@ -502,16 +630,22 @@ ${AERIAL}
     for (var k = 0.0; k < SUBSTEPS; k += 1.0) {
       let p = origin + direction * (t + (k + 0.5) * dt);
       let medium = sampleMedium(length(p) - planetRadius());
-      let multi = textureSampleLevel(multiScatteringLut, linearClamp, multiScatteringUv(length(p), dot(normalize(p), toSun)), 0.0).rgb;
-      let inscatter = transmittanceToSun(p, toSun) * (medium.scatteringRayleigh * phaseRayleigh + medium.scatteringMie * phaseMie)
-        + multi * (medium.scatteringRayleigh + medium.scatteringMie);
+      var inscatter = vec3f(0.0);
+      for (var b = 0u; b < 2u; b++) {
+        let body = atmosphere.bodies[b];
+        if (all(body.illuminance.rgb <= vec3f(0.0))) { continue; }
+        let toBody = body.direction.xyz;
+        let multi = textureSampleLevel(multiScatteringLut, linearClamp, multiScatteringUv(length(p), dot(normalize(p), toBody)), 0.0).rgb;
+        inscatter += body.illuminance.rgb * (transmittanceToSun(p, toBody) * (medium.scatteringRayleigh * phaseRayleigh[b] + medium.scatteringMie * phaseMie[b])
+          + multi * (medium.scatteringRayleigh + medium.scatteringMie));
+      }
       let extinction = max(medium.extinction, vec3f(1e-7));
       let stepTransmittance = exp(-medium.extinction * dt);
       radiance += transmittance * (inscatter - inscatter * stepTransmittance) / extinction;
       transmittance *= stepTransmittance;
     }
     t = end;
-    textureStore(output, vec3u(id.xy, slice), vec4f(radiance * atmosphere.sunIlluminance.rgb, 1.0 - dot(transmittance, vec3f(1.0 / 3.0))));
+    textureStore(output, vec3u(id.xy, slice), vec4f(radiance, 1.0 - dot(transmittance, vec3f(1.0 / 3.0))));
   }
 }`;
 
@@ -540,8 +674,8 @@ ${AERIAL}
   return vec4f(s.rgb, 1.0 - s.a);
 }`;
 
-/** uniform Atmosphere 的大小（6 个 vec4）。 */
-const ATMOSPHERE_FLOATS = 24;
+/** uniform Atmosphere 的大小（12 个 vec4）。 */
+const ATMOSPHERE_FLOATS = 48;
 /**
  * 天空立方体和镜面贴图的边长。64 不够：粗糙度 0.5 的表面落在第 3、4 级（每面 8²、4²），双线性插值的折线在地面的反射里成了
  * 一圈圈的环。
@@ -567,23 +701,43 @@ export class DynamicSky {
   }
 }
 
+/** 天上的一盏光（太阳或者月亮）这一帧的状态。 */
+export interface CelestialBody {
+  /** 场景里有没有它（对应的方向光在这一帧的光照里）。 */
+  present: boolean;
+  /** 朝它的方向（世界，单位向量）。 */
+  readonly direction: [number, number, number];
+  /** 大气层顶的照度（光的颜色 · 强度；月亮的乘了月相）。 */
+  readonly illuminance: [number, number, number];
+  /** 圆盘的角半径（弧度）。 */
+  angularRadius: number;
+}
+
+function celestialBody(): CelestialBody {
+  return { present: false, direction: [0, 1, 0], illuminance: [0, 0, 0], angularRadius: 0.00465 };
+}
+
+/** 落到地平线以下这么多（sin 高度角）以后不再算它的散射：天文昏影（-18°）已经结束，贡献是 0。 */
+const NO_SCATTERING_BELOW = -0.35;
+
 /**
- * 场景的大气（渲染系统一份）：前向渲染器收集光照时 apply（找 SkyAtmosphere、调太阳的颜色、换天空光），网格之前 AtmosphereRenderFeature
- * 的 prepare 里 update（该重算的查找表和天空光录进自己的编码器提交），画天空时 draw。
+ * 场景的大气（渲染系统一份）：前向渲染器收集光照时 apply（找 SkyAtmosphere、调太阳和月亮的颜色、换天空光），网格之前
+ * AtmosphereRenderFeature 的 prepare 里 update（该重算的查找表和天空光录进自己的编码器提交），画天空时 draw。
  */
 export class Atmosphere {
-  /** 这一帧有没有大气（场景里有 SkyAtmosphere）。 */
+  /** 这一帧有没有大气（场景里有 SkyAtmosphere，也有太阳或者月亮）。 */
   active = false;
   readonly settings: AtmosphereSettings = structuredClone(EARTH_ATMOSPHERE) as AtmosphereSettings;
-  /** 朝太阳的方向（世界）和大气层顶的照度。 */
-  readonly directionToSun: [number, number, number] = [0, 1, 0];
-  readonly sunIlluminance: [number, number, number] = [0, 0, 0];
-  /** 太阳圆盘的角半径（弧度）。 */
-  sunAngularRadius = 0.00465;
+  readonly sun = celestialBody();
+  readonly moon = celestialBody();
+  /** 月相：月面被太阳照亮的比例（0 新月，1 满月）。 */
+  moonPhase = 1;
   /** 相机离地面的高度（千米）。 */
   cameraHeight = 0;
   /** 空气透视的距离倍数（SkyAtmosphere.aerialPerspectiveScale）；0 是不做。 */
   aerialPerspectiveScale = 1;
+  /** 星星的亮度（SkyAtmosphere.starsIntensity，白天淡到 0）。 */
+  starsIntensity = 0;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   #gpu: AtmosphereGpu | undefined;
@@ -594,10 +748,19 @@ export class Atmosphere {
   #skyKey = '';
   #lightingKey = '';
   #reading = false;
+  // SkyAtmosphere 这一帧的值
+  #sunEntity = -1 as EntityId;
+  #moonEntity = -1 as EntityId;
+  #moonDiskIntensity = 0;
+  #stars = 0;
+  /** 月面被照亮的地方的亮度（满月的照度 · moonDiskIntensity）。 */
+  readonly #moonDisk: [number, number, number] = [0, 0, 0];
+  /** 世界到天球坐标的旋转（三行，每行补一个 0）：SkyAtmosphere 所在实体的三个轴。 */
+  readonly #celestial = new Float32Array(12);
 
   readonly #collect = system('Atmosphere.collect', {
     with: { atmosphere: SkyAtmosphere, transform: Transform },
-    update: ({ atmosphere, count }) => {
+    update: ({ atmosphere, transform, count }) => {
       if (count === 0 || this.active) return;
       this.active = true;
       const s = this.settings;
@@ -611,6 +774,17 @@ export class Atmosphere {
       s.groundAlbedo = [atmosphere.groundAlbedo[0]!, atmosphere.groundAlbedo[1]!, atmosphere.groundAlbedo[2]!];
       s.skyIntensity = atmosphere.skyIntensity[0]!;
       this.aerialPerspectiveScale = atmosphere.aerialPerspectiveScale[0]!;
+      this.#sunEntity = atmosphere.sun[0]! as EntityId;
+      this.#moonEntity = atmosphere.moon[0]! as EntityId;
+      this.#moonDiskIntensity = atmosphere.moonDiskIntensity[0]!;
+      this.#stars = atmosphere.starsIntensity[0]!;
+      // 世界矩阵的三列（实体的三个轴，归一化掉缩放）就是世界到天球坐标的旋转的三行
+      const w = transform.slot[0]! * 16;
+      for (let axis = 0; axis < 3; axis++) {
+        const x = transform.world[w + axis * 4]!, y = transform.world[w + axis * 4 + 1]!, z = transform.world[w + axis * 4 + 2]!;
+        const length = Math.hypot(x, y, z) || 1;
+        this.#celestial.set([x / length, y / length, z / length], axis * 4);
+      }
     },
   });
 
@@ -620,27 +794,42 @@ export class Atmosphere {
   }
 
   /**
-   * 收集光照之后（前向渲染器调）：场景里有 SkyAtmosphere 时，太阳（投阴影的方向光，没有时是第一盏）的颜色乘相机处的透射率，
-   * 天空盒光换成大气的。eye 是主相机的位置（米）。
+   * 收集光照之后（前向渲染器调）：场景里有 SkyAtmosphere 时，太阳和月亮的颜色乘相机处的透射率（月亮的再乘月相；沉到地平线
+   * 以下是黑的），天空盒光换成大气的。eye 是主相机的位置（米）。
    */
-  apply(context: RenderContext, lighting: Lighting, eye: { readonly x: number; readonly y: number; readonly z: number }, sunAngleDegrees: number): void {
+  apply(context: RenderContext, lighting: Lighting, eye: { readonly x: number; readonly y: number; readonly z: number }): void {
     this.active = false;
     context.game.entities.run(this.#collect, context.time);
-    if (!this.active || lighting.directionalCount === 0) {
+    if (!this.active) return;
+    const lights = lighting.directionals.slice(0, lighting.directionalCount);
+    const moonLight = this.#moonEntity < 0 ? undefined : lights.find((light) => light.entity === this.#moonEntity);
+    const sunLight = this.#sunEntity < 0
+      ? lights.find((light) => light !== moonLight && light.shadow) ?? lights.find((light) => light !== moonLight)
+      : lights.find((light) => light.entity === this.#sunEntity);
+    if (!sunLight && !moonLight) {
       this.active = false;
       return;
     }
-    const sun = lighting.directionals[Math.max(lighting.shadowLight, 0)]!;
-    const length = Math.hypot(sun.direction.x, sun.direction.y, sun.direction.z) || 1;
-    this.directionToSun.splice(0, 3, -sun.direction.x / length, -sun.direction.y / length, -sun.direction.z / length);
-    this.sunIlluminance.splice(0, 3, sun.color.r, sun.color.g, sun.color.b);
-    this.sunAngularRadius = Math.max((sunAngleDegrees / 2) * (Math.PI / 180), 1e-4);
     this.cameraHeight = Math.max(eye.y / 1000, 0.001);
-    const position: [number, number, number] = [0, this.settings.planetRadius + this.cameraHeight, 0];
-    const [r, g, b] = sunTransmittance(this.settings, position, this.directionToSun);
-    sun.color.set(sun.color.r * r, sun.color.g * g, sun.color.b * b, 1);
+    place(this.sun, sunLight);
+    place(this.moon, moonLight);
+    // 月相：月亮在太阳对面是满月，挨着太阳是新月。没有太阳的场景当满月
+    const [sun, moon] = [this.sun.direction, this.moon.direction];
+    this.moonPhase = sunLight ? (1 - (sun[0] * moon[0] + sun[1] * moon[1] + sun[2] * moon[2])) / 2 : 1;
+    for (let c = 0; c < 3; c++) {
+      this.#moonDisk[c] = this.moon.illuminance[c]! * this.#moonDiskIntensity;
+      this.moon.illuminance[c]! *= this.moonPhase;
+    }
+    for (const [body, light] of [[this.sun, sunLight], [this.moon, moonLight]] as const) {
+      if (!light) continue;
+      const [r, g, b] = this.#transmittanceTo(body);
+      light.color.set(body.illuminance[0] * r, body.illuminance[1] * g, body.illuminance[2] * b, 1);
+    }
+    // 星星：太阳在地平线上下 6° 之间淡入淡出（再往后天空亮的地方由着色器按对比度盖掉），白天不画
+    const day = sunLight && this.sun.illuminance.some((v) => v > 0) ? smoothstep(-0.1, 0.1, sun[1]) : 0;
+    this.starsIntensity = this.#stars * (1 - day);
     this.#sky ??= new DynamicSky(this.#device);
-    // 天空盒的约定是乘实体的旋转；大气没有旋转。强度已经乘进天空的亮度里
+    // 天空盒的约定是乘实体的旋转；大气的天空光已经在世界坐标里。强度已经乘进天空的亮度里
     this.#skyLight ??= { skybox: this.#sky, intensity: 1, rotation: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) };
     lighting.skybox = this.#skyLight;
   }
@@ -652,11 +841,12 @@ export class Atmosphere {
     gpu.writeUniforms(this.#uniforms());
     const s = this.settings;
     const lutKey = JSON.stringify([s.planetRadius, s.atmosphereHeight, s.rayleighScattering, s.mieScattering, s.mieAbsorption, s.miePhaseG, s.ozoneAbsorption, s.groundAlbedo]);
-    // 看得见的天空：太阳方向变化约 0.05° 以内、相机高度变化 1 m 以内、亮度不变时不重算。环境光（立方体、球谐、预滤波，
-    // 约 1 ms）粗一档：太阳动了约 0.5°、亮度变了 2% 才重算，日夜循环时不每帧都算
+    // 看得见的天空：太阳、月亮的方向变化约 0.05° 以内、相机高度变化 1 m 以内、亮度不变时不重算。环境光（立方体、球谐、预滤波，
+    // 约 1 ms）粗一档：动了约 0.5°、亮度变了 2% 才重算，日夜循环时不每帧都算
     const sky = [lutKey, Math.round(this.cameraHeight * 1000), s.skyIntensity];
-    const skyKey = JSON.stringify([...sky, this.directionToSun.map((v) => Math.round(v * 1000)), this.sunIlluminance]);
-    const lightingKey = JSON.stringify([...sky, this.directionToSun.map((v) => Math.round(v * 100)), this.sunIlluminance.map((v) => Math.round(Math.log(Math.max(v, 1e-4)) * 50))]);
+    const bodies = [this.sun, this.moon].map((body) => ({ direction: body.direction, illuminance: this.#scattering(body) }));
+    const skyKey = JSON.stringify([...sky, bodies.map((body) => [body.direction.map((v) => Math.round(v * 1000)), body.illuminance])]);
+    const lightingKey = JSON.stringify([...sky, bodies.map((body) => [body.direction.map((v) => Math.round(v * 100)), body.illuminance.map((v) => Math.round(Math.log(Math.max(v, 1e-6)) * 50))])]);
     if (lutKey === this.#lutKey && skyKey === this.#skyKey) return;
     const encoder = this.#device.createCommandEncoder({ label: 'Atmosphere' });
     if (lutKey !== this.#lutKey) gpu.recordLuts(encoder);
@@ -685,16 +875,45 @@ export class Atmosphere {
     this.#sky?.specular.destroy();
   }
 
+  /**
+   * 相机处朝 body 的透射率，乘圆盘露在地平线上面的比例（圆盘沉下去的那一两分钟里平滑地暗掉，不是圆心一过地平线就黑）。
+   * 圆心已经在地平线下面时按贴着地平线的方向算。
+   */
+  #transmittanceTo(body: CelestialBody): [number, number, number] {
+    const radius = this.settings.planetRadius + this.cameraHeight;
+    const horizon = -Math.acos(Math.min(this.settings.planetRadius / radius, 1));
+    const [x, y, z] = body.direction;
+    const elevation = Math.asin(Math.min(Math.max(y, -1), 1));
+    const visible = smoothstep(horizon - body.angularRadius, horizon + body.angularRadius, elevation);
+    if (visible <= 0) return [0, 0, 0];
+    const lifted = Math.max(elevation, horizon + 1e-4);
+    const flat = Math.hypot(x, z);
+    const direction: [number, number, number] = flat > 1e-6 ? [(x / flat) * Math.cos(lifted), Math.sin(lifted), (z / flat) * Math.cos(lifted)] : [0, 1, 0];
+    const [r, g, b] = sunTransmittance(this.settings, [0, radius, 0], direction);
+    return [r * visible, g * visible, b * visible];
+  }
+
+  /** body 照进大气散射的照度（乘了天空的亮度）：没有它、或者落到地平线以下很多时是 0，着色器就不算它。 */
+  #scattering(body: CelestialBody): number[] {
+    const lit = body.present && body.direction[1] > NO_SCATTERING_BELOW;
+    return body.illuminance.map((v) => (lit ? v * this.settings.skyIntensity : 0));
+  }
+
   #uniforms(): Float32Array {
     const s = this.settings;
-    const cosDisk = Math.cos(this.sunAngularRadius);
+    // 没有这个天体时角半径的余弦给 2：视线和它的夹角的余弦永远到不了，不画圆盘
+    const cosDisk = (body: CelestialBody) => (body.present ? Math.cos(body.angularRadius) : 2);
     return new Float32Array([
       ...s.rayleighScattering, s.planetRadius,
       s.mieScattering, s.mieScattering + s.mieAbsorption, s.miePhaseG, s.planetRadius + s.atmosphereHeight,
       ...s.ozoneAbsorption, s.atmosphereHeight,
       ...s.groundAlbedo, s.planetRadius + this.cameraHeight,
-      ...this.directionToSun, cosDisk,
-      ...this.sunIlluminance.map((v) => v * s.skyIntensity), 1e4,
+      ...this.sun.direction, cosDisk(this.sun),
+      ...this.#scattering(this.sun), 1e4,
+      ...this.moon.direction, cosDisk(this.moon),
+      ...this.#scattering(this.moon), 0,
+      ...this.#moonDisk, this.starsIntensity,
+      ...this.#celestial,
     ]);
   }
 
@@ -715,6 +934,24 @@ export class Atmosphere {
   }
 }
 
+/** 把这一帧的方向光记成天体：朝它的方向、大气层顶的照度、角半径。没有这盏光时照度是 0，方向留着上一帧的。 */
+function place(body: CelestialBody, light: DirectionalLight | undefined): void {
+  body.present = light !== undefined;
+  if (!light) {
+    body.illuminance.fill(0);
+    return;
+  }
+  const length = Math.hypot(light.direction.x, light.direction.y, light.direction.z) || 1;
+  body.direction.splice(0, 3, -light.direction.x / length, -light.direction.y / length, -light.direction.z / length);
+  body.illuminance.splice(0, 3, light.color.r, light.color.g, light.color.b);
+  body.angularRadius = Math.max((light.angle / 2) * (Math.PI / 180), 1e-4);
+}
+
+function smoothstep(low: number, high: number, value: number): number {
+  const t = Math.min(Math.max((value - low) / (high - low), 0), 1);
+  return t * t * (3 - 2 * t);
+}
+
 type ComputeName = 'transmittance' | 'multiScattering' | 'skyView' | 'skyCube' | 'sh' | 'aerial';
 
 /** 大气的 GPU 资源：查找表、计算管线、画天空的管线。 */
@@ -730,6 +967,8 @@ export class AtmosphereGpu {
   readonly skyLayout: GPUBindGroupLayout;
   readonly viewLayout: GPUBindGroupLayout;
   readonly skyBindGroup: GPUBindGroup;
+  /** 查天空视图表用：u 是方位角，首尾相接。 */
+  readonly #skySampler: GPUSampler;
   readonly #device: GPUDevice;
   readonly #resources: GpuResources;
   readonly #pipelines: Record<ComputeName, GPUComputePipeline>;
@@ -744,6 +983,7 @@ export class AtmosphereGpu {
     this.#device = device;
     this.#resources = resources;
     const storage = GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING;
+    this.#skySampler = device.createSampler({ label: 'Atmosphere sky view', magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'clamp-to-edge' });
     this.uniforms = device.createBuffer({ label: 'Atmosphere', size: ATMOSPHERE_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.transmittance = device.createTexture({ label: 'Atmosphere transmittance', size: [256, 64], format: FORMAT, usage: storage });
     this.multiScattering = device.createTexture({ label: 'Atmosphere multiple scattering', size: [32, 32], format: FORMAT, usage: storage });
@@ -780,6 +1020,7 @@ export class AtmosphereGpu {
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
     this.viewLayout = device.createBindGroupLayout({ label: 'Atmosphere view', entries: [{ binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform', hasDynamicOffset: true } }] });
@@ -790,6 +1031,7 @@ export class AtmosphereGpu {
         { binding: 1, resource: this.skyView.createView() },
         { binding: 2, resource: this.transmittance.createView() },
         { binding: 3, resource: resources.linearClamp },
+        { binding: 4, resource: this.#skySampler },
       ],
     });
   }
@@ -823,14 +1065,13 @@ export class AtmosphereGpu {
 
   /** 环境光：天空立方体（每级 mip），球谐，镜面预滤波。天空视图表要先算好。 */
   recordLighting(encoder: GPUCommandEncoder, sky: DynamicSky): void {
-    const linear = this.#resources.linearClamp;
     for (let level = 0; level < this.skyCube.mipLevelCount; level++) {
       const size = Math.max(1, SKY_CUBE_SIZE >> level);
       this.#dispatch(encoder, 'skyCube', [
         { binding: 0, resource: { buffer: this.uniforms } },
         { binding: 1, resource: this.skyCube.createView({ dimension: '2d-array', baseMipLevel: level, mipLevelCount: 1 }) },
         { binding: 2, resource: this.skyView.createView() },
-        { binding: 3, resource: linear },
+        { binding: 3, resource: this.#skySampler },
       ], [Math.ceil(size / 8), Math.ceil(size / 8), 6]);
     }
     this.#dispatch(encoder, 'sh', [

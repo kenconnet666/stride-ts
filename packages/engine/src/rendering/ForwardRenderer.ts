@@ -19,7 +19,7 @@ import { Matrix } from '../mathematics/Matrix';
 import { Color4 } from '../mathematics/vectors';
 import { cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
-import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, SURFACE_FORMATS, type DirectionalShadowSettings, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { MAX_DIRECTIONAL_LIGHTS, MAX_LOCAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, SURFACE_FORMATS, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { GpuProfiler } from '../graphics/GpuProfiler';
 import { GraphTexturePool } from './graph/GraphTexturePool';
 import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphStats } from './graph/RenderGraph';
@@ -196,14 +196,15 @@ export class ForwardRenderer {
   // 光源：前 MAX_DIRECTIONAL_LIGHTS 个方向光、第一个天空盒光，加上所有环境光
   #lightFound = false;
   #skyboxLight: SkyboxLight | undefined;
-  readonly #shadowSettings: DirectionalShadowSettings = {
+  /** 每盏方向光一份阴影设置（收集时填，要投阴影的那盏的 shadow 指着它）。 */
+  readonly #shadowSettings: DirectionalShadowSettings[] = Array.from({ length: MAX_DIRECTIONAL_LIGHTS }, () => ({
     size: 'medium', filter: 'none', cascadeCount: 4, depthBias: 0, normalOffsetScale: 0, stabilization: 'projectionSnapping',
     pssmFactor: 0.5, depthRange: 'automatic', minDistance: 0, maxDistance: 50, blendCascades: true, lightAngle: 0.53,
-  };
+  }));
   readonly #lightColor = new Color4();
   readonly #collectLights = system('ForwardRenderer.lights', {
     with: { light: Light, transform: Transform },
-    update: ({ light, transform, count }) => {
+    update: ({ light, transform, entities, count }) => {
       const lighting = this.renderSystem.lighting;
       if (count > 0) this.#lightFound = true;
       for (let i = 0; i < count; i++) {
@@ -227,9 +228,11 @@ export class ForwardRenderer {
           const w = transform.slot[i]! * 16;
           directional.direction.set(-transform.world[w + 8]!, -transform.world[w + 9]!, -transform.world[w + 10]!);
           directional.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
-          if (this.drawShadows && this.quality.shadows && light.shadow[i] && lighting.shadowLight < 0) {
-            lighting.shadowLight = lighting.directionalCount;
-            const s = this.#shadowSettings;
+          directional.entity = entities[i]!;
+          directional.angle = light.shadowLightAngle[i]!;
+          directional.shadow = undefined;
+          if (this.drawShadows && this.quality.shadows && light.shadow[i]) {
+            const s = this.#shadowSettings[lighting.directionalCount]!;
             // 大小、滤波、级联数不超过画质档位给的
             s.size = limitShadowSize(light.shadowSize[i]!, this.quality);
             s.filter = limitShadowFilter(light.shadowFilter[i]!, this.quality);
@@ -243,7 +246,7 @@ export class ForwardRenderer {
             s.maxDistance = light.shadowMaxDistance[i]!;
             s.blendCascades = light.shadowBlendCascades[i] !== 0;
             s.lightAngle = light.shadowLightAngle[i]!;
-            lighting.directionalShadow = s;
+            directional.shadow = s;
           }
           lighting.directionalCount++;
         }
@@ -608,15 +611,37 @@ export class ForwardRenderer {
     lighting.skybox = undefined;
     this.#lightFound = false;
     context.game.entities.run(this.#collectLights, context.time);
-    // 物理天空：太阳的颜色按大气的透射率变，天空盒光换成大气的
-    if (this.#lightFound) this.renderSystem.atmosphere.apply(context, lighting, this.#mainView.eye, lighting.shadowLight >= 0 ? this.#shadowSettings.lightAngle : 0.53);
-    if (this.#lightFound) return;
-    defaultLighting.directionals.forEach((light, i) => {
-      lighting.directionals[i]!.direction.copy(light.direction);
-      lighting.directionals[i]!.color.copy(light.color);
-    });
-    lighting.directionalCount = defaultLighting.directionalCount;
-    lighting.ambient.copy(defaultLighting.ambient);
+    if (!this.#lightFound) {
+      defaultLighting.directionals.forEach((light, i) => {
+        const directional = lighting.directionals[i]!;
+        directional.direction.copy(light.direction);
+        directional.color.copy(light.color);
+        directional.entity = light.entity;
+        directional.shadow = undefined;
+      });
+      lighting.directionalCount = defaultLighting.directionalCount;
+      lighting.ambient.copy(defaultLighting.ambient);
+      return;
+    }
+    // 物理天空：太阳、月亮的颜色按大气的透射率变（落到地平线以下是黑的），天空盒光换成大气的
+    this.renderSystem.atmosphere.apply(context, lighting, this.#mainView.eye);
+    this.#dropBlackDirectionals(lighting);
+    // 投阴影的是第一盏要投的：太阳落山以后它是黑的、被丢掉了，轮到月亮
+    lighting.shadowLight = lighting.directionals.findIndex((light, i) => i < lighting.directionalCount && light.shadow !== undefined);
+    lighting.directionalShadow = lighting.directionals[lighting.shadowLight]?.shadow;
+  }
+
+  /** 黑的方向光（强度 0，或者物理天空里落到地平线以下的）挪到后面、不算数：不占着色器里的循环，也不占投阴影的名额。顺序不变。 */
+  #dropBlackDirectionals(lighting: Lighting): void {
+    const lights = lighting.directionals;
+    let kept = 0;
+    for (let i = 0; i < lighting.directionalCount; i++) {
+      const light = lights[i]!;
+      if (light.color.r <= 0 && light.color.g <= 0 && light.color.b <= 0) continue;
+      lights[i] = lights[kept]!;
+      lights[kept++] = light;
+    }
+    lighting.directionalCount = kept;
   }
 
   /** 上一帧的渲染图：跑了哪些通道、裁掉哪些、临时贴图声明了几张、实际占了几张（调试的 perf 命令和统计量读）。 */

@@ -5,6 +5,7 @@
  * 剔除也由特性自己做（Cull，在 stride-native 里），还没有排列组合（效果系统等内容管线）。
  */
 import type { SceneEntityFile } from '../content/format';
+import type { EntityId } from '../data/prop';
 import type { Game } from '../games/Game';
 import type { GameTime } from '../games/GameTime';
 import type { GraphicsDevice } from '../graphics/GraphicsDevice';
@@ -334,6 +335,12 @@ export interface DirectionalLight {
   readonly direction: Vector3;
   /** 线性空间的颜色乘强度。 */
   readonly color: Color4;
+  /** 带着这盏光的实体（默认光照的是 -1）；物理天空按它认太阳和月亮。 */
+  entity: EntityId;
+  /** 光源的角直径（度；Light.shadowLightAngle）：物理天空画圆盘的大小。 */
+  angle: number;
+  /** 要投阴影时是它的阴影设置（Light.shadow 开着、画质档位允许）。只有一盏真的投：前面第一盏要投的。 */
+  shadow: DirectionalShadowSettings | undefined;
 }
 
 /**
@@ -376,8 +383,8 @@ export function createLocalLight(): LocalLight {
 }
 
 export interface Lighting {
-  /** 预先分配了 MAX_DIRECTIONAL_LIGHTS 个，前 directionalCount 个有效。 */
-  readonly directionals: readonly DirectionalLight[];
+  /** 预先分配了 MAX_DIRECTIONAL_LIGHTS 个，前 directionalCount 个有效（颜色是黑的不算，排在后面）。 */
+  readonly directionals: DirectionalLight[];
   directionalCount: number;
   /** 投阴影的方向光在 directionals 里的下标；没有时是 -1。 */
   shadowLight: number;
@@ -423,7 +430,7 @@ export class RenderSystem {
   };
   /** 场景里没有 Light 组件时用的光照（直射光的漫反射要除以 π，所以强度 3 大约是满亮度）。 */
   readonly defaultLighting: Lighting = {
-    directionals: [{ direction: new Vector3(-0.4, -1, -0.6), color: new Color4(3, 3, 3, 1) }],
+    directionals: [directionalLight(new Vector3(-0.4, -1, -0.6), new Color4(3, 3, 3, 1))],
     directionalCount: 1,
     shadowLight: -1,
     directionalShadow: undefined,
@@ -511,5 +518,9 @@ export class RenderSystem {
 }
 
 function directionalLights(): DirectionalLight[] {
-  return Array.from({ length: MAX_DIRECTIONAL_LIGHTS }, () => ({ direction: new Vector3(), color: new Color4() }));
+  return Array.from({ length: MAX_DIRECTIONAL_LIGHTS }, () => directionalLight(new Vector3(), new Color4()));
+}
+
+function directionalLight(direction: Vector3, color: Color4): DirectionalLight {
+  return { direction, color, entity: -1 as EntityId, angle: 0.53, shadow: undefined };
 }

@@ -7,6 +7,7 @@
  */
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
 import { Light, Model, ReflectionProbe, SkyAtmosphere } from '../rendering/components';
+import { DayNightCycle, lightRotationTowards } from '../rendering/DayNightCycle';
 import { Material } from '../rendering/Material';
 import { Transform } from '../engine/transform';
 import type { EntityId } from '../data/prop';
@@ -117,25 +118,63 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const entities = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(ReflectionProbe));
     return { enabled: probes.enabled, inUse: probes.count, probes: entities.map(describe) };
   });
-  debug.command('sky', 'Physical sky (SkyAtmosphere). args: on (true/false) adds or removes an atmosphere entity, elevation and azimuth (degrees) turn the sun (the shadow-casting directional light, else the first one), intensity scales the sky, aerial scales the distances of aerial perspective (0 turns it off). Returns the sun direction and its color at the camera.', (args) => {
-    const atmospheres = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(SkyAtmosphere));
+  debug.command('sky', 'Physical sky (SkyAtmosphere). args: on (true/false) adds or removes an atmosphere entity; elevation and azimuth (degrees) turn the sun (SkyAtmosphere.sun, else the shadow-casting directional light, else the first one); intensity scales the sky; aerial scales the distances of aerial perspective (0 turns it off); stars sets the brightness of the stars; moon (true/false) adds or removes a moon light. Day-night cycle (adds a DayNightCycle next to the atmosphere): time (hours), dayLength (game seconds per day, 0 stops), day (of the year), latitude, north (degrees), moonPhase (0 new, 0.5 full). Returns the sun and the moon as the atmosphere sees them.', (args) => {
+    const all = () => game.entities.ids().map((id) => game.entities.entity(id));
+    const atmospheres = all().filter((entity) => entity.get(SkyAtmosphere));
     if (args['on'] === true && atmospheres.length === 0) atmospheres.push(game.entities.create({ name: 'Sky atmosphere', components: [Transform, SkyAtmosphere] }));
     if (args['on'] === false) for (const entity of atmospheres.splice(0)) entity.destroy();
-    if (typeof args['intensity'] === 'number') for (const entity of atmospheres) entity.require(SkyAtmosphere).skyIntensity = args['intensity'];
-    if (typeof args['aerial'] === 'number') for (const entity of atmospheres) entity.require(SkyAtmosphere).aerialPerspectiveScale = args['aerial'];
-    if (typeof args['elevation'] === 'number' || typeof args['azimuth'] === 'number') {
-      const lights = game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.get(Light)?.type === 'directional');
-      const sun = lights.find((entity) => entity.get(Light)?.shadow) ?? lights[0];
+    const entity = atmospheres[0];
+    const sky = entity?.require(SkyAtmosphere);
+    const number = (key: string) => (typeof args[key] === 'number' ? (args[key] as number) : undefined);
+    if (sky) {
+      sky.skyIntensity = number('intensity') ?? sky.skyIntensity;
+      sky.aerialPerspectiveScale = number('aerial') ?? sky.aerialPerspectiveScale;
+      sky.starsIntensity = number('stars') ?? sky.starsIntensity;
+    }
+    const directionals = () => all().filter((light) => light.get(Light)?.type === 'directional');
+    const findSun = () => (sky && sky.sun >= 0 && game.entities.isAlive(sky.sun) ? game.entities.entity(sky.sun) : directionals().find((light) => light.id !== sky?.moon && light.get(Light)?.shadow) ?? directionals().find((light) => light.id !== sky?.moon));
+    if (sky && args['moon'] === true && !(sky.moon >= 0 && game.entities.isAlive(sky.moon))) {
+      // 月光：偏蓝，强度是太阳的几十分之一（真实的是四十万分之一，那样没有自动曝光就是全黑）
+      const moon = game.entities.create({ name: 'Moon', components: [Transform, Light.with({ type: 'directional', color: [0.6, 0.7, 1, 1], intensity: 0.15, shadow: true, shadowLightAngle: 0.52 })] });
+      moon.require(Transform).rotation = lightRotationTowards([-0.5, 0.6, -0.62]);
+      sky.moon = moon.id;
+    }
+    if (sky && args['moon'] === false && sky.moon >= 0) {
+      if (game.entities.isAlive(sky.moon)) game.entities.entity(sky.moon).destroy();
+      sky.moon = -1 as typeof sky.moon;
+    }
+    if (number('elevation') !== undefined || number('azimuth') !== undefined) {
+      const sun = findSun();
       if (!sun) throw new Error('sky: the scene has no directional light to turn');
-      // 光照向本地 -Z：先绕 X 转 -高度角（朝下），再绕 Y 转方位角；朝太阳的方向是 (cos 高 · sin 方, sin 高, cos 高 · cos 方)
-      const elevation = ((typeof args['elevation'] === 'number' ? args['elevation'] : 45) * Math.PI) / 180;
-      const azimuth = ((typeof args['azimuth'] === 'number' ? args['azimuth'] : 0) * Math.PI) / 180;
-      const sy = Math.sin(azimuth / 2), cy = Math.cos(azimuth / 2), sx = Math.sin(-elevation / 2), cx = Math.cos(-elevation / 2);
-      sun.require(Transform).rotation = { x: cy * sx, y: sy * cx, z: -sy * sx, w: cy * cx };
+      const elevation = ((number('elevation') ?? 45) * Math.PI) / 180, azimuth = ((number('azimuth') ?? 0) * Math.PI) / 180;
+      sun.require(Transform).rotation = lightRotationTowards([Math.cos(elevation) * Math.sin(azimuth), Math.sin(elevation), Math.cos(elevation) * Math.cos(azimuth)]);
+    }
+    const cycleArgs = { time: 'timeOfDay', dayLength: 'dayLength', day: 'dayOfYear', latitude: 'latitude', north: 'north', moonPhase: 'moonPhase' } as const;
+    if (entity && sky && Object.keys(cycleArgs).some((key) => number(key) !== undefined)) {
+      // 日夜循环转的是 SkyAtmosphere.sun 指的实体：没设时把现在当太阳的那盏光记上
+      if (!(sky.sun >= 0 && game.entities.isAlive(sky.sun))) {
+        const sun = findSun();
+        if (!sun) throw new Error('sky: the scene has no directional light for the day-night cycle to turn');
+        sky.sun = sun.id;
+      }
+      if (!entity.get(DayNightCycle)) entity.add(DayNightCycle);
+      const cycle = entity.require(DayNightCycle);
+      for (const [key, field] of Object.entries(cycleArgs) as [keyof typeof cycleArgs, (typeof cycleArgs)[keyof typeof cycleArgs]][]) cycle[field] = number(key) ?? cycle[field];
     }
     const { atmosphere, lighting } = game.renderSystem;
-    const sun = lighting.directionals[Math.max(lighting.shadowLight, 0)]!.color;
-    return { active: atmosphere.active, directionToSun: atmosphere.directionToSun, sunAtCamera: [sun.r, sun.g, sun.b] };
+    const cycle = entity?.get(DayNightCycle);
+    const lit = (id: number | undefined) => {
+      const light = lighting.directionals.slice(0, lighting.directionalCount).find((directional) => directional.entity === id);
+      return light ? [light.color.r, light.color.g, light.color.b] : [0, 0, 0];
+    };
+    return {
+      active: atmosphere.active,
+      sun: { direction: atmosphere.sun.direction, atCamera: lit(findSun()?.id) },
+      moon: atmosphere.moon.present ? { direction: atmosphere.moon.direction, phase: atmosphere.moonPhase, atCamera: lit(sky?.moon) } : null,
+      stars: atmosphere.starsIntensity,
+      shadowLight: lighting.shadowLight >= 0 ? game.entities.entity(lighting.directionals[lighting.shadowLight]!.entity).name : null,
+      ...(cycle ? { cycle: { timeOfDay: cycle.timeOfDay, dayLength: cycle.dayLength, dayOfYear: cycle.dayOfYear, latitude: cycle.latitude, north: cycle.north, moonPhase: cycle.moonPhase } } : {}),
+    };
   });
   debug.command('ssr','Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
     const ssr = game.graphicsCompositor.screenSpaceReflections;

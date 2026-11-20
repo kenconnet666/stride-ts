@@ -20,6 +20,7 @@ import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
 import { Background, Camera, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite } from '../rendering/components';
+import { DayNightCycle } from '../rendering/DayNightCycle';
 import type { Material } from '../rendering/Material';
 import type { Mesh } from '../rendering/Mesh';
 import type { Cubemap, Skybox } from '../rendering/Skybox';
@@ -348,11 +349,6 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
     },
     remove: drop(ReflectionProbe),
   },
-  skyAtmosphere: {
-    // 没写的字段用组件的默认值（地球）；三维的数组拷一份，组件不留场景文件的引用
-    add: (entity, sky) => entity.add(SkyAtmosphere.with(Object.fromEntries(Object.entries(sky).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value])))),
-    remove: drop(SkyAtmosphere),
-  },
   sprite: {
     add: (entity, sprite, { assets }) => {
       if ('sheet' in sprite) {
@@ -434,6 +430,16 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
     add: (entity, link, context) => entity.add(UIElementLink.with({ target: entityRef(link.target, context, 'UI element link target'), nodeName: link.nodeName })),
     remove: drop(UIElementLink),
   },
+  skyAtmosphere: {
+    // 没写的字段用组件的默认值（地球）；三维的数组拷一份，组件不留场景文件的引用
+    add: (entity, { sun, moon, ...sky }, context) => entity.add(SkyAtmosphere.with({
+      ...Object.fromEntries(Object.entries(sky).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value])),
+      sun: entityRef(sun ?? null, context, 'sun of the sky atmosphere'),
+      moon: entityRef(moon ?? null, context, 'moon of the sky atmosphere'),
+    })),
+    remove: drop(SkyAtmosphere),
+  },
+  dayNightCycle: { add: (entity, cycle) => entity.add(DayNightCycle.with({ ...cycle })), remove: drop(DayNightCycle) },
 };
 
 const COMPONENT_KEYS = Object.keys(BUILDERS) as ComponentKey[];

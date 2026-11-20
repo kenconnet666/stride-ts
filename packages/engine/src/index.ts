@@ -62,6 +62,7 @@ export {
   type ColliderShapeFile,
   type SceneBackground,
   type SceneReflectionProbe,
+  type SceneDayNightCycle,
   type SceneSkyAtmosphere,
   type SceneBody,
   type SceneCharacter,
@@ -175,7 +176,8 @@ export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings 
 export { RecastNavigationComponent, type NavigationState } from './navigation/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
 export { Background, Camera, Instance, Instancing, Light, Model, ModelPart, ReflectionProbe, Skinned, SkyAtmosphere, Sprite } from './rendering/components';
-export { Atmosphere, DynamicSky, EARTH_ATMOSPHERE, sunTransmittance, type AtmosphereSettings } from './rendering/Atmosphere';
+export { Atmosphere, DynamicSky, EARTH_ATMOSPHERE, sunTransmittance, type AtmosphereSettings, type CelestialBody } from './rendering/Atmosphere';
+export { celestialState, DayNightCycle, lightRotationTowards, type CelestialState } from './rendering/DayNightCycle';
 export { AtmosphereRenderFeature } from './rendering/AtmosphereRenderFeature';
 export { MAX_REFLECTION_PROBES, ReflectionProbes } from './rendering/ReflectionProbes';
 export { cameraProjectionMatrix, screenToWorldRaySegment, worldToScreen, type CameraProjection } from './rendering/cameraRays';

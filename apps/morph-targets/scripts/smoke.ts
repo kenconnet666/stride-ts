@@ -44,10 +44,8 @@ stride('eval', HELPERS);
 const names = stride('eval', `['Donut', 'Cube', 'Icosphere'].map((n) => morphs(n)?.morphTargetNames.join())`) as string[];
 check('三个模型带形变目标', names[0] === 'Bigger,Thicker,Wider,Flatter' && names[1] === 'Taller,Twisted,Tapered,Rounded' && names[2] === 'Squashed,Stretched,Bumpy,Pear', names);
 
-const weights = () => stride('eval', `['Donut', 'Cube', 'Icosphere'].map((n) => [...morphs(n).weights])`) as number[][];
-const first = weights();
-await sleep(600);
-const second = weights();
+// 按游戏时间等：CI 的软件 WebGPU 上一帧要几百毫秒，墙钟的 0.6 秒可能一帧都没走
+const [first, second] = stride('eval', `(async () => { const w = () => ['Donut', 'Cube', 'Icosphere'].map((n) => [...morphs(n).weights]); const first = w(); await seconds(0.6); return [first, w()]; })()`) as [number[][], number[][]];
 const moved = first.map((w, m) => w.some((value, i) => Math.abs(value - second[m]![i]!) > 1e-3));
 check('开始时三个剪辑都在播（权重在变）', moved.every(Boolean), { first, second });
 
@@ -86,11 +84,9 @@ const source = stride('eval', `(async () => {
 check('甜甜圈切到 FBX：模型换了，目标和剪辑的时间留着', source.meshes.includes('fbx') && source.names.split(',').sort().join() === 'Bigger,Flatter,Thicker,Wider' && Math.abs(source.after - source.before) < 1e-3, source);
 
 const page = () => stride('eval', `byName('MorphTargetsController').get(strideEngine.UIComponent).enabled`) as boolean;
-stride('key', 'F1');
-await sleep(200);
+stride('eval', `tap('F1').then(() => 1)`);
 const hidden = !page();
-stride('key', 'F1');
-await sleep(200);
+stride('eval', `tap('F1').then(() => 1)`);
 check('F1 隐藏、再按显示面板', hidden && page(), { hidden });
 
 finish();

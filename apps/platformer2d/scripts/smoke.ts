@@ -22,15 +22,11 @@ const COINS = `const g = strideGame; const coins = g.entities.ids().map((i) => g
   [coins.length, coins.filter((e) => e.require(strideEngine.Sprite).enabled).length, coins.map((e) => e.require(strideEngine.Sprite).frame).join()]`;
 type Player = [number, number, number, number, boolean];
 
-const idleFrames = new Set<number>();
-for (let i = 0; i < 6; i++) {
-  idleFrames.add((stride('eval', PLAYER) as Player)[3]);
-  await sleep(220);
-}
+// 等待都按游戏时间和状态（tools/smoke.ts 的 seconds、until、holdFor）：CI 的软件 WebGPU 上一帧要几百毫秒
+const idleFrames = new Set<number>(stride('eval', `(async () => { const seen = []; for (let i = 0; i < 6; i++) { seen.push(player2d()[3]); await seconds(0.22); } return seen; })()`) as number[]);
 check('待机时在 0-3 帧之间换', idleFrames.size > 1 && [...idleFrames].every((f) => f >= 0 && f < 4), [...idleFrames]);
-const coinFrames = (stride('eval', COINS) as [number, number, string])[2];
-await sleep(150);
-check('金币在转（帧在换）', (stride('eval', COINS) as [number, number, string])[2] !== coinFrames, coinFrames);
+const coinFrames = stride('eval', `(async () => { const frames = () => (0, eval)(${JSON.stringify(COINS)})[2]; const before = frames(); await seconds(0.15); return [before, frames()]; })()`) as [string, string];
+check('金币在转（帧在换）', coinFrames[1] !== coinFrames[0], coinFrames);
 
 // 点选精灵（编号缓冲）：角色所在的像素点到角色，它正上方的天空什么都点不到
 const picked = stride('eval', `(async () => {
@@ -45,21 +41,25 @@ check('点选：精灵点得到，空处点不到', picked[0] === 'Player' && pi
 
 // 先在出生的地方跳（头顶是空的）：跑完再跳时停在哪里随帧率变，可能停在平台下面，头一碰就落下来（regress 里帧率高时就这样）
 const start = stride('eval', PLAYER) as Player;
-// 起跳后轮询：刚打开的浏览器帧率不稳，固定等一段真实时间时角色可能才刚离地
-stride('key', 'W');
-let jumping = stride('eval', PLAYER) as Player;
-for (let i = 0; i < 15 && !(jumping[1] > start[1] + 0.5); i++) {
-  await sleep(100);
-  jumping = stride('eval', PLAYER) as Player;
-}
+// 起跳后等它离地半米（最多 1.5 秒游戏时间），再等落地站稳
+const jumping = stride('eval', `tap('KeyW').then(() => until(() => player2d()[1] > ${start[1] + 0.5}, 1.5)).then(player2d)`) as Player;
 check('W 起跳，放跳的帧', !jumping[4] && jumping[1] > start[1] + 0.5 && jumping[3] >= 21, jumping);
-await sleep(1200);
+stride('eval', `until(() => player2d()[4], 3).then(() => seconds(0.3)).then(() => 1)`);
 
 // 按多久都在页面里按游戏时间算（holdFor）：CLI 的每条命令是一个新进程，单核慢的机器上松开会晚到将近一秒，多跑出去一大截
 const running = stride('eval', `holdFor('KeyD', 0.8, player2d)`) as Player;
 check('按住 D 往右跑，放跑步的帧', running[0] > start[0] + 2 && running[3] >= 4 && running[3] < 20 && Math.abs(running[2]) < 1e-3, { start, running });
 
-const turned = stride('eval', `(async () => { const before = player2d(); await holdFor('KeyA', 0.4); return [before, player2d()]; })()`) as [Player, Player];
+// 按住 A 直到往左走了（最多 2 秒游戏时间）：刚才往右跑的速度要先减下来，慢的机器上 0.4 秒只有两三帧
+const turned = stride('eval', `(async () => {
+  const before = player2d();
+  window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyA' }));
+  await until(() => player2d()[0] < before[0] - 0.05, 2);
+  const after = player2d();
+  window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyA' }));
+  await frames(2);
+  return [before, after];
+})()`) as [Player, Player];
 check('A 转身往左：绕 Y 转 180°', Math.abs(Math.abs(turned[1][2]) - 1) < 1e-3 && turned[1][0] < turned[0][0], turned);
 
 // 右下角 (13, -6.5) 的金币：往右走过去
@@ -70,7 +70,7 @@ check('碰到金币：精灵马上隐藏', collected[0] === coins && collected[1
 const sounds = stride('eval', `const type = strideGame.registry.scriptsNamed('CollectCoin')[0];
   [...strideGame.rootScene.entities.values()].map((e) => e.get(type)?.sfxInstance?.playState).filter(Boolean)`) as string[];
 check('拿到的那个金币放了音效', sounds.length === 1 && (sounds[0] === 'playing' || sounds[0] === 'stopped'), sounds);
-await sleep(3300);
+stride('eval', `until(() => (0, eval)(${JSON.stringify(COINS)})[0] === ${coins - 1}, 5).then(() => 1)`);
 check('3 秒后金币实体移除', (stride('eval', COINS) as [number, number, string])[0] === coins - 1, stride('eval', COINS));
 
 finish();

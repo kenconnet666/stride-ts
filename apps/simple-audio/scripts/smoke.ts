@@ -62,8 +62,8 @@ check('真的有声音（主音量的输出不是静音）', loud > 0.001, loud)
 
 const clicked = stride('eval', 'uiClick(640, 360, () => ({ sounds: sounds(), waves: waves() }))') as { sounds: Sounds; waves: [number, number][] };
 check('点一下：音效在放，两个波形图回到中间、不透明', clicked.sounds.effect === 'playing' && clicked.waves.every(([, opacity]) => opacity > 0.5), clicked);
-await sleep(1500);
-const later = stride('eval', 'waves()') as [number, number][];
+// 波形图的动画按游戏时间走：CI 的软件 WebGPU 上一帧几百毫秒，按墙钟等动画走不完。声音按真实时间放，下面那段仍按墙钟等
+const later = stride('eval', `(async () => { const end = strideGame.updateTime.total + 1.5; while (strideGame.updateTime.total < end) await new Promise((r) => requestAnimationFrame(r)); return waves(); })()`) as [number, number][];
 check('之后波形图往两边移开、渐隐', later[0]![0] < clicked.waves[0]![0] && later[1]![0] > clicked.waves[1]![0] && later.every(([, opacity]) => opacity < 0.05), { clicked: clicked.waves, later });
 await sleep(1500);
 const done = stride('eval', 'sounds()') as Sounds;

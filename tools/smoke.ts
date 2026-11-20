@@ -29,6 +29,8 @@ export interface Smoke {
  *   holdFor(code, s, sample?)        按住 s 秒游戏时间再松开，返回松开前一刻 sample() 的值。要"按多久"时用它，不用 CLI 的
  *                                    key --down/--up：每条 CLI 命令是一个新进程，单核慢的机器上一条要接近一秒，松开就晚到了
  *   frame()                          等一帧
+ *   until(fn, s)                     每帧看一次 fn()，真了就返回它的值；最多等 s 秒游戏时间，到了返回最后一次的值。"等到某个状态"都用它，
+ *                                    不按墙钟等（CI 的软件 WebGPU 上一帧几百毫秒），也不按帧数等（帧率随机器变）
  *   sceneChanged(from)               等根场景从 from 换掉、新场景画过一帧（换场景要加载、编管线，慢的机器上几秒到几十秒）；返回新场景的名字
  *   pointerAt(type, x, y, target?)   在画布的 (x, y)（CSS 像素）发一个合成的指针事件（连同对应的鼠标事件）；松开发给 window
  *   click(x, y, button = 0)          在画布的 (x, y)（CSS 像素）点一下鼠标（合成事件，锁不了指针）
@@ -53,6 +55,14 @@ export const PAGE_HELPERS = `(() => {
   globalThis.pointerAt = (type, x, y, target = canvas) => pointer(type, x, y, 0, target);
   globalThis.frames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
   globalThis.seconds = async (s) => { const end = G.updateTime.total + s; while (G.updateTime.total < end) await frame(); };
+  globalThis.until = async (fn, s) => {
+    // 墙钟的上限只是防止游戏停着时卡死（hub 的 eval 两分钟超时）
+    const end = G.updateTime.total + s, wall = performance.now() + 100000;
+    for (let value = fn(); ; value = fn()) {
+      if (value || G.updateTime.total >= end || performance.now() > wall) return value;
+      await frame();
+    }
+  };
   globalThis.sceneChanged = async (from) => {
     // 上限只是防止卡死（hub 的 eval 两分钟超时）；正常是换完就返回
     const end = performance.now() + 100000;

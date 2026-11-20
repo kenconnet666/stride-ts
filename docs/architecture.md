@@ -82,7 +82,8 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
 - **UI（2026-11-19，`ui/`，GameMenu 用到的）**：照 Stride 的 UI 系统，布局只做两维（见 decisions.md）。资源：.sduipage、.sduilib 导入成 `UIFile`（元素平铺成数组），`content.loadUIPage`、`loadUILibrary`；`UIComponent` 是引擎自带的脚本组件。元素树：`UIElement` 的 Measure、Arrange 照 Stride（附加属性做成元素上的属性），面板 Grid、UniformGrid、StackPanel、Canvas，控件 ContentDecorator、Button、ToggleButton、ImageElement、TextBlock（换行）、ScrollingText、ModalElement、ScrollViewer、Slider、Border、EditText（Stride 能写进页面的类型都有）；文字的描边在字形的着色器里按到轮廓的距离画；键盘事件发给有焦点的元素（`game.ui.focusedElement`）；影子 DOM（`game.ui.semantics`：全屏 UI 的文字和控件在页面上的透明节点，读屏、Tab 键、查找、复制用）。
 - **调试渲染（2026-11-20，`debug/DebugDraw.ts`）**：`game.debugDraw` 立即模式的线和线框形状，固定像素宽、解析抗锯齿，画在后处理之后；`simulation.showColliders` 把碰撞体画出来。`game.ui`（UISystem）每帧布局、在场景之后用 SpriteBatch 画 UI（九宫格、文字、剪裁矩形）：全屏的铺满画面，不是全屏的按 Size 和实体的世界矩阵放进 3D 场景（面向相机、固定大小，`ui/UIProjection.ts`），按主相机画、和场景的深度比较；实体可以跟着 UI 元素走（`UIElementLink`，走变换存储的链接，同 ModelNodeLink）；输入在脚本之前：按上一帧的样子把指针事件交给元素（路由事件，`ui/events.ts`、`ui/UIPicking.ts`），UI 占着的鼠标、键盘对脚本藏起来（`input/capture.ts`，Stride master 的 Input Capture）；EditText 的编辑交给隐藏的 DOM 输入框（`ui/TextInputBridge.ts`）。Slider（水平的）、Border 在 MorphTargets 时加上。还没有：除输入框以外的无障碍树、竖直的 Slider、ToggleButton 这些没用到的控件。
 - **统计量、预热、渲染图（2026-11-20，P4 的底座）**：`game.metrics` 和设备上的记账（显存 `graphicsDevice.memory`、管线 `graphicsDevice.pipelines`），每个样例的基线进回归；模型的管线在加载场景、预制体时后台编好（`MeshRenderFeature.warm`）；渲染图（`rendering/graph/`：通道声明读写、裁掉没用的、临时贴图轮着用）先接了后处理，主画面的各遍还是前向渲染器里直接写的。见 decisions.md 2026-11-20 的三条。
-- 接下来：Stride 的 WGSL 和效果系统（等着色器系统）、透明材质、点光源和聚光灯（及其阴影）、render bundle 缓存静态批次、非均匀缩放的法线（逆转置）。
+- **屏幕空间效果（2026-11-20，P4）**：都在深度预通道之后、或主画面画完以后，作为渲染图的全屏通道：GTAO（`AmbientOcclusion.ts`，半分辨率，只乘环境光）；屏幕空间反射（`ScreenSpaceReflections.ts`：不透明阶段另写法线、粗糙度、环境镜面反射的表面，Hi-Z 分层步进、GGX 随机方向、空间复用加时间累积，合成时换掉环境镜面反射）；接触阴影（`ContactShadows.ts`，投阴影的方向光，全分辨率）；运动模糊（`MotionBlur.ts`，McGuire 2012 的重建滤波）。开不开照合成器的设置（Stride 有的）或默认关（Stride 没有的），画质档位给上限（`Quality.ts`）。后处理、GTAO、背景的管线在加载场景时预热（空录一帧，从渲染图里列出要的管线）。
+- 接下来见 roadmap.md 末尾的"进度"（P4 的画面功能：SSGI、次表面散射、阴影、大气……）。
 
 C# 移植版踩过的 WebGPU 坑，全部适用，见 [lessons.md](lessons.md)：`writeBuffer` 的生效时机、pass 内的状态去重、scissor 一直有效、调试组会切断 pass、没写的颜色目标要设 writeMask 0。
 
@@ -854,6 +855,8 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - 保存资源时重新生成 `src/assets.gen.ts`（见"组件 API"里的"资源的强类型"；现在句柄只带种类）。
   - 开发服务器本身是 Vite，负责脚本热重载。
   - 还没做：运行资源管线（导入 glTF、PNG 这些源文件）、源文件的导入设置。资源的移动、改名、删除做了（按路径引用，改写引用它的文件，见 decisions.md 2026-11-20）。
+- **界面**（2026-11-20，用户定了 Vue 加 vue-tsx-pro，`packages/editor/src/ui`）：场景树、属性面板（照字段描述画）、视口、资源浏览器、工具条（保存、撤销重做、试玩）。
+- **预制体**（2026-11-20，见 [prefabs.md](prefabs.md)）：场景文件里的实例只存引用和差异（`prefab: { path, root?, set?, removed? }`），加载时展开（`content/prefabInstances.ts`）；导入器把 Stride 的实例转成引用；编辑器显示展开的场景，改、删成员落成实例的覆盖（`editor/prefabEdits.ts`），也能单独打开预制体编辑。
 - **资源管线在 Node 端**，输入是通用格式，输出是运行时的二进制：
   - 模型：glTF（cgltf）和 FBX（ufbx）直接导入，不经过 Assimp 或 FBX2glTF。
   - 纹理：编码成 KTX2 加 Basis（Basis 的编码器）。

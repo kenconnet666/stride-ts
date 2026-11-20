@@ -6,11 +6,18 @@
 - 能用浏览器 API 的地方直接用。
 - 编辑器也是自己的：Node.js 后端加 Web 前端，视口用的就是游戏运行时的同一套渲染器（2026-11-17 用户决定，不依赖 Stride Game Studio）。Stride 的工程通过导入器迁移过来。
 
+## 现在做到哪了（2026-11-20）
+
+- **P1、P2 完成**：Stride 的 20 个样例（Third Person Platformer、AnimatedModel、PhysicsSample、BepuSample、Platformer2D、TopDownRPG、FirstPersonShooter、SpriteFonts、GameMenu、JumpyJet、SpaceEscape、粒子、UI、声音、材质着色器、形变目标、C# 教程……）都移植了，导入器从 Stride 工程直接导入；TPP 和桌面 Stride 4.4.2 逐像素比对过（平均每通道差 0.7/255）。
+- **P3 编辑器**：浏览器里的编辑器，视口就是运行着的游戏：场景树、属性面板、操纵器、资源浏览器（移动、改名、删除时改写引用）、撤销重做、试玩、预制体（场景里只存引用和差异，改实例的成员落成覆盖，单独打开预制体编辑）。
+- **P4 现代画面**：画质档位、管线预热、渲染图；TAA 和运动向量、GTAO、屏幕空间反射、接触阴影、运动模糊。
+- 进度和下一步见 [docs/roadmap.md](docs/roadmap.md) 末尾的"进度"；换机器、新环境上手见 [docs/handover.md](docs/handover.md)。
+
 来由：Stride 的 C# 网页移植（`C:\Users\Administrator\IdeaProjects\stride`，fork `kenconnet666/stride` 的 `web-experiment-base` 分支）能跑，但浏览器里的 .NET 没有 JIT，每次改动都要 AOT 编译，迭代慢，而且引擎和游戏被链接进同一个 wasm，没法分开缓存。2026-11-16 决定暂停那条线，转做这个。调研全文见 [docs/research.md](docs/research.md)，历史经验见 [docs/lessons.md](docs/lessons.md)。
 
 ## 开发
 
-需要 Node 22+ 和 pnpm 10；原生模块在 `jolt-native-fork` 里用 `StrideNative/Scripts/build-wasm.ps1` 编好（位置不同时设 `STRIDE_NATIVE_DIST`）。
+需要 Node 22+ 和 pnpm 10，浏览器要支持 WebGPU（Chrome）。原生模块（`@stride-ts/native`）由 `pnpm install` 从 Jolt fork 的 GitHub Release 装，不用自己编；只有改原生部分时才要在 `jolt-native-fork` 里用 `StrideNative/Scripts/build-wasm.ps1` 编（流程见下表的第一行）。
 
 ```bash
 pnpm install
@@ -19,6 +26,20 @@ pnpm test         # Vitest in Node
 pnpm typecheck
 pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox preview` serves it on 5181
 ```
+
+跑一个样例（以 Third Person Platformer 为例；内容从 Stride 仓库导入，不提交）：
+
+```bash
+pnpm --filter @stride-ts/platformer import:stride
+```
+
+```bash
+pnpm --filter @stride-ts/platformer dev
+```
+
+然后打开 `http://localhost:5184/?debug`（游戏，带 `?debug` 才连调试 CLI）或 `http://localhost:5184/__stride/editor/`（编辑器）。调试 CLI 在仓库根目录 `pnpm exec stride <命令>`（`status`、`shot`、`perf`、`metrics`……，见 [packages/cli/README.md](packages/cli/README.md)）。
+
+全部样例的冒烟回归在单独的 git 工作树里跑（主检出可以接着改）：`pwsh tools/verify.ps1`，见 [tools/README.md](tools/README.md)。各样例的端口见 [docs/handover.md](docs/handover.md)。
 
 | 目录 | 内容 |
 |---|---|
@@ -29,7 +50,7 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 | `apps/platformer` | Third Person Platformer 的移植。`pnpm --filter @stride-ts/platformer import:stride` 从 Stride 仓库（默认 `~/IdeaProjects/stride`，可用 `STRIDE_REPO` 改）导入场景到 `public/content`（不提交，`content-overrides/` 里是代替源图片的 SVG），`pnpm --filter @stride-ts/platformer dev` 在 5184 端口（开发时用调试版原生模块） |
 | `apps/<样例>` | 其余 Stride 样例的移植（animated-model、physics-sample、bepu-sample、game-menu、csharp-beginner 等），用法同 `apps/platformer`：`import:stride` 导入、`dev` 运行、`smoke` 冒烟。清单、端口和验收结果见 [docs/roadmap.md](docs/roadmap.md) 的"进度" |
 | `packages/cli` | 调试 CLI `stride`：查看和操作正在运行的游戏（状态、实体、输入、截图比较、性能），见 [packages/cli/README.md](packages/cli/README.md) |
-| `packages/editor` | `@stride-ts/editor`：编辑器。Node 后端（开发服务器上的 Vite 插件：工程、资源数据库、保存和移动资源、生成 `src/assets.gen.ts`）和界面（Vue 加 vue-tsx-pro，样例 `pnpm dev` 以后开 `/__stride/editor/`）；见 [packages/editor/README.md](packages/editor/README.md) |
+| `packages/editor` | `@stride-ts/editor`：编辑器。Node 后端（开发服务器上的 Vite 插件：工程、资源数据库、保存和移动资源、生成 `src/assets.gen.ts`）和界面（Vue 加 vue-tsx-pro：场景树、属性面板、视口、资源浏览器、预制体），样例 `pnpm dev` 以后开 `/__stride/editor/`；见 [packages/editor/README.md](packages/editor/README.md) |
 | `apps/sandbox` | 冒烟测试页：跨源隔离、原生模块的工作线程、WebGPU、帧循环、Jolt 步进 |
 | `apps/bench` | 数据布局和跨边界开销的基准（JS 对象、JS 堆的 TypedArray、wasm 共享内存、JS 到 wasm 的调用、上传 GPU、创建和每帧更新）。`pnpm --filter @stride-ts/bench dev` 在 5182 端口，`tools/bench.cjs` 在无头 Chrome 里跑并打印结果（`?only=render` 只跑渲染提交）；`gc.html` 是 GC 场景，用 `tools/gc-trace.cjs` 跑。结论见 [docs/architecture.md](docs/architecture.md) 的"实测"各节和"复杂场景的帧预算估算" |
 | `tools/` | 回归、验证、测量的脚本，桌面 Stride 的截图工程（`tools/stride-capture`），调试桥扩展，见 [tools/README.md](tools/README.md) |
@@ -56,7 +77,9 @@ pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox 
 | 线程 | **只用多线程版**（2026-11-17 用户决定，放弃单线程路线）：主线程驱动一帧，Jolt 的任务系统把物理步进分给 pthread 工作线程；Worker 另做无状态的重活（转码、解码、导航网格构建） | 物理查询保持同步，保留 Stride 的 API 形状；代价是部署必须带 COOP/COEP 响应头（跨源隔离） |
 | 自己写的原生代码 | 新代码用 Rust，复用旧代码用 C++ | 不用 C#：要带 .NET 运行时、必须 AOT，而且 .NET 11.0.0 的 Mono 还有个 SIMD bug |
 
-## 原型计划
+## 原型计划（2026-11-16 的计划，P1 已完成）
+
+> 下面是开工时的计划，留着做对照。结果：导入器、运行时、TPP 的游戏逻辑都做了，TPP 和桌面 Stride 逐像素比对过；体积和启动的实测见 [docs/architecture.md](docs/architecture.md) 的"体积"。
 
 用第三人称平台跳跃游戏（Third Person Platformer）做第一个对比。它在 Stride 仓库的 `samples/Templates/ThirdPersonPlatformer`，物理已经转换成 Bepu。
 
@@ -177,10 +200,12 @@ this.bullets.give(bullet);
 
 ## 需要用户决定的事
 
-- 游戏脚本是否只用 TypeScript。
-- C# 移植版是否和这里并行推进。
-- 预制体在场景文件里怎么表示、SVG 精灵和几何表示的格式：见 [docs/roadmap.md](docs/roadmap.md) 末尾的"等用户定的"。
-- ~~这个目录对应的 GitHub 仓库~~：2026-11-18 已建成公开仓库 [kenconnet666/stride-ts](https://github.com/kenconnet666/stride-ts)，MIT 许可证。
+现在没有（见 [docs/roadmap.md](docs/roadmap.md) 末尾的"等用户定的"）。原来列在这里的都定了：
+
+- 游戏脚本只用 TypeScript，C# 脚本由 agent 逐个翻译（路线图的 D5，2026-11-19）。
+- C# 网页移植版停止，只当参考实现（D6，2026-11-19）。
+- 预制体在场景文件里只存引用和差异（[docs/prefabs.md](docs/prefabs.md)）；SVG 编成彩色字形、材质用 MaterialX 的节点、几何按实验结论分（[docs/vector-assets.md](docs/vector-assets.md)），都是 2026-11-20 照推荐定的。
+- GitHub 仓库：2026-11-18 建成公开仓库 [kenconnet666/stride-ts](https://github.com/kenconnet666/stride-ts)，MIT 许可证。
 
 ## 许可证
 

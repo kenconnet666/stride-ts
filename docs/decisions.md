@@ -18,8 +18,9 @@ P4 的"天气系统"（`weather/Weather.ts`，`Weather` 组件，场景文件的
 
 查"天气下雪看不见"时卡在几处，顺手补了 CLI（`packages/cli`）：
 
-- `stride eval`：一个表达式就是结果，几条语句用 return；能直接 await；作用域里有 `game`、`engine`、`entity(名字或 id)`、`named(名字)`、`frames(n)`、`seconds(s)`（游戏时间）。`--file` 从文件读代码，PowerShell 里不用再把代码转成 JSON、处理引号。
+- `stride eval`：一个表达式能直接 await，作用域里有 `game`、`engine`、`entity(名字或 id)`、`named(名字)`、`frames(n)`、`seconds(s)`（游戏时间；页面有同名全局变量时用页面的）；几条语句照旧在全局作用域里间接 eval、结果是最后一个的值（冒烟脚本都这么写，第一版当函数体跑、没有 return 就是 undefined，回归挂了三个），有顶层 await 时才当异步函数体跑。`--file` 从文件读代码，PowerShell 里不用再把代码转成 JSON、处理引号。
 - `stride wait --game <秒>`：按游戏时间等（CI 的软件 WebGPU、后台标签上，墙钟的几秒可能只有几帧）。
+- `stride slow <毫秒>`：每帧在页面里多忙等这么久，本机复现 CI 的软件 WebGPU 上几百毫秒一帧的情况（冒烟脚本的时序问题原来只能推上去等 CI）。
 - `stride particles [--name]`：每个发射器在 CPU 还是 GPU 上、粒子池多大、活着几个、活着的粒子在世界里的范围（GPU 上的读回来数）。这次一看就知道雪活着、只是全在下风 30 米外。
 
 ## 2026-11-20 体积雾和体积光：跟着相机的体素表，主光带级联阴影，和上一帧混合

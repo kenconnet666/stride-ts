@@ -242,7 +242,29 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('debug-text', 'Lines the scripts printed with game.debugText in the last frame.', () => game.debugText.lines);
   debug.command('devtools', "Run a DevTools protocol command on this tab through the Stride Debug Bridge extension (tools/debug-bridge). args: method ('detach' ends debugging), params, waitFor (an event to wait for after the command; returns its params).", (args) =>
     sendDevtools(String(args['method']), (args['params'] ?? {}) as Readonly<Record<string, unknown>>, args['waitFor'] === undefined ? undefined : String(args['waitFor'])));
-  debug.command('eval', 'Evaluate JavaScript in the page: an expression, or statements that return the result; await works. In scope: game, engine, entity(name | id), named(name), frames(n), seconds(s) (game time). args: code.', (args) => evaluate(game, args));
+  debug.command('eval', 'Evaluate JavaScript in the page. An expression: its value; await works; in scope are game, engine, entity(name | id), named(name), frames(n), seconds(s) (game time). Statements: the value of the last one, in global scope; with a top-level await they run as an async function body (use return). args: code.', (args) => evaluate(game, args));
+  // 慢帧：每帧在 requestAnimationFrame 里忙等 ms 毫秒（和游戏的帧在同一轮，所以帧间隔加长这么多）。页面地址带
+  // ?stride-slow=<毫秒> 时一开始就慢（regress.ps1 -Slow；重载页面后还在）
+  let slowMs = 0, slowing = false;
+  const slow = (ms: number) => {
+    slowMs = Math.max(0, ms);
+    if (slowMs > 0 && !slowing) {
+      slowing = true;
+      const tick = () => {
+        if (slowMs <= 0) {
+          slowing = false;
+          return;
+        }
+        const end = performance.now() + slowMs;
+        while (performance.now() < end);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+    return { ms: slowMs };
+  };
+  if (typeof location !== 'undefined') slow(Number(new URLSearchParams(location.search).get('stride-slow') ?? 0));
+  debug.command('slow', "Make every frame take ms longer (busy wait on the main thread), to reproduce slow machines such as CI's software WebGPU (frames of a few hundred ms); the page url's ?stride-slow=<ms> does it from the start. args: ms (0 stops).", (args) => slow(Number(args['ms'] ?? 0)));
   debug.command('particles', 'Particle emitters: where they simulate, pool size, living particles and their world bounds (GPU ones are read back). args: name (part of the entity name).', (args) => particles(game, args));
 }
 
@@ -533,20 +555,29 @@ function vector(value: unknown, name: string): [number, number, number] {
 }
 
 /**
- * 页面里跑一段代码（`stride eval`）：一个表达式（结果就是它的值）或几条语句（用 return 给结果），都能直接 await。能用的
- * 名字：game、engine（样例的 main.ts 挂的 strideEngine，引擎的全部导出）、entity(名字或 id)、named(名字)、frames(n)、
- * seconds(s)（按游戏时间等），全局的照常能用。
+ * 页面里跑一段代码（`stride eval`），结果等到 Promise 落定：
+ * - 一个表达式：结果是它的值，能直接 await；能用 game、engine（样例的 main.ts 挂的 strideEngine，引擎的全部导出）、
+ *   entity(名字或 id)、named(名字)、frames(n)、seconds(s)（按游戏时间等）。页面自己有同名全局变量的（冒烟的 PAGE_HELPERS）
+ *   用页面的。
+ * - 几条语句：照旧在全局作用域里间接 eval，结果是最后一个表达式的值（只有全局的 strideGame、strideEngine）；语句里有
+ *   顶层 await 时间接 eval 不支持，改成异步函数体跑，上面那些名字能用，结果要用 return 给。
  */
 async function evaluate(game: Game, { code }: Args): Promise<unknown> {
   if (typeof code !== 'string') throw new Error('code must be a string');
   const AsyncFunction = Object.getPrototypeOf(async () => undefined).constructor as new (...args: string[]) => (...values: unknown[]) => Promise<unknown>;
-  const names = ['game', 'engine', 'entity', 'named', 'frames', 'seconds'];
+  const scope = ['game', 'engine', 'entity', 'named', 'frames', 'seconds'];
+  const names = scope.filter((name) => !(name in globalThis));
   let run: (...values: unknown[]) => Promise<unknown>;
   try {
     run = new AsyncFunction(...names, `return (${code}\n);`);
   } catch {
-    // 不是一个表达式：当语句跑
-    run = new AsyncFunction(...names, code);
+    try {
+      return await (0, eval)(code);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      // 多半是顶层 await：当异步函数体跑
+      run = new AsyncFunction(...names, code);
+    }
   }
   const all = () => game.entities.ids().map((id) => game.entities.entity(id));
   const named = (name: string) => all().filter((entity) => entity.name === name);
@@ -566,7 +597,8 @@ async function evaluate(game: Game, { code }: Args): Promise<unknown> {
     const end = game.updateTime.total + s, wall = performance.now() + 100000;
     while (game.updateTime.total < end && performance.now() < wall && game.status === 'running') await frame();
   };
-  return await run(game, (globalThis as { strideEngine?: unknown }).strideEngine, entity, named, frames, seconds);
+  const values: Record<string, unknown> = { game, engine: (globalThis as { strideEngine?: unknown }).strideEngine, entity, named, frames, seconds };
+  return await run(...names.map((name) => values[name]));
 }
 
 /**

@@ -63,9 +63,11 @@ Game
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
   logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
   eval <code | -> | --file <script.js>
-                          run JavaScript in the page: an expression, or statements that return the result; await works.
-                          In scope: game, engine, entity(name | id), named(name), frames(n), seconds(s) (game time).
+                          run JavaScript in the page. An expression: its value, await works, and in scope are game, engine,
+                          entity(name | id), named(name), frames(n), seconds(s) (game time). Statements: the value of the
+                          last one (global scope); with a top-level await they run as an async function body (use return).
                           - reads stdin; --file reads a file (no shell quoting)
+  slow <ms>               make every frame that much longer (busy wait) to reproduce CI's software WebGPU; 0 stops
   particles [--name <text>]                         particle emitters: CPU or GPU, pool size, living particles and where they are
 
 Common options
@@ -298,6 +300,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   },
   wait: () => (options.game === undefined ? waitForGame(Number(options.timeout ?? 30)) : call('eval', { code: `(async () => { const start = game.updateTime.total; await seconds(${Number(options.game)}); return { waited: game.updateTime.total - start, total: game.updateTime.total }; })()` })),
   particles: () => call('particles', options.name ? { name: options.name } : {}),
+  slow: () => call('slow', { ms: Number(required(rest[0], 'ms')) }),
   status: () => call('status'),
   commands: () => call('commands'),
   call: () => call(required(rest[0], 'command'), rest[1] === undefined ? {} : (JSON.parse(rest[1]) as Record<string, unknown>)),

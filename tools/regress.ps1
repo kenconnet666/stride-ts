@@ -8,11 +8,13 @@
 # 用法：pwsh tools/regress.ps1 [-Apps physics-sample,topdown-rpg | -Changed [-Base HEAD~1]] [-Parallel 4]
 #   -Changed：只跑改动影响到的样例（和 -Base 比，默认 origin/main，见 tools/affected.ts），第 2 层测试；全量在 CI 里跑。
 #   提交后马上推送了的，用 -Base 指推送前的提交（例如 HEAD~1）
+#   -Slow 300：每帧多忙等 300 毫秒（页面地址的 stride-slow），本机复现 CI 的软件 WebGPU 上的慢帧（冒烟的时序问题）
 param(
     [string[]]$Apps,
     [switch]$Changed,
     [string]$Base = 'origin/main',
     [int]$Parallel = [Math]::Clamp([Math]::Floor([Environment]::ProcessorCount / 8), 1, 4),
+    [int]$Slow = 0,
     # 内部用：只跑这一个样例（并行时每个子进程跑一个）
     [string]$App
 )
@@ -53,7 +55,7 @@ if ($App) {
         # STRIDE_CHROME_ARGS（空格分开）：CI 里用软件 WebGPU。画面固定 1280x720：冒烟的点击坐标、按后备缓冲布局的 UI 都按这个大小写
         # 外面的 @() 不能少：只有一个元素时管道的结果是字符串，@chromeArgs 展开字符串什么也不传（本地不设 STRIDE_CHROME_ARGS 时自动播放的参数就丢了）
         $chromeArgs = @(@('--autoplay-policy=no-user-gesture-required') + @(($env:STRIDE_CHROME_ARGS ?? '') -split ' ' | Where-Object { $_ }) | ForEach-Object { "--chrome-arg=$_" })
-        pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads&stride-pointer-lock=virtual" --headless --size 1280x720 --dpr 1 @chromeArgs | Out-Null
+        pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads&stride-pointer-lock=virtual$($Slow -gt 0 ? "&stride-slow=$Slow" : "")" --headless --size 1280x720 --dpr 1 @chromeArgs | Out-Null
         pnpm --filter "@stride-ts/$App" smoke -- --hub $App 2>&1
         $code = $LASTEXITCODE
         # 失败时带上 Chrome 自己的日志里和 GPU 有关的行（GPU 进程崩溃、看门狗、共享内存不够这类事页面的控制台看不到）
@@ -83,7 +85,7 @@ if ($selected.Count -eq 0) {
 Write-Host "running $($selected.Count) smoke tests, $Parallel at a time"
 $results = $selected | ForEach-Object -ThrottleLimit $Parallel -Parallel {
     $started = Get-Date
-    $output = pwsh -NoProfile -File $using:PSCommandPath -App $_ 2>&1
+    $output = pwsh -NoProfile -File $using:PSCommandPath -App $_ -Slow $using:Slow 2>&1
     [pscustomobject]@{
         App = $_
         Passed = $LASTEXITCODE -eq 0

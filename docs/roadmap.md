@@ -411,14 +411,18 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 |---|---|---|
 | 统计量和预算 | `game.metrics`、`stride metrics`、`tools/budgets.json` | 实体数、绘制次数、显存、原生内存、当场建的管线数；每个样例的基线进回归 |
 | 管线的预热 | `MeshRenderFeature.warm`、`ContentManager.pipelineWarmer`、`PostProcessingEffects.warm`、`RenderGraph.warm` | 模型的管线在加载时后台编好；TPP 启动后的停顿 1.05 秒 → 0.38 秒；后处理的管线照场景的设置空录一帧、从渲染图里列出来一起预热，TPP 当场建的管线 22 → 5 条；GTAO、背景也预热；精灵、TAA 的还是当场建 |
-| 渲染图 | `rendering/graph/` | 前向渲染器的一帧（阴影、渲染目标贴图的相机、点选、主画面、后处理）都是图的通道；后处理的中间贴图 33.8 MB → 18 MB，截图逐像素不变；场景之后画的 UI、调试线不在图里（见 decisions.md） |
-| 阴影图集按用到的大小建 | `rendering/shadows/ShadowMapRenderer.ts` | 从 1024² 起、放不下才翻倍，一半大也放得下时缩小（和 Stride 不同：它固定 4096²，64 MB）；BepuSample 的贴图 119.8 → 55.9 MB |
-| TAA 加锐化、运动向量 | `rendering/TemporalAntialiasing.ts`、`stride taa`、`RenderStage.velocity` | 默认关（样例照内容用 FXAA）；网格有运动向量（世界矩阵、蒙皮、形变的上一帧，缓冲分两半轮着写），天空按深度重投影；TPP 上开 TAA 多 1 ms |
-| GTAO | `rendering/AmbientOcclusion.ts`、`stride ao` | 半分辨率，只乘环境光（和 Stride 不同：它乘整个画面）；照合成器开，BepuSample 开着；TPP 上 0.3 ms |
-| 运动模糊 | `rendering/MotionBlur.ts`、`stride blur` | McGuire 2012 的重建滤波（块里最长的运动、3x3 邻块、按深度分前景背景加权），快门半帧、最长 32 像素；不开 TAA 也画运动向量；Stride 没有，默认关，画质档位高、极高才允许 |
-| 接触阴影 | `rendering/ContactShadows.ts`、`stride contact` | 投阴影的方向光，全分辨率，沿深度缓冲朝光源走 16 步，只乘那盏光的直射项；起点沿重建的法线抬起、背光的面不算、挡住要靠前一点（掠射的面上不自遮挡）；Stride 没有，默认关（开了和桌面 Stride 的截图不再逐像素一致），画质档位高、极高才允许 |
-| 屏幕空间反射 | `rendering/ScreenSpaceReflections.ts`、`stride ssr` | Hi-Z 分层步进（照 FidelityFX SSSR）、GGX 随机方向、空间上复用邻居的光线、时间累积；不透明阶段另写表面，合成时用反射换掉环境镜面反射（和 Stride 不同：它直接加，天空盒的镜面算两遍）；照合成器的 LocalReflections 开，BepuSample 开着；TPP 上看过（地面映出墙和角色，没有噪声和块状瑕疵）。还没做：粗糙表面按锥角取颜色的 mip |
+| 渲染图 | `rendering/RenderGraph.ts` | 前向渲染器的一帧（阴影、渲染目标贴图的相机、点选、主画面、后处理）都是图的通道；后处理的中间贴图 33.8 MB → 18 MB，截图逐像素不变；场景之后画的 UI、调试线不在图里（见 decisions.md） |
+| 阴影图集按用到的大小建 | `rendering/lighting/ShadowMapRenderer.ts` | 从 1024² 起、放不下才翻倍，一半大也放得下时缩小（和 Stride 不同：它固定 4096²，64 MB）；BepuSample 的贴图 119.8 → 55.9 MB |
+| TAA 加锐化、运动向量 | `rendering/screenspace/TemporalAntialiasing.ts`、`stride taa`、`RenderStage.velocity` | 默认关（样例照内容用 FXAA）；网格有运动向量（世界矩阵、蒙皮、形变的上一帧，缓冲分两半轮着写），天空按深度重投影；TPP 上开 TAA 多 1 ms |
+| GTAO | `rendering/screenspace/AmbientOcclusion.ts`、`stride ao` | 半分辨率，只乘环境光（和 Stride 不同：它乘整个画面）；照合成器开，BepuSample 开着；TPP 上 0.3 ms |
+| 运动模糊 | `rendering/screenspace/MotionBlur.ts`、`stride blur` | McGuire 2012 的重建滤波（块里最长的运动、3x3 邻块、按深度分前景背景加权），快门半帧、最长 32 像素；不开 TAA 也画运动向量；Stride 没有，默认关，画质档位高、极高才允许 |
+| 接触阴影 | `rendering/screenspace/ContactShadows.ts`、`stride contact` | 投阴影的方向光，全分辨率，沿深度缓冲朝光源走 16 步，只乘那盏光的直射项；起点沿重建的法线抬起、背光的面不算、挡住要靠前一点（掠射的面上不自遮挡）；Stride 没有，默认关（开了和桌面 Stride 的截图不再逐像素一致），画质档位高、极高才允许 |
+| 屏幕空间反射 | `rendering/screenspace/ScreenSpaceReflections.ts`、`stride ssr` | Hi-Z 分层步进（照 FidelityFX SSSR）、GGX 随机方向、空间上复用邻居的光线、时间累积；不透明阶段另写表面，合成时用反射换掉环境镜面反射（和 Stride 不同：它直接加，天空盒的镜面算两遍）；照合成器的 LocalReflections 开，BepuSample 开着；TPP 上看过（地面映出墙和角色，没有噪声和块状瑕疵）。还没做：粗糙表面按锥角取颜色的 mip |
 | 画质档位 | `rendering/Quality.ts`、`stride quality` | 低、中、高、极高四档，是内容要的阴影和后处理的上限，默认极高（照内容画）；TPP 的 GPU 每帧 5.07 / 4.5 / 3.1 / 2.6 ms，贴图 108 / 58 / 36 / 34 MB |
+| GPU 粒子 | `particles/gpu/`，发射器的 `simulation`、`game.particles.simulation` | 做了：环形缓冲（不读回存活数）、按模块拼计算着色器（管线后台编）、bitonic 按深度排序、间接绘制（按活着的粒子数画，派发只跑可能活着的那段环）、点选；20 万粒子 CPU 8 fps → GPU 120 fps，容量 50 万、粒子少时计算通道 0.007 ms。没做：深度缓冲碰撞（雨点落地溅起要用）、力场、碰撞体碰撞、子粒子、飘带和拖尾、按生成顺序排序、PositionArc、游戏自己的模块（这些发射器留在 CPU 上）；GPU 上的预热（WarmupTime）；排序里 j 小的步放进工作组共享内存；`kernel.ts` 自己的 PCG 哈希换成 `rendering/wgsl.ts` 共用的；`particles/gpu/` 四个文件并回 `particles/` |
+| 风场 | `weather/WindField.ts`：`game.wind`、`WindZone` 组件、粒子的 `UpdaterWind` | 做了：全局方向风加球形的局部风区（空间哈希），阵风和湍流 CPU、WGSL 同一个公式；GPU 粒子最多 8 个局部风区；能写进场景文件、编辑器有字段。没做：风接植被、布料、云（体积云的风向现在是它自己的参数）、按高度变的风速剖面、风区的盒子形状 |
+| 雨雪 | `weather/Precipitation.ts`：`Precipitation` 组件 | 做了：跟着相机的 GPU 粒子（雨、雪两套预设，强度、半宽可调），受风吹，屋檐下不下；能写进场景文件。没做：落地溅起和水花（要深度缓冲碰撞）、地面变湿、积水积雪、雨雪由天气状态（云量、湿度）驱动、雨幕和远处的雾、声音 |
+| 天空遮挡 | `weather/SkyOcclusion.ts`：`renderSystem.skyOcclusion` | 做了：从上往下的深度图（64 m、512²、1 MB），只画阴影投射者，纹素吸附，离开 8 m 或每秒重画一次（TPP 0.009 ms），没人用不画，画质低档关。没做：会动的遮挡物按"我动了"的标记重画（现在按间隔）；只表示头顶最高的表面（悬空结构下面也算挡着）；湿润、积雪还没用它 |
 
 ### 正在做和下一步
 
@@ -426,7 +430,7 @@ P1 和 P2 内部不分先后，按"下一个游戏缺什么就做什么"推进�
 
 1. **P4 底座接着做**：
    1. 底座剩下的小项：~~后处理的管线一起预热~~（2026-11-20：TPP 当场建的管线 22 → 5 条）；~~绘制次数按通道数~~（2026-11-20：`stride draws`，`render.drawCalls` 算上所有通道）；~~GTAO、背景的管线也预热~~（2026-11-20：渲染特性的 `warmFiles`，按要加载的实体文件预热）；~~精灵、TAA 和运行中打开的效果~~（2026-11-20：精灵的混合方式从场景文件推得出来，按文件预热；TAA、接触阴影、运动模糊和运动向量的阶段按画质档位允许就预热。platformer2d 加载后、TPP 运行中打开这三个效果后都没有当场建的模型、精灵、后处理管线，只剩加载时用一次的 DFG LUT、天空盒预滤波、mipmap 生成）。
-   2. P4 的画面功能：画质档位、TAA 和运动向量、GTAO 做了，屏幕空间反射、接触阴影、运动模糊做了，屏幕空间全局光照做了（2026-11-20，位掩码，`stride ssgi`，默认关）；屏幕空间次表面散射和方向光的透射做了（2026-11-20，只糊漫反射光，`stride sss`，材质和合成器导入）；风场和雨雪的底座做了（2026-11-20，`weather/`：`game.wind`、`WindZone`、粒子的 `UpdaterWind`，`Precipitation` 跟着相机的 GPU 粒子，屋檐下不下的天空遮挡 `renderSystem.skyOcclusion`，能写进场景文件；见 decisions.md。GPU 粒子接下来做深度缓冲碰撞（雨点落地溅起）；天气状态驱动雨雪、云、雾是之后的事）；GPU 粒子做了第一步（2026-11-20，`particles/gpu/`：环形缓冲、按模块拼计算着色器、bitonic 按深度排序，20 万粒子 CPU 8 fps、GPU 120 fps；间接绘制和只派发可能活着的那段环，容量大、粒子少时不白跑；力场、碰撞、子粒子、飘带还在 CPU 上，见 decisions.md）；PCSS 做了（2026-11-20，方向光，`shadowFilter: 'pcss'`、`shadowLightAngle`）；反射探针做了（2026-11-20，盒子探针、视差校正、一帧拍一个面，`ReflectionProbe` 组件）；物理天空和空气透视做了（2026-11-20，Hillaire 2020，`SkyAtmosphere` 组件）；日夜循环和夜空做了（2026-11-20，`DayNightCycle` 组件按时刻、日期、纬度转太阳、月亮和星空；月亮是第二盏方向光，月相是算出来的；程序生成的星星和银河）；输出加了抖动（2026-11-20，色调映射里，`stride call dither`；暗的渐变不再有色带）；体积云做了第一步（2026-11-20，`VolumetricClouds` 组件，`stride call clouds`；只盖天空的像素，云在地面上的影子、云进环境光还没做）；接着照第三节的阶段表往下：云的影子和环境光、体积雾和体积光（平面反射要镜像相机、所有管线加剔除翻转的变体，用处窄，往后放）。
+   2. P4 的画面功能：画质档位、TAA 和运动向量、GTAO 做了，屏幕空间反射、接触阴影、运动模糊做了，屏幕空间全局光照做了（2026-11-20，位掩码，`stride ssgi`，默认关）；屏幕空间次表面散射和方向光的透射做了（2026-11-20，只糊漫反射光，`stride sss`，材质和合成器导入）；GPU 粒子、风场、雨雪、天空遮挡的底座做了（2026-11-20，上表各行写了做了什么、没做什么，取舍见 decisions.md；GPU 粒子接下来是深度缓冲碰撞，然后雨点落地溅起；天气状态驱动雨雪、云、雾是之后的事）；PCSS 做了（2026-11-20，方向光，`shadowFilter: 'pcss'`、`shadowLightAngle`）；反射探针做了（2026-11-20，盒子探针、视差校正、一帧拍一个面，`ReflectionProbe` 组件）；物理天空和空气透视做了（2026-11-20，Hillaire 2020，`SkyAtmosphere` 组件）；日夜循环和夜空做了（2026-11-20，`DayNightCycle` 组件按时刻、日期、纬度转太阳、月亮和星空；月亮是第二盏方向光，月相是算出来的；程序生成的星星和银河）；输出加了抖动（2026-11-20，色调映射里，`stride call dither`；暗的渐变不再有色带）；体积云做了第一步（2026-11-20，`VolumetricClouds` 组件，`stride call clouds`；只盖天空的像素，云在地面上的影子、云进环境光还没做）；接着照第三节的阶段表往下：云的影子和环境光、体积雾和体积光（平面反射要镜像相机、所有管线加剔除翻转的变体，用处窄，往后放）。
 2. **P3 的界面**（用户 2026-11-20 定了 Vue 加 vue-tsx-pro、资源按路径引用；骨架、场景树和资源浏览器的操作做了）：多选一起改、复制粘贴实体、加脚本组件，预制体的编辑（加载器、导入器的转换、改和删实例的成员、单独打开预制体编辑）都做了、往预制体成员下面加实体都做了；用编辑器把 P1、P2 的样例打开、改、保存、播放一遍的验收做了（2026-11-20，结果在 progress-log.md；sprite-fonts、custom-effect 的场景是代码建的，编辑器打不开）。
 3. **遗留的小项**（用到时做）：~~粒子、场景里的 UI 的点选~~（2026-11-20：点到粒子、放在 3D 里的 UI 画出来的地方返回它们的实体，全屏 UI 不参加，编辑器的选中框跟上，见 decisions.md 的"点选认粒子和放在 3D 里的 UI"）；富文本（用户定了：Markdown，编辑器里有对应的可视化编辑器）：~~运行时~~（2026-11-20：`RichTextBlock`，Markdown 子集加 Pandoc 的方括号属性，见 decisions.md 的"富文本的写法和排版"），剩编辑器里的所见即所得编辑；TouchInputs 样例（P3 之后）；P2 收尾时挪到 P4 的 MSAA、分簇、透明物体的阴影、画进渲染目标贴图的相机的阴影和后处理、没有样例触发的材质特性；csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，原因没查完（见 progress-log.md 的"P2 收尾的验收"）。
 

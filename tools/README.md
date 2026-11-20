@@ -18,7 +18,8 @@
 |---|---|
 | `vite-app.ts` | apps 共用的 Vite 配置（`strideApp(端口)`）：跨源隔离的响应头、不预打包原生模块、调试中枢（`strideDebug`）、构建后写 `.br`/`.gz` 预压缩文件 |
 | `measure.ps1` | 测每个样例的工程数字：导入时间、构建时间、页面下载量（原始和 brotli）、启动各阶段（`Game.startup`）、帧时间（preview 构建、无头 Chrome 不限帧率、`stride perf`）。桌面 Stride 的帧时间用各截图工程的 `--benchmark`（`stride-capture/Benchmark.cs`）。用法：`pwsh tools/measure.ps1 [-Apps a,b] [-SkipImport] [-Out measure.json]` |
-| `regress.ps1` | 回归：所有样例的冒烟脚本挨个跑一遍，每个样例单独起开发服务器（`--force`）、单独开无头 Chrome，最后打印结果表。用法：`pwsh tools/regress.ps1 [-Apps physics-sample,topdown-rpg]` |
+| `import-all.ps1` | 把所有样例（或 `-Apps` 给的）从 Stride 源码重新导入，几个并行（`-Parallel`，默认每 8 个逻辑核一路、最多 4 路），最后打印结果表。验证跑着的时候不要用（验证工作树联接着主检出的内容）。用法：`pwsh tools/import-all.ps1 [-Apps a,b] [-Parallel 4]` |
+| `regress.ps1` | 回归：所有样例的冒烟脚本跑一遍，每个样例单独起开发服务器（`--force`）、单独开无头 Chrome（CLI 状态目录按样例分开），几个样例并行（`-Parallel`，默认每 8 个逻辑核一路、最多 4 路；冒烟不看帧时间，并行不影响结果），最后打印结果表。页面带 `?stride-workers=4`：工作线程数固定，原生内存的预算和机器的核数无关。用法：`pwsh tools/regress.ps1 [-Apps physics-sample,topdown-rpg] [-Parallel 4]` |
 | `stop-dev.ps1` | 停掉留在后台的开发服务器（vite）和调试 CLI 开的无头 Chrome：做完一个样例的验证就跑一遍（`-Keep <样例>` 留下还在用的，`-List` 只看）。它们不用了也一直占着显卡，几个叠在一起帧时间和冒烟的时序都不可信 |
 | `verify.ps1` | 耗时的验证放进单独的 git 工作树挂后台跑，主检出接着改。两个槽位：`-Slot 1`（默认）用 `../stride-ts-verify-1`，`-Slot 2` 用 `../stride-ts-verify-2`，都是分离头指针；每个槽位的 CLI 状态在 `~/.stride-ts/regress-<槽位>`、开发服务器端口加 1000 × 槽位，两个可以同时跑（比如一个全量回归、一个测量）。工作树切到给定的提交、`pnpm install`，导入的内容用目录联接指向主检出，再跑脚本（默认 `regress.ps1`）。先本地提交，通过后再推送。用法：`pwsh tools/verify.ps1 [-Slot 1|2] [-Ref <提交>] [-Script tools/measure.ps1] [给脚本的参数，如 -Apps jumpy-jet,physics-sample]` | 停一次正在跑的验证时，停外层的 pwsh 不够（`regress.ps1` 和它的 node 子进程还在跑、和下一次抢开发服务器和无头 Chrome）：按命令行找含 `stride-ts-verify-<槽位>` 的 node、pwsh 进程停掉，再 `stop-dev.ps1 -All`。
 | `debug-bridge/` | Chrome 扩展 Stride Debug Bridge：让 `cpu-profile`、`mouse --trusted` 在用户平时的 Chrome 里也能用（`chrome.debugger`，Chrome 不许默认配置文件开远程调试端口）。安装见其中的 README |

@@ -42,7 +42,10 @@ import { UserPreferences } from './UserPreferences';
 export type GameStatus = 'starting' | 'running' | 'failed' | 'exited';
 
 export interface GameOptions {
-  /** 原生模块任务系统的工作线程数；默认 hardwareConcurrency - 1。 */
+  /**
+   * 原生模块任务系统的工作线程数；默认 hardwareConcurrency - 1。调试时页面地址的 `?stride-workers=N` 也能给（同一个标签页里
+   * 一直有效），回归用它固定线程数：每个线程的栈算在原生内存里，线程数随机器变的话 `native.allocated.bytes` 的预算就没法比。
+   */
   workerThreads?: number;
   /**
    * 用调试版的原生运行时：Jolt 断言（失败时 console.error 带 C++ 调用栈）和 Emscripten 的运行时检查，比正式版慢。
@@ -98,11 +101,6 @@ declare global {
   var strideGame: Game | undefined;
 }
 
-/**
- * 拥有原生模块、图形设备、实体和帧循环（对应 Stride 的 Game）。
- * 继承它并重写 loadContent 和 update（要调用 super.update，脚本和系统在里面跑）；draw 默认交给图形合成器，
- * 重写时可以不调用 super.draw，自己画。run() 初始化之后才有 `native`、`graphicsDevice` 和渲染系统。其中任何一处抛异常，或 AsyncScript 被拒绝，游戏都会停下，状态为 'failed'。
- */
 /** Game.loadScene 的选项（同 LoadSceneOptions；parent 给了就是子场景）。 */
 export type LoadChildSceneOptions = LoadSceneOptions;
 
@@ -111,6 +109,27 @@ export interface LoadGameSettingsOptions extends LoadSceneOptions {
   readonly renderers?: Readonly<Record<string, (props: Readonly<Record<string, unknown>>, game: Game) => SceneRenderer | Promise<SceneRenderer>>>;
 }
 
+/**
+ * 原生模块的工作线程数：选项优先，其次是调试时页面地址的 `?stride-workers=N`；都没有就不传，用原生模块的默认值。
+ * 地址里的值记进 sessionStorage，同一个标签页后来的重载和跳转（冒烟脚本会换 `?scene=…`）沿用它。
+ */
+function workerThreadsOption(options: GameOptions, debugQuery: URLSearchParams | null): { workerThreads?: number } {
+  if (options.workerThreads !== undefined) return { workerThreads: options.workerThreads };
+  if (!debugQuery) return {};
+  const fromQuery = debugQuery.get('stride-workers');
+  if (fromQuery != null) sessionStorage.setItem('stride-workers', fromQuery);
+  const text = fromQuery ?? sessionStorage.getItem('stride-workers');
+  if (text == null) return {};
+  const count = Number(text);
+  if (!Number.isInteger(count) || count < 1) throw new Error(`?stride-workers must be a positive integer, got '${text}'`);
+  return { workerThreads: count };
+}
+
+/**
+ * 拥有原生模块、图形设备、实体和帧循环（对应 Stride 的 Game）。
+ * 继承它并重写 loadContent 和 update（要调用 super.update，脚本和系统在里面跑）；draw 默认交给图形合成器，
+ * 重写时可以不调用 super.draw，自己画。run() 初始化之后才有 `native`、`graphicsDevice` 和渲染系统。其中任何一处抛异常，或 AsyncScript 被拒绝，游戏都会停下，状态为 'failed'。
+ */
 export class Game {
   native!: StrideNative;
   /** 所有 Transform 组件的数据，在原生内存里；世界矩阵在每帧 update 之后、draw 之前算。 */
@@ -219,7 +238,7 @@ export class Game {
       this.native = await createStrideNative({
         debug: options.debugNative ?? false,
         features: options.nativeFeatures ?? [],
-        ...(options.workerThreads === undefined ? {} : { workerThreads: options.workerThreads }),
+        ...workerThreadsOption(options, debugging ? query : null),
       });
       this.startup.native = performance.now();
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);

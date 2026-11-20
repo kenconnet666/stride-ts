@@ -18,13 +18,13 @@
 
 旧机器是 Windows 11，用户 `Administrator`。新机器路径不同时，下表的"说明"一栏说怎么改。
 
-新机器（2026-11-20 搭好）上的位置：本仓库 `C:\code\stride-ts`；Jolt 的 fork `C:\code\JoltPhysics`（`build-wasm.ps1`、`tools/build-jolt-wasm.ps1` 默认找和本仓库并列的它）；Stride 源码 `~\IdeaProjects\stride`（stride3d/stride 的 master，浅克隆）；emsdk 6.0.8 在 `~\emsdk`（脚本先看 `$env:EMSDK`）；vue-tsx-pro、easy-query-ts、json-wire 在 `~\IdeaProjects\` 下；参考仓库 `C:\code\refs`（PlayCanvas 的目录叫 `playcanvas-engine`）。Python 3 用 scoop 装的（带 Pillow）。
+新机器（2026-11-20 搭好）上的位置：本仓库 `C:\code\stride-ts`；Jolt 的 fork `C:\code\JoltPhysics`（`build-wasm.ps1`、`tools/build-jolt-wasm.ps1` 默认找和本仓库并列的它）；Stride 源码 `~\IdeaProjects\stride`（kenconnet666/stride 的 `web-experiment-base` 分支，浅克隆）；验证工作树 `C:\code\stride-ts-verify-1`、`-2`；emsdk 6.0.8 在 `~\emsdk`（脚本先看 `$env:EMSDK`）；vue-tsx-pro、easy-query-ts、json-wire 在 `~\IdeaProjects\` 下；参考仓库 `C:\code\refs`（PlayCanvas 的目录叫 `playcanvas-engine`）。Python 3 用 scoop 装的（带 Pillow）。
 
 | 什么 | 旧机器上的位置 | 怎么来 | 说明 |
 |---|---|---|---|
 | **本仓库** | `C:\Users\Administrator\WebstormProjects\stride-ts` | `git clone https://github.com/kenconnet666/stride-ts`，`main` | 推送到 `origin` 不用先问用户（提交并验证以后） |
 | **Jolt 的 fork**（原生部分 StrideNative：物理、导航、动画、贴图解码编成 wasm） | `C:\Users\Administrator\CLionProjects\jolt-native-fork` | `git clone https://github.com/kenconnet666/JoltPhysics jolt-native-fork`，分支 `stride` | `upstream` 是 `jrouwe/JoltPhysics`，**永远不推**。只在要改原生部分时需要；平时本仓库从 fork 的 GitHub Release 装编好的包 |
-| **Stride 源码**（只读：导入样例、对照实现） | `C:\Users\Administrator\IdeaProjects\stride` | `git clone https://github.com/stride3d/stride` | 导入脚本默认找 `~/IdeaProjects/stride`，别处用环境变量 `STRIDE_REPO`。不在那边提交 |
+| **Stride 源码**（只读：导入样例、对照实现） | `C:\Users\Administrator\IdeaProjects\stride` | `git clone --depth 1 -b web-experiment-base https://github.com/kenconnet666/stride`（用户的 fork） | **要这个分支**：里面的样例换成了 BepuPhysics 的组件，导入器只认这些；上游 stride3d/stride 的样例还是 Bullet 的物理组件，导入时会被跳过，first-person-shooter、platformer 这些就跑不起来。导入脚本默认找 `~/IdeaProjects/stride`，别处用环境变量 `STRIDE_REPO`。不在那边提交 |
 | **vue-tsx-pro**（编辑器界面的组件库，用户自己的） | `C:\Users\Administrator\IdeaProjects\vue-tsx-pro` | 用户的仓库 | 本仓库从 npm 装 `@zerodep-dev/vue-tsx-pro-tsx`、`-ui`（现在 `^0.30.0`）。只有要改组件库时才需要源码；它的约定见那边的 HANDOFF.md：`node scripts/dev/check.mjs` 过了再提交，`node scripts/release.mjs <版本> --wait` 发版（等 CI，打标签以后 CI 发 npm） |
 | 参考用的开源仓库（浅克隆） | `C:\code\refs` | 用到时 `git clone --depth 1` | 清单见 CLAUDE.md 的"参考用的开源仓库"（glTF-Transform、three.js、PlayCanvas、dawn、wgpu、Babylon.js、filament……） |
 | 用户的 easy-query-ts（只读参考） | `C:\code\easy-query-ts` | 用户的仓库 | TS API 写法的参考（不可变 builder、类型推导） |
@@ -50,18 +50,13 @@
 ### 1.3 第一次跑起来
 
 1. **装依赖**：`pnpm install`。原生包 `@stride-ts/native` 经 `pnpm-workspace.yaml` 的 override 从 fork 的 GitHub Release（`native-v<版本>`）下 tgz，不用先编原生部分。**不要**改成 `file:` 指向本地 tgz（JetBrains 认不出类型）。
-2. **导入每个样例的内容**（`public/content/`，不提交）：
-
-   ```bash
-   for app in animated-model bepu-sample csharp-beginner csharp-intermediate custom-effect first-person-shooter game-menu jumpy-jet material-shader morph-targets particles-sample physics-sample platformer platformer2d simple-audio space-escape sprite-fonts topdown-rpg ui-element-link ui-particles; do
-     (cd apps/$app && pnpm -s import:stride) || echo "FAILED $app"
-   done
-   ```
+2. **导入每个样例的内容**（`public/content/`，不提交）：`pwsh tools/import-all.ps1`（几个样例并行，最后打出结果表）。
 
    导入时的警告里**不应该有** `prefab instances kept expanded`（有的话是预制体实例没转成引用，见 decisions.md 的预制体那条）。粒子样例有几条"不是内置的粒子模块"的警告，是正常的。
 3. **检查**：`pnpm typecheck`、`pnpm test`（engine 336 个、pipeline 63 个、editor 17 个单测）。
 4. **回归**：`pwsh tools/verify.ps1`（建 git 工作树 `../stride-ts-verify-1`（`-Slot 2` 用 `-2`，可以和 1 同时跑），切到当前提交、装依赖、把主检出导入的内容联接过去，跑 `tools/regress.ps1`：20 个样例的冒烟，每个起开发服务器和无头 Chrome，最后和 `tools/budgets.json` 的预算比）。旧机器上一遍 20 分钟左右，最后打出每个样例 `True`/`False` 的表。
-   - **预算基线是旧机器记的**：实体数、绘制次数、显存、当场建的管线这些和机器无关；帧时间会变。新机器上只有帧时间超了的话，重记：`$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/verify.ps1`，再把 `../stride-ts-verify/tools/budgets.json` 拷回主检出、单独提交（"预算的基线：……"）。
+   - **预算和机器无关**：实体数、绘制次数、显存、当场建的管线、原生内存（回归用 `?stride-workers=4` 固定工作线程数，每个线程 1 MB 的栈算在原生内存里）；帧时间不进预算。有意的变化之后重记：`$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/verify.ps1`，再把 `../stride-ts-verify-1/tools/budgets.json` 拷回主检出、单独提交（"预算的基线：……"）。
+   - 回归默认几个样例并行（`-Parallel`，每 8 个逻辑核一路、最多 4 路），新机器（36 线程、RX 9070 GRE）上是 4 路。
 5. **Chrome**：
    - 装 **Claude in Chrome** 插件：看画面、点按钮、读控制台都用它（用户的主 Chrome 一直登录着）。一个开发服务器只留一个游戏标签页（CLI 连最后连上的那个）。
    - 要 `stride cpu-profile`、`stride mouse left --trusted`（真实点击、指针锁定）时，装调试桥扩展 `tools/debug-bridge`（见它的 README）；或者用 `pnpm exec stride open <url> --headless` 自己起的 Chrome。

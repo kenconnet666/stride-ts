@@ -534,16 +534,20 @@ fn component(v: vec4f, i: u32) -> f32 {
   return dot(v, select(vec4f(0.0), vec4f(1.0), CASCADE_INDICES == vec4u(i)));
 }
 
+/** 深度 depth 处用哪个级联：前 count - 1 个分界里深度超过了几个（分界递增，同 Stride 逐个比较取最后一个超过的）。 */
+fn shadowCascade(depth: f32, count: u32) -> u32 {
+  let passed = select(vec4f(0.0), vec4f(1.0), (vec4f(depth) > view.shadowSplits) & (CASCADE_INDICES + 1u < vec4u(count)));
+  return u32(dot(passed, vec4f(1.0)));
+}
+
 /** 方向光的阴影（Stride 的 ShadowMapReceiverDirectional.ComputeShadow）。 */
 fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 {
   let count = u32(view.shadow.x);
   if (count == 0u) {
     return 1.0;
   }
-  // 级联：前 count - 1 个分界里深度超过了几个（分界递增，同 Stride 逐个比较取最后一个超过的）
   let splits = view.shadowSplits;
-  let passed = select(vec4f(0.0), vec4f(1.0), (vec4f(depth) > splits) & (CASCADE_INDICES + 1u < vec4u(count)));
-  let cascade = u32(dot(passed, vec4f(1.0)));
+  let cascade = shadowCascade(depth, count);
   // 法线偏移：按图集的像素大小和 1 - N·L 沿法线推出去
   let p = position + 2.0 * view.shadowAtlas.x * view.shadow.z * saturate(1.0 - nDotL) * normal;
   var shadow = shadowFromCascade(p, cascade);
@@ -565,6 +569,53 @@ fn computeShadow(position: vec3f, normal: vec3f, nDotL: f32, depth: f32) -> f32 
     }
   }
   return shadow;
+}
+
+/** 图集里 uv 处存的深度，四个像素双线性（深度图不能用普通的采样器过滤）。 */
+fn shadowDepthAt(uv: vec2f) -> f32 {
+  let texel = uv * view.shadowAtlas.y - 0.5;
+  let base = vec2i(floor(texel));
+  let w = fract(texel);
+  let last = vec2i(i32(view.shadowAtlas.y) - 1);
+  let d00 = textureLoad(shadowAtlas, clamp(base, vec2i(0), last), 0);
+  let d10 = textureLoad(shadowAtlas, clamp(base + vec2i(1, 0), vec2i(0), last), 0);
+  let d01 = textureLoad(shadowAtlas, clamp(base + vec2i(0, 1), vec2i(0), last), 0);
+  let d11 = textureLoad(shadowAtlas, clamp(base + vec2i(1, 1), vec2i(0), last), 0);
+  return mix(mix(d00, d10, w.x), mix(d01, d11, w.x), w.y);
+}
+
+/**
+ * 方向光穿过这个像素所在物体的厚度（世界单位；Stride 的 ShadowMapFilterBase.SampleThickness）：阴影图里离光最近的表面到这里的
+ * 距离。先往表面里缩 1.5 个阴影图像素的对角线，避开表面自己（同 Stride 的 CalculateAdjustedShadowSpacePixelPosition）。
+ * 级联是正交投影：世界单位换到图集的 UV、深度的比例是矩阵前三列的那一行的长度。
+ */
+fn shadowThickness(position: vec3f, normal: vec3f, depth: f32) -> f32 {
+  let m = view.shadowMatrices[shadowCascade(depth, u32(view.shadow.x))];
+  let uvPerUnit = length(vec3f(m[0].x, m[1].x, m[2].x));
+  let depthPerUnit = length(vec3f(m[0].z, m[1].z, m[2].z));
+  // 1.5 · √2 个像素
+  let p = position - normal * (2.1213 * view.shadowAtlas.x / uvPerUnit);
+  let s = m * vec4f(p, 1.0);
+  let q = s.xyz / s.w;
+  return max(q.z - shadowDepthAt(q.xy), 0.0) / depthPerUnit;
+}
+
+/** 皮肤的透射轮廓（Stride 的 MaterialSubsurfaceScatteringScatteringProfileSkin，取自 Jimenez 的 separable-sss）；dd 是 -d²。 */
+fn skinTransmittanceProfile(dd: f32) -> vec3f {
+  return vec3f(0.233, 0.455, 0.649) * exp(dd / 0.0064) + vec3f(0.1, 0.336, 0.344) * exp(dd / 0.0484)
+    + vec3f(0.118, 0.198, 0.0) * exp(dd / 0.187) + vec3f(0.113, 0.007, 0.007) * exp(dd / 0.567)
+    + vec3f(0.358, 0.004, 0.0) * exp(dd / 1.99) + vec3f(0.078, 0.0, 0.0) * exp(dd / 7.41);
+}
+
+/**
+ * 次表面散射材质的透射（Stride 的 MaterialSurfaceSubsurfaceScatteringShading.CalculateTransmittance）：光从背面穿过薄的地方
+ * （耳朵、鼻翼、手指）透出来。thickness 是 shadowThickness 算的厚度，lightColor 不乘阴影（挡住光的正是物体自己）。
+ * 加进直射光的漫反射，和它一起被乘 π、被屏幕空间的散射模糊。
+ */
+fn transmittance(thickness: f32, n: vec3f, l: vec3f, lightColor: vec3f, albedo: vec3f) -> vec3f {
+  let scale = 8.25 * (1.0 - material.subsurface.y) / max(material.subsurface.z, 0.0001);
+  let d = scale * thickness;
+  return skinTransmittanceProfile(-d * d) * saturate(0.3 + dot(l, -n)) * lightColor * albedo;
 }
 
 /** 一个像素上着色要用的表面属性。 */
@@ -767,6 +818,8 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   let surface = Surface(n, v, diffuse, select(specular, glass.reflectance, isGlass), hasSpecular, isGlass, alphaR, nDotV);
   var direct = Lit(vec3f(0.0), vec3f(0.0));
+  // 次表面散射的材质（有槽位）算透射
+  let scatters = material.subsurface.x > 0.0;
   let lightCount = u32(view.sky.z);
   let shadowLight = i32(view.sky.w);
   for (var i = 0u; i < lightCount; i++) {
@@ -774,6 +827,10 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     var shadow = 1.0;
     if (i32(i) == shadowLight) {
       shadow = computeShadow(in.world, n, max(dot(n, l), 0.0001), in.depth) * screenContactShadow(in.position);
+      // 和 Stride 不同：没有阴影图的光不算透射（不知道厚度；Stride 当厚度是 0，被照到的地方都透亮）
+      if (scatters && view.shadow.x > 0.0) {
+        direct.diffuse += transmittance(shadowThickness(in.world, n, in.depth), n, l, view.lightColors[i].rgb * directOcclusion, diffuse);
+      }
     }
     let lit = shadeLight(surface, l, view.lightColors[i].rgb * shadow * directOcclusion);
     direct.diffuse += lit.diffuse;

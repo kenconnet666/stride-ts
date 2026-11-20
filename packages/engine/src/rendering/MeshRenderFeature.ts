@@ -125,10 +125,17 @@ struct LocalShadow {
 @group(0) @binding(13) var<storage, read> localShadows: array<LocalShadow>;
 // 屏幕空间的环境光遮蔽（GTAO，AmbientOcclusion.ts）：半分辨率，只乘环境光；没有时是 1x1 的白图
 @group(0) @binding(14) var screenOcclusion: texture_2d<f32>;
+@group(0) @binding(15) var screenShadow: texture_2d<f32>;
 
 fn screenAmbientOcclusion(position: vec4f) -> f32 {
   let size = textureDimensions(screenOcclusion);
   return textureLoad(screenOcclusion, min(vec2u(position.xy) / 2u, size - 1u), 0).r;
+}
+
+/** 投阴影的方向光的接触阴影（ContactShadows，全分辨率；没开时是白图）。 */
+fn screenContactShadow(position: vec4f) -> f32 {
+  let size = textureDimensions(screenShadow);
+  return textureLoad(screenShadow, min(vec2u(position.xy), size - 1u), 0).r;
 }
 
 // 漫反射 = combine(贴图(uv * scale + offset), baseColor)；combine 0 是乘，1 是加（operator 是 WGSL 的保留字）。
@@ -748,7 +755,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     let l = -view.lightDirections[i].xyz;
     var shadow = 1.0;
     if (i32(i) == shadowLight) {
-      shadow = computeShadow(in.world, n, max(dot(n, l), 0.0001), in.depth);
+      shadow = computeShadow(in.world, n, max(dot(n, l), 0.0001), in.depth) * screenContactShadow(in.position);
     }
     direct += shadeLight(surface, l, view.lightColors[i].rgb * shadow * directOcclusion);
   }
@@ -1238,9 +1245,9 @@ export class MeshRenderFeature extends RootRenderFeature {
     // 透明阶段：一段一段（同一批里连着的几个实例）从远到近；其余阶段每批一段
     const runs = stage.transparent ? this.#backToFront(context, view, cullPass, index, visible) : undefined;
     if (runs?.length === 0) return;
-    // 屏幕空间的遮蔽是主画面不透明的那些像素的：透明的、别的视图不用
-    const occlusion = stage.transparent || stage.shadowCasters ? undefined : view.screenOcclusion;
-    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, occlusion), [view.index * VIEW_STRIDE]);
+    // 屏幕空间的遮蔽、接触阴影是主画面不透明的那些像素的：透明的、别的视图不用
+    const screenSpace = !(stage.transparent || stage.shadowCasters);
+    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     for (let i = 0, end = runs ? runs.length / 3 : cullPass.batchCount; i < end; i++) {
       const b = runs ? runs[i * 3]! : i;
@@ -1424,7 +1431,8 @@ class Gpu {
   #localShadows: GPUBuffer;
   /** 视图绑定组，按绑在阴影位置上的深度图分开：画阴影图集时不能同时采样它。 */
   /** 阴影图集 → 遮蔽贴图 → 视图绑定组。 */
-  readonly #viewBindGroups = new Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>();
+  /** 阴影图集 → 环境光遮蔽 → 接触阴影 → 视图绑定组。 */
+  readonly #viewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>();
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
@@ -1450,6 +1458,7 @@ class Gpu {
         { binding: 12, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 13, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 14, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        { binding: 15, visibility: GPUShaderStage.FRAGMENT, texture: {} },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -1822,14 +1831,17 @@ class Gpu {
 
   /**
    * 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的；occlusion 是屏幕空间的环境光遮蔽，
-   * 没有时用白图。
+   * contact 是接触阴影，没有时都用白图。
    */
-  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture): GPUBindGroup {
+  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
     const ao = occlusion ?? this.#resources.white;
-    let groups = this.#viewBindGroups.get(atlas);
-    if (!groups) this.#viewBindGroups.set(atlas, (groups = new Map()));
-    let group = groups.get(ao);
+    const shadow = contact ?? this.#resources.white;
+    let byAtlas = this.#viewBindGroups.get(atlas);
+    if (!byAtlas) this.#viewBindGroups.set(atlas, (byAtlas = new Map()));
+    let groups = byAtlas.get(ao);
+    if (!groups) byAtlas.set(ao, (groups = new Map()));
+    let group = groups.get(shadow);
     if (!group) {
       group = this.device.createBindGroup({
         label: 'MeshRenderFeature view',
@@ -1850,9 +1862,10 @@ class Gpu {
           { binding: 12, resource: { buffer: this.#morphWeights! } },
           { binding: 13, resource: { buffer: this.#localShadows } },
           { binding: 14, resource: ao.createView() },
+          { binding: 15, resource: shadow.createView() },
         ],
       });
-      groups.set(ao, group);
+      groups.set(shadow, group);
     }
     return group;
   }

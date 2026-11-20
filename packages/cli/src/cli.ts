@@ -50,6 +50,9 @@ Game
   quality [low|medium|high|ultra]                   quality tier: caps on shadows and post effects (no argument shows the current one)
   taa [on|off]                                      temporal anti-aliasing instead of FXAA (no argument toggles)
   ao [on|off] [--radius <m>]                        screen-space ambient occlusion, GTAO (no argument toggles)
+  blur [on|off] [--shutter s] [--maxPixels n]       motion blur (no argument toggles)
+  contact [on|off] [--length m] [--steps n] [--thickness t]
+                                                    contact shadows of the shadow-casting directional light (no argument toggles)
   ssr [on|off] [--maxRoughness r] [--thickness t] [--maxSteps n] [--debug off|hits|reflection]
                                                     screen-space reflections (no argument toggles)
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
@@ -110,6 +113,10 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     thickness: { type: 'string' },
     maxSteps: { type: 'string' },
     debug: { type: 'string' },
+    length: { type: 'string' },
+    shutter: { type: 'string' },
+    maxPixels: { type: 'string' },
+    steps: { type: 'string' },
   },
 });
 
@@ -329,6 +336,14 @@ const commands: Record<string, () => Promise<unknown>> = {
   draws: () => call('draws', {}),
   metrics: () => call('metrics', options.over ? { over: true } : {}),
   ao: () => call('ao', { ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }), ...(options.radius ? { radius: Number(options.radius) } : {}) }),
+  blur: () => call('blur', {
+    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...Object.fromEntries((['shutter', 'maxPixels'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
+  }),
+  contact: () => call('contact', {
+    ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
+    ...Object.fromEntries((['length', 'steps', 'thickness'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),
+  }),
   ssr: () => call('ssr', {
     ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }),
     ...Object.fromEntries((['maxRoughness', 'thickness', 'maxSteps'] as const).filter((key) => options[key] !== undefined).map((key) => [key, Number(options[key])])),

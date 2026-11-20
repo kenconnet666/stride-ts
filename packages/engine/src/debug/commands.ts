@@ -51,6 +51,18 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     if (typeof args['radius'] === 'number') ao.radius = args['radius'];
     return { enabled: ao.enabled, radius: ao.radius, power: ao.power };
   });
+  debug.command('blur', 'Motion blur of the main view. args: on (true/false; omitted toggles), shutter (fraction of a frame), maxPixels.', (args) => {
+    const blur = game.graphicsCompositor.motionBlur;
+    blur.enabled = typeof args['on'] === 'boolean' ? args['on'] : !blur.enabled;
+    for (const key of ['shutter', 'maxPixels'] as const) if (typeof args[key] === 'number') blur[key] = args[key];
+    return { enabled: blur.enabled, shutter: blur.shutter, maxPixels: blur.maxPixels };
+  });
+  debug.command('contact', 'Contact shadows (screen-space shadows of the shadow-casting directional light). args: on (true/false; omitted toggles), length (world units), steps, thickness.', (args) => {
+    const contact = game.graphicsCompositor.contactShadows;
+    contact.enabled = typeof args['on'] === 'boolean' ? args['on'] : !contact.enabled;
+    for (const key of ['length', 'steps', 'thickness'] as const) if (typeof args[key] === 'number') contact[key] = args[key];
+    return { enabled: contact.enabled, length: contact.length, steps: contact.steps, thickness: contact.thickness };
+  });
   debug.command('ssr', 'Screen-space reflections of the main view. args: on (true/false; omitted toggles), maxRoughness, thickness, maxSteps, debug (off, hits, reflection).', (args) => {
     const ssr = game.graphicsCompositor.screenSpaceReflections;
     ssr.enabled = typeof args['on'] === 'boolean' ? args['on'] : !ssr.enabled;

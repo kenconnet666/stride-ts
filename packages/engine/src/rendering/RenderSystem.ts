@@ -126,6 +126,8 @@ export class RenderView {
   readonly inverseViewProjection = Matrix.identity();
   /** 屏幕空间的环境光遮蔽（AmbientOcclusion.record 的结果），着色时乘环境光；只有主画面有。 */
   screenOcclusion: GPUTexture | undefined;
+  /** 投阴影的方向光的接触阴影（ContactShadows.record 的结果），着色时乘那盏光；只有主画面有。 */
+  screenShadow: GPUTexture | undefined;
   /** 运动向量用（TemporalAntialiasing.jitter 设）：这一帧没挪过亚像素的视图投影、上一帧的。 */
   readonly unjitteredViewProjection = Matrix.identity();
   readonly previousViewProjection = Matrix.identity();

@@ -37,7 +37,7 @@ check('场景画出来了', drawn.entities > 50 && drawn.drawn > 20 && drawn.dra
 
 // 角色出生在半空，落到地上以后高度不再变
 type Point = [number, number, number];
-const rest = stride('eval', `frames(90).then(async () => { const a = playerAt(); await frames(20); return [a, playerAt()]; })`) as [Point, Point];
+const rest = stride('eval', `seconds(1.5).then(async () => { const a = playerAt(); await seconds(0.33); return [a, playerAt()]; })`) as [Point, Point];
 check('角色落在地上站住', Math.abs(rest[1][1] - rest[0][1]) < 0.01 && rest[1][1] > -1, rest);
 
 // 点选（GPU 上画编号再读回）：角色在画面中间偏下，点到的是蒙皮的模型；最上面一行是天空，什么都点不到
@@ -50,11 +50,12 @@ check('点选：角色、天空、地面', picked[0] === 'MannequinModel' && pic
 const run = stride('eval', `(async () => {
   const before = playerAt();
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyW' }));
-  await frames(40);
+  await seconds(0.67);
+  // 跑和站着各看 20 帧的骨骼变化，比的是两者之比，帧率不影响
   const running = await poseChange(20);
   const during = playerAt();
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyW' }));
-  await frames(60);
+  await seconds(1);
   const stopped = playerAt();
   const idle = await poseChange(20);
   return { before, during, running, idle, stopped, after: playerAt() };
@@ -71,7 +72,8 @@ const jump = stride('eval', `(async () => {
   window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space' }));
   await frames(2);
   window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Space' }));
-  for (let i = 0; i < 120; i++) { await frame(); top = Math.max(top, playerAt()[1]); }
+  const end = strideGame.updateTime.total + 2;
+  while (strideGame.updateTime.total < end) { await frame(); top = Math.max(top, playerAt()[1]); }
   return { ground, top, landed: playerAt()[1] };
 })()`) as { ground: number; top: number; landed: number };
 check('空格跳起来', jump.top - jump.ground > 0.5, jump);

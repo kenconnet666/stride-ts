@@ -2,7 +2,7 @@
 //   pnpm --filter @stride-ts/platformer2d smoke [-- --hub <中枢名的一部分>]
 // 检查：场景在跑、精灵表的帧在换（待机、金币）；W 起跳（跳的帧）；按住 D 往右跑（跑步的帧）、A 转身往左（实体绕 Y 转 180°）；
 // 走到右下角的金币上：精灵马上隐藏、音效响起，3 秒后金币实体移除。
-import { startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('platformer2d');
 
@@ -13,9 +13,11 @@ await sleep(1000);
 const status = stride('status') as { status: string; error: string | null; entities: number };
 check('场景在跑', status.status === 'running' && status.error === null && status.entities === 70, status);
 
-/** 页面里的表达式：玩家的 x、y、绕 Y 的朝向（四元数的 y）、精灵的帧、是否着地。 */
-const PLAYER = `const g = strideGame; const e = g.entities.entity(g.entities.ids().find((i) => g.entities.entity(i).name === 'Player'));
-  const t = e.require(strideEngine.Transform); [t.position.x, t.position.y, t.rotation.y, e.require(strideEngine.Sprite).frame, e.require(strideEngine.Character).grounded]`;
+// 页面里的 player2d()：玩家的 x、y、绕 Y 的朝向（四元数的 y）、精灵的帧、是否着地
+stride('eval', PAGE_HELPERS);
+stride('eval', `globalThis.player2d = () => { const g = strideGame; const e = g.entities.entity(g.entities.ids().find((i) => g.entities.entity(i).name === 'Player'));
+  const t = e.require(strideEngine.Transform); return [t.position.x, t.position.y, t.rotation.y, e.require(strideEngine.Sprite).frame, e.require(strideEngine.Character).grounded]; }; 1`);
+const PLAYER = 'player2d()';
 const COINS = `const g = strideGame; const coins = g.entities.ids().map((i) => g.entities.entity(i)).filter((e) => e.name === 'Coin');
   [coins.length, coins.filter((e) => e.require(strideEngine.Sprite).enabled).length, coins.map((e) => e.require(strideEngine.Sprite).frame).join()]`;
 type Player = [number, number, number, number, boolean];
@@ -53,22 +55,16 @@ for (let i = 0; i < 15 && !(jumping[1] > start[1] + 0.5); i++) {
 check('W 起跳，放跳的帧', !jumping[4] && jumping[1] > start[1] + 0.5 && jumping[3] >= 21, jumping);
 await sleep(1200);
 
-stride('key', 'D', '--down');
-await sleep(800);
-const running = stride('eval', PLAYER) as Player;
-stride('key', 'D', '--up');
+// 按多久都在页面里按游戏时间算（holdFor）：CLI 的每条命令是一个新进程，单核慢的机器上松开会晚到将近一秒，多跑出去一大截
+const running = stride('eval', `holdFor('KeyD', 0.8, player2d)`) as Player;
 check('按住 D 往右跑，放跑步的帧', running[0] > start[0] + 2 && running[3] >= 4 && running[3] < 20 && Math.abs(running[2]) < 1e-3, { start, running });
 
-stride('key', 'A', '--hold', '400');
-await sleep(200);
-const turned = stride('eval', PLAYER) as Player;
-check('A 转身往左：绕 Y 转 180°', Math.abs(Math.abs(turned[2]) - 1) < 1e-3 && turned[0] < running[0], turned);
+const turned = stride('eval', `(async () => { const before = player2d(); await holdFor('KeyA', 0.4); return [before, player2d()]; })()`) as [Player, Player];
+check('A 转身往左：绕 Y 转 180°', Math.abs(Math.abs(turned[1][2]) - 1) < 1e-3 && turned[1][0] < turned[0][0], turned);
 
 // 右下角 (13, -6.5) 的金币：往右走过去
 const [coins] = stride('eval', COINS) as [number, number, string];
-stride('key', 'D', '--down');
-await sleep(3200);
-stride('key', 'D', '--up');
+stride('eval', `holdFor('KeyD', 3.2)`);
 const collected = stride('eval', COINS) as [number, number, string];
 check('碰到金币：精灵马上隐藏', collected[0] === coins && collected[1] === coins - 1, { coins, collected });
 const sounds = stride('eval', `const type = strideGame.registry.scriptsNamed('CollectCoin')[0];

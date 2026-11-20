@@ -20,11 +20,14 @@ export interface Smoke {
 
 /**
  * 页面里的帮手：冒烟脚本开头 `stride('eval', PAGE_HELPERS)` 装一次，之后的 eval 里直接用。
- *   frames(n)                        等 n 帧
+ *   frames(n)                        等 n 帧（只用来等事件传到下一帧；表示一段时间用 seconds）
+ *   seconds(s)                       等游戏时间走过 s 秒：帧率随机器变（无头 Chrome 在有的机器上 60、有的 120 fps），按帧数等的时长跟着变
  *   lines()                          屏幕上的调试文字
  *   named(name)                      这个名字的实体（数组）
  *   position(name)、rotation(name)   第一个这个名字的实体的本地位置、旋转（数组）
  *   tap(code)、hold(code, n)          按一下键、按住 n 帧（返回按着时的调试文字）；code 是 KeyboardEvent.code
+ *   holdFor(code, s, sample?)        按住 s 秒游戏时间再松开，返回松开前一刻 sample() 的值。要"按多久"时用它，不用 CLI 的
+ *                                    key --down/--up：每条 CLI 命令是一个新进程，单核慢的机器上一条要接近一秒，松开就晚到了
  *   frame()                          等一帧
  *   pointerAt(type, x, y, target?)   在画布的 (x, y)（CSS 像素）发一个合成的指针事件（连同对应的鼠标事件）；松开发给 window
  *   click(x, y, button = 0)          在画布的 (x, y)（CSS 像素）点一下鼠标（合成事件，锁不了指针）
@@ -48,12 +51,14 @@ export const PAGE_HELPERS = `(() => {
   globalThis.frame = frame;
   globalThis.pointerAt = (type, x, y, target = canvas) => pointer(type, x, y, 0, target);
   globalThis.frames = async (n) => { for (let i = 0; i < n; i++) await frame(); };
+  globalThis.seconds = async (s) => { const end = G.updateTime.total + s; while (G.updateTime.total < end) await frame(); };
   globalThis.lines = () => G.debugText.lines.map((l) => l.text);
   globalThis.named = (name) => G.entities.ids().map((i) => G.entities.entity(i)).filter((e) => e.name === name);
   globalThis.position = (name) => { const p = named(name)[0].require(E.Transform).position; return [p.x, p.y, p.z]; };
   globalThis.rotation = (name) => { const q = named(name)[0].require(E.Transform).rotation; return [q.x, q.y, q.z, q.w]; };
   globalThis.tap = async (code) => { key('keydown', code); await frames(2); key('keyup', code); await frames(2); };
   globalThis.hold = async (code, n) => { key('keydown', code); await frames(n); const seen = lines(); key('keyup', code); await frames(2); return seen; };
+  globalThis.holdFor = async (code, s, sample) => { key('keydown', code); await seconds(s); const seen = sample?.(); key('keyup', code); await frames(2); return seen; };
   globalThis.click = async (x, y, button = 0) => {
     pointer('pointermove', x, y, button); await frame();
     pointer('pointerdown', x, y, button); await frames(2);

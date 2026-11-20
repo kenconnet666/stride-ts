@@ -1122,12 +1122,14 @@ export function parseCollisionMask(value: unknown): number {
 }
 
 /**
- * 场景（或预制体）里的一个预制体实例（docs/prefabs.md，用户 2026-11-20 定）：带着它的实体是实例的容器，预制体的根实体
- * 挂在它下面；成员不存，加载时由预制体合并出来，成员在场景里的 id 是 `<实例 id>/<预制体里的 id>`（prefabInstances.ts）。
+ * 场景（或预制体）里的一个预制体实例（docs/prefabs.md，用户 2026-11-20 定）：带着它的实体就是预制体的根（身份和摆放是
+ * 实例自己的）；根下面的成员不存，加载时由预制体合并出来，在场景里的 id 是 `<实例 id>/<预制体里的 id>`（prefabInstances.ts）。
  */
 export interface PrefabInstanceFile {
   /** 预制体的内容路径。 */
   readonly path: string;
+  /** 放的是预制体的哪个根（预制体里的 id）；预制体只有一个根时不用写。 */
+  readonly root?: string;
   /** 在预制体某个实体（预制体里的 id）的某条路径上改成的值；脚本组件在路径里按类型名指（`scripts`, `Game.Health`）。 */
   readonly set?: readonly { readonly entity: string; readonly path: readonly (string | number)[]; readonly value: unknown }[];
   /** 这个实例不要的预制体实体（连后代），预制体里的 id。 */

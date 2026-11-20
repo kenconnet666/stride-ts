@@ -29,6 +29,10 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64.', () => screenshot(debug, game));
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
   debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
+  debug.command('draws', 'Draw calls of the last frame per GPU render pass (scene stages, shadows, each post-processing step, UI, debug lines), in drawing order.', () => {
+    const { total, byPass } = game.graphicsDevice.draws;
+    return { total, passes: Object.fromEntries(byPass) };
+  });
   debug.command('metrics', 'Statistics of the systems and their budgets (entities, draw calls, GPU memory, native memory, frame times, and what the game registered). args: over (only those over budget).', (args) => {
     return args['over'] === true ? game.metrics.over() : game.metrics.snapshot();
   });

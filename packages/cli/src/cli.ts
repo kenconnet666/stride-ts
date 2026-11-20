@@ -39,6 +39,7 @@ Game
                                                     --region: compare only that rectangle (e.g. leave out UI drawn differently)
   perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, native timings, GPU per pass
   native [--reset]                                  native counters (physics bodies, ...), timings, wasm memory
+  draws                                             draw calls of the last frame per GPU render pass
   metrics [--over]                                  statistics and budgets: entities, draw calls, GPU and native memory, frame times
                                                     (--over: only those over their budget)
   gpu-calls [--seconds 2]                           WebGPU calls and writeBuffer bytes per frame
@@ -319,6 +320,7 @@ const commands: Record<string, () => Promise<unknown>> = {
     };
   },
   pick: () => call('pick', { x: Number(rest[0]), y: Number(rest[1]) }),
+  draws: () => call('draws', {}),
   metrics: () => call('metrics', options.over ? { over: true } : {}),
   ao: () => call('ao', { ...(rest[0] === undefined ? {} : { on: rest[0] === 'on' }), ...(options.radius ? { radius: Number(options.radius) } : {}) }),
   taa: () => call('taa', rest[0] === undefined ? {} : { on: rest[0] === 'on' }),

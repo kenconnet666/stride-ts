@@ -67,6 +67,47 @@ export class PipelineCounts {
   }
 }
 
+/**
+ * 一帧的绘制次数，按 GPU 的渲染通道（beginRenderPass 的标签）分：场景的各阶段、阴影、后处理的每一步、UI、调试线都算，
+ * 不只数渲染特性的。和管线一样在设备上套一层（每个编码器的 beginRenderPass），所以谁画的都数得到；一个渲染通道里的
+ * draw、drawIndexed、两种 indirect 各算一次。
+ */
+export class DrawCounts {
+  /** 上一帧的总数（endFrame 时换过来）。 */
+  total = 0;
+  /** 上一帧按通道标签的次数，按第一次画的顺序；没有标签的在 (unlabeled) 上。 */
+  byPass: ReadonlyMap<string, number> = new Map();
+  #current = new Map<string, number>();
+
+  constructor(device: GPUDevice) {
+    const createEncoder = device.createCommandEncoder.bind(device);
+    device.createCommandEncoder = (descriptor) => {
+      const encoder = createEncoder(descriptor);
+      const begin = encoder.beginRenderPass.bind(encoder);
+      encoder.beginRenderPass = (pass) => this.#count(begin(pass), pass.label ?? '(unlabeled)');
+      return encoder;
+    };
+  }
+
+  /** 帧末（提交以后）：这一帧数的成为"上一帧"的。 */
+  endFrame(): void {
+    this.byPass = this.#current;
+    this.total = [...this.#current.values()].reduce((sum, count) => sum + count, 0);
+    this.#current = new Map();
+  }
+
+  #count(pass: GPURenderPassEncoder, label: string): GPURenderPassEncoder {
+    const add = () => this.#current.set(label, (this.#current.get(label) ?? 0) + 1);
+    const draw = pass.draw.bind(pass), drawIndexed = pass.drawIndexed.bind(pass);
+    const drawIndirect = pass.drawIndirect.bind(pass), drawIndexedIndirect = pass.drawIndexedIndirect.bind(pass);
+    pass.draw = (...args) => (add(), draw(...args));
+    pass.drawIndexed = (...args) => (add(), drawIndexed(...args));
+    pass.drawIndirect = (...args) => (add(), drawIndirect(...args));
+    pass.drawIndexedIndirect = (...args) => (add(), drawIndexedIndirect(...args));
+    return pass;
+  }
+}
+
 export class GpuMemory {
   readonly buffers: GpuResourceCount = { count: 0, bytes: 0 };
   readonly textures: GpuResourceCount = { count: 0, bytes: 0 };

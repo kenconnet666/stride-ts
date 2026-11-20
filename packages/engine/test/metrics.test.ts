@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { Metrics } from '../src/debug/Metrics';
-import { GpuMemory, PipelineCounts, textureBytes } from '../src/graphics/GpuMemory';
+import { DrawCounts, GpuMemory, PipelineCounts, textureBytes } from '../src/graphics/GpuMemory';
 
 describe('统计和预算（Metrics）', () => {
   test('量是现读现算的；设了上限的超了就报，没设的不报；可以先设预算后登记', () => {
@@ -77,5 +77,26 @@ describe('显存的账（GpuMemory）', () => {
     await device.createComputePipelineAsync(descriptor('Prefilter'));
     expect([pipelines.sync, pipelines.warmed, pipelines.recentSync]).toEqual([2, 2, ['ToneMap', '(unlabeled)']]);
     expect(made).toEqual(['sync ToneMap', 'sync undefined', 'async Mesh Opaque', 'async Prefilter']);
+  });
+});
+
+describe('每帧的绘制次数（DrawCounts）', () => {
+  test('按渲染通道的标签分；四种 draw 都算；帧末换成上一帧的', () => {
+    const pass = { draw() {}, drawIndexed() {}, drawIndirect() {}, drawIndexedIndirect() {} };
+    const encoder = { beginRenderPass: () => ({ ...pass }) };
+    const device = { createCommandEncoder: () => ({ ...encoder }) } as unknown as GPUDevice;
+    const draws = new DrawCounts(device);
+    const frame = device.createCommandEncoder();
+    const scene = frame.beginRenderPass({ label: 'ForwardRenderer', colorAttachments: [] });
+    scene.drawIndexed(36);
+    scene.draw(3);
+    scene.drawIndirect({} as GPUBuffer, 0);
+    frame.beginRenderPass({ label: 'ToneMap', colorAttachments: [] }).draw(3);
+    frame.beginRenderPass({ colorAttachments: [] }).drawIndexedIndirect({} as GPUBuffer, 0);
+    expect(draws.total).toBe(0);
+    draws.endFrame();
+    expect([draws.total, Object.fromEntries(draws.byPass)]).toEqual([5, { ForwardRenderer: 3, ToneMap: 1, '(unlabeled)': 1 }]);
+    draws.endFrame();
+    expect(draws.total).toBe(0);
   });
 });

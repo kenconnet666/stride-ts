@@ -1,4 +1,4 @@
-import { GpuMemory, PipelineCounts } from './GpuMemory';
+import { DrawCounts, GpuMemory, PipelineCounts } from './GpuMemory';
 import type { TextureTarget } from '@stride-ts/native';
 import { GpuProfiler } from './GpuProfiler';
 
@@ -29,6 +29,8 @@ export class GraphicsDevice {
   readonly memory: GpuMemory;
   /** 管线里当场建的、后台编的各几条（见 PipelineCounts）。 */
   readonly pipelines: PipelineCounts;
+  /** 上一帧的绘制次数，按渲染通道分（见 DrawCounts）。 */
+  readonly draws: DrawCounts;
   private readonly context: GPUCanvasContext;
   #frameEncoder: GPUCommandEncoder | undefined;
   #viewTexture: GPUTexture | undefined;
@@ -55,6 +57,7 @@ export class GraphicsDevice {
     // 先装上记账，后面建的资源（包括剖析器自己的）才都算进去
     this.memory = new GpuMemory(device);
     this.pipelines = new PipelineCounts(device);
+    this.draws = new DrawCounts(device);
     this.profiler = new GpuProfiler(device, timestampQuery);
     this.canvas = canvas;
     this.context = context;
@@ -114,6 +117,7 @@ export class GraphicsDevice {
     this.#frameEncoder = undefined;
     this.profiler.resolve(encoder);
     this.queue.submit([encoder.finish()]);
+    this.draws.endFrame();
   }
 
   destroy(): void {

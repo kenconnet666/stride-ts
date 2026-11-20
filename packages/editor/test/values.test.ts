@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { colorToHex, eulerToQuaternion, hexToColor, quaternionToEuler } from '../src/ui/values.ts';
+import { colorToHex, eulerToQuaternion, hasMixed, hexToColor, mergeValues, MIXED, quaternionToEuler } from '../src/ui/values.ts';
 
 // 属性面板上的值和文件里的值之间的换算。
 
@@ -38,5 +38,18 @@ describe('颜色：文件里的（sRGB 或线性）和取色器的 #rrggbb', () 
 
   test('HDR 的值（超过 1）在取色器上夹住', () => {
     expect(colorToHex([4, -1, 0.5], 'srgb')).toBe('#ff0080');
+  });
+});
+
+describe('多选：几个实体的值并成一个', () => {
+  test('一样的照原样，向量、对象逐项并，不一样的是 MIXED', () => {
+    expect(mergeValues([[1, 2, 3]])).toEqual([1, 2, 3]);
+    expect(mergeValues([[1, 2, 3], [1, 5, 3]])).toEqual([1, MIXED, 3]);
+    expect(mergeValues([{ model: 'A', materials: [null] }, { model: 'A', materials: [null, 'M'] }])).toEqual({ model: 'A', materials: MIXED });
+    // 有的写了、有的没写（用默认值）
+    expect(mergeValues([{ trigger: true }, {}])).toEqual({ trigger: MIXED });
+    expect(mergeValues([undefined, undefined])).toBeUndefined();
+    expect(mergeValues([0, '0'])).toBe(MIXED);
+    expect([hasMixed({ a: [1, MIXED] }), hasMixed({ a: [1, 2] }), hasMixed(MIXED)]).toEqual([true, false, true]);
   });
 });

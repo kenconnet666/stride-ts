@@ -284,6 +284,8 @@ docs/roadmap.md 的"进度"只留结论；这里是已完成各项的过程记�
 
 加脚本组件（同一天，同样在 TPP 的编辑器里）：Wall_North 上从"添加组件"选 ThirdPersonCamera，场景文档里多了 `{ type: 'game/camera/ThirdPersonCamera#ThirdPersonCamera', props: {} }`，面板照脚本的 9 个属性画（没写的淡色显示默认值），改 defaultDistance 写进 props；墙的实例上加 PlayerInput 记成实例 `prefab.set` 里整个脚本列表的覆盖，Ctrl+Z 撤回。第一版的列表里混着引擎自己登记的 AudioEmitterComponent、UIComponent 这些（场景组件的实现），改成只列游戏模块里的。看截图时发现属性面板一长，场景树、视口跟着整排一起滚（分栏里套的分栏按内容定高），套着的分栏改成绝对定位铺满那一栏，各栏自己滚。
 
+多选一起改（同一天，TPP 编辑器，经 CDP 发真的鼠标、键盘事件）：场景树单击、Ctrl+单击、Shift+单击、Ctrl+单击去掉一个，选中的依次是 [North]、[West]、[West, North]、North 到 GridBase10x10 (9) 的一段 5 个、去掉 Ramp 剩 4 个。选中四面墙：名字、位置的 x 和 z、旋转显示"多个值"，y = 0、缩放 1 照常显示，静态碰撞体是共有的组件；往位置 y 的框里打 2 回车，四面墙的 y 都是 2，Ctrl+Z 一步全部回到 0；旋转的 x 打 10，南北墙（朝向 90°）和东西墙（0°）各自保留朝向、都俯仰 10°；加 Model 组件四个都有、一步撤回。单选时改位置、旋转照旧。第一版窄的数字框里"多个值"显示不下，改成"—"、悬停提示"多个值"。
+
 ## P4 底座（2026-11-20 起）
 
 1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。

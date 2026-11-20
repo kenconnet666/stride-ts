@@ -1,8 +1,9 @@
 /**
  * 属性面板上的值和文件里的值之间的换算：旋转（文件里是四元数，面板上按欧拉角改）、颜色（文件里可能是线性的，取色器是
- * sRGB 的）、新加的值从什么开始。纯函数，单测在 test/values.test.ts。
+ * sRGB 的）、新加的值从什么开始、多选时几个实体的值并成一个。纯函数，单测在 test/values.test.ts。
  */
 import type { FieldType } from '@stride-ts/engine/editor-fields';
+import { sameValue } from '@stride-ts/engine/content-prefabs';
 
 const DEGREES = 180 / Math.PI;
 
@@ -81,3 +82,32 @@ export function emptyValue(type: FieldType): unknown {
     case 'json': return {};
   }
 }
+
+/** 多选时几个实体上这一处的值不一样：属性面板显示"多个值"。 */
+export const MIXED: unique symbol = Symbol('mixed');
+
+/**
+ * 几个实体上同一处的值并成一个给属性面板显示：都一样就是它；一样长的列表、对象逐项并（位置的 x 一样、y 不一样时只有
+ * y 是 MIXED）；别的不一样（列表长短不同、有的没写）就是 MIXED。只有一个值时原样返回。
+ */
+export function mergeValues(values: readonly unknown[]): unknown {
+  const [first] = values;
+  if (values.every((value) => sameValue(value, first))) return first;
+  if (values.every((value) => Array.isArray(value) && value.length === (first as unknown[]).length)) {
+    return (first as unknown[]).map((_, i) => mergeValues(values.map((value) => (value as unknown[])[i])));
+  }
+  if (values.every(isObject)) {
+    const keys = new Set(values.flatMap((value) => Object.keys(value as object)));
+    return Object.fromEntries([...keys].map((key) => [key, mergeValues(values.map((value) => (value as Record<string, unknown>)[key]))]));
+  }
+  return MIXED;
+}
+
+/** 值里（任何一层）有没有 MIXED。 */
+export function hasMixed(value: unknown): boolean {
+  if (value === MIXED) return true;
+  if (value === null || typeof value !== 'object') return false;
+  return Object.values(value).some(hasMixed);
+}
+
+const isObject = (value: unknown): boolean => value !== null && typeof value === 'object' && !Array.isArray(value);

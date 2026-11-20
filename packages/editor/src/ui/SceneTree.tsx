@@ -27,6 +27,15 @@ function buildTree(entities: readonly SceneEntityFile[]): Node[] {
   return roots;
 }
 
+/** 树里看得见的节点（展开着的往下列），从上到下：Shift 选一段时按它。 */
+function visibleOrder(nodes: readonly Node[], expanded: ReadonlySet<string>, out: string[] = []): string[] {
+  for (const node of nodes) {
+    out.push(node.entity.id);
+    if (expanded.has(node.entity.id)) visibleOrder(node.children, expanded, out);
+  }
+  return out;
+}
+
 function findNode(nodes: readonly Node[], id: string): Node | undefined {
   for (const node of nodes) {
     if (node.entity.id === id) return node;
@@ -45,7 +54,7 @@ function prefabLabel(session: EditorSession, id: string) {
 }
 
 /**
- * 场景树：场景里的实体按父子关系列出（预制体的实例展开着，成员用斜体）；选中和视口里的选中是同一个。拖动换父实体、
+ * 场景树：场景里的实体按父子关系列出（预制体的实例展开着，成员用斜体）；选中和视口里的选中是同一个，Ctrl、Shift 多选。拖动换父实体、
  * 换顺序（本地的变换不变）；成员不在文档里，不能拖，也不能当拖去的父实体。
  */
 export const SceneTree = _component(({ session }: { session: EditorSession }) => {
@@ -73,7 +82,35 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
     if (open.size !== expanded.length) expanded = [...open];
   });
 
+  // Ctrl、Shift 多选：树自己的多选模式是点一下加进、再点去掉，这里换成常见的做法——单击只选它，Ctrl+单击加进、去掉，
+  // Shift+单击选上次点的到这次点的一段。按键在捕获阶段记下（树在冒泡阶段的 click、keydown 里改选中）
+  let modifiers = { toggle: false, range: false };
+  let anchor: string | undefined;
+  const remember = (event: MouseEvent | KeyboardEvent): void => {
+    modifiers = { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey };
+  };
+  // 同一个监听函数重复加只算一次，重画时调多少次都没关系
+  const listen = (element: unknown) => {
+    if (!(element instanceof HTMLElement)) return;
+    element.addEventListener('click', remember, true);
+    element.addEventListener('keydown', remember, true);
+  };
+  const choose = (ids: string[]) => {
+    const before = new Set(selection.value);
+    // 树报上来的是加进或去掉了一个：那个就是这次点的
+    const clicked = ids.find((id) => !before.has(id)) ?? selection.value.find((id) => !ids.includes(id));
+    if (clicked === undefined) return session.select(ids);
+    if (modifiers.range && anchor !== undefined) {
+      const order = visibleOrder(roots, new Set(expanded));
+      const [from, to] = [order.indexOf(anchor), order.indexOf(clicked)];
+      if (from >= 0 && to >= 0) return session.select(order.slice(Math.min(from, to), Math.max(from, to) + 1));
+    }
+    anchor = clicked;
+    session.select(modifiers.toggle ? ids : [clicked]);
+  };
+
   return () => (
+    <div {...css.attrs(styles.tree)} ref={listen}>
     <Tree
       {...css.attrs(styles.tree)}
       aria-label="场景里的实体"
@@ -91,10 +128,11 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       selectionMode="multiple"
       _expanded={expanded}
       _selected={[...selection.value]}
-      onUpdate:_selected={(ids: string[]) => session.select(ids)}
+      onUpdate:_selected={choose}
       canDrop={(node: Node, target: TreeMoveTarget) => !session.isMember(node.entity.id) && (target.parent == null || !session.isMember(target.parent))}
       onMove={move}
       loading={!agent.value}
     />
+    </div>
   );
 });

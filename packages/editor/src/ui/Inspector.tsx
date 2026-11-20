@@ -3,9 +3,11 @@ import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
+import type { SceneEdit } from '@stride-ts/engine/editor-document';
 import { COMPONENT_FIELDS, ENTITY_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
-import { assetListId, FieldEditor, FieldRow, type FieldContext, type ValuePath } from './FieldEditor';
+import { assetListId, FieldEditor, FieldRow, type FieldContext, type ValuePath, type ValueUpdate } from './FieldEditor';
 import type { EditorSession } from './session';
+import { mergeValues } from './values';
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', gap: '_sm', padding: '_sm', fontSize: '0.875rem' },
@@ -16,6 +18,7 @@ const styles = css.create({
 });
 
 type ComponentKey = keyof typeof COMPONENT_FIELDS;
+type Entities = readonly SceneEntityFile[];
 
 /** "添加组件"下拉框里脚本的值的前缀（组件的值是 COMPONENT_FIELDS 的键）。 */
 const SCRIPT_OPTION = 'script:';
@@ -23,12 +26,41 @@ const SCRIPT_OPTION = 'script:';
 /** 脚本的类名：登记的名字（`gameplay/player#Player`、`Gameplay.Boss`）或 Stride 的类型名的最后一段。 */
 const scriptClass = (type: string): string => type.slice(Math.max(type.lastIndexOf('.'), type.lastIndexOf('#')) + 1);
 
-/** 能加的脚本：游戏登记的、这个实体上还没有的（按类名比，导入的场景里写的是 Stride 的类型名）。重名的类显示全名。 */
-function addableScripts(registered: readonly string[], present: readonly { readonly type: string }[]): { type: string; label: string }[] {
-  const have = new Set(present.map((script) => scriptClass(script.type)));
+/** 实体上第 k 个（从 0 数）类名是 name 的脚本在脚本列表里的下标；没有是 -1。 */
+function scriptIndex(entity: SceneEntityFile, name: string, k: number): number {
+  let seen = 0;
+  return (entity.components.scripts ?? []).findIndex((script) => scriptClass(script.type) === name && seen++ === k);
+}
+
+/**
+ * 几个实体都有的脚本：按第一个实体上的顺序，每个是"第 k 个类名是 name 的"（同一种脚本挂了两个时也一一对上）。
+ * 只选了一个实体时就是它的全部脚本。
+ */
+function commonScripts(entities: Entities): { type: string; name: string; k: number }[] {
+  const counts = new Map<string, number>();
+  return (entities[0]!.components.scripts ?? [])
+    .map(({ type }) => {
+      const name = scriptClass(type);
+      const k = counts.get(name) ?? 0;
+      counts.set(name, k + 1);
+      return { type, name, k };
+    })
+    .filter(({ name, k }) => entities.every((entity) => scriptIndex(entity, name, k) >= 0));
+}
+
+/** 能加的脚本：游戏登记的、不是每个实体上都已经有的（按类名比，导入的场景里写的是 Stride 的类型名）。重名的类显示全名。 */
+function addableScripts(registered: readonly string[], entities: Entities): { type: string; label: string }[] {
+  const everywhere = (name: string) => entities.every((entity) => scriptIndex(entity, name, 0) >= 0);
   const counts = new Map<string, number>();
   for (const type of registered) counts.set(scriptClass(type), (counts.get(scriptClass(type)) ?? 0) + 1);
-  return registered.filter((type) => !have.has(scriptClass(type))).map((type) => ({ type, label: counts.get(scriptClass(type))! > 1 ? type : scriptClass(type) }));
+  return registered.filter((type) => !everywhere(scriptClass(type))).map((type) => ({ type, label: counts.get(scriptClass(type))! > 1 ? type : scriptClass(type) }));
+}
+
+/** 实体里 path 上的值（列表按下标）。 */
+function valueAt(entity: SceneEntityFile, path: ValuePath): unknown {
+  let value: unknown = entity;
+  for (const key of path) value = value !== null && typeof value === 'object' ? (value as Record<string | number, unknown>)[key] : undefined;
+  return value;
 }
 
 /** 实例的根、成员上的说明：属于哪个预制体，这个实体上有几处覆盖。 */
@@ -50,6 +82,9 @@ function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
  * （它有脚本的类，见 EditAgent.scriptFields），游戏里没有这个脚本时按原样的 JSON 改。"添加组件"里也列出游戏登记的脚本
  * （EditAgent.scriptTypes），加上的脚本 type 写登记的名字、属性先都用脚本的默认值。改一个值是对场景文档的一次 set，
  * 连着改同一个值（拖数字、打字）并成撤销的一步。
+ *
+ * 选了几个实体时显示它们都有的组件和脚本，值不一样的地方显示"多个值"（mergeValues）；改一处是对每个实体各一次 set，
+ * 一起做、一起撤销；加、去掉组件也是对每个实体。
  */
 export const Inspector = _component(({ session }: { session: EditorSession }) => {
   const { version, selection, agent, assets } = session;
@@ -59,84 +94,103 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     for (const asset of assets.value) byKind.set(asset.kind, [...(byKind.get(asset.kind) ?? []), asset.path]);
     return [...byKind];
   });
-  // 显示的是展开以后的实体：实例的根带着预制体的组件，成员也能选
-  const entity = _derived.by((): SceneEntityFile | undefined => {
+  // 显示的是展开以后的实体（实例的根带着预制体的组件，成员也能选），按场景里的顺序
+  const entities = _derived.by((): Entities => {
     void version.value;
-    const ids = selection.value;
-    return agent.value && ids.length === 1 ? session.expanded.find((candidate) => candidate.id === ids[0]) : undefined;
+    const ids = new Set(selection.value);
+    return agent.value && ids.size > 0 ? session.expanded.filter((entity) => ids.has(entity.id)) : [];
   });
   const context = _derived.by((): FieldContext => {
     void version.value;
     return { entities: agent.value ? session.expanded.map(({ id, name }) => ({ id, name })) : [] };
   });
 
-  /** 加上、去掉（undefined）一个组件：单独一步撤销。 */
-  const setComponent = (id: string, key: string, value: unknown) => {
-    session.apply({ type: 'set', entity: id, path: ['components', key], value });
+  /** 对每个实体做一个修改（undefined 的跳过），一起做、一起撤销；mergeKey 同 session.apply。 */
+  const applyEach = (targets: Entities, edit: (entity: SceneEntityFile) => SceneEdit | undefined, mergeKey?: string) => {
+    const edits = targets.map(edit).filter((one): one is SceneEdit => one !== undefined);
+    if (edits.length > 0) session.apply(edits.length === 1 ? edits[0]! : { type: 'batch', edits }, mergeKey);
+  };
+
+  /** 加、去掉组件和脚本：单独一步撤销。 */
+  const change = (targets: Entities, edit: (entity: SceneEntityFile) => SceneEdit | undefined) => {
+    applyEach(targets, edit);
     session.commit();
   };
 
-  /** 加一个脚本（属性都用脚本的默认值）：加在脚本列表的最后，单独一步撤销。 */
-  const addScript = (id: string, scripts: readonly unknown[], type: string) => {
-    const script = { type, props: {} };
-    session.apply({ type: 'set', entity: id, path: scripts.length > 0 ? ['components', 'scripts', scripts.length] : ['components', 'scripts'], value: scripts.length > 0 ? script : [script] });
-    session.commit();
+  /**
+   * 每个实体上 base(实体) 下面的 path 设成 value（ValueUpdate 按各自现在的值算）；同一处连着改并成一步（换了地方、失去
+   * 焦点以后是新的一步）。
+   */
+  const setter = (targets: Entities, base: (entity: SceneEntityFile) => ValuePath) => (path: ValuePath, value: unknown) => {
+    // 按原来的值算时读现在的：连着拖的时候这个回调可能是几次修改之前画的
+    const now = typeof value === 'function' ? new Map(session.expanded.map((entity) => [entity.id, entity])) : undefined;
+    applyEach(targets, (entity) => {
+      const full = [...base(entity), ...path];
+      return { type: 'set', entity: entity.id, path: full, value: now ? (value as ValueUpdate)(valueAt(now.get(entity.id) ?? entity, full)) : value };
+    }, `${targets.map((entity) => entity.id).join(',')}/${[...base(targets[0]!), ...path].join('/')}`);
   };
 
-  /** 实体上 base 下面的 path 设成 value；同一处连着改并成一步（换了地方、失去焦点以后是新的一步）。 */
-  const setter = (id: string, base: ValuePath) => (path: ValuePath, value: unknown) => {
-    const full = [...base, ...path];
-    session.apply({ type: 'set', entity: id, path: full, value }, `${id}/${full.join('/')}`);
-  };
+  /** 在没有这个脚本的实体上加一个（属性都用脚本的默认值），加在脚本列表的最后。 */
+  const addScript = (targets: Entities, type: string) =>
+    change(targets, (entity) => {
+      if (scriptIndex(entity, scriptClass(type), 0) >= 0) return undefined;
+      const scripts = entity.components.scripts ?? [];
+      const script = { type, props: {} };
+      return { type: 'set', entity: entity.id, path: scripts.length > 0 ? ['components', 'scripts', scripts.length] : ['components', 'scripts'], value: scripts.length > 0 ? script : [script] };
+    });
 
   return () => {
-    const ids = selection.value;
+    const list = entities;
     if (!agent.value) return <div {...css.attrs(styles.hint)}>场景还没打开</div>;
-    if (ids.length === 0) return <div {...css.attrs(styles.hint)}>在场景树或视口里选一个实体</div>;
-    if (!entity) return <div {...css.attrs(styles.hint)}>选中了 {ids.length} 个实体（多选的一起改还没做）</div>;
-    const { id, components } = entity;
-    const record = entity as unknown as Record<string, unknown>;
+    if (list.length === 0) return <div {...css.attrs(styles.hint)}>在场景树或视口里选一个实体（Ctrl、Shift 多选）</div>;
+    const merged = (read: (entity: SceneEntityFile) => unknown) => mergeValues(list.map(read));
+    const keys = Object.keys(COMPONENT_FIELDS) as ComponentKey[];
     return (
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
         {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
-        {instanceHint(session, entity)}
+        {list.length === 1
+          ? instanceHint(session, list[0]!)
+          : <div {...css.attrs(styles.hint)}>选中了 {list.length} 个实体：显示它们都有的组件，值不一样的显示"多个值"；改一处改所有的，一步撤销。</div>}
         <section {...css.attrs(styles.section)}>
-          {ENTITY_FIELDS.map((field) => <FieldRow field={field} value={record[field.name]} context={context} onSet={setter(id, [field.name])} />)}
+          {ENTITY_FIELDS.map((field) => (
+            <FieldRow field={field} value={merged((entity) => (entity as unknown as Record<string, unknown>)[field.name])} context={context} onSet={setter(list, () => [field.name])} />
+          ))}
         </section>
-        {(Object.keys(COMPONENT_FIELDS) as ComponentKey[]).filter((key) => components[key] !== undefined).map((key) => (
+        {keys.filter((key) => list.every((entity) => entity.components[key] !== undefined)).map((key) => (
           <section {...css.attrs(styles.section)}>
             <div {...css.attrs(styles.heading)}>
               {COMPONENT_FIELDS[key].label}
-              <IconButton icon={X} variant="ghost" aria-label={`去掉 ${COMPONENT_FIELDS[key].label}`} onClick={() => setComponent(id, key, undefined)} />
+              <IconButton icon={X} variant="ghost" aria-label={`去掉 ${COMPONENT_FIELDS[key].label}`} onClick={() => change(list, ({ id }) => ({ type: 'set', entity: id, path: ['components', key], value: undefined }))} />
             </div>
-            <FieldEditor type={COMPONENT_FIELDS[key].type} value={components[key]} context={context} onSet={setter(id, ['components', key])} />
+            <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key])} context={context} onSet={setter(list, () => ['components', key])} />
           </section>
         ))}
-        {(components.scripts ?? []).map((script, i) => {
-          const fields = agent.value?.scriptFields(script.type);
-          const type: FieldType = fields ? { kind: 'object', fields } : { kind: 'json' };
+        {commonScripts(list).map(({ type, name, k }) => {
+          const fields = agent.value?.scriptFields(type);
+          const fieldType: FieldType = fields ? { kind: 'object', fields } : { kind: 'json' };
+          const index = (entity: SceneEntityFile) => scriptIndex(entity, name, k);
           return (
             <section {...css.attrs(styles.section)}>
-              <div {...css.attrs(styles.heading)} title={script.type}>
-                {scriptClass(script.type)}
-                <IconButton icon={X} variant="ghost" aria-label="去掉这个脚本" onClick={() => {
-                  const rest = (components.scripts ?? []).filter((_, j) => j !== i);
-                  setComponent(id, 'scripts', rest.length > 0 ? rest : undefined);
-                }} />
+              <div {...css.attrs(styles.heading)} title={type}>
+                {name}
+                <IconButton icon={X} variant="ghost" aria-label="去掉这个脚本" onClick={() => change(list, (entity) => {
+                  const rest = (entity.components.scripts ?? []).filter((_, j) => j !== index(entity));
+                  return { type: 'set', entity: entity.id, path: ['components', 'scripts'], value: rest.length > 0 ? rest : undefined };
+                })} />
               </div>
-              <FieldEditor type={type} value={script.props} context={context} onSet={setter(id, ['components', 'scripts', i, 'props'])} />
+              <FieldEditor type={fieldType} value={merged((entity) => entity.components.scripts![index(entity)]!.props)} context={context} onSet={setter(list, (entity) => ['components', 'scripts', index(entity), 'props'])} />
             </section>
           );
         })}
         <select {...css.attrs(styles.add)} aria-label="添加组件" value="" onChange={(event: Event) => {
           const value = (event.target as HTMLSelectElement).value;
-          if (value.startsWith(SCRIPT_OPTION)) addScript(id, components.scripts ?? [], value.slice(SCRIPT_OPTION.length));
-          else if (value) setComponent(id, value, structuredClone(COMPONENT_FIELDS[value as ComponentKey].initial));
+          if (value.startsWith(SCRIPT_OPTION)) addScript(list, value.slice(SCRIPT_OPTION.length));
+          else if (value) change(list, ({ id, components }) => (components[value as ComponentKey] !== undefined ? undefined : { type: 'set', entity: id, path: ['components', value], value: structuredClone(COMPONENT_FIELDS[value as ComponentKey].initial) }));
         }}>
           <option value="">添加组件……</option>
-          {(Object.keys(COMPONENT_FIELDS) as ComponentKey[]).filter((key) => components[key] === undefined).map((key) => <option value={key}>{COMPONENT_FIELDS[key].label}</option>)}
+          {keys.filter((key) => list.some((entity) => entity.components[key] === undefined)).map((key) => <option value={key}>{COMPONENT_FIELDS[key].label}</option>)}
           <optgroup label="脚本">
-            {addableScripts(agent.value.scriptTypes(), components.scripts ?? []).map(({ type, label }) => <option value={SCRIPT_OPTION + type} title={type}>{label}</option>)}
+            {addableScripts(agent.value.scriptTypes(), list).map(({ type, label }) => <option value={SCRIPT_OPTION + type} title={type}>{label}</option>)}
           </optgroup>
         </select>
       </div>

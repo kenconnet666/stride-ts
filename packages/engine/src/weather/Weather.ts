@@ -8,8 +8,9 @@
  * - 风（`game.wind` 的全局风）：风速、方向、阵风和湍流，和场景里 directional 的 WindZone 加在一起。
  *
  * 只驱动场景里有的：没有体积云就只是不画云，想要的东西（以及它们没被天气接管的字段：云底、雾的高度衰减、雨的范围）照常
- * 写在各自的组件上。地面多湿、积了多少雪（wetness、snowCover）跟着降水慢慢变，写给渲染系统（`renderSystem.surfaceWeather`）：
- * 网格着色时淋得到的表面变湿（变暗、变光滑），朝上的积雪。
+ * 写在各自的组件上。地面多湿、积了多少水、积了多少雪（wetness、puddles、snowCover）跟着降水慢慢变，写给渲染系统
+ * （`renderSystem.surfaceWeather`，连同下雨的大小 rain）：网格着色时淋得到的表面变湿（变暗、变光滑），平的地方积出水洼（雨打
+ * 出涟漪），朝上的积雪。
  *
  * 风向和体积云的 windDirection 一样是吹向的方位（度，0 是 +Z，90 是 +X）。编辑状态下（`game.editing`）不过渡，直接是想要的
  * 天气，地面的湿和雪也直接是下了很久以后的样子。场景里有几个 Weather 时只用第一个。
@@ -55,12 +56,14 @@ export interface WeatherState {
   gustiness: number;
   /** 地面多湿，0 到 1：下雨时变湿，雨停了慢慢干。 */
   wetness: number;
+  /** 积水，0 到 1：地面湿透以后还在下雨就积起来（水洼变大），雨停了比湿更慢地干。 */
+  puddles: number;
   /** 地面积了多少雪，0 到 1：下雪时积起来，气温高于 0 °C 时化掉。 */
   snowCover: number;
 }
 
 /** Weather 组件里写的那几项（不带过渡时间）。 */
-export type WeatherTarget = Omit<WeatherState, 'wetness' | 'snowCover'>;
+export type WeatherTarget = Omit<WeatherState, 'wetness' | 'puddles' | 'snowCover'>;
 
 /** 几种常见的天气（`stride call weather '{"preset":"rain"}'`；编辑器、游戏也可以拿来用）。 */
 export const WEATHER_PRESETS = {
@@ -75,9 +78,13 @@ export const WEATHER_PRESETS = {
 
 export type WeatherPreset = keyof typeof WEATHER_PRESETS;
 
-/** 大雨下多久地面全湿、雨停了多久干透、大雪下多久积满（秒；降水小时按比例慢）。 */
+/**
+ * 大雨下多久地面全湿、雨停了多久干透、湿透以后大雨下多久水洼积满、雨停了多久水洼干掉、大雪下多久积满（秒；降水小时按比例慢）。
+ */
 const WETTING_TIME = 60;
 const DRYING_TIME = 300;
+const PUDDLE_TIME = 240;
+const PUDDLE_DRYING_TIME = 900;
 const SNOWING_TIME = 600;
 /** 气温每高 1 °C，积雪多快化掉（每秒化掉的比例）。 */
 const MELT_PER_DEGREE = 1 / 600;
@@ -166,7 +173,7 @@ export class WeatherSystem {
     if (!target) {
       this.current = undefined;
       game.wind.weather = undefined;
-      if (surface) Object.assign(surface, { wetness: 0, snowCover: 0 });
+      if (surface) Object.assign(surface, { wetness: 0, puddles: 0, snowCover: 0, rain: 0 });
       return;
     }
     this.advance(target, game.editing ? undefined : game.updateTime.elapsed);
@@ -174,8 +181,8 @@ export class WeatherSystem {
     game.wind.weather = weatherWind(this.current!);
     // 材质的湿和雪：淋不淋得到看天空遮挡
     if (surface) {
-      const { wetness, snowCover } = this.current!;
-      Object.assign(surface, { wetness, snowCover });
+      const { wetness, puddles, snowCover, precipitation, temperature } = this.current!;
+      Object.assign(surface, { wetness, puddles, snowCover, rain: temperature < SNOW_BELOW ? 0 : precipitation });
       if (wetness > 0 || snowCover > 0) game.renderSystem.skyOcclusion.use();
     }
   }
@@ -191,6 +198,8 @@ export class WeatherSystem {
       return (this.current = {
         ...stripTransition(target),
         wetness: target.precipitation > 0 && !snowing ? 1 : 0,
+        // 下了很久的雨：积水按雨的大小（小雨积不满）
+        puddles: !snowing ? target.precipitation : 0,
         snowCover: snowing ? 1 : 0,
       });
     }
@@ -206,6 +215,9 @@ export class WeatherSystem {
     const snowing = current.temperature < SNOW_BELOW;
     const wetting = snowing ? 0 : amount / WETTING_TIME;
     current.wetness = clamp01(current.wetness + (wetting > 0 ? wetting : -1 / DRYING_TIME) * elapsed);
+    // 积水：湿透了还在下才积，最多积到雨的大小（小雨积不满）；雨停了慢慢干
+    if (wetting <= 0) current.puddles = clamp01(current.puddles - elapsed / PUDDLE_DRYING_TIME);
+    else if (current.wetness >= 1 && current.puddles < amount) current.puddles = Math.min(amount, current.puddles + (amount / PUDDLE_TIME) * elapsed);
     const melting = Math.max(0, current.temperature) * MELT_PER_DEGREE;
     current.snowCover = clamp01(current.snowCover + ((snowing ? amount / SNOWING_TIME : 0) - melting) * elapsed);
     return current;

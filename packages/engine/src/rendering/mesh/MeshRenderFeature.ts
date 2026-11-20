@@ -897,7 +897,7 @@ class Gpu {
     const cloud = this.#clouds.shadow;
     const cloudLight = cloud ? directionals.findIndex((light, i) => i < directionalCount && light.entity === cloud.lightEntity) : -1;
     const data = this.#viewData, words = new Uint32Array(data.buffer);
-    const { wetness, snowCover } = this.#weather.surfaceWeather;
+    const { wetness, puddles, snowCover, rain } = this.#weather.surfaceWeather;
     const occlusion = wetness > 0 || snowCover > 0;
     for (const view of views) {
       const o = view.index * stride;
@@ -933,7 +933,7 @@ class Gpu {
       data.set(view.unjitteredViewProjection, o + 204);
       data.set(view.previousViewProjection, o + 220);
       data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
-      data.set([wetness, snowCover, 0, 0], o + 240);
+      data.set([wetness, snowCover, puddles, rain], o + 240);
       data.set([this.#decals.count, 0, 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
     }

@@ -481,10 +481,10 @@ export class RenderSystem {
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
   /**
-   * 地面多湿、积了多少雪（0 到 1；天气状态 weather/Weather.ts 每帧写，没有天气时是 0）：网格着色时淋得到的表面变湿、
-   * 朝上的积雪。大于 0 时写的人每帧 skyOcclusion.use()（屋檐下的不湿）。
+   * 地面多湿、积了多少水、积了多少雪、雨下得多大（0 到 1；天气状态 weather/Weather.ts 每帧写，没有天气时是 0）：网格着色时
+   * 淋得到的表面变湿、平的地方积出水洼（下雨时有涟漪）、朝上的积雪。大于 0 时写的人每帧 skyOcclusion.use()（屋檐下的不湿）。
    */
-  readonly surfaceWeather = { wetness: 0, snowCover: 0 };
+  readonly surfaceWeather = { wetness: 0, puddles: 0, snowCover: 0, rain: 0 };
 
   constructor(graphicsDevice: GraphicsDevice) {
     this.graphicsDevice = graphicsDevice;

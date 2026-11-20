@@ -66,7 +66,7 @@ struct View {
   // 云的影子（cloudShadowMap）：x：地面点的水平位置（米）到贴图坐标的比例，yz：贴图坐标的偏移（风吹着走），
   // w：被云挡着的方向光的下标（没有云时 -1）
   cloudShadow: vec4f,
-  // 天气（RenderSystem.surfaceWeather）：x：地面多湿，y：积了多少雪（都是 0 到 1）
+  // 天气（RenderSystem.surfaceWeather）：x：地面多湿，y：积了多少雪，z：积了多少水（水洼），w：雨多大（涟漪），都是 0 到 1
   weather: vec4f,
   // x：贴花的个数（decals 的前几个）
   decal: vec4f,
@@ -151,7 +151,7 @@ fn clusterCounts(cluster: i32) -> vec2u {
   return vec2u(packed & 0xffffu, packed >> 16u);
 }
 
-/** 贴花改过的表面和法线。 */
+/** 贴花、天气改过的表面和法线。 */
 struct Decaled { surface: LayerSurface, normal: vec3f };
 
 fn decodeSrgb(c: vec3f) -> vec3f {
@@ -251,32 +251,103 @@ fn skyExposure(world: vec3f) -> f32 {
   return select(1.0, 0.0, surface < 1.0 && c.z > surface + 0.2 / 450.0);
 }
 
+/** 整数格点的哈希，0..1（水洼、涟漪用）。 */
+fn cellHash(p: vec2i) -> f32 {
+  var h = bitcast<u32>(p.x) * 374761393u + bitcast<u32>(p.y) * 668265263u;
+  h = (h ^ (h >> 13u)) * 1274126177u;
+  return f32((h ^ (h >> 16u)) >> 8u) / 16777216.0;
+}
+
+/** 二维值噪声，0..1：格点上的哈希按 smoothstep 插值。 */
+fn valueNoise(p: vec2f) -> f32 {
+  let i = vec2i(floor(p));
+  let f = p - floor(p);
+  let u = f * f * (3.0 - 2.0 * f);
+  let a = mix(cellHash(i), cellHash(i + vec2i(1, 0)), u.x);
+  let b = mix(cellHash(i + vec2i(0, 1)), cellHash(i + vec2i(1, 1)), u.x);
+  return mix(a, b, u.y);
+}
+
 /**
- * 天气改表面（Lagarde 2013 "Water drop 2 - Wet surfaces" 的做法简化）：
- * - 湿：淋得到的非金属吸了水变暗（金属不吸水），表面一层水膜变光滑（朝上的更光滑）；积水的水洼还没做；
- * - 雪：淋得到、朝上的面积起来，积得越多越往斜面上长；雪是白的、粗糙的非金属。
+ * 雨打水面的涟漪（Lagarde 2013 "Water drop 3" 的程序化版本）：xz 平面上每 RIPPLE_CELL 米一格，每格每个周期随机的位置落一滴
+ * （下得小时一部分格子不落），水波一圈圈往外扩、越扩越弱。返回水面高度的梯度（xz），法线 = normalize(-gx, 1, -gz)。
+ */
+const RIPPLE_CELL = 0.35;
+fn rippleGradient(p: vec2f, time: f32, rain: f32) -> vec2f {
+  let cell = floor(p / RIPPLE_CELL);
+  var g = vec2f(0.0);
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let c = vec2i(cell) + vec2i(x, y);
+      // 一个周期 0.8 秒，每格的相位错开；下一个周期换一个位置
+      let phase = time / 0.8 + cellHash(c + vec2i(7, 13));
+      let cycle = i32(floor(phase));
+      let t = phase - floor(phase);
+      let seed = c * 3 + vec2i(cycle, cycle * 5);
+      if (cellHash(seed + vec2i(3, 1)) > rain) {
+        continue;
+      }
+      let center = (vec2f(c) + vec2f(cellHash(seed), cellHash(seed + vec2i(11, 17)))) * RIPPLE_CELL;
+      let offset = p - center;
+      let d = length(offset);
+      // 波前在 t · 25 厘米处，波长 4 厘米，宽 3 厘米的包络，越往外越弱
+      let w = d - t * 0.25;
+      let k = 6.2831853 / 0.04;
+      let envelope = exp(-w * w / (2.0 * 0.03 * 0.03)) * (1.0 - t) * (1.0 - t);
+      let slope = 0.0025 * envelope * (k * cos(w * k) - w / (0.03 * 0.03) * sin(w * k));
+      g += offset / max(d, 1e-4) * slope;
+    }
+  }
+  return g;
+}
+
+/**
+ * 天气改表面（Lagarde 2013 "Water drop 2 - Wet surfaces"、"Water drop 3 - Physically based wet surfaces" 的做法简化）：
+ * - 湿：淋得到的非金属吸了水变暗（金属不吸水），表面一层水膜变光滑（朝上的更光滑）；
+ * - 水洼：积了水以后，平的、淋得到的地方按世界 xz 的低频噪声积出一片片水（积得越多越大）：上面是一层平的水面——很光滑、
+ *   按水的非金属算、底下的颜色更暗，法线朝上；下雨时有涟漪（rippleGradient）；
+ * - 雪：淋得到、朝上的面积起来，积得越多越往斜面上长；雪是白的、粗糙的非金属，盖在水洼上面。
  * 竖着的面按往外 30 厘米的那一点判断淋不淋得到：墙面自己正上方是墙头，按自己的位置查总是被挡着。
  */
-fn weatherSurface(world: vec3f, n: vec3f, s: LayerSurface) -> LayerSurface {
+fn weatherSurface(world: vec3f, n: vec3f, s: LayerSurface) -> Decaled {
   let wetness = view.weather.x;
   let snowCover = view.weather.y;
-  if (wetness <= 0.0 && snowCover <= 0.0) {
-    return s;
+  let puddles = view.weather.z;
+  var result = Decaled(s, n);
+  if (wetness <= 0.0 && snowCover <= 0.0 && puddles <= 0.0) {
+    return result;
   }
   let exposure = skyExposure(world + vec3f(n.x, 0.0, n.z) * 0.3);
   let up = saturate(n.y);
   var r = s;
+  // 水洼之间的地面按 wetness 湿：雨停了它先干（5 分钟），水洼还在（15 分钟）
   let wet = wetness * exposure;
   r.albedo *= mix(1.0, 0.45, wet * (1.0 - s.metalness));
   // 水膜让表面光滑一些，但保留材质自己粗糙度的变化（全压到一个很小的值，地面就成了一面映着天的镜子，贴图都看不见了）
   // 金属不吸水，水在上面成珠、不成一层均匀的膜：光滑得少（不然半金属的地面成了映着阴天的镜子）
   r.roughness = mix(s.roughness, max(s.roughness * 0.35, 0.1), wet * mix(0.6, 1.0, up) * (1.0 - 0.75 * s.metalness));
-  let snow = exposure * smoothstep(0.0, 0.25, up * 1.2 - (1.0 - snowCover));
+  if (puddles > 0.0 && exposure > 0.0) {
+    // 两层噪声（几米和一米左右的斑块）；积水越多阈值越低、水洼越大，边缘 0.06 宽的过渡
+    let noise = valueNoise(world.xz * 0.35) * 0.7 + valueNoise(world.xz * 1.1 + 13.7) * 0.3;
+    let water = smoothstep(0.94 - puddles * 0.55, 1.0 - puddles * 0.55, noise) * smoothstep(0.9, 0.98, n.y);
+    if (water > 0.0) {
+      r.albedo *= mix(1.0, 0.6, water);
+      r.metalness = mix(r.metalness, 0.0, water);
+      r.specular = mix(r.specular, vec3f(0.02), water);
+      r.roughness = mix(r.roughness, 0.03, water);
+      let g = rippleGradient(world.xz, view.locals.y, view.weather.w) * water;
+      result.normal = normalize(mix(n, normalize(vec3f(-g.x, 1.0, -g.y)), water));
+    }
+  }
+  // 积雪 0 时一点不积（以前写成 up · 1.2 - (1 - 积雪)，没雪时朝上的面也算出 0.9 的雪，下雨的地面成了白的），1 时朝上 0.2 以上都积满
+  let snow = exposure * smoothstep(0.0, 0.25, 1.2 * (up - 1.0 + snowCover));
   r.albedo = mix(r.albedo, vec3f(0.9), snow);
   r.metalness = mix(r.metalness, 0.0, snow);
   r.specular = mix(r.specular, vec3f(0.02), snow);
   r.roughness = mix(r.roughness, 0.75, snow);
-  return r;
+  result.normal = normalize(mix(result.normal, n, snow));
+  result.surface = r;
+  return result;
 }
 
 /** 云的影子：从 world 朝光（toLight）看过去被云挡掉多少。先沿光线退到地面（y = 0）上的那个点，影子图是按地面上的点存的。 */
@@ -1228,7 +1299,10 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   let cluster = clusterOf(in.position, in.world);
   let decaled = applyDecals(in.world, n, coatSurface(in, layers, coatPass), cluster);
   n = decaled.normal;
-  let layered = weatherSurface(in.world, n, decaled.surface);
+  // 水洼的水面是平的（下雨时有涟漪）：天气也可能换法线
+  let weathered = weatherSurface(in.world, n, decaled.surface);
+  n = weathered.normal;
+  let layered = weathered.surface;
   let albedo = layered.albedo;
 
   // 金属度工作流（MaterialSurfaceMetalness）或镜面颜色（MaterialSpecularMapFeature），再乘 cavity 和透明的 alpha、tint

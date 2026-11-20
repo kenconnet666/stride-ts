@@ -218,6 +218,25 @@ describe('天气状态', () => {
     weather.advance({ ...snow, temperature: 10, precipitation: 0 }, 10);
     expect(weather.current!.snowCover).toBeLessThan((0.6 / 600) * 100);
   });
+
+  test('积水：地面湿透之前不积；之后按雨的大小积，最多积到雨的大小；雨停了比湿更慢地干', () => {
+    const weather = new WeatherSystem();
+    const steady = { ...rain, transitionTime: 0 };
+    weather.advance({ ...clear, transitionTime: 0 }, undefined);
+    weather.advance(steady, 50);
+    expect(weather.current).toMatchObject({ wetness: 0.5, puddles: 0 });
+    weather.advance(steady, 50);
+    const soaked = weather.current!.puddles;
+    weather.advance(steady, 120);
+    expect(weather.current!.puddles - soaked).toBeCloseTo((0.6 / 240) * 120, 5);
+    weather.advance(steady, 1000);
+    expect(weather.current!.puddles).toBeCloseTo(0.6, 2);
+    weather.advance({ ...clear, transitionTime: 0 }, 90);
+    expect(weather.current!.puddles).toBeCloseTo(0.6 - 90 / 900, 2);
+    expect(weather.current!.wetness).toBeCloseTo(1 - 90 / 300, 5);
+    // 下了很久的雨：积水按雨的大小
+    expect(new WeatherSystem().advance(steady, undefined).puddles).toBe(0.6);
+  });
 });
 
 describe('风场和雨雪写在场景文件里', () => {
@@ -273,14 +292,14 @@ describe('风场和雨雪写在场景文件里', () => {
     expect(checkEntity({ ...scene.entities[0]!, components: { weather: WEATHER_PRESETS.storm } })).toEqual([]);
     // 地面的湿和雪写给渲染系统，有湿或雪时要天空遮挡（屋檐下的不湿）
     let used = 0;
-    const surfaceWeather = { wetness: 0, snowCover: 0 };
+    const surfaceWeather = { wetness: 0, puddles: 0, snowCover: 0, rain: 0 };
     game.renderSystem = { surfaceWeather, skyOcclusion: { use: () => used++ } } as never;
     game.weather.update(game);
-    expect(surfaceWeather).toEqual({ wetness: 0, snowCover: 1 });
+    expect(surfaceWeather).toEqual({ wetness: 0, puddles: 0, snowCover: 1, rain: 0 });
     expect(used).toBe(1);
     sky.remove(Weather);
     game.weather.update(game);
-    expect(surfaceWeather).toEqual({ wetness: 0, snowCover: 0 });
+    expect(surfaceWeather).toEqual({ wetness: 0, puddles: 0, snowCover: 0, rain: 0 });
     game.wind.update(game);
     expect(game.weather.current).toBeUndefined();
     expect(game.wind.global.velocity).toEqual([0, 0, 0]);

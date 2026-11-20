@@ -58,8 +58,11 @@ export class GraphicsDevice {
 
   static async create(canvas: HTMLCanvasElement): Promise<GraphicsDevice> {
     if (!navigator.gpu) throw new Error('WebGPU is not available in this browser');
-    // 没有硬件适配器时（没有显卡的机器、CI 里用 SwiftShader 的 Chrome）退回软件的后备适配器：慢，但画得出来
-    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }) ?? await navigator.gpu.requestAdapter({ forceFallbackAdapter: true });
+    // 没有硬件适配器时（没有显卡的机器、CI 里用 SwiftShader 的 Chrome）退回软件的后备适配器：慢，但画得出来。
+    // 要独立显卡：macOS、Linux 上双显卡的笔记本按它挑；Windows 上 Chrome 不理它（用哪块由系统的图形设置定，crbug.com/369219127），
+    // 传了每次启动都在控制台警告一次，所以不传
+    const windows = /Windows/.test((navigator as { userAgentData?: { platform: string } }).userAgentData?.platform ?? navigator.userAgent);
+    const adapter = await navigator.gpu.requestAdapter(windows ? {} : { powerPreference: 'high-performance' }) ?? await navigator.gpu.requestAdapter({ forceFallbackAdapter: true });
     if (!adapter) throw new Error('No WebGPU adapter is available');
     if (adapter.info.isFallbackAdapter) console.warn('WebGPU: using the software fallback adapter (no hardware adapter is available); rendering is slow');
     const compression = COMPRESSION.filter(([feature]) => adapter.features.has(feature));

@@ -251,6 +251,8 @@ export class Game {
     if (debugging) {
       registerGameCommands(this.debug, this);
       this.debug.connect();
+      // 冒烟脚本按资源计时看下载了哪些文件（字体的块、贴图）：开发服务器上每个模块一个请求，浏览器默认只留 250 条，后来的丢掉
+      performance.setResourceTimingBufferSize(10_000);
     }
     this.editing = options.editing ?? (debugging && query.has('stride-edit'));
     try {

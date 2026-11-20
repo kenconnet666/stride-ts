@@ -30,10 +30,6 @@ export interface RenderResult {
   readonly elapsed: number;
 }
 
-export const RENDER_COMMAND_HELP = 'Offline render (fixed time step, sub-frame antialiasing and motion blur) to an MP4 (H.264 + AAC) or a PNG sequence, saved in the project\'s exports folder. '
-  + 'args: name (default "render"), preset (landscape1080 | vertical1080 | square1080 | landscape4k), width, height, fps, '
-  + 'timeline (entity with a TimelinePlayer, or a timeline name: restarted from 0, seconds defaults to its length), seconds, samples (sub-frames per frame, default 8), '
-  + 'shutter (0..1 of the frame interval, default 0.5), format (mp4 | png), bitrate, audio (default true). In the editor it renders in a hidden play-mode page.';
 
 export async function renderCommand(game: Game, args: Args): Promise<RenderResult> {
   if (game.editing) return renderInPlayPage(args);

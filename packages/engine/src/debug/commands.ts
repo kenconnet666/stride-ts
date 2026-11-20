@@ -25,9 +25,13 @@ import { keyCode } from '../input/keys';
 import { describe, type Debug } from './Debug';
 import { pageHelpers } from './pageHelpers';
 import { devtoolsBridgeVersion, sendDevtools } from './devtoolsBridge';
-import { RENDER_COMMAND_HELP, renderCommand } from '../offline/renderCommand';
 
 type Args = Readonly<Record<string, unknown>>;
+
+const RENDER_HELP = 'Offline render (fixed time step, sub-frame antialiasing and motion blur) to an MP4 (H.264 + AAC) or a PNG sequence, saved in the project\'s exports folder. '
+  + 'args: name (default "render"), preset (landscape1080 | vertical1080 | square1080 | landscape4k), width, height, fps, '
+  + 'timeline (entity with a TimelinePlayer, or a timeline name: restarted from 0, seconds defaults to its length), seconds, samples (sub-frames per frame, default 8), '
+  + 'shutter (0..1 of the frame interval, default 0.5), format (mp4 | png), bitrate, audio (default true). In the editor it renders in a hidden play-mode page.';
 
 export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('commands', 'List the registered commands.', () => debug.commands());
@@ -38,7 +42,8 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('time', 'Pause, resume, step frames, time scale, fixed time step, set the game clock. args: pause, resume, step (frames), timeScale, fixedTimeStep (seconds, or null to clear), total (seconds).', (args) => time(game, args));
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64. args: exact (true: that frame without the output dither, for pixel comparisons).', (args) => screenshot(debug, game, args['exact'] === true));
-  debug.command('render', RENDER_COMMAND_HELP, (args) => renderCommand(game, args));
+  // 离线渲染的几个模块（编码、封装、混音）用到时才加载，不进每个游戏页面
+  debug.command('render', RENDER_HELP, async (args) => (await import('../offline/renderCommand')).renderCommand(game, args));
   debug.command('perf', 'Sample for some seconds: frame times, CPU time per system and phase, GPU time per pass, render stats. args: seconds (default 3), gpu (default true).', (args) => perf(debug, game, args));
   debug.command('native', 'Native module stats: counters, timings since the last reset (or since perf started), memory. args: reset (clear the timings afterwards).', (args) => nativeStats(game, args));
   debug.command('draws', 'Draw calls of the last frame per GPU render pass (scene stages, shadows, each post-processing step, UI, debug lines), in drawing order.', () => {

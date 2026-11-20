@@ -105,6 +105,18 @@ export interface EditorMessages {
   readonly timelineExporting: string;
   readonly timelineExportPresets: { readonly landscape1080: string; readonly vertical1080: string; readonly square1080: string };
   readonly timelineExported: (path: string, seconds: number) => string;
+  readonly graphOpen: string;
+  readonly graphTitle: (path: string) => string;
+  readonly graphAddNode: string;
+  readonly graphHint: string;
+  readonly graphClose: string;
+  readonly graphNoMaterial: string;
+  readonly graphDisconnect: string;
+  readonly graphOutput: string;
+  readonly graphOutputs: { readonly baseColor: string; readonly metalness: string; readonly roughness: string; readonly normal: string; readonly emissive: string; readonly occlusion: string };
+  readonly graphCategories: Readonly<Record<string, string>>;
+  readonly graphNodes: Readonly<Record<string, string>>;
+  readonly graphPorts: Readonly<Record<string, string>>;
   // 会话
   readonly prefabMade: (path: string) => string;
   readonly savedWithMissing: (count: number, first: readonly string[], more: boolean) => string;
@@ -206,6 +218,22 @@ const zhCN: EditorMessages = {
   timelineExporting: '出片中…',
   timelineExportPresets: { landscape1080: '横屏 1080p', vertical1080: '竖屏 9:16', square1080: '方形 1:1' },
   timelineExported: (path, seconds) => `已导出 ${path}（${seconds.toFixed(0)} 秒）`,
+  graphOpen: '节点图',
+  graphTitle: (path) => `节点图：${path}`,
+  graphAddNode: '加节点……',
+  graphHint: '拖标题移动，拖空白处平移，滚轮缩放；从输出口拖到输入口连线，点连着的输入口断开；选中节点按 Delete 删除',
+  graphClose: '关掉节点图',
+  graphNoMaterial: '在资源浏览器里选中一个材质，属性面板上点"节点图"',
+  graphDisconnect: '点一下断开',
+  graphOutput: '材质输出',
+  graphOutputs: { baseColor: '基础色', metalness: '金属度', roughness: '粗糙度', normal: '法线', emissive: '自发光', occlusion: '环境光遮蔽' },
+  graphCategories: { input: '输入', generator: '生成器', math: '运算', normal: '法线', mapping: '映射' },
+  graphNodes: {
+    uv: 'UV', position: '位置', time: '时间', value: '数', color: '颜色', texture: '贴图', noise: '噪声', voronoi: 'Voronoi', bricks: '砖块', checker: '棋盘格',
+    gradient: '渐变', circle: '圆', add: '加', subtract: '减', multiply: '乘', mix: '混合', invert: '反相', levels: '色阶', power: '幂', colorRamp: '颜色渐变',
+    normalFromHeight: '从高度算法线', uvTransform: 'UV 变换',
+  },
+  graphPorts: { uv: 'UV', position: '位置', time: '时间', value: '值', color: '颜色', distance: '距离', cell: '格子', mask: '遮罩', brick: '每块砖', out: '结果', a: 'A', b: 'B', t: '比例', in: '输入', height: '高度', normal: '法线' },
   prefabMade: (path) => `做成了预制体 ${path}，场景里换成了它的实例（保存场景以后生效）`,
   savedWithMissing: (count, first, more) => `已保存；${count} 处脚本的必填属性没设，试玩时这些脚本不挂：${first.join('、')}${more ? '……' : ''}`,
 };
@@ -306,6 +334,22 @@ const enUS: EditorMessages = {
   timelineExporting: 'Rendering…',
   timelineExportPresets: { landscape1080: 'Landscape 1080p', vertical1080: 'Vertical 9:16', square1080: 'Square 1:1' },
   timelineExported: (path, seconds) => `Exported ${path} (${seconds.toFixed(0)} s)`,
+  graphOpen: 'Node graph',
+  graphTitle: (path) => `Node graph: ${path}`,
+  graphAddNode: 'Add node…',
+  graphHint: 'Drag a title to move, drag the background to pan, wheel to zoom; drag from an output to an input to link, click a linked input to unlink; Delete removes the selected node',
+  graphClose: 'Close the node graph',
+  graphNoMaterial: 'Select a material in the asset browser and click "Node graph" in the inspector',
+  graphDisconnect: 'Click to unlink',
+  graphOutput: 'Material output',
+  graphOutputs: { baseColor: 'Base color', metalness: 'Metalness', roughness: 'Roughness', normal: 'Normal', emissive: 'Emissive', occlusion: 'Occlusion' },
+  graphCategories: { input: 'Input', generator: 'Generator', math: 'Math', normal: 'Normal', mapping: 'Mapping' },
+  graphNodes: {
+    uv: 'UV', position: 'Position', time: 'Time', value: 'Value', color: 'Color', texture: 'Texture', noise: 'Noise', voronoi: 'Voronoi', bricks: 'Bricks', checker: 'Checker',
+    gradient: 'Gradient', circle: 'Circle', add: 'Add', subtract: 'Subtract', multiply: 'Multiply', mix: 'Mix', invert: 'Invert', levels: 'Levels', power: 'Power', colorRamp: 'Color ramp',
+    normalFromHeight: 'Normal from height', uvTransform: 'UV transform',
+  },
+  graphPorts: {},
   prefabMade: (path) => `Made prefab ${path}; the scene now has an instance of it (takes effect when the scene is saved)`,
   savedWithMissing: (count, first, more) => `Saved; ${count} required script propert${count === 1 ? 'y is' : 'ies are'} not set, so those scripts are not attached when playing: ${first.join(', ')}${more ? '…' : ''}`,
 };

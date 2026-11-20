@@ -1,23 +1,192 @@
 {
  "name": "Wall",
  "baseColor": [
-  0.95,
-  0.93,
-  0.9,
+  1,
+  1,
+  1,
   1
  ],
  "metalness": 0,
  "roughness": 0.85,
- "baseColorTexture": {
-  "texture": "Level/Textures/Grid",
-  "encoding": "svg",
-  "scale": [
-   1,
-   1
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "uv",
+    "params": {
+     "scale": [
+      1,
+      1
+     ]
+    },
+    "position": [
+     0,
+     0
+    ],
+    "inputs": {}
+   },
+   {
+    "id": "bricks",
+    "type": "bricks",
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    },
+    "params": {
+     "columns": 3,
+     "rows": 4,
+     "mortar": 0.025,
+     "shift": 0.5
+    },
+    "position": [
+     220,
+     0
+    ]
+   },
+   {
+    "id": "noise",
+    "type": "noise",
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    },
+    "params": {
+     "scale": 24,
+     "octaves": 4
+    },
+    "position": [
+     0,
+     146
+    ]
+   },
+   {
+    "id": "mortar",
+    "type": "color",
+    "params": {
+     "color": [
+      0.55,
+      0.55,
+      0.5
+     ]
+    },
+    "position": [
+     220,
+     400
+    ],
+    "inputs": {}
+   },
+   {
+    "id": "brick",
+    "type": "colorRamp",
+    "inputs": {
+     "t": {
+      "node": "bricks",
+      "output": "brick"
+     }
+    },
+    "params": {
+     "from": [
+      0.35,
+      0.09,
+      0.05
+     ],
+     "to": [
+      0.6,
+      0.22,
+      0.12
+     ]
+    },
+    "position": [
+     440,
+     0
+    ]
+   },
+   {
+    "id": "albedo",
+    "type": "mix",
+    "inputs": {
+     "a": {
+      "node": "mortar"
+     },
+     "b": {
+      "node": "brick"
+     },
+     "t": {
+      "node": "bricks",
+      "output": "mask"
+     }
+    },
+    "position": [
+     660,
+     0
+    ]
+   },
+   {
+    "id": "height",
+    "type": "multiply",
+    "inputs": {
+     "a": {
+      "node": "bricks",
+      "output": "mask"
+     },
+     "b": {
+      "node": "noise"
+     }
+    },
+    "position": [
+     440,
+     200
+    ]
+   },
+   {
+    "id": "normal",
+    "type": "normalFromHeight",
+    "inputs": {
+     "height": {
+      "node": "height"
+     },
+     "uv": {
+      "node": "uv"
+     }
+    },
+    "params": {
+     "strength": 1
+    },
+    "position": [
+     660,
+     200
+    ]
+   },
+   {
+    "id": "rough",
+    "type": "levels",
+    "inputs": {
+     "in": {
+      "node": "noise"
+     }
+    },
+    "params": {
+     "outMin": 0.6,
+     "outMax": 0.95
+    },
+    "position": [
+     440,
+     400
+    ]
+   }
   ],
-  "offset": [
-   0,
-   0
-  ]
+  "outputs": {
+   "baseColor": {
+    "node": "albedo"
+   },
+   "roughness": {
+    "node": "rough"
+   },
+   "normal": {
+    "node": "normal"
+   }
+  }
  }
 }

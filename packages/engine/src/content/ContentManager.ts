@@ -18,7 +18,7 @@ import type { Vec3Like } from '../data/vectors';
 import { Model, ModelPart, Skinned } from '../rendering/components';
 import { ModelMorph, ModelSkeleton } from '../animation/AnimationSystem';
 import { Morphed } from '../animation/morphs';
-import { Material, type MaterialShaderTrees } from '../rendering/mesh/Material';
+import { Material, type MaterialShaderLayer, type MaterialShaderTrees } from '../rendering/mesh/Material';
 import { preload, textureRefs } from './loading';
 import { expandPrefabInstances, loadPrefabs } from './prefabInstances';
 import { Prefab } from './Prefab';
@@ -32,6 +32,8 @@ import { Texture, type ImageDecoder, type TextureDecoder } from '../graphics/Tex
 import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
 import { ColorTreeCompiler } from '../rendering/mesh/colorTree';
+import { compileMaterialGraph, materialGraphTextures, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
+import type { GraphFile } from '../graph/nodeGraph';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { uiAssetPaths } from './references';
@@ -367,8 +369,8 @@ export class ContentManager {
    * 材质的颜色树（自发光、法线贴图、位移贴图）：先加载它们引用的贴图，再用同一个编译器编译（贴图共用绑定组 3，着色器类按游戏
    * 登记的找）。一棵树都没有时是 undefined。
    */
-  async #shaderTrees({ emissiveTree: emissive, normalTree: normal, displacementTree: displacement, layers = [], clearCoat: coat }: MaterialFile): Promise<MaterialShaderTrees | undefined> {
-    if (!emissive && !normal && !displacement && layers.length === 0 && !coat) return undefined;
+  async #shaderTrees({ name, emissiveTree: emissive, normalTree: normal, displacementTree: displacement, layers = [], clearCoat: coat, graph }: MaterialFile): Promise<MaterialShaderTrees | undefined> {
+    if (!emissive && !normal && !displacement && layers.length === 0 && !coat && !graph) return undefined;
     const layerTrees = layers.flatMap((l) => [l.blend, l.diffuse, l.specular?.color, l.specular?.intensity, l.metalness, l.glossiness?.tree, l.normal?.tree, l.emissive?.tree]);
     // 清漆的树：函数名 → 树和返回类型
     const coatTrees: (readonly [string, ParticleModuleFile, 'vec4f' | 'f32'])[] = coat ? [
@@ -381,6 +383,7 @@ export class ContentManager {
     const refs = [emissive?.tree, normal?.tree, displacement?.tree, ...layerTrees, ...coatTrees.map(([, tree]) => tree)].flatMap((t) => (t ? textureRefs(t) : []));
     const textures = new Map(await Promise.all(refs.map(async (ref) => [ref.texture, await this.loadTextureRef(ref, ref.srgb ?? true)] as const)));
     const compiler = new ColorTreeCompiler({ texture: (path) => textures.get(path), shaderClass: (name) => this.#shaderClasses(name) }, 3);
+    const graphCode = graph ? await this.#graphLayer(graph, compiler, layers.length, name) : undefined;
     const functions = [
       emissive && `fn emissiveTree() -> vec4f {\n  return ${compiler.color(emissive.tree)};\n}\n`,
       normal && `fn normalTree() -> vec4f {\n  return ${compiler.color(normal.tree)};\n}\n`,
@@ -396,6 +399,7 @@ export class ContentManager {
         layer.occlusion && `fn layer${i}Occlusion() -> f32 {\n  return ${compiler.scalar(layer.occlusion.tree)};\n}\n`,
       ]),
       ...coatTrees.map(([name, tree, type]) => `fn ${name}() -> ${type} {\n  return ${type === 'f32' ? compiler.scalar(tree) : compiler.color(tree)};\n}\n`),
+      graphCode?.code,
     ];
     return {
       code: compiler.declarations + functions.filter(Boolean).join(''),
@@ -410,15 +414,50 @@ export class ContentManager {
           topNormal: { scaleAndBias: coat.coat.normal.scaleAndBias, isXYNormal: coat.coat.normal.isXYNormal },
         },
       } : {}),
-      ...(layers.length > 0 ? {
-        layers: layers.map((layer) => ({
+      ...(graphCode ? { graph: true } : {}),
+      ...(layers.length > 0 || graphCode ? {
+        layers: [...layers.map((layer) => ({
           diffuse: layer.diffuse !== undefined, specular: layer.specular !== undefined, metalness: layer.metalness !== undefined,
           emissive: layer.emissive !== undefined,
           ...(layer.glossiness ? { glossiness: { invert: layer.glossiness.invert } } : {}),
           ...(layer.normal ? { normal: { scaleAndBias: layer.normal.scaleAndBias, isXYNormal: layer.normal.isXYNormal } } : {}),
           ...(layer.occlusion ? { occlusion: { directLighting: layer.occlusion.directLighting } } : {}),
-        })),
+        })), ...(graphCode ? [graphCode.layer] : [])],
       } : {}),
+    };
+  }
+
+  /**
+   * 材质节点图（rendering/mesh/materialGraph.ts）编成第 index 层：先加载贴图节点引用的贴图资源，图的代码加上这一层的各个函数
+   * （权重 1，读 materialGraph() 算好的 graph_* 变量）。
+   */
+  async #graphLayer(graph: GraphFile, compiler: ColorTreeCompiler, index: number, name: string): Promise<{ code: string; layer: MaterialShaderLayer }> {
+    const textures = new Map(await Promise.all(materialGraphTextures(graph).map(async (path) => [path, await this.loadTextureAsset(path)] as const)));
+    const compiled = compileMaterialGraph(graph, compiler, (path, uv) => {
+      const texture = textures.get(path);
+      return texture && compiler.sampleTexture(texture, uv);
+    }, `material ${name}`);
+    const has = (output: MaterialGraphOutput) => compiled.outputs.has(output);
+    const layer = (fn: string, type: string, body: string) => `fn layer${index}${fn}() -> ${type} {\n  return ${body};\n}\n`;
+    const code = [
+      compiled.code,
+      layer('Blend', 'f32', '1.0'),
+      has('baseColor') && layer('Diffuse', 'vec4f', 'graph_baseColor'),
+      has('metalness') && layer('Metalness', 'f32', 'graph_metalness'),
+      has('roughness') && layer('Gloss', 'f32', 'graph_roughness'),
+      has('normal') && layer('Normal', 'vec4f', 'vec4f(graph_normal, 1.0)'),
+      has('emissive') && layer('Emissive', 'vec3f', 'graph_emissive.rgb'),
+      has('occlusion') && layer('Occlusion', 'f32', 'graph_occlusion'),
+    ].filter(Boolean).join('');
+    return {
+      code,
+      layer: {
+        diffuse: has('baseColor'), specular: false, metalness: has('metalness'), emissive: has('emissive'),
+        // 图给的是粗糙度（invert：不再用 1 减）
+        ...(has('roughness') ? { glossiness: { invert: true } } : {}),
+        ...(has('normal') ? { normal: { scaleAndBias: false, isXYNormal: false } } : {}),
+        ...(has('occlusion') ? { occlusion: { directLighting: 1 } } : {}),
+      },
     };
   }
 

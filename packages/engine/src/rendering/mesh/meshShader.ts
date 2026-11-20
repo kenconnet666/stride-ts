@@ -617,10 +617,22 @@ fn surfaceNormal(in: Varyings, coatPass: bool) -> vec3f {
   let coat = coatNormal(in, coatPass);
   m = select(m, coat.xyz, coat.w > 0.5);
   let tangentLength = length(in.tangent.xyz);
-  let t = in.tangent.xyz / max(tangentLength, 1e-8);
-  let b = in.tangent.w * cross(n, t);
+  // 没有切线的网格（白盒、程序生成的形状）：按位置和 UV 的屏幕空间导数现算切线框架（Schüler 2013，"Normal Mapping Without
+  // Precomputed Tangents"），T、B 是位置沿 U、V 的方向。和 Stride 不同：Stride 的法线贴图要求网格带切线。导数在分支外算
+  let dp1 = dpdx(in.world);
+  let dp2 = dpdy(in.world);
+  let duv1 = dpdx(in.uv);
+  let duv2 = dpdy(in.uv);
+  let dp2perp = cross(dp2, n);
+  let dp1perp = cross(n, dp1);
+  let ct = dp2perp * duv1.x + dp1perp * duv2.x;
+  let cb = dp2perp * duv1.y + dp1perp * duv2.y;
+  let frameScale = inverseSqrt(max(max(dot(ct, ct), dot(cb, cb)), 1e-20));
+  let hasTangent = tangentLength > 0.0;
+  let t = select(ct * frameScale, in.tangent.xyz / max(tangentLength, 1e-8), hasTangent);
+  let b = select(cb * frameScale, in.tangent.w * cross(n, t), hasTangent);
   let mapped = normalize(m.x * t + m.y * b + m.z * n);
-  return select(n, mapped, (hasBase || layered.w > 0.5 || coat.w > 0.5) && tangentLength > 0.0);
+  return select(n, mapped, hasBase || layered.w > 0.5 || coat.w > 0.5);
 }
 
 /**
@@ -1502,7 +1514,7 @@ export function materialTreesCode(trees: MaterialShaderTrees | undefined): strin
   return ${displacement.scaleAndBias ? '(2.0 * d - 1.0)' : 'd'} * ${wgslFloat(displacement.intensity)};
 }`
     : 'fn treeDisplacement(uv: vec2f, local: vec3f) -> f32 { return 0.0; }';
-  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode, layersCode(trees?.layers ?? []), clearCoatCode(trees?.clearCoat)].join('\n');
+  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode, layersCode(trees?.layers ?? [], trees?.graph ?? false), clearCoatCode(trees?.clearCoat)].join('\n');
 }
 
 /**
@@ -1552,7 +1564,7 @@ fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface {
  * 材质层（Stride 的 MaterialBlendLayer、MaterialStreamLinearBlend）：每层的遮罩 b，各个属性 mix(下面的, 这层的, b)；光泽度换成粗糙度
  * 再混，法线在切线空间里混再归一化，自发光（乘过强度的）、环境光遮蔽和它对直射光的影响也一样混。没有层时这几个函数原样返回。
  */
-function layersCode(layers: readonly MaterialShaderLayer[]): string {
+function layersCode(layers: readonly MaterialShaderLayer[], graph: boolean): string {
   const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y);`;
   const surface = layers.map((layer, i) => [
     `  let b${i} = saturate(layer${i}Blend());`,
@@ -1584,7 +1596,7 @@ ${layers.length > 0 ? `  ${fill}\n${surface}` : ''}
   return r;
 }
 fn layerNormal(in: Varyings, m: vec3f) -> vec4f {
-${normals.length > 0 ? `  ${fill}\n  var n = m;\n${normals.join('\n')}\n  return vec4f(n, 1.0);` : '  return vec4f(m, 0.0);'}
+${graph ? `  ${fill}\n  materialGraph();\n` : ''}${normals.length > 0 ? `${graph ? '' : `  ${fill}\n`}  var n = m;\n${normals.join('\n')}\n  return vec4f(n, 1.0);` : '  return vec4f(m, 0.0);'}
 }`;
 }
 

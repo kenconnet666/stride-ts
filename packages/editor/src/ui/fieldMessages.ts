@@ -31,7 +31,7 @@ const zhCN: FieldMessages = {
     albedoMix: '颜色的比例', alphaCutoff: '透明裁剪阈值', ambient: '环境光', ambientOcclusion: '环境光遮蔽', angleInner: '内锥角', angleOuter: '外锥角',
     angularDamping: '角阻尼', animations: '动画剪辑', anisotropy: '各向异性', antialiasing: '抗锯齿', atmosphereHeight: '大气层厚度', backFace: '背面',
     baseColor: '基础色', baseColorOperator: '基础色的混合', baseColorTexture: '基础色贴图', baseHeight: '基准高度', blendCascades: '级联之间过渡',
-    blendDistance: '过渡距离', blendMode: '混合模式', blend: '过渡', brushes: '笔刷', points: '顶点', topRadius: '顶面半径', segments: '分段', operation: '运算', material: '材质槽', bloom: '泛光', bodyA: '物体 A', bodyB: '物体 B', bottom: '底部高度', boxProjection: '盒投影',
+    blendDistance: '过渡距离', blendMode: '混合模式', blend: '过渡', brushes: '笔刷', points: '顶点', topRadius: '顶面半径', segments: '分段', operation: '运算', material: '材质槽', octaves: '层数', seed: '种子', randomness: '随机程度', columns: '列数', rows: '行数', mortar: '灰缝', shift: '错开', angle: '角度', softness: '柔和', repeat: '重复', inMin: '输入下限', inMax: '输入上限', gamma: '伽马', outMin: '输出下限', outMax: '输出上限', exponent: '指数', from: '起点颜色', to: '终点颜色', graph: '节点图', bloom: '泛光', bodyA: '物体 A', bodyB: '物体 B', bottom: '底部高度', boxProjection: '盒投影',
     brightFilter: '亮部提取', build: '生成设置', camera: '相机', cascadeCount: '级联数', cavity: '缝隙遮蔽', celShading: '卡通着色', cellHeight: '体素高度',
     cellSize: '体素大小', center: '中心', centerFromMiddle: '从中间算中心', clearCoat: '清漆层', clearColor: '清屏色', clip: '剪辑', cloudCoverage: '云量',
     cloudType: '云的类型', collisionMasks: '碰撞遮罩', color: '颜色', coverage: '覆盖率', dayLength: '一天的长度', dayOfYear: '一年中的第几天', density: '密度',
@@ -124,6 +124,8 @@ const zhCN: FieldMessages = {
     'polygon in the XZ plane as [x, z] pairs (may be concave), extruded up from the position': 'XZ 平面上的多边形，[x, z] 一对一个点（可以是凹的），从位置往上挤出',
     'unset: same as radius; 0 makes a cone': '不写时同半径；0 是圆锥',
     'index into materials': '材质槽的下标',
+    'a texture asset (an imported image)': '贴图资源（导入的图片）',
+    'material node graph (edited in the node graph panel); its outputs override the values above': '材质节点图（在节点图面板里编辑），它的输出盖过上面的值',
     'name of the clip in the AnimationComponent': 'AnimationComponent 里剪辑的名字',
   },
 };

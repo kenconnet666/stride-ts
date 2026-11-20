@@ -229,6 +229,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     <div {...css.attrs(styles.panel)}>
       {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
       <div {...css.attrs(styles.hint)}>{t.assetHint(t.assetLabels[asset.kind], asset.path)}</div>
+      {asset.kind === 'material' && <button type="button" onClick={() => session.openMaterialGraph()}>{t.graphOpen}</button>}
       <FieldEditor type={{ kind: 'object', fields: ASSET_FIELDS[asset.kind] }} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
     </div>
   );

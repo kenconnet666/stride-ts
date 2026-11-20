@@ -160,6 +160,17 @@ export class ColorTreeCompiler {
     }
   }
 
+  /** 登记一个库函数（按名字，每个只放一次）；材质节点图（materialGraph.ts）用。 */
+  addFunction(name: string, code: string): void {
+    this.#functions.set(name, code);
+  }
+
+  /** 在 uv（WGSL 表达式）处采样一张贴图，绑定和颜色树的贴图共用；材质节点图用。值是贴图原样的颜色（不预乘）。 */
+  sampleTexture(texture: Texture, uv: string, sampler: TextureSampler = {}): string {
+    const i = this.#bound.push({ texture, sampler }) - 1;
+    return this.#vertex ? `textureSampleLevel(t${i}, s${i}, ${uv}, 0.0)` : `textureSample(t${i}, s${i}, ${uv})`;
+  }
+
   /** 贴图节点的采样表达式（没有贴图时是 undefined）：TexcoordIndex 是 Texcoord1 时用第二套 UV。 */
   #sample(node: ParticleModuleFile): string | undefined {
     const ref = node['texture'] as TextureRef | null | undefined;

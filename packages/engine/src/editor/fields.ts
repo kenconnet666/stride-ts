@@ -609,6 +609,7 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
   sheen: { type: object(fields<NonNullable<MaterialFile['sheen']>>({ color: colorLinear3, roughness: number({ min: 0, max: 1, step: 0.01 }) })), optional: true, group: 'advanced' },
   anisotropy: { type: object(fields<NonNullable<MaterialFile['anisotropy']>>({ strength: number({ min: -1, max: 1, step: 0.01 }), rotation: { type: number({ unit: 'rad' }), optional: true, default: 0 } })), optional: true, group: 'advanced' },
   layers: { type: json, optional: true, group: 'advanced' },
+  graph: { type: json, optional: true, group: 'advanced', description: 'material node graph (edited in the node graph panel); its outputs override the values above' },
 });
 
 const positiveNumber = (step = 0.05): FieldType => number({ min: 0, step });

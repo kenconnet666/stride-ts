@@ -3,6 +3,8 @@
  * UI 页面，以及文件的扩展名表。不依赖别的模块（除了同目录的格式文件）。
  */
 
+import type { GraphFile } from '../graph/nodeGraph';
+
 export const EXTENSIONS = {
   model: '.model',
   material: '.material.json',
@@ -232,6 +234,11 @@ export interface MaterialFile {
    * "贴图乘数"、镜面带贴图……），导入器把这些属性的树放进最底下一层、遮罩是常量 1 的层里：和材质层走同一条路径，盖住固定槽的值。
    */
   readonly layers?: readonly MaterialLayerFile[];
+  /**
+   * 材质节点图（Stride 没有；照 Substance Designer、Material Maker）：输出（baseColor、metalness、roughness、normal、emissive、
+   * occlusion）盖过上面的值，在着色器里直接求值。节点库见 rendering/mesh/materialGraph.ts。
+   */
+  readonly graph?: GraphFile;
   /** 两面都画（Stride 的 CullMode 是 None）。 */
   readonly doubleSided?: boolean;
   /** 环境光遮蔽（Stride 的 Occlusion 特性的 AmbientOcclusionMap）。 */

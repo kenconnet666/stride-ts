@@ -12,6 +12,7 @@
  */
 import { shallowRef, triggerRef } from 'vue';
 import type { PrefabFile, SceneEntityFile, SceneFile, TimelineFile } from '@stride-ts/engine/content-format';
+import type { GraphFile } from '@stride-ts/engine/node-graph';
 import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
@@ -59,6 +60,8 @@ export class EditorSession implements EditableScene {
   readonly frameGuide = shallowRef(0);
   /** 打开的时间轴（资源浏览器里打开的，下面的时间轴面板显示它）：选实体、改场景时一直开着。 */
   readonly timeline = shallowRef<OpenTimeline | undefined>();
+  /** 节点图面板开着（编辑的是属性面板里正开着的材质的 graph）。 */
+  readonly graphOpen = shallowRef(false);
   /** 正在导出的时间轴（名字）；没在导出时是 undefined。 */
   readonly exporting = shallowRef<string>();
   /** 还没存的时间轴修改（连着拖关键帧只存最后一次）。 */
@@ -185,6 +188,23 @@ export class EditorSession implements EditableScene {
     const content = inspected?.kind === 'timeline' && inspected.path === path ? inspected.content as unknown as TimelineFile : await this.client.readAsset<TimelineFile>('timeline', path);
     this.timeline.value = { path, content, time: 0, throughCamera: false, camera: undefined, subtitle: '' };
     this.seekTimeline(0);
+  }
+
+  /** 打开属性面板里那个材质的节点图（还没有图时建一个只有材质输出的空图），面板显示在下面。 */
+  openMaterialGraph(): void {
+    const inspected = this.inspected.value;
+    if (inspected?.kind !== 'material') return;
+    if (!inspected.content['graph']) this.editInspected(['graph'], { nodes: [], outputs: {} } satisfies GraphFile);
+    this.graphOpen.value = true;
+  }
+
+  closeMaterialGraph(): void {
+    this.graphOpen.value = false;
+  }
+
+  /** 改节点图（整个换掉）：同属性面板的修改，稍等一下存，材质热重载。 */
+  editMaterialGraph(change: (graph: GraphFile) => GraphFile): void {
+    this.editInspected(['graph'], (previous: unknown) => change((previous as GraphFile | undefined) ?? { nodes: [], outputs: {} }));
   }
 
   /** 关掉时间轴：视口回到场景文档的样子。 */

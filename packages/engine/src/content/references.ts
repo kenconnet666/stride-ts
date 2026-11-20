@@ -4,7 +4,7 @@
  * 文件（assetReferenceSlots）。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入写了扩展名）。
  */
 import type {
-  AnimationData, BrushFile, EXTENSIONS, GameSettingsFile, TimelineFile, ModelData, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SpriteSheetFile, TextureRef, UIFile,
+  AnimationData, BrushFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SpriteSheetFile, TextureRef, UIFile,
   UISpriteValue,
 } from './format';
 import { textureRefs } from './loading.ts';
@@ -195,6 +195,10 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
     }
     case 'material':
       textureRefs(file).forEach(image);
+      // 节点图里贴图节点引用的贴图资源
+      for (const node of (file as MaterialFile).graph?.nodes ?? []) {
+        if (node.type === 'texture' && typeof node.params?.['texture'] === 'string') add('texture', node.params, 'texture');
+      }
       break;
     case 'spriteSheet':
       for (const sprite of (file as SpriteSheetFile).sprites) image(sprite.texture);

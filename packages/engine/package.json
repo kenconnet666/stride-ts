@@ -11,6 +11,8 @@
     "./debug-protocol": "./src/debug/protocol.ts",
     "./editor-document": "./src/editor/SceneDocument.ts",
     "./editor-fields": "./src/editor/fields.ts",
+    "./material-graph": "./src/rendering/mesh/materialGraph.ts",
+    "./node-graph": "./src/graph/nodeGraph.ts",
     "./editor-field-schema": "./src/editor/fieldSchema.ts",
     "./editor-prefabs": "./src/editor/prefabEdits.ts",
     "./editor-copy": "./src/editor/copyEntities.ts",

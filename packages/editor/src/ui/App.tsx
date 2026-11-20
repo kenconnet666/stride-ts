@@ -8,6 +8,7 @@ import { LOCALES, locale, setLocale, type Locale } from './i18n';
 import { Inspector } from './Inspector';
 import { t } from './messages';
 import { SceneTree } from './SceneTree';
+import { GraphPanel } from './GraphPanel';
 import { TimelinePanel } from './TimelinePanel';
 import type { EditorSession } from './session';
 import { Viewport } from './Viewport';
@@ -125,7 +126,8 @@ export const App = _component(({ session }: { session: EditorSession }) => {
         <Splitter
           {...css.attrs(styles.body)}
           orientation="vertical"
-          _size={78}
+          // 节点图开着时下面让出一半高度（节点、参数要地方）
+          _size={session.graphOpen.value && session.inspected.value?.kind === 'material' ? 50 : 78}
           maxSize={92}
           start={
             <Splitter
@@ -145,6 +147,8 @@ export const App = _component(({ session }: { session: EditorSession }) => {
           }
           end={session.timeline.value ? (
             <Splitter {...css.attrs(styles.fill)} _size={30} minSize={15} start={<AssetBrowser session={session} />} end={<TimelinePanel session={session} />} />
+          ) : session.graphOpen.value && session.inspected.value?.kind === 'material' ? (
+            <Splitter {...css.attrs(styles.fill)} _size={22} minSize={12} start={<AssetBrowser session={session} />} end={<GraphPanel session={session} />} />
           ) : <AssetBrowser session={session} />}
         />
       </div>

@@ -1,5 +1,6 @@
-/** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、游戏设置）。 */
-import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile } from '../../content/format';
+/** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
+import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile } from '../../content/format';
+import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
 /** 材质的贴图槽（颜色、自发光）：贴图加采样方式和 UV 的缩放、偏移。 */
@@ -275,5 +276,49 @@ export const SPRITE_SHEET_FIELDS = fields<SpriteSheetFile>({
   },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+/** 合成音效的一个数值参数：范围照 SYNTH_RANGES，默认值照 DEFAULT_SOUND_SYNTH，group 是面板上的分组。 */
+const synthNumber = (key: keyof typeof SYNTH_RANGES, group: string, description: string): FieldSpec => {
+  const [min, max] = SYNTH_RANGES[key];
+  return { type: number({ min, max, step: 0.01 }), optional: true, default: DEFAULT_SOUND_SYNTH[key], group, description };
+};
+
+/** 合成音效（audio/soundSynth.ts，sfxr 的算法和参数范围）。 */
+const SOUND_SYNTH_FIELDS = fields<SoundSynth>({
+  wave: { type: oneOf('square', 'sawtooth', 'sine', 'triangle', 'noise'), optional: true, default: DEFAULT_SOUND_SYNTH.wave, group: 'tone', description: 'waveform' },
+  attack: synthNumber('attack', 'envelope', 'rise time (squared: 1 is about 2.3 seconds)'),
+  sustain: synthNumber('sustain', 'envelope', 'hold time (squared, like attack)'),
+  punch: synthNumber('punch', 'envelope', 'extra loudness at the start of the hold, falling off'),
+  decay: synthNumber('decay', 'envelope', 'fade-out time (squared, like attack)'),
+  frequency: synthNumber('frequency', 'pitch', 'start pitch (squared: 0.3 is about 330 Hz, 0.5 about 880 Hz)'),
+  minFrequency: synthNumber('minFrequency', 'pitch', 'the sound ends when a falling pitch reaches this (0: never)'),
+  slide: synthNumber('slide', 'pitch', 'pitch slide: positive goes up, negative goes down'),
+  deltaSlide: synthNumber('deltaSlide', 'pitch', 'change of the slide over time'),
+  vibratoDepth: synthNumber('vibratoDepth', 'pitch', 'vibrato depth'),
+  vibratoSpeed: synthNumber('vibratoSpeed', 'pitch', 'vibrato speed'),
+  arpeggio: synthNumber('arpeggio', 'pitch', 'pitch jump after a while: positive up, negative down'),
+  arpeggioSpeed: synthNumber('arpeggioSpeed', 'pitch', 'how soon the pitch jumps (1: never)'),
+  repeatSpeed: synthNumber('repeatSpeed', 'pitch', 'restart the pitch (not the envelope) this often (0: never)'),
+  duty: synthNumber('duty', 'tone', 'square wave: 0 is half and half, higher is thinner'),
+  dutySweep: synthNumber('dutySweep', 'tone', 'change of the duty over time'),
+  phaserOffset: synthNumber('phaserOffset', 'tone', 'phaser: delay of the copy mixed in'),
+  phaserSweep: synthNumber('phaserSweep', 'tone', 'change of the phaser delay over time'),
+  lowPassCutoff: synthNumber('lowPassCutoff', 'filter', 'low-pass cutoff (1: no filtering)'),
+  lowPassSweep: synthNumber('lowPassSweep', 'filter', 'change of the low-pass cutoff over time'),
+  lowPassResonance: synthNumber('lowPassResonance', 'filter', 'low-pass resonance'),
+  highPassCutoff: synthNumber('highPassCutoff', 'filter', 'high-pass cutoff (0: no filtering)'),
+  highPassSweep: synthNumber('highPassSweep', 'filter', 'change of the high-pass cutoff over time'),
+  volume: synthNumber('volume', 'output', 'peak level'),
+  seed: { type: integer(0), optional: true, default: DEFAULT_SOUND_SYNTH.seed, group: 'output', description: 'random seed of the noise (the same parameters always give the same sound)' },
+});
+
+/** 声音资源：音频文件的格式和播放方式，合成的音效的参数。 */
+export const SOUND_FIELDS = fields<SoundFile>({
+  name: string,
+  encoding: { type: oneOf('wav', 'mp3', 'ogg', 'flac', 'aac', 'synth'), description: "format of the audio file next to it; 'synth' is a generated sound effect with no audio file" },
+  streamFromDisk: { type: bool, description: 'play while downloading (music) instead of decoding it whole first; generated sounds are never streamed' },
+  spatialized: { type: bool, description: 'can be positioned in 3D by an audio emitter' },
+  synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
+});
+
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

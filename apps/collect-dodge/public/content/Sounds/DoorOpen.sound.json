@@ -1,6 +1,33 @@
 {
  "name": "DoorOpen",
- "encoding": "wav",
+ "encoding": "synth",
  "streamFromDisk": false,
- "spatialized": false
+ "spatialized": false,
+ "synth": {
+  "wave": "square",
+  "attack": 0,
+  "sustain": 0.031,
+  "punch": 0,
+  "decay": 0.49,
+  "frequency": 0.225,
+  "minFrequency": 0,
+  "slide": 0.194,
+  "deltaSlide": 0,
+  "vibratoDepth": 0,
+  "vibratoSpeed": 0,
+  "arpeggio": 0,
+  "arpeggioSpeed": 0,
+  "duty": 0.2,
+  "dutySweep": 0,
+  "repeatSpeed": 0.603,
+  "phaserOffset": 0,
+  "phaserSweep": 0,
+  "lowPassCutoff": 1,
+  "lowPassSweep": 0,
+  "lowPassResonance": 0,
+  "highPassCutoff": 0,
+  "highPassSweep": 0,
+  "volume": 0.5,
+  "seed": 1335815312
+ }
 }

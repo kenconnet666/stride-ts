@@ -14,7 +14,8 @@ import { assetSchemas, componentSchemas, entitySchema, sceneSettingSchemas } fro
 import { checkEntity } from '@stride-ts/engine/editor-fields';
 import { applyPolyOperation, POLY_OPERATIONS, type PolyOperation } from '@stride-ts/engine/modeling';
 import { autoRegions, gridRegions, replaceSprites } from '@stride-ts/engine/editor-sprites';
-import type { PolyMeshFile, SpriteSheetFile, TextureEncoding } from '@stride-ts/engine/content-format';
+import { mutateSound, seededRandom, soundSynth, SOUND_PRESETS, SOUND_SYNTH_RATE, synthesizeSound, type SoundPreset } from '@stride-ts/engine/audio-synth';
+import type { PolyMeshFile, SoundFile, SpriteSheetFile, TextureEncoding } from '@stride-ts/engine/content-format';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import * as z from 'zod';
@@ -147,6 +148,29 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
     const replaced = replaceSprites(sheet, { texture, encoding }, regions, pixelsPerUnit);
     await backend.saveAsset('spriteSheet', path, replaced.sheet);
     return json({ saved: `spriteSheet ${path}`, texture: [pixels.width, pixels.height], sliced: regions.length, sprites: replaced.sheet.sprites.length, regions });
+  });
+
+  server.registerTool('generate_sound', {
+    description: [
+      'Generate a sound effect (kind sound, .sound.json with encoding "synth": sfxr parameters, synthesized when loaded, no audio file; created when missing) like the sound generator in the editor.',
+      'preset picks a random sound of that kind; mutate instead changes the parameters of the existing sound a little. seed makes the choice repeatable.',
+      'Fine-tune afterwards with read_asset/write_asset (field_schemas lists the parameters and their ranges). Returns the parameters and the length in seconds.',
+    ].join(' '),
+    inputSchema: z.object({
+      path: assetPath,
+      preset: z.enum(Object.keys(SOUND_PRESETS) as [SoundPreset, ...SoundPreset[]]).optional(),
+      mutate: z.boolean().optional(),
+      seed: z.number().int().optional(),
+      spatialized: z.boolean().optional(),
+    }),
+  }, async ({ path, preset, mutate, seed, spatialized }) => {
+    const existing = await backend.readAsset('sound', path).catch(() => undefined) as SoundFile | undefined;
+    const random = seededRandom(seed ?? Math.floor(Math.random() * 0x7fffffff));
+    if (mutate && existing?.encoding !== 'synth') throw new Error(`generate_sound: mutate needs an existing generated sound at ${path}`);
+    const synth = mutate ? mutateSound(soundSynth(existing!.synth ?? {}), random) : SOUND_PRESETS[preset ?? 'random'](random);
+    const file: SoundFile = { name: path.slice(path.lastIndexOf('/') + 1), encoding: 'synth', streamFromDisk: false, spatialized: spatialized ?? existing?.spatialized ?? false, synth };
+    await backend.saveAsset('sound', path, file);
+    return json({ saved: `sound ${path}`, seconds: synthesizeSound(synth).length / SOUND_SYNTH_RATE, synth });
   });
 
   server.registerTool('edit_scene', {

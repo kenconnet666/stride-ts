@@ -4,7 +4,7 @@
  * 文件（assetReferenceSlots）。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入写了扩展名）。
  */
 import type {
-  AnimationData, BrushFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SpriteSheetFile, TextureRef, UIFile,
+  AnimationData, BrushFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SoundFile, SpriteSheetFile, TextureRef, UIFile,
   UISpriteValue,
 } from './format';
 import { textureRefs } from './loading.ts';
@@ -148,8 +148,8 @@ const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap'): AssetKind => (ki
  */
 export function assetReferences(kind: AssetKind, path: string, file: unknown): AssetReference[] {
   const refs: AssetReference[] = assetReferenceSlots(kind, file).map(({ kind, path }) => ({ kind, path }));
-  // 声音的音频文件、导入设置的源模型不写在文件里，和它同名
-  if (kind === 'sound') refs.push({ kind: 'audio', path });
+  // 声音的音频文件、导入设置的源模型不写在文件里，和它同名；合成的音效没有音频文件
+  if (kind === 'sound' && (file as SoundFile | undefined)?.encoding !== 'synth') refs.push({ kind: 'audio', path });
   if (kind === 'modelImport') refs.push({ kind: 'modelSource', path });
   if (kind === 'imageImport') refs.push({ kind: 'image', path });
   const seen = new Set<string>();

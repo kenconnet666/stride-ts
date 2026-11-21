@@ -93,6 +93,13 @@ export class AudioEngine {
     return this.context.decodeAudioData(bytes.slice(0));
   }
 
+  /** 生成的样本（合成的音效）做成单声道的 AudioBuffer。 */
+  fromSamples(samples: Float32Array<ArrayBuffer>, sampleRate: number): AudioBuffer {
+    const buffer = this.context.createBuffer(1, Math.max(1, samples.length), sampleRate);
+    buffer.copyToChannel(samples, 0);
+    return buffer;
+  }
+
   destroy(): void {
     this.#detach?.();
     void this.#context?.close();

@@ -3,6 +3,7 @@
  * UI 页面，以及文件的扩展名表。不依赖别的模块（除了同目录的格式文件）。
  */
 
+import type { SoundSynth } from '../audio/soundSynth';
 import type { GraphFile } from '../graph/nodeGraph';
 
 export const EXTENSIONS = {
@@ -50,13 +51,16 @@ export type SoundEncoding = 'mp3' | 'ogg' | 'wav' | 'flac' | 'aac';
 
 /**
  * 声音（Stride 的 Sound 资源，.sdsnd）：音频文件是 `<路径>.<encoding>`。streamFromDisk 的边下边放（音乐），其余的先整个解码
- * （音效）；spatialized 的可以按 AudioEmitter 的位置空间化。
+ * （音效）；spatialized 的可以按 AudioEmitter 的位置空间化。encoding 是 'synth' 的是合成的音效（audio/soundSynth.ts）：
+ * 没有音频文件，加载时按 synth 的参数生成，不能流式。
  */
 export interface SoundFile {
   readonly name: string;
-  readonly encoding: SoundEncoding;
+  readonly encoding: SoundEncoding | 'synth';
   readonly streamFromDisk: boolean;
   readonly spatialized: boolean;
+  /** 合成音效的参数（encoding 是 'synth' 时用；没写的参数用默认值）。 */
+  readonly synth?: Partial<SoundSynth>;
 }
 
 /**

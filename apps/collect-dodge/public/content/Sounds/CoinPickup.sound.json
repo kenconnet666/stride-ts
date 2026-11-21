@@ -1,6 +1,33 @@
 {
  "name": "CoinPickup",
- "encoding": "wav",
+ "encoding": "synth",
  "streamFromDisk": false,
- "spatialized": false
+ "spatialized": false,
+ "synth": {
+  "wave": "square",
+  "attack": 0,
+  "sustain": 0.022,
+  "punch": 0.582,
+  "decay": 0.364,
+  "frequency": 0.623,
+  "minFrequency": 0,
+  "slide": 0,
+  "deltaSlide": 0,
+  "vibratoDepth": 0,
+  "vibratoSpeed": 0,
+  "arpeggio": 0.361,
+  "arpeggioSpeed": 0.581,
+  "duty": 0,
+  "dutySweep": 0,
+  "repeatSpeed": 0,
+  "phaserOffset": 0,
+  "phaserSweep": 0,
+  "lowPassCutoff": 1,
+  "lowPassSweep": 0,
+  "lowPassResonance": 0,
+  "highPassCutoff": 0,
+  "highPassSweep": 0,
+  "volume": 0.5,
+  "seed": 656124003
+ }
 }

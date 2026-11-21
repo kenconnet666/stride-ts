@@ -613,3 +613,8 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 特性：atomic-vec2u-min-max、bgra8unorm-storage、clip-distances、depth-clip-control、dual-source-blending、float32-blendable、float32-filterable、indirect-first-instance、primitive-index、rg11b10ufloat-renderable、shader-f16、subgroup-size-control、subgroups、texture-component-swizzle、texture-compression-bc（含 sliced-3d）、texture-formats-tier1/2、timestamp-query。上限：缓冲和单个存储缓冲绑定 2 GB，每阶段 16 个存储缓冲，工作组共享内存 32 KB、一个工作组最多 1024 个线程，2D 贴图 16384。结论见 decisions.md 的"未来城市和现实仿真：路线图加 G 组"。
 
+## 音效生成器（2026-11-21）
+
+- 主 Chrome 里 collect-dodge 的编辑器：资源浏览器选 Sounds/CoinPickup（wav 的），属性面板上方是音效生成器（试听放旁边的 wav），编码改成 synth 出现八个类别按钮和"变一点"，点"拾取"参数填进下面的字段、时长 0.37 秒、放了一遍；"变一点""爆炸""受击"各放一遍（起初按钮放一遍、参数变了又自动放一遍，改成按钮放过的不重放）；字段里把衰减改成 0.45，存进文件、自动放一遍。视口里的游戏加载这个声音 20.8 毫秒（0.46 秒的噪声）。不带 `?stride-edit` 打开游戏，三个合成的音效（0.30、0.18、0.55 秒）加载、播放，控制台没有错误。
+- 单测：默认参数的长度和峰值、volume 只缩放；同样的 seed 出同样的噪声；往下滑到最低音高提前结束、往上滑过零点更密；每个类别 20 个种子：同种子同参数、都在范围里、0.02 到 8 秒、没有 NaN（包络里长度 0 的一段原来出 NaN，修了）；变一点不换波形、每个参数最多挪 0.05；合成的声音不引用音频文件。MCP 的 `generate_sound`：同种子同参数、存成 synth、没有缺失的引用、变一点、不存在的不能变。
+

@@ -20,6 +20,7 @@
     "./editor-prefabs": "./src/editor/prefabEdits.ts",
     "./editor-copy": "./src/editor/copyEntities.ts",
     "./editor-sprites": "./src/editor/spriteSlicing.ts",
+    "./audio-synth": "./src/audio/soundSynth.ts",
     "./editor-make-prefab": "./src/editor/makePrefab.ts",
     "./math": "./src/data/Matrix.ts"
   },

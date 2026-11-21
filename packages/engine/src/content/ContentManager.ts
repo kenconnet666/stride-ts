@@ -31,6 +31,7 @@ import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureDecoder } from '../graphics/Texture';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
+import { SOUND_SYNTH_RATE, synthesizeSound } from '../audio/soundSynth';
 import { ColorTreeCompiler } from '../rendering/mesh/colorTree';
 import { compileMaterialGraph, materialGraphTextures, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
 import type { GraphFile } from '../graph/nodeGraph';
@@ -586,6 +587,7 @@ export class ContentManager {
       const file = this.#json<SoundFile>(await this.#read(url));
       const audio = this.audio;
       if (!audio) throw new Error(`loading ${url.href}: sounds need an audio engine (Game sets one when it starts)`);
+      if (file.encoding === 'synth') return new Sound(audio, file.name, { buffer: audio.fromSamples(synthesizeSound(file.synth ?? {}), SOUND_SYNTH_RATE) }, file.spatialized);
       const audioUrl = new URL(`${path}.${file.encoding}`, this.root);
       const source = file.streamFromDisk ? { url: audioUrl.href } : { buffer: await audio.decode(await this.#read(audioUrl)) };
       return new Sound(audio, file.name, source, file.spatialized);

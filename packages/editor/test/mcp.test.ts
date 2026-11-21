@@ -134,6 +134,20 @@ describe('编辑器的 MCP 服务', () => {
       ['sheet_0', [0, 0, 4, 8], 8], ['sheet_1', [12, 0, 4, 8], 8],
     ]);
   }, 60_000);
+
+  test('合成音效：按类别生成（同一个种子出同一组参数，没有音频文件也不报引用缺失），在它附近变一点，没有的声音不能变', async () => {
+    const first = await mcp.call('generate_sound', { path: 'Sounds/Coin', preset: 'pickup', seed: 7 });
+    const again = await mcp.call('generate_sound', { path: 'Sounds/Coin2', preset: 'pickup', seed: 7 });
+    expect(first.value.synth).toEqual(again.value.synth);
+    expect(first.value.seconds).toBeGreaterThan(0.05);
+    const saved = (await mcp.call('read_asset', { kind: 'sound', path: 'Sounds/Coin' })).value;
+    expect(saved).toMatchObject({ name: 'Coin', encoding: 'synth', streamFromDisk: false, synth: first.value.synth });
+    expect((await mcp.call('list_assets', { kind: 'sound' })).value).toEqual([{ kind: 'sound', path: 'Sounds/Coin' }, { kind: 'sound', path: 'Sounds/Coin2' }]);
+    const mutated = await mcp.call('generate_sound', { path: 'Sounds/Coin', mutate: true, seed: 3 });
+    expect(mutated.value.synth).not.toEqual(first.value.synth);
+    expect(mutated.value.synth.wave).toBe(first.value.synth.wave);
+    expect((await mcp.call('generate_sound', { path: 'Sounds/Nope', mutate: true })).error).toBe(true);
+  }, 60_000);
 });
 
 /** width × height 的 RGBA PNG，alpha 按列给（每个像素灰色）。 */

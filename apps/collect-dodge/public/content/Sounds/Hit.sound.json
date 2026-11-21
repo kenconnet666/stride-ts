@@ -1,6 +1,33 @@
 {
  "name": "Hit",
- "encoding": "wav",
+ "encoding": "synth",
  "streamFromDisk": false,
- "spatialized": false
+ "spatialized": false,
+ "synth": {
+  "wave": "noise",
+  "attack": 0,
+  "sustain": 0.082,
+  "punch": 0,
+  "decay": 0.27,
+  "frequency": 0.353,
+  "minFrequency": 0,
+  "slide": -0.365,
+  "deltaSlide": 0,
+  "vibratoDepth": 0,
+  "vibratoSpeed": 0,
+  "arpeggio": 0,
+  "arpeggioSpeed": 0,
+  "duty": 0,
+  "dutySweep": 0,
+  "repeatSpeed": 0,
+  "phaserOffset": 0,
+  "phaserSweep": 0,
+  "lowPassCutoff": 1,
+  "lowPassSweep": 0,
+  "lowPassResonance": 0,
+  "highPassCutoff": 0,
+  "highPassSweep": 0,
+  "volume": 0.5,
+  "seed": 1256448967
+ }
 }

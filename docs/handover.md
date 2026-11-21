@@ -35,7 +35,7 @@
 
 | 工具 | 旧机器上的版本 | 用途 |
 |---|---|---|
-| Node.js | 24.12.0（要 22 以上） | 构建、导入器、调试 CLI（Node 直接跑 TS） |
+| Node.js | 26.13.1（要 26 以上；装在 CLion 的 node/versions 下，用户 PATH 指着它；pnpm 等全局包用它的 npm 装，Node 26 不带 corepack） | 构建、导入器、调试 CLI（Node 直接跑 TS） |
 | pnpm | 10.34.5 | monorepo |
 | PowerShell | 7.6（`pwsh`，不是 Windows PowerShell 5.1） | `tools/*.ps1`：验证、回归、停后台进程 |
 | Git Bash | Git for Windows 自带 | 日常命令 |

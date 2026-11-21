@@ -23,6 +23,9 @@ export interface TileKey {
 
 export const tileId = ({ level, x, z }: TileKey): string => `${level}/${x}_${z}`;
 
+/** 最细的一层：块边长不大于 detail（米）的第一层。 */
+export const leafLevel = ({ size, detail }: { readonly size: number; readonly detail: number }): number => Math.max(0, Math.ceil(Math.log2(size / detail)));
+
 /** 节点在地形本地坐标里的范围：最小角和边长（地形以实体为中心，边长 size）。 */
 export function tileRect(size: number, { level, x, z }: TileKey): { x0: number; z0: number; edge: number } {
   const edge = size / 2 ** level;
@@ -48,7 +51,7 @@ export interface TileSelection {
  */
 export function selectTiles(selection: TileSelection): { draw: TileKey[]; want: TileKey[] } {
   const { size, leafEdge, lodFactor, eye, ground, ready } = selection;
-  const maxLevel = Math.max(0, Math.ceil(Math.log2(size / leafEdge)));
+  const maxLevel = leafLevel({ size, detail: leafEdge });
   const draw: TileKey[] = [];
   const want: { key: TileKey; distance: number }[] = [];
   const height = Math.abs(eye[1] - ground);

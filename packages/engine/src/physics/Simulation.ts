@@ -403,6 +403,23 @@ export class Simulation {
     return bodies.map((body) => this.#bodyEntities[body]!);
   }
 
+  /**
+   * 一块高度场的静态碰撞（地形的块，terrain/TerrainSystem.ts）：sampleCount² 个高度（按行 z 排）、格距 spacing 米，第一个样本放在
+   * 世界坐标 position。射线、接触报的实体是 entity（地形实体）。返回拿掉它的函数（物体和形状一起释放）。
+   */
+  addHeightfield(entity: EntityId, heights: Float32Array, sampleCount: number, spacing: number, position: Vec3, { layer = 0, friction = 1 }: { layer?: number; friction?: number } = {}): () => void {
+    const world = this.#worldOrCreate();
+    const field = world.createHeightfield(heights, sampleCount, spacing);
+    const body = world.addBody({ motion: 'static', position, layer, friction, shapes: [{ type: 'heightfield', heightfield: field }] });
+    this.#bodyEntities[body] = entity;
+    return () => {
+      if (this.#world !== world) return;
+      world.removeBodies([body]);
+      world.releaseShape(field);
+      delete this.#bodyEntities[body];
+    };
+  }
+
   destroy(): void {
     this.#world?.destroy();
     this.#world = undefined;

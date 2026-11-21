@@ -18,13 +18,16 @@ import type { Game } from '../engine/Game';
 import { Model } from '../rendering/components';
 import { Mesh } from '../rendering/mesh/Mesh';
 import { HeightfieldTile, HeightPages } from '../rendering/mesh/HeightPages';
+import { Character } from '../physics/components';
 import { Terrain, TerrainAsset, TerrainTile } from './Terrain';
-import { heightfieldGrid, selectTiles, TILE_QUADS, TILE_SAMPLES, tileId, tilePageHeader, tileRect, type TileKey } from './terrainTiles';
+import { heightfieldGrid, leafLevel, selectTiles, TILE_QUADS, TILE_SAMPLES, tileId, tilePageHeader, tileRect, type TileKey } from './terrainTiles';
 
 /** 同时在算的高度页最多几个（每页约 1 毫秒，工作线程上）。 */
 const MAX_PENDING = 8;
 /** 每个地形缓存的块最多几个（不在画的、最久没用的先释放）。 */
 const MAX_CACHED = 768;
+/** 相机、角色所在的块往外几块建碰撞（最细一层；32 米的块时是 160 米见方）。 */
+const COLLIDER_RADIUS = 2;
 /** UV 按这么多个贴图周期取模：大世界里 UV 的数也小。 */
 const UV_PERIODS = 256;
 
@@ -57,6 +60,15 @@ interface TerrainState {
   eye: [number, number, number] | undefined;
   /** 设置变了加一：算到一半的页发现代数不对就扔掉。 */
   generation: number;
+  /** 碰撞的块（最细一层，按格子坐标 `x_z`）：物理世界里的高度场，相机和角色附近才有。 */
+  readonly colliders: Map<string, Collider>;
+}
+
+/** 一块碰撞：建好了是拿掉它的函数，还在算时是 undefined。 */
+interface Collider {
+  release: (() => void) | undefined;
+  /** 最后一次在要的范围里的帧。 */
+  used: number;
 }
 
 export class TerrainSystem {
@@ -98,12 +110,72 @@ export class TerrainSystem {
       }
       if (!state) {
         const grid = new Mesh(`${asset.path} heightfield`, { ...heightfieldGrid(), heightfield: true });
-        state = { entity, settings, asset, grid, minHeight: Infinity, maxHeight: -Infinity, tiles: new Map(), drawn: new Map(), pending: 0, eye: undefined, generation: 0 };
+        state = { entity, settings, asset, grid, minHeight: Infinity, maxHeight: -Infinity, tiles: new Map(), drawn: new Map(), pending: 0, eye: undefined, generation: 0, colliders: new Map() };
         this.#states.set(id, state);
       }
       if (eye) this.#updateTerrain(state, eye);
+      if (game.simulation) this.#updateColliders(state, eye);
     }
   }
+
+  /**
+   * 碰撞的块：相机和每个角色附近 COLLIDER_RADIUS 块以内的最细一层块建成静态的高度场（和画出来的最细一层同样的采样点，碰撞和画面
+   * 对得上）；出了范围再多一块才拿掉。碰撞只跟地形实体的位置走（不转、不缩放）。
+   */
+  #updateColliders(state: TerrainState, eyeWorld: readonly number[] | undefined): void {
+    const terrain = state.entity.require(Terrain);
+    const leaf = tileRect(terrain.size, { level: leafLevel(terrain), x: 0, z: 0 }).edge;
+    const origin = state.entity.require(Transform).world;
+    const half = terrain.size / 2, cells = Math.round(terrain.size / leaf);
+    this.#characters.length = 0;
+    this.#game.entities.run(this.#collectCharacters, this.#game.updateTime);
+    const sources = eyeWorld ? [...this.#characters, eyeWorld] : this.#characters;
+    const frame = this.#frame;
+    const wanted = (reach: number) => {
+      const keys = new Set<string>();
+      for (const source of sources) {
+        const cx = Math.floor((source[0]! - origin[12]! + half) / leaf), cz = Math.floor((source[2]! - origin[14]! + half) / leaf);
+        for (let z = cz - reach; z <= cz + reach; z++) for (let x = cx - reach; x <= cx + reach; x++) if (x >= 0 && z >= 0 && x < cells && z < cells) keys.add(`${x}_${z}`);
+      }
+      return keys;
+    };
+    for (const key of wanted(COLLIDER_RADIUS)) {
+      let collider = state.colliders.get(key);
+      if (!collider) {
+        state.colliders.set(key, (collider = { release: undefined, used: frame }));
+        const [x, z] = key.split('_').map(Number) as [number, number];
+        void this.#buildCollider(state, collider, -half + x * leaf, -half + z * leaf, leaf, state.generation);
+      }
+      collider.used = frame;
+    }
+    const keep = wanted(COLLIDER_RADIUS + 1);
+    for (const [key, collider] of state.colliders) {
+      if (keep.has(key) || collider.used === frame) continue;
+      collider.release?.();
+      state.colliders.delete(key);
+    }
+  }
+
+  async #buildCollider(state: TerrainState, collider: Collider, x0: number, z0: number, edge: number, generation: number): Promise<void> {
+    const spacing = edge / TILE_QUADS, samples = TILE_QUADS + 1;
+    const heights = await state.asset.evaluator(this.#game.native).heights(x0, z0, spacing, samples, samples);
+    const simulation = this.#game.simulation;
+    // 算的时候块已经不要了（走远了、地形换了）：不建
+    if (!simulation || generation !== state.generation || !state.entity.alive || ![...state.colliders.values()].includes(collider)) return;
+    const world = state.entity.require(Transform).world;
+    collider.release = simulation.addHeightfield(state.entity.id, heights, samples, spacing, [world[12]! + x0, world[13]!, world[14]! + z0]);
+  }
+
+  readonly #characters: number[][] = [];
+  readonly #collectCharacters = system('TerrainSystem.characters', {
+    with: { character: Character, transform: Transform },
+    update: ({ transform, count }) => {
+      for (let row = 0; row < count; row++) {
+        const at = transform.slot[row]! * 16;
+        this.#characters.push([transform.world[at + 12]!, transform.world[at + 13]!, transform.world[at + 14]!]);
+      }
+    },
+  });
 
   /** 每个地形的块数（调试命令 terrain 用）。 */
   stats(): { entity: string; asset: string; drawn: number; cached: number; pending: number }[] {
@@ -258,6 +330,8 @@ export class TerrainSystem {
     for (const child of state.drawn.values()) if (child.alive) child.destroy();
     for (const tile of state.tiles.values()) if (tile.page !== undefined) this.#pages.free(tile.page);
     state.grid.dispose();
+    for (const collider of state.colliders.values()) collider.release?.();
+    state.colliders.clear();
     state.drawn.clear();
     state.tiles.clear();
     this.#states.delete(id);

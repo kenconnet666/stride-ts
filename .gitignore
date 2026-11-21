@@ -18,3 +18,6 @@ dist/
 
 # 导出的成片、图像序列（调试命令 render、编辑器的导出）
 /apps/*/exports/
+
+# 本地打包的 vue-tsx-pro（tools/vue-tsx-pro.ts local）
+/vendor/

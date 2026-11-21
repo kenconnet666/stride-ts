@@ -99,8 +99,12 @@ export function startSmoke(defaultHub: string): Smoke {
   };
   const since = lastSeq();
   let failed = 0;
+  // 每条检查带上离上一条过了几秒：CI 的软件 WebGPU 上冒烟慢到超时的时候，看得出慢在哪一步
+  let last = performance.now();
   const check = (name: string, ok: boolean, detail: unknown): void => {
-    console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : `: ${JSON.stringify(detail)}`}`);
+    const now = performance.now();
+    console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok ? '' : `: ${JSON.stringify(detail)}`} (+${((now - last) / 1000).toFixed(1)} s)`);
+    last = now;
     if (!ok) failed++;
   };
   return {

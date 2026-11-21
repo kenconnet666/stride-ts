@@ -11,7 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type TextModelFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeTextModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
+import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeTextModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
@@ -153,13 +153,13 @@ export class EditorBackend {
   }
 
   /**
-   * 高斯泼溅（3DGS 的 .ply，标准的或 SuperSplat 的压缩格式；Niantic 的 .spz）转成运行时的 .splat 放进 folder（只留转好的：.ply 动辄上百 MB）；
+   * 高斯泼溅（3DGS 的 .ply，标准的或 SuperSplat 的压缩格式；Niantic 的 .spz；PlayCanvas 的 .sog）转成运行时的 .splat 放进 folder（只留转好的：.ply 动辄上百 MB）；
    * 认不出时什么也不写。
    */
   async #importSplats(folder: string, base: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
     let converted: Uint8Array;
     try {
-      converted = convertSplats(bytes, fileName).bytes;
+      converted = (await convertSplats(await (this.#tools ??= createStrideTools()), bytes, fileName)).bytes;
     } catch (error) {
       throw new HttpError(400, (error as Error).message);
     }
@@ -214,7 +214,7 @@ export class EditorBackend {
     const extension = path.extname(fileName).toLowerCase();
     const base = path.basename(fileName, path.extname(fileName)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
     if (extension === '.ies') return this.#importLightProfile(folder, base, fileName, bytes);
-    if (extension === '.ply' || extension === '.spz') return this.#importSplats(folder, base, fileName, bytes);
+    if (SPLAT_SOURCE_EXTENSIONS.includes(extension)) return this.#importSplats(folder, base, fileName, bytes);
     const audio = ({ '.mp3': 'mp3', '.ogg': 'ogg', '.wav': 'wav', '.flac': 'flac', '.aac': 'aac' } as const)[extension as '.mp3'];
     // 视频（mp4、webm）同图片一样是贴图：材质、精灵的贴图槽直接用它，放起来是视频贴图
     const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg', '.webp': 'webp', '.mp4': 'mp4', '.webm': 'webm' } as const)[extension as '.png'];

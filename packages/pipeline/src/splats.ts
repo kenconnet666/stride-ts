@@ -6,9 +6,12 @@
  *   最大值之间量化，旋转是"最大的分量 2 位加另外三个各 10 位"。照 PlayCanvas 的 gsplat-compressed-data.js 解。
  * 高阶的球谐（视角相关的颜色）：标准的读 f_rest_*（按通道排，个数 9、24、45 对着 1、2、3 阶），压缩的读 element sh 的 uchar
  * （v · 8 / 255 − 4，同 PlayCanvas）。
+ * 另外两种文件：Niantic 的 .spz（readSpzSplats）、PlayCanvas 的 .sog（readSogSplats，zip 里放 WebP，要原生工具模块解图）。
  */
 import { gunzipSync, zstdDecompressSync } from 'node:zlib';
+import type { StrideTools } from '@stride-ts/native/tools';
 import { encodeSplats, type SplatSource } from '@stride-ts/engine/splats';
+import { openZip } from './zip.ts';
 
 /** 球谐 0 阶的系数（f_dc 换成颜色：0.5 + SH_C0 · f_dc）。 */
 const SH_C0 = 0.28209479177387814;
@@ -26,16 +29,107 @@ interface PlyElement {
 }
 
 /** 编辑器能导入的泼溅文件（扩展名）。 */
-export const SPLAT_SOURCE_EXTENSIONS = ['.ply', '.spz'] as const;
+export const SPLAT_SOURCE_EXTENSIONS: readonly string[] = ['.ply', '.spz', '.sog'];
 
-/** .ply 或 .spz 的字节 → .splat 文件的字节和泼溅个数（按 where 的扩展名分）。格式不认时报错（带 where）。 */
-export function convertSplats(bytes: Uint8Array, where: string): { readonly bytes: Uint8Array; readonly count: number } {
-  const source = where.toLowerCase().endsWith('.spz') ? readSpzSplats(bytes, where) : readPlySplats(bytes, where);
+/** .ply、.spz 或 .sog 的字节 → .splat 文件的字节和泼溅个数（按 where 的扩展名分）。格式不认时报错（带 where）。 */
+export async function convertSplats(tools: StrideTools, bytes: Uint8Array, where: string): Promise<{ readonly bytes: Uint8Array; readonly count: number }> {
+  const extension = where.toLowerCase().slice(where.lastIndexOf('.'));
+  const source = extension === '.spz' ? readSpzSplats(bytes, where) : extension === '.sog' ? await readSogSplats(tools, bytes, where) : readPlySplats(bytes, where);
   return { bytes: encodeSplats(source), count: source.count };
 }
 
+/** SOG 的 meta.json（版本 2、3）里用到的字段。 */
+interface SogMeta {
+  readonly version?: number;
+  readonly count: number;
+  readonly means: { readonly mins: readonly number[]; readonly maxs: readonly number[]; readonly files: readonly string[] };
+  readonly scales: { readonly codebook: readonly number[]; readonly files: readonly string[] };
+  readonly quats: { readonly files: readonly string[] };
+  readonly sh0: { readonly codebook: readonly number[]; readonly files: readonly string[] };
+  readonly shN?: { readonly codebook: readonly number[]; readonly files: readonly string[] };
+}
+
+/**
+ * PlayCanvas 的 SOG（splat-transform 产出、SuperSplat 发布用）：一个 zip，meta.json 加几张无损 WebP，每个像素是一个泼溅（按行排）。
+ * 照 PlayCanvas 的 gsplat-sog-data.js 解：
+ * - 位置：means_l、means_u 两张图拼成每个分量 16 位，在 mins..maxs 之间，再 sign(v)·(e^|v| − 1)（对数压过的）。
+ * - 缩放、0 阶颜色：每个通道 8 位是码本的下标（缩放的码本是对数，颜色的码本是 f_dc）；不透明度版本 2 是线性的 a / 255，
+ *   版本 3 是 (a / 204)²。
+ * - 旋转：版本 2 是最小三分量（a 通道 252 + 最大分量的位置），版本 3 是 rgb 三个 8 位的指数映射。
+ * - 高阶球谐：shN_labels 每个泼溅一个调色板下标（版本 2 是 16 位、3 是 24 位），shN_centroids 每行 64 个调色板项，每项
+ *   每个系数一个像素（rgb 是三个通道的码本下标）。版本 3 的 4 阶截到 3 阶。
+ * 坐标同 3DGS 的 .ply（RDF），和 .ply 一样摆。版本 1（没有码本，已弃用）不认。
+ */
+export async function readSogSplats(tools: StrideTools, bytes: Uint8Array, where: string): Promise<SplatSource> {
+  const zip = openZip(bytes, where);
+  const metaBytes = zip.read('meta.json');
+  if (!metaBytes) throw new Error(`${where}: no meta.json in the SOG archive`);
+  const meta = JSON.parse(new TextDecoder().decode(metaBytes)) as SogMeta;
+  if (meta.version !== 2 && meta.version !== 3) throw new Error(`${where}: SOG version ${meta.version ?? 1} is not supported (re-export with splat-transform for version 2 or 3)`);
+  const { count } = meta;
+  const image = async (name: string | undefined) => {
+    const file = name === undefined ? undefined : zip.read(name);
+    if (!file) throw new Error(`${where}: ${name ?? 'an image'} is missing from the SOG archive`);
+    const decoded = await tools.decodeImage(file);
+    return { width: decoded.width, pixels: decoded.pixels };
+  };
+  const [meansL, meansU, quats, scales, sh0] = await Promise.all([
+    image(meta.means.files[0]), image(meta.means.files[1]), image(meta.quats.files[0]), image(meta.scales.files[0]), image(meta.sh0.files[0]),
+  ]);
+  for (const decoded of [meansL, meansU, quats, scales, sh0]) {
+    if (decoded.pixels.length < count * 4) throw new Error(`${where}: SOG images hold fewer than ${count} splats`);
+  }
+  const v3 = meta.version === 3;
+  const positions = new Float32Array(count * 3), scaleOut = new Float32Array(count * 3), rotations = new Float32Array(count * 4), colors = new Float32Array(count * 4);
+  const { mins, maxs } = meta.means;
+  for (let i = 0; i < count; i++) {
+    const o = i * 4;
+    for (let k = 0; k < 3; k++) {
+      const t = ((meansU.pixels[o + k]! << 8) | meansL.pixels[o + k]!) / 65535;
+      const v = mins[k]! + (maxs[k]! - mins[k]!) * t;
+      positions[i * 3 + k] = Math.sign(v) * (Math.exp(Math.abs(v)) - 1);
+      scaleOut[i * 3 + k] = Math.exp(meta.scales.codebook[scales.pixels[o + k]!]!);
+      colors[i * 4 + k] = 0.5 + SH_C0 * meta.sh0.codebook[sh0.pixels[o + k]!]!;
+    }
+    const alpha = sh0.pixels[o + 3]!;
+    colors[i * 4 + 3] = v3 ? Math.min(1, (alpha / 204) ** 2) : alpha / 255;
+    if (v3) {
+      const p = [0, 1, 2].map((k) => (quats.pixels[o + k]! - 128) / 127);
+      const length = Math.hypot(p[0]!, p[1]!, p[2]!);
+      const angle = length * Math.PI * 0.5;
+      const factor = length > 1e-12 ? Math.sin(angle) / length : Math.PI * 0.5;
+      rotations.set([p[0]! * factor, p[1]! * factor, p[2]! * factor, Math.cos(angle)], o);
+    } else {
+      const [a, b, c] = [0, 1, 2].map((k) => (quats.pixels[o + k]! / 255 - 0.5) * Math.SQRT2) as [number, number, number];
+      const d = Math.sqrt(Math.max(0, 1 - a * a - b * b - c * c));
+      // xyzw：最大的分量是 d，a 通道说它在哪（0 是 w）
+      const mode = quats.pixels[o + 3]! - 252;
+      rotations.set(mode === 1 ? [d, b, c, a] : mode === 2 ? [b, d, c, a] : mode === 3 ? [b, c, d, a] : [a, b, c, d], o);
+    }
+  }
+  if (!meta.shN) return { count, positions, scales: scaleOut, rotations, colors };
+  const [centroids, labels] = await Promise.all([image(meta.shN.files[0]), image(meta.shN.files[1])]);
+  // 调色板每行 64 项：图宽 = 64 × 每个通道的系数个数（3、8、15、24 对着 1～4 阶）
+  const coefficients = centroids.width / 64;
+  const bandsInFile = SPZ_SH_DIM.indexOf(coefficients);
+  if (bandsInFile < 1) throw new Error(`${where}: SOG spherical harmonics palette is ${centroids.width} pixels wide`);
+  const bands = Math.min(bandsInFile, 3);
+  const kept = SPZ_SH_DIM[bands]!;
+  const sh = new Float32Array(count * kept * 3);
+  const codebook = meta.shN.codebook;
+  for (let i = 0; i < count; i++) {
+    const o = i * 4;
+    const n = labels.pixels[o]! | (labels.pixels[o + 1]! << 8) | (v3 ? labels.pixels[o + 2]! << 16 : 0);
+    const row = Math.floor(n / 64) * centroids.width, column = (n % 64) * coefficients;
+    for (let c = 0; c < 3; c++) {
+      for (let k = 0; k < kept; k++) sh[i * kept * 3 + c * kept + k] = codebook[centroids.pixels[(row + column + k) * 4 + c]!]!;
+    }
+  }
+  return { count, positions, scales: scaleOut, rotations, colors, shBands: bands, sh };
+}
+
 const SPZ_MAGIC = 0x5053474e;
-/** SPZ 里每个阶数的每个通道的球谐系数个数（到 4 阶）。 */
+/** 每个阶数的每个通道的球谐系数个数（到 4 阶；SPZ、SOG 都用）。 */
 const SPZ_SH_DIM = [0, 3, 8, 15, 24];
 /** RUB 换 RDF（y、z 取反）时 1～3 阶的每个基函数变不变号：(−1) 的 y、z 次数之和次方（基函数依次是 y z x、xy yz z² xz x²−y²、……）。 */
 const SPZ_SH_FLIP = [-1, -1, 1, -1, 1, 1, -1, 1, -1, 1, -1, -1, 1, -1, 1];

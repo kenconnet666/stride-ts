@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
-import { describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { decodeSplats, SPLAT_WORDS } from '@stride-ts/engine/splats';
-import { convertSplats, readPlySplats, readSpzSplats } from '../src/splats.ts';
+import { convertSplats, readPlySplats, readSogSplats, readSpzSplats } from '../src/splats.ts';
 
 /** 写一个标准 3DGS 的 .ply（binary little endian）。 */
 function standardPly(splats: readonly { x: number; y: number; z: number; scale: number; dc: number; opacity: number }[]): Uint8Array {
@@ -19,7 +20,13 @@ function standardPly(splats: readonly { x: number; y: number; z: number; scale: 
 }
 
 describe('高斯泼溅的导入', () => {
-  test('标准 3DGS 的 .ply：对数缩放取 exp、不透明度过 sigmoid、f_dc 换成颜色；写成 .splat 再读回来', () => {
+  let tools: StrideTools;
+  beforeAll(async () => {
+    tools = await createStrideTools({ workerThreads: 2 });
+  });
+  afterAll(() => tools.shutdown());
+
+  test('标准 3DGS 的 .ply：对数缩放取 exp、不透明度过 sigmoid、f_dc 换成颜色；写成 .splat 再读回来', async () => {
     const ply = standardPly([{ x: 1, y: 2, z: 3, scale: 0.05, dc: 0, opacity: 0 }, { x: -1, y: 0, z: 4, scale: 0.2, dc: 1, opacity: 10 }]);
     const source = readPlySplats(ply, 'test.ply');
     expect(source.count).toBe(2);
@@ -28,7 +35,7 @@ describe('高斯泼溅的导入', () => {
     expect(source.colors[3]).toBeCloseTo(0.5, 5);
     expect(source.colors[4]).toBeCloseTo(0.5 + 0.2820948, 5);
     expect(source.colors[7]).toBeGreaterThan(0.9999);
-    const { bytes, count } = convertSplats(ply, 'test.ply');
+    const { bytes, count } = await convertSplats(tools, ply, 'test.ply');
     const decoded = decodeSplats(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, 'test.splat');
     expect(count).toBe(2);
     expect(decoded.words.length).toBe(2 * SPLAT_WORDS);
@@ -57,7 +64,7 @@ describe('高斯泼溅的导入', () => {
     expect(source.sh!.length).toBe(source.count * 45);
     // 8 位解出来在 -4..4 之间
     expect(Math.max(...source.sh!.subarray(0, 4500).map(Math.abs))).toBeLessThanOrEqual(4);
-    const { bytes } = convertSplats(new Uint8Array(await readFile(withSh)), 'skull');
+    const { bytes } = await convertSplats(tools, new Uint8Array(await readFile(withSh)), 'skull');
     const decoded = decodeSplats(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, 'skull.splat');
     expect(decoded.shBands).toBe(3);
     expect(decoded.sh.length).toBe(source.count * 12);
@@ -119,6 +126,19 @@ describe('高斯泼溅的导入', () => {
       expect(Math.abs(dot)).toBeGreaterThan(0.99);
     }
   });
+
+  // PlayCanvas 示例里的 SOG（版本 2，100 万个、3 阶球谐；参考仓库有的时候才跑）：zip 里的 WebP 用原生工具模块解
+  const sog = 'C:/code/refs/playcanvas-engine/examples/assets/splats/bicycle.sog';
+  test.skipIf(!existsSync(sog))('SOG：码本的缩放和颜色、最小三分量的旋转、调色板的球谐', async () => {
+    const source = await readSogSplats(tools, new Uint8Array(await readFile(sog)), 'bicycle.sog');
+    expect(source.count).toBe(1_000_000);
+    expect(source.shBands).toBe(3);
+    for (let i = 0; i < source.count; i += 9973) {
+      expect(Math.hypot(...source.rotations.subarray(i * 4, i * 4 + 4))).toBeCloseTo(1, 2);
+      expect(source.colors[i * 4 + 3]).toBeGreaterThanOrEqual(0);
+      expect(source.scales[i * 3]).toBeGreaterThan(0);
+    }
+  }, 60_000);
 
   test('不是 .ply、不是二进制小端时报错', () => {
     expect(() => readPlySplats(new TextEncoder().encode('hello'), 'x')).toThrow(/not a .ply/);

@@ -142,6 +142,10 @@ export interface EditorMessages {
   readonly realtimeOff: string;
   readonly polyDone: string;
   readonly polyHint: string;
+  readonly splineEdit: string;
+  readonly splineHint: string;
+  readonly splineDeletePoints: string;
+  readonly splinePoints: (count: number) => string;
   readonly polyModes: Readonly<Record<'vertex' | 'edge' | 'face', string>>;
   // 雕刻地形
   readonly sculpt: string;
@@ -350,6 +354,10 @@ const zhCN: EditorMessages = {
   realtimeOff: '视口静止时不画（有输入、修改时才画，省显卡）：点一下改成一直画，粒子、天气一直动',
   polyDone: '完成',
   polyHint: '视口里点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），拖操纵器移动（W、E、R 换移动、旋转、缩放）；Delete 删面，Ctrl+Z 撤销',
+  splineEdit: '编辑样条',
+  splineHint: '视口里点选控制点（Shift、Ctrl 加选），拖操纵器移动（W、E、R 换移动、旋转、缩放），双击路径加点；Delete 删点，Ctrl+Z 撤销',
+  splineDeletePoints: '删除点',
+  splinePoints: (count) => `${count} 个点`,
   polyModes: { vertex: '点', edge: '边', face: '面' },
   sculpt: '雕刻',
   sculptHint: '视口里左键拖着雕刻地形（Shift 抬高、压低反过来；压平压到按下那一点的高度），[、] 缩小、放大笔刷；Ctrl+Z 撤销一笔',
@@ -568,6 +576,10 @@ const enUS: EditorMessages = {
   realtimeOff: 'The viewport draws only when something changes (input, edits), saving the GPU; click to redraw all the time so particles and weather keep moving',
   polyDone: 'Done',
   polyHint: 'Click vertices, edges or faces in the viewport (1, 2, 3 switch the mode; Shift or Ctrl adds), drag the gizmo to move (W, E, R: move, rotate, scale); Delete removes faces, Ctrl+Z undoes',
+  splineEdit: 'Edit spline',
+  splineHint: 'Click control points in the viewport (Shift or Ctrl adds), drag the gizmo to move (W, E, R: move, rotate, scale), double-click the path to add a point; Delete removes points, Ctrl+Z undoes',
+  splineDeletePoints: 'Delete points',
+  splinePoints: (count) => `${count} point${count === 1 ? '' : 's'}`,
   polyModes: { vertex: 'Vertex', edge: 'Edge', face: 'Face' },
   sculpt: 'Sculpt',
   sculptHint: 'Drag in the viewport to sculpt the terrain (Shift swaps raise and lower; flatten levels to the height where the drag starts), [ and ] shrink and grow the brush; Ctrl+Z undoes a stroke',

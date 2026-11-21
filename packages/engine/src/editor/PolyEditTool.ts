@@ -78,7 +78,7 @@ export function pickEdge(edges: readonly PolyEdge[], projected: readonly (Pixel 
   for (const edge of edges) {
     const a = projected[edge[0]], b = projected[edge[1]];
     if (!a || !b) continue;
-    const distance = distanceToSegment(pixel, a, b);
+    const { distance } = closestOnSegment(pixel, a, b);
     if (distance <= radius && (!best || distance < best.distance)) best = { edge, distance };
   }
   return best?.edge;
@@ -128,23 +128,23 @@ export function selectionCenter(world: readonly Vec3Tuple[], vertices: readonly 
 }
 
 /**
- * 操纵器拖的结果落到顶点上（从拖之前的网格算，不累积误差）：移动是加上世界里的位移，旋转绕枢轴转，缩放沿操纵器的轴
- * （orientation）相对枢轴缩放；再换回模型的本地坐标。digits 是存进文件留几位小数。
+ * 操纵器拖的结果落到点上（多边形的顶点、样条的控制点；从拖之前的位置算，不累积误差）：移动是加上世界里的位移，旋转绕枢轴转，缩放沿操纵器的轴
+ * （orientation）相对枢轴缩放；再换回本地坐标。返回全部的点（没选中的原样）；digits 是存进文件留几位小数。
  */
-export function transformVertices(
-  start: PolyMeshFile, vertices: readonly number[], change: GizmoChange,
+export function transformPoints(
+  start: readonly Vec3Tuple[], indices: readonly number[], change: GizmoChange,
   pivot: Readonly<{ x: number; y: number; z: number }>, orientation: Readonly<{ x: number; y: number; z: number; w: number }>,
   world: MatrixSource, digits = 5,
-): PolyMeshFile {
+): Vec3Tuple[] {
   // 双精度：大世界里远处的模型，世界矩阵的逆也要准
   const inverse = new Float64Array(16);
-  if (!Matrix.invert(inverse, world)) throw new Error('the model has a singular world matrix; its polygons cannot be edited');
+  if (!Matrix.invert(inverse, world)) throw new Error('the model has a singular world matrix; its points cannot be edited');
   const round = (value: number) => Math.round(value * 10 ** digits) / 10 ** digits;
   const axes = new Quaternion(orientation.x, orientation.y, orientation.z, orientation.w);
   const unrotate = axes.clone().invert();
-  const moved = start.vertices.slice();
-  for (const v of new Set(vertices)) {
-    const [x, y, z] = start.vertices[v]!;
+  const moved = start.slice();
+  for (const v of new Set(indices)) {
+    const [x, y, z] = start[v]!;
     const point = new Vector3(...Matrix.transformPoint(world, x, y, z));
     if (change.type === 'translate') point.add(change.delta);
     else if (change.type === 'rotate') point.subtract(pivot).rotate(change.rotation).add(pivot);
@@ -155,14 +155,15 @@ export function transformVertices(
     }
     moved[v] = Matrix.transformPoint(inverse, point.x, point.y, point.z).map(round) as unknown as Vec3Tuple;
   }
-  return { ...start, vertices: moved };
+  return moved;
 }
 
-function distanceToSegment(point: Pixel, a: Pixel, b: Pixel): number {
+/** 画面上点到线段最近的地方：距离（像素）和在线段上的位置 t（0..1）。 */
+export function closestOnSegment(point: Pixel, a: Pixel, b: Pixel): { readonly distance: number; readonly t: number } {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const length = dx * dx + dy * dy;
   const t = length > 0 ? Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length)) : 0;
-  return Math.hypot(point[0] - (a[0] + dx * t), point[1] - (a[1] + dy * t));
+  return { distance: Math.hypot(point[0] - (a[0] + dx * t), point[1] - (a[1] + dy * t)), t };
 }
 
 /** 射线和三角形（Möller–Trumbore，两面都算）：碰到时是射线上的距离。 */

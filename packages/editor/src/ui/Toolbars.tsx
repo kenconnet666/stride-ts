@@ -161,6 +161,14 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopPolyEdit()}>{t.polyDone}</Button>,
     ];
   };
+  /** 编辑样条时的工具条：几个点、删除选中的点，最后是"完成"。 */
+  const splineControls = (editing: NonNullable<typeof session.splineEditing.value>) => [
+    <span {...css.attrs(styles.count)}>{t.splinePoints(editing.spline.points.length)}</span>,
+    <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.splineDeletePoints} (Delete)`} disabled={editing.selection.length === 0}
+      onClick={() => session.deleteSplinePoints()}>{t.splineDeletePoints}</Button>,
+    <span {...css.attrs(styles.spacer)} />,
+    <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopSplineEdit()}>{t.polyDone}</Button>,
+  ];
   /**
    * 雕刻地形时的工具条：先是笔刷、地物两种工具；笔刷是种类、半径（米）、强度，地物是新建、选中的那个的高度、过渡宽度、强度
    * 和删除；文件里有几笔，最后是"完成"。
@@ -217,6 +225,8 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
     const off = playing;
     const poly = session.polyEditing.value;
     if (poly && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{polyControls(poly)}</div>;
+    const splineEditing = session.splineEditing.value;
+    if (splineEditing && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{splineControls(splineEditing)}</div>;
     const sculpting = session.sculpting.value;
     if (sculpting && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{sculptControls(sculpting)}</div>;
     return (

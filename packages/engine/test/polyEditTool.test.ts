@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { Quaternion, Vector3 } from '../src/data/vectors';
 import { polyCube } from '../src/modeling/polyEdit';
-import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformVertices, worldVertices } from '../src/editor/PolyEditTool';
+import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformPoints, worldVertices } from '../src/editor/PolyEditTool';
 
 // 视口里编辑多边形网格的纯函数部分：边表、点选点边面、选择的增减、操纵器的结果落到顶点上。
 
@@ -61,22 +61,22 @@ describe('操纵器的结果落到顶点上', () => {
   const top = [3, 2, 6, 7];
 
   test('移动：世界里的位移换回本地（实体挪过也一样）', () => {
-    const moved = transformVertices(cube, top, { type: 'translate', delta: new Vector3(0, 1, 0) }, new Vector3(10, 0.5, 0), new Quaternion(), shifted);
-    expect(moved.vertices[3]).toEqual([-0.5, 1.5, -0.5]);
-    expect(moved.vertices[0]).toEqual(cube.vertices[0]);
+    const moved = transformPoints(cube.vertices, top, { type: 'translate', delta: new Vector3(0, 1, 0) }, new Vector3(10, 0.5, 0), new Quaternion(), shifted);
+    expect(moved[3]).toEqual([-0.5, 1.5, -0.5]);
+    expect(moved[0]).toEqual(cube.vertices[0]);
   });
 
   test('缩放：相对枢轴', () => {
     const center = selectionCenter(worldVertices(cube, identity), top)!;
     expect(center).toEqual([0, 0.5, 0]);
-    const scaled = transformVertices(cube, top, { type: 'scale', factor: new Vector3(2, 1, 2) }, new Vector3(...center), new Quaternion(), identity);
-    expect(scaled.vertices[6]).toEqual([1, 0.5, 1]);
+    const scaled = transformPoints(cube.vertices, top, { type: 'scale', factor: new Vector3(2, 1, 2) }, new Vector3(...center), new Quaternion(), identity);
+    expect(scaled[6]).toEqual([1, 0.5, 1]);
   });
 
   test('旋转：绕枢轴转', () => {
     const rotation = new Quaternion().setAxisAngle(new Vector3(0, 1, 0), Math.PI / 2);
-    const turned = transformVertices(cube, top, { type: 'rotate', rotation }, new Vector3(0, 0.5, 0), new Quaternion(), identity);
+    const turned = transformPoints(cube.vertices, top, { type: 'rotate', rotation }, new Vector3(0, 0.5, 0), new Quaternion(), identity);
     // (0.5, 0.5, 0.5) 绕 y 转 90 度到 (0.5, 0.5, -0.5)
-    expect(turned.vertices[6]).toEqual([0.5, 0.5, -0.5]);
+    expect(turned[6]).toEqual([0.5, 0.5, -0.5]);
   });
 });

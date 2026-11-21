@@ -7,8 +7,9 @@
  *   临时放进 SURFACE_DRAG_GROUP 这个渲染组、点选时不画，自己不挡）；吸附到顶点（snap.vertex，或拖的时候按住 V）时，拖着的东西上
  *   离光标最近的顶点对到光标下另一个物体上离点到的地方最近的顶点（同一套点选）；
  * - W、E、R：移动、旋转、缩放；F：把选中的东西放到画面中间；相机的操作见 EditorCamera。
- * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）、雕刻地形（agent.sculpt）时左键换成那个工具的：画笔刷；点选点、
- *   边、面（1、2、3 换模式，Shift、Ctrl 加选），操纵器拖选中的顶点（PolyEditTool）；雕刻的笔刷（[、] 改大小，Shift 反过来）。
+ * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）、编辑样条（agent.splineEdit）、雕刻地形（agent.sculpt）时左键换成
+ *   那个工具的：画笔刷；点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），操纵器拖选中的顶点（PolyEditTool）；点选、拖控制点，
+ *   双击路径加点（SplineEditTool）；雕刻的笔刷（[、] 改大小，Shift 反过来）。
  */
 import type { Entity } from '../engine/Entity';
 import { SyncScript } from '../engine/scripts';
@@ -30,8 +31,11 @@ import { selectionVertices } from '../modeling/polyEdit';
 import { Terrain, TerrainAsset } from '../terrain/Terrain';
 import type { TerrainFeatureFile, TerrainStrokeFile } from '../content/terrainFormat';
 import type { TerrainHit } from '../terrain/TerrainSystem';
-import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformVertices, worldVertices, type PolySelectMode } from './PolyEditTool';
+import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformPoints, worldVertices, type PolySelectMode } from './PolyEditTool';
 import type { PolyMeshFile } from '../content/assetFormat';
+import type { SplineFile } from '../content/splineFormat';
+import { splineCurve } from '../modeling/spline';
+import { insertSplinePoint, moveSplinePoints, pickSplineCurve } from './SplineEditTool';
 
 /** 选中的东西的框的颜色（线性）。 */
 const SELECTION_COLOR: DebugColor = [1, 0.55, 0.1, 1];
@@ -105,6 +109,10 @@ export class EditorViewport extends SyncScript {
   #drags = 0;
   /** 多边形编辑里正在拖的操纵器：按下时的网格和要动的顶点（结果每帧从它算）。 */
   #polyDrag: { readonly start: PolyMeshFile; readonly vertices: readonly number[] } | undefined;
+  /** 样条编辑里正在拖的操纵器：按下时的样条和要动的控制点。 */
+  #splineDrag: { readonly start: SplineFile; readonly points: readonly number[] } | undefined;
+  /** 上一次在样条编辑里按下左键的时刻和位置（认双击）。 */
+  #lastSplineClick: { readonly time: number; readonly at: readonly [number, number] } | undefined;
   /** 绘制模式里正在画的一笔：上一笔落在哪（世界坐标），画没画上。 */
   #stroke: { last: [number, number, number] | undefined; painted: boolean } | undefined;
   /** 拖地物：拖的是哪个地物的哪个角（undefined 是整个地物），按下时光标下的地面（地形本地 x、z），按下时的地物，挪没挪过。 */
@@ -120,7 +128,7 @@ export class EditorViewport extends SyncScript {
     const input = this.game.input, draw = this.game.debugDraw;
     for (const id of agent.selection) {
       // 正在编辑多边形的实体画它自己的线框，不画包围盒
-      if (agent.polyEdit?.entity === id) continue;
+      if (agent.polyEdit?.entity === id || agent.splineEdit?.entity === id) continue;
       const entity = live.entity(id);
       if (!entity?.alive) continue;
       const boxes = selectionBoxes(this.game, entity);
@@ -151,6 +159,10 @@ export class EditorViewport extends SyncScript {
     }
     if (agent.polyEdit) {
       this.#poly(agent, pixel, navigating);
+      return;
+    }
+    if (agent.splineEdit) {
+      this.#spline(agent, pixel, navigating);
       return;
     }
     if (agent.sculpt) {
@@ -474,7 +486,7 @@ export class EditorViewport extends SyncScript {
     if (drag && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) {
       const change = gizmo.drag(this.#ray(pixel), pixel);
       if (change) {
-        poly.mesh = transformVertices(drag.start, drag.vertices, change, gizmo.dragOrigin ?? gizmo.pivot, gizmo.orientation, world);
+        poly.mesh = { ...drag.start, vertices: transformPoints(drag.start.vertices, drag.vertices, change, gizmo.dragOrigin ?? gizmo.pivot, gizmo.orientation, world) };
         agent.onPolyChanged?.(poly, false);
       }
     }
@@ -489,6 +501,80 @@ export class EditorViewport extends SyncScript {
         const additive = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight'].some((key) => input.isKeyDown(key));
         poly.selection = clickSelection(poly.selection, poly.mode, hit, additive);
         agent.onPolyChanged?.(poly, false);
+      }
+      this.#pressed = undefined;
+    }
+    if (center) this.#drawGizmo(gizmo);
+  }
+
+  /**
+   * 样条编辑的一帧：画路径和控制点（选中的高亮），左键点一下点选控制点（Shift、Ctrl 加选、再点去掉，点空处清空），双击路径
+   * 在那里加一个点，按在操纵器上拖选中的点（移动、旋转、缩放照 W、E、R）。每帧把新样条交给 agent.onSplineChanged（路径的
+   * 线跟着动，模型等松开后存文件、后端重新烘），松开、加点时 commit。关了深度测试：埋在地里的路也看得见、点得到。
+   */
+  #spline(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
+    const edit = agent.splineEdit!, entity = agent.live?.entity(edit.entity);
+    if (!entity?.alive) return;
+    const input = this.game.input, draw = this.game.debugDraw, gizmo = agent.gizmo;
+    const world = currentWorld(entity);
+    const toWorld = (points: readonly (readonly [number, number, number])[]) => worldVertices({ vertices: points }, world);
+    const curve = splineCurve(edit.spline.points, edit.spline.closed === true).map(toWorld);
+    for (const segment of curve) draw.polyline(segment, POLY_EDGE_COLOR, { width: 2, depthTest: false });
+    const points = toWorld(edit.spline.points.map((point) => point.position));
+    const chosen = new Set(edit.selection);
+    points.forEach((point, i) => {
+      const half = this.#viewHeight(point) * POLY_VERTEX_SCREEN_SIZE * (chosen.has(i) ? 2 : 1.4);
+      draw.box(Matrix.compose(new Float32Array(16), point, [0, 0, 0, 1], [1, 1, 1]), [half, half, half], chosen.has(i) ? POLY_SELECTED_COLOR : POLY_EDGE_COLOR, { width: 2, depthTest: false });
+    });
+
+    const indices = this.#splineDrag?.points ?? edit.selection;
+    const center = selectionCenter(points, indices);
+    applySnap(gizmo, agent.snap, input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
+    if (center) {
+      gizmo.pivot.set(...center);
+      if (!this.#splineDrag) {
+        if (agent.gizmoSpace === 'local' || gizmo.mode === 'scale') gizmo.orientation.set(...Matrix.decompose(world).rotation);
+        else gizmo.orientation.identity();
+        this.#hover = navigating ? undefined : gizmo.pick(pixel, this.#project);
+      }
+      gizmo.size = this.#viewHeight(center) * GIZMO_SCREEN_SIZE;
+    }
+    if (input.isMouseButtonPressed('left') && !navigating) {
+      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
+      const handle = center ? gizmo.pick(at, this.#project) : undefined;
+      const now = performance.now(), last = this.#lastSplineClick;
+      // 两次按下落在同一帧里（帧率低、自动化发的双击）也算双击，同地物的
+      const presses = input.pointerEvents.filter((event) => event.device === 'mouse' && event.eventType === 'pressed').length;
+      const double = presses >= 2 || (last !== undefined && now - last.time < DOUBLE_CLICK_MS && Math.hypot(at[0] - last.at[0], at[1] - last.at[1]) < CLICK_PIXELS);
+      this.#lastSplineClick = { time: now, at };
+      const projected = points.map(([x, y, z]) => this.#project({ x, y, z }));
+      const onPath = double && pickVertex(projected, at) === undefined ? pickSplineCurve(curve.map((segment) => segment.map(([x, y, z]) => this.#project({ x, y, z }))), at) : undefined;
+      if (handle && gizmo.begin(handle, this.#ray(at), at)) this.#splineDrag = { start: edit.spline, points: indices };
+      else if (onPath) {
+        const { spline, index } = insertSplinePoint(edit.spline, onPath.segment, onPath.u);
+        edit.spline = spline;
+        edit.selection = [index];
+        agent.onSplineChanged?.(edit, true);
+      } else this.#pressed = at;
+    }
+    const drag = this.#splineDrag;
+    if (drag && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) {
+      const change = gizmo.drag(this.#ray(pixel), pixel);
+      if (change) {
+        edit.spline = moveSplinePoints(drag.start, drag.points, change, gizmo.dragOrigin ?? gizmo.pivot, gizmo.orientation, world);
+        agent.onSplineChanged?.(edit, false);
+      }
+    }
+    if (input.isMouseButtonReleased('left')) {
+      if (drag) {
+        gizmo.end();
+        this.#splineDrag = undefined;
+        agent.onSplineChanged?.(edit, true);
+      } else if (this.#pressed && Math.hypot(pixel[0] - this.#pressed[0], pixel[1] - this.#pressed[1]) < CLICK_PIXELS) {
+        const hit = pickVertex(points.map(([x, y, z]) => this.#project({ x, y, z })), pixel);
+        const additive = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight'].some((key) => input.isKeyDown(key));
+        edit.selection = clickSelection({ ...EMPTY_POLY_SELECTION, vertices: edit.selection }, 'vertex', hit, additive).vertices;
+        agent.onSplineChanged?.(edit, false);
       }
       this.#pressed = undefined;
     }

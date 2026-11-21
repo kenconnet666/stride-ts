@@ -1,4 +1,4 @@
-import { Mountain, Plus, Shapes, Sparkles, Workflow, X } from '@lucide/icons';
+import { Mountain, Plus, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { Button, IconButton, Menu, MenuGroup, MenuItem, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -272,6 +272,11 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       const model = entity.components.model?.model;
       return model === undefined ? undefined : session.polySourceOf(model);
     };
+    // 模型是从样条（.spline.json）烘出来的：能在视口里拖它的控制点
+    const splineSource = (entity: SceneEntityFile) => {
+      const model = entity.components.model?.model;
+      return model === undefined ? undefined : session.splineSourceOf(model);
+    };
     const keys = Object.keys(COMPONENT_FIELDS) as ComponentKey[];
     return (
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
@@ -298,6 +303,10 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             )}
             {key === 'model' && list.length === 1 && polySource(list[0]!) && (
               <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Shapes} onClick={() => void session.startPolyEdit(list[0]!.id, polySource(list[0]!)!)}>{t.polyEdit}</Button>
+            )}
+            {key === 'model' && list.length === 1 && splineSource(list[0]!) && (
+              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.splineEditing.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Spline}
+                onClick={() => void session.startSplineEdit(list[0]!.id, splineSource(list[0]!)!)}>{t.splineEdit}</Button>
             )}
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key], COMPONENT_FIELDS[key].type)} context={context} onSet={setter(list, () => ['components', key])} />
           </section>

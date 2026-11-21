@@ -64,10 +64,10 @@ export function checkSpline(file: SplineFile, where = file.name): SplineFile {
 }
 
 /**
- * 路径按弧长采样：大约每 step 米一个截面（总长平均分，最后一个正好在终点；首尾相连时最后一个和第一个重合）。控制点的 tilt、
- * width 沿路径线性过渡。
+ * 路径上第 segment 段（控制点 segment 到下一个之间；首尾相连时最后一段回到第一个点）参数 u（0..1，不是弧长）处的位置。
+ * 开放的两端按反射补一个点。
  */
-export function sampleSpline(points: readonly SplinePointFile[], closed: boolean, step: number): SplineFrame[] {
+export function splinePoint(points: readonly SplinePointFile[], closed: boolean, segment: number, u: number): Vec3 {
   const n = points.length;
   const at = (i: number): Vec3 => {
     if (closed) return [...points[((i % n) + n) % n]!.position] as Vec3;
@@ -75,15 +75,29 @@ export function sampleSpline(points: readonly SplinePointFile[], closed: boolean
     if (i >= n) return sub(scale(points[n - 1]!.position, 2), points[n - 2]!.position);
     return [...points[i]!.position] as Vec3;
   };
+  return catmullRom(at(segment - 1), at(segment), at(segment + 1), at(segment + 2), u);
+}
+
+/** 画路径用的折线：每段 perSegment 份，每段一组点（含两端），第 i 组是控制点 i 到下一个之间。 */
+export function splineCurve(points: readonly SplinePointFile[], closed: boolean, perSegment = 16): Vec3[][] {
+  const segments = points.length < 2 ? 0 : closed ? points.length : points.length - 1;
+  return Array.from({ length: segments }, (_, s) => Array.from({ length: perSegment + 1 }, (_, k) => splinePoint(points, closed, s, k / perSegment)));
+}
+
+/**
+ * 路径按弧长采样：大约每 step 米一个截面（总长平均分，最后一个正好在终点；首尾相连时最后一个和第一个重合）。控制点的 tilt、
+ * width 沿路径线性过渡。
+ */
+export function sampleSpline(points: readonly SplinePointFile[], closed: boolean, step: number): SplineFrame[] {
+  const n = points.length;
   const segments = closed ? n : n - 1;
   // 密采样：位置和控制点上的 tilt、width（按段内的参数线性插值）
   const dense: { position: Vec3; tilt: number; width: number }[] = [];
   for (let s = 0; s < segments; s++) {
-    const p0 = at(s - 1), p1 = at(s), p2 = at(s + 1), p3 = at(s + 2);
     const a = points[s % n]!, b = points[(s + 1) % n]!;
     for (let k = 0; k < DENSE_PER_SEGMENT || (s === segments - 1 && k === DENSE_PER_SEGMENT); k++) {
       const u = k / DENSE_PER_SEGMENT;
-      dense.push({ position: catmullRom(p0, p1, p2, p3, u), tilt: lerp(a.tilt ?? 0, b.tilt ?? 0, u), width: lerp(a.width ?? 1, b.width ?? 1, u) });
+      dense.push({ position: splinePoint(points, closed, s, u), tilt: lerp(a.tilt ?? 0, b.tilt ?? 0, u), width: lerp(a.width ?? 1, b.width ?? 1, u) });
     }
   }
   const lengths = [0];

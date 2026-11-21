@@ -488,7 +488,9 @@ export class EditorSession implements EditableScene {
     const imported = (selected === 'model' || selected === 'modelSource') && has('modelImport');
     // 贴图（图片、贴图资源）看它的导入设置；还没有设置的位图（随模型导入的、Stride 工程导入的）先显示默认的，改了才建文件
     const image = (selected === 'image' || selected === 'texture') && (has('imageImport') || this.#imageSource(path) !== undefined);
-    const kind = imported ? 'modelImport' : image ? 'imageImport' : selected;
+    // 白盒、SDF、多边形烘出的模型（二进制）也改不了：看烘它的源
+    const baked = selected === 'model' ? BAKED_SOURCES.find(has) : undefined;
+    const kind = imported ? 'modelImport' : image ? 'imageImport' : baked ?? selected;
     if (kind === 'imageImport' && !has('imageImport')) {
       this.inspected.value = { kind, path, content: { source: this.#imageSource(path)!, ...DEFAULT_IMAGE_IMPORT } };
       return;
@@ -1070,6 +1072,8 @@ export interface InspectedAsset {
   readonly content: Record<string, unknown>;
 }
 
+/** 烘出模型的源（编辑器后端按它们烘同名的模型）：选中烘出的模型时看源。 */
+const BAKED_SOURCES = ['brush', 'sdf', 'poly'] as const satisfies readonly AssetKind[];
 const isInspectable = (kind: AssetKind): kind is InspectableKind => Object.hasOwn(ASSET_FIELDS, kind);
 
 /** 资源改了以后等这么久（毫秒）再存：拖数字、取色时不每一下都写文件。 */

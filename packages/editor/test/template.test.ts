@@ -28,6 +28,9 @@ describe('stride-editor new', () => {
     const created = await createProject(root);
     expect(created.port).toBe(5212);
     expect(created.files).toContain('src/game/CoinRunGame.ts');
+    // 各查各的类型：根上的 pnpm typecheck 按包的 typecheck 脚本挨个跑
+    expect(created.files).toContain('tsconfig.json');
+    expect((JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> }).scripts['typecheck']).toMatch(/^tsc -p \./);
     expect(await readFile(path.join(root, 'vite.config.ts'), 'utf8')).toContain('strideApp(5212)');
     const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')) as { name: string; dependencies: Record<string, string> };
     expect(pkg.name).toBe('@stride-ts/coin-run');

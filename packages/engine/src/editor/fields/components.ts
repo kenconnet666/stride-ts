@@ -189,7 +189,7 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
   gaussianSplat: {
     label: 'Gaussian splats',
     type: object(fields<NonNullable<Components['gaussianSplat']>>({
-      splats: { type: asset('splats'), description: 'splat asset (.splat, imported from a 3D Gaussian Splatting .ply)' },
+      splats: { type: asset('splats'), description: 'splat asset (.splat, imported from a 3D Gaussian Splatting .ply or .spz)' },
     })),
     initial: { splats: '' },
   },

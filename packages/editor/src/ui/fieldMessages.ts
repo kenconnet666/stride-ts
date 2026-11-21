@@ -90,7 +90,7 @@ const zhCN: FieldMessages = {
     'the disc lies in the local XY plane and shines toward local -Z': '圆盘在本地 XY 平面上，朝本地 -Z 照',
     'IES light profile: how strongly the fixture shines in each direction; 0° points along local -Z': '配光曲线（IES 文件）：灯具往各个方向照多亮；0° 对着本地 -Z',
     'along the local X axis; the tube shines all around': '沿本地 X 轴，往四周照',
-    'splat asset (.splat, imported from a 3D Gaussian Splatting .ply)': '泼溅资源（.splat，从 3DGS 的 .ply 导入）',
+    'splat asset (.splat, imported from a 3D Gaussian Splatting .ply or .spz)': '泼溅资源（.splat，从 3DGS 的 .ply 或 .spz 导入）',
     'size along the local X axis': '沿本地 X 轴的尺寸',
     'size along the local Y axis; the light shines toward local -Z': '沿本地 Y 轴的尺寸；光朝本地 -Z 照',
     'waveform': '波形',

@@ -7,6 +7,7 @@
  * 高阶的球谐（视角相关的颜色）：标准的读 f_rest_*（按通道排，个数 9、24、45 对着 1、2、3 阶），压缩的读 element sh 的 uchar
  * （v · 8 / 255 − 4，同 PlayCanvas）。
  */
+import { gunzipSync, zstdDecompressSync } from 'node:zlib';
 import { encodeSplats, type SplatSource } from '@stride-ts/engine/splats';
 
 /** 球谐 0 阶的系数（f_dc 换成颜色：0.5 + SH_C0 · f_dc）。 */
@@ -24,10 +25,110 @@ interface PlyElement {
   readonly properties: readonly { readonly name: string; readonly type: string }[];
 }
 
-/** .ply 的字节 → .splat 文件的字节和泼溅个数。格式不认时报错（带 where）。 */
-export function convertPlySplats(bytes: Uint8Array, where: string): { readonly bytes: Uint8Array; readonly count: number } {
-  const source = readPlySplats(bytes, where);
+/** 编辑器能导入的泼溅文件（扩展名）。 */
+export const SPLAT_SOURCE_EXTENSIONS = ['.ply', '.spz'] as const;
+
+/** .ply 或 .spz 的字节 → .splat 文件的字节和泼溅个数（按 where 的扩展名分）。格式不认时报错（带 where）。 */
+export function convertSplats(bytes: Uint8Array, where: string): { readonly bytes: Uint8Array; readonly count: number } {
+  const source = where.toLowerCase().endsWith('.spz') ? readSpzSplats(bytes, where) : readPlySplats(bytes, where);
   return { bytes: encodeSplats(source), count: source.count };
+}
+
+const SPZ_MAGIC = 0x5053474e;
+/** SPZ 里每个阶数的每个通道的球谐系数个数（到 4 阶）。 */
+const SPZ_SH_DIM = [0, 3, 8, 15, 24];
+/** RUB 换 RDF（y、z 取反）时 1～3 阶的每个基函数变不变号：(−1) 的 y、z 次数之和次方（基函数依次是 y z x、xy yz z² xz x²−y²、……）。 */
+const SPZ_SH_FLIP = [-1, -1, 1, -1, 1, 1, -1, 1, -1, 1, -1, -1, 1, -1, 1];
+
+/**
+ * Niantic 的 SPZ（Scaniverse 等导出的开放格式）：版本 2、3 是整个文件 gzip，版本 4 是每段单独 zstd（前面一张目录）。解开以后
+ * 16 字节的头（魔数 NGSP、版本、个数、球谐阶数、定点的小数位、标志），再依次是位置（每个分量 24 位有符号定点）、不透明度
+ * （8 位）、颜色（8 位，0 阶球谐按 0.15 缩放过）、缩放（8 位，exp(b / 16 − 10)）、旋转（版本 2 是 xyz 各 8 位，3 起是最小三分量
+ * 一个 u32）、球谐（每个系数 RGB 交错各 8 位，(b − 128) / 128）。照 PlayCanvas 的 spz-parser 和 Niantic 的 spz 库。4 阶的
+ * 球谐截到 3 阶。SPZ 的坐标是 RUB（右、上、后），3DGS 的 .ply 是 RDF（右、下、前）：读出来绕 X 转半圈换成 .ply 的，同一个场景两种
+ * 文件导入后一样（PlayCanvas 示例里的 biker.spz 和 biker.compressed.ply 对过）。
+ */
+export function readSpzSplats(bytes: Uint8Array, where: string): SplatSource {
+  let header: { version: number; count: number; shDegree: number; fractionalBits: number };
+  let streams: Uint8Array[];
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const sizesFor = (count: number, version: number, shDegree: number) => [count * 9, count, count * 3, count * 3, count * (version >= 3 ? 4 : 3), count * SPZ_SH_DIM[shDegree]! * 3];
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    const raw = gunzipSync(bytes);
+    const v = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+    if (v.getUint32(0, true) !== SPZ_MAGIC) throw new Error(`${where}: not an SPZ file`);
+    header = { version: v.getUint32(4, true), count: v.getUint32(8, true), shDegree: v.getUint8(12), fractionalBits: v.getUint8(13) };
+    if (header.shDegree >= SPZ_SH_DIM.length) throw new Error(`${where}: SPZ spherical harmonics degree ${header.shDegree}`);
+    let offset = 16;
+    streams = sizesFor(header.count, header.version, header.shDegree).map((size) => {
+      if (offset + size > raw.length) throw new Error(`${where}: truncated SPZ`);
+      const stream = raw.subarray(offset, offset + size);
+      offset += size;
+      return stream;
+    });
+  } else {
+    if (bytes.length < 32 || view.getUint32(0, true) !== SPZ_MAGIC) throw new Error(`${where}: not an SPZ file`);
+    header = { version: view.getUint32(4, true), count: view.getUint32(8, true), shDegree: view.getUint8(12), fractionalBits: view.getUint8(13) };
+    if (header.version !== 4) throw new Error(`${where}: SPZ version ${header.version} without gzip (only version 4 stores separately compressed streams)`);
+    if (header.shDegree >= SPZ_SH_DIM.length) throw new Error(`${where}: SPZ spherical harmonics degree ${header.shDegree}`);
+    if (view.getUint8(14) & 0x2) throw new Error(`${where}: SPZ extensions are not supported`);
+    const sizes = sizesFor(header.count, 4, header.shDegree).filter((size, i) => i < 5 || size > 0);
+    const streamCount = view.getUint8(15), toc = view.getUint32(16, true);
+    if (streamCount !== sizes.length) throw new Error(`${where}: SPZ has ${streamCount} streams, expected ${sizes.length}`);
+    let offset = toc + streamCount * 16;
+    streams = sizes.map((size, i) => {
+      const compressed = Number(view.getBigUint64(toc + i * 16, true));
+      const uncompressed = Number(view.getBigUint64(toc + i * 16 + 8, true));
+      if (uncompressed !== size || offset + compressed > bytes.length) throw new Error(`${where}: SPZ stream ${i} has the wrong size`);
+      const stream = new Uint8Array(zstdDecompressSync(bytes.subarray(offset, offset + compressed)));
+      offset += compressed;
+      return stream;
+    });
+  }
+  const [position, alpha, color, scale, rotation, harmonics] = streams as [Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array, Uint8Array | undefined];
+  const { count, version } = header;
+  const positions = new Float32Array(count * 3), scales = new Float32Array(count * 3), rotations = new Float32Array(count * 4), colors = new Float32Array(count * 4);
+  const unit = 1 / (1 << header.fractionalBits);
+  const colorScale = SH_C0 / 0.15;
+  for (let i = 0; i < count; i++) {
+    for (let k = 0; k < 3; k++) {
+      const o = (i * 3 + k) * 3;
+      positions[i * 3 + k] = (k === 0 ? unit : -unit) * (((position[o]! | (position[o + 1]! << 8) | (position[o + 2]! << 16)) << 8) >> 8);
+      scales[i * 3 + k] = Math.exp(scale[i * 3 + k]! / 16 - 10);
+      colors[i * 4 + k] = (color[i * 3 + k]! / 255 - 0.5) * colorScale + 0.5;
+    }
+    colors[i * 4 + 3] = alpha[i]! / 255;
+    if (version >= 3) {
+      let word = (rotation[i * 4]! | (rotation[i * 4 + 1]! << 8) | (rotation[i * 4 + 2]! << 16) | (rotation[i * 4 + 3]! << 24)) >>> 0;
+      const largest = word >>> 30;
+      const q = [0, 0, 0, 0];
+      let sum = 0;
+      for (let k = 3; k >= 0; k--) {
+        if (k === largest) continue;
+        const value = (word & 0x1ff) * (Math.SQRT1_2 / 511);
+        q[k] = word & 0x200 ? -value : value;
+        word >>>= 10;
+        sum += q[k]! * q[k]!;
+      }
+      q[largest] = Math.sqrt(Math.max(0, 1 - sum));
+      rotations.set([q[0]!, -q[1]!, -q[2]!, q[3]!], i * 4);
+    } else {
+      const q = [0, 1, 2].map((k) => rotation[i * 3 + k]! / 127.5 - 1);
+      rotations.set([q[0]!, -q[1]!, -q[2]!, Math.sqrt(Math.max(0, 1 - q[0]! * q[0]! - q[1]! * q[1]! - q[2]! * q[2]!))], i * 4);
+    }
+  }
+  // 球谐：SPZ 按系数交错 RGB，我们按通道排；4 阶截到 3 阶
+  const dim = SPZ_SH_DIM[header.shDegree]!;
+  const bands = Math.min(header.shDegree, 3);
+  if (bands === 0 || !harmonics) return { count, positions, scales, rotations, colors };
+  const kept = SPZ_SH_DIM[bands]!;
+  const sh = new Float32Array(count * kept * 3);
+  for (let i = 0; i < count; i++) {
+    for (let k = 0; k < kept; k++) {
+      for (let c = 0; c < 3; c++) sh[i * kept * 3 + c * kept + k] = SPZ_SH_FLIP[k]! * (harmonics[(i * dim + k) * 3 + c]! - 128) / 128;
+    }
+  }
+  return { count, positions, scales, rotations, colors, shBands: bands, sh };
 }
 
 /** 解析 .ply 成泼溅（颜色是显示空间的 0..1，不透明度 0..1，缩放是线性的半轴长）。 */

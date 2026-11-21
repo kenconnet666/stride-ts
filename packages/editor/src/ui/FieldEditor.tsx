@@ -71,6 +71,12 @@ function engineEditors(context: () => FieldContext): PropertyEditors<EngineKind>
                 _value={typeof angle === 'number' ? angle : null}
                 {...(angle === PROPERTY_MIXED ? { placeholder: '—', title: t.mixed } : {})}
                 onUpdate:_value={(next: number | null) => next !== null && set([], setAngle(i, next))}
+                // 相对的输入（+=15）：每个实体按自己的这个角算
+                onRelative={(apply: (current: number | null) => unknown) =>
+                  set([], (current: unknown) => {
+                    const angles = quaternionToEuler(Array.isArray(current) ? (current as number[]) : [0, 0, 0, 1]);
+                    return eulerToQuaternion(angles.map((angle, j) => (j === i ? Number(apply(angle)) : angle)));
+                  })}
               />
             ))}
           </div>

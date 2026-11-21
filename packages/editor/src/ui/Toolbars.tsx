@@ -11,6 +11,7 @@ import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, NumberField, Select, Separator, Skeleton, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
 import { LOCALES, locale, setLocale, type Locale } from './i18n';
+import { SearchEverywhere } from './SearchEverywhere';
 import { t } from './messages';
 import type { EditorSession } from './session';
 
@@ -50,6 +51,7 @@ export const MainToolbar = _component(({ session, playing, onTogglePlay }: { ses
       <IconButton {...iconProps} icon={Undo2} aria-label={t.undo} title={`${t.undo} (Ctrl+Z)`} disabled={!session.canUndo || playing} onClick={() => session.undo()} />
       <IconButton {...iconProps} icon={Redo2} aria-label={t.redo} title={`${t.redo} (Ctrl+Y)`} disabled={!session.canRedo || playing} onClick={() => session.redo()} />
       <span {...css.attrs(styles.spacer)} />
+      <SearchEverywhere session={session} playing={playing} onTogglePlay={onTogglePlay} />
       {playing
         ? <IconButton size="sm" variant="soft" tone="danger" icon={Square} aria-label={t.stopPlaying} title={t.stopPlaying} onClick={onTogglePlay} />
         : <IconButton size="sm" variant="ghost" tone="success" icon={Play} aria-label={t.play} title={t.play} onClick={onTogglePlay} />}

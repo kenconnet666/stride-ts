@@ -119,6 +119,8 @@ export class EditorSession implements EditableScene {
   readonly references = shallowRef<readonly string[]>([]);
   /** 视口一直出帧（粒子、天气、时间累积的效果一直动）；关着时静止就不出帧（Game.renderOnDemand），输入、修改时才画。 */
   readonly realtime = shallowRef(false);
+  /** 命令面板（到处搜）开着：快捷键在 App 里接（焦点在视口的 iframe 里也认），面板在主工具条上。 */
+  readonly palette = shallowRef(false);
   /** 最近一次操作做不了的原因（工具条上显示），下一次操作成功时清掉。 */
   readonly notice = shallowRef('');
   /** 最近一次操作做成了什么（工具条上不显眼地显示；有 notice 时让给它）。 */

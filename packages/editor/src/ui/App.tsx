@@ -20,6 +20,9 @@ const styles = css.create({
   viewport: { flex: '1', minHeight: '0', position: 'relative' },
 });
 
+/** 连按两下 Shift 算一次的间隔（毫秒），同 JetBrains 的默认。 */
+const DOUBLE_SHIFT_MS = 300;
+
 /**
  * 事件落在输入框里（敲字、复制粘贴文字）。视口里的事件来自 iframe 的文档，那边的 Element 不是这个窗口的，所以不用 instanceof。
  */
@@ -44,8 +47,17 @@ export const App = _component(({ session }: { session: EditorSession }) => {
 
   // Ctrl+Shift+V 粘贴成子实体：paste 事件不带按键，按下时记着
   let pasteAsChild = false;
+  // 连按两下 Shift 打开到处搜（同 JetBrains）：上一次单独按下 Shift 的时刻
+  let lastShift = 0;
 
   const shortcut = (event: KeyboardEvent) => {
+    if (event.key === 'Shift' && !event.repeat) {
+      const now = performance.now();
+      if (now - lastShift < DOUBLE_SHIFT_MS) session.palette.value = true;
+      lastShift = now;
+      return;
+    }
+    lastShift = 0;
     // 在输入框里按 Delete 是删字
     const typing = editingText(event.target);
     if (event.key === 'Delete' && !typing && !playing) {
@@ -61,6 +73,7 @@ export const App = _component(({ session }: { session: EditorSession }) => {
     if (key === 'v') pasteAsChild = event.shiftKey;
     if (key === 'c' || key === 'x' || key === 'v') return;
     if (key === 's') void session.save();
+    else if (key === 'k') session.palette.value = true;
     else if (key === 'd') void session.duplicateSelection();
     else if (key === 'z' && !event.shiftKey) session.undo();
     else if (key === 'y' || (key === 'z' && event.shiftKey)) session.redo();

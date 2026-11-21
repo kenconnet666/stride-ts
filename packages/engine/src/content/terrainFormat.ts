@@ -27,6 +27,27 @@ export interface TerrainNoiseFile {
   readonly warp?: number;
   /** ≥ 0：按累积的坡度压低细节（陡处平滑、谷里留细节，像侵蚀过）。 */
   readonly erosion?: number;
+  /** 冲沟（侵蚀的样子，逐点算、不模拟）；不写就没有。 */
+  readonly gullies?: TerrainGulliesFile;
+}
+
+/**
+ * 冲沟：沿下坡方向的条纹一层层分叉（细的从粗的两侧斜着分出去），坡缓的地方淡成谷底（valley 以下）、山顶（peak 以上）。
+ * 只加在底上，地物、笔画压在它上面。没写的用 TERRAIN_GULLY_DEFAULTS。
+ */
+export interface TerrainGulliesFile {
+  /** 深度（米）。 */
+  readonly strength?: number;
+  /** 最粗一层的间距（米）。 */
+  readonly scale?: number;
+  /** 层数（0..8），每层间距减半。 */
+  readonly octaves?: number;
+  /** > 0：细的冲沟要多陡才出现（越小越只长在陡处）。 */
+  readonly detail?: number;
+  /** 谷底的高度（米）。 */
+  readonly valley?: number;
+  /** 山顶的高度（米）。 */
+  readonly peak?: number;
 }
 
 /** 矢量的地物：flatten 是多边形（[x, z]，米）里压到 height，边外 falloff 米内过渡（路基、广场、建筑的地基）。 */
@@ -63,9 +84,12 @@ export interface TerrainFile {
 }
 
 /** 底的默认值（同 @stride-ts/native 的 TERRAIN_NOISE_DEFAULTS，这里再写一份：格式文件不依赖原生模块）。 */
-export const TERRAIN_NOISE_DEFAULTS: Readonly<Required<TerrainNoiseFile>> = {
+export const TERRAIN_NOISE_DEFAULTS: Readonly<Required<Omit<TerrainNoiseFile, 'gullies'>>> = {
   seed: 0, octaves: 6, scale: 1000, height: 200, offset: 0, lacunarity: 2, gain: 0.5, ridged: 0, warp: 0, erosion: 0,
 };
+
+/** 冲沟的默认值（同 @stride-ts/native 的 TERRAIN_GULLY_DEFAULTS）。 */
+export const TERRAIN_GULLY_DEFAULTS: Readonly<Required<TerrainGulliesFile>> = { strength: 20, scale: 400, octaves: 4, detail: 1.5, valley: 0, peak: 300 };
 
 const STROKE_OPS: readonly TerrainStrokeFile['op'][] = ['raise', 'lower', 'flatten', 'smooth'];
 
@@ -80,6 +104,14 @@ export function checkTerrainFile(value: unknown, where: string): TerrainFile {
   if (typeof file.name !== 'string') fail('name', 'must be a string');
   if (typeof file.noise !== 'object' || file.noise === null) fail('noise', 'must be an object');
   for (const [key, v] of Object.entries(file.noise as object)) {
+    if (key === 'gullies') {
+      if (typeof v !== 'object' || v === null) fail('noise.gullies', 'must be an object');
+      for (const [g, gv] of Object.entries(v as object)) {
+        if (!(g in TERRAIN_GULLY_DEFAULTS)) fail(`noise.gullies.${g}`, 'is not a gully parameter');
+        if (!isNumber(gv)) fail(`noise.gullies.${g}`, 'must be a finite number');
+      }
+      continue;
+    }
     if (!(key in TERRAIN_NOISE_DEFAULTS)) fail(`noise.${key}`, 'is not a noise parameter');
     if (!isNumber(v)) fail(`noise.${key}`, 'must be a finite number');
   }

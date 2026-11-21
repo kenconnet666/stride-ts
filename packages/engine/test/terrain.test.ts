@@ -90,6 +90,10 @@ describe('地形文件', () => {
     const ok = { name: 'Hills', noise: { octaves: 4 }, features: [{ type: 'flatten', points: [[0, 0], [1, 0], [0, 1]], height: 2 }] };
     expect(checkTerrainFile(ok, 'Hills')).toBe(ok);
     expect(() => checkTerrainFile({ name: 'Hills', noise: { octave: 4 } }, 'Hills')).toThrow('Hills: noise.octave is not a noise parameter');
+    const gullies = { name: 'Hills', noise: { gullies: { strength: 30, scale: 500, valley: -100 } } };
+    expect(checkTerrainFile(gullies, 'Hills')).toBe(gullies);
+    expect(() => checkTerrainFile({ name: 'Hills', noise: { gullies: { depth: 3 } } }, 'Hills')).toThrow('noise.gullies.depth is not a gully parameter');
+    expect(() => checkTerrainFile({ name: 'Hills', noise: { gullies: 5 } }, 'Hills')).toThrow('noise.gullies must be an object');
     expect(() => checkTerrainFile({ name: 'Hills', noise: {}, features: [{ type: 'flatten', points: [[0, 0]], height: 0 }] }, 'Hills')).toThrow('features[0].points must be at least 3');
     expect(() => checkTerrainFile({ name: 'Hills', noise: {}, strokes: [{ op: 'dig', x: 0, z: 0, radius: 1, strength: 1 }] }, 'Hills')).toThrow('strokes[0].op must be one of');
   });

@@ -8,7 +8,15 @@
   "offset": -60,
   "erosion": 0.45,
   "ridged": 0.3,
-  "warp": 350
+  "warp": 350,
+  "gullies": {
+   "strength": 22,
+   "scale": 500,
+   "octaves": 3,
+   "detail": 1.5,
+   "valley": -100,
+   "peak": 250
+  }
  },
  "material": "Materials/Library/AlpineTerrain",
  "uvScale": 4,

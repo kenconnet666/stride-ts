@@ -231,6 +231,18 @@ export const TERRAIN_FIELDS = fields<TerrainFile>({
       ridged: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'how much of sharp ridges to mix in' },
       warp: { type: number({ min: 0, step: 10, unit: 'm' }), optional: true, default: 0, description: 'domain warp: bends the noise so hills look less regular' },
       erosion: { type: number({ min: 0, max: 4, step: 0.05 }), optional: true, default: 0, description: 'damps detail on steep slopes (smooth slopes, detailed valleys), like erosion' },
+      gullies: {
+        type: object(fields<NonNullable<NonNullable<TerrainFile['noise']>['gullies']>>({
+          strength: { type: number({ min: 0, step: 1, unit: 'm' }), optional: true, default: 20, description: 'how deep the gullies are' },
+          scale: { type: number({ min: 1, step: 10, unit: 'm' }), optional: true, default: 400, description: 'spacing of the coarsest gullies; each layer halves it' },
+          octaves: { type: integer(0, 8), optional: true, default: 4, description: 'gully layers: finer gullies branch off the coarser ones' },
+          detail: { type: number({ min: 0.05, max: 8, step: 0.1 }), optional: true, default: 1.5, description: 'lower keeps fine gullies to steep slopes only' },
+          valley: { type: number({ step: 10, unit: 'm' }), optional: true, default: 0, description: 'height of the valley floors: below it gentle slopes fade into valleys' },
+          peak: { type: number({ step: 10, unit: 'm' }), optional: true, default: 300, description: 'height of the peaks: above it gentle slopes fade into sharp tops' },
+        })),
+        optional: true,
+        description: 'erosion gullies carved into the noise (branching, evaluated per point without simulation); unset has none',
+      },
     })),
   },
   material: { ...nullable(asset('material')), optional: true, description: 'material of the ground; unset uses the default material' },

@@ -85,7 +85,9 @@ export async function pageTarget(browser: BrowserRecord, urlPrefix: string): Pro
   const deadline = Date.now() + 10_000;
   for (;;) {
     const targets = (await (await fetch(`http://127.0.0.1:${browser.port}/json/list`)).json()) as (PageTarget & { type: string })[];
-    const found = targets.find((t) => t.type === 'page' && t.url.startsWith(urlPrefix));
+    // 编辑器的视口是同源的 iframe，不是单独的目标：找不到完全对上的就用同一个源的顶层标签（整个编辑器）
+    const origin = URL.canParse(urlPrefix) ? new URL(urlPrefix).origin : undefined;
+    const found = targets.find((t) => t.type === 'page' && t.url.startsWith(urlPrefix)) ?? targets.find((t) => t.type === 'page' && origin !== undefined && t.url.startsWith(`${origin}/`));
     if (found) return found;
     if (Date.now() > deadline) throw new Error(`no tab at ${urlPrefix} in the stride Chrome (tabs: ${targets.map((t) => t.url).join(', ')})`);
     await new Promise((resolve) => setTimeout(resolve, 100));

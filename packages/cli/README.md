@@ -93,6 +93,22 @@ C++ 也能下断点：`at` 写原生源码的 `文件:行`（比如 `Source/Runt
 
 第三方代码（`node_modules`、Vite 的模块）不进单步和调用栈。停下的会话要和页面无关的 DevTools 连接：用 `stride open <地址>`（有界面、无头都行）开的 Chrome；经调试桥扩展的连接走页面转发，页面停住时没法再发"继续"，所以不支持（以后调试桥改成扩展直连中枢）。
 
+## 像人一样看和操作页面（`stride page`）
+
+照 Claude in Chrome 那套能力做的，经 DevTools 协议：主 Chrome 经调试桥扩展、`stride open` 的 Chrome 直连，一样用。主要用在编辑器的界面（`/__stride/editor/`），游戏页面的 DOM 也行。
+
+| 命令 | 作用 |
+|---|---|
+| `page tree [--interactive] [--max 400]` | 无障碍树，每个元素带编号（`e123`），连同里面的 iframe（编辑器的视口）；`--interactive` 只列能操作的和它们所在的区域 |
+| `page find <文字>`、`page text` | 名字或值里有这段文字的元素；页面的文字 |
+| `page click <编号或 x,y> [--button right] [--count 2] [--modifiers ctrl+shift]` | 真实的点击（浏览器当成用户操作），编号先滚进视口、点中心 |
+| `page hover`、`page drag <从> <到> [--steps 12]`、`page scroll <位置> [--dy 300]` | 悬停、按住拖过去（中间有移动事件，拖操纵器、拖资源都行）、滚轮 |
+| `page type <文字>`、`page key <组合>... [--repeat n]` | 往焦点里打字；按键（`Enter`、`ctrl+s`、`shift+Tab`、`F2`、`a`） |
+| `page shot <out.png> [--ref e123]` | 截视口或一个元素，按 CSS 像素（图上的坐标就是 click 用的坐标，高分屏也一样） |
+| `page eval <表达式>` 或 `--file` | 在顶层页面（编辑器的界面，不是视口里的游戏）求值，查界面的布局、状态 |
+
+鼠标、键盘的操作会在页面最上层画一个 agent 的指针（橙色，不挡点击）：平滑地移过去再点，点击有波纹，按键、滚轮在旁边标出来，闲置 4 秒淡出；人在旁边看得清 agent 在干什么。截图比对、测帧时间时加 `--no-cursor`。编号在页面刷新、元素重新渲染后会变，失效时报错提示重新 `page tree`。后台的标签不出帧，`stride front` 切到前面。
+
 ## 在游戏里埋点
 
 ```ts

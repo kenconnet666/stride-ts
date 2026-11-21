@@ -50,11 +50,16 @@ async function updatedOnDisk() {
   return now !== fingerprint;
 }
 
+// 先让回复送出去再重新加载（马上 reload 的话回复会丢，页面那边一直等到超时）
+function reloadSoon() {
+  setTimeout(() => chrome.runtime.reload(), 300);
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   fingerprint = await currentFingerprint();
   const tabs = await chrome.tabs.query({ url: ['http://localhost/*', 'http://127.0.0.1/*'] });
   for (const tab of tabs) {
-    if (tab.id !== undefined) await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }).catch(() => {});
+    if (tab.id !== undefined) await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['content.js'] }).catch(() => {});
   }
 });
 
@@ -65,14 +70,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 页面打开时内容脚本打个招呼：借这个机会看文件有没有改
     updatedOnDisk().then((updated) => {
       sendResponse({ result: { version: chrome.runtime.getManifest().version } });
-      if (updated) chrome.runtime.reload();
+      if (updated) reloadSoon();
     });
     return true;
   }
   updatedOnDisk().then((updated) => {
     if (updated) {
       sendResponse({ error: 'the Stride Debug Bridge extension was updated on disk and is reloading itself; run the command again' });
-      chrome.runtime.reload();
+      reloadSoon();
       return;
     }
     run(tabId, message).then(
@@ -96,10 +101,20 @@ async function run(tabId, { method, params, waitFor, session = 'default' }) {
   }
   await attach(target);
   if (!sessions.includes(session)) await setSessions(tabId, [...sessions, session]);
-  if (!waitFor) return chrome.debugger.sendCommand(target, method, params ?? {});
-  const event = waitForEvent(tabId, waitFor);
-  await chrome.debugger.sendCommand(target, method, params ?? {});
-  return event;
+  const event = waitFor ? waitForEvent(tabId, waitFor) : undefined;
+  const result = await send(target, method, params ?? {});
+  return event ?? result;
+}
+
+// 扩展刚重新加载、标签刚被断开时，附加和 Chrome 的"断开了"通知会撞上：碰到"没附加"就重新附加、再发一次
+async function send(target, method, params) {
+  try {
+    return await chrome.debugger.sendCommand(target, method, params);
+  } catch (error) {
+    if (!/not attached/i.test(error?.message ?? '')) throw error;
+    await attach(target);
+    return chrome.debugger.sendCommand(target, method, params);
+  }
 }
 
 function waitForEvent(tabId, method) {

@@ -14,6 +14,7 @@ import { decodePng, diffImages, encodePng } from './png.ts';
 import { profileCallers, profileFromTrace, summarizeProfile, type CpuProfile, type TraceEvent } from './profile.ts';
 import { checkEval, runTypeQuery, TS_USAGE, TypeScriptServer } from './lsp.ts';
 import { runDebugPlan, type DebugPlan } from './debugger.ts';
+import { setCursorEnabled, pageClick, pageDrag, pageEval, pageFind, pageHover, pageKey, pageScroll, pageShot, pageText, pageTree, pageType } from './page.ts';
 import { listHubs, readBrowser } from './state.ts';
 
 const HELP = `stride <command> [options]   (from the repository: pnpm exec stride <command>)
@@ -48,6 +49,17 @@ Game
   gpu-calls [--seconds 2]                           WebGPU calls and writeBuffer bytes per frame
   cpu-profile [--seconds 5] [--out profile.json] [--callers <regex>]
                           sample the main thread (needs a Chrome from stride open): ms per frame by kind and function
+  page tree [--interactive] [--max 400]             the page's accessibility tree (the editor UI too, iframes included),
+                                                    each element with a ref (e123)
+  page find <text> | page text                      elements whose name or value has the text; the page's text
+  page eval <expr> | --file <f>                     evaluate in the top page (the editor UI, not the game iframe)
+  page click <ref|x,y> [--button left|right|middle] [--count 2] [--modifiers ctrl+shift]
+  page hover <ref|x,y> | page drag <from> <to> [--steps 12] | page scroll <ref|x,y> [--dy 300] [--dx 0]
+  page type <text> | page key <combo>... [--repeat n]  (combo: Enter, ctrl+s, shift+Tab, F2, a)
+                                                    mouse and keyboard actions draw an agent cursor on the page (--no-cursor: don't)
+  page shot <out.png> [--ref e123]                  screenshot of the viewport or an element, in CSS pixels (the
+                                                    coordinates click takes); real user input (trusted events) through
+                                                    the DevTools protocol, like a person at the screen
   front                                             bring the game's tab to the front (a background tab does not run frames;
                                                     status.visibility says hidden)
   pick <x> <y>                                      entity under a canvas pixel (CSS pixels from the top-left; meshes and sprites)
@@ -159,6 +171,15 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     watch: { type: 'string', multiple: true },
     run: { type: 'string' },
     exceptions: { type: 'string' },
+    interactive: { type: 'boolean' },
+    button: { type: 'string' },
+    count: { type: 'string' },
+    modifiers: { type: 'string' },
+    dy: { type: 'string' },
+    dx: { type: 'string' },
+    repeat: { type: 'string' },
+    ref: { type: 'string' },
+    'no-cursor': { type: 'boolean' },
   },
 });
 
@@ -400,6 +421,53 @@ const commands: Record<string, () => Promise<unknown>> = {
     };
   },
   pick: () => call('pick', { x: Number(rest[0]), y: Number(rest[1]) }),
+  async page() {
+    const [sub, ...args] = rest;
+    const { cdp: session } = await pageCdp(`page ${sub ?? ''}`);
+    await using cdp = session;
+    setCursorEnabled(options['no-cursor'] !== true);
+    const at = (i: number, what: string) => required(args[i], what);
+    switch (sub) {
+      case 'tree':
+        return pageTree(cdp, { interactive: options.interactive === true, max: Number(options.max ?? 400) });
+      case 'find':
+        return pageFind(cdp, args.join(' '));
+      case 'text':
+        return pageText(cdp);
+      case 'eval':
+        return pageEval(cdp, options.file ? readFileSync(options.file, 'utf8') : args.join(' '));
+      case 'click':
+        return pageClick(cdp, at(0, 'element ref or x,y'), {
+          ...(options.button ? { button: options.button as 'left' | 'right' | 'middle' } : {}),
+          ...(options.count ? { count: Number(options.count) } : {}),
+          ...(options.modifiers ? { modifiers: options.modifiers } : {}),
+        });
+      case 'hover':
+        return pageHover(cdp, at(0, 'element ref or x,y'));
+      case 'drag':
+        return pageDrag(cdp, at(0, 'from (ref or x,y)'), at(1, 'to (ref or x,y)'), {
+          ...(options.steps ? { steps: Number(options.steps) } : {}),
+          ...(options.button ? { button: options.button as 'left' | 'right' | 'middle' } : {}),
+          ...(options.modifiers ? { modifiers: options.modifiers } : {}),
+        });
+      case 'scroll':
+        return pageScroll(cdp, at(0, 'element ref or x,y'), Number(options.dy ?? 300), Number(options.dx ?? 0));
+      case 'type':
+        await pageType(cdp, args.join(' '));
+        return { typed: args.join(' ').length };
+      case 'key':
+        await pageKey(cdp, args, Number(options.repeat ?? 1));
+        return { pressed: args };
+      case 'shot': {
+        const out = at(0, 'output .png');
+        const png = await pageShot(cdp, options.ref);
+        writeFileSync(out, png);
+        return { written: out, bytes: png.length };
+      }
+      default:
+        throw new Error('page <tree|find|text|click|hover|drag|scroll|type|key|shot>; see stride --help');
+    }
+  },
   async front() {
     // 后台的标签不跑 requestAnimationFrame（启动参数也管不了）：把游戏标签切到前面
     const { cdp: session } = await pageCdp('front');
@@ -515,7 +583,9 @@ async function main(): Promise<void> {
   const run = commands[command];
   if (!run) throw new Error(`unknown command '${command}'; see stride --help`);
   const result = await run();
-  if (result !== undefined) console.log(formatJson(result));
+  // 文字（page tree、page text）原样打，别的按 JSON
+  if (typeof result === 'string') console.log(result);
+  else if (result !== undefined) console.log(formatJson(result));
 }
 
 main().catch((error: unknown) => {

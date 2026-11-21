@@ -9,10 +9,9 @@
 import { ArrowDown, ArrowUp, CircleX, Film, Plus, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, CurveField, GradientField, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Tab, TabList, Tabs, type CurveKey, type GradientStop } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { ParticleModuleFile, SceneEntityFile } from '@stride-ts/engine/content-format';
 import { curve, EMITTER_FIELDS, isCurve, newEmitter, PARTICLE_MODULES, type ParticleStackKind } from '@stride-ts/engine/editor-particles';
-import { ColorGradient, FloatCurve } from './CurveEditor';
 import { FieldEditor, FieldRow, type FieldContext, type ValuePath } from './FieldEditor';
 import { t } from './messages';
 import type { EditorSession, FlipbookSettings } from './session';
@@ -21,6 +20,23 @@ const SPECS = new Map(PARTICLE_MODULES.map((spec) => [spec.type, spec]));
 const LISTS: readonly ParticleStackKind[] = ['spawners', 'initializers', 'updaters'];
 const SINGLES: readonly ParticleStackKind[] = ['shapeBuilder', 'material'];
 const small = { size: 'sm', variant: 'ghost', tone: 'neutral' } as const;
+
+/** 文件里的曲线（Stride 的 ComputeCurveSampler + ComputeAnimationCurve）：横轴是走过的寿命 0..1。 */
+interface KeyFrameFile {
+  readonly key: number;
+  readonly value: number | readonly number[];
+  readonly tangentType?: string;
+}
+interface CurveFile {
+  readonly $type?: string | undefined;
+  readonly curve: { readonly $type?: string | undefined; readonly keyFrames: readonly KeyFrameFile[] };
+}
+
+const framesOf = (file: CurveFile) => [...file.curve.keyFrames].sort((a, b) => a.key - b.key);
+const withFrames = (file: CurveFile, keyFrames: readonly KeyFrameFile[]): CurveFile => ({ ...file, curve: { ...file.curve, keyFrames } });
+/** 颜色曲线的值是 0..1 的 rgba（同导入的 Stride 文件，不换色彩空间），色标的颜色是 #rrggbbaa。 */
+const rgbaToHex = (value: number | readonly number[]) => `#${(Array.isArray(value) ? value : [1, 1, 1, 1]).slice(0, 4).map((c: number) => Math.round(Math.min(Math.max(c, 0), 1) * 255).toString(16).padStart(2, '0')).join('')}`;
+const hexToRgba = (hex: string) => [1, 3, 5, 7].map((i) => parseInt(hex.slice(i, i + 2) || 'ff', 16) / 255);
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.8rem' },
@@ -37,6 +53,8 @@ const styles = css.create({
   curveRow: { display: 'grid', gridTemplateColumns: 'minmax(6em, 35%) 1fr', alignItems: 'start', gap: '_xs' },
   label: { color: '_textMuted' },
   curve: { display: 'flex', alignItems: 'flex-start', gap: '2px', minWidth: '0' },
+  curveField: { flex: '1', minWidth: '0', height: '4.5em' },
+  gradientField: { flex: '1', minWidth: '0' },
   bake: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '_xs', padding: '_sm', width: '20em' },
   bakeWide: { gridColumn: '1 / -1' },
   hint: { color: '_textMuted', padding: '_sm' },
@@ -70,18 +88,23 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
   const onField = (at: ValuePath) => (path: ValuePath, value: unknown) =>
     update([...at, ...path], (current) => (typeof value === 'function' ? (value as (previous: unknown) => unknown)(current) : value));
 
-  const curveEditor = (at: ValuePath, value: unknown, kind: 'Float' | 'Vector4') => {
+  const curveEditor = (at: ValuePath, value: unknown, kind: 'Float' | 'Vector4', label: string) => {
     if (!isCurve(value)) {
       return <Button size="sm" variant="soft" tone="neutral" icon={Plus} onClick={() => set(at, curve(kind, kind === 'Float' ? [[0, 1], [1, 1]] : [[0, [1, 1, 1, 1]], [1, [1, 1, 1, 0]]]))}>{t.particleAddCurve}</Button>;
     }
-    // 拖一个点的一路修改并成撤销的一步，松手时结束
-    const change = (next: unknown, done: boolean) => {
-      update(at, () => next, `curve:${at.join('.')}`);
-      if (done) session.commit();
-    };
+    // 拖一个点的一路修改并成撤销的一步（vue-tsx-pro 的曲线、渐变编辑拖动中实时写回），一次操作结束时收住
+    const file = value as unknown as CurveFile;
+    const write = (keyFrames: readonly KeyFrameFile[]) => update(at, () => withFrames(file, keyFrames), `curve:${at.join('.')}`);
+    const frames = framesOf(file);
     return (
       <span {...css.attrs(styles.curve)}>
-        {String(value.$type).endsWith('Float') ? <FloatCurve value={value as never} onChange={change} /> : <ColorGradient value={value as never} onChange={change} />}
+        {String(value.$type).endsWith('Float')
+          ? <CurveField {...css.attrs(styles.curveField)} aria-label={label} _value={frames.map((f) => ({ x: f.key, y: Number(f.value) }))}
+              onUpdate:_value={(keys: readonly CurveKey[]) => write(keys.map((k) => ({ key: k.x, value: k.y, tangentType: 'linear' })))}
+              onValueCommit={() => session.commit()} />
+          : <GradientField {...css.attrs(styles.gradientField)} aria-label={label} _value={frames.map((f) => ({ offset: f.key, color: rgbaToHex(f.value) }))}
+              onUpdate:_value={(stops: readonly GradientStop[]) => write(stops.map((s) => ({ key: s.offset, value: hexToRgba(s.color), tangentType: 'linear' })))}
+              onValueCommit={() => session.commit()} />}
         <IconButton {...small} icon={X} aria-label={t.particleRemoveCurve} title={t.particleRemoveCurve} onClick={() => set(at, null)} />
       </span>
     );
@@ -103,7 +126,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
             ? (
               <div {...css.attrs(styles.curveRow)}>
                 <span {...css.attrs(styles.label)}>{t.particleFields[field.name] ?? field.name}</span>
-                {curveEditor([...at, field.name], module[field.name], module.$type === 'updaterColorOverTime' ? 'Vector4' : 'Float')}
+                {curveEditor([...at, field.name], module[field.name], module.$type === 'updaterColorOverTime' ? 'Vector4' : 'Float', t.particleFields[field.name] ?? field.name)}
               </div>
             )
             : <FieldRow field={field} value={module[field.name]} context={context} onSet={onField([...at, field.name])} />))

@@ -131,10 +131,6 @@ export interface EditorMessages {
   readonly particleRemove: string;
   readonly particleAddCurve: string;
   readonly particleRemoveCurve: string;
-  readonly particleGradientHint: string;
-  readonly particleStopColor: string;
-  readonly particleStopAlpha: string;
-  readonly particleStopRemove: string;
   readonly particleStacks: { readonly spawners: string; readonly initializers: string; readonly updaters: string; readonly shapeBuilder: string; readonly material: string };
   readonly particleModules: Readonly<Record<string, string>>;
   readonly particleFields: Readonly<Record<string, string>>;
@@ -289,10 +285,6 @@ const zhCN: EditorMessages = {
   particleRemove: '删掉这个模块',
   particleAddCurve: '加曲线',
   particleRemoveCurve: '去掉曲线',
-  particleGradientHint: '双击加一个色标；拖色标挪位置，点选中改颜色',
-  particleStopColor: '色标的颜色',
-  particleStopAlpha: '透明度',
-  particleStopRemove: '删掉色标',
   particleStacks: { spawners: '生成', initializers: '初始化', updaters: '更新', shapeBuilder: '形状', material: '材质' },
   particleModules: {
     spawnerPerSecond: '每秒生成', spawnerBurst: '一次爆发', spawnerPerFrame: '每帧生成', spawnerFromDistance: '按移动距离生成',
@@ -458,10 +450,6 @@ const enUS: EditorMessages = {
   particleRemove: 'Remove this module',
   particleAddCurve: 'Add curve',
   particleRemoveCurve: 'Remove the curve',
-  particleGradientHint: 'Double-click to add a stop; drag a stop to move it, click it to edit its color',
-  particleStopColor: 'Stop color',
-  particleStopAlpha: 'Alpha',
-  particleStopRemove: 'Remove stop',
   particleStacks: { spawners: 'Spawn', initializers: 'Initialize', updaters: 'Update', shapeBuilder: 'Shape', material: 'Material' },
   particleModules: {},
   particleFields: {},

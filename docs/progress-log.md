@@ -849,6 +849,12 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - 调试桥 0.4 直连中枢（同一天）：扩展的 service worker 拿页面转交的桥票连开发服务器的中枢，CLI 的 DevTools 会话经中枢直接到扩展，不经过页面的 JS（断点停住时也能发命令、事件收得到）。实测时修了三处：扩展重新加载后新的内容脚本错过了票（页面只发一次）→ 内容脚本向页面要（0.4.1）；中枢把扩展的回复整个展开转给 CLI，回复里中枢自己的编号盖掉了 CLI 命令的编号，`front` 一直等到超时；`stride page` 里 `await using` 的会话在 `return pageEval(...)`（没 await）时就释放了，WebSocket 先关、命令没回复（经页面转发的旧路径同样有竞争，只是 detach 慢一步没暴露）。修完测试浏览器里 `front`、`page eval`、`page click`、`cpu-profile` 都经直连走通，编辑器的视口 iframe 也连上了。0.4.2：`front` 把最小化的窗口还原；直连的命令也查文件指纹自己更新。
 
+## CI 卡住的冒烟（2026-11-22）
+
+- 3b6688c 那次运行的 smoke (csharp-intermediate) 跑了 22 分钟没动静（别的冒烟最长 13 分钟），作业没设时限，GitHub 默认要等 6 小时；main 的并发组不取消正在跑的，后面每次推送都排在它后面（排队的被更新的顶掉，看起来是一串 cancelled）。日志里只有 "running 1 smoke tests"：regress.ps1 一个样例跑完才整段打印，卡住时什么也看不到。手动取消了那次运行。
+- 改：CI 的冒烟作业 `timeout-minutes: 30`；regress.ps1 每个样例有时限（`-AppTimeout`，本机 600 秒、CI 1500 秒），子进程的输出写进临时文件，超时杀掉进程树（连开发服务器）、按状态目录关它的无头 Chrome，打印到那时为止的输出（看最后过的是哪一步），算失败。卡住的原因要等下一次复现时看输出。
+- 顺手：CI 的 action 从 Node 20 的版本升到 Node 24 的（checkout v7、setup-node v7、cache v6、pnpm/action-setup v6；看过各大版本的说明，我们显式写了 `cache: pnpm`，不受 setup-node v6 只自动缓存 npm 的影响），日志里不再有 Node 20 弃用的警告。
+
 ## CI 的软件 WebGPU 提速：调研（2026-11-21，没做完）
 
 - CI 用 Chrome 带的 SwiftShader。它在 x86-64 上用 Subzero 编着色器（`src/Reactor/reactor.gni`：二进制小、只用 SSE4.1，不用 AVX），线程数默认 min(核数, 16)，`SwiftShader.ini` 的 `[Processor] ThreadCount` 能改。

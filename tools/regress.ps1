@@ -9,6 +9,8 @@
 #   -Changed：只跑改动影响到的样例（和 -Base 比，默认 origin/main，见 tools/affected.ts），第 2 层测试；全量在 CI 里跑。
 #   提交后马上推送了的，用 -Base 指推送前的提交（例如 HEAD~1）
 #   -Slow 300：每帧多忙等 300 毫秒（页面地址的 stride-slow），本机复现 CI 的软件 WebGPU 上的慢帧（冒烟的时序问题）
+#   -AppTimeout 600：一个样例（冒烟加验收）最多跑多少秒（默认本机 600、CI 上 1500）；超时把它的进程树杀掉、关它的 Chrome，
+#     打印到这时为止的输出（看最后过的是哪一步），算失败。不设的话卡住的冒烟在 CI 上占满作业的时限，什么也不打印
 #   -Editor：冒烟过了以后在同一个开发服务器上再跑编辑器验收（tools/editor-accept/accept.ts：打开、逐个实体画面板、不改就保存、
 #     改、保存、重开、试玩；内容目录先保护、验完还原）。-Changed 时改了编辑器、场景的加载和格式、验收工具就自动对 platformer、
 #     greybox 跑（tools/affected.ts --editor）
@@ -19,6 +21,7 @@ param(
     [int]$Parallel = [Math]::Clamp([Math]::Floor([Environment]::ProcessorCount / 8), 1, 4),
     [int]$Slow = 0,
     [switch]$Editor,
+    [int]$AppTimeout = $env:CI ? 1500 : 600,
     # 内部用：只跑这一个样例（并行时每个子进程跑一个）
     [string]$App
 )
@@ -123,10 +126,24 @@ Write-Host "running $($selected.Count) smoke tests, $Parallel at a time$($editor
 $results = $selected | ForEach-Object -ThrottleLimit $Parallel -Parallel {
     $started = Get-Date
     $editorArg = $_ -in $using:editorApps ? @('-Editor') : @()
-    $output = pwsh -NoProfile -File $using:PSCommandPath -App $_ -Slow $using:Slow @editorArg 2>&1
+    $rootDir = $using:root; $timeout = $using:AppTimeout
+    # 子进程的输出进临时文件：超时杀掉以后还能打印到那时为止的输出
+    $log = Join-Path ([IO.Path]::GetTempPath()) "stride-regress-$_-$PID.log"
+    $child = Start-Process pwsh -ArgumentList (@('-NoProfile', '-File', $using:PSCommandPath, '-App', $_, '-Slow', $using:Slow) + $editorArg) -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru -NoNewWindow
+    # 先取句柄：进程退出后 ExitCode 才读得到
+    $null = $child.Handle
+    $timedOut = -not $child.WaitForExit($timeout * 1000)
+    if ($timedOut) {
+        # 连开发服务器一起杀；无头 Chrome 是另起的，按这个样例的状态目录关
+        try { $child.Kill($true) } catch { }
+        $state = Join-Path $using:stateRoot $_
+        pwsh -NoProfile -Command "`$env:STRIDE_STATE_DIR = '$state'; `$env:STRIDE_BROWSER_DIR = '$state'; Set-Location '$rootDir'; pnpm exec stride close" *> $null
+    }
+    $output = @(Get-Content $log, "$log.err" -ErrorAction SilentlyContinue) + @(if ($timedOut) { "FAIL timed out after $timeout s (-AppTimeout); the output above is what it printed until then" })
+    Remove-Item $log, "$log.err" -ErrorAction SilentlyContinue
     [pscustomobject]@{
         App = $_
-        Passed = $LASTEXITCODE -eq 0
+        Passed = -not $timedOut -and $child.ExitCode -eq 0
         Failed = @($output | Select-String '^FAIL').Count
         Seconds = [int]((Get-Date) - $started).TotalSeconds
         Output = $output

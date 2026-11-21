@@ -48,6 +48,21 @@ describe('高斯泼溅的导入', () => {
     }
   });
 
+  // 带 3 阶球谐的压缩 .ply（参考仓库有的时候才跑）
+  const withSh = 'C:/code/refs/playcanvas-engine/examples/assets/splats/skull.compressed.ply';
+  test.skipIf(!existsSync(withSh))('压缩 .ply 的 element sh：3 阶球谐（每个通道 15 个），写进 .splat 的球谐段再读回来', async () => {
+    const source = readPlySplats(new Uint8Array(await readFile(withSh)), 'skull');
+    expect(source.shBands).toBe(3);
+    expect(source.sh!.length).toBe(source.count * 45);
+    // 8 位解出来在 -4..4 之间
+    expect(Math.max(...source.sh!.subarray(0, 4500).map(Math.abs))).toBeLessThanOrEqual(4);
+    const { bytes } = convertPlySplats(new Uint8Array(await readFile(withSh)), 'skull');
+    const decoded = decodeSplats(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, 'skull.splat');
+    expect(decoded.shBands).toBe(3);
+    expect(decoded.sh.length).toBe(source.count * 12);
+    expect(decoded.shRange).toBeGreaterThan(0);
+  });
+
   test('不是 .ply、不是二进制小端时报错', () => {
     expect(() => readPlySplats(new TextEncoder().encode('hello'), 'x')).toThrow(/not a .ply/);
     expect(() => readPlySplats(new TextEncoder().encode('ply\nformat ascii 1.0\nelement vertex 0\nend_header\n'), 'x')).toThrow(/binary little-endian/);

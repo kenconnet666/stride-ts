@@ -790,4 +790,6 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 单测：标准 3DGS 的 .ply（对数缩放、sigmoid、f_dc）写成 .splat 再读回来；PlayCanvas 示例里的 guitar.compressed.ply（参考仓库有的时候跑）解出来的四元数是单位的；不是 .ply、不是二进制小端报错。
 - 真实数据：`C:\code\refs\playcanvas-engine\examples\assets\splats\hotel-culpture.compressed.ply` 经编辑器接口导入营地的一个临时目录（2.5 秒），实体绕 X 转 180°（3DGS 的 y 朝下），无头 Chrome 第一次就画对了：雕塑、电梯、楼梯、地砖的反光都在。放一个红盒子进去，雕塑的泼溅挡住盒子的一边，盒子挡住后面的墙。测试的数据没进仓库。
 - 耗时：静止 1.86 毫秒（主画面那一遍），相机一直转（每帧重排）时排序 0.41 + 那一遍 1.89 毫秒。
+- 第二步高阶球谐：skull.compressed.ply（24.7 万个、3 阶）导入 18.8 MB；无头 Chrome 里同一个角度开、关球谐对比，开着的头骨有一块块金属的高光，平均每像素差 3 个色阶；开销 +0.017 毫秒。导入的单测加了压缩格式的 element sh。
+- 验证时 4 个样例的"启动时同步建的管线"超了预算：泼溅渲染器构造时就建了排序的计算管线，改成第一次用到时才建。
 

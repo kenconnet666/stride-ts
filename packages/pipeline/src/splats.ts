@@ -4,7 +4,8 @@
  *   （sigmoid 之前）；只有 red green blue 的普通点云也行（缩放给一个小的默认值）。
  * - SuperSplat、PlayCanvas 的压缩 .ply（element chunk 加 packed_*）：每 256 个泼溅一块，位置、缩放（对数）、颜色在块的最小、
  *   最大值之间量化，旋转是"最大的分量 2 位加另外三个各 10 位"。照 PlayCanvas 的 gsplat-compressed-data.js 解。
- * 高阶的球谐（f_rest_*、element sh）现在不用：只取 0 阶的颜色。
+ * 高阶的球谐（视角相关的颜色）：标准的读 f_rest_*（按通道排，个数 9、24、45 对着 1、2、3 阶），压缩的读 element sh 的 uchar
+ * （v · 8 / 255 − 4，同 PlayCanvas）。
  */
 import { encodeSplats, type SplatSource } from '@stride-ts/engine/splats';
 
@@ -35,7 +36,28 @@ export function readPlySplats(bytes: Uint8Array, where: string): SplatSource {
   const columns = readElements(bytes, dataStart, elements, where);
   const vertex = columns.get('vertex');
   if (!vertex) throw new Error(`${where}: the .ply has no vertex element`);
-  return columns.has('chunk') ? compressedSplats(columns.get('chunk')!, vertex, where) : standardSplats(vertex, where);
+  const splats = columns.has('chunk') ? compressedSplats(columns.get('chunk')!, vertex, where) : standardSplats(vertex, where);
+  // 压缩格式的球谐在单独的 sh 元素里（8 位），标准的在 vertex 里（f32）
+  const sh = sphericalHarmonics(columns.get('sh') ?? vertex, columns.has('sh'), splats.count);
+  return sh ? { ...splats, ...sh } : splats;
+}
+
+/** f_rest_0..n-1 → 高阶球谐（阶数按每个通道的系数个数定：3、8、15 是 1、2、3 阶）；没有时 undefined。 */
+function sphericalHarmonics(columns: Map<string, Float64Array>, quantized: boolean, count: number): { shBands: number; sh: Float32Array } | undefined {
+  let total = 0;
+  while (columns.has(`f_rest_${total}`)) total++;
+  const bands = ({ 9: 1, 24: 2, 45: 3 } as Record<number, number>)[total];
+  if (!bands) return undefined;
+  const rest = Array.from({ length: total }, (_, k) => columns.get(`f_rest_${k}`)!);
+  if (rest[0]!.length !== count) return undefined;
+  const sh = new Float32Array(count * total);
+  for (let i = 0; i < count; i++) {
+    for (let k = 0; k < total; k++) {
+      const value = rest[k]![i]!;
+      sh[i * total + k] = quantized ? value * (8 / 255) - 4 : value;
+    }
+  }
+  return { shBands: bands, sh };
 }
 
 function readHeader(bytes: Uint8Array, where: string): { elements: PlyElement[]; dataStart: number } {

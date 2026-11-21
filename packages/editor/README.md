@@ -18,7 +18,7 @@ node packages/editor/src/server/cli.ts new apps/my-game
 
 ## 界面
 
-`src/ui`：布局参考 JetBrains IDE（`App.tsx`、`layout.ts`、`ToolWindow.tsx`、`Toolbars.tsx`）。最上面是主工具条（工程名、保存、撤销、重做，右边试玩）；中间是视口（游戏页面本身，嵌在同源的 iframe 里，地址带 `?debug&stride-edit`），上面是文档页签和视口工具条（对选中实体的操作、吸附、画幅参考线）；面板是停在四周的工具窗口——左边场景树（上）和资源（下），右边属性面板，下边是正在编辑的时间轴、节点图或粒子（打开时自动出来）；两侧竖条上的图标显示、收起它们，显示哪些、各占多大记在浏览器的 localStorage 里；最下面是状态栏（提示和出错、选中几个、界面语言）。按钮、输入框、下拉框、菜单、页签都用 vue-tsx-pro 的组件。界面由第二个 Vite 服务器提供，第一次打开编辑器时才建（见 `src/server/vite.ts`），游戏页面不经过它。`src/` 根上是前后端共用的接口（`protocol.ts`）和前端的封装（`EditorClient.ts`），`src/server` 是后端。
+`src/ui`：布局参考 JetBrains IDE（`App.tsx` 用 vue-tsx-pro 的 Workbench，`Toolbars.tsx`）。最上面是主工具条（工程名、保存、撤销、重做，右边试玩）；中间是视口（游戏页面本身，嵌在同源的 iframe 里，地址带 `?debug&stride-edit`），上面是文档页签和视口工具条（对选中实体的操作、吸附、画幅参考线）；面板是停在四周的工具窗口——左边场景树（上）和资源（下），右边属性面板，下边是正在编辑的时间轴、节点图或粒子（打开时自动出来）；两侧竖条上的图标显示、收起它们，显示哪些、各占多大记在浏览器的 localStorage 里；最下面是状态栏（提示和出错、选中几个、界面语言）。工程、资源列表还没读到，或视口还在打开游戏页面（`session.opening`）时，场景树、资源、属性面板、文档页签、视口画骨架屏。按钮、输入框、下拉框、菜单、页签都用 vue-tsx-pro 的组件。界面由第二个 Vite 服务器提供，第一次打开编辑器时才建（见 `src/server/vite.ts`），游戏页面不经过它。`src/` 根上是前后端共用的接口（`protocol.ts`）和前端的封装（`EditorClient.ts`），`src/server` 是后端。
 
 - 场景文档和撤销栈在界面这边（`ui/session.ts`），游戏页面里的实体跟着它；视口里拖操纵器、属性面板里改的，都是对文档的修改。
 - 属性面板照引擎的字段描述（`editor/fields.ts`）画控件；脚本的字段问游戏页面（它有脚本的类）。"添加组件"里也列出游戏登记的脚本，加上的脚本 `type` 写登记的名字（`game/player/PlayerInput#PlayerInput`）。加脚本、加组件时，它要同一个实体上有的组件（脚本的 `requires`、字段描述的 `requires`，比如日夜循环要物理天空）一起加上；去掉被依赖的组件时工具条上提示。必填属性没设的标红，保存时在工具条上列出来（试玩时这些脚本不挂）。

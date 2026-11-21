@@ -67,6 +67,10 @@ export function turbulenceAt(x: number, y: number, z: number, time: number, out:
 
 const NO_WIND: GlobalWind = { velocity: [0, 0, 0], turbulence: 0, pulseMagnitude: 0, pulseFrequency: 0 };
 
+/**
+ * 风场：各个 WindZone 合起来。坐标是渲染空间的（相对 game.renderOrigin，D18；局部风源的中心取自 Transform.renderWorld），
+ * 和粒子的模拟同一个空间：sample、nearest 的点也按渲染空间给，世界坐标要先减渲染原点。
+ */
 export class WindField {
   /** 局部风源的格子边长，米。改了下一帧生效。 */
   cellSize = 32;
@@ -144,7 +148,7 @@ export class WindField {
     this.#grid = grid;
   }
 
-  /** (x, y, z) 处这一刻的风速，米每秒，写进 out。 */
+  /** 渲染空间的 (x, y, z) 处这一刻的风速，米每秒，写进 out。 */
   sample(x: number, y: number, z: number, out: [number, number, number] = [0, 0, 0]): [number, number, number] {
     const time = this.time, global = this.global;
     const pulse = 1 + global.pulseMagnitude * gust(time * global.pulseFrequency);

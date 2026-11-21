@@ -30,6 +30,9 @@ import { BRDF, GRADIENT_NOISE } from '../wgsl';
 import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees } from './Material';
 import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from './HeightPages';
 
+/** 植被的风带进着色器的局部风源个数（离相机最近的几个；每个顶点都要看一遍，少一点）。 */
+export const VEGETATION_LOCAL_WINDS = 4;
+
 /** DFG 查找表的尺寸（同 Stride 的 EnvironmentLightingDFGLUT16）。 */
 export const DFG_LUT_WIDTH = 32;
 export const DFG_LUT_HEIGHT = 64;
@@ -86,6 +89,9 @@ struct View {
   origin: vec4f,
   // 全局风（RenderSystem.wind）：速度（米每秒，乘过这一刻的阵风）、湍流；植被的风（Material.wind）用
   wind: vec4f,
+  // 离相机最近的几个局部风源：中心（渲染空间）、半径；强度（乘过阵风，0 是没有）
+  windLocals: array<vec4f, ${VEGETATION_LOCAL_WINDS}>,
+  windStrengths: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）和它们的阴影（点光是立方体的六个面 +Z、-Z、+X、-X、+Y、-Y 各一个矩阵，
 // 聚光只用第一个），在一个缓冲里，见 lighting/LocalLights.ts
@@ -525,16 +531,36 @@ const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 
  * 树干的长度）；抖：离树干的竖直轴 2 米以外的顶点沿法线抖 flutter · (风速 / 10)，频率高、每个顶点相位不同。
  * 草的模式：高度是 (1 − uv.v) · 10（梢摆 bend），相位按顶点自己的位置（一个网格里的草叶各摆各的）。
  */
+/** 渲染空间里 q 处的风速：全局风加上局部风源从中心往外的推力（同 WindField.sample，线性衰减，不算湍流）。 */
+fn windAt(q: vec3f) -> vec3f {
+  var v = view.wind.xyz;
+  for (var i = 0u; i < ${VEGETATION_LOCAL_WINDS}u; i++) {
+    let zone = view.windLocals[i];
+    let strength = view.windStrengths[i];
+    let d = q - zone.xyz;
+    let distance = length(d);
+    if (strength != 0.0 && distance < zone.w && distance > 1e-3) {
+      v += d / distance * strength * (1.0 - distance / zone.w);
+    }
+  }
+  return v;
+}
+
 fn windSway(p: vec3f, world: mat4x4f, localNormal: vec3f, uv: vec2f) -> vec3f {
   let bend = material.wind.x;
   let flutter = material.wind.y;
-  let horizontal = vec2f(view.wind.x, view.wind.z);
-  let speed = length(horizontal);
-  if ((bend <= 0.0 && flutter <= 0.0) || speed < 0.001) {
+  if (bend <= 0.0 && flutter <= 0.0) {
     return p;
   }
   let origin = world[3].xyz;
   let grass = material.wind.z > 0.5;
+  // 树按树根处的风整棵弯（局部风源里一棵树不会被撕开），草按每片自己的位置
+  let wind = windAt(select(origin, p, grass));
+  let horizontal = vec2f(wind.x, wind.z);
+  let speed = length(horizontal);
+  if (speed < 0.001) {
+    return p;
+  }
   let height = select(max(p.y - origin.y, 0.0), (1.0 - uv.y) * 10.0, grass);
   let time = view.locals.y;
   // 相位按世界坐标（加上渲染原点取模的部分：原点换了不跳）；顺着风的方向推进，阵风像波一样扫过林子

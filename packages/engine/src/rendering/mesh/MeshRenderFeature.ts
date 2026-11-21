@@ -67,9 +67,10 @@ const SHADOW_SLOPE_BIAS = 1.5;
 const VIEW_STRIDE = 1280;
 /**
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
- * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32，云影、天气、贴花、分簇 20，平面反射 28，原点 4，风 4。
+ * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32，云影、天气、贴花、分簇 20，平面反射 28，原点 4，风 4，
+ * 局部风源 4 · 4 和它们的强度 4。
  */
-const VIEW_FLOATS = 292;
+const VIEW_FLOATS = 312;
 /** 不用平面反射的视图在那几个数的位置写的：全是 0（用不用的那一位是 0）。 */
 const PLANAR_OFF = new Float32Array(28);
 /** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
@@ -1008,6 +1009,12 @@ class Gpu {
       data.set([origin[0] % ORIGIN_PATTERN_PERIOD, 0, origin[2] % ORIGIN_PATTERN_PERIOD, 0], o + 284);
       const wind = this.#weather.wind;
       data.set([...wind.velocity, wind.turbulence], o + 288);
+      // 局部风源：中心已经在渲染空间里（同风场），没有的那几个强度是 0
+      data.fill(0, o + 292, o + 312);
+      wind.locals.forEach((local, i) => {
+        data.set([...local.center, local.radius], o + 292 + i * 4);
+        data[o + 308 + i] = local.strength;
+      });
     }
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);

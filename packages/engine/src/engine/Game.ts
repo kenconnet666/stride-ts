@@ -41,6 +41,7 @@ import { browserImageDecoder, ktx2Decoder } from '../graphics/Texture';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleSystemComponent';
 import { gust, WindField } from '../weather/WindField';
+import { VEGETATION_LOCAL_WINDS } from '../rendering/mesh/meshShader';
 import { PrecipitationSystem } from '../weather/Precipitation';
 import { WeatherSystem } from '../weather/Weather';
 import { WorldStreaming } from '../world/WorldStreaming';
@@ -568,11 +569,16 @@ export class Game {
 
   /** 植被的风（Material.wind）用的全局风：速度乘上这一刻的阵风（同 WindField.sample 的全局部分），写给渲染系统。 */
   #updateRenderWind(): void {
-    const global = this.wind.global, out = this.renderSystem?.wind;
+    const global = this.wind.global, out = this.renderSystem?.wind, time = this.wind.time;
     if (!out) return;
-    const pulse = 1 + global.pulseMagnitude * gust(this.wind.time * global.pulseFrequency);
+    const pulse = 1 + global.pulseMagnitude * gust(time * global.pulseFrequency);
     for (let k = 0; k < 3; k++) out.velocity[k] = global.velocity[k]! * pulse;
     out.turbulence = global.turbulence;
+    // 局部风源取离相机最近的几个（风场在渲染空间里：相机的位置减渲染原点）；强度同 WindField.sample 乘上它自己的阵风
+    const eye = this.terrain.eyeWorld() ?? [...this.renderOrigin];
+    out.locals = this.wind.nearest(eye[0] - this.renderOrigin[0], eye[1] - this.renderOrigin[1], eye[2] - this.renderOrigin[2], VEGETATION_LOCAL_WINDS).map((local) => ({
+      center: local.center, radius: local.radius, strength: local.strength * (1 + local.pulseMagnitude * gust(time * local.pulseFrequency)),
+    }));
   }
 
   /** 合成器指定的网格效果：按名字找游戏导出的 meshEffect，找不到时警告、用默认效果。 */

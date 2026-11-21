@@ -1321,6 +1321,37 @@
      "pulseFrequency": 0.12
     }
    }
+  },
+  {
+   "id": "7bf22da9-a6cb-4129-b5ba-dec3e6ef8141",
+   "name": "Downwash",
+   "parent": null,
+   "position": [
+    -230,
+    -29.5,
+    -110
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "windZone": {
+     "mode": "spherical",
+     "strength": 20,
+     "radius": 30,
+     "turbulence": 0,
+     "pulseMagnitude": 0.3,
+     "pulseFrequency": 0.5
+    }
+   }
   }
  ]
 }

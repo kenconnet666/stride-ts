@@ -9,7 +9,7 @@ import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
 import { Camera, Decal, Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { cameraVerticalFieldOfView } from '../rendering/cameraRays';
 import { DayNightCycle, lightRotationTowards } from '../rendering/sky/DayNightCycle';
-import { Material } from '../rendering/mesh/Material';
+import { Material, type MaterialTransmission } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
 import { Texture, type TextureId } from '../graphics/Texture';
 import { PARTICLE_BYTES } from '../particles/gpuKernel';
@@ -272,7 +272,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     }
     return { decals: tests().length, drawn: game.renderSystem.decals.count };
   });
-  debug.command('material', 'Materials by name (part of it; without name lists them): extended shading. args: name; sheen [r, g, b, roughness] (null removes); anisotropy [strength, rotation in degrees] (null removes).', (args) => {
+  debug.command('material', 'Materials by name (part of it; without name lists them): extended shading. args: name; sheen [r, g, b, roughness] (null removes); anisotropy [strength, rotation in degrees] (null removes); transmission { factor, ior, thickness, attenuationColor, attenuationDistance } (null removes).', (args) => {
     const all: Material[] = [];
     for (let id = 1; Material.byId(id); id++) all.push(Material.byId(id)!);
     const name = typeof args['name'] === 'string' ? args['name'] : undefined;
@@ -285,9 +285,12 @@ export function registerGameCommands(debug: Debug, game: Game): void {
         const anisotropy = args['anisotropy'] as number[] | null | undefined;
         if (anisotropy === null) material.setAnisotropy(undefined);
         else if (Array.isArray(anisotropy)) material.setAnisotropy({ strength: anisotropy[0]!, rotation: ((anisotropy[1] ?? 0) * Math.PI) / 180 });
+        const transmission = args['transmission'] as MaterialTransmission | null | undefined;
+        if (transmission === null) material.setTransmission(undefined);
+        else if (transmission) material.setTransmission(transmission);
       }
     }
-    return matched.map((material) => ({ id: material.id, name: material.name, metalness: material.metalness, roughness: material.roughness, sheen: material.sheen, anisotropy: material.anisotropy }));
+    return matched.map((material) => ({ id: material.id, name: material.name, metalness: material.metalness, roughness: material.roughness, sheen: material.sheen, anisotropy: material.anisotropy, transmission: material.transmission }));
   });
   debug.command('lights', 'Test point lights: an n x n grid of colored point lights 1 m above the ground, spacing m apart, around at [x, z] (default: below the camera). args: count (n; 0 removes them), radius (m), intensity, spacing (m), at.', (args) => {
     for (const entity of game.entities.ids().map((id) => game.entities.entity(id)).filter((e) => e.name === 'Test light')) entity.destroy();

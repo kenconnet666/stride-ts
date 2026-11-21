@@ -34,8 +34,8 @@ const entity = (name: string, position: number[], rotation: number[], components
 /** 绕 x 轴转 angle 弧度的四元数（相机往下看一点）。 */
 const pitch = (angle: number) => [Math.sin(angle / 2), 0, 0, Math.cos(angle / 2)];
 
-/** 材质：天空下一个球，相机正对着、略往下看。 */
-const materialScene = (material: string) => ({
+/** 材质：天空下一个球，相机正对着、略往下看。玻璃类的球后面摆三个彩色的方块，看得出透过去、折射的样子。 */
+const materialScene = (material: string, backdrop: boolean) => ({
   name: 'LibraryThumbnail', compositor: main.compositor,
   entities: (() => {
     const sun = entity('Sun', named('Sun').position, named('Sun').rotation, { light: component('Sun', 'light') });
@@ -45,6 +45,8 @@ const materialScene = (material: string) => ({
       // 物理天空按 id 认太阳
       entity('Sky', [0, 0, 0], [0, 0, 0, 1], { skyAtmosphere: { ...(component('Sky', 'skyAtmosphere') as object), sun: sun.id } }),
       entity('Ball', [0, 0, 0], [0, 0, 0, 1], { model: { model: 'Models/LibrarySphere', materials: [material] } }),
+      ...(backdrop ? (['carPaint', 'gold', 'glossyPlastic'] as const).map((behind, i) =>
+        entity(`Backdrop ${i}`, [(i - 1) * 0.42, -0.05, -0.9], [0, 0, 0, 1], { model: { model: 'Models/LibraryBox', materials: [libraryMaterialPath(behind)] } })) : []),
     ];
   })(),
 });
@@ -94,6 +96,7 @@ const write = async (file: string, value: unknown) => {
   written.push(absolute);
 };
 await write('Models/LibrarySphere.model', { format: 1, procedural: { type: 'sphere', radius: 0.5, tessellation: 64 }, materials: [] });
+await write('Models/LibraryBox.model', { format: 1, procedural: { type: 'cube', size: [0.36, 0.8, 0.36] }, materials: [] });
 for (const { id: itemId, material } of LIBRARY_MATERIALS) await write(`${libraryMaterialPath(itemId)}.material.json`, material);
 
 await mkdir(out, { recursive: true });
@@ -108,7 +111,7 @@ try {
   };
   for (let i = 0; i < 120 && !(await evaluate('Boolean(globalThis.strideGame?.rootScene)')); i++) await new Promise((resolve) => setTimeout(resolve, 500));
   const items = [
-    ...LIBRARY_MATERIALS.map((item) => ({ id: item.id, scene: materialScene(libraryMaterialPath(item.id)), wait: 0.5 })),
+    ...LIBRARY_MATERIALS.map((item) => ({ id: item.id, scene: materialScene(libraryMaterialPath(item.id), item.category === 'glass'), wait: 0.5 })),
     ...LIBRARY_EFFECTS.map((item) => ({ id: item.id, scene: effectScene(item.particleSystem), wait: 2 })),
   ].filter((item) => !only || only.includes(item.id));
   for (const item of items) {

@@ -410,6 +410,9 @@ export class ForwardRenderer {
     const planar = renderSystem.planarReflections;
     planar.enabled = this.quality.planarReflections;
     const planarView = this.hasCamera ? planar.begin(context, this.#mainView) : undefined;
+    // 折射：场景里有透射材质、画进 HDR 缓冲时，主画面不透明的画完拷一份给透明阶段（要不要拷在 prepare 写视图的常量之前定下来）
+    const refraction = renderSystem.refraction;
+    refraction.begin(this.#mainView, this.hasCamera && post && this.drawTransparent && planar.supported && context.game.meshes.batches.some((batch) => batch.material.transmission !== undefined));
     // 天空遮挡（从上往下的深度图，雨雪等用）：有人用、要重画的帧当作一个视图，和主画面一起剔除
     const sky = renderSystem.skyOcclusion;
     sky.enabled = this.quality.skyOcclusion;
@@ -511,7 +514,11 @@ export class ForwardRenderer {
     // 点选：有人问的时候才画（用的是这一帧剔除好的实例）
     if (this.picker.pending) frame.pass('ScenePicker', (pass) => pass.sideEffect(), () => this.picker.draw(context, encoder, mainView, canvas.width, canvas.height));
     if (post) {
-      const color = graph.texture({ label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT });
+      // 折射要把不透明的画面拷出去：这一帧的 HDR 缓冲多一个 COPY_SRC
+      const color = graph.texture({
+        label: 'ForwardRenderer HDR color', width: canvas.width, height: canvas.height, format: HDR_FORMAT,
+        ...(refraction.receiver ? { usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC } : {}),
+      });
       const surfaces = reflect || this.#scatter ? SURFACE_FORMATS.map((format, i) => graph.texture({ label: `ForwardRenderer surface ${i}`, width: canvas.width, height: canvas.height, format })) : undefined;
       this.#viewPasses(context, frame, mainView, this.#hdrOutput(color, surfaces), depth, [r, g, b, a], this.drawTransparent, 'ForwardRenderer', keepDepth, drawParticles);
       if (this.#indirect) this.globalIllumination.capture(frame, color);
@@ -638,7 +645,10 @@ export class ForwardRenderer {
       }
     }
     const surfaces = output.surfaces ?? [];
-    // 透明的、粒子、线框：没有表面时和不透明的在同一遍里画；有表面时（只有不透明的网格写表面）接着另开一遍
+    // 折射：主画面不透明的画完要拷一份（renderSystem.refraction 在这一帧开头定的）
+    const refract = view !== undefined && view === renderSystem.refraction.receiver && isGraphTexture(target);
+    // 透明的、粒子、线框：没有表面、不拷折射的画面时和不透明的在同一遍里画；有表面（只有不透明的网格写表面）或者要拷时接着另开一遍
+    const split = surfaces.length > 0 || refract;
     const drawRest = (pass: GPURenderPassEncoder) => {
       if (!view) return;
       if (transparent) renderSystem.draw(context, pass, view, output.transparent);
@@ -666,11 +676,11 @@ export class ForwardRenderer {
           { view: isGraphTexture(target) ? real.view(target) : target, clearValue: [...clearColor], loadOp: 'clear', storeOp: 'store' },
           ...surfaces.map((surface) => ({ view: real.view(surface), clearValue: [0, 0, 0, 0], loadOp: 'clear' as const, storeOp: 'store' as const })),
         ],
-        depthStencilAttachment: { view: depthView(real), depthClearValue: 1, depthLoadOp: prepassNeeded ? 'load' : 'clear', depthStoreOp: keepDepth || surfaces.length > 0 ? 'store' : 'discard' },
+        depthStencilAttachment: { view: depthView(real), depthClearValue: 1, depthLoadOp: prepassNeeded ? 'load' : 'clear', depthStoreOp: keepDepth || split ? 'store' : 'discard' },
       });
       if (view === this.#mainView) this.background?.(pass, { width: output.width, height: output.height, format: output.format, depthFormat: DEPTH_FORMAT, surfaceFormats: output.opaque.output.surfaceFormats ?? [] });
       if (view) renderSystem.draw(context, pass, view, output.opaque);
-      if (surfaces.length === 0) drawRest(pass);
+      if (!split) drawRest(pass);
       pass.end();
     });
     // 空气透视：不透明的画完（没有表面时透明的也在同一遍里），按深度把大气的散射和透射合成进画面
@@ -694,18 +704,27 @@ export class ForwardRenderer {
         fog.record(encoder, view, renderSystem.lighting, clouds.shadow, isGraphTexture(target) ? real.view(target) : target, output.format, depth, { clusters: renderSystem.clusters.buffer, localLights: renderSystem.localLights.buffer }, (name) => renderSystem.graphicsDevice.profiler.passTimestamps(name));
       });
     }
-    if (surfaces.length === 0 || !view) return;
+    if (!split || !view) return;
     // 次表面散射：不透明的画完、透明的画上去之前，把散射材质的漫反射光糊开（第 3 张表面里有槽位和强度）
     if (view === this.#mainView && this.#scatter && isGraphTexture(target) && !isGraphTexture(depth)) {
       this.subsurfaceScattering.record(frame, target, surfaces[2]!, depth, view, renderSystem.subsurfaceMaterials);
+    }
+    // 折射：不透明的（连天空、云、雾、次表面散射）画完，拷一份、出 mip，透明阶段的透射材质取它
+    if (refract && isGraphTexture(target)) {
+      frame.pass(`${label} refraction copy`, (pass) => {
+        pass.read(target);
+        pass.sideEffect();
+      }, (real) => renderSystem.refraction.copy(encoder, real.texture(target)));
     }
     frame.pass(`${label} transparent`, (pass) => {
       if (isGraphTexture(target)) pass.readWrite(target);
       else pass.sideEffect();
       if (isGraphTexture(depth)) pass.readWrite(depth);
     }, (real) => {
+      const timestampWrites = profiler.passTimestamps(`${label} transparent`);
       const pass = encoder.beginRenderPass({
         label: `${label} transparent`,
+        ...(timestampWrites ? { timestampWrites } : {}),
         colorAttachments: [{ view: isGraphTexture(target) ? real.view(target) : target, loadOp: 'load', storeOp: 'store' }],
         depthStencilAttachment: { view: depthView(real), depthLoadOp: 'load', depthStoreOp: keepDepth ? 'store' : 'discard' },
       });

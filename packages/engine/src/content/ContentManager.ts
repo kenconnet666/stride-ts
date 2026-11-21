@@ -362,6 +362,7 @@ export class ContentManager {
         ...(file.subsurfaceScattering ? { subsurfaceScattering: file.subsurfaceScattering } : {}),
         ...(file.sheen ? { sheen: file.sheen } : {}),
         ...(file.anisotropy ? { anisotropy: file.anisotropy } : {}),
+        ...(file.transmission ? { transmission: file.transmission } : {}),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
         ...(glossinessTexture ? { glossinessMap: { ...glossinessTexture, channel: file.glossinessTexture!.channel, invert: file.glossinessTexture!.invert, ...(file.glossinessTexture!.metalnessChannel ? { metalnessChannel: file.glossinessTexture!.metalnessChannel } : {}) } } : {}),
         ...(file.emissive ? { emissive: file.emissive } : {}),

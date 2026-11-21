@@ -155,6 +155,29 @@ export interface MaterialDesc {
   readonly sheen?: MaterialSheen;
   /** 各向异性（拉丝金属、头发），默认没有。 */
   readonly anisotropy?: MaterialAnisotropy;
+  /** 透射（玻璃、水、冰，看得见后面折射过来的东西），默认没有；有它的材质画在透明阶段。 */
+  readonly transmission?: MaterialTransmission;
+}
+
+/**
+ * 透射（Stride 没有，它的玻璃只是按菲涅耳混合；glTF 的 KHR_materials_transmission 加 KHR_materials_volume，着色照 Filament）：
+ * 光穿过表面，后面的东西按折射率偏开、按粗糙度变糊、按厚度和吸收染色。主画面上取不透明的画面（rendering/screenspace/Refraction.ts），
+ * 别的视图取环境。透射的那部分不走漫反射：漫反射乘 1 - factor。
+ */
+export interface MaterialTransmission {
+  /** 穿过去的比例（0 到 1）；1 是清玻璃。 */
+  readonly factor: number;
+  /** 折射率，默认 1.5（玻璃；水 1.33，冰 1.31，钻石 2.42）。 */
+  readonly ior?: number;
+  /**
+   * 物体的厚度（米）：0（默认）是薄的面（窗玻璃、泡泡），后面的东西不偏开；大于 0 按实心的球近似（玻璃杯、宝石、水体），
+   * 光在里面走这么远，越厚偏得越多、吸收越多。
+   */
+  readonly thickness?: number;
+  /** 光在里面走 attenuationDistance 米后剩下的颜色（线性），默认白（不吸收）。 */
+  readonly attenuationColor?: readonly [number, number, number];
+  /** 见 attenuationColor（米），默认无穷远（不吸收）。 */
+  readonly attenuationDistance?: number;
 }
 
 /**
@@ -230,6 +253,8 @@ export class Material {
   /** 光泽、各向异性；改它们用 setSheen、setAnisotropy。 */
   sheen: MaterialSheen | undefined;
   anisotropy: Required<MaterialAnisotropy> | undefined;
+  /** 透射；改它用 setTransmission。 */
+  transmission: Required<MaterialTransmission> | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
   version = 0;
 
@@ -279,6 +304,7 @@ export class Material {
     this.subsurfaceScattering = desc.subsurfaceScattering && { ...SKIN_SUBSURFACE_SCATTERING, ...desc.subsurfaceScattering };
     this.sheen = desc.sheen;
     this.anisotropy = desc.anisotropy && { rotation: 0, ...desc.anisotropy };
+    this.transmission = withTransmissionDefaults(desc.transmission);
     this.id = materials.add(this) as MaterialId;
   }
 
@@ -291,6 +317,12 @@ export class Material {
   /** 加上、改掉或去掉各向异性，并让渲染特性重新上传。 */
   setAnisotropy(value: MaterialAnisotropy | undefined): void {
     this.anisotropy = value && { rotation: 0, ...value };
+    this.version++;
+  }
+
+  /** 加上、改掉或去掉透射，并让渲染特性重新上传（画在哪个阶段跟着变：有透射的画在透明阶段）。 */
+  setTransmission(value: MaterialTransmission | undefined): void {
+    this.transmission = withTransmissionDefaults(value);
     this.version++;
   }
 
@@ -311,9 +343,9 @@ export class Material {
     return this.shaderTrees?.clearCoat !== undefined;
   }
 
-  /** 透明混合和玻璃的材质画在透明阶段。 */
+  /** 透明混合、玻璃、透射的材质画在透明阶段。 */
   get isTransparent(): boolean {
-    return this.transparency !== undefined || this.glass !== undefined;
+    return this.transparency !== undefined || this.glass !== undefined || this.transmission !== undefined;
   }
 
   /**
@@ -335,4 +367,8 @@ export class Material {
 /** 贴图槽补上默认的 uv 变换和采样器。 */
 function withTransform({ texture, scale = [1, 1], offset = [0, 0], sampler = {} }: MaterialTexture): Required<MaterialTexture> {
   return { texture, scale, offset, sampler };
+}
+
+function withTransmissionDefaults(value: MaterialTransmission | undefined): Required<MaterialTransmission> | undefined {
+  return value && { ior: 1.5, thickness: 0, attenuationColor: [1, 1, 1], attenuationDistance: Infinity, ...value };
 }

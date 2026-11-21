@@ -221,7 +221,7 @@ const zhCN: EditorMessages = {
     materials: '材质', effects: '特效', all: '全部',
     categories: { metal: '金属', plastic: '塑料、漆', glass: '玻璃', emissive: '发光', stone: '石头、砖', wood: '木头', fabric: '布', fire: '火', smoke: '烟', sparks: '火花', magic: '魔法', ambient: '氛围', water: '水' },
     names: {
-      gold: '金', copper: '铜', chrome: '铬', brushedSteel: '拉丝钢', carPaint: '车漆', glossyPlastic: '亮面塑料', mattePlastic: '哑光塑料', rubber: '橡胶', clearGlass: '透明玻璃',
+      gold: '金', copper: '铜', chrome: '铬', brushedSteel: '拉丝钢', carPaint: '车漆', glossyPlastic: '亮面塑料', mattePlastic: '哑光塑料', rubber: '橡胶', clearGlass: '透明玻璃', frostedGlass: '磨砂玻璃', crystal: '水晶',
       neonCyan: '霓虹（青）', neonMagenta: '霓虹（品红）', concrete: '混凝土', redBrick: '红砖', stoneTiles: '石板', wood: '木头', marble: '大理石', fabric: '布',
       campfire: '篝火', smokeColumn: '烟柱', steam: '蒸汽', sparks: '火花', magicOrb: '魔法光球', dustMotes: '浮尘', fountain: '喷泉',
     },
@@ -420,7 +420,7 @@ const enUS: EditorMessages = {
     materials: 'Materials', effects: 'Effects', all: 'All',
     categories: { metal: 'Metal', plastic: 'Plastic and paint', glass: 'Glass', emissive: 'Emissive', stone: 'Stone and brick', wood: 'Wood', fabric: 'Fabric', fire: 'Fire', smoke: 'Smoke', sparks: 'Sparks', magic: 'Magic', ambient: 'Ambient', water: 'Water' },
     names: {
-      gold: 'Gold', copper: 'Copper', chrome: 'Chrome', brushedSteel: 'Brushed steel', carPaint: 'Car paint', glossyPlastic: 'Glossy plastic', mattePlastic: 'Matte plastic', rubber: 'Rubber', clearGlass: 'Clear glass',
+      gold: 'Gold', copper: 'Copper', chrome: 'Chrome', brushedSteel: 'Brushed steel', carPaint: 'Car paint', glossyPlastic: 'Glossy plastic', mattePlastic: 'Matte plastic', rubber: 'Rubber', clearGlass: 'Clear glass', frostedGlass: 'Frosted glass', crystal: 'Crystal',
       neonCyan: 'Neon (cyan)', neonMagenta: 'Neon (magenta)', concrete: 'Concrete', redBrick: 'Red brick', stoneTiles: 'Stone tiles', wood: 'Wood', marble: 'Marble', fabric: 'Fabric',
       campfire: 'Campfire', smokeColumn: 'Smoke column', steam: 'Steam', sparks: 'Sparks', magicOrb: 'Magic orb', dustMotes: 'Dust motes', fountain: 'Fountain',
     },

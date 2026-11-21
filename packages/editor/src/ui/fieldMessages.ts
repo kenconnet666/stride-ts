@@ -27,6 +27,7 @@ const zhCN: FieldMessages = {
   },
   names: {
     font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距',
+    transmission: '透射', factor: '比例', ior: '折射率', attenuationColor: '吸收后的颜色', attenuationDistance: '吸收距离',
     distortion: '扭曲',
     streamFromDisk: '边下边放', spatialized: '空间化', synth: '音效生成器', wave: '波形', attack: '起音', sustain: '持续', punch: '冲击', decay: '衰减',
     frequency: '音高', minFrequency: '最低音高', slide: '滑音', deltaSlide: '滑音的变化', vibratoDepth: '颤音深度', vibratoSpeed: '颤音速度', arpeggio: '琶音',
@@ -204,6 +205,9 @@ const zhCN: FieldMessages = {
     'how wide the blend into the shapes before it is (0 is a sharp seam)': '和前面的形状融合的宽度（0 是硬接）',
     'a texture asset (an imported image)': '贴图资源（导入的图片）',
     'material node graph (edited in the node graph panel); its outputs override the values above': '材质节点图（在节点图面板里编辑），它的输出盖过上面的值',
+    'light passes through (glass, water, ice): what is behind shows through, bent by the index of refraction': '光穿过去（玻璃、水、冰）：看得见后面的东西，按折射率偏开',
+    '0 is a thin surface (a window pane); above 0 the object is solid and bends what is behind it more': '0 是薄的面（窗玻璃）；大于 0 是实心的，后面的东西偏得更多',
+    'light keeps the attenuation color after traveling this far inside': '光在里面走这么远后剩下"吸收后的颜色"',
     'name of the clip in the AnimationComponent': 'AnimationComponent 里剪辑的名字',
   },
 };

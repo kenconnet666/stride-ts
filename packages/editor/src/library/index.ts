@@ -64,6 +64,9 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   plain('rubber', 'plastic', { baseColor: [0.02, 0.02, 0.02, 1], metalness: 0, roughness: 0.9 }),
   // 玻璃：漫反射的颜色只当透过去的颜色（不算漫反射光照），同 Stride 的薄玻璃
   plain('clearGlass', 'glass', { baseColor: [0.92, 0.96, 0.96, 1], metalness: 0, roughness: 0.03, glass: { refractiveIndex: 1.5 }, diffuseShading: false }),
+  // 透射（折射后面的东西）：磨砂玻璃是薄的面、按粗糙度糊；水晶是实心的，偏得多，带一点蓝绿的吸收
+  plain('frostedGlass', 'glass', { baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.35, transmission: { factor: 1, ior: 1.5 } }),
+  plain('crystal', 'glass', { baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.02, transmission: { factor: 1, ior: 1.6, thickness: 0.5, attenuationColor: [0.75, 0.92, 0.95], attenuationDistance: 0.6 } }),
   plain('neonCyan', 'emissive', { baseColor: [0.02, 0.02, 0.02, 1], metalness: 0, roughness: 0.4, emissive: [0.2, 5, 6] }),
   plain('neonMagenta', 'emissive', { baseColor: [0.02, 0.02, 0.02, 1], metalness: 0, roughness: 0.4, emissive: [6, 0.3, 4] }),
   plain('concrete', 'stone', {

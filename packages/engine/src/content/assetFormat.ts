@@ -222,6 +222,17 @@ export interface MaterialFile {
   readonly sheen?: { readonly color: Vec3Tuple; readonly roughness: number };
   /** 各向异性（Stride 没有，glTF 的 KHR_materials_anisotropy）：强度 -1..1，方向绕法线转的角度（弧度）。 */
   readonly anisotropy?: { readonly strength: number; readonly rotation?: number };
+  /**
+   * 透射（Stride 没有，glTF 的 KHR_materials_transmission 加 volume）：比例 0..1、折射率（默认 1.5）、厚度（米，0 是薄的面）、
+   * 吸收（走 attenuationDistance 米后剩下的颜色）。意思同 rendering/mesh/Material.ts 的 MaterialTransmission。
+   */
+  readonly transmission?: {
+    readonly factor: number;
+    readonly ior?: number;
+    readonly thickness?: number;
+    readonly attenuationColor?: Vec3Tuple;
+    readonly attenuationDistance?: number;
+  };
   /** 1 - 光泽度；没有时是 1（Stride 的默认光泽度 0）。有 glossinessTexture 时不看它。 */
   readonly roughness?: number;
   /**

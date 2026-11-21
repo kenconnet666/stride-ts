@@ -50,6 +50,16 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
   subsurfaceScattering: { type: json, optional: true, group: 'advanced' },
   sheen: { type: object(fields<NonNullable<MaterialFile['sheen']>>({ color: colorLinear3, roughness: number({ min: 0, max: 1, step: 0.01 }) })), optional: true, group: 'advanced' },
   anisotropy: { type: object(fields<NonNullable<MaterialFile['anisotropy']>>({ strength: number({ min: -1, max: 1, step: 0.01 }), rotation: { type: number({ unit: 'rad' }), optional: true, default: 0 } })), optional: true, group: 'advanced' },
+  transmission: {
+    type: object(fields<NonNullable<MaterialFile['transmission']>>({
+      factor: number({ min: 0, max: 1, step: 0.01 }),
+      ior: { type: number({ min: 1, max: 3, step: 0.01 }), optional: true, default: 1.5 },
+      thickness: { type: number({ min: 0, step: 0.01, unit: 'm' }), optional: true, default: 0, description: '0 is a thin surface (a window pane); above 0 the object is solid and bends what is behind it more' },
+      attenuationColor: { type: colorLinear3, optional: true },
+      attenuationDistance: { type: number({ min: 0, step: 0.01, unit: 'm' }), optional: true, description: 'light keeps the attenuation color after traveling this far inside' },
+    })),
+    optional: true, group: 'advanced', description: 'light passes through (glass, water, ice): what is behind shows through, bent by the index of refraction',
+  },
   layers: { type: json, optional: true, group: 'advanced' },
   graph: { type: json, optional: true, group: 'advanced', description: 'material node graph (edited in the node graph panel); its outputs override the values above' },
 });

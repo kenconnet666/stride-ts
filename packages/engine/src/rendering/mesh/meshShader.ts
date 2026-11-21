@@ -69,7 +69,7 @@ struct View {
   cloudShadow: vec4f,
   // 天气（RenderSystem.surfaceWeather）：x：地面多湿，y：积了多少雪，z：积了多少水（水洼），w：雨多大（涟漪），都是 0 到 1
   weather: vec4f,
-  // x：贴花的个数（decals 的前几个）
+  // x：贴花的个数（decals 的前几个），y：折射拷的画面最粗的 mip 级 + 1（0 是这个视图没有，screenspace/Refraction.ts）
   decal: vec4f,
   // 分簇（lighting/Clusters.ts 的 clusterParams）：(格数 / 视图宽、格数 / 视图高、层数 / ln(far / near)、分不分簇)，
   // (视图的前方, ln near)
@@ -85,6 +85,8 @@ struct View {
 // 点光、聚光（Stride 的 LightPoint、LightSpot）和它们的阴影（点光是立方体的六个面 +Z、-Z、+X、-X、+Y、-Y 各一个矩阵，
 // 聚光只用第一个），在一个缓冲里，见 lighting/LocalLights.ts
 ${LOCAL_LIGHT_WGSL}
+// 透明阶段的管线（MeshRenderFeature 按阶段给）：第 26 个绑定在透明阶段是折射拷的画面，不透明阶段是平面反射图
+override TRANSPARENT_STAGE: bool = false;
 @group(0) @binding(0) var<uniform> view: View;
 @group(0) @binding(1) var<storage, read> worlds: array<mat4x4f>;
 @group(0) @binding(2) var<storage, read> slots: array<u32>;
@@ -422,6 +424,9 @@ struct Material {
   // 两条渐变的节点（位置、线性颜色）
   celDiffuse: array<vec4f, ${CEL_RAMP_STOPS}>,
   celSpecular: array<vec4f, ${CEL_RAMP_STOPS}>,
+  // 透射（Material.transmission）：比例（0 是没有）、折射率、厚度（0 是薄的面）；吸收系数（每米，-ln(颜色) / 距离）
+  transmission: vec4f,
+  absorption: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
@@ -1185,6 +1190,63 @@ fn planarSpecular(world: vec3f, fragment: vec2f, n: vec3f, roughness: f32) -> ve
   return vec4f(color, saturate(edge * 8.0) * smoothstep(0.6, 0.9, facing));
 }
 
+/**
+ * 透射过来的光（Material.transmission，照 Filament 的 evaluateRefraction）：沿折射光线找出射点——薄的面（厚度 0）就是这一点、
+ * 方向不变；实心的按球近似（Filament 的 refractionSolidSphere：进去折一次，在里面走厚度那么远，按球面的法线再折出来）——投到
+ * 屏幕上取折射拷的画面（粗糙的取模糊的级）；这个视图没有那份画面、或者出射点出了屏幕时取出射方向上的环境。走过的距离按吸收衰减。
+ */
+fn transmittedLight(world: vec3f, n: vec3f, v: vec3f, perceptualRoughness: f32, cluster: i32) -> vec3f {
+  let ior = material.transmission.y;
+  let etaIR = 1.0 / ior;
+  let thickness = material.transmission.z;
+  var position = world;
+  var direction = -v;
+  var distance = 0.0;
+  if (thickness > 0.0) {
+    let inside = refract(-v, n, etaIR);
+    let nDotR = dot(n, inside);
+    distance = thickness * -nDotR;
+    position = world + inside * distance;
+    let exitNormal = normalize(nDotR * inside - n * 0.5);
+    direction = refract(inside, exitNormal, ior);
+    // 全反射时 refract 是 0：按里面的方向走
+    if (dot(direction, direction) < 1e-6) {
+      direction = inside;
+    }
+  }
+  // 折射率接近 1 的没有微表面的糊（Filament 的重映射：1 时不糊，1.5 时按粗糙度糊）
+  let roughness = mix(perceptualRoughness, 0.0, saturate(etaIR * 3.0 - 2.0));
+  var color = vec3f(0.0);
+  var onScreen = false;
+  if (TRANSPARENT_STAGE && view.decal.y > 0.0) {
+    let clip = view.viewProjection * vec4f(position, 1.0);
+    let uv = vec2f(clip.x, -clip.y) / clip.w * 0.5 + 0.5;
+    if (clip.w > 0.0 && all(uv >= vec2f(0.0)) && all(uv <= vec2f(1.0))) {
+      // 取哪级照 Filament（2·log2(粗糙度) 加偏移，乘 1/log2(√5)），偏移取最粗的级（约 log2 画面尺寸）：光滑的清楚，磨砂的糊得开
+      let level = max(0.0, (2.0 * log2(max(roughness, 1e-3)) + view.decal.y - 1.0) * 0.8614);
+      color = sceneColor(uv, level);
+      onScreen = true;
+    }
+  }
+  if (!onScreen) {
+    color = environmentRadiance(position, direction, roughness, cluster);
+  }
+  return color * exp(-material.absorption.rgb * distance);
+}
+
+/** 一个方向上的环境光（反射探针盖住的用它，剩下的用环境光颜色和天空盒），roughness 是感知的粗糙度。 */
+fn environmentRadiance(world: vec3f, direction: vec3f, roughness: f32, cluster: i32) -> vec3f {
+  var probe = vec4f(0.0);
+  if (view.locals.w > 0.0) {
+    probe = probeSpecular(world, direction, roughness, cluster);
+  }
+  var color = probe.rgb + view.ambientColor.rgb * (1.0 - probe.a);
+  if (view.sky.x > 0.0) {
+    color += textureSampleLevel(skySpecular, linearClamp, skyDirection(direction), roughness * view.sky.y).rgb * view.sky.x * (1.0 - probe.a);
+  }
+  return color;
+}
+
 fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f, attenuation: f32, visibility: f32) -> Lit {
   let nDotL = max(dot(s.n, l), 0.0001);
   let lightColorNdotL = lightColor * (attenuation * visibility * nDotL);
@@ -1406,7 +1468,9 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     sheenDfg = dfgLookup(vec2f(1.0 - sheenRoughness, nDotV)).z;
   }
   let sheenScaling = 1.0 - max(sheenColor.r, max(sheenColor.g, sheenColor.b)) * sheenDfg;
-  let diffuse = baseDiffuse * sheenScaling;
+  // 透射的那部分光穿过去了，不走漫反射（Filament：Fd *= 1 - transmission）
+  let transmission = material.transmission.x;
+  let diffuse = baseDiffuse * sheenScaling * (1.0 - transmission);
   // 各向异性的方向：顶点切线（没有时按贴图坐标的导数算），转材质给的角度。导数在按材质常量的分支里取（一致的控制流）
   let anisotropy = clamp(material.anisotropy.x, -0.99, 0.99);
   var anisotropicT = vec3f(1.0, 0.0, 0.0);
@@ -1511,7 +1575,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     probe = probeSpecular(in.world, reflection, sqrt(alphaR), cluster);
   }
   // 平面反射盖在探针上面：盒子里朝着平面法线的表面用镜像着画的场景（probe 是预乘过权重的）
-  if (hasSpecular && view.planar.x > 0.0) {
+  if (hasSpecular && view.planar.x > 0.0 && !TRANSPARENT_STAGE) {
     let planar = planarSpecular(in.world, in.position.xy, n, sqrt(alphaR));
     probe = vec4f(planar.rgb * planar.a + probe.rgb * (1.0 - planar.a), planar.a + probe.a * (1.0 - planar.a));
   }
@@ -1535,8 +1599,23 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   // 自发光：a 不小于 0 时输出的 alpha 用它（Stride 的 UseAlpha）
   let emitted = emissiveColor(in);
   // 限在 float16 的上限以内：很光滑的表面（湿的地面）对着太阳的高光能超过 65504，变成无穷大，泛光把它摊成整帧的 NaN
-  let color = min(scattered + direct.specular * PI + environment + layerEmissive(in, emitted.rgb), vec3f(60000.0));
-  let alpha = select(base.a, emitted.a, emitted.a >= 0.0);
+  // 透射：后面折射过来的光，乘没被表面反射走的部分（1 - 环境镜面的比例）、基础色（金属不透光）、比例。它已经含着背景，
+  // 输出不透明（alpha 1，透明阶段的预乘混合就是覆盖）
+  // 这个视图没有折射拷的画面时（上限 16 张贴图的设备、渲染目标贴图的相机、探针的面）退回普通的透明混合：不偏开、不糊，
+  // 背景按透过的比例留下（alpha 是不透过的那部分）
+  var transmitted = vec3f(0.0);
+  var alpha = select(base.a, emitted.a, emitted.a >= 0.0);
+  if (transmission > 0.0) {
+    let tint = select(albedo, albedo * (1.0 - metalness), isMetalness);
+    let passes = saturate(1.0 - environmentSpecular) * tint * transmission;
+    if (view.decal.y > 0.0) {
+      transmitted = transmittedLight(in.world, n, v, roughness, cluster) * passes;
+      alpha = 1.0;
+    } else {
+      alpha = 1.0 - dot(passes, vec3f(1.0 / 3.0));
+    }
+  }
+  let color = min(scattered + direct.specular * PI + environment + transmitted + layerEmissive(in, emitted.rgb), vec3f(60000.0));
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
   return Shaded(effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect), n, roughness, environmentSpecular, environment, scattered);
 }`;
@@ -1744,16 +1823,18 @@ fn sheenDfg(nDotV: f32, alpha: f32) -> f32 {
 }`;
 
 /**
- * 平面反射的反射图（视图的第 26 个绑定）和取色的函数：设备放得下这张贴图时才声明（PlanarReflections.supported），
- * 放不下时取色返回黑（这时 view.planar.x 总是 0，调不到）。
+ * 视图的第 26 个绑定（屏幕的贴图：不透明阶段是平面反射图，透明阶段是折射拷的画面）和取色的函数：设备放得下这张贴图时才声明
+ * （PlanarReflections.supported），放不下时取色返回黑（这时 view.planar.x、view.decal.y 总是 0，调不到）。
  */
-export function planarCode(supported: boolean): string {
+export function screenTextureCode(supported: boolean): string {
   return supported
     ? /* wgsl */ `
-@group(0) @binding(26) var planarTexture: texture_2d<f32>;
-fn planarColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(planarTexture, linearClamp, uv, level).rgb; }
+@group(0) @binding(26) var screenTexture: texture_2d<f32>;
+fn planarColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(screenTexture, linearClamp, uv, level).rgb; }
+fn sceneColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(screenTexture, linearClamp, uv, level).rgb; }
 `
     : /* wgsl */ `
 fn planarColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
+fn sceneColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
 `;
 }

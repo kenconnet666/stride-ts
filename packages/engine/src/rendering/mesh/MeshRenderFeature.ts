@@ -18,6 +18,7 @@ import type { Decals } from './Decals';
 import { clusterParams, type Clusters } from '../lighting/Clusters';
 import type { LocalLightBuffer } from '../lighting/LocalLights';
 import type { PlanarReflections } from '../lighting/PlanarReflections';
+import type { Refraction } from '../screenspace/Refraction';
 import type { FrustumCuller } from '@stride-ts/native';
 import type { AnimationSystem } from '../../animation/AnimationSystem';
 import type { EntityId } from '../../data/prop';
@@ -34,7 +35,7 @@ import type { Clouds } from '../sky/VolumetricClouds';
 import { Skybox } from '../lighting/Skybox';
 import type { SubsurfaceMaterials } from '../screenspace/SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
-import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER, planarCode } from './meshShader';
+import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER, screenTextureCode } from './meshShader';
 import { CEL_RAMP_STOPS, vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/format';
 import { Mesh } from './Mesh';
 import { inRenderMask, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
@@ -70,7 +71,7 @@ const VIEW_FLOATS = 288;
 /** 不用平面反射的视图在那几个数的位置写的：全是 0（用不用的那一位是 0）。 */
 const PLANAR_OFF = new Float32Array(28);
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
-const MATERIAL_BYTES = 544;
+const MATERIAL_BYTES = 576;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 const DISTRIBUTION_CODES = { ggx: 0, beckmann: 1, blinnPhong: 2 } as const;
@@ -305,7 +306,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters, this.system.localLights, this.system.planarReflections));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters, this.system.localLights, this.system.planarReflections, this.system.refraction));
   }
 
 
@@ -329,10 +330,13 @@ export class MeshRenderFeature extends RootRenderFeature {
     if (runs?.length === 0) return;
     // 屏幕空间的遮蔽、接触阴影是主画面不透明的那些像素的：透明的、别的视图不用
     const screenSpace = !(stage.transparent || stage.shadowCasters);
-    // 平面反射图只给用它着色的视图（主画面）绑：镜像的视图正往它里面画，同一个通道里不能又画又采样
-    const planar = this.system.planarReflections;
-    const reflection = screenSpace && planar.active && view === planar.receiver ? planar.texture : undefined;
-    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, reflection), [view.index * VIEW_STRIDE]);
+    // 屏幕的贴图（第 26 个绑定）：不透明阶段是平面反射图，透明阶段是折射拷的画面，都只给用它着色的视图（主画面）绑——镜像的视图
+    // 正往反射图里画，同一个通道里不能又画又采样
+    const { planarReflections: planar, refraction } = this.system;
+    const screen = stage.transparent
+      ? (view === refraction.receiver ? refraction.texture : undefined)
+      : (screenSpace && planar.active && view === planar.receiver ? planar.texture : undefined);
+    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, screen), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     for (let i = 0, end = runs ? runs.length / 3 : cullPass.batchCount; i < end; i++) {
       const b = runs ? runs[i * 3]! : i;
@@ -474,6 +478,7 @@ class Gpu {
   /** 视图绑定组里的反射探针是哪一代（ReflectionProbes.generation）；换了要重建绑定组。 */
   #probeGeneration = -1;
   #planarGeneration = -1;
+  #refractionGeneration = -1;
   readonly #clouds: Clouds;
   /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
   #cloudShadow: GPUTexture | undefined;
@@ -491,6 +496,7 @@ class Gpu {
   /** 点光、聚光（渲染系统一份，前向渲染器上传）；换了缓冲要重建绑定组。 */
   readonly #localLights: LocalLightBuffer;
   readonly #planar: PlanarReflections;
+  readonly #refraction: Refraction;
   #localLightBuffer: GPUBuffer | undefined;
   /** 视图绑定组里的贴花图集和缓冲；换了要重建绑定组。 */
   #decalAtlas: GPUTexture | undefined;
@@ -547,9 +553,10 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
     this.device = device;
     this.#planar = planar;
+    this.#refraction = refraction;
     this.#resources = resources;
     this.#subsurface = subsurface;
     this.#probes = probes;
@@ -623,7 +630,7 @@ class Gpu {
     let module = this.#modules.get(key);
     if (!module) {
       const label = `MeshRenderFeature${trees ? ' (material trees)' : ''}${effect ? ' (mesh effect)' : ''}`;
-      module = createCheckedShaderModule(this.device, label, MESH_SHADER + planarCode(this.#planar.supported) + meshEffectCode(effect) + materialTreesCode(trees));
+      module = createCheckedShaderModule(this.device, label, MESH_SHADER + screenTextureCode(this.#planar.supported) + meshEffectCode(effect) + materialTreesCode(trees));
       this.#modules.set(key, module);
     }
     return module;
@@ -748,6 +755,7 @@ class Gpu {
             module,
             // 要留表面的阶段（屏幕空间反射开着时的不透明阶段）：普通的材质写表面，别的那一遍不写（写掩码 0）
             entryPoint: materialPass?.entryPoint ?? (surfaceFormats ? 'fsSurface' : 'fs'),
+            ...(stage.transparent ? { constants: { TRANSPARENT_STAGE: 1 } } : {}),
             targets: [
               { format: colorFormat, ...(stage.transparent ? { blend: materialPass?.blend ?? PREMULTIPLIED_ALPHA } : {}) },
               ...(surfaceFormats ?? []).map((format) => ({ format, ...(materialPass ? { writeMask: 0 } : {}) })),
@@ -939,7 +947,8 @@ class Gpu {
       data.set(view.previousViewProjection, o + 220);
       data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], cloudLight] : [0, 0, 0, -1], o + 236);
       data.set([wetness, snowCover, puddles, rain], o + 240);
-      data.set([this.#decals.count, 0, 0, 0], o + 244);
+      const refraction = this.#refraction;
+      data.set([this.#decals.count, view === refraction.receiver && refraction.texture ? refraction.maxMip + 1 : 0, 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
       data.set(planar.active && view === planar.receiver ? planar.params : PLANAR_OFF, o + 256);
     }
@@ -947,8 +956,9 @@ class Gpu {
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer || planar.generation !== this.#planarGeneration) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer || planar.generation !== this.#planarGeneration || this.#refraction.generation !== this.#refractionGeneration) {
       this.#planarGeneration = planar.generation;
+      this.#refractionGeneration = this.#refraction.generation;
       this.#clusterBuffer = this.#clusters.buffer;
       this.#localLightBuffer = this.#localLights.buffer;
       this.#decalAtlas = this.#decals.atlas;
@@ -964,13 +974,13 @@ class Gpu {
 
   /**
    * 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的；occlusion 是屏幕空间的环境光遮蔽，
-   * contact 是接触阴影，没有时都用白图。
+   * contact 是接触阴影，没有时都用白图；screen 是第 26 个绑定（平面反射图或者折射拷的画面），没有时用 1x1 的空图。
    */
-  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, planar?: GPUTexture): GPUBindGroup {
+  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, screen?: GPUTexture): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
     const ao = occlusion ?? this.#resources.white;
     const shadow = contact ?? this.#resources.white;
-    const reflection = planar ?? this.#planar.empty;
+    const reflection = screen ?? this.#planar.empty;
     let byAtlas = this.#viewBindGroups.get(atlas);
     if (!byAtlas) this.#viewBindGroups.set(atlas, (byAtlas = new Map()));
     let byOcclusion = byAtlas.get(ao);
@@ -1138,6 +1148,10 @@ class Gpu {
       floats.fill(0, 72, 72 + CEL_RAMP_STOPS * 8);
       cel?.diffuse?.ramp.forEach((stop, i) => floats.set(stop, 72 + i * 4));
       cel?.specular?.ramp.forEach((stop, i) => floats.set(stop, 72 + CEL_RAMP_STOPS * 4 + i * 4));
+      // 透射：比例、折射率、厚度；吸收系数 -ln(颜色) / 距离（glTF 的 volume）
+      const transmission = material.transmission;
+      floats.set(transmission ? [transmission.factor, transmission.ior, transmission.thickness, 0] : [0, 1.5, 0, 0], 72 + CEL_RAMP_STOPS * 8);
+      floats.set(transmission ? [...transmission.attenuationColor.map((c) => -Math.log(Math.max(c, 1e-4)) / transmission.attenuationDistance), 0] : [0, 0, 0, 0], 76 + CEL_RAMP_STOPS * 8);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});

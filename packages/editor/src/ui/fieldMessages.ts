@@ -26,7 +26,7 @@ const zhCN: FieldMessages = {
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },
   names: {
-    font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距',
+    font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距', diameter: '直径',
     transmission: '透射', factor: '比例', ior: '折射率', attenuationColor: '吸收后的颜色', attenuationDistance: '吸收距离',
     distortion: '扭曲',
     streamFromDisk: '边下边放', spatialized: '空间化', synth: '音效生成器', wave: '波形', attack: '起音', sustain: '持续', punch: '冲击', decay: '衰减',
@@ -87,6 +87,8 @@ const zhCN: FieldMessages = {
     'resolution of the mirrored image relative to the main view': '镜像画面相对主画面的分辨率',
     'how much normals that tilt away from the plane bend the reflection': '法线偏离平面时倒影扭多少',
     'like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter': '同点光：正前方同样远处同样亮；面板做大了是更柔和，不是更亮',
+    'the disc lies in the local XY plane and shines toward local -Z': '圆盘在本地 XY 平面上，朝本地 -Z 照',
+    'along the local X axis; the tube shines all around': '沿本地 X 轴，往四周照',
     'size along the local X axis': '沿本地 X 轴的尺寸',
     'size along the local Y axis; the light shines toward local -Z': '沿本地 Y 轴的尺寸；光朝本地 -Z 照',
     'waveform': '波形',

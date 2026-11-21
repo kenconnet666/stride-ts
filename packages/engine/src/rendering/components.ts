@@ -55,17 +55,19 @@ export const Camera = component('Camera', {
  * shadowNormalOffsetScale，大小按光源在画面上盖住多大定。
  */
 export const Light = component('Light', {
-  type: prop.enum(['directional', 'ambient', 'skybox', 'point', 'spot', 'rect']).default('directional'),
+  type: prop.enum(['directional', 'ambient', 'skybox', 'point', 'spot', 'rect', 'disc', 'tube']).default('directional'),
   color: prop.color(),
   intensity: prop.f32().default(1).min(0),
   /** 点光的半径：光照在这里衰减到 0（Stride 的 LightPoint.Radius）。 */
   radius: prop.f32().default(1).min(0),
-  /** 聚光、矩形光照到多远（Stride 的 LightSpot.Range）。 */
+  /** 聚光、面光源（矩形、圆盘、管状）照到多远（Stride 的 LightSpot.Range）。 */
   range: prop.f32().default(3).min(0),
   /**
    * 矩形光（Stride 没有；同虚幻的 Rect Light）的宽、高（沿实体的本地 X、Y，乘实体的缩放）：发光的矩形朝本地 -Z 照，按 LTC
    * （线性变换的余弦）算漫反射和镜面反射。intensity 和点光的同一个意思（正前方同样远处同样亮），光摊在整个面上：面板越大越柔和、
    * 不是越亮。不投阴影。
+   * 圆盘光（disc，同 Unity HDRP 的 Disc Light）：width 是直径，圆盘朝本地 -Z 照；管状光（tube，同 HDRP 的 Tube Light、虚幻点光的
+   * Source Length）：width 是长度，沿本地 X，往四周照（灯管、霓虹灯条）。强度的意思同矩形光。
    */
   width: prop.f32().default(1).min(0),
   height: prop.f32().default(1).min(0),

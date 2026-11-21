@@ -1153,22 +1153,40 @@ fn celEnvironment(color: vec3f) -> vec3f {
  * 按粗糙度和视角查表把 GGX 的波瓣变成余弦再积分，菲涅耳用 Hill 的缩放和偏移。积分的结果是反射出去的亮度（发光面的亮度乘
  * 形状因子），这里的光照最后要乘 π（见 shade），所以先除掉。到中心的距离在射程以内平滑地淡出。查找表还没上传时不画。
  */
-fn rectLight(s: Surface, light: LocalLight, world: vec3f) -> Lit {
+fn areaLight(s: Surface, light: LocalLight, world: vec3f, kind: u32) -> Lit {
   var result = Lit(vec3f(0.0), vec3f(0.0));
   let toLight = light.position.xyz - world;
   let window = localLightWindow(light, dot(toLight, toLight));
   if (localLightData[0].y < 0.5 || window <= 0.0) {
     return result;
   }
-  let corners = rectLightCorners(light);
   let radiance = light.color.rgb * (window / PI);
-  result.diffuse = s.diffuse * radiance * ltcIntegrate(s.n, s.v, world, mat3x3f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), corners);
+  let identity = mat3x3f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
+  var mInv = identity;
+  var fresnel = vec3f(0.0);
   if (s.hasSpecular) {
     let table = ltcLookup(sqrt(s.alphaR), s.nDotV);
     let m = table[0];
-    let mInv = mat3x3f(m.x, 0.0, m.y, 0.0, 1.0, 0.0, m.z, 0.0, m.w);
-    let fresnel = s.specular * table[1].x + (1.0 - s.specular) * table[1].y;
-    result.specular = radiance * fresnel * ltcIntegrate(s.n, s.v, world, mInv, corners);
+    mInv = mat3x3f(m.x, 0.0, m.y, 0.0, 1.0, 0.0, m.z, 0.0, m.w);
+    fresnel = s.specular * table[1].x + (1.0 - s.specular) * table[1].y;
+  }
+  // 管状光：一条线段，往四周照
+  if (kind == 4u) {
+    let halfLength = length(light.angle.xyz);
+    let axis = light.angle.xyz / max(halfLength, 1e-6);
+    result.diffuse = s.diffuse * radiance * ltcLine(s.n, s.v, world, identity, light.position.xyz, axis, halfLength);
+    if (s.hasSpecular) {
+      result.specular = radiance * fresnel * ltcLine(s.n, s.v, world, mInv, light.position.xyz, axis, halfLength);
+    }
+    return result;
+  }
+  // 矩形光、圆盘光：多边形。圆盘的漫反射很糊、看不出边，按正 6 边形算（面积 2.598r²，乘 3 / 2.598 补成正 12 边形的），
+  // 镜面反射按正 12 边形，亮面上的倒影是圆的；比两遍都用 12 边形省一小半
+  let diffusePolygon = areaLightPolygon(light, kind, 6u);
+  let diffuseScale = select(1.0, 1.1547005, kind == 3u);
+  result.diffuse = s.diffuse * radiance * diffuseScale * ltcPolygon(s.n, s.v, world, identity, diffusePolygon);
+  if (s.hasSpecular) {
+    result.specular = radiance * fresnel * ltcPolygon(s.n, s.v, world, mInv, areaLightPolygon(light, kind, AREA_CORNERS));
   }
   return result;
 }
@@ -1535,8 +1553,9 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   for (var k = 0u; k < localCount; k++) {
     let light = localLight(select(k, clusters[firstLight + k], clustered));
-    if (localLightKind(light) == 2u) {
-      let lit = rectLight(surface, light, in.world);
+    let kind = localLightKind(light);
+    if (kind >= 2u) {
+      let lit = areaLight(surface, light, in.world, kind);
       direct.diffuse += lit.diffuse * directOcclusion;
       direct.specular += lit.specular * directOcclusion;
       continue;

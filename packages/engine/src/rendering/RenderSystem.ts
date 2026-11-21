@@ -389,8 +389,11 @@ export interface DirectionalLight {
  */
 export interface LocalLight {
   spot: boolean;
-  /** 矩形光（Light 的 rect）：position 是中心，direction 是照向的方向，halfWidth、halfHeight 是半宽的向量和半高。 */
-  rect: boolean;
+  /**
+   * 面光源（Light 的 rect、disc、tube），点光、聚光是 undefined：position 是中心，direction 是照向的方向（矩形、圆盘）；
+   * halfWidth 是沿本地 X 的向量（矩形的半宽、圆盘的半径、管子的半长），halfHeight 是矩形的半高、圆盘的半径。
+   */
+  area: 'rect' | 'disc' | 'tube' | undefined;
   readonly halfWidth: Vector3;
   halfHeight: number;
   readonly position: Vector3;
@@ -414,7 +417,7 @@ export interface LocalLight {
 /** 一盏还没用上的点光或聚光（Lighting.locals 按需变长，变长的部分留着下一帧复用）。 */
 export function createLocalLight(): LocalLight {
   return {
-    spot: false, rect: false, halfWidth: new Vector3(), halfHeight: 0, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
+    spot: false, area: undefined, halfWidth: new Vector3(), halfHeight: 0, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
     castsShadow: false, shadow: { size: 'medium', filter: 'none', depthBias: 0.01, normalOffsetScale: 10 }, world: new Float32Array(16), shadowIndex: -1,
   };
 }

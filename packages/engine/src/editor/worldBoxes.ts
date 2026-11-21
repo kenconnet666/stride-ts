@@ -47,6 +47,8 @@ export function selectionBoxes(game: Game, entity: Entity): WorldBox[] {
   if (board) boxes.push(board);
   const light = entity.get(Light);
   if (light?.type === 'rect') boxes.push({ matrix: currentWorld(entity), halfExtents: [light.width / 2, light.height / 2, 0.005] });
+  if (light?.type === 'disc') boxes.push({ matrix: currentWorld(entity), halfExtents: [light.width / 2, light.width / 2, 0.005] });
+  if (light?.type === 'tube') boxes.push({ matrix: currentWorld(entity), halfExtents: [light.width / 2, 0.02, 0.02] });
   // 平面反射的影响盒子（跟着实体转）
   const planar = entity.get(PlanarReflection);
   if (planar) boxes.push({ matrix: currentWorld(entity), halfExtents: [planar.size.x / 2, planar.size.y / 2, planar.size.z / 2] });

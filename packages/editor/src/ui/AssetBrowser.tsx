@@ -136,7 +136,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     void run(t.newAsset, async () => {
       const folder = folderForNew();
       const path = freeAssetPath(folder, option.name, option.kind, new Set(assets.value.map((asset) => `${asset.kind}:${asset.path}`)));
-      await session.createAsset(option.kind, path, option.content(path.slice(path.lastIndexOf('/') + 1)));
+      await session.createAsset(option.kind, path, option.content(path.slice(path.lastIndexOf('/') + 1), assets.value));
       if (folder) expanded = [...new Set([...expanded, FOLDER + folder])];
       selected = [`${option.kind}:${path}`];
       target = path;

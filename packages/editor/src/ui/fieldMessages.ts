@@ -26,6 +26,7 @@ const zhCN: FieldMessages = {
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },
   names: {
+    font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距',
     distortion: '扭曲',
     streamFromDisk: '边下边放', spatialized: '空间化', synth: '音效生成器', wave: '波形', attack: '起音', sustain: '持续', punch: '冲击', decay: '衰减',
     frequency: '音高', minFrequency: '最低音高', slide: '滑音', deltaSlide: '滑音的变化', vibratoDepth: '颤音深度', vibratoSpeed: '颤音速度', arpeggio: '琶音',
@@ -74,6 +75,13 @@ const zhCN: FieldMessages = {
     shakeRotation: '晃动的角度', shakePosition: '晃动的位移', shakeFrequency: '晃动的频率', sensor: '传感器', focalLength: '焦距', aperture: '光圈', focusDistance: '对焦距离', shutterAngle: '快门角', exposureCompensation: '曝光补偿', depthOfField: '景深', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
+    'the text; line breaks start new lines': '文字；换行就是另起一行',
+    'font asset whose outlines are extruded': '用哪个字体资源的轮廓挤出',
+    'height of a line (ascent plus descent)': '一行字的高（上升加下降）',
+    'extrusion depth; a few millimetres for signs on a wall': '挤出的厚度；贴在墙上的字给几毫米',
+    'line spacing as a multiple of the line height': '行距是字高的多少倍',
+    'extra space between letters as a multiple of the line height': '字和字之间额外的距离（字高的倍数）',
+    'slot 0: the front faces, slot 1: the sides and the back (the front material when missing)': '槽 0 是字面，槽 1 是侧面和背面（没给时同字面）',
     'box (around the entity, turning with it) whose surfaces facing the plane normal (local +Y) reflect': '盒子（以实体为中心，跟着实体转）里朝着平面法线（本地 +Y）的表面有倒影',
     'resolution of the mirrored image relative to the main view': '镜像画面相对主画面的分辨率',
     'how much normals that tilt away from the plane bend the reflection': '法线偏离平面时倒影扭多少',

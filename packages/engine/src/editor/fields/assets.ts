@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile } from '../../content/format';
+import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, TextModelFile } from '../../content/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -311,6 +311,19 @@ const SOUND_SYNTH_FIELDS = fields<SoundSynth>({
   seed: { type: integer(0), optional: true, default: DEFAULT_SOUND_SYNTH.seed, group: 'output', description: 'random seed of the noise (the same parameters always give the same sound)' },
 });
 
+/** 3D 文字（TextModelFile）：后端烘成同名的模型。 */
+const TEXT_FIELDS = fields<TextModelFile>({
+  name: string,
+  text: { type: string, description: 'the text; line breaks start new lines' },
+  font: { type: asset('font'), description: 'font asset whose outlines are extruded' },
+  size: { type: number({ min: 0.001, step: 0.05, unit: 'm' }), description: 'height of a line (ascent plus descent)' },
+  depth: { type: number({ min: 0, step: 0.005, unit: 'm' }), description: 'extrusion depth; a few millimetres for signs on a wall' },
+  align: optional(oneOf('left', 'center', 'right'), 'center'),
+  lineSpacing: { type: number({ min: 0, step: 0.05 }), optional: true, default: 1.2, description: 'line spacing as a multiple of the line height' },
+  letterSpacing: { type: number({ step: 0.01 }), optional: true, default: 0, description: 'extra space between letters as a multiple of the line height' },
+  materials: { type: list(asset('material')), description: 'slot 0: the front faces, slot 1: the sides and the back (the front material when missing)' },
+});
+
 /** 声音资源：音频文件的格式和播放方式，合成的音效的参数。 */
 export const SOUND_FIELDS = fields<SoundFile>({
   name: string,
@@ -320,5 +333,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

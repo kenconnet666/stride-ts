@@ -32,6 +32,7 @@ export const EXTENSIONS = {
   brush: '.brush.json',
   /** SDF 建模（SdfFile）：形状平滑合成的列表，编辑器后端把它烘成同名的模型（.model）。 */
   sdf: '.sdf.json',
+  text: '.text.json',
   /** 多边形网格（PolyMeshFile）：顶点和 n 边形的面，编辑器后端把它烘成同名的模型（.model）。 */
   poly: '.poly.json',
   /**
@@ -563,6 +564,31 @@ export type SdfShapeFile = {
   | { readonly kind: 'torus'; readonly ringRadius: number; readonly tubeRadius: number }
   | { readonly kind: 'ellipsoid'; readonly radii: Vec3Tuple }
 );
+
+/**
+ * 3D 文字（Stride 没有；同 Blender 的文字物体挤出、虚幻的 Text 3D）：店招、站名、门牌、警示贴、立体的字。用字体资源排版，
+ * 每个字的轮廓挤出 depth 厚（洞挖掉），编辑器后端烘成同名的模型（pipeline/src/textModel.ts，原生工具模块的 Manifold）；
+ * 文字的原点在整段的中心，字面朝本地 +Z。材质槽 0 是字面（正面），1 是侧面和背面（没给时同字面）：发光的字面配金属的侧边
+ * 就是商场的发光字。字体里没有的字用字体的默认字符。
+ */
+export interface TextModelFile {
+  readonly name: string;
+  /** 文字，
+ 换行。 */
+  readonly text: string;
+  /** 字体资源的内容路径。 */
+  readonly font: string;
+  /** 一行字的高（米：字体的上升加下降）。 */
+  readonly size: number;
+  /** 挤出的厚度（米）；贴在墙上的薄字给几毫米。 */
+  readonly depth: number;
+  readonly align?: 'left' | 'center' | 'right';
+  /** 行距是字高的多少倍，默认 1.2。 */
+  readonly lineSpacing?: number;
+  /** 字和字之间额外加多少（字高的倍数），默认 0。 */
+  readonly letterSpacing?: number;
+  readonly materials: readonly (string | null)[];
+}
 
 /** 能导入的源模型的格式：源文件是 `<内容路径>.<格式>`。 */
 export type ModelSourceFormat = 'glb' | 'gltf' | 'fbx' | 'obj';

@@ -1,0 +1,14 @@
+{
+ "name": "BrushedSteel",
+ "baseColor": [
+  0.56,
+  0.57,
+  0.58,
+  1
+ ],
+ "metalness": 1,
+ "roughness": 0.35,
+ "anisotropy": {
+  "strength": 0.8
+ }
+}

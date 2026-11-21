@@ -1,0 +1,11 @@
+{
+ "name": "GoalSign",
+ "text": "GOAL",
+ "font": "UI/OpenSans-Regular",
+ "size": 1.4,
+ "depth": 0.12,
+ "materials": [
+  "Materials/SignNeon",
+  "Materials/Library/BrushedSteel"
+ ]
+}

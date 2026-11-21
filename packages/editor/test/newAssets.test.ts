@@ -7,14 +7,16 @@ describe('"新建"出来的资源', () => {
     const models = NEW_ASSET_OPTIONS.filter((option) => option.kind === 'model');
     expect(models.map((option) => option.id)).toEqual(['model:cube', 'model:plane', 'model:sphere', 'model:geoSphere', 'model:capsule', 'model:cylinder', 'model:torus', 'model:cone', 'model:teapot']);
     for (const option of models) {
-      const bytes = new TextEncoder().encode(JSON.stringify(option.content('X'))).buffer;
+      const bytes = new TextEncoder().encode(JSON.stringify(option.content('X', []))).buffer;
       expect(parseProceduralModel(bytes, option.id).format).toBe(1);
       expect(readModelFile(bytes, option.id).meshes[0]!.indexCount).toBeGreaterThan(0);
     }
     const byId = (id: string) => NEW_ASSET_OPTIONS.find((option) => option.id === id)!;
-    expect(byId('scene').content('Level1')).toEqual({ name: 'Level1', entities: [] });
-    expect(byId('material').content('Red')).toMatchObject({ name: 'Red' });
-    expect(byId('ui').content('Hud')).toMatchObject({ name: 'Hud', root: 0, elements: [{ type: 'Canvas' }] });
+    expect(byId('scene').content('Level1', [])).toEqual({ name: 'Level1', entities: [] });
+    expect(byId('material').content('Red', [])).toMatchObject({ name: 'Red' });
+    expect(byId('ui').content('Hud', [])).toMatchObject({ name: 'Hud', root: 0, elements: [{ type: 'Canvas' }] });
+    // 3D 文字先用工程里的第一个字体
+    expect(byId('text').content('Sign', [{ kind: 'model', path: 'Coin' }, { kind: 'font', path: 'UI/Sans' }])).toMatchObject({ name: 'Sign', font: 'UI/Sans' });
   });
 
   test('名字被占了加数字；不同种类的同名资源不算占', () => {

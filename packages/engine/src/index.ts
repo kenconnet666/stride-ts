@@ -302,12 +302,13 @@ export { UISystem } from './ui/UISystem';
 export { pageHelpers, type PageHelpers } from './debug/pageHelpers';
 export { collectSemantics, semanticsKey, type SemanticsLine, type SemanticsNode, type SemanticsRole } from './ui/semantics';
 export { SemanticsLayer } from './ui/SemanticsLayer';
-export { Mesh, type Bounds, type MeshData, type MeshId } from './rendering/mesh/Mesh';
+export { IMPOSTOR_FRAMES, Mesh, type Bounds, type MeshData, type MeshId } from './rendering/mesh/Mesh';
+export { ImpostorBaker, impostorMesh } from './rendering/mesh/Impostors';
 export { browserImageDecoder, ktx2Decoder, Texture, type ImageDecodeOptions, type ImageDecoder, type TextureData, type TextureDecoder, type TextureId } from './graphics/Texture';
 export { MipmapGenerator } from './graphics/MipmapGenerator';
 export { MeshRenderFeature, type MeshBatch } from './rendering/mesh/MeshRenderFeature';
 export {
-  inRenderMask, MAX_DIRECTIONAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalLight, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
+  inRenderMask, MAX_DIRECTIONAL_LIGHTS, RENDER_GROUP_ALL, RENDER_GROUP_BAKE, RENDER_GROUP_VISIBLE, RenderStage, RenderSystem, RenderView, RootRenderFeature, type DirectionalLight, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderOutput, type ShadowMapFilter,
   type LocalLight, type SceneRenderer, type ShadowMapSize, type ShadowReceiver, type ShadowStabilization, type SkyboxLight, type Viewport,
 } from './rendering/RenderSystem';
 export { DirectionalShadowCascades, type CascadeRectangle } from './rendering/lighting/DirectionalShadowCascades';

@@ -123,8 +123,8 @@ interface GpuMaterial {
 }
 
 /** 顶点在网格空间里怎么变形：不变、按形变目标、按高度页（地形块）。 */
-type VertexDeform = 'none' | 'morph' | 'heightfield';
-const deformOf = (mesh: Mesh): VertexDeform => (mesh.heightfield ? 'heightfield' : mesh.data.morph ? 'morph' : 'none');
+type VertexDeform = 'none' | 'morph' | 'heightfield' | 'impostor';
+const deformOf = (mesh: Mesh): VertexDeform => (mesh.heightfield ? 'heightfield' : mesh.impostor ? 'impostor' : mesh.data.morph ? 'morph' : 'none');
 
 export class MeshRenderFeature extends RootRenderFeature {
   readonly name = 'MeshRenderFeature';
@@ -341,7 +341,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     const counts = cullPass.culler.counts;
     // 透明阶段画透明的材质，再给有清漆的（不透明的）材质叠一遍清漆
     // 点选、线框、阴影投射的阶段透明、不透明的都画（透明的按 alpha 抖动着投阴影，见 Material.depthFragment）
-    const inStage = (material: Material) => stage.picking || stage.wireframe || stage.shadowCasters || (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
+    const inStage = (material: Material) => stage.picking || stage.wireframe || stage.shadowCasters || stage.impostor || (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
     const visible = (b: number) => {
       const batch = this.batches[b]!;
       return counts[index * cullPass.batchCount + b]! > 0 && inStage(batch.material) && inRenderMask(view.cullingMask, batch.renderGroup);
@@ -763,7 +763,9 @@ class Gpu {
       const offsets = vertexLayoutOffsets(layout);
       // 运动向量阶段不要切线（只算位置），用自己的顶点着色器
       // 高度场（地形块）的顶点按高度页算，有自己的入口；切线在着色器里由高度算
+      // 远处卡片（Impostors.ts）的四个顶点按相机转、选图集的格子，也有自己的入口
       const entryPoint = deform === 'heightfield' ? (stage.velocity ? 'vsVelocityHeightfield' : 'vsHeightfield')
+        : deform === 'impostor' ? (stage.velocity ? 'vsVelocityImpostor' : 'vsImpostor')
         : stage.velocity ? `vsVelocity${skinned ? 'Skinned' : ''}` : `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
       const module = this.#module(trees, effect);
       return {
@@ -788,7 +790,9 @@ class Gpu {
           }],
         },
         ...(colorFormat ? {
-          fragment: stage.picking || stage.wireframe || stage.velocity ? { module, entryPoint: stage.picking ? 'fsPick' : stage.wireframe ? 'fsWire' : 'fsVelocity', targets: [{ format: colorFormat }] } : {
+          fragment: stage.impostor ? {
+            module, entryPoint: 'fsImpostorBake', targets: [{ format: colorFormat }, ...(surfaceFormats ?? []).map((format) => ({ format }))],
+          } : stage.picking || stage.wireframe || stage.velocity ? { module, entryPoint: stage.picking ? 'fsPick' : stage.wireframe ? 'fsWire' : 'fsVelocity', targets: [{ format: colorFormat }] } : {
             module,
             // 要留表面的阶段（屏幕空间反射开着时的不透明阶段）：普通的材质写表面，别的那一遍不写（写掩码 0）
             entryPoint: materialPass?.entryPoint ?? (surfaceFormats ? 'fsSurface' : 'fs'),
@@ -804,7 +808,7 @@ class Gpu {
           ? { topology: 'line-list' }
           : stage.shadowCasters
             ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth && !stage.depthClip }
-            : { topology: 'triangle-list', cullMode: materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
+            : { topology: 'triangle-list', cullMode: stage.impostor ? 'none' : materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
         // 深度预通道之后的阶段：同样的物体、同样的顶点着色器（位置是 @invariant 的）已经把深度写好了，这里只让深度相等的
         // 像素过，也不再写深度，被挡住的像素一个都不着色
         depthStencil: stage.afterDepthPrepass
@@ -813,7 +817,7 @@ class Gpu {
             format: depthFormat,
             depthWriteEnabled: !stage.transparent && !stage.wireframe,
             // 反向 Z（RenderView.reversedDepth）：相机的视图近 1 远 0；阴影投射的阶段（阴影、天空遮挡）照旧是正向
-            depthCompare: stage.shadowCasters ? 'less-equal' : 'greater-equal',
+            depthCompare: stage.shadowCasters || stage.impostor ? 'less-equal' : 'greater-equal',
             // 和 Stride 不同：阴影投射另加按坡度的深度偏移。只有常量偏移加法线偏移时，太阳低（20° 左右）、光掠过地面，
             // 阴影图的深度量化在受光面上成了一圈圈的痤疮（日夜循环里常见）
             ...(stage.shadowCasters ? { depthBiasSlopeScale: SHADOW_SLOPE_BIAS, depthBiasClamp: 0.01 } : {}),
@@ -1008,10 +1012,10 @@ class Gpu {
       const origin = this.#weather.renderOrigin;
       data.set([origin[0] % ORIGIN_PATTERN_PERIOD, 0, origin[2] % ORIGIN_PATTERN_PERIOD, 0], o + 284);
       const wind = this.#weather.wind;
-      data.set([...wind.velocity, wind.turbulence], o + 288);
+      data.set(view.windless ? [0, 0, 0, 0] : [...wind.velocity, wind.turbulence], o + 288);
       // 局部风源：中心已经在渲染空间里（同风场），没有的那几个强度是 0
       data.fill(0, o + 292, o + 312);
-      wind.locals.forEach((local, i) => {
+      if (!view.windless) wind.locals.forEach((local, i) => {
         data.set([...local.center, local.radius], o + 292 + i * 4);
         data[o + 308 + i] = local.strength;
       });

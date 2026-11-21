@@ -26,6 +26,7 @@ import { LocalLightBuffer } from './lighting/LocalLights';
 import type { Skybox } from './lighting/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 import { SkyOcclusion } from '../weather/SkyOcclusion';
+import { ImpostorBaker } from './mesh/Impostors';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -98,12 +99,18 @@ export class RenderStage {
    * （不透明的已经画完、深度写好了）。
    */
   readonly velocity: boolean;
+  /**
+   * 远处卡片的烘焙（mesh/Impostors.ts）：颜色目标写材质的漫反射色（Alpha 裁剪过），第二个目标写视图空间的法线和粗糙度；
+   * 透明、不透明的都画，不受光照，深度是正向的。只有网格画。
+   */
+  readonly impostor: boolean;
 
   constructor(
     name: string, output: RenderOutput,
-    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false, picking = false, wireframe = false, velocity = false }:
-    { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean; picking?: boolean; wireframe?: boolean; velocity?: boolean } = {},
+    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false, picking = false, wireframe = false, velocity = false, impostor = false }:
+    { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean; picking?: boolean; wireframe?: boolean; velocity?: boolean; impostor?: boolean } = {},
   ) {
+    this.impostor = impostor;
     this.velocity = velocity;
     this.picking = picking;
     this.wireframe = wireframe;
@@ -126,6 +133,13 @@ export interface Viewport {
 
 /** 所有渲染组（Stride 的 RenderGroupMask.All）。 */
 export const RENDER_GROUP_ALL = 0xffffffff;
+
+/**
+ * 留给离屏烘焙的渲染组（远处卡片 ImpostorBaker 临时放的模型）：相机、阴影、探针这些视图都不画它，只有烘焙的视图画。
+ */
+export const RENDER_GROUP_BAKE = 30;
+/** 除了烘焙组以外的所有渲染组：相机的视图按场景的掩码再去掉烘焙组。 */
+export const RENDER_GROUP_VISIBLE = (RENDER_GROUP_ALL & ~(1 << RENDER_GROUP_BAKE)) >>> 0;
 
 /** 渲染组 group 在不在掩码 mask 里。 */
 export function inRenderMask(mask: number, group: number): boolean {
@@ -196,9 +210,11 @@ export class RenderView {
   skipsTransparent = false;
   /**
    * 画哪些渲染组（Stride 的 RenderView.CullingMask，合成器里相机渲染器的 RenderMask）：第 g 位是 1 时画第 g 组。
-   * 默认全画。
+   * 默认除了烘焙组（RENDER_GROUP_BAKE）全画。
    */
-  cullingMask = RENDER_GROUP_ALL;
+  cullingMask = RENDER_GROUP_VISIBLE;
+  /** 植被不摆（烘焙远处卡片的视图：烘的是静止的样子）。 */
+  windless = false;
   /** 朝内的视锥平面：左、右、下、上、近、远，每个 xyzw（Matrix.frustumPlanes）。update() 算。 */
   readonly frustumPlanes = new Float32Array(24);
   /**
@@ -524,6 +540,8 @@ export class RenderSystem {
   readonly localLights: LocalLightBuffer;
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
+  /** 远处卡片的烘焙（有要烘的模型时合成器多画几个正交视图）。 */
+  readonly impostors: ImpostorBaker;
   /**
    * 地面多湿、积了多少水、积了多少雪、雨下得多大（0 到 1；天气状态 weather/Weather.ts 每帧写，没有天气时是 0）：网格着色时
    * 淋得到的表面变湿、平的地方积出水洼（下雨时有涟漪）、朝上的积雪。大于 0 时写的人每帧 skyOcclusion.use()（屋檐下的不湿）。
@@ -549,6 +567,7 @@ export class RenderSystem {
     this.clusters = new Clusters(graphicsDevice.device);
     this.localLights = new LocalLightBuffer(graphicsDevice.device);
     this.skyOcclusion = new SkyOcclusion(graphicsDevice.device);
+    this.impostors = new ImpostorBaker(graphicsDevice.device, this.resources);
   }
 
   get device(): GPUDevice {
@@ -616,6 +635,7 @@ export class RenderSystem {
     this.localLights.destroy();
     this.atmosphere.destroy();
     this.skyOcclusion.destroy();
+    this.impostors.destroy();
     this.resources.destroy();
   }
 }

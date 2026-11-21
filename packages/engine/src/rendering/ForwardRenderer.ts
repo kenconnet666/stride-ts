@@ -21,7 +21,7 @@ import { Matrix } from '../data/Matrix';
 import { Color4 } from '../data/vectors';
 import { cameraGate, cameraProjectionMatrix } from './cameraRays';
 import { Camera, Light } from './components';
-import { createLocalLight, MAX_DIRECTIONAL_LIGHTS, RENDER_GROUP_ALL, RenderStage, RenderView, SURFACE_FORMATS, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
+import { createLocalLight, MAX_DIRECTIONAL_LIGHTS, RENDER_GROUP_ALL, RENDER_GROUP_VISIBLE, RenderStage, RenderView, SURFACE_FORMATS, type DirectionalShadowSettings, type Lighting, type RenderContext, type RenderSystem, type SkyboxLight } from './RenderSystem';
 import { GpuProfiler } from '../graphics/GpuProfiler';
 import { GraphTexturePool } from './GraphTexturePool';
 import { RenderGraph, type GraphTexture, type PassResources, type RenderGraphStats } from './RenderGraph';
@@ -337,7 +337,7 @@ export class ForwardRenderer {
   configure({ clearColor: [r, g, b, a], postEffects, transparent, textureCameras, shadows, particlesOverUI, renderMask, subsurfaceScattering }: CompositorSettings): void {
     this.subsurfaceScattering.enabled = subsurfaceScattering === true;
     this.particlesOverUI = particlesOverUI === true;
-    this.#mainView.cullingMask = renderMask ?? RENDER_GROUP_ALL;
+    this.#mainView.cullingMask = ((renderMask ?? RENDER_GROUP_ALL) & RENDER_GROUP_VISIBLE) >>> 0;
     this.clearColor.set(r, g, b, a);
     this.postEffects.configure(postEffects);
     this.ambientOcclusion.enabled = postEffects?.ambientOcclusion !== undefined;
@@ -363,7 +363,7 @@ export class ForwardRenderer {
     this.#found.clear();
     textureCameras.forEach(({ cameraSlot, texture, renderMask }, i) => {
       const view = this.#textureViews[i]!;
-      view.cullingMask = renderMask ?? RENDER_GROUP_ALL;
+      view.cullingMask = ((renderMask ?? RENDER_GROUP_ALL) & RENDER_GROUP_VISIBLE) >>> 0;
       view.receivesShadows = this.drawShadows;
       view.width = texture.data.width;
       view.height = texture.data.height;
@@ -425,17 +425,21 @@ export class ForwardRenderer {
     const sky = renderSystem.skyOcclusion;
     sky.enabled = this.quality.skyOcclusion;
     const skyView = this.hasCamera ? sky.begin(this.#mainView.eye, context.time.total) : undefined;
+    // 远处卡片的烘焙：有排着的模型时这一帧多几个正交视图（一起剔除、写常量），不分簇（不受光照）
+    const impostors = renderSystem.impostors;
+    const impostorViews = impostors.begin();
     const views = [
       ...(this.hasCamera ? [this.#mainView] : []),
       ...(probeView ? [probeView] : []),
       ...(planarView ? [planarView] : []),
       ...(skyView ? [skyView] : []),
       ...this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view)),
+      ...impostorViews,
     ];
 
     renderSystem.collect(views);
     this.#gatherLighting(context);
-    this.#assignClusters(views.filter((view) => view !== skyView));
+    this.#assignClusters(views.filter((view) => view !== skyView && !impostorViews.includes(view)));
     // 光照变了（太阳转了、落山了）：只拍一次的探针重拍
     probes.watchLighting(renderSystem.lighting);
     renderSystem.lighting.shadow = undefined;
@@ -464,6 +468,8 @@ export class ForwardRenderer {
     }
     // 天空遮挡：能挡阳光的才挡天，用阴影投射者的阶段画（管线和阴影共用）；贴图在图外面，算副作用
     if (skyView) frame.pass('SkyOcclusion', (pass) => pass.sideEffect(), () => sky.draw(context, encoder, renderSystem, this.shadowMapRenderer.casterStage));
+    // 烘好的卡片贴图在图外面，算副作用
+    if (impostorViews.length > 0) frame.pass('ImpostorBake', (pass) => pass.sideEffect(), () => impostors.draw(context, encoder, context.game.meshes));
     const probeTarget = probeView && probes.captureTarget();
     if (probeView && probeTarget) {
       const size = probeView.width;

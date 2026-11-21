@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
-  Camera, cameraProjectionMatrix, entityAtSlot, inRenderMask, RENDER_GROUP_ALL, coverSource, spotAngleAttenuation, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, screenToWorldRaySegment, Transform, Vector3, transformSlot, worldToScreen,
+  Camera, cameraProjectionMatrix, entityAtSlot, inRenderMask, RENDER_GROUP_ALL, RENDER_GROUP_BAKE, RENDER_GROUP_VISIBLE, coverSource, spotAngleAttenuation, DirectionalShadowCascades, spriteQuad, Fxaa, Game, gaussianOffsetsWeights, Instance, Instancing, Material, Matrix, Mesh, MeshRenderFeature, Model, RenderView, screenToWorldRaySegment, Transform, Vector3, transformSlot, worldToScreen,
   type DirectionalShadowSettings, type GraphicsDevice, type ShadowReceiver,
 } from '../src/index';
 import { VERTEX_FLOATS } from '../src/rendering/mesh/Mesh';
@@ -213,7 +213,9 @@ describe('MeshRenderFeature', () => {
     feature.extract(context);
     expect(feature.batches.map((b) => [b.isShadowCaster, b.renderGroup, b.count])).toEqual([[true, 0, 2], [false, 0, 1], [true, 4, 1]]);
     expect([inRenderMask(RENDER_GROUP_ALL, 4), inRenderMask(0b10001, 4), inRenderMask(0b10001, 3), inRenderMask(0x80000000, 31), inRenderMask(0, 0)]).toEqual([true, true, false, true, false]);
-    expect(new RenderView().cullingMask).toBe(RENDER_GROUP_ALL);
+    // 默认除了烘焙远处卡片的那一组都画
+    expect(new RenderView().cullingMask).toBe(RENDER_GROUP_VISIBLE);
+    expect(inRenderMask(RENDER_GROUP_VISIBLE, RENDER_GROUP_BAKE)).toBe(false);
     entities[3]!.require(Model).renderGroup = 0;
     feature.extract(context);
 

@@ -11,6 +11,9 @@ import { MESH_EFFECT_PARAMETERS } from './meshEffect';
 
 export { VERTEX_FLOATS };
 
+/** 远处卡片（MeshData.impostor、Impostors.ts）的图集有几格：绕竖直轴每 360° / 格数 一个方向，排成一行。 */
+export const IMPOSTOR_FRAMES = 8;
+
 export type MeshId = Branded<number, 'MeshId'>;
 
 export interface MeshData {
@@ -28,6 +31,11 @@ export interface MeshData {
    * 顶点着色器用 vsHeightfield。
    */
   readonly heightfield?: boolean;
+  /**
+   * 远处卡片（Impostors.ts 的 impostorModel）：四个顶点的位置都是卡片的中心，法线的 xy 是这个角离中心的偏移（米），顶点着色器
+   * vsImpostor 按相机把卡片转过来、按方向选图集里的一格。剔除用的包围盒由建它的人设（卡片转到哪个方向都要包住）。
+   */
+  readonly impostor?: boolean;
 }
 
 /** 轴对齐包围盒，模型空间。 */
@@ -57,6 +65,8 @@ export class Mesh {
   effectVersion = 0;
   /** 见 MeshData.heightfield。 */
   readonly heightfield: boolean;
+  /** 见 MeshData.impostor。 */
+  readonly impostor: boolean;
 
   constructor(name: string, data: MeshData) {
     this.layout = data.layout ?? FLOAT_LAYOUT;
@@ -69,6 +79,7 @@ export class Mesh {
     this.bounds = boundsOf(data.vertices, this.layout, this.dequantize, this.vertexStride);
     this.cullBounds = this.bounds;
     this.heightfield = data.heightfield === true;
+    this.impostor = data.impostor === true;
     this.id = meshes.add(this) as MeshId;
   }
 

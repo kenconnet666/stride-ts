@@ -42,9 +42,10 @@ export interface ScatterLayerFile {
   readonly viewDistance?: number;
   /**
    * 远处的细节层次，按 distance 从近到远：格子中心离相机超过 distance 时换成 model（简化的树：同一个种子、少长最细的一层），
-   * 只留 keep（0..1）的点（远处的草稀一点；留下的是近处那些点的一部分，不跳）。没写 model 的沿用上一层的。
+   * 只留 keep（0..1）的点（远处的草稀一点；留下的是近处那些点的一部分，不跳）。没写 model 的沿用上一层的。impostor 是 true 时
+   * 换成近一层模型的远处卡片（rendering/mesh/Impostors.ts：运行时烘的转向相机的四边形；烘好之前用近一层的模型），不能和 model 同写。
    */
-  readonly lods?: readonly { readonly distance: number; readonly model?: string; readonly keep?: number }[];
+  readonly lods?: readonly { readonly distance: number; readonly model?: string; readonly keep?: number; readonly impostor?: boolean }[];
   /** 投不投阴影，默认模型投、草不投。 */
   readonly castShadows?: boolean;
 }
@@ -84,6 +85,7 @@ export function checkScatterFile(value: unknown, where: string): ScatterFile {
     layer.lods?.forEach((lod, k) => {
       if (!(lod.distance > 0) || (k > 0 && !(lod.distance > layer.lods![k - 1]!.distance))) fail(`${at}.lods[${k}].distance`, 'must be positive and increasing');
       if (lod.keep !== undefined && !(lod.keep > 0 && lod.keep <= 1)) fail(`${at}.lods[${k}].keep`, 'must be in (0, 1]');
+      if (lod.impostor && (lod.model !== undefined || layer.grass !== undefined)) fail(`${at}.lods[${k}].impostor`, "is the nearer level's model as a card: not with a model of its own or on a grass layer");
     });
   });
   return file;

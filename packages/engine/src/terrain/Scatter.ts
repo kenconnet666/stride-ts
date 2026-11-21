@@ -197,6 +197,8 @@ const NORMAL_STEP = 0.5;
 export class ScatterSystem {
   readonly #game: Game;
   readonly #states = new Map<EntityId, ScatterState>();
+  /** 远处卡片（lods 的 impostor）：源模型 → 烘好的卡片，null 是在烘（或者烘不了）。 */
+  readonly #impostors = new Map<LoadedModel, LoadedModel | null>();
   readonly #seen = new Set<EntityId>();
   readonly #inverse = new Float64Array(16);
   #frame = 0;
@@ -275,7 +277,9 @@ export class ScatterSystem {
           if (distance > reach) continue;
           const key = `${l}:${cx}_${cz}`;
           const cell = state.cells.get(key);
-          const tier = lodTier(layer, distance, cell?.tier);
+          let tier = lodTier(layer, distance, cell?.tier);
+          // 远处卡片还没烘好：先用近一层的
+          while (tier > 0 && layer.grass === undefined && !this.#modelOf(state.asset, l, tier)) tier--;
           if (cell) cell.used = this.#frame;
           // 细节层次变了的格子重撒（新的撒好了再拿掉旧的，不闪）
           if (!cell || cell.tier !== tier || cell.stale) wanted.push({ key, layer: l, cx, cz, size, distance, tier, ...(cell ? { replaces: cell } : {}) });
@@ -319,7 +323,7 @@ export class ScatterSystem {
     const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size), keepOf(layer, tier));
     const cell = game.entities.create({ name: `${state.entity.name}/scatter ${layer.name} ${id}`, components: [Transform] });
     cell.require(Transform).parent = state.entity;
-    const model = state.asset.models[layerIndex]?.[tier];
+    const model = this.#modelOf(state.asset, layerIndex, tier);
     if (!model) throw new Error(`${state.asset.path}: layer ${layer.name} has no model`);
     for (const instance of instances) {
       const child = game.entities.create({ name: layer.name, components: [Transform.with({ position: instance.position, rotation: instance.rotation, scale: [instance.scale, instance.scale, instance.scale] })] });
@@ -398,6 +402,24 @@ export class ScatterSystem {
     }
     this.carried = { kept, stale, dropped: state.cells.size - kept };
     return { entity: state.entity, asset, terrain, cells, eye: undefined, complete: false };
+  }
+
+  /**
+   * 第 tier 个细节层次的模型。远处卡片的层次（lods 的 impostor）是近一层模型的卡片：第一次问时开始烘，烘好之前是 undefined，
+   * 烘好后各个摆放重新选格子（换成卡片）；烘不了的一直用近一层的。
+   */
+  #modelOf(asset: ScatterAsset, layerIndex: number, tier: number): LoadedModel | undefined {
+    const model = asset.models[layerIndex]?.[tier];
+    if (!model || !asset.file.layers[layerIndex]!.lods?.[tier - 1]?.impostor) return model;
+    const card = this.#impostors.get(model);
+    if (card !== undefined) return card ?? undefined;
+    this.#impostors.set(model, null);
+    const game = this.#game;
+    game.renderSystem.impostors.impostor(game, model).then((baked) => {
+      this.#impostors.set(model, baked);
+      for (const state of this.#states.values()) state.complete = false;
+    }, (error: unknown) => console.error(`[stride] scatter: cannot bake the impostor of ${asset.path} layer ${asset.file.layers[layerIndex]!.name}:`, error));
+    return undefined;
   }
 
   /** 上一次换版本时留下、要重撒、拿掉的格子数（调试命令 scatter 报，看雕刻时重撒了多少）。 */

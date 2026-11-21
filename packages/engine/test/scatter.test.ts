@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { checkScatterFile, type ScatterLayerFile } from '../src/content/scatterFormat';
+import { VERTEX_FLOATS } from '../src/content/format';
+import { impostorMesh } from '../src/rendering/mesh/Impostors';
 import { grassBlades, gridGround, lodTier, scatterCell, type GroundSample } from '../src/terrain/Scatter';
 
 const flat: GroundSample = () => ({ height: 5, normal: [0, 1, 0] });
@@ -108,5 +110,28 @@ describe('细节层次', () => {
     expect(far.length / near.length).toBeGreaterThan(0.2);
     expect(far.length / near.length).toBeLessThan(0.3);
     expect(() => checkScatterFile({ name: 'S', layers: [{ ...trees, lods: [{ distance: 100 }, { distance: 50 }] }] }, 'S')).toThrow('lods[1].distance must be positive and increasing');
+  });
+
+  test('远处卡片是近一层模型的卡片：不能自带模型，草的层不能用', () => {
+    expect(checkScatterFile({ name: 'S', layers: [{ ...trees, lods: [{ distance: 100, model: 'Models/TreeFar' }, { distance: 200, impostor: true }] }] }, 'S').layers[0]!.lods![1]!.impostor).toBe(true);
+    expect(() => checkScatterFile({ name: 'S', layers: [{ ...trees, lods: [{ distance: 100, model: 'M', impostor: true }] }] }, 'S')).toThrow('lods[0].impostor');
+    expect(() => checkScatterFile({ name: 'S', layers: [{ name: 'G', density: 1, grass: { height: 0.5, width: 0.05 }, lods: [{ distance: 20, impostor: true }] }] }, 'S')).toThrow('lods[0].impostor');
+  });
+});
+
+describe('远处卡片', () => {
+  test('四个顶点都在卡片中心，法线的 xy 是角的偏移；剔除的盒子包住转到任何方向的卡片', () => {
+    const mesh = impostorMesh('Trees/Oak impostor', 10, 4);
+    const v = mesh.data.vertices as Float32Array;
+    const corners = [0, 1, 2, 3].map((i) => Array.from(v.subarray(i * VERTEX_FLOATS, i * VERTEX_FLOATS + 8)));
+    expect(corners.map((c) => c.slice(0, 3))).toEqual([[0, 4, 0], [0, 4, 0], [0, 4, 0], [0, 4, 0]]);
+    expect(corners.map((c) => c.slice(3, 5))).toEqual([[-5, -5], [5, -5], [5, 5], [-5, 5]]);
+    // UV：左下角是 (0, 1)，v 朝下
+    expect(corners.map((c) => c.slice(6, 8))).toEqual([[0, 1], [1, 1], [1, 0], [0, 0]]);
+    expect(mesh.impostor).toBe(true);
+    const reach = 5 * Math.SQRT2;
+    expect(mesh.cullBounds.min[0]).toBeCloseTo(-reach);
+    expect(mesh.cullBounds.max[1]).toBeCloseTo(4 + reach);
+    expect(mesh.cullBounds.max[2]).toBeCloseTo(reach);
   });
 });

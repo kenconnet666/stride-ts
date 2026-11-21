@@ -29,6 +29,7 @@ import { MATERIAL_STREAMS } from '../shaderClass';
 import { BRDF, GRADIENT_NOISE } from '../wgsl';
 import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees } from './Material';
 import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from './HeightPages';
+import { IMPOSTOR_FRAMES } from './Mesh';
 
 /** 植被的风带进着色器的局部风源个数（离相机最近的几个；每个顶点都要看一遍，少一点）。 */
 export const VEGETATION_LOCAL_WINDS = 4;
@@ -673,6 +674,52 @@ fn heightfieldVertex(grid: vec3f, slot: u32) -> HeightfieldVertex {
   return transformVertex(v.position, v.normal, v.uv, v.tangent, slot, vertex, IDENTITY, false);
 }
 
+/**
+ * 远处卡片（MeshData.impostor，Impostors.ts）的一个角：center 是卡片中心（模型空间），corner 是这个角离中心的偏移（米）。
+ * 卡片绕竖直轴转向相机（透视的视图）或整个转向光（正交的视图：阴影、天空遮挡，从高处的太阳看竖着的卡片只是一条线）；
+ * 图集的格子按相机在实例自己的朝向里的方位角选最近的一格。切线是卡片的右、副切线是上，烘的法线图在这个框架里。植被的风照常
+ * 弯（按树根处的风），卡片跟着整棵树摆。
+ */
+fn impostorVertex(center: vec3f, corner: vec2f, uv: vec2f, slot: u32) -> Varyings {
+  let world = worlds[frameBase(0u, false) + slot];
+  let middle = (world * vec4f(center, 1.0)).xyz;
+  let scale = length(world[1].xyz);
+  let vp = view.viewProjection;
+  // 正交投影：裁剪坐标的 w 不随位置变；它的第三行是视图的前方（正向深度）
+  let ortho = abs(vp[0][3]) + abs(vp[1][3]) + abs(vp[2][3]) < 1e-6;
+  let toward = select(view.eye.xyz - middle, -vec3f(vp[0][2], vp[1][2], vp[2][2]), ortho);
+  var level = toward.xz;
+  if (dot(level, level) < 1e-10) {
+    level = world[2].xz;
+  }
+  let d = normalize(level);
+  let right = vec3f(d.y, 0.0, -d.x);
+  let facing = select(vec3f(d.x, 0.0, d.y), normalize(toward), ortho);
+  let up = cross(facing, right);
+  // 第 k 格是从实例本地的 (sin θ, 0, cos θ) 方向看的，θ = k · 2π / 格数
+  let azimuth = atan2(dot(d, normalize(world[0].xz)), dot(d, normalize(world[2].xz)));
+  let frames = ${IMPOSTOR_FRAMES};
+  let frame = ((i32(round(azimuth / 6.2831853 * f32(frames))) % frames) + frames) % frames;
+  let p = middle + (right * corner.x + up * corner.y) * scale;
+  let worldPosition = vec4f(effectWorldPosition(windSway(p, world, vec3f(0.0, 0.0, 1.0), uv), mesh.effect), 1.0);
+  var out: Varyings;
+  out.position = view.viewProjection * worldPosition;
+  out.world = worldPosition.xyz;
+  out.effect = effectVarying(out.position, worldPosition.xyz, mesh.effect);
+  out.normal = facing;
+  out.uv = effectUv(mesh.uvTransform.zw + vec2f((f32(frame) + uv.x) / f32(frames), uv.y) * mesh.uvTransform.xy, mesh.effect);
+  out.depth = out.position.w;
+  out.tangent = vec4f(right, 1.0);
+  out.local = vec3f(corner, 0.0);
+  out.slot = slot;
+  out.skinned = 0u;
+  return out;
+}
+
+@vertex fn vsImpostor(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32) -> Varyings {
+  return impostorVertex(mesh.positionOffset.xyz + position * mesh.positionScale.xyz, normal.xy, uv, slots[instance]);
+}
+
 // 运动向量（RenderStage.velocity）：位置和别的阶段一样算（@invariant，深度相等的比较才对得上），另外带上这一帧、上一帧
 // 没挪过亚像素的裁剪坐标，片元着色器相减
 struct VelocityVaryings {
@@ -698,6 +745,16 @@ fn velocityVertex(position: vec3f, normal: vec3f, uv: vec2f, slot: u32, vertex: 
   let slot = slots[instance];
   let v = heightfieldVertex(position, slot);
   return velocityVertex(v.position, v.normal, v.uv, slot, vertex, IDENTITY, IDENTITY);
+}
+
+/** 远处卡片的运动向量：只算相机动了的那部分（卡片自己一帧的转动、摆动很小）。 */
+@vertex fn vsVelocityImpostor(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32) -> VelocityVaryings {
+  let now = impostorVertex(mesh.positionOffset.xyz + position * mesh.positionScale.xyz, normal.xy, uv, slots[instance]);
+  var out: VelocityVaryings;
+  out.position = now.position;
+  out.current = view.unjitteredViewProjection * vec4f(now.world, 1.0);
+  out.previous = view.previousViewProjection * vec4f(now.world, 1.0);
+  return out;
 }
 
 @vertex fn vsVelocitySkinned(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> VelocityVaryings {
@@ -1433,6 +1490,29 @@ fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f, attenuation: f32, visibil
     discard;
   }
   return in.slot + 1u;
+}
+
+struct ImpostorBakeOutput {
+  @location(0) albedo: vec4f,
+  @location(1) normal: vec4f,
+};
+
+/**
+ * 烘远处卡片（RenderStage.impostor）：漫反射色（材质层混过的，Alpha 裁剪掉的像素丢掉，没有裁剪时按 0.5），和视图空间里的法线
+ * （右、上、朝相机，映射到 0..1）加粗糙度。视图是正交的：视图投影的前两行就是视图的右、上。
+ */
+@fragment fn fsImpostorBake(in: Varyings, @builtin(front_facing) front: bool) -> ImpostorBakeOutput {
+  let base = baseColor(in);
+  if (base.a * material.blend.a < select(0.5, material.flags.y, material.flags.y >= 0.0)) {
+    discard;
+  }
+  let n = facingNormal(surfaceNormal(in, false), front);
+  let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb, material.surface.y));
+  let vp = view.viewProjection;
+  let right = normalize(vec3f(vp[0][0], vp[1][0], vp[2][0]));
+  let up = normalize(vec3f(vp[0][1], vp[1][1], vp[2][1]));
+  let m = vec3f(dot(n, right), dot(n, up), dot(n, cross(right, up)));
+  return ImpostorBakeOutput(vec4f(layers.albedo, 1.0), vec4f(m * 0.5 + 0.5, layers.roughness));
 }
 
 struct WireOutput {

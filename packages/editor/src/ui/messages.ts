@@ -150,7 +150,6 @@ export interface EditorMessages {
   readonly graphHint: string;
   readonly graphClose: string;
   readonly graphNoMaterial: string;
-  readonly graphDisconnect: string;
   readonly graphOutput: string;
   readonly graphOutputs: { readonly baseColor: string; readonly metalness: string; readonly roughness: string; readonly normal: string; readonly emissive: string; readonly occlusion: string };
   readonly graphCategories: Readonly<Record<string, string>>;
@@ -307,10 +306,9 @@ const zhCN: EditorMessages = {
   paintSelectEntity: '先在场景里选中要画的实体（它要用这个材质）',
   paintNoMask: '这一层的遮罩不是一张图，画不了（加一个绘制层）',
   graphAddNode: '加节点……',
-  graphHint: '拖标题移动，拖空白处平移，滚轮缩放；从输出口拖到输入口连线，点连着的输入口断开；选中节点按 Delete 删除',
+  graphHint: '拖节点移动，拖空白处平移，滚轮缩放；从输出口拖到输入口连线；选中节点或连线按 Delete 删除',
   graphClose: '关掉节点图',
   graphNoMaterial: '在资源浏览器里选中一个材质，属性面板上点"节点图"',
-  graphDisconnect: '点一下断开',
   graphOutput: '材质输出',
   graphOutputs: { baseColor: '基础色', metalness: '金属度', roughness: '粗糙度', normal: '法线', emissive: '自发光', occlusion: '环境光遮蔽' },
   graphCategories: { input: '输入', generator: '生成器', math: '运算', normal: '法线', mapping: '映射' },
@@ -462,10 +460,9 @@ const enUS: EditorMessages = {
   paintSelectEntity: 'Select the entity to paint in the scene first (it must use this material)',
   paintNoMask: 'The mask of this layer is not an image, so it cannot be painted (add a paint layer)',
   graphAddNode: 'Add node…',
-  graphHint: 'Drag a title to move, drag the background to pan, wheel to zoom; drag from an output to an input to link, click a linked input to unlink; Delete removes the selected node',
+  graphHint: 'Drag a node to move, drag the background to pan, wheel to zoom; drag from an output to an input to link; Delete removes the selected nodes or links',
   graphClose: 'Close the node graph',
   graphNoMaterial: 'Select a material in the asset browser and click "Node graph" in the inspector',
-  graphDisconnect: 'Click to unlink',
   graphOutput: 'Material output',
   graphOutputs: { baseColor: 'Base color', metalness: 'Metalness', roughness: 'Roughness', normal: 'Normal', emissive: 'Emissive', occlusion: 'Occlusion' },
   graphCategories: { input: 'Input', generator: 'Generator', math: 'Math', normal: 'Normal', mapping: 'Mapping' },

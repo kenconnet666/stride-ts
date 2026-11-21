@@ -1,17 +1,18 @@
 /**
- * 节点图面板（材质的 graph，引擎 graph/nodeGraph.ts、rendering/mesh/materialGraph.ts）：属性面板里开着的材质的节点图。节点是卡片，
- * 输出在右、输入在左，参数在下面直接改；最右边是材质的输出（基础色、金属度……）。操作：
- * - 拖节点的标题移动，拖空白处平移，滚轮缩放；
- * - 从输出口拖到输入口（或材质输出）连线，点已经连着的输入口断开；
- * - 点标题选中，Delete 删掉（连到它的线一起去掉）；"加节点"菜单按分类列出节点库。
- * 每次修改经 session.editMaterialGraph 存（同属性面板，稍等一下存），材质热重载，视口里马上看到。节点的布局是定的（行高固定），
- * 端口的位置按节点的位置算，不量 DOM。
+ * 节点图面板（材质的 graph，引擎 graph/nodeGraph.ts、rendering/mesh/materialGraph.ts）：属性面板里开着的材质的节点图，画在
+ * vue-tsx-pro 的 Diagram 上（平移缩放、选择、拖节点、端口之间连线都是它的）。节点是卡片，输出在右、输入在左，参数在下面直接改；
+ * 最右边是材质的输出（基础色、金属度……）。操作：
+ * - 拖节点移动（材质的输出跟着最右边的节点，不能拖），拖空白处平移（小手），滚轮或触控板捏合缩放；
+ * - 从输出端口拖到输入端口（或材质输出）连线，一个输入只接一条线（新的替换旧的）；
+ * - 点节点或连线选中，Delete 删掉（删节点时连到它的线一起去掉，删连线是断开）；"加节点"菜单按分类列出节点库。
+ * 每次修改经 session.editMaterialGraph 存（同属性面板，稍等一下存），材质热重载，视口里马上看到。节点卡片的行高是定的，
+ * 端口的位置按行算（Diagram 的端口 at），不量 DOM。
  */
 import { CircleX, Plus } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, Menu, MenuGroup, MenuItem } from '@zerodep-dev/vue-tsx-pro-ui';
-import { onMounted, onUnmounted, type VNode } from 'vue';
+import { Diagram, type DiagramConnection, type DiagramEdgeItem, type DiagramNodeItem, type DiagramNodeMove, type DiagramPortItem, type DiagramSelection } from '@zerodep-dev/vue-tsx-pro-ui/diagram';
 import type { GraphFile, GraphLink, GraphNodeFile, NodeSpec } from '@stride-ts/engine/node-graph';
 import { MATERIAL_GRAPH_OUTPUTS, MATERIAL_NODE_SPECS } from '@stride-ts/engine/material-graph';
 import { FieldRow, type FieldContext } from './FieldEditor';
@@ -21,6 +22,10 @@ import type { EditorSession } from './session';
 const WIDTH = 190;
 const HEADER = 24;
 const ROW = 20;
+/** 卡片的边框：行从边框里面排起 */
+const BORDER = 1;
+/** 参数一行（属性面板的字段行 28 加行间距 2）的高度。 */
+const PARAM_ROW = 30;
 const OUTPUT_NODE = '$output';
 const SPECS = new Map(MATERIAL_NODE_SPECS.map((spec) => [spec.type, spec]));
 const OUTPUT_PORTS = Object.entries(MATERIAL_GRAPH_OUTPUTS).map(([name, type]) => ({ name, type }));
@@ -29,14 +34,13 @@ const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.75rem' },
   toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_sm', paddingBlock: '2px', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
   grow: { flex: '1', color: '_textMuted' },
-  canvas: { flex: '1', position: 'relative', overflow: 'hidden', minHeight: '0', backgroundColor: '_background', cursor: 'grab', touchAction: 'none', userSelect: 'none' },
-  layer: { position: 'absolute', left: '0', top: '0', transformOrigin: '0 0' },
-  node: { position: 'absolute', width: `${WIDTH}px`, borderWidth: '1px', borderStyle: 'solid', borderColor: '_border', borderRadius: '6px', backgroundColor: '_surface', boxShadow: '0 1px 4px rgba(0,0,0,0.3)', cursor: 'default' },
+  canvas: { flex: '1', minHeight: '0', position: 'relative' },
+  diagram: { position: 'absolute', inset: '0' },
+  card: { width: '100%', height: '100%', borderWidth: '1px', borderStyle: 'solid', borderColor: '_border', borderRadius: '6px', backgroundColor: '_surface', boxShadow: '0 1px 4px rgba(0,0,0,0.3)', overflow: 'hidden' },
   selected: { borderColor: '_accent' },
-  header: { height: `${HEADER}px`, lineHeight: `${HEADER}px`, paddingInline: '8px', fontWeight: '600', cursor: 'move', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  row: { height: `${ROW}px`, display: 'flex', alignItems: 'center', paddingInline: '10px', position: 'relative' },
+  header: { boxSizing: 'border-box', height: `${HEADER}px`, lineHeight: `${HEADER}px`, paddingInline: '8px', fontWeight: '600', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  row: { height: `${ROW}px`, display: 'flex', alignItems: 'center', paddingInline: '10px' },
   outputRow: { justifyContent: 'flex-end' },
-  port: { position: 'absolute', width: '10px', height: '10px', borderRadius: '50%', top: `${ROW / 2 - 5}px`, cursor: 'crosshair', borderWidth: '1px', borderStyle: 'solid', borderColor: '_text' },
   params: { padding: '4px 6px', display: 'flex', flexDirection: 'column', gap: '2px' },
   hint: { color: '_textMuted', padding: '_sm' },
 });
@@ -44,47 +48,37 @@ const styles = css.create({
 /** 端口的颜色按种类（数、二维、三维、颜色）。 */
 const PORT_COLORS: Readonly<Record<string, string>> = { float: '#9aa0a6', vec2: '#6fbf73', vec3: '#5b9bd5', color: '#e8a33d' };
 
-type Point = readonly [number, number];
+/** 画布上的一个节点：图里的节点（或材质的输出），带 Diagram 要的位置、大小、端口。 */
+interface CardItem extends DiagramNodeItem {
+  readonly node?: GraphNodeFile;
+  readonly spec?: NodeSpec;
+}
+
+/** 卡片里第 row 行（标题下面从 0 数）的中心在卡片高度里的比例：端口对准它。 */
+const rowAt = (row: number, height: number) => (BORDER + HEADER + row * ROW + ROW / 2) / height;
 
 export const GraphPanel = _component(({ session }: { session: EditorSession }) => {
-  let view = _state({ x: 40, y: 30, scale: 1 });
-  let selected = _state<string | undefined>(undefined);
-  /** 正在拖的节点的位置（松手才存）。 */
-  let dragging = _state<{ id: string; at: Point } | undefined>(undefined);
-  /** 正在拉的线：从哪个输出、鼠标在哪（面板坐标）。 */
-  let wiring = _state<{ link: GraphLink; to: Point } | undefined>(undefined);
-  let canvas: HTMLElement | undefined;
-
+  let selection = _state<DiagramSelection>({ nodes: [], edges: [] });
   const graph = (): GraphFile | undefined => session.inspected.value?.content['graph'] as GraphFile | undefined;
-  const position = (node: GraphNodeFile): Point => (dragging?.id === node.id ? dragging.at : node.position ?? [0, 0]);
-  const outputNodeAt = (file: GraphFile): Point => [Math.max(0, ...file.nodes.map((node) => position(node)[0])) + WIDTH + 80, 0];
-
-  /** 面板上的点（屏幕的像素）换成图的坐标。 */
-  const toGraph = (event: PointerEvent | WheelEvent): Point => {
-    const rect = canvas!.getBoundingClientRect();
-    return [(event.clientX - rect.left - view.x) / view.scale, (event.clientY - rect.top - view.y) / view.scale];
-  };
-  const outputPort = (node: GraphNodeFile, index: number): Point => [position(node)[0] + WIDTH, position(node)[1] + HEADER + index * ROW + ROW / 2];
-  const inputPort = (at: Point, index: number, outputs: number): Point => [at[0], at[1] + HEADER + (outputs + index) * ROW + ROW / 2];
-
   const edit = (change: (file: GraphFile) => GraphFile) => session.editMaterialGraph(change);
+  const context: FieldContext = { entities: [] };
 
   const connect = (from: GraphLink, node: string, port: string) => edit((file) => (node === OUTPUT_NODE
     ? { ...file, outputs: { ...file.outputs, [port]: from } }
     : { ...file, nodes: file.nodes.map((n) => (n.id === node && n.id !== from.node ? { ...n, inputs: { ...n.inputs, [port]: from } } : n)) }));
-  const disconnect = (node: string, port: string) => edit((file) => (node === OUTPUT_NODE
+  const disconnect = (file: GraphFile, node: string, port: string): GraphFile => (node === OUTPUT_NODE
     ? { ...file, outputs: Object.fromEntries(Object.entries(file.outputs).filter(([name]) => name !== port)) }
-    : { ...file, nodes: file.nodes.map((n) => (n.id === node ? { ...n, inputs: Object.fromEntries(Object.entries(n.inputs ?? {}).filter(([name]) => name !== port)) } : n)) }));
-  const remove = (id: string) => edit((file) => ({
+    : { ...file, nodes: file.nodes.map((n) => (n.id === node ? { ...n, inputs: Object.fromEntries(Object.entries(n.inputs ?? {}).filter(([name]) => name !== port)) } : n)) });
+  const removeNode = (file: GraphFile, id: string): GraphFile => ({
     nodes: file.nodes.filter((n) => n.id !== id).map((n) => ({ ...n, inputs: Object.fromEntries(Object.entries(n.inputs ?? {}).filter(([, link]) => link.node !== id)) })),
     outputs: Object.fromEntries(Object.entries(file.outputs).filter(([, link]) => link?.node !== id)),
-  }));
+  });
   const add = (type: string) => edit((file) => {
     let n = file.nodes.length + 1;
     while (file.nodes.some((node) => node.id === `${type}${n}`)) n++;
-    const rect = canvas!.getBoundingClientRect();
-    const at: Point = [Math.round((rect.width / 2 - view.x) / view.scale - WIDTH / 2), Math.round((rect.height / 2 - view.y) / view.scale - 40)];
-    return { ...file, nodes: [...file.nodes, { id: `${type}${n}`, type, position: at }] };
+    // 新节点放在已有节点的下面
+    const bottom = Math.max(0, ...file.nodes.map((node) => (node.position?.[1] ?? 0) + 120));
+    return { ...file, nodes: [...file.nodes, { id: `${type}${n}`, type, position: [0, bottom] }] };
   });
   /** 改参数：路径直接交给属性面板的修改（向量的一个分量、按旧值算的更新都照它的规矩）。 */
   const setParam = (id: string, name: string, path: readonly (string | number)[], value: unknown) => {
@@ -92,88 +86,89 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     if (index >= 0) session.editInspected(['graph', 'nodes', index, 'params', name, ...path], value);
   };
 
-  /** 拖：按下时记起点，移动时按 move 改，松手时 done。 */
-  const drag = (event: PointerEvent, move: (dx: number, dy: number, event: PointerEvent) => void, done?: (event: PointerEvent) => void) => {
-    event.stopPropagation();
-    const startX = event.clientX, startY = event.clientY;
-    const onMove = (e: PointerEvent) => move((e.clientX - startX) / view.scale, (e.clientY - startY) / view.scale, e);
-    const onUp = (e: PointerEvent) => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      done?.(e);
+  /** 图里的节点和材质的输出换成 Diagram 的节点（端口对准卡片里的行）。 */
+  const cards = (file: GraphFile): CardItem[] => {
+    const items: CardItem[] = file.nodes.flatMap((node) => {
+      const spec = SPECS.get(node.type);
+      if (!spec) return [];
+      const height = HEADER + (spec.outputs.length + spec.inputs.length) * ROW + (spec.params.length > 0 ? spec.params.length * PARAM_ROW + 6 : 0) + 2 * BORDER;
+      const ports: DiagramPortItem[] = [
+        ...spec.outputs.map((port, i): DiagramPortItem => ({ id: port.name, direction: 'out', at: rowAt(i, height), color: PORT_COLORS[port.type]!, label: t.graphPorts[port.name] ?? port.name })),
+        ...spec.inputs.map((port, i): DiagramPortItem => ({ id: port.name, direction: 'in', at: rowAt(spec.outputs.length + i, height), color: PORT_COLORS[port.type]!, label: t.graphPorts[port.name] ?? port.name })),
+      ];
+      const [x, y] = node.position ?? [0, 0];
+      return [{ id: node.id, x, y, width: WIDTH, height, ports, node, spec }];
+    });
+    const right = Math.max(0, ...items.map((item) => item.x)) + WIDTH + 80;
+    const height = HEADER + OUTPUT_PORTS.length * ROW + 2 * BORDER;
+    items.push({
+      id: OUTPUT_NODE, x: right, y: 0, width: WIDTH, height,
+      ports: OUTPUT_PORTS.map((port, i) => ({ id: port.name, direction: 'in', at: rowAt(i, height), color: PORT_COLORS[port.type]!, label: port.name })),
+    });
+    return items;
+  };
+
+  /** 输入接的线：连线的 id 是"节点:端口"（删连线时按它断开）。 */
+  const links = (file: GraphFile): DiagramEdgeItem[] => {
+    const firstOutput = (id: string) => SPECS.get(file.nodes.find((n) => n.id === id)?.type ?? '')?.outputs[0]?.name;
+    const edge = (link: GraphLink, node: string, port: string): DiagramEdgeItem[] => {
+      const output = link.output ?? firstOutput(link.node);
+      return output === undefined ? [] : [{ id: `${node}:${port}`, from: link.node, fromPort: output, to: node, toPort: port }];
     };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
+    return [
+      ...file.nodes.flatMap((node) => Object.entries(node.inputs ?? {}).flatMap(([port, link]) => edge(link, node.id, port))),
+      ...Object.entries(file.outputs).flatMap(([port, link]) => (link ? edge(link, OUTPUT_NODE, port) : [])),
+    ];
   };
 
-  const panStart = (event: PointerEvent) => {
-    selected = undefined;
-    const start = { ...view };
-    drag(event, (dx, dy) => (view = { ...start, x: start.x + dx * view.scale, y: start.y + dy * view.scale }));
+  const onConnect = (connection: DiagramConnection) => {
+    if (connection.fromPort === undefined || connection.toPort === undefined) return;
+    connect({ node: connection.from, output: connection.fromPort }, connection.to, connection.toPort);
   };
-  const wheel = (event: WheelEvent) => {
+  const onNodesMove = (moves: DiagramNodeMove[]) => edit((file) => ({
+    ...file,
+    nodes: file.nodes.map((n) => {
+      const move = moves.find((m) => m.id === n.id);
+      return move ? { ...n, position: [Math.round(move.x), Math.round(move.y)] as [number, number] } : n;
+    }),
+  }));
+  /** Delete：删选中的节点（材质的输出删不掉），断开选中的连线。 */
+  const onKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+    if ((event.target as HTMLElement).closest('input, textarea, select')) return;
+    const { nodes, edges } = selection;
+    if (nodes.length + edges.length === 0) return;
     event.preventDefault();
-    const [gx, gy] = toGraph(event);
-    const scale = Math.min(2, Math.max(0.3, view.scale * Math.exp(-event.deltaY * 0.001)));
-    const rect = canvas!.getBoundingClientRect();
-    view = { scale, x: event.clientX - rect.left - gx * scale, y: event.clientY - rect.top - gy * scale };
-  };
-  const moveStart = (event: PointerEvent, node: GraphNodeFile) => {
-    selected = node.id;
-    const start = node.position ?? [0, 0];
-    drag(event, (dx, dy) => (dragging = { id: node.id, at: [Math.round(start[0] + dx), Math.round(start[1] + dy)] }), () => {
-      const moved = dragging;
-      dragging = undefined;
-      if (moved && (moved.at[0] !== start[0] || moved.at[1] !== start[1])) edit((file) => ({ ...file, nodes: file.nodes.map((n) => (n.id === moved.id ? { ...n, position: moved.at } : n)) }));
+    edit((file) => {
+      let next = file;
+      for (const id of edges) {
+        const split = id.lastIndexOf(':');
+        next = disconnect(next, id.slice(0, split), id.slice(split + 1));
+      }
+      for (const id of nodes) if (id !== OUTPUT_NODE) next = removeNode(next, id);
+      return next;
     });
-  };
-  /** 从输出口拉线：松手的地方是输入口（data-node、data-port）就连上。 */
-  const wireStart = (event: PointerEvent, link: GraphLink) => {
-    wiring = { link, to: toGraph(event) };
-    drag(event, (_dx, _dy, e) => (wiring = { link, to: toGraph(e) }), (e) => {
-      wiring = undefined;
-      const target = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-port]');
-      if (target?.dataset['node'] && target.dataset['port']) connect(link, target.dataset['node'], target.dataset['port']);
-    });
+    selection = { nodes: [], edges: [] };
   };
 
-  const keydown = (event: KeyboardEvent) => {
-    if ((event.key === 'Delete' || event.key === 'Backspace') && selected && !(event.target as HTMLElement).closest('input, textarea, select')) {
-      remove(selected);
-      selected = undefined;
+  const card = (item: CardItem, selected: boolean) => {
+    const { node, spec } = item;
+    if (!node || !spec) {
+      return (
+        <div {...css.attrs(styles.card, selected && styles.selected)}>
+          <div {...css.attrs(styles.header)}>{t.graphOutput}</div>
+          {OUTPUT_PORTS.map((port) => <div {...css.attrs(styles.row)}>{t.graphOutputs[port.name as keyof typeof t.graphOutputs] ?? port.name}</div>)}
+        </div>
+      );
     }
-  };
-  onMounted(() => window.addEventListener('keydown', keydown));
-  onUnmounted(() => window.removeEventListener('keydown', keydown));
-
-  const curve = (a: Point, b: Point, color: string) => {
-    const dx = Math.max(40, Math.abs(b[0] - a[0]) / 2);
-    return <path d={`M ${a[0]} ${a[1]} C ${a[0] + dx} ${a[1]}, ${b[0] - dx} ${b[1]}, ${b[0]} ${b[1]}`} stroke={color} stroke-width="2" fill="none" />;
-  };
-
-  const context: FieldContext = { entities: [] };
-
-  const nodeCard = (node: GraphNodeFile, spec: NodeSpec) => {
-    const [x, y] = position(node);
     return (
-      <div {...css.attrs(styles.node, selected === node.id && styles.selected)} style={{ left: `${x}px`, top: `${y}px` }} onPointerdown={(e: PointerEvent) => e.stopPropagation()}>
-        <div {...css.attrs(styles.header)} title={node.id} onPointerdown={(e: PointerEvent) => moveStart(e, node)}>{t.graphNodes[node.type] ?? node.type}</div>
-        {spec.outputs.map((port) => (
-          <div {...css.attrs(styles.row, styles.outputRow)}>
-            {t.graphPorts[port.name] ?? port.name}
-            <span {...css.attrs(styles.port)} style={{ right: '-6px', backgroundColor: PORT_COLORS[port.type] }} onPointerdown={(e: PointerEvent) => wireStart(e, { node: node.id, output: port.name })} />
-          </div>
-        ))}
-        {spec.inputs.map((port) => (
-          <div {...css.attrs(styles.row)}>
-            <span {...css.attrs(styles.port)} data-node={node.id} data-port={port.name} style={{ left: '-6px', backgroundColor: node.inputs?.[port.name] ? PORT_COLORS[port.type] : 'transparent' }}
-              title={node.inputs?.[port.name] ? t.graphDisconnect : undefined}
-              onPointerdown={(e: PointerEvent) => { e.stopPropagation(); if (node.inputs?.[port.name]) disconnect(node.id, port.name); }} />
-            {t.graphPorts[port.name] ?? port.name}
-          </div>
-        ))}
+      <div {...css.attrs(styles.card, selected && styles.selected)}>
+        <div {...css.attrs(styles.header)} title={node.id}>{t.graphNodes[node.type] ?? node.type}</div>
+        {spec.outputs.map((port) => <div {...css.attrs(styles.row, styles.outputRow)}>{t.graphPorts[port.name] ?? port.name}</div>)}
+        {spec.inputs.map((port) => <div {...css.attrs(styles.row)}>{t.graphPorts[port.name] ?? port.name}</div>)}
         {spec.params.length > 0 && (
-          <div {...css.attrs(styles.params)}>
+          // 参数里拖数值、选下拉框不是拖节点
+          <div {...css.attrs(styles.params)} onPointerdown={(event: PointerEvent) => event.stopPropagation()}>
             {spec.params.map((param) => (
               <FieldRow field={{ name: param.name, type: param.type, optional: true, default: param.default, ...(param.description ? { description: param.description } : {}) }}
                 value={node.params?.[param.name]} context={context} onSet={(path, value) => setParam(node.id, param.name, path, value)} />
@@ -188,34 +183,6 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     const inspected = session.inspected.value;
     const file = graph();
     if (inspected?.kind !== 'material' || !file) return <div {...css.attrs(styles.hint)}>{t.graphNoMaterial}</div>;
-    const out = outputNodeAt(file);
-    const links: VNode[] = [];
-    const portOf = (link: GraphLink): Point | undefined => {
-      const node = file.nodes.find((n) => n.id === link.node);
-      const spec = node && SPECS.get(node.type);
-      if (!node || !spec) return undefined;
-      const index = link.output === undefined ? 0 : spec.outputs.findIndex((p) => p.name === link.output);
-      return index < 0 ? undefined : outputPort(node, index);
-    };
-    for (const node of file.nodes) {
-      const spec = SPECS.get(node.type);
-      if (!spec) continue;
-      spec.inputs.forEach((port, i) => {
-        const link = node.inputs?.[port.name];
-        const from = link && portOf(link);
-        if (from) links.push(curve(from, inputPort(position(node), i, spec.outputs.length), PORT_COLORS[port.type]!));
-      });
-    }
-    OUTPUT_PORTS.forEach((port, i) => {
-      const link = file.outputs[port.name];
-      const from = link && portOf(link);
-      if (from) links.push(curve(from, inputPort(out, i, 0), PORT_COLORS[port.type]!));
-    });
-    if (wiring) {
-      const from = portOf(wiring.link);
-      if (from) links.push(curve(from, wiring.to, '#ffffff'));
-    }
-    const transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
     return (
       <div {...css.attrs(styles.panel)}>
         <div {...css.attrs(styles.toolbar)}>
@@ -229,26 +196,25 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
           <span {...css.attrs(styles.grow)}>{t.graphHint}</span>
           <IconButton icon={CircleX} variant="ghost" aria-label={t.graphClose} onClick={() => session.closeMaterialGraph()} />
         </div>
-        <div {...css.attrs(styles.canvas)} ref={(element: unknown) => (canvas = element as HTMLElement)} onPointerdown={panStart} onWheel={wheel}>
-          <svg {...css.attrs(styles.layer)} style={{ transform, overflow: 'visible' }} width="1" height="1">{links}</svg>
-          <div {...css.attrs(styles.layer)} style={{ transform }}>
-            {file.nodes.map((node) => {
-              const spec = SPECS.get(node.type);
-              return spec ? nodeCard(node, spec) : undefined;
-            })}
-            <div {...css.attrs(styles.node)} style={{ left: `${out[0]}px`, top: `${out[1]}px` }} onPointerdown={(e: PointerEvent) => e.stopPropagation()}>
-              <div {...css.attrs(styles.header)}>{t.graphOutput}</div>
-              {OUTPUT_PORTS.map((port) => (
-                <div {...css.attrs(styles.row)}>
-                  <span {...css.attrs(styles.port)} data-node={OUTPUT_NODE} data-port={port.name}
-                    style={{ left: '-6px', backgroundColor: file.outputs[port.name] ? PORT_COLORS[port.type] : 'transparent' }}
-                    title={file.outputs[port.name] ? t.graphDisconnect : undefined}
-                    onPointerdown={(e: PointerEvent) => { e.stopPropagation(); if (file.outputs[port.name]) disconnect(OUTPUT_NODE, port.name); }} />
-                  {t.graphOutputs[port.name as keyof typeof t.graphOutputs] ?? port.name}
-                </div>
-              ))}
-            </div>
-          </div>
+        <div {...css.attrs(styles.canvas)} onKeydown={onKeydown}>
+          <Diagram
+            {...css.attrs(styles.diagram)}
+            nodes={cards(file)}
+            edges={links(file)}
+            height="100%"
+            routing="bezier"
+            selectable
+            draggable={(item: CardItem) => item.id !== OUTPUT_NODE}
+            _selected={selection}
+            connectable
+            onConnect={onConnect}
+            onNodesMove={onNodesMove}
+            fitView
+            getNodeLabel={(item: CardItem) => (item.node ? t.graphNodes[item.node.type] ?? item.node.type : t.graphOutput)}
+            aria-label={t.toolWindows.graph}
+          >
+            {(item: CardItem, state: { selected: boolean }) => card(item, state.selected)}
+          </Diagram>
         </div>
       </div>
     );

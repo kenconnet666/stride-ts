@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { checkTerrainFile } from '../src/content/terrainFormat';
+import { changedRegions } from '../src/terrain/TerrainSystem';
 import { heightfieldGrid, selectTiles, TILE_QUADS, tileId, tilePageHeader, tileRect, type TileKey } from '../src/terrain/terrainTiles';
 
 const all = () => true;
@@ -57,6 +58,30 @@ describe('地形的分块', () => {
     expect(Math.max(...indices)).toBe(vertices.length / 8 - 1);
     // 块的原点 (1030, -6) 米，每 4 米一个周期、按 1024 米取模：UV 原点 (1.5, 254.5)；32 米的块每格 1 米 = 0.25 个周期
     expect(tilePageHeader(1030, -6, 32, 4, 1024)).toEqual([1.5, 254.5, 0.25, 4]);
+  });
+});
+
+describe('地形的改动范围（雕刻时只重算盖到的块）', () => {
+  const base = { name: 'Hills', noise: { octaves: 4 }, strokes: [{ op: 'raise' as const, x: 10, z: 20, radius: 5, strength: 2 }] };
+
+  test('底、材质、UV 变了：整个重算', () => {
+    expect(changedRegions(base, { ...base, noise: { octaves: 5 } })).toBeUndefined();
+    expect(changedRegions(base, { ...base, material: 'Materials/Grass' })).toBeUndefined();
+  });
+
+  test('加一笔、去一笔：那一笔的范围；地物按包围盒加过渡；没改：空', () => {
+    expect(changedRegions(base, base)).toEqual([]);
+    const added = { ...base, strokes: [...base.strokes, { op: 'lower' as const, x: -100, z: 0, radius: 10, strength: 1 }] };
+    expect(changedRegions(base, added)).toEqual([[-110, -10, -90, 10]]);
+    expect(changedRegions(added, base)).toEqual([[-110, -10, -90, 10]]);
+    const flat = { ...base, features: [{ type: 'flatten' as const, points: [[0, 0], [10, 0], [10, 10]] as [number, number][], height: 1, falloff: 2 }] };
+    expect(changedRegions(base, flat)).toEqual([[-2, -2, 12, 12]]);
+  });
+
+  test('同样的笔画换了顺序：这些笔画的范围都算改了', () => {
+    const two = { ...base, strokes: [...base.strokes, { op: 'lower' as const, x: 0, z: 0, radius: 1, strength: 1 }] };
+    const swapped = { ...two, strokes: [two.strokes[1]!, two.strokes[0]!] };
+    expect(changedRegions(two, swapped)).toEqual([[-1, -1, 1, 1], [5, 15, 15, 25]]);
   });
 });
 

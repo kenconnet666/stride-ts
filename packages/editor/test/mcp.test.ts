@@ -113,6 +113,15 @@ describe('编辑器的 MCP 服务', () => {
     expect((await mcp.call('generate_sound', { path: 'Sounds/Nope', mutate: true })).error).toBe(true);
   }, 60_000);
 
+  test('雕刻地形：追加笔画和地物、撤掉最后几笔，存回文件', async () => {
+    await mcp.call('write_asset', { kind: 'terrain', path: 'Terrains/Hills', content: { name: 'Hills', noise: { octaves: 4 } }, create: true });
+    expect((await mcp.call('sculpt_terrain', { path: 'Terrains/Hills', strokes: [{ op: 'raise', x: 0, z: 0, radius: 20, strength: 5 }, { op: 'lower', x: 30, z: 0, radius: 10, strength: 2 }] })).value).toEqual({ strokes: 2, features: 0 });
+    expect((await mcp.call('sculpt_terrain', { path: 'Terrains/Hills', undo: 1, features: [{ type: 'flatten', points: [[0, 0], [10, 0], [10, 10]], height: 3, falloff: 4 }] })).value).toEqual({ strokes: 1, features: 1 });
+    const file = (await mcp.call('read_asset', { kind: 'terrain', path: 'Terrains/Hills' })).value;
+    expect(file.strokes).toEqual([{ op: 'raise', x: 0, z: 0, radius: 20, strength: 5 }]);
+    expect(file.features[0]).toMatchObject({ type: 'flatten', height: 3, falloff: 4 });
+  });
+
   test('一个服务能换到仓库里别的工程：project 列出别的工程，switch_project 以后别的工具都对着新工程', async () => {
     const other = (await createProject(path.join(repo, 'apps', 'other'))).root;
     expect((await mcp.call('project', {})).value.otherProjects).toEqual(['apps/game', 'apps/other']);

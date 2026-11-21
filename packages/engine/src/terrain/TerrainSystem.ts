@@ -20,6 +20,7 @@ import { Mesh } from '../rendering/mesh/Mesh';
 import { HeightfieldTile, HeightPages } from '../rendering/mesh/HeightPages';
 import { Character } from '../physics/components';
 import { Terrain, TerrainAsset, TerrainTile } from './Terrain';
+import type { TerrainFile } from '../content/terrainFormat';
 import { heightfieldGrid, leafLevel, selectTiles, TILE_QUADS, TILE_SAMPLES, tileId, tilePageHeader, tileRect, type TileKey } from './terrainTiles';
 
 /** 同时在算的高度页最多几个（每页约 1 毫秒，工作线程上）。 */
@@ -39,6 +40,8 @@ interface Tile {
   used: number;
   /** 高度页在算。 */
   requested: boolean;
+  /** 地形文件改了、这块在改动的范围里：照旧画着旧的页，新的页算好了换上（雕刻时不闪）。 */
+  stale: boolean;
 }
 
 /** 一个地形实体的状态。 */
@@ -60,6 +63,8 @@ interface TerrainState {
   eye: [number, number, number] | undefined;
   /** 设置变了加一：算到一半的页发现代数不对就扔掉。 */
   generation: number;
+  /** 算过的块数、碰撞块数（累计，调试命令 terrain 报，看雕刻时重算了多少）。 */
+  built: { tiles: number; colliders: number };
   /** 碰撞的块（最细一层，按格子坐标 `x_z`）：物理世界里的高度场，相机和角色附近才有。 */
   readonly colliders: Map<string, Collider>;
 }
@@ -102,15 +107,20 @@ export class TerrainSystem {
       const terrain = entity.require(Terrain);
       const asset = TerrainAsset.byId(terrain.terrain);
       if (!asset) continue;
-      const settings = `${asset.id}|${terrain.size}|${terrain.detail}|${terrain.lodFactor}|${terrain.isShadowCaster}|${terrain.renderGroup}`;
+      const settings = `${asset.path}|${terrain.size}|${terrain.detail}|${terrain.lodFactor}|${terrain.isShadowCaster}|${terrain.renderGroup}`;
       let state = this.#states.get(id);
       if (state && state.settings !== settings) {
         this.#drop(id, state);
         state = undefined;
       }
+      // 同一个地形文件的新版本（编辑器、MCP 改了、热重载）：只改了笔画、地物时只重算盖到的块
+      if (state && state.asset !== asset && !this.#swapAsset(state, asset)) {
+        this.#drop(id, state);
+        state = undefined;
+      }
       if (!state) {
         const grid = new Mesh(`${asset.path} heightfield`, { ...heightfieldGrid(), heightfield: true });
-        state = { entity, settings, asset, grid, minHeight: Infinity, maxHeight: -Infinity, tiles: new Map(), drawn: new Map(), pending: 0, eye: undefined, generation: 0, colliders: new Map() };
+        state = { entity, settings, asset, grid, minHeight: Infinity, maxHeight: -Infinity, tiles: new Map(), drawn: new Map(), pending: 0, eye: undefined, generation: 0, colliders: new Map(), built: { tiles: 0, colliders: 0 } };
         this.#states.set(id, state);
       }
       if (eye) this.#updateTerrain(state, eye);
@@ -163,6 +173,7 @@ export class TerrainSystem {
     // 算的时候块已经不要了（走远了、地形换了）：不建
     if (!simulation || generation !== state.generation || !state.entity.alive || ![...state.colliders.values()].includes(collider)) return;
     const world = state.entity.require(Transform).world;
+    state.built.colliders++;
     collider.release = simulation.addHeightfield(state.entity.id, heights, samples, spacing, [world[12]! + x0, world[13]!, world[14]! + z0]);
   }
 
@@ -178,9 +189,10 @@ export class TerrainSystem {
   });
 
   /** 每个地形的块数（调试命令 terrain 用）。 */
-  stats(): { entity: string; asset: string; drawn: number; cached: number; pending: number }[] {
+  stats(): { entity: string; asset: string; drawn: number; cached: number; pending: number; colliders: number; built: { tiles: number; colliders: number } }[] {
     return [...this.#states.values()].map((state) => ({
       entity: state.entity.name, asset: state.asset.path, drawn: state.drawn.size, cached: state.tiles.size, pending: state.pending,
+      colliders: state.colliders.size, built: { ...state.built },
     }));
   }
 
@@ -250,16 +262,59 @@ export class TerrainSystem {
     for (const key of want) {
       const id = tileId(key);
       let tile = state.tiles.get(id);
-      if (!tile) state.tiles.set(id, (tile = { key, page: undefined, used: frame, requested: false }));
+      if (!tile) state.tiles.set(id, (tile = { key, page: undefined, used: frame, requested: false, stale: false }));
       tile.used = frame;
       if (tile.page !== undefined || state.pending >= MAX_PENDING || tile.requested) continue;
       tile.requested = true;
       void this.#build(state, tile, state.generation);
     }
+    // 改动范围里正在画的块：后台重算（新的页好了再换上）
+    for (const [id, child] of state.drawn) {
+      const tile = state.tiles.get(id)!;
+      if (!tile.stale || tile.requested || state.pending >= MAX_PENDING) continue;
+      tile.requested = true;
+      void this.#build(state, tile, state.generation, child);
+    }
     this.#evict(state);
   }
 
-  async #build(state: TerrainState, tile: Tile, generation: number): Promise<void> {
+  /**
+   * 换成同一个地形文件的新版本：底（噪声）、材质、UV 变了返回 false（整个重建）；只是笔画、地物增减了，就只让改动范围（笔画按半径、
+   * 地物按包围盒加过渡宽度）里的块和碰撞块重算，别的留着——笔画、地物只改自己范围里的高度，范围外逐位不变。
+   */
+  #swapAsset(state: TerrainState, asset: TerrainAsset): boolean {
+    const rects = changedRegions(state.asset.file, asset.file);
+    if (!rects) return false;
+    state.asset = asset;
+    state.generation++;
+    const size = state.entity.require(Terrain).size;
+    const hit = (x0: number, z0: number, edge: number, margin: number) =>
+      rects.some((r) => x0 - margin < r[2] && x0 + edge + margin > r[0] && z0 - margin < r[3] && z0 + edge + margin > r[1]);
+    for (const [id, tile] of state.tiles) {
+      tile.requested = false;
+      const { x0, z0, edge } = tileRect(size, tile.key);
+      // 多一圈格子：页的边上那一圈是算法线用的
+      if (!hit(x0, z0, edge, edge / TILE_QUADS)) continue;
+      if (state.drawn.has(id)) tile.stale = true;
+      else {
+        if (tile.page !== undefined) this.#pages.free(tile.page);
+        state.tiles.delete(id);
+      }
+    }
+    const leaf = tileRect(size, { level: leafLevel(state.entity.require(Terrain)), x: 0, z: 0 }).edge;
+    for (const [key, collider] of state.colliders) {
+      const [x, z] = key.split('_').map(Number) as [number, number];
+      if (!hit(-size / 2 + x * leaf, -size / 2 + z * leaf, leaf, 0)) continue;
+      collider.release?.();
+      state.colliders.delete(key);
+    }
+    state.pending = 0;
+    state.eye = undefined;
+    return true;
+  }
+
+  /** 算一块的高度页；replacing 是正在画着它的子实体时（改动范围里的旧块），算好以后换到新的页上。 */
+  async #build(state: TerrainState, tile: Tile, generation: number, replacing?: Entity): Promise<void> {
     const terrain = state.entity.require(Terrain);
     const { x0, z0, edge } = tileRect(terrain.size, tile.key);
     const spacing = edge / TILE_QUADS;
@@ -270,8 +325,13 @@ export class TerrainSystem {
       if (generation !== state.generation || !state.entity.alive) return;
       const header = tilePageHeader(x0, z0, edge, uvScale, uvScale * UV_PERIODS);
       const pages = this.#pages;
+      const old = tile.page;
       tile.page = pages.allocate();
       pages.write(tile.page, header, heights);
+      state.built.tiles++;
+      tile.stale = false;
+      if (replacing?.alive) replacing.require(HeightfieldTile).page = tile.page;
+      if (old !== undefined) pages.free(old);
       // 共用网格的包围盒（网格空间：x、z 是格坐标多一圈，y 是米）跟着算好的页放大，剔除、阴影的范围都对
       // 下界再减去裙边（粗的块裙边深）
       let min = state.minHeight, max = state.maxHeight;
@@ -287,8 +347,11 @@ export class TerrainSystem {
       state.eye = undefined;
       this.#game.requestFrames();
     } finally {
-      if (generation === state.generation) state.pending--;
-      tile.requested = false;
+      // 代数变了（换了文件）时 pending 已经清零
+      if (generation === state.generation) {
+        state.pending--;
+        tile.requested = false;
+      }
     }
   }
 
@@ -338,3 +401,27 @@ export class TerrainSystem {
   }
 }
 
+
+/**
+ * 新旧两版地形文件的改动范围（地形本地坐标的矩形 [x0, z0, x1, z1]）：底（噪声）、材质、UV 变了返回 undefined（整个重算）；
+ * 否则是增加或去掉了的笔画（按半径）、地物（按包围盒加过渡宽度）的范围。
+ */
+export function changedRegions(before: TerrainFile, after: TerrainFile): [number, number, number, number][] | undefined {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  if (!same(before.noise, after.noise) || !same(before.material, after.material) || !same(before.uvScale, after.uvScale)) return undefined;
+  const rects: [number, number, number, number][] = [];
+  const diff = <T>(a: readonly T[], b: readonly T[], rect: (item: T) => [number, number, number, number]) => {
+    const count = new Map<string, number>();
+    for (const item of a) count.set(JSON.stringify(item), (count.get(JSON.stringify(item)) ?? 0) + 1);
+    for (const item of b) count.set(JSON.stringify(item), (count.get(JSON.stringify(item)) ?? 0) - 1);
+    for (const item of [...a, ...b]) if (count.get(JSON.stringify(item))) rects.push(rect(item));
+  };
+  diff(before.strokes ?? [], after.strokes ?? [], (s) => [s.x - s.radius, s.z - s.radius, s.x + s.radius, s.z + s.radius]);
+  diff(before.features ?? [], after.features ?? [], (f) => {
+    const xs = f.points.map((p) => p[0]), zs = f.points.map((p) => p[1]), m = f.falloff ?? 0;
+    return [Math.min(...xs) - m, Math.min(...zs) - m, Math.max(...xs) + m, Math.max(...zs) + m];
+  });
+  // 笔画的先后影响结果：同样的笔画换了顺序时，这些笔画的范围都算改了
+  if (rects.length === 0 && !same(before.strokes ?? [], after.strokes ?? [])) for (const s of after.strokes ?? []) rects.push([s.x - s.radius, s.z - s.radius, s.x + s.radius, s.z + s.radius]);
+  return rects;
+}

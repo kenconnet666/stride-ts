@@ -15,7 +15,7 @@ import { checkEntity } from '@stride-ts/engine/editor-fields';
 import { applyPolyOperation, POLY_OPERATIONS, type PolyOperation } from '@stride-ts/engine/modeling';
 import { autoRegions, gridRegions, replaceSprites } from '@stride-ts/engine/editor-sprites';
 import { mutateSound, seededRandom, soundSynth, SOUND_PRESETS, SOUND_SYNTH_RATE, synthesizeSound, type SoundPreset } from '@stride-ts/engine/audio-synth';
-import type { PolyMeshFile, SceneEntityFile, SoundFile, SpriteSheetFile, TextureEncoding } from '@stride-ts/engine/content-format';
+import type { PolyMeshFile, SceneEntityFile, SoundFile, SpriteSheetFile, TerrainFeatureFile, TerrainFile, TerrainStrokeFile, TextureEncoding } from '@stride-ts/engine/content-format';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import * as z from 'zod';
@@ -99,6 +99,35 @@ export function createEditorMcpServer(projects: McpProjects): McpServer {
   }, async ({ file, folder }) => {
     const result = await projects.current.importFile(folder, path.basename(file), new Uint8Array(await readFile(file)));
     return json({ asset: brief(result.asset), warnings: result.warnings, ...(result.animations ? { animations: result.animations } : {}) });
+  });
+
+  server.registerTool('sculpt_terrain', {
+    description: [
+      'Sculpt a vector terrain asset (kind terrain, .terrain.json) and save it; viewports re-evaluate only the tiles the change covers.',
+      'Coordinates are the terrain\'s local meters (x, z; the terrain entity\'s position is the origin), heights in meters.',
+      'strokes are appended in order: raise / lower {x, z, radius, strength (m)}, flatten {x, z, radius, strength 0..1, height}, smooth {x, z, radius, strength 0..1}.',
+      'features are appended: flatten {points: [[x, z], ...] polygon, height, falloff (m), strength 0..1} for roads, plazas, foundations.',
+      'undo removes that many of the last strokes first. Returns the stroke and feature counts.',
+    ].join(' '),
+    inputSchema: z.object({
+      path: assetPath,
+      strokes: z.array(z.object({
+        op: z.enum(['raise', 'lower', 'flatten', 'smooth']),
+        x: z.number(), z: z.number(), radius: z.number().positive(), strength: z.number(), height: z.number().optional(),
+      })).optional(),
+      features: z.array(z.object({
+        type: z.literal('flatten'), name: z.string().optional(),
+        points: z.array(z.tuple([z.number(), z.number()])).min(3), height: z.number(), falloff: z.number().min(0).optional(), strength: z.number().min(0).max(1).optional(),
+      })).optional(),
+      undo: z.number().int().min(0).optional(),
+    }),
+  }, async ({ path, strokes = [], features = [], undo = 0 }) => {
+    const file = await projects.current.readAsset('terrain', path) as TerrainFile;
+    const kept = (file.strokes ?? []).slice(0, Math.max(0, (file.strokes?.length ?? 0) - undo));
+    // zod 的可选字段带 undefined，文件的类型不带：JSON 存盘时 undefined 的字段本来就不写
+    const next: TerrainFile = { ...file, strokes: [...kept, ...(strokes as TerrainStrokeFile[])], features: [...(file.features ?? []), ...(features as TerrainFeatureFile[])] };
+    await projects.current.saveAsset('terrain', path, next);
+    return json({ strokes: next.strokes!.length, features: next.features!.length });
   });
 
   server.registerTool('edit_poly', {

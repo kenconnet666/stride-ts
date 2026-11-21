@@ -67,15 +67,15 @@ const SHADOW_SLOPE_BIAS = 1.5;
 const VIEW_STRIDE = 1280;
 /**
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
- * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32，云影、天气、贴花、分簇 20，平面反射 28。
+ * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32，云影、天气、贴花、分簇 20，平面反射 28，原点 4，风 4。
  */
-const VIEW_FLOATS = 288;
+const VIEW_FLOATS = 292;
 /** 不用平面反射的视图在那几个数的位置写的：全是 0（用不用的那一位是 0）。 */
 const PLANAR_OFF = new Float32Array(28);
 /** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
 const ORIGIN_PATTERN_PERIOD = 65536;
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
-const MATERIAL_BYTES = 576;
+const MATERIAL_BYTES = 592;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
 const OPERATOR_CODES = { multiply: 0, add: 1 } as const;
 const DISTRIBUTION_CODES = { ggx: 0, beckmann: 1, blinnPhong: 2 } as const;
@@ -513,7 +513,7 @@ class Gpu {
   /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
   #cloudShadow: GPUTexture | undefined;
   /** 地面的湿和雪、判断淋不淋得到的天空遮挡（RenderSystem 的）。 */
-  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin'>;
+  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind'>;
   /** 视图绑定组里绑的是真的天空遮挡（有湿或雪时），还是空的；换了要重建绑定组。 */
   #occlusionBound = false;
   /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）和深度缓冲。 */
@@ -585,7 +585,7 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
     this.device = device;
     this.#planar = planar;
     this.#refraction = refraction;
@@ -635,7 +635,8 @@ class Gpu {
     this.#materialLayout = device.createBindGroupLayout({
       label: 'MeshRenderFeature material',
       entries: [
-        { binding: 0, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        // 顶点着色器也读：植被的风（Material.wind）
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
         { binding: 1, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: {} },
@@ -1005,6 +1006,8 @@ class Gpu {
       // 原点是 1024 米的整数倍，按 65536 米取模（图案 65 公里重复一次，单精度在这个范围里是毫米级）
       const origin = this.#weather.renderOrigin;
       data.set([origin[0] % ORIGIN_PATTERN_PERIOD, 0, origin[2] % ORIGIN_PATTERN_PERIOD, 0], o + 284);
+      const wind = this.#weather.wind;
+      data.set([...wind.velocity, wind.turbulence], o + 288);
     }
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
@@ -1207,6 +1210,7 @@ class Gpu {
       const transmission = material.transmission;
       floats.set(transmission ? [transmission.factor, transmission.ior, transmission.thickness, 0] : [0, 1.5, 0, 0], 72 + CEL_RAMP_STOPS * 8);
       floats.set(transmission ? [...transmission.attenuationColor.map((c) => -Math.log(Math.max(c, 1e-4)) / transmission.attenuationDistance), 0] : [0, 0, 0, 0], 76 + CEL_RAMP_STOPS * 8);
+      floats.set(material.wind ? [material.wind.bend, material.wind.flutter, 0, 0] : [0, 0, 0, 0], 80 + CEL_RAMP_STOPS * 8);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});

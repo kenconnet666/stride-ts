@@ -40,7 +40,7 @@ import { RenderSystem, type SceneRenderer } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../graphics/Texture';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleSystemComponent';
-import { WindField } from '../weather/WindField';
+import { gust, WindField } from '../weather/WindField';
 import { PrecipitationSystem } from '../weather/Precipitation';
 import { WeatherSystem } from '../weather/Weather';
 import { WorldStreaming } from '../world/WorldStreaming';
@@ -566,6 +566,15 @@ export class Game {
     return change;
   }
 
+  /** 植被的风（Material.wind）用的全局风：速度乘上这一刻的阵风（同 WindField.sample 的全局部分），写给渲染系统。 */
+  #updateRenderWind(): void {
+    const global = this.wind.global, out = this.renderSystem?.wind;
+    if (!out) return;
+    const pulse = 1 + global.pulseMagnitude * gust(this.wind.time * global.pulseFrequency);
+    for (let k = 0; k < 3; k++) out.velocity[k] = global.velocity[k]! * pulse;
+    out.turbulence = global.turbulence;
+  }
+
   /** 合成器指定的网格效果：按名字找游戏导出的 meshEffect，找不到时警告、用默认效果。 */
   /** 按场景的合成器设置配置主画面（loadScene 时；编辑器里场景的合成器改了以后 LiveScene 也调）。where 用在报错里。 */
   configureCompositor(compositor: CompositorSettings, where: string): void {
@@ -763,6 +772,7 @@ export class Game {
         this.world.update();
         this.weather.update(this);
         this.wind.update(this);
+        this.#updateRenderWind();
         this.precipitation.update(this);
         this.particles.update(this.updateTime.elapsed);
       }

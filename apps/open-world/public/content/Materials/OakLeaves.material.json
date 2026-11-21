@@ -21,5 +21,9 @@
   ]
  },
  "alphaCutoff": 0.5,
- "doubleSided": true
+ "doubleSided": true,
+ "wind": {
+  "bend": 0.45,
+  "flutter": 0.08
+ }
 }

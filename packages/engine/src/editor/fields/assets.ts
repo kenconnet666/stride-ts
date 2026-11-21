@@ -49,6 +49,15 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
   clearCoat: { type: json, optional: true, group: 'advanced' },
   subsurfaceScattering: { type: json, optional: true, group: 'advanced' },
   sheen: { type: object(fields<NonNullable<MaterialFile['sheen']>>({ color: colorLinear3, roughness: number({ min: 0, max: 1, step: 0.01 }) })), optional: true, group: 'advanced' },
+  wind: {
+    type: object(fields<NonNullable<MaterialFile['wind']>>({
+      bend: { type: number({ min: 0, step: 0.05, unit: 'm' }), description: 'how far a point 10 m up sways in a 10 m/s wind (grows with the height squared)' },
+      flutter: { type: number({ min: 0, step: 0.01, unit: 'm' }), optional: true, default: 0, description: 'how far leaves away from the trunk shake along their normal in a 10 m/s wind' },
+    })),
+    optional: true,
+    group: 'advanced',
+    description: 'vegetation wind: the mesh sways and its leaves flutter in the global wind (WindZone, weather)',
+  },
   anisotropy: { type: object(fields<NonNullable<MaterialFile['anisotropy']>>({ strength: number({ min: -1, max: 1, step: 0.01 }), rotation: { type: number({ unit: 'rad' }), optional: true, default: 0 } })), optional: true, group: 'advanced' },
   transmission: {
     type: object(fields<NonNullable<MaterialFile['transmission']>>({

@@ -157,6 +157,19 @@ export interface MaterialDesc {
   readonly anisotropy?: MaterialAnisotropy;
   /** 透射（玻璃、水、冰，看得见后面折射过来的东西），默认没有；有它的材质画在透明阶段。 */
   readonly transmission?: MaterialTransmission;
+  /** 植被的风（树、草在风里摆），默认没有。 */
+  readonly wind?: MaterialWind;
+}
+
+/**
+ * 植被的风（Stride 没有；同虚幻的 SimpleGrassWind、CryEngine 的植被弯曲的思路，只用顶点的位置，不要额外的顶点数据）：按全局风
+ * （game.wind，阵风在内）在顶点着色器里挪顶点。bend：整棵顺着风弯、来回摆，离实体原点越高挪得越多（高度的平方），是 10 米高处在
+ * 10 米每秒的风里摆多远（米）；flutter：离树干（实体原点的竖直轴）远的顶点沿法线抖（叶子），是 10 米每秒的风里抖多大（米）。
+ * 每个实体按位置错开相位，一片林子不会一起摆。阴影、深度、运动向量用同样的位置。
+ */
+export interface MaterialWind {
+  readonly bend: number;
+  readonly flutter?: number;
 }
 
 /**
@@ -255,6 +268,8 @@ export class Material {
   anisotropy: Required<MaterialAnisotropy> | undefined;
   /** 透射；改它用 setTransmission。 */
   transmission: Required<MaterialTransmission> | undefined;
+  /** 植被的风；改它用 setWind。 */
+  wind: Required<MaterialWind> | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
   version = 0;
 
@@ -305,7 +320,14 @@ export class Material {
     this.sheen = desc.sheen;
     this.anisotropy = desc.anisotropy && { rotation: 0, ...desc.anisotropy };
     this.transmission = withTransmissionDefaults(desc.transmission);
+    this.wind = desc.wind && { flutter: 0, ...desc.wind };
     this.id = materials.add(this) as MaterialId;
+  }
+
+  /** 加上、改掉或去掉植被的风，并让渲染特性重新上传。 */
+  setWind(value: MaterialWind | undefined): void {
+    this.wind = value && { flutter: 0, ...value };
+    this.version++;
   }
 
   /** 加上、改掉或去掉光泽，并让渲染特性重新上传。 */

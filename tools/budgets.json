@@ -21,6 +21,17 @@
     "render.drawCalls": 61,
     "render.instances": 1338
   },
+  "campsite": {
+    "entities": 19,
+    "gpu.buffers": 78,
+    "gpu.buffers.bytes": 707136,
+    "gpu.pipelines.sync": 3,
+    "gpu.textures": 22,
+    "gpu.textures.bytes": 41337650,
+    "native.allocated.bytes": 65381440,
+    "render.drawCalls": 84,
+    "render.instances": 78
+  },
   "collect-dodge": {
     "entities": 16,
     "gpu.buffers": 79,

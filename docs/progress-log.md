@@ -795,3 +795,10 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 第三步 `.spz`：PlayCanvas 示例里的 biker.spz（版本 4、15.3 万个、每段 zstd）解开 67 毫秒；和同一场景的 biker.compressed.ply 逐点比：位置差不到 0.1 毫米、颜色差一两个色阶、四元数同向。第一次对比 y、z 是反的（SPZ 是 RUB），读的时候换成 RDF 以后一致。经编辑器接口导入营地的临时目录，两个文件转出来的 `.splat` 一样大（4.3 MB），无头 Chrome 同一个相机下画面平均差 0.63 个色阶、最大 30（量化）。单测：手写一个版本 3（gzip、1 阶球谐）的文件查定点、旋转、坐标换算和球谐变号，示例文件有时比两种格式。
 - 第四步 `.sog`：先发现原生工具模块解不了 WebP，StrideNative 0.42.0 加了 libwebp 的解码器（原生的 Node 测试加了一张 1×1 的无损 WebP 和一个坏的）。单测读 PlayCanvas 示例的 bicycle.sog（版本 2、100 万个、3 阶球谐）：四元数是单位的、缩放为正。经编辑器接口导入营地：bicycle.sog（14.8 MB）4.0 秒转成 76 MB 的 `.splat`，无头 Chrome 里自行车立着、辐条清楚；apartment.sog（66 万个）2.1 秒，相机在屋子中间时近处的大泼溅糊满画面（数据本来如此）。
 
+## W1 大世界的底座：第一步（2026-11-21）
+
+- `.world.json`（`content/worldFormat.ts`：格子、图层、索引，`checkWorldFile` 检查）和流式加载（`world/WorldStreaming.ts`，`game.world.load(路径)`、`StreamingSource` 组件、`stride call world`）。
+- 新样例 `apps/open-world`（用 `cli.ts new` 建的）：`scripts/generate-test-world.ts` 生成 4 公里见方的测试世界 Worlds/Test（512 个格子场景，1.6 MB）；常驻场景 MainScene 有相机、太阳、物理天空。无头 Chrome 里地面和方块按格子出现；冒烟：相机附近的格子都在，挪到 1.2 公里外那边的加载、原来的卸载。
+- 飞过去的测量见 decisions.md 的同名条目。
+- D18：Jolt 的 PerformanceTest 用当前 fork 编单精度、双精度两份（wasm64、Distribution、单线程）：Ragdoll 25.13 / 25.12、ConvexVsMesh 111.5 / 110.5、Pyramid 33.2 / 33.5 步每秒；LargeMesh 两份都在 wasm 里内存不够（PerformanceTest 默认的堆）。
+

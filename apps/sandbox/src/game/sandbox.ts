@@ -41,7 +41,7 @@ export const measureCrates = system({
 });
 
 export class SandboxGame extends Game {
-  private world!: PhysicsWorld;
+  private physicsWorld!: PhysicsWorld;
   private fountain!: Fountain;
   private physicsTime = 0;
   private stepMilliseconds = 0;
@@ -56,8 +56,8 @@ export class SandboxGame extends Game {
   }
 
   protected override async loadContent(): Promise<void> {
-    this.world = this.native.createPhysicsWorld(GRID * GRID + 1, { transforms: this.transforms });
-    this.world.addBox({ position: [0, -1, 0], halfExtent: [50, 1, 50], motion: 'static' });
+    this.physicsWorld = this.native.createPhysicsWorld(GRID * GRID + 1, { transforms: this.transforms });
+    this.physicsWorld.addBox({ position: [0, -1, 0], halfExtent: [50, 1, 50], motion: 'static' });
     // 箱子先作为实体放好，刚体从它们的 Transform 出发
     const boxes = Array.from({ length: GRID * GRID }, (_, i) =>
       this.entities.create({
@@ -65,7 +65,7 @@ export class SandboxGame extends Game {
         components: [Transform.with({ position: [(i % GRID) * 1.5 - 7, 5 + Math.floor(i / GRID) * 1.2, 0] }), Crate],
       }),
     );
-    this.world.addBoxes(boxes.map((box) => ({ halfExtent: [0.5, 0.5, 0.5], transform: transformSlot(box) })));
+    this.physicsWorld.addBoxes(boxes.map((box) => ({ halfExtent: [0.5, 0.5, 0.5], transform: transformSlot(box) })));
 
     // 看得见的部分：每排箱子一种颜色（同网格同材质的合成一次实例化绘制），地面和相机
     const cube = Mesh.cube();
@@ -97,7 +97,7 @@ export class SandboxGame extends Game {
     this.physicsTime = Math.min(this.physicsTime + time.elapsed, PHYSICS_STEP * MAX_STEPS_PER_FRAME);
     for (; this.physicsTime >= PHYSICS_STEP; this.physicsTime -= PHYSICS_STEP) {
       const start = performance.now();
-      this.world.step(PHYSICS_STEP);
+      this.physicsWorld.step(PHYSICS_STEP);
       this.stepMilliseconds = performance.now() - start;
     }
     if (time.total - this.statsTime >= STATS_INTERVAL) {

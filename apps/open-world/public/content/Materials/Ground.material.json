@@ -1,0 +1,11 @@
+{
+ "name": "Ground",
+ "baseColor": [
+  0.16,
+  0.22,
+  0.12,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.9
+}

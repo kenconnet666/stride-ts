@@ -1,0 +1,17 @@
+{
+ "format": 1,
+ "procedural": {
+  "type": "plane",
+  "size": [
+   256,
+   256
+  ],
+  "uvScale": [
+   128,
+   128
+  ]
+ },
+ "materials": [
+  "Materials/Ground"
+ ]
+}

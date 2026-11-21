@@ -28,6 +28,8 @@ export const EXTENSIONS = {
   sound: '.sound.json',
   /** 时间轴（TimelineFile）。 */
   timeline: '.timeline.json',
+  /** 世界（WorldFile，content/worldFormat.ts）：格子、图层和有内容的格子的索引；格子的内容是旁边目录里的场景。 */
+  world: '.world.json',
   /** 关卡白盒（BrushFile）：笔刷的列表，编辑器后端把它烘成同名的模型（.model）。 */
   brush: '.brush.json',
   /** SDF 建模（SdfFile）：形状平滑合成的列表，编辑器后端把它烘成同名的模型（.model）。 */

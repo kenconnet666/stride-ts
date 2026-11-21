@@ -1,5 +1,5 @@
 /** 实体的组件、场景的设置、实体自己的字段描述（COMPONENT_FIELDS、SCENE_FIELDS、ENTITY_FIELDS）。 */
-import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/format';
+import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneStreamingSource, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/format';
 import type { SceneSettingKey } from '../SceneDocument';
 import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, nullable, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -322,6 +322,13 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       windDirection: { type: number({ unit: 'deg' }), optional: true, default: 0, description: 'where the wind blows to, around Y: 0 is +Z, 90 is +X' },
       gustiness: optional(number({ min: 0, max: 1 }), 0.3),
       transitionTime: { type: number({ min: 0, unit: 's' }), optional: true, default: 30, description: 'how fast the current weather follows; 0 changes at once' },
+    })),
+    initial: {},
+  },
+  streamingSource: {
+    label: 'Streaming Source',
+    type: object(fields<SceneStreamingSource>({
+      radiusScale: { type: number({ min: 0 }), optional: true, default: 1, description: "world cells load within each layer's radius times this (the main camera always streams with 1)" },
     })),
     initial: {},
   },

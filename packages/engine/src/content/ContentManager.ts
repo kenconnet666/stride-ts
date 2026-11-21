@@ -42,6 +42,7 @@ import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage'
 import { uiAssetPaths } from './references';
 import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, isVideoEncoding, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './format';
 import { Timeline } from '../timeline/Timeline';
+import { checkWorldFile, type WorldFile } from './worldFormat';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -587,6 +588,11 @@ export class ContentManager {
    * 加载声音：不流式的下载并整个解码，流式的只记下音频文件的地址（实例播放时边下边放）。
    */
   /** 时间轴（TimelineFile）和它的声音轨道用到的声音（播放到时不用等加载）。 */
+  /** 世界（`.world.json`）：读进来、检查过的文件；格子的场景由 world/WorldStreaming.ts 按需加载。 */
+  loadWorld(path: string): Promise<WorldFile> {
+    return this.#once(path + EXTENSIONS.world, async (url) => checkWorldFile(this.#json<unknown>(await this.#read(url)), path));
+  }
+
   loadTimeline(path: string): Promise<Timeline> {
     return this.#once(path + EXTENSIONS.timeline, async (url) => {
       const file = this.#json<TimelineFile>(await this.#read(url));

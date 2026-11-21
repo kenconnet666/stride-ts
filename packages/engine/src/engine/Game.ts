@@ -42,6 +42,7 @@ import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleS
 import { WindField } from '../weather/WindField';
 import { PrecipitationSystem } from '../weather/Precipitation';
 import { WeatherSystem } from '../weather/Weather';
+import { WorldStreaming } from '../world/WorldStreaming';
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
@@ -181,6 +182,8 @@ export class Game {
   readonly precipitation = new PrecipitationSystem();
   /** 天气状态（Stride 没有）：Weather 组件想要的天气慢慢过渡，驱动云、雾、风和雨雪；`game.weather.current` 是当前的天气。 */
   readonly weather = new WeatherSystem();
+  /** 世界的流式加载（Stride 没有）：`game.world.load('Worlds/Island')` 换成一个 `.world.json` 的世界，格子按相机和 StreamingSource 加载。 */
+  readonly world = new WorldStreaming(this);
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
   readonly particles = new ParticleSystems();
   /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
@@ -713,6 +716,7 @@ export class Game {
         this.writeStats();
         await scriptContinuations();
         this.transforms.update();
+        this.world.update();
         this.weather.update(this);
         this.wind.update(this);
         this.precipitation.update(this);

@@ -276,6 +276,8 @@ export { GpuEmitter, SpawnRing } from './particles/GpuEmitter';
 export { gust, packWind, turbulenceAt, WindField, WindZone, GPU_LOCAL_WINDS, type GlobalWind, type LocalWind } from './weather/WindField';
 export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitationEmitter } from './weather/Precipitation';
 export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './weather/Weather';
+export { StreamingSource, WorldStreaming } from './world/WorldStreaming';
+export { cellAt, cellKey, cellOrigin, checkWorldFile, distanceToCell, worldCellPath, type WorldFile, type WorldLayer } from './content/worldFormat';
 export { SkyOcclusion, skyOcclusionCenter } from './weather/SkyOcclusion';
 export { packDepthSurface, ViewDepthSurface, type GpuDepthSurface } from './rendering/DepthSurface';
 export { buildKernel, gpuUnsupported, type GpuKernel } from './particles/gpuKernel';

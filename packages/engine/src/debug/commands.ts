@@ -340,6 +340,16 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     toneMap.dither = switchArg(args, toneMap.dither);
     return { dither: toneMap.dither };
   });
+  debug.command('world', 'World streaming (game.world, .world.json): cells load around the main camera and StreamingSource entities. args: load (world content path) switches to that world; unload (true) drops its cells. Reports the world, cell size, loaded and loading cells (layer/x_z), the streaming sources and how many cell loads and unloads happened.', async (args) => {
+    const world = game.world;
+    if (typeof args['load'] === 'string') await world.load(args['load']);
+    if (args['unload'] === true) world.unload();
+    return {
+      world: world.path ?? null, cellSize: world.file?.cellSize, layers: world.file?.layers,
+      loaded: world.loaded, loading: world.loading, sources: world.sources.map((source) => [Math.round(source.x), Math.round(source.z)]),
+      loads: world.loads, unloads: world.unloads,
+    };
+  });
   debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
     const taa = game.graphicsCompositor.temporalAntialiasing;
     taa.enabled = switchArg(args, taa.enabled);

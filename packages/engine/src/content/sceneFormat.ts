@@ -292,6 +292,11 @@ export interface SceneWeather {
   readonly transitionTime?: number;
 }
 
+/** 世界的流式源（Stride 没有，见 world/WorldStreaming.ts）：世界的格子按它附近加载。 */
+export interface SceneStreamingSource {
+  readonly radiusScale?: number;
+}
+
 /** 贴花（Stride 没有，见 Decal 组件）：颜色、法线贴图（法线没写 srgb 时按线性读）；没写的用默认值。 */
 export interface SceneDecal {
   readonly size?: Vec3Tuple;
@@ -552,6 +557,7 @@ export interface SceneEntityFile {
     readonly windZone?: SceneWindZone;
     readonly precipitation?: ScenePrecipitation;
     readonly weather?: SceneWeather;
+    readonly streamingSource?: SceneStreamingSource;
     readonly decal?: SceneDecal;
     /** Stride.BepuPhysics 的 StaticComponent。 */
     readonly static?: SceneCollidable;

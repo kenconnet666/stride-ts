@@ -15,7 +15,7 @@ Stride 的 TypeScript 孪生版起步的**一站式创作工作台**（用户 20
 - [docs/handover.md](docs/handover.md)：**换机器的交接**：新机器上的准备、各样例的端口、约定、调试命令、踩过的坑、定时任务的提示词（做到哪了看路线图的"进度"）。
 - [docs/roadmap.md](docs/roadmap.md)：路线图（范围、原则、阶段、取舍）和末尾的"进度"；执行中自己做的决定记在 [docs/decisions.md](docs/decisions.md)，已完成各项的过程在 [docs/progress-log.md](docs/progress-log.md)。
 
-现状（2026-11-21：P1、P2 完成；P3 编辑器的界面、场景树和资源浏览器的操作、预制体做了；P4 的底座做了大半；创作线 F1–F4（MCP、时间轴、物理相机和镜头、离线渲染和出片）做完，S2 的资源创作工具做完（验收 `apps/campsite`）；G1 室内的真实感做完（矩形、圆盘、管状面光源，IES 配光，视频贴图，平面反射，3D 文字，折射），G2 高斯泼溅做完（.ply、.spz、.sog 的导入和渲染；泼溅是采样数据，不做编辑器的创作工具）；原生模块是 64 位（Memory64）的；下一步是 W 组（从零创建大型世界和真实世界模拟）的 W1 大世界的底座，见路线图的"正在做和下一步"。进度、下一步、等用户定的事见 docs/roadmap.md 末尾的"进度"，只留结论，各项的过程和验收表在 docs/progress-log.md）：
+现状（2026-11-21：P1、P2 完成；P3 编辑器的界面、场景树和资源浏览器的操作、预制体做了；P4 的底座做了大半；创作线 F1–F4（MCP、时间轴、物理相机和镜头、离线渲染和出片）做完，S2 的资源创作工具做完（验收 `apps/campsite`）；G1 室内的真实感做完（矩形、圆盘、管状面光源，IES 配光，视频贴图，平面反射，3D 文字，折射），G2 高斯泼溅做完（.ply、.spz、.sog 的导入和渲染；泼溅是采样数据，不做编辑器的创作工具）；原生模块是 64 位（Memory64）的；W1 大世界的底座做了第一步（`.world.json` 世界分区、运行时按相机流式加载格子，`game.world`、`world/WorldStreaming.ts`，样例 `apps/open-world`），双精度（D18）等用户定；下一步是编辑器和 MCP 建世界，见路线图的"正在做和下一步"。进度、下一步、等用户定的事见 docs/roadmap.md 末尾的"进度"，只留结论，各项的过程和验收表在 docs/progress-log.md）：
 
 - **仓库**：pnpm monorepo（见 README.md 的"开发"），`main` 分支，远程 `origin` 是公开仓库 `kenconnet666/stride-ts`（2026-11-18 建，MIT 许可证）。提交了就直接推送到 origin，不用先问，也不等全量回归（用户 2026-11-18、2026-11-20：推送是为了几处检出互相同步，回归在后台跑，失败了再修、再推）；fork 同样直接推 origin，但永远不推上游 jrouwe。
 - **引擎核心**：`Game` 循环、`GraphicsDevice`、实体核心（`prop`、数据组件和列存储、系统、脚本、按模块路径登记，见 docs/architecture.md 的"实现状态"），实体克隆（`entity.clone()`）和所在的场景（`entity.scene`）；开发时有热重载（`Game.hotEntry`）；`Transform` 的数据在 stride-native 的变换存储里（层级传播、物理写回，见"共享内存的数据模型"）。

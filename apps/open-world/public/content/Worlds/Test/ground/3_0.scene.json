@@ -1,0 +1,32 @@
+{
+ "name": "3_0",
+ "entities": [
+  {
+   "id": "ground-3_0",
+   "name": "Ground",
+   "parent": null,
+   "position": [
+    128,
+    0,
+    128
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/CellGround",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

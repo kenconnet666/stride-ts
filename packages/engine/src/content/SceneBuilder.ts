@@ -25,6 +25,7 @@ import { Background, Camera, Decal, GaussianSplat, Instance, Instancing, Light, 
 import { DayNightCycle } from '../rendering/sky/DayNightCycle';
 import { Precipitation } from '../weather/Precipitation';
 import { Weather } from '../weather/Weather';
+import { StreamingSource } from '../world/WorldStreaming';
 import { WindZone } from '../weather/WindField';
 import type { Material } from '../rendering/mesh/Material';
 import type { Mesh } from '../rendering/mesh/Mesh';
@@ -406,6 +407,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   windZone: { add: (entity, zone) => entity.add(WindZone.with({ ...zone })), remove: drop(WindZone) },
   precipitation: { add: (entity, precipitation) => entity.add(Precipitation.with({ ...precipitation })), remove: drop(Precipitation) },
   weather: { add: (entity, weather) => entity.add(Weather.with({ ...weather })), remove: drop(Weather) },
+  streamingSource: { add: (entity, source) => entity.add(StreamingSource.with({ ...source })), remove: drop(StreamingSource) },
   decal: {
     add: (entity, { size, albedo, normal, color, ...decal }, { assets }) => entity.add(Decal.with({
       ...decal,

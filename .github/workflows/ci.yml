@@ -102,8 +102,9 @@ jobs:
     needs: content
     runs-on: ubuntu-latest
     name: smoke (${{ matrix.app }})
-    # 最慢的样例十几分钟；卡住的冒烟不设上限会占满 GitHub 默认的 6 小时，main 上后面的推送都排在它后面（并发组不取消正在跑的）
-    timeout-minutes: 30
+    # 最慢的样例（csharp-intermediate）在软件 WebGPU 上过了的时候也要 12～29 分钟（随运行器的快慢）；卡住的冒烟不设上限会占满
+    # GitHub 默认的 6 小时，main 上后面的推送都排在它后面（并发组不取消正在跑的）。regress.ps1 在 CI 上每个样例 2400 秒为止
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:

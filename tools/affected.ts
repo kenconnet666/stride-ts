@@ -14,6 +14,8 @@ const REPRESENTATIVE = ['platformer', 'bepu-sample', 'particles-sample', 'platfo
 
 /** 引擎的模块 → 用得最多的样例（顺序是先匹配先用）。 */
 const AREAS: readonly (readonly [RegExp, readonly string[]])[] = [
+  // 游戏的启动、帧循环、游戏设置：代表样例加上靠游戏设置里自己的根渲染器画的两个（没有场景）
+  [/^packages\/engine\/src\/engine\/Game\.ts$/, [...REPRESENTATIVE, 'custom-effect', 'sprite-fonts']],
   [/^packages\/engine\/src\/physics\/(NavigationSystem|RecastNavigation)/, ['csharp-intermediate', 'topdown-rpg']],
   [/^packages\/engine\/src\/physics\//, ['physics-sample', 'bepu-sample', 'platformer', 'first-person-shooter', 'topdown-rpg']],
   [/^packages\/engine\/src\/(animation|engine\/transform)/, ['animated-model', 'morph-targets', 'platformer', 'first-person-shooter']],

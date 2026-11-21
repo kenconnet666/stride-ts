@@ -599,3 +599,17 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
    - bepu-sample 的预算（entities 457 > 366、render.instances 2522 > 2023）、space-escape 的预算（render.instances 130 > 127）——没人看过；可能是冒烟改成按游戏时间、状态等以后量预算的时刻变了，也可能和物理一帧补 0.25 秒有关；
    - ui-particles："火跟着导火索往左走"（fire1 = [10,0,0]）——没人看过；
    - csharp-intermediate：收尾的提交改了动画（淡入、出拳逐帧看）和导航（按游戏时间等）的等法，本地真显卡过，SwiftShader 上没跑完。下一步：看最新一次完整运行，还有失败就照 lessons.md 的做法改等法；样例里按帧走的动画（SimpleAudio 的波形图，同 Stride）以后可以改成按时间走（和 Stride 不同，要记进 decisions.md）。
+
+## WebGPU 能力实测（2026-11-21，给 G 组定取舍）
+
+页面 `apps/bench` 的 `capabilities.html`（`node tools/run-page.ts http://localhost:5182/capabilities.html capabilitiesResults --error capabilitiesError --screenshot <png>`），无头 Chrome 157，RX 9070 GRE（RDNA 4），1080p，GPU 时间戳取中位数。页面底下画出各项的画面，看过是对的。
+
+| 项 | 做法 | 结果 |
+|---|---|---|
+| 高斯泼溅 | 12 × 4 × 16 米的屋子，97% 贴在表面、3% 飘着；每帧按视深 16 位计数排序（清桶、计数、一个工作组的前缀和、散开），再照 3DGS 投成椭圆、从后往前混合进 rgba16float | 100 万个：排序 0.35、画 1.17 毫秒；300 万：0.85、2.09；600 万：2.75、3.64。飘着的大泼溅占 15% 时 600 万个要画 8.3 毫秒：开销看重叠层数 |
+| 群演 | 一个人 4000 个三角形，32 帧的位置和法线烘成两张 rgba32float，一次实例化画完，深度测试、背面剔除 | 2000 人 0.52 毫秒，一万人 2.59，五万人 11.0；每毫秒 1500 万到 1800 万个三角形 |
+| 视频贴图 | 画布画 120 帧编成 H.264（avc1.640028），WebCodecs 硬解，每帧 `importExternalTexture` 铺满 1080p 画一遍 | 只解码每秒 750 到 800 帧，解码加导入加画每秒 310 到 335 帧；帧是 NV12，每帧 CPU 0.25 到 0.29 毫秒，GPU 0.016 毫秒 |
+| 路径追踪 | 方块楼的城，JS 里分 8 桶按表面积启发式建 BVH2，计算着色器遍历：主光线、一次漫反射反弹、太阳的阴影光线 | 10 万个三角形：建 0.75 到 1.1 秒，一个样本 2.28 毫秒，每秒 17 亿条光线；100 万个：建 7 秒，2.55 毫秒，每秒 15 亿条 |
+
+特性：atomic-vec2u-min-max、bgra8unorm-storage、clip-distances、depth-clip-control、dual-source-blending、float32-blendable、float32-filterable、indirect-first-instance、primitive-index、rg11b10ufloat-renderable、shader-f16、subgroup-size-control、subgroups、texture-component-swizzle、texture-compression-bc（含 sliced-3d）、texture-formats-tier1/2、timestamp-query。上限：缓冲和单个存储缓冲绑定 2 GB，每阶段 16 个存储缓冲，工作组共享内存 32 KB、一个工作组最多 1024 个线程，2D 贴图 16384。结论见 decisions.md 的"未来城市和现实仿真：路线图加 G 组"。
+

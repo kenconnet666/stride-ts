@@ -2,7 +2,7 @@
  * 编辑器"新建"出来的资源的初始内容（前端的资源浏览器用；只有数据，没有 Node 的依赖）。都是最小的合法文件，建出来以后在
  * 编辑器里接着改：场景是空的、材质是浅灰的、基本形状是 JSON 写的模型（content/modelFile.ts）、UI 页面是一块全屏的 Canvas。
  */
-import { PROCEDURAL_SHAPES, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type TimelineFile, type UIFile } from '@stride-ts/engine/content-format';
+import { PROCEDURAL_SHAPES, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SpriteSheetFile, type TimelineFile, type UIFile } from '@stride-ts/engine/content-format';
 import { polyCube } from '@stride-ts/engine/modeling';
 import type { AssetKind } from './protocol.ts';
 
@@ -10,7 +10,7 @@ export type ProceduralShapeType = (typeof PROCEDURAL_SHAPES)[number];
 
 /** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容（菜单里的文字在界面的翻译表里，按 id 和 shape 取）。 */
 export interface NewAssetOption {
-  readonly id: 'scene' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | `model:${ProceduralShapeType}`;
+  readonly id: 'scene' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | `model:${ProceduralShapeType}`;
   readonly kind: AssetKind;
   /** 基本形状的模型是哪种形状。 */
   readonly shape?: ProceduralShapeType;
@@ -36,6 +36,8 @@ export const NEW_ASSET_OPTIONS: readonly NewAssetOption[] = [
     content: (name): UIFile => ({ name, designResolution: [1280, 720], root: 0, elements: [{ type: 'Canvas', props: {} }] }),
   },
   { id: 'timeline', kind: 'timeline', name: 'NewTimeline', content: (name): TimelineFile => ({ name, duration: 5, tracks: [] }) },
+  // 精灵表：空的，在精灵表面板里选一张贴图开始切
+  { id: 'spriteSheet', kind: 'spriteSheet', name: 'NewSprites', content: (name): SpriteSheetFile => ({ name, sprites: [] }) },
   // 白盒：一块 8 x 8 米的地板，在上面接着搭
   { id: 'brush', kind: 'brush', name: 'NewGreybox', content: (name): BrushFile => ({ name, materials: [null], brushes: [{ name: 'Floor', kind: 'box', operation: 'add', position: [0, -0.25, 0], size: [8, 0.5, 8] }] }) },
   { id: 'poly', kind: 'poly', name: 'NewMesh', content: (name): PolyMeshFile => polyCube(name) },

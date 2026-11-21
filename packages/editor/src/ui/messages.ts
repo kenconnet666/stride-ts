@@ -26,6 +26,11 @@ export interface EditorMessages {
   readonly snapSurfaceOff: string;
   readonly snapVertexOn: string;
   readonly snapVertexOff: string;
+  readonly spriteSheet: {
+    readonly none: string; readonly add: string; readonly remove: string; readonly columns: string; readonly rows: string; readonly grid: string; readonly auto: string;
+    readonly fit: string; readonly texture: string; readonly startFrom: string; readonly list: string; readonly center: string; readonly cannotShow: string;
+    readonly nothingFound: string; readonly sliced: (count: number) => string; readonly noImage: (path: string) => string;
+  };
   readonly palette: { readonly title: string; readonly placeholder: string; readonly actions: string; readonly entities: string; readonly assets: string; readonly toggleRealtime: string; readonly toggleSnap: string; readonly toggleSurfaceSnap: string; readonly toggleVertexSnap: string };
   readonly snapStep: { readonly [K in 'translate' | 'rotate' | 'scale']: { readonly label: string; readonly title: string } };
   readonly prefabTitle: (path: string) => string;
@@ -33,7 +38,7 @@ export interface EditorMessages {
   readonly viewportToolbar: string;
   readonly openDocuments: string;
   readonly selectedCount: (n: number) => string;
-  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string };
+  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string };
   readonly language: string;
   readonly frameGuide: string;
   readonly frameGuideOff: string;
@@ -52,7 +57,7 @@ export interface EditorMessages {
   readonly delete: string;
   readonly open: string;
   readonly newAsset: string;
-  readonly newAssetLabels: { readonly scene: string; readonly material: string; readonly ui: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly shape: (shape: string) => string };
+  readonly newAssetLabels: { readonly scene: string; readonly spriteSheet: string; readonly material: string; readonly ui: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly shape: (shape: string) => string };
   readonly shapes: Readonly<Record<ProceduralShapeType, string>>;
   readonly importing: string;
   readonly working: (action: string) => string;
@@ -64,7 +69,7 @@ export interface EditorMessages {
   readonly created: (kind: string, path: string) => string;
   readonly imported: (assets: readonly string[]) => string;
   // 属性面板
-  readonly assetLabels: { readonly material: string; readonly model: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly modelImport: string; readonly imageImport: string; readonly gameSettings: string };
+  readonly assetLabels: { readonly material: string; readonly model: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly modelImport: string; readonly imageImport: string; readonly spriteSheet: string; readonly gameSettings: string };
   readonly assetHint: (kind: string, path: string) => string;
   readonly instanceOf: (prefab: string) => string;
   readonly memberOf: (prefab: string, instance: string, member: string) => string;
@@ -194,6 +199,12 @@ const zhCN: EditorMessages = {
   snapSurfaceOff: '吸附到表面关着：点一下打开，拖移动的操纵器时东西落到光标下的表面上',
   snapVertexOn: '吸附到顶点开着：拖移动的操纵器时，东西上离光标最近的顶点对到光标下另一个物体的顶点上',
   snapVertexOff: '吸附到顶点关着：点一下打开（拖的时候按住 V 也行），东西上的顶点对到光标下另一个物体的顶点上',
+  spriteSheet: {
+    none: '在资源浏览器里选一个精灵表', add: '加一个精灵', remove: '删掉选中的精灵', columns: '列数', rows: '行数', grid: '按网格切', auto: '自动切',
+    fit: '整张放进视口', texture: '贴图（内容路径）', startFrom: '从这张贴图开始', list: '精灵', center: '原点（拖动改）',
+    cannotShow: '这张贴图只有 KTX2，浏览器显示不了：在资源浏览器里把它的源图片放回来', nothingFound: '没有切出东西（贴图全透明？）',
+    sliced: (count) => `切出 ${count} 个精灵，替换了这张贴图上原来的`, noImage: (path) => `找不到图片 ${path}`,
+  },
   palette: { title: '到处搜', placeholder: '搜操作、实体、资源', actions: '操作', entities: '场景里的实体', assets: '资源', toggleRealtime: '视口一直出帧（开关）', toggleSnap: '吸附（开关）', toggleSurfaceSnap: '吸附到表面（开关）', toggleVertexSnap: '吸附到顶点（开关）' },
   snapStep: {
     translate: { label: '移动', title: '移动的步长（米）' },
@@ -205,7 +216,7 @@ const zhCN: EditorMessages = {
   viewportToolbar: '视口工具条',
   openDocuments: '打开的文档',
   selectedCount: (n) => `选中 ${n} 个`,
-  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子' },
+  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表' },
   language: '界面语言',
   frameGuide: '画幅参考线（视口上框出画幅和安全框，构图用）',
   frameGuideOff: '画幅：关',
@@ -221,7 +232,7 @@ const zhCN: EditorMessages = {
   delete: '删除',
   open: '打开',
   newAsset: '新建资源',
-  newAssetLabels: { scene: '场景', material: '材质', ui: 'UI 页面', timeline: '时间轴', brush: '白盒（布尔建模）', sdf: 'SDF 模型（平滑融合）', poly: '多边形网格（点线面编辑）', shape: (shape) => `基本形状：${shape}` },
+  newAssetLabels: { spriteSheet: '精灵表', scene: '场景', material: '材质', ui: 'UI 页面', timeline: '时间轴', brush: '白盒（布尔建模）', sdf: 'SDF 模型（平滑融合）', poly: '多边形网格（点线面编辑）', shape: (shape) => `基本形状：${shape}` },
   shapes: { cube: '立方体', plane: '平面', sphere: '球', geoSphere: '测地球', capsule: '胶囊', cylinder: '圆柱', torus: '圆环', cone: '圆锥', teapot: '茶壶' },
   importing: '导入',
   working: (action) => `${action}……`,
@@ -232,7 +243,7 @@ const zhCN: EditorMessages = {
   opened: (kind, path) => `打开了 ${kind} ${path}`,
   created: (kind, path) => `建了 ${kind} ${path}（路径框里可以改名）`,
   imported: (assets) => `导入了 ${assets.join('、')}`,
-  assetLabels: { material: '材质', model: '模型', timeline: '时间轴', brush: '白盒', sdf: 'SDF 模型', poly: '多边形网格', modelImport: '导入设置', imageImport: '贴图的导入设置', gameSettings: '游戏设置' },
+  assetLabels: { material: '材质', model: '模型', timeline: '时间轴', brush: '白盒', sdf: 'SDF 模型', poly: '多边形网格', modelImport: '导入设置', imageImport: '贴图的导入设置', spriteSheet: '精灵表', gameSettings: '游戏设置' },
   assetHint: (kind, path) => `${kind} ${path}：改了马上存进资源文件，视口里用到它的实体跟着变。`,
   instanceOf: (prefab) => `预制体 ${prefab} 的实例`,
   memberOf: (prefab, instance, member) => `预制体 ${prefab} 的实例 ${instance} 里的 ${member}`,
@@ -370,6 +381,12 @@ const enUS: EditorMessages = {
   snapSurfaceOff: 'Surface snapping is off: click to drop things onto the surface under the cursor while dragging the move gizmo',
   snapVertexOn: 'Vertex snapping is on: dragging the move gizmo puts the vertex nearest the cursor onto a vertex of the object under the cursor',
   snapVertexOff: 'Vertex snapping is off: click (or hold V while dragging) to put a vertex onto a vertex of the object under the cursor',
+  spriteSheet: {
+    none: 'Select a sprite sheet in the asset browser', add: 'Add a sprite', remove: 'Delete the selected sprite', columns: 'Columns', rows: 'Rows', grid: 'Slice by grid', auto: 'Slice automatically',
+    fit: 'Fit the texture in view', texture: 'Texture (content path)', startFrom: 'Start from this texture', list: 'Sprites', center: 'Origin (drag to move)',
+    cannotShow: 'This texture only exists as KTX2, which the browser cannot show: put its source image back in the asset browser', nothingFound: 'Nothing was found (is the texture fully transparent?)',
+    sliced: (count) => `Sliced ${count} sprites, replacing the ones on this texture`, noImage: (path) => `No image at ${path}`,
+  },
   palette: { title: 'Search everywhere', placeholder: 'Search actions, entities, assets', actions: 'Actions', entities: 'Entities in the scene', assets: 'Assets', toggleRealtime: 'Toggle realtime viewport', toggleSnap: 'Toggle snapping', toggleSurfaceSnap: 'Toggle snapping to surfaces', toggleVertexSnap: 'Toggle snapping to vertices' },
   snapStep: {
     translate: { label: 'Move', title: 'Move step (meters)' },
@@ -381,7 +398,7 @@ const enUS: EditorMessages = {
   viewportToolbar: 'Viewport toolbar',
   openDocuments: 'Open documents',
   selectedCount: (n) => `${n} selected`,
-  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles' },
+  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet' },
   language: 'Interface language',
   frameGuide: 'Frame guide (the frame and safe areas over the viewport, for composing shots)',
   frameGuideOff: 'Frame: off',
@@ -397,7 +414,7 @@ const enUS: EditorMessages = {
   delete: 'Delete',
   open: 'Open',
   newAsset: 'New asset',
-  newAssetLabels: { scene: 'Scene', material: 'Material', ui: 'UI page', timeline: 'Timeline', brush: 'Greybox (CSG)', sdf: 'SDF model (smooth blends)', poly: 'Poly mesh (point, edge, face editing)', shape: (shape) => `Shape: ${shape}` },
+  newAssetLabels: { spriteSheet: 'Sprite sheet', scene: 'Scene', material: 'Material', ui: 'UI page', timeline: 'Timeline', brush: 'Greybox (CSG)', sdf: 'SDF model (smooth blends)', poly: 'Poly mesh (point, edge, face editing)', shape: (shape) => `Shape: ${shape}` },
   shapes: { cube: 'Cube', plane: 'Plane', sphere: 'Sphere', geoSphere: 'Geosphere', capsule: 'Capsule', cylinder: 'Cylinder', torus: 'Torus', cone: 'Cone', teapot: 'Teapot' },
   importing: 'Import',
   working: (action) => `${action}…`,
@@ -408,7 +425,7 @@ const enUS: EditorMessages = {
   opened: (kind, path) => `Opened ${kind} ${path}`,
   created: (kind, path) => `Created ${kind} ${path} (rename it in the path box)`,
   imported: (assets) => `Imported ${assets.join(', ')}`,
-  assetLabels: { material: 'Material', model: 'Model', timeline: 'Timeline', brush: 'Greybox', sdf: 'SDF model', poly: 'Poly mesh', modelImport: 'Import settings', imageImport: 'Texture import settings', gameSettings: 'Game settings' },
+  assetLabels: { material: 'Material', model: 'Model', timeline: 'Timeline', brush: 'Greybox', sdf: 'SDF model', poly: 'Poly mesh', modelImport: 'Import settings', imageImport: 'Texture import settings', spriteSheet: 'Sprite sheet', gameSettings: 'Game settings' },
   assetHint: (kind, path) => `${kind} ${path}: changes are saved to the asset file at once, and the entities that use it in the viewport follow.`,
   instanceOf: (prefab) => `Instance of prefab ${prefab}`,
   memberOf: (prefab, instance, member) => `${member} in ${instance}, an instance of prefab ${prefab}`,

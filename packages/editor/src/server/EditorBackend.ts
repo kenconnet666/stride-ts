@@ -100,6 +100,19 @@ export class EditorBackend {
   }
 
   /** 读一个 JSON 资源的内容。 */
+  /**
+   * 解码一张贴图（内容路径）成 RGBA8 的像素：MCP 切精灵表用。读浏览器能解的那个文件（png、jpg、webp；压成 KTX2 的贴图用旁边的
+   * 源图片），没有时报错。
+   */
+  async decodeImage(assetPath: string): Promise<{ width: number; height: number; data: Uint8Array }> {
+    const record = this.database.get('image', checkContentPath(assetPath));
+    const file = record?.files.find((name) => /\.(png|jpe?g|webp)$/i.test(name));
+    if (!file) throw new HttpError(404, `no png, jpg or webp image at ${assetPath}`);
+    const tools = await (this.#tools ??= createStrideTools());
+    const image = await tools.decodeImage(await readFile(path.join(this.project.contentDir, file)));
+    return { width: image.width, height: image.height, data: image.pixels };
+  }
+
   async readAsset(kind: AssetKind, assetPath: string): Promise<unknown> {
     const file = this.#jsonFile(kind, assetPath);
     try {

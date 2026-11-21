@@ -1,5 +1,5 @@
-/** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、游戏设置）。 */
-import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile } from '../../content/format';
+/** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、游戏设置）。 */
+import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile } from '../../content/format';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
 /** 材质的贴图槽（颜色、自发光）：贴图加采样方式和 UV 的缩放、偏移。 */
@@ -255,5 +255,25 @@ export const IMAGE_IMPORT_FIELDS = fields<ImageImportFile>({
   srgb: { type: bool, description: 'color image (stored as sRGB); turn off for normal, roughness and other data maps' },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+/**
+ * 精灵表（SpriteSheetFile）：精灵的列表，每个精灵是贴图上的一块区域、原点、九宫格的边框。改了马上存，用到它的精灵热重载；
+ * 区域、原点在编辑器底部的精灵表面板里拖（贴图上画出各个精灵的框），切图（按网格、自动找）也在那里。
+ */
+export const SPRITE_SHEET_FIELDS = fields<SpriteSheetFile>({
+  name: string,
+  sprites: {
+    type: list(object(fields<SpriteSheetFile['sprites'][number]>({
+      name: string,
+      texture: object(textureRef),
+      region: { type: vector(4), description: 'area on the texture in pixels: x, y (top left), width, height' },
+      pixelsPerUnit: { type: number({ min: 0.001, step: 1 }), description: 'texture pixels per world unit (meter)' },
+      center: { type: vector(2), description: 'origin in pixels: from the region center when centerFromMiddle, otherwise from its top left' },
+      centerFromMiddle: bool,
+      borders: { type: vector(4), optional: true, default: [0, 0, 0, 0], description: '9-slice borders in pixels: left, top, right, bottom (0: the whole sprite stretches)' },
+    }))),
+    description: 'the sprites, in order (a sprite component picks one by index)',
+  },
+});
+
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

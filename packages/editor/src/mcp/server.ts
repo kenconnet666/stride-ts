@@ -13,7 +13,8 @@ import { SceneDocument, type EntitiesFile, type SceneEdit } from '@stride-ts/eng
 import { assetSchemas, componentSchemas, entitySchema, sceneSettingSchemas } from '@stride-ts/engine/editor-field-schema';
 import { checkEntity } from '@stride-ts/engine/editor-fields';
 import { applyPolyOperation, POLY_OPERATIONS, type PolyOperation } from '@stride-ts/engine/modeling';
-import type { PolyMeshFile } from '@stride-ts/engine/content-format';
+import { autoRegions, gridRegions, replaceSprites } from '@stride-ts/engine/editor-sprites';
+import type { PolyMeshFile, SpriteSheetFile, TextureEncoding } from '@stride-ts/engine/content-format';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import * as z from 'zod';
@@ -116,6 +117,38 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
     return json({ saved: `poly ${path}`, vertexCount: result.mesh.vertices.length, faceCount: result.mesh.faces.length, selected: { faces: result.faces, edges: result.edges, vertices: result.vertices } });
   });
 
+  server.registerTool('slice_sprites', {
+    description: [
+      'Slice a texture into sprites and put them in a sprite sheet (kind spriteSheet, .sheet.json; created when missing), replacing the sprites of the sheet on that texture.',
+      'mode grid: columns x rows cells, or cellWidth x cellHeight cells (fully transparent cells are skipped);',
+      'mode auto: each 8-connected blob of pixels with alpha above alphaThreshold becomes one sprite (bounding box; overlapping boxes merge; blobs smaller than minSize pixels are noise).',
+      'New sprites are named <texture name>_<n>, with the origin at their center. Edit names, pixelsPerUnit, borders afterwards with read_asset/write_asset.',
+    ].join(' '),
+    inputSchema: z.object({
+      path: assetPath,
+      texture: assetPath,
+      mode: z.enum(['grid', 'auto']),
+      columns: z.number().int().positive().optional(),
+      rows: z.number().int().positive().optional(),
+      cellWidth: z.number().int().positive().optional(),
+      cellHeight: z.number().int().positive().optional(),
+      alphaThreshold: z.number().int().min(0).max(254).optional(),
+      minSize: z.number().int().positive().optional(),
+      pixelsPerUnit: z.number().positive().optional(),
+    }),
+  }, async ({ path, texture, mode, alphaThreshold, minSize, pixelsPerUnit, ...grid }) => {
+    const pixels = await backend.decodeImage(texture);
+    const regions = mode === 'auto'
+      ? autoRegions(pixels, { ...(alphaThreshold !== undefined ? { alphaThreshold } : {}), ...(minSize !== undefined ? { minSize } : {}) })
+      : gridRegions(pixels.width, pixels.height, grid, pixels, alphaThreshold ?? 0);
+    const existing = await backend.readAsset('spriteSheet', path).catch(() => undefined) as SpriteSheetFile | undefined;
+    const sheet = existing ?? { name: path.slice(path.lastIndexOf('/') + 1), sprites: [] };
+    const encoding = imageEncodingOf(backend.database.get('image', texture)?.files ?? []);
+    const replaced = replaceSprites(sheet, { texture, encoding }, regions, pixelsPerUnit);
+    await backend.saveAsset('spriteSheet', path, replaced.sheet);
+    return json({ saved: `spriteSheet ${path}`, texture: [pixels.width, pixels.height], sliced: regions.length, sprites: replaced.sheet.sprites.length, regions });
+  });
+
   server.registerTool('edit_scene', {
     description: [
       'Apply edits to a scene or prefab file and save it (one step; editors and the game hot reload). Each edit is one of:',
@@ -192,4 +225,10 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
   }, async ({ command, args }) => json(await (await hub()).call(command, args ?? {})));
 
   return server;
+}
+
+/** 贴图的文件读成精灵表里的编码：有浏览器能解的源图片用它（KTX2 以外的），只有 KTX2 时是 ktx2。 */
+function imageEncodingOf(files: readonly string[]): TextureEncoding {
+  const source = files.map((file) => file.slice(file.lastIndexOf('.')).toLowerCase()).find((extension) => extension !== '.ktx2');
+  return source === '.jpg' || source === '.jpeg' ? 'jpeg' : source === '.webp' ? 'webp' : source === '.svg' ? 'svg' : source === '.png' ? 'png' : 'ktx2';
 }

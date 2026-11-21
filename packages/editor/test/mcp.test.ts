@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { SceneFile } from '@stride-ts/engine/content-format';
 import { createProject } from '../src/server/template.ts';
@@ -118,4 +119,37 @@ describe('编辑器的 MCP 服务', () => {
     expect(decal).toMatchObject({ title: 'Decal', type: 'object' });
     expect((await mcp.call('field_schemas', { of: 'components', name: 'nope' })).error).toBe(true);
   }, 60_000);
+
+  test('切精灵表：导入一张两块不透明的图，自动切出两个精灵（精灵表不存在时建），按网格切（全透明的格子不要）替换同一张贴图上的', async () => {
+    const file = path.join(repo, 'sheet.png');
+    await writeFile(file, rgbaPng(16, 8, (x) => (x < 4 || x >= 12 ? 255 : 0)));
+    expect((await mcp.call('import_file', { file, folder: 'Sprites' })).error).toBe(false);
+    const auto = await mcp.call('slice_sprites', { path: 'Sprites/Hero', texture: 'Sprites/sheet', mode: 'auto' });
+    expect(auto.value).toMatchObject({ sliced: 2, sprites: 2, regions: [[0, 0, 4, 8], [12, 0, 4, 8]] });
+    const grid = await mcp.call('slice_sprites', { path: 'Sprites/Hero', texture: 'Sprites/sheet', mode: 'grid', columns: 4, rows: 1, pixelsPerUnit: 8 });
+    // 中间两格全透明，不要
+    expect(grid.value).toMatchObject({ sliced: 2, sprites: 2 });
+    const sheet = (await mcp.call('read_asset', { kind: 'spriteSheet', path: 'Sprites/Hero' })).value;
+    expect(sheet.sprites.map((sprite: { name: string; region: number[]; pixelsPerUnit: number }) => [sprite.name, sprite.region, sprite.pixelsPerUnit])).toEqual([
+      ['sheet_0', [0, 0, 4, 8], 8], ['sheet_1', [12, 0, 4, 8], 8],
+    ]);
+  }, 60_000);
 });
+
+/** width × height 的 RGBA PNG，alpha 按列给（每个像素灰色）。 */
+function rgbaPng(width: number, height: number, alpha: (x: number) => number): Uint8Array {
+  const chunk = (type: string, data: Uint8Array) => {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const length = Buffer.alloc(4), crc = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    crc.writeUInt32BE(zlib.crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 6, 0, 0, 0], 8);
+  const rows = Buffer.alloc(height * (1 + width * 4));
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) rows.set([128, 128, 128, alpha(x)], y * (1 + width * 4) + 1 + x * 4);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', header), chunk('IDAT', zlib.deflateSync(rows)), chunk('IEND', new Uint8Array(0))]);
+}

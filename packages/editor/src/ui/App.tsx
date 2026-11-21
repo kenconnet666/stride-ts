@@ -1,4 +1,4 @@
-import { Clapperboard, FolderTree, ListTree, SlidersHorizontal, Sparkles, Workflow } from '@lucide/icons';
+import { Clapperboard, FolderTree, Images, ListTree, SlidersHorizontal, Sparkles, Workflow } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { usePersistentState } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -10,6 +10,7 @@ import { Inspector } from './Inspector';
 import { t } from './messages';
 import { ParticlePanel } from './ParticlePanel';
 import { SceneTree } from './SceneTree';
+import { SpriteSheetPanel } from './SpriteSheetPanel';
 import type { EditorSession } from './session';
 import { TimelinePanel } from './TimelinePanel';
 import { DocumentTabs, MainToolbar, StatusBar, ViewportToolbar } from './Toolbars';
@@ -128,6 +129,11 @@ export const App = _component(({ session }: { session: EditorSession }) => {
       id: 'graph', title: t.toolWindows.graph, icon: Workflow, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,
       available: session.graphOpen.value && session.inspected.value?.kind === 'material', ...(session.inspected.value ? { detail: session.inspected.value.path } : {}),
       content: () => <GraphPanel session={session} />,
+    },
+    {
+      id: 'sprites', title: t.toolWindows.sprites, icon: Images, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,
+      available: session.inspected.value?.kind === 'spriteSheet', ...(session.inspected.value ? { detail: session.inspected.value.path } : {}),
+      content: () => <SpriteSheetPanel session={session} />,
     },
     {
       id: 'particles', title: t.toolWindows.particles, icon: Sparkles, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,

@@ -24,7 +24,7 @@ import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
 import { freeAssetPath } from '../newAssets';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../library/index.ts';
 import type { EditAgent, EditableScene, Game, PaintBrush, PolyEditSession, PolySelection, PolySelectMode, SculptBrush, SnapSettings, SplineEditSession } from '@stride-ts/engine';
-import { deleteSplinePoints } from '@stride-ts/engine';
+import { branchFromPoint, deleteSplinePoints } from '@stride-ts/engine';
 import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
 import type { PolyMeshFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
 import { EditorClient } from '../EditorClient.ts';
@@ -1013,6 +1013,16 @@ export class EditorSession implements EditableScene {
       return;
     }
     edit.selection = [];
+    this.#splineChanged(edit, true);
+  }
+
+  /** 从选中的那一个控制点拉出一条分支（路网；三条路交汇处生成路口），选中分支的末端，接着拖它。 */
+  branchSpline(): void {
+    const edit = this.agent.value?.splineEdit;
+    if (!edit || edit.selection.length !== 1) return;
+    const { spline, index } = branchFromPoint(edit.spline, edit.selection[0]!);
+    edit.spline = spline;
+    edit.selection = [index];
     this.#splineChanged(edit, true);
   }
 

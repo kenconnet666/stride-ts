@@ -145,6 +145,8 @@ export interface EditorMessages {
   readonly splineEdit: string;
   readonly splineHint: string;
   readonly splineDeletePoints: string;
+  readonly splineBranch: string;
+  readonly splineBranchHint: string;
   readonly splinePoints: (count: number) => string;
   readonly polyModes: Readonly<Record<'vertex' | 'edge' | 'face', string>>;
   // 雕刻地形
@@ -357,6 +359,8 @@ const zhCN: EditorMessages = {
   splineEdit: '编辑样条',
   splineHint: '视口里点选控制点（Shift、Ctrl 加选），拖操纵器移动（W、E、R 换移动、旋转、缩放），双击路径加点；Delete 删点，Ctrl+Z 撤销',
   splineDeletePoints: '删除点',
+  splineBranch: '拉出分支',
+  splineBranchHint: '从选中的点往右边拉出一条新的路（三条路交汇处自动生成路口）',
   splinePoints: (count) => `${count} 个点`,
   polyModes: { vertex: '点', edge: '边', face: '面' },
   sculpt: '雕刻',
@@ -579,6 +583,8 @@ const enUS: EditorMessages = {
   splineEdit: 'Edit spline',
   splineHint: 'Click control points in the viewport (Shift or Ctrl adds), drag the gizmo to move (W, E, R: move, rotate, scale), double-click the path to add a point; Delete removes points, Ctrl+Z undoes',
   splineDeletePoints: 'Delete points',
+  splineBranch: 'Branch',
+  splineBranchHint: 'Start a new path at the selected point, heading right (roads get a junction where three meet)',
   splinePoints: (count) => `${count} point${count === 1 ? '' : 's'}`,
   polyModes: { vertex: 'Vertex', edge: 'Edge', face: 'Face' },
   sculpt: 'Sculpt',

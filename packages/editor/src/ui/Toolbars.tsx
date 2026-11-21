@@ -5,7 +5,7 @@
  * - ViewportToolbar：视口上面，对选中实体的操作、吸附、画幅参考线；
  * - StatusBar：最下面，提示和出错、选中几个、界面语言。
  */
-import { Activity, ArrowDownToLine, Globe, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, SquareDot, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
+import { Activity, ArrowDownToLine, Globe, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, GitBranchPlus, Magnet, SquareDot, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
 import type { PolyOperation } from '@stride-ts/engine/modeling';
 import type { SculptBrush } from '@stride-ts/engine';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
@@ -161,9 +161,11 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopPolyEdit()}>{t.polyDone}</Button>,
     ];
   };
-  /** 编辑样条时的工具条：几个点、删除选中的点，最后是"完成"。 */
+  /** 编辑样条时的工具条：几个点（分支的也算）、从选中的点拉出分支、删除选中的点，最后是"完成"。 */
   const splineControls = (editing: NonNullable<typeof session.splineEditing.value>) => [
-    <span {...css.attrs(styles.count)}>{t.splinePoints(editing.spline.points.length)}</span>,
+    <span {...css.attrs(styles.count)}>{t.splinePoints(editing.spline.points.length + (editing.spline.branches ?? []).reduce((sum, branch) => sum + branch.points.length, 0))}</span>,
+    <Button size="sm" variant="ghost" tone="neutral" icon={GitBranchPlus} title={t.splineBranchHint} disabled={editing.selection.length !== 1}
+      onClick={() => session.branchSpline()}>{t.splineBranch}</Button>,
     <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.splineDeletePoints} (Delete)`} disabled={editing.selection.length === 0}
       onClick={() => session.deleteSplinePoints()}>{t.splineDeletePoints}</Button>,
     <span {...css.attrs(styles.spacer)} />,

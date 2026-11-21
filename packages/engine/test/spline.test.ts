@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { SplineFile } from '../src/content/splineFormat';
-import { checkSpline, frameAt, sampleSpline, splineMeshes } from '../src/modeling/spline';
+import { checkSpline, frameAt, roadNetwork, sampleSpline, splineCenterlines, splineMeshes } from '../src/modeling/spline';
 
 /** 网格里的顶点（每个 8 个数）。 */
 const verticesOf = (vertices: Float32Array) => Array.from({ length: vertices.length / 8 }, (_, i) => Array.from(vertices.slice(i * 8, i * 8 + 8)));
@@ -64,5 +64,91 @@ describe('样条', () => {
     expect(() => checkSpline({ name: 'S', materials: [null], profile: { type: 'road', width: 4 }, points: [{ position: [0, 0, 0] }] })).toThrow('at least 2 points');
     expect(() => checkSpline({ name: 'S', materials: [null], profile: { type: 'road', width: 0 }, points: [{ position: [0, 0, 0] }, { position: [1, 0, 0] }] })).toThrow('profile.width must be positive');
     expect(() => checkSpline({ name: 'S', materials: [null], profile: { type: 'canal' } as never, points: [{ position: [0, 0, 0] }, { position: [1, 0, 0] }] })).toThrow('profile.type');
+  });
+});
+
+describe('路网和路口', () => {
+  // 东西向的路，正中往南（+z）岔出一条：丁字路口
+  const tee: SplineFile = {
+    name: 'Tee', materials: [null], profile: { type: 'road', width: 6 },
+    points: [{ position: [-30, 0, 0] }, { position: [0, 0, 0] }, { position: [30, 0, 0] }],
+    branches: [{ points: [{ position: [0, 0, 0] }, { position: [0, 0, 30] }] }],
+  };
+
+  test('丁字路口：三条路停在边线交点再往外一个转角半径（默认半个路宽），剩下的段拉伸', () => {
+    const { junctions, kept } = roadNetwork(tee);
+    expect(junctions.length).toBe(1);
+    const [junction] = junctions;
+    expect(junction!.position).toEqual([0, 0, 0]);
+    // 按角度逆时针（atan2(z, x)，从 -180° 起）：往西、往东、往南（+z）
+    expect(junction!.arms.map((arm) => [arm.path, arm.sign])).toEqual([[0, -1], [0, 1], [1, 1]]);
+    for (const arm of junction!.arms) expect(arm.trim).toBeCloseTo(6, 6);
+    expect(kept[0]!.map(([a, b]) => [Math.round(a * 1e6) / 1e6, Math.round(b * 1e6) / 1e6])).toEqual([[0, 24], [36, 60]]);
+    expect(kept[1]!.map(([a, b]) => [Math.round(a * 1e6) / 1e6, Math.round(b * 1e6) / 1e6])).toEqual([[6, 30]]);
+  });
+
+  test('路口的轮廓：逆时针、端口接着路面的边、两个转角是圆弧，对面（180°）直连', () => {
+    const [junction] = roadNetwork(tee).junctions;
+    const outline = junction!.outline;
+    // 3 个端口各两个点，两个转角各 7 个中间点
+    expect(outline.length).toBe(6 + 2 * 7);
+    expect(junction!.curb.filter((curb) => !curb).length).toBe(3);
+    // 往西那条路的端口在 x = -6，z = ±3（先靠上一条路的那边）
+    expect(outline.slice(0, 2).map((p) => p.map((c) => Math.round(c * 1e6) / 1e6))).toEqual([[-6, 0, 3], [-6, 0, -3]]);
+    // 有向面积为正（逆时针，按 atan2(z, x) 转），都在路面的高度
+    let area = 0;
+    outline.forEach((a, i) => {
+      const b = outline[(i + 1) % outline.length]!;
+      area += a[0] * b[2] - b[0] * a[2];
+    });
+    expect(area).toBeGreaterThan(0);
+    expect(outline.every((p) => p[1] === 0)).toBe(true);
+    // 往东、往南之间的转角：端口 (6, 3)、(3, 6)，控制点是边线的交点 (3, 3)，圆弧的中点 (3.75, 3.75)
+    expect(outline.some((p) => Math.abs(p[0] - 3.75) < 1e-9 && Math.abs(p[2] - 3.75) < 1e-9)).toBe(true);
+  });
+
+  test('网格：路口的顶面朝上；只有两条路相接、没有分支的不出路口', () => {
+    const [mesh] = splineMeshes(tee);
+    const vertices = verticesOf(mesh!.vertices);
+    const indices = mesh!.indices;
+    for (let i = 0; i < indices.length; i += 3) {
+      const [a, b, c] = [vertices[indices[i]!]!, vertices[indices[i + 1]!]!, vertices[indices[i + 2]!]!];
+      const e1 = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!], e2 = [c[0]! - a[0]!, c[1]! - a[1]!, c[2]! - a[2]!];
+      const n = [e1[1]! * e2[2]! - e1[2]! * e2[1]!, e1[2]! * e2[0]! - e1[0]! * e2[2]!, e1[0]! * e2[1]! - e1[1]! * e2[0]!];
+      // 三角形的绕向和顶点法线一致
+      expect(n[0]! * a[3]! + n[1]! * a[4]! + n[2]! * a[5]!).toBeGreaterThanOrEqual(-1e-6);
+    }
+    const joined: SplineFile = { ...tee, points: [{ position: [-30, 0, 0] }, { position: [0, 0, 0] }], branches: [{ points: [{ position: [0, 0, 0] }, { position: [0, 0, 30] }] }] };
+    expect(roadNetwork(joined).junctions).toEqual([]);
+    // 别的横截面每条路径各自拉伸
+    const fence = splineMeshes({ ...tee, materials: [null, null], profile: { type: 'fence' } });
+    expect(fence.length).toBe(2);
+    expect(() => checkSpline({ ...tee, branches: [{ points: [{ position: [0, 0, 0] }] }] })).toThrow('branches[0].points needs at least 2 points');
+  });
+
+  test('地面贴的中心线：每条路径一条折线，经过路口时走端口 → 中心 → 端口的直线；再加路口的路缘', () => {
+    const lines = splineCenterlines(tee, 4);
+    const [main, branch] = lines.map((line) => line.points);
+    // 后面是路口的三段路缘（从端口经过转角到下一个端口）：往西到往东之间对着岔路的那边是直的，另外两个转角是圆弧
+    const curbs = lines.filter((line) => line.curb);
+    expect(curbs.map((line) => line.points.length)).toEqual([2, 9, 9]);
+    const round = (p: readonly number[]) => p.map((c) => Math.round(c * 1e6) / 1e6);
+    // 主路：……(-6, 0, 0)、(0, 0, 0)、(6, 0, 0)……，中心只出现一次
+    const i = main!.findIndex((p) => round(p).join() === '0,0,0');
+    expect(round(main![i - 1]!)).toEqual([-6, 0, 0]);
+    expect(round(main![i + 1]!)).toEqual([6, 0, 0]);
+    expect(main!.filter((p) => round(p).join() === '0,0,0').length).toBe(1);
+    // 岔路从路口中心出发，接着是它的端口
+    expect(round(branch![0]!)).toEqual([0, 0, 0]);
+    expect(round(branch![1]!)).toEqual([0, 0, 6]);
+    expect(round(branch!.at(-1)!)).toEqual([0, 0, 30]);
+  });
+
+  test('十字路口：四条路都退到交点外，两条路径共用中间的控制点', () => {
+    const cross: SplineFile = { ...tee, branches: [{ points: [{ position: [0, 0, -30] }, { position: [0, 0, 0] }, { position: [0, 0, 30] }] }] };
+    const [junction] = roadNetwork(cross).junctions;
+    expect(junction!.arms.length).toBe(4);
+    for (const arm of junction!.arms) expect(arm.trim).toBeCloseTo(6, 6);
+    expect(junction!.outline.length).toBe(8 + 4 * 7);
   });
 });

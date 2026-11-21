@@ -10,7 +10,7 @@ import type { Branded } from '../data/prop';
 import type { Material } from '../rendering/mesh/Material';
 import { TERRAIN_NOISE_DEFAULTS, type TerrainFile, type TerrainSplineFile } from '../content/terrainFormat';
 import type { SplineFile } from '../content/splineFormat';
-import { sampleSpline } from '../modeling/spline';
+import { splineCenterlines } from '../modeling/spline';
 
 export type TerrainAssetId = Branded<number, 'TerrainAssetId'>;
 
@@ -47,18 +47,22 @@ export interface TerrainPath {
 
 /** 地形贴样条时取样的间距（米）：比样条自己的分辨率粗也够（压平按线段插值高度）。 */
 const PATH_STEP = 4;
+/** 路口的路缘比路多压的深度（米）：路缘的端头盖到往外斜下去的路上，不压深一点地会冒到路面上。 */
+const CURB_DEPTH = 0.2;
 
 /**
- * 解析地形的一条样条：路径按弧长每 PATH_STEP 米取一个点（加上 position），宽度不写时按横截面定（道路是路面加两侧路肩，铁轨是
- * 轨距加 3 米的道床，别的 2 米）。
+ * 解析地形贴着的一个样条：每条中心线一条（splineCenterlines：路网去掉路口剩下的各段加路口的辐条，别的横截面是每条路径），
+ * 按弧长每 PATH_STEP 米取一个点（加上 position），宽度不写时按横截面定（道路是路面加两侧路肩，铁轨是轨距加 3 米的道床，
+ * 别的 2 米）。连着的几条在原生侧一起算（路面上的那条说了算）；路口的路缘压得深 CURB_DEPTH。
  */
-export function terrainPath(entry: TerrainSplineFile, spline: SplineFile): TerrainPath {
+export function terrainPaths(entry: TerrainSplineFile, spline: SplineFile): TerrainPath[] {
   const [dx, dy, dz] = entry.position ?? [0, 0, 0];
-  const points = sampleSpline(spline.points, spline.closed ?? false, Math.min(PATH_STEP, spline.resolution ?? PATH_STEP))
-    .map((frame) => [frame.position[0] + dx, frame.position[1] + dy, frame.position[2] + dz] as const);
   const profile = spline.profile;
   const width = entry.width ?? (profile.type === 'road' ? profile.width + 2 * (profile.shoulder ?? 0.5) : profile.type === 'rail' ? (profile.gauge ?? 1.435) + 3 : 2);
-  return { points, width, offset: entry.offset ?? -0.1, falloff: entry.falloff ?? 10, strength: entry.strength ?? 1, mode: entry.mode ?? 'conform' };
+  return splineCenterlines(spline, Math.min(PATH_STEP, spline.resolution ?? PATH_STEP)).map(({ points, curb }) => ({
+    points: points.map(([x, y, z]) => [x + dx, y + dy, z + dz] as const),
+    width, offset: (entry.offset ?? -0.1) - (curb ? CURB_DEPTH : 0), falloff: entry.falloff ?? 10, strength: entry.strength ?? 1, mode: entry.mode ?? 'conform',
+  }));
 }
 
 /**

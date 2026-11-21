@@ -26,6 +26,6 @@ describe('样条的烘焙', () => {
   });
 
   test('控制点不够时报错，带着资源名', () => {
-    expect(() => bakeSplineModel(tools, { name: 'Bad', materials: [null], profile: { type: 'road', width: 6 }, points: [{ position: [0, 0, 0] }] }, 'spline Roads/Bad')).toThrow(/spline Roads\/Bad: a spline needs at least 2 points/);
+    expect(() => bakeSplineModel(tools, { name: 'Bad', materials: [null], profile: { type: 'road', width: 6 }, points: [{ position: [0, 0, 0] }] }, 'spline Roads/Bad')).toThrow(/spline Roads\/Bad: points needs at least 2 points/);
   });
 });

@@ -34,8 +34,8 @@ import type { TerrainHit } from '../terrain/TerrainSystem';
 import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformPoints, worldVertices, type PolySelectMode } from './PolyEditTool';
 import type { PolyMeshFile } from '../content/assetFormat';
 import type { SplineFile } from '../content/splineFormat';
-import { splineCurve } from '../modeling/spline';
-import { insertSplinePoint, moveSplinePoints, pickSplineCurve } from './SplineEditTool';
+import { splineCurve, splinePaths } from '../modeling/spline';
+import { insertSplinePoint, moveSplinePoints, pickSplineCurve, splinePointList } from './SplineEditTool';
 
 /** 选中的东西的框的颜色（线性）。 */
 const SELECTION_COLOR: DebugColor = [1, 0.55, 0.1, 1];
@@ -518,9 +518,10 @@ export class EditorViewport extends SyncScript {
     const input = this.game.input, draw = this.game.debugDraw, gizmo = agent.gizmo;
     const world = currentWorld(entity);
     const toWorld = (points: readonly (readonly [number, number, number])[]) => worldVertices({ vertices: points }, world);
-    const curve = splineCurve(edit.spline.points, edit.spline.closed === true).map(toWorld);
-    for (const segment of curve) draw.polyline(segment, POLY_EDGE_COLOR, { width: 2, depthTest: false });
-    const points = toWorld(edit.spline.points.map((point) => point.position));
+    // 每条路径（路网的分支也是）每段一组折线
+    const curves = splinePaths(edit.spline).map((path) => splineCurve(path.points, path.closed === true).map(toWorld));
+    for (const segment of curves.flat()) draw.polyline(segment, POLY_EDGE_COLOR, { width: 2, depthTest: false });
+    const points = toWorld(splinePointList(edit.spline).map((entry) => entry.point.position));
     const chosen = new Set(edit.selection);
     points.forEach((point, i) => {
       const half = this.#viewHeight(point) * POLY_VERTEX_SCREEN_SIZE * (chosen.has(i) ? 2 : 1.4);
@@ -548,10 +549,12 @@ export class EditorViewport extends SyncScript {
       const double = presses >= 2 || (last !== undefined && now - last.time < DOUBLE_CLICK_MS && Math.hypot(at[0] - last.at[0], at[1] - last.at[1]) < CLICK_PIXELS);
       this.#lastSplineClick = { time: now, at };
       const projected = points.map(([x, y, z]) => this.#project({ x, y, z }));
-      const onPath = double && pickVertex(projected, at) === undefined ? pickSplineCurve(curve.map((segment) => segment.map(([x, y, z]) => this.#project({ x, y, z }))), at) : undefined;
+      const onPath = double && pickVertex(projected, at) === undefined
+        ? pickSplineCurve(curves.map((segments) => segments.map((segment) => segment.map(([x, y, z]) => this.#project({ x, y, z })))), at)
+        : undefined;
       if (handle && gizmo.begin(handle, this.#ray(at), at)) this.#splineDrag = { start: edit.spline, points: indices };
       else if (onPath) {
-        const { spline, index } = insertSplinePoint(edit.spline, onPath.segment, onPath.u);
+        const { spline, index } = insertSplinePoint(edit.spline, onPath.path, onPath.segment, onPath.u);
         edit.spline = spline;
         edit.selection = [index];
         agent.onSplineChanged?.(edit, true);

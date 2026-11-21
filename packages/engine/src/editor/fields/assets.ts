@@ -278,7 +278,7 @@ export const POLY_FIELDS = fields<PolyMeshFile>({
   faces: { type: { kind: 'json' }, description: 'faces as vertex index loops, counterclockwise seen from outside, each with an optional material slot' },
 });
 
-/** 样条（SplineFile）：改了马上重新烘成模型、视口热重载。控制点先按 JSON 改（视口里拖控制点以后做）。 */
+/** 样条（SplineFile）：改了马上重新烘成模型、视口热重载。控制点按 JSON 改，或者在视口里拖（模型组件上的"编辑样条"）。 */
 export const SPLINE_FIELDS = fields<SplineFile>({
   name: string,
   materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'material slots: road, tube, custom one; rail rails and sleepers; fence posts and rails; wire poles and wires' },
@@ -289,10 +289,11 @@ export const SPLINE_FIELDS = fields<SplineFile>({
       kind: 'union',
       tag: 'type',
       variants: {
-        road: fields<{ width: unknown; thickness: unknown; shoulder: unknown }>({
+        road: fields<{ width: unknown; thickness: unknown; shoulder: unknown; cornerRadius: unknown }>({
           width: { type: positiveNumber(), description: 'width of the road surface (m)' },
           thickness: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0.3, description: 'depth of the road body under the surface' },
           shoulder: { type: number({ min: 0, step: 0.1, unit: 'm' }), optional: true, default: 0.5, description: 'how far the sloped sides reach out beyond the surface' },
+          cornerRadius: { type: number({ min: 0, step: 0.5, unit: 'm' }), optional: true, description: 'radius of the rounded corners at junctions; unset is half the road width' },
         }),
         tube: fields<{ radius: unknown; sides: unknown }>({
           radius: { type: positiveNumber(), description: 'radius (m)' },
@@ -322,6 +323,7 @@ export const SPLINE_FIELDS = fields<SplineFile>({
     description: 'what is built along the path',
   },
   points: { type: { kind: 'json' }, description: 'control points the path passes through: position [x, y, z], optional tilt (degrees, banks to the right) and width (multiplies the profile width)' },
+  branches: { type: { kind: 'json' }, optional: true, description: 'more paths of a network ({ points, closed }); points at the same position are welded, and roads get a junction where three or more meet' },
 });
 
 /**

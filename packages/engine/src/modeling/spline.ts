@@ -6,9 +6,13 @@
  * - 路径：向心 Catmull-Rom（alpha 0.5，Barry–Goldman 的写法）经过每个控制点，开放的两端按反射补一个点；先每段密采样、按累计
  *   弧长重新等距取点；
  * - 朝向：right = 切线 × 世界上方（路面不随路径侧翻，竖直的一段沿用上一个），up = right × 切线；控制点的 tilt 让它绕切线转；
- * - 顶点同多边形网格：每个 8 个数（位置、法线、UV），UV 按米（贴图每米重复一次，同白盒），三角形逆时针是正面。
+ * - 顶点同多边形网格：每个 8 个数（位置、法线、UV），UV 按米（贴图每米重复一次，同白盒），三角形逆时针是正面；
+ * - 路网（文件的 branches）：道路在三条以上的路交汇处生成路口（roadNetwork，思路同 godot-road-generator 的 n 边形路口，截断
+ *   距离自动算）：每条路的方向投到水平面、按角度排好，相邻两条路的边线求交点，各条路停在离路口中心最远的交点再往外一个转角
+ *   半径的地方；路口的轮廓是各条路的端口加上相邻端口之间以交点为控制点的二次贝塞尔（转角的圆弧，夹角 180° 以上的直连），
+ *   顶面从中心扇形铺满，转角外侧照路的边坡往下。别的横截面各条路径各自拉伸。
  */
-import { SPLINE_SLOTS, type SplineFile, type SplinePointFile } from '../content/splineFormat.ts';
+import { SPLINE_SLOTS, type SplineBranchFile, type SplineFile, type SplinePointFile } from '../content/splineFormat.ts';
 
 type Vec3 = [number, number, number];
 
@@ -49,11 +53,16 @@ export function checkSpline(file: SplineFile, where = file.name): SplineFile {
   const fail = (problem: string): never => {
     throw new Error(`${where}: ${problem}`);
   };
-  if (!Array.isArray(file.points) || file.points.length < 2) fail('a spline needs at least 2 points');
-  file.points.forEach((point, i) => {
-    if (!Array.isArray(point.position) || point.position.length !== 3 || !point.position.every(Number.isFinite)) fail(`points[${i}].position must be 3 finite numbers`);
-    if (point.width !== undefined && !(point.width > 0)) fail(`points[${i}].width must be positive`);
-  });
+  const checkPoints = (points: readonly SplinePointFile[], at: string) => {
+    if (!Array.isArray(points) || points.length < 2) fail(`${at} needs at least 2 points`);
+    points.forEach((point, i) => {
+      if (!Array.isArray(point.position) || point.position.length !== 3 || !point.position.every(Number.isFinite)) fail(`${at}[${i}].position must be 3 finite numbers`);
+      if (point.width !== undefined && !(point.width > 0)) fail(`${at}[${i}].width must be positive`);
+    });
+  };
+  checkPoints(file.points, 'points');
+  if (file.branches !== undefined && !Array.isArray(file.branches)) fail('branches must be a list');
+  file.branches?.forEach((branch, b) => checkPoints(branch.points, `branches[${b}].points`));
   if (file.resolution !== undefined && !(file.resolution > 0)) fail('resolution must be positive');
   const p = file.profile;
   if (!p || !['road', 'tube', 'custom', 'rail', 'fence', 'wire'].includes(p.type)) fail("profile.type must be one of road, tube, custom, rail, fence, wire");
@@ -89,6 +98,16 @@ export function splineCurve(points: readonly SplinePointFile[], closed: boolean,
  * width 沿路径线性过渡。
  */
 export function sampleSpline(points: readonly SplinePointFile[], closed: boolean, step: number): SplineFrame[] {
+  return samplePath(points, closed, step).frames;
+}
+
+/** 样条的全部路径：第一条是文件的 points，后面是 branches。 */
+export function splinePaths(file: Pick<SplineFile, 'points' | 'closed' | 'branches'>): SplineBranchFile[] {
+  return [{ points: file.points, closed: file.closed ?? false }, ...(file.branches ?? [])];
+}
+
+/** sampleSpline，再加上每个控制点离起点的弧长（knots；首尾相连时多一个，是回到起点的总长）。 */
+function samplePath(points: readonly SplinePointFile[], closed: boolean, step: number): { frames: SplineFrame[]; knots: number[] } {
   const n = points.length;
   const segments = closed ? n : n - 1;
   // 密采样：位置和控制点上的 tilt、width（按段内的参数线性插值）
@@ -103,6 +122,7 @@ export function sampleSpline(points: readonly SplinePointFile[], closed: boolean
   const lengths = [0];
   for (let i = 1; i < dense.length; i++) lengths.push(lengths[i - 1]! + length(sub(dense[i]!.position, dense[i - 1]!.position)));
   const total = lengths.at(-1)!;
+  const knots = Array.from({ length: segments + 1 }, (_, s) => lengths[s * DENSE_PER_SEGMENT]!);
   const count = Math.max(1, Math.ceil(total / step));
   const samples: { position: Vec3; tilt: number; width: number; distance: number }[] = [];
   let j = 0;
@@ -116,7 +136,7 @@ export function sampleSpline(points: readonly SplinePointFile[], closed: boolean
   }
   // 朝向：切线用前后两个点（首尾相连时绕回去），right 跟着世界的上方
   let previousRight: Vec3 = [1, 0, 0];
-  return samples.map((sample, k) => {
+  const frames = samples.map((sample, k): SplineFrame => {
     const before = samples[k - 1] ?? (closed ? samples[samples.length - 2] : undefined) ?? sample;
     const after = samples[k + 1] ?? (closed ? samples[1] : undefined) ?? sample;
     const tangent = normalize(sub(after.position, before.position));
@@ -131,6 +151,7 @@ export function sampleSpline(points: readonly SplinePointFile[], closed: boolean
     }
     return { position: sample.position, tangent, right, up, distance: sample.distance, width: sample.width };
   });
+  return { frames, knots };
 }
 
 /** 弧长 distance 处的截面（在相邻两个采样之间插值；超出两端时取端点）。 */
@@ -154,15 +175,27 @@ export function frameAt(frames: readonly SplineFrame[], distance: number): Splin
 /** 按横截面拉伸、摆放，得出按材质槽分好的网格。 */
 export function splineMeshes(file: SplineFile, where = file.name): SplineSlotMesh[] {
   checkSpline(file, where);
-  const frames = sampleSpline(file.points, file.closed ?? false, file.resolution ?? 2);
-  const profile = file.profile;
+  const profile = file.profile, step = file.resolution ?? 2;
   const slots = Array.from({ length: SPLINE_SLOTS[profile.type] }, () => new MeshBuilder());
-  switch (profile.type) {
-    case 'road': {
-      const w = profile.width / 2, t = profile.thickness ?? 0.3, s = profile.shoulder ?? 0.5;
-      extrude(slots[0]!, frames, [[-w - s, -t], [w + s, -t], [w, 0], [-w, 0]], true);
-      break;
+  if (profile.type === 'road') {
+    const w = profile.width / 2, t = profile.thickness ?? 0.3, s = profile.shoulder ?? 0.5;
+    const network = roadNetwork(file);
+    network.paths.forEach((path, p) => {
+      for (const [from, to] of network.kept[p]!) extrude(slots[0]!, resample(path.frames, from, to, step), [[-w - s, -t], [w + s, -t], [w, 0], [-w, 0]], true);
+    });
+    for (const junction of network.junctions) junctionMesh(slots[0]!, junction, t, s);
+  } else {
+    for (const path of splinePaths(file)) {
+      const closed = path.closed ?? false;
+      profileMeshes(slots, profile, sampleSpline(path.points, closed, step), closed);
     }
+  }
+  return slots.flatMap((builder, material) => (builder.indices.length === 0 ? [] : [{ material, vertices: Float32Array.from(builder.vertices), indices: Uint32Array.from(builder.indices) }]));
+}
+
+/** 道路以外的横截面沿一条路径拉伸、摆放。 */
+function profileMeshes(slots: readonly MeshBuilder[], profile: Exclude<SplineFile['profile'], { type: 'road' }>, frames: readonly SplineFrame[], closed: boolean): void {
+  switch (profile.type) {
     case 'tube': {
       const sides = Math.max(3, Math.round(profile.sides ?? 12));
       extrudeRound(slots[0]!, frames, profile.radius, sides, [0, 0]);
@@ -178,12 +211,12 @@ export function splineMeshes(file: SplineFile, where = file.name): SplineSlotMes
         const x = side * (gauge / 2 + 0.035);
         extrude(slots[0]!, frames, [[x - 0.035, 0.15], [x + 0.035, 0.15], [x + 0.035, 0.3], [x - 0.035, 0.3]], true);
       }
-      along(frames, spacing, file.closed ?? false, (frame) => box(slots[1]!, frame, gauge + 1.1, 0.15, 0.25, 0));
+      along(frames, spacing, closed, (frame) => box(slots[1]!, frame, gauge + 1.1, 0.15, 0.25, 0));
       break;
     }
     case 'fence': {
       const height = profile.height ?? 1.2, spacing = profile.postSpacing ?? 2.5, rails = Math.max(1, Math.round(profile.rails ?? 2));
-      along(frames, spacing, file.closed ?? false, (frame) => box(slots[0]!, frame, 0.1, height, 0.1, 0));
+      along(frames, spacing, closed, (frame) => box(slots[0]!, frame, 0.1, height, 0.1, 0));
       for (let i = 1; i <= rails; i++) {
         const y = (height * i) / (rails + 0.5);
         extrude(slots[1]!, frames, [[-0.025, y - 0.04], [0.025, y - 0.04], [0.025, y + 0.04], [-0.025, y + 0.04]], true);
@@ -194,7 +227,7 @@ export function splineMeshes(file: SplineFile, where = file.name): SplineSlotMes
       const height = profile.poleHeight ?? 10, spacing = profile.poleSpacing ?? 40, sag = profile.sag ?? 1.5, wires = Math.max(1, Math.round(profile.wires ?? 3));
       const arm = (wires - 1) * 0.8 + 0.6;
       const poles: SplineFrame[] = [];
-      along(frames, spacing, file.closed ?? false, (frame) => {
+      along(frames, spacing, closed, (frame) => {
         poles.push(frame);
         box(slots[0]!, frame, 0.3, height, 0.3, 0);
         box(slots[0]!, frame, arm, 0.15, 0.15, height - 0.5);
@@ -219,7 +252,221 @@ export function splineMeshes(file: SplineFile, where = file.name): SplineSlotMes
       break;
     }
   }
-  return slots.flatMap((builder, material) => (builder.indices.length === 0 ? [] : [{ material, vertices: Float32Array.from(builder.vertices), indices: Uint32Array.from(builder.indices) }]));
+}
+
+/** 路口的一条路：第几条路径、在哪个控制点、往哪边走（1 是往路径的后面，-1 是往前面），路停在离路口中心多远（沿路径的弧长）。 */
+export interface RoadArm {
+  readonly path: number;
+  readonly knot: number;
+  readonly sign: 1 | -1;
+  readonly trim: number;
+}
+
+/**
+ * 一个路口：中心（路径上的那个控制点）、交汇的路（按水平面上的角度逆时针排）、顶面的轮廓（逆时针，从第一条路的端口开始），
+ * curb[i] 是轮廓上 i 到 i + 1 这条边是不是路缘（转角；不是的是接着路的端口）。
+ */
+export interface RoadJunction {
+  readonly position: Vec3;
+  readonly arms: readonly RoadArm[];
+  readonly outline: readonly Vec3[];
+  readonly curb: readonly boolean[];
+}
+
+/** 路网：每条路径的采样和控制点的弧长，路口，每条路径去掉路口以后剩下的弧长区间（拉伸这些段）。 */
+export interface RoadNetwork {
+  readonly paths: readonly { readonly frames: readonly SplineFrame[]; readonly knots: readonly number[]; readonly closed: boolean }[];
+  readonly junctions: readonly RoadJunction[];
+  readonly kept: readonly (readonly (readonly [number, number])[])[];
+}
+
+/** 控制点焊在一起的容差：位置按厘米取整后相同。 */
+export const splineWeldKey = (position: readonly number[]): string => position.map((c) => Math.round(c * 100)).join(',');
+/** 转角的圆弧分几段。 */
+const CORNER_SEGMENTS = 8;
+
+/** 道路的路网：找出三条以上的路交汇的控制点，算各条路停在哪、路口的轮廓（见文件开头）。 */
+export function roadNetwork(file: SplineFile): RoadNetwork {
+  const profile = file.profile;
+  const halfWidth = profile.type === 'road' ? profile.width / 2 : 0;
+  const radius = profile.type === 'road' ? (profile.cornerRadius ?? profile.width / 2) : 0;
+  const paths = splinePaths(file).map((path) => ({ ...samplePath(path.points, path.closed ?? false, file.resolution ?? 2), closed: path.closed ?? false, points: path.points }));
+  // 焊点 → 从它出发的路（每个控制点往前、往后各一条，开放路径的两端只有一条）
+  const nodes = new Map<string, { position: Vec3; arms: { path: number; knot: number; sign: 1 | -1 }[] }>();
+  paths.forEach((path, p) => {
+    path.points.forEach((point, k) => {
+      const key = splineWeldKey(point.position);
+      const node = nodes.get(key) ?? { position: [...point.position] as Vec3, arms: [] };
+      nodes.set(key, node);
+      if (k > 0 || path.closed) node.arms.push({ path: p, knot: k, sign: -1 });
+      if (k < path.points.length - 1 || path.closed) node.arms.push({ path: p, knot: k, sign: 1 });
+    });
+  });
+  const junctionNodes = [...nodes.values()].filter((node) => node.arms.length >= 3);
+  const junctionKnots = paths.map((_, p) => new Set(junctionNodes.flatMap((node) => node.arms.filter((arm) => arm.path === p).map((arm) => arm.knot))));
+  // 一条路最多退多远：到同一条路径上下一个路口的一半弱（两头的路口各占一半），到路径的一端的九成
+  const room = (arm: { path: number; knot: number; sign: 1 | -1 }): number => {
+    const path = paths[arm.path]!, n = path.points.length, total = path.knots.at(-1)!, at = path.knots[arm.knot]!;
+    for (let step = 1; step <= n; step++) {
+      const raw = arm.knot + arm.sign * step;
+      if (!path.closed && (raw < 0 || raw >= n)) break;
+      const k = ((raw % n) + n) % n;
+      if (!junctionKnots[arm.path]!.has(k)) continue;
+      const d = arm.sign > 0 ? path.knots[k]! - at : at - path.knots[k]!;
+      return (path.closed ? (((d % total) + total) % total || total) : d) * 0.45;
+    }
+    if (path.closed) return total * 0.45;
+    return (arm.sign > 0 ? total - at : at) * 0.9;
+  };
+
+  const junctions = junctionNodes.map((node): RoadJunction => {
+    // 每条路离开路口的水平方向、路口处的半宽，按角度逆时针排
+    const arms = node.arms.map((arm) => {
+      const path = paths[arm.path]!;
+      const frame = frameAt(path.frames, path.knots[arm.knot]!);
+      const dx = frame.tangent[0] * arm.sign, dz = frame.tangent[2] * arm.sign, l = Math.hypot(dx, dz) || 1;
+      return { ...arm, dir: [dx / l, dz / l] as const, half: halfWidth * frame.width, angle: Math.atan2(dz, dx), trim: 0 };
+    }).sort((a, b) => a.angle - b.angle);
+    // 相邻两条路（a 逆时针转到 b）：a 靠 b 那边的边线和 b 靠 a 那边的边线的交点（离中心 s、r 远）；夹角 180° 以上没有
+    const corners = arms.map((a, i) => {
+      const b = arms[(i + 1) % arms.length]!;
+      let gap = b.angle - a.angle;
+      if (gap <= 0) gap += Math.PI * 2;
+      if (gap >= Math.PI - 0.05) return undefined;
+      const pa = [-a.dir[1], a.dir[0]] as const, pb = [-b.dir[1], b.dir[0]] as const;
+      // pa·wa + s·da = −pb·wb + r·db
+      const rx = -pb[0] * b.half - pa[0] * a.half, rz = -pb[1] * b.half - pa[1] * a.half;
+      const det = -a.dir[0] * b.dir[1] + b.dir[0] * a.dir[1];
+      if (Math.abs(det) < 1e-9) return undefined;
+      const s = (-rx * b.dir[1] + b.dir[0] * rz) / det, r = (a.dir[0] * rz - a.dir[1] * rx) / det;
+      return { s: Math.max(0, s), r: Math.max(0, r), point: [pa[0] * a.half + a.dir[0] * s, pa[1] * a.half + a.dir[1] * s] as const };
+    });
+    arms.forEach((arm, i) => {
+      const next = corners[i], previous = corners[(i - 1 + arms.length) % arms.length];
+      arm.trim = Math.min(room(arm), Math.max(next?.s ?? 0, previous?.r ?? 0) + radius);
+    });
+    // 每条路的端口：靠上一条路那边的点、靠下一条路那边的点（路面的边，含侧倾和宽度倍数）
+    const ports = arms.map((arm) => {
+      const path = paths[arm.path]!;
+      const frame = frameAt(path.frames, wrapDistance(path.knots[arm.knot]! + arm.sign * arm.trim, path.knots.at(-1)!, path.closed));
+      const side = frame.right[0] * -arm.dir[1] + frame.right[2] * arm.dir[0] >= 0 ? 1 : -1;
+      return { toPrevious: place(frame, -side * halfWidth, 0), toNext: place(frame, side * halfWidth, 0) };
+    });
+    const outline: Vec3[] = [], curb: boolean[] = [];
+    arms.forEach((_, i) => {
+      const port = ports[i]!, nextPort = ports[(i + 1) % arms.length]!;
+      outline.push(port.toPrevious, port.toNext);
+      curb.push(false, true);
+      const corner = corners[i];
+      if (!corner) return;
+      const control: Vec3 = [node.position[0] + corner.point[0], (port.toNext[1] + nextPort.toPrevious[1]) / 2, node.position[2] + corner.point[1]];
+      for (let k = 1; k < CORNER_SEGMENTS; k++) {
+        const t = k / CORNER_SEGMENTS;
+        outline.push(add(add(scale(port.toNext, (1 - t) ** 2), scale(control, 2 * t * (1 - t))), scale(nextPort.toPrevious, t * t)));
+        curb.push(true);
+      }
+    });
+    return { position: node.position, arms: arms.map(({ path, knot, sign, trim }) => ({ path, knot, sign, trim })), outline, curb };
+  });
+
+  // 每条路径去掉路口占的弧长以后剩下的区间
+  const kept = paths.map((path, p) => {
+    const total = path.knots.at(-1)!;
+    const cuts: [number, number][] = [];
+    for (const arm of junctions.flatMap((junction) => junction.arms)) {
+      if (arm.path !== p) continue;
+      const at = path.knots[arm.knot]!;
+      const [a, b] = arm.sign > 0 ? [at, at + arm.trim] : [at - arm.trim, at];
+      if (path.closed && a < 0) cuts.push([a + total, total], [0, b]);
+      else if (path.closed && b > total) cuts.push([a, total], [0, b - total]);
+      else cuts.push([Math.max(0, a), Math.min(total, b)]);
+    }
+    cuts.sort((x, y) => x[0] - y[0]);
+    const spans: [number, number][] = [];
+    let from = 0;
+    for (const [a, b] of cuts) {
+      if (a > from + 1e-6) spans.push([from, a]);
+      from = Math.max(from, b);
+    }
+    if (total > from + 1e-6) spans.push([from, total]);
+    return spans;
+  });
+  return { paths: paths.map(({ frames, knots, closed }) => ({ frames, knots, closed })), junctions, kept };
+}
+
+/**
+ * 地面要贴着的中心线（地形贴样条用，每条大约每 step 米一个点），每条路径一条。道路经过路口时中间那段换成"端口中点 → 路口中心
+ * → 端口中点"的直线（路口的顶面从中心扇形铺开，沿这些线正好是直的，地面贴着它们就贴着路口）；一条路径保持一条折线，段和段之间
+ * 不重叠（折线的端头会往外多压半个宽度）。每个路口的路缘（转角）再各是一条，curb 为 true：转角离两条辐条都远，只靠辐条的话
+ * 转角里原来的地会冒出来；地形给它们压得深一点（它们的端头盖到了路上，路往外是斜的）。别的横截面就是每条路径。
+ */
+export function splineCenterlines(file: SplineFile, step: number): { readonly points: Vec3[]; readonly curb: boolean }[] {
+  if (file.profile.type !== 'road') return splinePaths(file).map((path) => ({ points: sampleSpline(path.points, path.closed ?? false, step).map((frame) => frame.position), curb: false }));
+  const network = roadNetwork(file);
+  // 路缘：轮廓上连着的路缘边（从一个端口靠下一条路的点，经过转角，到下一个端口靠这条路的点）
+  const curbs = network.junctions.flatMap(({ outline, curb }) => {
+    const runs: Vec3[][] = [];
+    outline.forEach((point, i) => {
+      if (!curb[i]) return;
+      if (i === 0 || !curb[i - 1]) runs.push([point]);
+      runs.at(-1)!.push(outline[(i + 1) % outline.length]!);
+    });
+    return runs.map((points) => ({ points, curb: true }));
+  });
+  const lines = network.paths.map((path, p) => {
+    // 这条路径经过的路口中心（按弧长）
+    const centers = network.junctions.flatMap((junction) => junction.arms.filter((arm) => arm.path === p).map((arm) => path.knots[arm.knot]!));
+    const line: Vec3[] = [];
+    const spans = network.kept[p]!;
+    let at = 0;
+    for (const [from, to] of spans) {
+      // 上一段（或路径的起点）到这一段之间的路口：先到路口中心
+      for (const center of centers) if (center >= at - 1e-6 && center <= from + 1e-6 && (line.length > 0 || center < from)) line.push(frameAt(path.frames, center).position);
+      line.push(...resample(path.frames, from, to, step).map((frame) => frame.position));
+      at = to;
+    }
+    const total = path.knots.at(-1)!;
+    for (const center of centers) if (center >= at - 1e-6 && center <= total + 1e-6 && at < total) line.push(frameAt(path.frames, center).position);
+    // 重复的中心（往前、往后两条路都记了同一个点）去掉
+    return { points: line.filter((point, i) => i === 0 || point.some((c, k) => c !== line[i - 1]![k])), curb: false };
+  });
+  return [...lines, ...curbs];
+}
+
+/** 首尾相连的路径上弧长绕回 [0, total)；开放的夹在两端。 */
+function wrapDistance(distance: number, total: number, closed: boolean): number {
+  if (!closed) return Math.min(total, Math.max(0, distance));
+  return ((distance % total) + total) % total;
+}
+
+/** 弧长 from 到 to 这一段重新等距取截面（大约每 step 米一个，两端都在）。 */
+function resample(frames: readonly SplineFrame[], from: number, to: number, step: number): SplineFrame[] {
+  const count = Math.max(1, Math.ceil((to - from) / step));
+  return Array.from({ length: count + 1 }, (_, k) => frameAt(frames, from + ((to - from) * k) / count));
+}
+
+/**
+ * 路口的网格：顶面从中心扇形铺到轮廓（UV 是水平的世界坐标，米），路缘外侧照路的边坡往外 shoulder、往下 thickness。
+ */
+function junctionMesh(builder: MeshBuilder, junction: RoadJunction, thickness: number, shoulder: number): void {
+  const up: Vec3 = [0, 1, 0];
+  const { position: center, outline, curb } = junction;
+  const c = builder.vertex(center, up, center[0], center[2]);
+  const ring = outline.map((point) => builder.vertex(point, up, point[0], point[2]));
+  for (let i = 0; i < ring.length; i++) builder.triangle(c, ring[i]!, ring[(i + 1) % ring.length]!, up);
+  outline.forEach((a, i) => {
+    if (!curb[i]) return;
+    const b = outline[(i + 1) % outline.length]!;
+    const ex = b[0] - a[0], ez = b[2] - a[2], l = Math.hypot(ex, ez);
+    if (l < 1e-9) return;
+    // 逆时针的轮廓（按 atan2(z, x) 转）：边的方向转 -90° 朝外
+    const out = [ez / l, -ex / l] as const;
+    const normal = normalize([out[0] * thickness, shoulder, out[1] * thickness]);
+    const below = (p: Vec3): Vec3 => [p[0] + out[0] * shoulder, p[1] - thickness, p[2] + out[1] * shoulder];
+    const a0 = builder.vertex(a, normal, 0, 0), b0 = builder.vertex(b, normal, l, 0);
+    const b1 = builder.vertex(below(b), normal, l, 1), a1 = builder.vertex(below(a), normal, 0, 1);
+    builder.quad(a0, b0, b1, a1, normal);
+  });
 }
 
 class MeshBuilder {
@@ -237,6 +484,13 @@ class MeshBuilder {
     const facing = dot(cross(sub(p(b), p(a)), sub(p(c), p(a))), normal);
     if (facing >= 0) this.indices.push(a, b, c, a, c, d);
     else this.indices.push(a, c, b, a, d, c);
+  }
+
+  /** 三角形 a b c：按法线定绕向。 */
+  triangle(a: number, b: number, c: number, normal: readonly number[]): void {
+    const p = (i: number) => this.vertices.slice(i * 8, i * 8 + 3);
+    if (dot(cross(sub(p(b), p(a)), sub(p(c), p(a))), normal) >= 0) this.indices.push(a, b, c);
+    else this.indices.push(a, c, b);
   }
 }
 

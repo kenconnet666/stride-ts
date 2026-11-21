@@ -21,6 +21,8 @@ stride cpu-profile ──▶ 开发服务器的调试中枢 ──▶ 页面（�
 - 扩展在 Chrome 眼里是不受信任的调试客户端，拿不到 V8 的 `Profiler` 域（`Runtime`、`Input`、`Tracing`、`IO` 这些可以）。所以 `cpu-profile` 用 Tracing 录 `disabled-by-default-v8.cpu_profiler(.hires)`，这和 DevTools 性能面板的做法一样；再从页面主线程的 `ProfileChunk` 事件拼出 CPU profile。直连 CDP 时也走这条路。
 - 扩展按标签各管各的，几个游戏页面可以同时调试。CLI 用 `--hub`（哪个开发服务器）和 `--page`（哪个页面）选。
 
+`stride open` 起的 Chrome（有界面、无头）不用装这个扩展：CLI 直接连它的调试端口（`stride debug` 的断点也只能走这条路，见 packages/cli/README.md）。
+
 ## 安装（一次）
 
 1. 在 Chrome 地址栏打开 `chrome://extensions`。
@@ -28,7 +30,7 @@ stride cpu-profile ──▶ 开发服务器的调试中枢 ──▶ 页面（�
 3. 点左上角的"加载已解压的扩展程序"，选这个目录：本仓库的 `tools\debug-bridge`。
 4. 列表里出现"Stride Debug Bridge"就装好了。已经开着的游戏页面要刷新一次，内容脚本才会注入。
 
-改了扩展的文件以后，在 `chrome://extensions` 里点它卡片上的刷新按钮（↻），再刷新游戏页面。卡片上的"Service Worker（无效）"不是出错：MV3 的后台脚本空闲约 30 秒就被停掉，页面发消息时会自动醒来。
+0.2.0 起扩展改了文件会自己重新加载：页面打开时、CLI 发命令时它比一次自己文件的指纹，变了就重新加载，并把内容脚本注入已经开着的本机页面（页面不用刷新；那一条命令会报"正在更新，再跑一次"）。从 0.1.0 升上来要在 `chrome://extensions` 里最后点一次它卡片上的刷新按钮（↻），之后不用再点。卡片上的"Service Worker（无效）"不是出错：MV3 的后台脚本空闲约 30 秒就被停掉，页面发消息时会自动醒来。
 
 ## 验证
 

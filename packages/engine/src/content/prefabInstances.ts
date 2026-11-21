@@ -186,6 +186,12 @@ export function availableParent(parent: string, exists: (id: string) => boolean)
   return null;
 }
 
+/** 场景文件里脚本的 type（`路径#导出名`，或 Stride 的 `命名空间.类名`）在预制体的结构里（Prefab.spawn、生成的 PrefabShape）的键：导出名、类名。 */
+export function scriptKey(type: string): string {
+  const hash = type.lastIndexOf('#');
+  return hash >= 0 ? type.slice(hash + 1) : type.slice(type.lastIndexOf('.') + 1);
+}
+
 /** 两个 JSON 值相同（值是 undefined 的键当没有）。 */
 export function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;

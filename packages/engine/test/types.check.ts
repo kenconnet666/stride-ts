@@ -3,7 +3,9 @@
  * 负例用 @ts-expect-error 固定“必须编译失败”。
  */
 import {
+  assetRef,
   component,
+  ContentManager,
   Game,
   prop,
   ScriptComponent,
@@ -13,6 +15,7 @@ import {
   validator,
   type Chunk,
   type ColorLike,
+  type Entity,
   type EntityId,
   type GameTime,
   type InitOf,
@@ -209,4 +212,20 @@ expect<Equal<typeof account.seen, Instant>>();
 // @ts-expect-error 日期要传 LocalDate 或文字
 Account.with({ opened: new Date() });
 // @ts-expect-error bytes 只给脚本用
-component({ blob: prop.bytes() });
+component({ blob: prop.bytes() });// ---- 资源句柄的结构：生成的预制体句柄带着 PrefabShape，spawn 的结果按名字有类型，写错名字编译失败 ----
+class Spin extends SyncScript.props({ speed: prop.number().default(1) }) {}
+interface CoinShape { readonly roots: { readonly Coin: { readonly scripts: { readonly Spin: Spin }; readonly children: { readonly Glow: { readonly scripts: {}; readonly children: {} } } } } }
+const coinHandle = assetRef<'prefab', CoinShape>('prefab', 'Prefabs/Coin');
+const spawnCoin = async (content: ContentManager, game: Game) => {
+  const coin = (await content.load(coinHandle)).spawn(game.entities);
+  expect<Equal<typeof coin.roots.Coin.scripts.Spin.speed, number>>();
+  expect<Equal<typeof coin.roots.Coin.children.Glow.entity, Entity>>();
+  // @ts-expect-error 没有这个子实体
+  void coin.roots.Coin.children.Missing;
+  // @ts-expect-error 没有这个脚本
+  void coin.roots.Coin.scripts.Rotate;
+  // 不带结构的句柄：名字是字符串索引
+  const any = (await content.load(assetRef('prefab', 'Prefabs/Any'))).spawn(game.entities);
+  expect<Equal<typeof any.roots[string]['scripts'][string], ScriptComponent>>();
+};
+void spawnCoin;

@@ -21,7 +21,7 @@ import { Morphed } from '../animation/morphs';
 import { Material, type MaterialShaderLayer, type MaterialShaderTrees } from '../rendering/mesh/Material';
 import { preload, textureRefs } from './loading';
 import { expandPrefabInstances, loadPrefabs } from './prefabInstances';
-import { Prefab } from './Prefab';
+import { Prefab, type PrefabShape } from './Prefab';
 import { changedEntities, SceneBuilder, type ModelUse, type SceneAssets } from './SceneBuilder';
 import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/mesh/Mesh';
@@ -67,12 +67,18 @@ export interface SceneReference {
  * 工程里的句柄由工具按内容目录生成（`src/assets.gen.ts`，见 docs/architecture.md 的"资源的强类型"），资源改名、删掉以后
  * 引用它的代码在类型检查时报错。
  */
-export interface AssetHandle<K extends keyof AssetTypes = keyof AssetTypes> {
+export interface AssetHandle<K extends keyof AssetTypes = keyof AssetTypes, S = unknown> {
   readonly kind: K;
   readonly path: string;
+  /** 只在类型里：资源的结构（生成的句柄给预制体写上它的 PrefabShape），运行时没有这个字段。 */
+  readonly shape?: S;
 }
 
-export function assetRef<K extends keyof AssetTypes>(kind: K, path: string): AssetHandle<K> {
+/** 句柄加载出来的东西：带结构的预制体是 Prefab<结构>，别的按种类。 */
+export type LoadedAsset<K extends keyof AssetTypes, S = unknown> = K extends 'prefab' ? (S extends PrefabShape ? Prefab<S> : Prefab) : AssetTypes[K];
+
+/** 资源句柄；S 是资源的结构（生成的预制体句柄写 `assetRef<'prefab', 它的结构>(…)`）。 */
+export function assetRef<K extends keyof AssetTypes, S = unknown>(kind: K, path: string): AssetHandle<K, S> {
   return { kind, path };
 }
 
@@ -254,8 +260,8 @@ export class ContentManager {
   }
 
   /** 按句柄加载：`const prefab = await content.load(assets.prefabs.Bullet)`。 */
-  load<K extends keyof AssetTypes>(handle: AssetHandle<K>): Promise<AssetTypes[K]> {
-    return this.#loaders[handle.kind](handle.path) as Promise<AssetTypes[K]>;
+  load<K extends keyof AssetTypes, S = unknown>(handle: AssetHandle<K, S>): Promise<LoadedAsset<K, S>> {
+    return this.#loaders[handle.kind](handle.path) as Promise<LoadedAsset<K, S>>;
   }
 
   loadModel(path: string): Promise<LoadedModel> {
@@ -706,10 +712,7 @@ export class ContentManager {
   loadSceneTemplate(path: string, options: LoadSceneOptions = {}): Promise<SceneTemplate> {
     return this.#once(path + EXTENSIONS.scene, 'template', async () => {
       const { scene, assets } = await this.#sceneWithAssets(path);
-      return new SceneTemplate(path, scene.entities, (files, name) => new Prefab(name, (entities) => {
-        const created = this.#scenes.instantiate(files, assets, entities, options, name);
-        return [created.get(files[0]!.id)!];
-      }));
+      return new SceneTemplate(path, scene.entities, (files, name) => new Prefab(name, files, (entities) => this.#scenes.instantiate(files, assets, entities, options, name)));
     });
   }
 
@@ -719,11 +722,7 @@ export class ContentManager {
       const raw = this.#json<PrefabFile>(await this.#read(url));
       const file = { ...raw, entities: await this.#expandInstances(raw.entities, url.href) };
       const assets = await this.#scenes.preload(file.entities, url.href);
-      const roots = file.entities.filter((entity) => entity.parent === null).map((entity) => entity.id);
-      return new Prefab(file.name, (entities) => {
-        const created = this.#scenes.instantiate(file.entities, assets, entities, options, path);
-        return roots.map((id) => created.get(id)!);
-      });
+      return new Prefab(file.name, file.entities, (entities) => this.#scenes.instantiate(file.entities, assets, entities, options, path));
     });
   }
 

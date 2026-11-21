@@ -461,6 +461,12 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 属性面板换成库的 PropertyGrid（0.35.0）：主 Chrome 里看 greybox，场景设置、Ball 的名字、位置、旋转（欧拉角）、缩放、模型（资源路径）、材质列表的“添加”都对；Ball 和 Sky 一起选，名字、位置显示“多个值”和“—”，改缩放 X 为 2 两个都变（视口里球拉宽）、撤销回来；材质的字段、节点图卡片里的参数（卡片高度正好装下）、粒子编辑器的发射器和模块的字段都照常。
 - 骨架屏：重新加载编辑器，场景树、文档页签、属性面板、视口（不透明的底加扫光，盖住游戏页面的启动日志）在游戏页面起来前是骨架，起来后换成内容；资源列表读得快，Tree 的防闪烁不画骨架。
 
+### 预制体句柄的结构类型（2026-11-21）
+
+- 重新生成全部样例的 assets.gen.ts：有预制体的（bepu-sample、csharp-intermediate、first-person-shooter、platformer……）带上结构，`pnpm typecheck` 全过（第一次 csharp-intermediate 报"接口没用到"：同名兄弟、没名字的实体也写了接口，改成只写够得着的）。
+- 主 Chrome 里 collect-dodge 的游戏页面：`content.load(assetRef('prefab', 'Prefabs/Coin')).spawn(...)` 的 `roots.Coin.scripts.Coin` 是 Coin 脚本、挂在根实体上，挪到玩家前面画面上看得见；spawn、销毁 100 次 7.4 毫秒。
+- 单测：运行时 spawn 按名字取根、子实体和脚本（Stride 的类型名取类名）；类型检查（types.check.ts）写错子实体、脚本的名字编译失败；生成器的输出（import type、ScriptComponent、嵌套实例、同名和没名字的）。
+
 ### 贴图的导入设置（2026-11-21）
 
 - 主 Chrome 里 bepu-sample：到处搜找到 GithubNicogo（二维码贴图，没有导入设置），属性面板显示默认的导入设置（源文件 png、压缩 none、mipmap、最大尺寸 0、sRGB）。打开 Constraint 场景、对准一个二维码方块；经编辑器接口把压缩改成 uastc：写出 KTX2，四个 QRMat 材质的编码改成 ktx2，视口热重载后画面一样；再改成 etc1s，页面请求的是 GithubNicogo.ktx2、画面照常；改回 none，KTX2 删掉，材质和改之前逐字节一样（验完删掉导入设置）。

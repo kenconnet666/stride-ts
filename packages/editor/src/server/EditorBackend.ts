@@ -548,7 +548,7 @@ export class EditorBackend {
   }
 
   #writeAssetTypes(): Promise<boolean> {
-    return writeAssetTypes(this.project.assetTypesFile, this.database.list(), this.project.manifest.content);
+    return writeAssetTypes(this.project.assetTypesFile, this.database.list(), this.project.manifest.content, this.project.contentDir);
   }
 
   /** 排在前面的活后面做；前面的出错不影响后面的。 */

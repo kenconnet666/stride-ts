@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, plainMesh, VERTEX_FLOATS, type BrushFile, type MaterialFile, type SceneFile, type UIFile } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, plainMesh, VERTEX_FLOATS, type BrushFile, type MaterialFile, type PrefabFile, type SceneFile, type UIFile } from '@stride-ts/engine/content-format';
 import {
   AssetDatabase, classifyAssetFile, EDITOR_API_PATH, EDITOR_HEADER, EditorBackend, generateAssetTypes, loadProject, PROJECT_FILE, projectInfo,
   type AssetChanges, type AssetRecord,
@@ -198,6 +198,25 @@ describe('资源句柄的生成（assets.gen.ts）', () => {
     // 一个能引用的资源都没有：不导入引擎
     expect(generateAssetTypes([], 'public/content').split('\n').slice(2)).toEqual(['export const assets = {', '} as const;', '']);
   });
+
+  test('预制体的句柄带结构：根、子实体按名字（同名取第一个、没名字的不算），脚本按导出名 import type，找不到模块的是 ScriptComponent，嵌套实例用那个预制体的根', () => {
+    const asset = (assetPath: string): AssetRecord => ({ kind: 'prefab', path: assetPath, files: [], bytes: 0, modified: 0, references: [], handle: 'prefab' });
+    const entity = (id: string, name: string, parent: string | null, extra: object = {}) => ({ id, name, parent, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {}, ...extra });
+    const prefabs = new Map<string, PrefabFile>([
+      ['Game/Coin', { name: 'Coin', entities: [
+        entity('c', 'Coin', null, { components: { scripts: [{ type: 'game/Coin#Coin' }, { type: 'Stride.Spinner' }] } }),
+        entity('g', 'Glow', 'c'), entity('g2', 'Glow', 'c'), entity('n', '', 'c'),
+      ] } as unknown as PrefabFile],
+      ['Game/Pile', { name: 'Pile', entities: [entity('p', 'Pile', null), entity('i', 'Top', 'p', { prefab: { path: 'Game/Coin' } })] } as unknown as PrefabFile],
+    ]);
+    const text = generateAssetTypes([asset('Game/Pile'), asset('Game/Coin')], 'public/content', {
+      prefabs, scriptModule: (type) => (type === 'game/Coin#Coin' ? { module: './game/Coin', name: 'Coin' } : undefined),
+    });
+    expect(text).toContain("import type { ScriptComponent } from '@stride-ts/engine';\nimport type { Coin } from './game/Coin';");
+    expect(text).toContain('interface Prefab0_0 {\n  readonly scripts: { readonly Coin: Coin; readonly Spinner: ScriptComponent; };\n  readonly children: { readonly Glow: Prefab0_1; };\n}');
+    expect(text).toContain("interface Prefab1_0 {\n  readonly scripts: {};\n  readonly children: { readonly Top: Prefab0['roots'][\"Coin\"]; };\n}");
+    expect(text).toContain("Coin: assetRef<'prefab', Prefab0>('prefab', \"Game/Coin\"),");
+  });
 });
 
 describe('后端（EditorBackend）', () => {
@@ -240,7 +259,7 @@ describe('后端（EditorBackend）', () => {
     expect(events).toHaveLength(notified);
     const created = await api('/asset?kind=prefab&path=Game/Prefabs/Bullet', { method: 'PUT', body: JSON.stringify({ name: 'Bullet', entities: [] }) });
     expect(created.status).toBe(200);
-    expect(await readFile(path.join(directory, 'src', 'assets.gen.ts'), 'utf8')).toContain("Bullet: assetRef('prefab', \"Game/Prefabs/Bullet\"),");
+    expect(await readFile(path.join(directory, 'src', 'assets.gen.ts'), 'utf8')).toContain("Bullet: assetRef<'prefab', Prefab0>('prefab', \"Game/Prefabs/Bullet\"),");
   });
 
   test('新建资源（create=1）：已经有了的不覆盖（409）；JSON 写的模型能建、能读回来，参数不对的拒绝', async () => {

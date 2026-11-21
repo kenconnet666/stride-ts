@@ -35,7 +35,7 @@ await database.scan();
 const backend = () => EditorBackend.open(project.root, path.join(project.root, 'public'));
 
 if (command === 'assets-types') {
-  const written = await writeAssetTypes(project.assetTypesFile, database.list(), project.manifest.content);
+  const written = await writeAssetTypes(project.assetTypesFile, database.list(), project.manifest.content, project.contentDir);
   console.log(`${project.manifest.assetTypes}: ${written ? 'written' : 'up to date'} (${database.list().filter((asset) => asset.handle).length} assets)`);
 } else if (command === 'assets') {
   for (const asset of database.list()) console.log(`${asset.kind.padEnd(12)} ${asset.path}${asset.error ? `  ERROR ${asset.error}` : ''}`);

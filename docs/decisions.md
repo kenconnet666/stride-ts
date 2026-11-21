@@ -23,6 +23,16 @@ S2 第四件的后一半。参考 Niagara 的 Flipbook Baker（固定相机、�
 - **放**：旁边加一个实体，一个发射器、每个周期生成一个粒子、活一个周期，按寿命翻页（uvBuilderFlipbook，animationSpeed = 帧数），大小是一格对应的世界大小，摆在格子中心。贴图引用要写 `encoding: 'png'`，不写按 KTX2 找（第一次就这样没加载上）。
 - 顺手：游戏页面写编辑器后端的两个接口（存图片、存导出）收进 `editor/backendApi.ts`，画贴图和离线渲染原来各写一份；调试命令的实体参数在编辑状态的页面里也认场景文件里的 id（编辑器、MCP 说的都是它）。
 
+## 2026-11-21 资源句柄里的结构类型：预制体（P3 第 6 项）
+
+docs/architecture.md 的"资源的强类型"设想句柄带着资源的结构。第一版做预制体，因为代码里最常见的是"建一个预制体、拿它的某个子实体或脚本"（原来是 `instantiate` 再 `findChild('名字')`、`require(脚本类)`，名字写错到运行时才知道）。
+
+- **生成**：`src/assets.gen.ts` 里每个预制体一个 `PrefabN` 接口（`roots`：有名字的根实体），每个够得着的实体一个 `PrefabN_M`（`scripts`：脚本按导出名；`children`：有名字的子实体）；句柄写成 `assetRef<'prefab', PrefabN>(…)`。脚本的 type 是登记的名字 `路径#导出名`，路径相对游戏的模块目录（就是生成的文件所在的目录），模块文件在就 `import type`，不在（导入的 Stride 场景里的 `命名空间.类名`、已经删了的脚本）就写 `ScriptComponent`。嵌套的预制体实例用那个预制体的根的结构。同名的兄弟只取第一个、没有名字的不进结构（运行时同样）；只写从根够得着的接口（应用开着 noUnusedLocals）。
+- **运行时**：`Prefab<S>.spawn(entities)` 返回 `{ entities, roots }`，`roots.<名字>` 是 `{ entity, scripts, children }`；脚本是取的时候按登记表找、没挂上（属性校验不过）时报错说清是哪个。`instantiate` 照旧（内部走 spawn）。`content.load(句柄)` 对带结构的预制体句柄返回 `Prefab<结构>`；按路径加载的结构是字符串索引。
+- **为什么用名字不用 id**：代码里写名字（编辑器里看得见、改得了），改了名字类型检查报错，正是要的效果；id 是文件内部的。
+- 耗时：各样例生成一次 1.2～1.3 秒（几乎都是 Node 起动和扫内容目录，结构本身可忽略）；collect-dodge 里 spawn、销毁 100 次 7.4 毫秒，和 instantiate 一样。全部样例的 typecheck 照过。
+- 还没做：场景里标了"导出"的实体、模型的材质槽名、`Overrides<P>`、组件（数据组件）的类型化取法。
+
 ## 2026-11-21 贴图的导入设置（P3 第 6 项）
 
 拖进来的 PNG、JPEG、WebP 原样给运行时用（浏览器解码，显存里是不压缩的 RGBA8）。Stride 工程导入时贴图编成 KTX2（Basis，运行时转码成 BC7、ASTC、ETC2），编辑器里自己加的图片也该能这样。

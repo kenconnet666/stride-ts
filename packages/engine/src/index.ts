@@ -36,9 +36,9 @@ export { AnimationClip, Skeleton, type AnimationNative } from './animation/resou
 export { evaluateCurve, propertyCurve, PropertyAnimated, PropertyStack, writeCurveValue, type AnimatableKey, type CurveInterpolation, type KeyValue, type PropertyCurve } from './animation/curves';
 export { Timeline, type TimelineBinding, type TimelineCue, type TimelineState } from './timeline/Timeline';
 export { TimelinePlayer } from './timeline/TimelinePlayer';
-export { Prefab } from './content/Prefab';
+export { Prefab, type EntityShape, type PrefabShape, type SpawnedEntity, type SpawnedPrefab, type UntypedEntityShape, type UntypedPrefabShape } from './content/Prefab';
 export { SceneTemplate } from './content/SceneTemplate';
-export { assetRef, ContentManager, type AssetHandle, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type GameSettings, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
+export { assetRef, ContentManager, type AssetHandle, type LoadedAsset, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type GameSettings, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
 export type { SceneScriptMap } from './content/sceneScripts';
 export {
   decodeCubemap,

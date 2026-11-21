@@ -492,6 +492,14 @@ describe('ContentManager', () => {
     expect(first!.id).not.toBe(second!.id);
     const [label] = second!.require(Transform).children;
     expect(label!.require(Label).target).toBe(second!.id);
+
+    // 带结构的句柄（生成的 assets.gen.ts 那样）：spawn 按名字给出根、子实体，脚本按导出名（Stride 的类型名取类名）
+    interface CrateShape { readonly roots: { readonly crate: { readonly scripts: {}; readonly children: { readonly label: { readonly scripts: { readonly Label: Label }; readonly children: {} } } } } }
+    const typed = await content.load(assetRef<'prefab', CrateShape>('prefab', 'prefabs/Crate'));
+    const spawned = typed.spawn(game.entities);
+    expect(spawned.entities).toEqual([spawned.roots.crate.entity]);
+    expect(spawned.roots.crate.children.label.scripts.Label.target).toBe(spawned.roots.crate.entity.id);
+    expect(spawned.roots.crate.children.label.entity.require(Transform).parent).toBe(spawned.roots.crate.entity);
   });
 
   test('场景里的预制体实例（docs/prefabs.md）：实例就是预制体的根，成员展开出来、id 拼出来，覆盖照用，引用指向这一组', async () => {

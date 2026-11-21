@@ -693,7 +693,7 @@ car.components.Vehicle.steering = 0.5;            // Vehicle instance, typed
 car.parts.frontLeft.components.Wheel.radius;      // number
 ```
 
-**实现到哪了**（2026-11-20）：生成器在 `packages/editor`（开发服务器启动、资源增减时重写 `src/assets.gen.ts`，`stride-editor assets-types` 单独生成）。现在句柄是 `assetRef(种类, 内容路径)`，按种类、目录分层（`assets.prefabs.Game.Prefabs.Bullet`），`content.load(句柄)` 的结果类型跟着种类；上面例子里的结构类型（预制体的组件和部件、模型的材质槽、场景里导出的实体）、`Overrides`、`scene.spawn` 还没有，等编辑器能编辑这些的时候做。句柄的值现在是路径不是 id（按路径还是按 id 引用等用户定）。
+**实现到哪了**（2026-11-20）：生成器在 `packages/editor`（开发服务器启动、资源增减时重写 `src/assets.gen.ts`，`stride-editor assets-types` 单独生成）。现在句柄是 `assetRef(种类, 内容路径)`，按种类、目录分层（`assets.prefabs.Game.Prefabs.Bullet`），`content.load(句柄)` 的结果类型跟着种类；预制体的句柄带结构（2026-11-21）：`prefab.spawn(entities)` 的 `roots.<名字>.children.<名字>`、`.scripts.<导出名>` 都有类型，脚本的类型 `import type` 自游戏的模块（见 decisions.md）；模型的材质槽、场景里导出的实体、`Overrides`、组件表还没有。句柄的值现在是路径不是 id（按路径还是按 id 引用等用户定）。
 
 **代码里定义的预制体**用 `prefab({ components, parts })` 写，类型直接推导，得到和生成的预制体同样的结构，`spawn`、`Overrides` 两者通用。
 

@@ -10,7 +10,7 @@ import { assetListId, FieldEditor, Fields, type FieldContext, type ValuePath, ty
 import type { EditorSession } from './session';
 import { labelText } from './fieldMessages';
 import { t } from './messages';
-import { mergeValues } from './values';
+import { mergeField } from './values';
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', gap: '_sm', padding: '_sm', fontSize: '0.875rem' },
@@ -105,7 +105,7 @@ function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
  * （EditAgent.scriptTypes），加上的脚本 type 写登记的名字、属性先都用脚本的默认值。改一个值是对场景文档的一次 set，
  * 连着改同一个值（拖数字、打字）并成撤销的一步。
  *
- * 选了几个实体时显示它们都有的组件和脚本，值不一样的地方显示"多个值"（mergeValues）；改一处是对每个实体各一次 set，
+ * 选了几个实体时显示它们都有的组件和脚本，值不一样的地方显示"多个值"（mergeField：照字段类型并，旋转按角）；改一处是对每个实体各一次 set，
  * 一起做、一起撤销；加、去掉组件也是对每个实体。
  *
  * 资源浏览器里选中材质、JSON 写的模型时显示资源自己的字段（引擎的 ASSET_FIELDS）：改了直接存进资源文件，视口里用到它的实体
@@ -257,7 +257,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       void version.value;
       return session.opened.value?.kind === 'scene' ? sceneSettings() : <div {...css.attrs(styles.hint)}>{t.pickEntity}</div>;
     }
-    const merged = (read: (entity: SceneEntityFile) => unknown) => mergeValues(list.map(read));
+    const merged = (read: (entity: SceneEntityFile) => unknown, type: FieldType) => mergeField(list.map(read), type);
     // 模型是从多边形网格（.poly.json）烘出来的：能在视口里编辑它
     const polySource = (entity: SceneEntityFile) => {
       const model = entity.components.model?.model;
@@ -272,7 +272,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
           : <div {...css.attrs(styles.hint)}>{t.multiSelection(list.length)}</div>}
         <Fields
           fields={ENTITY_FIELDS}
-          value={Object.fromEntries(ENTITY_FIELDS.map((field) => [field.name, merged((entity) => (entity as unknown as Record<string, unknown>)[field.name])]))}
+          value={Object.fromEntries(ENTITY_FIELDS.map((field) => [field.name, merged((entity) => (entity as unknown as Record<string, unknown>)[field.name], field.type)]))}
           context={context}
           onSet={setter(list, () => [])}
         />
@@ -286,7 +286,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             {key === 'model' && list.length === 1 && polySource(list[0]!) && (
               <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Shapes} onClick={() => void session.startPolyEdit(list[0]!.id, polySource(list[0]!)!)}>{t.polyEdit}</Button>
             )}
-            <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key])} context={context} onSet={setter(list, () => ['components', key])} />
+            <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key], COMPONENT_FIELDS[key].type)} context={context} onSet={setter(list, () => ['components', key])} />
           </section>
         ))}
         {commonScripts(list).map(({ type, name, k }) => {
@@ -302,7 +302,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
                   return { type: 'set', entity: entity.id, path: ['components', 'scripts'], value: rest.length > 0 ? rest : undefined };
                 })} />
               </div>
-              <FieldEditor type={fieldType} value={merged((entity) => entity.components.scripts![index(entity)]!.props)} context={context} onSet={setter(list, (entity) => ['components', 'scripts', index(entity), 'props'])} />
+              <FieldEditor type={fieldType} value={merged((entity) => entity.components.scripts![index(entity)]!.props, fieldType)} context={context} onSet={setter(list, (entity) => ['components', 'scripts', index(entity), 'props'])} />
             </section>
           );
         })}

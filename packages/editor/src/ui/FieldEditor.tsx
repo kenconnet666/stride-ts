@@ -16,7 +16,7 @@ import { inferFields, type Field, type FieldType } from '@stride-ts/engine/edito
 import type { SceneScriptValue } from '@stride-ts/engine/content-format';
 import { fieldDescription, fieldName } from './fieldMessages';
 import { t } from './messages';
-import { eulerToQuaternion, quaternionToEuler } from './values';
+import { eulerToQuaternion, MixedRotation, quaternionToEuler } from './values';
 
 /** 文件里一个值的路径（相对编辑器拿到的值）。 */
 export type ValuePath = PropertyPath;
@@ -51,9 +51,12 @@ const AXES = ['X', 'Y', 'Z'];
 function engineEditors(context: () => FieldContext): PropertyEditors<EngineKind> {
   const editors: PropertyEditors<EngineKind> = {
     rotation: {
-      // 文件里是四元数，面板上按欧拉角改；多选时各个实体的旋转不一样就三个角都显示"多个值"，改一个角时每个实体留着自己的另外两个角
+      // 文件里是四元数，面板上按欧拉角改；多选时按角显示"多个值"（属性面板按类型并成 MixedRotation），改一个角时每个实体留着
+      // 自己的另外两个角
       render: ({ value, label, set }) => {
-        const euler: unknown[] = hasMixed(value) ? [PROPERTY_MIXED, PROPERTY_MIXED, PROPERTY_MIXED] : quaternionToEuler(Array.isArray(value) ? (value as number[]) : [0, 0, 0, 1]);
+        const euler: readonly unknown[] = value instanceof MixedRotation
+          ? value.euler
+          : hasMixed(value) ? [PROPERTY_MIXED, PROPERTY_MIXED, PROPERTY_MIXED] : quaternionToEuler(Array.isArray(value) ? (value as number[]) : [0, 0, 0, 1]);
         const setAngle = (i: number, next: number) => (current: unknown) =>
           eulerToQuaternion(quaternionToEuler(Array.isArray(current) ? (current as number[]) : [0, 0, 0, 1]).map((angle, j) => (j === i ? next : angle)));
         return (

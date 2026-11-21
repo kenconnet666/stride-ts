@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { hasMixed, PROPERTY_MIXED as MIXED } from '@zerodep-dev/vue-tsx-pro-ui';
-import { eulerToQuaternion, mergeValues, quaternionToEuler } from '../src/ui/values.ts';
+import { ENTITY_FIELDS, COMPONENT_FIELDS } from '@stride-ts/engine/editor-fields';
+import { eulerToQuaternion, mergeField, mergeValues, MixedRotation, quaternionToEuler } from '../src/ui/values.ts';
 
 // 属性面板上的值和文件里的值之间的换算。
 
@@ -39,5 +40,25 @@ describe('多选：几个实体的值并成一个', () => {
     expect(mergeValues([undefined, undefined])).toBeUndefined();
     expect(mergeValues([0, '0'])).toBe(MIXED);
     expect([hasMixed({ a: [1, MIXED] }), hasMixed({ a: [1, 2] }), hasMixed(MIXED)]).toEqual([true, false, true]);
+  });
+});
+
+describe('多选时照字段类型并（mergeField）', () => {
+  const rotation = ENTITY_FIELDS.find((field) => field.name === 'rotation')!.type;
+
+  test('旋转按欧拉角逐个角并：只有绕 Y 不一样时另外两个角照常显示；一样时原样', () => {
+    const a = eulerToQuaternion([10, 20, 30]), b = eulerToQuaternion([10, 70, 30]);
+    const merged = mergeField([a, b], rotation);
+    expect(merged).toBeInstanceOf(MixedRotation);
+    expect((merged as MixedRotation).euler).toEqual([10, MIXED, 30]);
+    expect(mergeField([a, [...a]], rotation)).toEqual(a);
+  });
+
+  test('往里照类型走：碰撞体形状列表里的旋转也按角并；没描述的、有的没写的同 mergeValues', () => {
+    const shape = (angles: number[], size: number) => ({ type: 'box', position: [0, 0, 0], rotation: eulerToQuaternion(angles), mass: 1, size: [size, 1, 1] });
+    const merged = mergeField([{ shapes: [shape([0, 0, 45], 1)] }, { shapes: [shape([0, 0, 90], 2)] }], COMPONENT_FIELDS.static.type) as { shapes: Record<string, unknown>[] };
+    expect((merged.shapes[0]!.rotation as MixedRotation).euler).toEqual([0, 0, MIXED]);
+    expect(merged.shapes[0]!.size).toEqual([MIXED, 1, 1]);
+    expect(hasMixed(mergeField([1, 2], { kind: 'json' }))).toBe(true);
   });
 });

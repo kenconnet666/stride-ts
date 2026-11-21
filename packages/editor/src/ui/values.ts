@@ -4,6 +4,7 @@
  */
 import { PROPERTY_MIXED } from '@zerodep-dev/vue-tsx-pro-ui';
 import { sameValue } from '@stride-ts/engine/content-prefabs';
+import type { Field, FieldType } from '@stride-ts/engine/editor-fields';
 
 const DEGREES = 180 / Math.PI;
 
@@ -59,3 +60,55 @@ export function mergeValues(values: readonly unknown[]): unknown {
 }
 
 const isObject = (value: unknown): boolean => value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * 多选时几个实体的旋转不一样：按欧拉角逐个角并（只有绕 Y 不一样时绕 X、绕 Z 照常显示），给旋转的编辑器用。四元数逐个分量
+ * 并没用：一个角不同，四个分量都跟着变。
+ */
+export class MixedRotation {
+  /** [绕 X, 绕 Y, 绕 Z]（度），各实体不一样的角是 PROPERTY_MIXED。 */
+  readonly euler: readonly unknown[];
+
+  constructor(euler: readonly unknown[]) {
+    this.euler = euler;
+  }
+}
+
+/**
+ * 照字段的类型并几个实体上同一处的值：旋转按欧拉角并（MixedRotation），对象、列表、几种之一往里照类型走，别的同
+ * mergeValues。
+ */
+export function mergeField(values: readonly unknown[], type: FieldType): unknown {
+  const [first] = values;
+  if (values.every((value) => sameValue(value, first))) return first;
+  switch (type.kind) {
+    case 'rotation':
+      return values.every((value) => Array.isArray(value) && value.length === 4) ? new MixedRotation(mergeValues(values.map((value) => quaternionToEuler(value as number[]))) as unknown[]) : PROPERTY_MIXED;
+    case 'object':
+      return mergeObjects(values, type.fields);
+    case 'union': {
+      const tag = (first as Record<string, unknown> | undefined)?.[type.tag];
+      const sameTag = values.every((value) => isObject(value) && (value as Record<string, unknown>)[type.tag] === tag);
+      return sameTag && typeof tag === 'string' ? mergeObjects(values, [...(type.common ?? []), ...(type.variants[tag] ?? [])]) : mergeValues(values);
+    }
+    case 'list':
+      return values.every((value) => Array.isArray(value) && value.length === (first as unknown[]).length)
+        ? (first as unknown[]).map((_, i) => mergeField(values.map((value) => (value as unknown[])[i]), type.item))
+        : PROPERTY_MIXED;
+    default:
+      return mergeValues(values);
+  }
+}
+
+/** 对象逐个键并：有字段描述的键照类型并，别的（几种之一的标签、没描述的）同 mergeValues。 */
+function mergeObjects(values: readonly unknown[], fields: readonly Field[]): unknown {
+  if (!values.every(isObject)) return mergeValues(values);
+  const types = new Map(fields.map((field) => [field.name, field.type]));
+  const keys = new Set(values.flatMap((value) => Object.keys(value as object)));
+  return Object.fromEntries([...keys].map((key) => {
+    const items = values.map((value) => (value as Record<string, unknown>)[key]);
+    const type = types.get(key);
+    // 有的实体没写这个键（可以不写的字段）：不往里并
+    return [key, type && items.every((item) => item !== undefined && item !== null) ? mergeField(items, type) : mergeValues(items)];
+  }));
+}

@@ -5,7 +5,8 @@
  *   哈希出来，所以同一个点不管哪个流式的格子、什么时候撒都一样；按坡度、高度、成片的噪声、离路和地物的距离筛，剩下的随机转、
  *   缩放、可选地顺着坡倾斜，贴在地面上（高度直接求值，同 game.terrain.heightAt）；
  * - ScatterSystem 按相机附近的格子撒（每层按自己的 viewDistance、cellSize），近的先撒，每帧有时间预算；走远了拿掉。每个格子
- *   一个子实体，下面每个实例一个带模型的实体（剔除、阴影、点选照常）。地形或摆放文件换了新版本（编辑器、热重载）时全部重撒；
+ *   一个子实体，下面每个实例一个带模型的实体（剔除、阴影、点选照常）。地形或摆放文件换了新版本（编辑器、热重载、雕刻）时只重撒
+ *   受影响的：规则没变的层留着，地形只是加减了笔画、地物、样条时只重撒盖到改动范围的格子（同地形的块，changedRegions）；
  * - 草（层的 grass）：每个点一片草叶（一个三角形），一个格子的草合成一个网格挂在格子的实体上。草密，地面的高度不逐点求值：
  *   整个格子按 1 米的格距在工作线程上算一页高度（TerrainAsset.heights），双线性插值出高度和法线（草叶的法线用地面的，和地形的
  *   光照接得上）。
@@ -25,6 +26,7 @@ import { ResourceTable } from '../engine/ResourceTable';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Terrain, TerrainAsset, type TerrainPath } from './Terrain';
+import { changedRegions } from './TerrainSystem';
 
 export type ScatterAssetId = Branded<number, 'ScatterAssetId'>;
 
@@ -154,6 +156,8 @@ interface Cell {
   used: number;
   readonly tier: number;
   mesh?: Mesh;
+  /** 地形在这个格子里改了：下次选格子时重撒（新的撒好了再拿掉它）。 */
+  stale?: boolean;
 }
 
 /** 细节层次的边界两边各留几米：相机在边界上来回走时格子不来回换。 */
@@ -228,10 +232,10 @@ export class ScatterSystem {
       const terrain = TerrainAsset.byId(entity.require(Terrain).terrain);
       if (!asset || !terrain) continue;
       let state = this.#states.get(id);
-      // 摆放文件、地形换了新版本：全部重撒
+      // 摆放文件、地形换了新版本：留下没受影响的格子
       if (state && (state.asset !== asset || state.terrain !== terrain)) {
-        this.#drop(id, state);
-        state = undefined;
+        state = this.#carryOver(state, asset, terrain);
+        this.#states.set(id, state);
       }
       if (!state) {
         state = { entity, asset, terrain, cells: new Map(), eye: undefined, complete: false };
@@ -274,7 +278,7 @@ export class ScatterSystem {
           const tier = lodTier(layer, distance, cell?.tier);
           if (cell) cell.used = this.#frame;
           // 细节层次变了的格子重撒（新的撒好了再拿掉旧的，不闪）
-          if (!cell || cell.tier !== tier) wanted.push({ key, layer: l, cx, cz, size, distance, tier, ...(cell ? { replaces: cell } : {}) });
+          if (!cell || cell.tier !== tier || cell.stale) wanted.push({ key, layer: l, cx, cz, size, distance, tier, ...(cell ? { replaces: cell } : {}) });
         }
       }
     });
@@ -362,6 +366,42 @@ export class ScatterSystem {
     });
     return cell;
   }
+
+  /**
+   * 换了新版本的摆放文件或地形：规则（文件的种子、格子大小，层的内容、模型、材质）没变的层留下它的格子，变了的拿掉；地形只是
+   * 加减了笔画、地物、样条时，盖到改动范围（加上离路的距离）的格子标成要重撒，地形的底变了全部拿掉。
+   */
+  #carryOver(state: ScatterState, asset: ScatterAsset, terrain: TerrainAsset): ScatterState {
+    const before = state.asset.file, after = asset.file;
+    const regions = state.terrain === terrain ? [] : changedRegions(state.terrain.file, terrain.file, state.terrain.paths, terrain.paths);
+    const sameLayer = (l: number) =>
+      before.seed === after.seed && before.cellSize === after.cellSize && l < after.layers.length
+      && JSON.stringify(before.layers[l]) === JSON.stringify(after.layers[l])
+      && (state.asset.models[l] ?? []).every((model, k) => model === asset.models[l]?.[k]) && state.asset.materials[l] === asset.materials[l];
+    const cells = new Map<string, Cell>();
+    let kept = 0, stale = 0;
+    for (const [key, cell] of state.cells) {
+      const layerIndex = Number(key.slice(0, key.indexOf(':')));
+      if (regions === undefined || !sameLayer(layerIndex)) {
+        dropCell(cell);
+        continue;
+      }
+      const layer = after.layers[layerIndex]!, size = layer.cellSize ?? after.cellSize ?? 64, margin = layer.avoidPaths ?? 3;
+      const [cx, cz] = key.slice(key.indexOf(':') + 1).split('_').map(Number) as [number, number];
+      const x0 = cx * size - margin, z0 = cz * size - margin, x1 = (cx + 1) * size + margin, z1 = (cz + 1) * size + margin;
+      if (regions.some(([rx0, rz0, rx1, rz1]) => rx0 < x1 && rx1 > x0 && rz0 < z1 && rz1 > z0)) {
+        cell.stale = true;
+        stale++;
+      }
+      cells.set(key, cell);
+      kept++;
+    }
+    this.carried = { kept, stale, dropped: state.cells.size - kept };
+    return { entity: state.entity, asset, terrain, cells, eye: undefined, complete: false };
+  }
+
+  /** 上一次换版本时留下、要重撒、拿掉的格子数（调试命令 scatter 报，看雕刻时重撒了多少）。 */
+  carried = { kept: 0, stale: 0, dropped: 0 };
 
   #drop(id: EntityId, state: ScatterState): void {
     for (const cell of state.cells.values()) dropCell(cell);

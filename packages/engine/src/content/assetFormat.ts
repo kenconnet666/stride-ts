@@ -84,9 +84,16 @@ export type ColorOperator = 'multiply' | 'add';
  * 贴图文件的编码：ktx2（Basis，运行时转码成 GPU 压缩格式），svg（矢量，加载时栅格化），png、jpeg（浏览器解码）。
  * 后三种在显存里是未压缩的 RGBA8，换来的是更小的下载。
  */
-export type TextureEncoding = 'ktx2' | 'svg' | 'png' | 'jpeg' | 'webp';
+/**
+ * 贴图文件的编码。mp4、webm 是视频贴图（Stride 没有；同 Unity 的 VideoPlayer 画进 RenderTexture、虚幻的 Media Texture）：静音循环播放，
+ * 每来一帧新的画面拷进贴图（屏幕、LED 墙、广告牌），哪个贴图槽都能用。
+ */
+export type TextureEncoding = 'ktx2' | 'svg' | 'png' | 'jpeg' | 'webp' | 'mp4' | 'webm';
 
-export const TEXTURE_EXTENSIONS: Readonly<Record<TextureEncoding, string>> = { ktx2: '.ktx2', svg: '.svg', png: '.png', jpeg: '.jpg', webp: '.webp' };
+export const TEXTURE_EXTENSIONS: Readonly<Record<TextureEncoding, string>> = { ktx2: '.ktx2', svg: '.svg', png: '.png', jpeg: '.jpg', webp: '.webp', mp4: '.mp4', webm: '.webm' };
+
+/** 视频贴图的编码。 */
+export const isVideoEncoding = (encoding: TextureEncoding | undefined): encoding is 'mp4' | 'webm' => encoding === 'mp4' || encoding === 'webm';
 
 /** 一张贴图文件：内容路径和编码。 */
 export interface TextureRef {

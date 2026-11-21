@@ -638,3 +638,9 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 耗时在无头 Chrome 里量（主 Chrome 的窗口被挡住时 requestAnimationFrame 停了，`stride perf` 等不到帧）：不透明一遍 0.229 毫秒（两盏矩形光）对 0.123 毫秒（两盏点光）。
 - 编辑器里选中 Cabin light：属性面板是矩形光的字段（宽、高、范围），视口里有它的操纵器。
 
+## 视频贴图（2026-11-21）
+
+- 测试视频用 ffmpeg 生成（`mandelbrot` 滤镜加色相旋转，1280 × 720、30 帧、6 秒，1.2 MB；只用来测，没留）。营地页面里拼了一个场景：一块 3.2 × 1.8 米的平面，材质的自发光槽接这个视频。无头 Chrome 里隔一秒截两张图，平均每通道差 12 到 18（在放）；画面是曼德博集合的屏。主 Chrome 的窗口那时被挡着，页面没连上中枢（同上回的 requestAnimationFrame 停了），改在无头的里量。
+- 每秒 `copyExternalImageToTexture` 30 次，每次 CPU 0.275 毫秒；`stride perf` 一帧 GPU 0.12 毫秒。
+- 单测：编辑器导入 mp4 成贴图资源（`encoding: 'mp4'`）、不写 `.image.json`；字段描述里贴图编码的枚举改成从 `TEXTURE_EXTENSIONS` 推（原来是手写的一串，漏了新的就对不上）。
+

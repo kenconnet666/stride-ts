@@ -28,7 +28,7 @@ import { Mesh, type Bounds, type MeshData } from '../rendering/mesh/Mesh';
 import { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
-import { Texture, type ImageDecoder, type TextureDecoder } from '../graphics/Texture';
+import { Texture, type ImageDecoder, type TextureData, type TextureDecoder } from '../graphics/Texture';
 import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
 import { SOUND_SYNTH_RATE, synthesizeSound } from '../audio/soundSynth';
@@ -38,7 +38,7 @@ import type { GraphFile } from '../graph/nodeGraph';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { uiAssetPaths } from './references';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './format';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, isVideoEncoding, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './format';
 import { Timeline } from '../timeline/Timeline';
 
 declare module '../data/prop' {
@@ -491,6 +491,7 @@ export class ContentManager {
   loadTexture(path: string, { encoding = 'ktx2', srgb = true, size }: { encoding?: TextureEncoding; srgb?: boolean; size?: readonly [number, number] } = {}): Promise<Texture> {
     const variant = encoding === 'ktx2' || srgb ? '' : ' (linear)';
     return this.#once(path + TEXTURE_EXTENSIONS[encoding], variant, async (url) => {
+      if (isVideoEncoding(encoding)) return new Texture(path, await loadVideo(url, srgb));
       const bytes = new Uint8Array(await this.#read(url));
       if (encoding === 'ktx2') {
         if (!this.textureDecoder) {
@@ -827,6 +828,18 @@ function expand({ min, max }: Bounds, margin: number): Bounds {
   return { min: [min[0] - margin, min[1] - margin, min[2] - margin], max: [max[0] + margin, max[1] + margin, max[2] + margin] };
 }
 
-
-
+/**
+ * 视频贴图的源：静音、循环、行内播放的 `<video>`（静音才能不等用户操作就自动播放），第一帧解出来以后交给 GpuResources，
+ * 它每来一帧新的画面拷一次。视频按地址边下边放，不先整个读进来。
+ */
+async function loadVideo(url: URL, srgb: boolean): Promise<TextureData> {
+  const video = document.createElement('video');
+  Object.assign(video, { muted: true, loop: true, playsInline: true, crossOrigin: 'anonymous', preload: 'auto', src: url.href });
+  await new Promise<void>((resolve, reject) => {
+    video.addEventListener('loadeddata', () => resolve(), { once: true });
+    video.addEventListener('error', () => reject(new Error(`loading ${url.href}: ${video.error?.message || 'the video cannot be played'}`)), { once: true });
+  });
+  await video.play().catch((error: unknown) => console.warn(`[stride] ${url.href} did not start playing`, error));
+  return { format: srgb ? 'rgba8unorm-srgb' : 'rgba8unorm', width: video.videoWidth, height: video.videoHeight, levels: [], video };
+}
 

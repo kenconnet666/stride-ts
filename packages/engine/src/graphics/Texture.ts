@@ -22,6 +22,8 @@ export interface TextureData {
   readonly generateMipmaps?: boolean;
   /** 渲染目标（Stride 的 RenderTexture）：没有 levels，内容由合成器画进去。 */
   readonly renderTarget?: boolean;
+  /** 视频贴图：没有 levels，正在放的视频每来一帧新的画面拷进来、重建 mip（GpuResources.texture）。 */
+  readonly video?: HTMLVideoElement;
 }
 
 export class Texture {
@@ -31,7 +33,7 @@ export class Texture {
   readonly data: TextureData;
 
   constructor(name: string, data: TextureData) {
-    if (data.levels.length === 0 && !data.renderTarget) throw new RangeError(`texture '${name}' has no mip levels`);
+    if (data.levels.length === 0 && !data.renderTarget && !data.video) throw new RangeError(`texture '${name}' has no mip levels`);
     this.name = name;
     this.data = data;
     this.id = textures.add(this) as TextureId;

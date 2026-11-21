@@ -9,7 +9,7 @@ import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile } from '@stride-ts/engine/content-format';
+import { DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { bakeBrushModel, bakePolyModel, bakeSdfModel, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '@stride-ts/engine/content-references';
@@ -169,9 +169,10 @@ export class EditorBackend {
     const extension = path.extname(fileName).toLowerCase();
     const base = path.basename(fileName, path.extname(fileName)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
     const audio = ({ '.mp3': 'mp3', '.ogg': 'ogg', '.wav': 'wav', '.flac': 'flac', '.aac': 'aac' } as const)[extension as '.mp3'];
-    const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg', '.webp': 'webp' } as const)[extension as '.png'];
+    // 视频（mp4、webm）同图片一样是贴图：材质、精灵的贴图槽直接用它，放起来是视频贴图
+    const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg', '.webp': 'webp', '.mp4': 'mp4', '.webm': 'webm' } as const)[extension as '.png'];
     if (!audio && !image) {
-      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), models (glb, gltf, fbx, obj) and fonts (ttf, otf, ttc) can be imported`);
+      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), videos (mp4, webm), models (glb, gltf, fbx, obj) and fonts (ttf, otf, ttc) can be imported`);
     }
     const kind: AssetKind = audio ? 'sound' : 'texture';
     return this.#enqueue(async () => {
@@ -189,7 +190,7 @@ export class EditorBackend {
       // 位图旁边写一份默认的导入设置（不压缩）：属性面板里改了就压成 KTX2
       // image 的类型是从扩展名表里按 '.png' 取的（只剩 'png'），这里按真正的几种比
       const bitmap = image as ImageImportFile['source'] | 'svg' | undefined;
-      const settings = bitmap && bitmap !== 'svg' ? path.join(this.project.contentDir, assetFileName('imageImport', assetPath)) : undefined;
+      const settings = bitmap && bitmap !== 'svg' && !isVideoEncoding(bitmap as TextureEncoding) ? path.join(this.project.contentDir, assetFileName('imageImport', assetPath)) : undefined;
       if (settings) await writeAtomically(settings, JSON.stringify({ source: bitmap as ImageImportFile['source'], ...DEFAULT_IMAGE_IMPORT } satisfies ImageImportFile, null, 1));
       await this.#refresh([this.#relative(source), this.#relative(main), ...(settings ? [this.#relative(settings)] : [])]);
       return { asset: this.database.get(kind, assetPath)!, warnings: [] };

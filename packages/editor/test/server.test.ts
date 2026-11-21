@@ -288,6 +288,11 @@ describe('后端（EditorBackend）', () => {
     const texture = (await (await post('Game/Textures', 'Coin.PNG', new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).json() as ImportResult).asset;
     expect([texture.kind, texture.path]).toEqual(['texture', 'Game/Textures/Coin']);
     expect(JSON.parse(await readFile(path.join(directory, 'public/content/Game/Textures/Coin.texture.json'), 'utf8'))).toEqual({ texture: 'Game/Textures/Coin', encoding: 'png' });
+    // 视频也是贴图（视频贴图），不写位图的导入设置（不压缩、不做 mip 设置）
+    const video = (await (await post('Game/Videos', 'Ad.mp4', new Uint8Array([0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70]))).json() as ImportResult).asset;
+    expect([video.kind, video.path]).toEqual(['texture', 'Game/Videos/Ad']);
+    expect(JSON.parse(await readFile(path.join(directory, 'public/content/Game/Videos/Ad.texture.json'), 'utf8'))).toEqual({ texture: 'Game/Videos/Ad', encoding: 'mp4' });
+    await expect(readFile(path.join(directory, 'public/content/Game/Videos/Ad.image.json'), 'utf8')).rejects.toThrow();
     // 贴图的导入设置：位图旁边写一份默认的（不压缩）；压成 KTX2 时引用它的材质改成读 KTX2，改回 none 时删掉 KTX2、改回读 PNG
     const contentFile = (file: string) => path.join(directory, 'public/content', file);
     expect(JSON.parse(await readFile(contentFile('Game/Textures/Coin.image.json'), 'utf8'))).toEqual({ source: 'png', compress: 'none', mipmaps: true, maxSize: 0, srgb: true });

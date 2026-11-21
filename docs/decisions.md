@@ -23,6 +23,15 @@ S2 第四件的后一半。参考 Niagara 的 Flipbook Baker（固定相机、�
 - **放**：旁边加一个实体，一个发射器、每个周期生成一个粒子、活一个周期，按寿命翻页（uvBuilderFlipbook，animationSpeed = 帧数），大小是一格对应的世界大小，摆在格子中心。贴图引用要写 `encoding: 'png'`，不写按 KTX2 找（第一次就这样没加载上）。
 - 顺手：游戏页面写编辑器后端的两个接口（存图片、存导出）收进 `editor/backendApi.ts`，画贴图和离线渲染原来各写一份；调试命令的实体参数在编辑状态的页面里也认场景文件里的 id（编辑器、MCP 说的都是它）。
 
+## 2026-11-21 视频贴图：屏幕和 LED 墙（G1）
+
+商场的 LED 墙、店里的电视、地铁的广告屏、卧室的显示器都是在放视频的面。参考：Unity 的 VideoPlayer 画进 RenderTexture、虚幻的 Media Texture、three.js 的 VideoTexture。
+
+- **做成贴图的一种编码**：`TextureEncoding` 多了 `mp4`、`webm`，材质、精灵、UI 的哪个贴图槽都能放视频；自发光槽接视频就是一块屏（亮度用自发光的颜色调）。不加新的组件或材质特性：着色器一行不改，用法和图片贴图一样（编辑器里贴图槽选它）。
+- **怎么放**：加载时建一个静音、循环、行内播放的 `<video>`（静音才能不等用户点就自动放），GPU 纹理带完整的 mip 链；视频每来一帧新的画面（`requestVideoFrameCallback`）拷进第 0 级（`copyExternalImageToTexture`）、在 GPU 上重建 mip，画面没变的帧什么也不做（同"没变就不做"）。实测一块 1280 × 720、30 帧的屏：每秒拷 30 次，每次 CPU 0.28 毫秒（WebGPU 能力实测里零拷贝的 `importExternalTexture` 是 0.29 毫秒 CPU、GPU 0.016 毫秒，差不多），一帧的 GPU 时间不受影响。
+- **编辑器**：资源浏览器能拖进 mp4、webm，同图片一样建一个贴图资源（不写位图的导入设置：不压缩成 KTX2）。
+- 还没做：离线出片时按时间轴的时刻取画面（现在是按墙钟放的，出片里的屏不可复现）、声音、屏幕多时换零拷贝的 `texture_external`（要材质的一个变体）、播放控制（暂停、换片、时间轴上的视频轨道）。
+
 ## 2026-11-21 矩形面光源（G1 的第一项）
 
 商场的灯带、筒灯格栅、LED 面板、车站的灯箱都是面光源，点光照出来的高光是一个点，磨光的地面上一看就假。参考：Heitz、Dupuy、Hill、Neubelt 2016 的 LTC（线性变换的余弦），虚幻的 Rect Light、Unity HDRP、three.js 的 RectAreaLight 都是它；Hill 2016 的菲涅耳近似和按地平线截掉的球近似形状因子（three.js 的写法）。

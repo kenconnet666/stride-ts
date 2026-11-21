@@ -38,6 +38,14 @@
 - **着色器**：按逆视图投影重建位置的不用改；要改的是写死的约定——天空是 0（大气、云、雾、GTAO、接触阴影、SSR、点选），远平面上的点取 ndc.z = 0（天空、背景、云、雾），全屏三角形的深度 0，"最近"从 min 换成 max（GTAO 的预滤波、TAA 的最近深度、SSR 的 Hi-Z），SSR 的分层步进照 FFX 反向深度那一支。平面反射的斜裁剪公式是正向的：投影先换回正向（z 行换成 w − z，再换一次就回来），裁剪完再换回去。`DepthSurface`（粒子撞深度）按 uniform 里的标志认哪边是空的（主视图反向、天空遮挡正向）。
 - 和 Stride 不同：Stride 是正向 Z；画面除了远处不再闪以外一样，和桌面 Stride 的截图比对照常过。
 
+## 2026-11-21 给 agent 用的断点：`stride debug`（用户要的）
+
+- **调研**：Chrome 官方的 chrome-devtools-mcp 有求值、控制台、网络、性能跟踪和截图，没有断点；社区的 MCP JS 调试器（devtools-debugger-mcp、mcp-js-debugger）小、多半只调 Node。VS Code 的 js-debug 功能最全（条件、命中次数、表达式的日志点、异常断点、source map、事件监听断点；wasm 经 `@vscode/dwarf-debugging` 读 DWARF，能看 C++ 的变量）。
+- **做法**：调试 CLI 里加一次性的会话，不做交互：计划进去（断点、日志点、表达式、触发的代码），JSON 出来（每次停下的调用栈、局部变量、表达式的值，单步记录，日志点的记录），停下自动继续。agent 一条命令拿到要看的东西，不用来回发"继续""求值"。位置按 TS 源码（Vite 内联的 source map）和 C++ 源码（原生调试版带的 wasm source map）写，报回来也是源码位置。功能照 js-debug 挑：条件、命中次数、日志点、异常、单步、跳过第三方代码、异步调用栈。
+- **连接**：停下的会话不能经调试桥扩展——扩展的命令经页面转发，页面停在断点上时它自己的 JS 都不走，没法再发"继续"。现在要 `stride open` 起的 Chrome（有界面、无头都行）；以后调试桥改成扩展的 service worker 直连中枢，主 Chrome 里也能停。
+- **C++**：原生的调试版（`-debug` 的 wasm）加 `-gline-tables-only`、`-gsource-map`，包里多 2.2 MB 的 `.wasm.map`（只在调试时下载）；只有行号没有变量，要看 C++ 的变量仍用 `-SourceDebug` 的 DWARF 加 Chrome 的 C/C++ 扩展，或者以后接 `@vscode/dwarf-debugging`。
+- **不装 chrome-devtools-mcp**：它的求值、控制台、截图和我们的 CLI 重了；性能跟踪的"洞察"以后真要用再装（要改 MCP 配置、重启会话，用户说可以帮忙）。
+
 ## 2026-11-21 矢量地形的第一步（W2）
 
 - **地形存描述、不存高度图**：`.terrain.json` 是噪声的底、矢量地物、雕刻笔画的参数，原生的求值器（stride-native 的 `sn_terrain_*`）按需求出任意范围、任意细的高度。别的做法：存高度图（Unity、虚幻的地形）——文件大、不能合并、分辨率定死，和"矢量优先"相反；高度图以后只当真实高程（W8）的叶子数据。

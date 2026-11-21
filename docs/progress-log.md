@@ -832,3 +832,10 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 编辑器：资源浏览器能新建地形，属性面板改噪声的参数（地物、笔画先按 JSON 改），改了热重载。
 - `apps/open-world` 的 `?world=Worlds/Valley`（常驻场景 Valley：16 公里见方、10 层噪声、一个 240 × 160 米的广场压平、一笔抬高 260 米的山）。主 Chrome 里看过：山、压平的台地、抬起来的山包都对；328 块、静止 8.4 毫秒一帧（120 Hz 封顶），GPU 2.4 毫秒，绘制 1262 次（阴影 1047）。无头 Chrome 里每帧挪 25 米（3 公里每秒）飞 240 帧：p50 8.4、p95 16.6 毫秒，地形的每帧更新 1～2 毫秒、最多 4.2；缓存满 768 块以后按最久没用的释放。
 - 编辑器（主 Chrome）：打开 Valley 场景，地形在视口里流式画出来；选中地形实体，属性面板是中文的地形字段；资源浏览器点地形资源，属性面板改噪声的偏移 -60 → 200，存盘、视口里的山整体抬高（328 块重建完、没有在算的）。编辑相机在地下时只看得到裙边（从下往上看地面是背面），不是错。
+
+## CI 的软件 WebGPU 提速：调研（2026-11-21，没做完）
+
+- CI 用 Chrome 带的 SwiftShader。它在 x86-64 上用 Subzero 编着色器（`src/Reactor/reactor.gni`：二进制小、只用 SSE4.1，不用 AVX），线程数默认 min(核数, 16)，`SwiftShader.ini` 的 `[Processor] ThreadCount` 能改。
+- 想换成 Mesa 的 lavapipe（llvmpipe 的 Vulkan，LLVM 编着色器、用 AVX2，"256 bits"）：WSL 的 Debian 13 装着 Chrome 158 和 mesa-vulkan-drivers 25.0.7。Chrome 在 Linux 上默认只在合成器（Skia）走 Vulkan 时才让 Dawn 用 Vulkan，适配器还要能导入外部贴图（`webgpu_decoder_impl.cc` 的 `CanUseAdapter`）。试了 `--use-vulkan=native --use-angle=vulkan` 加 lavapipe 的 ICD：GPU 进程反复重启、WebGPU 没有适配器，还要再查（看 GPU 进程的崩溃日志、只开 Skia 的 Vulkan）。
+- 小测试页（`--headless=new`，限 4 个核同 CI 的运行器）：SwiftShader 1280×720 画 2000 个立方体每帧 91 毫秒、100 万次的计算着色器 136 毫秒。lavapipe 跑通以后用同一页比。
+

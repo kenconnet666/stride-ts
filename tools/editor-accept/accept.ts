@@ -1,6 +1,6 @@
 // 编辑器验收（一个样例）：在 stride open 起的 Chrome 里开着的编辑器上，经 CDP 操作编辑器的会话——打开根场景、逐个实体画属性
 // 面板、不改就保存（应逐字节不变）、改（移动、改名、加子实体和脚本、复制粘贴、撤销到底再重做）、保存、重新打开、打开其他场景、
-// 试玩。结果写成 <out>/<样例>.json 和几张截图。一般经 run.ps1 跑（它管内容目录的备份、开发服务器和 Chrome），见 README.md。
+// 试玩。没有场景的游戏（画面全是根渲染器的）只查打开后属性面板里是游戏设置、没有报错。结果写成 <out>/<样例>.json 和几张截图。一般经 run.ps1 跑（它管内容目录的备份、开发服务器和 Chrome），见 README.md。
 //   node tools/editor-accept/accept.ts <样例> <开发服务器端口> <输出目录>
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -55,7 +55,8 @@ const HELPERS = `
     const end = Date.now() + timeout;
     for (;;) {
       const s = session();
-      if (s?.agent.value && s.opened.value) return s;
+      // 没有场景的游戏（sprite-fonts、custom-effect）：不开文档，属性面板里是游戏设置
+      if (s?.agent.value && (s.opened.value || s.inspected.value?.kind === 'gameSettings')) return s;
       if (Date.now() > end) throw new Error('editor did not open a scene: ' + (document.querySelector('iframe') ? (document.body.innerText.match(/(the game[^\\n]*|no scene[^\\n]*|[^\\n]*Error[^\\n]*)/) ?? [''])[0] : 'no viewport'));
       await wait(200);
     }
@@ -78,11 +79,30 @@ try {
   phase = 'open';
   await cdp.send('Page.reload');
   await new Promise((resolve) => setTimeout(resolve, 3000));
+  const sceneless = await run<{ settings: string; fields: number } | null>(`
+    const s = await ready();
+    if (s.opened.value) return null;
+    await wait(1500);
+    return { settings: s.inspected.value.path, fields: Object.keys(s.inspected.value.content ?? {}).length };`);
+  if (sceneless) {
+    // 没有场景的游戏：编辑器打开、属性面板显示游戏设置、没有报错就算过（场景的那几步不适用）
+    Object.assign(report, { sceneless });
+    await shot('open');
+    report['problems'] = problems;
+    report['passed'] = problems.length === 0 && sceneless.fields > 0;
+    writeFileSync(path.join(outDir, `${app}.json`), JSON.stringify(report, null, 1));
+    console.log(JSON.stringify(report, null, 1));
+    process.exit(0);
+  }
   const opened = await run<{ scene: string; entities: number; expanded: number; scenes: string[]; scripts: string[] }>(`
     const s = await ready();
     await wait(1500);
     return { scene: s.opened.value.path, entities: s.file.entities.length, expanded: s.expanded.length,
-      scenes: s.assets.value.filter((a) => a.kind === 'scene').map((a) => a.path), scripts: s.agent.value.scriptTypes() };`);
+      // 世界的格子场景（几百上千个）经世界视图看，不在这里一个个打开
+      scenes: (() => {
+        const worlds = s.assets.value.filter((a) => a.kind === 'world').map((a) => a.path + '/');
+        return s.assets.value.filter((a) => a.kind === 'scene' && !worlds.some((w) => a.path.startsWith(w))).map((a) => a.path);
+      })(), scripts: s.agent.value.scriptTypes() };`);
   Object.assign(report, opened);
   const sceneFile = path.join(content, `${opened.scene}.scene.json`);
   const original = sha(sceneFile);
@@ -143,7 +163,8 @@ try {
 
   // 别的场景
   phase = 'other-scenes';
-  const others = opened.scenes.filter((scene) => scene !== opened.scene);
+  // 别的场景最多开 12 个（每个要几秒）
+  const others = opened.scenes.filter((scene) => scene !== opened.scene).slice(0, 12);
   report['otherScenes'] = [];
   for (const scene of others) {
     phase = `scene ${scene}`;

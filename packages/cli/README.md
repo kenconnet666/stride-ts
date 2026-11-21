@@ -69,6 +69,29 @@ CLI 起一个 TypeScript 7 的语言服务器（仓库里装的 `tsc --lsp --std
 
 eval 作用域和页面里一样：`game`（`Game`）、`engine`（引擎的全部导出）、`pageHelpers` 的帮手（`entity`、`named`、`frames`、`seconds`、`until`……，类型取自 `PageHelpers`，加了帮手不用改这里）。代码放在引擎源码目录里一个不落盘的虚拟文件里，当异步函数体查（表达式、语句、顶层 await、`return` 都行）。
 
+## 断点和日志点（`stride debug`）
+
+一次性的调试会话（`src/debugger.ts`，DevTools 协议的 Debugger 域），给 agent 用：一份 JSON 计划进去，每次停下的调用栈、局部变量、表达式的值出来，停下的地方自动继续，不用交互。功能照 VS Code 的 js-debug 挑：
+
+| 计划里的项 | 作用 |
+|---|---|
+| `breakpoints: [{ at: "terrain/TerrainSystem.ts:194" }]` | 按 TS 源码的行下断点（文件写仓库里路径的结尾就行），经 Vite 内联的 source map 换成浏览器里的位置；报回来的位置也换回源码 |
+| `condition`、`hitCount` | 条件断点、第几次经过才停 |
+| `log: "表达式"` | 日志点：不停下，记下每次经过时的值（最多 2000 条），适合看帧循环里的数怎么变 |
+| `watch: [...]`（断点上或计划上） | 停下时在那一帧的作用域里求值（对象展开 `depth` 层，默认 1） |
+| `exceptions: "uncaught" \| "all"` | 抛异常时停下，报抛出的值、调用栈和局部变量 |
+| `steps: n` | 停下以后再单步 n 次（跳过函数调用），每步记位置和表达式 |
+| `run: "代码"` | 断点设好以后在页面里跑的代码（同 `stride eval`，有 `game`、`entity`、`frames`……），用来触发要查的路径；它的结果也报回来 |
+| `maxHits`（10）、`seconds`（10） | 最多停几次、最多等几秒 |
+
+```powershell
+pnpm exec stride debug --file plan.json
+```
+
+C++ 也能下断点：`at` 写原生源码的 `文件:行`（比如 `Source/Runtime/TerrainApi.cpp:272`），按调试版 wasm 带的 source map 找位置（游戏要按 `debugNative` 加载调试版模块，开发服务器上默认就是）；调用栈从 C++ 一路报到 TS 的调用方。C++ 的帧只有行号没有变量名：局部变量是 `$var0`、`$var1`……（参数在前，值是真的值，i64 带 `n`），`watch` 里也这么写。要看 C++ 的变量名、结构体，用原生的 `-SourceDebug` 版（DWARF）加 Chrome 的 C/C++ 扩展。
+
+第三方代码（`node_modules`、Vite 的模块）不进单步和调用栈。停下的会话要和页面无关的 DevTools 连接：用 `stride open <地址>`（有界面、无头都行）开的 Chrome；经调试桥扩展的连接走页面转发，页面停住时没法再发"继续"，所以不支持（以后调试桥改成扩展直连中枢）。
+
 ## 在游戏里埋点
 
 ```ts

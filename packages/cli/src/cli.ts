@@ -13,6 +13,7 @@ import { COLLECT_GPU_COUNTERS, INSTALL_GPU_COUNTERS } from './gpu-calls.ts';
 import { decodePng, diffImages, encodePng } from './png.ts';
 import { profileCallers, profileFromTrace, summarizeProfile, type CpuProfile, type TraceEvent } from './profile.ts';
 import { checkEval, runTypeQuery, TS_USAGE, TypeScriptServer } from './lsp.ts';
+import { runDebugPlan, type DebugPlan } from './debugger.ts';
 import { listHubs, readBrowser } from './state.ts';
 
 const HELP = `stride <command> [options]   (from the repository: pnpm exec stride <command>)
@@ -69,6 +70,15 @@ Game
                           last one (global scope); with a top-level await they run as an async function body (use return).
                           - reads stdin; --file reads a file (no shell quoting); --check type-checks it first against the
                           engine's types (as TypeScript, eval scope declared) and does not run it on errors
+  debug [plan | - | --file <plan.json>] [--break <file:line>]... [--log <file:line>=<expr>]... [--watch <expr>]...
+        [--run <code>] [--exceptions uncaught|all] [--steps n] [--max hits] [--seconds s]
+                          one-shot debugging session (needs a Chrome from stride open; pauses never go through the page).
+                          plan (JSON): breakpoints [{ at: "file:line" (TS source; a path suffix is enough), condition,
+                          hitCount, log (logpoint: record this expression's value, do not pause), watch: [expr] }],
+                          exceptions ("uncaught" | "all"), watch [expr] (at every pause), steps (step over n times after a
+                          pause), run (code to eval in the page once breakpoints are set, like stride eval), maxHits (10),
+                          seconds (10), depth (1). Reports where breakpoints resolved, each pause (reason, stack in source
+                          positions, locals, watches, steps) and the logpoint records; pauses resume on their own
   slow <ms>               make every frame that much longer (busy wait) to reproduce CI's software WebGPU; 0 stops
   particles [--name <text>]                         particle emitters: CPU or GPU, pool size, living particles and where they are
 
@@ -142,6 +152,11 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     steps: { type: 'string' },
     check: { type: 'boolean' },
     in: { type: 'string' },
+    break: { type: 'string', multiple: true },
+    log: { type: 'string', multiple: true },
+    watch: { type: 'string', multiple: true },
+    run: { type: 'string' },
+    exceptions: { type: 'string' },
   },
 });
 
@@ -430,6 +445,41 @@ const commands: Record<string, () => Promise<unknown>> = {
     return call('eval', { code });
   },
   ts: () => runTypeQuery(rest[0], rest.slice(1), options),
+  async debug() {
+    const text = options.file ? readFileSync(options.file, 'utf8') : rest[0] === '-' ? readFileSync(0, 'utf8') : rest.join(' ');
+    // 简单的会话不用写 JSON：--break、--log 文件:行=表达式、--watch、--run、--exceptions、--steps、--max、--seconds 拼成计划
+    const flags = {
+      breakpoints: [
+        ...(options.break ?? []).map((at) => ({ at })),
+        ...(options.log ?? []).map((spec) => ({ at: spec.slice(0, spec.indexOf('=')), log: spec.slice(spec.indexOf('=') + 1) })),
+      ],
+      ...(options.watch ? { watch: options.watch } : {}),
+      ...(options.run === undefined ? {} : { run: options.run }),
+      ...(options.exceptions ? { exceptions: options.exceptions as 'uncaught' | 'all' } : {}),
+      ...(options.steps ? { steps: Number(options.steps) } : {}),
+      ...(options.max ? { maxHits: Number(options.max) } : {}),
+      ...(options.seconds ? { seconds: Number(options.seconds) } : {}),
+    };
+    const base = text ? (JSON.parse(text) as DebugPlan & { run?: string }) : {};
+    const plan: DebugPlan & { run?: string } = { ...base, ...flags, breakpoints: [...(base.breakpoints ?? []), ...flags.breakpoints] };
+    if (!plan.breakpoints?.length && !plan.exceptions) throw new Error('debug: give a plan (JSON) or --break / --log / --exceptions; see stride --help');
+    // 停在断点上时页面的 JS 都不走：要和页面无关的 DevTools 连接（stride open 起的 Chrome），不能经调试桥
+    const browser = readBrowser();
+    if (!browser) throw new Error('debug pauses the page, so it needs a DevTools connection that does not go through the page: open it with `stride open <url>` (or --headless)');
+    const client = await HubClient.find(options.hub);
+    const pages = await client.pages();
+    const info = page === undefined ? pages.at(-1) : pages.find((p) => p.id === page);
+    if (!info) throw new Error('no page is connected');
+    await using cdp = await CdpSession.connect((await pageTarget(browser, info.url)).webSocketDebuggerUrl);
+    let ran: Promise<unknown> | undefined;
+    const trigger = plan.run === undefined ? undefined : () => {
+      ran = client.call('eval', { code: plan.run }, { page: info.id, timeout: (plan.seconds ?? 10) * 1000 + 60_000 }).catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }));
+    };
+    const result = await runDebugPlan(cdp, plan, trigger);
+    // 触发的代码多半在放走断点以后很快跑完：等它一会儿，结果一起报
+    const run = ran && (await Promise.race([ran, new Promise((resolve) => setTimeout(() => resolve('<still running>'), 3000))]));
+    return { ...result, ...(ran ? { run } : {}) };
+  },
 };
 
 /** parseArgs，选项写错时打一行错误（而不是调用栈）并退出。 */

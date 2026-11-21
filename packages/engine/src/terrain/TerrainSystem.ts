@@ -106,7 +106,7 @@ export class TerrainSystem {
     this.#seen.clear();
     game.entities.run(this.#collect, game.updateTime);
     for (const [id, state] of this.#states) if (!this.#seen.has(id) || !state.entity.alive) this.#drop(id, state);
-    const eye = this.#eyeWorld();
+    const eye = this.eyeWorld();
     for (const id of this.#seen) {
       const entity = game.entities.entity(id);
       const terrain = entity.require(Terrain);
@@ -288,8 +288,8 @@ export class TerrainSystem {
     return undefined;
   }
 
-  /** 主画面的相机在世界里的位置（视图在渲染空间里：加上渲染原点）；还没画过时用主相机实体的位置。 */
-  #eyeWorld(): [number, number, number] | undefined {
+  /** 主画面的相机在世界里的位置（视图在渲染空间里：加上渲染原点）；还没画过时是 undefined。摆放（ScatterSystem）也按它撒。 */
+  eyeWorld(): [number, number, number] | undefined {
     const game = this.#game;
     const view = (game.graphicsCompositor as Game['graphicsCompositor'] | undefined)?.mainView;
     if (!view || !Matrix.invert(this.#inverse, view.view)) return undefined;

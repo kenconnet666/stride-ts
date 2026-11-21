@@ -1,0 +1,11 @@
+{
+ "name": "Bark",
+ "baseColor": [
+  0.25,
+  0.17,
+  0.11,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.9
+}

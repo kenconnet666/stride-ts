@@ -141,6 +141,9 @@
     "terrain": {
      "terrain": "Terrains/Valley",
      "size": 16384
+    },
+    "scatter": {
+     "scatter": "Scatter/Valley"
     }
    }
   },

@@ -280,6 +280,7 @@ export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitatio
 export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './weather/Weather';
 export { StreamingSource, WorldStreaming } from './world/WorldStreaming';
 export { Terrain, TerrainAsset, TerrainTile, type TerrainAssetId } from './terrain/Terrain';
+export { Scatter, ScatterAsset, ScatterSystem, scatterCell, type GroundSample, type ScatterAssetId, type ScatterInstance } from './terrain/Scatter';
 export { TerrainSystem, type TerrainHit } from './terrain/TerrainSystem';
 export { cellAt, cellKey, cellOrigin, checkWorldFile, distanceToCell, worldCellPath, type WorldFile, type WorldLayer } from './content/worldFormat';
 export { SkyOcclusion, skyOcclusionCenter } from './weather/SkyOcclusion';

@@ -540,6 +540,8 @@ export interface SceneEntityFile {
     readonly gaussianSplat?: { readonly splats: string };
     /** 矢量地形（Stride 没有，见 Terrain 组件）：terrain 是地形资源（.terrain.json）的内容路径；没写的项用组件的默认值。 */
     readonly terrain?: { readonly terrain: string; readonly size?: number; readonly detail?: number; readonly lodFactor?: number; readonly isShadowCaster?: boolean; readonly renderGroup?: number };
+    /** 程序化摆放（Stride 没有，见 terrain/Scatter.ts）：在同一个实体的地形上按 .scatter.json 的规则撒模型。 */
+    readonly scatter?: { readonly scatter: string };
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     /** 镜头系统（Stride 没有，见 CameraRig 组件）：跟随、注视的实体是场景文件里的 id；没写的项用组件的默认值。 */
     readonly cameraRig?: {

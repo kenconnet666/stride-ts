@@ -1,0 +1,11 @@
+{
+ "name": "Rock",
+ "baseColor": [
+  0.42,
+  0.4,
+  0.37,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.9
+}

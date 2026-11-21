@@ -4,7 +4,7 @@
  * 文件（assetReferenceSlots）。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入写了扩展名）。
  */
 import type {
-  AnimationData, BrushFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, TextureRef, UIFile,
+  AnimationData, BrushFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, TextureRef, UIFile,
   UISpriteValue,
 } from './format';
 import { textureRefs } from './loading.ts';
@@ -27,7 +27,7 @@ export interface AssetReference {
  * 怎么读它的设置，渲染目标贴图不是文件（运行时建）。
  */
 export type EntityAssetReference =
-  | { readonly kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats' | 'terrain'; readonly path: string }
+  | { readonly kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats' | 'terrain' | 'scatter'; readonly path: string }
   | { readonly kind: 'image'; readonly path: string; readonly texture: TextureRef }
   | { readonly kind: 'renderTexture'; readonly path: string; readonly texture: SceneRenderTexture };
 
@@ -71,6 +71,7 @@ function visitEntityReferences(files: readonly SceneEntityFile[], visitAny: (ref
     if ((c.light?.type === 'point' || c.light?.type === 'spot') && c.light.profile) visit({ kind: 'lightProfile', path: c.light.profile }, c.light, 'profile');
     if (c.gaussianSplat) visit({ kind: 'splats', path: c.gaussianSplat.splats }, c.gaussianSplat, 'splats');
     if (c.terrain) visit({ kind: 'terrain', path: c.terrain.terrain }, c.terrain, 'terrain');
+    if (c.scatter) visit({ kind: 'scatter', path: c.scatter.scatter }, c.scatter, 'scatter');
     if (c.background?.type === 'cubemap') visit({ kind: 'cubemap', path: c.background.texture }, c.background, 'texture');
     else if (c.background) image(c.background.image);
     if (c.decal?.albedo) image(c.decal.albedo);
@@ -143,7 +144,7 @@ function uiAssetValues(file: UIFile): ({ $asset: string } | { sheet: string } | 
 }
 
 /** 脚本属性里的资源种类 → 资源文件的种类（UI 页面和 UI 库是同一种文件）。 */
-const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats' | 'terrain'): AssetKind => (kind === 'uiPage' || kind === 'uiLibrary' ? 'ui' : kind);
+const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats' | 'terrain' | 'scatter'): AssetKind => (kind === 'uiPage' || kind === 'uiLibrary' ? 'ui' : kind);
 
 /**
  * 一个资源文件引用的别的资源，去过重。file 是解析好的内容：JSON 文件是它的对象，模型、动画是 decodeModel、decodeAnimation
@@ -247,6 +248,11 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
       if (terrain.material) add('material', terrain, 'material');
       // 贴着的样条：样条改了地形跟着重新加载、按改动的范围重算
       (terrain.splines ?? []).forEach((entry) => add('spline', entry, 'spline'));
+      break;
+    }
+    case 'scatter': {
+      const layers = (file as ScatterFile).layers;
+      layers.forEach((layer) => add('model', layer, 'model'));
       break;
     }
     case 'text': {

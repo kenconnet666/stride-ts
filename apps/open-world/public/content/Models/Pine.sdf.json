@@ -1,0 +1,91 @@
+{
+ "name": "Pine",
+ "materials": [
+  "Materials/Bark",
+  "Materials/Needles"
+ ],
+ "resolution": 0.2,
+ "shapes": [
+  {
+   "name": "Trunk",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    0,
+    3,
+    0
+   ],
+   "height": 6,
+   "radius": 0.22,
+   "material": 0
+  },
+  {
+   "name": "Needles 1",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.35,
+   "position": [
+    0,
+    3.6,
+    0
+   ],
+   "radii": [
+    2.0,
+    1.1,
+    2.0
+   ],
+   "material": 1
+  },
+  {
+   "name": "Needles 2",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.35,
+   "position": [
+    0,
+    5.0,
+    0
+   ],
+   "radii": [
+    1.6,
+    1.0,
+    1.6
+   ],
+   "material": 1
+  },
+  {
+   "name": "Needles 3",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.35,
+   "position": [
+    0,
+    6.3,
+    0
+   ],
+   "radii": [
+    1.2,
+    0.95,
+    1.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Needles 4",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.35,
+   "position": [
+    0,
+    7.5,
+    0
+   ],
+   "radii": [
+    0.75,
+    0.9,
+    0.75
+   ],
+   "material": 1
+  }
+ ]
+}

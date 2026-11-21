@@ -45,6 +45,8 @@ import { Timeline } from '../timeline/Timeline';
 import { checkWorldFile, type WorldFile } from './worldFormat';
 import { checkTerrainFile } from './terrainFormat';
 import { TerrainAsset, terrainPaths } from '../terrain/Terrain';
+import { ScatterAsset } from '../terrain/Scatter';
+import { checkScatterFile } from './scatterFormat';
 import { checkSpline } from '../modeling/spline';
 import type { SplineFile } from './splineFormat';
 
@@ -495,6 +497,14 @@ export class ContentManager {
   /** 样条（.spline.json，检查过的）：模型是编辑器后端烘好的，这里读的是路径本身（地形贴样条、车道图用）。 */
   loadSpline(path: string): Promise<SplineFile> {
     return this.#once(path + EXTENSIONS.spline, async (url) => checkSpline(this.#json<SplineFile>(await this.#read(url)), url.href));
+  }
+
+  /** 程序化摆放（.scatter.json）和每层的模型；实例由 ScatterSystem 按相机附近的格子撒（terrain/Scatter.ts）。 */
+  loadScatter(path: string): Promise<ScatterAsset> {
+    return this.#once(path + EXTENSIONS.scatter, async (url) => {
+      const file = checkScatterFile(this.#json<unknown>(await this.#read(url)), url.href);
+      return new ScatterAsset(path, file, await Promise.all(file.layers.map((layer) => this.loadModel(layer.model))));
+    });
   }
 
   /** 矢量地形（.terrain.json）和它的材质；高度由原生的求值器按需算（terrain/TerrainSystem.ts）。 */

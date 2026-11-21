@@ -379,6 +379,9 @@ export function registerGameCommands(debug: Debug, game: Game): void {
       length: Math.round(roads.reduce((sum, lane) => sum + lane.length, 0)), deadEnds: roads.filter((lane) => lane.next.length === 0).length,
     };
   });
+  debug.command('scatter', 'Procedural placement (game.scatter, Scatter components on terrains): per terrain, how many cells are scattered around the camera and how many instances they hold, and how many cells and instances were built since the start.', () => ({
+    terrains: game.scatter.stats(), built: game.scatter.built,
+  }));
   debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
     const taa = game.graphicsCompositor.temporalAntialiasing;
     taa.enabled = switchArg(args, taa.enabled);

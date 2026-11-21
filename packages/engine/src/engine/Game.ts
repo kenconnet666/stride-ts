@@ -45,6 +45,7 @@ import { PrecipitationSystem } from '../weather/Precipitation';
 import { WeatherSystem } from '../weather/Weather';
 import { WorldStreaming } from '../world/WorldStreaming';
 import { TerrainSystem } from '../terrain/TerrainSystem';
+import { ScatterSystem } from '../terrain/Scatter';
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
@@ -196,6 +197,8 @@ export class Game {
   readonly world = new WorldStreaming(this);
   /** 矢量地形（Stride 没有）：Terrain 实体按相机分块、分细节层次求值成网格（terrain/TerrainSystem.ts）。 */
   readonly terrain = new TerrainSystem(this);
+  /** 程序化摆放（Stride 没有）：Scatter 组件按规则在地形上撒模型，相机附近的格子现撒（terrain/Scatter.ts）。 */
+  readonly scatter = new ScatterSystem(this);
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
   readonly particles = new ParticleSystems();
   /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
@@ -755,6 +758,7 @@ export class Game {
         this.#updateRenderOrigin();
         // 地形的块在变换更新之前换：新挂上的块这一帧就有世界矩阵
         this.terrain.update();
+        this.scatter.update(this.terrain.eyeWorld());
         this.transforms.update();
         this.world.update();
         this.weather.update(this);

@@ -1,0 +1,45 @@
+{
+ "name": "Valley",
+ "seed": 3,
+ "cellSize": 64,
+ "layers": [
+  {
+   "name": "Pines",
+   "model": "Models/Pine",
+   "density": 120,
+   "slope": [
+    0,
+    32
+   ],
+   "height": [
+    -80,
+    170
+   ],
+   "clump": {
+    "scale": 70,
+    "coverage": 0.45
+   },
+   "scale": [
+    0.7,
+    1.35
+   ],
+   "viewDistance": 350
+  },
+  {
+   "name": "Boulders",
+   "model": "Models/Boulder",
+   "density": 12,
+   "slope": [
+    12,
+    60
+   ],
+   "scale": [
+    0.6,
+    1.8
+   ],
+   "alignToSlope": 0.8,
+   "sink": 0.25,
+   "viewDistance": 300
+  }
+ ]
+}

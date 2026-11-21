@@ -205,6 +205,13 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: { terrain: '' },
   },
+  scatter: {
+    label: 'Scatter',
+    type: object(fields<NonNullable<Components['scatter']>>({
+      scatter: { type: asset('scatter'), description: 'placement rules (.scatter.json): models scattered on the terrain of this entity by density, slope, height and clumps, around the camera' },
+    })),
+    initial: { scatter: '' },
+  },
   cameraRig: {
     label: 'Camera rig',
     type: object(fields<NonNullable<Components['cameraRig']>>({

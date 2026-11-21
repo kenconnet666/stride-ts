@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile } from '../../content/format';
+import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile } from '../../content/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -328,6 +328,37 @@ export const SPLINE_FIELDS = fields<SplineFile>({
   branches: { type: { kind: 'json' }, optional: true, description: 'more paths of a network ({ points, closed }); points at the same position are welded, and roads get a junction where three or more meet' },
 });
 
+/** 程序化摆放（ScatterFile）：改了马上存，挂着它的地形重撒。 */
+export const SCATTER_FIELDS = fields<ScatterFile>({
+  name: string,
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed: another number is another arrangement with the same rules' },
+  cellSize: { type: number({ min: 4, step: 8, unit: 'm' }), optional: true, default: 64, description: 'edge of the streamed cells: cells near the camera are scattered, far ones dropped' },
+  layers: {
+    type: list(object(fields<ScatterFile['layers'][number]>({
+      name: string,
+      model: { type: asset('model'), description: 'the model scattered' },
+      density: { type: number({ min: 0.01, step: 10 }), description: 'at most this many per hectare (100 × 100 m)' },
+      slope: { type: vector(2, '°'), optional: true, default: [0, 90], description: 'only where the ground slope is in this range' },
+      height: { type: vector(2, 'm'), optional: true, description: 'only where the ground height is in this range; unset is anywhere' },
+      clump: {
+        type: object(fields<NonNullable<ScatterFile['layers'][number]['clump']>>({
+          scale: { type: number({ min: 1, step: 5, unit: 'm' }), description: 'size of the patches' },
+          coverage: { type: number({ min: 0, max: 1, step: 0.05 }), description: '0..1: how much of the ground the patches cover' },
+        })),
+        optional: true,
+        description: 'scatter in patches instead of everywhere',
+      },
+      avoidPaths: { type: number({ min: 0, step: 1, unit: 'm' }), optional: true, default: 3, description: 'keeps this far off the roads and rails the terrain follows (and out of its flatten features)' },
+      scale: { type: vector(2), optional: true, default: [0.8, 1.2], description: 'random uniform scale in this range' },
+      alignToSlope: { type: number({ min: 0, max: 1, step: 0.1 }), optional: true, default: 0, description: '0 stands upright (trees), 1 lies along the slope (rocks)' },
+      sink: { type: number({ step: 0.05, unit: 'm' }), optional: true, default: 0, description: 'pushed this far into the ground (times the scale)' },
+      viewDistance: { type: number({ min: 1, step: 50, unit: 'm' }), optional: true, default: 400, description: 'scattered only this close to the camera' },
+      castShadows: { type: bool, optional: true, default: true },
+    }))),
+    description: 'layers of placement rules, each scattering one model',
+  },
+});
+
 /**
  * 游戏设置（.game.json，Stride 的 GameSettings）。根渲染器（合成器的根是游戏自己的渲染器时，SpriteFonts、CustomEffect）的类型是
  * 游戏登记的名字，属性的字段由游戏的代码定：按文件里现在的值推（record）。
@@ -441,5 +472,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

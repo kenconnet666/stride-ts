@@ -1,0 +1,62 @@
+{
+ "name": "Boulder",
+ "materials": [
+  "Materials/Rock"
+ ],
+ "resolution": 0.12,
+ "shapes": [
+  {
+   "name": "Body",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "position": [
+    0,
+    0.5,
+    0
+   ],
+   "radii": [
+    1.1,
+    0.75,
+    0.9
+   ]
+  },
+  {
+   "name": "Lump",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.25,
+   "position": [
+    0.5,
+    0.75,
+    0.3
+   ],
+   "radii": [
+    0.6,
+    0.5,
+    0.55
+   ]
+  },
+  {
+   "name": "Chip",
+   "kind": "box",
+   "operation": "subtract",
+   "smoothness": 0.05,
+   "position": [
+    -0.9,
+    1.0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0.38,
+    0.92
+   ],
+   "size": [
+    0.8,
+    0.8,
+    2.2
+   ]
+  }
+ ]
+}

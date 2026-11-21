@@ -1,0 +1,11 @@
+{
+ "name": "Needles",
+ "baseColor": [
+  0.09,
+  0.2,
+  0.08,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.85
+}

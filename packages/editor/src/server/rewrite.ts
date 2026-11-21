@@ -4,7 +4,7 @@
  * 只改那几处；JSON 照导入器的格式（缩进 1 格）写回。
  */
 import { readFile } from 'node:fs/promises';
-import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, isProceduralModel, parseProceduralModel } from '@stride-ts/engine/content-format';
+import { decodeAnimation, decodeModel, encodeAnimation, encodeModel, isProceduralModel, parseProceduralModel, type TextureEncoding } from '@stride-ts/engine/content-format';
 import { assetReferenceSlots, type AssetKind } from '@stride-ts/engine/content-references';
 import { assetKey, ownBuffer } from './AssetDatabase.ts';
 
@@ -36,6 +36,24 @@ export async function rewriteReferences(kind: AssetKind, file: string, changes: 
   if (!file.endsWith('.json')) return undefined;
   const content: unknown = JSON.parse(await readFile(file, 'utf8'));
   return apply(kind, content, changes) ? JSON.stringify(content, null, 1) : undefined;
+}
+
+/**
+ * 引用贴图 imagePath 的地方读它的编码改成 encoding（贴图的导入设置换了格式：压成 KTX2、改回源图片）。只有 JSON 文件里有：
+ * 返回改好的内容，没有要改的是 undefined。没写编码的引用按 KTX2 算（TextureRef 的默认）。
+ */
+export async function rewriteImageEncoding(kind: AssetKind, file: string, imagePath: string, encoding: TextureEncoding): Promise<string | undefined> {
+  if (!file.endsWith('.json')) return undefined;
+  const content: unknown = JSON.parse(await readFile(file, 'utf8'));
+  let changed = false;
+  for (const slot of assetReferenceSlots(kind, content)) {
+    if (slot.kind !== 'image' || slot.path !== imagePath) continue;
+    const owner = slot.owner as { encoding?: TextureEncoding };
+    if ((owner.encoding ?? 'ktx2') === encoding) continue;
+    owner.encoding = encoding;
+    changed = true;
+  }
+  return changed ? JSON.stringify(content, null, 1) : undefined;
 }
 
 function apply(kind: AssetKind, content: unknown, changes: PathChanges): boolean {

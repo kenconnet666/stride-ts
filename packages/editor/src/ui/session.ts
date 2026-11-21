@@ -12,7 +12,7 @@
  */
 import { setPropertyPath } from '@zerodep-dev/vue-tsx-pro-ui';
 import { shallowRef, triggerRef } from 'vue';
-import type { PrefabFile, SceneEntityFile, SceneFile, TimelineFile } from '@stride-ts/engine/content-format';
+import { DEFAULT_IMAGE_IMPORT, type ImageImportFile, type PrefabFile, type SceneEntityFile, type SceneFile, type TimelineFile } from '@stride-ts/engine/content-format';
 import type { GraphFile } from '@stride-ts/engine/node-graph';
 import { encodePng } from '@stride-ts/engine/png';
 import { availableParent, expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
@@ -481,8 +481,15 @@ export class EditorSession implements EditableScene {
   /** 在属性面板里编辑这个资源（能编辑的：材质、JSON 写的模型）；别的种类、二进制的模型清掉面板。 */
   async inspectAsset(selected: AssetKind, path: string): Promise<void> {
     // 导入的模型（二进制）本身改不了：选中它或它的源文件时看它的导入设置
-    const imported = (selected === 'model' || selected === 'modelSource') && this.assets.value.some((asset) => asset.kind === 'modelImport' && asset.path === path);
-    const kind = imported ? 'modelImport' : selected;
+    const has = (kind: AssetKind) => this.assets.value.some((asset) => asset.kind === kind && asset.path === path);
+    const imported = (selected === 'model' || selected === 'modelSource') && has('modelImport');
+    // 贴图（图片、贴图资源）看它的导入设置；还没有设置的位图（随模型导入的、Stride 工程导入的）先显示默认的，改了才建文件
+    const image = (selected === 'image' || selected === 'texture') && (has('imageImport') || this.#imageSource(path) !== undefined);
+    const kind = imported ? 'modelImport' : image ? 'imageImport' : selected;
+    if (kind === 'imageImport' && !has('imageImport')) {
+      this.inspected.value = { kind, path, content: { source: this.#imageSource(path)!, ...DEFAULT_IMAGE_IMPORT } };
+      return;
+    }
     if (!isInspectable(kind)) {
       this.inspected.value = undefined;
       return;
@@ -496,6 +503,13 @@ export class EditorSession implements EditableScene {
       this.inspected.value = undefined;
       this.status.value = (error as Error).message;
     }
+  }
+
+  /** 内容路径上的位图（png、jpg、webp）的格式：贴图导入设置的 source；没有这样的图片时是 undefined。 */
+  #imageSource(path: string): ImageImportFile['source'] | undefined {
+    const files = this.assets.value.find((asset) => asset.kind === 'image' && asset.path === path)?.files ?? [];
+    for (const [format, extension] of [['png', '.png'], ['jpeg', '.jpg'], ['webp', '.webp']] as const) if (files.some((file) => file.endsWith(extension))) return format;
+    return undefined;
   }
 
   /** 改正在编辑的资源里 path 上的值（ValueUpdate 按现在的值算，undefined 去掉这个键）；稍等一下再存，连着改只存最后一次。 */

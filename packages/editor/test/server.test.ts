@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import zlib from 'node:zlib';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -268,6 +269,20 @@ describe('后端（EditorBackend）', () => {
     const texture = (await (await post('Game/Textures', 'Coin.PNG', new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).json() as ImportResult).asset;
     expect([texture.kind, texture.path]).toEqual(['texture', 'Game/Textures/Coin']);
     expect(JSON.parse(await readFile(path.join(directory, 'public/content/Game/Textures/Coin.texture.json'), 'utf8'))).toEqual({ texture: 'Game/Textures/Coin', encoding: 'png' });
+    // 贴图的导入设置：位图旁边写一份默认的（不压缩）；压成 KTX2 时引用它的材质改成读 KTX2，改回 none 时删掉 KTX2、改回读 PNG
+    const contentFile = (file: string) => path.join(directory, 'public/content', file);
+    expect(JSON.parse(await readFile(contentFile('Game/Textures/Coin.image.json'), 'utf8'))).toEqual({ source: 'png', compress: 'none', mipmaps: true, maxSize: 0, srgb: true });
+    await writeFile(contentFile('Game/Textures/Coin.png'), tinyPng(8, 6));
+    await api('/asset?kind=material&path=Game/Materials/Coin', { method: 'PUT', body: JSON.stringify({ name: 'Coin', baseColor: [1, 1, 1, 1], baseColorTexture: { texture: 'Game/Textures/Coin', encoding: 'png', srgb: true } }) });
+    const compress = (mode: string) => api('/asset?kind=imageImport&path=Game/Textures/Coin', { method: 'PUT', body: JSON.stringify({ source: 'png', compress: mode, mipmaps: true, maxSize: 4, srgb: true }) });
+    expect((await compress('uastc')).status).toBe(200);
+    const ktx2 = await readFile(contentFile('Game/Textures/Coin.ktx2'));
+    expect([...ktx2.subarray(1, 7)].map((c) => String.fromCharCode(c)).join('')).toBe('KTX 20');
+    const materialEncoding = async () => (JSON.parse(await readFile(contentFile('Game/Materials/Coin.material.json'), 'utf8')) as MaterialFile).baseColorTexture?.encoding;
+    expect(await materialEncoding()).toBe('ktx2');
+    expect(JSON.parse(await readFile(contentFile('Game/Textures/Coin.texture.json'), 'utf8')).encoding).toBe('ktx2');
+    expect((await compress('none')).status).toBe(200);
+    expect([existsSync(contentFile('Game/Textures/Coin.ktx2')), await materialEncoding()]).toEqual([false, 'png']);
     // 模型：一个三角形、一个带嵌入贴图的材质 → 模型、材质、贴图三个文件
     const positions = Buffer.from(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]).buffer).toString('base64');
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).toString('base64');
@@ -452,3 +467,21 @@ describe('关卡白盒：存下就烘成同名的模型', () => {
     expect(moved.moved.map((asset) => `${asset.kind} ${asset.path}`)).toEqual(['brush Game/Level/Hall', 'model Game/Level/Hall']);
   });
 });
+
+/** 一张能解码的 RGBA PNG（每个像素一种颜色）：测试贴图压缩用。 */
+function tinyPng(width: number, height: number): Uint8Array {
+  const chunk = (type: string, data: Uint8Array) => {
+    const body = Buffer.concat([Buffer.from(type, 'latin1'), data]);
+    const length = Buffer.alloc(4), crc = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    crc.writeUInt32BE(zlib.crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 6, 0, 0, 0], 8);
+  const rows = Buffer.alloc(height * (1 + width * 4));
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) rows.set([x * 30, y * 40, 200, 255], y * (1 + width * 4) + 1 + x * 4);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', header), chunk('IDAT', zlib.deflateSync(rows)), chunk('IEND', new Uint8Array(0))]);
+}

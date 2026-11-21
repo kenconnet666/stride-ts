@@ -38,6 +38,11 @@ export const EXTENSIONS = {
    * （连材质、贴图、骨架、动画），设置改了重新导入。
    */
   modelImport: '.import.json',
+  /**
+   * 贴图的导入设置（ImageImportFile）：源图片（.png、.jpg、.webp）在旁边、同名，编辑器后端照设置把它压成 KTX2（同名的 .ktx2），
+   * 引用它的地方的编码跟着改。
+   */
+  imageImport: '.image.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */
@@ -568,6 +573,30 @@ export interface ModelImportFile {
   /** 动画烘焙的采样率（每秒关键帧数）。 */
   readonly sampleRate: number;
 }
+
+/** 贴图导入设置里源图片的格式（浏览器直接能解的那几种）。 */
+export type ImageSourceFormat = 'png' | 'jpeg' | 'webp';
+
+/**
+ * 贴图的导入设置（`.image.json`，和贴图同名；Stride 的 TextureAsset、Unity 的 TextureImporter 那一类）：源图片留着，compress 不是
+ * none 时后端把它压成 Basis 的 KTX2（运行时转码成 BC7、ASTC、ETC2，显存小、下载也常更小），引用这张贴图的材质、精灵表、场景
+ * 改成读 KTX2；改回 none 时删掉 KTX2、改回读源图片。
+ */
+export interface ImageImportFile {
+  /** 源图片的格式：源文件是 `<内容路径><TEXTURE_EXTENSIONS[source]>`。 */
+  readonly source: ImageSourceFormat;
+  /** 压缩：none 用源图片；uastc 质量高（同 Stride 导入的默认）；etc1s 文件小、有色块。 */
+  readonly compress: 'none' | 'uastc' | 'etc1s';
+  /** 压缩时生成 mipmap（远处不闪、省带宽）。 */
+  readonly mipmaps: boolean;
+  /** 压缩时长边超过它就等比缩小（宽高补到 4 的倍数）；0 不限。 */
+  readonly maxSize: number;
+  /** 颜色贴图（按 sRGB 存、生成 mipmap 时按线性算）；法线、粗糙度这些数据贴图关掉。 */
+  readonly srgb: boolean;
+}
+
+/** 新的贴图导入设置：不压缩（拖进来的图片原样用），压缩时带 mipmap、不限尺寸。 */
+export const DEFAULT_IMAGE_IMPORT: Omit<ImageImportFile, 'source'> = { compress: 'none', mipmaps: true, maxSize: 0, srgb: true };
 
 /** 新导入的源模型的设置（同 Stride 导入 FBX、glTF 的默认）。 */
 export const DEFAULT_MODEL_IMPORT: Omit<ModelImportFile, 'source'> = { scale: 1, materials: true, animations: true, sampleRate: 30 };

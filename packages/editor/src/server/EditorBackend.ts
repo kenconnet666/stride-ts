@@ -9,13 +9,13 @@ import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ModelImportFile, type ModelSourceFormat, type PolyMeshFile, type SdfFile } from '@stride-ts/engine/content-format';
+import { DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { bakeBrushModel, bakePolyModel, bakeSdfModel, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
-import { rewriteReferences } from './rewrite.ts';
+import { rewriteImageEncoding, rewriteReferences } from './rewrite.ts';
 import { writeAssetTypes } from './assetTypes.ts';
 import { loadProject, projectInfo, type Project } from './project.ts';
 
@@ -33,10 +33,10 @@ const CHANGE_DELAY = 50;
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
 /** 编辑器后端烘成同名模型的资源种类（源头是 JSON，场景引用烘出的 .model）。 */
 /** 编辑器后端照它烘出（导入）同名模型的资源：白盒、SDF、多边形网格、源模型的导入设置。 */
-type BakedKind = 'brush' | 'sdf' | 'poly' | 'modelImport';
-const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'modelImport';
+type BakedKind = 'brush' | 'sdf' | 'poly' | 'modelImport' | 'imageImport';
+const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'modelImport' || kind === 'imageImport';
 
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'modelImport']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'modelImport', 'imageImport']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -173,7 +173,12 @@ export class EditorBackend {
       await writeAtomically(main, JSON.stringify(audio
         ? { name: path.basename(assetPath), encoding: audio, streamFromDisk: false, spatialized: false }
         : { texture: assetPath, encoding: image }, null, 1));
-      await this.#refresh([this.#relative(source), this.#relative(main)]);
+      // 位图旁边写一份默认的导入设置（不压缩）：属性面板里改了就压成 KTX2
+      // image 的类型是从扩展名表里按 '.png' 取的（只剩 'png'），这里按真正的几种比
+      const bitmap = image as ImageImportFile['source'] | 'svg' | undefined;
+      const settings = bitmap && bitmap !== 'svg' ? path.join(this.project.contentDir, assetFileName('imageImport', assetPath)) : undefined;
+      if (settings) await writeAtomically(settings, JSON.stringify({ source: bitmap as ImageImportFile['source'], ...DEFAULT_IMAGE_IMPORT } satisfies ImageImportFile, null, 1));
+      await this.#refresh([this.#relative(source), this.#relative(main), ...(settings ? [this.#relative(settings)] : [])]);
       return { asset: this.database.get(kind, assetPath)!, warnings: [] };
     });
   }
@@ -355,6 +360,8 @@ export class EditorBackend {
   #companions(record: AssetRecord): AssetRecord[] {
     const same = (...kinds: AssetKind[]) => kinds.map((kind) => this.database.get(kind, record.path)).filter((found) => found !== undefined);
     if (record.kind === 'sound') return same('audio');
+    if (record.kind === 'imageImport') return same('image');
+    if (record.kind === 'image') return same('imageImport');
     if (record.kind === 'modelImport') return same('model', 'modelSource');
     if (isBakedKind(record.kind)) return same('model');
     if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'modelImport', 'modelSource');
@@ -473,6 +480,7 @@ export class EditorBackend {
   async #bake(kind: BakedKind, assetPath: string, content: unknown): Promise<Baked> {
     const tools = await (this.#tools ??= createStrideTools());
     const where = `${kind} ${assetPath}`;
+    if (kind === 'imageImport') return this.#encodeImage(assetPath, content as ImageImportFile);
     if (kind === 'modelImport') {
       const settings = content as ModelImportFile;
       const fileName = `${path.basename(assetPath)}.${settings.source}`;
@@ -498,6 +506,45 @@ export class EditorBackend {
     await writeAtomically(path.join(this.project.contentDir, model), bytes);
     this.#bakes.set(`${kind}:${assetPath}`, JSON.stringify(content));
     return { files: [model], warnings: [] };
+  }
+
+  /**
+   * 照贴图的导入设置压缩：compress 不是 none 时解码源图片、按 maxSize 等比缩小（宽高补到 4 的倍数）、编成 Basis 的 KTX2 写在
+   * 旁边；none 时删掉 KTX2。然后引用这张贴图的 JSON 文件改成读新的编码。返回写了、删了的文件。
+   */
+  async #encodeImage(assetPath: string, settings: ImageImportFile): Promise<Baked> {
+    const where = `imageImport ${assetPath}`;
+    if (!['png', 'jpeg', 'webp'].includes(settings.source)) throw new Error(`${where}: source must be png, jpeg or webp`);
+    const ktx2 = assetPath + TEXTURE_EXTENSIONS.ktx2;
+    const files: string[] = [ktx2];
+    let encoding: TextureEncoding = settings.source;
+    if (settings.compress === 'none') {
+      await rm(path.join(this.project.contentDir, ktx2), { force: true });
+    } else {
+      const tools = await (this.#tools ??= createStrideTools());
+      const bytes = await readFile(path.join(this.project.contentDir, assetPath + TEXTURE_EXTENSIONS[settings.source])).catch(() => {
+        throw new Error(`${where}: the source image ${assetPath}${TEXTURE_EXTENSIONS[settings.source]} is missing`);
+      });
+      const image = await tools.decodeImage(bytes);
+      const longest = Math.max(image.width, image.height);
+      const fit = settings.maxSize > 0 && longest > settings.maxSize ? settings.maxSize / longest : 1;
+      // 块压缩要整块：宽高补到 4 的倍数（同 Stride 的 TextureHelper.FindBestTextureSize）
+      const width = Math.max(4, Math.ceil((image.width * fit) / 4) * 4), height = Math.max(4, Math.ceil((image.height * fit) / 4) * 4);
+      const pixels = width === image.width && height === image.height ? image.pixels : await tools.resizeImage(image.pixels, image.width, image.height, width, height);
+      await writeAtomically(path.join(this.project.contentDir, ktx2), await tools.encodeBasis(pixels, width, height, { mode: settings.compress, srgb: settings.srgb, mipmaps: settings.mipmaps }));
+      encoding = 'ktx2';
+    }
+    for (const record of this.database.referrers('image', assetPath)) {
+      const main = record.files[0];
+      if (main === undefined) continue;
+      const file = path.join(this.project.contentDir, main);
+      const content = await rewriteImageEncoding(record.kind, file, assetPath, encoding);
+      if (content === undefined) continue;
+      await writeAtomically(file, content);
+      files.push(main);
+    }
+    this.#bakes.set(`imageImport:${assetPath}`, JSON.stringify(settings));
+    return { files, warnings: [] };
   }
 
   #writeAssetTypes(): Promise<boolean> {

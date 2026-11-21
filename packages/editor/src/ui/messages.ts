@@ -64,7 +64,7 @@ export interface EditorMessages {
   readonly created: (kind: string, path: string) => string;
   readonly imported: (assets: readonly string[]) => string;
   // 属性面板
-  readonly assetLabels: { readonly material: string; readonly model: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly modelImport: string; readonly gameSettings: string };
+  readonly assetLabels: { readonly material: string; readonly model: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly modelImport: string; readonly imageImport: string; readonly gameSettings: string };
   readonly assetHint: (kind: string, path: string) => string;
   readonly instanceOf: (prefab: string) => string;
   readonly memberOf: (prefab: string, instance: string, member: string) => string;
@@ -232,7 +232,7 @@ const zhCN: EditorMessages = {
   opened: (kind, path) => `打开了 ${kind} ${path}`,
   created: (kind, path) => `建了 ${kind} ${path}（路径框里可以改名）`,
   imported: (assets) => `导入了 ${assets.join('、')}`,
-  assetLabels: { material: '材质', model: '模型', timeline: '时间轴', brush: '白盒', sdf: 'SDF 模型', poly: '多边形网格', modelImport: '导入设置', gameSettings: '游戏设置' },
+  assetLabels: { material: '材质', model: '模型', timeline: '时间轴', brush: '白盒', sdf: 'SDF 模型', poly: '多边形网格', modelImport: '导入设置', imageImport: '贴图的导入设置', gameSettings: '游戏设置' },
   assetHint: (kind, path) => `${kind} ${path}：改了马上存进资源文件，视口里用到它的实体跟着变。`,
   instanceOf: (prefab) => `预制体 ${prefab} 的实例`,
   memberOf: (prefab, instance, member) => `预制体 ${prefab} 的实例 ${instance} 里的 ${member}`,
@@ -408,7 +408,7 @@ const enUS: EditorMessages = {
   opened: (kind, path) => `Opened ${kind} ${path}`,
   created: (kind, path) => `Created ${kind} ${path} (rename it in the path box)`,
   imported: (assets) => `Imported ${assets.join(', ')}`,
-  assetLabels: { material: 'Material', model: 'Model', timeline: 'Timeline', brush: 'Greybox', sdf: 'SDF model', poly: 'Poly mesh', modelImport: 'Import settings', gameSettings: 'Game settings' },
+  assetLabels: { material: 'Material', model: 'Model', timeline: 'Timeline', brush: 'Greybox', sdf: 'SDF model', poly: 'Poly mesh', modelImport: 'Import settings', imageImport: 'Texture import settings', gameSettings: 'Game settings' },
   assetHint: (kind, path) => `${kind} ${path}: changes are saved to the asset file at once, and the entities that use it in the viewport follow.`,
   instanceOf: (prefab) => `Instance of prefab ${prefab}`,
   memberOf: (prefab, instance, member) => `${member} in ${instance}, an instance of prefab ${prefab}`,

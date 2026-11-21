@@ -151,6 +151,7 @@ export function assetReferences(kind: AssetKind, path: string, file: unknown): A
   // 声音的音频文件、导入设置的源模型不写在文件里，和它同名
   if (kind === 'sound') refs.push({ kind: 'audio', path });
   if (kind === 'modelImport') refs.push({ kind: 'modelSource', path });
+  if (kind === 'imageImport') refs.push({ kind: 'image', path });
   const seen = new Set<string>();
   return refs.filter((ref) => {
     const key = `${ref.kind}:${ref.path}`;

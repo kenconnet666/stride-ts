@@ -11,7 +11,7 @@
  */
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
-  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile,
+  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile,
   GameSettingsFile, SceneScriptValue, SceneTextureCamera,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
@@ -821,7 +821,16 @@ export const MODEL_IMPORT_FIELDS = fields<ModelImportFile>({
   sampleRate: { type: integer(1, 240), description: 'animation keyframes per second when baking' },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+/** 贴图的导入设置（ImageImportFile，.image.json）：改了马上存，编辑器后端照新的设置压缩（或改回源图片）。 */
+export const IMAGE_IMPORT_FIELDS = fields<ImageImportFile>({
+  source: { type: oneOf('png', 'jpeg', 'webp'), description: 'format of the source image next to these settings (same name)' },
+  compress: { type: oneOf('none', 'uastc', 'etc1s'), description: 'none: use the source image; uastc: KTX2, high quality; etc1s: KTX2, smallest file' },
+  mipmaps: { type: bool, description: 'generate mipmaps when compressing' },
+  maxSize: { type: integer(0, 16384), description: 'when compressing, scale down so the longer side is at most this many pixels; 0: no limit' },
+  srgb: { type: bool, description: 'color image (stored as sRGB); turn off for normal, roughness and other data maps' },
+});
+
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 
 /**
  * 按值推出字段（游戏自己的渲染器、没有声明的脚本属性：代码里没有字段描述，文件里的值就是全部信息）：资源引用

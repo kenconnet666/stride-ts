@@ -244,8 +244,9 @@ export class EditAgent {
 
   /** 按文档建场景、换成根场景，之后实体跟着这份文档（sync）。给的是只读的 SceneSource 时只能看和选，不能拖。 */
   async open(source: SceneSource | EditableScene): Promise<void> {
-    // 换了场景：参考场景挂在旧的根下面，跟着旧场景一起卸载了
+    // 换了场景：参考场景、一起看的世界挂在旧的根下面，跟着旧场景一起卸载了
     this.#references.clear();
+    if (this.game.world.attached) this.game.world.unload();
     this.#live = await LiveScene.open(this.game, source);
     this.#target = 'apply' in source ? source : undefined;
     this.selection = this.#selection;
@@ -288,6 +289,26 @@ export class EditAgent {
     this.#references.delete(path);
     this.game.unloadScene(await loading);
     this.refresh();
+  }
+
+  /**
+   * 把这个世界（`.world.json` 的内容路径）的格子挂在正在编辑的场景下面一起看：编辑相机附近的格子按各图层的加载半径流式加载
+   * （WorldStreaming.attach），只看不改——格子的实体不在编辑的文档里，点选点不到。往世界里放东西经后端的 placeInWorld。
+   */
+  async showWorld(path: string): Promise<void> {
+    await this.game.world.attach(path, this.#require().instance);
+    this.refresh();
+  }
+
+  /** 不再一起看世界（卸掉它的格子）。 */
+  hideWorld(): void {
+    if (this.game.world.attached) this.game.world.unload();
+    this.refresh();
+  }
+
+  /** 正在一起看的世界（内容路径）；没有时是 undefined。 */
+  get world(): string | undefined {
+    return this.game.world.attached ? this.game.world.path : undefined;
   }
 
   /** 正在一起看的参考场景（内容路径）。 */

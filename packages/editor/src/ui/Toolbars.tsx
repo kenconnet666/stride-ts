@@ -5,7 +5,7 @@
  * - ViewportToolbar：视口上面，对选中实体的操作、吸附、画幅参考线；
  * - StatusBar：最下面，提示和出错、选中几个、界面语言。
  */
-import { Activity, ArrowDownToLine, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, SquareDot, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
+import { Activity, ArrowDownToLine, Globe, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, SquareDot, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
 import type { PolyOperation } from '@stride-ts/engine/modeling';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -110,6 +110,11 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       step('translate', 0.001),
       step('rotate', 0.01),
       step('scale', 0.001),
+      // 一起看着世界时：把选中的东西放进世界对应的格子
+      ...(session.world.value ? [
+        <Button size="sm" variant="soft" tone="neutral" icon={Globe} title={t.placeInWorldHint} disabled={session.selection.value.length === 0}
+          onClick={() => void session.placeSelectionInWorld().catch((error: unknown) => (session.notice.value = (error as Error).message))}>{t.placeInWorld}</Button>,
+      ] : []),
     ];
   };
   /** 挤出、内插、倒角的距离（米）：工具条上一个数，几个操作共用。 */

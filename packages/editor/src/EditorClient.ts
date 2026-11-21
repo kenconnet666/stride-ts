@@ -7,6 +7,7 @@ import {
   EDITOR_API_PATH, EDITOR_ASSETS_EVENT, type AssetChanges, type AssetKind, type AssetRecord, type DeleteResult, type ImportResult, type MoveRequest, type MoveResult,
   type ProjectInfo,
 } from './protocol.ts';
+import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 
 /** 每个接口请求都要带的头，同后端的 EDITOR_HEADER。 */
 const HEADERS = { 'x-stride-editor': '1' };
@@ -50,6 +51,11 @@ export class EditorClient {
     const result = await response.json() as AssetRecord | { error: string };
     if (!response.ok) throw new Error(`editor save image ${path}: ${(result as { error: string }).error}`);
     return result as AssetRecord;
+  }
+
+  /** 往世界里放实体（根实体的 position 是世界坐标，分进对应格子的场景，见后端的 placeInWorld）；返回每个实体放进了哪个格子。 */
+  placeInWorld(world: string, layer: string, entities: readonly SceneEntityFile[]): Promise<{ entity: string; name: string; cell: [number, number]; scene: string }[]> {
+    return request('POST', '/world/place', { world, layer, entities });
   }
 
   /** 移动、改名资源（几个，或者一个文件夹下面的全部）；引用它们的文件跟着改写。 */

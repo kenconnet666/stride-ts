@@ -78,8 +78,9 @@ export function projectedPixelRatio(transform: Readonly<Matrix4>, virtualResolut
  */
 export function pointerToVirtual(position: Vec2, uiWorld: Readonly<Matrix4>, inverseViewProjection: Readonly<Matrix4>): [number, number] | undefined {
   const x = position[0] * 2 - 1, y = 1 - position[1] * 2;
-  const near = unproject(inverseViewProjection, x, y, 0);
-  const far = unproject(inverseViewProjection, x, y, 1);
+  // 相机的投影是反向 Z：近平面的深度是 1、远平面是 0
+  const near = unproject(inverseViewProjection, x, y, 1);
+  const far = unproject(inverseViewProjection, x, y, 0);
   // near + t · (far - near) = origin + u · axisX + v · axisY，按克莱姆法则解 u、v、t
   const d = [far[0] - near[0], far[1] - near[1], far[2] - near[2]];
   const ax = [uiWorld[0]!, uiWorld[1]!, uiWorld[2]!], ay = [uiWorld[4]!, uiWorld[5]!, uiWorld[6]!];

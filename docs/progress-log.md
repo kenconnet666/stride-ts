@@ -820,4 +820,6 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 后端 `createWorld`、`placeInWorld`，MCP 的 `create_world`、`place_in_world`、`world_info`。
 - `apps/open-world/scripts/build-town.ts`：只经 MCP 建世界 Worlds/Town（格子 128 米，地面图层 900 米、楼图层 600 米的加载半径），写材质和模型，按世界坐标放 144 块街区的地面、576 栋楼（离中心近的高），分进 128 个格子的场景，一共约 3 秒。`?world=Worlds/Town` 打开，无头 Chrome 里从城边高处看过去 106 个格子加载着，街道、楼、影子都对。
 - 反向 Z 那次提交的验证（14 个样例）全过。
+- 第五步编辑器的世界视图：主 Chrome 里开编辑器，资源浏览器双击 Town：常驻场景打开、编辑相机附近的楼一起显示；加一个实体、位置设成 (300, 0, 300)，点"放进世界"，状态栏"1 个实体放进了世界的 1 个格子"，场景树里它没了，磁盘上在 Worlds/Town/ground/2_2 里、本地 x 是 44（300 − 2 × 128）。
+- 这一步的验证里 topdown-rpg 的"鼠标指着箱子时高亮"挂了：反向 Z 以后屏幕射线的起点终点反了，修了射线和 3D UI 的指针；topdown-rpg、csharp-intermediate、physics-sample、ui-element-link 重跑都过。
 

@@ -504,6 +504,10 @@ export class EditorBackend {
       return this.database.list();
     }
     if (route === 'POST /move') return this.moveAssets(await readJson(request) as MoveRequest);
+    if (route === 'POST /world/place') {
+      const { world, layer, entities } = await readJson(request) as { world: string; layer: string; entities: SceneEntityFile[] };
+      return this.placeInWorld(world, layer, entities);
+    }
     if (route === 'POST /import') {
       const folder = url.searchParams.get('folder') ?? '', name = url.searchParams.get('name');
       if (!name) throw new HttpError(400, 'name (the dropped file name) is required');

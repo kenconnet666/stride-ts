@@ -70,7 +70,8 @@ export function screenToWorldRaySegment(game: Game, camera: Entity, screenX: num
     const [px, py, pz] = Matrix.transformPoint(inverse, x, y, depth);
     return new Vector3(px + o[0], py + o[1], pz + o[2]);
   };
-  return { start: world(0), end: world(1) };
+  // 相机的投影是反向 Z（近平面深度 1、远平面 0，见 cameraProjectionMatrix）
+  return { start: world(1), end: world(0) };
 }
 
 /**

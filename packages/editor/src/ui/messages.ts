@@ -69,7 +69,7 @@ export interface EditorMessages {
   readonly delete: string;
   readonly open: string;
   readonly newAsset: string;
-  readonly newAssetLabels: { readonly scene: string; readonly spriteSheet: string; readonly sound: string; readonly text: string; readonly material: string; readonly ui: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly shape: (shape: string) => string };
+  readonly newAssetLabels: { readonly scene: string; readonly spriteSheet: string; readonly sound: string; readonly text: string; readonly material: string; readonly ui: string; readonly timeline: string; readonly world: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly shape: (shape: string) => string };
   readonly shapes: Readonly<Record<ProceduralShapeType, string>>;
   readonly importing: string;
   readonly working: (action: string) => string;
@@ -96,6 +96,11 @@ export interface EditorMessages {
   readonly sceneNotOpen: string;
   readonly noScene: string;
   readonly childSceneHint: (path: string) => string;
+  readonly worldShown: (path: string) => string;
+  readonly placeInWorld: string;
+  readonly placeInWorldHint: string;
+  readonly placeInWorldRoots: string;
+  readonly placedInWorld: (count: number, cells: number) => string;
   readonly showChildScene: (name: string) => string;
   readonly hideChildScene: (name: string) => string;
   readonly noSceneNoSettings: string;
@@ -261,7 +266,7 @@ const zhCN: EditorMessages = {
   delete: '删除',
   open: '打开',
   newAsset: '新建资源',
-  newAssetLabels: { spriteSheet: '精灵表', sound: '音效（合成）', text: '3D 文字（店招、站名）', scene: '场景', material: '材质', ui: 'UI 页面', timeline: '时间轴', brush: '白盒（布尔建模）', sdf: 'SDF 模型（平滑融合）', poly: '多边形网格（点线面编辑）', shape: (shape) => `基本形状：${shape}` },
+  newAssetLabels: { spriteSheet: '精灵表', sound: '音效（合成）', text: '3D 文字（店招、站名）', scene: '场景', material: '材质', ui: 'UI 页面', timeline: '时间轴', world: '大世界（格子流式加载）', brush: '白盒（布尔建模）', sdf: 'SDF 模型（平滑融合）', poly: '多边形网格（点线面编辑）', shape: (shape) => `基本形状：${shape}` },
   shapes: { cube: '立方体', plane: '平面', sphere: '球', geoSphere: '测地球', capsule: '胶囊', cylinder: '圆柱', torus: '圆环', cone: '圆锥', teapot: '茶壶' },
   importing: '导入',
   working: (action) => `${action}……`,
@@ -286,6 +291,11 @@ const zhCN: EditorMessages = {
   addSettingMenu: '添加设置……',
   sceneNotOpen: '场景还没打开',
   childSceneHint: (path) => `子场景 ${path}：点眼睛在视口里一起看（只看不改），双击单独打开它编辑`,
+  worldShown: (path) => `世界 ${path}：编辑相机附近的格子一起显示（只看不改）；在常驻场景里摆好东西，选中后点"放进世界"`,
+  placeInWorld: '放进世界',
+  placeInWorldHint: '把选中的实体按它们的世界位置放进世界对应的格子（从常驻场景里挪走）',
+  placeInWorldRoots: '只能放根实体（选中的实体要没有父实体）',
+  placedInWorld: (count, cells) => `${count} 个实体放进了世界的 ${cells} 个格子`,
   showChildScene: (name) => `在视口里一起看 ${name}`,
   hideChildScene: (name) => `不再一起看 ${name}`,
   noScene: '这个游戏没有场景：画面是游戏自己的根渲染器画的，属性面板里改游戏设置（根渲染器的属性改了马上看到）',
@@ -460,7 +470,7 @@ const enUS: EditorMessages = {
   delete: 'Delete',
   open: 'Open',
   newAsset: 'New asset',
-  newAssetLabels: { spriteSheet: 'Sprite sheet', sound: 'Sound effect (generated)', text: '3D text (signs)', scene: 'Scene', material: 'Material', ui: 'UI page', timeline: 'Timeline', brush: 'Greybox (CSG)', sdf: 'SDF model (smooth blends)', poly: 'Poly mesh (point, edge, face editing)', shape: (shape) => `Shape: ${shape}` },
+  newAssetLabels: { spriteSheet: 'Sprite sheet', sound: 'Sound effect (generated)', text: '3D text (signs)', scene: 'Scene', material: 'Material', ui: 'UI page', timeline: 'Timeline', world: 'Large world (streamed cells)', brush: 'Greybox (CSG)', sdf: 'SDF model (smooth blends)', poly: 'Poly mesh (point, edge, face editing)', shape: (shape) => `Shape: ${shape}` },
   shapes: { cube: 'Cube', plane: 'Plane', sphere: 'Sphere', geoSphere: 'Geosphere', capsule: 'Capsule', cylinder: 'Cylinder', torus: 'Torus', cone: 'Cone', teapot: 'Teapot' },
   importing: 'Import',
   working: (action) => `${action}…`,
@@ -485,6 +495,11 @@ const enUS: EditorMessages = {
   addSettingMenu: 'Add a setting…',
   sceneNotOpen: 'No scene is open yet',
   childSceneHint: (path) => `Child scene ${path}: click the eye to see it in the viewport (view only), double-click to open it for editing`,
+  worldShown: (path) => `World ${path}: cells near the edit camera are shown (view only); arrange things in the persistent scene, select them and click "Place in world"`,
+  placeInWorld: 'Place in world',
+  placeInWorldHint: 'Move the selected entities into the world cells at their world positions (out of the persistent scene)',
+  placeInWorldRoots: 'Only root entities can be placed (the selected entities must have no parent)',
+  placedInWorld: (count, cells) => `${count} entities placed into ${cells} cells of the world`,
   showChildScene: (name) => `Show ${name} in the viewport`,
   hideChildScene: (name) => `Hide ${name}`,
   noScene: 'This game has no scene: its own root renderer draws the picture. Edit the game settings in the inspector (changes to the renderer show at once)',

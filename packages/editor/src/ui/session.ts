@@ -118,6 +118,8 @@ export class EditorSession implements EditableScene {
   readonly snap = shallowRef<SnapSettings>();
   /** 视口里一起看的参考场景：正在编辑的场景的子场景（SceneFile.children）里打开着的，只看不改。换文档时清空。 */
   readonly references = shallowRef<readonly string[]>([]);
+  /** 视口里一起看的世界（`.world.json` 的内容路径，见 openWorld）：编辑相机附近的格子流式显示，只看不改。换文档时清空。 */
+  readonly world = shallowRef<string>();
   /** 视口一直出帧（粒子、天气、时间累积的效果一直动）；关着时静止就不出帧（Game.renderOnDemand），输入、修改时才画。 */
   readonly realtime = shallowRef(false);
   /** 命令面板（到处搜）开着：快捷键在 App 里接（焦点在视口的 iframe 里也认），面板在主工具条上。 */
@@ -560,6 +562,7 @@ export class EditorSession implements EditableScene {
     this.selection.value = [];
     await agent.open(this.#view);
     this.references.value = [];
+    this.world.value = undefined;
     if (this.snap.value) agent.snap = this.snap.value;
     else this.snap.value = agent.snap;
     agent.game.renderOnDemand = !this.realtime.value;
@@ -668,6 +671,49 @@ export class EditorSession implements EditableScene {
   redo(): void {
     if (this.polyEditing.value) return this.#polyStep(this.#polyRedo, this.#polyUndo);
     if (this.#require().redo()) this.#changed();
+  }
+
+  /**
+   * 打开一个世界：打开它的常驻场景（没有常驻场景时留在正在编辑的场景上），把世界的格子挂上一起看（编辑相机附近的流式显示）。
+   * 往世界里放东西：在常驻场景里摆好，选中后 placeSelectionInWorld。
+   */
+  async openWorld(path: string): Promise<void> {
+    const agent = this.agent.value;
+    if (!agent) throw new Error('the game page is not ready yet');
+    const world = await this.client.readAsset<{ persistent?: string }>('world', path);
+    const opened = this.opened.value;
+    if (world.persistent && !(opened?.kind === 'scene' && opened.path === world.persistent)) await this.openAsset({ kind: 'scene', path: world.persistent });
+    await agent.showWorld(path);
+    this.world.value = path;
+    this.status.value = t.worldShown(path);
+  }
+
+  /**
+   * 把选中的根实体（和它们的后代）按世界位置放进一起看的世界（后端的 placeInWorld，分进对应格子的场景），再从正在编辑的场景里
+   * 去掉（一步撤销只管这边的去掉；格子的场景已经写好）。放进世界的第一个图层。
+   */
+  async placeSelectionInWorld(): Promise<void> {
+    const agent = this.agent.value, world = this.world.value;
+    if (!agent || !world) return;
+    const chosen = new Set(this.selection.value);
+    const file = this.file;
+    if (file.entities.some((entity) => chosen.has(entity.id) && entity.parent !== null)) throw new Error(t.placeInWorldRoots);
+    // 父实体排在前面：顺着扫一遍收全后代；根实体的位置加上场景的偏移就是世界坐标
+    const offset = file.offset ?? [0, 0, 0];
+    const taken = new Set(chosen);
+    const entities = file.entities.filter((entity) => taken.has(entity.id) || (entity.parent !== null && taken.has(entity.parent) && taken.add(entity.id)))
+      .map((entity) => (entity.parent === null ? { ...entity, position: [entity.position[0] + offset[0], entity.position[1] + offset[1], entity.position[2] + offset[2]] as [number, number, number] } : entity));
+    if (entities.length === 0) return;
+    const { layers } = await this.client.readAsset<{ layers: { name: string }[] }>('world', world);
+    const placed = await this.client.placeInWorld(world, layers[0]!.name, entities);
+    this.apply({ type: 'remove', entities: [...chosen] });
+    this.commit();
+    this.select([]);
+    await this.save();
+    // 世界的索引和格子的场景变了：丢掉页面里缓存的，重新挂上
+    agent.game.content.evict([world, ...new Set(placed.map((entry) => entry.scene))]);
+    await agent.showWorld(world);
+    this.status.value = t.placedInWorld(placed.length, new Set(placed.map((entry) => entry.scene)).size);
   }
 
   /** 子场景 path 在视口里一起看还是不看（参考场景，见 references）。 */

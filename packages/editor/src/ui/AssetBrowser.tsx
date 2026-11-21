@@ -113,11 +113,12 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     return t.deleted(asset.kind, asset.path);
   });
 
-  /** 场景、预制体可以在编辑器里打开（双击也行）。 */
-  const openable = (node: Node | undefined) => node?.asset?.kind === 'scene' || node?.asset?.kind === 'prefab' || node?.asset?.kind === 'timeline';
+  /** 场景、预制体、时间轴、世界可以在编辑器里打开（双击也行）；世界是打开它的常驻场景、把格子挂上一起看。 */
+  const openable = (node: Node | undefined) => node?.asset?.kind === 'scene' || node?.asset?.kind === 'prefab' || node?.asset?.kind === 'timeline' || node?.asset?.kind === 'world';
   const open = (node: Node) => run(t.open, async () => {
     const { kind, path } = node.asset!;
     if (kind === 'timeline') await session.openTimeline(path);
+    else if (kind === 'world') await session.openWorld(path);
     else await session.openAsset({ kind: kind as 'scene' | 'prefab', path });
     return t.opened(kind, path);
   });

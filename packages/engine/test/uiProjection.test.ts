@@ -8,7 +8,7 @@ const SIZE = { x: 12.8, y: 7.2, z: 1 };
 /** 相机在 eye，看向原点，竖直视角 60 度，16:9。 */
 function camera(eye: [number, number, number]) {
   const view = Matrix.lookAtRH(new Float32Array(16), eye, [0, 0, 0], [0, 1, 0]);
-  const projection = Matrix.perspectiveFovRH(new Float32Array(16), Math.PI / 3, 16 / 9, 0.1, 100);
+  const projection = Matrix.perspectiveFovRH(new Float32Array(16), Math.PI / 3, 16 / 9, 0.1, 100, true); // 同相机：反向 Z
   const world = new Float32Array(16);
   Matrix.invert(world, view);
   const viewProjection = Matrix.multiply(new Float32Array(16), projection, view);

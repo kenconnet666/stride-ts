@@ -52,12 +52,19 @@ const state = () => stride('eval', `${BODIES} ({ kinematic: ids.filter((i) => g.
   heights: ids.map((i) => g.entities.entity(i).require(strideEngine.Transform).world[13].toFixed(2)).join() })`) as { kinematic: number; total: number; heights: string };
 const start = state();
 check('开始时箱子都是运动学的', start.total > 0 && start.kinematic === start.total, start);
-stride('key', 'D', '--hold', '1500');
-await sleep(800);
+// 按住 D 直到箱子都变成动态的、再落一会儿（按游戏时间等）：CI 的软件 WebGPU 上一帧可能超过 0.25 秒，按墙钟按 1.5 秒时角色
+// 还没走到触发器
+const allKinematic = (value: boolean) => `(async () => { ${BODIES} await until(() => ids.every((i) => g.entities.entity(i).require(strideEngine.Body).kinematic === ${value}), 5); })()`;
+stride('key', 'D', '--down');
+stride('eval', allKinematic(false));
+stride('key', 'D', '--up');
+stride('wait', '--game', '0.5');
 const inside = state();
 check('角色走进触发器：箱子变成动态落下', inside.kinematic === 0 && inside.heights !== start.heights, inside);
-stride('key', 'A', '--hold', '1500');
-await sleep(500);
+stride('key', 'A', '--down');
+stride('eval', allKinematic(true));
+stride('key', 'A', '--up');
+stride('wait', '--game', '0.5');
 const after = state();
 check('走出来后变回运动学、回到原位', after.kinematic === after.total && after.heights === start.heights, after);
 

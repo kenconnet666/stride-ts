@@ -45,6 +45,27 @@ describe('材质节点图', () => {
     expect(c.declarations).toContain('fn graphHeightNormal(');
   });
 
+  test('坡度、高度遮罩和世界 UV：读材质流的世界坐标和法线，遮罩用一个 graphRange', () => {
+    const c = compiler();
+    const graph: GraphFile = {
+      nodes: [
+        { id: 'uv', type: 'worldUv', params: { scale: 0.05 } },
+        { id: 'grain', type: 'noise', inputs: { uv: { node: 'uv' } } },
+        { id: 'steep', type: 'slopeMask', params: { minAngle: 30, maxAngle: 90, blend: 10 } },
+        { id: 'high', type: 'heightMask', params: { minHeight: 200, maxHeight: 1000, blend: 50 } },
+        { id: 'snow', type: 'multiply', inputs: { a: { node: 'steep' }, b: { node: 'high' } } },
+        { id: 'color', type: 'mix', inputs: { a: { node: 'grain' }, t: { node: 'snow' } } },
+      ],
+      outputs: { baseColor: { node: 'color' } },
+    };
+    const { code } = compileMaterialGraph(graph, c, () => undefined, 'terrain');
+    expect(code).toContain('(streams.world.xz * 0.05)');
+    expect(code).toContain('graphRange(degrees(acos(clamp(streams.normal.y, 0.0, 1.0))), 30.0, 1000.0, 10.0)');
+    expect(code).toContain('graphRange(streams.world.y, 200.0, 1000.0, 50.0)');
+    // 两个遮罩共用一份库函数
+    expect(c.declarations.match(/fn graphRange\(/g)).toHaveLength(1);
+  });
+
   test('错误：认不出的节点、不存在的输出、没有的输入、环、指向不存在的节点', () => {
     const fails = (graph: GraphFile) => () => compileMaterialGraph(graph, compiler(), () => undefined, 'bad');
     expect(fails({ nodes: [{ id: 'a', type: 'nope' }], outputs: { baseColor: { node: 'a' } } })).toThrow("bad: node 'a' has the unknown type 'nope'");

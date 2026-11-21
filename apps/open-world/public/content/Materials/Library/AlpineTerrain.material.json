@@ -1,0 +1,229 @@
+{
+ "name": "AlpineTerrain",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.9,
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "worldUv",
+    "position": [
+     0,
+     0
+    ],
+    "params": {
+     "scale": 0.05
+    }
+   },
+   {
+    "id": "patches",
+    "type": "noise",
+    "position": [
+     220,
+     0
+    ],
+    "params": {
+     "scale": 6,
+     "octaves": 4,
+     "roughness": 0.55
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "grass",
+    "type": "colorRamp",
+    "position": [
+     440,
+     0
+    ],
+    "params": {
+     "from": [
+      0.1,
+      0.17,
+      0.05
+     ],
+     "to": [
+      0.24,
+      0.33,
+      0.11
+     ]
+    },
+    "inputs": {
+     "t": {
+      "node": "patches"
+     }
+    }
+   },
+   {
+    "id": "strata",
+    "type": "noise",
+    "position": [
+     0,
+     160
+    ],
+    "params": {
+     "scale": 14,
+     "octaves": 5,
+     "roughness": 0.6,
+     "seed": 3
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "rock",
+    "type": "colorRamp",
+    "position": [
+     220,
+     160
+    ],
+    "params": {
+     "from": [
+      0.13,
+      0.12,
+      0.11
+     ],
+     "to": [
+      0.3,
+      0.28,
+      0.25
+     ]
+    },
+    "inputs": {
+     "t": {
+      "node": "strata"
+     }
+    }
+   },
+   {
+    "id": "steep",
+    "type": "slopeMask",
+    "position": [
+     440,
+     160
+    ],
+    "params": {
+     "minAngle": 32,
+     "maxAngle": 90,
+     "blend": 10
+    }
+   },
+   {
+    "id": "ground",
+    "type": "mix",
+    "position": [
+     0,
+     320
+    ],
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "grass"
+     },
+     "b": {
+      "node": "rock"
+     },
+     "t": {
+      "node": "steep"
+     }
+    }
+   },
+   {
+    "id": "high",
+    "type": "heightMask",
+    "position": [
+     220,
+     320
+    ],
+    "params": {
+     "minHeight": 180,
+     "maxHeight": 100000,
+     "blend": 60
+    }
+   },
+   {
+    "id": "flat",
+    "type": "slopeMask",
+    "position": [
+     440,
+     320
+    ],
+    "params": {
+     "minAngle": 0,
+     "maxAngle": 38,
+     "blend": 12
+    }
+   },
+   {
+    "id": "snowCover",
+    "type": "multiply",
+    "position": [
+     0,
+     480
+    ],
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "high"
+     },
+     "b": {
+      "node": "flat"
+     }
+    }
+   },
+   {
+    "id": "snow",
+    "type": "color",
+    "position": [
+     220,
+     480
+    ],
+    "params": {
+     "color": [
+      0.86,
+      0.89,
+      0.93
+     ]
+    }
+   },
+   {
+    "id": "color",
+    "type": "mix",
+    "position": [
+     440,
+     480
+    ],
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "ground"
+     },
+     "b": {
+      "node": "snow"
+     },
+     "t": {
+      "node": "snowCover"
+     }
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "color"
+   }
+  }
+ }
+}

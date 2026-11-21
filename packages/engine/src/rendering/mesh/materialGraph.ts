@@ -106,6 +106,12 @@ const BRICKS = `fn graphBricks(uv: vec2f, columns: f32, rows: f32, mortar: f32, 
   return vec2f(inside, graphHash2(cell).x);
 }
 `;
+/** 0..1：v 在 [lo, hi] 里是 1，两头各按 width 宽的平滑过渡（width 是 0 时是硬边）。 */
+const RANGE = `fn graphRange(v: f32, lo: f32, hi: f32, width: f32) -> f32 {
+  let w = max(width, 1e-4) * 0.5;
+  return smoothstep(lo - w, lo + w, v) * (1.0 - smoothstep(hi - w, hi + w, v));
+}
+`;
 /** 高度的导数换成切线空间的法线：按 UV 的导数把屏幕空间的高度梯度换到 UV 空间（x 沿 U、y 沿 V）。 */
 const HEIGHT_NORMAL = `fn graphHeightNormal(height: f32, uv: vec2f, strength: f32) -> vec3f {
   let dx = dpdx(uv);
@@ -135,6 +141,42 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
   },
   { type: 'position', category: 'input', inputs: [], outputs: [{ name: 'position', type: 'vec3' }], params: [], emit: () => ({ position: 'streams.position' }) },
   { type: 'time', category: 'input', inputs: [], outputs: [{ name: 'time', type: 'float' }], params: [], emit: () => ({ time: 'streams.time' }) },
+  { type: 'worldPosition', category: 'input', inputs: [], outputs: [{ name: 'position', type: 'vec3' }], params: [], emit: () => ({ position: 'streams.world' }) },
+  { type: 'worldNormal', category: 'input', inputs: [], outputs: [{ name: 'normal', type: 'vec3' }], params: [], emit: () => ({ normal: 'streams.normal' }) },
+  {
+    // 世界坐标的 x、z 当 UV（从上往下投）：大地形上贴图按米铺，不跟着块、模型的 UV 走
+    type: 'worldUv', category: 'mapping', inputs: [], outputs: [{ name: 'uv', type: 'vec2' }],
+    params: [{ name: 'scale', type: num(0, undefined, 0.01), default: 0.1, description: 'repeats per meter (0.1 = one tile every 10 m)' }],
+    emit: (_, p) => ({ uv: `(streams.world.xz * ${f(p['scale'])})` }),
+  },
+  // 遮罩：0..1，在 [最小, 最大] 里是 1，两头按 blend 的宽度过渡（地形按坡度、高度混材质：陡处是岩石、高处是雪……）
+  // 坡度是表面和水平面的夹角：朝下的面（悬垂、物体的底面）算 90°，不会因为超过 90° 又落回平地那一档
+  {
+    type: 'slopeMask', category: 'mask', inputs: [], outputs: [{ name: 'mask', type: 'float' }],
+    params: [
+      { name: 'minAngle', type: { kind: 'number', step: 5, min: 0, max: 90, unit: 'deg' }, default: 30, description: 'slope (degrees from flat) where the mask starts' },
+      { name: 'maxAngle', type: { kind: 'number', step: 5, min: 0, max: 90, unit: 'deg' }, default: 90, description: 'slope where it ends' },
+      { name: 'blend', type: { kind: 'number', step: 1, min: 0, unit: 'deg' }, default: 10, description: 'width of the soft edges' },
+    ],
+    emit: (_, p, context) => {
+      context.addFunction('graphRange', RANGE);
+      // 范围顶到 0° 或 90° 时那一头不过渡（过渡是以边界为中心的：平地、竖直面上会只有一半）
+      const lo = Number(p['minAngle']) <= 0 ? -1000 : p['minAngle'], hi = Number(p['maxAngle']) >= 90 ? 1000 : p['maxAngle'];
+      return { mask: `graphRange(degrees(acos(clamp(streams.normal.y, 0.0, 1.0))), ${f(lo)}, ${f(hi)}, ${f(p['blend'])})` };
+    },
+  },
+  {
+    type: 'heightMask', category: 'mask', inputs: [], outputs: [{ name: 'mask', type: 'float' }],
+    params: [
+      { name: 'minHeight', type: num(undefined, undefined, 10), default: 200, description: 'world height (m) where the mask starts' },
+      { name: 'maxHeight', type: num(undefined, undefined, 10), default: 100000, description: 'world height where it ends' },
+      { name: 'blend', type: num(0, undefined, 5), default: 30, description: 'width of the soft edges (m)' },
+    ],
+    emit: (_, p, context) => {
+      context.addFunction('graphRange', RANGE);
+      return { mask: `graphRange(streams.world.y, ${f(p['minHeight'])}, ${f(p['maxHeight'])}, ${f(p['blend'])})` };
+    },
+  },
   { type: 'value', category: 'input', inputs: [], outputs: [{ name: 'value', type: 'float' }], params: [{ name: 'value', type: num(), default: 0.5 }], emit: (_, p) => ({ value: f(p['value']) }) },
   { type: 'color', category: 'input', inputs: [], outputs: [{ name: 'color', type: 'color' }], params: [{ name: 'color', type: color, default: [0.8, 0.8, 0.8] }], emit: (_, p) => ({ color: rgb(p['color']) }) },
   {

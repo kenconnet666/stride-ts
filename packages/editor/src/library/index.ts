@@ -11,7 +11,7 @@
 import type { GraphFile, GraphNodeFile } from '@stride-ts/engine/node-graph';
 import type { MaterialFile, ParticleModuleFile } from '@stride-ts/engine/content-format';
 
-export type MaterialCategory = 'metal' | 'plastic' | 'glass' | 'emissive' | 'stone' | 'wood' | 'fabric';
+export type MaterialCategory = 'metal' | 'plastic' | 'glass' | 'emissive' | 'stone' | 'wood' | 'fabric' | 'terrain';
 export type EffectCategory = 'fire' | 'smoke' | 'sparks' | 'magic' | 'ambient' | 'water';
 
 export interface LibraryMaterial {
@@ -126,6 +126,25 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
       ['fall', 'levels', { inMin: 0.5, inMax: 0.54, outMin: 1, outMax: 0 }, { in: 'veins' }],
       ['vein', 'multiply', {}, { a: 'rise', b: 'fall' }],
       ['color', 'colorRamp', { from: [0.93, 0.92, 0.89], to: [0.35, 0.35, 0.38] }, { t: 'vein' }],
+    ], { baseColor: 'color' }),
+  }),
+  // 地形（W2 的材质规则）：按世界坐标铺（每 20 米重复一次），平处是草、陡过 32° 是岩石、180 米以上较平的地方积雪；
+  // 遮罩是节点图的坡度、高度遮罩，换地形、挪地形都对
+  plain('alpineTerrain', 'terrain', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9,
+    graph: graph([
+      ['uv', 'worldUv', { scale: 0.05 }],
+      ['patches', 'noise', { scale: 6, octaves: 4, roughness: 0.55 }, { uv: 'uv' }],
+      ['grass', 'colorRamp', { from: [0.1, 0.17, 0.05], to: [0.24, 0.33, 0.11] }, { t: 'patches' }],
+      ['strata', 'noise', { scale: 14, octaves: 5, roughness: 0.6, seed: 3 }, { uv: 'uv' }],
+      ['rock', 'colorRamp', { from: [0.13, 0.12, 0.11], to: [0.3, 0.28, 0.25] }, { t: 'strata' }],
+      ['steep', 'slopeMask', { minAngle: 32, maxAngle: 90, blend: 10 }],
+      ['ground', 'mix', {}, { a: 'grass', b: 'rock', t: 'steep' }],
+      ['high', 'heightMask', { minHeight: 180, maxHeight: 100000, blend: 60 }],
+      ['flat', 'slopeMask', { minAngle: 0, maxAngle: 38, blend: 12 }],
+      ['snowCover', 'multiply', {}, { a: 'high', b: 'flat' }],
+      ['snow', 'color', { color: [0.86, 0.89, 0.93] }],
+      ['color', 'mix', {}, { a: 'ground', b: 'snow', t: 'snowCover' }],
     ], { baseColor: 'color' }),
   }),
   plain('fabric', 'fabric', {

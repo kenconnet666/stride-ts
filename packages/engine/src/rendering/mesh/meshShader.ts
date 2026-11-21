@@ -1683,12 +1683,17 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
  * - treeNormal：切线空间的法线（已经按 ScaleAndBias、IsXYNormal 换好），w 为 0 时没有法线树、用法线贴图；
  * - treeDisplacement：顶点沿模型空间的法线移动多少（顶点着色器里算）。
  */
+/** 片元着色器里材质流的世界位置（渲染空间的位置加回渲染原点）和几何法线。 */
+const FRAGMENT_WORLD = 'in.world + view.origin.xyz';
+const FRAGMENT_NORMAL = 'normalize(in.normal)';
+
 export function materialTreesCode(trees: MaterialShaderTrees | undefined): string {
   const { emissive, normal, displacement } = trees ?? {};
-  const fill = (uv: string, local: string) => `streams = MaterialStreams(${uv}, ${uv}, vec4f(1.0), vec4f(1.0), ${local}, view.locals.y);`;
+  // 顶点着色器里（位移）没有世界坐标和法线：给 0 和朝上
+  const fill = (uv: string, local: string, world = 'vec3f(0.0)', normal = 'vec3f(0.0, 1.0, 0.0)') => `streams = MaterialStreams(${uv}, ${uv}, vec4f(1.0), vec4f(1.0), ${local}, view.locals.y, ${world}, ${normal});`;
   const emissiveCode = emissive
     ? `fn emissiveColor(in: Varyings) -> vec4f {
-  ${fill('in.uv', 'in.local')}
+  ${fill('in.uv', 'in.local', FRAGMENT_WORLD, FRAGMENT_NORMAL)}
   let e = emissiveTree();
   return vec4f(e.rgb * ${wgslFloat(emissive.intensity)}, ${emissive.useAlpha ? 'e.a' : '-1.0'});
 }`
@@ -1701,7 +1706,7 @@ export function materialTreesCode(trees: MaterialShaderTrees | undefined): strin
 }`;
   const normalCode = normal
     ? `fn treeNormal(in: Varyings) -> vec4f {
-  ${fill('in.uv', 'in.local')}
+  ${fill('in.uv', 'in.local', FRAGMENT_WORLD, FRAGMENT_NORMAL)}
   var m = normalTree().xyz;
   ${normal.scaleAndBias ? 'm = 2.0 * m - 1.0;' : ''}
   ${normal.isXYNormal ? 'm.z = sqrt(max(0.0, 1.0 - (m.x * m.x + m.y * m.y)));' : ''}
@@ -1730,7 +1735,7 @@ function clearCoatCode(coat: MaterialShaderClearCoat | undefined): string {
     return `fn coatNormal(in: Varyings, coatPass: bool) -> vec4f { return vec4f(0.0); }
 fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface { return s; }`;
   }
-  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y);`;
+  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y, ${FRAGMENT_WORLD}, ${FRAGMENT_NORMAL});`;
   const unpack = (name: string, { scaleAndBias, isXYNormal }: { scaleAndBias: boolean; isXYNormal: boolean }) => [
     scaleAndBias ? `  ${name} = 2.0 * ${name} - 1.0;` : '',
     isXYNormal ? `  ${name}.z = sqrt(max(0.0, 1.0 - (${name}.x * ${name}.x + ${name}.y * ${name}.y)));` : '',
@@ -1766,7 +1771,7 @@ fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface {
  * 再混，法线在切线空间里混再归一化，自发光（乘过强度的）、环境光遮蔽和它对直射光的影响也一样混。没有层时这几个函数原样返回。
  */
 function layersCode(layers: readonly MaterialShaderLayer[], graph: boolean): string {
-  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y);`;
+  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y, ${FRAGMENT_WORLD}, ${FRAGMENT_NORMAL});`;
   const surface = layers.map((layer, i) => [
     `  let b${i} = saturate(layer${i}Blend());`,
     layer.diffuse ? `  r.albedo = mix(r.albedo, layer${i}Diffuse().rgb, b${i});` : '',

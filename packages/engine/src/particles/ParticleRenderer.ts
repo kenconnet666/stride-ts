@@ -64,7 +64,7 @@ ${MATERIAL_STREAMS}
 }
 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
-  streams = MaterialStreams(in.uv, in.uv1, in.color, draw.colorScale, vec3f(0.0), draw.time);
+  streams = MaterialStreams(in.uv, in.uv1, in.color, draw.colorScale, vec3f(0.0), draw.time, vec3f(0.0), vec3f(0.0, 1.0, 0.0));
   var color = materialColor();
   color.a *= draw.alphaFactor;
   return color;
@@ -72,7 +72,7 @@ ${MATERIAL_STREAMS}
 
 // 点选：颜色是预乘的，画上去加的是 rgb、挡住后面的是 a·alphaFactor，两样都差不多是 0 的地方看不见，点不到（加法混合的粒子靠 rgb）
 @fragment fn fsPick(in: Varyings) -> @location(0) u32 {
-  streams = MaterialStreams(in.uv, in.uv1, in.color, draw.colorScale, vec3f(0.0), draw.time);
+  streams = MaterialStreams(in.uv, in.uv1, in.color, draw.colorScale, vec3f(0.0), draw.time, vec3f(0.0), vec3f(0.0, 1.0, 0.0));
   let color = materialColor();
   if (max(color.a * draw.alphaFactor, max(color.r, max(color.g, color.b))) < 0.1) {
     discard;

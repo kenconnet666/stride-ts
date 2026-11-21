@@ -10,7 +10,7 @@
   "ridged": 0.3,
   "warp": 350
  },
- "material": "Materials/Grass",
+ "material": "Materials/Library/AlpineTerrain",
  "uvScale": 4,
  "features": [
   {

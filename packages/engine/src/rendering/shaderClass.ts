@@ -26,6 +26,8 @@ export function isShaderClass(value: unknown): value is ShaderClass {
 /**
  * 材质着色器里共用的流（Stride 的 streams）：uv、uv1 是两套 UV（TEXCOORD0、1），color 是顶点颜色（粒子的颜色），colorScale 是
  * 组件的颜色（粒子），position 是本地坐标（网格），time 是游戏开始以来的秒数（Stride 的 Global.Time）。片元着色器开头填好。
+ * world、normal 是世界坐标的位置和法线（网格，材质节点图的坡度、高度遮罩和世界 UV 用；法线是几何的，不带法线贴图；
+ * 粒子、顶点着色器里是 0 和朝上）。和 Stride 不同：Stride 的颜色树拿不到世界坐标，地形的按坡度、高度混材质要另写着色器。
  */
 export const MATERIAL_STREAMS = /* wgsl */ `
 struct MaterialStreams {
@@ -35,6 +37,8 @@ struct MaterialStreams {
   colorScale: vec4f,
   position: vec3f,
   time: f32,
+  world: vec3f,
+  normal: vec3f,
 };
 var<private> streams: MaterialStreams;
 

@@ -4,8 +4,11 @@
  * mat4x4f，所以变换存储的世界矩阵可以原样上传。out 可以和参数是同一个数组。
  */
 export type Matrix4 = Float32Array;
+/** 只读的输入矩阵：单精度的，或者双精度的（变换存储的世界矩阵，D18）。 */
+export type MatrixSource = Readonly<Float32Array | Float64Array>;
 
-const temp = new Float32Array(16);
+// 双精度：multiply 也给双精度的矩阵用（D18，编辑器里远处的框），单精度的结果照样精确到 float
+const temp = new Float64Array(16);
 
 export const Matrix = {
   /** 新的单位矩阵。 */
@@ -20,7 +23,7 @@ export const Matrix = {
   },
 
   /** out = a * b：先做 b 的变换，再做 a 的（列向量）。和 Stride 的 Matrix.Multiply(b, a) 同一个结果。 */
-  multiply(out: Matrix4, a: Readonly<Matrix4>, b: Readonly<Matrix4>): Matrix4 {
+  multiply<Out extends Float32Array | Float64Array = Matrix4>(out: Out, a: MatrixSource, b: MatrixSource): Out {
     for (let c = 0; c < 4; c++) {
       const b0 = b[c * 4]!, b1 = b[c * 4 + 1]!, b2 = b[c * 4 + 2]!, b3 = b[c * 4 + 3]!;
       for (let r = 0; r < 4; r++) temp[c * 4 + r] = a[r]! * b0 + a[4 + r]! * b1 + a[8 + r]! * b2 + a[12 + r]! * b3;
@@ -30,7 +33,7 @@ export const Matrix = {
   },
 
   /** 矩阵（source 里从 offset 开始的 16 个数）的旋转部分：前三列各自归一化去掉缩放，平移置 0。 */
-  rotationOf(out: Matrix4, source: Readonly<Float32Array>, offset = 0): Matrix4 {
+  rotationOf(out: Matrix4, source: MatrixSource, offset = 0): Matrix4 {
     out.fill(0);
     for (let c = 0; c < 3; c++) {
       const o = offset + c * 4;
@@ -42,7 +45,7 @@ export const Matrix = {
   },
 
   /** 逆矩阵；奇异时返回 false，out 不变。 */
-  invert(out: Matrix4, m: Readonly<Matrix4>): boolean {
+  invert(out: Float32Array | Float64Array, m: MatrixSource): boolean {
     const [a00, a01, a02, a03, a10, a11, a12, a13, a20, a21, a22, a23, a30, a31, a32, a33] = m as unknown as number[] as [
       number, number, number, number, number, number, number, number, number, number, number, number, number, number, number, number,
     ];
@@ -154,7 +157,7 @@ export const Matrix = {
    * 拆成平移、旋转（四元数 xyzw）、缩放（Stride 的 Matrix.Decompose）。只对没有切变的矩阵精确；镜像（行列式为负）
    * 记在 x 的缩放上。
    */
-  decompose(m: Readonly<Matrix4>): { translation: Vec3Tuple; rotation: [number, number, number, number]; scale: Vec3Tuple } {
+  decompose(m: MatrixSource): { translation: Vec3Tuple; rotation: [number, number, number, number]; scale: Vec3Tuple } {
     const scale: Vec3Tuple = [0, 1, 2].map((c) => Math.hypot(m[c * 4]!, m[c * 4 + 1]!, m[c * 4 + 2]!)) as Vec3Tuple;
     const determinant = m[0]! * (m[5]! * m[10]! - m[9]! * m[6]!) - m[4]! * (m[1]! * m[10]! - m[9]! * m[2]!) + m[8]! * (m[1]! * m[6]! - m[5]! * m[2]!);
     if (determinant < 0) scale[0] = -scale[0];
@@ -203,7 +206,7 @@ export const Matrix = {
   },
 
   /** 用矩阵变换一个点（带平移，做透视除法）。 */
-  transformPoint(m: Readonly<Matrix4>, x: number, y: number, z: number): [number, number, number] {
+  transformPoint(m: MatrixSource, x: number, y: number, z: number): [number, number, number] {
     const w = m[3]! * x + m[7]! * y + m[11]! * z + m[15]!;
     return [
       (m[0]! * x + m[4]! * y + m[8]! * z + m[12]!) / w,

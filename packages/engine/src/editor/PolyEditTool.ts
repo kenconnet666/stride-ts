@@ -6,7 +6,7 @@
  * 坐标：网格的顶点是模型的本地坐标，画和点选用世界坐标（乘实体的世界矩阵），操纵器的结果是世界里的变化，换回本地再写进网格。
  */
 import type { PolyMeshFile, Vec3Tuple } from '../content/assetFormat';
-import { Matrix, type Matrix4 } from '../data/Matrix';
+import { Matrix, type MatrixSource } from '../data/Matrix';
 import { Quaternion, Vector3 } from '../data/vectors';
 import type { PolyEdge } from '../modeling/polyEdit';
 import { triangulateFace } from '../modeling/polyMesh';
@@ -55,7 +55,7 @@ export function meshEdges(mesh: Pick<PolyMeshFile, 'faces'>): PolyEdge[] {
 }
 
 /** 顶点在世界里的位置。 */
-export function worldVertices(mesh: Pick<PolyMeshFile, 'vertices'>, world: Matrix4): Vec3Tuple[] {
+export function worldVertices(mesh: Pick<PolyMeshFile, 'vertices'>, world: MatrixSource): Vec3Tuple[] {
   return mesh.vertices.map(([x, y, z]) => Matrix.transformPoint(world, x, y, z) as Vec3Tuple);
 }
 
@@ -134,9 +134,10 @@ export function selectionCenter(world: readonly Vec3Tuple[], vertices: readonly 
 export function transformVertices(
   start: PolyMeshFile, vertices: readonly number[], change: GizmoChange,
   pivot: Readonly<{ x: number; y: number; z: number }>, orientation: Readonly<{ x: number; y: number; z: number; w: number }>,
-  world: Matrix4, digits = 5,
+  world: MatrixSource, digits = 5,
 ): PolyMeshFile {
-  const inverse = new Float32Array(16);
+  // 双精度：大世界里远处的模型，世界矩阵的逆也要准
+  const inverse = new Float64Array(16);
   if (!Matrix.invert(inverse, world)) throw new Error('the model has a singular world matrix; its polygons cannot be edited');
   const round = (value: number) => Math.round(value * 10 ** digits) / 10 ** digits;
   const axes = new Quaternion(orientation.x, orientation.y, orientation.z, orientation.w);

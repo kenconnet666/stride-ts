@@ -196,7 +196,9 @@ export class WorldStreaming {
     this.#found = [];
     game.entities.run(this.#collectSources, game.updateTime);
     const view = (game.graphicsCompositor as Game['graphicsCompositor'] | undefined)?.mainView;
-    if (view && Matrix.invert(this.#inverse, view.view)) this.#found.push({ x: this.#inverse[12]!, z: this.#inverse[14]!, scale: 1 });
+    // 视图在渲染空间里（D18）：相机的位置加上渲染原点才是世界坐标
+    const origin = game.renderOrigin;
+    if (view && Matrix.invert(this.#inverse, view.view)) this.#found.push({ x: this.#inverse[12]! + origin[0], z: this.#inverse[14]! + origin[2], scale: 1 });
     return this.#found;
   }
 }

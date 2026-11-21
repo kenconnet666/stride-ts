@@ -56,7 +56,7 @@ export function uiElementLinkSystem(entities: EntityManager, transforms: Transfo
         if (root && (cached?.root !== root || cached.name !== name)) found.set(id, (cached = { root, name, element: root.findName(name) }));
         const element = root ? cached!.element : null;
         // 链接是 UI 实体的世界矩阵 × matrix：要的世界矩阵左乘 UI 实体世界矩阵的逆
-        if (!element || !ui.elementWorldMatrix(elementWorld, uiComponent, element) || !Matrix.invert(inverseUiWorld, target.require(Transform).world)) {
+        if (!element || !ui.elementWorldMatrix(elementWorld, uiComponent, element) || !Matrix.invert(inverseUiWorld, target.require(Transform).renderWorld)) {
           transforms.setLink(slot, transformSlot(target), IDENTITY);
           continue;
         }

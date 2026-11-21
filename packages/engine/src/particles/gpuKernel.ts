@@ -31,7 +31,7 @@ import { DEPTH_SURFACE_WGSL } from '../rendering/DepthSurface';
 /** 一个粒子在存储缓冲里占的字节（WGSL 的 Particle）。 */
 export const PARTICLE_BYTES = 96;
 /** uniform 开头的固定部分（Sim 的 data 之前），vec4 的个数。 */
-export const HEADER_VEC4S = 5;
+export const HEADER_VEC4S = 6;
 export const WORKGROUP_SIZE = 64;
 const CURVE_SAMPLES = 32;
 const DEGREES = Math.PI / 180;
@@ -150,6 +150,9 @@ struct Sim {
   windowCount: u32,
   pad0: u32,
   pad1: u32,
+  // 渲染原点挪了多少（D18，粒子在渲染空间里模拟）：这一帧处理的粒子位置先减去它
+  shift: vec3f,
+  pad2: u32,
   data: array<vec4f, ${Math.max(slots, 1)}>,
 };
 @group(0) @binding(0) var<uniform> sim: Sim;
@@ -191,6 +194,7 @@ ${stage('post')}
   }
   let i = (sim.windowStart + id.x) % sim.capacity;
   var p = particles[i];
+  p.position -= sim.shift;
   let spawnIndex = (i + sim.capacity - sim.spawnStart) % sim.capacity;
   if (spawnIndex < sim.spawnCount) {
     // 新粒子：默认值（CPU 的 InitialDefaultFields），寿命按种子在范围里取

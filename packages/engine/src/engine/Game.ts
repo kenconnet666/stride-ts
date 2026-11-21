@@ -99,6 +99,8 @@ const DEFAULT_MAX_BODIES = 4096;
 const METRIC_FRAMES = 60;
 /** 暂停时单步、没设 fixedTimeStep 时每步的秒数。 */
 const STEP_SECONDS = 1 / 60;
+/** 渲染原点按这么多米对齐（D18）：相机离原点最多几百米，单精度在那里的刻度不到 0.1 毫米；走出一格才换（换时所有实例的矩阵重传一次）。 */
+export const RENDER_ORIGIN_CELL = 1024;
 /** 按需出帧时叫醒一次出多少帧：异步加载完的贴图、管线，时间累积的效果（TAA、体积云）要几十帧才稳下来。 */
 const SETTLE_FRAMES = 120;
 
@@ -182,6 +184,12 @@ export class Game {
   readonly precipitation = new PrecipitationSystem();
   /** 天气状态（Stride 没有）：Weather 组件想要的天气慢慢过渡，驱动云、雾、风和雨雪；`game.weather.current` 是当前的天气。 */
   readonly weather = new WeatherSystem();
+  /**
+   * 渲染原点（D18 大世界）：位置都是双精度，GPU 上是单精度——渲染用的世界矩阵（`Transform.renderWorld`）、相机的视图矩阵、灯光、
+   * 调试线都减去它。它跟着主画面的相机、按 RENDER_ORIGIN_CELL 米对齐，相机走出一格才换（换的那一帧所有实例的矩阵重传一次）。
+   * 把渲染空间的点换回世界：加上它。
+   */
+  readonly renderOrigin: [number, number, number] = [0, 0, 0];
   /** 世界的流式加载（Stride 没有）：`game.world.load('Worlds/Island')` 换成一个 `.world.json` 的世界，格子按相机和 StreamingSource 加载。 */
   readonly world = new WorldStreaming(this);
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
@@ -192,7 +200,7 @@ export class Game {
   readonly userPreferences = new UserPreferences();
   private readonly debugTextRenderer = new DebugTextRenderer();
   /** 调试用的线（线框、包围盒、网格、Gizmo）：脚本每帧调用，画在场景之后、UI 之前。 */
-  readonly debugDraw = new DebugDraw();
+  readonly debugDraw = new DebugDraw(this.renderOrigin);
   private readonly debugDrawRenderer = new DebugDrawRenderer();
   /** 调试命令、计数器、事件和日志转发（debug/Debug.ts）。 */
   readonly debug = new Debug(() => (this.status === 'starting' ? undefined : this.frames));
@@ -311,6 +319,7 @@ export class Game {
       this.content.audio ??= this.audio;
       this.audio.attach(window);
       this.renderSystem = new RenderSystem(this.graphicsDevice);
+      this.renderSystem.renderOrigin = this.renderSystem.clouds.renderOrigin = this.renderOrigin;
       this.meshes = this.renderSystem.addFeature(new MeshRenderFeature());
       // 背景画在网格之后，只落在没画到的地方
       this.renderSystem.addFeature(new BackgroundRenderFeature());
@@ -582,6 +591,24 @@ export class Game {
     this.scenesChanged.run({ scene, loaded: false });
   }
 
+  /** 渲染原点跟着上一帧主画面的相机（世界矩阵是双精度的），按格对齐；变了就交给变换存储（渲染用的矩阵跟着重算）。 */
+  #updateRenderOrigin(): void {
+    const id = (this.graphicsCompositor as Game['graphicsCompositor'] | undefined)?.mainCameraEntity;
+    const camera = id === undefined || !this.entities.isAlive(id) ? undefined : this.entities.entity(id).get(Transform)?.world;
+    if (!camera) return;
+    const snap = (value: number) => Math.round(value / RENDER_ORIGIN_CELL) * RENDER_ORIGIN_CELL;
+    const next = [snap(camera[12]!), snap(camera[13]!), snap(camera[14]!)] as const;
+    const origin = this.renderOrigin;
+    if (next[0] === origin[0] && next[1] === origin[1] && next[2] === origin[2]) return;
+    const dx = next[0] - origin[0], dy = next[1] - origin[1], dz = next[2] - origin[2];
+    this.debugDraw.moveOrigin(dx, dy, dz);
+    this.particles.moveOrigin(dx, dy, dz);
+    origin[0] = next[0];
+    origin[1] = next[1];
+    origin[2] = next[2];
+    this.transforms.setRenderOrigin(origin[0], origin[1], origin[2]);
+  }
+
   /** 运行脚本、系统和物理仿真（在物理前和物理后两组系统之间）；重写时要调用 super.update(time)。 */
   protected update(time: GameTime): void {
     this.entities.update(time, this.simulation ? (t) => this.simulation!.update(t) : undefined);
@@ -630,7 +657,10 @@ export class Game {
       if (!hit || hit.depth >= 1 || !view) return undefined;
       // 像素中心换成裁剪空间（y 向上），深度就是 NDC 的 z（0 到 1），用视图投影的逆矩阵换回世界
       const ndcX = ((px + 0.5) / canvas.width) * 2 - 1, ndcY = 1 - ((py + 0.5) / canvas.height) * 2;
-      return { entity: this.#pickedEntity(hit.slot), point: Matrix.transformPoint(view.inverseViewProjection, ndcX, ndcY, hit.depth) };
+      // 视图在渲染空间里：点加上渲染原点才是世界坐标
+      const [rx, ry, rz] = Matrix.transformPoint(view.inverseViewProjection, ndcX, ndcY, hit.depth);
+      const o = this.renderOrigin;
+      return { entity: this.#pickedEntity(hit.slot), point: [rx + o[0], ry + o[1], rz + o[2]] };
     } finally {
       release();
     }
@@ -715,6 +745,7 @@ export class Game {
         this.update(this.updateTime);
         this.writeStats();
         await scriptContinuations();
+        this.#updateRenderOrigin();
         this.transforms.update();
         this.world.update();
         this.weather.update(this);

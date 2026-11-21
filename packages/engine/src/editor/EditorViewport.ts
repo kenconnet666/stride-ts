@@ -498,12 +498,12 @@ export class EditorViewport extends SyncScript {
 }
 
 /** 实体的模型的顶点（世界坐标，x、y、z 连着排）；没有模型时是 undefined。蒙皮、形变的按绑定时的样子。 */
-function worldVerticesOf(entity: Entity): Float32Array | undefined {
+function worldVerticesOf(entity: Entity): Float64Array | undefined {
   const model = entity.get(Model);
   const mesh = model ? Mesh.byId(model.mesh) : undefined;
   if (!mesh) return undefined;
   const local = mesh.positions(), m = currentWorld(entity);
-  const world = new Float32Array(local.length);
+  const world = new Float64Array(local.length);
   for (let i = 0; i < local.length; i += 3) {
     const x = local[i]!, y = local[i + 1]!, z = local[i + 2]!;
     world[i] = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;

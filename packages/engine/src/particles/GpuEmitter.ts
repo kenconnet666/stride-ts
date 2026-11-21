@@ -209,6 +209,16 @@ export class GpuEmitter {
     return this.ring.capacity * PARTICLE_BYTES + this.#sortSize * 8;
   }
 
+  /** 渲染原点挪了 (dx, dy, dz)（D18）：活着的粒子在下一次模拟时跟着换算。 */
+  moveOrigin(dx: number, dy: number, dz: number): void {
+    const shift = this.#shift;
+    shift[0] = shift[0]! + dx;
+    shift[1] = shift[1]! + dy;
+    shift[2] = shift[2]! + dz;
+  }
+
+  readonly #shift = new Float32Array(3);
+
   /** 这一帧的模拟：dt 秒、要生成 wanted 个，time 是游戏时间。录进 pass。管线还在编时什么都不做（这几帧生成的丢掉）。 */
   simulate(pass: GPUComputePassEncoder, dt: number, wanted: number, time = 0): void {
     const pipeline = this.#shared.simPipelines.get(this.kernel.code);
@@ -273,6 +283,9 @@ export class GpuEmitter {
     data.set(rotation, 12);
     bits[16] = (this.ring.head + capacity - window) % capacity;
     bits[17] = window;
+    // 攒下的原点挪动交给这一步（下一步不再挪）
+    data.set(this.#shift, 20);
+    this.#shift.fill(0);
     this.kernel.pack(data.subarray(HEADER_VEC4S * 4));
     return window;
   }

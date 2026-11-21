@@ -704,7 +704,8 @@ function vector(value: unknown, name: string): [number, number, number] {
 async function evaluate(game: Game, { code }: Args): Promise<unknown> {
   if (typeof code !== 'string') throw new Error('code must be a string');
   // 页面自己有同名全局变量的帮手用页面的：样例的冒烟会换掉其中几个（比如按坐标点的 uiClick），不能被这里的盖住
-  const helpers = Object.fromEntries(Object.entries(pageHelpers(game)).filter(([name]) => !(name in globalThis)));
+  // 只认函数：浏览器自己的同名全局（window.frames 是窗口列表）不算，不然 frames(n) 调的是它
+  const helpers = Object.fromEntries(Object.entries(pageHelpers(game)).filter(([name]) => typeof (globalThis as Record<string, unknown>)[name] !== 'function'));
   const scope: Record<string, unknown> = { game, engine: (globalThis as { strideEngine?: unknown }).strideEngine, ...helpers };
   const names = Object.keys(scope);
   const values = names.map((name) => scope[name]);

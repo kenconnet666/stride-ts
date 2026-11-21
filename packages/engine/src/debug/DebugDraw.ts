@@ -72,6 +72,16 @@ class LineBuffer {
     this.expires[this.count++] = expires;
   }
 
+  /** 所有线的端点挪 (dx, dy, dz)（渲染原点换了，见 DebugDraw.moveOrigin）。 */
+  shift(dx: number, dy: number, dz: number): void {
+    const data = this.data;
+    for (let i = 0; i < this.count; i++) {
+      const o = i * DEBUG_LINE_FLOATS;
+      data[o] = data[o]! - dx; data[o + 1] = data[o + 1]! - dy; data[o + 2] = data[o + 2]! - dz;
+      data[o + 4] = data[o + 4]! - dx; data[o + 5] = data[o + 5]! - dy; data[o + 6] = data[o + 6]! - dz;
+    }
+  }
+
   /** 去掉到期的（expires 不大于 now），留下的往前挪；返回有没有去掉。 */
   expire(now: number): boolean {
     let kept = 0;
@@ -99,6 +109,19 @@ export class DebugDraw {
   readonly #overlay = new LineBuffer();
   #now = 0;
   #version = 0;
+  /** 渲染原点（Game.renderOrigin，D18）：给的点是世界坐标（双精度），存的时候减去它，GPU 上是相机附近的小数。 */
+  readonly #origin: readonly [number, number, number];
+
+  constructor(origin: readonly [number, number, number] = [0, 0, 0]) {
+    this.#origin = origin;
+  }
+
+  /** @internal 渲染原点挪了 (dx, dy, dz)：留着的线（有 duration 的）跟着换算。 */
+  moveOrigin(dx: number, dy: number, dz: number): void {
+    this.#tested.shift(dx, dy, dz);
+    this.#overlay.shift(dx, dy, dz);
+    this.#version++;
+  }
 
   /** 线变过就加一（渲染器靠它决定要不要重新上传）。 */
   get version(): number { return this.#version; }
@@ -235,7 +258,9 @@ export class DebugDraw {
   #line(a: Triple, b: Triple, color: DebugColor, options: DebugDrawOptions | undefined): void {
     const buffer = options?.depthTest === false ? this.#overlay : this.#tested;
     // 没给 duration：到下一次 beginFrame 为止（那时的时间一定不小于现在）
-    buffer.push(a, b, color, options?.width ?? this.width, options?.duration ? this.#now + options.duration : this.#now);
+    const o = this.#origin;
+    const from: Triple = [a[0] - o[0], a[1] - o[1], a[2] - o[2]], to: Triple = [b[0] - o[0], b[1] - o[1], b[2] - o[2]];
+    buffer.push(from, to, color, options?.width ?? this.width, options?.duration ? this.#now + options.duration : this.#now);
     this.#version++;
   }
 

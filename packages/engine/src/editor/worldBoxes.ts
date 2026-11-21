@@ -5,7 +5,7 @@
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
-import { Matrix, type Matrix4 } from '../data/Matrix';
+import { Matrix } from '../data/Matrix';
 import { GaussianSplat, Light, Model, ModelPart, PlanarReflection, ReflectionProbe } from '../rendering/components';
 import { SplatCloud } from '../rendering/splats/SplatRenderer';
 import { Mesh } from '../rendering/mesh/Mesh';
@@ -16,15 +16,15 @@ import { UIComponent } from '../ui/UIComponent';
  * 实体现在的世界矩阵。世界矩阵平时每帧统一算一次；文档刚改过（或者场景刚打开）的这一帧里它还是旧的，所以编辑器要用
  * 世界位姿的地方都先算一下这个实体和它的祖先。
  */
-export function currentWorld(entity: Entity): Float32Array {
+export function currentWorld(entity: Entity): Float64Array {
   const transform = entity.require(Transform);
   transform.updateWorldMatrix();
   return transform.world;
 }
 
-/** 世界里的一个盒子：矩阵（中心在原点）和半边长。 */
+/** 世界里的一个盒子：矩阵（中心在原点，双精度：大世界里远处的框也准）和半边长。 */
 export interface WorldBox {
-  readonly matrix: Matrix4;
+  readonly matrix: Float32Array | Float64Array;
   readonly halfExtents: readonly [number, number, number];
 }
 
@@ -56,7 +56,7 @@ export function selectionBoxes(game: Game, entity: Entity): WorldBox[] {
   if (cloud) {
     const center = [0, 1, 2].map((k) => (cloud.min[k]! + cloud.max[k]!) / 2);
     const local = Matrix.scaleTranslation(new Float32Array(16), 1, 1, 1, center[0]!, center[1]!, center[2]!);
-    boxes.push({ matrix: Matrix.multiply(new Float32Array(16), currentWorld(entity), local), halfExtents: [0, 1, 2].map((k) => (cloud.max[k]! - cloud.min[k]!) / 2) as [number, number, number] });
+    boxes.push({ matrix: Matrix.multiply(new Float64Array(16), currentWorld(entity), local), halfExtents: [0, 1, 2].map((k) => (cloud.max[k]! - cloud.min[k]!) / 2) as [number, number, number] });
   }
   // 平面反射的影响盒子（跟着实体转）
   const planar = entity.get(PlanarReflection);
@@ -68,7 +68,7 @@ export function selectionBoxes(game: Game, entity: Entity): WorldBox[] {
  * 反射探针影响的盒子（同 rendering/lighting/ReflectionProbes 的算法）：以实体为中心、按世界的轴摆，边长是 size 乘实体的缩放；blend 是
  * 过渡距离（离盒子的面这么近以内淡出）。实体上没有探针时是 undefined。
  */
-export function probeBoxes(entity: Entity): { matrix: Matrix4; halfExtents: [number, number, number]; blend: number } | undefined {
+export function probeBoxes(entity: Entity): { matrix: Float32Array | Float64Array; halfExtents: [number, number, number]; blend: number } | undefined {
   const probe = entity.get(ReflectionProbe);
   if (!probe) return undefined;
   const { translation, scale } = Matrix.decompose(currentWorld(entity));
@@ -89,7 +89,7 @@ export function modelBoxes(entity: Entity): WorldBox[] {
     const { min, max } = mesh.bounds;
     const center = Matrix.scaleTranslation(new Float32Array(16), 1, 1, 1, (min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2);
     boxes.push({
-      matrix: Matrix.multiply(new Float32Array(16), currentWorld(part), center),
+      matrix: Matrix.multiply(new Float64Array(16), currentWorld(part), center),
       halfExtents: [(max[0] - min[0]) / 2, (max[1] - min[1]) / 2, (max[2] - min[2]) / 2],
     });
   }

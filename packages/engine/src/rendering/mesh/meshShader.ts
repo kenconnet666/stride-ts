@@ -81,6 +81,8 @@ struct View {
   planar: vec4f,
   planarNormal: vec4f,
   planarIntensity: vec4f,
+  // 渲染原点（D18）按 65536 米取模的 xz：world 在渲染空间里，按世界坐标的图案（水洼、积雪的噪声）加上它，原点换了图案不跳
+  origin: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）和它们的阴影（点光是立方体的六个面 +Z、-Z、+X、-X、+Y、-Y 各一个矩阵，
 // 聚光只用第一个），在一个缓冲里，见 lighting/LocalLights.ts
@@ -336,14 +338,15 @@ fn weatherSurface(world: vec3f, n: vec3f, geometric: vec3f, skinned: bool, s: La
   r.roughness = mix(s.roughness, max(s.roughness * 0.35, 0.1), wet * mix(0.6, 1.0, up) * (1.0 - 0.75 * s.metalness));
   if (puddles > 0.0 && exposure > 0.0) {
     // 两层噪声（几米和一米左右的斑块）；积水越多阈值越低、水洼越大，边缘 0.06 宽的过渡
-    let noise = valueNoise(world.xz * 0.35) * 0.7 + valueNoise(world.xz * 1.1 + 13.7) * 0.3;
+    let ground = world.xz + view.origin.xz;
+    let noise = valueNoise(ground * 0.35) * 0.7 + valueNoise(ground * 1.1 + 13.7) * 0.3;
     let water = smoothstep(0.94 - puddles * 0.55, 1.0 - puddles * 0.55, noise) * smoothstep(0.9, 0.98, n.y);
     if (water > 0.0) {
       r.albedo *= mix(1.0, 0.6, water);
       r.metalness = mix(r.metalness, 0.0, water);
       r.specular = mix(r.specular, vec3f(0.02), water);
       r.roughness = mix(r.roughness, 0.03, water);
-      let g = rippleGradient(world.xz, view.locals.y, view.weather.w) * water;
+      let g = rippleGradient(ground, view.locals.y, view.weather.w) * water;
       result.normal = normalize(mix(n, normalize(vec3f(-g.x, 1.0, -g.y)), water));
     }
   }
@@ -351,7 +354,8 @@ fn weatherSurface(world: vec3f, n: vec3f, geometric: vec3f, skinned: bool, s: La
   // 不满时加上两层噪声（一米多和几十厘米的斑块），积得越多噪声越弱
   var snow = 0.0;
   if (snowCover > 0.0 && !skinned) {
-    let patches = valueNoise(world.xz * 0.6 + 41.3) * 0.6 + valueNoise(world.xz * 2.3 + 5.1) * 0.4 - 0.5;
+    let ground = world.xz + view.origin.xz;
+    let patches = valueNoise(ground * 0.6 + 41.3) * 0.6 + valueNoise(ground * 2.3 + 5.1) * 0.4 - 0.5;
     snow = exposure * smoothstep(0.0, 0.25, 1.2 * (up - 1.0 + snowCover) + patches * (1.0 - snowCover));
   }
   r.albedo = mix(r.albedo, vec3f(0.9), snow);

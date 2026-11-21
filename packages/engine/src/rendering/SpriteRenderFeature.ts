@@ -240,7 +240,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
     const gpu = this.#gpu;
     const colorFormat = stage.output.colorFormat;
     if (!gpu || this.#count === 0 || !(stage.transparent || stage.picking) || !colorFormat) return;
-    const order = this.#writeInstances(context.game.transforms.world, view);
+    const order = this.#writeInstances(context.game.transforms.renderWorld, view);
     const first = view.index * gpu.capacity;
     this.system.device.queue.writeBuffer(gpu.instances!, first * INSTANCE_FLOATS * 4, this.#instanceData, 0, this.#count * INSTANCE_FLOATS);
     pass.setBindGroup(0, gpu.instanceGroup!, [view.index * VIEW_STRIDE]);

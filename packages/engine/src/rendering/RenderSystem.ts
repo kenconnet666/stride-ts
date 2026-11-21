@@ -506,6 +506,8 @@ export class RenderSystem {
   readonly atmosphere: Atmosphere;
   /** 场景的体积云（VolumetricClouds 组件）。 */
   readonly clouds: Clouds;
+  /** 渲染原点（Game.renderOrigin，D18）：渲染空间是世界减去它；按世界坐标的图案（水洼、积雪、云）要加回来。Game 设成它自己的那个数组。 */
+  renderOrigin: readonly [number, number, number] = [0, 0, 0];
   /** 场景的体积雾（VolumetricFog 组件）。 */
   readonly fog: Fog;
   /** 场景的贴花（Decal 组件；网格着色时查）。 */

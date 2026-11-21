@@ -90,7 +90,7 @@ export class WindField {
     update: ({ zone, transform, count }) => {
       const collected = this.#collected!;
       for (let i = 0; i < count; i++) {
-        const w = transform.slot[i]! * 16, world = transform.world;
+        const w = transform.slot[i]! * 16, world = transform.renderWorld;
         const settings = { turbulence: zone.turbulence[i]!, pulseMagnitude: zone.pulseMagnitude[i]!, pulseFrequency: zone.pulseFrequency[i]! };
         if (zone.mode[i] === 'spherical') {
           collected.locals.push({ center: [world[w + 12]!, world[w + 13]!, world[w + 14]!], radius: zone.radius[i]!, strength: zone.strength[i]!, ...settings });

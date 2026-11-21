@@ -113,7 +113,7 @@ export class ReflectionProbes {
     with: { probe: ReflectionProbe, transform: Transform },
     update: ({ probe, transform, entities, count }) => {
       for (let i = 0; i < count; i++) {
-        const w = transform.slot[i]! * 16, world = transform.world;
+        const w = transform.slot[i]! * 16, world = transform.renderWorld;
         const center: [number, number, number] = [world[w + 12]!, world[w + 13]!, world[w + 14]!];
         // 盒子跟实体的缩放（各轴的长度），不跟旋转
         const half = [0, 1, 2].map((axis) => Math.hypot(world[w + axis * 4]!, world[w + axis * 4 + 1]!, world[w + axis * 4 + 2]!) * probe.size[i * 3 + axis]! / 2);

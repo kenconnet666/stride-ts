@@ -271,6 +271,8 @@ export function evalScopeFile(code: string, helperNames: readonly string[]): { f
     "import type { PageHelpers as __PageHelpers } from './debug/pageHelpers';",
     'declare const game: __engine.Game;',
     'declare const engine: typeof __engine;',
+    // 样例的入口把引擎挂在全局的 strideEngine 上（同 engine）
+    'declare const strideEngine: typeof __engine;',
     'declare const __helpers: __PageHelpers;',
     ...helperNames.map((name) => `declare const ${name}: __PageHelpers['${name}'];`),
     'export async function __strideEval() {',

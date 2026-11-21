@@ -210,7 +210,7 @@ export class Atmosphere {
       // 世界矩阵的三列（实体的三个轴，归一化掉缩放）就是世界到天球坐标的旋转的三行
       const w = transform.slot[0]! * 16;
       for (let axis = 0; axis < 3; axis++) {
-        const x = transform.world[w + axis * 4]!, y = transform.world[w + axis * 4 + 1]!, z = transform.world[w + axis * 4 + 2]!;
+        const x = transform.renderWorld[w + axis * 4]!, y = transform.renderWorld[w + axis * 4 + 1]!, z = transform.renderWorld[w + axis * 4 + 2]!;
         const length = Math.hypot(x, y, z) || 1;
         this.#celestial.set([x / length, y / length, z / length], axis * 4);
       }

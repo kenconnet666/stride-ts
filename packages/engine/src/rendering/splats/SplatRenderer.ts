@@ -308,7 +308,7 @@ export class SplatRenderer {
         if (!cloud || cloud.count === 0) continue;
         const instance = this.#instance(entities[i]!, cloud);
         instance.live = true;
-        const w = transform.slot[i]! * 16, world = transform.world.subarray(w, w + 16);
+        const w = transform.slot[i]! * 16, world = transform.renderWorld.subarray(w, w + 16);
         const changed = this.#writeParams(instance, world, view);
         if (changed) instance.sorted[0] = NaN;
         const center = [(cloud.min[0] + cloud.max[0]) / 2, (cloud.min[1] + cloud.max[1]) / 2, (cloud.min[2] + cloud.max[2]) / 2];

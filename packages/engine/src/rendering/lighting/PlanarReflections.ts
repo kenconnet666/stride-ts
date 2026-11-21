@@ -150,7 +150,7 @@ export class PlanarReflections {
     update: ({ reflection, transform, count }) => {
       const [x, y, z] = this.#eye;
       for (let i = 0; i < count; i++) {
-        const w = transform.slot[i]! * 16, world = transform.world.subarray(w, w + 16);
+        const w = transform.slot[i]! * 16, world = transform.renderWorld.subarray(w, w + 16);
         const { normal, point } = planeOf(world);
         const above = (x! - point[0]) * normal[0] + (y! - point[1]) * normal[1] + (z! - point[2]) * normal[2];
         if (above <= CLIP_OFFSET) continue;

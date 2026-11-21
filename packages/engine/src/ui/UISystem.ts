@@ -302,7 +302,7 @@ export class UISystem {
     if (!Matrix.invert(cameraWorld, view.view)) return [];
     const placed = components.map((component) => {
       const virtual: [number, number] = [component.resolution.x, component.resolution.y];
-      const uiWorld = uiWorldMatrix(new Float32Array(16), component, virtual, component.entity.require(Transform).world, cameraWorld, view.projection);
+      const uiWorld = uiWorldMatrix(new Float32Array(16), component, virtual, component.entity.require(Transform).renderWorld, cameraWorld, view.projection);
       const transform = Matrix.multiply(new Float32Array(16), view.viewProjection, uiWorld);
       // UI 中心在裁剪空间的 w：透视投影下就是到相机的距离
       const distance = transform[3]! * (virtual[0] / 2) + transform[7]! * (virtual[1] / 2) + transform[15]!;

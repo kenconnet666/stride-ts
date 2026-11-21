@@ -86,7 +86,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
       this.#cubemap = this.#image ? undefined : Cubemap.byId(background.texture[0]!);
       this.#intensity = background.intensity[0]!;
       this.#renderGroup = background.renderGroup[0]!;
-      Matrix.rotationOf(this.#rotation, transform.world, transform.slot[0]! * 16);
+      Matrix.rotationOf(this.#rotation, transform.renderWorld, transform.slot[0]! * 16);
     },
   });
 

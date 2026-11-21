@@ -13,7 +13,7 @@
 import type { TransformSlot, TransformStore } from '@stride-ts/native';
 import { prop, type DataValues, type EntityId } from '../data/prop';
 import { createSchema, type Column } from '../data/schema';
-import { Matrix, type Matrix4 } from '../data/Matrix';
+import { Matrix, type Matrix4, type MatrixSource } from '../data/Matrix';
 import type { Vec3Like } from '../data/vectors';
 import { ComponentType, type ExternalStorage } from './component';
 import type { Entity } from './Entity';
@@ -31,16 +31,24 @@ export type TransformShape = typeof shape;
 export interface TransformColumns {
   /** 每行实体的槽位：position[slot * 3]、rotation[slot * 4]、scale[slot * 3]、world[slot * 16]。 */
   readonly slot: Int32Array;
-  readonly position: Float32Array;
+  /** 本地位置（双精度）。 */
+  readonly position: Float64Array;
   readonly rotation: Float32Array;
   readonly scale: Float32Array;
-  /** 世界矩阵，列主序 4x4，平移在 12..14；每帧 update 之后算出。 */
-  readonly world: Float32Array;
+  /** 世界矩阵（双精度），列主序 4x4，平移在 12..14；每帧 update 之后算出。玩法（物理、声音、导航、脚本）用它。 */
+  readonly world: Float64Array;
+  /**
+   * 渲染用的世界矩阵（单精度），平移相对渲染原点（`game.renderOrigin`，相机附近按格对齐）；和 world 一起算出。渲染（GPU、剔除、
+   * 灯光、相机的视图矩阵）一律用它：远处的东西在相机附近也有足够的精度。
+   */
+  readonly renderWorld: Float32Array;
 }
 
 export type TransformView = DataValues<TransformShape> & {
-  /** 世界矩阵（列主序 4x4），原生内存上的视图。 */
-  readonly world: Float32Array;
+  /** 世界矩阵（双精度，列主序 4x4），原生内存上的视图。 */
+  readonly world: Float64Array;
+  /** 渲染用的世界矩阵（单精度，平移相对渲染原点 `game.renderOrigin`），渲染的代码用它。 */
+  readonly renderWorld: Float32Array;
   /** 父实体，undefined 表示根。父实体也要有 Transform，不能形成环；改父实体时本地值不变（同 Stride）。 */
   parent: Entity | undefined;
   readonly children: readonly Entity[];
@@ -52,7 +60,7 @@ export type TransformView = DataValues<TransformShape> & {
   /** 本地位置、旋转、缩放拼成的矩阵（Stride 的 LocalMatrix）；写进 out，没给时新建一个。 */
   localMatrix(out?: Matrix4): Matrix4;
   /** 把矩阵拆成本地位置、旋转、缩放（Stride 的 `matrix.Decompose(out Scale, out Rotation, out Position)`），只对没有切变的矩阵精确。 */
-  setLocalMatrix(matrix: Readonly<Matrix4>): void;
+  setLocalMatrix(matrix: MatrixSource): void;
 };
 
 /** 一个变换存储在 TS 这边的记录：槽位属于哪个实体（场景的根不属于实体）、每个槽位有哪些子槽位。 */
@@ -185,6 +193,7 @@ const external: ExternalStorage = {
       rotation: store.rotation,
       scale: store.scale,
       world: store.world,
+      renderWorld: store.renderWorld,
     } satisfies TransformColumns as TransformColumns;
   },
 
@@ -195,6 +204,13 @@ const external: ExternalStorage = {
         get: () => {
           const at = slotOf(manager, entity) * 16;
           return stateOf(manager).store.world.subarray(at, at + 16);
+        },
+      },
+      renderWorld: {
+        enumerable: true,
+        get: () => {
+          const at = slotOf(manager, entity) * 16;
+          return stateOf(manager).store.renderWorld.subarray(at, at + 16);
         },
       },
       parent: {
@@ -224,7 +240,7 @@ const external: ExternalStorage = {
         },
       },
       setLocalMatrix: {
-        value: (matrix: Readonly<Matrix4>) => {
+        value: (matrix: MatrixSource) => {
           const { store } = stateOf(manager);
           const slot = slotOf(manager, entity);
           const { translation, rotation, scale } = Matrix.decompose(matrix);

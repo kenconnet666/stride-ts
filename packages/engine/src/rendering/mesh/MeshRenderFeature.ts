@@ -70,6 +70,8 @@ const VIEW_STRIDE = 1280;
 const VIEW_FLOATS = 288;
 /** 不用平面反射的视图在那几个数的位置写的：全是 0（用不用的那一位是 0）。 */
 const PLANAR_OFF = new Float32Array(28);
+/** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
+const ORIGIN_PATTERN_PERIOD = 65536;
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
 const MATERIAL_BYTES = 576;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
@@ -250,7 +252,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   override prepare(context: RenderContext): void {
     const gpu = this.#ensureGpu();
     gpu.nextFrame();
-    gpu.uploadWorlds(context.game.transforms.world, context.game.transforms.slotLimit);
+    gpu.uploadWorlds(context.game.transforms.renderWorld, context.game.transforms.slotLimit);
     gpu.uploadSkinning(this.#paletteOf, context.game.animation);
     gpu.uploadMorphs(this.#morphOf, context.game.animation);
     const passes = this.#cullPasses.slice(0, this.#cullPassCount);
@@ -390,7 +392,7 @@ export class MeshRenderFeature extends RootRenderFeature {
    * 阴影视图不画透明的东西，跳过。
    */
   #sortTransparentInstances(context: RenderContext, pass: CullPass): void {
-    const world = context.game.transforms.world;
+    const world = context.game.transforms.renderWorld;
     const { counts, visibleSlots } = pass.culler;
     for (let b = 0; b < pass.batchCount; b++) {
       const batch = this.batches[b]!;
@@ -411,7 +413,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     for (let b = 0; b < pass.batchCount; b++) {
       if (visible(b)) batches.push({ batch: b, start: viewIndex * pass.slotCount + this.batches[b]!.first, count: counts[viewIndex * pass.batchCount + b]! });
     }
-    return backToFrontRuns(batches, visibleSlots, context.game.transforms.world, view.eye);
+    return backToFrontRuns(batches, visibleSlots, context.game.transforms.renderWorld, view.eye);
   }
 
   /** 一张表的行按批记下变换槽位。相邻的行大多是同一批，先比较上一批，省掉大部分 Map 查找。 */
@@ -483,7 +485,7 @@ class Gpu {
   /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
   #cloudShadow: GPUTexture | undefined;
   /** 地面的湿和雪、判断淋不淋得到的天空遮挡（RenderSystem 的）。 */
-  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>;
+  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin'>;
   /** 视图绑定组里绑的是真的天空遮挡（有湿或雪时），还是空的；换了要重建绑定组。 */
   #occlusionBound = false;
   /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）和深度缓冲。 */
@@ -553,7 +555,7 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
     this.device = device;
     this.#planar = planar;
     this.#refraction = refraction;
@@ -951,6 +953,9 @@ class Gpu {
       data.set([this.#decals.count, view === refraction.receiver && refraction.texture ? refraction.maxMip + 1 : 0, 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
       data.set(planar.active && view === planar.receiver ? planar.params : PLANAR_OFF, o + 256);
+      // 原点是 1024 米的整数倍，按 65536 米取模（图案 65 公里重复一次，单精度在这个范围里是毫米级）
+      const origin = this.#weather.renderOrigin;
+      data.set([origin[0] % ORIGIN_PATTERN_PERIOD, 0, origin[2] % ORIGIN_PATTERN_PERIOD, 0], o + 284);
     }
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);

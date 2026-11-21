@@ -172,7 +172,9 @@ export class PrecipitationSystem {
       }
       // 体积跟着相机（上一帧的主视图），往上风挪；生成数按强度，小数部分攒到下一帧
       const [windX, , windZ] = game.wind.global.velocity;
-      if (eye) Object.assign(state.entity.require(Transform).position, { x: eye.x - windX * state.fallTime, y: eye.y + state.height, z: eye.z - windZ * state.fallTime });
+      // 视图的 eye 在渲染空间里（D18），实体的位置是世界坐标：加上渲染原点
+      const o = game.renderOrigin;
+      if (eye) Object.assign(state.entity.require(Transform).position, { x: eye.x + o[0] - windX * state.fallTime, y: eye.y + o[1] + state.height, z: eye.z + o[2] - windZ * state.fallTime });
       const wanted = state.rate * state.intensity * this.#dt + state.carry;
       const whole = Math.floor(wanted);
       state.carry = wanted - whole;

@@ -167,13 +167,13 @@ export class SkyOcclusion implements GpuDepthSurface {
         occluders[slot] = radius;
         if (previous[slot]! > 0) continue;
         // 新出现的遮挡物
-        this.#remember(transforms.world, slot);
-        if (!dirty) dirty = this.#covers(transforms.world, slot, radius);
+        this.#remember(transforms.renderWorld, slot);
+        if (!dirty) dirty = this.#covers(transforms.renderWorld, slot, radius);
       }
     }
     // 不再是遮挡物的（删了、换了不投阴影的材质）：按它最后的世界矩阵看（释放的槽位矩阵还留着）
     for (let slot = 1; !dirty && slot < Math.min(limit, previous.length); slot++) {
-      if (previous[slot]! > 0 && !(occluders[slot]! > 0)) dirty = this.#covers(transforms.world, slot, previous[slot]!);
+      if (previous[slot]! > 0 && !(occluders[slot]! > 0)) dirty = this.#covers(transforms.renderWorld, slot, previous[slot]!);
     }
     if (frame !== this.#checkedFrame) {
       this.#checkedFrame = frame;
@@ -181,8 +181,8 @@ export class SkyOcclusion implements GpuDepthSurface {
       for (const slot of transforms.changedSlots()) {
         const radius = Math.max(occluders[slot] ?? 0, previous[slot] ?? 0);
         if (!(radius > 0)) continue;
-        if (!dirty) dirty = this.#covers(transforms.world, slot, radius) || this.#coveredBefore(slot, radius);
-        this.#remember(transforms.world, slot);
+        if (!dirty) dirty = this.#covers(transforms.renderWorld, slot, radius) || this.#coveredBefore(slot, radius);
+        this.#remember(transforms.renderWorld, slot);
       }
     }
     if (dirty && !this.#drawing) this.#dirty = true;

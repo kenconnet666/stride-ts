@@ -802,3 +802,10 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 飞过去的测量见 decisions.md 的同名条目。
 - D18：Jolt 的 PerformanceTest 用当前 fork 编单精度、双精度两份（wasm64、Distribution、单线程）：Ragdoll 25.13 / 25.12、ConvexVsMesh 111.5 / 110.5、Pyramid 33.2 / 33.5 步每秒；LargeMesh 两份都在 wasm 里内存不够（PerformanceTest 默认的堆）。
 
+## W1 第二步：双精度（D18，2026-11-21）
+
+- 原生（StrideNative 0.43.0）：Jolt 开 `DOUBLE_PRECISION`；变换存储的本地位置、世界矩阵是双精度（`DMat44` 算层级），另存单精度的 `renderWorld`（平移相对渲染原点，`sn_transforms_set_render_origin`）；剔除用它；物理的世界位置按 double 传（物体描述、命中点、射线和球扫掠的起点、瞬移、positions()、重叠查询的原点）。原生测试 20 组、Node 测试 39 个全过，新加一条：2 万公里外的位置留得住毫米，远处的物理和射线照常。
+- TS：`Transform.world` 是 Float64Array，多了 `renderWorld`；`Matrix` 的输入接受双精度（`MatrixSource`），multiply、invert 能写双精度；渲染的代码改读 `renderWorld`，玩法的照旧读 `world`；`game.renderOrigin`、调试线、射线、点选、粒子、云、地面天气的图案按原点换算。
+- 实测（无头 Chrome，open-world）：相机和方块放到 1000 万米外，渲染原点跳到 (10000384, 0, 10000384)，方块的渲染位置 -383.75（0.25 米的零头保住了），画面和近处一样；相机挪 1 厘米，画面只在方块边上差亚像素（平均差 0.67）。冒烟照过。
+- 顺手修的：`stride eval` 的 `frames(n)` 一直是坏的——页面 eval 的作用域"有同名全局就用页面的"，而浏览器自己有 `window.frames`；改成只认函数。`stride eval --check` 的作用域加上样例挂的 `strideEngine`。
+

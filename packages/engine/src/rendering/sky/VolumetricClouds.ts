@@ -85,6 +85,18 @@ export class Clouds {
   readonly settings: CloudSettings = { coverage: 0.5, density: 1, bottom: 1500, thickness: 2500, cloudType: 0.7, scale: 1, windSpeed: 10, windDirection: 0 };
   /** 风吹出来的偏移（千米）：形状的和细节的（细节飘得快一点，云的边在变）。 */
   readonly offset: [number, number, number, number] = [0, 0, 0, 0];
+  /**
+   * 渲染原点（Game.renderOrigin，D18）：相机、像素的位置在渲染空间里（世界减去它），云的图案按世界坐标——采样的偏移加上它
+   * （千米，按噪声的周期取模），原点换了云不跳。
+   */
+  renderOrigin: readonly [number, number, number] = [0, 0, 0];
+
+  /** 发给着色器的偏移：风吹的偏移加上渲染原点（千米），按噪声的周期取模。 */
+  #worldOffset(): [number, number, number, number] {
+    const period = SHAPE_PERIOD_KM * this.settings.scale * 64;
+    const o = this.renderOrigin;
+    return [(this.offset[0] + o[0] / 1000) % period, (this.offset[1] + o[2] / 1000) % period, this.offset[2], this.offset[3]];
+  }
   readonly #device: GPUDevice;
   readonly #atmosphere: Atmosphere;
   #gpu: CloudsGpu | undefined;
@@ -189,7 +201,8 @@ export class Clouds {
   get shadow(): CloudShadow | undefined {
     if (!this.active || !this.#gpu || this.#shadowKey === '' || this.#light.entity < 0) return undefined;
     const period = SHAPE_PERIOD_KM * this.settings.scale * SHAPE_PERIODS;
-    return { texture: this.#gpu.shadow, scale: 1 / (period * 1000), offset: [this.offset[0] / period, this.offset[1] / period], lightEntity: this.#light.entity };
+    const offset = this.#worldOffset();
+    return { texture: this.#gpu.shadow, scale: 1 / (period * 1000), offset: [offset[0] / period, offset[1] / period], lightEntity: this.#light.entity };
   }
 
   /** 步进这一帧的云、合成进 target（主画面，不透明的画完以后）。depth 是主画面的深度；timestampWrites 量步进那一遍的 GPU 耗时。 */
@@ -251,7 +264,7 @@ export class Clouds {
     }
     data.set([bottom, top, s.coverage, EXTINCTION_PER_KM * s.density], 36);
     data.set([1 / (SHAPE_PERIOD_KM * s.scale), 7, s.cloudType, quality.steps], 40);
-    data.set(this.offset, 44);
+    data.set(this.#worldOffset(), 44);
     data.set([...light.direction, quality.lightSteps], 48);
     data.set([...light.color, firstFrame ? 1 : HISTORY_BLEND], 52);
     data.set(atmosphere.skyRadiance(true), 56);

@@ -134,6 +134,32 @@ export class ParticleSystems {
     this.#components.clear();
   }
 
+  /**
+   * @internal 渲染原点挪了 (dx, dy, dz)（D18）：粒子在渲染空间里模拟（发射器用 Transform.renderWorld），活着的粒子跟着换算——
+   * CPU 上的直接改位置，GPU 上的在下一次模拟时减。
+   */
+  moveOrigin(dx: number, dy: number, dz: number): void {
+    for (const component of this.#components) {
+      for (const emitter of component.particleSystem.emitters) {
+        const gpu = this.#gpuOf(emitter);
+        if (gpu) {
+          gpu.moveOrigin(dx, dy, dz);
+          continue;
+        }
+        const pool = emitter.pool;
+        for (const field of ['position', 'oldPosition'] as const) {
+          const values = pool.field(field);
+          if (!values) continue;
+          for (let i = 0; i < pool.living; i++) {
+            values[i * 3] = values[i * 3]! - dx;
+            values[i * 3 + 1] = values[i * 3 + 1]! - dy;
+            values[i * 3 + 2] = values[i * 3 + 2]! - dz;
+          }
+        }
+      }
+    }
+  }
+
   /** 发射器在 GPU 上的状态（还没建、不在 GPU 上时是 undefined）。 */
   gpuEmitter(emitter: ParticleEmitter): GpuEmitter | undefined {
     return this.#gpuOf(emitter);
@@ -156,7 +182,7 @@ export class ParticleSystems {
           if (updater instanceof UpdaterDepthCollision) updater.depthSurface = depthSurface(component.game, updater.surface);
         }
       }
-      const { translation, rotation, scale } = Matrix.decompose(component.entity.require(Transform).world);
+      const { translation, rotation, scale } = Matrix.decompose(component.entity.require(Transform).renderWorld);
       system.translation = translation;
       system.rotation = rotation;
       system.uniformScale = scale[0];

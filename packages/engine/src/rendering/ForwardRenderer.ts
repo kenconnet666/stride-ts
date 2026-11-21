@@ -122,6 +122,8 @@ export class ForwardRenderer {
   readonly #unjittered = new Float32Array(16);
   /** 这一帧用的相机实体找到了没有；没有相机时只清屏（同 Stride）。 */
   hasCamera = false;
+  /** 上一帧主画面用的相机实体（渲染原点跟着它，见 Game.renderOrigin）。 */
+  mainCameraEntity: EntityId | undefined;
   /** 后处理（Stride 的 ForwardRenderer.PostEffects），设置可以改，默认值同 Stride。 */
   readonly postEffects: PostProcessingEffects;
   /** 屏幕空间的环境光遮蔽（GTAO，只乘环境光；开不开照合成器的 AmbientOcclusion，见 AmbientOcclusion.ts）。 */
@@ -206,8 +208,10 @@ export class ForwardRenderer {
         const view = overridden && entities[row] === override ? this.#mainView : this.#wanted.get(camera.slot[row]!);
         if (!view || this.#found.has(view) || (overridden && view === this.#mainView && entities[row] !== override)) continue;
         this.#found.add(view);
+        if (view === this.#mainView) this.mainCameraEntity = entities[row];
         const slot = transform.slot[row]!;
-        if (!Matrix.invert(view.view, transform.world.subarray(slot * 16, slot * 16 + 16))) Matrix.setIdentity(view.view);
+        // 视图矩阵在渲染空间里（相机的渲染用世界矩阵，平移相对渲染原点）
+        if (!Matrix.invert(view.view, transform.renderWorld.subarray(slot * 16, slot * 16 + 16))) Matrix.setIdentity(view.view);
         view.nearClipPlane = camera.nearClipPlane[row]!;
         view.farClipPlane = camera.farClipPlane[row]!;
         const physical = camera.physical[row] === 1;
@@ -252,7 +256,7 @@ export class ForwardRenderer {
           const sky = (this.#skyboxLight ??= { skybox, intensity, rotation: new Float32Array(16) });
           sky.skybox = skybox;
           sky.intensity = intensity;
-          Matrix.rotationOf(sky.rotation, transform.world, transform.slot[i]! * 16);
+          Matrix.rotationOf(sky.rotation, transform.renderWorld, transform.slot[i]! * 16);
           lighting.skybox = sky;
         } else if (light.type[i] === 'point' || light.type[i] === 'spot' || light.type[i] === 'rect' || light.type[i] === 'disc' || light.type[i] === 'tube') {
           this.#collectLocal(light, transform, i, color, intensity);
@@ -262,7 +266,7 @@ export class ForwardRenderer {
           const directional = lighting.directionals[lighting.directionalCount]!;
           // 照向本地 -Z：世界矩阵第三列（Z 轴）取反
           const w = transform.slot[i]! * 16;
-          directional.direction.set(-transform.world[w + 8]!, -transform.world[w + 9]!, -transform.world[w + 10]!);
+          directional.direction.set(-transform.renderWorld[w + 8]!, -transform.renderWorld[w + 9]!, -transform.renderWorld[w + 10]!);
           directional.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
           directional.entity = entities[i]!;
           directional.angle = light.shadowLightAngle[i]!;
@@ -747,7 +751,7 @@ export class ForwardRenderer {
     const lighting = this.renderSystem.lighting;
     if (lighting.localCount === lighting.locals.length) lighting.locals.push(createLocalLight());
     const local = lighting.locals[lighting.localCount++]!;
-    const w = transform.slot[i]! * 16, world = transform.world;
+    const w = transform.slot[i]! * 16, world = transform.renderWorld;
     local.spot = light.type[i] === 'spot';
     const type = light.type[i]!;
     local.area = type === 'rect' || type === 'disc' || type === 'tube' ? type : undefined;

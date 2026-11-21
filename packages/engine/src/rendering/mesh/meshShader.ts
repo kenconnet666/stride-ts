@@ -1174,16 +1174,30 @@ fn thinGlass(color: vec3f, cosTheta: f32, refractiveIndex: f32) -> Glass {
   return Glass(transmittance, saturate(rk * transmittance + r));
 }
 
+/** Alpha 裁剪的材质每往下一级 mip，贴图的 alpha 放大多少（Golus 用 0.25）。 */
+const ALPHA_MIP_SCALE = 0.25;
+
 /** 背面的法线翻过来朝着相机（Stride 的 MaterialSurfaceLightingAndShading）：两面画的材质背面也按正对着算光照。 */
 fn facingNormal(n: vec3f, front: bool) -> vec3f {
   return select(-n, n, front);
 }
 
-/** 漫反射的基础色：贴图和颜色按运算符组合。 */
+/**
+ * 漫反射的基础色：贴图和颜色按运算符组合。有 Alpha 裁剪的材质（flags.y >= 0）按取的 mip 级把贴图的 alpha 放大（Ben Golus 的
+ * "Anti-aliased Alpha Test" 里保覆盖率的做法）：细的叶子、针叶在远处的 mip 里 alpha 被平均得低于阈值，不放大就整片被挖没。
+ */
 fn baseColor(in: Varyings) -> vec4f {
   var texel = vec4f(1.0);
   if ((u32(material.flags.w) & 1u) != 0u) {
-    texel = textureSample(baseColorTexture, baseColorSampler, in.uv * material.uvTransform.xy + material.uvTransform.zw);
+    let uv = in.uv * material.uvTransform.xy + material.uvTransform.zw;
+    texel = textureSample(baseColorTexture, baseColorSampler, uv);
+    if (material.flags.y >= 0.0) {
+      let texels = uv * vec2f(textureDimensions(baseColorTexture));
+      let dx = dpdx(texels);
+      let dy = dpdy(texels);
+      let mip = max(0.5 * log2(max(dot(dx, dx), dot(dy, dy))), 0.0);
+      texel.a *= 1.0 + mip * ALPHA_MIP_SCALE;
+    }
   }
   return select(texel * material.baseColor, texel + material.baseColor, material.combine == 1u);
 }

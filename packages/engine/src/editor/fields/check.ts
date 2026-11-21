@@ -84,10 +84,10 @@ function checkObject(value: unknown, of: readonly Field[], where: string, issues
   for (const key of Object.keys(object)) if (!known.has(key)) issues.push(`${where}.${key}: not a field of this component`);
 }
 
-/** 检查一个实体文件：名字、变换和每种组件（脚本不查，要脚本的类）。 */
 /** 场景文件里一个实体能有的键（SceneEntityFile）。 */
 const ENTITY_KEYS: ReadonlySet<string> = new Set(['id', 'name', 'parent', 'prefab', 'position', 'rotation', 'scale', 'components'] satisfies (keyof SceneEntityFile)[]);
 
+/** 检查一个实体文件：名字、变换和每种组件（脚本不查，要脚本的类）。 */
 export function checkEntity(entity: SceneEntityFile): string[] {
   const where = `entity ${entity.name}`;
   const issues: string[] = [];

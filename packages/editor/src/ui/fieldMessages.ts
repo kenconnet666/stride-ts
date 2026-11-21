@@ -19,14 +19,14 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Child scenes': '子场景', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
+    'Child scenes': '子场景', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },
   names: {
-    terrain: '地形', detail: '细节', lodFactor: '细分距离', lacunarity: '频率倍数', gain: '幅度倍数', ridged: '山脊', warp: '扭曲', erosion: '侵蚀', falloff: '过渡', splines: '贴着的样条', spline: '样条', branches: '分支', lanes: '车道', oneWay: '单行', gullies: '冲沟', valley: '谷底高度', peak: '山顶高度', features: '地物', strokes: '笔画',
+    terrain: '地形', detail: '细节', lodFactor: '细分距离', lacunarity: '频率倍数', gain: '幅度倍数', ridged: '山脊', warp: '扭曲', erosion: '侵蚀', falloff: '过渡', splines: '贴着的样条', spline: '样条', branches: '分支', lanes: '车道', oneWay: '单行', track: '轨道', path: '路径', stops: '车站', at: '停在', dwell: '停站时长', maxSpeed: '最高速度', acceleration: '加速度', deceleration: '减速度', doorTime: '开关门用时', carLength: '车厢长', carGap: '车厢间距', timeOffset: '时刻表偏移', station: '站名', gullies: '冲沟', valley: '谷底高度', peak: '山顶高度', features: '地物', strokes: '笔画',
     font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距', diameter: '直径', profile: '配光曲线', splats: '泼溅',
     transmission: '透射', factor: '比例', ior: '折射率', attenuationColor: '吸收后的颜色', attenuationDistance: '吸收距离',
     distortion: '扭曲',

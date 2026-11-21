@@ -40,7 +40,7 @@ import { UIComponent } from '../ui/UIComponent';
 import { UIElementLink } from '../ui/UIElementLink';
 import type { UILibrary, UIPage } from '../ui/UIPage';
 import type { ContentManager, LoadedModel, LoadSceneOptions, SceneReference } from './ContentManager';
-import type { ColliderShapeFile, SceneEntityFile, SceneLightShadow, SceneLocalLightShadow, ScenePostEffects, SceneUI } from './format';
+import type { ColliderShapeFile, SceneEntityFile, SceneLightShadow, SceneLocalLightShadow, ScenePostEffects, SceneUI, SplineFile } from './format';
 import { preload } from './loading';
 import type { Prefab } from './Prefab';
 import { availableParent } from './prefabInstances';
@@ -71,6 +71,7 @@ export interface SceneAssets {
   readonly uiLibraries: ReadonlyMap<string, UILibrary>;
   readonly sounds: ReadonlyMap<string, Sound>;
   readonly timelines: ReadonlyMap<string, Timeline>;
+  readonly splines: ReadonlyMap<string, SplineFile>;
 }
 
 /** 一个网格配一个材质画（预热管线用，见 ContentManager.pipelineWarmer）。 */
@@ -111,7 +112,7 @@ export class SceneBuilder {
     const unsupported = refs.find((ref) => !PRELOADED_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${where}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
     const paths = (kind: EntityAssetReference['kind']) => refs.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, terrains, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines] = await Promise.all([
+    const [models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, terrains, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines, splines] = await Promise.all([
       preload(paths('model'), (p) => content.loadModel(p)),
       preload(paths('material'), (p) => content.loadMaterial(p)),
       preload(paths('animation'), (p) => content.loadAnimation(p)),
@@ -128,6 +129,7 @@ export class SceneBuilder {
       preload(paths('uiLibrary'), (p) => content.loadUILibrary(p)),
       preload(paths('sound'), (p) => content.loadSound(p)),
       preload(paths('timeline'), (p) => content.loadTimeline(p)),
+      preload(paths('spline'), (p) => content.loadSpline(p)),
     ]);
     // 背景的平面图片和精灵的贴图按 sRGB 读（同 Stride 的颜色贴图）；渲染目标贴图按路径建一次
     const images = new Map<string, Texture>();
@@ -135,7 +137,7 @@ export class SceneBuilder {
       if (ref.kind === 'renderTexture') images.set(ref.path, content.renderTexture(ref.texture));
       else if (ref.kind === 'image') images.set(ref.path, await content.loadTextureRef(ref.texture, true));
     }));
-    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, terrains, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines };
+    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, terrains, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines, splines };
     // 管线也算要等的资源：建实体之前在后台编好，第一帧和以后生成这些模型时都不用当场编译着色器
     await content.pipelineWarmer?.(modelUses(files, assets, content.defaultMaterial), postEffects, files);
     return assets;
@@ -221,7 +223,7 @@ export class SceneBuilder {
     const binder = new SceneScriptBinder(entities.game.registry, options.scripts);
     const byKind: Readonly<Record<string, ReadonlyMap<string, object>>> = {
       model: assets.models, material: assets.materials, animation: assets.animations, prefab: assets.prefabs, font: assets.fonts, texture: assets.textures,
-      spriteSheet: assets.spriteSheets, uiPage: assets.uiPages, uiLibrary: assets.uiLibraries, sound: assets.sounds, timeline: assets.timelines,
+      spriteSheet: assets.spriteSheets, uiPage: assets.uiPages, uiLibrary: assets.uiLibraries, sound: assets.sounds, timeline: assets.timelines, spline: assets.splines,
     };
     const context = {
       entities: created,
@@ -559,7 +561,7 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
 
 /** 实体文件能引用的资源种类（加载场景时预先加载；scene 只给路径）。脚本属性里写了别的种类时报错。 */
 const PRELOADED_KINDS: ReadonlySet<string> = new Set<EntityAssetReference['kind']>([
-  'model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary', 'sound', 'timeline', 'skybox', 'cubemap', 'lightProfile', 'splats', 'terrain', 'image', 'renderTexture',
+  'model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary', 'sound', 'timeline', 'spline', 'skybox', 'cubemap', 'lightProfile', 'splats', 'terrain', 'image', 'renderTexture',
 ]);
 
 /** 点光、聚光的配光曲线列（没有时不写，用默认的 0）。 */

@@ -62,6 +62,7 @@ declare module '../data/prop' {
     uiLibrary: UILibrary;
     sound: Sound;
     timeline: Timeline;
+    spline: SplineFile;
   }
 }
 
@@ -241,6 +242,7 @@ export class ContentManager {
     uiLibrary: (path) => this.loadUILibrary(path),
     sound: (path) => this.loadSound(path),
     timeline: (path) => this.loadTimeline(path),
+    spline: (path) => this.loadSpline(path),
   };
 
   constructor({ root = 'content/', read = fetchReader, shaderClass = () => undefined }: ContentOptions = {}) {

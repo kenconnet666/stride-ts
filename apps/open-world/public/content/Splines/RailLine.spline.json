@@ -1,0 +1,47 @@
+{
+ "name": "RailLine",
+ "materials": [
+  "Materials/Steel",
+  "Materials/Box"
+ ],
+ "profile": {
+  "type": "rail"
+ },
+ "points": [
+  {
+   "position": [
+    -500,
+    -50,
+    220
+   ]
+  },
+  {
+   "position": [
+    -250,
+    -40,
+    220
+   ]
+  },
+  {
+   "position": [
+    0,
+    -28,
+    220
+   ]
+  },
+  {
+   "position": [
+    250,
+    -18,
+    220
+   ]
+  },
+  {
+   "position": [
+    500,
+    -10,
+    220
+   ]
+  }
+ ]
+}

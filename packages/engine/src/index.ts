@@ -269,6 +269,7 @@ export { UIComponent, type ResolutionStretch } from './ui/UIComponent';
 export { UIElementLink } from './ui/UIElementLink';
 export { AudioEngine } from './audio/AudioEngine';
 export { AudioEmitterComponent, AudioEmitterSoundController, AudioListenerComponent } from './audio/AudioEmitterComponent';
+export { Train, TrainDoor, trainSchedule, trainStateAt, type TrainSchedule, type TrainScheduleOptions, type TrainState, type TrainStop } from './trains/Train';
 export { Sound, SoundInstance, type PlayState } from './audio/Sound';
 export { ParticleSystem } from './particles/ParticleSystem';
 export { ParticleEmitter, type ParticleSimulation, type SimulationSpace, type RandomSeedMethod, type SortingPolicy } from './particles/ParticleEmitter';

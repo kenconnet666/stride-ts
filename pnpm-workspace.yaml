@@ -8,4 +8,4 @@ packages:
 overrides:
   # 整个工作区只用一个 TypeScript（根 package.json 定的 7.1 每日版，和 vue-tsx-pro 同一个）：Vue 的可选 peer 不再自己挑最新的正式版
   typescript: 7.1.0-dev.20261104.1
-  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.40.0/stride-ts-native-0.40.0.tgz
+  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-v0.41.0/stride-ts-native-0.41.0.tgz

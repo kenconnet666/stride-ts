@@ -1,3 +1,4 @@
+// 共用的编译选项：各子项目（packages/*、apps/*、tools）的 tsconfig.json 继承这份、只列自己的目录，检查按子项目跑（根 package.json 的 typecheck）
 {
   "compilerOptions": {
     "target": "es2024",
@@ -21,6 +22,5 @@
     // 编辑器的界面（packages/editor/src/ui）用 Vue 加 vue-tsx-pro 写 TSX；别处没有 .tsx
     "jsx": "preserve",
     "jsxImportSource": "@zerodep-dev/vue-tsx-pro-tsx"
-  },
-  "include": ["packages/*/src", "packages/*/test", "packages/*/experiments", "apps/*/src", "apps/*/scripts", "apps/*/vite.config.ts", "tools/*.ts", "tools/editor-accept/*.ts", "vitest.config.ts"]
+  }
 }

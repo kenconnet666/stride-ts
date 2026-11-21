@@ -86,7 +86,7 @@ function sharedFor(device: GPUDevice): Shared {
   let found = shared.get(device);
   if (found) return found;
   const layout = (label: string, entries: GPUBindGroupLayoutEntry[]) => device.createBindGroupLayout({ label, entries });
-  const storage = (binding: number, type: GPUBufferBindingType, visibility = GPUShaderStage.COMPUTE): GPUBindGroupLayoutEntry => ({ binding, visibility, buffer: { type } });
+  const storage = (binding: number, type: GPUBufferBindingType, visibility: GPUShaderStageFlags = GPUShaderStage.COMPUTE): GPUBindGroupLayoutEntry => ({ binding, visibility, buffer: { type } });
   const keysLayout = layout('GPU particles sort keys', [storage(0, 'uniform'), storage(1, 'read-only-storage'), storage(2, 'storage')]);
   const stepLayout = layout('GPU particles sort step', [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: 8 } }, storage(1, 'storage')]);
   found = {

@@ -10,14 +10,16 @@
   "scripts": {
     "dev": "pnpm --filter @stride-ts/sandbox dev",
     "build": "pnpm --filter @stride-ts/sandbox build",
-    "typecheck": "tsc -p .",
-    "test": "vitest run",
+    "typecheck": "pnpm -r --no-bail --workspace-concurrency=8 run typecheck && tsc -p tools",
+    "typecheck:changed": "pnpm -r --no-bail --workspace-concurrency=8 --filter \"...[origin/main]\" run typecheck && tsc -p tools",
+    "test": "pnpm -r --no-bail run test",
+    "test:changed": "pnpm -r --no-bail --filter \"...[origin/main]\" run test",
     "stride": "node packages/cli/src/cli.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
     "@webgpu/types": "^0.1.74",
-    "typescript": "^7.0.2",
+    "typescript": "7.1.0-dev.20261104.1",
     "vite": "^8.3.8",
     "vitest": "^5.1.0",
     "@stride-ts/cli": "workspace:*",

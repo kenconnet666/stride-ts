@@ -53,7 +53,7 @@
 2. **导入每个样例的内容**（`public/content/`，不提交）：`pwsh tools/import-all.ps1`（几个样例并行，最后打出结果表）。
 
    导入时的警告里**不应该有** `prefab instances kept expanded`（有的话是预制体实例没转成引用，见 decisions.md 的预制体那条）。粒子样例有几条"不是内置的粒子模块"的警告，是正常的。
-3. **检查**：`pnpm typecheck`、`pnpm test`（engine 336 个、pipeline 63 个、editor 17 个单测）。
+3. **检查**：`pnpm typecheck`、`pnpm test`（按子项目各跑各的：每个包、样例有自己的 `tsconfig.json`（继承根上的 `tsconfig.base.json`）和 `typecheck`、`test` 脚本；只查改了的用 `pnpm typecheck:changed`、`pnpm test:changed`）。
 4. **回归**：`pwsh tools/verify.ps1`（建 git 工作树 `../stride-ts-verify-1`（`-Slot 2` 用 `-2`，可以和 1 同时跑），切到当前提交、装依赖、把主检出导入的内容联接过去，跑 `tools/regress.ps1`：20 个样例的冒烟，每个起开发服务器和无头 Chrome，最后和 `tools/budgets.json` 的预算比）。旧机器上一遍 20 分钟左右，最后打出每个样例 `True`/`False` 的表。
    - **预算和机器无关**：实体数、绘制次数、显存、当场建的管线、原生内存（回归用 `?stride-workers=4` 固定工作线程数，每个线程 1 MB 的栈算在原生内存里）；帧时间不进预算。有意的变化之后重记：`$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/verify.ps1`，再把 `../stride-ts-verify-1/tools/budgets.json` 拷回主检出、单独提交（"预算的基线：……"）。
    - 回归默认几个样例并行（`-Parallel`，每 8 个逻辑核一路、最多 4 路），新机器（36 线程、RX 9070 GRE）上是 4 路。

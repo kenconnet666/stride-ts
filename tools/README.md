@@ -32,7 +32,7 @@
 | `run-page.ts` | 在自己的无头 Chrome 里（`~/.stride-ts/run-page`，跑完就关）打开一个不连调试中枢的页面，等它把结果放到全局变量上，打印页面的文字；`--out` 另存 JSON，`--screenshot` 截图。不用 Playwright。用法：`node tools/run-page.ts http://localhost:5182/displacement.html displacementResults --error displacementError`（几何实验 E2，见 docs/vector-assets.md） |
 | `bench.cjs` | 打开 `apps/bench`（先 `pnpm --filter @stride-ts/bench dev`，端口 5182），等基准跑完，打印结果表；第三个参数给文件名时另存 JSON。用法：`node bench.cjs <playwright> http://localhost:5182/ [out.json]` |
 | `gc-trace.cjs` | 打开 `apps/bench/gc.html`，开着 Chrome 的 tracing 跑各种分配模式，按场景报告帧间隔和 V8 记录的主线程 GC 停顿（次数、总时长、最长一次）。用法：`node gc-trace.cjs <playwright> http://localhost:5182/gc.html [trace.json]` |
-| `gen-type-stress.mjs` | 生成 `packages/engine/test/stress.check.ts`（默认 300 个组件、150 个系统、150 个脚本），之后用 `npx tsc -p . --extendedDiagnostics` 看检查时间和实例化次数。用法：`node tools/gen-type-stress.mjs [组件数] [系统数] [脚本数]` |
+| `gen-type-stress.mjs` | 生成 `packages/engine/test/stress.check.ts`（默认 300 个组件、150 个系统、150 个脚本），之后用 `npx tsc -p packages/engine --extendedDiagnostics` 看检查时间和实例化次数。用法：`node tools/gen-type-stress.mjs [组件数] [系统数] [脚本数]` |
 
 `bench.cjs` 和 `gc-trace.cjs` 还用 Playwright（第一个参数是它的路径，`require.resolve('playwright')`），Chrome 是本机安装的 `C:/Program Files/Google/Chrome/Application/chrome.exe`。
 

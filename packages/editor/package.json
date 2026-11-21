@@ -13,6 +13,10 @@
     "./protocol": "./src/protocol.ts",
     "./client": "./src/EditorClient.ts"
   },
+  "scripts": {
+    "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",
+    "test": "vitest run"
+  },
   "dependencies": {
     "@lucide/icons": "^1.76.0",
     "@modelcontextprotocol/server": "^2.4.0",

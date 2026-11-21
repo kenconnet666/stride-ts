@@ -12,6 +12,10 @@
     "./hub": "./src/hub.ts",
     "./client": "./src/client.ts"
   },
+  "scripts": {
+    "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",
+    "test": "vitest run"
+  },
   "dependencies": {
     "@stride-ts/engine": "workspace:*",
     "ws": "^8.23.0"

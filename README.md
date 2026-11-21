@@ -22,8 +22,10 @@
 ```bash
 pnpm install
 pnpm dev          # sandbox on http://localhost:5180 (COOP/COEP headers set)
-pnpm test         # Vitest in Node
-pnpm typecheck
+pnpm test                 # 每个子项目自己的 Vitest（pnpm -r run test）
+pnpm typecheck            # 每个子项目自己的 tsc（pnpm -r run typecheck，外加 tools）
+pnpm typecheck:changed    # 只查和 origin/main 比改了的子项目和依赖它们的（test:changed 同理）
+pnpm -F @stride-ts/editor typecheck   # 只查一个子项目
 pnpm build        # sandbox production build; `pnpm --filter @stride-ts/sandbox preview` serves it on 5181
 ```
 

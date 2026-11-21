@@ -22,6 +22,10 @@
     "./editor-make-prefab": "./src/editor/makePrefab.ts",
     "./math": "./src/data/Matrix.ts"
   },
+  "scripts": {
+    "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",
+    "test": "vitest run"
+  },
   "dependencies": {
     "@stride-ts/native": "^0.29.0"
   }

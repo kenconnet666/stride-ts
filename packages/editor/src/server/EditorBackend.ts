@@ -9,9 +9,9 @@ import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type TextModelFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
+import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type SplineFile, type TextModelFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeTextModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
+import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
@@ -34,10 +34,10 @@ const CHANGE_DELAY = 50;
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
 /** 编辑器后端烘成同名模型的资源种类（源头是 JSON，场景引用烘出的 .model）。 */
 /** 编辑器后端照它烘出（导入）同名模型的资源：白盒、SDF、多边形网格、源模型的导入设置。 */
-type BakedKind = 'brush' | 'sdf' | 'poly' | 'text' | 'modelImport' | 'imageImport';
-const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'text' || kind === 'modelImport' || kind === 'imageImport';
+type BakedKind = 'brush' | 'sdf' | 'poly' | 'text' | 'spline' | 'modelImport' | 'imageImport';
+const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'text' || kind === 'spline' || kind === 'modelImport' || kind === 'imageImport';
 
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world', 'terrain']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world', 'terrain', 'spline']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -478,7 +478,7 @@ export class EditorBackend {
     if (record.kind === 'image') return same('imageImport');
     if (record.kind === 'modelImport') return same('model', 'modelSource');
     if (isBakedKind(record.kind)) return same('model');
-    if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'text', 'modelImport', 'modelSource');
+    if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'text', 'spline', 'modelImport', 'modelSource');
     return [];
   }
 
@@ -620,6 +620,7 @@ export class EditorBackend {
     const bytes = kind === 'brush' ? await bakeBrushModel(tools, content as BrushFile, where)
       : kind === 'sdf' ? await bakeSdfModel(tools, content as SdfFile, where)
       : kind === 'text' ? await bakeTextModel(tools, content as TextModelFile, (file) => readFile(path.join(this.project.contentDir, file)), where)
+      : kind === 'spline' ? bakeSplineModel(tools, content as SplineFile, where)
       : bakePolyModel(tools, content as PolyMeshFile, where);
     const model = assetPath + EXTENSIONS.model;
     await writeAtomically(path.join(this.project.contentDir, model), bytes);

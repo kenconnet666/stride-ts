@@ -2,3 +2,4 @@
 export * from './polyMesh.ts';
 export * from './polyEdit.ts';
 export * from './textOutline.ts';
+export * from './spline.ts';

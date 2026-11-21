@@ -1,0 +1,42 @@
+{
+ "name": "PlazaRoad",
+ "materials": [
+  "Materials/Street"
+ ],
+ "profile": {
+  "type": "road",
+  "width": 7,
+  "thickness": 0.4,
+  "shoulder": 0.6
+ },
+ "points": [
+  {
+   "position": [
+    -110,
+    40.02,
+    -10
+   ]
+  },
+  {
+   "position": [
+    -40,
+    40.02,
+    10
+   ]
+  },
+  {
+   "position": [
+    40,
+    40.02,
+    -10
+   ]
+  },
+  {
+   "position": [
+    110,
+    40.02,
+    10
+   ]
+  }
+ ]
+}

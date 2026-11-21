@@ -53,6 +53,8 @@ export const EXTENSIONS = {
   splats: '.splat',
   /** 矢量地形（TerrainFile，content/terrainFormat.ts）：噪声的底、矢量地物和雕刻的笔画，运行时求值，不存高度图。 */
   terrain: '.terrain.json',
+  /** 样条（SplineFile，content/splineFormat.ts）：控制点和横截面，编辑器后端把它烘成同名的模型（.model）。 */
+  spline: '.spline.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */

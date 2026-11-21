@@ -1,0 +1,44 @@
+{
+ "name": "PlazaFence",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Facade"
+ ],
+ "closed": true,
+ "profile": {
+  "type": "fence",
+  "height": 1.2,
+  "postSpacing": 3,
+  "rails": 2
+ },
+ "points": [
+  {
+   "position": [
+    -115,
+    40.0,
+    -75
+   ]
+  },
+  {
+   "position": [
+    115,
+    40.0,
+    -75
+   ]
+  },
+  {
+   "position": [
+    115,
+    40.0,
+    75
+   ]
+  },
+  {
+   "position": [
+    -115,
+    40.0,
+    75
+   ]
+  }
+ ]
+}

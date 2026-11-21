@@ -143,6 +143,87 @@
      "size": 16384
     }
    }
+  },
+  {
+   "id": "d92c3ad9-43c8-4930-85ea-9a59641044ba",
+   "name": "PlazaRoad",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Splines/PlazaRoad",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "d8fa21aa-dd67-4322-b549-edc836f0f70c",
+   "name": "PlazaFence",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Splines/PlazaFence",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "677402d7-10f0-48ed-8732-4ddf8f387360",
+   "name": "PlazaPowerLine",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Splines/PlazaPowerLine",
+     "materials": []
+    }
+   }
   }
  ]
 }

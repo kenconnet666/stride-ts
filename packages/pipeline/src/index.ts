@@ -18,3 +18,4 @@ export { bakeSdfModel, DEFAULT_SDF_RESOLUTION } from './sdfModel.ts';
 export { bakeTextModel } from './textModel.ts';
 export { convertSplats, readPlySplats, readSpzSplats, SPLAT_SOURCE_EXTENSIONS } from './splats.ts';
 export { bakePolyModel } from './polyModel.ts';
+export { bakeSplineModel } from './splineModel.ts';

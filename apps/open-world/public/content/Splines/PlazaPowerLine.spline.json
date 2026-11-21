@@ -1,0 +1,37 @@
+{
+ "name": "PlazaPowerLine",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Box"
+ ],
+ "profile": {
+  "type": "wire",
+  "poleHeight": 10,
+  "poleSpacing": 40,
+  "sag": 1.2,
+  "wires": 3
+ },
+ "points": [
+  {
+   "position": [
+    -110,
+    40.0,
+    55
+   ]
+  },
+  {
+   "position": [
+    0,
+    40.0,
+    62
+   ]
+  },
+  {
+   "position": [
+    110,
+    40.0,
+    55
+   ]
+  }
+ ]
+}

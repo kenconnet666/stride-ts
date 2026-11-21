@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, TextModelFile } from '../../content/format';
+import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile } from '../../content/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -265,6 +265,52 @@ export const POLY_FIELDS = fields<PolyMeshFile>({
   faces: { type: { kind: 'json' }, description: 'faces as vertex index loops, counterclockwise seen from outside, each with an optional material slot' },
 });
 
+/** 样条（SplineFile）：改了马上重新烘成模型、视口热重载。控制点先按 JSON 改（视口里拖控制点以后做）。 */
+export const SPLINE_FIELDS = fields<SplineFile>({
+  name: string,
+  materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'material slots: road, tube, custom one; rail rails and sleepers; fence posts and rails; wire poles and wires' },
+  closed: { type: bool, optional: true, default: false, description: 'join the last point back to the first (a loop road, a fence around something)' },
+  resolution: { type: number({ min: 0.1, step: 0.5, unit: 'm' }), optional: true, default: 2, description: 'one cross-section every this many meters along the path: smaller is rounder and heavier' },
+  profile: {
+    type: {
+      kind: 'union',
+      tag: 'type',
+      variants: {
+        road: fields<{ width: unknown; thickness: unknown; shoulder: unknown }>({
+          width: { type: positiveNumber(), description: 'width of the road surface (m)' },
+          thickness: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0.3, description: 'depth of the road body under the surface' },
+          shoulder: { type: number({ min: 0, step: 0.1, unit: 'm' }), optional: true, default: 0.5, description: 'how far the sloped sides reach out beyond the surface' },
+        }),
+        tube: fields<{ radius: unknown; sides: unknown }>({
+          radius: { type: positiveNumber(), description: 'radius (m)' },
+          sides: { type: integer(3, 64), optional: true, default: 12, description: 'sides around the tube' },
+        }),
+        custom: fields<{ shape: unknown; closed: unknown }>({
+          shape: { type: { kind: 'json' }, description: 'cross-section as [right, up] pairs in meters, counterclockwise' },
+          closed: { type: bool, optional: true, default: false, description: 'join the last shape point back to the first' },
+        }),
+        rail: fields<{ gauge: unknown; sleeperSpacing: unknown }>({
+          gauge: { type: number({ min: 0.3, step: 0.01, unit: 'm' }), optional: true, default: 1.435, description: 'distance between the inner sides of the rails (standard gauge 1.435 m)' },
+          sleeperSpacing: { type: number({ min: 0.1, step: 0.05, unit: 'm' }), optional: true, default: 0.6, description: 'distance between sleepers' },
+        }),
+        fence: fields<{ height: unknown; postSpacing: unknown; rails: unknown }>({
+          height: { type: number({ min: 0.1, step: 0.1, unit: 'm' }), optional: true, default: 1.2, description: 'height of the posts' },
+          postSpacing: { type: number({ min: 0.1, step: 0.5, unit: 'm' }), optional: true, default: 2.5, description: 'distance between posts' },
+          rails: { type: integer(1, 10), optional: true, default: 2, description: 'horizontal rails between the posts' },
+        }),
+        wire: fields<{ poleHeight: unknown; poleSpacing: unknown; sag: unknown; wires: unknown }>({
+          poleHeight: { type: number({ min: 1, step: 1, unit: 'm' }), optional: true, default: 10, description: 'height of the poles' },
+          poleSpacing: { type: number({ min: 1, step: 5, unit: 'm' }), optional: true, default: 40, description: 'distance between poles' },
+          sag: { type: number({ min: 0, step: 0.25, unit: 'm' }), optional: true, default: 1.5, description: 'how far the wires hang down midway between two poles' },
+          wires: { type: integer(1, 12), optional: true, default: 3, description: 'wires on the crossarm' },
+        }),
+      },
+    },
+    description: 'what is built along the path',
+  },
+  points: { type: { kind: 'json' }, description: 'control points the path passes through: position [x, y, z], optional tilt (degrees, banks to the right) and width (multiplies the profile width)' },
+});
+
 /**
  * 游戏设置（.game.json，Stride 的 GameSettings）。根渲染器（合成器的根是游戏自己的渲染器时，SpriteFonts、CustomEffect）的类型是
  * 游戏登记的名字，属性的字段由游戏的代码定：按文件里现在的值推（record）。
@@ -378,5 +424,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

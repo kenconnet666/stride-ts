@@ -27,6 +27,9 @@ const intro = stride('eval', `(async () => {
   const player = entity('Intro').get(strideEngine.TimelinePlayer);
   const events = player.events.receiver();
   const during = await until(() => player.subtitle && [player.subtitle, strideGame.graphicsCompositor.mainCamera === entity('CutsceneCamera').id], 6);
+  // 看过放着的样子就跳到快放完：CI 的软件 WebGPU 上一帧很慢，游戏时间走 6 秒要超过页面帮手的墙钟上限（事件在 6 秒，跳过去的
+  // 不触发，跳到它前面）
+  player.seek(player.timeline.duration - 0.3);
   await until(() => !player.playing, 10);
   return { during, ended: [player.time, strideGame.graphicsCompositor.mainCamera ?? null, events.drain()] };
 })()`) as { during: [string, boolean] | false; ended: [number, number | null, string[]] };

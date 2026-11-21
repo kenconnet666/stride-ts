@@ -69,16 +69,18 @@
 
 | 样例 | 端口 | 样例 | 端口 |
 |---|---|---|---|
-| platformer（TPP） | 5184 | space-escape | 5212 |
-| animated-model | 5186 | material-shader | 5214 |
-| physics-sample | 5188 | custom-effect | 5216 |
-| bepu-sample | 5190 | morph-targets | 5218 |
-| platformer2d | 5192 | csharp-beginner | 5220 |
-| topdown-rpg | 5194 | csharp-intermediate | 5222 |
-| first-person-shooter | 5196 | game-menu | 5200 |
-| sprite-fonts | 5198 | ui-element-link | 5202 |
-| ui-particles | 5204 | simple-audio | 5206 |
-| particles-sample | 5208 | jumpy-jet | 5210 |
+| platformer（TPP） | 5184 | particles-sample | 5208 |
+| animated-model | 5186 | jumpy-jet | 5210 |
+| physics-sample | 5188 | space-escape | 5212 |
+| bepu-sample | 5190 | material-shader | 5214 |
+| platformer2d | 5192 | custom-effect | 5216 |
+| topdown-rpg | 5194 | morph-targets | 5218 |
+| first-person-shooter | 5196 | csharp-beginner | 5220 |
+| sprite-fonts | 5198 | csharp-intermediate | 5222 |
+| game-menu | 5200 | collect-dodge（C1 的小游戏） | 5224 |
+| ui-element-link | 5202 | short-film（F4 的短片） | 5226 |
+| ui-particles | 5204 | greybox（白盒演示） | 5228 |
+| simple-audio | 5206 | campsite（S2 的营地） | 5230 |
 
 另外：`apps/sandbox`（5180，冒烟页）、`apps/bench`（5182，基准）。
 
@@ -86,42 +88,7 @@
 
 ## 2. 现在做到哪了，接着做什么
 
-### 2.1 各阶段
-
-- **P1、P2**（Stride 样例的运行时）：完成。20 个样例都移植了，TPP 和桌面 Stride 逐像素比对过。
-- **P3 编辑器**：界面（Vue 加 vue-tsx-pro）、场景树（加删、拖动换父实体）、属性面板（照字段描述画，加删组件）、视口（点选、操纵器）、资源浏览器（移动、改名、删除，改写引用它的文件）、撤销重做、试玩都做了；**预制体**这一轮做完了：场景里只存引用和差异、导入器把 Stride 的实例转成引用、编辑器里改删实例的成员落成覆盖、单独打开预制体编辑、覆盖里的资源路径随移动改写。
-- **P4 现代画面**：底座（统计量和预算、管线预热、渲染图、阴影图集按需、画质档位）做了；画面功能做了 TAA 加运动向量、GTAO、屏幕空间反射、接触阴影、运动模糊。
-
-### 2.2 这一轮（2026-11-20 下午）新做的，按提交
-
-| 提交 | 内容 | 验证 |
-|---|---|---|
-| `d5d39a2`、`78ed87e` | 预制体实例就是预制体的根；导入器把 Stride 的实例转成引用（TPP 134 个，场景文件 194 → 101 KB） | 全量回归通过，已推送 |
-| `9d5be40` | 编辑器里改、删实例的成员（`editor/prefabEdits.ts`） | 全量回归通过，Chrome 里在 TopDownRPG 上验过，已推送 |
-| `8c6fea7` | 单独打开预制体编辑；覆盖里的资源路径算引用 | Chrome 里在 TPP 上验过（改了再改回，文件 SHA-1 不变），已推送 |
-| `406457e`、`aee40c7` | 后处理、GTAO、背景的管线加载时预热（TPP 当场建的管线 22 → 5） | 全量回归通过，已推送 |
-| `1b9adeb` | 绘制次数按渲染通道数（`stride draws`） | 全量回归通过，已推送 |
-| `0039cd1`、`c5e2115` | 屏幕空间反射第一版 | 全量回归通过，已推送 |
-| `8749132` | 编辑器升级到 vue-tsx-pro 0.30.0（场景树单击能选中了） | Chrome 里验过，全量回归通过，已推送 |
-| `9c2cdde` | 屏幕空间反射：空间上复用邻居的光线（粗糙表面上不再满是黑点） | Chrome 里在 TPP 上看过，全量回归通过，已推送 |
-| `a2792fe` | 接触阴影、运动模糊（默认关） | 单测、类型检查、全量回归通过，已推送；**没在 Chrome 里看过画面** |
-
-同一天在 vue-tsx-pro 那边修了两件事并发了 0.30.0：`css` 改成只有静态方法的类（JetBrains 里按类着色）；拖动工具 `startMove` 设了阈值时过了阈值才捕获指针（能拖动的 Tree 里单击选不中）。
-
-### 2.3 接着做什么（按顺序）
-
-1. **看接触阴影和运动模糊的画面**（`a2792fe`，第一件事）：
-   - TPP（5184）上 `pnpm exec stride contact on`：看角色脚下、墙根、台阶边上的影子是不是贴上去了、没有漏光；不对就调 `--length`（默认 0.3 世界单位）、`--thickness`（默认 0.005）、`--steps`（16）。开关各截一张做差：`pnpm exec stride pause`，`stride contact off`，`stride shot off.png`，`stride contact on`，`stride shot on.png --diff off.png`。
-   - `pnpm exec stride blur on`：静止时画面应该和关着时一样（差 0）；按住方向键跑动、转相机（`stride key KeyW --hold 1000`、`stride mouse move 300 0`）时角色和背景糊得对不对，轮廓不该把背景糊进前景。
-   - 看过以后把结果写进 progress-log.md（"同一天"那一段后面），有问题就修；然后更新 roadmap 进度里的"运动模糊""接触阴影"两行。
-2. **P4 画面功能接着往下**（roadmap 第三节的阶段表）：SSGI、屏幕空间次表面散射；然后阴影（PCSS、缓存的级联）、大气和天气、材质扩展、GPU 粒子……每项照"做法：先读 Stride 的实现和参考仓库 → 写 → 单测 → Chrome 里看 → 回归 → 推送 → 更新进度"。
-3. **P4 底座的剩余**：精灵、TAA 的管线还是第一次用时当场建（精灵透不透明要看贴图，从文件推不出来；TAA 运行中才打开）。
-4. **P3 编辑器的剩余**：多选一起改、复制粘贴实体、加脚本组件、往预制体成员下面加实体；然后用编辑器把 P1、P2 的每个样例打开、改、保存、试玩一遍当验收。
-5. **遗留的小项**（roadmap 进度第 3 条）：~~粒子和场景里 UI 的点选~~（做了）、富文本（运行时做了，剩编辑器里的可视化编辑）、TouchInputs 样例、MSAA、分簇光照、透明物体的阴影……；csharp-beginner、morph-targets 的截图差比早先的记录高 0.04 到 0.28，原因没查完。
-
-### 2.4 交接时没跑完的
-
-- 全量回归：跑完了，全部通过（见第 7 节）。唯一没收尾的是接触阴影和运动模糊的画面（2.3 的第 1 条）。
+看 [roadmap.md](roadmap.md) 末尾的"进度"（各阶段做到哪了、正在做和下一步、遗留的尾巴）和 CLAUDE.md 的"现状"。2026-11-20 那次换机器时的快照（当时的提交表、接着做什么、没跑完的）原样挪到了 [progress-log.md](progress-log.md) 的"换机器交接时的快照（2026-11-20）"。
 
 ---
 
@@ -171,12 +138,12 @@
 
 ## 6. 定时任务（无人值守续跑）
 
-在新机器上用 CronCreate 建一个每 15 分钟的任务，提示词照抄下面这段（"创建于"改成新的日期，"7 天后"那句的日期跟着改）：
+在新机器上用 CronCreate 建一个每 15 分钟的任务，提示词照抄下面这段（2026-11-21 在用的版本；"【续期】"那句的日期改成新建那天往后 6 天）：
 
-> 【无人值守续跑】继续执行 stride-ts 的路线图 docs/roadmap.md（取舍已全部按推荐定，见 docs/decisions.md）。先读路线图末尾的"进度"一节，从记录的下一步接着做；如果上一轮做到一半（工作区有未提交的改动），先把它做完。按路线图第五节的流程推进：缺什么补什么、写单测、用调试 CLI（pnpm exec stride …）在 Chrome 里验证、提交并推送、更新"进度"。长任务放后台跑。只有遇到 D10 里"停下来问"的情况才停下来问用户，其他情况不要停，也不要只汇报不干活。路线图全部完成后，在"进度"里写明，并用 CronDelete 删掉这个定时任务。这个定时任务创建于 2026-11-19，7 天后会自动过期：如果今天已经是 2026-11-25 或更晚，并且路线图还没做完，就用 CronCreate 新建一个同样的任务（每 15 分钟，提示词照抄这段）。
-
-## 7. 交接时的状态
-
-- 定时任务：已停（2026-11-20 10:40 左右）。
-- 推送：交接时把 `main` 全部推到了 origin（用户要求），包括还在跑全量回归的 `8749132`、`9c2cdde`、`a2792fe`。
-- 全量回归：`99b2cfe`（含 `8749132`、`9c2cdde`、`a2792fe`）在旧机器上 20 个样例全部通过；预算基线跟着重记了（每个样例多两个 GPU 缓冲：接触阴影、运动模糊各自的参数缓冲）。新机器上第一次 `pwsh tools/verify.ps1` 是确认新环境，只有帧时间可能要重记。
+> 【无人值守续跑】继续执行 stride-ts 的路线图 docs/roadmap.md（取舍已全部按推荐定，见第四节；只有 D10 里"停下来问"的事才停下问用户）。用中文和用户沟通。
+> 做法：读 docs/roadmap.md "进度"里的"正在做和下一步"（2026-11-20 重排过的有序清单），按顺序做第一项没做完的；做完在清单里划掉、写结论。先读相关代码和参考实现再动手（调研自己做）。做完更新"进度"、docs/decisions.md、docs/progress-log.md 和 CLAUDE.md 的现状。
+> 提交和测试：提交前 pnpm typecheck、pnpm test（失败了不提交）；提交后 git pull --rebase origin main 再推 origin main（不强推）；推送后在验证工作树里跑 pwsh tools/verify.ps1 -Changed -Base <推送前的提交>（回归按 WebGPU 默认上限开页面），失败了修好再推；看 CI（gh run list）的失败并修。在 Chrome 里实际看过、量过耗时才算完成。开发服务器、无头 Chrome 用完就停（pwsh tools/stop-dev.ps1）。改源码里带反引号或 ${} 的文字用 Edit 工具或写成脚本文件，不用 PowerShell 的字符串替换。耗时的命令放后台跑。
+> 调试难时先升级调试 CLI（packages/cli），再用 CLion 的 JS 调试器（MCP 的 xdebug_*）和电脑控制（CLion 点击级、Chrome 只读）。
+> 【单会话】用户 2026-11-20 定：不再多个会话并行，除非用户主动通知；不开子会话、不提议开。../stride-ts-verify-1、-2、-3 是验证位（分离头指针、没有没提交的改动）。
+> 【wasm】原生那边（C:\code\JoltPhysics 的 StrideNative）有问题或者不够用时直接改那边、重编、发新版本，不在 TS 里绕。
+> 【续期】这个定时任务 7 天后过期：2026-11-27 之后路线图还没做完，就照这段文字重新建一个。

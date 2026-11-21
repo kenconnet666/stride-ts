@@ -25,7 +25,8 @@ export function packDepthSurface(view: RenderView, width: number, height: number
   const data = new ArrayBuffer(DEPTH_SURFACE_BYTES);
   const f32 = new Float32Array(data);
   f32.set(view.viewProjection, 0);
-  new Uint32Array(data, 64, 4).set([1, width, height, 0]);
+  // w：反向 Z（RenderView.reversedDepth：主视图是，天空遮挡的俯视图不是），着色器按它认哪里是空的
+  new Uint32Array(data, 64, 4).set([1, width, height, view.reversedDepth ? 1 : 0]);
   f32.set(view.inverseViewProjection, 20);
   // 视图矩阵的第三行是视图空间的 +Z（相机朝 -Z 看）
   const v = view.view;
@@ -44,7 +45,7 @@ export function packDepthSurface(view: RenderView, width: number, height: number
 export const DEPTH_SURFACE_WGSL = /* wgsl */ `
 struct DepthSurface {
   viewProjection: mat4x4f,
-  // x：有效（0 时没有表面），y、z：深度图的宽、高
+  // x：有效（0 时没有表面），y、z：深度图的宽、高，w：1 是反向 Z（近 1 远 0）
   valid: vec4u,
   inverseViewProjection: mat4x4f,
   // 视图看的方向（世界，单位向量）
@@ -69,7 +70,9 @@ fn surfacePoint(texel: vec2i) -> vec4f {
   let depth = textureLoad(surfaceDepth, t, 0);
   let uv = (vec2f(t) + 0.5) / vec2f(size);
   let world = surface.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
-  return vec4f(world.xyz / world.w, select(1.0, 0.0, depth >= 1.0));
+  // 远平面（什么都没画）：正向 Z 是 1，反向 Z 是 0
+  let empty = select(depth >= 1.0, depth <= 0.0, surface.valid.w == 1u);
+  return vec4f(world.xyz / world.w, select(1.0, 0.0, empty));
 }
 
 /** 相邻两个点里离中间那个近的（沿视线）那一边的差：边缘上不跨到后面的背景去。 */

@@ -107,7 +107,10 @@ export class PlanarReflections {
     Matrix.multiply(view.view, main.view, REFLECT);
     // 投影：主相机的，近平面换成反射平面（在镜像相机的视空间里），再把 X 取反
     view.projection.set(main.projection);
+    // 斜裁剪的公式是正向 Z 的：反向 Z 的投影先换回正向（z 行换成 w − z，再换一次就回来），裁剪完再换回去
+    if (main.reversedDepth) flipDepth(view.projection);
     obliqueNearPlane(view.projection, view.view, normal, d + CLIP_OFFSET);
+    if (main.reversedDepth) flipDepth(view.projection);
     for (const i of [0, 4, 8, 12]) view.projection[i] = -view.projection[i]!;
     view.nearClipPlane = main.nearClipPlane;
     view.farClipPlane = main.farClipPlane;
@@ -192,6 +195,11 @@ function reflectionMatrix(out: Float32Array, [x, y, z]: readonly [number, number
     -2 * z * x, -2 * z * y, 1 - 2 * z * z, 0,
     2 * d * x, 2 * d * y, 2 * d * z, 1,
   ]);
+}
+
+/** 投影的深度在正向 Z 和反向 Z 之间换：裁剪空间的 z 换成 w − z（行 3 换成行 4 减行 3），换两次是原样。 */
+function flipDepth(projection: Float32Array): void {
+  for (let c = 0; c < 4; c++) projection[c * 4 + 2] = projection[c * 4 + 3]! - projection[c * 4 + 2]!;
 }
 
 /**

@@ -141,7 +141,7 @@ export class DebugDrawRenderer {
     });
     pass.setBindGroup(0, this.#bindGroup!);
     if (depth) {
-      pass.setPipeline(this.#pipeline(device, gpu, format, 'less-equal'));
+      pass.setPipeline(this.#pipeline(device, gpu, format, 'greater-equal'));
       pass.draw(4, tested.count, 0, 0);
     }
     if (overlay.count > 0) {

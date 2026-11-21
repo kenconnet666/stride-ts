@@ -85,12 +85,13 @@ fn at(p: vec2i, size: vec2i) -> f32 {
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let size = vec2i(textureDimensions(previous));
   let p = vec2i(in.position.xy) * 2;
-  var m = min(min(at(p, size), at(p + vec2i(1, 0), size)), min(at(p + vec2i(0, 1), size), at(p + vec2i(1, 1), size)));
+  // 存最近的：反向 Z 下近的深度大，取最大
+  var m = max(max(at(p, size), at(p + vec2i(1, 0), size)), max(at(p + vec2i(0, 1), size), at(p + vec2i(1, 1), size)));
   let lastX = (size.x & 1) == 1 && p.x + 3 == size.x;
   let lastY = (size.y & 1) == 1 && p.y + 3 == size.y;
-  if (lastX) { m = min(m, min(at(p + vec2i(2, 0), size), at(p + vec2i(2, 1), size))); }
-  if (lastY) { m = min(m, min(at(p + vec2i(0, 2), size), at(p + vec2i(1, 2), size))); }
-  if (lastX && lastY) { m = min(m, at(p + vec2i(2, 2), size)); }
+  if (lastX) { m = max(m, max(at(p + vec2i(2, 0), size), at(p + vec2i(2, 1), size))); }
+  if (lastY) { m = max(m, max(at(p + vec2i(0, 2), size), at(p + vec2i(1, 2), size))); }
+  if (lastX && lastY) { m = max(m, at(p + vec2i(2, 2), size)); }
   return vec4f(m, 0.0, 0.0, 1.0);
 }`;
 
@@ -146,7 +147,7 @@ fn mipResolution(mip: i32) -> vec2f {
   return ssr.size.xy * exp2(-f32(mip));
 }
 
-/** 分层步进（FidelityFX SSSR 的 FFX_SSSR_HierarchicalRaymarch，深度不反转、Hi-Z 存最近的）。返回走到的位置和走了几步。 */
+/** 分层步进（FidelityFX SSSR 的 FFX_SSSR_HierarchicalRaymarch，反向 Z 那一支 FFX_SSSR_INVERTED_DEPTH_RANGE：Hi-Z 存最近的、近的深度大）。返回走到的位置和走了几步。 */
 fn hierarchicalMarch(origin: vec3f, direction: vec3f) -> vec4f {
   let inverse = select(vec3f(FLOAT_MAX), 1.0 / direction, direction != vec3f(0.0));
   let maxMip = i32(ssr.size.z) - 1;
@@ -170,10 +171,10 @@ fn hierarchicalMarch(origin: vec3f, direction: vec3f) -> vec4f {
     let surfaceZ = textureLoad(hiz, vec2i(cell), mip).r;
     plane = (floor(cell) + floorOffset) / resolution + uvOffset;
     var bounds = (vec3f(plane, surfaceZ) - origin) * inverse;
-    // 往远处走的光线才会撞上这一格里最近的那个深度
-    bounds.z = select(FLOAT_MAX, bounds.z, direction.z > 0.0);
+    // 往远处走的光线（反向 Z：深度变小）才会撞上这一格里最近的那个深度
+    bounds.z = select(FLOAT_MAX, bounds.z, direction.z < 0.0);
     let tMin = min(min(bounds.x, bounds.y), bounds.z);
-    let above = surfaceZ > position.z;
+    let above = surfaceZ < position.z;
     let skipped = tMin != bounds.z && above;
     t = select(t, tMin, above);
     position = origin + t * direction;
@@ -232,7 +233,7 @@ fn hierarchicalMarch(origin: vec3f, direction: vec3f) -> vec4f {
   let sceneWorld = worldPosition(ssr, hit.xy, sceneZ);
   let rayWorld = worldPosition(ssr, hit.xy, hit.z);
   let thickness = ssr.params.y * length(ssr.eye.xyz - sceneWorld);
-  if (distance(sceneWorld, rayWorld) > thickness || sceneZ >= 1.0) {
+  if (distance(sceneWorld, rayWorld) > thickness || sceneZ <= 0.0) {
     return vec4f(0.0);
   }
   // 把握：靠近屏幕边缘、接近最大粗糙度时渐隐

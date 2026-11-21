@@ -33,17 +33,18 @@ struct Prefilter { inverseProjection: mat4x4f };
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let full = vec2i(textureDimensions(depth));
   let base = vec2i(in.position.xy) * 2;
-  var d = 1.0;
+  // 四个里最近的（反向 Z：深度大的近，0 是天空）
+  var d = 0.0;
   var at = base;
   for (var i = 0; i < 4; i++) {
     let p = min(base + vec2i(i & 1, i >> 1), full - 1);
     let sample = textureLoad(depth, p, 0);
-    if (sample < d) {
+    if (sample > d) {
       d = sample;
       at = p;
     }
   }
-  if (d >= 1.0) { return vec4f(0.0, 0.0, 1e6, 0.0); }
+  if (d <= 0.0) { return vec4f(0.0, 0.0, 1e6, 0.0); }
   let uv = (vec2f(at) + 0.5) / vec2f(full);
   let v = prefilter.inverseProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, d, 1.0);
   let q = v.xyz / v.w;

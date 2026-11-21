@@ -60,7 +60,7 @@ export class LocalShadowViews {
     receiver.depthB = (near * far) / (near - far);
     const views: RenderView[] = [];
     rectangles.forEach((rectangle, face) => {
-      const view = (this.#views[this.#used++] ??= new RenderView());
+      const view = (this.#views[this.#used++] ??= Object.assign(new RenderView(), { reversedDepth: false }));
       const size = rectangle.width;
       if (light.spot) {
         Matrix.invert(view.view, light.world);

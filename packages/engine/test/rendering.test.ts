@@ -53,10 +53,13 @@ describe('Matrix', () => {
   test('相机的正交投影（Stride 的 OrthoRH）：看到 orthographicSize 高、按宽高比的宽；透视的同 PerspectiveFovRH', () => {
     const camera = { projection: 'orthographic', verticalFieldOfView: 45, orthographicSize: 21, nearClipPlane: 0.1, farClipPlane: 100 } as const;
     const ortho = cameraProjectionMatrix(new Float32Array(16), camera, 16 / 9);
-    expect(rounded(Matrix.transformPoint(ortho, (21 * 16) / 9 / 2, 10.5, -0.1))).toEqual([1, 1, 0]);
-    expect(rounded(Matrix.transformPoint(ortho, 0, -10.5, -100))).toEqual([0, -1, 1]);
+    // 反向 Z（RenderView.reversedDepth）：近平面上的点深度 1，远平面上的 0
+    expect(rounded(Matrix.transformPoint(ortho, (21 * 16) / 9 / 2, 10.5, -0.1))).toEqual([1, 1, 1]);
+    expect(rounded(Matrix.transformPoint(ortho, 0, -10.5, -100))).toEqual([0, -1, 0]);
     const perspective = cameraProjectionMatrix(new Float32Array(16), { ...camera, projection: 'perspective' }, 16 / 9);
-    expect([...perspective]).toEqual([...Matrix.perspectiveFovRH(new Float32Array(16), Math.PI / 4, 16 / 9, 0.1, 100)]);
+    expect([...perspective]).toEqual([...Matrix.perspectiveFovRH(new Float32Array(16), Math.PI / 4, 16 / 9, 0.1, 100, true)]);
+    expect(Matrix.transformPoint(perspective, 0, 0, -0.1)[2]).toBeCloseTo(1, 5);
+    expect(Matrix.transformPoint(perspective, 0, 0, -100)[2]).toBeCloseTo(0, 5);
   });
 
   test('聚光的角度衰减（Stride 的 LightSpot）：内锥的边上是 1，外锥的边上是 0；内外颠倒时按小的当内锥', () => {
@@ -68,9 +71,9 @@ describe('Matrix', () => {
     expect(spotAngleAttenuation(90, 50)).toEqual([scale, offset]);
   });
 
-  test('视锥平面朝内：视野里的点在所有平面的正面，近平面后面、视野外的点在某个平面的背面', () => {
-    const view = new RenderView();
-    Matrix.perspectiveFovRH(view.projection, Math.PI / 2, 1, 0.1, 100);
+  test.each([true, false])('视锥平面朝内（反向 Z：%s）：视野里的点在所有平面的正面，近平面后面、视野外的点在某个平面的背面', (reversed) => {
+    const view = Object.assign(new RenderView(), { reversedDepth: reversed });
+    Matrix.perspectiveFovRH(view.projection, Math.PI / 2, 1, 0.1, 100, reversed);
     view.update();
     const side = (p: readonly number[]) => Array.from({ length: 6 }, (_, i) => {
       const plane = view.frustumPlanes.subarray(i * 4, i * 4 + 4);

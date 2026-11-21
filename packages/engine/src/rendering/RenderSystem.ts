@@ -206,6 +206,12 @@ export class RenderView {
    * 同 Stride 的 VisibilityGroup。update() 算。
    */
   readonly nearPlane = new Float32Array(4);
+  /**
+   * 反向 Z（精度审计，2026-11-21）：深度近 1 远 0，深度比较是 greater-equal、清成 0，浮点深度的精度均匀地落到远处，大世界远处
+   * 不闪。相机的视图（主画面、反射探针、平面反射、画进贴图的相机）都是；阴影和天空遮挡这种只画深度、范围小的视图不是。
+   * 和 Stride 不同：Stride 是正向 Z。
+   */
+  reversedDepth = true;
   /** 剔除时忽略近、远平面（Stride 的 VisiblityIgnoreDepthPlanes）：阴影级联前后的物体也要投下阴影。 */
   ignoreDepthPlanes = false;
   /** 可见物体的包围盒到近平面的最近、最远距离（Stride 的 MinimumDistance、MaximumDistance），剔除后才有。 */
@@ -216,7 +222,7 @@ export class RenderView {
   update(): void {
     Matrix.multiply(this.viewProjection, this.projection, this.view);
     Matrix.invert(this.inverseViewProjection, this.viewProjection);
-    Matrix.frustumPlanes(this.frustumPlanes, this.viewProjection);
+    Matrix.frustumPlanes(this.frustumPlanes, this.viewProjection, this.reversedDepth);
     if (!Matrix.invert(CAMERA_WORLD, this.view)) return;
     this.eye.set(CAMERA_WORLD[12]!, CAMERA_WORLD[13]!, CAMERA_WORLD[14]!);
     // 相机看向本地 -Z

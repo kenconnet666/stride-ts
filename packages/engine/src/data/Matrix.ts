@@ -79,14 +79,15 @@ export const Matrix = {
    * 右手坐标系的透视投影（Stride 的 Matrix.PerspectiveFovRH）：相机看向 -Z，深度 0（近）到 1（远），
    * 和 WebGPU 的裁剪空间一致。fieldOfView 是竖直视角，弧度。
    */
-  perspectiveFovRH(out: Matrix4, fieldOfView: number, aspectRatio: number, near: number, far: number): Matrix4 {
+  perspectiveFovRH(out: Matrix4, fieldOfView: number, aspectRatio: number, near: number, far: number, reversed = false): Matrix4 {
     const yScale = 1 / Math.tan(fieldOfView / 2);
     out.fill(0);
     out[0] = yScale / aspectRatio;
     out[5] = yScale;
-    out[10] = far / (near - far);
+    // 反向 Z（reversed）：近 1 远 0，浮点深度的精度均匀地落在远处（大世界不闪）；正向同 Stride：近 0 远 1
+    out[10] = reversed ? near / (far - near) : far / (near - far);
     out[11] = -1;
-    out[14] = (near * far) / (near - far);
+    out[14] = reversed ? (near * far) / (far - near) : (near * far) / (near - far);
     return out;
   },
 
@@ -99,22 +100,22 @@ export const Matrix = {
     return out;
   },
 
-  /** 右手坐标系的正交投影（Stride 的 Matrix.OrthoOffCenterRH），深度 0（近）到 1（远）。 */
-  orthoOffCenterRH(out: Matrix4, left: number, right: number, bottom: number, top: number, near: number, far: number): Matrix4 {
+  /** 右手坐标系的正交投影（Stride 的 Matrix.OrthoOffCenterRH），深度 0（近）到 1（远）；reversed 时反过来（近 1 远 0）。 */
+  orthoOffCenterRH(out: Matrix4, left: number, right: number, bottom: number, top: number, near: number, far: number, reversed = false): Matrix4 {
     out.fill(0);
     out[0] = 2 / (right - left);
     out[5] = 2 / (top - bottom);
-    out[10] = 1 / (near - far);
+    out[10] = reversed ? 1 / (far - near) : 1 / (near - far);
     out[12] = (left + right) / (left - right);
     out[13] = (top + bottom) / (bottom - top);
-    out[14] = near / (near - far);
+    out[14] = reversed ? far / (far - near) : near / (near - far);
     out[15] = 1;
     return out;
   },
 
   /** 右手坐标系、以视线为中心的正交投影（Stride 的 Matrix.OrthoRH）。 */
-  orthoRH(out: Matrix4, width: number, height: number, near: number, far: number): Matrix4 {
-    return Matrix.orthoOffCenterRH(out, -width / 2, width / 2, -height / 2, height / 2, near, far);
+  orthoRH(out: Matrix4, width: number, height: number, near: number, far: number, reversed = false): Matrix4 {
+    return Matrix.orthoOffCenterRH(out, -width / 2, width / 2, -height / 2, height / 2, near, far, reversed);
   },
 
   /** 先缩放再平移（Stride 的 Matrix.Scaling(s) * Matrix.Translation(t)）。 */
@@ -134,7 +135,7 @@ export const Matrix = {
    * 视图投影矩阵的 6 个视锥平面，朝内（dot(n, p) + w > 0 在内侧），法线归一化，顺序：左、右、下、上、近、远
    * （近、远在最后，剔除时可以只用前 4 个）。深度范围 0..1，同 WebGPU。
    */
-  frustumPlanes(out: Float32Array, viewProjection: Readonly<Matrix4>): Float32Array {
+  frustumPlanes(out: Float32Array, viewProjection: Readonly<Matrix4>, reversed = false): Float32Array {
     const m = viewProjection;
     // 裁剪坐标 = M * p，第 i 行是 (m[i], m[4 + i], m[8 + i], m[12 + i])
     const row = (i: number, sign: number, base: number | undefined, o: number): void => {
@@ -144,8 +145,14 @@ export const Matrix = {
     row(0, -1, 3, 4);
     row(1, 1, 3, 8);
     row(1, -1, 3, 12);
-    row(2, 1, undefined, 16);
-    row(2, -1, 3, 20);
+    // 近平面 z ≥ 0、远平面 z ≤ w；反向 Z 时两个对调（近平面 z ≤ w、远平面 z ≥ 0）
+    if (reversed) {
+      row(2, -1, 3, 16);
+      row(2, 1, undefined, 20);
+    } else {
+      row(2, 1, undefined, 16);
+      row(2, -1, 3, 20);
+    }
     for (let o = 0; o < 24; o += 4) {
       const length = Math.hypot(out[o]!, out[o + 1]!, out[o + 2]!) || 1;
       for (let c = 0; c < 4; c++) out[o + c]! /= length;

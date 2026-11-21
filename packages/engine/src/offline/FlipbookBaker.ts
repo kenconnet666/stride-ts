@@ -132,7 +132,7 @@ export async function bakeFlipbook(game: Game, source: ParticleSystemComponent, 
         const pass = encoder.beginRenderPass({
           label: 'Flipbook frame',
           colorAttachments: [{ view: texture.createView(), loadOp: i === 0 ? 'clear' : 'load', clearValue: [clear, clear, clear, clear], storeOp: 'store' }],
-          depthStencilAttachment: { view: depth.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'discard' },
+          depthStencilAttachment: { view: depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'discard' },
         });
         // 第一帧整张清一次底色，之后只画自己那一格
         pass.setViewport((i % columns) * frameSize, Math.floor(i / columns) * frameSize, frameSize, frameSize, 0, 1);
@@ -256,7 +256,7 @@ function cameraView(framing: Framing, axes: (typeof AXES)[FlipbookView], pixels:
   Matrix.lookAtRH(view.view, eye, framing.center, axes.up);
   view.nearClipPlane = 0.01;
   view.farClipPlane = distance + framing.depth + 1;
-  Matrix.orthoRH(view.projection, framing.size, framing.size, view.nearClipPlane, view.farClipPlane);
+  Matrix.orthoRH(view.projection, framing.size, framing.size, view.nearClipPlane, view.farClipPlane, true);
   view.width = view.height = pixels;
   view.update();
   return view;

@@ -41,13 +41,15 @@ fn worldAt(uv: vec2f, z: f32) -> vec3f {
   let size = contact.params.zw;
   let uv = (vec2f(pixel) + 0.5) / size;
   let origin = worldAt(uv, z);
-  let eye = worldAt(uv, 0.0);
+  // 近平面上的点（反向 Z：深度 1）
+  let eye = worldAt(uv, 1.0);
   // 法线由深度重建（导数要在分支之前取）；朝向相机那一面
   var normal = normalize(cross(dpdy(origin), dpdx(origin)));
   if (dot(normal, eye - origin) < 0.0) {
     normal = -normal;
   }
-  if (z >= 1.0) {
+  // 反向 Z：0 是天空
+  if (z <= 0.0) {
     return vec4f(1.0);
   }
   // 背光的面直射项本来就是 0，不用再算；掠射的面上光线贴着表面走，最容易把自己当成挡住的东西

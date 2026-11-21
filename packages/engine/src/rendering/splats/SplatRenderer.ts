@@ -439,7 +439,7 @@ export class SplatRenderer {
           targets: [{ format: colorFormat, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
         },
         primitive: { topology: 'triangle-strip' },
-        depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
+        depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'greater-equal' },
       });
       this.#drawPipelines.set(key, pipeline);
     }

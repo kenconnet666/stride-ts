@@ -388,12 +388,14 @@ fn sampleHistory(uv: vec2f) -> vec4f {
   // 这个像素盖着的 2x2 个画面像素都被物体挡着：不算
   let full = vec2i(clouds.size.zw) - 1;
   let corner = vec2i(in.position.xy) * 2;
-  let farthest = max(
-    max(textureLoad(depth, min(corner, full), 0), textureLoad(depth, min(corner + vec2i(1, 0), full), 0)),
-    max(textureLoad(depth, min(corner + vec2i(0, 1), full), 0), textureLoad(depth, min(corner + vec2i(1, 1), full), 0)));
-  if (farthest < 1.0) { return vec4f(0.0, 0.0, 0.0, NOT_MARCHED); }
+  // 反向 Z：远的深度小，最远的是最小的那个；0 是天空
+  let farthest = min(
+    min(textureLoad(depth, min(corner, full), 0), textureLoad(depth, min(corner + vec2i(1, 0), full), 0)),
+    min(textureLoad(depth, min(corner + vec2i(0, 1), full), 0), textureLoad(depth, min(corner + vec2i(1, 1), full), 0)));
+  if (farthest > 0.0) { return vec4f(0.0, 0.0, 0.0, NOT_MARCHED); }
 
-  let far = clouds.inverseViewProjection * vec4f(in.ndc, 1.0, 1.0);
+  // 远平面上的点（反向 Z：深度 0）
+  let far = clouds.inverseViewProjection * vec4f(in.ndc, 0.0, 1.0);
   let direction = normalize(far.xyz / far.w - clouds.eye.xyz);
   // 每帧换一个抖动（黄金分割的步子），十几帧里把一步的长度铺满
   let jitter = fract(gradientNoise(in.position.xy) + clouds.eye.w * 0.61803399);
@@ -415,7 +417,8 @@ ${FULLSCREEN_VERTEX}
 @group(0) @binding(1) var depth: texture_depth_2d;
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  if (textureLoad(depth, vec2i(in.position.xy), 0) < 1.0) { discard; }
+  // 反向 Z：0 是天空
+  if (textureLoad(depth, vec2i(in.position.xy), 0) > 0.0) { discard; }
   // 双线性放大，没算的纹素（被物体挡着的那些）不参加：物体的轮廓边上不会混进别的值
   let size = vec2f(textureDimensions(cloudBuffer));
   let position = in.uv * size - 0.5;

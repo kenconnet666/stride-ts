@@ -43,7 +43,7 @@ export class SkyOcclusion implements GpuDepthSurface {
   minRedrawInterval = 0.2;
   /** 画质档位开着（前向渲染器每帧设）。 */
   enabled = true;
-  readonly view = Object.assign(new RenderView(), { receivesShadows: false, skipsSkinned: true, skipsTransparent: true });
+  readonly view = Object.assign(new RenderView(), { receivesShadows: false, skipsSkinned: true, skipsTransparent: true, reversedDepth: false });
   readonly #device: GPUDevice;
   #texture: GPUTexture | undefined;
   #depthView: GPUTextureView | undefined;

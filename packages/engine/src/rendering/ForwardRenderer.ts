@@ -55,7 +55,8 @@ export function spotAngleAttenuation(angleInner: number, angleOuter: number): [s
   return [scale, -cosOuter * scale];
 }
 
-export const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
+// 32 位浮点：反向 Z 的精度要浮点深度才有（定点的 24 位反过来也没用）
+export const DEPTH_FORMAT: GPUTextureFormat = 'depth32float';
 /** 运动向量：UV 的差，两个半精度。 */
 const VELOCITY_FORMAT: GPUTextureFormat = 'rg16float';
 /** 没画运动向量的像素（清屏的值）：比任何画面里的差都大，TAA 看到它就按深度重投影（TemporalAntialiasing.ts 里同一个数）。 */
@@ -632,7 +633,7 @@ export class ForwardRenderer {
           label: `${label} depth prepass`,
           ...(prepassTimestamps ? { timestampWrites: prepassTimestamps } : {}),
           colorAttachments: [],
-          depthStencilAttachment: { view: depthView(real), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
+          depthStencilAttachment: { view: depthView(real), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
         });
         renderSystem.draw(context, prepass, view, this.depthPrepassStage);
         prepass.end();
@@ -689,7 +690,7 @@ export class ForwardRenderer {
           { view: isGraphTexture(target) ? real.view(target) : target, clearValue: [...clearColor], loadOp: 'clear', storeOp: 'store' },
           ...surfaces.map((surface) => ({ view: real.view(surface), clearValue: [0, 0, 0, 0], loadOp: 'clear' as const, storeOp: 'store' as const })),
         ],
-        depthStencilAttachment: { view: depthView(real), depthClearValue: 1, depthLoadOp: prepassNeeded ? 'load' : 'clear', depthStoreOp: keepDepth || split ? 'store' : 'discard' },
+        depthStencilAttachment: { view: depthView(real), depthClearValue: 0, depthLoadOp: prepassNeeded ? 'load' : 'clear', depthStoreOp: keepDepth || split ? 'store' : 'discard' },
       });
       if (view === this.#mainView) this.background?.(pass, { width: output.width, height: output.height, format: output.format, depthFormat: DEPTH_FORMAT, surfaceFormats: output.opaque.output.surfaceFormats ?? [] });
       if (view) renderSystem.draw(context, pass, view, output.opaque);

@@ -16,7 +16,8 @@ struct FullscreenVaryings {
 @vertex fn fullscreenVertex(@builtin(vertex_index) index: u32) -> FullscreenVaryings {
   let ndc = vec2f(f32((index << 1u) & 2u) * 2.0 - 1.0, f32(index & 2u) * 2.0 - 1.0);
   var out: FullscreenVaryings;
-  out.position = vec4f(ndc, 1.0, 1.0);
+  // 深度在远平面上：反向 Z（相机的视图近 1 远 0）是 0，天空、背景按 greater-equal 只画在什么都没画的像素上
+  out.position = vec4f(ndc, 0.0, 1.0);
   out.uv = vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
   out.ndc = ndc;
   return out;

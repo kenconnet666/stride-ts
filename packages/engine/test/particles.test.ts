@@ -655,7 +655,7 @@ describe('粒子的点选（ScenePicker 的编号缓冲）', () => {
     expect(pipeline!.label).toBe('Particles picking');
     expect(pipeline!.fragment!.entryPoint).toBe('fsPick');
     expect(pipeline!.fragment!.targets).toEqual([{ format: 'r32uint' }]);
-    expect(pipeline!.depthStencil).toMatchObject({ depthWriteEnabled: true, depthCompare: 'less-equal' });
+    expect(pipeline!.depthStencil).toMatchObject({ depthWriteEnabled: true, depthCompare: 'greater-equal' });
     const [module] = firstArgs<GPUShaderModuleDescriptor>(calls, 'createShaderModule');
     expect(module!.code).toContain('if (max(color.a * draw.alphaFactor, max(color.r, max(color.g, color.b))) < 0.1) {\n    discard;');
     expect(calls.filter((call) => call.method === 'drawIndexed')).toHaveLength(1);

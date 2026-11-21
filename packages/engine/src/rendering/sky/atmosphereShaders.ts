@@ -437,7 +437,8 @@ ${NIGHT}
 const LUMINANCE = vec3f(0.2126, 0.7152, 0.0722);
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  let far = view.inverseViewProjection * vec4f(in.ndc, 1.0, 1.0);
+  // 远平面上的点（反向 Z：深度 0）
+  let far = view.inverseViewProjection * vec4f(in.ndc, 0.0, 1.0);
   let direction = normalize(far.xyz / far.w - view.eye.xyz);
   // 一个像素的张角：导数要在分支之外取
   let pixel = max(length(dpdx(direction)), length(dpdy(direction)));
@@ -512,7 +513,7 @@ ${AERIAL}
 @compute @workgroup_size(8, 8, 1) fn main(@builtin(global_invocation_id) id: vec3u) {
   if (any(vec2f(id.xy) >= vec2f(AERIAL_SIZE))) { return; }
   let uv = (vec2f(id.xy) + 0.5) / AERIAL_SIZE;
-  let far = camera.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 1.0, 1.0);
+  let far = camera.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
   let direction = normalize(far.xyz / far.w - camera.eye.xyz);
   let origin = vec3f(0.0, atmosphere.ground.w, 0.0);
   var phaseRayleigh: array<f32, 2>;
@@ -566,7 +567,8 @@ ${AERIAL}
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let d = textureLoad(depth, vec2i(in.position.xy), 0);
-  if (d >= 1.0) { discard; }
+  // 反向 Z：0 是天空（远平面）
+  if (d <= 0.0) { discard; }
   let world = camera.inverseViewProjection * vec4f(in.ndc, d, 1.0);
   let distance = length(world.xyz / world.w - camera.eye.xyz) / 1000.0 * camera.eye.w;
   // 层号的反函数：第 i 层的中心在 sqrt(距离 / 总长) - 0.5 / 层数；比第一层还近的按距离淡到 0

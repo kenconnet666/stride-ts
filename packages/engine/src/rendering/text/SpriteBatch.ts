@@ -673,7 +673,7 @@ export class SpriteBatch {
           targets: [{ format: this.#format, blend: { color: { srcFactor: source, dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
         },
         primitive: { topology: 'triangle-strip' },
-        ...(depthFormat ? { depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' } } : {}),
+        ...(depthFormat ? { depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'greater-equal' } } : {}),
       });
       this.#pipelines.set(key, pipeline);
     }

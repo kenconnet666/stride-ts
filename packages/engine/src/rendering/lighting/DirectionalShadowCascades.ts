@@ -28,7 +28,7 @@ type Vec3 = [number, number, number];
 
 export class DirectionalShadowCascades {
   /** 第 i 个级联的阴影视图（忽略近、远平面剔除）。 */
-  readonly views: RenderView[] = Array.from({ length: 4 }, () => Object.assign(new RenderView(), { ignoreDepthPlanes: true }));
+  readonly views: RenderView[] = Array.from({ length: 4 }, () => Object.assign(new RenderView(), { ignoreDepthPlanes: true, reversedDepth: false }));
   #currentMin = 1;
   #currentMax = 2;
   readonly #splitRatios = new Float64Array(4);
@@ -149,7 +149,9 @@ export class DirectionalShadowCascades {
   #updateFrustum(source: RenderView): void {
     Matrix.invert(this.#projectionToView, source.projection);
     this.#cornersWS.length = this.#cornersVS.length = 0;
-    for (const [x, y, z] of FRUSTUM_BASE_POINTS) {
+    for (const [x, y, base] of FRUSTUM_BASE_POINTS) {
+      // 前 4 个是近平面、后 4 个是远平面：反向 Z（主视图）的近平面深度是 1
+      const z = source.reversedDepth ? 1 - base : base;
       this.#cornersWS.push(Matrix.transformPoint(source.inverseViewProjection, x, y, z));
       this.#cornersVS.push(Matrix.transformPoint(this.#projectionToView, x, y, z));
     }

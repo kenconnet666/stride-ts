@@ -44,15 +44,15 @@ export function cameraVerticalFieldOfView(camera: CameraProjection): number {
   return (2 * Math.atan(camera.sensorHeight / (2 * camera.focalLength)) * 180) / Math.PI;
 }
 
-/** 相机的投影矩阵（Stride 的 CameraComponent.Update）：透视按竖直视角，正交看到 orthographicSize 高、按宽高比的宽。 */
+/** 相机的投影矩阵（Stride 的 CameraComponent.Update）：透视按竖直视角，正交看到 orthographicSize 高、按宽高比的宽。反向 Z（近 1 远 0，见 RenderView.reversedDepth）。 */
 export function cameraProjectionMatrix(out: Float32Array, camera: CameraProjection, aspectRatio: number): Float32Array {
   const { nearClipPlane: near, farClipPlane: far } = camera;
   // 画幅比画布宽（上下黑边）：画幅的视角不变，画布的竖直方向按比例多看一些
   const gate = camera.aspectRatio ?? 0;
   const stretch = gate > aspectRatio ? gate / aspectRatio : 1;
   return camera.projection === 'orthographic'
-    ? Matrix.orthoRH(out, aspectRatio * camera.orthographicSize * stretch, camera.orthographicSize * stretch, near, far)
-    : Matrix.perspectiveFovRH(out, 2 * Math.atan(Math.tan((cameraVerticalFieldOfView(camera) * Math.PI) / 360) * stretch), aspectRatio, near, far);
+    ? Matrix.orthoRH(out, aspectRatio * camera.orthographicSize * stretch, camera.orthographicSize * stretch, near, far, true)
+    : Matrix.perspectiveFovRH(out, 2 * Math.atan(Math.tan((cameraVerticalFieldOfView(camera) * Math.PI) / 360) * stretch), aspectRatio, near, far, true);
 }
 
 /**

@@ -6,6 +6,7 @@
  * 粒子系统的位置、旋转按实体的世界矩阵，统一缩放取世界矩阵 X 轴的长度。
  * 和 Stride 不同：组件的 Control（ResetSeconds、播放状态）只在 Stride 的编辑器里起作用，这里不导入运行时。
  */
+import { shaderTime } from '../engine/GameTime';
 import type { ParticleModuleFile } from '../content/format';
 import type { Game } from '../engine/Game';
 import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
@@ -99,14 +100,14 @@ export class ParticleSystems {
   /** @internal 画进 pass（前向渲染器的透明阶段）。 */
   draw(game: Game, pass: GPURenderPassEncoder, view: RenderView, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     this.#renderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources, { gpu: this.#gpuOf });
-    this.#renderer.draw(pass, view, this.components, colorFormat, depthFormat, game.updateTime.total);
+    this.#renderer.draw(pass, view, this.components, colorFormat, depthFormat, shaderTime(game.updateTime.total));
   }
 
   /** @internal 画进点选的编号缓冲（ScenePicker，颜色格式 r32uint）：写粒子系统所在实体的变换槽位加一。 */
   drawPicking(game: Game, pass: GPURenderPassEncoder, view: RenderView, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     if (this.#components.size === 0) return;
     this.#pickingRenderer ??= new ParticleRenderer(game.graphicsDevice.device, game.renderSystem.resources, { pickId: (component) => transformSlot(component.entity) + 1, gpu: this.#gpuOf });
-    this.#pickingRenderer.draw(pass, view, this.components, colorFormat, depthFormat, game.updateTime.total);
+    this.#pickingRenderer.draw(pass, view, this.components, colorFormat, depthFormat, shaderTime(game.updateTime.total));
   }
 
   /** @internal Game 在画完 UI 之后调用：合成器要粒子画在 UI 上面时画进后备缓冲。 */
@@ -238,12 +239,12 @@ export class ParticleSystems {
         const state = this.#stateFor(emitter, device);
         if (!state) continue;
         // 预热：一步一次派发、马上提交（在这一帧的模拟之前）；管线还在编时留到下一帧
-        if (emitter.gpuWarmup.length > 0 && state.warmup(emitter.gpuWarmup, game.updateTime.total)) emitter.gpuWarmup = [];
+        if (emitter.gpuWarmup.length > 0 && state.warmup(emitter.gpuWarmup, shaderTime(game.updateTime.total))) emitter.gpuWarmup = [];
         if (!pass) {
           const timestampWrites = game.graphicsDevice.profiler.passTimestamps('GPU particles');
           pass = game.graphicsDevice.frameEncoder.beginComputePass({ label: 'GPU particles', ...(timestampWrites ? { timestampWrites } : {}) });
         }
-        state.simulate(pass, dt * component.speed, emitter.gpuSpawn, game.updateTime.total);
+        state.simulate(pass, dt * component.speed, emitter.gpuSpawn, shaderTime(game.updateTime.total));
         emitter.gpuSpawn = 0;
         if (back && emitter.sortingPolicy === 'byDepth') state.sort(pass, back);
       }

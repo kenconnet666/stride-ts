@@ -55,8 +55,11 @@ export function uiElementLinkSystem(entities: EntityManager, transforms: Transfo
         let cached = found.get(id);
         if (root && (cached?.root !== root || cached.name !== name)) found.set(id, (cached = { root, name, element: root.findName(name) }));
         const element = root ? cached!.element : null;
-        // 链接是 UI 实体的世界矩阵 × matrix：要的世界矩阵左乘 UI 实体世界矩阵的逆
-        if (!element || !ui.elementWorldMatrix(elementWorld, uiComponent, element) || !Matrix.invert(inverseUiWorld, target.require(Transform).renderWorld)) {
+        // 链接是 UI 实体的世界矩阵 × matrix：要的世界矩阵左乘 UI 实体世界矩阵的逆。放在 3D 里的 UI，元素的矩阵在渲染空间里
+        // （D18），和 UI 实体的 renderWorld 一起换算才准（世界 = 平移(渲染原点) · renderWorld，乘回去正好）；全屏的 UI 的元素
+        // 矩阵在 UI 自己的坐标里，照 Stride 的语义按世界矩阵换算
+        const uiWorld = uiComponent.isFullScreen ? target.require(Transform).world : target.require(Transform).renderWorld;
+        if (!element || !ui.elementWorldMatrix(elementWorld, uiComponent, element) || !Matrix.invert(inverseUiWorld, uiWorld)) {
           transforms.setLink(slot, transformSlot(target), IDENTITY);
           continue;
         }

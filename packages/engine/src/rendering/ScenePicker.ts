@@ -102,7 +102,7 @@ export class ScenePicker {
       const pass = encoder.beginRenderPass({
         label: 'ScenePicker',
         colorAttachments: [{ view: targets.id.createView(), clearValue: [0, 0, 0, 0], loadOp: 'clear', storeOp: 'store' }],
-        depthStencilAttachment: { view: targets.depth.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
+        depthStencilAttachment: { view: targets.depth.createView(), depthClearValue: 0, depthLoadOp: 'clear', depthStoreOp: 'store' },
       });
       // 只画被点的那个像素；排除的渲染组只在这一遍里不画（视图的掩码马上放回去）
       pass.setScissorRect(x, y, 1, 1);

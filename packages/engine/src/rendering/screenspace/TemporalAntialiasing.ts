@@ -93,7 +93,8 @@ fn clipToBox(previous: vec3f, low: vec3f, high: vec3f) -> vec3f {
   let size = vec2i(textureDimensions(current));
   var m1 = vec3f(0.0);
   var m2 = vec3f(0.0);
-  var closest = 1.0;
+  // 最近的深度：反向 Z 下近的深度大
+  var closest = 0.0;
   var closestPixel = pixel;
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
@@ -102,7 +103,7 @@ fn clipToBox(previous: vec3f, low: vec3f, high: vec3f) -> vec3f {
       m1 += c;
       m2 += c * c;
       let d = textureLoad(depth, p, 0);
-      if (d < closest) {
+      if (d > closest) {
         closest = d;
         closestPixel = p;
       }

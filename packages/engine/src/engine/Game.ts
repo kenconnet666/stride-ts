@@ -654,7 +654,8 @@ export class Game {
       const px = Math.floor(x * ratio), py = Math.floor(y * ratio);
       const hit = await this.graphicsCompositor.picker.pickSurface(px, py, excludeGroups);
       const view = this.graphicsCompositor.mainView;
-      if (!hit || hit.depth >= 1 || !view) return undefined;
+      // 反向 Z：0 是什么都没画（天空）
+      if (!hit || hit.depth <= 0 || !view) return undefined;
       // 像素中心换成裁剪空间（y 向上），深度就是 NDC 的 z（0 到 1），用视图投影的逆矩阵换回世界
       const ndcX = ((px + 0.5) / canvas.width) * 2 - 1, ndcY = 1 - ((py + 0.5) / canvas.height) * 2;
       // 视图在渲染空间里：点加上渲染原点才是世界坐标

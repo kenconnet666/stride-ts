@@ -314,7 +314,7 @@ export class SpriteRenderFeature extends RootRenderFeature {
       primitive: { topology: 'triangle-strip', cullMode: 'none' },
       depthStencil: ignoreDepth
         ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'always' }
-        : { format: depthFormat, depthWriteEnabled: true, depthCompare: 'less-equal' },
+        : { format: depthFormat, depthWriteEnabled: true, depthCompare: 'greater-equal' },
     };
   }
 

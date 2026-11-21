@@ -14,6 +14,7 @@
  *   （GPU 蒙皮，Stride 的 TransformationSkinning），再乘世界矩阵。阴影投射阶段只画投射阴影的批次，管线只写深度。
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
+import { shaderTime } from '../../engine/GameTime';
 import type { Decals } from './Decals';
 import { clusterParams, type Clusters } from '../lighting/Clusters';
 import type { LocalLightBuffer } from '../lighting/LocalLights';
@@ -263,7 +264,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       this.#sortTransparentInstances(context, pass);
     }
     gpu.uploadInstances(passes, offset);
-    gpu.uploadViews(this.system.views, this.system.lighting, context.game.updateTime.total);
+    gpu.uploadViews(this.system.views, this.system.lighting, shaderTime(context.game.updateTime.total));
   }
 
   /**
@@ -777,7 +778,8 @@ class Gpu {
           : {
             format: depthFormat,
             depthWriteEnabled: !stage.transparent && !stage.wireframe,
-            depthCompare: 'less-equal',
+            // 反向 Z（RenderView.reversedDepth）：相机的视图近 1 远 0；阴影投射的阶段（阴影、天空遮挡）照旧是正向
+            depthCompare: stage.shadowCasters ? 'less-equal' : 'greater-equal',
             // 和 Stride 不同：阴影投射另加按坡度的深度偏移。只有常量偏移加法线偏移时，太阳低（20° 左右）、光掠过地面，
             // 阴影图的深度量化在受光面上成了一圈圈的痤疮（日夜循环里常见）
             ...(stage.shadowCasters ? { depthBiasSlopeScale: SHADOW_SLOPE_BIAS, depthBiasClamp: 0.01 } : {}),

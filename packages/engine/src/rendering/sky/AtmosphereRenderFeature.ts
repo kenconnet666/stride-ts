@@ -86,7 +86,7 @@ export class AtmosphereRenderFeature extends RootRenderFeature {
       layout: this.system.device.createPipelineLayout({ bindGroupLayouts: [gpu.skyLayout, gpu.viewLayout] }),
       vertex: { module: gpu.skyModule, entryPoint: 'fullscreenVertex' },
       fragment: { module: gpu.skyModule, entryPoint: 'fs', targets: colorTargets(stage, { format: colorFormat }) },
-      depthStencil: { format: stage.output.depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
+      depthStencil: { format: stage.output.depthFormat, depthWriteEnabled: false, depthCompare: 'greater-equal' },
     })];
   }
 }

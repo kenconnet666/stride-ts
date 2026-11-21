@@ -31,7 +31,8 @@ struct Uniforms {
 @group(0) @binding(3) var image: texture_2d<f32>;
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  let far = uniforms.inverseViewProjection * vec4f(in.ndc, 1.0, 1.0);
+  // 远平面上的点（反向 Z：深度 0）
+  let far = uniforms.inverseViewProjection * vec4f(in.ndc, 0.0, 1.0);
   let direction = far.xyz / far.w - uniforms.eye.xyz;
   let rotation = mat3x3f(uniforms.rotation[0].xyz, uniforms.rotation[1].xyz, uniforms.rotation[2].xyz);
   let d = normalize(direction * rotation);
@@ -198,7 +199,7 @@ export class BackgroundRenderFeature extends RootRenderFeature {
       layout: this.system.device.createPipelineLayout({ bindGroupLayouts: [gpu.layout] }),
       vertex: { module: gpu.module, entryPoint: 'fullscreenVertex' },
       fragment: { module: gpu.module, entryPoint, targets: colorTargets(stage, { format: colorFormat }) },
-      depthStencil: { format: stage.output.depthFormat, depthWriteEnabled: false, depthCompare: 'less-equal' },
+      depthStencil: { format: stage.output.depthFormat, depthWriteEnabled: false, depthCompare: 'greater-equal' },
     };
   }
 

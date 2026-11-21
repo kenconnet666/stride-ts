@@ -212,7 +212,7 @@ export class ReflectionProbes {
     const { forward, up } = FACES[face]!;
     const [x, y, z] = next.center;
     Matrix.lookAtRH(view.view, next.center, [x + forward[0], y + forward[1], z + forward[2]], up);
-    Matrix.perspectiveFovRH(view.projection, Math.PI / 2, 1, NEAR, FAR);
+    Matrix.perspectiveFovRH(view.projection, Math.PI / 2, 1, NEAR, FAR, true);
     view.nearClipPlane = NEAR;
     view.farClipPlane = FAR;
     view.width = view.height = this.size;

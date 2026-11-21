@@ -12,6 +12,7 @@
  *   一段解析的指数高度雾（farFog；Quílez 的做法，光学深度沿视线解析积分）：只有主光（不算阴影）和环境光，没有噪声。
  * - 还没做：点光、聚光在雾里的阴影；透明的物体在雾的前面还是后面（现在按它身后不透明物体的距离算）。
  */
+import { shaderTime } from '../../engine/GameTime';
 import { system } from '../../engine/system';
 import type { GpuResources } from '../../graphics/GpuResources';
 import { VolumetricFog } from '../components';
@@ -193,7 +194,8 @@ fn sunShadow(world: vec3f) -> f32 {
   let size = textureDimensions(output);
   if (any(id >= size)) { return; }
   let uv = (vec2f(id.xy) + 0.5) / vec2f(size.xy);
-  let far = fog.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 1.0, 1.0);
+  // 远平面上的点（反向 Z：深度 0）
+  let far = fog.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, 0.0, 1.0);
   let direction = normalize(far.xyz / far.w - fog.eye.xyz);
   // 这一帧体素在层里的位置：每一列错开（交错梯度噪声），每帧再挪（黄金分割的步子）
   let jitter = fract(gradientNoise(vec2f(id.xy)) + fog.eye.w);
@@ -285,7 +287,8 @@ fn farFog(direction: vec3f, start: f32, end: f32) -> vec4f {
   let world = fog.inverseViewProjection * vec4f(in.ndc, d, 1.0);
   let offset = world.xyz / world.w - fog.eye.xyz;
   // 天空的像素当作很远（10 万米）
-  let fullDistance = select(length(offset), 1e5, d >= 1.0);
+  // 反向 Z：0 是天空
+  let fullDistance = select(length(offset), 1e5, d <= 0.0);
   let direction = normalize(offset);
   // 表里的那一段：天空的像素、比表远的物体按表的尽头算
   let distance = min(fullDistance, fog.fog.w);
@@ -437,7 +440,7 @@ export class Fog {
     ], 144);
     data.set(cloud ? [cloud.scale, cloud.offset[0], cloud.offset[1], 1] : [0, 0, 0, 0], 148);
     data.set(clusterParams(view), 152);
-    data.set([lighting.localCount, this.#time, s.noise, s.noiseScale], 160);
+    data.set([lighting.localCount, shaderTime(this.#time), s.noise, s.noiseScale], 160);
     data.set([...this.#wind, s.farFog ? 1 : 0], 164);
     return data;
   }

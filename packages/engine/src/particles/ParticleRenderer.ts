@@ -318,7 +318,7 @@ export class ParticleRenderer {
       },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       // 点选时写深度：后画的 UI、别的粒子系统和它比远近
-      depthStencil: { format: depthFormat, depthWriteEnabled: picking, depthCompare: 'less-equal' },
+      depthStencil: { format: depthFormat, depthWriteEnabled: picking, depthCompare: 'greater-equal' },
     };
   }
 

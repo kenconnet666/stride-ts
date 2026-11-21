@@ -1,9 +1,10 @@
-import { Eye, EyeOff } from '@lucide/icons';
+import { Eye, EyeOff, TriangleAlert } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton, Tree, type TreeMove, type TreeMoveTarget } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Icon, IconButton, Tree, type TreeMove, type TreeMoveTarget } from '@zerodep-dev/vue-tsx-pro-ui';
 import { watch } from 'vue';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
+import { availableParent } from '@stride-ts/engine/content-prefabs';
 import { t } from './messages';
 import type { EditorSession } from './session';
 
@@ -13,6 +14,7 @@ const styles = css.create({
   prefab: { color: '_textMuted', fontSize: '0.85em' },
   noScene: { display: 'block', padding: '_sm', color: '_textMuted', fontSize: '0.85em', whiteSpace: 'normal' },
   member: { fontStyle: 'italic' },
+  detached: { display: 'inline-flex', alignItems: 'center', gap: '_xs', color: '_warningText' },
   scene: { fontWeight: '600' },
   // 子场景：名字加一个看不看的开关，没在看的淡一点
   child: { display: 'inline-flex', alignItems: 'center', gap: '_xs' },
@@ -27,6 +29,8 @@ interface Node {
   readonly key: string;
   readonly entity?: SceneEntityFile;
   readonly scene?: string;
+  /** 实体在文档里的父实体不在了（预制体删了它挂着的成员）：节点先挂在最近的实例下面，标出来。 */
+  readonly detached?: boolean;
   readonly children: Node[];
 }
 
@@ -35,13 +39,18 @@ const DOCUMENT = '\0document';
 /** 子场景节点的键的前缀（后面是内容路径）。 */
 const CHILD_SCENE = '\0scene:';
 
-/** 实体列表按父子排成树，同级保持文件里的顺序。 */
+/**
+ * 实体列表按父子排成树，同级保持文件里的顺序。父实体不在了的（预制体删了它挂着的成员）同游戏里一样挂在最近的实例下面
+ * （availableParent），标出来让用户挪。
+ */
 function buildTree(entities: readonly SceneEntityFile[]): Node[] {
-  const nodes = new Map(entities.map((entity) => [entity.id, { key: entity.id, entity, children: [] as Node[] }]));
+  const nodes = new Map<string, Node>(entities.map((entity) => [entity.id, { key: entity.id, entity, children: [] }]));
   const roots: Node[] = [];
-  for (const node of nodes.values()) {
-    const parent = node.entity.parent === null ? undefined : nodes.get(node.entity.parent);
-    (parent ? parent.children : roots).push(node);
+  for (const entity of entities) {
+    let node = nodes.get(entity.id)!;
+    const parentId = entity.parent === null ? null : availableParent(entity.parent, (id) => nodes.has(id));
+    if (entity.parent !== null && parentId !== entity.parent) nodes.set(entity.id, node = { ...node, detached: true });
+    (parentId === null ? roots : nodes.get(parentId)!.children).push(node);
   }
   return roots;
 }
@@ -169,10 +178,17 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       getKey={(node: Node) => node.key}
       getLabel={(node: Node) => (node.entity ? node.entity.name || '(unnamed)' : documentName())}
       renderItem={(node: Node) => (node.entity ? (
-        <span {...css.attrs(session.isMember(node.key) && styles.member)}>
-          {node.entity.name || '(unnamed)'}
-          {prefabLabel(session, node.key)}
-        </span>
+        node.detached ? (
+          <span {...css.attrs(styles.detached)} title={t.parentMissing(session.missingParent(node.entity) ?? '')}>
+            <Icon icon={TriangleAlert} />
+            {node.entity.name || '(unnamed)'}
+          </span>
+        ) : (
+          <span {...css.attrs(session.isMember(node.key) && styles.member)}>
+            {node.entity.name || '(unnamed)'}
+            {prefabLabel(session, node.key)}
+          </span>
+        )
       ) : node.scene !== undefined ? childScene(node.scene) : <span {...css.attrs(styles.scene)} title={t.documentNode}>{documentName()}</span>)}
       getChildren={(node: Node) => node.children}
       hasChildren={(node: Node) => node.children.length > 0}

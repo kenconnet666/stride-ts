@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { SceneEntityFile } from '../src/content/format';
-import { expandPrefabInstances, memberId, prefabPaths, setPath } from '../src/content/prefabInstances';
+import { availableParent, expandPrefabInstances, memberId, prefabPaths, setPath } from '../src/content/prefabInstances';
 
 const entity = (id: string, parent: string | null = null, extra: Partial<SceneEntityFile> = {}): SceneEntityFile =>
   ({ id, name: id, parent, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {}, ...extra });
@@ -89,5 +89,17 @@ describe('预制体实例的展开', () => {
     expect(setPath(e, ['position', 1], 2)!.position).toEqual([0, 2, 0]);
     expect(e.position).toEqual([0, 0, 0]);
     expect(setPath(e, ['components', 'light', 'intensity'], 1)).toBeUndefined();
+  });
+});
+
+describe('父实体不在了挂哪（availableParent）', () => {
+  test('在就是它；成员被预制体删了挂最近的那层实例（嵌套的实例也是）；都没有是最上层', () => {
+    const scene = new Set(['a', 'e1', 'e1/body', 'e1/inner', 'e1/inner/hand']);
+    const exists = (id: string) => scene.has(id);
+    expect(availableParent('e1/body', exists)).toBe('e1/body');
+    expect(availableParent('e1/weapon', exists)).toBe('e1');
+    expect(availableParent('e1/inner/gone', exists)).toBe('e1/inner');
+    expect(availableParent('e2/weapon', exists)).toBeNull();
+    expect(availableParent('missing', exists)).toBeNull();
   });
 });

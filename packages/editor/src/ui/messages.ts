@@ -66,6 +66,7 @@ export interface EditorMessages {
   readonly instanceOf: (prefab: string) => string;
   readonly memberOf: (prefab: string, instance: string, member: string) => string;
   readonly instanceChanges: (own: number, removed: number) => string;
+  readonly parentMissing: (parent: string) => string;
   readonly scriptNeedsComponents: (script: string, components: readonly string[]) => string;
   readonly removedRequired: (component: string, dependents: readonly string[]) => string;
   readonly sceneSettingsHint: (scene: string) => string;
@@ -229,6 +230,7 @@ const zhCN: EditorMessages = {
   assetHint: (kind, path) => `${kind} ${path}：改了马上存进资源文件，视口里用到它的实体跟着变。`,
   instanceOf: (prefab) => `预制体 ${prefab} 的实例`,
   memberOf: (prefab, instance, member) => `预制体 ${prefab} 的实例 ${instance} 里的 ${member}`,
+  parentMissing: (parent) => `挂着的 ${parent} 不在了（预制体删了这个成员？），先放在最近的实例下面；拖到要放的地方`,
   instanceChanges: (own, removed) => `${own > 0 ? `，这个实体改了 ${own} 处` : ''}${removed > 0 ? `，去掉了 ${removed} 个实体` : ''}。改的值记在实例上，和预制体一样时不记。`,
   scriptNeedsComponents: (script, components) => `${script} 要实体上有 ${components.join('、')}，场景文件里加不了，试玩时这个脚本不挂`,
   removedRequired: (component, dependents) => `去掉了 ${component}；${dependents.join('、')} 要它，试玩时不起作用`,
@@ -401,6 +403,7 @@ const enUS: EditorMessages = {
   assetHint: (kind, path) => `${kind} ${path}: changes are saved to the asset file at once, and the entities that use it in the viewport follow.`,
   instanceOf: (prefab) => `Instance of prefab ${prefab}`,
   memberOf: (prefab, instance, member) => `${member} in ${instance}, an instance of prefab ${prefab}`,
+  parentMissing: (parent) => `Its parent ${parent} is gone (removed from the prefab?), so it sits under the nearest instance for now; drag it where it belongs`,
   instanceChanges: (own, removed) => `${own > 0 ? `; ${own} change${own === 1 ? '' : 's'} on this entity` : ''}${removed > 0 ? `; ${removed} entit${removed === 1 ? 'y' : 'ies'} removed` : ''}. Changes are stored on the instance, and values equal to the prefab's are not.`,
   scriptNeedsComponents: (script, components) => `${script} needs ${components.join(', ')} on the entity, which scene files cannot add; the script is not attached when playing`,
   removedRequired: (component, dependents) => `Removed ${component}; ${dependents.join(', ')} need${dependents.length === 1 ? 's' : ''} it and will not work when playing`,

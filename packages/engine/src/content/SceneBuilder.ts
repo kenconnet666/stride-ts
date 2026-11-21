@@ -39,6 +39,7 @@ import type { ContentManager, LoadedModel, LoadSceneOptions, SceneReference } fr
 import type { ColliderShapeFile, SceneEntityFile, SceneLightShadow, SceneLocalLightShadow, ScenePostEffects, SceneUI } from './format';
 import { preload } from './loading';
 import type { Prefab } from './Prefab';
+import { availableParent } from './prefabInstances';
 import { entityAssetReferences, type EntityAssetReference } from './references';
 import { SceneScriptBinder } from './sceneScripts';
 
@@ -238,17 +239,13 @@ export class SceneBuilder {
  */
 function parentOf(file: SceneEntityFile, created: ReadonlyMap<string, Entity>, where: string): Entity | undefined {
   const parent = file.parent!;
-  const found = created.get(parent);
-  if (found) return found;
-  for (let slash = parent.lastIndexOf('/'); slash > 0; slash = parent.lastIndexOf('/', slash - 1)) {
-    const instance = created.get(parent.slice(0, slash));
-    if (instance) {
-      console.warn(`[stride] ${where}: entity '${file.name}' has parent ${parent}, which is not in the scene (removed from its prefab?); attached to '${instance.name}' instead`);
-      return instance;
-    }
-  }
-  console.warn(`[stride] ${where}: entity '${file.name}' has parent ${parent}, which is not in the scene; placed at the top level`);
-  return undefined;
+  const available = availableParent(parent, (id) => created.has(id));
+  if (available === parent) return created.get(parent);
+  const instance = available === null ? undefined : created.get(available);
+  console.warn(instance
+    ? `[stride] ${where}: entity '${file.name}' has parent ${parent}, which is not in the scene (removed from its prefab?); attached to '${instance.name}' instead`
+    : `[stride] ${where}: entity '${file.name}' has parent ${parent}, which is not in the scene; placed at the top level`);
+  return instance;
 }
 
 /** 两个版本的实体文件之间的差别。 */

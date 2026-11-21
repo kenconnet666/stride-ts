@@ -15,7 +15,7 @@ import { shallowRef, triggerRef } from 'vue';
 import type { PrefabFile, SceneEntityFile, SceneFile, TimelineFile } from '@stride-ts/engine/content-format';
 import type { GraphFile } from '@stride-ts/engine/node-graph';
 import { encodePng } from '@stride-ts/engine/png';
-import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
+import { availableParent, expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
 import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
@@ -590,6 +590,18 @@ export class EditorSession implements EditableScene {
   /** 展开的场景里的实体属于哪个实例（实例的根和成员）；普通实体是 undefined。 */
   instanceMember(id: string): InstanceMember | undefined {
     return instanceMember(this.file, this.#prefabs, id);
+  }
+
+  /**
+   * 实体在文档里的父实体不在展开的场景里了（预制体删了它挂着的成员）时，给人看的那个父实体：实例换成它的名字（`Coin1/gone`）；
+   * 父实体在时是 undefined。
+   */
+  missingParent({ parent }: SceneEntityFile): string | undefined {
+    if (parent === null) return undefined;
+    const expanded = new Map(this.expanded.map((entity) => [entity.id, entity]));
+    const available = availableParent(parent, (id) => expanded.has(id));
+    if (available === parent) return undefined;
+    return available === null ? parent : `${expanded.get(available)!.name || available}${parent.slice(available.length)}`;
   }
 
   /** 是实例的成员（不是根）：它不在文档里，能改值、删、往下面加实体，不能挪（它跟着预制体）。 */

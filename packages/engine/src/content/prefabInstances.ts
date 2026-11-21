@@ -173,6 +173,19 @@ export function getPath(entity: SceneEntityFile, path: readonly (string | number
   return node;
 }
 
+/**
+ * 实体挂在哪：父实体 parent 在场景里（exists）就是它；不在时（`<实例>/<成员>` 的成员被预制体删掉了）是还在的、最近的那一层
+ * 实例，都没有是 null（最上层）。加载场景和编辑器的场景树用同一条规则。
+ */
+export function availableParent(parent: string, exists: (id: string) => boolean): string | null {
+  if (exists(parent)) return parent;
+  for (let slash = parent.lastIndexOf('/'); slash > 0; slash = parent.lastIndexOf('/', slash - 1)) {
+    const instance = parent.slice(0, slash);
+    if (exists(instance)) return instance;
+  }
+  return null;
+}
+
 /** 两个 JSON 值相同（值是 undefined 的键当没有）。 */
 export function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;

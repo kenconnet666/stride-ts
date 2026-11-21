@@ -17,6 +17,7 @@ const styles = css.create({
   section: { display: 'flex', flexDirection: 'column', gap: '2px' },
   heading: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: '600', marginBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
   hint: { color: '_textMuted', padding: '_sm' },
+  warning: { color: '_warningText' },
   add: { marginBlockStart: '_sm', alignSelf: 'flex-start' },
   // 骨架屏：标题加几行“名字、输入框”，和字段行一样高（28px）
   skeletonRow: { display: 'grid', gridTemplateColumns: '35% 1fr', gap: '_sm', alignItems: 'center', height: '28px' },
@@ -97,6 +98,12 @@ function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
       {where}{t.instanceChanges(own, target.instance.id === id ? removed.length : 0)}
     </div>
   );
+}
+
+/** 实体的父实体不在了（预制体删了它挂着的成员）：提示用户挪，同场景树里的标记。 */
+function parentHint(session: EditorSession, entity: SceneEntityFile) {
+  const missing = session.missingParent(entity);
+  return missing === undefined ? undefined : <div {...css.attrs(styles.hint, styles.warning)} role="status">{t.parentMissing(missing)}</div>;
 }
 
 /**
@@ -268,7 +275,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
         {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
         {list.length === 1
-          ? instanceHint(session, list[0]!)
+          ? [parentHint(session, list[0]!), instanceHint(session, list[0]!)]
           : <div {...css.attrs(styles.hint)}>{t.multiSelection(list.length)}</div>}
         <Fields
           fields={ENTITY_FIELDS}

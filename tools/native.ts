@@ -1,22 +1,19 @@
 /**
- * 原生模块 @stride-ts/native（Jolt 的 fork 里的 `StrideNative/JS`）在两种来源之间切换：
+ * 原生模块 @stride-ts/native（Jolt 的 fork 里的 `StrideNative/JS`）用哪个 GitHub Release：
  *
- *   node tools/native.ts local               把 fork 里刚编好、打好的包（build-wasm.ps1 -SkipTests 出的
- *                                            `StrideNative/JS/stride-ts-native-<版本>.tgz`）拷进 vendor/native/，override 指过去，
- *                                            pnpm install：原生的改动马上在这边用上，测试和发版放后面
- *   node tools/native.ts release <版本>      override 换回 GitHub Release 的地址（推送前：CI 装不到本地的包），pnpm install
+ *   node tools/native.ts dev                 把 fork 里刚编好、打好的包（build-wasm.ps1 -SkipTests）发成临时的预发行版
+ *                                            （release-native.ps1 -Dev，标签 native-dev-<提交>；fork 要先提交推送），override 指过去，
+ *                                            pnpm install：原生的改动马上在这边用上，CI 也装得到；测试和正式版攒一批再做
+ *   node tools/native.ts release <版本>      override 换成正式版 native-v<版本> 的地址，pnpm install
  *
- * 和 tools/vue-tsx-pro.ts 一样，tgz 放在仓库里面（vendor/ 不进仓库）：路径不带 `..`，JetBrains 解析得了类型。fork 的位置可以用
- * 环境变量 JOLT_FORK 改。流程见 CLAUDE.md 的约定（用户 2026-11-21：wasm 先编译直接用，测试后置）。
+ * 用户 2026-11-21 定：wasm 先编译直接用、测试后置，主仓库用临时发行版。fork 的位置可以用环境变量 JOLT_FORK 改。
  */
-import { execSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, execSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const fork = process.env['JOLT_FORK'] ?? 'C:/code/JoltPhysics';
-const packageDir = path.join(fork, 'StrideNative', 'JS');
-const vendor = path.join(root, 'vendor', 'native');
 const workspace = path.join(root, 'pnpm-workspace.yaml');
 const OVERRIDE = /^( {2}'@stride-ts\/native': ).*$/m;
 const RELEASES = 'https://github.com/kenconnet666/JoltPhysics/releases/download';
@@ -27,16 +24,15 @@ function setOverride(target: string): void {
   writeFileSync(workspace, text.replace(OVERRIDE, `$1${target}`));
   // 参数是固定的词：Windows 上 pnpm 是 .cmd，经 shell 起
   execSync('pnpm install', { cwd: root, stdio: 'inherit' });
+  console.log(`@stride-ts/native → ${target}`);
 }
 
-function local(): void {
-  const { version } = JSON.parse(readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as { version: string };
-  const file = `stride-ts-native-${version}.tgz`;
-  if (!readdirSync(packageDir).includes(file)) throw new Error(`no ${file} in ${packageDir}: build it first (pwsh StrideNative/Scripts/build-wasm.ps1 -SkipTests in the fork)`);
-  rmSync(vendor, { recursive: true, force: true });
-  mkdirSync(vendor, { recursive: true });
-  copyFileSync(path.join(packageDir, file), path.join(vendor, file));
-  setOverride(`file:vendor/native/${file}`);
+function dev(): void {
+  const script = path.join(fork, 'StrideNative', 'Scripts', 'release-native.ps1');
+  const output = execFileSync('pwsh', ['-NoProfile', '-File', script, '-Dev'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  const url = output.trim().split(/\r?\n/).at(-1)!;
+  if (!url.startsWith(`${RELEASES}/native-dev-`)) throw new Error(`release-native.ps1 -Dev printed no download url:\n${output}`);
+  setOverride(url);
 }
 
 function release(version: string): void {
@@ -45,9 +41,9 @@ function release(version: string): void {
 }
 
 const [command, version] = process.argv.slice(2);
-if (command === 'local') local();
+if (command === 'dev') dev();
 else if (command === 'release' && version) release(version);
 else {
-  console.error('usage: node tools/native.ts local | release <version>');
+  console.error('usage: node tools/native.ts dev | release <version>');
   process.exit(2);
 }

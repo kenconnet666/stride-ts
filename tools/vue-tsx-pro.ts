@@ -1,29 +1,26 @@
 /**
  * 编辑器用的 vue-tsx-pro（`~/IdeaProjects/vue-tsx-pro`，npm 包 `@zerodep-dev/vue-tsx-pro-tsx`、`-ui`）在两种来源之间切换：
  *
- *   node tools/vue-tsx-pro.ts local          在 vue-tsx-pro 里打包 tsx、ui（pnpm pack，会先构建），放进 vendor/vue-tsx-pro/，
- *                                            pnpm-workspace.yaml 的 overrides 指过去，pnpm install：库里的改动当场在编辑器里见效
- *   node tools/vue-tsx-pro.ts npm <版本>     去掉那两条 override，编辑器的依赖写成 ^<版本>，pnpm install（推送前：CI 装不到本地的包）
+ *   node tools/vue-tsx-pro.ts dev            在 vue-tsx-pro 里发临时的预发行版（scripts/dev-release.mjs：不跑测试，pnpm pack 四个包挂到
+ *                                            GitHub 的 dev-<提交> 上；库要先提交推送），pnpm-workspace.yaml 的 overrides 指向那里的
+ *                                            tsx、ui，pnpm install：库里的改动马上在编辑器里用上，CI 也装得到
+ *   node tools/vue-tsx-pro.ts npm <版本>     去掉那两条 override，编辑器的依赖写成 ^<版本>（npm 上的正式版），pnpm install
  *
- * tgz 放在仓库里面（vendor/ 不进仓库）：路径不带 `..`，pnpm 建的目录名 JetBrains 解析得了类型。库的位置可以用环境变量
- * VUE_TSX_PRO 改。流程见 CLAUDE.md 的约定（用户 2026-11-21：本地打包本地安装来快速迭代，同时照常发版）。
+ * 用户 2026-11-21 定：vue-tsx-pro 先编译直接用、测试后置，主仓库用临时发行版（不再本地安装覆盖）；测试和正式版攒一批再做。
+ * 库的位置可以用环境变量 VUE_TSX_PRO 改。
  */
-import { execSync } from 'node:child_process';
-import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, execSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
 const library = process.env['VUE_TSX_PRO'] ?? path.join(homedir(), 'IdeaProjects', 'vue-tsx-pro');
-const vendor = path.join(root, 'vendor', 'vue-tsx-pro');
 const workspace = path.join(root, 'pnpm-workspace.yaml');
-const PACKAGES = { tsx: '@zerodep-dev/vue-tsx-pro-tsx', ui: '@zerodep-dev/vue-tsx-pro-ui' } as const;
+const PACKAGES = ['@zerodep-dev/vue-tsx-pro-tsx', '@zerodep-dev/vue-tsx-pro-ui'] as const;
 /** 这两条 override 前后的标记行：切回 npm 时整段删掉。 */
-const BEGIN = '  # vue-tsx-pro：本地打的包（node tools/vue-tsx-pro.ts local；推送前 npm <版本> 换回）';
-const END = '  # vue-tsx-pro 本地包结束';
-
-// 参数都是自己拼的路径和固定的词（没有空格、引号），拼成一行交给 shell：Windows 上 pnpm 是 .cmd，不经 shell 起不来
-const pnpm = (args: string[], cwd: string) => execSync(`pnpm ${args.map((a) => JSON.stringify(a)).join(' ')}`, { cwd, stdio: 'inherit' });
+const BEGIN = '  # vue-tsx-pro：临时发行版（node tools/vue-tsx-pro.ts dev；正式版发了以后 npm <版本> 换回）';
+const END = '  # vue-tsx-pro 临时发行版结束';
 
 function setOverrides(lines: string[]): void {
   const text = readFileSync(workspace, 'utf8');
@@ -33,18 +30,17 @@ function setOverrides(lines: string[]): void {
   writeFileSync(workspace, without.replace(/\noverrides:\n/, `\noverrides:\n${block}`));
 }
 
-function local(): void {
-  rmSync(vendor, { recursive: true, force: true });
-  mkdirSync(vendor, { recursive: true });
-  for (const name of Object.keys(PACKAGES)) pnpm(['pack', '--pack-destination', vendor], path.join(library, 'packages', name));
-  const files = readdirSync(vendor);
-  const lines = Object.entries(PACKAGES).map(([name, pkg]) => {
-    const file = files.find((f) => f.startsWith(`zerodep-dev-vue-tsx-pro-${name}-`));
-    if (!file) throw new Error(`no packed ${pkg} in ${vendor}`);
-    return `  '${pkg}': file:vendor/vue-tsx-pro/${file}`;
-  });
-  setOverrides(lines);
-  pnpm(['install'], root);
+// Windows 上 pnpm 是 .cmd，经 shell 起（参数是固定的词）
+const install = () => execSync('pnpm install', { cwd: root, stdio: 'inherit' });
+
+function dev(): void {
+  const output = execFileSync('node', ['scripts/dev-release.mjs'], { cwd: library, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  const urls = JSON.parse(output.trim().split(/\r?\n/).at(-1)!) as Record<string, string>;
+  setOverrides(PACKAGES.map((pkg) => {
+    if (!urls[pkg]) throw new Error(`dev-release.mjs printed no url for ${pkg}:\n${output}`);
+    return `  '${pkg}': ${urls[pkg]}`;
+  }));
+  install();
 }
 
 function npm(version: string): void {
@@ -52,15 +48,15 @@ function npm(version: string): void {
   setOverrides([]);
   const manifest = path.join(root, 'packages', 'editor', 'package.json');
   let text = readFileSync(manifest, 'utf8');
-  for (const pkg of Object.values(PACKAGES)) text = text.replace(new RegExp(`("${pkg}": )"[^"]*"`), `$1"^${version}"`);
+  for (const pkg of PACKAGES) text = text.replace(new RegExp(`("${pkg}": )"[^"]*"`), `$1"^${version}"`);
   writeFileSync(manifest, text);
-  pnpm(['install'], root);
+  install();
 }
 
 const [command, version] = process.argv.slice(2);
-if (command === 'local') local();
+if (command === 'dev') dev();
 else if (command === 'npm' && version) npm(version);
 else {
-  console.error('usage: node tools/vue-tsx-pro.ts local | npm <version>');
+  console.error('usage: node tools/vue-tsx-pro.ts dev | npm <version>');
   process.exit(2);
 }

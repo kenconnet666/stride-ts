@@ -191,10 +191,10 @@ const audio = evaluate<Audio>(`(async () => {
   const r = {};
   // 等到显示 Playing：CI 的软件渲染上一帧几百毫秒，固定等 10 帧时有时还是 Stopped
   await tap('Space'); r.playing = await until(() => (find('Space')?.endsWith('Playing') ? find('Space') : null), 2) ?? \`\${find('Space')} (frame \${strideGame.frames})\`;
-  await tap('ArrowUp'); await tap('ArrowLeft'); r.volume = [find('Up/Down'), find('Left/Right')];
-  // 等到显示 Paused（CI 上偶尔没等到，结果里带上第几帧，下次失败时好查）
-  // CI 上偶尔停不下来：失败时带上音频上下文的状态（没有声卡时流式的音乐可能一放就算放完，再按空格成了重新放）
+  // 放起来马上暂停，再调音量和声像：音乐只有 17 秒左右，CI 的软件渲染上一帧几百毫秒，先调音量再暂停时音乐已经放完（成了 Stopped）
+  // 等到显示 Paused；没等到时结果里带上第几帧和音频上下文的状态
   await tap('Space'); r.paused = await until(() => (find('Space')?.endsWith('Paused') ? find('Space') : null), 2) ?? \`\${find('Space')} (frame \${strideGame.frames}, audio \${strideGame.audio.context.state})\`;
+  await tap('ArrowUp'); await tap('ArrowLeft'); r.volume = [find('Up/Down'), find('Left/Right')];
   const gun = named('AudioDemo')[0].require(strideEngine.AudioEmitterComponent).controller('Gun');
   r.gun = [gun.playState];
   // 按着右键的时候看：帧慢时松开以后再看，枪声可能已经放完了

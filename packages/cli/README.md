@@ -52,6 +52,23 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 
 **测性能前**：确认笔记本的电源模式（静谧模式下 GPU 慢好几倍），`status` 里的 `gpu.description` 记下了适配器。
 
+## 类型感知（`stride ts`、`eval --check`）
+
+CLI 起一个 TypeScript 7 的语言服务器（仓库里装的 `tsc --lsp --stdio`，`src/lsp.ts`），按 LSP 问类型，agent 不开 IDE 也能拿到编辑器那样的信息。位置写 `文件:行:列`（1 起，同 tsc 的报错），结果是 JSON。每次调用起一个服务器，问一次一般半秒到一秒。
+
+| 命令 | 作用 |
+|---|---|
+| `ts hover <文件:行:列>` | 那里的类型和文档注释（同编辑器里的悬停） |
+| `ts def <文件:行:列>`、`ts refs <文件:行:列>` | 定义在哪、所有引用 |
+| `ts complete <文件:行:列> [--limit 100]` | 那里能写的名字，带类型 |
+| `ts check <文件>...` | 这些文件的类型错误和警告；有错误时退出码 1 |
+| `ts symbols <名字> [--in <文件>]` | 按名字找符号（类、函数、变量……）；在 `--in` 所在的工程里找，默认引擎 |
+| `ts type <表达式>` | eval 作用域里一个表达式的类型，比如 `ts type "game.world.loaded"` 是 `string[]` |
+| `ts members <表达式>` | eval 作用域里一个表达式的属性和方法，带类型：`ts members "game.graphicsCompositor"` |
+| `eval --check <代码>` | 先按引擎的类型查代码（拼错的属性、参数类型不对），有错误时不跑，退出码 1，报出代码里的行列 |
+
+eval 作用域和页面里一样：`game`（`Game`）、`engine`（引擎的全部导出）、`pageHelpers` 的帮手（`entity`、`named`、`frames`、`seconds`、`until`……，类型取自 `PageHelpers`，加了帮手不用改这里）。代码放在引擎源码目录里一个不落盘的虚拟文件里，当异步函数体查（表达式、语句、顶层 await、`return` 都行）。
+
 ## 在游戏里埋点
 
 ```ts

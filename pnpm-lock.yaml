@@ -383,6 +383,9 @@ importers:
       '@stride-ts/engine':
         specifier: workspace:*
         version: link:../engine
+      typescript:
+        specifier: 7.1.0-dev.20261104.1
+        version: 7.1.0-dev.20261104.1
       ws:
         specifier: ^8.23.0
         version: 8.23.0

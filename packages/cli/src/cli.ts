@@ -12,6 +12,7 @@ import { formatJson } from './format.ts';
 import { COLLECT_GPU_COUNTERS, INSTALL_GPU_COUNTERS } from './gpu-calls.ts';
 import { decodePng, diffImages, encodePng } from './png.ts';
 import { profileCallers, profileFromTrace, summarizeProfile, type CpuProfile, type TraceEvent } from './profile.ts';
+import { checkEval, runTypeQuery, TS_USAGE, TypeScriptServer } from './lsp.ts';
 import { listHubs, readBrowser } from './state.ts';
 
 const HELP = `stride <command> [options]   (from the repository: pnpm exec stride <command>)
@@ -62,13 +63,17 @@ Game
                                                     screen-space reflections (no argument reports; toggle flips)
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
   logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
-  eval <code | -> | --file <script.js>
+  eval <code | -> | --file <script.js> [--check]
                           run JavaScript in the page. An expression: its value, await works, and in scope are game, engine,
                           entity(name | id), named(name), frames(n), seconds(s) (game time). Statements: the value of the
                           last one (global scope); with a top-level await they run as an async function body (use return).
-                          - reads stdin; --file reads a file (no shell quoting)
+                          - reads stdin; --file reads a file (no shell quoting); --check type-checks it first against the
+                          engine's types (as TypeScript, eval scope declared) and does not run it on errors
   slow <ms>               make every frame that much longer (busy wait) to reproduce CI's software WebGPU; 0 stops
   particles [--name <text>]                         particle emitters: CPU or GPU, pool size, living particles and where they are
+
+Types (TypeScript 7's language server; positions are 1-based like the compiler's messages)
+  ${TS_USAGE}
 
 Common options
   --hub <text>            pick a hub by name or url (default: the one whose page connected last)
@@ -135,6 +140,8 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     shutter: { type: 'string' },
     maxPixels: { type: 'string' },
     steps: { type: 'string' },
+    check: { type: 'boolean' },
+    in: { type: 'string' },
   },
 });
 
@@ -411,9 +418,18 @@ const commands: Record<string, () => Promise<unknown>> = {
     return undefined;
   },
   async eval() {
-    const code = options.file ? readFileSync(options.file, 'utf8') : rest[0] === '-' ? readFileSync(0, 'utf8') : rest.join(' ');
-    return call('eval', { code: required(code || undefined, 'code') });
+    const code = required((options.file ? readFileSync(options.file, 'utf8') : rest[0] === '-' ? readFileSync(0, 'utf8') : rest.join(' ')) || undefined, 'code');
+    if (options.check) {
+      const server = await TypeScriptServer.start();
+      const errors = await checkEval(server, code).finally(() => server.close());
+      if (errors.some((diagnostic) => diagnostic.severity === 'error')) {
+        process.exitCode = 1;
+        return { ran: false, diagnostics: errors };
+      }
+    }
+    return call('eval', { code });
   },
+  ts: () => runTypeQuery(rest[0], rest.slice(1), options),
 };
 
 /** parseArgs，选项写错时打一行错误（而不是调用栈）并退出。 */

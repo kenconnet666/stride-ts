@@ -852,6 +852,11 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - 调试桥 0.4 直连中枢（同一天）：扩展的 service worker 拿页面转交的桥票连开发服务器的中枢，CLI 的 DevTools 会话经中枢直接到扩展，不经过页面的 JS（断点停住时也能发命令、事件收得到）。实测时修了三处：扩展重新加载后新的内容脚本错过了票（页面只发一次）→ 内容脚本向页面要（0.4.1）；中枢把扩展的回复整个展开转给 CLI，回复里中枢自己的编号盖掉了 CLI 命令的编号，`front` 一直等到超时；`stride page` 里 `await using` 的会话在 `return pageEval(...)`（没 await）时就释放了，WebSocket 先关、命令没回复（经页面转发的旧路径同样有竞争，只是 detach 慢一步没暴露）。修完测试浏览器里 `front`、`page eval`、`page click`、`cpu-profile` 都经直连走通，编辑器的视口 iframe 也连上了。0.4.2：`front` 把最小化的窗口还原；直连的命令也查文件指纹自己更新。
 
+## W3 样条网络：第一步（2026-11-22）
+
+- 格式和几何：`content/splineFormat.ts`、`modeling/spline.ts`（采样、拉伸、立柱、导线）、`pipeline/src/splineModel.ts`；编辑器后端的烘焙表、新建资源（一段弯的 6 米宽的路）、字段描述（横截面是按 type 分的联合）、中文。单测：路径经过控制点、等距、right 水平、侧倾、首尾相连；道路的宽度、三角形朝着法线；围栏立柱数、导线中点下垂；烘出电杆、导线两个槽。
+- open-world 的 Valley：广场上一条 S 形的路（7 米宽）、一圈圆角的围栏（每 3 米一根立柱、两根横杆）、一条架空线（每 40 米一根 10 米的电杆、三根导线下垂 1.2 米）；写进文件以后开发服务器的编辑器后端马上烘出模型（13、141、32 KB）。测试浏览器里看过：路、围栏、电杆和导线都在，帧时间 p50 8.33、p95 8.47 毫秒，绘制 36 次。字段检查（`check-fields.ts`）所有工程 0 个问题。
+
 ## 调试工具：iframe 里的日志点、调试桥的提示条（2026-11-22）
 
 - `stride debug` 在编辑器视口（iframe）里停下时局部变量全是"Cannot read properties of undefined (reading 'summarize')"，日志点一条也记不下来：值的摘要和日志点用的帮手只事先装在顶层页面里。改成用到时在当前执行上下文里建（`globalThis.__strideDebug ??= …`），收日志时挨个执行上下文（`Runtime.enable` 报的顶层和 iframe）收、清。修完在视口的 iframe 里日志点一次记了 201 条，拖地物的两个毛病就是这么查出来的。
@@ -859,6 +864,8 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 调试桥自己更新的毛病：加载时的文件指纹记在变量里，Chrome 把闲着的 service worker 停了再起以后，拿已经改过的文件当基准，就再也发现不了改动（改了 0.4.3 一直还是 0.4.2）。指纹改记在 `chrome.storage.session`，磁盘上 manifest 的版本和正在跑的不一样也算改了。这次是经 `stride open` 的 Chrome 的调试端口让扩展的 service worker 执行 `chrome.runtime.reload()` 换上的。
 
 - `stop-dev.ps1` 把 `~/.stride-ts` 下的 Chrome 都当无头的停，用户正看着的测试浏览器（有窗口、装着调试桥）也被关了；`-Keep` 只管开发服务器。改成按命令行有没有 `--headless` 分：有窗口的叫 test browser、默认留着（`-All` 才停），`-Keep` 按名字留任何一种。
+
+- 测试浏览器的标签越开越多（用户 2026-11-22 指出）：`stride open` 在已经开着的浏览器里每次都开新标签，后台的游戏页还在按满帧率画。改成同源（同一个开发服务器）的标签、空白页优先换成新地址，同源多余的标签关掉，都没有才开新标签（实测连开两次：一直只有一个标签）；`stop-dev.ps1` 停开发服务器时把测试浏览器里开着本机页面的标签关掉（全是本机页面时先开一个空白页，窗口留着）。顺手修了它的一个坑：`Invoke-RestMethod` 把 JSON 数组当一个对象送进管道，要先放进变量再过滤。
 
 ## CI 卡住的冒烟（2026-11-22）
 

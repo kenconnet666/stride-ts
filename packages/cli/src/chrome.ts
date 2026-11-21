@@ -35,12 +35,30 @@ export interface OpenOptions {
   readonly chromeArgs?: readonly string[];
 }
 
-/** 打开 url：已经有 stride 启动的 Chrome 时开新标签，否则启动一个；给了 size 时把视口调成这么大。 */
+/**
+ * 打开 url：已经有 stride 启动的 Chrome 时用它——同一个开发服务器（同源）的标签、空白页优先换成这个地址，同源的多余标签关掉
+ * （每次开新标签的话标签越开越多，后台的游戏页还在按满帧率画）；都没有才开新标签。没有就启动一个。给了 size 时把视口调成这么大。
+ */
 export async function openUrl(url: string, options: OpenOptions = {}): Promise<BrowserRecord> {
   let browser = readBrowser();
   if (browser) {
-    const response = await fetch(`http://127.0.0.1:${browser.port}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' });
-    if (!response.ok) throw new Error(`Chrome refused to open a tab: ${response.status} ${await response.text()}`);
+    const base = `http://127.0.0.1:${browser.port}`;
+    const origin = new URL(url).origin;
+    const pages = ((await (await fetch(`${base}/json/list`)).json()) as (PageTarget & { readonly type: string })[]).filter((target) => target.type === 'page');
+    const sameOrigin = pages.filter((page) => URL.canParse(page.url) && new URL(page.url).origin === origin);
+    const blank = pages.filter((page) => page.url === 'about:blank' || page.url.startsWith('chrome://newtab'));
+    const [reuse, ...extra] = [...sameOrigin, ...blank];
+    if (reuse) {
+      {
+        await using page = await CdpSession.connect(reuse.webSocketDebuggerUrl);
+        await page.send('Page.navigate', { url });
+      }
+      for (const page of extra.filter((candidate) => sameOrigin.includes(candidate))) await fetch(`${base}/json/close/${page.id}`).catch(() => undefined);
+      await fetch(`${base}/json/activate/${reuse.id}`).catch(() => undefined);
+    } else {
+      const response = await fetch(`${base}/json/new?${encodeURIComponent(url)}`, { method: 'PUT' });
+      if (!response.ok) throw new Error(`Chrome refused to open a tab: ${response.status} ${await response.text()}`);
+    }
   } else {
     browser = await launch(url, options);
   }

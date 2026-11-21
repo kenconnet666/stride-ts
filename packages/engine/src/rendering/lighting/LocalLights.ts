@@ -9,11 +9,17 @@
  *   4 管状光）、照向的方向（聚光、矩形光、圆盘光）和阴影的下标（没有是 -1）、聚光是角度衰减的 scale、offset，面光源是沿本地 X
  *   的向量（矩形的半宽、圆盘的半径、管子的半长）和矩形的半高（圆盘是半径）。
  *
+ * - 点光、聚光有配光曲线（IES）时：angle.z 是它的表从第几个 vec4 开始（0 是没有），angle.w 是本地 +X 轴（IES 的水平 0°）
+ *   打包成两个 snorm16 的八面体编码、按位放进 f32。表在阴影之后：一个 vec4 的头（垂直格数、水平格数），再是值，每个 vec4 放 4 个，
+ *   同一个配光这一帧只放一份。
+ *
  * 面光源的 LTC 查找表（ltcTable.ts，64 KB）是另一个 uniform 缓冲（ltc），场景里第一次有面光源时才加载那个模块、上传。
  * - 再往后每个阴影 26 个（LocalShadow）：六个矩阵（点光是立方体的六个面，聚光只用第一个），参数（深度偏移、法线偏移比例、点光
  *   深度的两个系数），选项（PCF 核大小、是不是点光）。
  */
+import type { Vector3 } from '../../data/vectors';
 import type { Lighting } from '../RenderSystem';
+import type { LightProfile } from './LightProfile';
 
 /** 面光源在着色器里的种类号（color.w）。 */
 const AREA_KINDS = { rect: 2, disc: 3, tube: 4 } as const;
@@ -101,6 +107,51 @@ fn localLightWindow(light: LocalLight, d2: f32) -> f32 {
   return falloff * falloff;
 }
 
+/** 配光表里第 i 个值（start 是表头的 vec4 下标）。 */
+fn lightProfileValue(start: u32, i: u32) -> f32 {
+  return localLightData[start + 1u + i / 4u][i % 4u];
+}
+
+/**
+ * 配光曲线在光往 outward（单位向量，从光源指出去）方向上的倍数（0..1）：垂直角从 direction（本地 -Z）量，水平角从本地 +X
+ * 往本地 +Y 量；表上按双线性插值，水平方向一圈首尾相接。
+ */
+fn lightProfileAt(light: LocalLight, outward: vec3f) -> f32 {
+  let start = u32(light.angle.z);
+  let size = localLightData[start];
+  let vertical = u32(size.x);
+  let horizontal = u32(size.y);
+  let forward = light.direction.xyz;
+  let fv = acos(clamp(dot(outward, forward), -1.0, 1.0)) * 0.31830988 * f32(vertical - 1u);
+  let v0 = min(u32(fv), vertical - 2u);
+  let tv = fv - f32(v0);
+  var h0 = 0u;
+  var h1 = 0u;
+  var th = 0.0;
+  if (horizontal > 1u) {
+    let x = octDecodeAxis(bitcast<u32>(light.angle.w));
+    let y = cross(-forward, x);
+    let phi = atan2(dot(outward, y), dot(outward, x));
+    let fh = fract(phi * 0.15915494 + 1.0) * f32(horizontal);
+    h0 = min(u32(fh), horizontal - 1u);
+    h1 = (h0 + 1u) % horizontal;
+    th = fh - f32(h0);
+  }
+  let a = mix(lightProfileValue(start, h0 * vertical + v0), lightProfileValue(start, h0 * vertical + v0 + 1u), tv);
+  let b = mix(lightProfileValue(start, h1 * vertical + v0), lightProfileValue(start, h1 * vertical + v0 + 1u), tv);
+  return mix(a, b, th);
+}
+
+/** 两个 snorm16 的八面体编码（低 16 位 x、高 16 位 y）还原成单位向量。 */
+fn octDecodeAxis(packed: u32) -> vec3f {
+  let e = unpack2x16snorm(packed);
+  var v = vec3f(e.x, e.y, 1.0 - abs(e.x) - abs(e.y));
+  if (v.z < 0.0) {
+    v = vec3f((1.0 - abs(v.yx)) * select(vec2f(-1.0), vec2f(1.0), v.xy >= vec2f(0.0)), v.z);
+  }
+  return normalize(v);
+}
+
 fn localLightAt(light: LocalLight, world: vec3f) -> vec4f {
   let toLight = light.position.xyz - world;
   let distance = length(toLight);
@@ -108,6 +159,9 @@ fn localLightAt(light: LocalLight, world: vec3f) -> vec4f {
   let d2 = distance * distance;
   var attenuation = localLightWindow(light, d2) / max(d2, 0.0001);
   let kind = localLightKind(light);
+  if (kind <= 1u && light.angle.z > 0.0) {
+    attenuation *= lightProfileAt(light, -l);
+  }
   if (kind == 1u) {
     let angular = saturate(dot(-l, light.direction.xyz) * light.angle.x + light.angle.y);
     attenuation *= angular * angular;
@@ -283,6 +337,8 @@ export class LocalLightBuffer {
   readonly #device: GPUDevice;
   #data = new Float32Array(4 * (1 + LIGHT_VEC4S + SHADOW_VEC4S));
   #ltc: 'empty' | 'loading' | 'ready' = 'empty';
+  /** 这一帧每个配光的表放在第几个 vec4。 */
+  readonly #profileStarts = new Map<LightProfile, number>();
 
   constructor(device: GPUDevice) {
     this.#device = device;
@@ -294,13 +350,23 @@ export class LocalLightBuffer {
   upload(lighting: Lighting): void {
     const { localCount: count, localShadowCount: shadowCount } = lighting;
     const shadowStart = 1 + count * LIGHT_VEC4S;
-    const floats = 4 * (shadowStart + shadowCount * SHADOW_VEC4S);
+    // 配光表接在阴影后面，同一个配光只放一份
+    const profileStarts = this.#profileStarts;
+    profileStarts.clear();
+    let next = shadowStart + shadowCount * SHADOW_VEC4S;
+    for (let i = 0; i < count; i++) {
+      const profile = lighting.locals[i]!.profile;
+      if (!profile || profileStarts.has(profile)) continue;
+      profileStarts.set(profile, next);
+      next += 1 + Math.ceil(profile.values.length / 4);
+    }
+    const floats = 4 * next;
     if (floats > this.#data.length) {
       this.#data = new Float32Array(2 ** Math.ceil(Math.log2(floats)));
       this.buffer.destroy();
       this.buffer = this.#create();
     }
-    const data = this.#data;
+    const data = this.#data, bits = new Uint32Array(data.buffer);
     data[0] = shadowStart;
     data[1] = this.#ltc === 'ready' ? 1 : 0;
     let areas = false;
@@ -315,9 +381,18 @@ export class LocalLightBuffer {
         areas = true;
       } else {
         data[o + 12] = angleScale; data[o + 13] = angleOffset;
+        const profile = lighting.locals[i]!.profile;
+        data[o + 14] = profile ? profileStarts.get(profile)! : 0;
+        // 本地 +X 按位放进 f32（着色器 bitcast 回 u32 再解八面体编码）
+        bits[o + 15] = profile ? octEncodeAxis(lighting.locals[i]!.axisX) : 0;
       }
     }
     if (areas && this.#ltc === 'empty') this.#loadLtc();
+    for (const [profile, start] of profileStarts) {
+      data[4 * start] = profile.vertical;
+      data[4 * start + 1] = profile.horizontal;
+      data.set(profile.values, 4 * (start + 1));
+    }
     for (let i = 0; i < shadowCount; i++) {
       const shadow = lighting.localShadows[i]!, o = 4 * (shadowStart + i * SHADOW_VEC4S);
       data.set(shadow.worldToShadow, o);
@@ -347,4 +422,17 @@ export class LocalLightBuffer {
   #create(): GPUBuffer {
     return this.#device.createBuffer({ label: 'Local lights', size: this.#data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
   }
+}
+
+/** 单位向量的八面体编码，两个 snorm16（低 16 位 x、高 16 位 y），和着色器里的 octDecodeAxis 对应。 */
+function octEncodeAxis(v: Vector3): number {
+  const sum = Math.abs(v.x) + Math.abs(v.y) + Math.abs(v.z) || 1;
+  let x = v.x / sum, y = v.y / sum;
+  if (v.z < 0) {
+    const ox = x;
+    x = (1 - Math.abs(y)) * (ox >= 0 ? 1 : -1);
+    y = (1 - Math.abs(ox)) * (y >= 0 ? 1 : -1);
+  }
+  const snorm = (value: number) => Math.round(Math.max(-1, Math.min(1, value)) * 32767) & 0xffff;
+  return (snorm(x) | (snorm(y) << 16)) >>> 0;
 }

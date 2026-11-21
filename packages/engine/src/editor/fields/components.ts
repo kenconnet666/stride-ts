@@ -122,11 +122,15 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
         directional: [lightColor, intensity, { name: 'shadow', type: object(directionalShadow), optional: true }],
         ambient: [lightColor, intensity, { name: 'shadow', type: object(directionalShadow), optional: true }],
         skybox: [{ name: 'skybox', type: asset('skybox') }, intensity],
-        point: [lightColor, intensity, { name: 'radius', type: number({ min: 0, unit: 'm' }) }, { name: 'shadow', type: object(localShadow), optional: true }],
+        point: [
+          lightColor, intensity, { name: 'radius', type: number({ min: 0, unit: 'm' }) }, { name: 'shadow', type: object(localShadow), optional: true },
+          { name: 'profile', type: asset('lightProfile'), optional: true, description: 'IES light profile: how strongly the fixture shines in each direction; 0° points along local -Z' },
+        ],
         spot: [
           lightColor, intensity, { name: 'range', type: number({ min: 0, unit: 'm' }) },
           { name: 'angleInner', type: number({ min: 0, max: 180, unit: 'deg' }) }, { name: 'angleOuter', type: number({ min: 0, max: 180, unit: 'deg' }) },
           { name: 'shadow', type: object(localShadow), optional: true },
+          { name: 'profile', type: asset('lightProfile'), optional: true, description: 'IES light profile: how strongly the fixture shines in each direction; 0° points along local -Z' },
         ],
         rect: [
           lightColor, { name: 'intensity', type: number({ min: 0, step: 0.1 }), description: 'like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter' },

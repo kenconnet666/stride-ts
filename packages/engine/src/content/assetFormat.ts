@@ -45,6 +45,8 @@ export const EXTENSIONS = {
    * 引用它的地方的编码跟着改。
    */
   imageImport: '.image.json',
+  /** 配光曲线：IES 文件（ANSI/IESNA LM-63 的文本）原样放，点光、聚光引用它（rendering/lighting/LightProfile.ts）。 */
+  lightProfile: '.ies',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */

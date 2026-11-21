@@ -510,12 +510,14 @@ export interface SceneEntityFile {
         readonly skybox: string;
         readonly intensity: number;
       }
-      /** 点光（Stride 的 LightPoint）。 */
-      | { readonly type: 'point'; readonly color: Vec3Tuple; readonly intensity: number; readonly radius: number; readonly shadow?: SceneLocalLightShadow }
+      /** 点光（Stride 的 LightPoint）；profile 是配光曲线（IES 文件）的内容路径，0° 对着本地 -Z。 */
+      | { readonly type: 'point'; readonly color: Vec3Tuple; readonly intensity: number; readonly radius: number; readonly shadow?: SceneLocalLightShadow; readonly profile?: string }
       /** 聚光（Stride 的 LightSpot），锥角是度、整个锥的张角。 */
       | {
         readonly type: 'spot'; readonly color: Vec3Tuple; readonly intensity: number; readonly range: number; readonly angleInner: number; readonly angleOuter: number;
         readonly shadow?: SceneLocalLightShadow;
+        /** 配光曲线（IES 文件）的内容路径，乘在锥角的衰减上。 */
+        readonly profile?: string;
       }
       /**
        * 矩形光（Stride 没有；同虚幻的 Rect Light、Unity HDRP 的矩形面光源）：width × height 的发光矩形（沿本地 X、Y），朝本地 -Z 照，

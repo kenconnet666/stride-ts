@@ -4,6 +4,7 @@
  * 和 Stride 不同的地方：没有通用的 RenderObject / RenderNode 列表，每个特性直接按列遍历实体（数据导向），
  * 剔除也由特性自己做（Cull，在 stride-native 里），还没有排列组合（效果系统等内容管线）。
  */
+import type { LightProfile } from './lighting/LightProfile';
 import type { SceneEntityFile } from '../content/format';
 import type { EntityId } from '../data/prop';
 import type { Game } from '../engine/Game';
@@ -394,6 +395,9 @@ export interface LocalLight {
    * halfWidth 是沿本地 X 的向量（矩形的半宽、圆盘的半径、管子的半长），halfHeight 是矩形的半高、圆盘的半径。
    */
   area: 'rect' | 'disc' | 'tube' | undefined;
+  /** 点光、聚光的配光曲线（Light 的 profile）；用的时候 axisX 是光源的本地 +X（IES 的水平 0°）。 */
+  profile: LightProfile | undefined;
+  readonly axisX: Vector3;
   readonly halfWidth: Vector3;
   halfHeight: number;
   readonly position: Vector3;
@@ -417,7 +421,7 @@ export interface LocalLight {
 /** 一盏还没用上的点光或聚光（Lighting.locals 按需变长，变长的部分留着下一帧复用）。 */
 export function createLocalLight(): LocalLight {
   return {
-    spot: false, area: undefined, halfWidth: new Vector3(), halfHeight: 0, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
+    spot: false, area: undefined, profile: undefined, axisX: new Vector3(1, 0, 0), halfWidth: new Vector3(), halfHeight: 0, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
     castsShadow: false, shadow: { size: 'medium', filter: 'none', depthBias: 0.01, normalOffsetScale: 10 }, world: new Float32Array(16), shadowIndex: -1,
   };
 }

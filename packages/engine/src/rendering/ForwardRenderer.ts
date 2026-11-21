@@ -10,6 +10,7 @@
  * 深度预通道同 Stride 默认合成器的 GBuffer 阶段（ZPrepass 效果）：先只画深度，不透明阶段用 less-equal 复用它，
  * 每个像素只做一次完整的着色（TPP 的不透明通道 3.0 → 0.9 ms 量级的差别就在这里）。
  */
+import { LightProfile } from './lighting/LightProfile';
 import type { EntityId } from '../data/prop';
 import type { CompositorSettings, TextureCamera } from '../content/ContentManager';
 import type { ScenePostEffects } from '../content/format';
@@ -747,6 +748,9 @@ export class ForwardRenderer {
     local.direction.set(-world[w + 8]!, -world[w + 9]!, -world[w + 10]!).normalize();
     local.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
     const radius = Math.max(0.001, local.spot || local.area ? light.range[i]! : light.radius[i]!);
+    // 配光曲线（点光、聚光）：IES 的 0° 对着本地 -Z（direction），水平 0° 是本地 +X
+    local.profile = local.area ? undefined : LightProfile.byId(light.profile[i]!);
+    if (local.profile) local.axisX.set(world[w]!, world[w + 1]!, world[w + 2]!).normalize();
     local.radius = radius;
     local.invSquareRadius = 1 / (radius * radius);
     local.shadowIndex = -1;

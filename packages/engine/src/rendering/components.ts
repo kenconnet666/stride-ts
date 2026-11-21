@@ -7,6 +7,7 @@
 import { prop, type EntityId } from '../data/prop';
 import { component, tag } from '../engine/component';
 import type { CubemapId, SkyboxId } from './lighting/Skybox';
+import type { LightProfileId } from './lighting/LightProfile';
 import type { SpriteSheetId } from './SpriteSheet';
 import type { TextureId } from '../graphics/Texture';
 
@@ -75,6 +76,11 @@ export const Light = component('Light', {
   angleInner: prop.f32().default(30).min(0).max(180).unit('deg'),
   angleOuter: prop.f32().default(35).min(0).max(180).unit('deg'),
   skybox: prop.u32().brand<'SkyboxId'>().default(0 as SkyboxId),
+  /**
+   * 点光、聚光的配光曲线（IES 文件，Stride 没有；同虚幻的 IES Light Profile）：按方向乘在光上，0 是没有。IES 的 0° 对着本地 -Z，
+   * 水平 0° 是本地 +X（见 lighting/LightProfile.ts）。
+   */
+  profile: prop.u32().brand<'LightProfileId'>().default(0 as LightProfileId),
   shadow: prop.bool().default(false).group('Shadow'),
   shadowSize: prop.enum(['xsmall', 'small', 'medium', 'large', 'xlarge']).default('medium').group('Shadow'),
   /** none 是一次比较采样，pcfNxN 是 Stride 的 PCF 核，pcss 是接触硬化的软阴影（方向光；Stride 没有，点光、聚光按 pcf7x7）。 */

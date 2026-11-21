@@ -26,6 +26,7 @@ import { changedEntities, SceneBuilder, type ModelUse, type SceneAssets } from '
 import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/mesh/Mesh';
 import { Cubemap, Skybox } from '../rendering/lighting/Skybox';
+import { LightProfile, parseIes } from '../rendering/lighting/LightProfile';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureData, type TextureDecoder } from '../graphics/Texture';
@@ -476,6 +477,11 @@ export class ContentManager {
 
   loadCubemap(path: string): Promise<Cubemap> {
     return this.#once(path + EXTENSIONS.cubemap, async (url) => new Cubemap(path, decodeCubemap(await this.#read(url), url.href)));
+  }
+
+  /** 配光曲线（IES 文件）。 */
+  loadLightProfile(path: string): Promise<LightProfile> {
+    return this.#once(path + EXTENSIONS.lightProfile, async (url) => new LightProfile(path, parseIes(new TextDecoder().decode(await this.#read(url)), url.href)));
   }
 
   loadSkybox(path: string): Promise<Skybox> {

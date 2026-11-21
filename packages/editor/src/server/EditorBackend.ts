@@ -12,6 +12,7 @@ import path from 'node:path';
 import { DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type TextModelFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeTextModel, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
+import { parseIes } from '@stride-ts/engine/light-profile';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -151,6 +152,26 @@ export class EditorBackend {
     });
   }
 
+  /** 配光曲线（IES 文件）原样放进 folder；先解析一遍，格式不对时什么也不写。 */
+  async #importLightProfile(folder: string, base: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
+    try {
+      parseIes(new TextDecoder().decode(bytes), fileName);
+    } catch (error) {
+      throw new HttpError(400, (error as Error).message);
+    }
+    return this.#enqueue(async () => {
+      let assetPath = '';
+      for (let n = 1; ; n++) {
+        assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
+        if (!this.database.get('lightProfile', assetPath)) break;
+      }
+      const file = path.join(this.project.contentDir, assetFileName('lightProfile', assetPath));
+      await writeAtomically(file, bytes);
+      await this.#refresh([this.#relative(file)]);
+      return { asset: this.database.get('lightProfile', assetPath)!, warnings: [] };
+    });
+  }
+
   /**
    * 导入一个拖进来的文件（编辑器的资源浏览器）：源文件原样放进 folder，旁边写上它的资源文件——音频（mp3、ogg、wav、flac、aac）
    * 是声音（.sound.json，不流式、不空间化，属性面板里再改），图片（png、jpg、svg）是单独引用的贴图（.texture.json）；模型
@@ -168,11 +189,12 @@ export class EditorBackend {
     }
     const extension = path.extname(fileName).toLowerCase();
     const base = path.basename(fileName, path.extname(fileName)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
+    if (extension === '.ies') return this.#importLightProfile(folder, base, fileName, bytes);
     const audio = ({ '.mp3': 'mp3', '.ogg': 'ogg', '.wav': 'wav', '.flac': 'flac', '.aac': 'aac' } as const)[extension as '.mp3'];
     // 视频（mp4、webm）同图片一样是贴图：材质、精灵的贴图槽直接用它，放起来是视频贴图
     const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg', '.webp': 'webp', '.mp4': 'mp4', '.webm': 'webm' } as const)[extension as '.png'];
     if (!audio && !image) {
-      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), videos (mp4, webm), models (glb, gltf, fbx, obj) and fonts (ttf, otf, ttc) can be imported`);
+      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), videos (mp4, webm), models (glb, gltf, fbx, obj), fonts (ttf, otf, ttc) and IES light profiles can be imported`);
     }
     const kind: AssetKind = audio ? 'sound' : 'texture';
     return this.#enqueue(async () => {

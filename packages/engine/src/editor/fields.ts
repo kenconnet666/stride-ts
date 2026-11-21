@@ -12,6 +12,7 @@
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile,
+  GameSettingsFile, SceneScriptValue,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
 import type { AssetKind } from '../content/references';
@@ -778,8 +779,53 @@ export const POLY_FIELDS = fields<PolyMeshFile>({
   faces: { type: { kind: 'json' }, description: 'faces as vertex index loops, counterclockwise seen from outside, each with an optional material slot' },
 });
 
+/**
+ * 游戏设置（.game.json，Stride 的 GameSettings）。根渲染器（合成器的根是游戏自己的渲染器时，SpriteFonts、CustomEffect）的类型是
+ * 游戏登记的名字，属性的字段由游戏的代码定，这里是 JSON；属性面板按文件里现在的值推出字段（gameSettingsFields）。
+ */
+export const GAME_SETTINGS_FIELDS = fields<GameSettingsFile>({
+  name: string,
+  defaultScene: { ...nullable(asset('scene')), description: 'the scene the game opens with; null when the root renderer draws everything (no scene)' },
+  renderer: { ...nullable({ kind: 'json' }), description: 'the compositor root when the game draws with its own renderer: its registered type name and properties' },
+  defaultBackBufferSize: { ...optional(vector(2, 'px'), [1280, 720]), description: 'the design resolution (desktop Stride opens its window this size)' },
+});
+
 /** 属性面板能编辑的资源（选中资源浏览器里的它时）：种类 → 字段。模型只有 JSON 写的那种能编辑。 */
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+
+/**
+ * 按值推出字段（游戏自己的渲染器、没有声明的脚本属性：代码里没有字段描述，文件里的值就是全部信息）：资源引用
+ * `{ $asset, kind }` 是资源，`{ $entity }` 是实体，数、布尔、文字照原样，两到四个数的数组是向量，对象逐个推，别的（null、
+ * 混着的数组）按 JSON 改。
+ */
+export function inferFields(values: Readonly<Record<string, SceneScriptValue>>): Field[] {
+  return Object.entries(values).map(([name, value]) => ({ name, type: inferType(value) }));
+}
+
+function inferType(value: SceneScriptValue): FieldType {
+  if (typeof value === 'number') return number();
+  if (typeof value === 'boolean') return bool;
+  if (typeof value === 'string') return string;
+  if (Array.isArray(value)) return value.length >= 2 && value.length <= 4 && value.every((item) => typeof item === 'number') ? vector(value.length as 2 | 3 | 4) : { kind: 'json' };
+  if (value === null || typeof value !== 'object') return { kind: 'json' };
+  if ('$asset' in value && typeof value.kind === 'string') {
+    const kind = value.kind as string;
+    return { kind: 'asset', asset: (kind === 'uiPage' || kind === 'uiLibrary' ? 'ui' : kind) as AssetKind, form: 'ref', refKind: kind };
+  }
+  if ('$entity' in value) return { kind: 'entity', form: 'ref' };
+  return object(inferFields(value as Readonly<Record<string, SceneScriptValue>>));
+}
+
+/** 这份游戏设置在属性面板上的字段：根渲染器的属性按文件里的值推出来（见 inferFields），类型名不让改。 */
+export function gameSettingsFields(file: GameSettingsFile): Field[] {
+  if (!file.renderer) return GAME_SETTINGS_FIELDS;
+  const renderer: Field = {
+    name: 'renderer',
+    description: `the root renderer ${file.renderer.type} (registered by the game); its properties`,
+    type: object([{ name: 'props', type: object(inferFields(file.renderer.props)) }]),
+  };
+  return GAME_SETTINGS_FIELDS.map((field) => (field.name === 'renderer' ? renderer : field));
+}
 
 const INTEGER_KINDS: ReadonlySet<string> = new Set(['int', 'u8', 'u32']);
 

@@ -173,11 +173,21 @@ export class EditorSession implements EditableScene {
     if (!agent) throw new Error('the game page is not in edit mode (open it with ?debug&stride-edit)');
     const path = agent.scenePath;
     const document = this.opened.value ?? (path ? { kind: 'scene' as const, path } : undefined);
-    if (!document) throw new Error('the game did not load its root scene from a content path; the editor cannot tell which scene file to open');
     agent.onSelectionChanged = (ids) => {
       this.selection.value = ids;
       if (ids.length > 0) this.inspected.value = undefined;
     };
+    if (!document) {
+      // 没有场景的游戏（画面全是游戏自己的根渲染器：SpriteFonts、CustomEffect）：不开文档，属性面板里是游戏设置，
+      // 改根渲染器的属性时页面重建它（EditAgent.reloadAssets）
+      if (this.snap.value) agent.snap = this.snap.value;
+      else this.snap.value = agent.snap;
+      this.agent.value = agent;
+      const settings = game.settingsPath;
+      if (settings) await this.inspectAsset('gameSettings', settings);
+      else this.status.value = t.noSceneNoSettings;
+      return;
+    }
     await this.#open(agent, document);
     // 试玩回来（视口重新打开）：时间轴开着就接着预览
     const timeline = this.timeline.value;
@@ -558,6 +568,8 @@ export class EditorSession implements EditableScene {
 
   /** 展开以后的实体（实例换成根和成员，同游戏里的）：场景树、属性面板显示的是它。 */
   get expanded(): readonly SceneEntityFile[] {
+    // 没有打开的文档（游戏没有场景，见 attach）：没有实体
+    if (!this.#document) return [];
     return expandPrefabInstances(this.file.entities, this.#prefabs, (message) => console.warn(`${this.file.name}: ${message}`));
   }
 

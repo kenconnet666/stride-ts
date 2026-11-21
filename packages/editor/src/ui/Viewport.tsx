@@ -59,8 +59,8 @@ export const Viewport = _component(({ session, playing, onShortcut }: { session:
     }
     status = OPENING;
     const win = frame.contentWindow as (Window & { strideGame?: Game }) | null;
-    // 游戏的 run 是异步的：等它的代理有了、根场景加载好
-    while (current === generation && !(win?.strideGame?.editor && win.strideGame.rootScene)) await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    // 游戏的 run 是异步的：等它的代理有了（loadContent 做完才建，根场景这时已经加载好；没有场景的游戏也是这时）
+    while (current === generation && !win?.strideGame?.editor) await new Promise((resolve) => setTimeout(resolve, POLL_MS));
     if (current !== generation || !win?.strideGame) return;
     try {
       await session.attach(win.strideGame);

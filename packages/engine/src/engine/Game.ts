@@ -216,6 +216,10 @@ export class Game {
   rootScene: SceneInstance | undefined;
   /** loadGameSettings 读到的游戏设置（Stride 的 Game.Settings）；没读过时是 undefined。 */
   settings: GameSettings | undefined;
+  /** loadGameSettings 读的游戏设置的内容路径（编辑器改了它时 reloadGameSettings 按它重建根渲染器）。 */
+  settingsPath: string | undefined;
+  /** loadGameSettings 给的渲染器工厂：重建根渲染器时还用它们。 */
+  #renderers: NonNullable<LoadGameSettingsOptions['renderers']> = {};
   /** 加载（loadScene）或卸载（unloadScene）了一个场景之后触发（Stride 里场景的 Children 变了，TopDownRPG 的 EnableDynamicNavigation 听它重建导航网格）。 */
   readonly scenesChanged = hook<{ readonly scene: SceneInstance; readonly loaded: boolean }>('scenesChanged');
   /** 场景的子场景（loadScene 的 parent），unloadScene 时跟着卸载。 */
@@ -443,15 +447,39 @@ export class Game {
    *   await this.loadGameSettings('SpriteFonts/Shared/GameSettings', { renderers: { 'SpriteFonts.FontRenderer': (props) => new FontRenderer(props) } });
    */
   async loadGameSettings(path: string, { renderers = {}, ...sceneOptions }: LoadGameSettingsOptions = {}): Promise<GameSettings> {
+    this.settingsPath = path;
+    this.#renderers = renderers;
+    const settings = await this.#applySettings(path);
+    if (settings.defaultScene) await this.setRootScene(settings.defaultScene, sceneOptions);
+    return settings;
+  }
+
+  /**
+   * 游戏设置的文件改了（编辑器里改了根渲染器的属性、它用的贴图）：重新读，用同一个工厂重建根渲染器（旧的有 destroy 就放掉），
+   * 下一帧就是新的。默认场景不动（换场景是编辑器打开别的场景）。没有用过 loadGameSettings 时什么也不做。
+   */
+  async reloadGameSettings(): Promise<void> {
+    const path = this.settingsPath;
+    if (!path) return;
+    this.content.evict([path]);
+    const old = this.rootRenderer;
+    await this.#applySettings(path);
+    if (old !== this.rootRenderer && old !== this.graphicsCompositor) (old as { destroy?(): void }).destroy?.();
+  }
+
+  /** 读游戏设置，按它定设计分辨率和根渲染器（游戏自己的渲染器、没有时是合成器）。 */
+  async #applySettings(path: string): Promise<GameSettings> {
     const settings = (this.settings = await this.content.loadGameSettings(path));
     // 样例的调试文字是按这么大的窗口摆的
     this.debugText.virtualResolution = settings.defaultBackBufferSize;
+    // 新的建好了再换上：建的时候（加载贴图）这几帧还画旧的
+    let next: SceneRenderer = this.graphicsCompositor;
     if (settings.renderer) {
-      const factory = renderers[settings.renderer.type];
-      if (factory) this.rootRenderer = await factory(settings.renderer.props, this);
+      const factory = this.#renderers[settings.renderer.type];
+      if (factory) next = await factory(settings.renderer.props, this);
       else console.warn(`[stride] ${path}: no renderer for ${settings.renderer.type}; using the forward renderer (give one in loadGameSettings' renderers option)`);
     }
-    if (settings.defaultScene) await this.setRootScene(settings.defaultScene, sceneOptions);
+    this.rootRenderer = next;
     return settings;
   }
 

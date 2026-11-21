@@ -238,6 +238,12 @@ export class EditAgent {
   /** 资源的文件改了（编辑器给出改了的和间接用到它们的内容路径）：引用它们的实体重建（见 LiveScene.reloadAssets）。 */
   async reloadAssets(paths: readonly string[]): Promise<void> {
     await this.#live?.reloadAssets(paths);
+    // 游戏设置（或它的根渲染器用的贴图，编辑器把引用它们的设置也算进来）改了：重建根渲染器
+    const settings = this.game.settingsPath;
+    if (settings && paths.includes(settings)) {
+      this.game.content.evict(paths);
+      await this.game.reloadGameSettings();
+    }
     this.selection = this.#selection;
   }
 

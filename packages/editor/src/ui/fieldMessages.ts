@@ -26,6 +26,7 @@ const zhCN: FieldMessages = {
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },
   names: {
+    defaultScene: '默认场景', renderer: '根渲染器', defaultBackBufferSize: '设计分辨率', props: '属性',
     addressU: 'U 方向寻址', addressV: 'V 方向寻址', aerialPerspectiveScale: '空气透视的距离倍数', agentHeight: '代理的高度', agentMaxClimb: '代理能迈的高度',
     agentMaxSlopeDegrees: '代理能走的坡度', agentRadius: '代理的半径', airControlForceScale: '空中操控力的比例', airControlScale: '空中速度的比例', albedo: '反照率',
     albedoMix: '颜色的比例', alphaCutoff: '透明裁剪阈值', ambient: '环境光', ambientOcclusion: '环境光遮蔽', angleInner: '内锥角', angleOuter: '外锥角',
@@ -67,6 +68,9 @@ const zhCN: FieldMessages = {
     shakeRotation: '晃动的角度', shakePosition: '晃动的位移', shakeFrequency: '晃动的频率', sensor: '传感器', focalLength: '焦距', aperture: '光圈', focusDistance: '对焦距离', shutterAngle: '快门角', exposureCompensation: '曝光补偿', depthOfField: '景深', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
+    'the scene the game opens with; null when the root renderer draws everything (no scene)': '游戏打开时的场景；画面全是根渲染器画的（没有场景）时是 null',
+    'the compositor root when the game draws with its own renderer: its registered type name and properties': '游戏用自己的渲染器画时合成器的根：它登记的类型名和属性',
+    'the design resolution (desktop Stride opens its window this size)': '设计分辨率（桌面 Stride 一开始的窗口就是这么大）',
     "one per material slot of the model; null keeps the model's own material; omitted keeps all of them": '模型的每个材质槽一个；null 用模型自带的材质；不写时全用模型自带的',
     'entity with the directional light of the sun; unset uses the shadow-casting directional light': '太阳那盏方向光所在的实体；不设时用投阴影的方向光',
     'entity with the directional light of the moon (its color and intensity are those of the full moon)': '月亮那盏方向光所在的实体（它的颜色和强度是满月的）',

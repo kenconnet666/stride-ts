@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { SceneEntityFile } from '../src/content/format';
-import { ASSET_FIELDS, checkEntity, checkFields, COMPONENT_FIELDS, SCENE_FIELDS, scriptFields } from '../src/editor/fields';
+import { ASSET_FIELDS, checkEntity, checkFields, COMPONENT_FIELDS, gameSettingsFields, inferFields, SCENE_FIELDS, scriptFields } from '../src/editor/fields';
 import { prop, SyncScript } from '../src/index';
 
 // 属性面板要的字段描述，和照着它做的检查。
@@ -136,5 +136,37 @@ describe('资源的字段描述（属性面板编辑选中的资源）', () => {
     expect(checkFields({ format: 1, procedural: { type: 'cube', size: [2, 1, 2] }, materials: ['M'] }, type, 'Box')).toEqual([]);
     expect(checkFields({ format: 1, procedural: { type: 'torus', radius: 0.5, thickness: 0.1, uvScale: [2, 1] } }, type, 'Ring')).toEqual([]);
     expect(checkFields({ format: 1, procedural: { type: 'donut' } }, type, 'Bad').length).toBeGreaterThan(0);
+  });
+});
+
+describe('按值推出字段（游戏自己的根渲染器的属性）', () => {
+  test('资源引用、实体、数、开关、文字、向量、对象；别的按 JSON', () => {
+    const fields = inferFields({
+      logo: { $asset: 'CustomEffect/Shared/LogoStride', kind: 'texture' },
+      page: { $asset: 'Menu/Page', kind: 'uiPage' },
+      target: { $entity: 'e1' },
+      speed: 2, loop: true, title: 'x', size: [1, 2], weird: [1, 'a'], nothing: null,
+      nested: { scale: [1, 1, 1] },
+    });
+    expect(Object.fromEntries(fields.map((field) => [field.name, field.type]))).toEqual({
+      logo: { kind: 'asset', asset: 'texture', form: 'ref', refKind: 'texture' },
+      page: { kind: 'asset', asset: 'ui', form: 'ref', refKind: 'uiPage' },
+      target: { kind: 'entity', form: 'ref' },
+      speed: { kind: 'number' }, loop: { kind: 'bool' }, title: { kind: 'string' },
+      size: { kind: 'vector', size: 2 }, weird: { kind: 'json' }, nothing: { kind: 'json' },
+      nested: { kind: 'object', fields: [{ name: 'scale', type: { kind: 'vector', size: 3 } }] },
+    });
+  });
+
+  test('游戏设置：有根渲染器时它的属性按值推，文件照这些字段检查没有问题', () => {
+    const file = {
+      name: 'GameSettings', defaultScene: null, defaultBackBufferSize: [1280, 720] as const,
+      renderer: { type: 'CustomEffect.CustomEffectRenderer', props: { background: { $asset: 'CustomEffect/Shared/StrideBackground', kind: 'texture' as const } } },
+    };
+    const fields = gameSettingsFields(file);
+    const renderer = fields.find((field) => field.name === 'renderer')!;
+    expect(renderer.type).toEqual({ kind: 'object', fields: [{ name: 'props', type: { kind: 'object', fields: [{ name: 'background', type: { kind: 'asset', asset: 'texture', form: 'ref', refKind: 'texture' } }] } }] });
+    expect(checkFields(file, { kind: 'object', fields: ASSET_FIELDS.gameSettings }, 'GameSettings')).toEqual([]);
+    expect(gameSettingsFields({ ...file, renderer: null })).toBe(ASSET_FIELDS.gameSettings);
   });
 });

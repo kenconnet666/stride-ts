@@ -59,7 +59,7 @@ export interface EditorMessages {
   readonly created: (kind: string, path: string) => string;
   readonly imported: (assets: readonly string[]) => string;
   // 属性面板
-  readonly assetLabels: { readonly material: string; readonly model: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string };
+  readonly assetLabels: { readonly material: string; readonly model: string; readonly timeline: string; readonly brush: string; readonly sdf: string; readonly poly: string; readonly gameSettings: string };
   readonly assetHint: (kind: string, path: string) => string;
   readonly instanceOf: (prefab: string) => string;
   readonly memberOf: (prefab: string, instance: string, member: string) => string;
@@ -71,6 +71,8 @@ export interface EditorMessages {
   readonly addSetting: string;
   readonly addSettingMenu: string;
   readonly sceneNotOpen: string;
+  readonly noScene: string;
+  readonly noSceneNoSettings: string;
   readonly pickEntity: string;
   readonly multiSelection: (count: number) => string;
   readonly removeScript: string;
@@ -213,7 +215,7 @@ const zhCN: EditorMessages = {
   opened: (kind, path) => `打开了 ${kind} ${path}`,
   created: (kind, path) => `建了 ${kind} ${path}（路径框里可以改名）`,
   imported: (assets) => `导入了 ${assets.join('、')}`,
-  assetLabels: { material: '材质', model: '模型', timeline: '时间轴', brush: '白盒', sdf: 'SDF 模型', poly: '多边形网格' },
+  assetLabels: { material: '材质', model: '模型', timeline: '时间轴', brush: '白盒', sdf: 'SDF 模型', poly: '多边形网格', gameSettings: '游戏设置' },
   assetHint: (kind, path) => `${kind} ${path}：改了马上存进资源文件，视口里用到它的实体跟着变。`,
   instanceOf: (prefab) => `预制体 ${prefab} 的实例`,
   memberOf: (prefab, instance, member) => `预制体 ${prefab} 的实例 ${instance} 里的 ${member}`,
@@ -225,6 +227,8 @@ const zhCN: EditorMessages = {
   addSetting: '添加设置',
   addSettingMenu: '添加设置……',
   sceneNotOpen: '场景还没打开',
+  noScene: '这个游戏没有场景：画面是游戏自己的根渲染器画的，属性面板里改游戏设置（根渲染器的属性改了马上看到）',
+  noSceneNoSettings: '这个游戏没有场景，也没有用 loadGameSettings 读游戏设置：编辑器没有能改的东西',
   pickEntity: '在场景树或视口里选一个实体（Ctrl、Shift 多选）',
   multiSelection: (count) => `选中了 ${count} 个实体：显示它们都有的组件，值不一样的显示"多个值"；改一处改所有的，一步撤销。`,
   removeScript: '去掉这个脚本',
@@ -375,7 +379,7 @@ const enUS: EditorMessages = {
   opened: (kind, path) => `Opened ${kind} ${path}`,
   created: (kind, path) => `Created ${kind} ${path} (rename it in the path box)`,
   imported: (assets) => `Imported ${assets.join(', ')}`,
-  assetLabels: { material: 'Material', model: 'Model', timeline: 'Timeline', brush: 'Greybox', sdf: 'SDF model', poly: 'Poly mesh' },
+  assetLabels: { material: 'Material', model: 'Model', timeline: 'Timeline', brush: 'Greybox', sdf: 'SDF model', poly: 'Poly mesh', gameSettings: 'Game settings' },
   assetHint: (kind, path) => `${kind} ${path}: changes are saved to the asset file at once, and the entities that use it in the viewport follow.`,
   instanceOf: (prefab) => `Instance of prefab ${prefab}`,
   memberOf: (prefab, instance, member) => `${member} in ${instance}, an instance of prefab ${prefab}`,
@@ -387,6 +391,8 @@ const enUS: EditorMessages = {
   addSetting: 'Add a setting',
   addSettingMenu: 'Add a setting…',
   sceneNotOpen: 'No scene is open yet',
+  noScene: 'This game has no scene: its own root renderer draws the picture. Edit the game settings in the inspector (changes to the renderer show at once)',
+  noSceneNoSettings: 'This game has no scene and does not read game settings with loadGameSettings: there is nothing for the editor to edit',
   pickEntity: 'Select an entity in the scene tree or the viewport (Ctrl, Shift for several)',
   multiSelection: (count) => `${count} entities selected: the components they all have are shown, differing values show "mixed"; an edit changes all of them in one undo step.`,
   removeScript: 'Remove this script',

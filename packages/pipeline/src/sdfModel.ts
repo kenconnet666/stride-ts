@@ -9,7 +9,8 @@
 import { encodeModel, VERTEX_FLOATS, type SdfFile, type SdfShapeFile } from '@stride-ts/engine/content-format';
 import type { SdfShape, StrideTools } from '@stride-ts/native/tools';
 import { compressMeshes, type SourceMesh } from './mesh.ts';
-import { projectUv, rigidTransform } from './brushModel.ts';
+import { projectUv } from '@stride-ts/engine/modeling';
+import { rigidTransform } from './brushModel.ts';
 
 /** 没写 resolution 时网格的边长（米）。 */
 export const DEFAULT_SDF_RESOLUTION = 0.05;

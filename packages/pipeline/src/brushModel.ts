@@ -8,6 +8,7 @@
  */
 import { encodeModel, VERTEX_FLOATS, type BrushFile, type BrushShapeFile } from '@stride-ts/engine/content-format';
 import type { Brush, StrideTools } from '@stride-ts/native/tools';
+import { projectUv } from '@stride-ts/engine/modeling';
 import { compressMeshes, type SourceMesh } from './mesh.ts';
 
 /** 圆柱、球没写分段数时用的。 */
@@ -61,17 +62,6 @@ export async function bakeBrushModel(tools: StrideTools, file: BrushFile, where 
     name: `slot${slot}`, material: slot, vertices: Float32Array.from(builder.vertices), indices: Uint32Array.from(builder.indices),
   }]));
   return encodeModel({ meshes: compressMeshes(meshes, tools), materials: file.materials.length > 0 ? file.materials : [null] });
-}
-
-/**
- * 按法线最大的分量选投影面：朝 ±X 的面用 (z, y)、±Y 用 (x, z)、±Z 用 (x, y)，翻过来的面镜像，贴图在每个面上都是正的。
- * SDF 建模（sdfModel.ts）按顶点的法线用同一个投影。
- */
-export function projectUv([x, y, z]: readonly number[], [nx, ny, nz]: readonly number[], scale: number): [number, number] {
-  const ax = Math.abs(nx!), ay = Math.abs(ny!), az = Math.abs(nz!);
-  if (ax >= ay && ax >= az) return [(nx! > 0 ? -z! : z!) / scale, -y! / scale];
-  if (ay >= az) return [x! / scale, (ny! > 0 ? z! : -z!) / scale];
-  return [(nz! > 0 ? x! : -x!) / scale, -y! / scale];
 }
 
 /** 位置和旋转（四元数 xyzw，没写是不转）合成列主序的 4x4 矩阵（白盒的笔刷、SDF 的形状给原生用）。 */

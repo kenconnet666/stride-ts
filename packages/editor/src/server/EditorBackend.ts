@@ -8,9 +8,9 @@
 import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type SdfFile } from '@stride-ts/engine/content-format';
+import { EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type PolyMeshFile, type SdfFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel, bakeSdfModel, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
+import { bakeBrushModel, bakePolyModel, bakeSdfModel, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -31,10 +31,10 @@ const CHANGE_DELAY = 50;
 /** 能经接口读写内容的种类：主文件是 JSON 的。 */
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
 /** 编辑器后端烘成同名模型的资源种类（源头是 JSON，场景引用烘出的 .model）。 */
-type BakedKind = 'brush' | 'sdf';
-const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf';
+type BakedKind = 'brush' | 'sdf' | 'poly';
+const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly';
 
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -430,13 +430,15 @@ export class EditorBackend {
   }
 
   /**
-   * 把白盒、SDF 烘成同名的模型（pipeline 的 bakeBrushModel、bakeSdfModel，原生工具模块里的 Manifold），写好模型文件，返回它的
+   * 把白盒、SDF、多边形网格烘成同名的模型（pipeline 的 bakeBrushModel、bakeSdfModel、bakePolyModel），写好模型文件，返回它的
    * 相对路径（还没刷新数据库）。形状不对时报错。
    */
   async #bake(kind: BakedKind, assetPath: string, content: unknown): Promise<string> {
     const tools = await (this.#tools ??= createStrideTools());
     const where = `${kind} ${assetPath}`;
-    const bytes = kind === 'brush' ? await bakeBrushModel(tools, content as BrushFile, where) : await bakeSdfModel(tools, content as SdfFile, where);
+    const bytes = kind === 'brush' ? await bakeBrushModel(tools, content as BrushFile, where)
+      : kind === 'sdf' ? await bakeSdfModel(tools, content as SdfFile, where)
+      : bakePolyModel(tools, content as PolyMeshFile, where);
     const model = assetPath + EXTENSIONS.model;
     await writeAtomically(path.join(this.project.contentDir, model), bytes);
     this.#bakes.set(`${kind}:${assetPath}`, JSON.stringify(content));

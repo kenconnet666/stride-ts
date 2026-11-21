@@ -12,6 +12,8 @@ import { EXTENSIONS } from '@stride-ts/engine/content-format';
 import { SceneDocument, type EntitiesFile, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { assetSchemas, componentSchemas, entitySchema, sceneSettingSchemas } from '@stride-ts/engine/editor-field-schema';
 import { checkEntity } from '@stride-ts/engine/editor-fields';
+import { applyPolyOperation, POLY_OPERATIONS, type PolyOperation } from '@stride-ts/engine/modeling';
+import type { PolyMeshFile } from '@stride-ts/engine/content-format';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import * as z from 'zod';
@@ -78,6 +80,40 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
   }, async ({ file, folder }) => {
     const result = await backend.importFile(folder, path.basename(file), new Uint8Array(await readFile(file)));
     return json({ asset: brief(result.asset), warnings: result.warnings, ...(result.animations ? { animations: result.animations } : {}) });
+  });
+
+  server.registerTool('edit_poly', {
+    description: [
+      'Edit a poly mesh asset (kind poly, .poly.json) with one modeling operation and save it (the backend bakes its model; editors hot reload).',
+      'Vertices and faces are indices into the file (read_asset); an edge is a vertex pair [a, b]. Operations:',
+      'extrude {faces, distance} pushes the faces out along their normals and adds side faces;',
+      'inset {faces, amount 0..1} shrinks each face toward its center with a ring of quads around it;',
+      'bevel {edges, distance} cuts a slanted face along edges whose ends have three faces each;',
+      'merge {vertices} collapses them to their center; split {edge, t} adds a vertex on an edge; connect {face, a, b} splits a face between two of its vertices;',
+      'move {delta:[x,y,z], vertices|faces|edges}; delete {faces}; flip {faces}; material {faces, material}.',
+      'The result tells what is selected after the operation (the extruded faces, the new vertex, ...) so operations chain.',
+    ].join(' '),
+    inputSchema: z.object({
+      path: assetPath,
+      op: z.enum(POLY_OPERATIONS),
+      faces: z.array(z.number().int()).optional(),
+      edges: z.array(z.tuple([z.number().int(), z.number().int()])).optional(),
+      vertices: z.array(z.number().int()).optional(),
+      edge: z.tuple([z.number().int(), z.number().int()]).optional(),
+      face: z.number().int().optional(),
+      a: z.number().int().optional(),
+      b: z.number().int().optional(),
+      distance: z.number().optional(),
+      amount: z.number().optional(),
+      t: z.number().optional(),
+      delta: z.tuple([z.number(), z.number(), z.number()]).optional(),
+      material: z.number().int().optional(),
+    }),
+  }, async ({ path, ...operation }) => {
+    const mesh = await backend.readAsset('poly', path) as PolyMeshFile;
+    const result = applyPolyOperation(mesh, operation as unknown as PolyOperation);
+    await backend.saveAsset('poly', path, result.mesh);
+    return json({ saved: `poly ${path}`, vertexCount: result.mesh.vertices.length, faceCount: result.mesh.faces.length, selected: { faces: result.faces, edges: result.edges, vertices: result.vertices } });
   });
 
   server.registerTool('edit_scene', {

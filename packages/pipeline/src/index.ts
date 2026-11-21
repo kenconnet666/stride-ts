@@ -15,3 +15,4 @@ export { importSourceModel, isSourceModel, type ImportedSourceModel, type Source
 export { encodeFont, importFontFile, isFontFile, type EncodedFont, type FontSettings } from './fontAsset.ts';
 export { bakeBrushModel } from './brushModel.ts';
 export { bakeSdfModel, DEFAULT_SDF_RESOLUTION } from './sdfModel.ts';
+export { bakePolyModel } from './polyModel.ts';

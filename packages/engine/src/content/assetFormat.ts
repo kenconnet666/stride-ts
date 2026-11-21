@@ -31,6 +31,8 @@ export const EXTENSIONS = {
   brush: '.brush.json',
   /** SDF 建模（SdfFile）：形状平滑合成的列表，编辑器后端把它烘成同名的模型（.model）。 */
   sdf: '.sdf.json',
+  /** 多边形网格（PolyMeshFile）：顶点和 n 边形的面，编辑器后端把它烘成同名的模型（.model）。 */
+  poly: '.poly.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */
@@ -540,6 +542,34 @@ export type SdfShapeFile = {
   | { readonly kind: 'torus'; readonly ringRadius: number; readonly tubeRadius: number }
   | { readonly kind: 'ellipsoid'; readonly radii: Vec3Tuple }
 );
+
+/**
+ * 多边形网格（Stride 没有；照 Unity 的 ProBuilder、Blender 的网格编辑）：顶点加 n 边形的面，编辑器里点线面地改（挤出、内插、倒角、
+ * 合并、切割，modeling/polyEdit.ts），编辑器后端烘成同名的模型：面三角化，相邻面的夹角小于 smoothAngle 时法线光滑过渡（其余是硬边），
+ * 按朝向投影的世界坐标 UV，每个面用它的材质槽；mirror 给了时按那个平面镜像一份（像 Blender 的镜像修改器：文件里只存一半，
+ * 改一边两边一起变）。场景引用烘出的模型。
+ */
+export interface PolyMeshFile {
+  readonly name: string;
+  /** 材质槽（内容路径；null 是默认材质）；面的 material 是这里的下标。 */
+  readonly materials: readonly (string | null)[];
+  /** 顶点的位置（相对模型的原点）。 */
+  readonly vertices: readonly Vec3Tuple[];
+  readonly faces: readonly PolyFaceFile[];
+  /** 相邻面的夹角（度）小于它时法线光滑过渡，默认 30；0 是全部硬边（平直的面）。 */
+  readonly smoothAngle?: number;
+  /** 自动 UV：多少米一个贴图周期（默认 1）。 */
+  readonly uvScale?: number;
+  /** 按 x = 0、y = 0 或 z = 0 的平面镜像一份，落在平面上的顶点两边共用；没写是不镜像。 */
+  readonly mirror?: 'x' | 'y' | 'z';
+}
+
+/** 一个面：顶点下标按从外面看逆时针排（至少 3 个，大致在一个平面上，可以是凹的）。 */
+export interface PolyFaceFile {
+  readonly vertices: readonly number[];
+  /** 材质槽的下标，没写是 0。 */
+  readonly material?: number;
+}
 
 /**
  * 时间轴（Stride 没有；照虚幻的 Sequencer、Unity 的 Timeline）：一段时间里各条轨道上的东西。游戏里当过场放（TimelinePlayer

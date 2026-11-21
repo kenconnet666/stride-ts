@@ -1,0 +1,11 @@
+{
+ "name": "MushroomSpots",
+ "baseColor": [
+  0.97,
+  0.95,
+  0.9,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.6
+}

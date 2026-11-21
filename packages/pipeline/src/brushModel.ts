@@ -63,24 +63,30 @@ export async function bakeBrushModel(tools: StrideTools, file: BrushFile, where 
   return encodeModel({ meshes: compressMeshes(meshes, tools), materials: file.materials.length > 0 ? file.materials : [null] });
 }
 
-/** 按法线最大的分量选投影面：朝 ±X 的面用 (z, y)、±Y 用 (x, z)、±Z 用 (x, y)，翻过来的面镜像，贴图在每个面上都是正的。 */
-function projectUv([x, y, z]: readonly number[], [nx, ny, nz]: readonly number[], scale: number): [number, number] {
+/**
+ * 按法线最大的分量选投影面：朝 ±X 的面用 (z, y)、±Y 用 (x, z)、±Z 用 (x, y)，翻过来的面镜像，贴图在每个面上都是正的。
+ * SDF 建模（sdfModel.ts）按顶点的法线用同一个投影。
+ */
+export function projectUv([x, y, z]: readonly number[], [nx, ny, nz]: readonly number[], scale: number): [number, number] {
   const ax = Math.abs(nx!), ay = Math.abs(ny!), az = Math.abs(nz!);
   if (ax >= ay && ax >= az) return [(nx! > 0 ? -z! : z!) / scale, -y! / scale];
   if (ay >= az) return [x! / scale, (ny! > 0 ? z! : -z!) / scale];
   return [(nz! > 0 ? x! : -x!) / scale, -y! / scale];
 }
 
+/** 位置和旋转（四元数 xyzw，没写是不转）合成列主序的 4x4 矩阵（白盒的笔刷、SDF 的形状给原生用）。 */
+export function rigidTransform([px, py, pz]: readonly number[], [qx, qy, qz, qw]: readonly number[] = [0, 0, 0, 1]): number[] {
+  return [
+    1 - 2 * (qy! * qy! + qz! * qz!), 2 * (qx! * qy! + qz! * qw!), 2 * (qx! * qz! - qy! * qw!), 0,
+    2 * (qx! * qy! - qz! * qw!), 1 - 2 * (qx! * qx! + qz! * qz!), 2 * (qy! * qz! + qx! * qw!), 0,
+    2 * (qx! * qz! + qy! * qw!), 2 * (qy! * qz! - qx! * qw!), 1 - 2 * (qx! * qx! + qy! * qy!), 0,
+    px!, py!, pz!, 1,
+  ];
+}
+
 /** 文件里的笔刷换成原生的：位置和旋转合成列主序的矩阵。 */
 function nativeBrush(brush: BrushShapeFile): Brush {
-  const [qx, qy, qz, qw] = brush.rotation ?? [0, 0, 0, 1];
-  const [px, py, pz] = brush.position;
-  const transform = [
-    1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy + qz * qw), 2 * (qx * qz - qy * qw), 0,
-    2 * (qx * qy - qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz + qx * qw), 0,
-    2 * (qx * qz + qy * qw), 2 * (qy * qz - qx * qw), 1 - 2 * (qx * qx + qy * qy), 0,
-    px, py, pz, 1,
-  ];
+  const transform = rigidTransform(brush.position, brush.rotation);
   const { operation } = brush;
   switch (brush.kind) {
     case 'box': return { kind: 'box', operation, transform, size: brush.size };

@@ -454,6 +454,33 @@
      ]
     }
    }
+  },
+  {
+   "id": "a599f864-d893-4d3b-a56a-42fd1935bbfb",
+   "name": "Mushroom",
+   "parent": null,
+   "position": [
+    1.5,
+    0,
+    -1.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Level/Mushroom",
+     "materials": []
+    }
+   }
   }
  ]
 }

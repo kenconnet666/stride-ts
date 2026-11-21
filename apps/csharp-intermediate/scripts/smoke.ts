@@ -193,7 +193,8 @@ const audio = evaluate<Audio>(`(async () => {
   await tap('Space'); r.playing = await until(() => (find('Space')?.endsWith('Playing') ? find('Space') : null), 2) ?? \`\${find('Space')} (frame \${strideGame.frames})\`;
   await tap('ArrowUp'); await tap('ArrowLeft'); r.volume = [find('Up/Down'), find('Left/Right')];
   // 等到显示 Paused（CI 上偶尔没等到，结果里带上第几帧，下次失败时好查）
-  await tap('Space'); r.paused = await until(() => (find('Space')?.endsWith('Paused') ? find('Space') : null), 1) ?? \`\${find('Space')} (frame \${strideGame.frames})\`;
+  // CI 上偶尔停不下来：失败时带上音频上下文的状态（没有声卡时流式的音乐可能一放就算放完，再按空格成了重新放）
+  await tap('Space'); r.paused = await until(() => (find('Space')?.endsWith('Paused') ? find('Space') : null), 2) ?? \`\${find('Space')} (frame \${strideGame.frames}, audio \${strideGame.audio.context.state})\`;
   const gun = named('AudioDemo')[0].require(strideEngine.AudioEmitterComponent).controller('Gun');
   r.gun = [gun.playState];
   // 按着右键的时候看：帧慢时松开以后再看，枪声可能已经放完了
@@ -220,7 +221,8 @@ const pose = (character: string, pivot: string) => evaluate<Pose>(`(() => {
 // 锁鼠标、移动、按键都等游戏处理过（until、frames、holdFor 按游戏时间），不按墙钟等
 const lock = async () => {
   stride('mouse', 'left', '--trusted');
-  stride('eval', 'until(() => strideGame.input.isMousePositionLocked, 3).then(() => frames(2)).then(() => 1)');
+  // 按游戏时间等：锁上了马上往下走，CI 上点击到锁定有时要好几帧
+  stride('eval', 'until(() => strideGame.input.isMousePositionLocked, 10).then(() => frames(2)).then(() => 1)');
 };
 const move = async (dx: number, dy: number) => {
   stride('mouse', 'move', String(dx), String(dy));

@@ -29,6 +29,8 @@ export const EXTENSIONS = {
   timeline: '.timeline.json',
   /** 关卡白盒（BrushFile）：笔刷的列表，编辑器后端把它烘成同名的模型（.model）。 */
   brush: '.brush.json',
+  /** SDF 建模（SdfFile）：形状平滑合成的列表，编辑器后端把它烘成同名的模型（.model）。 */
+  sdf: '.sdf.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */
@@ -494,6 +496,49 @@ export type BrushShapeFile = {
   /** 圆柱（顶面半径不同时是圆台、为 0 是圆锥）：轴是 Y，中心在 position。 */
   | { readonly kind: 'cylinder'; readonly height: number; readonly radius: number; readonly topRadius?: number; readonly segments?: number }
   | { readonly kind: 'sphere'; readonly radius: number; readonly segments?: number }
+);
+
+/**
+ * SDF 建模（Stride 没有；照 Womp、Adobe Substance Modeler 的"液态"建模）：一串形状——球、圆角方块、胶囊、圆柱、圆环、椭球——
+ * 按顺序平滑地并上、减掉或求交（smoothness 是融合带的宽度，0 是硬接），编辑器后端（原生工具模块的 st_sdf_mesh，Manifold 的等值面）
+ * 烘成同名的模型：光滑的法线（距离场的梯度，融合的地方也是圆的），按朝向投影的世界坐标 UV，每个三角形用离它最近的形状的材质槽。
+ * 圆润的道具、角色的粗形、石头这类用它很快；场景引用烘出的模型，这个文件是源头，随时回来改参数。
+ */
+export interface SdfFile {
+  readonly name: string;
+  /** 材质槽（内容路径；null 是默认材质）；形状的 material 是这里的下标。 */
+  readonly materials: readonly (string | null)[];
+  /** 网格的边长（米，默认 0.05）：越小越细、烘得越慢。 */
+  readonly resolution?: number;
+  /** 自动 UV：多少米一个贴图周期（默认 1）。 */
+  readonly uvScale?: number;
+  /** 按顺序合成（第一个应该是 add）。 */
+  readonly shapes: readonly SdfShapeFile[];
+}
+
+/** SDF 建模的一个形状：形状、运算、和前面融合的宽度、放在哪（中心，相对模型的原点）、用哪个材质槽。 */
+export type SdfShapeFile = {
+  /** 编辑器里显示的名字。 */
+  readonly name?: string;
+  readonly operation: 'add' | 'subtract' | 'intersect';
+  /** 和前面的形状融合的宽度（米）；没写是 0（硬接）。 */
+  readonly smoothness?: number;
+  readonly position: Vec3Tuple;
+  /** 四元数 xyzw；没写是不转。 */
+  readonly rotation?: readonly [number, number, number, number];
+  /** 材质槽的下标，没写是 0。 */
+  readonly material?: number;
+} & (
+  | { readonly kind: 'sphere'; readonly radius: number }
+  /** 方块：size 是整个的边长，圆角在尺寸以内。 */
+  | { readonly kind: 'box'; readonly size: Vec3Tuple; readonly cornerRadius?: number }
+  /** 胶囊：轴是 Y，height 是两个半球中心之间的距离。 */
+  | { readonly kind: 'capsule'; readonly height: number; readonly radius: number }
+  /** 圆柱：轴是 Y，边上的圆角在尺寸以内。 */
+  | { readonly kind: 'cylinder'; readonly height: number; readonly radius: number; readonly edgeRadius?: number }
+  /** 圆环：环在 XZ 平面上。 */
+  | { readonly kind: 'torus'; readonly ringRadius: number; readonly tubeRadius: number }
+  | { readonly kind: 'ellipsoid'; readonly radii: Vec3Tuple }
 );
 
 /**

@@ -1,0 +1,11 @@
+{
+ "name": "MushroomStem",
+ "baseColor": [
+  0.92,
+  0.86,
+  0.72,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.8
+}

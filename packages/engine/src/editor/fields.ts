@@ -11,7 +11,7 @@
  */
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
-  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile,
+  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
 import type { AssetKind } from '../content/references';
@@ -694,7 +694,6 @@ export const TIMELINE_FIELDS = fields<TimelineFile>({
   }),
 });
 
-/** 属性面板能编辑的资源（选中资源浏览器里的它时）：种类 → 字段。模型只有 JSON 写的那种能编辑。 */
 /** 关卡白盒（BrushFile）：笔刷按形状分；改了马上存，编辑器后端烘成同名的模型，视口里热重载。 */
 export const BRUSH_FIELDS = fields<BrushFile>({
   name: string,
@@ -727,7 +726,46 @@ export const BRUSH_FIELDS = fields<BrushFile>({
   }),
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS } as const;
+/** SDF 建模（SdfFile）：形状按种类分；改了马上存，编辑器后端烘成同名的模型，视口里热重载。 */
+export const SDF_FIELDS = fields<SdfFile>({
+  name: string,
+  materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'material slots; a shape picks one by index' },
+  resolution: { type: number({ min: 0.005, step: 0.01, unit: 'm' }), optional: true, default: 0.05, description: 'mesh edge length: smaller is finer and slower to bake' },
+  uvScale: { type: number({ min: 0.01, step: 0.25, unit: 'm' }), optional: true, default: 1, description: 'automatic UVs: one texture repeat per this many meters' },
+  shapes: list({
+    kind: 'union',
+    tag: 'kind',
+    variants: {
+      sphere: fields<{ radius: unknown }>({ radius: { type: positiveNumber() } }),
+      box: fields<{ size: unknown; cornerRadius: unknown }>({
+        size: { type: vector(3, 'm') },
+        cornerRadius: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0 },
+      }),
+      capsule: fields<{ height: unknown; radius: unknown }>({
+        height: { type: number({ min: 0, step: 0.1, unit: 'm' }), description: 'distance between the two end centers, along Y' },
+        radius: { type: positiveNumber() },
+      }),
+      cylinder: fields<{ height: unknown; radius: unknown; edgeRadius: unknown }>({
+        height: { type: positiveNumber() },
+        radius: { type: positiveNumber() },
+        edgeRadius: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0 },
+      }),
+      torus: fields<{ ringRadius: unknown; tubeRadius: unknown }>({ ringRadius: { type: positiveNumber() }, tubeRadius: { type: positiveNumber() } }),
+      ellipsoid: fields<{ radii: unknown }>({ radii: { type: vector(3, 'm') } }),
+    },
+    common: fields<{ name: unknown; operation: unknown; smoothness: unknown; position: unknown; rotation: unknown; material: unknown }>({
+      name: { type: string, optional: true },
+      operation: { type: oneOf('add', 'subtract', 'intersect') },
+      smoothness: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0, description: 'how wide the blend into the shapes before it is (0 is a sharp seam)' },
+      position: { type: vector(3, 'm') },
+      rotation: { type: rotation, optional: true, default: [0, 0, 0, 1] },
+      material: { type: integer(0, 255), optional: true, default: 0, description: 'index into materials' },
+    }),
+  }),
+});
+
+/** 属性面板能编辑的资源（选中资源浏览器里的它时）：种类 → 字段。模型只有 JSON 写的那种能编辑。 */
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS } as const;
 
 const INTEGER_KINDS: ReadonlySet<string> = new Set(['int', 'u8', 'u32']);
 

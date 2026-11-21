@@ -504,7 +504,11 @@ export class ContentManager {
   loadScatter(path: string): Promise<ScatterAsset> {
     return this.#once(path + EXTENSIONS.scatter, async (url) => {
       const file = checkScatterFile(this.#json<unknown>(await this.#read(url)), url.href);
-      return new ScatterAsset(path, file, await Promise.all(file.layers.map((layer) => this.loadModel(layer.model))));
+      const [models, materials] = await Promise.all([
+        Promise.all(file.layers.map((layer) => (layer.model ? this.loadModel(layer.model) : undefined))),
+        Promise.all(file.layers.map((layer) => (layer.material ? this.loadMaterial(layer.material) : undefined))),
+      ]);
+      return new ScatterAsset(path, file, models, materials);
     });
   }
 

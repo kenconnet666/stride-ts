@@ -253,7 +253,10 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
     }
     case 'scatter': {
       const layers = (file as ScatterFile).layers;
-      layers.forEach((layer) => add('model', layer, 'model'));
+      layers.forEach((layer) => {
+        if (layer.model) add('model', layer, 'model');
+        if (layer.material) add('material', layer, 'material');
+      });
       break;
     }
     case 'text': {

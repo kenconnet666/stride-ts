@@ -436,7 +436,7 @@ struct Material {
   // 透射（Material.transmission）：比例（0 是没有）、折射率、厚度（0 是薄的面）；吸收系数（每米，-ln(颜色) / 距离）
   transmission: vec4f,
   absorption: vec4f,
-  // 植被的风（Material.wind）：x 是弯，y 是叶子抖，都是 10 米每秒的风里的米数；都是 0 是没有
+  // 植被的风（Material.wind）：x 是弯，y 是叶子抖，都是 10 米每秒的风里的米数，都是 0 是没有；z 是 1 时是草的模式
   wind: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
@@ -523,8 +523,9 @@ const IDENTITY = mat4x4f(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 
  * 植被的风（Material.wind，见那里的说明）：p 是渲染空间里的世界位置，world 是实体的世界矩阵，localNormal 是模型空间的法线。
  * 弯：顺风方向挪 bend · (风速 / 10) · (高度 / 10)²，风速按每棵树错开相位的慢摆（0.65..1）调，再按挪的距离往下降一点（保持
  * 树干的长度）；抖：离树干的竖直轴 2 米以外的顶点沿法线抖 flutter · (风速 / 10)，频率高、每个顶点相位不同。
+ * 草的模式：高度是 (1 − uv.v) · 10（梢摆 bend），相位按顶点自己的位置（一个网格里的草叶各摆各的）。
  */
-fn windSway(p: vec3f, world: mat4x4f, localNormal: vec3f) -> vec3f {
+fn windSway(p: vec3f, world: mat4x4f, localNormal: vec3f, uv: vec2f) -> vec3f {
   let bend = material.wind.x;
   let flutter = material.wind.y;
   let horizontal = vec2f(view.wind.x, view.wind.z);
@@ -533,10 +534,11 @@ fn windSway(p: vec3f, world: mat4x4f, localNormal: vec3f) -> vec3f {
     return p;
   }
   let origin = world[3].xyz;
-  let height = max(p.y - origin.y, 0.0);
+  let grass = material.wind.z > 0.5;
+  let height = select(max(p.y - origin.y, 0.0), (1.0 - uv.y) * 10.0, grass);
   let time = view.locals.y;
   // 相位按世界坐标（加上渲染原点取模的部分：原点换了不跳）；顺着风的方向推进，阵风像波一样扫过林子
-  let place = origin.xz + view.origin.xz;
+  let place = select(origin.xz, p.xz, grass) + view.origin.xz;
   let direction = horizontal / speed;
   let phase = dot(place, direction) * 0.08 + dot(place, vec2f(0.37, 0.61)) * 0.05;
   let strength = speed * 0.1;
@@ -563,7 +565,7 @@ fn transformVertex(position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f, sl
   // 材质的位移贴图：顶点沿模型空间的法线移动（Stride 的 MaterialSurfaceDisplacement，MaterialShader 的水波）
   let displaced = local + normalize(localNormal) * treeDisplacement(meshUv, local);
   // 植被的风；网格效果可以在投影前改世界位置（Stride 的 PreTransformPosition，SpaceEscape 的走廊往远处弯）
-  let worldPosition = vec4f(effectWorldPosition(windSway((world * vec4f(displaced, 1.0)).xyz, world, localNormal), mesh.effect), 1.0);
+  let worldPosition = vec4f(effectWorldPosition(windSway((world * vec4f(displaced, 1.0)).xyz, world, localNormal, meshUv), mesh.effect), 1.0);
   var out: Varyings;
   out.position = view.viewProjection * worldPosition;
   out.world = worldPosition.xyz;
@@ -590,8 +592,9 @@ fn previousWorldPosition(position: vec3f, normal: vec3f, uv: vec2f, slot: u32, v
   let morph = morphDelta(slot, vertex, true);
   let local = (skin * vec4f(mesh.positionOffset.xyz + position * mesh.positionScale.xyz + morph.position, 1.0)).xyz;
   let localNormal = (skin * vec4f(select(normal, octDecode(normal.xy), (mesh.flags & 1u) != 0u) + morph.normal, 0.0)).xyz;
-  let displaced = local + normalize(localNormal) * treeDisplacement(mesh.uvTransform.zw + uv * mesh.uvTransform.xy, local);
-  return vec4f(effectWorldPosition(windSway((world * vec4f(displaced, 1.0)).xyz, world, localNormal), mesh.effect), 1.0);
+  let meshUv = mesh.uvTransform.zw + uv * mesh.uvTransform.xy;
+  let displaced = local + normalize(localNormal) * treeDisplacement(meshUv, local);
+  return vec4f(effectWorldPosition(windSway((world * vec4f(displaced, 1.0)).xyz, world, localNormal, meshUv), mesh.effect), 1.0);
 }
 
 /** 顶点的蒙皮矩阵：4 个关节的蒙皮矩阵按权重相加（Stride 的 TransformationSkinning）；previous 取上一帧的。 */

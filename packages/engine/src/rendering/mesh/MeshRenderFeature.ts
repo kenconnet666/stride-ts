@@ -1210,7 +1210,7 @@ class Gpu {
       const transmission = material.transmission;
       floats.set(transmission ? [transmission.factor, transmission.ior, transmission.thickness, 0] : [0, 1.5, 0, 0], 72 + CEL_RAMP_STOPS * 8);
       floats.set(transmission ? [...transmission.attenuationColor.map((c) => -Math.log(Math.max(c, 1e-4)) / transmission.attenuationDistance), 0] : [0, 0, 0, 0], 76 + CEL_RAMP_STOPS * 8);
-      floats.set(material.wind ? [material.wind.bend, material.wind.flutter, 0, 0] : [0, 0, 0, 0], 80 + CEL_RAMP_STOPS * 8);
+      floats.set(material.wind ? [material.wind.bend, material.wind.flutter, material.wind.mode === 'grass' ? 1 : 0, 0] : [0, 0, 0, 0], 80 + CEL_RAMP_STOPS * 8);
       this.device.queue.writeBuffer(gpu.buffer, 0, this.#materialData);
       const view = (texture: Required<MaterialTexture> | undefined) => (texture ? this.#resources.texture(texture.texture) : this.#resources.white).createView();
       const sampler = (texture: Required<MaterialTexture> | undefined) => this.#resources.sampler(texture?.sampler ?? {});

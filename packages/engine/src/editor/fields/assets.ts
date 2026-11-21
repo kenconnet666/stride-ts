@@ -53,6 +53,7 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
     type: object(fields<NonNullable<MaterialFile['wind']>>({
       bend: { type: number({ min: 0, step: 0.05, unit: 'm' }), description: 'how far a point 10 m up sways in a 10 m/s wind (grows with the height squared)' },
       flutter: { type: number({ min: 0, step: 0.01, unit: 'm' }), optional: true, default: 0, description: 'how far leaves away from the trunk shake along their normal in a 10 m/s wind' },
+      mode: { type: oneOf('tree', 'grass'), optional: true, default: 'tree', description: 'tree bends by the height above the entity; grass (merged blades) by the blade height (uv v: 1 root, 0 tip), bend is the tip sway' },
     })),
     optional: true,
     group: 'advanced',
@@ -387,7 +388,18 @@ export const SCATTER_FIELDS = fields<ScatterFile>({
   layers: {
     type: list(object(fields<ScatterFile['layers'][number]>({
       name: string,
-      model: { type: asset('model'), description: 'the model scattered' },
+      model: { type: asset('model'), optional: true, description: 'the model scattered (not for grass)' },
+      grass: {
+        type: object(fields<NonNullable<ScatterFile['layers'][number]['grass']>>({
+          height: { type: number({ min: 0.01, step: 0.05, unit: 'm' }), description: 'blade height (times the scale)' },
+          width: { type: number({ min: 0.001, step: 0.01, unit: 'm' }), description: 'blade width at the root (times the scale)' },
+          lean: { type: number({ min: 0, max: 2, step: 0.05 }), optional: true, default: 0.3, description: 'how far the tip leans, in blade heights' },
+        })),
+        optional: true,
+        description: 'scatter grass blades instead of a model: one triangle each, merged into one mesh per cell',
+      },
+      material: { type: asset('material'), optional: true, description: 'material of the grass blades (double-sided, wind mode grass)' },
+      cellSize: { type: number({ min: 4, step: 4, unit: 'm' }), optional: true, description: 'edge of this layer\'s cells; unset uses the file\'s (grass: 16)' },
       density: { type: number({ min: 0.01, step: 10 }), description: 'at most this many per hectare (100 × 100 m)' },
       slope: { type: vector(2, '°'), optional: true, default: [0, 90], description: 'only where the ground slope is in this range' },
       height: { type: vector(2, 'm'), optional: true, description: 'only where the ground height is in this range; unset is anywhere' },

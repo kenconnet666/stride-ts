@@ -4,10 +4,16 @@
  * - 撒法是纯函数（scatterCell）：一层按 density 的抖动网格出候选点（网格对齐地形的原点），每个点的随机数由种子、层、网格坐标
  *   哈希出来，所以同一个点不管哪个流式的格子、什么时候撒都一样；按坡度、高度、成片的噪声、离路和地物的距离筛，剩下的随机转、
  *   缩放、可选地顺着坡倾斜，贴在地面上（高度直接求值，同 game.terrain.heightAt）；
- * - ScatterSystem 按相机附近的格子撒（每层按自己的 viewDistance），近的先撒，每帧有时间预算；走远了拿掉。每个格子一个子实体，
- *   下面每个实例一个带模型的实体（剔除、阴影、点选照常）。地形或摆放文件换了新版本（编辑器、热重载）时全部重撒。
+ * - ScatterSystem 按相机附近的格子撒（每层按自己的 viewDistance、cellSize），近的先撒，每帧有时间预算；走远了拿掉。每个格子
+ *   一个子实体，下面每个实例一个带模型的实体（剔除、阴影、点选照常）。地形或摆放文件换了新版本（编辑器、热重载）时全部重撒；
+ * - 草（层的 grass）：每个点一片草叶（一个三角形），一个格子的草合成一个网格挂在格子的实体上。草密，地面的高度不逐点求值：
+ *   整个格子按 1 米的格距在工作线程上算一页高度（TerrainAsset.heights），双线性插值出高度和法线（草叶的法线用地面的，和地形的
+ *   光照接得上）。
  */
 import type { LoadedModel } from '../content/ContentManager';
+import type { Material } from '../rendering/mesh/Material';
+import { Mesh } from '../rendering/mesh/Mesh';
+import { Model } from '../rendering/components';
 import type { ScatterFile, ScatterLayerFile } from '../content/scatterFormat';
 import { Matrix } from '../data/Matrix';
 import { prop, type Branded, type EntityId } from '../data/prop';
@@ -29,17 +35,19 @@ export const Scatter = component('Scatter', {
 
 const assets = new ResourceTable<ScatterAsset>();
 
-/** 加载好的摆放资源：文件和每层的模型（按层的顺序）。 */
+/** 加载好的摆放资源：文件、每层的模型（撒草的层没有）和草的材质（按层的顺序；没写的是 undefined，用默认材质）。 */
 export class ScatterAsset {
   readonly id: ScatterAssetId;
   readonly path: string;
   readonly file: ScatterFile;
-  readonly models: readonly LoadedModel[];
+  readonly models: readonly (LoadedModel | undefined)[];
+  readonly materials: readonly (Material | undefined)[];
 
-  constructor(path: string, file: ScatterFile, models: readonly LoadedModel[]) {
+  constructor(path: string, file: ScatterFile, models: readonly (LoadedModel | undefined)[], materials: readonly (Material | undefined)[] = []) {
     this.path = path;
     this.file = file;
     this.models = models;
+    this.materials = materials;
     this.id = assets.add(this) as ScatterAssetId;
   }
 
@@ -80,7 +88,8 @@ export function scatterCell(
       // 抖动不超出自己的网格：相邻的格子不会重复撒
       const x = (i + 0.5 + (random(0) - 0.5) * 0.9) * spacing, z = (j + 0.5 + (random(1) - 0.5) * 0.9) * spacing;
       if (x < x0 || x >= x0 + size || z < z0 || z >= z0 + size) continue;
-      if (layer.clump && clumpNoise(x / layer.clump.scale, z / layer.clump.scale, seed + layerIndex * 101) > layer.clump.coverage) continue;
+      // 成片：阈值按点抖一点（±0.08），斑块的边是渐渐稀下去的，不是一条硬线
+      if (layer.clump && clumpNoise(x / layer.clump.scale, z / layer.clump.scale, seed + layerIndex * 101) > layer.clump.coverage + (random(4) - 0.5) * 0.16) continue;
       if (blocked(x, z)) continue;
       const sample = ground(x, z);
       if (!sample) continue;
@@ -130,10 +139,11 @@ function clumpNoise(x: number, z: number, seed: number): number {
   return Math.min(1, Math.max(0, 0.5 + (n - 0.5) * 2.1));
 }
 
-/** 撒好的一个格子：子实体（下面是各个实例），最后一次在范围里的帧。 */
+/** 撒好的一个格子：子实体（下面是各个实例，或者挂着草的网格），最后一次在范围里的帧，草的网格（拿掉格子时放掉）。 */
 interface Cell {
   readonly entity: Entity;
   used: number;
+  mesh?: Mesh;
 }
 
 interface ScatterState {
@@ -218,12 +228,12 @@ export class ScatterSystem {
     const ex = m[0]! * eyeWorld[0]! + m[4]! * eyeWorld[1]! + m[8]! * eyeWorld[2]! + m[12]!;
     const ez = m[2]! * eyeWorld[0]! + m[6]! * eyeWorld[1]! + m[10]! * eyeWorld[2]! + m[14]!;
     if (state.complete && state.eye && Math.hypot(ex - state.eye[0], ez - state.eye[1]) < RESELECT_DISTANCE) return;
-    const file = state.asset.file, size = file.cellSize ?? 64;
+    const file = state.asset.file;
     const half = state.entity.require(Terrain).size / 2;
     // 要的格子：每层 viewDistance 以内（按格子中心），近的先撒
-    const wanted: { key: string; layer: number; cx: number; cz: number; distance: number }[] = [];
+    const wanted: { key: string; layer: number; cx: number; cz: number; size: number; distance: number }[] = [];
     file.layers.forEach((layer, l) => {
-      const reach = layer.viewDistance ?? 400;
+      const reach = layer.viewDistance ?? 400, size = layer.cellSize ?? file.cellSize ?? 64;
       const c0x = Math.floor((ex - reach) / size), c1x = Math.floor((ex + reach) / size);
       const c0z = Math.floor((ez - reach) / size), c1z = Math.floor((ez + reach) / size);
       for (let cx = c0x; cx <= c1x; cx++) {
@@ -234,7 +244,7 @@ export class ScatterSystem {
           const key = `${l}:${cx}_${cz}`;
           const cell = state.cells.get(key);
           if (cell) cell.used = this.#frame;
-          else wanted.push({ key, layer: l, cx, cz, distance });
+          else wanted.push({ key, layer: l, cx, cz, size, distance });
         }
       }
     });
@@ -242,7 +252,9 @@ export class ScatterSystem {
     let built = 0;
     for (const want of wanted) {
       if (performance.now() > deadline) break;
-      state.cells.set(want.key, { entity: this.#build(state, want.layer, want.cx * size, want.cz * size, size, `${want.cx}_${want.cz}`), used: this.#frame });
+      const { layer, cx, cz, size } = want;
+      const grass = file.layers[layer]!.grass !== undefined;
+      state.cells.set(want.key, grass ? this.#buildGrass(state, layer, cx * size, cz * size, size, `${cx}_${cz}`) : { entity: this.#build(state, layer, cx * size, cz * size, size, `${cx}_${cz}`), used: this.#frame });
       built++;
     }
     state.eye = [ex, ez];
@@ -250,7 +262,7 @@ export class ScatterSystem {
     // 出了范围的格子拿掉（留一帧的余地：刚好在边上的不来回建、拆）
     for (const [key, cell] of state.cells) {
       if (cell.used < this.#frame - 1) {
-        cell.entity.destroy();
+        dropCell(cell);
         state.cells.delete(key);
       }
     }
@@ -270,7 +282,8 @@ export class ScatterSystem {
     const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size));
     const cell = game.entities.create({ name: `${state.entity.name}/scatter ${layer.name} ${id}`, components: [Transform] });
     cell.require(Transform).parent = state.entity;
-    const model = state.asset.models[layerIndex]!;
+    const model = state.asset.models[layerIndex];
+    if (!model) throw new Error(`${state.asset.path}: layer ${layer.name} has no model`);
     for (const instance of instances) {
       const child = game.entities.create({ name: layer.name, components: [Transform.with({ position: instance.position, rotation: instance.rotation, scale: [instance.scale, instance.scale, instance.scale] })] });
       child.require(Transform).parent = cell;
@@ -281,10 +294,89 @@ export class ScatterSystem {
     return cell;
   }
 
+  /**
+   * 撒一个格子的草：格子的实体马上建（占住位置），高度页在工作线程上算好以后撒草叶、合成网格挂上去；那时格子已经拿掉了就不挂。
+   */
+  #buildGrass(state: ScatterState, layerIndex: number, x0: number, z0: number, size: number, id: string): Cell {
+    const game = this.#game, terrain = state.terrain;
+    const layer = state.asset.file.layers[layerIndex]!;
+    const cellEntity = game.entities.create({ name: `${state.entity.name}/grass ${layer.name} ${id}`, components: [Transform] });
+    cellEntity.require(Transform).parent = state.entity;
+    const cell: Cell = { entity: cellEntity, used: this.#frame };
+    // 多算一圈（求格子边上的法线），格距 GRASS_SPACING
+    const count = Math.ceil(size / GRASS_SPACING) + 3;
+    const ox = x0 - GRASS_SPACING, oz = z0 - GRASS_SPACING;
+    const half = state.entity.require(Terrain).size / 2;
+    void terrain.heights(game.native, ox, oz, GRASS_SPACING, count, count).then((heights) => {
+      if (!cellEntity.alive) return;
+      const ground = gridGround(heights, ox, oz, GRASS_SPACING, count, half);
+      const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size));
+      if (instances.length === 0) return;
+      cell.mesh = new Mesh(`${state.asset.path} ${layer.name} ${id}`, grassBlades(layer, instances, ground));
+      const material = state.asset.materials[layerIndex] ?? game.content.defaultMaterial;
+      cellEntity.add(Model.with({ mesh: cell.mesh.id, material: material.id, isShadowCaster: layer.castShadows ?? false }));
+      this.built.cells++;
+      this.built.instances += instances.length;
+      game.requestFrames?.();
+    }, (error: unknown) => console.warn(`[stride] ${state.asset.path}: grass ${layer.name} ${id}: ${(error as Error).message}`));
+    return cell;
+  }
+
   #drop(id: EntityId, state: ScatterState): void {
-    for (const cell of state.cells.values()) if (cell.entity.alive) cell.entity.destroy();
+    for (const cell of state.cells.values()) dropCell(cell);
     this.#states.delete(id);
   }
+}
+
+/** 草的格子按多少米的格距算地面的高度页。 */
+const GRASS_SPACING = 1;
+
+/** 拿掉一个格子：实体（连同下面的实例）、草的网格。 */
+function dropCell(cell: Cell): void {
+  if (cell.entity.alive) cell.entity.destroy();
+  cell.mesh?.dispose();
+}
+
+/**
+ * 从一页高度（count × count 个，原点 (ox, oz)，格距 spacing，按行 x 先变）插出地面：双线性的高度，法线按中心差分（也双线性）。
+ * 地形以外（|x|、|z| 超过 half）是 undefined。
+ */
+export function gridGround(heights: Float32Array, ox: number, oz: number, spacing: number, count: number, half: number): GroundSample {
+  const at = (i: number, j: number) => heights[Math.min(count - 1, Math.max(0, j)) * count + Math.min(count - 1, Math.max(0, i))]!;
+  return (x, z) => {
+    if (Math.abs(x) > half || Math.abs(z) > half) return undefined;
+    const fx = (x - ox) / spacing, fz = (z - oz) / spacing;
+    const i = Math.min(count - 2, Math.max(0, Math.floor(fx))), j = Math.min(count - 2, Math.max(0, Math.floor(fz)));
+    const tx = fx - i, tz = fz - j;
+    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+    const h = lerp(lerp(at(i, j), at(i + 1, j), tx), lerp(at(i, j + 1), at(i + 1, j + 1), tx), tz);
+    const dx = lerp(lerp(at(i + 1, j) - at(i - 1, j), at(i + 2, j) - at(i, j), tx), lerp(at(i + 1, j + 1) - at(i - 1, j + 1), at(i + 2, j + 1) - at(i, j + 1), tx), tz) / 2;
+    const dz = lerp(lerp(at(i, j + 1) - at(i, j - 1), at(i + 1, j + 1) - at(i + 1, j - 1), tx), lerp(at(i, j + 2) - at(i, j), at(i + 1, j + 2) - at(i + 1, j), tx), tz) / 2;
+    const n = new Vector3(-dx, spacing, -dz).normalize();
+    return { height: h, normal: [n.x, n.y, n.z] };
+  };
+}
+
+/**
+ * 草叶合成一个网格：每个实例一个三角形——根部两个点（宽 width · 缩放，横着的方向随实例的朝向）、梢一个点（高 height · 缩放，
+ * 往实例的 +Z 歪 lean 个叶高）。法线用地面的（和地形的光照接得上），UV 的 v 根是 1、梢是 0（风的草模式按它摆）。
+ */
+export function grassBlades(layer: ScatterLayerFile, instances: readonly ScatterInstance[], ground: GroundSample): { vertices: Float32Array; indices: Uint32Array } {
+  const { height, width, lean = 0.3 } = layer.grass!;
+  const vertices = new Float32Array(instances.length * 3 * 8), indices = new Uint32Array(instances.length * 3);
+  const across = new Vector3(), ahead = new Vector3();
+  instances.forEach((instance, k) => {
+    const [x, y, z] = instance.position;
+    const q = new Quaternion(...instance.rotation);
+    across.set(1, 0, 0).rotate(q).scale((width * instance.scale) / 2);
+    ahead.set(0, 0, 1).rotate(q).scale(lean * height * instance.scale);
+    const normal = ground(x, z)?.normal ?? [0, 1, 0];
+    const tip = [x + ahead.x, y + height * instance.scale, z + ahead.z];
+    const corners = [[x - across.x, y - across.y, z - across.z, 0, 1], [x + across.x, y + across.y, z + across.z, 1, 1], [tip[0]!, tip[1]!, tip[2]!, 0.5, 0]] as const;
+    corners.forEach(([px, py, pz, u, v], c) => vertices.set([px, py, pz, normal[0], normal[1], normal[2], u, v], (k * 3 + c) * 8));
+    indices.set([k * 3, k * 3 + 1, k * 3 + 2], k * 3);
+  });
+  return { vertices, indices };
 }
 
 /**

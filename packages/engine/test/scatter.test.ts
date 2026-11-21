@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { checkScatterFile, type ScatterLayerFile } from '../src/content/scatterFormat';
-import { scatterCell, type GroundSample } from '../src/terrain/Scatter';
+import { grassBlades, gridGround, scatterCell, type GroundSample } from '../src/terrain/Scatter';
 
 const flat: GroundSample = () => ({ height: 5, normal: [0, 1, 0] });
 const trees: ScatterLayerFile = { name: 'Trees', model: 'Models/Tree', density: 400 };
@@ -52,5 +52,34 @@ describe('程序化摆放', () => {
   test('文件检查', () => {
     expect(() => checkScatterFile({ name: 'S', layers: [{ name: 'A', model: 'M', density: 0 }] }, 'S')).toThrow('layers[0].density must be positive');
     expect(() => checkScatterFile({ name: 'S', layers: [{ name: 'A', model: 'M', density: 1, slope: [40, 10] }] }, 'S')).toThrow('slope must be [min, max]');
+  });
+});
+
+describe('撒草', () => {
+  test('高度页插出地面：格点上是格点的高度、中间双线性，斜坡的法线朝着下坡', () => {
+    // 4 × 4 的页、格距 1、原点 (-1, -1)：高度 = x（往 +x 每米升 1 米）
+    const heights = Float32Array.from({ length: 16 }, (_, k) => (k % 4) - 1);
+    const ground = gridGround(heights, -1, -1, 1, 4, 100);
+    expect(ground(0, 0)!.height).toBeCloseTo(0, 6);
+    expect(ground(0.5, 0.25)!.height).toBeCloseTo(0.5, 6);
+    const n = ground(0.5, 0.5)!.normal;
+    expect(n[0]).toBeCloseTo(-Math.SQRT1_2, 6);
+    expect(n[1]).toBeCloseTo(Math.SQRT1_2, 6);
+    expect(ground(200, 0)).toBeUndefined();
+  });
+
+  test('草叶合成一个网格：每片一个三角形，根在地上、梢在叶高处，UV 的 v 根 1 梢 0', () => {
+    const grass: ScatterLayerFile = { name: 'Grass', density: 100_000, grass: { height: 0.5, width: 0.04, lean: 0 } };
+    const instances = scatterCell(grass, 0, 1, 0, 0, 4, flat);
+    const { vertices, indices } = grassBlades(grass, instances, flat);
+    expect(indices.length).toBe(instances.length * 3);
+    for (let k = 0; k < instances.length; k++) {
+      const v = (c: number) => Array.from(vertices.slice((k * 3 + c) * 8, (k * 3 + c) * 8 + 8));
+      expect(v(0)[1]).toBe(5);
+      expect(v(2)[1]).toBeCloseTo(5 + 0.5 * instances[k]!.scale, 5);
+      expect([v(0)[7], v(1)[7], v(2)[7]]).toEqual([1, 1, 0]);
+      expect([v(0)[4], v(2)[4]]).toEqual([1, 1]);
+    }
+    expect(() => checkScatterFile({ name: 'S', layers: [{ name: 'G', density: 1, grass: { height: 0, width: 1 } }] }, 'S')).toThrow('grass needs a positive height and width');
   });
 });

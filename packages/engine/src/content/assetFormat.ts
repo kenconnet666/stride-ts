@@ -235,7 +235,7 @@ export interface MaterialFile {
   /** 光泽（Stride 没有，glTF 的 KHR_materials_sheen）：颜色（线性）和粗糙度。意思同 rendering/mesh/Material.ts 的 MaterialSheen。 */
   readonly sheen?: { readonly color: Vec3Tuple; readonly roughness: number };
   /** 植被的风（Stride 没有）：在风里摆、叶子抖。意思同 rendering/mesh/Material.ts 的 MaterialWind。 */
-  readonly wind?: { readonly bend: number; readonly flutter?: number };
+  readonly wind?: { readonly bend: number; readonly flutter?: number; readonly mode?: 'tree' | 'grass' };
   /** 各向异性（Stride 没有，glTF 的 KHR_materials_anisotropy）：强度 -1..1，方向绕法线转的角度（弧度）。 */
   readonly anisotropy?: { readonly strength: number; readonly rotation?: number };
   /**

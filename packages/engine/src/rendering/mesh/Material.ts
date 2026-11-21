@@ -166,10 +166,13 @@ export interface MaterialDesc {
  * （game.wind，阵风在内）在顶点着色器里挪顶点。bend：整棵顺着风弯、来回摆，离实体原点越高挪得越多（高度的平方），是 10 米高处在
  * 10 米每秒的风里摆多远（米）；flutter：离树干（实体原点的竖直轴）远的顶点沿法线抖（叶子），是 10 米每秒的风里抖多大（米）。
  * 每个实体按位置错开相位，一片林子不会一起摆。阴影、深度、运动向量用同样的位置。
+ * mode 是 grass 时（摆放合成的草，一个网格里很多片草叶）：高度按 UV 的 v 算（1 是根、0 是梢），bend 是梢在 10 米每秒的风里
+ * 摆多远（米），相位按每个顶点的位置错开。
  */
 export interface MaterialWind {
   readonly bend: number;
   readonly flutter?: number;
+  readonly mode?: 'tree' | 'grass';
 }
 
 /**
@@ -320,13 +323,13 @@ export class Material {
     this.sheen = desc.sheen;
     this.anisotropy = desc.anisotropy && { rotation: 0, ...desc.anisotropy };
     this.transmission = withTransmissionDefaults(desc.transmission);
-    this.wind = desc.wind && { flutter: 0, ...desc.wind };
+    this.wind = desc.wind && { flutter: 0, mode: 'tree', ...desc.wind };
     this.id = materials.add(this) as MaterialId;
   }
 
   /** 加上、改掉或去掉植被的风，并让渲染特性重新上传。 */
   setWind(value: MaterialWind | undefined): void {
-    this.wind = value && { flutter: 0, ...value };
+    this.wind = value && { flutter: 0, mode: 'tree', ...value };
     this.version++;
   }
 

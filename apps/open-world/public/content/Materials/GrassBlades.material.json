@@ -1,0 +1,29 @@
+{
+ "name": "GrassBlades",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.9,
+ "baseColorTexture": {
+  "texture": "Textures/GrassBlade",
+  "encoding": "svg",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ },
+ "doubleSided": true,
+ "wind": {
+  "bend": 0.12,
+  "flutter": 0,
+  "mode": "grass"
+ }
+}

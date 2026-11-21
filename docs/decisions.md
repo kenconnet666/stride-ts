@@ -23,6 +23,12 @@ S2 第四件的后一半。参考 Niagara 的 Flipbook Baker（固定相机、�
 - **放**：旁边加一个实体，一个发射器、每个周期生成一个粒子、活一个周期，按寿命翻页（uvBuilderFlipbook，animationSpeed = 帧数），大小是一格对应的世界大小，摆在格子中心。贴图引用要写 `encoding: 'png'`，不写按 KTX2 找（第一次就这样没加载上）。
 - 顺手：游戏页面写编辑器后端的两个接口（存图片、存导出）收进 `editor/backendApi.ts`，画贴图和离线渲染原来各写一份；调试命令的实体参数在编辑状态的页面里也认场景文件里的 id（编辑器、MCP 说的都是它）。
 
+## 2026-11-21 检查按子项目跑，TypeScript 换成 7.1 的每日版（用户定）
+
+- **各查各的**：每个包、样例有自己的 `tsconfig.json`（继承根上的 `tsconfig.base.json`，只列自己的目录）和 `typecheck` 脚本（`tsc -p .`，增量信息放在自己的 `node_modules/.cache`），有单测的包有 `test`（`vitest run`）；`tools/` 也有自己的 tsconfig。根上的 `pnpm typecheck`、`pnpm test` 名字不变（CI 照旧），改成 `pnpm -r` 挨个跑子项目的脚本（`--no-bail` 把每个的结果都报出来，typecheck 同时跑 8 个）；`typecheck:changed`、`test:changed` 只跑和 origin/main 比改了的子项目和依赖它们的，`pnpm -F <包> typecheck` 只查一个。根上的 `vitest.config.ts` 删掉。
+- **代价**（这台机器）：原来一个程序查全部 2.7 秒；分开以后每个样例都要读一遍引擎，全部第一次 13 秒，有增量信息时每个样例 0.3 秒，剩下的主要是 pnpm 起 30 个进程；单测 33 秒（原来约 20 秒）。换来的是改一个子项目只查它和依赖它的。
+- **TypeScript 7.1.0-dev.20261104.1**：和 vue-tsx-pro 同一个版本（那边换版本时要和浏览器里的 tsgo-wasm 成对换，这边跟着它）。7.1 不再把默认参数 `GPUShaderStage.COMPUTE` 推成 number（推成字面量 4），`GpuEmitter` 的 `storage` 帮手的参数写上 `GPUShaderStageFlags`。
+
 ## 2026-11-21 编辑器的布局照 JetBrains IDE 重排
 
 用户要的：布局适当参考 JetBrains 的编辑器，按钮、输入框尽量用 vue-tsx-pro 的风格。
@@ -33,7 +39,7 @@ S2 第四件的后一半。参考 Niagara 的 Flipbook Baker（固定相机、�
 - **工具条分开**：主工具条只放文档级的操作（保存、撤销、重做，右边是绿色的试玩，试玩时换成红色的停止）；对实体的操作、吸附、画幅参考线挪到视口工具条；提示、出错、选中几个、界面语言放到状态栏。
 - **控件**：原生的 `<select>`、`<input>`、`<button>` 换成 vue-tsx-pro 的 Select、NumberField、ColorField、Checkbox、Textarea、Button、IconButton；"加组件""加设置""加模块""加节点""新建资源"这类一次性的选择换成"+"按钮弹出的菜单（Menu，脚本、节点按类别分组），发射器的切换、加、删是页签（Tabs 自带的加号和关闭）。资源路径的输入框敲完（回车、失焦）才写回，敲到一半的路径不是资源。
 - **滚动条**（用户追加的）：滚动的地方都用 vue-tsx-pro 的 ScrollArea（浮层滚动条），不用原生的 `overflow: auto`：工具窗口的内容默认放进 ScrollArea，自己管滚动的（树、时间轴、粒子）给 `scroll="self"`；树（Tree 自带 ScrollArea，外面给的属性落在视口上）要经 `propsScrollArea` 给高度，不然溢出到外层的原生滚动条；JSON 的文本框按内容长高，不在框里滚。
-- **通用的部件挪进 vue-tsx-pro**（用户追加的）：外壳是库里的 Workbench（工具窗口、两侧竖条、布局双向绑定，跟着可用性自动开关），粒子面板的曲线、颜色渐变是 CurveField、GradientField，节点图画在 Diagram 上（节点上有名字的端口、端口到端口的贝塞尔连线）；编辑器只留和引擎数据对应的部分。库的缺陷在库里修（分隔条的命中区被它所在格的伪元素盖住、鼠标拖不动，0.24.0 起所有 Splitter 都这样）。
+- **通用的部件挪进 vue-tsx-pro**（用户追加的）：外壳是库里的 Workbench（工具窗口、两侧竖条、布局双向绑定，跟着可用性自动开关），粒子面板的曲线、颜色渐变是 CurveField、GradientField，节点图画在 Diagram 上（节点上有名字的端口、端口到端口的贝塞尔连线）；属性面板是库里的 PropertyGrid、PropertyEditor（按字段描述画行，改一处交出“路径加值”，多选的 `PROPERTY_MIXED`），引擎自己的三种值（旋转、资源、实体）经它的 `editors` 接进去（`ui/FieldEditor.tsx`）；编辑器只留和引擎数据对应的部分。库的缺陷在库里修（分隔条的命中区被它所在格的伪元素盖住、鼠标拖不动，0.24.0 起所有 Splitter 都这样）。
 - **画布的交互**（用户追加的）：能拖动平移的画布（节点图、图表、地图）光标是小手，拖动空白处平移，滚轮缩放；滚轮不再平移（Diagram 原来是滚轮平移、按住 Ctrl 缩放）。只有拖动空白处是框选的画布（`dragMode="select"`）才让滚轮平移。改在库的默认值里，编辑器不另配。
 - **加载的骨架屏**（用户追加的）：工程和资源列表还没读到、视口还在打开游戏页面时，场景树、资源、属性面板、文档页签、工程名、视口画骨架屏（库的 Skeleton、Tree 的 loading），不画空白和"场景没打开"；视口的骨架底下垫一层不透明的表面，盖住游戏页面的启动日志。打开状态放在会话里（`session.opening`），因为试玩时代理也是空的，但不算在打开。
 - 没做的：工具窗口拖到别的边、浮动窗口；JetBrains 的搜索（双击 Shift）和命令面板以后接 vue-tsx-pro 的 CommandPalette。

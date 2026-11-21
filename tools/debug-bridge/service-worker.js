@@ -78,17 +78,18 @@ async function setSessions(tabId, sessions) {
 // 一次指纹，变了就回一个"正在更新"的错误、重新加载；重新加载后把内容脚本注入已经开着的本机页面，页面不用刷新。
 const OWN_FILES = ['manifest.json', 'service-worker.js', 'content.js'];
 const UPDATING = 'the Stride Debug Bridge extension was updated on disk and is reloading itself; run the command again';
-let fingerprint;
-
 async function currentFingerprint() {
   const texts = await Promise.all(OWN_FILES.map((file) => fetch(chrome.runtime.getURL(file), { cache: 'no-store' }).then((r) => r.text()).catch(() => '')));
   return texts.join('\n--\n');
 }
 
+// 加载时的指纹记在 chrome.storage.session 里：Chrome 把闲着的 service worker 停了再起时变量清空，要是那时再拿磁盘上（已经改过的）
+// 文件当基准，就永远发现不了改动。磁盘上 manifest 的版本和正在跑的不一样也算改了（基准丢了的时候兜底）。
 async function updatedOnDisk() {
-  const now = await currentFingerprint();
-  fingerprint ??= now;
-  return now !== fingerprint;
+  const [now, stored] = await Promise.all([currentFingerprint(), chrome.storage.session.get('fingerprint')]);
+  if (stored.fingerprint === undefined) await chrome.storage.session.set({ fingerprint: now });
+  const diskVersion = (() => { try { return JSON.parse(now.split('\n--\n')[0]).version; } catch { return undefined; } })();
+  return (stored.fingerprint !== undefined && now !== stored.fingerprint) || (diskVersion !== undefined && diskVersion !== chrome.runtime.getManifest().version);
 }
 
 // 先让回复送出去再重新加载（马上 reload 的话回复会丢，页面那边一直等到超时）
@@ -97,7 +98,7 @@ function reloadSoon() {
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
-  fingerprint = await currentFingerprint();
+  await chrome.storage.session.set({ fingerprint: await currentFingerprint() });
   const tabs = await chrome.tabs.query({ url: ['http://localhost/*', 'http://127.0.0.1/*'] });
   for (const tab of tabs) {
     if (tab.id !== undefined) await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, files: ['content.js'] }).catch(() => {});
@@ -141,10 +142,12 @@ async function run(tabId, { method, params, waitFor, session = 'default' }) {
   if (method === 'detach') {
     const rest = sessions.filter((s) => s !== session);
     await setSessions(tabId, rest);
-    // 还有别的会话在用：不断开
-    if (rest.length === 0) await chrome.debugger.detach(target).catch(() => {}); // 没附加时也算成功
+    // 还有别的会话在用：不断开；最后一个也先留着附加一会儿（见 detachLater）
+    if (rest.length === 0) detachLater(tabId);
     return { sessions: rest.length };
   }
+  clearTimeout(lingering.get(tabId));
+  lingering.delete(tabId);
   await attach(target);
   if (!sessions.includes(session)) await setSessions(tabId, [...sessions, session]);
   const event = waitFor ? waitForEvent(tabId, waitFor) : undefined;
@@ -186,6 +189,21 @@ function waitForEvent(tabId, method) {
     }, EVENT_TIMEOUT_MS);
     waiters.set(key, [...(waiters.get(key) ?? []), onEvent]);
   });
+}
+
+// 最后一个会话断开以后先留着附加 LINGER_MS 再断：附加期间 Chrome 在页面顶部显示"正在调试此浏览器"的提示条，条一出一收页面的高度
+// 就变（56 像素），一条条命令之间页面重新布局，上一条命令读到的坐标下一条就对不上了（agent 截图、找元素再点的时候）。连着的命令
+// 之间不断开，提示条一直在，布局稳定；闲下来才断开、提示条消失。
+const LINGER_MS = 5 * 60_000;
+const lingering = new Map();
+
+function detachLater(tabId) {
+  clearTimeout(lingering.get(tabId));
+  lingering.set(tabId, setTimeout(async () => {
+    lingering.delete(tabId);
+    // 这期间又有会话来了：不断
+    if ((await sessionsOf(tabId)).length === 0) await chrome.debugger.detach({ tabId }).catch(() => {}); // 没附加时也算成功
+  }, LINGER_MS));
 }
 
 // service worker 可能在两条命令之间被回收：已经附加着时 attach 报错，当成成功

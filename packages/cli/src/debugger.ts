@@ -194,7 +194,10 @@ export function pathMatch(url: string, file: string): number {
 const NATIVE_SOURCE = /\.(c|cc|cpp|cxx|h|hh|hpp|inl)$/i;
 const WASM_URL = /\.wasm(\?|$)/i;
 
-/** 页面里的帮手：值的摘要（深度有限、不会被循环引用卡住）和日志点的记录。 */
+/**
+ * 页面里的帮手：值的摘要（深度有限、不会被循环引用卡住）和日志点的记录。用到时在当前的执行上下文里建（DEBUG）：停在 iframe 里
+ * （编辑器的视口）时那里没有顶层页面的全局，事先只在顶层装的话摘要、日志点在 iframe 里都会失败。
+ */
 const PAGE_HELPERS = `(() => {
   const summarize = (value, depth) => {
     if (value === null || value === undefined || typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string') return value;
@@ -214,7 +217,7 @@ const PAGE_HELPERS = `(() => {
     }
     return out;
   };
-  globalThis.__strideDebug = { summarize, logs: [], log(at, read) {
+  return { summarize, logs: [], log(at, read) {
     if (this.logs.length >= 2000) return;
     let value;
     try { value = summarize(read(), 2); } catch (error) { value = '<' + error + '>'; }
@@ -222,12 +225,15 @@ const PAGE_HELPERS = `(() => {
   }, hits: {} };
 })()`;
 
+/** 当前执行上下文里的帮手（没有就建）。 */
+const DEBUG = `(globalThis.__strideDebug ??= ${PAGE_HELPERS})`;
+
 /** 一条断点在页面里的条件：日志点记值不停下；命中次数用页面里的计数。 */
 function breakpointCondition(bp: DebugBreakpoint, index: number): string | undefined {
   const at = JSON.stringify(bp.at);
-  if (bp.log !== undefined) return `(globalThis.__strideDebug?.log(${at}, () => (${bp.log})), false)`;
+  if (bp.log !== undefined) return `(${DEBUG}.log(${at}, () => (${bp.log})), false)`;
   const parts: string[] = [];
-  if (bp.hitCount !== undefined) parts.push(`((globalThis.__strideDebug.hits[${index}] = (globalThis.__strideDebug.hits[${index}] ?? 0) + 1) >= ${bp.hitCount})`);
+  if (bp.hitCount !== undefined) parts.push(`((${DEBUG}.hits[${index}] = (globalThis.__strideDebug.hits[${index}] ?? 0) + 1) >= ${bp.hitCount})`);
   if (bp.condition !== undefined) parts.push(`(${bp.condition})`);
   return parts.length ? parts.join(' && ') : undefined;
 }
@@ -287,7 +293,11 @@ export async function runDebugPlan(cdp: EventedSession, plan: DebugPlan, trigger
     });
   };
 
-  await cdp.send('Runtime.evaluate', { expression: PAGE_HELPERS });
+  // 页面的各个执行上下文（顶层和 iframe）：日志点记在命中的那个上下文里，最后挨个收
+  const contexts = new Set<number>();
+  cdp.on('Runtime.executionContextCreated', (params) => contexts.add((params as { context: { id: number } }).context.id));
+  cdp.on('Runtime.executionContextDestroyed', (params) => contexts.delete((params as { executionContextId: number }).executionContextId));
+  await cdp.send('Runtime.enable', {});
   await cdp.send('Debugger.enable', {});
   await cdp.send('Debugger.setAsyncCallStackDepth', { maxDepth: 8 });
   await cdp.send('Debugger.setBlackboxPatterns', { patterns: ['/node_modules/', '/@vite/', '/@id/'] });
@@ -369,7 +379,7 @@ export async function runDebugPlan(cdp: EventedSession, plan: DebugPlan, trigger
   // 表达式展开 depth + 1 层（看的就是它），局部变量 depth 层（一般只要看清是什么）
   const summarize = async (callFrameId: string, expression: string, levels = depth + 1): Promise<unknown> => {
     const { result, exceptionDetails } = (await cdp.send('Debugger.evaluateOnCallFrame', {
-      callFrameId, expression: `globalThis.__strideDebug.summarize((${expression}), ${levels})`, returnByValue: true, silent: true,
+      callFrameId, expression: `${DEBUG}.summarize((${expression}), ${levels})`, returnByValue: true, silent: true,
     })) as { result: RemoteObject; exceptionDetails?: { exception?: RemoteObject; text: string } };
     return exceptionDetails ? `<${exceptionDetails.exception?.description ?? exceptionDetails.text}>` : result.value;
   };
@@ -442,10 +452,15 @@ export async function runDebugPlan(cdp: EventedSession, plan: DebugPlan, trigger
     pauses.shift();
     await cdp.send('Debugger.resume', {}).catch(() => undefined);
   }
-  const { result } = (await cdp.send('Runtime.evaluate', { expression: 'globalThis.__strideDebug?.logs ?? []', returnByValue: true })) as { result: { value: { at: string; value: unknown }[] } };
-  await cdp.send('Runtime.evaluate', { expression: 'delete globalThis.__strideDebug' });
+  const logs: { at: string; value: unknown }[] = [];
+  for (const contextId of contexts) {
+    const reply = (await cdp.send('Runtime.evaluate', { contextId, expression: '(() => { const logs = globalThis.__strideDebug?.logs ?? []; delete globalThis.__strideDebug; return logs; })()', returnByValue: true }).catch(() => undefined)) as
+      { result: { value?: { at: string; value: unknown }[] } } | undefined;
+    logs.push(...(reply?.result.value ?? []));
+  }
   await cdp.send('Debugger.disable', {});
-  return { breakpoints: resolvedList, hits, logs: result.value, timedOut };
+  await cdp.send('Runtime.disable', {}).catch(() => undefined);
+  return { breakpoints: resolvedList, hits, logs, timedOut };
 }
 
 async function clearBreakpoints(cdp: DevtoolsSession, ids: Map<string, DebugBreakpoint>): Promise<void> {

@@ -47,6 +47,8 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `eval <代码 \| -> \| --file <脚本>` | 在页面里执行。一个表达式：结果是它的值，能直接 await，作用域里有 `game`、`engine`（样例挂的 `strideEngine`）、`entity(名字或 id)`、`named(名字)`、`frames(n)`、`seconds(s)`（按游戏时间等）。几条语句：照旧在全局作用域里跑，结果是最后一个的值；语句里有顶层 await 时当异步函数体跑，结果用 return 给。`-` 从标准输入读，`--file` 从文件读（PowerShell 里不用转义） |
 | `wait --game <秒>` | 等游戏时间走这么多（不是墙钟：CI 的软件 WebGPU、后台标签上一帧可能几百毫秒）；不带 `--game` 是等页面连上、游戏跑起来 |
 | `slow <毫秒>` | 每帧在页面里多忙等这么久（0 停）：本机复现 CI 的软件 WebGPU 上几百毫秒一帧的情况，冒烟脚本的时序问题不用推上去等 CI |
+| `throttle <倍数> [--seconds s]` | CPU 降速（DevTools 的 CPU throttling），复现 CI 上软件 WebGPU、慢机器的时序；挂着直到 `--seconds` 到或 Ctrl+C，结束时恢复。和 `slow` 不同：整个渲染进程都慢（Chrome 隔一会儿停一下主线程），所以页面里 JS 量出来的毫秒数不变、帧率掉（20 倍时 120 → 41 帧每秒） |
+| `viewport <宽x高> [--dpr 2] [--mobile] [--seconds s]`、`viewport off` | 模拟屏幕大小和像素比（手机竖屏：`390x844 --dpr 3 --mobile`）；同样挂着直到结束 |
 | `front` | 把游戏的标签切到前面：后台的标签不跑 `requestAnimationFrame`（启动参数也管不了），`status` 的 `visibility` 是 `hidden` 时用它 |
 | `particles [--name x]` | 每个粒子发射器：在 CPU 还是 GPU 上、粒子池多大、活着几个、活着的粒子在世界里的范围（GPU 上的读回来数）。粒子看不见时先看这个 |
 | `commands`、`call <命令> <JSON>` | 列出页面登记的命令；调任意命令（游戏自己加的也行） |

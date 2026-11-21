@@ -60,6 +60,10 @@ Game
   page shot <out.png> [--ref e123]                  screenshot of the viewport or an element, in CSS pixels (the
                                                     coordinates click takes); real user input (trusted events) through
                                                     the DevTools protocol, like a person at the screen
+  throttle <rate> [--seconds s]                     slow the page's CPU down rate times (DevTools' CPU throttling) to reproduce
+                                                    CI's software WebGPU timing; held until --seconds pass or Ctrl+C
+  viewport <WxH> [--dpr 2] [--mobile] [--seconds s] | viewport off
+                                                    emulate a screen size and pixel ratio (phone portrait: 390x844 --dpr 3 --mobile)
   front                                             bring the game's tab to the front (a background tab does not run frames;
                                                     status.visibility says hidden)
   pick <x> <y>                                      entity under a canvas pixel (CSS pixels from the top-left; meshes and sprites)
@@ -180,6 +184,7 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     repeat: { type: 'string' },
     ref: { type: 'string' },
     'no-cursor': { type: 'boolean' },
+    mobile: { type: 'boolean' },
   },
 });
 
@@ -428,12 +433,13 @@ const commands: Record<string, () => Promise<unknown>> = {
     setCursorEnabled(options['no-cursor'] !== true);
     const at = (i: number, what: string) => required(args[i], what);
     switch (sub) {
+      // 树和文字原样打（给人和 agent 读的多行文字）；别的命令的结果按 JSON（脚本解析 CLI 的输出）
       case 'tree':
-        return pageTree(cdp, { interactive: options.interactive === true, max: Number(options.max ?? 400) });
+        return void console.log(await pageTree(cdp, { interactive: options.interactive === true, max: Number(options.max ?? 400) }));
       case 'find':
-        return pageFind(cdp, args.join(' '));
+        return void console.log(await pageFind(cdp, args.join(' ')));
       case 'text':
-        return pageText(cdp);
+        return void console.log(await pageText(cdp));
       case 'eval':
         return pageEval(cdp, options.file ? readFileSync(options.file, 'utf8') : args.join(' '));
       case 'click':
@@ -467,6 +473,49 @@ const commands: Record<string, () => Promise<unknown>> = {
       default:
         throw new Error('page <tree|find|text|click|hover|drag|scroll|type|key|shot>; see stride --help');
     }
+  },
+  async throttle() {
+    // CPU 降速（DevTools 的"性能"里那个）：复现 CI 上软件 WebGPU、慢机器的时序。1 是不降速；同一个会话断开时 Chrome 会恢复，所以
+    // 降速期间要一直挂着：给 --seconds 时降速这么久再恢复，不给时降到按 Ctrl+C 为止
+    const rate = Number(required(rest[0], 'rate (1 = off, 4 = 4x slower)'));
+    const { cdp: session } = await pageCdp('throttle');
+    await using cdp = session;
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate });
+    if (rate === 1) return { rate };
+    const seconds = options.seconds ? Number(options.seconds) : undefined;
+    console.error(`CPU throttled ${rate}x${seconds ? ` for ${seconds} s` : '; Ctrl+C to stop'}`);
+    await new Promise<void>((resolve) => {
+      const timer = seconds ? setTimeout(resolve, seconds * 1000) : undefined;
+      process.once('SIGINT', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    return { rate, restored: true };
+  },
+  async viewport() {
+    // 视口的大小和像素比（测不同的屏幕、手机竖屏）；off 恢复。同 throttle：会话断开时 Chrome 恢复，所以挂着直到 Ctrl+C 或 --seconds
+    const { cdp: session } = await pageCdp('viewport');
+    await using cdp = session;
+    if (rest[0] === 'off') {
+      await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+      return { viewport: 'off' };
+    }
+    const [width, height] = required(rest[0], 'size (e.g. 390x844) or off').split('x').map(Number);
+    const deviceScaleFactor = options.dpr ? Number(options.dpr) : 0;
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor, mobile: options.mobile === true });
+    const seconds = options.seconds ? Number(options.seconds) : undefined;
+    console.error(`viewport ${width}x${height}${deviceScaleFactor ? ` @${deviceScaleFactor}x` : ''}${seconds ? ` for ${seconds} s` : '; Ctrl+C to stop'}`);
+    await new Promise<void>((resolve) => {
+      const timer = seconds ? setTimeout(resolve, seconds * 1000) : undefined;
+      process.once('SIGINT', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+    await cdp.send('Emulation.clearDeviceMetricsOverride', {});
+    return { width, height, restored: true };
   },
   async front() {
     // 后台的标签不跑 requestAnimationFrame（启动参数也管不了）：把游戏标签切到前面
@@ -583,9 +632,7 @@ async function main(): Promise<void> {
   const run = commands[command];
   if (!run) throw new Error(`unknown command '${command}'; see stride --help`);
   const result = await run();
-  // 文字（page tree、page text）原样打，别的按 JSON
-  if (typeof result === 'string') console.log(result);
-  else if (result !== undefined) console.log(formatJson(result));
+  if (result !== undefined) console.log(formatJson(result));
 }
 
 main().catch((error: unknown) => {

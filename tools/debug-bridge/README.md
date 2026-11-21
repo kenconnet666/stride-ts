@@ -20,6 +20,7 @@ stride cpu-profile ──▶ 开发服务器的调试中枢 ──▶ 页面（�
 - CLI 先看页面有没有这个扩展：有就走扩展，没有才找 `stride open` 启动的 Chrome 的调试端口。
 - 扩展在 Chrome 眼里是不受信任的调试客户端，拿不到 V8 的 `Profiler` 域（`Runtime`、`Input`、`Tracing`、`IO` 这些可以）。所以 `cpu-profile` 用 Tracing 录 `disabled-by-default-v8.cpu_profiler(.hires)`，这和 DevTools 性能面板的做法一样；再从页面主线程的 `ProfileChunk` 事件拼出 CPU profile。直连 CDP 时也走这条路。
 - 扩展按标签各管各的，几个游戏页面可以同时调试。CLI 用 `--hub`（哪个开发服务器）和 `--page`（哪个页面）选。
+- 多会话（0.3.0 起）：同一个标签可以几个调试会话同时用（几个 agent 会话、几条 CLI 命令）。每条命令带会话 ID，第一个会话用时附加，最后一个会话断开时才真的断开；哪些会话附加着记在 `chrome.storage.session` 里，service worker 被回收也不丢。同一个事件可以几个会话同时等。
 
 `stride open` 起的 Chrome（有界面、无头）不用装这个扩展：CLI 直接连它的调试端口（`stride debug` 的断点也只能走这条路，见 packages/cli/README.md）。
 

@@ -1,4 +1,5 @@
 /** CLI 这一头：找到调试中枢，调用页面的命令、读日志。 */
+import { randomUUID } from 'node:crypto';
 import { DEBUG_API_PATH, DEBUG_TOKEN_HEADER, type CallResponse, type HubLogEntry, type PageInfo } from '@stride-ts/engine/debug-protocol';
 import { listHubs, type HubRecord } from './state.ts';
 
@@ -48,11 +49,13 @@ export class HubClient {
   }
 
   /** 经页面的 devtools 命令（调试桥扩展，tools/debug-bridge）对这个页面执行 DevTools 协议的命令。 */
+  /** 经调试桥扩展的一个 DevTools 会话：带自己的会话 ID，几个会话（几个 agent、几条命令）可以同时用同一个标签，各自断开。 */
   devtools(page: number): DevtoolsSession {
+    const session = randomUUID();
     return {
-      send: (method, params = {}, timeout = 60_000) => this.call('devtools', { method, params }, { page, timeout }),
-      sendAndWait: (method, params, event, timeout = 60_000) => this.call('devtools', { method, params, waitFor: event }, { page, timeout }),
-      [Symbol.asyncDispose]: async () => void (await this.call('devtools', { method: 'detach' }, { page }).catch(() => undefined)),
+      send: (method, params = {}, timeout = 60_000) => this.call('devtools', { method, params, session }, { page, timeout }),
+      sendAndWait: (method, params, event, timeout = 60_000) => this.call('devtools', { method, params, waitFor: event, session }, { page, timeout }),
+      [Symbol.asyncDispose]: async () => void (await this.call('devtools', { method: 'detach', session }, { page }).catch(() => undefined)),
     };
   }
 

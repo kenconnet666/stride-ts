@@ -111,6 +111,10 @@ async function launch(url: string, { headless = false, size, dpr, chromeArgs = [
     '--no-default-browser-check',
     '--enable-webgpu-developer-features',
     '--enable-logging=stderr',
+    // 窗口被挡住、标签在后台时也不节流（requestAnimationFrame、定时器照常跑）：用户一边用电脑，这里一边测帧时间、跑冒烟
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-background-timer-throttling',
     ...(headless ? ['--headless=new'] : []),
     ...(size ? [`--window-size=${size[0]},${size[1]}`] : []),
     ...(dpr ? [`--force-device-scale-factor=${dpr}`] : []),

@@ -48,6 +48,8 @@ Game
   gpu-calls [--seconds 2]                           WebGPU calls and writeBuffer bytes per frame
   cpu-profile [--seconds 5] [--out profile.json] [--callers <regex>]
                           sample the main thread (needs a Chrome from stride open): ms per frame by kind and function
+  front                                             bring the game's tab to the front (a background tab does not run frames;
+                                                    status.visibility says hidden)
   pick <x> <y>                                      entity under a canvas pixel (CSS pixels from the top-left; meshes and sprites)
   wireframe [on|off|toggle]                                overlay the wireframe of the meshes on the main view (no argument reports; toggle flips)
   quality [low|medium|high|ultra]                   quality tier: caps on shadows and post effects (no argument shows the current one)
@@ -213,7 +215,16 @@ async function pageCdp(command: string): Promise<{ client: HubClient; info: Page
  */
 async function recordCpuProfile(cdp: DevtoolsSession, seconds: number): Promise<CpuProfile> {
   const categories = ['__metadata', 'disabled-by-default-v8.cpu_profiler', 'disabled-by-default-v8.cpu_profiler.hires'];
-  await cdp.send('Tracing.start', { traceConfig: { includedCategories: categories, excludedCategories: ['*'] }, transferMode: 'ReturnAsStream' });
+  // Tracing 整个浏览器同时只能有一个（别的会话、别的标签在录时报"already been started"）：排队等它录完，最多等 2 分钟
+  for (const deadline = Date.now() + 120_000; ;) {
+    try {
+      await cdp.send('Tracing.start', { traceConfig: { includedCategories: categories, excludedCategories: ['*'] }, transferMode: 'ReturnAsStream' });
+      break;
+    } catch (error) {
+      if (!/already been started/i.test(String(error)) || Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
   await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   const { stream } = (await cdp.sendAndWait('Tracing.end', {}, 'Tracing.tracingComplete')) as { stream: string };
   let text = '';
@@ -389,6 +400,13 @@ const commands: Record<string, () => Promise<unknown>> = {
     };
   },
   pick: () => call('pick', { x: Number(rest[0]), y: Number(rest[1]) }),
+  async front() {
+    // 后台的标签不跑 requestAnimationFrame（启动参数也管不了）：把游戏标签切到前面
+    const { cdp: session } = await pageCdp('front');
+    await using cdp = session;
+    await cdp.send('Page.bringToFront', {});
+    return { front: true };
+  },
   draws: () => call('draws', {}),
   metrics: () => call('metrics', options.over ? { over: true } : {}),
   ao: () => call('ao', { ...switchArgs(rest[0]), ...(options.radius ? { radius: Number(options.radius) } : {}) }),

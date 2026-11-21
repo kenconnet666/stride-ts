@@ -370,8 +370,8 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   });
   debug.command('raycast', 'Physics ray cast. args: origin [x,y,z], direction [x,y,z], maxDistance (default 1000), mask.', (args) => raycast(game, args));
   debug.command('debug-text', 'Lines the scripts printed with game.debugText in the last frame.', () => game.debugText.lines);
-  debug.command('devtools', "Run a DevTools protocol command on this tab through the Stride Debug Bridge extension (tools/debug-bridge). args: method ('detach' ends debugging), params, waitFor (an event to wait for after the command; returns its params).", (args) =>
-    sendDevtools(String(args['method']), (args['params'] ?? {}) as Readonly<Record<string, unknown>>, args['waitFor'] === undefined ? undefined : String(args['waitFor'])));
+  debug.command('devtools', "Run a DevTools protocol command on this tab through the Stride Debug Bridge extension (tools/debug-bridge). args: method ('detach' ends this session's debugging; the tab stays attached while other sessions use it), params, waitFor (an event to wait for after the command; returns its params), session (the debugging session's id, so several sessions can share the tab).", (args) =>
+    sendDevtools(String(args['method']), (args['params'] ?? {}) as Readonly<Record<string, unknown>>, args['waitFor'] === undefined ? undefined : String(args['waitFor']), args['session'] === undefined ? undefined : String(args['session'])));
   debug.command('eval', 'Evaluate JavaScript in the page. An expression: its value; await works; in scope are game, engine, entity(name | id), named(name), frames(n), seconds(s) (game time). Statements: the value of the last one, in global scope; with a top-level await they run as an async function body (use return). args: code.', (args) => evaluate(game, args));
   // 慢帧：每帧在 requestAnimationFrame 里忙等 ms 毫秒（和游戏的帧在同一轮，所以帧间隔加长这么多）。页面地址带
   // ?stride-slow=<毫秒> 时一开始就慢（regress.ps1 -Slow；重载页面后还在）
@@ -420,6 +420,8 @@ function status(debug: Debug, game: Game): unknown {
     native: game.native ? { workerThreads: game.native.workerThreadCount } : null,
     /** 调试桥扩展的版本（没装时是 null）：有它时 cpu-profile、mouse --trusted 在任何 Chrome 里都能用。 */
     devtoolsBridge: devtoolsBridgeVersion() ?? null,
+    /** 页面看得见没有：hidden 时（标签在后台、窗口最小化）requestAnimationFrame 不走，游戏不出帧；stride front 切到前面。 */
+    visibility: document.visibilityState,
     entities: game.entities.count,
     counters: debug.counters(),
     watches: debug.watches(),

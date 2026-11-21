@@ -12,10 +12,10 @@
       window.removeEventListener('message', onMessage);
       return;
     }
-    const { id, method, params, waitFor } = event.data;
+    const { id, method, params, waitFor, session } = event.data;
     let reply;
     try {
-      reply = await chrome.runtime.sendMessage({ method, params, waitFor });
+      reply = await chrome.runtime.sendMessage({ method, params, waitFor, session });
     } catch (error) {
       reply = { error: `the Stride Debug Bridge extension did not answer: ${error.message}` };
     }

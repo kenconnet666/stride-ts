@@ -26,7 +26,7 @@ export function devtoolsBridgeVersion(): string | undefined {
  * 执行一条 DevTools 协议的命令（method 为 'detach' 时断开调试，Chrome 顶部的提示条随之消失）。给了 waitFor 时等命令之后的
  * 这个事件，返回事件的参数（Tracing.end 之后的 Tracing.tracingComplete）。
  */
-export function sendDevtools(method: string, params: Readonly<Record<string, unknown>> = {}, waitFor?: string): Promise<unknown> {
+export function sendDevtools(method: string, params: Readonly<Record<string, unknown>> = {}, waitFor?: string, session?: string): Promise<unknown> {
   if (!devtoolsBridgeVersion()) {
     return Promise.reject(new Error('the Stride Debug Bridge extension is not installed in this browser (load tools/debug-bridge as an unpacked extension)'));
   }
@@ -34,7 +34,7 @@ export function sendDevtools(method: string, params: Readonly<Record<string, unk
   const id = nextId++;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
-    window.postMessage({ source: SOURCE, direction: 'request', id, method, params, ...(waitFor ? { waitFor } : {}) }, window.location.origin);
+    window.postMessage({ source: SOURCE, direction: 'request', id, method, params, ...(waitFor ? { waitFor } : {}), ...(session ? { session } : {}) }, window.location.origin);
   });
 }
 

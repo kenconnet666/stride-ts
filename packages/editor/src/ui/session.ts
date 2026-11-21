@@ -10,6 +10,7 @@
  *
  * 打开的文档可以是场景，也可以是单独打开的预制体（`openAsset`）：预制体在视口里只有它自己，加上预览用的灯（不在文档里）。
  */
+import { setPropertyPath } from '@zerodep-dev/vue-tsx-pro-ui';
 import { shallowRef, triggerRef } from 'vue';
 import type { PrefabFile, SceneEntityFile, SceneFile, TimelineFile } from '@stride-ts/engine/content-format';
 import type { GraphFile } from '@stride-ts/engine/node-graph';
@@ -20,7 +21,6 @@ import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/
 import { copyEntities, duplicateEntities, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
-import { withPath } from './values';
 import { freeAssetPath } from '../newAssets';
 import type { EditAgent, EditableScene, Game, PaintBrush, SnapSettings } from '@stride-ts/engine';
 import { EditorClient } from '../EditorClient.ts';
@@ -460,20 +460,17 @@ export class EditorSession implements EditableScene {
     }
   }
 
-  /** 改正在编辑的资源里 path 上的值（ValueUpdate 按现在的值算）；稍等一下再存，连着改只存最后一次。 */
+  /** 改正在编辑的资源里 path 上的值（ValueUpdate 按现在的值算，undefined 去掉这个键）；稍等一下再存，连着改只存最后一次。 */
   editInspected(path: readonly (string | number)[], value: unknown): void {
     const now = this.inspected.value;
     if (!now) return;
-    let current: unknown = now.content;
-    for (const key of path) current = current !== null && typeof current === 'object' ? (current as Record<string | number, unknown>)[key] : undefined;
-    const next = typeof value === 'function' ? (value as (previous: unknown) => unknown)(current) : value;
     // 时间轴面板正开着同一个时间轴：改的是同一份（预览跟着变，由它存）
     const open = this.timeline.value;
     if (now.kind === 'timeline' && open?.path === now.path) {
-      this.editTimeline((file) => withPath(file, path, next) as TimelineFile);
+      this.editTimeline((file) => setPropertyPath(file, path, value) as TimelineFile);
       return;
     }
-    const edited = { ...now, content: withPath(now.content, path, next) as Record<string, unknown> };
+    const edited = { ...now, content: setPropertyPath(now.content, path, value) as Record<string, unknown> };
     this.inspected.value = edited;
     clearTimeout(this.#inspectedSave?.timer);
     this.#inspectedSave = { asset: edited, timer: setTimeout(() => void this.#flushInspected(), INSPECTED_SAVE_DELAY) };

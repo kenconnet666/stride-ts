@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { colorToHex, eulerToQuaternion, hasMixed, hexToColor, mergeValues, MIXED, quaternionToEuler, withPath } from '../src/ui/values.ts';
+import { hasMixed, PROPERTY_MIXED as MIXED } from '@zerodep-dev/vue-tsx-pro-ui';
+import { eulerToQuaternion, mergeValues, quaternionToEuler } from '../src/ui/values.ts';
 
 // 属性面板上的值和文件里的值之间的换算。
 
@@ -28,19 +29,6 @@ describe('旋转：四元数和欧拉角（Stride 的 yaw、pitch、roll 顺序�
   });
 });
 
-describe('颜色：文件里的（sRGB 或线性）和取色器的 #rrggbb', () => {
-  test('sRGB 原样；线性的换过去再换回来差不到一个色阶', () => {
-    expect(colorToHex([1, 0.5, 0], 'srgb')).toBe('#ff8000');
-    expect(colorToHex([1, 0.2158, 0], 'linear')).toBe('#ff8000');
-    expect(hexToColor('#ff8000', 'srgb', [0, 0, 0, 0.5])).toEqual([1, 0.50196, 0, 0.5]);
-    expect(hexToColor('#ff8000', 'linear', [0, 0, 0])).toEqual([1, 0.21586, 0]);
-  });
-
-  test('HDR 的值（超过 1）在取色器上夹住', () => {
-    expect(colorToHex([4, -1, 0.5], 'srgb')).toBe('#ff0080');
-  });
-});
-
 describe('多选：几个实体的值并成一个', () => {
   test('一样的照原样，向量、对象逐项并，不一样的是 MIXED', () => {
     expect(mergeValues([[1, 2, 3]])).toEqual([1, 2, 3]);
@@ -52,13 +40,4 @@ describe('多选：几个实体的值并成一个', () => {
     expect(mergeValues([0, '0'])).toBe(MIXED);
     expect([hasMixed({ a: [1, MIXED] }), hasMixed({ a: [1, 2] }), hasMixed(MIXED)]).toEqual([true, false, true]);
   });
-});
-
-test('withPath：不改原值，路径上缺的对象、列表补上', () => {
-  const original = { a: { b: 1 }, list: [1, 2] };
-  expect(withPath(original, ['a', 'c'], 2)).toEqual({ a: { b: 1, c: 2 }, list: [1, 2] });
-  expect(withPath(original, ['list', 1], 5)).toEqual({ a: { b: 1 }, list: [1, 5] });
-  expect(withPath(undefined, ['radius'], 3)).toEqual({ radius: 3 });
-  expect(withPath(undefined, [0, 'x'], 1)).toEqual([{ x: 1 }]);
-  expect(original).toEqual({ a: { b: 1 }, list: [1, 2] });
 });

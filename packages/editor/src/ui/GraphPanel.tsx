@@ -15,7 +15,7 @@ import { Button, IconButton, Menu, MenuGroup, MenuItem } from '@zerodep-dev/vue-
 import { Diagram, type DiagramConnection, type DiagramEdgeItem, type DiagramNodeItem, type DiagramNodeMove, type DiagramPortItem, type DiagramSelection } from '@zerodep-dev/vue-tsx-pro-ui/diagram';
 import type { GraphFile, GraphLink, GraphNodeFile, NodeSpec } from '@stride-ts/engine/node-graph';
 import { MATERIAL_GRAPH_OUTPUTS, MATERIAL_NODE_SPECS } from '@stride-ts/engine/material-graph';
-import { FieldRow, type FieldContext } from './FieldEditor';
+import { Fields, type FieldContext } from './FieldEditor';
 import { t } from './messages';
 import type { EditorSession } from './session';
 
@@ -81,9 +81,9 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     return { ...file, nodes: [...file.nodes, { id: `${type}${n}`, type, position: [0, bottom] }] };
   });
   /** 改参数：路径直接交给属性面板的修改（向量的一个分量、按旧值算的更新都照它的规矩）。 */
-  const setParam = (id: string, name: string, path: readonly (string | number)[], value: unknown) => {
+  const setParam = (id: string, path: readonly (string | number)[], value: unknown) => {
     const index = graph()?.nodes.findIndex((n) => n.id === id) ?? -1;
-    if (index >= 0) session.editInspected(['graph', 'nodes', index, 'params', name, ...path], value);
+    if (index >= 0) session.editInspected(['graph', 'nodes', index, 'params', ...path], value);
   };
 
   /** 图里的节点和材质的输出换成 Diagram 的节点（端口对准卡片里的行）。 */
@@ -169,10 +169,12 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
         {spec.params.length > 0 && (
           // 参数里拖数值、选下拉框不是拖节点
           <div {...css.attrs(styles.params)} onPointerdown={(event: PointerEvent) => event.stopPropagation()}>
-            {spec.params.map((param) => (
-              <FieldRow field={{ name: param.name, type: param.type, optional: true, default: param.default, ...(param.description ? { description: param.description } : {}) }}
-                value={node.params?.[param.name]} context={context} onSet={(path, value) => setParam(node.id, param.name, path, value)} />
-            ))}
+            <Fields
+              fields={spec.params.map((param) => ({ name: param.name, type: param.type, optional: true, default: param.default, ...(param.description ? { description: param.description } : {}) }))}
+              value={node.params ?? {}}
+              context={context}
+              onSet={(path, value) => setParam(node.id, path, value)}
+            />
           </div>
         )}
       </div>

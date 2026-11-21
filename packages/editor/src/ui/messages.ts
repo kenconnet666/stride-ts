@@ -79,15 +79,8 @@ export interface EditorMessages {
   readonly scripts: string;
   // 字段
   readonly mixed: string;
-  readonly requiredUnset: (field: string) => string;
-  readonly setValue: string;
-  readonly add: string;
-  readonly setNull: (field: string) => string;
-  readonly removeField: (field: string) => string;
   readonly eulerHint: string;
   readonly none: string;
-  readonly defaultItem: string;
-  readonly removeLast: string;
   // 时间轴面板
   readonly timelinePlay: string;
   readonly timelinePause: string;
@@ -231,15 +224,8 @@ const zhCN: EditorMessages = {
   addComponentMenu: '添加组件……',
   scripts: '脚本',
   mixed: '多个值',
-  requiredUnset: (field) => `${field}：必填，还没设`,
-  setValue: '设置',
-  add: '添加',
-  setNull: (field) => `${field} 设成 null`,
-  removeField: (field) => `去掉 ${field}`,
   eulerHint: '角度（度），先绕 Z、再绕 X、再绕 Y（同 Stride）',
   none: '（无）',
-  defaultItem: '（默认）',
-  removeLast: '去掉最后一项',
   timelinePlay: '播放（预览）',
   timelinePause: '暂停',
   timelineThroughCamera: '从时间轴的相机里看（相机轨道那一刻的相机）',
@@ -393,15 +379,8 @@ const enUS: EditorMessages = {
   addComponentMenu: 'Add a component…',
   scripts: 'Scripts',
   mixed: 'mixed',
-  requiredUnset: (field) => `${field}: required, not set yet`,
-  setValue: 'Set',
-  add: 'Add',
-  setNull: (field) => `Set ${field} to null`,
-  removeField: (field) => `Remove ${field}`,
   eulerHint: 'Angles (degrees): around Z, then X, then Y (as in Stride)',
   none: '(none)',
-  defaultItem: '(default)',
-  removeLast: 'Remove the last one',
   timelinePlay: 'Play (preview)',
   timelinePause: 'Pause',
   timelineThroughCamera: 'Look through the timeline camera (the camera track at this time)',

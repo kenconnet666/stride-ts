@@ -12,7 +12,7 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, CurveField, GradientField, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Tab, TabList, Tabs, type CurveKey, type GradientStop } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { ParticleModuleFile, SceneEntityFile } from '@stride-ts/engine/content-format';
 import { curve, EMITTER_FIELDS, isCurve, newEmitter, PARTICLE_MODULES, type ParticleStackKind } from '@stride-ts/engine/editor-particles';
-import { FieldEditor, FieldRow, type FieldContext, type ValuePath } from './FieldEditor';
+import { FieldEditor, Fields, type FieldContext, type ValuePath } from './FieldEditor';
 import { t } from './messages';
 import type { EditorSession, FlipbookSettings } from './session';
 
@@ -129,7 +129,8 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
                 {curveEditor([...at, field.name], module[field.name], module.$type === 'updaterColorOverTime' ? 'Vector4' : 'Float', t.particleFields[field.name] ?? field.name)}
               </div>
             )
-            : <FieldRow field={field} value={module[field.name]} context={context} onSet={onField([...at, field.name])} />))
+            // 曲线的行夹在字段中间：每个字段单独一组
+            : <Fields fields={[field]} value={module} context={context} onSet={onField(at)} />))
           : <FieldEditor type={{ kind: 'json' }} value={module} context={context} onSet={onField(at)} />}
       </div>
     );
@@ -184,7 +185,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
           <ScrollArea {...css.attrs(styles.scroll)} propsContent={css.attrs(styles.body)}>
             <div {...css.attrs(styles.column)}>
               <div {...css.attrs(styles.stackTitle)}>{t.particleEmitterSettings}</div>
-              {EMITTER_FIELDS.map((field) => <FieldRow field={field} value={emitter[field.name]} context={context} onSet={onField([...at, field.name])} />)}
+              <Fields fields={EMITTER_FIELDS} value={emitter} context={context} onSet={onField(at)} />
               {SINGLES.map((stack) => {
                 const module = emitter[stack] as ParticleModuleFile | null | undefined;
                 const choices = PARTICLE_MODULES.filter((spec) => spec.stack === stack);

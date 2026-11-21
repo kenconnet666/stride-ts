@@ -9,12 +9,16 @@
 #   -Changed：只跑改动影响到的样例（和 -Base 比，默认 origin/main，见 tools/affected.ts），第 2 层测试；全量在 CI 里跑。
 #   提交后马上推送了的，用 -Base 指推送前的提交（例如 HEAD~1）
 #   -Slow 300：每帧多忙等 300 毫秒（页面地址的 stride-slow），本机复现 CI 的软件 WebGPU 上的慢帧（冒烟的时序问题）
+#   -Editor：冒烟过了以后在同一个开发服务器上再跑编辑器验收（tools/editor-accept/accept.ts：打开、逐个实体画面板、不改就保存、
+#     改、保存、重开、试玩；内容目录先保护、验完还原）。-Changed 时改了编辑器、场景的加载和格式、验收工具就自动对 platformer、
+#     greybox 跑（tools/affected.ts --editor）
 param(
     [string[]]$Apps,
     [switch]$Changed,
     [string]$Base = 'origin/main',
     [int]$Parallel = [Math]::Clamp([Math]::Floor([Environment]::ProcessorCount / 8), 1, 4),
     [int]$Slow = 0,
+    [switch]$Editor,
     # 内部用：只跑这一个样例（并行时每个子进程跑一个）
     [string]$App
 )
@@ -67,6 +71,30 @@ if ($App) {
                 Where-Object { $_.Line -notmatch ':CONSOLE[:(]' } | Select-Object -Last 60 | ForEach-Object Line
             if ($gpuLines) { Write-Host "--- chrome.log (GPU-related lines)"; $gpuLines | ForEach-Object { Write-Host $_ } }
         }
+        if ($Editor -and $code -eq 0) {
+            # 编辑器验收：同一个开发服务器，换开编辑器的页面；要保存场景，内容目录先保护起来（验完还原），报告和截图放在状态目录下
+            pnpm exec stride close | Out-Null
+            $out = Join-Path $env:STRIDE_STATE_DIR 'editor-accept'
+            $report = Join-Path $out "$App.json"
+            Remove-Item $report -ErrorAction SilentlyContinue
+            pwsh -NoProfile -File (Join-Path $root 'tools' 'editor-accept' 'content.ps1') protect $App | Out-Null
+            try {
+                # 界面按中文开：accept.ts 按中文的按钮名找按钮
+                pnpm exec stride open "http://localhost:$port/__stride/editor/?lang=zh-CN&stride-limits=default" --headless --size 1400x900 --dpr 1 @chromeArgs | Out-Null
+                node (Join-Path $root 'tools' 'editor-accept' 'accept.ts') $App $port $out 2>&1 | Out-Null
+            } finally {
+                pnpm exec stride close | Out-Null
+                pwsh -NoProfile -File (Join-Path $root 'tools' 'editor-accept' 'content.ps1') restore $App | Out-Null
+            }
+            $result = (Test-Path $report) ? (Get-Content $report -Raw | ConvertFrom-Json) : $null
+            if ($result -and $result.passed) {
+                Write-Host "ok   编辑器验收：$(@($result.scenes).Count) 个场景（$out）"
+            } else {
+                $problems = $result ? @($result.problems) : @('no report (see the dev server and Chrome logs)')
+                $problems | ForEach-Object { Write-Host "FAIL 编辑器验收：$_" }
+                $code = 1
+            }
+        }
         exit $code
     } finally {
         pnpm exec stride close | Out-Null
@@ -80,6 +108,9 @@ $all = Get-ChildItem apps -Directory | Where-Object { Test-Path (Join-Path $_.Fu
 $selected = if ($Changed) { (node (Join-Path $root 'tools' 'affected.ts') $Base) -split ',' | Where-Object { $_ } }
     elseif ($Apps) { $Apps -split ',' | ForEach-Object Trim }
     else { $all }
+# 跑编辑器验收的样例：-Editor 时是选中的全部，-Changed 时按改动（改了编辑器才有）
+$editorApps = @(if ($Editor) { $selected } elseif ($Changed) { (node (Join-Path $root 'tools' 'affected.ts') $Base --editor) -split ',' | Where-Object { $_ } })
+$selected = @(@($selected) + $editorApps | Select-Object -Unique)
 # 没有冒烟脚本的样例（新建的工程还没写）不跑，说一声
 $missing = @($selected | Where-Object { $_ -notin $all })
 if ($missing.Count -gt 0) { Write-Host "no smoke test (scripts/smoke.ts) in: $($missing -join ', ')" }
@@ -88,10 +119,11 @@ if ($selected.Count -eq 0) {
     Write-Host 'no smoke test is affected by the changes'
     exit 0
 }
-Write-Host "running $($selected.Count) smoke tests, $Parallel at a time"
+Write-Host "running $($selected.Count) smoke tests, $Parallel at a time$($editorApps.Count -gt 0 ? " (editor acceptance on $($editorApps -join ', '))" : '')"
 $results = $selected | ForEach-Object -ThrottleLimit $Parallel -Parallel {
     $started = Get-Date
-    $output = pwsh -NoProfile -File $using:PSCommandPath -App $_ -Slow $using:Slow 2>&1
+    $editorArg = $_ -in $using:editorApps ? @('-Editor') : @()
+    $output = pwsh -NoProfile -File $using:PSCommandPath -App $_ -Slow $using:Slow @editorArg 2>&1
     [pscustomobject]@{
         App = $_
         Passed = $LASTEXITCODE -eq 0

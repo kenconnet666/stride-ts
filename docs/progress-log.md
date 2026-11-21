@@ -461,6 +461,12 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 属性面板换成库的 PropertyGrid（0.35.0）：主 Chrome 里看 greybox，场景设置、Ball 的名字、位置、旋转（欧拉角）、缩放、模型（资源路径）、材质列表的“添加”都对；Ball 和 Sky 一起选，名字、位置显示“多个值”和“—”，改缩放 X 为 2 两个都变（视口里球拉宽）、撤销回来；材质的字段、节点图卡片里的参数（卡片高度正好装下）、粒子编辑器的发射器和模块的字段都照常。
 - 骨架屏：重新加载编辑器，场景树、文档页签、属性面板、视口（不透明的底加扫光，盖住游戏页面的启动日志）在游戏页面起来前是骨架，起来后换成内容；资源列表读得快，Tree 的防闪烁不画骨架。
 
+### 编辑器验收接进回归（2026-11-21）
+
+- 先单独跑 `tools/editor-accept/run.ps1 -Apps platformer,greybox`：两个都过（这几天的编辑器改动没弄坏验收）。
+- `pwsh tools/regress.ps1 -Apps greybox -Editor`：冒烟五项过了以后"ok 编辑器验收：1 个场景"，共 71 秒；报告里不改就保存逐字节不变、改名加子实体粘贴撤销重做、保存重开、试玩都对，截图（`~/.stride-ts/regress/greybox/editor-accept/`）里是改过的场景；跑完内容目录还原（git 里没有改动）。
+- `node tools/affected.ts <base> --editor`：改了编辑器时打印 platformer,greybox，不然是空的。
+
 ### 预制体句柄的结构类型（2026-11-21）
 
 - 重新生成全部样例的 assets.gen.ts：有预制体的（bepu-sample、csharp-intermediate、first-person-shooter、platformer……）带上结构，`pnpm typecheck` 全过（第一次 csharp-intermediate 报"接口没用到"：同名兄弟、没名字的实体也写了接口，改成只写够得着的）。

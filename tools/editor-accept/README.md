@@ -33,4 +33,4 @@ pwsh tools/editor-accept/run.ps1 -Apps platformer,topdown-rpg
 
 - **保存会写内容目录**：`run.ps1` 先用 `content.ps1 protect` 保护起来（目录联接换成拷贝；真目录整份备份），验完 `restore` 还原。中途停掉的话手动 `pwsh tools/editor-accept/content.ps1 restore <样例>`，不然内容目录里留着验收改过的场景。
 - **第一次开编辑器要等预构建**：新起的开发服务器第一次打开编辑器时，Vite 要预构建依赖，页面一分钟左右才起来；accept.ts 等 3 分钟。
-- 它不跑在 `regress.ps1` 里：回归每个样例只起一次开发服务器、并行跑冒烟，验收要在同一个服务器上开编辑器（另一个页面，调试中枢只认最后连上的页面）、还要改内容目录，放进回归会和冒烟互相干扰。要的时候单独跑。
+- 回归里也跑：`regress.ps1 -Editor`（或 `-Changed` 时改了编辑器自动跑 platformer、greybox）在冒烟过了以后、同一个开发服务器上开编辑器跑 `accept.ts`，前后用 `content.ps1` 保护、还原内容目录；报告在这个样例的回归状态目录的 `editor-accept/` 下。单独跑用 `run.ps1`。

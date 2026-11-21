@@ -10,7 +10,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..' '..')
 $content = Join-Path $root 'apps' $App 'public' 'content'
-$backup = Join-Path ([IO.Path]::GetTempPath()) "stride-editor-accept-$App"
+# 按端口偏移分开：几个验证槽位同时验收同一个样例时各用各的备份
+$backup = Join-Path ([IO.Path]::GetTempPath()) "stride-editor-accept-$App-$($env:STRIDE_PORT_OFFSET ?? 0)"
 $marker = "$backup.json"
 
 function Copy-Tree([string]$From, [string]$To, [switch]$Mirror) {

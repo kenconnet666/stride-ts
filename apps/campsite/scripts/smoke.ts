@@ -16,6 +16,8 @@ const models = stride('eval', `(async () => {
 })()`) as Record<string, number>;
 check('白盒、SDF、多边形烘出的模型都有网格（木屋墙和屋顶两个材质）', Object.values(models).every((count) => count > 0) && models['Cabin'] === 2, models);
 
+// 火星一秒 12 个：CI 的软件渲染上开场时游戏时间还很短，等够一秒半再数（CI 上数到过 0 个）
+stride('wait', '--game', '1.5');
 const fire = stride('call', 'particles', JSON.stringify({ name: 'Campfire' })) as { emitter: string; alive: number }[];
 check('篝火的火苗、火星都在放', fire.length === 2 && fire.every((emitter) => emitter.alive > 0), fire.map((emitter) => [emitter.emitter, emitter.alive]));
 

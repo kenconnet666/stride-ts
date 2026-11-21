@@ -34,7 +34,7 @@ import type { Clouds } from '../sky/VolumetricClouds';
 import { Skybox } from '../lighting/Skybox';
 import type { SubsurfaceMaterials } from '../screenspace/SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
-import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER } from './meshShader';
+import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER, planarCode } from './meshShader';
 import { CEL_RAMP_STOPS, vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/format';
 import { Mesh } from './Mesh';
 import { inRenderMask, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
@@ -589,7 +589,7 @@ class Gpu {
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
         { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-        { binding: 26, visibility: GPUShaderStage.FRAGMENT, texture: {} },
+        ...(planar.supported ? [{ binding: 26, visibility: GPUShaderStage.FRAGMENT, texture: {} }] : []),
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -623,7 +623,7 @@ class Gpu {
     let module = this.#modules.get(key);
     if (!module) {
       const label = `MeshRenderFeature${trees ? ' (material trees)' : ''}${effect ? ' (mesh effect)' : ''}`;
-      module = createCheckedShaderModule(this.device, label, MESH_SHADER + meshEffectCode(effect) + materialTreesCode(trees));
+      module = createCheckedShaderModule(this.device, label, MESH_SHADER + planarCode(this.#planar.supported) + meshEffectCode(effect) + materialTreesCode(trees));
       this.#modules.set(key, module);
     }
     return module;
@@ -1007,7 +1007,7 @@ class Gpu {
           { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
           { binding: 24, resource: { buffer: this.#clusters.buffer } },
           { binding: 25, resource: { buffer: this.#localLights.ltc } },
-          { binding: 26, resource: reflection.createView() },
+          ...(this.#planar.supported ? [{ binding: 26, resource: reflection.createView() }] : []),
         ],
       });
       groups.set(reflection, group);

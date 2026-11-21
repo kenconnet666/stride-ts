@@ -133,7 +133,6 @@ ${CLUSTER_WGSL}
 // 矩形光的 LTC 查找表（lighting/ltcTable.ts，64 × 64，每格 8 个半精度数）；场景里有矩形光时才填（localLightData[0].y 是 1）
 @group(0) @binding(25) var<uniform> ltcTable: array<vec4u, 4096>;
 // 平面反射图（镜像着画的场景，左右颠倒，带 mip）；这一帧没有平面反射时是 1x1 的空图
-@group(0) @binding(26) var planarTexture: texture_2d<f32>;
 ${LTC_WGSL}
 
 /** 像素所在的簇的簇头在 clusters 里的下标；视图没分簇时是 -1（看所有的光和贴花）。 */
@@ -1182,7 +1181,7 @@ fn planarSpecular(world: vec3f, fragment: vec2f, n: vec3f, roughness: f32) -> ve
   }
   let tilt = (view.viewProjection * vec4f(n - view.planarNormal.xyz * facing, 0.0)).xy * vec2f(-0.5, -0.5) * view.planarNormal.w;
   let uv = vec2f(1.0 - fragment.x * view.planar.z, fragment.y * view.planar.w) + tilt;
-  let color = textureSampleLevel(planarTexture, linearClamp, uv, roughness * view.planar.y * 0.6).rgb * view.planarIntensity.x;
+  let color = planarColor(uv, roughness * view.planar.y * 0.6) * view.planarIntensity.x;
   return vec4f(color, saturate(edge * 8.0) * smoothstep(0.6, 0.9, facing));
 }
 
@@ -1743,3 +1742,18 @@ fn sheenDfg(nDotV: f32, alpha: f32) -> f32 {
   }
   lut[id.y * ${DFG_LUT_WIDTH}u + id.x] = vec4f(scale / f32(SAMPLES), bias / f32(SAMPLES), sheenDfg(nDotV, alphaR), 0.0);
 }`;
+
+/**
+ * 平面反射的反射图（视图的第 26 个绑定）和取色的函数：设备放得下这张贴图时才声明（PlanarReflections.supported），
+ * 放不下时取色返回黑（这时 view.planar.x 总是 0，调不到）。
+ */
+export function planarCode(supported: boolean): string {
+  return supported
+    ? /* wgsl */ `
+@group(0) @binding(26) var planarTexture: texture_2d<f32>;
+fn planarColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(planarTexture, linearClamp, uv, level).rgb; }
+`
+    : /* wgsl */ `
+fn planarColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
+`;
+}

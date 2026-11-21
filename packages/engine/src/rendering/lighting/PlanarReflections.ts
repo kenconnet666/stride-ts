@@ -40,6 +40,11 @@ interface Candidate {
 export class PlanarReflections {
   /** 关掉时不画、着色时也不用（画质档位、调试用）。 */
   enabled = true;
+  /**
+   * 设备放得下反射图这张贴图没有：网格着色器的片元阶段已经用了 16 张（视图 7 张、材质 5 张、材质层的贴图），WebGPU 默认的上限
+   * 就是 16（软件渲染、很多手机）；上限是 16 的设备上不画平面反射，着色器里也不声明它（MeshRenderFeature）。
+   */
+  readonly supported: boolean;
   /** 这一帧镜像的视图（begin 设，不画时 undefined）。不接收阴影：倒影里的阴影是以后的事。 */
   readonly view = Object.assign(new RenderView(), { receivesShadows: false });
   /**
@@ -64,6 +69,7 @@ export class PlanarReflections {
 
   constructor(device: GPUDevice, _resources: GpuResources) {
     this.#device = device;
+    this.supported = device.limits.maxSampledTexturesPerShaderStage > 16;
     this.#mipmaps = new MipmapGenerator(device);
     this.#empty = device.createTexture({ label: 'PlanarReflections empty', size: [1, 1], format: PLANAR_FORMAT, usage: GPUTextureUsage.TEXTURE_BINDING });
   }
@@ -84,7 +90,7 @@ export class PlanarReflections {
   begin(context: RenderContext, main: RenderView): RenderView | undefined {
     this.active = false;
     this.#best = undefined;
-    if (!this.enabled) return undefined;
+    if (!this.enabled || !this.supported) return undefined;
     this.#eye = [main.eye.x, main.eye.y, main.eye.z];
     context.game.entities.run(this.#collect, context.time);
     // run 里设的：类型推断以为还是开头赋的 undefined

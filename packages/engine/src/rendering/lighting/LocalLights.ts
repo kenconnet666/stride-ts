@@ -1,12 +1,14 @@
 /**
- * 这一帧的点光、聚光和它们的阴影在 GPU 上的那一份（渲染系统一份，`renderSystem.localLights`）：网格着色、体积雾都读它，
+ * 这一帧的点光、聚光、矩形光和它们的阴影在 GPU 上的那一份（渲染系统一份，`renderSystem.localLights`）：网格着色、体积雾都读它，
  * 前向渲染器每帧在阴影收集之后、prepare 之前上传一次。个数不设上限，缓冲按 2 的幂变大（换了缓冲，用它的绑定组要重建：看
  * buffer 变没变）。
  *
  * 光和阴影放在一个存储缓冲里（`array<vec4f>`，着色器里叫 localLightData）：片元阶段的存储缓冲默认最多 8 个，分开放要占两个。
- * - 第 0 个 vec4：x 是阴影从第几个 vec4 开始。
- * - 从第 1 个 vec4 起每盏光 4 个（LocalLight）：位置和 1 / 半径²、颜色乘强度和是不是聚光、聚光的方向和阴影的下标（没有是 -1）、
- *   角度衰减的 scale、offset。
+ * - 第 0 个 vec4：x 是阴影从第几个 vec4 开始，y 是 LTC 查找表上传了没有（矩形光要它，没上传时先不画矩形光）。
+ * - 从第 1 个 vec4 起每盏光 4 个（LocalLight）：位置和 1 / 半径²、颜色乘强度和种类（0 点光、1 聚光、2 矩形光）、照向的方向
+ *   （聚光、矩形光）和阴影的下标（没有是 -1）、聚光是角度衰减的 scale、offset，矩形光是半宽的向量和半高。
+ *
+ * 矩形光的 LTC 查找表（ltcTable.ts，64 KB）是另一个 uniform 缓冲（ltc），场景里第一次有矩形光时才加载那个模块、上传。
  * - 再往后每个阴影 26 个（LocalShadow）：六个矩阵（点光是立方体的六个面，聚光只用第一个），参数（深度偏移、法线偏移比例、点光
  *   深度的两个系数），选项（PCF 核大小、是不是点光）。
  */
@@ -84,30 +86,117 @@ fn localShadowCoord(start: u32, position: vec3f, unbiased: vec3f, lightPosition:
   return vec4f(projected.xy / projected.w, depth, select(0.0, 1.0, depth >= 0.0 && depth <= 1.0));
 }
 
+/** 光的种类（color.w）：0 点光，1 聚光，2 矩形光。 */
+fn localLightKind(light: LocalLight) -> u32 {
+  return u32(light.color.w + 0.5);
+}
+
+/** 到光源中心的距离在半径（射程）以内平滑地衰减到 0 的窗口（Stride 的 GetDistanceAttenuation 里乘在 1 / d² 上的那部分）。 */
+fn localLightWindow(light: LocalLight, d2: f32) -> f32 {
+  let falloff = saturate(1.0 - pow(d2 * light.position.w, 2.0));
+  return falloff * falloff;
+}
+
 fn localLightAt(light: LocalLight, world: vec3f) -> vec4f {
   let toLight = light.position.xyz - world;
   let distance = length(toLight);
   let l = toLight / max(distance, 1e-6);
   let d2 = distance * distance;
-  let falloff = saturate(1.0 - pow(d2 * light.position.w, 2.0));
-  var attenuation = falloff * falloff / max(d2, 0.0001);
-  if (light.color.w > 0.5) {
+  var attenuation = localLightWindow(light, d2) / max(d2, 0.0001);
+  let kind = localLightKind(light);
+  if (kind == 1u) {
     let angular = saturate(dot(-l, light.direction.xyz) * light.angle.x + light.angle.y);
     attenuation *= angular * angular;
+  } else if (kind == 2u) {
+    // 矩形光在用这个近似的地方（体积雾）当中心的一个点，只往正面照（亮度乘面积 / π 回到点光的强度）；网格着色用 LTC
+    attenuation *= saturate(dot(-l, light.direction.xyz)) * 4.0 * light.angle.w * length(light.angle.xyz) * 0.31830988;
   }
   return vec4f(l, attenuation);
 }
+
+/**
+ * 矩形光的四个角（逆时针，从正面看；正面朝 direction）：angle.xyz 是半宽的向量（本地 X），半高沿 cross(半宽, direction)（本地 Y），
+ * 长度是 angle.w。
+ */
+fn rectLightCorners(light: LocalLight) -> array<vec3f, 4> {
+  let c = light.position.xyz;
+  let w = light.angle.xyz;
+  let h = normalize(cross(w, light.direction.xyz)) * light.angle.w;
+  return array<vec3f, 4>(c + w - h, c - w - h, c - w + h, c + w + h);
+}
+
+/** 一条边对矢量形状因子的贡献（Hill、Heitz 的有理多项式近似 θ / sin θ / 2π），v1、v2 是投到单位球上的两个角。 */
+fn ltcEdge(v1: vec3f, v2: vec3f) -> vec3f {
+  let x = dot(v1, v2);
+  let y = abs(x);
+  let a = 0.8543985 + (0.4965155 + 0.0145206 * y) * y;
+  let b = 3.4175940 + (4.1616724 + y) * y;
+  let v = a / b;
+  let thetaSinTheta = select(0.5 * inverseSqrt(max(1.0 - x * x, 1e-7)) - v, v, x > 0.0);
+  return cross(v1, v2) * thetaSinTheta;
+}
+
+/**
+ * 多边形光（矩形）经 LTC 变换后的积分（Heitz 2016）：mInv 把 GGX 的波瓣变回余弦分布，角投到单位球上按边积分，再按被地平线
+ * 截掉的球近似形状因子（Hill 2016）。位置在光的背面时是 0。结果是 0..1（整个半球是 1）。
+ */
+fn ltcIntegrate(n: vec3f, v: vec3f, p: vec3f, mInv: mat3x3f, corners: array<vec3f, 4>) -> f32 {
+  if (dot(cross(corners[1] - corners[0], corners[3] - corners[0]), p - corners[0]) < 0.0) {
+    return 0.0;
+  }
+  // 以法线为轴的正交基（视线在 T1、N 的平面里）
+  let t1 = normalize(v - n * dot(v, n));
+  let t2 = -cross(n, t1);
+  let m = mInv * transpose(mat3x3f(t1, t2, n));
+  var c: array<vec3f, 4>;
+  for (var i = 0u; i < 4u; i++) {
+    c[i] = normalize(m * (corners[i] - p));
+  }
+  let f = ltcEdge(c[0], c[1]) + ltcEdge(c[1], c[2]) + ltcEdge(c[2], c[3]) + ltcEdge(c[3], c[0]);
+  let l = length(f);
+  return max((l * l + f.z) / (l + 1.0), 0.0);
+}
 `;
+
+/**
+ * WGSL：LTC 查找表（ltcTable.ts，64 × 64，每格一个 vec4u：8 个半精度数）的双线性采样。用的着色器自己声明
+ * `var<uniform> ltcTable: array<vec4u, 4096>`。返回 [M⁻¹ 的四个元素, 镜面的缩放和偏移]。
+ */
+export const LTC_WGSL = /* wgsl */ `
+fn ltcTexel(x: u32, y: u32) -> array<vec4f, 2> {
+  let u = ltcTable[min(y, 63u) * 64u + min(x, 63u)];
+  return array<vec4f, 2>(vec4f(unpack2x16float(u.x), unpack2x16float(u.y)), vec4f(unpack2x16float(u.z), unpack2x16float(u.w)));
+}
+
+/** roughness 是感知的粗糙度（sqrt(alpha)），nDotV 是视线和法线的夹角余弦。 */
+fn ltcLookup(roughness: f32, nDotV: f32) -> array<vec4f, 2> {
+  let p = vec2f(saturate(roughness), sqrt(saturate(1.0 - nDotV))) * 63.0;
+  let i = vec2u(floor(p));
+  let f = p - floor(p);
+  let a = ltcTexel(i.x, i.y);
+  let b = ltcTexel(i.x + 1u, i.y);
+  let c = ltcTexel(i.x, i.y + 1u);
+  let d = ltcTexel(i.x + 1u, i.y + 1u);
+  return array<vec4f, 2>(mix(mix(a[0], b[0], f.x), mix(c[0], d[0], f.x), f.y), mix(mix(a[1], b[1], f.x), mix(c[1], d[1], f.x), f.y));
+}
+`;
+
+/** LTC 查找表的字节数：64 × 64 格，每格一个 vec4u。 */
+export const LTC_TABLE_BYTES = 64 * 64 * 16;
 
 export class LocalLightBuffer {
   /** 存储缓冲；没有光时也留着开头的那个 vec4（绑定组里的存储缓冲不能缺）。 */
   buffer: GPUBuffer;
+  /** LTC 查找表（uniform，`array<vec4u, 4096>`）：一直绑着，第一次有矩形光时才填。 */
+  readonly ltc: GPUBuffer;
   readonly #device: GPUDevice;
   #data = new Float32Array(4 * (1 + LIGHT_VEC4S + SHADOW_VEC4S));
+  #ltc: 'empty' | 'loading' | 'ready' = 'empty';
 
   constructor(device: GPUDevice) {
     this.#device = device;
     this.buffer = this.#create();
+    this.ltc = device.createBuffer({ label: 'LTC table', size: LTC_TABLE_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   }
 
   /** 上传这一帧的点光、聚光和它们的阴影（前向渲染器在阴影收集之后、prepare 之前调）。 */
@@ -122,14 +211,22 @@ export class LocalLightBuffer {
     }
     const data = this.#data;
     data[0] = shadowStart;
+    data[1] = this.#ltc === 'ready' ? 1 : 0;
+    let rects = false;
     for (let i = 0; i < count; i++) {
-      const { position: p, color: c, direction: d, spot, invSquareRadius, angleScale, angleOffset, shadowIndex } = lighting.locals[i]!;
+      const { position: p, color: c, direction: d, spot, rect, invSquareRadius, angleScale, angleOffset, shadowIndex, halfWidth: w, halfHeight } = lighting.locals[i]!;
       const o = 4 * (1 + i * LIGHT_VEC4S);
       data[o] = p.x; data[o + 1] = p.y; data[o + 2] = p.z; data[o + 3] = invSquareRadius;
-      data[o + 4] = c.r; data[o + 5] = c.g; data[o + 6] = c.b; data[o + 7] = spot ? 1 : 0;
+      data[o + 4] = c.r; data[o + 5] = c.g; data[o + 6] = c.b; data[o + 7] = rect ? 2 : spot ? 1 : 0;
       data[o + 8] = d.x; data[o + 9] = d.y; data[o + 10] = d.z; data[o + 11] = shadowIndex;
-      data[o + 12] = angleScale; data[o + 13] = angleOffset;
+      if (rect) {
+        data[o + 12] = w.x; data[o + 13] = w.y; data[o + 14] = w.z; data[o + 15] = halfHeight;
+        rects = true;
+      } else {
+        data[o + 12] = angleScale; data[o + 13] = angleOffset;
+      }
     }
+    if (rects && this.#ltc === 'empty') this.#loadLtc();
     for (let i = 0; i < shadowCount; i++) {
       const shadow = lighting.localShadows[i]!, o = 4 * (shadowStart + i * SHADOW_VEC4S);
       data.set(shadow.worldToShadow, o);
@@ -141,6 +238,19 @@ export class LocalLightBuffer {
 
   destroy(): void {
     this.buffer.destroy();
+    this.ltc.destroy();
+  }
+
+  /** 加载、上传 LTC 查找表（一次）；加载好以前矩形光不画（第 0 个 vec4 的 y）。 */
+  #loadLtc(): void {
+    this.#ltc = 'loading';
+    void import('./ltcTable').then(({ ltcTable }) => {
+      this.#device.queue.writeBuffer(this.ltc, 0, ltcTable());
+      this.#ltc = 'ready';
+    }, (error: unknown) => {
+      this.#ltc = 'empty';
+      console.error('[stride] loading the LTC table for rect lights failed', error);
+    });
   }
 
   #create(): GPUBuffer {

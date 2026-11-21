@@ -382,11 +382,15 @@ export interface DirectionalLight {
 }
 
 /**
- * 点光或聚光（Stride 的 LightPoint、LightSpot）：位置、颜色乘强度、半径平方的倒数（距离衰减到 0 的地方）；聚光还有照向的
- * 方向和角度衰减的 scale、offset（saturate(dot(-L, direction) · scale + offset)²）。
+ * 点光、聚光或矩形光（Stride 的 LightPoint、LightSpot；矩形光 Stride 没有）：位置、颜色乘强度、半径平方的倒数（距离衰减到
+ * 0 的地方）；聚光还有照向的方向和角度衰减的 scale、offset（saturate(dot(-L, direction) · scale + offset)²）。
  */
 export interface LocalLight {
   spot: boolean;
+  /** 矩形光（Light 的 rect）：position 是中心，direction 是照向的方向，halfWidth、halfHeight 是半宽的向量和半高。 */
+  rect: boolean;
+  readonly halfWidth: Vector3;
+  halfHeight: number;
   readonly position: Vector3;
   readonly direction: Vector3;
   readonly color: Color4;
@@ -408,7 +412,7 @@ export interface LocalLight {
 /** 一盏还没用上的点光或聚光（Lighting.locals 按需变长，变长的部分留着下一帧复用）。 */
 export function createLocalLight(): LocalLight {
   return {
-    spot: false, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
+    spot: false, rect: false, halfWidth: new Vector3(), halfHeight: 0, position: new Vector3(), direction: new Vector3(), color: new Color4(), radius: 1, invSquareRadius: 1, angleScale: 0, angleOffset: 1, angleOuter: 35,
     castsShadow: false, shadow: { size: 'medium', filter: 'none', depthBias: 0.01, normalOffsetScale: 10 }, world: new Float32Array(16), shadowIndex: -1,
   };
 }

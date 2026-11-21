@@ -128,6 +128,12 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
           { name: 'angleInner', type: number({ min: 0, max: 180, unit: 'deg' }) }, { name: 'angleOuter', type: number({ min: 0, max: 180, unit: 'deg' }) },
           { name: 'shadow', type: object(localShadow), optional: true },
         ],
+        rect: [
+          lightColor, { name: 'intensity', type: number({ min: 0, step: 0.1 }), description: 'like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter' },
+          { name: 'width', type: number({ min: 0, unit: 'm' }), description: 'size along the local X axis' },
+          { name: 'height', type: number({ min: 0, unit: 'm' }), description: 'size along the local Y axis; the light shines toward local -Z' },
+          { name: 'range', type: number({ min: 0, unit: 'm' }) },
+        ],
       } satisfies Record<NonNullable<Components['light']>['type'], readonly Field[]>,
     },
     initial: { type: 'point', color: [1, 1, 1], intensity: 1, radius: 1 },

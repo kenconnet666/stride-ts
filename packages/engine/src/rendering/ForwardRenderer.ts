@@ -253,7 +253,7 @@ export class ForwardRenderer {
           sky.intensity = intensity;
           Matrix.rotationOf(sky.rotation, transform.world, transform.slot[i]! * 16);
           lighting.skybox = sky;
-        } else if (light.type[i] === 'point' || light.type[i] === 'spot') {
+        } else if (light.type[i] === 'point' || light.type[i] === 'spot' || light.type[i] === 'rect') {
           this.#collectLocal(light, transform, i, color, intensity);
         } else if (light.type[i] === 'ambient') {
           lighting.ambient.set(lighting.ambient.r + color.r * intensity, lighting.ambient.g + color.g * intensity, lighting.ambient.b + color.b * intensity, 1);
@@ -573,8 +573,10 @@ export class ForwardRenderer {
     if (!clustered) return;
     if (this.#lightSpheres.length < count * 4) this.#lightSpheres = new Float32Array(2 ** Math.ceil(Math.log2(count * 4)));
     for (let i = 0; i < count; i++) {
-      const { position, radius } = lighting.locals[i]!;
-      this.#lightSpheres.set([position.x, position.y, position.z, radius], i * 4);
+      const { position, radius, rect, halfWidth, halfHeight } = lighting.locals[i]!;
+      // 矩形光从发光面上各处照出去：球再大半条对角线
+      const reach = rect ? radius + Math.hypot(halfWidth.length(), halfHeight) : radius;
+      this.#lightSpheres.set([position.x, position.y, position.z, reach], i * 4);
     }
     clusters.upload(this.#lightSpheres, count, decals.bounds, decals.count, probes.bounds, probes.count);
   }
@@ -704,14 +706,25 @@ export class ForwardRenderer {
     const local = lighting.locals[lighting.localCount++]!;
     const w = transform.slot[i]! * 16, world = transform.world;
     local.spot = light.type[i] === 'spot';
+    local.rect = light.type[i] === 'rect';
     local.position.set(world[w + 12]!, world[w + 13]!, world[w + 14]!);
-    // 聚光照向本地 -Z
+    // 聚光、矩形光照向本地 -Z
     local.direction.set(-world[w + 8]!, -world[w + 9]!, -world[w + 10]!).normalize();
     local.color.set(color.r * intensity, color.g * intensity, color.b * intensity, 1);
-    const radius = Math.max(0.001, local.spot ? light.range[i]! : light.radius[i]!);
+    const radius = Math.max(0.001, local.spot || local.rect ? light.range[i]! : light.radius[i]!);
     local.radius = radius;
     local.invSquareRadius = 1 / (radius * radius);
     local.shadowIndex = -1;
+    if (local.rect) {
+      // 半宽是本地 X 轴（带缩放）乘宽的一半，半高按本地 Y 轴的长度
+      local.halfWidth.set(world[w]!, world[w + 1]!, world[w + 2]!).scale(light.width[i]! / 2);
+      local.halfHeight = Math.hypot(world[w + 4]!, world[w + 5]!, world[w + 6]!) * light.height[i]! / 2;
+      // 强度和点光的同一个意思（正前方同样远处同样亮）：发光面的亮度 = π · 强度 / 面积，面板做大了是更柔和、不是更亮
+      const area = Math.max(4 * local.halfWidth.length() * local.halfHeight, 1e-6);
+      local.color.set(local.color.r * Math.PI / area, local.color.g * Math.PI / area, local.color.b * Math.PI / area, 1);
+      local.castsShadow = false;
+      return;
+    }
     local.castsShadow = this.drawShadows && this.quality.shadows && light.shadow[i] !== 0;
     if (local.castsShadow) {
       local.shadow.size = limitShadowSize(light.shadowSize[i]!, this.quality);

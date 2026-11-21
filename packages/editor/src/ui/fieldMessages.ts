@@ -73,6 +73,9 @@ const zhCN: FieldMessages = {
     shakeRotation: '晃动的角度', shakePosition: '晃动的位移', shakeFrequency: '晃动的频率', sensor: '传感器', focalLength: '焦距', aperture: '光圈', focusDistance: '对焦距离', shutterAngle: '快门角', exposureCompensation: '曝光补偿', depthOfField: '景深', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
+    'like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter': '同点光：正前方同样远处同样亮；面板做大了是更柔和，不是更亮',
+    'size along the local X axis': '沿本地 X 轴的尺寸',
+    'size along the local Y axis; the light shines toward local -Z': '沿本地 Y 轴的尺寸；光朝本地 -Z 照',
     'waveform': '波形',
     'rise time (squared: 1 is about 2.3 seconds)': '起音的时长（平方关系：1 约 2.3 秒）',
     'hold time (squared, like attack)': '持续的时长（同起音，平方关系）',

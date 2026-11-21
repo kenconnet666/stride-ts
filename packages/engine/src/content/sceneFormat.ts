@@ -508,7 +508,12 @@ export interface SceneEntityFile {
       | {
         readonly type: 'spot'; readonly color: Vec3Tuple; readonly intensity: number; readonly range: number; readonly angleInner: number; readonly angleOuter: number;
         readonly shadow?: SceneLocalLightShadow;
-      };
+      }
+      /**
+       * 矩形光（Stride 没有；同虚幻的 Rect Light、Unity HDRP 的矩形面光源）：width × height 的发光矩形（沿本地 X、Y），朝本地 -Z 照，
+       * range 以外照不到；intensity 同点光的（正前方同样远处同样亮，面板越大越柔和），不投阴影。
+       */
+      | { readonly type: 'rect'; readonly color: Vec3Tuple; readonly intensity: number; readonly width: number; readonly height: number; readonly range: number };
     readonly background?: SceneBackground;
     readonly reflectionProbe?: SceneReflectionProbe;
     readonly skyAtmosphere?: SceneSkyAtmosphere;

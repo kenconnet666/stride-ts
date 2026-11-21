@@ -171,6 +171,8 @@ const added = [
   entity('crate', 'Crate', [-0.7, 0, -1.8], euler(15), model('Models/Crate')),
   entity('lantern', 'Lantern', [-0.7, 0.6, -1.8], euler(0), model('Models/Lantern')),
   entity('lantern-light', 'Lantern light', [-0.7, 0.8, -1.8], euler(0), { light: { type: 'point', color: [1, 0.7, 0.4], intensity: 4, radius: 4 } }),
+  // 屋里天花板上的一块面板灯（矩形光，朝下照）：从门、窗里透出来
+  entity('cabin-light', 'Cabin light', [-3, 2.5, -3], euler(20, -90), { light: { type: 'rect', color: [1, 0.78, 0.55], intensity: 12, width: 1.4, height: 0.8, range: 6 } }),
 ];
 await call('edit_scene', {
   kind: 'scene', path: 'MainScene', edits: [

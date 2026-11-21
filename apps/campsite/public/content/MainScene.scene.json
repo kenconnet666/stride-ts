@@ -518,6 +518,41 @@
    }
   },
   {
+   "id": "cabin-light",
+   "name": "Cabin light",
+   "parent": null,
+   "position": [
+    -3,
+    2.5,
+    -3
+   ],
+   "rotation": [
+    -0.6963642403200189,
+    0.12278780396897285,
+    0.12278780396897282,
+    0.696364240320019
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "rect",
+     "color": [
+      1,
+      0.78,
+      0.55
+     ],
+     "intensity": 12,
+     "width": 1.4,
+     "height": 0.8,
+     "range": 6
+    }
+   }
+  },
+  {
    "id": "campfire",
    "name": "Campfire",
    "parent": null,

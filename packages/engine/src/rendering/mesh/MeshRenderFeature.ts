@@ -578,6 +578,7 @@ class Gpu {
         { binding: 22, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
         { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
+        { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -988,6 +989,7 @@ class Gpu {
           { binding: 22, resource: { buffer: this.#decals.buffer } },
           { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
           { binding: 24, resource: { buffer: this.#clusters.buffer } },
+          { binding: 25, resource: { buffer: this.#localLights.ltc } },
         ],
       });
       groups.set(shadow, group);

@@ -362,6 +362,8 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
       } else if (light.type === 'spot') {
         const { range, angleInner, angleOuter } = light;
         entity.add(Light.with({ type: 'spot', color: [...light.color, 1], intensity: light.intensity, range, angleInner, angleOuter, ...(light.shadow ? localShadowColumns(light.shadow) : {}) }));
+      } else if (light.type === 'rect') {
+        entity.add(Light.with({ type: 'rect', color: [...light.color, 1], intensity: light.intensity, width: light.width, height: light.height, range: light.range }));
       } else entity.add(Light.with({ type: light.type, color: [...light.color, 1], intensity: light.intensity, ...(light.shadow ? shadowColumns(light.shadow) : {}) }));
     },
     remove: drop(Light),

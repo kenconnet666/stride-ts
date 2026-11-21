@@ -38,7 +38,7 @@ describe('字段描述（editor/fields）', () => {
       'entity E.components.model.model: expected a model asset, got 3',
       'entity E.components.model.materials: expected a list, got "Game/Red"',
       'entity E.components.model.castShadows: not a field of this component',
-      'entity E.components.light.type: expected one of directional, ambient, skybox, point, spot, got "laser"',
+      'entity E.components.light.type: expected one of directional, ambient, skybox, point, spot, rect, got "laser"',
       'entity E.components.camera.verticalFieldOfView: expected a number in 1..179, got 200',
       'entity E.components.camera.farClipPlane: missing',
       'entity E.components.camera.slot: expected an integer, got 1.5',

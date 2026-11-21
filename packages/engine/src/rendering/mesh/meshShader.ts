@@ -23,7 +23,7 @@
  */
 import { CEL_RAMP_STOPS } from '../../content/format';
 import { CLUSTER_WGSL } from '../lighting/Clusters';
-import { LOCAL_LIGHT_WGSL } from '../lighting/LocalLights';
+import { LOCAL_LIGHT_WGSL, LTC_WGSL } from '../lighting/LocalLights';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
 import { BRDF, GRADIENT_NOISE } from '../wgsl';
@@ -124,6 +124,9 @@ struct Decal { toBox: mat4x4f, albedo: vec4f, normal: vec4f, color: vec4f, fade:
 // 每簇：光的个数、贴花的个数，再是光的下标、贴花的下标（lighting/Clusters.ts）
 @group(0) @binding(24) var<storage, read> clusters: array<u32>;
 ${CLUSTER_WGSL}
+// 矩形光的 LTC 查找表（lighting/ltcTable.ts，64 × 64，每格 8 个半精度数）；场景里有矩形光时才填（localLightData[0].y 是 1）
+@group(0) @binding(25) var<uniform> ltcTable: array<vec4u, 4096>;
+${LTC_WGSL}
 
 /** 像素所在的簇的簇头在 clusters 里的下标；视图没分簇时是 -1（看所有的光和贴花）。 */
 fn clusterOf(position: vec4f, world: vec3f) -> i32 {
@@ -1133,6 +1136,31 @@ fn celEnvironment(color: vec3f) -> vec3f {
  * Stride 的 MaterialSurfaceShadingDiffuseLambert、SpecularMicrofacet），卡通着色的材质两项各过渐变。l 是指向光源的单位向量；
  * attenuation 是距离、角度衰减，visibility 是阴影乘遮蔽（卡通着色只让衰减进渐变）。
  */
+/**
+ * 矩形光（LTC，Heitz 2016；同 three.js 的 RectAreaLight、虚幻的 Rect Light）：漫反射是余弦分布在矩形上的积分，镜面反射是
+ * 按粗糙度和视角查表把 GGX 的波瓣变成余弦再积分，菲涅耳用 Hill 的缩放和偏移。积分的结果是反射出去的亮度（发光面的亮度乘
+ * 形状因子），这里的光照最后要乘 π（见 shade），所以先除掉。到中心的距离在射程以内平滑地淡出。查找表还没上传时不画。
+ */
+fn rectLight(s: Surface, light: LocalLight, world: vec3f) -> Lit {
+  var result = Lit(vec3f(0.0), vec3f(0.0));
+  let toLight = light.position.xyz - world;
+  let window = localLightWindow(light, dot(toLight, toLight));
+  if (localLightData[0].y < 0.5 || window <= 0.0) {
+    return result;
+  }
+  let corners = rectLightCorners(light);
+  let radiance = light.color.rgb * (window / PI);
+  result.diffuse = s.diffuse * radiance * ltcIntegrate(s.n, s.v, world, mat3x3f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), corners);
+  if (s.hasSpecular) {
+    let table = ltcLookup(sqrt(s.alphaR), s.nDotV);
+    let m = table[0];
+    let mInv = mat3x3f(m.x, 0.0, m.y, 0.0, 1.0, 0.0, m.z, 0.0, m.w);
+    let fresnel = s.specular * table[1].x + (1.0 - s.specular) * table[1].y;
+    result.specular = radiance * fresnel * ltcIntegrate(s.n, s.v, world, mInv, corners);
+  }
+  return result;
+}
+
 fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f, attenuation: f32, visibility: f32) -> Lit {
   let nDotL = max(dot(s.n, l), 0.0001);
   let lightColorNdotL = lightColor * (attenuation * visibility * nDotL);
@@ -1419,6 +1447,12 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   for (var k = 0u; k < localCount; k++) {
     let light = localLight(select(k, clusters[firstLight + k], clustered));
+    if (localLightKind(light) == 2u) {
+      let lit = rectLight(surface, light, in.world);
+      direct.diffuse += lit.diffuse * directOcclusion;
+      direct.specular += lit.specular * directOcclusion;
+      continue;
+    }
     let at = localLightAt(light, in.world);
     let l = at.xyz;
     let attenuation = at.w;

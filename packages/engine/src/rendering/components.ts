@@ -55,13 +55,20 @@ export const Camera = component('Camera', {
  * shadowNormalOffsetScale，大小按光源在画面上盖住多大定。
  */
 export const Light = component('Light', {
-  type: prop.enum(['directional', 'ambient', 'skybox', 'point', 'spot']).default('directional'),
+  type: prop.enum(['directional', 'ambient', 'skybox', 'point', 'spot', 'rect']).default('directional'),
   color: prop.color(),
   intensity: prop.f32().default(1).min(0),
   /** 点光的半径：光照在这里衰减到 0（Stride 的 LightPoint.Radius）。 */
   radius: prop.f32().default(1).min(0),
-  /** 聚光照到多远（Stride 的 LightSpot.Range）。 */
+  /** 聚光、矩形光照到多远（Stride 的 LightSpot.Range）。 */
   range: prop.f32().default(3).min(0),
+  /**
+   * 矩形光（Stride 没有；同虚幻的 Rect Light）的宽、高（沿实体的本地 X、Y，乘实体的缩放）：发光的矩形朝本地 -Z 照，按 LTC
+   * （线性变换的余弦）算漫反射和镜面反射。intensity 和点光的同一个意思（正前方同样远处同样亮），光摊在整个面上：面板越大越柔和、
+   * 不是越亮。不投阴影。
+   */
+  width: prop.f32().default(1).min(0),
+  height: prop.f32().default(1).min(0),
   /** 聚光的内锥角、外锥角（度，整个锥的张角）：内锥里全亮，到外锥平滑地暗到 0。 */
   angleInner: prop.f32().default(30).min(0).max(180).unit('deg'),
   angleOuter: prop.f32().default(35).min(0).max(180).unit('deg'),

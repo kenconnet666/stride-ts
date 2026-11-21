@@ -6,7 +6,7 @@ import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
 import { Matrix, type Matrix4 } from '../data/Matrix';
-import { Model, ModelPart, ReflectionProbe } from '../rendering/components';
+import { Light, Model, ModelPart, ReflectionProbe } from '../rendering/components';
 import { Mesh } from '../rendering/mesh/Mesh';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import { UIComponent } from '../ui/UIComponent';
@@ -29,7 +29,7 @@ export interface WorldBox {
 
 /**
  * 实体在视口里的选中框（点选能点到的那些东西）：模型（它自己的和引擎给多出来的网格建的子实体的）的包围盒；粒子系统的包围
- * 形状，没有时是活着的粒子占的范围；放在 3D 里的 UI 的那块板。
+ * 形状，没有时是活着的粒子占的范围；放在 3D 里的 UI 的那块板；矩形光的发光面（点选点不到，选中了看得见它在哪、多大）。
  */
 export function selectionBoxes(game: Game, entity: Entity): WorldBox[] {
   const boxes = modelBoxes(entity);
@@ -45,6 +45,8 @@ export function selectionBoxes(game: Game, entity: Entity): WorldBox[] {
   const ui = entity.get(UIComponent);
   const board = ui && game.ui.worldBox(ui);
   if (board) boxes.push(board);
+  const light = entity.get(Light);
+  if (light?.type === 'rect') boxes.push({ matrix: currentWorld(entity), halfExtents: [light.width / 2, light.height / 2, 0.005] });
   return boxes;
 }
 

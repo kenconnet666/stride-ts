@@ -19,6 +19,14 @@ import { Quaternion, Vector3, type Vec3Like } from '../data/vectors';
 /** 俯仰不到正上、正下：留一点，朝向才不会翻过去。 */
 const MAX_PITCH = Math.PI / 2 - 0.001;
 
+/** 编辑相机的一个视角：注视点、转角、距离。 */
+export interface EditorCameraView {
+  readonly target: readonly [number, number, number];
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly distance: number;
+}
+
 export class EditorCameraState {
   /** 注视点：环绕的中心。 */
   readonly target = new Vector3();
@@ -80,6 +88,18 @@ export class EditorCameraState {
   focus(center: Readonly<Vec3Like>, radius: number, fovY: number): void {
     this.target.copy(center);
     this.distance = Math.max(this.minDistance, Math.max(radius, 1e-3) / Math.sin(Math.min(fovY, Math.PI - 0.01) / 2));
+  }
+
+  /** 记下现在的视角（切换文档时存，回来时 restore）。 */
+  snapshot(): EditorCameraView {
+    return { target: [this.target.x, this.target.y, this.target.z], yaw: this.yaw, pitch: this.pitch, distance: this.distance };
+  }
+
+  restore(view: EditorCameraView): void {
+    this.target.set(view.target[0], view.target[1], view.target[2]);
+    this.yaw = view.yaw;
+    this.pitch = view.pitch;
+    this.distance = view.distance;
   }
 
   /** 从眼睛的位置和朝向设状态（接手一台已经摆好的相机）：注视点在正前方 distance 处。 */

@@ -22,7 +22,7 @@ import type { Material } from '../rendering/mesh/Material';
 import { MeshPainter, type PaintTarget } from '../rendering/paint/MeshPainter';
 import { encodePng } from '../offline/png';
 import { saveImage } from './backendApi';
-import { EditorCameraController } from './EditorCamera';
+import { EditorCameraController, type EditorCameraView } from './EditorCamera';
 import { EditorViewport } from './EditorViewport';
 import { scriptFields, type Field } from './fields';
 import { LiveScene, type SceneSource } from './LiveScene';
@@ -116,7 +116,8 @@ export class EditAgent {
     this.game = game;
     // 从场景原来的主相机的位置看起：打开编辑器时画面不跳
     const compositor = game.graphicsCompositor;
-    const sceneCamera = game.entities.ids().map((id) => game.entities.entity(id)).find((entity) => entity.get(Camera)?.slot === compositor.cameraSlot);
+    this.#sceneCameraSlot = compositor.cameraSlot;
+    const sceneCamera = this.#sceneCamera(game.entities.ids().map((id) => game.entities.entity(id)));
     // 投影也照它的（2D 游戏的相机是正交的）
     const lens = sceneCamera?.get(Camera);
     this.camera = game.entities.create({
@@ -131,9 +132,7 @@ export class EditAgent {
     this.camera.require(EditorViewport).agent = this;
     const state = this.camera.require(EditorCameraController).state;
     // 这时第一帧还没跑，世界矩阵还没算过
-    const world = sceneCamera?.has(Transform) ? currentWorld(sceneCamera) : undefined;
-    if (world) state.setFromPose({ x: world[12]!, y: world[13]!, z: world[14]! }, { x: -world[8]!, y: -world[9]!, z: -world[10]! });
-    else state.setFromPose({ x: 0, y: 5, z: 10 }, { x: 0, y: -0.4, z: -1 });
+    if (!this.#lookFrom(sceneCamera)) state.setFromPose({ x: 0, y: 5, z: 10 }, { x: 0, y: -0.4, z: -1 });
     this.camera.require(EditorCameraController).apply();
     compositor.cameraSlot = EDITOR_CAMERA_SLOT;
     // 视口静止时不出帧（输入、修改、调试命令叫醒，见 Game.renderOnDemand）；要粒子、天气一直动时编辑器把它关掉
@@ -242,14 +241,46 @@ export class EditAgent {
     return this.#target;
   }
 
-  /** 按文档建场景、换成根场景，之后实体跟着这份文档（sync）。给的是只读的 SceneSource 时只能看和选，不能拖。 */
-  async open(source: SceneSource | EditableScene): Promise<void> {
+  /**
+   * 按文档建场景、换成根场景，之后实体跟着这份文档（sync）。给的是只读的 SceneSource 时只能看和选，不能拖。
+   * key 认是哪个文档（编辑器给资源路径；默认是场景名）：换了文档时编辑相机记下旧文档的视角，新文档看过就回到上次的视角，
+   * 没看过就从它的主相机看起（不然大场景打开时相机可能还在上一个场景的位置，比如在地形下面）。
+   */
+  async open(source: SceneSource | EditableScene, key = source.file.name): Promise<void> {
+    const controller = this.camera.require(EditorCameraController);
+    if (this.#openedKey !== undefined) this.#views.set(this.#openedKey, controller.state.snapshot());
     // 换了场景：参考场景、一起看的世界挂在旧的根下面，跟着旧场景一起卸载了
     this.#references.clear();
     if (this.game.world.attached) this.game.world.unload();
     this.#live = await LiveScene.open(this.game, source);
     this.#target = 'apply' in source ? source : undefined;
     this.selection = this.#selection;
+    if (key !== this.#openedKey) {
+      const view = this.#views.get(key);
+      if (view) controller.state.restore(view);
+      else this.#lookFrom(this.#sceneCamera([...this.#live.instance.entities.values()]));
+      controller.apply();
+      this.#openedKey = key;
+    }
+  }
+
+  readonly #sceneCameraSlot: number;
+  #openedKey: string | undefined;
+  /** 各文档上次的编辑相机视角（文档的 key → 视角）。 */
+  readonly #views = new Map<string, EditorCameraView>();
+
+  /** 场景的主相机：Camera 的槽位是游戏的主相机槽位的那个（编辑相机接手前的 compositor.cameraSlot）。 */
+  #sceneCamera(entities: readonly Entity[]): Entity | undefined {
+    return entities.find((entity) => entity.get(Camera)?.slot === this.#sceneCameraSlot);
+  }
+
+  /** 编辑相机摆到这台相机的位置和朝向；没有相机（或没有变换）时返回 false。 */
+  #lookFrom(sceneCamera: Entity | undefined): boolean {
+    // 这时这一帧还没跑，世界矩阵还没算过
+    const world = sceneCamera?.has(Transform) ? currentWorld(sceneCamera) : undefined;
+    if (!world) return false;
+    this.camera.require(EditorCameraController).state.setFromPose({ x: world[12]!, y: world[13]!, z: world[14]! }, { x: -world[8]!, y: -world[9]!, z: -world[10]! });
+    return true;
   }
 
   /** 资源的文件改了（编辑器给出改了的和间接用到它们的内容路径）：引用它们的实体重建（见 LiveScene.reloadAssets）。 */

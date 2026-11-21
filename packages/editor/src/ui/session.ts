@@ -560,7 +560,7 @@ export class EditorSession implements EditableScene {
     if (document.kind === 'scene') this.scene.value = document;
     this.dirty.value = false;
     this.selection.value = [];
-    await agent.open(this.#view);
+    await agent.open(this.#view, `${document.kind}:${document.path}`);
     this.references.value = [];
     this.world.value = undefined;
     if (this.snap.value) agent.snap = this.snap.value;

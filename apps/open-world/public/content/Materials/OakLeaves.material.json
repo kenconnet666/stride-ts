@@ -1,0 +1,25 @@
+{
+ "name": "OakLeaves",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.8,
+ "baseColorTexture": {
+  "texture": "Textures/LeafCluster",
+  "encoding": "svg",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ },
+ "alphaCutoff": 0.5,
+ "doubleSided": true
+}

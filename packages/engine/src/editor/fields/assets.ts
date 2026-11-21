@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile } from '../../content/format';
+import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -328,6 +328,48 @@ export const SPLINE_FIELDS = fields<SplineFile>({
   branches: { type: { kind: 'json' }, optional: true, description: 'more paths of a network ({ points, closed }); points at the same position are welded, and roads get a junction where three or more meet' },
 });
 
+/** 参数化的树（TreeFile）：改了马上重新长成模型、视口热重载。 */
+export const TREE_FIELDS = fields<TreeFile>({
+  name: string,
+  materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'material slots: bark, leaves (leaves use a leaf-cluster texture with alpha cutoff, double-sided)' },
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed: another number grows another tree of the same kind' },
+  shape: { type: oneOf('deciduous', 'conifer'), optional: true, default: 'deciduous', description: 'conifer: the trunk runs to the top and side branches get shorter upward' },
+  levels: {
+    type: list(object(fields<TreeFile['levels'][number]>({
+      length: { type: number({ min: 0.01, step: 0.5, unit: 'm' }), description: 'length of the branches of this level' },
+      radius: { type: number({ min: 0.001, step: 0.05 }), description: 'trunk: radius in meters; branches: times the radius of the parent where they grow' },
+      children: { type: integer(0, 64), optional: true, description: 'branches of the next level growing on each branch of this level' },
+      angle: { type: number({ min: 0, max: 180, step: 5, unit: '°' }), optional: true, default: 45, description: 'angle to the parent branch' },
+      start: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.3, description: 'where along the parent they start growing (0..1)' },
+      gnarliness: { type: number({ min: 0, step: 0.02 }), optional: true, default: 0.1, description: 'random bending at each section; thinner branches bend more' },
+      taper: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.7, description: 'how much thinner the tip is than the base (0..1)' },
+      twist: { type: number({ step: 0.05 }), optional: true, default: 0, description: 'twist per section around the branch axis (radians)' },
+      sections: { type: integer(1, 64), optional: true, default: 8, description: 'sections along the length' },
+      segments: { type: integer(3, 32), optional: true, default: 6, description: 'segments around the branch' },
+    }))),
+    description: 'branch levels: the first is the trunk, each grows the next one (at most 4)',
+  },
+  leaves: {
+    type: object(fields<NonNullable<TreeFile['leaves']>>({
+      count: { type: integer(0, 200), description: 'leaf cards on each branch of the last level' },
+      size: { type: number({ min: 0.01, step: 0.1, unit: 'm' }), description: 'size of a leaf card' },
+      sizeVariance: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.3, description: 'random variation of the size (0..1)' },
+      angle: { type: number({ min: 0, max: 180, step: 5, unit: '°' }), optional: true, default: 40, description: 'angle to the branch' },
+      start: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'where along the branch the leaves start (0..1)' },
+    })),
+    optional: true,
+    description: 'leaf cards (two crossed quads each) on the branches of the last level',
+  },
+  growth: {
+    type: object(fields<NonNullable<TreeFile['growth']>>({
+      direction: { type: vector(3), description: 'direction the branches turn toward (up toward the light, down for drooping)' },
+      strength: { type: number({ step: 0.001 }), description: 'turn per section, divided by the branch radius (thin branches turn more)' },
+    })),
+    optional: true,
+    description: 'a pull on the branches toward a direction',
+  },
+});
+
 /** 程序化摆放（ScatterFile）：改了马上存，挂着它的地形重撒。 */
 export const SCATTER_FIELDS = fields<ScatterFile>({
   name: string,
@@ -472,5 +514,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

@@ -6,12 +6,13 @@
  * 一致，而且每个请求要带 EDITOR_HEADER（跨源的页面带自定义头会先发预检，这里不回 CORS 头，预检过不了）。
  */
 import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type SplineFile, type TextModelFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
+import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type SplineFile, type TreeFile, type TextModelFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
+import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, bakeTreeModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
@@ -34,10 +35,10 @@ const CHANGE_DELAY = 50;
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
 /** 编辑器后端烘成同名模型的资源种类（源头是 JSON，场景引用烘出的 .model）。 */
 /** 编辑器后端照它烘出（导入）同名模型的资源：白盒、SDF、多边形网格、源模型的导入设置。 */
-type BakedKind = 'brush' | 'sdf' | 'poly' | 'text' | 'spline' | 'modelImport' | 'imageImport';
-const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'text' || kind === 'spline' || kind === 'modelImport' || kind === 'imageImport';
+type BakedKind = 'brush' | 'sdf' | 'poly' | 'text' | 'spline' | 'tree' | 'modelImport' | 'imageImport';
+const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'text' || kind === 'spline' || kind === 'tree' || kind === 'modelImport' || kind === 'imageImport';
 
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world', 'terrain', 'spline', 'scatter']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world', 'terrain', 'spline', 'tree', 'scatter']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -71,8 +72,60 @@ export class EditorBackend {
   static async open(root: string, publicDir: string): Promise<EditorBackend> {
     const backend = new EditorBackend(await loadProject(root), publicDir);
     await backend.database.scan();
+    await backend.#bakeStale();
     await backend.#writeAssetTypes();
     return backend;
+  }
+
+  /**
+   * 开着的时候没看到的改动（开发服务器停着时 agent 直接写了文件、git 切了分支）：生成模型的资源（白盒、SDF、多边形、3D 文字、
+   * 样条、树）打开工程时和上次烘的内容比（按内容的哈希，记在工程的 node_modules/.cache 里；文件的修改时间在新检出的工作树里
+   * 靠不住），变了的补烘。没记过的：模型不在才烘，在就当它是对的、记下来。导入（源模型、贴图）慢，照旧等文件改了再导入。
+   */
+  async #bakeStale(): Promise<void> {
+    this.#bakeHashes = await readFile(this.#bakeCacheFile, 'utf8').then((text) => JSON.parse(text) as Record<string, string>, () => ({}));
+    const baked: string[] = [];
+    for (const record of this.database.list()) {
+      const kind = record.kind;
+      if (!isBakedKind(kind) || kind === 'modelImport' || kind === 'imageImport') continue;
+      const key = `${kind}:${record.path}`;
+      try {
+        const content: unknown = JSON.parse(await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8'));
+        const hash = contentHash(content), known = this.#bakeHashes[key];
+        if (known === hash) continue;
+        if (known === undefined && existsSync(path.join(this.project.contentDir, record.path + EXTENSIONS.model))) {
+          this.#bakeHashes[key] = hash;
+          continue;
+        }
+        baked.push(...(await this.#bake(kind, record.path, content)).files);
+      } catch (error) {
+        console.warn(`[stride-editor] ${kind} ${record.path}: ${(error as Error).message}; its model is left as it was`);
+      }
+    }
+    if (baked.length > 0) {
+      console.info(`[stride-editor] baked ${baked.length} model(s) whose sources changed while the editor was closed`);
+      await this.database.refresh(baked);
+    }
+    await this.#saveBakeHashes();
+  }
+
+  /** 上次烘的内容的哈希（`种类:路径` → 哈希），存在 #bakeCacheFile。 */
+  #bakeHashes: Record<string, string> = {};
+
+  get #bakeCacheFile(): string {
+    return path.join(this.project.root, 'node_modules', '.cache', 'stride-editor', 'bakes.json');
+  }
+
+  /** 记下这次烘的内容（不重复烘同样的内容；下次打开工程时比较）。 */
+  #recordBake(key: string, content: unknown): void {
+    this.#bakes.set(key, JSON.stringify(content));
+    this.#bakeHashes[key] = contentHash(content);
+    void this.#saveBakeHashes();
+  }
+
+  async #saveBakeHashes(): Promise<void> {
+    await mkdir(path.dirname(this.#bakeCacheFile), { recursive: true });
+    await writeFile(this.#bakeCacheFile, JSON.stringify(this.#bakeHashes));
   }
 
   /** 资源变了以后调（参数是这一批里变了的资源）；返回取消登记的函数。 */
@@ -478,7 +531,7 @@ export class EditorBackend {
     if (record.kind === 'image') return same('imageImport');
     if (record.kind === 'modelImport') return same('model', 'modelSource');
     if (isBakedKind(record.kind)) return same('model');
-    if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'text', 'spline', 'modelImport', 'modelSource');
+    if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'text', 'spline', 'tree', 'modelImport', 'modelSource');
     return [];
   }
 
@@ -614,17 +667,18 @@ export class EditorBackend {
         await writeAtomically(target, file.content);
         written.push(file.path);
       }
-      this.#bakes.set(`${kind}:${assetPath}`, JSON.stringify(content));
+      this.#recordBake(`${kind}:${assetPath}`, content);
       return { files: written, warnings, animations };
     }
     const bytes = kind === 'brush' ? await bakeBrushModel(tools, content as BrushFile, where)
       : kind === 'sdf' ? await bakeSdfModel(tools, content as SdfFile, where)
       : kind === 'text' ? await bakeTextModel(tools, content as TextModelFile, (file) => readFile(path.join(this.project.contentDir, file)), where)
       : kind === 'spline' ? bakeSplineModel(tools, content as SplineFile, where)
+      : kind === 'tree' ? bakeTreeModel(tools, content as TreeFile, where)
       : bakePolyModel(tools, content as PolyMeshFile, where);
     const model = assetPath + EXTENSIONS.model;
     await writeAtomically(path.join(this.project.contentDir, model), bytes);
-    this.#bakes.set(`${kind}:${assetPath}`, JSON.stringify(content));
+    this.#recordBake(`${kind}:${assetPath}`, content);
     return { files: [model], warnings: [] };
   }
 
@@ -663,7 +717,7 @@ export class EditorBackend {
       await writeAtomically(file, content);
       files.push(main);
     }
-    this.#bakes.set(`imageImport:${assetPath}`, JSON.stringify(settings));
+    this.#recordBake(`imageImport:${assetPath}`, settings);
     return { files, warnings: [] };
   }
 
@@ -759,4 +813,9 @@ interface Baked {
   readonly files: readonly string[];
   readonly warnings: readonly string[];
   readonly animations?: ImportResult['animations'];
+}
+
+/** 资源内容的哈希（解析过的 JSON 重新序列化：空白、换行不算改了）。 */
+function contentHash(content: unknown): string {
+  return createHash('sha1').update(JSON.stringify(content)).digest('hex');
 }

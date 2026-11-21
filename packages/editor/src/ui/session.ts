@@ -1343,7 +1343,7 @@ export interface InspectedAsset {
 }
 
 /** 烘出模型的源（编辑器后端按它们烘同名的模型）：选中烘出的模型时看源。 */
-const BAKED_SOURCES = ['brush', 'sdf', 'poly', 'text', 'spline'] as const satisfies readonly AssetKind[];
+const BAKED_SOURCES = ['brush', 'sdf', 'poly', 'text', 'spline', 'tree'] as const satisfies readonly AssetKind[];
 const isInspectable = (kind: AssetKind): kind is InspectableKind => Object.hasOwn(ASSET_FIELDS, kind);
 
 /** 资源改了以后等这么久（毫秒）再存：拖数字、取色时不每一下都写文件。 */

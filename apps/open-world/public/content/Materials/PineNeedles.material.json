@@ -1,0 +1,25 @@
+{
+ "name": "PineNeedles",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.85,
+ "baseColorTexture": {
+  "texture": "Textures/NeedleCluster",
+  "encoding": "svg",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ },
+ "alphaCutoff": 0.5,
+ "doubleSided": true
+}

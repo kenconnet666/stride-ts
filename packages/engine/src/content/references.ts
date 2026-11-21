@@ -4,7 +4,7 @@
  * 文件（assetReferenceSlots）。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入写了扩展名）。
  */
 import type {
-  AnimationData, BrushFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, TextureRef, UIFile,
+  AnimationData, BrushFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, TextureRef, UIFile,
   UISpriteValue,
 } from './format';
 import { textureRefs } from './loading.ts';
@@ -238,8 +238,9 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
       materials.forEach((material, i) => material !== null && add('material', materials, i));
       break;
     }
+    case 'tree':
     case 'spline': {
-      const materials = (file as SplineFile).materials;
+      const materials = (file as SplineFile | TreeFile).materials;
       materials.forEach((material, i) => material !== null && add('material', materials, i));
       break;
     }

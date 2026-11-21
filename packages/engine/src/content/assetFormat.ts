@@ -55,6 +55,8 @@ export const EXTENSIONS = {
   terrain: '.terrain.json',
   /** 样条（SplineFile，content/splineFormat.ts）：控制点和横截面，编辑器后端把它烘成同名的模型（.model）。 */
   spline: '.spline.json',
+  /** 参数化的树（TreeFile，content/treeFormat.ts）：生长的规则和种子，编辑器后端把它长成同名的模型（.model）。 */
+  tree: '.tree.json',
   /** 程序化摆放（ScatterFile，content/scatterFormat.ts）：在地形上撒模型的规则和种子，实例运行时按相机附近的格子撒。 */
   scatter: '.scatter.json',
 } as const;

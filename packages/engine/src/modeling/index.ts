@@ -4,3 +4,4 @@ export * from './polyEdit.ts';
 export * from './textOutline.ts';
 export * from './spline.ts';
 export * from './roadLanes.ts';
+export * from './tree.ts';

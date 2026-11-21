@@ -181,7 +181,7 @@ export function splineMeshes(file: SplineFile, where = file.name): SplineSlotMes
     const w = profile.width / 2, t = profile.thickness ?? 0.3, s = profile.shoulder ?? 0.5;
     const network = roadNetwork(file);
     network.paths.forEach((path, p) => {
-      for (const [from, to] of network.kept[p]!) extrude(slots[0]!, resample(path.frames, from, to, step), [[-w - s, -t], [w + s, -t], [w, 0], [-w, 0]], true);
+      for (const [from, to] of network.kept[p]!) extrude(slots[0]!, resampleFrames(path.frames, from, to, step), [[-w - s, -t], [w + s, -t], [w, 0], [-w, 0]], true);
     });
     for (const junction of network.junctions) junctionMesh(slots[0]!, junction, t, s);
   } else {
@@ -422,7 +422,7 @@ export function splineCenterlines(file: SplineFile, step: number): { readonly po
     for (const [from, to] of spans) {
       // 上一段（或路径的起点）到这一段之间的路口：先到路口中心
       for (const center of centers) if (center >= at - 1e-6 && center <= from + 1e-6 && (line.length > 0 || center < from)) line.push(frameAt(path.frames, center).position);
-      line.push(...resample(path.frames, from, to, step).map((frame) => frame.position));
+      line.push(...resampleFrames(path.frames, from, to, step).map((frame) => frame.position));
       at = to;
     }
     const total = path.knots.at(-1)!;
@@ -440,7 +440,7 @@ function wrapDistance(distance: number, total: number, closed: boolean): number 
 }
 
 /** 弧长 from 到 to 这一段重新等距取截面（大约每 step 米一个，两端都在）。 */
-function resample(frames: readonly SplineFrame[], from: number, to: number, step: number): SplineFrame[] {
+export function resampleFrames(frames: readonly SplineFrame[], from: number, to: number, step: number): SplineFrame[] {
   const count = Math.max(1, Math.ceil((to - from) / step));
   return Array.from({ length: count + 1 }, (_, k) => frameAt(frames, from + ((to - from) * k) / count));
 }

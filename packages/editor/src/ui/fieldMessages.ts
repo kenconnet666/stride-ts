@@ -26,7 +26,7 @@ const zhCN: FieldMessages = {
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },
   names: {
-    terrain: '地形', detail: '细节', lodFactor: '细分距离', lacunarity: '频率倍数', gain: '幅度倍数', ridged: '山脊', warp: '扭曲', erosion: '侵蚀', falloff: '过渡', splines: '贴着的样条', spline: '样条', branches: '分支', gullies: '冲沟', valley: '谷底高度', peak: '山顶高度', features: '地物', strokes: '笔画',
+    terrain: '地形', detail: '细节', lodFactor: '细分距离', lacunarity: '频率倍数', gain: '幅度倍数', ridged: '山脊', warp: '扭曲', erosion: '侵蚀', falloff: '过渡', splines: '贴着的样条', spline: '样条', branches: '分支', lanes: '车道', oneWay: '单行', gullies: '冲沟', valley: '谷底高度', peak: '山顶高度', features: '地物', strokes: '笔画',
     font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距', diameter: '直径', profile: '配光曲线', splats: '泼溅',
     transmission: '透射', factor: '比例', ior: '折射率', attenuationColor: '吸收后的颜色', attenuationDistance: '吸收距离',
     distortion: '扭曲',
@@ -130,6 +130,8 @@ const zhCN: FieldMessages = {
     'the spline the ground follows (its coordinates are the terrain\'s local ones)': '地面贴着的样条（坐标当地形本地的）',
     'moves the spline by this much first': '样条先挪这么多',
     'radius of the rounded corners at junctions; unset is half the road width': '路口转角的半径；不设是半个路宽',
+    'lanes in each direction (all of them along the path when one-way); unset is one per 3.5 m of width': '每个方向几条车道（单行时是全部顺着路径的车道）；不设按 3.5 米一条',
+    'all lanes run along the path direction (from the first control point on)': '所有车道都顺着路径的方向（从第一个控制点往后）',
     'more paths of a network ({ points, closed }); points at the same position are welded, and roads get a junction where three or more meet': '路网里更多的路径（{ points, closed }）；位置相同的控制点焊在一起，道路在三条以上的路交汇处生成路口',
     'width flattened along the path; unset follows the cross-section (a road is its surface plus shoulders)': '沿路径压平的宽度；不设按横截面定（道路是路面加路肩）',
     'ground height relative to the path (slightly below a road surface)': '地面相对路径的高度（比路面低一点）',

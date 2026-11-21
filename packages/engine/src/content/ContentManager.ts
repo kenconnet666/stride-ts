@@ -490,13 +490,18 @@ export class ContentManager {
     return this.#once(path + EXTENSIONS.splats, async (url) => new SplatCloud(path, await this.#read(url)));
   }
 
+  /** 样条（.spline.json，检查过的）：模型是编辑器后端烘好的，这里读的是路径本身（地形贴样条、车道图用）。 */
+  loadSpline(path: string): Promise<SplineFile> {
+    return this.#once(path + EXTENSIONS.spline, async (url) => checkSpline(this.#json<SplineFile>(await this.#read(url)), url.href));
+  }
+
   /** 矢量地形（.terrain.json）和它的材质；高度由原生的求值器按需算（terrain/TerrainSystem.ts）。 */
   loadTerrain(path: string): Promise<TerrainAsset> {
     return this.#once(path + EXTENSIONS.terrain, async (url) => {
       const file = checkTerrainFile(this.#json<unknown>(await this.#read(url)), url.href);
       const [material, paths] = await Promise.all([
         file.material ? this.loadMaterial(file.material) : undefined,
-        Promise.all((file.splines ?? []).map(async (entry) => terrainPaths(entry, checkSpline(this.#json<SplineFile>(await this.#read(new URL(entry.spline + EXTENSIONS.spline, this.root))), `${url.href}: spline ${entry.spline}`)))),
+        Promise.all((file.splines ?? []).map(async (entry) => terrainPaths(entry, await this.loadSpline(entry.spline)))),
       ]);
       return new TerrainAsset(path, file, material, paths.flat());
     });

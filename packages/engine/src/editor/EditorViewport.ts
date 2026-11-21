@@ -35,6 +35,7 @@ import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pi
 import type { PolyMeshFile } from '../content/assetFormat';
 import type { SplineFile } from '../content/splineFormat';
 import { splineCurve, splinePaths } from '../modeling/spline';
+import { roadLanes, type RoadLane } from '../modeling/roadLanes';
 import { insertSplinePoint, moveSplinePoints, pickSplineCurve, splinePointList } from './SplineEditTool';
 
 /** 选中的东西的框的颜色（线性）。 */
@@ -58,6 +59,9 @@ const CORNER_PIXELS = 10;
 /** 多边形编辑的线框和选中的点、边、面。 */
 const POLY_EDGE_COLOR: DebugColor = [0.85, 0.88, 0.95, 0.7];
 const POLY_SELECTED_COLOR: DebugColor = [1, 0.55, 0.1, 1];
+/** 样条编辑里画的车道：路段上的、路口里的连接车道。 */
+const LANE_COLOR: DebugColor = [0.2, 0.9, 1, 0.8];
+const CONNECTOR_COLOR: DebugColor = [1, 0.85, 0.2, 0.8];
 /** 顶点的小方块的半边长（画面高度的倍数）。 */
 const POLY_VERTEX_SCREEN_SIZE = 0.004;
 const POLY_MODE_KEYS: readonly (readonly [string, PolySelectMode])[] = [['Digit1', 'vertex'], ['Digit2', 'edge'], ['Digit3', 'face']];
@@ -111,6 +115,8 @@ export class EditorViewport extends SyncScript {
   #polyDrag: { readonly start: PolyMeshFile; readonly vertices: readonly number[] } | undefined;
   /** 样条编辑里正在拖的操纵器：按下时的样条和要动的控制点。 */
   #splineDrag: { readonly start: SplineFile; readonly points: readonly number[] } | undefined;
+  /** 样条编辑里画的车道图（道路才有）：按样条对象缓存，改了才重算。 */
+  #lanes: { readonly spline: SplineFile; readonly lanes: readonly RoadLane[] } | undefined;
   /** 上一次在样条编辑里按下左键的时刻和位置（认双击）。 */
   #lastSplineClick: { readonly time: number; readonly at: readonly [number, number] } | undefined;
   /** 绘制模式里正在画的一笔：上一笔落在哪（世界坐标），画没画上。 */
@@ -521,6 +527,11 @@ export class EditorViewport extends SyncScript {
     // 每条路径（路网的分支也是）每段一组折线
     const curves = splinePaths(edit.spline).map((path) => splineCurve(path.points, path.closed === true).map(toWorld));
     for (const segment of curves.flat()) draw.polyline(segment, POLY_EDGE_COLOR, { width: 2, depthTest: false });
+    // 道路的车道图：路段上的青色、路口里的连接车道黄色，细线画在路面上方 5 厘米（深度测试开着，被挡住的看不见）
+    if (this.#lanes?.spline !== edit.spline) this.#lanes = { spline: edit.spline, lanes: roadLanes(edit.spline) };
+    for (const lane of this.#lanes.lanes) {
+      draw.polyline(toWorld(lane.points.map(([x, y, z]) => [x, y + 0.05, z] as const)), lane.junction === undefined ? LANE_COLOR : CONNECTOR_COLOR, { width: 1 });
+    }
     const points = toWorld(splinePointList(edit.spline).map((entry) => entry.point.position));
     const chosen = new Set(edit.selection);
     points.forEach((point, i) => {

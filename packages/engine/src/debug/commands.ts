@@ -11,6 +11,9 @@ import { cameraVerticalFieldOfView } from '../rendering/cameraRays';
 import { DayNightCycle, lightRotationTowards } from '../rendering/sky/DayNightCycle';
 import { Material, type MaterialTransmission } from '../rendering/mesh/Material';
 import { Transform } from '../engine/transform';
+import { Matrix } from '../data/Matrix';
+import type { DebugColor } from './DebugDraw';
+import { roadLanes } from '../modeling/roadLanes';
 import { Texture, type TextureId } from '../graphics/Texture';
 import { PARTICLE_BYTES } from '../particles/gpuKernel';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
@@ -353,6 +356,28 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('terrain', 'Vector terrain (game.terrain, Terrain components): per terrain entity, how many tiles are drawn, cached and being evaluated. args: height ([x, z] in world coordinates) also reports the ground height there for the first terrain.', (args) => {
     const at = args['height'];
     return { terrains: game.terrain.stats(), ...(Array.isArray(at) ? { height: game.terrain.heightAt(Number(at[0]), Number(at[1])) } : {}) };
+  });
+  debug.command('lanes', 'Lane graph of a road spline (modeling/roadLanes.ts, right-hand traffic): lanes along the roads and connector lanes through the junctions. args: spline (content path, required), entity (whose transform places it; default the origin), seconds (draws the lanes that long with direction arrows: roads cyan, connectors yellow; default 10, 0 draws nothing).', async (args) => {
+    if (typeof args['spline'] !== 'string') throw new Error('lanes needs spline (a content path)');
+    const lanes = roadLanes(await game.content.loadSpline(args['spline']));
+    const world = args['entity'] === undefined ? undefined : entityArg(game, args).require(Transform).world;
+    // 画在路面上方 5 厘米（贴着画会和路面打架）
+    const place = (p: readonly number[]): [number, number, number] => (world ? Matrix.transformPoint(world, p[0]!, p[1]! + 0.05, p[2]!) : [p[0]!, p[1]! + 0.05, p[2]!]) as [number, number, number];
+    const seconds = Number(args['seconds'] ?? 10);
+    if (seconds > 0) {
+      for (const lane of lanes) {
+        const points = lane.points.map(place);
+        const color: DebugColor = lane.junction === undefined ? [0.2, 0.9, 1, 1] : [1, 0.85, 0.2, 1];
+        game.debugDraw.polyline(points, color, { duration: seconds, width: 2 });
+        // 每 20 米一个箭头，指着行驶方向
+        for (let i = 10; i + 1 < points.length; i += 10) game.debugDraw.arrow(points[i - 1]!, points[i + 1]!, color, { duration: seconds, width: 2, headLength: 1.5 });
+      }
+    }
+    const roads = lanes.filter((lane) => lane.junction === undefined);
+    return {
+      lanes: roads.length, connectors: lanes.length - roads.length,
+      length: Math.round(roads.reduce((sum, lane) => sum + lane.length, 0)), deadEnds: roads.filter((lane) => lane.next.length === 0).length,
+    };
   });
   debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
     const taa = game.graphicsCompositor.temporalAntialiasing;

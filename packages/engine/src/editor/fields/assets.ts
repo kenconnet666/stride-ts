@@ -289,11 +289,13 @@ export const SPLINE_FIELDS = fields<SplineFile>({
       kind: 'union',
       tag: 'type',
       variants: {
-        road: fields<{ width: unknown; thickness: unknown; shoulder: unknown; cornerRadius: unknown }>({
+        road: fields<{ width: unknown; thickness: unknown; shoulder: unknown; cornerRadius: unknown; lanes: unknown; oneWay: unknown }>({
           width: { type: positiveNumber(), description: 'width of the road surface (m)' },
           thickness: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0.3, description: 'depth of the road body under the surface' },
           shoulder: { type: number({ min: 0, step: 0.1, unit: 'm' }), optional: true, default: 0.5, description: 'how far the sloped sides reach out beyond the surface' },
           cornerRadius: { type: number({ min: 0, step: 0.5, unit: 'm' }), optional: true, description: 'radius of the rounded corners at junctions; unset is half the road width' },
+          lanes: { type: integer(1, 8), optional: true, description: 'lanes in each direction (all of them along the path when one-way); unset is one per 3.5 m of width' },
+          oneWay: { type: bool, optional: true, default: false, description: 'all lanes run along the path direction (from the first control point on)' },
         }),
         tube: fields<{ radius: unknown; sides: unknown }>({
           radius: { type: positiveNumber(), description: 'radius (m)' },

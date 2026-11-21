@@ -20,7 +20,8 @@ export interface SplinePointFile {
 /**
  * 横截面。材质槽按种类固定（文件的 materials 按这个顺序）：
  * - road：路面（顶面、两侧斜坡、底面一个槽）；width 是路面宽，thickness 是厚度，shoulder 是两侧斜坡往外伸出的宽度，
- *   cornerRadius 是路口转角的半径（默认半个路宽）；
+ *   cornerRadius 是路口转角的半径（默认半个路宽），lanes 是每个方向几条车道（默认按 3.5 米一条、至少一条），oneWay 时全部
+ *   顺着路径的方向（车道图见 modeling/spline.ts 的 roadLanes，靠右行驶）；
  * - tube：圆管（管子、缆线、扶手），radius、sides；
  * - custom：任意截面（shape 是 [右, 上] 的折线，米；closed 时首尾相连），一个槽；
  * - rail：铁轨（钢轨、轨枕两个槽），gauge 是两根钢轨内侧的距离（标准轨 1.435 米）；
@@ -28,7 +29,7 @@ export interface SplinePointFile {
  * - wire：架空线（电杆、导线两个槽），电杆每 poleSpacing 米一根、高 poleHeight，wires 根导线在杆顶的横担上，两杆之间下垂 sag 米。
  */
 export type SplineProfileFile =
-  | { readonly type: 'road'; readonly width: number; readonly thickness?: number; readonly shoulder?: number; readonly cornerRadius?: number }
+  | { readonly type: 'road'; readonly width: number; readonly thickness?: number; readonly shoulder?: number; readonly cornerRadius?: number; readonly lanes?: number; readonly oneWay?: boolean }
   | { readonly type: 'tube'; readonly radius: number; readonly sides?: number }
   | { readonly type: 'custom'; readonly shape: readonly (readonly [number, number])[]; readonly closed?: boolean }
   | { readonly type: 'rail'; readonly gauge?: number; readonly sleeperSpacing?: number }

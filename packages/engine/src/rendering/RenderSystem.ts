@@ -14,6 +14,7 @@ import { Matrix } from '../data/Matrix';
 import { Color4, Vector3 } from '../data/vectors';
 import { GpuResources } from '../graphics/GpuResources';
 import { PlanarReflections } from './lighting/PlanarReflections';
+import { SplatRenderer } from './splats/SplatRenderer';
 import { Refraction } from './screenspace/Refraction';
 import { ReflectionProbes } from './lighting/ReflectionProbes';
 import { Atmosphere, type DynamicSky } from './sky/Atmosphere';
@@ -497,6 +498,8 @@ export class RenderSystem {
   readonly reflectionProbes: ReflectionProbes;
   /** 平面反射（合成器每帧按主画面镜像着画一遍、网格特性着色时用）。 */
   readonly planarReflections: PlanarReflections;
+  /** 高斯泼溅（合成器每帧给主画面排序、画）。 */
+  readonly splats: SplatRenderer;
   /** 屏幕空间的折射（合成器每帧拷主画面不透明的部分、网格特性给透射材质着色时用）。 */
   readonly refraction: Refraction;
   /** 物理天空（场景里有 SkyAtmosphere 时；合成器收集光照时用，AtmosphereRenderFeature 画天空）。 */
@@ -525,6 +528,7 @@ export class RenderSystem {
     this.reflectionProbes = new ReflectionProbes(graphicsDevice.device, this.resources);
     this.planarReflections = new PlanarReflections(graphicsDevice.device, this.resources);
     this.refraction = new Refraction(graphicsDevice.device);
+    this.splats = new SplatRenderer(graphicsDevice.device);
     this.atmosphere = new Atmosphere(graphicsDevice.device, this.resources);
     this.clouds = new Clouds(graphicsDevice.device, this.atmosphere);
     this.fog = new Fog(graphicsDevice.device, this.resources);
@@ -590,6 +594,7 @@ export class RenderSystem {
     for (const feature of this.features) feature.destroy();
     this.reflectionProbes.destroy();
     this.planarReflections.destroy();
+    this.splats.destroy();
     this.refraction.destroy();
     this.clouds.destroy();
     this.fog.destroy();

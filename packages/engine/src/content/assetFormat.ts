@@ -47,6 +47,8 @@ export const EXTENSIONS = {
   imageImport: '.image.json',
   /** 配光曲线：IES 文件（ANSI/IESNA LM-63 的文本）原样放，点光、聚光引用它（rendering/lighting/LightProfile.ts）。 */
   lightProfile: '.ies',
+  /** 高斯泼溅（content/splatFile.ts 的二进制）：编辑器从 3DGS 的 .ply 导入成它。 */
+  splats: '.splat',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */

@@ -27,6 +27,7 @@ import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/mesh/Mesh';
 import { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import { LightProfile, parseIes } from '../rendering/lighting/LightProfile';
+import { SplatCloud } from '../rendering/splats/SplatRenderer';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureData, type TextureDecoder } from '../graphics/Texture';
@@ -477,6 +478,11 @@ export class ContentManager {
 
   loadCubemap(path: string): Promise<Cubemap> {
     return this.#once(path + EXTENSIONS.cubemap, async (url) => new Cubemap(path, decodeCubemap(await this.#read(url), url.href)));
+  }
+
+  /** 高斯泼溅（.splat）。 */
+  loadSplats(path: string): Promise<SplatCloud> {
+    return this.#once(path + EXTENSIONS.splats, async (url) => new SplatCloud(path, await this.#read(url)));
   }
 
   /** 配光曲线（IES 文件）。 */

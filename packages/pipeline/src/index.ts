@@ -16,4 +16,5 @@ export { encodeFont, importFontFile, isFontFile, type EncodedFont, type FontSett
 export { bakeBrushModel } from './brushModel.ts';
 export { bakeSdfModel, DEFAULT_SDF_RESOLUTION } from './sdfModel.ts';
 export { bakeTextModel } from './textModel.ts';
+export { convertPlySplats, readPlySplats } from './splats.ts';
 export { bakePolyModel } from './polyModel.ts';

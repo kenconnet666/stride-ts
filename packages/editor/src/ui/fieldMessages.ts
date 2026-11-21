@@ -19,14 +19,14 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Child scenes': '子场景', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Sky atmosphere': '物理天空',
+    'Child scenes': '子场景', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Gaussian splats': '高斯泼溅', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },
   names: {
-    font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距', diameter: '直径', profile: '配光曲线',
+    font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距', diameter: '直径', profile: '配光曲线', splats: '泼溅',
     transmission: '透射', factor: '比例', ior: '折射率', attenuationColor: '吸收后的颜色', attenuationDistance: '吸收距离',
     distortion: '扭曲',
     streamFromDisk: '边下边放', spatialized: '空间化', synth: '音效生成器', wave: '波形', attack: '起音', sustain: '持续', punch: '冲击', decay: '衰减',
@@ -90,6 +90,7 @@ const zhCN: FieldMessages = {
     'the disc lies in the local XY plane and shines toward local -Z': '圆盘在本地 XY 平面上，朝本地 -Z 照',
     'IES light profile: how strongly the fixture shines in each direction; 0° points along local -Z': '配光曲线（IES 文件）：灯具往各个方向照多亮；0° 对着本地 -Z',
     'along the local X axis; the tube shines all around': '沿本地 X 轴，往四周照',
+    'splat asset (.splat, imported from a 3D Gaussian Splatting .ply)': '泼溅资源（.splat，从 3DGS 的 .ply 导入）',
     'size along the local X axis': '沿本地 X 轴的尺寸',
     'size along the local Y axis; the light shines toward local -Z': '沿本地 Y 轴的尺寸；光朝本地 -Z 照',
     'waveform': '波形',

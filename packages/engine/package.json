@@ -23,7 +23,8 @@
     "./audio-synth": "./src/audio/soundSynth.ts",
     "./editor-make-prefab": "./src/editor/makePrefab.ts",
     "./math": "./src/data/Matrix.ts",
-    "./light-profile": "./src/rendering/lighting/LightProfile.ts"
+    "./light-profile": "./src/rendering/lighting/LightProfile.ts",
+    "./splats": "./src/content/splatFile.ts"
   },
   "scripts": {
     "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",

@@ -8,6 +8,7 @@ import { prop, type EntityId } from '../data/prop';
 import { component, tag } from '../engine/component';
 import type { CubemapId, SkyboxId } from './lighting/Skybox';
 import type { LightProfileId } from './lighting/LightProfile';
+import type { SplatCloudId } from './splats/SplatRenderer';
 import type { SpriteSheetId } from './SpriteSheet';
 import type { TextureId } from '../graphics/Texture';
 
@@ -111,6 +112,15 @@ export const PlanarReflection = component('PlanarReflection', {
   resolution: prop.f32().default(0.5).min(0.1).max(1),
   distortion: prop.f32().default(0.02).min(0),
   intensity: prop.f32().default(1).min(0),
+});
+
+/**
+ * 高斯泼溅（Stride 没有；同 PlayCanvas 的 GSplat、Unity 的 Gaussian Splatting 插件）：引用一个泼溅资源（`.splat`，编辑器从
+ * 3DGS 的 .ply 导入），跟着实体的变换摆（缩放、旋转一起算进协方差）。主画面每帧在 GPU 上按视深排序、从远到近画，和网格按深度
+ * 互相遮挡（rendering/splats/SplatRenderer.ts）。
+ */
+export const GaussianSplat = component('GaussianSplat', {
+  splats: prop.u32().brand<'SplatCloudId'>().default(0 as SplatCloudId),
 });
 
 /**

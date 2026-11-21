@@ -411,6 +411,8 @@ export class ForwardRenderer {
     const planar = renderSystem.planarReflections;
     planar.enabled = this.quality.planarReflections;
     const planarView = this.hasCamera ? planar.begin(context, this.#mainView) : undefined;
+    // 高斯泼溅：主画面这一帧要画的实体（排序在主画面的通道之前）
+    renderSystem.splats.collect(context, this.hasCamera ? this.#mainView : undefined);
     // 折射：场景里有透射材质、画进 HDR 缓冲时，主画面不透明的画完拷一份给透明阶段（要不要拷在 prepare 写视图的常量之前定下来）
     const refraction = renderSystem.refraction;
     refraction.begin(this.#mainView, this.hasCamera && post && this.drawTransparent && planar.supported && context.game.meshes.batches.some((batch) => batch.material.transmission !== undefined));
@@ -652,12 +654,18 @@ export class ForwardRenderer {
     const split = surfaces.length > 0 || refract;
     const drawRest = (pass: GPURenderPassEncoder) => {
       if (!view) return;
+      // 高斯泼溅（只有主画面）：不透明的之后、透明的之前，读深度、不写
+      if (view === this.#mainView) renderSystem.splats.draw(pass, output.format, DEPTH_FORMAT);
       if (transparent) renderSystem.draw(context, pass, view, output.transparent);
       // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
       if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);
       if (this.wireframe && view === this.#mainView) renderSystem.draw(context, pass, view, output.wireframe);
     };
-    // 分簇：着色时像素只看所在那一簇的点光、聚光、贴花
+    // 高斯泼溅按视深排序（相机、实体没动的不重排）：在画它的通道之前
+    if (view === this.#mainView && renderSystem.splats.active) {
+      frame.pass(`${label} splats sort`, (pass) => pass.sideEffect(), () => renderSystem.splats.sort(encoder, profiler.passTimestamps(`${label} splats sort`)));
+    }
+    // 分簇：着色时像素只看所在那一簇的点光、贴花
     if (view?.clustered) {
       frame.pass(`${label} clusters`, (pass) => pass.sideEffect(), () => renderSystem.clusters.record(encoder, view, profiler.passTimestamps(`${label} clusters`)));
     }

@@ -186,6 +186,13 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: { size: [10, 1, 10] },
   },
+  gaussianSplat: {
+    label: 'Gaussian splats',
+    type: object(fields<NonNullable<Components['gaussianSplat']>>({
+      splats: { type: asset('splats'), description: 'splat asset (.splat, imported from a 3D Gaussian Splatting .ply)' },
+    })),
+    initial: { splats: '' },
+  },
   cameraRig: {
     label: 'Camera rig',
     type: object(fields<NonNullable<Components['cameraRig']>>({

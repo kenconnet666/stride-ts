@@ -27,7 +27,7 @@ export interface AssetReference {
  * 怎么读它的设置，渲染目标贴图不是文件（运行时建）。
  */
 export type EntityAssetReference =
-  | { readonly kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile'; readonly path: string }
+  | { readonly kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats'; readonly path: string }
   | { readonly kind: 'image'; readonly path: string; readonly texture: TextureRef }
   | { readonly kind: 'renderTexture'; readonly path: string; readonly texture: SceneRenderTexture };
 
@@ -69,6 +69,7 @@ function visitEntityReferences(files: readonly SceneEntityFile[], visitAny: (ref
     for (const animation of c.animation?.animations ?? []) visit({ kind: 'animation', path: animation.clip }, animation, 'clip');
     if (c.light?.type === 'skybox') visit({ kind: 'skybox', path: c.light.skybox }, c.light, 'skybox');
     if ((c.light?.type === 'point' || c.light?.type === 'spot') && c.light.profile) visit({ kind: 'lightProfile', path: c.light.profile }, c.light, 'profile');
+    if (c.gaussianSplat) visit({ kind: 'splats', path: c.gaussianSplat.splats }, c.gaussianSplat, 'splats');
     if (c.background?.type === 'cubemap') visit({ kind: 'cubemap', path: c.background.texture }, c.background, 'texture');
     else if (c.background) image(c.background.image);
     if (c.decal?.albedo) image(c.decal.albedo);
@@ -141,7 +142,7 @@ function uiAssetValues(file: UIFile): ({ $asset: string } | { sheet: string } | 
 }
 
 /** 脚本属性里的资源种类 → 资源文件的种类（UI 页面和 UI 库是同一种文件）。 */
-const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile'): AssetKind => (kind === 'uiPage' || kind === 'uiLibrary' ? 'ui' : kind);
+const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats'): AssetKind => (kind === 'uiPage' || kind === 'uiLibrary' ? 'ui' : kind);
 
 /**
  * 一个资源文件引用的别的资源，去过重。file 是解析好的内容：JSON 文件是它的对象，模型、动画是 decodeModel、decodeAnimation

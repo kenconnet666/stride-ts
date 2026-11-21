@@ -11,7 +11,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type TextModelFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeTextModel, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
+import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeTextModel, convertPlySplats, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
@@ -152,6 +152,30 @@ export class EditorBackend {
     });
   }
 
+  /**
+   * 高斯泼溅（3DGS 的 .ply，标准的或 SuperSplat 的压缩格式）转成运行时的 .splat 放进 folder（只留转好的：.ply 动辄上百 MB）；
+   * 认不出时什么也不写。
+   */
+  async #importSplats(folder: string, base: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
+    let converted: Uint8Array;
+    try {
+      converted = convertPlySplats(bytes, fileName).bytes;
+    } catch (error) {
+      throw new HttpError(400, (error as Error).message);
+    }
+    return this.#enqueue(async () => {
+      let assetPath = '';
+      for (let n = 1; ; n++) {
+        assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
+        if (!this.database.get('splats', assetPath)) break;
+      }
+      const file = path.join(this.project.contentDir, assetFileName('splats', assetPath));
+      await writeAtomically(file, converted);
+      await this.#refresh([this.#relative(file)]);
+      return { asset: this.database.get('splats', assetPath)!, warnings: [] };
+    });
+  }
+
   /** 配光曲线（IES 文件）原样放进 folder；先解析一遍，格式不对时什么也不写。 */
   async #importLightProfile(folder: string, base: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
     try {
@@ -190,11 +214,12 @@ export class EditorBackend {
     const extension = path.extname(fileName).toLowerCase();
     const base = path.basename(fileName, path.extname(fileName)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
     if (extension === '.ies') return this.#importLightProfile(folder, base, fileName, bytes);
+    if (extension === '.ply') return this.#importSplats(folder, base, fileName, bytes);
     const audio = ({ '.mp3': 'mp3', '.ogg': 'ogg', '.wav': 'wav', '.flac': 'flac', '.aac': 'aac' } as const)[extension as '.mp3'];
     // 视频（mp4、webm）同图片一样是贴图：材质、精灵的贴图槽直接用它，放起来是视频贴图
     const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg', '.webp': 'webp', '.mp4': 'mp4', '.webm': 'webm' } as const)[extension as '.png'];
     if (!audio && !image) {
-      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), videos (mp4, webm), models (glb, gltf, fbx, obj), fonts (ttf, otf, ttc) and IES light profiles can be imported`);
+      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), videos (mp4, webm), models (glb, gltf, fbx, obj), fonts (ttf, otf, ttc), IES light profiles and Gaussian splats (ply) can be imported`);
     }
     const kind: AssetKind = audio ? 'sound' : 'texture';
     return this.#enqueue(async () => {

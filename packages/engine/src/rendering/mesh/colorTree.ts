@@ -102,10 +102,10 @@ export class ColorTreeCompiler {
       case 'computeVertexStreamColor':
         return 'streams.color';
       case 'computeSoftCircle': {
-        // 和 Stride 不同（我们加的）：UV 中心到边上从 1 渐变到 0 的圆点，按预乘 alpha 输出（粒子不用另带一张圆点贴图）；
-        // hardness 越大中间实的越多
+        // 和 Stride 不同（我们加的）：UV 中心到边上从 1 渐变到 0 的圆点（粒子不用另带一张圆点贴图），乘上粒子的颜色（预乘的，
+        // 颜色随时间这类更新器给的；同 Stride 里贴图乘顶点流颜色的常见写法）；hardness 越大中间实的越多
         const hardness = Math.min(Math.max(get(file, 'hardness', 0), 0), 0.99);
-        return `vec4f(1.0 - smoothstep(${float(hardness)}, 1.0, length(streams.uv * 2.0 - 1.0)))`;
+        return `(streams.color * (1.0 - smoothstep(${float(hardness)}, 1.0, length(streams.uv * 2.0 - 1.0))))`;
       }
       case 'computeFloat4':
         return literal4(get(file, 'value', [1, 1, 1, 1]));

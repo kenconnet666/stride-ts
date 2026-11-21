@@ -22,7 +22,9 @@ import { copyEntities, duplicateEntities, pasteEntities, positionAfter, type Pas
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
 import { freeAssetPath } from '../newAssets';
-import type { EditAgent, EditableScene, Game, PaintBrush, SnapSettings } from '@stride-ts/engine';
+import type { EditAgent, EditableScene, Game, PaintBrush, PolyEditSession, PolySelection, PolySelectMode, SnapSettings } from '@stride-ts/engine';
+import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
+import type { PolyMeshFile } from '@stride-ts/engine/content-format';
 import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
 import { t } from './messages';
@@ -77,6 +79,14 @@ export class EditorSession implements EditableScene {
   readonly frameGuide = shallowRef(0);
   /** 打开的时间轴（资源浏览器里打开的，下面的时间轴面板显示它）：选实体、改场景时一直开着。 */
   readonly timeline = shallowRef<OpenTimeline | undefined>();
+  /**
+   * 正在视口里编辑的多边形网格（S2）：哪个实体上、哪个 .poly.json，选择模式、选中的东西和现在的网格；没在编辑时是 undefined。
+   * 操纵器拖完、工具条上的操作做完存进文件（后端烘成模型、视口热重载）；撤销、重做这时是网格的上一步、下一步。
+   */
+  readonly polyEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly mode: PolySelectMode; readonly selection: PolySelection; readonly mesh: PolyMeshFile }>();
+  /** 多边形编辑的撤销：每一步之前的网格；重做是撤销掉的。 */
+  #polyUndo: PolyMeshFile[] = [];
+  #polyRedo: PolyMeshFile[] = [];
   /** 正在画的材质层（属性面板里开着的材质的第几层、它的遮罩）；没在画时是 undefined。 */
   readonly painting = shallowRef<{ readonly layer: number; readonly mask: string }>();
   /** 绘制的笔刷（半径、硬度、强度、擦除），换着画别的层时保留。 */
@@ -261,6 +271,7 @@ export class EditorSession implements EditableScene {
       this.notice.value = t.paintNoMask;
       return;
     }
+    this.stopPolyEdit();
     // 存过还没刷新的材质先存下来：视口里的材质要有这一层
     await this.#flushInspected();
     await agent.beginPaint(entity, inspected.path, mask, this.paintBrush.value);
@@ -537,6 +548,8 @@ export class EditorSession implements EditableScene {
   /** 游戏页面要重新加载了（试玩回来、HMR 整页刷新）：代理作废。 */
   detach(): void {
     this.agent.value = undefined;
+    // 页面重新加载（试玩、热重载）：页面里的多边形编辑没了，工具条也收起
+    this.polyEditing.value = undefined;
   }
 
   get file(): SceneFile {
@@ -560,10 +573,13 @@ export class EditorSession implements EditableScene {
   }
 
   get canUndo(): boolean {
+    // 编辑多边形时撤销的是网格的一步（读 polyEditing 让工具条跟着每一步刷新）
+    if (this.polyEditing.value) return this.#polyUndo.length > 0;
     return this.#undo?.canUndo ?? false;
   }
 
   get canRedo(): boolean {
+    if (this.polyEditing.value) return this.#polyRedo.length > 0;
     return this.#undo?.canRedo ?? false;
   }
 
@@ -583,11 +599,103 @@ export class EditorSession implements EditableScene {
   }
 
   undo(): void {
+    if (this.polyEditing.value) return this.#polyStep(this.#polyUndo, this.#polyRedo);
     if (this.#require().undo()) this.#changed();
   }
 
   redo(): void {
+    if (this.polyEditing.value) return this.#polyStep(this.#polyRedo, this.#polyUndo);
     if (this.#require().redo()) this.#changed();
+  }
+
+  /** 模型 modelPath 是不是从多边形网格烘出来的：同一路径有 .poly.json 时是它的路径。 */
+  polySourceOf(modelPath: string): string | undefined {
+    return this.assets.value.some((asset) => asset.kind === 'poly' && asset.path === modelPath) ? modelPath : undefined;
+  }
+
+  /** 在视口里编辑实体 entity 的模型来自的多边形网格 path（选中的实体、点、边、面的选择从面开始）。 */
+  async startPolyEdit(entity: string, path: string): Promise<void> {
+    const agent = this.agent.value;
+    if (!agent) return;
+    this.stopPainting();
+    const mesh = await this.client.readAsset<PolyMeshFile>('poly', path);
+    this.#polyUndo = [];
+    this.#polyRedo = [];
+    agent.beginPolyEdit(entity, path, mesh);
+    agent.onPolyChanged = (edit, commit) => this.#polyChanged(edit, commit);
+    this.#polyChanged(agent.polyEdit!, false);
+    // 怎么操作写在状态栏（不是出错，不用 notice）
+    this.notice.value = '';
+    this.status.value = t.polyHint;
+  }
+
+  stopPolyEdit(): void {
+    this.agent.value?.endPolyEdit();
+    if (this.polyEditing.value && this.status.value === t.polyHint) this.status.value = '';
+    this.polyEditing.value = undefined;
+  }
+
+  /** 换选择模式（点、边、面）；选中的清空。 */
+  setPolyMode(mode: PolySelectMode): void {
+    const edit = this.agent.value?.polyEdit;
+    if (!edit || edit.mode === mode) return;
+    edit.mode = mode;
+    edit.selection = { vertices: [], edges: [], faces: [] };
+    this.#polyChanged(edit, false);
+  }
+
+  /** 对选中的东西做一个编辑操作（挤出、倒角……，引擎的 applyPolyOperation）；做不了时（选的不对）在状态栏说为什么。 */
+  polyOperation(operation: PolyOperation): void {
+    const edit = this.agent.value?.polyEdit;
+    if (!edit) return;
+    let result: PolyEditResult;
+    try {
+      result = applyPolyOperation(edit.mesh, operation);
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+      return;
+    }
+    this.#polyUndo.push(edit.mesh);
+    this.#polyRedo = [];
+    edit.mesh = result.mesh;
+    // 操作之后选中它给的东西（挤出后是挤出的面……）；当前模式没有的换到有的那种
+    const mode: PolySelectMode = result.faces.length > 0 ? 'face' : result.edges.length > 0 ? 'edge' : result.vertices.length > 0 ? 'vertex' : edit.mode;
+    edit.mode = mode;
+    edit.selection = { vertices: mode === 'vertex' ? result.vertices : [], edges: mode === 'edge' ? result.edges : [], faces: mode === 'face' ? result.faces : [] };
+    this.notice.value = '';
+    this.#savePoly(edit);
+    this.#polyChanged(edit, false);
+  }
+
+  /** 视口里改了网格、选择或模式：commit（拖完操纵器）时记一步撤销、存文件。 */
+  #polyChanged(edit: PolyEditSession, commit: boolean): void {
+    if (!this.polyEditing.value) this.#polySaved = edit.mesh;
+    // 拖的过程中每帧的网格都写进了 polyEditing：和上一次存的那份比，撤销也回到它（按下之前的样子）
+    else if (commit && this.#polySaved && this.#polySaved !== edit.mesh) {
+      this.#polyUndo.push(this.#polySaved);
+      this.#polyRedo = [];
+      this.#savePoly(edit);
+    }
+    this.polyEditing.value = { entity: edit.entity, path: edit.path, mode: edit.mode, selection: edit.selection, mesh: edit.mesh };
+  }
+
+  /** 上一次存进文件的网格（拖之前的样子）。 */
+  #polySaved: PolyMeshFile | undefined;
+
+  #savePoly(edit: PolyEditSession): void {
+    this.#polySaved = edit.mesh;
+    void this.client.saveAsset('poly', edit.path, edit.mesh).catch((error: unknown) => (this.notice.value = (error as Error).message));
+  }
+
+  /** 多边形编辑的撤销、重做：换回上一步、下一步的网格，存文件。选中的清空（下标可能不对了）。 */
+  #polyStep(from: PolyMeshFile[], to: PolyMeshFile[]): void {
+    const edit = this.agent.value?.polyEdit, mesh = from.pop();
+    if (!edit || !mesh) return;
+    to.push(edit.mesh);
+    edit.mesh = mesh;
+    edit.selection = { vertices: [], edges: [], faces: [] };
+    this.#savePoly(edit);
+    this.#polyChanged(edit, false);
   }
 
   /** 加一个空实体（只有变换），放在 parent 的子实体的最后（null 是最上层），选中它。 */
@@ -602,6 +710,12 @@ export class EditorSession implements EditableScene {
 
   /** 删掉选中的实体和它们的后代（一步撤销）；实例的成员记成实例去掉了它。 */
   deleteSelection(): void {
+    // 编辑多边形时 Delete 删的是选中的面
+    const poly = this.polyEditing.value;
+    if (poly) {
+      if (poly.selection.faces.length > 0) this.polyOperation({ op: 'delete', faces: poly.selection.faces });
+      return;
+    }
     // 展开的场景里父实体排在前面：顺着扫一遍收全后代（包括挂在成员下面的文档实体）
     const removing = new Set(this.selection.value);
     const parentOf = new Map<string, string | null>();

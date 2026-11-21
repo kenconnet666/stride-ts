@@ -5,6 +5,8 @@
  * - 左键拖操纵器的把手：改选中的实体的位置、旋转、缩放，每帧一个修改（同一次拖并成撤销的一步）；吸附照 EditAgent.snap，
  *   按住 Ctrl 反过来；
  * - W、E、R：移动、旋转、缩放；F：把选中的东西放到画面中间；相机的操作见 EditorCamera。
+ * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）时左键换成那个工具的：画笔刷；点选点、边、面（1、2、3 换模式，
+ *   Shift、Ctrl 加选），操纵器拖选中的顶点（PolyEditTool）。
  */
 import type { Entity } from '../engine/Entity';
 import { SyncScript } from '../engine/scripts';
@@ -21,6 +23,9 @@ import type { SceneEdit } from './SceneDocument';
 import { applyGizmoChange, applySnap, type GizmoAxis, type GizmoHandle, type Ray, type TransformGizmo } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
 import { raycastMesh } from '../rendering/paint/MeshPainter';
+import { selectionVertices } from '../modeling/polyEdit';
+import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformVertices, worldVertices, type PolySelectMode } from './PolyEditTool';
+import type { PolyMeshFile } from '../content/assetFormat';
 
 /** 选中的东西的框的颜色（线性）。 */
 const SELECTION_COLOR: DebugColor = [1, 0.55, 0.1, 1];
@@ -32,6 +37,12 @@ const ACTIVE_COLOR: DebugColor = [1, 0.9, 0.2, 1];
 /** 绘制模式的笔刷：画是白的，擦是红的。 */
 const BRUSH_COLOR: DebugColor = [1, 1, 1, 0.9];
 const ERASE_COLOR: DebugColor = [1, 0.3, 0.3, 0.9];
+/** 多边形编辑的线框和选中的点、边、面。 */
+const POLY_EDGE_COLOR: DebugColor = [0.85, 0.88, 0.95, 0.7];
+const POLY_SELECTED_COLOR: DebugColor = [1, 0.55, 0.1, 1];
+/** 顶点的小方块的半边长（画面高度的倍数）。 */
+const POLY_VERTEX_SCREEN_SIZE = 0.004;
+const POLY_MODE_KEYS: readonly (readonly [string, PolySelectMode])[] = [['Digit1', 'vertex'], ['Digit2', 'edge'], ['Digit3', 'face']];
 /** 操纵器的轴在画面上有多长（画面高度的倍数）。 */
 const GIZMO_SCREEN_SIZE = 0.14;
 /** 按下到松开鼠标挪了不到这么多像素算点一下。 */
@@ -58,6 +69,8 @@ export class EditorViewport extends SyncScript {
   #drag: { readonly starts: readonly DragStart[]; readonly key: string } | undefined;
   #pressed: readonly [number, number] | undefined;
   #drags = 0;
+  /** 多边形编辑里正在拖的操纵器：按下时的网格和要动的顶点（结果每帧从它算）。 */
+  #polyDrag: { readonly start: PolyMeshFile; readonly vertices: readonly number[] } | undefined;
   /** 绘制模式里正在画的一笔：上一笔落在哪（世界坐标），画没画上。 */
   #stroke: { last: [number, number, number] | undefined; painted: boolean } | undefined;
 
@@ -66,6 +79,8 @@ export class EditorViewport extends SyncScript {
     if (!agent || !live) return;
     const input = this.game.input, draw = this.game.debugDraw;
     for (const id of agent.selection) {
+      // 正在编辑多边形的实体画它自己的线框，不画包围盒
+      if (agent.polyEdit?.entity === id) continue;
       const entity = live.entity(id);
       if (!entity?.alive) continue;
       const boxes = selectionBoxes(this.game, entity);
@@ -92,6 +107,10 @@ export class EditorViewport extends SyncScript {
     // 在模型上画贴图：左键拖是画，不点选、不拖操纵器
     if (agent.paint) {
       this.#paint(agent, pixel, navigating);
+      return;
+    }
+    if (agent.polyEdit) {
+      this.#poly(agent, pixel, navigating);
       return;
     }
     const roots = agent.editable ? agent.selectionRoots() : [];
@@ -163,6 +182,87 @@ export class EditorViewport extends SyncScript {
     }
   }
 
+  /**
+   * 多边形编辑的一帧：画线框（选中的点、边、面高亮），1、2、3 换选择模式；左键点一下按模式点选（Shift、Ctrl 加选、再点去掉，
+   * 点空处清空），按在操纵器上拖选中的顶点（移动、旋转、缩放照 W、E、R），每帧把新网格交给 agent.onPolyChanged，松开时
+   * commit。线框关了深度测试：背面的边也看得见、点得到。
+   */
+  #poly(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
+    const poly = agent.polyEdit!, entity = agent.live?.entity(poly.entity);
+    if (!entity?.alive) return;
+    const input = this.game.input, draw = this.game.debugDraw, gizmo = agent.gizmo;
+    if (!navigating && !this.#polyDrag) {
+      const mode = POLY_MODE_KEYS.find(([key]) => input.isKeyPressed(key))?.[1];
+      if (mode && mode !== poly.mode) {
+        poly.mode = mode;
+        poly.selection = EMPTY_POLY_SELECTION;
+        agent.onPolyChanged?.(poly, false);
+      }
+    }
+    const world = currentWorld(entity);
+    const points = worldVertices(poly.mesh, world);
+    const edges = meshEdges(poly.mesh);
+    const { selection } = poly;
+    const selectedEdges = new Set(selection.edges.map(([a, b]) => (a < b ? `${a},${b}` : `${b},${a}`)));
+    for (const [a, b] of edges) {
+      const chosen = selectedEdges.has(`${a},${b}`);
+      draw.line(points[a]!, points[b]!, chosen ? POLY_SELECTED_COLOR : POLY_EDGE_COLOR, { width: chosen ? 3 : 1, depthTest: false });
+    }
+    for (const face of selection.faces) {
+      const outline = poly.mesh.faces[face]?.vertices.map((v) => points[v]!);
+      if (outline) draw.polyline(outline, POLY_SELECTED_COLOR, { width: 3, depthTest: false, closed: true });
+    }
+    if (poly.mode === 'vertex') {
+      const chosen = new Set(selection.vertices);
+      points.forEach((point, v) => {
+        const half = this.#viewHeight(point) * POLY_VERTEX_SCREEN_SIZE * (chosen.has(v) ? 1.6 : 1);
+        draw.box(Matrix.compose(new Float32Array(16), point, [0, 0, 0, 1], [1, 1, 1]), [half, half, half], chosen.has(v) ? POLY_SELECTED_COLOR : POLY_EDGE_COLOR, { width: 2, depthTest: false });
+      });
+    }
+
+    const vertices = this.#polyDrag?.vertices ?? selectionVertices(poly.mesh, selection);
+    const center = selectionCenter(points, vertices);
+    applySnap(gizmo, agent.snap, input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
+    if (center) {
+      gizmo.pivot.set(...center);
+      if (!this.#polyDrag) {
+        if (agent.gizmoSpace === 'local' || gizmo.mode === 'scale') gizmo.orientation.set(...Matrix.decompose(world).rotation);
+        else gizmo.orientation.identity();
+      }
+      gizmo.size = this.#viewHeight(center) * GIZMO_SCREEN_SIZE;
+      if (!this.#polyDrag) this.#hover = navigating ? undefined : gizmo.pick(pixel, this.#project);
+    }
+    if (input.isMouseButtonPressed('left') && !navigating) {
+      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
+      const handle = center ? gizmo.pick(at, this.#project) : undefined;
+      if (handle && gizmo.begin(handle, this.#ray(at), at)) this.#polyDrag = { start: poly.mesh, vertices };
+      else this.#pressed = at;
+    }
+    const drag = this.#polyDrag;
+    if (drag && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) {
+      const change = gizmo.drag(this.#ray(pixel), pixel);
+      if (change) {
+        poly.mesh = transformVertices(drag.start, drag.vertices, change, gizmo.dragOrigin ?? gizmo.pivot, gizmo.orientation, world);
+        agent.onPolyChanged?.(poly, false);
+      }
+    }
+    if (input.isMouseButtonReleased('left')) {
+      if (drag) {
+        gizmo.end();
+        this.#polyDrag = undefined;
+        agent.onPolyChanged?.(poly, true);
+      } else if (this.#pressed && Math.hypot(pixel[0] - this.#pressed[0], pixel[1] - this.#pressed[1]) < CLICK_PIXELS) {
+        const projected = points.map(([x, y, z]) => this.#project({ x, y, z }));
+        const hit = poly.mode === 'vertex' ? pickVertex(projected, pixel) : poly.mode === 'edge' ? pickEdge(edges, projected, pixel) : pickFace(poly.mesh, points, this.#ray(pixel));
+        const additive = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight'].some((key) => input.isKeyDown(key));
+        poly.selection = clickSelection(poly.selection, poly.mode, hit, additive);
+        agent.onPolyChanged?.(poly, false);
+      }
+      this.#pressed = undefined;
+    }
+    if (center) this.#drawGizmo(gizmo);
+  }
+
   /** 这一帧里鼠标按下那一刻在画布上的位置（像素）；这一帧没有按下事件时是 undefined。 */
   #pressPixel(events: readonly PointerEvent[]): readonly [number, number] | undefined {
     const press = events.find((event) => event.device === 'mouse' && event.eventType === 'pressed');
@@ -180,11 +280,15 @@ export class EditorViewport extends SyncScript {
       if (agent.gizmoSpace === 'local' || gizmo.mode === 'scale') gizmo.orientation.set(...rotation);
       else gizmo.orientation.identity();
     }
+    gizmo.size = this.#viewHeight([gizmo.pivot.x, gizmo.pivot.y, gizmo.pivot.z]) * GIZMO_SCREEN_SIZE;
+  }
+
+  /** 画面在这个点那么远的地方有多高（世界单位）：操纵器、顶点的方块按它定大小，画面上看着一样大。 */
+  #viewHeight(point: readonly number[]): number {
     const camera = this.entity.require(Camera), eye = this.entity.require(Transform).world;
-    const viewHeight = camera.projection === 'orthographic'
+    return camera.projection === 'orthographic'
       ? camera.orthographicSize
-      : 2 * Math.hypot(gizmo.pivot.x - eye[12]!, gizmo.pivot.y - eye[13]!, gizmo.pivot.z - eye[14]!) * Math.tan((camera.verticalFieldOfView * Math.PI) / 360);
-    gizmo.size = viewHeight * GIZMO_SCREEN_SIZE;
+      : 2 * Math.hypot(point[0]! - eye[12]!, point[1]! - eye[13]!, point[2]! - eye[14]!) * Math.tan((camera.verticalFieldOfView * Math.PI) / 360);
   }
 
   readonly #project = (point: { readonly x: number; readonly y: number; readonly z: number }): readonly [number, number] | undefined => {

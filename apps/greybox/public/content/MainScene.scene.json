@@ -194,6 +194,33 @@
    }
   },
   {
+   "id": "01340594-94e7-4e5a-a0b2-f668ed6c36d5",
+   "name": "Crate",
+   "parent": null,
+   "position": [
+    -1.5,
+    0.5,
+    2.5
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Level/Crate",
+     "materials": []
+    }
+   }
+  },
+  {
    "id": "bf4537f0-32a0-4ea8-86c3-dfb6294b7e56",
    "name": "Fountain",
    "parent": null,

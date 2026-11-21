@@ -5,10 +5,11 @@
  * - ViewportToolbar：视口上面，对选中实体的操作、吸附、画幅参考线；
  * - StatusBar：最下面，提示和出错、选中几个、界面语言。
  */
-import { ClipboardPaste, Copy, CopyPlus, Magnet, Package, Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
+import { ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
+import type { PolyOperation } from '@stride-ts/engine/modeling';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton, NumberField, Select, Separator, Skeleton, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, NumberField, Select, Separator, Skeleton, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
 import { LOCALES, locale, setLocale, type Locale } from './i18n';
 import { t } from './messages';
 import type { EditorSession } from './session';
@@ -107,9 +108,53 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       step('scale', 0.001),
     ];
   };
+  /** 挤出、内插、倒角的距离（米）：工具条上一个数，几个操作共用。 */
+  let polyAmount = _state(0.25);
+  /**
+   * 编辑多边形网格时的工具条：选择模式（点、边、面）、操作的距离、各个操作（选的东西对得上才能点），最后是"完成"。
+   */
+  const polyControls = (poly: NonNullable<typeof session.polyEditing.value>) => {
+    const { vertices, edges, faces } = poly.selection;
+    const operation = (name: keyof typeof t.polyOps, icon: typeof Plus, enabled: boolean, build: () => PolyOperation | undefined) => (
+      <Button size="sm" variant="ghost" tone="neutral" icon={icon} disabled={!enabled} onClick={() => {
+        const op = build();
+        if (op) session.polyOperation(op);
+        else session.notice.value = t.polyConnectNeedsFace;
+      }}>{t.polyOps[name]}</Button>
+    );
+    // 连接：两个点在同一个面上、不相邻（相邻的已经有边了）
+    const connect = (): PolyOperation | undefined => {
+      const [a, b] = vertices as [number, number];
+      const face = poly.mesh.faces.findIndex(({ vertices: ring }) => {
+        const i = ring.indexOf(a), j = ring.indexOf(b);
+        return i >= 0 && j >= 0 && Math.abs(i - j) !== 1 && Math.abs(i - j) !== ring.length - 1;
+      });
+      return face < 0 ? undefined : { op: 'connect', face, a, b };
+    };
+    return [
+      ...(['vertex', 'edge', 'face'] as const).map((mode, i) => (
+        <Button size="sm" variant={poly.mode === mode ? 'soft' : 'ghost'} tone="neutral" aria-pressed={poly.mode === mode} title={`${t.polyModes[mode]} (${i + 1})`} onClick={() => session.setPolyMode(mode)}>{t.polyModes[mode]}</Button>
+      )),
+      <Separator orientation="vertical" />,
+      <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.polyAmount} aria-label={t.polyAmount} min={0.001} step={0.05} format={{ useGrouping: false, maximumFractionDigits: 4 }}
+        _value={polyAmount} onUpdate:_value={(value: number | null) => value !== null && value > 0 && (polyAmount = value)} />,
+      operation('extrude', ArrowUpFromLine, faces.length > 0, () => ({ op: 'extrude', faces, distance: polyAmount })),
+      operation('inset', SquareDashedBottom, faces.length > 0, () => ({ op: 'inset', faces, amount: polyAmount })),
+      operation('bevel', Combine, edges.length > 0, () => ({ op: 'bevel', edges, distance: polyAmount })),
+      operation('split', Scissors, edges.length === 1, () => ({ op: 'split', edge: edges[0]! })),
+      operation('merge', Merge, vertices.length >= 2, () => ({ op: 'merge', vertices })),
+      operation('connect', Scissors, vertices.length === 2, connect),
+      operation('flip', FlipVertical2, faces.length > 0, () => ({ op: 'flip', faces })),
+      operation('delete', Trash2, faces.length > 0, () => ({ op: 'delete', faces })),
+      <span {...css.attrs(styles.spacer)} />,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopPolyEdit()}>{t.polyDone}</Button>,
+    ];
+  };
   return () => {
     const selected = session.selection.value.length;
     const off = playing;
+    const poly = session.polyEditing.value;
+    if (poly && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{polyControls(poly)}</div>;
     return (
       <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>
         <IconButton {...iconProps} icon={Plus} aria-label={t.addEntity} title={t.addEntity} disabled={!session.agent.value || off} onClick={() => void session.addEntity(selected === 1 ? session.selection.value[0]! : null)} />

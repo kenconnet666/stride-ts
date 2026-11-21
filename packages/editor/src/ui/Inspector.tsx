@@ -1,4 +1,4 @@
-import { Plus, Sparkles, Workflow, X } from '@lucide/icons';
+import { Plus, Shapes, Sparkles, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { Button, IconButton, Menu, MenuGroup, MenuItem, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -258,6 +258,11 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       return session.opened.value?.kind === 'scene' ? sceneSettings() : <div {...css.attrs(styles.hint)}>{t.pickEntity}</div>;
     }
     const merged = (read: (entity: SceneEntityFile) => unknown) => mergeValues(list.map(read));
+    // 模型是从多边形网格（.poly.json）烘出来的：能在视口里编辑它
+    const polySource = (entity: SceneEntityFile) => {
+      const model = entity.components.model?.model;
+      return model === undefined ? undefined : session.polySourceOf(model);
+    };
     const keys = Object.keys(COMPONENT_FIELDS) as ComponentKey[];
     return (
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
@@ -278,6 +283,9 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
               <IconButton icon={X} variant="ghost" aria-label={t.remove(labelText(COMPONENT_FIELDS[key].label))} onClick={() => removeComponent(list, key)} />
             </div>
             {key === 'particleSystem' && list.length === 1 && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Sparkles} onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</Button>}
+            {key === 'model' && list.length === 1 && polySource(list[0]!) && (
+              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Shapes} onClick={() => void session.startPolyEdit(list[0]!.id, polySource(list[0]!)!)}>{t.polyEdit}</Button>
+            )}
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key])} context={context} onSet={setter(list, () => ['components', key])} />
           </section>
         ))}

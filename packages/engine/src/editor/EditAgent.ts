@@ -28,6 +28,7 @@ import { scriptFields, type Field } from './fields';
 import { LiveScene, type SceneSource } from './LiveScene';
 import { TimelinePreview, type TimelinePreviewState } from './TimelinePreview';
 import type { SceneEdit } from './SceneDocument';
+import { EMPTY_POLY_SELECTION, type PolyEditSession, type PolySelectMode } from './PolyEditTool';
 import { DEFAULT_SNAP, TransformGizmo, type SnapSettings } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
 
@@ -95,6 +96,10 @@ export class EditAgent {
   paint: PaintSession | undefined;
   /** 一笔画完（松开左键）以后调：遮罩的内容路径和读回的像素（编辑器存成 png）。 */
   onPaintStroke: ((mask: string, image: { readonly width: number; readonly height: number; readonly rgba: Uint8Array<ArrayBuffer> }) => void) | undefined;
+  /** 编辑多边形网格（S2）：开着时视口里点选的是点、边、面，操纵器拖的是选中的顶点（见 EditorViewport、PolyEditTool）。 */
+  polyEdit: PolyEditSession | undefined;
+  /** 多边形编辑改了网格、选择、模式以后调；commit 是一次操作做完（松开操纵器），编辑器这时存文件、记一步撤销。 */
+  onPolyChanged: ((edit: PolyEditSession, commit: boolean) => void) | undefined;
   /** 用户在视口里点选以后调（参数是新的选中）。 */
   onSelectionChanged: ((ids: readonly string[]) => void) | undefined;
   #live: LiveScene | undefined;
@@ -176,8 +181,19 @@ export class EditAgent {
    */
   async beginPaint(entity: string, material: string, mask: string, brush: PaintBrush = this.paint?.brush ?? DEFAULT_PAINT_BRUSH): Promise<void> {
     this.endPaint();
+    this.endPolyEdit();
     const [loaded, texture] = await Promise.all([this.game.content.loadMaterial(material), this.game.content.loadTextureRef({ texture: mask, encoding: 'png', srgb: false }, false)]);
     this.paint = { entity, material: loaded, mask, painter: new MeshPainter(this.game.renderSystem.resources, texture), brush };
+  }
+
+  /** 开始编辑这个实体上的多边形网格（path 是它的 .poly.json，mesh 是文件的内容）；画贴图的模式关掉。 */
+  beginPolyEdit(entity: string, path: string, mesh: PolyEditSession['mesh'], mode: PolySelectMode = 'face'): void {
+    this.endPaint();
+    this.polyEdit = { entity, path, mesh, mode, selection: EMPTY_POLY_SELECTION };
+  }
+
+  endPolyEdit(): void {
+    this.polyEdit = undefined;
   }
 
   endPaint(): void {

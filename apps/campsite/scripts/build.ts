@@ -186,7 +186,7 @@ await call('edit_scene', {
   ],
 });
 // 篝火：库里的特效，放在火塘中间
-await call('use_library', { id: 'campfire', scene: 'MainScene', position: [FIRE[0], 0.05, FIRE[2]] });
+await call('use_library', { id: 'campfire', scene: 'MainScene', position: [FIRE[0], 0.05, FIRE[2]], entityId: 'campfire' });
 
 console.log(await call('list_assets', {}));
 await mcp.stop();

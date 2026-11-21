@@ -1,0 +1,66 @@
+/**
+ * 矢量地形的组件和资源（Stride 没有，新加的；W2）：Terrain 组件引用一个地形资源（`.terrain.json`，content/terrainFormat.ts），
+ * TerrainSystem 按相机把它分块、分细节层次求值成网格画出来。地形以实体为中心、边长 size（米），跟着实体的变换摆。
+ */
+import type { StrideNative, TerrainEvaluator } from '@stride-ts/native';
+import { component, tag } from '../engine/component';
+import { prop } from '../data/prop';
+import { ResourceTable } from '../engine/ResourceTable';
+import type { Branded } from '../data/prop';
+import type { Material } from '../rendering/mesh/Material';
+import { TERRAIN_NOISE_DEFAULTS, type TerrainFile } from '../content/terrainFormat';
+
+export type TerrainAssetId = Branded<number, 'TerrainAssetId'>;
+
+export const Terrain = component('Terrain', {
+  terrain: prop.u32().brand<'TerrainAssetId'>().default(0 as TerrainAssetId),
+  /** 地形的边长（米），以实体为中心。 */
+  size: prop.f32().default(4096).min(1),
+  /** 最细的块的边长（米）：一块 32 × 32 个格，16 是半米一个顶点。 */
+  detail: prop.f32().default(32).min(1),
+  /** 离相机不到块边长的这么多倍就细分：大了近处更细、三角形更多。 */
+  lodFactor: prop.f32().default(2).min(0.5),
+  isShadowCaster: prop.bool().default(true),
+  /** 渲染组（0 到 31），同 Model 的。 */
+  renderGroup: prop.u8().max(31).default(0),
+});
+
+/** 地形的块（TerrainSystem 建的子实体，只在运行时有，不进场景文件）。 */
+export const TerrainTile = tag('TerrainTile');
+
+const assets = new ResourceTable<TerrainAsset>();
+
+/** 加载好的地形资源：文件和它的材质；原生的求值器第一次用到时建（每个原生模块一个）。 */
+export class TerrainAsset {
+  readonly id: TerrainAssetId;
+  readonly path: string;
+  readonly file: TerrainFile;
+  readonly material: Material | undefined;
+  #evaluator: { native: StrideNative; evaluator: TerrainEvaluator } | undefined;
+
+  constructor(path: string, file: TerrainFile, material: Material | undefined) {
+    this.path = path;
+    this.file = file;
+    this.material = material;
+    this.id = assets.add(this) as TerrainAssetId;
+  }
+
+  /** @internal Terrain 组件里存的 id 对应的资源。 */
+  static byId(id: number): TerrainAsset | undefined {
+    return assets.get(id);
+  }
+
+  /** 原生的求值器（同样的描述在任何机器上求出逐位相同的高度）。 */
+  evaluator(native: StrideNative): TerrainEvaluator {
+    if (this.#evaluator?.native !== native) {
+      const { noise, features = [], strokes = [] } = this.file;
+      this.#evaluator = { native, evaluator: native.createTerrain({ noise: { ...TERRAIN_NOISE_DEFAULTS, ...noise }, features, strokes }) };
+    }
+    return this.#evaluator.evaluator;
+  }
+
+  /** 地形本地坐标 (x, z) 处的高度（同步，摆东西、玩法用）。 */
+  heightAt(native: StrideNative, x: number, z: number): number {
+    return this.evaluator(native).height(x, z);
+  }
+}

@@ -381,7 +381,16 @@ export class MeshRenderFeature extends RootRenderFeature {
     }
   }
 
+  /** 网格释放了（Mesh.dispose，流式加载的地形块这类）：它的批和显存跟着去掉。 */
+  readonly #stopForgetting = Mesh.onDispose((mesh) => {
+    for (const [key, batch] of this.#batchByKey) if (batch.mesh === mesh) this.#batchByKey.delete(key);
+    const kept = this.batches.filter((batch) => batch.mesh !== mesh);
+    this.batches.splice(0, this.batches.length, ...kept);
+    this.#gpu?.forget(mesh);
+  });
+
   override destroy(): void {
+    this.#stopForgetting();
     this.#gpu?.destroy();
     this.#gpu = undefined;
     for (const pass of this.#cullPasses) pass.culler.destroy();
@@ -1182,6 +1191,14 @@ class Gpu {
       gpu.version = material.version;
     }
     return gpu.bindGroup;
+  }
+
+  /** 网格的显存释放掉（之后再画会重新上传）。 */
+  forget(mesh: Mesh): void {
+    const gpu = this.#meshes.get(mesh);
+    if (!gpu) return;
+    for (const buffer of [gpu.params, gpu.vertices, gpu.indices, gpu.edges?.buffer]) buffer?.destroy();
+    this.#meshes.delete(mesh);
   }
 
   destroy(): void {

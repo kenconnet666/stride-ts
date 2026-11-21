@@ -823,3 +823,12 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 第五步编辑器的世界视图：主 Chrome 里开编辑器，资源浏览器双击 Town：常驻场景打开、编辑相机附近的楼一起显示；加一个实体、位置设成 (300, 0, 300)，点"放进世界"，状态栏"1 个实体放进了世界的 1 个格子"，场景树里它没了，磁盘上在 Worlds/Town/ground/2_2 里、本地 x 是 44（300 − 2 × 128）。
 - 这一步的验证里 topdown-rpg 的"鼠标指着箱子时高亮"挂了：反向 Z 以后屏幕射线的起点终点反了，修了射线和 3D UI 的指针；topdown-rpg、csharp-intermediate、physics-sample、ui-element-link 重跑都过。
 
+
+
+## W2 矢量地形：第一步（2026-11-21）
+
+- 原生：`sn_terrain_create`、`sn_terrain_height`、`sn_terrain_heights`（任务，输出一页 float），JS 的 `createTerrain`、`TerrainEvaluator`；测试：压平的多边形里逐位等于目标高度、页和单点同值、相邻页接缝逐位相同、两万公里外隔半米的两个点高度不同又连续。单线程每百万个点 0.7 秒（10 层），64 页 131² 并行 114 毫秒。临时版 `native-dev-3515fee7ef`。
+- 引擎：`.terrain.json`（`checkTerrainFile`）、`Terrain` 组件、`TerrainAsset`、`game.terrain`（`terrain/TerrainSystem.ts`，四叉树和网格是纯函数 `terrain/terrainTiles.ts`），调试命令 `stride call terrain`（`height: [x, z]` 问地面高度）；`Mesh.dispose`、`ResourceTable.remove`。
+- 编辑器：资源浏览器能新建地形，属性面板改噪声的参数（地物、笔画先按 JSON 改），改了热重载。
+- `apps/open-world` 的 `?world=Worlds/Valley`（常驻场景 Valley：16 公里见方、10 层噪声、一个 240 × 160 米的广场压平、一笔抬高 260 米的山）。主 Chrome 里看过：山、压平的台地、抬起来的山包都对；328 块、静止 8.4 毫秒一帧（120 Hz 封顶），GPU 2.4 毫秒，绘制 1262 次（阴影 1047）。无头 Chrome 里每帧挪 25 米（3 公里每秒）飞 240 帧：p50 8.4、p95 16.6 毫秒，地形的每帧更新 1～2 毫秒、最多 4.2；缓存满 768 块以后按最久没用的释放。
+- 编辑器（主 Chrome）：打开 Valley 场景，地形在视口里流式画出来；选中地形实体，属性面板是中文的地形字段；资源浏览器点地形资源，属性面板改噪声的偏移 -60 → 200，存盘、视口里的山整体抬高（328 块重建完、没有在算的）。编辑相机在地下时只看得到裙边（从下往上看地面是背面），不是错。

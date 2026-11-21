@@ -277,6 +277,8 @@ export { gust, packWind, turbulenceAt, WindField, WindZone, GPU_LOCAL_WINDS, typ
 export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitationEmitter } from './weather/Precipitation';
 export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './weather/Weather';
 export { StreamingSource, WorldStreaming } from './world/WorldStreaming';
+export { Terrain, TerrainAsset, TerrainTile, type TerrainAssetId } from './terrain/Terrain';
+export { TerrainSystem } from './terrain/TerrainSystem';
 export { cellAt, cellKey, cellOrigin, checkWorldFile, distanceToCell, worldCellPath, type WorldFile, type WorldLayer } from './content/worldFormat';
 export { SkyOcclusion, skyOcclusionCenter } from './weather/SkyOcclusion';
 export { packDepthSurface, ViewDepthSurface, type GpuDepthSurface } from './rendering/DepthSurface';

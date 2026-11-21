@@ -8,7 +8,7 @@ overrides:
   '@zerodep-dev/vue-tsx-pro-tsx': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev-7f9b2ee9b0/zerodep-dev-vue-tsx-pro-tsx-0.37.1.tgz
   '@zerodep-dev/vue-tsx-pro-ui': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev-7f9b2ee9b0/zerodep-dev-vue-tsx-pro-ui-0.37.1.tgz
   typescript: 7.1.0-dev.20261104.1
-  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
 
 pnpmfileChecksum: sha256-cNVAWsfYgR1gA9gfl6uRdr7jzzf0Qt8bfIezEETHYTs=
 
@@ -51,8 +51,8 @@ importers:
   apps/bench:
     dependencies:
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -64,8 +64,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -77,8 +77,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -90,8 +90,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -103,8 +103,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -116,8 +116,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -129,8 +129,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -142,8 +142,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -155,8 +155,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -168,8 +168,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -181,8 +181,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -194,8 +194,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -207,8 +207,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -220,8 +220,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -233,8 +233,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -246,8 +246,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -259,8 +259,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -272,8 +272,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -285,8 +285,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -298,8 +298,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -311,8 +311,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -324,8 +324,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -347,8 +347,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -360,8 +360,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -373,8 +373,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
     devDependencies:
       vite:
         specifier: ^8.3.8
@@ -411,8 +411,8 @@ importers:
         specifier: workspace:*
         version: link:../engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
       '@stride-ts/pipeline':
         specifier: workspace:*
         version: link:../pipeline
@@ -432,8 +432,8 @@ importers:
   packages/engine:
     dependencies:
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
 
   packages/pipeline:
     dependencies:
@@ -441,8 +441,8 @@ importers:
         specifier: workspace:*
         version: link:../engine
       '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz
       yaml:
         specifier: ^2.9.1
         version: 2.9.1
@@ -732,8 +732,8 @@ packages:
   '@rolldown/pluginutils@1.1.1':
     resolution: {integrity: sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA==}
 
-  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz':
-    resolution: {integrity: sha512-MVAhg9tIvOjUPSYpUVhMN413O0VL/saRohJw8DrJ9P8es+Rbd0VOEZK1Cp4uaL3wLUZy6iT1MOzQNXoArYg6zg==, tarball: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz}
+  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz':
+    resolution: {integrity: sha512-xPlpXqgL2md5d7TS7fq549JyNdpWSwtD+1S0T4F5Dwe1tDjytSfk2NH+/0/r95w4irZGxlhfXAysg+t9Z/rSyQ==, tarball: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz}
     version: 0.43.0
     engines: {node: '>=22'}
 
@@ -1607,7 +1607,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.1.1': {}
 
-  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-d6302e7509/stride-ts-native-0.43.0.tgz': {}
+  '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-3515fee7ef/stride-ts-native-0.43.0.tgz': {}
 
   '@swc/helpers@0.5.24': {}
 

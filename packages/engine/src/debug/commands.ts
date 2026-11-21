@@ -350,6 +350,10 @@ export function registerGameCommands(debug: Debug, game: Game): void {
       loads: world.loads, unloads: world.unloads,
     };
   });
+  debug.command('terrain', 'Vector terrain (game.terrain, Terrain components): per terrain entity, how many tiles are drawn, cached and being evaluated. args: height ([x, z] in world coordinates) also reports the ground height there for the first terrain.', (args) => {
+    const at = args['height'];
+    return { terrains: game.terrain.stats(), ...(Array.isArray(at) ? { height: game.terrain.heightAt(Number(at[0]), Number(at[1])) } : {}) };
+  });
   debug.command('taa', 'Temporal anti-aliasing of the main view instead of FXAA. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
     const taa = game.graphicsCompositor.temporalAntialiasing;
     taa.enabled = switchArg(args, taa.enabled);

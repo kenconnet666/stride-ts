@@ -51,6 +51,8 @@ export const EXTENSIONS = {
   lightProfile: '.ies',
   /** 高斯泼溅（content/splatFile.ts 的二进制）：编辑器从 3DGS 的 .ply 导入成它。 */
   splats: '.splat',
+  /** 矢量地形（TerrainFile，content/terrainFormat.ts）：噪声的底、矢量地物和雕刻的笔画，运行时求值，不存高度图。 */
+  terrain: '.terrain.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */

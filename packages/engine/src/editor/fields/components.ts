@@ -193,6 +193,18 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: { splats: '' },
   },
+  terrain: {
+    label: 'Terrain',
+    type: object(fields<NonNullable<Components['terrain']>>({
+      terrain: { type: asset('terrain'), description: 'vector terrain asset (.terrain.json): noise base, flatten features and sculpt strokes, evaluated at run time' },
+      size: { type: number({ min: 1, step: 64, unit: 'm' }), optional: true, default: 4096, description: 'edge length of the square the terrain covers, centered on the entity' },
+      detail: { type: number({ min: 1, step: 1, unit: 'm' }), optional: true, default: 32, description: 'edge of the finest tile (32 × 32 cells): 32 is one vertex per meter near the camera' },
+      lodFactor: { type: number({ min: 0.5, step: 0.25 }), optional: true, default: 2, description: 'tiles closer than this many tile edges split into finer ones: larger is finer and more triangles' },
+      isShadowCaster: { type: bool, optional: true, default: true },
+      renderGroup: { type: integer(0, 31), optional: true, default: 0 },
+    })),
+    initial: { terrain: '' },
+  },
   cameraRig: {
     label: 'Camera rig',
     type: object(fields<NonNullable<Components['cameraRig']>>({

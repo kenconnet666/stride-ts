@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, TextModelFile } from '../../content/format';
+import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, TextModelFile } from '../../content/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -216,6 +216,29 @@ export const SDF_FIELDS = fields<SdfFile>({
   }),
 });
 
+/** 矢量地形（TerrainFile）：改了马上存，视口里的地形热重载（整个重新求值）。 */
+export const TERRAIN_FIELDS = fields<TerrainFile>({
+  name: string,
+  noise: {
+    type: object(fields<NonNullable<TerrainFile['noise']>>({
+      seed: { type: integer(0, 0xffffffff), optional: true, default: 0, description: 'random seed: another number is another landscape' },
+      octaves: { type: integer(0, 16), optional: true, default: 6, description: 'noise layers: more is finer detail and slower' },
+      scale: { type: number({ min: 1, step: 50, unit: 'm' }), optional: true, default: 1000, description: 'wavelength of the largest hills' },
+      height: { type: number({ min: 0, step: 10, unit: 'm' }), optional: true, default: 200, description: 'how high the hills go (amplitude)' },
+      offset: { type: number({ step: 1, unit: 'm' }), optional: true, default: 0, description: 'raises the whole terrain' },
+      lacunarity: { type: number({ min: 1, max: 4, step: 0.05 }), optional: true, default: 2, description: 'frequency multiplier from one layer to the next' },
+      gain: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.5, description: 'amplitude multiplier from one layer to the next' },
+      ridged: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'how much of sharp ridges to mix in' },
+      warp: { type: number({ min: 0, step: 10, unit: 'm' }), optional: true, default: 0, description: 'domain warp: bends the noise so hills look less regular' },
+      erosion: { type: number({ min: 0, max: 4, step: 0.05 }), optional: true, default: 0, description: 'damps detail on steep slopes (smooth slopes, detailed valleys), like erosion' },
+    })),
+  },
+  material: { ...nullable(asset('material')), optional: true, description: 'material of the ground; unset uses the default material' },
+  uvScale: { type: number({ min: 0.01, step: 0.5, unit: 'm' }), optional: true, default: 4, description: 'automatic UVs: one texture repeat per this many meters' },
+  features: { type: { kind: 'json' }, optional: true, description: "vector features: { type: 'flatten', points: [[x, z], …], height, falloff, strength } flattens a polygon (roads, plazas, foundations)" },
+  strokes: { type: { kind: 'json' }, optional: true, description: "sculpt strokes in order: { op: 'raise' | 'lower' | 'flatten' | 'smooth', x, z, radius, strength, height }" },
+});
+
 /**
  * 多边形网格（PolyMeshFile）：顶点和面在视口里点线面地改（多边形编辑模式）或者用 MCP 的 edit_poly，这里按 JSON 显示；
  * 改了马上存，编辑器后端烘成同名的模型。
@@ -343,5 +366,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

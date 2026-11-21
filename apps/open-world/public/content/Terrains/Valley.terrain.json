@@ -1,0 +1,50 @@
+{
+ "name": "Valley",
+ "noise": {
+  "seed": 7,
+  "octaves": 10,
+  "scale": 2400,
+  "height": 420,
+  "offset": 200,
+  "erosion": 0.45,
+  "ridged": 0.3,
+  "warp": 350
+ },
+ "material": "Materials/Grass",
+ "uvScale": 4,
+ "features": [
+  {
+   "type": "flatten",
+   "name": "Plaza",
+   "points": [
+    [
+     -120,
+     -80
+    ],
+    [
+     120,
+     -80
+    ],
+    [
+     120,
+     80
+    ],
+    [
+     -120,
+     80
+    ]
+   ],
+   "height": 40,
+   "falloff": 120
+  }
+ ],
+ "strokes": [
+  {
+   "op": "raise",
+   "x": 900,
+   "z": -700,
+   "radius": 400,
+   "strength": 260
+  }
+ ]
+}

@@ -19,5 +19,6 @@ export * from './binaryFormat.ts';
 export * from './assetFormat.ts';
 export * from './sceneFormat.ts';
 export * from './worldFormat.ts';
+export * from './terrainFormat.ts';
 export * from './modelFile.ts';
 export { generateProceduralMesh, PROCEDURAL_SHAPES, proceduralTangents, type ProceduralMesh, type ProceduralModel, type ProceduralShape } from '../rendering/mesh/procedural.ts';

@@ -1,0 +1,148 @@
+{
+ "name": "Valley",
+ "compositor": {
+  "clearColor": [
+   0.1,
+   0.1,
+   0.12,
+   1
+  ],
+  "postEffects": {
+   "brightFilter": true,
+   "bloom": true,
+   "lightStreak": false,
+   "lensFlare": false,
+   "toneMap": true,
+   "antialiasing": true
+  },
+  "transparent": true
+ },
+ "entities": [
+  {
+   "id": "b45dc344-ec90-4efc-9263-37ca311b464a",
+   "name": "Camera",
+   "parent": null,
+   "position": [
+    0,
+    180,
+    600
+   ],
+   "rotation": [
+    -0.12,
+    0,
+    0,
+    0.9928
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.1,
+     "farClipPlane": 20000
+    }
+   }
+  },
+  {
+   "id": "45526f15-89c5-4a9e-9874-9dfde7bf91f1",
+   "name": "Sun",
+   "parent": null,
+   "position": [
+    0,
+    10,
+    0
+   ],
+   "rotation": [
+    -0.408218,
+    -0.23457,
+    -0.109382,
+    0.875426
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "directional",
+     "color": [
+      1,
+      0.98,
+      0.94
+     ],
+     "intensity": 8,
+     "shadow": {
+      "size": "large",
+      "filter": "pcf5x5",
+      "cascadeCount": "four",
+      "depthBias": 0.0015,
+      "normalOffsetScale": 10,
+      "stabilization": "projectionSnapping",
+      "pssmFactor": 0.5,
+      "depthRange": "automatic",
+      "minDistance": 0,
+      "maxDistance": 1500,
+      "blendCascades": true
+     }
+    }
+   }
+  },
+  {
+   "id": "f7f227e4-0c45-4e10-aeb5-2bfc67255d41",
+   "name": "Sky",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "skyAtmosphere": {
+     "sun": "45526f15-89c5-4a9e-9874-9dfde7bf91f1"
+    }
+   }
+  },
+  {
+   "id": "0c6f1d2e-5a8b-4e43-9b61-6f1f6c0a7a11",
+   "name": "Terrain",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "terrain": {
+     "terrain": "Terrains/Valley",
+     "size": 16384
+    }
+   }
+  }
+ ]
+}

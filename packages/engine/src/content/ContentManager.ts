@@ -43,6 +43,8 @@ import { uiAssetPaths } from './references';
 import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, isVideoEncoding, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './format';
 import { Timeline } from '../timeline/Timeline';
 import { checkWorldFile, type WorldFile } from './worldFormat';
+import { checkTerrainFile } from './terrainFormat';
+import { TerrainAsset } from '../terrain/Terrain';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -484,6 +486,14 @@ export class ContentManager {
   /** 高斯泼溅（.splat）。 */
   loadSplats(path: string): Promise<SplatCloud> {
     return this.#once(path + EXTENSIONS.splats, async (url) => new SplatCloud(path, await this.#read(url)));
+  }
+
+  /** 矢量地形（.terrain.json）和它的材质；高度由原生的求值器按需算（terrain/TerrainSystem.ts）。 */
+  loadTerrain(path: string): Promise<TerrainAsset> {
+    return this.#once(path + EXTENSIONS.terrain, async (url) => {
+      const file = checkTerrainFile(this.#json<unknown>(await this.#read(url)), url.href);
+      return new TerrainAsset(path, file, file.material ? await this.loadMaterial(file.material) : undefined);
+    });
   }
 
   /** 配光曲线（IES 文件）。 */

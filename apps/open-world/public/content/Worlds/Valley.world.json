@@ -1,0 +1,12 @@
+{
+ "name": "Valley",
+ "cellSize": 256,
+ "persistent": "Valley",
+ "layers": [
+  {
+   "name": "default",
+   "loadRadius": 512
+  }
+ ],
+ "cells": {}
+}

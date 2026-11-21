@@ -14,4 +14,9 @@ export class ResourceTable<T> {
   get(id: number): T | undefined {
     return this.#items[id];
   }
+
+  /** 去掉一个资源；id 不再复用（列里还存着旧 id 的组件取到 undefined，不会错指到别的资源）。 */
+  remove(id: number): void {
+    this.#items[id] = undefined;
+  }
 }

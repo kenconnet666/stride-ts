@@ -32,6 +32,7 @@ export interface Bounds {
 }
 
 const meshes = new ResourceTable<Mesh>();
+const disposeListeners = new Set<(mesh: Mesh) => void>();
 
 export class Mesh {
   /** 从 1 开始；Model 组件的 mesh 列存它。 */
@@ -123,6 +124,22 @@ export class Mesh {
   /** @internal Model 组件里存的 id 对应的网格。 */
   static byId(id: number): Mesh | undefined {
     return meshes.get(id);
+  }
+
+  /**
+   * 不再用了（流式加载的地形块这类运行时建、会扔掉的网格）：id 作废，渲染特性释放它的显存。用它的实体要先去掉。
+   * 资源管线加载的网格跟着资源走，不用调。
+   */
+  dispose(): void {
+    if (meshes.get(this.id) !== this) return;
+    meshes.remove(this.id);
+    for (const listener of disposeListeners) listener(this);
+  }
+
+  /** @internal 网格 dispose 时调（渲染特性释放显存）；返回取消登记的函数。 */
+  static onDispose(listener: (mesh: Mesh) => void): () => void {
+    disposeListeners.add(listener);
+    return () => disposeListeners.delete(listener);
   }
 
   /** 立方体（Stride 的 CubeProceduralModel），中心在原点，每个面 4 个顶点，法线朝外，每个面 UV 铺满 0..1。 */

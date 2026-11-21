@@ -32,6 +32,7 @@ import type { Mesh } from '../rendering/mesh/Mesh';
 import type { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import type { LightProfile } from '../rendering/lighting/LightProfile';
 import type { SplatCloud } from '../rendering/splats/SplatRenderer';
+import { Terrain, type TerrainAsset } from '../terrain/Terrain';
 import type { SpriteSheet } from '../rendering/SpriteSheet';
 import type { SpriteFont } from '../rendering/text/SpriteFont';
 import type { Texture } from '../graphics/Texture';
@@ -57,6 +58,8 @@ export interface SceneAssets {
   readonly lightProfiles: ReadonlyMap<string, LightProfile>;
   /** 高斯泼溅。 */
   readonly splats: ReadonlyMap<string, SplatCloud>;
+  /** 矢量地形。 */
+  readonly terrains: ReadonlyMap<string, TerrainAsset>;
   /** 背景和精灵的贴图（包括渲染目标贴图），按内容路径。 */
   readonly images: ReadonlyMap<string, Texture>;
   readonly spriteSheets: ReadonlyMap<string, SpriteSheet>;
@@ -108,7 +111,7 @@ export class SceneBuilder {
     const unsupported = refs.find((ref) => !PRELOADED_KINDS.has(ref.kind));
     if (unsupported) throw new Error(`${where}: script properties referring to ${unsupported.kind} assets are not supported yet (${unsupported.path})`);
     const paths = (kind: EntityAssetReference['kind']) => refs.filter((ref) => ref.kind === kind).map((ref) => ref.path);
-    const [models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines] = await Promise.all([
+    const [models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, terrains, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines] = await Promise.all([
       preload(paths('model'), (p) => content.loadModel(p)),
       preload(paths('material'), (p) => content.loadMaterial(p)),
       preload(paths('animation'), (p) => content.loadAnimation(p)),
@@ -116,6 +119,7 @@ export class SceneBuilder {
       preload(paths('cubemap'), (p) => content.loadCubemap(p)),
       preload(paths('lightProfile'), (p) => content.loadLightProfile(p)),
       preload(paths('splats'), (p) => content.loadSplats(p)),
+      preload(paths('terrain'), (p) => content.loadTerrain(p)),
       preload(paths('prefab'), (p) => content.loadPrefab(p)),
       preload(paths('spriteSheet'), (p) => content.loadSpriteSheet(p)),
       preload(paths('font'), (p) => content.loadFont(p)),
@@ -131,7 +135,7 @@ export class SceneBuilder {
       if (ref.kind === 'renderTexture') images.set(ref.path, content.renderTexture(ref.texture));
       else if (ref.kind === 'image') images.set(ref.path, await content.loadTextureRef(ref.texture, true));
     }));
-    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines };
+    const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, terrains, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines };
     // 管线也算要等的资源：建实体之前在后台编好，第一帧和以后生成这些模型时都不用当场编译着色器
     await content.pipelineWarmer?.(modelUses(files, assets, content.defaultMaterial), postEffects, files);
     return assets;
@@ -403,6 +407,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   },
   planarReflection: { add: (entity, { size, ...rest }) => entity.add(PlanarReflection.with({ size: [...size], ...rest })), remove: drop(PlanarReflection) },
   gaussianSplat: { add: (entity, splat, { assets }) => entity.add(GaussianSplat.with({ splats: assets.splats.get(splat.splats)!.id })), remove: drop(GaussianSplat) },
+  terrain: { add: (entity, { terrain, ...rest }, { assets }) => entity.add(Terrain.with({ terrain: assets.terrains.get(terrain)!.id, ...rest })), remove: drop(Terrain) },
   // 风场和雨雪（Stride 没有）：没写的字段用组件的默认值
   windZone: { add: (entity, zone) => entity.add(WindZone.with({ ...zone })), remove: drop(WindZone) },
   precipitation: { add: (entity, precipitation) => entity.add(Precipitation.with({ ...precipitation })), remove: drop(Precipitation) },
@@ -554,7 +559,7 @@ function colliderShape(shape: ColliderShapeFile, assets: SceneAssets): ColliderS
 
 /** 实体文件能引用的资源种类（加载场景时预先加载；scene 只给路径）。脚本属性里写了别的种类时报错。 */
 const PRELOADED_KINDS: ReadonlySet<string> = new Set<EntityAssetReference['kind']>([
-  'model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary', 'sound', 'timeline', 'skybox', 'cubemap', 'lightProfile', 'splats', 'image', 'renderTexture',
+  'model', 'material', 'animation', 'scene', 'prefab', 'font', 'texture', 'spriteSheet', 'uiPage', 'uiLibrary', 'sound', 'timeline', 'skybox', 'cubemap', 'lightProfile', 'splats', 'terrain', 'image', 'renderTexture',
 ]);
 
 /** 点光、聚光的配光曲线列（没有时不写，用默认的 0）。 */

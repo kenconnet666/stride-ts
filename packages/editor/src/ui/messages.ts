@@ -156,6 +156,7 @@ export interface EditorMessages {
   readonly paintHint: string;
   readonly paintSelectEntity: string;
   readonly paintNoMask: string;
+  readonly clipboardNotEntities: string;
   readonly graphAddNode: string;
   readonly graphHint: string;
   readonly graphClose: string;
@@ -324,6 +325,7 @@ const zhCN: EditorMessages = {
   paintHint: '在视口里按住左键在选中的实体上画（Alt、右键照常转相机）；每一笔画完存进遮罩',
   paintSelectEntity: '先在场景里选中要画的实体（它要用这个材质）',
   paintNoMask: '这一层的遮罩不是一张图，画不了（加一个绘制层）',
+  clipboardNotEntities: '剪贴板里不是复制的实体',
   graphAddNode: '加节点……',
   graphHint: '拖节点移动，拖空白处平移，滚轮缩放；从输出口拖到输入口连线；选中节点或连线按 Delete 删除',
   graphClose: '关掉节点图',
@@ -487,6 +489,7 @@ const enUS: EditorMessages = {
   paintHint: 'Hold the left button in the viewport to paint on the selected entity (Alt and the right button still move the camera); each stroke is saved into the mask',
   paintSelectEntity: 'Select the entity to paint in the scene first (it must use this material)',
   paintNoMask: 'The mask of this layer is not an image, so it cannot be painted (add a paint layer)',
+  clipboardNotEntities: 'The clipboard does not hold copied entities',
   graphAddNode: 'Add node…',
   graphHint: 'Drag a node to move, drag the background to pan, wheel to zoom; drag from an output to an input to link; Delete removes the selected nodes or links',
   graphClose: 'Close the node graph',

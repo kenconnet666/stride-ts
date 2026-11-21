@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { SceneEntityFile, SceneFile } from '../src/content/format';
 import { expandPrefabInstances } from '../src/content/prefabInstances';
-import { copyEntities, duplicateEntities, pasteEntities, positionAfter } from '../src/editor/copyEntities';
+import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEntities, positionAfter } from '../src/editor/copyEntities';
 import { SceneDocument, UndoStack } from '../src/editor/SceneDocument';
 
 type Components = SceneEntityFile['components'];
@@ -124,5 +124,15 @@ describe('复制、粘贴实体', () => {
     const twice = duplicateEntities(document.file, prefabs, ['p1'], () => 'q' + Math.random().toString(36).slice(2, 6));
     document.apply(twice.edit);
     expect(document.file.entities.filter((e) => e.parent === 'e1/body').map((e) => e.id)).toEqual(['p1', twice.roots[0]]);
+  });
+
+  test('系统剪贴板：写出去再读回来是同样的实体；别的文字、别的 JSON 不认；字段不对时报出哪里', () => {
+    const copied = copyEntities(scene(), prefabs, ['e1']);
+    expect(parseClipboard(clipboardText(copied))).toEqual(copied);
+    expect(parseClipboard('hello')).toBeUndefined();
+    expect(parseClipboard('{"entities": []}')).toBeUndefined();
+    expect(() => parseClipboard(JSON.stringify({ format: 'stride-ts/entities', entities: {} }))).toThrow(/not an array/);
+    expect(() => parseClipboard(JSON.stringify({ format: 'stride-ts/entities', entities: [{ name: 'x' }] }))).toThrow(/string id/);
+    expect(() => parseClipboard(JSON.stringify({ format: 'stride-ts/entities', entities: [{ ...entity('a'), scripts: [] }] }))).toThrow(/components\.scripts/);
   });
 });

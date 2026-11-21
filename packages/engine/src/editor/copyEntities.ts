@@ -6,13 +6,47 @@
  * - 粘贴时每个实体换新 id；拷的实体之间的引用（父实体、约束、link、脚本的 `$entity`，实例成员的 `<实例>/…`）跟着换成
  *   新的，指向拷贝以外的照旧指原来的实体。名字、本地的变换不变。
  *
- * 纯函数，只读文件、给出修改；剪贴板放在界面那边（editor 包的 session.ts）。
+ * - 系统剪贴板里是一段带格式名的 JSON（clipboardText、parseClipboard）：别的标签页里的编辑器、agent、文本编辑器都能读写。
+ *
+ * 纯函数，只读文件、给出修改；剪贴板的读写在界面那边（editor 包的 session.ts）。
  */
 import type { SceneEntityFile } from '../content/format';
 import { expandPrefabInstances, renameReferences } from '../content/prefabInstances';
+import { checkEntity } from './fields';
 import { SceneDocument, type EntitiesFile, type SceneEdit } from './SceneDocument';
 
 type Entities = readonly SceneEntityFile[];
+
+/** 系统剪贴板里的实体的格式名：认它来区分剪贴板里别的 JSON。 */
+const CLIPBOARD_FORMAT = 'stride-ts/entities';
+
+/** 复制的实体（copyEntities 的结果）写进系统剪贴板的文字。 */
+export function clipboardText(copied: Entities): string {
+  return JSON.stringify({ format: CLIPBOARD_FORMAT, entities: copied }, null, 1);
+}
+
+/**
+ * 读系统剪贴板的文字：不是复制的实体（别的文字、别的 JSON）时是 undefined；是，但实体的字段不对（手改坏了、别的版本）时抛错，
+ * 报出前几处。
+ */
+export function parseClipboard(text: string): SceneEntityFile[] | undefined {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(data) || data.format !== CLIPBOARD_FORMAT) return undefined;
+  if (!Array.isArray(data.entities)) throw new Error('clipboard: "entities" is not an array');
+  const issues = data.entities.flatMap((entity: unknown) =>
+    isRecord(entity) && typeof entity.id === 'string' && (entity.parent === null || typeof entity.parent === 'string')
+      ? checkEntity(entity as unknown as SceneEntityFile)
+      : [`${JSON.stringify(entity)?.slice(0, 60)}: an entity needs a string id and a parent (string or null)`]);
+  if (issues.length > 0) throw new Error(`clipboard: ${issues.slice(0, 3).join('; ')}${issues.length > 3 ? ` (+${issues.length - 3} more)` : ''}`);
+  return data.entities as SceneEntityFile[];
+}
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /** 粘贴到哪：parent（null 是最上层）的子实体里的第 position 个，按文档里的兄弟数（实例的成员不算），超出是最后。 */
 export interface PasteTarget {

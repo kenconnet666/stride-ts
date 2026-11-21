@@ -18,7 +18,7 @@ import { encodePng } from '@stride-ts/engine/png';
 import { expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
 import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
-import { copyEntities, duplicateEntities, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
+import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
 import { freeAssetPath } from '../newAssets';
@@ -106,8 +106,8 @@ export class EditorSession implements EditableScene {
   /** 最近打开的场景：单独打开预制体以后回到它。 */
   readonly scene = shallowRef<OpenedDocument>();
   /**
-   * 复制的实体（copyEntities 的结果）。放在会话里，所以换着打开场景、预制体以后还能粘贴；不进系统剪贴板（别的标签页里的
-   * 编辑器拿不到）。
+   * 最近复制的实体（copyEntities 的结果），换着打开场景、预制体以后还能粘贴。复制时也写进系统剪贴板（别的标签页、别的工程的
+   * 编辑器能粘贴）；读不了系统剪贴板时（工具条的粘贴按钮没给权限）粘贴它。
    */
   readonly clipboard = shallowRef<readonly SceneEntityFile[]>();
   /**
@@ -791,18 +791,48 @@ export class EditorSession implements EditableScene {
     if (agent) agent.snap = this.snap.value;
   }
 
-  /** 复制选中的实体（连同后代、组件）。 */
-  copySelection(): void {
-    if (this.selection.value.length === 0) return;
+  /**
+   * 复制选中的实体（连同后代、组件），返回写进系统剪贴板的文字（copy 事件里由调用方写）；没选中时是 undefined。
+   */
+  copySelection(): string | undefined {
+    if (this.selection.value.length === 0) return undefined;
     this.clipboard.value = copyEntities(this.file, this.#prefabs, this.selection.value);
     this.notice.value = '';
+    return clipboardText(this.clipboard.value);
+  }
+
+  /** 工具条的复制：没有 copy 事件，用异步剪贴板接口写（写失败时这个标签页里照样能粘贴）。 */
+  async copyToSystem(): Promise<void> {
+    const text = this.copySelection();
+    if (text !== undefined) await navigator.clipboard.writeText(text).catch(() => undefined);
+  }
+
+  /** 工具条的粘贴：读系统剪贴板要用户给权限，没给（或浏览器不让读）就粘贴这个标签页里复制的。 */
+  async pasteFromSystem(asChild = false): Promise<void> {
+    const text = await navigator.clipboard.readText().catch(() => undefined);
+    await this.paste(asChild, text);
   }
 
   /**
    * 粘贴复制的实体（新 id，一步撤销），选中粘贴出来的。默认粘贴成选中的最后一个实体的兄弟，紧跟在它后面；asChild 时粘贴成
-   * 它的最后的子实体；没选中时放在最上层的最后。
+   * 它的最后的子实体；没选中时放在最上层的最后。text 是系统剪贴板里的文字：是复制的实体就粘贴它（别的标签页复制的），
+   * 不是就提示；没给时粘贴这个标签页里最近复制的。
    */
-  async paste(asChild = false): Promise<void> {
+  async paste(asChild = false, text?: string): Promise<void> {
+    if (text !== undefined) {
+      let parsed: SceneEntityFile[] | undefined;
+      try {
+        parsed = parseClipboard(text);
+      } catch (error) {
+        this.notice.value = (error as Error).message;
+        return;
+      }
+      if (!parsed) {
+        this.notice.value = t.clipboardNotEntities;
+        return;
+      }
+      this.clipboard.value = parsed;
+    }
     const copied = this.clipboard.value;
     if (!copied) return;
     // 别的文档里复制来的实例可能用到这里还没加载的预制体

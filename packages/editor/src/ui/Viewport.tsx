@@ -41,7 +41,7 @@ const OPENING = Symbol('opening');
  * 视口：游戏页面本身，嵌在同源的 iframe 里。编辑时地址带 `?debug&stride-edit`（游戏开在编辑状态，见引擎的 EditAgent），
  * 起来以后把场景交给会话；试玩时不带 stride-edit 重新打开，是一个干净的游戏。
  */
-export const Viewport = _component(({ session, playing, onShortcut }: { session: EditorSession; playing: boolean; onShortcut: (event: KeyboardEvent) => void }) => {
+export const Viewport = _component(({ session, playing, onShortcut, onClipboard }: { session: EditorSession; playing: boolean; onShortcut: (event: KeyboardEvent) => void; onClipboard: (event: ClipboardEvent) => void }) => {
   // 正在打开时是骨架屏加 t.openingGame（换语言跟着换），出错时是报错，好了是空的
   let status = _state<string | typeof OPENING>(OPENING);
   let generation = 0;
@@ -50,8 +50,9 @@ export const Viewport = _component(({ session, playing, onShortcut }: { session:
     const frame = event.target as HTMLIFrameElement;
     const current = ++generation;
     session.detach();
-    // 焦点在游戏里时，编辑器的快捷键（保存、撤销）照样有用
+    // 焦点在游戏里时，编辑器的快捷键（保存、撤销）、复制粘贴实体照样有用
     frame.contentWindow?.addEventListener('keydown', onShortcut);
+    for (const type of ['copy', 'cut', 'paste'] as const) frame.contentWindow?.addEventListener(type, onClipboard);
     session.opening.value = !playing;
     if (playing) {
       status = '';

@@ -160,8 +160,8 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>
         <IconButton {...iconProps} icon={Plus} aria-label={t.addEntity} title={t.addEntity} disabled={!session.agent.value || off} onClick={() => void session.addEntity(selected === 1 ? session.selection.value[0]! : null)} />
         <IconButton {...iconProps} icon={Trash2} aria-label={t.deleteSelection} title={`${t.deleteSelection} (Delete)`} disabled={selected === 0 || off} onClick={() => session.deleteSelection()} />
-        <IconButton {...iconProps} icon={Copy} aria-label={t.copySelection} title={`${t.copySelection} (Ctrl+C)`} disabled={selected === 0 || off} onClick={() => session.copySelection()} />
-        <IconButton {...iconProps} icon={ClipboardPaste} aria-label={t.paste} title={`${t.paste} (Ctrl+V)`} disabled={!session.clipboard.value || off} onClick={() => void session.paste()} />
+        <IconButton {...iconProps} icon={Copy} aria-label={t.copySelection} title={`${t.copySelection} (Ctrl+C)`} disabled={selected === 0 || off} onClick={() => void session.copyToSystem()} />
+        <IconButton {...iconProps} icon={ClipboardPaste} aria-label={t.paste} title={`${t.paste} (Ctrl+V)`} disabled={!session.agent.value || off} onClick={() => void session.pasteFromSystem()} />
         <IconButton {...iconProps} icon={CopyPlus} aria-label={t.duplicate} title={`${t.duplicate} (Ctrl+D)`} disabled={selected === 0 || off} onClick={() => void session.duplicateSelection()} />
         <IconButton {...iconProps} icon={Package} aria-label={t.makePrefab} title={t.makePrefab} disabled={selected !== 1 || off} onClick={() => void session.makePrefabFromSelection()} />
         <Separator orientation="vertical" />

@@ -461,6 +461,12 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 属性面板换成库的 PropertyGrid（0.35.0）：主 Chrome 里看 greybox，场景设置、Ball 的名字、位置、旋转（欧拉角）、缩放、模型（资源路径）、材质列表的“添加”都对；Ball 和 Sky 一起选，名字、位置显示“多个值”和“—”，改缩放 X 为 2 两个都变（视口里球拉宽）、撤销回来；材质的字段、节点图卡片里的参数（卡片高度正好装下）、粒子编辑器的发射器和模块的字段都照常。
 - 骨架屏：重新加载编辑器，场景树、文档页签、属性面板、视口（不透明的底加扫光，盖住游戏页面的启动日志）在游戏页面起来前是骨架，起来后换成内容；资源列表读得快，Tree 的防闪烁不画骨架。
 
+### 复制的实体进系统剪贴板（2026-11-21）
+
+- 主 Chrome 里开两个编辑器：greybox（5228）和 collect-dodge（5224）。greybox 的视口里点蘑菇，Ctrl+C：iframe 里的 copy 事件写进剪贴板的是 `{"format": "stride-ts/entities", ...}`；切到 collect-dodge 的标签页，Ctrl+V：paste 事件读到同一段文字，场景树里多了 Mushroom，文档标成改过。
+- 第一次粘贴时蘑菇的模型（greybox 的 Level/Mushroom）这边没有：同步失败、没选中粘贴出来的实体，控制台报未处理的异常——于是改了 LiveScene 的同步（见 decisions.md）。改完重新粘贴：控制台只有一条"left out model"的警告，游戏页面里的 Mushroom 实体在（24 个实体）；撤销、Ctrl+Y 重做，实体跟着删了又建，没有异常。
+- 单元测试：剪贴板的文字写出去读回来不变，别的文字、别的 JSON 不认，字段不对时报出哪里；LiveScene 的测试改成"资源加载不了时那个组件先不建，同一次的别的修改照样跟上，路径改对以后加上"。
+
 ### 按值推字段的 record 种类（2026-11-21）
 
 - 主 Chrome 里开 bepu-sample 的编辑器，资源浏览器里双击 Scenes/Constraint 打开（双击能开场景，之前怀疑的问题没复现）；选 Stiff Pendulum：约束 0 的设置画成 localOffsetA、localOffsetB 两个向量和 springFrequency、springDampingRatio 两个数，约束 1（ballSocketMotor）是它自己的四项；springFrequency 点加号 3 → 3.1，撤销按钮亮了，撤销回 3。

@@ -26,6 +26,7 @@ import { EditorCameraController } from './EditorCamera';
 import { EditorViewport } from './EditorViewport';
 import { scriptFields, type Field } from './fields';
 import { LiveScene, type SceneSource } from './LiveScene';
+import type { SceneInstance } from '../content/ContentManager';
 import { TimelinePreview, type TimelinePreviewState } from './TimelinePreview';
 import type { SceneEdit } from './SceneDocument';
 import { EMPTY_POLY_SELECTION, type PolyEditSession, type PolySelectMode } from './PolyEditTool';
@@ -108,6 +109,8 @@ export class EditAgent {
   #selection: readonly string[] = [];
   /** 反射探针上次重拍时的文档（sync 里比，文档变了就重拍）。 */
   #probesFile: SceneFile | undefined;
+  /** 一起看的参考场景（子场景）：内容路径 → 加载出来的场景。 */
+  readonly #references = new Map<string, Promise<SceneInstance>>();
 
   constructor(game: Game) {
     this.game = game;
@@ -241,6 +244,8 @@ export class EditAgent {
 
   /** 按文档建场景、换成根场景，之后实体跟着这份文档（sync）。给的是只读的 SceneSource 时只能看和选，不能拖。 */
   async open(source: SceneSource | EditableScene): Promise<void> {
+    // 换了场景：参考场景挂在旧的根下面，跟着旧场景一起卸载了
+    this.#references.clear();
     this.#live = await LiveScene.open(this.game, source);
     this.#target = 'apply' in source ? source : undefined;
     this.selection = this.#selection;
@@ -256,6 +261,38 @@ export class EditAgent {
       await this.game.reloadGameSettings();
     }
     this.selection = this.#selection;
+  }
+
+  /**
+   * 把这个场景（内容路径）当参考场景一起看：挂在正在编辑的场景下面（偏移照它的文件，接在编辑的场景后面），不挂脚本，不用它的
+   * 合成器、仿真设置；只看不改（点选点不到它的实体，见 pick）。已经在看时什么也不做。
+   */
+  async showReference(path: string): Promise<void> {
+    const root = this.#require().instance;
+    if (this.#references.has(path)) return;
+    const loading = this.game.loadScene(path, { parent: root, attachScripts: false, applySettings: false });
+    this.#references.set(path, loading);
+    try {
+      await loading;
+    } catch (error) {
+      this.#references.delete(path);
+      throw error;
+    }
+    this.refresh();
+  }
+
+  /** 不再看这个参考场景（卸载它的实体）。 */
+  async hideReference(path: string): Promise<void> {
+    const loading = this.#references.get(path);
+    if (!loading) return;
+    this.#references.delete(path);
+    this.game.unloadScene(await loading);
+    this.refresh();
+  }
+
+  /** 正在一起看的参考场景（内容路径）。 */
+  get references(): string[] {
+    return [...this.#references.keys()];
   }
 
   /** 文档改了：让实体跟上（见 LiveScene.sync）。 */

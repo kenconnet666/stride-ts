@@ -533,6 +533,7 @@ export const SCENE_FIELDS: { readonly [K in SceneSettingKey]: ComponentDescripti
     },
   },
   offset: { label: 'Offset', type: vector(3, 'm'), initial: [0, 0, 0] },
+  children: { label: 'Child scenes', type: list(asset('scene')), initial: [] },
   compositor: {
     label: 'Compositor',
     type: object(fields<SceneCompositor>({

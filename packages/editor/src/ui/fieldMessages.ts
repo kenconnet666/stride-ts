@@ -19,7 +19,7 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Sky atmosphere': '物理天空',
+    'Child scenes': '子场景', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',

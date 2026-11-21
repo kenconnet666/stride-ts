@@ -511,6 +511,10 @@ export class Game {
     const sceneOptions = this.editing ? { attachScripts: false, ...options } : options;
     const scene = file ? await this.content.instantiateScene(file, this.entities, sceneOptions) : await this.content.loadScene(path, this.entities, sceneOptions);
     if (parent) this.#childScenes.set(parent, [...(this.#childScenes.get(parent) ?? []), scene]);
+    if (options.applySettings === false) {
+      this.scenesChanged.run({ scene, loaded: true });
+      return scene;
+    }
     if (scene.compositor) this.configureCompositor(scene.compositor, path);
     if (scene.physics) {
       if (!this.simulation) throw new Error(`scene '${path}' has physics; run the game with nativeFeatures: [physics] (import { physics } from '@stride-ts/native/physics')`);

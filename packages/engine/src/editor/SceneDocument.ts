@@ -36,7 +36,7 @@ export type SceneEdit =
   /** 删实体；留下的实体里不能还有它们的子实体（删一棵子树用 removeSubtree 给出全部）。 */
   | { readonly type: 'remove'; readonly entities: readonly string[] }
   /**
-   * 改场景自己的设置（SCENE_SETTING_KEYS：物理、导航、偏移、合成器）里 path 上的值；value 是 undefined 时删掉。规则同 set。
+   * 改场景自己的设置（SCENE_SETTING_KEYS：物理、导航、偏移、合成器、子场景）里 path 上的值；value 是 undefined 时删掉。规则同 set。
    * 预制体文件没有这些设置。
    */
   | { readonly type: 'scene'; readonly path: ScenePath; readonly value: unknown }
@@ -44,7 +44,7 @@ export type SceneEdit =
   | { readonly type: 'batch'; readonly edits: readonly SceneEdit[] };
 
 /** 场景文件里场景自己的设置（不是实体）：'scene' 修改只能改这几个键下面的值。 */
-export const SCENE_SETTING_KEYS = ['physics', 'navigation', 'offset', 'compositor'] as const;
+export const SCENE_SETTING_KEYS = ['physics', 'navigation', 'offset', 'compositor', 'children'] as const;
 export type SceneSettingKey = (typeof SCENE_SETTING_KEYS)[number];
 
 export class SceneDocument<F extends EntitiesFile = SceneFile> {

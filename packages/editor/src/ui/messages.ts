@@ -74,6 +74,9 @@ export interface EditorMessages {
   readonly addSettingMenu: string;
   readonly sceneNotOpen: string;
   readonly noScene: string;
+  readonly childSceneHint: (path: string) => string;
+  readonly showChildScene: (name: string) => string;
+  readonly hideChildScene: (name: string) => string;
   readonly noSceneNoSettings: string;
   readonly pickEntity: string;
   readonly multiSelection: (count: number) => string;
@@ -233,6 +236,9 @@ const zhCN: EditorMessages = {
   addSetting: '添加设置',
   addSettingMenu: '添加设置……',
   sceneNotOpen: '场景还没打开',
+  childSceneHint: (path) => `子场景 ${path}：点眼睛在视口里一起看（只看不改），双击单独打开它编辑`,
+  showChildScene: (name) => `在视口里一起看 ${name}`,
+  hideChildScene: (name) => `不再一起看 ${name}`,
   noScene: '这个游戏没有场景：画面是游戏自己的根渲染器画的，属性面板里改游戏设置（根渲染器的属性改了马上看到）',
   noSceneNoSettings: '这个游戏没有场景，也没有用 loadGameSettings 读游戏设置：编辑器没有能改的东西',
   pickEntity: '在场景树或视口里选一个实体（Ctrl、Shift 多选）',
@@ -401,6 +407,9 @@ const enUS: EditorMessages = {
   addSetting: 'Add a setting',
   addSettingMenu: 'Add a setting…',
   sceneNotOpen: 'No scene is open yet',
+  childSceneHint: (path) => `Child scene ${path}: click the eye to see it in the viewport (view only), double-click to open it for editing`,
+  showChildScene: (name) => `Show ${name} in the viewport`,
+  hideChildScene: (name) => `Hide ${name}`,
   noScene: 'This game has no scene: its own root renderer draws the picture. Edit the game settings in the inspector (changes to the renderer show at once)',
   noSceneNoSettings: 'This game has no scene and does not read game settings with loadGameSettings: there is nothing for the editor to edit',
   pickEntity: 'Select an entity in the scene tree or the viewport (Ctrl, Shift for several)',

@@ -576,6 +576,11 @@ export interface SceneFile {
   readonly offset?: readonly [number, number, number];
   /** 主画面的合成器设置；没有时用前向渲染器的默认值。 */
   readonly compositor?: SceneCompositor;
+  /**
+   * 子场景（Stride 的 SceneAsset.ChildrenIds）的内容路径：编辑器里一起看（参考场景，摆在各自的 offset 上），游戏运行时不自动
+   * 加载（同 Stride：由脚本按需加载，TopDownRPG 的分块）。
+   */
+  readonly children?: readonly string[];
   /** 父实体都排在子实体前面。 */
   readonly entities: readonly SceneEntityFile[];
 }

@@ -89,6 +89,11 @@ export interface LoadSceneOptions {
   readonly parent?: EntityScene | undefined;
   /** 挂不挂场景文件里的脚本，没给是挂。编辑器的编辑状态不挂（脚本不跑），见 editor/LiveScene。 */
   readonly attachScripts?: boolean;
+  /**
+   * Game.loadScene 用不用场景自己的设置（合成器、仿真、导航），没给是用。编辑器里一起看的参考场景（子场景）只要实体，不改正在
+   * 编辑的场景的画面和仿真。
+   */
+  readonly applySettings?: boolean;
 }
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */

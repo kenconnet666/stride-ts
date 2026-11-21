@@ -203,12 +203,15 @@ export class StrideImporter {
     const usesPhysics = files.some((file) => file.components.static || file.components.character || file.components.body);
     const navigation = this.#navigationSettings(asset);
     const offset = vec3(asset.data['Offset'], 0);
+    // 子场景：编辑器里一起看的参考场景（游戏运行时不自动加载，同 Stride）
+    const children = (Array.isArray(asset.data['ChildrenIds']) ? asset.data['ChildrenIds'] : []).filter((id): id is string => typeof id === 'string').map((id) => this.#project.get(id, asset.file).path);
     const scene: SceneFile = {
       name: path.basename(asset.path),
       ...(usesPhysics ? { physics: this.#physicsSettings(asset) } : {}),
       ...(usesPhysics && navigation ? { navigation } : {}),
       ...(offset.some((value) => value !== 0) ? { offset } : {}),
       ...(compositor.main ? { compositor: compositor.main } : {}),
+      ...(children.length > 0 ? { children } : {}),
       entities: files,
     };
     await this.#write(asset.path + EXTENSIONS.scene, JSON.stringify(scene, null, 1));

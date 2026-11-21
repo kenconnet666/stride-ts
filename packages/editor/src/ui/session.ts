@@ -115,6 +115,8 @@ export class EditorSession implements EditableScene {
    * 页面里的默认值（不在界面这边引入引擎的值）。
    */
   readonly snap = shallowRef<SnapSettings>();
+  /** 视口里一起看的参考场景：正在编辑的场景的子场景（SceneFile.children）里打开着的，只看不改。换文档时清空。 */
+  readonly references = shallowRef<readonly string[]>([]);
   /** 视口一直出帧（粒子、天气、时间累积的效果一直动）；关着时静止就不出帧（Game.renderOnDemand），输入、修改时才画。 */
   readonly realtime = shallowRef(false);
   /** 最近一次操作做不了的原因（工具条上显示），下一次操作成功时清掉。 */
@@ -163,6 +165,13 @@ export class EditorSession implements EditableScene {
       const reloaded = assetsToReload(this.assets.value, changed.filter((asset) => asset.kind !== 'scene' && asset.kind !== 'prefab' && !(asset.kind === 'image' && asset.path === painting)));
       if (reloaded.length > 0) void this.agent.value?.reloadAssets(reloaded).catch((error: unknown) => console.error('reloading assets failed', error));
       void this.#reloadChangedElsewhere(changed);
+      // 一起看着的参考场景的文件改了（单独打开它改完存了、agent 改了）：重新加载
+      const agent = this.agent.value;
+      for (const asset of changed) {
+        if (asset.kind !== 'scene' || !agent?.references.includes(asset.path)) continue;
+        agent.game.content.evict([asset.path]);
+        void agent.hideReference(asset.path).then(() => agent.showReference(asset.path)).catch((error: unknown) => (this.notice.value = (error as Error).message));
+      }
     });
   }
 
@@ -526,6 +535,7 @@ export class EditorSession implements EditableScene {
     this.dirty.value = false;
     this.selection.value = [];
     await agent.open(this.#view);
+    this.references.value = [];
     if (this.snap.value) agent.snap = this.snap.value;
     else this.snap.value = agent.snap;
     agent.game.renderOnDemand = !this.realtime.value;
@@ -622,6 +632,20 @@ export class EditorSession implements EditableScene {
   redo(): void {
     if (this.polyEditing.value) return this.#polyStep(this.#polyRedo, this.#polyUndo);
     if (this.#require().redo()) this.#changed();
+  }
+
+  /** 子场景 path 在视口里一起看还是不看（参考场景，见 references）。 */
+  async toggleReference(path: string): Promise<void> {
+    const agent = this.agent.value;
+    if (!agent) return;
+    try {
+      if (agent.references.includes(path)) await agent.hideReference(path);
+      else await agent.showReference(path);
+      this.notice.value = '';
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+    }
+    this.references.value = agent.references;
   }
 
   /** 视口一直出帧还是静止时不出帧（见 realtime）。 */

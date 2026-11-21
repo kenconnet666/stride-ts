@@ -107,6 +107,8 @@ export interface EditorMessages {
   readonly particleOpen: string;
   // 多边形编辑
   readonly polyEdit: string;
+  readonly realtimeOn: string;
+  readonly realtimeOff: string;
   readonly polyDone: string;
   readonly polyHint: string;
   readonly polyModes: Readonly<Record<'vertex' | 'edge' | 'face', string>>;
@@ -260,6 +262,8 @@ const zhCN: EditorMessages = {
   paintLayers: '图层',
   particleOpen: '粒子编辑器',
   polyEdit: '编辑多边形',
+  realtimeOn: '视口一直在画（粒子、天气一直动）：点一下改成静止时不画，省显卡',
+  realtimeOff: '视口静止时不画（有输入、修改时才画，省显卡）：点一下改成一直画，粒子、天气一直动',
   polyDone: '完成',
   polyHint: '视口里点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），拖操纵器移动（W、E、R 换移动、旋转、缩放）；Delete 删面，Ctrl+Z 撤销',
   polyModes: { vertex: '点', edge: '边', face: '面' },
@@ -424,6 +428,8 @@ const enUS: EditorMessages = {
   paintLayers: 'Layers',
   particleOpen: 'Particle editor',
   polyEdit: 'Edit polygons',
+  realtimeOn: 'The viewport redraws all the time (particles and weather keep moving); click to draw only when something changes and save the GPU',
+  realtimeOff: 'The viewport draws only when something changes (input, edits), saving the GPU; click to redraw all the time so particles and weather keep moving',
   polyDone: 'Done',
   polyHint: 'Click vertices, edges or faces in the viewport (1, 2, 3 switch the mode; Shift or Ctrl adds), drag the gizmo to move (W, E, R: move, rotate, scale); Delete removes faces, Ctrl+Z undoes',
   polyModes: { vertex: 'Vertex', edge: 'Edge', face: 'Face' },

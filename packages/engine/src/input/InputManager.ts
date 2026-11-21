@@ -123,6 +123,8 @@ export class InputManager {
   readonly #abort = new AbortController();
   /** 模拟的指针锁（simulatePointerLock 以后）：锁没锁只记在这里；null 是用浏览器的指针锁。 */
   #virtualLock: boolean | null = null;
+  /** 有输入事件时调（Game 用它叫醒按需出帧，见 Game.renderOnDemand）。 */
+  onActivity: (() => void) | undefined;
 
   constructor(canvas: HTMLCanvasElement) {
     this.#canvas = canvas;
@@ -158,6 +160,10 @@ export class InputManager {
       this.#pendingWheel -= notches;
       event.preventDefault();
     }, { ...options, passive: false });
+    // 有输入（按键、指针、滚轮）：按需出帧的游戏（编辑器的视口）醒过来
+    for (const type of ['keydown', 'keyup', 'pointerdown', 'pointermove', 'pointerup', 'wheel'] as const) {
+      (type === 'keydown' || type === 'keyup' || type === 'pointerup' ? window : canvas).addEventListener(type, () => this.onActivity?.(), { ...options, passive: true });
+    }
     // 失去焦点时按着的键收不到 keyup：全部当作松开
     window.addEventListener('blur', () => {
       this.#keyboard.releaseAll();

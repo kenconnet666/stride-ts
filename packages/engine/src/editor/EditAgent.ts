@@ -133,6 +133,8 @@ export class EditAgent {
     else state.setFromPose({ x: 0, y: 5, z: 10 }, { x: 0, y: -0.4, z: -1 });
     this.camera.require(EditorCameraController).apply();
     compositor.cameraSlot = EDITOR_CAMERA_SLOT;
+    // 视口静止时不出帧（输入、修改、调试命令叫醒，见 Game.renderOnDemand）；要粒子、天气一直动时编辑器把它关掉
+    game.renderOnDemand = true;
     game.debug.command('paint', PAINT_HELP, (args) => this.#paintCommand(args));
   }
 
@@ -184,21 +186,30 @@ export class EditAgent {
     this.endPolyEdit();
     const [loaded, texture] = await Promise.all([this.game.content.loadMaterial(material), this.game.content.loadTextureRef({ texture: mask, encoding: 'png', srgb: false }, false)]);
     this.paint = { entity, material: loaded, mask, painter: new MeshPainter(this.game.renderSystem.resources, texture), brush };
+    this.refresh();
   }
 
   /** 开始编辑这个实体上的多边形网格（path 是它的 .poly.json，mesh 是文件的内容）；画贴图的模式关掉。 */
   beginPolyEdit(entity: string, path: string, mesh: PolyEditSession['mesh'], mode: PolySelectMode = 'face'): void {
     this.endPaint();
     this.polyEdit = { entity, path, mesh, mode, selection: EMPTY_POLY_SELECTION };
+    this.refresh();
   }
 
   endPolyEdit(): void {
     this.polyEdit = undefined;
+    this.refresh();
   }
 
   endPaint(): void {
     this.paint?.painter.destroy();
     this.paint = undefined;
+    this.refresh();
+  }
+
+  /** 编辑器直接改了代理的状态（多边形编辑的网格、选择）：视口按需出帧时叫醒它画出来。 */
+  refresh(): void {
+    this.game.requestFrames();
   }
 
   /** @internal 正在画的实体上用那个材质的网格和它们现在的世界矩阵（模型多出来的网格在子实体 ModelPart 上）。 */
@@ -278,6 +289,8 @@ export class EditAgent {
   set selection(ids: readonly string[]) {
     const live = this.#live;
     this.#selection = live ? ids.filter((id) => live.entity(id)?.alive) : [];
+    // 打开、同步、热重载做完时都设一次选中：画面跟着出帧（按需出帧，见 Game.renderOnDemand）
+    this.refresh();
   }
 
   /** 这些实体（默认是选中的）的包围球：它们的选中框（见 selectionBoxes）合起来；没有选中框的按位置算一个点。都不在时是 undefined。 */
@@ -316,12 +329,14 @@ export class EditAgent {
    */
   previewTimeline(file: TimelineFile, time: number, options: { readonly throughCamera?: boolean } = {}): TimelinePreviewState {
     this.#timelinePreview ??= new TimelinePreview(this.game, (id) => this.#live?.entity(id));
+    this.refresh();
     return this.#timelinePreview.show(file, time, options);
   }
 
   /** 结束预览：场景回到文档的样子，主画面回到编辑相机。 */
   endTimelinePreview(): void {
     this.#timelinePreview?.end();
+    this.refresh();
   }
 
   /**
@@ -364,6 +379,7 @@ export class EditAgent {
     if (!sphere) return;
     const [x, y, z] = sphere.center;
     this.camera.require(EditorCameraController).focus({ x, y, z }, sphere.radius > 0 ? sphere.radius : 0.5);
+    this.refresh();
   }
 
   /**

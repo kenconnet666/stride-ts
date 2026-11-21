@@ -64,6 +64,8 @@ export class Debug {
   readonly frames = new FrameTimings(4096);
   readonly #frameNumber: () => number | undefined;
   readonly #commands = new Map<string, { readonly description: string; readonly handler: DebugHandler }>();
+  /** CLI 调来一条命令时调（命令跑完调它的返回值）：按需出帧的游戏在命令跑着的时候一直出帧（Game.holdFrames）。 */
+  onCall: (() => () => void) | undefined;
   readonly #counters = new Map<string, number>();
   readonly #watches = new Map<string, () => unknown>();
   #socket: WebSocket | undefined;
@@ -196,10 +198,13 @@ export class Debug {
   }
 
   async #call({ id, command, args }: CallMessage): Promise<void> {
+    const release = this.onCall?.();
     try {
       this.#send({ type: 'result', id, ok: true, value: describe(await this.run(command, args)) });
     } catch (error) {
       this.#send({ type: 'result', id, ok: false, error: error instanceof Error ? (error.stack ?? error.message) : String(error) });
+    } finally {
+      release?.();
     }
   }
 

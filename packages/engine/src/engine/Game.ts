@@ -97,6 +97,8 @@ const DEFAULT_MAX_BODIES = 4096;
 const METRIC_FRAMES = 60;
 /** 暂停时单步、没设 fixedTimeStep 时每步的秒数。 */
 const STEP_SECONDS = 1 / 60;
+/** 按需出帧时叫醒一次出多少帧：异步加载完的贴图、管线，时间累积的效果（TAA、体积云）要几十帧才稳下来。 */
+const SETTLE_FRAMES = 120;
 
 /** Vite 的 `import.meta.hot` 里引擎用到的部分。 */
 export interface HotContext {
@@ -231,6 +233,13 @@ export class Game {
   private pendingSteps = 0;
   /** 正在跑一帧（exit 推迟到帧末）。 */
   private inFrame = false;
+  /**
+   * 按需出帧（编辑器的视口，见 EditAgent）：开着时没人叫醒（requestFrames、holdFrames：输入、画布变大小、编辑器的修改、调试命令）
+   * 就不更新、不画，视口静止时不占显卡；叫醒以后出 SETTLE_FRAMES 帧再停。粒子、天气这类自己会动的东西停着不动——要一直动时关掉它。
+   */
+  renderOnDemand = false;
+  #wakeFrames = 0;
+  #holds = 0;
   /** 离线渲染接管着帧循环（takeOverFrames）。 */
   private framesTakenOver = false;
   private exitRequested = false;
@@ -287,6 +296,9 @@ export class Game {
       // 加载内容、脚本启动时读到的就是画面的实际大小（Stride 的后备缓冲在游戏开始前就建好了）
       this.graphicsDevice.resizeToDisplaySize();
       this.input = new InputManager(canvas);
+      this.input.onActivity = () => this.requestFrames();
+      new ResizeObserver(() => this.requestFrames()).observe(canvas);
+      this.debug.onCall = () => this.holdFrames();
       if (debugSwitch(debugging ? query : null, 'stride-pointer-lock') === 'virtual') this.input.simulatePointerLock();
       this.ui.attach(this);
       if (this.native.hasFeature('texture')) this.content.textureDecoder ??= ktx2Decoder(this.native, this.graphicsDevice);
@@ -574,6 +586,16 @@ export class Game {
    * 点到粒子、UI 算点到粒子系统、UI 所在的实体；全屏的 UI 点不到，点的是它后面的场景。
    */
   async pick(x: number, y: number): Promise<Entity | undefined> {
+    // 点选要画一两帧才有结果：按需出帧时也要出
+    const release = this.holdFrames();
+    try {
+      return await this.#pickNow(x, y);
+    } finally {
+      release();
+    }
+  }
+
+  async #pickNow(x: number, y: number): Promise<Entity | undefined> {
     const canvas = this.graphicsDevice.canvas;
     const ratio = canvas.width / Math.max(1, canvas.clientWidth);
     const slot = await this.graphicsCompositor.picker.pick(x * ratio, y * ratio);
@@ -589,8 +611,10 @@ export class Game {
     if (this.status !== 'running') return;
     const interval = this.lastFrameTime === undefined ? 0 : now - this.lastFrameTime;
     this.lastFrameTime = now;
-    // 离线渲染接管着帧循环时只排下一次
-    if (!this.framesTakenOver) {
+    // 离线渲染接管着帧循环时只排下一次；按需出帧、没人叫醒时也只排下一次
+    const idle = this.renderOnDemand && this.#holds === 0 && this.#wakeFrames <= 0;
+    if (!idle && this.#wakeFrames > 0) this.#wakeFrames--;
+    if (!this.framesTakenOver && !idle) {
       let advance: number | undefined;
       if (!this.paused || this.pendingSteps > 0) {
         if (this.paused) this.pendingSteps--;
@@ -605,6 +629,23 @@ export class Game {
     }
     requestAnimationFrame(this.frame);
   };
+
+  /** 按需出帧时叫醒：接下来至少出 count 帧（默认够异步加载、时间累积的效果稳下来）。没开按需出帧时什么也不变。 */
+  requestFrames(count = SETTLE_FRAMES): void {
+    this.#wakeFrames = Math.max(this.#wakeFrames, count);
+  }
+
+  /** 按需出帧时一直出帧，直到调返回的函数（之后再出 SETTLE_FRAMES 帧）：要等几帧才有结果的事（点选、调试命令）。 */
+  holdFrames(): () => void {
+    this.#holds++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.#holds--;
+      this.requestFrames();
+    };
+  }
 
   /**
    * 离线渲染（offline/OfflineRenderer）接管帧循环：之后 requestAnimationFrame 来了不跑帧，由 runFrame 一帧一帧地跑——不受

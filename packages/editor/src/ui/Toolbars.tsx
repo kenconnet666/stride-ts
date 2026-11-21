@@ -5,7 +5,7 @@
  * - ViewportToolbar：视口上面，对选中实体的操作、吸附、画幅参考线；
  * - StatusBar：最下面，提示和出错、选中几个、界面语言。
  */
-import { ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
+import { Activity, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
 import type { PolyOperation } from '@stride-ts/engine/modeling';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -165,6 +165,7 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
         <IconButton {...iconProps} icon={Package} aria-label={t.makePrefab} title={t.makePrefab} disabled={selected !== 1 || off} onClick={() => void session.makePrefabFromSelection()} />
         <Separator orientation="vertical" />
         {snapControls()}
+        <IconButton {...iconProps} icon={Activity} variant={session.realtime.value ? 'soft' : 'ghost'} aria-pressed={session.realtime.value} aria-label={session.realtime.value ? t.realtimeOn : t.realtimeOff} title={session.realtime.value ? t.realtimeOn : t.realtimeOff} disabled={!session.agent.value || off} onClick={() => session.setRealtime(!session.realtime.value)} />
         <span {...css.attrs(styles.spacer)} />
         <Select
           {...css.attrs(styles.guide)}

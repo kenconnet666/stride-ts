@@ -115,6 +115,8 @@ export class EditorSession implements EditableScene {
    * 页面里的默认值（不在界面这边引入引擎的值）。
    */
   readonly snap = shallowRef<SnapSettings>();
+  /** 视口一直出帧（粒子、天气、时间累积的效果一直动）；关着时静止就不出帧（Game.renderOnDemand），输入、修改时才画。 */
+  readonly realtime = shallowRef(false);
   /** 最近一次操作做不了的原因（工具条上显示），下一次操作成功时清掉。 */
   readonly notice = shallowRef('');
   /** 最近一次操作做成了什么（工具条上不显眼地显示；有 notice 时让给它）。 */
@@ -182,6 +184,7 @@ export class EditorSession implements EditableScene {
       // 改根渲染器的属性时页面重建它（EditAgent.reloadAssets）
       if (this.snap.value) agent.snap = this.snap.value;
       else this.snap.value = agent.snap;
+      agent.game.renderOnDemand = !this.realtime.value;
       this.agent.value = agent;
       const settings = game.settingsPath;
       if (settings) await this.inspectAsset('gameSettings', settings);
@@ -525,6 +528,7 @@ export class EditorSession implements EditableScene {
     await agent.open(this.#view);
     if (this.snap.value) agent.snap = this.snap.value;
     else this.snap.value = agent.snap;
+    agent.game.renderOnDemand = !this.realtime.value;
     this.agent.value = agent;
     this.#changed(false);
   }
@@ -620,6 +624,15 @@ export class EditorSession implements EditableScene {
     if (this.#require().redo()) this.#changed();
   }
 
+  /** 视口一直出帧还是静止时不出帧（见 realtime）。 */
+  setRealtime(on: boolean): void {
+    this.realtime.value = on;
+    const game = this.agent.value?.game;
+    if (!game) return;
+    game.renderOnDemand = !on;
+    game.requestFrames();
+  }
+
   /** 模型 modelPath 是不是从多边形网格烘出来的：同一路径有 .poly.json 时是它的路径。 */
   polySourceOf(modelPath: string): string | undefined {
     return this.assets.value.some((asset) => asset.kind === 'poly' && asset.path === modelPath) ? modelPath : undefined;
@@ -681,6 +694,8 @@ export class EditorSession implements EditableScene {
 
   /** 视口里改了网格、选择或模式：commit（拖完操纵器）时记一步撤销、存文件。 */
   #polyChanged(edit: PolyEditSession, commit: boolean): void {
+    // 网格、选择是直接改在代理上的：视口按需出帧时叫醒它
+    this.agent.value?.refresh();
     if (!this.polyEditing.value) this.#polySaved = edit.mesh;
     // 拖的过程中每帧的网格都写进了 polyEditing：和上一次存的那份比，撤销也回到它（按下之前的样子）
     else if (commit && this.#polySaved && this.#polySaved !== edit.mesh) {

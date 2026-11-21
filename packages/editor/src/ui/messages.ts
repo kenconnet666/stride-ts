@@ -22,6 +22,8 @@ export interface EditorMessages {
   readonly snap: string;
   readonly snapOn: string;
   readonly snapOff: string;
+  readonly snapSurfaceOn: string;
+  readonly snapSurfaceOff: string;
   readonly snapStep: { readonly [K in 'translate' | 'rotate' | 'scale']: { readonly label: string; readonly title: string } };
   readonly prefabTitle: (path: string) => string;
   readonly mainToolbar: string;
@@ -180,6 +182,8 @@ const zhCN: EditorMessages = {
   snap: '吸附',
   snapOn: '吸附开着（拖的时候按住 Ctrl 临时不吸）',
   snapOff: '吸附关着（拖的时候按住 Ctrl 临时吸附）',
+  snapSurfaceOn: '吸附到表面开着：拖移动的操纵器时东西落到光标下的表面上（底面贴着它）',
+  snapSurfaceOff: '吸附到表面关着：点一下打开，拖移动的操纵器时东西落到光标下的表面上',
   snapStep: {
     translate: { label: '移动', title: '移动的步长（米）' },
     rotate: { label: '旋转', title: '旋转的步长（度）' },
@@ -346,6 +350,8 @@ const enUS: EditorMessages = {
   snap: 'Snapping',
   snapOn: 'Snapping is on (hold Ctrl while dragging to move freely)',
   snapOff: 'Snapping is off (hold Ctrl while dragging to snap)',
+  snapSurfaceOn: 'Surface snapping is on: dragging the move gizmo drops things onto the surface under the cursor (resting on their bottom)',
+  snapSurfaceOff: 'Surface snapping is off: click to drop things onto the surface under the cursor while dragging the move gizmo',
   snapStep: {
     translate: { label: 'Move', title: 'Move step (meters)' },
     rotate: { label: 'Rotate', title: 'Rotation step (degrees)' },

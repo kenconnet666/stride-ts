@@ -76,10 +76,14 @@ export interface SnapSettings {
   readonly rotate: number;
   /** 缩放的步长（倍数）。 */
   readonly scale: number;
+  /**
+   * 吸附到表面：拖移动的操纵器时，东西落到光标下的表面上（底面贴着它；拖着的东西自己不挡）。没写时是关着（以前存的设置）。
+   */
+  readonly surface?: boolean;
 }
 
 /** 默认的吸附：关着；步长 1 米、15 度、0.1 倍（Stride 编辑器的默认值）。 */
-export const DEFAULT_SNAP: SnapSettings = { enabled: false, translate: 1, rotate: 15, scale: 0.1 };
+export const DEFAULT_SNAP: SnapSettings = { enabled: false, translate: 1, rotate: 15, scale: 0.1, surface: false };
 
 /** 照吸附设置和"Ctrl 按着没有"设操纵器的步长（不吸附时是 0）。 */
 export function applySnap(gizmo: TransformGizmo, settings: SnapSettings, invert: boolean): void {

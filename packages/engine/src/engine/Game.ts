@@ -1,3 +1,4 @@
+import { Matrix } from '../data/Matrix';
 import { createStrideNative, type NativeFeature, type StrideNative, type TransformStore } from '@stride-ts/native';
 import { AnimationSystem } from '../animation/AnimationSystem';
 import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
@@ -598,9 +599,34 @@ export class Game {
   async #pickNow(x: number, y: number): Promise<Entity | undefined> {
     const canvas = this.graphicsDevice.canvas;
     const ratio = canvas.width / Math.max(1, canvas.clientWidth);
-    const slot = await this.graphicsCompositor.picker.pick(x * ratio, y * ratio);
+    return this.#pickedEntity(await this.graphicsCompositor.picker.pick(x * ratio, y * ratio));
+  }
+
+  /** 变换槽位 → 点到的实体：模型多出来的网格挂在子实体上，算模型所在的实体。 */
+  #pickedEntity(slot: number | undefined): Entity | undefined {
     const entity = slot === undefined ? undefined : entityAtSlot(this.entities, slot);
     return entity?.has(ModelPart) ? (entity.require(Transform).parent ?? entity) : entity;
+  }
+
+  /**
+   * 点选加上表面的位置：画布上 (x, y)（CSS 像素）最前面的表面在世界里的点和它所属的实体（同 pick）。excludeGroups 里的渲染组
+   * （位掩码）不算——编辑器拖东西吸附到表面时，拖着的东西自己不挡。什么都没点到时是 undefined。结果要等画一两帧。
+   */
+  async pickSurface(x: number, y: number, excludeGroups = 0): Promise<{ readonly entity: Entity | undefined; readonly point: [number, number, number] } | undefined> {
+    const release = this.holdFrames();
+    try {
+      const canvas = this.graphicsDevice.canvas;
+      const ratio = canvas.width / Math.max(1, canvas.clientWidth);
+      const px = Math.floor(x * ratio), py = Math.floor(y * ratio);
+      const hit = await this.graphicsCompositor.picker.pickSurface(px, py, excludeGroups);
+      const view = this.graphicsCompositor.mainView;
+      if (!hit || hit.depth >= 1 || !view) return undefined;
+      // 像素中心换成裁剪空间（y 向上），深度就是 NDC 的 z（0 到 1），用视图投影的逆矩阵换回世界
+      const ndcX = ((px + 0.5) / canvas.width) * 2 - 1, ndcY = 1 - ((py + 0.5) / canvas.height) * 2;
+      return { entity: this.#pickedEntity(hit.slot), point: Matrix.transformPoint(view.inverseViewProjection, ndcX, ndcY, hit.depth) };
+    } finally {
+      release();
+    }
   }
 
   protected draw(time: GameTime): void {

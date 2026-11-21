@@ -866,6 +866,8 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 改：CI 的冒烟作业 `timeout-minutes: 30`；regress.ps1 每个样例有时限（`-AppTimeout`，本机 600 秒、CI 1500 秒），子进程的输出写进临时文件，超时杀掉进程树（连开发服务器）、按状态目录关它的无头 Chrome，打印到那时为止的输出（看最后过的是哪一步），算失败。卡住的原因要等下一次复现时看输出。
 - 顺手：CI 的 action 从 Node 20 的版本升到 Node 24 的（checkout v7、setup-node v7、cache v6、pnpm/action-setup v6；看过各大版本的说明，我们显式写了 `cache: pnpm`，不受 setup-node v6 只自动缓存 npm 的影响），日志里不再有 Node 20 弃用的警告。
 
+- ac26d90 的 CI 挂在 simple-audio：`stride open` 60 秒没等到页面连上（新的输出捕获把整段日志打出来了），本机 31 秒就过。`open`、`wait` 等页面的时限是写死的 60、30 秒，没看 CI 设的 `STRIDE_TIMEOUT`（300 秒，别的命令都看）：改成也看它。
+
 ## CI 的软件 WebGPU 提速：调研（2026-11-21，没做完）
 
 - CI 用 Chrome 带的 SwiftShader。它在 x86-64 上用 Subzero 编着色器（`src/Reactor/reactor.gni`：二进制小、只用 SSE4.1，不用 AVX），线程数默认 min(核数, 16)，`SwiftShader.ini` 的 `[Processor] ThreadCount` 能改。

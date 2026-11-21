@@ -192,6 +192,7 @@ const positionals = rawPositionals.map((arg) => (arg.startsWith(NEGATIVE) ? arg.
 const [command, ...rest] = positionals;
 const page = options.page === undefined ? undefined : Number(options.page);
 // 没给 --timeout 时看环境变量 STRIDE_TIMEOUT（秒）：CI 的软件 WebGPU 上一帧零点几秒，按帧等的命令要更久
+// open、wait 等页面连上来也按它（CI 上软件 WebGPU 的页面起来要一分多钟，冒烟在这里超时过）
 const timeoutSeconds = options.timeout ?? process.env['STRIDE_TIMEOUT'];
 const timeout = timeoutSeconds === undefined ? undefined : Number(timeoutSeconds) * 1000;
 
@@ -353,7 +354,7 @@ const commands: Record<string, () => Promise<unknown>> = {
       ...(options.dpr ? { dpr: Number(options.dpr) } : {}),
       ...(options['chrome-arg'] ? { chromeArgs: options['chrome-arg'] } : {}),
     });
-    return { browser, game: await waitForGame(Number(options.timeout ?? 60), gamePagePrefix(url)) };
+    return { browser, game: await waitForGame(Number(timeoutSeconds ?? 60), gamePagePrefix(url)) };
   },
   async close() {
     return { closed: await closeBrowser() };
@@ -361,7 +362,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   async hubs() {
     return Promise.all(listHubs().map(async (hub) => ({ name: hub.name, url: hub.url, pid: hub.pid, pages: await new HubClient(hub).pages().catch((error: unknown) => String(error)) })));
   },
-  wait: () => (options.game === undefined ? waitForGame(Number(options.timeout ?? 30)) : call('eval', { code: `(async () => { const start = game.updateTime.total; await seconds(${Number(options.game)}); return { waited: game.updateTime.total - start, total: game.updateTime.total }; })()` })),
+  wait: () => (options.game === undefined ? waitForGame(Number(timeoutSeconds ?? 30)) : call('eval', { code: `(async () => { const start = game.updateTime.total; await seconds(${Number(options.game)}); return { waited: game.updateTime.total - start, total: game.updateTime.total }; })()` })),
   particles: () => call('particles', options.name ? { name: options.name } : {}),
   slow: () => call('slow', { ms: Number(required(rest[0], 'ms')) }),
   status: () => call('status'),

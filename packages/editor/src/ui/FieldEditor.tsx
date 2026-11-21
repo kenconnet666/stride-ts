@@ -12,7 +12,8 @@ import {
   type PropertyPath,
   type PropertyUpdate,
 } from '@zerodep-dev/vue-tsx-pro-ui';
-import type { Field, FieldType } from '@stride-ts/engine/editor-fields';
+import { inferFields, type Field, type FieldType } from '@stride-ts/engine/editor-fields';
+import type { SceneScriptValue } from '@stride-ts/engine/content-format';
 import { fieldDescription, fieldName } from './fieldMessages';
 import { t } from './messages';
 import { eulerToQuaternion, quaternionToEuler } from './values';
@@ -34,8 +35,8 @@ export interface FieldContext {
   readonly entities: readonly { readonly id: string; readonly name: string }[];
 }
 
-/** 引擎自己的值（vue-tsx-pro 的 PropertyGrid 没有的种类）：旋转、资源、实体。 */
-type EngineKind = Extract<FieldType, { kind: 'rotation' | 'asset' | 'entity' }>;
+/** 引擎自己的值（vue-tsx-pro 的 PropertyGrid 没有的种类）：旋转、资源、实体，按值推字段的一组值。 */
+type EngineKind = Extract<FieldType, { kind: 'rotation' | 'asset' | 'entity' | 'record' }>;
 
 const styles = css.create({
   vector: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(3.5em, 1fr))', gap: '2px' },
@@ -48,7 +49,7 @@ const AXES = ['X', 'Y', 'Z'];
 
 /** 引擎的三种值的编辑器；context 读的是最新的（实体列表跟着场景变）。 */
 function engineEditors(context: () => FieldContext): PropertyEditors<EngineKind> {
-  return {
+  const editors: PropertyEditors<EngineKind> = {
     rotation: {
       // 文件里是四元数，面板上按欧拉角改；多选时各个实体的旋转不一样就三个角都显示"多个值"，改一个角时每个实体留着自己的另外两个角
       render: ({ value, label, set }) => {
@@ -92,6 +93,16 @@ function engineEditors(context: () => FieldContext): PropertyEditors<EngineKind>
       },
       empty: (type) => (type.form === 'ref' ? { $asset: '', kind: type.refKind ?? type.asset } : ''),
     },
+    record: {
+      // 字段就是值里现在的键，种类按值推（约束的设置、游戏的根渲染器的属性）；多选时几个不一样就不逐项改
+      render: ({ value, label, set }) => {
+        if (value === PROPERTY_MIXED) return <span>{t.mixed}</span>;
+        const values = (value ?? {}) as Readonly<Record<string, SceneScriptValue>>;
+        return <PropertyEditor<EngineKind> type={{ kind: 'object', fields: inferFields(values) }} value={values} label={label} editors={editors} getLabel={getLabel} getDescription={getDescription} numberFormat={NUMBER_FORMAT} onSet={set} />;
+      },
+      empty: () => ({}),
+      stacked: true,
+    },
     entity: {
       render: ({ type, value, label, set }) => {
         const id = value === PROPERTY_MIXED ? PROPERTY_MIXED : type.form === 'ref' ? (value as { $entity?: unknown } | null)?.$entity : value;
@@ -115,6 +126,7 @@ function engineEditors(context: () => FieldContext): PropertyEditors<EngineKind>
       empty: () => null,
     },
   };
+  return editors;
 }
 
 // 名字、说明按翻译表（引擎的字段描述是 Field，PropertyGrid 给回来的是同一个对象）

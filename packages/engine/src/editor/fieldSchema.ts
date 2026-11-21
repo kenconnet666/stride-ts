@@ -47,6 +47,8 @@ export function fieldTypeSchema(type: FieldType): JsonSchema {
       return {
         oneOf: Object.entries(type.variants).map(([tag, fields]) => objectSchema([{ name: type.tag, type: { kind: 'enum', values: [tag] } }, ...(type.common ?? []), ...fields])),
       };
+    case 'record':
+      return { type: 'object', description: 'values keyed by name; the keys and value kinds the file already has' };
     case 'json':
       return {};
   }

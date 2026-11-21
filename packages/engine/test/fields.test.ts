@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import type { SceneEntityFile } from '../src/content/format';
-import { ASSET_FIELDS, checkEntity, checkFields, COMPONENT_FIELDS, gameSettingsFields, inferFields, SCENE_FIELDS, scriptFields } from '../src/editor/fields';
+import { ASSET_FIELDS, checkEntity, checkFields, COMPONENT_FIELDS, inferFields, SCENE_FIELDS, scriptFields } from '../src/editor/fields';
 import { prop, SyncScript } from '../src/index';
 
 // 属性面板要的字段描述，和照着它做的检查。
@@ -158,15 +158,23 @@ describe('按值推出字段（游戏自己的根渲染器的属性）', () => {
     });
   });
 
-  test('游戏设置：有根渲染器时它的属性按值推，文件照这些字段检查没有问题', () => {
+  test('游戏设置：根渲染器的属性是 record（按值推），文件照字段检查没有问题；record 不是对象时报出来', () => {
     const file = {
       name: 'GameSettings', defaultScene: null, defaultBackBufferSize: [1280, 720] as const,
       renderer: { type: 'CustomEffect.CustomEffectRenderer', props: { background: { $asset: 'CustomEffect/Shared/StrideBackground', kind: 'texture' as const } } },
     };
-    const fields = gameSettingsFields(file);
-    const renderer = fields.find((field) => field.name === 'renderer')!;
-    expect(renderer.type).toEqual({ kind: 'object', fields: [{ name: 'props', type: { kind: 'object', fields: [{ name: 'background', type: { kind: 'asset', asset: 'texture', form: 'ref', refKind: 'texture' } }] } }] });
-    expect(checkFields(file, { kind: 'object', fields: ASSET_FIELDS.gameSettings }, 'GameSettings')).toEqual([]);
-    expect(gameSettingsFields({ ...file, renderer: null })).toBe(ASSET_FIELDS.gameSettings);
+    const type = { kind: 'object', fields: ASSET_FIELDS.gameSettings } as const;
+    expect(checkFields(file, type, 'GameSettings')).toEqual([]);
+    expect(checkFields({ ...file, renderer: null }, type, 'GameSettings')).toEqual([]);
+    expect(checkFields({ ...file, renderer: { type: 'X', props: [1] } }, type, 'GameSettings').join()).toMatch(/renderer\.props: expected an object/);
+  });
+
+  test('约束的设置是 record；合成器的渲染目标贴图相机有完整的字段', () => {
+    const constraints = COMPONENT_FIELDS.constraints.type;
+    expect(checkFields([{ type: 'ballSocket', enabled: true, bodyA: 'a', settings: { localOffsetA: [0, 1, 0], springFrequency: 30 } }], constraints, 'c')).toEqual([]);
+    const compositor = SCENE_FIELDS.compositor.type;
+    const camera = { cameraSlot: 1, texture: { renderTexture: 'Mirror', width: 512, height: 512, hdr: false, srgb: true }, clearColor: [0, 0, 0, 1], postEffects: null, transparent: true };
+    expect(checkFields({ clearColor: [0, 0, 0, 1], postEffects: null, transparent: true, textureCameras: [camera] }, compositor, 'compositor')).toEqual([]);
+    expect(checkFields({ clearColor: [0, 0, 0, 1], postEffects: null, transparent: true, textureCameras: [{ ...camera, cameraSlot: 'x' }] }, compositor, 'compositor').join()).toMatch(/cameraSlot/);
   });
 });

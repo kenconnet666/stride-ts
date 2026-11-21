@@ -461,6 +461,12 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 属性面板换成库的 PropertyGrid（0.35.0）：主 Chrome 里看 greybox，场景设置、Ball 的名字、位置、旋转（欧拉角）、缩放、模型（资源路径）、材质列表的“添加”都对；Ball 和 Sky 一起选，名字、位置显示“多个值”和“—”，改缩放 X 为 2 两个都变（视口里球拉宽）、撤销回来；材质的字段、节点图卡片里的参数（卡片高度正好装下）、粒子编辑器的发射器和模块的字段都照常。
 - 骨架屏：重新加载编辑器，场景树、文档页签、属性面板、视口（不透明的底加扫光，盖住游戏页面的启动日志）在游戏页面起来前是骨架，起来后换成内容；资源列表读得快，Tree 的防闪烁不画骨架。
 
+### 按值推字段的 record 种类（2026-11-21）
+
+- 主 Chrome 里开 bepu-sample 的编辑器，资源浏览器里双击 Scenes/Constraint 打开（双击能开场景，之前怀疑的问题没复现）；选 Stiff Pendulum：约束 0 的设置画成 localOffsetA、localOffsetB 两个向量和 springFrequency、springDampingRatio 两个数，约束 1（ballSocketMotor）是它自己的四项；springFrequency 点加号 3 → 3.1，撤销按钮亮了，撤销回 3。
+- custom-effect 的编辑器（没有场景）：属性面板里游戏设置的根渲染器是类型加属性，属性里 background、logo 两个资源字段照旧。
+- `node tools/editor-accept/check-fields.ts` 查所有样例的场景文件：0 个问题。
+
 ### 子场景在编辑器里一起看（2026-11-21）
 
 - 重新导入 topdown-rpg：DynamicScene 的 `children` 是五个分块。主 Chrome 里开编辑器、打开 DynamicScene：场景树里实体下面列着五个子场景，各有一个眼睛；点中央、东边两块，视口里出现两块地面，东边的在 x −30 到 −10、中央的在 −10 到 10，接在一起（实体多了 18 个）；再点东边的眼睛，那 9 个实体卸掉；双击中央那块，文档页签换成 CentralChunk，参考场景清空。

@@ -4,8 +4,7 @@ import { Button, IconButton, Menu, MenuGroup, MenuItem, SHIMMER_STAGGER, Skeleto
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@stride-ts/engine/editor-document';
-import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, gameSettingsFields, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
-import type { GameSettingsFile } from '@stride-ts/engine/content-format';
+import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
 import { PaintLayers } from './PaintLayers';
 import { assetListId, FieldEditor, Fields, type FieldContext, type ValuePath, type ValueUpdate } from './FieldEditor';
 import type { EditorSession } from './session';
@@ -245,8 +244,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       <div {...css.attrs(styles.hint)}>{t.assetHint(t.assetLabels[asset.kind], asset.path)}</div>
       {asset.kind === 'material' && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Workflow} onClick={() => session.openMaterialGraph()}>{t.graphOpen}</Button>}
       {asset.kind === 'material' && <PaintLayers session={session} />}
-      {/* 游戏设置的根渲染器的属性按文件里的值推出字段（游戏的渲染器类没有字段描述） */}
-      <Fields fields={asset.kind === 'gameSettings' ? gameSettingsFields(asset.content as unknown as GameSettingsFile) : ASSET_FIELDS[asset.kind]} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
+      <Fields fields={ASSET_FIELDS[asset.kind]} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
     </div>
   );
 

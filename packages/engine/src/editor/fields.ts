@@ -12,7 +12,7 @@
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
   SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile,
-  GameSettingsFile, SceneScriptValue,
+  GameSettingsFile, SceneScriptValue, SceneTextureCamera,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
 import type { AssetKind } from '../content/references';
@@ -39,7 +39,12 @@ export type FieldType =
   | { readonly kind: 'object'; readonly fields: readonly Field[] }
   /** 几种形状之一，tag 那个字段的值说是哪种；common 是每种都有的字段。 */
   | { readonly kind: 'union'; readonly tag: string; readonly variants: Readonly<Record<string, readonly Field[]>>; readonly common?: readonly Field[] }
-  /** 还没有描述（粒子的模块、约束的设置）：面板按原样的 JSON 改，checkFields 不看里面。 */
+  /**
+   * 形状由代码定、文件里写全了的一组值（游戏自己的根渲染器的属性、约束的设置）：字段就是值里现在的那些键，种类按值推
+   * （inferFields）；checkFields 只查它是对象。
+   */
+  | { readonly kind: 'record' }
+  /** 还没有描述（粒子的模块）：面板按原样的 JSON 改，checkFields 不看里面。 */
   | { readonly kind: 'json' };
 
 export interface Field {
@@ -438,7 +443,8 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       enabled: bool,
       bodyA: entity,
       bodyB: optional(entity),
-      settings: { kind: 'json' },
+      // 每种约束的设置不一样（原生的 ConstraintDesc 有三十来种），文件里写全了：按值推字段
+      settings: { kind: 'record' },
     }))),
     initial: [],
   },
@@ -542,8 +548,16 @@ export const SCENE_FIELDS: { readonly [K in SceneSettingKey]: ComponentDescripti
       renderMask: optional(integer(0)),
       transparent: bool,
       subsurfaceScattering: optional(bool, false),
-      // 渲染目标贴图的相机：形状多（各带一套前向渲染器的设置），先按 JSON 改
-      textureCameras: optional({ kind: 'json' }),
+      // 渲染目标贴图的相机：各带一套前向渲染器的设置
+      textureCameras: optional(list(object(fields<SceneTextureCamera>({
+        cameraSlot: integer(0),
+        texture: object(renderTexture),
+        clearColor: { kind: 'color', alpha: true, space: 'linear' },
+        postEffects: nullable(object(postEffects)),
+        renderMask: optional(integer(0)),
+        transparent: bool,
+        subsurfaceScattering: optional(bool, false),
+      })))),
       shadows: optional(bool, true),
       particlesOverUI: optional(bool, false),
       meshEffect: optional(string),
@@ -782,12 +796,18 @@ export const POLY_FIELDS = fields<PolyMeshFile>({
 
 /**
  * 游戏设置（.game.json，Stride 的 GameSettings）。根渲染器（合成器的根是游戏自己的渲染器时，SpriteFonts、CustomEffect）的类型是
- * 游戏登记的名字，属性的字段由游戏的代码定，这里是 JSON；属性面板按文件里现在的值推出字段（gameSettingsFields）。
+ * 游戏登记的名字，属性的字段由游戏的代码定：按文件里现在的值推（record）。
  */
 export const GAME_SETTINGS_FIELDS = fields<GameSettingsFile>({
   name: string,
   defaultScene: { ...nullable(asset('scene')), description: 'the scene the game opens with; null when the root renderer draws everything (no scene)' },
-  renderer: { ...nullable({ kind: 'json' }), description: 'the compositor root when the game draws with its own renderer: its registered type name and properties' },
+  renderer: {
+    ...nullable(object([
+      { name: 'type', type: string, description: 'the name the game registered its renderer under (loadGameSettings renderers)' },
+      { name: 'props', type: { kind: 'record' } },
+    ])),
+    description: 'the compositor root when the game draws with its own renderer: its registered type name and properties',
+  },
   defaultBackBufferSize: { ...optional(vector(2, 'px'), [1280, 720]), description: 'the design resolution (desktop Stride opens its window this size)' },
 });
 
@@ -815,17 +835,6 @@ function inferType(value: SceneScriptValue): FieldType {
   }
   if ('$entity' in value) return { kind: 'entity', form: 'ref' };
   return object(inferFields(value as Readonly<Record<string, SceneScriptValue>>));
-}
-
-/** 这份游戏设置在属性面板上的字段：根渲染器的属性按文件里的值推出来（见 inferFields），类型名不让改。 */
-export function gameSettingsFields(file: GameSettingsFile): Field[] {
-  if (!file.renderer) return GAME_SETTINGS_FIELDS;
-  const renderer: Field = {
-    name: 'renderer',
-    description: `the root renderer ${file.renderer.type} (registered by the game); its properties`,
-    type: object([{ name: 'props', type: object(inferFields(file.renderer.props)) }]),
-  };
-  return GAME_SETTINGS_FIELDS.map((field) => (field.name === 'renderer' ? renderer : field));
 }
 
 const INTEGER_KINDS: ReadonlySet<string> = new Set(['int', 'u8', 'u32']);
@@ -947,6 +956,9 @@ function check(value: unknown, type: FieldType, where: string, issues: string[])
       checkObject(value, [{ name: type.tag, type: string }, ...variant, ...(type.common ?? [])], where, issues);
       return;
     }
+    case 'record':
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) issues.push(`${where}: expected an object, got ${JSON.stringify(value) ?? 'undefined'}`);
+      return;
     case 'json':
       return;
   }

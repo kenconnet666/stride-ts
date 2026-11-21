@@ -264,7 +264,7 @@ export class EditAgent {
     const component = terrain.require(Terrain);
     const current = TerrainAsset.byId(component.terrain);
     if (!current) return;
-    const next = new TerrainAsset(current.path, change(current.file), current.material);
+    const next = new TerrainAsset(current.path, change(current.file), current.material, current.paths);
     component.terrain = next.id;
     // 更早的预览没人用了（地形系统一帧之内就换到新的上；上一个留着，它可能还没换过来）
     this.#sculptPreviews.push(next);

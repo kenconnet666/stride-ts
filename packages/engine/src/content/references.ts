@@ -245,6 +245,8 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
     case 'terrain': {
       const terrain = file as TerrainFile;
       if (terrain.material) add('material', terrain, 'material');
+      // 贴着的样条：样条改了地形跟着重新加载、按改动的范围重算
+      (terrain.splines ?? []).forEach((entry) => add('spline', entry, 'spline'));
       break;
     }
     case 'text': {

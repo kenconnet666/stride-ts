@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { checkTerrainFile } from '../src/content/terrainFormat';
 import { changedRegions } from '../src/terrain/TerrainSystem';
+import { terrainPath } from '../src/terrain/Terrain';
+import type { SplineFile } from '../src/content/splineFormat';
 import { heightfieldGrid, selectTiles, TILE_QUADS, tileId, tilePageHeader, tileRect, type TileKey } from '../src/terrain/terrainTiles';
 
 const all = () => true;
@@ -96,5 +98,28 @@ describe('地形文件', () => {
     expect(() => checkTerrainFile({ name: 'Hills', noise: { gullies: 5 } }, 'Hills')).toThrow('noise.gullies must be an object');
     expect(() => checkTerrainFile({ name: 'Hills', noise: {}, features: [{ type: 'flatten', points: [[0, 0]], height: 0 }] }, 'Hills')).toThrow('features[0].points must be at least 3');
     expect(() => checkTerrainFile({ name: 'Hills', noise: {}, strokes: [{ op: 'dig', x: 0, z: 0, radius: 1, strength: 1 }] }, 'Hills')).toThrow('strokes[0].op must be one of');
+  });
+});
+
+describe('地形贴着样条（道路压平）', () => {
+  const road: SplineFile = { name: 'Road', materials: [null], profile: { type: 'road', width: 6, shoulder: 0.5 }, points: [{ position: [0, 10, 0] }, { position: [40, 12, 0] }] };
+
+  test('解析：按弧长取点、挪 position，宽度按横截面（路面加路肩），默认偏移、过渡、模式', () => {
+    const path = terrainPath({ spline: 'Roads/Road', position: [100, 0, 50] }, road);
+    expect(path.points[0]).toEqual([100, 10, 50]);
+    expect(path.points.at(-1)).toEqual([140, 12, 50]);
+    // 40.05 米（爬了 2 米）每 4 米一个点：11 段、12 个点
+    expect(path.points.length).toBe(12);
+    expect(path).toMatchObject({ width: 7, offset: -0.1, falloff: 10, strength: 1, mode: 'conform' });
+    expect(terrainPath({ spline: 'Roads/Road', width: 20, mode: 'carve' }, road)).toMatchObject({ width: 20, mode: 'carve' });
+  });
+
+  test('样条改了（地形文件没改）：路径的包围盒加半宽和过渡', () => {
+    const file = { name: 'Hills', noise: {}, splines: [{ spline: 'Roads/Road' }] };
+    const before = terrainPath({ spline: 'Roads/Road' }, road);
+    const after = terrainPath({ spline: 'Roads/Road' }, { ...road, points: [{ position: [0, 10, 0] }, { position: [40, 20, 0] }] });
+    expect(changedRegions(file, file, [before], [before])).toEqual([]);
+    expect(changedRegions(file, file, [before], [after])).toEqual([[-13.5, -13.5, 53.5, 13.5], [-13.5, -13.5, 53.5, 13.5]]);
+    expect(() => checkTerrainFile({ ...file, splines: [{ spline: '' }] }, 'Hills')).toThrow('splines[0].spline must be a spline path');
   });
 });

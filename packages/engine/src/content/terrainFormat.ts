@@ -61,6 +61,24 @@ export interface TerrainFeatureFile {
   readonly strength?: number;
 }
 
+/**
+ * 地形贴着样条（W3：道路、铁路的路基、河道）：样条资源（`.spline.json`，坐标当地形本地的，position 是再挪多少）沿路径两侧
+ * width / 2 米内压到路径的高度加 offset，再往外 falloff 米内过渡；mode 是高了削、低了填（conform）、只削（carve，路堑、河道）
+ * 还是只填（fill，路堤）。在多边形的地物之后、笔画之前作用。宽度不写时按样条的横截面定（道路是路面加两侧路肩）。
+ */
+export interface TerrainSplineFile {
+  readonly spline: string;
+  readonly position?: readonly [number, number, number];
+  readonly width?: number;
+  /** 默认 -0.1：地面比路面低一点，路基露出来。 */
+  readonly offset?: number;
+  /** 默认 10 米。 */
+  readonly falloff?: number;
+  /** 0..1，默认 1。 */
+  readonly strength?: number;
+  readonly mode?: 'conform' | 'carve' | 'fill';
+}
+
 /** 雕刻的一笔（按顺序作用）：抬高、压低的 strength 是米，压平、磨平是 0..1。 */
 export interface TerrainStrokeFile {
   readonly op: 'raise' | 'lower' | 'flatten' | 'smooth';
@@ -76,6 +94,7 @@ export interface TerrainFile {
   readonly name: string;
   readonly noise: TerrainNoiseFile;
   readonly features?: readonly TerrainFeatureFile[];
+  readonly splines?: readonly TerrainSplineFile[];
   readonly strokes?: readonly TerrainStrokeFile[];
   /** 材质的内容路径；没有时用默认材质。 */
   readonly material?: string | null;
@@ -128,6 +147,13 @@ export function checkTerrainFile(value: unknown, where: string): TerrainFile {
       fail(`features[${i}].points`, 'must be at least 3 [x, z] number pairs');
     }
     if (!isNumber(f.height)) fail(`features[${i}].height`, 'must be a finite number');
+  });
+  list('splines').forEach((entry, i) => {
+    const s = entry as Partial<TerrainSplineFile>;
+    if (typeof s.spline !== 'string' || s.spline === '') fail(`splines[${i}].spline`, 'must be a spline path');
+    if (s.width !== undefined && !(isNumber(s.width) && s.width > 0)) fail(`splines[${i}].width`, 'must be a positive number');
+    if (s.mode !== undefined && !['conform', 'carve', 'fill'].includes(s.mode)) fail(`splines[${i}].mode`, 'must be conform, carve or fill');
+    if (s.position !== undefined && !(Array.isArray(s.position) && s.position.length === 3 && s.position.every(isNumber))) fail(`splines[${i}].position`, 'must be 3 finite numbers');
   });
   list('strokes').forEach((stroke, i) => {
     const s = stroke as Partial<TerrainStrokeFile>;

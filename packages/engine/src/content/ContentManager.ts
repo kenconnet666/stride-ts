@@ -44,7 +44,9 @@ import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, isVid
 import { Timeline } from '../timeline/Timeline';
 import { checkWorldFile, type WorldFile } from './worldFormat';
 import { checkTerrainFile } from './terrainFormat';
-import { TerrainAsset } from '../terrain/Terrain';
+import { TerrainAsset, terrainPath } from '../terrain/Terrain';
+import { checkSpline } from '../modeling/spline';
+import type { SplineFile } from './splineFormat';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -492,7 +494,11 @@ export class ContentManager {
   loadTerrain(path: string): Promise<TerrainAsset> {
     return this.#once(path + EXTENSIONS.terrain, async (url) => {
       const file = checkTerrainFile(this.#json<unknown>(await this.#read(url)), url.href);
-      return new TerrainAsset(path, file, file.material ? await this.loadMaterial(file.material) : undefined);
+      const [material, paths] = await Promise.all([
+        file.material ? this.loadMaterial(file.material) : undefined,
+        Promise.all((file.splines ?? []).map(async (entry) => terrainPath(entry, checkSpline(this.#json<SplineFile>(await this.#read(new URL(entry.spline + EXTENSIONS.spline, this.root))), `${url.href}: spline ${entry.spline}`)))),
+      ]);
+      return new TerrainAsset(path, file, material, paths);
     });
   }
 

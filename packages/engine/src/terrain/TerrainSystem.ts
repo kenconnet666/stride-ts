@@ -19,7 +19,7 @@ import { Model } from '../rendering/components';
 import { Mesh } from '../rendering/mesh/Mesh';
 import { HeightfieldTile, HeightPages } from '../rendering/mesh/HeightPages';
 import { Character } from '../physics/components';
-import { Terrain, TerrainAsset, TerrainTile } from './Terrain';
+import { Terrain, TerrainAsset, TerrainTile, type TerrainPath } from './Terrain';
 import type { TerrainFile } from '../content/terrainFormat';
 import { heightfieldGrid, leafLevel, selectTiles, TILE_QUADS, TILE_SAMPLES, tileId, tilePageHeader, tileRect, type TileKey } from './terrainTiles';
 
@@ -357,7 +357,7 @@ export class TerrainSystem {
    * 地物按包围盒加过渡宽度）里的块和碰撞块重算，别的留着——笔画、地物只改自己范围里的高度，范围外逐位不变。
    */
   #swapAsset(state: TerrainState, asset: TerrainAsset): boolean {
-    const rects = changedRegions(state.asset.file, asset.file);
+    const rects = changedRegions(state.asset.file, asset.file, state.asset.paths, asset.paths);
     if (!rects) return false;
     state.asset = asset;
     state.generation++;
@@ -489,7 +489,7 @@ export interface TerrainHit {
   readonly height: number;
 }
 
-export function changedRegions(before: TerrainFile, after: TerrainFile): [number, number, number, number][] | undefined {
+export function changedRegions(before: TerrainFile, after: TerrainFile, beforePaths: readonly TerrainPath[] = [], afterPaths: readonly TerrainPath[] = []): [number, number, number, number][] | undefined {
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   if (!same(before.noise, after.noise) || !same(before.material, after.material) || !same(before.uvScale, after.uvScale)) return undefined;
   const rects: [number, number, number, number][] = [];
@@ -502,6 +502,11 @@ export function changedRegions(before: TerrainFile, after: TerrainFile): [number
   diff(before.strokes ?? [], after.strokes ?? [], (s) => [s.x - s.radius, s.z - s.radius, s.x + s.radius, s.z + s.radius]);
   diff(before.features ?? [], after.features ?? [], (f) => {
     const xs = f.points.map((p) => p[0]), zs = f.points.map((p) => p[1]), m = f.falloff ?? 0;
+    return [Math.min(...xs) - m, Math.min(...zs) - m, Math.max(...xs) + m, Math.max(...zs) + m];
+  });
+  // 样条（地形引用的样条改了、引用变了）：路径的包围盒加半宽和过渡
+  diff(beforePaths, afterPaths, (p) => {
+    const xs = p.points.map((q) => q[0]), zs = p.points.map((q) => q[2]), m = p.width / 2 + p.falloff;
     return [Math.min(...xs) - m, Math.min(...zs) - m, Math.max(...xs) + m, Math.max(...zs) + m];
   });
   // 笔画的先后影响结果：同样的笔画换了顺序时，这些笔画的范围都算改了

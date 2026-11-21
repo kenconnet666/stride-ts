@@ -224,6 +224,33 @@
      "materials": []
     }
    }
+  },
+  {
+   "id": "506091b1-9d9e-4676-b2ec-8381b632d129",
+   "name": "EastRoad",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Splines/EastRoad",
+     "materials": []
+    }
+   }
   }
  ]
 }

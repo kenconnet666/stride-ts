@@ -54,5 +54,14 @@
    "radius": 400,
    "strength": 260
   }
+ ],
+ "splines": [
+  {
+   "spline": "Splines/PlazaRoad"
+  },
+  {
+   "spline": "Splines/EastRoad",
+   "falloff": 25
+  }
  ]
 }

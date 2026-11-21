@@ -1,0 +1,56 @@
+{
+ "name": "EastRoad",
+ "materials": [
+  "Materials/Street"
+ ],
+ "profile": {
+  "type": "road",
+  "width": 7,
+  "thickness": 0.4,
+  "shoulder": 0.6
+ },
+ "points": [
+  {
+   "position": [
+    110,
+    40.02,
+    0
+   ]
+  },
+  {
+   "position": [
+    200,
+    26,
+    -40
+   ]
+  },
+  {
+   "position": [
+    320,
+    6,
+    -75
+   ]
+  },
+  {
+   "position": [
+    500,
+    4,
+    -40
+   ]
+  },
+  {
+   "position": [
+    700,
+    2,
+    60
+   ]
+  },
+  {
+   "position": [
+    900,
+    -1,
+    20
+   ]
+  }
+ ]
+}

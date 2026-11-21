@@ -4,17 +4,15 @@
  *
  * - 细分只在四个子块的网格都准备好了才换上（之前一直画父块），不会出现空洞；
  * - 相邻的块细节层次不同时接缝处会有小缝：每块的四边垂下一圈裙边挡住（同 Unity、Godot 的地形插件的常见做法）；
- * - 网格的顶点相对块的原点（数都小），块的位置放在实体的变换里（双精度）。
+ * - 所有块共用一个网格（heightfieldGrid），高度在高度页里，整片地形一次实例化绘制；块的位置、缩放放在实体的变换里（双精度）。
  */
-import { FLOAT_LAYOUT, type VertexLayout } from '../content/format';
+import { VERTEX_FLOATS } from '../content/format';
+import { HEIGHT_PAGE_SAMPLES } from '../rendering/mesh/HeightPages';
 
 /** 每块每边几个格（顶点多一个）。 */
 export const TILE_QUADS = 32;
 /** 一块要的高度页每边几个点：顶点数加上两边各一圈（算法线用）。 */
-export const TILE_SAMPLES = TILE_QUADS + 3;
-/** 带切线（法线贴图要用）的顶点布局。 */
-export const TILE_LAYOUT: VertexLayout = { ...FLOAT_LAYOUT, tangent: 'float32x4' };
-const TILE_FLOATS = 12;
+export const TILE_SAMPLES = HEIGHT_PAGE_SAMPLES;
 
 /** 四叉树的一个节点：level 0 是根，那一层的块边长是 size / 2^level，x、z 是这一层里的第几块（从 0 起）。 */
 export interface TileKey {
@@ -82,37 +80,34 @@ export function selectTiles(selection: TileSelection): { draw: TileKey[]; want: 
 }
 
 /**
- * 一块的网格：heights 是 TILE_SAMPLES² 个高度（按行 z 排，从块的原点外一格起），顶点位置相对块的原点。uvOrigin 是块的原点在
- * UV 里的位置（调用方按贴图的周期取过模，数小），uvScale 米重复一次。裙边从四边垂下 skirt 米。
+ * 所有块共用的高度场网格（Mesh 的 heightfield，见 rendering/mesh/HeightPages.ts）：顶点的 x、z 是格坐标 0..TILE_QUADS，y 是 0（地面）
+ * 或 1（裙边：着色器里往下垂页头给的深度）。高度、法线、UV 在顶点着色器里按块的高度页算，实体的缩放把一格放大成米。
+ * 裙边是四条边各一排垂下去的顶点，和边上的顶点连成竖着的带，两面都画（不用管每条边的绕向，三角形很少）。
  */
-export function buildTileMesh(heights: Float32Array, edge: number, uvOrigin: readonly [number, number], uvScale: number, skirt: number): { vertices: Float32Array; indices: Uint16Array } {
-  const n = TILE_QUADS, side = n + 1, spacing = edge / n;
-  if (heights.length !== TILE_SAMPLES * TILE_SAMPLES) throw new RangeError(`terrain tile needs ${TILE_SAMPLES}² heights, got ${heights.length}`);
-  const sample = (i: number, j: number) => heights[(j + 1) * TILE_SAMPLES + i + 1]!;
-  const vertices = new Float32Array((side * side + 4 * side) * TILE_FLOATS);
-  const put = (v: number, i: number, j: number, y: number) => {
-    // 中心差分的法线；切线沿 +x（贴图的 u），bitangent 沿 +z（v 也沿 +z）
-    const dx = (sample(i + 1, j) - sample(i - 1, j)) / (2 * spacing), dz = (sample(i, j + 1) - sample(i, j - 1)) / (2 * spacing);
-    const inv = 1 / Math.hypot(dx, 1, dz), tInv = 1 / Math.hypot(1, dx);
-    const at = v * TILE_FLOATS;
-    vertices[at] = i * spacing;
-    vertices[at + 1] = y;
-    vertices[at + 2] = j * spacing;
-    vertices[at + 3] = -dx * inv;
-    vertices[at + 4] = inv;
-    vertices[at + 5] = -dz * inv;
-    vertices[at + 6] = uvOrigin[0] + (i * spacing) / uvScale;
-    vertices[at + 7] = uvOrigin[1] + (j * spacing) / uvScale;
-    vertices[at + 8] = tInv;
-    vertices[at + 9] = dx * tInv;
-    vertices[at + 10] = 0;
-    vertices[at + 11] = -1;
-  };
-  for (let j = 0; j < side; j++) for (let i = 0; i < side; i++) put(j * side + i, i, j, sample(i, j));
-  // 裙边：四条边各一排垂下去的顶点（顺序同 tileIndices）
-  let next = side * side;
-  for (const [i, j] of edgeVertices()) put(next++, i, j, sample(i, j) - skirt);
-  return { vertices, indices: tileIndices() };
+export function heightfieldGrid(): { vertices: Float32Array; indices: Uint16Array } {
+  const n = TILE_QUADS, side = n + 1;
+  const edges = edgeVertices();
+  const vertices = new Float32Array((side * side + edges.length) * VERTEX_FLOATS);
+  const put = (v: number, i: number, j: number, skirt: number) => vertices.set([i, skirt, j, 0, 1, 0, i / n, j / n], v * VERTEX_FLOATS);
+  for (let j = 0; j < side; j++) for (let i = 0; i < side; i++) put(j * side + i, i, j, 0);
+  edges.forEach(([i, j], k) => put(side * side + k, i, j, 1));
+  const indices: number[] = [];
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const a = j * side + i, b = a + 1, c = a + side, d = c + 1;
+      // 从上往下看逆时针（法线朝 +Y）
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  for (let e = 0; e < 4; e++) {
+    const first = side * side + e * side;
+    for (let k = 0; k < n; k++) {
+      const [i0, j0] = edges[e * side + k]!, [i1, j1] = edges[e * side + k + 1]!;
+      const top0 = j0 * side + i0, top1 = j1 * side + i1, bottom0 = first + k, bottom1 = first + k + 1;
+      indices.push(top0, bottom0, top1, top1, bottom0, bottom1, top0, top1, bottom0, top1, bottom1, bottom0);
+    }
+  }
+  return { vertices, indices: Uint16Array.from(indices) };
 }
 
 /** 四条边上的顶点（格坐标），依次是 z = 0、z = n、x = 0、x = n 的边。 */
@@ -121,28 +116,12 @@ function edgeVertices(): [number, number][] {
   return [...line.map((i): [number, number] => [i, 0]), ...line.map((i): [number, number] => [i, n]), ...line.map((j): [number, number] => [0, j]), ...line.map((j): [number, number] => [n, j])];
 }
 
-let indices: Uint16Array | undefined;
-
-/** 每块都一样的索引（只建一次，各块的网格共用这个数组）。 */
-function tileIndices(): Uint16Array {
-  if (indices) return indices;
-  const n = TILE_QUADS, side = n + 1, out: number[] = [];
-  for (let j = 0; j < n; j++) {
-    for (let i = 0; i < n; i++) {
-      const a = j * side + i, b = a + 1, c = a + side, d = c + 1;
-      // 从上往下看逆时针（法线朝 +Y）
-      out.push(a, c, b, b, c, d);
-    }
-  }
-  // 裙边和边上的顶点连成竖着的带；两面都画（不用管每条边的绕向），三角形很少
-  const edges = edgeVertices();
-  for (let e = 0; e < 4; e++) {
-    const first = side * side + e * side;
-    for (let k = 0; k < n; k++) {
-      const [i0, j0] = edges[e * side + k]!, [i1, j1] = edges[e * side + k + 1]!;
-      const top0 = j0 * side + i0, top1 = j1 * side + i1, bottom0 = first + k, bottom1 = first + k + 1;
-      out.push(top0, bottom0, top1, top1, bottom0, bottom1, top0, top1, bottom0, top1, bottom1, bottom0);
-    }
-  }
-  return (indices = Uint16Array.from(out));
+/**
+ * 块的高度页的页头：UV 的原点（块的原点按 period 米取过模再除以 uvScale，大世界里 UV 的数也小）、每格的 UV 步长、裙边的深度
+ * （垂下几个格那么深：相邻的块最多差一层，接缝的高度差在一个格的坡度以内）。
+ */
+export function tilePageHeader(x0: number, z0: number, edge: number, uvScale: number, period: number): [number, number, number, number] {
+  const spacing = edge / TILE_QUADS;
+  const wrap = (value: number) => value - Math.floor(value / period) * period;
+  return [wrap(x0) / uvScale, wrap(z0) / uvScale, spacing / uvScale, Math.max(spacing * 4, 1)];
 }

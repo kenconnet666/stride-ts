@@ -1,9 +1,10 @@
 /**
- * 地形的渲染（`game.terrain`）：每帧对每个 Terrain 实体按相机选块（terrainTiles.ts 的四叉树），没好的块在工作线程上求高度页、
- * 建网格，好的块挂成实体的子实体（TerrainTile，带 Model）交给网格渲染特性画（剔除、阴影、材质都和普通模型一样）。
+ * 地形的渲染（`game.terrain`）：每帧对每个 Terrain 实体按相机选块（terrainTiles.ts 的四叉树），没好的块在工作线程上求高度，写进
+ * 高度页（rendering/mesh/HeightPages.ts）；好的块挂成实体的子实体（TerrainTile，带 Model 和 HeightfieldTile），全部用这个地形的
+ * 同一个高度场网格和材质，网格渲染特性一次实例化绘制画完（剔除、阴影、材质都和普通模型一样）。
  *
  * - 没变就不做：相机挪得不到最细一层块边长的 1/8、也没有新的块好了时，不重选；
- * - 同时最多 MAX_PENDING 页在算；块的网格缓存着（最近用过的留 MAX_CACHED 块），不用的释放显存；
+ * - 同时最多 MAX_PENDING 页在算；块的高度页缓存着（最近用过的留 MAX_CACHED 块），不用的还回去；
  * - 资源、尺寸、细节这些设置变了（编辑器里改了地形文件、热重载），整个重建。
  *
  * `stride call terrain` 看每个地形画了几块、在算几块、缓存了几块。
@@ -16,8 +17,9 @@ import type { EntityId } from '../data/prop';
 import type { Game } from '../engine/Game';
 import { Model } from '../rendering/components';
 import { Mesh } from '../rendering/mesh/Mesh';
+import { HeightfieldTile, HeightPages } from '../rendering/mesh/HeightPages';
 import { Terrain, TerrainAsset, TerrainTile } from './Terrain';
-import { buildTileMesh, selectTiles, TILE_LAYOUT, TILE_QUADS, TILE_SAMPLES, tileId, tileRect, type TileKey } from './terrainTiles';
+import { heightfieldGrid, selectTiles, TILE_QUADS, TILE_SAMPLES, tileId, tilePageHeader, tileRect, type TileKey } from './terrainTiles';
 
 /** 同时在算的高度页最多几个（每页约 1 毫秒，工作线程上）。 */
 const MAX_PENDING = 8;
@@ -28,7 +30,8 @@ const UV_PERIODS = 256;
 
 interface Tile {
   readonly key: TileKey;
-  mesh: Mesh | undefined;
+  /** 高度页的起点（HeightPages）；还在算时是 undefined。 */
+  page: number | undefined;
   /** 最后一次被选中（画或者要）的帧。 */
   used: number;
   /** 高度页在算。 */
@@ -41,6 +44,11 @@ interface TerrainState {
   /** 建块时的设置：变了整个重建。 */
   settings: string;
   asset: TerrainAsset;
+  /** 这个地形的块共用的高度场网格；剔除的包围盒的高度范围跟着算好的页放大。 */
+  readonly grid: Mesh;
+  /** 算好的页的高度范围（包围盒用）。 */
+  minHeight: number;
+  maxHeight: number;
   readonly tiles: Map<string, Tile>;
   /** 正在画的块 → 子实体。 */
   readonly drawn: Map<string, Entity>;
@@ -89,7 +97,8 @@ export class TerrainSystem {
         state = undefined;
       }
       if (!state) {
-        state = { entity, settings, asset, tiles: new Map(), drawn: new Map(), pending: 0, eye: undefined, generation: 0 };
+        const grid = new Mesh(`${asset.path} heightfield`, { ...heightfieldGrid(), heightfield: true });
+        state = { entity, settings, asset, grid, minHeight: Infinity, maxHeight: -Infinity, tiles: new Map(), drawn: new Map(), pending: 0, eye: undefined, generation: 0 };
         this.#states.set(id, state);
       }
       if (eye) this.#updateTerrain(state, eye);
@@ -148,7 +157,7 @@ export class TerrainSystem {
     const native = this.#game.native;
     const half = terrain.size / 2;
     const ground = asset.heightAt(native, Math.min(half, Math.max(-half, eye[0])), Math.min(half, Math.max(-half, eye[2])));
-    const ready = (key: TileKey) => state.tiles.get(tileId(key))?.mesh !== undefined;
+    const ready = (key: TileKey) => state.tiles.get(tileId(key))?.page !== undefined;
     const { draw, want } = selectTiles({ size: terrain.size, leafEdge: terrain.detail, lodFactor: terrain.lodFactor, eye, ground, ready });
     const frame = this.#frame;
     // 要画的换上，不画了的拿掉
@@ -158,7 +167,7 @@ export class TerrainSystem {
       keep.add(id);
       const tile = state.tiles.get(id)!;
       tile.used = frame;
-      if (!state.drawn.has(id)) state.drawn.set(id, this.#spawnTile(state, key, tile.mesh!));
+      if (!state.drawn.has(id)) state.drawn.set(id, this.#spawnTile(state, key, tile.page!));
     }
     for (const [id, child] of state.drawn) {
       if (keep.has(id)) continue;
@@ -169,9 +178,9 @@ export class TerrainSystem {
     for (const key of want) {
       const id = tileId(key);
       let tile = state.tiles.get(id);
-      if (!tile) state.tiles.set(id, (tile = { key, mesh: undefined, used: frame, requested: false }));
+      if (!tile) state.tiles.set(id, (tile = { key, page: undefined, used: frame, requested: false }));
       tile.used = frame;
-      if (tile.mesh || state.pending >= MAX_PENDING || tile.requested) continue;
+      if (tile.page !== undefined || state.pending >= MAX_PENDING || tile.requested) continue;
       tile.requested = true;
       void this.#build(state, tile, state.generation);
     }
@@ -187,11 +196,22 @@ export class TerrainSystem {
     try {
       const heights = await state.asset.evaluator(this.#game.native).heights(x0 - spacing, z0 - spacing, spacing, TILE_SAMPLES, TILE_SAMPLES);
       if (generation !== state.generation || !state.entity.alive) return;
-      const period = uvScale * UV_PERIODS;
-      const uvOrigin: [number, number] = [mod(x0, period) / uvScale, mod(z0, period) / uvScale];
-      // 裙边垂下几个格那么深：相邻的块最多差一层，接缝的高度差在一个格的坡度以内
-      const { vertices, indices } = buildTileMesh(heights, edge, uvOrigin, uvScale, Math.max(spacing * 4, 1));
-      tile.mesh = new Mesh(`${state.asset.path}/${tileId(tile.key)}`, { vertices, indices, layout: TILE_LAYOUT });
+      const header = tilePageHeader(x0, z0, edge, uvScale, uvScale * UV_PERIODS);
+      const pages = this.#pages;
+      tile.page = pages.allocate();
+      pages.write(tile.page, header, heights);
+      // 共用网格的包围盒（网格空间：x、z 是格坐标多一圈，y 是米）跟着算好的页放大，剔除、阴影的范围都对
+      // 下界再减去裙边（粗的块裙边深）
+      let min = state.minHeight, max = state.maxHeight;
+      for (const h of heights) {
+        if (h - header[3] < min) min = h - header[3];
+        if (h > max) max = h;
+      }
+      if (min < state.minHeight || max > state.maxHeight) {
+        state.minHeight = min;
+        state.maxHeight = max;
+        state.grid.cullBounds = { min: [-1, min, -1], max: [TILE_QUADS + 1, max, TILE_QUADS + 1] };
+      }
       state.eye = undefined;
       this.#game.requestFrames();
     } finally {
@@ -200,15 +220,22 @@ export class TerrainSystem {
     }
   }
 
-  #spawnTile(state: TerrainState, key: TileKey, mesh: Mesh): Entity {
+  get #pages(): HeightPages {
+    return this.#game.meshes.heightPages;
+  }
+
+  #spawnTile(state: TerrainState, key: TileKey, page: number): Entity {
     const terrain = state.entity.require(Terrain);
-    const { x0, z0 } = tileRect(terrain.size, key);
+    const { x0, z0, edge } = tileRect(terrain.size, key);
+    const spacing = edge / TILE_QUADS;
     const material = state.asset.material ?? this.#game.content.defaultMaterial;
     const child = this.#game.entities.create({
       name: `${state.entity.name}/tile ${tileId(key)}`,
       components: [
-        Transform.with({ position: [x0, 0, z0] }),
-        Model.with({ mesh: mesh.id, material: material.id, isShadowCaster: terrain.isShadowCaster, renderGroup: terrain.renderGroup }),
+        // 共用网格的一格是 1：按这一层的格距放大
+        Transform.with({ position: [x0, 0, z0], scale: [spacing, 1, spacing] }),
+        Model.with({ mesh: state.grid.id, material: material.id, isShadowCaster: terrain.isShadowCaster, renderGroup: terrain.renderGroup }),
+        HeightfieldTile.with({ page }),
         TerrainTile,
       ],
     });
@@ -221,7 +248,7 @@ export class TerrainSystem {
     if (state.tiles.size <= MAX_CACHED) return;
     const idle = [...state.tiles.entries()].filter(([id, tile]) => !state.drawn.has(id) && !tile.requested).sort((a, b) => a[1].used - b[1].used);
     for (const [id, tile] of idle.slice(0, state.tiles.size - MAX_CACHED)) {
-      tile.mesh?.dispose();
+      if (tile.page !== undefined) this.#pages.free(tile.page);
       state.tiles.delete(id);
     }
   }
@@ -229,11 +256,11 @@ export class TerrainSystem {
   #drop(id: EntityId, state: TerrainState): void {
     state.generation++;
     for (const child of state.drawn.values()) if (child.alive) child.destroy();
-    for (const tile of state.tiles.values()) tile.mesh?.dispose();
+    for (const tile of state.tiles.values()) if (tile.page !== undefined) this.#pages.free(tile.page);
+    state.grid.dispose();
     state.drawn.clear();
     state.tiles.clear();
     this.#states.delete(id);
   }
 }
 
-const mod = (value: number, period: number) => value - Math.floor(value / period) * period;

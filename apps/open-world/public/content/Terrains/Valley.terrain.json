@@ -5,7 +5,7 @@
   "octaves": 10,
   "scale": 2400,
   "height": 420,
-  "offset": 200,
+  "offset": -60,
   "erosion": 0.45,
   "ridged": 0.3,
   "warp": 350

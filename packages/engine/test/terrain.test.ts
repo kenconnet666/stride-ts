@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { checkTerrainFile } from '../src/content/terrainFormat';
-import { buildTileMesh, selectTiles, TILE_QUADS, TILE_SAMPLES, tileId, tileRect, type TileKey } from '../src/terrain/terrainTiles';
+import { heightfieldGrid, selectTiles, TILE_QUADS, tileId, tilePageHeader, tileRect, type TileKey } from '../src/terrain/terrainTiles';
 
 const all = () => true;
 
@@ -46,23 +46,17 @@ describe('地形的分块', () => {
     expect(empty.want[0]).toEqual({ level: 0, x: 0, z: 0 });
   });
 
-  test('块的网格：顶点相对块的原点，法线朝上偏向下坡，裙边垂下去', () => {
-    // 往 +x 每米升 1 米的斜坡（间距 1 米）
-    const heights = Float32Array.from({ length: TILE_SAMPLES * TILE_SAMPLES }, (_, i) => (i % TILE_SAMPLES) - 1);
-    const { vertices, indices } = buildTileMesh(heights, TILE_QUADS, [0, 0], 4, 2);
+  test('共用的高度场网格：格坐标、裙边的顶点 y 是 1；块的页头是取过模的 UV 原点、每格的 UV 步长和裙边深度', () => {
+    const { vertices, indices } = heightfieldGrid();
     const side = TILE_QUADS + 1;
-    expect(vertices.length / 12).toBe(side * side + 4 * side);
+    expect(vertices.length / 8).toBe(side * side + 4 * side);
     expect(indices.length).toBe(TILE_QUADS * TILE_QUADS * 6 + 4 * TILE_QUADS * 12);
-    // 第 (3, 0) 个顶点：x = 3、高 3，法线 (-1, 1, 0) / √2，UV 每 4 米一个周期
-    const v = vertices.subarray(3 * 12, 4 * 12);
-    expect([...v.subarray(0, 3)]).toEqual([3, 3, 0]);
-    expect(v[3]).toBeCloseTo(-Math.SQRT1_2);
-    expect(v[4]).toBeCloseTo(Math.SQRT1_2);
-    expect(v[6]).toBeCloseTo(0.75);
-    // 第一圈裙边在 z = 0 那条边下面 2 米
-    const skirt = vertices.subarray(side * side * 12, side * side * 12 + 3);
-    expect([...skirt]).toEqual([0, -2, 0]);
-    expect(Math.max(...indices)).toBe(vertices.length / 12 - 1);
+    expect([...vertices.subarray(3 * 8, 3 * 8 + 3)]).toEqual([3, 0, 0]);
+    // 第一圈裙边在 z = 0 那条边下面
+    expect([...vertices.subarray(side * side * 8, side * side * 8 + 3)]).toEqual([0, 1, 0]);
+    expect(Math.max(...indices)).toBe(vertices.length / 8 - 1);
+    // 块的原点 (1030, -6) 米，每 4 米一个周期、按 1024 米取模：UV 原点 (1.5, 254.5)；32 米的块每格 1 米 = 0.25 个周期
+    expect(tilePageHeader(1030, -6, 32, 4, 1024)).toEqual([1.5, 254.5, 0.25, 4]);
   });
 });
 

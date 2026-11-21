@@ -39,6 +39,7 @@ import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshE
 import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER, screenTextureCode } from './meshShader';
 import { CEL_RAMP_STOPS, vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/format';
 import { Mesh } from './Mesh';
+import { HeightfieldTile, HeightPages } from './HeightPages';
 import { inRenderMask, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
 
@@ -120,6 +121,10 @@ interface GpuMaterial {
   version: number;
 }
 
+/** 顶点在网格空间里怎么变形：不变、按形变目标、按高度页（地形块）。 */
+type VertexDeform = 'none' | 'morph' | 'heightfield';
+const deformOf = (mesh: Mesh): VertexDeform => (mesh.heightfield ? 'heightfield' : mesh.data.morph ? 'morph' : 'none');
+
 export class MeshRenderFeature extends RootRenderFeature {
   readonly name = 'MeshRenderFeature';
   /** 网格效果（Stride 合成器里 MeshRenderFeature 的 EffectName 指的效果）：所有网格都用它画；没有时是默认的效果。 */
@@ -179,8 +184,19 @@ export class MeshRenderFeature extends RootRenderFeature {
     },
   });
 
-  /** 变换槽位 → 形变权重的起点（只有带形变网格的槽位有意义）。 */
+  /** 地形块：它的高度页的起点也放在 morphOf 里（一个实体不会既是地形块又带形变）。 */
+  readonly #extractHeightfieldSystem = system('MeshRenderFeature.extractHeightfield', {
+    with: { transform: Transform, tile: HeightfieldTile },
+    update: ({ transform, tile, count }) => {
+      for (let i = 0; i < count; i++) this.#morphOf.set(transform.slot[i]!, tile.page[i]!);
+    },
+  });
+
+  /** 变换槽位 → 形变权重的起点（只有带形变网格的槽位有意义），地形块是高度页的起点。 */
   readonly #morphOf = new SlotTable();
+
+  /** 地形块的高度页（见 HeightPages.ts）：地形系统写，这里每帧上传改了的部分。 */
+  readonly heightPages = new HeightPages();
 
   // 剔除：一帧里第 k 次 cull 用第 k 个工作区；视图到（剔除，视图在其中的下标）
   readonly #cullPasses: CullPass[] = [];
@@ -195,6 +211,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     context.game.entities.run(this.#extractSystem, context.time);
     context.game.entities.run(this.#extractSkinnedSystem, context.time);
     context.game.entities.run(this.#extractMorphedSystem, context.time);
+    context.game.entities.run(this.#extractHeightfieldSystem, context.time);
     this.#masters.clear();
     this.#entityManager = context.game.entities;
     context.game.entities.run(this.#extractInstancesSystem, context.time);
@@ -256,6 +273,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     gpu.uploadWorlds(context.game.transforms.renderWorld, context.game.transforms.slotLimit);
     gpu.uploadSkinning(this.#paletteOf, context.game.animation);
     gpu.uploadMorphs(this.#morphOf, context.game.animation);
+    gpu.uploadHeights(this.heightPages);
     const passes = this.#cullPasses.slice(0, this.#cullPassCount);
     let offset = 0;
     for (const pass of passes) {
@@ -296,7 +314,7 @@ export class MeshRenderFeature extends RootRenderFeature {
     const gpu = this.#ensureGpu();
     const pending: Promise<void>[] = [];
     const add = (stage: RenderStage, materialPass?: MaterialPass) => {
-      const warming = gpu.warmPipeline(stage, mesh.layout, skinned, mesh.data.morph !== undefined, material, this.effect, materialPass);
+      const warming = gpu.warmPipeline(stage, mesh.layout, skinned, deformOf(mesh), material, this.effect, materialPass);
       if (warming) pending.push(warming);
     };
     for (const stage of stages) {
@@ -351,7 +369,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       const materialChanged = batch.material !== material, meshChanged = batch.mesh !== mesh || batch.skinned !== skinned;
       const passes = stage.transparent ? transparentPasses(batch.material) : NO_PASSES;
-      const pipelineOf = (materialPass?: MaterialPass) => gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, batch.mesh.data.morph !== undefined, batch.material, this.effect, materialPass);
+      const pipelineOf = (materialPass?: MaterialPass) => gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, deformOf(batch.mesh), batch.material, this.effect, materialPass);
       if (passes.length === 0 && (materialChanged || meshChanged)) {
         // 管线也按材质分（自发光变体、两面画），同样的组合是同一条管线
         const next = pipelineOf();
@@ -537,6 +555,8 @@ class Gpu {
   #paletteOf: GPUBuffer | undefined;
   #palettes: GPUBuffer | undefined;
   #morphOf: GPUBuffer | undefined;
+  /** 地形块的高度页（HeightPages 的 GPU 那份）。 */
+  #heights: GPUBuffer | undefined;
   #morphWeights: GPUBuffer | undefined;
   /** 没有形变的网格绑的空缓冲。 */
   readonly #noMorph: GPUBuffer;
@@ -596,6 +616,7 @@ class Gpu {
         { binding: 10, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 11, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 12, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
+        { binding: 13, visibility: GPUShaderStage.VERTEX, buffer: { type: 'read-only-storage' } },
         { binding: 14, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 15, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 16, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: 'cube-array' } },
@@ -691,12 +712,12 @@ class Gpu {
    * 阴影投射）没有片元着色器；阴影投射还不剔背面、不做深度裁剪（Stride 的 ShadowMeshPipelineProcessor）。深度比较是 less-equal
    * （Stride 的 DepthStencilStates.Default），不透明阶段靠它复用深度预通道的结果。
    */
-  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipeline {
-    const key = this.#pipelineKey(stage, layout, skinned, morphed, material, effect, materialPass);
+  pipelineFor(stage: RenderStage, layout: VertexLayout, skinned: boolean, deform: VertexDeform, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipeline {
+    const key = this.#pipelineKey(stage, layout, skinned, deform, material, effect, materialPass);
     let pipeline = this.#pipelines.get(key);
     if (!pipeline) {
       // 画的时候才发现没有：当场建。着色器的编译在这一帧里做，画面会卡一下——预热（warmPipeline）就是为了不走到这里
-      pipeline = this.device.createRenderPipeline(this.#pipelineDescriptor(stage, layout, skinned, morphed, material, effect, materialPass));
+      pipeline = this.device.createRenderPipeline(this.#pipelineDescriptor(stage, layout, skinned, deform, material, effect, materialPass));
       this.#pipelines.set(key, pipeline);
     }
     return pipeline;
@@ -706,12 +727,12 @@ class Gpu {
    * 预热：这条管线还没有的话在后台编译（createRenderPipelineAsync，不卡帧），好了以后放进缓存。已经有了返回 undefined，
    * 否则返回编好时完成的 Promise。编译期间画到它的话照旧当场建一条（结果一样，只是白编了一次）。
    */
-  warmPipeline(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): Promise<void> | undefined {
-    const key = this.#pipelineKey(stage, layout, skinned, morphed, material, effect, materialPass);
+  warmPipeline(stage: RenderStage, layout: VertexLayout, skinned: boolean, deform: VertexDeform, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): Promise<void> | undefined {
+    const key = this.#pipelineKey(stage, layout, skinned, deform, material, effect, materialPass);
     if (this.#pipelines.has(key)) return undefined;
     let warming = this.#warming.get(key);
     if (!warming) {
-      warming = this.device.createRenderPipelineAsync(this.#pipelineDescriptor(stage, layout, skinned, morphed, material, effect, materialPass)).then((pipeline) => {
+      warming = this.device.createRenderPipelineAsync(this.#pipelineDescriptor(stage, layout, skinned, deform, material, effect, materialPass)).then((pipeline) => {
         this.#warming.delete(key);
         if (!this.#pipelines.has(key)) this.#pipelines.set(key, pipeline);
       });
@@ -720,15 +741,15 @@ class Gpu {
     return warming;
   }
 
-  #pipelineKey(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): string {
+  #pipelineKey(stage: RenderStage, layout: VertexLayout, skinned: boolean, deform: VertexDeform, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): string {
     const { colorFormat, depthFormat } = stage.output;
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     const depthFragment = colorFormat === undefined ? material.depthFragment : undefined;
-    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${morphed}:${doubleSided}:${depthFragment}:${materialPass?.name}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
+    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${deform}:${doubleSided}:${depthFragment}:${materialPass?.name}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
   }
 
-  #pipelineDescriptor(stage: RenderStage, layout: VertexLayout, skinned: boolean, morphed: boolean, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipelineDescriptor {
+  #pipelineDescriptor(stage: RenderStage, layout: VertexLayout, skinned: boolean, deform: VertexDeform, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipelineDescriptor {
     const { colorFormat, depthFormat, surfaceFormats } = stage.output;
     // 只有深度的阶段不看材质（两面画的材质也只影响颜色阶段，阴影投射本来就不剔背面）
     // 颜色树的变体每个阶段都用：位移贴图在只写深度的阶段也要算（深度预通道和不透明阶段的深度要一样）
@@ -739,15 +760,17 @@ class Gpu {
     {
       const offsets = vertexLayoutOffsets(layout);
       // 运动向量阶段不要切线（只算位置），用自己的顶点着色器
-      const entryPoint = stage.velocity ? `vsVelocity${skinned ? 'Skinned' : ''}` : `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
+      // 高度场（地形块）的顶点按高度页算，有自己的入口；切线在着色器里由高度算
+      const entryPoint = deform === 'heightfield' ? (stage.velocity ? 'vsVelocityHeightfield' : 'vsHeightfield')
+        : stage.velocity ? `vsVelocity${skinned ? 'Skinned' : ''}` : `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
       const module = this.#module(trees, effect);
       return {
-        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${morphed ? ' morphed' : ''}${trees ? ' material trees' : ''}`,
+        label: `MeshRenderFeature ${stage.name} ${layout.position}/${layout.normal}/${layout.uv}${skinned ? ' skinned' : ''}${deform === 'none' ? '' : ` ${deform}`}${trees ? ' material trees' : ''}`,
         layout: this.#layout(trees?.textures.length ?? 0).layout,
         vertex: {
           module,
           entryPoint,
-          ...(morphed ? { constants: { MORPHED: 1 } } : {}),
+          ...(deform === 'morph' ? { constants: { MORPHED: 1 } } : {}),
           buffers: [{
             arrayStride: offsets.stride,
             attributes: [
@@ -894,6 +917,21 @@ class Gpu {
     animation.forEachMorph((base, values) => this.device.queue.writeBuffer(weights, (current + base) * 4, values));
   }
 
+  /** 高度页：缓冲长大了重建、整个传，否则只传改了的那段（地形的块好了才写，平时不传）。 */
+  uploadHeights(pages: HeightPages): void {
+    if (!this.#heights || pages.grown) {
+      this.#heights?.destroy();
+      this.#heights = this.#createStorage('MeshRenderFeature heights', pages.data.byteLength);
+      this.#clearViewBindGroups();
+      this.device.queue.writeBuffer(this.#heights, 0, pages.data);
+      pages.grown = false;
+    } else if (pages.dirtyEnd > pages.dirtyStart) {
+      this.device.queue.writeBuffer(this.#heights, pages.dirtyStart * 4, pages.data, pages.dirtyStart, pages.dirtyEnd - pages.dirtyStart);
+    }
+    pages.dirtyStart = Infinity;
+    pages.dirtyEnd = 0;
+  }
+
   /** 各次剔除的可见槽位（每个视图一段，直接在 wasm 内存里）依次拼成实例缓冲。 */
   uploadInstances(passes: readonly CullPass[], total: number): void {
     const bytes = Math.max(total, 1) * 4;
@@ -1022,6 +1060,7 @@ class Gpu {
           { binding: 10, resource: { buffer: this.#localLights.buffer } },
           { binding: 11, resource: { buffer: this.#morphOf! } },
           { binding: 12, resource: { buffer: this.#morphWeights! } },
+          { binding: 13, resource: { buffer: this.#heights! } },
           { binding: 14, resource: ao.createView() },
           { binding: 15, resource: shadow.createView() },
           { binding: 16, resource: this.#probes.cubes.createView({ dimension: 'cube-array' }) },
@@ -1202,7 +1241,7 @@ class Gpu {
   }
 
   destroy(): void {
-    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#morphOf, this.#morphWeights, this.#noMorph]) buffer?.destroy();
+    for (const buffer of [this.#worlds, this.#instances, this.#views, this.#paletteOf, this.#palettes, this.#morphOf, this.#morphWeights, this.#heights, this.#noMorph]) buffer?.destroy();
     for (const { params, vertices, indices, edges } of this.#meshes.values()) {
       params.destroy();
       vertices.destroy();

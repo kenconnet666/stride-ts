@@ -28,6 +28,7 @@ import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
 import { BRDF, GRADIENT_NOISE } from '../wgsl';
 import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees } from './Material';
+import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from './HeightPages';
 
 /** DFG 查找表的尺寸（同 Stride 的 EnvironmentLightingDFGLUT16）。 */
 export const DFG_LUT_WIDTH = 32;
@@ -107,6 +108,8 @@ override TRANSPARENT_STAGE: bool = false;
 // 带形变网格的实体：变换槽位 → 它的模型实例那组形变权重在 morphWeights 里的起点
 @group(0) @binding(11) var<storage, read> morphOf: array<u32>;
 @group(0) @binding(12) var<storage, read> morphWeights: array<f32>;
+// 地形块的高度页（HeightPages.ts）：页头 4 个 float（UV 原点 u、v，每格的 UV 步长，裙边深度）加一圈多的高度；块的起点在 morphOf 里
+@group(0) @binding(13) var<storage, read> heights: array<f32>;
 // 屏幕空间的环境光遮蔽，半分辨率，只乘环境光；没有时是 1x1 的白图。GTAO（AmbientOcclusion.ts）的在 r 里；view.locals.z 是 1 时是
 // 屏幕空间全局光照（ScreenSpaceGlobalIllumination.ts）的：rgb 是间接光（乘漫反射颜色加上），a 是遮蔽
 @group(0) @binding(14) var screenOcclusion: texture_2d<f32>;
@@ -578,6 +581,31 @@ fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f, previous: bool) -> mat4x
   return transformVertex(position, normal, uv, tangent, slot, vertex, skinMatrix(slot, joints, weights, false), true);
 }
 
+/** 高度场网格的一个顶点（格坐标 i、j 和是不是裙边）按这个实体的高度页摆好：网格空间的位置、法线、UV、切线。 */
+struct HeightfieldVertex { position: vec3f, normal: vec3f, uv: vec2f, tangent: vec4f };
+fn heightfieldVertex(grid: vec3f, slot: u32) -> HeightfieldVertex {
+  let base = morphOf[frameBase(3u, false) + slot];
+  let i = u32(grid.x);
+  let j = u32(grid.z);
+  let at = base + ${HEIGHT_PAGE_HEADER}u + (j + 1u) * ${HEIGHT_PAGE_SAMPLES}u + i + 1u;
+  // 每格的高度差（网格空间里 x、z 一格是 1，实体的缩放把它放大成米；法线经余子式矩阵变到世界里，斜率跟着对）
+  let dx = (heights[at + 1u] - heights[at - 1u]) * 0.5;
+  let dz = (heights[at + ${HEIGHT_PAGE_SAMPLES}u] - heights[at - ${HEIGHT_PAGE_SAMPLES}u]) * 0.5;
+  var out: HeightfieldVertex;
+  out.position = vec3f(grid.x, heights[at] - grid.y * heights[base + 3u], grid.z);
+  out.normal = vec3f(-dx, 1.0, -dz);
+  out.uv = vec2f(heights[base], heights[base + 1u]) + grid.xz * heights[base + 2u];
+  // 切线沿 +x（u），bitangent 沿 +z（v 也沿 +z）
+  out.tangent = vec4f(1.0, dx, 0.0, -1.0);
+  return out;
+}
+
+@vertex fn vsHeightfield(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
+  let slot = slots[instance];
+  let v = heightfieldVertex(position, slot);
+  return transformVertex(v.position, v.normal, v.uv, v.tangent, slot, vertex, IDENTITY, false);
+}
+
 // 运动向量（RenderStage.velocity）：位置和别的阶段一样算（@invariant，深度相等的比较才对得上），另外带上这一帧、上一帧
 // 没挪过亚像素的裁剪坐标，片元着色器相减
 struct VelocityVaryings {
@@ -597,6 +625,12 @@ fn velocityVertex(position: vec3f, normal: vec3f, uv: vec2f, slot: u32, vertex: 
 
 @vertex fn vsVelocity(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> VelocityVaryings {
   return velocityVertex(position, normal, uv, slots[instance], vertex, IDENTITY, IDENTITY);
+}
+
+@vertex fn vsVelocityHeightfield(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> VelocityVaryings {
+  let slot = slots[instance];
+  let v = heightfieldVertex(position, slot);
+  return velocityVertex(v.position, v.normal, v.uv, slot, vertex, IDENTITY, IDENTITY);
 }
 
 @vertex fn vsVelocitySkinned(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(4) joints: vec4u, @location(5) weights: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> VelocityVaryings {

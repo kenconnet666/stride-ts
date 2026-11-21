@@ -23,6 +23,11 @@ export interface MeshData {
   readonly dequantize?: Dequantize;
   /** 形变数据（布局见 content/format.ts 的 MeshMorph），按 uint32 看。 */
   readonly morph?: Uint32Array;
+  /**
+   * 高度场网格（地形块共用的格子，见 HeightPages.ts）：顶点的 x、z 是格坐标，y 是 1 时是裙边；高度由实体的高度页给，
+   * 顶点着色器用 vsHeightfield。
+   */
+  readonly heightfield?: boolean;
 }
 
 /** 轴对齐包围盒，模型空间。 */
@@ -50,6 +55,8 @@ export class Mesh {
   effectParameters: Float32Array | undefined;
   /** 改了效果参数要递增，渲染特性据此重新上传。 */
   effectVersion = 0;
+  /** 见 MeshData.heightfield。 */
+  readonly heightfield: boolean;
 
   constructor(name: string, data: MeshData) {
     this.layout = data.layout ?? FLOAT_LAYOUT;
@@ -61,6 +68,7 @@ export class Mesh {
     this.data = data;
     this.bounds = boundsOf(data.vertices, this.layout, this.dequantize, this.vertexStride);
     this.cullBounds = this.bounds;
+    this.heightfield = data.heightfield === true;
     this.id = meshes.add(this) as MeshId;
   }
 

@@ -204,6 +204,43 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
     return json({ saved: `${kind} ${path}`, changed: changed.map((entity) => ({ id: entity.id, name: entity.name })), removed, issues });
   });
 
+  server.registerTool('create_world', {
+    description: 'Create a large world (.world.json): the XZ plane is cut into square cells, each cell\'s content is a scene file loaded and unloaded by distance at run time (game.world.load). Layers group content by load radius (terrain far, small props near). persistent is a scene that is always there (sky, sun, settings). Add content with place_in_world.',
+    inputSchema: z.object({
+      path: assetPath,
+      cellSize: z.number().positive().optional().describe('cell edge in meters (default 256)'),
+      layers: z.array(z.object({ name: z.string(), loadRadius: z.number().positive() })).optional().describe('default [{name:"default", loadRadius:512}]'),
+      persistent: z.string().optional().describe('content path of the always-loaded scene'),
+    }),
+  }, async ({ path, cellSize, layers, persistent }) => json(brief(await backend.createWorld(path, {
+    ...(cellSize === undefined ? {} : { cellSize }), ...(layers ? { layers } : {}), ...(persistent ? { persistent } : {}),
+  }))));
+
+  server.registerTool('place_in_world', {
+    description: 'Put entities into a world: each root entity (parent null) goes into the cell its position (world coordinates, meters) falls in, converted to cell-local; children follow their root. Cell scenes are created as needed and the world\'s cell index is updated. Entities without an id get one. Parents must come before children.',
+    inputSchema: z.object({
+      world: assetPath.describe('content path of the .world.json'),
+      layer: z.string().optional().describe('layer name (default: the first layer)'),
+      entities: z.array(z.record(z.string(), z.unknown())).describe('SceneEntityFile objects (id, name, parent, position, rotation, scale, components)'),
+    }),
+  }, async ({ world, layer, entities }) => {
+    const file = await backend.readAsset('world', world) as { layers: { name: string }[] };
+    return json(await backend.placeInWorld(world, layer ?? file.layers[0]!.name, entities as unknown as SceneEntityFile[]));
+  });
+
+  server.registerTool('world_info', {
+    description: 'A world\'s cell size, layers, persistent scene and which cells have content (per layer), with each cell\'s scene path and entity count.',
+    inputSchema: z.object({ world: assetPath.describe('content path of the .world.json') }),
+  }, async ({ world }) => {
+    const file = await backend.readAsset('world', world) as { cellSize: number; persistent?: string; layers: { name: string; loadRadius: number }[]; cells: Record<string, [number, number][]> };
+    const cells = await Promise.all(Object.entries(file.cells).flatMap(([layer, list]) => list.map(async ([x, z]) => {
+      const scene = `${world}/${layer}/${x}_${z}`;
+      const content = database.get('scene', scene) ? await backend.readAsset('scene', scene) as { entities: unknown[] } : undefined;
+      return { layer, cell: [x, z], scene, entities: content?.entities.length ?? 0 };
+    })));
+    return json({ cellSize: file.cellSize, persistent: file.persistent ?? null, layers: file.layers, cells });
+  });
+
   server.registerTool('list_library', {
     description: 'The built-in material and effect library of the editor (the Library window): ids and categories. Materials need no textures (plain PBR or material node graphs); effects are particle systems. Use one with use_library.',
     inputSchema: z.object({}),

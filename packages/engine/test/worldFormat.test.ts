@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { cellAt, cellOrigin, checkWorldFile, distanceToCell, worldCellPath } from '../src/content/worldFormat';
+import { cellAt, cellOrigin, checkWorldFile, distanceToCell, placeInCells, worldCellPath } from '../src/content/worldFormat';
 
 const world = { name: 'Island', cellSize: 100, layers: [{ name: 'terrain', loadRadius: 800 }, { name: 'props', loadRadius: 200 }], cells: { props: [[0, 0], [-1, 2]] } };
 
@@ -26,5 +26,21 @@ describe('世界的格子', () => {
     expect(() => checkWorldFile({ ...world, layers: [{ name: 'a', loadRadius: 1 }, { name: 'a', loadRadius: 2 }] }, 'w')).toThrow(/twice/);
     expect(() => checkWorldFile({ ...world, cells: { roads: [[0, 0]] } }, 'w')).toThrow(/unknown layer 'roads'/);
     expect(() => checkWorldFile({ ...world, cells: { props: [[0.5, 0]] } }, 'w')).toThrow(/integers/);
+  });
+});
+
+describe('往世界里放实体', () => {
+  const at = (id: string, parent: string | null, position: [number, number, number]) => ({ id, name: id, parent, position, rotation: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number], components: {} });
+
+  test('根实体按世界坐标分到格子里、位置换成格子里的；子实体跟着根走，本地位置不动', () => {
+    const placed = placeInCells(world, [at('a', null, [150, 2, -30]), at('b', 'a', [1, 0, 0]), at('c', null, [-10, 0, 10])]);
+    expect(placed.map((cell) => [cell.x, cell.z, cell.entities.map((e) => [e.id, ...e.position])])).toEqual([
+      [1, -1, [['a', 50, 2, 70], ['b', 1, 0, 0]]],
+      [-1, 0, [['c', 90, 0, 10]]],
+    ]);
+  });
+
+  test('子实体排在父实体前面时报错', () => {
+    expect(() => placeInCells(world, [at('b', 'a', [0, 0, 0]), at('a', null, [0, 0, 0])])).toThrow(/must come before/);
   });
 });

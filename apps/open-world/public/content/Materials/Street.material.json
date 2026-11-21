@@ -1,0 +1,11 @@
+{
+ "name": "Street",
+ "baseColor": [
+  0.18,
+  0.18,
+  0.19,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.85
+}

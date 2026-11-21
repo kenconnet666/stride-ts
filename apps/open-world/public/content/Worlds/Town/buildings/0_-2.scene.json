@@ -1,0 +1,248 @@
+{
+ "name": "0_-2",
+ "entities": [
+  {
+   "id": "fbc581ed-1a3b-4f1c-8546-82821491fa0b",
+   "name": "Tower 6,3,0",
+   "parent": null,
+   "position": [
+    24,
+    29.127925894519958,
+    40
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    16.87357371300459,
+    58.255851789039916,
+    13.773682039231062
+   ],
+   "components": {
+    "model": {
+     "model": "Models/GlassTower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5f6b9d55-d80d-4694-81f9-5ef5b6a1cf4e",
+   "name": "Tower 6,3,1",
+   "parent": null,
+   "position": [
+    56,
+    29.93912239623001,
+    40
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    18.690295639447868,
+    59.87824479246002,
+    18.957938910927624
+   ],
+   "components": {
+    "model": {
+     "model": "Models/GlassTower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "894c692f-0a8e-4f2c-ac8c-ebd3264249ea",
+   "name": "Tower 6,3,2",
+   "parent": null,
+   "position": [
+    24,
+    17.60596715880434,
+    72
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    23.02953812526539,
+    35.21193431760868,
+    21.911346038337797
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "22079371-fc45-4188-b2e4-73f0ebff6c7c",
+   "name": "Tower 6,3,3",
+   "parent": null,
+   "position": [
+    56,
+    22.26952987207786,
+    72
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    12.117990590631962,
+    44.53905974415572,
+    23.87227341113612
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "18644886-42ab-4693-bf68-78741d99c2f6",
+   "name": "Tower 6,4,0",
+   "parent": null,
+   "position": [
+    24,
+    31.584230362325073,
+    120
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    13.022929028142244,
+    63.168460724650146,
+    17.10768159851432
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "60deb905-d48f-48c3-9ef4-21e8ab819b72",
+   "name": "Tower 6,4,1",
+   "parent": null,
+   "position": [
+    56,
+    31.318717810552453,
+    120
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    20.50895422557369,
+    62.637435621104906,
+    16.13737663719803
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5baf8e2b-94aa-4d9f-8345-f53eb2c520f9",
+   "name": "Tower 7,3,0",
+   "parent": null,
+   "position": [
+    104,
+    27.66905353587544,
+    40
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    24.66790759889409,
+    55.33810707175088,
+    16.539559518452734
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "6165affa-4940-436d-a6ea-15faa971687f",
+   "name": "Tower 7,3,2",
+   "parent": null,
+   "position": [
+    104,
+    20.310950113071307,
+    72
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    18.69713628059253,
+    40.621900226142614,
+    18.51742245675996
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "520f926d-cbee-401e-8054-7606cb7aa8b9",
+   "name": "Tower 7,4,0",
+   "parent": null,
+   "position": [
+    104,
+    39.11000558538042,
+    120
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    24.80654471553862,
+    78.22001117076084,
+    15.425526975654066
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

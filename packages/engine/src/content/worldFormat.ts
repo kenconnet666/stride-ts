@@ -8,6 +8,7 @@
  * - 常驻的场景（persistent：天空、太阳、天气、全局的设置）一直在，格子的场景挂在它下面。
  * - cells 是有内容的格子的索引（没列的格子是空的，不去读），编辑器往格子里放东西时更新它。
  */
+import type { SceneEntityFile } from './sceneFormat.ts';
 
 /** 世界的一个图层：一类内容和它的加载半径。 */
 export interface WorldLayer {
@@ -70,4 +71,38 @@ export function checkWorldFile(file: unknown, where: string): WorldFile {
     }
   }
   return { ...world, cells: world.cells ?? {} };
+}
+
+/** 放进一个格子的实体：格子坐标、格子的原点和换成格子里的坐标的实体。 */
+export interface CellPlacement {
+  readonly x: number;
+  readonly z: number;
+  readonly entities: SceneEntityFile[];
+}
+
+/**
+ * 按世界坐标把实体分到格子里（编辑器、agent 往世界里放东西）：根实体（parent 是 null）的 position 是世界坐标，按它落在哪个格子
+ * 分，位置换成相对格子原点的；子实体跟着它的根走（本地坐标不动）。父实体排在子实体前面（同场景文件）。
+ */
+export function placeInCells(world: Pick<WorldFile, 'cellSize'>, entities: readonly SceneEntityFile[]): CellPlacement[] {
+  const cells = new Map<string, CellPlacement>();
+  const cellOf = new Map<string, CellPlacement>();
+  for (const entity of entities) {
+    let cell: CellPlacement | undefined;
+    let placed = entity;
+    if (entity.parent === null) {
+      const [x, z] = cellAt(world, entity.position[0], entity.position[2]);
+      const key = cellKey(x, z);
+      cell = cells.get(key) ?? { x, z, entities: [] };
+      cells.set(key, cell);
+      const [ox, oy, oz] = cellOrigin(world, x, z);
+      placed = { ...entity, position: [entity.position[0] - ox, entity.position[1] - oy, entity.position[2] - oz] };
+    } else {
+      cell = cellOf.get(entity.parent);
+      if (!cell) throw new Error(`entity ${entity.id}: its parent ${entity.parent} must come before it in the list`);
+    }
+    cellOf.set(entity.id, cell);
+    cell.entities.push(placed);
+  }
+  return [...cells.values()];
 }

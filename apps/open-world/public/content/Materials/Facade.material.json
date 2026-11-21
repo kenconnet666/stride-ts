@@ -1,0 +1,11 @@
+{
+ "name": "Facade",
+ "baseColor": [
+  0.62,
+  0.6,
+  0.56,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.6
+}

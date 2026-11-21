@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { checkEval, evalScopeFile, openEvalScope, parseSourcePosition, REPO_ROOT, TypeScriptServer } from '../src/lsp.ts';
@@ -37,8 +38,10 @@ describe('类型感知：TypeScript 的语言服务器', () => {
     expect(members.find((member) => member.name === 'load')?.detail).toContain('load(path: string): Promise<WorldFile>');
     const file = path.join(REPO_ROOT, 'packages/engine/src/content/worldFormat.ts');
     server.open(file);
-    expect(await server.hover({ file, line: 40, column: 14 })).toMatch(/^const cellOrigin: .*\n格子的原点/);
-    const refs = await server.references({ file, line: 40, column: 14 });
+    // cellOrigin 的定义在哪一行现找（文件改了行号会变）
+    const line = readFileSync(file, 'utf8').split('\n').findIndex((text) => text.startsWith('export const cellOrigin')) + 1;
+    expect(await server.hover({ file, line, column: 14 })).toMatch(/^const cellOrigin: .*\n格子的原点/);
+    const refs = await server.references({ file, line, column: 14 });
     expect(refs.some((ref) => ref.file === 'packages/engine/src/world/WorldStreaming.ts')).toBe(true);
   });
 });

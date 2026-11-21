@@ -1,0 +1,113 @@
+{
+ "name": "2_0",
+ "entities": [
+  {
+   "id": "17f62b73-7dbd-49de-b6a0-46dbfbfb324b",
+   "name": "Block 9,6",
+   "parent": null,
+   "position": [
+    24,
+    0,
+    40
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/TownGround",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "e32c54cf-ebe9-41fd-9823-76b89ef034f7",
+   "name": "Block 9,7",
+   "parent": null,
+   "position": [
+    24,
+    0,
+    120
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/TownGround",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "61131323-26cf-49af-8265-0a61590e9945",
+   "name": "Block 10,6",
+   "parent": null,
+   "position": [
+    104,
+    0,
+    40
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/TownGround",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "53dad4c2-516e-4af4-ac58-98499bbd04e5",
+   "name": "Block 10,7",
+   "parent": null,
+   "position": [
+    104,
+    0,
+    120
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/TownGround",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

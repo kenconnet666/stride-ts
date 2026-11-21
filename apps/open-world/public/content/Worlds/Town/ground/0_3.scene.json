@@ -1,0 +1,59 @@
+{
+ "name": "0_3",
+ "entities": [
+  {
+   "id": "eed1c726-de92-42c5-b5df-519962a525cc",
+   "name": "Block 6,11",
+   "parent": null,
+   "position": [
+    40,
+    0,
+    56
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/TownGround",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "3aae262b-2ef6-4f40-b9a4-e0187d0eeab7",
+   "name": "Block 7,11",
+   "parent": null,
+   "position": [
+    120,
+    0,
+    56
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/TownGround",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

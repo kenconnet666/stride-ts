@@ -815,3 +815,9 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - D18 那次提交的验证里 ui-element-link 的 FullScreen 场景"跟着按钮"差了 1024：全屏 UI 的元素矩阵在 UI 自己的坐标里，不在渲染空间，链接要按 UI 实体的 `world` 换算；放在 3D 里的 UI 照旧按 `renderWorld`（乘回去正好是世界坐标，远处也准）。
 - 单测改了三条（相机的投影反向、视锥平面正反两种都测、粒子点选的管线 greater-equal）。
 
+## W1 第四步：agent 建世界（2026-11-21）
+
+- 后端 `createWorld`、`placeInWorld`，MCP 的 `create_world`、`place_in_world`、`world_info`。
+- `apps/open-world/scripts/build-town.ts`：只经 MCP 建世界 Worlds/Town（格子 128 米，地面图层 900 米、楼图层 600 米的加载半径），写材质和模型，按世界坐标放 144 块街区的地面、576 栋楼（离中心近的高），分进 128 个格子的场景，一共约 3 秒。`?world=Worlds/Town` 打开，无头 Chrome 里从城边高处看过去 106 个格子加载着，街道、楼、影子都对。
+- 反向 Z 那次提交的验证（14 个样例）全过。
+

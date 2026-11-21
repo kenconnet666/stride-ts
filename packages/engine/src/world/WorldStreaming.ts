@@ -89,11 +89,34 @@ export class WorldStreaming {
     const file = await game.content.loadWorld(path);
     this.unload();
     const root = await game.setRootScene(file.persistent ?? { name: file.name, entities: [] });
+    this.#use(path, file, root, false);
+    return file;
+  }
+
+  /**
+   * 编辑器用：把这个世界的格子挂在 root（正在编辑的场景）下面一起看，不换根场景；编辑状态下也按流式源（编辑相机）加载，格子的
+   * 实体不在编辑的文档里（点选点不到、改不了，见 EditAgent.showWorld）。路径相同时只换 root。
+   */
+  async attach(path: string, root: SceneInstance): Promise<WorldFile> {
+    const file = await this.#game.content.loadWorld(path);
+    this.unload();
+    this.#use(path, file, root, true);
+    return file;
+  }
+
+  /** 挂在编辑的场景下面（attach），不是游戏里加载的（load）。 */
+  get attached(): boolean {
+    return this.#attached;
+  }
+
+  #attached = false;
+
+  #use(path: string, file: WorldFile, root: SceneInstance, attached: boolean): void {
     this.file = file;
     this.path = path;
     this.root = root;
+    this.#attached = attached;
     this.#index = new Map(file.layers.map((layer) => [layer.name, new Set((file.cells[layer.name] ?? []).map(([x, z]) => `${x}_${z}`))]));
-    return file;
   }
 
   /** 卸掉世界的格子（根场景留着，换根场景时自然卸掉）。 */
@@ -105,6 +128,7 @@ export class WorldStreaming {
     this.file = undefined;
     this.path = undefined;
     this.root = undefined;
+    this.#attached = false;
   }
 
   /** 已经加载好的格子（`图层/x_z`）和在读的。 */
@@ -120,9 +144,10 @@ export class WorldStreaming {
   update(): void {
     const game = this.#game;
     const file = this.file;
-    if (!file || game.editing) return;
-    // 根场景换了（游戏自己 setRootScene），世界跟着结束
-    if (game.rootScene !== this.root) {
+    // 编辑状态只流式加载编辑器挂上的世界（attach），游戏里 load 的不动
+    if (!file || (game.editing && !this.#attached)) return;
+    // 根场景换了（游戏自己 setRootScene），世界跟着结束；挂在编辑的场景下面的由编辑器在换文档时卸掉（EditAgent.hideWorld）
+    if (!this.#attached && game.rootScene !== this.root) {
       this.unload();
       return;
     }

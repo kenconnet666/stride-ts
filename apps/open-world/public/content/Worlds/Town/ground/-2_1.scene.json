@@ -1,0 +1,32 @@
+{
+ "name": "-2_1",
+ "entities": [
+  {
+   "id": "4136865c-d4b6-4e72-b610-979f59a4e2ec",
+   "name": "Block 3,8",
+   "parent": null,
+   "position": [
+    56,
+    0,
+    72
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/TownGround",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

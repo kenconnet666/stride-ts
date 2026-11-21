@@ -1,0 +1,167 @@
+{
+ "name": "3_0",
+ "entities": [
+  {
+   "id": "6554aca6-aa3d-4f31-8b1b-5e6683830aa8",
+   "name": "Tower 11,6,0",
+   "parent": null,
+   "position": [
+    40,
+    16.34796523503455,
+    24
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    22.578730165027082,
+    32.6959304700691,
+    21.757721095345914
+   ],
+   "components": {
+    "model": {
+     "model": "Models/GlassTower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "28f3fcce-ee00-42f9-b93b-94d882ed96a2",
+   "name": "Tower 11,6,1",
+   "parent": null,
+   "position": [
+    72,
+    8.348618423930933,
+    24
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    25.451626698486507,
+    16.697236847861866,
+    21.44521401776001
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "8d916cc5-6294-4bb6-a4f8-cd682d354688",
+   "name": "Tower 11,6,2",
+   "parent": null,
+   "position": [
+    40,
+    17.00505427435255,
+    56
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    18.81030415231362,
+    34.0101085487051,
+    21.113086310680956
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "11222fa9-5f0f-4487-93d2-398bd5366d73",
+   "name": "Tower 11,6,3",
+   "parent": null,
+   "position": [
+    72,
+    13.134572837330683,
+    56
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    18.979237264953554,
+    26.269145674661367,
+    17.523677998688072
+   ],
+   "components": {
+    "model": {
+     "model": "Models/GlassTower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "4d5464d3-8150-45cd-b527-5035e10aa0e6",
+   "name": "Tower 11,7,0",
+   "parent": null,
+   "position": [
+    40,
+    18.431495372393503,
+    104
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    14.05607612291351,
+    36.862990744787005,
+    17.974954582750797
+   ],
+   "components": {
+    "model": {
+     "model": "Models/GlassTower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "9ec0de51-85aa-4b6c-968c-41c38c0a486e",
+   "name": "Tower 11,7,1",
+   "parent": null,
+   "position": [
+    72,
+    18.794775633512014,
+    104
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    14.943247157149017,
+    37.58955126702403,
+    14.781506438739598
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Tower",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

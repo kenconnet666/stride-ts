@@ -9,7 +9,7 @@ import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type TextModelFile } from '@stride-ts/engine/content-format';
+import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type TextModelFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeTextModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
@@ -37,7 +37,7 @@ const CHANGE_DELAY = 50;
 type BakedKind = 'brush' | 'sdf' | 'poly' | 'text' | 'modelImport' | 'imageImport';
 const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'text' || kind === 'modelImport' || kind === 'imageImport';
 
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -114,6 +114,52 @@ export class EditorBackend {
     return { width: image.width, height: image.height, data: image.pixels };
   }
 
+  /**
+   * 新建一个世界（`.world.json`，content/worldFormat.ts）：格子边长、图层，常驻场景（天空、太阳、全局的设置）可选；还没有格子。
+   * 已经有了报 409。
+   */
+  async createWorld(assetPath: string, { cellSize = 256, layers = [{ name: 'default', loadRadius: 512 }], persistent }: { readonly cellSize?: number; readonly layers?: readonly WorldLayer[]; readonly persistent?: string } = {}): Promise<AssetRecord> {
+    const world: WorldFile = { name: assetPath.slice(assetPath.lastIndexOf('/') + 1), cellSize, ...(persistent ? { persistent } : {}), layers: [...layers], cells: {} };
+    return this.saveAsset('world', assetPath, world, { create: true });
+  }
+
+  /**
+   * 往世界里放实体（编辑器的"在哪都能放东西"、agent 的 place_in_world）：根实体的 position 是世界坐标，按落在哪个格子分进那个
+   * 格子的场景（没有就建），位置换成相对格子原点的，子实体跟着根走；世界的索引加上新格子。实体没有 id 时给一个。返回每个实体
+   * 放进了哪个格子的场景。
+   */
+  async placeInWorld(worldPath: string, layer: string, entities: readonly SceneEntityFile[]): Promise<{ readonly entity: string; readonly name: string; readonly cell: readonly [number, number]; readonly scene: string }[]> {
+    const world = checkWorldFile(await this.readAsset('world', worldPath), worldPath);
+    if (!world.layers.some((l) => l.name === layer)) throw new HttpError(400, `world ${worldPath} has no layer '${layer}' (layers: ${world.layers.map((l) => l.name).join(', ')})`);
+    const ids = new Map<string, string>();
+    const withIds = entities.map((entity) => {
+      const id = entity.id || crypto.randomUUID();
+      ids.set(entity.id, id);
+      return { ...entity, id, parent: entity.parent === null ? null : (ids.get(entity.parent) ?? entity.parent) };
+    });
+    let placements;
+    try {
+      placements = placeInCells(world, withIds);
+    } catch (error) {
+      throw new HttpError(400, `${worldPath}: ${(error as Error).message}`);
+    }
+    const placed: { entity: string; name: string; cell: readonly [number, number]; scene: string }[] = [];
+    const cells = { ...world.cells };
+    const listed = new Set((cells[layer] ?? []).map(([x, z]) => `${x}_${z}`));
+    for (const { x, z, entities: cellEntities } of placements) {
+      const scenePath = worldCellPath(worldPath, layer, x, z);
+      const existing = this.database.get('scene', scenePath) ? (await this.readAsset('scene', scenePath)) as SceneFile : { name: `${x}_${z}`, entities: [] };
+      await this.saveAsset('scene', scenePath, { ...existing, entities: [...existing.entities, ...cellEntities] });
+      if (!listed.has(`${x}_${z}`)) {
+        listed.add(`${x}_${z}`);
+        cells[layer] = [...(cells[layer] ?? []), [x, z]];
+      }
+      for (const entity of cellEntities) placed.push({ entity: entity.id, name: entity.name, cell: [x, z], scene: scenePath });
+    }
+    if (cells !== world.cells) await this.saveAsset('world', worldPath, { ...world, cells });
+    return placed;
+  }
+
   async readAsset(kind: AssetKind, assetPath: string): Promise<unknown> {
     const file = this.#jsonFile(kind, assetPath);
     try {
@@ -136,6 +182,13 @@ export class EditorBackend {
     if (kind === 'model') {
       try {
         parseProceduralModel(new TextEncoder().encode(JSON.stringify(content)), assetPath);
+      } catch (error) {
+        throw new HttpError(400, (error as Error).message);
+      }
+    }
+    if (kind === 'world') {
+      try {
+        checkWorldFile(content, assetPath);
       } catch (error) {
         throw new HttpError(400, (error as Error).message);
       }

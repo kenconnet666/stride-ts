@@ -128,6 +128,32 @@ export class SceneBuilder {
   }
 
   /**
+   * 同 preload，但加载不了的资源不让整批失败：用到它们的组件去掉（记警告），返回去掉以后的实体文件和资源。实体跟着编辑器的
+   * 文档时用（ContentManager.updateScene）：敲错的资源路径、从别的工程粘贴来的实体不让视口停在上一次的样子；资源后来有了
+   * （导入了、路径改对了），再跟上时组件就加上。
+   */
+  async preloadAvailable(files: readonly SceneEntityFile[], where: string): Promise<{ files: readonly SceneEntityFile[]; assets: SceneAssets }> {
+    try {
+      return { files, assets: await this.preload(files, where) };
+    } catch {
+      // 逐个组件再试一遍，找出是哪些（加载过的资源有缓存，只有失败的那些重新加载）
+    }
+    const available = await Promise.all(files.map(async (file) => {
+      const kept: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(file.components)) {
+        try {
+          await this.preload([{ ...file, components: { [key]: value } }], where);
+          kept[key] = value;
+        } catch (error) {
+          console.warn(`${where}: ${file.name || file.id}: left out ${key}: ${(error as Error).message}`);
+        }
+      }
+      return Object.keys(kept).length === Object.keys(file.components).length ? file : { ...file, components: kept as SceneEntityFile['components'] };
+    }));
+    return { files: available, assets: await this.preload(available, where) };
+  }
+
+  /**
    * 按实体文件建实体：先按顺序建实体和只管自己的组件（父实体在前），再加引用别的实体的组件（约束、实例的主实体、挂到骨骼
    * 节点这些，目标可能排在后面），最后挂脚本（这时所有实体都在，脚本属性里的实体引用才解析得了）。返回按文件里的实体 id 的表；
    * where 用在报错和警告里。into 是已经有实体的表（往建好的场景里加实体时给）：新建的加进去，父实体和引用也在里面找。

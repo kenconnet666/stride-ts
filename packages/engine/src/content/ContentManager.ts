@@ -627,17 +627,20 @@ export class ContentManager {
     // 实例展开以后再比（没变的实例展开出同一批对象，见 prefabInstances.ts）
     const { added, removed, changed } = changedEntities(await this.#expandInstances(before.entities, where), await this.#expandInstances(after.entities, where));
     if (added.length + removed.length + changed.length === 0) return;
-    // 资源：新实体的，和组件变了的实体的
-    const assets = await this.#scenes.preload([...added, ...changed.filter(([old, file]) => file.components !== old.components).map(([, file]) => file)], where);
+    // 资源：新实体的，和组件变了的实体的。加载不了的资源不让整次失败：用到它的组件先不建（记警告），实体照样跟上文档；old 还是
+    // 文件里的样子，去掉组件对没建的组件是空操作，资源有了以后再跟上时加上
+    const loaded = await this.#scenes.preloadAvailable([...added, ...changed.filter(([old, file]) => file.components !== old.components).map(([, file]) => file)], where);
+    const available = new Map(loaded.files.map((file) => [file.id, file]));
+    const usable = (file: SceneEntityFile) => available.get(file.id) ?? file;
     // instance.entities 就是建场景时的那张表
     const live = instance.entities as Map<string, Entity>;
     // 先加（变了的实体可能要挂到新实体下面），再改（要留下的子实体从要删的父实体下面挪走），最后删
-    this.#scenes.instantiate(added, assets, entities, options, where, live);
+    this.#scenes.instantiate(added.map(usable), loaded.assets, entities, options, where, live);
     for (const file of added) live.get(file.id)!.scene = instance;
     for (const [old, file] of changed) {
       const entity = live.get(file.id);
       // 运行中被销毁了的（脚本销毁的）不管
-      if (entity?.alive) this.#scenes.update(entity, old, file, assets, live, where);
+      if (entity?.alive) this.#scenes.update(entity, old, usable(file), loaded.assets, live, where);
     }
     for (const id of removed) {
       const entity = live.get(id);

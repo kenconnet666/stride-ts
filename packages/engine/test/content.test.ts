@@ -1,7 +1,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { texture } from '@stride-ts/native/texture';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import {
   assetRef,
   Background,
@@ -227,12 +227,23 @@ describe('ContentManager', () => {
     await Promise.all([live.sync(), live.sync()]);
     expect([wall.alive, live.entity('wall'), lamp.alive, live.idOf(lamp)]).toEqual([false, undefined, true, 'lamp']);
 
-    // 新引用的资源加载不了：sync 报错，实体停在上一次的样子；改回去以后接着用
+    // 新引用的资源加载不了（敲错的路径、别的工程粘贴来的）：用到它的组件先不建、记警告，同一次的别的修改照样跟上；路径改对了
+    // 再跟上时加上
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     undo.apply({ type: 'set', entity: 'root', path: ['components', 'model'], value: { model: 'models/Missing', materials: [] } });
-    await expect(live.sync()).rejects.toThrow('no https://game.test/content/models/Missing.model');
-    expect(root.has(Model)).toBe(false);
+    undo.apply({ type: 'set', entity: 'root', path: ['components', 'light', 'intensity'], value: 4 });
+    await live.sync();
+    expect([root.has(Model), root.require(Light).intensity]).toEqual([false, 4]);
+    expect(warn.mock.calls.join()).toMatch(/Root: left out model: .*models\/Missing\.model/);
+    warn.mockRestore();
+    undo.apply({ type: 'set', entity: 'root', path: ['components', 'model', 'model'], value: 'models/Wall' });
+    await live.sync();
+    expect([root.has(Model), root.require(Light).intensity]).toEqual([true, 4]);
+    undo.undo();
+    undo.undo();
     undo.undo();
     await live.sync();
+    expect(root.has(Model)).toBe(false);
 
     // 一路撤销回最初的文档：场景回到加载时的样子
     while (undo.undo());

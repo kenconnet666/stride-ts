@@ -63,4 +63,33 @@ export class TerrainAsset {
   heightAt(native: StrideNative, x: number, z: number): number {
     return this.evaluator(native).height(x, z);
   }
+
+  /** 一页高度（工作线程上算，见 TerrainEvaluator.heights）；算着的时候 dispose 了，算完再放原生的求值器。 */
+  async heights(native: StrideNative, x0: number, z0: number, spacing: number, countX: number, countZ: number): Promise<Float32Array> {
+    this.#inflight++;
+    try {
+      return await this.evaluator(native).heights(x0, z0, spacing, countX, countZ);
+    } finally {
+      if (--this.#inflight === 0 && this.#disposed) this.#release();
+    }
+  }
+
+  /**
+   * 不再用了（编辑器雕刻时预览用的中间版本）：从资源表里拿掉，原生的求值器等手上的计算算完再放。
+   * 内容管理器加载的资源不用调它（跟着内容缓存走）。
+   */
+  dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    assets.remove(this.id);
+    if (this.#inflight === 0) this.#release();
+  }
+
+  #inflight = 0;
+  #disposed = false;
+
+  #release(): void {
+    this.#evaluator?.evaluator.destroy();
+    this.#evaluator = undefined;
+  }
 }

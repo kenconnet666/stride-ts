@@ -14,6 +14,8 @@ import { timelineCurve } from '../timeline/Timeline';
 import { sceneComponentKey } from '../content/SceneBuilder';
 import { requiredName } from '../content/sceneScripts';
 import type { Entity } from '../engine/Entity';
+import { Terrain, TerrainAsset } from '../terrain/Terrain';
+import type { TerrainStrokeFile } from '../content/terrainFormat';
 import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
 import { Camera, Model, ModelPart } from '../rendering/components';
@@ -77,6 +79,24 @@ export interface PaintSession {
   brush: PaintBrush;
 }
 
+/**
+ * 雕刻地形的笔刷（W2）：op 是抬高、压低、压平（到按下处的高度）、磨平；半径是米；strength：抬高、压低是拖过一遍大约抬起、
+ * 压下多少米，压平、磨平是 0..1（拖过一遍贴近多少）。
+ */
+export interface SculptBrush {
+  readonly op: TerrainStrokeFile['op'];
+  readonly radius: number;
+  readonly strength: number;
+}
+
+export const DEFAULT_SCULPT_BRUSH: SculptBrush = { op: 'raise', radius: 40, strength: 4 };
+
+/** 雕刻地形的模式：雕的是哪个地形实体（场景文件里的 id）、笔刷。 */
+export interface SculptSession {
+  readonly entity: string;
+  brush: SculptBrush;
+}
+
 export const DEFAULT_PAINT_BRUSH: PaintBrush = { radius: 0.25, hardness: 0.5, strength: 0.8, erase: false };
 
 const PAINT_HELP = 'Paint a material layer mask on a model in the editor (the viewport page): args entity (scene file id), material and mask (content paths; '
@@ -101,6 +121,12 @@ export class EditAgent {
   polyEdit: PolyEditSession | undefined;
   /** 多边形编辑改了网格、选择、模式以后调；commit 是一次操作做完（松开操纵器），编辑器这时存文件、记一步撤销。 */
   onPolyChanged: ((edit: PolyEditSession, commit: boolean) => void) | undefined;
+  /** 雕刻地形（W2）：开着时视口里左键拖是雕刻，不是点选、拖操纵器（见 EditorViewport）。 */
+  sculpt: SculptSession | undefined;
+  /** 雕完一笔（松开左键）以后调：地形资源的内容路径和这一笔落下的笔画（地形本地坐标，按顺序接在文件的笔画后面）。 */
+  onSculptStroke: ((path: string, strokes: readonly TerrainStrokeFile[]) => void) | undefined;
+  /** 视口里改了雕刻笔刷（[、] 改大小）以后调，编辑器的工具条跟着变。 */
+  onSculptBrush: ((brush: SculptBrush) => void) | undefined;
   /** 用户在视口里点选以后调（参数是新的选中）。 */
   onSelectionChanged: ((ids: readonly string[]) => void) | undefined;
   #live: LiveScene | undefined;
@@ -186,6 +212,7 @@ export class EditAgent {
   async beginPaint(entity: string, material: string, mask: string, brush: PaintBrush = this.paint?.brush ?? DEFAULT_PAINT_BRUSH): Promise<void> {
     this.endPaint();
     this.endPolyEdit();
+    this.endSculpt();
     const [loaded, texture] = await Promise.all([this.game.content.loadMaterial(material), this.game.content.loadTextureRef({ texture: mask, encoding: 'png', srgb: false }, false)]);
     this.paint = { entity, material: loaded, mask, painter: new MeshPainter(this.game.renderSystem.resources, texture), brush };
     this.refresh();
@@ -194,6 +221,7 @@ export class EditAgent {
   /** 开始编辑这个实体上的多边形网格（path 是它的 .poly.json，mesh 是文件的内容）；画贴图的模式关掉。 */
   beginPolyEdit(entity: string, path: string, mesh: PolyEditSession['mesh'], mode: PolySelectMode = 'face'): void {
     this.endPaint();
+    this.endSculpt();
     this.polyEdit = { entity, path, mesh, mode, selection: EMPTY_POLY_SELECTION };
     this.refresh();
   }
@@ -202,6 +230,39 @@ export class EditAgent {
     this.polyEdit = undefined;
     this.refresh();
   }
+
+  /** 开始雕刻这个地形实体（场景文件里的 id）；画贴图、编辑多边形的模式关掉。 */
+  beginSculpt(entity: string, brush: SculptBrush = this.sculpt?.brush ?? DEFAULT_SCULPT_BRUSH): void {
+    this.endPaint();
+    this.endPolyEdit();
+    this.sculpt = { entity, brush };
+    this.refresh();
+  }
+
+  endSculpt(): void {
+    this.sculpt = undefined;
+    for (const preview of this.#sculptPreviews) preview.dispose();
+    this.#sculptPreviews = [];
+    this.refresh();
+  }
+
+  /**
+   * @internal 视口的笔刷落了几笔：地形换成"现在的版本后面接上这几笔"的预览版本（TerrainSystem 只重算盖到的块，见
+   * changedRegions），马上看得到；松开以后编辑器存文件，热重载回来的版本和预览一样、不再重算。
+   */
+  previewSculpt(terrain: Entity, strokes: readonly TerrainStrokeFile[]): void {
+    const component = terrain.require(Terrain);
+    const current = TerrainAsset.byId(component.terrain);
+    if (!current || strokes.length === 0) return;
+    const next = new TerrainAsset(current.path, { ...current.file, strokes: [...(current.file.strokes ?? []), ...strokes] }, current.material);
+    component.terrain = next.id;
+    // 更早的预览没人用了（地形系统一帧之内就换到新的上；上一个留着，它可能还没换过来）
+    this.#sculptPreviews.push(next);
+    while (this.#sculptPreviews.length > 2) this.#sculptPreviews.shift()!.dispose();
+    this.refresh();
+  }
+
+  #sculptPreviews: TerrainAsset[] = [];
 
   endPaint(): void {
     this.paint?.painter.destroy();

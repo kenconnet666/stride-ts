@@ -7,8 +7,8 @@
  *   临时放进 SURFACE_DRAG_GROUP 这个渲染组、点选时不画，自己不挡）；吸附到顶点（snap.vertex，或拖的时候按住 V）时，拖着的东西上
  *   离光标最近的顶点对到光标下另一个物体上离点到的地方最近的顶点（同一套点选）；
  * - W、E、R：移动、旋转、缩放；F：把选中的东西放到画面中间；相机的操作见 EditorCamera。
- * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）时左键换成那个工具的：画笔刷；点选点、边、面（1、2、3 换模式，
- *   Shift、Ctrl 加选），操纵器拖选中的顶点（PolyEditTool）。
+ * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）、雕刻地形（agent.sculpt）时左键换成那个工具的：画笔刷；点选点、
+ *   边、面（1、2、3 换模式，Shift、Ctrl 加选），操纵器拖选中的顶点（PolyEditTool）；雕刻的笔刷（[、] 改大小，Shift 反过来）。
  */
 import type { Entity } from '../engine/Entity';
 import { SyncScript } from '../engine/scripts';
@@ -27,6 +27,8 @@ import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
 import { Mesh } from '../rendering/mesh/Mesh';
 import { raycastMesh } from '../rendering/paint/MeshPainter';
 import { selectionVertices } from '../modeling/polyEdit';
+import { Terrain, TerrainAsset } from '../terrain/Terrain';
+import type { TerrainStrokeFile } from '../content/terrainFormat';
 import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformVertices, worldVertices, type PolySelectMode } from './PolyEditTool';
 import type { PolyMeshFile } from '../content/assetFormat';
 
@@ -40,6 +42,8 @@ const ACTIVE_COLOR: DebugColor = [1, 0.9, 0.2, 1];
 /** 绘制模式的笔刷：画是白的，擦是红的。 */
 const BRUSH_COLOR: DebugColor = [1, 1, 1, 0.9];
 const ERASE_COLOR: DebugColor = [1, 0.3, 0.3, 0.9];
+/** 雕刻笔刷的圈分几段。 */
+const SCULPT_RING_SEGMENTS = 48;
 /** 多边形编辑的线框和选中的点、边、面。 */
 const POLY_EDGE_COLOR: DebugColor = [0.85, 0.88, 0.95, 0.7];
 const POLY_SELECTED_COLOR: DebugColor = [1, 0.55, 0.1, 1];
@@ -96,6 +100,8 @@ export class EditorViewport extends SyncScript {
   #polyDrag: { readonly start: PolyMeshFile; readonly vertices: readonly number[] } | undefined;
   /** 绘制模式里正在画的一笔：上一笔落在哪（世界坐标），画没画上。 */
   #stroke: { last: [number, number, number] | undefined; painted: boolean } | undefined;
+  /** 雕刻地形时正在拖的一笔：上一笔落在哪（地形本地的 x、z），这一次拖落下的笔画，压平的目标高度（按下处）。 */
+  #sculptStroke: { last: [number, number] | undefined; strokes: TerrainStrokeFile[]; height: number } | undefined;
 
   override update(): void {
     const agent = this.agent, live = agent?.live;
@@ -134,6 +140,10 @@ export class EditorViewport extends SyncScript {
     }
     if (agent.polyEdit) {
       this.#poly(agent, pixel, navigating);
+      return;
+    }
+    if (agent.sculpt) {
+      this.#sculpt(agent, pixel, navigating);
       return;
     }
     const roots = agent.editable ? agent.selectionRoots() : [];
@@ -214,6 +224,71 @@ export class EditorViewport extends SyncScript {
       this.#stroke = undefined;
       if (stroke.painted) void paint.painter.read().then((image) => agent.onPaintStroke?.(paint.mask, image));
     }
+  }
+
+  /**
+   * 雕刻地形的一帧：光标下的地面上画出笔刷的圈（贴着地面）；[、] 缩小、放大笔刷；左键按着时每挪过半径的四分之一落一笔（拖得快
+   * 时中间补上），这一帧落的几笔交给 agent.previewSculpt（马上看到）；按住 Shift 抬高、压低反过来；压平压到按下那一点的高度。
+   * 松开时把这一次拖落的笔画交给 agent.onSculptStroke 存进文件（撤销的一步）。
+   */
+  #sculpt(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
+    const sculpt = agent.sculpt!, terrain = agent.live?.entity(sculpt.entity);
+    const input = this.game.input;
+    if (!terrain?.alive || !terrain.has(Terrain)) return;
+    if (!navigating) {
+      const scale = input.isKeyPressed('BracketRight') ? 1.25 : input.isKeyPressed('BracketLeft') ? 0.8 : 1;
+      if (scale !== 1) {
+        sculpt.brush = { ...sculpt.brush, radius: round(Math.max(0.5, sculpt.brush.radius * scale), 2) };
+        agent.onSculptBrush?.(sculpt.brush);
+      }
+    }
+    const ray = this.#ray(pixel);
+    const hit = this.game.terrain.raycast([ray.origin.x, ray.origin.y, ray.origin.z], [ray.direction.x, ray.direction.y, ray.direction.z]);
+    const shift = input.isKeyDown('ShiftLeft') || input.isKeyDown('ShiftRight');
+    const { radius, strength } = sculpt.brush;
+    const op = !shift ? sculpt.brush.op : sculpt.brush.op === 'raise' ? 'lower' : sculpt.brush.op === 'lower' ? 'raise' : sculpt.brush.op;
+    const onTerrain = hit?.entity === terrain ? hit : undefined;
+    if (onTerrain) this.#drawSculptBrush(onTerrain.point, radius, op === 'lower' ? ERASE_COLOR : BRUSH_COLOR);
+    if (input.isMouseButtonPressed('left') && !navigating && onTerrain) this.#sculptStroke = { last: undefined, strokes: [], height: onTerrain.height };
+    const stroke = this.#sculptStroke;
+    if (stroke && input.isMouseButtonDown('left') && onTerrain) {
+      const spacing = radius * 0.25;
+      const [x1, z1] = onTerrain.local;
+      const [x0, z0] = stroke.last ?? onTerrain.local;
+      const gap = Math.hypot(x1 - x0, z1 - z0);
+      const steps = stroke.last ? Math.floor(gap / spacing) : 1;
+      const dabs: TerrainStrokeFile[] = [];
+      // 一遍拖过去一个点大约被八笔盖到：每笔四分之一，拖过一遍差不多是 strength
+      const amount = round(strength * 0.25, 4);
+      for (let i = 1; i <= steps; i++) {
+        const t = stroke.last ? (i * spacing) / gap : 1;
+        const x = round(x0 + (x1 - x0) * t, 2), z = round(z0 + (z1 - z0) * t, 2);
+        dabs.push({ op, x, z, radius: round(radius, 2), strength: amount, ...(op === 'flatten' ? { height: round(stroke.height, 2) } : {}) });
+        stroke.last = [x, z];
+      }
+      if (dabs.length > 0) {
+        stroke.strokes.push(...dabs);
+        agent.previewSculpt(terrain, dabs);
+      }
+    }
+    if (input.isMouseButtonReleased('left') && stroke) {
+      this.#sculptStroke = undefined;
+      const path = TerrainAsset.byId(terrain.require(Terrain).terrain)?.path;
+      if (path && stroke.strokes.length > 0) agent.onSculptStroke?.(path, stroke.strokes);
+    }
+  }
+
+  /** 雕刻笔刷的圈：贴着地面的一圈线（每段按地形的高度抬一点，不被地面挡住一半）。 */
+  #drawSculptBrush(center: readonly [number, number, number], radius: number, color: DebugColor): void {
+    const points: [number, number, number][] = [];
+    for (let i = 0; i < SCULPT_RING_SEGMENTS; i++) {
+      const angle = (i / SCULPT_RING_SEGMENTS) * Math.PI * 2;
+      const x = center[0] + Math.cos(angle) * radius, z = center[2] + Math.sin(angle) * radius;
+      points.push([x, (this.game.terrain.heightAt(x, z) ?? center[1]) + radius * 0.01, z]);
+    }
+    const draw = this.game.debugDraw;
+    draw.polyline(points, color, { closed: true, width: 2, depthTest: false });
+    draw.line(center, [center[0], center[1] + radius * 0.2, center[2]], color, { width: 2, depthTest: false });
   }
 
   /**
@@ -532,4 +607,10 @@ function nearestVertex(cache: Map<Entity, Float32Array>, entity: Entity, point: 
     if (distance < best) [best, index] = [distance, i];
   }
   return index < 0 ? undefined : [vertices[index]!, vertices[index + 1]!, vertices[index + 2]!];
+}
+
+/** 留 digits 位小数（笔画存进文件，留厘米、万分之一就够，文件好读；除以 10 的幂，不出 0.30000000000000004）。 */
+function round(value: number, digits: number): number {
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
 }

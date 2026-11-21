@@ -31,6 +31,11 @@ const MAX_CACHED = 768;
 const COLLIDER_RADIUS = 2;
 /** UV 按这么多个贴图周期取模：大世界里 UV 的数也小。 */
 const UV_PERIODS = 256;
+/** 射线找地面时假定地形最陡的坡（高差 ÷ 水平距离）：按它算一步能放心走多远；比它陡的悬崖可能被一步跨过去。 */
+const MAX_SLOPE = 4;
+/** 射线找地面最多走多少步、最小一步（米，离得远时按距离放大）。 */
+const MAX_RAY_STEPS = 1024;
+const MIN_RAY_STEP = 0.05;
 
 interface Tile {
   readonly key: TileKey;
@@ -168,7 +173,7 @@ export class TerrainSystem {
 
   async #buildCollider(state: TerrainState, collider: Collider, x0: number, z0: number, edge: number, generation: number): Promise<void> {
     const spacing = edge / TILE_QUADS, samples = TILE_QUADS + 1;
-    const heights = await state.asset.evaluator(this.#game.native).heights(x0, z0, spacing, samples, samples);
+    const heights = await state.asset.heights(this.#game.native, x0, z0, spacing, samples, samples);
     const simulation = this.#game.simulation;
     // 算的时候块已经不要了（走远了、地形换了）：不建
     if (!simulation || generation !== state.generation || !state.entity.alive || ![...state.colliders.values()].includes(collider)) return;
@@ -210,6 +215,63 @@ export class TerrainSystem {
       if (Math.abs(lx) > half || Math.abs(lz) > half) continue;
       const h = asset.heightAt(this.#game.native, lx, lz);
       return world[1]! * lx + world[5]! * h + world[9]! * lz + world[13]!;
+    }
+    return undefined;
+  }
+
+  /**
+   * 射线（世界坐标，direction 是单位向量）最先碰到地形的地方：沿射线走，每步按"离地面的高度 ÷ 最陡的坡"放心地走（地形不会
+   * 比 MAX_SLOPE 更陡地冒出来挡住），穿到地下以后在最后一步里二分。返回世界坐标的点、哪个地形、地形本地的 x、z 和高度
+   * （雕刻的笔画按本地坐标存）；maxDistance 以内没碰到时是 undefined。编辑器的雕刻笔刷用；直接求值，不等块算好。
+   */
+  raycast(origin: readonly number[], direction: readonly number[], maxDistance = 20_000): TerrainHit | undefined {
+    let best: TerrainHit | undefined;
+    for (const state of this.#states.values()) {
+      const hit = this.#raycastOne(state, origin, direction, Math.min(maxDistance, best?.distance ?? Infinity));
+      if (hit) best = hit;
+    }
+    return best;
+  }
+
+  #raycastOne(state: TerrainState, origin: readonly number[], direction: readonly number[], maxDistance: number): TerrainHit | undefined {
+    const { entity, asset } = state;
+    const world = entity.require(Transform).world;
+    if (!Matrix.invert(this.#inverse, world)) return undefined;
+    const m = this.#inverse, half = entity.require(Terrain).size / 2, native = this.#game.native;
+    const [ox, oy, oz] = origin as [number, number, number], [dx, dy, dz] = direction as [number, number, number];
+    // 射线在地形本地坐标里（地形只能绕 Y 转、平移，见 heightAt）
+    const lo = [m[0]! * ox + m[4]! * oy + m[8]! * oz + m[12]!, m[1]! * ox + m[5]! * oy + m[9]! * oz + m[13]!, m[2]! * ox + m[6]! * oy + m[10]! * oz + m[14]!];
+    const ld = [m[0]! * dx + m[4]! * dy + m[8]! * dz, m[1]! * dx + m[5]! * dy + m[9]! * dz, m[2]! * dx + m[6]! * dy + m[10]! * dz];
+    const length = Math.hypot(ld[0]!, ld[1]!, ld[2]!);
+    const at = (t: number) => [lo[0]! + ld[0]! * t, lo[1]! + ld[1]! * t, lo[2]! + ld[2]! * t] as const;
+    const gap = (t: number) => {
+      const [x, y, z] = at(t);
+      return Math.abs(x) > half || Math.abs(z) > half ? undefined : y - asset.heightAt(native, x, z);
+    };
+    const reach = length * maxDistance;
+    const slope = Math.abs(ld[1]!) + MAX_SLOPE * Math.hypot(ld[0]!, ld[2]!);
+    let t = 0, previous = 0;
+    for (let step = 0; step < MAX_RAY_STEPS && t <= maxDistance; step++) {
+      const g = gap(t);
+      if (g !== undefined && g <= 0) {
+        // 在 previous 和 t 之间二分到厘米以内
+        let lo0 = previous, hi = t;
+        for (let i = 0; i < 24 && (hi - lo0) * length > 0.01; i++) {
+          const mid = (lo0 + hi) / 2;
+          const gm = gap(mid);
+          if (gm !== undefined && gm <= 0) hi = mid;
+          else lo0 = mid;
+        }
+        const [x, , z] = at(hi);
+        const h = asset.heightAt(native, x, z);
+        return {
+          entity, distance: hi, local: [x, z], height: h,
+          point: [world[0]! * x + world[4]! * h + world[8]! * z + world[12]!, world[1]! * x + world[5]! * h + world[9]! * z + world[13]!, world[2]! * x + world[6]! * h + world[10]! * z + world[14]!],
+        };
+      }
+      previous = t;
+      // 在地形外面（或者刚开始）按固定的小步走；离地面高时按坡度放心地走
+      t += g === undefined ? Math.max(1, reach / MAX_RAY_STEPS) / length : Math.max(MIN_RAY_STEP * (1 + t * length * 1e-3), g / slope) / length;
     }
     return undefined;
   }
@@ -321,7 +383,7 @@ export class TerrainSystem {
     const uvScale = state.asset.file.uvScale ?? 4;
     state.pending++;
     try {
-      const heights = await state.asset.evaluator(this.#game.native).heights(x0 - spacing, z0 - spacing, spacing, TILE_SAMPLES, TILE_SAMPLES);
+      const heights = await state.asset.heights(this.#game.native, x0 - spacing, z0 - spacing, spacing, TILE_SAMPLES, TILE_SAMPLES);
       if (generation !== state.generation || !state.entity.alive) return;
       const header = tilePageHeader(x0, z0, edge, uvScale, uvScale * UV_PERIODS);
       const pages = this.#pages;
@@ -406,6 +468,15 @@ export class TerrainSystem {
  * 新旧两版地形文件的改动范围（地形本地坐标的矩形 [x0, z0, x1, z1]）：底（噪声）、材质、UV 变了返回 undefined（整个重算）；
  * 否则是增加或去掉了的笔画（按半径）、地物（按包围盒加过渡宽度）的范围。
  */
+/** TerrainSystem.raycast 的结果：世界坐标的点、射线上的距离、哪个地形、地形本地的 x、z 和高度。 */
+export interface TerrainHit {
+  readonly point: readonly [number, number, number];
+  readonly distance: number;
+  readonly entity: Entity;
+  readonly local: readonly [number, number];
+  readonly height: number;
+}
+
 export function changedRegions(before: TerrainFile, after: TerrainFile): [number, number, number, number][] | undefined {
   const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   if (!same(before.noise, after.noise) || !same(before.material, after.material) || !same(before.uvScale, after.uvScale)) return undefined;

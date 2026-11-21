@@ -1,4 +1,4 @@
-import { Plus, Shapes, Sparkles, Workflow, X } from '@lucide/icons';
+import { Mountain, Plus, Shapes, Sparkles, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { Button, IconButton, Menu, MenuGroup, MenuItem, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -292,6 +292,10 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
               <IconButton icon={X} variant="ghost" aria-label={t.remove(labelText(COMPONENT_FIELDS[key].label))} onClick={() => removeComponent(list, key)} />
             </div>
             {key === 'particleSystem' && list.length === 1 && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Sparkles} onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</Button>}
+            {key === 'terrain' && list.length === 1 && typeof list[0]!.components['terrain']?.['terrain'] === 'string' && (
+              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.sculpting.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Mountain}
+                onClick={() => void session.startSculpt(list[0]!.id, list[0]!.components['terrain']!['terrain'] as string)}>{t.sculpt}</Button>
+            )}
             {key === 'model' && list.length === 1 && polySource(list[0]!) && (
               <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Shapes} onClick={() => void session.startPolyEdit(list[0]!.id, polySource(list[0]!)!)}>{t.polyEdit}</Button>
             )}

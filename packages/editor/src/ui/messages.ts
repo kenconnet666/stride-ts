@@ -143,6 +143,14 @@ export interface EditorMessages {
   readonly polyDone: string;
   readonly polyHint: string;
   readonly polyModes: Readonly<Record<'vertex' | 'edge' | 'face', string>>;
+  // 雕刻地形
+  readonly sculpt: string;
+  readonly sculptHint: string;
+  readonly sculptOps: Readonly<Record<'raise' | 'lower' | 'flatten' | 'smooth', string>>;
+  readonly sculptRadius: string;
+  readonly sculptStrength: string;
+  readonly sculptStrokes: (count: number) => string;
+  readonly sculptDone: string;
   readonly polyAmount: string;
   readonly polyOps: Readonly<Record<'extrude' | 'inset' | 'bevel' | 'merge' | 'split' | 'connect' | 'delete' | 'flip', string>>;
   readonly polyConnectNeedsFace: string;
@@ -336,6 +344,13 @@ const zhCN: EditorMessages = {
   polyDone: '完成',
   polyHint: '视口里点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），拖操纵器移动（W、E、R 换移动、旋转、缩放）；Delete 删面，Ctrl+Z 撤销',
   polyModes: { vertex: '点', edge: '边', face: '面' },
+  sculpt: '雕刻',
+  sculptHint: '视口里左键拖着雕刻地形（Shift 抬高、压低反过来；压平压到按下那一点的高度），[、] 缩小、放大笔刷；Ctrl+Z 撤销一笔',
+  sculptOps: { raise: '抬高', lower: '压低', flatten: '压平', smooth: '磨平' },
+  sculptRadius: '半径',
+  sculptStrength: '强度',
+  sculptStrokes: (count) => `${count} 笔`,
+  sculptDone: '完成',
   polyAmount: '距离',
   polyOps: { extrude: '挤出', inset: '内插', bevel: '倒角', merge: '合并', split: '切分', connect: '连接', delete: '删面', flip: '翻面' },
   polyConnectNeedsFace: '连接要选同一个面上不相邻的两个点',
@@ -540,6 +555,13 @@ const enUS: EditorMessages = {
   polyDone: 'Done',
   polyHint: 'Click vertices, edges or faces in the viewport (1, 2, 3 switch the mode; Shift or Ctrl adds), drag the gizmo to move (W, E, R: move, rotate, scale); Delete removes faces, Ctrl+Z undoes',
   polyModes: { vertex: 'Vertex', edge: 'Edge', face: 'Face' },
+  sculpt: 'Sculpt',
+  sculptHint: 'Drag in the viewport to sculpt the terrain (Shift swaps raise and lower; flatten levels to the height where the drag starts), [ and ] shrink and grow the brush; Ctrl+Z undoes a stroke',
+  sculptOps: { raise: 'Raise', lower: 'Lower', flatten: 'Flatten', smooth: 'Smooth' },
+  sculptRadius: 'Radius',
+  sculptStrength: 'Strength',
+  sculptStrokes: (count) => `${count} strokes`,
+  sculptDone: 'Done',
   polyAmount: 'Distance',
   polyOps: { extrude: 'Extrude', inset: 'Inset', bevel: 'Bevel', merge: 'Merge', split: 'Split', connect: 'Connect', delete: 'Delete faces', flip: 'Flip' },
   polyConnectNeedsFace: 'Connect needs two non-adjacent vertices of the same face',

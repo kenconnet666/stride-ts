@@ -23,9 +23,9 @@ import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
 import { freeAssetPath } from '../newAssets';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../library/index.ts';
-import type { EditAgent, EditableScene, Game, PaintBrush, PolyEditSession, PolySelection, PolySelectMode, SnapSettings } from '@stride-ts/engine';
+import type { EditAgent, EditableScene, Game, PaintBrush, PolyEditSession, PolySelection, PolySelectMode, SculptBrush, SnapSettings } from '@stride-ts/engine';
 import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
-import type { PolyMeshFile } from '@stride-ts/engine/content-format';
+import type { PolyMeshFile, TerrainFile } from '@stride-ts/engine/content-format';
 import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
 import { t } from './messages';
@@ -92,6 +92,17 @@ export class EditorSession implements EditableScene {
   readonly painting = shallowRef<{ readonly layer: number; readonly mask: string }>();
   /** 绘制的笔刷（半径、硬度、强度、擦除），换着画别的层时保留。 */
   readonly paintBrush = shallowRef<PaintBrush>({ radius: 0.25, hardness: 0.5, strength: 0.8, erase: false });
+  /**
+   * 正在视口里雕刻的地形（W2）：哪个实体、哪个 .terrain.json；没在雕刻时是 undefined。每拖一笔存一次文件（笔画接在后面），
+   * 撤销、重做这时是地形文件的上一步、下一步；strokes 是文件里现在有几笔（工具条显示，也让撤销按钮跟着刷新）。
+   */
+  readonly sculpting = shallowRef<{ readonly entity: string; readonly path: string; readonly strokes: number }>();
+  /** 雕刻的笔刷（种类、半径、强度），换着雕别的地形时保留。 */
+  readonly sculptBrush = shallowRef<SculptBrush>({ op: 'raise', radius: 40, strength: 4 });
+  /** 雕刻的撤销：每一笔之前的地形文件；重做是撤销掉的；现在存着的那份。 */
+  #sculptUndo: TerrainFile[] = [];
+  #sculptRedo: TerrainFile[] = [];
+  #sculptFile: TerrainFile | undefined;
   /** 正在烘序列帧（粒子窗口的"烘焙"这时不能点）。 */
   readonly baking = shallowRef(false);
   /** 粒子面板开着时编辑的实体（场景文件里的 id）；没开时是 undefined。 */
@@ -301,6 +312,7 @@ export class EditorSession implements EditableScene {
       return;
     }
     this.stopPolyEdit();
+    this.stopSculpt();
     // 存过还没刷新的材质先存下来：视口里的材质要有这一层
     await this.#flushInspected();
     await agent.beginPaint(entity, inspected.path, mask, this.paintBrush.value);
@@ -320,6 +332,60 @@ export class EditorSession implements EditableScene {
     this.paintBrush.value = brush;
     const paint = this.agent.value?.paint;
     if (paint) paint.brush = brush;
+  }
+
+  /** 在视口里雕刻实体 entity 的地形（path 是它的 .terrain.json）：左键拖是雕刻，见 EditorViewport。 */
+  async startSculpt(entity: string, path: string): Promise<void> {
+    const agent = this.agent.value;
+    if (!agent) return;
+    this.stopPainting();
+    this.stopPolyEdit();
+    this.#sculptFile = await this.client.readAsset<TerrainFile>('terrain', path);
+    this.#sculptUndo = [];
+    this.#sculptRedo = [];
+    agent.beginSculpt(entity, this.sculptBrush.value);
+    agent.onSculptStroke = (strokePath, strokes) => {
+      const before = this.#sculptFile;
+      if (strokePath !== path || !before) return;
+      this.#sculptUndo.push(before);
+      this.#sculptRedo = [];
+      this.#saveSculpt({ ...before, strokes: [...(before.strokes ?? []), ...strokes] });
+    };
+    // 视口里按 [、] 改了笔刷大小：工具条跟着变
+    agent.onSculptBrush = (brush) => (this.sculptBrush.value = brush);
+    this.sculpting.value = { entity, path, strokes: this.#sculptFile.strokes?.length ?? 0 };
+    this.notice.value = '';
+    this.status.value = t.sculptHint;
+  }
+
+  stopSculpt(): void {
+    this.agent.value?.endSculpt();
+    if (this.sculpting.value && this.status.value === t.sculptHint) this.status.value = '';
+    this.sculpting.value = undefined;
+    this.#sculptFile = undefined;
+  }
+
+  setSculptBrush(brush: SculptBrush): void {
+    this.sculptBrush.value = brush;
+    const sculpt = this.agent.value?.sculpt;
+    if (sculpt) sculpt.brush = brush;
+  }
+
+  /** 存地形文件（后端写盘，视口热重载回来的和预览的一样、不再重算）。 */
+  #saveSculpt(file: TerrainFile): void {
+    const sculpting = this.sculpting.value;
+    if (!sculpting) return;
+    this.#sculptFile = file;
+    this.sculpting.value = { ...sculpting, strokes: file.strokes?.length ?? 0 };
+    void this.client.saveAsset('terrain', sculpting.path, file).catch((error: unknown) => (this.notice.value = (error as Error).message));
+  }
+
+  /** 雕刻的撤销、重做：存回上一步、下一步的地形文件（视口按改动的范围重算）。 */
+  #sculptStep(from: TerrainFile[], to: TerrainFile[]): void {
+    const file = from.pop();
+    if (!file || !this.#sculptFile) return;
+    to.push(this.#sculptFile);
+    this.#saveSculpt(file);
   }
 
   /** 打开粒子面板，编辑这个实体的粒子系统（底部显示）。 */
@@ -552,6 +618,8 @@ export class EditorSession implements EditableScene {
 
   async #open(agent: EditAgent, document: OpenedDocument): Promise<void> {
     // 预制体文件也是一列实体（名字加实体），当成没有场景设置的场景打开
+    // 雕刻、多边形编辑是对上一个文档里的实体做的
+    this.stopSculpt();
     const file: SceneFile = await this.client.readAsset<SceneFile | PrefabFile>(document.kind, document.path);
     this.#prefabs = await this.#loadPrefabs(file);
     this.#document = new SceneDocument(file);
@@ -640,11 +708,13 @@ export class EditorSession implements EditableScene {
   get canUndo(): boolean {
     // 编辑多边形时撤销的是网格的一步（读 polyEditing 让工具条跟着每一步刷新）
     if (this.polyEditing.value) return this.#polyUndo.length > 0;
+    if (this.sculpting.value) return this.#sculptUndo.length > 0;
     return this.#undo?.canUndo ?? false;
   }
 
   get canRedo(): boolean {
     if (this.polyEditing.value) return this.#polyRedo.length > 0;
+    if (this.sculpting.value) return this.#sculptRedo.length > 0;
     return this.#undo?.canRedo ?? false;
   }
 
@@ -665,11 +735,13 @@ export class EditorSession implements EditableScene {
 
   undo(): void {
     if (this.polyEditing.value) return this.#polyStep(this.#polyUndo, this.#polyRedo);
+    if (this.sculpting.value) return this.#sculptStep(this.#sculptUndo, this.#sculptRedo);
     if (this.#require().undo()) this.#changed();
   }
 
   redo(): void {
     if (this.polyEditing.value) return this.#polyStep(this.#polyRedo, this.#polyUndo);
+    if (this.sculpting.value) return this.#sculptStep(this.#sculptRedo, this.#sculptUndo);
     if (this.#require().redo()) this.#changed();
   }
 
@@ -749,6 +821,7 @@ export class EditorSession implements EditableScene {
     const agent = this.agent.value;
     if (!agent) return;
     this.stopPainting();
+    this.stopSculpt();
     const mesh = await this.client.readAsset<PolyMeshFile>('poly', path);
     this.#polyUndo = [];
     this.#polyRedo = [];

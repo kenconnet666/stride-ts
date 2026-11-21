@@ -7,6 +7,7 @@
  */
 import { Activity, ArrowDownToLine, Globe, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, SquareDot, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
 import type { PolyOperation } from '@stride-ts/engine/modeling';
+import type { SculptBrush } from '@stride-ts/engine';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, NumberField, Select, Separator, Skeleton, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -159,11 +160,34 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopPolyEdit()}>{t.polyDone}</Button>,
     ];
   };
+  /** 雕刻地形时的工具条：笔刷的种类、半径（米）、强度，文件里有几笔，最后是"完成"。 */
+  const sculptControls = (sculpting: NonNullable<typeof session.sculpting.value>) => {
+    const brush = session.sculptBrush.value;
+    // 抬高、压低的强度是米；压平、磨平是 0..1：换到另一类时强度换成那一类的默认值
+    const isFraction = (op: SculptBrush['op']) => op === 'flatten' || op === 'smooth';
+    const fraction = isFraction(brush.op);
+    return [
+      ...(['raise', 'lower', 'flatten', 'smooth'] as const).map((op) => (
+        <Button size="sm" variant={brush.op === op ? 'soft' : 'ghost'} tone="neutral" aria-pressed={brush.op === op}
+          onClick={() => session.setSculptBrush({ ...brush, op, strength: isFraction(op) === fraction ? brush.strength : isFraction(op) ? 0.5 : 4 })}>{t.sculptOps[op]}</Button>
+      )),
+      <Separator orientation="vertical" />,
+      <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.sculptRadius} aria-label={t.sculptRadius} min={0.5} step={5} format={{ useGrouping: false, maximumFractionDigits: 2 }}
+        _value={brush.radius} onUpdate:_value={(value: number | null) => value !== null && value > 0 && session.setSculptBrush({ ...brush, radius: value })} />,
+      <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.sculptStrength} aria-label={t.sculptStrength} min={0} {...(fraction ? { max: 1 } : {})} step={fraction ? 0.1 : 1} format={{ useGrouping: false, maximumFractionDigits: 3 }}
+        _value={brush.strength} onUpdate:_value={(value: number | null) => value !== null && value >= 0 && session.setSculptBrush({ ...brush, strength: value })} />,
+      <span {...css.attrs(styles.spacer)} />,
+      <span>{t.sculptStrokes(sculpting.strokes)}</span>,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopSculpt()}>{t.sculptDone}</Button>,
+    ];
+  };
   return () => {
     const selected = session.selection.value.length;
     const off = playing;
     const poly = session.polyEditing.value;
     if (poly && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{polyControls(poly)}</div>;
+    const sculpting = session.sculpting.value;
+    if (sculpting && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{sculptControls(sculpting)}</div>;
     return (
       <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>
         <IconButton {...iconProps} icon={Plus} aria-label={t.addEntity} title={t.addEntity} disabled={!session.agent.value || off} onClick={() => void session.addEntity(selected === 1 ? session.selection.value[0]! : null)} />

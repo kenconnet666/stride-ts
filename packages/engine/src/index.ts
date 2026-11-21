@@ -160,7 +160,7 @@ export { DebugText, type DebugTextLine } from './debug/DebugText';
 export { drawCollider } from './physics/debugShapes';
 export { ScenePicker } from './rendering/ScenePicker';
 export { EditorCameraController, EditorCameraState } from './editor/EditorCamera';
-export type { EditableScene, EditAgent, PaintBrush, PaintSession, RequiredComponentEntry, WorldSphere } from './editor/EditAgent';
+export type { EditableScene, EditAgent, PaintBrush, PaintSession, SculptBrush, SculptSession, RequiredComponentEntry, WorldSphere } from './editor/EditAgent';
 export type { PolyEditSession, PolySelection, PolySelectMode } from './editor/PolyEditTool';
 export { applyGizmoChange, applySnap, DEFAULT_SNAP, TransformGizmo, type GizmoAxis, type GizmoChange, type GizmoHandle, type GizmoMode, type SnapSettings } from './editor/TransformGizmo';
 export { checkEntity, checkFields, COMPONENT_FIELDS, ENTITY_FIELDS, scriptFields, TEXTURE_FIELDS, type ComponentDescription, type Field, type FieldType } from './editor/fields';
@@ -278,7 +278,7 @@ export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitatio
 export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './weather/Weather';
 export { StreamingSource, WorldStreaming } from './world/WorldStreaming';
 export { Terrain, TerrainAsset, TerrainTile, type TerrainAssetId } from './terrain/Terrain';
-export { TerrainSystem } from './terrain/TerrainSystem';
+export { TerrainSystem, type TerrainHit } from './terrain/TerrainSystem';
 export { cellAt, cellKey, cellOrigin, checkWorldFile, distanceToCell, worldCellPath, type WorldFile, type WorldLayer } from './content/worldFormat';
 export { SkyOcclusion, skyOcclusionCenter } from './weather/SkyOcclusion';
 export { packDepthSurface, ViewDepthSurface, type GpuDepthSurface } from './rendering/DepthSurface';

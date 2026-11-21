@@ -1,0 +1,18 @@
+{
+ "name": "Crackle",
+ "encoding": "synth",
+ "streamFromDisk": false,
+ "spatialized": false,
+ "synth": {
+  "wave": "noise",
+  "attack": 0,
+  "sustain": 0.02,
+  "punch": 0.6,
+  "decay": 0.16,
+  "frequency": 0.55,
+  "slide": -0.25,
+  "highPassCutoff": 0.12,
+  "volume": 0.6,
+  "seed": 11
+ }
+}

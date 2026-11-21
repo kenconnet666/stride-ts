@@ -1,0 +1,153 @@
+{
+ "name": "FirePit",
+ "materials": [
+  "Materials/Rock"
+ ],
+ "resolution": 0.025,
+ "shapes": [
+  {
+   "name": "Stone 1",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    0.55,
+    0.08,
+    0
+   ],
+   "radii": [
+    0.17,
+    0.12,
+    0.14
+   ]
+  },
+  {
+   "name": "Stone 2",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    0.4213244437154379,
+    0.08,
+    0.35353318532759664
+   ],
+   "radii": [
+    0.17,
+    0.13999999999999999,
+    0.14
+   ]
+  },
+  {
+   "name": "Stone 3",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    0.09550649771681173,
+    0.08,
+    0.5416442641567144
+   ],
+   "radii": [
+    0.17,
+    0.16,
+    0.14
+   ]
+  },
+  {
+   "name": "Stone 4",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    -0.2749999999999999,
+    0.08,
+    0.47631397208144133
+   ],
+   "radii": [
+    0.17,
+    0.12,
+    0.14
+   ]
+  },
+  {
+   "name": "Stone 5",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    -0.5168309414322496,
+    0.08,
+    0.1881110788291179
+   ],
+   "radii": [
+    0.17,
+    0.13999999999999999,
+    0.14
+   ]
+  },
+  {
+   "name": "Stone 6",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    -0.5168309414322497,
+    0.08,
+    -0.1881110788291178
+   ],
+   "radii": [
+    0.17,
+    0.16,
+    0.14
+   ]
+  },
+  {
+   "name": "Stone 7",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    -0.27500000000000024,
+    0.08,
+    -0.4763139720814412
+   ],
+   "radii": [
+    0.17,
+    0.12,
+    0.14
+   ]
+  },
+  {
+   "name": "Stone 8",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    0.0955064977168115,
+    0.08,
+    -0.5416442641567145
+   ],
+   "radii": [
+    0.17,
+    0.13999999999999999,
+    0.14
+   ]
+  },
+  {
+   "name": "Stone 9",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.04,
+   "position": [
+    0.4213244437154378,
+    0.08,
+    -0.3535331853275968
+   ],
+   "radii": [
+    0.17,
+    0.16,
+    0.14
+   ]
+  }
+ ]
+}

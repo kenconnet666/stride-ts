@@ -119,7 +119,7 @@ jobs:
           path: apps/*/public/content
           key: ${{ needs.content.outputs.key }}
           fail-on-cache-miss: true
-      # 手搭的工程（collect-dodge、short-film、greybox）的内容是提交在仓库里的：缓存的键只看导入器的输入，它们改了键不变，
+      # 手搭的工程（collect-dodge、short-film、greybox、campsite）的内容是提交在仓库里的：缓存的键只看导入器的输入，它们改了键不变，
       # 恢复缓存会拿旧的盖掉刚检出的。按仓库里的还原回来（导入的、不提交的文件不受影响）
       - name: Restore committed content
         run: git restore --source=HEAD --worktree -- ':(glob)apps/*/public/content/**'

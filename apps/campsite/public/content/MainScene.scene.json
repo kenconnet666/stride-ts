@@ -1,0 +1,808 @@
+{
+ "name": "MainScene",
+ "compositor": {
+  "clearColor": [
+   0.1,
+   0.1,
+   0.12,
+   1
+  ],
+  "postEffects": {
+   "brightFilter": true,
+   "bloom": true,
+   "lightStreak": false,
+   "lensFlare": false,
+   "toneMap": true,
+   "antialiasing": true
+  },
+  "transparent": true
+ },
+ "entities": [
+  {
+   "id": "182d47af-fa5a-4cae-8c1e-69f0fda7ef46",
+   "name": "Camera",
+   "parent": null,
+   "position": [
+    6.5,
+    2.2,
+    7.5
+   ],
+   "rotation": [
+    -0.055274547554539324,
+    0.33710774196905435,
+    0.01983059494822602,
+    0.9396328230756766
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 45,
+     "nearClipPlane": 0.1,
+     "farClipPlane": 1000
+    }
+   }
+  },
+  {
+   "id": "74bb9f54-45d0-4a0b-9a9b-c2093326b3ce",
+   "name": "Sun",
+   "parent": null,
+   "position": [
+    0,
+    10,
+    0
+   ],
+   "rotation": [
+    -0.09982952178648372,
+    0.5693010845723744,
+    0.06990138369076634,
+    0.8130462091681605
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "directional",
+     "color": [
+      1,
+      0.72,
+      0.5
+     ],
+     "intensity": 4,
+     "shadow": {
+      "size": "large",
+      "filter": "pcf5x5",
+      "cascadeCount": "four",
+      "depthBias": 0.0015,
+      "normalOffsetScale": 10,
+      "stabilization": "projectionSnapping",
+      "pssmFactor": 0.5,
+      "depthRange": "automatic",
+      "minDistance": 0,
+      "maxDistance": 60,
+      "blendCascades": true
+     }
+    }
+   }
+  },
+  {
+   "id": "c578c6df-2543-4054-803a-41915e6ffa65",
+   "name": "Sky",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "skyAtmosphere": {
+     "sun": "74bb9f54-45d0-4a0b-9a9b-c2093326b3ce"
+    }
+   }
+  },
+  {
+   "id": "0c2d7ecc-33f5-4d1d-b9cd-c999b8aaeb72",
+   "name": "Ground",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Ground",
+     "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1000,
+        1,
+        1000
+       ],
+       "position": [
+        0,
+        -0.5,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5
+    }
+   }
+  },
+  {
+   "id": "cabin",
+   "name": "Cabin",
+   "parent": null,
+   "position": [
+    -3,
+    0,
+    -3
+   ],
+   "rotation": [
+    0,
+    0.17364817766693033,
+    0,
+    0.984807753012208
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Cabin",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "path",
+   "name": "Path",
+   "parent": null,
+   "position": [
+    -0.45,
+    0.01,
+    -0.6
+   ],
+   "rotation": [
+    0,
+    0.38831991615740885,
+    0,
+    0.9215246294676572
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Path",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "fire-pit",
+   "name": "Fire pit",
+   "parent": null,
+   "position": [
+    1.6,
+    0,
+    1.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/FirePit",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "fire-light",
+   "name": "Fire light",
+   "parent": null,
+   "position": [
+    1.6,
+    0.7,
+    1.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "point",
+     "color": [
+      1,
+      0.55,
+      0.2
+     ],
+     "intensity": 25,
+     "radius": 7
+    },
+    "scripts": [
+     {
+      "type": "game/Crackle#Crackle",
+      "props": {
+       "sound": {
+        "$asset": "Sounds/Crackle",
+        "kind": "sound"
+       }
+      }
+     }
+    ]
+   }
+  },
+  {
+   "id": "log-1",
+   "name": "Log",
+   "parent": null,
+   "position": [
+    0.30000000000000004,
+    0,
+    1.5999999999999999
+   ],
+   "rotation": [
+    0,
+    0.6427876096865393,
+    0,
+    0.766044443118978
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Log",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "log-2",
+   "name": "Log 2",
+   "parent": null,
+   "position": [
+    2.2,
+    0,
+    2.5999999999999996
+   ],
+   "rotation": [
+    0,
+    -0.17364817766693033,
+    0,
+    0.984807753012208
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Log",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "rock-1",
+   "name": "Rock",
+   "parent": null,
+   "position": [
+    4,
+    0,
+    -2.5
+   ],
+   "rotation": [
+    0,
+    0.25881904510252074,
+    0,
+    0.9659258262890683
+   ],
+   "scale": [
+    1.4,
+    1.2,
+    1.4
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Rock",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "rock-2",
+   "name": "Rock 2",
+   "parent": null,
+   "position": [
+    -5.5,
+    0,
+    2
+   ],
+   "rotation": [
+    0,
+    -0.49999999999999994,
+    0,
+    0.8660254037844387
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Rock",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "rock-3",
+   "name": "Rock 3",
+   "parent": null,
+   "position": [
+    3.5,
+    0,
+    3.5
+   ],
+   "rotation": [
+    0,
+    0.8191520442889918,
+    0,
+    0.573576436351046
+   ],
+   "scale": [
+    0.6,
+    0.6,
+    0.6
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Rock",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "crate",
+   "name": "Crate",
+   "parent": null,
+   "position": [
+    -0.7,
+    0,
+    -1.8
+   ],
+   "rotation": [
+    0,
+    0.13052619222005157,
+    0,
+    0.9914448613738104
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Crate",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "lantern",
+   "name": "Lantern",
+   "parent": null,
+   "position": [
+    -0.7,
+    0.6,
+    -1.8
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Lantern",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "lantern-light",
+   "name": "Lantern light",
+   "parent": null,
+   "position": [
+    -0.7,
+    0.8,
+    -1.8
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "point",
+     "color": [
+      1,
+      0.7,
+      0.4
+     ],
+     "intensity": 4,
+     "radius": 4
+    }
+   }
+  },
+  {
+   "id": "d585f800-d64d-484b-b1c3-6e936b2f4ad3",
+   "name": "Campfire",
+   "parent": null,
+   "position": [
+    1.6,
+    0.05,
+    1.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "particleSystem": {
+     "particleSystem": {
+      "settings": {},
+      "emitters": [
+       {
+        "emitterName": "Flames",
+        "particleLifetime": [
+         0.6,
+         1.1
+        ],
+        "shapeBuilder": {
+         "$type": "shapeBuilderBillboard"
+        },
+        "material": {
+         "$type": "particleMaterialComputeColor",
+         "computeColor": {
+          "$type": "computeSoftCircle",
+          "hardness": 0
+         },
+         "alphaAdditive": 1
+        },
+        "spawners": [
+         {
+          "$type": "spawnerPerSecond",
+          "spawnCount": 140
+         }
+        ],
+        "initializers": [
+         {
+          "$type": "initialPositionSeed",
+          "positionMin": [
+           -0.2,
+           0,
+           -0.2
+          ],
+          "positionMax": [
+           0.2,
+           0.1,
+           0.2
+          ]
+         },
+         {
+          "$type": "initialVelocitySeed",
+          "velocityMin": [
+           -0.15,
+           0.9,
+           -0.15
+          ],
+          "velocityMax": [
+           0.15,
+           1.8,
+           0.15
+          ]
+         },
+         {
+          "$type": "initialColorSeed",
+          "colorMin": [
+           1,
+           1,
+           1,
+           1
+          ],
+          "colorMax": [
+           1,
+           1,
+           1,
+           1
+          ]
+         }
+        ],
+        "updaters": [
+         {
+          "$type": "updaterColorOverTime",
+          "samplerMain": {
+           "$type": "computeCurveSamplerVector4",
+           "curve": {
+            "$type": "computeAnimationCurveVector4",
+            "keyFrames": [
+             {
+              "key": 0,
+              "value": [
+               1,
+               0.75,
+               0.3,
+               0.3
+              ],
+              "tangentType": "linear"
+             },
+             {
+              "key": 0.35,
+              "value": [
+               1,
+               0.38,
+               0.06,
+               0.25
+              ],
+              "tangentType": "linear"
+             },
+             {
+              "key": 1,
+              "value": [
+               0.4,
+               0.05,
+               0.01,
+               0
+              ],
+              "tangentType": "linear"
+             }
+            ]
+           }
+          }
+         },
+         {
+          "$type": "updaterSizeOverTime",
+          "samplerMain": {
+           "$type": "computeCurveSamplerFloat",
+           "curve": {
+            "$type": "computeAnimationCurveFloat",
+            "keyFrames": [
+             {
+              "key": 0,
+              "value": 0.45,
+              "tangentType": "linear"
+             },
+             {
+              "key": 0.4,
+              "value": 0.35,
+              "tangentType": "linear"
+             },
+             {
+              "key": 1,
+              "value": 0.05,
+              "tangentType": "linear"
+             }
+            ]
+           }
+          }
+         }
+        ]
+       },
+       {
+        "emitterName": "Embers",
+        "particleLifetime": [
+         1,
+         2
+        ],
+        "shapeBuilder": {
+         "$type": "shapeBuilderBillboard"
+        },
+        "material": {
+         "$type": "particleMaterialComputeColor",
+         "computeColor": {
+          "$type": "computeSoftCircle",
+          "hardness": 0.6
+         },
+         "alphaAdditive": 1
+        },
+        "spawners": [
+         {
+          "$type": "spawnerPerSecond",
+          "spawnCount": 12
+         }
+        ],
+        "initializers": [
+         {
+          "$type": "initialPositionSeed",
+          "positionMin": [
+           -0.2,
+           0.1,
+           -0.2
+          ],
+          "positionMax": [
+           0.2,
+           0.3,
+           0.2
+          ]
+         },
+         {
+          "$type": "initialVelocitySeed",
+          "velocityMin": [
+           -0.4,
+           1,
+           -0.4
+          ],
+          "velocityMax": [
+           0.4,
+           2.5,
+           0.4
+          ]
+         },
+         {
+          "$type": "initialColorSeed",
+          "colorMin": [
+           1,
+           1,
+           1,
+           1
+          ],
+          "colorMax": [
+           1,
+           1,
+           1,
+           1
+          ]
+         }
+        ],
+        "updaters": [
+         {
+          "$type": "updaterColorOverTime",
+          "samplerMain": {
+           "$type": "computeCurveSamplerVector4",
+           "curve": {
+            "$type": "computeAnimationCurveVector4",
+            "keyFrames": [
+             {
+              "key": 0,
+              "value": [
+               1,
+               0.6,
+               0.2,
+               1
+              ],
+              "tangentType": "linear"
+             },
+             {
+              "key": 1,
+              "value": [
+               1,
+               0.2,
+               0.05,
+               0
+              ],
+              "tangentType": "linear"
+             }
+            ]
+           }
+          }
+         },
+         {
+          "$type": "updaterSizeOverTime",
+          "samplerMain": {
+           "$type": "computeCurveSamplerFloat",
+           "curve": {
+            "$type": "computeAnimationCurveFloat",
+            "keyFrames": [
+             {
+              "key": 0,
+              "value": 0.05,
+              "tangentType": "linear"
+             },
+             {
+              "key": 1,
+              "value": 0.02,
+              "tangentType": "linear"
+             }
+            ]
+           }
+          }
+         }
+        ]
+       }
+      ]
+     }
+    }
+   }
+  }
+ ]
+}

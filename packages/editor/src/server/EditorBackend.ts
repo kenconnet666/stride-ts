@@ -594,12 +594,36 @@ function checkContentPath(assetPath: string): string {
   return assetPath;
 }
 
-/** 先写到旁边的临时文件再改名：读的人（开发服务器、游戏页面）不会读到写了一半的。 */
+let atomicWrites = 0;
+
+/**
+ * 先写到旁边的临时文件再改名：读的人（开发服务器、游戏页面）不会读到写了一半的。临时文件每次一个名字（同一个文件连着写时
+ * 不互相盖），改名没成就删掉它，不留在内容目录里。
+ */
 async function writeAtomically(file: string, content: string | Uint8Array): Promise<void> {
   await mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.tmp`;
+  const temporary = `${file}.${process.pid}-${++atomicWrites}.tmp`;
   await writeFile(temporary, content);
-  await rename(temporary, file);
+  try {
+    await renameRetrying(temporary, file);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
+}
+
+/** Windows 上目标文件正被别的进程打开着（开发服务器在读它烘模型、监视文件的、杀毒）时改名报 EPERM、EBUSY：等一下再试。 */
+async function renameRetrying(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(from, to);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (attempt >= 6 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** attempt));
+    }
+  }
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {

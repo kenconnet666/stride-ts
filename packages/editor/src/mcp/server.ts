@@ -224,8 +224,9 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       scene: assetPath.optional().describe('scene or prefab to change'),
       entities: z.array(z.string()).optional().describe('material: entity ids to use it on'),
       position: z.tuple([z.number(), z.number(), z.number()]).optional().describe('effect: where to put the new entity'),
+      entityId: z.string().optional().describe('effect: id of the new entity (default a random UUID; give one to keep a scripted build repeatable)'),
     }),
-  }, async ({ id, kind = 'scene', scene, entities, position }) => {
+  }, async ({ id, kind = 'scene', scene, entities, position, entityId }) => {
     const material = LIBRARY_MATERIALS.find((item) => item.id === id), effect = LIBRARY_EFFECTS.find((item) => item.id === id);
     if (!material && !effect) throw new Error(`no library item '${id}' (list_library lists them)`);
     const result: Record<string, unknown> = {};
@@ -248,7 +249,7 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       document.apply({ type: 'batch', edits });
       result['used'] = changed.map((entity) => ({ id: entity.id, name: entity.name }));
     } else {
-      const added: SceneEntityFile = { id: crypto.randomUUID(), name: libraryAssetName(id), parent: null, position: position ?? [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { particleSystem: structuredClone(effect!.particleSystem) } };
+      const added: SceneEntityFile = { id: entityId ?? crypto.randomUUID(), name: libraryAssetName(id), parent: null, position: position ?? [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { particleSystem: structuredClone(effect!.particleSystem) } };
       document.apply(document.addChild(added));
       result['added'] = { id: added.id, name: added.name };
     }

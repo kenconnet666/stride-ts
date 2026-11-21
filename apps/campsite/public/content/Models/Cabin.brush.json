@@ -1,0 +1,117 @@
+{
+ "name": "Cabin",
+ "materials": [
+  "Materials/Library/Wood",
+  "Materials/Shingles"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "name": "Walls",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    1.3,
+    0
+   ],
+   "size": [
+    4,
+    2.6,
+    3
+   ]
+  },
+  {
+   "name": "Inside",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    0,
+    1.45,
+    0
+   ],
+   "size": [
+    3.7,
+    2.6,
+    2.7
+   ]
+  },
+  {
+   "name": "Door",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    0.8,
+    1.05,
+    1.5
+   ],
+   "size": [
+    0.9,
+    1.9,
+    0.6
+   ]
+  },
+  {
+   "name": "Window",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    -0.9,
+    1.55,
+    1.5
+   ],
+   "size": [
+    0.8,
+    0.7,
+    0.6
+   ]
+  },
+  {
+   "name": "Side window",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    2,
+    1.55,
+    0
+   ],
+   "size": [
+    0.6,
+    0.7,
+    0.8
+   ]
+  },
+  {
+   "name": "Roof",
+   "kind": "prism",
+   "operation": "add",
+   "material": 1,
+   "position": [
+    0,
+    2.6,
+    -1.85
+   ],
+   "rotation": [
+    0.7071067811865476,
+    0,
+    0,
+    0.7071067811865476
+   ],
+   "points": [
+    [
+     -2.45,
+     0
+    ],
+    [
+     2.45,
+     0
+    ],
+    [
+     0,
+     -1.5
+    ]
+   ],
+   "height": 3.7
+  }
+ ]
+}

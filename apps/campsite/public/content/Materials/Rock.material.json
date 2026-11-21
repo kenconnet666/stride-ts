@@ -1,0 +1,155 @@
+{
+ "name": "Rock",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.85,
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "uv",
+    "params": {},
+    "position": [
+     0,
+     0
+    ],
+    "inputs": {}
+   },
+   {
+    "id": "blotch",
+    "type": "noise",
+    "params": {
+     "scale": 3,
+     "octaves": 4,
+     "seed": 3
+    },
+    "position": [
+     220,
+     0
+    ],
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "grain",
+    "type": "noise",
+    "params": {
+     "scale": 30,
+     "octaves": 5,
+     "roughness": 0.6
+    },
+    "position": [
+     220,
+     160
+    ],
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "tone",
+    "type": "colorRamp",
+    "params": {
+     "from": [
+      0.22,
+      0.21,
+      0.2
+     ],
+     "to": [
+      0.48,
+      0.46,
+      0.42
+     ]
+    },
+    "position": [
+     440,
+     0
+    ],
+    "inputs": {
+     "t": {
+      "node": "blotch"
+     }
+    }
+   },
+   {
+    "id": "speckle",
+    "type": "colorRamp",
+    "params": {
+     "from": [
+      0.8,
+      0.8,
+      0.8
+     ],
+     "to": [
+      1.1,
+      1.1,
+      1.1
+     ]
+    },
+    "position": [
+     440,
+     160
+    ],
+    "inputs": {
+     "t": {
+      "node": "grain"
+     }
+    }
+   },
+   {
+    "id": "color",
+    "type": "multiply",
+    "params": {},
+    "position": [
+     660,
+     0
+    ],
+    "inputs": {
+     "a": {
+      "node": "tone"
+     },
+     "b": {
+      "node": "speckle"
+     }
+    }
+   },
+   {
+    "id": "normal",
+    "type": "normalFromHeight",
+    "params": {
+     "strength": 1.2
+    },
+    "position": [
+     660,
+     160
+    ],
+    "inputs": {
+     "height": {
+      "node": "grain"
+     },
+     "uv": {
+      "node": "uv"
+     }
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "color"
+   },
+   "normal": {
+    "node": "normal"
+   }
+  }
+ }
+}

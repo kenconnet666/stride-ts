@@ -1,0 +1,140 @@
+{
+ "name": "Shingles",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.8,
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "uv",
+    "params": {
+     "scale": [
+      2,
+      2
+     ]
+    },
+    "position": [
+     0,
+     0
+    ],
+    "inputs": {}
+   },
+   {
+    "id": "rows",
+    "type": "bricks",
+    "params": {
+     "columns": 6,
+     "rows": 14,
+     "mortar": 0.04,
+     "shift": 0.5
+    },
+    "position": [
+     220,
+     0
+    ],
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "tone",
+    "type": "colorRamp",
+    "params": {
+     "from": [
+      0.16,
+      0.06,
+      0.04
+     ],
+     "to": [
+      0.32,
+      0.14,
+      0.08
+     ]
+    },
+    "position": [
+     440,
+     0
+    ],
+    "inputs": {
+     "t": {
+      "node": "rows",
+      "output": "brick"
+     }
+    }
+   },
+   {
+    "id": "gap",
+    "type": "color",
+    "params": {
+     "color": [
+      0.04,
+      0.03,
+      0.03
+     ]
+    },
+    "position": [
+     440,
+     160
+    ],
+    "inputs": {}
+   },
+   {
+    "id": "color",
+    "type": "mix",
+    "params": {},
+    "position": [
+     660,
+     0
+    ],
+    "inputs": {
+     "a": {
+      "node": "gap"
+     },
+     "b": {
+      "node": "tone"
+     },
+     "t": {
+      "node": "rows",
+      "output": "mask"
+     }
+    }
+   },
+   {
+    "id": "normal",
+    "type": "normalFromHeight",
+    "params": {
+     "strength": 2.5
+    },
+    "position": [
+     660,
+     160
+    ],
+    "inputs": {
+     "height": {
+      "node": "rows",
+      "output": "mask"
+     },
+     "uv": {
+      "node": "uv"
+     }
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "color"
+   },
+   "normal": {
+    "node": "normal"
+   }
+  }
+ }
+}

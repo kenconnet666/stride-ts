@@ -1,0 +1,69 @@
+{
+ "name": "Lantern",
+ "materials": [
+  "Materials/Library/BrushedSteel",
+  "Materials/LanternGlow"
+ ],
+ "resolution": 0.008,
+ "shapes": [
+  {
+   "name": "Base",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    0,
+    0.02,
+    0
+   ],
+   "height": 0.04,
+   "radius": 0.11,
+   "edgeRadius": 0.008
+  },
+  {
+   "name": "Glass",
+   "kind": "capsule",
+   "operation": "add",
+   "smoothness": 0.01,
+   "material": 1,
+   "position": [
+    0,
+    0.17,
+    0
+   ],
+   "height": 0.14,
+   "radius": 0.08
+  },
+  {
+   "name": "Cap",
+   "kind": "cylinder",
+   "operation": "add",
+   "smoothness": 0.01,
+   "position": [
+    0,
+    0.3,
+    0
+   ],
+   "height": 0.04,
+   "radius": 0.09,
+   "edgeRadius": 0.01
+  },
+  {
+   "name": "Handle",
+   "kind": "torus",
+   "operation": "add",
+   "position": [
+    0,
+    0.37,
+    0
+   ],
+   "rotation": [
+    0.7071067811865475,
+    0,
+    0,
+    0.7071067811865476
+   ],
+   "ringRadius": 0.06,
+   "tubeRadius": 0.01
+  }
+ ]
+}

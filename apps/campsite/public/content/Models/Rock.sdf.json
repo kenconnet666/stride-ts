@@ -1,0 +1,55 @@
+{
+ "name": "Rock",
+ "materials": [
+  "Materials/Rock"
+ ],
+ "resolution": 0.04,
+ "shapes": [
+  {
+   "name": "Body",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "position": [
+    0,
+    0.2,
+    0
+   ],
+   "radii": [
+    0.7,
+    0.45,
+    0.55
+   ]
+  },
+  {
+   "name": "Lump",
+   "kind": "ellipsoid",
+   "operation": "add",
+   "smoothness": 0.18,
+   "position": [
+    0.45,
+    0.35,
+    0.15
+   ],
+   "radii": [
+    0.35,
+    0.3,
+    0.32
+   ]
+  },
+  {
+   "name": "Cut",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    0,
+    -0.5,
+    0
+   ],
+   "size": [
+    3,
+    1,
+    3
+   ]
+  }
+ ]
+}

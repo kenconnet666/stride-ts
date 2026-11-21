@@ -28,8 +28,6 @@ export interface EditorMessages {
   readonly viewportToolbar: string;
   readonly openDocuments: string;
   readonly selectedCount: (n: number) => string;
-  readonly toolStripe: string;
-  readonly hideToolWindow: string;
   readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string };
   readonly language: string;
   readonly frameGuide: string;
@@ -188,8 +186,6 @@ const zhCN: EditorMessages = {
   viewportToolbar: '视口工具条',
   openDocuments: '打开的文档',
   selectedCount: (n) => `选中 ${n} 个`,
-  toolStripe: '工具窗口',
-  hideToolWindow: '收起',
   toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子' },
   language: '界面语言',
   frameGuide: '画幅参考线（视口上框出画幅和安全框，构图用）',
@@ -353,8 +349,6 @@ const enUS: EditorMessages = {
   viewportToolbar: 'Viewport toolbar',
   openDocuments: 'Open documents',
   selectedCount: (n) => `${n} selected`,
-  toolStripe: 'Tool windows',
-  hideToolWindow: 'Hide',
   toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles' },
   language: 'Interface language',
   frameGuide: 'Frame guide (the frame and safe areas over the viewport, for composing shots)',

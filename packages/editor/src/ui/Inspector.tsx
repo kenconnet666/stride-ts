@@ -1,6 +1,6 @@
 import { Plus, Sparkles, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
-import { Button, IconButton, Menu, MenuGroup, MenuItem } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, IconButton, Menu, MenuGroup, MenuItem, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@stride-ts/engine/editor-document';
@@ -18,7 +18,26 @@ const styles = css.create({
   heading: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: '600', marginBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
   hint: { color: '_textMuted', padding: '_sm' },
   add: { marginBlockStart: '_sm', alignSelf: 'flex-start' },
+  // 骨架屏：标题加几行“名字、输入框”，和字段行一样高（28px）
+  skeletonRow: { display: 'grid', gridTemplateColumns: '35% 1fr', gap: '_sm', alignItems: 'center', height: '28px' },
+  skeletonField: { height: '22px' },
 });
+
+/** 打开游戏页面时属性面板的占位：一节标题和几行字段，扫光一行接一行。 */
+const SKELETON_ROWS = 6;
+function inspectorSkeleton() {
+  return (
+    <div {...css.attrs(styles.panel)} aria-busy="true">
+      <Skeleton shape="heading" />
+      {Array.from({ length: SKELETON_ROWS }, (_, row) => (
+        <div {...css.attrs(styles.skeletonRow)}>
+          <Skeleton shape="text" delay={(row + 1) * SHIMMER_STAGGER} />
+          <Skeleton sx={styles.skeletonField} delay={(row + 1) * SHIMMER_STAGGER} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 type ComponentKey = keyof typeof COMPONENT_FIELDS;
 type Entities = readonly SceneEntityFile[];
@@ -233,7 +252,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
     const list = entities;
     const inspected = session.inspected.value;
     if (inspected) return assetInspector(inspected);
-    if (!agent.value) return <div {...css.attrs(styles.hint)}>{t.sceneNotOpen}</div>;
+    if (!agent.value) return session.opening.value ? inspectorSkeleton() : <div {...css.attrs(styles.hint)}>{t.sceneNotOpen}</div>;
     if (list.length === 0) {
       void version.value;
       return session.opened.value?.kind === 'scene' ? sceneSettings() : <div {...css.attrs(styles.hint)}>{t.pickEntity}</div>;

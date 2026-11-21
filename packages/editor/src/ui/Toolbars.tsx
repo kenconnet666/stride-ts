@@ -8,7 +8,7 @@
 import { ClipboardPaste, Copy, CopyPlus, Magnet, Package, Play, Plus, Redo2, Save, Square, Trash2, Undo2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton, NumberField, Select, Separator, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
+import { IconButton, NumberField, Select, Separator, Skeleton, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
 import { LOCALES, locale, setLocale, type Locale } from './i18n';
 import { t } from './messages';
 import type { EditorSession } from './session';
@@ -24,6 +24,10 @@ const styles = css.create({
   project: { color: '_textMuted', paddingInlineEnd: '_sm', whiteSpace: 'nowrap' },
   spacer: { flex: '1' },
   tabs: { flexShrink: '0', backgroundColor: '_surfaceRaised' },
+  // 骨架屏：和一个页签一样高（28px），工程名占一个名字的宽
+  tabsLoading: { height: '28px', display: 'flex', alignItems: 'center', paddingInline: '10px' },
+  tabSkeleton: { width: '6em', height: '1em' },
+  projectSkeleton: { width: '7em' },
   viewport: { ...bar, height: '34px', backgroundColor: '_surface', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_borderMuted' },
   step: { width: '6.5em' },
   guide: { width: '8em' },
@@ -39,7 +43,7 @@ export const MainToolbar = _component(({ session, playing, onTogglePlay }: { ses
   return () => (
     <div {...css.attrs(styles.main)} role="toolbar" aria-label={t.mainToolbar}>
       <span {...css.attrs(styles.brand)}>Stride</span>
-      <span {...css.attrs(styles.project)}>{session.project.value?.name ?? ''}</span>
+      <span {...css.attrs(styles.project)}>{session.project.value?.name ?? <Skeleton shape="text" sx={styles.projectSkeleton} />}</span>
       <Separator orientation="vertical" />
       <IconButton {...iconProps} icon={Save} aria-label={t.save} title={`${t.save} (Ctrl+S)`} disabled={!session.dirty.value || playing} onClick={() => void session.save()} />
       <IconButton {...iconProps} icon={Undo2} aria-label={t.undo} title={`${t.undo} (Ctrl+Z)`} disabled={!session.canUndo || playing} onClick={() => session.undo()} />
@@ -58,7 +62,11 @@ export const DocumentTabs = _component(({ session, playing }: { session: EditorS
   return () => {
     const opened = session.opened.value;
     const scene = session.scene.value;
-    if (!opened) return <div {...css.attrs(styles.tabs)} />;
+    if (!opened) {
+      return session.opening.value
+        ? <div {...css.attrs(styles.tabs, styles.tabsLoading)} aria-busy="true"><Skeleton sx={styles.tabSkeleton} /></div>
+        : <div {...css.attrs(styles.tabs)} />;
+    }
     const prefab = opened.kind === 'prefab' ? opened : undefined;
     const dirty = session.dirty.value ? ' •' : '';
     const back = () => scene && !playing && void session.openAsset(scene);

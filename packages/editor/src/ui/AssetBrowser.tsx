@@ -195,6 +195,8 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         {...css.attrs(styles.tree)}
         propsScrollArea={{ sx: styles.scroll }}
         aria-label={t.assets}
+        // 工程和资源列表还没读到
+        loading={session.project.value === undefined}
         items={roots}
         getKey={(node: Node) => node.key}
         getLabel={(node: Node) => node.name}

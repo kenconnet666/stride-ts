@@ -56,7 +56,7 @@ const PREVIEW_LIGHTS: readonly SceneEntityFile[] = [
 
 export class EditorSession implements EditableScene {
   readonly client = new EditorClient();
-  /** 工程（打开时读）。 */
+  /** 工程（打开时读；没读到以前是 undefined，资源列表也还没有：界面画骨架屏）。 */
   readonly project = shallowRef<ProjectInfo>();
   /** 内容目录里的资源，后端推送变化时跟着改。 */
   readonly assets = shallowRef<readonly AssetRecord[]>([]);
@@ -68,6 +68,11 @@ export class EditorSession implements EditableScene {
   readonly dirty = shallowRef(false);
   /** 游戏页面里的代理；页面还没起来、重新加载时是 undefined。 */
   readonly agent = shallowRef<EditAgent>();
+  /**
+   * 视口正在打开编辑状态的游戏页面、还没把场景交给会话（视口管它）：场景树、属性面板、视口画骨架屏。试玩时 agent 也是空的，
+   * 但不算在打开。
+   */
+  readonly opening = shallowRef(true);
   /** 视口上的画幅参考线：画幅的宽高比，0 是不显示（见 Viewport 的 frameGuide）。 */
   readonly frameGuide = shallowRef(0);
   /** 打开的时间轴（资源浏览器里打开的，下面的时间轴面板显示它）：选实体、改场景时一直开着。 */

@@ -1,5 +1,6 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
+import { Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { Game } from '@stride-ts/engine';
 import type { CSSProperties } from 'vue';
 import { t } from './messages';
@@ -9,6 +10,9 @@ const styles = css.create({
   frame: { display: 'block', width: '100%', height: '100%', borderWidth: '0', backgroundColor: 'black' },
   status: { position: 'absolute', insetInlineStart: '_sm', insetBlockStart: '_sm', color: '_textMuted' },
   wrap: { position: 'relative', height: '100%' },
+  // 打开游戏页面时盖住整个视口（游戏页面这时在起设备、打印启动日志），文字在中间；骨架是半透明的，底下垫一层不透明的表面
+  opening: { position: 'absolute', inset: '0', display: 'grid', placeItems: 'center', backgroundColor: '_surface', color: '_textMuted' },
+  openingShimmer: { position: 'absolute', inset: '0', borderRadius: '0' },
   guide: { position: 'absolute', inset: '0', pointerEvents: 'none', display: 'grid', placeItems: 'center', overflow: 'hidden' },
 });
 
@@ -38,7 +42,7 @@ const OPENING = Symbol('opening');
  * 起来以后把场景交给会话；试玩时不带 stride-edit 重新打开，是一个干净的游戏。
  */
 export const Viewport = _component(({ session, playing, onShortcut }: { session: EditorSession; playing: boolean; onShortcut: (event: KeyboardEvent) => void }) => {
-  // 正在打开时显示 t.openingGame（换语言跟着换），出错时是报错，好了是空的
+  // 正在打开时是骨架屏加 t.openingGame（换语言跟着换），出错时是报错，好了是空的
   let status = _state<string | typeof OPENING>(OPENING);
   let generation = 0;
 
@@ -48,6 +52,7 @@ export const Viewport = _component(({ session, playing, onShortcut }: { session:
     session.detach();
     // 焦点在游戏里时，编辑器的快捷键（保存、撤销）照样有用
     frame.contentWindow?.addEventListener('keydown', onShortcut);
+    session.opening.value = !playing;
     if (playing) {
       status = '';
       return;
@@ -62,14 +67,22 @@ export const Viewport = _component(({ session, playing, onShortcut }: { session:
       status = '';
     } catch (error) {
       status = (error as Error).message;
+    } finally {
+      session.opening.value = false;
     }
   };
 
   return () => (
-    <div {...css.attrs(styles.wrap)}>
+    <div {...css.attrs(styles.wrap)} aria-busy={status === OPENING || undefined}>
       <iframe {...css.attrs(styles.frame)} src={playing ? '/?debug' : '/?debug&stride-edit'} title={t.gameViewport} onLoad={(event: Event) => void loaded(event)} />
       {session.frameGuide.value > 0 && frameGuide(session.frameGuide.value)}
-      {status && <span {...css.attrs(styles.status)}>{status === OPENING ? t.openingGame : status}</span>}
+      {status === OPENING && (
+        <div {...css.attrs(styles.opening)} role="status">
+          <Skeleton sx={styles.openingShimmer} />
+          {t.openingGame}
+        </div>
+      )}
+      {status && status !== OPENING && <span {...css.attrs(styles.status)}>{status}</span>}
     </div>
   );
 });

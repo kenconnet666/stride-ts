@@ -178,20 +178,19 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         <IconButton icon={Trash2} size="sm" variant="ghost" tone="neutral" aria-label={t.delete} title={t.delete} disabled={!current?.asset || busy} onClick={() => current && void remove(current)} />
         <span {...css.attrs(styles.status)} title={status}>{status}</span>
       </div>
-      {current && (
-        <div {...css.attrs(styles.bar)}>
-          <TextField
-            {...css.attrs(styles.path)}
-            size="sm"
-            _value={target}
-            aria-label={t.moveRename}
-            placeholder={t.pathPlaceholder}
-            disabled={busy}
-            onKeydown={(event: KeyboardEvent) => event.key === 'Enter' && target && target !== current.path && void move(current, target)}
-          />
-          <IconButton icon={Check} size="sm" variant="ghost" tone="neutral" aria-label={t.moveRename} title={t.moveRename} disabled={busy || target === current.path || !target} onClick={() => void move(current, target)} />
-        </div>
-      )}
+      {/* 移动、改名的一栏一直占着位置（没选中时不可用）：选中时才出来的话下面的列表往下跳一行，双击的第二下落到别的行上 */}
+      <div {...css.attrs(styles.bar)}>
+        <TextField
+          {...css.attrs(styles.path)}
+          size="sm"
+          _value={target}
+          aria-label={t.moveRename}
+          placeholder={t.pathPlaceholder}
+          disabled={busy || !current}
+          onKeydown={(event: KeyboardEvent) => event.key === 'Enter' && current && target && target !== current.path && void move(current, target)}
+        />
+        <IconButton icon={Check} size="sm" variant="ghost" tone="neutral" aria-label={t.moveRename} title={t.moveRename} disabled={busy || !current || target === current.path || !target} onClick={() => current && void move(current, target)} />
+      </div>
       <Tree
         {...css.attrs(styles.tree)}
         propsScrollArea={{ sx: styles.scroll }}
@@ -205,11 +204,13 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         hasChildren={(node: Node) => !node.asset}
         getIcon={(node: Node, open: boolean) => (node.asset ? (ICONS as Record<string, typeof File>)[node.asset.kind] ?? File : open ? FolderOpen : Folder)}
         renderItem={(node: Node) => (
-          <span onDblclick={() => openable(node) && void open(node)}>
+          <span>
             {node.name}
             {node.asset && <span {...css.attrs(styles.kind)}>{node.asset.kind}</span>}
           </span>
         )}
+        // 双击整行、回车打开（场景、预制体……）
+        onActivate={(node: Node) => openable(node) && void open(node)}
         _expanded={expanded}
         selectionMode="single"
         _selected={selected}

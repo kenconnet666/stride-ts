@@ -154,7 +154,7 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
     const shown = session.references.value.includes(path);
     const name = path.slice(path.lastIndexOf('/') + 1);
     return (
-      <span {...css.attrs(styles.child)} title={t.childSceneHint(path)} onDblclick={() => void session.openAsset({ kind: 'scene', path })}>
+      <span {...css.attrs(styles.child)} title={t.childSceneHint(path)}>
         <span {...css.attrs(!shown && styles.hidden)}>{name}</span>
         <IconButton icon={shown ? Eye : EyeOff} size="sm" variant="ghost" tone="neutral" aria-pressed={shown} aria-label={shown ? t.hideChildScene(name) : t.showChildScene(name)}
           onClick={(event: MouseEvent) => {
@@ -198,6 +198,8 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       onUpdate:_selected={choose}
       canDrop={(node: Node, target: TreeMoveTarget) => node.entity !== undefined && !session.isMember(node.key) && target.parent !== null && !target.parent?.startsWith(CHILD_SCENE)}
       onMove={move}
+      // 子场景的一行：双击、回车单独打开它编辑
+      onActivate={(node: Node) => node.scene !== undefined && void session.openAsset({ kind: 'scene', path: node.scene })}
     />
     </div>
   );

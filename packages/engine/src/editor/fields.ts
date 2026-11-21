@@ -11,7 +11,7 @@
  */
 import type {
   ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog,
-  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile,
+  SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, TextureRef, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile,
   GameSettingsFile, SceneScriptValue, SceneTextureCamera,
 } from '../content/format';
 import type { SceneSettingKey } from './SceneDocument';
@@ -812,7 +812,16 @@ export const GAME_SETTINGS_FIELDS = fields<GameSettingsFile>({
 });
 
 /** 属性面板能编辑的资源（选中资源浏览器里的它时）：种类 → 字段。模型只有 JSON 写的那种能编辑。 */
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+/** 源模型的导入设置（ModelImportFile，.import.json）：改了马上存，编辑器后端照新的设置重新导入。 */
+export const MODEL_IMPORT_FIELDS = fields<ModelImportFile>({
+  source: { type: oneOf('glb', 'gltf', 'fbx', 'obj'), description: 'format of the source file next to these settings (same name); drop a new file to replace it' },
+  scale: { type: number({ min: 0.001, step: 0.001 }), description: 'uniform scale applied to vertices, bones and animation (0.01 for an FBX made in centimeters)' },
+  materials: { type: bool, description: 'import materials and their textures; off: meshes use the default material. Material files already there are kept on reimport' },
+  animations: { type: bool, description: 'import each animation as a clip (the skeleton comes too)' },
+  sampleRate: { type: integer(1, 240), description: 'animation keyframes per second when baking' },
+});
+
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 
 /**
  * 按值推出字段（游戏自己的渲染器、没有声明的脚本属性：代码里没有字段描述，文件里的值就是全部信息）：资源引用

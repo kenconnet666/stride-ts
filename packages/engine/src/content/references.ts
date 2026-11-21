@@ -11,10 +11,10 @@ import { textureRefs } from './loading.ts';
 import { visitScriptAssets } from './sceneScripts.ts';
 
 /**
- * 资源的种类：内容文件的种类（EXTENSIONS 的键，字形块算字体的一部分），加上贴图文件（image：.ktx2、.svg、.png、.jpg）和
- * 声音的音频文件（audio）。
+ * 资源的种类：内容文件的种类（EXTENSIONS 的键，字形块算字体的一部分），加上贴图文件（image：.ktx2、.svg、.png、.jpg）、
+ * 声音的音频文件（audio）和导入设置旁边的源模型文件（modelSource：.glb、.gltf、.fbx、.obj）。
  */
-export type AssetKind = Exclude<keyof typeof EXTENSIONS, 'glyphs'> | 'image' | 'audio';
+export type AssetKind = Exclude<keyof typeof EXTENSIONS, 'glyphs'> | 'image' | 'audio' | 'modelSource';
 
 export interface AssetReference {
   readonly kind: AssetKind;
@@ -148,8 +148,9 @@ const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap'): AssetKind => (ki
  */
 export function assetReferences(kind: AssetKind, path: string, file: unknown): AssetReference[] {
   const refs: AssetReference[] = assetReferenceSlots(kind, file).map(({ kind, path }) => ({ kind, path }));
-  // 声音的音频文件不写在文件里，和声音同名
+  // 声音的音频文件、导入设置的源模型不写在文件里，和它同名
   if (kind === 'sound') refs.push({ kind: 'audio', path });
+  if (kind === 'modelImport') refs.push({ kind: 'modelSource', path });
   const seen = new Set<string>();
   return refs.filter((ref) => {
     const key = `${ref.kind}:${ref.path}`;

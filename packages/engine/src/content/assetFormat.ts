@@ -33,6 +33,11 @@ export const EXTENSIONS = {
   sdf: '.sdf.json',
   /** 多边形网格（PolyMeshFile）：顶点和 n 边形的面，编辑器后端把它烘成同名的模型（.model）。 */
   poly: '.poly.json',
+  /**
+   * 源模型的导入设置（ModelImportFile）：源文件（.glb、.gltf、.fbx、.obj）放在旁边、同名，编辑器后端照设置把它导入成同名的模型
+   * （连材质、贴图、骨架、动画），设置改了重新导入。
+   */
+  modelImport: '.import.json',
 } as const;
 
 /** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */
@@ -542,6 +547,30 @@ export type SdfShapeFile = {
   | { readonly kind: 'torus'; readonly ringRadius: number; readonly tubeRadius: number }
   | { readonly kind: 'ellipsoid'; readonly radii: Vec3Tuple }
 );
+
+/** 能导入的源模型的格式：源文件是 `<内容路径>.<格式>`。 */
+export type ModelSourceFormat = 'glb' | 'gltf' | 'fbx' | 'obj';
+
+/**
+ * 源模型的导入设置（`.import.json`，和导入出的模型同名；Stride 的 ModelAsset、Unity 的 ModelImporter、Godot 的 .import 那一类）。
+ * 编辑器把 glTF、FBX、OBJ 拖进来时写一份默认的，源文件留在旁边；改了设置后端重新导入：模型、骨架、动画、贴图照新的设置重写，
+ * 已经有的材质文件不动（导入以后可能改过）。
+ */
+export interface ModelImportFile {
+  /** 源文件的格式：源文件是 `<内容路径>.<source>`。 */
+  readonly source: ModelSourceFormat;
+  /** 整体缩放（Stride 的 ScaleImport、Unity 的 Scale Factor）：顶点、骨架和动画的平移、形变的位移都乘它；厘米做的 FBX 写 0.01。 */
+  readonly scale: number;
+  /** 导入材质（和它们的贴图）；关着时网格用默认材质。 */
+  readonly materials: boolean;
+  /** 导入动画（每个动画一个剪辑）；关着时只在有蒙皮时导骨架。 */
+  readonly animations: boolean;
+  /** 动画烘焙的采样率（每秒关键帧数）。 */
+  readonly sampleRate: number;
+}
+
+/** 新导入的源模型的设置（同 Stride 导入 FBX、glTF 的默认）。 */
+export const DEFAULT_MODEL_IMPORT: Omit<ModelImportFile, 'source'> = { scale: 1, materials: true, animations: true, sampleRate: 30 };
 
 /**
  * 多边形网格（Stride 没有；照 Unity 的 ProBuilder、Blender 的网格编辑）：顶点加 n 边形的面，编辑器里点线面地改（挤出、内插、倒角、

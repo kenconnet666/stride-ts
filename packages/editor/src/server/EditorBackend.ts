@@ -6,9 +6,10 @@
  * 一致，而且每个请求要带 EDITOR_HEADER（跨源的页面带自定义头会先发预检，这里不回 CORS 头，预检过不了）。
  */
 import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type PolyMeshFile, type SdfFile } from '@stride-ts/engine/content-format';
+import { DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ModelImportFile, type ModelSourceFormat, type PolyMeshFile, type SdfFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { bakeBrushModel, bakePolyModel, bakeSdfModel, importFontFile, importSourceModel, isFontFile, isSourceModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '@stride-ts/engine/content-references';
@@ -31,10 +32,11 @@ const CHANGE_DELAY = 50;
 /** 能经接口读写内容的种类：主文件是 JSON 的。 */
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
 /** 编辑器后端烘成同名模型的资源种类（源头是 JSON，场景引用烘出的 .model）。 */
-type BakedKind = 'brush' | 'sdf' | 'poly';
-const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly';
+/** 编辑器后端照它烘出（导入）同名模型的资源：白盒、SDF、多边形网格、源模型的导入设置。 */
+type BakedKind = 'brush' | 'sdf' | 'poly' | 'modelImport';
+const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'modelImport';
 
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'modelImport']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -126,12 +128,12 @@ export class EditorBackend {
     }
     return this.#enqueue(async () => {
       if (create && this.database.get(kind, assetPath)) throw new HttpError(409, `${kind} ${assetPath} already exists`);
-      // 白盒、SDF 先烘：形状不对时报错、什么也不写（不留一个烘不出模型的源文件）
-      const model = isBakedKind(kind) ? await this.#bake(kind, assetPath, content).catch((error: unknown) => {
+      // 白盒、SDF、导入设置先烘：形状、设置不对时报错、什么也不写（不留一个烘不出模型的源文件）
+      const baked = isBakedKind(kind) ? await this.#bake(kind, assetPath, content).catch((error: unknown) => {
         throw new HttpError(400, (error as Error).message);
       }) : undefined;
       await writeAtomically(file, JSON.stringify(content, null, 1));
-      await this.#refresh([this.#relative(file), ...(model ? [model] : [])]);
+      await this.#refresh([this.#relative(file), ...(baked?.files ?? [])]);
       return this.database.get(kind, assetPath)!;
     });
   }
@@ -144,12 +146,7 @@ export class EditorBackend {
    */
   async importFile(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
     if (folder !== '') checkContentPath(folder);
-    if (isSourceModel(fileName)) {
-      return this.#importConverted('model', folder, fileName, async (tools, name) => {
-        const { model, animations, files, warnings } = await importSourceModel(tools, bytes, { fileName, folder, name });
-        return { asset: model, files, warnings, animations };
-      });
-    }
+    if (isSourceModel(fileName)) return this.#importModel(folder, fileName, bytes);
     if (isFontFile(fileName)) {
       return this.#importConverted('font', folder, fileName, async (tools, name) => {
         const { font, files } = await importFontFile(tools, bytes, { fileName, folder, name });
@@ -182,7 +179,38 @@ export class EditorBackend {
   }
 
   /**
-   * 要转换的文件（模型、字体）：convert 用原生的导入工具在内存里做好资源的全部文件，名字不和已有的同类资源重复，一起写进内容目录。
+   * 导入源模型：源文件放进 folder（`<名字>.<格式>`），旁边写一份默认的导入设置（`<名字>.import.json`），照设置导入成同名的
+   * 模型（连材质、贴图、骨架、动画；#bake）。名字不和已有的模型、导入设置重复。导入不了时什么也不留。
+   */
+  #importModel(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
+    return this.#enqueue(async () => {
+      const source = path.extname(fileName).slice(1).toLowerCase() as ModelSourceFormat;
+      const base = fileName.slice(0, fileName.length - path.extname(fileName).length).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
+      let assetPath = '';
+      for (let n = 1; ; n++) {
+        assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
+        if (!this.database.get('model', assetPath) && !this.database.get('modelImport', assetPath)) break;
+      }
+      const settings: ModelImportFile = { source, ...DEFAULT_MODEL_IMPORT };
+      const sourceFile = `${assetPath}.${source}`;
+      await writeAtomically(path.join(this.project.contentDir, sourceFile), bytes);
+      let baked: Baked;
+      try {
+        baked = await this.#bake('modelImport', assetPath, settings);
+      } catch (error) {
+        await rm(path.join(this.project.contentDir, sourceFile), { force: true });
+        throw new HttpError(400, (error as Error).message);
+      }
+      const main = assetFileName('modelImport', assetPath);
+      await writeAtomically(path.join(this.project.contentDir, main), JSON.stringify(settings, null, 1));
+      await this.#refresh([sourceFile, main, ...baked.files]);
+      const animations = baked.animations ?? [];
+      return { asset: this.database.get('model', assetPath)!, warnings: [...baked.warnings], ...(animations.length > 0 ? { animations } : {}) };
+    });
+  }
+
+  /**
+   * 要转换的文件（字体）：convert 用原生的导入工具在内存里做好资源的全部文件，名字不和已有的同类资源重复，一起写进内容目录。
    */
   async #importConverted(
     kind: AssetKind,
@@ -320,9 +348,17 @@ export class EditorBackend {
   }
 
   /** 跟着这个资源一起挪、一起删的资源：声音和它同名的音频文件，白盒、SDF 和它们烘出的模型。 */
+  /**
+   * 和这个资源同名、跟着它挪、删的资源：声音的音频文件；白盒、SDF、多边形网格、导入设置烘出的模型，导入设置的源文件；反过来
+   * 烘出的模型也带着它的源（不然挪了模型，源还会往原来的地方烘）。
+   */
   #companions(record: AssetRecord): AssetRecord[] {
-    const companion = record.kind === 'sound' ? this.database.get('audio', record.path) : isBakedKind(record.kind) ? this.database.get('model', record.path) : undefined;
-    return companion ? [companion] : [];
+    const same = (...kinds: AssetKind[]) => kinds.map((kind) => this.database.get(kind, record.path)).filter((found) => found !== undefined);
+    if (record.kind === 'sound') return same('audio');
+    if (record.kind === 'modelImport') return same('model', 'modelSource');
+    if (isBakedKind(record.kind)) return same('model');
+    if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'modelImport', 'modelSource');
+    return [];
   }
 
   /** HTTP 接口；不是编辑器接口的请求交给 next。 */
@@ -401,7 +437,7 @@ export class EditorBackend {
   /** 一个 JSON 资源的主文件（绝对路径）；种类不对、路径想跑出内容目录时报错。 */
   #jsonFile(kind: AssetKind, assetPath: string): string {
     if (!JSON_KINDS.has(kind)) throw new HttpError(400, `${kind} assets cannot be read or saved through the editor API (not a JSON asset)`);
-    return path.join(this.project.contentDir, assetFileName(kind as Exclude<AssetKind, 'image' | 'audio'>, checkContentPath(assetPath)));
+    return path.join(this.project.contentDir, assetFileName(kind as Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>, checkContentPath(assetPath)));
   }
 
   #relative(file: string): string {
@@ -421,7 +457,7 @@ export class EditorBackend {
       try {
         const text = await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8');
         if (JSON.stringify(JSON.parse(text)) === this.#bakes.get(`${kind}:${record.path}`)) continue;
-        baked.push(await this.#bake(kind, record.path, JSON.parse(text)));
+        baked.push(...(await this.#bake(kind, record.path, JSON.parse(text))).files);
       } catch (error) {
         console.warn(`[stride-editor] ${kind} ${record.path}: ${(error as Error).message}; its model is left as it was`);
       }
@@ -430,19 +466,38 @@ export class EditorBackend {
   }
 
   /**
-   * 把白盒、SDF、多边形网格烘成同名的模型（pipeline 的 bakeBrushModel、bakeSdfModel、bakePolyModel），写好模型文件，返回它的
-   * 相对路径（还没刷新数据库）。形状不对时报错。
+   * 把白盒、SDF、多边形网格烘成同名的模型（pipeline 的 bakeBrushModel、bakeSdfModel、bakePolyModel），或者照导入设置把旁边的
+   * 源模型导入成同名的模型（importSourceModel：连材质、贴图、骨架、动画；已经有的材质文件不动，导入以后可能改过）。写好文件，
+   * 返回它们的相对路径（还没刷新数据库）和导入的警告、动画。形状、设置不对时报错。
    */
-  async #bake(kind: BakedKind, assetPath: string, content: unknown): Promise<string> {
+  async #bake(kind: BakedKind, assetPath: string, content: unknown): Promise<Baked> {
     const tools = await (this.#tools ??= createStrideTools());
     const where = `${kind} ${assetPath}`;
+    if (kind === 'modelImport') {
+      const settings = content as ModelImportFile;
+      const fileName = `${path.basename(assetPath)}.${settings.source}`;
+      const bytes = await readFile(path.join(this.project.contentDir, `${assetPath}.${settings.source}`)).catch(() => {
+        throw new Error(`${where}: the source file ${assetPath}.${settings.source} is missing`);
+      });
+      const folder = assetPath.includes('/') ? assetPath.slice(0, assetPath.lastIndexOf('/')) : '';
+      const { files, warnings, animations } = await importSourceModel(tools, bytes, { fileName, folder, name: path.basename(assetPath), settings });
+      const written: string[] = [];
+      for (const file of files) {
+        const target = path.join(this.project.contentDir, file.path);
+        if (file.path.endsWith(EXTENSIONS.material) && existsSync(target)) continue;
+        await writeAtomically(target, file.content);
+        written.push(file.path);
+      }
+      this.#bakes.set(`${kind}:${assetPath}`, JSON.stringify(content));
+      return { files: written, warnings, animations };
+    }
     const bytes = kind === 'brush' ? await bakeBrushModel(tools, content as BrushFile, where)
       : kind === 'sdf' ? await bakeSdfModel(tools, content as SdfFile, where)
       : bakePolyModel(tools, content as PolyMeshFile, where);
     const model = assetPath + EXTENSIONS.model;
     await writeAtomically(path.join(this.project.contentDir, model), bytes);
     this.#bakes.set(`${kind}:${assetPath}`, JSON.stringify(content));
-    return model;
+    return { files: [model], warnings: [] };
   }
 
   #writeAssetTypes(): Promise<boolean> {
@@ -506,4 +561,11 @@ function readBytes(request: IncomingMessage): Promise<Buffer> {
     request.on('end', () => resolve(Buffer.concat(chunks)));
     request.on('error', reject);
   });
+}
+
+/** 烘一次的结果：写了的文件（相对内容目录），导入源模型时的警告和动画剪辑。 */
+interface Baked {
+  readonly files: readonly string[];
+  readonly warnings: readonly string[];
+  readonly animations?: ImportResult['animations'];
 }

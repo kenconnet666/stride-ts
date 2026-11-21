@@ -290,6 +290,21 @@ describe('后端（EditorBackend）', () => {
     const material = JSON.parse(await readFile(path.join(directory, 'public/content/Game/Props/crate/Materials/RedPaint.material.json'), 'utf8'));
     expect(material).toMatchObject({ name: 'Red Paint', baseColor: [1, 0, 0, 1], metalness: 0, roughness: expect.closeTo(0.4, 5), baseColorTexture: { texture: 'Game/Props/crate/Textures/image0', encoding: 'png', srgb: true } });
     expect(existsSync(path.join(directory, 'public/content/Game/Props/crate/Textures/image0.png'))).toBe(true);
+    // 导入设置：源文件留在旁边，默认设置写在 .import.json；改了设置重新导入（模型重写），改过的材质不动
+    const content = (file: string) => path.join(directory, 'public/content', file);
+    expect(JSON.parse(await readFile(content('Game/Props/crate.import.json'), 'utf8'))).toEqual({ source: 'gltf', scale: 1, materials: true, animations: true, sampleRate: 30 });
+    expect(existsSync(content('Game/Props/crate.gltf'))).toBe(true);
+    await writeFile(content('Game/Props/crate/Materials/RedPaint.material.json'), JSON.stringify({ name: 'Edited', baseColor: [0, 1, 0, 1] }));
+    const before = await readFile(content('Game/Props/crate.model'));
+    const settings = await api('/asset?kind=modelImport&path=Game/Props/crate', { method: 'PUT', body: JSON.stringify({ source: 'gltf', scale: 2, materials: true, animations: true, sampleRate: 30 }) });
+    expect(settings.status).toBe(200);
+    expect(Buffer.compare(before, await readFile(content('Game/Props/crate.model')))).not.toBe(0);
+    expect(JSON.parse(await readFile(content('Game/Props/crate/Materials/RedPaint.material.json'), 'utf8')).name).toBe('Edited');
+    expect((await api('/asset?kind=modelImport&path=Game/Props/crate', { method: 'PUT', body: JSON.stringify({ source: 'gltf', scale: 0, materials: true, animations: true, sampleRate: 30 }) })).status).toBe(400);
+    // 挪模型：导入设置和源文件一起挪（不然改设置时还往原来的地方导）
+    expect((await api('/move', { method: 'POST', body: JSON.stringify({ assets: [{ kind: 'model', from: 'Game/Props/crate', to: 'Game/Props/box' }] }) })).status).toBe(200);
+    expect([existsSync(content('Game/Props/box.import.json')), existsSync(content('Game/Props/box.gltf')), existsSync(content('Game/Props/crate.gltf'))]).toEqual([true, true, false]);
+    await api('/move', { method: 'POST', body: JSON.stringify({ assets: [{ kind: 'model', from: 'Game/Props/box', to: 'Game/Props/crate' }] }) });
     // 同名的再导一次加数字；不是模型也不是音频、图片的拒绝
     expect(((await (await post('Game/Props', 'crate.gltf', new TextEncoder().encode(JSON.stringify(gltf)))).json()) as ImportResult).asset.path).toBe('Game/Props/crate2');
     const unknown = await post('Game', 'notes.txt', new Uint8Array([1]));

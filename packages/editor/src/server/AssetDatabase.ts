@@ -13,12 +13,15 @@ import type { AssetChanges, AssetRecord } from '../protocol.ts';
 
 /** 声音的音频文件（引擎的 SoundEncoding）。 */
 const AUDIO_EXTENSIONS = ['.mp3', '.ogg', '.wav', '.flac', '.aac'];
+/** 导入设置旁边的源模型（ModelSourceFormat）：运行时不读，编辑器重新导入时用。 */
+const MODEL_SOURCE_EXTENSIONS = ['.glb', '.gltf', '.fbx', '.obj'];
 
 /** 扩展名 → 种类，长的在前（`.material.json` 要先于别的 `.json` 认出来）。 */
 const KIND_BY_EXTENSION: readonly (readonly [extension: string, kind: AssetKind])[] = [
   ...Object.entries(EXTENSIONS).filter(([kind]) => kind !== 'glyphs').map(([kind, extension]) => [extension, kind as AssetKind] as const),
   ...Object.values(TEXTURE_EXTENSIONS).map((extension) => [extension, 'image'] as const),
   ...AUDIO_EXTENSIONS.map((extension) => [extension, 'audio'] as const),
+  ...MODEL_SOURCE_EXTENSIONS.map((extension) => [extension, 'modelSource'] as const),
 ].sort((a, b) => b[0].length - a[0].length);
 
 /** 字体的一个字形块：`<字体>.<块号>.glyphs`。 */
@@ -37,8 +40,8 @@ export function classifyAssetFile(file: string): { kind: AssetKind; path: string
   return undefined;
 }
 
-/** 一种资源的主文件名（内容路径加扩展名）；贴图、音频有几种扩展名，不在这里。 */
-export function assetFileName(kind: Exclude<AssetKind, 'image' | 'audio'>, assetPath: string): string {
+/** 一种资源的主文件名（内容路径加扩展名）；贴图、音频、源模型有几种扩展名，不在这里。 */
+export function assetFileName(kind: Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>, assetPath: string): string {
   return assetPath + EXTENSIONS[kind];
 }
 

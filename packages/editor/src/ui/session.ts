@@ -479,7 +479,10 @@ export class EditorSession implements EditableScene {
   }
 
   /** 在属性面板里编辑这个资源（能编辑的：材质、JSON 写的模型）；别的种类、二进制的模型清掉面板。 */
-  async inspectAsset(kind: AssetKind, path: string): Promise<void> {
+  async inspectAsset(selected: AssetKind, path: string): Promise<void> {
+    // 导入的模型（二进制）本身改不了：选中它或它的源文件时看它的导入设置
+    const imported = (selected === 'model' || selected === 'modelSource') && this.assets.value.some((asset) => asset.kind === 'modelImport' && asset.path === path);
+    const kind = imported ? 'modelImport' : selected;
     if (!isInspectable(kind)) {
       this.inspected.value = undefined;
       return;

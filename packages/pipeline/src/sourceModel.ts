@@ -9,8 +9,11 @@
  * 关节名同 Stride 导入时起的名字），蒙皮的网格按关节名绑上去，没蒙皮的网格刚性地挂在它所在的节点上（节点动画也带得动）；
  * 每个动画（glTF 的动画、FBX 的动画栈）按 30 帧每秒烘焙成一个剪辑（`<名字>/Animations/<动画名>.anim`），连同形变权重的曲线。
  * 形变目标照导入（按名字合成模型的目标表）。材质照 glTF 的金属度工作流：金属度粗糙度贴图进 glossinessTexture（G 通道反着读成粗糙度，B 通道是金属度、乘系数）。
+ *
+ * 导入设置（ModelImportFile）：scale 乘顶点、形变位移、骨架和动画的平移，蒙皮的逆绑定矩阵跟着换（平移乘 scale：整副骨架等于
+ * 被均匀缩放 S 共轭，蒙皮的结果正好也缩放 S）；materials 关着时网格用默认材质、不写材质和贴图；animations 关着时不烘动画。
  */
-import { EXTENSIONS, encodeAnimation, encodeModel, encodeSkeleton, TEXTURE_EXTENSIONS, VERTEX_FLOATS, type MaterialFile, type TextureEncoding, type TextureSlot } from '@stride-ts/engine/content-format';
+import { DEFAULT_MODEL_IMPORT, EXTENSIONS, encodeAnimation, encodeModel, encodeSkeleton, TEXTURE_EXTENSIONS, VERTEX_FLOATS, type MaterialFile, type ModelImportFile, type TextureEncoding, type TextureSlot } from '@stride-ts/engine/content-format';
 import type { MaterialInfo, Scene, StrideTools, TextureSlot as NativeTextureSlot } from '@stride-ts/native/tools';
 import { addTangents, compressMeshes, sourceMorph, type SourceMesh } from './mesh.ts';
 import { meshSkin, morphWeightCurves, strideNodeNames, type ImportedSkeleton } from './stride/animation.ts';
@@ -22,6 +25,8 @@ export interface SourceModelOptions {
   readonly folder: string;
   /** 资源的名字（不给时取文件名，去掉不能做内容路径的字符）。 */
   readonly name?: string;
+  /** 导入设置（没给的用 DEFAULT_MODEL_IMPORT）。 */
+  readonly settings?: Partial<Omit<ModelImportFile, 'source'>>;
 }
 
 export interface ImportedSourceModel {
@@ -41,7 +46,9 @@ export function isSourceModel(fileName: string): boolean {
   return Object.hasOwn(FORMATS, extensionOf(fileName));
 }
 
-export async function importSourceModel(tools: StrideTools, bytes: Uint8Array, { fileName, folder, name }: SourceModelOptions): Promise<ImportedSourceModel> {
+export async function importSourceModel(tools: StrideTools, bytes: Uint8Array, { fileName, folder, name, settings = {} }: SourceModelOptions): Promise<ImportedSourceModel> {
+  const { scale, materials: withMaterials, animations: withAnimations, sampleRate } = { ...DEFAULT_MODEL_IMPORT, ...settings };
+  if (!(scale > 0)) throw new Error(`${fileName}: the import scale must be positive (got ${scale})`);
   const extension = extensionOf(fileName);
   if (!isSourceModel(fileName)) throw new Error(`${fileName}: not a model file (glb, gltf, fbx, obj)`);
   const base = (name ?? fileName.slice(0, fileName.length - extension.length)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Model';
@@ -71,7 +78,7 @@ export async function importSourceModel(tools: StrideTools, bytes: Uint8Array, {
       return file ? { texture: file.path, encoding: file.encoding, srgb, scale: slot.scale, offset: slot.offset } : undefined;
     };
 
-    const materialPaths = scene.materials.map((materialName, i) => {
+    const materialPaths = !withMaterials ? [] : scene.materials.map((materialName, i) => {
       const info = scene.materialInfos[i]!;
       const path = `${root}/Materials/${materialName.replace(/[^A-Za-z0-9_-]+/g, '') || `material${i}`}`;
       files.push({ path: path + EXTENSIONS.material, content: JSON.stringify(materialFile(materialName, info, texture), null, 1) });
@@ -81,16 +88,19 @@ export async function importSourceModel(tools: StrideTools, bytes: Uint8Array, {
 
     const sources = Array.from({ length: scene.meshCount }, (_, m) => scene.mesh(m));
     if (sources.length === 0) throw new Error(`${fileName}: the file has no meshes`);
-    const skeleton = sources.some((data) => data.skin) || scene.animations.length > 0 ? sceneSkeleton(scene, `${root}/${base}`, tools, files) : undefined;
+    const animated = withAnimations && scene.animations.length > 0;
+    const skeleton = sources.some((data) => data.skin) || animated ? sceneSkeleton(scene, `${root}/${base}`, tools, files, scale) : undefined;
     const identity = Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
     const morphTargets: string[] = [];
     const meshes = sources.map((data, m) => {
-      const skin = skeleton ? meshSkin(data, scene, skeleton, identity, fileName, (message) => warnings.push(message)) : undefined;
-      const morph = sourceMorph(data, 1, morphTargets);
-      const mesh: SourceMesh = { name: `mesh${m}`, material: data.material, vertices: interleave(data.positions, data.normals, data.uvs), indices: data.indices, ...(skin ? { skin } : {}), ...(morph ? { morph } : {}) };
-      return data.material !== null && normalMapped[data.material] && data.normals && data.uvs ? addTangents(mesh, tools) : mesh;
+      const found = skeleton ? meshSkin(data, scene, skeleton, identity, fileName, (message) => warnings.push(message)) : undefined;
+      const skin = found && scale !== 1 ? { ...found, inverseBinds: scaleTranslations(found.inverseBinds, scale) } : found;
+      const morph = sourceMorph(data, scale, morphTargets);
+      const material = withMaterials ? data.material : null;
+      const mesh: SourceMesh = { name: `mesh${m}`, material, vertices: interleave(data.positions, data.normals, data.uvs, scale), indices: data.indices, ...(skin ? { skin } : {}), ...(morph ? { morph } : {}) };
+      return material !== null && normalMapped[material] && data.normals && data.uvs ? addTangents(mesh, tools) : mesh;
     });
-    const animations = await sceneAnimations(scene, skeleton, `${root}/Animations`, files, tools);
+    const animations = animated ? await sceneAnimations(scene, skeleton, `${root}/Animations`, files, tools, sampleRate, scale) : [];
     files.push({
       path: root + EXTENSIONS.model,
       content: encodeModel({ meshes: compressMeshes(meshes, tools), materials: materialPaths, ...(skeleton ? { skeleton: skeleton.path } : {}), ...(morphTargets.length > 0 ? { morphTargets } : {}) }),
@@ -127,11 +137,13 @@ function materialFile(name: string, info: MaterialInfo, texture: (slot: NativeTe
   };
 }
 
-/** 动画烘焙的采样率（每秒关键帧数，同 Stride 工程的导入）。 */
-const ANIMATION_SAMPLE_RATE = 30;
+/** 4x4 列主序矩阵（一个接一个）的平移乘 scale：被均匀缩放共轭（S M S⁻¹），逆绑定矩阵随骨架一起缩放。 */
+function scaleTranslations(matrices: readonly number[], scale: number): number[] {
+  return matrices.map((value, i) => (i % 16 >= 12 && i % 16 <= 14 ? value * scale : value));
+}
 
 /** 文件里的全部节点按深度优先排成骨架（父关节在前），写出 `.skeleton`。关节名同 Stride 导入时起的名字（strideNodeNames）。 */
-function sceneSkeleton(scene: Scene, path: string, tools: StrideTools, files: { path: string; content: Uint8Array | string }[]): ImportedSkeleton & { readonly nodes: readonly number[] } {
+function sceneSkeleton(scene: Scene, path: string, tools: StrideTools, files: { path: string; content: Uint8Array | string }[], scale: number): ImportedSkeleton & { readonly nodes: readonly number[] } {
   const names = strideNodeNames(scene.nodes);
   const children = scene.nodes.map(() => [] as number[]);
   const roots: number[] = [];
@@ -144,8 +156,9 @@ function sceneSkeleton(scene: Scene, path: string, tools: StrideTools, files: { 
   roots.forEach(visit);
   const jointOf = new Map(nodes.map((node, joint) => [node, joint]));
   const joints = nodes.map((node) => {
-    const { parent, translation, rotation, scale } = scene.nodes[node]!;
-    return { name: names[node]!, parent: parent < 0 ? -1 : jointOf.get(parent)!, translation, rotation, scale };
+    const { parent, translation, rotation } = scene.nodes[node]!;
+    const scaled: [number, number, number] = [translation[0] * scale, translation[1] * scale, translation[2] * scale];
+    return { name: names[node]!, parent: parent < 0 ? -1 : jointOf.get(parent)!, translation: scaled, rotation, scale: scene.nodes[node]!.scale };
   });
   files.push({ path: path + EXTENSIONS.skeleton, content: encodeSkeleton({ joints: joints.map(({ name, parent }) => ({ name, parent })), archive: tools.buildSkeleton(joints) }) });
   return { path, joints, nodes, indexOf: new Map(joints.map((joint, i) => [joint.name, i])), transform: Float32Array.of(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1) };
@@ -154,18 +167,24 @@ function sceneSkeleton(scene: Scene, path: string, tools: StrideTools, files: { 
 /** 每个动画烘焙成一个剪辑（骨架的关节轨道加形变权重的曲线），写出 `.anim`；名字重复、不能做内容路径的换掉。 */
 async function sceneAnimations(
   scene: Scene, skeleton: (ImportedSkeleton & { readonly nodes: readonly number[] }) | undefined, folder: string, files: { path: string; content: Uint8Array | string }[], tools: StrideTools,
+  sampleRate: number, scale: number,
 ): Promise<{ name: string; clip: string }[]> {
   const used = new Set<string>();
   const animations: { name: string; clip: string }[] = [];
   for (let i = 0; i < scene.animations.length; i++) {
-    const baked = await scene.bakeAnimation(i, ANIMATION_SAMPLE_RATE);
+    const baked = await scene.bakeAnimation(i, sampleRate);
     const name = scene.animations[i] || `Animation${i}`;
     let file = name.replace(/[^A-Za-z0-9_-]+/g, '') || `Animation${i}`;
     for (let k = 2; used.has(file); k++) file = `${file}${k}`;
     used.add(file);
     const duration = Math.max(baked.duration, 1e-3);
     const morphWeights = morphWeightCurves(baked, scene);
-    const archive = skeleton ? tools.buildAnimation(duration, skeleton.nodes.map((node) => baked.tracks[node]!)) : new Uint8Array(0);
+    // 平移的关键帧 [时间, x, y, z] 乘 scale（同骨架）
+    const track = (node: number) => {
+      const original = baked.tracks[node]!;
+      return scale === 1 || !original.translations ? original : { ...original, translations: original.translations.map(([time, x, y, z]) => [time!, x! * scale, y! * scale, z! * scale]) };
+    };
+    const archive = skeleton ? tools.buildAnimation(duration, skeleton.nodes.map(track)) : new Uint8Array(0);
     const clip = `${folder}/${file}`;
     files.push({ path: clip + EXTENSIONS.animation, content: encodeAnimation({ duration, repeatMode: 'loopInfinite', ...(skeleton ? { skeleton: skeleton.path } : {}), ...(morphWeights.length > 0 ? { morphWeights } : {}), archive }) });
     animations.push({ name, clip });
@@ -173,12 +192,12 @@ async function sceneAnimations(
   return animations;
 }
 
-/** 位置、法线、UV 交错成 FLOAT_LAYOUT 的顶点（没有法线、UV 的补 0）。 */
-function interleave(positions: Float32Array, normals: Float32Array | null, uvs: Float32Array | null): Float32Array {
+/** 位置（乘 scale）、法线、UV 交错成 FLOAT_LAYOUT 的顶点（没有法线、UV 的补 0）。 */
+function interleave(positions: Float32Array, normals: Float32Array | null, uvs: Float32Array | null, scale: number): Float32Array {
   const count = positions.length / 3;
   const vertices = new Float32Array(count * VERTEX_FLOATS);
   for (let v = 0; v < count; v++) {
-    vertices.set(positions.subarray(v * 3, v * 3 + 3), v * VERTEX_FLOATS);
+    for (let k = 0; k < 3; k++) vertices[v * VERTEX_FLOATS + k] = positions[v * 3 + k]! * scale;
     if (normals) vertices.set(normals.subarray(v * 3, v * 3 + 3), v * VERTEX_FLOATS + 3);
     if (uvs) vertices.set(uvs.subarray(v * 2, v * 2 + 2), v * VERTEX_FLOATS + 6);
   }

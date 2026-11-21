@@ -1,0 +1,43 @@
+{
+ "name": "PineFar",
+ "materials": [
+  "Materials/Bark",
+  "Materials/PineNeedles"
+ ],
+ "seed": 2,
+ "shape": "conifer",
+ "levels": [
+  {
+   "length": 14,
+   "radius": 0.28,
+   "children": 30,
+   "sections": 14,
+   "segments": 5,
+   "gnarliness": 0.02
+  },
+  {
+   "length": 5,
+   "radius": 0.45,
+   "angle": 100,
+   "start": 0.18,
+   "children": 4,
+   "sections": 5,
+   "segments": 3,
+   "gnarliness": 0.05
+  }
+ ],
+ "leaves": {
+  "count": 5,
+  "size": 2.4,
+  "sizeVariance": 0.3,
+  "angle": 30
+ },
+ "growth": {
+  "direction": [
+   0,
+   -1,
+   0
+  ],
+  "strength": 0.0015
+ }
+}

@@ -40,6 +40,11 @@ export interface ScatterLayerFile {
   readonly sink?: number;
   /** 离相机多远以内才撒（米），默认 400。 */
   readonly viewDistance?: number;
+  /**
+   * 远处的细节层次，按 distance 从近到远：格子中心离相机超过 distance 时换成 model（简化的树：同一个种子、少长最细的一层），
+   * 只留 keep（0..1）的点（远处的草稀一点；留下的是近处那些点的一部分，不跳）。没写 model 的沿用上一层的。
+   */
+  readonly lods?: readonly { readonly distance: number; readonly model?: string; readonly keep?: number }[];
   /** 投不投阴影，默认模型投、草不投。 */
   readonly castShadows?: boolean;
 }
@@ -76,6 +81,10 @@ export function checkScatterFile(value: unknown, where: string): ScatterFile {
     range(layer.scale, `${at}.scale`);
     if (layer.clump !== undefined && !(layer.clump.scale > 0 && layer.clump.coverage >= 0 && layer.clump.coverage <= 1)) fail(`${at}.clump`, 'needs scale > 0 and coverage in 0..1');
     if (layer.viewDistance !== undefined && !(layer.viewDistance > 0)) fail(`${at}.viewDistance`, 'must be positive');
+    layer.lods?.forEach((lod, k) => {
+      if (!(lod.distance > 0) || (k > 0 && !(lod.distance > layer.lods![k - 1]!.distance))) fail(`${at}.lods[${k}].distance`, 'must be positive and increasing');
+      if (lod.keep !== undefined && !(lod.keep > 0 && lod.keep <= 1)) fail(`${at}.lods[${k}].keep`, 'must be in (0, 1]');
+    });
   });
   return file;
 }

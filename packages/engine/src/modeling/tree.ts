@@ -8,7 +8,8 @@
  * - 子枝沿母枝从 start 到梢均匀分层抽样（每根占一段，在段里随机），方位角也分层抽样、再打乱（高度和方位不相关，针叶树的长枝
  *   不会都转到一边）；朝向是母枝那一处的朝向绕自己的轴转方位角、再张开 angle 度；
  * - 叶片：两张交叉的卡片，长在最后一层的枝上；法线朝树冠的中心往外（看起来是一团圆的树冠，不是一片片的纸）。
- * 随机数用种子起的 mulberry32：同一个文件长出同一棵树。
+ * 随机数用种子起的 mulberry32，每根枝自己一个（种子由母枝的种子和它是第几根哈希出来）：同一个文件长出同一棵树；少长最细的一层
+ * （远处的简化版，摆放的 lods）时，树干和别的枝长得一模一样，换的时候不跳。
  */
 import { TREE_SLOTS, type TreeFile, type TreeLevelFile } from '../content/treeFormat.ts';
 import { Quaternion, Vector3 } from '../data/vectors.ts';
@@ -28,6 +29,8 @@ interface Bud {
   readonly length: number;
   readonly radius: number;
   readonly level: number;
+  /** 这根枝自己的随机数种子（由母枝的种子和它是第几根算出来）：少长一层（远处的简化版）时，别的枝长得一模一样。 */
+  readonly seed: number;
 }
 
 /** 一片叶子（两张交叉的卡片）：根部的位置、朝向（本地 +Y 是叶片伸出的方向）、大小。 */
@@ -59,22 +62,23 @@ export function checkTree(file: TreeFile, where = file.name): TreeFile {
 /** 长一棵树，得出按材质槽分好的网格：树皮（槽 0）、叶片（槽 1）。 */
 export function treeMeshes(file: TreeFile, where = file.name): SlotMesh[] {
   checkTree(file, where);
-  const random = mulberry32(file.seed ?? 1);
   const conifer = file.shape === 'conifer';
   const levels = file.levels, last = levels.length - 1;
   const slots = Array.from({ length: TREE_SLOTS }, () => new MeshBuilder());
   const leaves: Leaf[] = [];
-  const queue: Bud[] = [{ position: new Vector3(), rotation: new Quaternion(), length: levels[0]!.length, radius: levels[0]!.radius, level: 0 }];
+  const queue: Bud[] = [{ position: new Vector3(), rotation: new Quaternion(), length: levels[0]!.length, radius: levels[0]!.radius, level: 0, seed: mix(file.seed ?? 1, 0) }];
   while (queue.length > 0) {
     const bud = queue.shift()!;
+    const random = mulberry32(bud.seed);
+    let child = 0;
     const sections = grow(bud, levels[bud.level]!, file, conifer && bud.level === 0, bud.level === last, random);
     meshBranch(slots[0]!, sections, levels[bud.level]!.segments ?? 6);
     if (bud.level < last) {
-      const child = levels[bud.level + 1]!;
-      spread(levels[bud.level]!.children ?? 0, child.start ?? 0.3, random, (t, angle) => {
+      const next = levels[bud.level + 1]!;
+      spread(levels[bud.level]!.children ?? 0, next.start ?? 0.3, random, (t, angle) => {
         const at = sectionAt(sections, t);
-        const rotation = at.rotation.clone().multiply(new Quaternion().setAxisAngle(UP, angle)).multiply(new Quaternion().setAxisAngle(X_AXIS, ((child.angle ?? 45) * Math.PI) / 180));
-        queue.push({ position: at.position, rotation, length: child.length * (conifer ? 1 - t : 1), radius: child.radius * at.radius, level: bud.level + 1 });
+        const rotation = at.rotation.clone().multiply(new Quaternion().setAxisAngle(UP, angle)).multiply(new Quaternion().setAxisAngle(X_AXIS, ((next.angle ?? 45) * Math.PI) / 180));
+        queue.push({ position: at.position, rotation, length: next.length * (conifer ? 1 - t : 1), radius: next.radius * at.radius, level: bud.level + 1, seed: mix(bud.seed, ++child) });
       });
     } else if (file.leaves) {
       const spec = file.leaves;
@@ -207,6 +211,16 @@ function meshLeaves(builder: MeshBuilder, leaves: readonly Leaf[]): void {
       builder.quad(ids[0]!, ids[1]!, ids[2]!, ids[3]!, [facing.x, facing.y, facing.z]);
     }
   }
+}
+
+/** 两个整数混成一个种子（lowbias32 的哈希）。 */
+function mix(a: number, b: number): number {
+  let h = (Math.imul(a, 0x7feb352d) ^ (b + 0x846ca68b)) >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x7feb352d) >>> 0;
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x846ca68b) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
 }
 
 /** mulberry32：种子起的 [0, 1) 随机数。 */

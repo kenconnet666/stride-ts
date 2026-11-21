@@ -1,0 +1,43 @@
+{
+ "name": "OakFar",
+ "materials": [
+  "Materials/Bark",
+  "Materials/OakLeaves"
+ ],
+ "seed": 4,
+ "levels": [
+  {
+   "length": 6,
+   "radius": 0.32,
+   "children": 7,
+   "sections": 10,
+   "segments": 5,
+   "gnarliness": 0.06,
+   "taper": 0.6
+  },
+  {
+   "length": 5,
+   "radius": 0.55,
+   "angle": 55,
+   "start": 0.4,
+   "children": 5,
+   "sections": 7,
+   "segments": 3,
+   "gnarliness": 0.1
+  }
+ ],
+ "leaves": {
+  "count": 4,
+  "size": 3.4,
+  "sizeVariance": 0.3,
+  "angle": 35
+ },
+ "growth": {
+  "direction": [
+   0,
+   1,
+   0
+  ],
+  "strength": 0.003
+ }
+}

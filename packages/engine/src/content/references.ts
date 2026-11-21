@@ -255,6 +255,7 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
       const layers = (file as ScatterFile).layers;
       layers.forEach((layer) => {
         if (layer.model) add('model', layer, 'model');
+        layer.lods?.forEach((lod) => lod.model && add('model', lod, 'model'));
         if (layer.material) add('material', layer, 'material');
       });
       break;

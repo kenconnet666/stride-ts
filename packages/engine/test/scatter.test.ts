@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { checkScatterFile, type ScatterLayerFile } from '../src/content/scatterFormat';
-import { grassBlades, gridGround, scatterCell, type GroundSample } from '../src/terrain/Scatter';
+import { grassBlades, gridGround, lodTier, scatterCell, type GroundSample } from '../src/terrain/Scatter';
 
 const flat: GroundSample = () => ({ height: 5, normal: [0, 1, 0] });
 const trees: ScatterLayerFile = { name: 'Trees', model: 'Models/Tree', density: 400 };
@@ -71,7 +71,7 @@ describe('撒草', () => {
   test('草叶合成一个网格：每片一个三角形，根在地上、梢在叶高处，UV 的 v 根 1 梢 0', () => {
     const grass: ScatterLayerFile = { name: 'Grass', density: 100_000, grass: { height: 0.5, width: 0.04, lean: 0 } };
     const instances = scatterCell(grass, 0, 1, 0, 0, 4, flat);
-    const { vertices, indices } = grassBlades(grass, instances, flat);
+    const { vertices, indices } = grassBlades(grass, instances);
     expect(indices.length).toBe(instances.length * 3);
     for (let k = 0; k < instances.length; k++) {
       const v = (c: number) => Array.from(vertices.slice((k * 3 + c) * 8, (k * 3 + c) * 8 + 8));
@@ -81,5 +81,32 @@ describe('撒草', () => {
       expect([v(0)[4], v(2)[4]]).toEqual([1, 1]);
     }
     expect(() => checkScatterFile({ name: 'S', layers: [{ name: 'G', density: 1, grass: { height: 0, width: 1 } }] }, 'S')).toThrow('grass needs a positive height and width');
+  });
+});
+
+describe('细节层次', () => {
+  const layer: ScatterLayerFile = { ...trees, lods: [{ distance: 100, model: 'Models/TreeFar' }, { distance: 200, keep: 0.25 }] };
+
+  test('按距离选层次，边界两边 4 米内不换', () => {
+    expect(lodTier(layer, 50)).toBe(0);
+    expect(lodTier(layer, 150)).toBe(1);
+    expect(lodTier(layer, 250)).toBe(2);
+    // 在 0 层、走到 102 米：还没超过边界 4 米，不换；106 米换
+    expect(lodTier(layer, 102, 0)).toBe(0);
+    expect(lodTier(layer, 106, 0)).toBe(1);
+    // 在 1 层、回到 98 米：不换；95 米换回 0
+    expect(lodTier(layer, 98, 1)).toBe(1);
+    expect(lodTier(layer, 95, 1)).toBe(0);
+  });
+
+  test('远处只留一部分点：是近处那些点的子集，大约 keep 那么多', () => {
+    const near = scatterCell(trees, 0, 1, 0, 0, 256, flat);
+    const far = scatterCell(trees, 0, 1, 0, 0, 256, flat, undefined, 0.25);
+    const key = (i: { position: readonly number[] }) => i.position.join();
+    const nearKeys = new Set(near.map(key));
+    expect(far.every((i) => nearKeys.has(key(i)))).toBe(true);
+    expect(far.length / near.length).toBeGreaterThan(0.2);
+    expect(far.length / near.length).toBeLessThan(0.3);
+    expect(() => checkScatterFile({ name: 'S', layers: [{ ...trees, lods: [{ distance: 100 }, { distance: 50 }] }] }, 'S')).toThrow('lods[1].distance must be positive and increasing');
   });
 });

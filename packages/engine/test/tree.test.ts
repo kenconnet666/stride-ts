@@ -61,3 +61,19 @@ describe('参数化的树', () => {
     expect(() => checkTree({ ...oak, levels: [{ length: 1, radius: 0.1 }, { length: 1, radius: 0.5 }] })).toThrow('levels[0].children must be a whole number');
   });
 });
+
+describe('树的简化版', () => {
+  test('少长最细的一层：树干和第一层枝（梢以外）的顶点一模一样（每根枝自己的随机数）', () => {
+    const full = treeMeshes(oak)[0]!.vertices;
+    const { leaves: _, ...rest } = oak;
+    const simple = treeMeshes({ ...rest, levels: oak.levels.slice(0, 2), leaves: { count: 3, size: 3 } })[0]!.vertices;
+    // 树干 11 圈 × 9 个顶点一样；第一层 6 根 × 7 圈 × 6 个，除了梢上那一圈（简化版里它们是最细的一层，梢收成一点）都一样
+    const trunk = 11 * 9 * 8;
+    expect(Array.from(simple.slice(0, trunk))).toEqual(Array.from(full.slice(0, trunk)));
+    for (let b = 0; b < 6; b++) {
+      const start = trunk + b * 7 * 6 * 8, body = 6 * 6 * 8;
+      expect(Array.from(simple.slice(start, start + body))).toEqual(Array.from(full.slice(start, start + body)));
+    }
+    expect(simple.length).toBe(trunk + 6 * 7 * 6 * 8);
+  });
+});

@@ -416,6 +416,15 @@ export const SCATTER_FIELDS = fields<ScatterFile>({
       alignToSlope: { type: number({ min: 0, max: 1, step: 0.1 }), optional: true, default: 0, description: '0 stands upright (trees), 1 lies along the slope (rocks)' },
       sink: { type: number({ step: 0.05, unit: 'm' }), optional: true, default: 0, description: 'pushed this far into the ground (times the scale)' },
       viewDistance: { type: number({ min: 1, step: 50, unit: 'm' }), optional: true, default: 400, description: 'scattered only this close to the camera' },
+      lods: {
+        type: list(object(fields<NonNullable<ScatterFile['layers'][number]['lods']>[number]>({
+          distance: { type: number({ min: 1, step: 10, unit: 'm' }), description: 'cells farther than this from the camera use this level' },
+          model: { type: asset('model'), optional: true, description: 'a simpler model (e.g. the same tree without its finest level); unset keeps the nearer one' },
+          keep: { type: number({ min: 0.01, max: 1, step: 0.05 }), optional: true, description: 'keeps this fraction of the points (thinner grass far away); unset keeps the nearer level\'s' },
+        }))),
+        optional: true,
+        description: 'levels of detail by distance, nearest first',
+      },
       castShadows: { type: bool, optional: true, default: true },
     }))),
     description: 'layers of placement rules, each scattering one model',

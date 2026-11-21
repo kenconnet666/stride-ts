@@ -35,15 +35,18 @@ export const Scatter = component('Scatter', {
 
 const assets = new ResourceTable<ScatterAsset>();
 
-/** 加载好的摆放资源：文件、每层的模型（撒草的层没有）和草的材质（按层的顺序；没写的是 undefined，用默认材质）。 */
+/**
+ * 加载好的摆放资源：文件、每层每个细节层次的模型（models[层][层次]，0 是近处的，撒草的层没有）和草的材质（按层的顺序；没写的是
+ * undefined，用默认材质）。
+ */
 export class ScatterAsset {
   readonly id: ScatterAssetId;
   readonly path: string;
   readonly file: ScatterFile;
-  readonly models: readonly (LoadedModel | undefined)[];
+  readonly models: readonly (readonly (LoadedModel | undefined)[])[];
   readonly materials: readonly (Material | undefined)[];
 
-  constructor(path: string, file: ScatterFile, models: readonly (LoadedModel | undefined)[], materials: readonly (Material | undefined)[] = []) {
+  constructor(path: string, file: ScatterFile, models: readonly (readonly (LoadedModel | undefined)[])[], materials: readonly (Material | undefined)[] = []) {
     this.path = path;
     this.file = file;
     this.models = models;
@@ -62,6 +65,8 @@ export interface ScatterInstance {
   readonly position: readonly [number, number, number];
   readonly rotation: readonly [number, number, number, number];
   readonly scale: number;
+  /** 地面在这一点的法线（草叶用它当法线）。 */
+  readonly normal: readonly [number, number, number];
 }
 
 /** 地面上一点：高度和单位法线（地形本地）；地形以外是 undefined。 */
@@ -72,7 +77,7 @@ export type GroundSample = (x: number, z: number) => { readonly height: number; 
  * 在压平的地物里）。纯函数：同样的输入撒出同样的实例。
  */
 export function scatterCell(
-  layer: ScatterLayerFile, layerIndex: number, seed: number, x0: number, z0: number, size: number, ground: GroundSample, blocked: (x: number, z: number) => boolean = () => false,
+  layer: ScatterLayerFile, layerIndex: number, seed: number, x0: number, z0: number, size: number, ground: GroundSample, blocked: (x: number, z: number) => boolean = () => false, keep = 1,
 ): ScatterInstance[] {
   const spacing = Math.sqrt(10_000 / layer.density);
   const [minSlope, maxSlope] = layer.slope ?? [0, 90];
@@ -82,14 +87,21 @@ export function scatterCell(
   // 网格点 i 抖动后总在 [i·spacing, (i + 1)·spacing) 里：格子盖到的网格都看一遍，落在格子外的不要
   const i0 = Math.floor(x0 / spacing), i1 = Math.floor((x0 + size) / spacing);
   const j0 = Math.floor(z0 / spacing), j1 = Math.floor((z0 + size) / spacing);
+  const layerSeed = hash(seed ^ 0x9e3779b9, layerIndex);
+  // 草一个格子上万个点：每个点的随机数、旋转都不新建对象
+  const random = (k: number) => hash(base, k) / 4294967296;
+  let base = 0;
   for (let i = i0; i <= i1; i++) {
+    const row = hash(layerSeed, i);
     for (let j = j0; j <= j1; j++) {
-      const random = randoms(seed, layerIndex, i, j);
+      base = hash(row, j);
       // 抖动不超出自己的网格：相邻的格子不会重复撒
       const x = (i + 0.5 + (random(0) - 0.5) * 0.9) * spacing, z = (j + 0.5 + (random(1) - 0.5) * 0.9) * spacing;
       if (x < x0 || x >= x0 + size || z < z0 || z >= z0 + size) continue;
       // 成片：阈值按点抖一点（±0.08），斑块的边是渐渐稀下去的，不是一条硬线
       if (layer.clump && clumpNoise(x / layer.clump.scale, z / layer.clump.scale, seed + layerIndex * 101) > layer.clump.coverage + (random(4) - 0.5) * 0.16) continue;
+      // 远处只留一部分（按点的随机数：留下的是近处那些点的子集）
+      if (keep < 1 && random(5) >= keep) continue;
       if (blocked(x, z)) continue;
       const sample = ground(x, z);
       if (!sample) continue;
@@ -97,19 +109,16 @@ export function scatterCell(
       if (slope < minSlope || slope > maxSlope) continue;
       if (layer.height && (sample.height < layer.height[0] || sample.height > layer.height[1])) continue;
       const scale = minScale + (maxScale - minScale) * random(2);
-      const yaw = new Quaternion().setAxisAngle({ x: 0, y: 1, z: 0 }, random(3) * Math.PI * 2);
-      const tilt = new Quaternion().slerp(Quaternion.betweenDirections({ x: 0, y: 1, z: 0 }, new Vector3(...sample.normal)), align);
-      const rotation = tilt.multiply(yaw);
-      instances.push({ position: [x, sample.height - (layer.sink ?? 0) * scale, z], rotation: [rotation.x, rotation.y, rotation.z, rotation.w], scale });
+      const half = random(3) * Math.PI;
+      let rotation: [number, number, number, number] = [0, Math.sin(half), 0, Math.cos(half)];
+      if (align > 0) {
+        const tilt = new Quaternion().slerp(Quaternion.betweenDirections({ x: 0, y: 1, z: 0 }, new Vector3(...sample.normal)), align).multiply(new Quaternion(...rotation));
+        rotation = [tilt.x, tilt.y, tilt.z, tilt.w];
+      }
+      instances.push({ position: [x, sample.height - (layer.sink ?? 0) * scale, z], rotation, scale, normal: [sample.normal[0], sample.normal[1], sample.normal[2]] });
     }
   }
   return instances;
-}
-
-/** 网格点的随机数：种子、层、网格坐标和第几个哈希成 [0, 1)。 */
-function randoms(seed: number, layer: number, i: number, j: number): (k: number) => number {
-  const base = hash(hash(hash(seed ^ 0x9e3779b9, layer), i), j);
-  return (k) => hash(base, k) / 4294967296;
 }
 
 /** 32 位整数哈希（lowbias32，Chris Wellons）。 */
@@ -139,11 +148,26 @@ function clumpNoise(x: number, z: number, seed: number): number {
   return Math.min(1, Math.max(0, 0.5 + (n - 0.5) * 2.1));
 }
 
-/** 撒好的一个格子：子实体（下面是各个实例，或者挂着草的网格），最后一次在范围里的帧，草的网格（拿掉格子时放掉）。 */
+/** 撒好的一个格子：子实体（下面是各个实例，或者挂着草的网格），最后一次在范围里的帧，细节层次，草的网格（拿掉格子时放掉）。 */
 interface Cell {
   readonly entity: Entity;
   used: number;
+  readonly tier: number;
   mesh?: Mesh;
+}
+
+/** 细节层次的边界两边各留几米：相机在边界上来回走时格子不来回换。 */
+const LOD_HYSTERESIS = 4;
+
+/** 离相机 distance 米的格子用第几个细节层次（0 是近处的）；current 是它现在的，边界附近不换。 */
+export function lodTier(layer: ScatterLayerFile, distance: number, current?: number): number {
+  const lods = layer.lods ?? [];
+  let tier = 0;
+  while (tier < lods.length && distance > lods[tier]!.distance) tier++;
+  if (current === undefined || current === tier) return tier;
+  // 往远换要超过边界 LOD_HYSTERESIS 米，往近换要进来 LOD_HYSTERESIS 米
+  const boundary = lods[Math.min(tier, current)]!.distance;
+  return Math.abs(distance - boundary) < LOD_HYSTERESIS ? current : tier;
 }
 
 interface ScatterState {
@@ -174,6 +198,8 @@ export class ScatterSystem {
   #frame = 0;
   /** 撒过的格子、实例数（累计，调试命令报）。 */
   built = { cells: 0, instances: 0 };
+  /** 高度页算好了、等着撒的草的格子：在 update 里按每帧的预算撒（不在回调里一下子撒完，飞得快时一帧来十几个）。 */
+  readonly #ready: (() => void)[] = [];
 
   readonly #collect = system('ScatterSystem.collect', {
     with: { scatter: Scatter, terrain: Terrain, transform: Transform },
@@ -194,6 +220,8 @@ export class ScatterSystem {
     for (const [id, state] of this.#states) if (!this.#seen.has(id) || !state.entity.alive) this.#drop(id, state);
     if (!eyeWorld) return;
     const deadline = performance.now() + BUDGET_MS;
+    // 先撒高度页已经好了的草（近的先要的，也先好）
+    while (this.#ready.length > 0 && performance.now() < deadline) this.#ready.shift()!();
     for (const id of this.#seen) {
       const entity = game.entities.entity(id);
       const asset = ScatterAsset.byId(entity.require(Scatter).scatter);
@@ -231,7 +259,7 @@ export class ScatterSystem {
     const file = state.asset.file;
     const half = state.entity.require(Terrain).size / 2;
     // 要的格子：每层 viewDistance 以内（按格子中心），近的先撒
-    const wanted: { key: string; layer: number; cx: number; cz: number; size: number; distance: number }[] = [];
+    const wanted: { key: string; layer: number; cx: number; cz: number; size: number; distance: number; tier: number; replaces?: Cell }[] = [];
     file.layers.forEach((layer, l) => {
       const reach = layer.viewDistance ?? 400, size = layer.cellSize ?? file.cellSize ?? 64;
       const c0x = Math.floor((ex - reach) / size), c1x = Math.floor((ex + reach) / size);
@@ -243,8 +271,10 @@ export class ScatterSystem {
           if (distance > reach) continue;
           const key = `${l}:${cx}_${cz}`;
           const cell = state.cells.get(key);
+          const tier = lodTier(layer, distance, cell?.tier);
           if (cell) cell.used = this.#frame;
-          else wanted.push({ key, layer: l, cx, cz, size, distance });
+          // 细节层次变了的格子重撒（新的撒好了再拿掉旧的，不闪）
+          if (!cell || cell.tier !== tier) wanted.push({ key, layer: l, cx, cz, size, distance, tier, ...(cell ? { replaces: cell } : {}) });
         }
       }
     });
@@ -252,9 +282,12 @@ export class ScatterSystem {
     let built = 0;
     for (const want of wanted) {
       if (performance.now() > deadline) break;
-      const { layer, cx, cz, size } = want;
+      const { layer, cx, cz, size, tier, replaces } = want;
       const grass = file.layers[layer]!.grass !== undefined;
-      state.cells.set(want.key, grass ? this.#buildGrass(state, layer, cx * size, cz * size, size, `${cx}_${cz}`) : { entity: this.#build(state, layer, cx * size, cz * size, size, `${cx}_${cz}`), used: this.#frame });
+      state.cells.set(want.key, grass
+        ? this.#buildGrass(state, layer, tier, cx * size, cz * size, size, `${cx}_${cz}`, replaces)
+        : { entity: this.#build(state, layer, tier, cx * size, cz * size, size, `${cx}_${cz}`), used: this.#frame, tier });
+      if (replaces && !grass) dropCell(replaces);
       built++;
     }
     state.eye = [ex, ez];
@@ -268,7 +301,7 @@ export class ScatterSystem {
     }
   }
 
-  #build(state: ScatterState, layerIndex: number, x0: number, z0: number, size: number, id: string): Entity {
+  #build(state: ScatterState, layerIndex: number, tier: number, x0: number, z0: number, size: number, id: string): Entity {
     const game = this.#game, native = game.native, terrain = state.terrain;
     const layer = state.asset.file.layers[layerIndex]!;
     const half = state.entity.require(Terrain).size / 2;
@@ -279,10 +312,10 @@ export class ScatterSystem {
       const n = new Vector3(-(hx - h), NORMAL_STEP, -(hz - h)).normalize();
       return { height: h, normal: [n.x, n.y, n.z] };
     };
-    const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size));
+    const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size), keepOf(layer, tier));
     const cell = game.entities.create({ name: `${state.entity.name}/scatter ${layer.name} ${id}`, components: [Transform] });
     cell.require(Transform).parent = state.entity;
-    const model = state.asset.models[layerIndex];
+    const model = state.asset.models[layerIndex]?.[tier];
     if (!model) throw new Error(`${state.asset.path}: layer ${layer.name} has no model`);
     for (const instance of instances) {
       const child = game.entities.create({ name: layer.name, components: [Transform.with({ position: instance.position, rotation: instance.rotation, scale: [instance.scale, instance.scale, instance.scale] })] });
@@ -297,28 +330,36 @@ export class ScatterSystem {
   /**
    * 撒一个格子的草：格子的实体马上建（占住位置），高度页在工作线程上算好以后撒草叶、合成网格挂上去；那时格子已经拿掉了就不挂。
    */
-  #buildGrass(state: ScatterState, layerIndex: number, x0: number, z0: number, size: number, id: string): Cell {
+  #buildGrass(state: ScatterState, layerIndex: number, tier: number, x0: number, z0: number, size: number, id: string, replaces?: Cell): Cell {
     const game = this.#game, terrain = state.terrain;
     const layer = state.asset.file.layers[layerIndex]!;
     const cellEntity = game.entities.create({ name: `${state.entity.name}/grass ${layer.name} ${id}`, components: [Transform] });
     cellEntity.require(Transform).parent = state.entity;
-    const cell: Cell = { entity: cellEntity, used: this.#frame };
+    const cell: Cell = { entity: cellEntity, used: this.#frame, tier };
     // 多算一圈（求格子边上的法线），格距 GRASS_SPACING
     const count = Math.ceil(size / GRASS_SPACING) + 3;
     const ox = x0 - GRASS_SPACING, oz = z0 - GRASS_SPACING;
     const half = state.entity.require(Terrain).size / 2;
     void terrain.heights(game.native, ox, oz, GRASS_SPACING, count, count).then((heights) => {
-      if (!cellEntity.alive) return;
-      const ground = gridGround(heights, ox, oz, GRASS_SPACING, count, half);
-      const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size));
-      if (instances.length === 0) return;
-      cell.mesh = new Mesh(`${state.asset.path} ${layer.name} ${id}`, grassBlades(layer, instances, ground));
-      const material = state.asset.materials[layerIndex] ?? game.content.defaultMaterial;
-      cellEntity.add(Model.with({ mesh: cell.mesh.id, material: material.id, isShadowCaster: layer.castShadows ?? false }));
-      this.built.cells++;
-      this.built.instances += instances.length;
+      // 编辑器按需出帧：叫醒一帧来撒
       game.requestFrames?.();
-    }, (error: unknown) => console.warn(`[stride] ${state.asset.path}: grass ${layer.name} ${id}: ${(error as Error).message}`));
+      this.#ready.push(() => {
+        // 换细节层次时旧的格子留到新的好了才拿掉（新的已经拿掉了也要拿掉它：它不在格子表里了）
+        if (replaces) dropCell(replaces);
+        if (!cellEntity.alive) return;
+        const ground = gridGround(heights, ox, oz, GRASS_SPACING, count, half);
+        const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size), keepOf(layer, tier));
+        if (instances.length === 0) return;
+        cell.mesh = new Mesh(`${state.asset.path} ${layer.name} ${id}`, grassBlades(layer, instances));
+        const material = state.asset.materials[layerIndex] ?? game.content.defaultMaterial;
+        cellEntity.add(Model.with({ mesh: cell.mesh.id, material: material.id, isShadowCaster: layer.castShadows ?? false }));
+        this.built.cells++;
+        this.built.instances += instances.length;
+      });
+    }, (error: unknown) => {
+      if (replaces) dropCell(replaces);
+      console.warn(`[stride] ${state.asset.path}: grass ${layer.name} ${id}: ${(error as Error).message}`);
+    });
     return cell;
   }
 
@@ -326,6 +367,15 @@ export class ScatterSystem {
     for (const cell of state.cells.values()) dropCell(cell);
     this.#states.delete(id);
   }
+}
+
+/** 第 tier 个细节层次留下多少点：那一层（或更近的一层）写的 keep，都没写是 1。 */
+function keepOf(layer: ScatterLayerFile, tier: number): number {
+  for (let k = tier - 1; k >= 0; k--) {
+    const keep = layer.lods?.[k]?.keep;
+    if (keep !== undefined) return keep;
+  }
+  return 1;
 }
 
 /** 草的格子按多少米的格距算地面的高度页。 */
@@ -352,8 +402,8 @@ export function gridGround(heights: Float32Array, ox: number, oz: number, spacin
     const h = lerp(lerp(at(i, j), at(i + 1, j), tx), lerp(at(i, j + 1), at(i + 1, j + 1), tx), tz);
     const dx = lerp(lerp(at(i + 1, j) - at(i - 1, j), at(i + 2, j) - at(i, j), tx), lerp(at(i + 1, j + 1) - at(i - 1, j + 1), at(i + 2, j + 1) - at(i, j + 1), tx), tz) / 2;
     const dz = lerp(lerp(at(i, j + 1) - at(i, j - 1), at(i + 1, j + 1) - at(i + 1, j - 1), tx), lerp(at(i, j + 2) - at(i, j), at(i + 1, j + 2) - at(i + 1, j), tx), tz) / 2;
-    const n = new Vector3(-dx, spacing, -dz).normalize();
-    return { height: h, normal: [n.x, n.y, n.z] };
+    const length = Math.hypot(dx, spacing, dz);
+    return { height: h, normal: [-dx / length, spacing / length, -dz / length] };
   };
 }
 
@@ -361,21 +411,29 @@ export function gridGround(heights: Float32Array, ox: number, oz: number, spacin
  * 草叶合成一个网格：每个实例一个三角形——根部两个点（宽 width · 缩放，横着的方向随实例的朝向）、梢一个点（高 height · 缩放，
  * 往实例的 +Z 歪 lean 个叶高）。法线用地面的（和地形的光照接得上），UV 的 v 根是 1、梢是 0（风的草模式按它摆）。
  */
-export function grassBlades(layer: ScatterLayerFile, instances: readonly ScatterInstance[], ground: GroundSample): { vertices: Float32Array; indices: Uint32Array } {
+export function grassBlades(layer: ScatterLayerFile, instances: readonly ScatterInstance[]): { vertices: Float32Array; indices: Uint32Array } {
   const { height, width, lean = 0.3 } = layer.grass!;
   const vertices = new Float32Array(instances.length * 3 * 8), indices = new Uint32Array(instances.length * 3);
-  const across = new Vector3(), ahead = new Vector3();
-  instances.forEach((instance, k) => {
-    const [x, y, z] = instance.position;
-    const q = new Quaternion(...instance.rotation);
-    across.set(1, 0, 0).rotate(q).scale((width * instance.scale) / 2);
-    ahead.set(0, 0, 1).rotate(q).scale(lean * height * instance.scale);
-    const normal = ground(x, z)?.normal ?? [0, 1, 0];
-    const tip = [x + ahead.x, y + height * instance.scale, z + ahead.z];
-    const corners = [[x - across.x, y - across.y, z - across.z, 0, 1], [x + across.x, y + across.y, z + across.z, 1, 1], [tip[0]!, tip[1]!, tip[2]!, 0.5, 0]] as const;
-    corners.forEach(([px, py, pz, u, v], c) => vertices.set([px, py, pz, normal[0], normal[1], normal[2], u, v], (k * 3 + c) * 8));
-    indices.set([k * 3, k * 3 + 1, k * 3 + 2], k * 3);
-  });
+  for (let k = 0; k < instances.length; k++) {
+    const { position: [x, y, z], rotation: [qx, qy, qz, qw], scale, normal: [nx, ny, nz] } = instances[k]!;
+    // 实例的本地 +X（横着）、+Z（梢歪的方向）转到地形里：四元数直接转单位向量（不建对象）
+    const ax = 1 - 2 * (qy * qy + qz * qz), ay = 2 * (qx * qy + qw * qz), az = 2 * (qx * qz - qw * qy);
+    const fx = 2 * (qx * qz + qw * qy), fz = 1 - 2 * (qx * qx + qy * qy);
+    const w = (width * scale) / 2, l = lean * height * scale;
+    let o = k * 24;
+    const put = (px: number, py: number, pz: number, u: number, v: number) => {
+      vertices[o] = px; vertices[o + 1] = py; vertices[o + 2] = pz;
+      vertices[o + 3] = nx; vertices[o + 4] = ny; vertices[o + 5] = nz;
+      vertices[o + 6] = u; vertices[o + 7] = v;
+      o += 8;
+    };
+    put(x - ax * w, y - ay * w, z - az * w, 0, 1);
+    put(x + ax * w, y + ay * w, z + az * w, 1, 1);
+    put(x + fx * l, y + height * scale, z + fz * l, 0.5, 0);
+    indices[k * 3] = k * 3;
+    indices[k * 3 + 1] = k * 3 + 1;
+    indices[k * 3 + 2] = k * 3 + 2;
+  }
   return { vertices, indices };
 }
 

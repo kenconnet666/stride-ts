@@ -505,7 +505,12 @@ export class ContentManager {
     return this.#once(path + EXTENSIONS.scatter, async (url) => {
       const file = checkScatterFile(this.#json<unknown>(await this.#read(url)), url.href);
       const [models, materials] = await Promise.all([
-        Promise.all(file.layers.map((layer) => (layer.model ? this.loadModel(layer.model) : undefined))),
+        // 每个细节层次的模型：没写 model 的层次沿用更近的一层
+        Promise.all(file.layers.map((layer) => {
+          let current = layer.model;
+          const paths = [current, ...(layer.lods ?? []).map((lod) => (current = lod.model ?? current))];
+          return Promise.all(paths.map((p) => (p ? this.loadModel(p) : undefined)));
+        })),
         Promise.all(file.layers.map((layer) => (layer.material ? this.loadMaterial(layer.material) : undefined))),
       ]);
       return new ScatterAsset(path, file, models, materials);

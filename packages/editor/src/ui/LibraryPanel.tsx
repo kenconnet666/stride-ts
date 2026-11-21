@@ -8,7 +8,7 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Plus, Wand } from '@lucide/icons';
-import { Button, ToggleGroup, ToggleItem } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, ScrollArea, ToggleGroup, ToggleItem } from '@zerodep-dev/vue-tsx-pro-ui';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, type EffectCategory, type MaterialCategory } from '../library/index.ts';
 import { t } from './messages';
 import type { EditorSession } from './session';
@@ -23,7 +23,9 @@ const THUMBNAILS: Readonly<Record<string, string>> = Object.fromEntries(
 export const LIBRARY_DRAG_TYPE = 'application/x-stride-library';
 
 const styles = css.create({
-  panel: { display: 'flex', flexDirection: 'column', gap: '8px', padding: '_sm', minHeight: '0' },
+  // 窗口自己管滚动（App 的 scroll: 'self'）：上面的切换按钮固定，下面的卡片网格在滚动区里
+  panel: { display: 'flex', flexDirection: 'column', gap: '8px', padding: '_sm', height: '100%', minHeight: '0', boxSizing: 'border-box' },
+  scroll: { flex: '1', minHeight: '0' },
   row: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
   // 类别多时折行，不被窗口的宽度截掉
   chips: { flexWrap: 'wrap' },
@@ -75,6 +77,7 @@ export const LibraryPanel = _component(({ session }: { session: EditorSession })
         <ToggleItem value="all">{t.library.all}</ToggleItem>
         {categories().map((value) => <ToggleItem value={value}>{t.library.categories[value]}</ToggleItem>)}
       </ToggleGroup>
+      <ScrollArea {...css.attrs(styles.scroll)}>
       <div {...css.attrs(styles.grid)} role="listbox" aria-label={shelf === 'materials' ? t.library.materials : t.library.effects}>
         {items().filter((item) => category === 'all' || item.category === category).map((item) => (
           <div {...css.attrs(styles.card, selected === item.id && styles.selected)} role="option" aria-selected={selected === item.id} draggable title={t.library.names[item.id] ?? item.id}
@@ -91,6 +94,7 @@ export const LibraryPanel = _component(({ session }: { session: EditorSession })
           </div>
         ))}
       </div>
+      </ScrollArea>
       <span {...css.attrs(styles.hint)}>{t.library.hint}</span>
     </div>
   );

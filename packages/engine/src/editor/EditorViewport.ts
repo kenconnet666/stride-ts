@@ -28,7 +28,8 @@ import { Mesh } from '../rendering/mesh/Mesh';
 import { raycastMesh } from '../rendering/paint/MeshPainter';
 import { selectionVertices } from '../modeling/polyEdit';
 import { Terrain, TerrainAsset } from '../terrain/Terrain';
-import type { TerrainStrokeFile } from '../content/terrainFormat';
+import type { TerrainFeatureFile, TerrainStrokeFile } from '../content/terrainFormat';
+import type { TerrainHit } from '../terrain/TerrainSystem';
 import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformVertices, worldVertices, type PolySelectMode } from './PolyEditTool';
 import type { PolyMeshFile } from '../content/assetFormat';
 
@@ -44,6 +45,12 @@ const BRUSH_COLOR: DebugColor = [1, 1, 1, 0.9];
 const ERASE_COLOR: DebugColor = [1, 0.3, 0.3, 0.9];
 /** 雕刻笔刷的圈分几段。 */
 const SCULPT_RING_SEGMENTS = 48;
+/** 没选中的地物的轮廓。 */
+const FEATURE_COLOR: DebugColor = [0.85, 0.95, 1, 0.85];
+/** 两次按下隔多久以内算双击（毫秒）。 */
+const DOUBLE_CLICK_MS = 400;
+/** 点地物的角：光标离角在屏幕上多少像素以内。 */
+const CORNER_PIXELS = 10;
 /** 多边形编辑的线框和选中的点、边、面。 */
 const POLY_EDGE_COLOR: DebugColor = [0.85, 0.88, 0.95, 0.7];
 const POLY_SELECTED_COLOR: DebugColor = [1, 0.55, 0.1, 1];
@@ -100,6 +107,10 @@ export class EditorViewport extends SyncScript {
   #polyDrag: { readonly start: PolyMeshFile; readonly vertices: readonly number[] } | undefined;
   /** 绘制模式里正在画的一笔：上一笔落在哪（世界坐标），画没画上。 */
   #stroke: { last: [number, number, number] | undefined; painted: boolean } | undefined;
+  /** 拖地物：拖的是哪个地物的哪个角（undefined 是整个地物），按下时光标下的地面（地形本地 x、z），按下时的地物，挪没挪过。 */
+  #featureDrag: { readonly feature: number; readonly vertex: number | undefined; readonly anchor: readonly [number, number]; readonly start: readonly TerrainFeatureFile[]; moved: boolean } | undefined;
+  /** 上一次在地物模式里按下左键的时刻和位置（认双击）。 */
+  #lastFeatureClick: { readonly time: number; readonly at: readonly [number, number] } | undefined;
   /** 雕刻地形时正在拖的一笔：上一笔落在哪（地形本地的 x、z），这一次拖落下的笔画，压平的目标高度（按下处）。 */
   #sculptStroke: { last: [number, number] | undefined; strokes: TerrainStrokeFile[]; height: number } | undefined;
 
@@ -248,6 +259,11 @@ export class EditorViewport extends SyncScript {
     const { radius, strength } = sculpt.brush;
     const op = !shift ? sculpt.brush.op : sculpt.brush.op === 'raise' ? 'lower' : sculpt.brush.op === 'lower' ? 'raise' : sculpt.brush.op;
     const onTerrain = hit?.entity === terrain ? hit : undefined;
+    if (onTerrain) sculpt.cursor = [onTerrain.local[0], onTerrain.local[1], onTerrain.height];
+    if (sculpt.tool === 'features') {
+      this.#features(agent, terrain, pixel, navigating, onTerrain);
+      return;
+    }
     if (onTerrain) this.#drawSculptBrush(onTerrain.point, radius, op === 'lower' ? ERASE_COLOR : BRUSH_COLOR);
     if (input.isMouseButtonPressed('left') && !navigating && onTerrain) this.#sculptStroke = { last: undefined, strokes: [], height: onTerrain.height };
     const stroke = this.#sculptStroke;
@@ -268,7 +284,7 @@ export class EditorViewport extends SyncScript {
       }
       if (dabs.length > 0) {
         stroke.strokes.push(...dabs);
-        agent.previewSculpt(terrain, dabs);
+        agent.previewTerrain(terrain, (file) => ({ ...file, strokes: [...(file.strokes ?? []), ...dabs] }));
       }
     }
     if (input.isMouseButtonReleased('left') && stroke) {
@@ -276,6 +292,113 @@ export class EditorViewport extends SyncScript {
       const path = TerrainAsset.byId(terrain.require(Terrain).terrain)?.path;
       if (path && stroke.strokes.length > 0) agent.onSculptStroke?.(path, stroke.strokes);
     }
+  }
+
+  /**
+   * 雕刻模式里拖地物的一帧：每个地物的轮廓贴着地面画出来（选中的高亮），角上画小圈。左键按在角上拖这个角，按在多边形里拖整个
+   * 地物，按在空处取消选中；在边上双击加一个角。拖的时候每帧换成预览的版本（agent.previewTerrain），松开交给
+   * agent.onSculptFeatures 存文件（撤销的一步）。
+   */
+  #features(agent: EditAgent, terrain: Entity, pixel: readonly [number, number], navigating: boolean, hit: TerrainHit | undefined): void {
+    const sculpt = agent.sculpt!, input = this.game.input, system = this.game.terrain;
+    const asset = TerrainAsset.byId(terrain.require(Terrain).terrain);
+    if (!asset) return;
+    const features = asset.file.features ?? [];
+    // 每个角在屏幕上的位置（点选用）和画出来的轮廓
+    const corners: { feature: number; vertex: number; screen: readonly [number, number] }[] = [];
+    const draw = this.game.debugDraw;
+    features.forEach((feature, index) => {
+      const color = index === sculpt.feature ? SELECTION_COLOR : FEATURE_COLOR;
+      const outline: [number, number, number][] = [];
+      feature.points.forEach(([x0, z0], vertex) => {
+        const [x1, z1] = feature.points[(vertex + 1) % feature.points.length]!;
+        // 边按长度分段，每段贴着地面（地形在边上的起伏也看得见）
+        const segments = Math.min(32, Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 4)));
+        for (let i = 0; i < segments; i++) {
+          const point = system.surfacePoint(terrain, x0 + ((x1 - x0) * i) / segments, z0 + ((z1 - z0) * i) / segments);
+          if (point) outline.push([point[0], point[1] + 0.2, point[2]]);
+        }
+        const corner = system.surfacePoint(terrain, x0, z0);
+        const screen = corner && this.#project({ x: corner[0], y: corner[1], z: corner[2] });
+        if (corner && screen) {
+          corners.push({ feature: index, vertex, screen });
+          draw.circle(corner, [0, 1, 0], Math.max(0.5, this.#distanceTo(corner) * 0.01), color, { width: 2, depthTest: false });
+        }
+      });
+      if (outline.length > 1) draw.polyline(outline, color, { closed: true, width: 2, depthTest: false });
+    });
+
+    if (input.isMouseButtonPressed('left') && !navigating && !this.#featureDrag) {
+      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
+      const corner = nearestCorner(corners, at);
+      const now = performance.now();
+      const last = this.#lastFeatureClick;
+      // 帧率低、双击很快（或者自动化发的双击）时两次按下落在同一帧里：按这一帧的按下次数也算
+      const presses = input.pointerEvents.filter((event) => event.device === 'mouse' && event.eventType === 'pressed').length;
+      const double = presses >= 2 || (last !== undefined && now - last.time < DOUBLE_CLICK_MS && Math.hypot(at[0] - last.at[0], at[1] - last.at[1]) < CLICK_PIXELS);
+      this.#lastFeatureClick = { time: now, at };
+      if (double && !corner) {
+        // 双击边：按屏幕上的距离找边（掠射的视角下一个像素是好几米，按米算的容差不稳），新的角放在边上对应的位置
+        const edge = nearestScreenEdge(corners, at);
+        if (edge) {
+          const points = features[edge.feature]!.points;
+          const [ax, az] = points[edge.vertex]!, [bx, bz] = points[(edge.vertex + 1) % points.length]!;
+          const added = [round(ax + (bx - ax) * edge.t, 2), round(az + (bz - az) * edge.t, 2)] as const;
+          const next = features.map((feature, index) => index !== edge.feature ? feature : { ...feature, points: [...feature.points.slice(0, edge.vertex + 1), added, ...feature.points.slice(edge.vertex + 1)] });
+          this.#selectFeature(agent, edge.feature);
+          this.#commitFeatures(agent, terrain, asset.path, next);
+          return;
+        }
+      }
+      if (corner) {
+        this.#selectFeature(agent, corner.feature);
+        this.#featureDrag = { feature: corner.feature, vertex: corner.vertex, anchor: hit?.local ?? [0, 0], start: features, moved: false };
+      } else {
+        const inside = hit ? features.findLastIndex((feature) => insidePolygon(feature.points, hit.local)) : -1;
+        this.#selectFeature(agent, inside >= 0 ? inside : undefined);
+        if (inside >= 0) this.#featureDrag = { feature: inside, vertex: undefined, anchor: hit!.local, start: features, moved: false };
+      }
+    }
+    // 按下以后再读：同一帧里按下又松开（点一下、快的双击）时这一帧就要结束这次拖，不然下一次按下被当成还在拖
+    const drag = this.#featureDrag;
+    if (drag && input.isMouseButtonDown('left') && hit) {
+      const dx = hit.local[0] - drag.anchor[0], dz = hit.local[1] - drag.anchor[1];
+      const next = drag.start.map((feature, index) => {
+        if (index !== drag.feature) return feature;
+        const points = feature.points.map(([x, z], vertex) =>
+          drag.vertex === undefined ? [round(x + dx, 2), round(z + dz, 2)] as const
+            : vertex === drag.vertex ? [round(hit.local[0], 2), round(hit.local[1], 2)] as const : [x, z] as const);
+        return { ...feature, points };
+      });
+      // 光标挪过一厘米才换版本（按着不动时不重算）
+      if (JSON.stringify(next[drag.feature]!.points) !== JSON.stringify(features[drag.feature]!.points)) {
+        drag.moved = true;
+        agent.previewTerrain(terrain, (file) => ({ ...file, features: next }));
+      }
+    }
+    if (drag && input.isMouseButtonReleased('left')) {
+      this.#featureDrag = undefined;
+      if (drag.moved) agent.onSculptFeatures?.(asset.path, TerrainAsset.byId(terrain.require(Terrain).terrain)?.file.features ?? []);
+    }
+  }
+
+  #selectFeature(agent: EditAgent, feature: number | undefined): void {
+    const sculpt = agent.sculpt!;
+    if (sculpt.feature === feature) return;
+    sculpt.feature = feature;
+    agent.onSculptSelect?.(feature);
+  }
+
+  /** 一下子做完的地物修改（双击加角）：预览、马上存。 */
+  #commitFeatures(agent: EditAgent, terrain: Entity, path: string, features: readonly TerrainFeatureFile[]): void {
+    agent.previewTerrain(terrain, (file) => ({ ...file, features }));
+    agent.onSculptFeatures?.(path, features);
+  }
+
+  /** 编辑相机到这一点的距离（米）：按距离定角上小圈的大小、点边的容差，远近看着一样大。 */
+  #distanceTo(point: readonly [number, number, number]): number {
+    const world = currentWorld(this.entity);
+    return Math.hypot(point[0] - world[12]!, point[1] - world[13]!, point[2] - world[14]!);
   }
 
   /** 雕刻笔刷的圈：贴着地面的一圈线（每段按地形的高度抬一点，不被地面挡住一半）。 */
@@ -613,4 +736,43 @@ function nearestVertex(cache: Map<Entity, Float32Array>, entity: Entity, point: 
 function round(value: number, digits: number): number {
   const scale = 10 ** digits;
   return Math.round(value * scale) / scale;
+}
+
+/** 屏幕上离 at 最近、在 CORNER_PIXELS 以内的地物的角。 */
+function nearestCorner<T extends { readonly screen: readonly [number, number] }>(corners: readonly T[], at: readonly [number, number]): T | undefined {
+  let best: T | undefined, bestDistance = CORNER_PIXELS;
+  for (const corner of corners) {
+    const distance = Math.hypot(corner.screen[0] - at[0], corner.screen[1] - at[1]);
+    if (distance < bestDistance) [best, bestDistance] = [corner, distance];
+  }
+  return best;
+}
+
+/**
+ * 屏幕上离 at 最近、在 CORNER_PIXELS 以内的地物的边（按两个角投到屏幕上的线段算）：哪个地物、从第几个角出发的边、落在边上的比例
+ * t（0 是这个角，1 是下一个角；屏幕上的比例，透视下和地面上差一点，加角够用）。
+ */
+function nearestScreenEdge(corners: readonly { readonly feature: number; readonly vertex: number; readonly screen: readonly [number, number] }[], at: readonly [number, number]): { feature: number; vertex: number; t: number } | undefined {
+  let best: { feature: number; vertex: number; t: number } | undefined, bestDistance = CORNER_PIXELS;
+  for (const a of corners) {
+    // 同一个地物的下一个角（下标绕回 0）；投不到屏幕上的角没有边
+    const ring = corners.filter((c) => c.feature === a.feature);
+    const b = ring.find((c) => c.vertex === a.vertex + 1) ?? (a.vertex === Math.max(...ring.map((c) => c.vertex)) ? ring.find((c) => c.vertex === 0) : undefined);
+    if (!b || b === a) continue;
+    const ex = b.screen[0] - a.screen[0], ey = b.screen[1] - a.screen[1], length2 = ex * ex + ey * ey;
+    const t = length2 > 0 ? Math.max(0, Math.min(1, ((at[0] - a.screen[0]) * ex + (at[1] - a.screen[1]) * ey) / length2)) : 0;
+    const distance = Math.hypot(at[0] - a.screen[0] - ex * t, at[1] - a.screen[1] - ey * t);
+    if (distance < bestDistance) [best, bestDistance] = [{ feature: a.feature, vertex: a.vertex, t }, distance];
+  }
+  return best;
+}
+
+/** 点在不在多边形里（射线交叉数）。 */
+function insidePolygon(points: readonly (readonly [number, number])[], [x, z]: readonly [number, number]): boolean {
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const [xi, zi] = points[i]!, [xj, zj] = points[j]!;
+    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
 }

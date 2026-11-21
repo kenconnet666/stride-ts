@@ -93,10 +93,11 @@ export class EditorSession implements EditableScene {
   /** 绘制的笔刷（半径、硬度、强度、擦除），换着画别的层时保留。 */
   readonly paintBrush = shallowRef<PaintBrush>({ radius: 0.25, hardness: 0.5, strength: 0.8, erase: false });
   /**
-   * 正在视口里雕刻的地形（W2）：哪个实体、哪个 .terrain.json；没在雕刻时是 undefined。每拖一笔存一次文件（笔画接在后面），
-   * 撤销、重做这时是地形文件的上一步、下一步；strokes 是文件里现在有几笔（工具条显示，也让撤销按钮跟着刷新）。
+   * 正在视口里雕刻的地形（W2）：哪个实体、哪个 .terrain.json；没在雕刻时是 undefined。每拖一笔、拖完地物存一次文件，
+   * 撤销、重做这时是地形文件的上一步、下一步；file 是现在存着的文件（工具条显示几笔、选中的地物的字段，也让撤销按钮跟着刷新），
+   * tool 是左键拖的是笔刷还是地物，feature 是选中的地物（file.features 的下标）。
    */
-  readonly sculpting = shallowRef<{ readonly entity: string; readonly path: string; readonly strokes: number }>();
+  readonly sculpting = shallowRef<{ readonly entity: string; readonly path: string; readonly file: TerrainFile; readonly tool: 'brush' | 'features'; readonly feature: number | undefined }>();
   /** 雕刻的笔刷（种类、半径、强度），换着雕别的地形时保留。 */
   readonly sculptBrush = shallowRef<SculptBrush>({ op: 'raise', radius: 40, strength: 4 });
   /** 雕刻的撤销：每一笔之前的地形文件；重做是撤销掉的；现在存着的那份。 */
@@ -346,21 +347,26 @@ export class EditorSession implements EditableScene {
     agent.beginSculpt(entity, this.sculptBrush.value);
     agent.onSculptStroke = (strokePath, strokes) => {
       const before = this.#sculptFile;
-      if (strokePath !== path || !before) return;
-      this.#sculptUndo.push(before);
-      this.#sculptRedo = [];
-      this.#saveSculpt({ ...before, strokes: [...(before.strokes ?? []), ...strokes] });
+      if (strokePath === path && before) this.#editSculpt({ ...before, strokes: [...(before.strokes ?? []), ...strokes] });
+    };
+    agent.onSculptFeatures = (featurePath, features) => {
+      const before = this.#sculptFile;
+      if (featurePath === path && before) this.#editSculpt({ ...before, features });
+    };
+    agent.onSculptSelect = (feature) => {
+      const sculpting = this.sculpting.value;
+      if (sculpting) this.sculpting.value = { ...sculpting, feature };
     };
     // 视口里按 [、] 改了笔刷大小：工具条跟着变
     agent.onSculptBrush = (brush) => (this.sculptBrush.value = brush);
-    this.sculpting.value = { entity, path, strokes: this.#sculptFile.strokes?.length ?? 0 };
+    this.sculpting.value = { entity, path, file: this.#sculptFile, tool: agent.sculpt!.tool, feature: undefined };
     this.notice.value = '';
-    this.status.value = t.sculptHint;
+    this.status.value = agent.sculpt!.tool === 'features' ? t.featuresHint : t.sculptHint;
   }
 
   stopSculpt(): void {
     this.agent.value?.endSculpt();
-    if (this.sculpting.value && this.status.value === t.sculptHint) this.status.value = '';
+    if (this.sculpting.value && (this.status.value === t.sculptHint || this.status.value === t.featuresHint)) this.status.value = '';
     this.sculpting.value = undefined;
     this.#sculptFile = undefined;
   }
@@ -371,12 +377,57 @@ export class EditorSession implements EditableScene {
     if (sculpt) sculpt.brush = brush;
   }
 
-  /** 存地形文件（后端写盘，视口热重载回来的和预览的一样、不再重算）。 */
-  #saveSculpt(file: TerrainFile): void {
-    const sculpting = this.sculpting.value;
+  /** 左键拖的是笔刷还是地物（地物的轮廓只在拖地物时画）。 */
+  setSculptTool(tool: 'brush' | 'features'): void {
+    const sculpt = this.agent.value?.sculpt, sculpting = this.sculpting.value;
+    if (!sculpt || !sculpting) return;
+    sculpt.tool = tool;
+    sculpt.feature = undefined;
+    this.sculpting.value = { ...sculpting, tool, feature: undefined };
+    this.status.value = tool === 'features' ? t.featuresHint : t.sculptHint;
+    this.agent.value?.refresh();
+  }
+
+  /** 新建一个压平的地物：光标最近指着的地面上、边长两倍笔刷半径的方块，压到那里的高度，过渡宽度是半径；选中它。 */
+  addTerrainFeature(): void {
+    const file = this.#sculptFile, sculpt = this.agent.value?.sculpt;
+    if (!file || !sculpt) return;
+    const [x, z, height] = sculpt.cursor ?? [0, 0, 0];
+    const r = this.sculptBrush.value.radius;
+    const round = (value: number) => Math.round(value * 100) / 100;
+    const points = [[x - r, z - r], [x + r, z - r], [x + r, z + r], [x - r, z + r]].map(([px, pz]) => [round(px!), round(pz!)] as const);
+    const features = [...(file.features ?? []), { type: 'flatten' as const, points, height: round(height), falloff: round(r) }];
+    this.#editSculpt({ ...file, features }, features.length - 1);
+  }
+
+  /** 改选中的地物的高度、过渡宽度、强度。 */
+  updateTerrainFeature(patch: { readonly height?: number; readonly falloff?: number; readonly strength?: number }): void {
+    const file = this.#sculptFile, index = this.sculpting.value?.feature;
+    if (!file || index === undefined) return;
+    this.#editSculpt({ ...file, features: (file.features ?? []).map((feature, i) => (i === index ? { ...feature, ...patch } : feature)) }, index);
+  }
+
+  deleteTerrainFeature(): void {
+    const file = this.#sculptFile, index = this.sculpting.value?.feature;
+    if (!file || index === undefined) return;
+    this.#editSculpt({ ...file, features: (file.features ?? []).filter((_, i) => i !== index) }, undefined);
+  }
+
+  /** 雕刻的一步：记撤销、存文件；feature 是之后选中的地物（不给就保留现在的）。 */
+  #editSculpt(file: TerrainFile, feature: number | undefined = this.sculpting.value?.feature): void {
+    if (this.#sculptFile) this.#sculptUndo.push(this.#sculptFile);
+    this.#sculptRedo = [];
+    this.#saveSculpt(file, feature);
+  }
+
+  /** 存地形文件（后端写盘，视口热重载回来的和预览的一样、不再重算）；选中的地物不在了就取消选中。 */
+  #saveSculpt(file: TerrainFile, feature: number | undefined = this.sculpting.value?.feature): void {
+    const sculpting = this.sculpting.value, sculpt = this.agent.value?.sculpt;
     if (!sculpting) return;
     this.#sculptFile = file;
-    this.sculpting.value = { ...sculpting, strokes: file.strokes?.length ?? 0 };
+    const selected = feature !== undefined && feature < (file.features?.length ?? 0) ? feature : undefined;
+    if (sculpt) sculpt.feature = selected;
+    this.sculpting.value = { ...sculpting, file, feature: selected };
     void this.client.saveAsset('terrain', sculpting.path, file).catch((error: unknown) => (this.notice.value = (error as Error).message));
   }
 

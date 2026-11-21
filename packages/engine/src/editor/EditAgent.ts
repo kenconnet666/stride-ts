@@ -15,7 +15,7 @@ import { sceneComponentKey } from '../content/SceneBuilder';
 import { requiredName } from '../content/sceneScripts';
 import type { Entity } from '../engine/Entity';
 import { Terrain, TerrainAsset } from '../terrain/Terrain';
-import type { TerrainStrokeFile } from '../content/terrainFormat';
+import type { TerrainFeatureFile, TerrainFile, TerrainStrokeFile } from '../content/terrainFormat';
 import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
 import { Camera, Model, ModelPart } from '../rendering/components';
@@ -91,10 +91,16 @@ export interface SculptBrush {
 
 export const DEFAULT_SCULPT_BRUSH: SculptBrush = { op: 'raise', radius: 40, strength: 4 };
 
-/** 雕刻地形的模式：雕的是哪个地形实体（场景文件里的 id）、笔刷。 */
+/**
+ * 雕刻地形的模式：雕的是哪个地形实体（场景文件里的 id）、笔刷；tool 是左键拖的是笔刷还是地物（拖地物的角、整个地物）；
+ * feature 是选中的地物（文件里 features 的下标）；cursor 是光标最近一次指着的地面（地形本地的 x、z 和高度，新建地物放这里）。
+ */
 export interface SculptSession {
   readonly entity: string;
   brush: SculptBrush;
+  tool: 'brush' | 'features';
+  feature: number | undefined;
+  cursor: readonly [number, number, number] | undefined;
 }
 
 export const DEFAULT_PAINT_BRUSH: PaintBrush = { radius: 0.25, hardness: 0.5, strength: 0.8, erase: false };
@@ -127,6 +133,10 @@ export class EditAgent {
   onSculptStroke: ((path: string, strokes: readonly TerrainStrokeFile[]) => void) | undefined;
   /** 视口里改了雕刻笔刷（[、] 改大小）以后调，编辑器的工具条跟着变。 */
   onSculptBrush: ((brush: SculptBrush) => void) | undefined;
+  /** 视口里拖完地物（松开左键）以后调：地形资源的内容路径和改过的全部地物（编辑器存进文件、记一步撤销）。 */
+  onSculptFeatures: ((path: string, features: readonly TerrainFeatureFile[]) => void) | undefined;
+  /** 视口里点选了地物（或点空处取消，undefined）以后调，编辑器的工具条显示它的字段。 */
+  onSculptSelect: ((feature: number | undefined) => void) | undefined;
   /** 用户在视口里点选以后调（参数是新的选中）。 */
   onSelectionChanged: ((ids: readonly string[]) => void) | undefined;
   #live: LiveScene | undefined;
@@ -235,7 +245,7 @@ export class EditAgent {
   beginSculpt(entity: string, brush: SculptBrush = this.sculpt?.brush ?? DEFAULT_SCULPT_BRUSH): void {
     this.endPaint();
     this.endPolyEdit();
-    this.sculpt = { entity, brush };
+    this.sculpt = { entity, brush, tool: this.sculpt?.tool ?? 'brush', feature: undefined, cursor: undefined };
     this.refresh();
   }
 
@@ -247,14 +257,14 @@ export class EditAgent {
   }
 
   /**
-   * @internal 视口的笔刷落了几笔：地形换成"现在的版本后面接上这几笔"的预览版本（TerrainSystem 只重算盖到的块，见
+   * @internal 视口的笔刷落了几笔、拖了地物：地形换成 change 改过的预览版本（TerrainSystem 只重算改动范围里的块，见
    * changedRegions），马上看得到；松开以后编辑器存文件，热重载回来的版本和预览一样、不再重算。
    */
-  previewSculpt(terrain: Entity, strokes: readonly TerrainStrokeFile[]): void {
+  previewTerrain(terrain: Entity, change: (file: TerrainFile) => TerrainFile): void {
     const component = terrain.require(Terrain);
     const current = TerrainAsset.byId(component.terrain);
-    if (!current || strokes.length === 0) return;
-    const next = new TerrainAsset(current.path, { ...current.file, strokes: [...(current.file.strokes ?? []), ...strokes] }, current.material);
+    if (!current) return;
+    const next = new TerrainAsset(current.path, change(current.file), current.material);
     component.terrain = next.id;
     // 更早的预览没人用了（地形系统一帧之内就换到新的上；上一个留着，它可能还没换过来）
     this.#sculptPreviews.push(next);

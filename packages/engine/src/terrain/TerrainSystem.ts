@@ -220,6 +220,18 @@ export class TerrainSystem {
   }
 
   /**
+   * 地形 entity 本地的 (x, z) 处地面的世界坐标（高度直接求值）：画贴着地面的线（编辑器里地物的轮廓）用。entity 不是在画的地形时
+   * 是 undefined。
+   */
+  surfacePoint(entity: Entity, x: number, z: number): [number, number, number] | undefined {
+    const state = this.#states.get(entity.id);
+    if (!state) return undefined;
+    const world = entity.require(Transform).world;
+    const h = state.asset.heightAt(this.#game.native, x, z);
+    return [world[0]! * x + world[4]! * h + world[8]! * z + world[12]!, world[1]! * x + world[5]! * h + world[9]! * z + world[13]!, world[2]! * x + world[6]! * h + world[10]! * z + world[14]!];
+  }
+
+  /**
    * 射线（世界坐标，direction 是单位向量）最先碰到地形的地方：沿射线走，每步按"离地面的高度 ÷ 最陡的坡"放心地走（地形不会
    * 比 MAX_SLOPE 更陡地冒出来挡住），穿到地下以后在最后一步里二分。返回世界坐标的点、哪个地形、地形本地的 x、z 和高度
    * （雕刻的笔画按本地坐标存）；maxDistance 以内没碰到时是 undefined。编辑器的雕刻笔刷用；直接求值，不等块算好。

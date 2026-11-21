@@ -26,6 +26,7 @@ const styles = css.create({
   brand: { fontWeight: '700', paddingInline: '_sm', whiteSpace: 'nowrap' },
   project: { color: '_textMuted', paddingInlineEnd: '_sm', whiteSpace: 'nowrap' },
   spacer: { flex: '1' },
+  count: { whiteSpace: 'nowrap', paddingInline: '_xs' },
   tabs: { flexShrink: '0', backgroundColor: '_surfaceRaised' },
   // 骨架屏：和一个页签一样高（28px），工程名占一个名字的宽
   tabsLoading: { height: '28px', display: 'flex', alignItems: 'center', paddingInline: '10px' },
@@ -160,13 +161,45 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopPolyEdit()}>{t.polyDone}</Button>,
     ];
   };
-  /** 雕刻地形时的工具条：笔刷的种类、半径（米）、强度，文件里有几笔，最后是"完成"。 */
+  /**
+   * 雕刻地形时的工具条：先是笔刷、地物两种工具；笔刷是种类、半径（米）、强度，地物是新建、选中的那个的高度、过渡宽度、强度
+   * 和删除；文件里有几笔，最后是"完成"。
+   */
   const sculptControls = (sculpting: NonNullable<typeof session.sculpting.value>) => {
+    const tools = (['brush', 'features'] as const).map((tool) => (
+      <Button size="sm" variant={sculpting.tool === tool ? 'soft' : 'ghost'} tone="neutral" aria-pressed={sculpting.tool === tool} onClick={() => session.setSculptTool(tool)}>{t.sculptTools[tool]}</Button>
+    ));
+    const tail = [
+      <span {...css.attrs(styles.spacer)} />,
+      <span {...css.attrs(styles.count)}>{t.sculptStrokes(sculpting.file.strokes?.length ?? 0)}</span>,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopSculpt()}>{t.sculptDone}</Button>,
+    ];
+    if (sculpting.tool === 'features') {
+      const feature = sculpting.feature === undefined ? undefined : sculpting.file.features?.[sculpting.feature];
+      const field = (label: string, value: number, patch: (value: number) => Parameters<typeof session.updateTerrainFeature>[0], options: { min?: number; max?: number; step: number }) => (
+        <NumberField {...css.attrs(styles.step)} size="sm" prefix={label} aria-label={label} {...options} format={{ useGrouping: false, maximumFractionDigits: 2 }}
+          _value={value} onUpdate:_value={(next: number | null) => next !== null && next !== value && session.updateTerrainFeature(patch(next))} />
+      );
+      return [
+        ...tools,
+        <Separator orientation="vertical" />,
+        <Button size="sm" variant="ghost" tone="neutral" icon={Plus} title={t.featureAddHint} onClick={() => session.addTerrainFeature()}>{t.featureAdd}</Button>,
+        ...(feature ? [
+          field(t.featureHeight, feature.height, (height) => ({ height }), { step: 1 }),
+          field(t.featureFalloff, feature.falloff ?? 0, (falloff) => ({ falloff }), { min: 0, step: 5 }),
+          field(t.sculptStrength, feature.strength ?? 1, (strength) => ({ strength }), { min: 0, max: 1, step: 0.1 }),
+          <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} onClick={() => session.deleteTerrainFeature()}>{t.featureDelete}</Button>,
+        ] : []),
+        ...tail,
+      ];
+    }
     const brush = session.sculptBrush.value;
     // 抬高、压低的强度是米；压平、磨平是 0..1：换到另一类时强度换成那一类的默认值
     const isFraction = (op: SculptBrush['op']) => op === 'flatten' || op === 'smooth';
     const fraction = isFraction(brush.op);
     return [
+      ...tools,
+      <Separator orientation="vertical" />,
       ...(['raise', 'lower', 'flatten', 'smooth'] as const).map((op) => (
         <Button size="sm" variant={brush.op === op ? 'soft' : 'ghost'} tone="neutral" aria-pressed={brush.op === op}
           onClick={() => session.setSculptBrush({ ...brush, op, strength: isFraction(op) === fraction ? brush.strength : isFraction(op) ? 0.5 : 4 })}>{t.sculptOps[op]}</Button>
@@ -176,9 +209,7 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
         _value={brush.radius} onUpdate:_value={(value: number | null) => value !== null && value > 0 && session.setSculptBrush({ ...brush, radius: value })} />,
       <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.sculptStrength} aria-label={t.sculptStrength} min={0} {...(fraction ? { max: 1 } : {})} step={fraction ? 0.1 : 1} format={{ useGrouping: false, maximumFractionDigits: 3 }}
         _value={brush.strength} onUpdate:_value={(value: number | null) => value !== null && value >= 0 && session.setSculptBrush({ ...brush, strength: value })} />,
-      <span {...css.attrs(styles.spacer)} />,
-      <span>{t.sculptStrokes(sculpting.strokes)}</span>,
-      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopSculpt()}>{t.sculptDone}</Button>,
+      ...tail,
     ];
   };
   return () => {

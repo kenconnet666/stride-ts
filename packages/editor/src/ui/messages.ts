@@ -151,6 +151,13 @@ export interface EditorMessages {
   readonly sculptStrength: string;
   readonly sculptStrokes: (count: number) => string;
   readonly sculptDone: string;
+  readonly sculptTools: Readonly<Record<'brush' | 'features', string>>;
+  readonly featureAdd: string;
+  readonly featureAddHint: string;
+  readonly featureDelete: string;
+  readonly featureHeight: string;
+  readonly featureFalloff: string;
+  readonly featuresHint: string;
   readonly polyAmount: string;
   readonly polyOps: Readonly<Record<'extrude' | 'inset' | 'bevel' | 'merge' | 'split' | 'connect' | 'delete' | 'flip', string>>;
   readonly polyConnectNeedsFace: string;
@@ -351,6 +358,13 @@ const zhCN: EditorMessages = {
   sculptStrength: '强度',
   sculptStrokes: (count) => `${count} 笔`,
   sculptDone: '完成',
+  sculptTools: { brush: '笔刷', features: '地物' },
+  featureAdd: '新建地物',
+  featureAddHint: '在光标最近指着的地面上放一个压平的方块（边长两倍笔刷半径）；视口里拖角改形状、拖里面挪位置，在边上双击加一个角',
+  featureDelete: '删除地物',
+  featureHeight: '高度',
+  featureFalloff: '过渡',
+  featuresHint: '视口里拖地物的角改形状、拖里面挪位置，在边上双击加一个角；点地物选中它，工具条上改高度、过渡宽度；Ctrl+Z 撤销一步',
   polyAmount: '距离',
   polyOps: { extrude: '挤出', inset: '内插', bevel: '倒角', merge: '合并', split: '切分', connect: '连接', delete: '删面', flip: '翻面' },
   polyConnectNeedsFace: '连接要选同一个面上不相邻的两个点',
@@ -562,6 +576,13 @@ const enUS: EditorMessages = {
   sculptStrength: 'Strength',
   sculptStrokes: (count) => `${count} strokes`,
   sculptDone: 'Done',
+  sculptTools: { brush: 'Brush', features: 'Features' },
+  featureAdd: 'New feature',
+  featureAddHint: 'Put a flattening square (twice the brush radius wide) on the ground the cursor last pointed at; in the viewport drag a corner to reshape it, drag inside to move it, double-click an edge to add a corner',
+  featureDelete: 'Delete feature',
+  featureHeight: 'Height',
+  featureFalloff: 'Falloff',
+  featuresHint: 'Drag a feature corner to reshape it, drag inside to move it, double-click an edge to add a corner; click a feature to select it and set its height and falloff in the toolbar; Ctrl+Z undoes a step',
   polyAmount: 'Distance',
   polyOps: { extrude: 'Extrude', inset: 'Inset', bevel: 'Bevel', merge: 'Merge', split: 'Split', connect: 'Connect', delete: 'Delete faces', flip: 'Flip' },
   polyConnectNeedsFace: 'Connect needs two non-adjacent vertices of the same face',

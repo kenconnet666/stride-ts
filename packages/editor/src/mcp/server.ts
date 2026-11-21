@@ -108,6 +108,7 @@ export function createEditorMcpServer(projects: McpProjects): McpServer {
       'strokes are appended in order: raise / lower {x, z, radius, strength (m)}, flatten {x, z, radius, strength 0..1, height}, smooth {x, z, radius, strength 0..1}.',
       'features are appended: flatten {points: [[x, z], ...] polygon, height, falloff (m), strength 0..1} for roads, plazas, foundations.',
       'undo removes that many of the last strokes first. Returns the stroke and feature counts.',
+      'To move, reshape or delete existing features, read_asset the terrain and write_asset it back with the edited features list.',
     ].join(' '),
     inputSchema: z.object({
       path: assetPath,

@@ -23,6 +23,21 @@ S2 第四件的后一半。参考 Niagara 的 Flipbook Baker（固定相机、�
 - **放**：旁边加一个实体，一个发射器、每个周期生成一个粒子、活一个周期，按寿命翻页（uvBuilderFlipbook，animationSpeed = 帧数），大小是一格对应的世界大小，摆在格子中心。贴图引用要写 `encoding: 'png'`，不写按 KTX2 找（第一次就这样没加载上）。
 - 顺手：游戏页面写编辑器后端的两个接口（存图片、存导出）收进 `editor/backendApi.ts`，画贴图和离线渲染原来各写一份；调试命令的实体参数在编辑状态的页面里也认场景文件里的 id（编辑器、MCP 说的都是它）。
 
+## 2026-11-21 Memory64：原生模块只出 64 位
+
+用户要实测 wasm 的内存能要到多少、64 位指针慢多少，看了数字定的："慢 7%～12% 可以接受，直接换成 64 位""直接用 64 位，不考虑 32 位"。
+
+- **能要到多少**（Chrome 157，`apps/bench/memory.html`：每次长 512 MB 直到长不动，再写最后一个字节）：32 位不管共享不共享都是 4 GB；64 位都是 16 GB（Chrome 的上限），最后一个字节写得进去；每长 512 MB 要 8～38 毫秒（64 位、共享的慢些）。第一次测的时候页面没封顶、又和编译并行，这台机器（内存当时 1867 MHz）死机了；用户把内存降到 1600 MHz，测试改成到 24 GB 就停、单独跑，之后正常。
+- **慢多少**（Jolt 自带的 PerformanceTest，同一份代码编成 wasm32、wasm64，Distribution、SIMD，单线程，Node 24，每秒步数）：Ragdoll 29.3 → 25.6（慢 12%），ConvexVsMesh 135.5 → 125.9（慢 7%），Pyramid 37.2 → 34.7（慢 7%）；三个场景的哈希两边一样。慢在指针变宽（缓存装得少）和 64 位内存的边界检查。
+- **怎么做**：
+  - StrideNative 的 CMake 全局加 `-m64`（Emscripten 的 `-sMEMORY64` 已弃用）（Jolt 的 `JPH_USE_WASM64` 一起开），核心、物理、贴图、导航、工具模块和插件都编成 64 位，内存上限 16 GB；文件名不变，不出 32 位的一份。
+  - C 的指针在 wasm64 里是 i64，到 JS 是 bigint。不让每个调用方改：`generate-exports.mjs` 从头文件给每个 C 函数生成"哪些位置是指针"的签名（`POINTER_SIGNATURES`，`size_t` 也算），加载器给模块上的函数包一层，指针在 JS 这边照旧是 number（16 GB 以内的地址在 2^53 以内）。Emscripten 自己的 `SIGNATURE_CONVERSIONS` 只管核心的导出，侧模块经 LDSO 挂上来的导出不归它，所以统一在 JS 里包。
+  - 插件没有头文件：`NativeFeature.signatures` 由插件作者写（格式同上），没写的函数指针参数要传 bigint。
+  - 结构体里的指针字段和输出指针按 8 字节读写（`readPointer`、`writePointer`）：变换的列、网格解码的请求、蒙皮请求、`readOwnedBuffer`、静态三角形、变了的槽位、场景里的图片。stride-ts 只经包装类调原生，不用改。
+  - 加载时先验证一个只声明了 64 位内存的最小模块（`memory64Supported`），不支持就报"要 Chrome 133、Firefox 134、Node 24 以上"。
+- **代价**：正式版 Safari 写这条时还不支持 Memory64（技术预览版加上了），在那之前引擎在 Safari 里跑不了；原生的计算慢 7%～12%（多核时 Jolt 的并行能补回来一些，没量）。
+- 考虑过：两份都出、按浏览器挑（用户否了：不考虑 32 位）；只给工具模块出 64 位（编辑器的大资源要，但运行时的流式内容迟早也要超过 4 GB）。
+
 ## 2026-11-21 屏幕空间的折射（G1）
 
 商场的玻璃栏杆、地铁的屏蔽门、水杯、冰、宝石：后面的东西要按折射率偏开、按粗糙度变糊。Stride 的玻璃只是按菲涅耳和背景混合（`glass`，留着）。参考：Filament 的 screen-space refraction（`surface_light_indirect.fs` 的 evaluateRefraction：薄的面、实心球两种模型，按粗糙度取颜色的 mip，吸收）、glTF 的 KHR_materials_transmission 和 KHR_materials_volume、Unity HDRP 的颜色金字塔。

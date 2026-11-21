@@ -31,6 +31,13 @@ export interface EditorMessages {
     readonly fit: string; readonly texture: string; readonly startFrom: string; readonly list: string; readonly center: string; readonly cannotShow: string;
     readonly nothingFound: string; readonly sliced: (count: number) => string; readonly noImage: (path: string) => string;
   };
+  readonly library: {
+    readonly materials: string; readonly effects: string; readonly all: string;
+    readonly categories: { readonly [K in 'metal' | 'plastic' | 'glass' | 'emissive' | 'stone' | 'wood' | 'fabric' | 'fire' | 'smoke' | 'sparks' | 'magic' | 'ambient' | 'water']: string };
+    readonly names: Readonly<Record<string, string>>;
+    readonly use: string; readonly add: string; readonly hint: string;
+    readonly used: (name: string, count: number) => string; readonly noModel: string; readonly added: (name: string) => string;
+  };
   readonly sound: {
     readonly title: string; readonly play: string; readonly stop: string; readonly mutate: string; readonly mutateTitle: string; readonly presetsTitle: string;
     readonly presets: { readonly [K in 'pickup' | 'laser' | 'explosion' | 'powerUp' | 'hit' | 'jump' | 'blip' | 'random']: string };
@@ -43,7 +50,7 @@ export interface EditorMessages {
   readonly viewportToolbar: string;
   readonly openDocuments: string;
   readonly selectedCount: (n: number) => string;
-  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string };
+  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string; readonly library: string };
   readonly language: string;
   readonly frameGuide: string;
   readonly frameGuideOff: string;
@@ -210,6 +217,17 @@ const zhCN: EditorMessages = {
     cannotShow: '这张贴图只有 KTX2，浏览器显示不了：在资源浏览器里把它的源图片放回来', nothingFound: '没有切出东西（贴图全透明？）',
     sliced: (count) => `切出 ${count} 个精灵，替换了这张贴图上原来的`, noImage: (path) => `找不到图片 ${path}`,
   },
+  library: {
+    materials: '材质', effects: '特效', all: '全部',
+    categories: { metal: '金属', plastic: '塑料、漆', glass: '玻璃', emissive: '发光', stone: '石头、砖', wood: '木头', fabric: '布', fire: '火', smoke: '烟', sparks: '火花', magic: '魔法', ambient: '氛围', water: '水' },
+    names: {
+      gold: '金', copper: '铜', chrome: '铬', brushedSteel: '拉丝钢', carPaint: '车漆', glossyPlastic: '亮面塑料', mattePlastic: '哑光塑料', rubber: '橡胶', clearGlass: '透明玻璃',
+      neonCyan: '霓虹（青）', neonMagenta: '霓虹（品红）', concrete: '混凝土', redBrick: '红砖', stoneTiles: '石板', wood: '木头', marble: '大理石', fabric: '布',
+      campfire: '篝火', smokeColumn: '烟柱', steam: '蒸汽', sparks: '火花', magicOrb: '魔法光球', dustMotes: '浮尘', fountain: '喷泉',
+    },
+    use: '用在选中的实体上', add: '加到场景', hint: '材质拖到视口里的物体上、或者选中物体再点"用在选中的实体上"；用的时候拷一份进工程（Materials/Library），之后和库没有关系',
+    used: (name, count) => `${name} 用在了 ${count} 个实体上`, noModel: '选中的实体里没有带模型的', added: (name) => `加了 ${name}`,
+  },
   sound: {
     title: '音效生成器', play: '试听', stop: '停', mutate: '变一点', mutateTitle: '在现在的参数附近随机变一点（同 sfxr 的 Mutate）',
     presetsTitle: '按类别随机出一个（换掉现在的参数）',
@@ -227,7 +245,7 @@ const zhCN: EditorMessages = {
   viewportToolbar: '视口工具条',
   openDocuments: '打开的文档',
   selectedCount: (n) => `选中 ${n} 个`,
-  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表' },
+  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表', library: '库' },
   language: '界面语言',
   frameGuide: '画幅参考线（视口上框出画幅和安全框，构图用）',
   frameGuideOff: '画幅：关',
@@ -398,6 +416,17 @@ const enUS: EditorMessages = {
     cannotShow: 'This texture only exists as KTX2, which the browser cannot show: put its source image back in the asset browser', nothingFound: 'Nothing was found (is the texture fully transparent?)',
     sliced: (count) => `Sliced ${count} sprites, replacing the ones on this texture`, noImage: (path) => `No image at ${path}`,
   },
+  library: {
+    materials: 'Materials', effects: 'Effects', all: 'All',
+    categories: { metal: 'Metal', plastic: 'Plastic and paint', glass: 'Glass', emissive: 'Emissive', stone: 'Stone and brick', wood: 'Wood', fabric: 'Fabric', fire: 'Fire', smoke: 'Smoke', sparks: 'Sparks', magic: 'Magic', ambient: 'Ambient', water: 'Water' },
+    names: {
+      gold: 'Gold', copper: 'Copper', chrome: 'Chrome', brushedSteel: 'Brushed steel', carPaint: 'Car paint', glossyPlastic: 'Glossy plastic', mattePlastic: 'Matte plastic', rubber: 'Rubber', clearGlass: 'Clear glass',
+      neonCyan: 'Neon (cyan)', neonMagenta: 'Neon (magenta)', concrete: 'Concrete', redBrick: 'Red brick', stoneTiles: 'Stone tiles', wood: 'Wood', marble: 'Marble', fabric: 'Fabric',
+      campfire: 'Campfire', smokeColumn: 'Smoke column', steam: 'Steam', sparks: 'Sparks', magicOrb: 'Magic orb', dustMotes: 'Dust motes', fountain: 'Fountain',
+    },
+    use: 'Use on the selected entities', add: 'Add to the scene', hint: 'Drag a material onto an object in the viewport, or select objects and click Use; a copy goes into the project (Materials/Library) and is not linked to the library afterwards',
+    used: (name, count) => `${name} is used on ${count} entit${count === 1 ? 'y' : 'ies'}`, noModel: 'None of the selected entities has a model', added: (name) => `Added ${name}`,
+  },
   sound: {
     title: 'Sound generator', play: 'Play', stop: 'Stop', mutate: 'Mutate', mutateTitle: 'Change the current parameters a little at random (Mutate in sfxr)',
     presetsTitle: 'Generate a random one of this kind (replaces the parameters)',
@@ -415,7 +444,7 @@ const enUS: EditorMessages = {
   viewportToolbar: 'Viewport toolbar',
   openDocuments: 'Open documents',
   selectedCount: (n) => `${n} selected`,
-  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet' },
+  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet', library: 'Library' },
   language: 'Interface language',
   frameGuide: 'Frame guide (the frame and safe areas over the viewport, for composing shots)',
   frameGuideOff: 'Frame: off',

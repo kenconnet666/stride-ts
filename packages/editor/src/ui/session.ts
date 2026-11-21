@@ -22,6 +22,7 @@ import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEn
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
 import { freeAssetPath } from '../newAssets';
+import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../library/index.ts';
 import type { EditAgent, EditableScene, Game, PaintBrush, PolyEditSession, PolySelection, PolySelectMode, SnapSettings } from '@stride-ts/engine';
 import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
 import type { PolyMeshFile } from '@stride-ts/engine/content-format';
@@ -125,6 +126,8 @@ export class EditorSession implements EditableScene {
   readonly notice = shallowRef('');
   /** 最近一次操作做成了什么（工具条上不显眼地显示；有 notice 时让给它）。 */
   readonly status = shallowRef('');
+  /** 正在从库窗口往外拖东西（视口盖上一层接放下）。 */
+  readonly libraryDragging = shallowRef(false);
   /**
    * 属性面板正在编辑的资源（资源浏览器里选中的材质、JSON 写的模型）：改了马上存（稍等一下，连着拖只存最后一次），后端推送
    * 变化以后视口里用到它的实体热重载。选了实体时清掉。
@@ -786,6 +789,56 @@ export class EditorSession implements EditableScene {
     this.apply(this.#requireDocument().addChild(entity));
     this.commit();
     // 游戏页面里建好了实体再选：代理只认场景里有的实体
+    await this.#synced;
+    this.select([entity.id]);
+  }
+
+  /**
+   * 库里的材质（library/）用在这些实体上：工程里还没有就先拷一份（`Materials/Library/<名字>`，有了就用工程里的，那份可能改过），
+   * 再把实体模型组件的每个材质槽都换成它（一步撤销）。没有模型组件的实体不动；返回换了几个实体。
+   */
+  async useLibraryMaterial(id: string, entities: readonly string[]): Promise<number> {
+    const item = LIBRARY_MATERIALS.find((candidate) => candidate.id === id);
+    if (!item) throw new Error(`no library material '${id}'`);
+    const path = libraryMaterialPath(id);
+    if (!this.assets.value.some((asset) => asset.kind === 'material' && asset.path === path)) await this.createAsset('material', path, item.material);
+    const edits: SceneEdit[] = this.expanded.filter((entity) => entities.includes(entity.id) && entity.components['model'] !== undefined).map((entity) => {
+      const slots = ((entity.components['model'] as { materials?: readonly unknown[] }).materials ?? []);
+      return { type: 'set', entity: entity.id, path: ['components', 'model', 'materials'], value: (slots.length > 0 ? slots : [null]).map(() => path) };
+    });
+    if (edits.length === 0) return 0;
+    this.apply(edits.length === 1 ? edits[0]! : { type: 'batch', edits });
+    this.commit();
+    return edits.length;
+  }
+
+  /**
+   * 库窗口拖来的东西放在视口的 (x, y)（CSS 像素）：材质用在那里的实体上，特效放在那里的表面上（没点到表面时放在原点）。
+   * value 是 `material:<id>` 或 `effect:<id>`（LibraryPanel 的拖放数据）。
+   */
+  async dropLibraryItem(value: string, x: number, y: number): Promise<void> {
+    const agent = this.agent.value;
+    if (!agent) return;
+    const [kind, id] = value.split(':') as [string, string];
+    const name = t.library.names[id] ?? id;
+    if (kind === 'material') {
+      const entity = await agent.pick(x, y);
+      const count = entity === undefined ? 0 : await this.useLibraryMaterial(id, [entity]);
+      this.status.value = count > 0 ? t.library.used(name, count) : t.library.noModel;
+      return;
+    }
+    const surface = await agent.game.pickSurface(x, y);
+    await this.addLibraryEffect(id, surface?.point ?? [0, 0, 0]);
+    this.status.value = t.library.added(name);
+  }
+
+  /** 库里的特效加进场景：一个带粒子系统组件的新实体，放在 at（默认原点），加完选中它。 */
+  async addLibraryEffect(id: string, at: readonly [number, number, number] = [0, 0, 0]): Promise<void> {
+    const item = LIBRARY_EFFECTS.find((candidate) => candidate.id === id);
+    if (!item) throw new Error(`no library effect '${id}'`);
+    const entity: SceneEntityFile = { id: crypto.randomUUID(), name: libraryAssetName(id), parent: null, position: [...at], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { particleSystem: structuredClone(item.particleSystem) } };
+    this.apply(this.#requireDocument().addChild(entity));
+    this.commit();
     await this.#synced;
     this.select([entity.id]);
   }

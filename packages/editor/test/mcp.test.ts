@@ -135,6 +135,31 @@ describe('编辑器的 MCP 服务', () => {
     ]);
   }, 60_000);
 
+  test('库：列出材质和特效；材质拷进工程（已有的留着）、用在实体的每个材质槽上，特效加成场景里一个带粒子系统的实体', async () => {
+    const library = (await mcp.call('list_library', {})).value;
+    expect(library.materials).toContainEqual({ id: 'gold', category: 'metal', path: 'Materials/Library/Gold' });
+    expect(library.effects).toContainEqual({ id: 'campfire', category: 'fire' });
+
+    const ball = { id: 'ball-1', name: 'Ball', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { model: { model: 'Models/Ball', materials: [null, null] } } };
+    const scene = (await mcp.call('read_asset', { kind: 'scene', path: 'MainScene' })).value as SceneFile;
+    await mcp.call('edit_scene', { kind: 'scene', path: 'MainScene', edits: [{ type: 'add', entities: [{ entity: ball, index: scene.entities.length }] }] });
+    const used = await mcp.call('use_library', { id: 'gold', scene: 'MainScene', entities: ['ball-1'] });
+    expect(used.value).toMatchObject({ material: 'Materials/Library/Gold', used: [{ id: 'ball-1', name: 'Ball' }] });
+    expect((await mcp.call('read_asset', { kind: 'material', path: 'Materials/Library/Gold' })).value).toMatchObject({ name: 'Gold', metalness: 1 });
+    // 工程里那份改过了：再用一次不覆盖
+    await mcp.call('write_asset', { kind: 'material', path: 'Materials/Library/Gold', content: { name: 'Gold', baseColor: [1, 0, 0, 1], metalness: 1, roughness: 0.5 } });
+    await mcp.call('use_library', { id: 'gold' });
+    expect((await mcp.call('read_asset', { kind: 'material', path: 'Materials/Library/Gold' })).value.baseColor).toEqual([1, 0, 0, 1]);
+
+    const added = await mcp.call('use_library', { id: 'campfire', scene: 'MainScene', position: [1, 0, 2] });
+    expect(added.value.added.name).toBe('Campfire');
+    const saved = (await mcp.call('read_asset', { kind: 'scene', path: 'MainScene' })).value as SceneFile;
+    expect(saved.entities.find((entity) => entity.id === 'ball-1')!.components['model']).toMatchObject({ materials: ['Materials/Library/Gold', 'Materials/Library/Gold'] });
+    expect(saved.entities.find((entity) => entity.name === 'Campfire')).toMatchObject({ position: [1, 0, 2], components: { particleSystem: { particleSystem: { emitters: [{ emitterName: 'Flames' }, { emitterName: 'Embers' }] } } } });
+    expect((await mcp.call('use_library', { id: 'campfire' })).error).toBe(true);
+    expect((await mcp.call('use_library', { id: 'nope' })).error).toBe(true);
+  }, 60_000);
+
   test('合成音效：按类别生成（同一个种子出同一组参数，没有音频文件也不报引用缺失），在它附近变一点，没有的声音不能变', async () => {
     const first = await mcp.call('generate_sound', { path: 'Sounds/Coin', preset: 'pickup', seed: 7 });
     const again = await mcp.call('generate_sound', { path: 'Sounds/Coin2', preset: 'pickup', seed: 7 });

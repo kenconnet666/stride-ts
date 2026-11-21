@@ -1,4 +1,4 @@
-import { Clapperboard, FolderTree, Images, ListTree, SlidersHorizontal, Sparkles, Workflow } from '@lucide/icons';
+import { Clapperboard, FolderTree, Images, Library, ListTree, SlidersHorizontal, Sparkles, Workflow } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { usePersistentState } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -8,6 +8,7 @@ import { AssetBrowser } from './AssetBrowser';
 import { GraphPanel } from './GraphPanel';
 import { Inspector } from './Inspector';
 import { t } from './messages';
+import { LibraryPanel } from './LibraryPanel';
 import { ParticlePanel } from './ParticlePanel';
 import { SceneTree } from './SceneTree';
 import { SpriteSheetPanel } from './SpriteSheetPanel';
@@ -135,6 +136,7 @@ export const App = _component(({ session }: { session: EditorSession }) => {
       available: session.inspected.value?.kind === 'spriteSheet', ...(session.inspected.value ? { detail: session.inspected.value.path } : {}),
       content: () => <SpriteSheetPanel session={session} />,
     },
+    { id: 'library', title: t.toolWindows.library, icon: Library, anchor: 'rightBottom', scroll: 'self', content: () => <LibraryPanel session={session} /> },
     {
       id: 'particles', title: t.toolWindows.particles, icon: Sparkles, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,
       available: session.particleEntity.value !== undefined,

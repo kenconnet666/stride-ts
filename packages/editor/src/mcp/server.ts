@@ -15,11 +15,12 @@ import { checkEntity } from '@stride-ts/engine/editor-fields';
 import { applyPolyOperation, POLY_OPERATIONS, type PolyOperation } from '@stride-ts/engine/modeling';
 import { autoRegions, gridRegions, replaceSprites } from '@stride-ts/engine/editor-sprites';
 import { mutateSound, seededRandom, soundSynth, SOUND_PRESETS, SOUND_SYNTH_RATE, synthesizeSound, type SoundPreset } from '@stride-ts/engine/audio-synth';
-import type { PolyMeshFile, SoundFile, SpriteSheetFile, TextureEncoding } from '@stride-ts/engine/content-format';
+import type { PolyMeshFile, SceneEntityFile, SoundFile, SpriteSheetFile, TextureEncoding } from '@stride-ts/engine/content-format';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import * as z from 'zod';
 import type { AssetKind, AssetRecord } from '../protocol.ts';
+import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../library/index.ts';
 import type { EditorBackend } from '../server/EditorBackend.ts';
 
 /** 资源的种类：内容格式的扩展名表里的（字形块算字体的），加上源图片、源音频。 */
@@ -201,6 +202,58 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
     const kept = new Set(document.file.entities.map((entity) => entity.id));
     const removed = before.filter((entity) => !kept.has(entity.id)).map((entity) => ({ id: entity.id, name: entity.name }));
     return json({ saved: `${kind} ${path}`, changed: changed.map((entity) => ({ id: entity.id, name: entity.name })), removed, issues });
+  });
+
+  server.registerTool('list_library', {
+    description: 'The built-in material and effect library of the editor (the Library window): ids and categories. Materials need no textures (plain PBR or material node graphs); effects are particle systems. Use one with use_library.',
+    inputSchema: z.object({}),
+  }, async () => json({
+    materials: LIBRARY_MATERIALS.map(({ id, category }) => ({ id, category, path: libraryMaterialPath(id) })),
+    effects: LIBRARY_EFFECTS.map(({ id, category }) => ({ id, category })),
+  }));
+
+  server.registerTool('use_library', {
+    description: [
+      'Use a library item (list_library) like the Library window does.',
+      'A material is copied into the project as Materials/Library/<Name> when missing (an existing copy is kept: it may have been edited); with scene and entities, every material slot of those entities\' model components is set to it.',
+      'An effect becomes a new entity with that particle system in the scene, at position (default the origin). Returns what was saved.',
+    ].join(' '),
+    inputSchema: z.object({
+      id: z.string(),
+      kind: z.enum(['scene', 'prefab']).optional(),
+      scene: assetPath.optional().describe('scene or prefab to change'),
+      entities: z.array(z.string()).optional().describe('material: entity ids to use it on'),
+      position: z.tuple([z.number(), z.number(), z.number()]).optional().describe('effect: where to put the new entity'),
+    }),
+  }, async ({ id, kind = 'scene', scene, entities, position }) => {
+    const material = LIBRARY_MATERIALS.find((item) => item.id === id), effect = LIBRARY_EFFECTS.find((item) => item.id === id);
+    if (!material && !effect) throw new Error(`no library item '${id}' (list_library lists them)`);
+    const result: Record<string, unknown> = {};
+    if (material) {
+      const path = libraryMaterialPath(id);
+      if (!database.get('material', path)) await backend.saveAsset('material', path, material.material, { create: true });
+      result['material'] = path;
+    }
+    if (!scene) {
+      if (effect) throw new Error('use_library: an effect needs the scene to add it to');
+      return json(result);
+    }
+    const document = new SceneDocument(await backend.readAsset(kind, scene) as EntitiesFile);
+    if (material) {
+      const changed = document.file.entities.filter((entity) => (entities ?? []).includes(entity.id) && entity.components['model'] !== undefined);
+      const edits: SceneEdit[] = changed.map((entity) => {
+        const slots = (entity.components['model'] as { materials?: readonly unknown[] }).materials ?? [];
+        return { type: 'set', entity: entity.id, path: ['components', 'model', 'materials'], value: (slots.length > 0 ? slots : [null]).map(() => libraryMaterialPath(id)) };
+      });
+      document.apply({ type: 'batch', edits });
+      result['used'] = changed.map((entity) => ({ id: entity.id, name: entity.name }));
+    } else {
+      const added: SceneEntityFile = { id: crypto.randomUUID(), name: libraryAssetName(id), parent: null, position: position ?? [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { particleSystem: structuredClone(effect!.particleSystem) } };
+      document.apply(document.addChild(added));
+      result['added'] = { id: added.id, name: added.name };
+    }
+    await backend.saveAsset(kind, scene, document.file);
+    return json({ saved: `${kind} ${scene}`, ...result });
   });
 
   server.registerTool('field_schemas', {

@@ -3,6 +3,7 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { Game } from '@stride-ts/engine';
 import type { CSSProperties } from 'vue';
+import { LIBRARY_DRAG_TYPE } from './LibraryPanel';
 import { t } from './messages';
 import type { EditorSession } from './session';
 
@@ -14,6 +15,8 @@ const styles = css.create({
   opening: { position: 'absolute', inset: '0', display: 'grid', placeItems: 'center', backgroundColor: '_surface', color: '_textMuted' },
   openingShimmer: { position: 'absolute', inset: '0', borderRadius: '0' },
   guide: { position: 'absolute', inset: '0', pointerEvents: 'none', display: 'grid', placeItems: 'center', overflow: 'hidden' },
+  // 从库窗口拖东西时盖在 iframe 上接放下（拖放的事件进了 iframe 就到不了编辑器）
+  drop: { position: 'absolute', inset: '0' },
 });
 
 /**
@@ -77,6 +80,17 @@ export const Viewport = _component(({ session, playing, onShortcut, onClipboard 
     <div {...css.attrs(styles.wrap)} aria-busy={status === OPENING || undefined}>
       <iframe {...css.attrs(styles.frame)} src={playing ? '/?debug' : '/?debug&stride-edit'} title={t.gameViewport} onLoad={(event: Event) => void loaded(event)} />
       {session.frameGuide.value > 0 && frameGuide(session.frameGuide.value)}
+      {session.libraryDragging.value && (
+        <div {...css.attrs(styles.drop)}
+          onDragover={(event: DragEvent) => event.dataTransfer?.types.includes(LIBRARY_DRAG_TYPE) && event.preventDefault()}
+          onDrop={(event: DragEvent) => {
+            event.preventDefault();
+            session.libraryDragging.value = false;
+            const value = event.dataTransfer?.getData(LIBRARY_DRAG_TYPE);
+            const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+            if (value) void session.dropLibraryItem(value, event.clientX - rect.left, event.clientY - rect.top).catch((error: unknown) => (session.notice.value = (error as Error).message));
+          }} />
+      )}
       {status === OPENING && (
         <div {...css.attrs(styles.opening)} role="status">
           <Skeleton sx={styles.openingShimmer} />

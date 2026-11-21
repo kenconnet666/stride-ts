@@ -93,6 +93,19 @@ export const Light = component('Light', {
 });
 
 /**
+ * 平面反射（Stride 没有；同虚幻的 Planar Reflection、Unity HDRP 的 Planar Reflection Probe）：磨光的地面、水面、镜子、玻璃幕墙。
+ * 平面过实体的原点、法线是本地 +Y；盒子（以实体为中心，size 乘实体的缩放，跟着实体转）里朝着法线的表面的环境镜面反射用它代替
+ * 天空盒、反射探针（rendering/lighting/PlanarReflections.ts）。每帧把场景按平面镜像再画一遍（resolution 是相对主画面的分辨率），
+ * 粗糙的表面取模糊的 mip；distortion 是法线让倒影扭的程度（水面、不平的地砖）。一帧只画离相机最近的那一个。
+ */
+export const PlanarReflection = component('PlanarReflection', {
+  size: prop.vec3().default([10, 1, 10]),
+  resolution: prop.f32().default(0.5).min(0.1).max(1),
+  distortion: prop.f32().default(0.02).min(0),
+  intensity: prop.f32().default(1).min(0),
+});
+
+/**
  * 反射探针（Stride 没有；同 Unity、Godot 的 Reflection Probe）：在实体的位置拍一张立方体贴图，盒子里的表面的环境镜面反射用它
  * 代替天空盒（ReflectionProbes.ts）。盒子以实体为中心，边长是 size 乘实体的缩放（不跟旋转，同 Unity 的盒子按世界的轴摆）；
  * 离盒子的面 blendDistance 以内淡出，几个盒子重叠时小的优先。boxProjection 开着时按盒子做视差校正（室内、走廊这类近处的

@@ -19,13 +19,14 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Child scenes': '子场景', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Sky atmosphere': '物理天空',
+    'Child scenes': '子场景', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },
   names: {
+    distortion: '扭曲',
     streamFromDisk: '边下边放', spatialized: '空间化', synth: '音效生成器', wave: '波形', attack: '起音', sustain: '持续', punch: '冲击', decay: '衰减',
     frequency: '音高', minFrequency: '最低音高', slide: '滑音', deltaSlide: '滑音的变化', vibratoDepth: '颤音深度', vibratoSpeed: '颤音速度', arpeggio: '琶音',
     arpeggioSpeed: '琶音速度', repeatSpeed: '重复速度', duty: '占空比', dutySweep: '占空比的变化', phaserOffset: '镶边延迟', phaserSweep: '镶边的变化',
@@ -73,6 +74,9 @@ const zhCN: FieldMessages = {
     shakeRotation: '晃动的角度', shakePosition: '晃动的位移', shakeFrequency: '晃动的频率', sensor: '传感器', focalLength: '焦距', aperture: '光圈', focusDistance: '对焦距离', shutterAngle: '快门角', exposureCompensation: '曝光补偿', depthOfField: '景深', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
+    'box (around the entity, turning with it) whose surfaces facing the plane normal (local +Y) reflect': '盒子（以实体为中心，跟着实体转）里朝着平面法线（本地 +Y）的表面有倒影',
+    'resolution of the mirrored image relative to the main view': '镜像画面相对主画面的分辨率',
+    'how much normals that tilt away from the plane bend the reflection': '法线偏离平面时倒影扭多少',
     'like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter': '同点光：正前方同样远处同样亮；面板做大了是更柔和，不是更亮',
     'size along the local X axis': '沿本地 X 轴的尺寸',
     'size along the local Y axis; the light shines toward local -Z': '沿本地 Y 轴的尺寸；光朝本地 -Z 照',

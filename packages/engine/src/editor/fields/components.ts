@@ -1,5 +1,5 @@
 /** 实体的组件、场景的设置、实体自己的字段描述（COMPONENT_FIELDS、SCENE_FIELDS、ENTITY_FIELDS）。 */
-import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/format';
+import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/format';
 import type { SceneSettingKey } from '../SceneDocument';
 import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, nullable, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -161,6 +161,16 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       refresh: optional(oneOf('once', 'everyFrame'), 'once'),
     })),
     initial: { size: [10, 10, 10] },
+  },
+  planarReflection: {
+    label: 'Planar reflection',
+    type: object(fields<ScenePlanarReflection>({
+      size: { type: vector(3, 'm'), description: 'box (around the entity, turning with it) whose surfaces facing the plane normal (local +Y) reflect' },
+      resolution: { type: number({ min: 0.1, max: 1, step: 0.05 }), optional: true, default: 0.5, description: 'resolution of the mirrored image relative to the main view' },
+      distortion: { type: number({ min: 0, step: 0.01 }), optional: true, default: 0.02, description: 'how much normals that tilt away from the plane bend the reflection' },
+      intensity: optional(number({ min: 0 }), 1),
+    })),
+    initial: { size: [10, 1, 10] },
   },
   cameraRig: {
     label: 'Camera rig',

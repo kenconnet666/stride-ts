@@ -406,6 +406,10 @@ export class ForwardRenderer {
     const probes = renderSystem.reflectionProbes;
     probes.enabled = this.quality.reflectionProbes;
     const probeView = this.hasCamera ? probes.begin(context) : undefined;
+    // 平面反射：主画面按离相机最近的那个平面镜像着再画一遍（一个视图，和主画面一起剔除、分簇），着色时主画面用它
+    const planar = renderSystem.planarReflections;
+    planar.enabled = this.quality.planarReflections;
+    const planarView = this.hasCamera ? planar.begin(context, this.#mainView) : undefined;
     // 天空遮挡（从上往下的深度图，雨雪等用）：有人用、要重画的帧当作一个视图，和主画面一起剔除
     const sky = renderSystem.skyOcclusion;
     sky.enabled = this.quality.skyOcclusion;
@@ -413,6 +417,7 @@ export class ForwardRenderer {
     const views = [
       ...(this.hasCamera ? [this.#mainView] : []),
       ...(probeView ? [probeView] : []),
+      ...(planarView ? [planarView] : []),
       ...(skyView ? [skyView] : []),
       ...this.#textureViews.slice(0, textureCameras.length).filter((view) => this.#found.has(view)),
     ];
@@ -456,6 +461,16 @@ export class ForwardRenderer {
       this.#viewPasses(context, frame, probeView, output, depth, [this.clearColor.r, this.clearColor.g, this.clearColor.b, this.clearColor.a], this.drawTransparent, 'ReflectionProbes face');
       // 六个面齐了：翻正、出 mip、预滤波进探针的立方体数组（画进的是图外面的贴图，算副作用）
       frame.pass('ReflectionProbes filter', (pass) => pass.sideEffect(), () => probes.finish(encoder));
+    }
+    // 平面反射：镜像的画面（不画透明的、粒子）画进反射图的第 0 级，再出 mip（画在图外面的贴图里，算副作用）。在主画面之前，
+    // 主画面着色时采样它
+    const planarTarget = planarView && planar.target();
+    if (planarView && planarTarget) {
+      const { width, height } = planarView;
+      const depth = graph.texture({ label: 'PlanarReflections depth', width, height, format: DEPTH_FORMAT });
+      const output: ColorOutput = { target: planarTarget, width, height, format: HDR_FORMAT, opaque: this.opaqueStage, transparent: this.transparentStage, wireframe: this.#wireframeStage };
+      this.#viewPasses(context, frame, planarView, output, depth, [this.clearColor.r, this.clearColor.g, this.clearColor.b, this.clearColor.a], false, 'PlanarReflections');
+      frame.pass('PlanarReflections mipmaps', (pass) => pass.sideEffect(), () => planar.finish(encoder));
     }
     // 渲染目标贴图：画完原样拷进贴图
     const copy = this.#textureCopy;

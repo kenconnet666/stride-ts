@@ -206,6 +206,14 @@ export interface SceneReflectionProbe {
   readonly refresh?: 'once' | 'everyFrame';
 }
 
+/** 平面反射（Stride 没有，见 PlanarReflection 组件）：平面过实体的原点、法线是本地 +Y；没写的用组件的默认值。 */
+export interface ScenePlanarReflection {
+  readonly size: Vec3Tuple;
+  readonly resolution?: number;
+  readonly distortion?: number;
+  readonly intensity?: number;
+}
+
 /** 物理天空（Stride 没有）：各字段的意思见 SkyAtmosphere 组件；没写的用地球的默认值。 */
 export interface SceneSkyAtmosphere {
   readonly planetRadius?: number;
@@ -516,6 +524,7 @@ export interface SceneEntityFile {
       | { readonly type: 'rect'; readonly color: Vec3Tuple; readonly intensity: number; readonly width: number; readonly height: number; readonly range: number };
     readonly background?: SceneBackground;
     readonly reflectionProbe?: SceneReflectionProbe;
+    readonly planarReflection?: ScenePlanarReflection;
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     /** 镜头系统（Stride 没有，见 CameraRig 组件）：跟随、注视的实体是场景文件里的 id；没写的项用组件的默认值。 */
     readonly cameraRig?: {

@@ -17,6 +17,7 @@
 import type { Decals } from './Decals';
 import { clusterParams, type Clusters } from '../lighting/Clusters';
 import type { LocalLightBuffer } from '../lighting/LocalLights';
+import type { PlanarReflections } from '../lighting/PlanarReflections';
 import type { FrustumCuller } from '@stride-ts/native';
 import type { AnimationSystem } from '../../animation/AnimationSystem';
 import type { EntityId } from '../../data/prop';
@@ -60,12 +61,14 @@ export interface MeshBatch {
 const SHADOW_SLOPE_BIAS = 1.5;
 
 /** 每个视图的常量占一块：uniform 的动态偏移必须是 minUniformBufferOffsetAlignment（256）的整数倍。 */
-const VIEW_STRIDE = 1024;
+const VIEW_STRIDE = 1280;
 /**
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
- * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32。
+ * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32，云影、天气、贴花、分簇 20，平面反射 28。
  */
-const VIEW_FLOATS = 256;
+const VIEW_FLOATS = 288;
+/** 不用平面反射的视图在那几个数的位置写的：全是 0（用不用的那一位是 0）。 */
+const PLANAR_OFF = new Float32Array(28);
 /** 材质 uniform：Material 结构（11 个 vec4、四个标量、光泽度贴图的三个 vec4），按 16 字节对齐。 */
 const MATERIAL_BYTES = 544;
 const CHANNELS = { r: [1, 0, 0, 0], g: [0, 1, 0, 0], b: [0, 0, 1, 0], a: [0, 0, 0, 1] } as const;
@@ -302,7 +305,7 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): Gpu {
-    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters, this.system.localLights));
+    return (this.#gpu ??= new Gpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters, this.system.localLights, this.system.planarReflections));
   }
 
 
@@ -326,7 +329,10 @@ export class MeshRenderFeature extends RootRenderFeature {
     if (runs?.length === 0) return;
     // 屏幕空间的遮蔽、接触阴影是主画面不透明的那些像素的：透明的、别的视图不用
     const screenSpace = !(stage.transparent || stage.shadowCasters);
-    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined), [view.index * VIEW_STRIDE]);
+    // 平面反射图只给用它着色的视图（主画面）绑：镜像的视图正往它里面画，同一个通道里不能又画又采样
+    const planar = this.system.planarReflections;
+    const reflection = screenSpace && planar.active && view === planar.receiver ? planar.texture : undefined;
+    pass.setBindGroup(0, gpu.viewBindGroup(stage.shadowCasters ? undefined : this.system.lighting.shadowAtlas, screenSpace ? view.screenOcclusion : undefined, screenSpace ? view.screenShadow : undefined, reflection), [view.index * VIEW_STRIDE]);
     let mesh: Mesh | undefined, material: Material | undefined, pipeline: GPURenderPipeline | undefined, skinned = false;
     for (let i = 0, end = runs ? runs.length / 3 : cullPass.batchCount; i < end; i++) {
       const b = runs ? runs[i * 3]! : i;
@@ -467,6 +473,7 @@ class Gpu {
   readonly #probes: ReflectionProbes;
   /** 视图绑定组里的反射探针是哪一代（ReflectionProbes.generation）；换了要重建绑定组。 */
   #probeGeneration = -1;
+  #planarGeneration = -1;
   readonly #clouds: Clouds;
   /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
   #cloudShadow: GPUTexture | undefined;
@@ -483,6 +490,7 @@ class Gpu {
   readonly #clusters: Clusters;
   /** 点光、聚光（渲染系统一份，前向渲染器上传）；换了缓冲要重建绑定组。 */
   readonly #localLights: LocalLightBuffer;
+  readonly #planar: PlanarReflections;
   #localLightBuffer: GPUBuffer | undefined;
   /** 视图绑定组里的贴花图集和缓冲；换了要重建绑定组。 */
   #decalAtlas: GPUTexture | undefined;
@@ -534,12 +542,14 @@ class Gpu {
   /**
    * 视图绑定组：阴影图集 → 环境光遮蔽 → 接触阴影 → 绑定组。按绑在阴影位置上的深度图分开：画阴影图集时不能同时采样它。
    */
-  readonly #viewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>();
+  /** 按阴影图集、屏幕遮蔽、接触阴影、平面反射图分的视图绑定组。 */
+  readonly #viewBindGroups = new Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, Map<GPUTexture, GPUBindGroup>>>>();
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections) {
     this.device = device;
+    this.#planar = planar;
     this.#resources = resources;
     this.#subsurface = subsurface;
     this.#probes = probes;
@@ -579,6 +589,7 @@ class Gpu {
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
         { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
+        { binding: 26, visibility: GPUShaderStage.FRAGMENT, texture: {} },
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -878,6 +889,7 @@ class Gpu {
 
   uploadViews(views: readonly RenderView[], lighting: Lighting, time: number): void {
     const stride = VIEW_STRIDE / 4;
+    const planar = this.#planar;
     if (views.length * stride > this.#viewData.length) {
       this.#viewData = new Float32Array(2 ** Math.ceil(Math.log2(views.length)) * stride);
       this.#views?.destroy();
@@ -929,12 +941,14 @@ class Gpu {
       data.set([wetness, snowCover, puddles, rain], o + 240);
       data.set([this.#decals.count, 0, 0, 0], o + 244);
       data.set(clusterParams(view), o + 248);
+      data.set(planar.active && view === planar.receiver ? planar.params : PLANAR_OFF, o + 256);
     }
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer || planar.generation !== this.#planarGeneration) {
+      this.#planarGeneration = planar.generation;
       this.#clusterBuffer = this.#clusters.buffer;
       this.#localLightBuffer = this.#localLights.buffer;
       this.#decalAtlas = this.#decals.atlas;
@@ -952,15 +966,18 @@ class Gpu {
    * 视图绑定组；shadowAtlas 是这个阶段采样的阴影图集，没有阴影或者正在画阴影时用空的；occlusion 是屏幕空间的环境光遮蔽，
    * contact 是接触阴影，没有时都用白图。
    */
-  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture): GPUBindGroup {
+  viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, planar?: GPUTexture): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
     const ao = occlusion ?? this.#resources.white;
     const shadow = contact ?? this.#resources.white;
+    const reflection = planar ?? this.#planar.empty;
     let byAtlas = this.#viewBindGroups.get(atlas);
     if (!byAtlas) this.#viewBindGroups.set(atlas, (byAtlas = new Map()));
-    let groups = byAtlas.get(ao);
-    if (!groups) byAtlas.set(ao, (groups = new Map()));
-    let group = groups.get(shadow);
+    let byOcclusion = byAtlas.get(ao);
+    if (!byOcclusion) byAtlas.set(ao, (byOcclusion = new Map()));
+    let groups = byOcclusion.get(shadow);
+    if (!groups) byOcclusion.set(shadow, (groups = new Map()));
+    let group = groups.get(reflection);
     if (!group) {
       group = this.device.createBindGroup({
         label: 'MeshRenderFeature view',
@@ -990,9 +1007,10 @@ class Gpu {
           { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
           { binding: 24, resource: { buffer: this.#clusters.buffer } },
           { binding: 25, resource: { buffer: this.#localLights.ltc } },
+          { binding: 26, resource: reflection.createView() },
         ],
       });
-      groups.set(shadow, group);
+      groups.set(reflection, group);
     }
     return group;
   }

@@ -21,7 +21,7 @@ import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
 import { CameraRig } from '../rendering/CameraRig';
-import { Background, Camera, Decal, Instance, Instancing, Light, Model, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from '../rendering/components';
+import { Background, Camera, Decal, Instance, Instancing, Light, Model, PlanarReflection, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { DayNightCycle } from '../rendering/sky/DayNightCycle';
 import { Precipitation } from '../weather/Precipitation';
 import { Weather } from '../weather/Weather';
@@ -388,6 +388,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
     },
     remove: drop(ReflectionProbe),
   },
+  planarReflection: { add: (entity, { size, ...rest }) => entity.add(PlanarReflection.with({ size: [...size], ...rest })), remove: drop(PlanarReflection) },
   // 风场和雨雪（Stride 没有）：没写的字段用组件的默认值
   windZone: { add: (entity, zone) => entity.add(WindZone.with({ ...zone })), remove: drop(WindZone) },
   precipitation: { add: (entity, precipitation) => entity.add(Precipitation.with({ ...precipitation })), remove: drop(Precipitation) },

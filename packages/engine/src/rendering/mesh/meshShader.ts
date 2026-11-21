@@ -75,6 +75,12 @@ struct View {
   // (视图的前方, ln near)
   cluster: vec4f,
   clusterView: vec4f,
+  // 平面反射（lighting/PlanarReflections.ts，只有主画面有）：世界到影响盒子（-1..1）的矩阵；(用不用、最粗的 mip 级、1 / 画面宽、
+  // 1 / 画面高)；(平面法线, 扭曲)；(强度, 0, 0, 0)
+  planarToBox: mat4x4f,
+  planar: vec4f,
+  planarNormal: vec4f,
+  planarIntensity: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）和它们的阴影（点光是立方体的六个面 +Z、-Z、+X、-X、+Y、-Y 各一个矩阵，
 // 聚光只用第一个），在一个缓冲里，见 lighting/LocalLights.ts
@@ -126,6 +132,8 @@ struct Decal { toBox: mat4x4f, albedo: vec4f, normal: vec4f, color: vec4f, fade:
 ${CLUSTER_WGSL}
 // 矩形光的 LTC 查找表（lighting/ltcTable.ts，64 × 64，每格 8 个半精度数）；场景里有矩形光时才填（localLightData[0].y 是 1）
 @group(0) @binding(25) var<uniform> ltcTable: array<vec4u, 4096>;
+// 平面反射图（镜像着画的场景，左右颠倒，带 mip）；这一帧没有平面反射时是 1x1 的空图
+@group(0) @binding(26) var planarTexture: texture_2d<f32>;
 ${LTC_WGSL}
 
 /** 像素所在的簇的簇头在 clusters 里的下标；视图没分簇时是 -1（看所有的光和贴花）。 */
@@ -1161,6 +1169,23 @@ fn rectLight(s: Surface, light: LocalLight, world: vec3f) -> Lit {
   return result;
 }
 
+/**
+ * 平面反射（PlanarReflections）：在影响盒子里、法线朝着平面法线的表面，取镜像画面同一个屏幕位置（u 翻回来）的颜色；法线偏离
+ * 平面法线的部分按扭曲挪一点（水面、不平的地砖），粗糙的取模糊的 mip。a 是权重：盒子边上、法线偏得多的淡出。
+ */
+fn planarSpecular(world: vec3f, fragment: vec2f, n: vec3f, roughness: f32) -> vec4f {
+  let box = (view.planarToBox * vec4f(world, 1.0)).xyz;
+  let facing = dot(n, view.planarNormal.xyz);
+  let edge = 1.0 - max(abs(box.x), abs(box.z));
+  if (abs(box.y) > 1.0 || edge <= 0.0 || facing < 0.6) {
+    return vec4f(0.0);
+  }
+  let tilt = (view.viewProjection * vec4f(n - view.planarNormal.xyz * facing, 0.0)).xy * vec2f(-0.5, -0.5) * view.planarNormal.w;
+  let uv = vec2f(1.0 - fragment.x * view.planar.z, fragment.y * view.planar.w) + tilt;
+  let color = textureSampleLevel(planarTexture, linearClamp, uv, roughness * view.planar.y * 0.6).rgb * view.planarIntensity.x;
+  return vec4f(color, saturate(edge * 8.0) * smoothstep(0.6, 0.9, facing));
+}
+
 fn shadeLight(s: Surface, l: vec3f, lightColor: vec3f, attenuation: f32, visibility: f32) -> Lit {
   let nDotL = max(dot(s.n, l), 0.0001);
   let lightColorNdotL = lightColor * (attenuation * visibility * nDotL);
@@ -1485,6 +1510,13 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   var probe = vec4f(0.0);
   if (hasSpecular && view.locals.w > 0.0) {
     probe = probeSpecular(in.world, reflection, sqrt(alphaR), cluster);
+  }
+  // 平面反射盖在探针上面：盒子里朝着平面法线的表面用镜像着画的场景（probe 是预乘过权重的）
+  if (hasSpecular && view.planar.x > 0.0) {
+    let planar = planarSpecular(in.world, in.position.xy, n, sqrt(alphaR));
+    probe = vec4f(planar.rgb * planar.a + probe.rgb * (1.0 - planar.a), planar.a + probe.a * (1.0 - planar.a));
+  }
+  if (probe.a > 0.0) {
     environment = environmentSpecular * probe.rgb * ao;
   }
   if (hasAmbient || hasSky) {

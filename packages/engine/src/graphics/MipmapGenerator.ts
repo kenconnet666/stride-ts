@@ -26,11 +26,14 @@ export class MipmapGenerator {
     this.#sampler = device.createSampler({ label: 'MipmapGenerator', minFilter: 'linear', magFilter: 'linear' });
   }
 
-  /** 由第 0 级生成其余各级，命令提交到设备队列上。 */
-  generate(texture: GPUTexture): void {
+  /**
+   * 由第 0 级生成其余各级。给了 into 时录进那个编码器（第 0 级是同一个编码器里前面画的，比如平面反射），否则自己建一个、
+   * 马上提交到设备队列上。
+   */
+  generate(texture: GPUTexture, into?: GPUCommandEncoder): void {
     if (texture.mipLevelCount <= 1) return;
     const pipeline = this.#pipelineFor(texture.format);
-    const encoder = this.#device.createCommandEncoder({ label: `mipmaps ${texture.label}` });
+    const encoder = into ?? this.#device.createCommandEncoder({ label: `mipmaps ${texture.label}` });
     for (let level = 1; level < texture.mipLevelCount; level++) {
       const pass = encoder.beginRenderPass({
         label: `mipmaps ${texture.label} level ${level}`,
@@ -47,7 +50,7 @@ export class MipmapGenerator {
       pass.draw(3);
       pass.end();
     }
-    this.#device.queue.submit([encoder.finish()]);
+    if (!into) this.#device.queue.submit([encoder.finish()]);
   }
 
   #pipelineFor(format: GPUTextureFormat): GPURenderPipeline {

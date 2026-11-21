@@ -48,6 +48,7 @@ export const SearchEverywhere = _component(({ session, playing, onTogglePlay }: 
         ? [
             ...action('snap', t.palette.toggleSnap, () => session.setSnap({ enabled: !snap.enabled })),
             ...action('surface', t.palette.toggleSurfaceSnap, () => session.setSnap({ surface: !snap.surface })),
+            ...action('vertex', t.palette.toggleVertexSnap, () => session.setSnap({ vertex: !snap.vertex })),
           ]
         : []),
     ];

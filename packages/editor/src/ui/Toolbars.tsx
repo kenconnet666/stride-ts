@@ -5,7 +5,7 @@
  * - ViewportToolbar：视口上面，对选中实体的操作、吸附、画幅参考线；
  * - StatusBar：最下面，提示和出错、选中几个、界面语言。
  */
-import { Activity, ArrowDownToLine, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
+import { Activity, ArrowDownToLine, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, Magnet, SquareDot, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
 import type { PolyOperation } from '@stride-ts/engine/modeling';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -106,6 +106,7 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
     return [
       <IconButton {...iconProps} icon={Magnet} variant={snap.enabled ? 'soft' : 'ghost'} aria-pressed={snap.enabled} aria-label={snap.enabled ? t.snapOn : t.snapOff} title={snap.enabled ? t.snapOn : t.snapOff} onClick={() => session.setSnap({ enabled: !snap.enabled })} />,
       <IconButton {...iconProps} icon={ArrowDownToLine} variant={snap.surface ? 'soft' : 'ghost'} aria-pressed={snap.surface === true} aria-label={snap.surface ? t.snapSurfaceOn : t.snapSurfaceOff} title={snap.surface ? t.snapSurfaceOn : t.snapSurfaceOff} onClick={() => session.setSnap({ surface: !snap.surface })} />,
+      <IconButton {...iconProps} icon={SquareDot} variant={snap.vertex ? 'soft' : 'ghost'} aria-pressed={snap.vertex === true} aria-label={snap.vertex ? t.snapVertexOn : t.snapVertexOff} title={snap.vertex ? t.snapVertexOn : t.snapVertexOff} onClick={() => session.setSnap({ vertex: !snap.vertex })} />,
       step('translate', 0.001),
       step('rotate', 0.01),
       step('scale', 0.001),

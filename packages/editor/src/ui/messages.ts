@@ -24,7 +24,9 @@ export interface EditorMessages {
   readonly snapOff: string;
   readonly snapSurfaceOn: string;
   readonly snapSurfaceOff: string;
-  readonly palette: { readonly title: string; readonly placeholder: string; readonly actions: string; readonly entities: string; readonly assets: string; readonly toggleRealtime: string; readonly toggleSnap: string; readonly toggleSurfaceSnap: string };
+  readonly snapVertexOn: string;
+  readonly snapVertexOff: string;
+  readonly palette: { readonly title: string; readonly placeholder: string; readonly actions: string; readonly entities: string; readonly assets: string; readonly toggleRealtime: string; readonly toggleSnap: string; readonly toggleSurfaceSnap: string; readonly toggleVertexSnap: string };
   readonly snapStep: { readonly [K in 'translate' | 'rotate' | 'scale']: { readonly label: string; readonly title: string } };
   readonly prefabTitle: (path: string) => string;
   readonly mainToolbar: string;
@@ -190,7 +192,9 @@ const zhCN: EditorMessages = {
   snapOff: '吸附关着（拖的时候按住 Ctrl 临时吸附）',
   snapSurfaceOn: '吸附到表面开着：拖移动的操纵器时东西落到光标下的表面上（底面贴着它）',
   snapSurfaceOff: '吸附到表面关着：点一下打开，拖移动的操纵器时东西落到光标下的表面上',
-  palette: { title: '到处搜', placeholder: '搜操作、实体、资源', actions: '操作', entities: '场景里的实体', assets: '资源', toggleRealtime: '视口一直出帧（开关）', toggleSnap: '吸附（开关）', toggleSurfaceSnap: '吸附到表面（开关）' },
+  snapVertexOn: '吸附到顶点开着：拖移动的操纵器时，东西上离光标最近的顶点对到光标下另一个物体的顶点上',
+  snapVertexOff: '吸附到顶点关着：点一下打开（拖的时候按住 V 也行），东西上的顶点对到光标下另一个物体的顶点上',
+  palette: { title: '到处搜', placeholder: '搜操作、实体、资源', actions: '操作', entities: '场景里的实体', assets: '资源', toggleRealtime: '视口一直出帧（开关）', toggleSnap: '吸附（开关）', toggleSurfaceSnap: '吸附到表面（开关）', toggleVertexSnap: '吸附到顶点（开关）' },
   snapStep: {
     translate: { label: '移动', title: '移动的步长（米）' },
     rotate: { label: '旋转', title: '旋转的步长（度）' },
@@ -364,7 +368,9 @@ const enUS: EditorMessages = {
   snapOff: 'Snapping is off (hold Ctrl while dragging to snap)',
   snapSurfaceOn: 'Surface snapping is on: dragging the move gizmo drops things onto the surface under the cursor (resting on their bottom)',
   snapSurfaceOff: 'Surface snapping is off: click to drop things onto the surface under the cursor while dragging the move gizmo',
-  palette: { title: 'Search everywhere', placeholder: 'Search actions, entities, assets', actions: 'Actions', entities: 'Entities in the scene', assets: 'Assets', toggleRealtime: 'Toggle realtime viewport', toggleSnap: 'Toggle snapping', toggleSurfaceSnap: 'Toggle snapping to surfaces' },
+  snapVertexOn: 'Vertex snapping is on: dragging the move gizmo puts the vertex nearest the cursor onto a vertex of the object under the cursor',
+  snapVertexOff: 'Vertex snapping is off: click (or hold V while dragging) to put a vertex onto a vertex of the object under the cursor',
+  palette: { title: 'Search everywhere', placeholder: 'Search actions, entities, assets', actions: 'Actions', entities: 'Entities in the scene', assets: 'Assets', toggleRealtime: 'Toggle realtime viewport', toggleSnap: 'Toggle snapping', toggleSurfaceSnap: 'Toggle snapping to surfaces', toggleVertexSnap: 'Toggle snapping to vertices' },
   snapStep: {
     translate: { label: 'Move', title: 'Move step (meters)' },
     rotate: { label: 'Rotate', title: 'Rotation step (degrees)' },

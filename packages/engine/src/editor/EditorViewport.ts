@@ -4,7 +4,8 @@
  *   Game.pick），全屏的 UI 点不到；选中的框是它们的包围盒、UI 的那块板，反射探针另画它影响的盒子；
  * - 左键拖操纵器的把手：改选中的实体的位置、旋转、缩放，每帧一个修改（同一次拖并成撤销的一步）；吸附照 EditAgent.snap，
  *   按住 Ctrl 反过来；吸附到表面（snap.surface）开着时拖移动的把手，东西落到光标下的表面上（点选读回的深度，拖着的东西
- *   临时放进 SURFACE_DRAG_GROUP 这个渲染组、点选时不画，自己不挡）；
+ *   临时放进 SURFACE_DRAG_GROUP 这个渲染组、点选时不画，自己不挡）；吸附到顶点（snap.vertex，或拖的时候按住 V）时，拖着的东西上
+ *   离光标最近的顶点对到光标下另一个物体上离点到的地方最近的顶点（同一套点选）；
  * - W、E、R：移动、旋转、缩放；F：把选中的东西放到画面中间；相机的操作见 EditorCamera。
  * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）时左键换成那个工具的：画笔刷；点选点、边、面（1、2、3 换模式，
  *   Shift、Ctrl 加选），操纵器拖选中的顶点（PolyEditTool）。
@@ -17,12 +18,13 @@ import type { PointerEvent } from '../input/InputManager';
 import { Matrix, type Matrix4 } from '../data/Matrix';
 import { Quaternion, Vector3 } from '../data/vectors';
 import { screenToWorldRaySegment, worldToScreen } from '../rendering/cameraRays';
-import { Camera, Model } from '../rendering/components';
+import { Camera, Model, ModelPart } from '../rendering/components';
 import type { EditAgent } from './EditAgent';
 import type { LiveScene } from './LiveScene';
 import type { SceneEdit } from './SceneDocument';
 import { applyGizmoChange, applySnap, type GizmoAxis, type GizmoChange, type GizmoHandle, type Ray, type TransformGizmo } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
+import { Mesh } from '../rendering/mesh/Mesh';
 import { raycastMesh } from '../rendering/paint/MeshPainter';
 import { selectionVertices } from '../modeling/polyEdit';
 import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformVertices, worldVertices, type PolySelectMode } from './PolyEditTool';
@@ -67,12 +69,19 @@ interface DragStart {
   readonly parentRotationInverse: Quaternion | undefined;
 }
 
-/** 吸附到表面的一次拖：换了渲染组的模型（松开时换回）、底面到原点的高度、正在等的点选。 */
-interface SurfaceDrag {
+/**
+ * 吸附到表面或顶点的一次拖（都靠点选光标下的东西）：换了渲染组的模型（松开时换回）、往哪吸、正在等的点选。
+ * - surface：lift 是第一个选中的实体的原点比它的选中框的底面高多少（落到表面上时原点放在表面上方这么高）；
+ * - vertex：anchor 是拖着的东西上离按下处最近的顶点（拖之前的世界坐标），它对到点到的物体上离点到的地方最近的顶点；
+ *   点到的物体的顶点换成世界坐标后存在 worlds 里（拖的时候它不动）。
+ */
+interface PickDrag {
   readonly groups: readonly (readonly [Entity, number])[];
-  /** 第一个选中的实体的原点比它的选中框的底面高多少（落到表面上时原点放在表面上方这么高）。 */
-  readonly lift: number;
+  readonly target: { readonly kind: 'surface'; readonly lift: number } | { readonly kind: 'vertex'; readonly anchor: Vector3; readonly worlds: Map<Entity, Float32Array> };
+  /** 有一次点选在路上（拖的时候一次只发一个）。 */
   picking: boolean;
+  /** 松开了：最后一次点选（松开的位置）已经发出，回来以后结束这次拖；之前发的回来了不再用。 */
+  ending: boolean;
 }
 
 /** 视口里的操作和画在场景上面的东西（选中的框、操纵器）。挂在编辑相机的实体上，每帧跑。 */
@@ -80,7 +89,7 @@ export class EditorViewport extends SyncScript {
   static override scriptName = 'EditorViewport';
   agent: EditAgent | undefined;
   #hover: GizmoHandle | undefined;
-  #drag: { readonly starts: readonly DragStart[]; readonly key: string; readonly surface?: SurfaceDrag } | undefined;
+  #drag: { readonly starts: readonly DragStart[]; readonly key: string; readonly pick?: PickDrag } | undefined;
   #pressed: readonly [number, number] | undefined;
   #drags = 0;
   /** 多边形编辑里正在拖的操纵器：按下时的网格和要动的顶点（结果每帧从它算）。 */
@@ -135,25 +144,32 @@ export class EditorViewport extends SyncScript {
     else if (this.#drag) this.#endDrag(agent);
 
     if (roots.length > 0 && !this.#drag) this.#hover = navigating ? undefined : gizmo.pick(pixel, this.#project);
-    if (input.isMouseButtonPressed('left') && !navigating) {
+    // 吸附到表面、顶点的拖松开以后还要等最后一次点选回来：那之前不开始新的拖
+    if (input.isMouseButtonPressed('left') && !navigating && !this.#drag) {
       // 帧率低（标签页在后台、机器卡）时按下、拖动、松开可能落在同一帧：按下用按下那一刻的位置（指针事件里记着），
       // 不用这一帧鼠标最后在的地方，不然点不到把手、点选点错地方
       const at = this.#pressPixel(input.pointerEvents) ?? pixel;
       const handle = roots.length > 0 ? gizmo.pick(at, this.#project) : undefined;
       if (handle && gizmo.begin(handle, this.#ray(at), at)) {
-        const surface = agent.snap.surface === true && gizmo.mode === 'translate' ? this.#beginSurface(roots) : undefined;
-        this.#drag = { starts: roots.map((entity) => this.#dragStart(live, entity)), key: `gizmo:${++this.#drags}`, ...(surface ? { surface } : {}) };
+        const vertex = agent.snap.vertex === true || input.isKeyDown('KeyV');
+        const pick = gizmo.mode !== 'translate' ? undefined
+          : vertex ? this.#beginPickDrag(roots, 'vertex', at)
+            : agent.snap.surface === true ? this.#beginPickDrag(roots, 'surface', at) : undefined;
+        this.#drag = { starts: roots.map((entity) => this.#dragStart(live, entity)), key: `gizmo:${++this.#drags}`, ...(pick ? { pick } : {}) };
       } else {
         this.#pressed = at;
       }
     }
     // 同一帧里松开的也先拖到松开的位置再结束
     if (this.#drag && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) {
-      if (this.#drag.surface) this.#surfaceDrag(agent, pixel, this.#drag.surface);
+      if (this.#drag.pick) this.#pickDrag(agent, pixel, this.#drag.pick, input.isMouseButtonReleased('left'));
       else this.#applyDrag(agent, pixel);
     }
     if (input.isMouseButtonReleased('left')) {
-      if (this.#drag) this.#endDrag(agent);
+      // 吸附到表面、顶点的拖在最后一次点选回来时自己结束
+      if (this.#drag) {
+        if (!this.#drag.pick) this.#endDrag(agent);
+      }
       else if (this.#pressed && Math.hypot(pixel[0] - this.#pressed[0], pixel[1] - this.#pressed[1]) < CLICK_PIXELS) this.#click(agent, pixel, input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
       this.#pressed = undefined;
     }
@@ -338,10 +354,10 @@ export class EditorViewport extends SyncScript {
   }
 
   /**
-   * 开始吸附到表面的拖：拖着的实体和它们的后代上的模型换进 SURFACE_DRAG_GROUP（点选时不画），量第一个实体的原点比它的
-   * 选中框的底面高多少。
+   * 开始吸附到表面或顶点的拖：拖着的实体和它们的后代上的模型换进 SURFACE_DRAG_GROUP（点选时不画）。表面：量第一个实体的
+   * 原点比它的选中框的底面高多少；顶点：找拖着的模型上投到画面里离按下处最近的顶点（没有模型时用第一个实体的原点）。
    */
-  #beginSurface(roots: readonly Entity[]): SurfaceDrag {
+  #beginPickDrag(roots: readonly Entity[], kind: 'surface' | 'vertex', pressed: readonly [number, number]): PickDrag {
     const groups: (readonly [Entity, number])[] = [];
     const visit = (entity: Entity) => {
       const model = entity.get(Model);
@@ -353,30 +369,61 @@ export class EditorViewport extends SyncScript {
     };
     roots.forEach(visit);
     const first = roots[0]!;
-    const origin = currentWorld(first)[13]!;
+    const world = currentWorld(first);
+    if (kind === 'vertex') {
+      let anchor = new Vector3(world[12]!, world[13]!, world[14]!), best = Infinity;
+      for (const [entity] of groups) {
+        const vertices = worldVerticesOf(entity);
+        for (let i = 0; vertices && i < vertices.length; i += 3) {
+          const point = { x: vertices[i]!, y: vertices[i + 1]!, z: vertices[i + 2]! };
+          const screen = this.#project(point);
+          const distance = screen ? (screen[0] - pressed[0]) ** 2 + (screen[1] - pressed[1]) ** 2 : Infinity;
+          if (distance < best) [best, anchor] = [distance, new Vector3(point.x, point.y, point.z)];
+        }
+      }
+      return { groups, target: { kind, anchor, worlds: new Map() }, picking: false, ending: false };
+    }
     let bottom = Infinity;
     for (const { matrix, halfExtents: [hx, hy, hz] } of selectionBoxes(this.game, first)) {
       // 盒子八个角里最低的
       for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) bottom = Math.min(bottom, Matrix.transformPoint(matrix, sx * hx, sy * hy, sz * hz)[1]);
     }
-    return { groups, lift: Number.isFinite(bottom) ? origin - bottom : 0, picking: false };
+    return { groups, target: { kind, lift: Number.isFinite(bottom) ? world[13]! - bottom : 0 }, picking: false, ending: false };
   }
 
   /**
-   * 吸附到表面的拖的一帧：点选光标下的表面（拖着的不算），读回来以后把第一个实体的原点放到表面上方 lift 处，别的选中的实体跟着
-   * 挪一样多。读回要等一两帧：上一次的还没回来时不再发。点到空处（天空）时不动。
+   * 吸附到表面或顶点的拖的一帧：点选光标下的东西（拖着的不算），读回来以后——表面：把第一个实体的原点放到表面上方 lift 处；
+   * 顶点：把 anchor 挪到点到的物体上离点到的地方最近的顶点。别的选中的实体跟着挪一样多。读回要等一两帧：上一次的还没回来时
+   * 不再发。点到空处（天空）、点到的东西没有顶点时不动。last（松开了）时不管有没有在路上的都发，回来以后结束这次拖：不然
+   * 松开前最后一段拖动没有点选回来，东西停在半路上。
    */
-  #surfaceDrag(agent: EditAgent, pixel: readonly [number, number], surface: SurfaceDrag): void {
+  #pickDrag(agent: EditAgent, pixel: readonly [number, number], pick: PickDrag, last: boolean): void {
     const drag = this.#drag;
-    if (!drag || surface.picking) return;
-    surface.picking = true;
+    if (!drag || pick.ending || (pick.picking && !last)) return;
+    pick.picking = true;
+    pick.ending = last;
     void this.game.pickSurface(pixel[0], pixel[1], (1 << SURFACE_DRAG_GROUP) >>> 0).then((hit) => {
-      surface.picking = false;
-      if (!hit || this.#drag !== drag) return;
-      const start = drag.starts[0]!.position;
-      const delta = new Vector3(hit.point[0] - start.x, hit.point[1] + surface.lift - start.y, hit.point[2] - start.z);
-      this.#applyChange(agent, { type: 'translate', delta });
+      if (!last) pick.picking = false;
+      if (this.#drag !== drag || (pick.ending && !last)) return;
+      if (hit) this.#moveToPicked(agent, drag.starts[0]!, pick, hit);
+      if (last) this.#endDrag(agent);
     });
+  }
+
+  /** 点选回来了：按吸附的种类算出挪多少（first 是第一个选中的实体拖之前的样子），改文档。 */
+  #moveToPicked(agent: EditAgent, first: DragStart, pick: PickDrag, hit: { readonly entity: Entity | undefined; readonly point: readonly number[] }): void {
+    const { target } = pick;
+    let from: Vector3, to: readonly number[];
+    if (target.kind === 'surface') {
+      from = first.position;
+      to = [hit.point[0]!, hit.point[1]! + target.lift, hit.point[2]!];
+    } else {
+      const vertex = hit.entity && nearestVertex(target.worlds, hit.entity, hit.point);
+      if (!vertex) return;
+      from = target.anchor;
+      to = vertex;
+    }
+    this.#applyChange(agent, { type: 'translate', delta: new Vector3(to[0]! - from.x, to[1]! - from.y, to[2]! - from.z) });
   }
 
   /** 把这一帧拖到的结果换成对文档的修改：每个实体从拖之前的样子算，世界里的值换回本地的。 */
@@ -406,8 +453,8 @@ export class EditorViewport extends SyncScript {
   }
 
   #endDrag(agent: EditAgent): void {
-    // 吸附到表面时换掉的渲染组换回来（实体可能在拖的时候被删了）
-    for (const [entity, group] of this.#drag?.surface?.groups ?? []) {
+    // 吸附到表面、顶点时换掉的渲染组换回来（实体可能在拖的时候被删了）
+    for (const [entity, group] of this.#drag?.pick?.groups ?? []) {
       const model = entity.alive ? entity.get(Model) : undefined;
       if (model) model.renderGroup = group;
     }
@@ -448,4 +495,41 @@ export class EditorViewport extends SyncScript {
       } else draw.polyline(outline, color, { ...options, closed: true });
     }
   }
+}
+
+/** 实体的模型的顶点（世界坐标，x、y、z 连着排）；没有模型时是 undefined。蒙皮、形变的按绑定时的样子。 */
+function worldVerticesOf(entity: Entity): Float32Array | undefined {
+  const model = entity.get(Model);
+  const mesh = model ? Mesh.byId(model.mesh) : undefined;
+  if (!mesh) return undefined;
+  const local = mesh.positions(), m = currentWorld(entity);
+  const world = new Float32Array(local.length);
+  for (let i = 0; i < local.length; i += 3) {
+    const x = local[i]!, y = local[i + 1]!, z = local[i + 2]!;
+    world[i] = m[0]! * x + m[4]! * y + m[8]! * z + m[12]!;
+    world[i + 1] = m[1]! * x + m[5]! * y + m[9]! * z + m[13]!;
+    world[i + 2] = m[2]! * x + m[6]! * y + m[10]! * z + m[14]!;
+  }
+  return world;
+}
+
+/**
+ * entity 的模型上离 point 最近的顶点（世界坐标）。模型的网格不止一个时，多出来的挂在子实体上（ModelPart），点选报的是
+ * entity 本身：一起找。顶点换算一次存进 cache（一次拖里它不动）。
+ */
+function nearestVertex(cache: Map<Entity, Float32Array>, entity: Entity, point: readonly number[]): [number, number, number] | undefined {
+  let vertices = cache.get(entity);
+  if (!vertices) {
+    const parts = [entity, ...entity.require(Transform).children.filter((child) => child.has(ModelPart))];
+    const each = parts.map(worldVerticesOf).filter((part) => part !== undefined);
+    vertices = new Float32Array(each.reduce((total, part) => total + part.length, 0));
+    each.reduce((offset, part) => (vertices!.set(part, offset), offset + part.length), 0);
+    cache.set(entity, vertices);
+  }
+  let best = Infinity, index = -1;
+  for (let i = 0; i < vertices.length; i += 3) {
+    const distance = (vertices[i]! - point[0]!) ** 2 + (vertices[i + 1]! - point[1]!) ** 2 + (vertices[i + 2]! - point[2]!) ** 2;
+    if (distance < best) [best, index] = [distance, i];
+  }
+  return index < 0 ? undefined : [vertices[index]!, vertices[index + 1]!, vertices[index + 2]!];
 }

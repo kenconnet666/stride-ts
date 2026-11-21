@@ -19,7 +19,8 @@ function random(seed: number): () => number {
   };
 }
 
-const json = (value: unknown) => JSON.stringify(value, null, 1) + '\n';
+// 同编辑器后端写的格式（缩进 1、末尾不换行）：编辑器打开、不改就存，文件逐字节不变
+const json = (value: unknown) => JSON.stringify(value, null, 1);
 const entity = (id: string, name: string, position: number[], components: object, scale = [1, 1, 1]) => ({ id, name, parent: null, position, rotation: [0, 0, 0, 1], scale, components });
 
 await rm(worldDir, { recursive: true, force: true });

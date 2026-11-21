@@ -32,18 +32,19 @@ const status = stride('status') as { status: string; error: string | null };
 check('Raycasting 在跑', status.status === 'running' && status.error === null, status);
 const texts = stride('eval', `strideGame.ui.components.flatMap((c) => [...(c.page?.rootElement?.children ?? [])]).map((e) => e.text ?? e.name)`) as string[];
 check('UI：下方的字和两边换场景的按钮', ['Shoot the cubes!', '<<', '>>'].every((text) => texts.includes(text)), texts);
-// 第一个箱子在画面上的位置（按主视图投影），把合成的指针从画布中心移过去点它
-const target = stride('eval', `${BODIES} const w = g.entities.entity(ids[0]).require(strideEngine.Transform).world;
-  const m = g.renderSystem.views[0].viewProjection; const c = g.graphicsDevice.canvas;
-  const x = m[0] * w[12] + m[4] * w[13] + m[8] * w[14] + m[12], y = m[1] * w[12] + m[5] * w[13] + m[9] * w[14] + m[13], h = m[3] * w[12] + m[7] * w[13] + m[11] * w[14] + m[15];
-  ({ id: ids[0], dx: (x / h) * c.clientWidth / 2, dy: (-y / h) * c.clientHeight / 2 })`) as { id: number; dx: number; dy: number };
-// 点和等都在页面里：分成几条 CLI 命令时，单核慢、负载重的机器上命令之间隔得太久。等到箱子升高（最多 2 秒游戏时间）：
-// CI 的软件 WebGPU 上一帧就超过 0.25 秒，物理一帧走的步数有上限，固定等 0.25 秒时箱子可能还没被推起来
-const pushed = stride('eval', `(async () => { const height = () => strideGame.entities.entity(${target.id}).require(strideEngine.Transform).world[13];
-  const c = strideGame.graphicsDevice.canvas, before = height();
-  await click(c.clientWidth / 2 + ${target.dx}, c.clientHeight / 2 + ${target.dy});
-  await until(() => height() > before + 0.1, 2);
-  return { before, after: height(), frames: strideGame.frames }; })()`) as { before: number; after: number };
+// 第一个箱子在画面上的位置（按主视图投影）：把合成的指针从画布中心移过去点它，等它升高（最多 2 秒游戏时间：CI 的软件 WebGPU
+// 上一帧就超过 0.25 秒，物理一帧走的步数有上限）。点和等都在页面里：分成几条 CLI 命令时，单核慢、负载重的机器上命令之间隔得
+// 太久。场景刚开头那几帧主视图和箱子还在落定（CI 上第 29 帧点空过一次），没推起来就重新瞄准再点，最多三次
+const pushed = stride('eval', `(async () => { ${BODIES}
+  const box = g.entities.entity(ids[0]), height = () => box.require(strideEngine.Transform).world[13], c = g.graphicsDevice.canvas;
+  const before = height();
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const w = box.require(strideEngine.Transform).world, m = g.renderSystem.views[0].viewProjection;
+    const x = m[0] * w[12] + m[4] * w[13] + m[8] * w[14] + m[12], y = m[1] * w[12] + m[5] * w[13] + m[9] * w[14] + m[13], h = m[3] * w[12] + m[7] * w[13] + m[11] * w[14] + m[15];
+    await click(c.clientWidth / 2 + (x / h) * c.clientWidth / 2, c.clientHeight / 2 - (y / h) * c.clientHeight / 2);
+    if (await until(() => height() > before + 0.1, 2)) return { before, after: height(), frames: g.frames, attempt };
+  }
+  return { before, after: height(), frames: g.frames, attempt: 3 }; })()`) as { before: number; after: number };
 check('点中的箱子被推起来', pushed.after > pushed.before + 0.1, pushed);
 
 // ---- VolumeTrigger

@@ -112,6 +112,19 @@ describe('编辑器的 MCP 服务', () => {
     expect(mutated.value.synth.wave).toBe(first.value.synth.wave);
     expect((await mcp.call('generate_sound', { path: 'Sounds/Nope', mutate: true })).error).toBe(true);
   }, 60_000);
+
+  test('一个服务能换到仓库里别的工程：project 列出别的工程，switch_project 以后别的工具都对着新工程', async () => {
+    const other = (await createProject(path.join(repo, 'apps', 'other'))).root;
+    expect((await mcp.call('project', {})).value.otherProjects).toEqual(['apps/game', 'apps/other']);
+    expect((await mcp.call('switch_project', { project: 'other' })).value).toMatchObject({ root: other });
+    expect((await mcp.call('project', {})).value.root).toBe(other);
+    // 新工程里没有前一个工程建的材质
+    expect((await mcp.call('list_assets', { kind: 'material' })).value.some((asset: { path: string }) => asset.path === 'Materials/Red')).toBe(false);
+    expect((await mcp.call('switch_project', { project: 'apps/missing' })).error).toBe(true);
+    // 换回来：前面建的材质还在
+    await mcp.call('switch_project', { project: 'apps/game' });
+    expect((await mcp.call('list_assets', { kind: 'material' })).value.some((asset: { path: string }) => asset.path === 'Materials/Red')).toBe(true);
+  }, 30_000);
 });
 
 /** width × height 的 RGBA PNG，alpha 按列给（每个像素灰色）。 */

@@ -17,9 +17,10 @@ import { writeAssetTypes } from './assetTypes.ts';
 import { EditorBackend } from './EditorBackend.ts';
 import { loadProject } from './project.ts';
 import { createProject } from './template.ts';
-import { realpathSync, watch } from 'node:fs';
+import { existsSync, realpathSync, watch } from 'node:fs';
+import { readdir } from 'node:fs/promises';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
-import { createEditorMcpServer } from '../mcp/server.ts';
+import { createEditorMcpServer, type McpProjects } from '../mcp/server.ts';
 
 const [command, directory = '.', ...rest] = process.argv.slice(2);
 if (command === 'new') {
@@ -64,18 +65,53 @@ if (command === 'assets-types') {
   process.exitCode = 1;
 }
 
-/** 用 stdio 起 MCP 服务，stdin 关了就退出。stdout 是 MCP 的通道：这里不能往 stdout 打印。 */
-async function serveMcp(editor: EditorBackend): Promise<void> {
+/**
+ * 用 stdio 起 MCP 服务，stdin 关了就退出。stdout 是 MCP 的通道：这里不能往 stdout 打印。一次编辑一个工程，switch_project 换到
+ * 仓库里别的工程（apps 下有内容目录的）：关掉旧的后端和监视，开新的。
+ */
+async function serveMcp(first: EditorBackend): Promise<void> {
   // 别的程序（编辑器、手改）改了内容目录，数据库跟上（开发服务器里是 Vite 的监视器报进来）
   // 监视按真实的长路径（Windows 的 8.3 短路径，比如临时目录的 LIONHE~1，fs.watch 的递归监视会让进程崩掉）
-  const contentDir = realpathSync.native(editor.project.contentDir);
-  const watcher = watch(contentDir, { recursive: true }, (_event, file) => file && editor.fileChanged(path.join(editor.project.contentDir, file)));
-  await createEditorMcpServer(editor).connect(new StdioServerTransport());
+  const watchContent = (editor: EditorBackend) =>
+    watch(realpathSync.native(editor.project.contentDir), { recursive: true }, (_event, file) => file && editor.fileChanged(path.join(editor.project.contentDir, file)));
+  let current = first;
+  let watcher = watchContent(current);
+  const repoRoot = findRepoRoot(current.project.root);
+  const appsDir = path.join(repoRoot, 'apps');
+  const list = async () => (await readdir(appsDir, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && existsSync(path.join(appsDir, entry.name, 'public', 'content')))
+    .map((entry) => `apps/${entry.name}`);
+  const projects: McpProjects = {
+    get current() {
+      return current;
+    },
+    list,
+    async switch(name) {
+      const relative = /[\\/]/.test(name) ? name : `apps/${name}`;
+      const root = path.resolve(repoRoot, relative);
+      if (!existsSync(path.join(root, 'public', 'content'))) throw new Error(`${relative} is not a stride-ts project (no public/content); projects: ${(await list()).join(', ')}`);
+      const next = await EditorBackend.open(root, path.join(root, 'public'));
+      watcher.close();
+      await current.close();
+      current = next;
+      watcher = watchContent(current);
+      return current;
+    },
+  };
+  await createEditorMcpServer(projects).connect(new StdioServerTransport());
   // stdin 关了（agent 退出）：停监视、放掉原生工具，事件循环空了进程自己退（Windows 上 process.exit 和正在关的监视器撞上会断言失败）
   process.stdin.on('close', () => {
     watcher.close();
-    void editor.close();
+    void current.close();
   });
+}
+
+/** 从工程目录往上找仓库的根（有 pnpm-workspace.yaml 的目录）；找不到时用工程的上两级（apps/<工程>）。 */
+function findRepoRoot(from: string): string {
+  for (let dir = from; ; dir = path.dirname(dir)) {
+    if (existsSync(path.join(dir, 'pnpm-workspace.yaml'))) return dir;
+    if (path.dirname(dir) === dir) return path.resolve(from, '..', '..');
+  }
 }
 
 function printMove({ moved, rewritten }: MoveResult): void {

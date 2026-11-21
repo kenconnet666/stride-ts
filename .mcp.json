@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "stride-editor": {
+      "command": "node",
+      "args": ["packages/editor/src/server/cli.ts", "mcp", "apps/open-world"]
+    }
+  }
+}

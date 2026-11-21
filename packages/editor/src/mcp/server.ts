@@ -33,47 +33,63 @@ const json = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSO
 /** 资源的记录去掉 agent 用不着的（修改时间、字节数）。 */
 const brief = (record: AssetRecord) => ({ kind: record.kind, path: record.path, ...(record.references.length > 0 ? { references: record.references } : {}), ...(record.error ? { error: record.error } : {}) });
 
-export function createEditorMcpServer(backend: EditorBackend): McpServer {
-  const server = new McpServer({ name: 'stride-editor', version: '0.1.0' });
-  const database = backend.database;
+/** MCP 服务编辑的工程：一次一个，switch_project 换（同一个服务能改仓库里的各个样例）。 */
+export interface McpProjects {
+  readonly current: EditorBackend;
+  /** 能换到的工程（仓库根下的相对路径，比如 apps/open-world）。 */
+  list(): Promise<string[]>;
+  /** 换到 project（list 里的路径或者工程目录的名字），返回新的后端。 */
+  switch(project: string): Promise<EditorBackend>;
+}
+
+export function createEditorMcpServer(projects: McpProjects): McpServer {
+  const server = new McpServer({ name: 'stride-editor', version: '0.2.0' });
 
   server.registerTool('project', {
-    description: 'The stride-ts project this server edits: name, folders, how many assets of each kind, broken references.',
+    description: 'The stride-ts project this server edits: name, folders, how many assets of each kind, broken references, and the other projects of the repository (switch_project).',
     inputSchema: z.object({}),
   }, async () => {
     const counts: Record<string, number> = {};
-    for (const asset of database.list()) counts[asset.kind] = (counts[asset.kind] ?? 0) + 1;
-    const { project } = backend;
-    return json({ name: project.manifest.name, root: project.root, content: project.contentDir, assets: counts, missingReferences: database.missing() });
+    for (const asset of projects.current.database.list()) counts[asset.kind] = (counts[asset.kind] ?? 0) + 1;
+    const { project } = projects.current;
+    return json({ name: project.manifest.name, root: project.root, content: project.contentDir, assets: counts, missingReferences: projects.current.database.missing(), otherProjects: await projects.list() });
+  });
+
+  server.registerTool('switch_project', {
+    description: 'Switch this server to another stride-ts project of the repository (e.g. apps/open-world, or just open-world); every other tool then works on it. See project for the list.',
+    inputSchema: z.object({ project: z.string().describe('project folder relative to the repository root, or its name') }),
+  }, async ({ project }) => {
+    const editor = await projects.switch(project);
+    return json({ name: editor.project.manifest.name, root: editor.project.root, assets: editor.database.size });
   });
 
   server.registerTool('list_assets', {
     description: 'Assets in the content folder (kind, content path, what each refers to). Filter by kind and folder.',
     inputSchema: z.object({ kind: kind.optional(), folder: z.string().optional().describe('only assets under this content folder') }),
-  }, async ({ kind, folder }) => json(database.list()
+  }, async ({ kind, folder }) => json(projects.current.database.list()
     .filter((asset) => (!kind || asset.kind === kind) && (!folder || asset.path.startsWith(`${folder}/`)))
     .map(brief)));
 
   server.registerTool('read_asset', {
     description: 'The JSON content of an asset file (scene, prefab, material, JSON model, UI page, sound, ...). Binary assets (compiled models, textures) cannot be read.',
     inputSchema: z.object({ kind, path: assetPath }),
-  }, async ({ kind, path }) => json(await backend.readAsset(kind, path)));
+  }, async ({ kind, path }) => json(await projects.current.readAsset(kind, path)));
 
   server.registerTool('write_asset', {
     description: 'Write the whole JSON content of an asset (create: only create a new one, fail if it exists). Field shapes: field_schemas. Editors and the running game hot reload it.',
     inputSchema: z.object({ kind, path: assetPath, content: z.unknown().describe('the JSON content'), create: z.boolean().optional() }),
-  }, async ({ kind, path, content, create }) => json(brief(await backend.saveAsset(kind, path, content, { create: create ?? false }))));
+  }, async ({ kind, path, content, create }) => json(brief(await projects.current.saveAsset(kind, path, content, { create: create ?? false }))));
 
   server.registerTool('delete_asset', {
     description: 'Delete an asset and its files. Refuses while other assets refer to it, unless force (their references break).',
     inputSchema: z.object({ kind, path: assetPath, force: z.boolean().optional() }),
-  }, async ({ kind, path, force }) => json(await backend.deleteAsset(kind, path, { force: force ?? false })));
+  }, async ({ kind, path, force }) => json(await projects.current.deleteAsset(kind, path, { force: force ?? false })));
 
   server.registerTool('move_asset', {
     description: 'Move or rename an asset (give kind) or a whole folder (no kind); files that refer to them are rewritten.',
     inputSchema: z.object({ kind: kind.optional(), from: z.string(), to: z.string() }),
   }, async ({ kind, from, to }) => {
-    const result = await backend.moveAssets(kind ? { assets: [{ kind, from, to }] } : { folder: from, to });
+    const result = await projects.current.moveAssets(kind ? { assets: [{ kind, from, to }] } : { folder: from, to });
     return json({ moved: result.moved.map(brief), rewritten: result.rewritten.map(brief) });
   });
 
@@ -81,7 +97,7 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
     description: 'Import a file from disk into a content folder: audio (mp3, ogg, wav, flac, aac) becomes a sound, images (png, jpg, webp, svg) a texture, glb/gltf/fbx/obj a model with materials and textures, ttf/otf/ttc a font.',
     inputSchema: z.object({ file: z.string().describe('absolute path of the file on disk'), folder: z.string().describe('content folder to put it in ("" is the root)') }),
   }, async ({ file, folder }) => {
-    const result = await backend.importFile(folder, path.basename(file), new Uint8Array(await readFile(file)));
+    const result = await projects.current.importFile(folder, path.basename(file), new Uint8Array(await readFile(file)));
     return json({ asset: brief(result.asset), warnings: result.warnings, ...(result.animations ? { animations: result.animations } : {}) });
   });
 
@@ -113,9 +129,9 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       material: z.number().int().optional(),
     }),
   }, async ({ path, ...operation }) => {
-    const mesh = await backend.readAsset('poly', path) as PolyMeshFile;
+    const mesh = await projects.current.readAsset('poly', path) as PolyMeshFile;
     const result = applyPolyOperation(mesh, operation as unknown as PolyOperation);
-    await backend.saveAsset('poly', path, result.mesh);
+    await projects.current.saveAsset('poly', path, result.mesh);
     return json({ saved: `poly ${path}`, vertexCount: result.mesh.vertices.length, faceCount: result.mesh.faces.length, selected: { faces: result.faces, edges: result.edges, vertices: result.vertices } });
   });
 
@@ -139,15 +155,15 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       pixelsPerUnit: z.number().positive().optional(),
     }),
   }, async ({ path, texture, mode, alphaThreshold, minSize, pixelsPerUnit, ...grid }) => {
-    const pixels = await backend.decodeImage(texture);
+    const pixels = await projects.current.decodeImage(texture);
     const regions = mode === 'auto'
       ? autoRegions(pixels, { ...(alphaThreshold !== undefined ? { alphaThreshold } : {}), ...(minSize !== undefined ? { minSize } : {}) })
       : gridRegions(pixels.width, pixels.height, grid, pixels, alphaThreshold ?? 0);
-    const existing = await backend.readAsset('spriteSheet', path).catch(() => undefined) as SpriteSheetFile | undefined;
+    const existing = await projects.current.readAsset('spriteSheet', path).catch(() => undefined) as SpriteSheetFile | undefined;
     const sheet = existing ?? { name: path.slice(path.lastIndexOf('/') + 1), sprites: [] };
-    const encoding = imageEncodingOf(backend.database.get('image', texture)?.files ?? []);
+    const encoding = imageEncodingOf(projects.current.database.get('image', texture)?.files ?? []);
     const replaced = replaceSprites(sheet, { texture, encoding }, regions, pixelsPerUnit);
-    await backend.saveAsset('spriteSheet', path, replaced.sheet);
+    await projects.current.saveAsset('spriteSheet', path, replaced.sheet);
     return json({ saved: `spriteSheet ${path}`, texture: [pixels.width, pixels.height], sliced: regions.length, sprites: replaced.sheet.sprites.length, regions });
   });
 
@@ -165,12 +181,12 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       spatialized: z.boolean().optional(),
     }),
   }, async ({ path, preset, mutate, seed, spatialized }) => {
-    const existing = await backend.readAsset('sound', path).catch(() => undefined) as SoundFile | undefined;
+    const existing = await projects.current.readAsset('sound', path).catch(() => undefined) as SoundFile | undefined;
     const random = seededRandom(seed ?? Math.floor(Math.random() * 0x7fffffff));
     if (mutate && existing?.encoding !== 'synth') throw new Error(`generate_sound: mutate needs an existing generated sound at ${path}`);
     const synth = mutate ? mutateSound(soundSynth(existing!.synth ?? {}), random) : SOUND_PRESETS[preset ?? 'random'](random);
     const file: SoundFile = { name: path.slice(path.lastIndexOf('/') + 1), encoding: 'synth', streamFromDisk: false, spatialized: spatialized ?? existing?.spatialized ?? false, synth };
-    await backend.saveAsset('sound', path, file);
+    await projects.current.saveAsset('sound', path, file);
     return json({ saved: `sound ${path}`, seconds: synthesizeSound(synth).length / SOUND_SYNTH_RATE, synth });
   });
 
@@ -191,14 +207,14 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       force: z.boolean().optional().describe('save even if the changed entities do not match the field descriptions'),
     }),
   }, async ({ kind, path, edits, force }) => {
-    const document = new SceneDocument(await backend.readAsset(kind, path) as EntitiesFile);
+    const document = new SceneDocument(await projects.current.readAsset(kind, path) as EntitiesFile);
     const before = document.file.entities;
     document.apply({ type: 'batch', edits: edits as unknown as SceneEdit[] });
     const previous = new Set(before);
     const changed = document.file.entities.filter((entity) => !previous.has(entity));
     const issues = changed.flatMap((entity) => checkEntity(entity));
     if (issues.length > 0 && !force) throw new Error(`not saved; the edits leave problems:\n${issues.join('\n')}`);
-    await backend.saveAsset(kind, path, document.file);
+    await projects.current.saveAsset(kind, path, document.file);
     const kept = new Set(document.file.entities.map((entity) => entity.id));
     const removed = before.filter((entity) => !kept.has(entity.id)).map((entity) => ({ id: entity.id, name: entity.name }));
     return json({ saved: `${kind} ${path}`, changed: changed.map((entity) => ({ id: entity.id, name: entity.name })), removed, issues });
@@ -212,7 +228,7 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       layers: z.array(z.object({ name: z.string(), loadRadius: z.number().positive() })).optional().describe('default [{name:"default", loadRadius:512}]'),
       persistent: z.string().optional().describe('content path of the always-loaded scene'),
     }),
-  }, async ({ path, cellSize, layers, persistent }) => json(brief(await backend.createWorld(path, {
+  }, async ({ path, cellSize, layers, persistent }) => json(brief(await projects.current.createWorld(path, {
     ...(cellSize === undefined ? {} : { cellSize }), ...(layers ? { layers } : {}), ...(persistent ? { persistent } : {}),
   }))));
 
@@ -224,18 +240,18 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       entities: z.array(z.record(z.string(), z.unknown())).describe('SceneEntityFile objects (id, name, parent, position, rotation, scale, components)'),
     }),
   }, async ({ world, layer, entities }) => {
-    const file = await backend.readAsset('world', world) as { layers: { name: string }[] };
-    return json(await backend.placeInWorld(world, layer ?? file.layers[0]!.name, entities as unknown as SceneEntityFile[]));
+    const file = await projects.current.readAsset('world', world) as { layers: { name: string }[] };
+    return json(await projects.current.placeInWorld(world, layer ?? file.layers[0]!.name, entities as unknown as SceneEntityFile[]));
   });
 
   server.registerTool('world_info', {
     description: 'A world\'s cell size, layers, persistent scene and which cells have content (per layer), with each cell\'s scene path and entity count.',
     inputSchema: z.object({ world: assetPath.describe('content path of the .world.json') }),
   }, async ({ world }) => {
-    const file = await backend.readAsset('world', world) as { cellSize: number; persistent?: string; layers: { name: string; loadRadius: number }[]; cells: Record<string, [number, number][]> };
+    const file = await projects.current.readAsset('world', world) as { cellSize: number; persistent?: string; layers: { name: string; loadRadius: number }[]; cells: Record<string, [number, number][]> };
     const cells = await Promise.all(Object.entries(file.cells).flatMap(([layer, list]) => list.map(async ([x, z]) => {
       const scene = `${world}/${layer}/${x}_${z}`;
-      const content = database.get('scene', scene) ? await backend.readAsset('scene', scene) as { entities: unknown[] } : undefined;
+      const content = projects.current.database.get('scene', scene) ? await projects.current.readAsset('scene', scene) as { entities: unknown[] } : undefined;
       return { layer, cell: [x, z], scene, entities: content?.entities.length ?? 0 };
     })));
     return json({ cellSize: file.cellSize, persistent: file.persistent ?? null, layers: file.layers, cells });
@@ -269,14 +285,14 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
     const result: Record<string, unknown> = {};
     if (material) {
       const path = libraryMaterialPath(id);
-      if (!database.get('material', path)) await backend.saveAsset('material', path, material.material, { create: true });
+      if (!projects.current.database.get('material', path)) await projects.current.saveAsset('material', path, material.material, { create: true });
       result['material'] = path;
     }
     if (!scene) {
       if (effect) throw new Error('use_library: an effect needs the scene to add it to');
       return json(result);
     }
-    const document = new SceneDocument(await backend.readAsset(kind, scene) as EntitiesFile);
+    const document = new SceneDocument(await projects.current.readAsset(kind, scene) as EntitiesFile);
     if (material) {
       const changed = document.file.entities.filter((entity) => (entities ?? []).includes(entity.id) && entity.components['model'] !== undefined);
       const edits: SceneEdit[] = changed.map((entity) => {
@@ -290,7 +306,7 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
       document.apply(document.addChild(added));
       result['added'] = { id: added.id, name: added.name };
     }
-    await backend.saveAsset(kind, scene, document.file);
+    await projects.current.saveAsset(kind, scene, document.file);
     return json({ saved: `${kind} ${scene}`, ...result });
   });
 
@@ -307,7 +323,7 @@ export function createEditorMcpServer(backend: EditorBackend): McpServer {
   });
 
   // 下面两个要游戏页面开着（开发服务器起着、浏览器里开着游戏或编辑器）
-  const hub = () => HubClient.find(backend.project.manifest.name);
+  const hub = () => HubClient.find(projects.current.project.manifest.name);
 
   server.registerTool('screenshot', {
     description: 'A PNG of the running game page (needs the project\'s dev server and the game or the editor open in a browser).',

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Stride Debug Bridge",
-  "version": "0.3.3",
+  "version": "0.4.2",
   "description": "Lets the stride-ts debug CLI send DevTools protocol commands (CPU profiling, trusted input) to localhost game pages. Reloads itself when its files change.",
   "permissions": [
     "debugger",

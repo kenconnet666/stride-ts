@@ -10,7 +10,47 @@ const EVENT_TIMEOUT_MS = 60_000;
 /** 等着的事件：`标签 事件名` → 等这个事件的函数（几个会话可以同时等同一个事件，来了都给）。 */
 const waiters = new Map();
 
+/** 直连中枢（0.4 起）：标签 → 连着中枢的 WebSocket。页面把中枢给的桥票交过来，这里拿票连上，替这个标签执行 CLI 的命令、转发事件。 */
+const hubs = new Map();
+
+function connectHub(tabId, url) {
+  const open = hubs.get(tabId);
+  if (open && open.url === url && open.socket.readyState <= WebSocket.OPEN) return;
+  open?.socket.close();
+  const socket = new WebSocket(url);
+  hubs.set(tabId, { url, socket });
+  socket.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    // 中枢的心跳：回一下（WebSocket 上有消息往来，service worker 就不会被停）
+    if (message.type === 'ping') return socket.send(JSON.stringify({ type: 'pong' }));
+    const { id, session, method, params, waitFor } = message;
+    // 同内容脚本那条路：文件改了就先回"正在更新"、重新加载（新注入的内容脚本向页面要票，重新连上中枢）
+    updatedOnDisk().then(async (updated) => {
+      if (updated) {
+        socket.send(JSON.stringify({ id, error: UPDATING }));
+        return reloadSoon();
+      }
+      try {
+        socket.send(JSON.stringify({ id, result: await run(tabId, { method, params, waitFor, session }) }));
+      } catch (error) {
+        socket.send(JSON.stringify({ id, error: error?.message ?? String(error) }));
+      }
+    });
+  };
+  socket.onclose = () => {
+    if (hubs.get(tabId)?.socket === socket) hubs.delete(tabId);
+  };
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  hubs.get(tabId)?.socket.close();
+  hubs.delete(tabId);
+});
+
 chrome.debugger.onEvent.addListener((source, method, params) => {
+  // 事件转给直连的中枢（CLI 的会话收得到，比如断点的 Debugger.paused）
+  const hub = hubs.get(source.tabId);
+  if (hub?.socket.readyState === WebSocket.OPEN) hub.socket.send(JSON.stringify({ event: method, params: params ?? {} }));
   const key = `${source.tabId} ${method}`;
   const list = waiters.get(key);
   if (!list) return;
@@ -37,6 +77,7 @@ async function setSessions(tabId, sessions) {
 // 自己的文件改了就重新加载（未打包的扩展从磁盘读文件）：省得每次在 chrome://extensions 里点刷新。页面打招呼、每条命令来时比
 // 一次指纹，变了就回一个"正在更新"的错误、重新加载；重新加载后把内容脚本注入已经开着的本机页面，页面不用刷新。
 const OWN_FILES = ['manifest.json', 'service-worker.js', 'content.js'];
+const UPDATING = 'the Stride Debug Bridge extension was updated on disk and is reloading itself; run the command again';
 let fingerprint;
 
 async function currentFingerprint() {
@@ -66,6 +107,11 @@ chrome.runtime.onInstalled.addListener(async () => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const tabId = sender.tab?.id;
   if (tabId === undefined) return false;
+  if (message?.method === 'connect-hub') {
+    connectHub(tabId, message.url);
+    sendResponse({ result: { connecting: true } });
+    return false;
+  }
   if (message?.method === 'hello') {
     // 页面打开时内容脚本打个招呼：借这个机会看文件有没有改
     updatedOnDisk().then((updated) => {
@@ -76,7 +122,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   updatedOnDisk().then((updated) => {
     if (updated) {
-      sendResponse({ error: 'the Stride Debug Bridge extension was updated on disk and is reloading itself; run the command again' });
+      sendResponse({ error: UPDATING });
       reloadSoon();
       return;
     }
@@ -103,7 +149,15 @@ async function run(tabId, { method, params, waitFor, session = 'default' }) {
   if (!sessions.includes(session)) await setSessions(tabId, [...sessions, session]);
   const event = waitFor ? waitForEvent(tabId, waitFor) : undefined;
   const result = await send(target, method, params ?? {});
+  if (method === 'Page.bringToFront') await raiseWindow(tabId);
   return event ?? result;
+}
+
+// Page.bringToFront 只在窗口里切到这个标签：窗口最小化着时页面照样是 hidden、不出帧。把窗口也还原、拿到前面
+async function raiseWindow(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  const window = await chrome.windows.get(tab.windowId);
+  await chrome.windows.update(tab.windowId, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
 }
 
 // 扩展刚重新加载、标签刚被断开时，附加和 Chrome 的"断开了"通知会撞上：碰到"没附加"就重新附加、再发一次

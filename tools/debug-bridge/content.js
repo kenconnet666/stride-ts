@@ -4,14 +4,22 @@
 // 扩展重新加载（改了文件自己重载）以后，旧的这份内容脚本和扩展断了联系，新的一份会被注入进来：旧的发现断了就退出，不抢着回复。
 (() => {
   const SOURCE = 'stride-debug-bridge';
+  let hubUrl;
   document.documentElement.dataset.strideDebugBridge = chrome.runtime.getManifest().version;
 
   const onMessage = async (event) => {
-    if (event.source !== window || event.data?.source !== SOURCE || event.data.direction !== 'request') return;
+    if (event.source !== window || event.data?.source !== SOURCE) return;
     if (!chrome.runtime?.id) {
       window.removeEventListener('message', onMessage);
       return;
     }
+    // 页面转来中枢的桥票：交给 service worker 直连中枢（记下来，扩展重新加载后的新内容脚本会再要一次）
+    if (event.data.direction === 'hub') {
+      hubUrl = event.data.url;
+      chrome.runtime.sendMessage({ method: 'connect-hub', url: hubUrl }).catch(() => {});
+      return;
+    }
+    if (event.data.direction !== 'request') return;
     const { id, method, params, waitFor, session } = event.data;
     let reply;
     try {
@@ -24,4 +32,6 @@
   window.addEventListener('message', onMessage);
   // 打个招呼：service worker 借这个机会看自己的文件有没有改，改了就重新加载
   chrome.runtime.sendMessage({ method: 'hello' }).catch(() => {});
+  // 向页面要中枢的桥票（页面连中枢时只发一次；扩展重新加载后注入的这份内容脚本错过了）
+  window.postMessage({ source: SOURCE, direction: 'want-hub' }, window.location.origin);
 })();

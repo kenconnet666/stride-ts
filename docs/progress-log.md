@@ -843,6 +843,8 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - `stride page`（照 Claude in Chrome 的能力）：无障碍树带编号、按文字找、真实的点击、悬停、拖动、滚轮、按键、打字、截图（按 CSS 像素，高分屏也对得上坐标）、在编辑器界面那层求值；操作时画一个 agent 的橙色指针（平滑移动、点击波纹、按键标签）。在编辑器上实测：读出主工具条、场景树、资源树、视口工具条的按钮和字段；点资源树、库窗口滚轮、Ctrl+K 搜 valley 都对。`stride front` 把后台的游戏标签切到前面（后台标签不出帧）；`stride open` 的 Chrome 加了不节流被挡住窗口的参数。
 - 顺手修的编辑器问题（用 `page eval` 找出来的）：库窗口声明了自己管滚动却没有滚动区，下面的材质滑不到，改成卡片网格在 ScrollArea 里、上面的切换按钮固定；编辑器页面的 html、body 不再滚动（整页多出来的浏览器滚动条）。
 
+- 调试桥 0.4 直连中枢（同一天）：扩展的 service worker 拿页面转交的桥票连开发服务器的中枢，CLI 的 DevTools 会话经中枢直接到扩展，不经过页面的 JS（断点停住时也能发命令、事件收得到）。实测时修了三处：扩展重新加载后新的内容脚本错过了票（页面只发一次）→ 内容脚本向页面要（0.4.1）；中枢把扩展的回复整个展开转给 CLI，回复里中枢自己的编号盖掉了 CLI 命令的编号，`front` 一直等到超时；`stride page` 里 `await using` 的会话在 `return pageEval(...)`（没 await）时就释放了，WebSocket 先关、命令没回复（经页面转发的旧路径同样有竞争，只是 detach 慢一步没暴露）。修完测试浏览器里 `front`、`page eval`、`page click`、`cpu-profile` 都经直连走通，编辑器的视口 iframe 也连上了。0.4.2：`front` 把最小化的窗口还原；直连的命令也查文件指纹自己更新。
+
 ## CI 的软件 WebGPU 提速：调研（2026-11-21，没做完）
 
 - CI 用 Chrome 带的 SwiftShader。它在 x86-64 上用 Subzero 编着色器（`src/Reactor/reactor.gni`：二进制小、只用 SSE4.1，不用 AVX），线程数默认 min(核数, 16)，`SwiftShader.ini` 的 `[Processor] ThreadCount` 能改。

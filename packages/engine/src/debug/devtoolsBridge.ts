@@ -50,3 +50,26 @@ function listen(): void {
     else request?.resolve(reply.result);
   });
 }
+
+/**
+ * 把中枢给的桥票（连中枢的地址）交给调试桥扩展：0.4 起扩展的 service worker 拿它直接连中枢，CLI 的 DevTools 会话从此不经过页面
+ * （页面停在断点上也能控制）。没装扩展时什么也不做；在编辑器的视口 iframe 里也一样（扩展按标签连）。
+ */
+export function offerBridge(url: string): void {
+  bridgeUrl = url;
+  if (!listeningForBridge) {
+    // 扩展重新加载（改了文件自己重载、刚装上）以后新注入的内容脚本会来要一次：再给它（页面连中枢时只发一次票）
+    listeningForBridge = true;
+    window.addEventListener('message', (event: MessageEvent<{ source?: string; direction?: string }>) => {
+      if (event.source === window && event.data?.source === SOURCE && event.data.direction === 'want-hub' && bridgeUrl) postBridge(bridgeUrl);
+    });
+  }
+  if (devtoolsBridgeVersion()) postBridge(url);
+}
+
+let bridgeUrl: string | undefined;
+let listeningForBridge = false;
+
+function postBridge(url: string): void {
+  window.postMessage({ source: SOURCE, direction: 'hub', url }, window.location.origin);
+}

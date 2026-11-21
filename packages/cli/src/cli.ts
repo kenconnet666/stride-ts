@@ -226,6 +226,8 @@ async function pageCdp(command: string): Promise<{ client: HubClient; info: Page
   const pages = await client.pages();
   const info = page === undefined ? pages.at(-1) : pages.find((p) => p.id === page);
   if (!info) throw new Error('no page is connected');
+  // 扩展直连着中枢：会话走中枢（不经过页面，能收事件）；只装了旧扩展：经页面转发；都没有：直连 stride open 的 Chrome
+  if (info.bridge) return { client, info, cdp: await client.devtoolsSocket(info.id) };
   const { devtoolsBridge } = (await client.call('status', {}, { page: info.id })) as { devtoolsBridge?: string | null };
   if (devtoolsBridge) return { client, info, cdp: client.devtools(info.id) };
   const browser = readBrowser();
@@ -429,6 +431,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   async page() {
     const [sub, ...args] = rest;
     const { cdp: session } = await pageCdp(`page ${sub ?? ''}`);
+    // 下面的 return 都要 await：await using 在 return 时就释放会话（关掉 WebSocket），命令还没回复
     await using cdp = session;
     setCursorEnabled(options['no-cursor'] !== true);
     const at = (i: number, what: string) => required(args[i], what);
@@ -441,23 +444,23 @@ const commands: Record<string, () => Promise<unknown>> = {
       case 'text':
         return void console.log(await pageText(cdp));
       case 'eval':
-        return pageEval(cdp, options.file ? readFileSync(options.file, 'utf8') : args.join(' '));
+        return await pageEval(cdp, options.file ? readFileSync(options.file, 'utf8') : args.join(' '));
       case 'click':
-        return pageClick(cdp, at(0, 'element ref or x,y'), {
+        return await pageClick(cdp, at(0, 'element ref or x,y'), {
           ...(options.button ? { button: options.button as 'left' | 'right' | 'middle' } : {}),
           ...(options.count ? { count: Number(options.count) } : {}),
           ...(options.modifiers ? { modifiers: options.modifiers } : {}),
         });
       case 'hover':
-        return pageHover(cdp, at(0, 'element ref or x,y'));
+        return await pageHover(cdp, at(0, 'element ref or x,y'));
       case 'drag':
-        return pageDrag(cdp, at(0, 'from (ref or x,y)'), at(1, 'to (ref or x,y)'), {
+        return await pageDrag(cdp, at(0, 'from (ref or x,y)'), at(1, 'to (ref or x,y)'), {
           ...(options.steps ? { steps: Number(options.steps) } : {}),
           ...(options.button ? { button: options.button as 'left' | 'right' | 'middle' } : {}),
           ...(options.modifiers ? { modifiers: options.modifiers } : {}),
         });
       case 'scroll':
-        return pageScroll(cdp, at(0, 'element ref or x,y'), Number(options.dy ?? 300), Number(options.dx ?? 0));
+        return await pageScroll(cdp, at(0, 'element ref or x,y'), Number(options.dy ?? 300), Number(options.dx ?? 0));
       case 'type':
         await pageType(cdp, args.join(' '));
         return { typed: args.join(' ').length };
@@ -598,14 +601,15 @@ const commands: Record<string, () => Promise<unknown>> = {
     const base = text ? (JSON.parse(text) as DebugPlan & { run?: string }) : {};
     const plan: DebugPlan & { run?: string } = { ...base, ...flags, breakpoints: [...(base.breakpoints ?? []), ...flags.breakpoints] };
     if (!plan.breakpoints?.length && !plan.exceptions) throw new Error('debug: give a plan (JSON) or --break / --log / --exceptions; see stride --help');
-    // 停在断点上时页面的 JS 都不走：要和页面无关的 DevTools 连接（stride open 起的 Chrome），不能经调试桥
-    const browser = readBrowser();
-    if (!browser) throw new Error('debug pauses the page, so it needs a DevTools connection that does not go through the page: open it with `stride open <url>` (or --headless)');
+    // 停在断点上时页面的 JS 都不走：要不经过页面的 DevTools 连接——调试桥扩展直连中枢（0.4 起，主 Chrome 也行），或者 stride open
+    // 起的 Chrome 的调试端口
     const client = await HubClient.find(options.hub);
     const pages = await client.pages();
     const info = page === undefined ? pages.at(-1) : pages.find((p) => p.id === page);
     if (!info) throw new Error('no page is connected');
-    await using cdp = await CdpSession.connect((await pageTarget(browser, info.url)).webSocketDebuggerUrl);
+    const browser = readBrowser();
+    if (!info.bridge && !browser) throw new Error('debug pauses the page, so it needs a DevTools connection that does not go through the page: the Stride Debug Bridge extension 0.4+ (connects to the hub by itself) or a Chrome from `stride open <url>`');
+    await using cdp = info.bridge ? await client.devtoolsSocket(info.id) : await CdpSession.connect((await pageTarget(browser!, info.url)).webSocketDebuggerUrl);
     let ran: Promise<unknown> | undefined;
     const trigger = plan.run === undefined ? undefined : () => {
       ran = client.call('eval', { code: plan.run }, { page: info.id, timeout: (plan.seconds ?? 10) * 1000 + 60_000 }).catch((error: unknown) => ({ error: error instanceof Error ? error.message : String(error) }));

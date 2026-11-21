@@ -10,7 +10,8 @@
  * 连接：Game.run 的 debug 选项打开时（默认在地址带 ?debug 时），连同源的 DEBUG_SOCKET_PATH。中枢由开发服务器的
  * Vite 插件提供（tools/vite-app.ts）；静态部署的页面没有中枢，连一次失败就不再试。
  */
-import { DEBUG_SOCKET_PATH, type CallMessage, type CommandInfo, type LogEntry, type LogLevel, type PageMessage } from './protocol';
+import { BRIDGE_SOCKET_PATH, DEBUG_SOCKET_PATH, type CallMessage, type CommandInfo, type HubMessage, type LogEntry, type LogLevel, type PageMessage } from './protocol';
+import { offerBridge } from './devtoolsBridge';
 
 export type DebugHandler = (args: Readonly<Record<string, unknown>>) => unknown;
 
@@ -184,7 +185,12 @@ export class Debug {
       this.#send({ type: 'hello', url: location.href, title: document.title });
       this.#flush();
     };
-    socket.onmessage = (event) => void this.#call(JSON.parse(String(event.data)) as CallMessage);
+    socket.onmessage = (event) => {
+      const message = JSON.parse(String(event.data)) as HubMessage;
+      // 中枢给的桥票：转给调试桥扩展，扩展拿它直接连中枢（没装扩展时什么也不做）
+      if (message.type === 'bridge') return offerBridge(new URL(`${BRIDGE_SOCKET_PATH}?ticket=${message.ticket}`, socket.url).href);
+      void this.#call(message);
+    };
     socket.onclose = () => {
       if (this.#socket !== socket) return; // disconnect() 关的
       this.#socket = undefined;

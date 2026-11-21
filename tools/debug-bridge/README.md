@@ -24,6 +24,21 @@ stride cpu-profile ──▶ 开发服务器的调试中枢 ──▶ 页面（�
 
 `stride open` 起的 Chrome（有界面、无头）不用装这个扩展：CLI 直接连它的调试端口（`stride debug` 的断点也只能走这条路，见 packages/cli/README.md）。
 
+## 直连中枢（0.4 起）
+
+页面连上开发服务器的调试中枢时，中枢发给它一张桥票（页面连着时有效）；页面经内容脚本交给扩展，扩展的 service worker 拿票连中枢的 `/__stride/bridge`（扩展的 Origin 不是同源，中枢只认票，口令不给页面）。之后 CLI 带口令连中枢的 `/__stride/devtools?page=<id>`，命令、回复和 DevTools 事件在 CLI 和扩展之间直接来回，**不经过页面的 JS**：
+
+- `stride debug` 的断点在主 Chrome 里也能用了（页面停住时照样能发"继续"）；
+- 事件（`Debugger.paused`、`Debugger.scriptParsed`……）收得到；
+- 中枢每 20 秒发一次心跳，service worker 一直保持"有效"，不会闲置被停；
+- `stride hubs`、中枢的 `/pages` 里页面的 `bridge: true` 表示直连着；
+- 扩展重新加载以后新注入的内容脚本向页面要一次票（`want-hub`），页面不用刷新就重新连上；直连的命令来时同样比一次文件指纹，改了就自己更新；
+- `stride front`（`Page.bringToFront`）还把标签所在的窗口还原（最小化着时）、拿到前面：只切标签的话最小化的窗口里页面照样 hidden、不出帧。锁屏时谁也拿不到前面，页面都不出帧，用 `stride open --headless` 的 Chrome。
+
+```
+stride（CLI）──WebSocket（口令）──▶ 调试中枢 ──WebSocket（桥票）──▶ 扩展的 service worker ──chrome.debugger──▶ 标签
+```
+
 ## 安装（一次）
 
 1. 在 Chrome 地址栏打开 `chrome://extensions`。

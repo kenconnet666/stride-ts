@@ -5,6 +5,11 @@
  * 安全：只接受同源页面的 WebSocket（Origin 的主机等于 Host）；HTTP 接口要带令牌头，令牌只写在本机的登记文件里，
  * 并且拒绝带 Origin 头的请求，别的网页没法借用户的浏览器调用。
  *
+ * 调试桥扩展（tools/debug-bridge）：页面连上时中枢发给它一张桥票（页面连着时有效），页面经内容脚本交给扩展，扩展的 service
+ * worker 拿票连 BRIDGE_SOCKET_PATH（扩展的 Origin 不是同源，只认票），替这个标签执行 DevTools 协议的命令、把事件转过来；中枢每 20 秒
+ * 发一次心跳，service worker 就不会闲置被停。CLI 带令牌连 DEVTOOLS_SOCKET_PATH?page=<id> 开 DevTools 会话（每条连接一个会话），
+ * 命令、事件经中枢和扩展来回，不经过页面的 JS：页面停在断点上时照样能控制（stride debug 在用户平时的 Chrome 里也能用）。
+ *
  * HTTP 接口：
  *   GET  /pages                         连着的页面
  *   POST /call  { page?, command, args?, timeout? }   调一个命令，page 省略时用最近连上的页面
@@ -14,7 +19,7 @@ import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
 import {
-  DEBUG_API_PATH, DEBUG_SOCKET_PATH, DEBUG_TOKEN_HEADER,
+  BRIDGE_SOCKET_PATH, DEBUG_API_PATH, DEBUG_SOCKET_PATH, DEBUG_TOKEN_HEADER, DEVTOOLS_SOCKET_PATH,
   type CallMessage, type CallRequest, type CallResponse, type HubLogEntry, type PageInfo, type PageMessage,
 } from '@stride-ts/engine/debug-protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -28,7 +33,18 @@ interface Page {
   readonly info: PageInfo;
   readonly socket: WebSocket;
   readonly pending: Map<number, (response: CallResponse) => void>;
+  /** 调试桥扩展拿来连中枢的票。 */
+  readonly ticket: string;
+  /** 调试桥扩展连着的 WebSocket（替这个标签执行 DevTools 命令）。 */
+  bridge: WebSocket | undefined;
+  /** 发给扩展、等回复的命令：中枢的编号 → 回调。 */
+  readonly bridgePending: Map<number, (reply: { result?: unknown; error?: string }) => void>;
+  /** CLI 开着的 DevTools 会话（事件转给它们）。 */
+  readonly devtools: Set<WebSocket>;
 }
+
+/** 心跳的间隔：扩展的 service worker 闲置 30 秒会被停，WebSocket 上有消息就不会。 */
+const BRIDGE_PING_MS = 20_000;
 
 export class DebugHub {
   readonly token = randomBytes(16).toString('hex');
@@ -53,11 +69,23 @@ export class DebugHub {
       void this.#handle(request, response);
     });
     server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-      if (request.url?.split('?')[0] !== DEBUG_SOCKET_PATH) return; // Vite 的 HMR 之类，交给别的监听器
-      if (!sameOrigin(request)) {
-        socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
-        return;
+      const url = new URL(request.url ?? '/', 'http://localhost');
+      const forbid = () => socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+      if (url.pathname === BRIDGE_SOCKET_PATH) {
+        // 扩展的 Origin 是 chrome-extension://…：不看 Origin，只认页面拿到的票
+        const page = [...this.#pages.values()].find((p) => p.ticket === url.searchParams.get('ticket'));
+        if (!page) return forbid();
+        return this.#sockets.handleUpgrade(request, socket, head, (ws) => this.#connectBridge(page, ws));
       }
+      if (url.pathname === DEVTOOLS_SOCKET_PATH) {
+        // CLI：同 HTTP 接口，要令牌、不许浏览器来连
+        if (request.headers.origin !== undefined || request.headers[DEBUG_TOKEN_HEADER] !== this.token) return forbid();
+        const page = this.#pages.get(Number(url.searchParams.get('page')));
+        if (!page) return forbid();
+        return this.#sockets.handleUpgrade(request, socket, head, (ws) => this.#connectDevtools(page, ws));
+      }
+      if (url.pathname !== DEBUG_SOCKET_PATH) return; // Vite 的 HMR 之类，交给别的监听器
+      if (!sameOrigin(request)) return forbid();
       this.#sockets.handleUpgrade(request, socket, head, (ws) => this.#connect(ws));
     });
     const register = () => {
@@ -86,8 +114,10 @@ export class DebugHub {
     socket.on('message', (data) => {
       const message = JSON.parse(String(data)) as PageMessage;
       if (message.type === 'hello') {
-        page = { info: { id, url: message.url, title: message.title, connectedAt: Date.now() }, socket, pending: new Map() };
+        page = { info: { id, url: message.url, title: message.title, connectedAt: Date.now() }, socket, pending: new Map(), ticket: randomBytes(16).toString('hex'), bridge: undefined, bridgePending: new Map(), devtools: new Set() };
         this.#pages.set(id, page);
+        // 桥票：页面转给调试桥扩展（没装时页面什么也不做）
+        socket.send(JSON.stringify({ type: 'bridge', ticket: page.ticket }));
         this.#log(id, { time: Date.now(), level: 'info', source: 'engine', message: `page ${id} connected: ${message.url}` });
       } else if (message.type === 'result') {
         const resolve = page?.pending.get(message.id);
@@ -99,8 +129,62 @@ export class DebugHub {
     });
     socket.on('close', () => {
       this.#pages.delete(id);
+      page?.bridge?.close();
+      for (const client of page?.devtools ?? []) client.close();
       for (const resolve of page?.pending.values() ?? []) resolve({ ok: false, error: `page ${id} disconnected (reloaded or closed)` });
       this.#log(id, { time: Date.now(), level: 'info', source: 'engine', message: `page ${id} disconnected` });
+    });
+  }
+
+  /** 调试桥扩展连上来了：替这个页面的标签执行命令（CLI 的 DevTools 会话转过来）、把事件转给会话。 */
+  #connectBridge(page: Page, socket: WebSocket): void {
+    page.bridge?.close();
+    page.bridge = socket;
+    const ping = setInterval(() => socket.send(JSON.stringify({ type: 'ping' })), BRIDGE_PING_MS);
+    socket.on('message', (data) => {
+      const message = JSON.parse(String(data)) as { id?: number; result?: unknown; error?: string; event?: string; params?: unknown; type?: string };
+      if (message.id !== undefined) {
+        const resolve = page.bridgePending.get(message.id);
+        page.bridgePending.delete(message.id);
+        resolve?.(message);
+      } else if (message.event) {
+        const event = JSON.stringify({ method: message.event, params: message.params });
+        for (const client of page.devtools) client.send(event);
+      }
+    });
+    socket.on('close', () => {
+      clearInterval(ping);
+      if (page.bridge !== socket) return;
+      page.bridge = undefined;
+      for (const resolve of page.bridgePending.values()) resolve({ error: 'the Stride Debug Bridge extension disconnected (reloaded or the tab closed)' });
+      page.bridgePending.clear();
+    });
+    this.#log(page.info.id, { time: Date.now(), level: 'info', source: 'engine', message: `page ${page.info.id}: Stride Debug Bridge connected` });
+  }
+
+  /** 发给扩展一条 DevTools 命令（这个会话的），等它的回复。 */
+  #bridgeCommand(page: Page, session: string, method: string, params: unknown): Promise<{ result?: unknown; error?: string }> {
+    const bridge = page.bridge;
+    if (!bridge) return Promise.resolve({ error: 'the Stride Debug Bridge extension is not connected to this page' });
+    const id = this.#nextCall++;
+    return new Promise((resolve) => {
+      page.bridgePending.set(id, resolve);
+      bridge.send(JSON.stringify({ id, session, method, params }));
+    });
+  }
+
+  /** CLI 的 DevTools 会话：命令转给扩展、回复按编号回；会话断开时替它 detach（扩展按会话计数，最后一个才真断开）。 */
+  #connectDevtools(page: Page, socket: WebSocket): void {
+    const session = randomBytes(8).toString('hex');
+    page.devtools.add(socket);
+    socket.on('message', (data) => {
+      const { id, method, params } = JSON.parse(String(data)) as { id: number; method: string; params?: unknown };
+      // 只取结果和错误：扩展的回复里的 id 是中枢自己的编号，不能盖掉 CLI 命令的
+      void this.#bridgeCommand(page, session, method, params ?? {}).then(({ result, error }) => socket.send(JSON.stringify({ id, result, error })));
+    });
+    socket.on('close', () => {
+      page.devtools.delete(socket);
+      void this.#bridgeCommand(page, session, 'detach', {});
     });
   }
 
@@ -121,7 +205,7 @@ export class DebugHub {
     const url = new URL(request.url!, 'http://localhost');
     const route = url.pathname.slice(DEBUG_API_PATH.length);
     try {
-      if (request.method === 'GET' && route === '/pages') return reply(200, [...this.#pages.values()].map((p) => p.info));
+      if (request.method === 'GET' && route === '/pages') return reply(200, [...this.#pages.values()].map((p) => ({ ...p.info, bridge: p.bridge !== undefined })));
       if (request.method === 'POST' && route === '/call') return reply(200, await this.#call(JSON.parse(await readBody(request)) as CallRequest & { timeout?: number }));
       if (request.method === 'GET' && route === '/logs') return this.#logsResponse(url.searchParams, response);
       reply(404, { ok: false, error: `no route ${request.method} ${route}` });

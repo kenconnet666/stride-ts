@@ -7,6 +7,13 @@
 export const DEBUG_SOCKET_PATH = '/__stride/ws';
 /** 中枢给 CLI 的 HTTP 接口的前缀。 */
 export const DEBUG_API_PATH = '/__stride/api';
+/**
+ * 调试桥扩展连中枢的 WebSocket 路径（带页面拿到的一次性桥票 `?ticket=`）：扩展直接替这个页面执行 DevTools 协议的命令、转发事件，
+ * 不经过页面的 JS（页面停在断点上时照样能发"继续"）。
+ */
+export const BRIDGE_SOCKET_PATH = '/__stride/bridge';
+/** CLI 经中枢、调试桥扩展对一个页面开 DevTools 会话的 WebSocket 路径（`?page=<id>`，要带令牌头）。 */
+export const DEVTOOLS_SOCKET_PATH = '/__stride/devtools';
 /** CLI 请求带的令牌头；令牌在中枢登记的文件里（~/.stride-ts/hubs/）。 */
 export const DEBUG_TOKEN_HEADER = 'x-stride-token';
 
@@ -48,12 +55,23 @@ export interface CallMessage {
   readonly args: Readonly<Record<string, unknown>>;
 }
 
+/** 中枢发给页面：调试桥扩展连中枢用的一次性桥票（页面转给扩展的内容脚本）。 */
+export interface BridgeTicketMessage {
+  readonly type: 'bridge';
+  readonly ticket: string;
+}
+
+/** 中枢发给页面的消息。 */
+export type HubMessage = CallMessage | BridgeTicketMessage;
+
 /** 中枢的 HTTP 接口里列出的页面。 */
 export interface PageInfo {
   readonly id: number;
   readonly url: string;
   readonly title: string;
   readonly connectedAt: number;
+  /** 这个页面所在标签的调试桥扩展直接连着中枢（DEVTOOLS_SOCKET_PATH 能用，会话不经过页面）。 */
+  readonly bridge?: boolean;
 }
 
 /** POST {DEBUG_API_PATH}/call 的请求体；page 省略时用最近连上的页面。 */

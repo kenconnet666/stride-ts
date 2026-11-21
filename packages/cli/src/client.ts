@@ -1,6 +1,7 @@
 /** CLI 这一头：找到调试中枢，调用页面的命令、读日志。 */
 import { randomUUID } from 'node:crypto';
-import { DEBUG_API_PATH, DEBUG_TOKEN_HEADER, type CallResponse, type HubLogEntry, type PageInfo } from '@stride-ts/engine/debug-protocol';
+import { DEBUG_API_PATH, DEBUG_TOKEN_HEADER, DEVTOOLS_SOCKET_PATH, type CallResponse, type HubLogEntry, type PageInfo } from '@stride-ts/engine/debug-protocol';
+import { WebSocket } from 'ws';
 import { listHubs, type HubRecord } from './state.ts';
 
 /** 对一个页面执行 DevTools 协议命令的会话：stride 启动的 Chrome 里直连 CDP（CdpSession），别的 Chrome 经调试桥扩展。 */
@@ -49,6 +50,20 @@ export class HubClient {
   }
 
   /** 经页面的 devtools 命令（调试桥扩展，tools/debug-bridge）对这个页面执行 DevTools 协议的命令。 */
+  /**
+   * 经中枢、调试桥扩展直连的 DevTools 会话（页面的 info.bridge 为真时有）：命令和事件不经过页面的 JS，页面停在断点上也能控制，
+   * 能收事件（stride debug 用）。
+   */
+  async devtoolsSocket(page: number): Promise<HubDevtoolsSession> {
+    const url = `${this.hub.url.replace(/^http/, 'ws')}${DEVTOOLS_SOCKET_PATH}?page=${page}`;
+    const socket = new WebSocket(url, { headers: { [DEBUG_TOKEN_HEADER]: this.hub.token } });
+    await new Promise<void>((resolve, reject) => {
+      socket.once('open', () => resolve());
+      socket.once('error', reject);
+    });
+    return new HubDevtoolsSession(socket);
+  }
+
   /** 经调试桥扩展的一个 DevTools 会话：带自己的会话 ID，几个会话（几个 agent、几条命令）可以同时用同一个标签，各自断开。 */
   devtools(page: number): DevtoolsSession {
     const session = randomUUID();
@@ -94,5 +109,67 @@ export class HubClient {
       throw new Error(`debug hub ${this.hub.name} at ${this.hub.url}: ${response.status} ${error ?? ''}`.trimEnd());
     }
     return JSON.parse(text);
+  }
+}
+
+/** 经中枢、调试桥扩展的 DevTools 会话（同 chrome.ts 的 CdpSession 的用法：send、sendAndWait、on）。 */
+export class HubDevtoolsSession implements DevtoolsSession {
+  readonly #socket: WebSocket;
+  #nextId = 1;
+  readonly #pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+  readonly #listeners = new Map<string, ((params: unknown) => void)[]>();
+
+  constructor(socket: WebSocket) {
+    this.#socket = socket;
+    socket.on('message', (data) => {
+      const message = JSON.parse(String(data)) as { id?: number; result?: unknown; error?: string; method?: string; params?: unknown };
+      if (message.id === undefined) {
+        for (const listener of this.#listeners.get(message.method ?? '') ?? []) listener(message.params);
+        return;
+      }
+      const pending = this.#pending.get(message.id);
+      this.#pending.delete(message.id);
+      if (message.error !== undefined) pending?.reject(new Error(message.error));
+      else pending?.resolve(message.result);
+    });
+    socket.on('close', () => {
+      for (const { reject } of this.#pending.values()) reject(new Error('the DevTools session through the hub closed'));
+      this.#pending.clear();
+    });
+  }
+
+  send(method: string, params: Record<string, unknown> = {}, timeout = 60_000): Promise<unknown> {
+    const id = this.#nextId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(id);
+        reject(new Error(`${method}: no reply in ${timeout} ms`));
+      }, timeout);
+      this.#pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      });
+      this.#socket.send(JSON.stringify({ id, method, params }));
+    });
+  }
+
+  on(event: string, listener: (params: unknown) => void): void {
+    this.#listeners.set(event, [...(this.#listeners.get(event) ?? []), listener]);
+  }
+
+  async sendAndWait(method: string, params: Record<string, unknown>, event: string, timeout = 60_000): Promise<unknown> {
+    const received = new Promise((resolve) => this.on(event, resolve));
+    await this.send(method, params, timeout);
+    return received;
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    this.#socket.close();
   }
 }

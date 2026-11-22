@@ -19,7 +19,7 @@ const fields = (i) => [
 
 const lines = [
   '// 由 tools/dev/gen-type-stress.mjs 生成，不要手改。只有 tsc 读它。',
-  "import { component, prop, SyncScript, system, type EntityId, type GameTime } from '../src/index';",
+  "import { component, prop, SyncScript, system, type EntityId, type GameTime } from '../../src';",
   '',
 ];
 for (let i = 0; i < components; i++) lines.push(`export const C${i} = component({ ${fields(i).join(', ')} });`);

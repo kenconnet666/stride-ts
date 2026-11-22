@@ -280,7 +280,9 @@ const navigation = evaluate<Navigation>(`(async () => {
   for (const end = strideGame.updateTime.total + 20; strideGame.entities.count === r.before && strideGame.updateTime.total < end;) { await click(400, 420); await seconds(0.1); }
   r.spheres = strideGame.entities.count - r.before;
   r.walking = lines().find((l) => l.startsWith('Distance to waypoint'));
-  await until(() => lines().includes('No target'), 15);
+  // 等角色走到：按游戏时间最多 60 秒。物理每帧最多补 0.25 秒（maximumTimeToProcess），CI 上一帧要一秒左右时物理只有游戏时间的
+  // 几分之一，15 秒不够（0c68a3f 的 CI 上走了 2 米就到点了）；快的机器上走到就返回
+  await until(() => lines().includes('No target'), 60);
   return { ...r, end: position('RegularCharacater'), after: strideGame.entities.count };
 })()`);
 const travelled = Math.hypot(navigation.end[0]! - navigation.start[0]!, navigation.end[2]! - navigation.start[2]!);

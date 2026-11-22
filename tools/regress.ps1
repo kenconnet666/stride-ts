@@ -64,8 +64,9 @@ if ($App) {
         # 外面的 @() 不能少：只有一个元素时管道的结果是字符串，@chromeArgs 展开字符串什么也不传（本地不设 STRIDE_CHROME_ARGS 时自动播放的参数就丢了）
         $chromeArgs = @(@('--autoplay-policy=no-user-gesture-required') + @(($env:STRIDE_CHROME_ARGS ?? '') -split ' ' | Where-Object { $_ }) | ForEach-Object { "--chrome-arg=$_" })
         $slowQuery = $Slow -gt 0 ? "&stride-slow=$Slow" : ''
+        # STRIDE_DPR：画布的像素比（默认 1）。CI 上最慢的样例用 0.5：CSS 的大小、点击坐标、UI 的布局不变，软件 WebGPU 要画的像素少四倍
         # 设备只要 WebGPU 的默认上限（同 CI 的软件 WebGPU）：本机的显卡给得多，超了默认上限的绑定只有 CI 上才报错
-        pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads&stride-pointer-lock=virtual&stride-limits=default$slowQuery" --headless --size 1280x720 --dpr 1 @chromeArgs | Out-Null
+        pnpm exec stride open "http://localhost:$port/?stride-workers=$workerThreads&stride-pointer-lock=virtual&stride-limits=default$slowQuery" --headless --size 1280x720 --dpr ($env:STRIDE_DPR ?? '1') @chromeArgs | Out-Null
         pnpm --filter "@stride-ts/$App" smoke -- --hub $App 2>&1
         $code = $LASTEXITCODE
         # 失败时带上 Chrome 自己的日志里和 GPU 有关的行（GPU 进程崩溃、看门狗、共享内存不够这类事页面的控制台看不到）

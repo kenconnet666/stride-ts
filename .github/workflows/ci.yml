@@ -136,4 +136,7 @@ jobs:
         env:
           STRIDE_CHROME_ARGS: --enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader --use-angle=swiftshader --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader
           STRIDE_TIMEOUT: '300'
+          # 最慢的两个样例（csharp-intermediate 30 分钟、csharp-beginner 14 分钟）按半分辨率画：CSS 的大小、点击坐标不变，
+          # 片元少四倍（它们的冒烟不看像素）
+          STRIDE_DPR: ${{ (matrix.app == 'csharp-intermediate' || matrix.app == 'csharp-beginner') && '0.5' || '1' }}
         run: pwsh tools/regress.ps1 -Apps ${{ matrix.app }} -Parallel 1

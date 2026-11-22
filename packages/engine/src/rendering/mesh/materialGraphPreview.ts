@@ -6,12 +6,13 @@
  *   const previewer = new MaterialGraphPreviewer(device, { loadImage: (path) => fetchBitmap(path) });
  *   const images = await previewer.render(graph);   // 节点 id → ImageData（64 × 64）
  *
- * 平面上的材质流：uv 是格子里的 0..1，世界位置是 (u, 0, v) · 2 米、法线朝上，时间 0；屏幕空间遮蔽当作没遮住，相机在 10 米高处。
- * 贴图节点用 loadImage 加载的图（没有时是品红）。
+ * 平面上的材质流同滤镜的烘焙（materialGraphBake.ts 的 uvPlaneStreams）：uv 是格子里的 0..1，世界位置是 (u, 0, v) · 2 米、法线朝上，
+ * 时间 0；屏幕空间遮蔽当作没遮住，相机在 10 米高处。贴图节点用 loadImage 加载的图（没有时是品红），滤镜节点先烘（同材质里的烘法，
+ * 按上游的内容缓存：改了别处的参数不重烘）。
  */
-import type { GraphFile, PortType } from '../../content/formats/nodeGraph';
-import { MATERIAL_STREAMS } from '../shaderClass';
-import { convertGraphValue, emitMaterialGraphNodes } from './materialGraph';
+import type { GraphFile, GraphNodeFile, PortType } from '../../content/formats/nodeGraph';
+import { BAKED_NODE_TYPES, bakedTextureKey, convertGraphValue, emitMaterialGraphNodes, materialGraphTextures } from './materialGraph';
+import { MaterialGraphBaker, UV_PLANE_DECLARATIONS, bakedMaterialGraphNodes, uvPlaneStreams } from './materialGraphBake';
 
 /** 预览一格的边长（像素） */
 export const MATERIAL_PREVIEW_SIZE = 64;
@@ -48,18 +49,16 @@ export function materialGraphPreviewShader(graph: GraphFile, where: string): Mat
   const nodes = graph.nodes.map((node) => node.id).filter((id) => values.has(`${id}:`));
   const cases = nodes.map((id, i) => {
     const value = values.get(`${id}:`)!;
-    return `    case ${i}u: { shown = ${DISPLAY[value.type](convertGraphValue(value, value.type))}; }`;
+    // 滤镜节点（输出是颜色）按接进来的值显示：烘的是灰度的数就还显示成灰度
+    const link = graph.nodes.find((node) => node.id === id && BAKED_NODE_TYPES.has(node.type))?.inputs?.['value'];
+    const shown = (link && values.get(`${link.node}:${link.output ?? ''}`)?.type) ?? value.type;
+    return `    case ${i}u: { shown = ${DISPLAY[shown](convertGraphValue(value, shown))}; }`;
   });
   const bindings = textures.map((_, i) => `@group(0) @binding(${i + 1}) var previewTexture${i}: texture_2d<f32>;`).join('\n');
   const code = /* wgsl */ `
-${MATERIAL_STREAMS}
-struct PreviewView { eye: vec4f };
-var<private> view: PreviewView;
+${UV_PLANE_DECLARATIONS}
 @group(0) @binding(0) var previewSampler: sampler;
 ${bindings}
-
-// 网格着色器里屏幕空间遮蔽的替身：预览里没有画面，当作没遮住
-fn screenAmbient(position: vec4f) -> vec4f { return vec4f(0.0, 0.0, 0.0, 1.0); }
 
 fn linearToSrgb(c: vec3f) -> vec3f {
   let x = clamp(c, vec3f(0.0), vec3f(1.0));
@@ -90,16 +89,7 @@ struct PreviewVaryings {
 @group(0) @binding(${textures.length + 1}) var<storage, read> previewTiles: array<u32>;
 
 @fragment fn fs(in: PreviewVaryings) -> @location(0) vec4f {
-  streams.uv = in.uv;
-  streams.uv1 = in.uv;
-  streams.color = vec4f(1.0);
-  streams.colorScale = vec4f(1.0);
-  streams.position = vec3f(in.uv.x, 0.0, in.uv.y) * 2.0;
-  streams.world = streams.position;
-  streams.normal = vec3f(0.0, 1.0, 0.0);
-  streams.time = 0.0;
-  streams.pixel = vec2f(-1.0);
-  view.eye = vec4f(1.0, 10.0, 1.0, 1.0);
+${uvPlaneStreams('in.uv')}
 ${lines.join('\n')}
   var shown = vec3f(0.0);
   switch in.tile {
@@ -129,6 +119,8 @@ export class MaterialGraphPreviewer {
   readonly #options: MaterialGraphPreviewerOptions;
   readonly #pipelines = new Map<string, { readonly pipeline: GPURenderPipeline; readonly layout: GPUBindGroupLayout }>();
   readonly #textures = new Map<string, Promise<GPUTexture>>();
+  /** 烘好的滤镜（按上游的内容）：每次只留这一次用到的 */
+  #baked = new Map<string, GPUTexture>();
   readonly #sampler: GPUSampler;
 
   constructor(device: GPUDevice, options: MaterialGraphPreviewerOptions = {}) {
@@ -145,7 +137,7 @@ export class MaterialGraphPreviewer {
     const size = this.#options.size ?? MATERIAL_PREVIEW_SIZE;
     const device = this.#device;
     const { pipeline, layout } = await this.#pipeline(shader.code, shader.textures.length);
-    const textures = await Promise.all(shader.textures.map((path) => this.#texture(path)));
+    const textures = shader.textures.map(await this.#resolver(graph, where));
     const rows = Math.ceil(shader.nodes.length / COLUMNS);
     const width = COLUMNS * size, height = rows * size;
     const target = device.createTexture({ size: [width, height], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
@@ -192,8 +184,33 @@ export class MaterialGraphPreviewer {
   /** 不再用了：贴图、管线放掉 */
   destroy(): void {
     for (const texture of this.#textures.values()) void texture.then((t) => t.destroy());
+    for (const texture of this.#baked.values()) texture.destroy();
     this.#textures.clear();
+    this.#baked.clear();
     this.#pipelines.clear();
+  }
+
+  /**
+   * 按 sample 的 key 找 GPU 贴图：贴图资源先都加载好，滤镜节点按依赖烘（同样的上游烘过就直接用）。上一次烘的、这次没用到的放掉。
+   */
+  async #resolver(graph: GraphFile, where: string): Promise<(key: string) => GPUTexture> {
+    const images = new Map(await Promise.all(materialGraphTextures(graph).map(async (path) => [path, await this.#texture(path)] as const)));
+    const filters = new Map(bakedMaterialGraphNodes(graph).map((node) => [bakedTextureKey(node), node]));
+    const previous = this.#baked;
+    const baked = new Map<string, GPUTexture>();
+    const resolve = (key: string): GPUTexture => {
+      const node = filters.get(key);
+      if (node === undefined) return images.get(key)!;
+      const content = upstreamKey(graph, node);
+      let texture = baked.get(content) ?? previous.get(content);
+      if (!texture) texture = MaterialGraphBaker.for(this.#device).bake(graph, node, resolve, where);
+      baked.set(content, texture);
+      return texture;
+    };
+    for (const key of filters.keys()) resolve(key);
+    for (const [content, texture] of previous) if (!baked.has(content)) texture.destroy();
+    this.#baked = baked;
+    return resolve;
   }
 
   /**
@@ -250,4 +267,18 @@ export class MaterialGraphPreviewer {
     }
     return texture;
   }
+}
+
+/** 一个节点连同它所有上游的内容（id、种类、参数、连线）：一样就是同一张烘出来的图。 */
+function upstreamKey(graph: GraphFile, node: string): string {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const seen = new Map<string, GraphNodeFile>();
+  const visit = (id: string) => {
+    const found = byId.get(id);
+    if (!found || seen.has(id)) return;
+    seen.set(id, found);
+    for (const link of Object.values(found.inputs ?? {})) visit(link.node);
+  };
+  visit(node);
+  return JSON.stringify([node, [...seen.values()].sort((a, b) => a.id.localeCompare(b.id)).map(({ id, type, params, inputs }) => [id, type, params, inputs])]);
 }

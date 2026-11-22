@@ -1,11 +1,15 @@
 /**
  * 材质节点图（材质文件的 graph，格式见 content/formats/nodeGraph.ts）：节点库和编译成 WGSL。参考 Substance Designer、Material Maker、
  * ArmorPaint 的节点：输入（UV、位置、时间、数、颜色、贴图）、生成器（噪声、Voronoi、砖块、棋盘格、渐变、圆）、运算（加减乘、
- * 混合、反相、色阶、幂、颜色渐变）、法线（从高度算）、UV 变换。
+ * 混合、反相、色阶、幂、颜色渐变）、法线（从高度算）、UV 变换，滤镜（烘焙、模糊、扭曲）。
  *
  * 编成一个 `materialGraph()`：按依赖排好的节点每个算一次（一个输出接到好几处也只算一次），结果写进私有变量 `graph_<输出>`；
  * 网格着色器在片元着色器里最先调的材质层函数（layerNormal）开头调它一次，图的输出当最后一层（权重 1）盖到表面上（见 Material.ts
- * 的 MaterialShaderTrees.graph、meshShader.ts 的 layersCode）。不烘焙：在着色器里直接求值，改了参数马上看得到。
+ * 的 MaterialShaderTrees.graph、meshShader.ts 的 layersCode）。一般不烘焙：在着色器里直接求值，改了参数马上看得到。
+ *
+ * 滤镜节点（BAKED，要读邻近的点：模糊；或者要换个地方取值：扭曲）把 `value` 输入的上游烘进一张贴图：上游在 0..1 的 UV 平面上
+ * 画一遍（materialGraphBake.ts），材质里按节点自己的 uv 采样。所以滤镜的上游按 UV 空间算——接了世界位置、屏幕遮蔽这些的，
+ * 烘的时候用平面上的替身（同节点的预览）。
  *
  * 端口的种类不同时自动转换：数到向量是重复，向量到数取第一个分量，颜色是 vec4（alpha）。颜色参数和颜色常量都是线性的。
  */
@@ -39,7 +43,12 @@ interface EmitContext {
   addFunction(name: string, code: string): void;
   /** 采样一张贴图资源（内容路径）；还没加载出来时是 undefined。 */
   sample(texture: string, uv: string): string | undefined;
+  /** 滤镜节点：采样这个节点烘好的贴图（`value` 输入的上游，materialGraphBake.ts 烘）。 */
+  baked(uv: string): string | undefined;
 }
+
+/** 滤镜节点在 sample 里用的"贴图"：烘好的那张（加载材质、预览时按它找到烘焙的结果）。 */
+export const bakedTextureKey = (node: string): string => `#bake:${node}`;
 
 const WGSL_TYPES: Readonly<Record<PortType, string>> = { float: 'f32', vec2: 'vec2f', vec3: 'vec3f', color: 'vec4f' };
 
@@ -49,6 +58,11 @@ const vec2: FieldType = { kind: 'vector', size: 2 };
 const color: FieldType = { kind: 'color', alpha: false, space: 'linear' };
 
 const UV_IN = { name: 'uv', type: 'vec2', fallback: 'streams.uv' } as const;
+/** 滤镜节点烘焙的输入：上游在 UV 平面上画进贴图。 */
+const BAKED_IN = { name: 'value', type: 'color', fallback: 'vec4f(0.0, 0.0, 0.0, 1.0)' } as const;
+/** 烘焙的分辨率（边长，像素）。 */
+const RESOLUTION = { name: 'resolution', type: { kind: 'enum', values: ['256', '512', '1024', '2048'] }, default: '512', description: 'size of the baked texture (pixels)' } as const satisfies MaterialNode['params'][number];
+const MISSING = 'vec4f(1.0, 0.0, 1.0, 1.0)';
 
 /** 2D 的哈希和噪声（值都在 0..1）：梯度噪声叠几层（fBm）、Voronoi 的最近距离和格子的随机数。 */
 const HASH = `fn graphHash2(p: vec2f) -> vec2f {
@@ -359,7 +373,40 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
       return { uv: `(mat2x2f(${f(Math.cos(a))}, ${f(Math.sin(a))}, ${f(-Math.sin(a))}, ${f(Math.cos(a))}) * ((${uv} - 0.5) * ${v2(p['scale'])}) + 0.5 + ${v2(p['offset'])})` };
     },
   },
+  // 滤镜：value 的上游烘进贴图（见文件开头），材质里按 uv 采样
+  {
+    // 烘焙：把一串贵的节点（多层噪声）算一次存成贴图，材质里只采样一次；也能当缓存换个 uv 平铺
+    type: 'bake', category: 'filter', inputs: [BAKED_IN, UV_IN], outputs: [{ name: 'color', type: 'color' }],
+    params: [RESOLUTION],
+    emit: ({ uv }, _, context) => ({ color: context.baked(uv!) ?? MISSING }),
+  },
+  {
+    // 模糊：高斯模糊，烘的时候在 GPU 上做（横竖两遍、四边按平铺接上）；半径大时在小一级的 mip 上模糊，开销不随半径涨
+    type: 'blur', category: 'filter', inputs: [BAKED_IN, UV_IN], outputs: [{ name: 'color', type: 'color' }],
+    params: [{ name: 'radius', type: num(0, 0.25, 0.005), default: 0.02, description: 'blur radius in UV (0.02 is 2% of the texture)' }, RESOLUTION],
+    emit: ({ uv }, _, context) => ({ color: context.baked(uv!) ?? MISSING }),
+  },
+  {
+    // 扭曲（Substance 的 Directional Warp）：在 uv 挪开 amount · strength 的地方取 value，方向是 angle；amount 不烘，
+    // 接噪声就是被噪声扭过的图案（大理石的纹、木纹）
+    type: 'warp', category: 'filter', inputs: [BAKED_IN, { name: 'amount', type: 'float', fallback: '0.0' }, UV_IN], outputs: [{ name: 'color', type: 'color' }],
+    params: [
+      { name: 'strength', type: num(undefined, undefined, 0.01), default: 0.1, description: 'how far to move, in UV, when amount is 1' },
+      { name: 'angle', type: { kind: 'number', step: 5, unit: 'deg' }, default: 0, description: 'direction to move (0 is +u)' },
+      RESOLUTION,
+    ],
+    emit: ({ amount, uv }, p, context) => {
+      const a = (Number(p['angle']) * Math.PI) / 180;
+      // 取到百万分之一：90° 的 cos 不是正好 0
+      const along = (x: number) => f(Math.round(x * Number(p['strength']) * 1e6) / 1e6);
+      const direction = `vec2f(${along(Math.cos(a))}, ${along(Math.sin(a))})`;
+      return { color: context.baked(`(${uv} + ${amount} * ${direction})`) ?? MISSING };
+    },
+  },
 ];
+
+/** 滤镜节点的种类：value 输入烘进贴图的。 */
+export const BAKED_NODE_TYPES: ReadonlySet<string> = new Set(['bake', 'blur', 'warp']);
 
 const NODES_BY_TYPE = new Map(MATERIAL_NODES.map((node) => [node.type, node]));
 
@@ -406,11 +453,13 @@ export interface MaterialGraphValue {
  * compileMaterialGraph 和节点的预览（materialGraphPreview.ts）共用；all 时没接到输出的节点也算（预览要每个节点）。
  */
 export function emitMaterialGraphNodes(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string, options: { readonly all?: boolean } = {}): { readonly lines: string[]; readonly values: ReadonlyMap<string, MaterialGraphValue> } {
-  const order = sortGraph(graph, where, options);
+  // 滤镜节点的 value 已经烘进贴图：它的上游不用在材质里再算一遍（只给它烘的，预览要每个节点时照样算）
+  const live = { ...graph, nodes: graph.nodes.map((node) => (BAKED_NODE_TYPES.has(node.type) && node.inputs?.['value'] ? { ...node, inputs: withoutKey(node.inputs, 'value') } : node)) };
+  const order = sortGraph(live, where, options);
   const lines: string[] = [];
   const values = new Map<string, MaterialGraphValue>();
-  const context: EmitContext = { addFunction: (name, code) => compiler.addFunction(name, code), sample };
   for (const node of order) {
+    const context: EmitContext = { addFunction: (name, code) => compiler.addFunction(name, code), sample, baked: (uv) => sample(bakedTextureKey(node.id), uv) };
     const spec = NODES_BY_TYPE.get(node.type);
     if (!spec) throw new Error(`${where}: node '${node.id}' has the unknown type '${node.type}'`);
     const inputs: Record<string, string> = {};
@@ -468,6 +517,10 @@ function colorRamp(t: string, p: Readonly<Record<string, unknown>>): string {
     result = `mix(${result}, ${rgb(stops[k]!.color)}, ${weight})`;
   }
   return result;
+}
+
+function withoutKey<T>(record: Readonly<Record<string, T>>, key: string): Record<string, T> {
+  return Object.fromEntries(Object.entries(record).filter(([name]) => name !== key));
 }
 
 function safe(id: string): string {

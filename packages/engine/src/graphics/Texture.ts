@@ -6,6 +6,7 @@
 import type { StrideNative, TextureTarget } from '@stride-ts/native';
 import type { Branded } from '../data/prop';
 import { ResourceTable } from '../engine/ResourceTable';
+import type { GpuResources } from './GpuResources';
 import type { GraphicsDevice } from './GraphicsDevice';
 
 export type TextureId = Branded<number, 'TextureId'>;
@@ -24,6 +25,11 @@ export interface TextureData {
   readonly renderTarget?: boolean;
   /** 视频贴图：没有 levels，正在放的视频每来一帧新的画面拷进来、重建 mip（GpuResources.texture）。 */
   readonly video?: HTMLVideoElement;
+  /**
+   * 在 GPU 上生成的贴图（材质节点图的滤镜烘的）：没有 levels，第一次在某个设备上用到时调它画出来（带完整的 mip），之后复用。
+   * 大小、格式要和上面写的一致。
+   */
+  readonly generate?: (resources: GpuResources) => GPUTexture;
 }
 
 export class Texture {
@@ -33,7 +39,7 @@ export class Texture {
   readonly data: TextureData;
 
   constructor(name: string, data: TextureData) {
-    if (data.levels.length === 0 && !data.renderTarget && !data.video) throw new RangeError(`texture '${name}' has no mip levels`);
+    if (data.levels.length === 0 && !data.renderTarget && !data.video && !data.generate) throw new RangeError(`texture '${name}' has no mip levels`);
     this.name = name;
     this.data = data;
     this.id = textures.add(this) as TextureId;

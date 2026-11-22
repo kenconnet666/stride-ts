@@ -36,7 +36,8 @@ import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
 import { SOUND_SYNTH_RATE, synthesizeSound } from '../audio/soundSynth';
 import { ColorTreeCompiler } from '../rendering/mesh/colorTree';
-import { compileMaterialGraph, materialGraphTextures, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
+import { bakedTextureKey, compileMaterialGraph, materialGraphTextures, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
+import { bakedMaterialGraphNodes, bakedMaterialGraphTexture } from '../rendering/mesh/materialGraphBake';
 import type { GraphFile } from './formats/nodeGraph';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
@@ -459,15 +460,18 @@ export class ContentManager {
   }
 
   /**
-   * 材质节点图（rendering/mesh/materialGraph.ts）编成第 index 层：先加载贴图节点引用的贴图资源，图的代码加上这一层的各个函数
+   * 材质节点图（rendering/mesh/materialGraph.ts）编成第 index 层：先加载贴图节点引用的贴图资源、给滤镜节点建烘焙的贴图，图的代码加上这一层的各个函数
    * （权重 1，读 materialGraph() 算好的 graph_* 变量）。
    */
   async #graphLayer(graph: GraphFile, compiler: ColorTreeCompiler, index: number, name: string): Promise<{ code: string; layer: MaterialShaderLayer }> {
-    const textures = new Map(await Promise.all(materialGraphTextures(graph).map(async (path) => [path, await this.loadTextureAsset(path)] as const)));
+    const where = `material ${name}`;
+    const textures = new Map<string, Texture>(await Promise.all(materialGraphTextures(graph).map(async (path) => [path, await this.loadTextureAsset(path)] as const)));
+    // 滤镜节点烘的贴图（第一次画的时候在 GPU 上烘），上游的滤镜在前
+    for (const node of bakedMaterialGraphNodes(graph)) textures.set(bakedTextureKey(node), bakedMaterialGraphTexture(graph, node, (key) => textures.get(key), where));
     const compiled = compileMaterialGraph(graph, compiler, (path, uv) => {
       const texture = textures.get(path);
       return texture && compiler.sampleTexture(texture, uv);
-    }, `material ${name}`);
+    }, where);
     const has = (output: MaterialGraphOutput) => compiled.outputs.has(output);
     const layer = (fn: string, type: string, body: string) => `fn layer${index}${fn}() -> ${type} {\n  return ${body};\n}\n`;
     const code = [

@@ -71,13 +71,17 @@ export class GpuResources {
   }
 
   /**
-   * 贴图的 GPU 纹理；渲染目标第一次用到时创建（内容是空的），其余的第一次用到时上传所有 mip，压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝。
+   * 贴图的 GPU 纹理；渲染目标第一次用到时创建（内容是空的），在 GPU 上生成的第一次用到时生成，其余的第一次用到时上传所有 mip，压缩格式按块算每行字节数，小于一个块的 mip 按整块拷贝。
    * 只给了第 0 级的（generateMipmaps）上传后在 GPU 上生成完整的 mip 链。
    */
   texture(texture: Texture): GPUTexture {
     let gpu = this.#textures.get(texture);
     if (!gpu && texture.data.video) {
       gpu = this.#videoTexture(texture.name, texture.data.video, texture.data.format);
+      this.#textures.set(texture, gpu);
+    }
+    if (!gpu && texture.data.generate) {
+      gpu = texture.data.generate(this);
       this.#textures.set(texture, gpu);
     }
     if (!gpu && texture.data.renderTarget) {

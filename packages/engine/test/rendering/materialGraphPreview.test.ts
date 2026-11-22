@@ -29,7 +29,7 @@ describe('材质节点图的预览着色器', () => {
     expect(shader.code).toContain('@group(0) @binding(1) var previewTexture0: texture_2d<f32>;');
     expect(shader.code).toContain('textureSample(previewTexture0, previewSampler,');
     expect(shader.code).toContain('fn screenAmbient(');
-    expect(shader.code).toContain('var<private> view: PreviewView;');
+    expect(shader.code).toContain('var<private> view: PlaneView;');
     expect(() => materialGraphPreviewShader({ nodes: [{ id: 'x', type: 'nope' }], outputs: {} }, 'bad graph')).toThrow(/bad graph: node 'x' has the unknown type 'nope'/);
   });
 });

@@ -145,6 +145,8 @@ async function launch(url: string, { headless = false, size, dpr, chromeArgs = [
     '--disable-backgrounding-occluded-windows',
     '--disable-renderer-backgrounding',
     '--disable-background-timer-throttling',
+    // 测试的页面照常建声音、播放（声音的冒烟照样查），只是不出声，不打扰用户用电脑（用户 2026-11-22）；要听时设 STRIDE_AUDIO=1
+    ...(process.env['STRIDE_AUDIO'] === '1' ? [] : ['--mute-audio']),
     ...(headless ? ['--headless=new'] : []),
     ...(size ? [`--window-size=${size[0]},${size[1]}`] : []),
     ...(dpr ? [`--force-device-scale-factor=${dpr}`] : []),

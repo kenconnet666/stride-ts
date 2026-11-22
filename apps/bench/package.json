@@ -1,7 +1,7 @@
 {
   "name": "@stride-ts/bench",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

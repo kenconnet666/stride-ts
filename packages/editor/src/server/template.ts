@@ -37,7 +37,7 @@ export async function createProject(root: string, { port }: NewProjectOptions = 
     'package.json': json({
       name: `@stride-ts/${folder}`,
       private: true,
-      license: 'MIT',
+      license: 'Apache-2.0',
       type: 'module',
       scripts: { smoke: 'node scripts/smoke.ts', dev: 'vite', build: 'vite build', preview: 'vite preview', typecheck: 'tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo' },
       dependencies: { '@stride-ts/engine': 'workspace:*', '@stride-ts/native': nativeVersion },

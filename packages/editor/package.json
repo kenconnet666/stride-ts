@@ -1,7 +1,7 @@
 {
   "name": "@stride-ts/editor",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "stride-ts editor: the Node backend (project, asset database, file watching, HTTP API as a Vite plugin) and, later, the web frontend",
   "bin": {

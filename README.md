@@ -77,4 +77,4 @@ pwsh tools/verify.ps1   # 在单独的 git 工作树里跑全部回归，主检�
 
 ## 许可证
 
-MIT，见 [LICENSE](LICENSE)。原生模块在 Jolt 的 fork 里（Jolt 本身是 MIT），用到的库见 fork 的 `StrideNative/ThirdParty/README.md`。矢量文字的覆盖率计算移植自 Eric Lengyel 的 Slug 参考着色器（Copyright 2017 Eric Lengyel，MIT 或 Apache-2.0，[EricLengyel/Slug](https://github.com/EricLengyel/Slug)）。共用资源的来源和许可见 world-engine-assets 的 `CREDITS.md`。
+Apache-2.0，见 [LICENSE](LICENSE)（2026-11-22 从 MIT 改过来）。原生模块在 Jolt 的 fork 里（Jolt 本身是 MIT），用到的库见 fork 的 `StrideNative/ThirdParty/README.md`。矢量文字的覆盖率计算移植自 Eric Lengyel 的 Slug 参考着色器（Copyright 2017 Eric Lengyel，MIT 或 Apache-2.0，[EricLengyel/Slug](https://github.com/EricLengyel/Slug)）。共用资源的来源和许可见 world-engine-assets 的 `CREDITS.md`。

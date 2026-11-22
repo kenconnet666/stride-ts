@@ -1,7 +1,7 @@
 {
   "name": "@stride-ts/physics-sample",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "import:stride": "node scripts/import.ts",

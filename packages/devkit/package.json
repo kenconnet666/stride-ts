@@ -1,7 +1,7 @@
 {
   "name": "@stride-ts/devkit",
   "private": true,
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "description": "stride-ts project tooling: the shared Vite config (strideApp: cross-origin isolation, debug hub, editor, asset packages, precompressed builds) and the smoke-test helpers",
   "exports": {

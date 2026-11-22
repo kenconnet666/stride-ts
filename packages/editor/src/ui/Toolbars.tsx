@@ -171,6 +171,21 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
     <span {...css.attrs(styles.spacer)} />,
     <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopSplineEdit()}>{t.polyDone}</Button>,
   ];
+  /** 编辑白盒时的工具条：几个笔刷、选中的那个是加减交、删除选中的，最后是"完成"。 */
+  const brushControls = (editing: NonNullable<typeof session.brushEditing.value>) => {
+    const shape = editing.selection === undefined ? undefined : editing.brush.brushes[editing.selection];
+    return [
+      <span {...css.attrs(styles.count)}>{t.brushCount(editing.brush.brushes.length)}</span>,
+      ...(['add', 'subtract', 'intersect'] as const).map((operation) => (
+        <Button size="sm" variant={shape?.operation === operation ? 'soft' : 'ghost'} tone="neutral" aria-pressed={shape?.operation === operation} disabled={!shape}
+          onClick={() => session.setBrushOperation(operation)}>{t.brushOperations[operation]}</Button>
+      )),
+      <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.brushDelete} (Delete)`} disabled={!shape || editing.brush.brushes.length <= 1}
+        onClick={() => session.deleteSelectedBrush()}>{t.brushDelete}</Button>,
+      <span {...css.attrs(styles.spacer)} />,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopBrushEdit()}>{t.polyDone}</Button>,
+    ];
+  };
   /**
    * 雕刻地形时的工具条：先是笔刷、地物两种工具；笔刷是种类、半径（米）、强度，地物是新建、选中的那个的高度、过渡宽度、强度
    * 和删除；文件里有几笔，最后是"完成"。
@@ -229,6 +244,8 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
     if (poly && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{polyControls(poly)}</div>;
     const splineEditing = session.splineEditing.value;
     if (splineEditing && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{splineControls(splineEditing)}</div>;
+    const brushEditing = session.brushEditing.value;
+    if (brushEditing && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{brushControls(brushEditing)}</div>;
     const sculpting = session.sculpting.value;
     if (sculpting && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{sculptControls(sculpting)}</div>;
     return (

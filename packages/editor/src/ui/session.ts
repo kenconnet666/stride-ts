@@ -23,10 +23,10 @@ import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
 import { freeAssetPath } from '../newAssets';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../library/index.ts';
-import type { EditAgent, EditableScene, Game, PaintBrush, PolyEditSession, PolySelection, PolySelectMode, SculptBrush, SnapSettings, SplineEditSession } from '@stride-ts/engine';
-import { branchFromPoint, deleteSplinePoints } from '@stride-ts/engine';
+import type { BrushEditSession, EditAgent, EditableScene, Game, PaintBrush, PolyEditSession, PolySelection, PolySelectMode, SculptBrush, SnapSettings, SplineEditSession } from '@stride-ts/engine';
+import { branchFromPoint, deleteBrush, deleteSplinePoints } from '@stride-ts/engine';
 import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
-import type { PolyMeshFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
+import type { BrushFile, BrushShapeFile, PolyMeshFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
 import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
 import { materialSet } from '../materialSet.ts';
@@ -99,6 +99,15 @@ export class EditorSession implements EditableScene {
   #splineRedo: SplineFile[] = [];
   /** 上一次存进文件的样条（拖之前的样子）。 */
   #splineSaved: SplineFile | undefined;
+  /**
+   * 正在视口里编辑的白盒（.brush.json）：哪个实体上、哪个文件，选中的笔刷和现在的白盒；没在编辑时是 undefined。拖完手柄、加
+   * 方块、删笔刷、改运算时存进文件（后端重新烘模型）；撤销、重做这时是白盒的上一步、下一步。
+   */
+  readonly brushEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly selection: number | undefined; readonly brush: BrushFile }>();
+  #brushUndo: BrushFile[] = [];
+  #brushRedo: BrushFile[] = [];
+  /** 上一次存进文件的白盒（拖之前的样子）。 */
+  #brushSaved: BrushFile | undefined;
   /** 正在画的材质层（属性面板里开着的材质的第几层、它的遮罩）；没在画时是 undefined。 */
   readonly painting = shallowRef<{ readonly layer: number; readonly mask: string }>();
   /** 绘制的笔刷（半径、硬度、强度、擦除），换着画别的层时保留。 */
@@ -351,6 +360,7 @@ export class EditorSession implements EditableScene {
     }
     this.stopPolyEdit();
     this.stopSplineEdit();
+    this.stopBrushEdit();
     this.stopSculpt();
     // 存过还没刷新的材质先存下来：视口里的材质要有这一层
     await this.#flushInspected();
@@ -380,6 +390,7 @@ export class EditorSession implements EditableScene {
     this.stopPainting();
     this.stopPolyEdit();
     this.stopSplineEdit();
+    this.stopBrushEdit();
     this.#sculptFile = await this.client.readAsset<TerrainFile>('terrain', path);
     this.#sculptUndo = [];
     this.#sculptRedo = [];
@@ -768,6 +779,7 @@ export class EditorSession implements EditableScene {
     // 页面重新加载（试玩、热重载）：页面里的多边形编辑没了，工具条也收起
     this.polyEditing.value = undefined;
     this.splineEditing.value = undefined;
+    this.brushEditing.value = undefined;
   }
 
   get file(): SceneFile {
@@ -808,6 +820,7 @@ export class EditorSession implements EditableScene {
     // 编辑多边形时撤销的是网格的一步（读 polyEditing 让工具条跟着每一步刷新）
     if (this.polyEditing.value) return this.#polyUndo.length > 0;
     if (this.splineEditing.value) return this.#splineUndo.length > 0;
+    if (this.brushEditing.value) return this.#brushUndo.length > 0;
     if (this.sculpting.value) return this.#sculptUndo.length > 0;
     return this.#undo?.canUndo ?? false;
   }
@@ -815,6 +828,7 @@ export class EditorSession implements EditableScene {
   get canRedo(): boolean {
     if (this.polyEditing.value) return this.#polyRedo.length > 0;
     if (this.splineEditing.value) return this.#splineRedo.length > 0;
+    if (this.brushEditing.value) return this.#brushRedo.length > 0;
     if (this.sculpting.value) return this.#sculptRedo.length > 0;
     return this.#undo?.canRedo ?? false;
   }
@@ -837,6 +851,7 @@ export class EditorSession implements EditableScene {
   undo(): void {
     if (this.polyEditing.value) return this.#polyStep(this.#polyUndo, this.#polyRedo);
     if (this.splineEditing.value) return this.#splineStep(this.#splineUndo, this.#splineRedo);
+    if (this.brushEditing.value) return this.#brushStep(this.#brushUndo, this.#brushRedo);
     if (this.sculpting.value) return this.#sculptStep(this.#sculptUndo, this.#sculptRedo);
     if (this.#require().undo()) this.#changed();
   }
@@ -844,6 +859,7 @@ export class EditorSession implements EditableScene {
   redo(): void {
     if (this.polyEditing.value) return this.#polyStep(this.#polyRedo, this.#polyUndo);
     if (this.splineEditing.value) return this.#splineStep(this.#splineRedo, this.#splineUndo);
+    if (this.brushEditing.value) return this.#brushStep(this.#brushRedo, this.#brushUndo);
     if (this.sculpting.value) return this.#sculptStep(this.#sculptRedo, this.#sculptUndo);
     if (this.#require().redo()) this.#changed();
   }
@@ -926,6 +942,7 @@ export class EditorSession implements EditableScene {
     this.stopPainting();
     this.stopSculpt();
     this.stopSplineEdit();
+    this.stopBrushEdit();
     const mesh = await this.client.readAsset<PolyMeshFile>('poly', path);
     this.#polyUndo = [];
     this.#polyRedo = [];
@@ -1020,6 +1037,7 @@ export class EditorSession implements EditableScene {
     this.stopPainting();
     this.stopSculpt();
     this.stopPolyEdit();
+    this.stopBrushEdit();
     const spline = await this.client.readAsset<SplineFile>('spline', path);
     this.#splineUndo = [];
     this.#splineRedo = [];
@@ -1086,6 +1104,85 @@ export class EditorSession implements EditableScene {
     edit.selection = [];
     this.#saveSpline(edit);
     this.#splineChanged(edit, false);
+  }
+
+  /** 模型 modelPath 是不是从白盒烘出来的：同一路径有 .brush.json 时是它的路径。 */
+  brushSourceOf(modelPath: string): string | undefined {
+    return this.assets.value.some((asset) => asset.kind === 'brush' && asset.path === modelPath) ? modelPath : undefined;
+  }
+
+  /** 在视口里编辑实体 entity 的模型来自的白盒 path 的笔刷。 */
+  async startBrushEdit(entity: string, path: string): Promise<void> {
+    const agent = this.agent.value;
+    if (!agent) return;
+    this.stopPainting();
+    this.stopSculpt();
+    this.stopPolyEdit();
+    this.stopSplineEdit();
+    const brush = await this.client.readAsset<BrushFile>('brush', path);
+    this.#brushUndo = [];
+    this.#brushRedo = [];
+    this.#brushSaved = brush;
+    agent.beginBrushEdit(entity, path, brush);
+    agent.onBrushChanged = (edit, commit) => this.#brushChanged(edit, commit);
+    this.#brushChanged(agent.brushEdit!, false);
+    this.notice.value = '';
+    this.status.value = t.brushHint;
+  }
+
+  stopBrushEdit(): void {
+    this.agent.value?.endBrushEdit();
+    if (this.brushEditing.value && this.status.value === t.brushHint) this.status.value = '';
+    this.brushEditing.value = undefined;
+  }
+
+  /** 删掉选中的笔刷（一步撤销）；只剩一个时在状态栏说为什么。 */
+  deleteSelectedBrush(): void {
+    const edit = this.agent.value?.brushEdit;
+    if (!edit || edit.selection === undefined) return;
+    try {
+      edit.brush = deleteBrush(edit.brush, edit.selection);
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+      return;
+    }
+    edit.selection = undefined;
+    this.#brushChanged(edit, true);
+  }
+
+  /** 把选中的笔刷换成加、减、交（一步撤销）。 */
+  setBrushOperation(operation: BrushShapeFile['operation']): void {
+    const edit = this.agent.value?.brushEdit, index = edit?.selection;
+    if (!edit || index === undefined || edit.brush.brushes[index]!.operation === operation) return;
+    edit.brush = { ...edit.brush, brushes: edit.brush.brushes.map((shape, i) => (i === index ? { ...shape, operation } : shape)) };
+    this.#brushChanged(edit, true);
+  }
+
+  /** 视口里改了白盒或选中的笔刷：commit（拖完、加方块、删笔刷）时记一步撤销、存文件。 */
+  #brushChanged(edit: BrushEditSession, commit: boolean): void {
+    this.agent.value?.refresh();
+    if (commit && this.#brushSaved && this.#brushSaved !== edit.brush) {
+      this.#brushUndo.push(this.#brushSaved);
+      this.#brushRedo = [];
+      this.#saveBrush(edit);
+    }
+    this.brushEditing.value = { entity: edit.entity, path: edit.path, selection: edit.selection, brush: edit.brush };
+  }
+
+  #saveBrush(edit: BrushEditSession): void {
+    this.#brushSaved = edit.brush;
+    void this.client.saveAsset('brush', edit.path, edit.brush).catch((error: unknown) => (this.notice.value = (error as Error).message));
+  }
+
+  /** 白盒编辑的撤销、重做：换回上一步、下一步的白盒，存文件；选中的还在就留着。 */
+  #brushStep(from: BrushFile[], to: BrushFile[]): void {
+    const edit = this.agent.value?.brushEdit, brush = from.pop();
+    if (!edit || !brush) return;
+    to.push(edit.brush);
+    edit.brush = brush;
+    if (edit.selection !== undefined && edit.selection >= brush.brushes.length) edit.selection = undefined;
+    this.#saveBrush(edit);
+    this.#brushChanged(edit, false);
   }
 
   /** 加一个空实体（只有变换），放在 parent 的子实体的最后（null 是最上层），选中它。 */
@@ -1158,6 +1255,8 @@ export class EditorSession implements EditableScene {
     }
     // 编辑样条时删的是选中的控制点
     if (this.splineEditing.value) return this.deleteSplinePoints();
+    // 编辑白盒时删的是选中的笔刷
+    if (this.brushEditing.value) return this.deleteSelectedBrush();
     // 展开的场景里父实体排在前面：顺着扫一遍收全后代（包括挂在成员下面的文档实体）
     const removing = new Set(this.selection.value);
     const parentOf = new Map<string, string | null>();

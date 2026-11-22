@@ -1,4 +1,4 @@
-import { Mountain, Plus, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
+import { Boxes, Mountain, Plus, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { Button, IconButton, Menu, MenuGroup, MenuItem, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -277,6 +277,11 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       const model = entity.components.model?.model;
       return model === undefined ? undefined : session.splineSourceOf(model);
     };
+    // 模型是从白盒（.brush.json）烘出来的：能在视口里点选笔刷、拖手柄改尺寸
+    const brushSource = (entity: SceneEntityFile) => {
+      const model = entity.components.model?.model;
+      return model === undefined ? undefined : session.brushSourceOf(model);
+    };
     const keys = Object.keys(COMPONENT_FIELDS) as ComponentKey[];
     return (
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
@@ -307,6 +312,10 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             {key === 'model' && list.length === 1 && splineSource(list[0]!) && (
               <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.splineEditing.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Spline}
                 onClick={() => void session.startSplineEdit(list[0]!.id, splineSource(list[0]!)!)}>{t.splineEdit}</Button>
+            )}
+            {key === 'model' && list.length === 1 && brushSource(list[0]!) && (
+              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.brushEditing.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Boxes}
+                onClick={() => void session.startBrushEdit(list[0]!.id, brushSource(list[0]!)!)}>{t.brushEdit}</Button>
             )}
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key], COMPONENT_FIELDS[key].type)} context={context} onSet={setter(list, () => ['components', key])} />
           </section>

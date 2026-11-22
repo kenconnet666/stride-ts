@@ -7,9 +7,10 @@
  *   临时放进 SURFACE_DRAG_GROUP 这个渲染组、点选时不画，自己不挡）；吸附到顶点（snap.vertex，或拖的时候按住 V）时，拖着的东西上
  *   离光标最近的顶点对到光标下另一个物体上离点到的地方最近的顶点（同一套点选）；
  * - W、E、R：移动、旋转、缩放；F：把选中的东西放到画面中间；相机的操作见 EditorCamera。
- * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）、编辑样条（agent.splineEdit）、雕刻地形（agent.sculpt）时左键换成
- *   那个工具的：画笔刷；点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），操纵器拖选中的顶点（PolyEditTool）；点选、拖控制点，
- *   双击路径加点（SplineEditTool）；雕刻的笔刷（[、] 改大小，Shift 反过来）。
+ * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）、编辑样条（agent.splineEdit）、编辑白盒（agent.brushEdit）、雕刻地形
+ *   （agent.sculpt）时左键换成那个工具的：画笔刷；点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），操纵器拖选中的顶点
+ *   （PolyEditTool）；点选、拖控制点，双击路径加点（SplineEditTool）；点选笔刷、拖面上的手柄改尺寸，双击面加方块（BrushEditTool）；
+ *   雕刻的笔刷（[、] 改大小，Shift 反过来）。
  */
 import type { Entity } from '../../engine/Entity';
 import { SyncScript } from '../../engine/scripts';
@@ -37,6 +38,8 @@ import type { SplineFile } from '../../content/formats/splineFormat';
 import { splineCurve, splinePaths } from '../../modeling/spline';
 import { roadLanes, type RoadLane } from '../../modeling/roadLanes';
 import { insertSplinePoint, moveSplinePoints, pickSplineCurve, splinePointList } from './SplineEditTool';
+import { addBoxOnFace, brushBox, clickBrush, faceCenter, pickBrushFace, resizeBrushFace } from './BrushEditTool';
+import type { BrushFile, BrushShapeFile } from '../../content/formats/assetFormat';
 
 /** 选中的东西的框的颜色（线性）。 */
 const SELECTION_COLOR: DebugColor = [1, 0.55, 0.1, 1];
@@ -74,6 +77,25 @@ const GIZMO_SCREEN_SIZE = 0.14;
 const SURFACE_DRAG_GROUP = 31;
 /** 按下到松开鼠标挪了不到这么多像素算点一下。 */
 const CLICK_PIXELS = 4;
+/** 白盒编辑的笔刷线框：加的、减的、交的。 */
+const BRUSH_OPERATION_COLORS: Readonly<Record<BrushShapeFile['operation'], DebugColor>> = {
+  add: [0.85, 0.88, 0.95, 0.75], subtract: [1, 0.35, 0.3, 0.85], intersect: [0.35, 0.6, 1, 0.85],
+};
+/** 白盒的手柄：光标离手柄在屏幕上多少像素以内算按到；手柄的方块按轴着色，指着的、拖着的黄色。 */
+const BRUSH_HANDLE_PIXELS = 12;
+const BRUSH_HANDLE_COLORS: readonly DebugColor[] = [[1, 0.15, 0.15, 1], [0.25, 0.9, 0.2, 1], [0.2, 0.4, 1, 1]];
+
+/**
+ * 射线上离直线（过 point、单位方向 axis）最近的那一点在直线上的位置（从 point 量的长度）：拖白盒的手柄用。射线和直线差不多平行
+ * （顺着轴看）时是 undefined。
+ */
+function lineParameter(ray: { readonly origin: readonly number[]; readonly direction: readonly number[] }, point: readonly number[], axis: readonly number[]): number | undefined {
+  const dot = (a: readonly number[], b: readonly number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+  const d = ray.direction, w = [ray.origin[0]! - point[0]!, ray.origin[1]! - point[1]!, ray.origin[2]! - point[2]!];
+  const a = dot(d, d), b = dot(d, axis), denominator = a - b * b;
+  if (denominator < 1e-9 * a) return undefined;
+  return (a * dot(axis, w) - b * dot(d, w)) / denominator;
+}
 
 /** 存进文件的数：去掉 float32 来回换算留下的尾巴。 */
 const tidy = (value: number): number => Math.round(value * 1e6) / 1e6;
@@ -119,6 +141,13 @@ export class EditorViewport extends SyncScript {
   #lanes: { readonly spline: SplineFile; readonly lanes: readonly RoadLane[] } | undefined;
   /** 上一次在样条编辑里按下左键的时刻和位置（认双击）。 */
   #lastSplineClick: { readonly time: number; readonly at: readonly [number, number] } | undefined;
+  /**
+   * 白盒编辑里正在拖的手柄：按下时的白盒、哪个笔刷的哪个面、面的中心和法线（模型本地）、按下时光标在法线那条线上的位置、
+   * 上一次交出去的推出量（没变就不再交）。
+   */
+  #brushDrag: { readonly start: BrushFile; readonly index: number; readonly face: number; readonly center: readonly [number, number, number]; readonly normal: readonly [number, number, number]; readonly anchor: number; delta: number } | undefined;
+  /** 上一次在白盒编辑里按下左键的时刻和位置（认双击）。 */
+  #lastBrushClick: { readonly time: number; readonly at: readonly [number, number] } | undefined;
   /** 绘制模式里正在画的一笔：上一笔落在哪（世界坐标），画没画上。 */
   #stroke: { last: [number, number, number] | undefined; painted: boolean } | undefined;
   /** 拖地物：拖的是哪个地物的哪个角（undefined 是整个地物），按下时光标下的地面（地形本地 x、z），按下时的地物，挪没挪过。 */
@@ -134,7 +163,7 @@ export class EditorViewport extends SyncScript {
     const input = this.game.input, draw = this.game.debugDraw;
     for (const id of agent.selection) {
       // 正在编辑多边形的实体画它自己的线框，不画包围盒
-      if (agent.polyEdit?.entity === id || agent.splineEdit?.entity === id) continue;
+      if (agent.polyEdit?.entity === id || agent.splineEdit?.entity === id || agent.brushEdit?.entity === id) continue;
       const entity = live.entity(id);
       if (!entity?.alive) continue;
       const boxes = selectionBoxes(this.game, entity);
@@ -169,6 +198,10 @@ export class EditorViewport extends SyncScript {
     }
     if (agent.splineEdit) {
       this.#spline(agent, pixel, navigating);
+      return;
+    }
+    if (agent.brushEdit) {
+      this.#brush(agent, pixel, navigating);
       return;
     }
     if (agent.sculpt) {
@@ -593,6 +626,91 @@ export class EditorViewport extends SyncScript {
       this.#pressed = undefined;
     }
     if (center) this.#drawGizmo(gizmo);
+  }
+
+  /**
+   * 白盒编辑的一帧：画每个笔刷的有向包围盒（加的白、减的红、交的蓝，选中的橙色），选中的笔刷六个面的中心各有一个手柄；左键点
+   * 一下选中点到的笔刷（同一处再点换成后面的那个，点空处取消），双击一个面在它外侧贴着加一个同样大小的方块，按在手柄上拖改尺寸（对面不动；吸附开着时按
+   * 移动的步长，Ctrl 反过来）。每帧把新白盒交给 agent.onBrushChanged（线框跟着动，模型等松开后存文件、后端重新烘），松开、加
+   * 方块时 commit。关了深度测试：被挡住、挖掉的笔刷也看得见、点得到。
+   */
+  #brush(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
+    const edit = agent.brushEdit!, entity = agent.live?.entity(edit.entity);
+    if (!entity?.alive) return;
+    const input = this.game.input, draw = this.game.debugDraw;
+    const world = currentWorld(entity), inverse = new Float32Array(16);
+    if (!Matrix.invert(inverse, world)) return;
+    const toWorld = ([x, y, z]: readonly number[]) => Matrix.transformPoint(world, x!, y!, z!);
+    // 射线换进模型的本地坐标（方向不归一：只比远近、求线上的位置）
+    const localRay = (at: readonly [number, number]) => {
+      const { origin: o, direction: d } = this.#ray(at);
+      const origin = Matrix.transformPoint(inverse, o.x, o.y, o.z), end = Matrix.transformPoint(inverse, o.x + d.x, o.y + d.y, o.z + d.z);
+      return { origin, direction: [end[0] - origin[0], end[1] - origin[1], end[2] - origin[2]] as [number, number, number] };
+    };
+    const boxes = edit.brush.brushes.map(brushBox);
+    boxes.forEach((box, i) => {
+      const chosen = i === edit.selection;
+      const matrix = Matrix.multiply(new Float32Array(16), world, Matrix.compose(new Float32Array(16), box.center, box.rotation, [1, 1, 1]));
+      draw.box(matrix, box.half, chosen ? POLY_SELECTED_COLOR : BRUSH_OPERATION_COLORS[edit.brush.brushes[i]!.operation], { width: chosen ? 3 : 1.5, depthTest: false });
+    });
+
+    const selected = edit.selection === undefined ? undefined : boxes[edit.selection];
+    const handles = selected ? [0, 1, 2, 3, 4, 5].map((face) => toWorld(faceCenter(selected, face).center)) : [];
+    const handleAt = (at: readonly [number, number]) => pickVertex(handles.map(([x, y, z]) => this.#project({ x, y, z })), at, BRUSH_HANDLE_PIXELS);
+    const drag = this.#brushDrag;
+    const active = drag?.face ?? (navigating ? undefined : handleAt(pixel));
+    handles.forEach((point, face) => {
+      const half = this.#viewHeight(point) * POLY_VERTEX_SCREEN_SIZE * (face === active ? 2.6 : 2);
+      draw.box(Matrix.compose(new Float32Array(16), point, [0, 0, 0, 1], [1, 1, 1]), [half, half, half], face === active ? ACTIVE_COLOR : BRUSH_HANDLE_COLORS[face >> 1]!, { width: 2, depthTest: false });
+    });
+
+    if (input.isMouseButtonPressed('left') && !navigating) {
+      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
+      const now = performance.now(), last = this.#lastBrushClick;
+      const presses = input.pointerEvents.filter((event) => event.device === 'mouse' && event.eventType === 'pressed').length;
+      const double = presses >= 2 || (last !== undefined && now - last.time < DOUBLE_CLICK_MS && Math.hypot(at[0] - last.at[0], at[1] - last.at[1]) < CLICK_PIXELS);
+      this.#lastBrushClick = { time: now, at };
+      const face = selected ? handleAt(at) : undefined;
+      if (face !== undefined) {
+        const { center, normal } = faceCenter(selected!, face);
+        const anchor = lineParameter(localRay(at), center, normal);
+        if (anchor !== undefined) this.#brushDrag = { start: edit.brush, index: edit.selection!, face, center, normal, anchor, delta: 0 };
+      } else if (double) {
+        const ray = localRay(at), hit = pickBrushFace(edit.brush, ray.origin, ray.direction);
+        if (hit) {
+          const { brush, index } = addBoxOnFace(edit.brush, hit.index, hit.face);
+          edit.brush = brush;
+          edit.selection = index;
+          agent.onBrushChanged?.(edit, true);
+        }
+      } else this.#pressed = at;
+    }
+    const current = this.#brushDrag;
+    if (current && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) {
+      const along = lineParameter(localRay(pixel), current.center, current.normal);
+      if (along !== undefined) {
+        let delta = along - current.anchor;
+        // 吸附的步长按模型本地的长度（白盒的实体一般不缩放）
+        const step = agent.snap.translate, snapping = agent.snap.enabled !== (input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
+        if (snapping && step > 0) delta = Math.round(delta / step) * step;
+        if (delta !== current.delta) {
+          current.delta = delta;
+          edit.brush = resizeBrushFace(current.start, current.index, current.face, delta);
+          agent.onBrushChanged?.(edit, false);
+        }
+      }
+    }
+    if (input.isMouseButtonReleased('left')) {
+      if (current) {
+        this.#brushDrag = undefined;
+        agent.onBrushChanged?.(edit, true);
+      } else if (this.#pressed && Math.hypot(pixel[0] - this.#pressed[0], pixel[1] - this.#pressed[1]) < CLICK_PIXELS) {
+        const ray = localRay(pixel);
+        edit.selection = clickBrush(edit.brush, ray.origin, ray.direction, edit.selection);
+        agent.onBrushChanged?.(edit, false);
+      }
+      this.#pressed = undefined;
+    }
   }
 
   /** 这一帧里鼠标按下那一刻在画布上的位置（像素）；这一帧没有按下事件时是 undefined。 */

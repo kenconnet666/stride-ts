@@ -150,6 +150,12 @@ export interface EditorMessages {
   readonly splineBranch: string;
   readonly splineBranchHint: string;
   readonly splinePoints: (count: number) => string;
+  // 白盒编辑
+  readonly brushEdit: string;
+  readonly brushHint: string;
+  readonly brushCount: (count: number) => string;
+  readonly brushDelete: string;
+  readonly brushOperations: Readonly<Record<'add' | 'subtract' | 'intersect', string>>;
   readonly polyModes: Readonly<Record<'vertex' | 'edge' | 'face', string>>;
   // 雕刻地形
   readonly sculpt: string;
@@ -365,6 +371,11 @@ const zhCN: EditorMessages = {
   splineBranch: '拉出分支',
   splineBranchHint: '从选中的点往右边拉出一条新的路（三条路交汇处自动生成路口）',
   splinePoints: (count) => `${count} 个点`,
+  brushEdit: '编辑白盒',
+  brushHint: '视口里点选笔刷（同一处再点换成后面的），拖面上的手柄改尺寸（吸附按移动的步长，Ctrl 反过来），双击面在外侧加方块；Delete 删笔刷，Ctrl+Z 撤销',
+  brushCount: (count) => `${count} 个笔刷`,
+  brushDelete: '删除笔刷',
+  brushOperations: { add: '加', subtract: '减', intersect: '交' },
   polyModes: { vertex: '点', edge: '边', face: '面' },
   sculpt: '雕刻',
   sculptHint: '视口里左键拖着雕刻地形（Shift 抬高、压低反过来；压平压到按下那一点的高度），[、] 缩小、放大笔刷；Ctrl+Z 撤销一笔',
@@ -590,6 +601,11 @@ const enUS: EditorMessages = {
   splineBranch: 'Branch',
   splineBranchHint: 'Start a new path at the selected point, heading right (roads get a junction where three meet)',
   splinePoints: (count) => `${count} point${count === 1 ? '' : 's'}`,
+  brushEdit: 'Edit greybox',
+  brushHint: 'Click a brush in the viewport (click again for the one behind), drag a face handle to resize (snaps to the move step, Ctrl inverts), double-click a face to add a box beside it; Delete removes the brush, Ctrl+Z undoes',
+  brushCount: (count) => `${count} brush${count === 1 ? '' : 'es'}`,
+  brushDelete: 'Delete brush',
+  brushOperations: { add: 'Add', subtract: 'Subtract', intersect: 'Intersect' },
   polyModes: { vertex: 'Vertex', edge: 'Edge', face: 'Face' },
   sculpt: 'Sculpt',
   sculptHint: 'Drag in the viewport to sculpt the terrain (Shift swaps raise and lower; flatten levels to the height where the drag starts), [ and ] shrink and grow the brush; Ctrl+Z undoes a stroke',

@@ -33,6 +33,7 @@ import { TimelinePreview, type TimelinePreviewState } from '../TimelinePreview';
 import type { SceneEdit } from '../SceneDocument';
 import { EMPTY_POLY_SELECTION, type PolyEditSession, type PolySelectMode } from './PolyEditTool';
 import type { SplineEditSession } from './SplineEditTool';
+import type { BrushEditSession } from './BrushEditTool';
 import { DEFAULT_SNAP, TransformGizmo, type SnapSettings } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
 
@@ -132,6 +133,10 @@ export class EditAgent {
   splineEdit: SplineEditSession | undefined;
   /** 样条编辑改了控制点、选中的点以后调；commit 是一次操作做完（松开操纵器、加了点），编辑器这时存文件、记一步撤销。 */
   onSplineChanged: ((edit: SplineEditSession, commit: boolean) => void) | undefined;
+  /** 编辑关卡白盒的笔刷（S2）：开着时视口里画笔刷的线框，点选笔刷、拖面上的手柄改尺寸，双击面加方块（见 EditorViewport、BrushEditTool）。 */
+  brushEdit: BrushEditSession | undefined;
+  /** 白盒编辑改了笔刷、选中的笔刷以后调；commit 是一次操作做完（松开手柄、加了方块），编辑器这时存文件、记一步撤销。 */
+  onBrushChanged: ((edit: BrushEditSession, commit: boolean) => void) | undefined;
   /** 雕刻地形（W2）：开着时视口里左键拖是雕刻，不是点选、拖操纵器（见 EditorViewport）。 */
   sculpt: SculptSession | undefined;
   /** 雕完一笔（松开左键）以后调：地形资源的内容路径和这一笔落下的笔画（地形本地坐标，按顺序接在文件的笔画后面）。 */
@@ -242,6 +247,7 @@ export class EditAgent {
     this.endPolyEdit();
     this.endSculpt();
     this.endSplineEdit();
+    this.endBrushEdit();
     const [loaded, texture] = await Promise.all([this.game.content.loadMaterial(material), this.game.content.loadTextureRef({ texture: mask, encoding: 'png', srgb: false }, false)]);
     this.paint = { entity, material: loaded, mask, painter: new MeshPainter(this.game.renderSystem.resources, texture), brush };
     this.refresh();
@@ -252,6 +258,7 @@ export class EditAgent {
     this.endPaint();
     this.endSculpt();
     this.endSplineEdit();
+    this.endBrushEdit();
     this.polyEdit = { entity, path, mesh, mode, selection: EMPTY_POLY_SELECTION };
     this.refresh();
   }
@@ -266,6 +273,7 @@ export class EditAgent {
     this.endPaint();
     this.endPolyEdit();
     this.endSculpt();
+    this.endBrushEdit();
     this.splineEdit = { entity, path, spline, selection: [] };
     this.refresh();
   }
@@ -275,11 +283,27 @@ export class EditAgent {
     this.refresh();
   }
 
+  /** 开始编辑这个实体上的白盒（path 是它的 .brush.json，brush 是文件的内容）；别的编辑模式关掉。 */
+  beginBrushEdit(entity: string, path: string, brush: BrushEditSession['brush']): void {
+    this.endPaint();
+    this.endPolyEdit();
+    this.endSculpt();
+    this.endSplineEdit();
+    this.brushEdit = { entity, path, brush, selection: undefined };
+    this.refresh();
+  }
+
+  endBrushEdit(): void {
+    this.brushEdit = undefined;
+    this.refresh();
+  }
+
   /** 开始雕刻这个地形实体（场景文件里的 id）；画贴图、编辑多边形的模式关掉。 */
   beginSculpt(entity: string, brush: SculptBrush = this.sculpt?.brush ?? DEFAULT_SCULPT_BRUSH): void {
     this.endPaint();
     this.endPolyEdit();
     this.endSplineEdit();
+    this.endBrushEdit();
     this.sculpt = { entity, brush, tool: this.sculpt?.tool ?? 'brush', feature: undefined, cursor: undefined };
     this.refresh();
   }

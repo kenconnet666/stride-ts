@@ -164,6 +164,7 @@ export { EditorCameraController, EditorCameraState } from './editor/viewport/Edi
 export type { EditableScene, EditAgent, PaintBrush, PaintSession, SculptBrush, SculptSession, RequiredComponentEntry, WorldSphere } from './editor/viewport/EditAgent';
 export type { PolyEditSession, PolySelection, PolySelectMode } from './editor/viewport/PolyEditTool';
 export { branchFromPoint, deleteSplinePoints, type SplineEditSession } from './editor/viewport/SplineEditTool';
+export { deleteBrush, type BrushEditSession } from './editor/viewport/BrushEditTool';
 export { applyGizmoChange, applySnap, DEFAULT_SNAP, TransformGizmo, type GizmoAxis, type GizmoChange, type GizmoHandle, type GizmoMode, type SnapSettings } from './editor/viewport/TransformGizmo';
 export { checkEntity, checkFields, COMPONENT_FIELDS, ENTITY_FIELDS, scriptFields, TEXTURE_FIELDS, type ComponentDescription, type Field, type FieldType } from './editor/fields/index';
 export { LiveScene, type SceneSource } from './editor/LiveScene';

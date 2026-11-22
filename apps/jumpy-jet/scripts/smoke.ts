@@ -55,8 +55,12 @@ const play = stride('eval', `(async () => {
   const playing = jjRoot().constructor.name;
   const plane = jjEntities('Character')[0].require(strideEngine.Transform).position;
   const first = sets().sort((a, b) => a.x - b.x)[0];
-  first.x = plane.x - 1; first.y = plane.y;
-  await frames(6);
+  // 每帧重新钉到飞机身上，加了分就停：慢的机器（CI 的软件 WebGPU）上一帧追好几步物理，钉一次的话几帧里管子已经移开、
+  // 飞机落下撞上管子，结束页面替掉了计分页面
+  for (let i = 0; i < 30 && jjScore() !== 'Score :  1'; i++) {
+    first.x = plane.x - 1; first.y = plane.y;
+    await frames(1);
+  }
   return { started, before, after, pipeLocal, playing, scored: jjScore() };
 })()`) as Play;
 check('点"Touch to Start"：计分页面', play.started === 'Score :  0', play.started);

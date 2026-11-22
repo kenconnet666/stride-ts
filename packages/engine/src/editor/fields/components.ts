@@ -219,6 +219,13 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: { city: '' },
   },
+  water: {
+    label: 'Water',
+    type: object(fields<NonNullable<Components['water']>>({
+      water: { type: asset('water'), description: 'water body (.water.json): a lake inside its shoreline or the open sea; the entity position is the water surface' },
+    })),
+    initial: { water: '' },
+  },
   cameraRig: {
     label: 'Camera rig',
     type: object(fields<NonNullable<Components['cameraRig']>>({

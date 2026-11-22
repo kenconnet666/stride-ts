@@ -27,7 +27,7 @@ export interface AssetReference {
  * 怎么读它的设置，渲染目标贴图不是文件（运行时建）。
  */
 export type EntityAssetReference =
-  | { readonly kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats' | 'terrain' | 'scatter' | 'city'; readonly path: string }
+  | { readonly kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats' | 'terrain' | 'scatter' | 'city' | 'water'; readonly path: string }
   | { readonly kind: 'image'; readonly path: string; readonly texture: TextureRef }
   | { readonly kind: 'renderTexture'; readonly path: string; readonly texture: SceneRenderTexture };
 
@@ -73,6 +73,7 @@ function visitEntityReferences(files: readonly SceneEntityFile[], visitAny: (ref
     if (c.terrain) visit({ kind: 'terrain', path: c.terrain.terrain }, c.terrain, 'terrain');
     if (c.scatter) visit({ kind: 'scatter', path: c.scatter.scatter }, c.scatter, 'scatter');
     if (c.city) visit({ kind: 'city', path: c.city.city }, c.city, 'city');
+    if (c.water) visit({ kind: 'water', path: c.water.water }, c.water, 'water');
     if (c.background?.type === 'cubemap') visit({ kind: 'cubemap', path: c.background.texture }, c.background, 'texture');
     else if (c.background) image(c.background.image);
     if (c.decal?.albedo) image(c.decal.albedo);
@@ -145,7 +146,7 @@ function uiAssetValues(file: UIFile): ({ $asset: string } | { sheet: string } | 
 }
 
 /** 脚本属性里的资源种类 → 资源文件的种类（UI 页面和 UI 库是同一种文件）。 */
-const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats' | 'terrain' | 'scatter' | 'city'): AssetKind => (kind === 'uiPage' || kind === 'uiLibrary' ? 'ui' : kind);
+const fileKind = (kind: SceneAssetKind | 'skybox' | 'cubemap' | 'lightProfile' | 'splats' | 'terrain' | 'scatter' | 'city' | 'water'): AssetKind => (kind === 'uiPage' || kind === 'uiLibrary' ? 'ui' : kind);
 
 /**
  * 一个资源文件引用的别的资源，去过重。file 是解析好的内容：JSON 文件是它的对象，模型、动画是 decodeModel、decodeAnimation

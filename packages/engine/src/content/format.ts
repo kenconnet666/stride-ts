@@ -27,3 +27,4 @@ export { generateProceduralMesh, PROCEDURAL_SHAPES, proceduralTangents, type Pro
 export * from './treeFormat.ts';
 export * from './buildingFormat.ts';
 export * from './cityFormat.ts';
+export * from './waterFormat.ts';

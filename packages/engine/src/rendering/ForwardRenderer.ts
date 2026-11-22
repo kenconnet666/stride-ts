@@ -418,9 +418,11 @@ export class ForwardRenderer {
     const planarView = this.hasCamera ? planar.begin(context, this.#mainView) : undefined;
     // 高斯泼溅：主画面这一帧要画的实体（排序在主画面的通道之前）
     renderSystem.splats.collect(context, this.hasCamera ? this.#mainView : undefined);
+    // 水体：主画面要拷不透明的画面和深度给它
+    renderSystem.water.collect(context);
     // 折射：场景里有透射材质、画进 HDR 缓冲时，主画面不透明的画完拷一份给透明阶段（要不要拷在 prepare 写视图的常量之前定下来）
     const refraction = renderSystem.refraction;
-    refraction.begin(this.#mainView, this.hasCamera && post && this.drawTransparent && planar.supported && context.game.meshes.batches.some((batch) => batch.material.transmission !== undefined));
+    refraction.begin(this.#mainView, this.hasCamera && post && this.drawTransparent && planar.supported && (renderSystem.water.active || context.game.meshes.batches.some((batch) => batch.material.transmission !== undefined)));
     // 天空遮挡（从上往下的深度图，雨雪等用）：有人用、要重画的帧当作一个视图，和主画面一起剔除
     const sky = renderSystem.skyOcclusion;
     sky.enabled = this.quality.skyOcclusion;
@@ -667,6 +669,8 @@ export class ForwardRenderer {
       if (!view) return;
       // 高斯泼溅（只有主画面）：不透明的之后、透明的之前，读深度、不写
       if (view === this.#mainView) renderSystem.splats.draw(pass, output.format, DEPTH_FORMAT);
+      // 水体（只有主画面、拷了不透明的画面以后）：在别的透明物体之前
+      if (refract) renderSystem.water.draw(pass, context, view, renderSystem.lighting, renderSystem.refraction, renderSystem.renderOrigin, output.format, DEPTH_FORMAT);
       if (transparent) renderSystem.draw(context, pass, view, output.transparent);
       // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
       if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);
@@ -734,7 +738,7 @@ export class ForwardRenderer {
       frame.pass(`${label} refraction copy`, (pass) => {
         pass.read(target);
         pass.sideEffect();
-      }, (real) => renderSystem.refraction.copy(encoder, real.texture(target)));
+      }, (real) => renderSystem.refraction.copy(encoder, real.texture(target), isGraphTexture(depth) ? undefined : depth));
     }
     frame.pass(`${label} transparent`, (pass) => {
       if (isGraphTexture(target)) pass.readWrite(target);
@@ -881,7 +885,7 @@ export class ForwardRenderer {
       this.#retiredDepth = this.#depth;
       this.#depth =this.renderSystem.graphicsDevice.device.createTexture({
         // TAA 读它重投影
-        label: `ForwardRenderer depth ${width}x${height}`, size: [width, height], format: DEPTH_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        label: `ForwardRenderer depth ${width}x${height}`, size: [width, height], format: DEPTH_FORMAT, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
       });
     }
     return this.#depth;

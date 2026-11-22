@@ -27,6 +27,7 @@ import type { Skybox } from './lighting/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 import { SkyOcclusion } from '../weather/SkyOcclusion';
 import { ImpostorBaker } from './mesh/Impostors';
+import { WaterRenderer } from '../water/Water';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -540,6 +541,8 @@ export class RenderSystem {
   readonly localLights: LocalLightBuffer;
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
+  /** 水体（water/Water.ts）：主画面透明的那一遍里画。 */
+  readonly water: WaterRenderer;
   /** 远处卡片的烘焙（有要烘的模型时合成器多画几个正交视图）。 */
   readonly impostors: ImpostorBaker;
   /**
@@ -568,6 +571,7 @@ export class RenderSystem {
     this.localLights = new LocalLightBuffer(graphicsDevice.device);
     this.skyOcclusion = new SkyOcclusion(graphicsDevice.device);
     this.impostors = new ImpostorBaker(graphicsDevice.device, this.resources);
+    this.water = new WaterRenderer(graphicsDevice.device, this.resources);
   }
 
   get device(): GPUDevice {
@@ -636,6 +640,7 @@ export class RenderSystem {
     this.atmosphere.destroy();
     this.skyOcclusion.destroy();
     this.impostors.destroy();
+    this.water.destroy();
     this.resources.destroy();
   }
 }

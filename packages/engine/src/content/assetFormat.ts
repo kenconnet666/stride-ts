@@ -61,6 +61,8 @@ export const EXTENSIONS = {
   building: '.building.json',
   /** 城市（CityFile，content/cityFormat.ts）：沿着路网摆楼的规则和种子，楼运行时由 CitySystem 摆（city/City.ts）。 */
   city: '.city.json',
+  /** 水体（WaterFile，content/waterFormat.ts）：湖的岸线或海、颜色、清澈度、浪、泡沫，Water 组件引用它（water/Water.ts）。 */
+  water: '.water.json',
   /** 程序化摆放（ScatterFile，content/scatterFormat.ts）：在地形上撒模型的规则和种子，实例运行时按相机附近的格子撒。 */
   scatter: '.scatter.json',
 } as const;

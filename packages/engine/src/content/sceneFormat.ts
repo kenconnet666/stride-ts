@@ -544,6 +544,8 @@ export interface SceneEntityFile {
     readonly scatter?: { readonly scatter: string };
     /** 城市（Stride 没有，见 city/City.ts）：按 .city.json 的规则沿路摆楼，楼是这个实体的子实体。 */
     readonly city?: { readonly city: string };
+    /** 水体（Stride 没有，见 water/Water.ts）：实体的位置是水面，按 .water.json 画湖或海。 */
+    readonly water?: { readonly water: string };
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     /** 镜头系统（Stride 没有，见 CameraRig 组件）：跟随、注视的实体是场景文件里的 id；没写的项用组件的默认值。 */
     readonly cameraRig?: {

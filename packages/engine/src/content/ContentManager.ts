@@ -49,6 +49,8 @@ import { ScatterAsset } from '../terrain/Scatter';
 import { checkScatterFile } from './scatterFormat';
 import { CityAsset } from '../city/City';
 import { checkCity, type CityFile } from './cityFormat';
+import { WaterAsset } from '../water/Water';
+import { checkWater, type WaterFile } from './waterFormat';
 import { checkSpline } from '../modeling/spline';
 import type { SplineFile } from './splineFormat';
 
@@ -527,6 +529,11 @@ export class ContentManager {
       const [roads, models] = await Promise.all([Promise.all(file.roads.map((road) => this.loadSpline(road))), Promise.all(file.buildings.map((rule) => this.loadModel(rule.model)))]);
       return new CityAsset(path, file, roads, models);
     });
+  }
+
+  /** 水体（.water.json）；画法见 water/Water.ts。 */
+  loadWater(path: string): Promise<WaterAsset> {
+    return this.#once(path + EXTENSIONS.water, async (url) => new WaterAsset(path, checkWater(this.#json<WaterFile>(await this.#read(url)), url.href)));
   }
 
   /** 矢量地形（.terrain.json）和它的材质；高度由原生的求值器按需算（terrain/TerrainSystem.ts）。 */

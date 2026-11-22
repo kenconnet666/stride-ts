@@ -28,6 +28,7 @@ import { Transform } from '../engine/transform';
 import { Terrain, TerrainAsset, type TerrainPath } from './Terrain';
 import { changedRegions } from './TerrainSystem';
 import type { GroundBox } from '../city/City';
+import { underWater, waterAreas, type WaterArea } from '../water/Water';
 import { hash32 } from '../data/hash';
 
 export type ScatterAssetId = Branded<number, 'ScatterAssetId'>;
@@ -178,6 +179,9 @@ interface ScatterState {
   /** 避开的楼（城市，地形本地的矩形）和它们是城市系统的哪个版本。 */
   obstacles: GroundBox[];
   cityVersion: number;
+  /** 水体（世界坐标）和上次看到的样子：变了整片重撒。 */
+  waters: WaterArea[];
+  waterKey: string | undefined;
 }
 
 /** 观察点挪不到这么多米、格子都撒好了时不重选格子。 */
@@ -235,7 +239,7 @@ export class ScatterSystem {
         this.#states.set(id, state);
       }
       if (!state) {
-        state = { entity, asset, terrain, cells: new Map(), eye: undefined, complete: false, obstacles: [], cityVersion: -1 };
+        state = { entity, asset, terrain, cells: new Map(), eye: undefined, complete: false, obstacles: [], cityVersion: -1, waters: [], waterKey: undefined };
         this.#states.set(id, state);
       }
       this.#updateState(state, eyeWorld, deadline);
@@ -255,6 +259,7 @@ export class ScatterSystem {
     if (!Matrix.invert(this.#inverse, world)) return;
     const m = this.#inverse;
     this.#avoidCity(state, m);
+    this.#avoidWater(state);
     const ex = m[0]! * eyeWorld[0]! + m[4]! * eyeWorld[1]! + m[8]! * eyeWorld[2]! + m[12]!;
     const ez = m[2]! * eyeWorld[0]! + m[6]! * eyeWorld[1]! + m[10]! * eyeWorld[2]! + m[14]!;
     if (state.complete && state.eye && Math.hypot(ex - state.eye[0], ez - state.eye[1]) < RESELECT_DISTANCE) return;
@@ -316,7 +321,7 @@ export class ScatterSystem {
       const n = new Vector3(-(hx - h), NORMAL_STEP, -(hz - h)).normalize();
       return { height: h, normal: [n.x, n.y, n.z] };
     };
-    const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size, state.obstacles), keepOf(layer, tier));
+    const instances = this.#aboveWater(state, scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size, state.obstacles), keepOf(layer, tier)));
     const cell = game.entities.create({ name: `${state.entity.name}/scatter ${layer.name} ${id}`, components: [Transform] });
     cell.require(Transform).parent = state.entity;
     const model = this.#modelOf(state.asset, layerIndex, tier);
@@ -352,7 +357,7 @@ export class ScatterSystem {
         if (replaces) dropCell(replaces);
         if (!cellEntity.alive) return;
         const ground = gridGround(heights, ox, oz, GRASS_SPACING, count, half);
-        const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size, state.obstacles), keepOf(layer, tier));
+        const instances = this.#aboveWater(state, scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size, state.obstacles), keepOf(layer, tier)));
         if (instances.length === 0) return;
         cell.mesh = new Mesh(`${state.asset.path} ${layer.name} ${id}`, grassBlades(layer, instances));
         const material = state.asset.materials[layerIndex] ?? game.content.defaultMaterial;
@@ -397,7 +402,7 @@ export class ScatterSystem {
       kept++;
     }
     this.carried = { kept, stale, dropped: state.cells.size - kept };
-    return { entity: state.entity, asset, terrain, cells, eye: undefined, complete: false, obstacles: state.obstacles, cityVersion: state.cityVersion };
+    return { entity: state.entity, asset, terrain, cells, eye: undefined, complete: false, obstacles: state.obstacles, cityVersion: state.cityVersion, waters: state.waters, waterKey: state.waterKey };
   }
 
   /**
@@ -443,6 +448,26 @@ export class ScatterSystem {
       });
       if (hit) cell.stale = true;
     }
+  }
+
+  /** 场景里的水体：变了（加了、挪了、改了岸线）整片重撒。 */
+  #avoidWater(state: ScatterState): void {
+    const waters = waterAreas(this.#game.entities, this.#game.updateTime);
+    const key = JSON.stringify(waters);
+    if (key === state.waterKey) return;
+    const first = state.waterKey === undefined;
+    state.waters = waters;
+    state.waterKey = key;
+    if (first && waters.length === 0) return;
+    state.complete = false;
+    for (const cell of state.cells.values()) cell.stale = true;
+  }
+
+  /** 去掉水下的实例（地形本地的位置换到世界里比）。 */
+  #aboveWater(state: ScatterState, instances: ScatterInstance[]): ScatterInstance[] {
+    if (state.waters.length === 0) return instances;
+    const m = state.entity.require(Transform).world;
+    return instances.filter(({ position: [x, y, z] }) => !underWater(state.waters, m[0]! * x + m[4]! * y + m[8]! * z + m[12]!, m[1]! * x + m[5]! * y + m[9]! * z + m[13]!, m[2]! * x + m[6]! * y + m[10]! * z + m[14]!));
   }
 
   /** 上一次换版本时留下、要重撒、拿掉的格子数（调试命令 scatter 报，看雕刻时重撒了多少）。 */

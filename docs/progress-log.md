@@ -906,6 +906,10 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - ac26d90 的 CI 挂在 simple-audio：`stride open` 60 秒没等到页面连上（新的输出捕获把整段日志打出来了），本机 31 秒就过。`open`、`wait` 等页面的时限是写死的 60、30 秒，没看 CI 设的 `STRIDE_TIMEOUT`（300 秒，别的命令都看）：改成也看它。
 
+## W6 水体（2026-11-22 起）
+
+- 第一步湖和海的水面：参考 WickedEngine 的 ocean（`wiOcean.cpp`、`oceanSurfacePS.hlsl`：FFT 的位移和梯度图、屏幕空间网格、平面反射、按水深吸收、岸边泡沫），先做不要计算着色器的那一半：`content/waterFormat.ts`（WaterFile、检查）、`water/Water.ts`（`Water` 组件、`WaterAsset`、`WaterRenderer`：相机为中心的极坐标网格（160 圈 × 192 段，近处 0.4 米、往外按几何级数铺到 extent），顶点里 6 组 Gerstner 波（按世界坐标加渲染原点取模的部分，远处几十个波长外压平），片元重算法线、近处叠 3 组短的波纹；天空的镜面立方体贴图反射、GGX 的太阳高光、菲涅耳混；水下是主画面不透明的拷贝（`Refraction`，现在也拷一份深度：主深度缓冲加 COPY_SRC），按水深偏开、按光在水里的路程吸收；岸边按竖直的水深起泡沫，和地面相交处按水深淡出），合成器在折射拷贝之后、别的透明物体之前画，有水时也要拷（`renderSystem.water.active`）。程序化摆放不往水下撒（`waterAreas`、`underWater`：水体变了整片重撒）。场景组件、加载、引用、字段和中文、编辑器新建"水体"。第一版的着色器里变量叫 `distance`，挡住了内建函数，页面里水的管线建不出来（Chrome 的日志里看出来）。Valley：`Waters/WestLake`（西边洼地，水面 −65 米，六边形的岸线），测试浏览器（无头，1080p）里看：浪、天空的反射、近岸变浅、岸边一圈泡沫、对岸的林子；第一次看湖里长着树，加了摆放避开水。120 Hz，水那一遍 0.087 毫秒。
+
 ## CI 提速和 csharp-intermediate 的导航（2026-11-22）
 
 - CI 上 0c68a3f 的 csharp-intermediate 冒烟失败在"导航：角色走到目标"：角色走了 2 米就到了等待的上限。物理每帧最多补 0.25 秒（`maximumTimeToProcess`），CI 的软件 WebGPU 上一帧要零点几秒到一秒，物理只有游戏时间的几分之一，按 15 秒游戏时间等不够（按运行器的快慢时过时不过）。等待放宽到 60 秒游戏时间，快的机器上走到就返回。

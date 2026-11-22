@@ -4,6 +4,8 @@
  * 光线找出射点，投到屏幕上取这份画面（粗糙的取模糊的级），着色器见 rendering/mesh/meshShader.ts 的 transmitted。参考 Filament
  * 的 screen-space refraction（薄的、实心球两种模型）和 Unity HDRP 的颜色金字塔。
  *
+ * 同时拷一份深度（depthTexture）：水体（water/Water.ts）按它量水深、起岸边的泡沫。
+ *
  * 只有主画面有（画进 HDR 缓冲时）；别的视图、没有这份画面时透射的光取环境（天空、反射探针）。透射材质后面的透明物体不在拷贝里，
  * 折射里看不见（同 HDRP）。反射图和这份画面共用视图的第 26 个绑定（不透明阶段是平面反射图，透明阶段是它），不多占一张贴图。
  */
@@ -21,6 +23,7 @@ export class Refraction {
   readonly #device: GPUDevice;
   readonly #mipmaps: MipmapGenerator;
   #texture: GPUTexture | undefined;
+  #depth: GPUTexture | undefined;
 
   constructor(device: GPUDevice) {
     this.#device = device;
@@ -41,21 +44,33 @@ export class Refraction {
     return this.receiver ? this.#texture : undefined;
   }
 
+  /** 同时拷的深度（主画面的深度格式）；copy 时给了深度才有。 */
+  get depthTexture(): GPUTexture | undefined {
+    return this.receiver ? this.#depth : undefined;
+  }
+
   /** 最粗的 mip 级（着色器按粗糙度取级用）。 */
   get maxMip(): number {
     return (this.#texture?.mipLevelCount ?? 1) - 1;
   }
 
-  /** 录进编码器：主画面（HDR，和拷贝一样大）拷进第 0 级，再出 mip。 */
-  copy(encoder: GPUCommandEncoder, source: GPUTexture): void {
+  /** 录进编码器：主画面（HDR，和拷贝一样大）拷进第 0 级，再出 mip；给了深度（要有 COPY_SRC）时也拷一份。 */
+  copy(encoder: GPUCommandEncoder, source: GPUTexture, depth?: GPUTexture): void {
     const texture = this.#texture;
     if (!this.receiver || !texture) return;
     encoder.copyTextureToTexture({ texture: source }, { texture, mipLevel: 0 }, [texture.width, texture.height]);
     this.#mipmaps.generate(texture, encoder);
+    if (!depth) return;
+    if (!this.#depth || this.#depth.width !== depth.width || this.#depth.height !== depth.height || this.#depth.format !== depth.format) {
+      this.#depth?.destroy();
+      this.#depth = this.#device.createTexture({ label: 'Refraction scene depth', size: [depth.width, depth.height], format: depth.format, usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING });
+    }
+    encoder.copyTextureToTexture({ texture: depth }, { texture: this.#depth }, [depth.width, depth.height]);
   }
 
   destroy(): void {
     this.#texture?.destroy();
+    this.#depth?.destroy();
   }
 
   #ensureTexture(width: number, height: number): void {

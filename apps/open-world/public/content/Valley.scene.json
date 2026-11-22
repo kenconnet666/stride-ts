@@ -1508,6 +1508,32 @@
    }
   },
   {
+   "id": "cbeeba05-f7df-4c96-97dc-45aec2e3f615",
+   "name": "WestLake",
+   "parent": null,
+   "position": [
+    -450,
+    -65,
+    -350
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "water": {
+     "water": "Waters/WestLake"
+    }
+   }
+  },
+  {
    "id": "1ab99899-2344-4460-a9ac-09849587898e",
    "name": "Wind",
    "parent": null,

@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { BuildingFile, CityFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/format';
+import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -436,6 +436,33 @@ export const CITY_FIELDS = fields<CityFile>({
   },
 });
 
+/** 水体（WaterFile）：改了马上看到。 */
+export const WATER_FIELDS = fields<WaterFile>({
+  name: string,
+  outline: { type: { kind: 'json' }, optional: true, description: 'lake shoreline [[x, z], …] in the entity space (at most 64 points); unset is the open sea. It need not follow the ground: the terrain hides what is below it' },
+  extent: { type: number({ min: 10, step: 100, unit: 'm' }), optional: true, default: 6000, description: 'how far from the camera the sea reaches' },
+  color: { type: vector(3), optional: true, default: [0.015, 0.06, 0.07], description: 'color of deep water (linear)' },
+  clarity: { type: number({ min: 0.05, step: 0.5, unit: 'm' }), optional: true, default: 4, description: 'how far light travels in the water before 1/e of it is left (clear lakes 10+, muddy rivers below 1)' },
+  waves: {
+    type: object(fields<NonNullable<WaterFile['waves']>>({
+      height: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0.3, description: 'height of the largest waves' },
+      length: { type: number({ min: 0.1, step: 1, unit: 'm' }), optional: true, default: 12, description: 'wavelength of the longest waves' },
+      direction: { type: number({ step: 5, unit: '°' }), optional: true, default: 0, description: 'where the waves travel (0 is local +X, counterclockwise)' },
+      speed: { type: number({ min: 0, step: 0.1 }), optional: true, default: 1, description: 'time scale of the waves' },
+      choppiness: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.5, description: 'how much the crests bunch up (0 round, 1 sharp)' },
+    })),
+    optional: true,
+    description: 'Gerstner waves, flattened far from the camera',
+  },
+  foam: {
+    type: object(fields<NonNullable<WaterFile['foam']>>({
+      shore: { type: number({ min: 0, step: 0.1, unit: 'm' }), optional: true, default: 1, description: 'foam where the water is shallower than this' },
+    })),
+    optional: true,
+    description: 'foam along the shore',
+  },
+});
+
 /** 程序化摆放（ScatterFile）：改了马上存，挂着它的地形重撒。 */
 export const SCATTER_FIELDS = fields<ScatterFile>({
   name: string,
@@ -601,5 +628,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

@@ -1,20 +1,17 @@
 import { Box, Check, ExternalLink, File, Folder, FolderOpen, Image, Music, Plus, Trash2, Type } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { IconButton, Menu, MenuItem, TextField, Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
+import { ControlGroup, Flex, IconButton, Menu, MenuItem, Text, TextField, Toolbar, Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
 import { freeAssetPath, newAssetOptions } from '../../shared/newAssets';
 import type { AssetRecord, MoveRequest } from '../../shared/protocol';
 import { assetLabel, newAssetLabel, t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
-  panel: { display: 'flex', flexDirection: 'column', height: '100%' },
-  bar: { display: 'flex', gap: '2px', alignItems: 'center', paddingInline: '_xs', paddingBlock: '2px' },
-  path: { flex: '1', minWidth: '0' },
-  status: { flex: '1', minWidth: '0', color: '_textMuted', fontSize: '0.75rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingInlineStart: '_xs' },
+  panel: { height: '100%' },
+  path: { margin: '_xs' },
   tree: { flex: '1', minHeight: '0' },
   scroll: { flex: '1', minHeight: '0' },
-  kind: { color: '_textMuted', marginInlineStart: '_xs', fontSize: '0.8em' },
 });
 
 /** 资源树的一个节点：文件夹（内容路径的一段），或者一个资源。 */
@@ -169,19 +166,20 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
   };
 
   return () => (
-    <div {...css.attrs(styles.panel)} onDragover={(event: DragEvent) => hasFiles(event) && event.preventDefault()} onDrop={importDropped}>
-      <div {...css.attrs(styles.bar)} role="toolbar" aria-label={t.assets}>
+    <Flex direction="column" sx={styles.panel} onDragover={(event: DragEvent) => hasFiles(event) && event.preventDefault()} onDrop={importDropped}>
+      <Toolbar docked="top" aria-label={t.assets}>
         <Menu trigger={(props) => <IconButton {...props} icon={Plus} size="sm" variant="ghost" tone="neutral" aria-label={t.newAsset} title={t.newAsset} disabled={busy} />}>
           {newAssetOptions().map((option) => <MenuItem onAction={() => create(option.id)}>{newAssetLabel(option)}</MenuItem>)}
         </Menu>
         <IconButton icon={ExternalLink} size="sm" variant="ghost" tone="neutral" aria-label={t.open} title={t.open} disabled={!openable(current) || busy} onClick={() => current && void open(current)} />
         <IconButton icon={Trash2} size="sm" variant="ghost" tone="neutral" aria-label={t.delete} title={t.delete} disabled={!current?.asset || busy} onClick={() => current && void remove(current)} />
-        <span {...css.attrs(styles.status)} title={status}>{status}</span>
-      </div>
+        <Flex grow>
+          <Text tone="muted" size="xs" truncate title={status}>{status}</Text>
+        </Flex>
+      </Toolbar>
       {/* 移动、改名的一栏一直占着位置（没选中时不可用）：选中时才出来的话下面的列表往下跳一行，双击的第二下落到别的行上 */}
-      <div {...css.attrs(styles.bar)}>
+      <ControlGroup aria-label={t.moveRename} sx={styles.path}>
         <TextField
-          {...css.attrs(styles.path)}
           size="sm"
           _value={target}
           aria-label={t.moveRename}
@@ -190,7 +188,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
           onKeydown={(event: KeyboardEvent) => event.key === 'Enter' && current && target && target !== current.path && void move(current, target)}
         />
         <IconButton icon={Check} size="sm" variant="ghost" tone="neutral" aria-label={t.moveRename} title={t.moveRename} disabled={busy || !current || target === current.path || !target} onClick={() => current && void move(current, target)} />
-      </div>
+      </ControlGroup>
       <Tree
         {...css.attrs(styles.tree)}
         propsScrollArea={{ sx: styles.scroll }}
@@ -204,10 +202,10 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         hasChildren={(node: Node) => !node.asset}
         getIcon={(node: Node, open: boolean) => (node.asset ? (ICONS as Record<string, typeof File>)[node.asset.kind] ?? File : open ? FolderOpen : Folder)}
         renderItem={(node: Node) => (
-          <span>
+          <Text>
             {node.name}
-            {node.asset && <span {...css.attrs(styles.kind)}>{node.asset.kind}</span>}
-          </span>
+            {node.asset && <Text tone="muted" size="xs"> {node.asset.kind}</Text>}
+          </Text>
         )}
         // 双击整行、回车打开（场景、预制体……）
         onActivate={(node: Node) => openable(node) && void open(node)}
@@ -225,6 +223,6 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
         onMove={dropped}
         canDrop={(_: Node, drop: { parent: string | undefined }) => drop.parent === undefined || drop.parent.startsWith(FOLDER)}
       />
-    </div>
+    </Flex>
   );
 });

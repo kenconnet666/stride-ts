@@ -1,7 +1,7 @@
 import { Eye, EyeOff, TriangleAlert } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Icon, IconButton, Tree, type TreeMove, type TreeMoveTarget } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Empty, Icon, IconButton, Strong, Text, Tree, type TreeMove, type TreeMoveTarget } from '@zerodep-dev/vue-tsx-pro-ui';
 import { watch } from 'vue';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { availableParent } from '@stride-ts/engine/content-prefabs';
@@ -11,14 +11,10 @@ import type { EditorSession } from '../session/EditorSession';
 const styles = css.create({
   tree: { height: '100%' },
   scroll: { height: '100%' },
-  prefab: { color: '_textMuted', fontSize: '0.85em' },
-  noScene: { display: 'block', padding: '_sm', color: '_textMuted', fontSize: '0.85em', whiteSpace: 'normal' },
+  // 预制体实例里的成员（改了算覆盖）
   member: { fontStyle: 'italic' },
-  detached: { display: 'inline-flex', alignItems: 'center', gap: '_xs', color: '_warningText' },
-  scene: { fontWeight: '600' },
-  // 子场景：名字加一个看不看的开关，没在看的淡一点
+  // 子场景：名字加一个看不看的开关
   child: { display: 'inline-flex', alignItems: 'center', gap: '_xs' },
-  hidden: { color: '_textMuted' },
 });
 
 /**
@@ -78,7 +74,7 @@ function prefabLabel(session: EditorSession, id: string) {
   const target = session.instanceMember(id);
   if (!target || target.instance.id !== id) return undefined;
   const { path } = target.instance.prefab!;
-  return <span {...css.attrs(styles.prefab)} title={path}> ⟨{path.slice(path.lastIndexOf('/') + 1)}⟩</span>;
+  return <Text tone="muted" size="sm" title={path}> ⟨{path.slice(path.lastIndexOf('/') + 1)}⟩</Text>;
 }
 
 /**
@@ -155,7 +151,7 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
     const name = path.slice(path.lastIndexOf('/') + 1);
     return (
       <span {...css.attrs(styles.child)} title={t.childSceneHint(path)}>
-        <span {...css.attrs(!shown && styles.hidden)}>{name}</span>
+        <Text tone={shown ? 'inherit' : 'muted'}>{name}</Text>
         <IconButton icon={shown ? Eye : EyeOff} size="sm" variant="ghost" tone="neutral" aria-pressed={shown} aria-label={shown ? t.hideChildScene(name) : t.showChildScene(name)}
           onClick={(event: MouseEvent) => {
             event.stopPropagation();
@@ -173,23 +169,22 @@ export const SceneTree = _component(({ session }: { session: EditorSession }) =>
       aria-label={t.sceneEntities}
       loading={session.opening.value}
       // 页面起来了却没有文档：游戏没有场景
-      {...(agent.value && !session.opened.value ? { empty: <span {...css.attrs(styles.noScene)}>{t.noScene}</span> } : {})}
+      {...(agent.value && !session.opened.value ? { empty: <Empty size="sm" icon={false} description={t.noScene} /> } : {})}
       items={roots}
       getKey={(node: Node) => node.key}
       getLabel={(node: Node) => (node.entity ? node.entity.name || '(unnamed)' : documentName())}
       renderItem={(node: Node) => (node.entity ? (
         node.detached ? (
-          <span {...css.attrs(styles.detached)} title={t.parentMissing(session.missingParent(node.entity) ?? '')}>
-            <Icon icon={TriangleAlert} />
-            {node.entity.name || '(unnamed)'}
-          </span>
+          <Text tone="warning" title={t.parentMissing(session.missingParent(node.entity) ?? '')}>
+            <Icon icon={TriangleAlert} /> {node.entity.name || '(unnamed)'}
+          </Text>
         ) : (
-          <span {...css.attrs(session.isMember(node.key) && styles.member)}>
+          <Text sx={session.isMember(node.key) && styles.member}>
             {node.entity.name || '(unnamed)'}
             {prefabLabel(session, node.key)}
-          </span>
+          </Text>
         )
-      ) : node.scene !== undefined ? childScene(node.scene) : <span {...css.attrs(styles.scene)} title={t.documentNode}>{documentName()}</span>)}
+      ) : node.scene !== undefined ? childScene(node.scene) : <Strong title={t.documentNode}>{documentName()}</Strong>)}
       getChildren={(node: Node) => node.children}
       hasChildren={(node: Node) => node.children.length > 0}
       selectionMode="multiple"

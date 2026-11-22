@@ -4,21 +4,13 @@
  * 音频文件的声音只有试听（放旁边的音频文件）。
  */
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
-import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Dices, Play, Shuffle, Square } from '@lucide/icons';
-import { Button } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Flex, FormSection, Small } from '@zerodep-dev/vue-tsx-pro-ui';
 import { mutateSound, seededRandom, soundSynth, SOUND_PRESETS, SOUND_SYNTH_RATE, synthesizeSound, type SoundPreset, type SoundSynth } from '@stride-ts/engine/audio-synth';
 import type { SoundFile } from '@stride-ts/engine/content-format';
 import { onUnmounted, watch } from 'vue';
 import { t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
-
-const styles = css.create({
-  box: { display: 'flex', flexDirection: 'column', gap: '4px', paddingBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
-  title: { fontWeight: '600' },
-  row: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
-  hint: { color: '_textMuted', fontSize: '0.8em' },
-});
 
 const PRESETS: readonly SoundPreset[] = ['pickup', 'laser', 'explosion', 'powerUp', 'hit', 'jump', 'blip', 'random'];
 /** 调参数以后等这么久没再改才自动试听（拖数值时不连着放）。 */
@@ -101,28 +93,27 @@ export const SoundGenerator = _component(({ session }: { session: EditorSession 
     const synth = current.file.encoding === 'synth' ? soundSynth(current.file.synth ?? {}) : undefined;
     const seconds = synth ? lengthOf(synth) : undefined;
     return (
-      <div {...css.attrs(styles.box)}>
-        <div {...css.attrs(styles.row)}>
-          <span {...css.attrs(styles.title)}>{t.sound.title}</span>
-          <Button size="sm" variant="soft" tone="neutral" icon={Play} onClick={() => void play()}>{t.sound.play}</Button>
-          <Button size="sm" variant="ghost" tone="neutral" icon={Square} onClick={stop}>{t.sound.stop}</Button>
-          {seconds !== undefined && <span {...css.attrs(styles.hint)}>{t.sound.length(seconds)}</span>}
-        </div>
+      <FormSection density="compact" title={t.sound.title}
+        extra={[
+          seconds !== undefined && <Small tone="muted">{t.sound.length(seconds)}</Small>,
+          <Button size="sm" variant="soft" tone="neutral" icon={Play} onClick={() => void play()}>{t.sound.play}</Button>,
+          <Button size="sm" variant="ghost" tone="neutral" icon={Square} onClick={stop}>{t.sound.stop}</Button>,
+        ]}>
         {synth ? (
           <>
-            <div {...css.attrs(styles.row)} title={t.sound.presetsTitle}>
+            <Flex align="center" gap="sm" wrap title={t.sound.presetsTitle}>
               {PRESETS.map((preset) => (
                 <Button size="sm" variant="soft" tone="neutral" {...(preset === 'random' ? { icon: Dices } : {})}
                   onClick={() => setSynth(SOUND_PRESETS[preset](seededRandom(Math.floor(Math.random() * 0x7fffffff))))}>{t.sound.presets[preset]}</Button>
               ))}
-            </div>
-            <div {...css.attrs(styles.row)}>
+            </Flex>
+            <Flex align="center" gap="sm" wrap>
               <Button size="sm" variant="soft" tone="neutral" icon={Shuffle} title={t.sound.mutateTitle}
                 onClick={() => setSynth(mutateSound(synth, seededRandom(Math.floor(Math.random() * 0x7fffffff))))}>{t.sound.mutate}</Button>
-            </div>
+            </Flex>
           </>
-        ) : <span {...css.attrs(styles.hint)}>{t.sound.fileSound}</span>}
-      </div>
+        ) : <Small tone="muted">{t.sound.fileSound}</Small>}
+      </FormSection>
     );
   };
 });

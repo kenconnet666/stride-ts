@@ -240,7 +240,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       <Flex direction="column" gap="sm" sx={styles.panel} onFocusout={() => session.commit()}>
         <Paragraph tone="muted" size="sm">{t.sceneSettingsHint(session.file.name)}</Paragraph>
         {SCENE_SETTING_KEYS.filter((key) => file[key] !== undefined).map((key) => (
-          <FormSection density="compact" collapsible title={labelText(SCENE_FIELDS[key].label)}
+          <FormSection key={key} density="compact" collapsible title={labelText(SCENE_FIELDS[key].label)}
             extra={<IconButton icon={X} size="sm" variant="ghost" aria-label={t.remove(labelText(SCENE_FIELDS[key].label))} onClick={() => change(key, undefined)} />}>
             <FieldEditor type={SCENE_FIELDS[key].type} value={file[key]} context={context} onSet={setSetting(key)} />
           </FormSection>
@@ -290,7 +290,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
           onSet={setter(list, () => [])}
         />
         {keys.filter((key) => list.every((entity) => entity.components[key] !== undefined)).map((key) => (
-          <FormSection density="compact" collapsible title={labelText(COMPONENT_FIELDS[key].label)}
+          <FormSection key={key} density="compact" collapsible title={labelText(COMPONENT_FIELDS[key].label)}
             extra={<IconButton icon={X} size="sm" variant="ghost" aria-label={t.remove(labelText(COMPONENT_FIELDS[key].label))} onClick={() => removeComponent(list, key)} />}>
             {key === 'particleSystem' && list.length === 1 && <Button sx={styles.action} size="sm" variant="soft" tone="neutral" icon={Sparkles} onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</Button>}
             {key === 'terrain' && list.length === 1 && typeof list[0]!.components['terrain']?.['terrain'] === 'string' && (
@@ -314,7 +314,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
           const fieldType: FieldType = fields ? { kind: 'object', fields } : { kind: 'json' };
           const index = (entity: SceneEntityFile) => scriptIndex(entity, name, k);
           return (
-            <FormSection density="compact" collapsible title={name} propsHeader={{ title: type }}
+            <FormSection key={`script:${name}:${k}`} density="compact" collapsible title={name} propsHeader={{ title: type }}
               extra={<IconButton icon={X} size="sm" variant="ghost" aria-label={t.removeScript} onClick={() => change(list, (entity) => {
                   const rest = (entity.components.scripts ?? []).filter((_, j) => j !== index(entity));
                   return { type: 'set', entity: entity.id, path: ['components', 'scripts'], value: rest.length > 0 ? rest : undefined };

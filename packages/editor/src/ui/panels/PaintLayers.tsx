@@ -6,17 +6,14 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Brush, Plus, Square } from '@lucide/icons';
-import { Button, Checkbox, ColorField, NumberField } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Checkbox, ColorField, Flex, FormSection, NumberField, Small, Text } from '@zerodep-dev/vue-tsx-pro-ui';
 import { t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
-  box: { display: 'flex', flexDirection: 'column', gap: '4px', paddingBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
-  title: { fontWeight: '600' },
-  row: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
-  active: { outlineWidth: '1px', outlineStyle: 'solid', outlineColor: '_accent', borderRadius: '4px', padding: '2px' },
+  // 正在画的那一层描一圈品牌色
+  active: { outlineWidth: '1px', outlineStyle: 'solid', outlineColor: '_accent', borderRadius: '_sm', padding: '2px' },
   small: { width: '7.5em' },
-  hint: { color: '_textMuted', fontSize: '0.8em' },
 });
 
 /** 颜色树里的常量颜色（computeColor，sRGB）和 #rrggbb 互换。 */
@@ -46,16 +43,13 @@ export const PaintLayers = _component(({ session }: { session: EditorSession }) 
     const painting = session.tools.painting.value;
     const brush = session.tools.paintBrush.value;
     return (
-      <div {...css.attrs(styles.box)}>
-        <div {...css.attrs(styles.row)}>
-          <span {...css.attrs(styles.title)}>{t.paintLayers}</span>
-          <Button size="sm" variant="soft" tone="neutral" icon={Plus} onClick={() => void session.tools.addPaintLayer()}>{t.paintAddLayer}</Button>
-        </div>
+      <FormSection density="compact" title={t.paintLayers}
+        extra={<Button size="sm" variant="soft" tone="neutral" icon={Plus} onClick={() => void session.tools.addPaintLayer()}>{t.paintAddLayer}</Button>}>
         {layers.map((layer, i) => {
           const paintable = Boolean(layer.blend?.texture?.texture);
           return (
-            <div {...css.attrs(styles.row, painting?.layer === i && styles.active)}>
-              <span>{t.paintLayer(i + 1)}</span>
+            <Flex align="center" gap="sm" wrap sx={painting?.layer === i && styles.active}>
+              <Text>{t.paintLayer(i + 1)}</Text>
               {layer.diffuse?.$type === 'computeColor' && (
                 <ColorField size="sm" aria-label={t.paintColor} title={t.paintColor} _value={toHex(layer.diffuse.value)}
                   onUpdate:_value={(hex: string) => session.editInspected(['layers', i, 'diffuse', 'value'], fromHex(hex))} />
@@ -69,19 +63,19 @@ export const PaintLayers = _component(({ session }: { session: EditorSession }) 
               {paintable && (painting?.layer === i
                 ? <Button size="sm" variant="solid" tone="accent" icon={Square} onClick={() => session.tools.stop()}>{t.paintStop}</Button>
                 : <Button size="sm" variant="soft" tone="neutral" icon={Brush} onClick={() => void session.tools.startPainting(i)}>{t.paintStart}</Button>)}
-            </div>
+            </Flex>
           );
         })}
         {painting && (
-          <div {...css.attrs(styles.row)}>
+          <Flex align="center" gap="sm" wrap>
             {amount(t.paintRadius, brush.radius, (radius) => radius > 0 && session.tools.setPaintBrush({ ...brush, radius }), { min: 0.01, max: 100 })}
             {amount(t.paintHardness, brush.hardness, (hardness) => session.tools.setPaintBrush({ ...brush, hardness }), { step: 0.1 })}
             {amount(t.paintStrength, brush.strength, (strength) => session.tools.setPaintBrush({ ...brush, strength }), { step: 0.1 })}
             <Checkbox size="sm" _checked={brush.erase} onUpdate:_checked={(erase: boolean) => session.tools.setPaintBrush({ ...brush, erase })}>{t.paintErase}</Checkbox>
-          </div>
+          </Flex>
         )}
-        {painting && <div {...css.attrs(styles.hint)}>{t.paintHint}</div>}
-      </div>
+        {painting && <Small tone="muted">{t.paintHint}</Small>}
+      </FormSection>
     );
   };
 });

@@ -9,7 +9,7 @@
 import { ArrowDown, ArrowUp, CircleX, Film, Plus, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, CurveField, GradientField, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Tab, TabList, Tabs, type CurveKey, type GradientStop } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Card, CurveField, Empty, Flex, FormSection, GradientField, Grid, GridItem, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Small, Tab, TabList, Tabs, Text, Toolbar, type CurveKey, type GradientStop } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { ParticleModuleFile, SceneEntityFile } from '@stride-ts/engine/content-format';
 import { curve, EMITTER_FIELDS, isCurve, newEmitter, PARTICLE_MODULES, type ParticleStackKind } from '@stride-ts/engine/editor-particles';
 import { FieldEditor, Fields, type FieldContext, type ValuePath } from '../fields/FieldEditor';
@@ -39,25 +39,16 @@ const rgbaToHex = (value: number | readonly number[]) => `#${(Array.isArray(valu
 const hexToRgba = (hex: string) => [1, 3, 5, 7].map((i) => parseInt(hex.slice(i, i + 2) || 'ff', 16) / 255);
 
 const styles = css.create({
-  panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.8rem' },
-  toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_borderMuted' },
+  panel: { height: '100%', minHeight: '0', fontSize: '0.8rem' },
   tabs: { flex: '1', minWidth: '0' },
   scroll: { flex: '1', minHeight: '0' },
-  body: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '_sm', padding: '_sm', alignItems: 'start' },
-  column: { display: 'flex', flexDirection: 'column', gap: '6px' },
-  stackTitle: { fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', minHeight: '28px' },
+  body: { padding: '_sm' },
   stackSelect: { flex: '1', minWidth: '0' },
-  card: { borderWidth: '1px', borderStyle: 'solid', borderColor: '_borderMuted', borderRadius: '6px', padding: '4px 6px', display: 'flex', flexDirection: 'column', gap: '2px', backgroundColor: '_surfaceMuted' },
-  cardHeader: { display: 'flex', alignItems: 'center', gap: '2px', fontWeight: '600' },
-  grow: { flex: '1' },
+  // 曲线参数的一行：名字一列、曲线编辑器占满剩下的
   curveRow: { display: 'grid', gridTemplateColumns: 'minmax(6em, 35%) 1fr', alignItems: 'start', gap: '_xs' },
-  label: { color: '_textMuted' },
-  curve: { display: 'flex', alignItems: 'flex-start', gap: '2px', minWidth: '0' },
   curveField: { flex: '1', minWidth: '0', height: '4.5em' },
   gradientField: { flex: '1', minWidth: '0' },
-  bake: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '_xs', padding: '_sm', width: '20em' },
-  bakeWide: { gridColumn: '1 / -1' },
-  hint: { color: '_textMuted', padding: '_sm' },
+  bake: { padding: '_sm', width: '20em' },
 });
 
 export const ParticlePanel = _component(({ session }: { session: EditorSession }) => {
@@ -97,7 +88,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
     const write = (keyFrames: readonly KeyFrameFile[]) => update(at, () => withFrames(file, keyFrames), `curve:${at.join('.')}`);
     const frames = framesOf(file);
     return (
-      <span {...css.attrs(styles.curve)}>
+      <Flex align="start" gap="xs">
         {String(value.$type).endsWith('Float')
           ? <CurveField {...css.attrs(styles.curveField)} aria-label={label} _value={frames.map((f) => ({ x: f.key, y: Number(f.value) }))}
               onUpdate:_value={(keys: readonly CurveKey[]) => write(keys.map((k) => ({ key: k.x, value: k.y, tangentType: 'linear' })))}
@@ -106,7 +97,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
               onUpdate:_value={(stops: readonly GradientStop[]) => write(stops.map((s) => ({ key: s.offset, value: hexToRgba(s.color), tangentType: 'linear' })))}
               onValueCommit={() => session.commit()} />}
         <IconButton {...small} icon={X} aria-label={t.particleRemoveCurve} title={t.particleRemoveCurve} onClick={() => set(at, null)} />
-      </span>
+      </Flex>
     );
   };
 
@@ -114,25 +105,25 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
   const card = (module: ParticleModuleFile, at: ValuePath, actions: { up?: () => void; down?: () => void; remove?: () => void }) => {
     const spec = SPECS.get(String(module.$type ?? ''));
     return (
-      <div {...css.attrs(styles.card)}>
-        <div {...css.attrs(styles.cardHeader)}>
-          <span {...css.attrs(styles.grow)}>{t.particleModules[String(module.$type)] ?? String(module.$type)}</span>
+      <Card variant="surface" padding="xs" radius="md"
+        header={<Text weight="semibold">{t.particleModules[String(module.$type)] ?? String(module.$type)}</Text>}
+        extra={<Flex gap="xs">
           {actions.up && <IconButton {...small} icon={ArrowUp} aria-label={t.particleUp} title={t.particleUp} onClick={actions.up} />}
           {actions.down && <IconButton {...small} icon={ArrowDown} aria-label={t.particleDown} title={t.particleDown} onClick={actions.down} />}
           {actions.remove && <IconButton {...small} icon={X} aria-label={t.particleRemove} title={t.particleRemove} onClick={actions.remove} />}
-        </div>
+        </Flex>}>
         {spec
           ? spec.fields.map((field) => (field.type.kind === 'json' && field.name.startsWith('sampler')
             ? (
               <div {...css.attrs(styles.curveRow)}>
-                <span {...css.attrs(styles.label)}>{t.particleFields[field.name] ?? field.name}</span>
+                <Text tone="muted">{t.particleFields[field.name] ?? field.name}</Text>
                 {curveEditor([...at, field.name], module[field.name], module.$type === 'updaterColorOverTime' ? 'Vector4' : 'Float', t.particleFields[field.name] ?? field.name)}
               </div>
             )
             // 曲线的行夹在字段中间：每个字段单独一组
             : <Fields fields={[field]} value={module} context={context} onSet={onField(at)} />))
           : <FieldEditor type={{ kind: 'json' }} value={module} context={context} onSet={onField(at)} />}
-      </div>
+      </Card>
     );
   };
 
@@ -145,14 +136,14 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
 
   return () => {
     const file = entity();
-    if (!file || !system()) return <div {...css.attrs(styles.hint)}>{t.particleNoSystem}</div>;
+    if (!file || !system()) return <Empty size="sm" icon={false} description={t.particleNoSystem} />;
     const list = emitters();
     const index = Math.min(emitterIndex, Math.max(0, list.length - 1));
     const emitter = list[index];
     const at: ValuePath = [...base, index];
     return (
-      <div {...css.attrs(styles.panel)}>
-        <div {...css.attrs(styles.toolbar)}>
+      <Flex direction="column" sx={styles.panel}>
+        <Toolbar docked="top" aria-label={t.particleEmitters}>
           <Tabs {...css.attrs(styles.tabs)} size="sm" _value={String(index)} onUpdate:_value={(value: string) => (emitterIndex = Number(value))}>
             <TabList
               aria-label={t.particleEmitters}
@@ -167,7 +158,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
             </TabList>
           </Tabs>
           <Popover placement="bottom-end" trigger={(props) => <Button {...props} size="sm" variant="soft" tone="neutral" icon={Film} disabled={session.baking.value}>{session.baking.value ? t.particleBaking : t.particleBake}</Button>}>
-            <div {...css.attrs(styles.bake)}>
+            <Grid columns={2} gap="xs" sx={styles.bake}>
               {(['columns', 'rows', 'size', 'seconds', 'start'] as const).map((key) => (
                 <NumberField size="sm" prefix={t.particleBakeFields[key]} aria-label={t.particleBakeFields[key]} min={key === 'start' ? 0 : key === 'seconds' ? 0.1 : 1}
                   step={key === 'size' ? 64 : key === 'seconds' || key === 'start' ? 0.5 : 1} format={{ useGrouping: false, maximumFractionDigits: 2 }}
@@ -175,24 +166,24 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
               ))}
               <Select size="sm" aria-label={t.particleBakeFields.view} items={(['front', 'side', 'top'] as const).map((view) => ({ value: view, label: t.particleBakeViews[view] }))}
                 _value={bake.view} onUpdate:_value={(view: string | null) => view && (bake = { ...bake, view: view as FlipbookSettings['view'] })} />
-              <span {...css.attrs(styles.label, styles.bakeWide)}>{t.particleBakeHint(bake.columns * bake.rows)}</span>
-              <Button {...css.attrs(styles.bakeWide)} size="sm" icon={Film} disabled={session.baking.value} onClick={() => void session.bakeFlipbook(file.id, bake)}>{t.particleBake}</Button>
-            </div>
+              <GridItem span="full"><Small tone="muted">{t.particleBakeHint(bake.columns * bake.rows)}</Small></GridItem>
+              <GridItem span="full"><Button size="sm" icon={Film} disabled={session.baking.value} onClick={() => void session.bakeFlipbook(file.id, bake)}>{t.particleBake}</Button></GridItem>
+            </Grid>
           </Popover>
           <IconButton {...small} icon={CircleX} aria-label={t.particleClose} title={t.particleClose} onClick={() => session.closeParticles()} />
-        </div>
+        </Toolbar>
         {emitter && (
-          <ScrollArea {...css.attrs(styles.scroll)} propsContent={css.attrs(styles.body)}>
-            <div {...css.attrs(styles.column)}>
-              <div {...css.attrs(styles.stackTitle)}>{t.particleEmitterSettings}</div>
-              <Fields fields={EMITTER_FIELDS} value={emitter} context={context} onSet={onField(at)} />
+          <ScrollArea sx={styles.scroll}>
+            <Grid minItemWidth="320px" gap="sm" align="start" sx={styles.body}>
+            <Flex direction="column" gap="sm">
+              <FormSection density="compact" title={t.particleEmitterSettings}>
+                <Fields fields={EMITTER_FIELDS} value={emitter} context={context} onSet={onField(at)} />
+              </FormSection>
               {SINGLES.map((stack) => {
                 const module = emitter[stack] as ParticleModuleFile | null | undefined;
                 const choices = PARTICLE_MODULES.filter((spec) => spec.stack === stack);
                 return (
-                  <div {...css.attrs(styles.column)}>
-                    <div {...css.attrs(styles.stackTitle)}>
-                      {t.particleStacks[stack]}
+                  <FormSection density="compact" title={t.particleStacks[stack]} extra={
                       <Select
                         {...css.attrs(styles.stackSelect)}
                         size="sm"
@@ -204,36 +195,33 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
                           // 换形状时留着大小、旋转的曲线
                           set([...at, stack], { ...SPECS.get(type)!.initial, ...(stack === 'shapeBuilder' && module ? { samplerSize: module['samplerSize'] ?? null, samplerRotation: module['samplerRotation'] ?? null } : {}) });
                         }}
-                      />
-                    </div>
+                      />}>
                     {module && card(module, [...at, stack], {})}
-                  </div>
+                  </FormSection>
                 );
               })}
-            </div>
+            </Flex>
             {LISTS.map((stack) => {
               const modules = (emitter[stack] as ParticleModuleFile[] | undefined) ?? [];
               return (
-                <div {...css.attrs(styles.column)}>
-                  <div {...css.attrs(styles.stackTitle)}>
-                    {t.particleStacks[stack]}
+                <FormSection density="compact" title={t.particleStacks[stack]} extra={
                     <Menu trigger={(props) => <IconButton {...props} {...small} icon={Plus} aria-label={t.particleAddModule} title={t.particleAddModule} />}>
                       {PARTICLE_MODULES.filter((spec) => spec.stack === stack).map((spec) => (
                         <MenuItem onAction={() => set([...at, stack], [...modules, spec.initial])}>{t.particleModules[spec.type] ?? spec.type}</MenuItem>
                       ))}
-                    </Menu>
-                  </div>
+                    </Menu>}>
                   {modules.map((module, i) => card(module, [...at, stack, i], {
                     ...(i > 0 ? { up: () => set([...at, stack], moved(modules, i, i - 1)) } : {}),
                     ...(i < modules.length - 1 ? { down: () => set([...at, stack], moved(modules, i, i + 1)) } : {}),
                     remove: () => set([...at, stack], modules.filter((_, j) => j !== i)),
                   }))}
-                </div>
+                </FormSection>
               );
             })}
+            </Grid>
           </ScrollArea>
         )}
-      </div>
+      </Flex>
     );
   };
 });

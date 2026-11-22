@@ -41,7 +41,7 @@ import { browserImageDecoder, ktx2Decoder } from '../graphics/Texture';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleSystemComponent';
 import { gust, WindField } from '../world/WindField';
-import { VEGETATION_LOCAL_WINDS } from '../rendering/mesh/meshShader';
+import { VEGETATION_LOCAL_WINDS } from '../rendering/mesh/wgsl/view';
 import { PrecipitationSystem } from '../world/Precipitation';
 import { WeatherSystem } from '../world/Weather';
 import { WorldStreaming } from '../world/WorldStreaming';

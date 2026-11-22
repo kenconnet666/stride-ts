@@ -26,6 +26,7 @@ import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import type { Vec3 } from '../particles/math';
 import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
 import { RenderView } from '../rendering/RenderSystem';
+import { readTexture } from '../graphics/readTexture';
 
 export type FlipbookView = 'front' | 'side' | 'top';
 
@@ -264,33 +265,8 @@ function cameraView(framing: Framing, axes: (typeof AXES)[FlipbookView], pixels:
 
 /** 读回一张 rgba16float 的图，换成 Float32Array（每像素 4 个数）。 */
 async function readFloats(device: GPUDevice, texture: GPUTexture): Promise<Float32Array> {
-  const { width, height } = texture;
-  const bytesPerRow = Math.ceil((width * 8) / 256) * 256;
-  const readback = device.createBuffer({ label: 'Flipbook readback', size: bytesPerRow * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-  try {
-    const encoder = device.createCommandEncoder({ label: 'Flipbook readback' });
-    encoder.copyTextureToBuffer({ texture }, { buffer: readback, bytesPerRow }, { width, height });
-    device.queue.submit([encoder.finish()]);
-    await readback.mapAsync(GPUMapMode.READ);
-    const halves = new Uint16Array(readback.getMappedRange());
-    const out = new Float32Array(width * height * 4);
-    const rowHalves = bytesPerRow / 2;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width * 4; x++) out[y * width * 4 + x] = halfToFloat(halves[y * rowHalves + x]!);
-    }
-    readback.unmap();
-    return out;
-  } finally {
-    readback.destroy();
-  }
-}
-
-/** IEEE 半精度浮点数（16 位）换成数。 */
-function halfToFloat(h: number): number {
-  const sign = h & 0x8000 ? -1 : 1, exponent = (h >> 10) & 0x1f, fraction = h & 0x3ff;
-  if (exponent === 0) return sign * 2 ** -14 * (fraction / 1024);
-  if (exponent === 31) return fraction ? NaN : sign * Infinity;
-  return sign * 2 ** (exponent - 15) * (1 + fraction / 1024);
+  const bytes = await readTexture(device, texture, 8);
+  return Float32Array.from(new Float16Array(bytes.buffer, bytes.byteOffset, bytes.length / 2));
 }
 
 export interface BakeResult extends Omit<BakedFlipbook, 'rgba'> {

@@ -13,6 +13,7 @@
 import type { GpuResources } from '../../graphics/GpuResources';
 import type { Texture } from '../../graphics/Texture';
 import type { Mesh } from '../mesh/Mesh';
+import { readTexture } from '../../graphics/readTexture';
 
 /** 笔刷：世界空间里的球，中心衰减到边上。 */
 export interface Brush {
@@ -156,18 +157,7 @@ export class MeshPainter {
   /** 读回现在的像素（RGBA8，一行紧挨一行），存成 png 用。 */
   async read(): Promise<{ readonly width: number; readonly height: number; readonly rgba: Uint8Array<ArrayBuffer> }> {
     const { width, height } = this.#work;
-    const bytesPerRow = Math.ceil((width * 4) / 256) * 256;
-    const buffer = this.#device.createBuffer({ label: 'MeshPainter read', size: bytesPerRow * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
-    const encoder = this.#device.createCommandEncoder({ label: 'MeshPainter read' });
-    encoder.copyTextureToBuffer({ texture: this.#work }, { buffer, bytesPerRow }, [width, height]);
-    this.#device.queue.submit([encoder.finish()]);
-    await buffer.mapAsync(GPUMapMode.READ);
-    const mapped = new Uint8Array(buffer.getMappedRange());
-    const rgba = new Uint8Array(width * height * 4);
-    for (let y = 0; y < height; y++) rgba.set(mapped.subarray(y * bytesPerRow, y * bytesPerRow + width * 4), y * width * 4);
-    buffer.unmap();
-    buffer.destroy();
-    return { width, height, rgba };
+    return { width, height, rgba: await readTexture(this.#device, this.#work, 4) };
   }
 
   destroy(): void {

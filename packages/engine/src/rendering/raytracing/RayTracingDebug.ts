@@ -5,6 +5,7 @@
 import { createCheckedShaderModule } from '../../graphics/shaderModule';
 import type { RenderView } from '../RenderSystem';
 import { rayTracingWgsl, type RayTracingScene } from './RayTracingScene';
+import { readTexture } from '../../graphics/readTexture';
 
 const SHADER = /* wgsl */ `
 struct Params {
@@ -57,8 +58,6 @@ export async function rayTraceView(device: GPUDevice, scene: RayTracingScene, vi
   data.set([sun[0], sun[1], sun[2], width, height, 0, 0, 0], 16);
   device.queue.writeBuffer(params, 0, data);
   const texture = device.createTexture({ size: [width, height], format: 'rgba8unorm', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC });
-  const bytesPerRow = Math.ceil((width * 4) / 256) * 256;
-  const readback = device.createBuffer({ size: bytesPerRow * height, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
   const encoder = device.createCommandEncoder({ label: 'RayTracingDebug' });
   const pass = encoder.beginComputePass();
   pass.setPipeline(pipeline);
@@ -66,13 +65,8 @@ export async function rayTraceView(device: GPUDevice, scene: RayTracingScene, vi
   pass.setBindGroup(1, group);
   pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
   pass.end();
-  encoder.copyTextureToBuffer({ texture }, { buffer: readback, bytesPerRow }, [width, height]);
   device.queue.submit([encoder.finish()]);
-  await readback.mapAsync(GPUMapMode.READ);
-  const rows = new Uint8Array(readback.getMappedRange());
-  const pixels = new Uint8Array(width * height * 4);
-  for (let y = 0; y < height; y++) pixels.set(rows.subarray(y * bytesPerRow, y * bytesPerRow + width * 4), y * width * 4);
-  readback.unmap();
-  for (const resource of [params, readback, texture]) resource.destroy();
+  const pixels = await readTexture(device, texture, 4);
+  for (const resource of [params, texture]) resource.destroy();
   return pixels;
 }

@@ -963,6 +963,10 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 - 整理（R3 做完以后，单独提交）：`ToneMap.ts` 长到 921 行，拆进 `rendering/postfx/tonemap/`——`ToneMap.ts`（映射和平均测光，532 行）、`HistogramMetering.ts`、`LocalExposure.ts`（建网格；映射时取网格留在 ToneMap 的着色器里）、`ColorLut.ts`（解析、按路径登记、每个设备的贴图）、`whiteBalance.ts`；站台的画面、照片比对、耗时和拆之前一样。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
+## 整理：读回贴图都用 readTexture（2026-11-22）
+
+序列帧烘焙（`FlipbookBaker.readFloats`，半精度换成 `Float16Array` 转，删了手写的 `halfToFloat`）、在模型上画的读回（`MeshPainter.read`）、光追的调试图（`RayTracingDebug`）都改用 `graphics/readTexture.ts`；离线渲染每帧复用常驻的读回缓冲，照旧。营地里试过：`stride call raytrace --out` 的图对、`bake` 烘出的火的序列帧对（试完删了）。
+
 ## 查立柱上的暗斑：是反射不是 GTAO；站台开 GTAO（2026-11-22）
 
 - 调试工具：`stride call ao '{"dump":true}'` 把上一帧的遮蔽（半分辨率）读回成灰度 PNG；`stride call <命令> --out 文件.png` 把命令结果里的 png 存成文件（raytrace 也能用）；读回贴图的公共函数 `graphics/readTexture.ts`（另有四处各写了一遍，整理时换过去）。

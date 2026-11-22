@@ -107,13 +107,19 @@ export class RenderStage {
    * 透明、不透明的都画，不受光照，深度是正向的。只有网格画。
    */
   readonly impostor: boolean;
+  /**
+   * 表面颜色的烘焙（raytracing/SurfaceColors.ts）：网格按纹理坐标铺满视口，颜色目标写漫反射色，第二个目标写自发光；没有深度
+   * （output 的 depthFormat 不用），不剔背面，只由 MeshRenderFeature.bakeSurfaces 画。
+   */
+  readonly surfaceBake: boolean;
 
   constructor(
     name: string, output: RenderOutput,
-    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false, picking = false, wireframe = false, velocity = false, impostor = false }:
-    { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean; picking?: boolean; wireframe?: boolean; velocity?: boolean; impostor?: boolean } = {},
+    { shadowCasters = false, transparent = false, depthClip = false, afterDepthPrepass = false, picking = false, wireframe = false, velocity = false, impostor = false, surfaceBake = false }:
+    { shadowCasters?: boolean; transparent?: boolean; depthClip?: boolean; afterDepthPrepass?: boolean; picking?: boolean; wireframe?: boolean; velocity?: boolean; impostor?: boolean; surfaceBake?: boolean } = {},
   ) {
     this.impostor = impostor;
+    this.surfaceBake = surfaceBake;
     this.velocity = velocity;
     this.picking = picking;
     this.wireframe = wireframe;

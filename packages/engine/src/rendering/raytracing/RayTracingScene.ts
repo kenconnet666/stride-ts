@@ -9,9 +9,10 @@
  */
 import type { Game } from '../../engine/Game';
 import type { Mesh } from '../mesh/Mesh';
+import { SurfaceColors } from './SurfaceColors';
 import type { MeshBatch } from '../mesh/MeshRenderFeature';
 
-/** 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、标志（第 1 位：双面的材质）、1 个空、颜色（rgba）、自发光（rgb、0）。 */
+/** 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、标志（第 1 位：双面的材质）、表面颜色的格号 + 1（0 是没有）、材质的颜色（rgba）、自发光（rgb、0）。 */
 export const RT_INSTANCE_WORDS = 24;
 const NODE_WORDS = 8;
 /**
@@ -32,6 +33,8 @@ export function rayTracingWgsl(group: number): string {
 @group(${group}) @binding(1) var<storage, read> rtInstances: array<vec4f>;
 @group(${group}) @binding(2) var<storage, read> rtBlas: array<vec4u>;
 @group(${group}) @binding(3) var<storage, read> rtTriangles: array<vec4f>;
+// 表面颜色（SurfaceColors）：每格漫反射色和有没有、自发光
+@group(${group}) @binding(4) var<storage, read> rtSurfaces: array<vec4f>;
 
 struct RtHit {
   t: f32,
@@ -187,12 +190,22 @@ fn rtBackFace(hit: RtHit, dir: vec3f) -> bool {
   return !doubleSided && dot(rtFaceNormal(hit), dir) > 0.0;
 }
 
+/** 实例的表面颜色在 rtSurfaces 里的下标（烘好了的），没有时 -1。 */
+fn rtSurface(hit: RtHit) -> i32 {
+  let tile = bitcast<vec4u>(rtInstances[hit.instance * 6u + 3u]).w;
+  if (tile == 0u || rtSurfaces[(tile - 1u) * 2u].a < 0.5) { return -1; }
+  return i32(tile - 1u) * 2;
+}
+
+/** 打到的表面的漫反射色：烘好的材质平均色（贴图、颜色树、节点图都算），还没烘好时是材质的颜色。 */
 fn rtAlbedo(hit: RtHit) -> vec3f {
-  return rtInstances[hit.instance * 6u + 4u].rgb;
+  let surface = rtSurface(hit);
+  return select(rtInstances[hit.instance * 6u + 4u].rgb, rtSurfaces[max(surface, 0)].rgb, surface >= 0);
 }
 
 fn rtEmissive(hit: RtHit) -> vec3f {
-  return rtInstances[hit.instance * 6u + 5u].rgb;
+  let surface = rtSurface(hit);
+  return select(rtInstances[hit.instance * 6u + 5u].rgb, rtSurfaces[max(surface, 0) + 1].rgb, surface >= 0);
 }
 `;
 }
@@ -221,6 +234,9 @@ export class RayTracingScene {
   readonly #buffers: { tlas: GPUBuffer | undefined; instances: GPUBuffer | undefined; blas: GPUBuffer | undefined; triangles: GPUBuffer | undefined } = { tlas: undefined, instances: undefined, blas: undefined, triangles: undefined };
   #layout: GPUBindGroupLayout | undefined;
   #group: GPUBindGroup | undefined;
+  #surfaceBuffer: GPUBuffer | undefined;
+  /** 每个批的平均漫反射色和自发光（光追打到的表面的颜色），前向渲染器在 pending 的帧画。 */
+  readonly surfaces: SurfaceColors;
   /** 顶层里有几个实例（统计）。 */
   instanceCount = 0;
   /** 传上去的场景变了（新的 BLAS 或者 TLAS）就加一：用光追结果的特性按它判断要不要重算。 */
@@ -228,13 +244,14 @@ export class RayTracingScene {
 
   constructor(device: GPUDevice) {
     this.#device = device;
+    this.surfaces = new SurfaceColors(device);
   }
 
-  /** 四个只读的存储缓冲（TLAS、实例、BLAS、三角形），计算着色器用。 */
+  /** 五个只读的存储缓冲（TLAS、实例、BLAS、三角形、表面颜色），计算着色器用。 */
   get bindGroupLayout(): GPUBindGroupLayout {
     return (this.#layout ??= this.#device.createBindGroupLayout({
       label: 'RayTracingScene',
-      entries: [0, 1, 2, 3].map((binding) => ({ binding, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' as const } })),
+      entries: [0, 1, 2, 3, 4].map((binding) => ({ binding, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' as const } })),
     }));
   }
 
@@ -251,6 +268,7 @@ export class RayTracingScene {
   /** 每帧（用到光追的那帧）：给新网格建 BLAS，实例或变换变了重建 TLAS，建好的传上去。 */
   update(game: Game): void {
     const batches = game.meshes.batches.filter((batch) => traceable(batch));
+    this.surfaces.assign(batches);
     for (const batch of batches) if (!this.#blas.has(batch.mesh)) this.#buildBlas(game, batch.mesh);
     // 实例变了（批里的个数、槽位）或者有东西动了：重建 TLAS
     const key = batches.map((batch) => `${batch.mesh.id}:${batch.material.id}:${batch.material.version}:${batch.count}`).join(',');
@@ -306,6 +324,7 @@ export class RayTracingScene {
         words[o + 12] = blas.nodeOffset;
         words[o + 13] = blas.triangleOffset;
         words[o + 14] = batch.material.doubleSided ? 1 : 0;
+        words[o + 15] = (this.surfaces.tileOf(batch) ?? -1) + 1;
         const { baseColor, emissive } = batch.material;
         instances.set([baseColor.r, baseColor.g, baseColor.b, 1, emissive[0], emissive[1], emissive[2], 0], o + 16);
       }
@@ -345,8 +364,10 @@ export class RayTracingScene {
     }
     const { tlas: t, instances, blas, triangles } = this.#buffers;
     if (!this.#tlas || !t || !instances || !blas || !triangles) return;
-    if (changed || !this.#group) {
-      this.#group = device.createBindGroup({ label: 'RayTracingScene', layout: this.bindGroupLayout, entries: [t, instances, blas, triangles].map((buffer, binding) => ({ binding, resource: { buffer } })) });
+    const surfaces = this.surfaces.buffer;
+    if (changed || !this.#group || surfaces !== this.#surfaceBuffer) {
+      this.#surfaceBuffer = surfaces;
+      this.#group = device.createBindGroup({ label: 'RayTracingScene', layout: this.bindGroupLayout, entries: [t, instances, blas, triangles, surfaces].map((buffer, binding) => ({ binding, resource: { buffer } })) });
     }
   }
 
@@ -407,6 +428,7 @@ export class RayTracingScene {
   }
 
   destroy(): void {
+    this.surfaces.destroy();
     for (const buffer of Object.values(this.#buffers)) buffer?.destroy();
   }
 }

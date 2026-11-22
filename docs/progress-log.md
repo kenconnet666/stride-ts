@@ -947,6 +947,14 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 
 合起来 `drawMs` 平均 5.3 → 4.4 毫秒。动的东西（列车、浮着的箱子、物理样例）照常更新：两张隔一秒半的截图里列车往前走了，physics-sample、bepu-sample、platformer、first-person-shooter、open-world 的冒烟都过。剩下的大头是剔除本身和逐实例的 CPU 活：W7 的第一步做 GPU 上的剔除和间接绘制。
 
+## R2 第四步：光追表面的颜色、点光聚光、跟着相机走的体（2026-11-22）
+
+- 表面颜色（`raytracing/SurfaceColors.ts`）：每个批按纹理坐标用网格着色器自己的材质代码（`vsSurfaceBake`、`fsSurfaceBake`）画进图集的一格，计算着色器求平均；`MeshRenderFeature.bakeSurfaces` 直接按槽位画（firstInstance），`Mesh.uvBounds` 写进 MeshParams 的末尾。站台的光追调试图（`stride call raytrace`）里树是绿的、道砟是棕的、站台是灰的（以前都是材质的颜色，贴图和节点图的材质发白）；不锈钢的立柱是黑的（金属没有漫反射，间接光里也该这样）。只在批或材质变了的帧烘，平时不花时间；探针的那一遍照旧 1.4 毫秒。
+- 点光、聚光照探针打到的表面（带阴影射线）：站台顶棚下临时放一盏橙色点光，开着全局光照时顶棚底面有地面反上来的橙光，关掉就没有。
+- `followCamera`：站台的体改成跟着相机走，相机往站台外挪了 10 米，挪完当时和 3 秒后的画面一样，没有黑块，遍历没有被截断的。
+- 修 CI：W7 的 GPU 剔除以后 platformer 的冒烟在 CI 的软件 WebGPU 上一直挂在"场景画出来了"（剔除剩几个是异步读回的，软件 WebGPU 开头几帧太慢，检查的时候还没读回来）：冒烟等到有数再比（最多 10 秒）。
+- 用户装好了 Windows 的图形工具（D3D12 调试层），`stride open --gpu-debug` 现在连 D3D12 的校验一起开。
+
 ## R2 第三步：DDGI 的辐照度体（2026-11-22）
 
 `IrradianceVolume` 组件（场景文件的 `irradianceVolume`：`size`、`spacing`、`rays`、`hysteresis`、`intensity`，属性面板、MCP 都有）和 `renderSystem.irradianceVolumes`（`rendering/raytracing/IrradianceVolume.ts`）：前向渲染器在写视图常量之前 `begin`（找体、分配图集、更新光追场景），阴影之后一个计算通道 `IrradianceVolume`（追射线、更新探针、拷回图集）。网格着色器的视图多三个 vec4（`giMin`、`giSpacing`、`giCounts`，视图常量一块从 1280 字节涨到 1536），第 27 个绑定是图集（和第 26 个一样，设备放得下 16 张以上的贴图时才有），`volumeIrradiance` 盖住的地方漫反射的环境光用探针的，盖不住的部分才用环境光和天空盒的。光追场景加了 `rtBackFace`（单面材质的背面，实例的标志位存双面）、`version`、`check`/`readBack`。画质的 `globalIllumination` 关着时不做。调试命令 `gi`（开关、探针数、每帧更新的探针和射线、遍历的统计）、`raytrace-check`。

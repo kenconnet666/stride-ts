@@ -88,9 +88,9 @@ const VIEW_STRIDE = 1536;
 /**
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
  * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32，云影、天气、贴花、分簇 20，平面反射 28，原点 4，风 4，
- * 局部风源 4 · 4 和它们的强度 4，辐照度体 12。
+ * 局部风源 4 · 4 和它们的强度 4，辐照度体 16。
  */
-const VIEW_FLOATS = 324;
+const VIEW_FLOATS = 328;
 /** 不用平面反射的视图在那几个数的位置写的：全是 0（用不用的那一位是 0）。 */
 const PLANAR_OFF = new Float32Array(28);
 /** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
@@ -110,7 +110,8 @@ function microfacetBits(model: Required<MicrofacetModel>): number {
   return (model.fresnel === 'none' ? 16 : 0) | (DISTRIBUTION_CODES[model.distribution] << 5) | (VISIBILITY_CODES[model.visibility] << 7) | (model.environment === 'polynomial' ? 1024 : 0);
 }
 /** 反量化参数和 flags（64 字节），加上网格效果的 16 个参数。 */
-const MESH_PARAMS_BYTES = 64 + MESH_EFFECT_PARAMETERS * 4;
+/** 网格的 uniform：MeshParams（三个 vec4、标志、效果参数、纹理坐标的范围）。 */
+const MESH_PARAMS_BYTES = 64 + MESH_EFFECT_PARAMETERS * 4 + 16;
 
 /** 一次剔除：一个剔除工作区和它剔除的视图；结果在实例缓冲里从 offset 开始，每个视图 slotCount 个。 */
 interface CullPass {
@@ -585,6 +586,31 @@ export class MeshRenderFeature extends RootRenderFeature {
     }
   }
 
+  /**
+   * 表面颜色的烘焙（raytracing/SurfaceColors.ts）：每个批的第一个实例按纹理坐标画进图集的一格（视口），stage 是 surfaceBake 的
+   * 阶段。view 是这一帧写过常量的视图（材质按世界坐标、天气的那些量取它的；位置不用它的投影）。不经剔除，直接按槽位画。
+   */
+  bakeSurfaces(pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage, tiles: readonly { readonly batch: MeshBatch; readonly x: number; readonly y: number; readonly size: number }[]): void {
+    const gpu = this.#gpu;
+    if (!gpu || tiles.length === 0) return;
+    pass.setBindGroup(0, gpu.viewBindGroup(undefined), [view.index * VIEW_STRIDE]);
+    for (const { batch, x, y, size } of tiles) {
+      if (batch.count === 0) continue;
+      const gpuMesh = gpu.mesh(batch.mesh, this.effect);
+      pass.setViewport(x, y, size, size, 0, 1);
+      pass.setPipeline(gpu.pipelineFor(stage, batch.mesh.layout, false, 'none', batch.material, this.effect));
+      pass.setBindGroup(1, gpu.material(batch.material));
+      const tree = gpu.treeBindGroup(batch.material);
+      if (tree) pass.setBindGroup(3, tree);
+      pass.setBindGroup(2, gpuMesh.bindGroup);
+      pass.setVertexBuffer(0, gpuMesh.vertices);
+      pass.setIndexBuffer(gpuMesh.indices, gpuMesh.indexFormat);
+      // 实例号就是槽位（vsSurfaceBake 不查视图的实例表）
+      pass.drawIndexed(gpuMesh.indexCount, 1, 0, 0, batch.slots[0]!);
+      this.drawCalls++;
+    }
+  }
+
   /** 网格释放了（Mesh.dispose，流式加载的地形块这类）：它的批和显存跟着去掉。 */
   readonly #stopForgetting = Mesh.onDispose((mesh) => {
     for (const [key, batch] of this.#batchByKey) if (batch.mesh === mesh) this.#batchByKey.delete(key);
@@ -957,7 +983,8 @@ class Gpu {
       // 运动向量阶段不要切线（只算位置），用自己的顶点着色器
       // 高度场（地形块）的顶点按高度页算，有自己的入口；切线在着色器里由高度算
       // 远处卡片（Impostors.ts）的四个顶点按相机转、选图集的格子，也有自己的入口
-      const entryPoint = deform === 'heightfield' ? (stage.velocity ? 'vsVelocityHeightfield' : 'vsHeightfield')
+      const entryPoint = stage.surfaceBake ? 'vsSurfaceBake'
+        : deform === 'heightfield' ? (stage.velocity ? 'vsVelocityHeightfield' : 'vsHeightfield')
         : deform === 'impostor' ? (stage.velocity ? 'vsVelocityImpostor' : 'vsImpostor')
         : stage.velocity ? `vsVelocity${skinned ? 'Skinned' : ''}` : `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;
       const module = this.#module(trees, effect);
@@ -983,8 +1010,8 @@ class Gpu {
           }],
         },
         ...(colorFormat ? {
-          fragment: stage.impostor ? {
-            module, entryPoint: 'fsImpostorBake', targets: [{ format: colorFormat }, ...(surfaceFormats ?? []).map((format) => ({ format }))],
+          fragment: stage.impostor || stage.surfaceBake ? {
+            module, entryPoint: stage.impostor ? 'fsImpostorBake' : 'fsSurfaceBake', targets: [{ format: colorFormat }, ...(surfaceFormats ?? []).map((format) => ({ format }))],
           } : stage.picking || stage.wireframe || stage.velocity ? { module, entryPoint: stage.picking ? 'fsPick' : stage.wireframe ? 'fsWire' : 'fsVelocity', targets: [{ format: colorFormat }] } : {
             module,
             // 要留表面的阶段（屏幕空间反射开着时的不透明阶段）：普通的材质写表面，别的那一遍不写（写掩码 0）
@@ -1001,11 +1028,11 @@ class Gpu {
           ? { topology: 'line-list' }
           : stage.shadowCasters
             ? { topology: 'triangle-list', cullMode: 'none', unclippedDepth: this.#unclippedDepth && !stage.depthClip }
-            : { topology: 'triangle-list', cullMode: stage.impostor ? 'none' : materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
+            : { topology: 'triangle-list', cullMode: stage.impostor || stage.surfaceBake ? 'none' : materialPass?.cullMode ?? (doubleSided ? 'none' : 'back'), frontFace: 'ccw' },
         // 深度预通道之后的阶段：同样的物体、同样的顶点着色器（位置是 @invariant 的）已经把深度写好了，这里只让深度相等的
         // 像素过，也不再写深度，被挡住的像素一个都不着色
-        depthStencil: stage.afterDepthPrepass
-          ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'equal' }
+        ...(stage.surfaceBake ? {} : { depthStencil: stage.afterDepthPrepass
+          ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'equal' } as const
           : {
             format: depthFormat,
             depthWriteEnabled: !stage.transparent && !stage.wireframe,
@@ -1014,7 +1041,7 @@ class Gpu {
             // 和 Stride 不同：阴影投射另加按坡度的深度偏移。只有常量偏移加法线偏移时，太阳低（20° 左右）、光掠过地面，
             // 阴影图的深度量化在受光面上成了一圈圈的痤疮（日夜循环里常见）
             ...(stage.shadowCasters ? { depthBiasSlopeScale: SHADOW_SLOPE_BIAS, depthBiasClamp: 0.01 } : {}),
-          },
+          } }),
       };
     }
   }
@@ -1387,6 +1414,8 @@ class Gpu {
       const data = new ArrayBuffer(MESH_PARAMS_BYTES);
       new Float32Array(data).set([...po, 0, ...ps, 0, us[0], us[1], uo[0], uo[1]]);
       new Uint32Array(data)[12] = mesh.layout.normal === 'snorm16x2' ? 1 : 0;
+      const [u0, v0, u1, v1] = mesh.uvBounds();
+      new Float32Array(data).set([u0, v0, 1 / Math.max(u1 - u0, 1e-6), 1 / Math.max(v1 - v0, 1e-6)], 16 + MESH_EFFECT_PARAMETERS);
       const params = this.#createFilled(`${mesh.name} params`, GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST, new Uint8Array(data));
       gpu = {
         params,

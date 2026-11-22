@@ -67,6 +67,7 @@ export class Mesh {
   readonly heightfield: boolean;
   /** 见 MeshData.impostor。 */
   readonly impostor: boolean;
+  #uvBounds: readonly [number, number, number, number] | undefined;
 
   constructor(name: string, data: MeshData) {
     this.layout = data.layout ?? FLOAT_LAYOUT;
@@ -123,6 +124,26 @@ export class Mesh {
       }
     }
     return out;
+  }
+
+  /** 解量化后的纹理坐标的范围 [最小 u, 最小 v, 最大 u, 最大 v]（表面颜色的烘焙按它铺满一格）；没有顶点时是 0..1。 */
+  uvBounds(): readonly [number, number, number, number] {
+    if (this.#uvBounds) return this.#uvBounds;
+    const { vertices } = this.data;
+    const offset = vertexLayoutOffsets(this.layout).uv;
+    const view = new DataView(vertices.buffer, vertices.byteOffset, vertices.byteLength);
+    const quantized = this.layout.uv === 'unorm16x2';
+    const { uvOffset: o, uvScale: s } = this.dequantize;
+    const bounds: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (let v = 0; v < this.vertexCount; v++) {
+      const at = v * this.vertexStride + offset;
+      for (let k = 0; k < 2; k++) {
+        const value = quantized ? o[k]! + (view.getUint16(at + k * 2, true) / 65535) * s[k]! : view.getFloat32(at + k * 4, true);
+        bounds[k] = Math.min(bounds[k]!, value);
+        bounds[k + 2] = Math.max(bounds[k + 2]!, value);
+      }
+    }
+    return (this.#uvBounds = this.vertexCount > 0 ? bounds : [0, 0, 1, 1]);
   }
 
   /** 顶点的 UV（量化的已经反量化），在模型上画贴图（rendering/paint/MeshPainter.ts）用。 */

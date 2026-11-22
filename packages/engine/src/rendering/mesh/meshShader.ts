@@ -94,10 +94,11 @@ struct View {
   // 离相机最近的几个局部风源：中心（渲染空间）、半径；强度（乘过阵风，0 是没有）
   windLocals: array<vec4f, ${VEGETATION_LOCAL_WINDS}>,
   windStrengths: vec4f,
-  // 辐照度体（raytracing/IrradianceVolume.ts）：最小角（渲染空间）和用不用、间距和强度、各轴的探针数
+  // 辐照度体（raytracing/IrradianceVolume.ts）：最小角（渲染空间）和用不用、间距和强度、各轴的探针数、卷动
   giMin: vec4f,
   giSpacing: vec4f,
   giCounts: vec4f,
+  giScroll: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）和它们的阴影（点光是立方体的六个面 +Z、-Z、+X、-X、+Y、-Y 各一个矩阵，
 // 聚光只用第一个），在一个缓冲里，见 lighting/LocalLights.ts
@@ -431,7 +432,8 @@ struct Material {
 // 网格的反量化：位置 = offset + 输入 · scale，UV = uvTransform.zw + 输入 · uvTransform.xy；flags 的第 1 位：法线是八面体编码。
 // 不量化的网格 offset 0、scale 1。unorm16 的位置读进来是 vec4f，snorm16x2 的法线是 (x, y, 0)，都按 vec3f 用。
 // effect：网格效果的参数（meshEffect.ts，Stride 的 Mesh.Parameters），没有效果时没用
-struct MeshParams { positionOffset: vec4f, positionScale: vec4f, uvTransform: vec4f, flags: u32, effect: MeshEffectParameters };
+// uvBounds：网格（解量化后）的纹理坐标的最小角和 1 / 范围（表面颜色的烘焙按它把纹理坐标铺满一格）
+struct MeshParams { positionOffset: vec4f, positionScale: vec4f, uvTransform: vec4f, flags: u32, effect: MeshEffectParameters, uvBounds: vec4f };
 @group(2) @binding(0) var<uniform> mesh: MeshParams;
 // 网格的形变数据（布局见 content/formats/format.ts 的 MeshMorph）；没有形变的网格绑一个空的
 @group(2) @binding(1) var<storage, read> morphData: array<u32>;
@@ -602,6 +604,17 @@ fn skinMatrix(slot: u32, joints: vec4u, weights: vec4f, previous: bool) -> mat4x
 
 @vertex fn vs(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
   return transformVertex(position, normal, uv, vec4f(0.0), slots[instance], vertex, IDENTITY, false);
+}
+
+/**
+ * 表面颜色的烘焙（RenderStage.surfaceBake，raytracing/SurfaceColors.ts）：顶点按纹理坐标（按网格的范围归一）铺满视口（图集的一格），
+ * 世界位置照常算（按世界坐标的材质节点照样对）。实例号直接是槽位（画的时候 firstInstance 给槽位，不经视图的实例表）。
+ */
+@vertex fn vsSurfaceBake(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) slot: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
+  var out = transformVertex(position, normal, uv, vec4f(0.0), slot, vertex, IDENTITY, false);
+  let t = (out.uv - mesh.uvBounds.xy) * mesh.uvBounds.zw;
+  out.position = vec4f(t.x * 2.0 - 1.0, 1.0 - t.y * 2.0, 0.5, 1.0);
+  return out;
 }
 
 @vertex fn vsTangent(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @location(3) tangent: vec4f, @builtin(instance_index) instance: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
@@ -1486,6 +1499,24 @@ struct ImpostorBakeOutput {
   return ImpostorBakeOutput(vec4f(layers.albedo, 1.0), vec4f(m * 0.5 + 0.5, layers.roughness));
 }
 
+struct SurfaceBakeOutput {
+  @location(0) albedo: vec4f,
+  @location(1) emissive: vec4f,
+};
+
+/**
+ * 表面颜色的烘焙（RenderStage.surfaceBake）：漫反射色（材质层混过的，金属的部分不算漫反射）和自发光，a 是 1（没盖到的像素清成 0，
+ * 求平均时只算盖到的）。Alpha 裁剪掉的像素丢掉。
+ */
+@fragment fn fsSurfaceBake(in: Varyings) -> SurfaceBakeOutput {
+  let base = baseColor(in);
+  if (base.a * material.blend.a < select(0.5, material.flags.y, material.flags.y >= 0.0)) {
+    discard;
+  }
+  let layers = materialLayers(in, LayerSurface(base.rgb, material.surface.x, material.specularColor.rgb, material.surface.y));
+  return SurfaceBakeOutput(vec4f(layers.albedo * (1.0 - layers.metalness), 1.0), vec4f(emissiveColor(in).rgb, 1.0));
+}
+
 struct WireOutput {
   @location(0) color: vec4f,
   @builtin(frag_depth) depth: f32,
@@ -2088,7 +2119,7 @@ ${IRRADIANCE_VOLUME_WGSL}
 /** 辐照度体在这一点的漫反射环境光（rgb，乘过强度）和盖住的程度（a）；没有体时是 0。 */
 fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f {
   if (view.giMin.w == 0.0) { return vec4f(0.0); }
-  let s = giSample(irradianceAtlas, linearClamp, GiVolume(view.giMin, view.giSpacing, view.giCounts), p, n, v);
+  let s = giSample(irradianceAtlas, linearClamp, GiVolume(view.giMin, view.giSpacing, view.giCounts, view.giScroll), p, n, v);
   return vec4f(s.rgb * view.giSpacing.w, s.a);
 }
 `

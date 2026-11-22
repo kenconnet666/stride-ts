@@ -11,7 +11,7 @@ import { assetListId, FieldEditor, Fields, type FieldContext, type ValuePath, ty
 import type { EditorSession } from '../session/EditorSession';
 import type { ModelSourceKind, ViewportTools } from '../session/ViewportTools';
 import { labelText } from '../i18n/fieldMessages';
-import { t } from '../i18n/messages';
+import { t, assetLabel } from '../i18n/messages';
 import { mergeField } from '../fields/values';
 
 const styles = css.create({
@@ -264,7 +264,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
   const assetInspector = (asset: NonNullable<typeof session.inspected.value>) => (
     <div {...css.attrs(styles.panel)}>
       {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
-      <div {...css.attrs(styles.hint)}>{t.assetHint(Object.hasOwn(t.assetLabels, asset.kind) ? t.assetLabels[asset.kind as keyof typeof t.assetLabels] : asset.kind, asset.path)}</div>
+      <div {...css.attrs(styles.hint)}>{t.assetHint(assetLabel(asset.kind), asset.path)}</div>
       {asset.kind === 'material' && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Workflow} onClick={() => session.openMaterialGraph()}>{t.graphOpen}</Button>}
       {asset.kind === 'material' && <PaintLayers session={session} />}
       {asset.kind === 'sound' && <SoundGenerator session={session} />}

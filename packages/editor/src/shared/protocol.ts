@@ -35,6 +35,8 @@ export interface ProjectManifest {
   readonly content: string;
   /** 生成的资源句柄（见 docs/architecture.md 的"资源的强类型"），相对工程根；默认 src/assets.gen.ts。 */
   readonly assetTypes: string;
+  /** 编辑器扩展的模块（shared/extension.ts：自定义的资源种类），相对工程根；没有时不写。 */
+  readonly extension?: string;
 }
 
 export const PROJECT_FILE = 'stride.project.json';
@@ -42,6 +44,8 @@ export const PROJECT_FILE = 'stride.project.json';
 export interface ProjectInfo extends ProjectManifest {
   /** 内容目录在开发服务器上的地址（相对站点根，比如 `content/`）；内容目录不在 public 下面时是 null。 */
   readonly contentUrl: string | null;
+  /** 编辑器扩展模块的绝对路径（正斜杠，界面经 Vite 的 /@fs/ 加载它）；没有扩展时是 null。 */
+  readonly extensionFile: string | null;
 }
 
 /** 数据库里的一个资源。 */

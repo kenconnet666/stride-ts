@@ -245,7 +245,7 @@ describe('后端（EditorBackend）', () => {
     const generated = await readFile(path.join(directory, 'src', 'assets.gen.ts'), 'utf8');
     expect(generated).toContain("Main: assetRef('scene', \"Game/Main\"),");
     expect(generated).toContain("Shared: assetRef('uiLibrary', \"Game/UI/Shared\"),");
-    expect(await (await api('/project')).json()).toEqual({ format: 1, name: '@test/backend', content: 'public/content', assetTypes: 'src/assets.gen.ts', contentUrl: 'content/' });
+    expect(await (await api('/project')).json()).toEqual({ format: 1, name: '@test/backend', content: 'public/content', assetTypes: 'src/assets.gen.ts', contentUrl: 'content/', extensionFile: null });
     const assets = await (await api('/assets')).json() as AssetRecord[];
     expect(assets).toHaveLength(backend.database.size);
     expect(await (await api('/asset?kind=scene&path=Game/Main')).json()).toEqual(scene);

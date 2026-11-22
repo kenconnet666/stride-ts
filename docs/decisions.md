@@ -2,6 +2,13 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+### 全仓库整理第三步之一：资源种类可登记，工程的编辑器扩展（2026-11-22）
+
+- 原来加一种资源要改 7 处（引擎的扩展名表、引用提取、字段表，编辑器的 JSON 种类表、新建模板、中英文名字、烘焙表），工程自己也加不了。改成：引擎 `content/assetKinds.ts` 是登记表（`registerAssetKind`：扩展名、引用；`CustomAssetKinds` 声明合并给类型，同引擎已有的 `AssetTypes`），字段 `registerAssetFields`；编辑器的资源数据库、JSON 种类、属性面板、烘焙表（`generatorFor`）、新建菜单（`newAssetOptions`）、名字（`assetLabel`）都按"内置的加上登记的"查。工程用一个扩展模块一次写全（`@stride-ts/editor/extension` 的 `defineEditorExtension`），清单 `stride.project.json` 的 `extension` 指向它。内置种类的表没有拆成每种一个文件：它们分在引擎（浏览器、Node 都跑）和编辑器后端（Node，烘焙要原生工具）两处是运行环境决定的，硬合成一处反而要让浏览器拖上 Node 的依赖。
+- 扩展模块三处加载：编辑器后端和 MCP 服务打开工程时（`installProjectExtension`，在扫内容目录之前），界面经 Vite 的 `/@fs/` 加载同一个模块（`GET /project` 带上 `extensionFile`）。所以模块顶层只放数据和纯函数。游戏运行时要预加载这种资源的引用时，游戏代码自己装一次。
+- 示范在 greybox：`editor/extension.ts` 的"柱子"（`.pillar.json` 烘成 JSON 写的圆柱）。测试：编辑器的 `test/extension.test.ts`（临时工程：认文件、打开时补烘、存盘时烘、参数不对报错不写、挪动时模型跟着走、挪材质时引用改写），引擎的 `test/content/assetKinds.test.ts`；Chrome 里新建菜单出现"柱子"、属性面板是中文的字段、改高度马上重烘。
+- 引擎 `editor-fields` 入口导出字段的构造函数（`fields`、`number`、`asset`……），工程写扩展时用。
+
 ### 全仓库整理第二步：开发工具包 @stride-ts/devkit；工具链换 Rust 的结论（2026-11-22）
 
 - `tools/lib` 里样例和新工程都要用的两样提成工作区包 `packages/devkit`：`@stride-ts/devkit/vite`（`strideApp`：跨源隔离、调试中枢、编辑器、资源包、预压缩）、`@stride-ts/devkit/smoke`（冒烟帮手）。样例的 `vite.config.ts`、冒烟脚本和新工程的模板都经包名用，各样例的 package.json 加它。冒烟帮手原来按相对路径找 CLI 和 `tools/budgets.json`，改成 `import.meta.resolve('@stride-ts/cli/cli')`（CLI 加导出 `./cli`）、从工程目录往上找预算表（仓库外的工程没有就不比）。仓库自己用的（`affected.ts`、`run-page.ts`、`consoleText.ts`）留在 `tools/lib`。新工程还只能建在仓库的 `apps/` 下（依赖写 `workspace:*`、tsconfig 继承仓库的），要在仓库外建得先把各包发到 npm，记在路线图。

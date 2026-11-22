@@ -9,7 +9,8 @@
  *
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
-export type { Field, FieldType } from './builders.ts';
+// 字段描述的构造函数：工程的编辑器扩展给自定义资源写字段时用
+export { asset, bool, entity, fields, integer, list, nullable, number, object, oneOf, optional, rotation, string, textureRef, vector, type Field, type FieldSpec, type FieldType } from './builders.ts';
 export * from './components.ts';
 export * from './assets.ts';
 export * from './scripts.ts';

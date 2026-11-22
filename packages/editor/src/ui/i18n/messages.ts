@@ -4,7 +4,8 @@
  */
 import type { MessageTable } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { NewAssetOption, ProceduralShapeType } from '../../shared/newAssets';
-import { translations } from './i18n';
+import { extensionAssetKind, extensionLabel } from '../../shared/extension';
+import { locale, translations } from './i18n';
 
 export interface EditorMessages {
   // 工具条
@@ -691,5 +692,13 @@ export const t = translations(editorMessages);
 
 /** "新建"菜单里这一项的文字。 */
 export function newAssetLabel(option: NewAssetOption): string {
+  if (option.id.startsWith('extension:')) return assetLabel(option.kind);
   return option.shape ? t.newAssetLabels.shape(t.shapes[option.shape]) : t.newAssetLabels[option.id as 'scene' | 'material' | 'ui' | 'timeline' | 'brush' | 'spline' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'sign' | 'ceiling' | 'fixture' | 'world' | 'terrain'];
+}
+
+/** 资源种类在界面上的名字：内置的按翻译表，编辑器扩展登记的按它的 label，都没有时是种类名。 */
+export function assetLabel(kind: string): string {
+  if (Object.hasOwn(t.assetLabels, kind)) return t.assetLabels[kind as keyof typeof t.assetLabels];
+  const extension = extensionAssetKind(kind);
+  return extension ? extensionLabel(extension, locale.value) : kind;
 }

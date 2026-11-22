@@ -6,12 +6,13 @@ import { PROCEDURAL_SHAPES, type BuildingFile, type CityFile, type WaterFile, ty
 import { SOUND_PRESETS, seededRandom } from '@stride-ts/engine/audio-synth';
 import { polyCube } from '@stride-ts/engine/modeling';
 import type { AssetKind } from './protocol.ts';
+import { extensionAssetKinds } from './extension.ts';
 
 export type ProceduralShapeType = (typeof PROCEDURAL_SHAPES)[number];
 
 /** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容（菜单里的文字在界面的翻译表里，按 id 和 shape 取）。 */
 export interface NewAssetOption {
-  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'water' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'sign' | 'ceiling' | 'fixture' | 'spline' | `model:${ProceduralShapeType}`;
+  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'water' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'sign' | 'ceiling' | 'fixture' | 'spline' | `model:${ProceduralShapeType}` | `extension:${string}`;
   readonly kind: AssetKind;
   /** 基本形状的模型是哪种形状。 */
   readonly shape?: ProceduralShapeType;
@@ -111,6 +112,17 @@ export const NEW_ASSET_OPTIONS: readonly NewAssetOption[] = [
     { name: 'Head', kind: 'sphere', operation: 'add', smoothness: 0.2, position: [0, 1.15, 0], radius: 0.3 },
   ] }) },
 ];
+
+/** "新建"菜单的全部项：内置的，加上装上的编辑器扩展登记了模板的种类（id 是 `extension:<种类>`）。 */
+export function newAssetOptions(): NewAssetOption[] {
+  return [
+    ...NEW_ASSET_OPTIONS,
+    ...extensionAssetKinds().flatMap((kind): NewAssetOption[] => {
+      const template = kind.template;
+      return template ? [{ id: `extension:${kind.kind}`, kind: kind.kind as AssetKind, name: template.name, content: (name) => template.content(name) as object }] : [];
+    }),
+  ];
+}
 
 /** folder 里给 name 找一个没被占的内容路径：name、name2、name3……（taken 是已有的 `种类:路径`）。 */
 export function freeAssetPath(folder: string, name: string, kind: AssetKind, taken: ReadonlySet<string>): string {

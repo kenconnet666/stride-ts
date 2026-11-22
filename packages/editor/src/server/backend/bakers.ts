@@ -1,12 +1,13 @@
 /**
  * 生成模型的资源（源头是 JSON 的参数：白盒、SDF、多边形网格、3D 文字、样条、树、建筑、商品包装、货架、堆放、招牌、天花板、
  * 店里的器具）：每种怎么烘（pipeline 的 bake*），烘出哪些同名的资源（跟着源文件挪、删）。编辑器后端存下、磁盘上改了、打开工程时
- * 补烘都查这张表；加一种生成的资源在这里加一行。
+ * 补烘都查这张表（generatorFor）；内置的加一种在这里加一行，工程自己的种类由编辑器扩展登记（shared/extension.ts 的 bake）。
  */
 import { EXTENSIONS, type BrushFile, type BuildingFile, type CeilingFile, type FixtureFile, type PileFile, type PolyMeshFile, type ProductFile, type SdfFile, type ShelfFile, type SignFile, type SplineFile, type TextModelFile, type TreeFile } from '@stride-ts/engine/content-format';
 import type { StrideTools } from '@stride-ts/native/tools';
 import { bakeBrushModel, bakeBuildingModel, bakeCeiling, bakeFixture, bakePile, bakePolyModel, bakeProduct, bakeSdfModel, bakeShelf, bakeSign, bakeSplineModel, bakeTextModel, bakeTreeModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '../../shared/protocol.ts';
+import { extensionAssetKinds, extensionAssetKind } from '../../shared/extension.ts';
 
 /** 烘的时候能用的：原生工具、读内容目录里的文件（字体、商品）。 */
 export interface BakeContext {
@@ -63,9 +64,21 @@ export const GENERATORS = {
   fixture: merged<FixtureFile>(({ tools, read }, file, assetPath, where) => bakeFixture(tools, file, assetPath, read, where)),
 } satisfies Record<string, Generator>;
 
-export type GeneratedKind = keyof typeof GENERATORS;
+/** 一种资源的烘法：内置的，或者装上的编辑器扩展登记的（有 bake 的）；不生成文件的种类是 undefined。 */
+export function generatorFor(kind: string): Generator | undefined {
+  if (Object.hasOwn(GENERATORS, kind)) return GENERATORS[kind as keyof typeof GENERATORS];
+  const extension = extensionAssetKind(kind);
+  const bake = extension?.bake;
+  if (!bake) return undefined;
+  return { bake: async ({ tools, read }, content, assetPath, where) => bake(content, { tools, read, assetPath, where }), outputs: extension.outputs ?? [['model', '']] };
+}
 
-export const isGenerated = (kind: string): kind is GeneratedKind => Object.hasOwn(GENERATORS, kind);
+/** 生成文件的资源种类：内置的和扩展登记的。 */
+export function generatedKinds(): AssetKind[] {
+  return [...Object.keys(GENERATORS), ...extensionAssetKinds().filter((kind) => kind.bake).map((kind) => kind.kind)] as AssetKind[];
+}
+
+export const isGenerated = (kind: string): boolean => generatorFor(kind) !== undefined;
 
 /** 生成的资源用着别的资源、那些变了要跟着重烘的：货架、堆放用着商品（标签、尺寸在它们的图集和网格里）。 */
-export const REBAKE_WITH: Readonly<Partial<Record<AssetKind, readonly GeneratedKind[]>>> = { product: ['shelf', 'pile'] };
+export const REBAKE_WITH: Readonly<Partial<Record<AssetKind, readonly AssetKind[]>>> = { product: ['shelf', 'pile'] };

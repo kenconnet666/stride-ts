@@ -181,6 +181,7 @@ export type { ModelUse } from './content/SceneBuilder';
 export { SceneDocument, UndoStack, type EntitiesFile, type SceneEdit, type ScenePath } from './editor/SceneDocument';
 export { changedEntities, type EntityChanges } from './content/SceneBuilder';
 export { assetReferences, assetReferenceSlots, entityAssetReferences, type AssetKind, type AssetReference, type AssetReferenceSlot, type EntityAssetReference } from './content/references';
+export { assetKindExtension, customAssetKinds, isJsonAssetKind, registerAssetKind, type AssetKindDefinition, type CustomAssetKinds, type ReferenceSink } from './content/assetKinds';
 export { DebugDraw, DEBUG_LINE_FLOATS, type DebugColor, type DebugDrawOptions, type DebugPoint } from './debug/DebugDraw';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
 export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './engine/Game';

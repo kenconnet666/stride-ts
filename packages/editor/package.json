@@ -13,7 +13,8 @@
     "./protocol": "./src/shared/protocol.ts",
     "./client": "./src/client/EditorClient.ts",
     "./mcp-client": "./src/server/mcp/mcpClient.ts",
-    "./library": "./src/library/index.ts"
+    "./library": "./src/library/index.ts",
+    "./extension": "./src/shared/extension.ts"
   },
   "scripts": {
     "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",

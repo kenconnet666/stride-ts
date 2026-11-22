@@ -2,9 +2,9 @@ import { Box, Check, ExternalLink, File, Folder, FolderOpen, Image, Music, Plus,
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { IconButton, Menu, MenuItem, TextField, Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
-import { freeAssetPath, NEW_ASSET_OPTIONS } from '../../shared/newAssets';
+import { freeAssetPath, newAssetOptions } from '../../shared/newAssets';
 import type { AssetRecord, MoveRequest } from '../../shared/protocol';
-import { newAssetLabel, t } from '../i18n/messages';
+import { assetLabel, newAssetLabel, t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
@@ -132,7 +132,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     return slash < 0 ? '' : node.path.slice(0, slash);
   };
   const create = (id: string) => {
-    const option = NEW_ASSET_OPTIONS.find((candidate) => candidate.id === id);
+    const option = newAssetOptions().find((candidate) => candidate.id === id);
     if (!option) return;
     void run(t.newAsset, async () => {
       const folder = folderForNew();
@@ -141,7 +141,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
       if (folder) expanded = [...new Set([...expanded, FOLDER + folder])];
       selected = [`${option.kind}:${path}`];
       target = path;
-      return t.created(option.kind, path);
+      return t.created(assetLabel(option.kind), path);
     });
   };
 
@@ -172,7 +172,7 @@ export const AssetBrowser = _component(({ session }: { session: EditorSession })
     <div {...css.attrs(styles.panel)} onDragover={(event: DragEvent) => hasFiles(event) && event.preventDefault()} onDrop={importDropped}>
       <div {...css.attrs(styles.bar)} role="toolbar" aria-label={t.assets}>
         <Menu trigger={(props) => <IconButton {...props} icon={Plus} size="sm" variant="ghost" tone="neutral" aria-label={t.newAsset} title={t.newAsset} disabled={busy} />}>
-          {NEW_ASSET_OPTIONS.map((option) => <MenuItem onAction={() => create(option.id)}>{newAssetLabel(option)}</MenuItem>)}
+          {newAssetOptions().map((option) => <MenuItem onAction={() => create(option.id)}>{newAssetLabel(option)}</MenuItem>)}
         </Menu>
         <IconButton icon={ExternalLink} size="sm" variant="ghost" tone="neutral" aria-label={t.open} title={t.open} disabled={!openable(current) || busy} onClick={() => current && void open(current)} />
         <IconButton icon={Trash2} size="sm" variant="ghost" tone="neutral" aria-label={t.delete} title={t.delete} disabled={!current?.asset || busy} onClick={() => current && void remove(current)} />

@@ -17,9 +17,9 @@ import { type ImportResult, type AssetChanges, type AssetMove, type AssetRecord,
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
 import { rewriteImageEncoding, rewriteReferences } from './rewrite.ts';
 import { writeAssetTypes } from './assetTypes.ts';
-import { loadProject, projectInfo, type Project } from './project.ts';
+import { installProjectExtension, loadProject, projectInfo, type Project } from './project.ts';
 import { syncAssetPackages } from './assetPackages.ts';
-import { GENERATORS, isGenerated, REBAKE_WITH, type GeneratedKind } from './bakers.ts';
+import { generatedKinds, generatorFor, isGenerated, REBAKE_WITH } from './bakers.ts';
 import { checkContentPath, contentHash, writeAtomically } from './files.ts';
 import { handleEditorRequest, HttpError } from './http.ts';
 import { Importer, type MaterialSetOptions } from './importer.ts';
@@ -32,7 +32,8 @@ const EXPORT_EXTENSIONS: ReadonlySet<string> = new Set(['mp4', 'webm', 'png']);
 const CHANGE_DELAY = 50;
 
 /** 存下、改了以后后端要烘（导入）的资源：生成模型的（bakers.ts 的表）和源模型、贴图的导入设置。 */
-type BakedKind = GeneratedKind | 'modelImport' | 'imageImport';
+/** 有主文件的种类（贴图、音频、源模型这几种附属文件不会是）。 */
+type BakedKind = Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>;
 const isBakedKind = (kind: string): kind is BakedKind => isGenerated(kind) || kind === 'modelImport' || kind === 'imageImport';
 
 
@@ -68,6 +69,7 @@ export class EditorBackend {
   /** 打开工程：读清单、同步依赖的资源包（assetPackages.ts）、扫内容目录、生成资源句柄。publicDir 是开发服务器的静态目录。 */
   static async open(root: string, publicDir: string): Promise<EditorBackend> {
     const project = await loadProject(root);
+    await installProjectExtension(project);
     await syncAssetPackages(project.root, project.contentDir);
     const backend = new EditorBackend(project, publicDir);
     await backend.database.scan();
@@ -405,10 +407,11 @@ export class EditorBackend {
     if (record.kind === 'imageImport') return same('image');
     if (record.kind === 'image') return same('imageImport');
     if (record.kind === 'modelImport') return same('model', 'modelSource');
-    if (isGenerated(record.kind)) {
-      return GENERATORS[record.kind].outputs.map(([kind, suffix]) => this.database.get(kind, record.path + suffix)).filter((found) => found !== undefined);
+    const generator = generatorFor(record.kind);
+    if (generator) {
+      return generator.outputs.map(([kind, suffix]) => this.database.get(kind, record.path + suffix)).filter((found) => found !== undefined);
     }
-    if (record.kind === 'model') return same(...(Object.keys(GENERATORS) as GeneratedKind[]), 'modelImport', 'modelSource');
+    if (record.kind === 'model') return same(...generatedKinds(), 'modelImport', 'modelSource');
     return [];
   }
 
@@ -488,7 +491,8 @@ export class EditorBackend {
       return dependents ? this.database.referrers(record.kind, record.path).filter((user) => (dependents as readonly string[]).includes(user.kind)) : [];
     }).map((record) => [`${record.kind}:${record.path}`, record] as const));
     for (const { kind, path: user } of users.values()) {
-      const bakedKind = kind as GeneratedKind;
+      // REBAKE_WITH 里列的都是有主文件、会烘的种类
+      const bakedKind = kind as BakedKind;
       try {
         const text = await readFile(path.join(this.project.contentDir, assetFileName(bakedKind, user)), 'utf8');
         baked.push(...(await this.#bake(bakedKind, user, JSON.parse(text))).files);
@@ -526,7 +530,9 @@ export class EditorBackend {
       return { files: written, warnings, animations };
     }
     const read = (file: string) => readFile(path.join(this.project.contentDir, file));
-    const files = await GENERATORS[kind].bake({ tools, read }, content, assetPath, where);
+    const generator = generatorFor(kind);
+    if (!generator) throw new Error(`${where}: no baker for asset kind '${kind}'`);
+    const files = await generator.bake({ tools, read }, content, assetPath, where);
     for (const file of files) await writeAtomically(path.join(this.project.contentDir, file.path), file.bytes);
     this.#recordBake(`${kind}:${assetPath}`, content);
     return { files: files.map((file) => file.path), warnings: [] };

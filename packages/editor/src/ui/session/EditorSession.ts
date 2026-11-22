@@ -28,6 +28,7 @@ import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } fro
 import { materialSet } from '../../shared/materialSet.ts';
 import { t } from '../i18n/messages';
 import { ViewportTools } from './ViewportTools';
+import { installEditorExtension, type EditorExtension } from '../../shared/extension';
 
 /** 出片的预设（引擎 offline/VideoExport.ts 的 RENDER_PRESETS 里常用的几个）。 */
 /** 序列帧烘焙的设置（引擎 bake 命令的参数）。 */
@@ -148,6 +149,11 @@ export class EditorSession implements EditableScene {
 
   async start(): Promise<void> {
     const [project, assets] = await Promise.all([this.client.project(), this.client.assets()]);
+    // 工程的编辑器扩展：自定义资源的名字、模板、字段（后端那边打开工程时已经装上）；工程信息交出去之前装好，界面一画就认得
+    if (project.extensionFile) {
+      const module = await import(/* @vite-ignore */ `${import.meta.env.BASE_URL}@fs/${project.extensionFile}`) as { default: EditorExtension };
+      installEditorExtension(module.default);
+    }
     this.project.value = project;
     this.assets.value = assets;
     this.client.onAssetsChanged(({ changed, removed }) => {

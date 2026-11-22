@@ -963,6 +963,11 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 - 整理（R3 做完以后，单独提交）：`ToneMap.ts` 长到 921 行，拆进 `rendering/postfx/tonemap/`——`ToneMap.ts`（映射和平均测光，532 行）、`HistogramMetering.ts`、`LocalExposure.ts`（建网格；映射时取网格留在 ToneMap 的着色器里）、`ColorLut.ts`（解析、按路径登记、每个设备的贴图）、`whiteBalance.ts`；站台的画面、照片比对、耗时和拆之前一样。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
+## 尾巴：茶壶的反射、morph-targets 的参考图（2026-11-22）
+
+- 茶壶背光面比 Stride 亮：用桌面版（`tools/stride-capture/csharp-beginner`，本机还在）重截 keyboard.png，`capture-ours.ps1` 再比：三张平均差 1.57、1.43、1.62（同 11-20），绿茶壶背光面 147.0 对 146.8，黄茶壶阴影面几处差都在 1.2/255 以内、有正有负——问题已经不在了（多半是后来改光照时修掉的），打钩。
+- morph-targets：现在的 Stride 源码要 .NET 11 SDK（本机 10.0.400）和 VS 2026 的 C++ 工作负载编整个引擎再打包；11-19 已经比过（差都在有意的 UI 偏差上），往后放，等别处也要本机编 Stride 时一起做（我定的）。
+
 ## 尾巴：碰撞体跟着实体缩放；stride eval 多条语句返回最后的值（2026-11-22）
 
 - 原生（fork 的 `PhysicsApi.cpp`，临时版 native-dev-54b1527）：`MakeShape`、`MakeBodyShape` 不再管缩放，建物体时整个形状套 `ScaledShape`（`MakeScaleValid`）。引擎：`Collider` 的 `absoluteSize`、`unscaledShape`，`Simulation` 建物体前换算，`debugShapes` 线框照原生的规则画；场景格式、编辑器的字段和中文名，Stride 导入器写 `absoluteSize`，迁移已有的内容（见 decisions.md）。

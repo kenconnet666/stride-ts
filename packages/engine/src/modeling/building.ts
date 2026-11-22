@@ -37,6 +37,9 @@ export function buildingMeshes(file: BuildingFile, where = file.name): SlotMesh[
   file.masses.forEach((mass, m) => {
     const outline = massOutline(mass, below);
     const height = mass.floors * mass.floorHeight;
+    base = mass.base ?? base;
+    // 离地的一段（连廊、架空的楼）底下盖上
+    if (base > 0 && mass.base !== undefined) cap(builders[WALL]!, outline, base, true);
     // 候选构件按种子、第几段体块、第几面立面挑
     facadesOf(outline).forEach((facade, i) => buildFacade(builders, file, mass, facade, base, hash32(hash32(file.seed ?? 1, m), i)));
     buildRoof(builders, mass.roof ?? { kind: 'flat' }, outline, base + height);
@@ -49,7 +52,7 @@ export function buildingMeshes(file: BuildingFile, where = file.name): SlotMesh[
 /** 文件里用到的材质槽（构件、屋顶改用的），网格要有这么多个槽。 */
 function usedSlots(file: BuildingFile): number[] {
   const slots = [WALL, GLASS, FRAME, ROOF];
-  for (const module of Object.values(file.modules ?? {})) slots.push(module.slots?.wall ?? WALL, module.slots?.glass ?? GLASS, module.slots?.frame ?? FRAME);
+  for (const module of Object.values(file.modules ?? {})) slots.push(module.slots?.wall ?? WALL, module.slots?.glass ?? GLASS, module.slots?.frame ?? FRAME, module.kind === 'panel' ? module.material ?? FRAME : FRAME);
   for (const mass of file.masses) slots.push(mass.roof?.material ?? ROOF);
   return slots;
 }
@@ -195,6 +198,14 @@ function buildModule(builders: MeshBuilder[], module: BuildingModule, f: Facade,
       box(frame, f, u0 + bar, u1, v0, v0 + bar, 0, FRAME_DEPTH);
       return;
     }
+    case 'panel': {
+      // 墙上突出来的一块板（招牌、灯带）
+      const margin = Math.min(module.margin ?? 0.1, (u1 - u0) * 0.45);
+      const sill = Math.min(module.sill ?? 0.2, (v1 - v0) * 0.8), head = Math.min(module.head ?? 0.2, (v1 - v0 - sill) * 0.8);
+      panel(wall, f, u0, u1, v0, v1, 0);
+      box(builders[module.material ?? FRAME]!, f, u0 + margin, u1 - margin, v0 + sill, v1 - head, 0, module.depth ?? 0.15);
+      return;
+    }
     case 'window': {
       const margin = Math.min(module.margin ?? 0.3, (u1 - u0) * 0.45);
       const sill = Math.min(module.sill ?? 0.9, (v1 - v0) * 0.8), head = Math.min(module.head ?? 0.5, (v1 - v0 - sill) * 0.5);
@@ -332,12 +343,13 @@ function buildRoof(builders: MeshBuilder[], roof: BuildingRoof, outline: readonl
   }
 }
 
-/** 水平的顶盖（耳切三角化，朝上）。 */
-function cap(builder: MeshBuilder, outline: readonly Vec2[], y: number): void {
+/** 水平的盖子（耳切三角化），朝上；down 时朝下（离地的一段的底）。 */
+function cap(builder: MeshBuilder, outline: readonly Vec2[], y: number, down = false): void {
+  const normal: Vec3 = down ? [0, -1, 0] : [0, 1, 0];
   const points = outline.map((p) => [p[0], y, p[1]] as [number, number, number]);
-  const indices = points.map((p) => builder.vertex(p, [0, 1, 0], p[0], p[2]));
+  const indices = points.map((p) => builder.vertex(p, normal, p[0], p[2]));
   const triangles = triangulateFace(points, points.map((_, i) => i));
-  for (let k = 0; k < triangles.length; k += 3) builder.triangle(indices[triangles[k]!]!, indices[triangles[k + 1]!]!, indices[triangles[k + 2]!]!, [0, 1, 0]);
+  for (let k = 0; k < triangles.length; k += 3) builder.triangle(indices[triangles[k]!]!, indices[triangles[k + 1]!]!, indices[triangles[k + 2]!]!, normal);
 }
 
 function centroid(points: readonly Vec2[]): Vec2 {

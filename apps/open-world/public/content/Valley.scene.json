@@ -1481,6 +1481,33 @@
    }
   },
   {
+   "id": "aed26e2e-c79e-427e-851e-171a359f1710",
+   "name": "TwinTowers",
+   "parent": null,
+   "position": [
+    0,
+    40,
+    -50
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Buildings/TwinTowers",
+     "materials": []
+    }
+   }
+  },
+  {
    "id": "1ab99899-2344-4460-a9ac-09849587898e",
    "name": "Wind",
    "parent": null,

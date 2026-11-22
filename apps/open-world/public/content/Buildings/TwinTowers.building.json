@@ -1,0 +1,187 @@
+{
+ "name": "TwinTowers",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Glass",
+  "Materials/Steel",
+  "Materials/Street",
+  "Materials/LedCyan"
+ ],
+ "seed": 2,
+ "masses": [
+  {
+   "footprint": {
+    "rect": [
+     16,
+     16
+    ],
+    "center": [
+     -17,
+     0
+    ]
+   },
+   "floors": 2,
+   "floorHeight": 5,
+   "facade": "Lobby",
+   "roof": {
+    "kind": "flat"
+   }
+  },
+  {
+   "inset": 1.5,
+   "floors": 22,
+   "floorHeight": 3.5,
+   "facade": "Tower",
+   "roof": {
+    "kind": "flat",
+    "parapet": 1
+   }
+  },
+  {
+   "floors": 2,
+   "floorHeight": 3.5,
+   "facade": "Crown",
+   "roof": {
+    "kind": "dome",
+    "height": 5,
+    "material": 1
+   }
+  },
+  {
+   "footprint": {
+    "rect": [
+     16,
+     16
+    ],
+    "center": [
+     17,
+     0
+    ]
+   },
+   "base": 0,
+   "floors": 2,
+   "floorHeight": 5,
+   "facade": "Lobby",
+   "roof": {
+    "kind": "flat"
+   }
+  },
+  {
+   "inset": 1.5,
+   "floors": 22,
+   "floorHeight": 3.5,
+   "facade": "Tower",
+   "roof": {
+    "kind": "flat",
+    "parapet": 1
+   }
+  },
+  {
+   "floors": 2,
+   "floorHeight": 3.5,
+   "facade": "Crown",
+   "roof": {
+    "kind": "dome",
+    "height": 5,
+    "material": 1
+   }
+  },
+  {
+   "footprint": {
+    "rect": [
+     22,
+     6
+    ]
+   },
+   "base": 52,
+   "floors": 2,
+   "floorHeight": 3.5,
+   "facade": "Bridge",
+   "roof": {
+    "kind": "flat"
+   }
+  }
+ ],
+ "facades": {
+  "Lobby": {
+   "floors": [
+    {
+     "pattern": "Pillar [Shop]* Pillar",
+     "ledge": {
+      "height": 0.4,
+      "depth": 0.3
+     }
+    }
+   ]
+  },
+  "Tower": {
+   "floors": [
+    {
+     "where": "top",
+     "pattern": "[Led]*"
+    },
+    {
+     "pattern": "Fin [Pane Pane|Pane|Panel Fin]*"
+    }
+   ]
+  },
+  "Crown": {
+   "floors": [
+    {
+     "pattern": "[Pane]*"
+    }
+   ]
+  },
+  "Bridge": {
+   "floors": [
+    {
+     "where": "ground",
+     "pattern": "[Pane]*"
+    },
+    {
+     "pattern": "[Led]*"
+    }
+   ]
+  }
+ },
+ "modules": {
+  "Pillar": {
+   "kind": "pillar",
+   "width": 1.2,
+   "depth": 0.35
+  },
+  "Shop": {
+   "kind": "window",
+   "width": 4,
+   "sill": 0.1,
+   "head": 1.2,
+   "margin": 0.2,
+   "mullions": 2
+  },
+  "Fin": {
+   "kind": "pillar",
+   "width": 0.3,
+   "depth": 0.5,
+   "slots": {
+    "wall": 2
+   }
+  },
+  "Pane": {
+   "kind": "curtain",
+   "width": 1.5
+  },
+  "Panel": {
+   "kind": "wall",
+   "width": 1.5
+  },
+  "Led": {
+   "kind": "panel",
+   "width": 3,
+   "margin": 0,
+   "sill": 1.2,
+   "head": 1.6,
+   "depth": 0.12,
+   "material": 4
+  }
+ }
+}

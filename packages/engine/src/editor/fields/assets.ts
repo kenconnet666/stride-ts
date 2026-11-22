@@ -399,6 +399,7 @@ export const BUILDING_FIELDS = fields<BuildingFile>({
     type: list(object(fields<BuildingFile['masses'][number]>({
       footprint: { type: { kind: 'json' }, optional: true, description: 'outline: points [[x, z], …], { rect: [width, depth], center } or { circle: radius, segments, center }; unset is the mass below moved in by inset' },
       inset: { type: number({ min: 0, step: 0.5, unit: 'm' }), optional: true, default: 0, description: 'moves every edge of the outline inward (setbacks)' },
+      base: { type: number({ min: 0, step: 1, unit: 'm' }), optional: true, description: 'height of the bottom of this mass; unset stacks it on the one below (side-by-side towers, sky bridges)' },
       floors: { type: integer(1, 300), description: 'floors in this mass' },
       floorHeight: { type: number({ min: 0.5, step: 0.1, unit: 'm' }), description: 'height of one floor' },
       facade: { type: string, optional: true, description: 'name of the facade rule; unset is plain wall' },
@@ -407,7 +408,7 @@ export const BUILDING_FIELDS = fields<BuildingFile>({
     description: 'masses stacked bottom up; every edge of the outline is a facade',
   },
   facades: { type: { kind: 'json' }, optional: true, description: "facade rules by name: { floors: [{ where: 'ground' | 'top' (unset: any floor), pattern: 'Pillar [Window Window]* Pillar', ledge: { height, depth } }] }; the first matching rule is used, * repeats to fill the edge, A|B picks one per column by the seed" },
-  modules: { type: { kind: 'json' }, optional: true, description: "facade modules by name, one floor high: { kind: 'wall' | 'window' (sill, head, margin, depth, frame, mullions, balcony) | 'pillar' (depth) | 'curtain' (frame), width, slots: { wall, glass, frame } (other material slots) }" },
+  modules: { type: { kind: 'json' }, optional: true, description: "facade modules by name, one floor high: { kind: 'wall' | 'window' (sill, head, margin, depth, frame, mullions, balcony) | 'pillar' (depth) | 'curtain' (frame) | 'panel' (margin, sill, head, depth, material: signs, light strips), width, slots: { wall, glass, frame } (other material slots) }" },
 });
 
 /** 城市（CityFile）：改了马上存，挂着它的实体整个城重摆。 */

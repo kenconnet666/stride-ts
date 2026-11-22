@@ -4,13 +4,14 @@
  *
  * 思路同 CityEngine 的 CGA、虚幻 PCG 的 Shape Grammar，按我们的规模简化成三层：
  * - 体块（masses）从下往上叠：每段一个底面（多边形、矩形、圆，或者在下面一段的基础上往里缩 inset）、几层、层高、用哪条立面
- *   规则、顶上盖什么屋顶（平顶加女儿墙、穹顶、尖顶）。底面的每条边是一面立面。
+ *   规则、顶上盖什么屋顶（平顶加女儿墙、穹顶、尖顶）。底面的每条边是一面立面。写了 base 的一段从那个高度起（不叠在上一段上）：
+ *   并排的双塔、塔之间半空的连廊；离地的一段底下也盖上。
  * - 立面规则（facades）按楼层（底层、顶层、其余）给一个图案：`Pillar [Window Window]* Pillar`——构件的名字从左到右（从外面看），
  *   带 `*` 的项重复到铺满，方括号把几个构件当一组重复；铺不满、铺多了的那一点按比例拉宽、压窄所有构件。一个位置可以写几个候选
  *   `Window|Balcony`：按文件的 seed 和"第几段体块、第几面立面、第几列"挑一个（同一列上下一致，像真楼那样成竖条；多写几遍同一个
  *   就是加它的权重），宽度按第一个候选排，列始终对齐。
  * - 构件（modules）是一块"一层高、width 宽"的立面：墙、窗（洞口、凹进去的窗台和窗洞、玻璃、窗框和竖梃，可选的阳台）、
- *   突出的壁柱、整片的玻璃幕墙。
+ *   突出的壁柱、整片的玻璃幕墙、贴在墙上突出来的一块板（招牌、灯带：用自发光的材质槽）。
  *
  * 坐标是米，地面在 y = 0，底面的点是 [x, z]（顺时针、逆时针都行）。材质槽默认 0 墙、1 玻璃、2 窗框、3 屋顶，构件和屋顶可以改用
  * 别的槽（招牌、彩色的墙）。
@@ -33,6 +34,8 @@ export interface BuildingMass {
   /** 底面；不写时用下面那一段的底面往里缩 inset 米（第一段必须写）。 */
   readonly footprint?: BuildingFootprint;
   readonly inset?: number;
+  /** 这一段的底离地多高（米）；不写时叠在上一段的顶上（第一段是 0）。 */
+  readonly base?: number;
   readonly floors: number;
   /** 层高（米）。 */
   readonly floorHeight: number;
@@ -71,6 +74,15 @@ export type BuildingModule = (
   }
   | { readonly kind: 'pillar'; readonly depth: number }
   | { readonly kind: 'curtain'; readonly frame?: number }
+  | {
+    readonly kind: 'panel';
+    /** 板离构件的两边、离地、离层顶的距离（米），突出多少（米），用哪个材质槽（默认窗框的槽；招牌、灯带用自发光的材质）。 */
+    readonly margin?: number;
+    readonly sill?: number;
+    readonly head?: number;
+    readonly depth?: number;
+    readonly material?: number;
+  }
 ) & { readonly width: number; readonly slots?: { readonly wall?: number; readonly glass?: number; readonly frame?: number } };
 
 export interface BuildingFile {
@@ -155,7 +167,10 @@ export function checkBuilding(file: BuildingFile, where = file.name): BuildingFi
       }
     } else if (module.kind === 'pillar') positive(module.depth, `${at}.depth`, false);
     else if (module.kind === 'curtain') notNegative(module.frame, `${at}.frame`);
-    else if (module.kind !== 'wall') fail(`${at}.kind`, "must be 'wall', 'window', 'pillar' or 'curtain'");
+    else if (module.kind === 'panel') {
+      for (const key of ['margin', 'sill', 'head', 'depth'] as const) notNegative(module[key], `${at}.${key}`);
+      slot(module.material, `${at}.material`);
+    } else if (module.kind !== 'wall') fail(`${at}.kind`, "must be 'wall', 'window', 'pillar', 'curtain' or 'panel'");
   }
   for (const [name, facade] of Object.entries(file.facades ?? {})) {
     if (!Array.isArray(facade.floors) || facade.floors.length === 0) fail(`facades.${name}.floors`, 'needs at least one floor rule');
@@ -180,6 +195,7 @@ export function checkBuilding(file: BuildingFile, where = file.name): BuildingFi
     if (!(Number.isInteger(mass.floors) && mass.floors >= 1)) fail(`${at}.floors`, 'must be a whole number ≥ 1');
     positive(mass.floorHeight, `${at}.floorHeight`, false);
     notNegative(mass.inset, `${at}.inset`);
+    notNegative(mass.base, `${at}.base`);
     if (mass.facade !== undefined && !(mass.facade in (file.facades ?? {}))) fail(`${at}.facade`, `'${mass.facade}' is not in facades`);
     const footprint = mass.footprint;
     if (footprint === undefined) {

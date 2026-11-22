@@ -126,6 +126,35 @@ describe('程序化建筑', () => {
     expect(() => checkBuilding({ ...tower(1), facades: { F: { floors: [{ pattern: 'Window|Door*' }] } } })).toThrow("uses the module 'Door'");
   });
 
+  test('并排的双塔和半空的连廊（base）、墙上的招牌板（panel）', () => {
+    const twin: BuildingFile = {
+      name: 'Twin', materials: [null, null, null, null, null],
+      masses: [
+        { footprint: { rect: [10, 10], center: [-15, 0] }, floors: 10, floorHeight: 3 },
+        { footprint: { rect: [10, 10], center: [15, 0] }, base: 0, floors: 10, floorHeight: 3 },
+        { footprint: { rect: [20, 4] }, base: 18, floors: 2, floorHeight: 3, facade: 'Bridge' },
+      ],
+      facades: { Bridge: { floors: [{ pattern: 'Sign Glass*' }] } },
+      modules: { ...modules, Sign: { kind: 'panel', width: 3, depth: 0.2, material: 4 } },
+    };
+    const meshes = buildingMeshes(twin);
+    const all = meshes.flatMap((m) => positions(m.vertices));
+    // 两座塔都从地面起到 30 米，连廊在 18～24 米
+    expect(Math.max(...all.filter((p) => p[0] > 10).map((p) => p[1]))).toBeCloseTo(30);
+    expect(Math.min(...all.filter((p) => p[0] > 10).map((p) => p[1]))).toBeCloseTo(0);
+    const bridge = all.filter((p) => Math.abs(p[0]) < 9);
+    expect(Math.min(...bridge.map((p) => p[1]))).toBeCloseTo(18);
+    expect(Math.max(...bridge.map((p) => p[1]))).toBeCloseTo(24);
+    // 连廊的底朝下盖上了
+    const wall = meshes.find((m) => m.material === 0)!;
+    let down = 0;
+    for (let i = 0; i < wall.vertices.length; i += 8) if (wall.vertices[i + 4]! < -0.99 && Math.abs(wall.vertices[i + 1]! - 18) < 1e-6) down++;
+    expect(down).toBeGreaterThanOrEqual(4);
+    // 招牌在第 4 个材质槽
+    expect(meshes.some((m) => m.material === 4 && m.indices.length > 0)).toBe(true);
+    expect(() => checkBuilding({ ...twin, masses: [{ ...twin.masses[0]!, base: -1 }] })).toThrow('masses[0].base must not be negative');
+  });
+
   test('检查：没有的构件、立面规则，第一段没有底面，屋顶不对', () => {
     expect(() => checkBuilding({ ...house, facades: { Main: { floors: [{ pattern: 'Pillar Door*' }] } } })).toThrow("uses the module 'Door'");
     expect(() => checkBuilding({ ...house, masses: [{ ...house.masses[0]!, facade: 'Missing' }] })).toThrow("'Missing' is not in facades");

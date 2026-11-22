@@ -27,7 +27,8 @@ export interface LogEntry {
   /** Date.now()。 */
   readonly time: number;
   readonly level: LogLevel;
-  readonly source: 'console' | 'error' | 'engine' | 'native' | 'event';
+  /** server：开发服务器自己的错误（模块编译失败这类：页面上只是停在加载，游戏连不上中枢），页号是 0。 */
+  readonly source: 'console' | 'error' | 'engine' | 'native' | 'event' | 'server';
   readonly message: string;
   /** 事件的数据、日志里不是字符串的参数（已经转成能 JSON 的值）。 */
   readonly data?: unknown;

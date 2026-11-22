@@ -22,6 +22,7 @@
   - 实际效果：PCF 从 2.9 ms 降到 1.6 ms，阴影级联的分界从 1.6 ms 降到 1.5 ms，FXAA 从 0.62 ms 降到 0.52 ms。
   - 看生成代码：Chrome 加 `--enable-unsafe-webgpu --enable-dawn-features=dump_shaders,disable_symbol_renaming`，控制台里会打出每个着色器的 WGSL、HLSL 和 DXIL 反汇编（`stride open --gpu-debug` 一并开着，还有 Dawn 的完整校验、HLSL 的调试符号和对象标签，PIX 截帧时用）。
 - **新写的计算着色器能把显卡卡死，连带用户的整个 Chrome**（2026-11-22）：着色器里的循环走不完时 D3D12 的看门狗重置驱动（DXGI_ERROR_DEVICE_HUNG），同一块显卡上的浏览器都受影响。新的计算着色器、光追先在 `stride open --headless` 或 `--gpu-debug` 起的 Chrome 里试；数据驱动的循环（BVH 遍历这类）都限步数。WGSL 的保留字比想的多：`patch`、`target`、`active` 都踩过（Tint 报 "is a reserved keyword"，模块无效，用到它的整帧命令缓冲都无效，画面全黑）；错误现在经 `uncapturederror` 进 `stride logs --level error`。
+- **tsc 过了、Vite 的 oxc 不认的写法**（2026-11-22）：类型位置的 `typeof this.#私有字段`（方法的返回类型）。开发服务器上那个模块编不出来，页面停在"starting..."，以前没有任何报错能看到。现在开发服务器的错误进中枢的日志（`stride logs --source server`），`stride open` 见到就报；单测 `test/core/modules.test.ts` 经 Vite 加载引擎的每个源文件。
 - **浏览器在呈现时多做的事**（读源码确认的，`C:\code\refs` 里的 chromium、firefox）：
   - Chrome 的画布配成 `alphaMode: 'opaque'` 时，每帧呈现前会多画一遍全屏三角形，只写 alpha 通道（`WebGPUTextureAlphaClearer`），开销是一次 bgra8 读写，大约几十微秒。改成 `premultiplied` 能省掉这一遍，但合成器就要把画布当半透明图层混合，所以还是用 `opaque`。
   - 在 Windows 上，首选格式 bgra8unorm 不需要额外拷贝。Mac 的 rgba8unorm、Linux 和 Android 的 bgra8unorm 会多拷一次，所以要用 `getPreferredCanvasFormat()`。

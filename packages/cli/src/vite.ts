@@ -16,7 +16,15 @@ export function strideDebug(): Plugin {
       root = config.root;
     },
     configureServer(server) {
-      mount(server.httpServer as Server | null, server.middlewares, `${appName(root)} (dev)`);
+      const hub = mount(server.httpServer as Server | null, server.middlewares, `${appName(root)} (dev)`);
+      if (!hub) return;
+      // 开发服务器的错误（模块编译失败：页面只是停在加载、游戏连不上中枢，命令行什么也看不到）也进中枢的日志
+      const logger = server.config.logger;
+      const error = logger.error.bind(logger);
+      logger.error = (message, options) => {
+        hub.serverError(stripAnsi(message).slice(0, 4000));
+        error(message, options);
+      };
     },
     configurePreviewServer(server) {
       mount(server.httpServer as Server | null, server.middlewares, `${appName(root)} (preview)`);
@@ -24,9 +32,17 @@ export function strideDebug(): Plugin {
   };
 }
 
-function mount(server: Server | null, middlewares: Connect.Server, name: string): void {
-  if (!server) return;
-  new DebugHub(name).attach(server, (handler) => middlewares.use(handler));
+function mount(server: Server | null, middlewares: Connect.Server, name: string): DebugHub | undefined {
+  if (!server) return undefined;
+  const hub = new DebugHub(name);
+  hub.attach(server, (handler) => middlewares.use(handler));
+  return hub;
+}
+
+/** 去掉终端的颜色控制码。 */
+function stripAnsi(text: string): string {
+  // eslint-disable-next-line no-control-regex
+  return text.replace(/\u001b\[[0-9;]*m/g, '');
 }
 
 /** 应用的名字：根目录 package.json 的 name，没有时用目录名。 */

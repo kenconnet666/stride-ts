@@ -188,6 +188,11 @@ export class DebugHub {
     });
   }
 
+  /** 开发服务器的错误（vite.ts 接的 Vite 日志）：记成页号 0、来源 server 的错误。 */
+  serverError(message: string): void {
+    this.#log(0, { time: Date.now(), level: 'error', source: 'server', message });
+  }
+
   #log(page: number, entry: Omit<HubLogEntry, 'seq' | 'page'>): void {
     const logged: HubLogEntry = { ...entry, seq: ++this.#seq, page };
     this.#logs.push(logged);

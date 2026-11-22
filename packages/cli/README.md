@@ -44,7 +44,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `quality [low\|medium\|high\|ultra]` | 画质档位：阴影和后处理的上限（`game.graphicsCompositor.quality`，见 `rendering/Quality.ts`）；不带参数是看现在的 |
 | `wireframe [on\|off]` | 在主画面上叠画网格的线框（三角形的边）；不带参数是切换（`game.graphicsCompositor.wireframe`） |
 | `raycast <x,y,z> <dx,dy,dz>` | 物理射线 |
-| `logs [-f] [--level warn]` | 页面的 console 输出、未捕获的异常、引擎日志、埋的事件 |
+| `logs [-f] [--level warn] [--source server]` | 页面的 console 输出、未捕获的异常、引擎日志、埋的事件；开发服务器自己的错误（模块编译失败：页面停在加载、游戏连不上中枢）也在这里（页号 0、来源 server），`stride open` 等页面时见到它就直接报出来，不干等到超时 |
 | `eval <代码 \| -> \| --file <脚本>` | 在页面里执行。一个表达式：结果是它的值，能直接 await，作用域里有 `game`、`engine`（样例挂的 `strideEngine`）、`entity(名字或 id)`、`named(名字)`、`frames(n)`、`seconds(s)`（按游戏时间等）。几条语句：照旧在全局作用域里跑，结果是最后一个的值；语句里有顶层 await 时当异步函数体跑，结果用 return 给。`-` 从标准输入读，`--file` 从文件读（PowerShell 里不用转义） |
 | `wait --game <秒>` | 等游戏时间走这么多（不是墙钟：CI 的软件 WebGPU、后台标签上一帧可能几百毫秒）；不带 `--game` 是等页面连上、游戏跑起来 |
 | `slow <毫秒>` | 每帧在页面里多忙等这么久（0 停）：本机复现 CI 的软件 WebGPU 上几百毫秒一帧的情况，冒烟脚本的时序问题不用推上去等 CI |

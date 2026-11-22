@@ -88,7 +88,7 @@ Game
   ssr [on|off|toggle] [--maxRoughness r] [--thickness t] [--maxSteps n] [--debug off|hits|reflection]
                                                     screen-space reflections (no argument reports; toggle flips)
   raycast <x,y,z> <dx,dy,dz> [--max 1000] [--mask <bits>]
-  logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event] [--json]
+  logs [-f] [--since <seq>] [--level info|warn|error] [--source console|error|engine|native|event|server] [--json]
   eval <code | -> | --file <script.js> [--check]
                           run JavaScript in the page. An expression: its value, await works, and in scope are game, engine,
                           entity(name | id), named(name), frames(n), seconds(s) (game time). Statements: the value of the
@@ -332,8 +332,19 @@ function gamePagePrefix(url: string): string {
   return parsed.pathname.startsWith('/__stride/editor') ? `${parsed.origin}/` : url.replace(/\/$/, '');
 }
 
-/** 等到有页面连上、游戏在运行（或失败）；urlPrefix 给了时只认这个地址的页面。 */
-async function waitForGame(seconds: number, urlPrefix?: string): Promise<unknown> {
+/** since（Date.now()）以后开发服务器报的最后一个错误（中枢日志里来源是 server 的）。 */
+async function lastServerError(client: HubClient, since: number): Promise<string | undefined> {
+  let found: string | undefined;
+  try {
+    for await (const entry of client.logs({ page: 0 })) if (entry.source === 'server' && entry.time >= since) found = entry.message;
+  } catch {
+    return undefined;
+  }
+  return found;
+}
+
+/** 等到有页面连上、游戏在运行（或失败）；urlPrefix 给了时只认这个地址的页面。started 以后开发服务器报了错就不再等。 */
+async function waitForGame(seconds: number, urlPrefix?: string, started = Date.now()): Promise<unknown> {
   const deadline = Date.now() + seconds * 1000;
   let last = 'no debug hub';
   while (Date.now() < deadline) {
@@ -343,6 +354,9 @@ async function waitForGame(seconds: number, urlPrefix?: string): Promise<unknown
       const target = pages.filter((p) => !urlPrefix || p.url.startsWith(urlPrefix)).at(-1);
       if (!target) {
         last = `no page${urlPrefix ? ` at ${urlPrefix}` : ''} connected to ${hub.name}`;
+        // 开发服务器报过错（模块编译失败）：页面停在加载，等也没用，带上错误
+        const serverError = await lastServerError(client, started);
+        if (serverError) throw new Error(`${last}; the dev server reported: ${serverError}`);
         continue;
       }
       const status = (await client.call('status', {}, { page: target.id }).catch((error: unknown) => ({ status: String(error) }))) as { status: string };
@@ -358,13 +372,15 @@ const commands: Record<string, () => Promise<unknown>> = {
   async open() {
     const url = required(rest[0], 'url');
     const size = options.size?.split('x').map(Number) as [number, number] | undefined;
+    // 浏览器开起来就去要模块了：开发服务器的错误从这时算
+    const started = Date.now();
     const browser = await openUrl(url, {
       ...(options.headless ? { headless: true } : {}),
       ...(size ? { size } : {}),
       ...(options.dpr ? { dpr: Number(options.dpr) } : {}),
       ...(options['chrome-arg'] || options['gpu-debug'] ? { chromeArgs: [...(options['gpu-debug'] ? GPU_DEBUG_ARGS : []), ...(options['chrome-arg'] ?? [])] } : {}),
     });
-    return { browser, game: await waitForGame(Number(timeoutSeconds ?? 60), gamePagePrefix(url)) };
+    return { browser, game: await waitForGame(Number(timeoutSeconds ?? 60), gamePagePrefix(url), started) };
   },
   async close() {
     return { closed: await closeBrowser() };

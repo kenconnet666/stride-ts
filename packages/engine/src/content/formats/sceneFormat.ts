@@ -116,6 +116,21 @@ export interface ScenePostEffects {
    * GlossinessThreshold，edgeFade 是它的 EdgeFadeFactor。
    */
   readonly localReflections?: { readonly maxRoughness: number; readonly edgeFade: number };
+  /** 调色和镜头（Stride 没有，见 rendering/postfx/ToneMap.ts）；没写的项用不改变画面的默认值。 */
+  readonly colorGrading?: SceneColorGrading;
+}
+
+/** 色调映射的算子、白平衡、对比度、饱和度，镜头的暗角、颗粒、色差、畸变（各项的意思见 ToneMap 的同名字段）。 */
+export interface SceneColorGrading {
+  readonly operator?: 'hejl2' | 'agx' | 'aces';
+  readonly temperature?: number;
+  readonly tint?: number;
+  readonly contrast?: number;
+  readonly saturation?: number;
+  readonly vignette?: number;
+  readonly grain?: number;
+  readonly chromaticAberration?: number;
+  readonly distortion?: number;
 }
 
 /** 渲染目标贴图（Stride 的 RenderTexture，.sdrendertex）：合成器里的相机画进去，精灵可以显示它。按内容路径区分。 */

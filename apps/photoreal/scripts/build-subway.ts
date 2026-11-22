@@ -64,7 +64,9 @@ await write('scene', 'Subway', {
   name: 'Subway',
   compositor: {
     clearColor: [0.1, 0.1, 0.12, 1],
-    postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true, localReflections: { maxRoughness: 0.45, edgeFade: 0.1 } },
+    postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true, localReflections: { maxRoughness: 0.45, edgeFade: 0.1 },
+      // 照片是手机拍的：AgX 的高光褪色、白平衡偏冷一点、反差低一点（手机的 HDR 合成）；畸变、色差、噪点手机自己校正掉了
+      colorGrading: { operator: 'agx', temperature: 5600, contrast: 0.9, saturation: 1.15, vignette: 0.15 } },
     transparent: true,
   },
   entities: [

@@ -17,6 +17,13 @@
    "localReflections": {
     "maxRoughness": 0.45,
     "edgeFade": 0.1
+   },
+   "colorGrading": {
+    "operator": "agx",
+    "temperature": 5600,
+    "contrast": 0.9,
+    "saturation": 1.15,
+    "vignette": 0.15
    }
   },
   "transparent": true

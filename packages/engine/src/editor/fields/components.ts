@@ -1,5 +1,5 @@
 /** 实体的组件、场景的设置、实体自己的字段描述（COMPONENT_FIELDS、SCENE_FIELDS、ENTITY_FIELDS）。 */
-import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneStreamingSource, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneIrradianceVolume, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/formats/format';
+import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneStreamingSource, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneIrradianceVolume, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneColorGrading, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/formats/format';
 import type { SceneSettingKey } from '../SceneDocument';
 import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, nullable, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -502,6 +502,17 @@ const postEffects = fields<ScenePostEffects>({
   antialiasing: bool,
   ambientOcclusion: optional(object([{ name: 'radius', type: number({ min: 0, unit: 'm' }) }])),
   localReflections: optional(object([{ name: 'maxRoughness', type: number({ min: 0, max: 1 }) }, { name: 'edgeFade', type: number({ min: 0, max: 1 }) }])),
+  colorGrading: optional(object(fields<SceneColorGrading>({
+    operator: { type: oneOf('hejl2', 'agx', 'aces'), optional: true, default: 'hejl2', description: 'tone mapping curve: hejl2 (Stride), agx (Blender, natural highlight roll-off), aces' },
+    temperature: { type: number({ min: 1667, max: 25000, step: 50, unit: 'K' }), optional: true, default: 6500, description: 'camera white balance: lower makes the image cooler' },
+    tint: { type: number({ min: -1, max: 1, step: 0.01 }), optional: true, default: 0, description: 'green (negative) to magenta (positive)' },
+    contrast: optional(number({ min: 0, step: 0.01 }), 1),
+    saturation: optional(number({ min: 0, step: 0.01 }), 1),
+    vignette: optional(number({ min: 0, max: 1, step: 0.01 }), 0),
+    grain: optional(number({ min: 0, max: 1, step: 0.01 }), 0),
+    chromaticAberration: { type: number({ min: 0, max: 0.05, step: 0.001 }), optional: true, default: 0, description: 'red and blue drift apart towards the edges' },
+    distortion: { type: number({ min: -1, max: 1, step: 0.01 }), optional: true, default: 0, description: 'lens distortion: positive is barrel (wide angle), negative is pincushion' },
+  }))),
 });
 
 /**

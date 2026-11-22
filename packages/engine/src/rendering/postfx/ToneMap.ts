@@ -8,6 +8,13 @@
  * - 曝光（AutoExposure、AutoKeyValue）：key = 1.03 - 2 / (2 + log10(adapted + 1))，曝光 = key / adapted；
  * - 算子：Hejl2（白点 5）。亮度、对比度是 0 时只剩 max(color, 0.0001)。
  * 泛光等效果的层在映射之前加上（见 AdditiveLayers.ts）。
+ * 调色和镜头（路线图 R3，Stride 没有；场景的 postEffects.colorGrading，没写时全是不改变画面的值）：
+ * - 镜头畸变（distortion，正的是桶形）、色差（chromaticAberration：红、蓝按到中心的距离往外、往里挪）：按畸变后的位置双线性地取画面；
+ * - 白平衡（temperature 是相机的白平衡色温，6500 K 不变；tint 往绿、品红偏）：CPU 上算好的 3×3 矩阵（von Kries，LMS 里按光源
+ *   白点和 D65 的比缩放），曝光之前乘；
+ * - 对比度（以 18% 灰为中心，在对数空间里拉）、算子（hejl2：Stride 的；agx：Blender 4 的 AgX，高光自然地褪色；aces：Narkowicz 的
+ *   ACES 拟合）、饱和度（映射之后按亮度拉开）；
+ * - 暗角（vignette：cos⁴ 的衰减按强度混）、颗粒（grain：每帧换的亮度噪声，在显示空间里加）。
  * 和 Stride 不同：输出是 8 位的 sRGB 时加不到一个灰阶的抖动（dither，默认开）。暗的渐变（夜空、雾）量化成 8 位以后相邻的带只差
  * 一个灰阶，是一圈圈看得见的色带；抖动把它打散成看不出来的噪声。图案是固定的（按像素坐标），画面不动时每帧一样。
  */
@@ -52,7 +59,8 @@ struct Adapt { factor: f32, reset: f32 };
 
 const TONEMAP_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
-struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32, compensation: f32, gate: vec4f };
+// grade：算子（0 hejl2、1 agx、2 aces）、饱和度、对比度、时间；lens：暗角、颗粒、色差、畸变；whiteBalance：线性 sRGB 上的白平衡矩阵
+struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32, compensation: f32, gate: vec4f, grade: vec4f, lens: vec4f, whiteBalance: mat3x3f };
 @group(0) @binding(0) var<uniform> settings: Settings;
 @group(0) @binding(1) var hdr: texture_2d<f32>;
 @group(0) @binding(2) var adapted: texture_2d<f32>;
@@ -67,6 +75,39 @@ fn hejl2(color: vec3f, whitePoint: f32) -> vec3f {
 }
 
 ${GRADIENT_NOISE}
+
+// AgX（Troy Sobotka；这里是 Benjamin Wrensch 的最小实现）：进 AgX 的空间、按 EV 范围取对数、六次多项式的对比度曲线、出来再按 2.2 变回线性
+fn agx(color: vec3f) -> vec3f {
+  let inset = mat3x3f(0.842479062253094, 0.0423282422610123, 0.0423756549057051,
+                      0.0784335999999992, 0.878468636469772, 0.0784336,
+                      0.0792237451477643, 0.0791661274605434, 0.879142973793104);
+  let outset = mat3x3f(1.19687900512017, -0.0528968517574562, -0.0529716355144438,
+                       -0.0980208811401368, 1.15190312990417, -0.0980434501171241,
+                       -0.0990297440797205, -0.0989611768448433, 1.15107367264116);
+  let minEv = -12.47393;
+  let maxEv = 4.026069;
+  var v = clamp(log2(max(inset * color, vec3f(1e-10))), vec3f(minEv), vec3f(maxEv));
+  v = (v - minEv) / (maxEv - minEv);
+  let x2 = v * v;
+  let x4 = x2 * x2;
+  v = 15.5 * x4 * x2 - 40.14 * x4 * v + 31.96 * x4 - 6.868 * x2 * v + 0.4298 * x2 + 0.1191 * v - 0.00232;
+  return pow(max(outset * v, vec3f(0.0)), vec3f(2.2));
+}
+
+// ACES 的拟合（Krzysztof Narkowicz 2015），先乘 0.6 对上 ACES 的曝光
+fn aces(color: vec3f) -> vec3f {
+  let x = color * 0.6;
+  return saturate((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14));
+}
+
+/** 画幅里的位置 uv → 镜头畸变以后取画面的位置（以画面中心、按宽高比算距离）。 */
+fn distorted(uv: vec2f, k: f32) -> vec2f {
+  let size = vec2f(textureDimensions(hdr));
+  let aspect = size.x / size.y;
+  let c = (uv - 0.5) * vec2f(aspect, 1.0);
+  let r2 = dot(c, c) / (0.25 * (aspect * aspect + 1.0));
+  return 0.5 + (uv - 0.5) * (1.0 + k * r2);
+}
 
 /**
  * 输出的抖动：在 sRGB 编码后的值上加 ±半个灰阶的噪声（三个通道各用一份，不相关），再换回线性（目标是 sRGB 视图，写进去时
@@ -84,12 +125,57 @@ fn dither(color: vec3f, pixel: vec2f) -> vec3f {
   // 画幅以外是黑边
   let frameUv = in.position.xy / vec2f(textureDimensions(hdr));
   if (any(frameUv < settings.gate.xy) || any(frameUv > settings.gate.zw)) { return vec4f(0.0, 0.0, 0.0, 1.0); }
-  var color = max(textureLoad(hdr, vec2u(in.position.xy), 0).rgb + additiveLayers(in.uv), vec3f(0.0001));
+  // 镜头畸变、色差：没开时直接按像素取（和 Stride 一样，逐像素比对的截图不变）
+  var color: vec3f;
+  var layerUv = in.uv;
+  if (settings.lens.z != 0.0 || settings.lens.w != 0.0) {
+    let uv = distorted(in.uv, settings.lens.w);
+    let shift = (uv - 0.5) * settings.lens.z;
+    color = vec3f(
+      textureSampleLevel(hdr, additiveSampler, uv + shift, 0.0).r,
+      textureSampleLevel(hdr, additiveSampler, uv, 0.0).g,
+      textureSampleLevel(hdr, additiveSampler, uv - shift, 0.0).b);
+    layerUv = uv;
+  } else {
+    color = textureLoad(hdr, vec2u(in.position.xy), 0).rgb;
+  }
+  color = max(color + additiveLayers(layerUv), vec3f(0.0001));
   if (settings.enabled != 0.0) {
     let luminance = max(textureLoad(adapted, vec2u(0u), 0).r, 0.0001);
     let keyValue = select(settings.keyValue, 1.03 - 2.0 / (2.0 + log2(luminance + 1.0) / log2(10.0)), settings.autoKeyValue > 0.5);
     let exposure = select(settings.exposure, max(keyValue / luminance, 0.0001), settings.autoExposure > 0.5);
-    color = hejl2(color * exposure * settings.compensation, settings.whitePoint);
+    color = max(settings.whiteBalance * color, vec3f(0.0)) * exposure * settings.compensation;
+    // 对比度：以 18% 灰为中心在对数空间里拉
+    if (settings.grade.z != 1.0) {
+      color = exp2((log2(max(color, vec3f(1e-6))) - log2(0.18)) * settings.grade.z + log2(0.18));
+    }
+    let curve = u32(settings.grade.x);
+    if (curve == 1u) {
+      color = agx(color);
+    } else if (curve == 2u) {
+      color = aces(color);
+    } else {
+      color = hejl2(color, settings.whitePoint);
+    }
+    // 饱和度（映射之后，按 Rec.709 的亮度）
+    if (settings.grade.y != 1.0) {
+      let y = dot(color, vec3f(0.2126, 0.7152, 0.0722));
+      color = max(mix(vec3f(y), color, settings.grade.y), vec3f(0.0));
+    }
+  }
+  // 暗角：cos⁴ 的自然衰减（到角上的距离按画面的半对角线归一），按强度混
+  if (settings.lens.x > 0.0) {
+    let size = vec2f(textureDimensions(hdr));
+    let c = (in.uv - 0.5) * vec2f(size.x / size.y, 1.0);
+    let r = length(c) / length(vec2f(0.5 * size.x / size.y, 0.5));
+    let cosine = 1.0 / sqrt(1.0 + r * r);
+    color *= mix(1.0, cosine * cosine * cosine * cosine, settings.lens.x);
+  }
+  // 颗粒：每帧换的亮度噪声，暗处、中间调更明显（在显示空间里加，乘在亮度上）
+  if (settings.lens.y > 0.0) {
+    let noise = gradientNoise(in.position.xy + vec2f(fract(settings.grade.w * 7.13) * 173.0, fract(settings.grade.w * 3.71) * 311.0)) - 0.5;
+    let y = dot(saturate(color), vec3f(0.2126, 0.7152, 0.0722));
+    color *= max(1.0 + noise * settings.lens.y * 0.5 * (1.0 - y * 0.7), 0.0);
   }
   if (settings.dither != 0.0) { color = dither(color, in.position.xy); }
   return vec4f(color, 1.0);
@@ -105,6 +191,54 @@ interface LuminanceTargets {
 }
 
 type ToneMapStep = 'luminance' | 'downscale' | 'adapt' | 'tonemap';
+
+/** 映射的算子：hejl2（Stride 的）、agx（Blender 4 的 AgX）、aces（Narkowicz 的拟合）。 */
+export type ToneMapOperator = 'hejl2' | 'agx' | 'aces';
+const OPERATORS: readonly ToneMapOperator[] = ['hejl2', 'agx', 'aces'];
+/** 映射的 uniform：8 个标量、画幅、调色、镜头、白平衡矩阵（3 列 vec4）。 */
+const SETTINGS_FLOATS = 32;
+
+/**
+ * 白平衡矩阵（线性 sRGB → 线性 sRGB，列主序 3×3）：相机设成 temperature（K）、tint 时，把这个色温的光源的白当成白（von Kries：
+ * 在 CAT02 的 LMS 里按 D65 和那个白点的比缩放）。色温的色度按普朗克轨迹的近似（Kang 2002），tint 沿轨迹的法线往品红、绿挪。
+ */
+export function whiteBalanceMatrix(temperature: number, tint: number): number[] {
+  if (Math.abs(temperature - 6500) < 1e-3 && Math.abs(tint) < 1e-6) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  const t = Math.min(Math.max(temperature, 1667), 25000);
+  const x = t <= 4000
+    ? -0.2661239e9 / t ** 3 - 0.2343589e6 / t ** 2 + 0.8776956e3 / t + 0.17991
+    : -3.0258469e9 / t ** 3 + 2.1070379e6 / t ** 2 + 0.2226347e3 / t + 0.24039;
+  const y0 = t <= 2222 ? -1.1063814 * x ** 3 - 1.3481102 * x ** 2 + 2.18555832 * x - 0.20219683
+    : t <= 4000 ? -0.9549476 * x ** 3 - 1.37418593 * x ** 2 + 2.09137015 * x - 0.16748867
+      : 3.081758 * x ** 3 - 5.8733867 * x ** 2 + 3.75112997 * x - 0.37001483;
+  const y = y0 + tint * 0.02;
+  const xyz = (cx: number, cy: number) => [cx / cy, 1, (1 - cx - cy) / cy];
+  // CAT02 的 XYZ → LMS
+  const cat = [[0.7328, 0.4296, -0.1624], [-0.7036, 1.6975, 0.0061], [0.003, 0.0136, 0.9834]];
+  const lms = (v: number[]) => cat.map((row) => row[0]! * v[0]! + row[1]! * v[1]! + row[2]! * v[2]!);
+  const source = lms(xyz(x, y)), target = lms(xyz(0.31271, 0.32902));
+  const scale = source.map((value, i) => target[i]! / value);
+  // 线性 sRGB ↔ XYZ（D65）
+  const toXyz = [[0.4124564, 0.3575761, 0.1804375], [0.2126729, 0.7151522, 0.072175], [0.0193339, 0.119192, 0.9503041]];
+  const fromXyz = [[3.2404542, -1.5371385, -0.4985314], [-0.969266, 1.8760108, 0.041556], [0.0556434, -0.2040259, 1.0572252]];
+  const catInverse = invert3(cat);
+  const multiply = (a: number[][], b: number[][]) => a.map((row) => [0, 1, 2].map((j) => row[0]! * b[0]![j]! + row[1]! * b[1]![j]! + row[2]! * b[2]![j]!));
+  const diagonal = [[scale[0]!, 0, 0], [0, scale[1]!, 0], [0, 0, scale[2]!]];
+  const m = multiply(fromXyz, multiply(catInverse, multiply(diagonal, multiply(cat, toXyz))));
+  // 列主序
+  return [m[0]![0]!, m[1]![0]!, m[2]![0]!, m[0]![1]!, m[1]![1]!, m[2]![1]!, m[0]![2]!, m[1]![2]!, m[2]![2]!];
+}
+
+function invert3(m: number[][]): number[][] {
+  const [a, b, c] = m[0]!, [d, e, f] = m[1]!, [g, h, i] = m[2]!;
+  const A = e! * i! - f! * h!, B = -(d! * i! - f! * g!), C = d! * h! - e! * g!;
+  const det = a! * A + b! * B + c! * C;
+  return [
+    [A / det, -(b! * i! - c! * h!) / det, (b! * f! - c! * e!) / det],
+    [B / det, (a! * i! - c! * g!) / det, -(a! * f! - c! * d!) / det],
+    [C / det, -(a! * h! - b! * g!) / det, (a! * e! - b! * d!) / det],
+  ];
+}
 /** 各步的着色器和目标格式（映射这一步画进后备缓冲，格式用到时才知道）。 */
 const STEPS: Record<ToneMapStep, readonly [label: string, code: string, format: GPUTextureFormat | undefined]> = {
   luminance: ['ToneMap luminance', LUMINANCE_SHADER, 'r16float'],
@@ -133,6 +267,22 @@ export class ToneMap {
   exposureCompensation = 0;
   /** 画幅在画面里的位置（uv：左、上、右、下），以外画黑边；主画面相机的 aspectRatio 定。 */
   gate: readonly [number, number, number, number] = [0, 0, 1, 1];
+  /** 调色和镜头（见文件头；默认值不改变画面，同 Stride）。 */
+  operator: ToneMapOperator = 'hejl2';
+  /** 相机的白平衡色温（K）：6500 不变，低了画面偏蓝（当作光源更暖、把它校正掉），高了偏暖。 */
+  temperature = 6500;
+  /** 往绿（负）、品红（正）偏，-1..1。 */
+  tint = 0;
+  saturation = 1;
+  contrast = 1;
+  /** 暗角、颗粒的强度（0..1）。 */
+  vignette = 0;
+  grain = 0;
+  /** 色差：画面边上红、蓝分开多少（相对到中心的距离的比例）。 */
+  chromaticAberration = 0;
+  /** 镜头畸变：正的是桶形（广角），负的是枕形。 */
+  distortion = 0;
+  #time = 0;
 
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
@@ -150,7 +300,7 @@ export class ToneMap {
   constructor(device: GPUDevice, sampler: GPUSampler) {
     this.#device = device;
     this.#sampler = sampler;
-    this.#settings = device.createBuffer({ label: 'ToneMap settings', size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#settings = device.createBuffer({ label: 'ToneMap settings', size: SETTINGS_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#adaptUniform = device.createBuffer({ label: 'ToneMap adapt', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const adapted = () => device.createTexture({ label: 'ToneMap adapted luminance', size: [1, 1], format: 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
     this.#adapted = [adapted(), adapted()];
@@ -158,8 +308,14 @@ export class ToneMap {
 
   /** 量 input（rgba16float 的 HDR 画面）的平均亮度并做时间上的适应；elapsed 是这一帧的秒数。 */
   measure(frame: EffectFrame, input: Image, elapsed: number): void {
-    this.#device.queue.writeBuffer(this.#settings, 0, new Float32Array([this.keyValue, 2 ** this.exposure, this.autoKeyValue ? 1 : 0, this.autoExposure ? 1 : 0, this.whitePoint, this.enabled ? 1 : 0]));
-    this.#device.queue.writeBuffer(this.#settings, 28, new Float32Array([2 ** this.exposureCompensation, ...this.gate]));
+    this.#time += elapsed;
+    const settings = new Float32Array(SETTINGS_FLOATS);
+    settings.set([this.keyValue, 2 ** this.exposure, this.autoKeyValue ? 1 : 0, this.autoExposure ? 1 : 0, this.whitePoint, this.enabled ? 1 : 0, 0, 2 ** this.exposureCompensation, ...this.gate]);
+    settings.set([OPERATORS.indexOf(this.operator), this.saturation, this.contrast, this.#time % 1000], 12);
+    settings.set([this.vignette, this.grain, this.chromaticAberration, this.distortion], 16);
+    const balance = whiteBalanceMatrix(this.temperature, this.tint);
+    for (let c = 0; c < 3; c++) settings.set([balance[c * 3]!, balance[c * 3 + 1]!, balance[c * 3 + 2]!, 0], 20 + c * 4);
+    this.#device.queue.writeBuffer(this.#settings, 0, settings);
     // 关掉时 draw 照样绑一张适应亮度（着色器不读它）；重新打开时从当前亮度开始适应
     if (!this.enabled) {
       this.#measured = this.#adapted[this.#current];

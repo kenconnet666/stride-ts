@@ -66,6 +66,12 @@ export class PostProcessingEffects {
     this.lightStreak.enabled = settings.lightStreak;
     this.lensFlare.enabled = settings.lensFlare;
     this.toneMap.enabled = settings.toneMap;
+    const grading = settings.colorGrading ?? {};
+    Object.assign(this.toneMap, {
+      operator: grading.operator ?? 'hejl2', temperature: grading.temperature ?? 6500, tint: grading.tint ?? 0, contrast: grading.contrast ?? 1,
+      saturation: grading.saturation ?? 1, vignette: grading.vignette ?? 0, grain: grading.grain ?? 0,
+      chromaticAberration: grading.chromaticAberration ?? 0, distortion: grading.distortion ?? 0,
+    });
     this.antialiasing.enabled = settings.antialiasing;
   }
 

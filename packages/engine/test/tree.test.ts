@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { TreeFile } from '../src/content/treeFormat';
+import type { TreeFile } from '../src/content/formats/treeFormat';
 import { checkTree, treeMeshes } from '../src/modeling/tree';
 
 const oak: TreeFile = {

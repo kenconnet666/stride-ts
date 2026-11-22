@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { COMPONENT_FIELDS } from '../src/editor/fields';
-import { assetSchemas, componentSchemas, fieldTypeSchema, sceneSettingSchemas } from '../src/editor/fieldSchema';
+import { COMPONENT_FIELDS } from '../src/editor/fields/index';
+import { assetSchemas, componentSchemas, fieldTypeSchema, sceneSettingSchemas } from '../src/editor/fields/jsonSchema';
 
 describe('字段描述换成 JSON Schema', () => {
   test('数、向量、颜色、资源和实体的两种写法、可空的列表项', () => {

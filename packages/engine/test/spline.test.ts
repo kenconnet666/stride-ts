@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { SplineFile } from '../src/content/splineFormat';
+import type { SplineFile } from '../src/content/formats/splineFormat';
 import { checkSpline, frameAt, roadNetwork, sampleSpline, splineCenterlines, splineMeshes } from '../src/modeling/spline';
 
 /** 网格里的顶点（每个 8 个数）。 */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { decodeGlyphBlock, encodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, glyphPointStep, snapGlyphPoints, type FontFile, type GlyphBlock } from '../src/content/format';
+import { decodeGlyphBlock, encodeGlyphBlock, GLYPH_RECORD, GLYPH_WORDS, glyphPointStep, snapGlyphPoints, type FontFile, type GlyphBlock } from '../src/content/formats/format';
 import { glyphScale, layoutText, measureText, SpriteFont } from '../src/index';
 
 // 一个合成的字体：A 宽 0.5 em、B 宽 0.6 em、空格 0.25 em，都在第 0 块；第 0x30 块有一个日文假名

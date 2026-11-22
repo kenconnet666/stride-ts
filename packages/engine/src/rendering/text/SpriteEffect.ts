@@ -10,7 +10,7 @@
  *
  *   batch.effect = spriteEffect(`fn spriteEffect(uv: vec2f, color: vec4f) -> vec4f { return sampleTexture0(uv.yx); }`);
  */
-import type { TextureSampler } from '../../content/format';
+import type { TextureSampler } from '../../content/formats/format';
 
 /** 参数有几个 float（4 个 vec4f）。 */
 export const SPRITE_EFFECT_PARAMETERS = 16;

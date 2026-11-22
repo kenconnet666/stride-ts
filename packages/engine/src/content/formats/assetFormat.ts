@@ -3,8 +3,8 @@
  * UI 页面，以及文件的扩展名表。不依赖别的模块（除了同目录的格式文件）。
  */
 
-import type { SoundSynth } from '../audio/soundSynth';
-import type { GraphFile } from '../graph/nodeGraph';
+import type { SoundSynth } from '../../audio/soundSynth';
+import type { GraphFile } from './nodeGraph';
 
 export const EXTENSIONS = {
   model: '.model',
@@ -28,7 +28,7 @@ export const EXTENSIONS = {
   sound: '.sound.json',
   /** 时间轴（TimelineFile）。 */
   timeline: '.timeline.json',
-  /** 世界（WorldFile，content/worldFormat.ts）：格子、图层和有内容的格子的索引；格子的内容是旁边目录里的场景。 */
+  /** 世界（WorldFile，content/formats/worldFormat.ts）：格子、图层和有内容的格子的索引；格子的内容是旁边目录里的场景。 */
   world: '.world.json',
   /** 关卡白盒（BrushFile）：笔刷的列表，编辑器后端把它烘成同名的模型（.model）。 */
   brush: '.brush.json',
@@ -51,19 +51,19 @@ export const EXTENSIONS = {
   lightProfile: '.ies',
   /** 高斯泼溅（content/splatFile.ts 的二进制）：编辑器从 3DGS 的 .ply 导入成它。 */
   splats: '.splat',
-  /** 矢量地形（TerrainFile，content/terrainFormat.ts）：噪声的底、矢量地物和雕刻的笔画，运行时求值，不存高度图。 */
+  /** 矢量地形（TerrainFile，content/formats/terrainFormat.ts）：噪声的底、矢量地物和雕刻的笔画，运行时求值，不存高度图。 */
   terrain: '.terrain.json',
-  /** 样条（SplineFile，content/splineFormat.ts）：控制点和横截面，编辑器后端把它烘成同名的模型（.model）。 */
+  /** 样条（SplineFile，content/formats/splineFormat.ts）：控制点和横截面，编辑器后端把它烘成同名的模型（.model）。 */
   spline: '.spline.json',
-  /** 参数化的树（TreeFile，content/treeFormat.ts）：生长的规则和种子，编辑器后端把它长成同名的模型（.model）。 */
+  /** 参数化的树（TreeFile，content/formats/treeFormat.ts）：生长的规则和种子，编辑器后端把它长成同名的模型（.model）。 */
   tree: '.tree.json',
-  /** 程序化建筑（BuildingFile，content/buildingFormat.ts）：体块、立面规则和构件（形状文法），编辑器后端把它生成同名的模型（.model）。 */
+  /** 程序化建筑（BuildingFile，content/formats/buildingFormat.ts）：体块、立面规则和构件（形状文法），编辑器后端把它生成同名的模型（.model）。 */
   building: '.building.json',
-  /** 城市（CityFile，content/cityFormat.ts）：沿着路网摆楼的规则和种子，楼运行时由 CitySystem 摆（city/City.ts）。 */
+  /** 城市（CityFile，content/formats/cityFormat.ts）：沿着路网摆楼的规则和种子，楼运行时由 CitySystem 摆（world/City.ts）。 */
   city: '.city.json',
-  /** 水体（WaterFile，content/waterFormat.ts）：湖的岸线或海、颜色、清澈度、浪、泡沫，Water 组件引用它（water/Water.ts）。 */
+  /** 水体（WaterFile，content/formats/waterFormat.ts）：湖的岸线或海、颜色、清澈度、浪、泡沫，Water 组件引用它（world/Water.ts）。 */
   water: '.water.json',
-  /** 程序化摆放（ScatterFile，content/scatterFormat.ts）：在地形上撒模型的规则和种子，实例运行时按相机附近的格子撒。 */
+  /** 程序化摆放（ScatterFile，content/formats/scatterFormat.ts）：在地形上撒模型的规则和种子，实例运行时按相机附近的格子撒。 */
   scatter: '.scatter.json',
 } as const;
 

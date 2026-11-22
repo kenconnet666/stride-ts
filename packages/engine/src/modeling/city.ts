@@ -1,9 +1,9 @@
 /**
- * 沿街摆楼（W5，文件格式和摆法见 content/cityFormat.ts）：纯函数，给城市文件、路的样条、每种楼的占地，算出每栋楼的位置和朝向。
- * 运行时的 CitySystem（city/City.ts）再按地面的高度把楼放上去。
+ * 沿街摆楼（W5，文件格式和摆法见 content/formats/cityFormat.ts）：纯函数，给城市文件、路的样条、每种楼的占地，算出每栋楼的位置和朝向。
+ * 运行时的 CitySystem（world/City.ts）再按地面的高度把楼放上去。
  */
-import type { CityFile } from '../content/cityFormat.ts';
-import type { SplineFile } from '../content/splineFormat.ts';
+import type { CityFile } from '../content/formats/cityFormat.ts';
+import type { SplineFile } from '../content/formats/splineFormat.ts';
 import { sampleSpline, splineCorridorWidth, splinePaths, frameAt } from './spline.ts';
 import { hash32 } from '../data/hash.ts';
 

@@ -15,7 +15,7 @@
 import type { Entity } from '../engine/Entity';
 import type { EntityManager } from '../engine/EntityManager';
 import type { ScriptComponent } from '../engine/scripts';
-import type { SceneEntityFile } from './format';
+import type { SceneEntityFile } from './formats/format';
 import { scriptKey } from './prefabInstances';
 
 /** 预制体里一个实体的结构（生成的类型写的）：挂着的脚本（按导出名）和有名字的子实体。 */

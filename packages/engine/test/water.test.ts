@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { checkWater, WATER_MAX_OUTLINE } from '../src/content/waterFormat';
-import { RIVER_VERTEX_FLOATS, riverRibbon, underWater } from '../src/water/Water';
+import { checkWater, WATER_MAX_OUTLINE } from '../src/content/formats/waterFormat';
+import { RIVER_VERTEX_FLOATS, riverRibbon, underWater } from '../src/world/Water';
 import { splineMeshes } from '../src/modeling/spline';
-import { waterSurfaceAt } from '../src/water/Buoyancy';
-import { OCEAN_CASCADES, oceanSpectrum, windSeaHeight } from '../src/water/OceanFFT';
+import { waterSurfaceAt } from '../src/world/Buoyancy';
+import { OCEAN_CASCADES, oceanSpectrum, windSeaHeight } from '../src/world/OceanFFT';
 
 describe('水体', () => {
   test('检查：岸线至少三个点、不超过上限，清澈度、浪的参数', () => {

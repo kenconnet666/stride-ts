@@ -1,5 +1,5 @@
 /**
- * 字体文件（TTF、OTF、TTC 的第一个字体）转成运行时的字体：`<路径>.font.json`（content/assetFormat.ts 的 FontFile）加按码位分块
+ * 字体文件（TTF、OTF、TTC 的第一个字体）转成运行时的字体：`<路径>.font.json`（content/formats/assetFormat.ts 的 FontFile）加按码位分块
  * （码位 >> 8）的 `<路径>.<块>.glyphs`，运行时用到哪块下哪块。字形是轮廓：stride-tools 读出二次曲线（CFF 的三次曲线拆成二次），
  * 整理成 Slug 的点和带（font.ts）。Stride 工程导入器（stride/fonts.ts）和编辑器的导入（拖进资源浏览器，`POST /import`）共用。
  */

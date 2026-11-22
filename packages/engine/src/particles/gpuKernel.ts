@@ -13,7 +13,7 @@
  * 支持的模块（其余的发射器留在 CPU 上，见 gpuUnsupported）：初始化器 SizeSeed、PositionSeed、VelocitySeed、DirectionSeed、
  * RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder；更新器 Gravity、ForceField（球、圆柱、圆环或没有形状，同 fieldShapes.ts）、
  * SizeOverTime、ColorOverTime、RotationOverTime、
- * SpeedToDirection、Wind（风场的全局风和离发射器最近的 GPU_LOCAL_WINDS 个局部风源，见 weather/WindField.ts）、DepthCollision
+ * SpeedToDirection、Wind（风场的全局风和离发射器最近的 GPU_LOCAL_WINDS 个局部风源，见 world/WindField.ts）、DepthCollision
  * （只在 GPU 上；按深度表面碰撞，见 rendering/DepthSurface.ts，一个发射器最多一个）。
  */
 import { CurveSampler } from './curves';
@@ -25,7 +25,7 @@ import type { ParticleModule } from './modules';
 import type { ParticleEmitter } from './ParticleEmitter';
 import { RandomOffset } from './random';
 import { UpdaterColorOverTime, UpdaterDepthCollision, UpdaterForceField, UpdaterGravity, UpdaterRotationOverTime, UpdaterSizeOverTime, UpdaterSpeedToDirection, UpdaterWind } from './updaters';
-import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../weather/WindField';
+import { GPU_LOCAL_WINDS, packWind, WIND_WGSL } from '../world/WindField';
 import { DEPTH_SURFACE_WGSL } from '../rendering/DepthSurface';
 
 /** 一个粒子在存储缓冲里占的字节（WGSL 的 Particle）。 */

@@ -11,7 +11,7 @@
  *
  * 开销（实体数 n）：改值是拷一遍实体列表的引用（十万个实体不到 1 毫秒）；加、删不管一次动多少个实体都只扫一遍列表。
  */
-import type { SceneEntityFile, SceneFile } from '../content/format';
+import type { SceneEntityFile, SceneFile } from '../content/formats/format';
 
 /** 有一列实体的文件：场景、预制体。 */
 export interface EntitiesFile {

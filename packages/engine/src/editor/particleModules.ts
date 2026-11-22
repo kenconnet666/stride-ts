@@ -6,8 +6,8 @@
  *
  * 这里没列的（导入的游戏模块、子粒子的模块）面板上按 JSON 改。
  */
-import type { ParticleModuleFile } from '../content/format';
-import type { Field, FieldType } from './fields';
+import type { ParticleModuleFile } from '../content/formats/format';
+import type { Field, FieldType } from './fields/index';
 
 export type ParticleStackKind = 'spawners' | 'initializers' | 'updaters' | 'shapeBuilder' | 'material';
 

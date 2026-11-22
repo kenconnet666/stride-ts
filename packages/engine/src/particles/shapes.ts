@@ -12,7 +12,7 @@
  *   垂直于它。
  * Ribbon、Trail 把粒子连成带子，见 ribbons.ts。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import { curveSampler, type CurveSampler } from './curves';
 import { combine, normalize, rotate, type Quat, type Vec3 } from './math';
 import { value } from './modules';

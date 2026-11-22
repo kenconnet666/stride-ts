@@ -12,7 +12,7 @@
  * 关节排好，不需要每个剪辑一份通道映射）；正在播放的列表只读，增删走 play、add、stop 这些方法（Stride 的
  * TrackingCollection 在移除时完成 Ended 的任务，这里由方法做）。
  */
-import type { AnimationRepeatMode } from '../content/format';
+import type { AnimationRepeatMode } from '../content/formats/format';
 import { ScriptComponent } from '../engine/scripts';
 import { PropertyAnimated } from './curves';
 import type { AnimationClip } from './resources';

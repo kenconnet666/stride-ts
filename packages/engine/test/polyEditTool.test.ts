@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { Quaternion, Vector3 } from '../src/data/vectors';
 import { polyCube } from '../src/modeling/polyEdit';
-import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformPoints, worldVertices } from '../src/editor/PolyEditTool';
+import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformPoints, worldVertices } from '../src/editor/viewport/PolyEditTool';
 
 // 视口里编辑多边形网格的纯函数部分：边表、点选点边面、选择的增减、操纵器的结果落到顶点上。
 

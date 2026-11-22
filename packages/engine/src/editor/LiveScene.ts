@@ -13,7 +13,7 @@
  * 仿真要不要停（`game.simulation.enabled`）、用什么相机看由编辑器定，不在这里管。
  */
 import type { CompositorSettings, LoadSceneOptions, SceneInstance } from '../content/ContentManager';
-import type { SceneFile } from '../content/format';
+import type { SceneFile } from '../content/formats/format';
 import { entityAssetReferences } from '../content/references';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';

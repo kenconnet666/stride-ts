@@ -6,7 +6,7 @@
  *   const blocks = await game.content.loadSceneTemplate('SpaceEscape/Shared/LevelBlocks');
  *   const [block] = blocks.prefab('Background_a00').instantiate(game.entities);
  */
-import type { SceneEntityFile, SceneScriptValue } from './format';
+import type { SceneEntityFile, SceneScriptValue } from './formats/format';
 import { Prefab } from './Prefab';
 
 export class SceneTemplate {

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import type { SplineFile } from '../src/content/splineFormat';
+import type { SplineFile } from '../src/content/formats/splineFormat';
 import { Matrix } from '../src/data/Matrix';
 import { Quaternion, Vector3 } from '../src/data/vectors';
-import { branchFromPoint, deleteSplinePoints, insertSplinePoint, moveSplinePoints, pickSplineCurve, splinePointList, weldedPoints } from '../src/editor/SplineEditTool';
+import { branchFromPoint, deleteSplinePoints, insertSplinePoint, moveSplinePoints, pickSplineCurve, splinePointList, weldedPoints } from '../src/editor/viewport/SplineEditTool';
 import { splineCurve, splinePoint } from '../src/modeling/spline';
 
 const road: SplineFile = {

@@ -1,5 +1,5 @@
 /**
- * 多边形网格（content/assetFormat.ts 的 PolyMeshFile）的几何：镜像、面法线、三角化、光滑法线、自动 UV，得出按材质槽分好的
+ * 多边形网格（content/formats/assetFormat.ts 的 PolyMeshFile）的几何：镜像、面法线、三角化、光滑法线、自动 UV，得出按材质槽分好的
  * 三角形网格（编辑器后端烘成模型用，pipeline 的 polyModel.ts）。编辑操作在 polyEdit.ts。
  *
  * - 面法线用 Newell 法（凹的、不太平的多边形也稳）；
@@ -8,7 +8,7 @@
  *   别的面在这里是硬边；
  * - UV 按面法线（同一个面的角点用同一个投影方向，面内不断开）投影世界坐标，同白盒。
  */
-import type { PolyFaceFile, PolyMeshFile, Vec3Tuple } from '../content/assetFormat.ts';
+import type { PolyFaceFile, PolyMeshFile, Vec3Tuple } from '../content/formats/assetFormat.ts';
 
 /** 一个材质槽的三角形网格：每个顶点 8 个数（位置、法线、UV），索引三个一组。 */
 export interface PolySlotMesh {

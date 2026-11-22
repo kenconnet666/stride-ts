@@ -3,7 +3,7 @@
  * 动画），这里记着关节名、时长、重复方式和原生对象。内容管理加载 `.skeleton`、`.anim` 时创建它们。
  */
 import type { Animation as NativeAnimation, Skeleton as NativeSkeleton, StrideNative } from '@stride-ts/native';
-import type { AnimationRepeatMode, MorphWeightCurve } from '../content/format';
+import type { AnimationRepeatMode, MorphWeightCurve } from '../content/formats/format';
 import type { PropertyCurve } from './curves';
 
 /** 内容管理加载骨架、动画和蒙皮要用的原生功能（Game 启动时交给 ContentManager，测试里可以换成假的）。 */

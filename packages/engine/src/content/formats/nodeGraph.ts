@@ -4,7 +4,7 @@
  *
  * 编辑器的节点图面板只认这里的格式和 NodeSpec：节点的位置、端口、参数的字段描述都在里面，换一个节点库不用改面板。
  */
-import type { FieldType } from '../editor/fields';
+import type { FieldType } from '../../editor/fields/index';
 
 /** 一条连线的源头：哪个节点的哪个输出（没写是它的第一个输出）。 */
 export interface GraphLink {

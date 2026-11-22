@@ -6,7 +6,7 @@
 import type {
   AnimationData, BuildingFile, BrushFile, CityFile, WaterFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, TextureRef, UIFile,
   UISpriteValue,
-} from './format';
+} from './formats/format';
 import { textureRefs } from './loading.ts';
 import { visitScriptAssets } from './sceneScripts.ts';
 

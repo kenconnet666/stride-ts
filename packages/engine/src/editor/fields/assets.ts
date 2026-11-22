@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/format';
+import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/formats/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 

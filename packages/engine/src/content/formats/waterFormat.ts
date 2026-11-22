@@ -1,6 +1,6 @@
 /**
  * 水体（`.water.json`，W6，Stride 没有）：湖（岸线多边形）或海（一直铺到远处），文件存参数（矢量的），Water 组件挂在实体上，
- * 实体的位置就是水面（本地 y = 0 的平面，岸线是本地的 [x, z]）；画法见 water/Water.ts。
+ * 实体的位置就是水面（本地 y = 0 的平面，岸线是本地的 [x, z]）；画法见 world/Water.ts。
  */
 
 export interface WaterFile {
@@ -28,7 +28,7 @@ export interface WaterFile {
 }
 
 /**
- * 按风的海浪谱（FFT，water/OceanFFT.ts）代替 6 组 Gerstner 波：海、大湖用。wind 是风速（米每秒，默认 10），patch 是最大一块的
+ * 按风的海浪谱（FFT，world/OceanFFT.ts）代替 6 组 Gerstner 波：海、大湖用。wind 是风速（米每秒，默认 10），patch 是最大一块的
  * 边长（米，默认 400，再小两级是它的 1/6、1/36），seed 换一片不同的浪；浪高不写时按风速估（充分成长的海，10 米每秒约 2 米），
  * waves 的 length 不用。
  */

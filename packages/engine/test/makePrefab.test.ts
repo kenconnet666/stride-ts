@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { SceneEntityFile, SceneFile } from '../src/content/format';
+import type { SceneEntityFile, SceneFile } from '../src/content/formats/format';
 import { expandPrefabInstances } from '../src/content/prefabInstances';
 import { makePrefab } from '../src/editor/makePrefab';
 import { SceneDocument, UndoStack } from '../src/editor/SceneDocument';

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { SceneEntityFile, SceneFile } from '../src/content/format';
+import type { SceneEntityFile, SceneFile } from '../src/content/formats/format';
 import { expandPrefabInstances } from '../src/content/prefabInstances';
 import { SceneDocument } from '../src/editor/SceneDocument';
 import { instanceMember, toDocumentEdit } from '../src/editor/prefabEdits';

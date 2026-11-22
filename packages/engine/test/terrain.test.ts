@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { checkTerrainFile } from '../src/content/terrainFormat';
-import { changedRegions } from '../src/terrain/TerrainSystem';
-import { terrainPaths } from '../src/terrain/Terrain';
-import type { SplineFile } from '../src/content/splineFormat';
-import { heightfieldGrid, selectTiles, TILE_QUADS, tileId, tilePageHeader, tileRect, type TileKey } from '../src/terrain/terrainTiles';
+import { checkTerrainFile } from '../src/content/formats/terrainFormat';
+import { changedRegions } from '../src/world/TerrainSystem';
+import { terrainPaths } from '../src/world/Terrain';
+import type { SplineFile } from '../src/content/formats/splineFormat';
+import { heightfieldGrid, selectTiles, TILE_QUADS, tileId, tilePageHeader, tileRect, type TileKey } from '../src/world/terrainTiles';
 
 const all = () => true;
 

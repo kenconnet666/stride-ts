@@ -7,12 +7,12 @@
  *   preview.show(file, 2.5, { throughCamera: true });
  *   preview.end();
  */
-import type { TimelineFile } from '../content/format';
+import type { TimelineFile } from '../content/formats/format';
 import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
 import type { Game } from '../engine/Game';
 import { AnimationComponent } from '../animation/AnimationComponent';
-import { Timeline, type TimelineBinding } from '../timeline/Timeline';
+import { Timeline, type TimelineBinding } from '../animation/Timeline';
 
 /** 预览的这一刻：相机（场景文件里的实体 id）和字幕。 */
 export interface TimelinePreviewState {

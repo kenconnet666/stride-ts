@@ -1,5 +1,5 @@
 /**
- * 建筑的烘焙（引擎 content/buildingFormat.ts 的 BuildingFile）：生成在引擎的 modeling/building.ts，这里写成普通的模型（量化加
+ * 建筑的烘焙（引擎 content/formats/buildingFormat.ts 的 BuildingFile）：生成在引擎的 modeling/building.ts，这里写成普通的模型（量化加
  * meshopt），场景照常引用。编辑器后端在建筑的文件存下、或者在磁盘上改了以后调它。
  */
 import { BUILDING_SLOTS, encodeModel, type BuildingFile } from '@stride-ts/engine/content-format';

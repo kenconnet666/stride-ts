@@ -8,7 +8,7 @@
  *   三次贝塞尔，两头的切线顺着两条车道的行驶方向；
  * - 两条路径首尾焊在一起（不是路口）时直接接上；首尾相连的路径终点接回起点；路的尽头没有 next。
  */
-import type { SplineFile } from '../content/splineFormat.ts';
+import type { SplineFile } from '../content/formats/splineFormat.ts';
 import { resampleFrames, roadNetwork, splinePaths, splineWeldKey, type SplineFrame } from './spline.ts';
 
 type Vec3 = [number, number, number];

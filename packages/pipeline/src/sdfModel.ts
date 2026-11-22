@@ -1,5 +1,5 @@
 /**
- * SDF 建模的烘焙（引擎 content/assetFormat.ts 的 SdfFile）：形状按顺序平滑合成，原生工具模块网格化（`sdfMesh`，Manifold 的等值面），
+ * SDF 建模的烘焙（引擎 content/formats/assetFormat.ts 的 SdfFile）：形状按顺序平滑合成，原生工具模块网格化（`sdfMesh`，Manifold 的等值面），
  * 结果按每个三角形所属形状的材质槽分成网格，法线是距离场的梯度（光滑，融合处也是圆的），UV 按顶点法线最大的分量投影世界坐标
  * （uvScale 米一个周期）。写成普通的模型（量化加 meshopt），场景照常引用。
  *

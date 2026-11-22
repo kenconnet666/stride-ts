@@ -9,7 +9,7 @@
  * 父粒子和新的子粒子怎么对应：父发射器有生成控制时按顺序，每个父粒子分到它这一帧要生成的个数（分完了剩下的新粒子不再初始化，
  * 同 Stride）；没有时每个子粒子随机挑一个父粒子。父发射器是局部模拟时，继承来的位置、速度按子模块的世界变换换过来。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import type { Vec3 } from './math';
 import { forEachSpawned, ParticleInitializer, ParticleSpawner, randomBox, value, vec3, type SpawnedRange, type SpawnTarget } from './modules';
 import { CHILDREN_FIELDS, type AnyParticleField, type ParticleField, type ParticlePool } from './ParticlePool';

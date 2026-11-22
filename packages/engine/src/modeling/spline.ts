@@ -1,5 +1,5 @@
 /**
- * 样条（content/splineFormat.ts 的 SplineFile）的几何：路径按弧长采样成带朝向的截面（sampleSpline、frameAt），按横截面拉伸、
+ * 样条（content/formats/splineFormat.ts 的 SplineFile）的几何：路径按弧长采样成带朝向的截面（sampleSpline、frameAt），按横截面拉伸、
  * 沿路摆立柱和轨枕、在电杆之间挂下垂的导线，得出按材质槽分好的三角形网格（编辑器后端烘成模型用，pipeline 的 splineModel.ts）。
  * 地形贴合、车道图、列车沿路走以后也用这里的采样。
  *
@@ -12,7 +12,7 @@
  *   半径的地方；路口的轮廓是各条路的端口加上相邻端口之间以交点为控制点的二次贝塞尔（转角的圆弧，夹角 180° 以上的直连），
  *   顶面从中心扇形铺满，转角外侧照路的边坡往下。别的横截面各条路径各自拉伸。
  */
-import { SPLINE_SLOTS, type SplineBranchFile, type SplineFile, type SplinePointFile } from '../content/splineFormat.ts';
+import { SPLINE_SLOTS, type SplineBranchFile, type SplineFile, type SplinePointFile } from '../content/formats/splineFormat.ts';
 import { MeshBuilder, slotMeshes, type SlotMesh } from './meshBuilder.ts';
 
 type Vec3 = [number, number, number];
@@ -207,7 +207,7 @@ function profileMeshes(slots: readonly MeshBuilder[], profile: Exclude<SplineFil
       extrude(slots[0]!, frames, profile.shape, profile.closed ?? false);
       break;
     case 'river':
-      // 河道没有几何：水面由水体画（water/Water.ts）
+      // 河道没有几何：水面由水体画（world/Water.ts）
       break;
     case 'rail': {
       const gauge = profile.gauge ?? 1.435, spacing = profile.sleeperSpacing ?? 0.6;

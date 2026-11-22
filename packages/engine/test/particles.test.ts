@@ -15,7 +15,7 @@ import type { ParticleEmitter } from '../src/particles/ParticleEmitter';
 import type { Texture } from '../src/graphics/Texture';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { randomSeed, RandomSeedGenerator, seedFloat } from '../src/particles/random';
-import type { ParticleModuleFile } from '../src/content/format';
+import type { ParticleModuleFile } from '../src/content/formats/format';
 import { ParticleRenderer } from '../src/particles/ParticleRenderer';
 import type { ParticleSystemComponent } from '../src/particles/ParticleSystemComponent';
 import type { GpuResources } from '../src/graphics/GpuResources';

@@ -1,11 +1,11 @@
-// 照编辑器的字段描述（engine 的 editor/fields.ts 的 checkEntity、SCENE_FIELDS）检查每个样例的全部场景、预制体文件（实体和场景的设置）：属性面板照这份描述画控件，
+// 照编辑器的字段描述（engine 的 editor/fields/index.ts 的 checkEntity、SCENE_FIELDS）检查每个样例的全部场景、预制体文件（实体和场景的设置）：属性面板照这份描述画控件，
 // 描述和文件对不上时面板会显示不了或者改出坏文件。不开浏览器。
 //   node tools/editor-accept/check-fields.ts [样例...]
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkEntity, checkFields, SCENE_FIELDS } from '../../packages/engine/src/editor/fields.ts';
-import type { SceneEntityFile } from '../../packages/engine/src/content/format.ts';
+import { checkEntity, checkFields, SCENE_FIELDS } from '../../packages/engine/src/editor/fields/index.ts';
+import type { SceneEntityFile } from '../../packages/engine/src/content/formats/format.ts';
 import { SCENE_SETTING_KEYS } from '../../packages/engine/src/editor/SceneDocument.ts';
 
 const apps = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps');

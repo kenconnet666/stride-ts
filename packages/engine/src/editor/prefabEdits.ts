@@ -11,7 +11,7 @@
  * 加实体照原样交给文档：加在成员下面的实体是文档里的普通实体，父实体写成员的 id（`<实例>/<预制体里的 id>`），展开时挂到
  * 成员上；复制粘贴见 copyEntities.ts。
  */
-import type { SceneEntityFile } from '../content/format';
+import type { SceneEntityFile } from '../content/formats/format';
 import { expandPrefabInstances, getPath, sameValue, setPath } from '../content/prefabInstances';
 import { SceneDocument, type EntitiesFile, type SceneEdit, type ScenePath } from './SceneDocument';
 

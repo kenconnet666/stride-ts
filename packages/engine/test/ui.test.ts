@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { GLYPH_RECORD, GLYPH_WORDS, type UIFile } from '../src/content/format';
+import { GLYPH_RECORD, GLYPH_WORDS, type UIFile } from '../src/content/formats/format';
 import {
   Border, buildElement, Button, Canvas, collectSemantics, ContentDecorator, ContentPresenter, EditText, Grid, semanticsKey, ImageButton, Slider, ImageElement, imageSize, ModalElement, ScrollViewer, SpriteFromSheet, SpriteSheet,
   ScrollBar, ScrollingText, SpriteFont, StackPanel, StripDefinition, TextBlock, ToggleButton, UIElement, UILibrary, UniformGrid, type PointerEvent, type SpriteFrame, type Texture, type ToggleState,

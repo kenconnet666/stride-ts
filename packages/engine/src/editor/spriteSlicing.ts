@@ -7,7 +7,7 @@
  *
  * 区域是 [x, y, 宽, 高]（像素），同精灵表文件的 region。replaceSprites 把切出来的放进精灵表。
  */
-import type { SpriteSheetFile, TextureRef } from '../content/format';
+import type { SpriteSheetFile, TextureRef } from '../content/formats/format';
 
 /** 一个区域：x、y（左上角）、宽、高，像素。 */
 export type SpriteRegion = readonly [number, number, number, number];

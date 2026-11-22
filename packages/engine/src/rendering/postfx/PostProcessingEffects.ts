@@ -7,7 +7,7 @@
  * enabled 为 false 时同 Stride（合成器的 PostEffects 是 null）：HDR 画面原样拷贝到输出，超过 1 的截断。
  * 临时的渲染目标每帧从池里借，参数每次绘制各占一段 uniform（见 ImageEffect.ts）。
  */
-import type { ScenePostEffects } from '../../content/format';
+import type { ScenePostEffects } from '../../content/formats/format';
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { prefilterLayers, type AdditiveLayer } from './AdditiveLayers';
 import { Bloom } from './Bloom';

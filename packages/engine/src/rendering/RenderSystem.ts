@@ -5,7 +5,7 @@
  * 剔除也由特性自己做（Cull，在 stride-native 里），还没有排列组合（效果系统等内容管线）。
  */
 import type { LightProfile } from './lighting/LightProfile';
-import type { SceneEntityFile } from '../content/format';
+import type { SceneEntityFile } from '../content/formats/format';
 import type { EntityId } from '../data/prop';
 import type { Game } from '../engine/Game';
 import type { GameTime } from '../engine/GameTime';
@@ -25,9 +25,9 @@ import { Clusters } from './lighting/Clusters';
 import { LocalLightBuffer } from './lighting/LocalLights';
 import type { Skybox } from './lighting/Skybox';
 import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
-import { SkyOcclusion } from '../weather/SkyOcclusion';
+import { SkyOcclusion } from '../world/SkyOcclusion';
 import { ImpostorBaker } from './mesh/Impostors';
-import { WaterRenderer } from '../water/Water';
+import { WaterRenderer } from '../world/WaterRenderer';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -541,12 +541,12 @@ export class RenderSystem {
   readonly localLights: LocalLightBuffer;
   /** 天空遮挡（从上往下的深度图，雨雪等用；有人用时合成器才画）。 */
   readonly skyOcclusion: SkyOcclusion;
-  /** 水体（water/Water.ts）：主画面透明的那一遍里画。 */
+  /** 水体（world/Water.ts）：主画面透明的那一遍里画。 */
   readonly water: WaterRenderer;
   /** 远处卡片的烘焙（有要烘的模型时合成器多画几个正交视图）。 */
   readonly impostors: ImpostorBaker;
   /**
-   * 地面多湿、积了多少水、积了多少雪、雨下得多大（0 到 1；天气状态 weather/Weather.ts 每帧写，没有天气时是 0）：网格着色时
+   * 地面多湿、积了多少水、积了多少雪、雨下得多大（0 到 1；天气状态 world/Weather.ts 每帧写，没有天气时是 0）：网格着色时
    * 淋得到的表面变湿、平的地方积出水洼（下雨时有涟漪）、朝上的积雪。大于 0 时写的人每帧 skyOcclusion.use()（屋檐下的不湿）。
    */
   readonly surfaceWeather = { wetness: 0, puddles: 0, snowCover: 0, rain: 0 };

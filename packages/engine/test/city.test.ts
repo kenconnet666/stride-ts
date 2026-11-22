@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { checkCity, type CityFile } from '../src/content/cityFormat';
-import type { SplineFile } from '../src/content/splineFormat';
+import { checkCity, type CityFile } from '../src/content/formats/cityFormat';
+import type { SplineFile } from '../src/content/formats/splineFormat';
 import { cityLots, overlaps, segmentBoxDistance, type CityFootprint } from '../src/modeling/city';
 
 /** 沿 x 的一条 200 米的直路，7 米宽（加路肩 8 米）。 */

@@ -6,7 +6,7 @@
  * 引擎的材质是 ParticleMaterialComputeColor：组件的颜色 · 颜色树。游戏的材质继承 ParticleMaterial、导出就按类名登记（同粒子模块），
  * 用 MaterialCompiler 把颜色树编成表达式（节点见 colorTree.ts）、拼自己的函数体。
  */
-import type { ParticleModuleFile, TextureSampler } from '../content/format';
+import type { ParticleModuleFile, TextureSampler } from '../content/formats/format';
 import { ColorTreeCompiler, type MaterialContext } from '../rendering/mesh/colorTree';
 import type { Texture } from '../graphics/Texture';
 import { value, type ParticleModuleKind } from './modules';

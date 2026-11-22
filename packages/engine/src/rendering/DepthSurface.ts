@@ -1,6 +1,6 @@
 /**
  * 深度表面：一张深度图加上画它的视图，GPU 粒子拿来碰撞（particles/updaters.ts 的 UpdaterDepthCollision）。有两种：
- * - 天空遮挡（weather/SkyOcclusion.ts）：从上往下看的高度场，相机周围几十米，屏幕外也有；
+ * - 天空遮挡（world/SkyOcclusion.ts）：从上往下看的高度场，相机周围几十米，屏幕外也有；
  * - 主视图上一帧的深度（ViewDepthSurface，前向渲染器的 `viewDepth`）：只有画面里看得见的表面，Unity VFX Graph、Niagara 的
  *   "按深度缓冲碰撞"。
  *

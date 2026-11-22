@@ -9,8 +9,8 @@
  *
  * 只是数据，不依赖 DOM 和运行着的游戏（scriptFields 要脚本的类，在游戏页面里调）。
  */
-export type { Field, FieldType } from './fields/builders.ts';
-export * from './fields/components.ts';
-export * from './fields/assets.ts';
-export * from './fields/scripts.ts';
-export * from './fields/check.ts';
+export type { Field, FieldType } from './builders.ts';
+export * from './components.ts';
+export * from './assets.ts';
+export * from './scripts.ts';
+export * from './check.ts';

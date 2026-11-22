@@ -7,7 +7,7 @@
  * 和 Stride 不同：组件的 Control（ResetSeconds、播放状态）只在 Stride 的编辑器里起作用，这里不导入运行时。
  */
 import { shaderTime } from '../engine/GameTime';
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import type { Game } from '../engine/Game';
 import { DEPTH_FORMAT } from '../rendering/ForwardRenderer';
 import type { RenderView } from '../rendering/RenderSystem';

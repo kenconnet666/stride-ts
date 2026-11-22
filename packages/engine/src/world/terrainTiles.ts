@@ -6,7 +6,7 @@
  * - 相邻的块细节层次不同时接缝处会有小缝：每块的四边垂下一圈裙边挡住（同 Unity、Godot 的地形插件的常见做法）；
  * - 所有块共用一个网格（heightfieldGrid），高度在高度页里，整片地形一次实例化绘制；块的位置、缩放放在实体的变换里（双精度）。
  */
-import { VERTEX_FLOATS } from '../content/format';
+import { VERTEX_FLOATS } from '../content/formats/format';
 import { HEIGHT_PAGE_SAMPLES } from '../rendering/mesh/HeightPages';
 
 /** 每块每边几个格（顶点多一个）。 */

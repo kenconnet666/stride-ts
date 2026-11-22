@@ -6,7 +6,7 @@
  * ?stride-edit）打开同一个游戏，在那里跑这条命令，跑完关掉。
  */
 import type { Game } from '../engine/Game';
-import { TimelinePlayer } from '../timeline/TimelinePlayer';
+import { TimelinePlayer } from '../animation/TimelinePlayer';
 import { saveExport } from '../editor/backendApi';
 import { exportImages, exportVideo, RENDER_PRESETS, type RenderPreset } from './VideoExport';
 

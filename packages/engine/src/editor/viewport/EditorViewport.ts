@@ -11,31 +11,31 @@
  *   那个工具的：画笔刷；点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），操纵器拖选中的顶点（PolyEditTool）；点选、拖控制点，
  *   双击路径加点（SplineEditTool）；雕刻的笔刷（[、] 改大小，Shift 反过来）。
  */
-import type { Entity } from '../engine/Entity';
-import { SyncScript } from '../engine/scripts';
-import { Transform } from '../engine/transform';
-import type { DebugColor } from '../debug/DebugDraw';
-import type { PointerEvent } from '../input/InputManager';
-import { Matrix, type Matrix4 } from '../data/Matrix';
-import { Quaternion, Vector3 } from '../data/vectors';
-import { screenToWorldRaySegment, worldToScreen } from '../rendering/cameraRays';
-import { Camera, Model, ModelPart } from '../rendering/components';
+import type { Entity } from '../../engine/Entity';
+import { SyncScript } from '../../engine/scripts';
+import { Transform } from '../../engine/transform';
+import type { DebugColor } from '../../debug/DebugDraw';
+import type { PointerEvent } from '../../input/InputManager';
+import { Matrix, type Matrix4 } from '../../data/Matrix';
+import { Quaternion, Vector3 } from '../../data/vectors';
+import { screenToWorldRaySegment, worldToScreen } from '../../rendering/cameraRays';
+import { Camera, Model, ModelPart } from '../../rendering/components';
 import type { EditAgent } from './EditAgent';
-import type { LiveScene } from './LiveScene';
-import type { SceneEdit } from './SceneDocument';
+import type { LiveScene } from '../LiveScene';
+import type { SceneEdit } from '../SceneDocument';
 import { applyGizmoChange, applySnap, type GizmoAxis, type GizmoChange, type GizmoHandle, type Ray, type TransformGizmo } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
-import { Mesh } from '../rendering/mesh/Mesh';
-import { raycastMesh } from '../rendering/paint/MeshPainter';
-import { selectionVertices } from '../modeling/polyEdit';
-import { Terrain, TerrainAsset } from '../terrain/Terrain';
-import type { TerrainFeatureFile, TerrainStrokeFile } from '../content/terrainFormat';
-import type { TerrainHit } from '../terrain/TerrainSystem';
+import { Mesh } from '../../rendering/mesh/Mesh';
+import { raycastMesh } from '../../rendering/paint/MeshPainter';
+import { selectionVertices } from '../../modeling/polyEdit';
+import { Terrain, TerrainAsset } from '../../world/Terrain';
+import type { TerrainFeatureFile, TerrainStrokeFile } from '../../content/formats/terrainFormat';
+import type { TerrainHit } from '../../world/TerrainSystem';
 import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformPoints, worldVertices, type PolySelectMode } from './PolyEditTool';
-import type { PolyMeshFile } from '../content/assetFormat';
-import type { SplineFile } from '../content/splineFormat';
-import { splineCurve, splinePaths } from '../modeling/spline';
-import { roadLanes, type RoadLane } from '../modeling/roadLanes';
+import type { PolyMeshFile } from '../../content/formats/assetFormat';
+import type { SplineFile } from '../../content/formats/splineFormat';
+import { splineCurve, splinePaths } from '../../modeling/spline';
+import { roadLanes, type RoadLane } from '../../modeling/roadLanes';
 import { insertSplinePoint, moveSplinePoints, pickSplineCurve, splinePointList } from './SplineEditTool';
 
 /** 选中的东西的框的颜色（线性）。 */

@@ -1,5 +1,5 @@
 /**
- * 把 Stride 工程的场景和预制体导入成运行时内容（格式见 @stride-ts/engine 的 content/format.ts）：实体的层级和变换，
+ * 把 Stride 工程的场景和预制体导入成运行时内容（格式见 @stride-ts/engine 的 content/formats/format.ts）：实体的层级和变换，
  * 模型（源 FBX/glTF 经 stride-tools 导入，含骨架和蒙皮）、动画、相机、光源、背景、精灵和精灵表，物理（碰撞体、刚体、
  * 角色、约束，GameSettings 里的仿真和碰撞矩阵）、导航设置，以及游戏脚本的属性。材质、贴图、天空盒在 materials.ts。
  * 还不认识的组件（音频等）跳过并计数。

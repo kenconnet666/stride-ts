@@ -168,7 +168,7 @@ export class EditorBackend {
   }
 
   /**
-   * 新建一个世界（`.world.json`，content/worldFormat.ts）：格子边长、图层，常驻场景（天空、太阳、全局的设置）可选；还没有格子。
+   * 新建一个世界（`.world.json`，content/formats/worldFormat.ts）：格子边长、图层，常驻场景（天空、太阳、全局的设置）可选；还没有格子。
    * 已经有了报 409。
    */
   async createWorld(assetPath: string, { cellSize = 256, layers = [{ name: 'default', loadRadius: 512 }], persistent }: { readonly cellSize?: number; readonly layers?: readonly WorldLayer[]; readonly persistent?: string } = {}): Promise<AssetRecord> {

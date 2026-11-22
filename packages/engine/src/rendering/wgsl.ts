@@ -78,7 +78,7 @@ fn faceDirection(face: u32, p: vec2f) -> vec3f {
   }
 }`;
 
-/** 整数格点的哈希（cellHash）和雨打水面的涟漪（rippleGradient）：网格着色器的水洼、水体（water/Water.ts）下雨时用。 */
+/** 整数格点的哈希（cellHash）和雨打水面的涟漪（rippleGradient）：网格着色器的水洼、水体（world/Water.ts）下雨时用。 */
 export const RAIN_RIPPLES = /* wgsl */ `
 /** 整数格点的哈希，0..1（水洼、涟漪用）。 */
 fn cellHash(p: vec2i) -> f32 {

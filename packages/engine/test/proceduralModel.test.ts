@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { assetReferences } from '../src/content/references';
-import { isProceduralModel, parseProceduralModel, PROCEDURAL_SHAPES, proceduralModelData, readModelFile } from '../src/content/format';
+import { isProceduralModel, parseProceduralModel, PROCEDURAL_SHAPES, proceduralModelData, readModelFile } from '../src/content/formats/format';
 import { generateProceduralMesh, proceduralTangents, type ProceduralModel } from '../src/rendering/mesh/procedural';
 
 const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).buffer;

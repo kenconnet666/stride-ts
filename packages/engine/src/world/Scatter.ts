@@ -1,5 +1,5 @@
 /**
- * 程序化摆放（W4）：Scatter 组件挂在地形实体上，引用一个 `.scatter.json`（content/scatterFormat.ts），按规则在地形上撒模型。
+ * 程序化摆放（W4）：Scatter 组件挂在地形实体上，引用一个 `.scatter.json`（content/formats/scatterFormat.ts），按规则在地形上撒模型。
  *
  * - 撒法是纯函数（scatterCell）：一层按 density 的抖动网格出候选点（网格对齐地形的原点），每个点的随机数由种子、层、网格坐标
  *   哈希出来，所以同一个点不管哪个流式的格子、什么时候撒都一样；按坡度、高度、成片的噪声、离路和地物的距离筛，剩下的随机转、
@@ -15,7 +15,7 @@ import type { LoadedModel } from '../content/ContentManager';
 import type { Material } from '../rendering/mesh/Material';
 import { Mesh } from '../rendering/mesh/Mesh';
 import { Model } from '../rendering/components';
-import type { ScatterFile, ScatterLayerFile } from '../content/scatterFormat';
+import type { ScatterFile, ScatterLayerFile } from '../content/formats/scatterFormat';
 import { Matrix } from '../data/Matrix';
 import { prop, type Branded, type EntityId } from '../data/prop';
 import { Quaternion, Vector3 } from '../data/vectors';
@@ -27,8 +27,8 @@ import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Terrain, TerrainAsset, type TerrainPath } from './Terrain';
 import { changedRegions } from './TerrainSystem';
-import type { GroundBox } from '../city/City';
-import { underWater, waterAreas, type WaterArea } from '../water/Water';
+import type { GroundBox } from './City';
+import { underWater, waterAreas, type WaterArea } from './Water';
 import { hash32 } from '../data/hash';
 
 export type ScatterAssetId = Branded<number, 'ScatterAssetId'>;

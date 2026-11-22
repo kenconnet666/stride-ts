@@ -21,7 +21,7 @@
  * 材质可以换微表面模型的各项（Material.microfacet）、用卡通着色（Material.celShading）。
  * 输出线性的 HDR 颜色，后处理和色调映射在后面（postfx/PostProcessingEffects）。
  */
-import { CEL_RAMP_STOPS } from '../../content/format';
+import { CEL_RAMP_STOPS } from '../../content/formats/format';
 import { CLUSTER_WGSL } from '../lighting/Clusters';
 import { LOCAL_LIGHT_WGSL, LTC_WGSL } from '../lighting/LocalLights';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
@@ -130,7 +130,7 @@ struct Probe { center: vec4f, boxMin: vec4f, boxMax: vec4f, options: vec4f };
 // 云的影子：云重复的那一个周期里地面上每个点朝主光的透射率（Clouds.shadow），采样器 repeat
 @group(0) @binding(18) var cloudShadowMap: texture_2d<f32>;
 @group(0) @binding(19) var linearRepeat: sampler;
-// 天空遮挡（weather/SkyOcclusion.ts）：从上往下看的深度图，记着头顶最高的表面；valid.x 是 0 时（没有湿和雪、还没画过）不查，
+// 天空遮挡（world/SkyOcclusion.ts）：从上往下看的深度图，记着头顶最高的表面；valid.x 是 0 时（没有湿和雪、还没画过）不查，
 // valid.y 是深度图的边长
 struct SkyOcclusion { viewProjection: mat4x4f, valid: vec4u };
 // 深度图拷进的缓冲（valid.y x valid.y 个，按行存）：同 DFG 表，不占采样贴图的名额；只取一个纹素，不插值
@@ -428,7 +428,7 @@ struct Material {
 // effect：网格效果的参数（meshEffect.ts，Stride 的 Mesh.Parameters），没有效果时没用
 struct MeshParams { positionOffset: vec4f, positionScale: vec4f, uvTransform: vec4f, flags: u32, effect: MeshEffectParameters };
 @group(2) @binding(0) var<uniform> mesh: MeshParams;
-// 网格的形变数据（布局见 content/format.ts 的 MeshMorph）；没有形变的网格绑一个空的
+// 网格的形变数据（布局见 content/formats/format.ts 的 MeshMorph）；没有形变的网格绑一个空的
 @group(2) @binding(1) var<storage, read> morphData: array<u32>;
 // 管线常量：网格有形变时为 true，没有时形变的代码整段去掉
 override MORPHED: bool = false;

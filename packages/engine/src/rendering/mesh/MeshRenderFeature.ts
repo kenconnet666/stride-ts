@@ -9,7 +9,7 @@
  * - Prepare：把变换存储的世界矩阵列整段上传（直接从 wasm 内存，只传用到的那一段），动画系统算好的蒙皮矩阵也直接从 wasm 内存上传，各次剔除的结果（每个视图一段可见槽位）
  *   也直接从 wasm 内存上传成实例缓冲，每个视图的常量（相机、光照、阴影、天空盒）写进按视图分块的 uniform 缓冲（动态偏移）。
  * - Draw：每批一次实例化绘制；着色器用 worlds[slots[instance_index]] 取世界矩阵，firstInstance 是这个视图里这一批的起点。
- *   顶点布局（content/format.ts 的 VertexLayout）不同的网格用不同的管线；量化的属性在顶点着色器里按网格的参数还原
+ *   顶点布局（content/formats/format.ts 的 VertexLayout）不同的网格用不同的管线；量化的属性在顶点着色器里按网格的参数还原
  *   （第 2 组绑定），八面体编码的法线也在那里解开。蒙皮的批次用带关节和权重属性的管线：顶点先乘 4 个蒙皮矩阵的加权和
  *   （GPU 蒙皮，Stride 的 TransformationSkinning），再乘世界矩阵。阴影投射阶段只画投射阴影的批次，管线只写深度。
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
@@ -37,7 +37,7 @@ import { Skybox } from '../lighting/Skybox';
 import type { SubsurfaceMaterials } from '../screenspace/SubsurfaceScattering';
 import { MESH_EFFECT_PARAMETERS, meshEffectCode, type MeshEffect } from './meshEffect';
 import { DFG_LUT_HEIGHT, DFG_LUT_SHADER, DFG_LUT_WIDTH, materialTreesCode, MESH_SHADER, screenTextureCode } from './meshShader';
-import { CEL_RAMP_STOPS, vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/format';
+import { CEL_RAMP_STOPS, vertexLayoutOffsets, type MicrofacetModel, type VertexLayout } from '../../content/formats/format';
 import { Mesh } from './Mesh';
 import { HeightfieldTile, HeightPages } from './HeightPages';
 import { inRenderMask, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';

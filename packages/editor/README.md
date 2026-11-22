@@ -21,7 +21,7 @@ node packages/editor/src/server/cli.ts new apps/my-game
 `src/ui`：布局参考 JetBrains IDE（`App.tsx` 用 vue-tsx-pro 的 Workbench，`Toolbars.tsx`）。最上面是主工具条（工程名、保存、撤销、重做，右边试玩）；中间是视口（游戏页面本身，嵌在同源的 iframe 里，地址带 `?debug&stride-edit`），上面是文档页签和视口工具条（对选中实体的操作、吸附、画幅参考线）；面板是停在四周的工具窗口——左边场景树（上）和资源（下），右边属性面板，下边是正在编辑的时间轴、节点图或粒子（打开时自动出来）；两侧竖条上的图标显示、收起它们，显示哪些、各占多大记在浏览器的 localStorage 里；最下面是状态栏（提示和出错、选中几个、界面语言）。工程、资源列表还没读到，或视口还在打开游戏页面（`session.opening`）时，场景树、资源、属性面板、文档页签、视口画骨架屏。按钮、输入框、下拉框、菜单、页签都用 vue-tsx-pro 的组件。界面由第二个 Vite 服务器提供，第一次打开编辑器时才建（见 `src/server/vite.ts`），游戏页面不经过它。`src/` 根上是前后端共用的接口（`protocol.ts`）和前端的封装（`EditorClient.ts`），`src/server` 是后端。
 
 - 场景文档和撤销栈在界面这边（`ui/session.ts`），游戏页面里的实体跟着它；视口里拖操纵器、属性面板里改的，都是对文档的修改。
-- 属性面板照引擎的字段描述（`editor/fields.ts`）画控件；脚本的字段问游戏页面（它有脚本的类）。"添加组件"里也列出游戏登记的脚本，加上的脚本 `type` 写登记的名字（`game/player/PlayerInput#PlayerInput`）。加脚本、加组件时，它要同一个实体上有的组件（脚本的 `requires`、字段描述的 `requires`，比如日夜循环要物理天空）一起加上；去掉被依赖的组件时工具条上提示。必填属性没设的标红，保存时在工具条上列出来（试玩时这些脚本不挂）。
+- 属性面板照引擎的字段描述（`editor/fields/index.ts`）画控件；脚本的字段问游戏页面（它有脚本的类）。"添加组件"里也列出游戏登记的脚本，加上的脚本 `type` 写登记的名字（`game/player/PlayerInput#PlayerInput`）。加脚本、加组件时，它要同一个实体上有的组件（脚本的 `requires`、字段描述的 `requires`，比如日夜循环要物理天空）一起加上；去掉被依赖的组件时工具条上提示。必填属性没设的标红，保存时在工具条上列出来（试玩时这些脚本不挂）。
 - 不选实体时属性面板显示场景自己的设置（物理、导航、偏移、合成器，`SCENE_FIELDS`）：合成器、偏移改了视口马上变，物理、导航试玩时用上。
 - 快捷键：Ctrl+S 保存，Ctrl+Z / Ctrl+Y 撤销重做（焦点在视口里也行）；视口里 W、E、R 换操纵器，F 聚焦。
 - 吸附：视口工具条上的磁铁开关和移动（米）、旋转（度）、缩放（倍数）的步长；拖操纵器时按住 Ctrl 反过来（开着时临时不吸、关着时临时吸）。设置记在编辑器的会话里。
@@ -33,7 +33,7 @@ node packages/editor/src/server/cli.ts new apps/my-game
 - agent 工具：`node packages/editor/src/server/cli.ts mcp apps/<工程>` 用 stdio 起 MCP 服务（`src/mcp/server.ts`），工具有资源的读写、新建、删除、移动、导入，场景和预制体的修改（`edit_scene`，照字段描述检查），切精灵表（`slice_sprites`：按网格或自动找不透明的块），合成音效（`generate_sound`：按类别随机或在已有的附近变一点，sfxr 的参数），材质库和特效库（`list_library`、`use_library`：拷进工程、用在实体上或加进场景），大世界（`create_world` 建 `.world.json`，`place_in_world` 按世界坐标把实体放进对应格子的场景、补上索引，`world_info` 列格子），字段描述的 JSON Schema，截图、出片（`render`：离线渲染成 MP4 或 PNG 序列，存进工程的 `exports/`；编辑器页面上会开一个看不见的试玩页面来渲染）和页面命令（要开发服务器开着）。一个服务一次编辑一个工程，`switch_project` 换到仓库里别的工程（`project` 列出有哪些）。仓库根的 `.mcp.json` 已经把它登记成 Claude Code 的项目级 MCP 服务（`stride-editor`，从 `apps/open-world` 开始）。
 - 多语言：界面文字在 `src/ui/messages.ts`（界面）和 `src/ui/fieldMessages.ts`（组件、字段的名字和说明，按英语原文翻）里，自带简体中文和英语；`?lang=`、工具条右边的下拉框换语言。加字段描述时一起翻（`test/i18n.test.ts` 查）。
 - 验收：`pwsh tools/editor-accept/run.ps1 -Apps <样例>`（见 [tools/editor-accept](../../tools/editor-accept/README.md)）。
-- 编辑资源：资源浏览器里选中材质、JSON 写的模型，属性面板显示资源自己的字段（引擎 `editor/fields.ts` 的 `ASSET_FIELDS`：材质的常用字段有控件，颜色树、材质层这类按 JSON 改；模型按形状换字段），改了稍等一下就存进资源文件，视口里用到它的实体热重载。选实体时回到实体的字段。
+- 编辑资源：资源浏览器里选中材质、JSON 写的模型，属性面板显示资源自己的字段（引擎 `editor/fields/index.ts` 的 `ASSET_FIELDS`：材质的常用字段有控件，颜色树、材质层这类按 JSON 改；模型按形状换字段），改了稍等一下就存进资源文件，视口里用到它的实体热重载。选实体时回到实体的字段。
 - 关卡白盒：`.brush.json`（引擎的 `BrushFile`）存下（属性面板、`PUT /asset`、MCP 的 `write_asset`）或在磁盘上改了，后端就烘出同名的 `.model`（pipeline 的 `bakeBrushModel`，原生工具模块的 Manifold）；笔刷不对时保存报 400。白盒和它的模型一起挪、一起删。
 - SDF 建模：`.sdf.json`（引擎的 `SdfFile`）同白盒一样，存下或在磁盘上改了，后端就烘出同名的 `.model`（pipeline 的 `bakeSdfModel`，原生工具模块的 `st_sdf_mesh`：形状平滑地并、差、交，Manifold 的等值面网格化，再按几何误差简化）；两种都在后端的同一张烘焙表里（`#bake`），模型跟着源文件挪、删。资源浏览器的"新建 → SDF 模型"建一个椭球加球头的例子，属性面板里改形状、融合宽度，视口热重载。
 - 3D 文字：`.text.json`（引擎的 `TextModelFile`：文字、字体资源、字高、厚度、对齐、行距、字距）同样烘出同名的 `.model`（pipeline 的 `bakeTextModel`：字体资源的字形轮廓按 Manifold 挤出、挖洞，字面是材质槽 0、侧面和背面是槽 1）。"新建 → 3D 文字"用工程里的第一个字体。

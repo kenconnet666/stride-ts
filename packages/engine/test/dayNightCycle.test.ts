@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { Transform } from '../src/engine/transform';
 import { Game } from '../src/engine/Game';
 import { ContentManager } from '../src/content/ContentManager';
-import type { SceneFile } from '../src/content/format';
+import type { SceneFile } from '../src/content/formats/format';
 import { SkyAtmosphere, VolumetricClouds } from '../src/rendering/components';
 import { celestialState, DayNightCycle, dayNightCycleSystem, lightRotationTowards } from '../src/rendering/sky/DayNightCycle';
 import { Vector3 } from '../src/data/vectors';

@@ -404,7 +404,7 @@ export class Simulation {
   }
 
   /**
-   * 一块高度场的静态碰撞（地形的块，terrain/TerrainSystem.ts）：sampleCount² 个高度（按行 z 排）、格距 spacing 米，第一个样本放在
+   * 一块高度场的静态碰撞（地形的块，world/TerrainSystem.ts）：sampleCount² 个高度（按行 z 排）、格距 spacing 米，第一个样本放在
    * 世界坐标 position。射线、接触报的实体是 entity（地形实体）。返回拿掉它的函数（物体和形状一起释放）。
    */
   addHeightfield(entity: EntityId, heights: Float32Array, sampleCount: number, spacing: number, position: Vec3, { layer = 0, friction = 1 }: { layer?: number; friction?: number } = {}): () => void {
@@ -610,7 +610,7 @@ export class BodyControl {
 
   /**
    * 浮力（Stride 没有；Jolt 的 ApplyBuoyancyImpulse）：水面是过 surface（世界坐标）、法线 normal 的平面，按形状算水下的体积和浮心，
-   * 加浮力和阻力，水按 flow（米每秒）流。每个物理步之前调（water/Buoyancy.ts 的系统调它）。返回有没有部分在水下。
+   * 加浮力和阻力，水按 flow（米每秒）流。每个物理步之前调（world/Buoyancy.ts 的系统调它）。返回有没有部分在水下。
    */
   applyBuoyancy(surface: readonly number[], normal: readonly number[], buoyancy: number, linearDrag: number, angularDrag: number, flow: readonly number[] | undefined, deltaTime: number): boolean {
     if (this.#detached) return false;

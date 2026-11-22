@@ -20,7 +20,7 @@ import { Mesh } from '../rendering/mesh/Mesh';
 import { HeightfieldTile, HeightPages } from '../rendering/mesh/HeightPages';
 import { Character } from '../physics/components';
 import { Terrain, TerrainAsset, TerrainTile, type TerrainPath } from './Terrain';
-import type { TerrainFile } from '../content/terrainFormat';
+import type { TerrainFile } from '../content/formats/terrainFormat';
 import { heightfieldGrid, leafLevel, selectTiles, TILE_QUADS, TILE_SAMPLES, tileId, tilePageHeader, tileRect, type TileKey } from './terrainTiles';
 
 /** 同时在算的高度页最多几个（每页约 1 毫秒，工作线程上）。 */

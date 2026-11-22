@@ -1,5 +1,5 @@
 /**
- * 高度页（矢量地形的块用，见 terrain/TerrainSystem.ts）：所有块共用一个网格（32 × 32 格的平面加裙边），每块的高度放在一个大的
+ * 高度页（矢量地形的块用，见 world/TerrainSystem.ts）：所有块共用一个网格（32 × 32 格的平面加裙边），每块的高度放在一个大的
  * 存储缓冲里的一页，顶点着色器（meshShader.ts 的 vsHeightfield）按格坐标取高度、用相邻的高度算法线。这样整片地形是同一个网格、
  * 同一个材质，一次实例化绘制画完（每个视图一次），不是每块一个网格一次绘制。
  *
@@ -12,7 +12,7 @@
 import { component } from '../../engine/component';
 import { prop } from '../../data/prop';
 
-/** 一页每边的高度个数：32 格的块 33 个顶点，两边各多一圈。同 terrain/terrainTiles.ts 的 TILE_SAMPLES。 */
+/** 一页每边的高度个数：32 格的块 33 个顶点，两边各多一圈。同 world/terrainTiles.ts 的 TILE_SAMPLES。 */
 export const HEIGHT_PAGE_SAMPLES = 35;
 export const HEIGHT_PAGE_HEADER = 4;
 export const HEIGHT_PAGE_FLOATS = HEIGHT_PAGE_HEADER + HEIGHT_PAGE_SAMPLES * HEIGHT_PAGE_SAMPLES;

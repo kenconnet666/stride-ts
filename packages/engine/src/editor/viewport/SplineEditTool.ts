@@ -6,9 +6,9 @@
  * 起点，见 splineFormat.ts），拖、删的时候一起动。坐标同多边形编辑（PolyEditTool）：控制点是实体的本地坐标，画和点选用世界
  * 坐标，操纵器的结果换回本地再写进文件。
  */
-import type { SplineBranchFile, SplineFile, SplinePointFile } from '../content/splineFormat';
-import type { MatrixSource } from '../data/Matrix';
-import { sampleSpline, splinePaths, splinePoint, splineWeldKey } from '../modeling/spline';
+import type { SplineBranchFile, SplineFile, SplinePointFile } from '../../content/formats/splineFormat';
+import type { MatrixSource } from '../../data/Matrix';
+import { sampleSpline, splinePaths, splinePoint, splineWeldKey } from '../../modeling/spline';
 import { closestOnSegment, POLY_PICK_PIXELS, transformPoints } from './PolyEditTool';
 import type { GizmoChange } from './TransformGizmo';
 

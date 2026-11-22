@@ -1,5 +1,5 @@
 /**
- * 矢量地形的组件和资源（Stride 没有，新加的；W2）：Terrain 组件引用一个地形资源（`.terrain.json`，content/terrainFormat.ts），
+ * 矢量地形的组件和资源（Stride 没有，新加的；W2）：Terrain 组件引用一个地形资源（`.terrain.json`，content/formats/terrainFormat.ts），
  * TerrainSystem 按相机把它分块、分细节层次求值成网格画出来。地形以实体为中心、边长 size（米），跟着实体的变换摆。
  */
 import type { StrideNative, TerrainEvaluator } from '@stride-ts/native';
@@ -8,8 +8,8 @@ import { prop } from '../data/prop';
 import { ResourceTable } from '../engine/ResourceTable';
 import type { Branded } from '../data/prop';
 import type { Material } from '../rendering/mesh/Material';
-import { TERRAIN_NOISE_DEFAULTS, type TerrainFile, type TerrainSplineFile } from '../content/terrainFormat';
-import type { SplineFile } from '../content/splineFormat';
+import { TERRAIN_NOISE_DEFAULTS, type TerrainFile, type TerrainSplineFile } from '../content/formats/terrainFormat';
+import type { SplineFile } from '../content/formats/splineFormat';
 import { splineCenterlines, splineCorridorWidth } from '../modeling/spline';
 
 export type TerrainAssetId = Branded<number, 'TerrainAssetId'>;

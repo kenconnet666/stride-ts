@@ -880,7 +880,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
 这正是"一个东西不处理多次"：导入时一次转换到位，运行时只做上传和拷贝。
 
 **第一段（2026-11-18 已实现）**：
-- **格式**（`packages/engine/src/content/format.ts`，不依赖别的模块，管线通过 `@stride-ts/engine/content-format` 导入）：资源之间按内容路径引用（"包名/相对路径"，不带扩展名）。模型 `.model` 是一个小容器：12 字节头（magic `SMDL`、版本、JSON 长度）、JSON 头（网格表、材质槽）、数据区（每个网格的交错顶点和索引）；每个网格记下顶点布局（`VertexLayout`）、反量化参数和是否 meshopt 压缩，见下面的"体积"。材质 `.material.json`、场景 `.scene.json` 先用 JSON（父实体排在前面），以后场景换成二进制。
+- **格式**（`packages/engine/src/content/formats/format.ts`，不依赖别的模块，管线通过 `@stride-ts/engine/content-format` 导入）：资源之间按内容路径引用（"包名/相对路径"，不带扩展名）。模型 `.model` 是一个小容器：12 字节头（magic `SMDL`、版本、JSON 长度）、JSON 头（网格表、材质槽）、数据区（每个网格的交错顶点和索引）；每个网格记下顶点布局（`VertexLayout`）、反量化参数和是否 meshopt 压缩，见下面的"体积"。材质 `.material.json`、场景 `.scene.json` 先用 JSON（父实体排在前面），以后场景换成二进制。
 - **预制体**（2026-11-19，BepuSample）：导入器把 .sdprefab 导出成 `<路径>.prefab.json`（和场景一样的实体层级），脚本属性引用预制体时随场景一起加载（`ContentManager.loadPrefab`，引用的资源先加载好），`Prefab.instantiate(entities)` 每次建一组新实体、返回根实体，预制体里脚本的实体引用指向这一组。场景和预制体共用"预加载资源"和"按实体文件建实体"两步。和 Stride 不同：实体建出来就在游戏里，不用再加进场景。
 - **换场景**（2026-11-19）：`game.setRootScene(path | SceneReference)` 对应 Stride 给 `SceneSystem.SceneInstance.RootScene` 赋值：加载新场景（加载期间旧场景照常跑），加载好后先设 `game.rootScene` 再销毁旧场景文件里的实体（子实体、脚本、物体、连着的约束跟着去掉）；连着换几次按顺序来。`game.loadScene` 是叠加加载，不算根场景。脚本属性引用场景时得到 `SceneReference`（只有路径），引用的场景不随引用它的场景加载（场景之间常常互相引用），导入器也不跟着导入。和 Stride 不同：脚本运行中另建的实体不跟着旧场景销毁。
   `game.unloadScene(instance)` 卸载 `loadScene` 叠加加载的场景（Stride 的子场景 Scene.Children，BepuSample 的演示场景这样加载），`setRootScene` 也用它。

@@ -5,7 +5,7 @@
  *   fieldTypeSchema(COMPONENT_FIELDS.light.type)
  *   componentSchemas()   // { model: {...}, light: {...}, ... }
  */
-import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type Field, type FieldType } from './fields.ts';
+import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type Field, type FieldType } from './index.ts';
 
 export type JsonSchema = { readonly [key: string]: unknown };
 

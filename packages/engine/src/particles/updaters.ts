@@ -2,14 +2,14 @@
  * 粒子的更新器（Stride 的 Updaters）：每帧改活着的粒子。普通的在生成新粒子之前跑，后置的（IsPostUpdater）在之后。
  * 现在有的：力场、重力、按寿命改大小、颜色、转角，速度方向、碰撞；Stride 没有的：风、按深度表面碰撞（只在 GPU 上）。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import { curveSampler, type CurveSampler } from './curves';
 import { createFieldShape, FieldFalloff, type FieldShape } from './fieldShapes';
 import type { Vec3 } from './math';
 import { ParticleModule, value, type ParticleModuleKind, type ParticleTransform } from './modules';
 import type { AnyParticleField, ParticlePool } from './ParticlePool';
 import { RandomOffset, seedFloat } from './random';
-import type { WindField } from '../weather/WindField';
+import type { WindField } from '../world/WindField';
 import type { GpuDepthSurface } from '../rendering/DepthSurface';
 
 const ZERO_TOLERANCE = 1e-6;

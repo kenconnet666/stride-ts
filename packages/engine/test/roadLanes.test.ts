@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { SplineFile } from '../src/content/splineFormat';
+import type { SplineFile } from '../src/content/formats/splineFormat';
 import { roadLanes } from '../src/modeling/roadLanes';
 
 const round = (p: readonly number[]) => p.map((c) => Math.round(c * 1e6) / 1e6);

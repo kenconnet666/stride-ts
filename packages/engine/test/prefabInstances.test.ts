@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { SceneEntityFile } from '../src/content/format';
+import type { SceneEntityFile } from '../src/content/formats/format';
 import { availableParent, expandPrefabInstances, memberId, prefabPaths, setPath } from '../src/content/prefabInstances';
 
 const entity = (id: string, parent: string | null = null, extra: Partial<SceneEntityFile> = {}): SceneEntityFile =>

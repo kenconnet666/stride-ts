@@ -11,7 +11,7 @@
  * - ComputeShaderClassColor：游戏登记的着色器类（Stride 的 .sdsl 着色器类写成 WGSL），泛型参数按名字传。
  * 认不出的节点当白色。树的格式同粒子模块（ParticleModuleFile：$type 是首字母小写的类名，贴图是 TextureRef）。
  */
-import type { ParticleModuleFile, ParticleValue, TextureRef, TextureSampler } from '../../content/format';
+import type { ParticleModuleFile, ParticleValue, TextureRef, TextureSampler } from '../../content/formats/format';
 import { srgbToLinear } from '../../data/vectors';
 import type { ShaderClass } from '../shaderClass';
 import type { Texture } from '../../graphics/Texture';

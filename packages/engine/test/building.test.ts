@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { checkBuilding, parseFacadePattern, type BuildingFile } from '../src/content/buildingFormat';
+import { checkBuilding, parseFacadePattern, type BuildingFile } from '../src/content/formats/buildingFormat';
 import { buildingMeshes, insetPolygon, layoutFloor } from '../src/modeling/building';
 
 const modules = {

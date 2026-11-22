@@ -20,7 +20,7 @@ import { Matrix } from '../data/Matrix';
 import { saveImage } from '../editor/backendApi';
 import { encodePng } from './png';
 import type { Game } from '../engine/Game';
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import { ParticleRenderer } from '../particles/ParticleRenderer';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
 import type { Vec3 } from '../particles/math';

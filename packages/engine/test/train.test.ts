@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { trainSchedule, trainStateAt, type TrainScheduleOptions } from '../src/trains/Train';
+import { trainSchedule, trainStateAt, type TrainScheduleOptions } from '../src/world/Train';
 
 // 1 公里的轨道，两站（200 米、800 米处），限速 20、加减速 1 米每秒²，开关门各 2 秒、停 20 秒
 const line: TrainScheduleOptions = {

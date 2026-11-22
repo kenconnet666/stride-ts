@@ -9,7 +9,7 @@
  * 和 Stride 不同：一个实体上每种脚本只能有一个。Stride 场景里同一个实体上挂了几个同类的脚本时（比如 BepuSample 的
  * Ropes 有 5 个 RopeSpawnerComponent），第二个起挂到自动建的子实体上（变换是单位的，位置和父实体相同）。
  */
-import type { SceneAssetKind, SceneScript, SceneScriptValue } from './format';
+import type { SceneAssetKind, SceneScript, SceneScriptValue } from './formats/format';
 import type { EntityId } from '../data/prop';
 import type { Entity } from '../engine/Entity';
 import type { Registry } from '../engine/registry';

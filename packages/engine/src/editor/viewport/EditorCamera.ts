@@ -9,12 +9,12 @@
  * EditorCameraState 只有状态和算术（注视点、偏航、俯仰、距离），可以单测、也可以不经输入直接驱动（聚焦、动画）；
  * EditorCameraController 是挂在相机实体上的脚本，每帧读输入、改状态、写回 Transform。
  */
-import { prop } from '../data/prop';
-import { SyncScript } from '../engine/scripts';
-import { Transform } from '../engine/transform';
-import type { GameTime } from '../engine/GameTime';
-import { Camera } from '../rendering/components';
-import { Quaternion, Vector3, type Vec3Like } from '../data/vectors';
+import { prop } from '../../data/prop';
+import { SyncScript } from '../../engine/scripts';
+import { Transform } from '../../engine/transform';
+import type { GameTime } from '../../engine/GameTime';
+import { Camera } from '../../rendering/components';
+import { Quaternion, Vector3, type Vec3Like } from '../../data/vectors';
 
 /** 俯仰不到正上、正下：留一点，朝向才不会翻过去。 */
 const MAX_PITCH = Math.PI / 2 - 0.001;

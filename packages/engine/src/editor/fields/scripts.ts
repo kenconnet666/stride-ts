@@ -1,5 +1,5 @@
 /** 没有手写描述的值的字段：按值推（inferFields）、按脚本的 prop 声明换（scriptFields）。 */
-import type { SceneScriptValue } from '../../content/format';
+import type { SceneScriptValue } from '../../content/formats/format';
 import type { AssetKind } from '../../content/references';
 import type { PropOptions } from '../../data/prop';
 import type { ScriptConstructor } from '../../engine/scripts';

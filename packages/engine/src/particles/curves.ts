@@ -3,7 +3,7 @@
  * 类型插值（Linear 线性，其余停在左边的值），再烘焙成 32 个均匀的采样点，求值时在采样点之间线性插值（同 Stride，所以关键帧
  * 之间的拐角会被削平一点）。值是 Float、Vector2/3/4、Color4（都按分量线性）或 Quaternion（归一化的线性插值）。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 
 const BAKED = 32;
 

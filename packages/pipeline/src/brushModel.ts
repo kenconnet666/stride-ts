@@ -1,5 +1,5 @@
 /**
- * 关卡白盒的烘焙（引擎 content/assetFormat.ts 的 BrushFile）：笔刷按顺序加、减、求交（原生工具模块的 Manifold，`brushCsg`），
+ * 关卡白盒的烘焙（引擎 content/formats/assetFormat.ts 的 BrushFile）：笔刷按顺序加、减、求交（原生工具模块的 Manifold，`brushCsg`），
  * 结果按笔刷的材质槽分成网格，平直的法线（白盒的硬边），UV 按面的朝向投影世界坐标（uvScale 米一个周期：贴网格图时相邻的面、
  * 不同的笔刷都接得上，同虚幻 CubeGrid 的默认 UV），同一平面上位置相同的顶点合并。写成普通的模型（量化加 meshopt），场景照常引用。
  *

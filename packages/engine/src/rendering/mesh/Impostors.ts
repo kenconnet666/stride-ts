@@ -21,7 +21,7 @@
  *   game.content.addModel(entity, far);
  */
 import type { LoadedModel } from '../../content/ContentManager';
-import { FLOAT_LAYOUT, VERTEX_FLOATS } from '../../content/format';
+import { FLOAT_LAYOUT, VERTEX_FLOATS } from '../../content/formats/format';
 import { Matrix } from '../../data/Matrix';
 import type { Game } from '../../engine/Game';
 import type { Entity } from '../../engine/Entity';

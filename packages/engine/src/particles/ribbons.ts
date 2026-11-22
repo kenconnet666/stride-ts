@@ -7,7 +7,7 @@
  * UV：U 横跨带子，V 沿着带子（AsIs 每段 0 到 1，Stretched 整条 0 到 TexCoordsFactor，DistanceBased 按走过的距离乘
  * TexCoordsFactor），再按 UVRotate 翻转、旋转，最后按材质的 UV 帧（翻页、滚动）变换。颜色按粒子，一个粒子的几个四边形同色。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import { rotate, type Vec3 } from './math';
 import { value } from './modules';
 import type { ParticleEmitter } from './ParticleEmitter';

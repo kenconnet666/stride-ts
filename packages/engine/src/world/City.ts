@@ -6,8 +6,8 @@
  *   entity.add(City.with({ city: (await game.content.loadCity('Cities/Valley')).id }));
  */
 import type { LoadedModel } from '../content/ContentManager';
-import type { CityFile } from '../content/cityFormat';
-import type { SplineFile } from '../content/splineFormat';
+import type { CityFile } from '../content/formats/cityFormat';
+import type { SplineFile } from '../content/formats/splineFormat';
 import { Matrix } from '../data/Matrix';
 import { prop, type Branded, type EntityId } from '../data/prop';
 import { component } from '../engine/component';
@@ -93,7 +93,7 @@ export class CitySystem {
   readonly #inverse = new Float64Array(16);
   /** 摆过几次城、一共摆了几栋楼（调试命令 city 报）。 */
   built = { cities: 0, buildings: 0 };
-  /** 楼摆了、拿掉了一次加一；程序化摆放（terrain/Scatter.ts）按它知道要避开的楼变了。 */
+  /** 楼摆了、拿掉了一次加一；程序化摆放（world/Scatter.ts）按它知道要避开的楼变了。 */
   version = 0;
   /** 每次改动的范围（世界的 x0、z0、x1、z1），只留最近 CHANGE_LOG 次。 */
   readonly #changes: { readonly version: number; readonly bounds: [number, number, number, number] }[] = [];

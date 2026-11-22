@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { entityAssetReferences } from '../src/content/references';
-import { checkEntity } from '../src/editor/fields';
-import type { SceneEntityFile } from '../src/content/format';
+import { checkEntity } from '../src/editor/fields/index';
+import type { SceneEntityFile } from '../src/content/formats/format';
 import { Matrix } from '../src/data/Matrix';
 import { DECAL_FLOATS, decalBounds, packAtlas, packDecal, tileSize } from '../src/rendering/mesh/Decals';
 import { CLUSTER_GRID, clusterIndex, clusterParams } from '../src/rendering/lighting/Clusters';

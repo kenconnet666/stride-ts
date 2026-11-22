@@ -8,7 +8,7 @@
  *   `$entity`）改成实例成员的 id `<根>/<后代>`。
  * - 只做场景文档里的普通实体：预制体的实例、实例的成员不行（实例已经是引用了；成员要先在预制体里改）。
  */
-import type { PrefabFile, SceneEntityFile } from '../content/format';
+import type { PrefabFile, SceneEntityFile } from '../content/formats/format';
 import { renameReferences } from '../content/prefabInstances';
 import type { EntitiesFile, SceneEdit } from './SceneDocument';
 

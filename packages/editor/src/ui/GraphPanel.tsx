@@ -1,5 +1,5 @@
 /**
- * 节点图面板（材质的 graph，引擎 graph/nodeGraph.ts、rendering/mesh/materialGraph.ts）：属性面板里开着的材质的节点图，画在
+ * 节点图面板（材质的 graph，引擎 content/formats/nodeGraph.ts、rendering/mesh/materialGraph.ts）：属性面板里开着的材质的节点图，画在
  * vue-tsx-pro 的 Diagram 上（平移缩放、选择、拖节点、端口之间连线都是它的）。节点是卡片，输出在右、输入在左，参数在下面直接改；
  * 最右边是材质的输出（基础色、金属度……）。操作：
  * - 拖节点移动（材质的输出跟着最右边的节点，不能拖），拖空白处平移（小手），滚轮或触控板捏合缩放；

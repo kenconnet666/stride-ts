@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { AnimationComponent, evaluateMorphCurve, ModelMorphs, MorphStack, type AnimationBlendStack, type AnimationClip } from '../src/index';
-import { decodeModel, encodeModel, MORPH_ENTRY_WORDS, packMeshMorph, plainMesh } from '../src/content/format';
+import { decodeModel, encodeModel, MORPH_ENTRY_WORDS, packMeshMorph, plainMesh } from '../src/content/formats/format';
 
 /** 只有时长和重复方式的假剪辑：AnimationComponent 只读这几个字段。 */
 const clip = (name: string, duration: number, repeatMode: AnimationClip['repeatMode'] = 'loopInfinite') => ({ name, duration, repeatMode, curves: [] as AnimationClip['curves'] }) as AnimationClip;

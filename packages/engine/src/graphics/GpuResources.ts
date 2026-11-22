@@ -2,7 +2,7 @@
  * 渲染特性共用的 GPU 资源：贴图和立方体贴图第一次用到时上传，天空盒的镜面立方体贴图第一次用到时生成，之后复用
  * （Mesh、Material 这些数据对象本身不碰 GPU），还有几个常用的默认资源和采样器。渲染系统销毁时一起释放。
  */
-import { CUBEMAP_TEXEL_BYTES, type TextureSampler } from '../content/format';
+import { CUBEMAP_TEXEL_BYTES, type TextureSampler } from '../content/formats/format';
 import { MipmapGenerator } from './MipmapGenerator';
 import type { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import { CubemapPrefilter, prefilterSkybox } from '../rendering/lighting/CubemapPrefilter';

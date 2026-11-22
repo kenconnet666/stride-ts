@@ -4,7 +4,7 @@
  * 风源是带 WindZone 组件的实体：
  * - directional：全局的风，方向是实体的 -Z（Stride 的前方），所有地方都吹；
  * - spherical：局部的风，从实体的位置往外吹，强度在半径里线性衰减到 0。
- * 场景里有天气状态（weather/Weather.ts）时，它给的风也算进全局风。
+ * 场景里有天气状态（world/Weather.ts）时，它给的风也算进全局风。
  * 都有阵风（pulse：强度按时间起伏）和湍流（turbulence：按位置、时间变的扰动，单位同风速）。全局风的阵风、湍流、局部风源
  * 都是时间和位置的确定函数，CPU（这里）和 GPU（windWgsl）用同一个公式，粒子在哪边模拟都一样。
  *
@@ -82,7 +82,7 @@ export class WindField {
   version = 0;
   /** 取风用的时间（秒，game.updateTime.total）；阵风、湍流按它变。 */
   time = 0;
-  /** 天气状态给的全局风（weather/Weather.ts 每帧写；没有天气时是 undefined），和 directional 的风源加在一起。 */
+  /** 天气状态给的全局风（world/Weather.ts 每帧写；没有天气时是 undefined），和 directional 的风源加在一起。 */
   weather: GlobalWind | undefined;
   #grid = new Map<string, number[]>();
   #key = '';

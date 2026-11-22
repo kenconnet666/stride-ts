@@ -2,7 +2,7 @@
  * 粒子系统（Stride 的 ParticleSystem）：一组发射器，加上播放状态（播放、暂停、停止、超时）和预热。位置、旋转、统一缩放由
  * ParticleSystemComponent 每帧按实体的世界变换设。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import { rotate, type Quat, type Vec3 } from './math';
 import { NO_CONTEXT, value, type ParticleContext } from './modules';
 import { ParticleEmitter, type EmitterParent } from './ParticleEmitter';

@@ -10,7 +10,7 @@
  * - 车门（TrainDoor）开的时候从原来的位置挪 offset：在车厢下面的门跟着这列车，写了 station 的门（站台的屏蔽门）在任何一列车
  *   停在那个站、开着门的时候开。
  */
-import type { SplineFile } from '../content/splineFormat';
+import type { SplineFile } from '../content/formats/splineFormat';
 import { prop } from '../data/prop';
 import { Quaternion, Vector3 } from '../data/vectors';
 import type { Entity } from '../engine/Entity';

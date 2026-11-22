@@ -1,5 +1,5 @@
 /**
- * 材质节点图（材质文件的 graph，格式见 graph/nodeGraph.ts）：节点库和编译成 WGSL。参考 Substance Designer、Material Maker、
+ * 材质节点图（材质文件的 graph，格式见 content/formats/nodeGraph.ts）：节点库和编译成 WGSL。参考 Substance Designer、Material Maker、
  * ArmorPaint 的节点：输入（UV、位置、时间、数、颜色、贴图）、生成器（噪声、Voronoi、砖块、棋盘格、渐变、圆）、运算（加减乘、
  * 混合、反相、色阶、幂、颜色渐变）、法线（从高度算）、UV 变换。
  *
@@ -9,8 +9,8 @@
  *
  * 端口的种类不同时自动转换：数到向量是重复，向量到数取第一个分量，颜色是 vec4（alpha）。颜色参数和颜色常量都是线性的。
  */
-import type { FieldType } from '../../editor/fields';
-import { sortGraph, type GraphFile, type GraphLink, type NodeSpec, type PortSpec, type PortType } from '../../graph/nodeGraph';
+import type { FieldType } from '../../editor/fields/index';
+import { sortGraph, type GraphFile, type GraphLink, type NodeSpec, type PortSpec, type PortType } from '../../content/formats/nodeGraph';
 import type { ColorTreeCompiler } from './colorTree';
 
 /** 材质的哪些属性能接到图上，各是什么种类。 */

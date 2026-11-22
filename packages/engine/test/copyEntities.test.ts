@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { SceneEntityFile, SceneFile } from '../src/content/format';
+import type { SceneEntityFile, SceneFile } from '../src/content/formats/format';
 import { expandPrefabInstances } from '../src/content/prefabInstances';
 import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEntities, positionAfter } from '../src/editor/copyEntities';
 import { SceneDocument, UndoStack } from '../src/editor/SceneDocument';

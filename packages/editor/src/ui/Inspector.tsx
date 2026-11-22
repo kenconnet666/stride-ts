@@ -108,7 +108,7 @@ function parentHint(session: EditorSession, entity: SceneEntityFile) {
 }
 
 /**
- * 属性面板：选中的实体的名字、变换和每个组件的字段，照着引擎的字段描述（editor/fields.ts）画；脚本的字段问游戏页面
+ * 属性面板：选中的实体的名字、变换和每个组件的字段，照着引擎的字段描述（editor/fields/index.ts）画；脚本的字段问游戏页面
  * （它有脚本的类，见 EditAgent.scriptFields），游戏里没有这个脚本时按原样的 JSON 改。"添加组件"里也列出游戏登记的脚本
  * （EditAgent.scriptTypes），加上的脚本 type 写登记的名字、属性先都用脚本的默认值。改一个值是对场景文档的一次 set，
  * 连着改同一个值（拖数字、打字）并成撤销的一步。

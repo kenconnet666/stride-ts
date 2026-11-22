@@ -2,7 +2,7 @@
  * 世界的流式加载（Stride 没有，新加的；照虚幻 5 的 World Partition）：`game.world.load('Worlds/Island')` 读 `.world.json`，常驻场景
  * 当根场景，之后每帧看流式源（主画面的相机、带 StreamingSource 的实体）在哪，按各图层的加载半径加载附近有内容的格子、卸载远了的。
  *
- * - 格子是普通的场景（content/worldFormat.ts），加载时 offset 是格子的原点，挂在常驻场景下面；
+ * - 格子是普通的场景（content/formats/worldFormat.ts），加载时 offset 是格子的原点，挂在常驻场景下面；
  * - 同时最多 MAX_LOADING 个格子在读，近的先读；读好时已经不要了（走远了、换了世界）就马上卸载；
  * - 卸载有滞后：离开加载半径的 1.25 倍才卸载，在边上来回走不会反复加载；
  * - 编辑状态（`game.editing`）不自己流式加载：编辑器按编辑相机加载格子（以后的世界视图）。
@@ -16,7 +16,7 @@ import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
 import type { SceneInstance } from '../content/ContentManager';
-import { cellOrigin, distanceToCell, worldCellPath, type WorldFile } from '../content/worldFormat';
+import { cellOrigin, distanceToCell, worldCellPath, type WorldFile } from '../content/formats/worldFormat';
 
 /** 流式源：世界的格子按它（和主画面的相机）附近加载。玩家、载具、要提前加载的远处的过场相机上放一个。 */
 export const StreamingSource = component('StreamingSource', {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { ContentManager } from '../src/content/ContentManager';
-import type { MaterialFile } from '../src/content/format';
+import type { MaterialFile } from '../src/content/formats/format';
 import { Material } from '../src/rendering/mesh/Material';
 
 describe('扩展材质：光泽和各向异性', () => {

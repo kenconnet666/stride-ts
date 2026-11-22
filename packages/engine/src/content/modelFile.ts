@@ -5,7 +5,7 @@
  *
  *   { "format": 1, "procedural": { "type": "cube", "size": [2, 1, 2] }, "materials": ["Materials/Ground"] }
  */
-import { decodeModel, plainMesh, VERTEX_FLOATS, type ModelData } from './binaryFormat.ts';
+import { decodeModel, plainMesh, VERTEX_FLOATS, type ModelData } from './formats/binaryFormat.ts';
 import { generateProceduralMesh, PROCEDURAL_SHAPES, proceduralTangents, type ProceduralModel } from '../rendering/mesh/procedural.ts';
 
 export const PROCEDURAL_MODEL_FORMAT = 1;

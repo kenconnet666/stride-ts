@@ -3,7 +3,7 @@
  * stride-tools 算，同 Stride 的 SkyboxGenerator）；镜面是按粗糙度预滤波的立方体贴图，渲染系统第一次用到时在 GPU 上
  * 从 radiance 生成（SkyboxPrefilter.ts）。和 Mesh 一样只是数据，按 id 登记，组件的列里存 id；GPU 资源由渲染系统管理。
  */
-import type { CubemapData } from '../../content/format';
+import type { CubemapData } from '../../content/formats/format';
 import type { Branded } from '../../data/prop';
 import { ResourceTable } from '../../engine/ResourceTable';
 
@@ -13,7 +13,7 @@ export type SkyboxId = Branded<number, 'SkyboxId'>;
 const cubemaps = new ResourceTable<Cubemap>();
 const skyboxes = new ResourceTable<Skybox>();
 
-/** HDR 立方体贴图，带 mip（格式和布局见 content/format.ts 的 CubemapData）。 */
+/** HDR 立方体贴图，带 mip（格式和布局见 content/formats/format.ts 的 CubemapData）。 */
 export class Cubemap {
   readonly id: CubemapId;
   readonly name: string;

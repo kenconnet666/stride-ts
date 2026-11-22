@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../src/content/format';
+import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../src/content/formats/format';
 import { parseColor, parseMarkdown, plainText, type RichDocument } from '../src/rendering/text/markdown';
 import { layoutRichText, lineOffset, type RichFonts, type RichLayoutOptions, type RichTextLayout } from '../src/rendering/text/richLayout';
 import { SpriteFont } from '../src/rendering/text/SpriteFont';

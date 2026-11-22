@@ -1,5 +1,5 @@
 /**
- * 时间轴（content/assetFormat.ts 的 TimelineFile）在运行时：某个时刻各条轨道是什么样。求值是无状态的——给一个时刻就能把
+ * 时间轴（content/formats/assetFormat.ts 的 TimelineFile）在运行时：某个时刻各条轨道是什么样。求值是无状态的——给一个时刻就能把
  * 场景摆成那一刻的样子（属性、相机、字幕、角色在放哪个动画剪辑的第几秒），所以编辑器里拖时间、成片逐帧出、游戏里按帧播放
  * 都走同一个 `evaluate`；声音、事件这些"经过某个时刻才发生"的由播放的一方按前后两个时刻比较（`crossed`）。
  *
@@ -8,9 +8,9 @@
  */
 import type { ComponentType } from '../engine/component';
 import type { Entity } from '../engine/Entity';
-import { AnimationComponent } from '../animation/AnimationComponent';
-import { evaluateCurve, writeCurveValue, type PropertyCurve } from '../animation/curves';
-import type { TimelineFile, TimelineTrackFile } from '../content/format';
+import { AnimationComponent } from './AnimationComponent';
+import { evaluateCurve, writeCurveValue, type PropertyCurve } from './curves';
+import type { TimelineFile, TimelineTrackFile } from '../content/formats/format';
 import type { Sound } from '../audio/Sound';
 
 /** 时间轴怎么找到场景里的东西。 */

@@ -6,9 +6,9 @@ import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { dayNightCycleSystem } from '../rendering/sky/DayNightCycle';
 import { hook } from './events';
 import { ContentManager, type CompositorSettings, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
-import type { SceneFile } from '../content/format';
+import type { SceneFile } from '../content/formats/format';
 import { Metrics } from '../debug/Metrics';
-import type { EditAgent } from '../editor/EditAgent';
+import type { EditAgent } from '../editor/viewport/EditAgent';
 import { registerGameCommands } from '../debug/commands';
 import { Debug } from '../debug/Debug';
 import { DebugText } from '../debug/DebugText';
@@ -26,8 +26,8 @@ import { InputManager } from '../input/InputManager';
 import { Simulation } from '../physics/Simulation';
 import { NavigationSystem } from '../physics/NavigationSystem';
 import { AudioEmitterComponent, AudioListenerComponent } from '../audio/AudioEmitterComponent';
-import { Train, TrainDoor } from '../trains/Train';
-import { TimelinePlayer } from '../timeline/TimelinePlayer';
+import { Train, TrainDoor } from '../world/Train';
+import { TimelinePlayer } from '../animation/TimelinePlayer';
 import { cameraRigSystem } from '../rendering/CameraRig';
 import { RecastNavigationComponent } from '../physics/RecastNavigationComponent';
 import { AtmosphereRenderFeature } from '../rendering/sky/AtmosphereRenderFeature';
@@ -40,15 +40,15 @@ import { RenderSystem, type SceneRenderer } from '../rendering/RenderSystem';
 import { browserImageDecoder, ktx2Decoder } from '../graphics/Texture';
 import { AudioEngine } from '../audio/AudioEngine';
 import { ParticleSystemComponent, ParticleSystems } from '../particles/ParticleSystemComponent';
-import { gust, WindField } from '../weather/WindField';
+import { gust, WindField } from '../world/WindField';
 import { VEGETATION_LOCAL_WINDS } from '../rendering/mesh/meshShader';
-import { PrecipitationSystem } from '../weather/Precipitation';
-import { WeatherSystem } from '../weather/Weather';
+import { PrecipitationSystem } from '../world/Precipitation';
+import { WeatherSystem } from '../world/Weather';
 import { WorldStreaming } from '../world/WorldStreaming';
-import { TerrainSystem } from '../terrain/TerrainSystem';
-import { ScatterSystem } from '../terrain/Scatter';
-import { CitySystem } from '../city/City';
-import { BuoyancySystem } from '../water/Buoyancy';
+import { TerrainSystem } from '../world/TerrainSystem';
+import { ScatterSystem } from '../world/Scatter';
+import { CitySystem } from '../world/City';
+import { BuoyancySystem } from '../world/Buoyancy';
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
@@ -198,13 +198,13 @@ export class Game {
   readonly renderOrigin: [number, number, number] = [0, 0, 0];
   /** 世界的流式加载（Stride 没有）：`game.world.load('Worlds/Island')` 换成一个 `.world.json` 的世界，格子按相机和 StreamingSource 加载。 */
   readonly world = new WorldStreaming(this);
-  /** 矢量地形（Stride 没有）：Terrain 实体按相机分块、分细节层次求值成网格（terrain/TerrainSystem.ts）。 */
+  /** 矢量地形（Stride 没有）：Terrain 实体按相机分块、分细节层次求值成网格（world/TerrainSystem.ts）。 */
   readonly terrain = new TerrainSystem(this);
-  /** 程序化摆放（Stride 没有）：Scatter 组件按规则在地形上撒模型，相机附近的格子现撒（terrain/Scatter.ts）。 */
+  /** 程序化摆放（Stride 没有）：Scatter 组件按规则在地形上撒模型，相机附近的格子现撒（world/Scatter.ts）。 */
   readonly scatter = new ScatterSystem(this);
-  /** 浮力（Stride 没有）：Buoyancy 组件的刚体在水里浮起来、顺着河流走（water/Buoyancy.ts）。 */
+  /** 浮力（Stride 没有）：Buoyancy 组件的刚体在水里浮起来、顺着河流走（world/Buoyancy.ts）。 */
   readonly buoyancy = new BuoyancySystem(this);
-  /** 城市（Stride 没有）：City 组件按 .city.json 的规则沿路摆楼（city/City.ts）。 */
+  /** 城市（Stride 没有）：City 组件按 .city.json 的规则沿路摆楼（world/City.ts）。 */
   readonly city = new CitySystem(this);
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
   readonly particles = new ParticleSystems();
@@ -234,7 +234,7 @@ export class Game {
   /** 内容加载完成（或换了根场景）时的帧号。 */
   sceneFrame: number | undefined;
   /**
-   * 编辑状态（编辑器把游戏页面开成这样，见 editor/EditAgent）：游戏照常启动、加载它的场景，但场景文件里的脚本不挂、
+   * 编辑状态（编辑器把游戏页面开成这样，见 editor/viewport/EditAgent）：游戏照常启动、加载它的场景，但场景文件里的脚本不挂、
    * 仿真不走，画面由编辑相机看。run 的时候定，之后不变。
    */
   editing = false;
@@ -359,7 +359,7 @@ export class Game {
       await this.loadContent();
       this.startup.content = performance.now();
       // 编辑器的代理只在编辑状态用到：单独加载，不进游戏的主包
-      if (this.editing) this.editor = new (await import('../editor/EditAgent')).EditAgent(this);
+      if (this.editing) this.editor = new (await import('../editor/viewport/EditAgent')).EditAgent(this);
     } catch (error) {
       this.fail(error);
       throw error;

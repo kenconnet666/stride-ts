@@ -1,5 +1,5 @@
 /**
- * 水体（W6，Stride 没有）：Water 组件引用一个 `.water.json`（content/waterFormat.ts），实体的位置是水面。画法参考 WickedEngine 的
+ * 水体的渲染器（RenderSystem.water，W6；组件、资源、占的地方在 Water.ts）。画法参考 WickedEngine 的
  * ocean（屏幕空间的折射、按水深的吸收、岸边泡沫）和 GPU Gems 第 1 章的 Gerstner 波，按我们的规模做成一个自带管线的渲染器
  * （同高斯泼溅）：
  * - 网格：以相机为中心的极坐标网格（近处密、往外按几何级数变疏，铺到 extent），顶点着色器把它放到水面上、叠 6 组 Gerstner 波
@@ -13,19 +13,14 @@
  *   就是水面的倒影：按屏幕坐标（u 翻回来）取、按法线偏开；浪陡的地方倒影不准，退回天空的反射（同 WickedEngine）。
  * - 水下（相机低于湖、海的水面，在岸线里）：先画一遍全屏的水下雾（按场景的深度用水的颜色和清澈度盖上，天空也被盖住），水面从
  *   下面看时法线反过来，透过水面看上面（那份拷贝），超过全反射的临界角（水的折射率 1.33）反射水的颜色，水面本身也按距离加雾。
- * - 海浪谱（文件的 waves.spectrum）：浪不用 Gerstner，用 FFT 算的三级平铺的位移图（water/OceanFFT.ts，每帧合成器在主画面之前
+ * - 海浪谱（文件的 waves.spectrum）：浪不用 Gerstner，用 FFT 算的三级平铺的位移图（world/OceanFFT.ts，每帧合成器在主画面之前
  *   simulate）：顶点按网格的疏密取对应的 mip 级叠位移，片元取斜率算法线，位移的雅可比小于阈值（浪尖挤在一起）的地方起白沫。
  * - 下雨（天气的 rain，RenderSystem.surfaceWeather）：水面上一圈圈的雨点涟漪（同地面水洼的 rippleGradient），雨越大越密。
  * - 只画主画面（要那份拷贝），在不透明的之后、透明的之前，读深度、不写。
  */
-import type { SplineFile } from '../content/splineFormat';
-import type { WaterFile } from '../content/waterFormat';
-import { sampleSpline, splinePaths } from '../modeling/spline';
-import { WATER_MAX_OUTLINE } from '../content/waterFormat';
-import { prop, type Branded, type EntityId } from '../data/prop';
-import { component } from '../engine/component';
-import { shaderTime, type GameTime } from '../engine/GameTime';
-import { ResourceTable } from '../engine/ResourceTable';
+import { WATER_MAX_OUTLINE } from '../content/formats/waterFormat';
+import type { EntityId } from '../data/prop';
+import { shaderTime } from '../engine/GameTime';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import type { GpuResources } from '../graphics/GpuResources';
@@ -35,138 +30,7 @@ import type { Refraction } from '../rendering/screenspace/Refraction';
 import type { PlanarReflections } from '../rendering/lighting/PlanarReflections';
 import { RAIN_RIPPLES } from '../rendering/wgsl';
 import { OCEAN_CASCADES, OCEAN_SIZE, OceanFFT, oceanPatches, windSeaHeight, type OceanSettings } from './OceanFFT';
-
-export type WaterAssetId = Branded<number, 'WaterAssetId'>;
-
-/** 水体：实体的位置是水面（本地 y = 0），水体文件里的岸线是本地的 [x, z]。 */
-export const Water = component('Water', {
-  water: prop.u32().brand<'WaterAssetId'>().default(0 as WaterAssetId),
-});
-
-const assets = new ResourceTable<WaterAsset>();
-
-/**
- * 一片水在世界里占哪儿：水面的高度、岸线（世界的 [x, z]；海是 undefined，哪儿都是）；河是 river：中心线（世界的 [x, 水面高度, z]）
- * 和半宽。
- */
-export interface WaterArea {
-  readonly level: number;
-  readonly outline: readonly (readonly [number, number])[] | undefined;
-  readonly river?: { readonly line: readonly (readonly [number, number, number])[]; readonly halfWidth: number; readonly speed: number };
-}
-
-/** 河的水面每隔多少米一节。 */
-const RIVER_STEP = 2;
-/** 河的水面网格一个顶点几个 float：本地的 x、水面高度、z，弧长；流向的 x、z，横向（−1..1），半宽。 */
-export const RIVER_VERTEX_FLOATS = 8;
-
-/**
- * 河的水面：样条每条路径每 RIVER_STEP 米一节，两边按样条的宽展开，水面比样条低 level 米；三角形列表（不用索引），坐标是样条的
- * （= 实体的本地）。
- */
-export function riverRibbon(spline: SplineFile, level: number): Float32Array {
-  const width = spline.profile.type === 'river' ? spline.profile.width : 4;
-  const out: number[] = [];
-  for (const path of splinePaths(spline)) {
-    const frames = sampleSpline(path.points, path.closed ?? false, RIVER_STEP);
-    for (let i = 0; i + 1 < frames.length; i++) {
-      const pair = [frames[i]!, frames[i + 1]!];
-      const corner = (k: number, side: number) => {
-        const f = pair[k]!, half = (width * f.width) / 2;
-        const rl = Math.hypot(f.right[0], f.right[2]) || 1, tl = Math.hypot(f.tangent[0], f.tangent[2]) || 1;
-        out.push(f.position[0] + (f.right[0] / rl) * half * side, f.position[1] - level, f.position[2] + (f.right[2] / rl) * half * side, f.distance,
-          f.tangent[0] / tl, f.tangent[2] / tl, side, half);
-      };
-      corner(0, -1); corner(0, 1); corner(1, 1);
-      corner(0, -1); corner(1, 1); corner(1, -1);
-    }
-  }
-  return Float32Array.from(out);
-}
-
-const areaQuery = system('waterAreas', {
-  with: { water: Water, transform: Transform },
-  update: ({ water, transform, count }) => {
-    for (let i = 0; i < count; i++) {
-      const asset = WaterAsset.byId(water.water[i]!);
-      if (!asset) continue;
-      const w = transform.slot[i]! * 16, m = transform.world;
-      const toWorld = (x: number, y: number, z: number) => [m[w]! * x + m[w + 4]! * y + m[w + 8]! * z + m[w + 12]!, m[w + 1]! * x + m[w + 5]! * y + m[w + 9]! * z + m[w + 13]!, m[w + 2]! * x + m[w + 6]! * y + m[w + 10]! * z + m[w + 14]!] as const;
-      const river = asset.river;
-      if (river) {
-        const level = asset.file.river?.level ?? 0.3;
-        for (const path of splinePaths(river)) {
-          const line = sampleSpline(path.points, path.closed ?? false, RIVER_STEP * 2).map((f) => toWorld(f.position[0], f.position[1] - level, f.position[2]));
-          collected.push({ level: Number.NaN, outline: undefined, river: { line, halfWidth: (river.profile.type === 'river' ? river.profile.width : 4) / 2, speed: asset.file.river?.speed ?? 1.5 } });
-        }
-        continue;
-      }
-      collected.push({
-        level: m[w + 13]!,
-        outline: asset.file.outline?.map(([x, z]) => [toWorld(x, 0, z)[0], toWorld(x, 0, z)[2]] as const),
-      });
-    }
-  },
-});
-let collected: WaterArea[] = [];
-
-/** 场景里的水体占的地方（程序化摆放不往水下撒）。 */
-export function waterAreas(entities: { run: (query: typeof areaQuery, time: GameTime) => void }, time: GameTime): WaterArea[] {
-  collected = [];
-  entities.run(areaQuery, time);
-  return collected;
-}
-
-/** 点（世界的 x、高度 y、z）在不在水下（河：离中心线半宽以内、低于那里的水面）。 */
-export function underWater(areas: readonly WaterArea[], x: number, y: number, z: number): boolean {
-  return areas.some((area) => (area.river ? underRiver(area.river, x, y, z) : y < area.level && (!area.outline || insidePolygon(area.outline, x, z))));
-}
-
-function underRiver({ line, halfWidth }: NonNullable<WaterArea['river']>, x: number, y: number, z: number): boolean {
-  for (let i = 0; i + 1 < line.length; i++) {
-    const [ax, ay, az] = line[i]!, [bx, by, bz] = line[i + 1]!;
-    const ex = bx - ax, ez = bz - az, length = ex * ex + ez * ez;
-    const t = length > 0 ? Math.min(1, Math.max(0, ((x - ax) * ex + (z - az) * ez) / length)) : 0;
-    if (Math.hypot(x - ax - ex * t, z - az - ez * t) < halfWidth + 0.5 && y < ay + (by - ay) * t) return true;
-  }
-  return false;
-}
-
-function insidePolygon(points: readonly (readonly [number, number])[], x: number, z: number): boolean {
-  let inside = false;
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const [xi, zi] = points[i]!, [xj, zj] = points[j]!;
-    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-/** 加载好的水体资源；river 是河的样条（文件写了 river 时）。 */
-export class WaterAsset {
-  readonly id: WaterAssetId;
-  readonly path: string;
-  readonly file: WaterFile;
-  readonly river: SplineFile | undefined;
-  #ribbon: Float32Array | undefined;
-
-  constructor(path: string, file: WaterFile, river?: SplineFile) {
-    this.path = path;
-    this.file = file;
-    this.river = river;
-    this.id = assets.add(this) as WaterAssetId;
-  }
-
-  /** 河的水面网格（riverRibbon，第一次要时算）；不是河时是 undefined。 */
-  get ribbon(): Float32Array | undefined {
-    if (!this.river) return undefined;
-    return (this.#ribbon ??= riverRibbon(this.river, this.file.river?.level ?? 0.3));
-  }
-
-  /** @internal Water 组件里存的 id 对应的资源。 */
-  static byId(id: number): WaterAsset | undefined {
-    return assets.get(id);
-  }
-}
+import { insidePolygon, RIVER_VERTEX_FLOATS, Water, WaterAsset } from './Water';
 
 /** 极坐标网格：几圈、每圈几段。 */
 const RINGS = 160;

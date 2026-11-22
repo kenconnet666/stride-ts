@@ -14,7 +14,7 @@
  * 纯函数，不读文件：要用到的预制体先由调用方加载好（ContentManager）。展开的结果按实例缓存：实例和预制体都没变时给同一批
  * 对象，编辑器改场景时（SceneBuilder.update 比对象是不是同一个）没动的实例不重建。
  */
-import type { SceneEntityFile, SceneScriptValue } from './format';
+import type { SceneEntityFile, SceneScriptValue } from './formats/format';
 
 type Entities = readonly SceneEntityFile[];
 

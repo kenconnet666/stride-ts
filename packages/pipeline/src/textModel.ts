@@ -1,5 +1,5 @@
 /**
- * 3D 文字的烘焙（引擎 content/assetFormat.ts 的 TextModelFile）：用字体资源排版、取轮廓（引擎 modeling/textOutline.ts），
+ * 3D 文字的烘焙（引擎 content/formats/assetFormat.ts 的 TextModelFile）：用字体资源排版、取轮廓（引擎 modeling/textOutline.ts），
  * 每个字的外轮廓挤出 depth 厚、洞挖掉（原生工具模块的 Manifold，白盒的 prism 笔刷），结果按朝向分成两个网格：朝 +Z 的字面是
  * 材质槽 0，侧面和背面是槽 1（只有一个槽时都用它）。平直的法线（字的侧面是硬边），UV 按面的朝向投影（同白盒，一米一个周期）。
  *

@@ -34,8 +34,8 @@ export { evaluateMorphCurve, ModelMorphs, Morphed, MorphStack } from './animatio
 export { ModelNodeLink } from './animation/ModelNodeLink';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';
 export { evaluateCurve, propertyCurve, PropertyAnimated, PropertyStack, writeCurveValue, type AnimatableKey, type CurveInterpolation, type KeyValue, type PropertyCurve } from './animation/curves';
-export { Timeline, type TimelineBinding, type TimelineCue, type TimelineState } from './timeline/Timeline';
-export { TimelinePlayer } from './timeline/TimelinePlayer';
+export { Timeline, type TimelineBinding, type TimelineCue, type TimelineState } from './animation/Timeline';
+export { TimelinePlayer } from './animation/TimelinePlayer';
 export { Prefab, type EntityShape, type PrefabShape, type SpawnedEntity, type SpawnedPrefab, type UntypedEntityShape, type UntypedPrefabShape } from './content/Prefab';
 export { SceneTemplate } from './content/SceneTemplate';
 export { assetRef, ContentManager, type AssetHandle, type LoadedAsset, type CompositorSettings, type ContentOptions, type TextureCamera, type ContentReader, type GameSettings, type LoadedModel, type LoadSceneOptions, type MeshoptDecoder, type MeshoptRequest, type SceneInstance, type SceneReference } from './content/ContentManager';
@@ -121,7 +121,7 @@ export {
   type CelRamp,
   type CelShading,
   type MicrofacetModel,
-} from './content/format';
+} from './content/formats/format';
 export { Commands } from './engine/Commands';
 export {
   component,
@@ -159,12 +159,12 @@ export { Debug, FrameTimings, describe, type DebugHandler } from './debug/Debug'
 export { DebugText, type DebugTextLine } from './debug/DebugText';
 export { drawCollider } from './physics/debugShapes';
 export { ScenePicker } from './rendering/ScenePicker';
-export { EditorCameraController, EditorCameraState } from './editor/EditorCamera';
-export type { EditableScene, EditAgent, PaintBrush, PaintSession, SculptBrush, SculptSession, RequiredComponentEntry, WorldSphere } from './editor/EditAgent';
-export type { PolyEditSession, PolySelection, PolySelectMode } from './editor/PolyEditTool';
-export { branchFromPoint, deleteSplinePoints, type SplineEditSession } from './editor/SplineEditTool';
-export { applyGizmoChange, applySnap, DEFAULT_SNAP, TransformGizmo, type GizmoAxis, type GizmoChange, type GizmoHandle, type GizmoMode, type SnapSettings } from './editor/TransformGizmo';
-export { checkEntity, checkFields, COMPONENT_FIELDS, ENTITY_FIELDS, scriptFields, TEXTURE_FIELDS, type ComponentDescription, type Field, type FieldType } from './editor/fields';
+export { EditorCameraController, EditorCameraState } from './editor/viewport/EditorCamera';
+export type { EditableScene, EditAgent, PaintBrush, PaintSession, SculptBrush, SculptSession, RequiredComponentEntry, WorldSphere } from './editor/viewport/EditAgent';
+export type { PolyEditSession, PolySelection, PolySelectMode } from './editor/viewport/PolyEditTool';
+export { branchFromPoint, deleteSplinePoints, type SplineEditSession } from './editor/viewport/SplineEditTool';
+export { applyGizmoChange, applySnap, DEFAULT_SNAP, TransformGizmo, type GizmoAxis, type GizmoChange, type GizmoHandle, type GizmoMode, type SnapSettings } from './editor/viewport/TransformGizmo';
+export { checkEntity, checkFields, COMPONENT_FIELDS, ENTITY_FIELDS, scriptFields, TEXTURE_FIELDS, type ComponentDescription, type Field, type FieldType } from './editor/fields/index';
 export { LiveScene, type SceneSource } from './editor/LiveScene';
 export { Metrics, type Metric, type MetricUnit } from './debug/Metrics';
 export { limitShadowCascades, limitShadowFilter, limitShadowSize, QUALITY_TIERS, type QualitySettings, type QualityTier } from './rendering/Quality';
@@ -269,24 +269,25 @@ export { UIComponent, type ResolutionStretch } from './ui/UIComponent';
 export { UIElementLink } from './ui/UIElementLink';
 export { AudioEngine } from './audio/AudioEngine';
 export { AudioEmitterComponent, AudioEmitterSoundController, AudioListenerComponent } from './audio/AudioEmitterComponent';
-export { Train, TrainDoor, trainSchedule, trainStateAt, type TrainSchedule, type TrainScheduleOptions, type TrainState, type TrainStop } from './trains/Train';
+export { Train, TrainDoor, trainSchedule, trainStateAt, type TrainSchedule, type TrainScheduleOptions, type TrainState, type TrainStop } from './world/Train';
 export { Sound, SoundInstance, type PlayState } from './audio/Sound';
 export { ParticleSystem } from './particles/ParticleSystem';
 export { ParticleEmitter, type ParticleSimulation, type SimulationSpace, type RandomSeedMethod, type SortingPolicy } from './particles/ParticleEmitter';
 export { AUTO_GPU_CAPACITY, ParticleSystemComponent, ParticleSystems } from './particles/ParticleSystemComponent';
 export { GpuEmitter, SpawnRing } from './particles/GpuEmitter';
-export { gust, packWind, turbulenceAt, WindField, WindZone, GPU_LOCAL_WINDS, type GlobalWind, type LocalWind } from './weather/WindField';
-export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitationEmitter } from './weather/Precipitation';
-export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './weather/Weather';
+export { gust, packWind, turbulenceAt, WindField, WindZone, GPU_LOCAL_WINDS, type GlobalWind, type LocalWind } from './world/WindField';
+export { Precipitation, PrecipitationSystem, PRECIPITATION_PRESETS, precipitationEmitter } from './world/Precipitation';
+export { fogDensity, Weather, WEATHER_PRESETS, weatherWind, WeatherSystem, type WeatherPreset, type WeatherState, type WeatherTarget } from './world/Weather';
 export { StreamingSource, WorldStreaming } from './world/WorldStreaming';
-export { Terrain, TerrainAsset, TerrainTile, type TerrainAssetId } from './terrain/Terrain';
-export { City, CityAsset, CitySystem, type CityAssetId } from './city/City';
-export { Water, WaterAsset, WaterRenderer, type WaterAssetId } from './water/Water';
-export { Buoyancy, BuoyancySystem, waterSurfaceAt } from './water/Buoyancy';
-export { Scatter, ScatterAsset, ScatterSystem, scatterCell, type GroundSample, type ScatterAssetId, type ScatterInstance } from './terrain/Scatter';
-export { TerrainSystem, type TerrainHit } from './terrain/TerrainSystem';
-export { cellAt, cellKey, cellOrigin, checkWorldFile, distanceToCell, worldCellPath, type WorldFile, type WorldLayer } from './content/worldFormat';
-export { SkyOcclusion, skyOcclusionCenter } from './weather/SkyOcclusion';
+export { Terrain, TerrainAsset, TerrainTile, type TerrainAssetId } from './world/Terrain';
+export { City, CityAsset, CitySystem, type CityAssetId } from './world/City';
+export { Water, WaterAsset, type WaterAssetId } from './world/Water';
+export { WaterRenderer } from './world/WaterRenderer';
+export { Buoyancy, BuoyancySystem, waterSurfaceAt } from './world/Buoyancy';
+export { Scatter, ScatterAsset, ScatterSystem, scatterCell, type GroundSample, type ScatterAssetId, type ScatterInstance } from './world/Scatter';
+export { TerrainSystem, type TerrainHit } from './world/TerrainSystem';
+export { cellAt, cellKey, cellOrigin, checkWorldFile, distanceToCell, worldCellPath, type WorldFile, type WorldLayer } from './content/formats/worldFormat';
+export { SkyOcclusion, skyOcclusionCenter } from './world/SkyOcclusion';
 export { packDepthSurface, ViewDepthSurface, type GpuDepthSurface } from './rendering/DepthSurface';
 export { buildKernel, gpuUnsupported, type GpuKernel } from './particles/gpuKernel';
 // 游戏自己的粒子模块（继承这几个基类、导出，场景里按类名找到）用到的

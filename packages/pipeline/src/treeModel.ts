@@ -1,5 +1,5 @@
 /**
- * 树的烘焙（引擎 content/treeFormat.ts 的 TreeFile）：生长在引擎的 modeling/tree.ts，这里写成普通的模型（量化加 meshopt），
+ * 树的烘焙（引擎 content/formats/treeFormat.ts 的 TreeFile）：生长在引擎的 modeling/tree.ts，这里写成普通的模型（量化加 meshopt），
  * 场景、摆放照常引用。编辑器后端在树的文件存下、或者在磁盘上改了以后调它。
  */
 import { encodeModel, type TreeFile } from '@stride-ts/engine/content-format';

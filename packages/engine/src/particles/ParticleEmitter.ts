@@ -10,7 +10,7 @@
  * 模拟可以放到 GPU 上（particles/GpuEmitter.ts，`simulation`）：那时 update 只跑生成器（这一帧生成几个），粒子在 GPU 上初始化、更新，
  * 粒子池是空的。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import { MaterialCompiler, ParticleMaterialComputeColor, type MaterialProgram, type ParticleMaterial } from './material';
 import { createBuiltinShape, type ParticleShapeBuilder } from './shapes';
 import { createInitializer, createSpawner, NO_CONTEXT, ParticleTransform, value, type ParticleContext, type ParticleInitializer, type ParticleModuleKind, type ParticleSpawner, type SpawnedRange } from './modules';

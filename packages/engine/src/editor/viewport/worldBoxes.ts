@@ -2,15 +2,15 @@
  * 编辑器在视口里要的几何：实体现在的世界矩阵、选中框（模型、粒子、放在 3D 里的 UI 的包围盒）、反射探针影响的盒子。
  * 选中框和聚焦（EditAgent.bounds）、视口里画框（EditorViewport）用同一份。
  */
-import type { Entity } from '../engine/Entity';
-import { Transform } from '../engine/transform';
-import type { Game } from '../engine/Game';
-import { Matrix } from '../data/Matrix';
-import { GaussianSplat, Light, Model, ModelPart, PlanarReflection, ReflectionProbe } from '../rendering/components';
-import { SplatCloud } from '../rendering/splats/SplatRenderer';
-import { Mesh } from '../rendering/mesh/Mesh';
-import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';
-import { UIComponent } from '../ui/UIComponent';
+import type { Entity } from '../../engine/Entity';
+import { Transform } from '../../engine/transform';
+import type { Game } from '../../engine/Game';
+import { Matrix } from '../../data/Matrix';
+import { GaussianSplat, Light, Model, ModelPart, PlanarReflection, ReflectionProbe } from '../../rendering/components';
+import { SplatCloud } from '../../rendering/splats/SplatRenderer';
+import { Mesh } from '../../rendering/mesh/Mesh';
+import { ParticleSystemComponent } from '../../particles/ParticleSystemComponent';
+import { UIComponent } from '../../ui/UIComponent';
 
 /**
  * 实体现在的世界矩阵。世界矩阵平时每帧统一算一次；文档刚改过（或者场景刚打开）的这一帧里它还是旧的，所以编辑器要用

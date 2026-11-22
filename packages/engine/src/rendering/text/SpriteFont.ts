@@ -1,5 +1,5 @@
 /**
- * 字体（Stride 的 SpriteFont）：度量和字形。字形是轮廓（Slug 的点和带，见 content/format.ts 的 GlyphBlock），按码位块
+ * 字体（Stride 的 SpriteFont）：度量和字形。字形是轮廓（Slug 的点和带，见 content/formats/format.ts 的 GlyphBlock），按码位块
  * （码位 >> 8）分文件，用到哪块才下载哪块：glyph() 碰到没下载的块时开始下载、这一次返回 undefined，下载完以后就有了；
  * 一开始就要齐的文字先 await ensure(text)。
  *
@@ -7,7 +7,7 @@
  * LineGapBaseLineFactor + 上升) · size（FreeTypeFontImporter），都不随字号变（OfflineRasterizedSpriteFont 重写了 GetFontDefaultLineSpacing
  * 这些）；运行时字体（dynamic）的两个因子都按 1（FontManager.GetFontInfo），按 字号 / size 缩放。字距取 kern 表（kerning()）。
  */
-import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../../content/format';
+import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../../content/formats/format';
 
 /** 一个字形：em 单位，y 向上。points、bands 是它所在块的数组，pointStart、bandStart 是字形在里面的起点。 */
 export interface FontGlyph {

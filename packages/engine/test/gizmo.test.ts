@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { applyGizmoChange, applySnap, closestOnAxis, DEFAULT_SNAP, rayPlane, TransformGizmo, type GizmoChange, type Ray } from '../src/editor/TransformGizmo';
+import { applyGizmoChange, applySnap, closestOnAxis, DEFAULT_SNAP, rayPlane, TransformGizmo, type GizmoChange, type Ray } from '../src/editor/viewport/TransformGizmo';
 import { Quaternion, Vector3 } from '../src/data/vectors';
 
 // 操纵器的几何：不碰输入、实体和绘制。

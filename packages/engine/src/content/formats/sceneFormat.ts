@@ -269,7 +269,7 @@ export interface SceneDayNightCycle {
   readonly moonPhase?: number;
 }
 
-/** 风源（Stride 没有，见 weather/WindField.ts 的 WindZone 组件）：没写的用组件的默认值。 */
+/** 风源（Stride 没有，见 world/WindField.ts 的 WindZone 组件）：没写的用组件的默认值。 */
 export interface SceneWindZone {
   readonly mode?: 'directional' | 'spherical';
   readonly strength?: number;
@@ -279,7 +279,7 @@ export interface SceneWindZone {
   readonly radius?: number;
 }
 
-/** 天气状态（Stride 没有，见 weather/Weather.ts）：想要的天气；没写的用组件的默认值。 */
+/** 天气状态（Stride 没有，见 world/Weather.ts）：想要的天气；没写的用组件的默认值。 */
 export interface SceneWeather {
   readonly cloudCoverage?: number;
   readonly cloudType?: number;
@@ -310,7 +310,7 @@ export interface SceneDecal {
   readonly lowerFade?: number;
 }
 
-/** 雨雪（Stride 没有，见 weather/Precipitation.ts）：没写的用组件的默认值；场景里有天气状态时种类和强度由它给。 */
+/** 雨雪（Stride 没有，见 world/Precipitation.ts）：没写的用组件的默认值；场景里有天气状态时种类和强度由它给。 */
 export interface ScenePrecipitation {
   readonly kind?: 'rain' | 'snow';
   readonly intensity?: number;
@@ -540,13 +540,13 @@ export interface SceneEntityFile {
     readonly gaussianSplat?: { readonly splats: string };
     /** 矢量地形（Stride 没有，见 Terrain 组件）：terrain 是地形资源（.terrain.json）的内容路径；没写的项用组件的默认值。 */
     readonly terrain?: { readonly terrain: string; readonly size?: number; readonly detail?: number; readonly lodFactor?: number; readonly isShadowCaster?: boolean; readonly renderGroup?: number };
-    /** 程序化摆放（Stride 没有，见 terrain/Scatter.ts）：在同一个实体的地形上按 .scatter.json 的规则撒模型。 */
+    /** 程序化摆放（Stride 没有，见 world/Scatter.ts）：在同一个实体的地形上按 .scatter.json 的规则撒模型。 */
     readonly scatter?: { readonly scatter: string };
-    /** 城市（Stride 没有，见 city/City.ts）：按 .city.json 的规则沿路摆楼，楼是这个实体的子实体。 */
+    /** 城市（Stride 没有，见 world/City.ts）：按 .city.json 的规则沿路摆楼，楼是这个实体的子实体。 */
     readonly city?: { readonly city: string };
-    /** 水体（Stride 没有，见 water/Water.ts）：实体的位置是水面，按 .water.json 画湖或海。 */
+    /** 水体（Stride 没有，见 world/Water.ts）：实体的位置是水面，按 .water.json 画湖或海。 */
     readonly water?: { readonly water: string };
-    /** 浮力（Stride 没有，见 water/Buoyancy.ts）：刚体在水里浮起来；没写的项用组件的默认值。 */
+    /** 浮力（Stride 没有，见 world/Buoyancy.ts）：刚体在水里浮起来；没写的项用组件的默认值。 */
     readonly buoyancy?: { readonly buoyancy?: number; readonly linearDrag?: number; readonly angularDrag?: number };
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     /** 镜头系统（Stride 没有，见 CameraRig 组件）：跟随、注视的实体是场景文件里的 id；没写的项用组件的默认值。 */

@@ -6,7 +6,7 @@
  * 字形块里的点按 Slug 的格式存（相邻的曲线共用端点，曲线只在带的曲线表里记起点），所以先从带里收齐这个字形的曲线起点，
  * 每条曲线是起点开始的三个点。
  */
-import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../content/format.ts';
+import { GLYPH_RECORD, GLYPH_WORDS, type FontFile, type GlyphBlock } from '../content/formats/format.ts';
 
 /** 一个字的轮廓：多边形的点（米，文字的平面里，y 向上），是不是洞（被奇数个别的轮廓包着），属于第几个字。 */
 export interface TextContour {

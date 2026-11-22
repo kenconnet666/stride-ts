@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { checkScatterFile, type ScatterLayerFile } from '../src/content/scatterFormat';
-import { VERTEX_FLOATS } from '../src/content/format';
+import { checkScatterFile, type ScatterLayerFile } from '../src/content/formats/scatterFormat';
+import { VERTEX_FLOATS } from '../src/content/formats/format';
 import { impostorMesh } from '../src/rendering/mesh/Impostors';
-import { grassBlades, gridGround, lodTier, scatterCell, type GroundSample } from '../src/terrain/Scatter';
+import { grassBlades, gridGround, lodTier, scatterCell, type GroundSample } from '../src/world/Scatter';
 
 const flat: GroundSample = () => ({ height: 5, normal: [0, 1, 0] });
 const trees: ScatterLayerFile = { name: 'Trees', model: 'Models/Tree', density: 400 };

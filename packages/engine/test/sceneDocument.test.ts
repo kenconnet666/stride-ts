@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { SceneEntityFile, SceneFile } from '../src/content/format';
+import type { SceneEntityFile, SceneFile } from '../src/content/formats/format';
 import { changedEntities } from '../src/content/SceneBuilder';
 import { SceneDocument, UndoStack } from '../src/editor/SceneDocument';
 

@@ -2,7 +2,7 @@
  * 画物理天空的根渲染特性（Atmosphere.ts 的大气）。单独一个文件：RenderSystem 引用 Atmosphere，这个类在模块加载时要继承
  * RenderSystem 的 RootRenderFeature，放在一起会循环引用。
  */
-import type { SceneEntityFile } from '../../content/format';
+import type { SceneEntityFile } from '../../content/formats/format';
 import { pipelineCache } from '../../graphics/PipelineCache';
 import type { AtmosphereGpu } from './Atmosphere';
 import { colorTargets, RootRenderFeature, type RenderContext, type RenderStage, type RenderView } from '../RenderSystem';

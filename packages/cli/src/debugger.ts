@@ -11,7 +11,7 @@
  */
 import type { DevtoolsSession } from './client.ts';
 
-/** 一个断点：at 是 `文件:行`（文件是仓库里的路径或者它的结尾，比如 `terrain/TerrainSystem.ts:120`）。 */
+/** 一个断点：at 是 `文件:行`（文件是仓库里的路径或者它的结尾，比如 `world/TerrainSystem.ts:120`）。 */
 export interface DebugBreakpoint {
   readonly at: string;
   /** 条件（源码作用域里的 JS 表达式），真的时才停。 */

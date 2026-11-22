@@ -1,5 +1,5 @@
 /**
- * Stride 的字体资源（.sdfnt）导入成运行时的字体（content/format.ts 的 FontFile 加按码位分块的 .glyphs）：
+ * Stride 的字体资源（.sdfnt）导入成运行时的字体（content/formats/format.ts 的 FontFile 加按码位分块的 .glyphs）：
  * - 字体文件：FileFontProvider 是相对资源文件的路径；SystemFontProvider 照 Stride 在系统字体目录里按家族名和粗斜体找，
  *   找不到时依次试度量兼容的字体（Arial、Liberation Sans……，同 Stride 的 GetFontNameCandidates），用了替代的记警告。
  * - 字符：编译期字体（OfflineRasterized、SignedDistanceField）只要 CharacterRegions 和 CharacterSet 列出的字符，运行时

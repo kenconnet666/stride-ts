@@ -1,11 +1,11 @@
 /**
- * 程序化建筑的生成（W5，文件格式见 content/buildingFormat.ts）：体块一段段叠起来，每段的底面每条边是一面立面，每层按立面规则的
+ * 程序化建筑的生成（W5，文件格式见 content/formats/buildingFormat.ts）：体块一段段叠起来，每段的底面每条边是一面立面，每层按立面规则的
  * 图案切成构件、生成几何；顶上盖屋顶。结果是按材质槽分好的网格（同样条、树），pipeline 的 buildingModel.ts 写成模型。
  *
  * 立面的框架：从外面看，u 从左到右沿着边、v 往上、w 朝外。窗洞往里凹（w < 0），壁柱、腰线、阳台往外突（w > 0）。
  * UV 按米（u、v），材质按米铺贴图。
  */
-import { checkBuilding, moduleChoices, parseFacadePattern, type BuildingFacade, type BuildingFile, type BuildingFootprint, type BuildingMass, type BuildingModule, type BuildingRoof, type FacadePatternItem } from '../content/buildingFormat.ts';
+import { checkBuilding, moduleChoices, parseFacadePattern, type BuildingFacade, type BuildingFile, type BuildingFootprint, type BuildingMass, type BuildingModule, type BuildingRoof, type FacadePatternItem } from '../content/formats/buildingFormat.ts';
 import { MeshBuilder, slotMeshes, type SlotMesh } from './meshBuilder.ts';
 import { triangulateFace } from './polyMesh.ts';
 import { hash32 } from '../data/hash.ts';

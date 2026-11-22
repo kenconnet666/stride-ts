@@ -1,10 +1,10 @@
 /**
  * 网格（对应 Stride 的 Mesh 加 MeshDraw）：交错的顶点和索引，放在 CPU 这边，布局就是 GPU 上的布局，渲染特性第一次
- * 画它时原样上传。布局见 content/format.ts 的 VertexLayout：资源管线产出的模型一般是量化的 16 字节顶点（反量化在顶点
+ * 画它时原样上传。布局见 content/formats/format.ts 的 VertexLayout：资源管线产出的模型一般是量化的 16 字节顶点（反量化在顶点
  * 着色器里做），程序化网格和 --plain 导出的模型是 32 字节的 float（FLOAT_LAYOUT）。程序化网格对应 Stride 的
  * ProceduralModels：尺寸默认 1，右手坐标系，三角形从外面看是逆时针。
  */
-import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, MORPH_ENTRY_WORDS, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../../content/format';
+import { FLOAT_LAYOUT, IDENTITY_DEQUANTIZE, MORPH_ENTRY_WORDS, VERTEX_FLOATS, vertexLayoutOffsets, type Dequantize, type VertexLayout } from '../../content/formats/format';
 import type { Branded } from '../../data/prop';
 import { ResourceTable } from '../../engine/ResourceTable';
 import { MESH_EFFECT_PARAMETERS } from './meshEffect';
@@ -24,7 +24,7 @@ export interface MeshData {
   readonly layout?: VertexLayout;
   /** 量化属性的还原，默认不量化。 */
   readonly dequantize?: Dequantize;
-  /** 形变数据（布局见 content/format.ts 的 MeshMorph），按 uint32 看。 */
+  /** 形变数据（布局见 content/formats/format.ts 的 MeshMorph），按 uint32 看。 */
   readonly morph?: Uint32Array;
   /**
    * 高度场网格（地形块共用的格子，见 HeightPages.ts）：顶点的 x、z 是格坐标，y 是 1 时是裙边；高度由实体的高度页给，

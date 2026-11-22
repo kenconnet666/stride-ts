@@ -1,20 +1,20 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { ContentManager } from '../src/content/ContentManager';
-import type { SceneFile } from '../src/content/format';
-import { checkEntity } from '../src/editor/fields';
+import type { SceneFile } from '../src/content/formats/format';
+import { checkEntity } from '../src/editor/fields/index';
 import { Game } from '../src/engine/Game';
-import { Precipitation, precipitationEmitter } from '../src/weather/Precipitation';
-import { fogDensity, Weather, WEATHER_PRESETS, WeatherSystem } from '../src/weather/Weather';
+import { Precipitation, precipitationEmitter } from '../src/world/Precipitation';
+import { fogDensity, Weather, WEATHER_PRESETS, WeatherSystem } from '../src/world/Weather';
 import { VolumetricClouds, VolumetricFog } from '../src/rendering/components';
-import { GPU_LOCAL_WINDS, gust, type LocalWind, packWind, WindField, WindZone } from '../src/weather/WindField';
+import { GPU_LOCAL_WINDS, gust, type LocalWind, packWind, WindField, WindZone } from '../src/world/WindField';
 import { buildKernel, gpuUnsupported } from '../src/particles/gpuKernel';
 import { ParticlePool } from '../src/particles/ParticlePool';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
 import { UpdaterDepthCollision, UpdaterWind } from '../src/particles/updaters';
 import { packDepthSurface } from '../src/rendering/DepthSurface';
 import { RenderView } from '../src/rendering/RenderSystem';
-import { SkyOcclusion, skyOcclusionCenter } from '../src/weather/SkyOcclusion';
+import { SkyOcclusion, skyOcclusionCenter } from '../src/world/SkyOcclusion';
 import { Matrix } from '../src/data/Matrix';
 import { fakeGpu, stubGpuGlobals } from './fakeGpu';
 

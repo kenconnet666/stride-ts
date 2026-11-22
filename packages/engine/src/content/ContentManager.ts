@@ -36,23 +36,23 @@ import { Sound } from '../audio/Sound';
 import { SOUND_SYNTH_RATE, synthesizeSound } from '../audio/soundSynth';
 import { ColorTreeCompiler } from '../rendering/mesh/colorTree';
 import { compileMaterialGraph, materialGraphTextures, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
-import type { GraphFile } from '../graph/nodeGraph';
+import type { GraphFile } from './formats/nodeGraph';
 import type { ShaderClass } from '../rendering/shaderClass';
 import { buildElement, UILibrary, UIPage, type UIResources } from '../ui/UIPage';
 import { uiAssetPaths } from './references';
-import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, isVideoEncoding, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './format';
-import { Timeline } from '../timeline/Timeline';
-import { checkWorldFile, type WorldFile } from './worldFormat';
-import { checkTerrainFile } from './terrainFormat';
-import { TerrainAsset, terrainPaths } from '../terrain/Terrain';
-import { ScatterAsset } from '../terrain/Scatter';
-import { checkScatterFile } from './scatterFormat';
-import { CityAsset } from '../city/City';
-import { checkCity, type CityFile } from './cityFormat';
-import { WaterAsset } from '../water/Water';
-import { checkWater, type WaterFile } from './waterFormat';
+import { decodeAnimation, decodeCubemap, decodeGlyphBlock, decodeSkeleton, isVideoEncoding, readModelFile, EXTENSIONS, TEXTURE_EXTENSIONS, vertexLayoutOffsets, type ScenePostEffects, type TextureEncoding, type ModelMeshData, type MaterialFile, type PrefabFile, type SceneEntityFile, type FontFile, type GameSettingsFile, type SceneFile, type SceneForwardRenderer, type SceneNavigation, type ScenePhysics, type SceneRenderTexture, type SkyboxFile, type SpriteSheetFile, type TextureRef, type TextureSlot, type UIFile, type ParticleModuleFile, type SoundFile, type TimelineFile } from './formats/format';
+import { Timeline } from '../animation/Timeline';
+import { checkWorldFile, type WorldFile } from './formats/worldFormat';
+import { checkTerrainFile } from './formats/terrainFormat';
+import { TerrainAsset, terrainPaths } from '../world/Terrain';
+import { ScatterAsset } from '../world/Scatter';
+import { checkScatterFile } from './formats/scatterFormat';
+import { CityAsset } from '../world/City';
+import { checkCity, type CityFile } from './formats/cityFormat';
+import { WaterAsset } from '../world/Water';
+import { checkWater, type WaterFile } from './formats/waterFormat';
 import { checkSpline } from '../modeling/spline';
-import type { SplineFile } from './splineFormat';
+import type { SplineFile } from './formats/splineFormat';
 
 declare module '../data/prop' {
   interface AssetTypes {
@@ -505,7 +505,7 @@ export class ContentManager {
     return this.#once(path + EXTENSIONS.spline, async (url) => checkSpline(this.#json<SplineFile>(await this.#read(url)), url.href));
   }
 
-  /** 程序化摆放（.scatter.json）和每层的模型；实例由 ScatterSystem 按相机附近的格子撒（terrain/Scatter.ts）。 */
+  /** 程序化摆放（.scatter.json）和每层的模型；实例由 ScatterSystem 按相机附近的格子撒（world/Scatter.ts）。 */
   loadScatter(path: string): Promise<ScatterAsset> {
     return this.#once(path + EXTENSIONS.scatter, async (url) => {
       const file = checkScatterFile(this.#json<unknown>(await this.#read(url)), url.href);
@@ -522,7 +522,7 @@ export class ContentManager {
     });
   }
 
-  /** 城市（.city.json）、它沿着的路和摆的楼的模型；楼由 CitySystem 沿街摆（city/City.ts）。 */
+  /** 城市（.city.json）、它沿着的路和摆的楼的模型；楼由 CitySystem 沿街摆（world/City.ts）。 */
   loadCity(path: string): Promise<CityAsset> {
     return this.#once(path + EXTENSIONS.city, async (url) => {
       const file = checkCity(this.#json<CityFile>(await this.#read(url)), url.href);
@@ -531,7 +531,7 @@ export class ContentManager {
     });
   }
 
-  /** 水体（.water.json）；画法见 water/Water.ts。 */
+  /** 水体（.water.json）；画法见 world/Water.ts。 */
   loadWater(path: string): Promise<WaterAsset> {
     return this.#once(path + EXTENSIONS.water, async (url) => {
       const file = checkWater(this.#json<WaterFile>(await this.#read(url)), url.href);
@@ -539,7 +539,7 @@ export class ContentManager {
     });
   }
 
-  /** 矢量地形（.terrain.json）和它的材质；高度由原生的求值器按需算（terrain/TerrainSystem.ts）。 */
+  /** 矢量地形（.terrain.json）和它的材质；高度由原生的求值器按需算（world/TerrainSystem.ts）。 */
   loadTerrain(path: string): Promise<TerrainAsset> {
     return this.#once(path + EXTENSIONS.terrain, async (url) => {
       const file = checkTerrainFile(this.#json<unknown>(await this.#read(url)), url.href);

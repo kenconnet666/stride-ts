@@ -4,7 +4,7 @@
  * RotationSeed、3DRotationSeed、ColorSeed、SpawnOrder。更新器见 updaters.ts，力场和碰撞的形状见 fieldShapes.ts。导入器只留下
  * 运行时认识的（见 pipeline 的 particles.ts）。
  */
-import type { ParticleModuleFile, ParticleValue } from '../content/format';
+import type { ParticleModuleFile, ParticleValue } from '../content/formats/format';
 import type { MaterialContext } from './material';
 import { isIdentity, normalize, rotate, slerp, combine, type Quat, type Vec3 } from './math';
 import type { AnyParticleField, ParticlePool } from './ParticlePool';

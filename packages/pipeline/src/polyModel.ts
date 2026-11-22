@@ -1,5 +1,5 @@
 /**
- * 多边形网格的烘焙（引擎 content/assetFormat.ts 的 PolyMeshFile）：几何（镜像、三角化、按光滑角的法线、自动 UV）在引擎的
+ * 多边形网格的烘焙（引擎 content/formats/assetFormat.ts 的 PolyMeshFile）：几何（镜像、三角化、按光滑角的法线、自动 UV）在引擎的
  * modeling/polyMesh.ts，这里写成普通的模型（量化加 meshopt），场景照常引用。编辑器后端在多边形网格存下、或者在磁盘上改了以后
  * 调它（server/EditorBackend.ts）。
  */

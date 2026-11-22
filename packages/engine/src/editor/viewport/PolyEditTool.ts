@@ -5,11 +5,11 @@
  *
  * 坐标：网格的顶点是模型的本地坐标，画和点选用世界坐标（乘实体的世界矩阵），操纵器的结果是世界里的变化，换回本地再写进网格。
  */
-import type { PolyMeshFile, Vec3Tuple } from '../content/assetFormat';
-import { Matrix, type MatrixSource } from '../data/Matrix';
-import { Quaternion, Vector3 } from '../data/vectors';
-import type { PolyEdge } from '../modeling/polyEdit';
-import { triangulateFace } from '../modeling/polyMesh';
+import type { PolyMeshFile, Vec3Tuple } from '../../content/formats/assetFormat';
+import { Matrix, type MatrixSource } from '../../data/Matrix';
+import { Quaternion, Vector3 } from '../../data/vectors';
+import type { PolyEdge } from '../../modeling/polyEdit';
+import { triangulateFace } from '../../modeling/polyMesh';
 import type { GizmoChange, Ray } from './TransformGizmo';
 
 /** 选择模式：点、边、面（键盘的 1、2、3）。 */

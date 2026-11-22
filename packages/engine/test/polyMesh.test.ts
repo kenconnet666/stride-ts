@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { PolyMeshFile } from '../src/content/assetFormat';
+import type { PolyMeshFile } from '../src/content/formats/assetFormat';
 import { mirrored, polyMeshSlots, triangulateFace } from '../src/modeling/polyMesh';
 import { bevelEdges, connectVertices, deleteFaces, extrudeFaces, flipFaces, insetFaces, mergeVertices, moveVertices, polyCube, splitEdge } from '../src/modeling/polyEdit';
 

@@ -13,7 +13,7 @@
 import { LightProfile } from './lighting/LightProfile';
 import type { EntityId } from '../data/prop';
 import type { CompositorSettings, TextureCamera } from '../content/ContentManager';
-import type { ScenePostEffects } from '../content/format';
+import type { ScenePostEffects } from '../content/formats/format';
 import type { ColumnsOf } from '../engine/component';
 import { system } from '../engine/system';
 import { Transform, type TransformColumns } from '../engine/transform';

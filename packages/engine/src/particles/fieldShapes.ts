@@ -5,7 +5,7 @@
  * 和 Stride 不同（改掉的毛病）：衰减在 FalloffStart 到 FalloffEnd 之间线性过渡；Stride 除以的是 FalloffEnd / FalloffStart 而不是
  * 两者的差，过渡区里力几乎不变，到 FalloffEnd 时突然跳到 StrengthOutside。
  */
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import { normalize, rotate, type Quat, type Vec3 } from './math';
 import { value } from './modules';
 

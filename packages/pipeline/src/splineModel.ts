@@ -1,5 +1,5 @@
 /**
- * 样条的烘焙（引擎 content/splineFormat.ts 的 SplineFile）：几何（路径采样、拉伸、摆立柱和电杆、挂导线）在引擎的
+ * 样条的烘焙（引擎 content/formats/splineFormat.ts 的 SplineFile）：几何（路径采样、拉伸、摆立柱和电杆、挂导线）在引擎的
  * modeling/spline.ts，这里写成普通的模型（量化加 meshopt），场景照常引用。编辑器后端在样条存下、或者在磁盘上改了以后调它。
  */
 import { encodeModel, type SplineFile } from '@stride-ts/engine/content-format';

@@ -6,7 +6,7 @@
  *   const morphs = game.animation.morphs(entity)!;
  *   morphs.setMorphWeight(morphs.findMorphTarget('Bigger'), 0.5);
  */
-import type { MorphWeightCurve } from '../content/format';
+import type { MorphWeightCurve } from '../content/formats/format';
 import { prop } from '../data/prop';
 import { component } from '../engine/component';
 import type { AnimationClip } from './resources';

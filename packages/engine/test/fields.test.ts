@@ -1,8 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
-import type { SceneEntityFile } from '../src/content/format';
-import { ASSET_FIELDS, checkEntity, checkFields, COMPONENT_FIELDS, inferFields, SCENE_FIELDS, scriptFields } from '../src/editor/fields';
+import type { SceneEntityFile } from '../src/content/formats/format';
+import { ASSET_FIELDS, checkEntity, checkFields, COMPONENT_FIELDS, inferFields, SCENE_FIELDS, scriptFields } from '../src/editor/fields/index';
 import { prop, SyncScript } from '../src/index';
 
 // 属性面板要的字段描述，和照着它做的检查。

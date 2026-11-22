@@ -3,7 +3,7 @@
  * 点和带在缓冲里的起点，横带、竖带的条数）。块第一次画的时候上传，缓冲不够时翻倍（旧内容在 GPU 上拷过去），之后 bindGroup
  * 换新的。只增不减：一个游戏用到的字形不多（CJK 字体也只下载用到的块）。
  */
-import { GLYPH_RECORD, GLYPH_WORDS } from '../../content/format';
+import { GLYPH_RECORD, GLYPH_WORDS } from '../../content/formats/format';
 import type { FontGlyph, LoadedGlyphBlock } from './SpriteFont';
 
 const GLYPH_ENTRY_WORDS = 8;

@@ -1,5 +1,5 @@
 /**
- * 参数化的树（content/treeFormat.ts 的 TreeFile）长成网格：按层生长出枝的骨架（每根枝分几节，每节带位置、朝向、半径），
+ * 参数化的树（content/formats/treeFormat.ts 的 TreeFile）长成网格：按层生长出枝的骨架（每根枝分几节，每节带位置、朝向、半径），
  * 枝拉成圆管（树皮的槽），最后一层的枝上贴叶片卡片（叶片的槽）。编辑器后端烘成模型用（pipeline 的 treeModel.ts）。
  *
  * 生长（思路照 ez-tree：分节、随机偏转、生长的方向力、分层的子枝按高度和方位分层抽样）：
@@ -11,7 +11,7 @@
  * 随机数用种子起的 mulberry32，每根枝自己一个（种子由母枝的种子和它是第几根哈希出来）：同一个文件长出同一棵树；少长最细的一层
  * （远处的简化版，摆放的 lods）时，树干和别的枝长得一模一样，换的时候不跳。
  */
-import { TREE_SLOTS, type TreeFile, type TreeLevelFile } from '../content/treeFormat.ts';
+import { TREE_SLOTS, type TreeFile, type TreeLevelFile } from '../content/formats/treeFormat.ts';
 import { Quaternion, Vector3 } from '../data/vectors.ts';
 import { MeshBuilder, slotMeshes, type SlotMesh } from './meshBuilder.ts';
 import { hash32 } from '../data/hash.ts';

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import type { SceneEntityFile } from '../src/content/format';
+import type { SceneEntityFile } from '../src/content/formats/format';
 import { assetReferenceSlots, assetReferences, entityAssetReferences } from '../src/content/references';
 
 const instance: SceneEntityFile = {

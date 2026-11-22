@@ -1,11 +1,11 @@
 /**
  * 材质，和 Stride 默认的 PBR 材质对应：漫反射颜色（可以带一张贴图，按运算符和颜色组合，即 Stride 材质里最常见的
  * ComputeTextureColor、ComputeBinaryColor 的形状）、金属度或镜面颜色工作流的镜面反射（GGX、Schlick、Smith-Schlick-GGX）、
- * 光泽度、自发光（可以乘一张贴图，或者是编译好的颜色树）、环境光遮蔽（可以是贴图）、cavity、法线贴图和透明混合，见 content/format.ts 的
+ * 光泽度、自发光（可以乘一张贴图，或者是编译好的颜色树）、环境光遮蔽（可以是贴图）、cavity、法线贴图和透明混合，见 content/formats/format.ts 的
  * MaterialFile。完整的材质（参数来自着色器反射、变体、实例参数）
  * 见 docs/architecture.md 的"外观：材质参数的分层"，等着色器系统一起做。和 Mesh 一样只是数据，GPU 资源由渲染特性管理。
  */
-import { CEL_RAMP_STOPS, type AmbientOcclusionSlot, type CelShading, type ColorOperator, type MicrofacetModel, type TextureSampler } from '../../content/format';
+import { CEL_RAMP_STOPS, type AmbientOcclusionSlot, type CelShading, type ColorOperator, type MicrofacetModel, type TextureSampler } from '../../content/formats/format';
 import type { Branded } from '../../data/prop';
 import { Color4, type ColorLike } from '../../data/vectors';
 import { ResourceTable } from '../../engine/ResourceTable';
@@ -22,7 +22,7 @@ export interface MaterialTexture {
   readonly sampler?: TextureSampler;
 }
 
-/** 法线贴图（Stride 的 MaterialNormalMapFeature），各开关的意思见 content/format.ts 的 NormalMapSlot。 */
+/** 法线贴图（Stride 的 MaterialNormalMapFeature），各开关的意思见 content/formats/format.ts 的 NormalMapSlot。 */
 export interface MaterialNormalMap extends MaterialTexture {
   /** 把 0..1 映射到 -1..1，默认 true。 */
   readonly scaleAndBias?: boolean;
@@ -32,12 +32,12 @@ export interface MaterialNormalMap extends MaterialTexture {
   readonly invertY?: boolean;
 }
 
-/** 环境光遮蔽，意思同 content/format.ts 的 AmbientOcclusionSlot。 */
+/** 环境光遮蔽，意思同 content/formats/format.ts 的 AmbientOcclusionSlot。 */
 export interface MaterialAmbientOcclusion extends Omit<AmbientOcclusionSlot, 'texture'> {
   readonly texture?: MaterialTexture & { readonly channel: 'r' | 'g' | 'b' | 'a' };
 }
 
-/** 透明混合（Stride 的 MaterialTransparencyBlendFeature），意思同 content/format.ts 的 TransparencyFile。 */
+/** 透明混合（Stride 的 MaterialTransparencyBlendFeature），意思同 content/formats/format.ts 的 TransparencyFile。 */
 /**
  * 透明：可见的漫反射乘 alpha（输出的 alpha 也乘它），镜面乘 specularAlpha（默认同 alpha），都乘 tint（Stride 的
  * matDiffuseSpecularAlphaBlend 的两个分量）。
@@ -65,7 +65,7 @@ export interface MaterialShaderTrees {
   /** 位移贴图：顶点沿模型空间的法线移动 值 × intensity（scaleAndBias 时值先换到 -1..1）。 */
   readonly displacement?: { readonly intensity: number; readonly scaleAndBias: boolean };
   /**
-   * 材质层（content/format.ts 的 MaterialLayerFile）：第 i 层的函数是 layer{i}Blend，有哪个属性就有 layer{i}Diffuse、
+   * 材质层（content/formats/format.ts 的 MaterialLayerFile）：第 i 层的函数是 layer{i}Blend，有哪个属性就有 layer{i}Diffuse、
    * layer{i}Specular、layer{i}Metalness、layer{i}Gloss、layer{i}Normal。
    */
   readonly layers?: readonly MaterialShaderLayer[];
@@ -75,7 +75,7 @@ export interface MaterialShaderTrees {
    */
   readonly graph?: boolean;
   /**
-   * 清漆（content/format.ts 的 ClearCoatFile）：code 里有 coatLodDistance、coatBaseDiffuse、coatBaseGloss、coatFlakesDiffuse、
+   * 清漆（content/formats/format.ts 的 ClearCoatFile）：code 里有 coatLodDistance、coatBaseDiffuse、coatBaseGloss、coatFlakesDiffuse、
    * coatFlakesGloss、coatFlakesMetalness、coatFlakesNormal、coatTopGloss、coatTopMetalness、coatTopNormal 这些函数。
    */
   readonly clearCoat?: MaterialShaderClearCoat;
@@ -117,17 +117,17 @@ export interface MaterialDesc {
   readonly specularEnergyConservative?: boolean;
   /** 画不画镜面反射（Stride 的 SpecularModel 有没有），默认 true；false 时金属度、镜面颜色只影响漫反射。 */
   readonly specularShading?: boolean;
-  /** 微表面镜面模型的各项（意思同 content/format.ts 的 MicrofacetModel），默认是 Stride 默认的那套。 */
+  /** 微表面镜面模型的各项（意思同 content/formats/format.ts 的 MicrofacetModel），默认是 Stride 默认的那套。 */
   readonly microfacet?: MicrofacetModel;
-  /** 卡通着色（意思同 content/format.ts 的 CelShading；渐变用 CEL_DEFAULT_RAMP 这些现成的，或者自己给节点）。 */
+  /** 卡通着色（意思同 content/formats/format.ts 的 CelShading；渐变用 CEL_DEFAULT_RAMP 这些现成的，或者自己给节点）。 */
   readonly celShading?: CelShading;
   /** 算不算漫反射光照（Stride 的 DiffuseModel 有没有），默认 true。 */
   readonly diffuseShading?: boolean;
-  /** 玻璃（意思同 content/format.ts 的 MaterialFile.glass）；有它的材质画在透明阶段。 */
+  /** 玻璃（意思同 content/formats/format.ts 的 MaterialFile.glass）；有它的材质画在透明阶段。 */
   readonly glass?: { readonly refractiveIndex: number };
   /** 粗糙度 = 1 - 光泽度，默认 1。 */
   readonly roughness?: number;
-  /** 光泽度贴图（意思同 content/format.ts 的 glossinessTexture）；有它时不看 roughness。 */
+  /** 光泽度贴图（意思同 content/formats/format.ts 的 glossinessTexture）；有它时不看 roughness。 */
   readonly glossinessMap?: MaterialTexture & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean; readonly metalnessChannel?: 'r' | 'g' | 'b' | 'a' };
   /** 自发光，线性颜色乘强度，默认没有；有 emissiveTexture 时再乘贴图的颜色。 */
   readonly emissive?: readonly [number, number, number];

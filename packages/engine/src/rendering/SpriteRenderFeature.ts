@@ -8,7 +8,7 @@
  *   混合；additiveBlend 是 src·alpha + dst。深度测试并写入，ignoreDepth 时都不做；不剔背面。
  * 和 Stride 不同（暂时）：没有 Swizzle、billboard 的 RotationEulerZ 和精灵的九宫格边框（Borders）。
  */
-import type { SceneEntityFile } from '../content/format';
+import type { SceneEntityFile } from '../content/formats/format';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Matrix } from '../data/Matrix';

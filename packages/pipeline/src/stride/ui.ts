@@ -1,5 +1,5 @@
 /**
- * Stride 的 UI 资源（.sduipage、.sduilib）导入成 UIFile（content/format.ts）：Hierarchy.Parts 里的元素平铺成数组，
+ * Stride 的 UI 资源（.sduipage、.sduilib）导入成 UIFile（content/formats/format.ts）：Hierarchy.Parts 里的元素平铺成数组，
  * Children、Content 的 `ref!!` 引用换成下标；属性名首字母小写，值按 UIValue 的约定换过来；精灵表、贴图、字体跟着导入。
  * 派生的元素（UI 库的实例，带 Base）在文件里已经是完整的属性（改过的键带 `*`），不需要再去合并 UI 库。
  * 布局只导入两维：深度方向的尺寸、对齐、Grid 的层（LayerDefinitions）不导入。

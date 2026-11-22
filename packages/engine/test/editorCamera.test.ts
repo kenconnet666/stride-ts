@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { EditorCameraState } from '../src/editor/EditorCamera';
+import { EditorCameraState } from '../src/editor/viewport/EditorCamera';
 
 const round = ({ x, y, z }: { x: number; y: number; z: number }) => [x, y, z].map((v) => Math.round(v * 1000) / 1000 + 0);
 

@@ -36,7 +36,7 @@ describe('类型感知：TypeScript 的语言服务器', () => {
     const scope = await openEvalScope(server, 'game.world.');
     const members = await server.completion({ file: scope.file, line: scope.firstLine, column: 'game.world.'.length + 1 });
     expect(members.find((member) => member.name === 'load')?.detail).toContain('load(path: string): Promise<WorldFile>');
-    const file = path.join(REPO_ROOT, 'packages/engine/src/content/worldFormat.ts');
+    const file = path.join(REPO_ROOT, 'packages/engine/src/content/formats/worldFormat.ts');
     server.open(file);
     // cellOrigin 的定义在哪一行现找（文件改了行号会变）
     const line = readFileSync(file, 'utf8').split('\n').findIndex((text) => text.startsWith('export const cellOrigin')) + 1;

@@ -17,7 +17,7 @@ import { component } from '../engine/component';
 import type { Entity } from '../engine/Entity';
 import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
-import type { ParticleModuleFile } from '../content/format';
+import type { ParticleModuleFile } from '../content/formats/format';
 import type { Game } from '../engine/Game';
 import { NO_CONTEXT } from '../particles/modules';
 import { ParticleSystemComponent } from '../particles/ParticleSystemComponent';

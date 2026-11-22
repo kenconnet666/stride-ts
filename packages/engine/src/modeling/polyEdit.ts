@@ -5,7 +5,7 @@
  *
  * 元素的叫法：顶点是下标，面是下标，边是两个顶点 [a, b]（不分方向）。网格不要求封闭（开口的边只属于一个面）。
  */
-import type { PolyFaceFile, PolyMeshFile, Vec3Tuple } from '../content/assetFormat.ts';
+import type { PolyFaceFile, PolyMeshFile, Vec3Tuple } from '../content/formats/assetFormat.ts';
 import { faceCenter, faceNormalRaw } from './polyMesh.ts';
 
 export type PolyEdge = readonly [number, number];

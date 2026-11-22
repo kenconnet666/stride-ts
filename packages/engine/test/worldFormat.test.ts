@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { cellAt, cellOrigin, checkWorldFile, distanceToCell, placeInCells, worldCellPath } from '../src/content/worldFormat';
+import { cellAt, cellOrigin, checkWorldFile, distanceToCell, placeInCells, worldCellPath } from '../src/content/formats/worldFormat';
 
 const world = { name: 'Island', cellSize: 100, layers: [{ name: 'terrain', loadRadius: 800 }, { name: 'props', loadRadius: 200 }], cells: { props: [[0, 0], [-1, 2]] } };
 

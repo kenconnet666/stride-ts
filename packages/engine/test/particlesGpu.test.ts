@@ -4,7 +4,7 @@ import { GpuEmitter, SpawnRing } from '../src/particles/GpuEmitter';
 import { buildKernel, gpuUnsupported, HEADER_VEC4S, WORKGROUP_SIZE } from '../src/particles/gpuKernel';
 import { SORT_BLOCK, sortPasses, sortSize } from '../src/particles/gpuSort';
 import { ParticleSystem } from '../src/particles/ParticleSystem';
-import type { ParticleModuleFile } from '../src/content/format';
+import type { ParticleModuleFile } from '../src/content/formats/format';
 import { fakeGpu, stubGpuGlobals, type BufferWrite } from './fakeGpu';
 
 /** 一个发射器（种子固定），粒子系统的变换按给的设好、模块的世界变换算好。 */

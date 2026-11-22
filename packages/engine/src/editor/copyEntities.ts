@@ -10,9 +10,9 @@
  *
  * 纯函数，只读文件、给出修改；剪贴板的读写在界面那边（editor 包的 session.ts）。
  */
-import type { SceneEntityFile } from '../content/format';
+import type { SceneEntityFile } from '../content/formats/format';
 import { expandPrefabInstances, renameReferences } from '../content/prefabInstances';
-import { checkEntity } from './fields';
+import { checkEntity } from './fields/index';
 import { SceneDocument, type EntitiesFile, type SceneEdit } from './SceneDocument';
 
 type Entities = readonly SceneEntityFile[];

@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import type { TimelineFile } from '../src/content/format';
+import type { TimelineFile } from '../src/content/formats/format';
 import type { Entity } from '../src/engine/Entity';
 import { Light } from '../src/rendering/components';
 import { Transform } from '../src/engine/transform';
-import { animationAt, Timeline, type TimelineBinding } from '../src/timeline/Timeline';
+import { animationAt, Timeline, type TimelineBinding } from '../src/animation/Timeline';
 
 /** 假的实体：get 返回一个普通对象当组件的视图，写进去的值能读出来。 */
 function fakeEntity(name: string, views: Map<unknown, Record<string, unknown>>): Entity {

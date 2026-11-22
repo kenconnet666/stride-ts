@@ -1,5 +1,5 @@
 /** 照字段描述检查值（checkFields、checkEntity）：保存前、读别人写的文件时。 */
-import type { SceneEntityFile } from '../../content/format';
+import type { SceneEntityFile } from '../../content/formats/format';
 import { string, entity, type FieldType, type Field } from './builders.ts';
 import { COMPONENT_FIELDS, ENTITY_FIELDS, type ComponentDescription } from './components.ts';
 

@@ -2,7 +2,7 @@
  * UI 页面和 UI 库（Stride 的 UIPage、UILibrary），以及按导入的 UIFile 建元素树。页面加载时建一次元素树；UI 库每次
  * instantiateElement 都按模板新建一棵（同 Stride 的 UILibraryExtensions.InstantiateElement 克隆模板）。
  */
-import type { UIElementFile, UIElementType, UIFile, UISpriteValue, UIStripDefinition, UIValue } from '../content/format';
+import type { UIElementFile, UIElementType, UIFile, UISpriteValue, UIStripDefinition, UIValue } from '../content/formats/format';
 import type { SpriteSheet } from '../rendering/SpriteSheet';
 import type { SpriteFont } from '../rendering/text/SpriteFont';
 import type { Texture } from '../graphics/Texture';

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import type { GraphFile } from '../src/graph/nodeGraph';
-import { sortGraph } from '../src/graph/nodeGraph';
+import type { GraphFile } from '../src/content/formats/nodeGraph';
+import { sortGraph } from '../src/content/formats/nodeGraph';
 import { ColorTreeCompiler } from '../src/rendering/mesh/colorTree';
 import { compileMaterialGraph, MATERIAL_NODE_SPECS } from '../src/rendering/mesh/materialGraph';
 

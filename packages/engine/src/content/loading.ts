@@ -1,5 +1,5 @@
 /** 内容加载里共用的小工具。 */
-import type { TextureRef } from './format';
+import type { TextureRef } from './formats/format';
 
 /** 并行加载一组（去重的）路径，结果按路径放进 Map。 */
 export async function preload<T>(paths: readonly string[], load: (path: string) => Promise<T>): Promise<Map<string, T>> {

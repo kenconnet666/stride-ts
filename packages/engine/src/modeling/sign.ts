@@ -65,23 +65,49 @@ export function floorStickerSvg(file: SignFile, font: TextFont | undefined, wher
 export function signModel(file: SignFile, font: TextFont | undefined, where = file.name): MergedProducts {
   const [w, h, d] = file.size;
   if (!(w > 0 && h > 0 && d > 0)) throw new Error(`${where}: size needs a width, height and depth greater than 0`);
-  const lightbox = (file.style ?? 'lightbox') === 'lightbox';
-  const background = file.colors?.background ?? '#2f9e44', ink = file.colors?.text ?? '#ffffff';
-  const faceW = Math.max(0.01, w - 2 * INSET), faceH = Math.max(0.01, h - 2 * INSET);
+  const style = file.style ?? 'lightbox';
+  const lightbox = style === 'lightbox';
+  // 吊旗、价牌：印的面盖满整块（没有外框），两面都印
+  const printed = style === 'banner' || style === 'stand';
+  const background = file.colors?.background ?? (printed ? '#d7262b' : '#2f9e44'), ink = file.colors?.text ?? (printed ? '#f6e21a' : '#ffffff');
+  const inset = printed ? 0 : INSET;
+  const faceW = Math.max(0.01, w - 2 * inset), faceH = Math.max(0.01, h - 2 * inset);
   const batch = new ProductBatch({ products: new Map(), font: () => undefined }, where, [], {
-    solids: [{ color: file.colors?.frame ?? '#c8c9cc', roughness: 0.35, metalness: 0.7 }],
+    solids: [
+      { color: file.colors?.frame ?? '#c8c9cc', roughness: 0.35, metalness: 0.7 },
+      // 吊旗、价牌的边（同底色）、吊绳和底座（深色）
+      { color: background, roughness: 0.5, metalness: 0 },
+      { color: '#2a2b2e', roughness: 0.5, metalness: 0.2 },
+    ],
     cells: [{
       size: [faceW * 1000, faceH * 1000], color: background, roughness: 0.3, metalness: 0, ...(lightbox ? { emissive: file.brightness ?? 3 } : {}),
       draw: ([x, y, cw, ch]: Cell) => (font ? textPath(font, file.text, x + cw / 2, y + ch / 2, cw * 0.86, ch * 0.72, ink) : undefined),
     }],
   });
-  batch.box([-w / 2, -h / 2, -d / 2], [w / 2, h / 2, d / 2], 0);
+  // 价牌的卡片在立杆顶上（原点在地面），别的以中心为原点
+  const cy = style === 'stand' ? Math.max(h, file.standHeight ?? 1.2) - h / 2 : 0;
+  batch.box([-w / 2, cy - h / 2, -d / 2], [w / 2, cy + h / 2, d / 2], printed ? EDGE : FRAME_SOLID);
   const face = (side: 1 | -1) => {
     const z = side * (d / 2 + PROUD), x = (faceW / 2) * side, y = faceH / 2;
     // 从这一面看：左下、右下、右上、左上（背面那一面的 x 反过来）
-    batch.quad([[-x, -y, z], [x, -y, z], [x, y, z], [-x, y, z]], [0, 0, side], 0);
+    batch.quad([[-x, cy - y, z], [x, cy - y, z], [x, cy + y, z], [-x, cy + y, z]], [0, 0, side], 0);
   };
   face(1);
-  if (file.doubleSided) face(-1);
+  if (file.doubleSided || printed) face(-1);
+  if (style === 'banner') {
+    // 顶上一根横杆，两根吊绳往上收到一点
+    const top = h / 2 + 0.012, hang = Math.max(0, file.hang ?? 0.5);
+    batch.tube([-w / 2 - 0.015, top, 0], [w / 2 + 0.015, top, 0], 0.008, FRAME_SOLID, 8);
+    if (hang > 0) for (const x of [-w * 0.4, w * 0.4]) batch.tube([x, top, 0], [0, top + hang, 0], 0.0015, CORD, 4);
+  }
+  if (style === 'stand') {
+    // 圆底座（扁圆台盖顶）、立杆到卡片底
+    batch.tube([0, 0, 0], [0, 0.02, 0], 0.16, CORD, 24);
+    batch.tube([0, 0.02, 0], [0, 0.026, 0], 0.16, CORD, 24, 0);
+    batch.tube([0, 0.02, 0], [0, cy - h / 2, 0], 0.012, FRAME_SOLID, 10);
+  }
   return batch.finish();
 }
+
+/** 纯色的下标：外框（不锈钢）、吊旗价牌的边（同底色）、吊绳和底座。 */
+const FRAME_SOLID = 0, EDGE = 1, CORD = 2;

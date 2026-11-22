@@ -108,6 +108,21 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
       ['normal', 'normalFromHeight', { strength: 1.5 }, { height: ['tiles', 'mask'], uv: 'uv' }],
     ], { baseColor: 'color', normal: 'normal' }),
   }),
+  // 墙砖：白釉面的方砖（每米 4 块、不错缝，包柱、墙面），每块白得略有不同，浅灰的缝；釉面光滑、缝粗糙
+  plain('wallTiles', 'stone', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.12,
+    graph: graph([
+      ['uv', 'uv'],
+      ['tiles', 'bricks', { columns: 4, rows: 4, mortar: 0.008, shift: 0 }, { uv: 'uv' }],
+      ['tone', 'colorRamp', { from: [0.78, 0.78, 0.76], to: [0.86, 0.86, 0.84] }, { t: ['tiles', 'brick'] }],
+      ['joint', 'color', { color: [0.42, 0.42, 0.4] }],
+      ['color', 'mix', {}, { a: 'joint', b: 'tone', t: ['tiles', 'mask'] }],
+      ['glaze', 'value', { value: 0.1 }],
+      ['grout', 'value', { value: 0.7 }],
+      ['roughness', 'mix', {}, { a: 'grout', b: 'glaze', t: ['tiles', 'mask'] }],
+      ['normal', 'normalFromHeight', { strength: 0.4 }, { height: ['tiles', 'mask'], uv: 'uv' }],
+    ], { baseColor: 'color', roughness: 'roughness', normal: 'normal' }),
+  }),
   plain('wood', 'wood', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.6,
     graph: graph([

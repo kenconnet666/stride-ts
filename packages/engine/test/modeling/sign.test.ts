@@ -40,4 +40,24 @@ describe('招牌', () => {
     expect(worn).toBe(floorStickerSvg({ ...base, wear: 0.5, seed: 3 }, undefined));
     expect(() => floorStickerSvg({ ...base, size: [0, 1, 0] }, undefined)).toThrow(/width and a length/);
   });
+
+  test('吊旗两面印、顶上横杆和吊绳收到上方一点；价牌立在地上，卡片顶在 standHeight', () => {
+    const ys = (vertices: Float32Array) => {
+      let min = Infinity, max = -Infinity;
+      for (let i = 1; i < vertices.length; i += 8) {
+        min = Math.min(min, vertices[i]!);
+        max = Math.max(max, vertices[i]!);
+      }
+      return [min, max];
+    };
+    const banner = signModel({ name: 'Flag', style: 'banner', text: '特价', font: 'F', size: [0.6, 0.9, 0.004], hang: 0.5 }, undefined);
+    expect(banner.emissive).toBe(0);
+    const [bottom, top] = ys(banner.vertices);
+    expect(bottom).toBeCloseTo(-0.45, 3);
+    expect(top).toBeGreaterThan(0.45 + 0.49);
+    const stand = signModel({ name: 'Price', style: 'stand', text: '9.9', font: 'F', size: [0.4, 0.3, 0.01], standHeight: 1.1 }, undefined);
+    const [floor, cardTop] = ys(stand.vertices);
+    expect(floor).toBeCloseTo(0, 6);
+    expect(cardTop).toBeCloseTo(1.1, 5);
+  });
 });

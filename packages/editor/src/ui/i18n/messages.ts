@@ -300,7 +300,7 @@ const zhCN: EditorMessages = {
     categories: { metal: '金属', plastic: '塑料、漆', glass: '玻璃', emissive: '发光', stone: '石头、砖', wood: '木头', fabric: '布', terrain: '地形', smart: '智能材质', fire: '火', smoke: '烟', sparks: '火花', magic: '魔法', ambient: '氛围', water: '水' },
     names: {
       gold: '金', copper: '铜', chrome: '铬', brushedSteel: '拉丝钢', carPaint: '车漆', glossyPlastic: '亮面塑料', mattePlastic: '哑光塑料', rubber: '橡胶', clearGlass: '透明玻璃', frostedGlass: '磨砂玻璃', crystal: '水晶',
-      neonCyan: '霓虹（青）', neonMagenta: '霓虹（品红）', concrete: '混凝土', redBrick: '红砖', stoneTiles: '石板', wood: '木头', marble: '大理石', fabric: '布', alpineTerrain: '高山地形（草、岩、雪）', wornPaint: '掉漆的金属', mossyStone: '长青苔的石头',
+      neonCyan: '霓虹（青）', neonMagenta: '霓虹（品红）', concrete: '混凝土', redBrick: '红砖', stoneTiles: '石板', wallTiles: '白瓷砖', wood: '木头', marble: '大理石', fabric: '布', alpineTerrain: '高山地形（草、岩、雪）', wornPaint: '掉漆的金属', mossyStone: '长青苔的石头',
       campfire: '篝火', smokeColumn: '烟柱', steam: '蒸汽', sparks: '火花', magicOrb: '魔法光球', dustMotes: '浮尘', fountain: '喷泉',
     },
     use: '用在选中的实体上', add: '加到场景', hint: '材质拖到视口里的物体上、或者选中物体再点"用在选中的实体上"；用的时候拷一份进工程（Materials/Library），之后和库没有关系',
@@ -572,7 +572,7 @@ const enUS: EditorMessages = {
     categories: { metal: 'Metal', plastic: 'Plastic and paint', glass: 'Glass', emissive: 'Emissive', stone: 'Stone and brick', wood: 'Wood', fabric: 'Fabric', terrain: 'Terrain', smart: 'Smart materials', fire: 'Fire', smoke: 'Smoke', sparks: 'Sparks', magic: 'Magic', ambient: 'Ambient', water: 'Water' },
     names: {
       gold: 'Gold', copper: 'Copper', chrome: 'Chrome', brushedSteel: 'Brushed steel', carPaint: 'Car paint', glossyPlastic: 'Glossy plastic', mattePlastic: 'Matte plastic', rubber: 'Rubber', clearGlass: 'Clear glass', frostedGlass: 'Frosted glass', crystal: 'Crystal',
-      neonCyan: 'Neon (cyan)', neonMagenta: 'Neon (magenta)', concrete: 'Concrete', redBrick: 'Red brick', stoneTiles: 'Stone tiles', wood: 'Wood', marble: 'Marble', fabric: 'Fabric', alpineTerrain: 'Alpine terrain (grass, rock, snow)', wornPaint: 'Worn paint', mossyStone: 'Mossy stone',
+      neonCyan: 'Neon (cyan)', neonMagenta: 'Neon (magenta)', concrete: 'Concrete', redBrick: 'Red brick', stoneTiles: 'Stone tiles', wallTiles: 'White wall tiles', wood: 'Wood', marble: 'Marble', fabric: 'Fabric', alpineTerrain: 'Alpine terrain (grass, rock, snow)', wornPaint: 'Worn paint', mossyStone: 'Mossy stone',
       campfire: 'Campfire', smokeColumn: 'Smoke column', steam: 'Steam', sparks: 'Sparks', magicOrb: 'Magic orb', dustMotes: 'Dust motes', fountain: 'Fountain',
     },
     use: 'Use on the selected entities', add: 'Add to the scene', hint: 'Drag a material onto an object in the viewport, or select objects and click Use; a copy goes into the project (Materials/Library) and is not linked to the library afterwards',

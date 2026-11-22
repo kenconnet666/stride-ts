@@ -41,6 +41,16 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
   ambientOcclusion: { type: json, optional: true, group: 'advanced' },
   cavity: { type: object(fields<NonNullable<MaterialFile['cavity']>>({ diffuse: number({ min: 0, max: 1 }), specular: number({ min: 0, max: 1 }) })), optional: true, group: 'advanced' },
   doubleSided: { type: bool, optional: true, default: false, group: 'surface' },
+  credit: {
+    type: object(fields<NonNullable<MaterialFile['credit']>>({
+      source: { type: string, description: 'where the sampled data comes from (URL)' },
+      license: { type: string, description: 'license, e.g. CC0 1.0 or CC BY 4.0' },
+      author: { type: string, optional: true },
+    })),
+    optional: true,
+    group: 'advanced',
+    description: 'source and attribution of scanned or sampled data',
+  },
   alphaCutoff: { type: number({ min: 0, max: 1, step: 0.01 }), optional: true, group: 'surface', description: 'pixels with a base color alpha below it are discarded' },
   transparency: { type: json, optional: true, group: 'surface' },
   microfacet: { type: json, optional: true, group: 'advanced' },

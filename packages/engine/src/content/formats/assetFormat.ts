@@ -313,6 +313,11 @@ export interface MaterialFile {
   /** Stride 的 Occlusion 特性里的 cavity：漫反射和镜面的可见部分乘上这两个系数。 */
   readonly cavity?: { readonly diffuse: number; readonly specular: number };
   readonly normalMap?: NormalMapSlot;
+  /**
+   * 来源和署名（Stride 没有）：扫描的材质这类采样数据从哪来（网址）、许可（CC0、CC-BY 4.0……）、作者。只是记录，渲染不用；
+   * 编辑器导入扫描的材质时写上。
+   */
+  readonly credit?: { readonly source: string; readonly license: string; readonly author?: string };
 }
 
 export type Vec3Tuple = readonly [number, number, number];

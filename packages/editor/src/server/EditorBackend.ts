@@ -15,6 +15,7 @@ import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, bakeTreeModel, bakeBuildingModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import { parseCubeLut } from '@stride-ts/engine/color-lut';
+import { materialSet, scannedMaterial, SRGB_ROLES, type MaterialCredit, type MaterialMapRole } from '../materialSet.ts';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -355,6 +356,58 @@ export class EditorBackend {
   }
 
   /**
+   * 导入一套扫描的材质（materialSet.ts）：各张贴图放进 `<folder>/<name>/`（`<name>_<用途>.<扩展名>`），导入设置是压成 UASTC 的
+   * KTX2、带 mipmap、长边最多 maxSize（颜色贴图按 sRGB，其余线性），当场压好；金属度贴图取平均当金属度；再写
+   * `<folder>/<name>.material.json`。高度、不透明度贴图还没有槽，跳过并警告。名字和已有的材质重复时加数字。
+   */
+  importMaterialSet(folder: string, files: readonly { readonly name: string; readonly bytes: Uint8Array }[], options: { readonly name?: string | undefined; readonly tileSize?: number | undefined; readonly maxSize?: number | undefined; readonly credit?: MaterialCredit | undefined } = {}): Promise<ImportResult> {
+    if (folder !== '') checkContentPath(folder);
+    const set = materialSet(files.map((file) => file.name));
+    if (!set) throw new HttpError(400, `not a material set: need a color map and at least one more map with the same prefix (got ${files.map((file) => file.name).join(', ')})`);
+    return this.#enqueue(async () => {
+      const base = (options.name ?? set.name).replace(/[^A-Za-z0-9_-]+/g, '') || 'Scanned';
+      let name = base;
+      for (let n = 2; this.database.get('material', folder ? `${folder}/${name}` : name); n++) name = `${base}${n}`;
+      const dir = folder ? `${folder}/${name}` : name;
+      const warnings: string[] = [];
+      const textures: Partial<Record<MaterialMapRole, string>> = {};
+      const written: string[] = [];
+      let metalness: number | undefined;
+      for (const map of set.maps) {
+        const file = files.find((candidate) => candidate.name === map.fileName)!;
+        if (map.role === 'height' || map.role === 'opacity') {
+          warnings.push(`${map.fileName}: ${map.role} maps have no material slot yet, skipped`);
+          continue;
+        }
+        const extension = path.extname(map.fileName).toLowerCase();
+        const source = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.webp': 'webp' } as const)[extension as '.png'];
+        if (map.role === 'metalness') {
+          const tools = await (this.#tools ??= createStrideTools());
+          const image = await tools.decodeImage(file.bytes);
+          let sum = 0;
+          for (let i = 0; i < image.pixels.length; i += 4) sum += image.pixels[i]!;
+          metalness = Math.round((sum / (image.pixels.length / 4) / 255) * 100) / 100;
+          if (metalness > 0.1 && metalness < 0.9) warnings.push(`${map.fileName}: the metalness map is not uniform (average ${metalness}); a single metalness value is used`);
+          continue;
+        }
+        const assetPath = `${dir}/${name}_${map.role}`;
+        await writeAtomically(path.join(this.project.contentDir, assetPath + TEXTURE_EXTENSIONS[source]), file.bytes);
+        const settings: ImageImportFile = { source, compress: 'uastc', mipmaps: true, maxSize: options.maxSize ?? 2048, srgb: SRGB_ROLES.has(map.role) };
+        const settingsFile = assetFileName('imageImport', assetPath);
+        await writeAtomically(path.join(this.project.contentDir, settingsFile), JSON.stringify(settings, null, 1));
+        const baked = await this.#bake('imageImport', assetPath, settings);
+        written.push(this.#relative(path.join(this.project.contentDir, assetPath + TEXTURE_EXTENSIONS[source])), settingsFile, ...baked.files);
+        textures[map.role] = assetPath;
+      }
+      const material = scannedMaterial(name, textures, { ...(options.tileSize !== undefined ? { tileSize: options.tileSize } : {}), ...(metalness !== undefined ? { metalness } : {}), ...(options.credit ? { credit: options.credit } : {}) });
+      const main = assetFileName('material', folder ? `${folder}/${name}` : name);
+      await writeAtomically(path.join(this.project.contentDir, main), JSON.stringify(material, null, 1));
+      await this.#refresh([...written, main]);
+      return { asset: this.database.get('material', folder ? `${folder}/${name}` : name)!, warnings };
+    });
+  }
+
+  /**
    * 导入源模型：源文件放进 folder（`<名字>.<格式>`），旁边写一份默认的导入设置（`<名字>.import.json`），照设置导入成同名的
    * 模型（连材质、贴图、骨架、动画；#bake）。名字不和已有的模型、导入设置重复。导入不了时什么也不留。
    */
@@ -564,6 +617,12 @@ export class EditorBackend {
     if (route === 'POST /world/place') {
       const { world, layer, entities } = await readJson(request) as { world: string; layer: string; entities: SceneEntityFile[] };
       return this.placeInWorld(world, layer, entities);
+    }
+    if (route === 'POST /import-material') {
+      // 一套扫描的材质：JSON 里各个文件是 base64
+      const body = await readJson(request) as { folder?: string; files: { name: string; base64: string }[]; name?: string; tileSize?: number; maxSize?: number; credit?: MaterialCredit };
+      if (!Array.isArray(body.files)) throw new HttpError(400, 'files ([{ name, base64 }]) is required');
+      return this.importMaterialSet(body.folder ?? '', body.files.map((file) => ({ name: file.name, bytes: Buffer.from(file.base64, 'base64') })), body);
     }
     if (route === 'POST /import') {
       const folder = url.searchParams.get('folder') ?? '', name = url.searchParams.get('name');

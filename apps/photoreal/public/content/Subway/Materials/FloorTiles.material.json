@@ -1,0 +1,60 @@
+{
+ "name": "FloorTiles",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "baseColorTexture": {
+  "texture": "Subway/Materials/FloorTiles/FloorTiles_baseColor",
+  "scale": [
+   0.5,
+   0.5
+  ],
+  "offset": [
+   0,
+   0
+  ],
+  "filter": "anisotropic",
+  "srgb": true
+ },
+ "metalness": 0,
+ "roughness": 1,
+ "glossinessTexture": {
+  "texture": "Subway/Materials/FloorTiles/FloorTiles_roughness",
+  "scale": [
+   0.5,
+   0.5
+  ],
+  "offset": [
+   0,
+   0
+  ],
+  "filter": "anisotropic",
+  "srgb": false,
+  "channel": "r",
+  "invert": true
+ },
+ "normalMap": {
+  "texture": "Subway/Materials/FloorTiles/FloorTiles_normalGl",
+  "scale": [
+   0.5,
+   0.5
+  ],
+  "offset": [
+   0,
+   0
+  ],
+  "filter": "anisotropic",
+  "srgb": false,
+  "scaleAndBias": true,
+  "isXYNormal": false,
+  "invertY": false
+ },
+ "credit": {
+  "source": "https://ambientcg.com/view?id=Tiles141",
+  "license": "CC0 1.0",
+  "author": "ambientCG (Lennart Demes)"
+ }
+}

@@ -963,6 +963,11 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 - 整理（R3 做完以后，单独提交）：`ToneMap.ts` 长到 921 行，拆进 `rendering/postfx/tonemap/`——`ToneMap.ts`（映射和平均测光，532 行）、`HistogramMetering.ts`、`LocalExposure.ts`（建网格；映射时取网格留在 ToneMap 的着色器里）、`ColorLut.ts`（解析、按路径登记、每个设备的贴图）、`whiteBalance.ts`；站台的画面、照片比对、耗时和拆之前一样。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
+## R4 第一步：扫描的材质的导入（2026-11-22）
+
+- `packages/editor/src/materialSet.ts`（`classifyMap`、`materialSet`、`scannedMaterial`，界面和后端共用），`EditorBackend.importMaterialSet`（各张图写进 `<文件夹>/<名字>/`、导入设置是 UASTC、当场压好，金属度贴图取平均，写材质）、`POST /import-material`、MCP 的 `import_material`、资源浏览器拖进一组图片时认出来合成一个材质；材质文件的 `credit`（引擎的格式、字段描述、中文名）；单测（ambientCG、Poly Haven 的命名，成套的判断，写出的材质照字段描述检查）。TypeScript 的库升到 es2026（`Uint8Array.toBase64`）。
+- 试：ambientCG 的 Tiles141（CC0）经后端导入站台，地面的白模换成它（`build-subway.ts` 同步）。头一回打开全是错：photoreal 没加载 `texture` 侧模块，KTX2 转不了码——新建工程的模板也没有，编辑器一压缩就坏；模板和 photoreal 加上 `texture`。测试浏览器（无头，960×1280）：地面有了真实的砖缝和污渍，照片比对的细节比 0.29 → 0.45，整体亮 0.36 档、偏暖（地砖比照片的暖、白），GPU 3.09 毫秒一帧（不变）。2K 的三张压 UASTC 用了 6 分钟、1K 的 78 秒：原生的 Basis 编码是单线程的，以后要快可以并行编几张（记一笔）。
+
 ## R2 第九步：成片的路径追踪的间接光，R2 做完（2026-11-22）
 
 - `PathTracedLighting`（`renderSystem.pathTracing`）：深度预通道以后，半分辨率（取 2×2 的左上角）按深度还原位置、按邻居求法线，余弦分布发 `paths` 条路径、最多 `bounces` 次反弹（第三次起俄罗斯轮盘赌）：打到的表面加 反照率 ×（直射光，带阴影射线）+ 自发光，没打到的加天空盒（镜面贴图的第一级）；相机不动时逐帧平均（离线渲染每个输出帧的第一个子帧从头来），两遍 à-trous 按深度、法线挡边，样本越多糊得越少。交给网格着色器当屏幕空间的间接光，视图的辐照度体那一位设 2，漫反射的环境光（辐照度体、天空盒光、环境光）整个由它代替，镜面反射照旧。光追场景和管线都好了才在写视图常量之前定下来用（不然那一帧网格着色读的是白图）。

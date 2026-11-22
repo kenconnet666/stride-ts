@@ -155,6 +155,7 @@ function mainTs(name: string): string {
 import * as engine from '@stride-ts/engine';
 import { Game } from '@stride-ts/engine';
 import { physics } from '@stride-ts/native/physics';
+import { texture } from '@stride-ts/native/texture';
 import { ${name}Game } from './game/${name}Game';
 
 // 调试用：控制台和 stride eval 可以拿到引擎的类型
@@ -166,7 +167,7 @@ const modules = import.meta.glob('./game/**/*.ts', { eager: true });
 
 const { game, created } = Game.hotEntry(import.meta.hot, modules, ${name}Game);
 if (created) {
-  game.run(canvas, { modules, stats, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics] }).catch((error: unknown) => {
+  game.run(canvas, { modules, stats, debugNative: import.meta.env.DEV, debug: import.meta.env.DEV || undefined, nativeFeatures: [physics, texture] }).catch((error: unknown) => {
     stats.textContent = \`failed: \${error instanceof Error ? error.message : String(error)}\`;
   });
 }

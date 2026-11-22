@@ -100,7 +100,7 @@ const brushModel = async (name: string, materials: string[], brushes: Brush[]) =
 
 // ---- 站台和轨道 ----
 const LENGTH = 60, START = -12, CENTER = START + LENGTH / 2;
-await brushModel('Platform', [M('Tile'), CONCRETE], [
+await brushModel('Platform', [M('FloorTiles'), CONCRETE], [
   box('Floor', [CENTER, -0.5, 4], [LENGTH, 1, 10], 0),
   // 站台边缘的混凝土立面（站台边在 z = −1）
   box('Edge', [CENTER, -0.7, -0.95], [LENGTH, 1.2, 0.1], 1),

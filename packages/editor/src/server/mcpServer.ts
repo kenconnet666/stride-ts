@@ -101,6 +101,27 @@ export function createEditorMcpServer(projects: McpProjects): McpServer {
     return json({ asset: brief(result.asset), warnings: result.warnings, ...(result.animations ? { animations: result.animations } : {}) });
   });
 
+  server.registerTool('import_material', {
+    description: [
+      'Import a scanned material (a set of texture maps from ambientCG, Poly Haven, Quixel, Substance...) as one material: maps are recognized by the',
+      'last word of the file name (Color/Albedo/Diff, NormalGL/NormalDX/nor_gl, Roughness/Gloss, Metalness, AmbientOcclusion/AO; resolution suffixes',
+      'like _2K are ignored), compressed to KTX2 (UASTC, mipmaps) under <folder>/<name>/, and a <folder>/<name>.material.json is written.',
+      'tileSize is how many meters one repeat of the texture covers (generated models use metric world UVs). Record where the data comes from in credit.',
+    ].join(' '),
+    inputSchema: z.object({
+      files: z.array(z.string()).describe('absolute paths of the map images'),
+      folder: z.string().describe('content folder to put the material in ("" is the root)'),
+      name: z.string().optional().describe('material name; default: the common prefix of the file names'),
+      tileSize: z.number().positive().optional().describe('meters covered by one repeat of the texture (default 1)'),
+      maxSize: z.number().int().min(0).optional().describe('longest side of the compressed textures in pixels (default 2048, 0: keep)'),
+      credit: z.object({ source: z.string(), license: z.string(), author: z.string().optional() }).optional().describe('source URL, license and author of the scanned data'),
+    }),
+  }, async ({ files, folder, ...options }) => {
+    const loaded = await Promise.all(files.map(async (file) => ({ name: path.basename(file), bytes: new Uint8Array(await readFile(file)) })));
+    const result = await projects.current.importMaterialSet(folder, loaded, options);
+    return json({ asset: brief(result.asset), warnings: result.warnings });
+  });
+
   server.registerTool('sculpt_terrain', {
     description: [
       'Sculpt a vector terrain asset (kind terrain, .terrain.json) and save it; viewports re-evaluate only the tiles the change covers.',

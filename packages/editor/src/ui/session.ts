@@ -29,6 +29,7 @@ import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@st
 import type { PolyMeshFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
 import { EditorClient } from '../EditorClient.ts';
 import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
+import { materialSet } from '../materialSet.ts';
 import { t } from './messages';
 
 /** 出片的预设（引擎 offline/VideoExport.ts 的 RENDER_PRESETS 里常用的几个）。 */
@@ -625,7 +626,15 @@ export class EditorSession implements EditableScene {
   async importFiles(folder: string, files: readonly File[]): Promise<AssetRecord[]> {
     const records: AssetRecord[] = [];
     const warnings: string[] = [];
-    for (const file of files) {
+    // 一组按文件名认得出的贴图（颜色加法线、粗糙度……）是一套扫描的材质：合成一个材质；其余的照常一个个导入
+    const set = materialSet(files.map((file) => file.name));
+    const inSet = new Set(set?.maps.map((map) => map.fileName));
+    if (set) {
+      const result = await this.client.importMaterialSet(folder, files.filter((file) => inSet.has(file.name)));
+      records.push(result.asset);
+      warnings.push(...result.warnings);
+    }
+    for (const file of files.filter((candidate) => !inSet.has(candidate.name))) {
       const result = await this.client.importFile(folder, file);
       records.push(result.asset);
       warnings.push(...result.warnings);

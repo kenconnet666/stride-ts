@@ -45,6 +45,15 @@ export class EditorClient {
     return result as ImportResult;
   }
 
+  /** 导入一套扫描的材质（各张贴图，见 materialSet.ts）放进 folder；返回材质。 */
+  async importMaterialSet(folder: string, files: readonly File[]): Promise<ImportResult> {
+    const encoded = await Promise.all(files.map(async (file) => ({ name: file.name, base64: new Uint8Array(await file.arrayBuffer()).toBase64() })));
+    const response = await fetch(`${EDITOR_API_PATH}/import-material`, { method: 'POST', headers: { ...HEADERS, 'content-type': 'application/json' }, body: JSON.stringify({ folder, files: encoded }) });
+    const result = await response.json() as ImportResult | { error: string };
+    if (!response.ok) throw new Error(`editor import material: ${(result as { error: string }).error}`);
+    return result as ImportResult;
+  }
+
   /** 写一张 png（建新的或覆盖），path 是内容路径（不带扩展名）；在模型上画贴图时存遮罩。 */
   async saveImage(path: string, png: Uint8Array<ArrayBuffer>): Promise<AssetRecord> {
     const response = await fetch(`${EDITOR_API_PATH}/image?path=${encodeURIComponent(path)}`, { method: 'PUT', headers: HEADERS, body: png });

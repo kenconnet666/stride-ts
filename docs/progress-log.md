@@ -963,6 +963,12 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 - 整理（R3 做完以后，单独提交）：`ToneMap.ts` 长到 921 行，拆进 `rendering/postfx/tonemap/`——`ToneMap.ts`（映射和平均测光，532 行）、`HistogramMetering.ts`、`LocalExposure.ts`（建网格；映射时取网格留在 ToneMap 的着色器里）、`ColorLut.ts`（解析、按路径登记、每个设备的贴图）、`whiteBalance.ts`；站台的画面、照片比对、耗时和拆之前一样。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
+## 尾巴：碰撞体跟着实体缩放；stride eval 多条语句返回最后的值（2026-11-22）
+
+- 原生（fork 的 `PhysicsApi.cpp`，临时版 native-dev-54b1527）：`MakeShape`、`MakeBodyShape` 不再管缩放，建物体时整个形状套 `ScaledShape`（`MakeScaleValid`）。引擎：`Collider` 的 `absoluteSize`、`unscaledShape`，`Simulation` 建物体前换算，`debugShapes` 线框照原生的规则画；场景格式、编辑器的字段和中文名，Stride 导入器写 `absoluteSize`，迁移已有的内容（见 decisions.md）。
+- 测试：Node 里的原生物理单测（放大 2 倍的 1 米方块、球：默认停在 1 米高，absoluteSize 停在 0.5 米），线框的单测按新旧两种规则，换算的单测。测试浏览器（bepu-sample 的 Colliders）：新建的放大方块比导入的方块高 0.500 米；导入的放大 2 倍的球、圆柱、方块的线框贴着模型。
+- 主动改进：`stride eval` 多条语句（带顶层 await）的代码以前总是返回 null（当异步函数体跑、没有 return）；现在像浏览器控制台一样返回最后一条表达式的值：在顶层的 `;` 和换行处切开，从最长的尾巴试着包成 `return (…)`，编译得过就用（`withLastValue`，单测覆盖跨行的表达式、字符串和注释里的分号）。
+
 ## 整理：读回贴图都用 readTexture（2026-11-22）
 
 序列帧烘焙（`FlipbookBaker.readFloats`，半精度换成 `Float16Array` 转，删了手写的 `halfToFloat`）、在模型上画的读回（`MeshPainter.read`）、光追的调试图（`RayTracingDebug`）都改用 `graphics/readTexture.ts`；离线渲染每帧复用常驻的读回缓冲，照旧。营地里试过：`stride call raytrace --out` 的图对、`bake` 烘出的火的序列帧对（试完删了）。

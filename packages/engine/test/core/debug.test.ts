@@ -165,21 +165,30 @@ group('碰撞体的线框（drawCollider）', () => {
   };
   const range = (points: number[][], axis: number): [number, number] => [Math.min(...points.map((p) => p[axis]!)), Math.max(...points.map((p) => p[axis]!))];
 
-  it('基本形状按实体的位置和朝向画、不跟实体的缩放；形状自己的位置算进去', () => {
+  it('基本形状默认跟着实体的缩放（尺寸和本地位置都乘上）', () => {
+    const draw = new DebugDraw();
+    // 实体在 (10, 0, 0)，缩放 (2, 3, 4)：边长 (4, 12, 24)，中心在 y = 15
+    const world = [2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 4, 0, 10, 0, 0, 1];
+    drawCollider(draw, new Collider([{ type: 'box', size: [2, 4, 6], position: [0, 5, 0] }]), world, [1, 1, 1, 1]);
+    const box = ends(draw);
+    expect([range(box, 0), range(box, 1), range(box, 2)]).toEqual([[8, 12], [9, 21], [-12, 12]]);
+  });
+
+  it('absoluteSize（Stride 的规则）：基本形状按实体的位置和朝向画、不跟实体的缩放；形状自己的位置算进去', () => {
     const draw = new DebugDraw();
     // 实体在 (10, 0, 0)，缩放 (2, 3, 4)
     const world = [2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 4, 0, 10, 0, 0, 1];
-    drawCollider(draw, new Collider([{ type: 'box', size: [2, 4, 6], position: [0, 5, 0] }]), world, [1, 1, 1, 1]);
+    drawCollider(draw, new Collider([{ type: 'box', size: [2, 4, 6], position: [0, 5, 0] }], { absoluteSize: true }), world, [1, 1, 1, 1]);
     expect(draw.count).toBe(12);
     const box = ends(draw);
     expect([range(box, 0), range(box, 1), range(box, 2)]).toEqual([[9, 11], [3, 7], [-3, 3]]);
     draw.clear();
     // 胶囊沿本地 Y：两个球心相距 length，加上两头的半径
-    drawCollider(draw, new Collider([{ type: 'capsule', radius: 0.5, length: 2 }]), world, [1, 1, 1, 1]);
+    drawCollider(draw, new Collider([{ type: 'capsule', radius: 0.5, length: 2 }], { absoluteSize: true }), world, [1, 1, 1, 1]);
     const capsule = ends(draw);
     expect([range(capsule, 0), range(capsule, 1)]).toEqual([[9.5, 10.5], [-1.5, 1.5]]);
     draw.clear();
-    drawCollider(draw, new Collider([{ type: 'sphere', radius: 2 }, { type: 'empty' }]), world, [1, 1, 1, 1]);
+    drawCollider(draw, new Collider([{ type: 'sphere', radius: 2 }, { type: 'empty' }], { absoluteSize: true }), world, [1, 1, 1, 1]);
     expect(range(ends(draw), 1)).toEqual([-2, 2]);
   });
 

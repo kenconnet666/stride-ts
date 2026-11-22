@@ -606,7 +606,8 @@ export class StrideImporter {
     const handler = asObject(component['ContactEventHandler'])?.$type;
     const trigger = handler === 'Stride.BepuPhysics.Definitions.Trigger,Stride.BepuPhysics';
     if (handler !== undefined && !trigger) this.#warnings.push(`${where}: contact event handler ${handler} is not supported; ignored (scripts can set one with simulation.setContactHandler)`);
-    return { shapes, layer: layer ? Number(layer[1]) : 0, friction: asNumber(component['FrictionCoefficient'], 1), ...(trigger ? { trigger } : {}) };
+    // Stride 的形状是世界单位、不跟着实体缩放（只有网格跟着），照原样画需要 absoluteSize
+    return { shapes, absoluteSize: true, layer: layer ? Number(layer[1]) : 0, friction: asNumber(component['FrictionCoefficient'], 1), ...(trigger ? { trigger } : {}) };
   }
 
   /** Stride.BepuPhysics 的 BodyComponent：碰撞体加刚体的设置，默认值同 Stride。 */

@@ -740,11 +740,13 @@ describe('导入 Stride 场景', () => {
         { type: 'box', size: [1, 2, 3], position: [0, 1, 0], rotation: [0, 0, 0, 1], mass: 1 },
         { type: 'capsule', radius: 0.35, length: 0.5, position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 2 },
       ],
+      // Stride 的形状是世界单位、不跟着实体缩放
+      absoluteSize: true,
       layer: 1,
       friction: 0.3,
     });
-    expect(ramp!.static).toEqual({ shapes: [{ type: 'mesh', model: 'Game/Models/Tri', position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }], layer: 0, friction: 1 });
-    expect(player!.character).toMatchObject({ layer: 2, friction: 0.5, speed: 10, jumpForce: 13, slopeAngle: 45, maximumHorizontalForce: 200, interpolated: true, gravity: true });
+    expect(ramp!.static).toEqual({ shapes: [{ type: 'mesh', model: 'Game/Models/Tri', position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }], absoluteSize: true, layer: 0, friction: 1 });
+    expect(player!.character).toMatchObject({ absoluteSize: true, layer: 2, friction: 0.5, speed: 10, jumpForce: 13, slopeAngle: 45, maximumHorizontalForce: 200, interpolated: true, gravity: true });
     expect(player!.character!.shapes).toEqual([{ type: 'capsule', radius: 0.4, length: 1.2, position: [0, 0.95, 0], rotation: [0, 0, 0, 1], mass: 1 }]);
 
     // 没有物理组件的场景不写仿真设置

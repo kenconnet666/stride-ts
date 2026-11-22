@@ -1907,6 +1907,7 @@
      ]
     },
     "body": {
+     "absoluteSize": true,
      "shapes": [
       {
        "type": "box",
@@ -1969,6 +1970,7 @@
      ]
     },
     "body": {
+     "absoluteSize": true,
      "shapes": [
       {
        "type": "box",
@@ -2031,6 +2033,7 @@
      ]
     },
     "body": {
+     "absoluteSize": true,
      "shapes": [
       {
        "type": "box",

@@ -6,7 +6,7 @@
  */
 import type { DebugColor, DebugDraw, DebugDrawOptions } from '../debug/DebugDraw';
 import type { Mesh } from '../rendering/mesh/Mesh';
-import type { Collider, ColliderShape } from './Collider';
+import { unscaledShape, type Collider, type ColliderShape } from './Collider';
 
 type Triple = readonly [number, number, number];
 
@@ -33,11 +33,12 @@ function pose([px, py, pz]: Triple, [x, y, z, w]: readonly [number, number, numb
   ]);
 }
 
-/** 去掉缩放：三个轴各自归一。 */
-function unscaled(world: ArrayLike<number>): Float32Array {
+/** 去掉缩放：三个轴各自归一；scale 收到各轴原来的长度。 */
+function unscaled(world: ArrayLike<number>, scale: number[]): Float32Array {
   const out = Float32Array.from(world);
   for (let axis = 0; axis < 3; axis++) {
     const length = Math.hypot(out[axis * 4]!, out[axis * 4 + 1]!, out[axis * 4 + 2]!) || 1;
+    scale[axis] = length;
     for (let k = 0; k < 3; k++) out[axis * 4 + k]! /= length;
   }
   return out;
@@ -71,30 +72,44 @@ function edgesOf(mesh: Mesh): Float32Array {
   return edges;
 }
 
-/** 碰撞体的各个形状画成线框；world 是实体的世界矩阵（列主序）。 */
+/**
+ * 碰撞体的各个形状画成线框；world 是实体的世界矩阵（列主序）。同原生建的形状：整个碰撞体按实体的世界缩放（本地位置也是），
+ * 球、胶囊只能均匀缩放（三个轴的平均），圆柱横向取 x、z 的平均、竖向取 y（Jolt 的 MakeScaleValid）。
+ */
 export function drawCollider(debugDraw: DebugDraw, collider: Collider, world: ArrayLike<number>, color: DebugColor, options?: DebugDrawOptions): void {
-  const rigid = unscaled(world);
-  for (const shape of collider.shapes) drawShape(debugDraw, shape, world, rigid, color, options);
+  const scale = [1, 1, 1];
+  const rigid = unscaled(world, scale);
+  const at = scale as [number, number, number];
+  for (const shape of collider.shapes) drawShape(debugDraw, collider.absoluteSize ? unscaledShape(shape, at) : shape, world, rigid, scale, color, options);
 }
 
-function drawShape(debugDraw: DebugDraw, shape: ColliderShape, world: ArrayLike<number>, rigid: Float32Array, color: DebugColor, options: DebugDrawOptions | undefined): void {
+function drawShape(debugDraw: DebugDraw, shape: ColliderShape, world: ArrayLike<number>, rigid: Float32Array, scale: readonly number[], color: DebugColor, options: DebugDrawOptions | undefined): void {
   const local = pose(shape.position ?? [0, 0, 0], shape.rotation ?? [0, 0, 0, 1]);
+  const [sx, sy, sz] = scale as [number, number, number];
+  // 去掉缩放的矩阵乘上缩放过的本地位置（球、胶囊、圆柱的尺寸另外按缩放算）
+  const at = () => {
+    const [px, py, pz] = shape.position ?? [0, 0, 0];
+    return multiply(rigid, pose([px * sx, py * sy, pz * sz], shape.rotation ?? [0, 0, 0, 1]));
+  };
   switch (shape.type) {
     case 'box':
-      debugDraw.box(multiply(rigid, local), [shape.size[0] / 2, shape.size[1] / 2, shape.size[2] / 2], color, options);
+      debugDraw.box(multiply(world, local), [shape.size[0] / 2, shape.size[1] / 2, shape.size[2] / 2], color, options);
       return;
     case 'sphere': {
-      const m = multiply(rigid, local);
+      const m = at();
       // 三个大圆跟着形状的朝向，转起来看得出来
-      for (const axis of [0, 1, 2]) debugDraw.circle([m[12]!, m[13]!, m[14]!], [m[axis * 4]!, m[axis * 4 + 1]!, m[axis * 4 + 2]!], shape.radius, color, options);
+      for (const axis of [0, 1, 2]) debugDraw.circle([m[12]!, m[13]!, m[14]!], [m[axis * 4]!, m[axis * 4 + 1]!, m[axis * 4 + 2]!], shape.radius * ((sx + sy + sz) / 3), color, options);
       return;
     }
     case 'capsule':
     case 'cylinder': {
-      const m = multiply(rigid, local);
-      const from = point(m, 0, -shape.length / 2, 0), to = point(m, 0, shape.length / 2, 0);
-      if (shape.type === 'capsule') debugDraw.capsule(from, to, shape.radius, color, options);
-      else debugDraw.cylinder(from, to, shape.radius, color, options);
+      const m = at();
+      const uniform = (sx + sy + sz) / 3;
+      const radius = shape.radius * (shape.type === 'capsule' ? uniform : (sx + sz) / 2);
+      const half = (shape.length / 2) * (shape.type === 'capsule' ? uniform : sy);
+      const from = point(m, 0, -half, 0), to = point(m, 0, half, 0);
+      if (shape.type === 'capsule') debugDraw.capsule(from, to, radius, color, options);
+      else debugDraw.cylinder(from, to, radius, color, options);
       return;
     }
     case 'mesh':

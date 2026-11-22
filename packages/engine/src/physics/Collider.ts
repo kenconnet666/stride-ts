@@ -42,19 +42,48 @@ export interface HullTransform {
 
 const colliders = new ResourceTable<Collider>();
 
+/**
+ * 碰撞体：形状跟着实体的世界缩放（尺寸和本地位置都乘上，同原生建物体时整个套一层缩放；球、胶囊只能均匀缩放，按三个轴的平均，
+ * 圆柱横向按 x、z 的平均、竖向按 y）。absoluteSize 时尺寸和本地位置是世界单位、不跟着缩放（Stride 的规则，导入的内容用），
+ * 建物体前用 unscaledShape 换算回去。和 Stride 不同：Stride 只缩放网格。
+ */
 export class Collider {
   readonly id: ColliderId;
   readonly shapes: readonly ColliderShape[];
+  readonly absoluteSize: boolean;
 
-  constructor(shapes: readonly ColliderShape[]) {
+  constructor(shapes: readonly ColliderShape[], options: { readonly absoluteSize?: boolean | undefined } = {}) {
     if (shapes.length === 0) throw new RangeError('a collider needs at least one shape');
     this.shapes = shapes;
+    this.absoluteSize = options.absoluteSize === true;
     this.id = colliders.add(this) as ColliderId;
   }
 
   /** @internal Static、Character 组件里存的 id 对应的碰撞体。 */
   static byId(id: number): Collider | undefined {
     return colliders.get(id);
+  }
+}
+
+/**
+ * 世界单位的形状（absoluteSize）换成缩放前的尺寸：之后按 scale（实体的世界缩放）整个缩放回来正好是原来的大小。网格、凸包本来就
+ * 跟着缩放（Stride 也是），只换本地位置。
+ */
+export function unscaledShape(shape: ColliderShape, scale: readonly [number, number, number]): ColliderShape {
+  const [sx, sy, sz] = scale.map((v) => Math.max(Math.abs(v), 1e-6)) as [number, number, number];
+  const uniform = (sx + sy + sz) / 3;
+  const position = shape.position ? { position: [shape.position[0] / sx, shape.position[1] / sy, shape.position[2] / sz] as const } : {};
+  switch (shape.type) {
+    case 'box':
+      return { ...shape, ...position, size: [shape.size[0] / sx, shape.size[1] / sy, shape.size[2] / sz] };
+    case 'sphere':
+      return { ...shape, ...position, radius: shape.radius / uniform };
+    case 'capsule':
+      return { ...shape, ...position, radius: shape.radius / uniform, length: shape.length / uniform };
+    case 'cylinder':
+      return { ...shape, ...position, radius: shape.radius / ((sx + sz) / 2), length: shape.length / sy };
+    default:
+      return { ...shape, ...position };
   }
 }
 

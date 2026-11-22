@@ -856,8 +856,46 @@ async function evaluate(game: Game, { code }: Args): Promise<unknown> {
   } finally {
     delete global.__strideEval;
   }
-  // 多半是顶层 await：当异步函数体跑
-  return await new AsyncFunction(...names, code)(...values);
+  // 多半是顶层 await：当异步函数体跑，最后一条是表达式时返回它的值（同浏览器控制台；不然多条语句的结果总是 null）
+  return await new AsyncFunction(...names, withLastValue(code, (body) => new AsyncFunction(...names, body)))(...values);
+}
+
+/**
+ * 把语句序列的最后一条表达式改成 return：在顶层（不在括号、字符串、注释里）的 `;` 和换行处切开，从最长的尾巴试起，把它包成
+ * `return (…)`，编译得过（compile 不抛 SyntaxError，只编译不运行）就用它；都不行原样返回。
+ */
+export function withLastValue(code: string, compile: (body: string) => unknown): string {
+  const boundaries: number[] = [];
+  let depth = 0;
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i]!;
+    if (ch === '"' || ch === "'" || ch === '`') {
+      for (i++; i < code.length && code[i] !== ch; i++) if (code[i] === '\\') i++;
+    } else if (ch === '/' && code[i + 1] === '/') {
+      while (i < code.length && code[i] !== '\n') i++;
+      if (depth === 0) boundaries.push(i);
+    } else if (ch === '/' && code[i + 1] === '*') {
+      i = code.indexOf('*/', i + 2);
+      if (i < 0) break;
+      i++;
+    } else if (ch === '(' || ch === '[' || ch === '{') depth++;
+    else if (ch === ')' || ch === ']' || ch === '}') depth--;
+    else if (depth === 0 && (ch === ';' || ch === '\n')) boundaries.push(i);
+  }
+  const trimmed = code.replace(/[\s;]+$/, '');
+  // 从最长的尾巴试起：跨行的表达式（第二行以 + 开头）不会只取到半截
+  for (const at of [-1, ...boundaries.filter((b) => b < trimmed.length)]) {
+    const tail = trimmed.slice(at + 1).trim();
+    if (tail === '' || /^(const|let|var|if|for|while|return|throw|function|class|try|switch|do)\b/.test(tail)) continue;
+    const body = `${trimmed.slice(0, at + 1)}\nreturn (${tail}\n);`;
+    try {
+      compile(body);
+      return body;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+  }
+  return code;
 }
 
 /**

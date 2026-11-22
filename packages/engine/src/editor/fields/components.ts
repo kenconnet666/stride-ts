@@ -29,6 +29,7 @@ const colliderShapes: FieldType = list({
 
 const collidable = {
   shapes: colliderShapes,
+  absoluteSize: { type: bool, optional: true, default: false, description: 'shape sizes are world units and ignore the entity scale (Stride rule, imported content); off: shapes scale with the entity' },
   layer: integer(0, 31),
   friction: number({ min: 0 }),
   trigger: optional(bool, false),

@@ -347,7 +347,7 @@ const drop = (...types: readonly (ComponentType<any> | ScriptConstructor)[]) => 
   return remove;
 };
 
-const collider = (shapes: readonly ColliderShapeFile[], assets: SceneAssets) => new Collider(shapes.map((shape) => colliderShape(shape, assets))).id;
+const collider = (shapes: readonly ColliderShapeFile[], assets: SceneAssets, absoluteSize: boolean | undefined) => new Collider(shapes.map((shape) => colliderShape(shape, assets)), { absoluteSize }).id;
 
 /** 引用的实体（场景里的 id）换成运行时的 id；null 是没指定。 */
 function entityRef(id: string | null, { created, file, where }: BuildContext, what: string): EntityId {
@@ -363,15 +363,15 @@ function entityRef(id: string | null, { created, file, where }: BuildContext, wh
  */
 const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
   static: {
-    add: (entity, { shapes, layer, friction, trigger = false }, { assets }) => entity.add(Static.with({ collider: collider(shapes, assets), layer, friction, trigger })),
+    add: (entity, { shapes, absoluteSize, layer, friction, trigger = false }, { assets }) => entity.add(Static.with({ collider: collider(shapes, assets, absoluteSize), layer, friction, trigger })),
     remove: drop(Static, PhysicsBody),
   },
   character: {
-    add: (entity, { shapes, trigger: _trigger, ...settings }, { assets }) => entity.add(Character.with({ collider: collider(shapes, assets), ...settings })),
+    add: (entity, { shapes, absoluteSize, trigger: _trigger, ...settings }, { assets }) => entity.add(Character.with({ collider: collider(shapes, assets, absoluteSize), ...settings })),
     remove: drop(Character, PhysicsBody),
   },
   body: {
-    add: (entity, { shapes, ...settings }, { assets }) => entity.add(Body.with({ collider: collider(shapes, assets), ...settings })),
+    add: (entity, { shapes, absoluteSize, ...settings }, { assets }) => entity.add(Body.with({ collider: collider(shapes, assets, absoluteSize), ...settings })),
     remove: drop(Body, PhysicsBody),
   },
   camera: {

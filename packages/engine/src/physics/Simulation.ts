@@ -20,7 +20,7 @@ import type { Entity } from '../engine/Entity';
 import { ModelNodeLink } from '../animation/ModelNodeLink';
 import { Matrix } from '../data/Matrix';
 import { Vector3, type QuatLike, type Vec3Like } from '../data/vectors';
-import { Collider, hullPoints, triangleSoup, type ColliderShape } from './Collider';
+import { Collider, hullPoints, triangleSoup, unscaledShape, type ColliderShape } from './Collider';
 import { TriggerHandler, type ContactHandler } from './contacts';
 import { drawCollider } from './debugShapes';
 import { Body, Character, PhysicsBody, Static } from './components';
@@ -115,7 +115,7 @@ export class Simulation {
     update: ({ body, transform, entities, count }, _time, commands) => {
       const descs = Array.from({ length: count }, (_, i): BodyDesc => ({
         motion: 'static',
-        shapes: this.#shapes(body.collider[i]!),
+        shapes: this.#shapes(body.collider[i]!, transform.slot[i]!),
         transform: transform.slot[i]! as TransformSlot,
         layer: body.layer[i]!,
         friction: body.friction[i]!,
@@ -132,7 +132,7 @@ export class Simulation {
     update: ({ body: b, transform, entities, count }, _time, commands) => {
       const descs = Array.from({ length: count }, (_, i): BodyDesc => ({
         motion: b.kinematic[i] ? 'kinematic' : 'dynamic',
-        shapes: this.#shapes(b.collider[i]!),
+        shapes: this.#shapes(b.collider[i]!, transform.slot[i]!),
         transform: transform.slot[i]! as TransformSlot,
         layer: b.layer[i]!,
         friction: b.friction[i]!,
@@ -152,7 +152,7 @@ export class Simulation {
     update: ({ character: c, transform, entities, count }, _time, commands) => {
       const descs = Array.from({ length: count }, (_, i): BodyDesc => ({
         motion: 'character',
-        shapes: this.#shapes(c.collider[i]!),
+        shapes: this.#shapes(c.collider[i]!, transform.slot[i]!),
         transform: transform.slot[i]! as TransformSlot,
         layer: c.layer[i]!,
         friction: c.friction[i]!,
@@ -482,10 +482,14 @@ export class Simulation {
     this.#entities.run(this.#createCharacters, time);
   }
 
-  #shapes(id: number): ShapeDesc[] {
+  /** 碰撞体的形状；世界单位的碰撞体（absoluteSize）按槽位现在的世界缩放换成缩放前的尺寸（原生按世界缩放整个缩放回来）。 */
+  #shapes(id: number, slot: number): ShapeDesc[] {
     const collider = Collider.byId(id);
     if (!collider) throw new Error(`physics body refers to collider ${id}, which does not exist`);
-    return collider.shapes.map((shape) => this.#shape(shape));
+    if (!collider.absoluteSize) return collider.shapes.map((shape) => this.#shape(shape));
+    this.#transforms.updateSlot(slot as TransformSlot);
+    const { scale } = Matrix.decompose(this.#transforms.world.subarray(slot * 16, slot * 16 + 16));
+    return collider.shapes.map((shape) => this.#shape(unscaledShape(shape, scale)));
   }
 
   #shape(shape: ColliderShape): ShapeDesc {

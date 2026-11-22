@@ -56,6 +56,11 @@ export type ColliderShapeFile = (
 /** 物理物体的公共部分（Stride 的 CollidableComponent）。 */
 export interface SceneCollidable {
   readonly shapes: readonly ColliderShapeFile[];
+  /**
+   * 形状的尺寸和本地位置按世界单位，不跟着实体的缩放（Stride 的规则：它只缩放网格）。从 Stride 导入的、2026-11-22 以前做的
+   * 场景里缩放过的实体是这样；没写时跟着实体的世界缩放（编辑器里缩放实体，碰撞体一起变）。
+   */
+  readonly absoluteSize?: boolean;
   /** CollisionLayer，0..31。 */
   readonly layer: number;
   readonly friction: number;

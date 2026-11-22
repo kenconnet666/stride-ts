@@ -52,6 +52,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 | `viewport <宽x高> [--dpr 2] [--mobile] [--seconds s]`、`viewport off` | 模拟屏幕大小和像素比（手机竖屏：`390x844 --dpr 3 --mobile`）；同样挂着直到结束 |
 | `front` | 把游戏的标签切到前面：后台的标签不跑 `requestAnimationFrame`（启动参数也管不了），`status` 的 `visibility` 是 `hidden` 时用它；`visible` 却很慢时看 `status`、`perf` 的 `throttled`（窗口被挡住，浏览器在节流，换无头的 Chrome 量） |
 | `particles [--name x]` | 每个粒子发射器：在 CPU 还是 GPU 上、粒子池多大、活着几个、活着的粒子在世界里的范围（GPU 上的读回来数）。粒子看不见时先看这个 |
+| `eval` 多条语句 | 最后一条是表达式时返回它的值（同浏览器控制台），不用再包成异步函数 |
 | `commands`、`call <命令> <JSON> [--out 图.png]` | 列出页面登记的命令；调任意命令（游戏自己加的也行）；结果里有 `png`（base64）时 `--out` 存成文件（`raytrace`、`ao` 的 `dump`） |
 
 **测性能前**：确认笔记本的电源模式（静谧模式下 GPU 慢好几倍），`status` 里的 `gpu.description` 记下了适配器。

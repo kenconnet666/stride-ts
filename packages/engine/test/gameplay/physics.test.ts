@@ -33,6 +33,25 @@ function run(game: Game & { simulation: Simulation }, frames: number): void {
 const position = (entity: Entity) => entity.require(Transform).position;
 
 describe('Simulation', () => {
+  test('缩放：形状默认跟着实体的世界缩放；absoluteSize（Stride 的规则）按世界单位', () => {
+    const game = createGame();
+    game.entities.create({ components: [Transform.with({ position: [0, -1, 0] }), Static.with({ collider: new Collider([{ type: 'box', size: [100, 2, 100] }]).id })] });
+    const cube = (x: number, absoluteSize: boolean) => game.entities.create({
+      components: [Transform.with({ position: [x, 3, 0], scale: [2, 2, 2] }), Body.with({ collider: new Collider([{ type: 'box', size: [1, 1, 1] }], { absoluteSize }).id })],
+    });
+    const scaled = cube(-5, false), absolute = cube(5, true);
+    // 放大的球：默认半径跟着放大，absoluteSize 的照写的半径
+    const ball = (x: number, absoluteSize: boolean) => game.entities.create({
+      components: [Transform.with({ position: [x, 3, 5], scale: [2, 2, 2] }), Body.with({ collider: new Collider([{ type: 'sphere', radius: 0.5 }], { absoluteSize }).id })],
+    });
+    const scaledBall = ball(-5, false), absoluteBall = ball(5, true);
+    run(game, 180);
+    expect(position(scaled).y).toBeCloseTo(1, 1);
+    expect(position(absolute).y).toBeCloseTo(0.5, 1);
+    expect(position(scaledBall).y).toBeCloseTo(1, 1);
+    expect(position(absoluteBall).y).toBeCloseTo(0.5, 1);
+  });
+
   test('静态体和角色：第一帧建物体，角色站稳、按 MoveVector 走、起跳；射线按层找到实体', () => {
     const game = createGame();
     game.simulation.configure({ gravity: [0, -40, 0] });

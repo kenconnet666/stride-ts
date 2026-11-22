@@ -1,0 +1,14 @@
+{
+ "name": "Grit",
+ "shape": "tuber",
+ "size": [
+  0.007,
+  0.004,
+  0.006
+ ],
+ "colors": {
+  "background": "#8b877f",
+  "accent": "#6c6862"
+ },
+ "seed": 1
+}

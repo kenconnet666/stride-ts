@@ -12,12 +12,12 @@
  * 外形：纸盒、瓶（细颈加盖）、易拉罐、广口瓶（宽盖）、桶（上大下小加盖，酱料、冰淇淋）、袋（枕形的零食袋，上下封口）、
  * 方桶（5 升的油桶：圆角方的桶身，瓶口偏到前面，后面一个提手）；
  * 散装的果蔬干货（没有标签和字，表皮按种子出颜色、纹路）：圆的（番茄、橙子、苹果）、洋葱、蒜头（一瓣瓣的）、核桃（坑坑洼洼）、
- * 土豆（扁长、不规则）；熟食的器皿（没有字，可以盛一份菜，见 food）：碗（圈足、带壁厚的旋转体）、方盘（圆角的方形浅盘）。
+ * 土豆（扁长、不规则）、落叶（躺平时宽 × 卷起的高 × 长，叶脉画在贴图上；地上的杂物用）；熟食的器皿（没有字，可以盛一份菜，见 food）：碗（圈足、带壁厚的旋转体）、方盘（圆角的方形浅盘）。
  */
-export type ProductShape = 'box' | 'bottle' | 'can' | 'jar' | 'tub' | 'pouch' | 'jug' | 'round' | 'onion' | 'garlic' | 'nut' | 'tuber' | 'bowl' | 'plate';
+export type ProductShape = 'box' | 'bottle' | 'can' | 'jar' | 'tub' | 'pouch' | 'jug' | 'round' | 'onion' | 'garlic' | 'nut' | 'tuber' | 'leaf' | 'bowl' | 'plate';
 
 /** 散装的果蔬干货（没有标签，堆放用）。 */
-export const PRODUCE_SHAPES: readonly ProductShape[] = ['round', 'onion', 'garlic', 'nut', 'tuber'];
+export const PRODUCE_SHAPES: readonly ProductShape[] = ['round', 'onion', 'garlic', 'nut', 'tuber', 'leaf'];
 
 /** 熟食的器皿（碗、盘：釉面，纹样和盛的菜画在贴图上）。 */
 export const WARE_SHAPES: readonly ProductShape[] = ['bowl', 'plate'];

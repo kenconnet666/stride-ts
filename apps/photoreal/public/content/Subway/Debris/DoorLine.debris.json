@@ -1,0 +1,37 @@
+{
+ "name": "DoorLine",
+ "area": [
+  10,
+  1.4
+ ],
+ "items": [
+  {
+   "product": "Subway/Debris/Grit",
+   "count": 500,
+   "variants": 4
+  },
+  {
+   "product": "Subway/Debris/Pebble",
+   "count": 220,
+   "variants": 4
+  },
+  {
+   "product": "Subway/Debris/Leaf",
+   "count": 30,
+   "variants": 5
+  },
+  {
+   "product": "Subway/Debris/Butt",
+   "count": 6,
+   "variants": 1
+  }
+ ],
+ "edges": {
+  "sides": [
+   "back"
+  ],
+  "width": 0.3,
+  "share": 0.8
+ },
+ "seed": 5
+}

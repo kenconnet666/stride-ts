@@ -1,0 +1,38 @@
+{
+ "name": "EndCorner",
+ "area": [
+  6,
+  1.5
+ ],
+ "items": [
+  {
+   "product": "Subway/Debris/Grit",
+   "count": 400,
+   "variants": 4
+  },
+  {
+   "product": "Subway/Debris/Pebble",
+   "count": 120,
+   "variants": 4
+  },
+  {
+   "product": "Subway/Debris/Leaf",
+   "count": 40,
+   "variants": 5
+  },
+  {
+   "product": "Subway/Debris/Butt",
+   "count": 5,
+   "variants": 1
+  }
+ ],
+ "edges": {
+  "sides": [
+   "back",
+   "front"
+  ],
+  "width": 0.35,
+  "share": 0.75
+ },
+ "seed": 6
+}

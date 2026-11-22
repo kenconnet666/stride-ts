@@ -1,0 +1,14 @@
+{
+ "name": "Pebble",
+ "shape": "nut",
+ "size": [
+  0.016,
+  0.011,
+  0.014
+ ],
+ "colors": {
+  "background": "#7d7a74",
+  "accent": "#5a5853"
+ },
+ "seed": 2
+}

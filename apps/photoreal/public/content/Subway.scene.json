@@ -409,6 +409,60 @@
      "materials": []
     }
    }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000019",
+   "name": "DoorLineDebris",
+   "parent": null,
+   "position": [
+    3,
+    0,
+    0.2
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Debris/DoorLine",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-00000000001a",
+   "name": "EndCornerDebris",
+   "parent": null,
+   "position": [
+    -5.2,
+    0,
+    0.05
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Debris/EndCorner",
+     "materials": []
+    }
+   }
   }
  ]
 }

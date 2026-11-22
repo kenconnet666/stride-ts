@@ -31,6 +31,7 @@ export * from './waterFormat.ts';
 export * from './productFormat.ts';
 export * from './shelfFormat.ts';
 export * from './pileFormat.ts';
+export * from './debrisFormat.ts';
 export * from './signFormat.ts';
 export * from './ceilingFormat.ts';
 export * from './fixtureFormat.ts';

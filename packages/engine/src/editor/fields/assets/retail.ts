@@ -1,5 +1,5 @@
 /** 店里的资源的字段：商品包装、货架、堆放、招牌、天花板、器具。 */
-import type { ProductFile, ShelfFile, PileFile, SignFile, CeilingFile, FixtureFile } from '../../../content/formats/format';
+import type { ProductFile, ShelfFile, PileFile, DebrisFile, SignFile, CeilingFile, FixtureFile } from '../../../content/formats/format';
 import { fields, number, integer, bool, string, oneOf, vector, asset, list, object, type FieldSpec } from '../builders.ts';
 
 /** 颜色写成 sRGB 的 #rrggbb。 */
@@ -9,8 +9,8 @@ export const hexColor = (description: string): FieldSpec => ({ type: string, opt
 export const PRODUCT_FIELDS = fields<ProductFile>({
   name: string,
   shape: {
-    type: oneOf('box', 'bottle', 'can', 'jar', 'tub', 'pouch', 'jug', 'round', 'onion', 'garlic', 'nut', 'tuber', 'bowl', 'plate'),
-    description: 'box: carton; bottle: narrow neck and cap; can; jar: wide lid; tub: wider at the top, with a lid; pouch: pillow-shaped bag sealed at both ends; jug: 5 l oil jug (rounded square body, spout moved to the front, a handle at the back); produce without a label (round: tomato, orange; onion; garlic; nut: walnut; tuber: potato); ware for cooked food: bowl (foot ring, wall thickness), plate (shallow rounded square)',
+    type: oneOf('box', 'bottle', 'can', 'jar', 'tub', 'pouch', 'jug', 'round', 'onion', 'garlic', 'nut', 'tuber', 'leaf', 'bowl', 'plate'),
+    description: 'box: carton; bottle: narrow neck and cap; can; jar: wide lid; tub: wider at the top, with a lid; pouch: pillow-shaped bag sealed at both ends; jug: 5 l oil jug (rounded square body, spout moved to the front, a handle at the back); produce without a label (round: tomato, orange; onion; garlic; nut: walnut; tuber: potato; leaf: a fallen leaf lying flat, width × curl height × length); ware for cooked food: bowl (foot ring, wall thickness), plate (shallow rounded square)',
   },
   size: { type: vector(3, 'm'), description: 'width (diameter for bottles, cans, jars, tubs and bowls), height, depth (cartons, pouches and plates; produce: elongated when given)' },
   font: { type: asset('font'), optional: true, description: 'font of the label text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese); no text without one' },
@@ -76,6 +76,30 @@ export const SHELF_FIELDS = fields<ShelfFile>({
   header: { type: string, optional: true, description: 'text on the lit header of a fridge (needs the font)' },
   priceTags: { type: oneOf('paper', 'electronic'), optional: true, default: 'paper', description: 'paper tags (white or yellow, red price) or electronic shelf labels (a small housing with an e-ink screen, black price and a QR code, some with a red promo bar)' },
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the stocking and the prices' },
+});
+
+/** 地上的碎石杂物（DebrisFile）：后端跑物理、生成同名的模型、图集和材质。 */
+export const DEBRIS_FIELDS = fields<DebrisFile>({
+  name: string,
+  area: { type: vector(2, 'm'), description: 'width (X) and depth (Z) of the patch of ground, centered on the origin' },
+  items: {
+    type: list(object(fields<DebrisFile['items'][number]>({
+      product: { type: asset('product'), description: 'what lies around (pebbles: nut or tuber in grey, leaves, cigarette butts: small cans)' },
+      count: { type: integer(0, 5000), description: 'how many' },
+      variants: { type: integer(1, 32), optional: true, default: 3, description: 'color or brand variants of it' },
+    }))),
+    description: 'items dropped on the ground; physics lays them down and the result is baked into one model',
+  },
+  edges: {
+    type: object(fields<NonNullable<DebrisFile['edges']>>({
+      sides: { type: list(oneOf('back', 'front', 'left', 'right')), description: 'edges where debris gathers (back is -Z, left is -X)' },
+      width: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0.4, description: 'how far in from those edges it gathers' },
+      share: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.7, description: 'share of the items that gather by the edges (denser closer in); the rest is spread over the whole patch' },
+    })),
+    optional: true,
+    description: 'debris piles up along walls and railings; spread evenly when missing',
+  },
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the layout' },
 });
 
 /** 物理堆放（PileFile）：后端跑物理、生成同名的模型、标签图集和材质。 */

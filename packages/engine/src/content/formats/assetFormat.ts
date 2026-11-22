@@ -65,6 +65,8 @@ export const EXTENSIONS = {
   shelf: '.shelf.json',
   /** 物理堆放（PileFile，content/formats/pileFormat.ts）：容器和往里倒的东西，编辑器后端跑物理、合成同名的模型、标签图集（.svg、.surface.svg）和材质。 */
   pile: '.pile.json',
+  /** 地上的碎石杂物（DebrisFile，content/formats/debrisFormat.ts）：一块地面和撒什么，编辑器后端跑物理、合成同名的模型、图集（.svg、.surface.svg）和材质。 */
+  debris: '.debris.json',
   /** 招牌（SignFile，content/formats/signFormat.ts）：灯箱、挂牌，编辑器后端生成同名的模型、图集和材质。 */
   sign: '.sign.json',
   /** 天花板（CeilingFile，content/formats/ceilingFormat.ts）：开放式的顶或格栅吊顶，编辑器后端生成同名的模型、图集和材质。 */

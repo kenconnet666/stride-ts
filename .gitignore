@@ -19,7 +19,7 @@ dist/
 # 共用资源包（@stride-ts/assets）同步进来的内容：开发服务器、编辑器后端、构建前从 node_modules 同步，改资源去资源仓库
 /apps/*/public/content/Shared/
 
-# 包装、货架、堆放生成的模型、标签图集、材质（几 MB 一个；编辑器后端打开工程时按源文件补烘，见 EditorBackend 的 #bakeStale）
+# 包装、货架、堆放、杂物生成的模型、标签图集、材质（几 MB 一个；编辑器后端打开工程时按源文件补烘，见 EditorBackend 的 #bakeStale）
 /apps/photoreal/public/content/Shop/Products/*
 !/apps/photoreal/public/content/Shop/Products/*.product.json
 /apps/photoreal/public/content/Shop/Shelves/*
@@ -32,6 +32,9 @@ dist/
 !/apps/photoreal/public/content/Shop/Ceilings/*.ceiling.json
 /apps/photoreal/public/content/Shop/Fixtures/*
 !/apps/photoreal/public/content/Shop/Fixtures/*.fixture.json
+/apps/photoreal/public/content/Subway/Debris/*
+!/apps/photoreal/public/content/Subway/Debris/*.product.json
+!/apps/photoreal/public/content/Subway/Debris/*.debris.json
 
 # 按内容目录生成的资源句柄（@stride-ts/editor：开发服务器启动时、`stride-editor assets-types`）
 /apps/*/src/assets.gen.ts

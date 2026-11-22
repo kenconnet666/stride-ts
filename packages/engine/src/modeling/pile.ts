@@ -95,7 +95,7 @@ export function pileSpawn(file: PileFile, products: ReadonlyMap<string, ProductF
 }
 
 /** 均匀分布的随机朝向（Shoemake）。 */
-function randomRotation(random: () => number): [number, number, number, number] {
+export function randomRotation(random: () => number): [number, number, number, number] {
   const u1 = random(), u2 = random() * 2 * Math.PI, u3 = random() * 2 * Math.PI;
   const a = Math.sqrt(1 - u1), b = Math.sqrt(u1);
   return [a * Math.sin(u2), a * Math.cos(u2), b * Math.sin(u3), b * Math.cos(u3)];

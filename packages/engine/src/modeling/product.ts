@@ -12,7 +12,7 @@ import type { MaterialFile } from '../content/formats/assetFormat.ts';
 import { PRODUCE_SHAPES, WARE_SHAPES, type ProductColors, type ProductFile, type ProductMotif, type ProductPattern, type ProductShape, type ProductSurface } from '../content/formats/productFormat.ts';
 import { hash32, seededRandom } from '../data/hash.ts';
 import { MeshBuilder } from './meshBuilder.ts';
-import { cross, finish, latheMesh, normalize, sub, type ProductMesh, type ProfilePoint } from './lathe.ts';
+import { cross, finish, latheMesh, normalize, smoothNormals, sub, type ProductMesh, type ProfilePoint } from './lathe.ts';
 import { svgNumber } from './svg.ts';
 import { WARE_COBALT, WARE_GLAZE, wareMesh, wareSkin } from './ware.ts';
 import { textContours, type TextFont } from './textOutline.ts';
@@ -43,12 +43,14 @@ const TRIMS = ['#e8c25a', '#ffffff', '#f4f2ec'];
 /** 拼品牌名的字（常见的商标用字）。 */
 const BRAND_CHARACTERS = '金龙鱼海天康乐福味美好鲜香农家旺佳丰园源山泉清真御品优百万华宝和顺禾田欢喜悦大小星光润洁雪绿新鸿盛';
 const DEFAULT_SURFACE: Readonly<Record<ProductShape, ProductSurface>> = {
-  box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic', jug: 'plastic', round: 'skin', onion: 'skin', garlic: 'skin', nut: 'skin', tuber: 'skin', bowl: 'ceramic', plate: 'ceramic',
+  box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic', jug: 'plastic', round: 'skin', onion: 'skin', garlic: 'skin', nut: 'skin', tuber: 'skin', leaf: 'skin', bowl: 'ceramic', plate: 'ceramic',
 };
 /** 果蔬的表皮、纹路、顶上（洋葱、蒜头的颈）的颜色，按种子在附近变一点。 */
 const PRODUCE_COLORS: Readonly<Record<string, readonly [background: string, accent: string, cap: string]>> = {
   round: ['#c8352a', '#e0603f', '#5a7a2e'], onion: ['#8e3550', '#c56e88', '#9a7a52'], garlic: ['#ece4d6', '#b99aa0', '#c9b48e'],
   nut: ['#a07a4e', '#6e4e2e', '#7d5a36'], tuber: ['#b8925e', '#8a6a3e', '#8a6a3e'],
+  // 落叶：枯黄、褐色，斑和叶脉深一点
+  leaf: ['#a8783a', '#6a4520', '#5a3a1a'],
 };
 /** 各种材料的粗糙度和金属度（货架的图集按它画表面贴图）。 */
 export const SURFACE_MATERIAL: Readonly<Record<ProductSurface, { readonly roughness: number; readonly metalness: number }>> = {
@@ -117,6 +119,7 @@ export function productMesh(file: ProductFile, where = file.name, segments = RAD
   if (file.shape === 'pouch') return pouchMesh(file.size);
   const radial = Math.max(3, Math.round(segments));
   if (isWare(file.shape)) return wareMesh(file, radial * 2);
+  if (file.shape === 'leaf') return leafMesh(file);
   if (isProduce(file.shape)) return produceMesh(file, radial);
   if (file.shape === 'jug') return jugMesh(file, radial);
   return latheMesh(latheProfile(file.shape, file.size[0] / 2, file.size[1]), radial);
@@ -169,6 +172,39 @@ function produceMesh(file: ProductFile, radial: number): ProductMesh {
   return { ...mesh, labelSize: [Math.PI * (rx + rz) * 1000, labelHeight(profile, h, Math.max(rx, rz)) * 1000] };
 }
 
+/**
+ * 落叶：躺平的一片叶子，长沿 Z、宽沿 X，两边和两头往上卷（size 是宽、卷起的高、长）。轮廓两头尖、中间宽，正反两面（隔 0.4 毫米），
+ * 贴图按叶面平铺（u 横、v 竖，叶脉画在 u = 0.5 那条线上）。
+ */
+function leafMesh(file: ProductFile): ProductMesh {
+  const [w, h] = file.size, d = leafLength(file);
+  const thickness = Math.min(0.0004, h * 0.5), curl = h - thickness;
+  const along = 12, across = 6, builder = new MeshBuilder();
+  // 叶的中脉在 s（−1..1，从叶柄到叶尖），横向是 t（−1..1）；轮廓两头尖、偏叶柄那头宽一点（按最宽处归一到 w）
+  const outline = (s: number) => Math.sin((Math.PI * (s + 1)) / 2) ** 0.7 * (1 - 0.12 * s);
+  const widest = Math.max(...Array.from({ length: 201 }, (_, i) => outline(-1 + i / 100)));
+  const point = (s: number, t: number, top: boolean): number[] => {
+    // 两边比两头卷得高：叶缘中间那点最高，正好是 curl
+    const lift = (0.6 * t * t + 0.4 * s * s) / 0.6;
+    return [(t * (w / 2) * outline(s)) / widest, Math.min(1, lift) * curl + (top ? thickness : 0), (s * d) / 2];
+  };
+  for (const top of [true, false]) {
+    const grid: number[][] = [];
+    for (let i = 0; i <= along; i++) {
+      const s = -1 + (2 * i) / along;
+      grid.push(Array.from({ length: across + 1 }, (_, j) => {
+        const t = -1 + (2 * j) / across, p = point(s, t, top);
+        return builder.vertex(p, [0, top ? 1 : -1, 0], p[0]! / w + 0.5, p[2]! / d + 0.5);
+      }));
+    }
+    for (let i = 0; i < along; i++) {
+      for (let j = 0; j < across; j++) builder.quad(grid[i]![j]!, grid[i]![j + 1]!, grid[i + 1]![j + 1]!, grid[i + 1]![j]!, [0, top ? 1 : -1, 0]);
+    }
+  }
+  smoothNormals(builder);
+  return finish(builder, [w * 1000, d * 1000]);
+}
+
 /** 果蔬轮廓线的长（米，按最大的半径估）：贴图 v 方向的长度。 */
 function labelHeight(profile: readonly ProfilePoint[], h: number, r: number): number {
   let length = 0;
@@ -196,7 +232,13 @@ function produceProfile(shape: ProductShape): ProfilePoint[] {
 export function productFootprint(file: ProductFile): readonly [number, number, number] {
   const [w, h, d] = file.size;
   if (file.shape === 'jug') return [w, h, jugDepth(file)];
+  if (file.shape === 'leaf') return [w, h, leafLength(file)];
   return [w, h, file.shape === 'box' || file.shape === 'pouch' || ((isProduce(file.shape) || file.shape === 'plate') && d > 0) ? d : w];
+}
+
+/** 落叶的长（米）：没写时是宽的 1.6。 */
+function leafLength(file: ProductFile): number {
+  return file.size[2] > 0 ? file.size[2] : file.size[0] * 1.6;
 }
 
 /** 方桶的厚度（米）：没写时是宽的 0.62（5 升的油桶大约 17 × 10.5 厘米）。 */
@@ -461,7 +503,18 @@ function produceSkin(file: ProductFile, design: ProductDesign, [W, H]: readonly 
   const random = seededRandom(hash32(hash32(file.seed ?? 1, variant), 77));
   const shapes: string[] = [];
   const { accent, cap } = design.colors;
-  if (file.shape === 'onion' || file.shape === 'garlic') {
+  if (file.shape === 'leaf') {
+    // 中脉在 u = 0.5，侧脉斜着往叶尖去；几块深一点的斑、叶缘一圈焦边
+    shapes.push(`<path d="M${svgNumber(W / 2)} 0L${svgNumber(W / 2)} ${svgNumber(H)}" stroke="${accent}" stroke-width="${svgNumber(W * 0.025)}"/>`);
+    for (let k = 1; k < 8; k++) {
+      const y = (H * k) / 8;
+      for (const side of [-1, 1]) shapes.push(`<path d="M${svgNumber(W / 2)} ${svgNumber(y)}L${svgNumber(W / 2 + side * W * 0.42)} ${svgNumber(y + H * 0.1)}" stroke="${accent}" stroke-width="${svgNumber(W * 0.012)}" opacity="0.7"/>`);
+    }
+    for (let i = 0; i < 10; i++) {
+      shapes.push(`<circle cx="${svgNumber(random() * W)}" cy="${svgNumber(random() * H)}" r="${svgNumber((0.02 + random() * 0.06) * W)}" fill="${cap}" opacity="${svgNumber(0.3 + random() * 0.4)}"/>`);
+    }
+    shapes.push(`<ellipse cx="${svgNumber(W / 2)}" cy="${svgNumber(H / 2)}" rx="${svgNumber(W * 0.46)}" ry="${svgNumber(H * 0.47)}" fill="none" stroke="${cap}" stroke-width="${svgNumber(W * 0.05)}" opacity="0.6"/>`);
+  } else if (file.shape === 'onion' || file.shape === 'garlic') {
     for (let i = 0; i < 28; i++) {
       const x = random() * W, width = 0.3 + random() * 1.2;
       shapes.push(`<rect x="${svgNumber(x)}" y="0" width="${svgNumber(width)}" height="${svgNumber(H)}" fill="${accent}" opacity="${svgNumber(0.25 + random() * 0.5)}"/>`);

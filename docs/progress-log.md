@@ -916,6 +916,8 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - 第四步浮力（同一天）：原生（fork 的 StrideNative）加 `sn_physics_body_apply_buoyancy`（调 Jolt 的 `BodyInterface::ApplyBuoyancyImpulse`：按形状算水下的体积和浮心，加浮力、线性和角阻力、水流；运动学物体忽略，写回有没有在水下），JS 的 `PhysicsWorld.applyBuoyancy`（查询缓冲里放水面的点、法线、流速、结果）；`build-wasm.ps1 -SkipTests` 在 Git Bash 起的 pwsh 里找不到 pnpm，用 PowerShell 工具重跑；fork 提交 7fc9c991，`node tools/native.ts dev` 发了 `native-dev-7fc9c9913e`。TS：`BodyControl.applyBuoyancy`，`water/Buoyancy.ts`（`Buoyancy` 组件：浮力系数、平移和转动阻力；`waterSurfaceAt`：湖、海是水位，河是离中心线半宽以内那一点的水面和顺着河的流速；`BuoyancySystem` 挂在仿真的 `onStep` 上，水体一帧取一次，离水面 50 米以内的调原生），场景组件、字段和中文；`WaterArea` 的河带上流速。测试：`waterSurfaceAt` 的湖、河、水外。Valley：湖里 5 个 1 米的箱子（浮力系数 1.6）、河里 3 根 3 米的木头（1.8）。测试浏览器（无头）里看：箱子浮在湖面上、露出三成，水下那截透过水看得见；木头几秒里顺着河往下游漂了几十米；120 Hz，物理步 0.06 毫秒。字段检查第一次报 40 处：场景里的 Body 要写全所有字段（layer、kinematic……），补上。
 
+- 第五步水下（同一天）：`water/Water.ts` 多一条全屏的管线（`vsFull`、`fsUnderwater`：读那份拷贝的颜色和深度，按到场景的距离、清澈度盖上水的颜色，天空的像素算无穷远），渲染器在相机低于这片湖、海的水面、在岸线里（按实体的转角换到本地判断）时先画它；水面的片元在相机低于这一点时走 `underside`：法线朝下，水的折射率 1.33 算出射角，超过临界角全反射成水的颜色、否则透过去取上面的画面，再按距离加雾；水里的光照抽成 `lightInWater`（水面、水下雾、水下看水面共用）。测试浏览器（无头，1080p）里在湖里 −68、−70 米看：远处被水的颜色盖住、近处的箱子看得见，水面从侧下方看大多是全反射、浪尖透出亮斑，往正上方看是透过水面的天空和全反射的暗块；120 Hz，透明那一遍（雾加水面）0.16 毫秒。
+
 ## CI 提速和 csharp-intermediate 的导航（2026-11-22）
 
 - CI 上 0c68a3f 的 csharp-intermediate 冒烟失败在"导航：角色走到目标"：角色走了 2 米就到了等待的上限。物理每帧最多补 0.25 秒（`maximumTimeToProcess`），CI 的软件 WebGPU 上一帧要零点几秒到一秒，物理只有游戏时间的几分之一，按 15 秒游戏时间等不够（按运行器的快慢时过时不过）。等待放宽到 60 秒游戏时间，快的机器上走到就返回。

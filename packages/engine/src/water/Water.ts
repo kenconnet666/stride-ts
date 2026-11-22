@@ -11,6 +11,8 @@
  *   两个相位错开半个周期地平移、交替淡入淡出，不会越拉越长），越快越碎，带子的两边淡出。
  * - 倒影：水的实体上再挂一个 PlanarReflection（平面在水面上）时，这一帧画的平面反射图（rendering/lighting/PlanarReflections.ts）
  *   就是水面的倒影：按屏幕坐标（u 翻回来）取、按法线偏开；浪陡的地方倒影不准，退回天空的反射（同 WickedEngine）。
+ * - 水下（相机低于湖、海的水面，在岸线里）：先画一遍全屏的水下雾（按场景的深度用水的颜色和清澈度盖上，天空也被盖住），水面从
+ *   下面看时法线反过来，透过水面看上面（那份拷贝），超过全反射的临界角（水的折射率 1.33）反射水的颜色，水面本身也按距离加雾。
  * - 只画主画面（要那份拷贝），在不透明的之后、透明的之前，读深度、不写。
  */
 import type { SplineFile } from '../content/splineFormat';
@@ -344,6 +346,44 @@ fn scenePosition(uv: vec2f, depth: f32) -> vec3f {
   return clip.xyz / clip.w;
 }
 
+/** 水里散射出来的光照：天光（天空的球谐朝上那一半、环境光）和太阳。 */
+fn lightInWater() -> vec3f {
+  let skyIntensity = water.sun.w;
+  return water.ambient.rgb + select(vec3f(0.0), textureSampleLevel(sky, linearClamp, skyDirection(vec3f(0.0, 1.0, 0.0)), max(water.sunColor.w - 1.0, 0.0)).rgb * skyIntensity, skyIntensity > 0.0)
+    + water.sunColor.rgb * max(water.sun.y, 0.0) * 0.25;
+}
+
+/** 从水下看水面：法线朝下，透过水面看上面（超过临界角全反射成水的颜色），再按距离加水下的雾。 */
+fn underside(in: Varyings, up: vec3f, viewDistance: f32) -> vec4f {
+  let n = -up;
+  let v = (water.eye.xyz - in.world) / max(viewDistance, 1e-4);
+  let cosI = max(dot(n, v), 0.0);
+  // 水的折射率 1.33：sin(折射角) = 1.33 · sin(入射角)，超过 1 就出不去
+  let sinOut2 = (1.0 - cosI * cosI) * 1.7689;
+  let fresnel = select(0.02 + 0.98 * pow(1.0 - sqrt(max(1.0 - sinOut2, 0.0)), 5.0), 1.0, sinOut2 >= 1.0);
+  let screen = in.position.xy * water.screen.xy;
+  let above = textureSampleLevel(scene, linearClamp, clamp(screen + up.xz * 0.03, vec2f(0.0), vec2f(1.0)), 0.0).rgb;
+  let fog = water.color.rgb * lightInWater();
+  var color = mix(above, fog, fresnel);
+  color = mix(color, fog, 1.0 - exp(-viewDistance / water.color.w));
+  return vec4f(color, 1.0);
+}
+
+@vertex fn vsFull(@builtin(vertex_index) index: u32) -> @builtin(position) vec4f {
+  let p = vec2f(f32((index << 1u) & 2u), f32(index & 2u));
+  return vec4f(p * 2.0 - 1.0, 0.0, 1.0);
+}
+
+/** 相机在水下：整个画面按到场景的距离盖上水的颜色（天空的像素算无穷远）。 */
+@fragment fn fsUnderwater(@builtin(position) position: vec4f) -> @location(0) vec4f {
+  let size = vec2f(textureDimensions(sceneDepth));
+  let pixel = vec2i(clamp(position.xy, vec2f(0.0), size - 1.0));
+  let depth = textureLoad(sceneDepth, pixel, 0);
+  let distanceTo = select(distance(scenePosition(position.xy * water.screen.xy, depth), water.eye.xyz), 1e6, depth <= 0.0);
+  let color = textureLoad(scene, pixel, 0).rgb;
+  return vec4f(mix(color, water.color.rgb * lightInWater(), 1.0 - exp(-distanceTo / water.color.w)), 1.0);
+}
+
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let river = water.waves2.w > 0.5;
   if (!river && water.axis.w > 0.0) {
@@ -373,6 +413,10 @@ fn scenePosition(uv: vec2f, depth: f32) -> vec3f {
       n.z -= d.y * ripple * cos(theta);
     }
     n = normalize(n);
+  }
+  // 相机在水面下面：从下面看
+  if (water.eye.y < in.world.y) {
+    return underside(in, n, viewDistance);
   }
   let v = toEye / max(viewDistance, 1e-4);
   let nDotV = max(dot(n, v), 0.001);
@@ -418,8 +462,7 @@ fn scenePosition(uv: vec2f, depth: f32) -> vec3f {
   let below = textureSampleLevel(scene, linearClamp, uv, 0.0).rgb;
   let transmittance = exp(-through / water.color.w);
   // 水里散射出来的光：水的颜色，被天光和太阳照着
-  let lightIn = water.ambient.rgb + select(vec3f(0.0), textureSampleLevel(sky, linearClamp, skyDirection(vec3f(0.0, 1.0, 0.0)), max(water.sunColor.w - 1.0, 0.0)).rgb * skyIntensity, skyIntensity > 0.0)
-    + water.sunColor.rgb * max(l.y, 0.0) * 0.25;
+  let lightIn = lightInWater();
   let underwater = mix(water.color.rgb * lightIn, below * mix(vec3f(1.0), water.color.rgb * 8.0, 1.0 - transmittance), transmittance);
   var color = mix(underwater, reflected, fresnel) + specular;
 
@@ -440,6 +483,8 @@ fn scenePosition(uv: vec2f, depth: f32) -> vec3f {
 interface WaterPipeline {
   readonly pipeline: GPURenderPipeline;
   readonly river: GPURenderPipeline;
+  /** 相机在水下时的全屏的雾。 */
+  readonly underwater: GPURenderPipeline;
   readonly layout: GPUBindGroupLayout;
   readonly key: string;
 }
@@ -502,7 +547,7 @@ export class WaterRenderer {
   draw(pass: GPURenderPassEncoder, context: RenderContext, view: RenderView, lighting: Lighting, refraction: Refraction, planar: PlanarReflections, origin: readonly number[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     const scene = refraction.texture, depth = refraction.depthTexture;
     if (this.#frame.length === 0 || !scene || !depth) return;
-    const { pipeline, river, layout } = this.#pipelineFor(colorFormat, depthFormat);
+    const { pipeline, river, underwater, layout } = this.#pipelineFor(colorFormat, depthFormat);
     const skybox = lighting.skybox;
     const sky = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
     // 太阳：投阴影的那盏方向光，没有就第一盏
@@ -576,6 +621,15 @@ export class WaterRenderer {
       outline.forEach(([x, z], i) => data.set([x, z], 96 + i * 2));
       this.#device.queue.writeBuffer(instance.buffer, 0, data);
       pass.setBindGroup(0, instance.group);
+      // 相机在这片湖、海的水面下面（在岸线里）：先盖一层全屏的水下雾
+      if (!asset.river && view.eye.y < world[13]!) {
+        const dx = view.eye.x - world[12]!, dz = view.eye.z - world[14]!;
+        const local: [number, number] = [dx * (ax / axisLength) + dz * (az / axisLength), -dx * (az / axisLength) + dz * (ax / axisLength)];
+        if (outline.length === 0 || insidePolygon(outline, local[0], local[1])) {
+          pass.setPipeline(underwater);
+          pass.draw(3);
+        }
+      }
       const ribbon = asset.ribbon;
       if (ribbon) {
         if (instance.ribbon?.asset !== asset) {
@@ -633,7 +687,15 @@ export class WaterRenderer {
       // 反向 Z：近 1 远 0；读深度、不写
       depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'greater-equal' },
     });
-    this.#pipeline = { pipeline: device.createRenderPipeline(describe('vs')), river: device.createRenderPipeline(describe('vsRiver')), layout, key };
+    const underwater = device.createRenderPipeline({
+      label: 'Water underwater',
+      layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
+      vertex: { module, entryPoint: 'vsFull' },
+      fragment: { module, entryPoint: 'fsUnderwater', targets: [{ format: colorFormat }] },
+      primitive: { topology: 'triangle-list' },
+      depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'always' },
+    });
+    this.#pipeline = { pipeline: device.createRenderPipeline(describe('vs')), river: device.createRenderPipeline(describe('vsRiver')), underwater, layout, key };
     return this.#pipeline;
   }
 }

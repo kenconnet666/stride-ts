@@ -500,6 +500,7 @@ const postEffects = fields<ScenePostEffects>({
   lensFlare: bool,
   toneMap: bool,
   antialiasing: bool,
+  antialiasingMode: { type: oneOf('fxaa', 'temporal'), optional: true, default: 'fxaa', description: 'fxaa (Stride) or temporal: TAA with sharpening, smoother edges and less shimmer in motion' },
   ambientOcclusion: optional(object([{ name: 'radius', type: number({ min: 0, unit: 'm' }) }])),
   localReflections: optional(object([{ name: 'maxRoughness', type: number({ min: 0, max: 1 }) }, { name: 'edgeFade', type: number({ min: 0, max: 1 }) }])),
   exposure: optional(object(fields<SceneExposure>({

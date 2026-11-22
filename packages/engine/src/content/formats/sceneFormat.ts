@@ -107,8 +107,13 @@ export interface ScenePostEffects {
   readonly lensFlare: boolean;
   /** 色调映射（ColorTransforms 里的 ToneMap）；关掉时 HDR 画面加上泛光等叠加层直接输出，超过 1 的截断。 */
   readonly toneMap: boolean;
-  /** FXAA（Antialiasing）。 */
+  /** 抗锯齿（Stride 的 Antialiasing，FXAA）。 */
   readonly antialiasing: boolean;
+  /**
+   * 抗锯齿用哪种（Stride 没有 TAA）：fxaa（没写时，Stride 的内容照原样画）或 temporal（时间抗锯齿加锐化，见
+   * rendering/screenspace/TemporalAntialiasing.ts）。编辑器新建的场景是 temporal。
+   */
+  readonly antialiasingMode?: 'fxaa' | 'temporal';
   /** 环境光遮蔽（AmbientOcclusion，我们用 GTAO 只乘环境光）；没写是关着。radius 是 Stride 的 ParamRadius（世界单位）。 */
   readonly ambientOcclusion?: { readonly radius: number };
   /**

@@ -13,7 +13,8 @@
    "lightStreak": false,
    "lensFlare": false,
    "toneMap": true,
-   "antialiasing": true
+   "antialiasing": true,
+   "antialiasingMode": "temporal"
   },
   "transparent": true
  },

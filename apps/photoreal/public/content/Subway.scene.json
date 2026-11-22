@@ -14,6 +14,7 @@
    "lensFlare": false,
    "toneMap": true,
    "antialiasing": true,
+   "antialiasingMode": "temporal",
    "localReflections": {
     "maxRoughness": 0.45,
     "edgeFade": 0.1

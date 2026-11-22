@@ -112,7 +112,7 @@ function mainScene(): object {
   const tilt = (-12 * Math.PI) / 360;
   return {
     name: 'MainScene',
-    compositor: { clearColor: [0.1, 0.1, 0.12, 1], postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true }, transparent: true },
+    compositor: { clearColor: [0.1, 0.1, 0.12, 1], postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true, antialiasingMode: 'temporal' }, transparent: true },
     entities: [
       { id: id(), name: 'Camera', ...transform([0, 4, 10], [+Math.sin(tilt).toFixed(6), 0, 0, +Math.cos(tilt).toFixed(6)]), components: { camera: { verticalFieldOfView: 45, nearClipPlane: 0.1, farClipPlane: 1000 } } },
       { id: sun, name: 'Sun', ...transform([0, 10, 0], sunRotation), components: { light: { type: 'directional', color: [1, 0.98, 0.94], intensity: 8, shadow: { size: 'large', filter: 'pcf5x5', cascadeCount: 'four', depthBias: 0.0015, normalOffsetScale: 10, stabilization: 'projectionSnapping', pssmFactor: 0.5, depthRange: 'automatic', minDistance: 0, maxDistance: 60, blendCascades: true } } } },

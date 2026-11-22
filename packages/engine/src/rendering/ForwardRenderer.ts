@@ -152,7 +152,7 @@ export class ForwardRenderer {
   #indirect = false;
   /** 这一帧做次表面散射。 */
   #scatter = false;
-  /** 时间抗锯齿（默认关，开着时代替后处理里的 FXAA；见 TemporalAntialiasing.ts）。 */
+  /** 时间抗锯齿（场景的 postEffects.antialiasingMode 是 temporal 时开，代替后处理里的 FXAA；见 TemporalAntialiasing.ts）。 */
   readonly temporalAntialiasing: TemporalAntialiasing;
   readonly shadowMapRenderer: ShadowMapRenderer;
 
@@ -341,6 +341,7 @@ export class ForwardRenderer {
     this.#mainView.cullingMask = ((renderMask ?? RENDER_GROUP_ALL) & RENDER_GROUP_VISIBLE) >>> 0;
     this.clearColor.set(r, g, b, a);
     this.postEffects.configure(postEffects);
+    this.temporalAntialiasing.enabled = postEffects?.antialiasingMode === 'temporal';
     this.ambientOcclusion.enabled = postEffects?.ambientOcclusion !== undefined;
     this.ambientOcclusion.radius = postEffects?.ambientOcclusion?.radius ?? 1;
     const reflections = postEffects?.localReflections;

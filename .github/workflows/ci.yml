@@ -1,6 +1,6 @@
-# CI：每次推送 main、每个 PR 跑（分层测试的第 3 层：本地只跑快检和改动影响到的样例，全量在这里）。
-# GitHub 自带的运行器没有显卡，WebGPU 用 Chrome 带的 SwiftShader（软件，Linux 上才有）：冒烟的功能检查和预算里的计数都验证得了，
-# 帧时间、和桌面 Stride 的截图比对、测量在本地的验证工作树里跑（tools/verify.ps1 槽位 3）。
+# CI：每次推送 main、每个 PR 跑，只管正确性（用户 2026-11-22 定）：类型检查、单测，加几个有代表性的样例的冒烟。
+# GitHub 自带的运行器没有显卡，WebGPU 用 Chrome 带的 SwiftShader（软件，Linux 上才有），画面越做越重（全局光照、软件光追）以后
+# 在上面一帧要好几秒；全部样例的冒烟、画面、帧时间、照片比对在本机真显卡（RX 9070 GRE）的验证工作树里跑（tools/verify.ps1）。
 name: CI
 
 on:
@@ -42,12 +42,11 @@ jobs:
       - run: pnpm test
 
   # 导入样例的内容（apps/*/public/content，不提交）：导入实际读到的文件（tools/content-key.ts：导入器、它 import 的引擎文件、样例的导入脚本、
-  # 内容的覆盖文件、锁文件）和 Stride 的提交都没变时用缓存。顺带列出有冒烟脚本的样例给 smoke 的矩阵
+  # 内容的覆盖文件、锁文件）和 Stride 的提交都没变时用缓存。只导入 smoke 要的三个 Stride 样例（greybox 的内容在仓库里）
   content:
     runs-on: ubuntu-latest
     outputs:
       key: ${{ steps.key.outputs.key }}
-      apps: ${{ steps.key.outputs.apps }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -58,8 +57,7 @@ jobs:
         run: |
           stride=$(git ls-remote "$STRIDE_FORK" "refs/heads/$STRIDE_BRANCH" | cut -f1)
           echo "stride=$stride" >> "$GITHUB_OUTPUT"
-          echo "key=content-$(node tools/content-key.ts)-$stride" >> "$GITHUB_OUTPUT"
-          echo "apps=$(ls apps/*/scripts/smoke.ts | cut -d/ -f2 | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+          echo "key=content-smoke-$(node tools/content-key.ts)-$stride" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v6
         id: cached
         with:
@@ -89,15 +87,15 @@ jobs:
         name: Import
         env:
           STRIDE_REPO: ${{ runner.temp }}/stride
-        run: pwsh tools/import-all.ps1 -Parallel 2
+        run: pwsh tools/import-all.ps1 -Apps platformer,platformer2d,game-menu -Parallel 2
       - if: steps.cached.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: apps/*/public/content
           key: ${{ steps.key.outputs.key }}
 
-  # 第 3 层：全部样例的冒烟（软件 WebGPU），一个样例一台运行器（公开仓库的运行器不计时长）：SwiftShader 在 4 核的运行器上画
-  # 1280x720 一帧要几百毫秒，两个样例抢一台时有的冒烟一帧都走不动
+  # 冒烟（软件 WebGPU）：只跑几个快的、覆盖面广的——3D 网格和阴影（platformer）、精灵（platformer2d）、全屏 UI（game-menu）、
+  # 编辑器做的内容（greybox）；一个样例一台运行器：SwiftShader 在 4 核的运行器上画 1280x720 一帧要几百毫秒
   smoke:
     needs: content
     runs-on: ubuntu-latest
@@ -108,7 +106,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJson(needs.content.outputs.apps) }}
+        app: [platformer, platformer2d, game-menu, greybox]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -136,7 +134,4 @@ jobs:
         env:
           STRIDE_CHROME_ARGS: --enable-unsafe-webgpu --enable-features=Vulkan --use-vulkan=swiftshader --use-angle=swiftshader --use-webgpu-adapter=swiftshader --enable-unsafe-swiftshader
           STRIDE_TIMEOUT: '300'
-          # 最慢的两个样例（csharp-intermediate 30 分钟、csharp-beginner 14 分钟）按半分辨率画：CSS 的大小、点击坐标不变，
-          # 片元少四倍（它们的冒烟不看像素）
-          STRIDE_DPR: ${{ (matrix.app == 'csharp-intermediate' || matrix.app == 'csharp-beginner') && '0.5' || '1' }}
         run: pwsh tools/regress.ps1 -Apps ${{ matrix.app }} -Parallel 1

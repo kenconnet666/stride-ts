@@ -137,6 +137,16 @@
 - **场景树单击选不中**：是 vue-tsx-pro 0.29 的 bug（拖动时按下就捕获指针），0.30.0 修了。
 - **样例导入的 Stride 内容里有过时的预制体引用**（CSharpIntermediate 的 DefaultScenery、FPS 的 Stairs1x1x2：成员的 `Base` 指着预制体里删掉的实体）：导入器把这样的成员当普通实体，别的照常转成引用。
 
+## 参考素材（照片比对用，不进仓库）
+
+路线图 R 组的照片比对用用户 2026-11-21、22 给的素材，放在仓库根的 `reference/`（`.gitignore` 里忽略：视频里有人脸，未来城市是网上视频的截图，公开仓库不提交）。换机器时从旧机器把整个目录拷过来：
+
+- `subway/`：高架地铁站台——`platform-screen-doors.jpg`（屏蔽门、信号灯、接触网、顶棚，晴天）、`platform-doors.mp4`（28 秒）、`platform-walk.mp4`（沿站台走、列车进站、广告灯箱）。
+- `mall/`：`atrium.mp4`（多层回廊的中庭、扶梯、展车）、`food-court.mp4`（美食广场）。
+- `bedroom/`：`bedroom.mp4`（卧室一角）。
+- `future-city/`：`domes-skybridges.png`（穹顶塔楼、空中走廊上的人流、中间的磁悬浮）、`maglev-meadow.png`（草地上的磁悬浮、远处的塔楼和雾）、`flyers-towers.png`（飞行器、塔楼、空中的车流、下面的森林）。
+- 长视频 `VID_20261121_133122.mp4`（4K 60 帧、7 分 19 秒、2.6 GB）在用户的微信临时目录里，内容见 progress-log 的 R 组一节。
+
 ## 6. 定时任务（无人值守续跑）
 
 在新机器上用 CronCreate 建一个每 10 分钟的任务，提示词照抄下面这段（2026-11-21 在用的版本；"【续期】"那句的日期改成新建那天往后 6 天）：

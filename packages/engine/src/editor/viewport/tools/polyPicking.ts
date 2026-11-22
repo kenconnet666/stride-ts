@@ -1,16 +1,16 @@
 /**
  * 视口里编辑多边形网格（.poly.json）的纯函数部分（照 Blender 的编辑模式、ProBuilder）：点、边、面三种选择模式，点到哪个顶点、
- * 哪条边、哪个面，选择的增减，操纵器拖的结果落到选中的顶点上。EditorViewport 的多边形编辑模式调这些，画线框、处理鼠标；
+ * 哪条边、哪个面，选择的增减，操纵器拖的结果落到选中的顶点上。视口工具 PolyEditTool 调这些，画线框、处理鼠标；
  * 编辑操作（挤出、倒角……）在 modeling/polyEdit.ts。
  *
  * 坐标：网格的顶点是模型的本地坐标，画和点选用世界坐标（乘实体的世界矩阵），操纵器的结果是世界里的变化，换回本地再写进网格。
  */
-import type { PolyMeshFile, Vec3Tuple } from '../../content/formats/assetFormat';
-import { Matrix, type MatrixSource } from '../../data/Matrix';
-import { Quaternion, Vector3 } from '../../data/vectors';
-import type { PolyEdge } from '../../modeling/polyEdit';
-import { triangulateFace } from '../../modeling/polyMesh';
-import type { GizmoChange, Ray } from './TransformGizmo';
+import type { PolyMeshFile, Vec3Tuple } from '../../../content/formats/assetFormat';
+import { Matrix, type MatrixSource } from '../../../data/Matrix';
+import { Quaternion, Vector3 } from '../../../data/vectors';
+import type { PolyEdge } from '../../../modeling/polyEdit';
+import { triangulateFace } from '../../../modeling/polyMesh';
+import type { GizmoChange, Ray } from '../TransformGizmo';
 
 /** 选择模式：点、边、面（键盘的 1、2、3）。 */
 export type PolySelectMode = 'vertex' | 'edge' | 'face';
@@ -23,16 +23,6 @@ export interface PolySelection {
 }
 
 export const EMPTY_POLY_SELECTION: PolySelection = { vertices: [], edges: [], faces: [] };
-
-/** 正在编辑的多边形网格：哪个实体（场景文件的 id）上的模型、它的 .poly.json，网格（拖的时候每帧换）、选择模式和选中的东西。 */
-export interface PolyEditSession {
-  readonly entity: string;
-  /** 多边形网格的内容路径（烘成同名的模型）。 */
-  readonly path: string;
-  mesh: PolyMeshFile;
-  mode: PolySelectMode;
-  selection: PolySelection;
-}
 
 /** 点在顶点、边上多少像素以内算点到。 */
 export const POLY_PICK_PIXELS = 8;

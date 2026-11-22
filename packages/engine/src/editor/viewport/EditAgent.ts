@@ -14,14 +14,12 @@ import { timelineCurve } from '../../animation/Timeline';
 import { sceneComponentKey } from '../../content/SceneBuilder';
 import { requiredName } from '../../content/sceneScripts';
 import type { Entity } from '../../engine/Entity';
-import { Terrain, TerrainAsset } from '../../world/Terrain';
-import type { TerrainFeatureFile, TerrainFile, TerrainStrokeFile } from '../../content/formats/terrainFormat';
 import { Transform } from '../../engine/transform';
 import type { Game } from '../../engine/Game';
-import { Camera, Model, ModelPart } from '../../rendering/components';
-import { Mesh } from '../../rendering/mesh/Mesh';
-import type { Material } from '../../rendering/mesh/Material';
-import { MeshPainter, type PaintTarget } from '../../rendering/paint/MeshPainter';
+import { Camera } from '../../rendering/components';
+import { MeshPainter } from '../../rendering/paint/MeshPainter';
+import type { BrushFile, PolyMeshFile } from '../../content/formats/assetFormat';
+import type { SplineFile } from '../../content/formats/splineFormat';
 import { encodePng } from '../../offline/png';
 import { saveImage } from '../backendApi';
 import { EditorCameraController, type EditorCameraView } from './EditorCamera';
@@ -31,9 +29,13 @@ import { LiveScene, type SceneSource } from '../LiveScene';
 import type { SceneInstance } from '../../content/ContentManager';
 import { TimelinePreview, type TimelinePreviewState } from '../TimelinePreview';
 import type { SceneEdit } from '../SceneDocument';
-import { EMPTY_POLY_SELECTION, type PolyEditSession, type PolySelectMode } from './PolyEditTool';
-import type { SplineEditSession } from './SplineEditTool';
-import type { BrushEditSession } from './BrushEditTool';
+import type { ViewportTool } from './tools/ViewportTool';
+import { DEFAULT_PAINT_BRUSH, PaintTool, type PaintBrush } from './tools/PaintTool';
+import { SculptTool, type SculptBrush } from './tools/SculptTool';
+import { PolyEditTool } from './tools/PolyEditTool';
+import type { PolySelectMode } from './tools/polyPicking';
+import { SplineEditTool } from './tools/SplineEditTool';
+import { BrushEditTool } from './tools/BrushEditTool';
 import { DEFAULT_SNAP, TransformGizmo, type SnapSettings } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
 
@@ -63,50 +65,6 @@ export interface EditableScene extends SceneSource {
   commit(): void;
 }
 
-/** 绘制模式的笔刷设置（半径米，硬度、强度 0..1；erase 是画 0）。 */
-export interface PaintBrush {
-  readonly radius: number;
-  readonly hardness: number;
-  readonly strength: number;
-  readonly erase: boolean;
-}
-
-/** 在模型上画贴图：画哪个实体上用这个材质的网格，画进哪张遮罩。 */
-export interface PaintSession {
-  readonly entity: string;
-  readonly material: Material;
-  /** 遮罩贴图的内容路径（线性的 png）。 */
-  readonly mask: string;
-  readonly painter: MeshPainter;
-  brush: PaintBrush;
-}
-
-/**
- * 雕刻地形的笔刷（W2）：op 是抬高、压低、压平（到按下处的高度）、磨平；半径是米；strength：抬高、压低是拖过一遍大约抬起、
- * 压下多少米，压平、磨平是 0..1（拖过一遍贴近多少）。
- */
-export interface SculptBrush {
-  readonly op: TerrainStrokeFile['op'];
-  readonly radius: number;
-  readonly strength: number;
-}
-
-export const DEFAULT_SCULPT_BRUSH: SculptBrush = { op: 'raise', radius: 40, strength: 4 };
-
-/**
- * 雕刻地形的模式：雕的是哪个地形实体（场景文件里的 id）、笔刷；tool 是左键拖的是笔刷还是地物（拖地物的角、整个地物）；
- * feature 是选中的地物（文件里 features 的下标）；cursor 是光标最近一次指着的地面（地形本地的 x、z 和高度，新建地物放这里）。
- */
-export interface SculptSession {
-  readonly entity: string;
-  brush: SculptBrush;
-  tool: 'brush' | 'features';
-  feature: number | undefined;
-  cursor: readonly [number, number, number] | undefined;
-}
-
-export const DEFAULT_PAINT_BRUSH: PaintBrush = { radius: 0.25, hardness: 0.5, strength: 0.8, erase: false };
-
 const PAINT_HELP = 'Paint a material layer mask on a model in the editor (the viewport page): args entity (scene file id), material and mask (content paths; '
   + 'the mask is a linear png, a layer blend of the material), points ([[x, y, z], ...] world space; dabs every quarter radius along them), '
   + 'radius (m), hardness, strength (0..1), erase. Saves the png through the editor backend.';
@@ -121,32 +79,14 @@ export class EditAgent {
   gizmoSpace: 'world' | 'local' = 'world';
   /** 吸附：步长和"一直吸附"，拖操纵器时按住 Ctrl 反过来。编辑器的界面记着它，页面重新加载以后再设回来。 */
   snap: SnapSettings = DEFAULT_SNAP;
-  /** 在模型上画贴图（S2）：开着时视口里左键拖是画，不是点选、拖操纵器（见 EditorViewport）。 */
-  paint: PaintSession | undefined;
-  /** 一笔画完（松开左键）以后调：遮罩的内容路径和读回的像素（编辑器存成 png）。 */
-  onPaintStroke: ((mask: string, image: { readonly width: number; readonly height: number; readonly rgba: Uint8Array<ArrayBuffer> }) => void) | undefined;
-  /** 编辑多边形网格（S2）：开着时视口里点选的是点、边、面，操纵器拖的是选中的顶点（见 EditorViewport、PolyEditTool）。 */
-  polyEdit: PolyEditSession | undefined;
-  /** 多边形编辑改了网格、选择、模式以后调；commit 是一次操作做完（松开操纵器），编辑器这时存文件、记一步撤销。 */
-  onPolyChanged: ((edit: PolyEditSession, commit: boolean) => void) | undefined;
-  /** 编辑样条的控制点（W3）：开着时视口里画路径和控制点，点选、拖的是控制点，双击路径加点（见 EditorViewport、SplineEditTool）。 */
-  splineEdit: SplineEditSession | undefined;
-  /** 样条编辑改了控制点、选中的点以后调；commit 是一次操作做完（松开操纵器、加了点），编辑器这时存文件、记一步撤销。 */
-  onSplineChanged: ((edit: SplineEditSession, commit: boolean) => void) | undefined;
-  /** 编辑关卡白盒的笔刷（S2）：开着时视口里画笔刷的线框，点选笔刷、拖面上的手柄改尺寸，双击面加方块（见 EditorViewport、BrushEditTool）。 */
-  brushEdit: BrushEditSession | undefined;
-  /** 白盒编辑改了笔刷、选中的笔刷以后调；commit 是一次操作做完（松开手柄、加了方块），编辑器这时存文件、记一步撤销。 */
-  onBrushChanged: ((edit: BrushEditSession, commit: boolean) => void) | undefined;
-  /** 雕刻地形（W2）：开着时视口里左键拖是雕刻，不是点选、拖操纵器（见 EditorViewport）。 */
-  sculpt: SculptSession | undefined;
-  /** 雕完一笔（松开左键）以后调：地形资源的内容路径和这一笔落下的笔画（地形本地坐标，按顺序接在文件的笔画后面）。 */
-  onSculptStroke: ((path: string, strokes: readonly TerrainStrokeFile[]) => void) | undefined;
-  /** 视口里改了雕刻笔刷（[、] 改大小）以后调，编辑器的工具条跟着变。 */
-  onSculptBrush: ((brush: SculptBrush) => void) | undefined;
-  /** 视口里拖完地物（松开左键）以后调：地形资源的内容路径和改过的全部地物（编辑器存进文件、记一步撤销）。 */
-  onSculptFeatures: ((path: string, features: readonly TerrainFeatureFile[]) => void) | undefined;
-  /** 视口里点选了地物（或点空处取消，undefined）以后调，编辑器的工具条显示它的字段。 */
-  onSculptSelect: ((feature: number | undefined) => void) | undefined;
+  /**
+   * 视口里正在用的编辑工具（画贴图、雕刻地形、编辑多边形、样条、白盒，见 tools/）：开着时左键交给它，不是点选、拖操纵器。
+   * 用下面的 paintMesh、sculptTerrain、editPoly、editSpline、editBrush 开，endTool 关。
+   */
+  get tool(): ViewportTool | undefined {
+    return this.#tool;
+  }
+
   /** 用户在视口里点选以后调（参数是新的选中）。 */
   onSelectionChanged: ((ids: readonly string[]) => void) | undefined;
   /**
@@ -155,6 +95,7 @@ export class EditAgent {
    */
   onOpenRequested: ((document: { readonly kind: 'scene' | 'prefab'; readonly path: string }) => Promise<void>) | undefined;
   #live: LiveScene | undefined;
+  #tool: ViewportTool | undefined;
   #timelinePreview: TimelinePreview | undefined;
   #target: EditableScene | undefined;
   #selection: readonly string[] = [];
@@ -213,14 +154,13 @@ export class EditAgent {
       radius: Number(args['radius'] ?? DEFAULT_PAINT_BRUSH.radius), hardness: Number(args['hardness'] ?? DEFAULT_PAINT_BRUSH.hardness),
       strength: Number(args['strength'] ?? DEFAULT_PAINT_BRUSH.strength), erase: args['erase'] === true,
     };
-    const reuse = this.paint?.entity === entity && this.paint.mask === mask;
-    if (!reuse) await this.beginPaint(entity, material, mask, brush);
-    const paint = this.paint!;
-    const targets = this.paintTargets();
+    const open = this.#tool instanceof PaintTool && this.#tool.entity === entity && this.#tool.mask === mask ? this.#tool : undefined;
+    const tool = open ?? await this.paintMesh(entity, material, mask, brush);
+    const targets = tool.targets(this.#live?.entity(entity));
     if (targets.length === 0) throw new Error(`entity ${entity} has no mesh with material ${material}`);
     let dabs = 0;
     const dab = (center: readonly [number, number, number]) => {
-      paint.painter.dab(targets, { center, radius: brush.radius, hardness: brush.hardness, strength: brush.strength, value: brush.erase ? [0, 0, 0, 1] : [1, 1, 1, 1] });
+      tool.dab(targets, center, brush);
       dabs++;
     };
     dab(points[0]!);
@@ -230,130 +170,59 @@ export class EditAgent {
       const steps = Math.max(1, Math.ceil(gap / (brush.radius * 0.25)));
       for (let k = 1; k <= steps; k++) dab([a[0] + ((b[0] - a[0]) * k) / steps, a[1] + ((b[1] - a[1]) * k) / steps, a[2] + ((b[2] - a[2]) * k) / steps]);
     }
-    paint.painter.commit();
-    const image = await paint.painter.read();
-    if (this.onPaintStroke && reuse) this.onPaintStroke(mask, image);
+    tool.painter.commit();
+    const image = await tool.painter.read();
+    // 编辑器里正开着画同一张遮罩：交给它存（和视口里画的一样）；否则直接经后端存
+    if (open?.onStroke) open.onStroke(mask, image);
     else await saveImage(mask, await encodePng(image.rgba, image.width, image.height));
-    if (!reuse) this.endPaint();
+    if (!open) this.endTool();
     return { dabs, mask };
   }
 
-  /**
-   * 开始在模型上画：实体（场景文件里的 id）上用 material 这个材质的网格，画进 mask（材质层遮罩用的线性 png，内容路径）。
-   * 之前开着的先结束。
-   */
-  async beginPaint(entity: string, material: string, mask: string, brush: PaintBrush = this.paint?.brush ?? DEFAULT_PAINT_BRUSH): Promise<void> {
-    this.endPaint();
-    this.endPolyEdit();
-    this.endSculpt();
-    this.endSplineEdit();
-    this.endBrushEdit();
+  /** 换上一个编辑工具（之前开着的先关掉、放掉资源）；返回它。 */
+  #use<T extends ViewportTool>(tool: T): T {
+    this.endTool();
+    this.#tool = tool;
+    this.refresh();
+    return tool;
+  }
+
+  /** 关掉正在用的编辑工具，左键回到点选、拖操纵器。 */
+  endTool(): void {
+    this.#tool?.dispose?.();
+    this.#tool = undefined;
+    this.refresh();
+  }
+
+  /** 开始在模型上画：实体（场景文件里的 id）上用 material 这个材质的网格，画进 mask（材质层遮罩用的线性 png，内容路径）。 */
+  async paintMesh(entity: string, material: string, mask: string, brush: PaintBrush = DEFAULT_PAINT_BRUSH): Promise<PaintTool> {
     const [loaded, texture] = await Promise.all([this.game.content.loadMaterial(material), this.game.content.loadTextureRef({ texture: mask, encoding: 'png', srgb: false }, false)]);
-    this.paint = { entity, material: loaded, mask, painter: new MeshPainter(this.game.renderSystem.resources, texture), brush };
-    this.refresh();
+    return this.#use(new PaintTool(entity, loaded, mask, new MeshPainter(this.game.renderSystem.resources, texture), brush));
   }
 
-  /** 开始编辑这个实体上的多边形网格（path 是它的 .poly.json，mesh 是文件的内容）；画贴图的模式关掉。 */
-  beginPolyEdit(entity: string, path: string, mesh: PolyEditSession['mesh'], mode: PolySelectMode = 'face'): void {
-    this.endPaint();
-    this.endSculpt();
-    this.endSplineEdit();
-    this.endBrushEdit();
-    this.polyEdit = { entity, path, mesh, mode, selection: EMPTY_POLY_SELECTION };
-    this.refresh();
+  /** 开始雕刻这个地形实体（场景文件里的 id）。 */
+  sculptTerrain(entity: string, brush?: SculptBrush, tool?: 'brush' | 'features'): SculptTool {
+    return this.#use(new SculptTool(entity, brush, tool));
   }
 
-  endPolyEdit(): void {
-    this.polyEdit = undefined;
-    this.refresh();
+  /** 开始编辑这个实体上的多边形网格（path 是它的 .poly.json，mesh 是文件的内容）。 */
+  editPoly(entity: string, path: string, mesh: PolyMeshFile, mode?: PolySelectMode): PolyEditTool {
+    return this.#use(new PolyEditTool(entity, path, mesh, mode));
   }
 
-  /** 开始编辑这个实体上的样条（path 是它的 .spline.json，spline 是文件的内容）；别的编辑模式关掉。 */
-  beginSplineEdit(entity: string, path: string, spline: SplineEditSession['spline']): void {
-    this.endPaint();
-    this.endPolyEdit();
-    this.endSculpt();
-    this.endBrushEdit();
-    this.splineEdit = { entity, path, spline, selection: [] };
-    this.refresh();
+  /** 开始编辑这个实体上的样条（path 是它的 .spline.json）。 */
+  editSpline(entity: string, path: string, spline: SplineFile): SplineEditTool {
+    return this.#use(new SplineEditTool(entity, path, spline));
   }
 
-  endSplineEdit(): void {
-    this.splineEdit = undefined;
-    this.refresh();
+  /** 开始编辑这个实体上的白盒（path 是它的 .brush.json）。 */
+  editBrush(entity: string, path: string, brush: BrushFile): BrushEditTool {
+    return this.#use(new BrushEditTool(entity, path, brush));
   }
 
-  /** 开始编辑这个实体上的白盒（path 是它的 .brush.json，brush 是文件的内容）；别的编辑模式关掉。 */
-  beginBrushEdit(entity: string, path: string, brush: BrushEditSession['brush']): void {
-    this.endPaint();
-    this.endPolyEdit();
-    this.endSculpt();
-    this.endSplineEdit();
-    this.brushEdit = { entity, path, brush, selection: undefined };
-    this.refresh();
-  }
-
-  endBrushEdit(): void {
-    this.brushEdit = undefined;
-    this.refresh();
-  }
-
-  /** 开始雕刻这个地形实体（场景文件里的 id）；画贴图、编辑多边形的模式关掉。 */
-  beginSculpt(entity: string, brush: SculptBrush = this.sculpt?.brush ?? DEFAULT_SCULPT_BRUSH): void {
-    this.endPaint();
-    this.endPolyEdit();
-    this.endSplineEdit();
-    this.endBrushEdit();
-    this.sculpt = { entity, brush, tool: this.sculpt?.tool ?? 'brush', feature: undefined, cursor: undefined };
-    this.refresh();
-  }
-
-  endSculpt(): void {
-    this.sculpt = undefined;
-    for (const preview of this.#sculptPreviews) preview.dispose();
-    this.#sculptPreviews = [];
-    this.refresh();
-  }
-
-  /**
-   * @internal 视口的笔刷落了几笔、拖了地物：地形换成 change 改过的预览版本（TerrainSystem 只重算改动范围里的块，见
-   * changedRegions），马上看得到；松开以后编辑器存文件，热重载回来的版本和预览一样、不再重算。
-   */
-  previewTerrain(terrain: Entity, change: (file: TerrainFile) => TerrainFile): void {
-    const component = terrain.require(Terrain);
-    const current = TerrainAsset.byId(component.terrain);
-    if (!current) return;
-    const next = new TerrainAsset(current.path, change(current.file), current.material, current.paths);
-    component.terrain = next.id;
-    // 更早的预览没人用了（地形系统一帧之内就换到新的上；上一个留着，它可能还没换过来）
-    this.#sculptPreviews.push(next);
-    while (this.#sculptPreviews.length > 2) this.#sculptPreviews.shift()!.dispose();
-    this.refresh();
-  }
-
-  #sculptPreviews: TerrainAsset[] = [];
-
-  endPaint(): void {
-    this.paint?.painter.destroy();
-    this.paint = undefined;
-    this.refresh();
-  }
-
-  /** 编辑器直接改了代理的状态（多边形编辑的网格、选择）：视口按需出帧时叫醒它画出来。 */
+  /** 编辑器直接改了代理、工具的状态（网格、选择）：视口按需出帧时叫醒它画出来。 */
   refresh(): void {
     this.game.requestFrames();
-  }
-
-  /** @internal 正在画的实体上用那个材质的网格和它们现在的世界矩阵（模型多出来的网格在子实体 ModelPart 上）。 */
-  paintTargets(): PaintTarget[] {
-    const paint = this.paint, entity = paint && this.#live?.entity(paint.entity);
-    if (!paint || !entity?.alive) return [];
-    const parts = [entity, ...entity.require(Transform).children.filter((child) => child.has(ModelPart))];
-    return parts.flatMap((part) => {
-      const model = part.get(Model);
-      const mesh = model && model.material === paint.material.id ? Mesh.byId(model.mesh) : undefined;
-      return mesh ? [{ mesh, world: new Float32Array(currentWorld(part)) }] : [];
-    });
   }
 
   /** 游戏自己启动时加载的根场景的内容路径（编辑器按它去读场景文件）；根场景不是按路径加载的时是 undefined。 */

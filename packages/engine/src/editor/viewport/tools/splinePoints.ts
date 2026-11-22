@@ -1,25 +1,16 @@
 /**
  * 视口里编辑样条（.spline.json）控制点的纯函数部分：点选控制点、双击路径加点、删点、从一个点拉出分支、操纵器拖的结果落到选中的
- * 点上。EditorViewport 的样条编辑模式调这些，画路径和控制点、处理鼠标；编辑器存文件，后端重新烘模型，贴着它的地形跟着重算。
+ * 点上。视口工具 SplineEditTool 调这些，画路径和控制点、处理鼠标；编辑器存文件，后端重新烘模型，贴着它的地形跟着重算。
  *
  * 控制点按"扁平的下标"说：先是文件的 points，再是各个分支的点（splinePointList）。位置相同的点焊在一起（路网的路口、分支的
  * 起点，见 splineFormat.ts），拖、删的时候一起动。坐标同多边形编辑（PolyEditTool）：控制点是实体的本地坐标，画和点选用世界
  * 坐标，操纵器的结果换回本地再写进文件。
  */
-import type { SplineBranchFile, SplineFile, SplinePointFile } from '../../content/formats/splineFormat';
-import type { MatrixSource } from '../../data/Matrix';
-import { sampleSpline, splinePaths, splinePoint, splineWeldKey } from '../../modeling/spline';
-import { closestOnSegment, POLY_PICK_PIXELS, transformPoints } from './PolyEditTool';
-import type { GizmoChange } from './TransformGizmo';
-
-/** 正在编辑的样条：哪个实体（场景文件的 id）上的模型、它的 .spline.json，样条（拖的时候每帧换）和选中的控制点（扁平的下标）。 */
-export interface SplineEditSession {
-  readonly entity: string;
-  /** 样条的内容路径（烘成同名的模型）。 */
-  readonly path: string;
-  spline: SplineFile;
-  selection: readonly number[];
-}
+import type { SplineBranchFile, SplineFile, SplinePointFile } from '../../../content/formats/splineFormat';
+import type { MatrixSource } from '../../../data/Matrix';
+import { sampleSpline, splinePaths, splinePoint, splineWeldKey } from '../../../modeling/spline';
+import { closestOnSegment, POLY_PICK_PIXELS, transformPoints } from './polyPicking';
+import type { GizmoChange } from '../TransformGizmo';
 
 /** 全部控制点，按扁平的下标排：第几条路径（0 是文件的 points，1 起是分支）、路径里的第几个、点本身。 */
 export function splinePointList(file: SplineFile): { readonly path: number; readonly index: number; readonly point: SplinePointFile }[] {

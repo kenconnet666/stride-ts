@@ -9,6 +9,7 @@ import { PaintLayers } from './PaintLayers';
 import { SoundGenerator } from './SoundGenerator';
 import { assetListId, FieldEditor, Fields, type FieldContext, type ValuePath, type ValueUpdate } from './FieldEditor';
 import type { EditorSession } from './session';
+import type { ModelSourceKind, ViewportTools } from './session/ViewportTools';
 import { labelText } from './fieldMessages';
 import { t } from './messages';
 import { mergeField } from './values';
@@ -119,6 +120,20 @@ function parentHint(session: EditorSession, entity: SceneEntityFile) {
  * 资源浏览器里选中材质、JSON 写的模型时显示资源自己的字段（引擎的 ASSET_FIELDS）：改了直接存进资源文件，视口里用到它的实体
  * 热重载（session.editInspected）。
  */
+/** 模型能从哪些源文件烘出来、在视口里编辑：属性面板的模型组件上对应的按钮。 */
+const MODEL_SOURCE_EDITORS: readonly {
+  readonly kind: ModelSourceKind;
+  readonly icon: typeof Shapes;
+  readonly label: () => string;
+  /** 正在编辑的实体（按钮高亮）。 */
+  readonly editing: (tools: ViewportTools) => string | undefined;
+  readonly start: (tools: ViewportTools, entity: string, path: string) => Promise<void>;
+}[] = [
+  { kind: 'poly', icon: Shapes, label: () => t.polyEdit, editing: (tools) => tools.polyEditing.value?.entity, start: (tools, entity, path) => tools.startPolyEdit(entity, path) },
+  { kind: 'spline', icon: Spline, label: () => t.splineEdit, editing: (tools) => tools.splineEditing.value?.entity, start: (tools, entity, path) => tools.startSplineEdit(entity, path) },
+  { kind: 'brush', icon: Boxes, label: () => t.brushEdit, editing: (tools) => tools.brushEditing.value?.entity, start: (tools, entity, path) => tools.startBrushEdit(entity, path) },
+];
+
 export const Inspector = _component(({ session }: { session: EditorSession }) => {
   const { version, selection, agent, assets } = session;
   // 资源字段的提示：每种资源一个 datalist
@@ -267,21 +282,6 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       return session.opened.value?.kind === 'scene' ? sceneSettings() : <div {...css.attrs(styles.hint)}>{t.pickEntity}</div>;
     }
     const merged = (read: (entity: SceneEntityFile) => unknown, type: FieldType) => mergeField(list.map(read), type);
-    // 模型是从多边形网格（.poly.json）烘出来的：能在视口里编辑它
-    const polySource = (entity: SceneEntityFile) => {
-      const model = entity.components.model?.model;
-      return model === undefined ? undefined : session.polySourceOf(model);
-    };
-    // 模型是从样条（.spline.json）烘出来的：能在视口里拖它的控制点
-    const splineSource = (entity: SceneEntityFile) => {
-      const model = entity.components.model?.model;
-      return model === undefined ? undefined : session.splineSourceOf(model);
-    };
-    // 模型是从白盒（.brush.json）烘出来的：能在视口里点选笔刷、拖手柄改尺寸
-    const brushSource = (entity: SceneEntityFile) => {
-      const model = entity.components.model?.model;
-      return model === undefined ? undefined : session.brushSourceOf(model);
-    };
     const keys = Object.keys(COMPONENT_FIELDS) as ComponentKey[];
     return (
       <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
@@ -303,20 +303,18 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             </div>
             {key === 'particleSystem' && list.length === 1 && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Sparkles} onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</Button>}
             {key === 'terrain' && list.length === 1 && typeof list[0]!.components['terrain']?.['terrain'] === 'string' && (
-              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.sculpting.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Mountain}
-                onClick={() => void session.startSculpt(list[0]!.id, list[0]!.components['terrain']!['terrain'] as string)}>{t.sculpt}</Button>
+              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.tools.sculpting.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Mountain}
+                onClick={() => void session.tools.startSculpt(list[0]!.id, list[0]!.components['terrain']!['terrain'] as string)}>{t.sculpt}</Button>
             )}
-            {key === 'model' && list.length === 1 && polySource(list[0]!) && (
-              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Shapes} onClick={() => void session.startPolyEdit(list[0]!.id, polySource(list[0]!)!)}>{t.polyEdit}</Button>
-            )}
-            {key === 'model' && list.length === 1 && splineSource(list[0]!) && (
-              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.splineEditing.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Spline}
-                onClick={() => void session.startSplineEdit(list[0]!.id, splineSource(list[0]!)!)}>{t.splineEdit}</Button>
-            )}
-            {key === 'model' && list.length === 1 && brushSource(list[0]!) && (
-              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.brushEditing.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Boxes}
-                onClick={() => void session.startBrushEdit(list[0]!.id, brushSource(list[0]!)!)}>{t.brushEdit}</Button>
-            )}
+            {key === 'model' && list.length === 1 && MODEL_SOURCE_EDITORS.map((editor) => {
+              // 模型是从这种源文件烘出来的：能在视口里编辑源文件
+              const entity = list[0]!, model = entity.components.model?.model;
+              const source = model === undefined ? undefined : session.tools.sourceOf(editor.kind, model);
+              return source && (
+                <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={editor.editing(session.tools) === entity.id ? 'accent' : 'neutral'} icon={editor.icon}
+                  onClick={() => void editor.start(session.tools, entity.id, source)}>{editor.label()}</Button>
+              );
+            })}
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key], COMPONENT_FIELDS[key].type)} context={context} onSet={setter(list, () => ['components', key])} />
           </section>
         ))}

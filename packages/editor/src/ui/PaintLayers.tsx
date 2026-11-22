@@ -43,13 +43,13 @@ export const PaintLayers = _component(({ session }: { session: EditorSession }) 
     const inspected = session.inspected.value;
     if (inspected?.kind !== 'material') return undefined;
     const layers = (inspected.content['layers'] as LayerFile[] | undefined) ?? [];
-    const painting = session.painting.value;
-    const brush = session.paintBrush.value;
+    const painting = session.tools.painting.value;
+    const brush = session.tools.paintBrush.value;
     return (
       <div {...css.attrs(styles.box)}>
         <div {...css.attrs(styles.row)}>
           <span {...css.attrs(styles.title)}>{t.paintLayers}</span>
-          <Button size="sm" variant="soft" tone="neutral" icon={Plus} onClick={() => void session.addPaintLayer()}>{t.paintAddLayer}</Button>
+          <Button size="sm" variant="soft" tone="neutral" icon={Plus} onClick={() => void session.tools.addPaintLayer()}>{t.paintAddLayer}</Button>
         </div>
         {layers.map((layer, i) => {
           const paintable = Boolean(layer.blend?.texture?.texture);
@@ -67,17 +67,17 @@ export const PaintLayers = _component(({ session }: { session: EditorSession }) 
                 amount(t.paintMetalness, number(layer.metalness.value, 0), (value) => session.editInspected(['layers', i, 'metalness', 'value'], value))
               )}
               {paintable && (painting?.layer === i
-                ? <Button size="sm" variant="solid" tone="accent" icon={Square} onClick={() => session.stopPainting()}>{t.paintStop}</Button>
-                : <Button size="sm" variant="soft" tone="neutral" icon={Brush} onClick={() => void session.startPainting(i)}>{t.paintStart}</Button>)}
+                ? <Button size="sm" variant="solid" tone="accent" icon={Square} onClick={() => session.tools.stop()}>{t.paintStop}</Button>
+                : <Button size="sm" variant="soft" tone="neutral" icon={Brush} onClick={() => void session.tools.startPainting(i)}>{t.paintStart}</Button>)}
             </div>
           );
         })}
         {painting && (
           <div {...css.attrs(styles.row)}>
-            {amount(t.paintRadius, brush.radius, (radius) => radius > 0 && session.setPaintBrush({ ...brush, radius }), { min: 0.01, max: 100 })}
-            {amount(t.paintHardness, brush.hardness, (hardness) => session.setPaintBrush({ ...brush, hardness }), { step: 0.1 })}
-            {amount(t.paintStrength, brush.strength, (strength) => session.setPaintBrush({ ...brush, strength }), { step: 0.1 })}
-            <Checkbox size="sm" _checked={brush.erase} onUpdate:_checked={(erase: boolean) => session.setPaintBrush({ ...brush, erase })}>{t.paintErase}</Checkbox>
+            {amount(t.paintRadius, brush.radius, (radius) => radius > 0 && session.tools.setPaintBrush({ ...brush, radius }), { min: 0.01, max: 100 })}
+            {amount(t.paintHardness, brush.hardness, (hardness) => session.tools.setPaintBrush({ ...brush, hardness }), { step: 0.1 })}
+            {amount(t.paintStrength, brush.strength, (strength) => session.tools.setPaintBrush({ ...brush, strength }), { step: 0.1 })}
+            <Checkbox size="sm" _checked={brush.erase} onUpdate:_checked={(erase: boolean) => session.tools.setPaintBrush({ ...brush, erase })}>{t.paintErase}</Checkbox>
           </div>
         )}
         {painting && <div {...css.attrs(styles.hint)}>{t.paintHint}</div>}

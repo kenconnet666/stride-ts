@@ -124,12 +124,12 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
   /**
    * 编辑多边形网格时的工具条：选择模式（点、边、面）、操作的距离、各个操作（选的东西对得上才能点），最后是"完成"。
    */
-  const polyControls = (poly: NonNullable<typeof session.polyEditing.value>) => {
+  const polyControls = (poly: NonNullable<typeof session.tools.polyEditing.value>) => {
     const { vertices, edges, faces } = poly.selection;
     const operation = (name: keyof typeof t.polyOps, icon: typeof Plus, enabled: boolean, build: () => PolyOperation | undefined) => (
       <Button size="sm" variant="ghost" tone="neutral" icon={icon} disabled={!enabled} onClick={() => {
         const op = build();
-        if (op) session.polyOperation(op);
+        if (op) session.tools.polyOperation(op);
         else session.notice.value = t.polyConnectNeedsFace;
       }}>{t.polyOps[name]}</Button>
     );
@@ -144,7 +144,7 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
     };
     return [
       ...(['vertex', 'edge', 'face'] as const).map((mode, i) => (
-        <Button size="sm" variant={poly.mode === mode ? 'soft' : 'ghost'} tone="neutral" aria-pressed={poly.mode === mode} title={`${t.polyModes[mode]} (${i + 1})`} onClick={() => session.setPolyMode(mode)}>{t.polyModes[mode]}</Button>
+        <Button size="sm" variant={poly.mode === mode ? 'soft' : 'ghost'} tone="neutral" aria-pressed={poly.mode === mode} title={`${t.polyModes[mode]} (${i + 1})`} onClick={() => session.tools.setPolyMode(mode)}>{t.polyModes[mode]}</Button>
       )),
       <Separator orientation="vertical" />,
       <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.polyAmount} aria-label={t.polyAmount} min={0.001} step={0.05} format={{ useGrouping: false, maximumFractionDigits: 4 }}
@@ -158,68 +158,68 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       operation('flip', FlipVertical2, faces.length > 0, () => ({ op: 'flip', faces })),
       operation('delete', Trash2, faces.length > 0, () => ({ op: 'delete', faces })),
       <span {...css.attrs(styles.spacer)} />,
-      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopPolyEdit()}>{t.polyDone}</Button>,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.tools.stop()}>{t.polyDone}</Button>,
     ];
   };
   /** 编辑样条时的工具条：几个点（分支的也算）、从选中的点拉出分支、删除选中的点，最后是"完成"。 */
-  const splineControls = (editing: NonNullable<typeof session.splineEditing.value>) => [
+  const splineControls = (editing: NonNullable<typeof session.tools.splineEditing.value>) => [
     <span {...css.attrs(styles.count)}>{t.splinePoints(editing.spline.points.length + (editing.spline.branches ?? []).reduce((sum, branch) => sum + branch.points.length, 0))}</span>,
     <Button size="sm" variant="ghost" tone="neutral" icon={GitBranchPlus} title={t.splineBranchHint} disabled={editing.selection.length !== 1}
-      onClick={() => session.branchSpline()}>{t.splineBranch}</Button>,
+      onClick={() => session.tools.branchSpline()}>{t.splineBranch}</Button>,
     <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.splineDeletePoints} (Delete)`} disabled={editing.selection.length === 0}
-      onClick={() => session.deleteSplinePoints()}>{t.splineDeletePoints}</Button>,
+      onClick={() => session.tools.deleteSplinePoints()}>{t.splineDeletePoints}</Button>,
     <span {...css.attrs(styles.spacer)} />,
-    <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopSplineEdit()}>{t.polyDone}</Button>,
+    <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.tools.stop()}>{t.polyDone}</Button>,
   ];
   /** 编辑白盒时的工具条：几个笔刷、选中的那个是加减交、删除选中的，最后是"完成"。 */
-  const brushControls = (editing: NonNullable<typeof session.brushEditing.value>) => {
+  const brushControls = (editing: NonNullable<typeof session.tools.brushEditing.value>) => {
     const shape = editing.selection === undefined ? undefined : editing.brush.brushes[editing.selection];
     return [
       <span {...css.attrs(styles.count)}>{t.brushCount(editing.brush.brushes.length)}</span>,
       ...(['add', 'subtract', 'intersect'] as const).map((operation) => (
         <Button size="sm" variant={shape?.operation === operation ? 'soft' : 'ghost'} tone="neutral" aria-pressed={shape?.operation === operation} disabled={!shape}
-          onClick={() => session.setBrushOperation(operation)}>{t.brushOperations[operation]}</Button>
+          onClick={() => session.tools.setBrushOperation(operation)}>{t.brushOperations[operation]}</Button>
       )),
       <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.brushDelete} (Delete)`} disabled={!shape || editing.brush.brushes.length <= 1}
-        onClick={() => session.deleteSelectedBrush()}>{t.brushDelete}</Button>,
+        onClick={() => session.tools.deleteSelectedBrush()}>{t.brushDelete}</Button>,
       <span {...css.attrs(styles.spacer)} />,
-      <Button size="sm" variant="ghost" tone="neutral" icon={Shapes} title={t.brushToPolyHint} onClick={() => void session.exportBrushToPoly()}>{t.brushToPoly}</Button>,
-      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopBrushEdit()}>{t.polyDone}</Button>,
+      <Button size="sm" variant="ghost" tone="neutral" icon={Shapes} title={t.brushToPolyHint} onClick={() => void session.tools.exportBrushToPoly()}>{t.brushToPoly}</Button>,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.tools.stop()}>{t.polyDone}</Button>,
     ];
   };
   /**
    * 雕刻地形时的工具条：先是笔刷、地物两种工具；笔刷是种类、半径（米）、强度，地物是新建、选中的那个的高度、过渡宽度、强度
    * 和删除；文件里有几笔，最后是"完成"。
    */
-  const sculptControls = (sculpting: NonNullable<typeof session.sculpting.value>) => {
+  const sculptControls = (sculpting: NonNullable<typeof session.tools.sculpting.value>) => {
     const tools = (['brush', 'features'] as const).map((tool) => (
-      <Button size="sm" variant={sculpting.tool === tool ? 'soft' : 'ghost'} tone="neutral" aria-pressed={sculpting.tool === tool} onClick={() => session.setSculptTool(tool)}>{t.sculptTools[tool]}</Button>
+      <Button size="sm" variant={sculpting.tool === tool ? 'soft' : 'ghost'} tone="neutral" aria-pressed={sculpting.tool === tool} onClick={() => session.tools.setSculptTool(tool)}>{t.sculptTools[tool]}</Button>
     ));
     const tail = [
       <span {...css.attrs(styles.spacer)} />,
       <span {...css.attrs(styles.count)}>{t.sculptStrokes(sculpting.file.strokes?.length ?? 0)}</span>,
-      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopSculpt()}>{t.sculptDone}</Button>,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.tools.stop()}>{t.sculptDone}</Button>,
     ];
     if (sculpting.tool === 'features') {
       const feature = sculpting.feature === undefined ? undefined : sculpting.file.features?.[sculpting.feature];
-      const field = (label: string, value: number, patch: (value: number) => Parameters<typeof session.updateTerrainFeature>[0], options: { min?: number; max?: number; step: number }) => (
+      const field = (label: string, value: number, patch: (value: number) => Parameters<typeof session.tools.updateTerrainFeature>[0], options: { min?: number; max?: number; step: number }) => (
         <NumberField {...css.attrs(styles.step)} size="sm" prefix={label} aria-label={label} {...options} format={{ useGrouping: false, maximumFractionDigits: 2 }}
-          _value={value} onUpdate:_value={(next: number | null) => next !== null && next !== value && session.updateTerrainFeature(patch(next))} />
+          _value={value} onUpdate:_value={(next: number | null) => next !== null && next !== value && session.tools.updateTerrainFeature(patch(next))} />
       );
       return [
         ...tools,
         <Separator orientation="vertical" />,
-        <Button size="sm" variant="ghost" tone="neutral" icon={Plus} title={t.featureAddHint} onClick={() => session.addTerrainFeature()}>{t.featureAdd}</Button>,
+        <Button size="sm" variant="ghost" tone="neutral" icon={Plus} title={t.featureAddHint} onClick={() => session.tools.addTerrainFeature()}>{t.featureAdd}</Button>,
         ...(feature ? [
           field(t.featureHeight, feature.height, (height) => ({ height }), { step: 1 }),
           field(t.featureFalloff, feature.falloff ?? 0, (falloff) => ({ falloff }), { min: 0, step: 5 }),
           field(t.sculptStrength, feature.strength ?? 1, (strength) => ({ strength }), { min: 0, max: 1, step: 0.1 }),
-          <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} onClick={() => session.deleteTerrainFeature()}>{t.featureDelete}</Button>,
+          <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} onClick={() => session.tools.deleteTerrainFeature()}>{t.featureDelete}</Button>,
         ] : []),
         ...tail,
       ];
     }
-    const brush = session.sculptBrush.value;
+    const brush = session.tools.sculptBrush.value;
     // 抬高、压低的强度是米；压平、磨平是 0..1：换到另一类时强度换成那一类的默认值
     const isFraction = (op: SculptBrush['op']) => op === 'flatten' || op === 'smooth';
     const fraction = isFraction(brush.op);
@@ -228,26 +228,26 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       <Separator orientation="vertical" />,
       ...(['raise', 'lower', 'flatten', 'smooth'] as const).map((op) => (
         <Button size="sm" variant={brush.op === op ? 'soft' : 'ghost'} tone="neutral" aria-pressed={brush.op === op}
-          onClick={() => session.setSculptBrush({ ...brush, op, strength: isFraction(op) === fraction ? brush.strength : isFraction(op) ? 0.5 : 4 })}>{t.sculptOps[op]}</Button>
+          onClick={() => session.tools.setSculptBrush({ ...brush, op, strength: isFraction(op) === fraction ? brush.strength : isFraction(op) ? 0.5 : 4 })}>{t.sculptOps[op]}</Button>
       )),
       <Separator orientation="vertical" />,
       <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.sculptRadius} aria-label={t.sculptRadius} min={0.5} step={5} format={{ useGrouping: false, maximumFractionDigits: 2 }}
-        _value={brush.radius} onUpdate:_value={(value: number | null) => value !== null && value > 0 && session.setSculptBrush({ ...brush, radius: value })} />,
+        _value={brush.radius} onUpdate:_value={(value: number | null) => value !== null && value > 0 && session.tools.setSculptBrush({ ...brush, radius: value })} />,
       <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.sculptStrength} aria-label={t.sculptStrength} min={0} {...(fraction ? { max: 1 } : {})} step={fraction ? 0.1 : 1} format={{ useGrouping: false, maximumFractionDigits: 3 }}
-        _value={brush.strength} onUpdate:_value={(value: number | null) => value !== null && value >= 0 && session.setSculptBrush({ ...brush, strength: value })} />,
+        _value={brush.strength} onUpdate:_value={(value: number | null) => value !== null && value >= 0 && session.tools.setSculptBrush({ ...brush, strength: value })} />,
       ...tail,
     ];
   };
   return () => {
     const selected = session.selection.value.length;
     const off = playing;
-    const poly = session.polyEditing.value;
+    const poly = session.tools.polyEditing.value;
     if (poly && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{polyControls(poly)}</div>;
-    const splineEditing = session.splineEditing.value;
+    const splineEditing = session.tools.splineEditing.value;
     if (splineEditing && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{splineControls(splineEditing)}</div>;
-    const brushEditing = session.brushEditing.value;
+    const brushEditing = session.tools.brushEditing.value;
     if (brushEditing && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{brushControls(brushEditing)}</div>;
-    const sculpting = session.sculpting.value;
+    const sculpting = session.tools.sculpting.value;
     if (sculpting && !off) return <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>{sculptControls(sculpting)}</div>;
     return (
       <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>

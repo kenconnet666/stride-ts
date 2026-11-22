@@ -1,23 +1,14 @@
 /**
  * 视口里编辑关卡白盒（.brush.json）的纯函数部分：笔刷的有向包围盒、射线点到哪个笔刷的哪个面、在面外侧贴着加一个方块、拖面上的
- * 手柄改尺寸（对面不动）。EditorViewport 的白盒编辑模式调这些，画线框和手柄、处理鼠标；编辑器存文件，后端重新烘模型。
+ * 手柄改尺寸（对面不动）。视口工具 BrushEditTool 调这些，画线框和手柄、处理鼠标；编辑器存文件，后端重新烘模型。
  *
  * 坐标都是模型的本地坐标（笔刷的 position 那一套）；视口把世界里的射线换进来。面按 轴 * 2 + (正向 ? 1 : 0) 编号：0 是 -X、
  * 1 是 +X、2 是 -Y、3 是 +Y、4 是 -Z、5 是 +Z（笔刷自己的轴，跟着它的 rotation 转）。
  */
-import type { BrushFile, BrushShapeFile } from '../../content/formats/assetFormat';
+import type { BrushFile, BrushShapeFile } from '../../../content/formats/assetFormat';
 
 type Vec3 = readonly [number, number, number];
 type Quat = readonly [number, number, number, number];
-
-/** 正在编辑的白盒：哪个实体（场景文件的 id）上的模型、它的 .brush.json、白盒（拖的时候每帧换）和选中的笔刷（下标）。 */
-export interface BrushEditSession {
-  readonly entity: string;
-  /** 白盒的内容路径（烘成同名的模型）。 */
-  readonly path: string;
-  brush: BrushFile;
-  selection: number | undefined;
-}
 
 /** 笔刷的有向包围盒：中心、朝向、半边长（本地坐标）。方块就是它自己；挤出、圆柱、球取外包的盒子。 */
 export interface BrushBox {

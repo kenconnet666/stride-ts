@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { BrushFile } from '../../src/content/formats/assetFormat';
-import { addBoxOnFace, brushBox, clickBrush, deleteBrush, faceCenter, pickBrushFace, resizeBrushFace } from '../../src/editor/viewport/BrushEditTool';
+import { addBoxOnFace, brushBox, clickBrush, deleteBrush, faceCenter, pickBrushFace, resizeBrushFace } from '../../src/editor/viewport/tools/brushShapes';
 
 const room: BrushFile = {
   name: 'Room', materials: [null, null],

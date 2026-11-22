@@ -7,17 +7,15 @@
  *   临时放进 SURFACE_DRAG_GROUP 这个渲染组、点选时不画，自己不挡）；吸附到顶点（snap.vertex，或拖的时候按住 V）时，拖着的东西上
  *   离光标最近的顶点对到光标下另一个物体上离点到的地方最近的顶点（同一套点选）；
  * - W、E、R：移动、旋转、缩放；F：把选中的东西放到画面中间；相机的操作见 EditorCamera。
- * - 画贴图（agent.paint）、编辑多边形网格（agent.polyEdit）、编辑样条（agent.splineEdit）、编辑白盒（agent.brushEdit）、雕刻地形
- *   （agent.sculpt）时左键换成那个工具的：画笔刷；点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），操纵器拖选中的顶点
- *   （PolyEditTool）；点选、拖控制点，双击路径加点（SplineEditTool）；点选笔刷、拖面上的手柄改尺寸，双击面加方块（BrushEditTool）；
- *   雕刻的笔刷（[、] 改大小，Shift 反过来）。
+ * - 开着编辑工具（agent.tool：画贴图、雕刻地形、编辑多边形、样条、白盒，见 tools/）时左键交给它：每帧把这一帧的输入和
+ *   换算（ViewportFrame）交给工具的 update。
  */
 import type { Entity } from '../../engine/Entity';
 import { SyncScript } from '../../engine/scripts';
 import { Transform } from '../../engine/transform';
 import type { DebugColor } from '../../debug/DebugDraw';
 import type { PointerEvent } from '../../input/InputManager';
-import { Matrix, type Matrix4 } from '../../data/Matrix';
+import { Matrix, type Matrix4, type MatrixSource } from '../../data/Matrix';
 import { Quaternion, Vector3 } from '../../data/vectors';
 import { screenToWorldRaySegment, worldToScreen } from '../../rendering/cameraRays';
 import { Camera, Model, ModelPart } from '../../rendering/components';
@@ -27,19 +25,7 @@ import type { SceneEdit } from '../SceneDocument';
 import { applyGizmoChange, applySnap, type GizmoAxis, type GizmoChange, type GizmoHandle, type Ray, type TransformGizmo } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
 import { Mesh } from '../../rendering/mesh/Mesh';
-import { raycastMesh } from '../../rendering/paint/MeshPainter';
-import { selectionVertices } from '../../modeling/polyEdit';
-import { Terrain, TerrainAsset } from '../../world/Terrain';
-import type { TerrainFeatureFile, TerrainStrokeFile } from '../../content/formats/terrainFormat';
-import type { TerrainHit } from '../../world/TerrainSystem';
-import { clickSelection, EMPTY_POLY_SELECTION, meshEdges, pickEdge, pickFace, pickVertex, selectionCenter, transformPoints, worldVertices, type PolySelectMode } from './PolyEditTool';
-import type { PolyMeshFile } from '../../content/formats/assetFormat';
-import type { SplineFile } from '../../content/formats/splineFormat';
-import { splineCurve, splinePaths } from '../../modeling/spline';
-import { roadLanes, type RoadLane } from '../../modeling/roadLanes';
-import { insertSplinePoint, moveSplinePoints, pickSplineCurve, splinePointList } from './SplineEditTool';
-import { addBoxOnFace, brushBox, clickBrush, faceCenter, pickBrushFace, resizeBrushFace } from './BrushEditTool';
-import type { BrushFile, BrushShapeFile } from '../../content/formats/assetFormat';
+import { ACTIVE_COLOR, CLICK_PIXELS, FileEditTool, type Pixel, type Point3, type ViewportFrame } from './tools/ViewportTool';
 
 /** 选中的东西的框的颜色（线性）。 */
 const SELECTION_COLOR: DebugColor = [1, 0.55, 0.1, 1];
@@ -47,27 +33,6 @@ const SELECTION_COLOR: DebugColor = [1, 0.55, 0.1, 1];
 const PROBE_COLOR: DebugColor = [0.2, 0.85, 1, 1];
 const PROBE_BLEND_COLOR: DebugColor = [0.2, 0.85, 1, 0.35];
 const AXIS_COLORS: Readonly<Record<GizmoAxis, DebugColor>> = { x: [1, 0.15, 0.15, 1], y: [0.25, 0.9, 0.2, 1], z: [0.2, 0.4, 1, 1] };
-const ACTIVE_COLOR: DebugColor = [1, 0.9, 0.2, 1];
-/** 绘制模式的笔刷：画是白的，擦是红的。 */
-const BRUSH_COLOR: DebugColor = [1, 1, 1, 0.9];
-const ERASE_COLOR: DebugColor = [1, 0.3, 0.3, 0.9];
-/** 雕刻笔刷的圈分几段。 */
-const SCULPT_RING_SEGMENTS = 48;
-/** 没选中的地物的轮廓。 */
-const FEATURE_COLOR: DebugColor = [0.85, 0.95, 1, 0.85];
-/** 两次按下隔多久以内算双击（毫秒）。 */
-const DOUBLE_CLICK_MS = 400;
-/** 点地物的角：光标离角在屏幕上多少像素以内。 */
-const CORNER_PIXELS = 10;
-/** 多边形编辑的线框和选中的点、边、面。 */
-const POLY_EDGE_COLOR: DebugColor = [0.85, 0.88, 0.95, 0.7];
-const POLY_SELECTED_COLOR: DebugColor = [1, 0.55, 0.1, 1];
-/** 样条编辑里画的车道：路段上的、路口里的连接车道。 */
-const LANE_COLOR: DebugColor = [0.2, 0.9, 1, 0.8];
-const CONNECTOR_COLOR: DebugColor = [1, 0.85, 0.2, 0.8];
-/** 顶点的小方块的半边长（画面高度的倍数）。 */
-const POLY_VERTEX_SCREEN_SIZE = 0.004;
-const POLY_MODE_KEYS: readonly (readonly [string, PolySelectMode])[] = [['Digit1', 'vertex'], ['Digit2', 'edge'], ['Digit3', 'face']];
 /** 操纵器的轴在画面上有多长（画面高度的倍数）。 */
 const GIZMO_SCREEN_SIZE = 0.14;
 /**
@@ -75,28 +40,6 @@ const GIZMO_SCREEN_SIZE = 0.14;
  * 文档不变。游戏自己用了第 31 组的东西拖的时候也会被当成拖着的。
  */
 const SURFACE_DRAG_GROUP = 31;
-/** 按下到松开鼠标挪了不到这么多像素算点一下。 */
-const CLICK_PIXELS = 4;
-/** 白盒编辑的笔刷线框：加的、减的、交的。 */
-const BRUSH_OPERATION_COLORS: Readonly<Record<BrushShapeFile['operation'], DebugColor>> = {
-  add: [0.85, 0.88, 0.95, 0.75], subtract: [1, 0.35, 0.3, 0.85], intersect: [0.35, 0.6, 1, 0.85],
-};
-/** 白盒的手柄：光标离手柄在屏幕上多少像素以内算按到；手柄的方块按轴着色，指着的、拖着的黄色。 */
-const BRUSH_HANDLE_PIXELS = 12;
-const BRUSH_HANDLE_COLORS: readonly DebugColor[] = [[1, 0.15, 0.15, 1], [0.25, 0.9, 0.2, 1], [0.2, 0.4, 1, 1]];
-
-/**
- * 射线上离直线（过 point、单位方向 axis）最近的那一点在直线上的位置（从 point 量的长度）：拖白盒的手柄用。射线和直线差不多平行
- * （顺着轴看）时是 undefined。
- */
-function lineParameter(ray: { readonly origin: readonly number[]; readonly direction: readonly number[] }, point: readonly number[], axis: readonly number[]): number | undefined {
-  const dot = (a: readonly number[], b: readonly number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
-  const d = ray.direction, w = [ray.origin[0]! - point[0]!, ray.origin[1]! - point[1]!, ray.origin[2]! - point[2]!];
-  const a = dot(d, d), b = dot(d, axis), denominator = a - b * b;
-  if (denominator < 1e-9 * a) return undefined;
-  return (a * dot(axis, w) - b * dot(d, w)) / denominator;
-}
-
 /** 存进文件的数：去掉 float32 来回换算留下的尾巴。 */
 const tidy = (value: number): number => Math.round(value * 1e6) / 1e6;
 
@@ -133,37 +76,14 @@ export class EditorViewport extends SyncScript {
   #drag: { readonly starts: readonly DragStart[]; readonly key: string; readonly pick?: PickDrag } | undefined;
   #pressed: readonly [number, number] | undefined;
   #drags = 0;
-  /** 多边形编辑里正在拖的操纵器：按下时的网格和要动的顶点（结果每帧从它算）。 */
-  #polyDrag: { readonly start: PolyMeshFile; readonly vertices: readonly number[] } | undefined;
-  /** 样条编辑里正在拖的操纵器：按下时的样条和要动的控制点。 */
-  #splineDrag: { readonly start: SplineFile; readonly points: readonly number[] } | undefined;
-  /** 样条编辑里画的车道图（道路才有）：按样条对象缓存，改了才重算。 */
-  #lanes: { readonly spline: SplineFile; readonly lanes: readonly RoadLane[] } | undefined;
-  /** 上一次在样条编辑里按下左键的时刻和位置（认双击）。 */
-  #lastSplineClick: { readonly time: number; readonly at: readonly [number, number] } | undefined;
-  /**
-   * 白盒编辑里正在拖的手柄：按下时的白盒、哪个笔刷的哪个面、面的中心和法线（模型本地）、按下时光标在法线那条线上的位置、
-   * 上一次交出去的推出量（没变就不再交）。
-   */
-  #brushDrag: { readonly start: BrushFile; readonly index: number; readonly face: number; readonly center: readonly [number, number, number]; readonly normal: readonly [number, number, number]; readonly anchor: number; delta: number } | undefined;
-  /** 上一次在白盒编辑里按下左键的时刻和位置（认双击）。 */
-  #lastBrushClick: { readonly time: number; readonly at: readonly [number, number] } | undefined;
-  /** 绘制模式里正在画的一笔：上一笔落在哪（世界坐标），画没画上。 */
-  #stroke: { last: [number, number, number] | undefined; painted: boolean } | undefined;
-  /** 拖地物：拖的是哪个地物的哪个角（undefined 是整个地物），按下时光标下的地面（地形本地 x、z），按下时的地物，挪没挪过。 */
-  #featureDrag: { readonly feature: number; readonly vertex: number | undefined; readonly anchor: readonly [number, number]; readonly start: readonly TerrainFeatureFile[]; moved: boolean } | undefined;
-  /** 上一次在地物模式里按下左键的时刻和位置（认双击）。 */
-  #lastFeatureClick: { readonly time: number; readonly at: readonly [number, number] } | undefined;
-  /** 雕刻地形时正在拖的一笔：上一笔落在哪（地形本地的 x、z），这一次拖落下的笔画，压平的目标高度（按下处）。 */
-  #sculptStroke: { last: [number, number] | undefined; strokes: TerrainStrokeFile[]; height: number } | undefined;
 
   override update(): void {
     const agent = this.agent, live = agent?.live;
     if (!agent || !live) return;
     const input = this.game.input, draw = this.game.debugDraw;
     for (const id of agent.selection) {
-      // 正在编辑多边形的实体画它自己的线框，不画包围盒
-      if (agent.polyEdit?.entity === id || agent.splineEdit?.entity === id || agent.brushEdit?.entity === id) continue;
+      // 正在编辑多边形、样条、白盒的实体由工具画它自己的线框，不画包围盒
+      if (agent.tool instanceof FileEditTool && agent.tool.entity === id) continue;
       const entity = live.entity(id);
       if (!entity?.alive) continue;
       const boxes = selectionBoxes(this.game, entity);
@@ -187,25 +107,8 @@ export class EditorViewport extends SyncScript {
     }
 
     const pixel = input.absoluteMousePosition;
-    // 在模型上画贴图：左键拖是画，不点选、不拖操纵器
-    if (agent.paint) {
-      this.#paint(agent, pixel, navigating);
-      return;
-    }
-    if (agent.polyEdit) {
-      this.#poly(agent, pixel, navigating);
-      return;
-    }
-    if (agent.splineEdit) {
-      this.#spline(agent, pixel, navigating);
-      return;
-    }
-    if (agent.brushEdit) {
-      this.#brush(agent, pixel, navigating);
-      return;
-    }
-    if (agent.sculpt) {
-      this.#sculpt(agent, pixel, navigating);
+    if (agent.tool) {
+      agent.tool.update(this.#frame(agent, pixel, navigating));
       return;
     }
     const roots = agent.editable ? agent.selectionRoots() : [];
@@ -248,469 +151,41 @@ export class EditorViewport extends SyncScript {
     if (roots.length > 0) this.#drawGizmo(gizmo);
   }
 
-  /**
-   * 绘制模式的一帧：光标下最近的网格面上画出笔刷的球；左键按着时每挪过笔刷半径的四分之一落一笔（拖得快时中间补上），画完
-   * 拷回贴图（视口马上看到）；松开时读回像素交给 agent.onPaintStroke 存盘。
-   */
-  #paint(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
-    const paint = agent.paint!;
-    const input = this.game.input;
-    const ray = this.#ray(pixel);
-    const origin = [ray.origin.x, ray.origin.y, ray.origin.z], direction = [ray.direction.x, ray.direction.y, ray.direction.z];
-    const targets = agent.paintTargets();
-    let hit: ReturnType<typeof raycastMesh>;
-    for (const { mesh, world } of targets) {
-      const found = raycastMesh(mesh, world, origin, direction);
-      if (found && (!hit || found.distance < hit.distance)) hit = found;
-    }
-    const { brush } = paint;
-    if (hit) this.game.debugDraw.sphere(hit.point, brush.radius, brush.erase ? ERASE_COLOR : BRUSH_COLOR, { width: 1, segments: 24 });
-    if (input.isMouseButtonPressed('left') && !navigating) this.#stroke = { last: undefined, painted: false };
-    const stroke = this.#stroke;
-    if (stroke && input.isMouseButtonDown('left') && hit) {
-      const spacing = brush.radius * 0.25;
-      const from = stroke.last ?? hit.point;
-      const gap = Math.hypot(hit.point[0] - from[0], hit.point[1] - from[1], hit.point[2] - from[2]);
-      // 第一笔落在按下的地方；之后按间距补上中间的点
-      const steps = stroke.last ? Math.floor(gap / spacing) : 1;
-      for (let i = 1; i <= steps; i++) {
-        const t = stroke.last ? (i * spacing) / gap : 1;
-        const center: [number, number, number] = [from[0] + (hit.point[0] - from[0]) * t, from[1] + (hit.point[1] - from[1]) * t, from[2] + (hit.point[2] - from[2]) * t];
-        paint.painter.dab(targets, { center, radius: brush.radius, hardness: brush.hardness, strength: brush.strength, value: brush.erase ? [0, 0, 0, 1] : [1, 1, 1, 1] });
-        stroke.last = center;
-        stroke.painted = true;
-      }
-      paint.painter.commit();
-    }
-    if (input.isMouseButtonReleased('left') && stroke) {
-      this.#stroke = undefined;
-      if (stroke.painted) void paint.painter.read().then((image) => agent.onPaintStroke?.(paint.mask, image));
-    }
-  }
-
-  /**
-   * 雕刻地形的一帧：光标下的地面上画出笔刷的圈（贴着地面）；[、] 缩小、放大笔刷；左键按着时每挪过半径的四分之一落一笔（拖得快
-   * 时中间补上），这一帧落的几笔交给 agent.previewSculpt（马上看到）；按住 Shift 抬高、压低反过来；压平压到按下那一点的高度。
-   * 松开时把这一次拖落的笔画交给 agent.onSculptStroke 存进文件（撤销的一步）。
-   */
-  #sculpt(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
-    const sculpt = agent.sculpt!, terrain = agent.live?.entity(sculpt.entity);
-    const input = this.game.input;
-    if (!terrain?.alive || !terrain.has(Terrain)) return;
-    if (!navigating) {
-      const scale = input.isKeyPressed('BracketRight') ? 1.25 : input.isKeyPressed('BracketLeft') ? 0.8 : 1;
-      if (scale !== 1) {
-        sculpt.brush = { ...sculpt.brush, radius: round(Math.max(0.5, sculpt.brush.radius * scale), 2) };
-        agent.onSculptBrush?.(sculpt.brush);
-      }
-    }
-    const ray = this.#ray(pixel);
-    const hit = this.game.terrain.raycast([ray.origin.x, ray.origin.y, ray.origin.z], [ray.direction.x, ray.direction.y, ray.direction.z]);
-    const shift = input.isKeyDown('ShiftLeft') || input.isKeyDown('ShiftRight');
-    const { radius, strength } = sculpt.brush;
-    const op = !shift ? sculpt.brush.op : sculpt.brush.op === 'raise' ? 'lower' : sculpt.brush.op === 'lower' ? 'raise' : sculpt.brush.op;
-    const onTerrain = hit?.entity === terrain ? hit : undefined;
-    if (onTerrain) sculpt.cursor = [onTerrain.local[0], onTerrain.local[1], onTerrain.height];
-    if (sculpt.tool === 'features') {
-      this.#features(agent, terrain, pixel, navigating, onTerrain);
-      return;
-    }
-    if (onTerrain) this.#drawSculptBrush(onTerrain.point, radius, op === 'lower' ? ERASE_COLOR : BRUSH_COLOR);
-    if (input.isMouseButtonPressed('left') && !navigating && onTerrain) this.#sculptStroke = { last: undefined, strokes: [], height: onTerrain.height };
-    const stroke = this.#sculptStroke;
-    if (stroke && input.isMouseButtonDown('left') && onTerrain) {
-      const spacing = radius * 0.25;
-      const [x1, z1] = onTerrain.local;
-      const [x0, z0] = stroke.last ?? onTerrain.local;
-      const gap = Math.hypot(x1 - x0, z1 - z0);
-      const steps = stroke.last ? Math.floor(gap / spacing) : 1;
-      const dabs: TerrainStrokeFile[] = [];
-      // 一遍拖过去一个点大约被八笔盖到：每笔四分之一，拖过一遍差不多是 strength
-      const amount = round(strength * 0.25, 4);
-      for (let i = 1; i <= steps; i++) {
-        const t = stroke.last ? (i * spacing) / gap : 1;
-        const x = round(x0 + (x1 - x0) * t, 2), z = round(z0 + (z1 - z0) * t, 2);
-        dabs.push({ op, x, z, radius: round(radius, 2), strength: amount, ...(op === 'flatten' ? { height: round(stroke.height, 2) } : {}) });
-        stroke.last = [x, z];
-      }
-      if (dabs.length > 0) {
-        stroke.strokes.push(...dabs);
-        agent.previewTerrain(terrain, (file) => ({ ...file, strokes: [...(file.strokes ?? []), ...dabs] }));
-      }
-    }
-    if (input.isMouseButtonReleased('left') && stroke) {
-      this.#sculptStroke = undefined;
-      const path = TerrainAsset.byId(terrain.require(Terrain).terrain)?.path;
-      if (path && stroke.strokes.length > 0) agent.onSculptStroke?.(path, stroke.strokes);
-    }
-  }
-
-  /**
-   * 雕刻模式里拖地物的一帧：每个地物的轮廓贴着地面画出来（选中的高亮），角上画小圈。左键按在角上拖这个角，按在多边形里拖整个
-   * 地物，按在空处取消选中；在边上双击加一个角。拖的时候每帧换成预览的版本（agent.previewTerrain），松开交给
-   * agent.onSculptFeatures 存文件（撤销的一步）。
-   */
-  #features(agent: EditAgent, terrain: Entity, pixel: readonly [number, number], navigating: boolean, hit: TerrainHit | undefined): void {
-    const sculpt = agent.sculpt!, input = this.game.input, system = this.game.terrain;
-    const asset = TerrainAsset.byId(terrain.require(Terrain).terrain);
-    if (!asset) return;
-    const features = asset.file.features ?? [];
-    // 每个角在屏幕上的位置（点选用）和画出来的轮廓
-    const corners: { feature: number; vertex: number; screen: readonly [number, number] }[] = [];
-    const draw = this.game.debugDraw;
-    features.forEach((feature, index) => {
-      const color = index === sculpt.feature ? SELECTION_COLOR : FEATURE_COLOR;
-      const outline: [number, number, number][] = [];
-      feature.points.forEach(([x0, z0], vertex) => {
-        const [x1, z1] = feature.points[(vertex + 1) % feature.points.length]!;
-        // 边按长度分段，每段贴着地面（地形在边上的起伏也看得见）
-        const segments = Math.min(32, Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 4)));
-        for (let i = 0; i < segments; i++) {
-          const point = system.surfacePoint(terrain, x0 + ((x1 - x0) * i) / segments, z0 + ((z1 - z0) * i) / segments);
-          if (point) outline.push([point[0], point[1] + 0.2, point[2]]);
+  /** 交给编辑工具的这一帧（见 ViewportFrame）。 */
+  #frame(agent: EditAgent, pixel: Pixel, navigating: boolean): ViewportFrame {
+    const viewport = this, game = this.game, input = game.input;
+    const ctrl = input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'), shift = input.isKeyDown('ShiftLeft') || input.isKeyDown('ShiftRight');
+    const pressed = input.isMouseButtonPressed('left') && !navigating;
+    return {
+      game, agent, input, pixel, navigating, pressed, ctrl, shift,
+      down: input.isMouseButtonDown('left'),
+      released: input.isMouseButtonReleased('left'),
+      additive: ctrl || shift,
+      pressPixel: (pressed ? this.#pressPixel(input.pointerEvents) : undefined) ?? pixel,
+      ray: (at) => this.#ray(at),
+      project: ([x, y, z]) => this.#project({ x, y, z }),
+      viewHeight: (point) => this.#viewHeight(point),
+      distanceTo: (point) => this.#distanceTo(point),
+      placeGizmo(center: Point3, world: MatrixSource, dragging: boolean) {
+        const gizmo = agent.gizmo;
+        applySnap(gizmo, agent.snap, ctrl);
+        gizmo.pivot.set(...center);
+        if (!dragging) {
+          if (agent.gizmoSpace === 'local' || gizmo.mode === 'scale') gizmo.orientation.set(...Matrix.decompose(world).rotation);
+          else gizmo.orientation.identity();
         }
-        const corner = system.surfacePoint(terrain, x0, z0);
-        const screen = corner && this.#project({ x: corner[0], y: corner[1], z: corner[2] });
-        if (corner && screen) {
-          corners.push({ feature: index, vertex, screen });
-          draw.circle(corner, [0, 1, 0], Math.max(0.5, this.#distanceTo(corner) * 0.01), color, { width: 2, depthTest: false });
-        }
-      });
-      if (outline.length > 1) draw.polyline(outline, color, { closed: true, width: 2, depthTest: false });
-    });
-
-    if (input.isMouseButtonPressed('left') && !navigating && !this.#featureDrag) {
-      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
-      const corner = nearestCorner(corners, at);
-      const now = performance.now();
-      const last = this.#lastFeatureClick;
-      // 帧率低、双击很快（或者自动化发的双击）时两次按下落在同一帧里：按这一帧的按下次数也算
-      const presses = input.pointerEvents.filter((event) => event.device === 'mouse' && event.eventType === 'pressed').length;
-      const double = presses >= 2 || (last !== undefined && now - last.time < DOUBLE_CLICK_MS && Math.hypot(at[0] - last.at[0], at[1] - last.at[1]) < CLICK_PIXELS);
-      this.#lastFeatureClick = { time: now, at };
-      if (double && !corner) {
-        // 双击边：按屏幕上的距离找边（掠射的视角下一个像素是好几米，按米算的容差不稳），新的角放在边上对应的位置
-        const edge = nearestScreenEdge(corners, at);
-        if (edge) {
-          const points = features[edge.feature]!.points;
-          const [ax, az] = points[edge.vertex]!, [bx, bz] = points[(edge.vertex + 1) % points.length]!;
-          const added = [round(ax + (bx - ax) * edge.t, 2), round(az + (bz - az) * edge.t, 2)] as const;
-          const next = features.map((feature, index) => index !== edge.feature ? feature : { ...feature, points: [...feature.points.slice(0, edge.vertex + 1), added, ...feature.points.slice(edge.vertex + 1)] });
-          this.#selectFeature(agent, edge.feature);
-          this.#commitFeatures(agent, terrain, asset.path, next);
-          return;
-        }
-      }
-      if (corner) {
-        this.#selectFeature(agent, corner.feature);
-        this.#featureDrag = { feature: corner.feature, vertex: corner.vertex, anchor: hit?.local ?? [0, 0], start: features, moved: false };
-      } else {
-        const inside = hit ? features.findLastIndex((feature) => insidePolygon(feature.points, hit.local)) : -1;
-        this.#selectFeature(agent, inside >= 0 ? inside : undefined);
-        if (inside >= 0) this.#featureDrag = { feature: inside, vertex: undefined, anchor: hit!.local, start: features, moved: false };
-      }
-    }
-    // 按下以后再读：同一帧里按下又松开（点一下、快的双击）时这一帧就要结束这次拖，不然下一次按下被当成还在拖
-    const drag = this.#featureDrag;
-    if (drag && input.isMouseButtonDown('left') && hit) {
-      const dx = hit.local[0] - drag.anchor[0], dz = hit.local[1] - drag.anchor[1];
-      const next = drag.start.map((feature, index) => {
-        if (index !== drag.feature) return feature;
-        const points = feature.points.map(([x, z], vertex) =>
-          drag.vertex === undefined ? [round(x + dx, 2), round(z + dz, 2)] as const
-            : vertex === drag.vertex ? [round(hit.local[0], 2), round(hit.local[1], 2)] as const : [x, z] as const);
-        return { ...feature, points };
-      });
-      // 光标挪过一厘米才换版本（按着不动时不重算）
-      if (JSON.stringify(next[drag.feature]!.points) !== JSON.stringify(features[drag.feature]!.points)) {
-        drag.moved = true;
-        agent.previewTerrain(terrain, (file) => ({ ...file, features: next }));
-      }
-    }
-    if (drag && input.isMouseButtonReleased('left')) {
-      this.#featureDrag = undefined;
-      if (drag.moved) agent.onSculptFeatures?.(asset.path, TerrainAsset.byId(terrain.require(Terrain).terrain)?.file.features ?? []);
-    }
+        gizmo.size = viewport.#viewHeight(center) * GIZMO_SCREEN_SIZE;
+        if (!dragging) viewport.#hover = navigating ? undefined : gizmo.pick(pixel, viewport.#project);
+      },
+      pickGizmo: (at) => agent.gizmo.pick(at, this.#project),
+      drawGizmo: () => this.#drawGizmo(agent.gizmo),
+    };
   }
 
-  #selectFeature(agent: EditAgent, feature: number | undefined): void {
-    const sculpt = agent.sculpt!;
-    if (sculpt.feature === feature) return;
-    sculpt.feature = feature;
-    agent.onSculptSelect?.(feature);
-  }
-
-  /** 一下子做完的地物修改（双击加角）：预览、马上存。 */
-  #commitFeatures(agent: EditAgent, terrain: Entity, path: string, features: readonly TerrainFeatureFile[]): void {
-    agent.previewTerrain(terrain, (file) => ({ ...file, features }));
-    agent.onSculptFeatures?.(path, features);
-  }
-
-  /** 编辑相机到这一点的距离（米）：按距离定角上小圈的大小、点边的容差，远近看着一样大。 */
-  #distanceTo(point: readonly [number, number, number]): number {
+  /** 编辑相机到这一点的距离（米）：按距离定小圈的大小、点选的容差，远近看着一样大。 */
+  #distanceTo(point: Point3): number {
     const world = currentWorld(this.entity);
     return Math.hypot(point[0] - world[12]!, point[1] - world[13]!, point[2] - world[14]!);
-  }
-
-  /** 雕刻笔刷的圈：贴着地面的一圈线（每段按地形的高度抬一点，不被地面挡住一半）。 */
-  #drawSculptBrush(center: readonly [number, number, number], radius: number, color: DebugColor): void {
-    const points: [number, number, number][] = [];
-    for (let i = 0; i < SCULPT_RING_SEGMENTS; i++) {
-      const angle = (i / SCULPT_RING_SEGMENTS) * Math.PI * 2;
-      const x = center[0] + Math.cos(angle) * radius, z = center[2] + Math.sin(angle) * radius;
-      points.push([x, (this.game.terrain.heightAt(x, z) ?? center[1]) + radius * 0.01, z]);
-    }
-    const draw = this.game.debugDraw;
-    draw.polyline(points, color, { closed: true, width: 2, depthTest: false });
-    draw.line(center, [center[0], center[1] + radius * 0.2, center[2]], color, { width: 2, depthTest: false });
-  }
-
-  /**
-   * 多边形编辑的一帧：画线框（选中的点、边、面高亮），1、2、3 换选择模式；左键点一下按模式点选（Shift、Ctrl 加选、再点去掉，
-   * 点空处清空），按在操纵器上拖选中的顶点（移动、旋转、缩放照 W、E、R），每帧把新网格交给 agent.onPolyChanged，松开时
-   * commit。线框关了深度测试：背面的边也看得见、点得到。
-   */
-  #poly(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
-    const poly = agent.polyEdit!, entity = agent.live?.entity(poly.entity);
-    if (!entity?.alive) return;
-    const input = this.game.input, draw = this.game.debugDraw, gizmo = agent.gizmo;
-    if (!navigating && !this.#polyDrag) {
-      const mode = POLY_MODE_KEYS.find(([key]) => input.isKeyPressed(key))?.[1];
-      if (mode && mode !== poly.mode) {
-        poly.mode = mode;
-        poly.selection = EMPTY_POLY_SELECTION;
-        agent.onPolyChanged?.(poly, false);
-      }
-    }
-    const world = currentWorld(entity);
-    const points = worldVertices(poly.mesh, world);
-    const edges = meshEdges(poly.mesh);
-    const { selection } = poly;
-    const selectedEdges = new Set(selection.edges.map(([a, b]) => (a < b ? `${a},${b}` : `${b},${a}`)));
-    for (const [a, b] of edges) {
-      const chosen = selectedEdges.has(`${a},${b}`);
-      draw.line(points[a]!, points[b]!, chosen ? POLY_SELECTED_COLOR : POLY_EDGE_COLOR, { width: chosen ? 3 : 1, depthTest: false });
-    }
-    for (const face of selection.faces) {
-      const outline = poly.mesh.faces[face]?.vertices.map((v) => points[v]!);
-      if (outline) draw.polyline(outline, POLY_SELECTED_COLOR, { width: 3, depthTest: false, closed: true });
-    }
-    if (poly.mode === 'vertex') {
-      const chosen = new Set(selection.vertices);
-      points.forEach((point, v) => {
-        const half = this.#viewHeight(point) * POLY_VERTEX_SCREEN_SIZE * (chosen.has(v) ? 1.6 : 1);
-        draw.box(Matrix.compose(new Float32Array(16), point, [0, 0, 0, 1], [1, 1, 1]), [half, half, half], chosen.has(v) ? POLY_SELECTED_COLOR : POLY_EDGE_COLOR, { width: 2, depthTest: false });
-      });
-    }
-
-    const vertices = this.#polyDrag?.vertices ?? selectionVertices(poly.mesh, selection);
-    const center = selectionCenter(points, vertices);
-    applySnap(gizmo, agent.snap, input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
-    if (center) {
-      gizmo.pivot.set(...center);
-      if (!this.#polyDrag) {
-        if (agent.gizmoSpace === 'local' || gizmo.mode === 'scale') gizmo.orientation.set(...Matrix.decompose(world).rotation);
-        else gizmo.orientation.identity();
-      }
-      gizmo.size = this.#viewHeight(center) * GIZMO_SCREEN_SIZE;
-      if (!this.#polyDrag) this.#hover = navigating ? undefined : gizmo.pick(pixel, this.#project);
-    }
-    if (input.isMouseButtonPressed('left') && !navigating) {
-      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
-      const handle = center ? gizmo.pick(at, this.#project) : undefined;
-      if (handle && gizmo.begin(handle, this.#ray(at), at)) this.#polyDrag = { start: poly.mesh, vertices };
-      else this.#pressed = at;
-    }
-    const drag = this.#polyDrag;
-    if (drag && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) {
-      const change = gizmo.drag(this.#ray(pixel), pixel);
-      if (change) {
-        poly.mesh = { ...drag.start, vertices: transformPoints(drag.start.vertices, drag.vertices, change, gizmo.dragOrigin ?? gizmo.pivot, gizmo.orientation, world) };
-        agent.onPolyChanged?.(poly, false);
-      }
-    }
-    if (input.isMouseButtonReleased('left')) {
-      if (drag) {
-        gizmo.end();
-        this.#polyDrag = undefined;
-        agent.onPolyChanged?.(poly, true);
-      } else if (this.#pressed && Math.hypot(pixel[0] - this.#pressed[0], pixel[1] - this.#pressed[1]) < CLICK_PIXELS) {
-        const projected = points.map(([x, y, z]) => this.#project({ x, y, z }));
-        const hit = poly.mode === 'vertex' ? pickVertex(projected, pixel) : poly.mode === 'edge' ? pickEdge(edges, projected, pixel) : pickFace(poly.mesh, points, this.#ray(pixel));
-        const additive = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight'].some((key) => input.isKeyDown(key));
-        poly.selection = clickSelection(poly.selection, poly.mode, hit, additive);
-        agent.onPolyChanged?.(poly, false);
-      }
-      this.#pressed = undefined;
-    }
-    if (center) this.#drawGizmo(gizmo);
-  }
-
-  /**
-   * 样条编辑的一帧：画路径和控制点（选中的高亮），左键点一下点选控制点（Shift、Ctrl 加选、再点去掉，点空处清空），双击路径
-   * 在那里加一个点，按在操纵器上拖选中的点（移动、旋转、缩放照 W、E、R）。每帧把新样条交给 agent.onSplineChanged（路径的
-   * 线跟着动，模型等松开后存文件、后端重新烘），松开、加点时 commit。关了深度测试：埋在地里的路也看得见、点得到。
-   */
-  #spline(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
-    const edit = agent.splineEdit!, entity = agent.live?.entity(edit.entity);
-    if (!entity?.alive) return;
-    const input = this.game.input, draw = this.game.debugDraw, gizmo = agent.gizmo;
-    const world = currentWorld(entity);
-    const toWorld = (points: readonly (readonly [number, number, number])[]) => worldVertices({ vertices: points }, world);
-    // 每条路径（路网的分支也是）每段一组折线
-    const curves = splinePaths(edit.spline).map((path) => splineCurve(path.points, path.closed === true).map(toWorld));
-    for (const segment of curves.flat()) draw.polyline(segment, POLY_EDGE_COLOR, { width: 2, depthTest: false });
-    // 道路的车道图：路段上的青色、路口里的连接车道黄色，细线画在路面上方 5 厘米（深度测试开着，被挡住的看不见）
-    if (this.#lanes?.spline !== edit.spline) this.#lanes = { spline: edit.spline, lanes: roadLanes(edit.spline) };
-    for (const lane of this.#lanes.lanes) {
-      draw.polyline(toWorld(lane.points.map(([x, y, z]) => [x, y + 0.05, z] as const)), lane.junction === undefined ? LANE_COLOR : CONNECTOR_COLOR, { width: 1 });
-    }
-    const points = toWorld(splinePointList(edit.spline).map((entry) => entry.point.position));
-    const chosen = new Set(edit.selection);
-    points.forEach((point, i) => {
-      const half = this.#viewHeight(point) * POLY_VERTEX_SCREEN_SIZE * (chosen.has(i) ? 2 : 1.4);
-      draw.box(Matrix.compose(new Float32Array(16), point, [0, 0, 0, 1], [1, 1, 1]), [half, half, half], chosen.has(i) ? POLY_SELECTED_COLOR : POLY_EDGE_COLOR, { width: 2, depthTest: false });
-    });
-
-    const indices = this.#splineDrag?.points ?? edit.selection;
-    const center = selectionCenter(points, indices);
-    applySnap(gizmo, agent.snap, input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
-    if (center) {
-      gizmo.pivot.set(...center);
-      if (!this.#splineDrag) {
-        if (agent.gizmoSpace === 'local' || gizmo.mode === 'scale') gizmo.orientation.set(...Matrix.decompose(world).rotation);
-        else gizmo.orientation.identity();
-        this.#hover = navigating ? undefined : gizmo.pick(pixel, this.#project);
-      }
-      gizmo.size = this.#viewHeight(center) * GIZMO_SCREEN_SIZE;
-    }
-    if (input.isMouseButtonPressed('left') && !navigating) {
-      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
-      const handle = center ? gizmo.pick(at, this.#project) : undefined;
-      const now = performance.now(), last = this.#lastSplineClick;
-      // 两次按下落在同一帧里（帧率低、自动化发的双击）也算双击，同地物的
-      const presses = input.pointerEvents.filter((event) => event.device === 'mouse' && event.eventType === 'pressed').length;
-      const double = presses >= 2 || (last !== undefined && now - last.time < DOUBLE_CLICK_MS && Math.hypot(at[0] - last.at[0], at[1] - last.at[1]) < CLICK_PIXELS);
-      this.#lastSplineClick = { time: now, at };
-      const projected = points.map(([x, y, z]) => this.#project({ x, y, z }));
-      const onPath = double && pickVertex(projected, at) === undefined
-        ? pickSplineCurve(curves.map((segments) => segments.map((segment) => segment.map(([x, y, z]) => this.#project({ x, y, z })))), at)
-        : undefined;
-      if (handle && gizmo.begin(handle, this.#ray(at), at)) this.#splineDrag = { start: edit.spline, points: indices };
-      else if (onPath) {
-        const { spline, index } = insertSplinePoint(edit.spline, onPath.path, onPath.segment, onPath.u);
-        edit.spline = spline;
-        edit.selection = [index];
-        agent.onSplineChanged?.(edit, true);
-      } else this.#pressed = at;
-    }
-    const drag = this.#splineDrag;
-    if (drag && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) {
-      const change = gizmo.drag(this.#ray(pixel), pixel);
-      if (change) {
-        edit.spline = moveSplinePoints(drag.start, drag.points, change, gizmo.dragOrigin ?? gizmo.pivot, gizmo.orientation, world);
-        agent.onSplineChanged?.(edit, false);
-      }
-    }
-    if (input.isMouseButtonReleased('left')) {
-      if (drag) {
-        gizmo.end();
-        this.#splineDrag = undefined;
-        agent.onSplineChanged?.(edit, true);
-      } else if (this.#pressed && Math.hypot(pixel[0] - this.#pressed[0], pixel[1] - this.#pressed[1]) < CLICK_PIXELS) {
-        const hit = pickVertex(points.map(([x, y, z]) => this.#project({ x, y, z })), pixel);
-        const additive = ['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight'].some((key) => input.isKeyDown(key));
-        edit.selection = clickSelection({ ...EMPTY_POLY_SELECTION, vertices: edit.selection }, 'vertex', hit, additive).vertices;
-        agent.onSplineChanged?.(edit, false);
-      }
-      this.#pressed = undefined;
-    }
-    if (center) this.#drawGizmo(gizmo);
-  }
-
-  /**
-   * 白盒编辑的一帧：画每个笔刷的有向包围盒（加的白、减的红、交的蓝，选中的橙色），选中的笔刷六个面的中心各有一个手柄；左键点
-   * 一下选中点到的笔刷（同一处再点换成后面的那个，点空处取消），双击一个面在它外侧贴着加一个同样大小的方块，按在手柄上拖改尺寸（对面不动；吸附开着时按
-   * 移动的步长，Ctrl 反过来）。每帧把新白盒交给 agent.onBrushChanged（线框跟着动，模型等松开后存文件、后端重新烘），松开、加
-   * 方块时 commit。关了深度测试：被挡住、挖掉的笔刷也看得见、点得到。
-   */
-  #brush(agent: EditAgent, pixel: readonly [number, number], navigating: boolean): void {
-    const edit = agent.brushEdit!, entity = agent.live?.entity(edit.entity);
-    if (!entity?.alive) return;
-    const input = this.game.input, draw = this.game.debugDraw;
-    const world = currentWorld(entity), inverse = new Float32Array(16);
-    if (!Matrix.invert(inverse, world)) return;
-    const toWorld = ([x, y, z]: readonly number[]) => Matrix.transformPoint(world, x!, y!, z!);
-    // 射线换进模型的本地坐标（方向不归一：只比远近、求线上的位置）
-    const localRay = (at: readonly [number, number]) => {
-      const { origin: o, direction: d } = this.#ray(at);
-      const origin = Matrix.transformPoint(inverse, o.x, o.y, o.z), end = Matrix.transformPoint(inverse, o.x + d.x, o.y + d.y, o.z + d.z);
-      return { origin, direction: [end[0] - origin[0], end[1] - origin[1], end[2] - origin[2]] as [number, number, number] };
-    };
-    const boxes = edit.brush.brushes.map(brushBox);
-    boxes.forEach((box, i) => {
-      const chosen = i === edit.selection;
-      const matrix = Matrix.multiply(new Float32Array(16), world, Matrix.compose(new Float32Array(16), box.center, box.rotation, [1, 1, 1]));
-      draw.box(matrix, box.half, chosen ? POLY_SELECTED_COLOR : BRUSH_OPERATION_COLORS[edit.brush.brushes[i]!.operation], { width: chosen ? 3 : 1.5, depthTest: false });
-    });
-
-    const selected = edit.selection === undefined ? undefined : boxes[edit.selection];
-    const handles = selected ? [0, 1, 2, 3, 4, 5].map((face) => toWorld(faceCenter(selected, face).center)) : [];
-    const handleAt = (at: readonly [number, number]) => pickVertex(handles.map(([x, y, z]) => this.#project({ x, y, z })), at, BRUSH_HANDLE_PIXELS);
-    const drag = this.#brushDrag;
-    const active = drag?.face ?? (navigating ? undefined : handleAt(pixel));
-    handles.forEach((point, face) => {
-      const half = this.#viewHeight(point) * POLY_VERTEX_SCREEN_SIZE * (face === active ? 2.6 : 2);
-      draw.box(Matrix.compose(new Float32Array(16), point, [0, 0, 0, 1], [1, 1, 1]), [half, half, half], face === active ? ACTIVE_COLOR : BRUSH_HANDLE_COLORS[face >> 1]!, { width: 2, depthTest: false });
-    });
-
-    if (input.isMouseButtonPressed('left') && !navigating) {
-      const at = this.#pressPixel(input.pointerEvents) ?? pixel;
-      const now = performance.now(), last = this.#lastBrushClick;
-      const presses = input.pointerEvents.filter((event) => event.device === 'mouse' && event.eventType === 'pressed').length;
-      const double = presses >= 2 || (last !== undefined && now - last.time < DOUBLE_CLICK_MS && Math.hypot(at[0] - last.at[0], at[1] - last.at[1]) < CLICK_PIXELS);
-      this.#lastBrushClick = { time: now, at };
-      const face = selected ? handleAt(at) : undefined;
-      if (face !== undefined) {
-        const { center, normal } = faceCenter(selected!, face);
-        const anchor = lineParameter(localRay(at), center, normal);
-        if (anchor !== undefined) this.#brushDrag = { start: edit.brush, index: edit.selection!, face, center, normal, anchor, delta: 0 };
-      } else if (double) {
-        const ray = localRay(at), hit = pickBrushFace(edit.brush, ray.origin, ray.direction);
-        if (hit) {
-          const { brush, index } = addBoxOnFace(edit.brush, hit.index, hit.face);
-          edit.brush = brush;
-          edit.selection = index;
-          agent.onBrushChanged?.(edit, true);
-        }
-      } else this.#pressed = at;
-    }
-    const current = this.#brushDrag;
-    if (current && (input.isMouseButtonDown('left') || input.isMouseButtonReleased('left'))) {
-      const along = lineParameter(localRay(pixel), current.center, current.normal);
-      if (along !== undefined) {
-        let delta = along - current.anchor;
-        // 吸附的步长按模型本地的长度（白盒的实体一般不缩放）
-        const step = agent.snap.translate, snapping = agent.snap.enabled !== (input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'));
-        if (snapping && step > 0) delta = Math.round(delta / step) * step;
-        if (delta !== current.delta) {
-          current.delta = delta;
-          edit.brush = resizeBrushFace(current.start, current.index, current.face, delta);
-          agent.onBrushChanged?.(edit, false);
-        }
-      }
-    }
-    if (input.isMouseButtonReleased('left')) {
-      if (current) {
-        this.#brushDrag = undefined;
-        agent.onBrushChanged?.(edit, true);
-      } else if (this.#pressed && Math.hypot(pixel[0] - this.#pressed[0], pixel[1] - this.#pressed[1]) < CLICK_PIXELS) {
-        const ray = localRay(pixel);
-        edit.selection = clickBrush(edit.brush, ray.origin, ray.direction, edit.selection);
-        agent.onBrushChanged?.(edit, false);
-      }
-      this.#pressed = undefined;
-    }
   }
 
   /** 这一帧里鼠标按下那一刻在画布上的位置（像素）；这一帧没有按下事件时是 undefined。 */
@@ -948,49 +423,4 @@ function nearestVertex(cache: Map<Entity, Float32Array>, entity: Entity, point: 
     if (distance < best) [best, index] = [distance, i];
   }
   return index < 0 ? undefined : [vertices[index]!, vertices[index + 1]!, vertices[index + 2]!];
-}
-
-/** 留 digits 位小数（笔画存进文件，留厘米、万分之一就够，文件好读；除以 10 的幂，不出 0.30000000000000004）。 */
-function round(value: number, digits: number): number {
-  const scale = 10 ** digits;
-  return Math.round(value * scale) / scale;
-}
-
-/** 屏幕上离 at 最近、在 CORNER_PIXELS 以内的地物的角。 */
-function nearestCorner<T extends { readonly screen: readonly [number, number] }>(corners: readonly T[], at: readonly [number, number]): T | undefined {
-  let best: T | undefined, bestDistance = CORNER_PIXELS;
-  for (const corner of corners) {
-    const distance = Math.hypot(corner.screen[0] - at[0], corner.screen[1] - at[1]);
-    if (distance < bestDistance) [best, bestDistance] = [corner, distance];
-  }
-  return best;
-}
-
-/**
- * 屏幕上离 at 最近、在 CORNER_PIXELS 以内的地物的边（按两个角投到屏幕上的线段算）：哪个地物、从第几个角出发的边、落在边上的比例
- * t（0 是这个角，1 是下一个角；屏幕上的比例，透视下和地面上差一点，加角够用）。
- */
-function nearestScreenEdge(corners: readonly { readonly feature: number; readonly vertex: number; readonly screen: readonly [number, number] }[], at: readonly [number, number]): { feature: number; vertex: number; t: number } | undefined {
-  let best: { feature: number; vertex: number; t: number } | undefined, bestDistance = CORNER_PIXELS;
-  for (const a of corners) {
-    // 同一个地物的下一个角（下标绕回 0）；投不到屏幕上的角没有边
-    const ring = corners.filter((c) => c.feature === a.feature);
-    const b = ring.find((c) => c.vertex === a.vertex + 1) ?? (a.vertex === Math.max(...ring.map((c) => c.vertex)) ? ring.find((c) => c.vertex === 0) : undefined);
-    if (!b || b === a) continue;
-    const ex = b.screen[0] - a.screen[0], ey = b.screen[1] - a.screen[1], length2 = ex * ex + ey * ey;
-    const t = length2 > 0 ? Math.max(0, Math.min(1, ((at[0] - a.screen[0]) * ex + (at[1] - a.screen[1]) * ey) / length2)) : 0;
-    const distance = Math.hypot(at[0] - a.screen[0] - ex * t, at[1] - a.screen[1] - ey * t);
-    if (distance < bestDistance) [best, bestDistance] = [{ feature: a.feature, vertex: a.vertex, t }, distance];
-  }
-  return best;
-}
-
-/** 点在不在多边形里（射线交叉数）。 */
-function insidePolygon(points: readonly (readonly [number, number])[], [x, z]: readonly [number, number]): boolean {
-  let inside = false;
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-    const [xi, zi] = points[i]!, [xj, zj] = points[j]!;
-    if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
-  }
-  return inside;
 }

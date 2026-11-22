@@ -26,7 +26,8 @@
     "vignette": 0.15
    },
    "exposure": {
-    "metering": "histogram"
+    "metering": "histogram",
+    "localShadows": 0.4
    }
   },
   "transparent": true

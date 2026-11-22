@@ -135,6 +135,11 @@ export interface SceneExposure {
   readonly high?: number;
   readonly speedBrighten?: number;
   readonly speedDarken?: number;
+  /** 局部曝光：亮处、暗处的反差系数（小于 1 压缩），细节的倍数，"底"里大半径模糊的比例（见 ToneMap 的 localHighlights 等）。 */
+  readonly localHighlights?: number;
+  readonly localShadows?: number;
+  readonly localDetail?: number;
+  readonly localBlur?: number;
 }
 
 /** 色调映射的算子、白平衡、对比度、饱和度，镜头的暗角、颗粒、色差、畸变（各项的意思见 ToneMap 的同名字段）。 */

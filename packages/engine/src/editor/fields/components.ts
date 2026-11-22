@@ -511,6 +511,10 @@ const postEffects = fields<ScenePostEffects>({
     high: { type: number({ min: 0, max: 1, step: 0.01 }), optional: true, default: 0.9, description: 'pixels above this share (the brightest) are left out' },
     speedBrighten: { type: number({ min: 0, step: 0.1, unit: 'EV/s' }), optional: true, default: 3, description: 'adaptation speed when the scene gets brighter' },
     speedDarken: { type: number({ min: 0, step: 0.1, unit: 'EV/s' }), optional: true, default: 1, description: 'adaptation speed when the scene gets darker' },
+    localHighlights: { type: number({ min: 0, max: 2, step: 0.05 }), optional: true, default: 1, description: 'local exposure: contrast of areas brighter than average (below 1 compresses them)' },
+    localShadows: { type: number({ min: 0, max: 2, step: 0.05 }), optional: true, default: 1, description: 'local exposure: contrast of areas darker than average (below 1 lifts them)' },
+    localDetail: { type: number({ min: 0, max: 4, step: 0.05 }), optional: true, default: 1, description: 'local exposure: strength of fine detail' },
+    localBlur: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.6, description: 'local exposure: share of the wide blur in the local average (the rest follows edges)' },
   }))),
   colorGrading: optional(object(fields<SceneColorGrading>({
     operator: { type: oneOf('hejl2', 'agx', 'aces'), optional: true, default: 'hejl2', description: 'tone mapping curve: hejl2 (Stride), agx (Blender, natural highlight roll-off), aces' },

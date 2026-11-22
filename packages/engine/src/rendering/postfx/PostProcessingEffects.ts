@@ -71,6 +71,8 @@ export class PostProcessingEffects {
       metering: exposure.metering ?? 'average', autoKeyValue: exposure.keyValue === undefined, keyValue: exposure.keyValue ?? 0.18,
       histogramRange: [exposure.minLog ?? -10, exposure.maxLog ?? 14], histogramFilter: [exposure.low ?? 0.1, exposure.high ?? 0.9],
       speedBrighten: exposure.speedBrighten ?? 3, speedDarken: exposure.speedDarken ?? 1,
+      localHighlights: exposure.localHighlights ?? 1, localShadows: exposure.localShadows ?? 1,
+      localDetail: exposure.localDetail ?? 1, localBlur: exposure.localBlur ?? 0.6,
     });
     const grading = settings.colorGrading ?? {};
     Object.assign(this.toneMap, {

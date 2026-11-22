@@ -61,7 +61,7 @@ const TOLERANCE = { count: { factor: 1.5, slack: 16 }, bytes: { factor: 1.3, sla
 const EXACT: Readonly<Record<string, { factor: number; slack: number }>> = { 'gpu.pipelines.sync': { factor: 1, slack: 2 } };
 
 /**
- * 预算：冒烟跑完时的统计量不能比记下的基线高出太多（docs/roadmap.md 的原则："预算和实测值进回归，变慢了要能自动发现"）。
+ * 预算：冒烟跑完时的统计量不能比记下的基线高出太多（docs/principles.md："预算和实测值进回归，变慢了要能自动发现"）。
  * 环境变量 STRIDE_UPDATE_BUDGETS=1 时不比，把这次的值记成新的基线（有意的变化之后重记：
  * `$env:STRIDE_UPDATE_BUDGETS = 1; pwsh tools/regress.ps1`）；还没有基线的样例跳过。
  */

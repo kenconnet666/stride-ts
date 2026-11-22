@@ -1,6 +1,6 @@
 # stride-ts：Stride 的 TypeScript 孪生版
 
-目标：做一个"形状像 Stride"、但比 Stride 做得更好的浏览器游戏引擎（2026-11-19 用户定：对齐 Stride 是底线，Stride 的毛病不跟，见 [docs/roadmap.md](docs/roadmap.md) 的"原则"）。
+目标：做一个"形状像 Stride"、但比 Stride 做得更好的浏览器游戏引擎（2026-11-19 用户定：对齐 Stride 是底线，Stride 的毛病不跟，见 [docs/principles.md](docs/principles.md)）。
 - 引擎和游戏脚本用 TypeScript 写：改完几百毫秒生效，支持热重载。
 - 计算量大的部分用别人维护、预先编好的 C/C++/Rust WebAssembly 库，很少重编，按内容哈希长期缓存。
 - 能用浏览器 API 的地方直接用。
@@ -11,7 +11,7 @@
 - **P1、P2 完成**：Stride 的 20 个样例（Third Person Platformer、AnimatedModel、PhysicsSample、BepuSample、Platformer2D、TopDownRPG、FirstPersonShooter、SpriteFonts、GameMenu、JumpyJet、SpaceEscape、粒子、UI、声音、材质着色器、形变目标、C# 教程……）都移植了，导入器从 Stride 工程直接导入；TPP 和桌面 Stride 4.4.2 逐像素比对过（平均每通道差 0.7/255）。
 - **P3 编辑器**：浏览器里的编辑器，视口就是运行着的游戏：场景树、属性面板、操纵器、资源浏览器（移动、改名、删除时改写引用）、撤销重做、试玩、预制体（场景里只存引用和差异，改实例的成员落成覆盖，单独打开预制体编辑）。
 - **P4 现代画面**：画质档位、管线预热、渲染图；TAA 和运动向量、GTAO、屏幕空间反射、接触阴影、运动模糊。
-- 进度和下一步见 [docs/roadmap.md](docs/roadmap.md) 末尾的"进度"；换机器、新环境上手见 [docs/handover.md](docs/handover.md)。
+- 进度和下一步见 [docs/roadmap.md](docs/roadmap.md) 的总表；换机器、新环境上手见 [docs/handover.md](docs/handover.md)。
 
 来由：Stride 的 C# 网页移植（`~\IdeaProjects\stride`，fork `kenconnet666/stride` 的 `web-experiment-base` 分支）能跑，但浏览器里的 .NET 没有 JIT，每次改动都要 AOT 编译，迭代慢，而且引擎和游戏被链接进同一个 wasm，没法分开缓存。2026-11-16 决定暂停那条线，转做这个。调研全文见 [docs/research.md](docs/research.md)，历史经验见 [docs/lessons.md](docs/lessons.md)。
 
@@ -50,7 +50,7 @@ pnpm --filter @stride-ts/platformer dev
 | `apps/sandbox/src/game` | 沙盒的游戏代码，用 `import.meta.glob` 交给引擎登记：粒子组件和系统、生成粒子的 `Fountain` 脚本 |
 | `packages/pipeline` | `@stride-ts/pipeline`：资源管线（Node 直接运行 TS）。现在是 Stride 工程导入器：读 Stride 的 YAML 场景、模型、材质、贴图、天空盒，源 FBX/glTF 经 stride-tools 导入，源图片编成 KTX2（Basis），HDR 天空盒算成球谐和预滤波的立方体贴图，写出运行时内容（格式在 `packages/engine/src/content/formats/format.ts`） |
 | `apps/platformer` | Third Person Platformer 的移植。`pnpm --filter @stride-ts/platformer import:stride` 从 Stride 仓库（默认 `~/IdeaProjects/stride`，可用 `STRIDE_REPO` 改）导入场景到 `public/content`（不提交，`content-overrides/` 里是代替源图片的 SVG），`pnpm --filter @stride-ts/platformer dev` 在 5184 端口（开发时用调试版原生模块） |
-| `apps/<样例>` | 其余 Stride 样例的移植（animated-model、physics-sample、bepu-sample、game-menu、csharp-beginner 等），用法同 `apps/platformer`：`import:stride` 导入、`dev` 运行、`smoke` 冒烟。清单、端口和验收结果见 [docs/roadmap.md](docs/roadmap.md) 的"进度" |
+| `apps/<样例>` | 其余 Stride 样例的移植（animated-model、physics-sample、bepu-sample、game-menu、csharp-beginner 等），用法同 `apps/platformer`：`import:stride` 导入、`dev` 运行、`smoke` 冒烟。清单、端口和验收结果见 [docs/stages.md](docs/stages.md) 的"各阶段的细节" |
 | `packages/cli` | 调试 CLI `stride`：查看和操作正在运行的游戏（状态、实体、输入、截图比较、性能），见 [packages/cli/README.md](packages/cli/README.md) |
 | `packages/editor` | `@stride-ts/editor`：编辑器。Node 后端（开发服务器上的 Vite 插件：工程、资源数据库、保存和移动资源、生成 `src/assets.gen.ts`）和界面（Vue 加 vue-tsx-pro：场景树、属性面板、视口、资源浏览器、预制体），样例 `pnpm dev` 以后开 `/__stride/editor/`；见 [packages/editor/README.md](packages/editor/README.md) |
 | `apps/sandbox` | 冒烟测试页：跨源隔离、原生模块的工作线程、WebGPU、帧循环、Jolt 步进 |
@@ -202,7 +202,7 @@ this.bullets.give(bullet);
 
 ## 需要用户决定的事
 
-现在没有（见 [docs/roadmap.md](docs/roadmap.md) 末尾的"等用户定的"）。原来列在这里的都定了：
+见 [docs/roadmap.md](docs/roadmap.md) 的"等用户定的"。原来列在这里的都定了：
 
 - 游戏脚本只用 TypeScript，C# 脚本由 agent 逐个翻译（路线图的 D5，2026-11-19）。
 - C# 网页移植版停止，只当参考实现（D6，2026-11-19）。

@@ -5,7 +5,7 @@
 | 先读 | 讲什么 |
 |---|---|
 | [CLAUDE.md](../CLAUDE.md) | 项目一页纸：做什么、各模块在哪、约定（中文注释和提交、推送规则、验证方式） |
-| [roadmap.md](roadmap.md) 末尾的"进度" | 各阶段做到哪了、**正在做和下一步**、等用户定的事 |
+| [roadmap.md](roadmap.md) | 总表（做完的打钩）、**正在做和下一步**、等用户定和帮忙的事；细节在 [stages.md](stages.md) |
 | [decisions.md](decisions.md) | 执行中自己做的决定（按时间倒序，最上面几条是这一轮的） |
 | [progress-log.md](progress-log.md) | 做完的各项的过程和验收（截图比对、数字） |
 | [architecture.md](architecture.md)、[lessons.md](lessons.md) | 已定的架构；WebGPU 和浏览器的坑 |
@@ -88,7 +88,7 @@
 
 ## 2. 现在做到哪了，接着做什么
 
-看 [roadmap.md](roadmap.md) 末尾的"进度"（各阶段做到哪了、正在做和下一步、遗留的尾巴）和 CLAUDE.md 的"现状"。2026-11-20 那次换机器时的快照（当时的提交表、接着做什么、没跑完的）原样挪到了 [progress-log.md](progress-log.md) 的"换机器交接时的快照（2026-11-20）"。
+看 [roadmap.md](roadmap.md) 的总表和"正在做和下一步"（遗留的尾巴是总表的第十四大阶段）和 CLAUDE.md 的"现状"。2026-11-20 那次换机器时的快照（当时的提交表、接着做什么、没跑完的）原样挪到了 [progress-log.md](progress-log.md) 的"换机器交接时的快照（2026-11-20）"。
 
 ---
 
@@ -152,8 +152,8 @@
 
 在新机器上用 CronCreate 建一个每 10 分钟的任务，提示词照抄下面这段（2026-11-21 在用的版本；"【续期】"那句的日期改成新建那天往后 6 天）：
 
-> 【无人值守续跑】继续执行 stride-ts 的路线图 docs/roadmap.md（取舍已全部按推荐定，见第四节；只有 D10 里"停下来问"的事才停下问用户）。用中文和用户沟通。
-> 做法：读 docs/roadmap.md "进度"里的"正在做和下一步"（2026-11-20 重排过的有序清单），按顺序做第一项没做完的；做完在清单里划掉、写结论。先读相关代码和参考实现再动手（调研自己做）。做完更新"进度"、docs/decisions.md、docs/progress-log.md 和 CLAUDE.md 的现状。
+> 【无人值守续跑】继续执行 stride-ts 的路线图 docs/roadmap.md（取舍已全部按推荐定，见 docs/stages.md 的第四节；只有 D10 里"停下来问"的事才停下问用户）。用中文和用户沟通。
+> 做法：读 docs/roadmap.md 的总表和"正在做和下一步"，按顺序做第一项没做完的；做完在总表里打钩、写结论（细节进 docs/stages.md）。先读相关代码和参考实现再动手（调研自己做）。做完更新"进度"、docs/decisions.md、docs/progress-log.md 和 CLAUDE.md 的现状。
 > 提交和测试：提交前 pnpm typecheck、pnpm test（失败了不提交）；提交后 git pull --rebase origin main 再推 origin main（不强推）；推送后在验证工作树里跑 pwsh tools/verify.ps1 -Changed -Base <推送前的提交>（回归按 WebGPU 默认上限开页面），失败了修好再推；看 CI（gh run list）的失败并修。在 Chrome 里实际看过、量过耗时才算完成。开发服务器、无头 Chrome 用完就停（pwsh tools/stop-dev.ps1）。改源码里带反引号或 ${} 的文字用 Edit 工具或写成脚本文件，不用 PowerShell 的字符串替换。耗时的命令放后台跑。
 > 调试难时先升级调试 CLI（packages/cli，stride debug 下断点），再用 CLion 的 JS 调试器（MCP 的 xdebug_*）和电脑控制（CLion 点击级、Chrome 只读）。
 > 【主动改进】用户 2026-11-21 定：不用提醒，每次除了路线图，也主动改善环境——整理代码和文档（整理和功能分开提交）、需要时克隆参考仓库到 C:\code\refs、想办法加快测试（回归、验证、CI 的耗时）、优化工具和流程、改善 agent 调试代码的体验（调试 CLI、stride debug、调试桥、MCP）；做了什么记进 progress-log。

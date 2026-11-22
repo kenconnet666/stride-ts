@@ -8,7 +8,7 @@
  * - 粒子画在 UI 上面：粒子的渲染特性把透明的粒子放进的阶段由主画面里的 SingleStageRenderer 画（不是前向渲染器的阶段）。
  * - 根（Game）是游戏程序集里的渲染器时（SpriteFonts 的 FontRenderer），或者根是相机渲染器、下面是游戏的渲染器时（JumpyJet 的
  *   JumpyJetRenderer，它借场景的前向渲染器画），给出它的类型名和设置，属性由导入器按脚本属性的规则换。
- * 多个相机分屏画、调试渲染器、别的单独的渲染阶段等以后随合成器的数据化一起做（docs/roadmap.md 的"合成器的最小数据化"）。
+ * 多个相机分屏画、调试渲染器、别的单独的渲染阶段等以后随合成器的数据化一起做（docs/scope.md 的"合成器的最小数据化"）。
  */
 import type { SceneCompositor, SceneForwardRenderer, ScenePostEffects, SceneRenderTexture, SceneTextureCamera } from '@stride-ts/engine/content-format';
 import { asNumber, asObject, parseAssetReference, parseObjectReference, srgbToLinear, type StrideObject, type StrideValue } from './yaml.ts';
@@ -143,7 +143,7 @@ function forwardSettings(forward: StrideObject, resolve: (node: StrideValue | un
  * 后处理里各效果开不开（Stride 的 PostProcessingEffects）：效果的 Enabled 默认是 true；色调映射是颜色变换组
  * （ColorTransforms）里的一项，组的 Transforms 默认是空的，没有 ToneMap 这一项就不做；Antialiasing 是 null 就不做抗锯齿。
  * 环境光遮蔽带上半径（ParamRadius，默认 1）。我们还没有的效果（屏幕空间反射、景深、雾、描边、胶片颗粒、暗角）不导入，见
- * docs/roadmap.md 的 P4。
+ * docs/stages.md 的 P4。
  */
 function postEffectsOf(effects: StrideObject | undefined): ScenePostEffects | null {
   if (!effects) return null;

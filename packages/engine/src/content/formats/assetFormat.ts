@@ -69,7 +69,7 @@ export const EXTENSIONS = {
   scatter: '.scatter.json',
 } as const;
 
-/** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/roadmap.md 的 D9）。 */
+/** 浏览器能解的音频格式（声音的源文件原样复制，见 docs/stages.md 的 D9）。 */
 export type SoundEncoding = 'mp3' | 'ogg' | 'wav' | 'flac' | 'aac';
 
 /**

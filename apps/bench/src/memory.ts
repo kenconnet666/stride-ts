@@ -1,4 +1,4 @@
-// wasm 内存能要到多少（docs/roadmap.md 第二节"Web 上的硬限制"的"内存"）：32 位、64 位（Memory64）、各自共享不共享，
+// wasm 内存能要到多少（docs/scope.md 第二节"Web 上的硬限制"的"内存"）：32 位、64 位（Memory64）、各自共享不共享，
 // 每次长 512 MB 直到长不动，记下最大的、最后一个字节能不能写、每次长要多久。结果打在页面上，也放在 globalThis.memoryResults。
 //   pnpm -F @stride-ts/bench dev，开 http://localhost:5182/memory.html
 export {};

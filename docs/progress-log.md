@@ -963,6 +963,10 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 - 整理（R3 做完以后，单独提交）：`ToneMap.ts` 长到 921 行，拆进 `rendering/postfx/tonemap/`——`ToneMap.ts`（映射和平均测光，532 行）、`HistogramMetering.ts`、`LocalExposure.ts`（建网格；映射时取网格留在 ToneMap 的着色器里）、`ColorLut.ts`（解析、按路径登记、每个设备的贴图）、`whiteBalance.ts`；站台的画面、照片比对、耗时和拆之前一样。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
+## 整理文档、重新规划：路线图改成一张总表（2026-11-22，用户要的）
+
+用户要路线图"就一张大表格，做了的打钩，其他表格不放路线图，内容写得我能看懂"。`docs/roadmap.md` 从 685 行（150 KB，一节节的分析加十几张表）改成：要做成什么（一段话）、一张总表（14 个大阶段、70 来个小阶段，按做的先后，每行一句大白话的"做什么"和 ✅/▶/◐/☐）、正在做和下一步、等用户定的、等用户帮忙的。原来的内容原样挪走，没删：原则 → `docs/principles.md`，第一、二节（Stride 的全部内容、超出 Stride 的功能分析）→ `docs/scope.md`，第三到五节（阶段和验收、取舍 D1–D18、执行）和各阶段、各组的细节表 → `docs/stages.md`。CLAUDE.md、README、handover（连同定时任务的提示词）、architecture、research、代码注释里指向原各节的引用改到新地方。"等用户帮忙的"去掉了调试桥那一条（用户已经刷新到 0.4.3）；"等用户定的"写上 3D 动画长片排在哪里。
+
 ## R4 第二步：三平面投影、细节叠加、按距离淡出的节点（2026-11-22）
 
 - `rendering/mesh/materialGraph.ts`：`triplanar`（贴图、每米几次、过渡的锐度：沿世界三个轴各采一次，按法线分量的次方混）、`overlay`（Photoshop 的叠加，amount 是叠多少）、`distanceFade`（离相机 near 米以内是 1、far 米以外是 0）；节点引用的贴图不只看 `texture` 节点，带 `texture` 参数的都算（加载、改名、移动时改写，`materialGraphTextures`、references.ts）。单测：三平面的六次采样、库函数只放一次、距离读 `view.eye`、贴图引用。

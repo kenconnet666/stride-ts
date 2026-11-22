@@ -83,7 +83,7 @@ WebGPU 核心规范没有 multi-draw-indirect，所以合批以"网格加材质"
 - **调试渲染（2026-11-20，`debug/DebugDraw.ts`）**：`game.debugDraw` 立即模式的线和线框形状，固定像素宽、解析抗锯齿，画在后处理之后；`simulation.showColliders` 把碰撞体画出来。`game.ui`（UISystem）每帧布局、在场景之后用 SpriteBatch 画 UI（九宫格、文字、剪裁矩形）：全屏的铺满画面，不是全屏的按 Size 和实体的世界矩阵放进 3D 场景（面向相机、固定大小，`ui/UIProjection.ts`），按主相机画、和场景的深度比较；实体可以跟着 UI 元素走（`UIElementLink`，走变换存储的链接，同 ModelNodeLink）；输入在脚本之前：按上一帧的样子把指针事件交给元素（路由事件，`ui/events.ts`、`ui/UIPicking.ts`），UI 占着的鼠标、键盘对脚本藏起来（`input/capture.ts`，Stride master 的 Input Capture）；EditText 的编辑交给隐藏的 DOM 输入框（`ui/TextInputBridge.ts`）。Slider（水平的）、Border 在 MorphTargets 时加上。还没有：除输入框以外的无障碍树、竖直的 Slider、ToggleButton 这些没用到的控件。
 - **统计量、预热、渲染图（2026-11-20，P4 的底座）**：`game.metrics` 和设备上的记账（显存 `graphicsDevice.memory`、管线 `graphicsDevice.pipelines`），每个样例的基线进回归；模型的管线在加载场景、预制体时后台编好（`MeshRenderFeature.warm`）；渲染图（`rendering/`：通道声明读写、裁掉没用的、临时贴图轮着用）先接了后处理，主画面的各遍还是前向渲染器里直接写的。见 decisions.md 2026-11-20 的三条。
 - **屏幕空间效果（2026-11-20，P4）**：都在深度预通道之后、或主画面画完以后，作为渲染图的全屏通道：GTAO（`AmbientOcclusion.ts`，半分辨率，只乘环境光）；屏幕空间反射（`ScreenSpaceReflections.ts`：不透明阶段另写法线、粗糙度、环境镜面反射的表面，Hi-Z 分层步进、GGX 随机方向、空间复用加时间累积，合成时换掉环境镜面反射）；接触阴影（`ContactShadows.ts`，投阴影的方向光，全分辨率）；运动模糊（`MotionBlur.ts`，McGuire 2012 的重建滤波）。开不开照合成器的设置（Stride 有的）或默认关（Stride 没有的），画质档位给上限（`Quality.ts`）。后处理、GTAO、背景的管线在加载场景时预热（空录一帧，从渲染图里列出要的管线）。
-- 接下来见 roadmap.md 末尾的"进度"（P4 的画面功能：SSGI、次表面散射、阴影、大气……）。
+- 接下来见 roadmap.md 的总表（P4 的画面功能：SSGI、次表面散射、阴影、大气……）。
 
 C# 移植版踩过的 WebGPU 坑，全部适用，见 [lessons.md](lessons.md)：`writeBuffer` 的生效时机、pass 内的状态去重、scissor 一直有效、调试组会切断 pass、没写的颜色目标要设 writeMask 0。
 
@@ -835,7 +835,7 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - 空中操控先把方向归一化：Stride 拿没归一化的目标速度做点积，单位对不上，离地后几乎没有空中操控。速度上限按目标速度的大小，摇杆推一半，空中也只到一半。
   - 球体扫掠可以忽略起点就重叠的物体。TPP 的相机用它，再配一条射线防止钻进正后方的墙；Stride 的相机贴着旁边的箱子时会被拉到最近。
   - TPP 的脚本按时间平滑（Stride 每帧固定比例，帧率越高越快），起跳宽限按帧时间减，每帧把输入事件取完（Stride 每帧取一个，悬空时没取的起跳会积到落地后才触发）。
-- **P1 里补上的**（2026-11-19，按游戏需要逐个做，细节见 docs/roadmap.md 的"进度"和 docs/decisions.md）：
+- **P1 里补上的**（2026-11-19，按游戏需要逐个做，细节见 docs/stages.md 的"各阶段的细节"和 docs/decisions.md）：
   - 动态和运动学刚体（`Body` 组件、`simulation.body(entity)`：唤醒、瞬移、速度、冲量、重力、睡眠阈值），凸包和动态网格碰撞体（网格对网格的碰撞），去掉物理组件或销毁实体时移除物体。
   - 触发器和接触事件（开始、结束、每步最深的穿透深度，Stride 的 IContactHandler），约束（Stride.BepuPhysics 的约束组件，原生侧是 Jolt 的约束），GameSettings 的碰撞矩阵。
   - 挂在会动的刚体下的运动学刚体、挂在骨骼节点上的刚体每步跟着实体走；静态体三角化（`staticTriangles`）给导航用。

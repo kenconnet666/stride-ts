@@ -4,7 +4,7 @@
  *
  *   game.graphicsCompositor.quality = QUALITY_TIERS.medium;
  *
- * 同一个游戏靠它在笔记本和台式机上都跑得动（docs/roadmap.md 第二节）。分辨率不在档位里：上采样和动态分辨率是玩家另外的
+ * 同一个游戏靠它在笔记本和台式机上都跑得动（docs/scope.md 第二节）。分辨率不在档位里：上采样和动态分辨率是玩家另外的
  * 选项，不拿它当性能优化。以后的效果（TAA、GTAO、SSR、体积雾……）各自在这里加自己的上限。
  */
 import type { ShadowMapFilter, ShadowMapSize } from './RenderSystem';

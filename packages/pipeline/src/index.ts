@@ -23,4 +23,5 @@ export { bakeTreeModel } from './bakers/treeModel.ts';
 export { bakeProduct } from './bakers/productModel.ts';
 export { bakeShelf } from './bakers/shelfModel.ts';
 export { bakePile } from './bakers/pileModel.ts';
+export { bakeSign } from './bakers/signModel.ts';
 export { bakeBuildingModel } from './bakers/buildingModel.ts';

@@ -1,0 +1,35 @@
+{
+ "name": "Fridge",
+ "type": "fridge",
+ "sides": 1,
+ "length": 3,
+ "height": 1.95,
+ "depth": 0.55,
+ "levels": [
+  0.12,
+  0.5,
+  0.88,
+  1.26,
+  1.64
+ ],
+ "bay": 0.75,
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "header": "冷藏饮料",
+ "stock": {
+  "products": [
+   "Shop/Products/Water",
+   "Shop/Products/Juice",
+   "Shop/Products/Cola",
+   "Shop/Products/Beer",
+   "Shop/Products/Tea",
+   "Shop/Products/Milk",
+   "Shop/Products/Yogurt"
+  ],
+  "variants": 4,
+  "facings": [
+   3,
+   6
+  ]
+ },
+ "seed": 46
+}

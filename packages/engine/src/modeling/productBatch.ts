@@ -27,11 +27,15 @@ export interface PlacedProduct {
   readonly fine: boolean;
 }
 
-/** 图集里一格纯色（架子、价签条、筐）：颜色（sRGB）、粗糙度、金属度。 */
+/**
+ * 图集里一格纯色（架子、价签条、筐）：颜色（sRGB）、粗糙度、金属度；emissive 是发光的强度（冷柜的灯带、灯箱的字面：
+ * 自发光贴图里这一格是它的颜色，整批的自发光乘所有格子里最大的强度，弱一点的格子按比例暗）。
+ */
 export interface AtlasSolid {
   readonly color: string;
   readonly roughness: number;
   readonly metalness: number;
+  readonly emissive?: number;
 }
 
 /** 图集里单独的一格（价签）：大小（毫米）、底色、表面，draw 往格子里画（像素坐标）。 */
@@ -43,13 +47,19 @@ export interface AtlasCell extends AtlasSolid {
 /** 图集里的一格（像素：x、y、宽、高）。 */
 export type Cell = readonly [x: number, y: number, w: number, h: number];
 
-/** 合成的网格（一个材质槽）、图集的两张 SVG 和栅格化的边长。 */
+/**
+ * 合成的网格（材质槽 0）、图集的 SVG 和栅格化的边长；有发光的格子时还有自发光的图集和最大的强度；有玻璃时玻璃是单独的网格
+ * （材质槽 1，透明的玻璃材质，不进图集）。
+ */
 export interface MergedProducts {
   readonly vertices: Float32Array;
   readonly indices: Uint32Array;
   readonly colorSvg: string;
   readonly surfaceSvg: string;
+  readonly emissiveSvg: string | undefined;
+  readonly emissive: number;
   readonly atlasPixels: number;
+  readonly glass: { readonly vertices: Float32Array; readonly indices: Uint32Array } | undefined;
 }
 
 /** 图集的边长（像素）、格子之间的留边、纯色格的边长。 */
@@ -72,6 +82,8 @@ export class ProductBatch {
   readonly #meshes = new Map<string, ProductMesh>();
   readonly #vertices: number[] = [];
   readonly #indices: number[] = [];
+  readonly #glassVertices: number[] = [];
+  readonly #glassIndices: number[] = [];
 
   constructor(sources: ProductSources, where: string, items: readonly PlacedProduct[], { solids = [], cells = [] }: { readonly solids?: readonly AtlasSolid[]; readonly cells?: readonly AtlasCell[] } = {}) {
     this.#sources = sources;
@@ -96,25 +108,36 @@ export class ProductBatch {
 
   /** 轴对齐的盒子，六个面都是第 solid 个纯色。 */
   box(min: readonly number[], max: readonly number[], solid: number): void {
-    const [x, y, w, h] = this.#solidCells[solid]!, u = (x + w / 2) / ATLAS, v = (y + h / 2) / ATLAS;
-    for (let axis = 0; axis < 3; axis++) {
-      for (const sign of [-1, 1]) {
-        const normal = [0, 0, 0];
-        normal[axis] = sign;
-        const a = (axis + 1) % 3, b = (axis + 2) % 3;
-        const base = this.#vertices.length / 8;
-        for (const [sa, sb] of [[0, 0], [1, 0], [1, 1], [0, 1]] as const) {
-          const p = [0, 0, 0];
-          p[axis] = sign > 0 ? max[axis]! : min[axis]!;
-          p[a] = sa ? max[a]! : min[a]!;
-          p[b] = sb ? max[b]! : min[b]!;
-          this.#vertices.push(p[0]!, p[1]!, p[2]!, normal[0]!, normal[1]!, normal[2]!, u, v);
-        }
-        // a、b、axis 是右手系的顺序：(0,0)→(1,0)→(1,1) 绕着 +axis 逆时针，负的那面反过来
-        if (sign > 0) this.#indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
-        else this.#indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
-      }
+    const [x, y, w, h] = this.#solidCells[solid]!;
+    addBox(this.#vertices, this.#indices, min, max, (x + w / 2) / ATLAS, (y + h / 2) / ATLAS);
+  }
+
+  /** 轴对齐的一块玻璃（冷柜的门、冰柜的盖）：进玻璃那个网格。 */
+  glassBox(min: readonly number[], max: readonly number[]): void {
+    addBox(this.#glassVertices, this.#glassIndices, min, max, 0, 0);
+  }
+
+  /** 一片玻璃（四个角，从正面看左下、右下、右上、左上；两面都画）：进玻璃那个网格。 */
+  glassQuad(corners: readonly (readonly number[])[]): void {
+    const [a, b, c] = corners as [readonly number[], readonly number[], readonly number[]];
+    const u = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!], v = [c[0]! - a[0]!, c[1]! - a[1]!, c[2]! - a[2]!];
+    const n = [u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!];
+    const l = Math.hypot(n[0]!, n[1]!, n[2]!) || 1;
+    for (const side of [1, -1]) {
+      const base = this.#glassVertices.length / 8;
+      for (const p of corners) this.#glassVertices.push(p[0]!, p[1]!, p[2]!, (n[0]! / l) * side, (n[1]! / l) * side, (n[2]! / l) * side, 0, 0);
+      if (side > 0) this.#glassIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      else this.#glassIndices.push(base, base + 2, base + 1, base, base + 3, base + 2);
     }
+  }
+
+  /** 任意的网格（每个顶点 8 个数：位置、法线、0..1 的 UV），贴第 cell 个单独的格子（UV 换进那一格）。 */
+  mesh(vertices: ArrayLike<number>, indices: ArrayLike<number>, cell: number): void {
+    const [cx, cy, cw, ch] = this.#extraCells[cell]!, base = this.#vertices.length / 8;
+    for (let i = 0; i < vertices.length; i += 8) {
+      this.#vertices.push(vertices[i]!, vertices[i + 1]!, vertices[i + 2]!, vertices[i + 3]!, vertices[i + 4]!, vertices[i + 5]!, (cx + vertices[i + 6]! * cw) / ATLAS, (cy + vertices[i + 7]! * ch) / ATLAS);
+    }
+    for (let i = 0; i < indices.length; i++) this.#indices.push(base + indices[i]!);
   }
 
   /** 一个四边形：四个角（从正面看左下、右下、右上、左上），法线，贴第 cell 个单独的格子。 */
@@ -144,12 +167,14 @@ export class ProductBatch {
       for (const index of mesh.indices) this.#indices.push(base + index);
     }
 
-    const color: string[] = [], surface: string[] = [];
-    const fill = ([x, y, w, h]: Cell, { color: colorFill, roughness, metalness }: AtlasSolid) => {
+    const color: string[] = [], surface: string[] = [], glow: string[] = [];
+    const strongest = Math.max(0, ...this.#solids.map((solid) => solid.emissive ?? 0), ...this.#cells.map((cell) => cell.emissive ?? 0));
+    const fill = ([x, y, w, h]: Cell, { color: colorFill, roughness, metalness, emissive = 0 }: AtlasSolid) => {
       // 每一格连留边一起铺底色：缩小的时候不混进别的格子
       const rect = `x="${x - PADDING}" y="${y - PADDING}" width="${w + 2 * PADDING}" height="${h + 2 * PADDING}"`;
       color.push(`<rect ${rect} fill="${colorFill}"/>`);
       surface.push(`<rect ${rect} fill="rgb(0,${Math.round(roughness * 255)},${Math.round(metalness * 255)})"/>`);
+      if (emissive > 0) glow.push(`<rect ${rect} fill="${colorFill}" opacity="${svgNumber(emissive / strongest)}"/>`);
     };
     this.#solids.forEach((solid, i) => fill(this.#solidCells[i]!, solid));
     this.#variantKeys.forEach((key, i) => {
@@ -163,10 +188,17 @@ export class ProductBatch {
     this.#cells.forEach((cell, i) => {
       fill(this.#extraCells[i]!, cell);
       const drawn = cell.draw?.(this.#extraCells[i]!);
-      if (drawn) color.push(drawn);
+      if (!drawn) return;
+      color.push(drawn);
+      // 发光的格子里画的字也发光（灯箱的字）
+      if ((cell.emissive ?? 0) > 0) glow.push(drawn);
     });
-    const svg = (shapes: string[]) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ATLAS} ${ATLAS}" width="${ATLAS}" height="${ATLAS}">${shapes.join('')}</svg>`;
-    return { vertices: Float32Array.from(this.#vertices), indices: Uint32Array.from(this.#indices), colorSvg: svg(color), surfaceSvg: svg(surface), atlasPixels: ATLAS };
+    const svg = (shapes: string[], background?: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ATLAS} ${ATLAS}" width="${ATLAS}" height="${ATLAS}">${background ? `<rect width="${ATLAS}" height="${ATLAS}" fill="${background}"/>` : ''}${shapes.join('')}</svg>`;
+    return {
+      vertices: Float32Array.from(this.#vertices), indices: Uint32Array.from(this.#indices), colorSvg: svg(color), surfaceSvg: svg(surface),
+      emissiveSvg: strongest > 0 ? svg(glow, '#000000') : undefined, emissive: strongest, atlasPixels: ATLAS,
+      glass: this.#glassIndices.length > 0 ? { vertices: Float32Array.from(this.#glassVertices), indices: Uint32Array.from(this.#glassIndices) } : undefined,
+    };
   }
 
   #mesh(path: string, fine: boolean): ProductMesh {
@@ -178,6 +210,28 @@ export class ProductBatch {
 }
 
 const pathOf = (key: string) => key.slice(key.indexOf('|') + 1);
+
+/** 轴对齐的盒子的六个面，UV 都是 (u, v)。 */
+function addBox(vertices: number[], indices: number[], min: readonly number[], max: readonly number[], u: number, v: number): void {
+  for (let axis = 0; axis < 3; axis++) {
+    for (const sign of [-1, 1]) {
+      const normal = [0, 0, 0];
+      normal[axis] = sign;
+      const a = (axis + 1) % 3, b = (axis + 2) % 3;
+      const base = vertices.length / 8;
+      for (const [sa, sb] of [[0, 0], [1, 0], [1, 1], [0, 1]] as const) {
+        const p = [0, 0, 0];
+        p[axis] = sign > 0 ? max[axis]! : min[axis]!;
+        p[a] = sa ? max[a]! : min[a]!;
+        p[b] = sb ? max[b]! : min[b]!;
+        vertices.push(p[0]!, p[1]!, p[2]!, normal[0]!, normal[1]!, normal[2]!, u, v);
+      }
+      // a、b、axis 是右手系的顺序：(0,0)→(1,0)→(1,1) 绕着 +axis 逆时针，负的那面反过来
+      if (sign > 0) indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      else indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    }
+  }
+}
 
 /** 把标签（毫米）缩放、装进图集（最下面留 reserve 像素给纯色格）：找一个最大的缩放，让全部装得下。返回每一格（像素）。 */
 function packAtlas(sizes: readonly (readonly [number, number])[], reserve: number): Cell[] {
@@ -198,8 +252,11 @@ function packAtlas(sizes: readonly (readonly [number, number])[], reserve: numbe
   return best;
 }
 
-/** 合成的那批的材质：颜色图集、表面图集（G 粗糙度、B 金属度）。path 是资源的内容路径（图集是 `<path>.svg`、`<path>.surface.svg`）。 */
-export function mergedMaterial(name: string, path: string, pixels: number): MaterialFile {
+/**
+ * 合成的那批的材质：颜色图集、表面图集（G 粗糙度、B 金属度），有发光的格子时加自发光图集乘 emissive。path 是资源的内容路径
+ * （图集是 `<path>.svg`、`<path>.surface.svg`、`<path>.emissive.svg`）。
+ */
+export function mergedMaterial(name: string, path: string, pixels: number, emissive = 0): MaterialFile {
   const slot = { encoding: 'svg' as const, size: [pixels, pixels] as const, filter: 'anisotropic' as const, scale: [1, 1] as const, offset: [0, 0] as const };
   return {
     name,
@@ -207,5 +264,11 @@ export function mergedMaterial(name: string, path: string, pixels: number): Mate
     baseColorTexture: { texture: path, srgb: true, ...slot },
     metalness: 1,
     glossinessTexture: { texture: `${path}.surface`, srgb: false, channel: 'g', invert: true, metalnessChannel: 'b', ...slot },
+    ...(emissive > 0 ? { emissive: [emissive, emissive, emissive] as const, emissiveTexture: { texture: `${path}.emissive`, srgb: true, ...slot } } : {}),
   };
+}
+
+/** 合成的那批里玻璃的材质（冷柜的门、冰柜的盖）：同材质库的透明玻璃，带一点冷色。 */
+export function mergedGlassMaterial(name: string): MaterialFile {
+  return { name: `${name} glass`, baseColor: [0.9, 0.95, 0.97, 1], metalness: 0, roughness: 0.03, glass: { refractiveIndex: 1.5 }, diffuseShading: false };
 }

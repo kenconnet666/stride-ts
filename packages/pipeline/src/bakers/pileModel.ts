@@ -5,11 +5,11 @@
  */
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
-import { encodeModel, EXTENSIONS, type PileFile, type ProductFile } from '@stride-ts/engine/content-format';
-import { mergedMaterial, pileContainer, pileModel, pileSpawn, productDesign, productMesh, type PlacedProduct, type TextFont } from '@stride-ts/engine/modeling';
+import { EXTENSIONS, type PileFile, type ProductFile } from '@stride-ts/engine/content-format';
+import { pileContainer, pileModel, pileSpawn, productDesign, productMesh, type PlacedProduct, type TextFont } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { compressMeshes } from '../mesh.ts';
 import type { BakedFile } from './productModel.ts';
+import { mergedFiles } from './mergedFiles.ts';
 import { loadTextFont } from './textFont.ts';
 
 /** 一步的时长（秒）、最多跑几步（20 秒）。 */
@@ -44,15 +44,7 @@ export async function bakePile(tools: StrideTools, file: PileFile, path: string,
   }
 
   const settled = await settle(file, products, pileSpawn(file, products, where));
-  const model = pileModel(file, { products, font: (font) => fonts.get(font) }, settled, where);
-  const encoder = new TextEncoder();
-  const meshes = model.indices.length === 0 ? [] : compressMeshes([{ name: 'pile', material: 0, vertices: model.vertices, indices: model.indices }], tools);
-  return [
-    { path: path + EXTENSIONS.model, bytes: encodeModel({ meshes, materials: [path] }) },
-    { path: `${path}.svg`, bytes: encoder.encode(model.colorSvg) },
-    { path: `${path}.surface.svg`, bytes: encoder.encode(model.surfaceSvg) },
-    { path: path + EXTENSIONS.material, bytes: encoder.encode(`${JSON.stringify(mergedMaterial(file.name, path, model.atlasPixels), null, 1)}\n`) },
-  ];
+  return mergedFiles(tools, file.name, path, pileModel(file, { products, font: (font) => fonts.get(font) }, settled, where));
 }
 
 /** 跑物理：容器是静态的板，东西是动态的凸包，步进到都睡着；返回停下的位姿（顺序同 spawn）。 */

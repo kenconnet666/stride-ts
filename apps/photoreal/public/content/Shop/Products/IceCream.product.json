@@ -1,0 +1,12 @@
+{
+ "name": "IceCream",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "tub",
+ "size": [
+  0.1,
+  0.08,
+  0
+ ],
+ "text": "冰淇淋",
+ "seed": 40
+}

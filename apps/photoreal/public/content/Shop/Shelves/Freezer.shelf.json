@@ -1,0 +1,28 @@
+{
+ "name": "Freezer",
+ "type": "freezer",
+ "sides": 1,
+ "length": 1.8,
+ "height": 0.85,
+ "depth": 0.9,
+ "levels": [
+  0.45
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "frameColor": "#e8eaec",
+ "stock": {
+  "products": [
+   "Shop/Products/Dumplings",
+   "Shop/Products/IceCream",
+   "Shop/Products/Noodles"
+  ],
+  "variants": 4,
+  "facings": [
+   2,
+   5
+  ],
+  "rows": 10,
+  "gaps": 0.1
+ },
+ "seed": 47
+}

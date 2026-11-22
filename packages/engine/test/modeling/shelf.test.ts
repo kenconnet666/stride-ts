@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import type { ProductFile } from '../../src/content/formats/productFormat';
 import type { ShelfFile } from '../../src/content/formats/shelfFormat';
-import { planShelf, shelfMaterial, shelfModel } from '../../src/modeling/shelf';
+import { mergedMaterial } from '../../src/modeling/productBatch';
+import { planShelf, shelfModel } from '../../src/modeling/shelf';
 
 const products = new Map<string, ProductFile>([
   ['P/Water', { name: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], seed: 1 }],
@@ -72,8 +73,23 @@ describe('货架', () => {
     expect(model.surfaceSvg).toContain('rgb(0,');
   });
 
-  test('材质：颜色图集加表面图集（G 粗糙度、B 金属度）', () => {
-    const material = shelfMaterial(island, 'Shop/Island', 2048);
+  test('冷柜：玻璃门进玻璃网格、灯带发光，只摆正面；冰柜的货在槽里、玻璃盖在上面', () => {
+    const fridge = shelfModel({ ...island, type: 'fridge', sides: 2 }, sources);
+    expect(fridge.glass?.indices.length).toBeGreaterThan(0);
+    expect(fridge.emissive).toBeGreaterThan(0);
+    expect(fridge.emissiveSvg).toContain('opacity');
+    const freezer: ShelfFile = { ...island, type: 'freezer', length: 1.8, height: 0.85, depth: 0.9, levels: [0.45] };
+    const model = shelfModel(freezer, sources);
+    expect(model.glass?.indices.length).toBeGreaterThan(0);
+    expect(model.items).toBeGreaterThan(0);
+    // 货都在槽里：槽底以上、四壁以内
+    for (let i = 0; i < model.vertices.length; i += 8) expect(Math.abs(model.vertices[i + 2]!)).toBeLessThanOrEqual(0.45 + 1e-6);
+  });
+
+  test('材质：颜色图集加表面图集（G 粗糙度、B 金属度）；有发光的格子时加自发光图集', () => {
+    expect(mergedMaterial('Island', 'Shop/Island', 2048).emissiveTexture).toBeUndefined();
+    expect(mergedMaterial('Fridge', 'Shop/Fridge', 2048, 6)).toMatchObject({ emissive: [6, 6, 6], emissiveTexture: { texture: 'Shop/Fridge.emissive', encoding: 'svg' } });
+    const material = mergedMaterial(island.name, 'Shop/Island', 2048);
     expect(material.baseColorTexture).toMatchObject({ texture: 'Shop/Island', encoding: 'svg', size: [2048, 2048] });
     expect(material.glossinessTexture).toMatchObject({ texture: 'Shop/Island.surface', channel: 'g', invert: true, metalnessChannel: 'b', srgb: false });
   });

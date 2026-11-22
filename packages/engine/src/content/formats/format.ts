@@ -31,3 +31,4 @@ export * from './waterFormat.ts';
 export * from './productFormat.ts';
 export * from './shelfFormat.ts';
 export * from './pileFormat.ts';
+export * from './signFormat.ts';

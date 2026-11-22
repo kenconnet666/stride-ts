@@ -1,0 +1,14 @@
+{
+ "name": "AisleDrinks",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "text": "饮料 · 零食",
+ "size": [
+  1.5,
+  0.36,
+  0.08
+ ],
+ "doubleSided": true,
+ "colors": {
+  "background": "#2f9e44"
+ }
+}

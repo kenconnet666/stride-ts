@@ -41,5 +41,12 @@ export interface ShelfFile {
   /** 价签上的数字用的字体；没有时价签只是色块。 */
   readonly font?: string;
   readonly stock?: ShelfStockFile;
+  /**
+   * 种类：货架（gondola，默认）；立式冷柜（fridge：单面，玻璃门，门框上竖着灯带，顶上一条灯箱写着 header）；卧式冰柜（freezer：
+   * 货躺在槽里，上面两块玻璃推拉盖；depth 是整个柜子的宽，levels 只用第一个——槽底的高，height 是柜沿的高）。
+   */
+  readonly type?: 'gondola' | 'fridge' | 'freezer';
+  /** 冷柜顶上灯箱的字（"冷藏饮料"），要有 font；没写时灯箱只发光不写字。 */
+  readonly header?: string;
   readonly seed?: number;
 }

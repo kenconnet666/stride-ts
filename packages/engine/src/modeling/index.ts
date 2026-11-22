@@ -11,3 +11,4 @@ export * from './product.ts';
 export * from './shelf.ts';
 export * from './productBatch.ts';
 export * from './pile.ts';
+export * from './sign.ts';

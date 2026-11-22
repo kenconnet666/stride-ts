@@ -284,6 +284,141 @@
    }
   },
   {
+   "id": "5e0b5e0b-0002-4000-8000-000000000016",
+   "name": "Freezer 6",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    -8.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Freezer",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000017",
+   "name": "Fridge 7",
+   "parent": null,
+   "position": [
+    -1.55,
+    0,
+    -11.6
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Fridge",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000018",
+   "name": "Fridge 8",
+   "parent": null,
+   "position": [
+    1.55,
+    0,
+    -11.6
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Shelves/Fridge",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000030",
+   "name": "Sign drinks",
+   "parent": null,
+   "position": [
+    0,
+    2.55,
+    -2.6
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Signs/AisleDrinks",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000031",
+   "name": "Sign frozen",
+   "parent": null,
+   "position": [
+    0,
+    2.55,
+    -7.4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Signs/AisleFrozen",
+     "materials": []
+    }
+   }
+  },
+  {
    "id": "5e0b5e0b-0002-4000-8000-000000000040",
    "name": "Light 0-0",
    "parent": null,

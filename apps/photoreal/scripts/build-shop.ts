@@ -110,7 +110,26 @@ const shelves: Record<string, object> = {
   Household: { ...gondola, stock: { products: ['Detergent', 'Tissue', 'Cereal', 'Crackers'].map(p), variants: 3 }, seed: 44 },
   Wall: { ...gondola, sides: 1, length: 8, height: 2.1, levels: [0.15, 0.52, 0.89, 1.26, 1.63, 2.0].slice(0, 5), stock: { products: ['Water', 'Juice', 'Beer', 'Cola', 'Milk', 'Yogurt'].map(p), variants: 5, facings: [4, 8] }, seed: 45 },
 };
+// 冷冻的货（冰柜里躺着的）、冷柜和冰柜
+for (const { id, ...product } of [
+  { id: 'Dumplings', shape: 'pouch', size: [0.2, 0.26, 0.05], text: '水饺', seed: 39 },
+  { id: 'IceCream', shape: 'tub', size: [0.1, 0.08, 0], text: '冰淇淋', seed: 40 },
+] as const) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
+shelves['Fridge'] = {
+  type: 'fridge', sides: 1, length: 3, height: 1.95, depth: 0.55, levels: [0.12, 0.5, 0.88, 1.26, 1.64], bay: 0.75, font: FONT, header: '冷藏饮料',
+  stock: { products: ['Water', 'Juice', 'Cola', 'Beer', 'Tea', 'Milk', 'Yogurt'].map(p), variants: 4, facings: [3, 6] }, seed: 46,
+};
+shelves['Freezer'] = {
+  type: 'freezer', sides: 1, length: 1.8, height: 0.85, depth: 0.9, levels: [0.45], font: FONT, frameColor: '#e8eaec',
+  stock: { products: ['Dumplings', 'IceCream', 'Noodles'].map(p), variants: 4, facings: [2, 5], rows: 10, gaps: 0.1 }, seed: 47,
+};
 for (const [name, shelf] of Object.entries(shelves)) await write('shelf', `Shop/Shelves/${name}`, { name, ...shelf });
+// 通道上方挂的双面招牌
+const signs: Record<string, object> = {
+  AisleDrinks: { text: '饮料 · 零食', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#2f9e44' } },
+  AisleFrozen: { text: '冷冻食品', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#1e64c8' } },
+};
+for (const [name, sign] of Object.entries(signs)) await write('sign', `Shop/Signs/${name}`, { name, font: FONT, ...sign });
 
 await write('material', 'Shop/Materials/Floor', { name: 'Floor', baseColor: [0.72, 0.71, 0.69, 1], metalness: 0, roughness: 0.16 });
 await write('material', 'Shop/Materials/Ceiling', { name: 'Ceiling', baseColor: [0.05, 0.05, 0.055, 1], metalness: 0, roughness: 0.8 });
@@ -136,6 +155,11 @@ const shelfEntities = [
   shelfAt(0, 'Drinks', [-1.3, 0, -1], 90), shelfAt(1, 'Pantry', [-1.3, 0, -5.1], 90),
   shelfAt(2, 'Snacks', [1.3, 0, -1], -90), shelfAt(3, 'Household', [1.3, 0, -5.1], -90),
   shelfAt(4, 'Snacks', [-4.2, 0, -3], 90), shelfAt(5, 'Wall', [5.95, 0, -3], -90),
+  // 过道尽头：一台卧式冰柜，后墙前一排两节立式冷柜
+  shelfAt(6, 'Freezer', [0, 0, -8.4], 0), shelfAt(7, 'Fridge', [-1.55, 0, -11.6], 0), shelfAt(8, 'Fridge', [1.55, 0, -11.6], 0),
+  // 挂在过道上方的招牌
+  entity(sid(0x30), 'Sign drinks', [0, 2.55, -2.6], { model: { model: 'Shop/Signs/AisleDrinks', materials: [] } }),
+  entity(sid(0x31), 'Sign frozen', [0, 2.55, -7.4], { model: { model: 'Shop/Signs/AisleFrozen', materials: [] } }),
 ];
 // 灯管：沿过道每 2.2 米一盏，两排
 const lights = [-1.6, 1.6].flatMap((x, row) => Array.from({ length: 6 }, (_, i) => entity(sid(0x40 + row * 8 + i), `Light ${row}-${i}`, [x * 1.4, 3.25, 2 - i * 2.2], {

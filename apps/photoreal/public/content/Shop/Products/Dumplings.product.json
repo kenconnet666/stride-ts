@@ -1,0 +1,12 @@
+{
+ "name": "Dumplings",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "pouch",
+ "size": [
+  0.2,
+  0.26,
+  0.05
+ ],
+ "text": "水饺",
+ "seed": 39
+}

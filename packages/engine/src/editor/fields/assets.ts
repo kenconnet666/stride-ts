@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile, ShelfFile, PileFile } from '../../content/formats/format';
+import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile, ShelfFile, PileFile, SignFile } from '../../content/formats/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -701,6 +701,8 @@ const SHELF_FIELDS = fields<ShelfFile>({
     optional: true,
     description: 'what goes on the shelf; empty shelves without it',
   },
+  type: { type: oneOf('gondola', 'fridge', 'freezer'), optional: true, default: 'gondola', description: 'gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor)' },
+  header: { type: string, optional: true, description: 'text on the lit header of a fridge (needs the font)' },
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the stocking and the prices' },
 });
 
@@ -726,6 +728,26 @@ const PILE_FIELDS = fields<PileFile>({
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the drop positions and variants' },
 });
 
+/** 招牌（SignFile）：后端生成同名的模型、图集和材质。 */
+const SIGN_FIELDS = fields<SignFile>({
+  name: string,
+  text: { type: string, description: 'the text on the face; line breaks start new lines' },
+  font: { type: asset('font'), description: 'font of the text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese)' },
+  size: { type: vector(3, 'm'), description: 'width, height, depth' },
+  style: { type: oneOf('lightbox', 'panel'), optional: true, default: 'lightbox', description: 'lightbox: the face glows (lit from inside); panel: it does not' },
+  doubleSided: { type: bool, optional: true, default: false, description: 'a face on the back too (signs hanging over an aisle)' },
+  colors: {
+    type: object(fields<NonNullable<SignFile['colors']>>({
+      background: { type: string, optional: true, description: 'face color (sRGB #rrggbb, green when missing)' },
+      text: { type: string, optional: true, description: 'text color (sRGB #rrggbb, white when missing)' },
+      frame: { type: string, optional: true, description: 'frame color (sRGB #rrggbb, brushed grey when missing)' },
+    })),
+    optional: true,
+    description: 'colors of the face, the text and the frame',
+  },
+  brightness: { type: number({ min: 0, step: 0.5 }), optional: true, default: 3, description: 'emissive strength of a lightbox face' },
+});
+
 /** 声音资源：音频文件的格式和播放方式，合成的音效的参数。 */
 export const SOUND_FIELDS = fields<SoundFile>({
   name: string,
@@ -735,5 +757,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, shelf: SHELF_FIELDS, pile: PILE_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, shelf: SHELF_FIELDS, pile: PILE_FIELDS, sign: SIGN_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

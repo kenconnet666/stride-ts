@@ -1,13 +1,13 @@
 /**
  * 货架的烘焙（引擎 content/formats/shelfFormat.ts 的 ShelfFile）：生成在引擎的 modeling/shelf.ts，这里读摆货要的商品文件和字体，
- * 写成同名的四个文件：模型、颜色图集（.svg）、表面图集（.surface.svg：G 粗糙度、B 金属度）、材质。编辑器后端在货架的文件存下、
+ * 写成同名的文件（bakers/mergedFiles.ts：模型、图集、材质，冷柜、冰柜还有自发光图集和玻璃的材质）。编辑器后端在货架的文件存下、
  * 在磁盘上改了、或者它摆着的商品改了以后调它。
  */
-import { encodeModel, EXTENSIONS, type ProductFile, type ShelfFile } from '@stride-ts/engine/content-format';
-import { productDesign, shelfMaterial, shelfModel, type TextFont } from '@stride-ts/engine/modeling';
+import { EXTENSIONS, type ProductFile, type ShelfFile } from '@stride-ts/engine/content-format';
+import { productDesign, shelfModel, type TextFont } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { compressMeshes } from '../mesh.ts';
 import type { BakedFile } from './productModel.ts';
+import { mergedFiles } from './mergedFiles.ts';
 import { loadTextFont } from './textFont.ts';
 
 /** 生成 path（货架的内容路径）同名的模型、两张图集和材质。商品读不到、规则不对时报错。 */
@@ -30,17 +30,9 @@ export async function bakeShelf(tools: StrideTools, file: ShelfFile, path: strin
       want(product.font, design.brand + (design.text ?? ''));
     }
   }
-  want(file.font, '0123456789.');
+  want(file.font, `0123456789.${file.header ?? ''}`);
   const fonts = new Map<string, TextFont>();
   for (const [font, text] of texts) fonts.set(font, await loadTextFont(font, text, readContent, where));
 
-  const model = shelfModel(file, { products, font: (font) => fonts.get(font) }, where);
-  const encoder = new TextEncoder();
-  const meshes = model.indices.length === 0 ? [] : compressMeshes([{ name: 'shelf', material: 0, vertices: model.vertices, indices: model.indices }], tools);
-  return [
-    { path: path + EXTENSIONS.model, bytes: encodeModel({ meshes, materials: [path] }) },
-    { path: `${path}.svg`, bytes: encoder.encode(model.colorSvg) },
-    { path: `${path}.surface.svg`, bytes: encoder.encode(model.surfaceSvg) },
-    { path: path + EXTENSIONS.material, bytes: encoder.encode(`${JSON.stringify(shelfMaterial(file, path, model.atlasPixels), null, 1)}\n`) },
-  ];
+  return mergedFiles(tools, file.name, path, shelfModel(file, { products, font: (font) => fonts.get(font) }, where));
 }

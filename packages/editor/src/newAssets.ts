@@ -2,7 +2,7 @@
  * 编辑器"新建"出来的资源的初始内容（前端的资源浏览器用；只有数据，没有 Node 的依赖）。都是最小的合法文件，建出来以后在
  * 编辑器里接着改：场景是空的、材质是浅灰的、基本形状是 JSON 写的模型（content/modelFile.ts）、UI 页面是一块全屏的 Canvas。
  */
-import { PROCEDURAL_SHAPES, type BuildingFile, type CityFile, type WaterFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type ProductFile, type ShelfFile, type PileFile, type TextModelFile, type TimelineFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
+import { PROCEDURAL_SHAPES, type BuildingFile, type CityFile, type WaterFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type ProductFile, type ShelfFile, type PileFile, type SignFile, type TextModelFile, type TimelineFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
 import { SOUND_PRESETS, seededRandom } from '@stride-ts/engine/audio-synth';
 import { polyCube } from '@stride-ts/engine/modeling';
 import type { AssetKind } from './protocol.ts';
@@ -11,7 +11,7 @@ export type ProceduralShapeType = (typeof PROCEDURAL_SHAPES)[number];
 
 /** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容（菜单里的文字在界面的翻译表里，按 id 和 shape 取）。 */
 export interface NewAssetOption {
-  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'water' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'spline' | `model:${ProceduralShapeType}`;
+  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'water' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'sign' | 'spline' | `model:${ProceduralShapeType}`;
   readonly kind: AssetKind;
   /** 基本形状的模型是哪种形状。 */
   readonly shape?: ProceduralShapeType;
@@ -87,6 +87,10 @@ export const NEW_ASSET_OPTIONS: readonly NewAssetOption[] = [
   { id: 'shelf', kind: 'shelf', name: 'NewShelf', content: (name): ShelfFile => ({ name, sides: 2, length: 4, height: 1.9, depth: 0.42, levels: [0.15, 0.55, 0.92, 1.29, 1.66], seed: 1 }) },
   // 物理堆放：一筐没有东西的筐；属性面板里加要倒进去的商品（果蔬或包装）
   { id: 'pile', kind: 'pile', name: 'NewPile', content: (name): PileFile => ({ name, container: { size: [0.6, 0.2, 0.4] }, items: [], seed: 1 }) },
+  // 招牌：一块 1.2 米宽的绿底白字灯箱（字体先用资源包里的中文字体）
+  { id: 'sign', kind: 'sign', name: 'NewSign', content: (name, existing): SignFile => ({
+    name, text: '超市入口', font: existing.find((asset) => asset.kind === 'font' && asset.path.startsWith('Shared/'))?.path ?? existing.find((asset) => asset.kind === 'font')?.path ?? '', size: [1.2, 0.3, 0.08],
+  }) },
   // 合成的音效：随机一个"拾取"，在属性面板的音效生成器里接着换、变、调
   { id: 'sound', kind: 'sound', name: 'NewSound', content: (name): SoundFile => ({ name, encoding: 'synth', streamFromDisk: false, spatialized: false, synth: SOUND_PRESETS.pickup(seededRandom(Date.now())) }) },
   // 样条：一段弯的 6 米宽的路（控制点在属性面板里按 JSON 改；横截面换成管子、轨道、围栏、电线）

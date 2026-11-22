@@ -12,7 +12,7 @@
  */
 import type { GraphFile, GraphNodeFile, PortType } from '../../content/formats/nodeGraph';
 import { BAKED_NODE_TYPES, bakedTextureKey, convertGraphValue, emitMaterialGraphNodes, materialGraphTextures } from './materialGraph';
-import { MaterialGraphBaker, UV_PLANE_DECLARATIONS, bakedMaterialGraphNodes, uvPlaneStreams } from './materialGraphBake';
+import { LINEAR_TO_SRGB, MaterialGraphBaker, UV_PLANE_DECLARATIONS, bakedMaterialGraphNodes, uvPlaneStreams } from './materialGraphBake';
 
 /** 预览一格的边长（像素） */
 export const MATERIAL_PREVIEW_SIZE = 64;
@@ -60,10 +60,7 @@ ${UV_PLANE_DECLARATIONS}
 @group(0) @binding(0) var previewSampler: sampler;
 ${bindings}
 
-fn linearToSrgb(c: vec3f) -> vec3f {
-  let x = clamp(c, vec3f(0.0), vec3f(1.0));
-  return select(1.055 * pow(x, vec3f(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3f(0.0031308));
-}
+${LINEAR_TO_SRGB}
 
 ${[...functions.values()].join('\n')}
 

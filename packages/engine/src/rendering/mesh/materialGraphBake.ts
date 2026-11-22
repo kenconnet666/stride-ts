@@ -11,12 +11,12 @@
  * 平面上的材质流同节点的预览（materialGraphPreview.ts 也用这里的 UV_PLANE_DECLARATIONS、uvPlaneStreams）：uv 是 0..1，世界位置是
  * (u, 0, v) · 2 米、法线朝上，时间 0；屏幕空间遮蔽当作没遮住，相机在 10 米高处。所以滤镜的上游按 UV 空间算才和不烘时一样。
  */
-import type { GraphFile, GraphNodeFile } from '../../content/formats/nodeGraph';
+import type { GraphFile, GraphLink, GraphNodeFile } from '../../content/formats/nodeGraph';
 import { MipmapGenerator } from '../../graphics/MipmapGenerator';
 import { Texture } from '../../graphics/Texture';
 import { MATERIAL_STREAMS } from '../shaderClass';
 import { FULLSCREEN_VERTEX } from '../wgsl';
-import { BAKED_NODE_TYPES, convertGraphValue, emitMaterialGraphNodes } from './materialGraph';
+import { BAKED_NODE_TYPES, MATERIAL_GRAPH_OUTPUTS, convertGraphValue, emitMaterialGraphNodes, type MaterialGraphOutput, type MaterialGraphValue } from './materialGraph';
 
 /** 烘好的贴图的格式：数、法线、高度都要比 8 位细（模糊过的高度算法线时看得出台阶）。 */
 const BAKED_FORMAT: GPUTextureFormat = 'rgba16float';
@@ -71,6 +71,32 @@ export interface MaterialGraphBakeShader {
 /** 一个滤镜节点 value 输入的上游画在 UV 平面上的着色器（输出线性的值，数是重复成颜色）。图有错时抛错，消息以 where 开头。 */
 export function materialGraphBakeShader(graph: GraphFile, node: string, where: string): MaterialGraphBakeShader {
   const link = graph.nodes.find((n) => n.id === node)?.inputs?.['value'];
+  return uvPlaneShader(graph, link, `${where}, baking node '${node}'`, `input value of node '${node}'`, (value) => (value ? convertGraphValue(value, 'color') : 'vec4f(0.0, 0.0, 0.0, 1.0)'));
+}
+
+/**
+ * 材质的一个输出画在 UV 平面上、编码成 8 位贴图的着色器（导出贴图用）：颜色（基础色、自发光）换成 sRGB，法线按 0.5 偏移
+ * （和材质的法线贴图一样，切线空间），数是灰度。没接的输出是 undefined。
+ */
+export function materialGraphOutputShader(graph: GraphFile, output: MaterialGraphOutput, where: string): MaterialGraphBakeShader | undefined {
+  const link = graph.outputs[output];
+  if (!link) return undefined;
+  const type = MATERIAL_GRAPH_OUTPUTS[output];
+  return uvPlaneShader(graph, link, `${where}, exporting ${output}`, `output ${output}`, (value) => {
+    const v = convertGraphValue(value!, type);
+    return type === 'color' ? `vec4f(linearToSrgb(${v}.rgb), 1.0)` : type === 'vec3' ? `vec4f(${v} * 0.5 + 0.5, 1.0)` : `vec4f(vec3f(${v}), 1.0)`;
+  });
+}
+
+/** 线性颜色编码成 sRGB（预览、导出用），先夹到 0..1。 */
+export const LINEAR_TO_SRGB = /* wgsl */ `
+fn linearToSrgb(c: vec3f) -> vec3f {
+  let x = clamp(c, vec3f(0.0), vec3f(1.0));
+  return select(1.055 * pow(x, vec3f(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3f(0.0031308));
+}`;
+
+/** link 接的值在 UV 平面上算出来、finish 换成要写的 vec4f 的着色器；what 是报错时说的"谁接错了"。 */
+function uvPlaneShader(graph: GraphFile, link: GraphLink | undefined, where: string, what: string, finish: (value: MaterialGraphValue | undefined) => string): MaterialGraphBakeShader {
   const functions = new Map<string, string>();
   const textures: string[] = [];
   const sample = (texture: string, uv: string) => {
@@ -79,18 +105,19 @@ export function materialGraphBakeShader(graph: GraphFile, node: string, where: s
     return `textureSample(bakeTexture${index}, bakeSampler, ${uv})`;
   };
   let lines: string[] = [];
-  let value = 'vec4f(0.0, 0.0, 0.0, 1.0)';
+  let value: MaterialGraphValue | undefined;
   if (link) {
-    // 借材质的一个输出排出 value 的上游（只算它们）
-    const emitted = emitMaterialGraphNodes({ nodes: graph.nodes, outputs: { baseColor: link } }, { addFunction: (name, code) => void functions.set(name, code) }, sample, `${where}, baking node '${node}'`);
-    const found = emitted.values.get(`${link.node}:${link.output ?? ''}`);
-    if (!found) throw new Error(`${where}: input value of node '${node}' is linked to output '${link.output ?? ''}' of node '${link.node}', which it does not have`);
+    // 借材质的一个输出排出 link 的上游（只算它们）
+    const emitted = emitMaterialGraphNodes({ nodes: graph.nodes, outputs: { baseColor: link } }, { addFunction: (name, code) => void functions.set(name, code) }, sample, where);
+    value = emitted.values.get(`${link.node}:${link.output ?? ''}`);
+    if (!value) throw new Error(`${where}: ${what} is linked to output '${link.output ?? ''}' of node '${link.node}', which it does not have`);
     lines = emitted.lines;
-    value = convertGraphValue(found, 'color');
   }
+  const result = finish(value);
   const code = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
 ${UV_PLANE_DECLARATIONS}
+${LINEAR_TO_SRGB}
 @group(0) @binding(0) var bakeSampler: sampler;
 ${textures.map((_, i) => `@group(0) @binding(${i + 1}) var bakeTexture${i}: texture_2d<f32>;`).join('\n')}
 
@@ -99,7 +126,7 @@ ${[...functions.values()].join('\n')}
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
 ${uvPlaneStreams('in.uv')}
 ${lines.join('\n')}
-  return ${value};
+  return ${result};
 }
 `;
   return { code, textures };
@@ -180,17 +207,8 @@ export class MaterialGraphBaker {
     const { resolution, level, size, radius } = bakedSize(file);
     const device = this.#device;
     const plane = this.#target(`${where} ${node}`, resolution);
-    const { pipeline, layout } = this.#pipeline(shader.code, shader.textures.length);
-    const bindGroup = device.createBindGroup({
-      layout,
-      entries: [{ binding: 0, resource: this.#sampler }, ...shader.textures.map((key, i) => ({ binding: i + 1, resource: textureOf(key).createView() }))],
-    });
     const encoder = device.createCommandEncoder({ label: `bake ${where} ${node}` });
-    const pass = encoder.beginRenderPass({ colorAttachments: [{ view: plane.createView({ baseMipLevel: 0, mipLevelCount: 1 }), loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bindGroup);
-    pass.draw(3);
-    pass.end();
+    this.#drawPlane(encoder, shader, textureOf, plane.createView({ baseMipLevel: 0, mipLevelCount: 1 }), BAKED_FORMAT);
     this.#mipmaps.generate(plane, encoder);
     if (file.type !== 'blur' || radius <= 0) {
       device.queue.submit([encoder.finish()]);
@@ -226,6 +244,56 @@ export class MaterialGraphBaker {
     return blurred;
   }
 
+  /**
+   * 把材质的各个输出（接了的）画在 UV 平面上、读回成 8 位的 RGBA（size × size，一行紧挨一行）：导出贴图用，编码见
+   * materialGraphOutputShader。textureOf 同 bake。
+   */
+  async exportOutputs(graph: GraphFile, outputs: readonly MaterialGraphOutput[], size: number, textureOf: (key: string) => GPUTexture, where: string): Promise<Map<MaterialGraphOutput, Uint8Array>> {
+    const device = this.#device;
+    const bytesPerRow = Math.ceil((size * 4) / 256) * 256;
+    const jobs = outputs.flatMap((output) => {
+      const shader = materialGraphOutputShader(graph, output, where);
+      return shader ? [{ output, shader }] : [];
+    });
+    const target = device.createTexture({ label: `${where} export`, size: [size, size], format: 'rgba8unorm', usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+    const readback = device.createBuffer({ label: `${where} export`, size: bytesPerRow * size * Math.max(1, jobs.length), usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const result = new Map<MaterialGraphOutput, Uint8Array>();
+    try {
+      const encoder = device.createCommandEncoder({ label: `export ${where}` });
+      jobs.forEach(({ shader }, i) => {
+        this.#drawPlane(encoder, shader, textureOf, target.createView(), 'rgba8unorm');
+        encoder.copyTextureToBuffer({ texture: target }, { buffer: readback, offset: i * bytesPerRow * size, bytesPerRow }, [size, size]);
+      });
+      device.queue.submit([encoder.finish()]);
+      await readback.mapAsync(GPUMapMode.READ);
+      const bytes = new Uint8Array(readback.getMappedRange());
+      jobs.forEach(({ output }, i) => {
+        const rgba = new Uint8Array(size * size * 4);
+        for (let y = 0; y < size; y++) rgba.set(bytes.subarray(i * bytesPerRow * size + y * bytesPerRow, i * bytesPerRow * size + y * bytesPerRow + size * 4), y * size * 4);
+        result.set(output, rgba);
+      });
+      readback.unmap();
+    } finally {
+      target.destroy();
+      readback.destroy();
+    }
+    return result;
+  }
+
+  /** 一遍全屏的绘制：着色器在 UV 平面上算，画进 target。 */
+  #drawPlane(encoder: GPUCommandEncoder, shader: MaterialGraphBakeShader, textureOf: (key: string) => GPUTexture, target: GPUTextureView, format: GPUTextureFormat): void {
+    const { pipeline, layout } = this.#pipeline(shader.code, shader.textures.length, format);
+    const bindGroup = this.#device.createBindGroup({
+      layout,
+      entries: [{ binding: 0, resource: this.#sampler }, ...shader.textures.map((key, i) => ({ binding: i + 1, resource: textureOf(key).createView() }))],
+    });
+    const pass = encoder.beginRenderPass({ colorAttachments: [{ view: target, loadOp: 'clear', storeOp: 'store', clearValue: [0, 0, 0, 1] }] });
+    pass.setPipeline(pipeline);
+    pass.setBindGroup(0, bindGroup);
+    pass.draw(3);
+    pass.end();
+  }
+
   #target(label: string, size: number): GPUTexture {
     return this.#device.createTexture({
       label, size: [size, size], format: BAKED_FORMAT, mipLevelCount: Math.floor(Math.log2(size)) + 1,
@@ -234,11 +302,12 @@ export class MaterialGraphBaker {
   }
 
   /** 烘焙的管线按代码缓存；绑定布局按贴图数写明（同预览：没有贴图时采样器用不到，'auto' 的布局里就没有它）。 */
-  #pipeline(code: string, textureCount: number): { readonly pipeline: GPURenderPipeline; readonly layout: GPUBindGroupLayout } {
-    const cached = this.#pipelines.get(code);
+  #pipeline(code: string, textureCount: number, format: GPUTextureFormat = BAKED_FORMAT): { readonly pipeline: GPURenderPipeline; readonly layout: GPUBindGroupLayout } {
+    const key = `${format}\n${code}`;
+    const cached = this.#pipelines.get(key);
     if (cached) {
-      this.#pipelines.delete(code);
-      this.#pipelines.set(code, cached);
+      this.#pipelines.delete(key);
+      this.#pipelines.set(key, cached);
       return cached;
     }
     const device = this.#device;
@@ -254,10 +323,10 @@ export class MaterialGraphBaker {
       label: 'material graph bake',
       layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
       vertex: { module, entryPoint: 'fullscreenVertex' },
-      fragment: { module, entryPoint: 'fs', targets: [{ format: BAKED_FORMAT }] },
+      fragment: { module, entryPoint: 'fs', targets: [{ format }] },
     });
     const entry = { pipeline, layout };
-    this.#pipelines.set(code, entry);
+    this.#pipelines.set(key, entry);
     if (this.#pipelines.size > PIPELINE_CACHE) this.#pipelines.delete(this.#pipelines.keys().next().value!);
     return entry;
   }

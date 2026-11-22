@@ -186,6 +186,7 @@ export interface EditorMessages {
   readonly particleBaking: string;
   readonly particleBakeHint: (frames: number) => string;
   readonly particleBaked: (path: string, frames: number, seconds: number) => string;
+  readonly graphExported: (paths: readonly string[], seconds: number) => string;
   readonly particleBakeFields: { readonly columns: string; readonly rows: string; readonly size: string; readonly seconds: string; readonly start: string; readonly view: string };
   readonly particleBakeViews: { readonly front: string; readonly side: string; readonly top: string };
   readonly particleEmitter: (n: number) => string;
@@ -221,6 +222,7 @@ export interface EditorMessages {
   readonly graphAddNode: string;
   readonly graphHint: string;
   readonly graphArrange: string;
+  readonly graphExport: string;
   readonly graphClose: string;
   readonly graphNoMaterial: string;
   readonly graphOutput: string;
@@ -411,6 +413,7 @@ const zhCN: EditorMessages = {
   particleBaking: '正在烘……',
   particleBakeHint: (frames) => `${frames} 帧排成一张图集，存进 Textures；旁边加一个放它的实体（一个粒子）`,
   particleBaked: (path, frames, seconds) => `烘好了 ${path}（${frames} 帧，${seconds.toFixed(2)} 秒）`,
+  graphExported: (paths, seconds) => `导出了 ${paths.join('、')}（${seconds.toFixed(2)} 秒）`,
   particleBakeFields: { columns: '列', rows: '行', size: '每格像素', seconds: '时长', start: '从第几秒', view: '方向' },
   particleBakeViews: { front: '正面', side: '侧面', top: '顶上' },
   particleEmitter: (n) => `发射器 ${n}`,
@@ -453,6 +456,7 @@ const zhCN: EditorMessages = {
   clipboardNotEntities: '剪贴板里不是复制的实体',
   graphAddNode: '加节点……',
   graphArrange: '整理',
+  graphExport: '导出贴图',
   graphHint: '拖节点移动，拖空白处平移，滚轮缩放；从输出口拖到输入口连线；选中节点或连线按 Delete 删除',
   graphClose: '关掉节点图',
   graphNoMaterial: '在资源浏览器里选中一个材质，属性面板上点"节点图"',
@@ -647,6 +651,7 @@ const enUS: EditorMessages = {
   particleBaking: 'Baking…',
   particleBakeHint: (frames) => `${frames} frames in one atlas, saved under Textures; an entity playing it (one particle) is added next to this one`,
   particleBaked: (path, frames, seconds) => `Baked ${path} (${frames} frames, ${seconds.toFixed(2)} s)`,
+  graphExported: (paths, seconds) => `Exported ${paths.join(', ')} (${seconds.toFixed(2)} s)`,
   particleBakeFields: { columns: 'Columns', rows: 'Rows', size: 'Pixels per frame', seconds: 'Seconds', start: 'Start at', view: 'View' },
   particleBakeViews: { front: 'Front', side: 'Side', top: 'Top' },
   particleEmitter: (n) => `Emitter ${n}`,
@@ -681,6 +686,7 @@ const enUS: EditorMessages = {
   clipboardNotEntities: 'The clipboard does not hold copied entities',
   graphAddNode: 'Add node…',
   graphArrange: 'Arrange',
+  graphExport: 'Export textures',
   graphHint: 'Drag a node to move, drag the background to pan, wheel to zoom; drag from an output to an input to link; Delete removes the selected nodes or links',
   graphClose: 'Close the node graph',
   graphNoMaterial: 'Select a material in the asset browser and click "Node graph" in the inspector',

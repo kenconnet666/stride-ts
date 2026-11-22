@@ -465,9 +465,7 @@ export class ContentManager {
    */
   async #graphLayer(graph: GraphFile, compiler: ColorTreeCompiler, index: number, name: string): Promise<{ code: string; layer: MaterialShaderLayer }> {
     const where = `material ${name}`;
-    const textures = new Map<string, Texture>(await Promise.all(materialGraphTextures(graph).map(async (path) => [path, await this.loadTextureAsset(path)] as const)));
-    // 滤镜节点烘的贴图（第一次画的时候在 GPU 上烘），上游的滤镜在前
-    for (const node of bakedMaterialGraphNodes(graph)) textures.set(bakedTextureKey(node), bakedMaterialGraphTexture(graph, node, (key) => textures.get(key), where));
+    const textures = await this.loadMaterialGraphTextures(graph, where);
     const compiled = compileMaterialGraph(graph, compiler, (path, uv) => {
       const texture = textures.get(path);
       return texture && compiler.sampleTexture(texture, uv);
@@ -494,6 +492,21 @@ export class ContentManager {
         ...(has('occlusion') ? { occlusion: { directLighting: 1 } } : {}),
       },
     };
+  }
+
+  /**
+   * 节点图要的贴图，按 sample 的 key：贴图节点引用的贴图资源（内容路径）、滤镜节点烘的贴图（bakedTextureKey，第一次画的时候在
+   * GPU 上烘）。加载材质、导出贴图（offline/MaterialGraphExport.ts）用。
+   */
+  async loadMaterialGraphTextures(graph: GraphFile, where: string): Promise<Map<string, Texture>> {
+    const textures = new Map<string, Texture>(await Promise.all(materialGraphTextures(graph).map(async (path) => [path, await this.loadTextureAsset(path)] as const)));
+    for (const node of bakedMaterialGraphNodes(graph)) textures.set(bakedTextureKey(node), bakedMaterialGraphTexture(graph, node, (key) => textures.get(key), where));
+    return textures;
+  }
+
+  /** 材质文件本身（不建 Material）：导出贴图读它的节点图。 */
+  async loadMaterialFile(path: string): Promise<MaterialFile> {
+    return this.#json<MaterialFile>(await this.#read(new URL(path + EXTENSIONS.material, this.root)));
   }
 
   loadCubemap(path: string): Promise<Cubemap> {

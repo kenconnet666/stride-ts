@@ -5,13 +5,14 @@
  * - 拖节点移动（材质的输出跟着最右边的节点，不能拖），拖空白处平移（小手），滚轮或触控板捏合缩放；
  * - 从输出端口拖到输入端口（或材质输出）连线，一个输入只接一条线（新的替换旧的）；
  * - 点节点或连线选中，Delete 删掉（删节点时连到它的线一起去掉，删连线是断开）；"加节点"菜单按分类列出节点库；
+ * - "导出贴图"把各个输出在 UV 平面上烘成 png，存在材质旁边（游戏页面的 material-export 命令）；
  * - "整理"按连线分层重排所有节点（输入在左、输出在右，vue-tsx-pro 的 graphLayout），节点变高了互相压住时用；没写位置的节点
  *   （agent 写的图常这样）也按它画。
  * 每次修改经 session.editMaterialGraph 存（同属性面板，稍等一下存），材质热重载，视口里马上看到。节点卡片的行高是定的，
  * 端口的位置按行算（Diagram 的端口 at），不量 DOM。每个节点在端口行下面有一张预览图（第一个输出在 UV 平面上的样子，引擎的
  * materialGraphPreview.ts 画；编辑器界面自己拿一个 WebGPU 设备，图一改就重画）。
  */
-import { CircleX, LayoutDashboard, Plus } from '@lucide/icons';
+import { CircleX, ImageDown, LayoutDashboard, Plus } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, Empty, Flex, IconButton, Menu, MenuGroup, MenuItem, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -277,6 +278,7 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
             ))}
           </Menu>
           <Button size="sm" variant="ghost" tone="neutral" icon={LayoutDashboard} disabled={file.nodes.length === 0} onClick={arrange}>{t.graphArrange}</Button>
+          <Button size="sm" variant="ghost" tone="neutral" icon={ImageDown} disabled={Object.keys(file.outputs).length === 0 || session.baking.value} onClick={() => void session.exportMaterialTextures()}>{t.graphExport}</Button>
           <Flex grow>
             <Text tone="muted" truncate>{t.graphHint}</Text>
           </Flex>

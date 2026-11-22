@@ -92,9 +92,9 @@ export class EditorSession implements EditableScene {
   readonly frameGuide = shallowRef(0);
   /** 打开的时间轴（资源浏览器里打开的，下面的时间轴面板显示它）：选实体、改场景时一直开着。 */
   readonly timeline = shallowRef<OpenTimeline | undefined>();
-  /** 正在烘序列帧（粒子窗口的"烘焙"这时不能点）。 */
   /** 视口里的编辑工具（画贴图、雕刻、多边形、样条、白盒）：开关、工具条的状态和操作、它们的撤销。 */
   readonly tools = new ViewportTools(this);
+  /** 正在烘序列帧或导出节点图的贴图（粒子窗口的"烘焙"、节点图的"导出贴图"这时不能点）。 */
   readonly baking = shallowRef(false);
   /** 粒子面板开着时编辑的实体（场景文件里的 id）；没开时是 undefined。 */
   readonly particleEntity = shallowRef<string>();
@@ -339,6 +339,25 @@ export class EditorSession implements EditableScene {
 
   closeMaterialGraph(): void {
     this.graphOpen.value = false;
+  }
+
+  /**
+   * 把属性面板里那个材质的节点图导出成贴图（游戏页面里的 material-export 命令，png 存在材质旁边：`<材质>_<输出>`）。用的是界面里
+   * 现在的图，还没存的修改也算。
+   */
+  async exportMaterialTextures(size = 1024): Promise<void> {
+    const agent = this.agent.value, inspected = this.inspected.value;
+    if (!agent || inspected?.kind !== 'material' || this.baking.value) return;
+    this.baking.value = true;
+    this.notice.value = '';
+    try {
+      const result = await agent.game.debug.run('material-export', { material: inspected.path, graph: inspected.content['graph'], size }) as { files: { path: string }[]; elapsed: number };
+      this.status.value = t.graphExported(result.files.map((file) => file.path), result.elapsed);
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+    } finally {
+      this.baking.value = false;
+    }
   }
 
   /** 改节点图（整个换掉）：同属性面板的修改，稍等一下存，材质热重载。 */

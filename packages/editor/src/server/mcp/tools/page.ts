@@ -1,4 +1,4 @@
-/** 编辑器 MCP 服务的工具：开着的页面（要开发服务器起着、浏览器里开着游戏或编辑器）：让编辑器打开文档、截图、出片、页面命令。 */
+/** 编辑器 MCP 服务的工具：开着的页面（要开发服务器起着、浏览器里开着游戏或编辑器）：让编辑器打开文档、截图、出片、导出节点图的贴图、页面命令。 */
 import type { McpServer } from '@modelcontextprotocol/server';
 import { HubClient } from '@stride-ts/cli/client';
 import * as z from 'zod';
@@ -40,6 +40,17 @@ export function registerPageTools(server: McpServer, projects: McpProjects): voi
       pathTracing: z.boolean().optional().describe('path trace the diffuse indirect light per pixel (accumulated over the sub-frames: give more samples, e.g. 32)'),
     }),
   }, async (args) => json(await (await hub()).call('render', args, { timeout: 30 * 60_000 })));
+
+  server.registerTool('export_material_textures', {
+    description: 'Export the outputs of the node graph of a material (base color, normal, roughness, ...) as pngs evaluated on the 0..1 UV square, saved in the content folder '
+      + '(default <material>_<output>) for other tools or a plain texture material; needs the game or the editor page open. Colors are sRGB, the normal is tangent space mapped to 0..1.',
+    inputSchema: z.object({
+      material: z.string().describe('content path of the material, without extension'),
+      size: z.number().int().min(1).max(8192).optional().describe('pixels (default 1024)'),
+      outputs: z.array(z.enum(['baseColor', 'metalness', 'roughness', 'normal', 'emissive', 'occlusion'])).optional().describe('default all linked ones'),
+      path: z.string().optional().describe('content path prefix of the files (default <material>_)'),
+    }),
+  }, async (args) => json(await (await hub()).call('material-export', args, { timeout: 5 * 60_000 })));
 
   server.registerTool('game_command', {
     description: 'Call a debug command on the running game page (the commands of the `stride` CLI: status, entities, inspect, set, eval, perf, ...; "commands" lists them).',

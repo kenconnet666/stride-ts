@@ -40,6 +40,7 @@ node packages/editor/src/server/cli.ts new apps/my-game
 - 3D 文字：`.text.json`（引擎的 `TextModelFile`：文字、字体资源、字高、厚度、对齐、行距、字距）同样烘出同名的 `.model`（pipeline 的 `bakeTextModel`：字体资源的字形轮廓按 Manifold 挤出、挖洞，字面是材质槽 0、侧面和背面是槽 1）。"新建 → 3D 文字"用工程里的第一个字体。
 - 多边形网格：`.poly.json`（引擎的 `PolyMeshFile`）同白盒一样烘成同名的 `.model`。编辑操作（挤出、内插、倒角、合并、切割、连接、移动、删面、翻面、换材质）是引擎 `modeling/polyEdit.ts` 的纯函数，agent 用 MCP 的 `edit_poly` 按名字调；人在属性面板的模型组件上点"编辑多边形"，视口进点、边、面的编辑模式（1、2、3 换模式，操纵器拖选中的顶点，视口工具条上是各个操作），每一步存文件、后端烘、视口热重载，开着时撤销、重做是网格的一步（`session.tools.polyEditing`）。
 - 粒子：属性面板的粒子系统上点"粒子编辑器"，下边的粒子窗口是发射器的模块栈（引擎的模块库 `editor/particleModules.ts`）。窗口工具条上的"烘成序列帧"把这个粒子系统烘成一张图集（引擎的 `offline/FlipbookBaker.ts`，游戏页面里的调试命令 `bake`，agent 用 MCP 的 `game_command`），存进 `Textures/<名字>Flipbook.png`，旁边加一个用一个粒子放它的实体。
+- 材质节点图：属性面板的材质上点"节点图"，下边的节点图面板（`ui/editors/GraphPanel.tsx`，引擎的节点库 `rendering/mesh/materialGraph.ts`）。每个节点有预览图（引擎的 `materialGraphPreview.ts`，编辑器界面自己的 WebGPU 设备上画），没写位置的节点按连线自动排，"整理"重排一遍。"导出贴图"把各个输出在 UV 平面上烘成 png，存成材质旁边的 `<材质>_<输出>.png`（游戏页面里的调试命令 `material-export`，agent 用 MCP 的 `export_material_textures`）。
 - 资源浏览器：选中资源可以移动、改名、删除（引用它的文件跟着改写）；场景、预制体可以打开（双击或"打开"按钮）。"新建"在选中的文件夹里建场景、材质、基本形状的模型（JSON 写的 `.model`，引擎生成网格）、UI 页面（初始内容在 `src/newAssets.ts`），重名的加数字，建好以后选中它、路径框里改名。从系统里拖进来的音频（mp3、ogg、wav、flac、aac）导入成声音、图片（png、jpg、webp、svg）导入成贴图，源文件放在旁边；模型（glb、gltf、fbx、obj）经导入器（pipeline 的 `importSourceModel`）成模型、材质、贴图（`POST /import`；带骨骼、动画的连骨架和每个动画的剪辑一起导入，放在 `<名字>/` 下）。源模型留在旁边，导入设置写在同名的 `.import.json`（缩放、材质、动画、采样率），属性面板或 MCP 改了就重新导入（已经有的材质不动）；字体（ttf、otf、ttc）编成运行时字体（pipeline 的 `importFontFile`，字形轮廓按码位分块，用到哪块下哪块）。
 
 ### 预制体

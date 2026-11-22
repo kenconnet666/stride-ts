@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { GraphFile } from '../../src/content/formats/nodeGraph';
 import { bakedTextureKey, compileMaterialGraph } from '../../src/rendering/mesh/materialGraph';
-import { bakedMaterialGraphNodes, bakedSize, materialGraphBakeShader } from '../../src/rendering/mesh/materialGraphBake';
+import { bakedMaterialGraphNodes, bakedSize, materialGraphBakeShader, materialGraphOutputShader } from '../../src/rendering/mesh/materialGraphBake';
 import { materialGraphPreviewShader } from '../../src/rendering/mesh/materialGraphPreview';
 
 // 噪声 → 模糊 → 扭曲（扭曲的量是另一个噪声，不烘）→ 基础色；砖块没接到别处
@@ -52,7 +52,7 @@ describe('材质节点图的滤镜（烘焙）', () => {
   test('没接 value 的滤镜烘成黑的；接错输出时报错', () => {
     expect(materialGraphBakeShader({ nodes: [{ id: 'b', type: 'bake' }], outputs: {} }, 'b', 'test').code).toContain('return vec4f(0.0, 0.0, 0.0, 1.0);');
     const wrong: GraphFile = { nodes: [{ id: 'n', type: 'noise' }, { id: 'b', type: 'bake', inputs: { value: { node: 'n', output: 'nope' } } }], outputs: {} };
-    expect(() => materialGraphBakeShader(wrong, 'b', 'bad graph')).toThrow(/bad graph: input value of node 'b' is linked to output 'nope' of node 'n'/);
+    expect(() => materialGraphBakeShader(wrong, 'b', 'bad graph')).toThrow(/bad graph, baking node 'b': input value of node 'b' is linked to output 'nope' of node 'n'/);
   });
 
   test('模糊的半径超过 24 像素就在小一级的 mip 上做，结果的边长跟着减半', () => {
@@ -69,5 +69,17 @@ describe('材质节点图的滤镜（烘焙）', () => {
     expect(shader.code).toContain('case 3u: { shown = linearToSrgb(g_warp_color.rgb); }');
     expect(shader.nodes).toEqual(['noise', 'blur', 'wobble', 'warp', 'bricks']);
     expect([...shader.textures].sort()).toEqual([bakedTextureKey('blur'), bakedTextureKey('warp')]);
+  });
+
+  test('导出贴图：颜色换成 sRGB，法线按 0.5 偏移，数是灰度；没接的输出没有着色器', () => {
+    const file: GraphFile = {
+      nodes: [{ id: 'n', type: 'noise' }, { id: 'h', type: 'normalFromHeight', inputs: { height: { node: 'n' } } }],
+      outputs: { baseColor: { node: 'n' }, normal: { node: 'h' }, roughness: { node: 'n' } },
+    };
+    expect(materialGraphOutputShader(file, 'baseColor', 'test')!.code).toContain('return vec4f(linearToSrgb(vec4f(vec3f(g_n_value), 1.0).rgb), 1.0);');
+    expect(materialGraphOutputShader(file, 'normal', 'test')!.code).toContain('return vec4f(g_h_normal * 0.5 + 0.5, 1.0);');
+    expect(materialGraphOutputShader(file, 'roughness', 'test')!.code).toContain('return vec4f(vec3f(g_n_value), 1.0);');
+    expect(materialGraphOutputShader(file, 'emissive', 'test')).toBeUndefined();
+    expect(() => materialGraphOutputShader({ nodes: [{ id: 'n', type: 'noise' }], outputs: { roughness: { node: 'n', output: 'nope' } } }, 'roughness', 'bad')).toThrow(/bad, exporting roughness: output roughness is linked to output 'nope' of node 'n'/);
   });
 });

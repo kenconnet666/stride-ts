@@ -5,6 +5,11 @@ import type { Game } from '../../engine/Game';
 import type { Debug } from '../Debug';
 import { type Args, entityArg, pngBase64 } from './shared.ts';
 
+const MATERIAL_EXPORT_HELP = 'Export the outputs of a material\'s node graph (base color, normal, roughness, ...) as pngs evaluated on the 0..1 UV square, '
+  + 'saved in the content folder through the editor backend. args: material (content path), graph (optional: a node graph to use instead of the saved one), '
+  + 'size (pixels, default 1024), outputs (default all linked ones), path (content path prefix, default <material>_; files are <path><output>). '
+  + 'Colors are sRGB, the normal is tangent space mapped to 0..1, the rest grayscale.';
+
 const RENDER_HELP = 'Offline render (fixed time step, sub-frame antialiasing and motion blur) to an MP4 (H.264 + AAC) or a PNG sequence, saved in the project\'s exports folder. '
   + 'args: name (default "render"), preset (landscape1080 | vertical1080 | square1080 | landscape4k), width, height, fps, '
   + 'timeline (entity with a TimelinePlayer, or a timeline name: restarted from 0, seconds defaults to its length), seconds, samples (sub-frames per frame, default 8), '
@@ -57,4 +62,5 @@ export function registerCaptureCommands(debug: Debug, game: Game): void {
     if (!component) throw new Error('bake: the entity has no particle system');
     return (await import('../../offline/FlipbookBaker')).bakeCommand(game, component, args);
   });
+  debug.command('material-export', MATERIAL_EXPORT_HELP, async (args) => (await import('../../offline/MaterialGraphExport')).materialExportCommand(game, args));
 }

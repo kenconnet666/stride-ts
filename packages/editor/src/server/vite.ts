@@ -9,10 +9,10 @@
  */
 import { fileURLToPath } from 'node:url';
 import type { Plugin, ViteDevServer } from 'vite';
-import { EDITOR_ASSETS_EVENT, EDITOR_UI_PATH } from '../protocol.ts';
-import { EditorBackend } from './EditorBackend.ts';
-import { syncAssetPackages } from './assetPackages.ts';
-import { loadProject } from './project.ts';
+import { EDITOR_ASSETS_EVENT, EDITOR_UI_PATH } from '../shared/protocol.ts';
+import { EditorBackend } from './backend/EditorBackend.ts';
+import { syncAssetPackages } from './backend/assetPackages.ts';
+import { loadProject } from './backend/project.ts';
 
 const UI_ROOT = fileURLToPath(new URL('../ui', import.meta.url));
 

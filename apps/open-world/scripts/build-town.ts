@@ -3,7 +3,7 @@
 //   node apps/open-world/scripts/build-town.ts
 // 打开 http://localhost:5232/?world=Worlds/Town 看。同一个种子每次一样；已经有了会先删掉重来。
 import path from 'node:path';
-import { McpProcess } from '../../../packages/editor/src/server/mcpClient.ts';
+import { McpProcess } from '@stride-ts/editor/mcp-client';
 
 const project = path.resolve(import.meta.dirname, '..');
 const mcp = new McpProcess(project);

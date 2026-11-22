@@ -20,12 +20,12 @@ import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/
 import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
-import { freeAssetPath } from '../../newAssets';
+import { freeAssetPath } from '../../shared/newAssets';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../../library/index.ts';
 import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
-import { EditorClient } from '../../EditorClient.ts';
-import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../../protocol.ts';
-import { materialSet } from '../../materialSet.ts';
+import { EditorClient } from '../../client/EditorClient.ts';
+import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../../shared/protocol.ts';
+import { materialSet } from '../../shared/materialSet.ts';
 import { t } from '../i18n/messages';
 import { ViewportTools } from './ViewportTools';
 

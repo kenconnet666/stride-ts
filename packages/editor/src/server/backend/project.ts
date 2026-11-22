@@ -1,7 +1,7 @@
 /** 工程：根目录、清单（PROJECT_FILE，可以没有）和由它算出来的几个路径。 */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { PROJECT_FILE, type ProjectInfo, type ProjectManifest } from '../protocol.ts';
+import { PROJECT_FILE, type ProjectInfo, type ProjectManifest } from '../../shared/protocol.ts';
 
 export interface Project {
   /** 工程根目录（绝对路径）。 */

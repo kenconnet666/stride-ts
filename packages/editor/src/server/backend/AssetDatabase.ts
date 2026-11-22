@@ -9,7 +9,7 @@ import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { decodeAnimation, decodeModel, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type UIFile } from '@stride-ts/engine/content-format';
 import { assetReferences, type AssetKind, type AssetReference } from '@stride-ts/engine/content-references';
-import type { AssetChanges, AssetRecord } from '../protocol.ts';
+import type { AssetChanges, AssetRecord } from '../../shared/protocol.ts';
 
 /** 声音的音频文件（引擎的 SoundEncoding）。 */
 const AUDIO_EXTENSIONS = ['.mp3', '.ogg', '.wav', '.flac', '.aac'];

@@ -6,7 +6,7 @@
 import {
   EDITOR_API_PATH, EDITOR_ASSETS_EVENT, type AssetChanges, type AssetKind, type AssetRecord, type DeleteResult, type ImportResult, type MoveRequest, type MoveResult,
   type ProjectInfo,
-} from './protocol.ts';
+} from '../shared/protocol.ts';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 
 /** 每个接口请求都要带的头，同后端的 EDITOR_HEADER。 */

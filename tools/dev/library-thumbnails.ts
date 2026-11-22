@@ -8,7 +8,7 @@ import { execSync, spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../../packages/editor/src/library/index.ts';
+import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '@stride-ts/editor/library';
 
 process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', 'library-thumbnails');
 const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('../../packages/cli/src/chrome.ts');

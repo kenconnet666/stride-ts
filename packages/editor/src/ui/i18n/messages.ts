@@ -3,7 +3,7 @@
  * 后端、引擎抛出来的报错是英语（运行时的报错不翻，同项目约定），原样显示。
  */
 import type { MessageTable } from '@zerodep-dev/vue-tsx-pro-ui';
-import type { NewAssetOption, ProceduralShapeType } from '../../newAssets';
+import type { NewAssetOption, ProceduralShapeType } from '../../shared/newAssets';
 import { translations } from './i18n';
 
 export interface EditorMessages {

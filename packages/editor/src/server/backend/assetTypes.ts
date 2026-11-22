@@ -20,7 +20,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { scriptKey } from '@stride-ts/engine/content-prefabs';
 import type { PrefabFile, SceneEntityFile } from '@stride-ts/engine/content-format';
-import type { AssetRecord } from '../protocol.ts';
+import type { AssetRecord } from '../../shared/protocol.ts';
 
 /**
  * 生成结构要的东西：预制体文件（按内容路径），脚本的 type 在哪个模块、导出名是什么（相对生成的文件的模块路径；找不到

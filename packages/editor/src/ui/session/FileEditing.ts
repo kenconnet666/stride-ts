@@ -4,8 +4,8 @@
  * 存盘；撤销、重做把那一步的文件交给 restore（换回工具里、刷新工具条），再存盘（后端重新烘模型、视口热重载）。
  */
 import { createHistory, type History } from '@zerodep-dev/vue-tsx-pro-ui';
-import type { EditorClient } from '../../EditorClient.ts';
-import type { AssetKind } from '../../protocol.ts';
+import type { EditorClient } from '../../client/EditorClient.ts';
+import type { AssetKind } from '../../shared/protocol.ts';
 
 export interface FileEditingOptions<F> {
   readonly client: EditorClient;

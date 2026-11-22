@@ -6,50 +6,39 @@
  * 一致，而且每个请求要带 EDITOR_HEADER（跨源的页面带自定义头会先发预检，这里不回 CORS 头，预检过不了）。
  */
 import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type SplineFile, type TreeFile, type BuildingFile, type TextModelFile, type ProductFile, type ShelfFile, type PileFile, type SignFile, type CeilingFile, type FixtureFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
+import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeProduct, bakeShelf, bakePile, bakeSign, bakeCeiling, bakeFixture, bakeBrushModel, brushToPoly, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, bakeTreeModel, bakeBuildingModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
+import { brushToPoly, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import { parseCubeLut } from '@stride-ts/engine/color-lut';
-import { materialSet, scannedMaterial, SRGB_ROLES, type MaterialCredit, type MaterialMapRole } from '../materialSet.ts';
+import { materialSet, scannedMaterial, SRGB_ROLES, type MaterialCredit, type MaterialMapRole } from '../../shared/materialSet.ts';
 import type { AssetKind } from '@stride-ts/engine/content-references';
-import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
+import { type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../../shared/protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
 import { rewriteImageEncoding, rewriteReferences } from './rewrite.ts';
 import { writeAssetTypes } from './assetTypes.ts';
 import { loadProject, projectInfo, type Project } from './project.ts';
 import { syncAssetPackages } from './assetPackages.ts';
+import { GENERATORS, isGenerated, REBAKE_WITH, type GeneratedKind } from './bakers.ts';
+import { checkContentPath, contentHash, writeAtomically } from './files.ts';
+import { handleEditorRequest, HttpError } from './http.ts';
 
 /** 导出的成片、图像序列放在工程的这个文件夹里（不提交）。 */
 export const EXPORTS_DIR = 'exports';
 const EXPORT_EXTENSIONS: ReadonlySet<string> = new Set(['mp4', 'webm', 'png']);
 
-/** 每个接口请求都要带的头（值随意）。 */
-export const EDITOR_HEADER = 'x-stride-editor';
-
 /** 文件变化攒这么久（毫秒）一起处理：导入器、git 切分支一次会动很多文件。 */
 const CHANGE_DELAY = 50;
 
-/** 能经接口读写内容的种类：主文件是 JSON 的。 */
+/** 存下、改了以后后端要烘（导入）的资源：生成模型的（bakers.ts 的表）和源模型、贴图的导入设置。 */
+type BakedKind = GeneratedKind | 'modelImport' | 'imageImport';
+const isBakedKind = (kind: string): kind is BakedKind => isGenerated(kind) || kind === 'modelImport' || kind === 'imageImport';
+
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
-/** 编辑器后端烘成同名模型的资源种类（源头是 JSON，场景引用烘出的 .model）。 */
-/** 编辑器后端照它烘出（导入）同名模型的资源：白盒、SDF、多边形网格、源模型的导入设置。 */
-type BakedKind = 'brush' | 'sdf' | 'poly' | 'text' | 'spline' | 'tree' | 'building' | 'product' | 'shelf' | 'pile' | 'sign' | 'ceiling' | 'fixture' | 'modelImport' | 'imageImport';
-const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'text' || kind === 'spline' || kind === 'tree' || kind === 'building' || kind === 'product' || kind === 'shelf' || kind === 'pile' || kind === 'sign' || kind === 'ceiling' || kind === 'fixture' || kind === 'modelImport' || kind === 'imageImport';
-
 const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world', 'terrain', 'spline', 'tree', 'building', 'product', 'shelf', 'pile', 'sign', 'ceiling', 'fixture', 'scatter', 'city', 'water']);
-
-class HttpError extends Error {
-  readonly status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
 
 export class EditorBackend {
   readonly project: Project;
@@ -612,78 +601,27 @@ export class EditorBackend {
     if (record.kind === 'imageImport') return same('image');
     if (record.kind === 'image') return same('imageImport');
     if (record.kind === 'modelImport') return same('model', 'modelSource');
-    // 包装还生成了同名的标签贴图和材质；货架还有表面的图集
-    if (record.kind === 'product') return same('model', 'material', 'image');
-    if (record.kind === 'shelf' || record.kind === 'pile' || record.kind === 'sign' || record.kind === 'ceiling' || record.kind === 'fixture') {
-      // 生成的模型、图集（颜色、表面、自发光）、材质（图集的、玻璃的）
-      const generated = [['image', `${record.path}.surface`], ['image', `${record.path}.emissive`], ['material', `${record.path}.glass`]] as const;
-      return [...same('model', 'material', 'image'), ...generated.map(([kind, path]) => this.database.get(kind, path)).filter((found) => found !== undefined)];
+    if (isGenerated(record.kind)) {
+      return GENERATORS[record.kind].outputs.map(([kind, suffix]) => this.database.get(kind, record.path + suffix)).filter((found) => found !== undefined);
     }
-    if (isBakedKind(record.kind)) return same('model');
-    if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'text', 'spline', 'tree', 'building', 'product', 'shelf', 'pile', 'sign', 'ceiling', 'fixture', 'modelImport', 'modelSource');
+    if (record.kind === 'model') return same(...(Object.keys(GENERATORS) as GeneratedKind[]), 'modelImport', 'modelSource');
     return [];
   }
 
-  /** HTTP 接口；不是编辑器接口的请求交给 next。 */
+  /** HTTP 接口（路由表在 http.ts）；不是编辑器接口的请求交给 next。 */
   handle(request: IncomingMessage, response: ServerResponse, next: () => void): void {
-    const url = new URL(request.url ?? '/', 'http://localhost');
-    if (url.pathname !== EDITOR_API_PATH && !url.pathname.startsWith(`${EDITOR_API_PATH}/`)) return next();
-    const reply = (status: number, body: unknown) => {
-      response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-      response.end(JSON.stringify(body));
-    };
-    this.#route(request, url).then((body) => reply(200, body), (error: unknown) => {
-      reply(error instanceof HttpError ? error.status : 500, { error: error instanceof Error ? error.message : String(error) });
-    });
+    handleEditorRequest(this, request, response, next);
   }
 
-  async #route(request: IncomingMessage, url: URL): Promise<unknown> {
-    if (!trusted(request)) throw new HttpError(403, `forbidden: the editor API only answers same-origin pages on this machine that send the ${EDITOR_HEADER} header`);
-    const route = `${request.method} ${url.pathname.slice(EDITOR_API_PATH.length)}`;
-    if (route === 'GET /project') return projectInfo(this.project, this.#publicDir);
-    if (route === 'GET /assets') {
-      await this.#work;
-      return this.database.list();
-    }
-    if (route === 'POST /move') return this.moveAssets(await readJson(request) as MoveRequest);
-    if (route === 'POST /world/place') {
-      const { world, layer, entities } = await readJson(request) as { world: string; layer: string; entities: SceneEntityFile[] };
-      return this.placeInWorld(world, layer, entities);
-    }
-    if (route === 'POST /brush/to-poly') {
-      const { path: brushPath, target } = await readJson(request) as { path?: string; target?: string };
-      if (!brushPath) throw new HttpError(400, 'path (the content path of the greybox) is required');
-      return this.exportBrushToPoly(brushPath, target);
-    }
-    if (route === 'POST /import-material') {
-      // 一套扫描的材质：JSON 里各个文件是 base64
-      const body = await readJson(request) as { folder?: string; files: { name: string; base64: string }[]; name?: string; tileSize?: number; maxSize?: number; credit?: MaterialCredit };
-      if (!Array.isArray(body.files)) throw new HttpError(400, 'files ([{ name, base64 }]) is required');
-      return this.importMaterialSet(body.folder ?? '', body.files.map((file) => ({ name: file.name, bytes: Buffer.from(file.base64, 'base64') })), body);
-    }
-    if (route === 'POST /import') {
-      const folder = url.searchParams.get('folder') ?? '', name = url.searchParams.get('name');
-      if (!name) throw new HttpError(400, 'name (the dropped file name) is required');
-      return this.importFile(folder, name, await readBytes(request));
-    }
-    if (route === 'PUT /image') {
-      const assetPath = url.searchParams.get('path');
-      if (!assetPath) throw new HttpError(400, 'path (the content path of the image, without extension) is required');
-      return this.saveImage(assetPath, await readBytes(request));
-    }
-    if (route === 'POST /export') {
-      const name = url.searchParams.get('name');
-      if (!name) throw new HttpError(400, 'name (the file name under exports/) is required');
-      return this.saveExport(name, await readBytes(request));
-    }
-    if (route === 'GET /asset' || route === 'PUT /asset' || route === 'DELETE /asset') {
-      const kind = url.searchParams.get('kind'), assetPath = url.searchParams.get('path');
-      if (!kind || !assetPath) throw new HttpError(400, 'kind and path are required');
-      if (request.method === 'GET') return this.readAsset(kind as AssetKind, assetPath);
-      if (request.method === 'DELETE') return this.deleteAsset(kind as AssetKind, assetPath, { force: url.searchParams.get('force') === '1' });
-      return this.saveAsset(kind as AssetKind, assetPath, await readJson(request), { create: url.searchParams.get('create') === '1' });
-    }
-    throw new HttpError(404, `no route ${route}`);
+  /** 工程的信息（GET /project）。 */
+  info(): ReturnType<typeof projectInfo> {
+    return projectInfo(this.project, this.#publicDir);
+  }
+
+  /** 所有资源（GET /assets）：等手上的活做完再列。 */
+  async listAssets(): Promise<AssetRecord[]> {
+    await this.#work;
+    return this.database.list();
   }
 
   /**
@@ -740,11 +678,13 @@ export class EditorBackend {
         console.warn(`[stride-editor] ${kind} ${record.path}: ${(error as Error).message}; its model is left as it was`);
       }
     }
-    // 货架、堆放用着改了的商品：跟着重新生成（商品的标签、尺寸在它们的图集和网格里）
-    const users = new Map(changes.changed.filter((record) => record.kind === 'product').flatMap((record) => this.database.referrers('product', record.path))
-      .filter((record) => record.kind === 'shelf' || record.kind === 'pile').map((record) => [`${record.kind}:${record.path}`, record] as const));
+    // 用着改了的资源的生成资源（货架、堆放用着商品）：跟着重新生成
+    const users = new Map(changes.changed.flatMap((record) => {
+      const dependents = REBAKE_WITH[record.kind];
+      return dependents ? this.database.referrers(record.kind, record.path).filter((user) => (dependents as readonly string[]).includes(user.kind)) : [];
+    }).map((record) => [`${record.kind}:${record.path}`, record] as const));
     for (const { kind, path: user } of users.values()) {
-      const bakedKind = kind as 'shelf' | 'pile';
+      const bakedKind = kind as GeneratedKind;
       try {
         const text = await readFile(path.join(this.project.contentDir, assetFileName(bakedKind, user)), 'utf8');
         baked.push(...(await this.#bake(bakedKind, user, JSON.parse(text))).files);
@@ -756,8 +696,7 @@ export class EditorBackend {
   }
 
   /**
-   * 把白盒、SDF、多边形网格烘成同名的模型（pipeline 的 bakeBrushModel、bakeSdfModel、bakePolyModel），或者照导入设置把旁边的
-   * 源模型导入成同名的模型（importSourceModel：连材质、贴图、骨架、动画；已经有的材质文件不动，导入以后可能改过）。写好文件，
+   * 照 bakers.ts 的表把生成模型的资源烘成同名的模型（和附带的图集、材质），或者照导入设置把旁边的源模型导入成同名的模型（importSourceModel：连材质、贴图、骨架、动画；已经有的材质文件不动，导入以后可能改过）。写好文件，
    * 返回它们的相对路径（还没刷新数据库）和导入的警告、动画。形状、设置不对时报错。
    */
   async #bake(kind: BakedKind, assetPath: string, content: unknown): Promise<Baked> {
@@ -782,31 +721,11 @@ export class EditorBackend {
       this.#recordBake(`${kind}:${assetPath}`, content);
       return { files: written, warnings, animations };
     }
-    if (kind === 'product' || kind === 'shelf' || kind === 'pile' || kind === 'sign' || kind === 'ceiling' || kind === 'fixture') {
-      const read = (file: string) => readFile(path.join(this.project.contentDir, file));
-      const files = kind === 'product' ? await bakeProduct(tools, content as ProductFile, assetPath, read, where)
-        : kind === 'shelf' ? await bakeShelf(tools, content as ShelfFile, assetPath, read, where)
-        : kind === 'pile' ? await bakePile(tools, content as PileFile, assetPath, read, where)
-        : kind === 'sign' ? await bakeSign(tools, content as SignFile, assetPath, read, where)
-        : kind === 'ceiling' ? bakeCeiling(tools, content as CeilingFile, assetPath, where)
-        : await bakeFixture(tools, content as FixtureFile, assetPath, read, where);
-      for (const file of files) await writeAtomically(path.join(this.project.contentDir, file.path), file.bytes);
-      this.#recordBake(`${kind}:${assetPath}`, content);
-      return { files: files.map((file) => file.path), warnings: [] };
-    }
-    const bytes = kind === 'brush' ? await bakeBrushModel(tools, content as BrushFile, where)
-      : kind === 'sdf' ? await bakeSdfModel(tools, content as SdfFile, where)
-      : kind === 'text' ? await bakeTextModel(tools, content as TextModelFile, (file) => readFile(path.join(this.project.contentDir, file)), where)
-      : kind === 'spline' ? bakeSplineModel(tools, content as SplineFile, where)
-      : kind === 'tree' ? bakeTreeModel(tools, content as TreeFile, where)
-      : kind === 'building' ? bakeBuildingModel(tools, content as BuildingFile, where)
-      : bakePolyModel(tools, content as PolyMeshFile, where);
+    const read = (file: string) => readFile(path.join(this.project.contentDir, file));
+    const files = await GENERATORS[kind].bake({ tools, read }, content, assetPath, where);
+    for (const file of files) await writeAtomically(path.join(this.project.contentDir, file.path), file.bytes);
     this.#recordBake(`${kind}:${assetPath}`, content);
-    // 没有几何的（河道样条）：不写模型
-    if (!bytes) return { files: [], warnings: [] };
-    const model = assetPath + EXTENSIONS.model;
-    await writeAtomically(path.join(this.project.contentDir, model), bytes);
-    return { files: [model], warnings: [] };
+    return { files: files.map((file) => file.path), warnings: [] };
   }
 
   /**
@@ -860,81 +779,6 @@ export class EditorBackend {
   }
 }
 
-/** 本机的同源页面发的、带着 EDITOR_HEADER 的请求。 */
-function trusted(request: IncomingMessage): boolean {
-  const host = request.headers.host;
-  if (!host || request.headers[EDITOR_HEADER] === undefined) return false;
-  let hostname: string;
-  try {
-    hostname = new URL(`http://${host}`).hostname;
-    if (request.headers.origin !== undefined && new URL(request.headers.origin).host !== host) return false;
-  } catch {
-    return false;
-  }
-  return hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1' || hostname === '[::1]';
-}
-
-/** 内容路径（相对内容目录、正斜杠、不带扩展名）不能是空的，不能跑出内容目录。 */
-function checkContentPath(assetPath: string): string {
-  if (typeof assetPath !== 'string' || assetPath.split('/').some((segment) => segment === '' || segment === '.' || segment === '..') || /[\\:]/.test(assetPath)) {
-    throw new HttpError(400, `'${assetPath}' is not a content path`);
-  }
-  return assetPath;
-}
-
-let atomicWrites = 0;
-
-/**
- * 先写到旁边的临时文件再改名：读的人（开发服务器、游戏页面）不会读到写了一半的。临时文件每次一个名字（同一个文件连着写时
- * 不互相盖），改名没成就删掉它，不留在内容目录里。
- */
-async function writeAtomically(file: string, content: string | Uint8Array): Promise<void> {
-  await mkdir(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}-${++atomicWrites}.tmp`;
-  await writeFile(temporary, content);
-  try {
-    await renameRetrying(temporary, file);
-  } catch (error) {
-    await rm(temporary, { force: true });
-    throw error;
-  }
-}
-
-/** Windows 上目标文件正被别的进程打开着（开发服务器在读它烘模型、监视文件的、杀毒）时改名报 EPERM、EBUSY：等一下再试。 */
-async function renameRetrying(from: string, to: string): Promise<void> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      await rename(from, to);
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (attempt >= 6 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** attempt));
-    }
-  }
-}
-
-async function readJson(request: IncomingMessage): Promise<unknown> {
-  try {
-    return JSON.parse(await readBody(request));
-  } catch (error) {
-    throw new HttpError(400, `the request body is not JSON: ${(error as Error).message}`);
-  }
-}
-
-async function readBody(request: IncomingMessage): Promise<string> {
-  return (await readBytes(request)).toString('utf8');
-}
-
-function readBytes(request: IncomingMessage): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    request.on('data', (chunk: Buffer) => chunks.push(chunk));
-    request.on('end', () => resolve(Buffer.concat(chunks)));
-    request.on('error', reject);
-  });
-}
-
 /** 烘一次的结果：写了的文件（相对内容目录），导入源模型时的警告和动画剪辑。 */
 interface Baked {
   readonly files: readonly string[];
@@ -942,7 +786,3 @@ interface Baked {
   readonly animations?: ImportResult['animations'];
 }
 
-/** 资源内容的哈希（解析过的 JSON 重新序列化：空白、换行不算改了）。 */
-function contentHash(content: unknown): string {
-  return createHash('sha1').update(JSON.stringify(content)).digest('hex');
-}

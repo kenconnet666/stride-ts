@@ -9,7 +9,7 @@ import { branchFromPoint, deleteBrush, deleteSplinePoints } from '@stride-ts/eng
 import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
 import type { BrushFile, BrushShapeFile, PolyMeshFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
 import { encodePng } from '@stride-ts/engine/png';
-import { freeAssetPath } from '../../newAssets';
+import { freeAssetPath } from '../../shared/newAssets';
 import { t } from '../i18n/messages';
 import type { EditorSession } from './EditorSession';
 import { FileEditing } from './FileEditing';

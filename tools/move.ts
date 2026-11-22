@@ -102,3 +102,7 @@ for (const from of moves.keys()) {
 }
 
 console.log(`moved ${moves.size} files, rewrote imports in ${rewrites.size} files:\n${[...moves].map(([from, to]) => `  ${relative(packageDir, from)} -> ${relative(packageDir, to)}`).join('\n')}`);
+
+// 按文件自己的位置拼的路径（path.resolve(import.meta.dirname, …)、new URL(…, import.meta.url)）改不了：列出来，挪完手动查
+const located = [...moves.values()].filter((file) => /import\.meta\.(dirname|filename|url)\b/.test(readFileSync(file, 'utf8')));
+if (located.length > 0) console.warn(`check paths built from import.meta.dirname / import.meta.url in:\n${located.map((file) => `  ${relative(packageDir, file)}`).join('\n')}`);

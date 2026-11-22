@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { parseProceduralModel, readModelFile } from '@stride-ts/engine/content-format';
-import { freeAssetPath, NEW_ASSET_OPTIONS } from '../src/newAssets.ts';
+import { freeAssetPath, NEW_ASSET_OPTIONS } from '../src/shared/newAssets.ts';
 
 describe('"新建"出来的资源', () => {
   test('每种形状都有一项，建出的 JSON 模型合法、能生成网格；场景、材质、UI 页面带上名字', () => {

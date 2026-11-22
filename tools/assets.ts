@@ -14,8 +14,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { EditorBackend } from '../packages/editor/src/server/EditorBackend.ts';
-import type { MaterialCredit } from '../packages/editor/src/materialSet.ts';
+import { EditorBackend, type MaterialCredit } from '@stride-ts/editor/server';
 
 const root = path.resolve(import.meta.dirname, '..');
 const assets = process.env['STRIDE_ASSETS'] ?? 'C:/code/stride-ts-assets';

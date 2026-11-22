@@ -10,8 +10,10 @@
   "exports": {
     "./vite": "./src/server/vite.ts",
     "./server": "./src/server/index.ts",
-    "./protocol": "./src/protocol.ts",
-    "./client": "./src/EditorClient.ts"
+    "./protocol": "./src/shared/protocol.ts",
+    "./client": "./src/client/EditorClient.ts",
+    "./mcp-client": "./src/server/mcp/mcpClient.ts",
+    "./library": "./src/library/index.ts"
   },
   "scripts": {
     "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",

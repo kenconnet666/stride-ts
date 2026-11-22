@@ -6,7 +6,7 @@
 //   比对：pnpm exec stride open "http://localhost:5234/?scene=Subway" --headless --size 960x1280
 //         pnpm exec stride shot out.png --photo reference/subway/platform-screen-doors.jpg
 import path from 'node:path';
-import { McpProcess } from '../../../packages/editor/src/server/mcpClient.ts';
+import { McpProcess } from '@stride-ts/editor/mcp-client';
 
 const project = path.resolve(import.meta.dirname, '..');
 const mcp = new McpProcess(project);

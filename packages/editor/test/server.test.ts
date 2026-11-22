@@ -11,7 +11,7 @@ import {
   AssetDatabase, classifyAssetFile, EDITOR_API_PATH, EDITOR_HEADER, EditorBackend, generateAssetTypes, loadProject, PROJECT_FILE, projectInfo,
   type AssetChanges, type AssetRecord,
 } from '../src/server/index.ts';
-import type { ImportResult } from '../src/protocol.ts';
+import type { ImportResult } from '../src/shared/protocol.ts';
 
 // 编辑器的后端：工程清单、资源数据库、资源句柄的生成、HTTP 接口。用临时目录里的真文件。
 

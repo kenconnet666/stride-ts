@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { classifyMap, materialSet, scannedMaterial } from '../src/materialSet.ts';
+import { classifyMap, materialSet, scannedMaterial } from '../src/shared/materialSet.ts';
 import { ASSET_FIELDS, checkFields } from '@stride-ts/engine/editor-fields';
 
 describe('扫描的材质', () => {

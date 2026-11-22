@@ -7,7 +7,7 @@ import path from 'node:path';
 import type { ProductFile } from '../../../packages/engine/src/content/formats/productFormat.ts';
 import type { CeilingFile } from '../../../packages/engine/src/content/formats/ceilingFormat.ts';
 import { ceilingLights } from '../../../packages/engine/src/modeling/ceiling.ts';
-import { McpProcess } from '../../../packages/editor/src/server/mcpClient.ts';
+import { McpProcess } from '@stride-ts/editor/mcp-client';
 
 const project = path.resolve(import.meta.dirname, '..');
 const mcp = new McpProcess(project);

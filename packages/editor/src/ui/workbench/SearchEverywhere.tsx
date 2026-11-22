@@ -1,7 +1,7 @@
 import { Search } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { CommandPalette, IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
-import type { AssetKind } from '../../protocol.ts';
+import type { AssetKind } from '../../shared/protocol.ts';
 import { t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
 

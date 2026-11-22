@@ -11,17 +11,17 @@
  */
 import path from 'node:path';
 import type { AssetKind } from '@stride-ts/engine/content-references';
-import type { MoveResult } from '../protocol.ts';
-import { AssetDatabase } from './AssetDatabase.ts';
-import { writeAssetTypes } from './assetTypes.ts';
-import { EditorBackend } from './EditorBackend.ts';
-import { loadProject } from './project.ts';
-import { syncAssetPackages } from './assetPackages.ts';
+import type { MoveResult } from '../shared/protocol.ts';
+import { AssetDatabase } from './backend/AssetDatabase.ts';
+import { writeAssetTypes } from './backend/assetTypes.ts';
+import { EditorBackend } from './backend/EditorBackend.ts';
+import { loadProject } from './backend/project.ts';
+import { syncAssetPackages } from './backend/assetPackages.ts';
 import { createProject } from './template.ts';
 import { existsSync, realpathSync, watch } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
-import { createEditorMcpServer, type McpProjects } from './mcpServer.ts';
+import { createEditorMcpServer, type McpProjects } from './mcp/mcpServer.ts';
 
 const [command, directory = '.', ...rest] = process.argv.slice(2);
 if (command === 'new') {

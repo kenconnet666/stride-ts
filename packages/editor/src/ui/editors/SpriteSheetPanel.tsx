@@ -15,8 +15,8 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, NumberField, TextField, Tree, usePanZoom } from '@zerodep-dev/vue-tsx-pro-ui';
 import { TEXTURE_EXTENSIONS, type SpriteSheetFile, type TextureRef } from '@stride-ts/engine/content-format';
 import { autoRegions, DEFAULT_PIXELS_PER_UNIT, gridRegions, replaceSprites, type SpritePixels, type SpriteRegion } from '@stride-ts/engine/editor-sprites';
-import { t } from './messages';
-import type { EditorSession } from './session';
+import { t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 type Sprite = SpriteSheetFile['sprites'][number];
 

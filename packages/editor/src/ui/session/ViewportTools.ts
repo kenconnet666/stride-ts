@@ -10,8 +10,8 @@ import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@st
 import type { BrushFile, BrushShapeFile, PolyMeshFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
 import { encodePng } from '@stride-ts/engine/png';
 import { freeAssetPath } from '../../newAssets';
-import { t } from '../messages';
-import type { EditorSession } from '../session';
+import { t } from '../i18n/messages';
+import type { EditorSession } from './EditorSession';
 import { FileEditing } from './FileEditing';
 
 /** 模型能从哪种源文件烘出来、在视口里编辑：多边形网格、样条、白盒。 */
@@ -54,6 +54,16 @@ export class ViewportTools {
   /** 正开着的工具在编辑的文件的撤销历史（会话的撤销、重做这时归它）；没开、在画贴图时是 undefined。 */
   get history(): FileEditing<object>['history'] | undefined {
     return this.#editing.value?.history;
+  }
+
+  /** 工具条上的操作做不了的原因：状态栏上显示。 */
+  report(message: string): void {
+    this.#session.notice.value = message;
+  }
+
+  /** 开着编辑文件的工具（雕刻、多边形、样条、白盒）：视口上面换成它的工具条。 */
+  get editing(): boolean {
+    return this.sculpting.value !== undefined || this.polyEditing.value !== undefined || this.splineEditing.value !== undefined || this.brushEditing.value !== undefined;
   }
 
   /** 模型 modelPath 是不是从这种源文件烘出来的：同一路径有那种资源时是它的路径。 */

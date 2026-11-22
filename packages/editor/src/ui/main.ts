@@ -5,8 +5,8 @@
 import { createApp } from 'vue';
 import { createUi, darkTheme, enUS, lightTheme, zhCN } from '@zerodep-dev/vue-tsx-pro-ui';
 import { App } from './App';
-import { locale } from './i18n';
-import { EditorSession } from './session';
+import { locale } from './i18n/i18n';
+import { EditorSession } from './session/EditorSession';
 
 const session = new EditorSession();
 createApp(App, { session })

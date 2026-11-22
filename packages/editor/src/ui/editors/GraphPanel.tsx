@@ -15,9 +15,9 @@ import { Button, IconButton, Menu, MenuGroup, MenuItem } from '@zerodep-dev/vue-
 import { Diagram, type DiagramConnection, type DiagramEdgeItem, type DiagramNodeItem, type DiagramNodeMove, type DiagramPortItem, type DiagramSelection } from '@zerodep-dev/vue-tsx-pro-ui/diagram';
 import type { GraphFile, GraphLink, GraphNodeFile, NodeSpec } from '@stride-ts/engine/node-graph';
 import { MATERIAL_GRAPH_OUTPUTS, MATERIAL_NODE_SPECS } from '@stride-ts/engine/material-graph';
-import { Fields, type FieldContext } from './FieldEditor';
-import { t } from './messages';
-import type { EditorSession } from './session';
+import { Fields, type FieldContext } from '../fields/FieldEditor';
+import { t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 const WIDTH = 190;
 const HEADER = 24;

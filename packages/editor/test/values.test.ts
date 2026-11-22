@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { hasMixed, PROPERTY_MIXED as MIXED } from '@zerodep-dev/vue-tsx-pro-ui';
 import { ENTITY_FIELDS, COMPONENT_FIELDS } from '@stride-ts/engine/editor-fields';
-import { eulerToQuaternion, mergeField, mergeValues, MixedRotation, quaternionToEuler } from '../src/ui/values.ts';
+import { eulerToQuaternion, mergeField, mergeValues, MixedRotation, quaternionToEuler } from '../src/ui/fields/values.ts';
 
 // 属性面板上的值和文件里的值之间的换算。
 

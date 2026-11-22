@@ -7,7 +7,7 @@ import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { onMounted, onUnmounted } from 'vue';
 import type { TimelineTrackFile } from '@stride-ts/engine/content-format';
-import type { EditorSession } from './session';
+import type { EditorSession } from '../session/EditorSession';
 
 type PropertyTrack = Extract<TimelineTrackFile, { type: 'property' }>;
 type Key = PropertyTrack['keys'][number];

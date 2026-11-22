@@ -9,13 +9,13 @@ import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Plus, Wand } from '@lucide/icons';
 import { Button, ScrollArea, ToggleGroup, ToggleItem } from '@zerodep-dev/vue-tsx-pro-ui';
-import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, type EffectCategory, type MaterialCategory } from '../library/index.ts';
-import { t } from './messages';
-import type { EditorSession } from './session';
+import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, type EffectCategory, type MaterialCategory } from '../../library/index.ts';
+import { t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 /** 缩略图（tools/dev/library-thumbnails.ts 画的），按 id 找。 */
 const THUMBNAILS: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(import.meta.glob<string>('../library/thumbnails/*.webp', { eager: true, query: '?url', import: 'default' }))
+  Object.entries(import.meta.glob<string>('../../library/thumbnails/*.webp', { eager: true, query: '?url', import: 'default' }))
     .map(([file, url]) => [file.slice(file.lastIndexOf('/') + 1, -'.webp'.length), url]),
 );
 

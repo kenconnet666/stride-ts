@@ -5,8 +5,8 @@ import { Icon, IconButton, Tree, type TreeMove, type TreeMoveTarget } from '@zer
 import { watch } from 'vue';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { availableParent } from '@stride-ts/engine/content-prefabs';
-import { t } from './messages';
-import type { EditorSession } from './session';
+import { t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
   tree: { height: '100%' },

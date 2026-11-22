@@ -10,8 +10,8 @@ import { Button } from '@zerodep-dev/vue-tsx-pro-ui';
 import { mutateSound, seededRandom, soundSynth, SOUND_PRESETS, SOUND_SYNTH_RATE, synthesizeSound, type SoundPreset, type SoundSynth } from '@stride-ts/engine/audio-synth';
 import type { SoundFile } from '@stride-ts/engine/content-format';
 import { onUnmounted, watch } from 'vue';
-import { t } from './messages';
-import type { EditorSession } from './session';
+import { t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
   box: { display: 'flex', flexDirection: 'column', gap: '4px', paddingBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },

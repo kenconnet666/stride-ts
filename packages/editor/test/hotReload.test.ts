@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { AssetRecord } from '../src/protocol.ts';
-import { assetsToReload } from '../src/ui/session.ts';
+import { assetsToReload } from '../src/ui/session/EditorSession.ts';
 
 const record = (kind: AssetRecord['kind'], path: string, references: AssetRecord['references'] = []): AssetRecord =>
   ({ kind, path, files: [], bytes: 0, modified: 0, references });

@@ -12,9 +12,9 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, CurveField, GradientField, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Tab, TabList, Tabs, type CurveKey, type GradientStop } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { ParticleModuleFile, SceneEntityFile } from '@stride-ts/engine/content-format';
 import { curve, EMITTER_FIELDS, isCurve, newEmitter, PARTICLE_MODULES, type ParticleStackKind } from '@stride-ts/engine/editor-particles';
-import { FieldEditor, Fields, type FieldContext, type ValuePath } from './FieldEditor';
-import { t } from './messages';
-import type { EditorSession, FlipbookSettings } from './session';
+import { FieldEditor, Fields, type FieldContext, type ValuePath } from '../fields/FieldEditor';
+import { t } from '../i18n/messages';
+import type { EditorSession, FlipbookSettings } from '../session/EditorSession';
 
 const SPECS = new Map(PARTICLE_MODULES.map((spec) => [spec.type, spec]));
 const LISTS: readonly ParticleStackKind[] = ['spawners', 'initializers', 'updaters'];

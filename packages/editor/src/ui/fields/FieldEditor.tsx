@@ -14,8 +14,8 @@ import {
 } from '@zerodep-dev/vue-tsx-pro-ui';
 import { inferFields, type Field, type FieldType } from '@stride-ts/engine/editor-fields';
 import type { SceneScriptValue } from '@stride-ts/engine/content-format';
-import { fieldDescription, fieldName } from './fieldMessages';
-import { t } from './messages';
+import { fieldDescription, fieldName } from '../i18n/fieldMessages';
+import { t } from '../i18n/messages';
 import { eulerToQuaternion, MixedRotation, quaternionToEuler } from './values';
 
 /** 文件里一个值的路径（相对编辑器拿到的值）。 */

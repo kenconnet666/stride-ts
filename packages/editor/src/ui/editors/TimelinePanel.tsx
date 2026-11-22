@@ -10,9 +10,9 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, IconButton, ScrollArea, Select } from '@zerodep-dev/vue-tsx-pro-ui';
 import { onUnmounted } from 'vue';
 import type { TimelineFile, TimelineTrackFile } from '@stride-ts/engine/content-format';
-import { t } from './messages';
+import { t } from '../i18n/messages';
 import { TimelineCurves } from './TimelineCurves';
-import { EXPORT_PRESETS, type EditorSession, type ExportPreset } from './session';
+import { EXPORT_PRESETS, type EditorSession, type ExportPreset } from '../session/EditorSession';
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.8rem' },

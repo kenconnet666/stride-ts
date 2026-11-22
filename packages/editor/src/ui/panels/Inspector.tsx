@@ -6,13 +6,13 @@ import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@stride-ts/engine/editor-document';
 import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
 import { PaintLayers } from './PaintLayers';
-import { SoundGenerator } from './SoundGenerator';
-import { assetListId, FieldEditor, Fields, type FieldContext, type ValuePath, type ValueUpdate } from './FieldEditor';
-import type { EditorSession } from './session';
-import type { ModelSourceKind, ViewportTools } from './session/ViewportTools';
-import { labelText } from './fieldMessages';
-import { t } from './messages';
-import { mergeField } from './values';
+import { SoundGenerator } from '../editors/SoundGenerator';
+import { assetListId, FieldEditor, Fields, type FieldContext, type ValuePath, type ValueUpdate } from '../fields/FieldEditor';
+import type { EditorSession } from '../session/EditorSession';
+import type { ModelSourceKind, ViewportTools } from '../session/ViewportTools';
+import { labelText } from '../i18n/fieldMessages';
+import { t } from '../i18n/messages';
+import { mergeField } from '../fields/values';
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', gap: '_sm', padding: '_sm', fontSize: '0.875rem' },

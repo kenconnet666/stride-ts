@@ -2,10 +2,10 @@ import { Box, Check, ExternalLink, File, Folder, FolderOpen, Image, Music, Plus,
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { IconButton, Menu, MenuItem, TextField, Tree, type TreeMove } from '@zerodep-dev/vue-tsx-pro-ui';
-import { freeAssetPath, NEW_ASSET_OPTIONS } from '../newAssets';
-import type { AssetRecord, MoveRequest } from '../protocol';
-import { newAssetLabel, t } from './messages';
-import type { EditorSession } from './session';
+import { freeAssetPath, NEW_ASSET_OPTIONS } from '../../newAssets';
+import type { AssetRecord, MoveRequest } from '../../protocol';
+import { newAssetLabel, t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
   panel: { display: 'flex', flexDirection: 'column', height: '100%' },

@@ -20,14 +20,14 @@ import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/
 import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
 import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
-import { freeAssetPath } from '../newAssets';
-import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../library/index.ts';
+import { freeAssetPath } from '../../newAssets';
+import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../../library/index.ts';
 import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
-import { EditorClient } from '../EditorClient.ts';
-import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../protocol.ts';
-import { materialSet } from '../materialSet.ts';
-import { t } from './messages';
-import { ViewportTools } from './session/ViewportTools';
+import { EditorClient } from '../../EditorClient.ts';
+import type { AssetKind, AssetRecord, MoveRequest, MoveResult, ProjectInfo } from '../../protocol.ts';
+import { materialSet } from '../../materialSet.ts';
+import { t } from '../i18n/messages';
+import { ViewportTools } from './ViewportTools';
 
 /** 出片的预设（引擎 offline/VideoExport.ts 的 RENDER_PRESETS 里常用的几个）。 */
 /** 序列帧烘焙的设置（引擎 bake 命令的参数）。 */

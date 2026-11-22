@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type Field, type FieldType } from '@stride-ts/engine/editor-fields';
-import { fieldMessages } from '../src/ui/fieldMessages.ts';
-import { pick } from '../src/ui/i18n.ts';
+import { fieldMessages } from '../src/ui/i18n/fieldMessages.ts';
+import { pick } from '../src/ui/i18n/i18n.ts';
 
 /** 引擎的字段描述里出现的全部标题、字段名、说明。 */
 function collect() {

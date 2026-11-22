@@ -5,7 +5,7 @@ import { ASSET_FIELDS, checkEntity, checkFields } from '@stride-ts/engine/editor
 import { compileMaterialGraph } from '@stride-ts/engine/material-graph';
 import { ColorTreeCompiler } from '../../engine/src/rendering/mesh/colorTree.ts';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryMaterialPath } from '../src/library/index.ts';
-import { editorMessages } from '../src/ui/messages.ts';
+import { editorMessages } from '../src/ui/i18n/messages.ts';
 
 const thumbnails = path.join(import.meta.dirname, '../src/library/thumbnails');
 const items = [...LIBRARY_MATERIALS, ...LIBRARY_EFFECTS];

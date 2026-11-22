@@ -4,18 +4,18 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { usePersistentState } from '@zerodep-dev/vue-tsx-pro-ui';
 import { defaultWorkbenchLayout, Workbench, type WorkbenchWindow } from '@zerodep-dev/vue-tsx-pro-ui/patterns';
 import { onMounted, onUnmounted } from 'vue';
-import { AssetBrowser } from './AssetBrowser';
-import { GraphPanel } from './GraphPanel';
-import { Inspector } from './Inspector';
-import { t } from './messages';
-import { LibraryPanel } from './LibraryPanel';
-import { ParticlePanel } from './ParticlePanel';
-import { SceneTree } from './SceneTree';
-import { SpriteSheetPanel } from './SpriteSheetPanel';
-import type { EditorSession } from './session';
-import { TimelinePanel } from './TimelinePanel';
-import { DocumentTabs, MainToolbar, StatusBar, ViewportToolbar } from './Toolbars';
-import { Viewport } from './Viewport';
+import { AssetBrowser } from './panels/AssetBrowser';
+import { GraphPanel } from './editors/GraphPanel';
+import { Inspector } from './panels/Inspector';
+import { t } from './i18n/messages';
+import { LibraryPanel } from './panels/LibraryPanel';
+import { ParticlePanel } from './editors/ParticlePanel';
+import { SceneTree } from './panels/SceneTree';
+import { SpriteSheetPanel } from './editors/SpriteSheetPanel';
+import type { EditorSession } from './session/EditorSession';
+import { TimelinePanel } from './editors/TimelinePanel';
+import { DocumentTabs, MainToolbar, StatusBar, ViewportToolbar } from './workbench/Toolbars';
+import { Viewport } from './workbench/Viewport';
 
 const styles = css.create({
   center: { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column' },

@@ -3,9 +3,9 @@ import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { Game } from '@stride-ts/engine';
 import type { CSSProperties } from 'vue';
-import { LIBRARY_DRAG_TYPE } from './LibraryPanel';
-import { t } from './messages';
-import type { EditorSession } from './session';
+import { LIBRARY_DRAG_TYPE } from '../panels/LibraryPanel';
+import { t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
   frame: { display: 'block', width: '100%', height: '100%', borderWidth: '0', backgroundColor: 'black' },

@@ -7,8 +7,8 @@ import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Brush, Plus, Square } from '@lucide/icons';
 import { Button, Checkbox, ColorField, NumberField } from '@zerodep-dev/vue-tsx-pro-ui';
-import { t } from './messages';
-import type { EditorSession } from './session';
+import { t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
   box: { display: 'flex', flexDirection: 'column', gap: '4px', paddingBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },

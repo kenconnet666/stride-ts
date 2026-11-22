@@ -1,9 +1,9 @@
 import { Search } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { CommandPalette, IconButton } from '@zerodep-dev/vue-tsx-pro-ui';
-import type { AssetKind } from '../protocol.ts';
-import { t } from './messages';
-import type { EditorSession } from './session';
+import type { AssetKind } from '../../protocol.ts';
+import { t } from '../i18n/messages';
+import type { EditorSession } from '../session/EditorSession';
 
 /** 命令面板里的一项：一个操作、场景里的一个实体或一个资源；选中就 run。 */
 interface PaletteItem {

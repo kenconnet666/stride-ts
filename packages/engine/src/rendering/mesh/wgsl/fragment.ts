@@ -69,44 +69,95 @@ fn celEnvironment(color: vec3f) -> vec3f {
  * attenuation 是距离、角度衰减，visibility 是阴影乘遮蔽（卡通着色只让衰减进渐变）。
  */
 /**
- * 矩形光（LTC，Heitz 2016；同 three.js 的 RectAreaLight、虚幻的 Rect Light）：漫反射是余弦分布在矩形上的积分，镜面反射是
- * 按粗糙度和视角查表把 GGX 的波瓣变成余弦再积分，菲涅耳用 Hill 的缩放和偏移。积分的结果是反射出去的亮度（发光面的亮度乘
- * 形状因子），这里的光照最后要乘 π（见 shade），所以先除掉。到中心的距离在射程以内平滑地淡出。查找表还没上传时不画。
+ * 面光源每个像素只算一次的部分（光源循环之前，areaShading）：着色点的本地坐标系（法线是 z）、按粗糙度和视角查的 LTC 矩阵和
+ * 菲涅耳的缩放偏移。原来每盏灯各查一遍表、各建一遍坐标系，灯一多（超市的天花板 36 盏，一簇平均 23 盏）白算很多遍。
  */
-fn areaLight(s: Surface, light: LocalLight, world: vec3f, kind: u32) -> Lit {
-  var result = Lit(vec3f(0.0), vec3f(0.0));
-  let toLight = light.position.xyz - world;
-  let window = localLightWindow(light, dot(toLight, toLight));
-  if (localLightData[0].y < 0.5 || window <= 0.0) {
-    return result;
-  }
-  let radiance = light.color.rgb * (window / PI);
-  let identity = mat3x3f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
-  var mInv = identity;
+struct AreaShading { frame: mat3x3f, mInv: mat3x3f, specularFrame: mat3x3f, fresnel: vec3f, determinant: f32 };
+
+fn areaShading(s: Surface) -> AreaShading {
+  let frame = ltcFrame(s.n, s.v);
+  var mInv = mat3x3f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
   var fresnel = vec3f(0.0);
-  if (s.hasSpecular) {
+  if (s.hasSpecular && localLightData[0].y > 0.5) {
     let table = ltcLookup(sqrt(s.alphaR), s.nDotV);
     let m = table[0];
     mInv = mat3x3f(m.x, 0.0, m.y, 0.0, 1.0, 0.0, m.z, 0.0, m.w);
     fresnel = s.specular * table[1].x + (1.0 - s.specular) * table[1].y;
   }
+  return AreaShading(frame, mInv, mInv * frame, fresnel, abs(determinant(mInv)));
+}
+
+/** 离发光面中心超过它半径的这么多倍时漫反射当小光源算（形状因子的误差约 (1 / AREA_FAR)²，1.5% 以内）。 */
+const AREA_FAR = 8.0;
+
+/**
+ * 矩形光（LTC，Heitz 2016；同 three.js 的 RectAreaLight、虚幻的 Rect Light）：漫反射是余弦分布在矩形上的积分，镜面反射是
+ * 按粗糙度和视角查表把 GGX 的波瓣变成余弦再积分，菲涅耳用 Hill 的缩放和偏移。积分的结果是反射出去的亮度（发光面的亮度乘
+ * 形状因子），这里的光照最后要乘 π（见 shade），所以先除掉。到中心的距离在射程以内平滑地淡出。查找表还没上传时不画。
+ *
+ * 省掉的：着色点在发光面背后、或者整盏灯在表面的地平线以下时不算；远处（AREA_FAR 倍半径以外）漫反射按小光源（Snyder）——
+ * 立体角 = 面积 · cosθₗ / d²，形状因子 = 立体角 · cosθₛ / π；镜面的波瓣比灯在画面上的张角宽得多时也按小光源（LTC 的分布在灯的
+ * 方向上的值乘立体角），光滑的表面（地面的倒影）照旧积分。矩形按 4 个角单独积分（ltcQuad），不走 12 个角的数组。
+ */
+fn areaLight(s: Surface, shading: AreaShading, light: LocalLight, world: vec3f, kind: u32) -> Lit {
+  var result = Lit(vec3f(0.0), vec3f(0.0));
+  let toLight = light.position.xyz - world;
+  let distance2 = dot(toLight, toLight);
+  let window = localLightWindow(light, distance2);
+  if (localLightData[0].y < 0.5 || window <= 0.0) {
+    return result;
+  }
+  // 发光面的半径（矩形是半对角线，圆盘是 √2 r，管子是半长）
+  let extent = sqrt(dot(light.angle.xyz, light.angle.xyz) + select(light.angle.w * light.angle.w, 0.0, kind == 4u));
+  // 整盏灯在表面的地平线以下：照不到（漫反射、镜面的波瓣都在上半球）
+  if (dot(s.n, toLight) < -extent) {
+    return result;
+  }
+  // 矩形、圆盘只往正面照：着色点在发光面背后
+  if (kind != 4u && dot(light.direction.xyz, toLight) >= 0.0) {
+    return result;
+  }
+  let radiance = light.color.rgb * (window / PI);
   // 管状光：一条线段，往四周照
   if (kind == 4u) {
     let halfLength = length(light.angle.xyz);
     let axis = light.angle.xyz / max(halfLength, 1e-6);
-    result.diffuse = s.diffuse * radiance * ltcLine(s.n, s.v, world, identity, light.position.xyz, axis, halfLength);
+    result.diffuse = s.diffuse * radiance * ltcLine(shading.frame, mat3x3f(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0), world, light.position.xyz, axis, halfLength);
     if (s.hasSpecular) {
-      result.specular = radiance * fresnel * ltcLine(s.n, s.v, world, mInv, light.position.xyz, axis, halfLength);
+      result.specular = radiance * shading.fresnel * ltcLine(shading.frame, shading.mInv, world, light.position.xyz, axis, halfLength);
     }
     return result;
   }
-  // 矩形光、圆盘光：多边形。圆盘的漫反射很糊、看不出边，按正 6 边形算（面积 2.598r²，乘 3 / 2.598 补成正 12 边形的），
-  // 镜面反射按正 12 边形，亮面上的倒影是圆的；比两遍都用 12 边形省一小半
-  let diffusePolygon = areaLightPolygon(light, kind, 6u);
-  let diffuseScale = select(1.0, 1.1547005, kind == 3u);
-  result.diffuse = s.diffuse * radiance * diffuseScale * ltcPolygon(s.n, s.v, world, identity, diffusePolygon);
-  if (s.hasSpecular) {
-    result.specular = radiance * fresnel * ltcPolygon(s.n, s.v, world, mInv, areaLightPolygon(light, kind, AREA_CORNERS));
+  let far = distance2 > AREA_FAR * AREA_FAR * extent * extent;
+  var solidAngle = 0.0;
+  var l = vec3f(0.0);
+  if (far) {
+    let d = sqrt(distance2);
+    l = toLight / d;
+    // 面积：矩形 4 · 半宽 · 半高，圆盘按正 12 边形 3r²（同 CPU 定亮度时的面积）
+    let area = select(3.0, 4.0, kind == 2u) * light.angle.w * length(light.angle.xyz);
+    solidAngle = area * dot(-l, light.direction.xyz) / distance2;
+    result.diffuse = s.diffuse * radiance * (solidAngle * max(dot(s.n, l), 0.0) / PI);
+  } else if (kind == 2u) {
+    result.diffuse = s.diffuse * radiance * ltcQuad(shading.frame, world, light);
+  } else {
+    // 圆盘的漫反射很糊、看不出边，按正 6 边形算（面积 2.598r²，乘 3 / 2.598 补成正 12 边形的）
+    result.diffuse = s.diffuse * radiance * 1.1547005 * ltcPolygon(shading.frame, world, areaLightPolygon(light, kind, 6u));
+  }
+  if (!s.hasSpecular) {
+    return result;
+  }
+  // 波瓣（宽约 α）比灯的张角（extent / d）宽四倍以上：LTC 的分布在灯的方向上几乎不变，取中心的值乘立体角
+  if (far && s.alphaR * s.alphaR * distance2 > 16.0 * extent * extent) {
+    let w = shading.specularFrame * l;
+    let length2 = dot(w, w);
+    let lobe = max(w.z, 0.0) * inverseSqrt(length2) / PI * shading.determinant / (length2 * sqrt(length2));
+    result.specular = radiance * shading.fresnel * (lobe * solidAngle);
+  } else if (kind == 2u) {
+    result.specular = radiance * shading.fresnel * ltcQuad(shading.specularFrame, world, light);
+  } else {
+    // 镜面反射按正 12 边形，亮面上的倒影是圆的
+    result.specular = radiance * shading.fresnel * ltcPolygon(shading.specularFrame, world, areaLightPolygon(light, kind, AREA_CORNERS));
   }
   return result;
 }
@@ -563,11 +614,16 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     localCount = clusterCounts(cluster).x;
     firstLight = clusters[u32(cluster)];
   }
+  // 面光源每个像素只算一次的部分（有面光源时才查表）
+  var area: AreaShading;
+  if (localCount > 0u) {
+    area = areaShading(surface);
+  }
   for (var k = 0u; k < localCount; k++) {
     let light = localLight(select(k, clusters[firstLight + k], clustered));
     let kind = localLightKind(light);
     if (kind >= 2u) {
-      let lit = areaLight(surface, light, in.world, kind);
+      let lit = areaLight(surface, area, light, in.world, kind);
       direct.diffuse += lit.diffuse * directOcclusion;
       direct.specular += lit.specular * directOcclusion;
       continue;

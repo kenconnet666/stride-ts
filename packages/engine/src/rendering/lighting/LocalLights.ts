@@ -226,17 +226,19 @@ fn ltcFrame(n: vec3f, v: vec3f) -> mat3x3f {
   return transpose(mat3x3f(t1, t2, n));
 }
 
+/** 按边积分以后的矢量形状因子换成被地平线截掉的球近似的形状因子（Hill 2016），0..1。 */
+fn ltcHorizon(f: vec3f) -> f32 {
+  let l = length(f);
+  return max((l * l + f.z) / (l + 1.0), 0.0);
+}
+
 /**
- * 多边形光（矩形、圆盘）经 LTC 变换后的积分（Heitz 2016）：mInv 把 GGX 的波瓣变回余弦分布，角投到单位球上按边积分，再按被地平线
- * 截掉的球近似形状因子（Hill 2016）。位置在光的背面时是 0。结果是 0..1（整个半球是 1）。
+ * 多边形光（圆盘）经 LTC 变换后的积分（Heitz 2016）：m 是 mInv 乘着色点的本地坐标系（AreaShading），把 GGX 的波瓣变回余弦分布，
+ * 角投到单位球上按边积分，再按被地平线截掉的球近似形状因子。着色点在光的背面由调用方先排除。结果是 0..1（整个半球是 1）。
  */
-fn ltcPolygon(n: vec3f, v: vec3f, p: vec3f, mInv: mat3x3f, polygon: AreaPolygon) -> f32 {
+fn ltcPolygon(m: mat3x3f, p: vec3f, polygon: AreaPolygon) -> f32 {
   let corners = polygon.corners;
   let last = polygon.count - 1u;
-  if (dot(cross(corners[1] - corners[0], corners[last] - corners[0]), p - corners[0]) < 0.0) {
-    return 0.0;
-  }
-  let m = mInv * ltcFrame(n, v);
   let first = normalize(m * (corners[0] - p));
   var previous = first;
   var f = vec3f(0.0);
@@ -246,8 +248,19 @@ fn ltcPolygon(n: vec3f, v: vec3f, p: vec3f, mInv: mat3x3f, polygon: AreaPolygon)
     previous = current;
   }
   f += ltcEdge(previous, first);
-  let l = length(f);
-  return max((l * l + f.z) / (l + 1.0), 0.0);
+  return ltcHorizon(f);
+}
+
+/** 矩形光的 LTC 积分（同 ltcPolygon，四个角直接算，不经数组和循环，寄存器少）。 */
+fn ltcQuad(m: mat3x3f, p: vec3f, light: LocalLight) -> f32 {
+  let c = light.position.xyz - p;
+  let u = light.angle.xyz;
+  let v = normalize(cross(u, light.direction.xyz)) * light.angle.w;
+  let a = normalize(m * (c + u - v));
+  let b = normalize(m * (c - u - v));
+  let d = normalize(m * (c - u + v));
+  let e = normalize(m * (c + u + v));
+  return ltcHorizon(ltcEdge(a, b) + ltcEdge(b, d) + ltcEdge(d, e) + ltcEdge(e, a));
 }
 
 /**
@@ -282,8 +295,7 @@ fn ltcLineIrradiance(c: vec3f, a: vec3f, hl: f32) -> f32 {
  * 管状光（一条线段）经 LTC 变换后的积分（HDRP 的 I_ltc_line）：center、axis（单位向量）、halfLength 在世界里。线段变换以后
  * 宽度方向被拉伸，按 1 / |M⁻ᵀ · 垂直方向| 补回来（HDRP 假定 mInv 是稀疏的，这里按余子式算一般的 3×3）。
  */
-fn ltcLine(n: vec3f, v: vec3f, p: vec3f, mInv: mat3x3f, center: vec3f, axis: vec3f, halfLength: f32) -> f32 {
-  let frame = ltcFrame(n, v);
+fn ltcLine(frame: mat3x3f, mInv: mat3x3f, p: vec3f, center: vec3f, axis: vec3f, halfLength: f32) -> f32 {
   let localCenter = frame * (center - p);
   let localAxis = frame * axis;
   let ortho = cross(localCenter, localAxis);

@@ -21,7 +21,7 @@ import { listHubs, readBrowser } from './state.ts';
 const HELP = `stride <command> [options]   (from the repository: pnpm exec stride <command>)
 
 Browser and connection
-  open <url> [--headless] [--size 1400x900] [--dpr 2] [--gpu-debug] [--chrome-arg <arg>]...
+  open <url> [--headless] [--size 1400x900, headless default 1920x1080] [--dpr 2] [--gpu-debug] [--chrome-arg <arg>]...
                           open the url in a stride-launched Chrome (new tab if one is running), wait until the game runs
   close                   close the stride-launched Chrome
   hubs                    running debug hubs (dev and preview servers) and their pages
@@ -368,10 +368,14 @@ async function waitForGame(seconds: number, urlPrefix?: string, started = Date.n
   throw new Error(`timed out after ${seconds} s: ${last}`);
 }
 
+/** 无头 Chrome 默认的窗口大小（CSS 像素）。 */
+const DEFAULT_HEADLESS_SIZE: [number, number] = [1920, 1080];
+
 const commands: Record<string, () => Promise<unknown>> = {
   async open() {
     const url = required(rest[0], 'url');
-    const size = options.size?.split('x').map(Number) as [number, number] | undefined;
+    // 无头的 Chrome 没给大小时用常见的 1080p 横屏（它自己的默认值很小，编辑器的面板挤得点不中）；有界面的跟着屏幕
+    const size = (options.size?.split('x').map(Number) as [number, number] | undefined) ?? (options.headless ? DEFAULT_HEADLESS_SIZE : undefined);
     // 浏览器开起来就去要模块了：开发服务器的错误从这时算
     const started = Date.now();
     const browser = await openUrl(url, {

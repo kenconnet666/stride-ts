@@ -171,23 +171,46 @@ function checkShelf(file: ShelfFile, where: string): void {
   if (file.levels.at(-1)! >= file.height) throw new Error(`${where}: the top level must be below the height`);
 }
 
-/** 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳。 */
-const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6;
+/** 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳，熟食柜的黑柜体、白石英、金、保温灯的暖光。 */
+const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10;
 /** 电子价签：外壳比屏大一圈（米）、凸出价签条多厚。 */
 const ESL_RIM = 0.004, ESL_DEPTH = 0.009;
 /** 冷柜：门在层板前面多远、门框多宽；顶上灯箱的高；冰柜的壁厚。 */
 const DOOR = 0.05, MULLION = 0.04, HEADER = 0.24, FREEZER_WALL = 0.06;
+/** 熟食柜：前面白台面、后面白挡边的宽，托盘比台面低多少；保温灯罩的半径、高，吊杆多长。 */
+const DELI_FRONT = 0.2, DELI_BACK = 0.08, DELI_SINK = 0.025, LAMP_RADIUS = 0.11, LAMP_HEIGHT = 0.14, LAMP_ROD = 0.6;
+
+/** 熟食柜的托盘（摆碗盘的那块）：前后的 z（原点在柜子中心）。 */
+function deliTray(file: ShelfFile): readonly [number, number] {
+  return [-file.depth / 2 + DELI_BACK, file.depth / 2 - DELI_FRONT];
+}
+
+/**
+ * 熟食柜上方每盏保温灯灯罩底面的中心（米，货架的坐标）：灯具只发光，照亮菜的光源由场景另放（同天花板的 ceilingLights），
+ * 搭场景时放在这些位置往下照。
+ */
+export function deliLamps(file: ShelfFile): (readonly [number, number, number])[] {
+  const bay = file.bay ?? 0.6, count = Math.max(1, Math.round(file.length / bay));
+  const [zBack, zFront] = deliTray(file);
+  return Array.from({ length: count }, (_, i) => [-file.length / 2 + (i + 0.5) * (file.length / count), file.height, (zBack + zFront) / 2] as const);
+}
 
 /** 生成货架（冷柜、冰柜）的网格和图集。 */
 export function shelfModel(file: ShelfFile, sources: ProductSources, where = file.name): ShelfModel {
   const type = file.type ?? 'gondola';
   // 冰柜的货躺在槽里：按一个单面、一层、槽那么深的货架摆，再挪到槽的中间
   const inner = file.depth - 2 * FREEZER_WALL;
+  // 熟食柜的碗盘摆在托盘上：按一个单面、一层、托盘那么深的货架摆，再挪到托盘那里（碗盘之间留宽一点）
+  const [trayBack, trayFront] = deliTray(file);
   const plan = type === 'freezer'
     ? planShelf({ ...file, sides: 1, length: file.length - 2 * FREEZER_WALL, depth: inner, levels: [file.levels[0]!] }, sources.products, where)
-    : planShelf(type === 'fridge' ? { ...file, sides: 1 } : file, sources.products, where);
-  const items = type === 'freezer' ? plan.items.map((item) => ({ ...item, position: [item.position[0], item.position[1], item.position[2] - inner / 2] as const })) : plan.items;
-  const tags = type === 'freezer' ? [] : plan.tags;
+    : type === 'deli'
+      ? planShelf({ ...file, type: 'gondola', sides: 1, length: file.length - 0.04, depth: trayFront - trayBack, levels: [file.levels[0]!] }, sources.products, where)
+      : planShelf(type === 'fridge' ? { ...file, sides: 1 } : file, sources.products, where);
+  const items = type === 'freezer' ? plan.items.map((item) => ({ ...item, position: [item.position[0], item.position[1], item.position[2] - inner / 2] as const }))
+    : type === 'deli' ? plan.items.map((item) => ({ ...item, position: [item.position[0], item.position[1], item.position[2] + trayBack] as const }))
+    : plan.items;
+  const tags = type === 'freezer' || type === 'deli' ? [] : plan.tags;
   const tagFont = file.font ? sources.font(file.font) : undefined;
   const electronic = file.priceTags === 'electronic';
   const prices = Array.from({ length: PRICES }, (_, k) => {
@@ -205,6 +228,10 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
       { color: '#eef4ff', roughness: 0.5, metalness: 0, emissive: 6 },
       { color: '#eef1f3', roughness: 0.4, metalness: 0 },
       { color: '#f0f0ee', roughness: 0.45, metalness: 0 },
+      { color: '#141518', roughness: 0.35, metalness: 0 },
+      { color: '#e9e8e3', roughness: 0.12, metalness: 0 },
+      { color: '#c9a250', roughness: 0.28, metalness: 0.9 },
+      { color: '#ffd9a0', roughness: 0.5, metalness: 0, emissive: 8 },
     ],
     // 价签：几种价格；纸的三个里一个黄底，电子的是墨水屏
     cells: prices.map((price, k): AtlasCell => (electronic ? eslCell(price, k, tagFont, hash32(file.seed ?? 1, 2000 + k)) : {
@@ -218,6 +245,10 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
   });
   if (type === 'freezer') {
     freezerBody(batch, file);
+    return { ...batch.finish(), items: items.length };
+  }
+  if (type === 'deli') {
+    deliBody(batch, file);
     return { ...batch.finish(), items: items.length };
   }
   if (type === 'stack') {
@@ -333,6 +364,26 @@ function fridgeFront(batch: ProductBatch, file: ShelfFile, zFar: number, headerC
 }
 
 /** 卧式冰柜：四壁和槽底（槽里白的），柜沿深色，沿下一圈灯带，上面两块错开的玻璃推拉盖。 */
+/**
+ * 熟食柜：黑柜体到台面下，前面白石英台面（比托盘高一点、前沿出挑），后面一道白挡边，中间托盘下沉 DELI_SINK、黑色，托盘前沿
+ * 一道金边；上方每盏保温灯是一根细吊杆、一个上小下大的金色灯罩、罩底一片发光的暖光。
+ */
+function deliBody(batch: ProductBatch, file: ShelfFile): void {
+  const L = file.length / 2, D = file.depth / 2, tray = file.levels[0]!, top = tray + DELI_SINK;
+  const [zBack, zFront] = deliTray(file);
+  batch.box([-L, 0, -D], [L, tray, D - 0.03], COUNTER);
+  batch.box([-L, top - 0.04, zFront], [L, top, D], QUARTZ);
+  batch.box([-L, tray, -D], [L, top + 0.03, zBack], QUARTZ);
+  batch.box([-L, tray - 0.02, zBack], [L, tray, zFront], COUNTER);
+  batch.box([-L, tray, zFront - 0.006], [L, top, zFront], GOLD);
+  for (const [x, y, z] of deliLamps(file)) {
+    batch.tube([x, y + LAMP_HEIGHT, z], [x, y + LAMP_HEIGHT + LAMP_ROD, z], 0.006, GOLD, 6);
+    // 灯罩是上小下大的圆台（钟形）
+    batch.tube([x, y, z], [x, y + LAMP_HEIGHT, z], LAMP_RADIUS, GOLD, 20, LAMP_RADIUS * 0.35);
+    batch.box([x - LAMP_RADIUS * 0.6, y + 0.02, z - LAMP_RADIUS * 0.6], [x + LAMP_RADIUS * 0.6, y + 0.03, z + LAMP_RADIUS * 0.6], WARM);
+  }
+}
+
 function freezerBody(batch: ProductBatch, file: ShelfFile): void {
   const L = file.length / 2, W = file.depth / 2, H = file.height, t = FREEZER_WALL, floor = file.levels[0]!;
   batch.box([-L, 0, -W], [L, H, -W + t], FRAME);

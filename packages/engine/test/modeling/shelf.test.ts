@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { ProductFile } from '../../src/content/formats/productFormat';
 import type { ShelfFile } from '../../src/content/formats/shelfFormat';
 import { mergedMaterial } from '../../src/modeling/productBatch';
-import { planShelf, shelfModel } from '../../src/modeling/shelf';
+import { deliLamps, planShelf, shelfModel } from '../../src/modeling/shelf';
 
 const products = new Map<string, ProductFile>([
   ['P/Water', { name: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], seed: 1 }],
@@ -120,6 +120,19 @@ describe('货架', () => {
       expect(item.position[1] + product.size[1]).toBeLessThanOrEqual(1.2 + 1e-9);
       expect(Math.abs(item.position[2])).toBeLessThanOrEqual(0.3);
     }
+  });
+
+  test('熟食柜：碗盘一排排摆在下沉的托盘里，不出柜子；上方每隔 bay 一盏保温灯，灯罩底发暖光', () => {
+    const bowl: ProductFile = { name: 'Bowl', shape: 'bowl', size: [0.2, 0.08, 0], food: { color: '#8a3818' } };
+    const deliSources = { products: new Map([['Bowl', bowl]]), font: () => undefined };
+    const deli: ShelfFile = { name: 'Deli', type: 'deli', sides: 1, length: 2.4, height: 1.6, depth: 0.9, levels: [0.86], bay: 0.6, stock: { products: ['Bowl'], facings: [1, 1], rows: 3, gaps: 0 } };
+    const model = shelfModel(deli, deliSources);
+    expect(model.items).toBeGreaterThan(20);
+    const { items } = planShelf({ ...deli, type: 'gondola', length: 2.36, depth: 0.9 - 0.28, levels: [0.86] }, deliSources.products);
+    expect(items.length).toBe(model.items);
+    expect(deliLamps(deli)).toHaveLength(4);
+    expect(deliLamps(deli).every(([x, y]) => Math.abs(x) < 1.2 && y === 1.6)).toBe(true);
+    expect(model.emissive).toBeGreaterThan(0);
   });
 
   test('材质：颜色图集加表面图集（G 粗糙度、B 金属度）；有发光的格子时加自发光图集', () => {

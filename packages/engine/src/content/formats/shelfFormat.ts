@@ -45,9 +45,11 @@ export interface ShelfFile {
    * 种类：货架（gondola，默认）；立式冷柜（fridge：单面，玻璃门，门框上竖着灯带，顶上一条灯箱写着 header）；卧式冰柜（freezer：
    * 货躺在槽里，上面两块玻璃推拉盖；depth 是整个柜子的宽，levels 只用第一个——槽底的高，height 是柜沿的高）；挂钩架（pegboard：
    * 洞洞板上一排排挂钩，袋装、卡装的商品挂在钩上，levels 是每排挂钩的高、depth 是钩长）；堆头（stack：地上一个台子，商品一块块
-   * 码成往上收的垛，levels 只用第一个——台面的高，depth 是整个垛的深，原点在台子中心）。端架就是短的单面货架。
+   * 码成往上收的垛，levels 只用第一个——台面的高，depth 是整个垛的深，原点在台子中心）；熟食柜（deli：黑色的柜体，前面一条白
+   * 石英台面，中间下沉的黑托盘上成排摆碗、盘（商品的 bowl、plate，摆货的 rows 是往里几排），上面每隔 bay 挂一盏金色的保温灯；
+   * levels 只用第一个——托盘面的高，height 是灯罩底的高，depth 是整个柜子的深）。端架就是短的单面货架。
    */
-  readonly type?: 'gondola' | 'fridge' | 'freezer' | 'pegboard' | 'stack';
+  readonly type?: 'gondola' | 'fridge' | 'freezer' | 'pegboard' | 'stack' | 'deli';
   /** 冷柜顶上灯箱的字（"冷藏饮料"），要有 font；没写时灯箱只发光不写字。 */
   readonly header?: string;
   /** 价签：纸的（默认，白底或黄底红字）或电子价签（一个小外壳加一块墨水屏：黑字、角上的二维码，有的带红色的促销条）。 */

@@ -117,8 +117,11 @@ export class ProductBatch {
     addBox(this.#glassVertices, this.#glassIndices, min, max, 0, 0);
   }
 
-  /** 一根圆管（从 from 到 to，半径 radius，绕一圈 segments 段，不封口），第 solid 个纯色：水管、吊杆、灯管。 */
-  tube(from: readonly number[], to: readonly number[], radius: number, solid: number, segments = 10): void {
+  /**
+   * 一根圆管（从 from 到 to，半径 radius，绕一圈 segments 段，不封口），第 solid 个纯色：水管、吊杆、灯管；toRadius 给了时是圆台
+   * （to 那头的半径，熟食柜的灯罩），法线按斜边。
+   */
+  tube(from: readonly number[], to: readonly number[], radius: number, solid: number, segments = 10, toRadius = radius): void {
     const [x, y, w, h] = this.#solidCells[solid]!, u = (x + w / 2) / ATLAS, v = (y + h / 2) / ATLAS;
     const axis = [to[0]! - from[0]!, to[1]! - from[1]!, to[2]! - from[2]!], length = Math.hypot(axis[0]!, axis[1]!, axis[2]!);
     if (length < 1e-9) return;
@@ -127,10 +130,13 @@ export class ProductBatch {
     const helper = Math.abs(a[1]!) < 0.9 ? [0, 1, 0] : [1, 0, 0];
     const p = normalize3(cross3(a, helper)), q = cross3(a, p);
     const base = this.#vertices.length / 8;
+    // 圆台的斜边：法线往轴的方向偏 (r0 − r1) / length
+    const slope = (radius - toRadius) / length, scale = 1 / Math.hypot(1, slope);
     for (let k = 0; k <= segments; k++) {
       const angle = (k / segments) * 2 * Math.PI, c = Math.cos(angle), s = Math.sin(angle);
       const n = [p[0]! * c + q[0]! * s, p[1]! * c + q[1]! * s, p[2]! * c + q[2]! * s];
-      for (const end of [from, to]) this.#vertices.push(end[0]! + n[0]! * radius, end[1]! + n[1]! * radius, end[2]! + n[2]! * radius, n[0]!, n[1]!, n[2]!, u, v);
+      const normal = [(n[0]! + a[0]! * slope) * scale, (n[1]! + a[1]! * slope) * scale, (n[2]! + a[2]! * slope) * scale];
+      for (const [end, r] of [[from, radius], [to, toRadius]] as const) this.#vertices.push(end[0]! + n[0]! * r, end[1]! + n[1]! * r, end[2]! + n[2]! * r, normal[0]!, normal[1]!, normal[2]!, u, v);
     }
     for (let k = 0; k < segments; k++) {
       const i = base + k * 2;

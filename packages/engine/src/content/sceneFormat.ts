@@ -546,6 +546,8 @@ export interface SceneEntityFile {
     readonly city?: { readonly city: string };
     /** 水体（Stride 没有，见 water/Water.ts）：实体的位置是水面，按 .water.json 画湖或海。 */
     readonly water?: { readonly water: string };
+    /** 浮力（Stride 没有，见 water/Buoyancy.ts）：刚体在水里浮起来；没写的项用组件的默认值。 */
+    readonly buoyancy?: { readonly buoyancy?: number; readonly linearDrag?: number; readonly angularDrag?: number };
     readonly skyAtmosphere?: SceneSkyAtmosphere;
     /** 镜头系统（Stride 没有，见 CameraRig 组件）：跟随、注视的实体是场景文件里的 id；没写的项用组件的默认值。 */
     readonly cameraRig?: {

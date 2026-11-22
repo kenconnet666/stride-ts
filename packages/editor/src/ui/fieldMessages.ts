@@ -19,7 +19,7 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
+    'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Buoyancy': '浮力', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
@@ -64,7 +64,7 @@ const zhCN: FieldMessages = {
     postEffects: '后处理', precipitation: '降水', premultipliedAlpha: '预乘 alpha', procedural: '形状', projection: '投影', pssmFactor: '级联分割系数',
     pulseFrequency: '脉动频率', pulseMagnitude: '脉动幅度', radius: '半径', radiusScale: '半径倍数', range: '范围', rayleighScattering: '瑞利散射', refractiveIndex: '折射率',
     refresh: '刷新', renderGroup: '渲染组', renderMask: '渲染掩码', resolution: '分辨率', resolutionStretch: '分辨率适配', rotation: '旋转', roughness: '粗糙度',
-    sampler: '采样器', scale: '缩放', settings: '设置', shadow: '阴影', shadows: '阴影', shapes: '形状', sheen: '光泽', wind: '风', lods: '细节层次', keep: '留下', impostor: '远处卡片', masses: '体块', fill: '填街区', river: '河', level: '水面', outline: '岸线', extent: '铺多远', clarity: '清澈度', waves: '浪', choppiness: '尖', foam: '泡沫', shore: '岸边', water: '水体', base: '离地', interior: '室内', room: '房间', lit: '亮灯', brightness: '亮度', spacing: '间距', roads: '路', buildings: '楼', setback: '离路边', gap: '空隙', area: '范围', weight: '权重', city: '城市', footprint: '底面', inset: '往里缩', floors: '层数', floorHeight: '层高', facade: '立面规则', roof: '屋顶', facades: '立面规则', modules: '构件', grass: '草', lean: '歪', bend: '弯', flutter: '叶子抖', sheet: '图集', size: '大小',
+    sampler: '采样器', scale: '缩放', settings: '设置', shadow: '阴影', shadows: '阴影', shapes: '形状', sheen: '光泽', wind: '风', lods: '细节层次', keep: '留下', impostor: '远处卡片', masses: '体块', fill: '填街区', buoyancy: '浮力', linearDrag: '平移阻力', angularDrag: '转动阻力', river: '河', level: '水面', outline: '岸线', extent: '铺多远', clarity: '清澈度', waves: '浪', choppiness: '尖', foam: '泡沫', shore: '岸边', water: '水体', base: '离地', interior: '室内', room: '房间', lit: '亮灯', brightness: '亮度', spacing: '间距', roads: '路', buildings: '楼', setback: '离路边', gap: '空隙', area: '范围', weight: '权重', city: '城市', footprint: '底面', inset: '往里缩', floors: '层数', floorHeight: '层高', facade: '立面规则', roof: '屋顶', facades: '立面规则', modules: '构件', grass: '草', lean: '歪', bend: '弯', flutter: '叶子抖', sheet: '图集', size: '大小',
     skyIntensity: '天空亮度', skybox: '天空盒', sleepThreshold: '睡眠阈值', slopeAngle: '能站的坡度', slot: '槽', snapText: '文字对齐像素', specular: '镜面',
     specularEnergyConservative: '镜面能量守恒', specularShading: '镜面着色', speed: '速度', srgb: 'sRGB', stabilization: '稳定', starsIntensity: '星星亮度',
     strength: '强度', subsurfaceScattering: '次表面散射', sun: '太阳', target: '目标', temperature: '温度', tessellation: '细分', texture: '贴图',
@@ -159,6 +159,9 @@ const zhCN: FieldMessages = {
     'Gerstner waves, flattened far from the camera': 'Gerstner 波，离相机远的压平',
     'foam where the water is shallower than this': '水比这浅的地方起泡沫',
     'foam along the shore': '岸边的泡沫',
+    'buoyancy factor: 1 is as heavy as water (hovers), above 1 floats': '浮力系数：1 是和水一样重（悬着），大于 1 浮起来',
+    'water drag on the motion': '水对平移的阻力',
+    'water drag on the rotation': '水对转动的阻力',
     'the river spline (profile river; its width is the water width)': '河的样条（横截面是 river；它的宽就是水面宽）',
     'how far the water surface is below the spline': '水面比样条低多少',
     'how fast the ripples flow along the spline': '波纹顺着样条流多快',

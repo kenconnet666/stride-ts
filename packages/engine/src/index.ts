@@ -282,6 +282,7 @@ export { StreamingSource, WorldStreaming } from './world/WorldStreaming';
 export { Terrain, TerrainAsset, TerrainTile, type TerrainAssetId } from './terrain/Terrain';
 export { City, CityAsset, CitySystem, type CityAssetId } from './city/City';
 export { Water, WaterAsset, WaterRenderer, type WaterAssetId } from './water/Water';
+export { Buoyancy, BuoyancySystem, waterSurfaceAt } from './water/Buoyancy';
 export { Scatter, ScatterAsset, ScatterSystem, scatterCell, type GroundSample, type ScatterAssetId, type ScatterInstance } from './terrain/Scatter';
 export { TerrainSystem, type TerrainHit } from './terrain/TerrainSystem';
 export { cellAt, cellKey, cellOrigin, checkWorldFile, distanceToCell, worldCellPath, type WorldFile, type WorldLayer } from './content/worldFormat';

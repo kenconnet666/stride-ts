@@ -608,6 +608,15 @@ export class BodyControl {
     if (!this.#detached) this.#world.applyImpulse(this.#body, undefined, [impulse.x, impulse.y, impulse.z]);
   }
 
+  /**
+   * 浮力（Stride 没有；Jolt 的 ApplyBuoyancyImpulse）：水面是过 surface（世界坐标）、法线 normal 的平面，按形状算水下的体积和浮心，
+   * 加浮力和阻力，水按 flow（米每秒）流。每个物理步之前调（water/Buoyancy.ts 的系统调它）。返回有没有部分在水下。
+   */
+  applyBuoyancy(surface: readonly number[], normal: readonly number[], buoyancy: number, linearDrag: number, angularDrag: number, flow: readonly number[] | undefined, deltaTime: number): boolean {
+    if (this.#detached) return false;
+    return this.#world.applyBuoyancy(this.#body, surface, normal, buoyancy, linearDrag, angularDrag, flow, deltaTime);
+  }
+
   /** 瞬移到世界位姿并唤醒（Stride 的 Teleport）；实体的变换立即更新。 */
   teleport(position: Vec3Like, rotation: QuatLike): void {
     if (!this.#detached) this.#world.teleport(this.#body, [position.x, position.y, position.z], [rotation.x, rotation.y, rotation.z, rotation.w]);

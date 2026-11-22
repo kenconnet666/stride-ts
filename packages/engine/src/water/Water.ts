@@ -45,7 +45,7 @@ const assets = new ResourceTable<WaterAsset>();
 export interface WaterArea {
   readonly level: number;
   readonly outline: readonly (readonly [number, number])[] | undefined;
-  readonly river?: { readonly line: readonly (readonly [number, number, number])[]; readonly halfWidth: number };
+  readonly river?: { readonly line: readonly (readonly [number, number, number])[]; readonly halfWidth: number; readonly speed: number };
 }
 
 /** 河的水面每隔多少米一节。 */
@@ -90,7 +90,7 @@ const areaQuery = system('waterAreas', {
         const level = asset.file.river?.level ?? 0.3;
         for (const path of splinePaths(river)) {
           const line = sampleSpline(path.points, path.closed ?? false, RIVER_STEP * 2).map((f) => toWorld(f.position[0], f.position[1] - level, f.position[2]));
-          collected.push({ level: Number.NaN, outline: undefined, river: { line, halfWidth: (river.profile.type === 'river' ? river.profile.width : 4) / 2 } });
+          collected.push({ level: Number.NaN, outline: undefined, river: { line, halfWidth: (river.profile.type === 'river' ? river.profile.width : 4) / 2, speed: asset.file.river?.speed ?? 1.5 } });
         }
         continue;
       }

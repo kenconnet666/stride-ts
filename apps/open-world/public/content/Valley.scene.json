@@ -1569,6 +1569,502 @@
    }
   },
   {
+   "id": "8785cfa4-850b-42bb-b7b8-3c6f1769bdd1",
+   "name": "Crate",
+   "parent": null,
+   "position": [
+    -440,
+    -60,
+    -300
+   ],
+   "rotation": [
+    0,
+    0.3826834,
+    0,
+    0.9238795
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Box",
+     "materials": [
+      "Materials/Platform"
+     ]
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "buoyancy": {
+     "buoyancy": 1.6
+    }
+   }
+  },
+  {
+   "id": "d74a50bb-a2a5-4c64-9cfd-fe6d00858050",
+   "name": "Crate",
+   "parent": null,
+   "position": [
+    -455,
+    -58,
+    -310
+   ],
+   "rotation": [
+    0,
+    0.3826834,
+    0,
+    0.9238795
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Box",
+     "materials": [
+      "Materials/Platform"
+     ]
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "buoyancy": {
+     "buoyancy": 1.6
+    }
+   }
+  },
+  {
+   "id": "1568e51e-a069-43b2-b235-1394335a1b7d",
+   "name": "Crate",
+   "parent": null,
+   "position": [
+    -430,
+    -59,
+    -320
+   ],
+   "rotation": [
+    0,
+    0.3826834,
+    0,
+    0.9238795
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Box",
+     "materials": [
+      "Materials/Platform"
+     ]
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "buoyancy": {
+     "buoyancy": 1.6
+    }
+   }
+  },
+  {
+   "id": "4309adc8-8ddc-42e6-bad3-d80526ed575b",
+   "name": "Crate",
+   "parent": null,
+   "position": [
+    -470,
+    -57,
+    -295
+   ],
+   "rotation": [
+    0,
+    0.3826834,
+    0,
+    0.9238795
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Box",
+     "materials": [
+      "Materials/Platform"
+     ]
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "buoyancy": {
+     "buoyancy": 1.6
+    }
+   }
+  },
+  {
+   "id": "0e0fa51c-6ac5-49df-86a5-9299b1fc5b33",
+   "name": "Crate",
+   "parent": null,
+   "position": [
+    -448,
+    -56,
+    -285
+   ],
+   "rotation": [
+    0,
+    0.3826834,
+    0,
+    0.9238795
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Box",
+     "materials": [
+      "Materials/Platform"
+     ]
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "buoyancy": {
+     "buoyancy": 1.6
+    }
+   }
+  },
+  {
+   "id": "ddbf052c-aa21-4eb1-a3fc-5fa4954ff7f6",
+   "name": "Log",
+   "parent": null,
+   "position": [
+    -200,
+    -16,
+    -20
+   ],
+   "rotation": [
+    0,
+    0.3826834,
+    0,
+    0.9238795
+   ],
+   "scale": [
+    3,
+    0.5,
+    0.5
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Box",
+     "materials": [
+      "Materials/Bark"
+     ]
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        3,
+        0.5,
+        0.5
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "buoyancy": {
+     "buoyancy": 1.8
+    }
+   }
+  },
+  {
+   "id": "b02be985-91f8-4840-a5f1-31b1a3cd50e5",
+   "name": "Log",
+   "parent": null,
+   "position": [
+    -226,
+    -31,
+    -46
+   ],
+   "rotation": [
+    0,
+    0.3826834,
+    0,
+    0.9238795
+   ],
+   "scale": [
+    3,
+    0.5,
+    0.5
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Box",
+     "materials": [
+      "Materials/Bark"
+     ]
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        3,
+        0.5,
+        0.5
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "buoyancy": {
+     "buoyancy": 1.8
+    }
+   }
+  },
+  {
+   "id": "0ead6cb9-2b81-4a6c-91b4-3aab26ac9532",
+   "name": "Log",
+   "parent": null,
+   "position": [
+    -258,
+    -37,
+    -79
+   ],
+   "rotation": [
+    0,
+    0.3826834,
+    0,
+    0.9238795
+   ],
+   "scale": [
+    3,
+    0.5,
+    0.5
+   ],
+   "components": {
+    "model": {
+     "model": "Models/Box",
+     "materials": [
+      "Materials/Bark"
+     ]
+    },
+    "body": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        3,
+        0.5,
+        0.5
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 0.5,
+     "kinematic": false,
+     "gravity": true,
+     "sleepThreshold": 0.01,
+     "interpolated": true
+    },
+    "buoyancy": {
+     "buoyancy": 1.8
+    }
+   }
+  },
+  {
    "id": "1ab99899-2344-4460-a9ac-09849587898e",
    "name": "Wind",
    "parent": null,

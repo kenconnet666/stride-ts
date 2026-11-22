@@ -226,6 +226,15 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: { water: '' },
   },
+  buoyancy: {
+    label: 'Buoyancy',
+    type: object(fields<NonNullable<Components['buoyancy']>>({
+      buoyancy: { type: number({ min: 0, step: 0.05 }), optional: true, default: 1.2, description: 'buoyancy factor: 1 is as heavy as water (hovers), above 1 floats' },
+      linearDrag: { type: number({ min: 0, step: 0.05 }), optional: true, default: 0.5, description: 'water drag on the motion' },
+      angularDrag: { type: number({ min: 0, step: 0.01 }), optional: true, default: 0.05, description: 'water drag on the rotation' },
+    })),
+    initial: {},
+  },
   cameraRig: {
     label: 'Camera rig',
     type: object(fields<NonNullable<Components['cameraRig']>>({

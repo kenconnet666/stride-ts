@@ -48,6 +48,7 @@ import { WorldStreaming } from '../world/WorldStreaming';
 import { TerrainSystem } from '../terrain/TerrainSystem';
 import { ScatterSystem } from '../terrain/Scatter';
 import { CitySystem } from '../city/City';
+import { BuoyancySystem } from '../water/Buoyancy';
 import { UIComponent } from '../ui/UIComponent';
 import { UISystem } from '../ui/UISystem';
 import { GameTime } from './GameTime';
@@ -201,6 +202,8 @@ export class Game {
   readonly terrain = new TerrainSystem(this);
   /** 程序化摆放（Stride 没有）：Scatter 组件按规则在地形上撒模型，相机附近的格子现撒（terrain/Scatter.ts）。 */
   readonly scatter = new ScatterSystem(this);
+  /** 浮力（Stride 没有）：Buoyancy 组件的刚体在水里浮起来、顺着河流走（water/Buoyancy.ts）。 */
+  readonly buoyancy = new BuoyancySystem(this);
   /** 城市（Stride 没有）：City 组件按 .city.json 的规则沿路摆楼（city/City.ts）。 */
   readonly city = new CitySystem(this);
   /** 粒子系统（Stride 的 ParticleSystemSimulationProcessor）：每帧变换更新之后模拟。 */
@@ -300,7 +303,10 @@ export class Game {
       });
       this.startup.native = performance.now();
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
-      if (this.native.hasFeature('physics')) this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
+      if (this.native.hasFeature('physics')) {
+        this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
+        this.buoyancy.attach(this.simulation);
+      }
       if (this.simulation && this.editing) this.simulation.enabled = false;
       if (this.simulation && this.native.hasFeature('navigation')) this.navigation = new NavigationSystem(this.native, this.simulation);
       this.registry.register(RecastNavigationComponent);

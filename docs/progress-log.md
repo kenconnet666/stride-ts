@@ -914,6 +914,8 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - 第三步倒影（同一天）：`PlanarReflections.plane`（这一帧画的平面），水体多绑一张平面反射图：平面朝上、高度和水面差不到半米时按屏幕坐标（u 翻回来）取、按法线偏开，浪越陡越退回天空（反射方向和平面的反射方向的点积，同 WickedEngine 的 planar_factor）。第一次看倒影里林子对、天空那片却是灰褐色：镜像视图的投影是斜裁剪的（近平面换成反射平面），天空的着色器按远平面（深度 0）反投影定方向，落到了相机后面、方向翻到地下。改成按近平面（深度 1）反投影：近平面就在反射平面上、总在相机前面，普通相机两种取法一样——网格的平面反射（湿地面、地板）里的天空原来也是错的，一起好了。Valley 的湖挂上 `PlanarReflection`（1100 × 4 × 900 米的盒子、半分辨率）。测试浏览器（无头，1080p）里看：对岸的林子、草坡倒映在水里，浪把倒影打碎一点，天空的反射是蓝的；120 Hz，平面反射那一遍 0.66 毫秒（预通道 0.31、不透明 0.36）。
 
+- 第四步浮力（同一天）：原生（fork 的 StrideNative）加 `sn_physics_body_apply_buoyancy`（调 Jolt 的 `BodyInterface::ApplyBuoyancyImpulse`：按形状算水下的体积和浮心，加浮力、线性和角阻力、水流；运动学物体忽略，写回有没有在水下），JS 的 `PhysicsWorld.applyBuoyancy`（查询缓冲里放水面的点、法线、流速、结果）；`build-wasm.ps1 -SkipTests` 在 Git Bash 起的 pwsh 里找不到 pnpm，用 PowerShell 工具重跑；fork 提交 7fc9c991，`node tools/native.ts dev` 发了 `native-dev-7fc9c9913e`。TS：`BodyControl.applyBuoyancy`，`water/Buoyancy.ts`（`Buoyancy` 组件：浮力系数、平移和转动阻力；`waterSurfaceAt`：湖、海是水位，河是离中心线半宽以内那一点的水面和顺着河的流速；`BuoyancySystem` 挂在仿真的 `onStep` 上，水体一帧取一次，离水面 50 米以内的调原生），场景组件、字段和中文；`WaterArea` 的河带上流速。测试：`waterSurfaceAt` 的湖、河、水外。Valley：湖里 5 个 1 米的箱子（浮力系数 1.6）、河里 3 根 3 米的木头（1.8）。测试浏览器（无头）里看：箱子浮在湖面上、露出三成，水下那截透过水看得见；木头几秒里顺着河往下游漂了几十米；120 Hz，物理步 0.06 毫秒。字段检查第一次报 40 处：场景里的 Body 要写全所有字段（layer、kinematic……），补上。
+
 ## CI 提速和 csharp-intermediate 的导航（2026-11-22）
 
 - CI 上 0c68a3f 的 csharp-intermediate 冒烟失败在"导航：角色走到目标"：角色走了 2 米就到了等待的上限。物理每帧最多补 0.25 秒（`maximumTimeToProcess`），CI 的软件 WebGPU 上一帧要零点几秒到一秒，物理只有游戏时间的几分之一，按 15 秒游戏时间等不够（按运行器的快慢时过时不过）。等待放宽到 60 秒游戏时间，快的机器上走到就返回。

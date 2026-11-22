@@ -27,6 +27,7 @@ import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Terrain, TerrainAsset, type TerrainPath } from './Terrain';
 import { changedRegions } from './TerrainSystem';
+import { hash32 } from '../data/hash';
 
 export type ScatterAssetId = Branded<number, 'ScatterAssetId'>;
 
@@ -89,14 +90,14 @@ export function scatterCell(
   // 网格点 i 抖动后总在 [i·spacing, (i + 1)·spacing) 里：格子盖到的网格都看一遍，落在格子外的不要
   const i0 = Math.floor(x0 / spacing), i1 = Math.floor((x0 + size) / spacing);
   const j0 = Math.floor(z0 / spacing), j1 = Math.floor((z0 + size) / spacing);
-  const layerSeed = hash(seed ^ 0x9e3779b9, layerIndex);
+  const layerSeed = hash32(seed ^ 0x9e3779b9, layerIndex);
   // 草一个格子上万个点：每个点的随机数、旋转都不新建对象
-  const random = (k: number) => hash(base, k) / 4294967296;
+  const random = (k: number) => hash32(base, k) / 4294967296;
   let base = 0;
   for (let i = i0; i <= i1; i++) {
-    const row = hash(layerSeed, i);
+    const row = hash32(layerSeed, i);
     for (let j = j0; j <= j1; j++) {
-      base = hash(row, j);
+      base = hash32(row, j);
       // 抖动不超出自己的网格：相邻的格子不会重复撒
       const x = (i + 0.5 + (random(0) - 0.5) * 0.9) * spacing, z = (j + 0.5 + (random(1) - 0.5) * 0.9) * spacing;
       if (x < x0 || x >= x0 + size || z < z0 || z >= z0 + size) continue;
@@ -123,16 +124,6 @@ export function scatterCell(
   return instances;
 }
 
-/** 32 位整数哈希（lowbias32，Chris Wellons）。 */
-function hash(a: number, b: number): number {
-  let h = (Math.imul(a, 0x7feb352d) ^ (b + 0x846ca68b)) >>> 0;
-  h ^= h >>> 16;
-  h = Math.imul(h, 0x7feb352d) >>> 0;
-  h ^= h >>> 15;
-  h = Math.imul(h, 0x846ca68b) >>> 0;
-  h ^= h >>> 16;
-  return h >>> 0;
-}
 
 /**
  * 成片的噪声：两层值噪声（平滑插值），值大致在 [0, 1] 里均匀分布（按 coverage 比较：小于它的地方撒）。坐标已经除过斑块的大小。
@@ -141,7 +132,7 @@ function clumpNoise(x: number, z: number, seed: number): number {
   const value = (x: number, z: number, s: number) => {
     const xi = Math.floor(x), zi = Math.floor(z), fx = x - xi, fz = z - zi;
     const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
-    const r = (a: number, b: number) => hash(hash(s, a), b) / 4294967296;
+    const r = (a: number, b: number) => hash32(hash32(s, a), b) / 4294967296;
     const top = r(xi, zi) + (r(xi + 1, zi) - r(xi, zi)) * sx, bottom = r(xi, zi + 1) + (r(xi + 1, zi + 1) - r(xi, zi + 1)) * sx;
     return top + (bottom - top) * sz;
   };

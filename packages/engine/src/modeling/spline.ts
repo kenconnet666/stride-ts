@@ -98,6 +98,11 @@ export function sampleSpline(points: readonly SplinePointFile[], closed: boolean
   return samplePath(points, closed, step).frames;
 }
 
+/** 样条在地上占多宽（米）：道路是路面加两侧路肩，铁轨是轨距加 3 米的道床，别的 2 米。地形贴样条、城市摆楼避让用。 */
+export function splineCorridorWidth(profile: SplineFile['profile']): number {
+  return profile.type === 'road' ? profile.width + 2 * (profile.shoulder ?? 0.5) : profile.type === 'rail' ? (profile.gauge ?? 1.435) + 3 : 2;
+}
+
 /** 样条的全部路径：第一条是文件的 points，后面是 branches。 */
 export function splinePaths(file: Pick<SplineFile, 'points' | 'closed' | 'branches'>): SplineBranchFile[] {
   return [{ points: file.points, closed: file.closed ?? false }, ...(file.branches ?? [])];

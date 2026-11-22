@@ -10,7 +10,7 @@ import type { Branded } from '../data/prop';
 import type { Material } from '../rendering/mesh/Material';
 import { TERRAIN_NOISE_DEFAULTS, type TerrainFile, type TerrainSplineFile } from '../content/terrainFormat';
 import type { SplineFile } from '../content/splineFormat';
-import { splineCenterlines } from '../modeling/spline';
+import { splineCenterlines, splineCorridorWidth } from '../modeling/spline';
 
 export type TerrainAssetId = Branded<number, 'TerrainAssetId'>;
 
@@ -58,7 +58,7 @@ const CURB_DEPTH = 0.2;
 export function terrainPaths(entry: TerrainSplineFile, spline: SplineFile): TerrainPath[] {
   const [dx, dy, dz] = entry.position ?? [0, 0, 0];
   const profile = spline.profile;
-  const width = entry.width ?? (profile.type === 'road' ? profile.width + 2 * (profile.shoulder ?? 0.5) : profile.type === 'rail' ? (profile.gauge ?? 1.435) + 3 : 2);
+  const width = entry.width ?? splineCorridorWidth(profile);
   return splineCenterlines(spline, Math.min(PATH_STEP, spline.resolution ?? PATH_STEP)).map(({ points, curb }) => ({
     points: points.map(([x, y, z]) => [x + dx, y + dy, z + dz] as const),
     width, offset: (entry.offset ?? -0.1) - (curb ? CURB_DEPTH : 0), falloff: entry.falloff ?? 10, strength: entry.strength ?? 1, mode: entry.mode ?? 'conform',

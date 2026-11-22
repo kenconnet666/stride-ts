@@ -14,6 +14,7 @@
 import { TREE_SLOTS, type TreeFile, type TreeLevelFile } from '../content/treeFormat.ts';
 import { Quaternion, Vector3 } from '../data/vectors.ts';
 import { MeshBuilder, slotMeshes, type SlotMesh } from './meshBuilder.ts';
+import { hash32 } from '../data/hash.ts';
 
 /** 枝的一节：位置、朝向（本地 +Y 是生长的方向）、半径。 */
 interface Section {
@@ -66,7 +67,7 @@ export function treeMeshes(file: TreeFile, where = file.name): SlotMesh[] {
   const levels = file.levels, last = levels.length - 1;
   const slots = Array.from({ length: TREE_SLOTS }, () => new MeshBuilder());
   const leaves: Leaf[] = [];
-  const queue: Bud[] = [{ position: new Vector3(), rotation: new Quaternion(), length: levels[0]!.length, radius: levels[0]!.radius, level: 0, seed: mix(file.seed ?? 1, 0) }];
+  const queue: Bud[] = [{ position: new Vector3(), rotation: new Quaternion(), length: levels[0]!.length, radius: levels[0]!.radius, level: 0, seed: hash32(file.seed ?? 1, 0) }];
   while (queue.length > 0) {
     const bud = queue.shift()!;
     const random = mulberry32(bud.seed);
@@ -78,7 +79,7 @@ export function treeMeshes(file: TreeFile, where = file.name): SlotMesh[] {
       spread(levels[bud.level]!.children ?? 0, next.start ?? 0.3, random, (t, angle) => {
         const at = sectionAt(sections, t);
         const rotation = at.rotation.clone().multiply(new Quaternion().setAxisAngle(UP, angle)).multiply(new Quaternion().setAxisAngle(X_AXIS, ((next.angle ?? 45) * Math.PI) / 180));
-        queue.push({ position: at.position, rotation, length: next.length * (conifer ? 1 - t : 1), radius: next.radius * at.radius, level: bud.level + 1, seed: mix(bud.seed, ++child) });
+        queue.push({ position: at.position, rotation, length: next.length * (conifer ? 1 - t : 1), radius: next.radius * at.radius, level: bud.level + 1, seed: hash32(bud.seed, ++child) });
       });
     } else if (file.leaves) {
       const spec = file.leaves;
@@ -213,15 +214,6 @@ function meshLeaves(builder: MeshBuilder, leaves: readonly Leaf[]): void {
   }
 }
 
-/** 两个整数混成一个种子（lowbias32 的哈希）。 */
-function mix(a: number, b: number): number {
-  let h = (Math.imul(a, 0x7feb352d) ^ (b + 0x846ca68b)) >>> 0;
-  h ^= h >>> 16;
-  h = Math.imul(h, 0x7feb352d) >>> 0;
-  h ^= h >>> 15;
-  h = Math.imul(h, 0x846ca68b) >>> 0;
-  return (h ^ (h >>> 16)) >>> 0;
-}
 
 /** mulberry32：种子起的 [0, 1) 随机数。 */
 function mulberry32(seed: number): () => number {

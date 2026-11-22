@@ -7,7 +7,7 @@ import type { PolyOperation } from '@stride-ts/engine/modeling';
 import type { SculptBrush } from '@stride-ts/engine';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, Flex, Menu, MenuItem, NumberField, Separator, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Checkbox, Flex, Menu, MenuItem, NumberField, Separator, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
 import { t } from '../i18n/messages';
 import type { ViewportTools } from '../session/ViewportTools';
 
@@ -23,6 +23,7 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
    */
   const polyControls = (poly: NonNullable<typeof tools.polyEditing.value>) => {
     const { vertices, edges, faces } = poly.selection;
+    const soft = tools.polySoft.value;
     const operation = (name: keyof typeof t.polyOps, icon: typeof Plus, enabled: boolean, build: () => PolyOperation | undefined) => (
       <Button size="sm" variant="ghost" tone="neutral" icon={icon} disabled={!enabled} onClick={() => {
         const op = build();
@@ -54,6 +55,10 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       operation('connect', Scissors, vertices.length === 2, connect),
       operation('flip', FlipVertical2, faces.length > 0, () => ({ op: 'flip', faces })),
       operation('delete', Trash2, faces.length > 0, () => ({ op: 'delete', faces })),
+      <Separator orientation="vertical" />,
+      <Checkbox size="sm" _checked={soft.enabled} title={t.polySoftHint} onUpdate:_checked={(enabled: boolean) => tools.setPolySoft({ ...soft, enabled })}>{t.polySoft}</Checkbox>,
+      <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.polySoftRadius} aria-label={t.polySoftRadius} disabled={!soft.enabled} min={0.01} step={0.1} format={{ useGrouping: false, maximumFractionDigits: 3 }}
+        _value={soft.radius} onUpdate:_value={(radius: number | null) => radius !== null && radius > 0 && tools.setPolySoft({ ...soft, radius })} />,
       <Flex grow />,
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
     ];

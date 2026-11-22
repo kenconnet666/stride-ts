@@ -149,6 +149,9 @@ export interface EditorMessages {
   readonly realtimeOff: string;
   readonly polyDone: string;
   readonly polyHint: string;
+  readonly polySoft: string;
+  readonly polySoftHint: string;
+  readonly polySoftRadius: string;
   readonly splineEdit: string;
   readonly splineHint: string;
   readonly splineDeletePoints: string;
@@ -397,7 +400,10 @@ const zhCN: EditorMessages = {
   realtimeOn: '视口一直在画（粒子、天气一直动）：点一下改成静止时不画，省显卡',
   realtimeOff: '视口静止时不画（有输入、修改时才画，省显卡）：点一下改成一直画，粒子、天气一直动',
   polyDone: '完成',
-  polyHint: '视口里点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选），拖操纵器移动（W、E、R 换移动、旋转、缩放）；Delete 删面，Ctrl+Z 撤销',
+  polyHint: '视口里点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选；双击边选边环、双击面选面环），拖操纵器移动（W、E、R 换移动、旋转、缩放）；Delete 删面，Ctrl+Z 撤销',
+  polySoft: '软选择',
+  polySoftHint: '拖的时候选中的点周围半径内的点按距离平滑衰减地跟着动（黄的动得多、蓝的动得少）',
+  polySoftRadius: '半径',
   splineEdit: '编辑样条',
   splineHint: '视口里点选控制点（Shift、Ctrl 加选），拖操纵器移动（W、E、R 换移动、旋转、缩放），双击路径加点；Delete 删点，Ctrl+Z 撤销',
   splineDeletePoints: '删除点',
@@ -655,7 +661,10 @@ const enUS: EditorMessages = {
   realtimeOn: 'The viewport redraws all the time (particles and weather keep moving); click to draw only when something changes and save the GPU',
   realtimeOff: 'The viewport draws only when something changes (input, edits), saving the GPU; click to redraw all the time so particles and weather keep moving',
   polyDone: 'Done',
-  polyHint: 'Click vertices, edges or faces in the viewport (1, 2, 3 switch the mode; Shift or Ctrl adds), drag the gizmo to move (W, E, R: move, rotate, scale); Delete removes faces, Ctrl+Z undoes',
+  polyHint: 'Click vertices, edges or faces in the viewport (1, 2, 3 switch the mode; Shift or Ctrl adds; double-click an edge for its loop, a face for its face loop), drag the gizmo to move (W, E, R: move, rotate, scale); Delete removes faces, Ctrl+Z undoes',
+  polySoft: 'Soft selection',
+  polySoftHint: 'While dragging, points within the radius of the selection follow with a smooth falloff (yellow moves more, blue less)',
+  polySoftRadius: 'Radius',
   splineEdit: 'Edit spline',
   splineHint: 'Click control points in the viewport (Shift or Ctrl adds), drag the gizmo to move (W, E, R: move, rotate, scale), double-click the path to add a point; Delete removes points, Ctrl+Z undoes',
   splineDeletePoints: 'Delete points',

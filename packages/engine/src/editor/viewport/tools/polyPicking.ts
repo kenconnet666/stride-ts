@@ -89,7 +89,8 @@ export function pickFace(mesh: Pick<PolyMeshFile, 'faces'>, world: readonly Vec3
   return best?.face;
 }
 
-const sameEdge = (a: PolyEdge, b: PolyEdge) => (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
+/** 两条边是不是同一条（不分方向）。 */
+export const sameEdge = (a: PolyEdge, b: PolyEdge) => (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
 
 /**
  * 点了一下之后的选择：additive（按着 Shift、Ctrl）时点到的加进来、已经选中的去掉；不按时只选它。点空处：additive 时不变，
@@ -119,12 +120,14 @@ export function selectionCenter(world: readonly Vec3Tuple[], vertices: readonly 
 
 /**
  * 操纵器拖的结果落到点上（多边形的顶点、样条的控制点；从拖之前的位置算，不累积误差）：移动是加上世界里的位移，旋转绕枢轴转，缩放沿操纵器的轴
- * （orientation）相对枢轴缩放；再换回本地坐标。返回全部的点（没选中的原样）；digits 是存进文件留几位小数。
+ * （orientation）相对枢轴缩放；再换回本地坐标。返回全部的点（没选中的原样）；digits 是存进文件留几位小数。weights（软选择，
+ * modeling/polyLoops.ts 的 softWeights）给了时动的是它里面的点、各按权重动一部分：移动乘权重，旋转按权重从不转插过去，缩放从 1
+ * 插到目标；没给时 indices 里的点全动。
  */
 export function transformPoints(
   start: readonly Vec3Tuple[], indices: readonly number[], change: GizmoChange,
   pivot: Readonly<{ x: number; y: number; z: number }>, orientation: Readonly<{ x: number; y: number; z: number; w: number }>,
-  world: MatrixSource, digits = 5,
+  world: MatrixSource, digits = 5, weights?: ReadonlyMap<number, number>,
 ): Vec3Tuple[] {
   // 双精度：大世界里远处的模型，世界矩阵的逆也要准
   const inverse = new Float64Array(16);
@@ -133,14 +136,16 @@ export function transformPoints(
   const axes = new Quaternion(orientation.x, orientation.y, orientation.z, orientation.w);
   const unrotate = axes.clone().invert();
   const moved = start.slice();
-  for (const v of new Set(indices)) {
+  const targets: Iterable<readonly [number, number]> = weights ?? [...new Set(indices)].map((v) => [v, 1] as const);
+  for (const [v, w] of targets) {
     const [x, y, z] = start[v]!;
     const point = new Vector3(...Matrix.transformPoint(world, x, y, z));
-    if (change.type === 'translate') point.add(change.delta);
-    else if (change.type === 'rotate') point.subtract(pivot).rotate(change.rotation).add(pivot);
+    if (change.type === 'translate') point.addScaled(change.delta, w);
+    else if (change.type === 'rotate') point.subtract(pivot).rotate(w === 1 ? change.rotation : new Quaternion().slerp(change.rotation, w)).add(pivot);
     else {
       const local = point.subtract(pivot).rotate(unrotate);
-      local.set(local.x * change.factor.x, local.y * change.factor.y, local.z * change.factor.z);
+      const f = change.factor;
+      local.set(local.x * (1 + (f.x - 1) * w), local.y * (1 + (f.y - 1) * w), local.z * (1 + (f.z - 1) * w));
       point.copy(local.rotate(axes).add(pivot));
     }
     moved[v] = Matrix.transformPoint(inverse, point.x, point.y, point.z).map(round) as unknown as Vec3Tuple;

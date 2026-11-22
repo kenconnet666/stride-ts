@@ -1,6 +1,6 @@
 /** 编辑器 MCP 服务的工具：建模：雕刻地形、编辑多边形网格、白盒导出成多边形网格。 */
 import type { McpServer } from '@modelcontextprotocol/server';
-import { applyPolyOperation, POLY_OPERATIONS, type PolyOperation } from '@stride-ts/engine/modeling';
+import { applyPolyOperation, edgeLoop, faceLoop, POLY_OPERATIONS, type PolyOperation } from '@stride-ts/engine/modeling';
 import type { PolyMeshFile, TerrainFeatureFile, TerrainFile, TerrainStrokeFile } from '@stride-ts/engine/content-format';
 import * as z from 'zod';
 import { assetPath, json, type McpProjects } from '../shared.ts';
@@ -68,6 +68,18 @@ export function registerModelingTools(server: McpServer, projects: McpProjects):
     const result = applyPolyOperation(mesh, operation as unknown as PolyOperation);
     await projects.current.saveAsset('poly', path, result.mesh);
     return json({ saved: `poly ${path}`, vertexCount: result.mesh.vertices.length, faceCount: result.mesh.faces.length, selected: { faces: result.faces, edges: result.edges, vertices: result.vertices } });
+  });
+
+  server.registerTool('poly_loop', {
+    description: [
+      'Select a loop on a poly mesh asset (like double-clicking in the viewport), to feed edit_poly: with edge [a, b] the edge loop through it',
+      '(it continues straight through vertices with exactly four edges and stops elsewhere or at the border); with face and edge the face loop',
+      'that goes from the quad face across that edge and on through the opposite edges of quads. Nothing is saved.',
+    ].join(' '),
+    inputSchema: z.object({ path: assetPath, edge: z.tuple([z.number().int(), z.number().int()]), face: z.number().int().optional() }),
+  }, async ({ path, edge, face }) => {
+    const mesh = await projects.current.readAsset('poly', path) as PolyMeshFile;
+    return json(face === undefined ? { edges: edgeLoop(mesh, edge) } : { faces: faceLoop(mesh, face, edge) });
   });
 
   server.registerTool('brush_to_poly', {

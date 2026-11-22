@@ -166,7 +166,7 @@ export type { ParticlePreview, ParticlePreviewState } from './editor/ParticlePre
 export type { FileEditTool, ViewportTool } from './editor/viewport/tools/ViewportTool';
 export type { PaintTool, PaintBrush, PaintImage } from './editor/viewport/tools/PaintTool';
 export type { SculptTool, SculptBrush } from './editor/viewport/tools/SculptTool';
-export type { PolyEditTool } from './editor/viewport/tools/PolyEditTool';
+export type { PolyEditTool, PolySoftSelection } from './editor/viewport/tools/PolyEditTool';
 export type { SplineEditTool } from './editor/viewport/tools/SplineEditTool';
 export type { BrushEditTool } from './editor/viewport/tools/BrushEditTool';
 export type { SdfEditTool } from './editor/viewport/tools/SdfEditTool';

@@ -4,7 +4,7 @@
  * 改了以后经回调告诉这里。会话持有它（`session.tools`），工具条、属性面板、图层栏用它。
  */
 import { shallowRef } from 'vue';
-import type { BrushEditTool, PaintBrush, PaintTool, PolyEditTool, PolySelection, PolySelectMode, SculptBrush, SculptTool, SdfEditTool, SplineEditTool } from '@stride-ts/engine';
+import type { BrushEditTool, PaintBrush, PaintTool, PolyEditTool, PolySelection, PolySelectMode, PolySoftSelection, SculptBrush, SculptTool, SdfEditTool, SplineEditTool } from '@stride-ts/engine';
 import { addSdfShape, branchFromPoint, deleteBrush, deleteSdfShape, deleteSplinePoints } from '@stride-ts/engine';
 import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
 import type { BrushFile, BrushShapeFile, PolyMeshFile, SdfFile, SdfShapeFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
@@ -32,6 +32,8 @@ export class ViewportTools {
   /** 雕刻的笔刷，换着雕别的地形时保留。 */
   readonly sculptBrush = shallowRef<SculptBrush>({ op: 'raise', radius: 40, strength: 4 });
   /** 正在编辑的多边形网格：哪个实体上、哪个 .poly.json，选择模式、选中的东西和现在的网格。 */
+  /** 多边形的软选择（拖的时候周围的点按距离衰减地跟着动）：开不开、半径（米）。换工具时留着。 */
+  readonly polySoft = shallowRef<PolySoftSelection>({ enabled: false, radius: 0.5 });
   readonly polyEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly mode: PolySelectMode; readonly selection: PolySelection; readonly mesh: PolyMeshFile }>();
   /** 正在编辑的样条：哪个实体上、哪个 .spline.json，选中的控制点和现在的样条。 */
   readonly splineEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly selection: readonly number[]; readonly spline: SplineFile }>();
@@ -269,6 +271,7 @@ export class ViewportTools {
     const agent = this.#session.agent.value;
     if (!mesh || !agent) return;
     const tool = this.#poly = agent.editPoly(entity, path, mesh);
+    tool.soft = this.polySoft.value;
     tool.onChanged = (commit) => {
       if (commit) this.#editing.value?.commit(tool.file);
       this.#showPoly();
@@ -280,6 +283,13 @@ export class ViewportTools {
   /** 换选择模式（点、边、面）；选中的清空。 */
   setPolyMode(mode: PolySelectMode): void {
     this.#poly?.setMode(mode);
+  }
+
+  /** 改软选择的设置（视口里受影响的点马上换颜色）。 */
+  setPolySoft(soft: PolySoftSelection): void {
+    this.polySoft.value = soft;
+    if (this.#poly) this.#poly.soft = soft;
+    this.#session.agent.value?.refresh();
   }
 
   /** 对选中的东西做一个编辑操作（挤出、倒角……，引擎的 applyPolyOperation）；做不了时（选的不对）在状态栏说为什么。 */

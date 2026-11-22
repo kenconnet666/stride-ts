@@ -15,15 +15,19 @@
  * - 对比度（以 18% 灰为中心，在对数空间里拉）、算子（hejl2：Stride 的；agx：Blender 4 的 AgX，高光自然地褪色；aces：Narkowicz 的
  *   ACES 拟合）、饱和度（映射之后按亮度拉开）；
  * - 暗角（vignette：cos⁴ 的衰减按强度混）、颗粒（grain：每帧换的亮度噪声，在显示空间里加）。
+ * 同目录的：按亮度直方图测光（HistogramMetering.ts）、局部曝光的网格（LocalExposure.ts，映射时在这里的 localExposure 里取）、
+ * 查找表（ColorLut.ts）、白平衡矩阵（whiteBalance.ts）。
  * 和 Stride 不同：输出是 8 位的 sRGB 时加不到一个灰阶的抖动（dither，默认开）。暗的渐变（夜空、雾）量化成 8 位以后相邻的带只差
  * 一个灰阶，是一圈圈看得见的色带；抖动把它打散成看不出来的噪声。图案是固定的（按像素坐标），画面不动时每帧一样。
  */
-import { FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../wgsl';
-import { GpuProfiler } from '../../graphics/GpuProfiler';
-import { createCheckedShaderModule } from '../../graphics/shaderModule';
-import type { ColorLut } from './ColorLut';
-import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
-import { fullscreenPipeline, isGraphTexture, warmFullscreenPipeline, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
+import { FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../../wgsl';
+import { GpuProfiler } from '../../../graphics/GpuProfiler';
+import { colorLutTexture, type ColorLut } from './ColorLut';
+import { HistogramMetering } from './HistogramMetering';
+import { LOCAL_CELL, LocalExposure, type LocalExposureBinding } from './LocalExposure';
+import { whiteBalanceMatrix } from './whiteBalance';
+import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from '../AdditiveLayers';
+import { fullscreenPipeline, isGraphTexture, warmFullscreenPipeline, type EffectFrame, type Image, type UniformArena } from '../ImageEffect';
 
 const LUMINANCE_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
@@ -57,183 +61,6 @@ struct Adapt { factor: f32, reset: f32 };
   let average = exp2(textureLoad(averageLog, vec2u(0u), i32(textureNumLevels(averageLog)) - 1).r);
   let last = select(textureLoad(previous, vec2u(0u), 0).r, average, adapt.reset > 0.5);
   return vec4f(last + (average - last) * adapt.factor, 0.0, 0.0, 1.0);
-}`;
-
-/** 直方图的格数：第 0 格是比范围暗的，其余按对数亮度均分范围。 */
-const HISTOGRAM_BINS = 128;
-
-/**
- * 按亮度直方图测光（metering = 'histogram'，照 Bevy 的 auto_exposure）：histogram 每个工作组在共享内存里数自己 32×32 个像素（隔一个取一个）
- * 落在哪一格（对数亮度），再加进全局的格子；average 去掉最暗、最亮的一部分（filter）求对数亮度的平均，按每秒几档的速度
- * 往它适应（变亮快、变暗慢，离得近时按指数慢下来），写进适应亮度（和平均测光同一张 1x1，映射那一步不用分），顺手清空格子。
- */
-const HISTOGRAM_SHADER = /* wgsl */ `
-struct Metering { minLog: f32, logRange: f32, low: f32, high: f32, speedBrighten: f32, speedDarken: f32, transition: f32, elapsed: f32, reset: f32 };
-@group(0) @binding(0) var<uniform> metering: Metering;
-@group(0) @binding(1) var hdr: texture_2d<f32>;
-@group(0) @binding(2) var<storage, read_write> histogram: array<atomic<u32>, ${HISTOGRAM_BINS}>;
-@group(0) @binding(3) var previous: texture_2d<f32>;
-@group(0) @binding(4) var adapted: texture_storage_2d<r32float, write>;
-
-var<workgroup> bins: array<atomic<u32>, ${HISTOGRAM_BINS}>;
-
-fn binOf(color: vec3f) -> u32 {
-  let luminance = dot(color, vec3f(0.2126, 0.7152, 0.0722));
-  if (!(luminance > exp2(metering.minLog))) { return 0u; }
-  let t = saturate((log2(luminance) - metering.minLog) / metering.logRange);
-  return 1u + min(u32(t * ${HISTOGRAM_BINS - 1}.0), ${HISTOGRAM_BINS - 2}u);
-}
-
-@compute @workgroup_size(16, 16)
-fn histogramMain(@builtin(global_invocation_id) id: vec3u, @builtin(local_invocation_index) index: u32) {
-  if (index < ${HISTOGRAM_BINS}u) { atomicStore(&bins[index], 0u); }
-  workgroupBarrier();
-  // 每 2×2 个像素数一个：直方图是统计量，数四分之一的像素分布一样，4K 下省四分之三
-  let pixel = id.xy * 2u;
-  if (all(pixel < textureDimensions(hdr))) { atomicAdd(&bins[binOf(textureLoad(hdr, pixel, 0).rgb)], 1u); }
-  workgroupBarrier();
-  if (index < ${HISTOGRAM_BINS}u) {
-    let count = atomicLoad(&bins[index]);
-    if (count > 0u) { atomicAdd(&histogram[index], count); }
-  }
-}
-
-/** 第 i 格的对数亮度（格子中间；第 0 格算范围的下限）。 */
-fn binLog(i: u32) -> f32 {
-  if (i == 0u) { return metering.minLog; }
-  return metering.minLog + (f32(i) - 0.5) / ${HISTOGRAM_BINS - 1}.0 * metering.logRange;
-}
-
-@compute @workgroup_size(1)
-fn averageMain() {
-  var total = 0u;
-  var cumulative: array<u32, ${HISTOGRAM_BINS}>;
-  for (var i = 0u; i < ${HISTOGRAM_BINS}u; i++) {
-    total += atomicLoad(&histogram[i]);
-    cumulative[i] = total;
-    atomicStore(&histogram[i], 0u);
-  }
-  // 累积的个数夹在 [first, last] 里：最暗的 low、最亮的 1 - high 那部分不算
-  let first = u32(f32(total) * metering.low);
-  let last = u32(f32(total) * metering.high);
-  var counted = 0u;
-  var sum = 0.0;
-  var before = first;
-  for (var i = 0u; i < ${HISTOGRAM_BINS}u; i++) {
-    let upTo = clamp(cumulative[i], first, last);
-    sum += f32(upTo - before) * binLog(i);
-    counted += upTo - before;
-    before = upTo;
-  }
-  let goal = select(metering.minLog, sum / f32(counted), counted > 0u);
-  var current = log2(max(textureLoad(previous, vec2u(0u), 0).r, 1e-6));
-  if (metering.reset > 0.5) {
-    current = goal;
-  } else {
-    // 画面变亮（goal 大）按 speedBrighten，变暗按 speedDarken（档/秒）；离目标不到 transition 档时按指数慢下来
-    let delta = goal - current;
-    let speed = select(metering.speedDarken, metering.speedBrighten, delta > 0.0) * metering.elapsed;
-    current += sign(delta) * min(speed, abs(delta) * speed / metering.transition);
-  }
-  textureStore(adapted, vec2u(0u), vec4f(exp2(current), 0.0, 0.0, 1.0));
-}`;
-
-/** 局部曝光的网格：一格管 32×32 个像素，对数亮度分 16 层。 */
-const LOCAL_CELL = 32;
-const LOCAL_SLICES = 16;
-/** 双边网格的模糊半径（格）和大半径的亮度模糊的半径（格）。 */
-const LOCAL_GRID_RADIUS = 2;
-const LOCAL_WIDE_RADIUS = 8;
-
-/**
- * 局部曝光（照 UE5 的 Local Exposure）的网格：grid 每个工作组管一格，把格子里的像素（隔一个取一个）按对数亮度分进 16 层，
- * 每层存（平均亮度 × 权重，权重），权重是这一层的像素占这一格的比例，各层加起来的那一列另存一张二维的图；blur 在网格上按高斯
- * 模糊（xy 5×5、层 3，一个线程一格一层），wide 把各列按大半径模糊（不分亮度的"大致多亮"）。亮度存成范围里的 0..1
- * （histogramRange）。
- */
-const LOCAL_GRID_SHADER = /* wgsl */ `
-struct Range { minLog: f32, logRange: f32 };
-@group(0) @binding(0) var<uniform> range: Range;
-@group(0) @binding(1) var hdr: texture_2d<f32>;
-@group(0) @binding(2) var grid: texture_storage_3d<rgba16float, write>;
-@group(0) @binding(3) var columns: texture_storage_2d<rgba16float, write>;
-
-var<workgroup> sums: array<atomic<u32>, ${LOCAL_SLICES}>;
-var<workgroup> counts: array<atomic<u32>, ${LOCAL_SLICES}>;
-
-@compute @workgroup_size(16, 16)
-fn gridMain(@builtin(workgroup_id) cell: vec3u, @builtin(local_invocation_id) local: vec3u, @builtin(local_invocation_index) index: u32) {
-  if (index < ${LOCAL_SLICES}u) { atomicStore(&sums[index], 0u); atomicStore(&counts[index], 0u); }
-  workgroupBarrier();
-  let pixel = cell.xy * ${LOCAL_CELL}u + local.xy * 2u;
-  if (all(pixel < textureDimensions(hdr))) {
-    let luminance = max(dot(textureLoad(hdr, pixel, 0).rgb, vec3f(0.2126, 0.7152, 0.0722)), 1e-8);
-    let t = saturate((log2(luminance) - range.minLog) / range.logRange);
-    let slice = min(u32(t * ${LOCAL_SLICES}.0), ${LOCAL_SLICES - 1}u);
-    atomicAdd(&sums[slice], u32(t * 65535.0 + 0.5));
-    atomicAdd(&counts[slice], 1u);
-  }
-  workgroupBarrier();
-  if (index < ${LOCAL_SLICES}u) {
-    let count = f32(atomicLoad(&counts[index]));
-    let mean = select(0.0, f32(atomicLoad(&sums[index])) / 65535.0 / count, count > 0.0);
-    let weight = count / 256.0;
-    textureStore(grid, vec3u(cell.xy, index), vec4f(mean * weight, weight, 0.0, 0.0));
-  }
-  if (index == 0u) {
-    var column = vec2f(0.0);
-    for (var i = 0u; i < ${LOCAL_SLICES}u; i++) {
-      column += vec2f(f32(atomicLoad(&sums[i])) / 65535.0, f32(atomicLoad(&counts[i]))) / 256.0;
-    }
-    textureStore(columns, cell.xy, vec4f(column, 0.0, 0.0));
-  }
-}`;
-
-const LOCAL_BLUR_SHADER = /* wgsl */ `
-@group(0) @binding(0) var grid: texture_3d<f32>;
-@group(0) @binding(1) var blurred: texture_storage_3d<rgba16float, write>;
-@group(0) @binding(2) var columns: texture_2d<f32>;
-@group(0) @binding(3) var wide: texture_storage_2d<rgba16float, write>;
-
-fn gaussian(d: f32, radius: f32) -> f32 {
-  let sigma = radius * 0.5 + 0.5;
-  return exp(-d * d / (2.0 * sigma * sigma));
-}
-
-@compute @workgroup_size(4, 4, 4)
-fn blurMain(@builtin(global_invocation_id) id: vec3u) {
-  let size = vec3i(textureDimensions(grid));
-  let cell = vec3i(id);
-  if (any(cell >= size)) { return; }
-  var sum = vec2f(0.0);
-  for (var dz = -1; dz <= 1; dz++) {
-    let z = cell.z + dz;
-    if (z < 0 || z >= size.z) { continue; }
-    for (var dy = -${LOCAL_GRID_RADIUS}; dy <= ${LOCAL_GRID_RADIUS}; dy++) {
-      for (var dx = -${LOCAL_GRID_RADIUS}; dx <= ${LOCAL_GRID_RADIUS}; dx++) {
-        let p = clamp(cell.xy + vec2i(dx, dy), vec2i(0), size.xy - 1);
-        let w = gaussian(length(vec2f(f32(dx), f32(dy))), ${LOCAL_GRID_RADIUS}.0) * gaussian(f32(dz), 1.0);
-        sum += textureLoad(grid, vec3i(p, z), 0).xy * w;
-      }
-    }
-  }
-  textureStore(blurred, cell, vec4f(sum, 0.0, 0.0));
-}
-
-@compute @workgroup_size(8, 8)
-fn wideMain(@builtin(global_invocation_id) id: vec3u) {
-  let size = vec2i(textureDimensions(columns));
-  let center = vec2i(id.xy);
-  if (any(center >= size)) { return; }
-  var total = vec2f(0.0);
-  for (var dy = -${LOCAL_WIDE_RADIUS}; dy <= ${LOCAL_WIDE_RADIUS}; dy++) {
-    for (var dx = -${LOCAL_WIDE_RADIUS}; dx <= ${LOCAL_WIDE_RADIUS}; dx++) {
-      let p = center + vec2i(dx, dy);
-      if (any(p < vec2i(0)) || any(p >= size)) { continue; }
-      total += textureLoad(columns, p, 0).xy * gaussian(length(vec2f(f32(dx), f32(dy))), ${LOCAL_WIDE_RADIUS}.0);
-    }
-  }
-  textureStore(wide, center, vec4f(total, 0.0, 0.0));
 }`;
 
 const TONEMAP_SHADER = /* wgsl */ `
@@ -413,80 +240,12 @@ interface LuminanceTargets {
 
 type ToneMapStep = 'luminance' | 'downscale' | 'adapt' | 'tonemap';
 
-interface LocalPipelines {
-  readonly grid: GPUComputePipeline;
-  readonly blur: GPUComputePipeline;
-  readonly wide: GPUComputePipeline;
-}
-
-/** 局部曝光跟着画面尺寸的网格：原始的、模糊过的（三维），各列加起来的、大半径模糊的（二维）。 */
-interface LocalTextures {
-  readonly width: number;
-  readonly height: number;
-  readonly grid: GPUTexture;
-  readonly blurred: GPUTexture;
-  readonly columns: GPUTexture;
-  readonly wide: GPUTexture;
-}
-
-/** 映射时绑的局部曝光的网格（模糊过的三维网格、大半径模糊的图）。 */
-interface LocalBinding {
-  readonly grid: GPUTexture;
-  readonly wide: GPUTexture;
-}
-
-interface HistogramPipelines {
-  readonly histogram: GPUComputePipeline;
-  readonly average: GPUComputePipeline;
-}
-
 /** 映射的算子：hejl2（Stride 的）、agx（Blender 4 的 AgX）、aces（Narkowicz 的拟合）。 */
 export type ToneMapOperator = 'hejl2' | 'agx' | 'aces';
 const OPERATORS: readonly ToneMapOperator[] = ['hejl2', 'agx', 'aces'];
 /** 映射的 uniform：8 个标量、画幅、调色、镜头、局部曝光的两组、查找表的两组、白平衡矩阵（3 列 vec4）。 */
 const SETTINGS_FLOATS = 48;
 
-/**
- * 白平衡矩阵（线性 sRGB → 线性 sRGB，列主序 3×3）：相机设成 temperature（K）、tint 时，把这个色温的光源的白当成白（von Kries：
- * 在 CAT02 的 LMS 里按 D65 和那个白点的比缩放）。色温的色度按普朗克轨迹的近似（Kang 2002），tint 沿轨迹的法线往品红、绿挪。
- */
-export function whiteBalanceMatrix(temperature: number, tint: number): number[] {
-  if (Math.abs(temperature - 6500) < 1e-3 && Math.abs(tint) < 1e-6) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
-  const t = Math.min(Math.max(temperature, 1667), 25000);
-  const x = t <= 4000
-    ? -0.2661239e9 / t ** 3 - 0.2343589e6 / t ** 2 + 0.8776956e3 / t + 0.17991
-    : -3.0258469e9 / t ** 3 + 2.1070379e6 / t ** 2 + 0.2226347e3 / t + 0.24039;
-  const y0 = t <= 2222 ? -1.1063814 * x ** 3 - 1.3481102 * x ** 2 + 2.18555832 * x - 0.20219683
-    : t <= 4000 ? -0.9549476 * x ** 3 - 1.37418593 * x ** 2 + 2.09137015 * x - 0.16748867
-      : 3.081758 * x ** 3 - 5.8733867 * x ** 2 + 3.75112997 * x - 0.37001483;
-  const y = y0 + tint * 0.02;
-  const xyz = (cx: number, cy: number) => [cx / cy, 1, (1 - cx - cy) / cy];
-  // CAT02 的 XYZ → LMS
-  const cat = [[0.7328, 0.4296, -0.1624], [-0.7036, 1.6975, 0.0061], [0.003, 0.0136, 0.9834]];
-  const lms = (v: number[]) => cat.map((row) => row[0]! * v[0]! + row[1]! * v[1]! + row[2]! * v[2]!);
-  const source = lms(xyz(x, y)), target = lms(xyz(0.31271, 0.32902));
-  const scale = source.map((value, i) => target[i]! / value);
-  // 线性 sRGB ↔ XYZ（D65）
-  const toXyz = [[0.4124564, 0.3575761, 0.1804375], [0.2126729, 0.7151522, 0.072175], [0.0193339, 0.119192, 0.9503041]];
-  const fromXyz = [[3.2404542, -1.5371385, -0.4985314], [-0.969266, 1.8760108, 0.041556], [0.0556434, -0.2040259, 1.0572252]];
-  const catInverse = invert3(cat);
-  const multiply = (a: number[][], b: number[][]) => a.map((row) => [0, 1, 2].map((j) => row[0]! * b[0]![j]! + row[1]! * b[1]![j]! + row[2]! * b[2]![j]!));
-  const diagonal = [[scale[0]!, 0, 0], [0, scale[1]!, 0], [0, 0, scale[2]!]];
-  const m = multiply(fromXyz, multiply(catInverse, multiply(diagonal, multiply(cat, toXyz))));
-  // 列主序
-  return [m[0]![0]!, m[1]![0]!, m[2]![0]!, m[0]![1]!, m[1]![1]!, m[2]![1]!, m[0]![2]!, m[1]![2]!, m[2]![2]!];
-}
-
-function invert3(m: number[][]): number[][] {
-  const [a, b, c] = m[0]!, [d, e, f] = m[1]!, [g, h, i] = m[2]!;
-  const A = e! * i! - f! * h!, B = -(d! * i! - f! * g!), C = d! * h! - e! * g!;
-  const det = a! * A + b! * B + c! * C;
-  return [
-    [A / det, -(b! * i! - c! * h!) / det, (b! * f! - c! * e!) / det],
-    [B / det, (a! * i! - c! * g!) / det, -(a! * f! - c! * d!) / det],
-    [C / det, -(a! * h! - b! * g!) / det, (a! * e! - b! * d!) / det],
-  ];
-}
 /** 各步的着色器和目标格式（映射这一步画进后备缓冲，格式用到时才知道）。 */
 const STEPS: Record<ToneMapStep, readonly [label: string, code: string, format: GPUTextureFormat | undefined]> = {
   luminance: ['ToneMap luminance', LUMINANCE_SHADER, 'r16float'],
@@ -568,18 +327,13 @@ export class ToneMap {
   readonly #sourceGroups = new WeakMap<GPUTexture, GPUBindGroup>();
   /** measure 写好的适应亮度，draw 读它。 */
   #measured: GPUTexture | undefined;
-  /** 直方图测光的格子和设置（第一次用到时建）、管线（后台编，编好以前照平均测光量）。 */
-  #histogram: { readonly bins: GPUBuffer; readonly uniform: GPUBuffer } | undefined;
-  #histogramPipelines: HistogramPipelines | Promise<void> | undefined;
-  #localPipelines: LocalPipelines | Promise<void> | undefined;
-  #local: LocalTextures | undefined;
-  #localUniform: GPUBuffer | undefined;
-  /** 这一帧映射时绑的网格：开着时是 #local 的，没开时是 1 个纹素的占位（着色器不读）。 */
-  #localBound: LocalBinding | undefined;
-  #localPlaceholder: (LocalBinding & { readonly lut: GPUTexture }) | undefined;
-  /** 查找表的贴图（按表建一次）；这一帧映射时绑的那张。 */
-  readonly #lutTextures = new WeakMap<ColorLut, GPUTexture>();
+  /** 直方图测光（第一次用到时建）、局部曝光的网格。 */
+  #histogram: HistogramMetering | undefined;
+  #local: LocalExposure | undefined;
+  /** 这一帧映射时绑的局部曝光的网格、查找表：没开时是 1 个纹素的占位（着色器不读）。 */
+  #localBound: LocalExposureBinding | undefined;
   #lutBound: GPUTexture | undefined;
+  #placeholders: (LocalExposureBinding & { readonly lut: GPUTexture }) | undefined;
 
   constructor(device: GPUDevice, sampler: GPUSampler) {
     this.#device = device;
@@ -599,7 +353,7 @@ export class ToneMap {
     settings.set([OPERATORS.indexOf(this.operator), this.saturation, this.contrast, this.#time % 1000], 12);
     settings.set([this.vignette, this.grain, this.chromaticAberration, this.distortion], 16);
     const wantsLocal = this.enabled && (this.localHighlights !== 1 || this.localShadows !== 1 || this.localDetail !== 1);
-    const local = wantsLocal ? this.#localPipelinesReady() : undefined;
+    const local = wantsLocal && (this.#local ??= new LocalExposure(this.#device)).ready() ? this.#local : undefined;
     const [minLog, maxLog] = this.histogramRange;
     settings.set([this.localHighlights, this.localShadows, this.localDetail, this.localBlur], 20);
     settings.set([minLog, Math.max(maxLog - minLog, 1e-3), local ? 1 : 0, 0], 24);
@@ -607,16 +361,16 @@ export class ToneMap {
     const lut = this.enabled && this.lutStrength > 0 ? this.lut : undefined;
     settings.set([...lut?.domainMin ?? [0, 0, 0], lut ? this.lutStrength : 0, ...lut?.domainMax ?? [1, 1, 1], lut?.size ?? 1], 28);
     for (let c = 0; c < 3; c++) settings.set([balance[c * 3]!, balance[c * 3 + 1]!, balance[c * 3 + 2]!, 0], 36 + c * 4);
-    this.#lutBound = lut ? this.#lutTexture(lut) : this.#placeholder().lut;
+    this.#lutBound = lut ? colorLutTexture(this.#device, lut) : this.#placeholder().lut;
     this.#device.queue.writeBuffer(this.#settings, 0, settings);
-    this.#localBound = local ? this.#buildLocalGrid(frame, input, local, minLog, maxLog) : this.#placeholder();
+    this.#localBound = local ? local.record(frame, input, minLog, maxLog) : this.#placeholder();
     // 关掉时 draw 照样绑一张适应亮度（着色器不读它）；重新打开时从当前亮度开始适应
     if (!this.enabled) {
       this.#measured = this.#adapted[this.#current];
       this.#reset = true;
       return;
     }
-    const histogram = this.metering === 'histogram' ? this.#histogramPipelinesReady() : undefined;
+    const histogram = this.metering === 'histogram' && (this.#histogram ??= new HistogramMetering(this.#device)).ready() ? this.#histogram : undefined;
     // 平均测光的亮度图跟着画面尺寸（尺寸变了要从头适应，所以在读 #reset 之前）
     const targets = histogram ? undefined : this.#targetsFor(input.width, input.height);
     const reset = this.#reset || !this.temporalAdaptation;
@@ -627,7 +381,9 @@ export class ToneMap {
     this.#current = 1 - this.#current;
     this.#measured = next;
     if (!targets) {
-      this.#measureHistogram(frame, input, previous, next, elapsed, reset, histogram!);
+      histogram!.record(frame, input, previous, next, {
+        range: this.histogramRange, filter: this.histogramFilter, speedBrighten: this.speedBrighten, speedDarken: this.speedDarken, elapsed, reset,
+      });
       return;
     }
     const factor = this.temporalAdaptation ? 1 - Math.exp(-elapsed * this.adaptationRate) : 1;
@@ -656,156 +412,14 @@ export class ToneMap {
     }, () => this.#warm(['luminance', 'downscale', 'adapt']));
   }
 
-  /** 直方图测光：数格子、按格子求平均并适应，写进 next（见 HISTOGRAM_SHADER）。 */
-  #measureHistogram(frame: EffectFrame, input: Image, previous: GPUTexture, next: GPUTexture, elapsed: number, reset: boolean, pipelines: HistogramPipelines): void {
-    const device = this.#device;
-    const { bins, uniform } = this.#histogram ??= {
-      bins: device.createBuffer({ label: 'ToneMap histogram', size: HISTOGRAM_BINS * 4, usage: GPUBufferUsage.STORAGE }),
-      uniform: device.createBuffer({ label: 'ToneMap metering', size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
-    };
-    const [min, max] = this.histogramRange;
-    // 离目标 1.5 档以内按指数慢下来（Bevy 的 exponential_transition_distance）
-    device.queue.writeBuffer(uniform, 0, new Float32Array([min, Math.max(max - min, 1e-3), ...this.histogramFilter, this.speedBrighten, this.speedDarken, 1.5, elapsed, reset ? 1 : 0]));
-    frame.pass('ToneMap measure', (pass) => {
-      if (isGraphTexture(input)) pass.read(input);
-      pass.sideEffect();
-    }, (real) => {
-      const texture = isGraphTexture(input) ? real.texture(input) : input;
-      const timestampWrites = GpuProfiler.of(device)?.passTimestamps('ToneMap histogram');
-      const pass = frame.encoder.beginComputePass({ label: 'ToneMap histogram', ...(timestampWrites ? { timestampWrites } : {}) });
-      pass.setPipeline(pipelines.histogram);
-      pass.setBindGroup(0, device.createBindGroup({
-        layout: pipelines.histogram.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: uniform } }, { binding: 1, resource: texture.createView() }, { binding: 2, resource: { buffer: bins } }],
-      }));
-      pass.dispatchWorkgroups(Math.ceil(texture.width / 32), Math.ceil(texture.height / 32));
-      pass.setPipeline(pipelines.average);
-      pass.setBindGroup(0, device.createBindGroup({
-        layout: pipelines.average.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: uniform } },
-          { binding: 2, resource: { buffer: bins } },
-          { binding: 3, resource: previous.createView() },
-          { binding: 4, resource: next.createView() },
-        ],
-      }));
-      pass.dispatchWorkgroups(1);
-      pass.end();
-    });
-  }
-
-  /** 局部曝光的网格：数格子、模糊（见 LOCAL_GRID_SHADER），返回映射时要绑的。 */
-  #buildLocalGrid(frame: EffectFrame, input: Image, pipelines: LocalPipelines, minLog: number, maxLog: number): LocalBinding {
-    const device = this.#device;
-    const textures = this.#localTexturesFor(input.width, input.height);
-    const uniform = this.#localUniform ??= device.createBuffer({ label: 'ToneMap local exposure', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    device.queue.writeBuffer(uniform, 0, new Float32Array([minLog, Math.max(maxLog - minLog, 1e-3), 0, 0]));
-    frame.pass('ToneMap local exposure', (pass) => {
-      if (isGraphTexture(input)) pass.read(input);
-      pass.sideEffect();
-    }, (real) => {
-      const texture = isGraphTexture(input) ? real.texture(input) : input;
-      const timestampWrites = GpuProfiler.of(device)?.passTimestamps('ToneMap local exposure');
-      const pass = frame.encoder.beginComputePass({ label: 'ToneMap local exposure', ...(timestampWrites ? { timestampWrites } : {}) });
-      pass.setPipeline(pipelines.grid);
-      pass.setBindGroup(0, device.createBindGroup({
-        layout: pipelines.grid.getBindGroupLayout(0),
-        entries: [
-          { binding: 0, resource: { buffer: uniform } },
-          { binding: 1, resource: texture.createView() },
-          { binding: 2, resource: textures.grid.createView() },
-          { binding: 3, resource: textures.columns.createView() },
-        ],
-      }));
-      const { width, height } = textures.grid;
-      pass.dispatchWorkgroups(width, height);
-      pass.setPipeline(pipelines.blur);
-      pass.setBindGroup(0, device.createBindGroup({
-        layout: pipelines.blur.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: textures.grid.createView() }, { binding: 1, resource: textures.blurred.createView() }],
-      }));
-      pass.dispatchWorkgroups(Math.ceil(width / 4), Math.ceil(height / 4), LOCAL_SLICES / 4);
-      pass.setPipeline(pipelines.wide);
-      pass.setBindGroup(0, device.createBindGroup({
-        layout: pipelines.wide.getBindGroupLayout(0),
-        entries: [{ binding: 2, resource: textures.columns.createView() }, { binding: 3, resource: textures.wide.createView() }],
-      }));
-      pass.dispatchWorkgroups(Math.ceil(width / 8), Math.ceil(height / 8));
-      pass.end();
-    });
-    return { grid: textures.blurred, wide: textures.wide };
-  }
-
-  #localTexturesFor(width: number, height: number): LocalTextures {
-    if (this.#local?.width === width && this.#local.height === height) return this.#local;
-    if (this.#local) for (const texture of [this.#local.grid, this.#local.blurred, this.#local.columns, this.#local.wide]) texture.destroy();
-    const columns = Math.ceil(width / LOCAL_CELL), rows = Math.ceil(height / LOCAL_CELL);
-    const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING;
-    const grid = (label: string) => this.#device.createTexture({ label, size: [columns, rows, LOCAL_SLICES], dimension: '3d', format: 'rgba16float', usage });
-    return (this.#local = {
-      width, height,
-      grid: grid('ToneMap local grid'), blurred: grid('ToneMap local grid blurred'),
-      columns: this.#device.createTexture({ label: 'ToneMap local columns', size: [columns, rows], format: 'rgba16float', usage }),
-      wide: this.#device.createTexture({ label: 'ToneMap local wide', size: [columns, rows], format: 'rgba16float', usage }),
-    });
-  }
-
   /** 没开局部曝光、没有查找表时绑的 1 个纹素的贴图（着色器不读）。 */
-  #placeholder(): LocalBinding & { readonly lut: GPUTexture } {
+  #placeholder(): LocalExposureBinding & { readonly lut: GPUTexture } {
     const volume = () => this.#device.createTexture({ label: 'ToneMap placeholder', size: [1, 1, 1], dimension: '3d', format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING });
-    return this.#localPlaceholder ??= {
+    return this.#placeholders ??= {
       grid: volume(),
       wide: this.#device.createTexture({ label: 'ToneMap placeholder', size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING }),
       lut: volume(),
     };
-  }
-
-  /** 查找表的三维贴图（rgba16float 才能线性过滤），第一次用到时建、传上去。 */
-  #lutTexture(lut: ColorLut): GPUTexture {
-    let texture = this.#lutTextures.get(lut);
-    if (!texture) {
-      const { size } = lut;
-      texture = this.#device.createTexture({ label: `ToneMap LUT ${lut.path}`, size: [size, size, size], dimension: '3d', format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
-      this.#device.queue.writeTexture({ texture }, new Float16Array(lut.rgba), { bytesPerRow: size * 8, rowsPerImage: size }, [size, size, size]);
-      this.#lutTextures.set(lut, texture);
-    }
-    return texture;
-  }
-
-  /** 局部曝光的两条管线，同 #histogramPipelinesReady：编好以前返回 undefined（这几帧不做局部曝光）。 */
-  #localPipelinesReady(): LocalPipelines | undefined {
-    const state = this.#localPipelines;
-    if (state && !(state instanceof Promise)) return state;
-    if (!state) {
-      const create = (label: string, code: string, entryPoint: string) => this.#device.createComputePipelineAsync({
-        label, layout: 'auto', compute: { module: createCheckedShaderModule(this.#device, label, code), entryPoint },
-      });
-      this.#localPipelines = Promise.all([
-        create('ToneMap local grid', LOCAL_GRID_SHADER, 'gridMain'),
-        create('ToneMap local blur', LOCAL_BLUR_SHADER, 'blurMain'),
-        create('ToneMap local wide', LOCAL_BLUR_SHADER, 'wideMain'),
-      ]).then(
-        ([grid, blur, wide]) => { this.#localPipelines = { grid, blur, wide }; },
-        (error: unknown) => console.warn('ToneMap local exposure: building the pipelines failed', error),
-      );
-    }
-    return undefined;
-  }
-
-  /** 直方图测光的两条管线：编好了给出来；第一次问时在后台开始编，编好以前返回 undefined（这几帧照平均测光量）。 */
-  #histogramPipelinesReady(): HistogramPipelines | undefined {
-    const state = this.#histogramPipelines;
-    if (state && !(state instanceof Promise)) return state;
-    if (!state) {
-      const module = createCheckedShaderModule(this.#device, 'ToneMap histogram', HISTOGRAM_SHADER);
-      const create = (entryPoint: string) => this.#device.createComputePipelineAsync({ label: `ToneMap ${entryPoint}`, layout: 'auto', compute: { module, entryPoint } });
-      // 编不出来时留着这个 Promise，不再重试（错误在着色器模块的编译信息里报过了）
-      this.#histogramPipelines = Promise.all([create('histogramMain'), create('averageMain')]).then(
-        ([histogram, average]) => { this.#histogramPipelines = { histogram, average }; },
-        (error: unknown) => console.warn('ToneMap histogram: building the pipelines failed', error),
-      );
-    }
-    return undefined;
   }
 
   /** 按 measure 量出的亮度把 input 加上 layers（已经 prefilterLayers 过）映射后画进 output。 */
@@ -848,11 +462,9 @@ export class ToneMap {
 
   destroy(): void {
     this.#targets?.luminance.destroy();
-    this.#histogram?.bins.destroy();
-    if (this.#local) for (const texture of [this.#local.grid, this.#local.blurred, this.#local.columns, this.#local.wide]) texture.destroy();
-    if (this.#localPlaceholder) for (const texture of [this.#localPlaceholder.grid, this.#localPlaceholder.wide, this.#localPlaceholder.lut]) texture.destroy();
-    this.#localUniform?.destroy();
-    this.#histogram?.uniform.destroy();
+    this.#histogram?.destroy();
+    this.#local?.destroy();
+    if (this.#placeholders) for (const texture of [this.#placeholders.grid, this.#placeholders.wide, this.#placeholders.lut]) texture.destroy();
     for (const texture of this.#adapted) texture.destroy();
     this.#settings.destroy();
     this.#adaptUniform.destroy();

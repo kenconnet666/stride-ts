@@ -20,8 +20,8 @@ import { ImageScaler } from './ImageScaler';
 import { LensFlare } from './LensFlare';
 import { LightStreak } from './LightStreak';
 import { QUALITY_TIERS, type QualitySettings } from '../Quality';
-import { ToneMap } from './ToneMap';
-import { colorLutAt } from './ColorLut';
+import { ToneMap } from './tonemap/ToneMap';
+import { colorLutAt } from './tonemap/ColorLut';
 
 /** 只录不执行的渲染图用：不会去要贴图。 */
 const NO_ALLOCATOR = {

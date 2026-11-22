@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { parseCubeLut } from '../../src/rendering/postfx/ColorLut';
+import { parseCubeLut } from '../../src/rendering/postfx/tonemap/ColorLut';
 import { assetReferences } from '../../src/content/references';
 
 /** 边长 n 的恒等表的 .cube 文本（红最快）。 */

@@ -121,9 +121,9 @@ export interface ScenePostEffects {
    * GlossinessThreshold，edgeFade 是它的 EdgeFadeFactor。
    */
   readonly localReflections?: { readonly maxRoughness: number; readonly edgeFade: number };
-  /** 调色和镜头（Stride 没有，见 rendering/postfx/ToneMap.ts）；没写的项用不改变画面的默认值。 */
+  /** 调色和镜头（Stride 没有，见 rendering/postfx/tonemap/ToneMap.ts）；没写的项用不改变画面的默认值。 */
   readonly colorGrading?: SceneColorGrading;
-  /** 自动曝光的测光（Stride 只有平均测光，见 rendering/postfx/ToneMap.ts 的 metering）；没写是 Stride 的。 */
+  /** 自动曝光的测光（Stride 只有平均测光，见 rendering/postfx/tonemap/ToneMap.ts 的 metering）；没写是 Stride 的。 */
   readonly exposure?: SceneExposure;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { whiteBalanceMatrix } from '../../src/rendering/postfx/ToneMap';
+import { whiteBalanceMatrix } from '../../src/rendering/postfx/tonemap/whiteBalance';
 
 /** 列主序 3×3 乘向量。 */
 const apply = (m: readonly number[], v: readonly number[]) => [0, 1, 2].map((r) => m[r]! * v[0]! + m[3 + r]! * v[1]! + m[6 + r]! * v[2]!);

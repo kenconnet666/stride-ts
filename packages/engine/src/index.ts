@@ -223,7 +223,7 @@ export { LensFlare } from './rendering/postfx/LensFlare';
 export { LightStreak } from './rendering/postfx/LightStreak';
 export { gaussianOffsetsWeights } from './rendering/postfx/GaussianBlur';
 export { PostProcessingEffects } from './rendering/postfx/PostProcessingEffects';
-export { ToneMap } from './rendering/postfx/ToneMap';
+export { ToneMap } from './rendering/postfx/tonemap/ToneMap';
 export { ForwardRenderer, spotAngleAttenuation } from './rendering/ForwardRenderer';
 export {
   Material,

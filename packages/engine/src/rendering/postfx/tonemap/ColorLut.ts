@@ -1,6 +1,6 @@
 /**
  * 调色的查找表（LUT）：.cube 文件（Adobe 的 Cube LUT 规范 1.0，DaVinci Resolve、Premiere、Photoshop、OCIO 都能导出），场景的
- * `postEffects.colorGrading.lut` 引用它，色调映射之后按显示空间（sRGB 编码后的 0..1）的颜色查三维表（rendering/postfx/ToneMap.ts）。
+ * `postEffects.colorGrading.lut` 引用它，色调映射之后按显示空间（sRGB 编码后的 0..1）的颜色查三维表（ToneMap.ts）。
  * 表是采样数据，编辑器只导入、不做创作工具（调色在 colorGrading 的参数里调）。
  *
  * 格式：文本，`#` 起是注释；关键字 TITLE、LUT_3D_SIZE N（2..256）、DOMAIN_MIN、DOMAIN_MAX（默认 0 和 1）；之后 N³ 行
@@ -73,4 +73,20 @@ export function parseCubeLut(text: string, path: string, where = path): ColorLut
   if (count !== size ** 3) throw new Error(`${where}: expected ${size}³ = ${size ** 3} table entries, got ${count}`);
   if (domainMin.some((v, k) => v >= domainMax[k]!)) throw new Error(`${where}: DOMAIN_MIN must be below DOMAIN_MAX`);
   return { path, size, domainMin, domainMax, rgba };
+}
+
+/** 每个设备上每张表的三维贴图（rgba16float 才能线性过滤），第一次用到时建、传上去。 */
+const textures = new WeakMap<GPUDevice, WeakMap<ColorLut, GPUTexture>>();
+
+export function colorLutTexture(device: GPUDevice, lut: ColorLut): GPUTexture {
+  let perDevice = textures.get(device);
+  if (!perDevice) textures.set(device, (perDevice = new WeakMap()));
+  let texture = perDevice.get(lut);
+  if (!texture) {
+    const { size } = lut;
+    texture = device.createTexture({ label: `ToneMap LUT ${lut.path}`, size: [size, size, size], dimension: '3d', format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    device.queue.writeTexture({ texture }, new Float16Array(lut.rgba), { bytesPerRow: size * 8, rowsPerImage: size }, [size, size, size]);
+    perDevice.set(lut, texture);
+  }
+  return texture;
 }

@@ -27,7 +27,7 @@ import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/mesh/Mesh';
 import { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import { LightProfile, parseIes } from '../rendering/lighting/LightProfile';
-import { parseCubeLut, registerColorLut, type ColorLut } from '../rendering/postfx/ColorLut';
+import { parseCubeLut, registerColorLut, type ColorLut } from '../rendering/postfx/tonemap/ColorLut';
 import { SplatCloud } from '../rendering/splats/SplatRenderer';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { ProductFile, ProductShape } from '../../src/content/formats/productFormat';
-import { isProduce, labelPixels, productDesign, productLabelSvg, productMaterial, productMesh, productSurfaceSvg, productTransmission } from '../../src/modeling/product';
+import { isProduce, labelPixels, productDesign, productLabelSvg, productMaterial, productMesh, productSurfaceSvg, productText, productTransmission } from '../../src/modeling/product';
 
 const bottle: ProductFile = { name: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], text: '矿泉水', seed: 3 };
 const sizes: Readonly<Record<ProductShape, readonly [number, number, number]>> = {
@@ -118,6 +118,25 @@ describe('商品包装', () => {
     expect(svg).toContain('<g filter="url(#print-82-0)">');
     expect(productTransmission({ ...oil, transmission: 3 })).toBe(1);
     expect(productTransmission({ name: 'Tomato', shape: 'round', size: [0.08, 0.07, 0], transmission: 1 })).toBe(0);
+  });
+
+  test('印得细的标签：色带有镶边和明暗，正面有徽标、配料小图、细字、角标；detail 关掉只剩色块和字；加的几样不改原来挑的', () => {
+    const oil: ProductFile = { ...bottle, pattern: 'band', motif: 'corn', badge: '5L', colors: { trim: '#e8c25a' } };
+    const [W, H] = productMesh(oil).labelSize;
+    const rich = productLabelSvg(oil, [W, H], undefined);
+    const flat = productLabelSvg({ ...oil, detail: false }, [W, H], undefined);
+    // 镶边、徽标的金色，玉米的黄，角标的星形
+    expect(rich).toContain('fill="#e8c25a"');
+    expect(rich).toContain('fill="#f6d030"');
+    expect(rich).toContain('stroke="#d7262b"');
+    expect(rich.length).toBeGreaterThan(flat.length * 2);
+    expect(flat).not.toContain('#e8c25a');
+    expect(flat).not.toContain('<circle');
+    expect(productText(productDesign(oil))).toContain('5L');
+    // 品牌、配色、图案和加这几样之前按同一个种子挑的一样
+    const before = productDesign(bottle), after = productDesign({ ...bottle, motif: 'leaf' });
+    expect([after.brand, after.colors.background, after.colors.accent, after.colors.cap, after.pattern]).toEqual([before.brand, before.colors.background, before.colors.accent, before.colors.cap, before.pattern]);
+    expect(productDesign({ name: 'Tomato', shape: 'round', size: [0.08, 0.07, 0] })).toMatchObject({ detail: false, motif: 'none' });
   });
 
   test('尺寸不对时报错', () => {

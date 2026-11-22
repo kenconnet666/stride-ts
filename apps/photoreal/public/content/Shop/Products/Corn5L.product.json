@@ -9,6 +9,8 @@
  ],
  "text": "玉米油",
  "seed": 83,
+ "motif": "corn",
+ "badge": "5L",
  "pattern": "band",
  "transmission": 0.9,
  "colors": {

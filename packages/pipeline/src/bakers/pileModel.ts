@@ -6,7 +6,7 @@
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
 import { physics } from '@stride-ts/native/physics';
 import { EXTENSIONS, type PileFile, type ProductFile } from '@stride-ts/engine/content-format';
-import { pileContainer, pileModel, pileSpawn, productDesign, productMesh, type PlacedProduct, type TextFont } from '@stride-ts/engine/modeling';
+import { pileContainer, pileModel, pileSpawn, productDesign, productMesh, productText, type PlacedProduct, type TextFont } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
 import type { BakedFile } from './productModel.ts';
 import { mergedFiles } from './mergedFiles.ts';
@@ -37,8 +37,7 @@ export async function bakePile(tools: StrideTools, file: PileFile, path: string,
     const product = products.get(item.product)!;
     if (!product.font || fonts.has(product.font)) continue;
     const text = Array.from({ length: Math.max(1, Math.round(item.variants ?? 3)) }, (_, k) => {
-      const design = productDesign(product, k);
-      return design.brand + (design.text ?? '');
+      return productText(productDesign(product, k));
     }).join('');
     fonts.set(product.font, await loadTextFont(product.font, text, readContent, where));
   }

@@ -4,7 +4,7 @@
  * 字体资源从内容目录读，readContent 给。
  */
 import { encodeModel, EXTENSIONS, type ProductFile } from '@stride-ts/engine/content-format';
-import { labelPixels, productDesign, productLabelSvg, productMaterial, productMesh, productSurfaceSvg, productTransmission } from '@stride-ts/engine/modeling';
+import { labelPixels, productDesign, productLabelSvg, productMaterial, productMesh, productSurfaceSvg, productText, productTransmission } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
 import { compressMeshes } from '../mesh.ts';
 import { loadTextFont } from './textFont.ts';
@@ -19,7 +19,7 @@ export interface BakedFile {
 export async function bakeProduct(tools: StrideTools, file: ProductFile, path: string, readContent: (path: string) => Promise<Uint8Array>, where = file.name): Promise<BakedFile[]> {
   const mesh = productMesh(file, where);
   const design = productDesign(file);
-  const font = file.font ? await loadTextFont(file.font, design.brand + (design.text ?? ''), readContent, where) : undefined;
+  const font = file.font ? await loadTextFont(file.font, productText(design), readContent, where) : undefined;
   const svg = productLabelSvg(file, mesh.labelSize, font);
   const material = productMaterial(file, path, labelPixels(mesh.labelSize));
   const model = encodeModel({ meshes: compressMeshes([{ name: 'package', material: 0, vertices: mesh.vertices, indices: mesh.indices }], tools), materials: [path] });

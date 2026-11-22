@@ -9,7 +9,7 @@
  * - 标签的 SVG 用毫米做单位（viewBox 和网格的展开一一对应，栅格化的尺寸按比例），字是字体轮廓的路径（evenodd 挖洞）。
  */
 import type { MaterialFile } from '../content/formats/assetFormat.ts';
-import { PRODUCE_SHAPES, WARE_SHAPES, type ProductColors, type ProductFile, type ProductPattern, type ProductShape, type ProductSurface } from '../content/formats/productFormat.ts';
+import { PRODUCE_SHAPES, WARE_SHAPES, type ProductColors, type ProductFile, type ProductMotif, type ProductPattern, type ProductShape, type ProductSurface } from '../content/formats/productFormat.ts';
 import { hash32, seededRandom } from '../data/hash.ts';
 import { MeshBuilder } from './meshBuilder.ts';
 import { cross, finish, latheMesh, normalize, sub, type ProductMesh, type ProfilePoint } from './lathe.ts';
@@ -27,11 +27,19 @@ export interface ProductDesign {
   readonly colors: Required<ProductColors>;
   readonly pattern: ProductPattern;
   readonly surface: ProductSurface;
+  /** 印得细不细、配料的小图、角标（见 ProductFile 的同名字段）。 */
+  readonly detail: boolean;
+  readonly motif: ProductMotif;
+  readonly badge: string | undefined;
 }
 
 /** 包装上常见的颜色（sRGB）：底色和强调色从这里挑。 */
 const PALETTE = ['#d7262b', '#f6c40f', '#2f9e44', '#1e64c8', '#f4f2ec', '#1d1d1f', '#f08c00', '#f7a8c4', '#7048a8', '#1aa39a', '#7a4a2a', '#efe3c4', '#e8e8e8', '#0b7a3e'];
 const PATTERNS: readonly ProductPattern[] = ['plain', 'band', 'stripes', 'split', 'wave', 'dots'];
+/** 没写时挑的配料小图（花生、玉米、芝麻这些说明是什么的，写在文件里）。 */
+const MOTIFS: readonly ProductMotif[] = ['leaf', 'drop', 'wheat', 'sunflower', 'none'];
+/** 镶边的颜色：金、白、米白。 */
+const TRIMS = ['#e8c25a', '#ffffff', '#f4f2ec'];
 /** 拼品牌名的字（常见的商标用字）。 */
 const BRAND_CHARACTERS = '金龙鱼海天康乐福味美好鲜香农家旺佳丰园源山泉清真御品优百万华宝和顺禾田欢喜悦大小星光润洁雪绿新鸿盛';
 const DEFAULT_SURFACE: Readonly<Record<ProductShape, ProductSurface>> = {
@@ -57,7 +65,7 @@ export function productDesign(file: ProductFile, variant = 0): ProductDesign {
     // 器皿：白釉青花（碗）或者素白（盘），没有品牌和字
     return {
       brand: '', text: undefined, pattern: file.pattern ?? (file.shape === 'bowl' ? 'floral' : 'plain'), surface: file.surface ?? 'ceramic',
-      colors: { background: file.colors?.background ?? WARE_GLAZE, accent: file.colors?.accent ?? WARE_COBALT, text: '', cap: '' },
+      colors: { background: file.colors?.background ?? WARE_GLAZE, accent: file.colors?.accent ?? WARE_COBALT, text: '', cap: '', trim: '' }, ...UNPRINTED,
     };
   }
   if (isProduce(file.shape)) {
@@ -65,7 +73,7 @@ export function productDesign(file: ProductFile, variant = 0): ProductDesign {
     const [background, accent, cap] = PRODUCE_COLORS[file.shape]!.map((color) => jitter(color, random, 0.12));
     return {
       brand: '', text: undefined, pattern: 'plain', surface: file.surface ?? 'skin',
-      colors: { background: file.colors?.background ?? background!, accent: file.colors?.accent ?? accent!, text: '', cap: file.colors?.cap ?? cap! },
+      colors: { background: file.colors?.background ?? background!, accent: file.colors?.accent ?? accent!, text: '', cap: file.colors?.cap ?? cap!, trim: '' }, ...UNPRINTED,
     };
   }
   const background = file.colors?.background ?? pick(PALETTE);
@@ -73,13 +81,26 @@ export function productDesign(file: ProductFile, variant = 0): ProductDesign {
   for (let tries = 0; !file.colors?.accent && contrast(accent, background) < 1.6 && tries < 8; tries++) accent = pick(PALETTE);
   const length = 2 + Math.floor(random() * 2);
   const brand = file.brand ?? Array.from({ length }, () => pick(Array.from(BRAND_CHARACTERS))).join('');
+  const cap = file.colors?.cap ?? pick(['#f4f2ec', '#d7262b', '#1e64c8', '#2f9e44', '#f6c40f', '#1d1d1f', accent]);
+  const pattern = file.pattern ?? pick(PATTERNS);
+  // 后加的几样排在最后挑：前面的（品牌、配色、图案）和加之前按同一个种子挑的一样
+  const motif = file.motif ?? pick(MOTIFS), trim = file.colors?.trim ?? pick(TRIMS);
   return {
     brand,
     text: file.text,
-    colors: { background, accent, text: file.colors?.text ?? '', cap: file.colors?.cap ?? pick(['#f4f2ec', '#d7262b', '#1e64c8', '#2f9e44', '#f6c40f', '#1d1d1f', accent]) },
-    pattern: file.pattern ?? pick(PATTERNS),
+    colors: { background, accent, text: file.colors?.text ?? '', cap, trim },
+    pattern,
     surface: file.surface ?? DEFAULT_SURFACE[file.shape],
+    detail: file.detail ?? true, motif, badge: file.badge || undefined,
   };
+}
+
+/** 果蔬、器皿：没有印的东西。 */
+const UNPRINTED = { detail: false, motif: 'none', badge: undefined } as const;
+
+/** 标签上要排的字（品牌名、品类、角标）：烘焙时按它从字体里取子集。 */
+export function productText(design: ProductDesign): string {
+  return design.brand + (design.text ?? '') + (design.badge ?? '');
 }
 
 /** 检查尺寸；不对时报错（where 是报错的前缀）。 */
@@ -338,6 +359,7 @@ function labelPrint(file: ProductFile, design: ProductDesign, labelSize: readonl
   }
   parts.push(...patternShapes(design, body));
   if (font) for (const area of areas) parts.push(...textBlock(design, font, area));
+  if (design.detail) parts.push(...labelDetails(design, font, areas[0]!, seededRandom(hash32(hash32(file.seed ?? 1, variant), 91))));
   return parts.join('');
 }
 
@@ -375,9 +397,9 @@ function patternShapes(design: ProductDesign, [x, y, w, h]: readonly [number, nu
     case 'floral':
       return [];
     case 'band':
-      return [`<rect x="${svgNumber(x)}" y="${svgNumber(y + h * 0.3)}" width="${svgNumber(w)}" height="${svgNumber(h * 0.36)}" fill="${accent}"/>`];
+      return [`<rect x="${svgNumber(x)}" y="${svgNumber(y + h * 0.3)}" width="${svgNumber(w)}" height="${svgNumber(h * 0.36)}" fill="${accent}"/>`, ...bandFinish(design, x, w, y + h * 0.3, h * 0.36)];
     case 'split':
-      return [`<rect x="${svgNumber(x)}" y="${svgNumber(y + h * 0.62)}" width="${svgNumber(w)}" height="${svgNumber(h * 0.38)}" fill="${accent}"/>`];
+      return [`<rect x="${svgNumber(x)}" y="${svgNumber(y + h * 0.62)}" width="${svgNumber(w)}" height="${svgNumber(h * 0.38)}" fill="${accent}"/>`, ...bandFinish(design, x, w, y + h * 0.62, h * 0.38)];
     case 'stripes': {
       const step = Math.max(h, 1) / 6, shapes: string[] = [];
       for (let k = -6; k * step < w + h; k++) shapes.push(`<path d="M${svgNumber(x + k * step)} ${svgNumber(y + h)}L${svgNumber(x + k * step + step * 0.45)} ${svgNumber(y + h)}L${svgNumber(x + k * step + step * 0.45 + h)} ${svgNumber(y)}L${svgNumber(x + k * step + h)} ${svgNumber(y)}Z" fill="${accent}" opacity="0.55"/>`);
@@ -405,11 +427,12 @@ function patternShapes(design: ProductDesign, [x, y, w, h]: readonly [number, nu
 /** 一块字：品牌名（大）和品类（小，在一个圆角的底上）。字的颜色：文件写了就用，没写的按底色挑黑或白。 */
 function textBlock(design: ProductDesign, font: TextFont, area: TextArea): string[] {
   const scale = area.scale ?? 1;
-  const under = design.pattern === 'band' ? design.colors.accent : design.colors.background;
-  const ink = design.colors.text || (luminance(under) > 0.45 ? '#1d1d1f' : '#ffffff');
+  const under = inkUnder(design), ink = inkOn(design);
   const shapes: string[] = [];
   const brandHeight = area.height * (design.text ? 0.5 : 0.7) * scale;
-  const brand = textPath(font, design.brand, area.cx, area.cy - (design.text ? area.height * 0.12 * scale : 0), area.width * scale, brandHeight, ink);
+  // 正面印了配料的小图时，品牌名收窄给两边让位
+  const brandWidth = area.width * scale * (hasMotifs(design, area) ? 0.62 : 1);
+  const brand = textPath(font, design.brand, area.cx, area.cy - (design.text ? area.height * 0.12 * scale : 0), brandWidth, brandHeight, ink);
   if (brand) shapes.push(brand);
   if (design.text) {
     const pillWidth = area.width * 0.7 * scale, pillHeight = area.height * 0.24 * scale, cy = area.cy + area.height * 0.26 * scale;
@@ -418,6 +441,126 @@ function textBlock(design: ProductDesign, font: TextFont, area: TextArea): strin
     if (text) shapes.push(text);
   }
   return shapes;
+}
+
+/** 字压在哪个颜色上（横带的字压在色带上）。 */
+function inkUnder(design: ProductDesign): string {
+  return design.pattern === 'band' ? design.colors.accent : design.colors.background;
+}
+
+/** 字的颜色：文件写了就用，没写的按压着的颜色挑黑或白。 */
+function inkOn(design: ProductDesign): string {
+  return design.colors.text || (luminance(inkUnder(design)) > 0.45 ? '#1d1d1f' : '#ffffff');
+}
+
+/** 这块字的两边画不画配料的小图（只画在正面那块）。 */
+function hasMotifs(design: ProductDesign, area: TextArea): boolean {
+  return design.detail && design.motif !== 'none' && (area.scale ?? 1) === 1;
+}
+
+/** 色带的镶边和明暗（印得细时）：上下两道镶边色的细线，色带上沿一道亮、下半截暗一点，像印出来的渐变。 */
+function bandFinish(design: ProductDesign, x: number, w: number, top: number, height: number): string[] {
+  if (!design.detail) return [];
+  const rect = (y: number, h: number, fill: string, opacity = 1) => `<rect x="${svgNumber(x)}" y="${svgNumber(y)}" width="${svgNumber(w)}" height="${svgNumber(h)}" fill="${fill}"${opacity < 1 ? ` opacity="${svgNumber(opacity)}"` : ''}/>`;
+  const line = Math.max(0.4, height * 0.035);
+  return [
+    rect(top + height * 0.06, height * 0.16, '#ffffff', 0.14),
+    rect(top + height * 0.6, height * 0.4, '#000000', 0.12),
+    rect(top - line / 2, line, design.colors.trim),
+    rect(top + height - line / 2, line, design.colors.trim),
+  ];
+}
+
+/**
+ * 印得细的标签在正面那块字的周围加的：顶上一枚徽标（镶边色的圆章、品牌的头一个字），品牌名两边配料的小图（白圆底），药丸下面
+ * 几行看不清的细字（灰的短横），右下的角标（星形，"5L"）。没有字体时徽标和角标不写字。
+ */
+function labelDetails(design: ProductDesign, font: TextFont | undefined, area: TextArea, random: () => number): string[] {
+  const { cx, cy, width, height } = area;
+  const trim = design.colors.trim, under = inkUnder(design), ink = inkOn(design);
+  const out: string[] = [];
+  const circle = (x: number, y: number, r: number, fill: string, extra = '') => `<circle cx="${svgNumber(x)}" cy="${svgNumber(y)}" r="${svgNumber(r)}" fill="${fill}"${extra}/>`;
+  // 徽标：骑在这块的上沿
+  const r = Math.min(width * 0.12, height * 0.16), ey = cy - height * 0.5 + r * 0.3;
+  out.push(circle(cx, ey, r, trim), circle(cx, ey, r * 0.84, under), circle(cx, ey, r * 0.7, 'none', ` stroke="${trim}" stroke-width="${svgNumber(r * 0.06)}"`));
+  const initial = Array.from(design.brand)[0];
+  if (font && initial) {
+    const glyph = textPath(font, initial, cx, ey, r * 0.95, r * 0.95, trim);
+    if (glyph) out.push(glyph);
+  }
+  // 配料的小图：品牌名两边
+  if (hasMotifs(design, area)) {
+    const size = Math.min(width * 0.22, height * 0.36), my = cy - (design.text ? height * 0.12 : 0);
+    for (const side of [-1, 1]) {
+      const mx = cx + side * width * 0.4;
+      out.push(circle(mx, my, size * 0.62, '#ffffff', ` stroke="${trim}" stroke-width="${svgNumber(size * 0.05)}"`), motifShapes(design.motif, mx, my, size));
+    }
+  }
+  // 细字：几行长短不一的短横
+  const rowHeight = height * 0.022;
+  for (let row = 0; row < 3; row++) {
+    const y = cy + height * (0.43 + row * 0.04), left = cx - width * 0.26, right = cx + width * 0.26;
+    let words = '';
+    for (let x = left + random() * width * 0.02; x < right;) {
+      const w = Math.min(right - x, width * (0.015 + random() * 0.05));
+      words += `M${svgNumber(x)} ${svgNumber(y)}h${svgNumber(w)}v${svgNumber(rowHeight)}h${svgNumber(-w)}Z`;
+      x += w + width * 0.012;
+    }
+    out.push(`<path d="${words}" fill="${ink}" opacity="0.5"/>`);
+  }
+  // 角标：右下的星形
+  if (design.badge) {
+    const br = Math.min(width * 0.13, height * 0.17), bx = cx + width * 0.4, by = cy + height * 0.36;
+    const points = Array.from({ length: 28 }, (_, k) => {
+      const angle = (k / 28) * 2 * Math.PI, radius = k % 2 ? br * 0.84 : br;
+      return `${svgNumber(bx + Math.cos(angle) * radius)} ${svgNumber(by + Math.sin(angle) * radius)}`;
+    });
+    out.push(`<path d="M${points.join('L')}Z" fill="#f6c40f" stroke="#d7262b" stroke-width="${svgNumber(br * 0.04)}"/>`);
+    const text = font ? textPath(font, design.badge, bx, by, br * 1.3, br * 0.8, '#d7262b') : undefined;
+    if (text) out.push(text);
+  }
+  return out;
+}
+
+/** 配料的小图（矢量，画在中心 (x, y)、大小 size 的方块里）。 */
+function motifShapes(motif: ProductMotif, x: number, y: number, size: number): string {
+  const s = size / 2, n = svgNumber;
+  // rotate 是绕 pivot（默认椭圆自己的中心）转的角度
+  const ellipse = (ex: number, ey: number, rx: number, ry: number, fill: string, rotate = 0, extra = '', pivot = [ex, ey]) =>
+    `<ellipse cx="${n(ex)}" cy="${n(ey)}" rx="${n(rx)}" ry="${n(ry)}" fill="${fill}"${rotate ? ` transform="rotate(${n(rotate)} ${n(pivot[0]!)} ${n(pivot[1]!)})"` : ''}${extra}/>`;
+  switch (motif) {
+    case 'none':
+      return '';
+    case 'leaf':
+      return `<path d="M${n(x)} ${n(y - s * 0.85)}Q${n(x + s * 0.8)} ${n(y)} ${n(x)} ${n(y + s * 0.85)}Q${n(x - s * 0.8)} ${n(y)} ${n(x)} ${n(y - s * 0.85)}Z" fill="#3d9a3a"/>`
+        + `<path d="M${n(x)} ${n(y - s * 0.7)}L${n(x)} ${n(y + s * 0.85)}" stroke="#a8d88a" stroke-width="${n(s * 0.06)}"/>`;
+    case 'drop':
+      return `<path d="M${n(x)} ${n(y - s * 0.85)}C${n(x + s * 0.2)} ${n(y - s * 0.4)} ${n(x + s * 0.6)} ${n(y)} ${n(x + s * 0.6)} ${n(y + s * 0.3)}A${n(s * 0.6)} ${n(s * 0.6)} 0 0 1 ${n(x - s * 0.6)} ${n(y + s * 0.3)}C${n(x - s * 0.6)} ${n(y)} ${n(x - s * 0.2)} ${n(y - s * 0.4)} ${n(x)} ${n(y - s * 0.85)}Z" fill="#f2b400"/>`
+        + ellipse(x - s * 0.22, y + s * 0.15, s * 0.1, s * 0.2, '#ffffff', 20, ' opacity="0.7"');
+    case 'peanut':
+      return ellipse(x, y - s * 0.32, s * 0.38, s * 0.42, '#c9955a') + ellipse(x, y + s * 0.34, s * 0.42, s * 0.44, '#c9955a') + ellipse(x, y + s * 0.02, s * 0.3, s * 0.2, '#c9955a')
+        + Array.from({ length: 6 }, (_, k) => `<circle cx="${n(x + (k % 2 ? 0.15 : -0.15) * s)}" cy="${n(y + (-0.5 + k * 0.2) * s)}" r="${n(s * 0.045)}" fill="#8a5a2a"/>`).join('');
+    case 'corn': {
+      let kernels = '';
+      for (let row = 0; row < 6; row++) for (let col = -1; col <= 1; col++) kernels += `<circle cx="${n(x + col * s * 0.16)}" cy="${n(y + (-0.55 + row * 0.2) * s)}" r="${n(s * 0.075)}" fill="#e0a800"/>`;
+      return ellipse(x, y - s * 0.05, s * 0.32, s * 0.75, '#f6d030') + kernels
+        + `<path d="M${n(x)} ${n(y + s * 0.85)}Q${n(x - s * 0.7)} ${n(y + s * 0.2)} ${n(x - s * 0.45)} ${n(y - s * 0.6)}Q${n(x - s * 0.3)} ${n(y + s * 0.2)} ${n(x)} ${n(y + s * 0.85)}Z" fill="#4c9a2a"/>`
+        + `<path d="M${n(x)} ${n(y + s * 0.85)}Q${n(x + s * 0.7)} ${n(y + s * 0.2)} ${n(x + s * 0.45)} ${n(y - s * 0.6)}Q${n(x + s * 0.3)} ${n(y + s * 0.2)} ${n(x)} ${n(y + s * 0.85)}Z" fill="#5aae34"/>`;
+    }
+    case 'sunflower':
+      return Array.from({ length: 12 }, (_, k) => ellipse(x, y - s * 0.55, s * 0.16, s * 0.34, '#f6c40f', k * 30, '', [x, y])).join('')
+        + `<circle cx="${n(x)}" cy="${n(y)}" r="${n(s * 0.36)}" fill="#6a3e1a"/>`;
+    case 'wheat': {
+      let grains = `<path d="M${n(x)} ${n(y + s * 0.9)}L${n(x)} ${n(y - s * 0.8)}" stroke="#b8862e" stroke-width="${n(s * 0.07)}"/>`;
+      for (let k = 0; k < 5; k++) {
+        const gy = y - s * 0.65 + k * s * 0.28;
+        grains += ellipse(x - s * 0.16, gy, s * 0.11, s * 0.2, '#d9a440', -30) + ellipse(x + s * 0.16, gy, s * 0.11, s * 0.2, '#d9a440', 30);
+      }
+      return grains + ellipse(x, y - s * 0.85, s * 0.1, s * 0.18, '#d9a440');
+    }
+    case 'sesame':
+      return Array.from({ length: 9 }, (_, k) => ellipse(x + ((k % 3) - 1) * s * 0.36, y + (Math.floor(k / 3) - 1) * s * 0.42, s * 0.1, s * 0.18, k % 2 ? '#2a2420' : '#c9a86a', (k * 37) % 60 - 30)).join('');
+  }
 }
 
 /** 一行字的路径（导出给货架的价签用）：按字体排版、缩放到放进 width × height、居中在 (cx, cy)；一个轮廓都没有时是 undefined。 */

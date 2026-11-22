@@ -4,7 +4,7 @@
  * 在磁盘上改了、或者它摆着的商品改了以后调它。
  */
 import { EXTENSIONS, type ProductFile, type ShelfFile } from '@stride-ts/engine/content-format';
-import { productDesign, shelfModel, type TextFont } from '@stride-ts/engine/modeling';
+import { productDesign, productText, shelfModel, type TextFont } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
 import type { BakedFile } from './productModel.ts';
 import { mergedFiles } from './mergedFiles.ts';
@@ -27,7 +27,7 @@ export async function bakeShelf(tools: StrideTools, file: ShelfFile, path: strin
   for (const product of products.values()) {
     for (let k = 0; k < variants; k++) {
       const design = productDesign(product, k);
-      want(product.font, design.brand + (design.text ?? ''));
+      want(product.font, productText(design));
     }
   }
   want(file.font, `0123456789.${file.header ?? ''}`);

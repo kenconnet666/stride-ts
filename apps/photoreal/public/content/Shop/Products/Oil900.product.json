@@ -9,6 +9,8 @@
  ],
  "text": "芝麻油",
  "seed": 85,
+ "motif": "sesame",
+ "badge": "900ml",
  "pattern": "band",
  "transmission": 0.9,
  "colors": {

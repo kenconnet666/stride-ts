@@ -9,6 +9,8 @@
  ],
  "text": "食用油",
  "seed": 81,
+ "motif": "sunflower",
+ "badge": "5L",
  "pattern": "band",
  "transmission": 0.9,
  "colors": {

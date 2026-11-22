@@ -9,6 +9,8 @@
  ],
  "text": "花生油",
  "seed": 82,
+ "motif": "peanut",
+ "badge": "5L",
  "pattern": "band",
  "transmission": 0.9,
  "colors": {

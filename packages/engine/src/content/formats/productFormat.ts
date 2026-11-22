@@ -41,13 +41,17 @@ export interface ProductFood {
   readonly pieces?: 'chunks' | 'strands' | 'beans' | 'smooth';
 }
 
-/** 标签的配色（sRGB 的 #rrggbb）：底色、图案的强调色、字的颜色、盖子的颜色。 */
+/** 标签的配色（sRGB 的 #rrggbb）：底色、图案的强调色、字的颜色、盖子的颜色、镶边（色带的金边、徽标）的颜色。 */
 export interface ProductColors {
   readonly background?: string;
   readonly accent?: string;
   readonly text?: string;
   readonly cap?: string;
+  readonly trim?: string;
 }
+
+/** 标签上配料的小图（品牌名两边的白圆底上）：叶子、油滴、花生、玉米、向日葵、麦穗、芝麻；none 不画。 */
+export type ProductMotif = 'leaf' | 'drop' | 'peanut' | 'corn' | 'sunflower' | 'wheat' | 'sesame' | 'none';
 
 export interface ProductFile {
   readonly name: string;
@@ -64,6 +68,15 @@ export interface ProductFile {
   readonly pattern?: ProductPattern;
   /** 没写时按外形：纸盒是纸，罐是金属，广口瓶是玻璃，器皿是瓷，别的是塑料。 */
   readonly surface?: ProductSurface;
+  /** 配料的小图；没写时按种子从叶子、油滴、麦穗、向日葵和不画里挑。 */
+  readonly motif?: ProductMotif;
+  /** 角上的标（"5L""非转基因"）；没写时不画。 */
+  readonly badge?: string;
+  /**
+   * 标签印得细不细（默认 true）：徽标、配料的小图、细字、角标、色带的镶边和明暗；false 只画色块、底纹和字（卡通的风格）。
+   * 果蔬、器皿不看它。
+   */
+  readonly detail?: boolean;
   /** 器皿（碗、盘）里盛的菜；没写是空的。 */
   readonly food?: ProductFood;
   /**

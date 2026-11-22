@@ -9,6 +9,8 @@
  ],
  "text": "调和油",
  "seed": 84,
+ "motif": "drop",
+ "badge": "1.8L",
  "pattern": "band",
  "transmission": 0.9,
  "colors": {

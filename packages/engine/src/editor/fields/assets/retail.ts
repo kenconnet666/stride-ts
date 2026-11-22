@@ -22,6 +22,7 @@ export const PRODUCT_FIELDS = fields<ProductFile>({
       accent: hexColor('pattern color'),
       text: hexColor('text color (black or white by contrast when missing)'),
       cap: hexColor('cap or lid color'),
+      trim: hexColor('trim lines and emblem color (gold, white or off-white)'),
     })),
     optional: true,
     description: 'label colors; the missing ones come from the seed, so variants of one file differ in them',
@@ -40,6 +41,9 @@ export const PRODUCT_FIELDS = fields<ProductFile>({
     optional: true,
     description: 'a dish of food in a bowl or plate; empty ware when missing',
   },
+  motif: { type: oneOf('leaf', 'drop', 'peanut', 'corn', 'sunflower', 'wheat', 'sesame', 'none'), optional: true, description: 'small picture of the ingredient on both sides of the brand (on a white disc); picked from the seed when missing (leaf, drop, wheat, sunflower or none)' },
+  badge: { type: string, optional: true, description: 'text of the starburst in the lower right corner ("5L", "non-GMO"); none when missing' },
+  detail: { type: bool, optional: true, default: true, description: 'print details: emblem, ingredient pictures, fine print, badge, trim lines and shading of the band; false draws only the color blocks, pattern and text (a cartoon look)' },
   transmission: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'how much light passes through the body (0..1: oil and drink bottles show what is inside); the label background is the body, printed parts (cap, pattern, text) stay opaque; produce and ware ignore it' },
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of everything not written: another number is another brand of the same product' },
 });

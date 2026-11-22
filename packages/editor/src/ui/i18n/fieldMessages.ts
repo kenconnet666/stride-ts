@@ -27,7 +27,7 @@ const zhCN: FieldMessages = {
   },
   names: {
     terrain: '地形', detail: '细节', lodFactor: '细分距离', lacunarity: '频率倍数', gain: '幅度倍数', ridged: '山脊', warp: '扭曲', erosion: '侵蚀', falloff: '过渡', splines: '贴着的样条', spline: '样条', branches: '分支', lanes: '车道', oneWay: '单行', track: '轨道', path: '路径', scatter: '摆放', levels: '层级', count: '数量', direction: '方向', children: '子枝数', gnarliness: '弯曲', taper: '收细', twist: '扭转', sections: '节数', leaves: '叶片', sizeVariance: '大小变化', growth: '生长方向', slope: '坡度', clump: '成片', avoidPaths: '离路', alignToSlope: '顺着坡', sink: '埋深', viewDistance: '可见距离', castShadows: '投阴影', stops: '车站', at: '停在', dwell: '停站时长', maxSpeed: '最高速度', acceleration: '加速度', deceleration: '减速度', doorTime: '开关门用时', carLength: '车厢长', carGap: '车厢间距', timeOffset: '时刻表偏移', station: '站名', gullies: '冲沟', valley: '谷底高度', peak: '山顶高度', features: '地物', strokes: '笔画',
-    wear: '磨损', hang: '吊绳长', standHeight: '价牌高', heads: '灯头数', tilt: '倾斜',
+    wear: '磨损', boardColor: '层板颜色', hang: '吊绳长', standHeight: '价牌高', heads: '灯头数', tilt: '倾斜',
     food: '盛的菜', sauce: '汤汁', mound: '鼓起', pieces: '样子',
     font: '字体', depth: '厚度', align: '对齐', lineSpacing: '行距', letterSpacing: '字距', diameter: '直径', profile: '配光曲线', splats: '泼溅',
     transmission: '透射', factor: '比例', ior: '折射率', attenuationColor: '吸收后的颜色', attenuationDistance: '吸收距离',
@@ -166,6 +166,7 @@ const zhCN: FieldMessages = {
     'how far the heads tilt from straight down toward the front (+Z), degrees': '灯头偏离竖直往正面（+Z）倾斜多少度',
     'length of the cords of a banner (m)': '吊旗的吊绳多长（米）',
     'height from the floor to the top of a stand card (m)': '价牌从地面到卡片顶多高（米）',
+    'color of the boards (sRGB #rrggbb, matte like wood-grain boards; the frame color when missing)': '层板的颜色（sRGB 的 #rrggbb，木纹板那样的哑光；没写同架子）',
     'main ingredient color (sRGB #rrggbb)': '主料的颜色（sRGB 的 #rrggbb）',
     'side ingredient color (red pepper, scallion; sRGB #rrggbb); a darker main color when missing': '配料的颜色（红椒、葱花；sRGB 的 #rrggbb）；没写时按主料暗一些',
     'sauce under the food (sRGB #rrggbb); the main color darkened when missing': '菜底下汤汁的颜色（sRGB 的 #rrggbb）；没写时按主料暗一些',

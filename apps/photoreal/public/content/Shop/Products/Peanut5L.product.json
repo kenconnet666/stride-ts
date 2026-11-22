@@ -1,0 +1,18 @@
+{
+ "name": "Peanut5L",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.17,
+  0.33,
+  0
+ ],
+ "text": "花生油",
+ "seed": 82,
+ "pattern": "band",
+ "colors": {
+  "background": "#b8742a",
+  "accent": "#2f9e44",
+  "cap": "#d7262b"
+ }
+}

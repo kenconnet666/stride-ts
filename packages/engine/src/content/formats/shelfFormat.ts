@@ -38,6 +38,8 @@ export interface ShelfFile {
   /** 架子和价签条的颜色（sRGB 的 #rrggbb）：架子默认浅灰，价签条默认白。 */
   readonly frameColor?: string;
   readonly stripColor?: string;
+  /** 层板的颜色（sRGB 的 #rrggbb，木纹板的浅木色这类）；没写同架子。 */
+  readonly boardColor?: string;
   /** 价签上的数字用的字体；没有时价签只是色块。 */
   readonly font?: string;
   readonly stock?: ShelfStockFile;

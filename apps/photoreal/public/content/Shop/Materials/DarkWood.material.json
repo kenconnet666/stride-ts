@@ -1,0 +1,11 @@
+{
+ "name": "DarkWood",
+ "baseColor": [
+  0.045,
+  0.036,
+  0.03,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.6
+}

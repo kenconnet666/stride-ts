@@ -172,7 +172,7 @@ function checkShelf(file: ShelfFile, where: string): void {
 }
 
 /** 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳，熟食柜的黑柜体、白石英、金、保温灯的暖光。 */
-const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10;
+const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11;
 /** 电子价签：外壳比屏大一圈（米）、凸出价签条多厚。 */
 const ESL_RIM = 0.004, ESL_DEPTH = 0.009;
 /** 冷柜：门在层板前面多远、门框多宽；顶上灯箱的高；冰柜的壁厚。 */
@@ -232,6 +232,8 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
       { color: '#e9e8e3', roughness: 0.12, metalness: 0 },
       { color: '#c9a250', roughness: 0.28, metalness: 0.9 },
       { color: '#ffd9a0', roughness: 0.5, metalness: 0, emissive: 8 },
+      // 层板：写了 boardColor 时是木纹板那样的哑光，没写同架子
+      file.boardColor ? { color: file.boardColor, roughness: 0.55, metalness: 0 } : { color: file.frameColor ?? '#d9dadc', roughness: 0.45, metalness: 0.5 },
     ],
     // 价签：几种价格；纸的三个里一个黄底，电子的是墨水屏
     cells: prices.map((price, k): AtlasCell => (electronic ? eslCell(price, k, tagFont, hash32(file.seed ?? 1, 2000 + k)) : {
@@ -277,7 +279,7 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
     const zs = [Math.min(z0, z1), Math.max(z0, z1)] as const;
     // 底座（第一层的下面是实心的踢脚板）和每一层的层板
     batch.box([-L + SPINE, 0, zs[0]], [L - SPINE, file.levels[0]!, zs[1]], BASE);
-    for (const level of file.levels.slice(1)) batch.box([-L + SPINE, level - BOARD, zs[0]], [L - SPINE, level, zs[1]], FRAME);
+    for (const level of file.levels.slice(1)) batch.box([-L + SPINE, level - BOARD, zs[0]], [L - SPINE, level, zs[1]], BOARD_SOLID);
     // 价签条：层板前沿往下
     for (const level of file.levels) {
       const s0 = side * zFar, s1 = side * (zFar + STRIP[1]);

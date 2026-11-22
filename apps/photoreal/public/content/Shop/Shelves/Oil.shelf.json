@@ -1,0 +1,35 @@
+{
+ "name": "Oil",
+ "sides": 1,
+ "length": 3.2,
+ "height": 1.95,
+ "depth": 0.42,
+ "levels": [
+  0.3,
+  0.72,
+  1.08,
+  1.43,
+  1.78
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "frameColor": "#3b3c3f",
+ "boardColor": "#cfb48c",
+ "stripColor": "#8ec8e8",
+ "stock": {
+  "products": [
+   "Shop/Products/Oil5L",
+   "Shop/Products/Peanut5L",
+   "Shop/Products/Corn5L",
+   "Shop/Products/Oil18",
+   "Shop/Products/Oil900"
+  ],
+  "variants": 3,
+  "facings": [
+   2,
+   5
+  ],
+  "rows": 3,
+  "gaps": 0.03
+ },
+ "seed": 86
+}

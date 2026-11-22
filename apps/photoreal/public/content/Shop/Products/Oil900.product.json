@@ -1,0 +1,18 @@
+{
+ "name": "Oil900",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.075,
+  0.26,
+  0
+ ],
+ "text": "芝麻油",
+ "seed": 85,
+ "pattern": "band",
+ "colors": {
+  "background": "#8a4a1a",
+  "accent": "#2f9e44",
+  "cap": "#f4f2ec"
+ }
+}

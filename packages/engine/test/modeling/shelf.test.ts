@@ -122,6 +122,13 @@ describe('货架', () => {
     }
   });
 
+  test('层板颜色：写了 boardColor 时层板用它（哑光），没写同架子', () => {
+    const plain = shelfModel({ ...island, frameColor: '#3b3c3f' }, sources);
+    const wood = shelfModel({ ...island, frameColor: '#3b3c3f', boardColor: '#cfb48c' }, sources);
+    expect(plain.colorSvg).not.toContain('#cfb48c');
+    expect(wood.colorSvg).toContain('#cfb48c');
+  });
+
   test('熟食柜：碗盘一排排摆在下沉的托盘里，不出柜子；上方每隔 bay 一盏保温灯，灯罩底发暖光', () => {
     const bowl: ProductFile = { name: 'Bowl', shape: 'bowl', size: [0.2, 0.08, 0], food: { color: '#8a3818' } };
     const deliSources = { products: new Map([['Bowl', bowl]]), font: () => undefined };

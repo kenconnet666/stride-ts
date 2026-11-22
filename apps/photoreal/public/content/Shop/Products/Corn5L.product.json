@@ -1,0 +1,18 @@
+{
+ "name": "Corn5L",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.16,
+  0.32,
+  0
+ ],
+ "text": "玉米油",
+ "seed": 83,
+ "pattern": "band",
+ "colors": {
+  "background": "#d8a83a",
+  "accent": "#1e64c8",
+  "cap": "#f6c40f"
+ }
+}

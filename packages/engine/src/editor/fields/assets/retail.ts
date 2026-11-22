@@ -54,6 +54,7 @@ export const SHELF_FIELDS = fields<ShelfFile>({
   bay: { type: number({ min: 0.2, step: 0.25, unit: 'm' }), optional: true, default: 1, description: 'spacing of the uprights' },
   frameColor: { type: string, optional: true, description: 'color of the frame and boards (sRGB #rrggbb, light grey when missing)' },
   stripColor: { type: string, optional: true, description: 'color of the price strips (sRGB #rrggbb, white when missing)' },
+  boardColor: { type: string, optional: true, description: 'color of the boards (sRGB #rrggbb, matte like wood-grain boards; the frame color when missing)' },
   font: { type: asset('font'), optional: true, description: 'font of the prices on the tags; plain tags without one' },
   stock: {
     type: object(fields<NonNullable<ShelfFile['stock']>>({

@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/formats/format';
+import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile } from '../../content/formats/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -652,6 +652,32 @@ const TEXT_FIELDS = fields<TextModelFile>({
   materials: { type: list(asset('material')), description: 'slot 0: the front faces, slot 1: the sides and the back (the front material when missing)' },
 });
 
+/** 颜色写成 sRGB 的 #rrggbb。 */
+const hexColor = (description: string): FieldSpec => ({ type: string, optional: true, description: `${description} (sRGB #rrggbb; picked from the seed when missing)` });
+
+/** 商品包装（ProductFile）：后端生成同名的模型、标签贴图（.svg）和材质。 */
+const PRODUCT_FIELDS = fields<ProductFile>({
+  name: string,
+  shape: { type: oneOf('box', 'bottle', 'can', 'jar', 'tub', 'pouch'), description: 'box: carton; bottle: narrow neck and cap; can; jar: wide lid; tub: wider at the top, with a lid; pouch: pillow-shaped bag sealed at both ends' },
+  size: { type: vector(3, 'm'), description: 'width (diameter for bottles, cans, jars and tubs), height, depth (cartons and pouches)' },
+  font: { type: asset('font'), optional: true, description: 'font of the label text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese); no text without one' },
+  brand: { type: string, optional: true, description: 'brand name in big letters; two or three common characters picked from the seed when missing' },
+  text: { type: string, optional: true, description: 'product kind under the brand (e.g. 生抽, 矿泉水); none when missing' },
+  colors: {
+    type: object(fields<NonNullable<ProductFile['colors']>>({
+      background: hexColor('label background'),
+      accent: hexColor('pattern color'),
+      text: hexColor('text color (black or white by contrast when missing)'),
+      cap: hexColor('cap or lid color'),
+    })),
+    optional: true,
+    description: 'label colors; the missing ones come from the seed, so variants of one file differ in them',
+  },
+  pattern: { type: oneOf('plain', 'band', 'stripes', 'split', 'wave', 'dots'), optional: true, description: 'label pattern; picked from the seed when missing' },
+  surface: { type: oneOf('paper', 'plastic', 'metal', 'glass'), optional: true, description: 'packaging material (roughness, metalness); by shape when missing: cartons paper, cans metal, jars glass, others plastic' },
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of everything not written: another number is another brand of the same product' },
+});
+
 /** 声音资源：音频文件的格式和播放方式，合成的音效的参数。 */
 export const SOUND_FIELDS = fields<SoundFile>({
   name: string,
@@ -661,5 +687,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

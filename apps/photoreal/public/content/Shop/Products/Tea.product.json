@@ -1,0 +1,15 @@
+{
+ "name": "Tea",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "can",
+ "size": [
+  0.058,
+  0.16,
+  0
+ ],
+ "text": "凉茶",
+ "seed": 15,
+ "colors": {
+  "cap": "#c8c8c8"
+ }
+}

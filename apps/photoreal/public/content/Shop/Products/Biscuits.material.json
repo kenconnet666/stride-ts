@@ -1,0 +1,29 @@
+{
+ "name": "Biscuits",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "baseColorTexture": {
+  "texture": "Shop/Products/Biscuits",
+  "encoding": "svg",
+  "size": [
+   512,
+   212
+  ],
+  "srgb": true,
+  "filter": "anisotropic",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ },
+ "roughness": 0.72,
+ "metalness": 0
+}

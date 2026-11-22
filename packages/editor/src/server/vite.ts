@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import type { Plugin, ViteDevServer } from 'vite';
 import { EDITOR_ASSETS_EVENT, EDITOR_UI_PATH } from '../protocol.ts';
 import { EditorBackend } from './EditorBackend.ts';
+import { syncAssetPackages } from './assetPackages.ts';
+import { loadProject } from './project.ts';
 
 const UI_ROOT = fileURLToPath(new URL('../ui', import.meta.url));
 
@@ -39,6 +41,18 @@ export function strideEditor(): Plugin {
         void ui?.then((child) => child.close());
         void backend.close();
       });
+    },
+  };
+}
+
+/** 构建之前把工程依赖的资源包同步进内容目录（开发服务器上是编辑器后端打开工程时同步），静态目录里才有它们。 */
+export function strideAssetPackages(): Plugin {
+  return {
+    name: 'stride-asset-packages',
+    apply: 'build',
+    async configResolved(config) {
+      const project = await loadProject(config.root);
+      await syncAssetPackages(project.root, project.contentDir);
     },
   };
 }

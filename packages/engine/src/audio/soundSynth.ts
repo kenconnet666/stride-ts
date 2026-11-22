@@ -10,6 +10,7 @@
  * 用法：`synthesizeSound(params)` 出 44100 Hz 的单声道样本；`SOUND_PRESETS.pickup(random)` 按类别随机出一组参数，
  * `mutateSound(params, random)` 在一组参数附近随机变一点。
  */
+import { seededRandom } from '../data/hash.ts';
 
 export type SynthWave = 'square' | 'sawtooth' | 'sine' | 'noise' | 'triangle';
 
@@ -208,18 +209,9 @@ export function synthesizeSound(partial: Partial<SoundSynth>): Float32Array<Arra
   return samples;
 }
 
-/** 0..1 的伪随机数（mulberry32）。 */
+/** 0..1 的伪随机数（mulberry32，data/hash.ts 的 seededRandom）。 */
 export type SynthRandom = () => number;
-
-export function seededRandom(seed: number): SynthRandom {
-  let state = seed | 0;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+export { seededRandom };
 
 export type SoundPreset = 'pickup' | 'laser' | 'explosion' | 'powerUp' | 'hit' | 'jump' | 'blip' | 'random';
 

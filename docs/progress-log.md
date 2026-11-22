@@ -1108,3 +1108,10 @@ R2 第八步的回归里 bepu-sample（开着屏幕空间反射：光追的反�
 - 想换成 Mesa 的 lavapipe（llvmpipe 的 Vulkan，LLVM 编着色器、用 AVX2，"256 bits"）：WSL 的 Debian 13 装着 Chrome 158 和 mesa-vulkan-drivers 25.0.7。Chrome 在 Linux 上默认只在合成器（Skia）走 Vulkan 时才让 Dawn 用 Vulkan，适配器还要能导入外部贴图（`webgpu_decoder_impl.cc` 的 `CanUseAdapter`）。试了 `--use-vulkan=native --use-angle=vulkan` 加 lavapipe 的 ICD：GPU 进程反复重启、WebGPU 没有适配器，还要再查（看 GPU 进程的崩溃日志、只开 Skia 的 Vulkan）。
 - 小测试页（`--headless=new`，限 4 个核同 CI 的运行器）：SwiftShader 1280×720 画 2000 个立方体每帧 91 毫秒、100 万次的计算着色器 136 毫秒。lavapipe 跑通以后用同一页比。
 
+## 七、超市和街边小店（2026-11-22 起）
+
+用户 11-22 给了第二批照片（104 张：超市的货架、冷柜、散装、熟食，夜里的街巷、小店；6 段视频：高架站台、美食广场、商场中庭、服装店、街上、卧室；3 张未来城市的截图），照片拷在本地 `reference/shop/`。功能核对见 stages.md 的"第二批照片的功能核对"，挑货架这条线先做。
+
+1. **共用资源的仓库**：用户提出照 vue-tsx-pro 的字体包单独放仓库。建了 `kenconnet666/stride-ts-assets`（公开；内容是 OFL、CC0），本身是编辑器工程；`tools/assets.ts build` 照 `sources.json` 用编辑器后端的 `importFile`、`importMaterialSet` 导入（重导前删掉旧的输出：导入器遇到同名会另起名字"…2"，第一次试就多出了一份 23 MB 的字体），`dev` 发 `dev-<提交>` 的预发行版、改 override、`pnpm install`。编辑器后端、命令行、构建前同步包里的 `content/Shared` 到工程的 `Shared/`。字体站酷庆科黄油体导成 91 个字形块共 23 MB——正是不该进主仓库的东西；站台的扫描地砖挪过去，`stride-editor assets apps/photoreal` 查 0 个缺失的引用。
+2. **商品包装生成器**：`.product.json` 六种外形（盒、瓶、罐、广口瓶、桶、袋），生成模型、SVG 标签、材质；11 个单测（尺寸、法线、UV、外壁法线朝外、种子和变体、SVG、材质）。`apps/photoreal/scripts/build-shop.ts` 经 MCP 写了 12 种商品和一张台子（`?scene=Shop`），无头 Chrome 里看：形状对，中文的品牌名和品类清楚、贴着弧面弯，字色按底色取黑白。顺手：`seededRandom` 从音效合成挪到 `data/hash.ts` 共用（树的生长留着自己那份，写法差一点，换了已有的树会长得不一样）；3D 文字和包装读字体共用 `pipeline/src/bakers/textFont.ts`。
+

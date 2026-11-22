@@ -1,0 +1,29 @@
+{
+ "name": "Tea",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "baseColorTexture": {
+  "texture": "Shop/Products/Tea",
+  "encoding": "svg",
+  "size": [
+   440,
+   512
+  ],
+  "srgb": true,
+  "filter": "anisotropic",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ },
+ "roughness": 0.3,
+ "metalness": 0.6
+}

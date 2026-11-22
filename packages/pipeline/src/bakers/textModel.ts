@@ -6,10 +6,11 @@
  * 编辑器后端在 `.text.json` 存下、或者在磁盘上改了以后调它（server/EditorBackend.ts）；字体资源（FontFile 和字形块）从内容
  * 目录读，readContent 给。
  */
-import { decodeGlyphBlock, encodeModel, EXTENSIONS, VERTEX_FLOATS, type FontFile, type GlyphBlock, type TextModelFile } from '@stride-ts/engine/content-format';
+import { encodeModel, VERTEX_FLOATS, type TextModelFile } from '@stride-ts/engine/content-format';
 import { projectUv, textContours } from '@stride-ts/engine/modeling';
 import type { Brush, StrideTools } from '@stride-ts/native/tools';
 import { rigidTransform } from './brushModel.ts';
+import { loadTextFont } from './textFont.ts';
 import { compressMeshes, type SourceMesh } from '../mesh.ts';
 
 /** 绕 X 转 +90°：白盒的 prism 是 XZ 平面上往 +Y 挤出，转过来是 XY 平面（文字的平面）上往 +Z 挤出，点 (x, z) 对着 (x, -y)。 */
@@ -19,22 +20,8 @@ const TO_TEXT_PLANE = [Math.SQRT1_2, 0, 0, Math.SQRT1_2] as const;
 export async function bakeTextModel(tools: StrideTools, file: TextModelFile, readContent: (path: string) => Promise<Uint8Array>, where = file.name): Promise<Uint8Array> {
   if (!file.font) throw new Error(`${where}: choose a font (a font asset; import a .ttf or .otf into the project first if there is none)`);
   if (!(file.size > 0)) throw new Error(`${where}: size must be greater than 0`);
-  let font: FontFile;
-  try {
-    font = JSON.parse(new TextDecoder().decode(await readContent(file.font + EXTENSIONS.font))) as FontFile;
-  } catch (error) {
-    throw new Error(`${where}: cannot read the font ${file.font}: ${(error as Error).message}`, { cause: error });
-  }
-  // 用到的字形块先读进来（排版是同步的）
-  const blocks = new Map<number, GlyphBlock>();
-  const wanted = new Set([...file.text].map((character) => character.codePointAt(0)! >> 8));
-  wanted.add(font.defaultCharacter >> 8);
-  for (const block of wanted) {
-    if (!font.blocks.includes(block)) continue;
-    const bytes = await readContent(`${file.font}.${block}${EXTENSIONS.glyphs}`);
-    blocks.set(block, decodeGlyphBlock(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, `${file.font}.${block}`));
-  }
-  const contours = textContours({ file: font, block: (block) => blocks.get(block) }, file.text, {
+  const font = await loadTextFont(file.font, file.text, readContent, where);
+  const contours = textContours(font, file.text, {
     size: file.size,
     ...(file.align ? { align: file.align } : {}),
     ...(file.lineSpacing !== undefined ? { lineSpacing: file.lineSpacing } : {}),

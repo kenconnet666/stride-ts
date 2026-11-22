@@ -1,0 +1,12 @@
+{
+ "name": "Milk",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "box",
+ "size": [
+  0.095,
+  0.2,
+  0.065
+ ],
+ "text": "纯牛奶",
+ "seed": 19
+}

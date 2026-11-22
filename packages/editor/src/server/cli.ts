@@ -16,6 +16,7 @@ import { AssetDatabase } from './AssetDatabase.ts';
 import { writeAssetTypes } from './assetTypes.ts';
 import { EditorBackend } from './EditorBackend.ts';
 import { loadProject } from './project.ts';
+import { syncAssetPackages } from './assetPackages.ts';
 import { createProject } from './template.ts';
 import { existsSync, realpathSync, watch } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -31,6 +32,8 @@ if (command === 'new') {
   process.exit(0);
 }
 const project = await loadProject(path.resolve(directory));
+// 依赖的资源包先同步进内容目录（assetPackages.ts）：列资源、查引用也要看到它们
+await syncAssetPackages(project.root, project.contentDir);
 const database = new AssetDatabase(project.contentDir);
 await database.scan();
 const backend = () => EditorBackend.open(project.root, path.join(project.root, 'public'));

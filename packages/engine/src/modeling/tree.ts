@@ -215,7 +215,7 @@ function meshLeaves(builder: MeshBuilder, leaves: readonly Leaf[]): void {
 }
 
 
-/** mulberry32：种子起的 [0, 1) 随机数。 */
+/** mulberry32：种子起的 [0, 1) 随机数。和 data/hash.ts 的 seededRandom 写法差一点，留着是为了已有的树长得和以前一样。 */
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {

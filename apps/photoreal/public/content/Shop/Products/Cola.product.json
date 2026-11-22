@@ -1,0 +1,16 @@
+{
+ "name": "Cola",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "can",
+ "size": [
+  0.066,
+  0.122,
+  0
+ ],
+ "text": "可乐",
+ "seed": 14,
+ "colors": {
+  "background": "#d7262b",
+  "cap": "#c8c8c8"
+ }
+}

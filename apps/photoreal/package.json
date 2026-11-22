@@ -11,6 +11,7 @@
   "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo"
  },
  "dependencies": {
+  "@stride-ts/assets": "^0.1.0",
   "@stride-ts/engine": "workspace:*",
   "@stride-ts/native": "^0.29.0"
  },

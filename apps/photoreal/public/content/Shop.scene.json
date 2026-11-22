@@ -1,0 +1,482 @@
+{
+ "name": "Shop",
+ "compositor": {
+  "clearColor": [
+   0.1,
+   0.1,
+   0.12,
+   1
+  ],
+  "postEffects": {
+   "brightFilter": true,
+   "bloom": true,
+   "lightStreak": false,
+   "lensFlare": false,
+   "toneMap": true,
+   "antialiasing": true,
+   "antialiasingMode": "temporal",
+   "ambientOcclusion": {
+    "radius": 0.1
+   },
+   "colorGrading": {
+    "operator": "agx"
+   },
+   "exposure": {
+    "metering": "histogram"
+   }
+  },
+  "transparent": true
+ },
+ "entities": [
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000001",
+   "name": "Camera",
+   "parent": null,
+   "position": [
+    0.15,
+    1.35,
+    1.35
+   ],
+   "rotation": [
+    -0.16553905725915075,
+    0.05453506247793154,
+    0.009168403553435784,
+    0.9846515565714407
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 50,
+     "nearClipPlane": 0.02,
+     "farClipPlane": 500
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000002",
+   "name": "Sun",
+   "parent": null,
+   "position": [
+    -6,
+    10,
+    8
+   ],
+   "rotation": [
+    -0.36304538072540404,
+    -0.2921563606347248,
+    -0.12101512690846802,
+    0.8764690819041744
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "directional",
+     "color": [
+      1,
+      0.97,
+      0.92
+     ],
+     "intensity": 8,
+     "shadow": {
+      "size": "large",
+      "filter": "pcf5x5",
+      "cascadeCount": "four",
+      "depthBias": 0.0015,
+      "normalOffsetScale": 10,
+      "stabilization": "projectionSnapping",
+      "pssmFactor": 0.5,
+      "depthRange": "automatic",
+      "minDistance": 0,
+      "maxDistance": 20,
+      "blendCascades": true
+     }
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000003",
+   "name": "Sky",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "skyAtmosphere": {
+     "sun": "5e0b5e0b-0001-4000-8000-000000000002"
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000004",
+   "name": "Table",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Models/Table",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000010",
+   "name": "SoySauce",
+   "parent": null,
+   "position": [
+    -0.95,
+    0.8,
+    -0.18
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/SoySauce",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000011",
+   "name": "Water",
+   "parent": null,
+   "position": [
+    -0.57,
+    0.8,
+    -0.18
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Water",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000012",
+   "name": "PeanutOil",
+   "parent": null,
+   "position": [
+    -0.18999999999999995,
+    0.8,
+    -0.18
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/PeanutOil",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000013",
+   "name": "Cola",
+   "parent": null,
+   "position": [
+    0.19000000000000017,
+    0.8,
+    -0.18
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Cola",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000014",
+   "name": "Tea",
+   "parent": null,
+   "position": [
+    0.5700000000000001,
+    0.8,
+    -0.18
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Tea",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000015",
+   "name": "ChiliSauce",
+   "parent": null,
+   "position": [
+    0.95,
+    0.8,
+    -0.18
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/ChiliSauce",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000016",
+   "name": "Yogurt",
+   "parent": null,
+   "position": [
+    -0.95,
+    0.8,
+    0.18
+   ],
+   "rotation": [
+    0,
+    -0.13052619222005157,
+    0,
+    0.9914448613738104
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Yogurt",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000017",
+   "name": "Biscuits",
+   "parent": null,
+   "position": [
+    -0.57,
+    0.8,
+    0.18
+   ],
+   "rotation": [
+    0,
+    -0.13052619222005157,
+    0,
+    0.9914448613738104
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Biscuits",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000018",
+   "name": "Milk",
+   "parent": null,
+   "position": [
+    -0.18999999999999995,
+    0.8,
+    0.18
+   ],
+   "rotation": [
+    0,
+    -0.13052619222005157,
+    0,
+    0.9914448613738104
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Milk",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-000000000019",
+   "name": "Cereal",
+   "parent": null,
+   "position": [
+    0.19000000000000017,
+    0.8,
+    0.18
+   ],
+   "rotation": [
+    0,
+    -0.13052619222005157,
+    0,
+    0.9914448613738104
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Cereal",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-00000000001a",
+   "name": "Chips",
+   "parent": null,
+   "position": [
+    0.5700000000000001,
+    0.8,
+    0.18
+   ],
+   "rotation": [
+    0,
+    -0.13052619222005157,
+    0,
+    0.9914448613738104
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Chips",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0001-4000-8000-00000000001b",
+   "name": "Konjac",
+   "parent": null,
+   "position": [
+    0.95,
+    0.8,
+    0.18
+   ],
+   "rotation": [
+    0,
+    -0.13052619222005157,
+    0,
+    0.9914448613738104
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Products/Konjac",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

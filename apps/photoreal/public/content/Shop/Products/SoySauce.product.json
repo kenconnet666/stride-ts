@@ -1,0 +1,12 @@
+{
+ "name": "SoySauce",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.07,
+  0.25,
+  0
+ ],
+ "text": "生抽",
+ "seed": 11
+}

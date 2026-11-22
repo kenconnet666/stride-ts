@@ -8,6 +8,7 @@ overrides:
   '@zerodep-dev/vue-tsx-pro-tsx': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev-ae015ebfee/zerodep-dev-vue-tsx-pro-tsx-0.37.1.tgz
   '@zerodep-dev/vue-tsx-pro-ui': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev-ae015ebfee/zerodep-dev-vue-tsx-pro-ui-0.37.1.tgz
   typescript: 7.1.0-dev.20261104.1
+  '@stride-ts/assets': https://github.com/kenconnet666/stride-ts-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz
   '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-54b152743c/stride-ts-native-0.43.0.tgz
 
 pnpmfileChecksum: sha256-cNVAWsfYgR1gA9gfl6uRdr7jzzf0Qt8bfIezEETHYTs=
@@ -242,6 +243,9 @@ importers:
 
   apps/photoreal:
     dependencies:
+      '@stride-ts/assets':
+        specifier: https://github.com/kenconnet666/stride-ts-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz
+        version: https://github.com/kenconnet666/stride-ts-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz
       '@stride-ts/engine':
         specifier: workspace:*
         version: link:../../packages/engine
@@ -744,6 +748,10 @@ packages:
 
   '@rolldown/pluginutils@1.1.1':
     resolution: {integrity: sha512-glFIJDvLNDtJhT9qrMFWLPbvS+skxgt4L0K8Ei2YtnhPysAJnsI7nyxSJxKj4ADeKX0OLjC4ntRkwpLOoS3rwA==}
+
+  '@stride-ts/assets@https://github.com/kenconnet666/stride-ts-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz':
+    resolution: {integrity: sha512-8oK+C2l6HLzpAke4RwgxSRzsiKvh1j1QFCsgr7R3rSYmt72KdaDWv2IUDuUJo4Sb1TfDEc0G19DF0RtciVKzwQ==, tarball: https://github.com/kenconnet666/stride-ts-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz}
+    version: 0.1.0
 
   '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-54b152743c/stride-ts-native-0.43.0.tgz':
     resolution: {integrity: sha512-XedHSfh8n9mOR5cO+VH0znoLqXOICT1qyO+zEEOASJrPAbBZRMKDUgQBCbIzptONYN9jGgnHvWK0gE3r0gV65A==, tarball: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-54b152743c/stride-ts-native-0.43.0.tgz}
@@ -1619,6 +1627,8 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.1.1': {}
+
+  '@stride-ts/assets@https://github.com/kenconnet666/stride-ts-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz': {}
 
   '@stride-ts/native@https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-54b152743c/stride-ts-native-0.43.0.tgz': {}
 

@@ -59,6 +59,8 @@ export const EXTENSIONS = {
   spline: '.spline.json',
   /** 参数化的树（TreeFile，content/formats/treeFormat.ts）：生长的规则和种子，编辑器后端把它长成同名的模型（.model）。 */
   tree: '.tree.json',
+  /** 商品包装（ProductFile，content/formats/productFormat.ts）：外形和标签的设计，编辑器后端生成同名的模型、标签贴图（.svg）和材质。 */
+  product: '.product.json',
   /** 程序化建筑（BuildingFile，content/formats/buildingFormat.ts）：体块、立面规则和构件（形状文法），编辑器后端把它生成同名的模型（.model）。 */
   building: '.building.json',
   /** 城市（CityFile，content/formats/cityFormat.ts）：沿着路网摆楼的规则和种子，楼运行时由 CitySystem 摆（world/City.ts）。 */

@@ -1,0 +1,15 @@
+{
+ "name": "PeanutOil",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.13,
+  0.32,
+  0
+ ],
+ "text": "花生油",
+ "seed": 13,
+ "colors": {
+  "background": "#f2c230"
+ }
+}

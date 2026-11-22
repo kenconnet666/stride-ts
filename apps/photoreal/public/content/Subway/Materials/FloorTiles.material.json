@@ -7,7 +7,7 @@
   1
  ],
  "baseColorTexture": {
-  "texture": "Subway/Materials/FloorTiles/FloorTiles_baseColor",
+  "texture": "Shared/Materials/Tiles141/Tiles141_baseColor",
   "scale": [
    0.5,
    0.5
@@ -22,7 +22,7 @@
  "metalness": 0,
  "roughness": 1,
  "glossinessTexture": {
-  "texture": "Subway/Materials/FloorTiles/FloorTiles_roughness",
+  "texture": "Shared/Materials/Tiles141/Tiles141_roughness",
   "scale": [
    0.5,
    0.5
@@ -37,7 +37,7 @@
   "invert": true
  },
  "normalMap": {
-  "texture": "Subway/Materials/FloorTiles/FloorTiles_normalGl",
+  "texture": "Shared/Materials/Tiles141/Tiles141_normalGl",
   "scale": [
    0.5,
    0.5
@@ -73,7 +73,7 @@
     "id": "tiles",
     "type": "texture",
     "params": {
-     "texture": "Subway/Materials/FloorTiles/FloorTiles_baseColor"
+     "texture": "Shared/Materials/Tiles141/Tiles141_baseColor"
     },
     "inputs": {
      "uv": {
@@ -85,7 +85,7 @@
     "id": "tilesRough",
     "type": "texture",
     "params": {
-     "texture": "Subway/Materials/FloorTiles/FloorTiles_roughness"
+     "texture": "Shared/Materials/Tiles141/Tiles141_roughness"
     },
     "inputs": {
      "uv": {

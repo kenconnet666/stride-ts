@@ -7,3 +7,4 @@ export * from './roadLanes.ts';
 export * from './tree.ts';
 export * from './building.ts';
 export * from './city.ts';
+export * from './product.ts';

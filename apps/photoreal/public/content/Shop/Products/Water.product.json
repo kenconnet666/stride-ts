@@ -1,0 +1,16 @@
+{
+ "name": "Water",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.065,
+  0.21,
+  0
+ ],
+ "text": "矿泉水",
+ "seed": 12,
+ "colors": {
+  "background": "#e8f1f8",
+  "cap": "#d7262b"
+ }
+}

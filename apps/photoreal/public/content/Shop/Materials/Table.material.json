@@ -1,0 +1,11 @@
+{
+ "name": "Table",
+ "baseColor": [
+  0.62,
+  0.6,
+  0.57,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.45
+}

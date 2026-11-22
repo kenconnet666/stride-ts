@@ -1,0 +1,29 @@
+{
+ "name": "Chips",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "baseColorTexture": {
+  "texture": "Shop/Products/Chips",
+  "encoding": "svg",
+  "size": [
+   512,
+   356
+  ],
+  "srgb": true,
+  "filter": "anisotropic",
+  "scale": [
+   1,
+   1
+  ],
+  "offset": [
+   0,
+   0
+  ]
+ },
+ "roughness": 0.32,
+ "metalness": 0
+}

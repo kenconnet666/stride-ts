@@ -1,0 +1,12 @@
+{
+ "name": "ChiliSauce",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "jar",
+ "size": [
+  0.08,
+  0.1,
+  0
+ ],
+ "text": "辣酱",
+ "seed": 16
+}

@@ -28,3 +28,4 @@ export * from './treeFormat.ts';
 export * from './buildingFormat.ts';
 export * from './cityFormat.ts';
 export * from './waterFormat.ts';
+export * from './productFormat.ts';

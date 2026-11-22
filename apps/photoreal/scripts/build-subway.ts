@@ -6,6 +6,7 @@
 //   比对：pnpm exec stride open "http://localhost:5234/?scene=Subway" --headless --size 960x1280
 //         pnpm exec stride shot out.png --photo reference/subway/platform-screen-doors.jpg
 import path from 'node:path';
+import { nodeGraph } from '@stride-ts/editor/library';
 import { McpProcess } from '@stride-ts/editor/mcp-client';
 
 const project = path.resolve(import.meta.dirname, '..');
@@ -45,7 +46,54 @@ await plain('FrameBlack', [0.015, 0.015, 0.016], 0.45);
 await plain('Ballast', [0.2, 0.16, 0.13], 0.95);
 await plain('Grass', [0.12, 0.17, 0.06], 0.9);
 await plain('Foliage', [0.06, 0.12, 0.04], 0.85);
-await plain('HazardYellow', [0.75, 0.55, 0.02], 0.6);
+// 黄黑的挡杆：斜条纹（UV 按米：先转 45°，再沿一个方向拉开，棋盘就成了 10 厘米宽的条），棱边掉漆露出底下的铁（屏幕空间的曲率乘
+// 斑驳的噪声），缝里、挨着地的地方攒灰（遮蔽乘噪声）
+await write('material', 'Subway/Materials/HazardYellow', {
+  name: 'HazardYellow', baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.6,
+  graph: nodeGraph([
+    ['uv', 'uv'],
+    ['turned', 'uvTransform', { rotation: 45, offset: [20, 20] }, { uv: 'uv' }],
+    ['across', 'uvTransform', { scale: [1.25, 0.0001] }, { uv: 'turned' }],
+    ['stripes', 'checker', { scale: 8 }, { uv: 'across' }],
+    ['yellow', 'color', { color: [0.75, 0.55, 0.02] }],
+    ['black', 'color', { color: [0.02, 0.02, 0.02] }],
+    ['paint', 'mix', {}, { a: 'yellow', b: 'black', t: 'stripes' }],
+    ['corners', 'curvatureMask', { from: 0.05, to: 0.25 }],
+    ['breakup', 'noise', { scale: 30, octaves: 4, roughness: 0.6, seed: 7 }, { uv: 'uv' }],
+    ['chipping', 'levels', { inMin: 0.3, inMax: 0.55 }, { in: 'breakup' }],
+    ['wear', 'multiply', {}, { a: ['corners', 'edges'], b: 'chipping' }],
+    ['iron', 'color', { color: [0.3, 0.29, 0.27] }],
+    ['chipped', 'mix', {}, { a: 'paint', b: 'iron', t: 'wear' }],
+    ['shadowed', 'occlusionMask', { from: 0.15, to: 0.6 }],
+    ['grimeBreakup', 'noise', { scale: 12, octaves: 3, seed: 13 }, { uv: 'uv' }],
+    ['dirt', 'multiply', {}, { a: 'shadowed', b: 'grimeBreakup' }],
+    ['dirtColor', 'color', { color: [0.06, 0.05, 0.04] }],
+    ['color', 'mix', {}, { a: 'chipped', b: 'dirtColor', t: 'dirt' }],
+    ['paintRoughness', 'value', { value: 0.6 }],
+    ['ironRoughness', 'value', { value: 0.4 }],
+    ['roughness', 'mix', {}, { a: 'paintRoughness', b: 'ironRoughness', t: 'wear' }],
+  ], { baseColor: 'color', metalness: 'wear', roughness: 'roughness' }),
+});
+// 屏蔽门的不锈钢：拉丝（各向异性），离地 30 厘米以内被鞋、箱子蹭花（更粗糙、略暗的斑），棱边磨亮
+await write('material', 'Subway/Materials/DoorSteel', {
+  name: 'DoorSteel', baseColor: [0.56, 0.57, 0.58, 1], metalness: 1, roughness: 0.35, anisotropy: { strength: 0.8 },
+  graph: nodeGraph([
+    ['uv', 'uv'],
+    ['low', 'heightMask', { minHeight: -10, maxHeight: 0.3, blend: 0.15 }],
+    ['scratches', 'noise', { scale: 60, octaves: 4, roughness: 0.7, seed: 3 }, { uv: 'uv' }],
+    ['scuffSpots', 'levels', { inMin: 0.4, inMax: 0.7 }, { in: 'scratches' }],
+    ['scuff', 'multiply', {}, { a: 'low', b: 'scuffSpots' }],
+    ['corners', 'curvatureMask', { from: 0.05, to: 0.3 }],
+    ['steel', 'color', { color: [0.56, 0.57, 0.58] }],
+    ['scuffed', 'color', { color: [0.42, 0.42, 0.42] }],
+    ['color', 'mix', {}, { a: 'steel', b: 'scuffed', t: 'scuff' }],
+    ['base', 'value', { value: 0.35 }],
+    ['rough', 'value', { value: 0.6 }],
+    ['polished', 'value', { value: 0.15 }],
+    ['scuffRoughness', 'mix', {}, { a: 'base', b: 'rough', t: 'scuff' }],
+    ['roughness', 'mix', {}, { a: 'scuffRoughness', b: 'polished', t: ['corners', 'edges'] }],
+  ], { baseColor: 'color', roughness: 'roughness' }),
+});
 await plain('RoofPaint', [0.5, 0.52, 0.54], 0.6);
 await plain('LampRed', [0.3, 0.02, 0.01], 0.4, { emissive: [6, 0.6, 0.2] });
 await plain('LampGreen', [0.02, 0.3, 0.05], 0.3, { emissive: [0.4, 6, 1.2] });
@@ -146,7 +194,7 @@ leaf('Gate', -1.6, 2.0);
 pane(-1.6, 2.0);
 doorBrushes.push(box('GatePost', [0.7, 1.15, Z], [0.6, 2.3, 0.32], 0));
 doorBrushes.push(box('GatePostWindow', [0.7, 1.95, Z + 0.17], [0.46, 0.4, 0.04], 1));
-await brushModel('ScreenDoors', [STEEL, M('FrameBlack'), M('LampRed')], doorBrushes);
+await brushModel('ScreenDoors', [M('DoorSteel'), M('FrameBlack'), M('LampRed')], doorBrushes);
 await brushModel('ScreenDoorGlass', [GLASS], glassBrushes);
 
 // 站台尽头：栏杆、黄黑挡杆、信号灯

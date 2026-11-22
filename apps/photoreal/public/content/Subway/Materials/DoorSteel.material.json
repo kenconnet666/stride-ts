@@ -1,0 +1,180 @@
+{
+ "name": "DoorSteel",
+ "baseColor": [
+  0.56,
+  0.57,
+  0.58,
+  1
+ ],
+ "metalness": 1,
+ "roughness": 0.35,
+ "anisotropy": {
+  "strength": 0.8
+ },
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "uv"
+   },
+   {
+    "id": "low",
+    "type": "heightMask",
+    "params": {
+     "minHeight": -10,
+     "maxHeight": 0.3,
+     "blend": 0.15
+    }
+   },
+   {
+    "id": "scratches",
+    "type": "noise",
+    "params": {
+     "scale": 60,
+     "octaves": 4,
+     "roughness": 0.7,
+     "seed": 3
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "scuffSpots",
+    "type": "levels",
+    "params": {
+     "inMin": 0.4,
+     "inMax": 0.7
+    },
+    "inputs": {
+     "in": {
+      "node": "scratches"
+     }
+    }
+   },
+   {
+    "id": "scuff",
+    "type": "multiply",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "low"
+     },
+     "b": {
+      "node": "scuffSpots"
+     }
+    }
+   },
+   {
+    "id": "corners",
+    "type": "curvatureMask",
+    "params": {
+     "from": 0.05,
+     "to": 0.3
+    }
+   },
+   {
+    "id": "steel",
+    "type": "color",
+    "params": {
+     "color": [
+      0.56,
+      0.57,
+      0.58
+     ]
+    }
+   },
+   {
+    "id": "scuffed",
+    "type": "color",
+    "params": {
+     "color": [
+      0.42,
+      0.42,
+      0.42
+     ]
+    }
+   },
+   {
+    "id": "color",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "steel"
+     },
+     "b": {
+      "node": "scuffed"
+     },
+     "t": {
+      "node": "scuff"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "type": "value",
+    "params": {
+     "value": 0.35
+    }
+   },
+   {
+    "id": "rough",
+    "type": "value",
+    "params": {
+     "value": 0.6
+    }
+   },
+   {
+    "id": "polished",
+    "type": "value",
+    "params": {
+     "value": 0.15
+    }
+   },
+   {
+    "id": "scuffRoughness",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "base"
+     },
+     "b": {
+      "node": "rough"
+     },
+     "t": {
+      "node": "scuff"
+     }
+    }
+   },
+   {
+    "id": "roughness",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "scuffRoughness"
+     },
+     "b": {
+      "node": "polished"
+     },
+     "t": {
+      "node": "corners",
+      "output": "edges"
+     }
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "color"
+   },
+   "roughness": {
+    "node": "roughness"
+   }
+  }
+ }
+}

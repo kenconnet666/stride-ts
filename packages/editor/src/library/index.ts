@@ -37,9 +37,13 @@ export const libraryMaterialPath = (id: string): string => `Materials/Library/${
 // ---- 材质 ----
 
 /** 一个节点：id、种类、参数、输入（端口名 → 源节点 id 或 [节点 id, 输出名]）。不写位置：节点图面板按连线排。 */
-type NodeSpec = readonly [id: string, type: string, params?: Record<string, unknown>, inputs?: Record<string, string | readonly [string, string]>];
+export type NodeSpec = readonly [id: string, type: string, params?: Record<string, unknown>, inputs?: Record<string, string | readonly [string, string]>];
 
-function graph(nodes: readonly NodeSpec[], outputs: Record<string, string | readonly [string, string]>): GraphFile {
+/**
+ * 按简写建材质的节点图（材质文件的 graph）：节点列表加输出（材质的属性 → 源节点）。库里的材质、搭场景的脚本写节点图都用它。
+ * 例：nodeGraph([['uv', 'uv'], ['spots', 'noise', { scale: 8 }, { uv: 'uv' }]], { roughness: 'spots' })
+ */
+export function nodeGraph(nodes: readonly NodeSpec[], outputs: Record<string, string | readonly [string, string]>): GraphFile {
   const link = (source: string | readonly [string, string]) => (typeof source === 'string' ? { node: source } : { node: source[0], output: source[1] });
   return {
     nodes: nodes.map(([id, type, params, inputs]): GraphNodeFile => ({
@@ -72,7 +76,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   plain('neonMagenta', 'emissive', { baseColor: [0.02, 0.02, 0.02, 1], metalness: 0, roughness: 0.4, emissive: [6, 0.3, 4] }),
   plain('concrete', 'stone', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv'],
       ['grain', 'noise', { scale: 40, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
       ['stains', 'noise', { scale: 3, octaves: 3, seed: 4 }, { uv: 'uv' }],
@@ -84,7 +88,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   }),
   plain('redBrick', 'stone', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.85,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv'],
       ['bricks', 'bricks', { columns: 4, rows: 8, mortar: 0.03, shift: 0.5 }, { uv: 'uv' }],
       ['variation', 'colorRamp', { from: [0.3, 0.07, 0.04], to: [0.55, 0.18, 0.1] }, { t: ['bricks', 'brick'] }],
@@ -96,7 +100,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   // 方石板：不错缝的砖（每块一个色调）加表面的细噪声
   plain('stoneTiles', 'stone', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.7,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv'],
       ['tiles', 'bricks', { columns: 12, rows: 6, mortar: 0.015, shift: 0 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.36, 0.35, 0.33], to: [0.6, 0.58, 0.54] }, { t: ['tiles', 'brick'] }],
@@ -111,7 +115,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   // 墙砖：白釉面的方砖（每米 4 块、不错缝，包柱、墙面），每块白得略有不同，浅灰的缝；釉面光滑、缝粗糙
   plain('wallTiles', 'stone', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.12,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv'],
       ['tiles', 'bricks', { columns: 4, rows: 4, mortar: 0.008, shift: 0 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.78, 0.78, 0.76], to: [0.86, 0.86, 0.84] }, { t: ['tiles', 'brick'] }],
@@ -125,7 +129,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   }),
   plain('wood', 'wood', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.6,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv', { scale: [1, 12] }],
       ['grain', 'noise', { scale: 6, octaves: 5, roughness: 0.55 }, { uv: 'uv' }],
       ['color', 'colorRamp', { from: [0.18, 0.08, 0.03], to: [0.5, 0.27, 0.12] }, { t: 'grain' }],
@@ -134,7 +138,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   }),
   plain('marble', 'stone', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.15,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv'],
       ['veins', 'noise', { scale: 4, octaves: 7, roughness: 0.6, seed: 2 }, { uv: 'uv' }],
       // 纹路是噪声等于 0.5 的那条线：往上一段从 0 升到 1、往下一段从 1 降到 0，乘起来只在 0.5 附近是 1
@@ -148,7 +152,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   // 遮罩是节点图的坡度、高度遮罩，换地形、挪地形都对
   plain('alpineTerrain', 'terrain', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'worldUv', { scale: 0.05 }],
       ['patches', 'noise', { scale: 6, octaves: 4, roughness: 0.55 }, { uv: 'uv' }],
       ['grass', 'colorRamp', { from: [0.1, 0.17, 0.05], to: [0.24, 0.33, 0.11] }, { t: 'patches' }],
@@ -166,7 +170,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   // 智能材质：掉漆的金属——棱边上漆磨掉、露出钢（金属度跟着），缝里和被遮住的地方积灰；都用噪声打散
   plain('wornPaint', 'smart', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.5,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv'],
       ['corners', 'curvatureMask', { from: 0.05, to: 0.25 }],
       ['breakup', 'noise', { scale: 22, octaves: 4, roughness: 0.6, seed: 5 }, { uv: 'uv' }],
@@ -189,7 +193,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   // 智能材质：长青苔的石头——缝里、被遮住的地方和朝上的面长苔（成片的），棱边磨得发白
   plain('mossyStone', 'smart', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.85,
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv'],
       ['grain', 'noise', { scale: 30, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
       ['blotch', 'noise', { scale: 4, octaves: 3, seed: 2 }, { uv: 'uv' }],
@@ -212,7 +216,7 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
   }),
   plain('fabric', 'fabric', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9, sheen: { color: [0.4, 0.45, 0.6], roughness: 0.5 },
-    graph: graph([
+    graph: nodeGraph([
       ['uv', 'uv'],
       ['weave', 'checker', { scale: 24 }, { uv: 'uv' }],
       ['fibers', 'noise', { scale: 30, octaves: 3 }, { uv: 'uv' }],

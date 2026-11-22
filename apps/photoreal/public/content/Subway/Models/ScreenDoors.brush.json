@@ -1,7 +1,7 @@
 {
  "name": "ScreenDoors",
  "materials": [
-  "Materials/Library/BrushedSteel",
+  "Subway/Materials/DoorSteel",
   "Subway/Materials/FrameBlack",
   "Subway/Materials/LampRed"
  ],

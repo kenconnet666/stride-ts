@@ -1,11 +1,280 @@
 {
  "name": "HazardYellow",
  "baseColor": [
-  0.75,
-  0.55,
-  0.02,
+  1,
+  1,
+  1,
   1
  ],
  "metalness": 0,
- "roughness": 0.6
+ "roughness": 0.6,
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "uv"
+   },
+   {
+    "id": "turned",
+    "type": "uvTransform",
+    "params": {
+     "rotation": 45,
+     "offset": [
+      20,
+      20
+     ]
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "across",
+    "type": "uvTransform",
+    "params": {
+     "scale": [
+      1.25,
+      0.0001
+     ]
+    },
+    "inputs": {
+     "uv": {
+      "node": "turned"
+     }
+    }
+   },
+   {
+    "id": "stripes",
+    "type": "checker",
+    "params": {
+     "scale": 8
+    },
+    "inputs": {
+     "uv": {
+      "node": "across"
+     }
+    }
+   },
+   {
+    "id": "yellow",
+    "type": "color",
+    "params": {
+     "color": [
+      0.75,
+      0.55,
+      0.02
+     ]
+    }
+   },
+   {
+    "id": "black",
+    "type": "color",
+    "params": {
+     "color": [
+      0.02,
+      0.02,
+      0.02
+     ]
+    }
+   },
+   {
+    "id": "paint",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "yellow"
+     },
+     "b": {
+      "node": "black"
+     },
+     "t": {
+      "node": "stripes"
+     }
+    }
+   },
+   {
+    "id": "corners",
+    "type": "curvatureMask",
+    "params": {
+     "from": 0.05,
+     "to": 0.25
+    }
+   },
+   {
+    "id": "breakup",
+    "type": "noise",
+    "params": {
+     "scale": 30,
+     "octaves": 4,
+     "roughness": 0.6,
+     "seed": 7
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "chipping",
+    "type": "levels",
+    "params": {
+     "inMin": 0.3,
+     "inMax": 0.55
+    },
+    "inputs": {
+     "in": {
+      "node": "breakup"
+     }
+    }
+   },
+   {
+    "id": "wear",
+    "type": "multiply",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "corners",
+      "output": "edges"
+     },
+     "b": {
+      "node": "chipping"
+     }
+    }
+   },
+   {
+    "id": "iron",
+    "type": "color",
+    "params": {
+     "color": [
+      0.3,
+      0.29,
+      0.27
+     ]
+    }
+   },
+   {
+    "id": "chipped",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "paint"
+     },
+     "b": {
+      "node": "iron"
+     },
+     "t": {
+      "node": "wear"
+     }
+    }
+   },
+   {
+    "id": "shadowed",
+    "type": "occlusionMask",
+    "params": {
+     "from": 0.15,
+     "to": 0.6
+    }
+   },
+   {
+    "id": "grimeBreakup",
+    "type": "noise",
+    "params": {
+     "scale": 12,
+     "octaves": 3,
+     "seed": 13
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "dirt",
+    "type": "multiply",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "shadowed"
+     },
+     "b": {
+      "node": "grimeBreakup"
+     }
+    }
+   },
+   {
+    "id": "dirtColor",
+    "type": "color",
+    "params": {
+     "color": [
+      0.06,
+      0.05,
+      0.04
+     ]
+    }
+   },
+   {
+    "id": "color",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "chipped"
+     },
+     "b": {
+      "node": "dirtColor"
+     },
+     "t": {
+      "node": "dirt"
+     }
+    }
+   },
+   {
+    "id": "paintRoughness",
+    "type": "value",
+    "params": {
+     "value": 0.6
+    }
+   },
+   {
+    "id": "ironRoughness",
+    "type": "value",
+    "params": {
+     "value": 0.4
+    }
+   },
+   {
+    "id": "roughness",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "paintRoughness"
+     },
+     "b": {
+      "node": "ironRoughness"
+     },
+     "t": {
+      "node": "wear"
+     }
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "color"
+   },
+   "metalness": {
+    "node": "wear"
+   },
+   "roughness": {
+    "node": "roughness"
+   }
+  }
+ }
 }

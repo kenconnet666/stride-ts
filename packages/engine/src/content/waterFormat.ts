@@ -20,6 +20,11 @@ export interface WaterFile {
   readonly waves?: { readonly height?: number; readonly length?: number; readonly direction?: number; readonly speed?: number; readonly choppiness?: number };
   /** 泡沫：岸边多宽（米，按水深），默认 1。 */
   readonly foam?: { readonly shore?: number };
+  /**
+   * 河：沿着样条（横截面是 river 的那种，坐标同实体的本地坐标）的一条水面，宽是样条的宽；level 是水面比样条低多少（米，默认 0.3），
+   * speed 是流速（米每秒，默认 1.5，波纹顺着样条的方向流）。写了它时 outline、extent 不用，浪按 waves 的高度压得很小。
+   */
+  readonly river?: { readonly spline: string; readonly level?: number; readonly speed?: number };
 }
 
 /** 岸线最多几个点（着色器里一个常量数组）。 */
@@ -45,5 +50,9 @@ export function checkWater(file: WaterFile, where = file.name): WaterFile {
     if (waves.choppiness !== undefined && !(waves.choppiness >= 0 && waves.choppiness <= 1)) fail('waves.choppiness', 'must be in 0..1');
   }
   if (file.foam?.shore !== undefined && !(file.foam.shore >= 0)) fail('foam.shore', 'must not be negative');
+  if (file.river !== undefined) {
+    if (typeof file.river.spline !== 'string' || file.river.spline === '') fail('river.spline', 'must be a spline path');
+    if (file.river.speed !== undefined && !(file.river.speed >= 0)) fail('river.speed', 'must not be negative');
+  }
   return file;
 }

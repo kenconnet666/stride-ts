@@ -533,7 +533,10 @@ export class ContentManager {
 
   /** 水体（.water.json）；画法见 water/Water.ts。 */
   loadWater(path: string): Promise<WaterAsset> {
-    return this.#once(path + EXTENSIONS.water, async (url) => new WaterAsset(path, checkWater(this.#json<WaterFile>(await this.#read(url)), url.href)));
+    return this.#once(path + EXTENSIONS.water, async (url) => {
+      const file = checkWater(this.#json<WaterFile>(await this.#read(url)), url.href);
+      return new WaterAsset(path, file, file.river ? await this.loadSpline(file.river.spline) : undefined);
+    });
   }
 
   /** 矢量地形（.terrain.json）和它的材质；高度由原生的求值器按需算（terrain/TerrainSystem.ts）。 */

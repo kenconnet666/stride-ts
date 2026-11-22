@@ -7,9 +7,13 @@
  * - 着色：每个像素重算浪的法线，叠几组短的波纹；反射天空（天空的镜面立方体贴图）、太阳的高光（GGX），按菲涅耳混；水下是主画面
  *   不透明的那份拷贝（rendering/screenspace/Refraction.ts，和透射材质共用），按法线偏开、按光在水里走的路程吸收（清澈度），越深越
  *   接近水的颜色；岸边按水深起泡沫，和地面相交的地方按水深淡出（没有硬边）。
+ * - 河（文件的 river）：沿样条的一条带子（riverRibbon），水面在样条下面一点，不叠大浪；波纹顺着样条的方向流（Valve 的 flow map：
+ *   两个相位错开半个周期地平移、交替淡入淡出，不会越拉越长），越快越碎，带子的两边淡出。
  * - 只画主画面（要那份拷贝），在不透明的之后、透明的之前，读深度、不写。
  */
+import type { SplineFile } from '../content/splineFormat';
 import type { WaterFile } from '../content/waterFormat';
+import { sampleSpline, splinePaths } from '../modeling/spline';
 import { WATER_MAX_OUTLINE } from '../content/waterFormat';
 import { prop, type Branded, type EntityId } from '../data/prop';
 import { component } from '../engine/component';
@@ -31,10 +35,43 @@ export const Water = component('Water', {
 
 const assets = new ResourceTable<WaterAsset>();
 
-/** 一片水在世界里占哪儿：水面的高度、岸线（世界的 [x, z]；海是 undefined，哪儿都是）。 */
+/**
+ * 一片水在世界里占哪儿：水面的高度、岸线（世界的 [x, z]；海是 undefined，哪儿都是）；河是 river：中心线（世界的 [x, 水面高度, z]）
+ * 和半宽。
+ */
 export interface WaterArea {
   readonly level: number;
   readonly outline: readonly (readonly [number, number])[] | undefined;
+  readonly river?: { readonly line: readonly (readonly [number, number, number])[]; readonly halfWidth: number };
+}
+
+/** 河的水面每隔多少米一节。 */
+const RIVER_STEP = 2;
+/** 河的水面网格一个顶点几个 float：本地的 x、水面高度、z，弧长；流向的 x、z，横向（−1..1），半宽。 */
+export const RIVER_VERTEX_FLOATS = 8;
+
+/**
+ * 河的水面：样条每条路径每 RIVER_STEP 米一节，两边按样条的宽展开，水面比样条低 level 米；三角形列表（不用索引），坐标是样条的
+ * （= 实体的本地）。
+ */
+export function riverRibbon(spline: SplineFile, level: number): Float32Array {
+  const width = spline.profile.type === 'river' ? spline.profile.width : 4;
+  const out: number[] = [];
+  for (const path of splinePaths(spline)) {
+    const frames = sampleSpline(path.points, path.closed ?? false, RIVER_STEP);
+    for (let i = 0; i + 1 < frames.length; i++) {
+      const pair = [frames[i]!, frames[i + 1]!];
+      const corner = (k: number, side: number) => {
+        const f = pair[k]!, half = (width * f.width) / 2;
+        const rl = Math.hypot(f.right[0], f.right[2]) || 1, tl = Math.hypot(f.tangent[0], f.tangent[2]) || 1;
+        out.push(f.position[0] + (f.right[0] / rl) * half * side, f.position[1] - level, f.position[2] + (f.right[2] / rl) * half * side, f.distance,
+          f.tangent[0] / tl, f.tangent[2] / tl, side, half);
+      };
+      corner(0, -1); corner(0, 1); corner(1, 1);
+      corner(0, -1); corner(1, 1); corner(1, -1);
+    }
+  }
+  return Float32Array.from(out);
 }
 
 const areaQuery = system('waterAreas', {
@@ -44,9 +81,19 @@ const areaQuery = system('waterAreas', {
       const asset = WaterAsset.byId(water.water[i]!);
       if (!asset) continue;
       const w = transform.slot[i]! * 16, m = transform.world;
+      const toWorld = (x: number, y: number, z: number) => [m[w]! * x + m[w + 4]! * y + m[w + 8]! * z + m[w + 12]!, m[w + 1]! * x + m[w + 5]! * y + m[w + 9]! * z + m[w + 13]!, m[w + 2]! * x + m[w + 6]! * y + m[w + 10]! * z + m[w + 14]!] as const;
+      const river = asset.river;
+      if (river) {
+        const level = asset.file.river?.level ?? 0.3;
+        for (const path of splinePaths(river)) {
+          const line = sampleSpline(path.points, path.closed ?? false, RIVER_STEP * 2).map((f) => toWorld(f.position[0], f.position[1] - level, f.position[2]));
+          collected.push({ level: Number.NaN, outline: undefined, river: { line, halfWidth: (river.profile.type === 'river' ? river.profile.width : 4) / 2 } });
+        }
+        continue;
+      }
       collected.push({
         level: m[w + 13]!,
-        outline: asset.file.outline?.map(([x, z]) => [m[w]! * x + m[w + 8]! * z + m[w + 12]!, m[w + 2]! * x + m[w + 10]! * z + m[w + 14]!] as const),
+        outline: asset.file.outline?.map(([x, z]) => [toWorld(x, 0, z)[0], toWorld(x, 0, z)[2]] as const),
       });
     }
   },
@@ -60,9 +107,19 @@ export function waterAreas(entities: { run: (query: typeof areaQuery, time: Game
   return collected;
 }
 
-/** 点（世界的 x、高度 y、z）在不在水下。 */
+/** 点（世界的 x、高度 y、z）在不在水下（河：离中心线半宽以内、低于那里的水面）。 */
 export function underWater(areas: readonly WaterArea[], x: number, y: number, z: number): boolean {
-  return areas.some((area) => y < area.level && (!area.outline || insidePolygon(area.outline, x, z)));
+  return areas.some((area) => (area.river ? underRiver(area.river, x, y, z) : y < area.level && (!area.outline || insidePolygon(area.outline, x, z))));
+}
+
+function underRiver({ line, halfWidth }: NonNullable<WaterArea['river']>, x: number, y: number, z: number): boolean {
+  for (let i = 0; i + 1 < line.length; i++) {
+    const [ax, ay, az] = line[i]!, [bx, by, bz] = line[i + 1]!;
+    const ex = bx - ax, ez = bz - az, length = ex * ex + ez * ez;
+    const t = length > 0 ? Math.min(1, Math.max(0, ((x - ax) * ex + (z - az) * ez) / length)) : 0;
+    if (Math.hypot(x - ax - ex * t, z - az - ez * t) < halfWidth + 0.5 && y < ay + (by - ay) * t) return true;
+  }
+  return false;
 }
 
 function insidePolygon(points: readonly (readonly [number, number])[], x: number, z: number): boolean {
@@ -74,16 +131,25 @@ function insidePolygon(points: readonly (readonly [number, number])[], x: number
   return inside;
 }
 
-/** 加载好的水体资源。 */
+/** 加载好的水体资源；river 是河的样条（文件写了 river 时）。 */
 export class WaterAsset {
   readonly id: WaterAssetId;
   readonly path: string;
   readonly file: WaterFile;
+  readonly river: SplineFile | undefined;
+  #ribbon: Float32Array | undefined;
 
-  constructor(path: string, file: WaterFile) {
+  constructor(path: string, file: WaterFile, river?: SplineFile) {
     this.path = path;
     this.file = file;
+    this.river = river;
     this.id = assets.add(this) as WaterAssetId;
+  }
+
+  /** 河的水面网格（riverRibbon，第一次要时算）；不是河时是 undefined。 */
+  get ribbon(): Float32Array | undefined {
+    if (!this.river) return undefined;
+    return (this.#ribbon ??= riverRibbon(this.river, this.file.river?.level ?? 0.3));
   }
 
   /** @internal Water 组件里存的 id 对应的资源。 */
@@ -172,6 +238,9 @@ struct Varyings {
   @location(0) world: vec3f,
   @location(1) plane: vec2f,
   @location(2) fade: f32,
+  // 河：流的速度（世界的 xz，米每秒）、横向（−1..1，两边淡出）；湖、海是 0
+  @location(3) flow: vec2f,
+  @location(4) across: f32,
 };
 
 fn ringRadius(ring: u32) -> f32 {
@@ -195,7 +264,50 @@ fn ringRadius(ring: u32) -> f32 {
   out.plane = plane;
   out.fade = fade;
   out.position = water.viewProjection * vec4f(out.world, 1.0);
+  out.flow = vec2f(0.0);
+  out.across = 0.0;
   return out;
+}
+
+/** 河的水面（riverRibbon 的顶点，本地坐标）：按实体的位置和绕 Y 的转角放到世界里，流向跟着转。 */
+@vertex fn vsRiver(@location(0) a: vec4f, @location(1) b: vec4f) -> Varyings {
+  let axis = water.axis.xy;
+  let turn = mat2x2f(axis.x, axis.y, -axis.y, axis.x);
+  let xz = water.origin.xz + turn * a.xz;
+  var out: Varyings;
+  out.world = vec3f(xz.x, water.origin.y + a.y, xz.y);
+  out.plane = xz;
+  out.fade = 0.0;
+  out.flow = turn * b.xy * water.waves2.z;
+  out.across = b.z;
+  out.position = water.viewProjection * vec4f(out.world, 1.0);
+  return out;
+}
+
+/** p 处几组短的波纹的法线扰动（xz），strength 是幅度。 */
+fn ripples(p: vec2f, strength: f32, t: f32) -> vec2f {
+  var slope = vec2f(0.0);
+  for (var i = 0u; i < 4u; i++) {
+    let angle = f32(i) * 2.4 + 0.5;
+    let d = vec2f(cos(angle), sin(angle));
+    let k = 2.0 * PI / (0.6 + f32(i) * 0.7);
+    let theta = k * dot(d, p) - sqrt(9.81 * k) * t * 0.3;
+    slope += d * strength * cos(theta);
+  }
+  return slope;
+}
+
+/** 河的法线：波纹顺着 flow 平移，两个相位错开半个周期、交替淡入淡出（flow map）。 */
+fn riverNormal(p: vec2f, flow: vec2f, t: f32) -> vec3f {
+  let speed = length(flow);
+  let strength = 0.06 + 0.04 * min(speed, 3.0);
+  let phase0 = fract(t * 0.3);
+  let phase1 = fract(t * 0.3 + 0.5);
+  let weight = 1.0 - abs(phase0 * 2.0 - 1.0);
+  let s0 = ripples(p - flow * phase0 * 3.3, strength, t);
+  let s1 = ripples(p - flow * phase1 * 3.3 + vec2f(3.7, 1.3), strength, t);
+  let slope = s0 * weight + s1 * (1.0 - weight);
+  return normalize(vec3f(-slope.x, 1.0, -slope.y));
 }
 
 /** 本地的点在岸线里（奇偶规则）。 */
@@ -227,7 +339,8 @@ fn scenePosition(uv: vec2f, depth: f32) -> vec3f {
 }
 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
-  if (water.axis.w > 0.0) {
+  let river = water.waves2.w > 0.5;
+  if (!river && water.axis.w > 0.0) {
     let d = in.plane - water.origin.xz;
     let local = vec2f(dot(d, water.axis.xy), dot(d, vec2f(-water.axis.y, water.axis.x)));
     if (!insideOutline(local)) {
@@ -235,21 +348,26 @@ fn scenePosition(uv: vec2f, depth: f32) -> vec3f {
     }
   }
   let p = in.plane + water.pattern.xy;
-  var n = gerstner(p, in.fade).normal;
-  // 近处叠几组短的波纹（风吹的细浪），远处淡掉
   let toEye = water.eye.xyz - in.world;
   let viewDistance = length(toEye);
-  let ripple = saturate(1.0 - viewDistance / 80.0) * 0.12;
   let t = water.eye.w * water.waves.w;
-  for (var i = 0u; i < 3u; i++) {
-    let angle = water.waves.z + f32(i) * 2.1 + 0.7;
-    let d = vec2f(cos(angle), sin(angle));
-    let k = 2.0 * PI / (0.7 + f32(i) * 0.55);
-    let theta = k * dot(d, p) - sqrt(9.81 * k) * t;
-    n.x -= d.x * ripple * cos(theta);
-    n.z -= d.y * ripple * cos(theta);
+  var n: vec3f;
+  if (river) {
+    n = riverNormal(p, in.flow, water.eye.w);
+  } else {
+    n = gerstner(p, in.fade).normal;
+    // 近处叠几组短的波纹（风吹的细浪），远处淡掉
+    let ripple = saturate(1.0 - viewDistance / 80.0) * 0.12;
+    for (var i = 0u; i < 3u; i++) {
+      let angle = water.waves.z + f32(i) * 2.1 + 0.7;
+      let d = vec2f(cos(angle), sin(angle));
+      let k = 2.0 * PI / (0.7 + f32(i) * 0.55);
+      let theta = k * dot(d, p) - sqrt(9.81 * k) * t;
+      n.x -= d.x * ripple * cos(theta);
+      n.z -= d.y * ripple * cos(theta);
+    }
+    n = normalize(n);
   }
-  n = normalize(n);
   let v = toEye / max(viewDistance, 1e-4);
   let nDotV = max(dot(n, v), 0.001);
   let fresnel = 0.02 + 0.98 * pow(1.0 - nDotV, 5.0);
@@ -298,20 +416,23 @@ fn scenePosition(uv: vec2f, depth: f32) -> vec3f {
     let foam = saturate((1.0 - depthBelow / shore) * (0.55 + 0.9 * wobble));
     color = mix(color, lightIn * 0.9, foam * 0.8);
   }
-  // 和地面相交的地方按水深淡出
-  let edge = saturate(depthBelow / 0.08);
+  // 和地面相交的地方按水深淡出；河的带子两边也淡出
+  let edge = saturate(depthBelow / 0.08) * (1.0 - smoothstep(0.8, 1.0, abs(in.across)));
   return vec4f(color, edge);
 }
 `;
 
 interface WaterPipeline {
   readonly pipeline: GPURenderPipeline;
+  readonly river: GPURenderPipeline;
   readonly layout: GPUBindGroupLayout;
   readonly key: string;
 }
 
 interface Instance {
   readonly buffer: GPUBuffer;
+  /** 河的水面网格（GPU 上的），和它对应的资源。 */
+  ribbon?: { readonly asset: WaterAsset; readonly buffer: GPUBuffer; readonly count: number };
   group: GPUBindGroup | undefined;
   /** 建绑定组时用的贴图（换了要重建）。 */
   key: readonly unknown[];
@@ -355,6 +476,7 @@ export class WaterRenderer {
     for (const [id, instance] of this.#instances) {
       if (this.#frame.some((item) => item.id === id)) continue;
       instance.buffer.destroy();
+      instance.ribbon?.buffer.destroy();
       this.#instances.delete(id);
     }
   }
@@ -365,7 +487,7 @@ export class WaterRenderer {
   draw(pass: GPURenderPassEncoder, context: RenderContext, view: RenderView, lighting: Lighting, refraction: Refraction, origin: readonly number[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     const scene = refraction.texture, depth = refraction.depthTexture;
     if (this.#frame.length === 0 || !scene || !depth) return;
-    const { pipeline, layout } = this.#pipelineFor(colorFormat, depthFormat);
+    const { pipeline, river, layout } = this.#pipelineFor(colorFormat, depthFormat);
     const skybox = lighting.skybox;
     const sky = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
     // 太阳：投阴影的那盏方向光，没有就第一盏
@@ -387,7 +509,6 @@ export class WaterRenderer {
     data.set(skybox ? skybox.rotation : IDENTITY, 48);
     data.set([origin[0]! % 65536, origin[2]! % 65536, 0, 0], 84);
     data.set([1 / view.width, 1 / view.height, view.width, view.height], 88);
-    pass.setPipeline(pipeline);
     for (const { id, asset, world } of this.#frame) {
       const file = asset.file;
       let instance = this.#instances.get(id);
@@ -430,17 +551,34 @@ export class WaterRenderer {
       // 方向：本地的角度加上实体绕 Y 转的角度
       const yaw = Math.atan2(az, ax);
       data.set([waves.height ?? 0.3, waves.length ?? 12, yaw + ((waves.direction ?? 0) * Math.PI) / 180, waves.speed ?? 1], 76);
-      data.set([waves.choppiness ?? 0.5, file.foam?.shore ?? 1, 0, 0], 80);
+      data.set([waves.choppiness ?? 0.5, file.foam?.shore ?? 1, file.river?.speed ?? 1.5, asset.river ? 1 : 0], 80);
       data.fill(0, 92);
       outline.forEach(([x, z], i) => data.set([x, z], 92 + i * 2));
       this.#device.queue.writeBuffer(instance.buffer, 0, data);
       pass.setBindGroup(0, instance.group);
+      const ribbon = asset.ribbon;
+      if (ribbon) {
+        if (instance.ribbon?.asset !== asset) {
+          instance.ribbon?.buffer.destroy();
+          const buffer = this.#device.createBuffer({ label: `Water ${asset.path} river`, size: Math.max(16, ribbon.byteLength), usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
+          this.#device.queue.writeBuffer(buffer, 0, ribbon);
+          instance.ribbon = { asset, buffer, count: ribbon.length / RIVER_VERTEX_FLOATS };
+        }
+        pass.setPipeline(river);
+        pass.setVertexBuffer(0, instance.ribbon.buffer);
+        pass.draw(instance.ribbon.count);
+        continue;
+      }
+      pass.setPipeline(pipeline);
       pass.draw(RINGS * SEGMENTS * 6);
     }
   }
 
   destroy(): void {
-    for (const instance of this.#instances.values()) instance.buffer.destroy();
+    for (const instance of this.#instances.values()) {
+      instance.buffer.destroy();
+      instance.ribbon?.buffer.destroy();
+    }
     this.#instances.clear();
   }
 
@@ -459,10 +597,13 @@ export class WaterRenderer {
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
-    const pipeline = device.createRenderPipeline({
-      label: 'Water',
+    const describe = (entryPoint: 'vs' | 'vsRiver'): GPURenderPipelineDescriptor => ({
+      label: entryPoint === 'vs' ? 'Water' : 'Water river',
       layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
-      vertex: { module, entryPoint: 'vs' },
+      vertex: {
+        module, entryPoint,
+        buffers: entryPoint === 'vs' ? [] : [{ arrayStride: RIVER_VERTEX_FLOATS * 4, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x4' }, { shaderLocation: 1, offset: 16, format: 'float32x4' }] }],
+      },
       fragment: {
         module, entryPoint: 'fs',
         targets: [{ format: colorFormat, blend: { color: { srcFactor: 'src-alpha', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
@@ -471,7 +612,7 @@ export class WaterRenderer {
       // 反向 Z：近 1 远 0；读深度、不写
       depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'greater-equal' },
     });
-    this.#pipeline = { pipeline, layout, key };
+    this.#pipeline = { pipeline: device.createRenderPipeline(describe('vs')), river: device.createRenderPipeline(describe('vsRiver')), layout, key };
     return this.#pipeline;
   }
 }

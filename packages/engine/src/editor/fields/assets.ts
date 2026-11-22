@@ -334,6 +334,9 @@ export const SPLINE_FIELDS = fields<SplineFile>({
           postSpacing: { type: number({ min: 0.1, step: 0.5, unit: 'm' }), optional: true, default: 2.5, description: 'distance between posts' },
           rails: { type: integer(1, 10), optional: true, default: 2, description: 'horizontal rails between the posts' },
         }),
+        river: fields<{ width: unknown }>({
+          width: { type: positiveNumber(), description: 'width of the water surface (m); the water body (.water.json river) draws it, the terrain (carve) digs the bed' },
+        }),
         wire: fields<{ poleHeight: unknown; poleSpacing: unknown; sag: unknown; wires: unknown }>({
           poleHeight: { type: number({ min: 1, step: 1, unit: 'm' }), optional: true, default: 10, description: 'height of the poles' },
           poleSpacing: { type: number({ min: 1, step: 5, unit: 'm' }), optional: true, default: 40, description: 'distance between poles' },
@@ -460,6 +463,15 @@ export const WATER_FIELDS = fields<WaterFile>({
     })),
     optional: true,
     description: 'foam along the shore',
+  },
+  river: {
+    type: object(fields<NonNullable<WaterFile['river']>>({
+      spline: { type: asset('spline'), description: 'the river spline (profile river; its width is the water width)' },
+      level: { type: number({ step: 0.1, unit: 'm' }), optional: true, default: 0.3, description: 'how far the water surface is below the spline' },
+      speed: { type: number({ min: 0, step: 0.25, unit: 'm/s' }), optional: true, default: 1.5, description: 'how fast the ripples flow along the spline' },
+    })),
+    optional: true,
+    description: 'a river along a spline instead of a lake or sea',
   },
 });
 

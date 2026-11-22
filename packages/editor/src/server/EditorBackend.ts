@@ -677,9 +677,11 @@ export class EditorBackend {
       : kind === 'tree' ? bakeTreeModel(tools, content as TreeFile, where)
       : kind === 'building' ? bakeBuildingModel(tools, content as BuildingFile, where)
       : bakePolyModel(tools, content as PolyMeshFile, where);
+    this.#recordBake(`${kind}:${assetPath}`, content);
+    // 没有几何的（河道样条）：不写模型
+    if (!bytes) return { files: [], warnings: [] };
     const model = assetPath + EXTENSIONS.model;
     await writeAtomically(path.join(this.project.contentDir, model), bytes);
-    this.#recordBake(`${kind}:${assetPath}`, content);
     return { files: [model], warnings: [] };
   }
 

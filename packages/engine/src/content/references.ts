@@ -4,7 +4,7 @@
  * 文件（assetReferenceSlots）。只依赖文件格式的类型，Node 里也能直接运行（所以相对导入写了扩展名）。
  */
 import type {
-  AnimationData, BuildingFile, BrushFile, CityFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, TextureRef, UIFile,
+  AnimationData, BuildingFile, BrushFile, CityFile, WaterFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, TextureRef, UIFile,
   UISpriteValue,
 } from './format';
 import { textureRefs } from './loading.ts';
@@ -252,6 +252,11 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
       if (terrain.material) add('material', terrain, 'material');
       // 贴着的样条：样条改了地形跟着重新加载、按改动的范围重算
       (terrain.splines ?? []).forEach((entry) => add('spline', entry, 'spline'));
+      break;
+    }
+    case 'water': {
+      const water = file as WaterFile;
+      if (water.river) add('spline', water.river, 'spline');
       break;
     }
     case 'city': {

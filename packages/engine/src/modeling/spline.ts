@@ -62,8 +62,8 @@ export function checkSpline(file: SplineFile, where = file.name): SplineFile {
   file.branches?.forEach((branch, b) => checkPoints(branch.points, `branches[${b}].points`));
   if (file.resolution !== undefined && !(file.resolution > 0)) fail('resolution must be positive');
   const p = file.profile;
-  if (!p || !['road', 'tube', 'custom', 'rail', 'fence', 'wire'].includes(p.type)) fail("profile.type must be one of road, tube, custom, rail, fence, wire");
-  if (p.type === 'road' && !(p.width > 0)) fail('profile.width must be positive');
+  if (!p || !['road', 'tube', 'custom', 'rail', 'fence', 'wire', 'river'].includes(p.type)) fail("profile.type must be one of road, tube, custom, rail, fence, wire, river");
+  if ((p.type === 'road' || p.type === 'river') && !(p.width > 0)) fail('profile.width must be positive');
   if (p.type === 'tube' && !(p.radius > 0)) fail('profile.radius must be positive');
   if (p.type === 'custom' && (!Array.isArray(p.shape) || p.shape.length < 2)) fail('profile.shape needs at least 2 [right, up] points');
   return file;
@@ -100,7 +100,7 @@ export function sampleSpline(points: readonly SplinePointFile[], closed: boolean
 
 /** 样条在地上占多宽（米）：道路是路面加两侧路肩，铁轨是轨距加 3 米的道床，别的 2 米。地形贴样条、城市摆楼避让用。 */
 export function splineCorridorWidth(profile: SplineFile['profile']): number {
-  return profile.type === 'road' ? profile.width + 2 * (profile.shoulder ?? 0.5) : profile.type === 'rail' ? (profile.gauge ?? 1.435) + 3 : 2;
+  return profile.type === 'road' ? profile.width + 2 * (profile.shoulder ?? 0.5) : profile.type === 'rail' ? (profile.gauge ?? 1.435) + 3 : profile.type === 'river' ? profile.width + 4 : 2;
 }
 
 /** 样条的全部路径：第一条是文件的 points，后面是 branches。 */
@@ -205,6 +205,9 @@ function profileMeshes(slots: readonly MeshBuilder[], profile: Exclude<SplineFil
     }
     case 'custom':
       extrude(slots[0]!, frames, profile.shape, profile.closed ?? false);
+      break;
+    case 'river':
+      // 河道没有几何：水面由水体画（water/Water.ts）
       break;
     case 'rail': {
       const gauge = profile.gauge ?? 1.435, spacing = profile.sleeperSpacing ?? 0.6;

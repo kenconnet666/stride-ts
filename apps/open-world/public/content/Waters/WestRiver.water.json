@@ -1,0 +1,17 @@
+{
+ "name": "WestRiver",
+ "river": {
+  "spline": "Splines/WestRiver",
+  "level": 0.3,
+  "speed": 2.5
+ },
+ "color": [
+  0.02,
+  0.06,
+  0.05
+ ],
+ "clarity": 2.5,
+ "foam": {
+  "shore": 0.5
+ }
+}

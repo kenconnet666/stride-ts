@@ -66,6 +66,13 @@
   {
    "spline": "Splines/RailLine",
    "falloff": 15
+  },
+  {
+   "spline": "Splines/WestRiver",
+   "mode": "carve",
+   "offset": -2.2,
+   "width": 13,
+   "falloff": 10
   }
  ]
 }

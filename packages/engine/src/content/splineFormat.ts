@@ -26,7 +26,8 @@ export interface SplinePointFile {
  * - custom：任意截面（shape 是 [右, 上] 的折线，米；closed 时首尾相连），一个槽；
  * - rail：铁轨（钢轨、轨枕两个槽），gauge 是两根钢轨内侧的距离（标准轨 1.435 米）；
  * - fence：围栏（立柱、横杆两个槽），立柱每 postSpacing 米一根，rails 根横杆；
- * - wire：架空线（电杆、导线两个槽），电杆每 poleSpacing 米一根、高 poleHeight，wires 根导线在杆顶的横担上，两杆之间下垂 sag 米。
+ * - wire：架空线（电杆、导线两个槽），电杆每 poleSpacing 米一根、高 poleHeight，wires 根导线在杆顶的横担上，两杆之间下垂 sag 米；
+ * - river：河道（不生成几何，没有模型）：width 是水面宽；水面由水体（.water.json 的 river）沿它画，地形贴样条（carve）挖出河床。
  */
 export type SplineProfileFile =
   | { readonly type: 'road'; readonly width: number; readonly thickness?: number; readonly shoulder?: number; readonly cornerRadius?: number; readonly lanes?: number; readonly oneWay?: boolean }
@@ -34,7 +35,8 @@ export type SplineProfileFile =
   | { readonly type: 'custom'; readonly shape: readonly (readonly [number, number])[]; readonly closed?: boolean }
   | { readonly type: 'rail'; readonly gauge?: number; readonly sleeperSpacing?: number }
   | { readonly type: 'fence'; readonly height?: number; readonly postSpacing?: number; readonly rails?: number }
-  | { readonly type: 'wire'; readonly poleHeight?: number; readonly poleSpacing?: number; readonly sag?: number; readonly wires?: number };
+  | { readonly type: 'wire'; readonly poleHeight?: number; readonly poleSpacing?: number; readonly sag?: number; readonly wires?: number }
+  | { readonly type: 'river'; readonly width: number };
 
 export interface SplineFile {
   readonly name: string;
@@ -58,4 +60,4 @@ export interface SplineBranchFile {
 }
 
 /** 每种横截面的材质槽个数。 */
-export const SPLINE_SLOTS: Readonly<Record<SplineProfileFile['type'], number>> = { road: 1, tube: 1, custom: 1, rail: 2, fence: 2, wire: 2 };
+export const SPLINE_SLOTS: Readonly<Record<SplineProfileFile['type'], number>> = { road: 1, tube: 1, custom: 1, rail: 2, fence: 2, wire: 2, river: 0 };

@@ -910,6 +910,8 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - 第一步湖和海的水面：参考 WickedEngine 的 ocean（`wiOcean.cpp`、`oceanSurfacePS.hlsl`：FFT 的位移和梯度图、屏幕空间网格、平面反射、按水深吸收、岸边泡沫），先做不要计算着色器的那一半：`content/waterFormat.ts`（WaterFile、检查）、`water/Water.ts`（`Water` 组件、`WaterAsset`、`WaterRenderer`：相机为中心的极坐标网格（160 圈 × 192 段，近处 0.4 米、往外按几何级数铺到 extent），顶点里 6 组 Gerstner 波（按世界坐标加渲染原点取模的部分，远处几十个波长外压平），片元重算法线、近处叠 3 组短的波纹；天空的镜面立方体贴图反射、GGX 的太阳高光、菲涅耳混；水下是主画面不透明的拷贝（`Refraction`，现在也拷一份深度：主深度缓冲加 COPY_SRC），按水深偏开、按光在水里的路程吸收；岸边按竖直的水深起泡沫，和地面相交处按水深淡出），合成器在折射拷贝之后、别的透明物体之前画，有水时也要拷（`renderSystem.water.active`）。程序化摆放不往水下撒（`waterAreas`、`underWater`：水体变了整片重撒）。场景组件、加载、引用、字段和中文、编辑器新建"水体"。第一版的着色器里变量叫 `distance`，挡住了内建函数，页面里水的管线建不出来（Chrome 的日志里看出来）。Valley：`Waters/WestLake`（西边洼地，水面 −65 米，六边形的岸线），测试浏览器（无头，1080p）里看：浪、天空的反射、近岸变浅、岸边一圈泡沫、对岸的林子；第一次看湖里长着树，加了摆放避开水。120 Hz，水那一遍 0.087 毫秒。
 
+- 第二步河（同一天）：样条的横截面 `river`（`width`；`splineMeshes` 不出几何，`bakeSplineModel` 返回 undefined，后端不写模型；占地按水面宽加 4 米），水体文件的 `river`（`spline`、`level`、`speed`），`WaterAsset.river`、`riverRibbon`（每 2 米一节、两边按样条的宽展开、比样条低 level，顶点带弧长、流向、横向、半宽），渲染器多一条管线 `vsRiver`（顶点缓冲按实体的位置和转角放到世界里），片元里河用 `riverNormal`：4 组短波纹顺着流向平移，两个相位错开半个周期、交替淡入淡出（Valve 的 flow map，Alex Vlachos 2010），越快越碎，带子两边淡出；`waterAreas` 的河按中心线和半宽算，摆放不往河里撒。测试：带子的宽、高、流向，河的水下判断，河道样条不出几何，不烘模型。Valley：`Splines/WestRiver`（从广场西边 −1.5 米一路下到湖边 −64.8 米，宽 10 米），地形贴它 carve（低 2.2 米、宽 13 米），`Waters/WestRiver`（流速 2.5 米每秒、浑一点）。测试浏览器（无头，1080p）里看：河从坡上流下来进湖，两边挖出来的坡是石头的颜色，波纹顺着河走；120 Hz，水那一遍（湖加河）0.02 毫秒。
+
 ## CI 提速和 csharp-intermediate 的导航（2026-11-22）
 
 - CI 上 0c68a3f 的 csharp-intermediate 冒烟失败在"导航：角色走到目标"：角色走了 2 米就到了等待的上限。物理每帧最多补 0.25 秒（`maximumTimeToProcess`），CI 的软件 WebGPU 上一帧要零点几秒到一秒，物理只有游戏时间的几分之一，按 15 秒游戏时间等不够（按运行器的快慢时过时不过）。等待放宽到 60 秒游戏时间，快的机器上走到就返回。

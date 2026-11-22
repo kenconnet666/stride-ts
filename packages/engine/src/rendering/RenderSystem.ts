@@ -28,6 +28,7 @@ import { SubsurfaceMaterials } from './screenspace/SubsurfaceScattering';
 import { SkyOcclusion } from '../world/SkyOcclusion';
 import { ImpostorBaker } from './mesh/Impostors';
 import { WaterRenderer } from '../world/WaterRenderer';
+import { RayTracingScene } from './raytracing/RayTracingScene';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -543,6 +544,8 @@ export class RenderSystem {
   readonly skyOcclusion: SkyOcclusion;
   /** 水体（world/Water.ts）：主画面透明的那一遍里画。 */
   readonly water: WaterRenderer;
+  /** 光追场景（R2：两层的 BVH，计算着色器里遍历）：全局光照、调试视图用到时每帧 update。 */
+  readonly rayTracing: RayTracingScene;
   /** 远处卡片的烘焙（有要烘的模型时合成器多画几个正交视图）。 */
   readonly impostors: ImpostorBaker;
   /**
@@ -574,6 +577,7 @@ export class RenderSystem {
     this.skyOcclusion = new SkyOcclusion(graphicsDevice.device);
     this.impostors = new ImpostorBaker(graphicsDevice.device, this.resources);
     this.water = new WaterRenderer(graphicsDevice.device, this.resources);
+    this.rayTracing = new RayTracingScene(graphicsDevice.device);
   }
 
   get device(): GPUDevice {
@@ -643,6 +647,7 @@ export class RenderSystem {
     this.skyOcclusion.destroy();
     this.impostors.destroy();
     this.water.destroy();
+    this.rayTracing.destroy();
     this.resources.destroy();
   }
 }

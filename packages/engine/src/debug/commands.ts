@@ -52,6 +52,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64. args: exact (true: that frame without the output dither, for pixel comparisons).', (args) => screenshot(debug, game, args['exact'] === true));
   // 离线渲染的几个模块（编码、封装、混音）用到时才加载，不进每个游戏页面
+  debug.command('raytrace', 'Render the main camera by ray tracing (the RayTracingScene: two-level BVH traversed in a compute shader; base color times the sun, sky where nothing is hit) and return it as a PNG (base64), to check the ray tracing scene against the rasterized frame. Builds the BVHs first if needed. args: width, height (default the canvas size).', (args) => rayTraceCommand(game, args));
   debug.command('decode-image', 'Decode an image with the browser (JPEG, WebP, AVIF, PNG) and scale it to cover width x height (centered crop). Used by stride shot --photo. args: data (base64 of the file), width, height. Returns the PNG as base64 and the original size.', (args) => decodeImage(args));
   debug.command('render', RENDER_HELP, async (args) => (await import('../offline/renderCommand')).renderCommand(game, args));
   debug.command('bake', BAKE_HELP, async (args) => {
@@ -669,6 +670,32 @@ async function screenshot(debug: Debug, game: Game, exact: boolean): Promise<unk
   offscreen.getContext('2d')!.drawImage(image, 0, 0);
   image.close();
   return { width: offscreen.width, height: offscreen.height, frame: game.frames, png: await pngBase64(offscreen) };
+}
+
+/** 调试命令 raytrace：光追场景跟上这一帧（BVH 没建好就等几帧），从主相机光追一张图，编成 PNG。 */
+async function rayTraceCommand(game: Game, args: Args): Promise<unknown> {
+  const view = game.graphicsCompositor.mainView;
+  if (!view) throw new Error('raytrace: no main camera');
+  const scene = game.renderSystem.rayTracing;
+  const start = performance.now();
+  for (let i = 0; i < 600 && !(scene.ready && scene.bindGroup); i++) {
+    scene.update(game);
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+  scene.update(game);
+  const buildMs = performance.now() - start;
+  const canvas = game.graphicsDevice.canvas;
+  const width = Number(args['width'] ?? canvas.width), height = Number(args['height'] ?? canvas.height);
+  const lighting = game.renderSystem.lighting;
+  const sun = lighting.directionalCount > 0 ? lighting.directionals[Math.max(lighting.shadowLight, 0)]!.direction : { x: 0, y: -1, z: 0 };
+  const length = Math.hypot(sun.x, sun.y, sun.z) || 1;
+  const { rayTraceView } = await import('../rendering/raytracing/RayTracingDebug');
+  const traceStart = performance.now();
+  const pixels = await rayTraceView(game.renderSystem.device, scene, view, [-sun.x / length, -sun.y / length, -sun.z / length], width, height);
+  const traceMs = performance.now() - traceStart;
+  const offscreen = new OffscreenCanvas(width, height);
+  offscreen.getContext('2d')!.putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0);
+  return { width, height, instances: scene.instanceCount, buildMs: Math.round(buildMs), traceMs: Math.round(traceMs), png: await pngBase64(offscreen) };
 }
 
 /** 画布的内容编成 PNG，base64（调试命令的返回值走 JSON）。 */

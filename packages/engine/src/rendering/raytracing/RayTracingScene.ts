@@ -10,6 +10,7 @@
 import type { Game } from '../../engine/Game';
 import type { Mesh } from '../mesh/Mesh';
 import { SurfaceColors } from './SurfaceColors';
+import { RayTracedLighting } from './RayTracedLighting';
 import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from '../mesh/HeightPages';
 import type { MeshBatch } from '../mesh/MeshRenderFeature';
 
@@ -261,6 +262,10 @@ export class RayTracingScene {
   #surfaceBuffer: GPUBuffer | undefined;
   /** 每个表面的平均漫反射色和自发光（光追打到的表面的颜色），前向渲染器在 pending 的帧画。 */
   readonly surfaces: SurfaceColors;
+  /** 光追打到的表面受的光（这一帧的光照），用到光追的帧前向渲染器写一次。 */
+  readonly lighting: RayTracedLighting;
+  /** 上次 update 是第几帧（一帧里几个特性都用到光追时只更新一次）。 */
+  #updatedFrame = -1;
   /** 顶层里有几个实例（统计）。 */
   instanceCount = 0;
   /** 传上去的场景变了（新的 BLAS 或者 TLAS）就加一：用光追结果的特性按它判断要不要重算。 */
@@ -269,13 +274,14 @@ export class RayTracingScene {
   constructor(device: GPUDevice) {
     this.#device = device;
     this.surfaces = new SurfaceColors(device);
+    this.lighting = new RayTracedLighting(device);
   }
 
   /** 五个只读的存储缓冲（TLAS、实例、BLAS、三角形、表面颜色），计算着色器用。 */
   get bindGroupLayout(): GPUBindGroupLayout {
     return (this.#layout ??= this.#device.createBindGroupLayout({
       label: 'RayTracingScene',
-      entries: [0, 1, 2, 3, 4].map((binding) => ({ binding, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' as const } })),
+      entries: [0, 1, 2, 3, 4].map((binding) => ({ binding, visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' as const } })),
     }));
   }
 
@@ -291,6 +297,8 @@ export class RayTracingScene {
 
   /** 每帧（用到光追的那帧）：给新几何建 BLAS，实例或变换变了重建 TLAS，建好的传上去。 */
   update(game: Game): void {
+    if (this.#updatedFrame === game.frames) return;
+    this.#updatedFrame = game.frames;
     const meshes = game.meshes;
     const entries: Entry[] = [];
     for (const batch of meshes.batches) {
@@ -514,6 +522,7 @@ export class RayTracingScene {
 
   destroy(): void {
     this.surfaces.destroy();
+    this.lighting.destroy();
     for (const buffer of Object.values(this.#buffers)) buffer?.destroy();
   }
 }

@@ -18,12 +18,12 @@
  * - 场景里只用第一个辐照度体。还没做的：把墙里的探针挪出来、几级不同间距的体（近密远疏）。
  */
 import { system } from '../../engine/system';
-import { LOCAL_LIGHT_WGSL } from '../lighting/LocalLights';
 import { createCheckedShaderModule } from '../../graphics/shaderModule';
 import { Transform } from '../../engine/transform';
 import { IrradianceVolume } from '../components';
-import { MAX_DIRECTIONAL_LIGHTS, type Lighting, type RenderContext } from '../RenderSystem';
+import type { RenderContext } from '../RenderSystem';
 import { rayTracingWgsl, type RayTracingScene } from './RayTracingScene';
+import { rayTracedLightingWgsl } from './RayTracedLighting';
 
 /** 辐照度图、距离图的边长（不含边）。 */
 const IRRADIANCE_TEXELS = 8;
@@ -43,11 +43,8 @@ const MAX_RAYS_PER_FRAME = 1 << 21;
 const SETTLE_UPDATES = 100;
 /** 没打到的射线记的长度。 */
 const MISS_DISTANCE = 1e5;
-/**
- * 参数的 uniform：体 4、帧 1、射线的旋转 3、天空的强度 1、环境光 1、天空的球谐 9、天空盒的旋转 3、方向光的方向和颜色各
- * MAX_DIRECTIONAL_LIGHTS 个（vec4）。和 RenderSystem 互相引用，用到时才算（模块加载时它还没定义）。
- */
-const paramsFloats = () => (4 + 1 + 3 + 1 + 1 + 9 + 3 + MAX_DIRECTIONAL_LIGHTS * 2) * 4;
+/** 参数的 uniform：体 4、帧 1、射线的旋转 3（vec4）。光照在 RayTracingScene.lighting 里。 */
+const PARAMS_FLOATS = (4 + 1 + 3) * 4;
 
 /**
  * 网格着色器和探针的射线都用的取辐照度的函数：giSample(图集, 采样器, 体, 位置, 法线, 朝着看的人的方向) 返回
@@ -137,17 +134,10 @@ ${IRRADIANCE_VOLUME_WGSL}
 struct Params {
   // 体：最小角和射线最远记多长、间距和留下旧值的比例、各轴的探针数和每个探针的射线数、卷动
   volume: GiVolume,
-  // 这一帧从第几个探针开始、更新几个、方向光几个、点光聚光几个
+  // 这一帧从第几个探针开始、更新几个
   frame: vec4u,
   // 射线方向的随机旋转（三行）
   rotation: array<vec4f, 3>,
-  // 天空盒光的强度
-  sky: vec4f,
-  ambient: vec4f,
-  skySH: array<vec4f, 9>,
-  skyRotation: array<vec4f, 3>,
-  lightDirections: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
-  lightColors: array<vec4f, ${MAX_DIRECTIONAL_LIGHTS}>,
 };
 @group(0) @binding(0) var<uniform> params: Params;
 
@@ -199,26 +189,8 @@ ${common()}
 @group(0) @binding(3) var<storage, read_write> rays: array<vec4f>;
 // 遍历的统计（调试命令 gi 报）：被截断的遍历数（光追场景的数据坏了才有）、一次遍历最多走了几步
 @group(0) @binding(4) var<storage, read_write> traversal: array<atomic<u32>, 2>;
-// 点光、聚光（同网格着色器、体积雾的那一份，lighting/LocalLights.ts）
-@group(0) @binding(5) var<storage, read> localLightData: array<vec4f>;
-${LOCAL_LIGHT_WGSL}
 ${rayTracingWgsl(1)}
-
-/** 天空盒光（球谐，同网格着色器的 evaluateSH 和 skyDirection）加环境光：没打到的射线、盒子外面的表面用。 */
-fn skyLight(direction: vec3f) -> vec3f {
-  let r = direction * mat3x3f(params.skyRotation[0].xyz, params.skyRotation[1].xyz, params.skyRotation[2].xyz);
-  let d = vec3f(r.xy, -r.z);
-  var c = params.skySH[0].rgb;
-  c += params.skySH[1].rgb * d.y;
-  c += params.skySH[2].rgb * d.z;
-  c += params.skySH[3].rgb * d.x;
-  c += params.skySH[4].rgb * d.y * d.x;
-  c += params.skySH[5].rgb * d.y * d.z;
-  c += params.skySH[6].rgb * (3.0 * d.z * d.z - 1.0);
-  c += params.skySH[7].rgb * d.x * d.z;
-  c += params.skySH[8].rgb * (d.x * d.x - d.y * d.y);
-  return params.ambient.rgb + max(c, vec3f(0.0)) * params.sky.x;
-}
+${rayTracedLightingWgsl(0, 6, 5)}
 
 @compute @workgroup_size(64) fn trace(@builtin(global_invocation_id) id: vec3u) {
   let rayCount = u32(params.volume.counts.w);
@@ -231,7 +203,7 @@ fn skyLight(direction: vec3f) -> vec3f {
   if (hit.capped) { atomicAdd(&traversal[0], 1u); }
   atomicMax(&traversal[1], hit.steps);
   if (hit.instance == 0xffffffffu) {
-    rays[id.x] = vec4f(skyLight(dir), ${MISS_DISTANCE});
+    rays[id.x] = vec4f(rtSkyLight(dir), ${MISS_DISTANCE});
     return;
   }
   // 打到背面：探针多半在墙里；长度记成负的（更新时数背面、距离图按缩短的长度记，着色时看不到墙另一边）
@@ -241,31 +213,10 @@ fn skyLight(direction: vec3f) -> vec3f {
   }
   let n = rtNormal(hit, dir);
   let p = origin + dir * hit.t;
-  var light = vec3f(0.0);
-  for (var i = 0u; i < params.frame.z; i++) {
-    let l = -params.lightDirections[i].xyz;
-    let nDotL = dot(n, l);
-    if (nDotL <= 0.0) { continue; }
-    let shadow = rtTrace(p + n * 1e-3, l, ${MISS_DISTANCE});
-    if (shadow.capped) { atomicAdd(&traversal[0], 1u); }
-    atomicMax(&traversal[1], shadow.steps);
-    if (shadow.instance != 0xffffffffu) { continue; }
-    light += params.lightColors[i].rgb * nDotL;
-  }
-  // 点光、聚光（面光源当中心的一个点，同体积雾）：射程里、朝着表面的，再看挡没挡
-  for (var i = 0u; i < params.frame.w; i++) {
-    let local = localLight(i);
-    let at = localLightAt(local, p);
-    let nDotL = dot(n, at.xyz);
-    if (at.w <= 0.0 || nDotL <= 0.0) { continue; }
-    let shadow = rtTrace(p + n * 1e-3, at.xyz, distance(local.position.xyz, p) - 1e-3);
-    if (shadow.capped) { atomicAdd(&traversal[0], 1u); }
-    if (shadow.instance != 0xffffffffu) { continue; }
-    light += local.color.rgb * nDotL * at.w;
-  }
+  var light = rtDirectLight(p, n);
   // 上一轮的探针给的间接光（多次反弹）；盒子外面的表面受天空盒光
   let indirect = giSample(atlas, linearClamp, params.volume, p, n, -dir);
-  light += mix(skyLight(n), indirect.rgb, indirect.a);
+  light += mix(rtSkyLight(n), indirect.rgb, indirect.a);
   rays[id.x] = vec4f(rtAlbedo(hit) * light + rtEmissive(hit), hit.t);
 }
 `;
@@ -430,7 +381,7 @@ export class IrradianceVolumes {
   readonly #params: GPUBuffer;
   /** 遍历的统计：被截断的遍历数（累计）、最多的步数，两个 u32。 */
   readonly #traversal: GPUBuffer;
-  readonly #paramData = new Float32Array(paramsFloats());
+  readonly #paramData = new Float32Array(PARAMS_FLOATS);
   #pipelines: { readonly trace: GPUComputePipeline; readonly update: GPUComputePipeline; readonly reset: GPUComputePipeline } | undefined;
   /** 清探针的参数（Reset）。 */
   readonly #resetParams: GPUBuffer;
@@ -456,7 +407,7 @@ export class IrradianceVolumes {
     this.#atlas = this.#createAtlas(1, 1);
     this.#traversal = device.createBuffer({ label: 'IrradianceVolume traversal stats', size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
     this.#resetParams = device.createBuffer({ label: 'IrradianceVolume reset params', size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.#params = device.createBuffer({ label: 'IrradianceVolume params', size: paramsFloats() * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.#params = device.createBuffer({ label: 'IrradianceVolume params', size: PARAMS_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
   }
 
   /** 这一帧在用（开着、设备和画质允许、场景里有体）。 */
@@ -551,7 +502,7 @@ export class IrradianceVolumes {
   }
 
   /** 追这一帧的射线、更新探针（录进 encoder；光追场景还没有能遍历的东西时不做）。 */
-  draw(encoder: GPUCommandEncoder, lighting: Lighting, localLights: GPUBuffer, rayTracing: RayTracingScene, timestampWrites?: GPUComputePassTimestampWrites): void {
+  draw(encoder: GPUCommandEncoder, localLights: GPUBuffer, rayTracing: RayTracingScene, timestampWrites?: GPUComputePassTimestampWrites): void {
     const state = this.#state;
     const scene = rayTracing.bindGroup;
     if (!state || !scene || !this.#scratch || !this.#rays) return;
@@ -565,7 +516,7 @@ export class IrradianceVolumes {
     // 轮完一遍：悬在空中的探针按轮数挑这一轮更新哪些
     if (firstLayer + layers >= cz) this.#cycle++;
     const probes = layers * layer;
-    this.#writeParams(state, firstLayer * layer, probes, lighting);
+    this.#writeParams(state, firstLayer * layer, probes);
     this.stats.updatedProbes = probes;
     this.stats.rays = probes * state.rays;
 
@@ -599,6 +550,7 @@ export class IrradianceVolumes {
         { binding: 3, resource: { buffer: this.#rays } },
         { binding: 4, resource: { buffer: this.#traversal } },
         { binding: 5, resource: { buffer: localLights } },
+        { binding: 6, resource: { buffer: rayTracing.lighting.buffer } },
       ],
     }));
     pass.setBindGroup(1, scene);
@@ -659,26 +611,12 @@ export class IrradianceVolumes {
     });
   }
 
-  #writeParams(state: VolumeState, firstProbe: number, probes: number, lighting: Lighting): void {
+  #writeParams(state: VolumeState, firstProbe: number, probes: number): void {
     const data = this.#paramData, words = new Uint32Array(data.buffer);
     const maxDistance = 1.5 * Math.hypot(...state.spacing);
     data.set([...state.min, maxDistance, ...state.spacing, state.hysteresis, ...state.counts, state.rays, ...state.scroll, this.#cycle % 65536], 0);
-    words.set([firstProbe, probes, lighting.directionalCount, lighting.localCount], 16);
+    words.set([firstProbe, probes, 0, 0], 16);
     data.set(this.#randomRotation(), 20);
-    const skybox = lighting.skybox;
-    data.set([skybox?.intensity ?? 0, 0, 0, 0], 32);
-    data.set([lighting.ambient.r, lighting.ambient.g, lighting.ambient.b, 0], 36);
-    const sh = skybox?.skybox.diffuseSH;
-    for (let c = 0; c < 9; c++) data.set(sh ? [sh[c * 3]!, sh[c * 3 + 1]!, sh[c * 3 + 2]!, 0] : [0, 0, 0, 0], 40 + c * 4);
-    const rotation = skybox?.rotation;
-    for (let r = 0; r < 3; r++) data.set(rotation ? [rotation[r * 4]!, rotation[r * 4 + 1]!, rotation[r * 4 + 2]!, 0] : [r === 0 ? 1 : 0, r === 1 ? 1 : 0, r === 2 ? 1 : 0, 0], 76 + r * 4);
-    for (let i = 0; i < MAX_DIRECTIONAL_LIGHTS; i++) {
-      const light = lighting.directionals[i]!;
-      const { x, y, z } = light.direction;
-      const length = Math.hypot(x, y, z) || 1;
-      data.set(i < lighting.directionalCount ? [x / length, y / length, z / length, 0] : [0, -1, 0, 0], 88 + i * 4);
-      data.set(i < lighting.directionalCount ? [light.color.r, light.color.g, light.color.b, 0] : [0, 0, 0, 0], 88 + MAX_DIRECTIONAL_LIGHTS * 4 + i * 4);
-    }
     this.#device.queue.writeBuffer(this.#params, 0, data);
   }
 
@@ -748,6 +686,7 @@ export class IrradianceVolumes {
         { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
         { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: {} },
       ],
     });
     const trace = device.createComputePipeline({

@@ -24,6 +24,8 @@ import { FULLSCREEN_VERTEX } from '../wgsl';
 import type { GraphTexture } from '../RenderGraph';
 import { fullscreenPipeline, FullscreenShader, UniformArena, warmFullscreenPipeline, type EffectFrame } from '../postfx/ImageEffect';
 import type { RenderView } from '../RenderSystem';
+import { RayTracedReflections, type RayTracedInputs } from '../raytracing/RayTracedReflections';
+import { SSR_COMMON_WGSL, SSR_SAMPLING_WGSL } from './reflectionWgsl';
 
 const HIZ_FORMAT: GPUTextureFormat = 'r32float';
 const TRACE_FORMAT: GPUTextureFormat = 'rgba16float';
@@ -36,38 +38,7 @@ const CONE_BIAS = 0.7;
 /** 运动向量里"这个像素没画"的标记（同 ForwardRenderer）。 */
 const NO_VELOCITY = 4;
 
-const COMMON = /* wgsl */ `
-struct Ssr {
-  inverseViewProjection: mat4x4f,
-  viewProjection: mat4x4f,
-  previousViewProjection: mat4x4f,
-  /** xyz：相机位置；w：第几帧（随机数换着用）。 */
-  eye: vec4f,
-  /** 最大粗糙度、厚度（相对深度）、屏幕边缘渐隐的比例、最多走几步。 */
-  params: vec4f,
-  /** 宽、高、Hi-Z 的级数、有没有运动向量。 */
-  size: vec4f,
-};
-
-fn worldPosition(ssr: Ssr, uv: vec2f, depth: f32) -> vec3f {
-  let clip = ssr.inverseViewProjection * vec4f(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, depth, 1.0);
-  return clip.xyz / clip.w;
-}
-
-/** 世界空间的点 → 屏幕（uv，深度）。 */
-fn project(matrix: mat4x4f, world: vec3f) -> vec3f {
-  let clip = matrix * vec4f(world, 1.0);
-  let ndc = clip.xyz / clip.w;
-  return vec3f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5, ndc.z);
-}
-
-fn octahedralDecode(e: vec2f) -> vec3f {
-  var n = vec3f(e, 1.0 - abs(e.x) - abs(e.y));
-  let t = saturate(-n.z);
-  n = vec3f(n.xy + select(vec2f(t), vec2f(-t), n.xy >= vec2f(0.0)), n.z);
-  return normalize(n);
-}
-`;
+const COMMON = SSR_COMMON_WGSL;
 
 /** 第 0 级：深度缓冲原样拷进 r32float。 */
 const HIZ_COPY_SHADER = /* wgsl */ `${FULLSCREEN_VERTEX}
@@ -119,30 +90,7 @@ const TRACE_SHADER = /* wgsl */ `${COMMON}
 
 const FLOAT_MAX = 3.402823466e38;
 
-/** 每个像素、每帧不同的两个随机数（整数哈希，PCG）。 */
-fn random2(pixel: vec2u, frame: u32) -> vec2f {
-  var v = vec3u(pixel, frame) * 1664525u + 1013904223u;
-  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
-  v ^= v >> vec3u(16u);
-  v.x += v.y * v.z; v.y += v.z * v.x;
-  return vec2f(v.xy & vec2u(0xffffffu)) / 16777216.0;
-}
-
-/** GGX 的可见法线分布里取一个微表面法线（Heitz 2018），v 和返回值都在切线空间（z 是表面法线）。 */
-fn sampleGgxVndf(v: vec3f, alpha: f32, u: vec2f) -> vec3f {
-  let vh = normalize(vec3f(alpha * v.x, alpha * v.y, v.z));
-  let lensq = vh.x * vh.x + vh.y * vh.y;
-  let t1 = select(vec3f(1.0, 0.0, 0.0), vec3f(-vh.y, vh.x, 0.0) / sqrt(lensq), lensq > 0.0);
-  let t2 = cross(vh, t1);
-  let r = sqrt(u.x);
-  let phi = 6.28318530718 * u.y;
-  let p1 = r * cos(phi);
-  let s = 0.5 * (1.0 + vh.z);
-  let p2 = (1.0 - s) * sqrt(1.0 - p1 * p1) + s * r * sin(phi);
-  let nh = p1 * t1 + p2 * t2 + sqrt(max(0.0, 1.0 - p1 * p1 - p2 * p2)) * vh;
-  return normalize(vec3f(alpha * nh.x, alpha * nh.y, max(0.0, nh.z)));
-}
-
+${SSR_SAMPLING_WGSL}
 fn mipResolution(mip: i32) -> vec2f {
   return ssr.size.xy * exp2(-f32(mip));
 }
@@ -204,18 +152,7 @@ fn hierarchicalMarch(origin: vec3f, direction: vec3f) -> vec4f {
   let world = worldPosition(ssr, uv, z);
   let n = octahedralDecode(surfaceData.xy);
   let v = normalize(ssr.eye.xyz - world);
-  // 切线空间：z 是法线
-  let up = select(vec3f(0.0, 0.0, 1.0), vec3f(1.0, 0.0, 0.0), abs(n.z) > 0.999);
-  let tx = normalize(cross(up, n));
-  let ty = cross(n, tx);
-  let alpha = max(roughness * roughness, 0.001);
-  let vt = vec3f(dot(v, tx), dot(v, ty), dot(v, n));
-  let h = sampleGgxVndf(vt, alpha, random2(vec2u(pixel), u32(ssr.eye.w)));
-  var r = reflect(-v, tx * h.x + ty * h.y + n * h.z);
-  // 取到朝表面里面的方向（掠射角）：换成镜面方向
-  if (dot(r, n) <= 0.0) {
-    r = reflect(-v, n);
-  }
+  let r = reflectionDirection(vec2u(pixel), u32(ssr.eye.w), n, v, roughness);
   // 屏幕空间的方向：起点加上一段反射方向再投影（终点在相机后面时缩短到近处）
   let origin = vec3f(uv, z);
   let viewDistance = length(ssr.eye.xyz - world);
@@ -258,6 +195,8 @@ const SPATIAL_SHADER = /* wgsl */ `${COMMON}
 @group(0) @binding(5) var linearClamp: sampler;
 @group(0) @binding(6) var pyramid: texture_2d<f32>;
 @group(0) @binding(7) var trilinearClamp: sampler;
+// 光追的反射（半分辨率，RayTracedReflections；没开时是 1×1 的空图）：rgb 是反射，a 是它占的比例（屏幕上没找到的那部分）
+@group(0) @binding(8) var rayTraced: texture_2d<f32>;
 
 /** 单位圆里的 8 个点（泊松盘），每个像素每帧转一个随机角度。 */
 const DISK = array<vec2f, 8>(
@@ -289,18 +228,29 @@ fn coneTangent(roughness: f32, nv: f32) -> f32 {
   return tangent * mix(saturate(nv * 2.0), 1.0, sqrt(roughness));
 }
 
-/** 一条光线的样本；cone 是这个表面的锥角正切，uv 是这个像素（锥从这里出发，到命中处的屏幕距离定截面多大）。 */
+/** 太亮的点（太阳的高光）压一下，免得随机方向偶尔碰上它时一闪一闪（Stride 的 ReduceHighlights）；合成时放回去。 */
+fn compress(color: vec3f) -> vec3f {
+  return color / (1.0 + max(max(color.r, color.g), color.b));
+}
+
+/**
+ * 一条光线的样本；cone 是这个表面的锥角正切，uv 是这个像素（锥从这里出发，到命中处的屏幕距离定截面多大）。屏幕上没找到（或者
+ * 把握不足）的那部分用光追的（同一条光线）。
+ */
 fn sampleAt(pixel: vec2i, uv: vec2f, cone: f32) -> vec4f {
   let hit = textureLoad(trace, pixel, 0);
-  if (hit.z <= 0.0) {
-    return vec4f(0.0);
+  var sum = vec4f(0.0);
+  if (hit.z > 0.0) {
+    let radius = cone * length((hit.xy - uv) * ssr.size.xy);
+    let mip = clamp(log2(max(radius, 1e-4)), 0.0, f32(textureNumLevels(pyramid)));
+    sum = vec4f(compress(colorAt(hit.xy, mip)) * hit.z, hit.z);
   }
-  let radius = cone * length((hit.xy - uv) * ssr.size.xy);
-  let mip = clamp(log2(max(radius, 1e-4)), 0.0, f32(textureNumLevels(pyramid)));
-  let reflected = colorAt(hit.xy, mip);
-  // 太亮的点（太阳的高光）压一下，免得随机方向偶尔碰上它时一闪一闪（Stride 的 ReduceHighlights）
-  let compressed = reflected / (1.0 + max(max(reflected.r, reflected.g), reflected.b));
-  return vec4f(compressed * hit.z, hit.z);
+  // 半分辨率的双线性：一次取到周围四条光线的平均（光追的样本噪声大，粗糙的金属尤其）
+  let traced = textureSampleLevel(rayTraced, linearClamp, (vec2f(pixel) + 0.5) / ssr.size.xy, 0.0);
+  if (traced.a > 0.0) {
+    sum += vec4f(compress(traced.rgb) * traced.a, traced.a);
+  }
+  return sum;
 }
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
@@ -425,6 +375,12 @@ export class ScreenSpaceReflections {
   maxSteps = 64;
   /** 调试视图：画面换成命中的把握（红：这一帧的追踪，绿：累积后）或者反射本身。 */
   debug: 'off' | 'hits' | 'reflection' = 'off';
+  /** 屏幕上找不到的反射用光追补（有光追场景时，RayTracedReflections）。 */
+  rayTraced = true;
+  /** 光追的反射；record 时给了光追的输入才用。 */
+  readonly #rayTraced: RayTracedReflections;
+  /** 不用光追时第 8 个绑定的空图。 */
+  readonly #noRayTraced: GPUTexture;
 
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
@@ -452,13 +408,16 @@ export class ScreenSpaceReflections {
     this.#spatial = new FullscreenShader(device, 'SSR spatial', SPATIAL_SHADER);
     this.#temporal = new FullscreenShader(device, 'SSR temporal', TEMPORAL_SHADER);
     this.#combine = new FullscreenShader(device, 'SSR combine', COMBINE_SHADER);
+    this.#rayTraced = new RayTracedReflections(device, linearClamp);
+    this.#noRayTraced = device.createTexture({ label: 'SSR no ray traced reflections', size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING });
   }
 
   /**
    * 往这一帧的渲染图里加反射的通道：color 是画好的 HDR 画面，depth 是它的深度，surfaces 是不透明阶段留下的表面
-   * （SURFACE_FORMATS 的顺序），velocity 是运动向量（TAA 开着时有）。返回合成了反射的新画面。
+   * （SURFACE_FORMATS 的顺序），velocity 是运动向量（TAA 开着时有），rayTraced 是光追的输入（有光追场景、rayTraced 开着时给，
+   * 屏幕上找不到的反射用光追补）。返回合成了反射的新画面。
    */
-  record(frame: EffectFrame, color: GraphTexture, depth: GPUTexture, surfaces: readonly GraphTexture[], view: RenderView, velocity: GraphTexture | undefined): GraphTexture {
+  record(frame: EffectFrame, color: GraphTexture, depth: GPUTexture, surfaces: readonly GraphTexture[], view: RenderView, velocity: GraphTexture | undefined, rayTraced?: RayTracedInputs): GraphTexture {
     this.#arena.reset();
     const { width, height } = color;
     const hiz = this.#hizFor(width, height);
@@ -481,9 +440,10 @@ export class ScreenSpaceReflections {
     const [normalRoughness, specularWeight, environment] = surfaces as [GraphTexture, GraphTexture, GraphTexture];
     const trace = frame.acquire(width, height, TRACE_FORMAT, 'SSR trace');
     this.#trace.draw(frame, trace, [parameters, depth, hiz, normalRoughness]);
+    const traced = rayTraced && this.rayTraced ? this.#rayTraced.record(frame, parameters, trace, normalRoughness, depth, rayTraced) : undefined;
     const spatial = frame.acquire(width, height, REFLECTION_FORMAT, 'SSR spatial');
     const pyramid = this.#recordPyramid(frame, color);
-    this.#spatial.draw(frame, spatial, [parameters, trace, color, normalRoughness, depth, this.#sampler, pyramid, this.#trilinear]);
+    this.#spatial.draw(frame, spatial, [parameters, trace, color, normalRoughness, depth, this.#sampler, pyramid, this.#trilinear, traced ?? this.#noRayTraced]);
     // 时间上的解析写进自己留到下一帧的贴图（图外面的）：算副作用
     const resolved = frame.graph.import({ label: 'SSR history', width, height, format: REFLECTION_FORMAT }, next.createView(), { texture: next });
     this.#temporal.draw(frame, resolved, [parameters, spatial, previous, velocity ?? previous, depth, this.#sampler]);
@@ -514,6 +474,8 @@ export class ScreenSpaceReflections {
   }
 
   destroy(): void {
+    this.#rayTraced.destroy();
+    this.#noRayTraced.destroy();
     this.#hiz?.destroy();
     for (const texture of this.#history ?? []) texture.destroy();
     this.#arena.destroy();

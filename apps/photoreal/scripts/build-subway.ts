@@ -40,7 +40,7 @@ for (const id of ['brushedSteel', 'clearGlass', 'concrete']) await call('use_lib
 const STEEL = 'Materials/Library/BrushedSteel', GLASS = 'Materials/Library/ClearGlass', CONCRETE = 'Materials/Library/Concrete';
 const plain = (name: string, baseColor: [number, number, number], roughness: number, extra: object = {}) =>
   write('material', `Subway/Materials/${name}`, { name, baseColor: [...baseColor, 1], metalness: 0, roughness, ...extra });
-await plain('Tile', [0.42, 0.41, 0.39], 0.55);
+await plain('Tile', [0.42, 0.41, 0.39], 0.35);
 await plain('FrameBlack', [0.015, 0.015, 0.016], 0.45);
 await plain('Ballast', [0.2, 0.16, 0.13], 0.95);
 await plain('Grass', [0.12, 0.17, 0.06], 0.9);
@@ -64,7 +64,7 @@ await write('scene', 'Subway', {
   name: 'Subway',
   compositor: {
     clearColor: [0.1, 0.1, 0.12, 1],
-    postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true },
+    postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true, localReflections: { maxRoughness: 0.45, edgeFade: 0.1 } },
     transparent: true,
   },
   entities: [

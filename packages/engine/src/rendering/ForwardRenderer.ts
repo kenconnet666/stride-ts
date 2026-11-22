@@ -36,6 +36,7 @@ import { ContactShadows } from './screenspace/ContactShadows';
 import { DepthOfField } from './screenspace/DepthOfField';
 import { MotionBlur } from './screenspace/MotionBlur';
 import { Skybox } from './lighting/Skybox';
+import type { RayTracedInputs } from './raytracing/RayTracedReflections';
 import { EffectFrame, isGraphTexture, UniformArena, type Image } from './postfx/ImageEffect';
 import { ImageScaler } from './postfx/ImageScaler';
 import { PostProcessingEffects } from './postfx/PostProcessingEffects';
@@ -444,6 +445,10 @@ export class ForwardRenderer {
     // 辐照度体：要在 prepare 写视图的常量之前找到（着色器按它取探针）；放不下第 27 个贴图的设备不做
     const volumes = renderSystem.irradianceVolumes;
     volumes.begin(context, renderSystem.rayTracing, this.hasCamera && renderSystem.planarReflections.supported && this.quality.globalIllumination, this.#mainView.eye);
+    // 光追的反射（屏幕空间反射找不到的用光追补）：开着屏幕空间反射、画质开着全局光照时
+    const rayTracedReflections = this.hasCamera && post && this.screenSpaceReflections.enabled && this.screenSpaceReflections.rayTraced && this.quality.screenSpaceReflections && this.quality.globalIllumination;
+    if (rayTracedReflections) renderSystem.rayTracing.update(context.game);
+    if (volumes.active || rayTracedReflections) renderSystem.rayTracing.lighting.write(renderSystem.lighting);
     this.#assignClusters(views.filter((view) => view !== skyView && !impostorViews.includes(view)));
     // 光照变了（太阳转了、落山了）：只拍一次的探针重拍
     probes.watchLighting(renderSystem.lighting);
@@ -480,9 +485,9 @@ export class ForwardRenderer {
     if (renderSystem.water.oceans) frame.pass('Ocean FFT', (pass) => pass.sideEffect(), () => renderSystem.water.simulate(encoder, context, renderSystem.graphicsDevice.profiler.passTimestamps('Ocean FFT')));
     // 光追打到的表面的颜色：批或材质变了的帧按纹理坐标烘一遍、求平均（在图外面，算副作用）
     const surfaces = renderSystem.rayTracing.surfaces;
-    if (volumes.active && surfaces.pending) frame.pass('SurfaceBake', (pass) => pass.sideEffect(), () => surfaces.draw(encoder, this.#mainView, context.game.meshes));
+    if ((volumes.active || rayTracedReflections) && surfaces.pending) frame.pass('SurfaceBake', (pass) => pass.sideEffect(), () => surfaces.draw(encoder, this.#mainView, context.game.meshes));
     // 辐照度体的探针：追射线、更新图集（图集在图外面，网格着色时取，算副作用）
-    if (volumes.active) frame.pass('IrradianceVolume', (pass) => pass.sideEffect(), () => volumes.draw(encoder, renderSystem.lighting, renderSystem.localLights.buffer, renderSystem.rayTracing, renderSystem.graphicsDevice.profiler.passTimestamps('IrradianceVolume')));
+    if (volumes.active) frame.pass('IrradianceVolume', (pass) => pass.sideEffect(), () => volumes.draw(encoder, renderSystem.localLights.buffer, renderSystem.rayTracing, renderSystem.graphicsDevice.profiler.passTimestamps('IrradianceVolume')));
     const probeTarget = probeView && probes.captureTarget();
     if (probeView && probeTarget) {
       const size = probeView.width;
@@ -551,7 +556,7 @@ export class ForwardRenderer {
       if (this.#indirect) this.globalIllumination.capture(frame, color);
       const velocity = temporal || blur ? this.#velocityPass(context, frame, depth) : undefined;
       // 反射在后处理之前合成进画面（同 Stride 的 LocalReflections 排在后处理的最前面）
-      const reflected = reflect && surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity) : color;
+      const reflected = reflect && surfaces ? this.screenSpaceReflections.record(frame, color, depth, surfaces, this.#mainView, velocity, rayTracedReflections ? this.#rayTracedInputs(renderSystem) : undefined) : color;
       // TAA 做了抗锯齿，后处理里就不再做 FXAA
       const antialiased = temporal ? this.temporalAntialiasing.record(frame, reflected, depth, this.#mainView, velocity!) : reflected;
       // 景深、运动模糊在抗锯齿之后、泛光这些之前（亮的东西糊开以后再泛光）；景深在前（同虚幻）
@@ -584,6 +589,21 @@ export class ForwardRenderer {
       this.#mainView.projection.set(this.#unjittered);
       this.#mainView.update();
     }
+  }
+
+  /** 光追的反射要的东西：光追场景、点光聚光、天空盒的镜面贴图（同网格着色器的取法）、辐照度体。 */
+  #rayTracedInputs(renderSystem: RenderSystem): RayTracedInputs {
+    const skybox = renderSystem.lighting.skybox;
+    const resources = renderSystem.resources;
+    const skySpecular = !skybox ? resources.blackCube : skybox.skybox instanceof Skybox ? resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
+    return {
+      scene: renderSystem.rayTracing,
+      localLights: renderSystem.localLights.buffer,
+      skySpecular,
+      specularLevels: skybox?.skybox.specularLevels ?? 0,
+      giAtlas: renderSystem.irradianceVolumes.atlas,
+      giVolume: renderSystem.irradianceVolumes.shading(),
+    };
   }
 
   destroy(): void {

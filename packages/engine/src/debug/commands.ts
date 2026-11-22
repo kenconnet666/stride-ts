@@ -450,10 +450,22 @@ function status(debug: Debug, game: Game): unknown {
     devtoolsBridge: devtoolsBridgeVersion() ?? null,
     /** 页面看得见没有：hidden 时（标签在后台、窗口最小化）requestAnimationFrame 不走，游戏不出帧；stride front 切到前面。 */
     visibility: document.visibilityState,
+    throttled: throttled(debug, meanInterval),
     entities: game.entities.count,
     counters: debug.counters(),
     watches: debug.watches(),
   };
+}
+
+/**
+ * 页面看得见、帧却很慢，而一帧里的更新加绘制只占很小一部分：是浏览器在节流（主 Chrome 的窗口被别的窗口挡住时呈现被压到一两帧
+ * 每秒），不是游戏慢。量帧时间换到 stride open --headless 起的 Chrome。不是这种情况时是 null。
+ */
+function throttled(debug: Debug, meanInterval: number): string | null {
+  if (document.visibilityState !== 'visible' || !(meanInterval > 100)) return null;
+  const busy = debug.frames.last(30, debug.frames.update).reduce((sum, ms) => sum + ms, 0) / 30 + debug.frames.last(30, debug.frames.draw).reduce((sum, ms) => sum + ms, 0) / 30;
+  if (busy > meanInterval * 0.3) return null;
+  return `frames come every ${Math.round(meanInterval)} ms but update + draw take ${busy.toFixed(1)} ms: the browser is throttling the page (an occluded window?); measure frame times in a stride open --headless Chrome`;
 }
 
 function adapterInfo(info: GPUAdapterInfo): Record<string, string> {
@@ -689,6 +701,7 @@ async function perf(debug: Debug, game: Game, args: Args): Promise<unknown> {
     frameMs: summary(intervals),
     updateMs: summary(debug.frames.last(frames, debug.frames.update)),
     drawMs: summary(debug.frames.last(frames, debug.frames.draw)),
+    throttled: throttled(debug, intervals.reduce((sum, ms) => sum + ms, 0) / Math.max(1, intervals.length)),
     cpuMsPerUpdate: Object.fromEntries([...timings].sort((a, b) => b[1] - a[1]).map(([label, ms]) => [label, round(perFrame(ms))])),
     nativeMsPerUpdate: Object.fromEntries(Object.entries(native.timings).sort((a, b) => b[1].ms - a[1].ms).map(([label, t]) => [label, round(perFrame(t.ms))])),
     gpu: gpu ? { totalMs: round(gpuReport.reduce((sum, [, t]) => sum + t.milliseconds, 0)), passes: Object.fromEntries(gpuReport.map(([label, t]) => [label, round(t.milliseconds)])) } : 'timestamp-query is not available',

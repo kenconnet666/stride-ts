@@ -881,7 +881,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 ## W5 程序化建筑和城市（2026-11-22 起）
 
 - 第一步单栋建筑的文法：`content/buildingFormat.ts`（BuildingFile、图案的解析 `parseFacadePattern`、检查）、`modeling/building.ts`（体块的底面和退台 `insetPolygon`、立面的框架（从外面看 u 从左到右）、一层的铺法 `layoutFloor`、构件的几何、屋顶），`pipeline/src/buildingModel.ts`，编辑器后端的烘焙种类 `building`、新建"程序化建筑"（三层的小楼）、字段（底面、屋顶、立面规则、构件按 JSON 改）、中文、资源引用（建筑 → 材质），MCP 的 `write_asset` 写文法出模型（加了测试），引擎的测试（图案、铺满、退台、高度、玻璃凹在墙里、三角形的绕向和法线一致、尖顶和圆的底面、检查）。第一版构件的窗框宽度和"窗框用哪个材质槽"都叫 `frame`，后端生成时报错才看出来，材质槽改成 `slots: { wall, glass, frame }`。Valley 的广场：`Buildings/Tower`（三层裙房、16 层玻璃幕墙退 4 米、两层冠顶的钢鳍片加玻璃穹顶）、`Rotunda`（28 边的圆楼、底层一圈门、上面退台、钢的穹顶）、`Apartment`（六层，窗和阳台交替、腰线、女儿墙）、三栋挨着的 `Shophouse`（店面、带小阳台的窗、尖顶）。测试浏览器里看：窗洞凹进去有阴影、阳台的栏板、腰线、穹顶的高光都对；尖顶从墙脚看不见（坡面在檐口后面），从高处看得见。全景 120 Hz，GPU 3.6 毫秒（不透明 1.8、阴影 0.8）。三角形：塔楼 2.3 万（窗框和幕墙骨架是 1.96 万），公寓 1.2 万。
-- 环境：主 Chrome 里游戏页突然只有 2 fps（空白页 120，CPU、GPU 都闲着，换旧代码、换场景、新标签都一样），`stride open --headless` 起的 Chrome 里 89～120 fps：主 Chrome 的窗口被别的窗口挡住时 Chrome 把它的呈现节流了，不是代码的问题；测帧时间用无头的 Chrome。
+- 环境：主 Chrome 里游戏页突然只有 2 fps（空白页 120，CPU、GPU 都闲着，换旧代码、换场景、新标签都一样），`stride open --headless` 起的 Chrome 里 89～120 fps：主 Chrome 的窗口被别的窗口挡住时 Chrome 把它的呈现节流了，不是代码的问题；测帧时间用无头的 Chrome。调试命令 `status`、`perf` 加了 `throttled`：页面看得见、帧间隔超过 100 毫秒而更新加绘制不到三成时，直接说是浏览器在节流、换无头的 Chrome 量；交接文档的坑和 CLI 的说明也写了。
 
 ## 调试工具：iframe 里的日志点、调试桥的提示条（2026-11-22）
 

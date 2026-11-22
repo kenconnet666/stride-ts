@@ -5,7 +5,7 @@
  * 安全：接口能写工程里的文件，所以只认本机的同源页面——Host 必须是回环地址（挡住 DNS 重绑定），带 Origin 的必须和 Host
  * 一致，而且每个请求要带 EDITOR_HEADER（跨源的页面带自定义头会先发预检，这里不回 CORS 头，预检过不了）。
  */
-import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, rmdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
@@ -84,7 +84,7 @@ export class EditorBackend {
    * 靠不住），变了的、生成的模型不在的补烘。没记过的：模型不在才烘，在就当它是对的、记下来。导入（源模型、贴图）慢，照旧等文件改了再导入。
    */
   async #bakeStale(): Promise<void> {
-    this.#bakeHashes = await readFile(this.#bakeCacheFile, 'utf8').then((text) => JSON.parse(text) as Record<string, string>, () => ({}));
+    this.#bakeHashes = await this.#readSharedBakeHashes();
     const baked: string[] = [];
     for (const record of this.database.list()) {
       const kind = record.kind;
@@ -119,16 +119,36 @@ export class EditorBackend {
     return path.join(this.project.root, 'node_modules', '.cache', 'stride-editor', 'bakes.json');
   }
 
-  /** 记下这次烘的内容（不重复烘同样的内容；下次打开工程时比较）。 */
-  #recordBake(key: string, content: unknown): void {
+  /**
+   * 记下这次烘的内容（不重复烘同样的内容；下次打开工程时比较）。哈希马上写进磁盘上共用的表（只改这一条，别的进程记的不盖掉），
+   * 再写源文件：同一个工程上开着的别的后端（agent 的 MCP 服务、另一个开发服务器）看到源文件变了时，查表知道已经烘过了，不用它
+   * 那份可能是旧的代码再烘一遍、盖掉这边的模型（出过：一个前一天起的 MCP 服务用旧代码把新烘的模型盖了）。
+   */
+  async #recordBake(key: string, content: unknown): Promise<void> {
     this.#bakes.set(key, JSON.stringify(content));
     this.#bakeHashes[key] = contentHash(content);
-    void this.#saveBakeHashes();
+    const shared = await this.#readSharedBakeHashes();
+    await this.#writeBakeHashes({ ...shared, [key]: this.#bakeHashes[key] });
   }
 
-  async #saveBakeHashes(): Promise<void> {
+  /** 磁盘上共用的哈希表（没有时是空的）。 */
+  #readSharedBakeHashes(): Promise<Record<string, string>> {
+    return readFile(this.#bakeCacheFile, 'utf8').then((text) => JSON.parse(text) as Record<string, string>, () => ({}));
+  }
+
+  /** 别的进程已经烘过这份内容：共用的表里是这个哈希、生成的模型在。 */
+  async #bakedElsewhere(key: string, assetPath: string, content: unknown): Promise<boolean> {
+    const shared = await this.#readSharedBakeHashes();
+    return shared[key] === contentHash(content) && existsSync(path.join(this.project.contentDir, assetPath + EXTENSIONS.model));
+  }
+
+  #saveBakeHashes(): Promise<void> {
+    return this.#writeBakeHashes(this.#bakeHashes);
+  }
+
+  async #writeBakeHashes(hashes: Record<string, string>): Promise<void> {
     await mkdir(path.dirname(this.#bakeCacheFile), { recursive: true });
-    await writeFile(this.#bakeCacheFile, JSON.stringify(this.#bakeHashes));
+    await writeAtomically(this.#bakeCacheFile, JSON.stringify(hashes));
   }
 
   /** 资源变了以后调（参数是这一批里变了的资源）；返回取消登记的函数。 */
@@ -478,9 +498,14 @@ export class EditorBackend {
       const kind = record.kind;
       if (!isBakedKind(kind)) continue;
       try {
-        const text = await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8');
-        if (JSON.stringify(JSON.parse(text)) === this.#bakes.get(`${kind}:${record.path}`)) continue;
-        baked.push(...(await this.#bake(kind, record.path, JSON.parse(text))).files);
+        const key = `${kind}:${record.path}`, content: unknown = JSON.parse(await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8'));
+        if (JSON.stringify(content) === this.#bakes.get(key)) continue;
+        if (await this.#bakedElsewhere(key, record.path, content)) {
+          this.#bakes.set(key, JSON.stringify(content));
+          this.#bakeHashes[key] = contentHash(content);
+          continue;
+        }
+        baked.push(...(await this.#bake(kind, record.path, content)).files);
       } catch (error) {
         console.warn(`[stride-editor] ${kind} ${record.path}: ${(error as Error).message}; its model is left as it was`);
       }
@@ -526,7 +551,7 @@ export class EditorBackend {
         await writeAtomically(target, file.content);
         written.push(file.path);
       }
-      this.#recordBake(`${kind}:${assetPath}`, content);
+      await this.#recordBake(`${kind}:${assetPath}`, content);
       return { files: written, warnings, animations };
     }
     const read = (file: string) => readFile(path.join(this.project.contentDir, file));
@@ -534,7 +559,7 @@ export class EditorBackend {
     if (!generator) throw new Error(`${where}: no baker for asset kind '${kind}'`);
     const files = await generator.bake({ tools, read }, content, assetPath, where);
     for (const file of files) await writeAtomically(path.join(this.project.contentDir, file.path), file.bytes);
-    this.#recordBake(`${kind}:${assetPath}`, content);
+    await this.#recordBake(`${kind}:${assetPath}`, content);
     return { files: files.map((file) => file.path), warnings: [] };
   }
 
@@ -573,7 +598,7 @@ export class EditorBackend {
       await writeAtomically(file, content);
       files.push(main);
     }
-    this.#recordBake(`imageImport:${assetPath}`, settings);
+    await this.#recordBake(`imageImport:${assetPath}`, settings);
     return { files, warnings: [] };
   }
 

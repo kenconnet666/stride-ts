@@ -2,7 +2,7 @@
 //   pnpm --filter @stride-ts/platformer smoke [-- --hub <中枢名的一部分>]
 // 每次先重新加载页面。检查：游戏在跑、场景画出来了；角色落在地上站住；按住 W 往前跑、骨骼跟着动，松开后停下；
 // 空格跳起来再落回地面；点选认得出角色；没有错误日志（finish 检查）。镜头要锁定鼠标才转，合成事件锁不了，不在这里测。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('platformer');
 

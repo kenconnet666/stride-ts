@@ -1,13 +1,13 @@
 // 按改动挑要跑的冒烟样例（分层测试的第 2 层；全量交给 CI）：和 base（默认 origin/main）比，加上工作区里没提交的改动，改了哪些
 // 文件就跑覆盖它们的样例。只改了文档的不跑；认不出的改动跑一组代表样例。打印逗号分隔的样例名（regress.ps1 -Changed 用）。
 // 加 --editor 时打印要跑编辑器验收（tools/editor-accept）的样例：改了编辑器、场景的加载和格式、验收工具时是 EDITOR_APPS，不然是空的。
-//   node tools/affected.ts [base] [--editor]
+//   node tools/lib/affected.ts [base] [--editor]
 import { execFileSync } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const apps = new Set(readdirSync(path.join(root, 'apps'), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name));
 
 /** 覆盖面广的几个：3D 网格和阴影（TPP）、物理（bepu-sample）、粒子、2D 精灵、全屏 UI。 */
@@ -20,6 +20,8 @@ const AREAS: readonly (readonly [RegExp, readonly string[]])[] = [
   [/^packages\/engine\/src\/physics\/(NavigationSystem|RecastNavigation)/, ['csharp-intermediate', 'topdown-rpg']],
   [/^packages\/engine\/src\/physics\//, ['physics-sample', 'bepu-sample', 'platformer', 'first-person-shooter', 'topdown-rpg']],
   [/^packages\/engine\/src\/(animation|engine\/transform)/, ['animated-model', 'morph-targets', 'platformer', 'first-person-shooter']],
+  // 大世界（地形、水、城市、列车、风和天气）和程序化建模：大世界的样例加上下雨下雪、粒子吃风的
+  [/^packages\/engine\/src\/(world|modeling)\//, ['open-world', 'greybox', 'particles-sample']],
   [/^packages\/engine\/src\/ui\//, ['game-menu', 'ui-element-link', 'ui-particles', 'sprite-fonts', 'jumpy-jet']],
   [/^packages\/engine\/src\/input\//, ['platformer', 'platformer2d', 'csharp-intermediate', 'game-menu', 'first-person-shooter']],
   [/^packages\/engine\/src\/particles\//, ['particles-sample', 'ui-particles', 'first-person-shooter']],
@@ -36,7 +38,7 @@ const EDITOR = /^(packages\/editor\/src\/|packages\/engine\/src\/(editor|content
 const EDITOR_APPS = ['platformer', 'greybox'];
 
 /** 不影响任何样例的。 */
-const IGNORED = /^(docs\/|.*\.md$|\.github\/|tools\/(budgets\.json|stride-capture\/|debug-bridge\/|measure\.ps1|verify\.ps1|import-all\.ps1|affected\.ts|content-key\.ts)|packages\/[^/]+\/test\/|apps\/[^/]+\/scripts\/import\.ts$)/;
+const IGNORED = /^(docs\/|.*\.md$|\.github\/|tools\/(budgets\.json|stride-capture\/|debug-bridge\/|dev\/|measure\.ps1|verify\.ps1|import-all\.ps1|lib\/affected\.ts|content-key\.ts)|packages\/[^/]+\/test\/|apps\/[^/]+\/scripts\/import\.ts$)/;
 
 const args = process.argv.slice(2);
 const editor = args.includes('--editor');

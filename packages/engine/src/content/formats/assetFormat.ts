@@ -602,7 +602,7 @@ export type SdfShapeFile = {
 
 /**
  * 3D 文字（Stride 没有；同 Blender 的文字物体挤出、虚幻的 Text 3D）：店招、站名、门牌、警示贴、立体的字。用字体资源排版，
- * 每个字的轮廓挤出 depth 厚（洞挖掉），编辑器后端烘成同名的模型（pipeline/src/textModel.ts，原生工具模块的 Manifold）；
+ * 每个字的轮廓挤出 depth 厚（洞挖掉），编辑器后端烘成同名的模型（pipeline/src/bakers/textModel.ts，原生工具模块的 Manifold）；
  * 文字的原点在整段的中心，字面朝本地 +Z。材质槽 0 是字面（正面），1 是侧面和背面（没给时同字面）：发光的字面配金属的侧边
  * 就是商场的发光字。字体里没有的字用字体的默认字符。
  */

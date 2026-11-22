@@ -2,12 +2,12 @@
 // 参考/我们 的比值（p10、中位数、p90）：处处相同说明是整体倍数（光强、反照率），随行变化说明和角度有关（高光、N·L）。
 // 两边都要固定曝光 EV0、关掉 FXAA 和亮部提取（参考图用 stride-capture 的 --exposure 0 --disable fxaa,brightfilter；
 // 我们这边先用 stride eval 设好，再 stride shot ours.png）。
-// 用法：node tools/hdr-ratio.ts <参考.png> <我们的.png> [每组的行数，默认 60]
+// 用法：node tools/dev/hdr-ratio.ts <参考.png> <我们的.png> [每组的行数，默认 60]
 import { readFileSync } from 'node:fs';
-import { decodePng } from '../packages/cli/src/png.ts';
+import { decodePng } from '../../packages/cli/src/png.ts';
 
 const [referenceFile, oursFile, bandArg = '60'] = process.argv.slice(2);
-if (!referenceFile || !oursFile) throw new Error('usage: node tools/hdr-ratio.ts <reference.png> <ours.png> [rows per band]');
+if (!referenceFile || !oursFile) throw new Error('usage: node tools/dev/hdr-ratio.ts <reference.png> <ours.png> [rows per band]');
 const reference = decodePng(readFileSync(referenceFile));
 const ours = decodePng(readFileSync(oursFile));
 if (reference.width !== ours.width || reference.height !== ours.height) throw new Error(`size differs: ${reference.width}x${reference.height} vs ${ours.width}x${ours.height}`);

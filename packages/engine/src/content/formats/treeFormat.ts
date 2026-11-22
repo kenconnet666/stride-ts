@@ -1,6 +1,6 @@
 /**
  * 参数化的树（`.tree.json`，W4，Stride 没有）：文件存生长的规则和种子（矢量的），编辑器后端照规则长成同名的模型
- * （modeling/tree.ts 生长、pipeline 的 treeModel.ts 写模型），场景、摆放（.scatter.json）照常引用模型；改了参数马上重新长、
+ * （modeling/tree.ts 生长、pipeline 的 bakers/treeModel.ts 写模型），场景、摆放（.scatter.json）照常引用模型；改了参数马上重新长、
  * 视口热重载。同一个文件、同一个种子长出同一棵树，换种子是同一种树的另一棵。
  *
  * 一层一层地长（思路同 ez-tree、Weber–Penn 的分层参数）：第 0 层是树干，每一根枝上沿着长度长出下一层的 children 根枝；

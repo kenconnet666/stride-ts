@@ -1,5 +1,5 @@
 // 编辑器材质库、特效库的缩略图（packages/editor/src/library/thumbnails/<id>.webp）：用引擎真的画出来。库里的预设变了重跑一遍。
-//   node tools/library-thumbnails.ts [--only <id>[,<id>]] [--size 128]
+//   node tools/dev/library-thumbnails.ts [--only <id>[,<id>]] [--size 128]
 // 借 greybox 的开发服务器（没开就开一个，用完 pwsh tools/stop-dev.ps1 停）：库里的材质和一个球的模型临时写进它的内容目录
 // （Materials/Library、Models/LibrarySphere，跑完删掉），在自己的无头 Chrome 里打开游戏页面，每个预设换一个现拼的根场景
 // （相机、太阳、天空照 greybox 的主场景；材质是一个球，特效是原点上的粒子系统、暗背景），等画面稳下来用引擎的截图命令截一帧，
@@ -8,12 +8,12 @@ import { execSync, spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../packages/editor/src/library/index.ts';
+import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../../packages/editor/src/library/index.ts';
 
 process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', 'library-thumbnails');
-const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('../packages/cli/src/chrome.ts');
+const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('../../packages/cli/src/chrome.ts');
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(import.meta.dirname, '..', '..');
 const content = path.join(root, 'apps/greybox/public/content');
 const out = path.join(root, 'packages/editor/src/library/thumbnails');
 const PORT = 5228, URL_ = `http://localhost:${PORT}/`;

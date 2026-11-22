@@ -9,7 +9,7 @@
 import { encodeModel, VERTEX_FLOATS, type BrushFile, type BrushShapeFile } from '@stride-ts/engine/content-format';
 import type { Brush, StrideTools } from '@stride-ts/native/tools';
 import { projectUv } from '@stride-ts/engine/modeling';
-import { compressMeshes, type SourceMesh } from './mesh.ts';
+import { compressMeshes, type SourceMesh } from '../mesh.ts';
 
 /** 圆柱、球没写分段数时用的。 */
 const DEFAULT_SEGMENTS = 32;

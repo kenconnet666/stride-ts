@@ -123,7 +123,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 
 先澄清数据流：wasm 是在主线程上同步调用的，工作线程只跑 Jolt 的任务；内存是同一块 `SharedArrayBuffer`。JS 通过 TypedArray 视图直接读写 wasm 内存，`writeBuffer` 也能直接从这个视图上传。**没有线程之间的交换**，代价只有两种：调用的开销、我们自己选择做的拷贝。
 
-基准在 `apps/bench`，用 `tools/bench.cjs` 在本机无头 Chrome 157 里跑（12 核，适配器报告 NVIDIA Ampere），跑了三次，数字稳定在 ±20% 以内。每项是中位数：
+基准在 `apps/bench`，用 `tools/dev/bench.cjs` 在本机无头 Chrome 157 里跑（12 核，适配器报告 NVIDIA Ampere），跑了三次，数字稳定在 ±20% 以内。每项是中位数：
 
 | 项目 | 1 万个实体 | 10 万个实体 | 每个实体 |
 |---|---|---|---|
@@ -187,7 +187,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 | 录进 render bundle，每帧重放 | 0.18 ms | 1.4 ms | 0.14–0.19 µs |
 | 一次实例化 draw（矩阵在 storage buffer 里） | 0.06 ms | 0.33 ms | 0.03–0.06 µs |
 
-**GC**（`apps/bench/gc.html`，`tools/gc-trace.cjs` 开着 Chrome 的 tracing 跑，停顿时长取自 V8 自己记录的 `MinorGC`、`MajorGC` 事件；帧节奏 165 Hz，每帧本身的工作很少）：
+**GC**（`apps/bench/gc.html`，`tools/dev/gc-trace.cjs` 开着 Chrome 的 tracing 跑，停顿时长取自 V8 自己记录的 `MinorGC`、`MajorGC` 事件；帧节奏 165 Hz，每帧本身的工作很少）：
 
 | 场景 | 分配速度 | 主线程 GC 占时 | 最长一次停顿 | 超过 20 ms 的帧 |
 |---|---|---|---|---|
@@ -256,7 +256,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - 系统的 `added`、`removed`：按实体回调（不是按块），`removed` 时还能读到数据，回调里的结构性改动走命令缓冲；
   - （2026-11-18）`Transform`：数据在 stride-native 的变换存储里，表里只存槽位；父子层级、销毁时连带子实体、和物理世界绑定，见上文"共享内存的数据模型"；
   - （2026-11-18）热重载：`Game.hotEntry`、`game.hotUpdate`，组件、脚本、系统、游戏类都能在运行中换成新版本，见"热重载"；
-  - 运行时测试 68 个（含管线的导入测试），类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/gen-type-stress.mjs` 生成）。
+  - 运行时测试 68 个（含管线的导入测试），类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/dev/gen-type-stress.mjs` 生成）。
 - **和下文设计的出入**：
   - 一个 archetype 目前是一块可增长的表（容量翻倍），还没有切成固定大小的块。
   - 默认值的检查在定义时做（越早越好），报错带字段名。
@@ -903,14 +903,14 @@ model.materials.body.variant({ team: 'blue' });         // variant: shared deriv
   - **模型**：顶点量化成 16 字节（位置按模型的包围盒 unorm16，精度低于 0.1 mm 时保留 float；法线八面体 snorm16x2；UV 按范围 unorm16，范围超过 16 时保留 float），按顶点缓存和读取顺序重排后 meshopt 编码（`packages/pipeline/src/mesh.ts`，参考 glTF-Transform）；运行时 `ContentManager.meshoptDecoder`（原生 `decodeMeshoptBatch`）并行解码，顶点着色器按网格参数反量化、解八面体法线。TPP 的模型 1.12 MB（brotli 512 KB）变 383 KB（brotli 303 KB），显存也减半。`--plain` 导出不压缩的 float 模型方便调试，运行时两种都能读。
   - **贴图**：除了 KTX2，贴图槽可以是 svg、png、jpeg（`browserImageDecoder`：PNG/JPEG 用 createImageBitmap，SVG 用 Image 加 OffscreenCanvas 按目标尺寸栅格化），只有第 0 级，`MipmapGenerator` 在 GPU 上生成 mip（sRGB 视图，线性空间平均）。导入时 `--overrides` 目录里的 `<内容路径>.svg` 代替源图片；TPP 的两张棋盘格是手写的 SVG（0.8 KB、1 KB，原来的 KTX2 是 16 KB、52 KB；栅格化后和原 PNG 的平均差 0.02 和 3.4），代价是显存里是未压缩的 RGBA8。
   - **天空盒**：见上面，镜面预滤波改在运行时做，内容少 4 MB。
-  - **分发**：`tools/vite-app.ts` 是 apps 共用的 Vite 配置，构建后给 dist 里压得小的文件写 `.br` 和 `.gz`，静态服务器打开预压缩文件的支持就直接发。
+  - **分发**：`tools/lib/vite-app.ts` 是 apps 共用的 Vite 配置，构建后给 dist 里压得小的文件写 `.br` 和 `.gz`，静态服务器打开预压缩文件的支持就直接发。
   - **结果**：TPP 页面下载（正式版 wasm、JS、内容）从约 9.4 MB（brotli 约 1.6 MB）变成 4.2 MB（brotli 1.1 MB），其中 wasm 3.1 MB（brotli 728 KB）；原生模块拆分后 TPP 只要核心，页面 1.6 MB（brotli 约 500 KB），wasm 361 KB（brotli 97 KB）。
 - **法线贴图（2026-11-18）**：照 Stride 的 MaterialNormalMapFeature、MaterialSurfaceNormalMap 和 NormalUpdate：切线空间的法线（InvertY、×2-1、由 xy 算 z）乘 TBN，副切线 = w · cross(法线, 切线)。导入器只给材质用法线贴图的网格生成 MikkTSpace 切线（`addTangents`：每个三角形角一份，切线不同的地方拆开顶点），量化成 snorm8x4，顶点从 16 字节变成 20 字节；Stride 在导入时翻转法线贴图的绿色通道（NormalMapTextureType.InvertY，默认开），这里记在材质上、采样后翻转，结果一样，PNG 可以原样复制。TPP 只有人物的两块哑光黑用法线贴图，platformer 的导入改成 `--textures source`：两张 PNG 178 KB，编成 KTX2 是 95 KB，但要多下载 339 KB（brotli）的贴图转码侧模块。
 - **和桌面 Stride 的截图比对（2026-11-18）**：TPP 默认设置下平均每通道差 0.7/255，差超过 10 的像素 0%，只剩地面网格线的亚像素差（SVG 棋盘格）。方法和工具见 `tools/stride-capture/tpp/README.md`；比对中修掉了直射光少乘 π、材质贴图多开的各向异性（Stride 默认三线性）、天空盒源贴图用了文件自带的 mip（Stride 从第 0 级重建）；剩下的只有有意保留的 SVG 棋盘格。按通道比 GPU 时间（Stride 用它自己的时间戳）又修了深度预通道、PCF 和 FXAA 的展开。同一块显卡上的帧时间：桌面 Stride 7.70 ms，我们 6.65 ms（关掉后处理时 3.95 对 3.34 ms），明细见那份 README。
 
 ## 对齐的验证方法
 
-- **截图比对**：同一场景、同一相机位置，用桌面 Stride、C# 移植版和这里各截一张，算差异图。桌面 Stride 用 `tools/stride-capture`（官方 4.4.2，可以关单个后处理、固定曝光、只留一种光），这边用 `stride shot --diff`；整体偏亮偏暗时用 `tools/hdr-ratio.ts` 看是倍数差还是随角度的差。
+- **截图比对**：同一场景、同一相机位置，用桌面 Stride、C# 移植版和这里各截一张，算差异图。桌面 Stride 用 `tools/stride-capture`（官方 4.4.2，可以关单个后处理、固定曝光、只留一种光），这边用 `stride shot --diff`；整体偏亮偏暗时用 `tools/dev/hdr-ratio.ts` 看是倍数差还是随角度的差。
 - **复用 Stride 的图形测试**：`Stride.Graphics.Tests` 的场景和 gold 图可以作为渲染器的回归测试，从最基本的开始（几何体、精灵、字体）。
 - **样例清单**：沿用 C# 移植版验证过的那批（SpriteFonts、AnimatedModel、GameMenu、MaterialShader、Third Person Platformer……），C# 版可以当参考实现。
 

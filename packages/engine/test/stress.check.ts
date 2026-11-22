@@ -1,4 +1,4 @@
-// 由 tools/gen-type-stress.mjs 生成，不要手改。只有 tsc 读它。
+// 由 tools/dev/gen-type-stress.mjs 生成，不要手改。只有 tsc 读它。
 import { component, prop, SyncScript, system, type EntityId, type GameTime } from '../src/index';
 
 export const C0 = component({ a0: prop.f32().min(0).default(0), b0: 0, c0: prop.int().default(1), d0: prop.enum(['x', 'y', 'z']).default('x'), e0: prop.bool().default(true), f0: prop.entity().default(0 as EntityId), g0: prop.u8() });

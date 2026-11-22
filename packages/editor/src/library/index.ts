@@ -6,7 +6,7 @@
  * 放大不糊（vector-assets.md 的方向）。特效是 Stride 格式的粒子系统组件（和粒子编辑器改的是同一种），柔和的圆点不用贴图。
  *
  * 只有数据，没有 Node 和 DOM 的依赖：前端的库窗口、MCP 的 library 工具共用。缩略图是 thumbnails/ 下同 id 的图，由
- * tools/library-thumbnails.ts 用引擎画出来（库变了重跑）。
+ * tools/dev/library-thumbnails.ts 用引擎画出来（库变了重跑）。
  */
 import type { GraphFile, GraphNodeFile } from '@stride-ts/engine/node-graph';
 import type { MaterialFile, ParticleModuleFile } from '@stride-ts/engine/content-format';

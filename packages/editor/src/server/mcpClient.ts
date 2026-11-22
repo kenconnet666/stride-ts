@@ -10,7 +10,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import path from 'node:path';
 
-const CLI = path.resolve(import.meta.dirname, '../server/cli.ts');
+const CLI = path.resolve(import.meta.dirname, './cli.ts');
 
 /** 用 stdio 起 `stride-editor mcp`，按行收发 JSON-RPC。 */
 export class McpProcess {

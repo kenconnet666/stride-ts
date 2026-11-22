@@ -8,7 +8,7 @@
  */
 import { encodeModel, VERTEX_FLOATS, type SdfFile, type SdfShapeFile } from '@stride-ts/engine/content-format';
 import type { SdfShape, StrideTools } from '@stride-ts/native/tools';
-import { compressMeshes, type SourceMesh } from './mesh.ts';
+import { compressMeshes, type SourceMesh } from '../mesh.ts';
 import { projectUv } from '@stride-ts/engine/modeling';
 import { rigidTransform } from './brushModel.ts';
 

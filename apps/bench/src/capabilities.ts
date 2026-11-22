@@ -6,7 +6,7 @@
 //   视频贴图：WebCodecs 解 1080p 的码流有多快，每帧 importExternalTexture 再铺满 1080p 画一遍的 CPU 和 GPU 时间；
 //   路径追踪：CPU 上按表面积启发式建 BVH（一座方块楼的城），计算着色器里遍历：每个像素主光线、一次漫反射反弹、各一条阴影光线。
 // 时间都是 GPU 时间戳（一帧里第一个通道开始到最后一个通道结束），取中位数。
-//   node tools/run-page.ts http://localhost:5182/capabilities.html capabilitiesResults --error capabilitiesError --out <json> --screenshot <png>
+//   node tools/lib/run-page.ts http://localhost:5182/capabilities.html capabilitiesResults --error capabilitiesError --out <json> --screenshot <png>
 const WIDTH = 1920, HEIGHT = 1080;
 
 const out = document.getElementById('out')!, lines: string[] = [], globals = globalThis as Record<string, unknown>;

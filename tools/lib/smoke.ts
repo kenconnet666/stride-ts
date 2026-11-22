@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'packages', 'cli', 'src', 'cli.ts');
+const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'packages', 'cli', 'src', 'cli.ts');
 
 export interface Smoke {
   /** 跑一条调试 CLI 命令，返回它输出的 JSON。 */
@@ -51,7 +51,7 @@ interface SmokeMetric {
 }
 
 /** 各个样例冒烟跑完时的统计量（`stride metrics`）记下的基线，见 checkBudgets。 */
-const BUDGETS_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'budgets.json');
+const BUDGETS_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'budgets.json');
 /** 进基线的量：和机器快慢无关的（实体数、绘制次数、显存、原生内存）。帧时间另由 tools/measure.ps1 和桌面 Stride 比。 */
 const BUDGETED = ['entities', 'render.drawCalls', 'render.instances', 'gpu.buffers', 'gpu.buffers.bytes', 'gpu.textures', 'gpu.textures.bytes', 'gpu.pipelines.sync', 'native.allocated.bytes'];
 /** 允许比基线高多少：冒烟跑完时的状态每次略有不同（随机的关卡、还没回收的子弹），所以留得宽，抓的是成倍的退步和泄漏。 */

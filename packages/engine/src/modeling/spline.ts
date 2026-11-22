@@ -1,6 +1,6 @@
 /**
  * 样条（content/formats/splineFormat.ts 的 SplineFile）的几何：路径按弧长采样成带朝向的截面（sampleSpline、frameAt），按横截面拉伸、
- * 沿路摆立柱和轨枕、在电杆之间挂下垂的导线，得出按材质槽分好的三角形网格（编辑器后端烘成模型用，pipeline 的 splineModel.ts）。
+ * 沿路摆立柱和轨枕、在电杆之间挂下垂的导线，得出按材质槽分好的三角形网格（编辑器后端烘成模型用，pipeline 的 bakers/splineModel.ts）。
  * 地形贴合、车道图、列车沿路走以后也用这里的采样。
  *
  * - 路径：向心 Catmull-Rom（alpha 0.5，Barry–Goldman 的写法）经过每个控制点，开放的两端按反射补一个点；先每段密采样、按累计

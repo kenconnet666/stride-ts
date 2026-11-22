@@ -3,7 +3,7 @@
 // Raycasting：点中箱子，箱子被推起来。VolumeTrigger：角色走进触发器，运动学的箱子变成动态落下；走出来后变回运动学、回到原位。
 // Constraints：球窝让球停在离立方体 4 米处；点 Next 按钮依次换完六种约束，焊接让球停在立方体左边 4 米。
 // 换场景：点 >> 按钮走一圈回到 Constraints，旧场景的实体、物体都去掉了，物理照常。Raycasting 下方有一行字。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('physics-sample');
 

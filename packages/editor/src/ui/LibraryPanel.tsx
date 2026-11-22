@@ -13,7 +13,7 @@ import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, type EffectCategory, type MaterialC
 import { t } from './messages';
 import type { EditorSession } from './session';
 
-/** 缩略图（tools/library-thumbnails.ts 画的），按 id 找。 */
+/** 缩略图（tools/dev/library-thumbnails.ts 画的），按 id 找。 */
 const THUMBNAILS: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(import.meta.glob<string>('../library/thumbnails/*.webp', { eager: true, query: '?url', import: 'default' }))
     .map(([file, url]) => [file.slice(file.lastIndexOf('/') + 1, -'.webp'.length), url]),

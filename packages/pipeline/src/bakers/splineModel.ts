@@ -5,7 +5,7 @@
 import { encodeModel, type SplineFile } from '@stride-ts/engine/content-format';
 import { checkSpline, splineMeshes } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { compressMeshes, type SourceMesh } from './mesh.ts';
+import { compressMeshes, type SourceMesh } from '../mesh.ts';
 
 /** 烘成模型文件的字节（.model）；河道（river）没有几何，是 undefined。控制点、横截面不对时报错。 */
 export function bakeSplineModel(tools: StrideTools, file: SplineFile, where = file.name): Uint8Array | undefined {

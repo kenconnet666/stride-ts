@@ -5,7 +5,7 @@
 import { encodeModel, type TreeFile } from '@stride-ts/engine/content-format';
 import { treeMeshes } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { compressMeshes, type SourceMesh } from './mesh.ts';
+import { compressMeshes, type SourceMesh } from '../mesh.ts';
 
 /** 烘成模型文件的字节（.model）。参数不对时报错。 */
 export function bakeTreeModel(tools: StrideTools, file: TreeFile, where = file.name): Uint8Array {

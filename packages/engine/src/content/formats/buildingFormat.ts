@@ -1,6 +1,6 @@
 /**
  * 程序化建筑（`.building.json`，W5，Stride 没有）：文件存形状文法（矢量的规则），编辑器后端照规则生成同名的模型
- * （modeling/building.ts 生成、pipeline 的 buildingModel.ts 写模型），场景照常引用模型；改了规则马上重新生成、视口热重载。
+ * （modeling/building.ts 生成、pipeline 的 bakers/buildingModel.ts 写模型），场景照常引用模型；改了规则马上重新生成、视口热重载。
  *
  * 思路同 CityEngine 的 CGA、虚幻 PCG 的 Shape Grammar，按我们的规模简化成三层：
  * - 体块（masses）从下往上叠：每段一个底面（多边形、矩形、圆，或者在下面一段的基础上往里缩 inset）、几层、层高、用哪条立面

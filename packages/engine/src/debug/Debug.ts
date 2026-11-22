@@ -8,7 +8,7 @@
  * - 日志：连上以后，页面的 console 输出、未捕获的异常和引擎的日志都转给中枢，`stride logs` 读。
  *
  * 连接：Game.run 的 debug 选项打开时（默认在地址带 ?debug 时），连同源的 DEBUG_SOCKET_PATH。中枢由开发服务器的
- * Vite 插件提供（tools/vite-app.ts）；静态部署的页面没有中枢，连一次失败就不再试。
+ * Vite 插件提供（tools/lib/vite-app.ts）；静态部署的页面没有中枢，连一次失败就不再试。
  */
 import { BRIDGE_SOCKET_PATH, DEBUG_SOCKET_PATH, type CallMessage, type CommandInfo, type HubMessage, type LogEntry, type LogLevel, type PageMessage } from './protocol';
 import { offerBridge } from './devtoolsBridge';

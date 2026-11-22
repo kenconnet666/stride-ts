@@ -1,7 +1,7 @@
 // 冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/campsite smoke [-- --hub <中枢名的一部分>]
 // 检查：主场景跑起来了；编辑器里做的资源都用上了——白盒、SDF、多边形烘出的模型有网格，篝火有粒子，噼啪声是合成的；没有错误日志。
-import { startSmoke } from '../../../tools/smoke.ts';
+import { startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, check, finish } = startSmoke('campsite');
 

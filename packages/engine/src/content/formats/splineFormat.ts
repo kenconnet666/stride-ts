@@ -1,6 +1,6 @@
 /**
  * 样条（`.spline.json`，W3，Stride 没有，新加的）：道路、管子、轨道、围栏、电线这类"沿着一条路径"的东西。文件存控制点和横截面
- * （矢量的参数），编辑器后端把它烘成同名的模型（modeling/spline.ts 拉伸、pipeline 的 splineModel.ts 写模型），场景照常引用；
+ * （矢量的参数），编辑器后端把它烘成同名的模型（modeling/spline.ts 拉伸、pipeline 的 bakers/splineModel.ts 写模型），场景照常引用；
  * 改了控制点、横截面马上重新烘、视口热重载。
  *
  * 坐标是实体的本地坐标（米）。路径经过每一个控制点（向心 Catmull-Rom，不打圈、不过冲），按弧长每 resolution 米取一个截面；

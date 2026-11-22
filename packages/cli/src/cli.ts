@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * stride：从命令行查看和操作正在运行的 stride-ts 游戏，给 agent 和开发者调试用。结果是 JSON（打到 stdout），
- * 出错时信息打到 stderr，退出码 1。游戏要打开 debug（开发服务器上默认开），开发服务器带调试中枢（tools/vite-app.ts）。
+ * 出错时信息打到 stderr，退出码 1。游戏要打开 debug（开发服务器上默认开），开发服务器带调试中枢（tools/lib/vite-app.ts）。
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs, type ParseArgsConfig } from 'node:util';

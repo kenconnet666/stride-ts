@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { decodeGlyphBlock, decodeModel, type FontFile, type GlyphBlock, type TextModelFile } from '@stride-ts/engine/content-format';
 import { textContours } from '@stride-ts/engine/modeling';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeTextModel } from '../src/textModel.ts';
+import { bakeTextModel } from '../src/bakers/textModel.ts';
 
 /** collect-dodge 里提交着的 OpenSans 字体资源。 */
 const CONTENT = path.resolve(import.meta.dirname, '../../../apps/collect-dodge/public/content');

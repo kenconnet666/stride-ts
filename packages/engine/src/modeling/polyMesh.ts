@@ -1,6 +1,6 @@
 /**
  * 多边形网格（content/formats/assetFormat.ts 的 PolyMeshFile）的几何：镜像、面法线、三角化、光滑法线、自动 UV，得出按材质槽分好的
- * 三角形网格（编辑器后端烘成模型用，pipeline 的 polyModel.ts）。编辑操作在 polyEdit.ts。
+ * 三角形网格（编辑器后端烘成模型用，pipeline 的 bakers/polyModel.ts）。编辑操作在 polyEdit.ts。
  *
  * - 面法线用 Newell 法（凹的、不太平的多边形也稳）；
  * - 三角化按面法线最大的分量投到平面上耳切（凹多边形也对，不支持带洞的面）；

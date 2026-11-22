@@ -1,6 +1,6 @@
 // 地形的山影图：用原生的求值器在 Node 里求一块地形文件（.terrain.json）的高度，画成 PNG（光从西北上方来）。调噪声、冲沟的参数时
 // 不用开浏览器、发版：
-//   node tools/terrain-hillshade.ts <地形文件> <out.png> [--x0 -1500] [--z0 -1500] [--size 3000] [--pixels 600] [--local]
+//   node tools/dev/terrain-hillshade.ts <地形文件> <out.png> [--x0 -1500] [--z0 -1500] [--size 3000] [--pixels 600] [--local]
 // 坐标是地形本地的米；--local 用 fork 里刚编的原生模块（C:\code\JoltPhysics\StrideNative\JS\dist，改了原生代码还没发版时）。
 // 打印求值的耗时（工作线程池，和游戏里算块的方式一样）。
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -19,11 +19,11 @@ for (let i = 0; i < args.length; i++) {
 }
 const option = (name: string, fallback: number) => (options.has(name) ? Number(options.get(name)) : fallback);
 const [file, out] = positional;
-if (!file || !out) throw new Error('usage: node tools/terrain-hillshade.ts <terrain.json> <out.png> [--x0 m] [--z0 m] [--size m] [--pixels n] [--local]');
+if (!file || !out) throw new Error('usage: node tools/dev/terrain-hillshade.ts <terrain.json> <out.png> [--x0 m] [--z0 m] [--size m] [--pixels n] [--local]');
 const x0 = option('x0', -1500), z0 = option('z0', -1500), size = option('size', 3000), n = option('pixels', 600);
 
 // 仓库根不依赖原生包：用引擎装的那份
-const dist = options.has('local') ? 'C:/code/JoltPhysics/StrideNative/JS/dist' : path.resolve(import.meta.dirname, '../packages/engine/node_modules/@stride-ts/native/dist');
+const dist = options.has('local') ? 'C:/code/JoltPhysics/StrideNative/JS/dist' : path.resolve(import.meta.dirname, '../../packages/engine/node_modules/@stride-ts/native/dist');
 const module = await import(pathToFileURL(path.join(dist, 'stride-native.js')).href);
 const native = await module.createStrideNative({});
 const terrain = JSON.parse(readFileSync(file, 'utf8')) as { noise: object; features?: object[]; strokes?: object[] };

@@ -4,7 +4,7 @@
 //   node apps/campsite/scripts/build.ts      重搭一遍（资源和场景按这里写的覆盖，几秒，烘模型在编辑器后端）
 // 搭完开 `pnpm --filter @stride-ts/campsite dev` 看，或者编辑器 http://localhost:5230/__stride/editor/ 里接着改。
 import path from 'node:path';
-import { McpProcess } from '../../../packages/editor/src/mcp/client.ts';
+import { McpProcess } from '../../../packages/editor/src/server/mcpClient.ts';
 
 const project = path.resolve(import.meta.dirname, '..');
 const mcp = new McpProcess(project);

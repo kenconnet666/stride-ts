@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { decodeModel, type SdfFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeSdfModel } from '../src/sdfModel.ts';
+import { bakeSdfModel } from '../src/bakers/sdfModel.ts';
 
 describe('SDF 建模的烘焙', () => {
   let tools: StrideTools;

@@ -168,7 +168,7 @@ docs/roadmap.md 的"进度"只留结论；这里是已完成各项的过程记�
    3. ~~场景、动画、声音~~（2026-11-19）：06 LoadScene、LoadChildScene（`game.loadScene` 的 `parent`、`offset`：子场景随父场景卸载）；07 AnimationBasics；08 AudioDemo、LoadMusic。引擎补上声音的发射器和听者（`AudioEmitterComponent`、`AudioListenerComponent`：按实体的位置空间化，指向性，HRTF 时的混响），场景里的同名组件导入成它们。
    4. ~~相机、角色、导航~~（2026-11-19）：09 FirstPersonCamera、CharacterMovement；10 ThirdPersonCamera（相机避障的射线，Stride 的脚本会穿墙，见 docs/decisions.md）；11 NavigateCharacter（寻路、沿路径走、拐点上放球）。引擎补上：`body.setOrientation`（原生 0.29.0，只改朝向、不打断位置的插值）、`entity.findChild`、`Quaternion.toEulerXYZ`。
    5. 冒烟和桌面比对：
-      - ~~冒烟~~（2026-11-19）：22 项。22 个教程场景都能进，11 个主题完成版的玩法各走一遍（UI 的按钮和输入框、触发器、两种射线按层过滤、投影和点地面克隆、异步脚本换材质、子场景和换根场景、动画的淡入和暂停、音乐和发射器、两个相机的锁鼠标和转视角、导航），换一圈教程实体数不变。冒烟脚本共用的页面帮手放进了 `tools/smoke.ts`（`PAGE_HELPERS`）；别的样例的冒烟还各带一份自己的，回头换成共用的。
+      - ~~冒烟~~（2026-11-19）：22 项。22 个教程场景都能进，11 个主题完成版的玩法各走一遍（UI 的按钮和输入框、触发器、两种射线按层过滤、投影和点地面克隆、异步脚本换材质、子场景和换根场景、动画的淡入和暂停、音乐和发射器、两个相机的锁鼠标和转视角、导航），换一圈教程实体数不变。冒烟脚本共用的页面帮手放进了 `tools/lib/smoke.ts`（`PAGE_HELPERS`）；别的样例的冒烟还各带一份自己的，回头换成共用的。
       - 桌面比对（`tools/stride-capture/csharp-intermediate`）：截图工程用官方 4.4.2 的包，去掉导航教程（它用的 Stride.BepuPhysics.Navigation 没有 4.4.2 的包）；截射线、投影、场景加载、声音四个教程的完成版。第一次比平均每通道差 26 到 67/255，查出材质导入的五处问题并修掉（docs/decisions.md 的"材质：着色模型、停用的特性、化不成固定槽的属性"）：没有镜面着色模型的材质不该有镜面反射（木地板成了镜面）、停用的特性照样导入了（激光发白光）、光泽度是运算时退成了 0、没给材质的程序模型没有材质槽（实体的覆盖用不上）、`findChild` 只找直接子实体（激光的长度没改）。现在投影 0.55、场景加载 0.66、声音 1.05、射线 1.71。
       - ~~玻璃材质~~（2026-11-19，`MaterialSpecularThinGlassModelFeature`，教程里绿色的箱子）：透明阶段分两遍画（透射乘到背景上、反射加上去），两面都画时四遍；背面的法线翻过来；没有漫反射着色模型的材质不算漫反射光照。射线那张从 2.11 降到 1.71。
       - ~~清漆材质~~（2026-11-19，`MaterialClearCoatFeature`，教程里蓝色的箱子）：两遍（金属碎片加底漆、清漆加在上面），输入都是颜色树。射线那张从 1.71 降到 1.00，蓝箱子各个面的平均颜色两边差不到 2/255。
@@ -193,7 +193,7 @@ docs/roadmap.md 的"进度"只留结论；这里是已完成各项的过程记�
       - 没有样例触发的那些（代码里还报警告，P4 做材质和画面时逐个补，先有用到它的内容再做）：材质——曲面细分、非微表面的镜面模型、镜面颜色用贴图、透明的贴图色调和别的透明类型、正面剔除、标量用贴图、颜色树里两张贴图合成和少数运算、层的 UVScale 覆盖、层的 cavity、透明、位移和嵌套的层、清漆加透明；别的——根运动和非标准的动画资源类型、凸分解、精灵的 Swizzle、手动的阴影级联分割、导航网格的别的分区方式、UI 的列表值。
       - 导入的警告每次都要看：CSharpIntermediate 的木地板成了镜面，导入时其实报了警告。~~导入没有缓存，每次都重编贴图~~（2026-11-19：贴图编码的结果按内容哈希缓存在 `~/.stride-ts/cache/pipeline`，`packages/pipeline/src/cache.ts`；一张 2048 的法线贴图编成 KTX2 要两分钟，重新导入不再等）。
       - ~~比对时发现要查的：SceneB 的拱顶内侧两肩比桌面亮 12/255~~（2026-11-20：拱的缩放不等比，法线要用世界矩阵的逆转置变换，以前直接乘世界矩阵；改了以后这张从 1.23 降到 0.29）。
-   6. 整理：~~各样例冒烟脚本里自带的页面帮手换成 `tools/smoke.ts` 的 `PAGE_HELPERS`~~（2026-11-20：等帧、合成指针事件、按名字找和点 UI 元素都用共用的，样例只留自己特有的；TPP 以前没有冒烟，补了一个：落地、跑、跳）；文档只留结论。
+   6. 整理：~~各样例冒烟脚本里自带的页面帮手换成 `tools/lib/smoke.ts` 的 `PAGE_HELPERS`~~（2026-11-20：等帧、合成指针事件、按名字找和点 UI 元素都用共用的，样例只留自己特有的；TPP 以前没有冒烟，补了一个：落地、跑、跳）；文档只留结论。
    7. ~~P2 的验收数字和全量回归~~（2026-11-20）：全部样例重截图、重测，桌面版的基准同一时段重跑（表在下面）。
       - 画面：和记录的数字一致（SpriteFonts 八屏完全相同，字形的新格式无损；SceneB 0.29）。csharp-beginner（1.38 到 1.59，原来 1.24 到 1.55）、morph-targets（4.16，原来 3.88）略升，A/B 过材质层的遮蔽和法线的逆转置（各关掉截一次），csharp-beginner 的三张数字都不变，不是它们；还没找到是哪次改动。
       - 帧时间：第一轮拿当天的数字去比各 README 里以前记的桌面数字，五个样例"超了"；其实桌面那边当天的数字也不一样（UIElementLink 以前记 1.24 ms，当天实测 4.42 ms）。同一时段重跑桌面基准以后再比才算数，以后每次验收都这样做。
@@ -396,7 +396,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 ## P4 底座（2026-11-20 起）
 
-1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。
+1. **统计量和预算**：`game.metrics`（`debug/Metrics.ts`）、显存和管线的记账（`graphics/GpuMemory.ts`，套在设备的 create* 上）、`stride metrics`；`tools/lib/smoke.ts` 的 `finish()` 把冒烟跑完时的统计量和 `tools/budgets.json` 的基线比。基线记的时候的数（1280x720）：贴图 5.6 MB（CustomEffect）到 185 MB（CSharpBeginner），TPP 126 MB；当场建的管线 4 到 94 条（CSharpIntermediate 最多）。
    - 第一次记基线是直接在主检出跑回归，同时我还在改主检出的代码，开发服务器热更新到改了一半的状态，几个样例失败。之后记基线都走验证工作树（`STRIDE_UPDATE_BUDGETS=1 pwsh tools/verify.ps1`），跑完把 `tools/budgets.json` 拷回来。
 2. **管线的预热**：`MeshRenderFeature.warm` 用 `createRenderPipelineAsync`，`SceneBuilder.preload` 的最后调（`ContentManager.pipelineWarmer`）。
    - 第一版在建实体之后等编译：等的那几帧里新旧两个场景的实体同时存在，ParticlesSample 换场景时旧脚本把新脚本登记的调试命令注销了。改成建实体之前等。
@@ -475,7 +475,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - 先单独跑 `tools/editor-accept/run.ps1 -Apps platformer,greybox`：两个都过（这几天的编辑器改动没弄坏验收）。
 - `pwsh tools/regress.ps1 -Apps greybox -Editor`：冒烟五项过了以后"ok 编辑器验收：1 个场景"，共 71 秒；报告里不改就保存逐字节不变、改名加子实体粘贴撤销重做、保存重开、试玩都对，截图（`~/.stride-ts/regress/greybox/editor-accept/`）里是改过的场景；跑完内容目录还原（git 里没有改动）。
-- `node tools/affected.ts <base> --editor`：改了编辑器时打印 platformer,greybox，不然是空的。
+- `node tools/lib/affected.ts <base> --editor`：改了编辑器时打印 platformer,greybox，不然是空的。
 
 ### 预制体句柄的结构类型（2026-11-21）
 
@@ -602,7 +602,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 ## WebGPU 能力实测（2026-11-21，给 G 组定取舍）
 
-页面 `apps/bench` 的 `capabilities.html`（`node tools/run-page.ts http://localhost:5182/capabilities.html capabilitiesResults --error capabilitiesError --screenshot <png>`），无头 Chrome 157，RX 9070 GRE（RDNA 4），1080p，GPU 时间戳取中位数。页面底下画出各项的画面，看过是对的。
+页面 `apps/bench` 的 `capabilities.html`（`node tools/lib/run-page.ts http://localhost:5182/capabilities.html capabilitiesResults --error capabilitiesError --screenshot <png>`），无头 Chrome 157，RX 9070 GRE（RDNA 4），1080p，GPU 时间戳取中位数。页面底下画出各项的画面，看过是对的。
 
 | 项 | 做法 | 结果 |
 |---|---|---|
@@ -620,7 +620,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 ## 材质库和特效库（2026-11-21）
 
-- 缩略图：`node tools/library-thumbnails.ts` 24 张约 40 秒（材质 0.6 到 1.3 秒一张，节点图的要编管线；特效等 2 秒游戏时间），共 37 KB。看过一遍：玻璃起初是白的（缺 `diffuseShading: false`）、大理石没有纹（改成噪声等于 0.5 的那条线）、石板有黑点（Voronoi 的距离在格子中心是 0，换成不错缝的砖）、布有摩尔纹（格子太密）、特效全是白的大团（大小随时间是直接设的大小，同 Stride；柔和圆点不乘粒子颜色——修在引擎里），都改了重画。
+- 缩略图：`node tools/dev/library-thumbnails.ts` 24 张约 40 秒（材质 0.6 到 1.3 秒一张，节点图的要编管线；特效等 2 秒游戏时间），共 37 KB。看过一遍：玻璃起初是白的（缺 `diffuseShading: false`）、大理石没有纹（改成噪声等于 0.5 的那条线）、石板有黑点（Voronoi 的距离在格子中心是 0，换成不错缝的砖）、布有摩尔纹（格子太密）、特效全是白的大团（大小随时间是直接设的大小，同 Stride；柔和圆点不乘粒子颜色——修在引擎里），都改了重画。
 - 主 Chrome 里 greybox 的编辑器：右下的"库"窗口，材质 17 张、特效 7 张卡片；把"金"拖到视口里的球上（拖放事件在页面里派发：扩展合成的鼠标拖动不触发 HTML 的原生拖放），球变成金的，状态栏"金 用在了 1 个实体上"；"篝火"拖到前墙顶上，加了 Campfire 实体（位置是放下处的表面）、选中；选中 Crate 点"铜"再点"用在选中的实体上"，箱子变成铜的；类别多时折行。都撤销了，拷进去的 Materials/Library 删了。
 - 单测：id 不重、每个都有缩略图和中英文的名字、类别；材质照字段描述没问题、节点图编得过、不用贴图；特效的组件照字段描述没问题、每个发射器有颜色和大小随时间。MCP：`list_library`，`use_library` 把金用在球的两个材质槽上、工程里改过的那份不覆盖、篝火加在给的位置、缺场景和不存在的报错。
 
@@ -715,7 +715,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
    5. ~~SDF 建模~~（2026-11-21 第一版：`.sdf.json` 存形状——球、圆角方块、胶囊、圆角圆柱、圆环、椭球，按顺序平滑地并、差、交，`smoothness` 是融合带的宽度；编辑器后端用原生工具模块的 `st_sdf_mesh`（StrideNative 0.39，Manifold 的等值面）烘成同名的模型：光滑的法线（距离场的梯度）、每个三角形用离它最近的形状的材质槽，再按几何误差简化；属性面板、MCP 改了马上烘、视口热重载；greybox 加了一个蘑菇，精度 0.03 米烘一次约 0.3 秒、模型 12 KB；见 decisions.md）。还剩：视口里直接拖形状（操纵器摆每个形状、拖手柄改尺寸）、颜色按融合过渡（顶点色）、展 UV、更多形状（圆锥、多边形挤出、样条扫掠）。轻量多边形编辑是下一项。
    6. ~~轻量多边形编辑~~（2026-11-21 做完：`.poly.json` 存顶点和 n 边形的面，后端烘成同名的模型（三角化、按光滑角的法线、自动 UV、可选镜像，引擎 `modeling/polyMesh.ts`）；编辑操作——挤出、内插、倒角（三个面相交的角）、合并、切割、连接、移动、删面、翻面、换材质——是纯函数（`modeling/polyEdit.ts`），MCP 的 `edit_poly` 调它们；编辑器里模型组件上点"编辑多边形"进视口的编辑模式：点、边、面三种选择（1、2、3，Shift、Ctrl 加选），操纵器拖选中的顶点（移动、旋转、缩放），工具条上的操作按选中的东西可用，松开、做完一步存文件、后端烘（约 20–60 毫秒）、视口热重载，撤销、重做是网格的一步；见 decisions.md）。还没做：环选、刀切、UV 编辑、软选择、顶点吸附、镜像那一半的预览。
    7. ~~音效生成器~~（2026-11-21：声音资源的 `encoding: 'synth'` 存 sfxr 的参数（几十个字节），加载时合成，不要音频文件（引擎 `audio/soundSynth.ts`，噪声按种子、同样的参数出同样的波形）；属性面板上方的音效生成器——拾取、激光、爆炸、升级、受击、跳跃、点选、随机，"变一点"，试听，字段改了自动再放一遍；"新建 → 音效"；MCP 的 `generate_sound`；collect-dodge 的三个音效换成了合成的，删了 wav；见 decisions.md）。
-   8. ~~材质库和特效库~~（2026-11-21：编辑器自带 17 种材质（金属、塑料和漆、玻璃、霓虹，混凝土、砖、石板、木头、大理石、布用材质节点图算，都不用贴图）和 7 种特效（篝火、烟柱、蒸汽、火花、魔法光球、浮尘、喷泉），`packages/editor/src/library/`；"库"窗口按类别列出带缩略图的卡片（缩略图用引擎画，`tools/library-thumbnails.ts`），材质拖到视口里的物体上或者选中再点就用上，特效拖到视口里放在放下处的表面上；用的时候拷一份进工程；MCP 的 `list_library`、`use_library`；顺手修了粒子的柔和圆点不乘粒子颜色（颜色随时间不起作用），greybox 的序列帧重烘；见 decisions.md）。
+   8. ~~材质库和特效库~~（2026-11-21：编辑器自带 17 种材质（金属、塑料和漆、玻璃、霓虹，混凝土、砖、石板、木头、大理石、布用材质节点图算，都不用贴图）和 7 种特效（篝火、烟柱、蒸汽、火花、魔法光球、浮尘、喷泉），`packages/editor/src/library/`；"库"窗口按类别列出带缩略图的卡片（缩略图用引擎画，`tools/dev/library-thumbnails.ts`），材质拖到视口里的物体上或者选中再点就用上，特效拖到视口里放在放下处的表面上；用的时候拷一份进工程；MCP 的 `list_library`、`use_library`；顺手修了粒子的柔和圆点不乘粒子颜色（颜色随时间不起作用），greybox 的序列帧重烘；见 decisions.md）。
    9. ~~S2 的验收~~（2026-11-21：`apps/campsite`，黄昏的营地——木屋是白盒、石头火塘木头提灯是 SDF、箱子是多边形编辑、屋顶瓦片石头草地是自己写的材质节点图、木头石板拉丝钢和篝火从库里拿、噼啪声是音效生成器做的，一张外部的图、一个外部的模型都没有；agent 那遍全程用 MCP（`apps/campsite/scripts/build.ts`，十几秒搭完），人那遍在编辑器里看过、改过白盒；内容一共 67 KB（platformer 导入的超过 1.1 MB）；1080p 的 GPU 每帧 1.6 毫秒；见 decisions.md）。S2 做完。
 
 ## 换机器交接时的快照（2026-11-20）
@@ -854,7 +854,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 ## W3 样条网络：第一步（2026-11-22）
 
-- 格式和几何：`content/formats/splineFormat.ts`、`modeling/spline.ts`（采样、拉伸、立柱、导线）、`pipeline/src/splineModel.ts`；编辑器后端的烘焙表、新建资源（一段弯的 6 米宽的路）、字段描述（横截面是按 type 分的联合）、中文。单测：路径经过控制点、等距、right 水平、侧倾、首尾相连；道路的宽度、三角形朝着法线；围栏立柱数、导线中点下垂；烘出电杆、导线两个槽。
+- 格式和几何：`content/formats/splineFormat.ts`、`modeling/spline.ts`（采样、拉伸、立柱、导线）、`pipeline/src/bakers/splineModel.ts`；编辑器后端的烘焙表、新建资源（一段弯的 6 米宽的路）、字段描述（横截面是按 type 分的联合）、中文。单测：路径经过控制点、等距、right 水平、侧倾、首尾相连；道路的宽度、三角形朝着法线；围栏立柱数、导线中点下垂；烘出电杆、导线两个槽。
 - open-world 的 Valley：广场上一条 S 形的路（7 米宽）、一圈圆角的围栏（每 3 米一根立柱、两根横杆）、一条架空线（每 40 米一根 10 米的电杆、三根导线下垂 1.2 米）；写进文件以后开发服务器的编辑器后端马上烘出模型（13、141、32 KB）。测试浏览器里看过：路、围栏、电杆和导线都在，帧时间 p50 8.33、p95 8.47 毫秒，绘制 36 次。字段检查（`check-fields.ts`）所有工程 0 个问题。
 
 - 第二步地形贴着样条（同一天，native-dev 见 pnpm-workspace.yaml）：原生的折线地物（贴合、只削、只填，每个点的高度，线段的格子）加测试（路面上逐位是路的高度、过渡带、只削只填、2000 个点 20 公里的长路）；地形文件的 `splines`、加载时解析（`terrainPath`）、增量重算比较路径、资源引用、字段和中文。Valley：广场上的路压平（本来就在广场上），从广场东边下去一条 7 米宽的路翻过起伏（控制点的高度按路线上量的地面定，最低处路比地面高二十多米），过渡 25 米。测试浏览器里看：之前是广场边上自然的坡，之后路贴着地、下面填起一道路堤，边坡陡，按高山地形的材质规则成了岩石；控制点处地面正好比路面低 0.1 米（3.899、1.9）。编辑器里只改样条文件（末端挪 10 米）：地形跟着重新加载，重算 29 块（画着 300 多块），挪过去的末端下面地面 -1.1。
@@ -869,7 +869,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - Valley：SDF 的松树（树干加四层针叶，0.2 米的网格，6 KB）和石头，`Scatter/Valley.scatter.json`：松树每公顷 120 棵、坡 32° 以内、170 米以下、成片盖住 45%，石头每公顷 12 块、坡 12°～60°、顺着坡、埋进去一点。测试浏览器里看：广场里、路上没有，松树一片一片的，石头在坡上；1700 个实例，静止 120 Hz（update 0.44 毫秒，其中原生的变换和剔除 0.63），每秒 50 米飞过去 120 Hz、update 的 p99 4 毫秒（撒格子的 2 毫秒预算加建实体）。编辑器里改密度（120 → 40）马上重撒：1704 → 704 个，改回来又是 1704 个。观察点没挪、格子都撒好时不重选格子（update 0.51 → 0.44 毫秒）。
 - 工具：CI 上 csharp-intermediate 的失败查清了——不是卡住：过了的那些次作业也要 12～29 分钟（随运行器的快慢），最近两次是被每个样例 1500 秒的上限掐断的；作业的时限改成 45 分钟、每个样例 2400 秒（5d93890）。
 
-- 第二步参数化的树（同一天）：`content/formats/treeFormat.ts`、`modeling/tree.ts`（生长、枝的圆管、叶片卡片，加测试：顶点数、同种子同一棵、换种子不同、绕向、针叶树的树干收到梢和侧枝越往上越短、文件检查），`modeling/meshBuilder.ts`（从 spline.ts 挪出来，样条和树共用），`pipeline/src/treeModel.ts`，编辑器后端的烘焙种类 `tree`、新建"参数化的树"、字段、中文、资源引用（树 → 材质）。Valley：`Trees/Oak.tree.json`（三层，叶簇的 SVG）、`Trees/Pine.tree.json`（针叶树，针叶的 SVG、枝条略下垂），摆放里的松树换成它、加一层橡树（每公顷 40 棵、成片）。测试浏览器里看：林子里橡树一团团的叶子、松树一层层的枝；针叶第一版太密（卡片像实心的方块），第二版太稀（远处像枯树：细线在 mip 里被挖没），第三版粗一点的针叶加更多卡片。3900 个实例、84 次实例化的绘制，120 Hz（GPU 上阴影 2.0、不透明 1.6 毫秒）。
+- 第二步参数化的树（同一天）：`content/formats/treeFormat.ts`、`modeling/tree.ts`（生长、枝的圆管、叶片卡片，加测试：顶点数、同种子同一棵、换种子不同、绕向、针叶树的树干收到梢和侧枝越往上越短、文件检查），`modeling/meshBuilder.ts`（从 spline.ts 挪出来，样条和树共用），`pipeline/src/bakers/treeModel.ts`，编辑器后端的烘焙种类 `tree`、新建"参数化的树"、字段、中文、资源引用（树 → 材质）。Valley：`Trees/Oak.tree.json`（三层，叶簇的 SVG）、`Trees/Pine.tree.json`（针叶树，针叶的 SVG、枝条略下垂），摆放里的松树换成它、加一层橡树（每公顷 40 棵、成片）。测试浏览器里看：林子里橡树一团团的叶子、松树一层层的枝；针叶第一版太密（卡片像实心的方块），第二版太稀（远处像枯树：细线在 mip 里被挖没），第三版粗一点的针叶加更多卡片。3900 个实例、84 次实例化的绘制，120 Hz（GPU 上阴影 2.0、不透明 1.6 毫秒）。
 - 第三步植被的风（同一天）：材质的 `wind`（资源格式、`Material.wind`、`setWind`、加载、字段描述和中文），`RenderSystem.wind`（Game 每帧从 game.wind 写：速度乘阵风），视图的 uniform 多一个 `wind`（VIEW_FLOATS 288 → 292），材质的 uniform 多一个（576 → 592 字节）、顶点阶段也看得见（第一次没开可见性，管线校验报错，页面里看出来的），网格着色器的 `windSway`（transformVertex 和上一帧的位置都过它）。Valley：树皮、橡树叶、针叶的材质 bend 0.45、叶子抖 0.08 和 0.03，加一个 7 米每秒、阵风 ±50% 的风区。测试浏览器里看：隔 0.7 秒的两张截图相减，树冠的边都在动、地面不动，叶子不离开枝；14 米的松树顶上摆 0.4～0.6 米；120 Hz。
 - 第四步草（同一天）：摆放层的 `grass`、`material`、`cellSize`（格式、检查、字段、中文），`ScatterAsset` 带每层的材质，`ScatterSystem` 撒草的格子（`#buildGrass`：先建格子的实体，工作线程上的高度页好了再撒、合成网格挂上去，那时格子已经拿掉就不挂；拿掉格子时放掉网格），`gridGround`（高度页插出高度和法线）、`grassBlades`（草叶合成网格）加测试；材质的风加 `mode: 'grass'`（着色器的 windSway 多一个 UV 参数）；成片的阈值按点抖 ±0.08（斑块的边渐稀，树、石头也是）。Valley：`Textures/GrassBlade.svg`（根深梢浅的渐变）、`Materials/GrassBlades`（两面画、风的草模式），摆放加一层草：每平方米 40 片、50 米以内、坡 35° 以内、成片盖住 70%。测试浏览器里看：第一张在地下（相机比地面低），双面的草叶从下面看像飘在天上；第二张在广场上（压平的地物里不撒，对的）；第三张在橡树林边：一片草地、斑块的边是硬线 → 抖阈值以后渐稀。隔 0.6 秒的两帧相减，草梢和树都在动。120 Hz，不透明那一遍 1.8 → 2.1 毫秒。
 - 第五步细节层次（同一天）：摆放层的 `lods`（格式、检查、字段、中文），`lodTier`（带回差）、`keepOf`，`ScatterAsset.models` 变成每层每个层次，格子记着层次、变了重撒，草的格子换层次时旧的留到新的好了；`scatterCell` 多一个 keep；树的每根枝自己的随机数（测试：少长一层，树干和第一层枝除了梢以外逐位相同）；草合网格挪进 update 的预算（`#ready` 队列，编辑器按需出帧时叫醒一帧）；`scatterCell`、`grassBlades` 去掉逐点建的对象（实例带上地面的法线，草叶不再取一次地面）：一个 16 米格子 4755 片草，摆 9 → 7 毫秒、合网格 14 → 3.5 毫秒。Valley：`Trees/OakFar.tree.json`、`PineFar.tree.json`，松树、橡树 120 米外换远处版，草 25、38 米外留 1/2、1/4，草的格子 8 米。测试浏览器里：同一个俯瞰的视角阴影 2.22 → 1.09 毫秒、不透明 2.14 → 1.97；飞过去第一版一帧卡到 92 毫秒（草在回调里合网格）→ 挪进预算 33 → 再去掉对象、格子 8 米以后 p99 8.5 毫秒；地面上看草往远处渐渐变稀。中途电脑死机重启：工作区的改动都在（文本文件没有截断、零字节），重跑类型检查、测试、字段检查都过，页面里重看一遍 120 Hz。
@@ -880,7 +880,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 工具：编辑器后端打开工程时补烘开着时没看到的改动（开发服务器停着时 agent 写了树、白盒这些的源文件，模型还是旧的）：按内容的哈希比上次烘的（记在工程的 `node_modules/.cache/stride-editor/bakes.json`；不用文件的修改时间，新检出的工作树里靠不住），没记过的模型在就当是对的。实测：第一次启动什么都不烘，停着时改了橡树的种子再启动烘 1 个，改回来再烘 1 个。
 ## W5 程序化建筑和城市（2026-11-22 起）
 
-- 第一步单栋建筑的文法：`content/formats/buildingFormat.ts`（BuildingFile、图案的解析 `parseFacadePattern`、检查）、`modeling/building.ts`（体块的底面和退台 `insetPolygon`、立面的框架（从外面看 u 从左到右）、一层的铺法 `layoutFloor`、构件的几何、屋顶），`pipeline/src/buildingModel.ts`，编辑器后端的烘焙种类 `building`、新建"程序化建筑"（三层的小楼）、字段（底面、屋顶、立面规则、构件按 JSON 改）、中文、资源引用（建筑 → 材质），MCP 的 `write_asset` 写文法出模型（加了测试），引擎的测试（图案、铺满、退台、高度、玻璃凹在墙里、三角形的绕向和法线一致、尖顶和圆的底面、检查）。第一版构件的窗框宽度和"窗框用哪个材质槽"都叫 `frame`，后端生成时报错才看出来，材质槽改成 `slots: { wall, glass, frame }`。Valley 的广场：`Buildings/Tower`（三层裙房、16 层玻璃幕墙退 4 米、两层冠顶的钢鳍片加玻璃穹顶）、`Rotunda`（28 边的圆楼、底层一圈门、上面退台、钢的穹顶）、`Apartment`（六层，窗和阳台交替、腰线、女儿墙）、三栋挨着的 `Shophouse`（店面、带小阳台的窗、尖顶）。测试浏览器里看：窗洞凹进去有阴影、阳台的栏板、腰线、穹顶的高光都对；尖顶从墙脚看不见（坡面在檐口后面），从高处看得见。全景 120 Hz，GPU 3.6 毫秒（不透明 1.8、阴影 0.8）。三角形：塔楼 2.3 万（窗框和幕墙骨架是 1.96 万），公寓 1.2 万。
+- 第一步单栋建筑的文法：`content/formats/buildingFormat.ts`（BuildingFile、图案的解析 `parseFacadePattern`、检查）、`modeling/building.ts`（体块的底面和退台 `insetPolygon`、立面的框架（从外面看 u 从左到右）、一层的铺法 `layoutFloor`、构件的几何、屋顶），`pipeline/src/bakers/buildingModel.ts`，编辑器后端的烘焙种类 `building`、新建"程序化建筑"（三层的小楼）、字段（底面、屋顶、立面规则、构件按 JSON 改）、中文、资源引用（建筑 → 材质），MCP 的 `write_asset` 写文法出模型（加了测试），引擎的测试（图案、铺满、退台、高度、玻璃凹在墙里、三角形的绕向和法线一致、尖顶和圆的底面、检查）。第一版构件的窗框宽度和"窗框用哪个材质槽"都叫 `frame`，后端生成时报错才看出来，材质槽改成 `slots: { wall, glass, frame }`。Valley 的广场：`Buildings/Tower`（三层裙房、16 层玻璃幕墙退 4 米、两层冠顶的钢鳍片加玻璃穹顶）、`Rotunda`（28 边的圆楼、底层一圈门、上面退台、钢的穹顶）、`Apartment`（六层，窗和阳台交替、腰线、女儿墙）、三栋挨着的 `Shophouse`（店面、带小阳台的窗、尖顶）。测试浏览器里看：窗洞凹进去有阴影、阳台的栏板、腰线、穹顶的高光都对；尖顶从墙脚看不见（坡面在檐口后面），从高处看得见。全景 120 Hz，GPU 3.6 毫秒（不透明 1.8、阴影 0.8）。三角形：塔楼 2.3 万（窗框和幕墙骨架是 1.96 万），公寓 1.2 万。
 - 第二步沿街摆楼（同一天）：`content/formats/cityFormat.ts`（CityFile、检查）、`modeling/city.ts`（纯函数 `cityLots`：沿每条路径两边按 1 米取样、按权重挑楼、矩形和路的线段（网格加速）、和摆下的楼（分离轴）碰了就往前挪 2 米），`world/City.ts`（`City` 组件、`CityAsset`、`CitySystem`：等地形加载好（`TerrainSystem.settled`）、按四个角往下打的地面取最低的放楼、楼是子实体，城市文件、路、模型换了整个重摆，调试命令 `city`），场景组件、加载、资源引用（场景 → 城市 → 路、楼）、字段和中文、编辑器新建"城市"。程序化摆放避开楼：城市系统给出楼的占地矩形和版本、每次改动的范围（`obstacles`、`changesSince`），`ScatterSystem` 换到地形本地坐标，撒的时候离楼 avoidPaths 米以内不撒，楼变了只把盖到的格子标成要重撒。整理先单独提交了：摆放和树里各一份的整数哈希挪进 `data/hash.ts`（这次是第三处要用），样条占地的宽度挪进 `splineCorridorWidth`。Valley：`Cities/EastTown`（沿东路网、东边 500 米见方的范围，联排、店铺、公寓、办公楼多，圆楼、塔楼少）加两种楼 `Buildings/Townhouse`、`Office`。测试浏览器（无头）里看：124 栋楼沿路两边排开、路口留空，平视的街景两边是公寓和联排、路边一条草、远处是塔楼，树和草都没有长进楼里；120 Hz，GPU 2.2 毫秒（不透明 0.57、阴影 1.37）。
 - 第三步填街区（同一天）：城市文件的 `fill`（`spacing`、`maxDistance`），`cityLots` 里放一栋楼的判断抽成一个函数，临街一排和填街区共用；填的时候在范围（或路网外扩 maxDistance）里每 spacing 米一个点、按哈希抖动，离最近的路中心线 maxDistance 以内的按由近到远排序，挨个挑楼、朝着最近的路（离路最近的点指向它的方向）放，碰到路、楼就跳过；摆下的楼按 32 米的网格存（以前是挨个比，几百栋时是平方的）。测试：临街那排不变，后面的楼更远、朝着路、不出 maxDistance、不重叠不压路。东路的小镇 `fill: { spacing: 14, maxDistance: 90 }`：340 栋楼（临街 124 栋），俯瞰像一片城，120 Hz，GPU 2.9 毫秒（阴影 1.65、不透明 0.81）。
 - 第四步室内映射（同一天）：材质的 `interior`（资源格式、`Material.interior`、加载、字段和中文），材质常量多两个 vec4（592 → 624 字节），网格着色器的 `interiorLight`：只给竖直的面（|n.y| < 0.3），房间的格子按世界坐标（加渲染原点取模的部分）排，射线换到房间坐标里和盒子的五个面求交，按格子（和立面的平面）哈希出墙色、家具的位置、亮不亮灯；没亮灯的房间按窗外的天光（天空的球谐朝外的那一半、环境光）乘 0.35、越往里越暗，亮灯的加暖光；乘 1 − 环境镜面的比例加到颜色上。Valley 的 `Materials/Glass` 换成深色、少一点金属度的玻璃开室内（4 × 3.6 × 5 米的房间）。测试浏览器（无头）里看：白天平视的街上办公楼的幕墙后面一层层的房间、有视差、能看到靠墙的家具；夜里（`stride call sky {"time": 21.5}`）一片亮着的窗户，第一版亮度 2 在夜里的曝光下发白，改成默认 0.5 是暖色、看得出房间的层次（改材质文件以后要刷新页面：楼的模型引用的材质在试玩页不热更新）。同一个夜景视角 A/B：不透明那一遍 0.607 → 0.667 毫秒。
@@ -905,6 +905,10 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 - 顺手：CI 的 action 从 Node 20 的版本升到 Node 24 的（checkout v7、setup-node v7、cache v6、pnpm/action-setup v6；看过各大版本的说明，我们显式写了 `cache: pnpm`，不受 setup-node v6 只自动缓存 npm 的影响），日志里不再有 Node 20 弃用的警告。
 
 - ac26d90 的 CI 挂在 simple-audio：`stride open` 60 秒没等到页面连上（新的输出捕获把整段日志打出来了），本机 31 秒就过。`open`、`wait` 等页面的时限是写死的 60、30 秒，没看 CI 设的 `STRIDE_TIMEOUT`（300 秒，别的命令都看）：改成也看它。
+
+## 整理整个仓库的目录（2026-11-22，用户要的）
+
+做完 W6 第七步以后整理（规则见 decisions.md 的"目录的分法"），两次提交：引擎（37 个文件搬家，`world/Water.ts` 拆出 `WaterRenderer.ts`），pipeline、editor、tools（20 个）。搬家的脚本：映射表 → 先按新位置改写全仓库的相对 import（含 `new URL`、`path.resolve` 里的相对路径），再 `git mv`，最后把文档、导出表、配置里写全的路径换掉；按 `import.meta.dirname` 拼的 `..` 和 PowerShell 里的路径手改（`smoke.ts` 找 CLI 和 `budgets.json`、`affected.ts`、`library-thumbnails.ts`、`build-jolt-wasm.ps1`、`regress.ps1`）。顺带：`tools/lib/affected.ts` 加了 `world/`、`modeling/` → open-world、greybox、particles-sample 的规则，`tools/dev/` 不触发冒烟；删了没人用的 `vendor/`（vue-tsx-pro 早改成从 GitHub 预发行版装）。类型检查、四个包的测试、字段检查都过；全部样例的回归在验证工作树里跑。
 
 ## W6 水体（2026-11-22 起）
 

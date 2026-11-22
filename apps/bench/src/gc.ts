@@ -1,5 +1,5 @@
 // 不同分配模式下的帧节奏。每个场景用 requestAnimationFrame 跑几秒，前后打 performance mark；
-// tools/gc-trace.cjs 录 Chrome trace，统计落在每个窗口里的 GC 事件，停顿时长取自 V8 自己的记录，不靠帧间隔猜。
+// tools/dev/gc-trace.cjs 录 Chrome trace，统计落在每个窗口里的 GC 事件，停顿时长取自 V8 自己的记录，不靠帧间隔猜。
 
 interface Scenario {
   readonly name: string;

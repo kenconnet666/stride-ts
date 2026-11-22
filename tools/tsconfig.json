@@ -1,4 +1,4 @@
 {
   "extends": "../tsconfig.base.json",
-  "include": ["*.ts", "editor-accept/*.ts"]
+  "include": ["*.ts", "lib/*.ts", "dev/*.ts", "editor-accept/*.ts"]
 }

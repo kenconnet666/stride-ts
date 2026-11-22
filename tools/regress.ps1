@@ -6,7 +6,7 @@
 # 几个样例同时跑（-Parallel，默认每 8 个逻辑核一路、最多 4 路）：每个样例在自己的子进程里跑，状态目录和端口各不相同。冒烟只看功能和
 # 计数，不看帧时间，显卡够用时并行不影响结果；测帧时间用 measure.ps1，它一个一个来。
 # 用法：pwsh tools/regress.ps1 [-Apps physics-sample,topdown-rpg | -Changed [-Base HEAD~1]] [-Parallel 4]
-#   -Changed：只跑改动影响到的样例（和 -Base 比，默认 origin/main，见 tools/affected.ts），第 2 层测试；全量在 CI 里跑。
+#   -Changed：只跑改动影响到的样例（和 -Base 比，默认 origin/main，见 tools/lib/affected.ts），第 2 层测试；全量在 CI 里跑。
 #   提交后马上推送了的，用 -Base 指推送前的提交（例如 HEAD~1）
 #   -Slow 300：每帧多忙等 300 毫秒（页面地址的 stride-slow），本机复现 CI 的软件 WebGPU 上的慢帧（冒烟的时序问题）
 #   -AppTimeout 600：一个样例（冒烟加验收）最多跑多少秒（默认本机 600、CI 上 2400：csharp-intermediate 在 CI 的软件 WebGPU 上
@@ -14,7 +14,7 @@
 #     打印到这时为止的输出（看最后过的是哪一步），算失败。不设的话卡住的冒烟在 CI 上占满作业的时限，什么也不打印
 #   -Editor：冒烟过了以后在同一个开发服务器上再跑编辑器验收（tools/editor-accept/accept.ts：打开、逐个实体画面板、不改就保存、
 #     改、保存、重开、试玩；内容目录先保护、验完还原）。-Changed 时改了编辑器、场景的加载和格式、验收工具就自动对 platformer、
-#     greybox 跑（tools/affected.ts --editor）
+#     greybox 跑（tools/lib/affected.ts --editor）
 param(
     [string[]]$Apps,
     [switch]$Changed,
@@ -109,12 +109,12 @@ if ($App) {
 }
 
 $all = Get-ChildItem apps -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'scripts' 'smoke.ts') } | ForEach-Object Name
-# pwsh -File 把 `-Apps a,b` 当成一个字符串传进来，自己按逗号拆；-Changed 按改动挑（tools/affected.ts）
-$selected = if ($Changed) { (node (Join-Path $root 'tools' 'affected.ts') $Base) -split ',' | Where-Object { $_ } }
+# pwsh -File 把 `-Apps a,b` 当成一个字符串传进来，自己按逗号拆；-Changed 按改动挑（tools/lib/affected.ts）
+$selected = if ($Changed) { (node (Join-Path $root 'tools' 'lib' 'affected.ts') $Base) -split ',' | Where-Object { $_ } }
     elseif ($Apps) { $Apps -split ',' | ForEach-Object Trim }
     else { $all }
 # 跑编辑器验收的样例：-Editor 时是选中的全部，-Changed 时按改动（改了编辑器才有）
-$editorApps = @(if ($Editor) { $selected } elseif ($Changed) { (node (Join-Path $root 'tools' 'affected.ts') $Base --editor) -split ',' | Where-Object { $_ } })
+$editorApps = @(if ($Editor) { $selected } elseif ($Changed) { (node (Join-Path $root 'tools' 'lib' 'affected.ts') $Base --editor) -split ',' | Where-Object { $_ } })
 $selected = @(@($selected) + $editorApps | Select-Object -Unique)
 # 没有冒烟脚本的样例（新建的工程还没写）不跑，说一声
 $missing = @($selected | Where-Object { $_ -notin $all })

@@ -3,14 +3,14 @@
 // 检查：场景在跑、导航网格建好；点地面角色寻路走过去；鼠标指着箱子时高亮；点箱子走过去出拳，箱子碎掉、掉出金币；
 // 掉落的金币和场景里的金币都能拾取（3 秒后移除）；背景音乐在放，箱子碎的时候有音效和粒子特效；出拳的碰撞体挂在右手上。DynamicScene：一开始加载中央的分块，走到东边的
 // 触发器里加载东边的分块、离开中央时卸载它，角色一直站在地面上，导航网格跟着重建。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('topdown-rpg');
 
 stride('eval', 'location.reload()');
 await sleep(1500);
 stride('wait');
-// 等待都按游戏时间和状态（tools/smoke.ts 的 until、seconds）：CI 的软件 WebGPU 上一帧要几百毫秒
+// 等待都按游戏时间和状态（tools/lib/smoke.ts 的 until、seconds）：CI 的软件 WebGPU 上一帧要几百毫秒
 stride('eval', PAGE_HELPERS);
 stride('eval', 'until(() => strideGame.navigation.ready, 10)');
 const status = stride('status') as { status: string; error: string | null; entities: number };

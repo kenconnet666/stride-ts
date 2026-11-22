@@ -20,7 +20,7 @@ import { createProject } from './template.ts';
 import { existsSync, realpathSync, watch } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
-import { createEditorMcpServer, type McpProjects } from '../mcp/server.ts';
+import { createEditorMcpServer, type McpProjects } from './mcpServer.ts';
 
 const [command, directory = '.', ...rest] = process.argv.slice(2);
 if (command === 'new') {

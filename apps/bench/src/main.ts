@@ -5,7 +5,7 @@ import { createRenderCases } from './render-cases';
 import { runCases, type Result } from './harness';
 
 declare global {
-  // tools/bench.cjs 读这两个值。
+  // tools/dev/bench.cjs 读这两个值。
   var benchResults: Result[] | undefined;
   var benchError: string | undefined;
 }

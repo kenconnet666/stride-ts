@@ -5,7 +5,7 @@
 import { BUILDING_SLOTS, encodeModel, type BuildingFile } from '@stride-ts/engine/content-format';
 import { buildingMeshes } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { compressMeshes, type SourceMesh } from './mesh.ts';
+import { compressMeshes, type SourceMesh } from '../mesh.ts';
 
 /** 默认的四个材质槽的网格名（多出来的槽叫 slot<i>）。 */
 const SLOT_NAMES = ['wall', 'glass', 'frame', 'roof'];

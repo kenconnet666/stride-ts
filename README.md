@@ -54,7 +54,7 @@ pnpm --filter @stride-ts/platformer dev
 | `packages/cli` | 调试 CLI `stride`：查看和操作正在运行的游戏（状态、实体、输入、截图比较、性能），见 [packages/cli/README.md](packages/cli/README.md) |
 | `packages/editor` | `@stride-ts/editor`：编辑器。Node 后端（开发服务器上的 Vite 插件：工程、资源数据库、保存和移动资源、生成 `src/assets.gen.ts`）和界面（Vue 加 vue-tsx-pro：场景树、属性面板、视口、资源浏览器、预制体），样例 `pnpm dev` 以后开 `/__stride/editor/`；见 [packages/editor/README.md](packages/editor/README.md) |
 | `apps/sandbox` | 冒烟测试页：跨源隔离、原生模块的工作线程、WebGPU、帧循环、Jolt 步进 |
-| `apps/bench` | 数据布局和跨边界开销的基准（JS 对象、JS 堆的 TypedArray、wasm 共享内存、JS 到 wasm 的调用、上传 GPU、创建和每帧更新）。`pnpm --filter @stride-ts/bench dev` 在 5182 端口，`tools/bench.cjs` 在无头 Chrome 里跑并打印结果（`?only=render` 只跑渲染提交）；`gc.html` 是 GC 场景，用 `tools/gc-trace.cjs` 跑。结论见 [docs/architecture.md](docs/architecture.md) 的"实测"各节和"复杂场景的帧预算估算" |
+| `apps/bench` | 数据布局和跨边界开销的基准（JS 对象、JS 堆的 TypedArray、wasm 共享内存、JS 到 wasm 的调用、上传 GPU、创建和每帧更新）。`pnpm --filter @stride-ts/bench dev` 在 5182 端口，`tools/dev/bench.cjs` 在无头 Chrome 里跑并打印结果（`?only=render` 只跑渲染提交）；`gc.html` 是 GC 场景，用 `tools/dev/gc-trace.cjs` 跑。结论见 [docs/architecture.md](docs/architecture.md) 的"实测"各节和"复杂场景的帧预算估算" |
 | `tools/` | 回归、验证、测量的脚本，桌面 Stride 的截图工程（`tools/stride-capture`），调试桥扩展，见 [tools/README.md](tools/README.md) |
 
 ## 技术栈的组织方式（2026-11-17，用户的方向）

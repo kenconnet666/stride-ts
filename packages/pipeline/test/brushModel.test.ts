@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { decodeModel, type BrushFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeBrushModel } from '../src/brushModel.ts';
+import { bakeBrushModel } from '../src/bakers/brushModel.ts';
 
 describe('关卡白盒的烘焙', () => {
   let tools: StrideTools;

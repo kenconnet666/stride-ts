@@ -1,15 +1,15 @@
 // 在自己的无头 Chrome 里打开一个不连调试中枢的页面（apps/bench 的各个页面），等它把结果放到全局变量上，打印页面的文字，
 // 结果写成 JSON。和平时用的浏览器分开（记录和用户目录在 ~/.stride-ts/run-page），跑完就关。
-//   node tools/run-page.ts <url> <结果的全局变量> [--error <出错的全局变量>] [--out <json 文件>] [--screenshot <png 文件>] [--timeout <秒，默认 300>]
+//   node tools/lib/run-page.ts <url> <结果的全局变量> [--error <出错的全局变量>] [--out <json 文件>] [--screenshot <png 文件>] [--timeout <秒，默认 300>]
 //     [--chrome-arg <Chrome 的参数>]...（可以给几个，比如 CI 里用软件 WebGPU：--chrome-arg=--use-webgpu-adapter=swiftshader）
-//   node tools/run-page.ts http://localhost:5182/displacement.html displacementResults --error displacementError
+//   node tools/lib/run-page.ts http://localhost:5182/displacement.html displacementResults --error displacementError
 import { writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
 // packages/cli 的状态目录在模块加载时读环境变量，所以先设好再导入
 process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', 'run-page');
-const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('../packages/cli/src/chrome.ts');
+const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('../../packages/cli/src/chrome.ts');
 
 const [url, result] = process.argv.slice(2);
 const option = (name: string) => {

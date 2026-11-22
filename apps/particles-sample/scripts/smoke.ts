@@ -5,7 +5,7 @@
 // - ChildParticles：四组子粒子都生出来了；CustomMaterials：着色器类和自定义材质的发射器在画；
 // - CustomParticles：游戏自己的生成器、形状；Lasers：闪电弧，激光的网格材质是颜色树的自发光、加法透明、两面画。
 // 最后回到 MainScene，没有错误日志（finish 检查）。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('particles-sample');
 

@@ -182,7 +182,7 @@
 
 ### E2 的结果（2026-11-19，第一部分：统一的细分级别）
 
-页面：`apps/bench` 的 `displacement.html`（`node tools/run-page.ts http://localhost:5182/displacement.html displacementResults --error displacementError`），数据用 E1 的工具加 `--export` 导出。Lucy，基础网格 1560 个三角形，细分 3 级（每个基础三角形 64 个微三角形），位移 8 位（每个基础顶点带自己的位移范围，三角形里插值）。两条路径画同样的三角形、同样的片元着色器：
+页面：`apps/bench` 的 `displacement.html`（`node tools/lib/run-page.ts http://localhost:5182/displacement.html displacementResults --error displacementError`），数据用 E1 的工具加 `--export` 导出。Lucy，基础网格 1560 个三角形，细分 3 级（每个基础三角形 64 个微三角形），位移 8 位（每个基础顶点带自己的位移范围，三角形里插值）。两条路径画同样的三角形、同样的片元着色器：
 
 - **位移**：一个基础三角形一个实例，顶点缓冲只有细分图案的格点 (i, j)；顶点着色器取三个基础顶点和法线、插值、按格点的编号取位移。
 - **静态**：重建好的顶点和下标。
@@ -222,7 +222,7 @@ RTX 3050 笔记本，1280×720，GPU 时间用时间戳查询量（每档 40 帧
 
 ### E3 的结果（2026-11-19：程序化的位移）
 
-页面：`apps/bench` 的 `procedural.html`（`node tools/run-page.ts http://localhost:5182/procedural.html proceduralResults --error proceduralError`）。一面 4 × 2 米的砖墙，高度是程序化的函数（砖、灰缝、每块砖高低不同、表面的噪声），灰缝到砖面 12 毫米。先把它求值成一页贴图（高度、砖的遮罩、法线，2048 × 1024，2 毫米一个纹素，带 mip）：这就是第二节说的"按页求值"，**求值一页 11 到 12 毫秒**。三条路径都采这一页，着色相同：
+页面：`apps/bench` 的 `procedural.html`（`node tools/lib/run-page.ts http://localhost:5182/procedural.html proceduralResults --error proceduralError`）。一面 4 × 2 米的砖墙，高度是程序化的函数（砖、灰缝、每块砖高低不同、表面的噪声），灰缝到砖面 12 毫米。先把它求值成一页贴图（高度、砖的遮罩、法线，2048 × 1024，2 毫米一个纹素，带 mip）：这就是第二节说的"按页求值"，**求值一页 11 到 12 毫秒**。三条路径都采这一页，着色相同：
 
 - **法线**：一个平面，法线取自这一页；
 - **视差**：同一个平面，片元着色器里沿视线在高度场里步进找交点（视差遮蔽映射，16 步或 48 步，再二分 4 次）；

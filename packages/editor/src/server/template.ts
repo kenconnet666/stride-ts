@@ -1,7 +1,7 @@
 /**
  * 新建工程（`stride-editor new <目录>`）：在仓库的 apps/ 下建一个能跑的空游戏，编辑器直接打开它接着搭。
  *
- * - 工程：package.json、vite.config.ts（仓库的 tools/vite-app.ts：跨源隔离、调试中枢、编辑器）、index.html、src/main.ts（入口，
+ * - 工程：package.json、vite.config.ts（仓库的 tools/lib/vite-app.ts：跨源隔离、调试中枢、编辑器）、index.html、src/main.ts（入口，
  *   开发时热重载）、src/game/<名字>Game.ts（加载 MainScene），端口取仓库里各个应用用过的最大端口 + 2。
  * - 冒烟测试 scripts/smoke.ts（tools/regress.ps1、CI 都跑它）：主场景跑起来、有实体、没有错误日志。游戏搭起来以后往里加检查。
  * - 场景 public/content/MainScene.scene.json：相机、投阴影的太阳、物理天空（太阳跟着它）、地面（JSON 写的平面模型、
@@ -43,7 +43,7 @@ export async function createProject(root: string, { port }: NewProjectOptions = 
       dependencies: { '@stride-ts/engine': 'workspace:*', '@stride-ts/native': nativeVersion },
       devDependencies: { vite: '^8.3.8' },
     }),
-    'vite.config.ts': `import { strideApp } from '../../tools/vite-app.ts';\n\nexport default strideApp(${devPort});\n`,
+    'vite.config.ts': `import { strideApp } from '../../tools/lib/vite-app.ts';\n\nexport default strideApp(${devPort});\n`,
     // 每个样例各查各的类型（根上的 pnpm typecheck 挨个跑）
     'tsconfig.json': json({ extends: '../../tsconfig.base.json', include: ['src', 'scripts', 'vite.config.ts'] }),
     'index.html': indexHtml(name),
@@ -177,7 +177,7 @@ function smokeTs(folder: string): string {
   return `// 冒烟测试：对着正在运行的页面（开发服务器或 preview，\`stride open\` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/${folder} smoke [-- --hub <中枢名的一部分>]
 // 检查：主场景跑起来了、有实体；没有错误日志（finish 检查）。游戏搭起来以后在这里加玩法的检查。
-import { startSmoke } from '../../../tools/smoke.ts';
+import { startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, check, finish } = startSmoke('${folder}');
 

@@ -14,7 +14,7 @@ describe('材质库和特效库', () => {
   test('id 不重，每个都有缩略图、中英文的名字和类别', () => {
     expect(new Set(items.map((item) => item.id)).size).toBe(items.length);
     for (const item of items) {
-      expect(existsSync(path.join(thumbnails, `${item.id}.webp`)), `${item.id} 的缩略图（node tools/library-thumbnails.ts --only ${item.id}）`).toBe(true);
+      expect(existsSync(path.join(thumbnails, `${item.id}.webp`)), `${item.id} 的缩略图（node tools/dev/library-thumbnails.ts --only ${item.id}）`).toBe(true);
       for (const messages of Object.values(editorMessages)) {
         expect(messages!.library.names[item.id], item.id).toBeTruthy();
         expect(messages!.library.categories[item.category], item.category).toBeTruthy();

@@ -1,3 +1,3 @@
-import { strideApp } from '../../tools/vite-app.ts';
+import { strideApp } from '../../tools/lib/vite-app.ts';
 
 export default strideApp(5232);

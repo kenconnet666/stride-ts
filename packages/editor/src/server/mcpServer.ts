@@ -21,7 +21,7 @@ import path from 'node:path';
 import * as z from 'zod';
 import type { AssetKind, AssetRecord } from '../protocol.ts';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../library/index.ts';
-import type { EditorBackend } from '../server/EditorBackend.ts';
+import type { EditorBackend } from './EditorBackend.ts';
 
 /** 资源的种类：内容格式的扩展名表里的（字形块算字体的），加上源图片、源音频。 */
 const ASSET_KINDS = [...Object.keys(EXTENSIONS).filter((key) => key !== 'glyphs'), 'image', 'audio'] as unknown as [AssetKind, ...AssetKind[]];

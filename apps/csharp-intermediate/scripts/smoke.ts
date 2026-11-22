@@ -3,7 +3,7 @@
 // 检查：在跑；菜单里两列各 11 个教程按钮；22 个教程场景（开始的、完成的）都能加载；每个主题完成版的交互（见各段）；
 // 换一圈教程实体数不变；没有错误日志（finish 检查）。
 // 按键和点击用合成的事件；两个相机教程要锁鼠标，用 `mouse --trusted`（DevTools 协议的真实点击）。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('csharp-intermediate');
 

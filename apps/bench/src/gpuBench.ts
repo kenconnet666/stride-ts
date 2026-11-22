@@ -25,7 +25,7 @@ export interface GpuBench {
 
 /**
  * 跑一个实验：结果放进 globalThis.<name>Results，出错时错误信息放进 globalThis.<name>Error
- * （`node tools/run-page.ts <地址> <name>Results --error <name>Error` 等这两个）。打出来的字在页面的 #out 里。
+ * （`node tools/lib/run-page.ts <地址> <name>Results --error <name>Error` 等这两个）。打出来的字在页面的 #out 里。
  */
 export function runBench<T>(name: string, [width, height]: readonly [number, number], main: (bench: GpuBench) => Promise<T>): void {
   const out = document.getElementById('out')!, lines: string[] = [], globals = globalThis as Record<string, unknown>;

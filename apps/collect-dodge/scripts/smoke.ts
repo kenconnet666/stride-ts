@@ -2,7 +2,7 @@
 //   pnpm --filter @stride-ts/collect-dodge smoke [-- --hub <中枢名的一部分>]
 // 检查：主场景跑起来了；开场过场放完；按 W 玩家朝前走；吃金币加分、金币消失；被障碍撞到回到出生点；金币吃完门升起来；走进终点赢了。
 // 金币和终点用瞬移过去（障碍来回走，走过去撞不撞到看时机）；撞障碍是把障碍挪到玩家身上。没有错误日志（finish 检查）。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('collect-dodge');
 

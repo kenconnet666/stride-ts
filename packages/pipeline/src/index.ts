@@ -13,11 +13,11 @@ export { importCompositor, renderGroupMask, renderGroupOf, type ImportedComposit
 export { proceduralMesh, type ProceduralMesh } from './stride/procedural.ts';
 export { importSourceModel, isSourceModel, type ImportedSourceModel, type SourceModelOptions } from './sourceModel.ts';
 export { encodeFont, importFontFile, isFontFile, type EncodedFont, type FontSettings } from './fontAsset.ts';
-export { bakeBrushModel } from './brushModel.ts';
-export { bakeSdfModel, DEFAULT_SDF_RESOLUTION } from './sdfModel.ts';
-export { bakeTextModel } from './textModel.ts';
+export { bakeBrushModel } from './bakers/brushModel.ts';
+export { bakeSdfModel, DEFAULT_SDF_RESOLUTION } from './bakers/sdfModel.ts';
+export { bakeTextModel } from './bakers/textModel.ts';
 export { convertSplats, readPlySplats, readSpzSplats, SPLAT_SOURCE_EXTENSIONS } from './splats.ts';
-export { bakePolyModel } from './polyModel.ts';
-export { bakeSplineModel } from './splineModel.ts';
-export { bakeTreeModel } from './treeModel.ts';
-export { bakeBuildingModel } from './buildingModel.ts';
+export { bakePolyModel } from './bakers/polyModel.ts';
+export { bakeSplineModel } from './bakers/splineModel.ts';
+export { bakeTreeModel } from './bakers/treeModel.ts';
+export { bakeBuildingModel } from './bakers/buildingModel.ts';

@@ -6,7 +6,7 @@
 import { encodeModel, type PolyMeshFile } from '@stride-ts/engine/content-format';
 import { polyMeshSlots } from '@stride-ts/engine/modeling';
 import type { StrideTools } from '@stride-ts/native/tools';
-import { compressMeshes, type SourceMesh } from './mesh.ts';
+import { compressMeshes, type SourceMesh } from '../mesh.ts';
 
 /** 烘成模型文件的字节（.model）。面的材质槽、顶点下标不对时报错，消息里有是第几个面。 */
 export function bakePolyModel(tools: StrideTools, file: PolyMeshFile, where = file.name): Uint8Array {

@@ -1,6 +1,6 @@
 /**
  * 参数化的树（content/formats/treeFormat.ts 的 TreeFile）长成网格：按层生长出枝的骨架（每根枝分几节，每节带位置、朝向、半径），
- * 枝拉成圆管（树皮的槽），最后一层的枝上贴叶片卡片（叶片的槽）。编辑器后端烘成模型用（pipeline 的 treeModel.ts）。
+ * 枝拉成圆管（树皮的槽），最后一层的枝上贴叶片卡片（叶片的槽）。编辑器后端烘成模型用（pipeline 的 bakers/treeModel.ts）。
  *
  * 生长（思路照 ez-tree：分节、随机偏转、生长的方向力、分层的子枝按高度和方位分层抽样）：
  * - 一根枝从根到梢分 sections 节，每节的朝向在上一节上随机偏转（gnarliness，越细偏得越多）、绕自己的轴扭（twist）、往

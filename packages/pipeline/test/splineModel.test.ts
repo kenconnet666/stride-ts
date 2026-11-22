@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { decodeModel, type SplineFile } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeSplineModel } from '../src/splineModel.ts';
+import { bakeSplineModel } from '../src/bakers/splineModel.ts';
 
 describe('样条的烘焙', () => {
   let tools: StrideTools;

@@ -3,7 +3,7 @@
 // 检查：在跑；菜单里 15 个教程按钮；每个教程都能加载（标题换了、脚本打印出它的字）；键盘、虚拟按钮转茶壶；克隆出三把剑；
 // 代码加载模型后能建、清实体；预制体实例化到自定义的父实体下；时间在走；换一圈教程实体数不变；没有错误日志（finish 检查）。
 // 按键用合成的 KeyboardEvent（InputManager 在 window 上听）。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('csharp-beginner');
 

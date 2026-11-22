@@ -10,7 +10,7 @@ import { decodeGlyphBlock, encodeModel, EXTENSIONS, VERTEX_FLOATS, type FontFile
 import { projectUv, textContours } from '@stride-ts/engine/modeling';
 import type { Brush, StrideTools } from '@stride-ts/native/tools';
 import { rigidTransform } from './brushModel.ts';
-import { compressMeshes, type SourceMesh } from './mesh.ts';
+import { compressMeshes, type SourceMesh } from '../mesh.ts';
 
 /** 绕 X 转 +90°：白盒的 prism 是 XZ 平面上往 +Y 挤出，转过来是 XY 平面（文字的平面）上往 +Z 挤出，点 (x, z) 对着 (x, -y)。 */
 const TO_TEXT_PLANE = [Math.SQRT1_2, 0, 0, Math.SQRT1_2] as const;

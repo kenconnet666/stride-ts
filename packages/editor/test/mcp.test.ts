@@ -5,7 +5,7 @@ import zlib from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import type { SceneFile } from '@stride-ts/engine/content-format';
 import { createProject } from '../src/server/template.ts';
-import { McpProcess } from '../src/mcp/client.ts';
+import { McpProcess } from '../src/server/mcpClient.ts';
 
 describe('编辑器的 MCP 服务', () => {
   let repo: string;

@@ -25,6 +25,7 @@ export const HeightfieldTile = component('HeightfieldTile', {
 export class HeightPages {
   data = new Float32Array(HEIGHT_PAGE_FLOATS * 64);
   readonly #free: number[] = [];
+  readonly #versions: number[] = [];
   #count = 0;
   /** 改过、还没上传的范围（float 下标，[start, end)）。 */
   dirtyStart = Infinity;
@@ -48,10 +49,17 @@ export class HeightPages {
   /** 写一页：页头（UV 原点、每格的 UV 步长、裙边深度）和 HEIGHT_PAGE_SAMPLES² 个高度。 */
   write(offset: number, header: readonly [number, number, number, number], heights: Float32Array): void {
     if (heights.length !== HEIGHT_PAGE_SAMPLES * HEIGHT_PAGE_SAMPLES) throw new RangeError(`height page needs ${HEIGHT_PAGE_SAMPLES}² heights, got ${heights.length}`);
+    const page = offset / HEIGHT_PAGE_FLOATS;
+    this.#versions[page] = (this.#versions[page] ?? 0) + 1;
     this.data.set(header, offset);
     this.data.set(heights, offset + HEIGHT_PAGE_HEADER);
     this.dirtyStart = Math.min(this.dirtyStart, offset);
     this.dirtyEnd = Math.max(this.dirtyEnd, offset + HEIGHT_PAGE_FLOATS);
+  }
+
+  /** 这一页写过几次（光追场景按页和版本缓存地形块的 BVH）。 */
+  versionOf(offset: number): number {
+    return this.#versions[offset / HEIGHT_PAGE_FLOATS] ?? 0;
   }
 
   free(offset: number): void {

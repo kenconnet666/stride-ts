@@ -5,21 +5,23 @@
  *   建好以前接着用上一棵（晚一两帧，给全局光照用看不出来）。
  * 每个实例存世界矩阵的逆（射线变到网格自己的坐标里：方向不归一，所以 t 和世界里的一样）、BLAS 的起点、材质的颜色和自发光。
  * 着色器里用 RAY_TRACING_WGSL 的 rtTrace（最近的交点）和 rtNormal（世界的法线）。没算进去的：带蒙皮和形变的网格、地形的高度页
- * 网格、透明的材质、贴图（只用材质的颜色）。
+ * 网格、透明的材质。
  */
 import type { Game } from '../../engine/Game';
 import type { Mesh } from '../mesh/Mesh';
 import { SurfaceColors } from './SurfaceColors';
+import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from '../mesh/HeightPages';
 import type { MeshBatch } from '../mesh/MeshRenderFeature';
 
 /** 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、标志（第 1 位：双面的材质）、表面颜色的格号 + 1（0 是没有）、材质的颜色（rgba）、自发光（rgb、0）。 */
 export const RT_INSTANCE_WORDS = 24;
 const NODE_WORDS = 8;
 /**
- * 一次遍历最多访问几个节点（TLAS、每个 BLAS 各算）：正常的射线几十到几百个；坏了的 BVH（下标指回自己）也不会让着色器死循环、
- * 把显卡卡到驱动重置（DXGI_ERROR_DEVICE_HUNG，整个浏览器都卡死）。
+ * 一次遍历最多访问几个节点：坏了的 BVH（下标指回自己）也不会让着色器死循环、把显卡卡到驱动重置（DXGI_ERROR_DEVICE_HUNG，整个
+ * 浏览器都卡死）。BLAS 里正常的射线几十到几百个；顶层在大世界里贴着地面横穿整张图的射线能过几千个实例的盒子，给得多些。
  */
 const MAX_TRAVERSAL_STEPS = 4096;
+const MAX_TLAS_STEPS = 16384;
 const TRIANGLE_WORDS = 12;
 
 /**
@@ -128,7 +130,7 @@ fn rtTrace(origin: vec3f, dir: vec3f, tMax: f32) -> RtHit {
   if (rtBox(rtTlas[0], rtTlas[1], origin, inverse, tMax) >= 1e30) { return hit; }
   var steps = 0u;
   loop {
-    if (steps >= ${MAX_TRAVERSAL_STEPS}u) {
+    if (steps >= ${MAX_TLAS_STEPS}u) {
       hit.capped = true;
       break;
     }
@@ -210,20 +212,42 @@ fn rtEmissive(hit: RtHit) -> vec3f {
 `;
 }
 
-/** 一个网格的 BLAS 在大缓冲里的位置。 */
+/** 一个几何（网格，或者地形块的一页高度）的 BLAS 在大缓冲里的位置和长度（float/u32 个数），局部的包围盒。 */
 interface Blas {
   readonly nodeOffset: number;
+  readonly nodeWords: number;
   readonly triangleOffset: number;
+  readonly triangleWords: number;
+  readonly bounds: { readonly min: readonly number[]; readonly max: readonly number[] };
 }
+
+/** 一个实例用哪个几何：网格的按网格认，地形块的按高度页和它写过几次（`page:版本`）。 */
+type GeometryKey = Mesh | string;
+
+/** 顶层的一个实例。 */
+interface Entry {
+  readonly geometry: GeometryKey;
+  readonly slot: number;
+  readonly batch: MeshBatch;
+  /** 表面颜色的那一格（SurfaceColors 的键）。 */
+  readonly surface: object | string;
+}
+
+/** 地形块光追用的网格隔几个高度取一个（32 格的块取成 16 格：间接光够了，BVH 小四倍）。 */
+const TERRAIN_STEP = 2;
+/** 不再用的 BLAS 占的比用着的多（而且超过这么多 u32）时整理大缓冲。 */
+const COMPACT_MIN_WORDS = 1 << 20;
 
 /** 光追场景（RenderSystem.rayTracing）：用到它的特性（全局光照、调试视图）每帧先 update，再按 bindGroupLayout 绑它的缓冲。 */
 export class RayTracingScene {
   readonly #device: GPUDevice;
-  readonly #blas = new Map<Mesh, Blas | 'building'>();
+  readonly #blas = new Map<GeometryKey, Blas | 'building'>();
   #nodes: Uint32Array = new Uint32Array(1 << 12);
   #nodeWords = 0;
   #triangles: Float32Array = new Float32Array(1 << 12);
   #triangleWords = 0;
+  /** 大缓冲里已经不用的 u32 个数（几何没了，整理时去掉）。 */
+  #wastedWords = 0;
   #blasVersion = 0;
   #uploadedBlas = -1;
   #tlas: { nodes: Uint32Array; instances: Float32Array } | undefined;
@@ -235,7 +259,7 @@ export class RayTracingScene {
   #layout: GPUBindGroupLayout | undefined;
   #group: GPUBindGroup | undefined;
   #surfaceBuffer: GPUBuffer | undefined;
-  /** 每个批的平均漫反射色和自发光（光追打到的表面的颜色），前向渲染器在 pending 的帧画。 */
+  /** 每个表面的平均漫反射色和自发光（光追打到的表面的颜色），前向渲染器在 pending 的帧画。 */
   readonly surfaces: SurfaceColors;
   /** 顶层里有几个实例（统计）。 */
   instanceCount = 0;
@@ -260,47 +284,105 @@ export class RayTracingScene {
     return this.#group;
   }
 
-  /** 网格的 BLAS 都建好了、顶层也建好了。 */
+  /** 几何的 BLAS 都建好了、顶层也建好了。 */
   get ready(): boolean {
     return this.#tlas !== undefined && ![...this.#blas.values()].includes('building') && !this.#tlasBuilding;
   }
 
-  /** 每帧（用到光追的那帧）：给新网格建 BLAS，实例或变换变了重建 TLAS，建好的传上去。 */
+  /** 每帧（用到光追的那帧）：给新几何建 BLAS，实例或变换变了重建 TLAS，建好的传上去。 */
   update(game: Game): void {
-    const batches = game.meshes.batches.filter((batch) => traceable(batch));
-    this.surfaces.assign(batches);
-    for (const batch of batches) if (!this.#blas.has(batch.mesh)) this.#buildBlas(game, batch.mesh);
-    // 实例变了（批里的个数、槽位）或者有东西动了：重建 TLAS
-    const key = batches.map((batch) => `${batch.mesh.id}:${batch.material.id}:${batch.material.version}:${batch.count}`).join(',');
+    const meshes = game.meshes;
+    const entries: Entry[] = [];
+    for (const batch of meshes.batches) {
+      if (!traceable(batch)) continue;
+      for (let i = 0; i < batch.count; i++) {
+        const slot = batch.slots[i]!;
+        if (batch.mesh.heightfield) {
+          const page = meshes.heightPageOf(slot);
+          const key = `${page}:${meshes.heightPages.versionOf(page)}`;
+          entries.push({ geometry: key, slot, batch, surface: key });
+        } else {
+          entries.push({ geometry: batch.mesh, slot, batch, surface: batch });
+        }
+      }
+    }
+    const surfaces = new Map<object | string, Entry>();
+    for (const entry of entries) if (!surfaces.has(entry.surface)) surfaces.set(entry.surface, entry);
+    this.surfaces.assign([...surfaces.values()].map(({ surface, batch, slot }) => ({ key: surface, batch, slot })));
+    const live = new Set<GeometryKey>();
+    for (const { geometry, batch } of entries) {
+      live.add(geometry);
+      if (!this.#blas.has(geometry)) this.#buildBlas(game, geometry, batch.mesh);
+    }
+    this.#forget(live);
+    // 实例变了（几何、材质、槽位）或者有东西动了：重建 TLAS
+    const key = entries.map(({ geometry, batch, slot }) => `${typeof geometry === 'string' ? geometry : geometry.id}:${batch.material.id}:${batch.material.version}:${slot}`).join(',');
     if (key !== this.#instanceKey || game.transforms.changedSlots().length > 0) this.#tlasDirty = true;
     this.#instanceKey = key;
-    if (this.#tlasDirty && !this.#tlasBuilding && batches.every((batch) => this.#blas.get(batch.mesh) !== 'building')) this.#buildTlas(game, batches);
+    if (this.#tlasDirty && !this.#tlasBuilding && entries.every(({ geometry }) => this.#blas.get(geometry) !== 'building')) this.#buildTlas(game, entries);
     this.#upload();
   }
 
-  #buildBlas(game: Game, mesh: Mesh): void {
-    this.#blas.set(mesh, 'building');
-    const indices = Uint32Array.from(mesh.data.indices);
-    void game.native.buildTriangleBvh(mesh.positions(), indices).then(({ nodes, triangles }) => {
-      const blas = { nodeOffset: this.#nodeWords / NODE_WORDS, triangleOffset: this.#triangleWords / TRIANGLE_WORDS };
+  /** 网格的 BLAS 按网格的顶点建；地形块的按它那页高度建（隔 TERRAIN_STEP 取一个，坐标同高度场的顶点着色器：格坐标、高度）。 */
+  #buildBlas(game: Game, geometry: GeometryKey, mesh: Mesh): void {
+    this.#blas.set(geometry, 'building');
+    const { positions, indices } = typeof geometry === 'string' ? terrainGrid(game.meshes.heightPages.data, Number(geometry.split(':')[0])) : { positions: mesh.positions(), indices: Uint32Array.from(mesh.data.indices) };
+    const bounds = boundsOf(positions);
+    const name = typeof geometry === 'string' ? `terrain page ${geometry}` : mesh.name;
+    void game.native.buildTriangleBvh(positions, indices).then(({ nodes, triangles }) => {
+      // 等着建的时候几何没了（地形块换了页）：不要了
+      if (this.#blas.get(geometry) !== 'building') return;
+      const blas: Blas = { nodeOffset: this.#nodeWords / NODE_WORDS, nodeWords: nodes.length, triangleOffset: this.#triangleWords / TRIANGLE_WORDS, triangleWords: triangles.length, bounds };
       this.#nodes = append(this.#nodes, this.#nodeWords, nodes) as Uint32Array;
       this.#nodeWords += nodes.length;
       this.#triangles = append(this.#triangles, this.#triangleWords, triangles) as Float32Array;
       this.#triangleWords += triangles.length;
-      this.#blas.set(mesh, blas);
+      this.#blas.set(geometry, blas);
       this.#blasVersion++;
       this.#tlasDirty = true;
-    }, (error: unknown) => console.error(`ray tracing: building the BVH of ${mesh.name} failed`, error));
+    }, (error: unknown) => {
+      this.#blas.delete(geometry);
+      console.error(`ray tracing: building the BVH of ${name} failed`, error);
+    });
   }
 
-  #buildTlas(game: Game, batches: readonly MeshBatch[]): void {
+  /** 这一帧没用到的几何去掉；不用的占得比用着的多时把大缓冲整理紧（偏移都变了：顶层重建好以前不给绑定组）。 */
+  #forget(live: ReadonlySet<GeometryKey>): void {
+    for (const [geometry, blas] of this.#blas) {
+      if (live.has(geometry)) continue;
+      this.#blas.delete(geometry);
+      if (blas !== 'building') this.#wastedWords += blas.nodeWords + blas.triangleWords;
+    }
+    if (this.#wastedWords < COMPACT_MIN_WORDS || this.#wastedWords < this.#nodeWords + this.#triangleWords - this.#wastedWords) return;
+    const nodes = new Uint32Array(this.#nodes.length), triangles = new Float32Array(this.#triangles.length);
+    let nodeWords = 0, triangleWords = 0;
+    for (const [geometry, blas] of this.#blas) {
+      if (blas === 'building') continue;
+      nodes.set(this.#nodes.subarray(blas.nodeOffset * NODE_WORDS, blas.nodeOffset * NODE_WORDS + blas.nodeWords), nodeWords);
+      triangles.set(this.#triangles.subarray(blas.triangleOffset * TRIANGLE_WORDS, blas.triangleOffset * TRIANGLE_WORDS + blas.triangleWords), triangleWords);
+      this.#blas.set(geometry, { ...blas, nodeOffset: nodeWords / NODE_WORDS, triangleOffset: triangleWords / TRIANGLE_WORDS });
+      nodeWords += blas.nodeWords;
+      triangleWords += blas.triangleWords;
+    }
+    this.#nodes = nodes;
+    this.#triangles = triangles;
+    this.#nodeWords = nodeWords;
+    this.#triangleWords = triangleWords;
+    this.#wastedWords = 0;
+    this.#blasVersion++;
+    this.#tlas = undefined;
+    this.#uploadedTlas = undefined;
+    this.#group = undefined;
+    this.#tlasDirty = true;
+  }
+
+  #buildTlas(game: Game, all: readonly Entry[]): void {
     this.#tlasDirty = false;
     const world = game.transforms.renderWorld;
-    const entries: { blas: Blas; slot: number; batch: MeshBatch }[] = [];
-    for (const batch of batches) {
-      const blas = this.#blas.get(batch.mesh);
-      if (!blas || blas === 'building') continue;
-      for (let i = 0; i < batch.count; i++) entries.push({ blas, slot: batch.slots[i]!, batch });
+    const entries: (Entry & { blas: Blas })[] = [];
+    for (const entry of all) {
+      const blas = this.#blas.get(entry.geometry);
+      if (blas && blas !== 'building') entries.push({ ...entry, blas });
     }
     if (entries.length === 0) {
       // 没有能光追的实例：不建 TLAS（空的 BVH 的根是个数为 0、盒子反着的节点，GPU 上会当成指回自己的内部节点死循环），也不给绑定组
@@ -311,20 +393,23 @@ export class RayTracingScene {
       return;
     }
     const boxes = new Float32Array(entries.length * 6);
-    entries.forEach(({ slot, batch }, k) => worldBox(world, slot * 16, batch.mesh.cullBounds, boxes, k * 6));
+    entries.forEach(({ slot, blas }, k) => worldBox(world, slot * 16, blas.bounds, boxes, k * 6));
     this.#tlasBuilding = true;
+    const blasVersion = this.#blasVersion;
     void game.native.buildBoxBvh(boxes).then(({ nodes, order }) => {
+      // 建的时候大缓冲整理过（偏移变了）：这棵作废，下一帧重建
+      if (blasVersion !== this.#blasVersion && this.#tlas === undefined) return;
       // 实例按叶子的顺序排：叶子里的"第一个图元"直接是实例的下标
       const instances = new Float32Array(Math.max(1, entries.length) * RT_INSTANCE_WORDS);
       const words = new Uint32Array(instances.buffer);
       for (let k = 0; k < entries.length; k++) {
-        const { blas, slot, batch } = entries[order[k]!]!;
+        const { blas, slot, batch, surface } = entries[order[k]!]!;
         const o = k * RT_INSTANCE_WORDS;
         inverseAffine(world, slot * 16, instances, o);
         words[o + 12] = blas.nodeOffset;
         words[o + 13] = blas.triangleOffset;
         words[o + 14] = batch.material.doubleSided ? 1 : 0;
-        words[o + 15] = (this.surfaces.tileOf(batch) ?? -1) + 1;
+        words[o + 15] = (this.surfaces.tileOf(surface) ?? -1) + 1;
         const { baseColor, emissive } = batch.material;
         instances.set([baseColor.r, baseColor.g, baseColor.b, 1, emissive[0], emissive[1], emissive[2], 0], o + 16);
       }
@@ -434,12 +519,12 @@ export class RayTracingScene {
 }
 
 /**
- * 光追得到的批：不透明、不蒙皮、不形变、不是地形的高度页网格、不是远处卡片、有三角形（空网格的 BVH 根是个数为 0 的叶子，GPU 上
- * 和内部节点分不开）。
+ * 光追得到的批：不透明、不蒙皮、不形变、不是远处卡片、有三角形（空网格的 BVH 根是个数为 0 的叶子，GPU 上和内部节点分不开）。
+ * 地形块（高度页的网格）按每块的高度建。
  */
 function traceable(batch: MeshBatch): boolean {
   const mesh = batch.mesh;
-  return batch.count > 0 && mesh.data.indices.length >= 3 && !batch.skinned && !batch.material.isTransparent && !mesh.heightfield && !mesh.impostor && mesh.data.morph === undefined;
+  return batch.count > 0 && mesh.data.indices.length >= 3 && !batch.skinned && !batch.material.isTransparent && !mesh.impostor && mesh.data.morph === undefined;
 }
 
 function append(target: Uint32Array | Float32Array, used: number, data: Uint32Array | Float32Array): Uint32Array | Float32Array {
@@ -450,6 +535,41 @@ function append(target: Uint32Array | Float32Array, used: number, data: Uint32Ar
   }
   out.set(data, used);
   return out;
+}
+
+/**
+ * 地形块那页高度的光追网格（同 meshShader 的 heightfieldVertex：x、z 是格坐标 0..32，y 是高度，不要裙边），每隔 TERRAIN_STEP 取一个；
+ * 三角形逆时针朝上（同光栅化的正面）。
+ */
+function terrainGrid(data: Float32Array, page: number): { positions: Float32Array; indices: Uint32Array } {
+  const cells = HEIGHT_PAGE_SAMPLES - 3, n = cells / TERRAIN_STEP + 1;
+  const positions = new Float32Array(n * n * 3);
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const x = i * TERRAIN_STEP, z = j * TERRAIN_STEP;
+      positions.set([x, data[page + HEIGHT_PAGE_HEADER + (z + 1) * HEIGHT_PAGE_SAMPLES + x + 1]!, z], (j * n + i) * 3);
+    }
+  }
+  const indices = new Uint32Array((n - 1) * (n - 1) * 6);
+  for (let j = 0, k = 0; j < n - 1; j++) {
+    for (let i = 0; i < n - 1; i++, k += 6) {
+      const a = j * n + i, b = a + n;
+      indices.set([a, b, a + 1, a + 1, b, b + 1], k);
+    }
+  }
+  return { positions, indices };
+}
+
+/** 顶点（xyz 连着）的包围盒。 */
+function boundsOf(positions: Float32Array): { min: number[]; max: number[] } {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (let v = 0; v < positions.length; v += 3) {
+    for (let c = 0; c < 3; c++) {
+      min[c] = Math.min(min[c]!, positions[v + c]!);
+      max[c] = Math.max(max[c]!, positions[v + c]!);
+    }
+  }
+  return positions.length > 0 ? { min, max } : { min: [0, 0, 0], max: [0, 0, 0] };
 }
 
 /** 局部包围盒按世界矩阵（列主序，渲染空间）变成世界的轴对齐盒，写到 out[at..at+6]。 */

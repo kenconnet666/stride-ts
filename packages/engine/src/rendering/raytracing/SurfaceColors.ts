@@ -1,11 +1,12 @@
 /**
  * 光追打到的表面是什么颜色（RayTracingScene 的 rtAlbedo、rtEmissive；路线图 R2）：WebGPU 没有无绑定的贴图，计算着色器里取不到
  * 每个材质的贴图、颜色树、节点图，所以把每个批（网格加材质）的平均漫反射色和自发光先烘出来：
- * - 每个批分一格（TILE 像素见方），批的第一个实例用网格着色器自己的材质代码（fsSurfaceBake：贴图、颜色树、材质层、节点图都算）
- *   按纹理坐标铺满那一格（vsSurfaceBake，纹理坐标按网格的范围归一），画进两张图集（漫反射色、自发光）；
+ * - 每个表面分一格（TILE 像素见方）：普通的批一个表面（画第一个实例），地形块每块一个（同一个材质按坡度、高度混出来的颜色每块
+ *   不一样）。用网格着色器自己的材质代码（fsSurfaceBake：贴图、颜色树、材质层、节点图都算）按纹理坐标铺满那一格（vsSurfaceBake，
+ *   纹理坐标按网格的范围归一；地形块按格坐标），画进两张图集（漫反射色、自发光）；
  * - 一个计算着色器把每格盖到的像素求平均，写进 colors（每格两个 vec4：漫反射色和"有没有"、自发光）。没盖到像素的格（没有纹理
  *   坐标的网格）a 是 0，光追退回材质的颜色。
- * 批或者材质变了（版本号）才重烘，一次烘全部（几千个小三角形批，一两次绘制的量）。按纹理坐标平均不按表面积，铺得密的地方占得多：
+ * 表面或者材质变了（版本号）才重烘，一次烘全部（几千次小绘制）。按纹理坐标平均不按表面积，铺得密的地方占得多：
  * 给间接光用够了。
  */
 import { RenderStage, type RenderView } from '../RenderSystem';
@@ -46,10 +47,17 @@ const REDUCE_SHADER = /* wgsl */ `
 }
 `;
 
+/** 一个要烘的表面：key 认它（普通的批是批本身，地形块是页和版本），画 batch 的 slot 那个实例。 */
+export interface SurfaceItem {
+  readonly key: object | string;
+  readonly batch: MeshBatch;
+  readonly slot: number;
+}
+
 /** 光追场景用的表面颜色（RayTracingScene 持有）：assign 分格，draw 在要重烘的帧烘、求平均。 */
 export class SurfaceColors {
   readonly #device: GPUDevice;
-  readonly #tiles = new Map<MeshBatch, number>();
+  readonly #tiles = new Map<object | string, { tile: number; item: SurfaceItem }>();
   readonly #free: number[] = [];
   #used = 0;
   #capacity = 0;
@@ -79,29 +87,30 @@ export class SurfaceColors {
     return this.#pending;
   }
 
-  /** 这一帧光追的批：给新的批分格（批在的时候格不变）、去掉没了的；批或材质变了要重烘。 */
-  assign(batches: readonly MeshBatch[]): void {
-    const live = new Set(batches);
-    for (const [batch, tile] of this.#tiles) {
-      if (live.has(batch)) continue;
-      this.#tiles.delete(batch);
+  /** 这一帧光追的表面：给新的分格（在的时候格不变）、去掉没了的；表面或材质变了要重烘。 */
+  assign(items: readonly SurfaceItem[]): void {
+    const live = new Set(items.map((item) => item.key));
+    for (const [key, { tile }] of this.#tiles) {
+      if (live.has(key)) continue;
+      this.#tiles.delete(key);
       this.#free.push(tile);
     }
-    for (const batch of batches) {
-      if (this.#tiles.has(batch)) continue;
-      this.#tiles.set(batch, this.#free.pop() ?? this.#used++);
+    for (const item of items) {
+      const entry = this.#tiles.get(item.key);
+      if (entry) entry.item = item;
+      else this.#tiles.set(item.key, { tile: this.#free.pop() ?? this.#used++, item });
     }
     if (this.#used > this.#capacity) this.#grow(this.#used);
-    const key = batches.map((batch) => `${batch.mesh.id}:${batch.material.id}:${batch.material.version}:${this.#tiles.get(batch)}`).join(',');
+    const key = items.map(({ key, batch }) => `${typeof key === 'string' ? key : batch.mesh.id}:${batch.material.id}:${batch.material.version}:${this.#tiles.get(key)!.tile}`).join(',');
     if (key !== this.#key) {
       this.#key = key;
-      this.#pending = batches.length > 0;
+      this.#pending = items.length > 0;
     }
   }
 
-  /** 批的格号（assign 过的）；没有时 undefined。 */
-  tileOf(batch: MeshBatch): number | undefined {
-    return this.#tiles.get(batch);
+  /** 表面的格号（assign 过的）；没有时 undefined。 */
+  tileOf(key: object | string): number | undefined {
+    return this.#tiles.get(key)?.tile;
   }
 
   /** 要重烘时：画进图集、求平均（录进 encoder）。view 是这一帧写过常量的视图。 */
@@ -109,7 +118,7 @@ export class SurfaceColors {
     if (!this.#pending || !this.#albedo || !this.#emissive) return;
     this.#pending = false;
     const perRow = this.#perRow();
-    const tiles = [...this.#tiles].map(([batch, tile]) => ({ batch, x: (tile % perRow) * TILE, y: Math.floor(tile / perRow) * TILE, size: TILE }));
+    const tiles = [...this.#tiles.values()].map(({ tile, item }) => ({ batch: item.batch, slot: item.slot, x: (tile % perRow) * TILE, y: Math.floor(tile / perRow) * TILE, size: TILE }));
     const pass = encoder.beginRenderPass({
       label: 'SurfaceBake',
       colorAttachments: [this.#albedo, this.#emissive].map((texture) => ({ view: texture.createView(), clearValue: [0, 0, 0, 0], loadOp: 'clear', storeOp: 'store' })),

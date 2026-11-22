@@ -9,7 +9,8 @@
  * 几次）。更新写进另一张、再拷回来（同一张贴图不能一边采样一边写）。网格着色时（meshShader 的 volumeIrradiance）取周围 8 个
  * 探针，按三线性、朝向、可见性加权；盒子外一格以内淡出，回到天空盒光和环境光。
  * - 射线打到单面材质背面的超过四分之一的探针在墙里、物体里，不用（着色时权重是 0）。
- * - 每帧最多追 RAY_BUDGET 条射线：探针多的体按 z 的层轮着更新。
+ * - 每帧最多追 RAY_BUDGET 条射线：探针多的体按 z 的层轮着更新；悬在空中（附近没有几何）和埋在东西里的探针隔
+ *   FAR_UPDATE_INTERVAL 轮才更新一次（大世界里跟着相机走的体上半截悬空、下半截在地下，它们几乎不被着色点取到）。
  * - 打到的表面的颜色是烘好的材质平均色（SurfaceColors），受方向光、点光、聚光（面光源当一个点）照，都带阴影射线。
  * - followCamera 的体跟着主相机走（大世界）：盒子按间距对齐到相机周围，探针在图集里按世界的格号取模放，相机挪了只有新进盒子的
  *   那几层探针清掉重来（RESET_SHADER），别的接着用。
@@ -31,6 +32,8 @@ const TILE_WIDTH = DISTANCE_TEXELS + 2;
 const TILE_HEIGHT = IRRADIANCE_TEXELS + 2 + DISTANCE_TEXELS + 2;
 /** 一个探针最多几条射线（更新时一个工作组把一个探针的射线全放进共享内存）。 */
 const MAX_RAYS = 256;
+/** 悬在空中、埋在东西里的探针隔几轮更新一次。 */
+const FAR_UPDATE_INTERVAL = 8;
 /** 每帧最多追几条射线（探针多的体按 z 的层轮着更新）。 */
 const RAY_BUDGET = 1 << 18;
 /** 光照或场景变了以后编辑器的视口接着出帧，让每个探针再更新几轮（hysteresis 0.97 时大约到 95%）。 */
@@ -163,6 +166,19 @@ fn probePosition(stored: vec3u) -> vec3f {
   return params.volume.min.xyz + vec3f(c) * params.volume.spacing.xyz;
 }
 
+/**
+ * 用不上的探针只每 ${FAR_UPDATE_INTERVAL} 轮更新一次：悬在空中的（上次更新时没有一条射线在 maxDistance 以内打到东西，距离图的 a 是 1）
+ * 和埋在东西里的（更新过、打到背面的太多，辐照度的 a 是 0；大世界里跟着相机走的体下半截在地下）。这一轮不更新时 true（追射线、
+ * 更新都跳过，图集里留着旧值）。轮数在 volume.scroll.w。
+ */
+fn probeSkipped(probe: u32) -> bool {
+  let tile = vec2i(giTile(probeCoordinate(probe), vec3u(params.volume.counts.xyz)));
+  let distance = textureLoad(atlas, tile + vec2i(1, ${IRRADIANCE_TEXELS + 3}), 0);
+  let far = distance.a > 0.5;
+  let buried = distance.b > 0.0 && textureLoad(atlas, tile + vec2i(1), 0).a < 0.5;
+  return (far || buried) && (probe + u32(params.volume.scroll.w)) % ${FAR_UPDATE_INTERVAL}u != 0u;
+}
+
 /** 第 ray 条射线的方向：球面斐波那契点，乘这一帧的随机旋转。 */
 fn rayDirection(ray: u32, count: u32) -> vec3f {
   let phi = 6.283185307 * fract(f32(ray) * 0.618033988749);
@@ -205,6 +221,7 @@ fn skyLight(direction: vec3f) -> vec3f {
   let rayCount = u32(params.volume.counts.w);
   if (id.x >= params.frame.y * rayCount) { return; }
   let probe = (params.frame.x + id.x / rayCount) % probeCount();
+  if (probeSkipped(probe)) { return; }
   let origin = probePosition(probeCoordinate(probe));
   let dir = rayDirection(id.x % rayCount, rayCount);
   let hit = rtTrace(origin, dir, ${MISS_DISTANCE});
@@ -282,6 +299,15 @@ fn texelDirection(t: vec2i, n: i32) -> vec3f {
   let probe = (params.frame.x + workgroupId.x) % probeCount();
   let tile = vec2i(giTile(probeCoordinate(probe), vec3u(params.volume.counts.xyz)));
   let distanceTile = tile + vec2i(0, ${IRRADIANCE_TEXELS + 2});
+  // 这一轮不更新的（悬在空中的）：照抄旧值（只拷更新了的那几行块，这一块也在里面）
+  if (probeSkipped(probe)) {
+    let texel = distanceTile + vec2i(local.xy);
+    textureStore(nextAtlas, texel, textureLoad(atlas, texel, 0));
+    if (local.x < ${IRRADIANCE_TEXELS + 2}u && local.y < ${IRRADIANCE_TEXELS + 2}u) {
+      textureStore(nextAtlas, tile + vec2i(local.xy), textureLoad(atlas, tile + vec2i(local.xy), 0));
+    }
+    return;
+  }
   // 更新过几次（距离图的 b）：头几次按平均混（新探针很快有值），以后留下 hysteresis 的旧值
   let updates = textureLoad(atlas, distanceTile + vec2i(1), 0).b;
   let hysteresis = min(params.volume.spacing.w, updates / (updates + 1.0));
@@ -291,7 +317,10 @@ fn texelDirection(t: vec2i, n: i32) -> vec3f {
   let toward = texelDirection(vec2i(local.xy), ${DISTANCE_TEXELS});
   var moments = vec2f(0.0);
   var weights = 0.0;
+  // 附近有没有几何（背面也算：探针在东西里面）
+  var near = false;
   for (var r = 0u; r < rayCount; r++) {
+    near = near || rayLight[r].w < maxDistance;
     let c = dot(toward, rayDirections[r].xyz);
     if (c <= 0.0) { continue; }
     let w = pow(c, 50.0);
@@ -301,7 +330,7 @@ fn texelDirection(t: vec2i, n: i32) -> vec3f {
   }
   let previousMoments = textureLoad(atlas, distanceTexel, 0).xy;
   let newMoments = select(moments / weights, previousMoments, weights <= 0.0);
-  textureStore(nextAtlas, distanceTexel, vec4f(mix(newMoments, previousMoments, hysteresis), updates + 1.0, 0.0));
+  textureStore(nextAtlas, distanceTexel, vec4f(mix(newMoments, previousMoments, hysteresis), updates + 1.0, select(1.0, 0.0, near)));
 
   if (local.x >= ${IRRADIANCE_TEXELS + 2}u || local.y >= ${IRRADIANCE_TEXELS + 2}u) { return; }
   let irradianceTexel = tile + vec2i(local.xy);
@@ -393,6 +422,8 @@ export class IrradianceVolumes {
   /** 清探针的参数（Reset）。 */
   readonly #resetParams: GPUBuffer;
   #nextProbe = 0;
+  /** 整个体轮过几遍（悬在空中的探针按它隔几轮更新）。 */
+  #cycle = 0;
   #random = 0x2545f491;
   /** 编辑器按需出帧时还要接着出几帧（探针收敛）：新建了体、光照或场景变了以后。 */
   #settling = 0;
@@ -513,6 +544,8 @@ export class IrradianceVolumes {
     const layers = this.#layersPerFrame(layer, cz, state.rays);
     const firstLayer = this.#nextProbe;
     this.#nextProbe = (firstLayer + layers) % cz;
+    // 轮完一遍：悬在空中的探针按轮数挑这一轮更新哪些
+    if (firstLayer + layers >= cz) this.#cycle++;
     const probes = layers * layer;
     this.#writeParams(state, firstLayer * layer, probes, lighting);
     this.stats.updatedProbes = probes;
@@ -571,7 +604,7 @@ export class IrradianceVolumes {
   #writeParams(state: VolumeState, firstProbe: number, probes: number, lighting: Lighting): void {
     const data = this.#paramData, words = new Uint32Array(data.buffer);
     const maxDistance = 1.5 * Math.hypot(...state.spacing);
-    data.set([...state.min, maxDistance, ...state.spacing, state.hysteresis, ...state.counts, state.rays, ...state.scroll, 0], 0);
+    data.set([...state.min, maxDistance, ...state.spacing, state.hysteresis, ...state.counts, state.rays, ...state.scroll, this.#cycle % 65536], 0);
     words.set([firstProbe, probes, lighting.directionalCount, lighting.localCount], 16);
     data.set(this.#randomRotation(), 20);
     const skybox = lighting.skybox;

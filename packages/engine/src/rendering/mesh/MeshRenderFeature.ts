@@ -231,6 +231,11 @@ export class MeshRenderFeature extends RootRenderFeature {
   /** 地形块的高度页（见 HeightPages.ts）：地形系统写，这里每帧上传改了的部分。 */
   readonly heightPages = new HeightPages();
 
+  /** 地形块（槽位）的高度页的起点（float）；光追场景按它建地形块的 BVH。 */
+  heightPageOf(slot: number): number {
+    return this.#morphOf.values[slot] ?? 0;
+  }
+
   // 剔除：一帧里第 k 次 cull 用第 k 个工作区；视图到（剔除，视图在其中的下标）
   readonly #cullPasses: CullPass[] = [];
   #cullPassCount = 0;
@@ -587,18 +592,17 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   /**
-   * 表面颜色的烘焙（raytracing/SurfaceColors.ts）：每个批的第一个实例按纹理坐标画进图集的一格（视口），stage 是 surfaceBake 的
-   * 阶段。view 是这一帧写过常量的视图（材质按世界坐标、天气的那些量取它的；位置不用它的投影）。不经剔除，直接按槽位画。
+   * 表面颜色的烘焙（raytracing/SurfaceColors.ts）：批的一个实例（槽位）按纹理坐标（地形块按格坐标）画进图集的一格（视口），stage 是
+   * surfaceBake 的阶段。view 是这一帧写过常量的视图（材质按世界坐标、天气的那些量取它的；位置不用它的投影）。不经剔除，直接按槽位画。
    */
-  bakeSurfaces(pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage, tiles: readonly { readonly batch: MeshBatch; readonly x: number; readonly y: number; readonly size: number }[]): void {
+  bakeSurfaces(pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage, tiles: readonly { readonly batch: MeshBatch; readonly slot: number; readonly x: number; readonly y: number; readonly size: number }[]): void {
     const gpu = this.#gpu;
     if (!gpu || tiles.length === 0) return;
     pass.setBindGroup(0, gpu.viewBindGroup(undefined), [view.index * VIEW_STRIDE]);
-    for (const { batch, x, y, size } of tiles) {
-      if (batch.count === 0) continue;
+    for (const { batch, slot, x, y, size } of tiles) {
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
       pass.setViewport(x, y, size, size, 0, 1);
-      pass.setPipeline(gpu.pipelineFor(stage, batch.mesh.layout, false, 'none', batch.material, this.effect));
+      pass.setPipeline(gpu.pipelineFor(stage, batch.mesh.layout, false, deformOf(batch.mesh), batch.material, this.effect));
       pass.setBindGroup(1, gpu.material(batch.material));
       const tree = gpu.treeBindGroup(batch.material);
       if (tree) pass.setBindGroup(3, tree);
@@ -606,7 +610,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       pass.setVertexBuffer(0, gpuMesh.vertices);
       pass.setIndexBuffer(gpuMesh.indices, gpuMesh.indexFormat);
       // 实例号就是槽位（vsSurfaceBake 不查视图的实例表）
-      pass.drawIndexed(gpuMesh.indexCount, 1, 0, 0, batch.slots[0]!);
+      pass.drawIndexed(gpuMesh.indexCount, 1, 0, 0, slot);
       this.drawCalls++;
     }
   }
@@ -983,7 +987,7 @@ class Gpu {
       // 运动向量阶段不要切线（只算位置），用自己的顶点着色器
       // 高度场（地形块）的顶点按高度页算，有自己的入口；切线在着色器里由高度算
       // 远处卡片（Impostors.ts）的四个顶点按相机转、选图集的格子，也有自己的入口
-      const entryPoint = stage.surfaceBake ? 'vsSurfaceBake'
+      const entryPoint = stage.surfaceBake ? (deform === 'heightfield' ? 'vsSurfaceBakeHeightfield' : 'vsSurfaceBake')
         : deform === 'heightfield' ? (stage.velocity ? 'vsVelocityHeightfield' : 'vsHeightfield')
         : deform === 'impostor' ? (stage.velocity ? 'vsVelocityImpostor' : 'vsImpostor')
         : stage.velocity ? `vsVelocity${skinned ? 'Skinned' : ''}` : `vs${skinned ? 'Skinned' : ''}${layout.tangent ? 'Tangent' : ''}`;

@@ -656,6 +656,15 @@ fn heightfieldVertex(grid: vec3f, slot: u32) -> HeightfieldVertex {
   return transformVertex(v.position, v.normal, v.uv, v.tangent, slot, vertex, IDENTITY, false);
 }
 
+/** 地形块的表面颜色的烘焙（同 vsSurfaceBake）：块的格坐标（0..${HEIGHT_PAGE_SAMPLES - 3}）铺满一格，实例号是槽位。 */
+@vertex fn vsSurfaceBakeHeightfield(@location(0) position: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f, @builtin(instance_index) slot: u32, @builtin(vertex_index) vertex: u32) -> Varyings {
+  let v = heightfieldVertex(position, slot);
+  var out = transformVertex(v.position, v.normal, v.uv, v.tangent, slot, vertex, IDENTITY, false);
+  let t = position.xz / ${HEIGHT_PAGE_SAMPLES - 3}.0;
+  out.position = vec4f(t.x * 2.0 - 1.0, 1.0 - t.y * 2.0, 0.5, 1.0);
+  return out;
+}
+
 /**
  * 远处卡片（MeshData.impostor，Impostors.ts）的一个角：center 是卡片中心（模型空间），corner 是这个角离中心的偏移（米）。
  * 卡片绕竖直轴转向相机（透视的视图）或整个转向光（正交的视图：阴影、天空遮挡，从高处的太阳看竖着的卡片只是一条线）；

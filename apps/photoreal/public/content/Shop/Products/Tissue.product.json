@@ -1,0 +1,12 @@
+{
+ "name": "Tissue",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "box",
+ "size": [
+  0.2,
+  0.09,
+  0.11
+ ],
+ "text": "抽纸",
+ "seed": 38
+}

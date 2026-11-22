@@ -1,0 +1,12 @@
+{
+ "name": "Beer",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "can",
+ "size": [
+  0.066,
+  0.165,
+  0
+ ],
+ "text": "啤酒",
+ "seed": 34
+}

@@ -36,10 +36,11 @@ const PATTERNS: readonly ProductPattern[] = ['plain', 'band', 'stripes', 'split'
 /** 拼品牌名的字（常见的商标用字）。 */
 const BRAND_CHARACTERS = '金龙鱼海天康乐福味美好鲜香农家旺佳丰园源山泉清真御品优百万华宝和顺禾田欢喜悦大小星光润洁雪绿新鸿盛';
 const DEFAULT_SURFACE: Readonly<Record<ProductShape, ProductSurface>> = { box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic' };
-const SURFACE_MATERIAL: Readonly<Record<ProductSurface, { readonly roughness: number; readonly metalness: number }>> = {
+/** 各种材料的粗糙度和金属度（货架的图集按它画表面贴图）。 */
+export const SURFACE_MATERIAL: Readonly<Record<ProductSurface, { readonly roughness: number; readonly metalness: number }>> = {
   paper: { roughness: 0.72, metalness: 0 }, plastic: { roughness: 0.32, metalness: 0 }, metal: { roughness: 0.3, metalness: 0.6 }, glass: { roughness: 0.08, metalness: 0 },
 };
-/** 旋转体绕一圈分几段。 */
+/** 旋转体绕一圈默认分几段（货架后排的商品给少一点）。 */
 const RADIAL_SEGMENTS = 20;
 /** 轮廓线上相邻两段的夹角超过这么多（弧度）就是硬边：顶点各用各的法线。 */
 const CREASE = 0.5;
@@ -69,12 +70,18 @@ function checkSize(file: ProductFile, where: string): void {
   if ((file.shape === 'box' || file.shape === 'pouch') && !(d > 0)) throw new Error(`${where}: a ${file.shape} needs a depth greater than 0`);
 }
 
-/** 外形的网格。 */
-export function productMesh(file: ProductFile, where = file.name): ProductMesh {
+/** 外形的网格；segments 是旋转体绕一圈分几段（默认 20，看不清的地方给少一点）。 */
+export function productMesh(file: ProductFile, where = file.name, segments = RADIAL_SEGMENTS): ProductMesh {
   checkSize(file, where);
   if (file.shape === 'box') return boxMesh(file.size);
   if (file.shape === 'pouch') return pouchMesh(file.size);
-  return latheMesh(latheProfile(file.shape, file.size[0] / 2, file.size[1]));
+  return latheMesh(latheProfile(file.shape, file.size[0] / 2, file.size[1]), Math.max(3, Math.round(segments)));
+}
+
+/** 摆在货架上占的地方（米）：宽、高、深（瓶罐的深是直径）。 */
+export function productFootprint(file: ProductFile): readonly [number, number, number] {
+  const [w, h, d] = file.size;
+  return [w, h, file.shape === 'box' || file.shape === 'pouch' ? d : w];
 }
 
 /** 轮廓线上的一点：半径、高（米），这一点往下的那一段是不是盖子。 */
@@ -112,7 +119,7 @@ function latheProfile(shape: ProductShape, r: number, h: number): ProfilePoint[]
  * 旋转体的网格：每一段轮廓线绕一圈是一圈四边形；u 是角度（正面 +Z 在 0.5），v 是从顶面中心沿轮廓线往下量的长度（贴图的上面
  * 对着包装的上面）。硬边两边的顶点分开、各用各段的法线，软的地方取两段的平均。
  */
-function latheMesh(profile: readonly ProfilePoint[]): ProductMesh {
+function latheMesh(profile: readonly ProfilePoint[], radial: number): ProductMesh {
   const segments = profile.length - 1;
   const lengths = profile.slice(1).map((p, i) => Math.hypot(p.r - profile[i]!.r, p.y - profile[i]!.y));
   const total = lengths.reduce((sum, l) => sum + l, 0);
@@ -133,16 +140,16 @@ function latheMesh(profile: readonly ProfilePoint[]): ProductMesh {
     const a = profile[s]!, b = profile[s + 1]!;
     const above = below - lengths[s]!;
     if (lengths[s]! < 1e-9) continue;
-    const ring = (point: ProfilePoint, end: 0 | 1, v: number) => Array.from({ length: RADIAL_SEGMENTS + 1 }, (_, k) => {
-      const u = k / RADIAL_SEGMENTS, angle = (u - 0.5) * 2 * Math.PI;
+    const ring = (point: ProfilePoint, end: 0 | 1, v: number) => Array.from({ length: radial + 1 }, (_, k) => {
+      const u = k / radial, angle = (u - 0.5) * 2 * Math.PI;
       const [nr, ny] = pointNormal(s, end);
       // 角度 0 对着 +Z（u = 0.5），往 +X 转
       const sin = Math.sin(angle), cos = Math.cos(angle);
       return builder.vertex([point.r * sin, point.y, point.r * cos], [nr * sin, ny, nr * cos], u, v / total);
     });
     const lower = ring(a, 0, below), upper = ring(b, 1, above);
-    for (let k = 0; k < RADIAL_SEGMENTS; k++) {
-      const mid = (k + 0.5) / RADIAL_SEGMENTS, angle = (mid - 0.5) * 2 * Math.PI;
+    for (let k = 0; k < radial; k++) {
+      const mid = (k + 0.5) / radial, angle = (mid - 0.5) * 2 * Math.PI;
       const [nr, ny] = normals[s]!;
       builder.quad(lower[k]!, lower[k + 1]!, upper[k + 1]!, upper[k]!, [nr * Math.sin(angle), ny, nr * Math.cos(angle)]);
     }
@@ -223,10 +230,16 @@ interface TextArea {
  * font 没有时不画字。
  */
 export function productLabelSvg(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
+  const [W, H] = labelSize;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgNumber(W)} ${svgNumber(H)}" width="${svgNumber(W)}" height="${svgNumber(H)}">${productLabelShapes(file, labelSize, font, variant)}</svg>`;
+}
+
+/** 标签里的图形（不带外面的 svg 标签，坐标同 productLabelSvg）：货架把它们嵌进图集的一格。 */
+export function productLabelShapes(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
   const design = productDesign(file, variant);
   const [W, H] = labelSize;
   const [w, h, d] = file.size.map((v) => v * 1000) as [number, number, number];
-  const parts: string[] = [`<rect width="${f(W)}" height="${f(H)}" fill="${design.colors.background}"/>`];
+  const parts: string[] = [`<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${design.colors.background}"/>`];
   // 图案画在哪：旋转体是盖子以下的整圈，纸盒是中间那一排，袋是整张
   let body: readonly [number, number, number, number] = [0, 0, W, H];
   let areas: TextArea[];
@@ -240,7 +253,7 @@ export function productLabelSvg(file: ProductFile, labelSize: readonly [number, 
     const profile = latheProfile(file.shape, file.size[0] / 2, file.size[1]);
     let capLength = 0;
     for (let s = profile.length - 1; s > 0 && profile[s]!.cap; s--) capLength += Math.hypot(profile[s]!.r - profile[s - 1]!.r, profile[s]!.y - profile[s - 1]!.y) * 1000;
-    if (capLength > 0) parts.push(`<rect width="${f(W)}" height="${f(capLength)}" fill="${design.colors.cap}"/>`);
+    if (capLength > 0) parts.push(`<rect width="${svgNumber(W)}" height="${svgNumber(capLength)}" fill="${design.colors.cap}"/>`);
     // 瓶的肩、颈不放字：字放在瓶身的直段（离底 3% 到 60% 高）
     const straight = file.shape === 'bottle' ? [0.03, 0.6] : file.shape === 'can' ? [0.08, 0.9] : file.shape === 'jar' ? [0.06, 0.76] : [0.1, 0.84];
     const bottom = H - (straight[0]! * h + file.size[0] * 1000 * 0.46), top = H - (straight[1]! * h + file.size[0] * 1000 * 0.46);
@@ -250,7 +263,7 @@ export function productLabelSvg(file: ProductFile, labelSize: readonly [number, 
   }
   parts.push(...patternShapes(design, body));
   if (font) for (const area of areas) parts.push(...textBlock(design, font, area));
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(W)} ${f(H)}" width="${f(W)}" height="${f(H)}">${parts.join('')}</svg>`;
+  return parts.join('');
 }
 
 /** 底纹（画在 body 那块里）。 */
@@ -260,27 +273,27 @@ function patternShapes(design: ProductDesign, [x, y, w, h]: readonly [number, nu
     case 'plain':
       return [];
     case 'band':
-      return [`<rect x="${f(x)}" y="${f(y + h * 0.3)}" width="${f(w)}" height="${f(h * 0.36)}" fill="${accent}"/>`];
+      return [`<rect x="${svgNumber(x)}" y="${svgNumber(y + h * 0.3)}" width="${svgNumber(w)}" height="${svgNumber(h * 0.36)}" fill="${accent}"/>`];
     case 'split':
-      return [`<rect x="${f(x)}" y="${f(y + h * 0.62)}" width="${f(w)}" height="${f(h * 0.38)}" fill="${accent}"/>`];
+      return [`<rect x="${svgNumber(x)}" y="${svgNumber(y + h * 0.62)}" width="${svgNumber(w)}" height="${svgNumber(h * 0.38)}" fill="${accent}"/>`];
     case 'stripes': {
       const step = Math.max(h, 1) / 6, shapes: string[] = [];
-      for (let k = -6; k * step < w + h; k++) shapes.push(`<path d="M${f(x + k * step)} ${f(y + h)}L${f(x + k * step + step * 0.45)} ${f(y + h)}L${f(x + k * step + step * 0.45 + h)} ${f(y)}L${f(x + k * step + h)} ${f(y)}Z" fill="${accent}" opacity="0.55"/>`);
+      for (let k = -6; k * step < w + h; k++) shapes.push(`<path d="M${svgNumber(x + k * step)} ${svgNumber(y + h)}L${svgNumber(x + k * step + step * 0.45)} ${svgNumber(y + h)}L${svgNumber(x + k * step + step * 0.45 + h)} ${svgNumber(y)}L${svgNumber(x + k * step + h)} ${svgNumber(y)}Z" fill="${accent}" opacity="0.55"/>`);
       return [`<g>${shapes.join('')}</g>`];
     }
     case 'wave': {
       const top = y + h * 0.58, amplitude = h * 0.06, waves = Math.max(2, Math.round(w / Math.max(h, 1) * 2));
-      let path = `M${f(x)} ${f(y + h)}L${f(x)} ${f(top)}`;
+      let path = `M${svgNumber(x)} ${svgNumber(y + h)}L${svgNumber(x)} ${svgNumber(top)}`;
       for (let k = 0; k < waves; k++) {
         const x0 = x + (k / waves) * w, x1 = x + ((k + 1) / waves) * w;
-        path += `Q${f((x0 + x1) / 2)} ${f(top + (k % 2 ? amplitude : -amplitude) * 2)} ${f(x1)} ${f(top)}`;
+        path += `Q${svgNumber((x0 + x1) / 2)} ${svgNumber(top + (k % 2 ? amplitude : -amplitude) * 2)} ${svgNumber(x1)} ${svgNumber(top)}`;
       }
-      return [`<path d="${path}L${f(x + w)} ${f(y + h)}Z" fill="${accent}"/>`];
+      return [`<path d="${path}L${svgNumber(x + w)} ${svgNumber(y + h)}Z" fill="${accent}"/>`];
     }
     case 'dots': {
       const step = Math.max(h, 1) / 7, radius = step * 0.18, shapes: string[] = [];
       for (let row = 0; (row + 0.5) * step < h; row++) {
-        for (let col = 0; (col + 0.5) * step < w; col++) shapes.push(`<circle cx="${f(x + (col + 0.5 + (row % 2) * 0.5) * step)}" cy="${f(y + (row + 0.5) * step)}" r="${f(radius)}"/>`);
+        for (let col = 0; (col + 0.5) * step < w; col++) shapes.push(`<circle cx="${svgNumber(x + (col + 0.5 + (row % 2) * 0.5) * step)}" cy="${svgNumber(y + (row + 0.5) * step)}" r="${svgNumber(radius)}"/>`);
       }
       return [`<g fill="${accent}" opacity="0.7">${shapes.join('')}</g>`];
     }
@@ -298,15 +311,15 @@ function textBlock(design: ProductDesign, font: TextFont, area: TextArea): strin
   if (brand) shapes.push(brand);
   if (design.text) {
     const pillWidth = area.width * 0.7 * scale, pillHeight = area.height * 0.24 * scale, cy = area.cy + area.height * 0.26 * scale;
-    shapes.push(`<rect x="${f(area.cx - pillWidth / 2)}" y="${f(cy - pillHeight / 2)}" width="${f(pillWidth)}" height="${f(pillHeight)}" rx="${f(pillHeight / 2)}" fill="${ink}"/>`);
+    shapes.push(`<rect x="${svgNumber(area.cx - pillWidth / 2)}" y="${svgNumber(cy - pillHeight / 2)}" width="${svgNumber(pillWidth)}" height="${svgNumber(pillHeight)}" rx="${svgNumber(pillHeight / 2)}" fill="${ink}"/>`);
     const text = textPath(font, design.text, area.cx, cy, pillWidth * 0.84, pillHeight * 0.7, ink === '#ffffff' ? under : '#ffffff');
     if (text) shapes.push(text);
   }
   return shapes;
 }
 
-/** 一行字的路径：按字体排版、缩放到放进 width × height、居中在 (cx, cy)；一个轮廓都没有时是 undefined。 */
-function textPath(font: TextFont, text: string, cx: number, cy: number, width: number, height: number, color: string): string | undefined {
+/** 一行字的路径（导出给货架的价签用）：按字体排版、缩放到放进 width × height、居中在 (cx, cy)；一个轮廓都没有时是 undefined。 */
+export function textPath(font: TextFont, text: string, cx: number, cy: number, width: number, height: number, color: string): string | undefined {
   const contours = textContours(font, text, { size: 1 });
   if (contours.length === 0) return undefined;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -319,7 +332,7 @@ function textPath(font: TextFont, text: string, cx: number, cy: number, width: n
   const size = Math.min(width / Math.max(maxX - minX, 1e-6), height / Math.max(maxY - minY, 1e-6));
   const ox = (minX + maxX) / 2, oy = (minY + maxY) / 2;
   // 文字的 y 往上，SVG 的往下
-  const d = contours.map(({ points }) => `M${points.map(([x, y]) => `${f(cx + (x - ox) * size)} ${f(cy - (y - oy) * size)}`).join('L')}Z`).join('');
+  const d = contours.map(({ points }) => `M${points.map(([x, y]) => `${svgNumber(cx + (x - ox) * size)} ${svgNumber(cy - (y - oy) * size)}`).join('L')}Z`).join('');
   return `<path d="${d}" fill="${color}" fill-rule="evenodd"/>`;
 }
 
@@ -341,7 +354,7 @@ export function productMaterial(file: ProductFile, texture: string, pixels: read
 }
 
 /** SVG 里的数：留一位小数（毫米），去掉尾巴。 */
-const f = (value: number): string => String(Math.round(value * 10) / 10);
+export const svgNumber = (value: number): string => String(Math.round(value * 10) / 10);
 
 function luminance(hex: string): number {
   const v = parseInt(hex.slice(1, 7), 16);

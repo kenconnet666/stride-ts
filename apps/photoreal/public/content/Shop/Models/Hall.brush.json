@@ -1,0 +1,266 @@
+{
+ "name": "Hall",
+ "materials": [
+  "Shop/Materials/Floor",
+  "Shop/Materials/Ceiling",
+  "Shop/Materials/Wall",
+  "Shop/Materials/Tube"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    -0.05,
+    -4
+   ],
+   "size": [
+    14,
+    0.1,
+    20
+   ]
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    3.35,
+    -4
+   ],
+   "size": [
+    14,
+    0.1,
+    20
+   ],
+   "material": 1
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -6.1,
+    1.65,
+    -4
+   ],
+   "size": [
+    0.2,
+    3.3,
+    20
+   ],
+   "material": 2
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    6.1,
+    1.65,
+    -4
+   ],
+   "size": [
+    0.2,
+    3.3,
+    20
+   ],
+   "material": 2
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    1.65,
+    -14.1
+   ],
+   "size": [
+    14,
+    3.3,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -2.2399999999999998,
+    3.28,
+    2
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -2.2399999999999998,
+    3.28,
+    -0.20000000000000018
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -2.2399999999999998,
+    3.28,
+    -2.4000000000000004
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -2.2399999999999998,
+    3.28,
+    -4.6000000000000005
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -2.2399999999999998,
+    3.28,
+    -6.800000000000001
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -2.2399999999999998,
+    3.28,
+    -9
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.2399999999999998,
+    3.28,
+    2
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.2399999999999998,
+    3.28,
+    -0.20000000000000018
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.2399999999999998,
+    3.28,
+    -2.4000000000000004
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.2399999999999998,
+    3.28,
+    -4.6000000000000005
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.2399999999999998,
+    3.28,
+    -6.800000000000001
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  },
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.2399999999999998,
+    3.28,
+    -9
+   ],
+   "size": [
+    0.12,
+    0.04,
+    1.4
+   ],
+   "material": 3
+  }
+ ]
+}

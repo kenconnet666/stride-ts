@@ -1,0 +1,13 @@
+{
+ "name": "Detergent",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.12,
+  0.3,
+  0
+ ],
+ "text": "洗衣液",
+ "seed": 33,
+ "surface": "plastic"
+}

@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile } from '../../content/formats/format';
+import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile, ShelfFile } from '../../content/formats/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -678,6 +678,32 @@ const PRODUCT_FIELDS = fields<ProductFile>({
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of everything not written: another number is another brand of the same product' },
 });
 
+/** 货架（ShelfFile）：后端生成同名的模型、标签图集和材质。 */
+const SHELF_FIELDS = fields<ShelfFile>({
+  name: string,
+  sides: { type: integer(1, 2), description: '1: against a wall, front facing +Z; 2: an island with a second face toward -Z' },
+  length: { type: number({ min: 0.1, step: 0.25, unit: 'm' }), description: 'length along X' },
+  height: { type: number({ min: 0.1, step: 0.1, unit: 'm' }), description: 'total height' },
+  depth: { type: number({ min: 0.05, step: 0.05, unit: 'm' }), description: 'depth of the shelf boards on each face' },
+  levels: { type: list(number({ min: 0, step: 0.05, unit: 'm' })), description: 'height of the top of each shelf board from the floor, bottom up; the first is the base' },
+  bay: { type: number({ min: 0.2, step: 0.25, unit: 'm' }), optional: true, default: 1, description: 'spacing of the uprights' },
+  frameColor: { type: string, optional: true, description: 'color of the frame and boards (sRGB #rrggbb, light grey when missing)' },
+  stripColor: { type: string, optional: true, description: 'color of the price strips (sRGB #rrggbb, white when missing)' },
+  font: { type: asset('font'), optional: true, description: 'font of the prices on the tags; plain tags without one' },
+  stock: {
+    type: object(fields<NonNullable<ShelfFile['stock']>>({
+      products: { type: list(asset('product')), description: 'products to stock; each level only takes those that fit under the next board' },
+      variants: { type: integer(1, 32), optional: true, default: 3, description: 'brands of each product (product variants: the colors and brand the product file leaves out)' },
+      facings: { type: vector(2), optional: true, default: [2, 5], description: 'how many of one item stand side by side (min, max)' },
+      rows: { type: integer(1, 16), optional: true, default: 4, description: 'at most this many rows deep (fewer when the board is shallower)' },
+      gaps: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.05, description: 'share of empty spots (sold out)' },
+    })),
+    optional: true,
+    description: 'what goes on the shelf; empty shelves without it',
+  },
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the stocking and the prices' },
+});
+
 /** 声音资源：音频文件的格式和播放方式，合成的音效的参数。 */
 export const SOUND_FIELDS = fields<SoundFile>({
   name: string,
@@ -687,5 +713,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, shelf: SHELF_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

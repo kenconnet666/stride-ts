@@ -1,0 +1,31 @@
+{
+ "name": "Drinks",
+ "sides": 2,
+ "length": 4,
+ "height": 1.95,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.55,
+  0.92,
+  1.29,
+  1.66
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "stock": {
+  "products": [
+   "Shop/Products/Water",
+   "Shop/Products/Juice",
+   "Shop/Products/Cola",
+   "Shop/Products/Tea",
+   "Shop/Products/Beer",
+   "Shop/Products/PeanutOil"
+  ],
+  "variants": 4,
+  "facings": [
+   3,
+   6
+  ]
+ },
+ "seed": 41
+}

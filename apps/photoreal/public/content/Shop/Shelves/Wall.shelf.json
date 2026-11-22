@@ -1,0 +1,31 @@
+{
+ "name": "Wall",
+ "sides": 1,
+ "length": 8,
+ "height": 2.1,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.52,
+  0.89,
+  1.26,
+  1.63
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "stock": {
+  "products": [
+   "Shop/Products/Water",
+   "Shop/Products/Juice",
+   "Shop/Products/Beer",
+   "Shop/Products/Cola",
+   "Shop/Products/Milk",
+   "Shop/Products/Yogurt"
+  ],
+  "variants": 5,
+  "facings": [
+   4,
+   8
+  ]
+ },
+ "seed": 45
+}

@@ -1,0 +1,12 @@
+{
+ "name": "Crackers",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "box",
+ "size": [
+  0.14,
+  0.2,
+  0.05
+ ],
+ "text": "苏打饼干",
+ "seed": 37
+}

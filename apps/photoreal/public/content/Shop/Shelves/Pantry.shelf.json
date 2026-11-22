@@ -1,0 +1,27 @@
+{
+ "name": "Pantry",
+ "sides": 2,
+ "length": 4,
+ "height": 1.95,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.55,
+  0.92,
+  1.29,
+  1.66
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "stock": {
+  "products": [
+   "Shop/Products/SoySauce",
+   "Shop/Products/Vinegar",
+   "Shop/Products/ChiliSauce",
+   "Shop/Products/Sauce",
+   "Shop/Products/PeanutOil",
+   "Shop/Products/Yogurt"
+  ],
+  "variants": 4
+ },
+ "seed": 42
+}

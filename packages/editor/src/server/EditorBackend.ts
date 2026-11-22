@@ -10,9 +10,9 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type SplineFile, type TreeFile, type BuildingFile, type TextModelFile, type ProductFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
+import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type SplineFile, type TreeFile, type BuildingFile, type TextModelFile, type ProductFile, type ShelfFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeProduct, bakeBrushModel, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, bakeTreeModel, bakeBuildingModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
+import { bakeProduct, bakeShelf, bakeBrushModel, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, bakeTreeModel, bakeBuildingModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import { parseCubeLut } from '@stride-ts/engine/color-lut';
 import { materialSet, scannedMaterial, SRGB_ROLES, type MaterialCredit, type MaterialMapRole } from '../materialSet.ts';
@@ -38,10 +38,10 @@ const CHANGE_DELAY = 50;
 /** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
 /** 编辑器后端烘成同名模型的资源种类（源头是 JSON，场景引用烘出的 .model）。 */
 /** 编辑器后端照它烘出（导入）同名模型的资源：白盒、SDF、多边形网格、源模型的导入设置。 */
-type BakedKind = 'brush' | 'sdf' | 'poly' | 'text' | 'spline' | 'tree' | 'building' | 'product' | 'modelImport' | 'imageImport';
-const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'text' || kind === 'spline' || kind === 'tree' || kind === 'building' || kind === 'product' || kind === 'modelImport' || kind === 'imageImport';
+type BakedKind = 'brush' | 'sdf' | 'poly' | 'text' | 'spline' | 'tree' | 'building' | 'product' | 'shelf' | 'modelImport' | 'imageImport';
+const isBakedKind = (kind: string): kind is BakedKind => kind === 'brush' || kind === 'sdf' || kind === 'poly' || kind === 'text' || kind === 'spline' || kind === 'tree' || kind === 'building' || kind === 'product' || kind === 'shelf' || kind === 'modelImport' || kind === 'imageImport';
 
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world', 'terrain', 'spline', 'tree', 'building', 'product', 'scatter', 'city', 'water']);
+const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world', 'terrain', 'spline', 'tree', 'building', 'product', 'shelf', 'scatter', 'city', 'water']);
 
 class HttpError extends Error {
   readonly status: number;
@@ -85,7 +85,7 @@ export class EditorBackend {
   /**
    * 开着的时候没看到的改动（开发服务器停着时 agent 直接写了文件、git 切了分支）：生成模型的资源（白盒、SDF、多边形、3D 文字、
    * 样条、树）打开工程时和上次烘的内容比（按内容的哈希，记在工程的 node_modules/.cache 里；文件的修改时间在新检出的工作树里
-   * 靠不住），变了的补烘。没记过的：模型不在才烘，在就当它是对的、记下来。导入（源模型、贴图）慢，照旧等文件改了再导入。
+   * 靠不住），变了的、生成的模型不在的补烘。没记过的：模型不在才烘，在就当它是对的、记下来。导入（源模型、贴图）慢，照旧等文件改了再导入。
    */
   async #bakeStale(): Promise<void> {
     this.#bakeHashes = await readFile(this.#bakeCacheFile, 'utf8').then((text) => JSON.parse(text) as Record<string, string>, () => ({}));
@@ -97,8 +97,10 @@ export class EditorBackend {
       try {
         const content: unknown = JSON.parse(await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8'));
         const hash = contentHash(content), known = this.#bakeHashes[key];
-        if (known === hash) continue;
-        if (known === undefined && existsSync(path.join(this.project.contentDir, record.path + EXTENSIONS.model))) {
+        // 生成的模型不在（包装、货架这类生成的大文件不进 git，新检出里没有）：源文件没变也要烘
+        const exists = existsSync(path.join(this.project.contentDir, record.path + EXTENSIONS.model));
+        if (known === hash && exists) continue;
+        if (known === undefined && exists) {
           this.#bakeHashes[key] = hash;
           continue;
         }
@@ -108,7 +110,7 @@ export class EditorBackend {
       }
     }
     if (baked.length > 0) {
-      console.info(`[stride-editor] baked ${baked.length} model(s) whose sources changed while the editor was closed`);
+      console.info(`[stride-editor] baked ${baked.length} file(s) whose sources changed while the editor was closed or are missing`);
       await this.database.refresh(baked);
     }
     await this.#saveBakeHashes();
@@ -593,10 +595,11 @@ export class EditorBackend {
     if (record.kind === 'imageImport') return same('image');
     if (record.kind === 'image') return same('imageImport');
     if (record.kind === 'modelImport') return same('model', 'modelSource');
-    // 包装还生成了同名的标签贴图和材质
+    // 包装还生成了同名的标签贴图和材质；货架还有表面的图集
     if (record.kind === 'product') return same('model', 'material', 'image');
+    if (record.kind === 'shelf') return [...same('model', 'material', 'image'), ...[this.database.get('image', `${record.path}.surface`)].filter((found) => found !== undefined)];
     if (isBakedKind(record.kind)) return same('model');
-    if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'text', 'spline', 'tree', 'building', 'product', 'modelImport', 'modelSource');
+    if (record.kind === 'model') return same('brush', 'sdf', 'poly', 'text', 'spline', 'tree', 'building', 'product', 'shelf', 'modelImport', 'modelSource');
     return [];
   }
 
@@ -711,6 +714,17 @@ export class EditorBackend {
         console.warn(`[stride-editor] ${kind} ${record.path}: ${(error as Error).message}; its model is left as it was`);
       }
     }
+    // 货架摆着改了的商品：跟着重新生成（商品的标签、尺寸在货架的图集和网格里）
+    const shelves = new Set(changes.changed.filter((record) => record.kind === 'product')
+      .flatMap((record) => this.database.referrers('product', record.path)).filter((record) => record.kind === 'shelf').map((record) => record.path));
+    for (const shelf of shelves) {
+      try {
+        const text = await readFile(path.join(this.project.contentDir, assetFileName('shelf', shelf)), 'utf8');
+        baked.push(...(await this.#bake('shelf', shelf, JSON.parse(text))).files);
+      } catch (error) {
+        console.warn(`[stride-editor] shelf ${shelf}: ${(error as Error).message}; its model is left as it was`);
+      }
+    }
     if (baked.length > 0) await this.#refresh(baked);
   }
 
@@ -741,8 +755,9 @@ export class EditorBackend {
       this.#recordBake(`${kind}:${assetPath}`, content);
       return { files: written, warnings, animations };
     }
-    if (kind === 'product') {
-      const files = await bakeProduct(tools, content as ProductFile, assetPath, (file) => readFile(path.join(this.project.contentDir, file)), where);
+    if (kind === 'product' || kind === 'shelf') {
+      const read = (file: string) => readFile(path.join(this.project.contentDir, file));
+      const files = kind === 'product' ? await bakeProduct(tools, content as ProductFile, assetPath, read, where) : await bakeShelf(tools, content as ShelfFile, assetPath, read, where);
       for (const file of files) await writeAtomically(path.join(this.project.contentDir, file.path), file.bytes);
       this.#recordBake(`${kind}:${assetPath}`, content);
       return { files: files.map((file) => file.path), warnings: [] };

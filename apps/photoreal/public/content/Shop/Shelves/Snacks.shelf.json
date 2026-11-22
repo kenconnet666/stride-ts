@@ -1,0 +1,28 @@
+{
+ "name": "Snacks",
+ "sides": 2,
+ "length": 4,
+ "height": 1.95,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.55,
+  0.92,
+  1.29,
+  1.66
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "stock": {
+  "products": [
+   "Shop/Products/Chips",
+   "Shop/Products/Konjac",
+   "Shop/Products/Noodles",
+   "Shop/Products/Biscuits",
+   "Shop/Products/Crackers",
+   "Shop/Products/Cereal",
+   "Shop/Products/Milk"
+  ],
+  "variants": 5
+ },
+ "seed": 43
+}

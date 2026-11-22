@@ -1,0 +1,12 @@
+{
+ "name": "Noodles",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "pouch",
+ "size": [
+  0.2,
+  0.13,
+  0.07
+ ],
+ "text": "方便面",
+ "seed": 36
+}

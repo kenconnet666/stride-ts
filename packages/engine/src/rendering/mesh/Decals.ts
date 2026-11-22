@@ -13,6 +13,7 @@
  * - 没做：只投到某些渲染组上（Godot 的 cull mask）、粗糙度和金属度的
  *   贴图、自发光、按距离淡出。
  */
+import { packPages } from '../../data/rectPacking.ts';
 import { Matrix, type Matrix4 } from '../../data/Matrix';
 import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
@@ -39,34 +40,6 @@ export type AtlasRect = readonly [u: number, v: number, width: number, height: n
 export interface AtlasPlace {
   readonly rect: AtlasRect;
   readonly layer: number;
-}
-
-/**
- * 按行装箱、可以分页：贴图按高度从高到低排，一行一行往下放，每块四周留 padding；一页放不下时接着放下一页。返回每张贴图的
- * 页和位置（像素：页、x、y、宽、高，不含留边）；比一页还大的那张是 undefined。
- */
-export function packPages(sizes: readonly (readonly [number, number])[], atlasSize: number, padding: number): ([number, number, number, number, number] | undefined)[] {
-  const order = sizes.map((_, i) => i).sort((a, b) => sizes[b]![1] - sizes[a]![1]);
-  const out: ([number, number, number, number, number] | undefined)[] = new Array(sizes.length);
-  let page = 0, x = 0, y = 0, row = 0;
-  for (const i of order) {
-    const [w, h] = sizes[i]!;
-    const pw = w + 2 * padding, ph = h + 2 * padding;
-    if (pw > atlasSize || ph > atlasSize) continue;
-    if (x + pw > atlasSize) {
-      x = 0;
-      y += row;
-      row = 0;
-    }
-    if (y + ph > atlasSize) {
-      page++;
-      x = y = row = 0;
-    }
-    out[i] = [page, x + padding, y + padding, w, h];
-    x += pw;
-    row = Math.max(row, ph);
-  }
-  return out;
 }
 
 /** 贴图放进图集时的大小：最长边缩到 MAX_TILE 以内，保持比例。 */

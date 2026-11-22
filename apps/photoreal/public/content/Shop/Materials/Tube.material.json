@@ -1,0 +1,16 @@
+{
+ "name": "Tube",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.5,
+ "emissive": [
+  6,
+  5.8,
+  5.5
+ ]
+}

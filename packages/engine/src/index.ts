@@ -205,7 +205,8 @@ export { RecastNavigationComponent, type NavigationState } from './physics/Recas
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
 export { CameraRig, cameraRigSystem } from './rendering/CameraRig';
 export { Background, Camera, GaussianSplat, Instance, Instancing, IrradianceVolume, Light, Model, ModelPart, PlanarReflection, ReflectionProbe, Skinned, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog, Decal } from './rendering/components';
-export { Decals, packPages, packDecal, tileSize, type AtlasRect, type DecalInstance } from './rendering/mesh/Decals';
+export { Decals, packDecal, tileSize, type AtlasRect, type DecalInstance } from './rendering/mesh/Decals';
+export { packPages } from './data/rectPacking';
 export { Fog, type FogSettings } from './rendering/sky/VolumetricFog';
 export { Clouds, type CloudSettings } from './rendering/sky/VolumetricClouds';
 export { Atmosphere, DynamicSky, EARTH_ATMOSPHERE, sunTransmittance, type AtmosphereSettings, type CelestialBody } from './rendering/sky/Atmosphere';

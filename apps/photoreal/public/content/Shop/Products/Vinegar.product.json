@@ -1,0 +1,12 @@
+{
+ "name": "Vinegar",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.068,
+  0.24,
+  0
+ ],
+ "text": "香醋",
+ "seed": 32
+}

@@ -1,0 +1,11 @@
+{
+ "name": "Floor",
+ "baseColor": [
+  0.72,
+  0.71,
+  0.69,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.16
+}

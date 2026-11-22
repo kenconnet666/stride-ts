@@ -1,0 +1,12 @@
+{
+ "name": "Juice",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.075,
+  0.26,
+  0
+ ],
+ "text": "果汁",
+ "seed": 31
+}

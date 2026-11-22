@@ -1,7 +1,7 @@
 // 路线图七"超市和街边小店"（用户 2026-11-22 的第二批照片，reference/shop/，不进仓库）的试验场：先是商品包装生成器的展示台——
 // 各种外形、按种子出的牌子排在一张台子上。只用编辑器的 MCP 服务（agent 那条路），资源和场景按这里写的覆盖，重跑就是重搭。
 //   node apps/photoreal/scripts/build-shop.ts
-//   看：http://localhost:5234/?scene=Shop
+//   看：http://localhost:5234/?scene=Shop（包装的展示台）、?scene=Supermarket（货架的过道）
 // 标签的中文字用资源包 @stride-ts/assets 里的站酷庆科黄油体（Shared/Fonts，开发服务器、编辑器后端打开工程时同步进来）。
 import path from 'node:path';
 import type { ProductFile } from '../../../packages/engine/src/content/formats/productFormat.ts';
@@ -85,6 +85,76 @@ await write('scene', 'Shop', {
     entity(id(3), 'Sky', [0, 0, 0], { skyAtmosphere: { sun: id(2) } }),
     entity(id(4), 'Table', [0, 0, 0], { model: { model: 'Shop/Models/Table', materials: [] } }),
     ...placed,
+  ],
+});
+
+// ---- 超市的过道（照片 reference/shop/ 里的货架过道）：两边各两节中岛货架，靠墙一排，顶上一排排灯管 ----
+// 几类没写配色、品牌名的商品：货架的变体按种子换成不同的牌子
+const families: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
+  { id: 'Juice', shape: 'bottle', size: [0.075, 0.26, 0], text: '果汁', seed: 31 },
+  { id: 'Vinegar', shape: 'bottle', size: [0.068, 0.24, 0], text: '香醋', seed: 32 },
+  { id: 'Detergent', shape: 'bottle', size: [0.12, 0.3, 0], text: '洗衣液', seed: 33, surface: 'plastic' },
+  { id: 'Beer', shape: 'can', size: [0.066, 0.165, 0], text: '啤酒', seed: 34 },
+  { id: 'Sauce', shape: 'jar', size: [0.075, 0.12, 0], text: '酱', seed: 35 },
+  { id: 'Noodles', shape: 'pouch', size: [0.2, 0.13, 0.07], text: '方便面', seed: 36 },
+  { id: 'Crackers', shape: 'box', size: [0.14, 0.2, 0.05], text: '苏打饼干', seed: 37 },
+  { id: 'Tissue', shape: 'box', size: [0.2, 0.09, 0.11], text: '抽纸', seed: 38 },
+];
+for (const { id, ...product } of families) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
+const p = (id: string) => `Shop/Products/${id}`;
+const gondola = { sides: 2, length: 4, height: 1.95, depth: 0.42, levels: [0.15, 0.55, 0.92, 1.29, 1.66], font: FONT };
+const shelves: Record<string, object> = {
+  Drinks: { ...gondola, stock: { products: ['Water', 'Juice', 'Cola', 'Tea', 'Beer', 'PeanutOil'].map(p), variants: 4, facings: [3, 6] }, seed: 41 },
+  Pantry: { ...gondola, stock: { products: ['SoySauce', 'Vinegar', 'ChiliSauce', 'Sauce', 'PeanutOil', 'Yogurt'].map(p), variants: 4 }, seed: 42 },
+  Snacks: { ...gondola, stock: { products: ['Chips', 'Konjac', 'Noodles', 'Biscuits', 'Crackers', 'Cereal', 'Milk'].map(p), variants: 5 }, seed: 43 },
+  Household: { ...gondola, stock: { products: ['Detergent', 'Tissue', 'Cereal', 'Crackers'].map(p), variants: 3 }, seed: 44 },
+  Wall: { ...gondola, sides: 1, length: 8, height: 2.1, levels: [0.15, 0.52, 0.89, 1.26, 1.63, 2.0].slice(0, 5), stock: { products: ['Water', 'Juice', 'Beer', 'Cola', 'Milk', 'Yogurt'].map(p), variants: 5, facings: [4, 8] }, seed: 45 },
+};
+for (const [name, shelf] of Object.entries(shelves)) await write('shelf', `Shop/Shelves/${name}`, { name, ...shelf });
+
+await write('material', 'Shop/Materials/Floor', { name: 'Floor', baseColor: [0.72, 0.71, 0.69, 1], metalness: 0, roughness: 0.16 });
+await write('material', 'Shop/Materials/Ceiling', { name: 'Ceiling', baseColor: [0.05, 0.05, 0.055, 1], metalness: 0, roughness: 0.8 });
+await write('material', 'Shop/Materials/Wall', { name: 'Wall', baseColor: [0.62, 0.6, 0.56, 1], metalness: 0, roughness: 0.7 });
+await write('material', 'Shop/Materials/Tube', { name: 'Tube', baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.5, emissive: [6, 5.8, 5.5] });
+await write('brush', 'Shop/Models/Hall', {
+  name: 'Hall', materials: ['Shop/Materials/Floor', 'Shop/Materials/Ceiling', 'Shop/Materials/Wall', 'Shop/Materials/Tube'], uvScale: 1,
+  brushes: [
+    { kind: 'box', operation: 'add', position: [0, -0.05, -4], size: [14, 0.1, 20] },
+    { kind: 'box', operation: 'add', position: [0, 3.35, -4], size: [14, 0.1, 20], material: 1 },
+    { kind: 'box', operation: 'add', position: [-6.1, 1.65, -4], size: [0.2, 3.3, 20], material: 2 },
+    { kind: 'box', operation: 'add', position: [6.1, 1.65, -4], size: [0.2, 3.3, 20], material: 2 },
+    { kind: 'box', operation: 'add', position: [0, 1.65, -14.1], size: [14, 3.3, 0.2], material: 2 },
+    // 灯管的灯具：和下面的面光源一一对应
+    ...[-1.6, 1.6].flatMap((x) => Array.from({ length: 6 }, (_, i) => ({ kind: 'box', operation: 'add', position: [x * 1.4, 3.28, 2 - i * 2.2], size: [0.12, 0.04, 1.4], material: 3 }))),
+  ],
+});
+const aisleEye: Vec3 = [0.25, 1.5, 3.2];
+const sid = (k: number) => `5e0b5e0b-0002-4000-8000-${k.toString(16).padStart(12, '0')}`;
+const shelfAt = (k: number, name: string, position: Vec3, yaw: number) => entity(sid(0x10 + k), `${name} ${k}`, position, { model: { model: `Shop/Shelves/${name}`, materials: [] } }, euler(yaw));
+// 过道沿 -Z：左边一排的正面朝 +X，右边一排朝 -X；靠墙那排在右边的墙上
+const shelfEntities = [
+  shelfAt(0, 'Drinks', [-1.3, 0, -1], 90), shelfAt(1, 'Pantry', [-1.3, 0, -5.1], 90),
+  shelfAt(2, 'Snacks', [1.3, 0, -1], -90), shelfAt(3, 'Household', [1.3, 0, -5.1], -90),
+  shelfAt(4, 'Snacks', [-4.2, 0, -3], 90), shelfAt(5, 'Wall', [5.95, 0, -3], -90),
+];
+// 灯管：沿过道每 2.2 米一盏，两排
+const lights = [-1.6, 1.6].flatMap((x, row) => Array.from({ length: 6 }, (_, i) => entity(sid(0x40 + row * 8 + i), `Light ${row}-${i}`, [x * 1.4, 3.25, 2 - i * 2.2], {
+  light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 24, width: 0.12, height: 1.4, range: 9 },
+}, euler(0, -90))));
+await write('scene', 'Supermarket', {
+  name: 'Supermarket',
+  compositor: {
+    clearColor: [0.05, 0.05, 0.06, 1],
+    postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true, antialiasingMode: 'temporal', ambientOcclusion: { radius: 0.2 },
+      localReflections: { maxRoughness: 0.4, edgeFade: 0.1 }, colorGrading: { operator: 'agx', temperature: 6000 }, exposure: { metering: 'histogram', localShadows: 0.3 } },
+    transparent: true,
+  },
+  entities: [
+    entity(sid(1), 'Camera', aisleEye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 200 } }, lookAt(aisleEye, [0, 1.2, -6])),
+    entity(sid(2), 'Ambient', [0, 3, 0], { light: { type: 'ambient', color: [1, 0.98, 0.95], intensity: 0.35 } }),
+    entity(sid(3), 'Hall', [0, 0, 0], { model: { model: 'Shop/Models/Hall', materials: [] } }),
+    ...shelfEntities,
+    ...lights,
   ],
 });
 await mcp.stop();

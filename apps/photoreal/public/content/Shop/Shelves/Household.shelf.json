@@ -1,0 +1,25 @@
+{
+ "name": "Household",
+ "sides": 2,
+ "length": 4,
+ "height": 1.95,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.55,
+  0.92,
+  1.29,
+  1.66
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "stock": {
+  "products": [
+   "Shop/Products/Detergent",
+   "Shop/Products/Tissue",
+   "Shop/Products/Cereal",
+   "Shop/Products/Crackers"
+  ],
+  "variants": 3
+ },
+ "seed": 44
+}

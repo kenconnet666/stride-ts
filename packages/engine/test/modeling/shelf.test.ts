@@ -86,6 +86,13 @@ describe('货架', () => {
     for (let i = 0; i < model.vertices.length; i += 8) expect(Math.abs(model.vertices[i + 2]!)).toBeLessThanOrEqual(0.45 + 1e-6);
   });
 
+  test('电子价签：每个价签多一个外壳（6 个面），屏比纸价签凸出来；图集里画了二维码的方块', () => {
+    const paper = shelfModel(island, sources), electronic = shelfModel({ ...island, priceTags: 'electronic' }, sources);
+    const tags = planShelf(island, products).tags.length;
+    expect(electronic.vertices.length / 8 - paper.vertices.length / 8).toBe(tags * 24);
+    expect((electronic.colorSvg.match(/fill="#151515"/g) ?? []).length).toBeGreaterThan(8 * 12);
+  });
+
   test('材质：颜色图集加表面图集（G 粗糙度、B 金属度）；有发光的格子时加自发光图集', () => {
     expect(mergedMaterial('Island', 'Shop/Island', 2048).emissiveTexture).toBeUndefined();
     expect(mergedMaterial('Fridge', 'Shop/Fridge', 2048, 6)).toMatchObject({ emissive: [6, 6, 6], emissiveTexture: { texture: 'Shop/Fridge.emissive', encoding: 'svg' } });

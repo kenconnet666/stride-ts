@@ -11,7 +11,8 @@
 import type { ProductFile } from '../content/formats/productFormat.ts';
 import type { ShelfFile } from '../content/formats/shelfFormat.ts';
 import { hash32, seededRandom } from '../data/hash.ts';
-import { productFootprint, textPath } from './product.ts';
+import { productFootprint, svgNumber, textPath } from './product.ts';
+import type { TextFont } from './textOutline.ts';
 import { ProductBatch, type AtlasCell, type Cell, type MergedProducts, type ProductSources } from './productBatch.ts';
 
 /** 摆上去的一件商品：哪个商品文件、第几个变体，底面中心的位置，绕 Y 转多少（背面那一面转半圈），是不是第一排。 */
@@ -104,8 +105,10 @@ function checkShelf(file: ShelfFile, where: string): void {
   if (file.levels.at(-1)! >= file.height) throw new Error(`${where}: the top level must be below the height`);
 }
 
-/** 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白。 */
-const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5;
+/** 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳。 */
+const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6;
+/** 电子价签：外壳比屏大一圈（米）、凸出价签条多厚。 */
+const ESL_RIM = 0.004, ESL_DEPTH = 0.009;
 /** 冷柜：门在层板前面多远、门框多宽；顶上灯箱的高；冰柜的壁厚。 */
 const DOOR = 0.05, MULLION = 0.04, HEADER = 0.24, FREEZER_WALL = 0.06;
 
@@ -120,6 +123,7 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
   const items = type === 'freezer' ? plan.items.map((item) => ({ ...item, position: [item.position[0], item.position[1], item.position[2] - inner / 2] as const })) : plan.items;
   const tags = type === 'freezer' ? [] : plan.tags;
   const tagFont = file.font ? sources.font(file.font) : undefined;
+  const electronic = file.priceTags === 'electronic';
   const prices = Array.from({ length: PRICES }, (_, k) => {
     const random = seededRandom(hash32(file.seed ?? 1, 1000 + k));
     return `${Math.floor(1 + random() * 39)}.${['90', '80', '50', '00', '99'][Math.floor(random() * 5)]}`;
@@ -134,9 +138,10 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
       { color: '#2a2c2f', roughness: 0.35, metalness: 0.6 },
       { color: '#eef4ff', roughness: 0.5, metalness: 0, emissive: 6 },
       { color: '#eef1f3', roughness: 0.4, metalness: 0 },
+      { color: '#f0f0ee', roughness: 0.45, metalness: 0 },
     ],
-    // 价签：几种价格，三个里一个黄底
-    cells: prices.map((price, k): AtlasCell => ({
+    // 价签：几种价格；纸的三个里一个黄底，电子的是墨水屏
+    cells: prices.map((price, k): AtlasCell => (electronic ? eslCell(price, k, tagFont, hash32(file.seed ?? 1, 2000 + k)) : {
       size: [TAG[0] * 1000, TAG[1] * 1000] as const, color: k % 3 === 0 ? '#f6d21a' : '#ffffff', roughness: 0.4, metalness: 0,
       draw: ([x, y, w, h]) => tagFont && textPath(tagFont, price, x + w * 0.55, y + h * 0.55, w * 0.78, h * 0.62, '#d7262b'),
     })).concat(type === 'fridge' ? [{
@@ -172,11 +177,42 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
   }
   // 价签：价签条正面上的一小片（从正面看左下、右下、右上、左上：背面那一面的 x 反过来）
   for (const tag of tags) {
-    const [x, y, z] = tag.position, [tw, th] = TAG;
+    const [x, y, z0] = tag.position, [tw, th] = TAG;
+    // 电子价签：外壳凸出价签条，屏贴在外壳正面
+    const z = electronic ? z0 + tag.side * ESL_DEPTH : z0;
+    if (electronic) {
+      const zs = [z0 - tag.side * 0.001, z - tag.side * 0.0005].sort((a, b) => a - b) as [number, number];
+      batch.box([x - tw / 2 - ESL_RIM, y - th / 2 - ESL_RIM, zs[0]], [x + tw / 2 + ESL_RIM, y + th / 2 + ESL_RIM, zs[1]], TAG_BODY);
+    }
     const corners = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sy]) => [x + sx * tw / 2 * tag.side, y + sy * th / 2, z]);
     batch.quad(corners, [0, 0, tag.side], tag.price);
   }
   return { ...batch.finish(), items: items.length };
+}
+
+/**
+ * 电子价签的屏（墨水屏：浅灰底、黑色的大数字、右边一个二维码样子的方块；三个里一个底下有红色的促销条）。seed 定二维码的花样。
+ */
+function eslCell(price: string, k: number, font: TextFont | undefined, seed: number): AtlasCell {
+  return {
+    size: [TAG[0] * 1000, TAG[1] * 1000], color: '#d8dbd4', roughness: 0.5, metalness: 0,
+    draw: ([x, y, w, h]: Cell) => {
+      const shapes: string[] = [];
+      const promo = k % 3 === 0;
+      if (promo) shapes.push(`<rect x="${x}" y="${svgNumber(y + h * 0.78)}" width="${w}" height="${svgNumber(h * 0.22)}" fill="#c8261e"/>`);
+      const digits = font && textPath(font, price, x + w * 0.36, y + h * (promo ? 0.4 : 0.5), w * 0.58, h * 0.5, '#151515');
+      if (digits) shapes.push(digits);
+      // 二维码样子的 7×7 格子
+      const random = seededRandom(seed), size = h * 0.42, cell = size / 7, qx = x + w * 0.74, qy = y + h * 0.12;
+      for (let i = 0; i < 7; i++) {
+        for (let j = 0; j < 7; j++) {
+          const finder = (i < 2 && j < 2) || (i < 2 && j > 4) || (i > 4 && j < 2);
+          if (finder || random() < 0.45) shapes.push(`<rect x="${svgNumber(qx + i * cell)}" y="${svgNumber(qy + j * cell)}" width="${svgNumber(cell)}" height="${svgNumber(cell)}" fill="#151515"/>`);
+        }
+      }
+      return shapes.join('');
+    },
+  };
 }
 
 /**

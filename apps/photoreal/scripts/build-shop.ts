@@ -104,11 +104,11 @@ for (const { id, ...product } of families) await write('product', `Shop/Products
 const p = (id: string) => `Shop/Products/${id}`;
 const gondola = { sides: 2, length: 4, height: 1.95, depth: 0.42, levels: [0.15, 0.55, 0.92, 1.29, 1.66], font: FONT };
 const shelves: Record<string, object> = {
-  Drinks: { ...gondola, stock: { products: ['Water', 'Juice', 'Cola', 'Tea', 'Beer', 'PeanutOil'].map(p), variants: 4, facings: [3, 6] }, seed: 41 },
-  Pantry: { ...gondola, stock: { products: ['SoySauce', 'Vinegar', 'ChiliSauce', 'Sauce', 'PeanutOil', 'Yogurt'].map(p), variants: 4 }, seed: 42 },
+  Drinks: { ...gondola, priceTags: 'electronic', stock: { products: ['Water', 'Juice', 'Cola', 'Tea', 'Beer', 'PeanutOil'].map(p), variants: 4, facings: [3, 6] }, seed: 41 },
+  Pantry: { ...gondola, priceTags: 'electronic', stock: { products: ['SoySauce', 'Vinegar', 'ChiliSauce', 'Sauce', 'PeanutOil', 'Yogurt'].map(p), variants: 4 }, seed: 42 },
   Snacks: { ...gondola, stock: { products: ['Chips', 'Konjac', 'Noodles', 'Biscuits', 'Crackers', 'Cereal', 'Milk'].map(p), variants: 5 }, seed: 43 },
   Household: { ...gondola, stock: { products: ['Detergent', 'Tissue', 'Cereal', 'Crackers'].map(p), variants: 3 }, seed: 44 },
-  Wall: { ...gondola, sides: 1, length: 8, height: 2.1, levels: [0.15, 0.52, 0.89, 1.26, 1.63, 2.0].slice(0, 5), stock: { products: ['Water', 'Juice', 'Beer', 'Cola', 'Milk', 'Yogurt'].map(p), variants: 5, facings: [4, 8] }, seed: 45 },
+  Wall: { ...gondola, priceTags: 'electronic', sides: 1, length: 8, height: 2.1, levels: [0.15, 0.52, 0.89, 1.26, 1.63, 2.0].slice(0, 5), stock: { products: ['Water', 'Juice', 'Beer', 'Cola', 'Milk', 'Yogurt'].map(p), variants: 5, facings: [4, 8] }, seed: 45 },
 };
 // 冷冻的货（冰柜里躺着的）、冷柜和冰柜
 for (const { id, ...product } of [

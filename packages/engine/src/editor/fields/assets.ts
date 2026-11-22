@@ -703,6 +703,7 @@ const SHELF_FIELDS = fields<ShelfFile>({
   },
   type: { type: oneOf('gondola', 'fridge', 'freezer'), optional: true, default: 'gondola', description: 'gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor)' },
   header: { type: string, optional: true, description: 'text on the lit header of a fridge (needs the font)' },
+  priceTags: { type: oneOf('paper', 'electronic'), optional: true, default: 'paper', description: 'paper tags (white or yellow, red price) or electronic shelf labels (a small housing with an e-ink screen, black price and a QR code, some with a red promo bar)' },
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the stocking and the prices' },
 });
 

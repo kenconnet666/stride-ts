@@ -48,5 +48,7 @@ export interface ShelfFile {
   readonly type?: 'gondola' | 'fridge' | 'freezer';
   /** 冷柜顶上灯箱的字（"冷藏饮料"），要有 font；没写时灯箱只发光不写字。 */
   readonly header?: string;
+  /** 价签：纸的（默认，白底或黄底红字）或电子价签（一个小外壳加一块墨水屏：黑字、角上的二维码，有的带红色的促销条）。 */
+  readonly priceTags?: 'paper' | 'electronic';
   readonly seed?: number;
 }

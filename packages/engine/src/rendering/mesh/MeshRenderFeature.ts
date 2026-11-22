@@ -58,6 +58,17 @@ export interface MeshBatch {
   count: number;
   /** 在这一帧所有批次连起来的槽位列表里的起点，Cull 时算。 */
   first: number;
+  /** @internal 各阶段上次用的管线（材质改了、输出格式或网格效果换了才重新查，不用每次画都拼管线的键）。 */
+  readonly pipelines: Map<RenderStage, CachedPipeline>;
+}
+
+/** 一批在一个阶段上次用的管线，和当时的输入。 */
+interface CachedPipeline {
+  readonly pipeline: GPURenderPipeline;
+  readonly materialVersion: number;
+  readonly effect: MeshEffect | undefined;
+  readonly colorFormat: GPUTextureFormat | undefined;
+  readonly depthFormat: GPUTextureFormat;
 }
 
 /** 阴影投射的按坡度深度偏移（GPU 的 depthBiasSlopeScale，乘三角形在阴影图里的最大深度斜率）。 */
@@ -271,7 +282,8 @@ export class MeshRenderFeature extends RootRenderFeature {
   override prepare(context: RenderContext): void {
     const gpu = this.#ensureGpu();
     gpu.nextFrame();
-    gpu.uploadWorlds(context.game.transforms.renderWorld, context.game.transforms.slotLimit);
+    const transforms = context.game.transforms;
+    gpu.uploadWorlds(transforms.renderWorld, transforms.slotLimit, transforms.changedSlots(), context.game.updateTime.frameCount);
     gpu.uploadSkinning(this.#paletteOf, context.game.animation);
     gpu.uploadMorphs(this.#morphOf, context.game.animation);
     gpu.uploadHeights(this.heightPages);
@@ -372,9 +384,14 @@ export class MeshRenderFeature extends RootRenderFeature {
       const passes = stage.transparent ? transparentPasses(batch.material) : NO_PASSES;
       const pipelineOf = (materialPass?: MaterialPass) => gpu.pipelineFor(stage, batch.mesh.layout, batch.skinned, deformOf(batch.mesh), batch.material, this.effect, materialPass);
       if (passes.length === 0 && (materialChanged || meshChanged)) {
-        // 管线也按材质分（自发光变体、两面画），同样的组合是同一条管线
-        const next = pipelineOf();
-        if (next !== pipeline) pass.setPipeline((pipeline = next));
+        // 管线也按材质分（自发光变体、两面画），同样的组合是同一条管线；上次的输入没变就用上次的
+        const { colorFormat, depthFormat } = stage.output;
+        let cached = batch.pipelines.get(stage);
+        if (!cached || cached.materialVersion !== batch.material.version || cached.effect !== this.effect || cached.colorFormat !== colorFormat || cached.depthFormat !== depthFormat) {
+          cached = { pipeline: pipelineOf(), materialVersion: batch.material.version, effect: this.effect, colorFormat, depthFormat };
+          batch.pipelines.set(stage, cached);
+        }
+        if (cached.pipeline !== pipeline) pass.setPipeline((pipeline = cached.pipeline));
       }
       if (materialChanged) {
         material = batch.material;
@@ -469,7 +486,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       if (!mesh) throw new Error(`Model refers to mesh ${meshId}, which does not exist`);
       if (!material) throw new Error(`Model refers to material ${materialId}, which does not exist`);
       if (skinned && !mesh.layout.joints) throw new Error(`mesh '${mesh.name}' is drawn skinned but has no joints and weights`);
-      batch = { mesh, material, isShadowCaster, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0 };
+      batch = { mesh, material, isShadowCaster, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map() };
       this.#batchByKey.set(key, batch);
       this.batches.push(batch);
     }
@@ -571,6 +588,11 @@ class Gpu {
   #parity = 0;
   /** 各缓冲一半的大小（世界矩阵、两张表按槽位，蒙皮矩阵按矩阵，形变权重按个）。 */
   #halves = { worlds: 0, paletteOf: 0, palettes: 0, morphOf: 0, morphWeights: 0 };
+  /** 世界矩阵的两半各是第几次更新（GameTime.frameCount）时的；−∞ 是没写过。 */
+  readonly #worldsAt = [-Infinity, -Infinity];
+  /** 最近两次更新各自变了的槽位（拷出来的：原生那边的视图下一次更新就失效）。 */
+  #changed: { update: number; slots: Int32Array } = { update: -1, slots: new Int32Array(0) };
+  #changedBefore: { update: number; slots: Int32Array } = { update: -1, slots: new Int32Array(0) };
   /** 两张表改了以后两半都要写一遍（另一半是上一帧的，下一帧轮到它时也得是新的）。 */
   #paletteOfWrites = 0;
   #morphOfWrites = 0;
@@ -836,20 +858,48 @@ class Gpu {
     return [this.#parity * half, (1 - this.#parity) * half];
   }
 
-  /** 世界矩阵列的 1..slotLimit 段（槽位 0 是空的，一起传，下标就和槽位一致），写进这一帧的那一半。 */
-  uploadWorlds(world: Float32Array, slotLimit: number): void {
+  /**
+   * 世界矩阵列的 1..slotLimit 段（槽位 0 是空的，一起传，下标就和槽位一致），写进这一帧的那一半。没变就不传：这一半上次写的
+   * 是第几次更新的，从那以后变了的槽位（changed 是这次更新的，TransformStore.changedSlots；再早一次的自己留着）按连着的段传；
+   * 隔了两次以上的更新（编辑状态按需出帧时）、缓冲新建了、变了的太多时整段传。
+   */
+  uploadWorlds(world: Float32Array, slotLimit: number, changed: Int32Array, update: number): void {
     const floats = (slotLimit + 1) * 16;
     if (!this.#worlds || this.#halves.worlds * 64 < floats * 4) {
       this.#worlds?.destroy();
       const half = capacityFor(floats * 4);
       this.#worlds = this.#createStorage('MeshRenderFeature worlds', half * 2);
       this.#halves.worlds = half / 64;
+      this.#worldsAt.fill(-Infinity);
       this.#clearViewBindGroups();
+    }
+    if (this.#changed.update !== update) {
+      this.#changedBefore = this.#changed;
+      this.#changed = { update, slots: changed.slice() };
     }
     const [current, previous] = this.#bases(this.#halves.worlds);
     this.#frameBases.set([current, previous], 0);
+    const held = this.#worldsAt[this.#parity]!;
+    this.#worldsAt[this.#parity] = update;
+    if (held === update) return;
+    const missing = held === update - 1 ? [this.#changed.slots] : held === update - 2 && this.#changedBefore.update === update - 1 ? [this.#changedBefore.slots, this.#changed.slots] : undefined;
+    const count = missing?.reduce((sum, list) => sum + list.length, 0) ?? Infinity;
     // 直接从 wasm 的共享内存上传，不经过 JS 数组
-    this.device.queue.writeBuffer(this.#worlds, current * 64, world, 0, floats);
+    if (!missing || count > slotLimit / 4) {
+      this.device.queue.writeBuffer(this.#worlds, current * 64, world, 0, floats);
+      return;
+    }
+    const slots = missing.length === 1 ? missing[0]!.slice() : Int32Array.from([...missing[0]!, ...missing[1]!]);
+    slots.sort();
+    // 连着的（中间空不到 8 个的也算）合成一段传
+    for (let i = 0; i < slots.length; ) {
+      const start = slots[i]!;
+      let end = start;
+      while (++i < slots.length && slots[i]! <= end + 8) end = Math.max(end, slots[i]!);
+      if (start > slotLimit) break;
+      const last = Math.min(end, slotLimit);
+      this.device.queue.writeBuffer(this.#worlds, (current + start) * 64, world, start * 16, (last - start + 1) * 16);
+    }
   }
 
   /**

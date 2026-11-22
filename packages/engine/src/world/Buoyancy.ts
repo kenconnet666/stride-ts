@@ -25,7 +25,7 @@ export const Buoyancy = component('Buoyancy', {
 export function waterSurfaceAt(areas: readonly WaterArea[], x: number, z: number): { readonly height: number; readonly flow: readonly [number, number, number] } | undefined {
   for (const area of areas) {
     if (area.river) {
-      const { line, halfWidth, speed } = area.river;
+      const { line, halfWidth, speed, offset } = area.river;
       let best: { distance: number; height: number; flow: [number, number, number] } | undefined;
       for (let i = 0; i + 1 < line.length; i++) {
         const [ax, ay, az] = line[i]!, [bx, by, bz] = line[i + 1]!;
@@ -34,7 +34,7 @@ export function waterSurfaceAt(areas: readonly WaterArea[], x: number, z: number
         const t = Math.min(1, Math.max(0, ((x - ax) * ex + (z - az) * ez) / (length * length)));
         const distance = Math.hypot(x - ax - ex * t, z - az - ez * t);
         if (distance > halfWidth || (best && distance >= best.distance)) continue;
-        best = { distance, height: ay + (by - ay) * t, flow: [(ex / length) * speed, 0, (ez / length) * speed] };
+        best = { distance, height: ay + (by - ay) * t + offset, flow: [(ex / length) * speed, 0, (ez / length) * speed] };
       }
       if (best) return best;
       continue;

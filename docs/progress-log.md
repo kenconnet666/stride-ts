@@ -906,6 +906,17 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - ac26d90 的 CI 挂在 simple-audio：`stride open` 60 秒没等到页面连上（新的输出捕获把整段日志打出来了），本机 31 秒就过。`open`、`wait` 等页面的时限是写死的 60、30 秒，没看 CI 设的 `STRIDE_TIMEOUT`（300 秒，别的命令都看）：改成也看它。
 
+## W7 开头：先测（2026-11-22）
+
+Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 Hz，但画一帧的 CPU（`drawMs`）平均 5.3、p95 8.0 毫秒，GPU 4.1 毫秒（阴影 1.5）；约一万个实例，6 个视图（4 级阴影、平面反射、主画面）剔除后画 49610 个、414 次绘制。CPU 剖析（`stride cpu-profile`）里最大的几项和处理：
+
+- 原生的视锥剔除 `CullBatches` 0.43 毫秒；`_emscripten_get_now` 0.82 毫秒是调试版原生模块在调试 CLI 连着时的计时自己（`forwardNativeDebug` 打开收集），发行版没有，测原生耗时时要记得扣掉。
+- `writeBuffer` 0.55 毫秒：每帧把一万多个世界矩阵整段传上去。改成只传变了的：两半各记是第几次更新写的，从那以后变了的槽位（`TransformStore.changedSlots`，再早一次的自己留一份）合成连着的段传，隔了两次以上的更新（编辑状态按需出帧）、缓冲新建、变了的超过四分之一时整段传 → 0.19 毫秒。
+- `pipelineFor`、`#pipelineKey` 0.39 毫秒：每次绘制都拼一个字符串当管线的键。每批记下各阶段上次用的管线和当时的输入（材质版本、网格效果、输出格式），没变就直接用 → 从剖析里消失。
+- `catmullRom`、`samplePath` 0.15 毫秒：浮力每帧经 `waterAreas` 沿河的样条重新采样（W6 第四步留下的浪费）。中心线按实体缓存，世界矩阵变了才重采；涨水的高度另记在 `offset` 上 → 消失。
+
+合起来 `drawMs` 平均 5.3 → 4.4 毫秒。动的东西（列车、浮着的箱子、物理样例）照常更新：两张隔一秒半的截图里列车往前走了，physics-sample、bepu-sample、platformer、first-person-shooter、open-world 的冒烟都过。剩下的大头是剔除本身和逐实例的 CPU 活：W7 的第一步做 GPU 上的剔除和间接绘制。
+
 ## W6 第九步：下雨涨水（2026-11-22），W6 做完
 
 天气状态（`world/Weather.ts`）多一个 `flood`（0..1）：照积水的写法，下雨就按雨的大小慢慢涨（`FLOOD_TIME` 1800 秒涨满），最多涨到雨的大小，雨停或变小了按 `FLOOD_DRAIN_TIME` 3600 秒退；一开始就在下的雨（编辑状态、第一帧）直接是雨的大小。写给 `renderSystem.surfaceWeather.flood`。水体文件多一个 `rise`（大雨下久了涨多少米，默认湖 0.5、河 0.6、海 0，`waterRise`）；渲染器的水面高度加 `rise·flood`（水下的判断、平面反射认不认这片水都跟着），`waterAreas` 加一个 `flood` 参数：浮力传现在的，程序化摆放不传（不随天气重撒）。渲染器的 `draw` 改收整个 `surfaceWeather`（雨和涨水），不再一个个传。测试浏览器（无头，1080p）里湖北岸看：`stride call weather {"on": true, "preset": "rain", "instant": true}` 以后岸线往草坡上爬了一截；湖里浮着的箱子从 −65.14 升到 −64.81（0.5 米 × 0.6）。W6 做完，留下的小尾巴记在路线图的行里。

@@ -25,20 +25,23 @@ describe('水体', () => {
       expect(ribbon[i + 4]!).toBeCloseTo(1);
       expect(Math.abs(ribbon[i + 6]!)).toBe(1);
     }
-    expect(underWater([{ level: Number.NaN, outline: undefined, river: { line: [[0, 4.5, 0], [40, 2.5, 0]], halfWidth: 5, speed: 1 } }], 20, 3, 2)).toBe(true);
-    expect(underWater([{ level: Number.NaN, outline: undefined, river: { line: [[0, 4.5, 0], [40, 2.5, 0]], halfWidth: 5, speed: 1 } }], 20, 3, 9)).toBe(false);
+    expect(underWater([{ level: Number.NaN, outline: undefined, river: { line: [[0, 4.5, 0], [40, 2.5, 0]], halfWidth: 5, speed: 1, offset: 0 } }], 20, 3, 2)).toBe(true);
+    expect(underWater([{ level: Number.NaN, outline: undefined, river: { line: [[0, 4.5, 0], [40, 2.5, 0]], halfWidth: 5, speed: 1, offset: 0 } }], 20, 3, 9)).toBe(false);
+    // 涨水：中心线的高度加上 offset
+    expect(underWater([{ level: Number.NaN, outline: undefined, river: { line: [[0, 4.5, 0], [40, 2.5, 0]], halfWidth: 5, speed: 1, offset: 0.6 } }], 20, 4, 2)).toBe(true);
     expect(splineMeshes(spline)).toEqual([]);
   });
 
   test('浮力找水面：湖是水位，河是中心线上那一点的水面和顺着河的流速，水外是 undefined', () => {
     const lake = { level: -5, outline: [[0, 0], [10, 0], [10, 10], [0, 10]] as [number, number][] };
-    const river = { level: Number.NaN, outline: undefined, river: { line: [[100, 4, 0], [140, 2, 0]] as [number, number, number][], halfWidth: 5, speed: 2 } };
+    const river = { level: Number.NaN, outline: undefined, river: { line: [[100, 4, 0], [140, 2, 0]] as [number, number, number][], halfWidth: 5, speed: 2, offset: 0 } };
     expect(waterSurfaceAt([lake, river], 5, 5)).toEqual({ height: -5, flow: [0, 0, 0] });
     const inRiver = waterSurfaceAt([lake, river], 120, 3)!;
     expect(inRiver.height).toBeCloseTo(3);
     expect(inRiver.flow).toEqual([2, 0, 0]);
     expect(waterSurfaceAt([lake, river], 120, 8)).toBeUndefined();
     expect(waterSurfaceAt([lake], 50, 50)).toBeUndefined();
+    expect(waterSurfaceAt([{ ...river, river: { ...river.river, offset: 0.5 } }], 120, 3)!.height).toBeCloseTo(3.5);
   });
 
   test('水下：低于水面而且在岸线里；海是哪儿都算', () => {

@@ -28,7 +28,8 @@ const assets = new ResourceTable<WaterAsset>();
 export interface WaterArea {
   readonly level: number;
   readonly outline: readonly (readonly [number, number])[] | undefined;
-  readonly river?: { readonly line: readonly (readonly [number, number, number])[]; readonly halfWidth: number; readonly speed: number };
+  /** 河：中心线（平时的水面）、半宽、流速；offset 是涨水抬高的米数，中心线的高度加上它才是现在的水面。 */
+  readonly river?: { readonly line: readonly (readonly [number, number, number])[]; readonly halfWidth: number; readonly speed: number; readonly offset: number };
 }
 
 /** 河的水面每隔多少米一节。 */
@@ -66,6 +67,8 @@ export function waterRise(file: WaterFile): number {
 }
 
 let floodNow = 0;
+/** 河的中心线按实体缓存：实体的世界矩阵没变就不重新沿样条采样（浮力每帧都要水面）。 */
+const riverLines = new WeakMap<WaterAsset, { readonly matrix: Float64Array; readonly lines: (readonly (readonly [number, number, number])[])[] }>();
 const areaQuery = system('waterAreas', {
   with: { water: Water, transform: Transform },
   update: ({ water, transform, count }) => {
@@ -76,11 +79,15 @@ const areaQuery = system('waterAreas', {
       const toWorld = (x: number, y: number, z: number) => [m[w]! * x + m[w + 4]! * y + m[w + 8]! * z + m[w + 12]!, m[w + 1]! * x + m[w + 5]! * y + m[w + 9]! * z + m[w + 13]!, m[w + 2]! * x + m[w + 6]! * y + m[w + 10]! * z + m[w + 14]!] as const;
       const river = asset.river;
       if (river) {
-        const level = asset.file.river?.level ?? 0.3;
-        for (const path of splinePaths(river)) {
-          const line = sampleSpline(path.points, path.closed ?? false, RIVER_STEP * 2).map((f) => toWorld(f.position[0], f.position[1] - level + waterRise(asset.file) * floodNow, f.position[2]));
-          collected.push({ level: Number.NaN, outline: undefined, river: { line, halfWidth: (river.profile.type === 'river' ? river.profile.width : 4) / 2, speed: asset.file.river?.speed ?? 1.5 } });
+        let cached = riverLines.get(asset);
+        if (!cached || cached.matrix.some((value, k) => value !== m[w + k])) {
+          const level = asset.file.river?.level ?? 0.3;
+          const lines = splinePaths(river).map((path) => sampleSpline(path.points, path.closed ?? false, RIVER_STEP * 2).map((f) => toWorld(f.position[0], f.position[1] - level, f.position[2])));
+          riverLines.set(asset, (cached = { matrix: Float64Array.from(m.subarray(w, w + 16)), lines }));
         }
+        const halfWidth = (river.profile.type === 'river' ? river.profile.width : 4) / 2, speed = asset.file.river?.speed ?? 1.5;
+        const offset = waterRise(asset.file) * floodNow;
+        for (const line of cached.lines) collected.push({ level: Number.NaN, outline: undefined, river: { line, halfWidth, speed, offset } });
         continue;
       }
       collected.push({
@@ -107,12 +114,12 @@ export function underWater(areas: readonly WaterArea[], x: number, y: number, z:
   return areas.some((area) => (area.river ? underRiver(area.river, x, y, z) : y < area.level && (!area.outline || insidePolygon(area.outline, x, z))));
 }
 
-function underRiver({ line, halfWidth }: NonNullable<WaterArea['river']>, x: number, y: number, z: number): boolean {
+function underRiver({ line, halfWidth, offset }: NonNullable<WaterArea['river']>, x: number, y: number, z: number): boolean {
   for (let i = 0; i + 1 < line.length; i++) {
     const [ax, ay, az] = line[i]!, [bx, by, bz] = line[i + 1]!;
     const ex = bx - ax, ez = bz - az, length = ex * ex + ez * ez;
     const t = length > 0 ? Math.min(1, Math.max(0, ((x - ax) * ex + (z - az) * ez) / length)) : 0;
-    if (Math.hypot(x - ax - ex * t, z - az - ez * t) < halfWidth + 0.5 && y < ay + (by - ay) * t) return true;
+    if (Math.hypot(x - ax - ex * t, z - az - ez * t) < halfWidth + 0.5 && y < ay + (by - ay) * t + offset) return true;
   }
   return false;
 }

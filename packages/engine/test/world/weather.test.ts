@@ -1,0 +1,382 @@
+import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { ContentManager } from '../../src/content/ContentManager';
+import type { SceneFile } from '../../src/content/formats/format';
+import { checkEntity } from '../../src/editor/fields';
+import { Game } from '../../src/engine/Game';
+import { Precipitation, precipitationEmitter } from '../../src/world/Precipitation';
+import { fogDensity, Weather, WEATHER_PRESETS, WeatherSystem } from '../../src/world/Weather';
+import { VolumetricClouds, VolumetricFog } from '../../src/rendering/components';
+import { GPU_LOCAL_WINDS, gust, type LocalWind, packWind, WindField, WindZone } from '../../src/world/WindField';
+import { buildKernel, gpuUnsupported } from '../../src/particles/gpuKernel';
+import { ParticlePool } from '../../src/particles/ParticlePool';
+import { ParticleSystem } from '../../src/particles/ParticleSystem';
+import { UpdaterDepthCollision, UpdaterWind } from '../../src/particles/updaters';
+import { packDepthSurface } from '../../src/rendering/DepthSurface';
+import { RenderView } from '../../src/rendering/RenderSystem';
+import { SkyOcclusion, skyOcclusionCenter } from '../../src/world/SkyOcclusion';
+import { Matrix } from '../../src/data/Matrix';
+import { fakeGpu, stubGpuGlobals } from '../fakeGpu';
+
+const still = { turbulence: 0, pulseMagnitude: 0, pulseFrequency: 0 };
+const local = (center: [number, number, number], radius: number, strength: number): LocalWind => ({ center, radius, strength, ...still });
+const round = (v: readonly number[]) => v.map((c) => +c.toFixed(4) + 0);
+
+describe('风场', () => {
+  test('全局风到处一样；局部风源从中心往外吹，在半径里线性衰减，半径外没有', () => {
+    const wind = new WindField();
+    wind.set({ velocity: [2, 0, 0], ...still }, [local([10, 0, 0], 4, 6)]);
+    expect(round(wind.sample(-100, 5, 3))).toEqual([2, 0, 0]);
+    // 离中心 1 米（半径 4）：往外 6 · 0.75
+    expect(round(wind.sample(10, 1, 0))).toEqual([2, 4.5, 0]);
+    expect(round(wind.sample(15, 0, 0))).toEqual([2, 0, 0]);
+  });
+
+  test('阵风让强度在 1 ± 幅度之间起伏；湍流按位置变；风源没变时版本号不变', () => {
+    const wind = new WindField();
+    wind.set({ velocity: [0, 0, 4], turbulence: 0, pulseMagnitude: 0.5, pulseFrequency: 1 }, []);
+    const speeds = Array.from({ length: 50 }, (_, i) => {
+      wind.time = i * 0.137;
+      return wind.sample(0, 0, 0)[2];
+    });
+    expect(Math.min(...speeds)).toBeGreaterThanOrEqual(2 - 1e-6);
+    expect(Math.max(...speeds)).toBeLessThanOrEqual(6 + 1e-6);
+    expect(Math.max(...speeds) - Math.min(...speeds)).toBeGreaterThan(1);
+    expect(Math.max(...Array.from({ length: 200 }, (_, i) => Math.abs(gust(i / 37))))).toBeLessThanOrEqual(1);
+    wind.set({ velocity: [0, 0, 0], turbulence: 1, pulseMagnitude: 0, pulseFrequency: 0 }, []);
+    expect(wind.sample(0, 0, 0)).not.toEqual(wind.sample(5, 2, 7));
+    const version = wind.version;
+    wind.set({ velocity: [0, 0, 0], turbulence: 1, pulseMagnitude: 0, pulseFrequency: 0 }, []);
+    expect(wind.version).toBe(version);
+  });
+
+  test('局部风源按格子找：远处的风源不用逐个看也取得到；数量不设上限', () => {
+    const wind = new WindField();
+    const locals = Array.from({ length: 2000 }, (_, i) => local([i * 50, 0, 0], 10, 1));
+    wind.set({ velocity: [0, 0, 0], ...still }, locals);
+    expect(round(wind.sample(1500 + 5, 0, 0))).toEqual([0.5, 0, 0]);
+    // GPU 只带最近的几个：离 (1500, 0, 0) 最近的是它自己和左右两个
+    expect(wind.nearest(1500, 0, 0, 3).map((l) => l.center[0]).sort((a, b) => a - b)).toEqual([1450, 1500, 1550]);
+  });
+
+  test('打包给着色器：全局风、个数，最近的局部风源各两个 vec4', () => {
+    const wind = new WindField();
+    wind.set({ velocity: [1, 2, 3], turbulence: 0.5, pulseMagnitude: 0.25, pulseFrequency: 2 }, [local([100, 0, 0], 5, 7), local([1, 0, 0], 3, 4)]);
+    const out = new Float32Array((2 + 2 * GPU_LOCAL_WINDS) * 4);
+    packWind(wind, [0, 0, 0], out, 0);
+    expect([...out.subarray(0, 8)]).toEqual([1, 2, 3, 0.5, 0.25, 2, 2, 0]);
+    expect([...out.subarray(8, 16)]).toEqual([1, 0, 0, 3, 4, 0, 0, 0]);
+    expect([...out.subarray(16, 20)]).toEqual([100, 0, 0, 5]);
+  });
+
+  test('粒子的风：速度往 风 + 终端速度 靠（CPU）；GPU 内核按同样的公式，打包 drag 和终端速度', () => {
+    const wind = new WindField();
+    wind.set({ velocity: [4, 0, 0], ...still }, []);
+    const updater = new UpdaterWind({ $type: 'updaterWind', drag: 2, terminalVelocity: [0, -9, 0] });
+    updater.field = wind;
+    const pool = new ParticlePool(new Set(['life', 'position', 'velocity']));
+    pool.setCapacity(1);
+    pool.add();
+    updater.update(0.25, pool);
+    // k = min(1, 2 · 0.25) = 0.5：从 0 往 (4, -9, 0) 走一半
+    expect([...pool.field('velocity')!]).toEqual([2, -4.5, 0]);
+    const system = new ParticleSystem({ emitters: [{ updaters: [{ $type: 'updaterWind', drag: 2, terminalVelocity: [0, -9, 0] }] }] });
+    system.update(0);
+    const kernel = buildKernel(system.emitters[0]!);
+    expect(kernel.code).toContain('windAt((*p).position, sim.time, 0u) + sim.data[18].yzw');
+    const data = new Float32Array(kernel.slots * 4);
+    kernel.pack(data);
+    expect([...data.subarray(18 * 4, 19 * 4)]).toEqual([2, 0, -9, 0]);
+  });
+});
+
+describe('雨雪', () => {
+  test('发射器：在 GPU 上，体积按半径和高度，寿命是落下两倍高度的时间，容量够装下；雨沿速度拉长，雪是点', () => {
+    const rain = precipitationEmitter('rain', 10, 9);
+    const emitter = (rain.file['particleSystem'] as { emitters: Record<string, unknown>[] }).emitters[0]!;
+    expect(rain.rate).toBe(20 * 20 * 20);
+    expect([emitter['simulation'], emitter['particleLifetime'], (emitter['shapeBuilder'] as { $type: string }).$type]).toEqual(['gpu', [2, 2.2], 'shapeBuilderOrientedQuad']);
+    expect(emitter['maxParticlesOverride']).toBeGreaterThanOrEqual(rain.rate * 2.2);
+    const system = new ParticleSystem(rain.file['particleSystem'] as never);
+    const snow = precipitationEmitter('snow', 10, 9);
+    expect(((snow.file['particleSystem'] as { emitters: Record<string, { $type: string }>[] }).emitters[0]!['shapeBuilder'])!.$type).toBe('shapeBuilderBillboard');
+    expect(system.emitters[0]!.updaters.some((updater) => updater instanceof UpdaterWind)).toBe(true);
+  });
+});
+
+describe('天空遮挡（从上往下的深度图）', () => {
+  let native: StrideNative;
+  beforeAll(async () => {
+    native = await createStrideNative({ workerThreads: 1 });
+  });
+  afterAll(() => native?.shutdown());
+
+  test('没人用就不画、不建贴图；中心按纹素吸附；走远了才重画（没变的遮挡物不重画）；画完下一帧开头才换成对外那张、版本号加一', () => {
+    stubGpuGlobals();
+    const { device, calls, writes } = fakeGpu();
+    const sky = new SkyOcclusion(device);
+    Object.assign(sky, { size: 64, resolution: 512, redrawDistance: 8 });
+    expect(skyOcclusionCenter({ x: 5.06, y: 1.2, z: -2.1 }, 0.125)).toEqual([5.0, 1.25, -2.125]);
+    expect(sky.begin({ x: 0, y: 0, z: 0 }, 0)).toBeUndefined();
+    expect(calls.some((call) => call.method === 'createTexture')).toBe(false);
+    sky.use();
+    const view = sky.begin({ x: 0.3, y: 0, z: 0 }, 0)!;
+    // 正交、从上往下：中心正下方的点在画面中间
+    const c = Matrix.transformPoint(view.viewProjection, 0.25, 0, 0);
+    expect([+c[0].toFixed(4) + 0, +c[1].toFixed(4) + 0]).toEqual([0, 0]);
+    sky.use();
+    expect(sky.begin({ x: 5, y: 0, z: 0 }, 0.5)).toBeUndefined();
+    sky.use();
+    expect(sky.begin({ x: 9, y: 0, z: 0 }, 0.6)).toBe(view);
+    sky.use();
+    expect(sky.begin({ x: 9, y: 0, z: 0 }, 1.7)).toBeUndefined();
+    // 画完：这一帧还是旧的，下一帧 begin 时换上
+    // 深度拷进还没换上的那个缓冲（网格着色器读缓冲），下一帧开头和矩阵一起换上
+    const pass = { end: () => {} } as unknown as GPURenderPassEncoder;
+    const copies: GPUBuffer[] = [];
+    const encoder = { beginRenderPass: () => pass, copyTextureToBuffer: (_: unknown, { buffer }: { buffer: GPUBuffer }) => copies.push(buffer) } as unknown as GPUCommandEncoder;
+    const before = sky.depthBuffer;
+    sky.draw({} as never, encoder, { draw: () => {}, graphicsDevice: { profiler: { passTimestamps: () => undefined } } } as never, {} as never);
+    expect(sky.version).toBe(0);
+    expect(copies).toHaveLength(1);
+    expect(copies[0]).not.toBe(before);
+    expect(sky.depthBuffer).toBe(before);
+    sky.begin({ x: 9, y: 0, z: 0 }, 1.8);
+    expect(sky.version).toBe(1);
+    expect(sky.depthBuffer).toBe(copies[0]);
+    const [write] = writes.filter((w) => (w.buffer as GPUBuffer).label === 'SkyOcclusion');
+    // 有效位、深度图的边长
+    expect(Array.from(new Uint32Array(write!.bytes.buffer, write!.bytes.byteOffset + 64, 2))).toEqual([1, 512]);
+    sky.use();
+    sky.enabled = false;
+    expect(sky.begin({ x: 100, y: 0, z: 0 }, 5)).toBeUndefined();
+  });
+
+  test('遮挡物在画的范围里动了、加了、删了才重画；范围外的、蒙皮的、透明的、不投阴影的动了不算；暂停的帧不重复算；停用过再用先重画', () => {
+    stubGpuGlobals();
+    const sky = new SkyOcclusion(fakeGpu().device);
+    using transforms = native.createTransforms(16);
+    const [near, far, skinned, glass, extra] = transforms.allocate(5);
+    transforms.position[far! * 3] = 500;
+    const mesh = { cullBounds: { min: [-1, -1, -1], max: [1, 1, 1] } };
+    const batch = (slots: number[], options: { skinned?: boolean; transparent?: boolean; caster?: boolean } = {}) =>
+      ({ mesh, material: { isTransparent: options.transparent ?? false }, isShadowCaster: options.caster ?? true, skinned: options.skinned ?? false, slots: Uint32Array.from(slots), count: slots.length }) as never;
+    let batches = [batch([near!, far!]), batch([skinned!], { skinned: true }), batch([glass!], { transparent: true })];
+    let frame = 0, time = 0;
+    /** 一帧：动 move 里的槽位、update、begin、watch；返回这一帧画没画。 */
+    const step = (move: (() => void) | undefined = undefined, options: { paused?: boolean } = {}) => {
+      if (!options.paused) {
+        move?.();
+        transforms.update();
+        frame++;
+      }
+      time += 0.5;
+      sky.use();
+      const drawn = sky.begin({ x: 0, y: 0, z: 0 }, time) !== undefined;
+      sky.watch(batches, transforms, frame);
+      return drawn;
+    };
+    expect(step()).toBe(true);
+    expect(step()).toBe(false);
+    // 范围外的、蒙皮的、透明的动了不算
+    expect(step(() => { transforms.position[far! * 3 + 2] = 3; transforms.position[skinned! * 3] = 1; transforms.position[glass! * 3] = 1; })).toBe(false);
+    expect(step()).toBe(false);
+    // 范围里的动了：下一帧重画
+    expect(step(() => { transforms.position[near! * 3] = 2; })).toBe(false);
+    expect(step()).toBe(true);
+    expect(step()).toBe(false);
+    // 暂停的帧：变了的槽位还是上一次的，不再算一次
+    expect(step(() => { transforms.position[near! * 3] = 3; })).toBe(false);
+    expect(step()).toBe(true);
+    expect(step(undefined, { paused: true })).toBe(false);
+    expect(step(undefined, { paused: true })).toBe(false);
+    // 瞬移出范围：按原来的位置算
+    expect(step(() => { transforms.position[near! * 3] = 1000; })).toBe(false);
+    expect(step()).toBe(true);
+    // 加了一个范围里的遮挡物、删了一个
+    batches = [...batches, batch([extra!])];
+    expect(step()).toBe(false);
+    expect(step()).toBe(true);
+    batches = batches.slice(0, -1);
+    expect(step()).toBe(false);
+    expect(step()).toBe(true);
+    // 停用过：接着用时先重画
+    sky.begin({ x: 0, y: 0, z: 0 }, (time += 0.5));
+    expect(step()).toBe(true);
+  });
+
+  test('按深度表面碰撞：内核多两个绑定（深度图、它的 uniform）和碰撞的代码；一个发射器两个时不上 GPU', () => {
+    const plain = new ParticleSystem({ emitters: [{ initializers: [{ $type: 'initialSizeSeed' }] }] }).emitters[0]!;
+    expect(buildKernel(plain).collider).toBeUndefined();
+    const collision = { $type: 'updaterDepthCollision', surface: 'sky', restitution: 0.25, spread: 0.3, bounceLifetime: 0.3 };
+    const emitter = new ParticleSystem({ emitters: [{ updaters: [collision] }] }).emitters[0]!;
+    const kernel = buildKernel(emitter);
+    expect(kernel.collider).toBeInstanceOf(UpdaterDepthCollision);
+    expect(kernel.collider!.surface).toBe('sky');
+    expect(kernel.code).toContain('@group(0) @binding(2) var surfaceDepth: texture_depth_2d;');
+    expect(kernel.code).toContain('let hit = surfaceHit((*p).position, ');
+    const data = new Float32Array(kernel.slots * 4);
+    kernel.pack(data);
+    // 恢复系数、摩擦（默认 0.1）、撞上不死、厚度（默认 0.5），散开、撞上以后最多活几秒
+    expect(Array.from(data.subarray(0, 6))).toEqual([0.25, Math.fround(0.1), 0, 0.5, Math.fround(0.3), Math.fround(0.3)]);
+    const twice = new ParticleSystem({ emitters: [{ updaters: [collision, collision] }] }).emitters[0]!;
+    expect(gpuUnsupported(twice)).toBe('it has more than one depth collision');
+  });
+
+  test('深度表面的 uniform：视图投影、有效位和尺寸、逆矩阵、视线方向（单位向量）、相机位置', () => {
+    const view = new RenderView();
+    Matrix.lookAtRH(view.view, [0, 10, 0], [0, 0, 0], [0, 0, -1]);
+    Matrix.orthoOffCenterRH(view.projection, -5, 5, -5, 5, 0, 20);
+    view.update();
+    const data = packDepthSurface(view, 256, 128);
+    const f32 = new Float32Array(data);
+    expect(Array.from(new Uint32Array(data, 64, 3))).toEqual([1, 256, 128]);
+    expect(Array.from(f32.subarray(36, 39)).map((v) => Math.round(v * 1000) / 1000 + 0)).toEqual([0, -1, 0]);
+    expect(Array.from(f32.subarray(40, 43)).map((v) => Math.round(v * 1000) / 1000 + 0)).toEqual([0, 10, 0]);
+    expect(Array.from(f32.subarray(20, 36))).toEqual(Array.from(view.inverseViewProjection));
+  });
+});
+
+describe('天气状态', () => {
+  const rain = { ...WEATHER_PRESETS.rain, transitionTime: 30 };
+  const clear = { ...WEATHER_PRESETS.clear, transitionTime: 30 };
+
+  test('第一次直接到想要的天气（下了很久的样子）；之后按时间常数指数地靠过去，帧率不同走的一样', () => {
+    const weather = new WeatherSystem();
+    expect(weather.advance(rain, 0.016)).toMatchObject({ cloudCoverage: 0.95, precipitation: 0.6, wetness: 1, snowCover: 0 });
+    // 一个时间常数走完 63%
+    weather.advance(clear, 30);
+    expect(weather.current!.cloudCoverage).toBeCloseTo(0.95 + (0.15 - 0.95) * (1 - Math.exp(-1)), 5);
+    const coarse = new WeatherSystem(), fine = new WeatherSystem();
+    coarse.advance(rain, undefined);
+    fine.advance(rain, undefined);
+    coarse.advance(clear, 1);
+    for (let i = 0; i < 100; i++) fine.advance(clear, 0.01);
+    expect(fine.current!.cloudCoverage).toBeCloseTo(coarse.current!.cloudCoverage, 5);
+    // 过渡时间 0：马上变
+    expect(weather.advance({ ...rain, transitionTime: 0 }, 0.016).cloudCoverage).toBe(0.95);
+  });
+
+  test('风向走近的那一边；雨停了地面慢慢干，下雪积雪，气温高了雪化', () => {
+    const weather = new WeatherSystem();
+    weather.advance({ ...clear, windDirection: 350 }, undefined);
+    weather.advance({ ...clear, windDirection: 10, transitionTime: 1 }, 100);
+    expect(weather.current!.windDirection).toBeCloseTo(10, 3);
+    weather.advance({ ...clear, windDirection: 350 }, undefined);
+    weather.advance({ ...clear, windDirection: 10 }, 30);
+    // 从 350 往上走过 0 到 10，不是往回走 340 度
+    expect(weather.current!.windDirection < 10 || weather.current!.windDirection > 350).toBe(true);
+    weather.advance(rain, undefined);
+    weather.advance({ ...clear, transitionTime: 0 }, 150);
+    expect(weather.current!.wetness).toBeCloseTo(0.5, 5);
+    const snow = { ...WEATHER_PRESETS.snow, transitionTime: 0 };
+    weather.advance({ ...clear, transitionTime: 0 }, undefined);
+    weather.advance(snow, 100);
+    expect(weather.current!.snowCover).toBeCloseTo((0.6 / 600) * 100, 5);
+    expect(weather.current!.wetness).toBe(0);
+    weather.advance({ ...snow, temperature: 10, precipitation: 0 }, 10);
+    expect(weather.current!.snowCover).toBeLessThan((0.6 / 600) * 100);
+  });
+
+  test('积水：地面湿透之前不积；之后按雨的大小积，最多积到雨的大小；雨停了比湿更慢地干', () => {
+    const weather = new WeatherSystem();
+    const steady = { ...rain, transitionTime: 0 };
+    weather.advance({ ...clear, transitionTime: 0 }, undefined);
+    weather.advance(steady, 50);
+    expect(weather.current).toMatchObject({ wetness: 0.5, puddles: 0 });
+    weather.advance(steady, 50);
+    const soaked = weather.current!.puddles;
+    weather.advance(steady, 120);
+    expect(weather.current!.puddles - soaked).toBeCloseTo((0.6 / 240) * 120, 5);
+    weather.advance(steady, 1000);
+    expect(weather.current!.puddles).toBeCloseTo(0.6, 2);
+    weather.advance({ ...clear, transitionTime: 0 }, 90);
+    expect(weather.current!.puddles).toBeCloseTo(0.6 - 90 / 900, 2);
+    expect(weather.current!.wetness).toBeCloseTo(1 - 90 / 300, 5);
+    // 下了很久的雨：积水按雨的大小
+    expect(new WeatherSystem().advance(steady, undefined).puddles).toBe(0.6);
+  });
+
+  test('涨水：下雨就慢慢涨，最多涨到雨的大小；雨停了更慢地退；下了很久的雨按雨的大小', () => {
+    const weather = new WeatherSystem();
+    const steady = { ...rain, transitionTime: 0 };
+    weather.advance({ ...clear, transitionTime: 0 }, undefined);
+    weather.advance(steady, 600);
+    expect(weather.current!.flood).toBeCloseTo((0.6 / 1800) * 600, 5);
+    weather.advance(steady, 3000);
+    expect(weather.current!.flood).toBeCloseTo(0.6, 5);
+    weather.advance({ ...clear, transitionTime: 0 }, 360);
+    expect(weather.current!.flood).toBeCloseTo(0.6 - 360 / 3600, 5);
+    // 雨小了：退到雨的大小为止
+    weather.advance({ ...steady, precipitation: 0.2 }, 10_000);
+    expect(weather.current!.flood).toBeCloseTo(0.2, 5);
+    expect(new WeatherSystem().advance(steady, undefined).flood).toBe(0.6);
+  });
+});
+
+describe('风场和雨雪写在场景文件里', () => {
+  let native: StrideNative;
+  beforeAll(async () => {
+    native = await createStrideNative({ workerThreads: 1 });
+  });
+  afterAll(() => native?.shutdown());
+
+  test('windZone、precipitation 加出组件，没写的字段用默认值；编辑器的字段描述照它们检查', async () => {
+    const scene: SceneFile = {
+      name: 'Weather',
+      entities: [
+        { id: 'wind', name: 'Wind', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { windZone: { mode: 'spherical', strength: 5, radius: 3 } } },
+        { id: 'rain', name: 'Rain', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { precipitation: { kind: 'snow' } } },
+      ],
+    };
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => new TextEncoder().encode(JSON.stringify(scene)).buffer as ArrayBuffer });
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    const loaded = await content.loadScene('scenes/Weather', game.entities);
+    const zone = loaded.entities.get('wind')!.require(WindZone);
+    expect([zone.mode, zone.strength, zone.radius, zone.turbulence]).toEqual(['spherical', 5, 3, 0.5]);
+    const precipitation = loaded.entities.get('rain')!.require(Precipitation);
+    expect([precipitation.kind, precipitation.intensity, precipitation.radius]).toEqual(['snow', 1, 20]);
+    expect(checkEntity(scene.entities[0]!)).toEqual([]);
+    expect(checkEntity({ ...scene.entities[1]!, components: { precipitation: { intensity: 3 } } }).length).toBeGreaterThan(0);
+  });
+
+  test('weather 加出 Weather；天气把当前的值写给云、雾、雨雪和全局风，没有天气时不接管', async () => {
+    const scene: SceneFile = {
+      name: 'Weather',
+      entities: [
+        { id: 'sky', name: 'Sky', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: { weather: { ...WEATHER_PRESETS.snow }, volumetricClouds: {}, volumetricFog: {}, precipitation: {} } },
+      ],
+    };
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => new TextEncoder().encode(JSON.stringify(scene)).buffer as ArrayBuffer });
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(16);
+    const loaded = await content.loadScene('scenes/Weather', game.entities);
+    const sky = loaded.entities.get('sky')!;
+    expect(sky.require(Weather).temperature).toBe(-5);
+    game.weather.update(game);
+    expect(sky.require(VolumetricClouds).coverage).toBeCloseTo(0.9, 5);
+    expect(sky.require(VolumetricClouds).windSpeed).toBeCloseTo(9, 5);
+    expect(sky.require(VolumetricFog).density).toBeCloseTo(fogDensity(WEATHER_PRESETS.snow), 5);
+    expect([sky.require(Precipitation).kind, sky.require(Precipitation).intensity]).toEqual(['snow', expect.closeTo(0.6, 5)]);
+    // 风吹向 0 度（+Z），3 米每秒
+    game.wind.update(game);
+    expect(game.wind.global.velocity.map((v) => +v.toFixed(4) + 0)).toEqual([0, 0, 3]);
+    expect(checkEntity({ ...scene.entities[0]!, components: { weather: WEATHER_PRESETS.storm } })).toEqual([]);
+    // 地面的湿和雪写给渲染系统，有湿或雪时要天空遮挡（屋檐下的不湿）
+    let used = 0;
+    const surfaceWeather = { wetness: 0, puddles: 0, snowCover: 0, rain: 0, flood: 0 };
+    game.renderSystem = { surfaceWeather, skyOcclusion: { use: () => used++ } } as never;
+    game.weather.update(game);
+    expect(surfaceWeather).toEqual({ wetness: 0, puddles: 0, snowCover: 1, rain: 0, flood: 0 });
+    expect(used).toBe(1);
+    sky.remove(Weather);
+    game.weather.update(game);
+    expect(surfaceWeather).toEqual({ wetness: 0, puddles: 0, snowCover: 0, rain: 0, flood: 0 });
+    game.wind.update(game);
+    expect(game.weather.current).toBeUndefined();
+    expect(game.wind.global.velocity).toEqual([0, 0, 0]);
+  });
+});

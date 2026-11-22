@@ -916,7 +916,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 ## 整理整个仓库的目录（2026-11-22，用户要的）
 
-做完 W6 第七步以后整理（规则见 decisions.md 的"目录的分法"），两次提交：引擎（37 个文件搬家，`world/Water.ts` 拆出 `WaterRenderer.ts`），pipeline、editor、tools（20 个）。搬家的脚本：映射表 → 先按新位置改写全仓库的相对 import（含 `new URL`、`path.resolve` 里的相对路径），再 `git mv`，最后把文档、导出表、配置里写全的路径换掉；按 `import.meta.dirname` 拼的 `..` 和 PowerShell 里的路径手改（`smoke.ts` 找 CLI 和 `budgets.json`、`affected.ts`、`library-thumbnails.ts`、`build-jolt-wasm.ps1`、`regress.ps1`）。顺带：`tools/lib/affected.ts` 加了 `world/`、`modeling/` → open-world、greybox、particles-sample 的规则，`tools/dev/` 不触发冒烟；删了没人用的 `vendor/`（vue-tsx-pro 早改成从 GitHub 预发行版装）。类型检查、四个包的测试、字段检查都过；全部样例的回归在验证工作树里跑。
+做完 W6 以后又过了一遍：引擎的 78 个测试照源码的模块分进 11 个子目录（`fields.test.ts` 按 `import.meta.dirname` 找 apps 的 `..` 手改），README 和 architecture.md 里的路径跟着改；样例里照 C# 命名空间排的单文件目录不动（见 decisions.md）。第一遍（W6 第七步以后）两次提交：引擎（37 个文件搬家，`world/Water.ts` 拆出 `WaterRenderer.ts`），pipeline、editor、tools（20 个）。搬家的脚本：映射表 → 先按新位置改写全仓库的相对 import（含 `new URL`、`path.resolve` 里的相对路径），再 `git mv`，最后把文档、导出表、配置里写全的路径换掉；按 `import.meta.dirname` 拼的 `..` 和 PowerShell 里的路径手改（`smoke.ts` 找 CLI 和 `budgets.json`、`affected.ts`、`library-thumbnails.ts`、`build-jolt-wasm.ps1`、`regress.ps1`）。顺带：`tools/lib/affected.ts` 加了 `world/`、`modeling/` → open-world、greybox、particles-sample 的规则，`tools/dev/` 不触发冒烟；删了没人用的 `vendor/`（vue-tsx-pro 早改成从 GitHub 预发行版装）。类型检查、四个包的测试、字段检查都过；全部样例的回归在验证工作树里跑。
 
 ## W6 水体（2026-11-22 起）
 

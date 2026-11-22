@@ -1,11 +1,11 @@
 // 用法：node tools/dev/gen-type-stress.mjs [组件数] [系统数] [脚本数]
-// 生成 packages/engine/test/stress.check.ts：大量用到各种属性的组件、系统和脚本，
+// 生成 packages/engine/test/core/stress.check.ts：大量用到各种属性的组件、系统和脚本，
 // 用 `tsc --extendedDiagnostics` 看类型推导怎么随规模增长（检查时间、实例化次数、不出 TS2589）。
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const [components = 300, systems = 150, scripts = 150] = process.argv.slice(2).map(Number);
-const out = fileURLToPath(new URL('../../packages/engine/test/stress.check.ts', import.meta.url));
+const out = fileURLToPath(new URL('../../packages/engine/test/core/stress.check.ts', import.meta.url));
 
 const fields = (i) => [
   `a${i}: prop.f32().min(0).default(${i})`,

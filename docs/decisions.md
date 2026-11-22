@@ -44,6 +44,8 @@
 - 引擎：大世界的运行时（流式加载、地形和摆放、水和浮力、城市、列车、风和天气）都在 `world/`，原来的 `terrain/`、`water/`、`city/`、`trains/`、`weather/` 各只有一到四个文件；时间轴在 `animation/`；所有文件格式（纯数据加检查，编辑器、管线、引擎共用）在 `content/formats/`，`content/` 根上是加载和缓存；编辑器在引擎里的那一半分成文档（根上）、视口里的工具（`editor/viewport/`）、字段描述（`editor/fields/`，入口 `index.ts`）。大文件按职责拆：`world/Water.ts`（组件、资源、占的地方）和 `world/WaterRenderer.ts`（着色器、渲染器）。
 - pipeline：生成模型的烘焙器（白盒、建筑、多边形、SDF、样条、3D 文字、树）在 `bakers/`。editor 包：MCP 的服务端和客户端（各一个文件）并进 `server/`。
 - tools：根上只放直接敲的命令和它们的数据（定时任务的提示词、CLAUDE.md 里写着这些路径，不动）；被引用的模块在 `lib/`，偶尔用的测量、分析脚本在 `dev/`。
+- 测试照源码的模块分子目录（引擎的 `test/` 原来 80 个文件平铺）；只有一两个测试的模块并进相近的（调试、统计量并进 `core/`，物理、导航、输入、手势、声音合成 `gameplay/`）。
+- 例外：移植的 Stride 样例（`apps/*/src/game/...`）里只有一个文件的目录不并：它们照原来 C# 工程的命名空间排，和 Stride 的源码一个对一个地比。
 - 改名、搬家用脚本做：`git mv` 加按新位置改写全仓库的相对 import，导出表、文档里写全的路径一起换；对外的包入口（`@stride-ts/engine/...` 的导出名）不变。
 
 ## 2026-11-21 给 agent 用的断点：`stride debug`（用户要的）

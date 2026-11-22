@@ -256,7 +256,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
   - 系统的 `added`、`removed`：按实体回调（不是按块），`removed` 时还能读到数据，回调里的结构性改动走命令缓冲；
   - （2026-11-18）`Transform`：数据在 stride-native 的变换存储里，表里只存槽位；父子层级、销毁时连带子实体、和物理世界绑定，见上文"共享内存的数据模型"；
   - （2026-11-18）热重载：`Game.hotEntry`、`game.hotUpdate`，组件、脚本、系统、游戏类都能在运行中换成新版本，见"热重载"；
-  - 运行时测试 68 个（含管线的导入测试），类型测试 `test/types.check.ts`，类型压力测试 `test/stress.check.ts`（由 `tools/dev/gen-type-stress.mjs` 生成）。
+  - 运行时测试 68 个（含管线的导入测试），类型测试 `test/core/types.check.ts`，类型压力测试 `test/core/stress.check.ts`（由 `tools/dev/gen-type-stress.mjs` 生成）。
 - **和下文设计的出入**：
   - 一个 archetype 目前是一块可增长的表（容量翻倍），还没有切成固定大小的块。
   - 默认值的检查在定义时做（越早越好），报错带字段名。

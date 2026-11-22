@@ -2,7 +2,7 @@
  * 开着视口的编辑工具时视口上面的工具条（换掉对实体的操作）：多边形（选择模式、操作的距离、挤出倒角……）、样条（删点、拉出
  * 分支）、白盒（加减交、删笔刷、转成多边形网格）、雕刻（笔刷的种类、半径、强度，或者地物的字段），最后是"完成"。
  */
-import { Check, Combine, FlipVertical2, GitBranchPlus, Merge, Plus, Scissors, Shapes, SquareDashedBottom, Trash2, ArrowUpFromLine } from '@lucide/icons';
+import { Check, Combine, Slice, FlipVertical2, GitBranchPlus, Merge, Plus, Scissors, Shapes, SquareDashedBottom, Trash2, ArrowUpFromLine } from '@lucide/icons';
 import type { PolyOperation } from '@stride-ts/engine/modeling';
 import type { SculptBrush } from '@stride-ts/engine';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
@@ -53,6 +53,7 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       operation('split', Scissors, edges.length === 1, () => ({ op: 'split', edge: edges[0]! })),
       operation('merge', Merge, vertices.length >= 2, () => ({ op: 'merge', vertices })),
       operation('connect', Scissors, vertices.length === 2, connect),
+      operation('loopCut', Slice, edges.length === 1, () => ({ op: 'loopCut', edge: edges[0]! })),
       operation('flip', FlipVertical2, faces.length > 0, () => ({ op: 'flip', faces })),
       operation('delete', Trash2, faces.length > 0, () => ({ op: 'delete', faces })),
       <Separator orientation="vertical" />,

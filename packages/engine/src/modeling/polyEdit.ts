@@ -1,5 +1,5 @@
 /**
- * 多边形网格的编辑操作（照 ProBuilder、Blender 的网格编辑）：挤出、内插、倒角、合并、切割（边上加点、面里连两个点）、移动、删面、
+ * 多边形网格的编辑操作（照 ProBuilder、Blender 的网格编辑）：挤出、内插、倒角、合并、切割（边上加点、面里连两个点、环切）、移动、删面、
  * 翻面。都是纯函数：输入网格和选中的东西，返回新网格和操作之后选中的东西（挤出后选中挤出的面，切割后选中新的边……），没有
  * 副作用；编辑器的视口工具（人）和 MCP 的 edit_poly（agent）都调这些。参数不对时报错，消息说清楚是哪个面、哪条边。
  *
@@ -7,6 +7,7 @@
  */
 import type { PolyFaceFile, PolyMeshFile, Vec3Tuple } from '../content/formats/assetFormat.ts';
 import { faceCenter, faceNormalRaw } from './polyMesh.ts';
+import { faceLoop } from './polyLoops.ts';
 
 export type PolyEdge = readonly [number, number];
 
@@ -275,6 +276,63 @@ export function connectVertices(mesh: PolyMeshFile, face: number, a: number, b: 
   return result({ ...mesh, faces }, { edges: [[a, b]] });
 }
 
+/**
+ * 环切（Blender 的 Loop Cut）：沿穿过 edge 的那一圈四边形（modeling/polyLoops.ts 的面环，两边都走）从中间切一刀——每条被穿过的边
+ * （"横档"）按同一个方向在 t 处加一个顶点（splitEdge，隔壁的面也插上，没有 T 形接缝），每个四边形里把两头的新顶点连起来
+ * （connectVertices）。edge 两边都不是四边形时报错。结果选中新的那圈边。
+ */
+export function loopCut(mesh: PolyMeshFile, edge: PolyEdge, t = 0.5): PolyEditResult {
+  checkVertices(mesh, edge, 'loopCut');
+  if (!(t > 0 && t < 1)) throw new Error(`loopCut: t is where across the faces, between 0 and 1 (got ${t})`);
+  const owners = edgeFaces(mesh.faces).get(edgeKey(edge[0], edge[1]));
+  if (!owners) throw new Error(`loopCut: ${edge[0]}-${edge[1]} is not an edge`);
+  const quad = owners.map((o) => o.face).find((f) => mesh.faces[f]!.vertices.length === 4);
+  if (quad === undefined) throw new Error(`loopCut: edge ${edge[0]}-${edge[1]} has no four-sided face to cut across`);
+  const ring = faceLoop(mesh, quad, edge);
+  // 每个面的两条横档，方向一致：在面里从横档的起点沿侧边走到的那个点是对边横档的起点
+  const across = (face: number, start: number, end: number): readonly [number, number] => {
+    const v = mesh.faces[face]!.vertices, k = v.indexOf(start);
+    // 横档顺着面的顶点顺序是 (start, end) 时，start 的另一个邻居是 v[k + 3]，对边是 (v[k + 3], v[k + 2])；反过来时是 (v[k + 1], v[k + 2])
+    return v[(k + 1) % 4] === end ? [v[(k + 3) % 4]!, v[(k + 2) % 4]!] : [v[(k + 1) % 4]!, v[(k + 2) % 4]!];
+  };
+  const shared = (f: number, g: number): readonly [number, number] => {
+    const v = mesh.faces[f]!.vertices, other = new Set(mesh.faces[g]!.vertices);
+    for (let k = 0; k < 4; k++) if (other.has(v[k]!) && other.has(v[(k + 1) % 4]!)) return [v[k]!, v[(k + 1) % 4]!];
+    throw new Error(`loopCut: faces ${f} and ${g} of the ring share no edge`);
+  };
+  // 从环的第一个面进去的那条横档（不和第二个面共的那条）
+  let entry: readonly [number, number] = ring.length > 1 ? across(ring[0]!, ...shared(ring[0]!, ring[1]!)) : edge;
+  const rungs: (readonly [number, number])[] = [];
+  const perFace: (readonly [string, string])[] = [];
+  const seen = new Set<string>();
+  for (const face of ring) {
+    const exit = across(face, entry[0], entry[1]);
+    for (const rung of [entry, exit]) {
+      const key = edgeKey(rung[0], rung[1]);
+      if (!seen.has(key)) {
+        seen.add(key);
+        rungs.push(rung);
+      }
+    }
+    perFace.push([edgeKey(entry[0], entry[1]), edgeKey(exit[0], exit[1])]);
+    entry = exit;
+  }
+  let current = mesh;
+  const cut = new Map<string, number>();
+  for (const [start, end] of rungs) {
+    const split = splitEdge(current, [start, end], t);
+    current = split.mesh;
+    cut.set(edgeKey(start, end), split.vertices[0]!);
+  }
+  const edges: PolyEdge[] = [];
+  ring.forEach((face, i) => {
+    const a = cut.get(perFace[i]![0])!, b = cut.get(perFace[i]![1])!;
+    current = connectVertices(current, face, a, b).mesh;
+    edges.push([a, b]);
+  });
+  return result(current, { edges });
+}
+
 /** 删面（用不到的顶点一起去掉）。 */
 export function deleteFaces(mesh: PolyMeshFile, faces: readonly number[]): PolyEditResult {
   checkFaces(mesh, faces, 'delete');
@@ -306,12 +364,13 @@ export type PolyOperation =
   | { readonly op: 'merge'; readonly vertices: readonly number[] }
   | { readonly op: 'split'; readonly edge: PolyEdge; readonly t?: number }
   | { readonly op: 'connect'; readonly face: number; readonly a: number; readonly b: number }
+  | { readonly op: 'loopCut'; readonly edge: PolyEdge; readonly t?: number }
   | { readonly op: 'move'; readonly delta: Vec3Tuple; readonly vertices?: readonly number[]; readonly faces?: readonly number[]; readonly edges?: readonly PolyEdge[] }
   | { readonly op: 'delete'; readonly faces: readonly number[] }
   | { readonly op: 'flip'; readonly faces: readonly number[] }
   | { readonly op: 'material'; readonly faces: readonly number[]; readonly material: number };
 
-export const POLY_OPERATIONS = ['extrude', 'inset', 'bevel', 'merge', 'split', 'connect', 'move', 'delete', 'flip', 'material'] as const;
+export const POLY_OPERATIONS = ['extrude', 'inset', 'bevel', 'merge', 'split', 'connect', 'loopCut', 'move', 'delete', 'flip', 'material'] as const;
 
 export function applyPolyOperation(mesh: PolyMeshFile, operation: PolyOperation): PolyEditResult {
   switch (operation.op) {
@@ -321,6 +380,7 @@ export function applyPolyOperation(mesh: PolyMeshFile, operation: PolyOperation)
     case 'merge': return mergeVertices(mesh, operation.vertices);
     case 'split': return splitEdge(mesh, operation.edge, operation.t);
     case 'connect': return connectVertices(mesh, operation.face, operation.a, operation.b);
+    case 'loopCut': return loopCut(mesh, operation.edge, operation.t);
     case 'move': {
       const vertices = selectionVertices(mesh, operation);
       const moved = moveVertices(mesh, vertices, operation.delta);

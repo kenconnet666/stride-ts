@@ -44,6 +44,7 @@ export function registerModelingTools(server: McpServer, projects: McpProjects):
       'inset {faces, amount 0..1} shrinks each face toward its center with a ring of quads around it;',
       'bevel {edges, distance} cuts a slanted face along edges whose ends have three faces each;',
       'merge {vertices} collapses them to their center; split {edge, t} adds a vertex on an edge; connect {face, a, b} splits a face between two of its vertices;',
+      'loopCut {edge, t} cuts across the ring of quads on both sides of an edge (a new edge loop, t from 0 to 1 along the crossed edges, default 0.5);',
       'move {delta:[x,y,z], vertices|faces|edges}; delete {faces}; flip {faces}; material {faces, material}.',
       'The result tells what is selected after the operation (the extruded faces, the new vertex, ...) so operations chain.',
     ].join(' '),

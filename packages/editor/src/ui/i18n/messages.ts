@@ -190,7 +190,7 @@ export interface EditorMessages {
   readonly featureFalloff: string;
   readonly featuresHint: string;
   readonly polyAmount: string;
-  readonly polyOps: Readonly<Record<'extrude' | 'inset' | 'bevel' | 'merge' | 'split' | 'connect' | 'delete' | 'flip', string>>;
+  readonly polyOps: Readonly<Record<'extrude' | 'inset' | 'bevel' | 'merge' | 'split' | 'connect' | 'loopCut' | 'delete' | 'flip', string>>;
   readonly polyConnectNeedsFace: string;
   readonly particleEmitters: string;
   readonly particleBake: string;
@@ -440,7 +440,7 @@ const zhCN: EditorMessages = {
   featureFalloff: '过渡',
   featuresHint: '视口里拖地物的角改形状、拖里面挪位置，在边上双击加一个角；点地物选中它，工具条上改高度、过渡宽度；Ctrl+Z 撤销一步',
   polyAmount: '距离',
-  polyOps: { extrude: '挤出', inset: '内插', bevel: '倒角', merge: '合并', split: '切分', connect: '连接', delete: '删面', flip: '翻面' },
+  polyOps: { extrude: '挤出', inset: '内插', bevel: '倒角', merge: '合并', split: '切分', connect: '连接', loopCut: '环切', delete: '删面', flip: '翻面' },
   polyConnectNeedsFace: '连接要选同一个面上不相邻的两个点',
   particleEmitters: '发射器',
   particleBake: '烘成序列帧',
@@ -701,7 +701,7 @@ const enUS: EditorMessages = {
   featureFalloff: 'Falloff',
   featuresHint: 'Drag a feature corner to reshape it, drag inside to move it, double-click an edge to add a corner; click a feature to select it and set its height and falloff in the toolbar; Ctrl+Z undoes a step',
   polyAmount: 'Distance',
-  polyOps: { extrude: 'Extrude', inset: 'Inset', bevel: 'Bevel', merge: 'Merge', split: 'Split', connect: 'Connect', delete: 'Delete faces', flip: 'Flip' },
+  polyOps: { extrude: 'Extrude', inset: 'Inset', bevel: 'Bevel', merge: 'Merge', split: 'Split', connect: 'Connect', loopCut: 'Loop cut', delete: 'Delete faces', flip: 'Flip' },
   polyConnectNeedsFace: 'Connect needs two non-adjacent vertices of the same face',
   particleEmitters: 'Emitters',
   particleBake: 'Bake to flipbook',

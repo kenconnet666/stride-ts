@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { PolyMeshFile, Vec3Tuple } from '../../src/content/formats/assetFormat';
-import { polyCube } from '../../src/modeling/polyEdit';
+import { loopCut, polyCube } from '../../src/modeling/polyEdit';
 import { edgeLoop, faceLoop, softWeights } from '../../src/modeling/polyLoops';
 
 /** n × n 个四边形的平面网格：顶点 (x, 0, z) 的下标是 z * (n + 1) + x，面 (x, z) 的下标是 z * n + x。 */
@@ -57,5 +57,25 @@ describe('多边形的环选和软选择', () => {
     expect(weights.get(2)).toBeCloseTo(0.5);
     expect(weights.has(3)).toBe(false);
     expect(softWeights(positions, [0], 0).size).toBe(1);
+  });
+
+  test('环切：沿穿过边的那一圈四边形切一刀，每条横档加一个点（隔壁的面也插上），每个面多出一个', () => {
+    const mesh = grid(4);
+    // 横边 11-12 两边的面是第 1 列：竖着一整列 4 个面，横档是这一列的 5 条横边
+    const cut = loopCut(mesh, [11, 12], 0.25);
+    expect(cut.mesh.vertices).toHaveLength(25 + 5);
+    expect(cut.mesh.faces).toHaveLength(16 + 4);
+    expect(cut.edges).toHaveLength(4);
+    // 新点都在 x = 1.25（从横档的同一头量 t）
+    expect(cut.mesh.vertices.slice(25).map((v) => v[0])).toEqual([1.25, 1.25, 1.25, 1.25, 1.25]);
+    // 立方体：从一条竖边切，绕四个侧面切一圈
+    const cube = polyCube('Cube');
+    const side = cube.faces.find((f) => f.vertices.some((v, i) => cube.vertices[v]![1] !== cube.vertices[f.vertices[(i + 1) % 4]!]![1]))!;
+    const vertical = side.vertices.map((a, i) => [a, side.vertices[(i + 1) % 4]!] as const).find(([a, b]) => cube.vertices[a]![1] !== cube.vertices[b]![1])!;
+    const ring = loopCut(cube, vertical);
+    expect(ring.mesh.vertices).toHaveLength(8 + 4);
+    expect(ring.mesh.faces).toHaveLength(6 + 4);
+    expect(new Set(ring.mesh.vertices.slice(8).map((v) => v[1]))).toEqual(new Set([0]));
+    expect(() => loopCut(cube, [0, 999])).toThrow(/loopCut/);
   });
 });

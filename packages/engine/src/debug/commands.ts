@@ -5,6 +5,7 @@
  * 实体参数可以是 id（数字）或名字（先按全名找，再按包含这段文字找，不唯一时报错并列出候选）。组件和脚本按登记的名字
  * （`路径#导出名`）或 # 后面的部分找。
  */
+import { textOf } from '../data/text.ts';
 import { QUALITY_TIERS, type QualityTier } from '../rendering/Quality';
 import { Camera, Decal, Light, Model, ReflectionProbe, SkyAtmosphere, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { cameraVerticalFieldOfView } from '../rendering/cameraRays';
@@ -435,7 +436,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('raycast', 'Physics ray cast. args: origin [x,y,z], direction [x,y,z], maxDistance (default 1000), mask.', (args) => raycast(game, args));
   debug.command('debug-text', 'Lines the scripts printed with game.debugText in the last frame.', () => game.debugText.lines);
   debug.command('devtools', "Run a DevTools protocol command on this tab through the Stride Debug Bridge extension (tools/debug-bridge). args: method ('detach' ends this session's debugging; the tab stays attached while other sessions use it), params, waitFor (an event to wait for after the command; returns its params), session (the debugging session's id, so several sessions can share the tab).", (args) =>
-    sendDevtools(String(args['method']), (args['params'] ?? {}) as Readonly<Record<string, unknown>>, args['waitFor'] === undefined ? undefined : String(args['waitFor']), args['session'] === undefined ? undefined : String(args['session'])));
+    sendDevtools(textOf(args['method']), (args['params'] ?? {}) as Readonly<Record<string, unknown>>, args['waitFor'] === undefined ? undefined : textOf(args['waitFor']), args['session'] === undefined ? undefined : textOf(args['session'])));
   debug.command('eval', 'Evaluate JavaScript in the page. An expression: its value; await works; in scope are game, engine, entity(name | id), named(name), frames(n), seconds(s) (game time). Statements: the value of the last one, in global scope; with a top-level await they run as an async function body (use return). args: code.', (args) => evaluate(game, args));
   // 慢帧：每帧在 requestAnimationFrame 里忙等 ms 毫秒（和游戏的帧在同一轮，所以帧间隔加长这么多）。页面地址带
   // ?stride-slow=<毫秒> 时一开始就慢（regress.ps1 -Slow；重载页面后还在）
@@ -547,7 +548,7 @@ function scriptProps(type: ScriptConstructor, script: ScriptComponent): unknown 
 
 function set(game: Game, args: Args): unknown {
   const entity = entityArg(game, args);
-  const path = String(args['path'] ?? '');
+  const path = textOf(args['path']);
   const [owner, ...keys] = path.split('.');
   if (!owner || keys.length === 0) throw new Error(`path must be 'Component.field' or 'Script.prop', got '${path}'`);
   const target = findOwner(game, entity, owner);
@@ -625,7 +626,7 @@ let syntheticPointer: [number, number] | undefined;
  * 这样脚本一定能看到这次按下；hold 按住 ms 毫秒的真实时间。合成事件拿不到指针锁定。
  */
 async function input(game: Game, args: Args): Promise<unknown> {
-  const action = String(args['action'] ?? 'press');
+  const action = textOf(args['action'], 'press');
   const canvas = game.graphicsDevice.canvas;
   if (Array.isArray(args['mouse'])) {
     const [dx = 0, dy = 0] = args['mouse'] as number[];
@@ -688,10 +689,9 @@ async function screenshot(debug: Debug, game: Game, exact: boolean): Promise<unk
   const dither = toneMap.dither;
   if (exact) toneMap.dither = false;
   // 画完的同一个任务里拿画布内容（WebGPU 画布的当前纹理在呈现之后就失效）
-  const bitmap = await debug.afterNextDraw(() => createImageBitmap(canvas)).finally(() => {
+  const image = await debug.afterNextDraw(() => createImageBitmap(canvas)).finally(() => {
     toneMap.dither = dither;
   });
-  const image = await bitmap;
   const offscreen = new OffscreenCanvas(image.width, image.height);
   offscreen.getContext('2d')!.drawImage(image, 0, 0);
   image.close();
@@ -729,7 +729,7 @@ async function pngBase64(canvas: OffscreenCanvas): Promise<string> {
   const blob = await canvas.convertToBlob({ type: 'image/png' });
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
+    reader.onload = () => resolve(reader.result as string);
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
@@ -741,7 +741,7 @@ async function pngBase64(canvas: OffscreenCanvas): Promise<string> {
  * 返回 PNG 的 base64。照片比对（`stride shot --photo`）用。
  */
 async function decodeImage(args: Args): Promise<unknown> {
-  const data = String(args['data'] ?? '');
+  const data = textOf(args['data']);
   const width = Number(args['width']), height = Number(args['height']);
   if (!data || !(width > 0 && height > 0)) throw new Error('decode-image: data (base64) and a positive width and height are required');
   const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
@@ -852,6 +852,8 @@ async function evaluate(game: Game, { code }: Args): Promise<unknown> {
   const global = globalThis as { __strideEval?: Record<string, unknown> };
   global.__strideEval = scope;
   try {
+    // eval 命令就是要在页面的全局作用域里跑 agent 给的代码（间接 eval：不碰这里的局部变量）
+    // oxlint-disable-next-line no-eval
     return await (0, eval)(`{ const { ${names.join(', ')} } = globalThis.__strideEval;\n${code}\n}`);
   } catch (error) {
     if (!(error instanceof SyntaxError)) throw error;

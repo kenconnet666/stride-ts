@@ -13,7 +13,7 @@ import type { StrideTools } from '@stride-ts/native/tools';
 import type { FontFile } from '@stride-ts/engine/content-format';
 import { encodeFont } from '../fontAsset.ts';
 import { once, type AssetEntry, type StrideProject } from './project.ts';
-import { asNumber, asObject, type StrideObject } from './yaml.ts';
+import { asNumber, asObject, type StrideObject, textField } from './yaml.ts';
 
 export interface FontImportContext {
   readonly project: StrideProject;
@@ -64,7 +64,7 @@ export class FontImporter {
       name: path.basename(asset.path),
       kind,
       size: asNumber(fontType['Size'], 20),
-      antiAlias: ANTI_ALIAS[String(fontType['AntiAlias'] ?? 'Default')] ?? 'default',
+      antiAlias: ANTI_ALIAS[textField(fontType, 'AntiAlias', 'Default')] ?? 'default',
       spacing: asNumber(asset.data['Spacing'], 0),
       lineSpacing: asNumber(asset.data['LineSpacing'], 0),
       lineGapFactor: asNumber(asset.data['LineGapFactor'], 1),
@@ -105,7 +105,7 @@ export class FontImporter {
     }
     if (source.$type !== 'SystemFontProvider') throw new Error(`${asset.file}: font source ${source.$type} is not supported`);
     const requested = typeof source['FontName'] === 'string' && source['FontName'].trim() !== '' ? source['FontName'] : defaultFontName();
-    const style = String(source['Style'] ?? 'Regular');
+    const style = textField(source, 'Style', 'Regular');
     const bold = /Bold/.test(style), italic = /Italic/.test(style);
     const installed = await (this.#installed ??= this.#scanSystemFonts());
     for (const candidate of fontNameCandidates(requested)) {

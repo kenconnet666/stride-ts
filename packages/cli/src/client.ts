@@ -1,4 +1,5 @@
 /** CLI 这一头：找到调试中枢，调用页面的命令、读日志。 */
+import { socketText } from './socketText.ts';
 import { randomUUID } from 'node:crypto';
 import { DEBUG_API_PATH, DEBUG_TOKEN_HEADER, DEVTOOLS_SOCKET_PATH, type CallResponse, type HubLogEntry, type PageInfo } from '@stride-ts/engine/debug-protocol';
 import { WebSocket } from 'ws';
@@ -122,7 +123,7 @@ export class HubDevtoolsSession implements DevtoolsSession {
   constructor(socket: WebSocket) {
     this.#socket = socket;
     socket.on('message', (data) => {
-      const message = JSON.parse(String(data)) as { id?: number; result?: unknown; error?: string; method?: string; params?: unknown };
+      const message = JSON.parse(socketText(data)) as { id?: number; result?: unknown; error?: string; method?: string; params?: unknown };
       if (message.id === undefined) {
         for (const listener of this.#listeners.get(message.method ?? '') ?? []) listener(message.params);
         return;

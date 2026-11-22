@@ -86,7 +86,7 @@ export function pageHelpers(game: Game) {
   /** 全屏 UI 的元素的中心在画布上的位置（CSS 像素）。 */
   const uiPoint = (target: string | UIElement): [number, number] => {
     const e = typeof target === 'string' ? uiFind(target) : target;
-    if (!e) throw new Error(`no UI element ${String(target)}`);
+    if (!e) throw new Error(`no UI element ${JSON.stringify(target)}`);
     const c = pages().find((c) => tree(c.page!.rootElement!).includes(e))!;
     // 元素的位置是页面的虚拟分辨率里的，换到画布的 CSS 像素
     const [vx, vy] = UISystem.virtualResolution(c, [canvas().width, canvas().height]);

@@ -473,11 +473,14 @@ const commands: Record<string, () => Promise<unknown>> = {
     switch (sub) {
       // 树和文字原样打（给人和 agent 读的多行文字）；别的命令的结果按 JSON（脚本解析 CLI 的输出）
       case 'tree':
-        return void console.log(await pageTree(cdp, { interactive: options.interactive === true, max: Number(options.max ?? 400) }));
+        console.log(await pageTree(cdp, { interactive: options.interactive === true, max: Number(options.max ?? 400) }));
+        return;
       case 'find':
-        return void console.log(await pageFind(cdp, args.join(' ')));
+        console.log(await pageFind(cdp, args.join(' ')));
+        return;
       case 'text':
-        return void console.log(await pageText(cdp));
+        console.log(await pageText(cdp));
+        return;
       case 'eval':
         return await pageEval(cdp, options.file ? readFileSync(options.file, 'utf8') : args.join(' '));
       case 'click':
@@ -675,7 +678,10 @@ function parseArgsOrExit<T extends ParseArgsConfig>(config: T): ReturnType<typeo
 }
 
 async function main(): Promise<void> {
-  if (options.help || !command) return void console.log(HELP);
+  if (options.help || !command) {
+    console.log(HELP);
+    return;
+  }
   const run = commands[command];
   if (!run) throw new Error(`unknown command '${command}'; see stride --help`);
   const result = await run();

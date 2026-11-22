@@ -249,7 +249,10 @@ export class ParticleEmitter implements ParentEmitter {
     for (let i = 0; i < pool.living; i++) {
       if (life[i]! > 1) life[i] = 1;
       const startingLife = minLife + (maxLife - minLife) * seedFloat(seeds[i]!, RandomOffset.lifetime);
-      if (life[i]! <= ZERO_TOLERANCE || ((life[i]! -= dt / startingLife) <= ZERO_TOLERANCE && this.delayParticleDeath === 0)) {
+      // 上一帧已经到 0 的删掉；这一帧减到 0 的：不延迟就删，延迟（连着子粒子生成器）就停在接近 0 留一帧
+      const expired = life[i]! <= ZERO_TOLERANCE;
+      if (!expired) life[i]! -= dt / startingLife;
+      if (expired || (life[i]! <= ZERO_TOLERANCE && this.delayParticleDeath === 0)) {
         pool.remove(i);
         i--;
       } else if (life[i]! <= ZERO_TOLERANCE) {

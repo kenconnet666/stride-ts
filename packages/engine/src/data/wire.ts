@@ -55,6 +55,8 @@ export function wireText(value: unknown): string {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   if (value instanceof Date) return Instant.fromDate(value).toString();
   if (value instanceof Uint8Array) return encodeBase64(value);
+  // wireTypeOf 认出来的（Decimal、日期时间、bigint）都有自己的 toString
+  // oxlint-disable-next-line typescript/no-base-to-string
   if (wireTypeOf(value) !== undefined) return String(value);
   throw new TypeError(`wireText: ${describe(value)} is not a single value`);
 }
@@ -152,10 +154,14 @@ function encode(value: unknown, path: string, found: Map<string, WireType | 'tex
     case 'function':
     case 'symbol':
       return null;
+    default:
+      // 对象、bigint 往下按单值的类型、数组、记录处理
+      break;
   }
   const type = wireTypeOf(value);
   if (type !== undefined) {
     note(found, path, type);
+    // oxlint-disable-next-line typescript/no-base-to-string -- double 是 Decimal，toString 是它的文字
     return type === 'double' ? String(value) : wireText(value);
   }
   const object = value as object;
@@ -207,7 +213,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function describe(value: unknown): string {
-  return Array.isArray(value) ? 'an array' : typeof value === 'object' ? `a ${value?.constructor?.name ?? 'object'}` : String(value);
+  if (Array.isArray(value)) return 'an array';
+  if (typeof value === 'object') return `a ${value?.constructor?.name ?? 'object'}`;
+  if (typeof value === 'bigint') return `${value}n`;
+  return typeof value === 'function' || typeof value === 'symbol' ? `a ${typeof value}` : JSON.stringify(value) ?? typeof value;
 }
 
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';

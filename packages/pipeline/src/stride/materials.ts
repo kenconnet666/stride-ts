@@ -32,7 +32,7 @@ import type { ResolvedImporterOptions } from './importer.ts';
 import { once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { simplifyRamp } from './celRamp.ts';
 import { importColorTree } from './particles.ts';
-import { asNumber, asObject, color3, color4, linearColor, parseAssetReference, srgbToLinear, vec2, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, color3, color4, linearColor, parseAssetReference, srgbToLinear, vec2, type StrideObject, type StrideValue, textField } from './yaml.ts';
 
 /** 材质导入用到的导入器的东西：工程、工具、选项，警告记到导入器的列表里，文件按内容路径写到输出目录。 */
 export interface MaterialImportContext {
@@ -197,7 +197,7 @@ export class MaterialImporter {
       // 没写 BlendMap 是 Stride 的默认值 new ComputeTextureScalar()（没有贴图，后备值 1：整层盖上），写成 null 才是没有
       const blendMap = layer?.['BlendMap'] === null ? undefined : (asObject(layer?.['BlendMap']) ?? { $type: 'ComputeTextureScalar' });
       if (!layer || layer['Enabled'] === false || !reference || !blendMap) continue;
-      const where = `${asset.file}: layer ${String(layer['Name'] ?? reference.url)}`;
+      const where = `${asset.file}: layer ${textField(layer, 'Name', reference.url)}`;
       const uvScale = vec2(asObject(layer['Overrides'])?.['UVScale'], 1);
       if (uvScale[0] !== 1 || uvScale[1] !== 1) this.#context.warnings.push(`${where}: UVScale overrides are not supported yet`);
       const sub = this.#context.project.get(reference.id, asset.file);
@@ -425,7 +425,7 @@ export class MaterialImporter {
    */
   async #displacement(feature: StrideObject | undefined, asset: AssetEntry): Promise<Pick<MaterialFile, 'displacementTree'>> {
     if (!feature) return {};
-    const stage = String(feature['Stage'] ?? 'Vertex');
+    const stage = textField(feature, 'Stage', 'Vertex');
     if (feature.$type !== 'MaterialDisplacementMapFeature' || stage !== 'Vertex') {
       this.#context.warnings.push(`${asset.file}: displacement ${feature.$type ?? 'feature'} in stage ${stage} is not supported; no displacement`);
       return {};
@@ -480,7 +480,7 @@ export class MaterialImporter {
     if (reference) {
       const scale = vec2(map!['Scale'], 1);
       const slot = textureSlot(await this.texture(this.#context.project.get(reference.id, asset.file)), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(map!['Offset'], 0), samplerOf(map!));
-      const channel = String(map!['Channel'] ?? 'R').toLowerCase() as 'r' | 'g' | 'b' | 'a';
+      const channel = textField(map!, 'Channel', 'R').toLowerCase() as 'r' | 'g' | 'b' | 'a';
       ambientOcclusion = { value: 1, texture: { ...slot, channel }, directLighting };
     } else {
       const value = this.#scalar(map, 1, asset);
@@ -499,7 +499,7 @@ export class MaterialImporter {
     if (!reference) return undefined;
     const scale = vec2(node['Scale'], 1);
     const slot = textureSlot(await this.texture(this.#context.project.get(reference.id, asset.file)), [scale[0] * uvScale[0], scale[1] * uvScale[1]], vec2(node['Offset'], 0), samplerOf(node));
-    return { ...slot, channel: String(node['Channel'] ?? 'R').toLowerCase() as 'r' | 'g' | 'b' | 'a' };
+    return { ...slot, channel: textField(node, 'Channel', 'R').toLowerCase() as 'r' | 'g' | 'b' | 'a' };
   }
 
   /** ComputeFloat 的值；没有贴图的 ComputeTextureScalar 用它的 FallbackValue（Stride 也是这样）。 */
@@ -537,7 +537,7 @@ export class MaterialImporter {
         return { color: WHITE, texture, operator: 'multiply' };
       }
       case 'ComputeBinaryColor': {
-        const name = String(node['Operator']);
+        const name = textField(node, 'Operator');
         const left = this.#evaluateColor(asObject(node['LeftChild']) ?? {}, asset, uvScale);
         const right = this.#evaluateColor(asObject(node['RightChild']) ?? {}, asset, uvScale);
         const fold = BINARY_OPERATORS[name];
@@ -688,13 +688,13 @@ function textureSlot({ texture, encoding, size, srgb }: ImportedTexture, scale: 
  * Anisotropic 的是各向异性，Point（含 Comparison、MinMagMipPoint）是最近点，其余（含混合的几种）按线性。
  */
 function samplerOf(node: StrideObject): TextureSampler {
-  const filtering = String(node['Filtering'] ?? 'Linear');
+  const filtering = textField(node, 'Filtering', 'Linear');
   const filter = /Anisotropic/.test(filtering) ? 'anisotropic' : /^(Comparison)?Point$|^(Comparison)?MinMagMipPoint$/.test(filtering) ? 'point' : undefined;
-  const address = (value: StrideValue | undefined) => {
-    const mode = String(value ?? 'Wrap');
+  const address = (key: string) => {
+    const mode = textField(node, key, 'Wrap');
     return mode === 'Clamp' || mode === 'Border' ? 'clamp' : mode === 'Mirror' || mode === 'MirrorOnce' ? 'mirror' : undefined;
   };
-  const [addressU, addressV] = [address(node['AddressModeU']), address(node['AddressModeV'])];
+  const [addressU, addressV] = [address('AddressModeU'), address('AddressModeV')];
   return { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } as TextureSampler;
 }
 
@@ -782,7 +782,7 @@ function isConstant(value: StrideValue | undefined): boolean {
       return parseAssetReference(node['Texture']) === undefined;
     case 'ComputeBinaryColor':
     case 'ComputeBinaryScalar':
-      return String(node['Operator']) in BINARY_OPERATORS && isConstant(node['LeftChild']) && isConstant(node['RightChild']);
+      return textField(node, 'Operator') in BINARY_OPERATORS && isConstant(node['LeftChild']) && isConstant(node['RightChild']);
     default:
       return false;
   }

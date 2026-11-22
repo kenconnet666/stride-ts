@@ -10,7 +10,10 @@
   "exports": {
     "./vite": "./src/vite.ts",
     "./hub": "./src/hub.ts",
-    "./client": "./src/client.ts"
+    "./client": "./src/client.ts",
+    "./png": "./src/png.ts",
+    "./chrome": "./src/chrome.ts",
+    "./state": "./src/state.ts"
   },
   "scripts": {
     "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",

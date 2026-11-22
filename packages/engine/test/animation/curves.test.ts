@@ -28,6 +28,8 @@ describe('属性曲线', () => {
     // 1..2 的中点：0.5 · (0 · -0.125 + 1 · 1.125 + 4 · 1.125 + 9 · -0.125) = 2.25（正好是 x² 的值）
     expect(value(curve, 1.5)[0]).toBeCloseTo(2.25, 6);
     // 第一段前面没有点，用第一个点自己
+    // 照 Catmull-Rom 的权重逐项写出来（前两个控制点是 0）
+    // oxlint-disable-next-line oxc/erasing-op
     expect(value(curve, 0.5)[0]).toBeCloseTo(0.5 * (0 * -0.125 + 0 * 1.125 + 1 * 1.125 + 4 * -0.125), 6);
   });
 

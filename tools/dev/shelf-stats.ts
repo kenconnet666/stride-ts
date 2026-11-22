@@ -1,8 +1,8 @@
 // 货架生成的统计（几件商品、几个顶点和三角形、图集多大）：node tools/dev/shelf-stats.ts <工程的内容目录> <货架的内容路径>...
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { ProductFile, ShelfFile } from '../../packages/engine/src/content/formats/format.ts';
-import { shelfModel } from '../../packages/engine/src/modeling/shelf.ts';
+import type { ProductFile, ShelfFile } from '@stride-ts/engine/content-format';
+import { shelfModel } from '@stride-ts/engine/modeling';
 
 const [content, ...shelves] = process.argv.slice(2);
 if (!content || shelves.length === 0) {

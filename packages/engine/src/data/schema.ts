@@ -367,6 +367,8 @@ function compile<Mode extends 'object' | 'row'>(
   const params = mode === 'row' ? 'c, r, v, d = dd' : 't, v, d = dd';
   const body = `${check ? 'k(v);' : ''} let x; ${lines.join(' ')}`;
   try {
+    // 按字段生成的初始化函数（比逐字段解释快几倍）；源码全是这里拼的，不含外来的文字
+    // oxlint-disable-next-line typescript/no-implied-eval
     return new Function('dd', 'm', 'k', 'cv', `return function (${params}) { ${body} };`)(declaredDefaults, missing, check, convert) as Initializer<Mode>;
   } catch {
     return fallback(fields, declaredDefaults, missing, check, convert, mode);

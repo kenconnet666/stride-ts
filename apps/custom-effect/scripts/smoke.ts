@@ -2,7 +2,7 @@
 //   pnpm --filter @stride-ts/custom-effect smoke [-- --hub <中枢名的一部分>]
 // 检查：按游戏设置挂上 CustomEffectRenderer；背景（不是清屏的绿）、红色的标志、白字都画出来了；波纹在动（隔半秒截两张，
 // 画面不一样）；暂停时画面不变；没有错误日志（finish 检查）。
-import { decodePng, diffImages } from '../../../packages/cli/src/png.ts';
+import { decodePng, diffImages } from '@stride-ts/cli/png';
 import { startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('custom-effect');

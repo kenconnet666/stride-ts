@@ -556,6 +556,8 @@ const COMPONENT_KEYS = Object.keys(BUILDERS) as ComponentKey[];
  */
 export function sceneComponentKey(type: ComponentType<any> | ScriptConstructor): ComponentKey | undefined {
   if (type === Model) return 'model';
+  // remove 只当 DROPPED 的键（按函数本身认），不调用
+  // oxlint-disable-next-line typescript/unbound-method
   return COMPONENT_KEYS.find((key) => DROPPED.get(BUILDERS[key].remove)?.[0] === type);
 }
 const LATE_KEYS = COMPONENT_KEYS.slice(COMPONENT_KEYS.indexOf('constraints'));

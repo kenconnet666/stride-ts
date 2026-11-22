@@ -3,7 +3,7 @@
  * （rendering/mesh/procedural.ts，运行时读 JSON 写的 .model 也用它）。Disc 用到时再加。
  */
 import { generateProceduralMesh, type ProceduralMesh, type ProceduralModel } from '@stride-ts/engine/content-format';
-import { asNumber, asObject, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, type StrideObject, type StrideValue, textField } from './yaml.ts';
 
 export type { ProceduralMesh };
 
@@ -16,7 +16,7 @@ export function proceduralModel(type: StrideObject): ProceduralModel | undefined
       return { type: 'cube', size: vec3(type['Size'], 1), ...common };
     case 'PlaneProceduralModel': {
       const grid = asObject(type['Tessellation']);
-      const normal = ({ UpX: 'x', UpY: 'y', UpZ: 'z' } as const)[String(type['Normal'] ?? 'UpY') as 'UpX' | 'UpY' | 'UpZ'] ?? 'z';
+      const normal = ({ UpX: 'x', UpY: 'y', UpZ: 'z' } as const)[textField(type, 'Normal', 'UpY') as 'UpX' | 'UpY' | 'UpZ'] ?? 'z';
       return { type: 'plane', size: vec2(type['Size'], 1), tessellation: [asNumber(grid?.['X'], 1), asNumber(grid?.['Y'], 1)], backFace: type['GenerateBackFace'] === true, normal, ...common };
     }
     case 'SphereProceduralModel':

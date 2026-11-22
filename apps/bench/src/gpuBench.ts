@@ -5,22 +5,23 @@ export const DEPTH_FORMAT: GPUTextureFormat = 'depth24plus';
 
 export type Draw = (pass: GPURenderPassEncoder) => void;
 
+/** 实验拿到的 GPU 和几个帮手（是函数属性不是方法：实验里解构出来单独调）。 */
 export interface GpuBench {
   readonly device: GPUDevice;
   readonly width: number;
   readonly height: number;
   /** timestamp：时间戳查询；wall：没有这个特性，退回"等提交的命令做完"的墙钟时间。 */
   readonly timing: 'timestamp' | 'wall';
-  print(line: string): void;
-  upload(data: ArrayBufferView, usage: number): GPUBuffer;
+  readonly print: (line: string) => void;
+  readonly upload: (data: ArrayBufferView, usage: number) => GPUBuffer;
   /** 画一帧（draw 里发绘制命令），返回 GPU 时间（毫秒）。 */
-  render(draw: Draw): Promise<number>;
+  readonly render: (draw: Draw) => Promise<number>;
   /** 先画 5 帧预热，再画 frames 帧，返回 GPU 时间的中位数（毫秒）。 */
-  measure(draw: Draw, frames?: number): Promise<number>;
+  readonly measure: (draw: Draw, frames?: number) => Promise<number>;
   /** 上一帧的画面（RGBA，一行行从上到下）。 */
-  readPixels(): Promise<Uint8Array>;
+  readonly readPixels: () => Promise<Uint8Array>;
   /** 把一帧画面放到页面上，肉眼也能看一眼。 */
-  show(pixels: Uint8Array): void;
+  readonly show: (pixels: Uint8Array) => void;
 }
 
 /**

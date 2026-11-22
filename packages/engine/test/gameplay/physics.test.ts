@@ -97,7 +97,8 @@ describe('Simulation', () => {
     expect(game.simulation.rayCastPenetrating(above, [0, 1, 0], 20)).toEqual([]);
     // 重叠查询（Stride 的 Overlap）：站着的角色和地面都碰到，按遮罩只要地面，半空里什么都不碰
     const feet = { position: [position(player).x, 0.05, position(player).z] as [number, number, number] };
-    expect(game.simulation.overlap({ type: 'sphere', radius: 0.3 }, feet).sort()).toEqual([floor.id, player.id].sort());
+    // 实体 id 是数：按数排（默认的 sort 按字典序，9 排在 10 后面）
+    expect(game.simulation.overlap({ type: 'sphere', radius: 0.3 }, feet).toSorted((a, b) => a - b)).toEqual([floor.id, player.id].toSorted((a, b) => a - b));
     expect(game.simulation.overlap({ type: 'box', size: [0.6, 0.6, 0.6] }, feet, { mask: 1 << 0 })).toEqual([floor.id]);
     expect(game.simulation.overlap({ type: 'capsule', radius: 0.2, length: 0.5 }, { position: [0, 30, 0], rotation: [0, 0, 0.7071068, 0.7071068] })).toEqual([]);
     // 建了物体以后：重力能改，阻尼只能设成一样的值
@@ -258,8 +259,8 @@ describe('Body（Stride 的 BodyComponent）', () => {
       ys.add(Math.round(points[i + 1]! * 1000) / 1000 + 0);
       zs.add(Math.round(points[i + 2]! * 1000) / 1000 + 0);
     }
-    expect([...xs].sort()).toEqual([-0.5, 0.5]);
-    expect([...ys].sort()).toEqual([4.5, 5.5]);
+    expect([...xs].toSorted((a, b) => a - b)).toEqual([-0.5, 0.5]);
+    expect([...ys].toSorted((a, b) => a - b)).toEqual([4.5, 5.5]);
     expect([...zs].sort((a, b) => a - b)).toEqual([-1, 1]);
   });
 });

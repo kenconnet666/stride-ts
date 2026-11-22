@@ -181,7 +181,7 @@ describe('网格压缩', () => {
     for (let v = 0; v < restored.vertices.length; v++) {
       const entries = Array.from({ length: words[2 + v]! - words[1 + v]! }, (_, k) => words[0]! + (words[1 + v]! + k) * MORPH_ENTRY_WORDS);
       const slots = entries.map((at) => words[at + 3]);
-      expect(slots).toEqual([...slots].sort());
+      expect(slots).toEqual(slots.toSorted((a, b) => a! - b!));
       // 槽 2 的增量是这个顶点（重排后）原来的 x + 2
       const lifted = entries.find((at) => words[at + 3] === 2)!;
       expect(floats[lifted + 1]).toBeCloseTo(restored.vertices[v]![0]! + 2, 3);

@@ -7,7 +7,7 @@
   let hubUrl;
   document.documentElement.dataset.strideDebugBridge = chrome.runtime.getManifest().version;
 
-  const onMessage = async (event) => {
+  const handle = async (event) => {
     if (event.source !== window || event.data?.source !== SOURCE) return;
     if (!chrome.runtime?.id) {
       window.removeEventListener('message', onMessage);
@@ -29,6 +29,8 @@
     }
     window.postMessage({ source: SOURCE, direction: 'reply', id, ...reply }, window.location.origin);
   };
+  // 监听器自己不是 async：handle 里的错都接住了，返回的 Promise 没人等
+  const onMessage = (event) => void handle(event);
   window.addEventListener('message', onMessage);
   // 打个招呼：service worker 借这个机会看自己的文件有没有改，改了就重新加载
   chrome.runtime.sendMessage({ method: 'hello' }).catch(() => {});

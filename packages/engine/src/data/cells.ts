@@ -111,11 +111,11 @@ function toDecimal(options: PropOptions, value: unknown): Decimal {
   const scale = options.scale ?? 0;
   const given = Decimal.from(value as Decimal | string | number | bigint);
   const normalized = given.normalize();
-  if (normalized.scale > scale) throw new RangeError(`${given} has more than ${scale} decimal places`);
+  if (normalized.scale > scale) throw new RangeError(`${given.toString()} has more than ${scale} decimal places`);
   const result = given.rescale(scale);
   const digits = (result.units < 0n ? -result.units : result.units).toString().length;
   const precision = options.precision ?? 18;
-  if (digits > precision) throw new RangeError(`${given} has more than ${precision} significant digits`);
+  if (digits > precision) throw new RangeError(`${given.toString()} has more than ${precision} significant digits`);
   return result;
 }
 

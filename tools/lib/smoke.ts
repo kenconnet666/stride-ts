@@ -9,13 +9,14 @@ import { fileURLToPath } from 'node:url';
 
 const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'packages', 'cli', 'src', 'cli.ts');
 
+/** 冒烟脚本的几个函数（是函数属性不是方法：脚本里解构出来单独调）。 */
 export interface Smoke {
   /** 跑一条调试 CLI 命令，返回它输出的 JSON。 */
-  stride(...args: string[]): unknown;
-  sleep(ms: number): Promise<void>;
-  check(name: string, ok: boolean, detail: unknown): void;
+  readonly stride: (...args: string[]) => unknown;
+  readonly sleep: (ms: number) => Promise<void>;
+  readonly check: (name: string, ok: boolean, detail: unknown) => void;
   /** 检查本次运行以来没有错误日志（中枢留着之前的页面的日志，不算），然后按结果退出。 */
-  finish(): never;
+  readonly finish: () => never;
 }
 
 /**
@@ -76,7 +77,10 @@ function checkBudgets(app: string, metrics: readonly SmokeMetric[], check: Smoke
     return;
   }
   const baseline = all[app];
-  if (!baseline) return void console.log(`     no budgets recorded for ${app} (STRIDE_UPDATE_BUDGETS=1 records them)`);
+  if (!baseline) {
+    console.log(`     no budgets recorded for ${app} (STRIDE_UPDATE_BUDGETS=1 records them)`);
+    return;
+  }
   const over = metrics.flatMap((metric) => {
     const recorded = baseline[metric.name];
     if (recorded === undefined) return [];

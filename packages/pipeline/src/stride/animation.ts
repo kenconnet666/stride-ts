@@ -15,7 +15,7 @@ import { Matrix } from '@stride-ts/engine/math';
 import type { BakedAnimation, JointDescription, JointTrack, MeshData, Scene, StrideTools } from '@stride-ts/native/tools';
 import { INFLUENCES, type SourceSkin } from '../mesh.ts';
 import { importTransform, loadSourceScene, sourceOf, type AssetEntry } from './project.ts';
-import { asObject, timeSpanSeconds } from './yaml.ts';
+import { asObject, timeSpanSeconds, textField } from './yaml.ts';
 
 /** 烘焙动画的采样率（每秒关键帧数，同 ufbx 和 Stride 的默认）。 */
 const SAMPLE_RATE = 30;
@@ -47,7 +47,7 @@ const isIdentity = (m: Float32Array) => m.every((value, i) => value === (i % 5 =
 export async function importSkeleton(asset: AssetEntry, context: AnimationImportContext): Promise<ImportedSkeleton> {
   const listed = Object.values(asObject(asset.data['Nodes']) ?? {}).map((node) => {
     const object = asObject(node) ?? {};
-    return { name: String(object['Name'] ?? ''), depth: Number(object['Depth'] ?? 0) };
+    return { name: textField(object, 'Name', ''), depth: Number(object['Depth'] ?? 0) };
   });
   if (listed.length === 0) throw new Error(`${asset.file}: the skeleton lists no nodes`);
   const transform = importMatrix(asset);
@@ -121,7 +121,7 @@ export async function importAnimation(asset: AssetEntry, skeleton: ImportedSkele
       }
     }
     const archive = skeleton ? withContext(asset.file, () => context.tools.buildAnimation(Math.max(duration, 1e-3), tracks)) : new Uint8Array(0);
-    const repeatMode = REPEAT_MODES[String(asset.data['RepeatMode'] ?? 'LoopInfinite')] ?? 'loopInfinite';
+    const repeatMode = REPEAT_MODES[textField(asset.data, 'RepeatMode', 'LoopInfinite')] ?? 'loopInfinite';
     await context.write(asset.path + EXTENSIONS.animation, encodeAnimation({
       duration, repeatMode, ...(skeleton ? { skeleton: skeleton.path } : {}), ...(morphWeights.length > 0 ? { morphWeights } : {}), archive,
     }));

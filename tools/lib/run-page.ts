@@ -9,7 +9,7 @@ import path from 'node:path';
 
 // packages/cli 的状态目录在模块加载时读环境变量，所以先设好再导入
 process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', 'run-page');
-const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('../../packages/cli/src/chrome.ts');
+const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('@stride-ts/cli/chrome');
 
 const [url, result] = process.argv.slice(2);
 const option = (name: string) => {

@@ -99,7 +99,7 @@ export interface SourceMap {
 }
 
 const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-const BASE64_VALUE = new Map([...BASE64].map((char, i) => [char, i]));
+const BASE64_VALUE = new Map(Array.from(BASE64).map((char, i) => [char, i]));
 
 /** 解析 source map 的 JSON（只认 mappings 和 sources；不处理 sections 的索引式 source map）。 */
 export function parseSourceMap(json: { sources: readonly string[]; sourceRoot?: string; mappings: string }): SourceMap {

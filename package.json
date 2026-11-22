@@ -13,13 +13,14 @@
     "typecheck": "pnpm -r --no-bail --workspace-concurrency=8 run typecheck && tsc -p tools",
     "typecheck:changed": "pnpm -r --no-bail --workspace-concurrency=8 --filter \"...[origin/main]\" run typecheck && tsc -p tools",
     "test": "pnpm -r --no-bail run test",
-    "lint": "oxlint --deny-warnings packages/editor packages/engine/src/editor packages/engine/test/editor",
+    "lint": "oxlint --deny-warnings .",
     "test:changed": "pnpm -r --no-bail --filter \"...[origin/main]\" run test",
     "stride": "node packages/cli/src/cli.ts"
   },
   "devDependencies": {
     "@stride-ts/cli": "workspace:*",
     "@stride-ts/editor": "workspace:*",
+    "@stride-ts/engine": "workspace:*",
     "@types/node": "^26.6.6",
     "@webgpu/types": "^0.1.74",
     "oxlint": "1.94.0",

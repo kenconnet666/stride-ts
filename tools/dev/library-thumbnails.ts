@@ -11,7 +11,7 @@ import path from 'node:path';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '@stride-ts/editor/library';
 
 process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', 'library-thumbnails');
-const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('../../packages/cli/src/chrome.ts');
+const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('@stride-ts/cli/chrome');
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const content = path.join(root, 'apps/greybox/public/content');

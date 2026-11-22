@@ -25,7 +25,7 @@ function connectHub(tabId, url) {
     if (message.type === 'ping') return socket.send(JSON.stringify({ type: 'pong' }));
     const { id, session, method, params, waitFor } = message;
     // 同内容脚本那条路：文件改了就先回"正在更新"、重新加载（新注入的内容脚本向页面要票，重新连上中枢）
-    updatedOnDisk().then(async (updated) => {
+    void updatedOnDisk().then(async (updated) => {
       if (updated) {
         socket.send(JSON.stringify({ id, error: UPDATING }));
         return reloadSoon();
@@ -86,6 +86,16 @@ async function currentFingerprint() {
 // 加载时的指纹记在 chrome.storage.session 里：Chrome 把闲着的 service worker 停了再起时变量清空，要是那时再拿磁盘上（已经改过的）
 // 文件当基准，就永远发现不了改动。磁盘上 manifest 的版本和正在跑的不一样也算改了（基准丢了的时候兜底）。
 async function updatedOnDisk() {
+  // 读不了自己的文件（扩展正被卸载、存储出错）时当作没改：调用方照常回复，不让页面干等到超时
+  try {
+    return await diskChanged();
+  } catch (error) {
+    console.warn('stride debug bridge: checking the extension files failed', error);
+    return false;
+  }
+}
+
+async function diskChanged() {
   const [now, stored] = await Promise.all([currentFingerprint(), chrome.storage.session.get('fingerprint')]);
   if (stored.fingerprint === undefined) await chrome.storage.session.set({ fingerprint: now });
   const diskVersion = (() => { try { return JSON.parse(now.split('\n--\n')[0]).version; } catch { return undefined; } })();
@@ -115,13 +125,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   if (message?.method === 'hello') {
     // 页面打开时内容脚本打个招呼：借这个机会看文件有没有改
-    updatedOnDisk().then((updated) => {
+    void updatedOnDisk().then((updated) => {
       sendResponse({ result: { version: chrome.runtime.getManifest().version } });
       if (updated) reloadSoon();
     });
     return true;
   }
-  updatedOnDisk().then((updated) => {
+  void updatedOnDisk().then((updated) => {
     if (updated) {
       sendResponse({ error: UPDATING });
       reloadSoon();

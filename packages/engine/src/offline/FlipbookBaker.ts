@@ -286,7 +286,7 @@ export interface BakeResult extends Omit<BakedFlipbook, 'rgba'> {
 export async function bakeCommand(game: Game, component: ParticleSystemComponent, args: Readonly<Record<string, unknown>>): Promise<BakeResult> {
   const count = (name: string, fallback: number) => (args[name] === undefined ? fallback : Number(args[name]));
   const view = args['view'] ?? 'front';
-  if (view !== 'front' && view !== 'side' && view !== 'top') throw new Error(`view must be front, side or top, got '${String(view)}'`);
+  if (view !== 'front' && view !== 'side' && view !== 'top') throw new Error(`view must be front, side or top, got ${JSON.stringify(view)}`);
   const started = performance.now();
   const { rgba, ...bake } = await bakeFlipbook(game, component, {
     columns: count('columns', 4), rows: count('rows', 4), frameSize: count('size', 256),

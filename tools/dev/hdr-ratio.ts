@@ -4,7 +4,7 @@
 // 我们这边先用 stride eval 设好，再 stride shot ours.png）。
 // 用法：node tools/dev/hdr-ratio.ts <参考.png> <我们的.png> [每组的行数，默认 60]
 import { readFileSync } from 'node:fs';
-import { decodePng } from '../../packages/cli/src/png.ts';
+import { decodePng } from '@stride-ts/cli/png';
 
 const [referenceFile, oursFile, bandArg = '60'] = process.argv.slice(2);
 if (!referenceFile || !oursFile) throw new Error('usage: node tools/dev/hdr-ratio.ts <reference.png> <ours.png> [rows per band]');

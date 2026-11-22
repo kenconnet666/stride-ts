@@ -5,6 +5,7 @@
  * 编辑状态的页面（game.editing：脚本不挂、仿真不走）自己不能出片：在页面里开一个看不见的 iframe，用试玩的地址（去掉
  * ?stride-edit）打开同一个游戏，在那里跑这条命令，跑完关掉。
  */
+import { textOf } from '../data/text.ts';
 import type { Game } from '../engine/Game';
 import { TimelinePlayer } from '../animation/TimelinePlayer';
 import { saveExport } from '../editor/backendApi';
@@ -34,15 +35,15 @@ export async function renderCommand(game: Game, args: Args): Promise<RenderResul
   // 刚打开的页面（或者窗口被挡住、一直没跑帧的页面）：先跑几帧，脚本开始了、后台算的东西就位了再出片
   if (game.frames < WARM_UP_FRAMES) await warmUp(game);
   const preset = args['preset'] === undefined ? undefined : RENDER_PRESETS[args['preset'] as RenderPreset];
-  if (args['preset'] !== undefined && !preset) throw new Error(`unknown preset '${String(args['preset'])}'; presets: ${Object.keys(RENDER_PRESETS).join(', ')}`);
+  if (args['preset'] !== undefined && !preset) throw new Error(`unknown preset ${JSON.stringify(args['preset'])}; presets: ${Object.keys(RENDER_PRESETS).join(', ')}`);
   const width = numberArg(args, 'width') ?? preset?.width ?? 1920;
   const height = numberArg(args, 'height') ?? preset?.height ?? 1080;
   const fps = numberArg(args, 'fps') ?? preset?.fps ?? 30;
-  const player = args['timeline'] === undefined ? undefined : timelinePlayer(game, String(args['timeline']));
+  const player = args['timeline'] === undefined ? undefined : timelinePlayer(game, textOf(args['timeline']));
   const seconds = numberArg(args, 'seconds') ?? player?.timeline.duration;
   if (!(seconds !== undefined && seconds > 0)) throw new Error('seconds is required (or a timeline whose length is used)');
   const format = args['format'] ?? 'mp4';
-  if (format !== 'mp4' && format !== 'png') throw new Error(`format must be mp4 or png, got '${String(format)}'`);
+  if (format !== 'mp4' && format !== 'png') throw new Error(`format must be mp4 or png, got ${JSON.stringify(format)}`);
   const name = typeof args['name'] === 'string' && args['name'] !== '' ? args['name'] : 'render';
   const options = {
     width, height, fps, seconds,
@@ -87,7 +88,7 @@ function numberArg(args: Args, key: string): number | undefined {
   const value = args[key];
   if (value === undefined) return undefined;
   const number = Number(value);
-  if (!Number.isFinite(number)) throw new Error(`${key} must be a number, got '${String(value)}'`);
+  if (!Number.isFinite(number)) throw new Error(`${key} must be a number, got ${JSON.stringify(value)}`);
   return number;
 }
 

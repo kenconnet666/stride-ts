@@ -1,7 +1,8 @@
 // 页面没连上调试中枢时（游戏启动前就出错、卡在加载）直接经 DevTools 协议在 stride 启动的 Chrome 里求值，看报错和页面文字。
 //   node tools/dev/cdp-eval.ts [--headless] [--reload] [<表达式>]   默认看页面文字；--reload 先重新加载、等 15 秒，报这期间的异常和控制台的错误
 // 例：node tools/dev/cdp-eval.ts --headless "document.title"
-import { CdpSession } from '../../packages/cli/src/chrome.ts';
+import { consoleArgText } from '../lib/consoleText.ts';
+import { CdpSession } from '@stride-ts/cli/chrome';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,7 +23,7 @@ for (const target of pages.filter((page) => page.type === 'page')) {
   });
   page.on('Runtime.consoleAPICalled', (params) => {
     const { type, args } = params as { type: string; args: { value?: unknown; description?: string }[] };
-    if (type === 'error' || type === 'warning') exceptions.push(`console.${type}: ${args.map((arg) => arg.value ?? arg.description).join(' ')}`);
+    if (type === 'error' || type === 'warning') exceptions.push(`console.${type}: ${args.map(consoleArgText).join(' ')}`);
   });
   await page.send('Runtime.enable', {});
   if (reload) {

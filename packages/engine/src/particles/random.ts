@@ -3,8 +3,8 @@
  * 不相关的随机数，每个粒子存一个种子，寿命、大小、位置这些各用自己的偏移取，算法照 Stride，固定种子时和桌面版一样。
  */
 
-const GELFOND = 23.140692632779269; // e 的 π 次方
-const GELFOND_SCHNEIDER = 2.6651441426902251; // 2 的 √2 次方
+const GELFOND = 23.14069263277927; // e 的 π 次方
+const GELFOND_SCHNEIDER = 2.665144142690225; // 2 的 √2 次方
 const NUMERATOR = 123456789;
 
 /** 各属性取随机数用的偏移（Stride 的 RandomOffset）。 */

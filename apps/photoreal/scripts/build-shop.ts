@@ -4,9 +4,8 @@
 //   看：http://localhost:5234/?scene=Shop（包装的展示台）、?scene=Supermarket（货架的过道）、?scene=Produce（散装区的物理堆放）
 // 标签的中文字用资源包 @stride-ts/assets 里的站酷庆科黄油体（Shared/Fonts，开发服务器、编辑器后端打开工程时同步进来）。
 import path from 'node:path';
-import type { ProductFile } from '../../../packages/engine/src/content/formats/productFormat.ts';
-import type { CeilingFile } from '../../../packages/engine/src/content/formats/ceilingFormat.ts';
-import { ceilingLights } from '../../../packages/engine/src/modeling/ceiling.ts';
+import type { CeilingFile, ProductFile } from '@stride-ts/engine/content-format';
+import { ceilingLights } from '@stride-ts/engine/modeling';
 import { McpProcess } from '@stride-ts/editor/mcp-client';
 
 const project = path.resolve(import.meta.dirname, '..');

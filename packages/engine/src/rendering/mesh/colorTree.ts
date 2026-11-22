@@ -11,6 +11,7 @@
  * - ComputeShaderClassColor：游戏登记的着色器类（Stride 的 .sdsl 着色器类写成 WGSL），泛型参数按名字传。
  * 认不出的节点当白色。树的格式同粒子模块（ParticleModuleFile：$type 是首字母小写的类名，贴图是 TextureRef）。
  */
+import { textOf } from '../../data/text.ts';
 import type { ParticleModuleFile, ParticleValue, TextureRef, TextureSampler } from '../../content/formats/format';
 import { srgbToLinear } from '../../data/vectors';
 import type { ShaderClass } from '../shaderClass';
@@ -119,7 +120,7 @@ export class ColorTreeCompiler {
       case 'computeBinaryColor':
       case 'computeBinaryScalar': {
         const left = this.color(file['leftChild']), right = this.color(file['rightChild']);
-        const operator = String(file['operator'] ?? 'multiply');
+        const operator = textOf(file['operator'], 'multiply');
         if (operator === 'add') return `(${left} + ${right})`;
         if (operator === 'subtract') return `(${left} - ${right})`;
         if (operator in OPERATORS) {
@@ -159,7 +160,7 @@ export class ColorTreeCompiler {
         const texel = this.#sample(file);
         // FallbackValue 是 ComputeFloat，导出成 { value }
         if (!texel) return float(get(get(file, 'fallbackValue', {} as ParticleModuleFile), 'value', 1));
-        const channel = String(file['channel'] ?? 'r').toLowerCase();
+        const channel = textOf(file['channel'], 'r').toLowerCase();
         return `${texel}.${channel.length === 1 && 'rgba'.includes(channel) ? channel : 'r'}`;
       }
       default:
@@ -200,7 +201,7 @@ export class ColorTreeCompiler {
 
   /** 着色器类：调用游戏登记的 WGSL 函数，泛型参数（ComputeColorParameter*）按着色器类声明的顺序传。 */
   #shaderClass(node: ParticleModuleFile): string {
-    const name = String(node['mixinReference'] ?? '');
+    const name = textOf(node['mixinReference']);
     const found = this.#context.shaderClass(name);
     if (!found) {
       warnOnce(`shader class ${name} (no WGSL registered under that name)`);
@@ -220,10 +221,10 @@ export class ColorTreeCompiler {
 /** 贴图节点的采样器（Stride 的 Filtering、AddressModeU/V；Border 当 Clamp，MirrorOnce 当 Mirror）。 */
 function samplerOf(node: ParticleModuleFile): TextureSampler {
   const address = (key: string): TextureSampler['addressU'] => {
-    const mode = String(node[key] ?? 'wrap');
+    const mode = textOf(node[key], 'wrap');
     return mode === 'clamp' || mode === 'border' ? 'clamp' : mode.startsWith('mirror') ? 'mirror' : undefined;
   };
-  const filtering = String(node['filtering'] ?? 'linear');
+  const filtering = textOf(node['filtering'], 'linear');
   const filter = filtering === 'point' ? 'point' : filtering === 'anisotropic' ? 'anisotropic' : undefined;
   const addressU = address('addressModeU'), addressV = address('addressModeV');
   return { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) };

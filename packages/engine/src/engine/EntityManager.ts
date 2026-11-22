@@ -357,7 +357,7 @@ export class EntityManager {
     }
     this.#systems = [...this.#systems, ...systems];
     this.#ordered = undefined;
-    this.#watching = this.#systems.filter((s) => s.spec.added || s.spec.removed);
+    this.#watching = this.#systems.filter((s) => s.spec.added !== undefined || s.spec.removed !== undefined);
     for (const s of systems) {
       if (s.spec.added) this.#forEachMatching(s, (id) => this.#callback(() => s.spec.added!(id, this.#commands)));
     }
@@ -371,7 +371,7 @@ export class EntityManager {
     }
     this.#systems = this.#systems.filter((s) => !systems.includes(s));
     this.#ordered = undefined;
-    this.#watching = this.#systems.filter((s) => s.spec.added || s.spec.removed);
+    this.#watching = this.#systems.filter((s) => s.spec.added !== undefined || s.spec.removed !== undefined);
     this.#afterChange();
   }
 
@@ -393,7 +393,7 @@ export class EntityManager {
       else this.#replaceScript(previous, next as ScriptConstructor);
     }
     this.#ordered = undefined;
-    this.#watching = this.#systems.filter((s) => s.spec.added || s.spec.removed);
+    this.#watching = this.#systems.filter((s) => s.spec.added !== undefined || s.spec.removed !== undefined);
     // 系统缓存的 chunk 拿着旧的列集合
     for (const s of this.#systems) s.chunks.clear();
   }
@@ -761,7 +761,9 @@ export class EntityManager {
       Object.defineProperty(script, field.name, {
         enumerable: true,
         get: () => stat.value,
-        set: (value: number) => (stat.base = value),
+        set: (value: number) => {
+          stat.base = value;
+        },
       });
     }
     script.statTable = table;

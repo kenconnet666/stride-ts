@@ -15,6 +15,7 @@
  *   POST /call  { page?, command, args?, timeout? }   调一个命令，page 省略时用最近连上的页面
  *   GET  /logs?since=<seq>&follow=1&page=<id>         日志，NDJSON；follow 时一直推送新的
  */
+import { socketText } from './socketText.ts';
 import { randomBytes } from 'node:crypto';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
@@ -112,7 +113,7 @@ export class DebugHub {
     const id = this.#nextPage++;
     let page: Page | undefined;
     socket.on('message', (data) => {
-      const message = JSON.parse(String(data)) as PageMessage;
+      const message = JSON.parse(socketText(data)) as PageMessage;
       if (message.type === 'hello') {
         page = { info: { id, url: message.url, title: message.title, connectedAt: Date.now() }, socket, pending: new Map(), ticket: randomBytes(16).toString('hex'), bridge: undefined, bridgePending: new Map(), devtools: new Set() };
         this.#pages.set(id, page);
@@ -142,7 +143,7 @@ export class DebugHub {
     page.bridge = socket;
     const ping = setInterval(() => socket.send(JSON.stringify({ type: 'ping' })), BRIDGE_PING_MS);
     socket.on('message', (data) => {
-      const message = JSON.parse(String(data)) as { id?: number; result?: unknown; error?: string; event?: string; params?: unknown; type?: string };
+      const message = JSON.parse(socketText(data)) as { id?: number; result?: unknown; error?: string; event?: string; params?: unknown; type?: string };
       if (message.id !== undefined) {
         const resolve = page.bridgePending.get(message.id);
         page.bridgePending.delete(message.id);
@@ -178,7 +179,7 @@ export class DebugHub {
     const session = randomBytes(8).toString('hex');
     page.devtools.add(socket);
     socket.on('message', (data) => {
-      const { id, method, params } = JSON.parse(String(data)) as { id: number; method: string; params?: unknown };
+      const { id, method, params } = JSON.parse(socketText(data)) as { id: number; method: string; params?: unknown };
       // 只取结果和错误：扩展的回复里的 id 是中枢自己的编号，不能盖掉 CLI 命令的
       void this.#bridgeCommand(page, session, method, params ?? {}).then(({ result, error }) => socket.send(JSON.stringify({ id, result, error })));
     });

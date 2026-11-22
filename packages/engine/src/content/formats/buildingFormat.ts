@@ -115,7 +115,7 @@ export function moduleChoices(slot: string): string[] {
 /** 解析图案：`A B* [C D|E]* F`。语法不对时报错（说清楚哪里）。 */
 export function parseFacadePattern(pattern: string): FacadePatternItem[] {
   const items: FacadePatternItem[] = [];
-  const re = /\s*(?:\[([^\[\]]*)\]|([A-Za-z_][\w-]*(?:\|[A-Za-z_][\w-]*)*))(\*?)/y;
+  const re = /\s*(?:\[([^[\]]*)\]|([A-Za-z_][\w-]*(?:\|[A-Za-z_][\w-]*)*))(\*?)/y;
   let at = 0;
   while (at < pattern.length) {
     if (/^\s*$/.test(pattern.slice(at))) break;

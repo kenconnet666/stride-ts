@@ -54,7 +54,7 @@ import { proceduralMesh } from './procedural.ts';
 import { cleanNodeName, importAnimation, importMatrix, importSkeleton, meshSkin, type AnimationImportContext, type ImportedSkeleton } from './animation.ts';
 import { importTransform, loadSourceScene, once, sourceOf, type AssetEntry, type StrideProject } from './project.ts';
 import { UIImporter } from './ui.ts';
-import { asNumber, asObject, color4, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, quaternion, timeSpanSeconds, vec2, vec3, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, color4, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, quaternion, timeSpanSeconds, vec2, vec3, type StrideObject, type StrideValue, textField } from './yaml.ts';
 
 export interface ImportResult {
   /** 场景的内容路径。 */
@@ -279,10 +279,10 @@ export class StrideImporter {
       const base = asObject(asObject(part)?.['Base']);
       const id = asObject(asObject(part)?.['Entity'])?.['Id'];
       if (!base || typeof id !== 'string') continue;
-      const reference = String(base['BasePartAsset']);
+      const reference = textField(base, 'BasePartAsset');
       const prefab = this.#project.get(reference.slice(0, reference.indexOf(':')), asset.file);
       await this.#prefab(prefab);
-      bases.set(id, { prefab: prefab.path, part: String(base['BasePartId']), instance: String(base['InstanceId']) });
+      bases.set(id, { prefab: prefab.path, part: textField(base, 'BasePartId'), instance: textField(base, 'InstanceId') });
     }
     const converted = convertInstances(parentsFirst(files), bases, this.#convertedPrefabs);
     if (converted.failure) this.#warnings.push(`${asset.file}: prefab instances kept expanded (${converted.failure})`);
@@ -290,7 +290,7 @@ export class StrideImporter {
   }
 
   async #entity(entity: StrideObject, parent: string | null, scene: AssetEntry, context: HierarchyContext): Promise<SceneEntityFile> {
-    const where = `${scene.file}: entity '${String(entity['Name'])}'`;
+    const where = `${scene.file}: entity '${textField(entity, 'Name')}'`;
     const transform = componentOf(entity, 'TransformComponent') ?? {};
     const components: Components = {};
     for (const component of Object.values(asObject(entity['Components']) ?? {})) {
@@ -492,7 +492,7 @@ export class StrideImporter {
           useHRTF: component['UseHRTF'] === true,
           directionalFactor: asNumber(component['DirectionalFactor'], 0),
           // HrtfEnvironment 的 Small、Medium、Large、Outdoors
-          environment: String(component['Environment'] ?? 'Small').toLowerCase(),
+          environment: textField(component, 'Environment', 'Small').toLowerCase(),
         };
         components.scripts = [...(components.scripts ?? []), { type: 'AudioEmitterComponent', props }];
         return true;
@@ -602,7 +602,7 @@ export class StrideImporter {
       this.#warnings.push(`${where}: collider ${type} is not supported; skipping the physics component`);
     }
     if (shapes.length === 0) return undefined;
-    const layer = /^Layer(\d+)$/.exec(String(component['CollisionLayer'] ?? 'Layer0'));
+    const layer = /^Layer(\d+)$/.exec(textField(component, 'CollisionLayer', 'Layer0'));
     const handler = asObject(component['ContactEventHandler'])?.$type;
     const trigger = handler === 'Stride.BepuPhysics.Definitions.Trigger,Stride.BepuPhysics';
     if (handler !== undefined && !trigger) this.#warnings.push(`${where}: contact event handler ${handler} is not supported; ignored (scripts can set one with simulation.setContactHandler)`);
@@ -664,13 +664,13 @@ export class StrideImporter {
   async #uiComponent(component: StrideObject, where: string): Promise<SceneUI> {
     const page = parseAssetReference(component['Page']);
     const flag = (key: string, fallback: boolean) => (typeof component[key] === 'boolean' && component[key] !== fallback ? { [lowerFirst(key)]: component[key] } : {});
-    const sampler = SPRITE_SAMPLERS[String(component['Sampler'] ?? 'LinearClamp')] ?? 'linearClamp';
+    const sampler = SPRITE_SAMPLERS[textField(component, 'Sampler', 'LinearClamp')] ?? 'linearClamp';
     const renderGroup = renderGroupOf(component['RenderGroup']);
     return {
       page: page ? await this.#ui.ui(this.#project.get(page.id, where)) : null,
       resolution: vec3(component['Resolution'], 0, [1280, 720, 1000]),
       size: vec3(component['Size'], 0, [1.28, 0.72, 1]),
-      resolutionStretch: lowerFirst(String(component['ResolutionStretch'] ?? 'FixedWidthAdaptableHeight')) as SceneUI['resolutionStretch'],
+      resolutionStretch: lowerFirst(textField(component, 'ResolutionStretch', 'FixedWidthAdaptableHeight')) as SceneUI['resolutionStretch'],
       ...flag('Enabled', true),
       ...(renderGroup !== 0 ? { renderGroup } : {}),
       ...flag('IsFullScreen', true),
@@ -699,8 +699,8 @@ export class StrideImporter {
       premultipliedAlpha: component['PremultipliedAlpha'] !== false,
       ignoreDepth: component['IgnoreDepth'] === true,
       isAlphaCutoff: component['IsAlphaCutoff'] === true,
-      blendMode: SPRITE_BLENDS[String(component['BlendMode'] ?? 'Auto')] ?? 'auto',
-      sampler: SPRITE_SAMPLERS[String(component['Sampler'] ?? 'LinearClamp')] ?? 'linearClamp',
+      blendMode: SPRITE_BLENDS[textField(component, 'BlendMode', 'Auto')] ?? 'auto',
+      sampler: SPRITE_SAMPLERS[textField(component, 'Sampler', 'LinearClamp')] ?? 'linearClamp',
     };
   }
 
@@ -764,7 +764,7 @@ export class StrideImporter {
         // Stride 的 Borders 是 X 左、Y 上、Z 右、W 下
         const borders = ['X', 'Y', 'Z', 'W'].map((k) => asNumber(asObject(sprite['Borders'])?.[k], 0)) as [number, number, number, number];
         return {
-          name: String(sprite['Name'] ?? ''),
+          name: textField(sprite, 'Name', ''),
           texture: await texture,
           region: [asNumber(region?.['X'], 0), asNumber(region?.['Y'], 0), asNumber(region?.['Width'], 0), asNumber(region?.['Height'], 0)] as const,
           pixelsPerUnit: asNumber(sprite['PixelsPerUnit'], 100),
@@ -823,7 +823,7 @@ export class StrideImporter {
     const b = asObject(configuration['BuildSettings']) ?? {};
     for (const unsupported of ['PartitionType', 'VertsPerPoly'] as const) {
       const value = b[unsupported];
-      if (value !== undefined && value !== 'WATERSHED' && value !== 6) this.#warnings.push(`${scene.file}: navigation ${unsupported} ${String(value)} is not supported; using ${unsupported === 'PartitionType' ? 'WATERSHED' : '6'}`);
+      if (value !== undefined && value !== 'WATERSHED' && value !== 6) this.#warnings.push(`${scene.file}: navigation ${unsupported} ${JSON.stringify(value)} is not supported; using ${unsupported === 'PartitionType' ? 'WATERSHED' : '6'}`);
     }
     return {
       build: {
@@ -885,7 +885,7 @@ export class StrideImporter {
     if (!shadow || shadow['Enabled'] !== true) return undefined;
     const bias = asObject(shadow['BiasParameters']) ?? {};
     return {
-      size: SHADOW_SIZES[String(shadow['Size'] ?? 'Medium')] ?? 'medium',
+      size: SHADOW_SIZES[textField(shadow, 'Size', 'Medium')] ?? 'medium',
       filter: this.#shadowFilter(shadow, where),
       depthBias: asNumber(bias['DepthBias'], 0.01),
       normalOffsetScale: asNumber(bias['NormalOffsetScale'], 10),
@@ -894,7 +894,7 @@ export class StrideImporter {
 
   #shadowFilter(shadow: StrideObject, where: string): SceneLightShadow['filter'] {
     const filter = asObject(shadow['Filter']);
-    if (filter?.$type === 'LightShadowMapFilterTypePcf') return PCF_FILTERS[String(filter['FilterSize'] ?? 'Filter3x3')] ?? 'pcf3x3';
+    if (filter?.$type === 'LightShadowMapFilterTypePcf') return PCF_FILTERS[textField(filter, 'FilterSize', 'Filter3x3')] ?? 'pcf3x3';
     if (filter) this.#warnings.push(`${where}: shadow filter ${filter.$type ?? 'value'} is not supported; using a single comparison sample`);
     return 'none';
   }
@@ -909,12 +909,12 @@ export class StrideImporter {
     const bias = asObject(shadow['BiasParameters']) ?? {};
     const depthRange = asObject(shadow['DepthRange']) ?? {};
     return {
-      size: SHADOW_SIZES[String(shadow['Size'] ?? 'Medium')] ?? 'medium',
+      size: SHADOW_SIZES[textField(shadow, 'Size', 'Medium')] ?? 'medium',
       filter: filterName,
-      cascadeCount: CASCADE_COUNTS[String(shadow['CascadeCount'] ?? 'FourCascades')] ?? 'four',
+      cascadeCount: CASCADE_COUNTS[textField(shadow, 'CascadeCount', 'FourCascades')] ?? 'four',
       depthBias: asNumber(bias['DepthBias'], 0.01),
       normalOffsetScale: asNumber(bias['NormalOffsetScale'], 10),
-      stabilization: STABILIZATION_MODES[String(shadow['StabilizationMode'] ?? 'ProjectionSnapping')] ?? 'projectionSnapping',
+      stabilization: STABILIZATION_MODES[textField(shadow, 'StabilizationMode', 'ProjectionSnapping')] ?? 'projectionSnapping',
       pssmFactor: partition?.$type === 'LightDirectionalShadowMap.PartitionLogarithmic' ? asNumber(partition['PSSMFactor'], 0.5) : 0.5,
       depthRange: depthRange['IsAutomatic'] === false ? 'manual' : 'automatic',
       minDistance: asNumber(depthRange['ManualMinDistance'], 0),
@@ -950,12 +950,12 @@ export class StrideImporter {
     if (asset.type === 'ProceduralModelAsset') return this.#importProceduralModel(asset);
     // 材质槽按 .sdm3d 里的顺序；源文件里的网格按材质名对上槽
     const slots = Object.values(asObject(asset.data['Materials']) ?? {}).map((slot) => asObject(slot) ?? {});
-    const slotNames = slots.map((slot) => String(slot['Name'] ?? ''));
+    const slotNames = slots.map((slot) => textField(slot, 'Name', ''));
     const slotAssets = slots.map((slot) => {
       const reference = parseAssetReference(asObject(slot['MaterialInstance'])?.['Material']);
       return reference ? this.#project.get(reference.id, asset.file) : null;
     });
-    const materials = await Promise.all(slotAssets.map((material) => (material ? this.#materials.material(material) : null)));
+    const materials = await Promise.all(slotAssets.map((material) => (material ? this.#materials.material(material) : Promise.resolve(null))));
     // 材质用法线贴图的槽：这些网格要生成切线
     const normalMapped = await Promise.all(slotAssets.map(async (material) => material !== null && needsTangents(await this.#materials.materialFile(material))));
 
@@ -1058,7 +1058,7 @@ export class StrideImporter {
     for (const [key, value] of Object.entries(asObject(component['Animations']) ?? {})) {
       // 字典项写成 名字: 引用，或者 { Key: 名字, Value: 引用 }
       const entry = asObject(value);
-      const name = entry && 'Key' in entry ? String(entry['Key']) : dictionaryKey(key);
+      const name = entry && 'Key' in entry ? textField(entry, 'Key') : dictionaryKey(key);
       const reference = parseAssetReference(entry && 'Value' in entry ? entry['Value'] : value);
       if (!reference) continue;
       animations.push({ name, clip: await this.#animation(this.#project.get(reference.id, where)) });

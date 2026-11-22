@@ -50,8 +50,9 @@ export class Entity {
    *   this.game.entities.create({ name: 'Bullet', scene: this.entity.scene, components: [Transform] });
    */
   get scene(): EntityScene | undefined {
-    for (let entity: Entity | undefined = this; entity; entity = entity.get(Transform)?.parent) {
-      if (entity.ownScene) return entity.ownScene;
+    if (this.ownScene) return this.ownScene;
+    for (let parent = this.get(Transform)?.parent; parent; parent = parent.get(Transform)?.parent) {
+      if (parent.ownScene) return parent.ownScene;
     }
     return undefined;
   }

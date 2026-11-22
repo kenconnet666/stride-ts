@@ -37,7 +37,7 @@ export function parseProceduralModel(bytes: ArrayBuffer | Uint8Array, source = '
   } catch (error) {
     throw new Error(`${source}: not a valid JSON model: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (file.format !== PROCEDURAL_MODEL_FORMAT) throw new Error(`${source}: unsupported JSON model format ${String(file.format)} (expected ${PROCEDURAL_MODEL_FORMAT})`);
+  if (file.format !== PROCEDURAL_MODEL_FORMAT) throw new Error(`${source}: unsupported JSON model format ${JSON.stringify(file.format)} (expected ${String(PROCEDURAL_MODEL_FORMAT)})`);
   const type = file.procedural?.type;
   if (!(PROCEDURAL_SHAPES as readonly string[]).includes(type)) throw new Error(`${source}: procedural.type must be one of ${PROCEDURAL_SHAPES.join(', ')}, got ${String(type)}`);
   if (file.materials !== undefined && !(Array.isArray(file.materials) && file.materials.every((m) => m === null || typeof m === 'string'))) {

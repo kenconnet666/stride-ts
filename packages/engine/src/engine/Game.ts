@@ -366,7 +366,7 @@ export class Game {
     }
     this.sceneFrame = this.frames;
     this.status = 'running';
-    requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.#nextFrame);
   }
 
   /** 引擎自己的统计量；游戏在 loadContent 里接着登记自己的、设预算。 */
@@ -724,8 +724,11 @@ export class Game {
       this.exit();
       return;
     }
-    requestAnimationFrame(this.frame);
+    requestAnimationFrame(this.#nextFrame);
   };
+
+  /** 交给 requestAnimationFrame 的回调（它不管返回的 Promise；帧里的错 frame 自己接住、报出来）。 */
+  readonly #nextFrame = (now: number): void => void this.frame(now);
 
   /** 按需出帧时叫醒：接下来至少出 count 帧（默认够异步加载、时间累积的效果稳下来）。没开按需出帧时什么也不变。 */
   requestFrames(count = SETTLE_FRAMES): void {
@@ -839,5 +842,5 @@ export class Game {
  * 兑现就多传一个微任务，所以多让几轮。
  */
 async function scriptContinuations(rounds = 16): Promise<void> {
-  for (let i = 0; i < rounds; i++) await null;
+  for (let i = 0; i < rounds; i++) await Promise.resolve();
 }

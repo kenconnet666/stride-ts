@@ -5,7 +5,11 @@
   "rules": {
     "typescript/no-floating-promises": "error",
     "typescript/no-misused-promises": "error",
-    "typescript/switch-exhaustiveness-check": ["error", { "considerDefaultExhaustiveForUnions": true }]
+    "typescript/switch-exhaustiveness-check": ["error", { "considerDefaultExhaustiveForUnions": true }],
+    // 字符串按码位展开（[...text]）是有意的：文字的光标、换行按码位走；数组、对象展开得不对的照旧报
+    // 解构时去掉一个字段（{ stock: _, ...rest }）、占位的参数用 _ 开头
+    "eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "ignoreRestSiblings": true }],
+    "typescript/no-misused-spread": ["warn", { "allow": [{ "from": "lib", "name": "string" }] }]
   },
   "ignorePatterns": ["**/dist/**", "**/public/**", "**/*.gen.ts", "reference/**"]
 }

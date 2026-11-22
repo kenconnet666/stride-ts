@@ -68,7 +68,7 @@ describe('富文本的 Markdown 子集', () => {
 });
 
 // 合成的字体（同 text.test.ts 的做法）：小写字母、数字、点宽 0.5 em，空格 0.25 em，• 0.4 em，汉字 1 em；字号 20 时一行 24、基线在 20
-const ADVANCES = new Map<number, number>([[32, 0.25], [0x2022, 0.4], [0x4e00, 1], ...[...'abcdefghijklmnopqrstuvwxyz0123456789.'].map((c) => [c.codePointAt(0)!, 0.5] as [number, number])]);
+const ADVANCES = new Map<number, number>([[32, 0.25], [0x2022, 0.4], [0x4e00, 1], ...Array.from('abcdefghijklmnopqrstuvwxyz0123456789.').map((c) => [c.codePointAt(0)!, 0.5] as [number, number])]);
 
 function glyphBlock(index: number): GlyphBlock {
   const codepoints = [...ADVANCES.keys()].filter((codepoint) => codepoint >> 8 === index);

@@ -219,7 +219,8 @@ export class RenderGraph {
   /** 不执行这一帧，只在后台编会跑的通道（裁掉的不算）要的管线；都编好了 Promise 才完成。 */
   async warm(): Promise<void> {
     const live = this.#cull();
-    await Promise.all(this.#passes.filter((_, index) => live[index]).map((pass) => pass.warm?.()));
+    // 已经预热过的通道的 warm 返回 undefined
+    await Promise.all(this.#passes.filter((_, index) => live[index]).map((pass) => pass.warm?.()).filter((warming) => warming !== undefined));
   }
 
   /** 哪些通道要跑：从后往前，写了"后面有人要"的贴图的、有副作用的。 */

@@ -1,7 +1,7 @@
 // MaterialShader 的冒烟测试：对着正在运行的页面（开发服务器或 preview），用调试 CLI 看一遍。
 //   pnpm --filter @stride-ts/material-shader smoke [-- --hub <中枢名的一部分>]
 // 检查：在跑；水面的材质带着游戏着色器类编的法线树和位移树；水面在动（隔半秒截两张，画面不一样）；没有错误日志（finish 检查）。
-import { decodePng, diffImages } from '../../../packages/cli/src/png.ts';
+import { decodePng, diffImages } from '@stride-ts/cli/png';
 import { startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('material-shader');

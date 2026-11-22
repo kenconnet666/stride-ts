@@ -81,7 +81,10 @@ export function readBrowser(): BrowserRecord | undefined {
 }
 
 export function writeBrowser(record: BrowserRecord | undefined): void {
-  if (!record) return void rmSync(BROWSER_FILE, { force: true });
+  if (!record) {
+    rmSync(BROWSER_FILE, { force: true });
+    return;
+  }
   mkdirSync(BROWSER_DIR, { recursive: true });
   writeFileSync(BROWSER_FILE, JSON.stringify(record, null, 2));
 }

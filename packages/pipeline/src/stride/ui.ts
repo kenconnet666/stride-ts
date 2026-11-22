@@ -7,7 +7,7 @@
 import path from 'node:path';
 import { EXTENSIONS, type TextureRef, type UIElementFile, type UIElementType, type UIFile, type UIStripDefinition, type UIValue } from '@stride-ts/engine/content-format';
 import { once, type AssetEntry, type StrideProject } from './project.ts';
-import { asNumber, asObject, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, scalarSource, vec3, type StrideObject, type StrideValue } from './yaml.ts';
+import { asNumber, asObject, dictionaryKey, lowerFirst, parseAssetReference, parseObjectReference, vec3, type StrideObject, type StrideValue, textField } from './yaml.ts';
 
 export interface UIImportContext {
   readonly project: StrideProject;
@@ -71,7 +71,7 @@ export class UIImporter {
     const parts = hierarchy?.['Parts'];
     if (!Array.isArray(parts)) throw new Error(`${asset.file}: no Hierarchy.Parts`);
     const objects = parts.map((part) => asObject(asObject(part)?.['UIElement'])).filter((e): e is StrideObject => e !== undefined);
-    const indices = new Map(objects.map((object, index) => [String(object['Id']), index]));
+    const indices = new Map(objects.map((object, index) => [textField(object, 'Id'), index]));
     const indexOf = (value: StrideValue | undefined, where: string): number | undefined => {
       // 带类型标签的引用（`!ImageElement ref!! Id`）解析出来是 { $type, value: 'ref!! Id' }
       const id = parseObjectReference(asObject(value)?.['value'] ?? value);
@@ -105,14 +105,14 @@ export class UIImporter {
 
   async #element(object: StrideObject, asset: AssetEntry, indexOf: (value: StrideValue | undefined, where: string) => number | undefined): Promise<UIElementFile> {
     const type = object.$type ?? 'unknown';
-    const where = `${asset.file}: ${type} '${String(object['Name'] ?? object['Id'])}'`;
+    const where = `${asset.file}: ${type} '${textField(object, 'Name', textField(object, 'Id'))}'`;
     if (!ELEMENT_TYPES.has(type)) throw new Error(`${where}: UI element type ${type} is not supported`);
 
     const props: Record<string, UIValue> = {};
     for (const [key, value] of Object.entries(object)) {
       if (STRUCTURE_KEYS.has(key) || DEPTH_PROPS.has(key) || value === undefined) continue;
       if (STRING_PROPS.has(key) && value !== null && typeof value !== 'string') {
-        props[lowerFirst(key)] = scalarSource(object, key) ?? String(value);
+        props[lowerFirst(key)] = textField(object, key);
         continue;
       }
       const converted = await this.#value(key, value, `${where}.${key}`);

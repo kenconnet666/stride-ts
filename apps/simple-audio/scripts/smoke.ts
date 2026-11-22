@@ -3,7 +3,7 @@
 // Chrome 要带 `--autoplay-policy=no-user-gesture-required`（regress.ps1 带了）：合成的点击不算用户操作，不然声音不出。
 // 检查：UI 画出来了；背景音乐在循环放、真的有声音（AnalyserNode 量主音量的输出）；点一下重放音效、两个波形图回到中间变成
 // 不透明，之后往两边移开、渐隐；音效放完变回停止；没有错误日志（finish 检查）。
-import { decodePng } from '../../../packages/cli/src/png.ts';
+import { decodePng } from '@stride-ts/cli/png';
 import { startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('simple-audio');

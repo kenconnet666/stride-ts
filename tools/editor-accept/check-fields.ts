@@ -4,9 +4,9 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkEntity, checkFields, SCENE_FIELDS } from '../../packages/engine/src/editor/fields/index.ts';
-import type { SceneEntityFile } from '../../packages/engine/src/content/formats/format.ts';
-import { SCENE_SETTING_KEYS } from '../../packages/engine/src/editor/SceneDocument.ts';
+import { checkEntity, checkFields, SCENE_FIELDS } from '@stride-ts/engine/editor-fields';
+import type { SceneEntityFile } from '@stride-ts/engine/content-format';
+import { SCENE_SETTING_KEYS } from '@stride-ts/engine/editor-document';
 
 const apps = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../apps');
 const walk = (dir: string): string[] => readdirSync(dir).flatMap((name) => {

@@ -1,4 +1,5 @@
 import { mkdtempSync } from 'node:fs';
+import { socketText } from '../src/socketText.ts';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -116,7 +117,7 @@ describe('调试中枢', () => {
     await new Promise((resolve) => page.once('open', resolve));
     page.send(JSON.stringify({ type: 'hello', url: `${url}/`, title: 'test page' }));
     page.on('message', (data) => {
-      const call = JSON.parse(String(data)) as CallMessage;
+      const call = JSON.parse(socketText(data)) as CallMessage;
       page.send(JSON.stringify(call.command === 'echo' ? { type: 'result', id: call.id, ok: true, value: call.args } : { type: 'result', id: call.id, ok: false, error: `unknown ${call.command}` }));
     });
     page.send(JSON.stringify({ type: 'logs', entries: [{ time: 1, level: 'warn', source: 'console', message: 'hello from the page' }] }));

@@ -79,7 +79,7 @@ export function generateProceduralMesh(model: ProceduralModel): ProceduralMesh {
       mesh = teapot(positive(model.size ?? 1, 'size'), model.tessellation ?? 8, uScale, vScale);
       break;
     default:
-      throw new Error(`procedural model: unknown type '${(model as { type: unknown }).type}' (expected ${PROCEDURAL_SHAPES.join(', ')})`);
+      throw new Error(`procedural model: unknown type ${JSON.stringify((model as { type: unknown }).type)} (expected ${PROCEDURAL_SHAPES.join(', ')})`);
   }
   applyOffsetAndScale(mesh, [...(model.localOffset ?? [0, 0, 0])], [...(model.scale ?? [1, 1, 1])]);
   // 顺时针（Stride）换成逆时针（我们）

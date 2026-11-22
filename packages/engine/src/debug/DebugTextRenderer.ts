@@ -29,7 +29,7 @@ export class DebugTextRenderer {
     if (!game.debugText.visible || lines.length === 0) return;
     const texture = this.#texture;
     if (!texture) {
-      this.#loading ??= this.#load(game);
+      if (!this.#loading) this.#loading = this.#load(game);
       return;
     }
     const device = game.graphicsDevice;

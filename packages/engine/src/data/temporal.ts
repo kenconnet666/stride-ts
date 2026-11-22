@@ -235,7 +235,7 @@ export class LocalDateTime {
   }
 
   toString(): string {
-    return `${this.date}T${this.time}`;
+    return `${this.date.toString()}T${this.time.toString()}`;
   }
 
   toJSON(): string {
@@ -299,7 +299,7 @@ export class Instant {
 
   /** UTC 写法，总有秒，小数去掉末尾的零：`2024-01-31T05:45:00Z`。 */
   toString(): string {
-    return `${new LocalDateTime(this.epochNanos)}Z`;
+    return `${new LocalDateTime(this.epochNanos).toString()}Z`;
   }
 
   toJSON(): string {

@@ -269,7 +269,7 @@ export const prop = {
    * 一个加载好的资源（只有脚本能用），比如 `prop.asset('model')`：场景里的脚本属性引用资源时，加载场景时一并加载好再传进来；
    * 代码里创建时传加载好的对象（`game.content.loadModel(...)`）。种类见 AssetTypes。
    */
-  asset: <K extends keyof AssetTypes & string>(kind: K) => declare<AssetTypes[K], 'asset'>('asset', { assetKind: kind }),
+  asset: <K extends keyof AssetTypes>(kind: K) => declare<AssetTypes[K], 'asset'>('asset', { assetKind: kind }),
 };
 
 function isAllDefault(shape: Shape): boolean {

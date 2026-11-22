@@ -3,7 +3,7 @@
 // 检查：UI 画出来了；导火索在烧短，火在冒粒子、跟着导火索走；点"恭喜"进入结束（火停掉、大彩纸放起来，按钮上出现命中特效，
 // 2 秒后移除）；点"重新开始"回到新游戏（火又点起来、彩纸停掉）；没有错误日志（finish 检查）。
 // 点击用合成的指针事件，按元素的位置算坐标。
-import { decodePng } from '../../../packages/cli/src/png.ts';
+import { decodePng } from '@stride-ts/cli/png';
 import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('ui-particles');

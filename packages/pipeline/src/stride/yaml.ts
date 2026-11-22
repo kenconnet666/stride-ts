@@ -24,7 +24,19 @@ export function scalarSource(object: StrideObject, key: string): string | undefi
   return (object as { [SOURCES]?: Record<string, string> })[SOURCES]?.[key];
 }
 
-const TAG = /(^|[\s:\-])!([^\s!][^\s]*)/gm;
+/**
+ * 映射里 key 的文字：字符串照原样，不带引号的数字、布尔取文件里的原文（`Text: 000` 不变成 "0"），没有时是 fallback；
+ * 是映射、列表时报错（不悄悄变成 "[object Object]"）。
+ */
+export function textField(object: StrideObject, key: string, fallback = ''): string {
+  const value = object[key];
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return scalarSource(object, key) ?? String(value);
+  throw new Error(`${key}: expected text, got ${JSON.stringify(value)}`);
+}
+
+const TAG = /(^|[\s:-])!([^\s!][^\s]*)/gm;
 
 function escapeTags(text: string): string {
   return text.replace(TAG, (_, before: string, tag: string) => `${before}!${tag.replace(/[,[\]]/g, (c) => encodeURIComponent(c))}`);

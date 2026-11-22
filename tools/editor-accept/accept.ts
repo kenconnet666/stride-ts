@@ -2,13 +2,14 @@
 // 面板、不改就保存（应逐字节不变）、改（移动、改名、加子实体和脚本、复制粘贴、撤销到底再重做）、保存、重新打开、打开其他场景、
 // 试玩。没有场景的游戏（画面全是根渲染器的）只查打开后属性面板里是游戏设置、没有报错。结果写成 <out>/<样例>.json 和几张截图。一般经 run.ps1 跑（它管内容目录的备份、开发服务器和 Chrome），见 README.md。
 //   node tools/editor-accept/accept.ts <样例> <开发服务器端口> <输出目录>
+import { consoleArgText } from '../lib/consoleText.ts';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CdpSession, pageTarget } from '../../packages/cli/src/chrome.ts';
-import { readBrowser } from '../../packages/cli/src/state.ts';
+import { CdpSession, pageTarget } from '@stride-ts/cli/chrome';
+import { readBrowser } from '@stride-ts/cli/state';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -31,7 +32,7 @@ cdp.on('Runtime.exceptionThrown', (params) => {
 cdp.on('Runtime.consoleAPICalled', (params) => {
   const { type, args } = params as { type: string; args: { value?: unknown; description?: string }[] };
   if (type !== 'error' && type !== 'warning') return;
-  const text = args.map((arg) => String(arg.value ?? arg.description ?? '')).join(' ');
+  const text = args.map(consoleArgText).join(' ');
   if (!IGNORE.test(text)) problems.push(`[${phase}] ${type}: ${text.split('\n').slice(0, 2).join(' | ').slice(0, 400)}`);
 });
 await cdp.send('Runtime.enable');

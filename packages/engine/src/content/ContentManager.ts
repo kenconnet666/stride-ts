@@ -286,7 +286,7 @@ export class ContentManager {
       const data = readModelFile(await this.#read(url), url.href);
       const [meshes, materials, skeleton] = await Promise.all([
         this.#decodeMeshes(data.meshes, url),
-        Promise.all(data.materials.map((material) => (material === null ? null : this.loadMaterial(material)))),
+        Promise.all(data.materials.map((material) => (material === null ? Promise.resolve(null) : this.loadMaterial(material)))),
         data.skeleton === undefined ? undefined : this.loadSkeleton(data.skeleton),
       ]);
       const loaded = data.meshes.map((file, i) => {
@@ -515,9 +515,9 @@ export class ContentManager {
         Promise.all(file.layers.map((layer) => {
           let current = layer.model;
           const paths = [current, ...(layer.lods ?? []).map((lod) => (current = lod.model ?? current))];
-          return Promise.all(paths.map((p) => (p ? this.loadModel(p) : undefined)));
+          return Promise.all(paths.map((p) => (p ? this.loadModel(p) : Promise.resolve(undefined))));
         })),
-        Promise.all(file.layers.map((layer) => (layer.material ? this.loadMaterial(layer.material) : undefined))),
+        Promise.all(file.layers.map((layer) => (layer.material ? this.loadMaterial(layer.material) : Promise.resolve(undefined)))),
       ]);
       return new ScatterAsset(path, file, models, materials);
     });

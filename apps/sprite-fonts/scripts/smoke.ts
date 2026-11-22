@@ -3,7 +3,7 @@
 // 检查：按游戏设置挂上 FontRenderer；背景图和白色的标题画出来了；时间到了自动换屏；空格暂停、点击继续；左右键换屏（暂停时
 // 跳过淡入）；九屏截图都画出了字；富文本那一屏的链接点了换屏、点别处照常暂停继续、影子 DOM 里有链接节点；日文字体只下载了
 // 用到的码位块。
-import { decodePng } from '../../../packages/cli/src/png.ts';
+import { decodePng } from '@stride-ts/cli/png';
 import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
 
 const { stride, sleep, check, finish } = startSmoke('sprite-fonts');

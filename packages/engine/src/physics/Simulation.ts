@@ -97,7 +97,7 @@ export class Simulation {
   #world: PhysicsWorld | undefined;
   #remaining = 0;
   /** 物体编号对应的实体。 */
-  readonly #bodyEntities: EntityId[] = [];
+  readonly #bodyEntities: (EntityId | undefined)[] = [];
   /** 网格形状建成的原生三角网格，按网格的 id 组合缓存（同一个模型的碰撞体共用）。 */
   readonly #meshes = new Map<string, PhysicsMesh>();
   /** 凸包形状，按网格的 id 组合加 hull 的变换缓存。 */
@@ -230,7 +230,7 @@ export class Simulation {
       this.#handlers.delete(body);
       this.#controls.get(body)?.detach();
       this.#controls.delete(body);
-      delete this.#bodyEntities[body];
+      this.#bodyEntities[body] = undefined;
     },
   });
 
@@ -416,7 +416,7 @@ export class Simulation {
       if (this.#world !== world) return;
       world.removeBodies([body]);
       world.releaseShape(field);
-      delete this.#bodyEntities[body];
+      this.#bodyEntities[body] = undefined;
     };
   }
 

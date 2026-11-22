@@ -73,7 +73,10 @@ export function encodeSplats(source: SplatSource): Uint8Array {
       max[k] = Math.max(max[k]!, value);
     }
   }
-  if (count === 0) min.fill(0), max.fill(0);
+  if (count === 0) {
+    min.fill(0);
+    max.fill(0);
+  }
   header.setUint32(0, SPLAT_MAGIC, true);
   header.setUint32(4, SPLAT_VERSION, true);
   header.setUint32(8, count, true);

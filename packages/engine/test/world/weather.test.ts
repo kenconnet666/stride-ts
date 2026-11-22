@@ -164,7 +164,7 @@ describe('天空遮挡（从上往下的深度图）', () => {
     let batches = [batch([near!, far!]), batch([skinned!], { skinned: true }), batch([glass!], { transparent: true })];
     let frame = 0, time = 0;
     /** 一帧：动 move 里的槽位、update、begin、watch；返回这一帧画没画。 */
-    const step = (move: (() => void) | undefined = undefined, options: { paused?: boolean } = {}) => {
+    const step = (move?: () => void, options: { paused?: boolean } = {}) => {
       if (!options.paused) {
         move?.();
         transforms.update();

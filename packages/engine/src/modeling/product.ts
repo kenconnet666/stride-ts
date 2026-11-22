@@ -68,7 +68,7 @@ export function productDesign(file: ProductFile, variant = 0): ProductDesign {
   let accent = file.colors?.accent ?? pick(PALETTE);
   for (let tries = 0; !file.colors?.accent && contrast(accent, background) < 1.6 && tries < 8; tries++) accent = pick(PALETTE);
   const length = 2 + Math.floor(random() * 2);
-  const brand = file.brand ?? Array.from({ length }, () => pick([...BRAND_CHARACTERS])).join('');
+  const brand = file.brand ?? Array.from({ length }, () => pick(Array.from(BRAND_CHARACTERS))).join('');
   return {
     brand,
     text: file.text,

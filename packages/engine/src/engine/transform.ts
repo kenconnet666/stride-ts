@@ -220,7 +220,9 @@ const external: ExternalStorage = {
           const owner = stateOf(manager).owner[stateOf(manager).store.parent[slotOf(manager, entity)]!];
           return owner === undefined ? undefined : manager.entity(owner);
         },
-        set: (parent: Entity | undefined) => setParent(manager, entity, parent),
+        set: (parent: Entity | undefined) => {
+          setParent(manager, entity, parent);
+        },
       },
       children: {
         enumerable: true,

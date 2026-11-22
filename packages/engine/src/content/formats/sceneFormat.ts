@@ -2,6 +2,7 @@
  * 场景文件和预制体文件（说明见 format.ts）：实体和它的各种组件、场景级的设置（合成器、物理、导航）、粒子系统的模块、
  * 游戏设置。不依赖别的模块（除了同目录的格式文件）。
  */
+import { textOf } from '../../data/text.ts';
 import type { ParticleModuleFile, SpriteBlend, TextureRef, Vec3Tuple } from './assetFormat';
 
 /** 方向光的阴影设置（Stride 的 LightDirectionalShadowMap），各字段的意思见 Light 组件。 */
@@ -472,7 +473,7 @@ export function parseCollisionMask(value: unknown): number {
   if (value === undefined || value === null || value === 'Everything') return 0xffffffff;
   if (value === 'None') return 0;
   let mask = 0;
-  for (const flag of String(value).split(',')) {
+  for (const flag of textOf(value).split(',')) {
     const layer = /^Layer(\d+)$/.exec(flag.trim());
     if (layer) mask |= 1 << Number(layer[1]);
   }

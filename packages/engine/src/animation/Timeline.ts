@@ -80,6 +80,10 @@ export class Timeline {
           if (component) poseAnimation(component, animationAt(track, time), this.name);
           break;
         }
+        // 事件、声音按跨过的时间段触发（TimelinePlayer、离线渲染的录音），不是某一刻的状态
+        case 'event':
+        case 'sound':
+          break;
       }
     }
     return { camera, subtitle: subtitles.join('\n') };

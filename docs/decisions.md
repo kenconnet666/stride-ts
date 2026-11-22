@@ -2,6 +2,12 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+### 全仓库整理第一步：lint 清零、跨包导入走包名（2026-11-22，用户要的全仓库整理）
+
+- 全仓库约 270 条 lint 逐条看：冒烟、GPU 实验的帮手接口改成函数属性（解构出来单独调，113 条 `unbound-method` 一次清掉）；读进来的数据取文字改用 `textOf`（引擎 `data/text.ts`）和 `textField`（pipeline 读 Stride YAML，数字取原文），字段是对象、列表时报错，不再悄悄变成 "[object Object]"；报错消息里显示收到的值用 JSON；WebSocket 消息按 Buffer、分片、ArrayBuffer 解（CLI 的 `socketText`）。顺手修掉的问题：测试里数字数组用默认的 `sort()`（字典序，9 排在 10 后面）、物理里 `delete` 数组元素留空洞、调试桥读自己的文件失败时不回复（页面干等到超时）、帧循环把 async 函数直接交给 requestAnimationFrame。有意的写法按行关并写理由（eval 命令、生成初始化函数的 `Function`、序列化的 toString）；字符串按码位展开（`[...text]`）在配置里放过。`pnpm lint` 管全仓库，9 秒，CI 也跑。
+- 样例脚本、工具不再按相对路径伸进各包的源码（16 处）：CLI 加导出 `./png`、`./chrome`、`./state`，引擎的走 `content-format`、`modeling`、`editor-fields`、`editor-document`，根包加引擎的依赖。
+- 坑：引擎里会被 Node 直接加载的模块（内容格式、建模、编辑器后端用到的），值导入要写 `.ts` 扩展名——只有类型导入的文件加第一个值导入时容易漏（这次 `sceneFormat` 加 `textOf`，MCP 服务启动就找不到模块，单测抓到）。
+
 ### 编辑器整理：视口工具一个接口、撤销用 vue-tsx-pro 的 createHistory（2026-11-22，用户要的编辑器工程整理第一步）
 
 - 用户 11-22 要编辑器"合理的适当工具封装和目录整理和工程化优化"，并"适当参考 vue-tsx-pro，符合相关标准"。方案分四步（视口工具和撤销的封装；前端按目录拆；后端、MCP 拆目录，路由表、烘焙表；lint、单测、文档），每步单独提交。

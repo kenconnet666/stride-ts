@@ -1,6 +1,6 @@
-import { Boxes, Mountain, Plus, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
+import { Boxes, FileQuestion, MousePointerClick, Mountain, Plus, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
-import { Button, IconButton, Menu, MenuGroup, MenuItem, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Empty, Flex, FormSection, IconButton, Menu, MenuGroup, MenuItem, Paragraph, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@stride-ts/engine/editor-document';
@@ -15,12 +15,9 @@ import { t, assetLabel } from '../i18n/messages';
 import { mergeField } from '../fields/values';
 
 const styles = css.create({
-  panel: { display: 'flex', flexDirection: 'column', gap: '_sm', padding: '_sm', fontSize: '0.875rem' },
-  section: { display: 'flex', flexDirection: 'column', gap: '2px' },
-  heading: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontWeight: '600', marginBlock: '_xs', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
-  hint: { color: '_textMuted', padding: '_sm' },
-  warning: { color: '_warningText' },
-  add: { marginBlockStart: '_sm', alignSelf: 'flex-start' },
+  panel: { padding: '_sm', fontSize: '0.875rem' },
+  // 节里的按钮（打开粒子编辑器、雕刻……）按内容宽，不占满一行
+  action: { justifySelf: 'start', alignSelf: 'flex-start' },
   // 骨架屏：标题加几行“名字、输入框”，和字段行一样高（28px）
   skeletonRow: { display: 'grid', gridTemplateColumns: '35% 1fr', gap: '_sm', alignItems: 'center', height: '28px' },
   skeletonField: { height: '22px' },
@@ -30,7 +27,7 @@ const styles = css.create({
 const SKELETON_ROWS = 6;
 function inspectorSkeleton() {
   return (
-    <div {...css.attrs(styles.panel)} aria-busy="true">
+    <Flex direction="column" gap="sm" sx={styles.panel} aria-busy="true">
       <Skeleton shape="heading" />
       {Array.from({ length: SKELETON_ROWS }, (_, row) => (
         <div {...css.attrs(styles.skeletonRow)}>
@@ -38,7 +35,7 @@ function inspectorSkeleton() {
           <Skeleton sx={styles.skeletonField} delay={(row + 1) * SHIMMER_STAGGER} />
         </div>
       ))}
-    </div>
+    </Flex>
   );
 }
 
@@ -96,16 +93,16 @@ function instanceHint(session: EditorSession, { id, name }: SceneEntityFile) {
   const own = set.filter((override) => override.entity === target.member).length;
   const where = target.instance.id === id ? t.instanceOf(path) : t.memberOf(path, target.instance.name, name || target.member);
   return (
-    <div {...css.attrs(styles.hint)}>
+    <Paragraph tone="muted" size="sm">
       {where}{t.instanceChanges(own, target.instance.id === id ? removed.length : 0)}
-    </div>
+    </Paragraph>
   );
 }
 
 /** 实体的父实体不在了（预制体删了它挂着的成员）：提示用户挪，同场景树里的标记。 */
 function parentHint(session: EditorSession, entity: SceneEntityFile) {
   const missing = session.missingParent(entity);
-  return missing === undefined ? undefined : <div {...css.attrs(styles.hint, styles.warning)} role="status">{t.parentMissing(missing)}</div>;
+  return missing === undefined ? undefined : <Paragraph tone="warning" size="sm" role="status">{t.parentMissing(missing)}</Paragraph>;
 }
 
 /**
@@ -240,55 +237,52 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
       session.commit();
     };
     return (
-      <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
-        <div {...css.attrs(styles.hint)}>{t.sceneSettingsHint(session.file.name)}</div>
+      <Flex direction="column" gap="sm" sx={styles.panel} onFocusout={() => session.commit()}>
+        <Paragraph tone="muted" size="sm">{t.sceneSettingsHint(session.file.name)}</Paragraph>
         {SCENE_SETTING_KEYS.filter((key) => file[key] !== undefined).map((key) => (
-          <section {...css.attrs(styles.section)}>
-            <div {...css.attrs(styles.heading)}>
-              {labelText(SCENE_FIELDS[key].label)}
-              <IconButton icon={X} variant="ghost" aria-label={t.remove(labelText(SCENE_FIELDS[key].label))} onClick={() => change(key, undefined)} />
-            </div>
+          <FormSection density="compact" collapsible title={labelText(SCENE_FIELDS[key].label)}
+            extra={<IconButton icon={X} size="sm" variant="ghost" aria-label={t.remove(labelText(SCENE_FIELDS[key].label))} onClick={() => change(key, undefined)} />}>
             <FieldEditor type={SCENE_FIELDS[key].type} value={file[key]} context={context} onSet={setSetting(key)} />
-          </section>
+          </FormSection>
         ))}
-        <Menu trigger={(props) => <Button {...props} {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Plus} aria-label={t.addSetting}>{t.addSettingMenu}</Button>}>
+        <Menu trigger={(props) => <Button {...props} sx={styles.action} size="sm" variant="soft" tone="neutral" icon={Plus} aria-label={t.addSetting}>{t.addSettingMenu}</Button>}>
           {SCENE_SETTING_KEYS.filter((key) => file[key] === undefined).map((key: SceneSettingKey) => (
             <MenuItem onAction={() => change(key, structuredClone(SCENE_FIELDS[key].initial))}>{labelText(SCENE_FIELDS[key].label)}</MenuItem>
           ))}
         </Menu>
-      </div>
+      </Flex>
     );
   };
 
   /** 资源浏览器里选中的资源（材质、JSON 写的模型）的字段。 */
   const assetInspector = (asset: NonNullable<typeof session.inspected.value>) => (
-    <div {...css.attrs(styles.panel)}>
+    <Flex direction="column" gap="sm" sx={styles.panel}>
       {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
-      <div {...css.attrs(styles.hint)}>{t.assetHint(assetLabel(asset.kind), asset.path)}</div>
-      {asset.kind === 'material' && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Workflow} onClick={() => session.openMaterialGraph()}>{t.graphOpen}</Button>}
+      <Paragraph tone="muted" size="sm">{t.assetHint(assetLabel(asset.kind), asset.path)}</Paragraph>
+      {asset.kind === 'material' && <Button sx={styles.action} size="sm" variant="soft" tone="neutral" icon={Workflow} onClick={() => session.openMaterialGraph()}>{t.graphOpen}</Button>}
       {asset.kind === 'material' && <PaintLayers session={session} />}
       {asset.kind === 'sound' && <SoundGenerator session={session} />}
       <Fields fields={assetFields(asset.kind) ?? []} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
-    </div>
+    </Flex>
   );
 
   return () => {
     const list = entities;
     const inspected = session.inspected.value;
     if (inspected) return assetInspector(inspected);
-    if (!agent.value) return session.opening.value ? inspectorSkeleton() : <div {...css.attrs(styles.hint)}>{t.sceneNotOpen}</div>;
+    if (!agent.value) return session.opening.value ? inspectorSkeleton() : <Empty size="sm" icon={FileQuestion} description={t.sceneNotOpen} />;
     if (list.length === 0) {
       void version.value;
-      return session.opened.value?.kind === 'scene' ? sceneSettings() : <div {...css.attrs(styles.hint)}>{t.pickEntity}</div>;
+      return session.opened.value?.kind === 'scene' ? sceneSettings() : <Empty size="sm" icon={MousePointerClick} description={t.pickEntity} />;
     }
     const merged = (read: (entity: SceneEntityFile) => unknown, type: FieldType) => mergeField(list.map(read), type);
     const keys = Object.keys(COMPONENT_FIELDS) as ComponentKey[];
     return (
-      <div {...css.attrs(styles.panel)} onFocusout={() => session.commit()}>
+      <Flex direction="column" gap="sm" sx={styles.panel} onFocusout={() => session.commit()}>
         {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
         {list.length === 1
           ? [parentHint(session, list[0]!), instanceHint(session, list[0]!)]
-          : <div {...css.attrs(styles.hint)}>{t.multiSelection(list.length)}</div>}
+          : <Paragraph tone="muted" size="sm">{t.multiSelection(list.length)}</Paragraph>}
         <Fields
           fields={ENTITY_FIELDS}
           value={Object.fromEntries(ENTITY_FIELDS.map((field) => [field.name, merged((entity) => (entity as unknown as Record<string, unknown>)[field.name], field.type)]))}
@@ -296,14 +290,11 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
           onSet={setter(list, () => [])}
         />
         {keys.filter((key) => list.every((entity) => entity.components[key] !== undefined)).map((key) => (
-          <section {...css.attrs(styles.section)}>
-            <div {...css.attrs(styles.heading)}>
-              {labelText(COMPONENT_FIELDS[key].label)}
-              <IconButton icon={X} variant="ghost" aria-label={t.remove(labelText(COMPONENT_FIELDS[key].label))} onClick={() => removeComponent(list, key)} />
-            </div>
-            {key === 'particleSystem' && list.length === 1 && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Sparkles} onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</Button>}
+          <FormSection density="compact" collapsible title={labelText(COMPONENT_FIELDS[key].label)}
+            extra={<IconButton icon={X} size="sm" variant="ghost" aria-label={t.remove(labelText(COMPONENT_FIELDS[key].label))} onClick={() => removeComponent(list, key)} />}>
+            {key === 'particleSystem' && list.length === 1 && <Button sx={styles.action} size="sm" variant="soft" tone="neutral" icon={Sparkles} onClick={() => session.openParticles(list[0]!.id)}>{t.particleOpen}</Button>}
             {key === 'terrain' && list.length === 1 && typeof list[0]!.components['terrain']?.['terrain'] === 'string' && (
-              <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={session.tools.sculpting.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Mountain}
+              <Button sx={styles.action} size="sm" variant="soft" tone={session.tools.sculpting.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Mountain}
                 onClick={() => void session.tools.startSculpt(list[0]!.id, list[0]!.components['terrain']!['terrain'] as string)}>{t.sculpt}</Button>
             )}
             {key === 'model' && list.length === 1 && MODEL_SOURCE_EDITORS.map((editor) => {
@@ -311,31 +302,28 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
               const entity = list[0]!, model = entity.components.model?.model;
               const source = model === undefined ? undefined : session.tools.sourceOf(editor.kind, model);
               return source && (
-                <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone={editor.editing(session.tools) === entity.id ? 'accent' : 'neutral'} icon={editor.icon}
+                <Button sx={styles.action} size="sm" variant="soft" tone={editor.editing(session.tools) === entity.id ? 'accent' : 'neutral'} icon={editor.icon}
                   onClick={() => void editor.start(session.tools, entity.id, source)}>{editor.label()}</Button>
               );
             })}
             <FieldEditor type={COMPONENT_FIELDS[key].type} value={merged((entity) => entity.components[key], COMPONENT_FIELDS[key].type)} context={context} onSet={setter(list, () => ['components', key])} />
-          </section>
+          </FormSection>
         ))}
         {commonScripts(list).map(({ type, name, k }) => {
           const fields = agent.value?.scriptFields(type);
           const fieldType: FieldType = fields ? { kind: 'object', fields } : { kind: 'json' };
           const index = (entity: SceneEntityFile) => scriptIndex(entity, name, k);
           return (
-            <section {...css.attrs(styles.section)}>
-              <div {...css.attrs(styles.heading)} title={type}>
-                {name}
-                <IconButton icon={X} variant="ghost" aria-label={t.removeScript} onClick={() => change(list, (entity) => {
+            <FormSection density="compact" collapsible title={name} propsHeader={{ title: type }}
+              extra={<IconButton icon={X} size="sm" variant="ghost" aria-label={t.removeScript} onClick={() => change(list, (entity) => {
                   const rest = (entity.components.scripts ?? []).filter((_, j) => j !== index(entity));
                   return { type: 'set', entity: entity.id, path: ['components', 'scripts'], value: rest.length > 0 ? rest : undefined };
-                })} />
-              </div>
+                })} />}>
               <FieldEditor type={fieldType} value={merged((entity) => entity.components.scripts![index(entity)]!.props, fieldType)} context={context} onSet={setter(list, (entity) => ['components', 'scripts', index(entity), 'props'])} />
-            </section>
+            </FormSection>
           );
         })}
-        <Menu trigger={(props) => <Button {...props} {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Plus} aria-label={t.addComponent}>{t.addComponentMenu}</Button>}>
+        <Menu trigger={(props) => <Button {...props} sx={styles.action} size="sm" variant="soft" tone="neutral" icon={Plus} aria-label={t.addComponent}>{t.addComponentMenu}</Button>}>
           {keys.filter((key) => list.some((entity) => entity.components[key] === undefined)).map((key) => (
             <MenuItem onAction={() => addComponent(list, key)}>{labelText(COMPONENT_FIELDS[key].label)}</MenuItem>
           ))}
@@ -343,7 +331,7 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             {addableScripts(agent.value.scriptTypes(), list).map(({ type, label }) => <MenuItem title={type} onAction={() => addScript(list, type)}>{label}</MenuItem>)}
           </MenuGroup>
         </Menu>
-      </div>
+      </Flex>
     );
   };
 });

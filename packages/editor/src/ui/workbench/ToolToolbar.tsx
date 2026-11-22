@@ -7,14 +7,11 @@ import type { PolyOperation } from '@stride-ts/engine/modeling';
 import type { SculptBrush } from '@stride-ts/engine';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, NumberField, Separator } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Flex, NumberField, Separator, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
 import { t } from '../i18n/messages';
 import type { ViewportTools } from '../session/ViewportTools';
 
 const styles = css.create({
-  bar: { display: 'flex', alignItems: 'center', gap: '2px', flexShrink: '0', paddingInline: '_xs', height: '34px', backgroundColor: '_surface', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_borderMuted' },
-  spacer: { flex: '1' },
-  count: { whiteSpace: 'nowrap', paddingInline: '_xs' },
   step: { width: '6.5em' },
 });
 
@@ -57,32 +54,32 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       operation('connect', Scissors, vertices.length === 2, connect),
       operation('flip', FlipVertical2, faces.length > 0, () => ({ op: 'flip', faces })),
       operation('delete', Trash2, faces.length > 0, () => ({ op: 'delete', faces })),
-      <span {...css.attrs(styles.spacer)} />,
+      <Flex grow />,
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
     ];
   };
   /** 编辑样条时的工具条：几个点（分支的也算）、从选中的点拉出分支、删除选中的点，最后是"完成"。 */
   const splineControls = (editing: NonNullable<typeof tools.splineEditing.value>) => [
-    <span {...css.attrs(styles.count)}>{t.splinePoints(editing.spline.points.length + (editing.spline.branches ?? []).reduce((sum, branch) => sum + branch.points.length, 0))}</span>,
+    <Text tone="muted" numeric>{t.splinePoints(editing.spline.points.length + (editing.spline.branches ?? []).reduce((sum, branch) => sum + branch.points.length, 0))}</Text>,
     <Button size="sm" variant="ghost" tone="neutral" icon={GitBranchPlus} title={t.splineBranchHint} disabled={editing.selection.length !== 1}
       onClick={() => tools.branchSpline()}>{t.splineBranch}</Button>,
     <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.splineDeletePoints} (Delete)`} disabled={editing.selection.length === 0}
       onClick={() => tools.deleteSplinePoints()}>{t.splineDeletePoints}</Button>,
-    <span {...css.attrs(styles.spacer)} />,
+    <Flex grow />,
     <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
   ];
   /** 编辑白盒时的工具条：几个笔刷、选中的那个是加减交、删除选中的，最后是"完成"。 */
   const brushControls = (editing: NonNullable<typeof tools.brushEditing.value>) => {
     const shape = editing.selection === undefined ? undefined : editing.brush.brushes[editing.selection];
     return [
-      <span {...css.attrs(styles.count)}>{t.brushCount(editing.brush.brushes.length)}</span>,
+      <Text tone="muted" numeric>{t.brushCount(editing.brush.brushes.length)}</Text>,
       ...(['add', 'subtract', 'intersect'] as const).map((operation) => (
         <Button size="sm" variant={shape?.operation === operation ? 'soft' : 'ghost'} tone="neutral" aria-pressed={shape?.operation === operation} disabled={!shape}
           onClick={() => tools.setBrushOperation(operation)}>{t.brushOperations[operation]}</Button>
       )),
       <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.brushDelete} (Delete)`} disabled={!shape || editing.brush.brushes.length <= 1}
         onClick={() => tools.deleteSelectedBrush()}>{t.brushDelete}</Button>,
-      <span {...css.attrs(styles.spacer)} />,
+      <Flex grow />,
       <Button size="sm" variant="ghost" tone="neutral" icon={Shapes} title={t.brushToPolyHint} onClick={() => void tools.exportBrushToPoly()}>{t.brushToPoly}</Button>,
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
     ];
@@ -96,8 +93,8 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       <Button size="sm" variant={sculpting.tool === tool ? 'soft' : 'ghost'} tone="neutral" aria-pressed={sculpting.tool === tool} onClick={() => tools.setSculptTool(tool)}>{t.sculptTools[tool]}</Button>
     ));
     const tail = [
-      <span {...css.attrs(styles.spacer)} />,
-      <span {...css.attrs(styles.count)}>{t.sculptStrokes(sculpting.file.strokes?.length ?? 0)}</span>,
+      <Flex grow />,
+      <Text tone="muted" numeric>{t.sculptStrokes(sculpting.file.strokes?.length ?? 0)}</Text>,
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.sculptDone}</Button>,
     ];
     if (sculpting.tool === 'features') {
@@ -141,6 +138,6 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
   return () => {
     const poly = tools.polyEditing.value, spline = tools.splineEditing.value, brush = tools.brushEditing.value, sculpting = tools.sculpting.value;
     const controls = poly ? polyControls(poly) : spline ? splineControls(spline) : brush ? brushControls(brush) : sculpting ? sculptControls(sculpting) : [];
-    return <div {...css.attrs(styles.bar)} role="toolbar" aria-label={t.viewportToolbar}>{controls}</div>;
+    return <Toolbar docked="top" aria-label={t.viewportToolbar}>{controls}</Toolbar>;
   };
 });

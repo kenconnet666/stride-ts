@@ -49,6 +49,7 @@ export interface EditorMessages {
   readonly prefabTitle: (path: string) => string;
   readonly mainToolbar: string;
   readonly viewportToolbar: string;
+  readonly statusBar: string;
   readonly openDocuments: string;
   readonly selectedCount: (n: number) => string;
   readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string; readonly library: string };
@@ -280,6 +281,7 @@ const zhCN: EditorMessages = {
   prefabTitle: (path) => `预制体 ${path}`,
   mainToolbar: '主工具条',
   viewportToolbar: '视口工具条',
+  statusBar: '状态栏',
   openDocuments: '打开的文档',
   selectedCount: (n) => `选中 ${n} 个`,
   toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表', library: '库' },
@@ -512,6 +514,7 @@ const enUS: EditorMessages = {
   prefabTitle: (path) => `Prefab ${path}`,
   mainToolbar: 'Main toolbar',
   viewportToolbar: 'Viewport toolbar',
+  statusBar: 'Status bar',
   openDocuments: 'Open documents',
   selectedCount: (n) => `${n} selected`,
   toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet', library: 'Library' },

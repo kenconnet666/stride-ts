@@ -8,7 +8,7 @@
 import { Activity, ArrowDownToLine, ClipboardPaste, Copy, CopyPlus, Globe, Magnet, Package, Play, Plus, Redo2, Save, Square, SquareDot, Trash2, Undo2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, IconButton, NumberField, Select, Separator, Skeleton, Tab, TabList, Tabs } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Flex, IconButton, NumberField, Select, Separator, Skeleton, Strong, Tab, TabList, Tabs, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
 import { LOCALES, locale, setLocale, type Locale } from '../i18n/i18n';
 import { SearchEverywhere } from './SearchEverywhere';
 import { ToolToolbar } from './ToolToolbar';
@@ -18,24 +18,16 @@ import type { EditorSession } from '../session/EditorSession';
 /** 画幅参考线的选项：名字和宽高比（0 是关）。 */
 const FRAME_GUIDES: readonly (readonly [string, number])[] = [['', 0], ['16:9', 16 / 9], ['9:16', 9 / 16], ['2.39:1', 2.39], ['1.85:1', 1.85], ['4:3', 4 / 3], ['1:1', 1]];
 
-const bar = { display: 'flex', alignItems: 'center', gap: '2px', flexShrink: '0', paddingInline: '_xs' } as const;
-
+// 停靠的几条横栏用库里的 Toolbar（docked），这里只剩各控件的宽度和页签的骨架
 const styles = css.create({
-  main: { ...bar, height: '40px', backgroundColor: '_surfaceRaised', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_borderMuted' },
-  brand: { fontWeight: '700', paddingInline: '_sm', whiteSpace: 'nowrap' },
-  project: { color: '_textMuted', paddingInlineEnd: '_sm', whiteSpace: 'nowrap' },
-  spacer: { flex: '1' },
+  brand: { paddingInline: '_sm' },
   tabs: { flexShrink: '0', backgroundColor: '_surfaceRaised' },
   // 骨架屏：和一个页签一样高（28px），工程名占一个名字的宽
   tabsLoading: { height: '28px', display: 'flex', alignItems: 'center', paddingInline: '10px' },
   tabSkeleton: { width: '6em', height: '1em' },
   projectSkeleton: { width: '7em' },
-  viewport: { ...bar, height: '34px', backgroundColor: '_surface', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_borderMuted' },
   step: { width: '6.5em' },
   guide: { width: '8em' },
-  status: { ...bar, height: '24px', gap: '_sm', paddingInline: '_sm', fontSize: '0.75rem', color: '_textMuted', backgroundColor: '_surfaceRaised', borderBlockStartWidth: '1px', borderBlockStartStyle: 'solid', borderBlockStartColor: '_borderMuted' },
-  message: { flex: '1', minWidth: '0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  notice: { color: '_dangerText' },
   language: { width: '7em' },
 });
 
@@ -43,19 +35,19 @@ const iconProps = { size: 'sm', variant: 'ghost', tone: 'neutral' } as const;
 
 export const MainToolbar = _component(({ session, playing, onTogglePlay }: { session: EditorSession; playing: boolean; onTogglePlay: () => void }) => {
   return () => (
-    <div {...css.attrs(styles.main)} role="toolbar" aria-label={t.mainToolbar}>
-      <span {...css.attrs(styles.brand)}>Stride</span>
-      <span {...css.attrs(styles.project)}>{session.project.value?.name ?? <Skeleton shape="text" sx={styles.projectSkeleton} />}</span>
+    <Toolbar docked="top" variant="surface" aria-label={t.mainToolbar}>
+      <Strong sx={styles.brand}>World Engine</Strong>
+      <Text tone="muted">{session.project.value?.name ?? <Skeleton shape="text" sx={styles.projectSkeleton} />}</Text>
       <Separator orientation="vertical" />
       <IconButton {...iconProps} icon={Save} aria-label={t.save} title={`${t.save} (Ctrl+S)`} disabled={!session.dirty.value || playing} onClick={() => void session.save()} />
       <IconButton {...iconProps} icon={Undo2} aria-label={t.undo} title={`${t.undo} (Ctrl+Z)`} disabled={!session.canUndo || playing} onClick={() => session.undo()} />
       <IconButton {...iconProps} icon={Redo2} aria-label={t.redo} title={`${t.redo} (Ctrl+Y)`} disabled={!session.canRedo || playing} onClick={() => session.redo()} />
-      <span {...css.attrs(styles.spacer)} />
+      <Flex grow />
       <SearchEverywhere session={session} playing={playing} onTogglePlay={onTogglePlay} />
       {playing
         ? <IconButton size="sm" variant="soft" tone="danger" icon={Square} aria-label={t.stopPlaying} title={t.stopPlaying} onClick={onTogglePlay} />
         : <IconButton size="sm" variant="ghost" tone="success" icon={Play} aria-label={t.play} title={t.play} onClick={onTogglePlay} />}
-    </div>
+    </Toolbar>
   );
 });
 
@@ -123,7 +115,7 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
     // 开着视口的编辑工具时换成它的工具条
     if (session.tools.editing && !off) return <ToolToolbar tools={session.tools} />;
     return (
-      <div {...css.attrs(styles.viewport)} role="toolbar" aria-label={t.viewportToolbar}>
+      <Toolbar docked="top" aria-label={t.viewportToolbar}>
         <IconButton {...iconProps} icon={Plus} aria-label={t.addEntity} title={t.addEntity} disabled={!session.agent.value || off} onClick={() => void session.addEntity(selected === 1 ? session.selection.value[0]! : null)} />
         <IconButton {...iconProps} icon={Trash2} aria-label={t.deleteSelection} title={`${t.deleteSelection} (Delete)`} disabled={selected === 0 || off} onClick={() => session.deleteSelection()} />
         <IconButton {...iconProps} icon={Copy} aria-label={t.copySelection} title={`${t.copySelection} (Ctrl+C)`} disabled={selected === 0 || off} onClick={() => void session.copyToSystem()} />
@@ -133,7 +125,7 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
         <Separator orientation="vertical" />
         {snapControls()}
         <IconButton {...iconProps} icon={Activity} variant={session.realtime.value ? 'soft' : 'ghost'} aria-pressed={session.realtime.value} aria-label={session.realtime.value ? t.realtimeOn : t.realtimeOff} title={session.realtime.value ? t.realtimeOn : t.realtimeOff} disabled={!session.agent.value || off} onClick={() => session.setRealtime(!session.realtime.value)} />
-        <span {...css.attrs(styles.spacer)} />
+        <Flex grow />
         <Select
           {...css.attrs(styles.guide)}
           size="sm"
@@ -143,7 +135,7 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
           _value={String(session.frameGuide.value)}
           onUpdate:_value={(value: string | null) => (session.frameGuide.value = Number(value ?? 0))}
         />
-      </div>
+      </Toolbar>
     );
   };
 });
@@ -154,9 +146,11 @@ export const StatusBar = _component(({ session }: { session: EditorSession }) =>
     const message = notice || session.status.value;
     const selected = session.selection.value.length;
     return (
-      <footer {...css.attrs(styles.status)}>
-        <span {...css.attrs(styles.message, notice ? styles.notice : undefined)} role="status" title={message}>{message}</span>
-        {selected > 0 && <span>{t.selectedCount(selected)}</span>}
+      <Toolbar docked="bottom" variant="surface" size="xs" gap="sm" aria-label={t.statusBar}>
+        <Flex grow>
+          <Text tone={notice ? 'danger' : 'muted'} truncate role="status" title={message}>{message}</Text>
+        </Flex>
+        {selected > 0 && <Text tone="muted">{t.selectedCount(selected)}</Text>}
         <Select
           {...css.attrs(styles.language)}
           size="xs"
@@ -167,7 +161,7 @@ export const StatusBar = _component(({ session }: { session: EditorSession }) =>
           _value={locale.value}
           onUpdate:_value={(value: string | null) => value && setLocale(value as Locale)}
         />
-      </footer>
+      </Toolbar>
     );
   };
 });

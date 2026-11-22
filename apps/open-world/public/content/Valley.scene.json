@@ -1293,6 +1293,168 @@
    }
   },
   {
+   "id": "f3f91989-4f52-4474-980c-79c8661432e3",
+   "name": "Tower",
+   "parent": null,
+   "position": [
+    62,
+    40,
+    -42
+   ],
+   "rotation": [
+    0,
+    0.0,
+    0,
+    1.0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Buildings/Tower",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "1f6cca15-0704-4b60-9f1b-5daba4fdbed3",
+   "name": "Rotunda",
+   "parent": null,
+   "position": [
+    -62,
+    40,
+    -42
+   ],
+   "rotation": [
+    0,
+    0.0,
+    0,
+    1.0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Buildings/Rotunda",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "c119ae50-b407-4af9-8efa-222d29957bb3",
+   "name": "Apartment",
+   "parent": null,
+   "position": [
+    50,
+    40,
+    40
+   ],
+   "rotation": [
+    0,
+    0.0,
+    0,
+    1.0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Buildings/Apartment",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "d21e4572-39a3-471d-a51b-8af0740268e2",
+   "name": "Shophouse",
+   "parent": null,
+   "position": [
+    -62,
+    40,
+    36
+   ],
+   "rotation": [
+    0,
+    0.0,
+    0,
+    1.0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Buildings/Shophouse",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "6dda6d91-bec0-4df4-a5ae-21d87fd3ee29",
+   "name": "Shophouse",
+   "parent": null,
+   "position": [
+    -52.5,
+    40,
+    36
+   ],
+   "rotation": [
+    0,
+    0.0,
+    0,
+    1.0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Buildings/Shophouse",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "9cfbabaa-92d8-44b3-b9b6-ccaf352063ff",
+   "name": "Shophouse",
+   "parent": null,
+   "position": [
+    -43,
+    40,
+    36
+   ],
+   "rotation": [
+    0,
+    0.0,
+    0,
+    1.0
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Buildings/Shophouse",
+     "materials": []
+    }
+   }
+  },
+  {
    "id": "1ab99899-2344-4460-a9ac-09849587898e",
    "name": "Wind",
    "parent": null,

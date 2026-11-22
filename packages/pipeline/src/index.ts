@@ -20,3 +20,4 @@ export { convertSplats, readPlySplats, readSpzSplats, SPLAT_SOURCE_EXTENSIONS } 
 export { bakePolyModel } from './polyModel.ts';
 export { bakeSplineModel } from './splineModel.ts';
 export { bakeTreeModel } from './treeModel.ts';
+export { bakeBuildingModel } from './buildingModel.ts';

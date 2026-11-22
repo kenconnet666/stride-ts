@@ -1,0 +1,78 @@
+{
+ "name": "Rotunda",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Glass",
+  "Materials/Steel",
+  "Materials/Street"
+ ],
+ "masses": [
+  {
+   "footprint": {
+    "circle": 13,
+    "segments": 28
+   },
+   "floors": 1,
+   "floorHeight": 5,
+   "facade": "Arcade",
+   "roof": {
+    "kind": "flat"
+   }
+  },
+  {
+   "inset": 1.5,
+   "floors": 3,
+   "floorHeight": 3.4,
+   "facade": "Ring",
+   "roof": {
+    "kind": "dome",
+    "height": 7,
+    "rings": 10,
+    "material": 2
+   }
+  }
+ ],
+ "facades": {
+  "Arcade": {
+   "floors": [
+    {
+     "pattern": "Door",
+     "ledge": {
+      "height": 0.5,
+      "depth": 0.4
+     }
+    }
+   ]
+  },
+  "Ring": {
+   "floors": [
+    {
+     "pattern": "Window",
+     "ledge": {
+      "height": 0.2,
+      "depth": 0.15
+     }
+    }
+   ]
+  }
+ },
+ "modules": {
+  "Door": {
+   "kind": "window",
+   "width": 2.9,
+   "sill": 0,
+   "head": 1.2,
+   "margin": 0.35,
+   "mullions": 1,
+   "depth": 0.4
+  },
+  "Window": {
+   "kind": "window",
+   "width": 2.6,
+   "sill": 0.8,
+   "head": 0.6,
+   "margin": 0.4,
+   "depth": 0.25
+  }
+ }
+}

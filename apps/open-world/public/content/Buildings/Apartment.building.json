@@ -1,0 +1,83 @@
+{
+ "name": "Apartment",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Glass",
+  "Materials/Steel",
+  "Materials/Street"
+ ],
+ "masses": [
+  {
+   "footprint": {
+    "rect": [
+     24,
+     12
+    ]
+   },
+   "floors": 6,
+   "floorHeight": 3.1,
+   "facade": "Flats",
+   "roof": {
+    "kind": "flat",
+    "parapet": 0.9
+   }
+  }
+ ],
+ "facades": {
+  "Flats": {
+   "floors": [
+    {
+     "where": "ground",
+     "pattern": "Wall [Door Window]* Wall"
+    },
+    {
+     "where": "top",
+     "pattern": "Wall [Window Balcony]* Wall",
+     "ledge": {
+      "height": 0.2,
+      "depth": 0.12
+     }
+    },
+    {
+     "pattern": "Wall [Window Balcony]* Wall",
+     "ledge": {
+      "height": 0.2,
+      "depth": 0.12
+     }
+    }
+   ]
+  }
+ },
+ "modules": {
+  "Wall": {
+   "kind": "wall",
+   "width": 1
+  },
+  "Door": {
+   "kind": "window",
+   "width": 2.2,
+   "sill": 0,
+   "head": 0.8,
+   "margin": 0.5
+  },
+  "Window": {
+   "kind": "window",
+   "width": 2,
+   "sill": 0.9,
+   "head": 0.5,
+   "mullions": 1
+  },
+  "Balcony": {
+   "kind": "window",
+   "width": 3,
+   "sill": 0,
+   "head": 0.5,
+   "margin": 0.4,
+   "mullions": 2,
+   "balcony": {
+    "depth": 1.2,
+    "railing": 1
+   }
+  }
+ }
+}

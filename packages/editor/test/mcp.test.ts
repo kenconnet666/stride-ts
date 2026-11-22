@@ -122,6 +122,19 @@ describe('编辑器的 MCP 服务', () => {
     expect(file.features[0]).toMatchObject({ type: 'flatten', height: 3, falloff: 4 });
   });
 
+  test('程序化建筑：写文法就生成同名的模型，规则不对时报错', async () => {
+    const building = {
+      name: 'House', materials: [null, null, null, null],
+      masses: [{ footprint: { rect: [10, 8] }, floors: 2, floorHeight: 3, facade: 'Main', roof: { kind: 'pyramid', height: 2 } }],
+      facades: { Main: { floors: [{ pattern: 'Wall Window* Wall' }] } },
+      modules: { Wall: { kind: 'wall', width: 1 }, Window: { kind: 'window', width: 2 } },
+    };
+    expect((await mcp.call('write_asset', { kind: 'building', path: 'Buildings/House', content: building, create: true })).value).toEqual({ kind: 'building', path: 'Buildings/House' });
+    const models = (await mcp.call('list_assets', { kind: 'model' })).value as { path: string }[];
+    expect(models.some((asset) => asset.path === 'Buildings/House')).toBe(true);
+    expect((await mcp.call('write_asset', { kind: 'building', path: 'Buildings/House', content: { ...building, facades: { Main: { floors: [{ pattern: 'Door*' }] } } } })).error).toBe(true);
+  }, 60_000);
+
   test('一个服务能换到仓库里别的工程：project 列出别的工程，switch_project 以后别的工具都对着新工程', async () => {
     const other = (await createProject(path.join(repo, 'apps', 'other'))).root;
     expect((await mcp.call('project', {})).value.otherProjects).toEqual(['apps/game', 'apps/other']);

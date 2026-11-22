@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/format';
+import type { BuildingFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -380,6 +380,25 @@ export const TREE_FIELDS = fields<TreeFile>({
   },
 });
 
+/** 程序化建筑（BuildingFile）：改了马上重新生成模型、视口热重载。体块的底面、屋顶和立面规则、构件按 JSON 改（形状多变）。 */
+export const BUILDING_FIELDS = fields<BuildingFile>({
+  name: string,
+  materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'material slots: wall, glass, frame, roof (modules and roofs can use more slots)' },
+  masses: {
+    type: list(object(fields<BuildingFile['masses'][number]>({
+      footprint: { type: { kind: 'json' }, optional: true, description: 'outline: points [[x, z], …], { rect: [width, depth], center } or { circle: radius, segments, center }; unset is the mass below moved in by inset' },
+      inset: { type: number({ min: 0, step: 0.5, unit: 'm' }), optional: true, default: 0, description: 'moves every edge of the outline inward (setbacks)' },
+      floors: { type: integer(1, 300), description: 'floors in this mass' },
+      floorHeight: { type: number({ min: 0.5, step: 0.1, unit: 'm' }), description: 'height of one floor' },
+      facade: { type: string, optional: true, description: 'name of the facade rule; unset is plain wall' },
+      roof: { type: { kind: 'json' }, optional: true, description: "{ kind: 'flat', parapet }, { kind: 'dome', height, rings } or { kind: 'pyramid', height }; material is a slot (default 3); default flat" },
+    }))),
+    description: 'masses stacked bottom up; every edge of the outline is a facade',
+  },
+  facades: { type: { kind: 'json' }, optional: true, description: "facade rules by name: { floors: [{ where: 'ground' | 'top' (unset: any floor), pattern: 'Pillar [Window Window]* Pillar', ledge: { height, depth } }] }; the first matching rule is used, * repeats to fill the edge" },
+  modules: { type: { kind: 'json' }, optional: true, description: "facade modules by name, one floor high: { kind: 'wall' | 'window' (sill, head, margin, depth, frame, mullions, balcony) | 'pillar' (depth) | 'curtain' (frame), width, slots: { wall, glass, frame } (other material slots) }" },
+});
+
 /** 程序化摆放（ScatterFile）：改了马上存，挂着它的地形重撒。 */
 export const SCATTER_FIELDS = fields<ScatterFile>({
   name: string,
@@ -545,5 +564,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

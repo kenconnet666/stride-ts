@@ -25,3 +25,4 @@ export * from './splineFormat.ts';
 export * from './modelFile.ts';
 export { generateProceduralMesh, PROCEDURAL_SHAPES, proceduralTangents, type ProceduralMesh, type ProceduralModel, type ProceduralShape } from '../rendering/mesh/procedural.ts';
 export * from './treeFormat.ts';
+export * from './buildingFormat.ts';

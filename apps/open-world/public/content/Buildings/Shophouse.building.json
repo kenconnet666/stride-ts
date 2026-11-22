@@ -1,0 +1,70 @@
+{
+ "name": "Shophouse",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Glass",
+  "Materials/Steel",
+  "Materials/Street"
+ ],
+ "masses": [
+  {
+   "footprint": {
+    "rect": [
+     9,
+     14
+    ]
+   },
+   "floors": 3,
+   "floorHeight": 3.4,
+   "facade": "Street",
+   "roof": {
+    "kind": "pyramid",
+    "height": 3,
+    "material": 3
+   }
+  }
+ ],
+ "facades": {
+  "Street": {
+   "floors": [
+    {
+     "where": "ground",
+     "pattern": "Pillar Shop* Pillar",
+     "ledge": {
+      "height": 0.3,
+      "depth": 0.25
+     }
+    },
+    {
+     "pattern": "Pillar Window* Pillar"
+    }
+   ]
+  }
+ },
+ "modules": {
+  "Pillar": {
+   "kind": "pillar",
+   "width": 0.5,
+   "depth": 0.15
+  },
+  "Shop": {
+   "kind": "window",
+   "width": 3.6,
+   "sill": 0.25,
+   "head": 0.7,
+   "margin": 0.2,
+   "mullions": 2
+  },
+  "Window": {
+   "kind": "window",
+   "width": 1.8,
+   "sill": 0.9,
+   "head": 0.6,
+   "mullions": 1,
+   "balcony": {
+    "depth": 0.6,
+    "railing": 0.9
+   }
+  }
+ }
+}

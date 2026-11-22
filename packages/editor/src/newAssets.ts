@@ -2,7 +2,7 @@
  * 编辑器"新建"出来的资源的初始内容（前端的资源浏览器用；只有数据，没有 Node 的依赖）。都是最小的合法文件，建出来以后在
  * 编辑器里接着改：场景是空的、材质是浅灰的、基本形状是 JSON 写的模型（content/modelFile.ts）、UI 页面是一块全屏的 Canvas。
  */
-import { PROCEDURAL_SHAPES, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type TextModelFile, type TimelineFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
+import { PROCEDURAL_SHAPES, type BuildingFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type TextModelFile, type TimelineFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
 import { SOUND_PRESETS, seededRandom } from '@stride-ts/engine/audio-synth';
 import { polyCube } from '@stride-ts/engine/modeling';
 import type { AssetKind } from './protocol.ts';
@@ -11,7 +11,7 @@ export type ProceduralShapeType = (typeof PROCEDURAL_SHAPES)[number];
 
 /** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容（菜单里的文字在界面的翻译表里，按 id 和 shape 取）。 */
 export interface NewAssetOption {
-  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'spline' | `model:${ProceduralShapeType}`;
+  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'spline' | `model:${ProceduralShapeType}`;
   readonly kind: AssetKind;
   /** 基本形状的模型是哪种形状。 */
   readonly shape?: ProceduralShapeType;
@@ -48,6 +48,19 @@ export const NEW_ASSET_OPTIONS: readonly NewAssetOption[] = [
       name, materials: [null, null], seed: 1,
       levels: [{ length: 6, radius: 0.25, children: 6, sections: 8, segments: 8 }, { length: 4, radius: 0.5, angle: 50, start: 0.4, children: 4, sections: 6, segments: 5 }, { length: 1.5, radius: 0.5, angle: 40, start: 0.2, sections: 4, segments: 3 }],
       leaves: { count: 6, size: 1 }, growth: { direction: [0, 1, 0], strength: 0.002 },
+    }),
+  },
+  // 程序化建筑：三层的小楼（底层店面、上面两层窗户，平顶加女儿墙），材质槽空着用默认材质
+  {
+    id: 'building', kind: 'building', name: 'NewBuilding', content: (name): BuildingFile => ({
+      name, materials: [null, null, null, null],
+      masses: [{ footprint: { rect: [12, 9] }, floors: 3, floorHeight: 3.2, facade: 'Main', roof: { kind: 'flat', parapet: 0.8 } }],
+      facades: { Main: { floors: [{ where: 'ground', pattern: 'Pillar Shop* Pillar' }, { pattern: 'Pillar Window* Pillar', ledge: { height: 0.25, depth: 0.15 } }] } },
+      modules: {
+        Pillar: { kind: 'pillar', width: 0.6, depth: 0.2 },
+        Window: { kind: 'window', width: 2.2, sill: 0.9, head: 0.5, mullions: 1 },
+        Shop: { kind: 'window', width: 3.5, sill: 0.3, head: 0.6, margin: 0.2, mullions: 2 },
+      },
     }),
   },
   // 程序化摆放：还没有层；在属性面板里加层（模型、密度、坡度……），地形实体加 Scatter 组件引用它

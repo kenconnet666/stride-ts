@@ -1,0 +1,108 @@
+{
+ "name": "Tower",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Glass",
+  "Materials/Steel",
+  "Materials/Street"
+ ],
+ "masses": [
+  {
+   "footprint": {
+    "rect": [
+     30,
+     22
+    ]
+   },
+   "floors": 3,
+   "floorHeight": 4.5,
+   "facade": "Podium",
+   "roof": {
+    "kind": "flat",
+    "parapet": 1.1
+   }
+  },
+  {
+   "inset": 4,
+   "floors": 16,
+   "floorHeight": 3.6,
+   "facade": "Office",
+   "roof": {
+    "kind": "flat"
+   }
+  },
+  {
+   "inset": 3,
+   "floors": 2,
+   "floorHeight": 3.6,
+   "facade": "Crown",
+   "roof": {
+    "kind": "dome",
+    "height": 6,
+    "material": 1
+   }
+  }
+ ],
+ "facades": {
+  "Podium": {
+   "floors": [
+    {
+     "where": "ground",
+     "pattern": "Pillar [Shop]* Pillar"
+    },
+    {
+     "pattern": "Pillar [Glass]* Pillar",
+     "ledge": {
+      "height": 0.4,
+      "depth": 0.3
+     }
+    }
+   ]
+  },
+  "Office": {
+   "floors": [
+    {
+     "pattern": "[Glass]*",
+     "ledge": {
+      "height": 0.15,
+      "depth": 0.1
+     }
+    }
+   ]
+  },
+  "Crown": {
+   "floors": [
+    {
+     "pattern": "Fin [Glass Glass Fin]*"
+    }
+   ]
+  }
+ },
+ "modules": {
+  "Pillar": {
+   "kind": "pillar",
+   "width": 1.2,
+   "depth": 0.35
+  },
+  "Fin": {
+   "kind": "pillar",
+   "width": 0.35,
+   "depth": 0.6,
+   "slots": {"wall": 2}
+  },
+  "Shop": {
+   "kind": "window",
+   "width": 4.5,
+   "sill": 0.15,
+   "head": 1.0,
+   "margin": 0.25,
+   "mullions": 2,
+   "frame": 0.08
+  },
+  "Glass": {
+   "kind": "curtain",
+   "width": 1.6,
+   "frame": 0.07
+  }
+ }
+}

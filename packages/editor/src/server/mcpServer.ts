@@ -376,6 +376,14 @@ export function createEditorMcpServer(projects: McpProjects): McpServer {
   // 下面两个要游戏页面开着（开发服务器起着、浏览器里开着游戏或编辑器）
   const hub = () => HubClient.find(projects.current.project.manifest.name);
 
+  server.registerTool('open_in_editor', {
+    description: 'Open a scene or a prefab in the editor UI the user has open (needs the project\'s dev server and the editor page open in a browser); the open document is saved first if it was changed.',
+    inputSchema: z.object({
+      path: z.string().describe('content path of the scene or prefab, without extension'),
+      kind: z.enum(['scene', 'prefab']).optional().describe('default scene'),
+    }),
+  }, async ({ path: assetPath, kind }) => json(await (await hub()).call('editor-open', { path: assetPath, kind: kind ?? 'scene' })));
+
   server.registerTool('screenshot', {
     description: 'A PNG of the running game page (needs the project\'s dev server and the game or the editor open in a browser).',
     inputSchema: z.object({}),

@@ -219,6 +219,8 @@ export class EditorSession implements EditableScene {
       this.selection.value = ids;
       if (ids.length > 0) this.inspected.value = undefined;
     };
+    // agent 经调试命令 editor-open（MCP 的 open_in_editor）让界面打开别的场景、预制体
+    agent.onOpenRequested = (document) => this.openAsset(document);
     if (!document) {
       // 没有场景的游戏（画面全是游戏自己的根渲染器：SpriteFonts、CustomEffect）：不开文档，属性面板里是游戏设置，
       // 改根渲染器的属性时页面重建它（EditAgent.reloadAssets）

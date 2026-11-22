@@ -144,6 +144,11 @@ export class EditAgent {
   onSculptSelect: ((feature: number | undefined) => void) | undefined;
   /** 用户在视口里点选以后调（参数是新的选中）。 */
   onSelectionChanged: ((ids: readonly string[]) => void) | undefined;
+  /**
+   * 编辑器界面接着时由界面设：在界面里打开一个场景或预制体（打开着的改过就先保存）。调试命令 editor-open（MCP 的 open_in_editor）
+   * 调它；没有界面（只开了带 ?stride-edit 的游戏页面）时是 undefined。
+   */
+  onOpenRequested: ((document: { readonly kind: 'scene' | 'prefab'; readonly path: string }) => Promise<void>) | undefined;
   #live: LiveScene | undefined;
   #timelinePreview: TimelinePreview | undefined;
   #target: EditableScene | undefined;
@@ -179,6 +184,14 @@ export class EditAgent {
     // 视口静止时不出帧（输入、修改、调试命令叫醒，见 Game.renderOnDemand）；要粒子、天气一直动时编辑器把它关掉
     game.renderOnDemand = true;
     game.debug.command('paint', PAINT_HELP, (args) => this.#paintCommand(args));
+    game.debug.command('editor-open', 'Open a scene or a prefab in the editor UI that embeds this page (saves the open document first if it was changed). args: path (content path), kind (scene | prefab, default scene).', async (args) => {
+      const path = args['path'], kind = args['kind'] ?? 'scene';
+      if (typeof path !== 'string' || path === '') throw new Error('editor-open: path (the content path of the scene or prefab) is required');
+      if (kind !== 'scene' && kind !== 'prefab') throw new Error(`editor-open: kind must be scene or prefab, got ${String(kind)}`);
+      if (!this.onOpenRequested) throw new Error('editor-open: no editor UI is attached to this page (open the editor at /__stride/editor/)');
+      await this.onOpenRequested({ kind, path });
+      return { opened: { kind, path } };
+    });
   }
 
   /**

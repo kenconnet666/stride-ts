@@ -963,6 +963,10 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 - 整理（R3 做完以后，单独提交）：`ToneMap.ts` 长到 921 行，拆进 `rendering/postfx/tonemap/`——`ToneMap.ts`（映射和平均测光，532 行）、`HistogramMetering.ts`、`LocalExposure.ts`（建网格；映射时取网格留在 ToneMap 的着色器里）、`ColorLut.ts`（解析、按路径登记、每个设备的贴图）、`whiteBalance.ts`；站台的画面、照片比对、耗时和拆之前一样。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
+## 尾巴：agent 让开着的编辑器打开场景（2026-11-22）
+
+MCP 的服务是单独的进程、有自己的后端，够不到用户开着的编辑器界面；走它已经在用的调试中枢：游戏页面（编辑器嵌着的那个）加调试命令 `editor-open`（`path`、`kind`），调 `EditAgent.onOpenRequested`——编辑器界面接上页面时把它设成 `session.openAsset`（打开着的改过就先保存）；没有界面时命令报清楚的错。MCP 的 `open_in_editor` 经中枢调它。测试浏览器（无头）开 bepu-sample 的编辑器，`stride call editor-open '{"path":"BepuSample/Scenes/Ropes"}'` 以后场景树和页签换成 Ropes。
+
 ## 尾巴：茶壶的反射、morph-targets 的参考图（2026-11-22）
 
 - 茶壶背光面比 Stride 亮：用桌面版（`tools/stride-capture/csharp-beginner`，本机还在）重截 keyboard.png，`capture-ours.ps1` 再比：三张平均差 1.57、1.43、1.62（同 11-20），绿茶壶背光面 147.0 对 146.8，黄茶壶阴影面几处差都在 1.2/255 以内、有正有负——问题已经不在了（多半是后来改光照时修掉的），打钩。

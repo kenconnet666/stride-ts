@@ -1114,4 +1114,4 @@ R2 第八步的回归里 bepu-sample（开着屏幕空间反射：光追的反�
 
 1. **共用资源的仓库**：用户提出照 vue-tsx-pro 的字体包单独放仓库。建了 `kenconnet666/stride-ts-assets`（公开；内容是 OFL、CC0），本身是编辑器工程；`tools/assets.ts build` 照 `sources.json` 用编辑器后端的 `importFile`、`importMaterialSet` 导入（重导前删掉旧的输出：导入器遇到同名会另起名字"…2"，第一次试就多出了一份 23 MB 的字体），`dev` 发 `dev-<提交>` 的预发行版、改 override、`pnpm install`。编辑器后端、命令行、构建前同步包里的 `content/Shared` 到工程的 `Shared/`。字体站酷庆科黄油体导成 91 个字形块共 23 MB——正是不该进主仓库的东西；站台的扫描地砖挪过去，`stride-editor assets apps/photoreal` 查 0 个缺失的引用。
 2. **商品包装生成器**：`.product.json` 六种外形（盒、瓶、罐、广口瓶、桶、袋），生成模型、SVG 标签、材质；11 个单测（尺寸、法线、UV、外壁法线朝外、种子和变体、SVG、材质）。`apps/photoreal/scripts/build-shop.ts` 经 MCP 写了 12 种商品和一张台子（`?scene=Shop`），无头 Chrome 里看：形状对，中文的品牌名和品类清楚、贴着弧面弯，字色按底色取黑白。顺手：`seededRandom` 从音效合成挪到 `data/hash.ts` 共用（树的生长留着自己那份，写法差一点，换了已有的树会长得不一样）；3D 文字和包装读字体共用 `pipeline/src/bakers/textFont.ts`。
-
+3. **白盒的视口编辑（四的尾巴）**：编辑器里在展示台的台子上试：属性面板点编辑白盒，工具条（几个笔刷、加减交、删除、完成）和状态栏的提示出来；点台面选中（橙色，六个面的手柄按轴着色）；拖顶面的手柄，台子从 0.8 米变成 0.968 米，文件存了、模型重烘；Ctrl+Z 回去；双击正面加了一个同样大小的方块；Delete 删掉；撤销三次后文件和提交的一样。同一处连点是按射线上的先后轮着选（0→1→2→0）；双击的第一下也算一次单击，会先把选中换到下一个，第二下加方块并选中新的。

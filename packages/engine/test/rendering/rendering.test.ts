@@ -202,6 +202,8 @@ describe('MeshRenderFeature', () => {
     game.transforms.update();
 
     const feature = new MeshRenderFeature();
+    // 原生剔除这条路（GPU 剔除要设备，见 GpuCulling.ts）
+    feature.gpuCulling = false;
     const context = { game, time: game.updateTime };
     feature.extract(context);
     expect(feature.batches.map((b) => [b.isShadowCaster, b.count])).toEqual([[true, 3], [false, 1]]);

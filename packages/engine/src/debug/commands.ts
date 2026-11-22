@@ -390,6 +390,11 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     taa.enabled = switchArg(args, taa.enabled);
     return { enabled: taa.enabled, feedback: taa.feedback, clipSigma: taa.clipSigma, sharpness: taa.sharpness };
   });
+  debug.command('culling', 'Mesh culling: opaque batches culled on the GPU (compute shader, indirect draws; needs indirect-first-instance) or all on the CPU (native frustum culling). args: on (GPU culling true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
+    const meshes = game.meshes;
+    meshes.gpuCulling = switchArg(args, meshes.gpuCulling);
+    return { gpu: meshes.gpuCulling, supported: game.renderSystem.graphicsDevice.indirectFirstInstance, wireframeFallsBackToCpu: game.graphicsCompositor.wireframe, stats: meshes.stats() };
+  });
   debug.command('wireframe', 'Overlay the wireframe of the meshes on the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
     const compositor = game.graphicsCompositor;
     compositor.wireframe = switchArg(args, compositor.wireframe);

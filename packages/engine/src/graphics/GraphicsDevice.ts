@@ -38,6 +38,8 @@ export class GraphicsDevice {
   readonly textureTarget: TextureTarget;
   /** 设备能关掉深度裁剪（'depth-clip-control'）：阴影投射者用它把视锥前面的物体压到近平面上（Stride 的 DepthClipEnable = false）。 */
   readonly depthClipControl: boolean;
+  /** 间接绘制的参数里能带 firstInstance（'indirect-first-instance'）：GPU 上的剔除（rendering/mesh/GpuCulling.ts）要它。 */
+  readonly indirectFirstInstance: boolean;
   /** 渲染通道的 GPU 耗时（开发时测量，默认关；设备不支持 timestamp-query 时打开也不记录）。 */
   readonly profiler: GpuProfiler;
   /** 这个设备上的缓冲和贴图占了多少显存（自己记的账，见 GpuMemory）。 */
@@ -69,17 +71,19 @@ export class GraphicsDevice {
     const compression = COMPRESSION.filter(([feature]) => adapter.features.has(feature));
     const depthClipControl = adapter.features.has('depth-clip-control');
     const timestampQuery = adapter.features.has('timestamp-query');
-    const optional = [...(depthClipControl ? ['depth-clip-control' as const] : []), ...(timestampQuery ? ['timestamp-query' as const] : [])];
+    const indirectFirstInstance = adapter.features.has('indirect-first-instance');
+    const optional = [...(depthClipControl ? ['depth-clip-control' as const] : []), ...(timestampQuery ? ['timestamp-query' as const] : []), ...(indirectFirstInstance ? ['indirect-first-instance' as const] : [])];
     const device = await adapter.requestDevice({ requiredFeatures: [...compression.map(([feature]) => feature), ...optional], ...(defaultLimits ? {} : { requiredLimits: adapterLimits(adapter) }) });
     const context = canvas.getContext('webgpu');
     if (!context) throw new Error('The canvas has no WebGPU context');
-    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8', depthClipControl, timestampQuery);
+    return new GraphicsDevice(device, canvas, context, compression[0]?.[1] ?? 'rgba8', depthClipControl, timestampQuery, indirectFirstInstance);
   }
 
-  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget, depthClipControl: boolean, timestampQuery: boolean) {
+  private constructor(device: GPUDevice, canvas: HTMLCanvasElement, context: GPUCanvasContext, textureTarget: TextureTarget, depthClipControl: boolean, timestampQuery: boolean, indirectFirstInstance: boolean) {
     this.device = device;
     this.textureTarget = textureTarget;
     this.depthClipControl = depthClipControl;
+    this.indirectFirstInstance = indirectFirstInstance;
     // 先装上记账，后面建的资源（包括剖析器自己的）才都算进去
     this.memory = new GpuMemory(device);
     this.pipelines = new PipelineCounts(device);

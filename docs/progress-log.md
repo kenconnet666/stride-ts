@@ -906,6 +906,12 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - ac26d90 的 CI 挂在 simple-audio：`stride open` 60 秒没等到页面连上（新的输出捕获把整段日志打出来了），本机 31 秒就过。`open`、`wait` 等页面的时限是写死的 60、30 秒，没看 CI 设的 `STRIDE_TIMEOUT`（300 秒，别的命令都看）：改成也看它。
 
+## W7 第一步：GPU 上的剔除（2026-11-22）
+
+`rendering/mesh/GpuCulling.ts`：一帧一个计算通道（64 个线程一组，x 是实例、y 是视图），实例的本地包围盒按世界矩阵（世界矩阵缓冲这一帧的那一半）变成轴对齐盒和视图的平面比，可见的 `atomicAdd` 间接参数里的实例数、槽位写进实例列表；距离范围每个工作组在共享内存里归约（浮点数换成保序的整数做原子 min、max），结果拷进暂存缓冲异步读回。`MeshRenderFeature` 的 `cull` 只记视图（透明的批照旧给原生剔除），`prepare` 传实例（槽位、批号，和上一帧一样就不传）、批、视图和清零的间接参数，把计算通道录进这一帧的编码器（在所有画之前）；`draw` 对 GPU 剔除的批 `drawIndexedIndirect`。批级的世界包围盒（`#updateBatchBounds`，按 `changedSlots` 只重算动了的批）挡掉整批在视锥外的绘制。设备加请求 `indirect-first-instance`（`GraphicsDevice.indirectFirstInstance`），`RenderSystem.wireframe` 让画线框的帧走 CPU 剔除，调试命令 `culling` 切换。
+
+量（测试浏览器，无头，1080p，Valley 俯瞰，游戏在走）：同一帧切换着截图，GPU 剔除和原生剔除逐像素一样（差的只有输出抖动的噪点）；画一帧的 CPU 平均 4.38 → 3.35 毫秒（原生剔除在调试版里 2.0 毫秒没了），计算通道 0.01 毫秒，绘制次数 414 → 416，GPU 总耗时不变（4.1 毫秒）。踩的坑：测量脚本里按游戏时间等（`seconds()`）在暂停的游戏里永远等不到，CLI 看起来像卡住；第一次对比时暂停得太早、摆放还没撒出来，差异是内容不同。
+
 ## W7 开头：先测（2026-11-22）
 
 Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 Hz，但画一帧的 CPU（`drawMs`）平均 5.3、p95 8.0 毫秒，GPU 4.1 毫秒（阴影 1.5）；约一万个实例，6 个视图（4 级阴影、平面反射、主画面）剔除后画 49610 个、414 次绘制。CPU 剖析（`stride cpu-profile`）里最大的几项和处理：

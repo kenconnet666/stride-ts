@@ -4,8 +4,10 @@
  * 数据流：
  * - Extract：遍历带 Model 和 Transform 的实体，按（网格，材质，是否投射阴影，是否蒙皮）分批，每批记下实体的变换槽位；
  *   蒙皮的实体（Skinned）还记下变换槽位对应的蒙皮矩阵起点，带形变的（Morphed）记下形变权重的起点。
- * - Cull：各批的槽位连着写进 stride-native 的剔除工作区（FrustumCuller），一次调用剔除一组视图，每批用网格的包围盒；
- *   主视图顺带量出可见物体的距离范围（阴影级联要用）。一帧剔除两次：先主视图，再阴影级联。
+ * - Cull：GPU 剔除（GpuCulling.ts，设备有 'indirect-first-instance' 时，W7）：这里只记下视图，Prepare 时一次计算着色器剔除这一帧
+ *   所有视图，画的时候间接绘制；视图的距离范围（阴影级联要用）用上一帧读回来的。透明的批（要从远到近排）和画线框的帧照旧在
+ *   CPU 上剔：各批的槽位连着写进 stride-native 的剔除工作区（FrustumCuller），一次调用剔除一组视图，每批用网格的包围盒，
+ *   顺带量出可见物体的距离范围。一帧剔除两次：先主视图，再阴影级联。
  * - Prepare：把变换存储的世界矩阵列整段上传（直接从 wasm 内存，只传用到的那一段），动画系统算好的蒙皮矩阵也直接从 wasm 内存上传，各次剔除的结果（每个视图一段可见槽位）
  *   也直接从 wasm 内存上传成实例缓冲，每个视图的常量（相机、光照、阴影、天空盒）写进按视图分块的 uniform 缓冲（动态偏移）。
  * - Draw：每批一次实例化绘制；着色器用 worlds[slots[instance_index]] 取世界矩阵，firstInstance 是这个视图里这一批的起点。
@@ -42,6 +44,7 @@ import { Mesh } from './Mesh';
 import { HeightfieldTile, HeightPages } from './HeightPages';
 import { inRenderMask, RootRenderFeature, type Lighting, type RenderContext, type RenderStage, type RenderSystem, type RenderView } from '../RenderSystem';
 import { backToFrontRuns, sortBackToFront, type VisibleBatch } from './transparentOrder';
+import { CULL_ALWAYS_VISIBLE, CULL_ON_CPU, GpuCulling, type CullBatchInput, type CullViewInput } from './GpuCulling';
 
 /** 一次实例化绘制：同一个网格和材质的实体。 */
 export interface MeshBatch {
@@ -58,6 +61,11 @@ export interface MeshBatch {
   count: number;
   /** 在这一帧所有批次连起来的槽位列表里的起点，Cull 时算。 */
   first: number;
+  /**
+   * @internal 这批所有实例的世界（渲染空间）包围盒，GPU 剔除时整批在视锥外就不发绘制；槽位列表变了、有实例动了才重算
+   * （#updateBatchBounds）。上一次算时的槽位列表留着比较。
+   */
+  readonly bounds: { readonly min: Float64Array; readonly max: Float64Array; dirty: boolean; slots: Uint32Array };
   /** @internal 各阶段上次用的管线（材质改了、输出格式或网格效果换了才重新查，不用每次画都拼管线的键）。 */
   readonly pipelines: Map<RenderStage, CachedPipeline>;
 }
@@ -107,9 +115,20 @@ const MESH_PARAMS_BYTES = 64 + MESH_EFFECT_PARAMETERS * 4;
 interface CullPass {
   readonly culler: FrustumCuller;
   readonly views: RenderView[];
+  /** 这一帧所有批的实例数、批数（实例列表按它排：每个视图 slotCount 个，各批从 batch.first 起）。 */
   slotCount: number;
   batchCount: number;
+  /** 这一次剔除的视图在实例列表里的起点（Prepare 时定）。 */
   offset: number;
+  /** GPU 剔除时这些视图在 GpuCulling 的视图表里从第几个起；全在 CPU 上剔时是 −1。 */
+  gpuView: number;
+  /** 在 CPU 上剔的批（全局下标）；culler 里的批号是在这里的下标。全在 CPU 上剔时就是 0..batchCount−1。 */
+  cpuBatches: number[];
+  /** 全局批号 → cpuBatches 里的下标，不在 CPU 上剔的是 −1。 */
+  cpuIndexOf: Int32Array;
+  /** CPU 剔除的工作区里各批的起点、实例总数（每个视图一段这么长）。 */
+  cpuFirst: number[];
+  cpuSlotCount: number;
 }
 
 interface GpuMesh {
@@ -218,6 +237,17 @@ export class MeshRenderFeature extends RootRenderFeature {
   // GPU 资源，第一次 Prepare 时创建
   #gpu: Gpu | undefined;
 
+  /**
+   * 不透明的批在 GPU 上剔除（GpuCulling.ts）。设备没有 'indirect-first-instance'、画线框的帧（RenderSystem.wireframe）照旧全在
+   * CPU 上剔；关掉它也是（`stride call culling '{"on": false}'`，对比用）。
+   */
+  gpuCulling = true;
+  #culling: GpuCulling | undefined;
+  /** 这一帧 GPU 剔除的视图（按 cull 的调用顺序），Prepare 时定各自在实例列表里的起点。 */
+  readonly #gpuViews: { readonly view: RenderView; readonly pass: CullPass; readonly index: number }[] = [];
+  /** 这一帧的实例（槽位、批号）。 */
+  #items = new Uint32Array(0);
+
   override extract(context: RenderContext): void {
     for (const batch of this.batches) batch.count = 0;
     context.game.entities.run(this.#extractSystem, context.time);
@@ -235,7 +265,88 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.#instanceCount = first;
     this.#cullPassCount = 0;
     this.#viewCulling.clear();
+    this.#gpuViews.length = 0;
     this.drawnInstances = this.drawCalls = 0;
+  }
+
+  /** 这一帧用不用 GPU 剔除。 */
+  #gpuCullingOn(): boolean {
+    return this.gpuCulling && !this.system.wireframe && this.system.graphicsDevice.indirectFirstInstance;
+  }
+
+  /** 批的包围盒上次是第几次更新（GameTime.frameCount）时的；槽位 → 批（重算哪些批），槽位列表变了时重建。 */
+  #boundsUpdate = -Infinity;
+  #batchOfSlot = new Int32Array(0);
+  #batchOfSlotStale = true;
+
+  /**
+   * 各批的世界包围盒跟上这一帧（GPU 剔除前调，一帧一次）：槽位列表变了的批、这次更新里有实例动了的批重算（只隔一次更新时按
+   * changedSlots 找，隔得多了全部重算）。静止的世界每帧几乎不花时间。
+   */
+  #updateBatchBounds(context: RenderContext): void {
+    const update = context.game.updateTime.frameCount;
+    if (update === this.#boundsUpdate) return;
+    const transforms = context.game.transforms;
+    this.batches.forEach((batch) => {
+      const previous = batch.bounds.slots;
+      if (previous.length !== batch.count || previous.some((slot, i) => slot !== batch.slots[i])) {
+        batch.bounds.slots = batch.slots.slice(0, batch.count);
+        batch.bounds.dirty = true;
+        this.#batchOfSlotStale = true;
+      }
+    });
+    if (update !== this.#boundsUpdate + 1) {
+      for (const batch of this.batches) batch.bounds.dirty = true;
+    } else {
+      if (this.#batchOfSlotStale) {
+        this.#batchOfSlot = new Int32Array(transforms.slotLimit + 1).fill(-1);
+        this.batches.forEach((batch, b) => {
+          for (let i = 0; i < batch.count; i++) this.#batchOfSlot[batch.slots[i]!] = b;
+        });
+        this.#batchOfSlotStale = false;
+      }
+      for (const slot of transforms.changedSlots()) {
+        const b = slot < this.#batchOfSlot.length ? this.#batchOfSlot[slot]! : -1;
+        if (b >= 0) this.batches[b]!.bounds.dirty = true;
+      }
+    }
+    this.#boundsUpdate = update;
+    const world = transforms.renderWorld;
+    for (const batch of this.batches) {
+      const { bounds } = batch;
+      if (!bounds.dirty) continue;
+      bounds.dirty = false;
+      const { min: lo, max: hi } = batch.mesh.cullBounds;
+      const cx = (lo[0]! + hi[0]!) / 2, cy = (lo[1]! + hi[1]!) / 2, cz = (lo[2]! + hi[2]!) / 2;
+      const ex = (hi[0]! - lo[0]!) / 2, ey = (hi[1]! - lo[1]!) / 2, ez = (hi[2]! - lo[2]!) / 2;
+      bounds.min.fill(Infinity);
+      bounds.max.fill(-Infinity);
+      for (let i = 0; i < batch.count; i++) {
+        const m = batch.slots[i]! * 16;
+        for (let r = 0; r < 3; r++) {
+          const center = world[m + r]! * cx + world[m + 4 + r]! * cy + world[m + 8 + r]! * cz + world[m + 12 + r]!;
+          const extent = Math.abs(world[m + r]!) * ex + Math.abs(world[m + 4 + r]!) * ey + Math.abs(world[m + 8 + r]!) * ez;
+          if (center - extent < bounds.min[r]!) bounds.min[r] = center - extent;
+          if (center + extent > bounds.max[r]!) bounds.max[r] = center + extent;
+        }
+      }
+    }
+  }
+
+  /** 批的世界包围盒和视图的视锥相交（包围盒是 0 的网格总是可见，同原生的剔除）。 */
+  #batchInView(batch: MeshBatch, view: RenderView): boolean {
+    const local = batch.mesh.cullBounds;
+    if (local.min.every((value, i) => value === local.max[i])) return true;
+    const { min, max } = batch.bounds;
+    if (!(min[0]! <= max[0]!)) return false;
+    const planes = view.frustumPlanes;
+    for (let p = 0, count = view.ignoreDepthPlanes ? 4 : 6; p < count; p++) {
+      const nx = planes[p * 4]!, ny = planes[p * 4 + 1]!, nz = planes[p * 4 + 2]!, d = planes[p * 4 + 3]!;
+      // 盒子里离平面最靠里的那个角在平面外面：整个在外面
+      const x = nx >= 0 ? max[0]! : min[0]!, y = ny >= 0 ? max[1]! : min[1]!, z = nz >= 0 ? max[2]! : min[2]!;
+      if (nx * x + ny * y + nz * z + d <= 0) return false;
+    }
+    return true;
   }
 
   /** 这一帧提取到的实例总数（剔除之前）。 */
@@ -249,34 +360,65 @@ export class MeshRenderFeature extends RootRenderFeature {
 
   override cull(context: RenderContext, views: readonly RenderView[]): void {
     if (views.length === 0) return;
-    const pass = (this.#cullPasses[this.#cullPassCount] ??= { culler: context.game.transforms.createCuller(), views: [], slotCount: 0, batchCount: 0, offset: 0 });
+    const pass = (this.#cullPasses[this.#cullPassCount] ??= { culler: context.game.transforms.createCuller(), views: [], slotCount: 0, batchCount: 0, offset: 0, gpuView: -1, cpuBatches: [], cpuIndexOf: new Int32Array(0), cpuFirst: [], cpuSlotCount: 0 });
     this.#cullPassCount++;
-    const { culler } = pass;
     const slotCount = this.#instanceCount, batchCount = this.batches.length;
-    culler.reserve(slotCount, batchCount, views.length);
-    const { slots, batchEnds, bounds } = culler;
+    const gpu = this.#gpuCullingOn();
+    // CPU 上剔哪些批：GPU 剔除时只剔透明的（要从远到近排），不然全部
+    pass.cpuBatches.length = pass.cpuFirst.length = 0;
+    if (pass.cpuIndexOf.length < batchCount) pass.cpuIndexOf = new Int32Array(batchCount * 2);
+    pass.cpuIndexOf.fill(-1);
+    let cpuSlots = 0;
     this.batches.forEach((batch, b) => {
-      slots.set(batch.slots.subarray(0, batch.count), batch.first);
-      batchEnds[b] = batch.first + batch.count;
-      const { min, max } = batch.mesh.cullBounds;
-      for (let c = 0; c < 3; c++) {
-        bounds[b * 6 + c] = (min[c]! + max[c]!) / 2;
-        bounds[b * 6 + 3 + c] = (max[c]! - min[c]!) / 2;
-      }
+      if (gpu && !batch.material.isTransparent && !batch.material.hasClearCoat) return;
+      pass.cpuIndexOf[b] = pass.cpuBatches.length;
+      pass.cpuBatches.push(b);
+      pass.cpuFirst.push(cpuSlots);
+      cpuSlots += batch.count;
     });
-    views.forEach((view, i) => {
-      culler.setView(i, view.frustumPlanes, view.ignoreDepthPlanes ? 4 : 6, view.ignoreDepthPlanes ? undefined : view.nearPlane);
-      this.#viewCulling.set(view, { pass, index: i });
-    });
-    culler.cull(slotCount, batchCount, views.length);
-    views.forEach((view, i) => {
-      view.minimumDistance = Math.min(view.minimumDistance, culler.minDistance(i));
-      view.maximumDistance = Math.max(view.maximumDistance, culler.maxDistance(i));
-    });
+    pass.cpuSlotCount = cpuSlots;
     pass.views.length = 0;
     pass.views.push(...views);
     pass.slotCount = slotCount;
     pass.batchCount = batchCount;
+    pass.gpuView = gpu ? this.#gpuViews.length : -1;
+    if (gpu) this.#updateBatchBounds(context);
+    views.forEach((view, i) => {
+      this.#viewCulling.set(view, { pass, index: i });
+      if (!gpu) return;
+      this.#gpuViews.push({ view, pass, index: i });
+      // 距离范围：上一帧 GPU 剔除读回来的（还没有时取相机的近、远平面）
+      if (view.ignoreDepthPlanes) return;
+      const result = this.#culling?.result(view);
+      view.minimumDistance = Math.min(view.minimumDistance, result ? result.minimumDistance : view.nearClipPlane);
+      view.maximumDistance = Math.max(view.maximumDistance, result ? result.maximumDistance : view.farClipPlane);
+    });
+    if (pass.cpuBatches.length === 0) return;
+    const { culler } = pass;
+    culler.reserve(cpuSlots, pass.cpuBatches.length, views.length);
+    const { slots, batchEnds, bounds } = culler;
+    pass.cpuBatches.forEach((b, j) => {
+      const batch = this.batches[b]!;
+      slots.set(batch.slots.subarray(0, batch.count), pass.cpuFirst[j]!);
+      batchEnds[j] = pass.cpuFirst[j]! + batch.count;
+      const { min, max } = batch.mesh.cullBounds;
+      for (let c = 0; c < 3; c++) {
+        bounds[j * 6 + c] = (min[c]! + max[c]!) / 2;
+        bounds[j * 6 + 3 + c] = (max[c]! - min[c]!) / 2;
+      }
+    });
+    views.forEach((view, i) => culler.setView(i, view.frustumPlanes, view.ignoreDepthPlanes ? 4 : 6, view.ignoreDepthPlanes ? undefined : view.nearPlane));
+    culler.cull(cpuSlots, pass.cpuBatches.length, views.length);
+    views.forEach((view, i) => {
+      view.minimumDistance = Math.min(view.minimumDistance, culler.minDistance(i));
+      view.maximumDistance = Math.max(view.maximumDistance, culler.maxDistance(i));
+    });
+  }
+
+  /** 一次剔除里第 viewIndex 个视图、第 b 批 CPU 剔出来的个数；这批在 GPU 上剔时是 undefined。 */
+  #cpuCount(pass: CullPass, viewIndex: number, b: number): number | undefined {
+    const j = pass.cpuIndexOf[b]!;
+    return j < 0 ? undefined : pass.culler.counts[viewIndex * pass.cpuBatches.length + j]!;
   }
 
   override prepare(context: RenderContext): void {
@@ -294,8 +436,31 @@ export class MeshRenderFeature extends RootRenderFeature {
       offset += pass.views.length * pass.slotCount;
       this.#sortTransparentInstances(context, pass);
     }
-    gpu.uploadInstances(passes, offset);
+    gpu.uploadInstances(passes, offset, this.batches);
     gpu.uploadViews(this.system.views, this.system.lighting, shaderTime(context.game.updateTime.total));
+    if (this.#gpuViews.length > 0) this.#recordGpuCulling(gpu);
+  }
+
+  /** 这一帧所有 GPU 剔除的视图一次剔完：实例、批、视图传上去，计算着色器录进这一帧的编码器（在所有画之前）。 */
+  #recordGpuCulling(gpu: Gpu): void {
+    const culling = (this.#culling ??= new GpuCulling(this.system.device));
+    const count = this.#instanceCount;
+    if (this.#items.length < count * 2) this.#items = new Uint32Array(count * 4);
+    const batches: CullBatchInput[] = this.batches.map((batch, b) => {
+      for (let k = 0; k < batch.count; k++) {
+        this.#items[(batch.first + k) * 2] = batch.slots[k]!;
+        this.#items[(batch.first + k) * 2 + 1] = b;
+      }
+      const { min, max } = batch.mesh.cullBounds;
+      const center = [0, 1, 2].map((c) => (min[c]! + max[c]!) / 2), extent = [0, 1, 2].map((c) => (max[c]! - min[c]!) / 2);
+      const always = extent.every((value) => Math.abs(value) < 1e-9);
+      const transparent = batch.material.isTransparent || batch.material.hasClearCoat;
+      return { center, extent, first: batch.first, indexCount: gpu.mesh(batch.mesh, this.effect).indexCount, flags: (always ? CULL_ALWAYS_VISIBLE : 0) | (transparent ? CULL_ON_CPU : 0) };
+    });
+    const views: CullViewInput[] = this.#gpuViews.map(({ view, pass, index }) => ({ view, region: pass.offset + index * pass.slotCount }));
+    culling.setFrame(this.#items, count, batches, views);
+    culling.record(this.system.graphicsDevice.frameEncoder, gpu.worldsBuffer!, gpu.worldsBase, gpu.instancesBuffer!, this.system.graphicsDevice.profiler.passTimestamps('GpuCulling'));
+    for (const { view } of this.#gpuViews) this.drawnInstances += culling.result(view)?.visible ?? 0;
   }
 
   /**
@@ -350,13 +515,15 @@ export class MeshRenderFeature extends RootRenderFeature {
     const culling = this.#viewCulling.get(view);
     if (!gpu || !culling) return;
     const { pass: cullPass, index } = culling;
-    const counts = cullPass.culler.counts;
+    const indirect = cullPass.gpuView >= 0 ? this.#culling : undefined;
     // 透明阶段画透明的材质，再给有清漆的（不透明的）材质叠一遍清漆
     // 点选、线框、阴影投射的阶段透明、不透明的都画（透明的按 alpha 抖动着投阴影，见 Material.depthFragment）
     const inStage = (material: Material) => stage.picking || stage.wireframe || stage.shadowCasters || stage.impostor || (stage.transparent ? material.isTransparent || material.hasClearCoat : !material.isTransparent);
+    // GPU 剔除的批不知道剔剩几个：整批的包围盒在视锥里就画（剔光了的话间接参数里的实例数是 0，GPU 上什么也不做）
     const visible = (b: number) => {
       const batch = this.batches[b]!;
-      return counts[index * cullPass.batchCount + b]! > 0 && inStage(batch.material) && inRenderMask(view.cullingMask, batch.renderGroup);
+      const cpu = this.#cpuCount(cullPass, index, b);
+      return (cpu === undefined ? this.#batchInView(batch, view) : cpu > 0) && inStage(batch.material) && inRenderMask(view.cullingMask, batch.renderGroup);
     };
     const viewOffset = cullPass.offset + index * cullPass.slotCount;
     // 透明阶段：一段一段（同一批里连着的几个实例）从远到近；其余阶段每批一段
@@ -376,7 +543,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       const b = runs ? runs[i * 3]! : i;
       const batch = this.batches[b]!;
       const first = runs ? runs[i * 3 + 1]! : 0;
-      const count = runs ? runs[i * 3 + 2]! : counts[index * cullPass.batchCount + b]!;
+      const count = runs ? runs[i * 3 + 2]! : this.#cpuCount(cullPass, index, b);
       if (!visible(b) || (stage.shadowCasters && !batch.isShadowCaster) || (view.skipsSkinned && batch.skinned) || (view.skipsTransparent && batch.material.isTransparent)) continue;
       // pass 内只在变化时重设状态（docs/lessons.md）
       const gpuMesh = gpu.mesh(batch.mesh, this.effect);
@@ -410,10 +577,11 @@ export class MeshRenderFeature extends RootRenderFeature {
       // 多遍的材质一遍一条管线，其余只画一遍
       for (let p = 0; p < Math.max(passes.length, 1); p++) {
         if (passes.length > 0) pass.setPipeline((pipeline = pipelineOf(passes[p])));
-        pass.drawIndexed(stage.wireframe ? gpu.edges(batch.mesh, gpuMesh).count : gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first + first);
+        if (count === undefined) pass.drawIndexedIndirect(indirect!.args!, indirect!.argsOffset(cullPass.gpuView + index, b));
+        else pass.drawIndexed(stage.wireframe ? gpu.edges(batch.mesh, gpuMesh).count : gpuMesh.indexCount, count, 0, 0, viewOffset + batch.first + first);
         this.drawCalls++;
       }
-      this.drawnInstances += count;
+      this.drawnInstances += count ?? 0;
     }
   }
 
@@ -431,6 +599,8 @@ export class MeshRenderFeature extends RootRenderFeature {
     this.#gpu = undefined;
     for (const pass of this.#cullPasses) pass.culler.destroy();
     this.#cullPasses.length = 0;
+    this.#culling?.destroy();
+    this.#culling = undefined;
   }
 
   /**
@@ -439,26 +609,26 @@ export class MeshRenderFeature extends RootRenderFeature {
    */
   #sortTransparentInstances(context: RenderContext, pass: CullPass): void {
     const world = context.game.transforms.renderWorld;
-    const { counts, visibleSlots } = pass.culler;
-    for (let b = 0; b < pass.batchCount; b++) {
+    const { visibleSlots } = pass.culler;
+    pass.cpuBatches.forEach((b, j) => {
       const batch = this.batches[b]!;
-      if (!batch.material.isTransparent && !batch.material.hasClearCoat) continue;
+      if (!batch.material.isTransparent && !batch.material.hasClearCoat) return;
       pass.views.forEach((view, v) => {
-        const count = counts[v * pass.batchCount + b]!;
+        const count = this.#cpuCount(pass, v, b)!;
         if (count < 2 || view.viewport) return;
-        const start = v * pass.slotCount + batch.first;
+        const start = v * pass.cpuSlotCount + pass.cpuFirst[j]!;
         sortBackToFront(visibleSlots.subarray(start, start + count), world, view.eye);
       });
-    }
+    });
   }
 
   /** 透明阶段要画的实例从远到近归并成一段一段（见 transparentOrder.ts）；各批自己那段已经排好（#sortTransparentInstances）。 */
   #backToFront(context: RenderContext, view: RenderView, pass: CullPass, viewIndex: number, visible: (b: number) => boolean): number[] {
-    const { counts, visibleSlots } = pass.culler;
+    const { visibleSlots } = pass.culler;
     const batches: VisibleBatch[] = [];
-    for (let b = 0; b < pass.batchCount; b++) {
-      if (visible(b)) batches.push({ batch: b, start: viewIndex * pass.slotCount + this.batches[b]!.first, count: counts[viewIndex * pass.batchCount + b]! });
-    }
+    pass.cpuBatches.forEach((b, j) => {
+      if (visible(b)) batches.push({ batch: b, start: viewIndex * pass.cpuSlotCount + pass.cpuFirst[j]!, count: this.#cpuCount(pass, viewIndex, b)! });
+    });
     return backToFrontRuns(batches, visibleSlots, context.game.transforms.renderWorld, view.eye);
   }
 
@@ -486,7 +656,7 @@ export class MeshRenderFeature extends RootRenderFeature {
       if (!mesh) throw new Error(`Model refers to mesh ${meshId}, which does not exist`);
       if (!material) throw new Error(`Model refers to material ${materialId}, which does not exist`);
       if (skinned && !mesh.layout.joints) throw new Error(`mesh '${mesh.name}' is drawn skinned but has no joints and weights`);
-      batch = { mesh, material, isShadowCaster, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map() };
+      batch = { mesh, material, isShadowCaster, renderGroup, skinned, slots: new Uint32Array(64), count: 0, first: 0, pipelines: new Map(), bounds: { min: new Float64Array(3), max: new Float64Array(3), dirty: true, slots: new Uint32Array(0) } };
       this.#batchByKey.set(key, batch);
       this.batches.push(batch);
     }
@@ -989,7 +1159,11 @@ class Gpu {
   }
 
   /** 各次剔除的可见槽位（每个视图一段，直接在 wasm 内存里）依次拼成实例缓冲。 */
-  uploadInstances(passes: readonly CullPass[], total: number): void {
+  /**
+   * 各次剔除里 CPU 剔出来的可见槽位传进实例列表：全在 CPU 上剔的一次传整段（布局一样），GPU 剔除的只传透明的那几批各自的段
+   * （别的段 GPU 自己写）。
+   */
+  uploadInstances(passes: readonly CullPass[], total: number, batches: readonly MeshBatch[]): void {
     const bytes = Math.max(total, 1) * 4;
     if (!this.#instances || this.#instances.size < bytes) {
       this.#instances?.destroy();
@@ -997,9 +1171,30 @@ class Gpu {
       this.#clearViewBindGroups();
     }
     for (const pass of passes) {
-      const length = pass.views.length * pass.slotCount;
-      if (length > 0) this.device.queue.writeBuffer(this.#instances, pass.offset * 4, pass.culler.visibleSlots, 0, length);
+      if (pass.gpuView < 0) {
+        const length = pass.views.length * pass.slotCount;
+        if (length > 0) this.device.queue.writeBuffer(this.#instances, pass.offset * 4, pass.culler.visibleSlots, 0, length);
+        continue;
+      }
+      const cpuCount = pass.cpuBatches.length;
+      pass.views.forEach((_, v) => pass.cpuBatches.forEach((b, j) => {
+        const count = pass.culler.counts[v * cpuCount + j]!;
+        if (count > 0) this.device.queue.writeBuffer(this.#instances!, (pass.offset + v * pass.slotCount + batches[b]!.first) * 4, pass.culler.visibleSlots, v * pass.cpuSlotCount + pass.cpuFirst[j]!, count);
+      }));
     }
+  }
+
+  /** 世界矩阵的缓冲、这一帧那一半的起点（第几个矩阵），实例列表的缓冲：GPU 剔除读写。 */
+  get worldsBuffer(): GPUBuffer | undefined {
+    return this.#worlds;
+  }
+
+  get worldsBase(): number {
+    return this.#frameBases[0]!;
+  }
+
+  get instancesBuffer(): GPUBuffer | undefined {
+    return this.#instances;
   }
 
   uploadViews(views: readonly RenderView[], lighting: Lighting, time: number): void {

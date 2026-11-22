@@ -448,6 +448,7 @@ export class ForwardRenderer {
     renderSystem.lighting.shadowAtlas = undefined;
     let shadowViews: readonly RenderView[] = [];
     if (views.length > 0) {
+      renderSystem.wireframe = this.wireframe;
       renderSystem.extract(context);
       sky.watch(context.game.meshes.batches, context.game.transforms, context.game.frames);
       renderSystem.cull(context, views);

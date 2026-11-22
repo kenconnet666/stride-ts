@@ -2,6 +2,7 @@
  * 光追的调试视图（调试命令 `raytrace`）：从主相机按像素发射线（rtTrace），打到的按材质的颜色乘朝太阳的程度上色、打不到的是天的
  * 颜色，读回成 RGBA 像素。和光栅化的截图并排看，验证光追场景（RayTracingScene）里的东西都在、位置和朝向对。
  */
+import { createCheckedShaderModule } from '../../graphics/shaderModule';
 import type { RenderView } from '../RenderSystem';
 import { rayTracingWgsl, type RayTracingScene } from './RayTracingScene';
 
@@ -41,7 +42,7 @@ ${rayTracingWgsl(1)}
 export async function rayTraceView(device: GPUDevice, scene: RayTracingScene, view: RenderView, sun: readonly [number, number, number], width: number, height: number): Promise<Uint8Array> {
   const group = scene.bindGroup;
   if (!group) throw new Error('raytrace: the ray tracing scene is not built yet (no meshes, or still building the BVHs)');
-  const module = device.createShaderModule({ label: 'RayTracingDebug', code: SHADER });
+  const module = createCheckedShaderModule(device, 'RayTracingDebug', SHADER);
   const ownLayout = device.createBindGroupLayout({
     label: 'RayTracingDebug',
     entries: [

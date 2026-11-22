@@ -25,6 +25,16 @@ export function chromeLogFile(headless: boolean): string {
   return path.join(headless ? HEADLESS_PROFILE_DIR : PROFILE_DIR, 'chrome.log');
 }
 
+/**
+ * stride open --gpu-debug 加的 Chrome 参数：Dawn 的完整校验（装了 Windows 的"图形工具"时还开 D3D12 的调试层）、把 WGSL 和翻译出来的
+ * HLSL 存进日志（不改名、带调试符号，PIX 里能按源码看着色器）、调试标签带到 D3D12 的对象上（PIX 的截帧里按我们的标签分组）。
+ * 慢一些，只在查 GPU 的问题时用；在 stride 自己的 Chrome 里开，卡死、崩了不影响用户的主 Chrome。
+ */
+export const GPU_DEBUG_ARGS: readonly string[] = [
+  '--enable-dawn-backend-validation',
+  '--enable-dawn-features=dump_shaders,disable_symbol_renaming,emit_hlsl_debug_symbols,use_user_defined_labels_in_backend',
+];
+
 export interface OpenOptions {
   readonly headless?: boolean;
   /** 视口大小 [宽, 高]（CSS 像素）：启动后按页面量出的边框差调整窗口。 */

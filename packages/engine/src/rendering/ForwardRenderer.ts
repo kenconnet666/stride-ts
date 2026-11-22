@@ -441,6 +441,9 @@ export class ForwardRenderer {
 
     renderSystem.collect(views);
     this.#gatherLighting(context);
+    // 辐照度体：要在 prepare 写视图的常量之前找到（着色器按它取探针）；放不下第 27 个贴图的设备不做
+    const volumes = renderSystem.irradianceVolumes;
+    volumes.begin(context, renderSystem.rayTracing, this.hasCamera && renderSystem.planarReflections.supported && this.quality.globalIllumination);
     this.#assignClusters(views.filter((view) => view !== skyView && !impostorViews.includes(view)));
     // 光照变了（太阳转了、落山了）：只拍一次的探针重拍
     probes.watchLighting(renderSystem.lighting);
@@ -475,6 +478,8 @@ export class ForwardRenderer {
     if (impostorViews.length > 0) frame.pass('ImpostorBake', (pass) => pass.sideEffect(), () => impostors.draw(context, encoder, context.game.meshes));
     // 海浪谱：位移图在图外面，主画面画水时取，算副作用
     if (renderSystem.water.oceans) frame.pass('Ocean FFT', (pass) => pass.sideEffect(), () => renderSystem.water.simulate(encoder, context, renderSystem.graphicsDevice.profiler.passTimestamps('Ocean FFT')));
+    // 辐照度体的探针：追射线、更新图集（图集在图外面，网格着色时取，算副作用）
+    if (volumes.active) frame.pass('IrradianceVolume', (pass) => pass.sideEffect(), () => volumes.draw(encoder, renderSystem.lighting, renderSystem.rayTracing, renderSystem.graphicsDevice.profiler.passTimestamps('IrradianceVolume')));
     const probeTarget = probeView && probes.captureTarget();
     if (probeView && probeTarget) {
       const size = probeView.width;

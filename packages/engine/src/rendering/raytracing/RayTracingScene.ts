@@ -11,14 +11,20 @@ import type { Game } from '../../engine/Game';
 import type { Mesh } from '../mesh/Mesh';
 import type { MeshBatch } from '../mesh/MeshRenderFeature';
 
-/** 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、2 个空、颜色（rgba）、自发光（rgb、0）。 */
+/** 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、标志（第 1 位：双面的材质）、1 个空、颜色（rgba）、自发光（rgb、0）。 */
 export const RT_INSTANCE_WORDS = 24;
 const NODE_WORDS = 8;
+/**
+ * 一次遍历最多访问几个节点（TLAS、每个 BLAS 各算）：正常的射线几十到几百个；坏了的 BVH（下标指回自己）也不会让着色器死循环、
+ * 把显卡卡到驱动重置（DXGI_ERROR_DEVICE_HUNG，整个浏览器都卡死）。
+ */
+const MAX_TRAVERSAL_STEPS = 4096;
 const TRIANGLE_WORDS = 12;
 
 /**
  * 光追的着色器代码（group 是绑定组号）：rtTrace(原点, 方向, 最远) 返回最近的交点（instance 是 0xffffffff 时没打到），
- * rtNormal 是交点的世界法线（朝着射线来的方向），rtAlbedo、rtEmissive 是实例材质的颜色和自发光。
+ * rtNormal 是交点的世界法线（朝着射线来的方向），rtBackFace 判断打到的是不是单面材质的背面，rtAlbedo、rtEmissive 是实例材质的
+ * 颜色和自发光。
  */
 export function rayTracingWgsl(group: number): string {
   return /* wgsl */ `
@@ -32,6 +38,10 @@ struct RtHit {
   instance: u32,
   triangle: u32,
   uv: vec2f,
+  // 遍历走满了 MAX_TRAVERSAL_STEPS 步被截断（BVH 坏了：结果不可信）
+  capped: bool,
+  // 这次遍历最多的一个循环走了几步（调试用）
+  steps: u32,
 };
 
 /** 射线和节点（两个 vec4u：最小角 + 第一个、最大角 + 个数）的盒子相交：进入的距离，没交上是 1e30。 */
@@ -49,10 +59,18 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
   let nodeBase = header.x;
   let triangleBase = header.y;
   let inverse = 1.0 / select(dir, vec3f(1e-20), abs(dir) < vec3f(1e-20));
+  // 根节点也要先比盒子：根是叶子（一个三角形的网格）时下面直接按叶子算
+  if (rtBox(rtBlas[nodeBase * 2u], rtBlas[nodeBase * 2u + 1u], origin, inverse, (*hit).t) >= 1e30) { return; }
   var stack: array<u32, 48>;
   var sp = 0u;
   var node = 0u;
+  var steps = 0u;
   loop {
+    if (steps >= ${MAX_TRAVERSAL_STEPS}u) {
+      (*hit).capped = true;
+      break;
+    }
+    steps++;
     let node0 = rtBlas[(nodeBase + node) * 2u];
     let node1 = rtBlas[(nodeBase + node) * 2u + 1u];
     if (node1.w == 0u) {
@@ -60,7 +78,7 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
       let a = node0.w;
       let da = rtBox(rtBlas[(nodeBase + a) * 2u], rtBlas[(nodeBase + a) * 2u + 1u], origin, inverse, (*hit).t);
       let db = rtBox(rtBlas[(nodeBase + a + 1u) * 2u], rtBlas[(nodeBase + a + 1u) * 2u + 1u], origin, inverse, (*hit).t);
-      if (da < 1e30 && db < 1e30) {
+      if (da < 1e30 && db < 1e30 && sp < 48u) {
         node = select(a + 1u, a, da <= db);
         stack[sp] = select(a, a + 1u, da <= db);
         sp++;
@@ -85,7 +103,7 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
         let v = dot(dir, q) * invDet;
         let t = dot(e2, q) * invDet;
         if (u >= 0.0 && v >= 0.0 && u + v <= 1.0 && t > 1e-4 && t < (*hit).t) {
-          *hit = RtHit(t, instance, triangleBase + i, vec2f(u, v));
+          *hit = RtHit(t, instance, triangleBase + i, vec2f(u, v), (*hit).capped, (*hit).steps);
         }
       }
     }
@@ -93,25 +111,32 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
     sp--;
     node = stack[sp];
   }
+  (*hit).steps = max((*hit).steps, steps);
 }
 
 /** 最近的交点（世界的射线，dir 可以不归一；没打到时 instance 是 0xffffffff，t 是 tMax）。 */
 fn rtTrace(origin: vec3f, dir: vec3f, tMax: f32) -> RtHit {
-  var hit = RtHit(tMax, 0xffffffffu, 0u, vec2f(0.0));
+  var hit = RtHit(tMax, 0xffffffffu, 0u, vec2f(0.0), false, 0u);
   if (arrayLength(&rtTlas) < 2u) { return hit; }
   let inverse = 1.0 / select(dir, vec3f(1e-20), abs(dir) < vec3f(1e-20));
   var stack: array<u32, 48>;
   var sp = 0u;
   var node = 0u;
   if (rtBox(rtTlas[0], rtTlas[1], origin, inverse, tMax) >= 1e30) { return hit; }
+  var steps = 0u;
   loop {
+    if (steps >= ${MAX_TRAVERSAL_STEPS}u) {
+      hit.capped = true;
+      break;
+    }
+    steps++;
     let node0 = rtTlas[node * 2u];
     let node1 = rtTlas[node * 2u + 1u];
     if (node1.w == 0u) {
       let a = node0.w;
       let da = rtBox(rtTlas[a * 2u], rtTlas[a * 2u + 1u], origin, inverse, hit.t);
       let db = rtBox(rtTlas[(a + 1u) * 2u], rtTlas[(a + 1u) * 2u + 1u], origin, inverse, hit.t);
-      if (da < 1e30 && db < 1e30) {
+      if (da < 1e30 && db < 1e30 && sp < 48u) {
         node = select(a + 1u, a, da <= db);
         stack[sp] = select(a, a + 1u, da <= db);
         sp++;
@@ -134,11 +159,12 @@ fn rtTrace(origin: vec3f, dir: vec3f, tMax: f32) -> RtHit {
     sp--;
     node = stack[sp];
   }
+  hit.steps = max(hit.steps, steps);
   return hit;
 }
 
-/** 交点的世界法线（几何的，朝着射线来的那面）。 */
-fn rtNormal(hit: RtHit, dir: vec3f) -> vec3f {
+/** 交点的世界几何法线，朝着三角形的正面（逆时针是正面，同光栅化的 frontFace: 'ccw'）。 */
+fn rtFaceNormal(hit: RtHit) -> vec3f {
   let e1 = rtTriangles[hit.triangle * 3u + 1u].xyz;
   let e2 = rtTriangles[hit.triangle * 3u + 2u].xyz;
   let local = cross(e1, e2);
@@ -146,8 +172,19 @@ fn rtNormal(hit: RtHit, dir: vec3f) -> vec3f {
   let r0 = rtInstances[hit.instance * 6u].xyz;
   let r1 = rtInstances[hit.instance * 6u + 1u].xyz;
   let r2 = rtInstances[hit.instance * 6u + 2u].xyz;
-  let n = normalize(r0 * local.x + r1 * local.y + r2 * local.z);
+  return normalize(r0 * local.x + r1 * local.y + r2 * local.z);
+}
+
+/** 交点的世界法线（几何的，朝着射线来的那面）。 */
+fn rtNormal(hit: RtHit, dir: vec3f) -> vec3f {
+  let n = rtFaceNormal(hit);
   return select(n, -n, dot(n, dir) > 0.0);
+}
+
+/** 射线打到的是单面材质的背面（光栅化时剔掉的那面：探针在墙里、物体里）；双面的材质两面都算正面。 */
+fn rtBackFace(hit: RtHit, dir: vec3f) -> bool {
+  let doubleSided = (bitcast<vec4u>(rtInstances[hit.instance * 6u + 3u]).z & 1u) != 0u;
+  return !doubleSided && dot(rtFaceNormal(hit), dir) > 0.0;
 }
 
 fn rtAlbedo(hit: RtHit) -> vec3f {
@@ -186,6 +223,8 @@ export class RayTracingScene {
   #group: GPUBindGroup | undefined;
   /** 顶层里有几个实例（统计）。 */
   instanceCount = 0;
+  /** 传上去的场景变了（新的 BLAS 或者 TLAS）就加一：用光追结果的特性按它判断要不要重算。 */
+  version = 0;
 
   constructor(device: GPUDevice) {
     this.#device = device;
@@ -245,6 +284,14 @@ export class RayTracingScene {
       if (!blas || blas === 'building') continue;
       for (let i = 0; i < batch.count; i++) entries.push({ blas, slot: batch.slots[i]!, batch });
     }
+    if (entries.length === 0) {
+      // 没有能光追的实例：不建 TLAS（空的 BVH 的根是个数为 0、盒子反着的节点，GPU 上会当成指回自己的内部节点死循环），也不给绑定组
+      this.#tlas = undefined;
+      this.#uploadedTlas = undefined;
+      this.#group = undefined;
+      this.instanceCount = 0;
+      return;
+    }
     const boxes = new Float32Array(entries.length * 6);
     entries.forEach(({ slot, batch }, k) => worldBox(world, slot * 16, batch.mesh.cullBounds, boxes, k * 6));
     this.#tlasBuilding = true;
@@ -258,6 +305,7 @@ export class RayTracingScene {
         inverseAffine(world, slot * 16, instances, o);
         words[o + 12] = blas.nodeOffset;
         words[o + 13] = blas.triangleOffset;
+        words[o + 14] = batch.material.doubleSided ? 1 : 0;
         const { baseColor, emissive } = batch.material;
         instances.set([baseColor.r, baseColor.g, baseColor.b, 1, emissive[0], emissive[1], emissive[2], 0], o + 16);
       }
@@ -276,7 +324,7 @@ export class RayTracingScene {
       let buffer = this.#buffers[key];
       if (!buffer || buffer.size < bytes) {
         buffer?.destroy();
-        buffer = device.createBuffer({ label: `RayTracingScene ${label}`, size: 2 ** Math.ceil(Math.log2(bytes)), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+        buffer = device.createBuffer({ label: `RayTracingScene ${label}`, size: 2 ** Math.ceil(Math.log2(bytes)), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
         this.#buffers[key] = buffer;
         changed = true;
       }
@@ -286,18 +334,76 @@ export class RayTracingScene {
       write('blas', 'BLAS nodes', this.#nodes, this.#nodeWords);
       write('triangles', 'triangles', this.#triangles, this.#triangleWords);
       this.#uploadedBlas = this.#blasVersion;
+      this.version++;
     }
     const tlas = this.#tlas;
     if (tlas && tlas !== this.#uploadedTlas) {
       write('tlas', 'TLAS nodes', tlas.nodes, tlas.nodes.length);
       write('instances', 'instances', tlas.instances, tlas.instances.length);
       this.#uploadedTlas = tlas;
+      this.version++;
     }
     const { tlas: t, instances, blas, triangles } = this.#buffers;
-    if (!t || !instances || !blas || !triangles) return;
+    if (!this.#tlas || !t || !instances || !blas || !triangles) return;
     if (changed || !this.#group) {
       this.#group = device.createBindGroup({ label: 'RayTracingScene', layout: this.bindGroupLayout, entries: [t, instances, blas, triangles].map((buffer, binding) => ({ binding, resource: { buffer } })) });
     }
+  }
+
+  /** 读回 GPU 上的四个缓冲（调试：check、和 CPU 上照着着色器走一遍比）；还没建好时 undefined。 */
+  async readBack(): Promise<{ tlas: Uint32Array; instances: Uint32Array; blas: Uint32Array; triangles: Uint32Array } | undefined> {
+    const { tlas, instances, blas, triangles } = this.#buffers;
+    if (!tlas || !instances || !blas || !triangles) return undefined;
+    const read = async (buffer: GPUBuffer) => {
+      const readback = this.#device.createBuffer({ size: buffer.size, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+      const encoder = this.#device.createCommandEncoder();
+      encoder.copyBufferToBuffer(buffer, 0, readback, 0, buffer.size);
+      this.#device.queue.submit([encoder.finish()]);
+      await readback.mapAsync(GPUMapMode.READ);
+      const words = new Uint32Array(readback.getMappedRange().slice(0));
+      readback.destroy();
+      return words;
+    };
+    const [t, i, b, tr] = await Promise.all([tlas, instances, blas, triangles].map(read));
+    return { tlas: t!, instances: i!, blas: b!, triangles: tr! };
+  }
+
+  /**
+   * 查 GPU 上的数据（调试命令 raytrace-check）：读回四个缓冲，每个实例的 BLAS、顶层的 TLAS 按 GPU 的走法遍历一遍，报下标越界、
+   * 有环（走回走过的节点）、叶子的三角形越界。
+   */
+  async check(): Promise<{ instances: number; problems: string[] }> {
+    const data = await this.readBack();
+    if (!data) return { instances: 0, problems: ['not built'] };
+    const { tlas: tlasWords, instances: instanceWords, blas: blasWords, triangles: triangleWords } = data;
+    const problems: string[] = [];
+    const walk = (label: string, words: Uint32Array, base: number, leaf: (first: number, count: number) => void) => {
+      const seen = new Set<number>();
+      const stack = [0];
+      while (stack.length > 0 && problems.length < 20) {
+        const node = stack.pop()!;
+        const at = (base + node) * NODE_WORDS;
+        if (at + NODE_WORDS > words.length) { problems.push(`${label}: node ${node} is outside the buffer`); continue; }
+        if (seen.has(node)) { problems.push(`${label}: node ${node} is reached twice (cycle)`); continue; }
+        seen.add(node);
+        const first = words[at + 3]!, count = words[at + 7]!;
+        if (count === 0) {
+          if (first <= node) problems.push(`${label}: interior node ${node} has children at ${first} (not after it)`);
+          else stack.push(first, first + 1);
+        } else leaf(first, count);
+      }
+    };
+    const count = this.instanceCount;
+    walk('TLAS', tlasWords, 0, (first, n) => {
+      if (first + n > count) problems.push(`TLAS: leaf instances ${first}..${first + n} past ${count}`);
+    });
+    for (let i = 0; i < count && problems.length < 20; i++) {
+      const nodeBase = instanceWords[i * RT_INSTANCE_WORDS + 12]!, triangleBase = instanceWords[i * RT_INSTANCE_WORDS + 13]!;
+      walk(`instance ${i} (BLAS at ${nodeBase})`, blasWords, nodeBase, (first, n) => {
+        if ((triangleBase + first + n) * TRIANGLE_WORDS > triangleWords.length) problems.push(`instance ${i}: triangles ${triangleBase + first}..${triangleBase + first + n} past the buffer`);
+      });
+    }
+    return { instances: count, problems };
   }
 
   destroy(): void {
@@ -305,10 +411,13 @@ export class RayTracingScene {
   }
 }
 
-/** 光追得到的批：不透明、不蒙皮、不形变、不是地形的高度页网格、不是远处卡片。 */
+/**
+ * 光追得到的批：不透明、不蒙皮、不形变、不是地形的高度页网格、不是远处卡片、有三角形（空网格的 BVH 根是个数为 0 的叶子，GPU 上
+ * 和内部节点分不开）。
+ */
 function traceable(batch: MeshBatch): boolean {
   const mesh = batch.mesh;
-  return batch.count > 0 && !batch.skinned && !batch.material.isTransparent && !mesh.heightfield && !mesh.impostor && mesh.data.morph === undefined;
+  return batch.count > 0 && mesh.data.indices.length >= 3 && !batch.skinned && !batch.material.isTransparent && !mesh.heightfield && !mesh.impostor && mesh.data.morph === undefined;
 }
 
 function append(target: Uint32Array | Float32Array, used: number, data: Uint32Array | Float32Array): Uint32Array | Float32Array {

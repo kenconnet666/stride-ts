@@ -21,7 +21,7 @@ import { Body, Character, PhysicsBody, Static } from '../physics/components';
 import { CONSTRAINT_COMPONENTS, type ConstraintComponentBase } from '../physics/ConstraintComponent';
 import type { ConstraintSettings } from '../physics/Simulation';
 import { CameraRig } from '../rendering/CameraRig';
-import { Background, Camera, Decal, GaussianSplat, Instance, Instancing, Light, Model, PlanarReflection, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from '../rendering/components';
+import { Background, Camera, Decal, GaussianSplat, Instance, Instancing, IrradianceVolume, Light, Model, PlanarReflection, ReflectionProbe, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog } from '../rendering/components';
 import { DayNightCycle } from '../rendering/sky/DayNightCycle';
 import { Precipitation } from '../world/Precipitation';
 import { Weather } from '../world/Weather';
@@ -418,6 +418,7 @@ const BUILDERS: { readonly [K in ComponentKey]: ComponentBuilder<K> } = {
     remove: drop(ReflectionProbe),
   },
   planarReflection: { add: (entity, { size, ...rest }) => entity.add(PlanarReflection.with({ size: [...size], ...rest })), remove: drop(PlanarReflection) },
+  irradianceVolume: { add: (entity, { size, ...rest }) => entity.add(IrradianceVolume.with({ size: [...size], ...rest })), remove: drop(IrradianceVolume) },
   gaussianSplat: { add: (entity, splat, { assets }) => entity.add(GaussianSplat.with({ splats: assets.splats.get(splat.splats)!.id })), remove: drop(GaussianSplat) },
   terrain: { add: (entity, { terrain, ...rest }, { assets }) => entity.add(Terrain.with({ terrain: assets.terrains.get(terrain)!.id, ...rest })), remove: drop(Terrain) },
   scatter: { add: (entity, { scatter }, { assets }) => entity.add(Scatter.with({ scatter: assets.scatters.get(scatter)!.id })), remove: drop(Scatter) },

@@ -25,6 +25,7 @@ import { CEL_RAMP_STOPS } from '../../content/formats/format';
 import { CLUSTER_WGSL } from '../lighting/Clusters';
 import { LOCAL_LIGHT_WGSL, LTC_WGSL } from '../lighting/LocalLights';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
+import { IRRADIANCE_VOLUME_WGSL } from '../raytracing/IrradianceVolume';
 import { MATERIAL_STREAMS } from '../shaderClass';
 import { BRDF, GRADIENT_NOISE, HASH3, RAIN_RIPPLES } from '../wgsl';
 import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees } from './Material';
@@ -93,6 +94,10 @@ struct View {
   // 离相机最近的几个局部风源：中心（渲染空间）、半径；强度（乘过阵风，0 是没有）
   windLocals: array<vec4f, ${VEGETATION_LOCAL_WINDS}>,
   windStrengths: vec4f,
+  // 辐照度体（raytracing/IrradianceVolume.ts）：最小角（渲染空间）和用不用、间距和强度、各轴的探针数
+  giMin: vec4f,
+  giSpacing: vec4f,
+  giCounts: vec4f,
 };
 // 点光、聚光（Stride 的 LightPoint、LightSpot）和它们的阴影（点光是立方体的六个面 +Z、-Z、+X、-X、+Y、-Y 各一个矩阵，
 // 聚光只用第一个），在一个缓冲里，见 lighting/LocalLights.ts
@@ -1817,12 +1822,15 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   if (probe.a > 0.0) {
     environment = environmentSpecular * probe.rgb * ao;
   }
+  // 辐照度体盖住的地方漫反射的环境光用探针的（有遮挡、有反弹），盖不住的部分（1 - a）才用环境光和天空盒的
+  let volume = volumeIrradiance(in.world, n, v);
+  scattered += diffuse * celEnvironment(volume.rgb) * ao * volume.a;
   if (hasAmbient || hasSky) {
-    scattered += diffuse * celEnvironment(view.ambientColor.rgb) * ao;
+    scattered += diffuse * celEnvironment(view.ambientColor.rgb) * ao * (1.0 - volume.a);
     environment += environmentSpecular * view.ambientColor.rgb * ao * (1.0 - probe.a);
     if (hasSky) {
       let skyIntensity = view.sky.x * ao;
-      scattered += diffuse * celEnvironment(evaluateSH(skyDirection(n)) * view.sky.x) * ao;
+      scattered += diffuse * celEnvironment(evaluateSH(skyDirection(n)) * view.sky.x) * ao * (1.0 - volume.a);
       if (hasSpecular && probe.a < 1.0) {
         environment += environmentSpecular * textureSampleLevel(skySpecular, linearClamp, skyDirection(reflection), sqrt(alphaR) * view.sky.y).rgb * skyIntensity * (1.0 - probe.a);
       }
@@ -2065,18 +2073,28 @@ fn sheenDfg(nDotV: f32, alpha: f32) -> f32 {
 }`;
 
 /**
- * 视图的第 26 个绑定（屏幕的贴图：不透明阶段是平面反射图，透明阶段是折射拷的画面）和取色的函数：设备放得下这张贴图时才声明
- * （PlanarReflections.supported），放不下时取色返回黑（这时 view.planar.x、view.decal.y 总是 0，调不到）。
+ * 视图的第 26、27 个绑定和用它们的函数：屏幕的贴图（不透明阶段是平面反射图，透明阶段是折射拷的画面）、辐照度体的图集。设备放得下
+ * 这两张贴图时才声明（PlanarReflections.supported），放不下时取色返回黑、辐照度体不盖（这时 view.planar.x、view.decal.y、
+ * view.giMin.w 总是 0，调不到）。
  */
 export function screenTextureCode(supported: boolean): string {
   return supported
     ? /* wgsl */ `
 @group(0) @binding(26) var screenTexture: texture_2d<f32>;
+@group(0) @binding(27) var irradianceAtlas: texture_2d<f32>;
 fn planarColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(screenTexture, linearClamp, uv, level).rgb; }
 fn sceneColor(uv: vec2f, level: f32) -> vec3f { return textureSampleLevel(screenTexture, linearClamp, uv, level).rgb; }
+${IRRADIANCE_VOLUME_WGSL}
+/** 辐照度体在这一点的漫反射环境光（rgb，乘过强度）和盖住的程度（a）；没有体时是 0。 */
+fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f {
+  if (view.giMin.w == 0.0) { return vec4f(0.0); }
+  let s = giSample(irradianceAtlas, linearClamp, GiVolume(view.giMin, view.giSpacing, view.giCounts), p, n, v);
+  return vec4f(s.rgb * view.giSpacing.w, s.a);
+}
 `
     : /* wgsl */ `
 fn planarColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
 fn sceneColor(uv: vec2f, level: f32) -> vec3f { return vec3f(0.0); }
+fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f { return vec4f(0.0); }
 `;
 }

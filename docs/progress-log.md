@@ -947,6 +947,14 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 
 合起来 `drawMs` 平均 5.3 → 4.4 毫秒。动的东西（列车、浮着的箱子、物理样例）照常更新：两张隔一秒半的截图里列车往前走了，physics-sample、bepu-sample、platformer、first-person-shooter、open-world 的冒烟都过。剩下的大头是剔除本身和逐实例的 CPU 活：W7 的第一步做 GPU 上的剔除和间接绘制。
 
+## R2 第三步：DDGI 的辐照度体（2026-11-22）
+
+`IrradianceVolume` 组件（场景文件的 `irradianceVolume`：`size`、`spacing`、`rays`、`hysteresis`、`intensity`，属性面板、MCP 都有）和 `renderSystem.irradianceVolumes`（`rendering/raytracing/IrradianceVolume.ts`）：前向渲染器在写视图常量之前 `begin`（找体、分配图集、更新光追场景），阴影之后一个计算通道 `IrradianceVolume`（追射线、更新探针、拷回图集）。网格着色器的视图多三个 vec4（`giMin`、`giSpacing`、`giCounts`，视图常量一块从 1280 字节涨到 1536），第 27 个绑定是图集（和第 26 个一样，设备放得下 16 张以上的贴图时才有），`volumeIrradiance` 盖住的地方漫反射的环境光用探针的，盖不住的部分才用环境光和天空盒的。光追场景加了 `rtBackFace`（单面材质的背面，实例的标志位存双面）、`version`、`check`/`readBack`。画质的 `globalIllumination` 关着时不做。调试命令 `gi`（开关、探针数、每帧更新的探针和射线、遍历的统计）、`raytrace-check`。
+
+站台（`apps/photoreal`，以机位为中心 40×6×16 米、间距 1 米，41×7×17 = 4879 个探针、每个 128 条射线，每帧 26 万条）：测试浏览器（无头，960×1280）里 GPU 1.4 毫秒、120 Hz；开关比较，顶棚下的地面从天空的蓝色变成中性的灰、顶棚的底面被地面反上来的光照亮。照片比对：暗处从差 2.2 档变成差 2.8 档——天空不再无遮挡地照进顶棚下面了，照片里的暗处亮是因为真的地砖亮、太阳照到地面上、手机的局部色调映射把暗处提起来，归 R3（曝光、色调）和 R5（场景、太阳的方向）。
+
+途中把用户的主 Chrome 卡死了一次（DXGI_ERROR_DEVICE_HUNG）：先是 WGSL 的保留字 `active` 让更新的管线无效、整帧的命令缓冲无效（黑屏），改了以后光追在场景还没加载出实例的那一两帧死循环。原因和查法见 decisions.md 的同名一条。以后新写的计算着色器先在 `stride open --headless` 或 `--gpu-debug` 的浏览器里试。
+
 ## W6 第九步：下雨涨水（2026-11-22），W6 做完
 
 天气状态（`world/Weather.ts`）多一个 `flood`（0..1）：照积水的写法，下雨就按雨的大小慢慢涨（`FLOOD_TIME` 1800 秒涨满），最多涨到雨的大小，雨停或变小了按 `FLOOD_DRAIN_TIME` 3600 秒退；一开始就在下的雨（编辑状态、第一帧）直接是雨的大小。写给 `renderSystem.surfaceWeather.flood`。水体文件多一个 `rise`（大雨下久了涨多少米，默认湖 0.5、河 0.6、海 0，`waterRise`）；渲染器的水面高度加 `rise·flood`（水下的判断、平面反射认不认这片水都跟着），`waterAreas` 加一个 `flood` 参数：浮力传现在的，程序化摆放不传（不随天气重撒）。渲染器的 `draw` 改收整个 `surfaceWeather`（雨和涨水），不再一个个传。测试浏览器（无头，1080p）里湖北岸看：`stride call weather {"on": true, "preset": "rain", "instant": true}` 以后岸线往草坡上爬了一截；湖里浮着的箱子从 −65.14 升到 −64.81（0.5 米 × 0.6）。W6 做完，留下的小尾巴记在路线图的行里。

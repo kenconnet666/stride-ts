@@ -19,7 +19,7 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Buoyancy': '浮力', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
+    'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Water': '水体', 'Buoyancy': '浮力', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Irradiance volume': '辐照度体', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
@@ -64,7 +64,7 @@ const zhCN: FieldMessages = {
     postEffects: '后处理', precipitation: '降水', premultipliedAlpha: '预乘 alpha', procedural: '形状', projection: '投影', pssmFactor: '级联分割系数',
     pulseFrequency: '脉动频率', pulseMagnitude: '脉动幅度', radius: '半径', radiusScale: '半径倍数', range: '范围', rayleighScattering: '瑞利散射', refractiveIndex: '折射率',
     refresh: '刷新', renderGroup: '渲染组', renderMask: '渲染掩码', resolution: '分辨率', resolutionStretch: '分辨率适配', rotation: '旋转', roughness: '粗糙度',
-    sampler: '采样器', scale: '缩放', settings: '设置', shadow: '阴影', shadows: '阴影', shapes: '形状', sheen: '光泽', wind: '风', lods: '细节层次', keep: '留下', impostor: '远处卡片', masses: '体块', fill: '填街区', buoyancy: '浮力', linearDrag: '平移阻力', angularDrag: '转动阻力', river: '河', level: '水面', outline: '岸线', extent: '铺多远', clarity: '清澈度', waves: '浪', choppiness: '尖', caustics: '焦散', rise: '涨水', spectrum: '海浪谱', patch: '一块多大', foam: '泡沫', shore: '岸边', water: '水体', base: '离地', interior: '室内', room: '房间', lit: '亮灯', brightness: '亮度', spacing: '间距', roads: '路', buildings: '楼', setback: '离路边', gap: '空隙', area: '范围', weight: '权重', city: '城市', footprint: '底面', inset: '往里缩', floors: '层数', floorHeight: '层高', facade: '立面规则', roof: '屋顶', facades: '立面规则', modules: '构件', grass: '草', lean: '歪', bend: '弯', flutter: '叶子抖', sheet: '图集', size: '大小',
+    sampler: '采样器', scale: '缩放', settings: '设置', shadow: '阴影', shadows: '阴影', shapes: '形状', sheen: '光泽', wind: '风', lods: '细节层次', keep: '留下', impostor: '远处卡片', masses: '体块', fill: '填街区', buoyancy: '浮力', linearDrag: '平移阻力', angularDrag: '转动阻力', river: '河', level: '水面', outline: '岸线', extent: '铺多远', clarity: '清澈度', waves: '浪', choppiness: '尖', caustics: '焦散', rise: '涨水', spectrum: '海浪谱', patch: '一块多大', foam: '泡沫', shore: '岸边', water: '水体', base: '离地', interior: '室内', room: '房间', lit: '亮灯', brightness: '亮度', spacing: '间距', rays: '射线数', hysteresis: '留旧值', irradianceVolume: '辐照度体', roads: '路', buildings: '楼', setback: '离路边', gap: '空隙', area: '范围', weight: '权重', city: '城市', footprint: '底面', inset: '往里缩', floors: '层数', floorHeight: '层高', facade: '立面规则', roof: '屋顶', facades: '立面规则', modules: '构件', grass: '草', lean: '歪', bend: '弯', flutter: '叶子抖', sheet: '图集', size: '大小',
     skyIntensity: '天空亮度', skybox: '天空盒', sleepThreshold: '睡眠阈值', slopeAngle: '能站的坡度', slot: '槽', snapText: '文字对齐像素', specular: '镜面',
     specularEnergyConservative: '镜面能量守恒', specularShading: '镜面着色', speed: '速度', srgb: 'sRGB', stabilization: '稳定', starsIntensity: '星星亮度',
     strength: '强度', subsurfaceScattering: '次表面散射', sun: '太阳', target: '目标', temperature: '温度', tessellation: '细分', texture: '贴图',
@@ -86,6 +86,10 @@ const zhCN: FieldMessages = {
     'slot 0: the front faces, slot 1: the sides and the back (the front material when missing)': '槽 0 是字面，槽 1 是侧面和背面（没给时同字面）',
     'box (around the entity, turning with it) whose surfaces facing the plane normal (local +Y) reflect': '盒子（以实体为中心，跟着实体转）里朝着平面法线（本地 +Y）的表面有倒影',
     'resolution of the mirrored image relative to the main view': '镜像画面相对主画面的分辨率',
+    'box (around the entity, along the world axes) filled with ray traced probes; surfaces inside get their diffuse ambient light from them': '盒子（以实体为中心，按世界的轴摆）里摆满光追的探针，里面的表面的漫反射环境光取探针的',
+    'distance between probes': '探针之间的距离',
+    'rays per probe per update': '每个探针每次更新发几条射线',
+    'share of the old value kept per update (higher is steadier, slower to follow changes)': '每次更新留下旧值的比例（越大越稳，跟得越慢）',
     'how much normals that tilt away from the plane bend the reflection': '法线偏离平面时倒影扭多少',
     'like a point light: as bright straight in front at the same distance; a bigger panel is softer, not brighter': '同点光：正前方同样远处同样亮；面板做大了是更柔和，不是更亮',
     'the disc lies in the local XY plane and shines toward local -Z': '圆盘在本地 XY 平面上，朝本地 -Z 照',

@@ -2,6 +2,13 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+### DDGI 的做法；空的 BVH 把显卡卡死；自己编 Chrome 不划算（2026-11-22，R2 第三步）
+
+- **DDGI 照 RTXGI 和 WickedEngine**：盒子里均匀的探针，每帧按球面斐波那契点（每帧随机转）发射线，辐照度 8×8、距离 14×14 的八面体图（各带一圈边，边上的纹素由更新的着色器按八面体展开抄里面的，不另开一遍），放进一张 rgba16float 的图集（一块 16×26），按 Chebyshev 可见性、绕一圈的朝向权重、三线性取周围 8 个。存的是余弦加权的平均入射光（辐照度 / π），和网格着色器的环境光同一个约定，直接乘漫反射色。更新写另一张再拷回来（同一张贴图不能一边采样一边写；rgba16float 的读写存储贴图不是核心功能）。每帧最多 26 万条射线，探针多的按 z 的层轮着更新，只拷更新了的那几行块。没做的：探针挪出墙（RTXGI 的 relocation；现在打到背面超过四分之一的探针直接不用）、点光聚光、贴图的颜色、跟着相机走。别的做法：RTXGI 的辐照度用 5 次方的"感知"编码，我们的 16 位浮点够用，按线性混（同 WickedEngine 的 DDGI_LINEAR_BLENDING）。
+- **空的 BVH 会让着色器死循环**：场景还没加载出能光追的实例时，顶层按 0 个盒子建，原生给的根是"个数 0、盒子反着（最小 0、最大 −1）"的节点。GPU 的平板相交按每个轴的近远交换，反着的盒子照样当成 [−1, 0] 的盒子；个数 0 又当成内部节点、孩子在下标 0，就是根自己——穿过那一块的射线永远走不完，显卡卡到驱动重置（DXGI_ERROR_DEVICE_HUNG），用户的整个 Chrome 卡死。改：没有实例时不建顶层、不给绑定组（有测试）；遍历的两个循环都限 4096 步（正常的射线几十步），走满了记一次（`stride call gi` 报 `traversal.capped`，应该是 0），坏了的数据不会再卡死显卡。查的办法（以后照着用）：GPU 上数被截断的遍历 → 读回四个缓冲按着色器的走法检查（`stride call raytrace-check`）→ 在 CPU 上照着 WGSL 走同一份数据比步数 → 记被截断的那几帧 → 上传时检查 CPU 那份。
+- **没被错误作用域接住的 WebGPU 错误都打进日志**（`GraphicsDevice` 的 `uncapturederror`，同一条最多三次）：以前只有 Chrome 自己在控制台警告，调试 CLI 看不到，管线无效时只看到黑屏。着色器模块统一用 `graphics/shaderModule.ts` 的 `createCheckedShaderModule`（编译错误带出错的那行）。
+- **不自己编 Chrome**（用户问的）：正式版 Chrome 已经有 `--enable-dawn-backend-validation`（Dawn 的完整校验；装了 Windows 的图形工具还开 D3D12 调试层）、`--enable-dawn-features=dump_shaders,disable_symbol_renaming,emit_hlsl_debug_symbols,use_user_defined_labels_in_backend`，PIX 能截 Chrome 的 GPU 进程的帧、单步着色器。自己编多的只是 Dawn 内部的断言和能改 Dawn；代价是一百多 GB 的源码、这台单核慢的机器上几个小时的全量编译、每次 Chrome 更新重编、插件重装，而且不是我们的目标（最新正式版）。改成：`stride open --gpu-debug` 在 stride 自己的 Chrome 里开这些开关（卡死、崩了不连累用户的主 Chrome——新的计算着色器、光追先在那里试），装了 PIX。真要改 Dawn 时单独编 Dawn，不编 Chromium。
+
 ### 精度审计（2026-11-21）
 
 按"范围多大、要分辨到多细、用多久"过了一遍各种值。够的不动，不够的排进 W1：

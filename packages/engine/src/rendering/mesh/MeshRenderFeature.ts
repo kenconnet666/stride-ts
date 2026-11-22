@@ -16,6 +16,7 @@
  *   （GPU 蒙皮，Stride 的 TransformationSkinning），再乘世界矩阵。阴影投射阶段只画投射阴影的批次，管线只写深度。
  * 每帧上传都只写一次、在提交之前，不会碰到 writeBuffer 生效时机的坑（docs/lessons.md）。
  */
+import { createCheckedShaderModule } from '../../graphics/shaderModule';
 import { shaderTime } from '../../engine/GameTime';
 import type { Decals } from './Decals';
 import { clusterParams, type Clusters } from '../lighting/Clusters';
@@ -83,13 +84,13 @@ interface CachedPipeline {
 const SHADOW_SLOPE_BIAS = 1.5;
 
 /** 每个视图的常量占一块：uniform 的动态偏移必须是 minUniformBufferOffsetAlignment（256）的整数倍。 */
-const VIEW_STRIDE = 1280;
+const VIEW_STRIDE = 1536;
 /**
  * View 结构：viewProjection 16、eye 4、环境色 4、sky 4、球谐 36、天空盒旋转 16、阴影矩阵 64、阴影参数 12、方向光 8 · 4、
  * locals 4，各缓冲这一帧和上一帧的起点 12，运动向量的两个矩阵 32，云影、天气、贴花、分簇 20，平面反射 28，原点 4，风 4，
- * 局部风源 4 · 4 和它们的强度 4。
+ * 局部风源 4 · 4 和它们的强度 4，辐照度体 12。
  */
-const VIEW_FLOATS = 312;
+const VIEW_FLOATS = 324;
 /** 不用平面反射的视图在那几个数的位置写的：全是 0（用不用的那一位是 0）。 */
 const PLANAR_OFF = new Float32Array(28);
 /** 按世界坐标的图案（水洼、积雪）重复的周期（米）：渲染原点按它取模交给着色器。 */
@@ -509,7 +510,6 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
 
-
   override draw(context: RenderContext, pass: GPURenderPassEncoder, view: RenderView, stage: RenderStage): void {
     const gpu = this.#gpu;
     const culling = this.#viewCulling.get(view);
@@ -696,12 +696,13 @@ class Gpu {
   /** 视图绑定组里的反射探针是哪一代（ReflectionProbes.generation）；换了要重建绑定组。 */
   #probeGeneration = -1;
   #planarGeneration = -1;
+  #irradianceGeneration = -1;
   #refractionGeneration = -1;
   readonly #clouds: Clouds;
   /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
   #cloudShadow: GPUTexture | undefined;
   /** 地面的湿和雪、判断淋不淋得到的天空遮挡（RenderSystem 的）。 */
-  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind'>;
+  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes'>;
   /** 视图绑定组里绑的是真的天空遮挡（有湿或雪时），还是空的；换了要重建绑定组。 */
   #occlusionBound = false;
   /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）和深度缓冲。 */
@@ -778,7 +779,7 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
     this.device = device;
     this.#planar = planar;
     this.#refraction = refraction;
@@ -822,7 +823,7 @@ class Gpu {
         { binding: 23, visibility: GPUShaderStage.FRAGMENT, texture: { viewDimension: '2d-array' } },
         { binding: 24, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
         { binding: 25, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
-        ...(planar.supported ? [{ binding: 26, visibility: GPUShaderStage.FRAGMENT, texture: {} }] : []),
+        ...(planar.supported ? [{ binding: 26, visibility: GPUShaderStage.FRAGMENT, texture: {} }, { binding: 27, visibility: GPUShaderStage.FRAGMENT, texture: {} }] : []),
       ],
     });
     this.#materialLayout = device.createBindGroupLayout({
@@ -1213,6 +1214,8 @@ class Gpu {
     const cloudLight = cloud ? directionals.findIndex((light, i) => i < directionalCount && light.entity === cloud.lightEntity) : -1;
     const data = this.#viewData, words = new Uint32Array(data.buffer);
     const { wetness, puddles, snowCover, rain } = this.#weather.surfaceWeather;
+    const volumes = this.#weather.irradianceVolumes;
+    const irradiance = volumes.shading();
     const occlusion = wetness > 0 || snowCover > 0;
     for (const view of views) {
       const o = view.index * stride;
@@ -1264,13 +1267,15 @@ class Gpu {
         data.set([...local.center, local.radius], o + 292 + i * 4);
         data[o + 308 + i] = local.strength;
       });
+      data.set(irradiance, o + 312);
     }
     this.#views ??= this.device.createBuffer({ label: 'MeshRenderFeature views', size: this.#viewData.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     if (views.length > 0) this.device.queue.writeBuffer(this.#views, 0, this.#viewData, 0, views.length * stride);
 
     const skySpecular = !skybox ? this.#resources.blackCube : skybox.skybox instanceof Skybox ? this.#resources.skyboxSpecular(skybox.skybox) : skybox.skybox.specular;
-    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer || planar.generation !== this.#planarGeneration || this.#refraction.generation !== this.#refractionGeneration) {
+    if (skySpecular !== this.#skySpecular || probes.generation !== this.#probeGeneration || cloud?.texture !== this.#cloudShadow || occlusion !== this.#occlusionBound || (occlusion && this.#weather.skyOcclusion.depthBuffer !== this.#occlusionDepth) || this.#decals.atlas !== this.#decalAtlas || this.#decals.buffer !== this.#decalBuffer || this.#clusters.buffer !== this.#clusterBuffer || this.#localLights.buffer !== this.#localLightBuffer || planar.generation !== this.#planarGeneration || this.#refraction.generation !== this.#refractionGeneration || volumes.generation !== this.#irradianceGeneration) {
       this.#planarGeneration = planar.generation;
+      this.#irradianceGeneration = volumes.generation;
       this.#refractionGeneration = this.#refraction.generation;
       this.#clusterBuffer = this.#clusters.buffer;
       this.#localLightBuffer = this.#localLights.buffer;
@@ -1331,7 +1336,7 @@ class Gpu {
           { binding: 23, resource: this.#decals.atlas.createView({ dimension: '2d-array' }) },
           { binding: 24, resource: { buffer: this.#clusters.buffer } },
           { binding: 25, resource: { buffer: this.#localLights.ltc } },
-          ...(this.#planar.supported ? [{ binding: 26, resource: reflection.createView() }] : []),
+          ...(this.#planar.supported ? [{ binding: 26, resource: reflection.createView() }, { binding: 27, resource: this.#weather.irradianceVolumes.atlas.createView() }] : []),
         ],
       });
       groups.set(reflection, group);
@@ -1608,18 +1613,3 @@ function capacityFor(bytes: number): number {
   return Math.max(256, 2 ** Math.ceil(Math.log2(bytes)));
 }
 
-/**
- * 建着色器模块，编译出错时把出错的行打到控制台（会进调试 CLI 的日志）：游戏写的颜色树、着色器类、网格效果拼进来的 WGSL 出错时，
- * 不然只看到管线无效、画面全黑。
- */
-function createCheckedShaderModule(device: GPUDevice, label: string, code: string): GPUShaderModule {
-  const module = device.createShaderModule({ label, code });
-  void module.getCompilationInfo().then(({ messages }) => {
-    const lines = code.split('\n');
-    for (const m of messages) {
-      if (m.type !== 'error') continue;
-      console.error(`[stride] ${label}: WGSL ${m.lineNum}:${m.linePos}: ${m.message}\n  ${lines[m.lineNum - 1]?.trim() ?? ''}`);
-    }
-  });
-  return module;
-}

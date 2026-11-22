@@ -118,6 +118,37 @@
    }
   },
   {
+   "id": "0b6c7c1e-0001-4000-8000-000000000004",
+   "name": "Irradiance",
+   "parent": null,
+   "position": [
+    8,
+    2.5,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "irradianceVolume": {
+     "size": [
+      40,
+      6,
+      16
+     ],
+     "spacing": 1
+    }
+   }
+  },
+  {
    "id": "0b6c7c1e-0001-4000-8000-000000000010",
    "name": "Platform",
    "parent": null,

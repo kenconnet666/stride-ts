@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { createStrideNative, type StrideNative } from '@stride-ts/native';
+import { RayTracingScene } from '../../src/rendering/raytracing/RayTracingScene';
+import { fakeGpu, stubGpuGlobals } from '../fakeGpu';
 
 /** Möller–Trumbore（两面都算），没打到是 Infinity。 */
 function intersect(o: number[], d: number[], v0: number[], e1: number[], e2: number[]): number {
@@ -95,5 +97,51 @@ describe('光追的 BVH（原生建，GPU 的布局）', () => {
     const { nodes, order, nodeCount } = await native.buildBoxBvh(boxes);
     expect([...order].sort((a, b) => a - b)).toEqual(Array.from({ length: 50 }, (_, i) => i));
     for (let n = 0; n < nodeCount; n++) expect(nodes[n * 8 + 7]!).toBeLessThanOrEqual(2);
+  });
+});
+
+describe('光追场景（RayTracingScene）', () => {
+  let native: StrideNative;
+  beforeAll(async () => {
+    stubGpuGlobals();
+    native = await createStrideNative({ workerThreads: 2 });
+  });
+  afterAll(() => native?.shutdown());
+
+  /** 一个三角形的网格的批（只给 RayTracingScene 读的字段）。 */
+  const triangleBatch = () => ({
+    mesh: { id: 1, name: 'triangle', data: { indices: [0, 1, 2] }, positions: () => new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), heightfield: false, impostor: false, cullBounds: { min: [0, 0, 0], max: [1, 1, 0] } },
+    material: { id: 1, version: 0, isTransparent: false, doubleSided: false, baseColor: { r: 1, g: 1, b: 1 }, emissive: [0, 0, 0] },
+    count: 1,
+    slots: [0],
+    skinned: false,
+  });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+  test('没有能光追的实例时不给绑定组：空的 BVH 的根在 GPU 上会当成指回自己的内部节点，遍历死循环把显卡卡到驱动重置', async () => {
+    const { device } = fakeGpu();
+    const scene = new RayTracingScene(device);
+    const game = { meshes: { batches: [] as unknown[] }, transforms: { changedSlots: () => [], renderWorld: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }, native };
+    const update = () => scene.update(game as never);
+    update();
+    await settle();
+    update();
+    expect(scene.bindGroup).toBeUndefined();
+    expect(scene.ready).toBe(false);
+
+    // 有了一个三角形：建好 BLAS、TLAS 以后有绑定组
+    game.meshes.batches = [triangleBatch()];
+    for (let i = 0; i < 4; i++) {
+      update();
+      await settle();
+    }
+    expect(scene.instanceCount).toBe(1);
+    expect(scene.bindGroup).toBeDefined();
+
+    // 又没了：绑定组撤掉（不拿旧的或者空的 TLAS 去遍历）
+    game.meshes.batches = [];
+    update();
+    expect(scene.instanceCount).toBe(0);
+    expect(scene.bindGroup).toBeUndefined();
   });
 });

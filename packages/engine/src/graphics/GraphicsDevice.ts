@@ -94,6 +94,7 @@ export class GraphicsDevice {
     this.backBufferFormat = navigator.gpu.getPreferredCanvasFormat();
     this.backBufferViewFormat = `${this.backBufferFormat}-srgb` as GPUTextureFormat;
     this.#configure(false);
+    logUncapturedErrors(device);
     this.lost = device.lost.then((info) => (info.reason === 'destroyed' ? new Promise<never>(() => {}) : new Error(`WebGPU device lost (${info.reason}): ${info.message || 'no message'}`)));
   }
 
@@ -185,4 +186,21 @@ export class GraphicsDevice {
     this.context.unconfigure();
     this.device.destroy();
   }
+}
+
+/** 同一条没接住的 WebGPU 错误最多报几次（每帧都出的错不刷屏）。 */
+const UNCAPTURED_REPEATS = 3;
+
+/**
+ * 没有错误作用域接住的 WebGPU 错误（管线无效、绑定不对、命令缓冲无效：画面全黑、某个通道没画）打到控制台，进调试 CLI 的日志；
+ * 不然只有 Chrome 自己在控制台里警告几次（调试 CLI 看不到）。同一条消息报 UNCAPTURED_REPEATS 次以后不再报。
+ */
+function logUncapturedErrors(device: GPUDevice): void {
+  const seen = new Map<string, number>();
+  device.addEventListener('uncapturederror', (event) => {
+    const message = (event as GPUUncapturedErrorEvent).error.message;
+    const count = (seen.get(message) ?? 0) + 1;
+    seen.set(message, count);
+    if (count <= UNCAPTURED_REPEATS) console.error(`[stride] WebGPU error${count === UNCAPTURED_REPEATS ? ' (repeated, not reported again)' : ''}: ${message}`);
+  });
 }

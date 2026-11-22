@@ -397,6 +397,12 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     meshes.gpuCulling = switchArg(args, meshes.gpuCulling);
     return { gpu: meshes.gpuCulling, supported: game.renderSystem.graphicsDevice.indirectFirstInstance, wireframeFallsBackToCpu: game.graphicsCompositor.wireframe, stats: meshes.stats() };
   });
+  debug.command('raytrace-check', 'Read back the ray tracing scene from the GPU and walk every BVH the way the shaders do: reports out-of-range indices, cycles and leaves past the triangle buffer (empty list = sound).', () => game.renderSystem.rayTracing.check());
+  debug.command('gi', 'Irradiance volume (DDGI: ray traced probes give the diffuse ambient light inside the IrradianceVolume box). args: on (true/false, or "toggle"; omitted keeps it and just reports). Reports the probe count, probes and rays updated per frame, the ray tracing scene instances, and how many ray traversals hit the step cap (should be 0; otherwise the BVH is broken).', async (args) => {
+    const volumes = game.renderSystem.irradianceVolumes;
+    volumes.enabled = switchArg(args, volumes.enabled);
+    return { enabled: volumes.enabled, active: volumes.active, ...volumes.stats, instances: game.renderSystem.rayTracing.instanceCount, traversal: await volumes.traversalStats() };
+  });
   debug.command('wireframe', 'Overlay the wireframe of the meshes on the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports).', (args) => {
     const compositor = game.graphicsCompositor;
     compositor.wireframe = switchArg(args, compositor.wireframe);

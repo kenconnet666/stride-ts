@@ -29,6 +29,7 @@ import { SkyOcclusion } from '../world/SkyOcclusion';
 import { ImpostorBaker } from './mesh/Impostors';
 import { WaterRenderer } from '../world/WaterRenderer';
 import { RayTracingScene } from './raytracing/RayTracingScene';
+import { IrradianceVolumes } from './raytracing/IrradianceVolume';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -546,6 +547,8 @@ export class RenderSystem {
   readonly water: WaterRenderer;
   /** 光追场景（R2：两层的 BVH，计算着色器里遍历）：全局光照、调试视图用到时每帧 update。 */
   readonly rayTracing: RayTracingScene;
+  /** 辐照度体（R2 的 DDGI：光追的探针算漫反射的间接光）：前向渲染器每帧更新，网格着色时取。 */
+  readonly irradianceVolumes: IrradianceVolumes;
   /** 远处卡片的烘焙（有要烘的模型时合成器多画几个正交视图）。 */
   readonly impostors: ImpostorBaker;
   /**
@@ -578,6 +581,7 @@ export class RenderSystem {
     this.impostors = new ImpostorBaker(graphicsDevice.device, this.resources);
     this.water = new WaterRenderer(graphicsDevice.device, this.resources);
     this.rayTracing = new RayTracingScene(graphicsDevice.device);
+    this.irradianceVolumes = new IrradianceVolumes(graphicsDevice.device, this.resources.linearClamp);
   }
 
   get device(): GPUDevice {
@@ -648,6 +652,7 @@ export class RenderSystem {
     this.impostors.destroy();
     this.water.destroy();
     this.rayTracing.destroy();
+    this.irradianceVolumes.destroy();
     this.resources.destroy();
   }
 }

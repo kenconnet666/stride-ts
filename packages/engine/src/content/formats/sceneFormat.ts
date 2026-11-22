@@ -206,6 +206,15 @@ export interface SceneReflectionProbe {
   readonly refresh?: 'once' | 'everyFrame';
 }
 
+/** 辐照度体（Stride 没有，见 IrradianceVolume 组件）：以实体为中心的盒子里光追的探针算漫反射的间接光；没写的用组件的默认值。 */
+export interface SceneIrradianceVolume {
+  readonly size: Vec3Tuple;
+  readonly spacing?: number;
+  readonly rays?: number;
+  readonly hysteresis?: number;
+  readonly intensity?: number;
+}
+
 /** 平面反射（Stride 没有，见 PlanarReflection 组件）：平面过实体的原点、法线是本地 +Y；没写的用组件的默认值。 */
 export interface ScenePlanarReflection {
   readonly size: Vec3Tuple;
@@ -536,6 +545,7 @@ export interface SceneEntityFile {
     readonly background?: SceneBackground;
     readonly reflectionProbe?: SceneReflectionProbe;
     readonly planarReflection?: ScenePlanarReflection;
+    readonly irradianceVolume?: SceneIrradianceVolume;
     /** 高斯泼溅：splats 是泼溅资源（.splat）的内容路径。 */
     readonly gaussianSplat?: { readonly splats: string };
     /** 矢量地形（Stride 没有，见 Terrain 组件）：terrain 是地形资源（.terrain.json）的内容路径；没写的项用组件的默认值。 */

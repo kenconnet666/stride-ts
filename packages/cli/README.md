@@ -20,7 +20,7 @@ CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插�
 
 | 命令 | 作用 |
 |---|---|
-| `open <url> [--headless] [--size 1400x900] [--dpr 2]` | 用自己启动的 Chrome 打开（独立的用户目录 `~/.stride-ts/chrome`，无头的另用 `~/.stride-ts/chrome-headless`；开着 CDP 端口），等到游戏运行起来再返回；再次 open 时在同一个浏览器里开新标签。`close` 关掉这个浏览器。平时看画面用自己的 Chrome 就行：页面经开发服务器的中枢连 CLI，开在哪个浏览器里都能用 |
+| `open <url> [--headless] [--size 1400x900] [--dpr 2] [--gpu-debug] [--chrome-arg <参数>]` | 用自己启动的 Chrome 打开（独立的用户目录 `~/.stride-ts/chrome`，无头的另用 `~/.stride-ts/chrome-headless`；开着 CDP 端口），等到游戏运行起来再返回；再次 open 时在同一个浏览器里开新标签。`close` 关掉这个浏览器。平时看画面用自己的 Chrome 就行：页面经开发服务器的中枢连 CLI，开在哪个浏览器里都能用。`--gpu-debug`（新启动的浏览器才生效，先 `close`）开 Dawn 的完整校验（装了 Windows 的"图形工具"时连 D3D12 调试层）、把 WGSL/HLSL 打进 Chrome 的日志（`chromeLogFile`）、HLSL 带调试符号、D3D12 对象带我们的标签（PIX 截帧用）。新写的计算着色器、光追这类可能把显卡卡死的东西先在这里试：卡死、崩了不连累用户的主 Chrome。没被错误作用域接住的 WebGPU 错误引擎都打进日志（`stride logs --level error`） |
 | `status` | 状态、帧号、游戏时间、帧率、画布、GPU 适配器、计数器、观察项 |
 | `entities [--name x] [--with C]`、`inspect <实体>` | 列实体；看某个实体的所有组件值和脚本属性。实体写 id 或名字 |
 | `set <实体> <组件.字段> <JSON>` | 改组件字段或脚本属性，例如 `set PlayerCharacter Character.speed 20` |

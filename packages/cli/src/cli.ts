@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import type { HubLogEntry, LogLevel, PageInfo } from '@stride-ts/engine/debug-protocol';
-import { CdpSession, closeBrowser, openUrl, pageTarget } from './chrome.ts';
+import { CdpSession, closeBrowser, GPU_DEBUG_ARGS, openUrl, pageTarget } from './chrome.ts';
 import { HubClient, type DevtoolsSession } from './client.ts';
 import { formatJson } from './format.ts';
 import { COLLECT_GPU_COUNTERS, INSTALL_GPU_COUNTERS } from './gpu-calls.ts';
@@ -21,7 +21,7 @@ import { listHubs, readBrowser } from './state.ts';
 const HELP = `stride <command> [options]   (from the repository: pnpm exec stride <command>)
 
 Browser and connection
-  open <url> [--headless] [--size 1400x900] [--dpr 2] [--chrome-arg <arg>]...
+  open <url> [--headless] [--size 1400x900] [--dpr 2] [--gpu-debug] [--chrome-arg <arg>]...
                           open the url in a stride-launched Chrome (new tab if one is running), wait until the game runs
   close                   close the stride-launched Chrome
   hubs                    running debug hubs (dev and preview servers) and their pages
@@ -132,6 +132,7 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     size: { type: 'string' },
     dpr: { type: 'string' },
     'chrome-arg': { type: 'string', multiple: true },
+    'gpu-debug': { type: 'boolean' },
     name: { type: 'string' },
     with: { type: 'string' },
     limit: { type: 'string' },
@@ -361,7 +362,7 @@ const commands: Record<string, () => Promise<unknown>> = {
       ...(options.headless ? { headless: true } : {}),
       ...(size ? { size } : {}),
       ...(options.dpr ? { dpr: Number(options.dpr) } : {}),
-      ...(options['chrome-arg'] ? { chromeArgs: options['chrome-arg'] } : {}),
+      ...(options['chrome-arg'] || options['gpu-debug'] ? { chromeArgs: [...(options['gpu-debug'] ? GPU_DEBUG_ARGS : []), ...(options['chrome-arg'] ?? [])] } : {}),
     });
     return { browser, game: await waitForGame(Number(timeoutSeconds ?? 60), gamePagePrefix(url)) };
   },

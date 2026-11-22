@@ -76,6 +76,7 @@ export {
   type ColliderShapeFile,
   type SceneBackground,
   type SceneReflectionProbe,
+  type SceneIrradianceVolume,
   type SceneDayNightCycle,
   type SceneSkyAtmosphere,
   type SceneVolumetricClouds,
@@ -202,7 +203,7 @@ export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings 
 export { RecastNavigationComponent, type NavigationState } from './physics/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type TouchingContact } from './physics/contacts';
 export { CameraRig, cameraRigSystem } from './rendering/CameraRig';
-export { Background, Camera, GaussianSplat, Instance, Instancing, Light, Model, ModelPart, PlanarReflection, ReflectionProbe, Skinned, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog, Decal } from './rendering/components';
+export { Background, Camera, GaussianSplat, Instance, Instancing, IrradianceVolume, Light, Model, ModelPart, PlanarReflection, ReflectionProbe, Skinned, SkyAtmosphere, Sprite, VolumetricClouds, VolumetricFog, Decal } from './rendering/components';
 export { Decals, packAtlas, packDecal, tileSize, type AtlasRect, type DecalInstance } from './rendering/mesh/Decals';
 export { Fog, type FogSettings } from './rendering/sky/VolumetricFog';
 export { Clouds, type CloudSettings } from './rendering/sky/VolumetricClouds';

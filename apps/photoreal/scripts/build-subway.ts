@@ -76,6 +76,8 @@ await write('scene', 'Subway', {
       },
     }, lookAt(sunAt, [0, 0, 0])),
     entity('0b6c7c1e-0001-4000-8000-000000000003', 'Sky', [0, 0, 0], { skyAtmosphere: { sun: '0b6c7c1e-0001-4000-8000-000000000002' } }),
+    // 机位附近的一段站台和轨道：光追的探针给漫反射的间接光（顶棚下、屏蔽门后面暗下来，地面反上来的光）
+    entity('0b6c7c1e-0001-4000-8000-000000000004', 'Irradiance', [8, 2.5, 0], { irradianceVolume: { size: [40, 6, 16], spacing: 1 } }),
   ],
 });
 // 观看时每一块之间停一下（STRIDE_BUILD_PAUSE 毫秒，默认 0）
@@ -84,8 +86,8 @@ let placed = 0x10;
 /** 白盒模型写好以后放进场景（实体编号按顺序，重搭时一样）。 */
 const brushModel = async (name: string, materials: string[], brushes: Brush[]) => {
   await write('brush', `Subway/Models/${name}`, { name, materials, uvScale: 1, brushes });
-  // 场景在开头重写过（相机、太阳、天空三个）：这里按顺序往后加
-  const index = 3 + placed - 0x10;
+  // 场景在开头重写过（相机、太阳、天空、辐照度体四个）：这里按顺序往后加
+  const index = 4 + placed - 0x10;
   const id = `0b6c7c1e-0001-4000-8000-${(placed++).toString(16).padStart(12, '0')}`;
   await call('edit_scene', { kind: 'scene', path: 'Subway', edits: [{ type: 'add', entities: [{ entity: entity(id, name, [0, 0, 0], { model: { model: `Subway/Models/${name}`, materials: [] } }), index }] }] });
   if (pause > 0) await new Promise((resolve) => setTimeout(resolve, pause));

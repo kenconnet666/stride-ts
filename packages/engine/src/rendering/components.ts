@@ -139,6 +139,20 @@ export const ReflectionProbe = component('ReflectionProbe', {
 });
 
 /**
+ * 辐照度体（Stride 没有；同 RTXGI、WickedEngine 的 DDGI）：盒子里每隔 spacing 米一个探针，探针每帧往四周发 rays 条光追的射线，
+ * 盒子里的表面的漫反射环境光用探针算出来的（有遮挡、有多次反弹的间接光），代替天空盒光和环境光（raytracing/IrradianceVolume.ts）。
+ * 盒子以实体为中心，边长是 size 乘实体的缩放（不跟旋转）；hysteresis 是每次更新留下旧值的比例（越大越稳、跟得越慢）；
+ * intensity 乘探针的光。场景里只用第一个。
+ */
+export const IrradianceVolume = component('IrradianceVolume', {
+  size: prop.vec3().default([20, 8, 20]),
+  spacing: prop.f32().default(1).min(0.1).unit('m'),
+  rays: prop.u32().default(128).min(16).max(256),
+  hysteresis: prop.f32().default(0.97).min(0).max(0.999),
+  intensity: prop.f32().default(1).min(0),
+});
+
+/**
  * 物理天空（Stride 没有；Hillaire 2020 的大气散射，见 Atmosphere.ts）：场景里有它时画天空、太阳圆盘，太阳（投阴影的方向光）的
  * 颜色按大气的透射率变（日出日落变红变暗），天空盒光换成大气算出来的。默认是地球的大气；距离是千米，散射、吸收系数是每千米。
  * 转太阳的实体就是日夜变化。场景里只用第一个。

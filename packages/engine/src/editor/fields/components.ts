@@ -1,5 +1,5 @@
 /** 实体的组件、场景的设置、实体自己的字段描述（COMPONENT_FIELDS、SCENE_FIELDS、ENTITY_FIELDS）。 */
-import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneStreamingSource, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/formats/format';
+import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneStreamingSource, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneIrradianceVolume, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/formats/format';
 import type { SceneSettingKey } from '../SceneDocument';
 import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, nullable, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -185,6 +185,17 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       intensity: optional(number({ min: 0 }), 1),
     })),
     initial: { size: [10, 1, 10] },
+  },
+  irradianceVolume: {
+    label: 'Irradiance volume',
+    type: object(fields<SceneIrradianceVolume>({
+      size: { type: vector(3, 'm'), description: 'box (around the entity, along the world axes) filled with ray traced probes; surfaces inside get their diffuse ambient light from them' },
+      spacing: { type: number({ min: 0.1, step: 0.1, unit: 'm' }), optional: true, default: 1, description: 'distance between probes' },
+      rays: { type: integer(16, 256), optional: true, default: 128, description: 'rays per probe per update' },
+      hysteresis: { type: number({ min: 0, max: 0.999, step: 0.01 }), optional: true, default: 0.97, description: 'share of the old value kept per update (higher is steadier, slower to follow changes)' },
+      intensity: optional(number({ min: 0 }), 1),
+    })),
+    initial: { size: [20, 8, 20] },
   },
   gaussianSplat: {
     label: 'Gaussian splats',

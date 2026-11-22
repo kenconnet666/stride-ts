@@ -12,7 +12,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type PolyMeshFile, type SdfFile, type SplineFile, type TreeFile, type BuildingFile, type TextModelFile, type ProductFile, type ShelfFile, type PileFile, type SignFile, type CeilingFile, type FixtureFile, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { bakeProduct, bakeShelf, bakePile, bakeSign, bakeCeiling, bakeFixture, bakeBrushModel, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, bakeTreeModel, bakeBuildingModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
+import { bakeProduct, bakeShelf, bakePile, bakeSign, bakeCeiling, bakeFixture, bakeBrushModel, brushToPoly, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, bakeTreeModel, bakeBuildingModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
 import { parseCubeLut } from '@stride-ts/engine/color-lut';
 import { materialSet, scannedMaterial, SRGB_ROLES, type MaterialCredit, type MaterialMapRole } from '../materialSet.ts';
@@ -230,6 +230,23 @@ export class EditorBackend {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new HttpError(404, `no ${kind} asset ${assetPath}`);
       throw error;
     }
+  }
+
+  /**
+   * 白盒 brushPath 导出成可编辑的多边形网格（pipeline 的 brushToPoly），存成新的 `.poly.json`（照常烘出同名的模型）：target 没给时
+   * 是白盒旁边的 `<名字>Poly`，有了往后加数字。白盒本身不动；返回新的多边形网格的路径和面数。
+   */
+  async exportBrushToPoly(brushPath: string, target?: string): Promise<{ readonly path: string; readonly vertexCount: number; readonly faceCount: number }> {
+    const brush = await this.readAsset('brush', brushPath) as BrushFile;
+    const taken = (candidate: string) => this.database.get('poly', candidate) !== undefined || this.database.get('model', candidate) !== undefined;
+    let polyPath = target ?? `${brushPath}Poly`;
+    for (let n = 2; target === undefined && taken(polyPath); n++) polyPath = `${brushPath}Poly${n}`;
+    const tools = await (this.#tools ??= createStrideTools());
+    const mesh = await brushToPoly(tools, brush, path.posix.basename(polyPath), `brush ${brushPath}`).catch((error: unknown) => {
+      throw new HttpError(400, (error as Error).message);
+    });
+    await this.saveAsset('poly', polyPath, mesh, { create: true });
+    return { path: polyPath, vertexCount: mesh.vertices.length, faceCount: mesh.faces.length };
   }
 
   /**
@@ -632,6 +649,11 @@ export class EditorBackend {
     if (route === 'POST /world/place') {
       const { world, layer, entities } = await readJson(request) as { world: string; layer: string; entities: SceneEntityFile[] };
       return this.placeInWorld(world, layer, entities);
+    }
+    if (route === 'POST /brush/to-poly') {
+      const { path: brushPath, target } = await readJson(request) as { path?: string; target?: string };
+      if (!brushPath) throw new HttpError(400, 'path (the content path of the greybox) is required');
+      return this.exportBrushToPoly(brushPath, target);
     }
     if (route === 'POST /import-material') {
       // 一套扫描的材质：JSON 里各个文件是 base64

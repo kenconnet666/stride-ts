@@ -1174,6 +1174,27 @@ export class EditorSession implements EditableScene {
     void this.client.saveAsset('brush', edit.path, edit.brush).catch((error: unknown) => (this.notice.value = (error as Error).message));
   }
 
+  /**
+   * 正在编辑的白盒导出成多边形网格（后端存成新的 `.poly.json`、烘出同名的模型），实体的模型换成它（一步撤销），接着编辑多边形。
+   * 白盒文件留着（别的实体可能还在用）。
+   */
+  async exportBrushToPoly(): Promise<void> {
+    const editing = this.brushEditing.value;
+    if (!editing) return;
+    let poly: string;
+    try {
+      poly = (await this.client.brushToPoly(editing.path)).path;
+    } catch (error) {
+      this.notice.value = (error as Error).message;
+      return;
+    }
+    this.stopBrushEdit();
+    this.apply({ type: 'set', entity: editing.entity, path: ['components', 'model', 'model'], value: poly });
+    this.commit();
+    await this.#synced;
+    await this.startPolyEdit(editing.entity, poly);
+  }
+
   /** 白盒编辑的撤销、重做：换回上一步、下一步的白盒，存文件；选中的还在就留着。 */
   #brushStep(from: BrushFile[], to: BrushFile[]): void {
     const edit = this.agent.value?.brushEdit, brush = from.pop();

@@ -155,6 +155,8 @@ export interface EditorMessages {
   readonly brushHint: string;
   readonly brushCount: (count: number) => string;
   readonly brushDelete: string;
+  readonly brushToPoly: string;
+  readonly brushToPolyHint: string;
   readonly brushOperations: Readonly<Record<'add' | 'subtract' | 'intersect', string>>;
   readonly polyModes: Readonly<Record<'vertex' | 'edge' | 'face', string>>;
   // 雕刻地形
@@ -375,6 +377,8 @@ const zhCN: EditorMessages = {
   brushHint: '视口里点选笔刷（同一处再点换成后面的），拖面上的手柄改尺寸（吸附按移动的步长，Ctrl 反过来），双击面在外侧加方块；Delete 删笔刷，Ctrl+Z 撤销',
   brushCount: (count) => `${count} 个笔刷`,
   brushDelete: '删除笔刷',
+  brushToPoly: '转成多边形网格',
+  brushToPolyHint: '导出成可编辑的多边形网格（新的 .poly.json），这个实体的模型换成它，接着编辑多边形；白盒文件留着',
   brushOperations: { add: '加', subtract: '减', intersect: '交' },
   polyModes: { vertex: '点', edge: '边', face: '面' },
   sculpt: '雕刻',
@@ -605,6 +609,8 @@ const enUS: EditorMessages = {
   brushHint: 'Click a brush in the viewport (click again for the one behind), drag a face handle to resize (snaps to the move step, Ctrl inverts), double-click a face to add a box beside it; Delete removes the brush, Ctrl+Z undoes',
   brushCount: (count) => `${count} brush${count === 1 ? '' : 'es'}`,
   brushDelete: 'Delete brush',
+  brushToPoly: 'To poly mesh',
+  brushToPolyHint: 'Export as an editable poly mesh (a new .poly.json), switch the entity model to it and start poly editing; the greybox file stays',
   brushOperations: { add: 'Add', subtract: 'Subtract', intersect: 'Intersect' },
   polyModes: { vertex: 'Vertex', edge: 'Edge', face: 'Face' },
   sculpt: 'Sculpt',

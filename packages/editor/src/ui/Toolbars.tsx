@@ -5,7 +5,7 @@
  * - ViewportToolbar：视口上面，对选中实体的操作、吸附、画幅参考线；
  * - StatusBar：最下面，提示和出错、选中几个、界面语言。
  */
-import { Activity, ArrowDownToLine, Globe, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, GitBranchPlus, Magnet, SquareDot, Merge, Package, Play, Plus, Redo2, Save, Scissors, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
+import { Activity, ArrowDownToLine, Globe, ArrowUpFromLine, Check, ClipboardPaste, Combine, Copy, CopyPlus, FlipVertical2, GitBranchPlus, Magnet, SquareDot, Merge, Package, Play, Plus, Redo2, Save, Scissors, Shapes, Square, SquareDashedBottom, Trash2, Undo2 } from '@lucide/icons';
 import type { PolyOperation } from '@stride-ts/engine/modeling';
 import type { SculptBrush } from '@stride-ts/engine';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
@@ -183,6 +183,7 @@ export const ViewportToolbar = _component(({ session, playing }: { session: Edit
       <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.brushDelete} (Delete)`} disabled={!shape || editing.brush.brushes.length <= 1}
         onClick={() => session.deleteSelectedBrush()}>{t.brushDelete}</Button>,
       <span {...css.attrs(styles.spacer)} />,
+      <Button size="sm" variant="ghost" tone="neutral" icon={Shapes} title={t.brushToPolyHint} onClick={() => void session.exportBrushToPoly()}>{t.brushToPoly}</Button>,
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => session.stopBrushEdit()}>{t.polyDone}</Button>,
     ];
   };

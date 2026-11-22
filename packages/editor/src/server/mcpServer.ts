@@ -186,6 +186,15 @@ export function createEditorMcpServer(projects: McpProjects): McpServer {
     return json({ saved: `poly ${path}`, vertexCount: result.mesh.vertices.length, faceCount: result.mesh.faces.length, selected: { faces: result.faces, edges: result.edges, vertices: result.vertices } });
   });
 
+  server.registerTool('brush_to_poly', {
+    description: [
+      'Export a greybox (kind brush, .brush.json) as an editable poly mesh (kind poly, .poly.json): the CSG result welded, coplanar triangles of one material slot merged into n-gon faces (concave allowed; faces with holes stay triangles), hard edges.',
+      'Saved as a new asset (default <greybox path>Poly, numbered if taken) whose baked model has the same path; the greybox is left as is.',
+      'Point a model component at the new path (edit_scene) and refine it with edit_poly.',
+    ].join(' '),
+    inputSchema: z.object({ path: assetPath, target: assetPath.optional() }),
+  }, async ({ path, target }) => json(await projects.current.exportBrushToPoly(path, target)));
+
   server.registerTool('slice_sprites', {
     description: [
       'Slice a texture into sprites and put them in a sprite sheet (kind spriteSheet, .sheet.json; created when missing), replacing the sprites of the sheet on that texture.',

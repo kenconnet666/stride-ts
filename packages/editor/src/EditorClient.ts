@@ -67,6 +67,11 @@ export class EditorClient {
     return request('POST', '/world/place', { world, layer, entities });
   }
 
+  /** 白盒导出成可编辑的多边形网格（新的 `.poly.json`，target 没给时是 `<白盒>Poly`）；返回它的路径。 */
+  brushToPoly(path: string, target?: string): Promise<{ path: string; vertexCount: number; faceCount: number }> {
+    return request('POST', '/brush/to-poly', target === undefined ? { path } : { path, target });
+  }
+
   /** 移动、改名资源（几个，或者一个文件夹下面的全部）；引用它们的文件跟着改写。 */
   moveAssets(move: MoveRequest): Promise<MoveResult> {
     return request('POST', '/move', move);

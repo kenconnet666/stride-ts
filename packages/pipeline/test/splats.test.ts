@@ -67,7 +67,10 @@ describe('高斯泼溅的导入', () => {
     const { bytes } = await convertSplats(tools, new Uint8Array(await readFile(withSh)), 'skull');
     const decoded = decodeSplats(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, 'skull.splat');
     expect(decoded.shBands).toBe(3);
-    expect(decoded.sh.length).toBe(source.count * 12);
+    // 24.7 万个：建了细节层次（叶子是原样的，内部节点合并出来的多一些）
+    expect(decoded.nodes.length).toBeGreaterThan(1);
+    expect(decoded.count).toBeGreaterThan(source.count);
+    expect(decoded.sh.length).toBe(decoded.count * 12);
     expect(decoded.shRange).toBeGreaterThan(0);
   });
 

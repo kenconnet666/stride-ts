@@ -12,6 +12,7 @@ import { gunzipSync, zstdDecompressSync } from 'node:zlib';
 import type { StrideTools } from '@stride-ts/native/tools';
 import { encodeSplats, type SplatSource } from '@stride-ts/engine/splats';
 import { openZip } from './zip.ts';
+import { buildSplatLod } from './splatLod.ts';
 
 /** 球谐 0 阶的系数（f_dc 换成颜色：0.5 + SH_C0 · f_dc）。 */
 const SH_C0 = 0.28209479177387814;
@@ -35,7 +36,8 @@ export const SPLAT_SOURCE_EXTENSIONS: readonly string[] = ['.ply', '.spz', '.sog
 export async function convertSplats(tools: StrideTools, bytes: Uint8Array, where: string): Promise<{ readonly bytes: Uint8Array; readonly count: number }> {
   const extension = where.toLowerCase().slice(where.lastIndexOf('.'));
   const source = extension === '.spz' ? readSpzSplats(bytes, where) : extension === '.sog' ? await readSogSplats(tools, bytes, where) : readPlySplats(bytes, where);
-  return { bytes: encodeSplats(source), count: source.count };
+  // 多于一个节点的建细节层次（splatLod.ts）：count 是原来的个数（不算合并出来的）
+  return { bytes: encodeSplats(buildSplatLod(source)), count: source.count };
 }
 
 /** SOG 的 meta.json（版本 2、3）里用到的字段。 */

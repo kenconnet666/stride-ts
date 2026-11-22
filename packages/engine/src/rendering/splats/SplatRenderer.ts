@@ -8,6 +8,10 @@
  * 网格、粒子、水按深度测——在扫描的墙面后面的玻璃看不见、前面的盖在泼溅上；雾、景深这些按深度算的也把泼溅当表面。只有薄薄
  * 一层（每个泼溅都很淡）的地方不写，后面的透明物体会画在它上面。
  *
+ * 细节层次（资源版本 3，导入时建）：每个视图每帧按节点投到屏幕上的粗细、预算和视锥选一刀（splatLod.ts），只给选中的节点
+ * 的泼溅排序、画——远处画合并过的粗一级，近处画原样的；选中的变了才重排。排序按选中的几段（节点的范围）走，第 i 个在哪段
+ * 二分查。
+ *
  * 颜色是球谐的 0 阶加上资源里有的高阶（1～3 阶：视角相关的颜色，反光的地面、玻璃、金属靠它），方向在泼溅自己的坐标里算
  * （相机位置按实体的逆变换换过去）。参考 PlayCanvas 的 gsplat、apps/bench 的 capabilities.html 里量过的那一版。
  */
@@ -16,7 +20,8 @@ import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
 import { ResourceTable } from '../../engine/ResourceTable';
 import type { Branded } from '../../data/prop';
-import { decodeSplats, shWords, SPLAT_WORDS } from '../../content/splatFile';
+import { decodeSplats, shWords, SPLAT_WORDS, type SplatNode } from '../../content/splatFile';
+import { selectSplatNodes, type SplatLodLimits } from './splatLod';
 import { GaussianSplat } from '../components';
 import type { RenderContext, RenderView } from '../RenderSystem';
 
@@ -36,6 +41,8 @@ export class SplatCloud {
   readonly shBands: number;
   readonly shRange: number;
   readonly sh: Uint32Array;
+  /** 细节层次的节点（至少一个根）。 */
+  readonly nodes: readonly SplatNode[];
 
   constructor(name: string, bytes: ArrayBuffer) {
     const decoded = decodeSplats(bytes, name);
@@ -47,6 +54,7 @@ export class SplatCloud {
     this.shBands = decoded.shBands;
     this.shRange = decoded.shRange;
     this.sh = decoded.sh;
+    this.nodes = decoded.nodes;
     this.id = clouds.add(this) as SplatCloudId;
   }
 
@@ -57,7 +65,7 @@ export class SplatCloud {
 }
 
 /**
- * 每个实例的常量：世界矩阵、视图矩阵、投影、(视口宽高、焦距 x y)、(个数、视深的近、远、0)、(相机在泼溅坐标里的位置, 0)、
+ * 每个实例的常量：世界矩阵、视图矩阵、投影、(视口宽高、焦距 x y)、(选中的个数、视深的近、远、选中的段数)、(相机在泼溅坐标里的位置, 0)、
  * (球谐的阶数、量化范围、每个泼溅的字数、0)。
  */
 const PARAMS_FLOATS = 16 * 3 + 16;
@@ -81,6 +89,20 @@ const SORT = /* wgsl */ `${COMMON}
 @group(0) @binding(2) var<storage, read_write> keys: array<u32>;
 @group(0) @binding(3) var<storage, read_write> bins: array<atomic<u32>>;
 @group(0) @binding(4) var<storage, read_write> order: array<u32>;
+// 选中的节点的段：(第一个泼溅, 在选中的里从第几个起)，按后者递增
+@group(0) @binding(5) var<storage, read> ranges: array<vec2u>;
+// 选中的第 i 个是哪个泼溅（count 时记下，scatter 用）
+@group(0) @binding(6) var<storage, read_write> ids: array<u32>;
+
+fn activeSplat(i: u32) -> u32 {
+  var lo = 0u;
+  var hi = u32(params.range.w) - 1u;
+  while (lo < hi) {
+    let mid = (lo + hi + 1u) / 2u;
+    if (ranges[mid].y <= i) { lo = mid; } else { hi = mid - 1u; }
+  }
+  return ranges[lo].x + (i - ranges[lo].y);
+}
 
 @compute @workgroup_size(256) fn clear(@builtin(global_invocation_id) id: vec3u) {
   atomicStore(&bins[id.x], 0u);
@@ -90,9 +112,11 @@ const SORT = /* wgsl */ `${COMMON}
 @compute @workgroup_size(256) fn count(@builtin(global_invocation_id) id: vec3u) {
   let i = id.x;
   if (i >= u32(params.range.x)) { return; }
-  let depth = -(params.view * params.world * vec4f(splatCenter(i), 1.0)).z;
+  let splat = activeSplat(i);
+  let depth = -(params.view * params.world * vec4f(splatCenter(splat), 1.0)).z;
   let key = 65535u - u32(clamp((depth - params.range.y) / max(params.range.z - params.range.y, 1e-6), 0.0, 1.0) * 65535.0);
   keys[i] = key;
+  ids[i] = splat;
   atomicAdd(&bins[key], 1u);
 }
 
@@ -122,7 +146,7 @@ var<workgroup> sums: array<u32, 256>;
 @compute @workgroup_size(256) fn scatter(@builtin(global_invocation_id) id: vec3u) {
   let i = id.x;
   if (i >= u32(params.range.x)) { return; }
-  order[atomicAdd(&bins[keys[i]], 1u)] = i;
+  order[atomicAdd(&bins[keys[i]], 1u)] = ids[i];
 }
 `;
 
@@ -175,8 +199,9 @@ fn decodeSrgb(c: vec3f) -> vec3f {
   return project(corner, order[instance], true);
 }
 
-// 写深度：不透明度本来就不到 DEPTH_ALPHA 的泼溅整个跳过（多数飘着的、边缘的），省掉投影和光栅化；不用排好的次序
-@vertex fn vsDepth(@builtin(vertex_index) corner: u32, @builtin(instance_index) i: u32) -> Varyings {
+// 写深度：不透明度本来就不到 DEPTH_ALPHA 的泼溅整个跳过（多数飘着的、边缘的），省掉投影和光栅化；次序不要紧，order 只是选中的那些
+@vertex fn vsDepth(@builtin(vertex_index) corner: u32, @builtin(instance_index) instance: u32) -> Varyings {
+  let i = order[instance];
   if (unpack4x8unorm(splats[i * SPLAT_WORDS + 6u]).a < DEPTH_ALPHA) {
     var out: Varyings;
     out.position = vec4f(0.0, 0.0, 2.0, 1.0);
@@ -255,6 +280,12 @@ interface Instance {
   readonly params: GPUBuffer;
   readonly keys: GPUBuffer;
   readonly order: GPUBuffer;
+  readonly ids: GPUBuffer;
+  /** 选中的节点的段（splatLod.ts 选的）。 */
+  readonly ranges: GPUBuffer;
+  /** 选中的节点（变了才重传段、重排）和它们的泼溅总数。 */
+  selected: number[];
+  active: number;
   readonly sortGroup: GPUBindGroup;
   readonly drawGroup: GPUBindGroup;
   readonly sorted: Float32Array;
@@ -286,7 +317,14 @@ export class SplatRenderer {
   readonly #views = new Map<RenderView, ViewSplats>();
   readonly #params = new Float32Array(PARAMS_FLOATS);
   readonly #inverse = new Float32Array(16);
+  readonly #selection: number[] = [];
+  readonly #localPlanes = new Float32Array(24);
   #entities: SplatEntity[] = [];
+  /**
+   * 细节层次：每个视图里一个泼溅实体最多画几个（默认 300 万，实测这台机器上一个视图画得动）；一级的粗细投到屏幕上不超过
+   * 几个像素（越大越省、远处越糊）。
+   */
+  limits: SplatLodLimits = { budget: 3_000_000, pixelError: 1 };
 
   constructor(device: GPUDevice) {
     this.#device = device;
@@ -298,7 +336,10 @@ export class SplatRenderer {
     const entry = (binding: number, visibility: number, type: GPUBufferBindingType): GPUBindGroupLayoutEntry => ({ binding, visibility, buffer: { type } });
     const sortLayout = device.createBindGroupLayout({
       label: 'Splats sort',
-      entries: [entry(0, GPUShaderStage.COMPUTE, 'uniform'), entry(1, GPUShaderStage.COMPUTE, 'read-only-storage'), ...[2, 3, 4].map((b) => entry(b, GPUShaderStage.COMPUTE, 'storage'))],
+      entries: [
+        entry(0, GPUShaderStage.COMPUTE, 'uniform'), entry(1, GPUShaderStage.COMPUTE, 'read-only-storage'), ...[2, 3, 4].map((b) => entry(b, GPUShaderStage.COMPUTE, 'storage')),
+        entry(5, GPUShaderStage.COMPUTE, 'read-only-storage'), entry(6, GPUShaderStage.COMPUTE, 'storage'),
+      ],
     });
     // 画颜色和写深度的两条管线共用一个绑定组（写深度的不读球谐、次序，自动的布局会少这两项）
     const drawLayout = device.createBindGroupLayout({
@@ -337,11 +378,12 @@ export class SplatRenderer {
       for (const { entity, cloud, world } of this.#entities) {
         const instance = this.#instance(state, entity, cloud);
         instance.live = true;
-        if (this.#writeParams(instance, world, view)) instance.sorted[0] = NaN;
+        const reselected = this.#select(instance, world, view);
+        if (this.#writeParams(instance, world, view) || reselected) instance.sorted[0] = NaN;
         frame.push({ instance, distance: this.#distance(cloud, world, view) });
       }
       // 实体之间按到相机的距离从远到近（同一个实体里的泼溅在 GPU 上排）
-      state.frame = frame.sort((a, b) => b.distance - a.distance).map(({ instance }) => instance);
+      state.frame = frame.filter(({ instance }) => instance.active > 0).sort((a, b) => b.distance - a.distance).map(({ instance }) => instance);
     }
     // 实体没了的、这一帧不画泼溅的视图（探针拍完了、平面反射关了），释放缓冲
     for (const [view, state] of this.#views) {
@@ -374,7 +416,7 @@ export class SplatRenderer {
     const { sortPipelines } = this.#shared();
     const pass = encoder.beginComputePass({ label: 'Splats sort', ...(timestampWrites ? { timestampWrites } : {}) });
     for (const instance of stale) {
-      const count = instance.cloud.count;
+      const count = instance.active;
       pass.setBindGroup(0, instance.sortGroup);
       pass.setPipeline(sortPipelines.clear);
       pass.dispatchWorkgroups(BINS / 256);
@@ -397,13 +439,27 @@ export class SplatRenderer {
     pass.setPipeline(this.#drawPipeline(colorFormat, surfaceFormats, depthFormat, false));
     for (const instance of frame) {
       pass.setBindGroup(0, instance.drawGroup);
-      pass.draw(4, instance.cloud.count);
+      pass.draw(4, instance.active);
     }
     pass.setPipeline(this.#drawPipeline(colorFormat, surfaceFormats, depthFormat, true));
     for (const instance of frame) {
       pass.setBindGroup(0, instance.drawGroup);
-      pass.draw(4, instance.cloud.count);
+      pass.draw(4, instance.active);
     }
+  }
+
+  /** 这一帧各视图画了几个泼溅（调试命令 splats 报）。 */
+  stats(): { readonly views: number; readonly instances: number; readonly drawn: number; readonly total: number; readonly nodes: number } {
+    let instances = 0, drawn = 0, total = 0, nodes = 0;
+    for (const state of this.#views.values()) {
+      for (const instance of state.frame) {
+        instances++;
+        drawn += instance.active;
+        total += instance.cloud.count;
+        nodes += instance.selected.length;
+      }
+    }
+    return { views: this.#views.size, instances, drawn, total, nodes };
   }
 
   destroy(): void {
@@ -434,10 +490,12 @@ export class SplatRenderer {
     const params = device.createBuffer({ label: 'Splats params', size: PARAMS_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const keys = device.createBuffer({ label: 'Splats keys', size: Math.max(16, cloud.count * 4), usage: GPUBufferUsage.STORAGE });
     const order = device.createBuffer({ label: 'Splats order', size: Math.max(16, cloud.count * 4), usage: GPUBufferUsage.STORAGE });
+    const ids = device.createBuffer({ label: 'Splats ids', size: Math.max(16, cloud.count * 4), usage: GPUBufferUsage.STORAGE });
+    const ranges = device.createBuffer({ label: 'Splats ranges', size: Math.max(16, cloud.nodes.length * 8), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     const group = (layout: GPUBindGroupLayout, buffers: GPUBuffer[], label: string) => device.createBindGroup({ label, layout, entries: buffers.map((buffer, binding) => ({ binding, resource: { buffer } })) });
     const instance: Instance = {
-      cloud, params, keys, order,
-      sortGroup: group(shared.sortLayout, [params, data, keys, shared.bins, order], 'Splats sort'),
+      cloud, params, keys, order, ids, ranges, selected: [], active: 0,
+      sortGroup: group(shared.sortLayout, [params, data, keys, shared.bins, order, ranges, ids], 'Splats sort'),
       drawGroup: group(shared.drawLayout, [params, data, order, this.#sh.get(cloud) ?? shared.noSh], 'Splats draw'),
       // 前 32 个：上次排序时的世界、视图矩阵；后 32 个：这一帧的（排了才挪到前面）
       sorted: new Float32Array(64).fill(NaN),
@@ -457,7 +515,7 @@ export class SplatRenderer {
     const focalX = (view.projection[0]! * view.width) / 2, focalY = (view.projection[5]! * view.height) / 2;
     p.set([view.width, view.height, focalX, focalY], 48);
     const [near, far] = this.#depthRange(instance.cloud, world, view);
-    p.set([instance.cloud.count, near, far, 0], 52);
+    p.set([instance.active, near, far, instance.selected.length], 52);
     // 相机在泼溅坐标里的位置（球谐按它算方向）
     const inverse = this.#inverse;
     Matrix.invert(inverse, world);
@@ -468,6 +526,43 @@ export class SplatRenderer {
     instance.sorted.set(p.subarray(0, 32), 32);
     for (let k = 0; k < 32; k++) if (p[k] !== instance.sorted[k]) return true;
     return false;
+  }
+
+  /**
+   * 选这个视图里画哪些节点（splatLod.ts）：相机和视锥换进泼溅的坐标里选。选中的变了时重传段，返回 true（要重排）。
+   */
+  #select(instance: Instance, world: Float32Array, view: RenderView): boolean {
+    const inverse = this.#inverse;
+    Matrix.invert(inverse, world);
+    const { x, y, z } = view.eye;
+    const eye: [number, number, number] = [
+      inverse[0]! * x + inverse[4]! * y + inverse[8]! * z + inverse[12]!, inverse[1]! * x + inverse[5]! * y + inverse[9]! * z + inverse[13]!, inverse[2]! * x + inverse[6]! * y + inverse[10]! * z + inverse[14]!,
+    ];
+    // 世界里的平面 n·p + w 换到泼溅坐标：n' = Mᵀn，w' = w + n·平移
+    const planes = this.#localPlanes;
+    for (let p = 0; p < 24; p += 4) {
+      const n = view.frustumPlanes.subarray(p, p + 4);
+      for (let j = 0; j < 3; j++) planes[p + j] = n[0]! * world[j * 4]! + n[1]! * world[j * 4 + 1]! + n[2]! * world[j * 4 + 2]!;
+      planes[p + 3] = n[3]! + n[0]! * world[12]! + n[1]! * world[13]! + n[2]! * world[14]!;
+    }
+    // 泼溅坐标里节点的粗细和到相机的距离按同样的比例缩放，像素数只看焦距
+    const pixelsPerUnit = Math.abs(view.projection[5]! * view.height) / 2;
+    const selection = this.#selection;
+    const active = selectSplatNodes(instance.cloud.nodes, { eye, pixelsPerUnit, planes }, this.limits, selection);
+    if (selection.length === instance.selected.length && selection.every((n, k) => n === instance.selected[k])) return false;
+    instance.selected = [...selection];
+    instance.active = active;
+    if (selection.length === 0) return true;
+    const ranges = new Uint32Array(selection.length * 2);
+    let start = 0;
+    selection.forEach((n, k) => {
+      const node = instance.cloud.nodes[n]!;
+      ranges[k * 2] = node.first;
+      ranges[k * 2 + 1] = start;
+      start += node.count;
+    });
+    this.#device.queue.writeBuffer(instance.ranges, 0, ranges);
+    return true;
   }
 
   /** 泼溅的包围盒中心到这个视图的相机的距离（实体之间排远近）。 */
@@ -517,7 +612,7 @@ export class SplatRenderer {
 }
 
 function destroyInstance(instance: Instance): void {
-  for (const buffer of [instance.params, instance.keys, instance.order]) buffer.destroy();
+  for (const buffer of [instance.params, instance.keys, instance.order, instance.ids, instance.ranges]) buffer.destroy();
 }
 
 /** 渲染器共用的 GPU 东西（SplatRenderer.#shared 第一次用到时建）。 */

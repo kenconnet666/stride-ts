@@ -81,18 +81,24 @@ fn rtDirectLight(p: vec3f, n: vec3f) -> vec3f {
 
 /** 光追用的这一帧的光照（RayTracingScene.lighting）：uniform 缓冲，write 从渲染系统的光照填。 */
 export class RayTracedLighting {
-  readonly buffer: GPUBuffer;
   readonly #device: GPUDevice;
-  readonly #data = new Float32Array(lightingFloats());
+  #data: Float32Array<ArrayBuffer> | undefined;
+  #buffer: GPUBuffer | undefined;
 
   constructor(device: GPUDevice) {
     this.#device = device;
-    this.buffer = device.createBuffer({ label: 'RayTracedLighting', size: this.#data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  }
+
+  /** 光照的 uniform（第一次用到光追时才建）。 */
+  get buffer(): GPUBuffer {
+    this.#data ??= new Float32Array(lightingFloats());
+    return (this.#buffer ??= this.#device.createBuffer({ label: 'RayTracedLighting', size: this.#data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
   }
 
   /** 这一帧的光照（前向渲染器收集完、用到光追时调一次）。 */
   write(lighting: Lighting): void {
-    const data = this.#data, words = new Uint32Array(data.buffer);
+    const buffer = this.buffer;
+    const data = this.#data!, words = new Uint32Array(data.buffer);
     words.set([lighting.directionalCount, lighting.localCount, 0, 0], 0);
     const skybox = lighting.skybox;
     data.set([skybox?.intensity ?? 0, 0, 0, 0], 4);
@@ -108,10 +114,10 @@ export class RayTracedLighting {
       data.set(i < lighting.directionalCount ? [x / length, y / length, z / length, 0] : [0, -1, 0, 0], 60 + i * 4);
       data.set(i < lighting.directionalCount ? [light.color.r, light.color.g, light.color.b, 0] : [0, 0, 0, 0], 60 + MAX_DIRECTIONAL_LIGHTS * 4 + i * 4);
     }
-    this.#device.queue.writeBuffer(this.buffer, 0, data);
+    this.#device.queue.writeBuffer(buffer, 0, data);
   }
 
   destroy(): void {
-    this.buffer.destroy();
+    this.#buffer?.destroy();
   }
 }

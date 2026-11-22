@@ -316,7 +316,7 @@ export class RayTracingScene {
     }
     const surfaces = new Map<object | string, Entry>();
     for (const entry of entries) if (!surfaces.has(entry.surface)) surfaces.set(entry.surface, entry);
-    this.surfaces.assign([...surfaces.values()].map(({ surface, batch, slot }) => ({ key: surface, batch, slot })));
+    this.surfaces.assign([...surfaces.values()].map(({ surface, batch, slot }) => ({ key: surface, batch, slot })), meshes);
     const live = new Set<GeometryKey>();
     for (const { geometry, batch } of entries) {
       live.add(geometry);

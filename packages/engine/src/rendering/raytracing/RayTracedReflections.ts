@@ -192,27 +192,33 @@ ${rayTracedLightingWgsl(0, 9, 8)}
 export class RayTracedReflections {
   readonly #device: GPUDevice;
   readonly #sampler: GPUSampler;
-  readonly #params: GPUBuffer;
+  #params: GPUBuffer | undefined;
   readonly #data = new Float32Array(20);
   readonly #temporal: FullscreenShader;
   readonly #blur: FullscreenShader;
-  readonly #blurSteps: [GPUBuffer, GPUBuffer];
+  #blurSteps: [GPUBuffer, GPUBuffer] | undefined;
   /** 时间累积的结果两张轮着用：这一帧写一张、读上一帧的另一张。 */
   #history: [GPUTexture, GPUTexture] | undefined;
   #current = 0;
-  #pipeline: { readonly pipeline: GPURenderPipeline; readonly layout: GPUBindGroupLayout } | undefined;
+  /** 追踪的管线：后台编，编好以前不画（不在帧里同步编）。 */
+  #pipeline: { readonly pipeline: GPURenderPipeline; readonly layout: GPUBindGroupLayout } | Promise<unknown> | undefined;
 
   constructor(device: GPUDevice, linearClamp: GPUSampler) {
     this.#device = device;
     this.#sampler = linearClamp;
-    this.#params = device.createBuffer({ label: 'RayTracedReflections params', size: this.#data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#temporal = new FullscreenShader(device, 'Ray traced reflections temporal', TEMPORAL_SHADER);
     this.#blur = new FullscreenShader(device, 'Ray traced reflections blur', BLUR_SHADER);
-    this.#blurSteps = [1, 2].map((step) => {
-      const buffer = device.createBuffer({ label: `Ray traced reflections blur ${step}`, size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-      device.queue.writeBuffer(buffer, 0, new Float32Array([step, 0, 0, 0]));
-      return buffer;
-    }) as [GPUBuffer, GPUBuffer];
+  }
+
+  /** 管线都编好了（追踪的、降噪的两条全屏的）；没有时在后台开始编，这一帧不画。 */
+  #ready(sceneLayout: GPUBindGroupLayout): { readonly pipeline: GPURenderPipeline; readonly layout: GPUBindGroupLayout } | undefined {
+    if (!this.#pipeline) {
+      const creating = this.#createPipeline(sceneLayout);
+      this.#pipeline = creating;
+      creating.then((ready) => (this.#pipeline = ready), (error: unknown) => console.error('Ray traced reflections: creating the pipeline failed', error));
+    }
+    const fullscreen = [this.#temporal.warm([FORMAT]), this.#blur.warm([FORMAT])].filter((warming) => warming !== undefined);
+    return this.#pipeline instanceof Promise || fullscreen.length > 0 ? undefined : this.#pipeline;
   }
 
   /**
@@ -222,13 +228,16 @@ export class RayTracedReflections {
   record(frame: EffectFrame, ssr: GPUBufferBinding, trace: GraphTexture, surface: GraphTexture, depth: GPUTexture, inputs: RayTracedInputs): GraphTexture | undefined {
     const scene = inputs.scene.bindGroup;
     if (!scene) return undefined;
+    const ready = this.#ready(inputs.scene.bindGroupLayout);
+    if (!ready) return undefined;
     const device = this.#device;
+    const params = (this.#params ??= device.createBuffer({ label: 'RayTracedReflections params', size: this.#data.byteLength, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
     const width = Math.max(1, Math.ceil(trace.width / 2)), height = Math.max(1, Math.ceil(trace.height / 2));
     const output = frame.acquire(width, height, FORMAT, 'Ray traced reflections');
     this.#data.set(inputs.giVolume, 0);
     this.#data.set([inputs.specularLevels, 0, 0, 0], 16);
-    device.queue.writeBuffer(this.#params, 0, this.#data);
-    const { pipeline, layout } = (this.#pipeline ??= this.#createPipeline(inputs.scene.bindGroupLayout));
+    device.queue.writeBuffer(params, 0, this.#data);
+    const { pipeline, layout } = ready;
     frame.pass('Ray traced reflections', (pass) => {
       pass.read(trace);
       pass.read(surface);
@@ -252,7 +261,7 @@ export class RayTracedReflections {
           { binding: 3, resource: depth.createView() },
           { binding: 4, resource: inputs.skySpecular.createView({ dimension: 'cube' }) },
           { binding: 5, resource: this.#sampler },
-          { binding: 6, resource: { buffer: this.#params } },
+          { binding: 6, resource: { buffer: params } },
           { binding: 7, resource: inputs.giAtlas.createView() },
           { binding: 8, resource: { buffer: inputs.localLights } },
           { binding: 9, resource: { buffer: inputs.scene.lighting.buffer } },
@@ -277,14 +286,19 @@ export class RayTracedReflections {
     this.#current = 1 - this.#current;
     const accumulated = frame.graph.import({ label: 'Ray traced reflections history', width, height, format: FORMAT }, next.createView(), { texture: next });
     this.#temporal.draw(frame, accumulated, [ssr, surface, depth, traced, previous, this.#sampler]);
+    const steps = (this.#blurSteps ??= [1, 2].map((step) => {
+      const buffer = this.#device.createBuffer({ label: `Ray traced reflections blur ${step}`, size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      this.#device.queue.writeBuffer(buffer, 0, new Float32Array([step, 0, 0, 0]));
+      return buffer;
+    }) as [GPUBuffer, GPUBuffer]);
     const first = frame.acquire(width, height, FORMAT, 'Ray traced reflections blur 1');
-    this.#blur.draw(frame, first, [ssr, surface, depth, accumulated, { buffer: this.#blurSteps[0] }]);
+    this.#blur.draw(frame, first, [ssr, surface, depth, accumulated, { buffer: steps[0] }]);
     const second = frame.acquire(width, height, FORMAT, 'Ray traced reflections blur 2');
-    this.#blur.draw(frame, second, [ssr, surface, depth, first, { buffer: this.#blurSteps[1] }]);
+    this.#blur.draw(frame, second, [ssr, surface, depth, first, { buffer: steps[1] }]);
     return second;
   }
 
-  #createPipeline(sceneLayout: GPUBindGroupLayout): { pipeline: GPURenderPipeline; layout: GPUBindGroupLayout } {
+  async #createPipeline(sceneLayout: GPUBindGroupLayout): Promise<{ pipeline: GPURenderPipeline; layout: GPUBindGroupLayout }> {
     const device = this.#device;
     const fragment = GPUShaderStage.FRAGMENT;
     const layout = device.createBindGroupLayout({
@@ -303,7 +317,7 @@ export class RayTracedReflections {
       ],
     });
     const module = createCheckedShaderModule(device, 'Ray traced reflections', SHADER);
-    const pipeline = device.createRenderPipeline({
+    const pipeline = await device.createRenderPipelineAsync({
       label: 'Ray traced reflections',
       layout: device.createPipelineLayout({ bindGroupLayouts: [layout, sceneLayout] }),
       vertex: { module, entryPoint: 'fullscreenVertex' },
@@ -314,8 +328,8 @@ export class RayTracedReflections {
   }
 
   destroy(): void {
-    this.#params.destroy();
-    for (const buffer of this.#blurSteps) buffer.destroy();
+    this.#params?.destroy();
+    for (const buffer of this.#blurSteps ?? []) buffer.destroy();
     for (const texture of this.#history ?? []) texture.destroy();
   }
 }

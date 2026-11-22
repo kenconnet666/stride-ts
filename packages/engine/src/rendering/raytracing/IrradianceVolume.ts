@@ -358,6 +358,20 @@ interface VolumeState {
   reset: [number, number, number] | 'all' | undefined;
 }
 
+/** 参数、清探针的参数、遍历的统计（u32 两个）。 */
+interface VolumeBuffers {
+  readonly params: GPUBuffer;
+  readonly reset: GPUBuffer;
+  readonly traversal: GPUBuffer;
+}
+
+/** 追射线、更新探针、清探针的三条计算管线。 */
+interface Pipelines {
+  readonly trace: GPUComputePipeline;
+  readonly update: GPUComputePipeline;
+  readonly reset: GPUComputePipeline;
+}
+
 /** 量一遍的 GPU 时间用的东西（timestamp-query）：查询集、解析的缓冲、读回的缓冲（还在 mapAsync 时不再写）。 */
 interface Timing {
   readonly querySet: GPUQuerySet;
@@ -378,13 +392,13 @@ export class IrradianceVolumes {
   #atlas: GPUTexture;
   #scratch: GPUTexture | undefined;
   #rays: GPUBuffer | undefined;
-  readonly #params: GPUBuffer;
+  /** 参数、清探针的参数、遍历的统计：第一次有体时才建（没有体的场景不占）。 */
+  #buffers: VolumeBuffers | undefined;
   /** 遍历的统计：被截断的遍历数（累计）、最多的步数，两个 u32。 */
-  readonly #traversal: GPUBuffer;
   readonly #paramData = new Float32Array(PARAMS_FLOATS);
-  #pipelines: { readonly trace: GPUComputePipeline; readonly update: GPUComputePipeline; readonly reset: GPUComputePipeline } | undefined;
+  /** 三条计算管线：后台编（不卡顿），编好以前不追射线。 */
+  #pipelines: Pipelines | Promise<Pipelines> | undefined;
   /** 清探针的参数（Reset）。 */
-  readonly #resetParams: GPUBuffer;
   #nextProbe = 0;
   /** 整个体轮过几遍（悬在空中的探针按它隔几轮更新）。 */
   #cycle = 0;
@@ -405,9 +419,15 @@ export class IrradianceVolumes {
     this.#device = device;
     this.#linear = linear;
     this.#atlas = this.#createAtlas(1, 1);
-    this.#traversal = device.createBuffer({ label: 'IrradianceVolume traversal stats', size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
-    this.#resetParams = device.createBuffer({ label: 'IrradianceVolume reset params', size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.#params = device.createBuffer({ label: 'IrradianceVolume params', size: PARAMS_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  }
+
+  #buffersFor(): VolumeBuffers {
+    const device = this.#device;
+    return (this.#buffers ??= {
+      params: device.createBuffer({ label: 'IrradianceVolume params', size: PARAMS_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+      reset: device.createBuffer({ label: 'IrradianceVolume reset params', size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+      traversal: device.createBuffer({ label: 'IrradianceVolume traversal stats', size: 8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC }),
+    });
   }
 
   /** 这一帧在用（开着、设备和画质允许、场景里有体）。 */
@@ -507,7 +527,15 @@ export class IrradianceVolumes {
     const scene = rayTracing.bindGroup;
     if (!state || !scene || !this.#scratch || !this.#rays) return;
     const device = this.#device;
-    const pipelines = (this.#pipelines ??= this.#createPipelines(rayTracing.bindGroupLayout));
+    // 管线在后台编：编好以前这一帧不追
+    if (!this.#pipelines) {
+      const creating = this.#createPipelines(rayTracing.bindGroupLayout);
+      this.#pipelines = creating;
+      creating.then((ready) => (this.#pipelines = ready), (error: unknown) => console.error('IrradianceVolume: creating the pipelines failed', error));
+    }
+    if (this.#pipelines instanceof Promise) return;
+    const pipelines = this.#pipelines;
+    const buffers = this.#buffersFor();
     const [cx, cy, cz] = state.counts;
     const layer = cx * cy;
     const layers = this.#layersPerFrame(layer, cz, state.rays);
@@ -531,12 +559,12 @@ export class IrradianceVolumes {
       const shift = state.reset === 'all' ? [0, 0, 0] : state.reset;
       const data = new Int32Array(12);
       data.set([...state.counts, 0, ...state.scroll, 0, ...shift, all ? 1 : 0]);
-      device.queue.writeBuffer(this.#resetParams, 0, data);
+      device.queue.writeBuffer(buffers.reset, 0, data);
       state.reset = undefined;
       pass.setPipeline(pipelines.reset);
       pass.setBindGroup(0, device.createBindGroup({
         layout: pipelines.reset.getBindGroupLayout(0),
-        entries: [{ binding: 0, resource: { buffer: this.#resetParams } }, { binding: 1, resource: this.#atlas.createView() }],
+        entries: [{ binding: 0, resource: { buffer: buffers.reset } }, { binding: 1, resource: this.#atlas.createView() }],
       }));
       pass.dispatchWorkgroups(cx * cy * cz);
     }
@@ -544,11 +572,11 @@ export class IrradianceVolumes {
     pass.setBindGroup(0, device.createBindGroup({
       layout: pipelines.trace.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: { buffer: this.#params } },
+        { binding: 0, resource: { buffer: buffers.params } },
         { binding: 1, resource: this.#atlas.createView() },
         { binding: 2, resource: this.#linear },
         { binding: 3, resource: { buffer: this.#rays } },
-        { binding: 4, resource: { buffer: this.#traversal } },
+        { binding: 4, resource: { buffer: buffers.traversal } },
         { binding: 5, resource: { buffer: localLights } },
         { binding: 6, resource: { buffer: rayTracing.lighting.buffer } },
       ],
@@ -559,7 +587,7 @@ export class IrradianceVolumes {
     pass.setBindGroup(0, device.createBindGroup({
       layout: pipelines.update.getBindGroupLayout(0),
       entries: [
-        { binding: 0, resource: { buffer: this.#params } },
+        { binding: 0, resource: { buffer: buffers.params } },
         { binding: 1, resource: this.#atlas.createView() },
         { binding: 2, resource: { buffer: this.#rays } },
         { binding: 3, resource: this.#scratch.createView() },
@@ -617,7 +645,7 @@ export class IrradianceVolumes {
     data.set([...state.min, maxDistance, ...state.spacing, state.hysteresis, ...state.counts, state.rays, ...state.scroll, this.#cycle % 65536], 0);
     words.set([firstProbe, probes, 0, 0], 16);
     data.set(this.#randomRotation(), 20);
-    this.#device.queue.writeBuffer(this.#params, 0, data);
+    this.#device.queue.writeBuffer(this.#buffersFor().params, 0, data);
   }
 
   /** 均匀分布的随机旋转（Shoemake 的随机四元数）的三行；种子固定，同样的帧序列出同样的结果（离线渲染可重复）。 */
@@ -675,7 +703,7 @@ export class IrradianceVolumes {
     return this.#device.createTexture({ label: 'IrradianceVolume atlas', size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.COPY_SRC });
   }
 
-  #createPipelines(scene: GPUBindGroupLayout): { trace: GPUComputePipeline; update: GPUComputePipeline; reset: GPUComputePipeline } {
+  async #createPipelines(scene: GPUBindGroupLayout): Promise<Pipelines> {
     const device = this.#device;
     const traceLayout = device.createBindGroupLayout({
       label: 'IrradianceVolume trace',
@@ -689,21 +717,19 @@ export class IrradianceVolumes {
         { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: {} },
       ],
     });
-    const trace = device.createComputePipeline({
+    const [trace, update, reset] = await Promise.all([device.createComputePipelineAsync({
       label: 'IrradianceVolume trace',
       layout: device.createPipelineLayout({ bindGroupLayouts: [traceLayout, scene] }),
       compute: { module: createCheckedShaderModule(device, 'IrradianceVolume trace', traceShader()), entryPoint: 'trace' },
-    });
-    const update = device.createComputePipeline({
+    }), device.createComputePipelineAsync({
       label: 'IrradianceVolume update',
       layout: 'auto',
       compute: { module: createCheckedShaderModule(device, 'IrradianceVolume update', updateShader()), entryPoint: 'update' },
-    });
-    const reset = device.createComputePipeline({
+    }), device.createComputePipelineAsync({
       label: 'IrradianceVolume reset',
       layout: 'auto',
       compute: { module: createCheckedShaderModule(device, 'IrradianceVolume reset', RESET_SHADER), entryPoint: 'clear' },
-    });
+    })]);
     return { trace, update, reset };
   }
 
@@ -714,7 +740,7 @@ export class IrradianceVolumes {
   async traversalStats(): Promise<{ capped: number; maxSteps: number }> {
     const readback = this.#device.createBuffer({ size: 8, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
     const encoder = this.#device.createCommandEncoder({ label: 'IrradianceVolume traversal stats readback' });
-    encoder.copyBufferToBuffer(this.#traversal, 0, readback, 0, 8);
+    encoder.copyBufferToBuffer(this.#buffersFor().traversal, 0, readback, 0, 8);
     this.#device.queue.submit([encoder.finish()]);
     await readback.mapAsync(GPUMapMode.READ);
     const [capped, maxSteps] = new Uint32Array(readback.getMappedRange());
@@ -725,9 +751,7 @@ export class IrradianceVolumes {
   destroy(): void {
     this.#release();
     this.#atlas.destroy();
-    this.#params.destroy();
-    this.#resetParams.destroy();
-    this.#traversal.destroy();
+    for (const buffer of Object.values(this.#buffers ?? {})) buffer.destroy();
     this.#timing?.querySet.destroy();
     this.#timing?.resolve.destroy();
     this.#timing?.readback.destroy();

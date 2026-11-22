@@ -472,6 +472,8 @@ export class ForwardRenderer {
     if (skyView) frame.pass('SkyOcclusion', (pass) => pass.sideEffect(), () => sky.draw(context, encoder, renderSystem, this.shadowMapRenderer.casterStage));
     // 烘好的卡片贴图在图外面，算副作用
     if (impostorViews.length > 0) frame.pass('ImpostorBake', (pass) => pass.sideEffect(), () => impostors.draw(context, encoder, context.game.meshes));
+    // 海浪谱：位移图在图外面，主画面画水时取，算副作用
+    if (renderSystem.water.oceans) frame.pass('Ocean FFT', (pass) => pass.sideEffect(), () => renderSystem.water.simulate(encoder, context, renderSystem.graphicsDevice.profiler.passTimestamps('Ocean FFT')));
     const probeTarget = probeView && probes.captureTarget();
     if (probeView && probeTarget) {
       const size = probeView.width;

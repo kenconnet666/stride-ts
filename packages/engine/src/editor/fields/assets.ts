@@ -453,9 +453,18 @@ export const WATER_FIELDS = fields<WaterFile>({
       direction: { type: number({ step: 5, unit: '°' }), optional: true, default: 0, description: 'where the waves travel (0 is local +X, counterclockwise)' },
       speed: { type: number({ min: 0, step: 0.1 }), optional: true, default: 1, description: 'time scale of the waves' },
       choppiness: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.5, description: 'how much the crests bunch up (0 round, 1 sharp)' },
+      spectrum: {
+        type: object(fields<NonNullable<NonNullable<WaterFile['waves']>['spectrum']>>({
+          wind: { type: number({ min: 0.5, step: 0.5, unit: 'm/s' }), optional: true, default: 10, description: 'wind speed driving the waves' },
+          patch: { type: number({ min: 10, step: 50, unit: 'm' }), optional: true, default: 400, description: 'size of the largest wave tile (two finer tiles are 1/6 and 1/36 of it)' },
+          seed: { type: integer(0, 1_000_000), optional: true, default: 0, description: 'another seed gives other waves' },
+        })),
+        optional: true,
+        description: 'FFT ocean waves from a wind spectrum instead of the Gerstner waves (unset height follows the wind)',
+      },
     })),
     optional: true,
-    description: 'Gerstner waves, flattened far from the camera',
+    description: 'Gerstner waves (or an FFT wind spectrum), flattened far from the camera',
   },
   foam: {
     type: object(fields<NonNullable<WaterFile['foam']>>({

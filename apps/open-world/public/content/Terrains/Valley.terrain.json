@@ -53,6 +53,13 @@
    "z": -700,
    "radius": 400,
    "strength": 260
+  },
+  {
+   "op": "lower",
+   "x": 0,
+   "z": 3200,
+   "radius": 1600,
+   "strength": 220
   }
  ],
  "splines": [

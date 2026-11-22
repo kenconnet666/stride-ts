@@ -17,7 +17,7 @@ export interface WaterFile {
    * 波浪：高（米，大约是最大的浪的波高）、波长（米，最长的那组）、方向（度，0 是本地 +X、逆时针转）、快慢（倍数）、尖（0..1，
    * 浪尖往一起挤的程度）。默认 0.3 米、12 米、0°、1、0.5。
    */
-  readonly waves?: { readonly height?: number; readonly length?: number; readonly direction?: number; readonly speed?: number; readonly choppiness?: number };
+  readonly waves?: { readonly height?: number; readonly length?: number; readonly direction?: number; readonly speed?: number; readonly choppiness?: number; readonly spectrum?: WaterSpectrum };
   /** 泡沫：岸边多宽（米，按水深），默认 1。 */
   readonly foam?: { readonly shore?: number };
   /**
@@ -25,6 +25,17 @@ export interface WaterFile {
    * speed 是流速（米每秒，默认 1.5，波纹顺着样条的方向流）。写了它时 outline、extent 不用，浪按 waves 的高度压得很小。
    */
   readonly river?: { readonly spline: string; readonly level?: number; readonly speed?: number };
+}
+
+/**
+ * 按风的海浪谱（FFT，water/OceanFFT.ts）代替 6 组 Gerstner 波：海、大湖用。wind 是风速（米每秒，默认 10），patch 是最大一块的
+ * 边长（米，默认 400，再小两级是它的 1/6、1/36），seed 换一片不同的浪；浪高不写时按风速估（充分成长的海，10 米每秒约 2 米），
+ * waves 的 length 不用。
+ */
+export interface WaterSpectrum {
+  readonly wind?: number;
+  readonly patch?: number;
+  readonly seed?: number;
 }
 
 /** 岸线最多几个点（着色器里一个常量数组）。 */
@@ -48,6 +59,12 @@ export function checkWater(file: WaterFile, where = file.name): WaterFile {
     if (waves.length !== undefined && !(waves.length > 0)) fail('waves.length', 'must be positive');
     if (waves.speed !== undefined && !(waves.speed >= 0)) fail('waves.speed', 'must not be negative');
     if (waves.choppiness !== undefined && !(waves.choppiness >= 0 && waves.choppiness <= 1)) fail('waves.choppiness', 'must be in 0..1');
+    const spectrum = waves.spectrum;
+    if (spectrum !== undefined) {
+      if (spectrum.wind !== undefined && !(spectrum.wind > 0)) fail('waves.spectrum.wind', 'must be positive');
+      if (spectrum.patch !== undefined && !(spectrum.patch > 0)) fail('waves.spectrum.patch', 'must be positive');
+      if (spectrum.seed !== undefined && !Number.isInteger(spectrum.seed)) fail('waves.spectrum.seed', 'must be an integer');
+    }
   }
   if (file.foam?.shore !== undefined && !(file.foam.shore >= 0)) fail('foam.shore', 'must not be negative');
   if (file.river !== undefined) {

@@ -2124,6 +2124,32 @@
      "pulseFrequency": 0.5
     }
    }
+  },
+  {
+   "id": "d0c94c53-f0ac-4aa1-a8b5-2a46dde45b63",
+   "name": "SouthBay",
+   "parent": null,
+   "position": [
+    0,
+    -120,
+    3200
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "water": {
+     "water": "Waters/SouthBay"
+    }
+   }
   }
  ]
 }

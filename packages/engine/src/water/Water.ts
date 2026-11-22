@@ -13,6 +13,8 @@
  *   就是水面的倒影：按屏幕坐标（u 翻回来）取、按法线偏开；浪陡的地方倒影不准，退回天空的反射（同 WickedEngine）。
  * - 水下（相机低于湖、海的水面，在岸线里）：先画一遍全屏的水下雾（按场景的深度用水的颜色和清澈度盖上，天空也被盖住），水面从
  *   下面看时法线反过来，透过水面看上面（那份拷贝），超过全反射的临界角（水的折射率 1.33）反射水的颜色，水面本身也按距离加雾。
+ * - 海浪谱（文件的 waves.spectrum）：浪不用 Gerstner，用 FFT 算的三级平铺的位移图（water/OceanFFT.ts，每帧合成器在主画面之前
+ *   simulate）：顶点按网格的疏密取对应的 mip 级叠位移，片元取斜率算法线，位移的雅可比小于阈值（浪尖挤在一起）的地方起白沫。
  * - 下雨（天气的 rain，RenderSystem.surfaceWeather）：水面上一圈圈的雨点涟漪（同地面水洼的 rippleGradient），雨越大越密。
  * - 只画主画面（要那份拷贝），在不透明的之后、透明的之前，读深度、不写。
  */
@@ -32,6 +34,7 @@ import type { Lighting, RenderContext, RenderView } from '../rendering/RenderSys
 import type { Refraction } from '../rendering/screenspace/Refraction';
 import type { PlanarReflections } from '../rendering/lighting/PlanarReflections';
 import { RAIN_RIPPLES } from '../rendering/wgsl';
+import { OCEAN_CASCADES, OCEAN_SIZE, OceanFFT, oceanPatches, windSeaHeight, type OceanSettings } from './OceanFFT';
 
 export type WaterAssetId = Branded<number, 'WaterAssetId'>;
 
@@ -169,7 +172,10 @@ export class WaterAsset {
 const RINGS = 160;
 const SEGMENTS = 192;
 /** 常量的字节数（见着色器的 WaterParams）。 */
-const UNIFORM_FLOATS = 96 + (WATER_MAX_OUTLINE / 2) * 4;
+const HEADER_FLOATS = 104;
+const UNIFORM_FLOATS = HEADER_FLOATS + (WATER_MAX_OUTLINE / 2) * 4;
+/** 海浪谱的浪尖白沫：位移的雅可比低于它的地方起沫。 */
+const CREST_FOAM = 0.75;
 
 const SHADER = /* wgsl */ `
 ${RAIN_RIPPLES}
@@ -200,6 +206,9 @@ struct WaterParams {
   screen: vec4f,
   // 平面反射：用不用（1/0，平面在这片水面上）、最粗的 mip 级；雨多大（0..1）
   planar: vec4f,
+  // 海浪谱：三级一块的边长（米）、用不用（1/0）；浪尖起沫的雅可比阈值
+  ocean: vec4f,
+  ocean2: vec4f,
   outline: array<vec4f, ${WATER_MAX_OUTLINE / 2}>,
 };
 @group(0) @binding(0) var<uniform> water: WaterParams;
@@ -208,6 +217,9 @@ struct WaterParams {
 @group(0) @binding(3) var sky: texture_cube<f32>;
 @group(0) @binding(4) var linearClamp: sampler;
 @group(0) @binding(5) var reflection: texture_2d<f32>;
+@group(0) @binding(6) var oceanDisplacement: texture_2d_array<f32>;
+@group(0) @binding(7) var oceanDerivatives: texture_2d_array<f32>;
+@group(0) @binding(8) var linearRepeat: sampler;
 
 const PI = 3.14159265;
 const WAVES = 6u;
@@ -244,6 +256,38 @@ fn gerstner(p: vec2f, fade: f32) -> Wave {
   return Wave(offset, normalize(vec3f(nx, ny, nz)));
 }
 
+/** p 处海浪谱的位移（三级相加）；spacing 是网格在这里的间距（米），按它挑 mip 级（顶点比格子疏时取平均过的）。 */
+fn oceanOffset(p: vec2f, spacing: f32) -> vec3f {
+  var offset = vec3f(0.0);
+  for (var c = 0u; c < ${OCEAN_CASCADES}u; c++) {
+    let tile = water.ocean[c];
+    let lod = max(log2(spacing * ${OCEAN_SIZE}.0 / tile), 0.0);
+    offset += textureSampleLevel(oceanDisplacement, linearRepeat, p / tile, c, lod).xyz;
+  }
+  return offset;
+}
+
+/** p 处海浪谱的法线（xyz）和浪尖的白沫（w，0..1）；dpx、dpy 是 p 在屏幕上的导数（挑 mip 级）。 */
+fn oceanSurface(p: vec2f, dpx: vec2f, dpy: vec2f) -> vec4f {
+  var slope = vec2f(0.0);
+  var jxx = 1.0;
+  var jzz = 1.0;
+  var jxz = 0.0;
+  for (var c = 0u; c < ${OCEAN_CASCADES}u; c++) {
+    let tile = water.ocean[c];
+    let uv = p / tile;
+    let d = textureSampleGrad(oceanDerivatives, linearRepeat, uv, c, dpx / tile, dpy / tile);
+    slope += d.xy;
+    jxx += d.z;
+    jzz += d.w;
+    jxz += textureSampleGrad(oceanDisplacement, linearRepeat, uv, c, dpx / tile, dpy / tile).w;
+  }
+  // 水平位移把格子挤扁了：斜率按挤的程度放大（法线是位移后的曲面的）
+  let n = normalize(vec3f(-slope.x / max(jxx, 0.2), 1.0, -slope.y / max(jzz, 0.2)));
+  let jacobian = jxx * jzz - jxz * jxz;
+  return vec4f(n, saturate((water.ocean2.x - jacobian) * 2.5));
+}
+
 struct Varyings {
   @builtin(position) position: vec4f,
   @location(0) world: vec3f,
@@ -267,11 +311,19 @@ fn ringRadius(ring: u32) -> f32 {
   let angle = f32(quad % ${SEGMENTS}u + corner.y) / f32(${SEGMENTS}) * 2.0 * PI;
   let r = ringRadius(ring);
   let plane = water.eye.xz + vec2f(cos(angle), sin(angle)) * r;
-  // 离相机几十个波长以外的浪压平（远处一个像素里好多个浪，只会闪）
-  let fade = saturate(1.0 - r / (water.waves.y * 40.0));
-  let wave = gerstner(plane + water.pattern.xy, fade);
   var out: Varyings;
-  out.world = vec3f(plane.x, water.origin.y, plane.y) + wave.offset;
+  var fade: f32;
+  var offset: vec3f;
+  if (water.ocean.w > 0.5) {
+    // 海浪谱：最大一块的十几倍以外压平；网格的间距大约是 r · 2π / SEGMENTS
+    fade = saturate(1.0 - r / (water.ocean.x * 15.0));
+    offset = oceanOffset(plane + water.pattern.xy, max(r, 0.4) * ${(2 * Math.PI) / SEGMENTS}) * fade;
+  } else {
+    // 离相机几十个波长以外的浪压平（远处一个像素里好多个浪，只会闪）
+    fade = saturate(1.0 - r / (water.waves.y * 40.0));
+    offset = gerstner(plane + water.pattern.xy, fade).offset;
+  }
+  out.world = vec3f(plane.x, water.origin.y, plane.y) + offset;
   out.plane = plane;
   out.fade = fade;
   out.position = water.viewProjection * vec4f(out.world, 1.0);
@@ -389,6 +441,10 @@ fn underside(in: Varyings, up: vec3f, viewDistance: f32) -> vec4f {
 
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
   let river = water.waves2.w > 0.5;
+  let p = in.plane + water.pattern.xy;
+  // 导数在裁岸线之前取（之后的控制流不一致）
+  let dpx = dpdx(p);
+  let dpy = dpdy(p);
   if (!river && water.axis.w > 0.0) {
     let d = in.plane - water.origin.xz;
     let local = vec2f(dot(d, water.axis.xy), dot(d, vec2f(-water.axis.y, water.axis.x)));
@@ -396,13 +452,17 @@ fn underside(in: Varyings, up: vec3f, viewDistance: f32) -> vec4f {
       discard;
     }
   }
-  let p = in.plane + water.pattern.xy;
   let toEye = water.eye.xyz - in.world;
   let viewDistance = length(toEye);
   let t = water.eye.w * water.waves.w;
   var n: vec3f;
+  var crest = 0.0;
   if (river) {
     n = riverNormal(p, in.flow, water.eye.w);
+  } else if (water.ocean.w > 0.5) {
+    let ocean = oceanSurface(p, dpx, dpy);
+    n = ocean.xyz;
+    crest = ocean.w;
   } else {
     n = gerstner(p, in.fade).normal;
     // 近处叠几组短的波纹（风吹的细浪），远处淡掉
@@ -483,6 +543,11 @@ fn underside(in: Varyings, up: vec3f, viewDistance: f32) -> vec4f {
     let foam = saturate((1.0 - depthBelow / shore) * (0.55 + 0.9 * wobble));
     color = mix(color, lightIn * 0.9, foam * 0.8);
   }
+  // 浪尖的白沫（海浪谱）：碎成一块一块
+  if (crest > 0.0) {
+    let breakup = sin(dot(p, vec2f(2.3, 1.1)) * 1.7 - t * 0.8) * sin(dot(p, vec2f(-1.2, 2.1)) * 2.3 + t * 0.6) * 0.5 + 0.5;
+    color = mix(color, lightIn * 0.85, saturate(crest * (0.6 + 0.8 * breakup)));
+  }
   // 和地面相交的地方按水深淡出；河的带子两边也淡出
   let edge = saturate(depthBelow / 0.08) * (1.0 - smoothstep(0.8, 1.0, abs(in.across)));
   return vec4f(color, edge);
@@ -500,6 +565,8 @@ interface WaterPipeline {
 
 interface Instance {
   readonly buffer: GPUBuffer;
+  /** 海浪谱的模拟（文件写了 waves.spectrum 时）。 */
+  ocean?: OceanFFT;
   /** 河的水面网格（GPU 上的），和它对应的资源。 */
   ribbon?: { readonly asset: WaterAsset; readonly buffer: GPUBuffer; readonly count: number };
   group: GPUBindGroup | undefined;
@@ -515,6 +582,8 @@ export class WaterRenderer {
   readonly #data = new Float32Array(UNIFORM_FLOATS);
   #frame: { id: EntityId; asset: WaterAsset; world: Float32Array }[] = [];
   #pipeline: WaterPipeline | undefined;
+  /** 没有海浪谱时绑上的空贴图（1 × 1 × 三层）。 */
+  #noOcean: GPUTexture | undefined;
 
   readonly #collect = system('WaterRenderer.collect', {
     with: { water: Water, transform: Transform },
@@ -538,6 +607,22 @@ export class WaterRenderer {
     return this.#frame.length > 0;
   }
 
+  /** 这一帧有没有海浪谱要算（合成器按它在主画面之前 simulate）。 */
+  get oceans(): boolean {
+    return this.#frame.some((item) => item.asset.file.waves?.spectrum !== undefined && !item.asset.river);
+  }
+
+  /** 在主画面之前：这一帧要画的海浪谱各算一遍（按游戏时间乘浪的快慢）。 */
+  simulate(encoder: GPUCommandEncoder, context: RenderContext, timestampWrites?: GPUComputePassTimestampWrites): void {
+    for (const { id, asset, world } of this.#frame) {
+      const settings = asset.river ? undefined : oceanSettings(asset, world);
+      if (!settings) continue;
+      const instance = this.#instanceFor(id, asset);
+      instance.ocean ??= new OceanFFT(this.#device);
+      instance.ocean.simulate(encoder, settings, context.time.total * (asset.file.waves?.speed ?? 1), timestampWrites);
+    }
+  }
+
   /** 合成器每帧开头：这一帧的水体。 */
   collect(context: RenderContext): void {
     this.#frame = [];
@@ -546,6 +631,7 @@ export class WaterRenderer {
       if (this.#frame.some((item) => item.id === id)) continue;
       instance.buffer.destroy();
       instance.ribbon?.buffer.destroy();
+      instance.ocean?.destroy();
       this.#instances.delete(id);
     }
   }
@@ -580,12 +666,12 @@ export class WaterRenderer {
     data.set([1 / view.width, 1 / view.height, view.width, view.height], 88);
     for (const { id, asset, world } of this.#frame) {
       const file = asset.file;
-      let instance = this.#instances.get(id);
-      if (!instance) {
-        instance = { buffer: this.#device.createBuffer({ label: `Water ${asset.path}`, size: UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }), group: undefined, key: [] };
-        this.#instances.set(id, instance);
-      }
-      const key = [scene, depth, sky, layout, planar.texture];
+      const instance = this.#instanceFor(id, asset);
+      const settings = asset.river ? undefined : oceanSettings(asset, world);
+      const ocean = settings ? instance.ocean : undefined;
+      const noOcean = (this.#noOcean ??= this.#device.createTexture({ label: 'Water no ocean', size: [1, 1, OCEAN_CASCADES], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING }));
+      const displacement = ocean?.displacement ?? noOcean, derivatives = ocean?.derivatives ?? noOcean;
+      const key = [scene, depth, sky, layout, planar.texture, displacement];
       if (!instance.group || key.some((item, i) => item !== instance!.key[i])) {
         instance.group = this.#device.createBindGroup({
           label: `Water ${asset.path}`,
@@ -597,6 +683,9 @@ export class WaterRenderer {
             { binding: 3, resource: sky.createView({ dimension: 'cube' }) },
             { binding: 4, resource: this.#resources.linearClamp },
             { binding: 5, resource: planar.texture.createView() },
+            { binding: 6, resource: displacement.createView({ dimension: '2d-array' }) },
+            { binding: 7, resource: derivatives.createView({ dimension: '2d-array' }) },
+            { binding: 8, resource: this.#resources.linearRepeat },
           ],
         });
         instance.key = key;
@@ -626,8 +715,9 @@ export class WaterRenderer {
       const plane = planar.active && planar.receiver === view ? planar.plane : undefined;
       const mirrored = plane !== undefined && plane.normal[1] > 0.99 && Math.abs(plane.point[1] - world[13]!) < 0.5;
       data.set([mirrored ? 1 : 0, planar.texture.mipLevelCount - 1, rain, 0], 92);
-      data.fill(0, 96);
-      outline.forEach(([x, z], i) => data.set([x, z], 96 + i * 2));
+      data.set([...(settings ? oceanPatches(settings.patch) : [1, 1, 1]), ocean ? 1 : 0, CREST_FOAM, 0, 0, 0], 96);
+      data.fill(0, HEADER_FLOATS);
+      outline.forEach(([x, z], i) => data.set([x, z], HEADER_FLOATS + i * 2));
       this.#device.queue.writeBuffer(instance.buffer, 0, data);
       pass.setBindGroup(0, instance.group);
       // 相机在这片湖、海的水面下面（在岸线里）：先盖一层全屏的水下雾
@@ -661,8 +751,19 @@ export class WaterRenderer {
     for (const instance of this.#instances.values()) {
       instance.buffer.destroy();
       instance.ribbon?.buffer.destroy();
+      instance.ocean?.destroy();
     }
     this.#instances.clear();
+    this.#noOcean?.destroy();
+  }
+
+  #instanceFor(id: EntityId, asset: WaterAsset): Instance {
+    let instance = this.#instances.get(id);
+    if (!instance) {
+      instance = { buffer: this.#device.createBuffer({ label: `Water ${asset.path}`, size: UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }), group: undefined, key: [] };
+      this.#instances.set(id, instance);
+    }
+    return instance;
   }
 
   #pipelineFor(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): WaterPipeline {
@@ -679,6 +780,9 @@ export class WaterRenderer {
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float', viewDimension: 'cube' } },
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
         { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
+        { binding: 6, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, texture: { sampleType: 'float', viewDimension: '2d-array' } },
+        { binding: 7, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float', viewDimension: '2d-array' } },
+        { binding: 8, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, sampler: {} },
       ],
     });
     const describe = (entryPoint: 'vs' | 'vsRiver'): GPURenderPipelineDescriptor => ({
@@ -707,6 +811,22 @@ export class WaterRenderer {
     this.#pipeline = { pipeline: device.createRenderPipeline(describe('vs')), river: device.createRenderPipeline(describe('vsRiver')), underwater, layout, key };
     return this.#pipeline;
   }
+}
+
+/** 水体文件的海浪谱换成模拟的设置（风向加上实体绕 Y 的转角）；没写 spectrum 是 undefined。 */
+function oceanSettings(asset: WaterAsset, world: Float32Array): OceanSettings | undefined {
+  const waves = asset.file.waves, spectrum = waves?.spectrum;
+  if (!waves || !spectrum) return undefined;
+  const wind = spectrum.wind ?? 10;
+  return {
+    patch: spectrum.patch ?? 400,
+    wind,
+    direction: Math.atan2(world[2]!, world[0]!) + ((waves.direction ?? 0) * Math.PI) / 180,
+    height: waves.height ?? windSeaHeight(wind),
+    // 文件的 0..1 对到 Tessendorf 的 λ 0..2
+    choppiness: (waves.choppiness ?? 0.5) * 2,
+    seed: spectrum.seed ?? 0,
+  };
 }
 
 const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);

@@ -920,6 +920,8 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - 第六步下雨（同一天）：水洼的涟漪函数（`cellHash`、`rippleGradient`，Lagarde 2013 的程序化版本）从网格着色器挪进 `rendering/wgsl.ts` 的 `RAIN_RIPPLES`，网格着色器和水体共用；水体的常量多一个雨多大（合成器传 `renderSystem.surfaceWeather.rain`），60 米以内叠到水面的法线上。测试浏览器（无头）里 `stride call weather {"on": true, "preset": "rain", "instant": true}` 以后在湖边看：雨丝、湿了的树和草坡，水面上近处一圈圈的涟漪叠在浪上；120 Hz。
 
+- 第七步 FFT 的海浪（同一天）：照 Tessendorf 2001（WickedEngine 的 ocean、HDRP 的水同一套思路）。`water/OceanFFT.ts`：三级级联（patch、patch/6、patch/36，各 256²，每级只留自己那段波数，下一级从它的第 6 个谐波接手），初始频谱是带风向的 Phillips 谱加种子的高斯随机数，在 CPU 上算一次、按方差归一到有效波高（不写浪高时按风速估 0.21·V²/g）；每帧一个计算通道：频谱按深水色散推进（角频率量化成 600 秒的整周期，时间取模后相位仍精确）、八个实数信号（高度、水平位移、斜率、位移的导数）两两拼成复数放两张 rgba32float 数组、逆 FFT 一行一个工作组在共享内存里做蝶形、收尾翻符号乘尖度写位移图和导数图（rgba16float，再出 mip）。水面的顶点按网格间距挑 mip 取位移，片元用 `textureSampleGrad`（导数在裁岸线前取）取斜率算法线、按位移的雅可比起浪尖白沫。踩的坑：WGSL 的保留字 `patch`、`target` 当了变量名，管线编不过，整帧的命令缓冲失效、画面全黑（`uncapturederror` 里看到）。演示：Valley 的地形在南边 (0, 3200) 加一笔压低 220 米，`Waters/SouthBay`（风 9 米每秒、尖 0.6）水面 −120 米。测试浏览器（无头，1080p）里贴着水面看：涌浪、尖的浪峰、一块块的白沫；120 Hz，FFT 那一遍 0.077 毫秒，透明那一遍 0.14 毫秒。浮力还按平的水面算（FFT 的位移在 GPU 上，要读回才能让东西随浪起伏，以后做）。
+
 ## CI 提速和 csharp-intermediate 的导航（2026-11-22）
 
 - CI 上 0c68a3f 的 csharp-intermediate 冒烟失败在"导航：角色走到目标"：角色走了 2 米就到了等待的上限。物理每帧最多补 0.25 秒（`maximumTimeToProcess`），CI 的软件 WebGPU 上一帧要零点几秒到一秒，物理只有游戏时间的几分之一，按 15 秒游戏时间等不够（按运行器的快慢时过时不过）。等待放宽到 60 秒游戏时间，快的机器上走到就返回。

@@ -3,6 +3,7 @@ import { checkWater, WATER_MAX_OUTLINE } from '../src/content/waterFormat';
 import { RIVER_VERTEX_FLOATS, riverRibbon, underWater } from '../src/water/Water';
 import { splineMeshes } from '../src/modeling/spline';
 import { waterSurfaceAt } from '../src/water/Buoyancy';
+import { OCEAN_CASCADES, oceanSpectrum, windSeaHeight } from '../src/water/OceanFFT';
 
 describe('水体', () => {
   test('检查：岸线至少三个点、不超过上限，清澈度、浪的参数', () => {
@@ -47,5 +48,32 @@ describe('水体', () => {
     expect(underWater([lake], 15, -6, 5)).toBe(false);
     expect(underWater([{ level: 0, outline: undefined }], 1000, -1, -1000)).toBe(true);
     expect(underWater([], 0, -100, 0)).toBe(false);
+  });
+
+  test('海浪谱：频谱共轭对称（海面是实的），有效波高等于文件的浪高，同样的种子同样的浪', () => {
+    const size = 32;
+    const settings = { patch: 400, wind: 12, direction: 0.4, height: 3, choppiness: 1, seed: 5 };
+    const out = oceanSpectrum(settings, size);
+    const cells = size * size;
+    let variance = 0;
+    for (let c = 0; c < OCEAN_CASCADES; c++) {
+      for (let m = 1; m < size; m++) {
+        for (let n = 1; n < size; n++) {
+          // H(k) = h₀(k) + h₀*(−k)；H(−k) 应是它的共轭
+          const o = (c * cells + m * size + n) * 4, q = (c * cells + (size - m) * size + (size - n)) * 4;
+          const re = out[o]! + out[o + 2]!, im = out[o + 1]! + out[o + 3]!;
+          expect(out[q]! + out[q + 2]!).toBeCloseTo(re, 6);
+          expect(out[q + 1]! + out[q + 3]!).toBeCloseTo(-im, 6);
+          variance += re * re + im * im;
+        }
+      }
+    }
+    // Parseval：海面高度的方差 = Σ|H(k)|²；随机的一份和期望差得不多
+    expect(4 * Math.sqrt(variance)).toBeGreaterThan(settings.height * 0.75);
+    expect(4 * Math.sqrt(variance)).toBeLessThan(settings.height * 1.25);
+    expect(oceanSpectrum(settings, size)).toEqual(out);
+    expect(oceanSpectrum({ ...settings, seed: 6 }, size)).not.toEqual(out);
+    expect(windSeaHeight(10)).toBeCloseTo(2.14, 2);
+    expect(() => checkWater({ name: 'Sea', waves: { spectrum: { wind: 0 } } })).toThrow('waves.spectrum.wind must be positive');
   });
 });

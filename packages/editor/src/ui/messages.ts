@@ -104,6 +104,8 @@ export interface EditorMessages {
   readonly showChildScene: (name: string) => string;
   readonly hideChildScene: (name: string) => string;
   readonly noSceneNoSettings: string;
+  /** 打开着的场景在别处改了、这里又有没存的修改。 */
+  readonly changedElsewhere: string;
   readonly pickEntity: string;
   readonly multiSelection: (count: number) => string;
   readonly removeScript: string;
@@ -321,6 +323,7 @@ const zhCN: EditorMessages = {
   hideChildScene: (name) => `不再一起看 ${name}`,
   noScene: '这个游戏没有场景：画面是游戏自己的根渲染器画的，属性面板里改游戏设置（根渲染器的属性改了马上看到）',
   noSceneNoSettings: '这个游戏没有场景，也没有用 loadGameSettings 读游戏设置：编辑器没有能改的东西',
+  changedElsewhere: '这个文件在别处改了（agent 或别的程序），这里还有没存的修改：保存会盖掉别处的修改',
   pickEntity: '在场景树或视口里选一个实体（Ctrl、Shift 多选）',
   multiSelection: (count) => `选中了 ${count} 个实体：显示它们都有的组件，值不一样的显示"多个值"；改一处改所有的，一步撤销。`,
   removeScript: '去掉这个脚本',
@@ -545,6 +548,7 @@ const enUS: EditorMessages = {
   hideChildScene: (name) => `Hide ${name}`,
   noScene: 'This game has no scene: its own root renderer draws the picture. Edit the game settings in the inspector (changes to the renderer show at once)',
   noSceneNoSettings: 'This game has no scene and does not read game settings with loadGameSettings: there is nothing for the editor to edit',
+  changedElsewhere: 'This file was changed elsewhere (an agent or another program) while it has unsaved changes here: saving overwrites the other changes',
   pickEntity: 'Select an entity in the scene tree or the viewport (Ctrl, Shift for several)',
   multiSelection: (count) => `${count} entities selected: the components they all have are shown, differing values show "mixed"; an edit changes all of them in one undo step.`,
   removeScript: 'Remove this script',

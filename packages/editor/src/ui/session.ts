@@ -16,7 +16,7 @@ import { DEFAULT_IMAGE_IMPORT, type ImageImportFile, type PrefabFile, type Scene
 import type { GraphFile } from '@stride-ts/engine/node-graph';
 import { encodePng } from '@stride-ts/engine/png';
 import { availableParent, expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
-import { SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
+import { sceneEditBetween, SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
 import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
@@ -194,6 +194,7 @@ export class EditorSession implements EditableScene {
       const reloaded = assetsToReload(this.assets.value, changed.filter((asset) => asset.kind !== 'scene' && asset.kind !== 'prefab' && !(asset.kind === 'image' && asset.path === painting)));
       if (reloaded.length > 0) void this.agent.value?.reloadAssets(reloaded).catch((error: unknown) => console.error('reloading assets failed', error));
       void this.#reloadChangedElsewhere(changed);
+      void this.#followOpenedElsewhere(changed);
       // 一起看着的参考场景的文件改了（单独打开它改完存了、agent 改了）：重新加载
       const agent = this.agent.value;
       for (const asset of changed) {
@@ -260,6 +261,29 @@ export class EditorSession implements EditableScene {
         this.inspected.value = { ...now, content };
       }
     }
+  }
+
+  /**
+   * 打开着的场景、预制体在别处改了（agent 经 MCP 搭场景、别的程序）：没有没存的修改时，磁盘上的和手上的差别当一次修改做进撤销栈
+   * （sceneEditBetween：视口里只重建变了的实体，这一步能撤销），文档仍是已保存的；有没存的修改时不动、提示（保存会盖掉别处的修改）。
+   * 自己刚存的那次回声读出来和手上的一样，不动。
+   */
+  async #followOpenedElsewhere(changed: readonly AssetRecord[]): Promise<void> {
+    const opened = this.opened.value, undo = this.#undo;
+    if (!opened || !undo || !changed.some((asset) => asset.kind === opened.kind && asset.path === opened.path)) return;
+    const content = await this.client.readAsset<SceneFile>(opened.kind, opened.path);
+    // 读的时候换了文档、又改了：这次的不算
+    if (this.opened.value !== opened || this.#undo !== undo) return;
+    const edit = sceneEditBetween(undo.file, content);
+    if (!edit) return;
+    if (this.dirty.value) {
+      this.notice.value = t.changedElsewhere;
+      return;
+    }
+    undo.apply(edit);
+    undo.commit();
+    this.#prefabs = await this.#loadPrefabs(undo.file);
+    this.#changed(false);
   }
 
   /** 时间轴还有没存的修改时马上存（关时间轴、出片之前；不然最后那一下改动会丢）。 */

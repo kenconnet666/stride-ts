@@ -311,6 +311,53 @@ function setAt(root: unknown, path: ScenePath, value: unknown, where: string): [
 }
 
 /**
+ * 从 from 变成 to 的修改（一样时是 undefined）：文件在别处改了（agent 经 MCP、别的程序）时，编辑器把它当一次修改做进撤销栈——
+ * 视口里只重建变了的实体，改动也能撤销。没变的实体留着（父实体和相对的顺序都没变的才算），改了的按字段 set（组件按一个个
+ * 组件），不在 to 里的删掉，新的和换了父实体、顺序的删了再加在它在 to 里的位置；场景设置按 SCENE_SETTING_KEYS 一个个设。
+ */
+export function sceneEditBetween<F extends EntitiesFile>(from: F, to: F): SceneEdit | undefined {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const edits: SceneEdit[] = [];
+  for (const key of SCENE_SETTING_KEYS) {
+    const before = (from as unknown as Record<string, unknown>)[key], after = (to as unknown as Record<string, unknown>)[key];
+    if (!same(before, after)) edits.push({ type: 'scene', path: [key], value: after });
+  }
+  const target = new Map(to.entities.map((entity) => [entity.id, entity]));
+  // 留下的：两边都有、父实体一样；父实体被删了的也不能留（删父实体时子实体得一起删）
+  let kept = new Set(from.entities.filter((entity) => target.get(entity.id)?.parent === entity.parent).map((entity) => entity.id));
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const entity of from.entities) {
+      if (kept.has(entity.id) && entity.parent !== null && !kept.has(ownerId(from.entities, entity.parent)) && from.entities.some((other) => other.id === ownerId(from.entities, entity.parent!))) {
+        kept.delete(entity.id);
+        changed = true;
+      }
+    }
+  }
+  // 留下的相对顺序要和 to 里的一样，不然全部删了再加
+  const order = (entities: readonly SceneEntityFile[]) => entities.filter((entity) => kept.has(entity.id)).map((entity) => entity.id).join('\n');
+  if (order(from.entities) !== order(to.entities)) kept = new Set();
+  for (const before of from.entities) {
+    if (!kept.has(before.id)) continue;
+    const after = target.get(before.id)!;
+    const record = (entity: SceneEntityFile) => entity as unknown as Record<string, unknown>;
+    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (key === 'id' || key === 'parent' || key === 'components') continue;
+      if (!same(record(before)[key], record(after)[key])) edits.push({ type: 'set', entity: before.id, path: [key], value: record(after)[key] });
+    }
+    const components = (entity: SceneEntityFile) => (entity.components ?? {}) as Record<string, unknown>;
+    for (const name of new Set([...Object.keys(components(before)), ...Object.keys(components(after))])) {
+      if (!same(components(before)[name], components(after)[name])) edits.push({ type: 'set', entity: before.id, path: ['components', name], value: components(after)[name] });
+    }
+  }
+  const removed = from.entities.filter((entity) => !kept.has(entity.id)).map((entity) => entity.id);
+  if (removed.length > 0) edits.push({ type: 'remove', entities: removed });
+  const added = to.entities.flatMap((entity, index) => (kept.has(entity.id) ? [] : [{ entity, index }]));
+  if (added.length > 0) edits.push({ type: 'add', entities: added });
+  return edits.length === 0 ? undefined : edits.length === 1 ? edits[0] : { type: 'batch', edits };
+}
+
+/**
  * 撤销重做：记下每次修改的逆操作。连着改同一个值（拖 Gizmo、拖滑块，每帧一次）时给同一个 mergeKey，它们并成一步，
  * 撤销回到拖之前的值。
  */

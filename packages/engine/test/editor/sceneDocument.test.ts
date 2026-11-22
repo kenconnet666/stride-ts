@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { SceneEntityFile, SceneFile } from '../../src/content/formats/format';
 import { changedEntities } from '../../src/content/SceneBuilder';
-import { SceneDocument, UndoStack } from '../../src/editor/SceneDocument';
+import { sceneEditBetween, SceneDocument, UndoStack } from '../../src/editor/SceneDocument';
 
 const entity = (id: string, parent: string | null = null, extra: Partial<SceneEntityFile> = {}): SceneEntityFile =>
   ({ id, name: id.toUpperCase(), parent, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {}, ...extra });
@@ -187,5 +187,46 @@ describe('场景文档（SceneDocument）', () => {
     expect(document.file).toEqual(file);
     expect(() => document.apply({ type: 'scene', path: ['entities'], value: [] })).toThrow(/not a scene setting/);
     expect(() => document.apply({ type: 'scene', path: ['name'], value: 'X' })).toThrow(/not a scene setting/);
+  });
+
+  test('两份文件之间的修改（文件在别处改了）：做完就是新的文件，没变的实体还是原来的对象，一步撤销回去', () => {
+    const before = scene();
+    const after: SceneFile = {
+      ...before,
+      compositor: { clearColor: [0, 0, 0, 1] } as unknown as NonNullable<SceneFile['compositor']>,
+      entities: [
+        // a 改了位置、去掉了组件，b 的脚本参数改了，新加 d、e（e 是 d 的子实体），c 没动
+        { ...before.entities[0]!, position: [1, 2, 3], components: {} },
+        { ...before.entities[1]!, components: { scripts: [{ type: 'Game.Spin', props: { speed: 3 } }] } as SceneEntityFile['components'] },
+        before.entities[2]!,
+        entity('d'),
+        entity('e', 'd'),
+      ],
+    };
+    const document = new SceneDocument(before);
+    const undo = new UndoStack(document);
+    const edit = sceneEditBetween(before, after)!;
+    undo.apply(edit);
+    expect(document.file).toEqual(after);
+    // 没动的实体是同一个对象（视口里不重建）
+    expect(document.file.entities.find((e) => e.id === 'c')).toBe(before.entities.find((e) => e.id === 'c'));
+    undo.undo();
+    expect(document.file).toEqual(before);
+    expect(sceneEditBetween(before, structuredClone(before))).toBeUndefined();
+  });
+
+  test('两份文件之间的修改：换了父实体、换了顺序的删了再加，父实体删了子实体一起删', () => {
+    const before: SceneFile = { name: 'T', entities: [entity('p'), entity('q', 'p'), entity('r'), entity('s')] };
+    const cases: SceneFile[] = [
+      { name: 'T', entities: [entity('p'), entity('r'), entity('q', 'r'), entity('s')] },
+      { name: 'T', entities: [entity('s'), entity('r'), entity('p'), entity('q', 'p')] },
+      { name: 'T', entities: [entity('r'), entity('q'), entity('s')] },
+      { name: 'T', entities: [] },
+    ];
+    for (const after of cases) {
+      const document = new SceneDocument(before);
+      document.apply(sceneEditBetween(before, after)!);
+      expect(document.file).toEqual(after);
+    }
   });
 });

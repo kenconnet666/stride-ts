@@ -26,7 +26,7 @@ import { CLUSTER_WGSL } from '../lighting/Clusters';
 import { LOCAL_LIGHT_WGSL, LTC_WGSL } from '../lighting/LocalLights';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
-import { BRDF, GRADIENT_NOISE, HASH3 } from '../wgsl';
+import { BRDF, GRADIENT_NOISE, HASH3, RAIN_RIPPLES } from '../wgsl';
 import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees } from './Material';
 import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from './HeightPages';
 import { IMPOSTOR_FRAMES } from './Mesh';
@@ -271,13 +271,6 @@ fn skyExposure(world: vec3f) -> f32 {
   return select(1.0, 0.0, surface < 1.0 && c.z > surface + 0.2 / 450.0);
 }
 
-/** 整数格点的哈希，0..1（水洼、涟漪用）。 */
-fn cellHash(p: vec2i) -> f32 {
-  var h = bitcast<u32>(p.x) * 374761393u + bitcast<u32>(p.y) * 668265263u;
-  h = (h ^ (h >> 13u)) * 1274126177u;
-  return f32((h ^ (h >> 16u)) >> 8u) / 16777216.0;
-}
-
 /** 二维值噪声，0..1：格点上的哈希按 smoothstep 插值。 */
 fn valueNoise(p: vec2f) -> f32 {
   let i = vec2i(floor(p));
@@ -288,38 +281,6 @@ fn valueNoise(p: vec2f) -> f32 {
   return mix(a, b, u.y);
 }
 
-/**
- * 雨打水面的涟漪（Lagarde 2013 "Water drop 3" 的程序化版本）：xz 平面上每 RIPPLE_CELL 米一格，每格每个周期随机的位置落一滴
- * （下得小时一部分格子不落），水波一圈圈往外扩、越扩越弱。返回水面高度的梯度（xz），法线 = normalize(-gx, 1, -gz)。
- */
-const RIPPLE_CELL = 0.35;
-fn rippleGradient(p: vec2f, time: f32, rain: f32) -> vec2f {
-  let cell = floor(p / RIPPLE_CELL);
-  var g = vec2f(0.0);
-  for (var y = -1; y <= 1; y++) {
-    for (var x = -1; x <= 1; x++) {
-      let c = vec2i(cell) + vec2i(x, y);
-      // 一个周期 0.8 秒，每格的相位错开；下一个周期换一个位置
-      let phase = time / 0.8 + cellHash(c + vec2i(7, 13));
-      let cycle = i32(floor(phase));
-      let t = phase - floor(phase);
-      let seed = c * 3 + vec2i(cycle, cycle * 5);
-      if (cellHash(seed + vec2i(3, 1)) > rain) {
-        continue;
-      }
-      let center = (vec2f(c) + vec2f(cellHash(seed), cellHash(seed + vec2i(11, 17)))) * RIPPLE_CELL;
-      let offset = p - center;
-      let d = length(offset);
-      // 波前在 t · 25 厘米处，波长 4 厘米，宽 3 厘米的包络，越往外越弱
-      let w = d - t * 0.25;
-      let k = 6.2831853 / 0.04;
-      let envelope = exp(-w * w / (2.0 * 0.03 * 0.03)) * (1.0 - t) * (1.0 - t);
-      let slope = 0.0025 * envelope * (k * cos(w * k) - w / (0.03 * 0.03) * sin(w * k));
-      g += offset / max(d, 1e-4) * slope;
-    }
-  }
-  return g;
-}
 
 /**
  * 天气改表面（Lagarde 2013 "Water drop 2 - Wet surfaces"、"Water drop 3 - Physically based wet surfaces" 的做法简化）：
@@ -978,6 +939,7 @@ fn vogelDisk(i: u32, count: u32, angle: f32) -> vec2f {
 
 ${GRADIENT_NOISE}
 ${HASH3}
+${RAIN_RIPPLES}
 
 const PCSS_BLOCKER_TAPS = 16u;
 const PCSS_FILTER_TAPS = 16u;

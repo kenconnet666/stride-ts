@@ -13,6 +13,7 @@
  *   就是水面的倒影：按屏幕坐标（u 翻回来）取、按法线偏开；浪陡的地方倒影不准，退回天空的反射（同 WickedEngine）。
  * - 水下（相机低于湖、海的水面，在岸线里）：先画一遍全屏的水下雾（按场景的深度用水的颜色和清澈度盖上，天空也被盖住），水面从
  *   下面看时法线反过来，透过水面看上面（那份拷贝），超过全反射的临界角（水的折射率 1.33）反射水的颜色，水面本身也按距离加雾。
+ * - 下雨（天气的 rain，RenderSystem.surfaceWeather）：水面上一圈圈的雨点涟漪（同地面水洼的 rippleGradient），雨越大越密。
  * - 只画主画面（要那份拷贝），在不透明的之后、透明的之前，读深度、不写。
  */
 import type { SplineFile } from '../content/splineFormat';
@@ -30,6 +31,7 @@ import { Skybox } from '../rendering/lighting/Skybox';
 import type { Lighting, RenderContext, RenderView } from '../rendering/RenderSystem';
 import type { Refraction } from '../rendering/screenspace/Refraction';
 import type { PlanarReflections } from '../rendering/lighting/PlanarReflections';
+import { RAIN_RIPPLES } from '../rendering/wgsl';
 
 export type WaterAssetId = Branded<number, 'WaterAssetId'>;
 
@@ -170,6 +172,7 @@ const SEGMENTS = 192;
 const UNIFORM_FLOATS = 96 + (WATER_MAX_OUTLINE / 2) * 4;
 
 const SHADER = /* wgsl */ `
+${RAIN_RIPPLES}
 struct WaterParams {
   viewProjection: mat4x4f,
   inverseViewProjection: mat4x4f,
@@ -195,7 +198,7 @@ struct WaterParams {
   pattern: vec4f,
   // 1 / 画面宽、1 / 画面高
   screen: vec4f,
-  // 平面反射：用不用（1/0，平面在这片水面上）、最粗的 mip 级
+  // 平面反射：用不用（1/0，平面在这片水面上）、最粗的 mip 级；雨多大（0..1）
   planar: vec4f,
   outline: array<vec4f, ${WATER_MAX_OUTLINE / 2}>,
 };
@@ -414,6 +417,12 @@ fn underside(in: Varyings, up: vec3f, viewDistance: f32) -> vec4f {
     }
     n = normalize(n);
   }
+  // 下雨：雨点的涟漪（近处才看得出来）
+  let rain = water.planar.z;
+  if (rain > 0.0 && viewDistance < 60.0) {
+    let g = rippleGradient(p, water.eye.w, rain) * (1.0 - viewDistance / 60.0);
+    n = normalize(n + vec3f(-g.x, 0.0, -g.y));
+  }
   // 相机在水面下面：从下面看
   if (water.eye.y < in.world.y) {
     return underside(in, n, viewDistance);
@@ -544,7 +553,7 @@ export class WaterRenderer {
   /**
    * 在主画面透明的那一遍里画（拷贝了不透明的画面之后）。lighting 是这一帧的光照，origin 是渲染原点（浪按世界坐标排）。
    */
-  draw(pass: GPURenderPassEncoder, context: RenderContext, view: RenderView, lighting: Lighting, refraction: Refraction, planar: PlanarReflections, origin: readonly number[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
+  draw(pass: GPURenderPassEncoder, context: RenderContext, view: RenderView, lighting: Lighting, refraction: Refraction, planar: PlanarReflections, rain: number, origin: readonly number[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     const scene = refraction.texture, depth = refraction.depthTexture;
     if (this.#frame.length === 0 || !scene || !depth) return;
     const { pipeline, river, underwater, layout } = this.#pipelineFor(colorFormat, depthFormat);
@@ -616,7 +625,7 @@ export class WaterRenderer {
       // 平面反射在这片水面上（平面朝上、高度和水面差不到半米）才用它当倒影
       const plane = planar.active && planar.receiver === view ? planar.plane : undefined;
       const mirrored = plane !== undefined && plane.normal[1] > 0.99 && Math.abs(plane.point[1] - world[13]!) < 0.5;
-      data.set([mirrored ? 1 : 0, planar.texture.mipLevelCount - 1, 0, 0], 92);
+      data.set([mirrored ? 1 : 0, planar.texture.mipLevelCount - 1, rain, 0], 92);
       data.fill(0, 96);
       outline.forEach(([x, z], i) => data.set([x, z], 96 + i * 2));
       this.#device.queue.writeBuffer(instance.buffer, 0, data);

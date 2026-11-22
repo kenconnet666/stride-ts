@@ -116,8 +116,8 @@ export const PlanarReflection = component('PlanarReflection', {
 
 /**
  * 高斯泼溅（Stride 没有；同 PlayCanvas 的 GSplat、Unity 的 Gaussian Splatting 插件）：引用一个泼溅资源（`.splat`，编辑器从
- * 3DGS 的 .ply 导入），跟着实体的变换摆（缩放、旋转一起算进协方差）。主画面每帧在 GPU 上按视深排序、从远到近画，和网格按深度
- * 互相遮挡（rendering/splats/SplatRenderer.ts）。
+ * 3DGS 的 .ply 导入），跟着实体的变换摆（缩放、旋转一起算进协方差）。每个要画它的视图（主画面、反射、渲染目标贴图的相机）每帧
+ * 在 GPU 上按视深排序、从远到近画，和网格、透明物体按深度互相遮挡（rendering/splats/SplatRenderer.ts）。
  */
 export const GaussianSplat = component('GaussianSplat', {
   splats: prop.u32().brand<'SplatCloudId'>().default(0 as SplatCloudId),

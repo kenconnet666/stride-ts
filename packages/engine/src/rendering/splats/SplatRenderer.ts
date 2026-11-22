@@ -1,12 +1,15 @@
 /**
  * 高斯泼溅（3D Gaussian Splatting，Kerbl 等 2023）的渲染：GaussianSplat 组件引用一个泼溅资源（`.splat`，content/splatFile.ts），
- * 主画面每帧在 GPU 上按视深给它的泼溅排序（16 位的计数排序：数桶、前缀和、分发，相机和实体都没动时不重排），再在不透明的
- * 东西画完以后、透明的之前从远到近画（EWA：每个泼溅的 3D 协方差投到屏幕上成一个椭圆，片元按高斯衰减的不透明度预乘混合），
- * 读深度、不写深度，所以被网格挡住的地方看不见、泼溅后面的网格照常看得见。
+ * 每个要画它的视图（主画面、反射探针的面、平面反射、渲染目标贴图的相机）每帧在 GPU 上按视深给它的泼溅排序（16 位的计数排序：
+ * 数桶、前缀和、分发，相机和实体都没动时不重排），再在不透明的东西画完以后、透明的之前从远到近画（EWA：每个泼溅的 3D 协方差
+ * 投到屏幕上成一个椭圆，片元按高斯衰减的不透明度预乘混合），读深度，所以被网格挡住的地方看不见、泼溅后面的网格照常看得见。
+ *
+ * 和透明物体的遮挡：颜色画完再画一遍只写深度的（不用排序，片元的不透明度过 DEPTH_ALPHA 才写，写泼溅中心的深度），之后的透明
+ * 网格、粒子、水按深度测——在扫描的墙面后面的玻璃看不见、前面的盖在泼溅上；雾、景深这些按深度算的也把泼溅当表面。只有薄薄
+ * 一层（每个泼溅都很淡）的地方不写，后面的透明物体会画在它上面。
  *
  * 颜色是球谐的 0 阶加上资源里有的高阶（1～3 阶：视角相关的颜色，反光的地面、玻璃、金属靠它），方向在泼溅自己的坐标里算
- * （相机位置按实体的逆变换换过去）。只画主画面（反射探针、平面反射、渲染目标贴图的相机里没有）；泼溅和透明的网格之间不排序
- * （泼溅先画）。参考 PlayCanvas 的 gsplat、apps/bench 的 capabilities.html 里量过的那一版。
+ * （相机位置按实体的逆变换换过去）。参考 PlayCanvas 的 gsplat、apps/bench 的 capabilities.html 里量过的那一版。
  */
 import { Matrix } from '../../data/Matrix';
 import { system } from '../../engine/system';
@@ -60,6 +63,8 @@ export class SplatCloud {
 const PARAMS_FLOATS = 16 * 3 + 16;
 const PARAMS_BYTES = PARAMS_FLOATS * 4;
 const BINS = 65536;
+/** 写深度的那一遍：片元的不透明度到这么多才写（见文件开头）。 */
+const DEPTH_ALPHA = 0.5;
 
 const COMMON = /* wgsl */ `
 struct Params { world: mat4x4f, view: mat4x4f, projection: mat4x4f, viewport: vec4f, range: vec4f, eye: vec4f, sh: vec4f };
@@ -160,14 +165,29 @@ fn shColor(i: u32, dir: vec3f) -> vec3f {
 
 struct Varyings { @builtin(position) position: vec4f, @location(0) offset: vec2f, @location(1) color: vec4f };
 
+const DEPTH_ALPHA = ${DEPTH_ALPHA.toFixed(3)};
+
 fn decodeSrgb(c: vec3f) -> vec3f {
   return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045));
 }
 
 @vertex fn vs(@builtin(vertex_index) corner: u32, @builtin(instance_index) instance: u32) -> Varyings {
+  return project(corner, order[instance], true);
+}
+
+// 写深度：不透明度本来就不到 DEPTH_ALPHA 的泼溅整个跳过（多数飘着的、边缘的），省掉投影和光栅化；不用排好的次序
+@vertex fn vsDepth(@builtin(vertex_index) corner: u32, @builtin(instance_index) i: u32) -> Varyings {
+  if (unpack4x8unorm(splats[i * SPLAT_WORDS + 6u]).a < DEPTH_ALPHA) {
+    var out: Varyings;
+    out.position = vec4f(0.0, 0.0, 2.0, 1.0);
+    return out;
+  }
+  return project(corner, i, false);
+}
+
+fn project(corner: u32, i: u32, colored: bool) -> Varyings {
   var out: Varyings;
   out.position = vec4f(0.0, 0.0, 2.0, 1.0);
-  let i = order[instance];
   let o = i * SPLAT_WORDS;
   let modelView = params.view * params.world;
   let p = (modelView * vec4f(splatCenter(i), 1.0)).xyz;
@@ -198,13 +218,18 @@ fn decodeSrgb(c: vec3f) -> vec3f {
   let axis = normalize(vec2f(b, major - a + 1e-6));
   let v1 = min(sqrt(2.0 * major), 1024.0) * axis;
   let v2 = min(sqrt(2.0 * minor), 1024.0) * vec2f(axis.y, -axis.x);
-  let quad = vec2f(f32(corner & 1u), f32(corner >> 1u)) * 4.0 - 2.0;
-  // 深度用泼溅中心的：和网格比深度（读、不写）
+  let color = unpack4x8unorm(splats[o + 6u]);
+  // 画颜色的盖到 2σ（不透明度衰减到 e⁻⁴）；写深度的只要 exp(−r²)·a ≥ DEPTH_ALPHA 的那一圈：r = √ln(a / DEPTH_ALPHA)，面积小好几倍
+  let extent = select(sqrt(max(log(color.a / DEPTH_ALPHA), 0.0)), 2.0, colored);
+  let quad = (vec2f(f32(corner & 1u), f32(corner >> 1u)) * 2.0 - 1.0) * extent;
+  // 深度用泼溅中心的：和网格比深度
   out.position = vec4f(clip.xy / clip.w + (quad.x * v1 + quad.y * v2) * 2.0 / params.viewport.xy, clip.z / clip.w, 1.0);
   out.offset = quad;
-  let color = unpack4x8unorm(splats[o + 6u]);
-  let direction = normalize(splatCenter(i) - params.eye.xyz);
-  out.color = vec4f(decodeSrgb(max(color.rgb + shColor(i, direction), vec3f(0.0))), color.a);
+  out.color = vec4f(0.0, 0.0, 0.0, color.a);
+  if (colored) {
+    let direction = normalize(splatCenter(i) - params.eye.xyz);
+    out.color = vec4f(decodeSrgb(max(color.rgb + shColor(i, direction), vec3f(0.0))), color.a);
+  }
   return out;
 }
 
@@ -215,19 +240,39 @@ fn decodeSrgb(c: vec3f) -> vec3f {
   if (alpha < 1.0 / 255.0) { discard; }
   return vec4f(in.color.rgb * alpha, alpha);
 }
+
+@fragment fn fsDepth(in: Varyings) {
+  if (exp(-dot(in.offset, in.offset)) * in.color.a < DEPTH_ALPHA) { discard; }
+}
 `;
 
-/** 一个 GaussianSplat 实体在 GPU 上的东西：常量、排序的键和桶、排好的次序，和上一次排序时的矩阵（没变就不重排）。 */
+/**
+ * 一个视图里一个 GaussianSplat 实体在 GPU 上的东西：常量、排序的键、排好的次序，和上一次排序时的矩阵（没变就不重排）。每个
+ * 视图各有一份（排序按各自的视深）。
+ */
 interface Instance {
   cloud: SplatCloud;
   readonly params: GPUBuffer;
   readonly keys: GPUBuffer;
   readonly order: GPUBuffer;
   readonly sortGroup: GPUBindGroup;
-  drawGroup: GPUBindGroup | undefined;
+  readonly drawGroup: GPUBindGroup;
   readonly sorted: Float32Array;
   /** 这一帧要画（collect 时设）。 */
   live: boolean;
+}
+
+/** 一个视图这一帧的：各实体的实例，和要画的（按实体到相机的距离从远到近）。 */
+interface ViewSplats {
+  readonly instances: Map<number, Instance>;
+  frame: Instance[];
+}
+
+/** 这一帧场景里的一个泼溅实体（collect 时收集，再分给各视图）。 */
+interface SplatEntity {
+  readonly entity: number;
+  readonly cloud: SplatCloud;
+  readonly world: Float32Array;
 }
 
 export class SplatRenderer {
@@ -235,15 +280,13 @@ export class SplatRenderer {
   /** 着色器、管线和共用的缓冲：场景里第一次有泼溅时才建（没用泼溅的游戏一条管线也不建）。 */
   #gpu: SplatGpu | undefined;
   readonly #drawPipelines = new Map<string, GPURenderPipeline>();
-  /** 泼溅资源的存储缓冲（多个实体共用一个资源时共用）和它的高阶球谐（没有时是空的那个）。 */
+  /** 泼溅资源的存储缓冲（多个实体、多个视图共用一个资源时共用）和它的高阶球谐（没有时是空的那个）。 */
   readonly #data = new Map<SplatCloud, GPUBuffer>();
   readonly #sh = new Map<SplatCloud, GPUBuffer>();
-  readonly #instances = new Map<number, Instance>();
+  readonly #views = new Map<RenderView, ViewSplats>();
   readonly #params = new Float32Array(PARAMS_FLOATS);
   readonly #inverse = new Float32Array(16);
-  /** 这一帧要画的（按实体到相机的距离从远到近）。 */
-  #frame: { instance: Instance; distance: number }[] = [];
-  #view: RenderView | undefined;
+  #entities: SplatEntity[] = [];
 
   constructor(device: GPUDevice) {
     this.#device = device;
@@ -252,16 +295,15 @@ export class SplatRenderer {
   #shared(): SplatGpu {
     if (this.#gpu) return this.#gpu;
     const device = this.#device;
-    const storage = (type: GPUBufferBindingType) => ({ buffer: { type } });
+    const entry = (binding: number, visibility: number, type: GPUBufferBindingType): GPUBindGroupLayoutEntry => ({ binding, visibility, buffer: { type } });
     const sortLayout = device.createBindGroupLayout({
       label: 'Splats sort',
-      entries: [
-        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
-        { binding: 1, visibility: GPUShaderStage.COMPUTE, ...storage('read-only-storage') },
-        { binding: 2, visibility: GPUShaderStage.COMPUTE, ...storage('storage') },
-        { binding: 3, visibility: GPUShaderStage.COMPUTE, ...storage('storage') },
-        { binding: 4, visibility: GPUShaderStage.COMPUTE, ...storage('storage') },
-      ],
+      entries: [entry(0, GPUShaderStage.COMPUTE, 'uniform'), entry(1, GPUShaderStage.COMPUTE, 'read-only-storage'), ...[2, 3, 4].map((b) => entry(b, GPUShaderStage.COMPUTE, 'storage'))],
+    });
+    // 画颜色和写深度的两条管线共用一个绑定组（写深度的不读球谐、次序，自动的布局会少这两项）
+    const drawLayout = device.createBindGroupLayout({
+      label: 'Splats draw',
+      entries: [entry(0, GPUShaderStage.VERTEX, 'uniform'), ...[1, 2, 3].map((b) => entry(b, GPUShaderStage.VERTEX, 'read-only-storage'))],
     });
     const sortModule = device.createShaderModule({ label: 'Splats sort', code: SORT });
     const layout = device.createPipelineLayout({ bindGroupLayouts: [sortLayout] });
@@ -269,7 +311,8 @@ export class SplatRenderer {
       label: `Splats ${entryPoint}`, layout, compute: { module: sortModule, entryPoint },
     })])) as SplatGpu['sortPipelines'];
     this.#gpu = {
-      sortLayout, sortPipelines,
+      sortLayout, sortPipelines, drawLayout,
+      drawPipelineLayout: device.createPipelineLayout({ bindGroupLayouts: [drawLayout] }),
       drawModule: device.createShaderModule({ label: 'Splats draw', code: DRAW }),
       bins: device.createBuffer({ label: 'Splats bins', size: BINS * 4, usage: GPUBufferUsage.STORAGE }),
       noSh: device.createBuffer({ label: 'Splats no SH', size: 16, usage: GPUBufferUsage.STORAGE }),
@@ -277,56 +320,60 @@ export class SplatRenderer {
     return this.#gpu;
   }
 
-  /** 这一帧主画面有没有要画的泼溅（collect 之后）。 */
-  get active(): boolean {
-    return this.#frame.length > 0;
+  /** 这一帧这个视图有没有要画的泼溅（collect 之后）。 */
+  active(view: RenderView): boolean {
+    return (this.#views.get(view)?.frame.length ?? 0) > 0;
   }
 
-  /** 每帧开头：收集这一帧要画的 GaussianSplat 实体（主画面）。 */
-  collect(context: RenderContext, view: RenderView | undefined): void {
-    for (const instance of this.#instances.values()) instance.live = false;
-    this.#frame = [];
-    this.#view = view;
-    if (!view) return;
-    context.game.entities.run(this.#collect, context.time);
-    // 实体之间按到相机的距离从远到近（同一个实体里的泼溅在 GPU 上排）
-    this.#frame.sort((a, b) => b.distance - a.distance);
-    // 实体没了的，释放它的缓冲
-    for (const [id, instance] of this.#instances) {
-      if (instance.live) continue;
-      for (const buffer of [instance.params, instance.keys, instance.order]) buffer.destroy();
-      this.#instances.delete(id);
+  /** 每帧开头：收集这一帧的 GaussianSplat 实体，分给要画泼溅的视图（主画面、反射、渲染目标贴图的相机）。 */
+  collect(context: RenderContext, views: readonly RenderView[]): void {
+    this.#entities = [];
+    if (views.length > 0) context.game.entities.run(this.#collect, context.time);
+    for (const view of views) {
+      let state = this.#views.get(view);
+      if (!state) this.#views.set(view, (state = { instances: new Map(), frame: [] }));
+      for (const instance of state.instances.values()) instance.live = false;
+      const frame: { instance: Instance; distance: number }[] = [];
+      for (const { entity, cloud, world } of this.#entities) {
+        const instance = this.#instance(state, entity, cloud);
+        instance.live = true;
+        if (this.#writeParams(instance, world, view)) instance.sorted[0] = NaN;
+        frame.push({ instance, distance: this.#distance(cloud, world, view) });
+      }
+      // 实体之间按到相机的距离从远到近（同一个实体里的泼溅在 GPU 上排）
+      state.frame = frame.sort((a, b) => b.distance - a.distance).map(({ instance }) => instance);
+    }
+    // 实体没了的、这一帧不画泼溅的视图（探针拍完了、平面反射关了），释放缓冲
+    for (const [view, state] of this.#views) {
+      if (!views.includes(view)) state.instances.forEach((instance) => (instance.live = false));
+      for (const [entity, instance] of state.instances) {
+        if (instance.live) continue;
+        destroyInstance(instance);
+        state.instances.delete(entity);
+      }
+      if (state.instances.size === 0) this.#views.delete(view);
     }
   }
 
   readonly #collect = system('SplatRenderer.collect', {
     with: { splat: GaussianSplat, transform: Transform },
     update: ({ splat, transform, count, entities }) => {
-      const view = this.#view!;
       for (let i = 0; i < count; i++) {
         const cloud = SplatCloud.byId(splat.splats[i]!);
         if (!cloud || cloud.count === 0) continue;
-        const instance = this.#instance(entities[i]!, cloud);
-        instance.live = true;
-        const w = transform.slot[i]! * 16, world = transform.renderWorld.subarray(w, w + 16);
-        const changed = this.#writeParams(instance, world, view);
-        if (changed) instance.sorted[0] = NaN;
-        const center = [(cloud.min[0] + cloud.max[0]) / 2, (cloud.min[1] + cloud.max[1]) / 2, (cloud.min[2] + cloud.max[2]) / 2];
-        const x = world[0]! * center[0]! + world[4]! * center[1]! + world[8]! * center[2]! + world[12]! - view.eye.x;
-        const y = world[1]! * center[0]! + world[5]! * center[1]! + world[9]! * center[2]! + world[13]! - view.eye.y;
-        const z = world[2]! * center[0]! + world[6]! * center[1]! + world[10]! * center[2]! + world[14]! - view.eye.z;
-        this.#frame.push({ instance, distance: Math.hypot(x, y, z) });
+        const w = transform.slot[i]! * 16;
+        this.#entities.push({ entity: entities[i]!, cloud, world: transform.renderWorld.slice(w, w + 16) });
       }
     },
   });
 
-  /** 录进编码器（主画面的通道之前）：要重排的实例排一遍。 */
-  sort(encoder: GPUCommandEncoder, timestampWrites?: GPUComputePassTimestampWrites): void {
-    const stale = this.#frame.filter(({ instance }) => Number.isNaN(instance.sorted[0]!));
+  /** 录进编码器（这个视图画泼溅的通道之前）：要重排的实例排一遍。 */
+  sort(encoder: GPUCommandEncoder, view: RenderView, timestampWrites?: GPUComputePassTimestampWrites): void {
+    const stale = this.#views.get(view)?.frame.filter((instance) => Number.isNaN(instance.sorted[0]!)) ?? [];
     if (stale.length === 0) return;
     const { sortPipelines } = this.#shared();
     const pass = encoder.beginComputePass({ label: 'Splats sort', ...(timestampWrites ? { timestampWrites } : {}) });
-    for (const { instance } of stale) {
+    for (const instance of stale) {
       const count = instance.cloud.count;
       pass.setBindGroup(0, instance.sortGroup);
       pass.setPipeline(sortPipelines.clear);
@@ -337,37 +384,40 @@ export class SplatRenderer {
       pass.dispatchWorkgroups(1);
       pass.setPipeline(sortPipelines.scatter);
       pass.dispatchWorkgroups(Math.ceil(count / 256));
-      instance.sorted.set(this.#params.subarray(0, 32));
+      // 排序时的矩阵：collect 写常量时记在 pending 里
+      instance.sorted.set(instance.sorted.subarray(32, 64), 0);
     }
     pass.end();
   }
 
-  /** 在主画面的通道里画（不透明的之后、透明的之前）。 */
-  draw(pass: GPURenderPassEncoder, colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
-    if (this.#frame.length === 0) return;
-    pass.setPipeline(this.#drawPipeline(colorFormat, depthFormat));
-    for (const { instance } of this.#frame) {
-      instance.drawGroup ??= this.#device.createBindGroup({
-        label: 'Splats draw',
-        layout: this.#drawPipeline(colorFormat, depthFormat).getBindGroupLayout(0),
-        entries: [instance.params, this.#data.get(instance.cloud)!, instance.order, this.#sh.get(instance.cloud) ?? this.#shared().noSh].map((buffer, binding) => ({ binding, resource: { buffer } })),
-      });
+  /** 在这个视图的通道里画（不透明的之后、透明的之前）：先画颜色，再写深度（见文件开头）。 */
+  draw(pass: GPURenderPassEncoder, view: RenderView, colorFormat: GPUTextureFormat, surfaceFormats: readonly GPUTextureFormat[], depthFormat: GPUTextureFormat): void {
+    const frame = this.#views.get(view)?.frame ?? [];
+    if (frame.length === 0) return;
+    pass.setPipeline(this.#drawPipeline(colorFormat, surfaceFormats, depthFormat, false));
+    for (const instance of frame) {
+      pass.setBindGroup(0, instance.drawGroup);
+      pass.draw(4, instance.cloud.count);
+    }
+    pass.setPipeline(this.#drawPipeline(colorFormat, surfaceFormats, depthFormat, true));
+    for (const instance of frame) {
       pass.setBindGroup(0, instance.drawGroup);
       pass.draw(4, instance.cloud.count);
     }
   }
 
   destroy(): void {
-    for (const instance of this.#instances.values()) for (const buffer of [instance.params, instance.keys, instance.order]) buffer.destroy();
+    for (const state of this.#views.values()) state.instances.forEach(destroyInstance);
+    this.#views.clear();
     for (const buffer of [...this.#data.values(), ...this.#sh.values()]) buffer.destroy();
     this.#gpu?.bins.destroy();
     this.#gpu?.noSh.destroy();
   }
 
-  #instance(entity: number, cloud: SplatCloud): Instance {
-    const existing = this.#instances.get(entity);
+  #instance(state: ViewSplats, entity: number, cloud: SplatCloud): Instance {
+    const existing = state.instances.get(entity);
     if (existing && existing.cloud === cloud) return existing;
-    if (existing) for (const buffer of [existing.params, existing.keys, existing.order]) buffer.destroy();
+    if (existing) destroyInstance(existing);
     let data = this.#data.get(cloud);
     if (!data) {
       data = this.#device.createBuffer({ label: `Splats ${cloud.name}`, size: Math.max(16, cloud.words.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
@@ -380,15 +430,20 @@ export class SplatRenderer {
       }
     }
     const device = this.#device;
+    const shared = this.#shared();
     const params = device.createBuffer({ label: 'Splats params', size: PARAMS_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const keys = device.createBuffer({ label: 'Splats keys', size: Math.max(16, cloud.count * 4), usage: GPUBufferUsage.STORAGE });
     const order = device.createBuffer({ label: 'Splats order', size: Math.max(16, cloud.count * 4), usage: GPUBufferUsage.STORAGE });
-    const sortGroup = device.createBindGroup({
-      label: 'Splats sort', layout: this.#shared().sortLayout,
-      entries: [params, data, keys, this.#shared().bins, order].map((buffer, binding) => ({ binding, resource: { buffer } })),
-    });
-    const instance: Instance = { cloud, params, keys, order, sortGroup, drawGroup: undefined, sorted: new Float32Array(32).fill(NaN), live: true };
-    this.#instances.set(entity, instance);
+    const group = (layout: GPUBindGroupLayout, buffers: GPUBuffer[], label: string) => device.createBindGroup({ label, layout, entries: buffers.map((buffer, binding) => ({ binding, resource: { buffer } })) });
+    const instance: Instance = {
+      cloud, params, keys, order,
+      sortGroup: group(shared.sortLayout, [params, data, keys, shared.bins, order], 'Splats sort'),
+      drawGroup: group(shared.drawLayout, [params, data, order, this.#sh.get(cloud) ?? shared.noSh], 'Splats draw'),
+      // 前 32 个：上次排序时的世界、视图矩阵；后 32 个：这一帧的（排了才挪到前面）
+      sorted: new Float32Array(64).fill(NaN),
+      live: true,
+    };
+    state.instances.set(entity, instance);
     return instance;
   }
 
@@ -398,6 +453,7 @@ export class SplatRenderer {
     p.set(world, 0);
     p.set(view.view, 16);
     p.set(view.projection, 32);
+    // 焦距（像素）：平面反射的投影 x 取反，焦距跟着是负的，椭圆照样镜像过去
     const focalX = (view.projection[0]! * view.width) / 2, focalY = (view.projection[5]! * view.height) / 2;
     p.set([view.width, view.height, focalX, focalY], 48);
     const [near, far] = this.#depthRange(instance.cloud, world, view);
@@ -409,8 +465,18 @@ export class SplatRenderer {
     p.set([inverse[0]! * x + inverse[4]! * y + inverse[8]! * z + inverse[12]!, inverse[1]! * x + inverse[5]! * y + inverse[9]! * z + inverse[13]!, inverse[2]! * x + inverse[6]! * y + inverse[10]! * z + inverse[14]!, 0], 56);
     p.set([instance.cloud.shBands, instance.cloud.shRange, shWords(instance.cloud.shBands), 0], 60);
     this.#device.queue.writeBuffer(instance.params, 0, p);
+    instance.sorted.set(p.subarray(0, 32), 32);
     for (let k = 0; k < 32; k++) if (p[k] !== instance.sorted[k]) return true;
     return false;
+  }
+
+  /** 泼溅的包围盒中心到这个视图的相机的距离（实体之间排远近）。 */
+  #distance(cloud: SplatCloud, world: Float32Array, view: RenderView): number {
+    const cx = (cloud.min[0] + cloud.max[0]) / 2, cy = (cloud.min[1] + cloud.max[1]) / 2, cz = (cloud.min[2] + cloud.max[2]) / 2;
+    const x = world[0]! * cx + world[4]! * cy + world[8]! * cz + world[12]! - view.eye.x;
+    const y = world[1]! * cx + world[5]! * cy + world[9]! * cz + world[13]! - view.eye.y;
+    const z = world[2]! * cx + world[6]! * cy + world[10]! * cz + world[14]! - view.eye.z;
+    return Math.hypot(x, y, z);
   }
 
   /** 包围盒的 8 个角在视图里的视深范围（排序的键按它量化：比用相机的近、远平面精细得多）。 */
@@ -426,20 +492,23 @@ export class SplatRenderer {
     return [Math.max(near, 0), Math.max(far, near + 1e-3)];
   }
 
-  #drawPipeline(colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): GPURenderPipeline {
-    const key = `${colorFormat}|${depthFormat}`;
+  /**
+   * 画颜色的（预乘混合、读深度）或者写深度的（不写颜色）管线，按格式建一次。主画面不透明的那一遍还写着表面（法线、材质……），
+   * 泼溅不写它们（写掩码 0）。
+   */
+  #drawPipeline(colorFormat: GPUTextureFormat, surfaceFormats: readonly GPUTextureFormat[], depthFormat: GPUTextureFormat, depth: boolean): GPURenderPipeline {
+    const key = `${colorFormat}|${surfaceFormats.join(',')}|${depthFormat}|${depth}`;
     let pipeline = this.#drawPipelines.get(key);
     if (!pipeline) {
+      const { drawModule: module, drawPipelineLayout: layout } = this.#shared();
+      const blend: GPUBlendState = { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } };
       pipeline = this.#device.createRenderPipeline({
-        label: 'Splats draw',
-        layout: 'auto',
-        vertex: { module: this.#shared().drawModule, entryPoint: 'vs' },
-        fragment: {
-          module: this.#shared().drawModule, entryPoint: 'fs',
-          targets: [{ format: colorFormat, blend: { color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' }, alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha' } } }],
-        },
+        label: depth ? 'Splats depth' : 'Splats draw',
+        layout,
+        vertex: { module, entryPoint: depth ? 'vsDepth' : 'vs' },
+        fragment: { module, entryPoint: depth ? 'fsDepth' : 'fs', targets: [depth ? { format: colorFormat, writeMask: 0 } : { format: colorFormat, blend }, ...surfaceFormats.map((format) => ({ format, writeMask: 0 }))] },
         primitive: { topology: 'triangle-strip' },
-        depthStencil: { format: depthFormat, depthWriteEnabled: false, depthCompare: 'greater-equal' },
+        depthStencil: { format: depthFormat, depthWriteEnabled: depth, depthCompare: 'greater-equal' },
       });
       this.#drawPipelines.set(key, pipeline);
     }
@@ -447,10 +516,16 @@ export class SplatRenderer {
   }
 }
 
+function destroyInstance(instance: Instance): void {
+  for (const buffer of [instance.params, instance.keys, instance.order]) buffer.destroy();
+}
+
 /** 渲染器共用的 GPU 东西（SplatRenderer.#shared 第一次用到时建）。 */
 interface SplatGpu {
   readonly sortLayout: GPUBindGroupLayout;
   readonly sortPipelines: Record<'clear' | 'count' | 'scan' | 'scatter', GPUComputePipeline>;
+  readonly drawLayout: GPUBindGroupLayout;
+  readonly drawPipelineLayout: GPUPipelineLayout;
   readonly drawModule: GPUShaderModule;
   readonly bins: GPUBuffer;
   readonly noSh: GPUBuffer;

@@ -418,8 +418,6 @@ export class ForwardRenderer {
     const planar = renderSystem.planarReflections;
     planar.enabled = this.quality.planarReflections;
     const planarView = this.hasCamera ? planar.begin(context, this.#mainView) : undefined;
-    // 高斯泼溅：主画面这一帧要画的实体（排序在主画面的通道之前）
-    renderSystem.splats.collect(context, this.hasCamera ? this.#mainView : undefined);
     // 水体：主画面要拷不透明的画面和深度给它
     renderSystem.water.collect(context);
     // 折射：场景里有透射材质、画进 HDR 缓冲时，主画面不透明的画完拷一份给透明阶段（要不要拷在 prepare 写视图的常量之前定下来）
@@ -442,6 +440,8 @@ export class ForwardRenderer {
     ];
 
     renderSystem.collect(views);
+    // 高斯泼溅：要着色的视图（主画面、反射探针的面、平面反射、渲染目标贴图的相机）这一帧要画的实体，排序在各自的通道之前
+    renderSystem.splats.collect(context, views.filter((view) => view !== skyView && !impostorViews.includes(view)));
     this.#gatherLighting(context);
     // 辐照度体：要在 prepare 写视图的常量之前找到（着色器按它取探针）；放不下第 27 个贴图的设备不做
     const volumes = renderSystem.irradianceVolumes;
@@ -706,8 +706,6 @@ export class ForwardRenderer {
     const split = surfaces.length > 0 || refract;
     const drawRest = (pass: GPURenderPassEncoder) => {
       if (!view) return;
-      // 高斯泼溅（只有主画面）：不透明的之后、透明的之前，读深度、不写
-      if (view === this.#mainView) renderSystem.splats.draw(pass, output.format, DEPTH_FORMAT);
       // 水体（只有主画面、拷了不透明的画面以后）：在别的透明物体之前
       if (refract) renderSystem.water.draw(pass, context, view, renderSystem.lighting, renderSystem.refraction, renderSystem.planarReflections, renderSystem.surfaceWeather, renderSystem.renderOrigin, output.format, DEPTH_FORMAT);
       if (transparent) renderSystem.draw(context, pass, view, output.transparent);
@@ -716,8 +714,8 @@ export class ForwardRenderer {
       if (this.wireframe && view === this.#mainView) renderSystem.draw(context, pass, view, output.wireframe);
     };
     // 高斯泼溅按视深排序（相机、实体没动的不重排）：在画它的通道之前
-    if (view === this.#mainView && renderSystem.splats.active) {
-      frame.pass(`${label} splats sort`, (pass) => pass.sideEffect(), () => renderSystem.splats.sort(encoder, profiler.passTimestamps(`${label} splats sort`)));
+    if (view && renderSystem.splats.active(view)) {
+      frame.pass(`${label} splats sort`, (pass) => pass.sideEffect(), () => renderSystem.splats.sort(encoder, view, profiler.passTimestamps(`${label} splats sort`)));
     }
     // 分簇：着色时像素只看所在那一簇的点光、贴花
     if (view?.clustered) {
@@ -743,6 +741,9 @@ export class ForwardRenderer {
       });
       if (view === this.#mainView) this.background?.(pass, { width: output.width, height: output.height, format: output.format, depthFormat: DEPTH_FORMAT, surfaceFormats: output.opaque.output.surfaceFormats ?? [] });
       if (view) renderSystem.draw(context, pass, view, output.opaque);
+      // 高斯泼溅：不透明的之后、在同一遍里（空气透视、雾、折射的拷贝、透明的都在它之后）；画完写一遍深度，透明物体按它和泼溅
+      // 互相遮挡
+      if (view) renderSystem.splats.draw(pass, view, output.format, output.opaque.output.surfaceFormats ?? [], DEPTH_FORMAT);
       if (!split) drawRest(pass);
       pass.end();
     });

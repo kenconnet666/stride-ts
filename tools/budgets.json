@@ -22,15 +22,15 @@
     "render.instances": 1338
   },
   "campsite": {
-    "entities": 19,
-    "gpu.buffers": 78,
-    "gpu.buffers.bytes": 707136,
-    "gpu.pipelines.sync": 3,
-    "gpu.textures": 22,
-    "gpu.textures.bytes": 41337650,
-    "native.allocated.bytes": 65381440,
-    "render.drawCalls": 84,
-    "render.instances": 78
+    "entities": 20,
+    "gpu.buffers": 89,
+    "gpu.buffers.bytes": 1096144,
+    "gpu.pipelines.sync": 4,
+    "gpu.textures": 31,
+    "gpu.textures.bytes": 59769698,
+    "native.allocated.bytes": 75521192,
+    "render.drawCalls": 94,
+    "render.instances": 65
   },
   "collect-dodge": {
     "entities": 16,
@@ -98,6 +98,17 @@
     "render.drawCalls": 22,
     "render.instances": 0
   },
+  "greybox": {
+    "entities": 13,
+    "gpu.buffers": 86,
+    "gpu.buffers.bytes": 1601552,
+    "gpu.pipelines.sync": 12,
+    "gpu.textures": 36,
+    "gpu.textures.bytes": 78676830,
+    "native.allocated.bytes": 75534944,
+    "render.drawCalls": 73,
+    "render.instances": 33
+  },
   "jumpy-jet": {
     "entities": 17,
     "gpu.buffers": 35,
@@ -131,6 +142,17 @@
     "render.drawCalls": 87,
     "render.instances": 17
   },
+  "open-world": {
+    "entities": 114,
+    "gpu.buffers": 55,
+    "gpu.buffers.bytes": 844932,
+    "gpu.pipelines.sync": 1,
+    "gpu.textures": 31,
+    "gpu.textures.bytes": 59769698,
+    "native.allocated.bytes": 60536624,
+    "render.drawCalls": 36,
+    "render.instances": 287
+  },
   "particles-sample": {
     "entities": 15,
     "gpu.buffers": 143,
@@ -141,6 +163,17 @@
     "native.allocated.bytes": 65953832,
     "render.drawCalls": 14,
     "render.instances": 10
+  },
+  "photoreal": {
+    "entities": 24,
+    "gpu.buffers": 132,
+    "gpu.buffers.bytes": 1921488,
+    "gpu.pipelines.sync": 1,
+    "gpu.textures": 48,
+    "gpu.textures.bytes": 113734282,
+    "native.allocated.bytes": 60537528,
+    "render.drawCalls": 173,
+    "render.instances": 100
   },
   "physics-sample": {
     "entities": 8,
@@ -174,6 +207,17 @@
     "native.allocated.bytes": 65127208,
     "render.drawCalls": 91,
     "render.instances": 0
+  },
+  "short-film": {
+    "entities": 37,
+    "gpu.buffers": 141,
+    "gpu.buffers.bytes": 1498336,
+    "gpu.pipelines.sync": 6,
+    "gpu.textures": 40,
+    "gpu.textures.bytes": 88367954,
+    "native.allocated.bytes": 75755600,
+    "render.drawCalls": 120,
+    "render.instances": 55
   },
   "simple-audio": {
     "entities": 3,

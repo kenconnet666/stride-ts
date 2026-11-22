@@ -261,7 +261,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const { active, settings } = game.renderSystem.fog;
     return { active, ...(fog ? { settings: { ...settings } } : {}) };
   });
-  debug.command('decal', 'Decals (Decal). args: on (true adds test decals, false removes them); at [x, y, z] (default: in front of the camera on the ground); size [x, y, z] (m); count (n: an n x n grid of decals 3 m apart, to measure the cost); color [r, g, b]; opacity; albedoMix; normalFade; pattern ("ring" draws a ring with an alpha mask, "none" a solid box); bumps (true adds a normal map of round bumps). Without on, changes the test decals.', (args) => {
+  debug.command('decal', 'Decals (Decal). args: on (true adds test decals, false removes them); at [x, y, z] (default: in front of the camera on the ground); size [x, y, z] (m); count (n: an n x n grid of decals 3 m apart, to measure the cost); color [r, g, b]; opacity; albedoMix; normalFade; pattern ("ring" draws a ring with an alpha mask, "none" a solid box); bumps (true adds a normal map of round bumps); distinct (true: every test decal gets its own 512x512 ring texture in a different hue, to fill the atlas past one page). Without on, changes the test decals. Reports the atlas size and its array layers (color pages first, then normal pages).', (args) => {
     const tests = () => game.entities.ids().map((id) => game.entities.entity(id)).filter((entity) => entity.name === 'Test decal');
     if (args['on'] === false) for (const entity of tests()) entity.destroy();
     if (args['on'] === true) {
@@ -281,11 +281,13 @@ export function registerGameCommands(debug: Debug, game: Game): void {
       if (Array.isArray(args['color'])) decal.color = vec3(args['color']);
       for (const key of ['opacity', 'albedoMix', 'normalFade'] as const) if (typeof args[key] === 'number') decal[key] = args[key];
       if (args['pattern'] === 'ring' || (args['on'] === true && args['pattern'] === undefined)) decal.albedo = testDecalTexture('ring').id;
+      if (args['distinct'] === true) decal.albedo = distinctDecalTexture(tests().indexOf(entity)).id;
       if (args['pattern'] === 'none') decal.albedo = 0 as TextureId;
       if (args['bumps'] === true) decal.normal = testDecalTexture('bumps').id;
       if (args['bumps'] === false) decal.normal = 0 as TextureId;
     }
-    return { decals: tests().length, drawn: game.renderSystem.decals.count };
+    const atlas = game.renderSystem.decals.atlas;
+    return { decals: tests().length, drawn: game.renderSystem.decals.count, atlas: { size: atlas.width, layers: atlas.depthOrArrayLayers } };
   });
   debug.command('material', 'Materials by name (part of it; without name lists them): extended shading. args: name; sheen [r, g, b, roughness] (null removes); anisotropy [strength, rotation in degrees] (null removes); transmission { factor, ior, thickness, attenuationColor, attenuationDistance } (null removes).', (args) => {
     const all: Material[] = [];
@@ -945,6 +947,25 @@ async function particles(game: Game, { name }: Args): Promise<unknown> {
 
 /** 试贴花用的程序生成的贴图（`stride call decal`）：ring 是一个带 alpha 遮罩的橙色圆环，bumps 是一片圆凸起的法线贴图。 */
 const testDecalTextures = new Map<string, Texture>();
+/** 第 i 个测试贴花自己的贴图（512x512 的环，色相按 i 变）：decal 命令的 distinct，把图集撑到多页。 */
+function distinctDecalTexture(i: number): Texture {
+  let texture = distinctDecalTextures.get(i);
+  if (texture) return texture;
+  const size = 512, pixels = new Uint8Array(size * size * 4);
+  const hue = (i * 0.618034) % 1;
+  const channel = (offset: number) => Math.round(255 * Math.max(0, Math.min(1, Math.abs(((hue + offset) % 1) * 6 - 3) - 1)));
+  const [r, g, b] = [channel(0), channel(2 / 3), channel(1 / 3)];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const radius = Math.hypot((x + 0.5) / size * 2 - 1, (y + 0.5) / size * 2 - 1);
+    const alpha = Math.max(0, Math.min(1, (0.2 - Math.abs(radius - 0.6)) * 20));
+    pixels.set([r, g, b, Math.round(alpha * 255)], (y * size + x) * 4);
+  }
+  texture = new Texture(`test decal ${i}`, { format: 'rgba8unorm-srgb', width: size, height: size, levels: [pixels] });
+  distinctDecalTextures.set(i, texture);
+  return texture;
+}
+const distinctDecalTextures = new Map<number, Texture>();
+
 function testDecalTexture(kind: 'ring' | 'bumps'): Texture {
   let texture = testDecalTextures.get(kind);
   if (texture) return texture;

@@ -3,10 +3,10 @@
  * 盒子里的不透明、透明表面着色时换上贴花的颜色和法线。网格着色器逐像素查（meshShader.ts 的 applyDecals）；分簇以后只查
  * 像素所在那一簇的。
  *
- * - 贴图放进一张图集（2D 贴图数组，第 0 层颜色、第 1 层法线；只占一个贴图绑定，网格着色器的贴图绑定离默认上限 16 个只差
- *   几个了）。颜色层是 rgba8unorm，存 sRGB 编码过的值、着色器里解码（数组的各层格式一样，法线层不能是 sRGB 的）。
- *   每张贴图最长边缩到 MAX_TILE 以内，按行装箱，四周留 PADDING 像素重复边缘的颜色（mip 不串色）；装不下时图集翻倍，到
- *   MAX_ATLAS 还装不下的贴花跳过并警告一次。贴图的集合变了才重建图集。
+ * - 贴图放进一张图集（2D 贴图数组：颜色的各页在前，法线的各页接在后面，用不到的不建；只占一个贴图绑定，网格着色器的贴图
+ *   绑定离默认上限 16 个只差几个了）。颜色层是 rgba8unorm，存 sRGB 编码过的值、着色器里解码（数组的各层格式一样，法线层不能是
+ *   sRGB 的）。每张贴图最长边缩到 MAX_TILE 以内，按行装箱，四周留 PADDING 像素重复边缘的颜色（mip 不串色）；装不下时
+ *   图集翻倍，到 MAX_ATLAS 还装不下就加页（页数只受设备的数组层数上限限制）。贴图的集合变了才重建图集。
  * - 每个贴花 DECAL_FLOATS 个数：世界到盒子（-1..1）的矩阵、颜色和法线在图集里的位置、颜色乘数和不透明度、几种淡出、
  *   盒子的三个轴（世界里，法线贴图的切线空间）。个数不设上限，缓冲按 2 的幂变大；内容没变时不重传。
  * - 分簇（lighting/Clusters.ts）：每个要着色的视图里像素只看所在那一簇的贴花。
@@ -35,25 +35,34 @@ const FORMAT: GPUTextureFormat = 'rgba8unorm';
 /** 一块在图集里的位置（贴图坐标：左上角和大小，0..1）。 */
 export type AtlasRect = readonly [u: number, v: number, width: number, height: number];
 
+/** 一块在图集里的位置和所在的层（图集数组的第几层）。 */
+export interface AtlasPlace {
+  readonly rect: AtlasRect;
+  readonly layer: number;
+}
+
 /**
- * 按行装箱：贴图按高度从高到低排，一行一行往下放，每块四周留 padding。返回每张贴图的位置（像素：x、y、宽、高，不含留边），
- * 放不下时返回 undefined。
+ * 按行装箱、可以分页：贴图按高度从高到低排，一行一行往下放，每块四周留 padding；一页放不下时接着放下一页。返回每张贴图的
+ * 页和位置（像素：页、x、y、宽、高，不含留边）；比一页还大的那张是 undefined。
  */
-export function packAtlas(sizes: readonly (readonly [number, number])[], atlasSize: number, padding: number): ([number, number, number, number] | undefined)[] | undefined {
+export function packPages(sizes: readonly (readonly [number, number])[], atlasSize: number, padding: number): ([number, number, number, number, number] | undefined)[] {
   const order = sizes.map((_, i) => i).sort((a, b) => sizes[b]![1] - sizes[a]![1]);
-  const out: ([number, number, number, number] | undefined)[] = new Array(sizes.length);
-  let x = 0, y = 0, row = 0;
+  const out: ([number, number, number, number, number] | undefined)[] = new Array(sizes.length);
+  let page = 0, x = 0, y = 0, row = 0;
   for (const i of order) {
     const [w, h] = sizes[i]!;
     const pw = w + 2 * padding, ph = h + 2 * padding;
-    if (pw > atlasSize) return undefined;
+    if (pw > atlasSize || ph > atlasSize) continue;
     if (x + pw > atlasSize) {
       x = 0;
       y += row;
       row = 0;
     }
-    if (y + ph > atlasSize) return undefined;
-    out[i] = [x + padding, y + padding, w, h];
+    if (y + ph > atlasSize) {
+      page++;
+      x = y = row = 0;
+    }
+    out[i] = [page, x + padding, y + padding, w, h];
     x += pw;
     row = Math.max(row, ph);
   }
@@ -72,6 +81,9 @@ export interface DecalInstance {
   readonly size: readonly [number, number, number];
   readonly albedo: AtlasRect | undefined;
   readonly normal: AtlasRect | undefined;
+  /** 颜色、法线贴图在图集数组的第几层（没有贴图时不用，0）。 */
+  readonly albedoLayer?: number | undefined;
+  readonly normalLayer?: number | undefined;
   readonly color: readonly [number, number, number];
   readonly opacity: number;
   readonly albedoMix: number;
@@ -134,7 +146,10 @@ export function packDecal(decal: DecalInstance, out: Float32Array, offset: numbe
     out[offset + 34 + axis * 4] = z / length;
     out[offset + 35 + axis * 4] = 0;
   }
-  out.fill(0, offset + 44, offset + DECAL_FLOATS);
+  // 颜色、法线在图集数组的第几层
+  out[offset + 44] = decal.albedoLayer ?? 0;
+  out[offset + 45] = decal.normalLayer ?? 0;
+  out.fill(0, offset + 46, offset + DECAL_FLOATS);
 }
 
 /** 把一张贴图画进图集的一块（颜色层编码成 sRGB）、按上一级生成 mip。 */
@@ -164,6 +179,8 @@ interface FoundDecal extends DecalInstance {
   normalId: number;
   albedo: AtlasRect | undefined;
   normal: AtlasRect | undefined;
+  albedoLayer: number;
+  normalLayer: number;
   opacity: number;
   albedoMix: number;
   normalFade: number;
@@ -174,7 +191,7 @@ interface FoundDecal extends DecalInstance {
 }
 
 function createFoundDecal(): FoundDecal {
-  return { world: new Float32Array(16), size: [0, 0, 0], color: [0, 0, 0], albedoId: 0, normalId: 0, albedo: undefined, normal: undefined, opacity: 0, albedoMix: 0, normalFade: 0, upperFade: 0, lowerFade: 0, dirty: true };
+  return { world: new Float32Array(16), size: [0, 0, 0], color: [0, 0, 0], albedoId: 0, normalId: 0, albedo: undefined, normal: undefined, albedoLayer: 0, normalLayer: 0, opacity: 0, albedoMix: 0, normalFade: 0, upperFade: 0, lowerFade: 0, dirty: true };
 }
 
 interface Entry {
@@ -195,11 +212,11 @@ export class Decals {
   #packedCount = 0;
   #buffer: GPUBuffer | undefined;
   #atlas: GPUTexture | undefined;
-  /** 还没有贴花时绑的：1x1x2 的空图集、一个贴花大小的空缓冲。 */
+  /** 还没有贴花时绑的：1x1x1 的空图集、一个贴花大小的空缓冲。 */
   #emptyAtlas: GPUTexture | undefined;
   #emptyBuffer: GPUBuffer | undefined;
-  /** 图集里的贴图（颜色、法线分开记：同一张贴图两种用法各放一块）→ 位置；贴图的集合变了才重建。 */
-  #rects = new Map<string, AtlasRect>();
+  /** 图集里的贴图（颜色、法线分开记：同一张贴图两种用法各放一块）→ 页和位置；贴图的集合变了才重建。 */
+  #places = new Map<string, AtlasPlace>();
   #atlasKey = '';
   #pipeline: GPURenderPipeline | undefined;
   /** 这一帧找到的贴花：前 #foundCount 个有效，记录跨帧复用（每帧给所有贴花填一遍，不分配）。 */
@@ -256,9 +273,9 @@ export class Decals {
     return this.#buffer ?? (this.#emptyBuffer ??= this.#device.createBuffer({ label: 'Decals empty', size: DECAL_FLOATS * 4, usage: GPUBufferUsage.STORAGE }));
   }
 
-  /** 图集（2D 贴图数组，两层）；还没有贴花时是 1x1 的空图集。换了网格特性要重建绑定组。 */
+  /** 图集（2D 贴图数组，颜色的各页在前、法线的接在后面）；还没有贴花时是 1x1 的空图集。换了网格特性要重建绑定组。 */
   get atlas(): GPUTexture {
-    return this.#atlas ?? (this.#emptyAtlas ??= this.#device.createTexture({ label: 'Decals empty atlas', size: [1, 1, 2], format: FORMAT, usage: GPUTextureUsage.TEXTURE_BINDING }));
+    return this.#atlas ?? (this.#emptyAtlas ??= this.#device.createTexture({ label: 'Decals empty atlas', size: [1, 1, 1], format: FORMAT, usage: GPUTextureUsage.TEXTURE_BINDING }));
   }
 
   /** @internal 前向渲染器每帧收集光照时调用：找贴花、需要时重建图集、内容变了才上传。 */
@@ -298,8 +315,12 @@ export class Decals {
       const decal = this.#found[i]!;
       if (!decal.dirty && !all) continue;
       decal.dirty = false;
-      decal.albedo = decal.albedoId ? this.#rects.get(`0:${decal.albedoId}`) : undefined;
-      decal.normal = decal.normalId ? this.#rects.get(`1:${decal.normalId}`) : undefined;
+      const albedo = decal.albedoId ? this.#places.get(`0:${decal.albedoId}`) : undefined;
+      const normal = decal.normalId ? this.#places.get(`1:${decal.normalId}`) : undefined;
+      decal.albedo = albedo?.rect;
+      decal.normal = normal?.rect;
+      decal.albedoLayer = albedo?.layer ?? 0;
+      decal.normalLayer = normal?.layer ?? 0;
       packDecal(decal, this.#data, i * DECAL_FLOATS);
       writeDecalBounds(decal.world, decal.size, this.bounds, i * 4);
       first = Math.min(first, i);
@@ -320,42 +341,41 @@ export class Decals {
     const key = entries.map((e) => `${e.layer}:${e.texture.id}`).sort().join(',');
     if (key === this.#atlasKey && (this.#atlas || entries.length === 0)) return false;
     this.#atlasKey = key;
-    this.#rects.clear();
+    this.#places.clear();
     if (entries.length === 0) return true;
     const sizes = entries.map((e) => tileSize(e.texture.data.width, e.texture.data.height));
-    // 两层各自装箱，图集的大小取两层都装得下的
-    let size = MIN_ATLAS, placed: ([number, number, number, number] | undefined)[] = [];
-    for (; size <= MAX_ATLAS; size *= 2) {
-      placed = new Array(entries.length);
-      let fits = true;
+    // 两层各自装箱；一页装得下时取装得下的最小边长，到 MAX_ATLAS 还装不下就分页
+    const pack = (size: number) => {
+      const placed: ([number, number, number, number, number] | undefined)[] = new Array(entries.length);
       for (const layer of [0, 1] as const) {
         const indices = entries.map((e, i) => (e.layer === layer ? i : -1)).filter((i) => i >= 0);
-        const packed = packAtlas(indices.map((i) => sizes[i]!), size, PADDING);
-        if (!packed) {
-          fits = false;
-          break;
-        }
+        const packed = packPages(indices.map((i) => sizes[i]!), size, PADDING);
         indices.forEach((index, k) => (placed[index] = packed[k]));
       }
-      if (fits) break;
-    }
-    if (size > MAX_ATLAS) {
-      size = MAX_ATLAS;
-      console.warn(`Decals: the decal textures do not fit into a ${MAX_ATLAS}x${MAX_ATLAS} atlas; some decals are drawn without them`);
-    }
-    if (this.#atlas?.width !== size) {
+      return placed;
+    };
+    let size = MIN_ATLAS, placed = pack(size);
+    while (size < MAX_ATLAS && placed.some((at) => at === undefined || at[0] > 0)) placed = pack((size *= 2));
+    // 颜色的页在前、法线的页接在后面：图集数组的层 = 颜色是页号，法线是颜色的页数加页号
+    const pagesOf = (layer: 0 | 1) => Math.max(0, ...placed.map((at, i) => (at && entries[i]!.layer === layer ? at[0] + 1 : 0)));
+    const colorPages = pagesOf(0);
+    const layerOf = (i: number) => (entries[i]!.layer === 0 ? placed[i]![0] : colorPages + placed[i]![0]);
+    const maxLayers = this.#device.limits.maxTextureArrayLayers;
+    const layers = Math.min(Math.max(1, colorPages + pagesOf(1)), maxLayers);
+    if (colorPages + pagesOf(1) > maxLayers) console.warn(`Decals: the decal textures need more atlas pages than the device allows (${maxLayers} array layers); some decals are drawn without them`);
+    if (this.#atlas?.width !== size || this.#atlas.depthOrArrayLayers !== layers) {
       this.#atlas?.destroy();
       this.#atlas = this.#device.createTexture({
-        label: 'Decals atlas', size: [size, size, 2], format: FORMAT, mipLevelCount: ATLAS_LEVELS,
+        label: 'Decals atlas', size: [size, size, layers], format: FORMAT, mipLevelCount: ATLAS_LEVELS,
         usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
       });
     }
-    this.#draw(entries, placed, size);
+    this.#draw(entries, placed.map((at, i) => (at && layerOf(i) < layers ? { at, layer: layerOf(i) } : undefined)), size, layers);
     return true;
   }
 
-  /** 每张贴图画进它的那块（连同留边：边缘的颜色往外延），再逐级生成 mip。 */
-  #draw(entries: readonly Entry[], placed: readonly ([number, number, number, number] | undefined)[], size: number): void {
+  /** 每张贴图画进它那一层的那块（连同留边：边缘的颜色往外延），再逐级生成 mip。 */
+  #draw(entries: readonly Entry[], placed: readonly ({ readonly at: readonly [number, number, number, number, number]; readonly layer: number } | undefined)[], size: number, layers: number): void {
     const device = this.#device, atlas = this.#atlas!;
     const pipeline = (this.#pipeline ??= device.createRenderPipeline({
       label: 'Decals atlas', layout: 'auto',
@@ -383,19 +403,19 @@ export class Decals {
       pass.end();
     };
     const levelView = (layer: number, level: number) => atlas.createView({ dimension: '2d', baseArrayLayer: layer, arrayLayerCount: 1, baseMipLevel: level, mipLevelCount: 1 });
-    // 先清空两层的第 0 级
-    for (const layer of [0, 1]) encoder.beginRenderPass({ colorAttachments: [{ view: levelView(layer, 0), loadOp: 'clear', storeOp: 'store' }] }).end();
+    // 先清空每一层的第 0 级
+    for (let layer = 0; layer < layers; layer++) encoder.beginRenderPass({ colorAttachments: [{ view: levelView(layer, 0), loadOp: 'clear', storeOp: 'store' }] }).end();
     entries.forEach((entry, i) => {
-      const at = placed[i];
-      if (!at) return;
-      const [x, y, w, h] = at;
+      const place = placed[i];
+      if (!place) return;
+      const { layer, at: [, x, y, w, h] } = place;
       // 画到含留边的一块，uv 往外扩到留边（clamp 采样，留边里是边缘的颜色）；记下的是不含留边的那块
       const source = this.#resources.texture(entry.texture).createView({ dimension: '2d' });
       const sx = (w + 2 * PADDING) / w, sy = (h + 2 * PADDING) / h;
-      blit(levelView(entry.layer, 0), source, entry.layer === 0, [x - PADDING, y - PADDING, w + 2 * PADDING, h + 2 * PADDING], [sx, sy, -PADDING / w, -PADDING / h]);
-      this.#rects.set(`${entry.layer}:${entry.texture.id}`, [x / size, y / size, w / size, h / size]);
+      blit(levelView(layer, 0), source, entry.layer === 0, [x - PADDING, y - PADDING, w + 2 * PADDING, h + 2 * PADDING], [sx, sy, -PADDING / w, -PADDING / h]);
+      this.#places.set(`${entry.layer}:${entry.texture.id}`, { rect: [x / size, y / size, w / size, h / size], layer });
     });
-    for (const layer of [0, 1]) {
+    for (let layer = 0; layer < layers; layer++) {
       for (let level = 1; level < ATLAS_LEVELS; level++) blit(levelView(layer, level), levelView(layer, level - 1), false, undefined, undefined, true);
     }
     device.queue.submit([encoder.finish()]);

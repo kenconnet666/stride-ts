@@ -963,6 +963,11 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 - 整理（R3 做完以后，单独提交）：`ToneMap.ts` 长到 921 行，拆进 `rendering/postfx/tonemap/`——`ToneMap.ts`（映射和平均测光，532 行）、`HistogramMetering.ts`、`LocalExposure.ts`（建网格；映射时取网格留在 ToneMap 的着色器里）、`ColorLut.ts`（解析、按路径登记、每个设备的贴图）、`whiteBalance.ts`；站台的画面、照片比对、耗时和拆之前一样。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
+## 尾巴：贴花的图集分页（2026-11-22）
+
+- `rendering/mesh/Decals.ts`：装箱改成可以分页（`packPages`，取代只能一页的 `packAtlas`）：先在一页里从 1024 长到 4096，再装不下就加页；图集数组里颜色的各页在前、法线的各页接在后面，用不到的不建（以前不管有没有法线贴图都建两层）；每个贴花数据里记颜色、法线在第几层（着色器按它取）。页数只受设备的数组层数上限限制，超了警告。调试命令 `decal` 加 `distinct`（每个测试贴花一张不同颜色的 512² 环），返回图集的边长和层数。单测：分页的装箱、层号的打包。
+- 测试浏览器（无头，platformer，1280×720）：100 个贴花各一张贴图（一页 4096² 放 49 张）分成 3 页，全部画出来、颜色各不相同；加上法线贴图共 4 层（3 个颜色页加 1 个法线页），纹理显存 5.7 亿字节（按"每页两层"建是 7.5 亿，还没有法线）；GPU 一帧 0.626 毫秒（一页时 0.615）。
+
 ## 尾巴：agent 让开着的编辑器打开场景（2026-11-22）
 
 MCP 的服务是单独的进程、有自己的后端，够不到用户开着的编辑器界面；走它已经在用的调试中枢：游戏页面（编辑器嵌着的那个）加调试命令 `editor-open`（`path`、`kind`），调 `EditAgent.onOpenRequested`——编辑器界面接上页面时把它设成 `session.openAsset`（打开着的改过就先保存）；没有界面时命令报清楚的错。MCP 的 `open_in_editor` 经中枢调它。测试浏览器（无头）开 bepu-sample 的编辑器，`stride call editor-open '{"path":"BepuSample/Scenes/Ropes"}'` 以后场景树和页签换成 Ropes。

@@ -3,22 +3,25 @@ import { entityAssetReferences } from '../../src/content/references';
 import { checkEntity } from '../../src/editor/fields';
 import type { SceneEntityFile } from '../../src/content/formats/format';
 import { Matrix } from '../../src/data/Matrix';
-import { DECAL_FLOATS, decalBounds, packAtlas, packDecal, tileSize } from '../../src/rendering/mesh/Decals';
+import { DECAL_FLOATS, decalBounds, packDecal, packPages, tileSize } from '../../src/rendering/mesh/Decals';
 import { CLUSTER_GRID, clusterIndex, clusterParams } from '../../src/rendering/lighting/Clusters';
 import { RenderView } from '../../src/rendering/RenderSystem';
 
 describe('贴花', () => {
-  test('图集按行装箱：高的先放，四周留边，装不下返回 undefined', () => {
-    const placed = packAtlas([[100, 50], [200, 120], [100, 50]], 512, 8)!;
-    // 最高的放在左上角（留边 8）
-    expect(placed[1]).toEqual([8, 8, 200, 120]);
-    expect(placed[0]).toEqual([224, 8, 100, 50]);
-    expect(placed[2]).toEqual([340, 8, 100, 50]);
+  test('图集按行装箱：高的先放，四周留边；一页放不下接着放下一页，比一页还大的是 undefined', () => {
+    const placed = packPages([[100, 50], [200, 120], [100, 50]], 512, 8);
+    // 最高的放在第 0 页左上角（留边 8）
+    expect(placed[1]).toEqual([0, 8, 8, 200, 120]);
+    expect(placed[0]).toEqual([0, 224, 8, 100, 50]);
+    expect(placed[2]).toEqual([0, 340, 8, 100, 50]);
     // 一行放不下就换行
-    const rows = packAtlas([[300, 100], [300, 100]], 512, 8)!;
-    expect(rows[1]).toEqual([8, 124, 300, 100]);
-    expect(packAtlas([[600, 10]], 512, 8)).toBeUndefined();
-    expect(packAtlas(Array.from({ length: 20 }, () => [200, 200] as const), 512, 8)).toBeUndefined();
+    const rows = packPages([[300, 100], [300, 100]], 512, 8);
+    expect(rows[1]).toEqual([0, 8, 124, 300, 100]);
+    expect(packPages([[600, 10]], 512, 8)).toEqual([undefined]);
+    // 216 像素一块（含留边），一页两行两列放 4 块：20 块分到 5 页
+    const pages = packPages(Array.from({ length: 20 }, () => [200, 200] as const), 512, 8);
+    expect(pages.map((at) => at![0])).toEqual([0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4]);
+    expect(pages[4]).toEqual([1, 8, 8, 200, 200]);
   });
 
   test('放进图集的大小：最长边缩到 512 以内，保持比例', () => {
@@ -30,7 +33,7 @@ describe('贴花', () => {
     // 盒子 4x2x6，放在 (10, 0, -5)，绕 Y 转 90°
     const world = Matrix.compose(Matrix.identity(), [10, 0, -5], [0, Math.SQRT1_2, 0, Math.SQRT1_2], [1, 1, 1]);
     const out = new Float32Array(DECAL_FLOATS);
-    packDecal({ world, size: [4, 2, 6], albedo: [0.25, 0.5, 0.125, 0.125], normal: undefined, color: [1, 0.5, 0], opacity: 0.8, albedoMix: 1, normalFade: 0.3, upperFade: 0.2, lowerFade: 0.1 }, out, 0);
+    packDecal({ world, size: [4, 2, 6], albedo: [0.25, 0.5, 0.125, 0.125], normal: undefined, albedoLayer: 3, color: [1, 0.5, 0], opacity: 0.8, albedoMix: 1, normalFade: 0.3, upperFade: 0.2, lowerFade: 0.1 }, out, 0);
     const toBox = out.subarray(0, 16);
     // 盒子的中心映到原点；本地的 +X 角（转 90° 后在世界的 -Z）映到 x = 1
     expect(Matrix.transformPoint(toBox, 10, 0, -5).map((v) => +v.toFixed(5) + 0)).toEqual([0, 0, 0]);
@@ -41,6 +44,8 @@ describe('贴花', () => {
     // 轴：x 转到世界的 -Z，y 还是 +Y
     expect(Array.from(out.subarray(32, 35)).map((v) => +v.toFixed(5) + 0)).toEqual([0, 0, -1]);
     expect(Array.from(out.subarray(36, 39)).map((v) => +v.toFixed(5) + 0)).toEqual([0, 1, 0]);
+    // 图集数组的层：颜色在第 3 层，没有法线贴图时是 0
+    expect(Array.from(out.subarray(44, 48))).toEqual([3, 0, 0, 0]);
   });
 
   test('场景文件里的贴花：颜色贴图按 sRGB、法线贴图默认按线性读；编辑器的字段描述照它检查', () => {

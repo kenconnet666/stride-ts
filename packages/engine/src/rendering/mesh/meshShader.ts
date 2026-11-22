@@ -147,7 +147,7 @@ struct SkyOcclusion { viewProjection: mat4x4f, valid: vec4u };
 // 没有），颜色乘数和不透明度，淡出（颜色换掉多少、法线、顶部、底部），盒子的三个轴（世界）
 struct Decal { toBox: mat4x4f, albedo: vec4f, normal: vec4f, color: vec4f, fade: vec4f, axisX: vec4f, axisY: vec4f, axisZ: vec4f, pad: vec4f };
 @group(0) @binding(22) var<storage, read> decals: array<Decal>;
-// 图集：第 0 层颜色（存的是 sRGB 编码过的值），第 1 层法线
+// 图集：颜色的各页在前（存的是 sRGB 编码过的值），法线的各页接在后面；每个贴花用哪一层在 pad.x（颜色）、pad.y（法线）
 @group(0) @binding(23) var decalAtlas: texture_2d_array<f32>;
 // 每簇：光的个数、贴花的个数，再是光的下标、贴花的下标（lighting/Clusters.ts）
 @group(0) @binding(24) var<storage, read> clusters: array<u32>;
@@ -232,13 +232,13 @@ fn applyDecals(world: vec3f, n: vec3f, s: LayerSurface, cluster: i32) -> Decaled
     var alpha = fade;
     var albedo = d.color.rgb;
     if (d.albedo.z > 0.0) {
-      let texel = textureSampleGrad(decalAtlas, linearClamp, d.albedo.xy + uv * d.albedo.zw, 0, duvx * d.albedo.zw, duvy * d.albedo.zw);
+      let texel = textureSampleGrad(decalAtlas, linearClamp, d.albedo.xy + uv * d.albedo.zw, i32(d.pad.x), duvx * d.albedo.zw, duvy * d.albedo.zw);
       albedo *= decodeSrgb(texel.rgb);
       alpha *= texel.a;
     }
     r.surface.albedo = mix(r.surface.albedo, albedo, alpha * d.fade.x);
     if (d.normal.z > 0.0) {
-      let t = textureSampleGrad(decalAtlas, linearClamp, d.normal.xy + uv * d.normal.zw, 1, duvx * d.normal.zw, duvy * d.normal.zw).xyz * 2.0 - 1.0;
+      let t = textureSampleGrad(decalAtlas, linearClamp, d.normal.xy + uv * d.normal.zw, i32(d.pad.y), duvx * d.normal.zw, duvy * d.normal.zw).xyz * 2.0 - 1.0;
       let decalNormal = normalize(d.axisX.xyz * t.x - d.axisZ.xyz * t.y + d.axisY.xyz * max(t.z, 0.0));
       // 贴花的法线是相对一个平面的：按表面的法线转过去（平面上的凸起跟着表面走）
       r.normal = normalize(mix(r.normal, normalize(r.normal + decalNormal - d.axisY.xyz), alpha));

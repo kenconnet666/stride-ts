@@ -240,6 +240,19 @@ importers:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
 
+  apps/photoreal:
+    dependencies:
+      '@stride-ts/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
+      '@stride-ts/native':
+        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-7fc9c9913e/stride-ts-native-0.43.0.tgz
+        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-7fc9c9913e/stride-ts-native-0.43.0.tgz
+    devDependencies:
+      vite:
+        specifier: ^8.3.8
+        version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
+
   apps/physics-sample:
     dependencies:
       '@stride-ts/engine':

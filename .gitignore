@@ -9,6 +9,7 @@ dist/
 # 从 Stride 仓库导入的内容（各个 app 的 pnpm import:stride）
 /apps/*/public/content/
 # 手搭的工程，内容要提交
+!/apps/photoreal/public/content/
 !/apps/open-world/public/content/
 !/apps/campsite/public/content/
 !/apps/greybox/public/content/

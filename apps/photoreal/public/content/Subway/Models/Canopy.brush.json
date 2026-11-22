@@ -1,0 +1,372 @@
+{
+ "name": "Canopy",
+ "materials": [
+  "Subway/Materials/RoofPaint",
+  "Materials/Library/BrushedSteel"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "name": "Deck",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    18,
+    4.8,
+    3.5
+   ],
+   "size": [
+    60,
+    0.12,
+    11
+   ],
+   "material": 0
+  },
+  {
+   "name": "Fascia",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    18,
+    4.55,
+    -2
+   ],
+   "size": [
+    60,
+    0.5,
+    0.12
+   ],
+   "material": 0
+  },
+  {
+   "name": "Beam0",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -12,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column0",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -12,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam1",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -6,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column1",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -6,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam2",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column2",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    0,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam3",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    6,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column3",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    6,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam4",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    12,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column4",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    12,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam5",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    18,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column5",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    18,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam6",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    24,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column6",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    24,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam7",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    30,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column7",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    30,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam8",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    36,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column8",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    36,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam9",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    42,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column9",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    42,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Beam10",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    48,
+    4.55,
+    3.5
+   ],
+   "size": [
+    0.25,
+    0.4,
+    11
+   ],
+   "material": 1
+  },
+  {
+   "name": "Column10",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    48,
+    0,
+    7.5
+   ],
+   "height": 4.4,
+   "radius": 0.18,
+   "material": 1,
+   "segments": 16
+  }
+ ]
+}

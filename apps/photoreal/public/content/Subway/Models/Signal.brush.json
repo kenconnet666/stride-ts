@@ -1,0 +1,61 @@
+{
+ "name": "Signal",
+ "materials": [
+  "Materials/Library/BrushedSteel",
+  "Subway/Materials/FrameBlack",
+  "Subway/Materials/LampGreen"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "name": "Pole",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    1.55,
+    0,
+    -1.25
+   ],
+   "height": 3.4,
+   "radius": 0.05,
+   "material": 0,
+   "segments": 16
+  },
+  {
+   "name": "Head",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    1.55,
+    3.55,
+    -1.25
+   ],
+   "size": [
+    0.28,
+    0.4,
+    0.24
+   ],
+   "material": 1
+  },
+  {
+   "name": "Lens",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    1.55,
+    3.5,
+    -1.12
+   ],
+   "height": 0.04,
+   "radius": 0.08,
+   "material": 2,
+   "segments": 16,
+   "rotation": [
+    0.7071067811865475,
+    0,
+    0,
+    0.7071067811865476
+   ]
+  }
+ ]
+}

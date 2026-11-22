@@ -1,0 +1,1483 @@
+{
+ "name": "ScreenDoors",
+ "materials": [
+  "Materials/Library/BrushedSteel",
+  "Subway/Materials/FrameBlack",
+  "Subway/Materials/LampRed"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "name": "Post0a",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    1.2,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post0aLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    1.2,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Door0LFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    1.9,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door0LHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    1.9,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door0RFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.9,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door0RHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    2.9,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Header0",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.4,
+    2.1199999999999997,
+    -0.6
+   ],
+   "size": [
+    2,
+    0.14,
+    0.24
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post0b",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    3.6,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post0bLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    3.6,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Fixed0Frame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    4.7,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1.8,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Fixed0Hole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    4.7,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Post1a",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    5.8,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post1aLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    5.8,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Door1LFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    6.5,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door1LHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    6.5,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door1RFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    7.5,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door1RHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    7.5,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Header1",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    7,
+    2.1199999999999997,
+    -0.6
+   ],
+   "size": [
+    2,
+    0.14,
+    0.24
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post1b",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    8.2,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post1bLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    8.2,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Fixed1Frame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    9.299999999999999,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1.8,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Fixed1Hole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    9.299999999999999,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Post2a",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    10.399999999999999,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post2aLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    10.399999999999999,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Door2LFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    11.1,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door2LHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    11.1,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door2RFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    12.1,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door2RHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    12.1,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Header2",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    11.6,
+    2.1199999999999997,
+    -0.6
+   ],
+   "size": [
+    2,
+    0.14,
+    0.24
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post2b",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    12.799999999999999,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post2bLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    12.799999999999999,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Fixed2Frame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    13.9,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1.8,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Fixed2Hole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    13.9,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Post3a",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    14.999999999999998,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post3aLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    14.999999999999998,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Door3LFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    15.7,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door3LHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    15.7,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door3RFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    16.7,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door3RHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    16.7,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Header3",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    16.2,
+    2.1199999999999997,
+    -0.6
+   ],
+   "size": [
+    2,
+    0.14,
+    0.24
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post3b",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    17.4,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post3bLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    17.4,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Fixed3Frame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    18.499999999999996,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1.8,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Fixed3Hole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    18.499999999999996,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Post4a",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    19.599999999999998,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post4aLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    19.599999999999998,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Door4LFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    20.299999999999997,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door4LHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    20.299999999999997,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door4RFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    21.299999999999997,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door4RHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    21.299999999999997,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Header4",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    20.799999999999997,
+    2.1199999999999997,
+    -0.6
+   ],
+   "size": [
+    2,
+    0.14,
+    0.24
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post4b",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    21.999999999999996,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post4bLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    21.999999999999996,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Fixed4Frame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    23.099999999999998,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1.8,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Fixed4Hole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    23.099999999999998,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Post5a",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    24.2,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post5aLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    24.2,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Door5LFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    24.9,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door5LHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    24.9,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door5RFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    25.9,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door5RHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    25.9,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Header5",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    25.4,
+    2.1199999999999997,
+    -0.6
+   ],
+   "size": [
+    2,
+    0.14,
+    0.24
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post5b",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    26.599999999999998,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post5bLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    26.599999999999998,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Fixed5Frame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    27.7,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1.8,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Fixed5Hole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    27.7,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Post6a",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    28.8,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post6aLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    28.8,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Door6LFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    29.5,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door6LHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    29.5,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door6RFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    30.5,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door6RHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    30.5,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Header6",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    30,
+    2.1199999999999997,
+    -0.6
+   ],
+   "size": [
+    2,
+    0.14,
+    0.24
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post6b",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    31.2,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post6bLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    31.2,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Fixed6Frame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    32.300000000000004,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1.8,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Fixed6Hole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    32.300000000000004,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Post7a",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    33.400000000000006,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post7aLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    33.400000000000006,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Door7LFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    34.1,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door7LHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    34.1,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door7RFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    35.1,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Door7RHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    35.1,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "Header7",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    34.6,
+    2.1199999999999997,
+    -0.6
+   ],
+   "size": [
+    2,
+    0.14,
+    0.24
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post7b",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    35.800000000000004,
+    1.1,
+    -0.6
+   ],
+   "size": [
+    0.4,
+    2.2,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "Post7bLamp",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    35.800000000000004,
+    2.24,
+    -0.6
+   ],
+   "size": [
+    0.26,
+    0.08,
+    0.2
+   ],
+   "material": 2
+  },
+  {
+   "name": "Fixed7Frame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    36.9,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    1.8,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "Fixed7Hole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    36.9,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "GateFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -0.6000000000000001,
+    1.045,
+    -0.6
+   ],
+   "size": [
+    2,
+    2.01,
+    0.06
+   ],
+   "material": 1
+  },
+  {
+   "name": "GateHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    -0.6000000000000001,
+    1.095,
+    -0.6
+   ],
+   "size": [
+    1.88,
+    1.7899999999999998,
+    0.2
+   ],
+   "material": 1
+  },
+  {
+   "name": "GatePost",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0.7,
+    1.15,
+    -0.6
+   ],
+   "size": [
+    0.6,
+    2.3,
+    0.32
+   ],
+   "material": 0
+  },
+  {
+   "name": "GatePostWindow",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0.7,
+    1.95,
+    -0.42999999999999994
+   ],
+   "size": [
+    0.46,
+    0.4,
+    0.04
+   ],
+   "material": 1
+  }
+ ]
+}

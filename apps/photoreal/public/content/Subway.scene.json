@@ -1,0 +1,364 @@
+{
+ "name": "Subway",
+ "compositor": {
+  "clearColor": [
+   0.1,
+   0.1,
+   0.12,
+   1
+  ],
+  "postEffects": {
+   "brightFilter": true,
+   "bloom": true,
+   "lightStreak": false,
+   "lensFlare": false,
+   "toneMap": true,
+   "antialiasing": true
+  },
+  "transparent": true
+ },
+ "entities": [
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000001",
+   "name": "Camera",
+   "parent": null,
+   "position": [
+    2.5,
+    1.55,
+    1.4
+   ],
+   "rotation": [
+    -0.04388527975397878,
+    0.35133994590458606,
+    0.01648924068365943,
+    0.935073488862963
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "camera": {
+     "verticalFieldOfView": 67,
+     "nearClipPlane": 0.05,
+     "farClipPlane": 2000
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000002",
+   "name": "Sun",
+   "parent": null,
+   "position": [
+    -20,
+    25,
+    20
+   ],
+   "rotation": [
+    -0.32711817019816203,
+    -0.3578927651031766,
+    -0.1354967825947491,
+    0.8640295673872972
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "directional",
+     "color": [
+      1,
+      0.97,
+      0.92
+     ],
+     "intensity": 10,
+     "shadow": {
+      "size": "large",
+      "filter": "pcf5x5",
+      "cascadeCount": "four",
+      "depthBias": 0.0015,
+      "normalOffsetScale": 10,
+      "stabilization": "projectionSnapping",
+      "pssmFactor": 0.5,
+      "depthRange": "automatic",
+      "minDistance": 0,
+      "maxDistance": 80,
+      "blendCascades": true
+     }
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000003",
+   "name": "Sky",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "skyAtmosphere": {
+     "sun": "0b6c7c1e-0001-4000-8000-000000000002"
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000010",
+   "name": "Platform",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/Platform",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000011",
+   "name": "Tracks",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/Tracks",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000012",
+   "name": "ScreenDoors",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/ScreenDoors",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000013",
+   "name": "ScreenDoorGlass",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/ScreenDoorGlass",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000014",
+   "name": "EndRailing",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/EndRailing",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000015",
+   "name": "Signal",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/Signal",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000016",
+   "name": "Canopy",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/Canopy",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000017",
+   "name": "Catenary",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/Catenary",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "0b6c7c1e-0001-4000-8000-000000000018",
+   "name": "Surroundings",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Subway/Models/Surroundings",
+     "materials": []
+    }
+   }
+  }
+ ]
+}

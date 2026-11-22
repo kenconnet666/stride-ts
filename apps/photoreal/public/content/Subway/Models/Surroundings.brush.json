@@ -1,0 +1,208 @@
+{
+ "name": "Surroundings",
+ "materials": [
+  "Subway/Materials/Grass",
+  "Subway/Materials/Foliage"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "name": "Field",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    18,
+    -2.2,
+    -60
+   ],
+   "size": [
+    300,
+    1,
+    100
+   ],
+   "material": 0
+  },
+  {
+   "name": "Tree0",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    -42,
+    2,
+    -22
+   ],
+   "radius": 4,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree1",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    -31,
+    3,
+    -28
+   ],
+   "radius": 6,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree2",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    -20,
+    4,
+    -27
+   ],
+   "radius": 5,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree3",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    -14,
+    2,
+    -26
+   ],
+   "radius": 4,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree4",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    -3,
+    3,
+    -25
+   ],
+   "radius": 6,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree5",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    3,
+    4,
+    -24
+   ],
+   "radius": 5,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree6",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    14,
+    2,
+    -23
+   ],
+   "radius": 4,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree7",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    25,
+    3,
+    -22
+   ],
+   "radius": 6,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree8",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    31,
+    4,
+    -28
+   ],
+   "radius": 5,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree9",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    42,
+    2,
+    -27
+   ],
+   "radius": 4,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree10",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    48,
+    3,
+    -26
+   ],
+   "radius": 6,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree11",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    59,
+    4,
+    -25
+   ],
+   "radius": 5,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree12",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    70,
+    2,
+    -24
+   ],
+   "radius": 4,
+   "material": 1,
+   "segments": 16
+  },
+  {
+   "name": "Tree13",
+   "kind": "sphere",
+   "operation": "add",
+   "position": [
+    76,
+    3,
+    -23
+   ],
+   "radius": 6,
+   "material": 1,
+   "segments": 16
+  }
+ ]
+}

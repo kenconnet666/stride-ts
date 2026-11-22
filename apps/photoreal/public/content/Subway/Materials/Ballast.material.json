@@ -1,0 +1,11 @@
+{
+ "name": "Ballast",
+ "baseColor": [
+  0.2,
+  0.16,
+  0.13,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.95
+}

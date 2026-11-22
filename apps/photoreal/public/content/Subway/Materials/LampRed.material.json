@@ -1,0 +1,16 @@
+{
+ "name": "LampRed",
+ "baseColor": [
+  0.3,
+  0.02,
+  0.01,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.4,
+ "emissive": [
+  6,
+  0.6,
+  0.2
+ ]
+}

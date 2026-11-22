@@ -1,0 +1,42 @@
+{
+ "name": "Platform",
+ "materials": [
+  "Subway/Materials/Tile",
+  "Materials/Library/Concrete"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "name": "Floor",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    18,
+    -0.5,
+    4
+   ],
+   "size": [
+    60,
+    1,
+    10
+   ],
+   "material": 0
+  },
+  {
+   "name": "Edge",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    18,
+    -0.7,
+    -0.95
+   ],
+   "size": [
+    60,
+    1.2,
+    0.1
+   ],
+   "material": 1
+  }
+ ]
+}

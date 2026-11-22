@@ -1,0 +1,11 @@
+{
+ "name": "Foliage",
+ "baseColor": [
+  0.06,
+  0.12,
+  0.04,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.85
+}

@@ -1,0 +1,153 @@
+{
+ "name": "Concrete",
+ "baseColor": [
+  1,
+  1,
+  1,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.9,
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "uv",
+    "position": [
+     0,
+     0
+    ]
+   },
+   {
+    "id": "grain",
+    "type": "noise",
+    "position": [
+     220,
+     0
+    ],
+    "params": {
+     "scale": 40,
+     "octaves": 5,
+     "roughness": 0.6
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "stains",
+    "type": "noise",
+    "position": [
+     440,
+     0
+    ],
+    "params": {
+     "scale": 3,
+     "octaves": 3,
+     "seed": 4
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "tone",
+    "type": "colorRamp",
+    "position": [
+     0,
+     160
+    ],
+    "params": {
+     "from": [
+      0.32,
+      0.31,
+      0.29
+     ],
+     "to": [
+      0.55,
+      0.54,
+      0.52
+     ]
+    },
+    "inputs": {
+     "t": {
+      "node": "stains"
+     }
+    }
+   },
+   {
+    "id": "speckle",
+    "type": "colorRamp",
+    "position": [
+     220,
+     160
+    ],
+    "params": {
+     "from": [
+      0.85,
+      0.85,
+      0.85
+     ],
+     "to": [
+      1.1,
+      1.1,
+      1.1
+     ]
+    },
+    "inputs": {
+     "t": {
+      "node": "grain"
+     }
+    }
+   },
+   {
+    "id": "color",
+    "type": "multiply",
+    "position": [
+     440,
+     160
+    ],
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "tone"
+     },
+     "b": {
+      "node": "speckle"
+     }
+    }
+   },
+   {
+    "id": "normal",
+    "type": "normalFromHeight",
+    "position": [
+     0,
+     320
+    ],
+    "params": {
+     "strength": 0.6
+    },
+    "inputs": {
+     "height": {
+      "node": "grain"
+     },
+     "uv": {
+      "node": "uv"
+     }
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "color"
+   },
+   "normal": {
+    "node": "normal"
+   }
+  }
+ }
+}

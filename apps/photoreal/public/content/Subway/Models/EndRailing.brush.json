@@ -1,0 +1,156 @@
+{
+ "name": "EndRailing",
+ "materials": [
+  "Materials/Library/BrushedSteel",
+  "Subway/Materials/HazardYellow"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "name": "RailPost0",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -8.6,
+    0,
+    -0.75
+   ],
+   "height": 1.1,
+   "radius": 0.025,
+   "material": 0,
+   "segments": 16
+  },
+  {
+   "name": "RailPost1",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -7.449999999999999,
+    0,
+    -0.75
+   ],
+   "height": 1.1,
+   "radius": 0.025,
+   "material": 0,
+   "segments": 16
+  },
+  {
+   "name": "RailPost2",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -6.3,
+    0,
+    -0.75
+   ],
+   "height": 1.1,
+   "radius": 0.025,
+   "material": 0,
+   "segments": 16
+  },
+  {
+   "name": "RailPost3",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -5.15,
+    0,
+    -0.75
+   ],
+   "height": 1.1,
+   "radius": 0.025,
+   "material": 0,
+   "segments": 16
+  },
+  {
+   "name": "RailPost4",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -4,
+    0,
+    -0.75
+   ],
+   "height": 1.1,
+   "radius": 0.025,
+   "material": 0,
+   "segments": 16
+  },
+  {
+   "name": "RailPost5",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -2.8499999999999996,
+    0,
+    -0.75
+   ],
+   "height": 1.1,
+   "radius": 0.025,
+   "material": 0,
+   "segments": 16
+  },
+  {
+   "name": "RailPost6",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -1.7000000000000002,
+    0,
+    -0.75
+   ],
+   "height": 1.1,
+   "radius": 0.025,
+   "material": 0,
+   "segments": 16
+  },
+  {
+   "name": "RailTop",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -5.15,
+    1.1,
+    -0.75
+   ],
+   "size": [
+    6.9,
+    0.05,
+    0.05
+   ],
+   "material": 0
+  },
+  {
+   "name": "RailMid",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -5.15,
+    0.55,
+    -0.75
+   ],
+   "size": [
+    6.9,
+    0.04,
+    0.04
+   ],
+   "material": 0
+  },
+  {
+   "name": "HazardBar",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -3.2,
+    0.42,
+    0.9
+   ],
+   "size": [
+    3,
+    0.14,
+    0.06
+   ],
+   "material": 1
+  }
+ ]
+}

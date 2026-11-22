@@ -1,0 +1,15 @@
+{
+ "name": "ClearGlass",
+ "baseColor": [
+  0.92,
+  0.96,
+  0.96,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.03,
+ "glass": {
+  "refractiveIndex": 1.5
+ },
+ "diffuseShading": false
+}

@@ -1,0 +1,11 @@
+{
+ "name": "Tile",
+ "baseColor": [
+  0.42,
+  0.41,
+  0.39,
+  1
+ ],
+ "metalness": 0,
+ "roughness": 0.55
+}

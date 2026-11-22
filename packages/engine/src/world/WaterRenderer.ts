@@ -15,6 +15,9 @@
  *   下面看时法线反过来，透过水面看上面（那份拷贝），超过全反射的临界角（水的折射率 1.33）反射水的颜色，水面本身也按距离加雾。
  * - 海浪谱（文件的 waves.spectrum）：浪不用 Gerstner，用 FFT 算的三级平铺的位移图（world/OceanFFT.ts，每帧合成器在主画面之前
  *   simulate）：顶点按网格的疏密取对应的 mip 级叠位移，片元取斜率算法线，位移的雅可比小于阈值（浪尖挤在一起）的地方起白沫。
+ * - 焦散（文件的 caustics）：水底（水面上看下去的那份拷贝、相机在水下时的整个画面）按折射的光线在那个深度的雅可比（浪尖像
+ *   透镜把光聚起来：J = det(I + d·(1 − 1/1.33)·∇∇h)，亮度 1/|J|）调亮调暗；水面的二阶导数在水底那一点上方按斜率差分，Gerstner 和
+ *   海浪谱一样。越深越淡（光被吸收、太阳不是点光源所以图案变糊），离相机远的淡掉（不闪）。不看阴影：树荫下的水底也有。
  * - 下雨（天气的 rain，RenderSystem.surfaceWeather）：水面上一圈圈的雨点涟漪（同地面水洼的 rippleGradient），雨越大越密。
  * - 只画主画面（要那份拷贝），在不透明的之后、透明的之前，读深度、不写。
  */
@@ -70,7 +73,7 @@ struct WaterParams {
   screen: vec4f,
   // 平面反射：用不用（1/0，平面在这片水面上）、最粗的 mip 级；雨多大（0..1）
   planar: vec4f,
-  // 海浪谱：三级一块的边长（米）、用不用（1/0）；浪尖起沫的雅可比阈值
+  // 海浪谱：三级一块的边长（米）、用不用（1/0）；浪尖起沫的雅可比阈值、焦散多强（0 是不要）
   ocean: vec4f,
   ocean2: vec4f,
   outline: array<vec4f, ${WATER_MAX_OUTLINE / 2}>,
@@ -161,6 +164,91 @@ struct Varyings {
   @location(3) flow: vec2f,
   @location(4) across: f32,
 };
+
+/** Gerstner 的水面上风吹的细浪（三组短的波）：p 处的斜率 ∇h。 */
+fn windRipples(p: vec2f) -> vec2f {
+  let t = water.eye.w * water.waves.w;
+  var slope = vec2f(0.0);
+  for (var i = 0u; i < 3u; i++) {
+    let angle = water.waves.z + f32(i) * 2.1 + 0.7;
+    let d = vec2f(cos(angle), sin(angle));
+    let k = 2.0 * PI / (0.7 + f32(i) * 0.55);
+    let theta = k * dot(d, p) - sqrt(9.81 * k) * t;
+    slope += d * 0.12 * cos(theta);
+  }
+  return slope;
+}
+
+/** 海浪谱 p 处（世界的 xz）的斜率 ∇h（三级相加）；比 blur 米细的浪按 mip 平均掉。 */
+fn oceanSlope(p: vec2f, blur: f32) -> vec2f {
+  var slope = vec2f(0.0);
+  for (var c = 0u; c < ${OCEAN_CASCADES}u; c++) {
+    let tile = water.ocean[c];
+    let lod = max(log2(blur * ${OCEAN_SIZE}.0 / tile), 0.0);
+    slope += textureSampleLevel(oceanDerivatives, linearRepeat, p / tile, c, lod).xy;
+  }
+  return slope;
+}
+
+/**
+ * p 处（世界的 xz）水面高度的二阶导数 (∂²h/∂x², ∂²h/∂z², ∂²h/∂x∂z)。Gerstner 加细浪按每组波解析地算（h = a·sin θ 的二阶导数是
+ * −a·k²·d·dᵀ·sin θ，不计水平位移）；海浪谱按斜率图前向差分，步长是 blur（米：比它细的图案看不出来，取平均过的 mip，不闪）。
+ */
+fn surfaceHessian(p: vec2f, blur: f32) -> vec3f {
+  if (water.ocean.w > 0.5) {
+    let s0 = oceanSlope(p, blur);
+    let sx = oceanSlope(p + vec2f(blur, 0.0), blur);
+    let sz = oceanSlope(p + vec2f(0.0, blur), blur);
+    return vec3f(sx.x - s0.x, sz.y - s0.y, sz.x - s0.x) / blur;
+  }
+  var hessian = vec3f(0.0);
+  let t = water.eye.w * water.waves.w;
+  for (var i = 0u; i < WAVES; i++) {
+    let row = WAVE_TABLE[i];
+    let angle = water.waves.z + row.x;
+    let d = vec2f(cos(angle), sin(angle));
+    let k = 2.0 * PI / max(water.waves.y * row.y, 0.05);
+    let a = water.waves.x * 0.5 * row.z;
+    let theta = k * dot(d, p) - sqrt(9.81 * k) * t;
+    hessian -= a * k * k * sin(theta) * vec3f(d.x * d.x, d.y * d.y, d.x * d.y);
+  }
+  // 细浪（windRipples）：斜率 0.12·d·cos θ 的导数
+  for (var i = 0u; i < 3u; i++) {
+    let angle = water.waves.z + f32(i) * 2.1 + 0.7;
+    let d = vec2f(cos(angle), sin(angle));
+    let k = 2.0 * PI / (0.7 + f32(i) * 0.55);
+    let theta = k * dot(d, p) - sqrt(9.81 * k) * t;
+    hessian -= 0.12 * k * sin(theta) * vec3f(d.x * d.x, d.y * d.y, d.x * d.y);
+  }
+  return hessian;
+}
+
+/**
+ * 焦散：水面下 depth 米、p 处（世界的 xz）的阳光是平均的几倍。竖直照下来的光折射以后横着偏 d·(1 − 1/η)·∇h，一小块面积变成
+ * det(I + d·(1 − 1/η)·∇∇h) 倍，亮度是它的倒数。
+ */
+fn caustics(p: vec2f, depth: f32, blur: f32) -> f32 {
+  let h = surfaceHessian(p, blur) * (depth * 0.248);
+  let j = (1.0 + h.x) * (1.0 + h.y) - h.z * h.z;
+  return min(1.0 / max(abs(j), 0.15), 5.0);
+}
+
+/** 水底 position（渲染空间）上焦散对颜色的倍数：在水面以下、有太阳时按深度和离相机的距离淡进淡出。 */
+fn causticsFactor(position: vec3f) -> f32 {
+  let depth = water.origin.y - position.y;
+  let strength = water.ocean2.y * saturate(water.sun.y * 2.0);
+  if (depth <= 0.0 || strength <= 0.0) {
+    return 1.0;
+  }
+  let viewDistance = distance(position, water.eye.xyz);
+  let fade = exp(-depth / water.color.w) * saturate(1.0 - viewDistance / 120.0) * saturate(depth * 4.0);
+  if (fade <= 0.01) {
+    return 1.0;
+  }
+  // 图案多糊（米）：太阳有半度大，越深越糊；离相机越远一个像素盖得越大
+  let blur = 0.08 + depth * 0.008 + viewDistance * 0.002;
+  return mix(1.0, caustics(position.xz + water.pattern.xy, depth, blur), strength * fade);
+}
 
 fn ringRadius(ring: u32) -> f32 {
   if (ring == 0u) { return 0.0; }
@@ -298,8 +386,12 @@ fn underside(in: Varyings, up: vec3f, viewDistance: f32) -> vec4f {
   let size = vec2f(textureDimensions(sceneDepth));
   let pixel = vec2i(clamp(position.xy, vec2f(0.0), size - 1.0));
   let depth = textureLoad(sceneDepth, pixel, 0);
-  let distanceTo = select(distance(scenePosition(position.xy * water.screen.xy, depth), water.eye.xyz), 1e6, depth <= 0.0);
-  let color = textureLoad(scene, pixel, 0).rgb;
+  let at = scenePosition(position.xy * water.screen.xy, depth);
+  let distanceTo = select(distance(at, water.eye.xyz), 1e6, depth <= 0.0);
+  var color = textureLoad(scene, pixel, 0).rgb;
+  if (depth > 0.0) {
+    color *= causticsFactor(at);
+  }
   return vec4f(mix(color, water.color.rgb * lightInWater(), 1.0 - exp(-distanceTo / water.color.w)), 1.0);
 }
 
@@ -330,16 +422,8 @@ fn underside(in: Varyings, up: vec3f, viewDistance: f32) -> vec4f {
   } else {
     n = gerstner(p, in.fade).normal;
     // 近处叠几组短的波纹（风吹的细浪），远处淡掉
-    let ripple = saturate(1.0 - viewDistance / 80.0) * 0.12;
-    for (var i = 0u; i < 3u; i++) {
-      let angle = water.waves.z + f32(i) * 2.1 + 0.7;
-      let d = vec2f(cos(angle), sin(angle));
-      let k = 2.0 * PI / (0.7 + f32(i) * 0.55);
-      let theta = k * dot(d, p) - sqrt(9.81 * k) * t;
-      n.x -= d.x * ripple * cos(theta);
-      n.z -= d.y * ripple * cos(theta);
-    }
-    n = normalize(n);
+    let ripple = windRipples(p) * saturate(1.0 - viewDistance / 80.0);
+    n = normalize(vec3f(n.x - ripple.x, n.y, n.z - ripple.y));
   }
   // 下雨：雨点的涟漪（近处才看得出来）
   let rain = water.planar.z;
@@ -387,12 +471,17 @@ fn underside(in: Varyings, up: vec3f, viewDistance: f32) -> vec4f {
   let bentDepth = textureLoad(sceneDepth, vec2i(clamp(uv * size, vec2f(0.0), size - 1.0)), 0);
   let bentScene = scenePosition(uv, bentDepth);
   var through = distance(bentScene, water.eye.xyz) - viewDistance;
+  var bottom = bentScene;
   // 偏到了水面前面的东西上：退回没偏的
   if (through < 0.0) {
     uv = screen;
     through = path;
+    bottom = flatScene;
   }
-  let below = textureSampleLevel(scene, linearClamp, uv, 0.0).rgb;
+  var below = textureSampleLevel(scene, linearClamp, uv, 0.0).rgb;
+  if (!river && flatDepth > 0.0) {
+    below *= causticsFactor(bottom);
+  }
   let transmittance = exp(-through / water.color.w);
   // 水里散射出来的光：水的颜色，被天光和太阳照着
   let lightIn = lightInWater();
@@ -579,7 +668,7 @@ export class WaterRenderer {
       const plane = planar.active && planar.receiver === view ? planar.plane : undefined;
       const mirrored = plane !== undefined && plane.normal[1] > 0.99 && Math.abs(plane.point[1] - world[13]!) < 0.5;
       data.set([mirrored ? 1 : 0, planar.texture.mipLevelCount - 1, rain, 0], 92);
-      data.set([...(settings ? oceanPatches(settings.patch) : [1, 1, 1]), ocean ? 1 : 0, CREST_FOAM, 0, 0, 0], 96);
+      data.set([...(settings ? oceanPatches(settings.patch) : [1, 1, 1]), ocean ? 1 : 0, CREST_FOAM, asset.river ? 0 : (file.caustics ?? 1), 0, 0], 96);
       data.fill(0, HEADER_FLOATS);
       outline.forEach(([x, z], i) => data.set([x, z], HEADER_FLOATS + i * 2));
       this.#device.queue.writeBuffer(instance.buffer, 0, data);

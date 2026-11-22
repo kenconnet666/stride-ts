@@ -906,6 +906,10 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 
 - ac26d90 的 CI 挂在 simple-audio：`stride open` 60 秒没等到页面连上（新的输出捕获把整段日志打出来了），本机 31 秒就过。`open`、`wait` 等页面的时限是写死的 60、30 秒，没看 CI 设的 `STRIDE_TIMEOUT`（300 秒，别的命令都看）：改成也看它。
 
+## W6 第八步：焦散（2026-11-22）
+
+物理上的做法：竖直照下来的阳光在起伏的水面折射，横着偏 d·(1 − 1/η)·∇h（η = 1.33），水底一小块的面积变成 det(I + d·(1 − 1/η)·∇∇h) 倍，亮度是它的倒数（浪尖、细浪像透镜，把光聚成线）。只要水面高度的二阶导数，Gerstner 和海浪谱同一套，不用另外的焦散贴图（HDRP 是把折射的网格画进一张焦散图，我们这个是它的解析近似，没有阴影）。`world/WaterRenderer.ts` 的 `causticsFactor` 用在两处：水面上看下去的那份拷贝的水底（湖、海；河不画）、相机在水下时全屏的雾之前。第一版用斜率的中心差分（每个像素四次求 6 组浪加 3 组细浪），看下去的那一遍从 0.14 涨到 0.39 毫秒；改成 Gerstner 每组波解析地加二阶导数（−a·k²·d·dᵀ·sin θ）、海浪谱前向差分，回到 0.14 毫秒。先前只算大浪时看不出焦散（大浪曲率小），细浪 `windRipples` 抽成函数，着色和焦散共用。海浪谱的最细一级在 15 米深处混叠成白噪点：加"模糊宽度" 0.08 + 0.008·深度 + 0.002·距离（米），按它挑每级的 mip、当差分的步长，海湾浅滩上变成顺着风拉长的光斑。测试浏览器（无头，1080p）里看：Valley 湖北岸 3 米深的浅滩从岸上看下去有光网，湖里 −70 米往湖底看是典型的焦散网，海湾浅滩是拉长的光斑；120 Hz，透明那一遍 0.12～0.15 毫秒。文件格式多一个 `caustics`（强度，0 是不要），属性面板有它。
+
 ## 整理整个仓库的目录（2026-11-22，用户要的）
 
 做完 W6 第七步以后整理（规则见 decisions.md 的"目录的分法"），两次提交：引擎（37 个文件搬家，`world/Water.ts` 拆出 `WaterRenderer.ts`），pipeline、editor、tools（20 个）。搬家的脚本：映射表 → 先按新位置改写全仓库的相对 import（含 `new URL`、`path.resolve` 里的相对路径），再 `git mv`，最后把文档、导出表、配置里写全的路径换掉；按 `import.meta.dirname` 拼的 `..` 和 PowerShell 里的路径手改（`smoke.ts` 找 CLI 和 `budgets.json`、`affected.ts`、`library-thumbnails.ts`、`build-jolt-wasm.ps1`、`regress.ps1`）。顺带：`tools/lib/affected.ts` 加了 `world/`、`modeling/` → open-world、greybox、particles-sample 的规则，`tools/dev/` 不触发冒烟；删了没人用的 `vendor/`（vue-tsx-pro 早改成从 GitHub 预发行版装）。类型检查、四个包的测试、字段检查都过；全部样例的回归在验证工作树里跑。

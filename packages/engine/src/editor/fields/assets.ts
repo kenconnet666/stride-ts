@@ -466,6 +466,7 @@ export const WATER_FIELDS = fields<WaterFile>({
     optional: true,
     description: 'Gerstner waves (or an FFT wind spectrum), flattened far from the camera',
   },
+  caustics: { type: number({ min: 0, max: 3, step: 0.1 }), optional: true, default: 1, description: 'how strong the light patterns the waves focus onto the bottom are (0 none; rivers have none)' },
   foam: {
     type: object(fields<NonNullable<WaterFile['foam']>>({
       shore: { type: number({ min: 0, step: 0.1, unit: 'm' }), optional: true, default: 1, description: 'foam where the water is shallower than this' },

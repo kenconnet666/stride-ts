@@ -18,6 +18,8 @@ export interface WaterFile {
    * 浪尖往一起挤的程度）。默认 0.3 米、12 米、0°、1、0.5。
    */
   readonly waves?: { readonly height?: number; readonly length?: number; readonly direction?: number; readonly speed?: number; readonly choppiness?: number; readonly spectrum?: WaterSpectrum };
+  /** 焦散：水底被浪聚起来的光斑多强（0 是不要），默认 1。河不画焦散。 */
+  readonly caustics?: number;
   /** 泡沫：岸边多宽（米，按水深），默认 1。 */
   readonly foam?: { readonly shore?: number };
   /**
@@ -66,6 +68,7 @@ export function checkWater(file: WaterFile, where = file.name): WaterFile {
       if (spectrum.seed !== undefined && !Number.isInteger(spectrum.seed)) fail('waves.spectrum.seed', 'must be an integer');
     }
   }
+  if (file.caustics !== undefined && !(file.caustics >= 0)) fail('caustics', 'must not be negative');
   if (file.foam?.shore !== undefined && !(file.foam.shore >= 0)) fail('foam.shore', 'must not be negative');
   if (file.river !== undefined) {
     if (typeof file.river.spline !== 'string' || file.river.spline === '') fail('river.spline', 'must be a spline path');

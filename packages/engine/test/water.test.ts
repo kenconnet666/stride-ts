@@ -75,5 +75,6 @@ describe('水体', () => {
     expect(oceanSpectrum({ ...settings, seed: 6 }, size)).not.toEqual(out);
     expect(windSeaHeight(10)).toBeCloseTo(2.14, 2);
     expect(() => checkWater({ name: 'Sea', waves: { spectrum: { wind: 0 } } })).toThrow('waves.spectrum.wind must be positive');
+    expect(() => checkWater({ name: 'Lake', caustics: -1 })).toThrow('caustics must not be negative');
   });
 });

@@ -131,7 +131,7 @@
 - **改文件的 Python 脚本写成文件再跑**：Git Bash 的 heredoc（`python - <<'EOF'`）会把反斜杠、`\U` 这类吃掉或报错。Windows 上 Python 以文本模式写文件会把换行写成 CRLF：一律 `open(p, 'w', encoding='utf-8', newline='')`。
 - **Chrome 标签在后台时不画帧**：`stride shot` 会一直等下一帧直到超时。先用插件截一张（把标签带到前台），再 `stride shot`；脚本里给它套 `timeout 60`。
 - **主 Chrome 的窗口被挡住时游戏页只有一两帧每秒**（2026-11-22）：标签是 visible、空白页照样 120 fps，CPU、GPU 都闲着，是 Chrome 把被遮挡窗口的呈现节流了。`stride status`、`stride perf` 的 `throttled` 会说出来；量帧时间用 `stride open --headless` 的 Chrome，看画面用插件截图。
-- **改了引擎里登记调试命令的代码**（`debug/commands.ts`）以后，Vite 的热更新不会重新登记命令：重新加载页面。
+- **改了引擎里登记调试命令的代码**（`debug/commands/`）以后，Vite 的热更新不会重新登记命令：重新加载页面。
 - **停后台验证**：`TaskStop` 只停最外层的 pwsh，`tools/regress.ps1` 和它的 node 子进程还在跑、和下一次抢资源（表现是下一次冒烟里 `no page is connected to this hub`）。停的时候按命令行找（槽位 2 换成 `stride-ts-verify-2`）：`Get-CimInstance Win32_Process -Filter "Name='node.exe' OR Name='pwsh.exe'" | Where-Object { $_.CommandLine -match 'stride-ts-verify-1' } | Stop-Process`，再 `pwsh tools/stop-dev.ps1 -All`。不要用 `&` 在 Bash 里起验证（收不到结束的通知）。
 - **编辑器页面**：会话对象在 `document.querySelector('#app').__vue_app__._instance.props.session`（JS 里查状态、模拟操作用）；编辑器的场景树和视口都要等游戏页面起来（几秒），太早点会点在加载中的骨架上。
 - **场景树单击选不中**：是 vue-tsx-pro 0.29 的 bug（拖动时按下就捕获指针），0.30.0 修了。

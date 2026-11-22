@@ -73,7 +73,7 @@ describe('货架', () => {
     const used = new Set(planShelf(island, products).items.map((item) => `${item.variant}|${item.product}`)).size;
     expect(model.colorSvg.match(/<svg x=/g)?.length).toBe(used);
     expect(model.surfaceSvg).toContain('rgb(0,');
-  });
+  }, 30_000); // 合并几千件商品的网格和图集：机器忙（验证槽在跑）时要好几秒
 
   test('冷柜：玻璃门进玻璃网格、灯带发光，只摆正面；冰柜的货在槽里、玻璃盖在上面', () => {
     const fridge = shelfModel({ ...island, type: 'fridge', sides: 2 }, sources);

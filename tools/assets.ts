@@ -1,5 +1,5 @@
 /**
- * 共用资源的包 @stride-ts/assets（单独的仓库 kenconnet666/stride-ts-assets，用户 2026-11-22 定：字体、图片这类不适合进 git 的资源
+ * 共用资源的包 @stride-ts/assets（单独的仓库 kenconnet666/world-engine-assets，用户 2026-11-22 定：字体、图片这类不适合进 git 的资源
  * 放单独的仓库，先用 GitHub Release 打包安装，同 vue-tsx-pro 的字体包）：
  *
  *   node tools/assets.ts build             照资源仓库的 sources/sources.json 用编辑器的导入器把源文件（ttf、扫描贴图）导入成
@@ -20,7 +20,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const assets = process.env['STRIDE_ASSETS'] ?? 'C:/code/stride-ts-assets';
 const workspace = path.join(root, 'pnpm-workspace.yaml');
 const OVERRIDE = /^( {2}'@stride-ts\/assets': ).*$/m;
-const RELEASES = 'https://github.com/kenconnet666/stride-ts-assets/releases/download';
+const RELEASES = 'https://github.com/kenconnet666/world-engine-assets/releases/download';
 
 interface Sources {
   readonly fonts: readonly { readonly file: string; readonly folder: string; readonly name: string }[];
@@ -76,7 +76,7 @@ function publish(tag: string, prerelease: boolean): string {
   const tgz = execSync('npm pack --silent', { cwd: assets, encoding: 'utf8' }).trim().split(/\r?\n/).at(-1)!;
   if (tgz !== `stride-ts-assets-${version}.tgz`) throw new Error(`npm pack wrote ${tgz}`);
   const commit = execFileSync('git', ['-C', assets, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  execFileSync('gh', ['release', 'create', tag, path.join(assets, tgz), '--repo', 'kenconnet666/stride-ts-assets', '--target', commit,
+  execFileSync('gh', ['release', 'create', tag, path.join(assets, tgz), '--repo', 'kenconnet666/world-engine-assets', '--target', commit,
     '--title', tag, '--notes', prerelease ? `临时版（提交 ${commit.slice(0, 10)}）` : `@stride-ts/assets ${version}`, ...(prerelease ? ['--prerelease'] : [])], { stdio: 'inherit' });
   return `${RELEASES}/${tag}/${tgz}`;
 }

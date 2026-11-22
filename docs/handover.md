@@ -18,11 +18,11 @@
 
 旧机器是 Windows 11，用户 `Administrator`。新机器路径不同时，下表的"说明"一栏说怎么改。
 
-新机器（2026-11-20 搭好）上的位置：本仓库 `C:\code\stride-ts`；Jolt 的 fork `C:\code\JoltPhysics`（`build-wasm.ps1`、`tools/dev/build-jolt-wasm.ps1` 默认找和本仓库并列的它）；Stride 源码 `~\IdeaProjects\stride`（kenconnet666/stride 的 `web-experiment-base` 分支，浅克隆）；验证工作树 `C:\code\stride-ts-verify-1`、`-2`；emsdk 6.0.8 在 `~\emsdk`（脚本先看 `$env:EMSDK`）；vue-tsx-pro、easy-query-ts、json-wire 在 `~\IdeaProjects\` 下；共用资源的仓库 `C:\code\stride-ts-assets`（kenconnet666/stride-ts-assets，字体、扫描材质的源文件和导出的内容；平时主仓库从它的 GitHub Release 装 `@stride-ts/assets`，只有加资源时要它，见 `tools/assets.ts`）；参考仓库 `C:\code\refs`（PlayCanvas 的目录叫 `playcanvas-engine`）。Python 3 用 scoop 装的（带 Pillow）。
+新机器（2026-11-20 搭好）上的位置：本仓库 `C:\code\stride-ts`；Jolt 的 fork `C:\code\JoltPhysics`（`build-wasm.ps1`、`tools/dev/build-jolt-wasm.ps1` 默认找和本仓库并列的它）；Stride 源码 `~\IdeaProjects\stride`（kenconnet666/stride 的 `web-experiment-base` 分支，浅克隆）；验证工作树 `C:\code\stride-ts-verify-1`、`-2`；emsdk 6.0.8 在 `~\emsdk`（脚本先看 `$env:EMSDK`）；vue-tsx-pro、easy-query-ts、json-wire 在 `~\IdeaProjects\` 下；共用资源的仓库 `C:\code\stride-ts-assets`（kenconnet666/world-engine-assets，字体、扫描材质的源文件和导出的内容；平时主仓库从它的 GitHub Release 装 `@stride-ts/assets`，只有加资源时要它，见 `tools/assets.ts`）；参考仓库 `C:\code\refs`（PlayCanvas 的目录叫 `playcanvas-engine`）。Python 3 用 scoop 装的（带 Pillow）。
 
 | 什么 | 旧机器上的位置 | 怎么来 | 说明 |
 |---|---|---|---|
-| **本仓库** | `C:\Users\Administrator\WebstormProjects\stride-ts` | `git clone https://github.com/kenconnet666/stride-ts`，`main` | 推送到 `origin` 不用先问用户（提交并验证以后） |
+| **本仓库** | `C:\Users\Administrator\WebstormProjects\stride-ts` | `git clone https://github.com/kenconnet666/world-engine`，`main` | 推送到 `origin` 不用先问用户（提交并验证以后） |
 | **Jolt 的 fork**（原生部分 StrideNative：物理、导航、动画、贴图解码编成 wasm） | `C:\Users\Administrator\CLionProjects\jolt-native-fork` | `git clone https://github.com/kenconnet666/JoltPhysics jolt-native-fork`，分支 `stride` | `upstream` 是 `jrouwe/JoltPhysics`，**永远不推**。只在要改原生部分时需要；平时本仓库从 fork 的 GitHub Release 装编好的包 |
 | **Stride 源码**（只读：导入样例、对照实现） | `C:\Users\Administrator\IdeaProjects\stride` | `git clone --depth 1 -b web-experiment-base https://github.com/kenconnet666/stride`（用户的 fork） | **要这个分支**：里面的样例换成了 BepuPhysics 的组件，导入器只认这些；上游 stride3d/stride 的样例还是 Bullet 的物理组件，导入时会被跳过，first-person-shooter、platformer 这些就跑不起来。导入脚本默认找 `~/IdeaProjects/stride`，别处用环境变量 `STRIDE_REPO`。不在那边提交 |
 | **vue-tsx-pro**（编辑器界面的组件库，用户自己的） | `C:\Users\Administrator\IdeaProjects\vue-tsx-pro` | 用户的仓库 | 本仓库从 npm 装 `@zerodep-dev/vue-tsx-pro-tsx`、`-ui`（现在 `^0.30.0`）。只有要改组件库时才需要源码；它的约定见那边的 HANDOFF.md：`node scripts/dev/check.mjs` 过了再提交，`node scripts/release.mjs <版本> --wait` 发版（等 CI，打标签以后 CI 发 npm） |

@@ -72,6 +72,8 @@ pwsh tools/verify.ps1   # 在单独的 git 工作树里跑全部回归，主检�
 - [docs/principles.md](docs/principles.md)、[docs/scope.md](docs/scope.md)、[docs/stages.md](docs/stages.md)：原则、范围、各阶段的定义和验收。
 - [docs/decisions.md](docs/decisions.md)、[docs/progress-log.md](docs/progress-log.md)：执行中的决定和过程。
 - [docs/vector-assets.md](docs/vector-assets.md)、[docs/creation-tools.md](docs/creation-tools.md)：矢量化的资源格式、创作工具的调研。
+- [docs/extending.md](docs/extending.md)：不改引擎、编辑器就能加的东西（脚本、系统、资源种类、调试命令、着色钩子、渲染特性、原生插件）。
+- 各包的 README：[engine](packages/engine/README.md)、[editor](packages/editor/README.md)、[pipeline](packages/pipeline/README.md)、[cli](packages/cli/README.md)、[devkit](packages/devkit/README.md)。
 - [docs/handover.md](docs/handover.md)：新机器上手、端口、约定、踩过的坑。
 - [docs/design-notes.md](docs/design-notes.md)：起步时的设计笔记（组件和脚本的写法、实例化和缓存）。
 

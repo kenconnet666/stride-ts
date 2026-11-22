@@ -592,7 +592,6 @@ export class Game {
     return change;
   }
 
-  /** 植被的风（Material.wind）用的全局风：速度乘上这一刻的阵风（同 WindField.sample 的全局部分），写给渲染系统。 */
   /**
    * 加一个每帧跑的子系统（排在已有的后面，同一阶段按加的顺序跑）；返回它。游戏自己的流式加载、模拟、AI 调度这类
    * "每帧一次、不属于某个实体"的事放这里；按组件跑的逻辑用实体系统（engine/system.ts）。
@@ -624,6 +623,7 @@ export class Game {
     ];
   }
 
+  /** 植被的风（Material.wind）用的全局风：速度乘上这一刻的阵风（同 WindField.sample 的全局部分），写给渲染系统。 */
   #updateRenderWind(): void {
     const global = this.wind.global, out = this.renderSystem?.wind, time = this.wind.time;
     if (!out) return;

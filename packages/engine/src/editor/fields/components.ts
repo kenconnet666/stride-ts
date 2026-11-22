@@ -194,6 +194,7 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       rays: { type: integer(16, 256), optional: true, default: 128, description: 'rays per probe per update' },
       hysteresis: { type: number({ min: 0, max: 0.999, step: 0.01 }), optional: true, default: 0.97, description: 'share of the old value kept per update (higher is steadier, slower to follow changes)' },
       intensity: optional(number({ min: 0 }), 1),
+      budget: { type: number({ min: 0.1, step: 0.1, unit: 'ms' }), optional: true, default: 1.5, description: 'GPU time per frame for the probes; rays per frame follow the measured time' },
       followCamera: { type: bool, optional: true, default: false, description: 'the box follows the main camera (large worlds) instead of staying at the entity' },
     })),
     initial: { size: [20, 8, 20] },

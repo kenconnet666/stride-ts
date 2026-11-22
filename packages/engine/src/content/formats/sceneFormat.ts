@@ -214,6 +214,7 @@ export interface SceneIrradianceVolume {
   readonly hysteresis?: number;
   readonly intensity?: number;
   readonly followCamera?: boolean;
+  readonly budget?: number;
 }
 
 /** 平面反射（Stride 没有，见 PlanarReflection 组件）：平面过实体的原点、法线是本地 +Y；没写的用组件的默认值。 */

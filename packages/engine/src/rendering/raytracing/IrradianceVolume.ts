@@ -9,7 +9,8 @@
  * 几次）。更新写进另一张、再拷回来（同一张贴图不能一边采样一边写）。网格着色时（meshShader 的 volumeIrradiance）取周围 8 个
  * 探针，按三线性、朝向、可见性加权；盒子外一格以内淡出，回到天空盒光和环境光。
  * - 射线打到单面材质背面的超过四分之一的探针在墙里、物体里，不用（着色时权重是 0）。
- * - 每帧最多追 RAY_BUDGET 条射线：探针多的体按 z 的层轮着更新；悬在空中（附近没有几何）和埋在东西里的探针隔
+ * - 每帧追多少条射线按测出来的 GPU 时间调（组件的 budget 毫秒；设备没有时间戳查询时固定 DEFAULT_RAYS 条）：探针多的体按 z 的层
+ *   轮着更新；悬在空中（附近没有几何）和埋在东西里的探针隔
  *   FAR_UPDATE_INTERVAL 轮才更新一次（大世界里跟着相机走的体上半截悬空、下半截在地下，它们几乎不被着色点取到）。
  * - 打到的表面的颜色是烘好的材质平均色（SurfaceColors），受方向光、点光、聚光（面光源当一个点）照，都带阴影射线。
  * - followCamera 的体跟着主相机走（大世界）：盒子按间距对齐到相机周围，探针在图集里按世界的格号取模放，相机挪了只有新进盒子的
@@ -34,8 +35,10 @@ const TILE_HEIGHT = IRRADIANCE_TEXELS + 2 + DISTANCE_TEXELS + 2;
 const MAX_RAYS = 256;
 /** 悬在空中、埋在东西里的探针隔几轮更新一次。 */
 const FAR_UPDATE_INTERVAL = 8;
-/** 每帧最多追几条射线（探针多的体按 z 的层轮着更新）。 */
-const RAY_BUDGET = 1 << 18;
+/** 每帧追几条射线的起点（测出 GPU 时间以前，或者设备没有时间戳查询时）和上下限。 */
+const DEFAULT_RAYS = 1 << 18;
+const MIN_RAYS = 1 << 13;
+const MAX_RAYS_PER_FRAME = 1 << 21;
 /** 光照或场景变了以后编辑器的视口接着出帧，让每个探针再更新几轮（hysteresis 0.97 时大约到 95%）。 */
 const SETTLE_UPDATES = 100;
 /** 没打到的射线记的长度。 */
@@ -392,6 +395,8 @@ interface VolumeState {
   readonly rays: number;
   hysteresis: number;
   intensity: number;
+  /** 这一遍每帧的 GPU 时间预算（毫秒）。 */
+  budget: number;
   /** 跟着主相机走。 */
   readonly follow: boolean;
   /** 跟着相机走的体：最小角那个探针的世界格号；还没定时 undefined。 */
@@ -400,6 +405,14 @@ interface VolumeState {
   scroll: [number, number, number];
   /** 相机挪了以后要清掉的：各轴挪了几格（还没清的），'all' 是全部。 */
   reset: [number, number, number] | 'all' | undefined;
+}
+
+/** 量一遍的 GPU 时间用的东西（timestamp-query）：查询集、解析的缓冲、读回的缓冲（还在 mapAsync 时不再写）。 */
+interface Timing {
+  readonly querySet: GPUQuerySet;
+  readonly resolve: GPUBuffer;
+  readonly readback: GPUBuffer;
+  busy: boolean;
 }
 
 /** 场景里的辐照度体（RenderSystem.irradianceVolumes）：前向渲染器每帧 begin（找体、分配）、draw（追射线、更新探针）。 */
@@ -431,7 +444,11 @@ export class IrradianceVolumes {
   /** 图集换了就加一（网格的视图绑定组跟着重建）。 */
   generation = 0;
   /** 这一帧更新了几个探针、追了几条射线（统计）。 */
-  readonly stats = { probes: 0, updatedProbes: 0, rays: 0 };
+  readonly stats = { probes: 0, updatedProbes: 0, rays: 0, raysPerFrame: DEFAULT_RAYS, gpuMs: 0 };
+  /** 这一帧打算追几条射线（按测出的 GPU 时间往 budget 调）。 */
+  #raysPerFrame = DEFAULT_RAYS;
+  /** 自己量这一遍的 GPU 时间（timestamp-query）：查询集、解析的缓冲、读回的缓冲（还在 mapAsync 时不再写）。 */
+  #timing: Timing | undefined;
 
   constructor(device: GPUDevice, linear: GPUSampler) {
     this.#device = device;
@@ -474,7 +491,7 @@ export class IrradianceVolumes {
       const follow = volume.followCamera[0] !== 0;
       // 跟着相机走的体间距不按盒子拉伸（世界的格要对齐），位置每帧按相机定
       const spacingOf: [number, number, number] = follow ? [spacing, spacing, spacing] : step;
-      this.#found = { key: [follow, ...(follow ? [] : min), ...spacingOf, ...counts, rays].join(), min, spacing: spacingOf, counts, rays, hysteresis: volume.hysteresis[0]!, intensity: volume.intensity[0]!, follow, scroll: [0, 0, 0], cell: undefined, reset: undefined };
+      this.#found = { key: [follow, ...(follow ? [] : min), ...spacingOf, ...counts, rays].join(), min, spacing: spacingOf, counts, rays, hysteresis: volume.hysteresis[0]!, intensity: volume.intensity[0]!, budget: volume.budget[0]!, follow, scroll: [0, 0, 0], cell: undefined, reset: undefined };
     },
   });
 
@@ -496,6 +513,7 @@ export class IrradianceVolumes {
     if (!this.#state) return;
     this.#state.hysteresis = found.hysteresis;
     this.#state.intensity = found.intensity;
+    this.#state.budget = found.budget;
     if (this.#state.follow) this.#follow(this.#state, [eye.x, eye.y, eye.z], context.game.renderOrigin);
     rayTracing.update(context.game);
     // 光照或者场景变了：按需出帧的编辑器视口接着出帧，直到探针跟上（大约 SETTLE_UPDATES 轮）
@@ -529,7 +547,7 @@ export class IrradianceVolumes {
   }
 
   #layersPerFrame(layer: number, layers: number, rays: number): number {
-    return Math.max(1, Math.min(layers, Math.floor(RAY_BUDGET / (layer * rays))));
+    return Math.max(1, Math.min(layers, Math.floor(this.#raysPerFrame / (layer * rays))));
   }
 
   /** 追这一帧的射线、更新探针（录进 encoder；光追场景还没有能遍历的东西时不做）。 */
@@ -551,7 +569,11 @@ export class IrradianceVolumes {
     this.stats.updatedProbes = probes;
     this.stats.rays = probes * state.rays;
 
-    const pass = encoder.beginComputePass({ label: 'IrradianceVolume', ...(timestampWrites ? { timestampWrites } : {}) });
+    // 开发时的剖析器要这一遍的时间戳就给它（这一帧不调预算），不然自己量
+    const timing = timestampWrites ? undefined : this.#timingFor();
+    const ownTimestamps = timing && !timing.busy ? { querySet: timing.querySet, beginningOfPassWriteIndex: 0, endOfPassWriteIndex: 1 } : undefined;
+    const writes = timestampWrites ?? ownTimestamps;
+    const pass = encoder.beginComputePass({ label: 'IrradianceVolume', ...(writes ? { timestampWrites: writes } : {}) });
     if (state.reset) {
       // 跟着相机走的体挪了：先清新进盒子的探针（直接写图集，下面追射线、更新时读到的就是清过的）
       const all = state.reset === 'all' || state.reset.some((shift, axis) => Math.abs(shift) >= state.counts[axis]!);
@@ -599,6 +621,42 @@ export class IrradianceVolumes {
     const first = Math.min(layers, cz - firstLayer);
     copy(firstLayer, first);
     if (first < layers) copy(0, layers - first);
+    if (timing && ownTimestamps) this.#measure(encoder, timing, state.budget);
+  }
+
+  /** 时间戳查询的东西（设备不支持时 undefined）。 */
+  #timingFor(): Timing | undefined {
+    if (this.#timing || !this.#device.features.has('timestamp-query')) return this.#timing;
+    const device = this.#device;
+    return (this.#timing = {
+      querySet: device.createQuerySet({ label: 'IrradianceVolume timing', type: 'timestamp', count: 2 }),
+      resolve: device.createBuffer({ label: 'IrradianceVolume timing resolve', size: 16, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC }),
+      readback: device.createBuffer({ label: 'IrradianceVolume timing readback', size: 16, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ }),
+      busy: false,
+    });
+  }
+
+  /** 读回这一遍的 GPU 时间，按它把下一帧的射线数往预算（毫秒）调：每次最多变 30%，免得来回晃。 */
+  #measure(encoder: GPUCommandEncoder, timing: Timing, budget: number): void {
+    encoder.resolveQuerySet(timing.querySet, 0, 2, timing.resolve, 0);
+    encoder.copyBufferToBuffer(timing.resolve, 0, timing.readback, 0, 16);
+    timing.busy = true;
+    // 编码器提交以后才能映射：等这一帧交给队列（同 GpuCulling 的读回）
+    queueMicrotask(() => {
+      timing.readback.mapAsync(GPUMapMode.READ).then(() => {
+        const [begin, end] = new BigUint64Array(timing.readback.getMappedRange());
+        timing.readback.unmap();
+        timing.busy = false;
+        const ms = Number(end! - begin!) / 1e6;
+        if (!(ms > 0) || ms > 1000) return;
+        this.stats.gpuMs = ms;
+        const ratio = Math.min(1.3, Math.max(0.7, budget / ms));
+        this.#raysPerFrame = Math.round(Math.min(MAX_RAYS_PER_FRAME, Math.max(MIN_RAYS, this.#raysPerFrame * ratio)));
+        this.stats.raysPerFrame = this.#raysPerFrame;
+      }, () => {
+        timing.busy = false;
+      });
+    });
   }
 
   #writeParams(state: VolumeState, firstProbe: number, probes: number, lighting: Lighting): void {
@@ -655,7 +713,8 @@ export class IrradianceVolumes {
     this.#atlas.destroy();
     this.#atlas = this.#createAtlas(width, height);
     this.#scratch = this.#device.createTexture({ label: 'IrradianceVolume scratch', size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC });
-    const perFrame = this.#layersPerFrame(cx * cy, cz, state.rays) * cx * cy;
+    // 射线缓冲按预算的上限（或整个体，取小的）开，预算调大时不用换
+    const perFrame = Math.max(1, Math.min(cz, Math.floor(MAX_RAYS_PER_FRAME / (cx * cy * state.rays)))) * cx * cy;
     this.#rays = this.#device.createBuffer({ label: 'IrradianceVolume rays', size: perFrame * state.rays * 16, usage: GPUBufferUsage.STORAGE });
     this.#nextProbe = 0;
     this.stats.probes = cx * cy * cz;
@@ -730,5 +789,8 @@ export class IrradianceVolumes {
     this.#params.destroy();
     this.#resetParams.destroy();
     this.#traversal.destroy();
+    this.#timing?.querySet.destroy();
+    this.#timing?.resolve.destroy();
+    this.#timing?.readback.destroy();
   }
 }

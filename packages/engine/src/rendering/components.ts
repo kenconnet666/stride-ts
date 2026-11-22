@@ -142,7 +142,8 @@ export const ReflectionProbe = component('ReflectionProbe', {
  * 辐照度体（Stride 没有；同 RTXGI、WickedEngine 的 DDGI）：盒子里每隔 spacing 米一个探针，探针每帧往四周发 rays 条光追的射线，
  * 盒子里的表面的漫反射环境光用探针算出来的（有遮挡、有多次反弹的间接光），代替天空盒光和环境光（raytracing/IrradianceVolume.ts）。
  * 盒子以实体为中心，边长是 size 乘实体的缩放（不跟旋转）；hysteresis 是每次更新留下旧值的比例（越大越稳、跟得越慢）；
- * intensity 乘探针的光。followCamera 开着时盒子不在实体那里，跟着主相机走（大世界：按间距对齐，相机挪了只有新进盒子的探针重来）。
+ * intensity 乘探针的光；budget 是这一遍每帧的 GPU 时间（毫秒），每帧追多少条射线按测出来的时间往它调（多了探针更新得慢）。
+ * followCamera 开着时盒子不在实体那里，跟着主相机走（大世界：按间距对齐，相机挪了只有新进盒子的探针重来）。
  * 场景里只用第一个。
  */
 export const IrradianceVolume = component('IrradianceVolume', {
@@ -152,6 +153,7 @@ export const IrradianceVolume = component('IrradianceVolume', {
   rays: prop.u32().default(128).min(16).max(256),
   hysteresis: prop.f32().default(0.97).min(0).max(0.999),
   intensity: prop.f32().default(1).min(0),
+  budget: prop.f32().default(1.5).min(0.1).unit('ms'),
 });
 
 /**

@@ -31,10 +31,10 @@ check('游戏在跑', status.status === 'running' && status.error === null, stat
 stride('eval', PAGE_HELPERS);
 stride('eval', HELPERS);
 
-// GPU 剔除剩下几个是异步读回来的（晚一两帧）：CI 的软件 WebGPU 刚开始几帧很慢，等到有数（最多 10 秒）
+// GPU 剔除剩下几个是异步读回来的（晚一两帧）：CI 的软件 WebGPU 一帧要几秒（本机的 SwiftShader 0.35 帧每秒），等到有数（最多 40 秒）
 const drawn = stride('eval', `(async () => { const mesh = strideGame.renderSystem.features.find((f) => f instanceof strideEngine.MeshRenderFeature);
   const read = () => ({ entities: strideGame.entities.count, instances: mesh.instanceCount, drawn: mesh.drawnInstances, draws: mesh.drawCalls });
-  for (let i = 0; i < 100 && read().drawn <= 20; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+  for (let i = 0; i < 400 && read().drawn <= 20; i++) await new Promise((resolve) => setTimeout(resolve, 100));
   return read(); })()`) as { entities: number; instances: number; drawn: number; draws: number };
 check('场景画出来了', drawn.entities > 50 && drawn.drawn > 20 && drawn.draws > 0, drawn);
 

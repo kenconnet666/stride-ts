@@ -12,7 +12,7 @@
  */
 import { setPropertyPath } from '@zerodep-dev/vue-tsx-pro-ui';
 import { shallowRef, triggerRef } from 'vue';
-import { DEFAULT_IMAGE_IMPORT, type ImageImportFile, type PrefabFile, type SceneEntityFile, type SceneFile, type TimelineFile } from '@stride-ts/engine/content-format';
+import { DEFAULT_IMAGE_IMPORT, TEXTURE_EXTENSIONS, type ImageImportFile, type TextureRef, type PrefabFile, type SceneEntityFile, type SceneFile, type TimelineFile } from '@stride-ts/engine/content-format';
 import type { GraphFile } from '@stride-ts/engine/node-graph';
 import { availableParent, expandPrefabInstances, loadPrefabs } from '@stride-ts/engine/content-prefabs';
 import { sceneEditBetween, SceneDocument, UndoStack, type SceneEdit } from '@stride-ts/engine/editor-document';
@@ -65,6 +65,18 @@ export class EditorSession implements EditableScene {
   readonly assets = shallowRef<readonly AssetRecord[]>([]);
   /** 选中的实体（文档里的 id）。 */
   readonly selection = shallowRef<readonly string[]>([]);
+
+  /**
+   * 一张图片资源在界面里能直接显示的地址（源文件 png、jpg、webp、svg；只压成了 KTX2 的看不了，是 undefined）：精灵表面板、
+   * 节点图的预览用。encoding 是贴图引用里写的编码，资源列表里还没有这张图时按它猜文件名。
+   */
+  imageUrl(path: string, encoding?: TextureRef['encoding']): string | undefined {
+    const root = this.project.value?.contentUrl;
+    if (root === null || root === undefined) return undefined;
+    const files = this.assets.value.find((asset) => asset.kind === 'image' && asset.path === path)?.files ?? [];
+    const shown = files.find((file) => /\.(png|jpe?g|webp|svg)$/i.test(file)) ?? (encoding && encoding !== 'ktx2' ? path + TEXTURE_EXTENSIONS[encoding] : undefined);
+    return shown === undefined ? undefined : `/${root}${shown}`;
+  }
   /** 文档每改一次（做、撤销、重做、打开）加一：读文档的地方读它，好跟着刷新。 */
   readonly version = shallowRef(0);
   /** 上次保存以后改过。 */

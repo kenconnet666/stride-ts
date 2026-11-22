@@ -48,10 +48,10 @@ export interface NodeSpec {
 }
 
 /**
- * 从 roots（图的输出接着的节点）往回走，按"被依赖的在前"排好要求值的节点；没接到输出的节点不算。连线指向不存在的节点、
+ * 从 roots（图的输出接着的节点）往回走，按"被依赖的在前"排好要求值的节点；没接到输出的节点不算（all 时也排进去，节点的预览用）。连线指向不存在的节点、
  * 节点 id 重复、有环时报错（where 用在消息里）。
  */
-export function sortGraph(graph: GraphFile, where: string): GraphNodeFile[] {
+export function sortGraph(graph: GraphFile, where: string, { all = false }: { readonly all?: boolean } = {}): GraphNodeFile[] {
   const byId = new Map<string, GraphNodeFile>();
   for (const node of graph.nodes) {
     if (byId.has(node.id)) throw new Error(`${where}: two nodes have the id '${node.id}'`);
@@ -71,5 +71,7 @@ export function sortGraph(graph: GraphFile, where: string): GraphNodeFile[] {
     order.push(node);
   };
   for (const [output, link] of Object.entries(graph.outputs)) if (link) visit(link.node, `output ${output}`);
+  // 节点的预览要每个节点都算，没接到输出的也排进去
+  if (all) for (const node of graph.nodes) visit(node.id, `node '${node.id}'`);
   return order;
 }

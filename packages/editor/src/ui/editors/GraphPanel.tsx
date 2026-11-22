@@ -6,7 +6,8 @@
  * - 从输出端口拖到输入端口（或材质输出）连线，一个输入只接一条线（新的替换旧的）；
  * - 点节点或连线选中，Delete 删掉（删节点时连到它的线一起去掉，删连线是断开）；"加节点"菜单按分类列出节点库。
  * 每次修改经 session.editMaterialGraph 存（同属性面板，稍等一下存），材质热重载，视口里马上看到。节点卡片的行高是定的，
- * 端口的位置按行算（Diagram 的端口 at），不量 DOM。
+ * 端口的位置按行算（Diagram 的端口 at），不量 DOM。每个节点在端口行下面有一张预览图（第一个输出在 UV 平面上的样子，引擎的
+ * materialGraphPreview.ts 画；编辑器界面自己拿一个 WebGPU 设备，图一改就重画）。
  */
 import { CircleX, Plus } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
@@ -15,6 +16,8 @@ import { Button, Empty, Flex, IconButton, Menu, MenuGroup, MenuItem, Text, Toolb
 import { Diagram, DiagramPortNode, portNodeLayout, type DiagramConnection, type DiagramEdgeItem, type DiagramNodeItem, type DiagramNodeMove, type DiagramSelection, type PortNodePort } from '@zerodep-dev/vue-tsx-pro-ui/diagram';
 import type { GraphFile, GraphLink, GraphNodeFile, NodeSpec } from '@stride-ts/engine/node-graph';
 import { MATERIAL_GRAPH_OUTPUTS, MATERIAL_NODE_SPECS } from '@stride-ts/engine/material-graph';
+import { MATERIAL_PREVIEW_SIZE, MaterialGraphPreviewer } from '@stride-ts/engine/material-graph-preview';
+import { onUnmounted, watch } from 'vue';
 import { Fields, type FieldContext } from '../fields/FieldEditor';
 import { t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
@@ -22,6 +25,10 @@ import type { EditorSession } from '../session/EditorSession';
 const WIDTH = 190;
 /** 参数一行（属性面板的字段行 28 加行间距 2）的高度。 */
 const PARAM_ROW = 30;
+/** 预览图占的高（图加上下的空）。 */
+const PREVIEW_ROW = MATERIAL_PREVIEW_SIZE + 8;
+/** 图改了以后等这么久没再改才重画预览（拖数值时不每帧都画）。 */
+const PREVIEW_DELAY_MS = 150;
 const OUTPUT_NODE = '$output';
 const SPECS = new Map(MATERIAL_NODE_SPECS.map((spec) => [spec.type, spec]));
 const OUTPUT_PORTS = Object.entries(MATERIAL_GRAPH_OUTPUTS).map(([name, type]) => ({ name, type }));
@@ -30,6 +37,16 @@ const styles = css.create({
   panel: { height: '100%', minHeight: '0', fontSize: '0.75rem' },
   canvas: { flex: '1', minHeight: '0', position: 'relative' },
   diagram: { position: 'absolute', inset: '0' },
+  preview: { display: 'block', alignSelf: 'center', width: `${MATERIAL_PREVIEW_SIZE}px`, height: `${MATERIAL_PREVIEW_SIZE}px`, borderRadius: '_sm', backgroundColor: '_surfaceMuted' },
+});
+
+/** 一张预览图：ImageData 画进一个画布（换了图才重画）。 */
+const PreviewImage = _component(({ image }: { image: ImageData | undefined }) => {
+  let canvas = _state.raw<HTMLCanvasElement | null>(null);
+  _effect(() => {
+    if (canvas && image) canvas.getContext('2d')?.putImageData(image, 0, 0);
+  });
+  return () => <canvas ref={_toRef(canvas)} {...css.attrs(styles.preview)} width={MATERIAL_PREVIEW_SIZE} height={MATERIAL_PREVIEW_SIZE} aria-hidden="true" />;
 });
 
 /** 端口的颜色按种类（数、二维、三维、颜色）。 */
@@ -52,6 +69,39 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
   const graph = (): GraphFile | undefined => session.inspected.value?.content['graph'] as GraphFile | undefined;
   const edit = (change: (file: GraphFile) => GraphFile) => session.editMaterialGraph(change);
   const context: FieldContext = { entities: [] };
+
+  /** 各节点的预览图（节点 id → 图）；编辑器界面自己的 GPU 设备上画，第一次要用时才建。 */
+  let previews = _state.raw<ReadonlyMap<string, ImageData>>(new Map());
+  let previewer: Promise<MaterialGraphPreviewer | undefined> | undefined;
+  const loadImage = async (path: string) => {
+    const url = session.imageUrl(path);
+    if (!url) return undefined;
+    const response = await fetch(url);
+    return response.ok ? createImageBitmap(await response.blob(), { colorSpaceConversion: 'none' }) : undefined;
+  };
+  const getPreviewer = () => (previewer ??= (async () => {
+    const adapter = await navigator.gpu?.requestAdapter();
+    const device = await adapter?.requestDevice();
+    return device ? new MaterialGraphPreviewer(device, { loadImage }) : undefined;
+  })());
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let rendering = 0;
+  // 图一改就重画（合并连着的修改）；画的过程中又改了，只要最后一次的结果
+  watch(() => JSON.stringify(graph() ?? null), () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const file = graph();
+      if (!file) return;
+      const ticket = ++rendering;
+      void getPreviewer().then((renderer) => renderer?.render(file, session.inspected.value?.path ?? 'material graph')).then((images) => {
+        if (images && ticket === rendering) previews = images;
+      }).catch((error: unknown) => (session.notice.value = (error as Error).message));
+    }, PREVIEW_DELAY_MS);
+  }, { immediate: true });
+  onUnmounted(() => {
+    clearTimeout(timer);
+    void previewer?.then((renderer) => renderer?.destroy());
+  });
 
   const connect = (from: GraphLink, node: string, port: string) => edit((file) => (node === OUTPUT_NODE
     ? { ...file, outputs: { ...file.outputs, [port]: from } }
@@ -81,14 +131,14 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     const items: CardItem[] = file.nodes.flatMap((node) => {
       const spec = SPECS.get(node.type);
       if (!spec) return [];
-      // 端口行下面是参数（属性面板的字段行，每行 PARAM_ROW），端口位置按行算（portNodeLayout）
-      const { height, ports } = portNodeLayout({
+      // 端口行下面是预览图和参数（属性面板的字段行，每行 PARAM_ROW），端口位置按行算（portNodeLayout）；有参数的节点里有控件
+      const layout = portNodeLayout({
         outputs: portsOf(spec.outputs, portLabel),
         inputs: portsOf(spec.inputs, portLabel),
-        body: spec.params.length > 0 ? spec.params.length * PARAM_ROW + 6 : 0,
+        body: (spec.outputs.length > 0 ? PREVIEW_ROW : 0) + (spec.params.length > 0 ? spec.params.length * PARAM_ROW : 0) + 6,
       });
       const [x, y] = node.position ?? [0, 0];
-      return [{ id: node.id, x, y, width: WIDTH, height, ports, node, spec }];
+      return [{ id: node.id, x, y, width: WIDTH, ...layout, controls: spec.params.length > 0, node, spec }];
     });
     const right = Math.max(0, ...items.map((item) => item.x)) + WIDTH + 80;
     const output = portNodeLayout({ inputs: portsOf(OUTPUT_PORTS, outputLabel) });
@@ -146,6 +196,7 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     return (
       <DiagramPortNode title={t.graphNodes[node.type] ?? node.type} propsHeader={{ title: node.id }}
         outputs={portsOf(spec.outputs, portLabel)} inputs={portsOf(spec.inputs, portLabel)}>
+        {spec.outputs.length > 0 && <PreviewImage image={previews.get(node.id)} />}
         {spec.params.length > 0 && (
           <Fields
             fields={spec.params.map((param) => ({ name: param.name, type: param.type, optional: true, default: param.default, ...(param.description ? { description: param.description } : {}) }))}

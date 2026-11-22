@@ -13,7 +13,7 @@ import { Crop, Grid3x3, Plus, ScanSearch, Trash2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Button, createImageRegionsController, Empty, Flex, IconButton, ImageRegions, NumberField, Text, TextField, Toolbar, Tree, type ImageRegion, type ImageRegionChange } from '@zerodep-dev/vue-tsx-pro-ui';
-import { TEXTURE_EXTENSIONS, type SpriteSheetFile, type TextureRef } from '@stride-ts/engine/content-format';
+import type { SpriteSheetFile, TextureRef } from '@stride-ts/engine/content-format';
 import { autoRegions, DEFAULT_PIXELS_PER_UNIT, gridRegions, replaceSprites, type SpritePixels, type SpriteRegion } from '@stride-ts/engine/editor-sprites';
 import { t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
@@ -47,13 +47,7 @@ export const SpriteSheetPanel = _component(({ session }: { session: EditorSessio
   const current = (): Sprite | undefined => sprites()[Math.min(selected, sprites().length - 1)];
 
   /** 浏览器能直接显示的那个文件（压成 KTX2 的贴图用旁边的源图片）；没有时是 undefined。 */
-  const imageUrl = (texture: TextureRef): string | undefined => {
-    const root = session.project.value?.contentUrl;
-    if (root === null || root === undefined) return undefined;
-    const files = session.assets.value.find((asset) => asset.kind === 'image' && asset.path === texture.texture)?.files ?? [];
-    const shown = files.find((file) => /\.(png|jpe?g|webp|svg)$/i.test(file)) ?? (texture.encoding && texture.encoding !== 'ktx2' ? texture.texture + TEXTURE_EXTENSIONS[texture.encoding] : undefined);
-    return shown === undefined ? undefined : `/${root}${shown}`;
-  };
+  const imageUrl = (texture: TextureRef): string | undefined => session.imageUrl(texture.texture, texture.encoding);
   /** 选中的精灵的贴图加载好了放进 image；换了贴图时把整张图放进视口。 */
   const load = (url: string | undefined) => {
     if (url === loadedUrl) return;

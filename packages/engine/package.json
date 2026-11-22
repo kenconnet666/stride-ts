@@ -12,6 +12,7 @@
     "./editor-document": "./src/editor/SceneDocument.ts",
     "./editor-fields": "./src/editor/fields/index.ts",
     "./material-graph": "./src/rendering/mesh/materialGraph.ts",
+    "./material-graph-preview": "./src/rendering/mesh/materialGraphPreview.ts",
     "./node-graph": "./src/content/formats/nodeGraph.ts",
     "./editor-particles": "./src/editor/particleModules.ts",
     "./modeling": "./src/modeling/index.ts",

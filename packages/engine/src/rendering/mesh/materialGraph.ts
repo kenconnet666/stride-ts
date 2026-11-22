@@ -371,10 +371,34 @@ export interface CompiledMaterialGraph {
  * 编成 WGSL。compiler 是同一份材质里颜色树用的编译器（贴图的绑定、库函数共用）；textures 给加载好的贴图资源（内容路径 →
  * 贴图在 compiler 里的采样，由调用方实现）。认不出的节点、接错的端口报错（where 用在消息里）。
  */
-export function compileMaterialGraph(graph: GraphFile, compiler: ColorTreeCompiler, sample: (texture: string, uv: string) => string | undefined, where: string): CompiledMaterialGraph {
-  const order = sortGraph(graph, where);
+export function compileMaterialGraph(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string): CompiledMaterialGraph {
+  const { lines, values } = emitMaterialGraphNodes(graph, compiler, sample, where);
+  const outputs = new Set<MaterialGraphOutput>();
+  const declarations: string[] = [];
+  for (const [name, type] of Object.entries(MATERIAL_GRAPH_OUTPUTS) as [MaterialGraphOutput, PortType][]) {
+    const link = graph.outputs[name];
+    if (!link) continue;
+    outputs.add(name);
+    declarations.push(`var<private> graph_${name}: ${WGSL_TYPES[type]};`);
+    lines.push(`  graph_${name} = ${convertGraphValue(linked(values, link, `output ${name}`, where), type)};`);
+  }
+  return { code: `${declarations.join('\n')}\nfn materialGraph() {\n${lines.join('\n')}\n}\n`, outputs };
+}
+
+/** 一个节点算出的值：WGSL 的变量名和种类。 */
+export interface MaterialGraphValue {
+  readonly expr: string;
+  readonly type: PortType;
+}
+
+/**
+ * 按依赖排好的节点每个算一次：每个输出一行 `let g_<节点>_<输出> = …;`。values 按 `节点:输出` 找到变量（`节点:` 是第一个输出）。
+ * compileMaterialGraph 和节点的预览（materialGraphPreview.ts）共用；all 时没接到输出的节点也算（预览要每个节点）。
+ */
+export function emitMaterialGraphNodes(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string, options: { readonly all?: boolean } = {}): { readonly lines: string[]; readonly values: ReadonlyMap<string, MaterialGraphValue> } {
+  const order = sortGraph(graph, where, options);
   const lines: string[] = [];
-  const values = new Map<string, { readonly expr: string; readonly type: PortType }>();
+  const values = new Map<string, MaterialGraphValue>();
   const context: EmitContext = { addFunction: (name, code) => compiler.addFunction(name, code), sample };
   for (const node of order) {
     const spec = NODES_BY_TYPE.get(node.type);
@@ -382,7 +406,7 @@ export function compileMaterialGraph(graph: GraphFile, compiler: ColorTreeCompil
     const inputs: Record<string, string> = {};
     for (const port of spec.inputs) {
       const link = node.inputs?.[port.name];
-      inputs[port.name] = link ? convert(linked(values, link, `input ${port.name} of node '${node.id}'`, where), port.type) : port.fallback;
+      inputs[port.name] = link ? convertGraphValue(linked(values, link, `input ${port.name} of node '${node.id}'`, where), port.type) : port.fallback;
     }
     for (const name of Object.keys(node.inputs ?? {})) if (!spec.inputs.some((port) => port.name === name)) throw new Error(`${where}: node '${node.id}' (${node.type}) has no input '${name}'`);
     const params = Object.fromEntries(spec.params.map((param) => [param.name, node.params?.[param.name] ?? param.default]));
@@ -395,26 +419,17 @@ export function compileMaterialGraph(graph: GraphFile, compiler: ColorTreeCompil
       if (output === spec.outputs[0]) values.set(`${node.id}:`, { expr: variable, type: output.type });
     }
   }
-  const outputs = new Set<MaterialGraphOutput>();
-  const declarations: string[] = [];
-  for (const [name, type] of Object.entries(MATERIAL_GRAPH_OUTPUTS) as [MaterialGraphOutput, PortType][]) {
-    const link = graph.outputs[name];
-    if (!link) continue;
-    outputs.add(name);
-    declarations.push(`var<private> graph_${name}: ${WGSL_TYPES[type]};`);
-    lines.push(`  graph_${name} = ${convert(linked(values, link, `output ${name}`, where), type)};`);
-  }
-  return { code: `${declarations.join('\n')}\nfn materialGraph() {\n${lines.join('\n')}\n}\n`, outputs };
+  return { lines, values };
 }
 
-function linked(values: ReadonlyMap<string, { readonly expr: string; readonly type: PortType }>, link: GraphLink, what: string, where: string): { readonly expr: string; readonly type: PortType } {
+function linked(values: ReadonlyMap<string, MaterialGraphValue>, link: GraphLink, what: string, where: string): MaterialGraphValue {
   const found = values.get(`${link.node}:${link.output ?? ''}`);
   if (!found) throw new Error(`${where}: ${what} is linked to output '${link.output ?? ''}' of node '${link.node}', which it does not have`);
   return found;
 }
 
 /** 种类之间的转换：数到向量是重复（颜色的 alpha 是 1），向量到数取第一个分量。 */
-function convert({ expr, type }: { readonly expr: string; readonly type: PortType }, to: PortType): string {
+export function convertGraphValue({ expr, type }: MaterialGraphValue, to: PortType): string {
   if (type === to) return expr;
   const component = { float: expr, vec2: `${expr}.x`, vec3: `${expr}.x`, color: `${expr}.r` }[type];
   switch (to) {

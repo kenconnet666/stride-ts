@@ -21,7 +21,7 @@
     "@webgpu/types": "^0.1.74",
     "typescript": "7.1.0-dev.20261104.1",
     "vite": "^8.3.8",
-    "vitest": "^5.1.0",
+    "vitest": "^5.1.1",
     "@stride-ts/cli": "workspace:*",
     "@stride-ts/editor": "workspace:*"
   }

@@ -6,6 +6,7 @@ const bottle: ProductFile = { name: 'Water', shape: 'bottle', size: [0.065, 0.21
 const sizes: Readonly<Record<ProductShape, readonly [number, number, number]>> = {
   box: [0.2, 0.3, 0.06], bottle: [0.065, 0.21, 0], can: [0.066, 0.12, 0], jar: [0.09, 0.11, 0], tub: [0.1, 0.08, 0], pouch: [0.16, 0.22, 0.05],
   round: [0.08, 0.07, 0], onion: [0.08, 0.085, 0], garlic: [0.055, 0.05, 0], nut: [0.035, 0.034, 0], tuber: [0.11, 0.06, 0.07],
+  bowl: [0.2, 0.08, 0], plate: [0.26, 0.035, 0.2],
 };
 
 /** 网格的包围盒和每个顶点：位置、法线、UV。 */
@@ -32,7 +33,7 @@ describe('商品包装', () => {
     const { min, max, worstNormal, uvOutside } = inspect(mesh.vertices);
     expect(min[1]).toBeCloseTo(0, 5);
     expect(max[1]).toBeCloseTo(size[1], 5);
-    const depth = shape === 'box' || shape === 'pouch' || (isProduce(shape) && size[2] > 0) ? size[2] : size[0];
+    const depth = shape === 'box' || shape === 'pouch' || ((isProduce(shape) || shape === 'plate') && size[2] > 0) ? size[2] : size[0];
     if (isProduce(shape)) {
       // 果蔬有起伏（土豆疙疙瘩瘩、蒜一瓣瓣）：尺寸差在 15% 以内
       expect(Math.abs(max[0]! - min[0]! - size[0]) / size[0]).toBeLessThan(0.15);
@@ -44,6 +45,27 @@ describe('商品包装', () => {
     expect(worstNormal).toBeLessThan(1e-5);
     expect(uvOutside).toBe(0);
     expect(mesh.labelSize[0]).toBeGreaterThan(0);
+  });
+
+  test('碗：盛了菜多一块菜面，边上低于口沿、中间鼓起；贴图有青花和菜那块；方盘按宽深压成圆角方形', () => {
+    const empty = productMesh({ name: 'Bowl', shape: 'bowl', size: [0.2, 0.08, 0] });
+    const file: ProductFile = { name: 'Pork', shape: 'bowl', size: [0.2, 0.08, 0], food: { color: '#8a3a1c', accent: '#2f8a2f', level: 0.6, mound: 0.25, pieces: 'chunks' }, seed: 4 };
+    const full = productMesh(file);
+    expect(full.vertices.length).toBeGreaterThan(empty.vertices.length);
+    // 菜面的顶点在碗的那些后面：中心那个最高（口沿以上、鼓起不到一个碗高），边上那圈在口沿以下
+    const food = full.vertices.subarray(empty.vertices.length);
+    const center = food[1]!;
+    expect(center).toBeGreaterThan(0.06);
+    expect(center).toBeLessThan(0.08 + 0.25 * 0.08 + 0.02);
+    const ring = food.subarray(food.length - 8 * 20);
+    for (let i = 0; i < ring.length; i += 8) expect(ring[i + 1]!).toBeLessThan(0.08);
+    // 贴图下面接了一块菜面（高比空碗的多一个口径）
+    expect(full.labelSize[1]).toBeCloseTo(empty.labelSize[1] + 200, 0);
+    const svg = productLabelSvg(file, full.labelSize, undefined);
+    expect(svg).toContain('#23408e');
+    expect(svg).toContain('#8a3a1c');
+    expect(productDesign(file).surface).toBe('ceramic');
+    expect(productDesign({ name: 'Plate', shape: 'plate', size: [0.26, 0.035, 0.2] }).pattern).toBe('plain');
   });
 
   test('旋转体的法线朝外：侧面的法线和从轴出来的方向同向', () => {

@@ -9,10 +9,16 @@
  * - 标签的 SVG 用毫米做单位（viewBox 和网格的展开一一对应，栅格化的尺寸按比例），字是字体轮廓的路径（evenodd 挖洞）。
  */
 import type { MaterialFile } from '../content/formats/assetFormat.ts';
-import { PRODUCE_SHAPES, type ProductColors, type ProductFile, type ProductPattern, type ProductShape, type ProductSurface } from '../content/formats/productFormat.ts';
+import { PRODUCE_SHAPES, WARE_SHAPES, type ProductColors, type ProductFile, type ProductPattern, type ProductShape, type ProductSurface } from '../content/formats/productFormat.ts';
 import { hash32, seededRandom } from '../data/hash.ts';
 import { MeshBuilder } from './meshBuilder.ts';
+import { cross, finish, latheMesh, normalize, sub, type ProductMesh, type ProfilePoint } from './lathe.ts';
+import { svgNumber } from './svg.ts';
+import { WARE_COBALT, WARE_GLAZE, wareMesh, wareSkin } from './ware.ts';
 import { textContours, type TextFont } from './textOutline.ts';
+
+export type { ProductMesh } from './lathe.ts';
+export { svgNumber } from './svg.ts';
 
 /** 定下来的设计：文件里没写的按种子挑好了。 */
 export interface ProductDesign {
@@ -23,20 +29,13 @@ export interface ProductDesign {
   readonly surface: ProductSurface;
 }
 
-/** 生成的网格（一个材质槽）和标签展开的大小（毫米：贴图的 viewBox，u、v 是它的比例）。 */
-export interface ProductMesh {
-  readonly vertices: Float32Array;
-  readonly indices: Uint32Array;
-  readonly labelSize: readonly [number, number];
-}
-
 /** 包装上常见的颜色（sRGB）：底色和强调色从这里挑。 */
 const PALETTE = ['#d7262b', '#f6c40f', '#2f9e44', '#1e64c8', '#f4f2ec', '#1d1d1f', '#f08c00', '#f7a8c4', '#7048a8', '#1aa39a', '#7a4a2a', '#efe3c4', '#e8e8e8', '#0b7a3e'];
 const PATTERNS: readonly ProductPattern[] = ['plain', 'band', 'stripes', 'split', 'wave', 'dots'];
 /** 拼品牌名的字（常见的商标用字）。 */
 const BRAND_CHARACTERS = '金龙鱼海天康乐福味美好鲜香农家旺佳丰园源山泉清真御品优百万华宝和顺禾田欢喜悦大小星光润洁雪绿新鸿盛';
 const DEFAULT_SURFACE: Readonly<Record<ProductShape, ProductSurface>> = {
-  box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic', round: 'skin', onion: 'skin', garlic: 'skin', nut: 'skin', tuber: 'skin',
+  box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic', round: 'skin', onion: 'skin', garlic: 'skin', nut: 'skin', tuber: 'skin', bowl: 'ceramic', plate: 'ceramic',
 };
 /** 果蔬的表皮、纹路、顶上（洋葱、蒜头的颈）的颜色，按种子在附近变一点。 */
 const PRODUCE_COLORS: Readonly<Record<string, readonly [background: string, accent: string, cap: string]>> = {
@@ -45,17 +44,22 @@ const PRODUCE_COLORS: Readonly<Record<string, readonly [background: string, acce
 };
 /** 各种材料的粗糙度和金属度（货架的图集按它画表面贴图）。 */
 export const SURFACE_MATERIAL: Readonly<Record<ProductSurface, { readonly roughness: number; readonly metalness: number }>> = {
-  paper: { roughness: 0.72, metalness: 0 }, plastic: { roughness: 0.32, metalness: 0 }, metal: { roughness: 0.3, metalness: 0.6 }, glass: { roughness: 0.08, metalness: 0 }, skin: { roughness: 0.55, metalness: 0 },
+  paper: { roughness: 0.72, metalness: 0 }, plastic: { roughness: 0.32, metalness: 0 }, metal: { roughness: 0.3, metalness: 0.6 }, glass: { roughness: 0.08, metalness: 0 }, skin: { roughness: 0.55, metalness: 0 }, ceramic: { roughness: 0.16, metalness: 0 },
 };
 /** 旋转体绕一圈默认分几段（货架后排的商品给少一点）。 */
 const RADIAL_SEGMENTS = 20;
-/** 轮廓线上相邻两段的夹角超过这么多（弧度）就是硬边：顶点各用各的法线。 */
-const CREASE = 0.5;
 
 /** 文件里没写的按种子（加上第几个变体）挑好。变体只改文件里没写的：写了品牌、配色的文件每个变体都一样。 */
 export function productDesign(file: ProductFile, variant = 0): ProductDesign {
   const random = seededRandom(hash32(file.seed ?? 1, variant));
   const pick = <T>(list: readonly T[]) => list[Math.floor(random() * list.length)]!;
+  if (isWare(file.shape)) {
+    // 器皿：白釉青花（碗）或者素白（盘），没有品牌和字
+    return {
+      brand: '', text: undefined, pattern: file.pattern ?? (file.shape === 'bowl' ? 'floral' : 'plain'), surface: file.surface ?? 'ceramic',
+      colors: { background: file.colors?.background ?? WARE_GLAZE, accent: file.colors?.accent ?? WARE_COBALT, text: '', cap: '' },
+    };
+  }
   if (isProduce(file.shape)) {
     // 果蔬：颜色在这一种的附近变一点（同一筐番茄有红有橙），没有品牌和字
     const [background, accent, cap] = PRODUCE_COLORS[file.shape]!.map((color) => jitter(color, random, 0.12));
@@ -91,8 +95,14 @@ export function productMesh(file: ProductFile, where = file.name, segments = RAD
   if (file.shape === 'box') return boxMesh(file.size);
   if (file.shape === 'pouch') return pouchMesh(file.size);
   const radial = Math.max(3, Math.round(segments));
+  if (isWare(file.shape)) return wareMesh(file, radial * 2);
   if (isProduce(file.shape)) return produceMesh(file, radial);
   return latheMesh(latheProfile(file.shape, file.size[0] / 2, file.size[1]), radial);
+}
+
+/** 是不是熟食的器皿（碗、盘：釉面，纹样和盛的菜画在贴图上，modeling/ware.ts）。 */
+export function isWare(shape: ProductShape): boolean {
+  return WARE_SHAPES.includes(shape);
 }
 
 /** 是不是散装的果蔬干货（没有标签，表皮按种子出）。 */
@@ -163,14 +173,7 @@ function produceProfile(shape: ProductShape): ProfilePoint[] {
 /** 摆在货架上占的地方（米）：宽、高、深（瓶罐的深是直径）。 */
 export function productFootprint(file: ProductFile): readonly [number, number, number] {
   const [w, h, d] = file.size;
-  return [w, h, file.shape === 'box' || file.shape === 'pouch' || (isProduce(file.shape) && d > 0) ? d : w];
-}
-
-/** 轮廓线上的一点：半径、高（米），这一点往下的那一段是不是盖子。 */
-interface ProfilePoint {
-  readonly r: number;
-  readonly y: number;
-  readonly cap?: boolean;
+  return [w, h, file.shape === 'box' || file.shape === 'pouch' || ((isProduce(file.shape) || file.shape === 'plate') && d > 0) ? d : w];
 }
 
 /** 旋转体的轮廓线：从底面中心出发，沿外壁到顶面中心。 */
@@ -195,53 +198,6 @@ function latheProfile(shape: ProductShape, r: number, h: number): ProfilePoint[]
     default:
       throw new Error(`${shape} is not a turned shape`);
   }
-}
-
-/**
- * 旋转体的网格：每一段轮廓线绕一圈是一圈四边形；u 是角度（正面 +Z 在 0.5），v 是从顶面中心沿轮廓线往下量的长度（贴图的上面
- * 对着包装的上面）。硬边两边的顶点分开、各用各段的法线，软的地方取两段的平均。
- */
-function latheMesh(profile: readonly ProfilePoint[], radial: number, deform?: (x: number, y: number, z: number, u: number) => readonly [number, number, number]): ProductMesh {
-  const segments = profile.length - 1;
-  const lengths = profile.slice(1).map((p, i) => Math.hypot(p.r - profile[i]!.r, p.y - profile[i]!.y));
-  const total = lengths.reduce((sum, l) => sum + l, 0);
-  // 每段朝外的法线（轮廓线的切线转 90°：往上走的外壁朝外）
-  const normals = profile.slice(1).map((p, i) => {
-    const dr = p.r - profile[i]!.r, dy = p.y - profile[i]!.y, l = Math.hypot(dr, dy) || 1;
-    return [dy / l, -dr / l] as const;
-  });
-  const pointNormal = (segment: number, end: 0 | 1): readonly [number, number] => {
-    const own = normals[segment]!, otherIndex = segment + (end === 0 ? -1 : 1), other = normals[otherIndex];
-    if (!other || Math.acos(Math.min(1, own[0] * other[0] + own[1] * other[1])) > CREASE) return own;
-    const r = own[0] + other[0], y = own[1] + other[1], l = Math.hypot(r, y) || 1;
-    return [r / l, y / l];
-  };
-  const builder = new MeshBuilder();
-  let below = total;
-  for (let s = 0; s < segments; s++) {
-    const a = profile[s]!, b = profile[s + 1]!;
-    const above = below - lengths[s]!;
-    if (lengths[s]! < 1e-9) continue;
-    const ring = (point: ProfilePoint, end: 0 | 1, v: number) => Array.from({ length: radial + 1 }, (_, k) => {
-      const u = k / radial, angle = (u - 0.5) * 2 * Math.PI;
-      const [nr, ny] = pointNormal(s, end);
-      // 角度 0 对着 +Z（u = 0.5），往 +X 转
-      const sin = Math.sin(angle), cos = Math.cos(angle);
-      const position = deform ? deform(point.r * sin, point.y, point.r * cos, u) : [point.r * sin, point.y, point.r * cos];
-      return builder.vertex(position, [nr * sin, ny, nr * cos], u, v / total);
-    });
-    const lower = ring(a, 0, below), upper = ring(b, 1, above);
-    for (let k = 0; k < radial; k++) {
-      const mid = (k + 0.5) / radial, angle = (mid - 0.5) * 2 * Math.PI;
-      const [nr, ny] = normals[s]!;
-      builder.quad(lower[k]!, lower[k + 1]!, upper[k + 1]!, upper[k]!, [nr * Math.sin(angle), ny, nr * Math.cos(angle)]);
-    }
-    below = above;
-  }
-  if (deform) smoothNormals(builder);
-  // 标签展开：宽是最粗处的周长，高是轮廓线的长度
-  const circumference = 2 * Math.PI * Math.max(...profile.map((p) => p.r));
-  return finish(builder, [circumference * 1000, total * 1000]);
 }
 
 /** 纸盒：六个面展开成十字（毫米）：一排是左侧、正面、右侧、背面，顶在正面上面、底在正面下面。 */
@@ -296,31 +252,6 @@ function pouchMesh([w, h, d]: readonly [number, number, number]): ProductMesh {
 }
 
 /** 按面重算法线：位置相同的顶点（贴图接缝、轮廓的段与段之间各有一份）一起取相邻三角形法线的面积加权平均。 */
-function smoothNormals(builder: MeshBuilder): void {
-  const { vertices, indices } = builder;
-  const key = (i: number) => `${Math.round(vertices[i * 8]! * 1e6)},${Math.round(vertices[i * 8 + 1]! * 1e6)},${Math.round(vertices[i * 8 + 2]! * 1e6)}`;
-  const sums = new Map<string, [number, number, number]>();
-  for (let t = 0; t < indices.length; t += 3) {
-    const [a, b, c] = [indices[t]!, indices[t + 1]!, indices[t + 2]!];
-    const p = (i: number) => [vertices[i * 8]!, vertices[i * 8 + 1]!, vertices[i * 8 + 2]!];
-    const n = cross(sub(p(b), p(a)), sub(p(c), p(a)));
-    for (const i of [a, b, c]) {
-      const sum = sums.get(key(i)) ?? [0, 0, 0];
-      sums.set(key(i), [sum[0] + n[0]!, sum[1] + n[1]!, sum[2] + n[2]!]);
-    }
-  }
-  for (let i = 0; i < vertices.length / 8; i++) {
-    const n = normalize(sums.get(key(i)) ?? [0, 1, 0]);
-    vertices[i * 8 + 3] = n[0]!;
-    vertices[i * 8 + 4] = n[1]!;
-    vertices[i * 8 + 5] = n[2]!;
-  }
-}
-
-function finish(builder: MeshBuilder, labelSize: readonly [number, number]): ProductMesh {
-  return { vertices: Float32Array.from(builder.vertices), indices: Uint32Array.from(builder.indices), labelSize };
-}
-
 /** 标签上画字的地方（毫米，SVG 的坐标：y 往下）：中心、可用的宽高。 */
 interface TextArea {
   readonly cx: number;
@@ -347,6 +278,7 @@ export function productLabelShapes(file: ProductFile, labelSize: readonly [numbe
   const [w, h, d] = file.size.map((v) => v * 1000) as [number, number, number];
   const parts: string[] = [`<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${design.colors.background}"/>`];
   if (isProduce(file.shape)) return parts.join('') + produceSkin(file, design, labelSize, variant);
+  if (isWare(file.shape)) return wareSkin(file, labelSize, design.colors.background, design.colors.accent, design.pattern === 'floral', variant);
   // 图案画在哪：旋转体是盖子以下的整圈，纸盒是中间那一排，袋是整张
   let body: readonly [number, number, number, number] = [0, 0, W, H];
   let areas: TextArea[];
@@ -402,7 +334,9 @@ function produceSkin(file: ProductFile, design: ProductDesign, [W, H]: readonly 
 function patternShapes(design: ProductDesign, [x, y, w, h]: readonly [number, number, number, number]): string[] {
   const accent = design.colors.accent;
   switch (design.pattern) {
+    // 青花画在器皿的贴图上（ware.ts），包装的标签不用
     case 'plain':
+    case 'floral':
       return [];
     case 'band':
       return [`<rect x="${svgNumber(x)}" y="${svgNumber(y + h * 0.3)}" width="${svgNumber(w)}" height="${svgNumber(h * 0.36)}" fill="${accent}"/>`];
@@ -485,9 +419,6 @@ export function productMaterial(file: ProductFile, texture: string, pixels: read
   };
 }
 
-/** SVG 里的数：留一位小数（毫米），去掉尾巴。 */
-export const svgNumber = (value: number): string => String(Math.round(value * 10) / 10);
-
 function luminance(hex: string): number {
   const v = parseInt(hex.slice(1, 7), 16);
   const channel = (c: number) => {
@@ -509,10 +440,3 @@ function contrast(a: string, b: string): number {
   const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
   return (x! + 0.05) / (y! + 0.05);
 }
-
-const sub = (a: readonly number[], b: readonly number[]) => [a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!];
-const cross = (a: readonly number[], b: readonly number[]) => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
-const normalize = (v: readonly number[]) => {
-  const l = Math.hypot(v[0]!, v[1]!, v[2]!) || 1;
-  return [v[0]! / l, v[1]! / l, v[2]! / l];
-};

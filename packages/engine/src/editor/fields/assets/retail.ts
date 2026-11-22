@@ -8,8 +8,11 @@ export const hexColor = (description: string): FieldSpec => ({ type: string, opt
 /** 商品包装（ProductFile）：后端生成同名的模型、标签贴图（.svg）和材质。 */
 export const PRODUCT_FIELDS = fields<ProductFile>({
   name: string,
-  shape: { type: oneOf('box', 'bottle', 'can', 'jar', 'tub', 'pouch'), description: 'box: carton; bottle: narrow neck and cap; can; jar: wide lid; tub: wider at the top, with a lid; pouch: pillow-shaped bag sealed at both ends' },
-  size: { type: vector(3, 'm'), description: 'width (diameter for bottles, cans, jars and tubs), height, depth (cartons and pouches)' },
+  shape: {
+    type: oneOf('box', 'bottle', 'can', 'jar', 'tub', 'pouch', 'round', 'onion', 'garlic', 'nut', 'tuber', 'bowl', 'plate'),
+    description: 'box: carton; bottle: narrow neck and cap; can; jar: wide lid; tub: wider at the top, with a lid; pouch: pillow-shaped bag sealed at both ends; produce without a label (round: tomato, orange; onion; garlic; nut: walnut; tuber: potato); ware for cooked food: bowl (foot ring, wall thickness), plate (shallow rounded square)',
+  },
+  size: { type: vector(3, 'm'), description: 'width (diameter for bottles, cans, jars, tubs and bowls), height, depth (cartons, pouches and plates; produce: elongated when given)' },
   font: { type: asset('font'), optional: true, description: 'font of the label text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese); no text without one' },
   brand: { type: string, optional: true, description: 'brand name in big letters; two or three common characters picked from the seed when missing' },
   text: { type: string, optional: true, description: 'product kind under the brand (e.g. 生抽, 矿泉水); none when missing' },
@@ -23,8 +26,20 @@ export const PRODUCT_FIELDS = fields<ProductFile>({
     optional: true,
     description: 'label colors; the missing ones come from the seed, so variants of one file differ in them',
   },
-  pattern: { type: oneOf('plain', 'band', 'stripes', 'split', 'wave', 'dots'), optional: true, description: 'label pattern; picked from the seed when missing' },
-  surface: { type: oneOf('paper', 'plastic', 'metal', 'glass'), optional: true, description: 'packaging material (roughness, metalness); by shape when missing: cartons paper, cans metal, jars glass, others plastic' },
+  pattern: { type: oneOf('plain', 'band', 'stripes', 'split', 'wave', 'dots', 'floral'), optional: true, description: 'label pattern (floral: blue-and-white porcelain bands for ware); picked from the seed when missing, ware: bowls floral, plates plain' },
+  surface: { type: oneOf('paper', 'plastic', 'metal', 'glass', 'skin', 'ceramic'), optional: true, description: 'material (roughness, metalness); by shape when missing: cartons paper, cans metal, jars glass, produce skin, ware ceramic, others plastic' },
+  food: {
+    type: object(fields<NonNullable<ProductFile['food']>>({
+      color: { type: string, description: 'main ingredient color (sRGB #rrggbb)' },
+      accent: { type: string, optional: true, description: 'side ingredient color (red pepper, scallion; sRGB #rrggbb); a darker main color when missing' },
+      sauce: { type: string, optional: true, description: 'sauce under the food (sRGB #rrggbb); the main color darkened when missing' },
+      level: { type: number(), optional: true, default: 0.7, description: 'how high the food reaches the wall (0..1 of the inner depth)' },
+      mound: { type: number(), optional: true, default: 0.15, description: 'how much the middle heaps up (fraction of the ware height)' },
+      pieces: { type: oneOf('chunks', 'strands', 'beans', 'smooth'), optional: true, default: 'chunks', description: 'what the food looks like: chunks (braised pork, fried chicken), strands (shredded potato, bean sprouts), beans (peanuts, soybeans), smooth (mashed, custard)' },
+    })),
+    optional: true,
+    description: 'a dish of food in a bowl or plate; empty ware when missing',
+  },
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of everything not written: another number is another brand of the same product' },
 });
 

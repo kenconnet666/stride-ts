@@ -11,18 +11,35 @@
 /**
  * 外形：纸盒、瓶（细颈加盖）、易拉罐、广口瓶（宽盖）、桶（上大下小加盖，酱料、冰淇淋）、袋（枕形的零食袋，上下封口）；
  * 散装的果蔬干货（没有标签和字，表皮按种子出颜色、纹路）：圆的（番茄、橙子、苹果）、洋葱、蒜头（一瓣瓣的）、核桃（坑坑洼洼）、
- * 土豆（扁长、不规则）。
+ * 土豆（扁长、不规则）；熟食的器皿（没有字，可以盛一份菜，见 food）：碗（圈足、带壁厚的旋转体）、方盘（圆角的方形浅盘）。
  */
-export type ProductShape = 'box' | 'bottle' | 'can' | 'jar' | 'tub' | 'pouch' | 'round' | 'onion' | 'garlic' | 'nut' | 'tuber';
+export type ProductShape = 'box' | 'bottle' | 'can' | 'jar' | 'tub' | 'pouch' | 'round' | 'onion' | 'garlic' | 'nut' | 'tuber' | 'bowl' | 'plate';
 
 /** 散装的果蔬干货（没有标签，堆放用）。 */
 export const PRODUCE_SHAPES: readonly ProductShape[] = ['round', 'onion', 'garlic', 'nut', 'tuber'];
 
-/** 包装的材料：决定粗糙度和金属度；skin 是果蔬的表皮。 */
-export type ProductSurface = 'paper' | 'plastic' | 'metal' | 'glass' | 'skin';
+/** 熟食的器皿（碗、盘：釉面，纹样和盛的菜画在贴图上）。 */
+export const WARE_SHAPES: readonly ProductShape[] = ['bowl', 'plate'];
 
-/** 标签的底纹：纯色、横带、斜条纹、上下两截、波浪、圆点。 */
-export type ProductPattern = 'plain' | 'band' | 'stripes' | 'split' | 'wave' | 'dots';
+/** 包装的材料：决定粗糙度和金属度；skin 是果蔬的表皮，ceramic 是瓷器的釉面（器皿和里面油亮的菜都光滑）。 */
+export type ProductSurface = 'paper' | 'plastic' | 'metal' | 'glass' | 'skin' | 'ceramic';
+
+/** 标签的底纹：纯色、横带、斜条纹、上下两截、波浪、圆点；floral 是器皿的青花（口沿、外壁的缠枝花带，碗心一朵）。 */
+export type ProductPattern = 'plain' | 'band' | 'stripes' | 'split' | 'wave' | 'dots' | 'floral';
+
+/**
+ * 器皿里盛的一份菜：color 是主料的颜色，accent 是配料（红椒丝、葱花），sauce 是底下汤汁的颜色（没写按主料暗一些）；level 是菜面
+ * 边上到内壁多高（0..1，按碗的深度），mound 是中间再鼓起多少（按器皿的高）；pieces 是菜的样子：块（红烧肉、炸鸡块）、丝（土豆丝、
+ * 豆芽）、粒（花生、毛豆）、糊（土豆泥、蛋羹）——决定贴图上画什么和菜面起伏多大。
+ */
+export interface ProductFood {
+  readonly color: string;
+  readonly accent?: string;
+  readonly sauce?: string;
+  readonly level?: number;
+  readonly mound?: number;
+  readonly pieces?: 'chunks' | 'strands' | 'beans' | 'smooth';
+}
 
 /** 标签的配色（sRGB 的 #rrggbb）：底色、图案的强调色、字的颜色、盖子的颜色。 */
 export interface ProductColors {
@@ -45,7 +62,9 @@ export interface ProductFile {
   readonly text?: string;
   readonly colors?: ProductColors;
   readonly pattern?: ProductPattern;
-  /** 没写时按外形：纸盒是纸，罐是金属，广口瓶是玻璃，别的是塑料。 */
+  /** 没写时按外形：纸盒是纸，罐是金属，广口瓶是玻璃，器皿是瓷，别的是塑料。 */
   readonly surface?: ProductSurface;
+  /** 器皿（碗、盘）里盛的菜；没写是空的。 */
+  readonly food?: ProductFood;
   readonly seed?: number;
 }

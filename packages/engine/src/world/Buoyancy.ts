@@ -99,7 +99,7 @@ export class BuoyancySystem {
     // 水体一帧取一次（一帧可能走好几步）
     if (this.#areasFrame !== game.frames) {
       this.#areasFrame = game.frames;
-      this.#areas = waterAreas(game.entities, game.updateTime);
+      this.#areas = waterAreas(game.entities, game.updateTime, game.weather.current?.flood ?? 0);
     }
     this.submerged = 0;
     if (this.#areas.length === 0) return;

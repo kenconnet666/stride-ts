@@ -60,6 +60,12 @@ export function riverRibbon(spline: SplineFile, level: number): Float32Array {
   return Float32Array.from(out);
 }
 
+/** 下了很久的大雨以后这片水涨多少米（文件的 rise，没写时湖 0.5、河 0.6、海 0）。 */
+export function waterRise(file: WaterFile): number {
+  return file.rise ?? (file.river ? 0.6 : file.outline ? 0.5 : 0);
+}
+
+let floodNow = 0;
 const areaQuery = system('waterAreas', {
   with: { water: Water, transform: Transform },
   update: ({ water, transform, count }) => {
@@ -72,13 +78,13 @@ const areaQuery = system('waterAreas', {
       if (river) {
         const level = asset.file.river?.level ?? 0.3;
         for (const path of splinePaths(river)) {
-          const line = sampleSpline(path.points, path.closed ?? false, RIVER_STEP * 2).map((f) => toWorld(f.position[0], f.position[1] - level, f.position[2]));
+          const line = sampleSpline(path.points, path.closed ?? false, RIVER_STEP * 2).map((f) => toWorld(f.position[0], f.position[1] - level + waterRise(asset.file) * floodNow, f.position[2]));
           collected.push({ level: Number.NaN, outline: undefined, river: { line, halfWidth: (river.profile.type === 'river' ? river.profile.width : 4) / 2, speed: asset.file.river?.speed ?? 1.5 } });
         }
         continue;
       }
       collected.push({
-        level: m[w + 13]!,
+        level: m[w + 13]! + waterRise(asset.file) * floodNow,
         outline: asset.file.outline?.map(([x, z]) => [toWorld(x, 0, z)[0], toWorld(x, 0, z)[2]] as const),
       });
     }
@@ -86,9 +92,12 @@ const areaQuery = system('waterAreas', {
 });
 let collected: WaterArea[] = [];
 
-/** 场景里的水体占的地方（程序化摆放不往水下撒）。 */
-export function waterAreas(entities: { run: (query: typeof areaQuery, time: GameTime) => void }, time: GameTime): WaterArea[] {
+/**
+ * 场景里的水体占的地方。flood 是天气的涨水（0..1，WeatherState.flood）：浮力用现在的水面；程序化摆放用平时的（不写，不随天气重撒）。
+ */
+export function waterAreas(entities: { run: (query: typeof areaQuery, time: GameTime) => void }, time: GameTime, flood = 0): WaterArea[] {
   collected = [];
+  floodNow = flood;
   entities.run(areaQuery, time);
   return collected;
 }

@@ -296,6 +296,22 @@ describe('天气状态', () => {
     // 下了很久的雨：积水按雨的大小
     expect(new WeatherSystem().advance(steady, undefined).puddles).toBe(0.6);
   });
+
+  test('涨水：下雨就慢慢涨，最多涨到雨的大小；雨停了更慢地退；下了很久的雨按雨的大小', () => {
+    const weather = new WeatherSystem();
+    const steady = { ...rain, transitionTime: 0 };
+    weather.advance({ ...clear, transitionTime: 0 }, undefined);
+    weather.advance(steady, 600);
+    expect(weather.current!.flood).toBeCloseTo((0.6 / 1800) * 600, 5);
+    weather.advance(steady, 3000);
+    expect(weather.current!.flood).toBeCloseTo(0.6, 5);
+    weather.advance({ ...clear, transitionTime: 0 }, 360);
+    expect(weather.current!.flood).toBeCloseTo(0.6 - 360 / 3600, 5);
+    // 雨小了：退到雨的大小为止
+    weather.advance({ ...steady, precipitation: 0.2 }, 10_000);
+    expect(weather.current!.flood).toBeCloseTo(0.2, 5);
+    expect(new WeatherSystem().advance(steady, undefined).flood).toBe(0.6);
+  });
 });
 
 describe('风场和雨雪写在场景文件里', () => {
@@ -351,14 +367,14 @@ describe('风场和雨雪写在场景文件里', () => {
     expect(checkEntity({ ...scene.entities[0]!, components: { weather: WEATHER_PRESETS.storm } })).toEqual([]);
     // 地面的湿和雪写给渲染系统，有湿或雪时要天空遮挡（屋檐下的不湿）
     let used = 0;
-    const surfaceWeather = { wetness: 0, puddles: 0, snowCover: 0, rain: 0 };
+    const surfaceWeather = { wetness: 0, puddles: 0, snowCover: 0, rain: 0, flood: 0 };
     game.renderSystem = { surfaceWeather, skyOcclusion: { use: () => used++ } } as never;
     game.weather.update(game);
-    expect(surfaceWeather).toEqual({ wetness: 0, puddles: 0, snowCover: 1, rain: 0 });
+    expect(surfaceWeather).toEqual({ wetness: 0, puddles: 0, snowCover: 1, rain: 0, flood: 0 });
     expect(used).toBe(1);
     sky.remove(Weather);
     game.weather.update(game);
-    expect(surfaceWeather).toEqual({ wetness: 0, puddles: 0, snowCover: 0, rain: 0 });
+    expect(surfaceWeather).toEqual({ wetness: 0, puddles: 0, snowCover: 0, rain: 0, flood: 0 });
     game.wind.update(game);
     expect(game.weather.current).toBeUndefined();
     expect(game.wind.global.velocity).toEqual([0, 0, 0]);

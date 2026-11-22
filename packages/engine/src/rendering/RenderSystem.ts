@@ -549,7 +549,7 @@ export class RenderSystem {
    * 地面多湿、积了多少水、积了多少雪、雨下得多大（0 到 1；天气状态 world/Weather.ts 每帧写，没有天气时是 0）：网格着色时
    * 淋得到的表面变湿、平的地方积出水洼（下雨时有涟漪）、朝上的积雪。大于 0 时写的人每帧 skyOcclusion.use()（屋檐下的不湿）。
    */
-  readonly surfaceWeather = { wetness: 0, puddles: 0, snowCover: 0, rain: 0 };
+  readonly surfaceWeather = { wetness: 0, puddles: 0, snowCover: 0, rain: 0, flood: 0 };
   /**
    * 植被的风（材质的 Material.wind 在顶点着色器里按它摆），Game 每帧从 game.wind 写：全局风（速度乘上这一刻的阵风、湍流），
    * 离相机最近的 VEGETATION_LOCAL_WINDS 个局部风源（WindZone 的球形：渲染空间的中心——同 WindField——、半径、乘过阵风的强度）。

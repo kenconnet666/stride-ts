@@ -18,6 +18,7 @@
  * - 焦散（文件的 caustics）：水底（水面上看下去的那份拷贝、相机在水下时的整个画面）按折射的光线在那个深度的雅可比（浪尖像
  *   透镜把光聚起来：J = det(I + d·(1 − 1/1.33)·∇∇h)，亮度 1/|J|）调亮调暗；水面的二阶导数在水底那一点上方按斜率差分，Gerstner 和
  *   海浪谱一样。越深越淡（光被吸收、太阳不是点光源所以图案变糊），离相机远的淡掉（不闪）。不看阴影：树荫下的水底也有。
+ * - 涨水（天气的 flood）：湖、河的水面抬高 rise·flood 米（Water.ts 的 waterRise），和地面相交的线跟着往上走。
  * - 下雨（天气的 rain，RenderSystem.surfaceWeather）：水面上一圈圈的雨点涟漪（同地面水洼的 rippleGradient），雨越大越密。
  * - 只画主画面（要那份拷贝），在不透明的之后、透明的之前，读深度、不写。
  */
@@ -33,7 +34,7 @@ import type { Refraction } from '../rendering/screenspace/Refraction';
 import type { PlanarReflections } from '../rendering/lighting/PlanarReflections';
 import { RAIN_RIPPLES } from '../rendering/wgsl';
 import { OCEAN_CASCADES, OCEAN_SIZE, OceanFFT, oceanPatches, windSeaHeight, type OceanSettings } from './OceanFFT';
-import { insidePolygon, RIVER_VERTEX_FLOATS, Water, WaterAsset } from './Water';
+import { insidePolygon, RIVER_VERTEX_FLOATS, Water, WaterAsset, waterRise } from './Water';
 
 /** 极坐标网格：几圈、每圈几段。 */
 const RINGS = 160;
@@ -592,7 +593,7 @@ export class WaterRenderer {
   /**
    * 在主画面透明的那一遍里画（拷贝了不透明的画面之后）。lighting 是这一帧的光照，origin 是渲染原点（浪按世界坐标排）。
    */
-  draw(pass: GPURenderPassEncoder, context: RenderContext, view: RenderView, lighting: Lighting, refraction: Refraction, planar: PlanarReflections, rain: number, origin: readonly number[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
+  draw(pass: GPURenderPassEncoder, context: RenderContext, view: RenderView, lighting: Lighting, refraction: Refraction, planar: PlanarReflections, weather: { readonly rain: number; readonly flood: number }, origin: readonly number[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     const scene = refraction.texture, depth = refraction.depthTexture;
     if (this.#frame.length === 0 || !scene || !depth) return;
     const { pipeline, river, underwater, layout } = this.#pipelineFor(colorFormat, depthFormat);
@@ -655,7 +656,9 @@ export class WaterRenderer {
           extent = Math.max(extent, Math.hypot(wx - view.eye.x, wz - view.eye.z));
         }
       }
-      data.set([world[12]!, world[13]!, world[14]!, extent], 64);
+      // 涨水：水面抬高
+      const level = world[13]! + waterRise(file) * weather.flood;
+      data.set([world[12]!, level, world[14]!, extent], 64);
       data.set([ax / axisLength, az / axisLength, 0, outline.length], 68);
       const color = file.color ?? [0.015, 0.06, 0.07];
       data.set([color[0], color[1], color[2], file.clarity ?? 4], 72);
@@ -666,15 +669,15 @@ export class WaterRenderer {
       data.set([waves.choppiness ?? 0.5, file.foam?.shore ?? 1, file.river?.speed ?? 1.5, asset.river ? 1 : 0], 80);
       // 平面反射在这片水面上（平面朝上、高度和水面差不到半米）才用它当倒影
       const plane = planar.active && planar.receiver === view ? planar.plane : undefined;
-      const mirrored = plane !== undefined && plane.normal[1] > 0.99 && Math.abs(plane.point[1] - world[13]!) < 0.5;
-      data.set([mirrored ? 1 : 0, planar.texture.mipLevelCount - 1, rain, 0], 92);
+      const mirrored = plane !== undefined && plane.normal[1] > 0.99 && Math.abs(plane.point[1] - level) < 0.5 + waterRise(file);
+      data.set([mirrored ? 1 : 0, planar.texture.mipLevelCount - 1, weather.rain, 0], 92);
       data.set([...(settings ? oceanPatches(settings.patch) : [1, 1, 1]), ocean ? 1 : 0, CREST_FOAM, asset.river ? 0 : (file.caustics ?? 1), 0, 0], 96);
       data.fill(0, HEADER_FLOATS);
       outline.forEach(([x, z], i) => data.set([x, z], HEADER_FLOATS + i * 2));
       this.#device.queue.writeBuffer(instance.buffer, 0, data);
       pass.setBindGroup(0, instance.group);
       // 相机在这片湖、海的水面下面（在岸线里）：先盖一层全屏的水下雾
-      if (!asset.river && view.eye.y < world[13]!) {
+      if (!asset.river && view.eye.y < level) {
         const dx = view.eye.x - world[12]!, dz = view.eye.z - world[14]!;
         const local: [number, number] = [dx * (ax / axisLength) + dz * (az / axisLength), -dx * (az / axisLength) + dz * (ax / axisLength)];
         if (outline.length === 0 || insidePolygon(outline, local[0], local[1])) {

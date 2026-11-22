@@ -60,10 +60,12 @@ export interface WeatherState {
   puddles: number;
   /** 地面积了多少雪，0 到 1：下雪时积起来，气温高于 0 °C 时化掉。 */
   snowCover: number;
+  /** 湖、河涨了多少，0 到 1：下雨时慢慢涨（最多涨到雨的大小），雨停了更慢地退；水体按自己的 rise 换成米。 */
+  flood: number;
 }
 
 /** Weather 组件里写的那几项（不带过渡时间）。 */
-export type WeatherTarget = Omit<WeatherState, 'wetness' | 'puddles' | 'snowCover'>;
+export type WeatherTarget = Omit<WeatherState, 'wetness' | 'puddles' | 'snowCover' | 'flood'>;
 
 /** 几种常见的天气（`stride call weather '{"preset":"rain"}'`；编辑器、游戏也可以拿来用）。 */
 export const WEATHER_PRESETS = {
@@ -86,6 +88,9 @@ const DRYING_TIME = 300;
 const PUDDLE_TIME = 240;
 const PUDDLE_DRYING_TIME = 900;
 const SNOWING_TIME = 600;
+/** 大雨下多久湖、河涨满（秒），雨停以后多久退完。 */
+const FLOOD_TIME = 1800;
+const FLOOD_DRAIN_TIME = 3600;
 /** 气温每高 1 °C，积雪多快化掉（每秒化掉的比例）。 */
 const MELT_PER_DEGREE = 1 / 600;
 /** 低于这个气温降水是雪。 */
@@ -173,7 +178,7 @@ export class WeatherSystem {
     if (!target) {
       this.current = undefined;
       game.wind.weather = undefined;
-      if (surface) Object.assign(surface, { wetness: 0, puddles: 0, snowCover: 0, rain: 0 });
+      if (surface) Object.assign(surface, { wetness: 0, puddles: 0, snowCover: 0, rain: 0, flood: 0 });
       return;
     }
     this.advance(target, game.editing ? undefined : game.updateTime.elapsed);
@@ -181,8 +186,8 @@ export class WeatherSystem {
     game.wind.weather = weatherWind(this.current!);
     // 材质的湿和雪：淋不淋得到看天空遮挡
     if (surface) {
-      const { wetness, puddles, snowCover, precipitation, temperature } = this.current!;
-      Object.assign(surface, { wetness, puddles, snowCover, rain: temperature < SNOW_BELOW ? 0 : precipitation });
+      const { wetness, puddles, snowCover, flood, precipitation, temperature } = this.current!;
+      Object.assign(surface, { wetness, puddles, snowCover, flood, rain: temperature < SNOW_BELOW ? 0 : precipitation });
       if (wetness > 0 || snowCover > 0) game.renderSystem.skyOcclusion.use();
     }
   }
@@ -201,6 +206,7 @@ export class WeatherSystem {
         // 下了很久的雨：积水按雨的大小（小雨积不满）
         puddles: !snowing ? target.precipitation : 0,
         snowCover: snowing ? 1 : 0,
+        flood: !snowing ? target.precipitation : 0,
       });
     }
     // 指数地靠过去：帧率不同走的一样
@@ -218,6 +224,9 @@ export class WeatherSystem {
     // 积水：湿透了还在下才积，最多积到雨的大小（小雨积不满）；雨停了慢慢干
     if (wetting <= 0) current.puddles = clamp01(current.puddles - elapsed / PUDDLE_DRYING_TIME);
     else if (current.wetness >= 1 && current.puddles < amount) current.puddles = Math.min(amount, current.puddles + (amount / PUDDLE_TIME) * elapsed);
+    // 涨水：下雨就涨（雨越大涨得越快、涨得越高），停了慢慢退
+    if (wetting > 0 && current.flood < amount) current.flood = Math.min(amount, current.flood + (amount / FLOOD_TIME) * elapsed);
+    else if (wetting <= 0 || current.flood > amount) current.flood = Math.max(wetting > 0 ? amount : 0, current.flood - elapsed / FLOOD_DRAIN_TIME);
     const melting = Math.max(0, current.temperature) * MELT_PER_DEGREE;
     current.snowCover = clamp01(current.snowCover + ((snowing ? amount / SNOWING_TIME : 0) - melting) * elapsed);
     return current;

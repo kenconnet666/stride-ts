@@ -154,6 +154,20 @@ function workerThreadsOption(options: GameOptions, debugQuery: URLSearchParams |
  * 继承它并重写 loadContent 和 update（要调用 super.update，脚本和系统在里面跑）；draw 默认交给图形合成器，
  * 重写时可以不调用 super.draw，自己画。run() 初始化之后才有 `native`、`graphicsDevice` 和渲染系统。其中任何一处抛异常，或 AsyncScript 被拒绝，游戏都会停下，状态为 'failed'。
  */
+/**
+ * 每帧跑一次的子系统（不属于某个实体的那种：世界的流式加载、地形、天气、风、雨雪、粒子……）。内置的和游戏用
+ * `game.addSystem` 加的在同一张表里，同一阶段按加的顺序跑；游戏时间不前进的帧（暂停、编辑状态）不跑 update。
+ */
+export interface GameSystem {
+  /** 在世界矩阵更新之前还是之后跑：会挂上、挪动实体的放 beforeTransforms，读世界矩阵的放 afterTransforms（默认）。 */
+  readonly phase?: 'beforeTransforms' | 'afterTransforms';
+  update?(game: Game): void;
+  /** 渲染原点挪了（大世界，见 Game.renderOrigin）：存着渲染空间坐标的东西跟着挪。 */
+  moveOrigin?(dx: number, dy: number, dz: number): void;
+  /** 游戏退出时（倒着加的顺序调）。 */
+  destroy?(): void;
+}
+
 export class Game {
   native!: StrideNative;
   /** 所有 Transform 组件的数据，在原生内存里；世界矩阵在每帧 update 之后、draw 之前算。 */
@@ -210,6 +224,8 @@ export class Game {
   readonly particles = new ParticleSystems();
   /** UI（Stride 的 UISystem）：UIComponent 的页面画在场景之后。 */
   readonly ui = new UISystem();
+  /** 每帧跑的子系统（见 GameSystem）：内置的按这里的顺序，游戏用 addSystem 往后加。 */
+  readonly #systems: GameSystem[] = this.#builtinSystems();
   /** 用户在系统里设的偏好：少动画、高对比、深浅色。 */
   readonly userPreferences = new UserPreferences();
   private readonly debugTextRenderer = new DebugTextRenderer();
@@ -422,7 +438,7 @@ export class Game {
     this.ui.destroy();
     this.debugTextRenderer.destroy();
     this.debugDrawRenderer.destroy();
-    this.particles.destroy();
+    for (const system of this.#systems.toReversed()) system.destroy?.();
     this.audio.destroy();
     (this.renderSystem as RenderSystem | undefined)?.destroy();
     (this.input as InputManager | undefined)?.destroy();
@@ -577,6 +593,37 @@ export class Game {
   }
 
   /** 植被的风（Material.wind）用的全局风：速度乘上这一刻的阵风（同 WindField.sample 的全局部分），写给渲染系统。 */
+  /**
+   * 加一个每帧跑的子系统（排在已有的后面，同一阶段按加的顺序跑）；返回它。游戏自己的流式加载、模拟、AI 调度这类
+   * "每帧一次、不属于某个实体"的事放这里；按组件跑的逻辑用实体系统（engine/system.ts）。
+   */
+  addSystem<S extends GameSystem>(system: S): S {
+    this.#systems.push(system);
+    return system;
+  }
+
+  /** 去掉 addSystem 加的子系统（不调它的 destroy）。 */
+  removeSystem(system: GameSystem): void {
+    const index = this.#systems.indexOf(system);
+    if (index >= 0) this.#systems.splice(index, 1);
+  }
+
+  /** 内置的子系统，按原来写死在帧里的顺序。 */
+  #builtinSystems(): GameSystem[] {
+    return [
+      // 地形的块、摆放的实例、城市的楼在变换更新之前换
+      { phase: 'beforeTransforms', update: () => this.terrain.update() },
+      { phase: 'beforeTransforms', update: () => this.scatter.update(this.terrain.eyeWorld()) },
+      { phase: 'beforeTransforms', update: () => this.city.update() },
+      { update: () => this.world.update() },
+      { update: () => this.weather.update(this) },
+      { update: () => this.wind.update(this) },
+      { update: () => this.#updateRenderWind() },
+      { update: () => this.precipitation.update(this) },
+      { update: () => this.particles.update(this.updateTime.elapsed), moveOrigin: (dx, dy, dz) => this.particles.moveOrigin(dx, dy, dz), destroy: () => this.particles.destroy() },
+    ];
+  }
+
   #updateRenderWind(): void {
     const global = this.wind.global, out = this.renderSystem?.wind, time = this.wind.time;
     if (!out) return;
@@ -635,7 +682,7 @@ export class Game {
     if (next[0] === origin[0] && next[1] === origin[1] && next[2] === origin[2]) return;
     const dx = next[0] - origin[0], dy = next[1] - origin[1], dz = next[2] - origin[2];
     this.debugDraw.moveOrigin(dx, dy, dz);
-    this.particles.moveOrigin(dx, dy, dz);
+    for (const system of this.#systems) system.moveOrigin?.(dx, dy, dz);
     origin[0] = next[0];
     origin[1] = next[1];
     origin[2] = next[2];
@@ -783,17 +830,10 @@ export class Game {
         this.writeStats();
         await scriptContinuations();
         this.#updateRenderOrigin();
-        // 地形的块在变换更新之前换：新挂上的块这一帧就有世界矩阵
-        this.terrain.update();
-        this.scatter.update(this.terrain.eyeWorld());
-        this.city.update();
+        // 挂上、挪动实体的子系统在变换更新之前：新挂上的这一帧就有世界矩阵；读世界矩阵的在之后
+        for (const system of this.#systems) if (system.phase === 'beforeTransforms') system.update?.(this);
         this.transforms.update();
-        this.world.update();
-        this.weather.update(this);
-        this.wind.update(this);
-        this.#updateRenderWind();
-        this.precipitation.update(this);
-        this.particles.update(this.updateTime.elapsed);
+        for (const system of this.#systems) if (system.phase !== 'beforeTransforms') system.update?.(this);
       }
       const drawStart = performance.now();
       this.draw(this.updateTime);

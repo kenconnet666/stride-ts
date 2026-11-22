@@ -184,7 +184,7 @@ export { assetReferences, assetReferenceSlots, entityAssetReferences, type Asset
 export { assetKindExtension, customAssetKinds, isJsonAssetKind, registerAssetKind, type AssetKindDefinition, type CustomAssetKinds, type ReferenceSink } from './content/assetKinds';
 export { DebugDraw, DEBUG_LINE_FLOATS, type DebugColor, type DebugDrawOptions, type DebugPoint } from './debug/DebugDraw';
 export type { CommandInfo, LogEntry, LogLevel } from './debug/protocol';
-export { Game, type GameOptions, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './engine/Game';
+export { Game, type GameOptions, type GameSystem, type GameStatus, type LoadChildSceneOptions, type LoadGameSettingsOptions, type HotContext } from './engine/Game';
 export { GameTime } from './engine/GameTime';
 export { UserPreferences } from './engine/UserPreferences';
 export { GraphicsDevice } from './graphics/GraphicsDevice';

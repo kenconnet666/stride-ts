@@ -220,6 +220,9 @@ interface Blas {
   readonly triangleOffset: number;
   readonly triangleWords: number;
   readonly bounds: { readonly min: readonly number[]; readonly max: readonly number[] };
+  /** 网格原来几个三角形、BVH 里用了几个（太多时原生先简化）。 */
+  readonly sourceTriangles: number;
+  readonly triangles: number;
 }
 
 /** 一个实例用哪个几何：网格的按网格认，地形块的按高度页和它写过几次（`page:版本`）。 */
@@ -234,6 +237,11 @@ interface Entry {
   readonly surface: object | string;
 }
 
+/**
+ * 一个网格进 BVH 最多几个三角形，多了原生先简化（sloppy，形变不超过网格尺寸的 1%）：光追只算间接光、反射里的大致形状，打到的
+ * 颜色是整个批的平均色（SurfaceColors），货架连同几千件商品的几十万个三角形没必要原样进去。
+ */
+const MAX_BLAS_TRIANGLES = 65536;
 /** 地形块光追用的网格隔几个高度取一个（32 格的块取成 16 格：间接光够了，BVH 小四倍）。 */
 const TERRAIN_STEP = 2;
 /** 不再用的 BLAS 占的比用着的多（而且超过这么多 u32）时整理大缓冲。 */
@@ -291,6 +299,21 @@ export class RayTracingScene {
   }
 
   /** 几何的 BLAS 都建好了、顶层也建好了。 */
+  /** BLAS 的个数、网格原来的和 BVH 里用的三角形数、大缓冲占的字节（调试命令 raytrace-stats）。 */
+  stats(): { readonly blas: number; readonly building: number; readonly sourceTriangles: number; readonly triangles: number; readonly bytes: number } {
+    let blas = 0, building = 0, sourceTriangles = 0, triangles = 0;
+    for (const entry of this.#blas.values()) {
+      if (entry === 'building') {
+        building++;
+        continue;
+      }
+      blas++;
+      sourceTriangles += entry.sourceTriangles;
+      triangles += entry.triangles;
+    }
+    return { blas, building, sourceTriangles, triangles, bytes: (this.#nodeWords + this.#triangleWords) * 4 };
+  }
+
   get ready(): boolean {
     return this.#tlas !== undefined && ![...this.#blas.values()].includes('building') && !this.#tlasBuilding;
   }
@@ -337,10 +360,13 @@ export class RayTracingScene {
     const { positions, indices } = typeof geometry === 'string' ? terrainGrid(game.meshes.heightPages.data, Number(geometry.split(':')[0])) : { positions: mesh.positions(), indices: Uint32Array.from(mesh.data.indices) };
     const bounds = boundsOf(positions);
     const name = typeof geometry === 'string' ? `terrain page ${geometry}` : mesh.name;
-    void game.native.buildTriangleBvh(positions, indices).then(({ nodes, triangles }) => {
+    void game.native.buildTriangleBvh(positions, indices, { maxTriangles: MAX_BLAS_TRIANGLES }).then(({ nodes, triangles, triangleCount }) => {
       // 等着建的时候几何没了（地形块换了页）：不要了
       if (this.#blas.get(geometry) !== 'building') return;
-      const blas: Blas = { nodeOffset: this.#nodeWords / NODE_WORDS, nodeWords: nodes.length, triangleOffset: this.#triangleWords / TRIANGLE_WORDS, triangleWords: triangles.length, bounds };
+      const blas: Blas = {
+        nodeOffset: this.#nodeWords / NODE_WORDS, nodeWords: nodes.length, triangleOffset: this.#triangleWords / TRIANGLE_WORDS, triangleWords: triangles.length, bounds,
+        sourceTriangles: indices.length / 3, triangles: triangleCount,
+      };
       this.#nodes = append(this.#nodes, this.#nodeWords, nodes) as Uint32Array;
       this.#nodeWords += nodes.length;
       this.#triangles = append(this.#triangles, this.#triangleWords, triangles) as Float32Array;

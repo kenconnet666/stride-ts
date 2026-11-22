@@ -374,6 +374,10 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
     splats.limits = { budget, pixelError };
     return { ...splats.limits, ...splats.stats() };
   });
+  debug.command('raytrace-stats', 'Ray tracing scene (RenderSystem.rayTracing): BLAS count (and still building), triangles of the meshes and triangles in the BVHs (meshes over the limit are simplified first), bytes of the node and triangle buffers. Builds the scene first if no feature uses it yet.', () => {
+    game.renderSystem.rayTracing.update(game);
+    return game.renderSystem.rayTracing.stats();
+  });
   debug.command('raytrace-check', 'Read back the ray tracing scene from the GPU and walk every BVH the way the shaders do: reports out-of-range indices, cycles and leaves past the triangle buffer (empty list = sound).', () => game.renderSystem.rayTracing.check());
   debug.command('pathtrace', 'Path traced diffuse indirect light (RenderSystem.pathTracing: replaces the irradiance volume, sky and ambient diffuse; accumulates while the camera stands still). args: on (true/false/"toggle"), paths (per pixel per frame), bounces, reset (true). Reports whether it is active and how many frames it accumulated.', (args) => {
     const tracing = game.renderSystem.pathTracing;

@@ -14,4 +14,4 @@ overrides:
   typescript: 7.1.0-dev.20261104.1
   # 共用资源的包（单独的仓库 kenconnet666/world-engine-assets，node tools/assets.ts dev | release <版本> 换地址）
   '@stride-ts/assets': https://github.com/kenconnet666/world-engine-assets/releases/download/dev-9947df7c5e/stride-ts-assets-0.1.0.tgz
-  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-caf7f68a0b/stride-ts-native-0.43.0.tgz
+  '@stride-ts/native': https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-61ba7879f3/stride-ts-native-0.43.0.tgz

@@ -1,11 +1,11 @@
 {
  "name": "Peanut5L",
  "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
- "shape": "bottle",
+ "shape": "jug",
  "size": [
   0.17,
-  0.33,
-  0
+  0.32,
+  0.105
  ],
  "text": "花生油",
  "seed": 82,

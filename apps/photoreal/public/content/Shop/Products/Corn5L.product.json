@@ -1,11 +1,11 @@
 {
  "name": "Corn5L",
  "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
- "shape": "bottle",
+ "shape": "jug",
  "size": [
   0.16,
-  0.32,
-  0
+  0.31,
+  0.1
  ],
  "text": "玉米油",
  "seed": 83,

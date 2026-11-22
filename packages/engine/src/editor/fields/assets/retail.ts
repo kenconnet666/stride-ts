@@ -9,8 +9,8 @@ export const hexColor = (description: string): FieldSpec => ({ type: string, opt
 export const PRODUCT_FIELDS = fields<ProductFile>({
   name: string,
   shape: {
-    type: oneOf('box', 'bottle', 'can', 'jar', 'tub', 'pouch', 'round', 'onion', 'garlic', 'nut', 'tuber', 'bowl', 'plate'),
-    description: 'box: carton; bottle: narrow neck and cap; can; jar: wide lid; tub: wider at the top, with a lid; pouch: pillow-shaped bag sealed at both ends; produce without a label (round: tomato, orange; onion; garlic; nut: walnut; tuber: potato); ware for cooked food: bowl (foot ring, wall thickness), plate (shallow rounded square)',
+    type: oneOf('box', 'bottle', 'can', 'jar', 'tub', 'pouch', 'jug', 'round', 'onion', 'garlic', 'nut', 'tuber', 'bowl', 'plate'),
+    description: 'box: carton; bottle: narrow neck and cap; can; jar: wide lid; tub: wider at the top, with a lid; pouch: pillow-shaped bag sealed at both ends; jug: 5 l oil jug (rounded square body, spout moved to the front, a handle at the back); produce without a label (round: tomato, orange; onion; garlic; nut: walnut; tuber: potato); ware for cooked food: bowl (foot ring, wall thickness), plate (shallow rounded square)',
   },
   size: { type: vector(3, 'm'), description: 'width (diameter for bottles, cans, jars, tubs and bowls), height, depth (cartons, pouches and plates; produce: elongated when given)' },
   font: { type: asset('font'), optional: true, description: 'font of the label text (Shared/Fonts/ZCOOLQingKeHuangYou from @stride-ts/assets has Chinese); no text without one' },

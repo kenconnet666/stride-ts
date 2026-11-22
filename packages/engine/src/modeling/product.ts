@@ -43,7 +43,7 @@ const TRIMS = ['#e8c25a', '#ffffff', '#f4f2ec'];
 /** 拼品牌名的字（常见的商标用字）。 */
 const BRAND_CHARACTERS = '金龙鱼海天康乐福味美好鲜香农家旺佳丰园源山泉清真御品优百万华宝和顺禾田欢喜悦大小星光润洁雪绿新鸿盛';
 const DEFAULT_SURFACE: Readonly<Record<ProductShape, ProductSurface>> = {
-  box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic', round: 'skin', onion: 'skin', garlic: 'skin', nut: 'skin', tuber: 'skin', bowl: 'ceramic', plate: 'ceramic',
+  box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic', jug: 'plastic', round: 'skin', onion: 'skin', garlic: 'skin', nut: 'skin', tuber: 'skin', bowl: 'ceramic', plate: 'ceramic',
 };
 /** 果蔬的表皮、纹路、顶上（洋葱、蒜头的颈）的颜色，按种子在附近变一点。 */
 const PRODUCE_COLORS: Readonly<Record<string, readonly [background: string, accent: string, cap: string]>> = {
@@ -118,6 +118,7 @@ export function productMesh(file: ProductFile, where = file.name, segments = RAD
   const radial = Math.max(3, Math.round(segments));
   if (isWare(file.shape)) return wareMesh(file, radial * 2);
   if (isProduce(file.shape)) return produceMesh(file, radial);
+  if (file.shape === 'jug') return jugMesh(file, radial);
   return latheMesh(latheProfile(file.shape, file.size[0] / 2, file.size[1]), radial);
 }
 
@@ -194,7 +195,87 @@ function produceProfile(shape: ProductShape): ProfilePoint[] {
 /** 摆在货架上占的地方（米）：宽、高、深（瓶罐的深是直径）。 */
 export function productFootprint(file: ProductFile): readonly [number, number, number] {
   const [w, h, d] = file.size;
+  if (file.shape === 'jug') return [w, h, jugDepth(file)];
   return [w, h, file.shape === 'box' || file.shape === 'pouch' || ((isProduce(file.shape) || file.shape === 'plate') && d > 0) ? d : w];
+}
+
+/** 方桶的厚度（米）：没写时是宽的 0.62（5 升的油桶大约 17 × 10.5 厘米）。 */
+function jugDepth(file: ProductFile): number {
+  return file.size[2] > 0 ? file.size[2] : file.size[0] * 0.62;
+}
+
+/** 方桶的肩从多高开始收、收到瓶颈的多高（高的比例）；桶身横截面的圆角（超椭圆的次数，越大越方）。 */
+const JUG_SHOULDER = [0.7, 0.86] as const;
+const JUG_SQUARENESS = 5;
+/** 瓶颈的半径（宽的一半的比例）。 */
+const JUG_NECK = 0.26;
+
+/**
+ * 方桶：旋转体的轮廓（同瓶，桶身更高、瓶颈更细）绕一圈后变形——桶身的横截面是圆角方（超椭圆，宽 × 厚），往上到瓶颈渐渐变回圆、
+ * 圆心挪到前面（瓶口偏前）；后面一个提手：从瓶颈后面拱起、落到背面的肩上的一根椭圆截面的弯管（拱下面是空的，手伸得进去），
+ * 贴图取瓶身底色那一片（透光的桶，提手也透）。
+ */
+function jugMesh(file: ProductFile, radial: number): ProductMesh {
+  const [w, h] = file.size, R = w / 2, b = jugDepth(file) / 2;
+  const profile = latheProfile('jug', R, h);
+  const [from, to] = JUG_SHOULDER.map((t) => t * h) as [number, number], forward = b * 0.45, power = 2 / JUG_SQUARENESS;
+  const body = latheMesh(profile, radial, (x, y, z) => {
+    // 往瓶颈变了多少：按肩收窄了多少算（按高算的话肩的上半截还很粗时已经快变成偏前的圆，前面会鼓出桶身）
+    const r = Math.hypot(x, z), t = y <= from ? 0 : y >= to ? 1 : smoothstep(R, R * JUG_NECK, r);
+    if (r < 1e-9) return [0, y, forward * t];
+    const s = x / r, c = z / r;
+    const bx = Math.sign(s) * Math.abs(s) ** power * r, bz = Math.sign(c) * Math.abs(c) ** power * r * (b / R);
+    // 往瓶颈去的圆在厚度方向也从桶的厚度慢慢放开：肩上的前后不鼓出桶身
+    const k = b / R + (1 - b / R) * t;
+    return [bx + (x - bx) * t, y, bz + (z * k + forward * t - bz) * t];
+  });
+
+  // 提手：二次贝塞尔，从瓶颈后面（埋在瓶颈里）拱到背面的肩下面（埋在桶身里）；截面横着宽（握的地方）
+  const p0 = [0, h * 0.85, forward - R * 0.12], control = [0, h * 1.02, -b * 1.05], p1 = [0, h * 0.62, -b * 0.75];
+  const rx = R * 0.14, rn = R * 0.1, steps = 14, around = 10;
+  const capLength = capLengthOf(profile);
+  const u = 0.02, v = Math.min(1, (capLength + 0.012) / (body.labelSize[1] / 1000));
+  const builder = new MeshBuilder();
+  const rings: number[][] = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps, q = 1 - t;
+    const point = [0, 1, 2].map((k) => q * q * p0[k]! + 2 * q * t * control[k]! + t * t * p1[k]!);
+    const tangent = normalize([0, 1, 2].map((k) => 2 * q * (control[k]! - p0[k]!) + 2 * t * (p1[k]! - control[k]!)));
+    // 弯管在 YZ 平面里：横的方向是 X，平面里的法线是 X × 切线
+    const inPlane = normalize(cross([1, 0, 0], tangent));
+    rings.push(Array.from({ length: around + 1 }, (_, k) => {
+      const angle = (k / around) * 2 * Math.PI, cos = Math.cos(angle), sin = Math.sin(angle);
+      const position = [0, 1, 2].map((j) => point[j]! + (j === 0 ? cos * rx : 0) + inPlane[j]! * sin * rn);
+      const normal = normalize([0, 1, 2].map((j) => (j === 0 ? cos / rx : 0) + (inPlane[j]! * sin) / rn));
+      return builder.vertex(position, normal, u, v);
+    }));
+  }
+  for (let i = 0; i < steps; i++) {
+    for (let k = 0; k < around; k++) {
+      const a = rings[i]![k]!, n = builder.vertices.slice(a * 8 + 3, a * 8 + 6);
+      builder.quad(a, rings[i]![k + 1]!, rings[i + 1]![k + 1]!, rings[i + 1]![k]!, n);
+    }
+  }
+  const handle = finish(builder, body.labelSize), offset = body.vertices.length / 8;
+  const vertices = new Float32Array(body.vertices.length + handle.vertices.length);
+  vertices.set(body.vertices);
+  vertices.set(handle.vertices, body.vertices.length);
+  const indices = new Uint32Array(body.indices.length + handle.indices.length);
+  indices.set(body.indices);
+  indices.set(handle.indices.map((i) => i + offset), body.indices.length);
+  return { vertices, indices, labelSize: body.labelSize };
+}
+
+/** 轮廓线上盖子那几段（从顶往下）的长（米）：贴图最上面这么长是盖子的颜色。 */
+function capLengthOf(profile: readonly ProfilePoint[]): number {
+  let length = 0;
+  for (let s = profile.length - 1; s > 0 && profile[s]!.cap; s--) length += Math.hypot(profile[s]!.r - profile[s - 1]!.r, profile[s]!.y - profile[s - 1]!.y);
+  return length;
+}
+
+function smoothstep(from: number, to: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - from) / (to - from)));
+  return t * t * (3 - 2 * t);
 }
 
 /** 旋转体的轮廓线：从底面中心出发，沿外壁到顶面中心。 */
@@ -208,6 +289,16 @@ function latheProfile(shape: ProductShape, r: number, h: number): ProfilePoint[]
       });
       return [{ r: 0, y: 0 }, { r: r * 0.92, y: 0 }, { r, y: h * 0.03 }, { r, y: h * 0.6 }, ...shoulder, { r: r * 0.38, y: h * 0.88 },
         { r: r * 0.44, y: h * 0.88, cap: true }, { r: r * 0.44, y: h, cap: true }, { r: 0, y: h, cap: true }];
+    }
+    case 'jug': {
+      // 桶身到 70% 高，肩收到细的瓶颈（86%），盖子到顶；横截面和瓶口的偏移在 jugMesh 里变形
+      const [from, to] = JUG_SHOULDER;
+      const shoulder = Array.from({ length: 6 }, (_, i) => {
+        const t = (i + 1) / 6;
+        return { r: r * (JUG_NECK + (1 - JUG_NECK) * Math.cos((t * Math.PI) / 2)), y: h * (from + (to - from) * Math.sin((t * Math.PI) / 2)) };
+      });
+      return [{ r: 0, y: 0 }, { r: r * 0.9, y: 0 }, { r, y: h * 0.03 }, { r, y: h * from }, ...shoulder,
+        { r: r * 0.32, y: h * to, cap: true }, { r: r * 0.32, y: h, cap: true }, { r: 0, y: h, cap: true }];
     }
     case 'can':
       return [{ r: 0, y: 0 }, { r: r * 0.86, y: 0 }, { r, y: h * 0.06 }, { r, y: h * 0.92 }, { r: r * 0.86, y: h * 0.98, cap: true }, { r: r * 0.86, y: h, cap: true }, { r: 0, y: h * 0.99, cap: true }];
@@ -347,11 +438,10 @@ function labelPrint(file: ProductFile, design: ProductDesign, labelSize: readonl
   } else {
     // 旋转体：轮廓线上盖子那几段从 v = 0 往下（贴图的上面），先算出盖子占多长
     const profile = latheProfile(file.shape, file.size[0] / 2, file.size[1]);
-    let capLength = 0;
-    for (let s = profile.length - 1; s > 0 && profile[s]!.cap; s--) capLength += Math.hypot(profile[s]!.r - profile[s - 1]!.r, profile[s]!.y - profile[s - 1]!.y) * 1000;
+    const capLength = capLengthOf(profile) * 1000;
     if (capLength > 0) parts.push(`<rect width="${svgNumber(W)}" height="${svgNumber(capLength)}" fill="${design.colors.cap}"/>`);
     // 瓶的肩、颈不放字：字放在瓶身的直段（离底 3% 到 60% 高）
-    const straight = file.shape === 'bottle' ? [0.03, 0.6] : file.shape === 'can' ? [0.08, 0.9] : file.shape === 'jar' ? [0.06, 0.76] : [0.1, 0.84];
+    const straight = file.shape === 'bottle' ? [0.03, 0.6] : file.shape === 'jug' ? [0.05, 0.66] : file.shape === 'can' ? [0.08, 0.9] : file.shape === 'jar' ? [0.06, 0.76] : [0.1, 0.84];
     const bottom = H - (straight[0]! * h + file.size[0] * 1000 * 0.46), top = H - (straight[1]! * h + file.size[0] * 1000 * 0.46);
     body = [0, capLength, W, H - capLength];
     // 正面在 u = 0.5（周长的一半处）；看得见的大约是周长的三分之一

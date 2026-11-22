@@ -4,7 +4,7 @@ import { isProduce, labelPixels, productDesign, productLabelSvg, productMaterial
 
 const bottle: ProductFile = { name: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], text: '矿泉水', seed: 3 };
 const sizes: Readonly<Record<ProductShape, readonly [number, number, number]>> = {
-  box: [0.2, 0.3, 0.06], bottle: [0.065, 0.21, 0], can: [0.066, 0.12, 0], jar: [0.09, 0.11, 0], tub: [0.1, 0.08, 0], pouch: [0.16, 0.22, 0.05],
+  box: [0.2, 0.3, 0.06], bottle: [0.065, 0.21, 0], jug: [0.17, 0.33, 0.105], can: [0.066, 0.12, 0], jar: [0.09, 0.11, 0], tub: [0.1, 0.08, 0], pouch: [0.16, 0.22, 0.05],
   round: [0.08, 0.07, 0], onion: [0.08, 0.085, 0], garlic: [0.055, 0.05, 0], nut: [0.035, 0.034, 0], tuber: [0.11, 0.06, 0.07],
   bowl: [0.2, 0.08, 0], plate: [0.26, 0.035, 0.2],
 };
@@ -33,7 +33,7 @@ describe('商品包装', () => {
     const { min, max, worstNormal, uvOutside } = inspect(mesh.vertices);
     expect(min[1]).toBeCloseTo(0, 5);
     expect(max[1]).toBeCloseTo(size[1], 5);
-    const depth = shape === 'box' || shape === 'pouch' || ((isProduce(shape) || shape === 'plate') && size[2] > 0) ? size[2] : size[0];
+    const depth = shape === 'box' || shape === 'pouch' || shape === 'jug' || ((isProduce(shape) || shape === 'plate') && size[2] > 0) ? size[2] : size[0];
     if (isProduce(shape)) {
       // 果蔬有起伏（土豆疙疙瘩瘩、蒜一瓣瓣）：尺寸差在 15% 以内
       expect(Math.abs(max[0]! - min[0]! - size[0]) / size[0]).toBeLessThan(0.15);

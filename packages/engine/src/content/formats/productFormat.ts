@@ -9,11 +9,12 @@
  */
 
 /**
- * 外形：纸盒、瓶（细颈加盖）、易拉罐、广口瓶（宽盖）、桶（上大下小加盖，酱料、冰淇淋）、袋（枕形的零食袋，上下封口）；
+ * 外形：纸盒、瓶（细颈加盖）、易拉罐、广口瓶（宽盖）、桶（上大下小加盖，酱料、冰淇淋）、袋（枕形的零食袋，上下封口）、
+ * 方桶（5 升的油桶：圆角方的桶身，瓶口偏到前面，后面一个提手）；
  * 散装的果蔬干货（没有标签和字，表皮按种子出颜色、纹路）：圆的（番茄、橙子、苹果）、洋葱、蒜头（一瓣瓣的）、核桃（坑坑洼洼）、
  * 土豆（扁长、不规则）；熟食的器皿（没有字，可以盛一份菜，见 food）：碗（圈足、带壁厚的旋转体）、方盘（圆角的方形浅盘）。
  */
-export type ProductShape = 'box' | 'bottle' | 'can' | 'jar' | 'tub' | 'pouch' | 'round' | 'onion' | 'garlic' | 'nut' | 'tuber' | 'bowl' | 'plate';
+export type ProductShape = 'box' | 'bottle' | 'can' | 'jar' | 'tub' | 'pouch' | 'jug' | 'round' | 'onion' | 'garlic' | 'nut' | 'tuber' | 'bowl' | 'plate';
 
 /** 散装的果蔬干货（没有标签，堆放用）。 */
 export const PRODUCE_SHAPES: readonly ProductShape[] = ['round', 'onion', 'garlic', 'nut', 'tuber'];
@@ -56,7 +57,7 @@ export type ProductMotif = 'leaf' | 'drop' | 'peanut' | 'corn' | 'sunflower' | '
 export interface ProductFile {
   readonly name: string;
   readonly shape: ProductShape;
-  /** 外形尺寸（米）：宽（瓶、罐、桶是直径）、高、深（纸盒、袋的厚度；瓶罐不用；果蔬写了就是扁的、长的，没写同宽）。 */
+  /** 外形尺寸（米）：宽（瓶、罐、桶是直径）、高、深（纸盒、袋、方桶的厚度，方桶没写是宽的 0.62；瓶罐不用；果蔬写了就是扁的、长的，没写同宽）。 */
   readonly size: readonly [number, number, number];
   /** 标签上的字用的字体资源；没有时标签只画色块和图案。 */
   readonly font?: string;

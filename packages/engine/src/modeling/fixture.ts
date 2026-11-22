@@ -1,16 +1,46 @@
 /**
  * 店里器具的生成（`.fixture.json`，格式见 content/formats/fixtureFormat.ts）：收银台、购物车、购物篮、寄存柜、闸机，都用
- * ProductBatch 的方块和圆管拼，出一个模型、图集和材质。收银台上方的号码灯箱、寄存柜每格的指示灯发光。
+ * ProductBatch 的方块和圆管拼，出一个模型、图集和材质。收银台上方的号码灯箱、寄存柜每格的指示灯、轨道射灯的灯口发光。
  */
 import type { FixtureFile } from '../content/formats/fixtureFormat.ts';
 import { textPath } from './product.ts';
 import { ProductBatch, type AtlasCell, type Cell, type MergedProducts } from './productBatch.ts';
 import type { TextFont } from './textOutline.ts';
 
-/** 纯色：主色、不锈钢、深色（传送带、屏、轮子）、浅色（柜体、台面）、绿灯（发光）、玻璃那样的深青（扫码窗、屏面）。 */
-const MAIN = 0, STEEL = 1, DARK = 2, LIGHT = 3, LED = 4, SCREEN = 5;
+/** 纯色：主色、不锈钢、深色（传送带、屏、轮子）、浅色（柜体、台面）、绿灯（发光）、玻璃那样的深青（扫码窗、屏面）、射灯口的暖白光。 */
+const MAIN = 0, STEEL = 1, DARK = 2, LIGHT = 3, LED = 4, SCREEN = 5, LAMP = 6;
 
-const DEFAULT_COLORS: Readonly<Record<FixtureFile['type'], string>> = { checkout: '#d8d6d0', cart: '#2f9e44', basket: '#1e64c8', locker: '#f08c00', gate: '#b8bcc0' };
+const DEFAULT_COLORS: Readonly<Record<FixtureFile['type'], string>> = { checkout: '#d8d6d0', cart: '#2f9e44', basket: '#1e64c8', locker: '#f08c00', gate: '#b8bcc0', track: '#1d1d1f' };
+
+/** 轨道射灯：轨道的截面边长、灯头吊在轨道下多深、灯身的半径和长（米）。 */
+const RAIL = 0.035, HEAD_DROP = 0.09, HEAD_RADIUS = 0.04, HEAD_LENGTH = 0.13;
+
+/** 轨道射灯的一个灯头：灯口中心（米，器具的坐标）和照的方向（单位向量）。 */
+export interface TrackSpot {
+  readonly position: readonly [number, number, number];
+  readonly direction: readonly [number, number, number];
+}
+
+/**
+ * 轨道射灯每个灯头放聚光灯的位置和方向：场景照它放（灯具只发光，同天花板的 ceilingLights）。位置在灯口外 2 厘米——放在灯口上
+ * 会被灯头自己的灯身挡住，投阴影时整盏灯是黑的。
+ */
+export function trackSpots(file: FixtureFile): TrackSpot[] {
+  return trackLenses(file).map(({ position, direction }) => ({ position: [position[0] + direction[0] * 0.02, position[1] + direction[1] * 0.02, position[2] + direction[2] * 0.02] as const, direction }));
+}
+
+/** 每个灯头的灯口中心和照的方向（几何用）。 */
+function trackLenses(file: FixtureFile): TrackSpot[] {
+  const length = Math.max(0.2, file.length ?? 3), heads = Math.max(1, Math.round(file.heads ?? 4));
+  const tilt = ((file.tilt ?? 30) * Math.PI) / 180;
+  const direction = [0, -Math.cos(tilt), Math.sin(tilt)] as const;
+  return Array.from({ length: heads }, (_, i) => {
+    const x = -length / 2 + ((i + 0.5) * length) / heads;
+    // 灯身的中心在转接杆下面，灯口在灯身朝 direction 的那一头
+    const center = [x, -RAIL - HEAD_DROP, 0];
+    return { position: [center[0]!, center[1]! + direction[1] * HEAD_LENGTH / 2, center[2]! + direction[2] * HEAD_LENGTH / 2] as const, direction };
+  });
+}
 
 export function fixtureModel(file: FixtureFile, font: TextFont | undefined, where = file.name): MergedProducts {
   const main = file.color ?? DEFAULT_COLORS[file.type];
@@ -27,6 +57,7 @@ export function fixtureModel(file: FixtureFile, font: TextFont | undefined, wher
       { color: '#eceae6', roughness: 0.4, metalness: 0 },
       { color: '#3cd35a', roughness: 0.4, metalness: 0, emissive: 3 },
       { color: '#1b2a33', roughness: 0.08, metalness: 0.3 },
+      { color: '#fff1d8', roughness: 0.4, metalness: 0, emissive: 8 },
     ],
     cells,
   });
@@ -36,6 +67,7 @@ export function fixtureModel(file: FixtureFile, font: TextFont | undefined, wher
     case 'basket': basket(batch); break;
     case 'locker': locker(batch, Math.max(1, Math.round(file.columns ?? 6)), Math.max(1, Math.round(file.rows ?? 4))); break;
     case 'gate': gate(batch); break;
+    case 'track': track(batch, file); break;
   }
   return batch.finish();
 }
@@ -142,6 +174,26 @@ function locker(batch: ProductBatch, columns: number, rows: number): void {
 }
 
 /** 闸机：两根立柱（顶上一块深色的感应面板），中间一根摆臂。 */
+/**
+ * 轨道射灯：一根方的轨道（顶面在原点），每个灯头是轨道下的转接块、一根短杆、一个朝着照的方向的圆筒灯身（后头收成一个钝的
+ * 圆台），灯口一片发光的圆。
+ */
+function track(batch: ProductBatch, file: FixtureFile): void {
+  const length = Math.max(0.2, file.length ?? 3);
+  batch.box([-length / 2, -RAIL, -RAIL / 2], [length / 2, 0, RAIL / 2], MAIN);
+  for (const { position, direction } of trackLenses(file)) {
+    const x = position[0];
+    batch.box([x - 0.025, -RAIL - 0.025, -0.02], [x + 0.025, -RAIL, 0.02], MAIN);
+    batch.tube([x, -RAIL - 0.025, 0], [x, -RAIL - HEAD_DROP, 0], 0.008, MAIN, 8);
+    const center = [x, -RAIL - HEAD_DROP, 0];
+    const front = position, back = center.map((c, k) => c - direction[k]! * HEAD_LENGTH / 2);
+    batch.tube(back, front, HEAD_RADIUS, MAIN, 16);
+    batch.tube(back, back.map((c, k) => c - direction[k]! * 0.02), HEAD_RADIUS, MAIN, 16, HEAD_RADIUS * 0.4);
+    // 灯口：往外一点点、半径收到 0 的扁圆台，就是一片圆
+    batch.tube(front.map((c, k) => c - direction[k]! * 0.004), front.map((c, k) => c + direction[k]! * 0.001), HEAD_RADIUS * 0.85, LAMP, 16, 0);
+  }
+}
+
 function gate(batch: ProductBatch): void {
   for (const x of [-0.38, 0.38]) {
     batch.box([x - 0.06, 0, -0.25], [x + 0.06, 0.95, 0.25], MAIN);

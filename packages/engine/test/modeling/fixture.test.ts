@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { FixtureFile } from '../../src/content/formats/fixtureFormat';
-import { fixtureModel } from '../../src/modeling/fixture';
+import { fixtureModel, trackSpots } from '../../src/modeling/fixture';
 
 describe('店里的器具', () => {
   test.each(['checkout', 'cart', 'basket', 'locker', 'gate'] as const)('%s：有几何，站在地上，索引都在顶点范围里', (type) => {
@@ -25,5 +25,18 @@ describe('店里的器具', () => {
     };
     expect(width(big)).toBeGreaterThan(width(small) * 2);
     expect(() => fixtureModel({ name: 'X', type: 'nope' as FixtureFile['type'] }, undefined)).toThrow(/unknown/);
+  });
+
+  test('轨道射灯：灯头等距排在轨道下面，往下、往正面斜着照，灯口发光', () => {
+    const spots = trackSpots({ name: 'Track', type: 'track', length: 2.4, heads: 4, tilt: 30 });
+    expect(spots).toHaveLength(4);
+    expect(spots.map((spot) => +spot.position[0].toFixed(3))).toEqual([-0.9, -0.3, 0.3, 0.9]);
+    for (const { position, direction } of spots) {
+      expect(Math.hypot(...direction)).toBeCloseTo(1, 6);
+      expect(direction[1]).toBeCloseTo(-Math.cos(Math.PI / 6), 6);
+      expect(direction[2]).toBeGreaterThan(0);
+      expect(position[1]).toBeLessThan(-0.1);
+    }
+    expect(fixtureModel({ name: 'Track', type: 'track' }, undefined).emissive).toBeGreaterThan(0);
   });
 });

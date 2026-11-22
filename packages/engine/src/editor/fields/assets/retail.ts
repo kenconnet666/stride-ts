@@ -157,10 +157,13 @@ export const CEILING_FIELDS = fields<CeilingFile>({
 /** 店里的器具（FixtureFile）：后端生成同名的模型、图集和材质。 */
 export const FIXTURE_FIELDS = fields<FixtureFile>({
   name: string,
-  type: { type: oneOf('checkout', 'cart', 'basket', 'locker', 'gate'), description: 'checkout counter (belt, scanner, register screens, a lit number sign above), shopping cart, hand basket, coin locker, entrance gate' },
+  type: { type: oneOf('checkout', 'cart', 'basket', 'locker', 'gate', 'track'), description: 'checkout counter (belt, scanner, register screens, a lit number sign above), shopping cart, hand basket, coin locker, entrance gate, ceiling track with spotlight heads (origin at the top of the rail; the lights that light things are placed by the scene at trackSpots)' },
   color: { type: string, optional: true, description: 'main color (sRGB #rrggbb; by type when missing)' },
   number: { type: string, optional: true, description: 'number on the checkout sign (needs the font)' },
   font: { type: asset('font'), optional: true, description: 'font of the checkout sign' },
   columns: { type: integer(1, 20), optional: true, default: 6, description: 'locker columns' },
   rows: { type: integer(1, 10), optional: true, default: 4, description: 'locker rows' },
+  length: { type: number({ min: 0.2, step: 0.1 }), optional: true, default: 3, description: 'track length (m)' },
+  heads: { type: integer(1, 32), optional: true, default: 4, description: 'spotlight heads on the track' },
+  tilt: { type: number({ min: 0, max: 90, step: 5 }), optional: true, default: 30, description: 'how far the heads tilt from straight down toward the front (+Z), degrees' },
 });

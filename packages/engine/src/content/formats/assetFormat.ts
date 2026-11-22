@@ -288,6 +288,11 @@ export interface MaterialFile {
      * 两个槽；这里一次采样两个值，不多占片元阶段的贴图绑定。
      */
     readonly metalnessChannel?: 'r' | 'g' | 'b' | 'a';
+    /**
+     * 同一张贴图的另一个通道乘到透射的比例上（glTF 的 transmissionTexture 是单独一张、取 R）：装油的塑料瓶身透光、印的标签不透，
+     * 一个材质按贴图分区域。没有 transmission 时不看。
+     */
+    readonly transmissionChannel?: 'r' | 'g' | 'b' | 'a';
   };
   /** 自发光：线性颜色乘强度；有 emissiveTexture 时再乘贴图（Stride 的 ComputeBinaryColor 乘法）。 */
   readonly emissive?: Vec3Tuple;

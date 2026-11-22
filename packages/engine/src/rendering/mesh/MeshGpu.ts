@@ -385,7 +385,8 @@ export class MeshGpu {
     const skin = skinned ? `${layout.joints}:${layout.weights}` : 'static';
     const doubleSided = colorFormat !== undefined && material.doubleSided;
     const depthFragment = colorFormat === undefined ? material.depthFragment : undefined;
-    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${deform}:${doubleSided}:${depthFragment}:${materialPass?.name}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
+    const transmits = stage.transparent && material.transmission !== undefined;
+    return `${stage.name}:${colorFormat}:${depthFormat}:${layout.position}:${layout.normal}:${layout.uv}:${layout.tangent}:${skin}:${deform}:${doubleSided}:${depthFragment}:${materialPass?.name}:${transmits}:${treesKey(material.shaderTrees)}:${effect?.code ?? ''}`;
   }
 
   #pipelineDescriptor(stage: RenderStage, layout: VertexLayout, skinned: boolean, deform: VertexDeform, material: Material, effect: MeshEffect | undefined, materialPass?: MaterialPass): GPURenderPipelineDescriptor {
@@ -453,7 +454,9 @@ export class MeshGpu {
           ? { format: depthFormat, depthWriteEnabled: false, depthCompare: 'equal' } as const
           : {
             format: depthFormat,
-            depthWriteEnabled: !stage.transparent && !stage.wireframe,
+            // 透射的材质在透明阶段也写深度（照 Filament：它输出的是不透明的颜色，背景已经折射着取进来了）：一个合成的网格里
+            // 前后好几个瓶子，不写深度时后面的三角形会盖住前面的
+            depthWriteEnabled: (!stage.transparent || material.transmission !== undefined) && !stage.wireframe,
             // 反向 Z（RenderView.reversedDepth）：相机的视图近 1 远 0；阴影投射的阶段（阴影、天空遮挡）照旧是正向
             depthCompare: stage.shadowCasters || stage.impostor ? 'less-equal' : 'greater-equal',
             // 和 Stride 不同：阴影投射另加按坡度的深度偏移。只有常量偏移加法线偏移时，太阳低（20° 左右）、光掠过地面，
@@ -900,9 +903,9 @@ export class MeshGpu {
       const gloss = material.glossinessMap;
       floats.set(gloss ? CHANNELS[gloss.channel] : [0, 0, 0, 0], 44);
       floats.set(uv(gloss), 48);
-      // 第 3..5 位：光泽度贴图里金属度的通道 + 1（0 是没有）
-      const metalnessChannel = gloss?.metalnessChannel ? 'rgba'.indexOf(gloss.metalnessChannel) + 1 : 0;
-      const textures = (slot ? 1 : 0) | (emissiveTexture ? 2 : 0) | (occlusion.texture ? 4 : 0) | (metalnessChannel << 3);
+      // 第 3..5 位、6..8 位：光泽度贴图里金属度、透射的通道 + 1（0 是没有）
+      const channelBits = (channel: string | undefined) => (channel ? 'rgba'.indexOf(channel) + 1 : 0);
+      const textures = (slot ? 1 : 0) | (emissiveTexture ? 2 : 0) | (occlusion.texture ? 4 : 0) | (channelBits(gloss?.metalnessChannel) << 3) | (channelBits(gloss?.transmissionChannel) << 6);
       floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, material.glass?.refractiveIndex ?? 0, textures], 52);
       const scattering = material.subsurfaceScattering;
       floats.set([this.#subsurface.slotOf(material), scattering?.translucency ?? 0, scattering?.width ?? 0, 0], 56);

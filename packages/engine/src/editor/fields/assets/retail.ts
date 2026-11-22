@@ -40,6 +40,7 @@ export const PRODUCT_FIELDS = fields<ProductFile>({
     optional: true,
     description: 'a dish of food in a bowl or plate; empty ware when missing',
   },
+  transmission: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0, description: 'how much light passes through the body (0..1: oil and drink bottles show what is inside); the label background is the body, printed parts (cap, pattern, text) stay opaque; produce and ware ignore it' },
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of everything not written: another number is another brand of the same product' },
 });
 

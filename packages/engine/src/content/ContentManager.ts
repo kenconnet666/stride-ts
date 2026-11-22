@@ -399,7 +399,7 @@ export class ContentManager {
         ...(file.anisotropy ? { anisotropy: file.anisotropy } : {}),
         ...(file.transmission ? { transmission: file.transmission } : {}),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),
-        ...(glossinessTexture ? { glossinessMap: { ...glossinessTexture, channel: file.glossinessTexture!.channel, invert: file.glossinessTexture!.invert, ...(file.glossinessTexture!.metalnessChannel ? { metalnessChannel: file.glossinessTexture!.metalnessChannel } : {}) } } : {}),
+        ...(glossinessTexture ? { glossinessMap: { ...glossinessTexture, channel: file.glossinessTexture!.channel, invert: file.glossinessTexture!.invert, ...(file.glossinessTexture!.metalnessChannel ? { metalnessChannel: file.glossinessTexture!.metalnessChannel } : {}), ...(file.glossinessTexture!.transmissionChannel ? { transmissionChannel: file.glossinessTexture!.transmissionChannel } : {}) } } : {}),
         ...(file.emissive ? { emissive: file.emissive } : {}),
         ...(emissiveTexture ? { emissiveTexture } : {}),
         ...(shaderTrees ? { shaderTrees } : {}),

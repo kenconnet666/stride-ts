@@ -167,6 +167,7 @@ const zhCN: FieldMessages = {
     'length of the cords of a banner (m)': '吊旗的吊绳多长（米）',
     'height from the floor to the top of a stand card (m)': '价牌从地面到卡片顶多高（米）',
     'color of the boards (sRGB #rrggbb, matte like wood-grain boards; the frame color when missing)': '层板的颜色（sRGB 的 #rrggbb，木纹板那样的哑光；没写同架子）',
+    'how much light passes through the body (0..1: oil and drink bottles show what is inside); the label background is the body, printed parts (cap, pattern, text) stay opaque; produce and ware ignore it': '瓶身透多少光（0..1：油瓶、饮料瓶看得见里面装的）；标签的底色是瓶身，印上去的（盖子、图案、字）不透；果蔬、器皿不看它',
     'main ingredient color (sRGB #rrggbb)': '主料的颜色（sRGB 的 #rrggbb）',
     'side ingredient color (red pepper, scallion; sRGB #rrggbb); a darker main color when missing': '配料的颜色（红椒、葱花；sRGB 的 #rrggbb）；没写时按主料暗一些',
     'sauce under the food (sRGB #rrggbb); the main color darkened when missing': '菜底下汤汁的颜色（sRGB 的 #rrggbb）；没写时按主料暗一些',

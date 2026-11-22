@@ -32,6 +32,14 @@ export interface MaterialNormalMap extends MaterialTexture {
   readonly invertY?: boolean;
 }
 
+/** 光泽度贴图取哪些通道：光泽度（或 invert 时的粗糙度）、可选的金属度和透射比例（意思同 content/formats/assetFormat.ts 的 glossinessTexture）。 */
+export interface GlossinessChannels {
+  readonly channel: 'r' | 'g' | 'b' | 'a';
+  readonly invert: boolean;
+  readonly metalnessChannel?: 'r' | 'g' | 'b' | 'a';
+  readonly transmissionChannel?: 'r' | 'g' | 'b' | 'a';
+}
+
 /** 环境光遮蔽，意思同 content/formats/format.ts 的 AmbientOcclusionSlot。 */
 export interface MaterialAmbientOcclusion extends Omit<AmbientOcclusionSlot, 'texture'> {
   readonly texture?: MaterialTexture & { readonly channel: 'r' | 'g' | 'b' | 'a' };
@@ -128,7 +136,7 @@ export interface MaterialDesc {
   /** 粗糙度 = 1 - 光泽度，默认 1。 */
   readonly roughness?: number;
   /** 光泽度贴图（意思同 content/formats/format.ts 的 glossinessTexture）；有它时不看 roughness。 */
-  readonly glossinessMap?: MaterialTexture & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean; readonly metalnessChannel?: 'r' | 'g' | 'b' | 'a' };
+  readonly glossinessMap?: MaterialTexture & GlossinessChannels;
   /** 自发光，线性颜色乘强度，默认没有；有 emissiveTexture 时再乘贴图的颜色。 */
   readonly emissive?: readonly [number, number, number];
   readonly emissiveTexture?: MaterialTexture;
@@ -267,7 +275,7 @@ export class Material {
   readonly diffuseShading: boolean;
   readonly glass: { readonly refractiveIndex: number } | undefined;
   readonly roughness: number;
-  readonly glossinessMap: Required<MaterialTexture> & { readonly channel: 'r' | 'g' | 'b' | 'a'; readonly invert: boolean; readonly metalnessChannel?: 'r' | 'g' | 'b' | 'a' } | undefined;
+  readonly glossinessMap: Required<MaterialTexture> & GlossinessChannels | undefined;
   readonly emissive: readonly [number, number, number];
   readonly emissiveTexture: Required<MaterialTexture> | undefined;
   readonly shaderTrees: MaterialShaderTrees | undefined;
@@ -312,7 +320,7 @@ export class Material {
     this.glass = desc.glass;
     this.roughness = desc.roughness ?? 1;
     const gloss = desc.glossinessMap;
-    this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert, ...(gloss.metalnessChannel ? { metalnessChannel: gloss.metalnessChannel } : {}) };
+    this.glossinessMap = gloss && { ...withTransform(gloss), channel: gloss.channel, invert: gloss.invert, ...(gloss.metalnessChannel ? { metalnessChannel: gloss.metalnessChannel } : {}), ...(gloss.transmissionChannel ? { transmissionChannel: gloss.transmissionChannel } : {}) };
     this.emissive = desc.emissive ?? [0, 0, 0];
     this.emissiveTexture = desc.emissiveTexture && withTransform(desc.emissiveTexture);
     this.shaderTrees = desc.shaderTrees;

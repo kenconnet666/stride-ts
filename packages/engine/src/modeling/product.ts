@@ -275,10 +275,46 @@ export function productLabelSvg(file: ProductFile, labelSize: readonly [number, 
 export function productLabelShapes(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
   const design = productDesign(file, variant);
   const [W, H] = labelSize;
-  const [w, h, d] = file.size.map((v) => v * 1000) as [number, number, number];
-  const parts: string[] = [`<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${design.colors.background}"/>`];
-  if (isProduce(file.shape)) return parts.join('') + produceSkin(file, design, labelSize, variant);
+  const background = `<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${design.colors.background}"/>`;
   if (isWare(file.shape)) return wareSkin(file, labelSize, design.colors.background, design.colors.accent, design.pattern === 'floral', variant);
+  return background + labelPrint(file, design, labelSize, font, variant);
+}
+
+/** 瓶身透多少光（ProductFile.transmission，限在 0..1）：只有包装算，果蔬、器皿是 0。 */
+export function productTransmission(file: ProductFile): number {
+  return isProduce(file.shape) || isWare(file.shape) ? 0 : Math.min(1, Math.max(0, file.transmission ?? 0));
+}
+
+/**
+ * 表面贴图里这个商品的那一格（坐标同 productLabelSvg；R 透射、G 粗糙度、B 金属度）：color 是底色那片（瓶身）的颜色，R 是透射的
+ * 比例；print 盖在上面，是印上去的图形（盖子、图案、字）用一个滤镜涂成 R 为 0 的同一个颜色——按它们的轮廓不透光（半透明的印刷
+ * 按它的不透明度少透一些）；不透光的商品没有 print。defs 是滤镜（同样材料的商品共用一个，放进 svg 的 defs）。
+ */
+export function productSurface(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): { readonly color: string; readonly print: string; readonly defs: string } {
+  const design = productDesign(file, variant);
+  const { roughness, metalness } = SURFACE_MATERIAL[design.surface];
+  const g = Math.round(roughness * 255), b = Math.round(metalness * 255), transmission = productTransmission(file);
+  if (transmission === 0) return { color: `rgb(0,${g},${b})`, print: '', defs: '' };
+  const id = `print-${g}-${b}`;
+  return {
+    color: `rgb(${Math.round(transmission * 255)},${g},${b})`,
+    print: `<g filter="url(#${id})">${labelPrint(file, design, labelSize, font, variant)}</g>`,
+    defs: `<filter id="${id}" color-interpolation-filters="sRGB"><feFlood flood-color="rgb(0,${g},${b})"/><feComposite in2="SourceAlpha" operator="in"/></filter>`,
+  };
+}
+
+/** 整张表面贴图（透光的包装单独烘时，材质的 `<texture>.surface`）。 */
+export function productSurfaceSvg(file: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
+  const [W, H] = labelSize, { color, print, defs } = productSurface(file, labelSize, font, variant);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgNumber(W)} ${svgNumber(H)}" width="${svgNumber(W)}" height="${svgNumber(H)}"><defs>${defs}</defs><rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${color}"/>${print}</svg>`;
+}
+
+/** 标签上底色以外的图形：果蔬的表皮纹路；包装的盖子、底纹、字。 */
+function labelPrint(file: ProductFile, design: ProductDesign, labelSize: readonly [number, number], font: TextFont | undefined, variant: number): string {
+  const [W, H] = labelSize;
+  const [w, h, d] = file.size.map((v) => v * 1000) as [number, number, number];
+  const parts: string[] = [];
+  if (isProduce(file.shape)) return produceSkin(file, design, labelSize, variant);
   // 图案画在哪：旋转体是盖子以下的整圈，纸盒是中间那一排，袋是整张
   let body: readonly [number, number, number, number] = [0, 0, W, H];
   let areas: TextArea[];
@@ -408,16 +444,28 @@ export function labelPixels(labelSize: readonly [number, number], longest = 512)
   return [Math.max(4, Math.round((labelSize[0] * scale) / 4) * 4), Math.max(4, Math.round((labelSize[1] * scale) / 4) * 4)];
 }
 
-/** 包装的材质：标签贴图（path 是贴图的内容路径，svg）加这类材料的粗糙度、金属度。 */
+/**
+ * 包装的材质：标签贴图（path 是贴图的内容路径，svg）加这类材料的粗糙度、金属度。瓶身透光（productTransmission 大于 0）时改用
+ * 表面贴图 `<texture>.surface`（productSurfaceShapes：R 透射、G 粗糙度、B 金属度），加上透射。
+ */
 export function productMaterial(file: ProductFile, texture: string, pixels: readonly [number, number], variant = 0): MaterialFile {
   const { surface } = productDesign(file, variant);
+  const slot = { encoding: 'svg', size: pixels, filter: 'anisotropic', scale: [1, 1], offset: [0, 0] } as const;
+  const base = { name: file.name, baseColor: [1, 1, 1, 1], baseColorTexture: { texture, srgb: true, ...slot } } as const;
+  if (productTransmission(file) === 0) return { ...base, ...SURFACE_MATERIAL[surface] };
   return {
-    name: file.name,
-    baseColor: [1, 1, 1, 1],
-    baseColorTexture: { texture, encoding: 'svg', size: pixels, srgb: true, filter: 'anisotropic', scale: [1, 1], offset: [0, 0] },
-    ...SURFACE_MATERIAL[surface],
+    ...base,
+    metalness: 1,
+    glossinessTexture: { texture: `${texture}.surface`, srgb: false, channel: 'g', invert: true, metalnessChannel: 'b', transmissionChannel: 'r', ...slot },
+    transmission: PACKAGE_TRANSMISSION,
   };
 }
+
+/**
+ * 透光的瓶身：比例 1（乘表面贴图的 R）、塑料的折射率，按实心的算（里面装满了油、饮料）——厚度是瓶身的一部分，背景折得不多。
+ * 颜色是标签的底色（透射乘基础色），不另加吸收。
+ */
+export const PACKAGE_TRANSMISSION = { factor: 1, ior: 1.45, thickness: 0.02 } as const;
 
 function luminance(hex: string): number {
   const v = parseInt(hex.slice(1, 7), 16);

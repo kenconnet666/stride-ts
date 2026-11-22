@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { ProductFile, ProductShape } from '../../src/content/formats/productFormat';
-import { isProduce, labelPixels, productDesign, productLabelSvg, productMaterial, productMesh } from '../../src/modeling/product';
+import { isProduce, labelPixels, productDesign, productLabelSvg, productMaterial, productMesh, productSurfaceSvg, productTransmission } from '../../src/modeling/product';
 
 const bottle: ProductFile = { name: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], text: '矿泉水', seed: 3 };
 const sizes: Readonly<Record<ProductShape, readonly [number, number, number]>> = {
@@ -105,6 +105,19 @@ describe('商品包装', () => {
     const material = productMaterial({ ...bottle, shape: 'can' }, 'Products/Cola', [512, 256]);
     expect(material.baseColorTexture).toMatchObject({ texture: 'Products/Cola', encoding: 'svg', size: [512, 256] });
     expect(material.metalness).toBeGreaterThan(0);
+  });
+
+  test('透光的瓶身：材质改用表面贴图的 R 乘透射，表面贴图里印的图形不透；果蔬、器皿不透', () => {
+    const oil: ProductFile = { ...bottle, transmission: 0.6, pattern: 'band' };
+    expect(productMaterial(bottle, 'Products/Water', [512, 256]).transmission).toBeUndefined();
+    const material = productMaterial(oil, 'Products/Oil', [512, 256]);
+    expect(material).toMatchObject({ transmission: { factor: 1 }, glossinessTexture: { texture: 'Products/Oil.surface', channel: 'g', invert: true, transmissionChannel: 'r' } });
+    const svg = productSurfaceSvg(oil, productMesh(oil).labelSize, undefined);
+    // 塑料：粗糙度 0.32（82）、金属度 0；瓶身 R = 0.6 × 255
+    expect(svg).toContain('fill="rgb(153,82,0)"');
+    expect(svg).toContain('<g filter="url(#print-82-0)">');
+    expect(productTransmission({ ...oil, transmission: 3 })).toBe(1);
+    expect(productTransmission({ name: 'Tomato', shape: 'round', size: [0.08, 0.07, 0], transmission: 1 })).toBe(0);
   });
 
   test('尺寸不对时报错', () => {

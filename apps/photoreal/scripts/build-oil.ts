@@ -35,11 +35,11 @@ const FONT = 'Shared/Fonts/ZCOOLQingKeHuangYou';
 // 照片里的油：5 升的大桶（下面几层）、1.8 升（中间）、900 毫升（最上层）。瓶身是透出来的油色（琥珀、金黄），标签只是中间一圈
 // （band），红、绿、蓝居多（金龙鱼、鲁花、福临门那样）
 const oils: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
-  { id: 'Oil5L', shape: 'bottle', size: [0.17, 0.33, 0], text: '食用油', seed: 81, pattern: 'band', colors: { background: '#c98a2a', accent: '#d7262b', cap: '#d7262b' } },
-  { id: 'Peanut5L', shape: 'bottle', size: [0.17, 0.33, 0], text: '花生油', seed: 82, pattern: 'band', colors: { background: '#b8742a', accent: '#2f9e44', cap: '#d7262b' } },
-  { id: 'Corn5L', shape: 'bottle', size: [0.16, 0.32, 0], text: '玉米油', seed: 83, pattern: 'band', colors: { background: '#d8a83a', accent: '#1e64c8', cap: '#f6c40f' } },
-  { id: 'Oil18', shape: 'bottle', size: [0.1, 0.3, 0], text: '调和油', seed: 84, pattern: 'band', colors: { background: '#c99a3a', accent: '#d7262b', cap: '#d7262b' } },
-  { id: 'Oil900', shape: 'bottle', size: [0.075, 0.26, 0], text: '芝麻油', seed: 85, pattern: 'band', colors: { background: '#8a4a1a', accent: '#2f9e44', cap: '#f4f2ec' } },
+  { id: 'Oil5L', shape: 'bottle', size: [0.17, 0.33, 0], text: '食用油', seed: 81, pattern: 'band', transmission: 0.9, colors: { background: '#dcb54e', accent: '#d7262b', cap: '#d7262b' } },
+  { id: 'Peanut5L', shape: 'bottle', size: [0.17, 0.33, 0], text: '花生油', seed: 82, pattern: 'band', transmission: 0.9, colors: { background: '#d09a3e', accent: '#2f9e44', cap: '#d7262b' } },
+  { id: 'Corn5L', shape: 'bottle', size: [0.16, 0.32, 0], text: '玉米油', seed: 83, pattern: 'band', transmission: 0.9, colors: { background: '#e4c45a', accent: '#1e64c8', cap: '#f6c40f' } },
+  { id: 'Oil18', shape: 'bottle', size: [0.1, 0.3, 0], text: '调和油', seed: 84, pattern: 'band', transmission: 0.9, colors: { background: '#d9b04c', accent: '#d7262b', cap: '#d7262b' } },
+  { id: 'Oil900', shape: 'bottle', size: [0.075, 0.26, 0], text: '芝麻油', seed: 85, pattern: 'band', transmission: 0.9, colors: { background: '#8a4a1a', accent: '#2f9e44', cap: '#f4f2ec' } },
 ];
 for (const { id, ...product } of oils) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 await write('shelf', 'Shop/Shelves/Oil', {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { ProductFile } from '../../src/content/formats/productFormat';
 import type { ShelfFile } from '../../src/content/formats/shelfFormat';
-import { mergedMaterial } from '../../src/modeling/productBatch';
+import { mergedClearMaterial, mergedMaterial } from '../../src/modeling/productBatch';
 import { deliLamps, planShelf, shelfModel } from '../../src/modeling/shelf';
 
 const products = new Map<string, ProductFile>([
@@ -148,5 +148,22 @@ describe('货架', () => {
     const material = mergedMaterial(island.name, 'Shop/Island', 2048);
     expect(material.baseColorTexture).toMatchObject({ texture: 'Shop/Island', encoding: 'svg', size: [2048, 2048] });
     expect(material.glossinessTexture).toMatchObject({ texture: 'Shop/Island.surface', channel: 'g', invert: true, metalnessChannel: 'b', srgb: false });
+  });
+
+  test('透光的油瓶另成一个网格：同样的图集加透射，表面图集里瓶身的 R 是透射、印的地方用滤镜涂成不透', () => {
+    const clearProducts = new Map([...products, ['P/Oil', { ...products.get('P/Oil')!, transmission: 0.8, pattern: 'band' as const }]]);
+    const all = shelfModel(island, { products: clearProducts, font: () => undefined });
+    const opaque = shelfModel(island, sources);
+    expect(all.clear).toBeDefined();
+    expect(opaque.clear).toBeUndefined();
+    // 油瓶的顶点从主网格挪进了透光的网格，总数不变
+    expect(all.vertices.length + all.clear!.vertices.length).toBe(opaque.vertices.length);
+    expect(all.surfaceSvg).toContain('fill="rgb(204,82,0)"');
+    expect(all.surfaceSvg).toMatch(/<defs><filter id="print-82-0"[^>]*><feFlood flood-color="rgb\(0,82,0\)"\/>/);
+    expect(all.surfaceSvg).toContain('filter="url(#print-82-0)"');
+    expect(opaque.surfaceSvg).not.toContain('filter');
+    expect(mergedClearMaterial('Island', 'Shop/Island', 2048)).toMatchObject({
+      name: 'Island clear', transmission: { factor: 1 }, glossinessTexture: { texture: 'Shop/Island.surface', transmissionChannel: 'r', metalnessChannel: 'b' },
+    });
   });
 });

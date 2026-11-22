@@ -10,8 +10,9 @@
  "text": "调和油",
  "seed": 84,
  "pattern": "band",
+ "transmission": 0.9,
  "colors": {
-  "background": "#c99a3a",
+  "background": "#d9b04c",
   "accent": "#d7262b",
   "cap": "#d7262b"
  }

@@ -66,5 +66,10 @@ export interface ProductFile {
   readonly surface?: ProductSurface;
   /** 器皿（碗、盘）里盛的菜；没写是空的。 */
   readonly food?: ProductFood;
+  /**
+   * 瓶身透多少光（0..1，默认 0）：装油、饮料的塑料瓶、玻璃瓶看得见里面的颜色。透的是标签的底色那片（瓶身，底色当里面装的东西的
+   * 颜色），印上去的（盖子、图案、字）不透；果蔬、器皿不看它。
+   */
+  readonly transmission?: number;
   readonly seed?: number;
 }

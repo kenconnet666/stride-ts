@@ -10,8 +10,9 @@
  "text": "玉米油",
  "seed": 83,
  "pattern": "band",
+ "transmission": 0.9,
  "colors": {
-  "background": "#d8a83a",
+  "background": "#e4c45a",
   "accent": "#1e64c8",
   "cap": "#f6c40f"
  }

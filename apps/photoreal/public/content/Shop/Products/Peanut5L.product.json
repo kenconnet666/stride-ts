@@ -10,8 +10,9 @@
  "text": "花生油",
  "seed": 82,
  "pattern": "band",
+ "transmission": 0.9,
  "colors": {
-  "background": "#b8742a",
+  "background": "#d09a3e",
   "accent": "#2f9e44",
   "cap": "#d7262b"
  }

@@ -1,7 +1,8 @@
 /**
  * 把一批摆好的商品（连同货架、筐这些架子）合成一个网格、一张标签图集（货架、堆放共用）：每个用到的商品变体在图集里一格（标签的
  * 图形照原样嵌进去，按毫米的大小一起缩放），架子的纯色、价签这些另外几格；商品的 UV 从自己的 0..1 换到它那一格。图集是两张 SVG：
- * 颜色，和表面（G 粗糙度、B 金属度，材质的 glossinessTexture 加 metalnessChannel）。整批一个材质，几千件商品一次绘制。
+ * 颜色，和表面（G 粗糙度、B 金属度，材质的 glossinessTexture 加 metalnessChannel；R 是透射的比例）。整批一个材质，几千件商品
+ * 一次绘制；瓶身透光的商品（ProductFile.transmission）的前排另成一个网格，用同样的图集加透射的材质（透明阶段画，标签按 R 不透）。
  *
  * 用法：new ProductBatch(sources, items, { solids, cells }) 排好图集；box、quad 加架子的几何（UV 指着纯色格、单独的格），
  * finish() 加上商品、出网格和两张 SVG。
@@ -9,7 +10,7 @@
 import type { MaterialFile } from '../content/formats/assetFormat.ts';
 import type { ProductFile } from '../content/formats/productFormat.ts';
 import { packPages } from '../data/rectPacking.ts';
-import { productDesign, productLabelShapes, productMesh, SURFACE_MATERIAL, svgNumber, type ProductMesh } from './product.ts';
+import { PACKAGE_TRANSMISSION, productDesign, productLabelShapes, productMesh, productSurface, productTransmission, svgNumber, type ProductMesh } from './product.ts';
 import type { TextFont } from './textOutline.ts';
 
 /** 生成要的别的资源：商品文件（按内容路径）和字体。 */
@@ -18,7 +19,7 @@ export interface ProductSources {
   readonly font: (path: string) => TextFont | undefined;
 }
 
-/** 摆好的一件商品：哪个商品文件、第几个变体，底面中心的位置、朝向（四元数），细不细（后排、堆在下面的给少一点面）。 */
+/** 摆好的一件商品：哪个商品文件、第几个变体，底面中心的位置、朝向（四元数），细不细（后排、堆在下面的给少一点面，也不透光）。 */
 export interface PlacedProduct {
   readonly product: string;
   readonly variant: number;
@@ -49,7 +50,7 @@ export type Cell = readonly [x: number, y: number, w: number, h: number];
 
 /**
  * 合成的网格（材质槽 0）、图集的 SVG 和栅格化的边长；有发光的格子时还有自发光的图集和最大的强度；有玻璃时玻璃是单独的网格
- * （材质槽 1，透明的玻璃材质，不进图集）。
+ * （透明的玻璃材质，不进图集）；有透光的商品时它们是单独的网格（同样的图集加透射，mergedClearMaterial）。
  */
 export interface MergedProducts {
   readonly vertices: Float32Array;
@@ -59,7 +60,14 @@ export interface MergedProducts {
   readonly emissiveSvg: string | undefined;
   readonly emissive: number;
   readonly atlasPixels: number;
-  readonly glass: { readonly vertices: Float32Array; readonly indices: Uint32Array } | undefined;
+  readonly glass: MeshArrays | undefined;
+  readonly clear: MeshArrays | undefined;
+}
+
+/** 一个网格的顶点（每个 8 个数：位置、法线、UV）和下标。 */
+export interface MeshArrays {
+  readonly vertices: Float32Array;
+  readonly indices: Uint32Array;
 }
 
 /** 图集的边长（像素）、格子之间的留边、纯色格的边长。 */
@@ -84,6 +92,8 @@ export class ProductBatch {
   readonly #indices: number[] = [];
   readonly #glassVertices: number[] = [];
   readonly #glassIndices: number[] = [];
+  readonly #clearVertices: number[] = [];
+  readonly #clearIndices: number[] = [];
 
   constructor(sources: ProductSources, where: string, items: readonly PlacedProduct[], { solids = [], cells = [] }: { readonly solids?: readonly AtlasSolid[]; readonly cells?: readonly AtlasCell[] } = {}) {
     this.#sources = sources;
@@ -187,21 +197,25 @@ export class ProductBatch {
         const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
         return [x + qw * tx + qy * tz - qz * ty, y + qw * ty + qz * tx - qx * tz, z + qw * tz + qx * ty - qy * tx];
       };
-      const base = this.#vertices.length / 8, src = mesh.vertices, [px, py, pz] = item.position;
+      // 只有前排（细的）透光：后排、堆在下面的照常不透明，画进折射拷的画面里——前排的瓶子透出来的是后面亮着的油，不是货架的暗底
+      const clear = item.fine && productTransmission(this.#sources.products.get(item.product)!) > 0;
+      const vertices = clear ? this.#clearVertices : this.#vertices, indices = clear ? this.#clearIndices : this.#indices;
+      const base = vertices.length / 8, src = mesh.vertices, [px, py, pz] = item.position;
       for (let i = 0; i < src.length; i += 8) {
         const p = rotate(src[i]!, src[i + 1]!, src[i + 2]!), n = rotate(src[i + 3]!, src[i + 4]!, src[i + 5]!);
-        this.#vertices.push(px + p[0], py + p[1], pz + p[2], n[0], n[1], n[2], (cx + src[i + 6]! * cw) / ATLAS, (cy + src[i + 7]! * ch) / ATLAS);
+        vertices.push(px + p[0], py + p[1], pz + p[2], n[0], n[1], n[2], (cx + src[i + 6]! * cw) / ATLAS, (cy + src[i + 7]! * ch) / ATLAS);
       }
-      for (const index of mesh.indices) this.#indices.push(base + index);
+      for (const index of mesh.indices) indices.push(base + index);
     }
 
-    const color: string[] = [], surface: string[] = [], glow: string[] = [];
+    const color: string[] = [], surface: string[] = [], glow: string[] = [], defs = new Set<string>();
     const strongest = Math.max(0, ...this.#solids.map((solid) => solid.emissive ?? 0), ...this.#cells.map((cell) => cell.emissive ?? 0));
-    const fill = ([x, y, w, h]: Cell, { color: colorFill, roughness, metalness, emissive = 0 }: AtlasSolid) => {
+    // surfaceFill 是表面图集里这一格的颜色（商品的按 productSurface，带透射的 R）
+    const fill = ([x, y, w, h]: Cell, { color: colorFill, roughness, metalness, emissive = 0 }: AtlasSolid, surfaceFill = `rgb(0,${Math.round(roughness * 255)},${Math.round(metalness * 255)})`) => {
       // 每一格连留边一起铺底色：缩小的时候不混进别的格子
       const rect = `x="${x - PADDING}" y="${y - PADDING}" width="${w + 2 * PADDING}" height="${h + 2 * PADDING}"`;
       color.push(`<rect ${rect} fill="${colorFill}"/>`);
-      surface.push(`<rect ${rect} fill="rgb(0,${Math.round(roughness * 255)},${Math.round(metalness * 255)})"/>`);
+      surface.push(`<rect ${rect} fill="${surfaceFill}"/>`);
       if (emissive > 0) glow.push(`<rect ${rect} fill="${colorFill}" opacity="${svgNumber(emissive / strongest)}"/>`);
     };
     this.#solids.forEach((solid, i) => fill(this.#solidCells[i]!, solid));
@@ -209,9 +223,15 @@ export class ProductBatch {
       const variant = Number(key.slice(0, key.indexOf('|'))), path = pathOf(key);
       const product = this.#sources.products.get(path)!, design = productDesign(product, variant), cell = this.#labelCells[i]!;
       const [W, H] = this.#mesh(path, true).labelSize;
-      fill(cell, { color: design.colors.background, ...SURFACE_MATERIAL[design.surface] });
       const font = product.font ? this.#sources.font(product.font) : undefined;
-      color.push(`<svg x="${cell[0]}" y="${cell[1]}" width="${cell[2]}" height="${cell[3]}" viewBox="0 0 ${svgNumber(W)} ${svgNumber(H)}" preserveAspectRatio="none">${productLabelShapes(product, [W, H], font, variant)}</svg>`);
+      const surfaceCell = productSurface(product, [W, H], font, variant);
+      fill(cell, { color: design.colors.background, roughness: 0, metalness: 0 }, surfaceCell.color);
+      const nested = (shapes: string) => `<svg x="${cell[0]}" y="${cell[1]}" width="${cell[2]}" height="${cell[3]}" viewBox="0 0 ${svgNumber(W)} ${svgNumber(H)}" preserveAspectRatio="none">${shapes}</svg>`;
+      color.push(nested(productLabelShapes(product, [W, H], font, variant)));
+      if (surfaceCell.print) {
+        surface.push(nested(surfaceCell.print));
+        defs.add(surfaceCell.defs);
+      }
     });
     this.#cells.forEach((cell, i) => {
       fill(this.#extraCells[i]!, cell);
@@ -221,11 +241,12 @@ export class ProductBatch {
       // 发光的格子里画的字也发光（灯箱的字）
       if ((cell.emissive ?? 0) > 0) glow.push(drawn);
     });
-    const svg = (shapes: string[], background?: string) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ATLAS} ${ATLAS}" width="${ATLAS}" height="${ATLAS}">${background ? `<rect width="${ATLAS}" height="${ATLAS}" fill="${background}"/>` : ''}${shapes.join('')}</svg>`;
+    const svg = (shapes: string[], background?: string, definitions = '') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ATLAS} ${ATLAS}" width="${ATLAS}" height="${ATLAS}">${definitions ? `<defs>${definitions}</defs>` : ''}${background ? `<rect width="${ATLAS}" height="${ATLAS}" fill="${background}"/>` : ''}${shapes.join('')}</svg>`;
     return {
-      vertices: Float32Array.from(this.#vertices), indices: Uint32Array.from(this.#indices), colorSvg: svg(color), surfaceSvg: svg(surface),
+      vertices: Float32Array.from(this.#vertices), indices: Uint32Array.from(this.#indices), colorSvg: svg(color), surfaceSvg: svg(surface, undefined, [...defs].join('')),
       emissiveSvg: strongest > 0 ? svg(glow, '#000000') : undefined, emissive: strongest, atlasPixels: ATLAS,
       glass: this.#glassIndices.length > 0 ? { vertices: Float32Array.from(this.#glassVertices), indices: Uint32Array.from(this.#glassIndices) } : undefined,
+      clear: this.#clearIndices.length > 0 ? { vertices: Float32Array.from(this.#clearVertices), indices: Uint32Array.from(this.#clearIndices) } : undefined,
     };
   }
 
@@ -299,6 +320,12 @@ export function mergedMaterial(name: string, path: string, pixels: number, emiss
     glossinessTexture: { texture: `${path}.surface`, srgb: false, channel: 'g', invert: true, metalnessChannel: 'b', ...slot },
     ...(emissive > 0 ? { emissive: [emissive, emissive, emissive] as const, emissiveTexture: { texture: `${path}.emissive`, srgb: true, ...slot } } : {}),
   };
+}
+
+/** 合成的那批里透光的商品的材质（油瓶）：同样的图集，表面图集的 R 乘透射的比例（标签那里是 0，不透）。 */
+export function mergedClearMaterial(name: string, path: string, pixels: number): MaterialFile {
+  const material = mergedMaterial(`${name} clear`, path, pixels);
+  return { ...material, glossinessTexture: { ...material.glossinessTexture!, transmissionChannel: 'r' }, transmission: PACKAGE_TRANSMISSION };
 }
 
 /** 合成的那批里玻璃的材质（冷柜的门、冰柜的盖）：同材质库的透明玻璃，带一点冷色。 */

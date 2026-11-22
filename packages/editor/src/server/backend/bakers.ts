@@ -40,8 +40,8 @@ function modelOnly<F>(bake: (context: BakeContext, file: F, where: string) => Ui
   };
 }
 
-/** 合成一个模型加图集、材质的（货架这一类）：模型、颜色和表面、自发光的图集，图集的材质和玻璃的材质。 */
-const MERGED_OUTPUTS: Generator['outputs'] = [['model', ''], ['material', ''], ['image', ''], ['image', '.surface'], ['image', '.emissive'], ['material', '.glass']];
+/** 合成一个模型加图集、材质的（货架这一类）：模型、颜色和表面、自发光的图集，图集的材质、玻璃的材质和透光的商品的材质。 */
+const MERGED_OUTPUTS: Generator['outputs'] = [['model', ''], ['material', ''], ['image', ''], ['image', '.surface'], ['image', '.emissive'], ['material', '.glass'], ['material', '.clear']];
 
 function merged<F>(bake: (context: BakeContext, file: F, assetPath: string, where: string) => readonly BakedFile[] | Promise<readonly BakedFile[]>, outputs = MERGED_OUTPUTS): Generator {
   return { bake: async (context, content, assetPath, where) => bake(context, content as F, assetPath, where), outputs };
@@ -55,8 +55,8 @@ export const GENERATORS = {
   spline: modelOnly<SplineFile>(({ tools }, file, where) => bakeSplineModel(tools, file, where)),
   tree: modelOnly<TreeFile>(({ tools }, file, where) => bakeTreeModel(tools, file, where)),
   building: modelOnly<BuildingFile>(({ tools }, file, where) => bakeBuildingModel(tools, file, where)),
-  // 包装还生成了同名的标签贴图和材质
-  product: merged<ProductFile>(({ tools, read }, file, assetPath, where) => bakeProduct(tools, file, assetPath, read, where), [['model', ''], ['material', ''], ['image', '']]),
+  // 包装还生成了同名的标签贴图和材质（瓶身透光时还有表面贴图）
+  product: merged<ProductFile>(({ tools, read }, file, assetPath, where) => bakeProduct(tools, file, assetPath, read, where), [['model', ''], ['material', ''], ['image', ''], ['image', '.surface']]),
   shelf: merged<ShelfFile>(({ tools, read }, file, assetPath, where) => bakeShelf(tools, file, assetPath, read, where)),
   pile: merged<PileFile>(({ tools, read }, file, assetPath, where) => bakePile(tools, file, assetPath, read, where)),
   sign: merged<SignFile>(({ tools, read }, file, assetPath, where) => bakeSign(tools, file, assetPath, read, where)),

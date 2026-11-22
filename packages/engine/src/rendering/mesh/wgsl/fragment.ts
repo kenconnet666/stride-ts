@@ -489,6 +489,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   let hasGlossTexture = dot(material.glossinessMask, vec4f(1.0)) > 0.0;
   var glossTexel = 0.0;
   var metalnessScale = 1.0;
+  var transmissionScale = 1.0;
   if (hasGlossTexture) {
     let texel = textureSample(glossinessTexture, glossinessSampler, in.uv * material.glossinessUvTransform.xy + material.glossinessUvTransform.zw);
     glossTexel = dot(texel, material.glossinessMask);
@@ -496,6 +497,11 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
     let metalnessChannel = (u32(material.flags.w) >> 3u) & 7u;
     if (metalnessChannel > 0u) {
       metalnessScale = dot(texel, select(vec4f(0.0), vec4f(1.0), vec4u(1u, 2u, 3u, 4u) == vec4u(metalnessChannel)));
+    }
+    // 透射的比例也可以按这张贴图的一个通道分区域（瓶身透、标签不透）
+    let transmissionChannel = (u32(material.flags.w) >> 6u) & 7u;
+    if (transmissionChannel > 0u) {
+      transmissionScale = dot(texel, select(vec4f(0.0), vec4f(1.0), vec4u(1u, 2u, 3u, 4u) == vec4u(transmissionChannel)));
     }
   }
   // 材质层按遮罩混进各个属性（没有层时原样）
@@ -550,7 +556,7 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   }
   let sheenScaling = 1.0 - max(sheenColor.r, max(sheenColor.g, sheenColor.b)) * sheenDfg;
   // 透射的那部分光穿过去了，不走漫反射（Filament：Fd *= 1 - transmission）
-  let transmission = material.transmission.x;
+  let transmission = material.transmission.x * transmissionScale;
   let diffuse = baseDiffuse * sheenScaling * (1.0 - transmission);
   // 各向异性的方向：顶点切线（没有时按贴图坐标的导数算），转材质给的角度。导数在按材质常量的分支里取（一致的控制流）
   let anisotropy = clamp(material.anisotropy.x, -0.99, 0.99);

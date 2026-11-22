@@ -10,6 +10,7 @@
  "text": "芝麻油",
  "seed": 85,
  "pattern": "band",
+ "transmission": 0.9,
  "colors": {
   "background": "#8a4a1a",
   "accent": "#2f9e44",

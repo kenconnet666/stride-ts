@@ -35,7 +35,7 @@ type Args = Readonly<Record<string, unknown>>;
 const RENDER_HELP = 'Offline render (fixed time step, sub-frame antialiasing and motion blur) to an MP4 (H.264 + AAC) or a PNG sequence, saved in the project\'s exports folder. '
   + 'args: name (default "render"), preset (landscape1080 | vertical1080 | square1080 | landscape4k), width, height, fps, '
   + 'timeline (entity with a TimelinePlayer, or a timeline name: restarted from 0, seconds defaults to its length), seconds, samples (sub-frames per frame, default 8), '
-  + 'shutter (0..1 of the frame interval, default 0.5), format (mp4 | png), bitrate, audio (default true). In the editor it renders in a hidden play-mode page.';
+  + 'shutter (0..1 of the frame interval, default 0.5), format (mp4 | png), bitrate, audio (default true), pathTracing (diffuse indirect light path traced per pixel, accumulated over the sub-frames; default false). In the editor it renders in a hidden play-mode page.';
 
 const BAKE_HELP = 'Bake a particle system into a flipbook atlas (columns x rows frames over some seconds, orthographic camera, alpha from a black and a white pass), '
   + 'saved as a png in the content folder through the editor backend. args: entity, columns (default 4), rows (default 4), size (pixels per frame, default 256), '
@@ -398,6 +398,14 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     return { gpu: meshes.gpuCulling, supported: game.renderSystem.graphicsDevice.indirectFirstInstance, wireframeFallsBackToCpu: game.graphicsCompositor.wireframe, stats: meshes.stats() };
   });
   debug.command('raytrace-check', 'Read back the ray tracing scene from the GPU and walk every BVH the way the shaders do: reports out-of-range indices, cycles and leaves past the triangle buffer (empty list = sound).', () => game.renderSystem.rayTracing.check());
+  debug.command('pathtrace', 'Path traced diffuse indirect light (RenderSystem.pathTracing: replaces the irradiance volume, sky and ambient diffuse; accumulates while the camera stands still). args: on (true/false/"toggle"), paths (per pixel per frame), bounces, reset (true). Reports whether it is active and how many frames it accumulated.', (args) => {
+    const tracing = game.renderSystem.pathTracing;
+    tracing.enabled = switchArg(args, tracing.enabled);
+    if (typeof args['paths'] === 'number') tracing.paths = args['paths'];
+    if (typeof args['bounces'] === 'number') tracing.bounces = args['bounces'];
+    if (args['reset'] === true) tracing.reset();
+    return { enabled: tracing.enabled, active: tracing.active, samples: tracing.samples, paths: tracing.paths, bounces: tracing.bounces };
+  });
   debug.command('gi', 'Irradiance volume (DDGI: ray traced probes give the diffuse ambient light inside the IrradianceVolume box). args: on (true/false, or "toggle"; omitted keeps it and just reports). Reports the probe count, probes and rays updated per frame, the ray tracing scene instances, and how many ray traversals hit the step cap (should be 0; otherwise the BVH is broken).', async (args) => {
     const volumes = game.renderSystem.irradianceVolumes;
     volumes.enabled = switchArg(args, volumes.enabled);

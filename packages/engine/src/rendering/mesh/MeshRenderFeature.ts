@@ -732,7 +732,7 @@ class Gpu {
   /** 视图绑定组里的云的影子图（没有云时是 undefined，绑一张白的）；换了要重建绑定组。 */
   #cloudShadow: GPUTexture | undefined;
   /** 地面的湿和雪、判断淋不淋得到的天空遮挡（RenderSystem 的）。 */
-  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes'>;
+  readonly #weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes' | 'pathTracing'>;
   /** 视图绑定组里绑的是真的天空遮挡（有湿或雪时），还是空的；换了要重建绑定组。 */
   #occlusionBound = false;
   /** 没有湿和雪时绑的天空遮挡参数（有效位是 0：着色器不查）和深度缓冲。 */
@@ -809,7 +809,7 @@ class Gpu {
   /** 视图绑定组里的天空盒镜面立方体贴图；换了天空盒要重建绑定组。 */
   #skySpecular: GPUTexture | undefined;
 
-  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
+  constructor(device: GPUDevice, resources: GpuResources, unclippedDepth: boolean, subsurface: SubsurfaceMaterials, probes: ReflectionProbes, clouds: Clouds, weather: Pick<RenderSystem, 'surfaceWeather' | 'skyOcclusion' | 'renderOrigin' | 'wind' | 'irradianceVolumes' | 'pathTracing'>, decals: Decals, clusters: Clusters, localLights: LocalLightBuffer, planar: PlanarReflections, refraction: Refraction) {
     this.device = device;
     this.#planar = planar;
     this.#refraction = refraction;
@@ -1246,7 +1246,8 @@ class Gpu {
     const data = this.#viewData, words = new Uint32Array(data.buffer);
     const { wetness, puddles, snowCover, rain } = this.#weather.surfaceWeather;
     const volumes = this.#weather.irradianceVolumes;
-    const irradiance = volumes.shading();
+    // 路径追踪的间接光开着时：用不用的那一位是 2，漫反射的环境光整个由它（屏幕空间的间接光）代替
+    const irradiance = this.#weather.pathTracing.active ? [0, 0, 0, 2, 1, 1, 1, 0, 2, 2, 2, 0, 0, 0, 0, 0] : volumes.shading();
     const occlusion = wetness > 0 || snowCover > 0;
     for (const view of views) {
       const o = view.index * stride;

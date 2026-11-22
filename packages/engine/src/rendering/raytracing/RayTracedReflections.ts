@@ -124,7 +124,8 @@ export interface RayTracedInputs {
   readonly giVolume: readonly number[];
 }
 
-const SHADER = /* wgsl */ `
+/** 追踪的着色器（和 RenderSystem 互相引用，用到时才拼）。 */
+const shader = () => /* wgsl */ `
 ${FULLSCREEN_VERTEX}
 ${SSR_COMMON_WGSL}
 ${SSR_SAMPLING_WGSL}
@@ -316,7 +317,7 @@ export class RayTracedReflections {
         { binding: 9, visibility: fragment, buffer: {} },
       ],
     });
-    const module = createCheckedShaderModule(device, 'Ray traced reflections', SHADER);
+    const module = createCheckedShaderModule(device, 'Ray traced reflections', shader());
     const pipeline = await device.createRenderPipelineAsync({
       label: 'Ray traced reflections',
       layout: device.createPipelineLayout({ bindGroupLayouts: [layout, sceneLayout] }),

@@ -447,8 +447,13 @@ export class ForwardRenderer {
     volumes.begin(context, renderSystem.rayTracing, this.hasCamera && renderSystem.planarReflections.supported && this.quality.globalIllumination, this.#mainView.eye);
     // 光追的反射（屏幕空间反射找不到的用光追补）：开着屏幕空间反射、画质开着全局光照时
     const rayTracedReflections = this.hasCamera && post && this.screenSpaceReflections.enabled && this.screenSpaceReflections.rayTraced && this.quality.screenSpaceReflections && this.quality.globalIllumination;
-    if (rayTracedReflections) renderSystem.rayTracing.update(context.game);
-    if (volumes.active || rayTracedReflections) renderSystem.rayTracing.lighting.write(renderSystem.lighting);
+    // 路径追踪的间接光（成片导出）：开着、设备放得下第 27 个贴图时；光追场景和管线都好了才用（不然这一帧网格着色读不到它）
+    const pathTracing = renderSystem.pathTracing;
+    const pathTracingWanted = this.hasCamera && pathTracing.enabled && renderSystem.planarReflections.supported;
+    if (rayTracedReflections || pathTracingWanted) renderSystem.rayTracing.update(context.game);
+    pathTracing.active = pathTracingWanted && pathTracing.ready(renderSystem.rayTracing);
+    this.#mainView.screenIndirect = this.#indirect || pathTracing.active;
+    if (volumes.active || rayTracedReflections || pathTracing.active) renderSystem.rayTracing.lighting.write(renderSystem.lighting);
     this.#assignClusters(views.filter((view) => view !== skyView && !impostorViews.includes(view)));
     // 光照变了（太阳转了、落山了）：只拍一次的探针重拍
     probes.watchLighting(renderSystem.lighting);
@@ -485,7 +490,7 @@ export class ForwardRenderer {
     if (renderSystem.water.oceans) frame.pass('Ocean FFT', (pass) => pass.sideEffect(), () => renderSystem.water.simulate(encoder, context, renderSystem.graphicsDevice.profiler.passTimestamps('Ocean FFT')));
     // 光追打到的表面的颜色：批或材质变了的帧按纹理坐标烘一遍、求平均（在图外面，算副作用）
     const surfaces = renderSystem.rayTracing.surfaces;
-    if ((volumes.active || rayTracedReflections) && surfaces.pending) frame.pass('SurfaceBake', (pass) => pass.sideEffect(), () => surfaces.draw(encoder, this.#mainView, context.game.meshes));
+    if ((volumes.active || rayTracedReflections || pathTracingWanted) && surfaces.pending) frame.pass('SurfaceBake', (pass) => pass.sideEffect(), () => surfaces.draw(encoder, this.#mainView, context.game.meshes));
     // 辐照度体的探针：追射线、更新图集（图集在图外面，网格着色时取，算副作用）
     if (volumes.active) frame.pass('IrradianceVolume', (pass) => pass.sideEffect(), () => volumes.draw(encoder, renderSystem.localLights.buffer, renderSystem.rayTracing, renderSystem.graphicsDevice.profiler.passTimestamps('IrradianceVolume')));
     const probeTarget = probeView && probes.captureTarget();
@@ -678,7 +683,9 @@ export class ForwardRenderer {
         prepass.end();
       });
       // 主画面：深度有了，算屏幕空间的全局光照（连遮蔽一起）或者只算环境光遮蔽，着色时用
-      if (view === this.#mainView && !isGraphTexture(depth) && this.#indirect) {
+      if (view === this.#mainView && !isGraphTexture(depth) && renderSystem.pathTracing.active) {
+        view.screenOcclusion = renderSystem.pathTracing.record(frame, depth, view, this.#rayTracedInputs(renderSystem));
+      } else if (view === this.#mainView && !isGraphTexture(depth) && this.#indirect) {
         view.screenOcclusion = this.globalIllumination.record(frame, depth, view);
       } else if (view === this.#mainView && !isGraphTexture(depth) && this.ambientOcclusion.enabled && this.quality.ambientOcclusion) {
         view.screenOcclusion = this.ambientOcclusion.record(frame, depth, view, this.#temporal);

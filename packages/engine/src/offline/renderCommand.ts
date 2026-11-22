@@ -48,6 +48,7 @@ export async function renderCommand(game: Game, args: Args): Promise<RenderResul
     width, height, fps, seconds,
     samples: numberArg(args, 'samples') ?? 8,
     shutter: numberArg(args, 'shutter') ?? 0.5,
+    pathTracing: args['pathTracing'] === true,
     // 过场从头放：跳回开头再放（时间轴的声音、事件从这里开始经过）
     prepare: player ? () => { player.seek(0); player.play(); } : undefined,
   };

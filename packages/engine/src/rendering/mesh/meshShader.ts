@@ -94,7 +94,7 @@ struct View {
   // 离相机最近的几个局部风源：中心（渲染空间）、半径；强度（乘过阵风，0 是没有）
   windLocals: array<vec4f, ${VEGETATION_LOCAL_WINDS}>,
   windStrengths: vec4f,
-  // 辐照度体（raytracing/IrradianceVolume.ts）：最小角（渲染空间）和用不用、间距和强度、各轴的探针数、卷动
+  // 辐照度体（raytracing/IrradianceVolume.ts）：最小角（渲染空间）和用不用（2：路径追踪的间接光代替）、间距和强度、各轴的探针数、卷动
   giMin: vec4f,
   giSpacing: vec4f,
   giCounts: vec4f,
@@ -2128,6 +2128,8 @@ ${IRRADIANCE_VOLUME_WGSL}
 /** 辐照度体在这一点的漫反射环境光（rgb，乘过强度）和盖住的程度（a）；没有体时是 0。 */
 fn volumeIrradiance(p: vec3f, n: vec3f, v: vec3f) -> vec4f {
   if (view.giMin.w == 0.0) { return vec4f(0.0); }
+  // 路径追踪的间接光代替（它从屏幕空间的间接光那里加进来）：盖满、自己不加
+  if (view.giMin.w > 1.5) { return vec4f(0.0, 0.0, 0.0, 1.0); }
   let s = giSample(irradianceAtlas, linearClamp, GiVolume(view.giMin, view.giSpacing, view.giCounts, view.giScroll), p, n, v);
   return vec4f(s.rgb * view.giSpacing.w, s.a);
 }

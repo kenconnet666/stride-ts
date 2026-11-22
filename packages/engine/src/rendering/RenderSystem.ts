@@ -30,6 +30,7 @@ import { ImpostorBaker } from './mesh/Impostors';
 import { WaterRenderer } from '../world/WaterRenderer';
 import { RayTracingScene } from './raytracing/RayTracingScene';
 import { IrradianceVolumes } from './raytracing/IrradianceVolume';
+import { PathTracedLighting } from './raytracing/PathTracedLighting';
 
 /** 一帧渲染里各阶段都要用的东西。 */
 export interface RenderContext {
@@ -555,6 +556,8 @@ export class RenderSystem {
   readonly rayTracing: RayTracingScene;
   /** 辐照度体（R2 的 DDGI：光追的探针算漫反射的间接光）：前向渲染器每帧更新，网格着色时取。 */
   readonly irradianceVolumes: IrradianceVolumes;
+  /** 路径追踪的间接光（成片导出用，离线渲染的 pathTracing、调试命令 pathtrace 开）。 */
+  readonly pathTracing: PathTracedLighting;
   /** 远处卡片的烘焙（有要烘的模型时合成器多画几个正交视图）。 */
   readonly impostors: ImpostorBaker;
   /**
@@ -588,6 +591,7 @@ export class RenderSystem {
     this.water = new WaterRenderer(graphicsDevice.device, this.resources);
     this.rayTracing = new RayTracingScene(graphicsDevice.device);
     this.irradianceVolumes = new IrradianceVolumes(graphicsDevice.device, this.resources.linearClamp);
+    this.pathTracing = new PathTracedLighting(graphicsDevice.device, this.resources.linearClamp);
   }
 
   get device(): GPUDevice {
@@ -659,6 +663,7 @@ export class RenderSystem {
     this.water.destroy();
     this.rayTracing.destroy();
     this.irradianceVolumes.destroy();
+    this.pathTracing.destroy();
     this.resources.destroy();
   }
 }

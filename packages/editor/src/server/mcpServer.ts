@@ -377,6 +377,7 @@ export function createEditorMcpServer(projects: McpProjects): McpServer {
       samples: z.number().int().positive().optional().describe('sub-frames per frame (default 8)'),
       shutter: z.number().min(0).max(1).optional().describe('fraction of the frame interval the shutter is open (default 0.5)'),
       format: z.enum(['mp4', 'png']).optional(),
+      pathTracing: z.boolean().optional().describe('path trace the diffuse indirect light per pixel (accumulated over the sub-frames: give more samples, e.g. 32)'),
     }),
   }, async (args) => json(await (await hub()).call('render', args, { timeout: 30 * 60_000 })));
 

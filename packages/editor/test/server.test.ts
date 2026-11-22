@@ -235,7 +235,11 @@ describe('后端（EditorBackend）', () => {
   });
   afterAll(() => new Promise((resolve) => server.close(resolve)));
 
-  const api = (route: string, init: RequestInit = {}) => fetch(`${base}${EDITOR_API_PATH}${route}`, { ...init, headers: { [EDITOR_HEADER]: '1', ...init.headers } });
+  const api = (route: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set(EDITOR_HEADER, '1');
+    return fetch(`${base}${EDITOR_API_PATH}${route}`, { ...init, headers });
+  };
 
   test('打开工程就生成资源句柄；HTTP 接口：工程、资源列表、读和保存 JSON 资源', async () => {
     const generated = await readFile(path.join(directory, 'src', 'assets.gen.ts'), 'utf8');

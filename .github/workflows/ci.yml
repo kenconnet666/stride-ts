@@ -39,6 +39,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm lint
       - run: pnpm test
 
   # 导入样例的内容（apps/*/public/content，不提交）：导入实际读到的文件（tools/content-key.ts：导入器、它 import 的引擎文件、样例的导入脚本、

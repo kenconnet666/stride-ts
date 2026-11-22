@@ -133,7 +133,7 @@ export class EditAgent {
     game.debug.command('editor-open', 'Open a scene or a prefab in the editor UI that embeds this page (saves the open document first if it was changed). args: path (content path), kind (scene | prefab, default scene).', async (args) => {
       const path = args['path'], kind = args['kind'] ?? 'scene';
       if (typeof path !== 'string' || path === '') throw new Error('editor-open: path (the content path of the scene or prefab) is required');
-      if (kind !== 'scene' && kind !== 'prefab') throw new Error(`editor-open: kind must be scene or prefab, got ${String(kind)}`);
+      if (kind !== 'scene' && kind !== 'prefab') throw new Error(`editor-open: kind must be scene or prefab, got ${JSON.stringify(kind)}`);
       if (!this.onOpenRequested) throw new Error('editor-open: no editor UI is attached to this page (open the editor at /__stride/editor/)');
       await this.onOpenRequested({ kind, path });
       return { opened: { kind, path } };

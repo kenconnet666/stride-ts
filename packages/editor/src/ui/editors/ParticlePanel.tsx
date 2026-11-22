@@ -161,7 +161,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
             >
               {list.map((e, i) => (
                 <Tab value={String(i)} propsClose={{ 'aria-label': t.particleRemoveEmitter }} onClose={() => set(base, list.filter((_, j) => j !== i))}>
-                  {String(e['emitterName'] || t.particleEmitter(i + 1))}
+                  {typeof e['emitterName'] === 'string' && e['emitterName'] !== '' ? e['emitterName'] : t.particleEmitter(i + 1)}
                 </Tab>
               ))}
             </TabList>

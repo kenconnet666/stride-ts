@@ -153,7 +153,7 @@ export class EditorViewport extends SyncScript {
 
   /** 交给编辑工具的这一帧（见 ViewportFrame）。 */
   #frame(agent: EditAgent, pixel: Pixel, navigating: boolean): ViewportFrame {
-    const viewport = this, game = this.game, input = game.input;
+    const game = this.game, input = game.input;
     const ctrl = input.isKeyDown('ControlLeft') || input.isKeyDown('ControlRight'), shift = input.isKeyDown('ShiftLeft') || input.isKeyDown('ShiftRight');
     const pressed = input.isMouseButtonPressed('left') && !navigating;
     return {
@@ -166,7 +166,7 @@ export class EditorViewport extends SyncScript {
       project: ([x, y, z]) => this.#project({ x, y, z }),
       viewHeight: (point) => this.#viewHeight(point),
       distanceTo: (point) => this.#distanceTo(point),
-      placeGizmo(center: Point3, world: MatrixSource, dragging: boolean) {
+      placeGizmo: (center: Point3, world: MatrixSource, dragging: boolean) => {
         const gizmo = agent.gizmo;
         applySnap(gizmo, agent.snap, ctrl);
         gizmo.pivot.set(...center);
@@ -174,8 +174,8 @@ export class EditorViewport extends SyncScript {
           if (agent.gizmoSpace === 'local' || gizmo.mode === 'scale') gizmo.orientation.set(...Matrix.decompose(world).rotation);
           else gizmo.orientation.identity();
         }
-        gizmo.size = viewport.#viewHeight(center) * GIZMO_SCREEN_SIZE;
-        if (!dragging) viewport.#hover = navigating ? undefined : gizmo.pick(pixel, viewport.#project);
+        gizmo.size = this.#viewHeight(center) * GIZMO_SCREEN_SIZE;
+        if (!dragging) this.#hover = navigating ? undefined : gizmo.pick(pixel, this.#project);
       },
       pickGizmo: (at) => agent.gizmo.pick(at, this.#project),
       drawGizmo: () => this.#drawGizmo(agent.gizmo),

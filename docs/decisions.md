@@ -7,6 +7,8 @@
 - 用户 11-22 要编辑器"合理的适当工具封装和目录整理和工程化优化"，并"适当参考 vue-tsx-pro，符合相关标准"。方案分四步（视口工具和撤销的封装；前端按目录拆；后端、MCP 拆目录，路由表、烘焙表；lint、单测、文档），每步单独提交。
 - 视口里五种编辑（画贴图、雕刻、多边形、样条、白盒）原来在 `EditorViewport` 里各一大段、`EditAgent` 里各一对 begin/end 加一组回调，编辑器会话里各抄一遍撤销栈和"上次存的那份"。改成：引擎的 `ViewportTool` 接口（每帧拿 `ViewportFrame`：输入、换算、操纵器），每种一个类，编辑文件的三种继承 `FileEditTool`；`Clicks` 统一点一下、双击的判断。界面这边会话持有 `ViewportTools` 控制器（vue-tsx-pro 的"控制器对象"写法：状态加方法），撤销重做用库里已有的 `createHistory`（文件按不可变的方式换，clone 原样、equals 比引用），不再各写一份。
 - 工具在游戏页面里（另一个 realm），界面只经 EditAgent 的工厂方法拿到它，不自己 new，也不靠 instanceof 跨页面判断。
+- 目录照职责分（前端 workbench、panels、editors、fields、i18n、session；后端 backend、mcp；前后端共用的 shared、client），会变的列表都收成表：HTTP 路由（`backend/http.ts`）、生成模型的烘焙（`backend/bakers.ts`）、MCP 工具按领域分文件。样例脚本、工具不再按相对路径伸进编辑器包的源码，经包名导入（`@stride-ts/editor/mcp-client`、`/library`、`/server`）：挪文件时只断包内的。测试照旧放在各包的 `test/`（和仓库别的包一致），不跟 vue-tsx-pro 改成源码旁的 `.test/`。
+- 静态检查用 oxlint 带类型（规则同 vue-tsx-pro：没接住的 Promise、Promise 传错地方、switch 没覆盖全是错误，其余默认规则是警告、`--deny-warnings`）。先管编辑器这次整理过的范围（`pnpm lint`，CI 也跑）；全仓库还有约 260 条，多是规则比代码的意图严（时间轴的 switch 故意不处理事件、声音轨道），记在路线图，逐个看着改。共用 tsconfig 的 lib 从 `es2026` 改成 `esnext`（tsgolint 不认 es2026，esnext 包含它）。格式化（prettier）不上：仓库的长行风格和它的默认差得多，全量改写一遍的提交没法审。
 
 ### 光追打到的表面：灯多时按贡献抽一盏打阴影射线；店里的器具合成一种资源（2026-11-22）
 

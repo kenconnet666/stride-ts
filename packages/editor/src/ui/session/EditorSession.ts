@@ -138,16 +138,13 @@ export class EditorSession implements EditableScene {
   #prefabs: ReadonlyMap<string, readonly SceneEntityFile[]> = new Map();
   #viewCache: { readonly file: SceneFile; readonly prefabs: ReadonlyMap<string, readonly SceneEntityFile[]>; readonly view: SceneFile } | undefined;
   /** 交给游戏页面的文档：展开好的场景，修改转回这里（修改本来就是对展开的场景说的）。 */
-  readonly #view: EditableScene = (() => {
-    const session = this;
-    return {
-      get file(): SceneFile {
-        return session.#viewFile();
-      },
-      apply: (edit: SceneEdit, mergeKey?: string) => session.apply(edit, mergeKey),
-      commit: () => session.commit(),
-    };
-  })();
+  readonly #view: EditableScene = ((session: EditorSession): EditableScene => ({
+    get file(): SceneFile {
+      return session.#viewFile();
+    },
+    apply: (edit: SceneEdit, mergeKey?: string) => session.apply(edit, mergeKey),
+    commit: () => session.commit(),
+  }))(this);
 
   async start(): Promise<void> {
     const [project, assets] = await Promise.all([this.client.project(), this.client.assets()]);

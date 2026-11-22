@@ -9,7 +9,7 @@
  * - 标签的 SVG 用毫米做单位（viewBox 和网格的展开一一对应，栅格化的尺寸按比例），字是字体轮廓的路径（evenodd 挖洞）。
  */
 import type { MaterialFile } from '../content/formats/assetFormat.ts';
-import type { ProductColors, ProductFile, ProductPattern, ProductShape, ProductSurface } from '../content/formats/productFormat.ts';
+import { PRODUCE_SHAPES, type ProductColors, type ProductFile, type ProductPattern, type ProductShape, type ProductSurface } from '../content/formats/productFormat.ts';
 import { hash32, seededRandom } from '../data/hash.ts';
 import { MeshBuilder } from './meshBuilder.ts';
 import { textContours, type TextFont } from './textOutline.ts';
@@ -35,10 +35,17 @@ const PALETTE = ['#d7262b', '#f6c40f', '#2f9e44', '#1e64c8', '#f4f2ec', '#1d1d1f
 const PATTERNS: readonly ProductPattern[] = ['plain', 'band', 'stripes', 'split', 'wave', 'dots'];
 /** 拼品牌名的字（常见的商标用字）。 */
 const BRAND_CHARACTERS = '金龙鱼海天康乐福味美好鲜香农家旺佳丰园源山泉清真御品优百万华宝和顺禾田欢喜悦大小星光润洁雪绿新鸿盛';
-const DEFAULT_SURFACE: Readonly<Record<ProductShape, ProductSurface>> = { box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic' };
+const DEFAULT_SURFACE: Readonly<Record<ProductShape, ProductSurface>> = {
+  box: 'paper', bottle: 'plastic', can: 'metal', jar: 'glass', tub: 'plastic', pouch: 'plastic', round: 'skin', onion: 'skin', garlic: 'skin', nut: 'skin', tuber: 'skin',
+};
+/** 果蔬的表皮、纹路、顶上（洋葱、蒜头的颈）的颜色，按种子在附近变一点。 */
+const PRODUCE_COLORS: Readonly<Record<string, readonly [background: string, accent: string, cap: string]>> = {
+  round: ['#c8352a', '#e0603f', '#5a7a2e'], onion: ['#8e3550', '#c56e88', '#9a7a52'], garlic: ['#ece4d6', '#b99aa0', '#c9b48e'],
+  nut: ['#a07a4e', '#6e4e2e', '#7d5a36'], tuber: ['#b8925e', '#8a6a3e', '#8a6a3e'],
+};
 /** 各种材料的粗糙度和金属度（货架的图集按它画表面贴图）。 */
 export const SURFACE_MATERIAL: Readonly<Record<ProductSurface, { readonly roughness: number; readonly metalness: number }>> = {
-  paper: { roughness: 0.72, metalness: 0 }, plastic: { roughness: 0.32, metalness: 0 }, metal: { roughness: 0.3, metalness: 0.6 }, glass: { roughness: 0.08, metalness: 0 },
+  paper: { roughness: 0.72, metalness: 0 }, plastic: { roughness: 0.32, metalness: 0 }, metal: { roughness: 0.3, metalness: 0.6 }, glass: { roughness: 0.08, metalness: 0 }, skin: { roughness: 0.55, metalness: 0 },
 };
 /** 旋转体绕一圈默认分几段（货架后排的商品给少一点）。 */
 const RADIAL_SEGMENTS = 20;
@@ -49,6 +56,14 @@ const CREASE = 0.5;
 export function productDesign(file: ProductFile, variant = 0): ProductDesign {
   const random = seededRandom(hash32(file.seed ?? 1, variant));
   const pick = <T>(list: readonly T[]) => list[Math.floor(random() * list.length)]!;
+  if (isProduce(file.shape)) {
+    // 果蔬：颜色在这一种的附近变一点（同一筐番茄有红有橙），没有品牌和字
+    const [background, accent, cap] = PRODUCE_COLORS[file.shape]!.map((color) => jitter(color, random, 0.12));
+    return {
+      brand: '', text: undefined, pattern: 'plain', surface: file.surface ?? 'skin',
+      colors: { background: file.colors?.background ?? background!, accent: file.colors?.accent ?? accent!, text: '', cap: file.colors?.cap ?? cap! },
+    };
+  }
   const background = file.colors?.background ?? pick(PALETTE);
   let accent = file.colors?.accent ?? pick(PALETTE);
   for (let tries = 0; !file.colors?.accent && contrast(accent, background) < 1.6 && tries < 8; tries++) accent = pick(PALETTE);
@@ -75,13 +90,80 @@ export function productMesh(file: ProductFile, where = file.name, segments = RAD
   checkSize(file, where);
   if (file.shape === 'box') return boxMesh(file.size);
   if (file.shape === 'pouch') return pouchMesh(file.size);
-  return latheMesh(latheProfile(file.shape, file.size[0] / 2, file.size[1]), Math.max(3, Math.round(segments)));
+  const radial = Math.max(3, Math.round(segments));
+  if (isProduce(file.shape)) return produceMesh(file, radial);
+  return latheMesh(latheProfile(file.shape, file.size[0] / 2, file.size[1]), radial);
+}
+
+/** 是不是散装的果蔬干货（没有标签，表皮按种子出）。 */
+export function isProduce(shape: ProductShape): boolean {
+  return PRODUCE_SHAPES.includes(shape);
+}
+
+/**
+ * 果蔬：旋转体的轮廓（单位大小）按尺寸拉成椭球那样，再按种类起伏：蒜头一瓣瓣（沿圆周的余弦）、核桃坑坑洼洼、土豆疙疙瘩瘩
+ * （按位置的哈希噪声），所以法线最后按起伏后的面重算（位置相同的顶点焊在一起取平均）。
+ */
+function produceMesh(file: ProductFile, radial: number): ProductMesh {
+  const [w, h, d] = file.size, rx = w / 2, rz = (d > 0 ? d : w) / 2;
+  const profile = produceProfile(file.shape);
+  const seed = file.seed ?? 1;
+  const bump = (u: number, t: number, cells: number, amount: number) => {
+    // 两层格子噪声：圆周上按 u 首尾相接
+    const value = (scale: number, salt: number) => {
+      const x = u * scale, y = t * scale * 0.5, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+      const at = (i: number, j: number) => hash32(hash32(seed + salt, ((x0 + i) % scale + scale) % scale), y0 + j) / 4294967296;
+      const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+      return (at(0, 0) * (1 - sx) + at(1, 0) * sx) * (1 - sy) + (at(0, 1) * (1 - sx) + at(1, 1) * sx) * sy;
+    };
+    return amount * (value(cells, 1) * 0.65 + value(cells * 2, 2) * 0.35 - 0.5);
+  };
+  const lobes = 6 + (seed % 4);
+  const deform = (u: number, t: number): number => {
+    // t 是从底到顶（0..1）；两头收拢的地方起伏小
+    const fade = Math.sin(Math.PI * Math.min(1, Math.max(0, t)));
+    switch (file.shape) {
+      case 'garlic': return 1 + 0.09 * Math.abs(Math.cos(lobes * Math.PI * u)) * fade - 0.04 * fade;
+      case 'nut': return 1 + bump(u, t, 9, 0.22) * fade;
+      case 'tuber': return 1 + bump(u, t, 4, 0.2) * fade;
+      case 'round': return 1 + bump(u, t, 5, 0.03) * fade;
+      default: return 1;
+    }
+  };
+  const mesh = latheMesh(profile.map((p) => ({ ...p, y: p.y * h })), radial, (x, y, z, u) => {
+    const t = y / h, k = deform(u, t);
+    return [x * rx * k, y, z * rz * k];
+  });
+  return { ...mesh, labelSize: [Math.PI * (rx + rz) * 1000, labelHeight(profile, h, Math.max(rx, rz)) * 1000] };
+}
+
+/** 果蔬轮廓线的长（米，按最大的半径估）：贴图 v 方向的长度。 */
+function labelHeight(profile: readonly ProfilePoint[], h: number, r: number): number {
+  let length = 0;
+  for (let i = 1; i < profile.length; i++) length += Math.hypot((profile[i]!.r - profile[i - 1]!.r) * r, (profile[i]!.y - profile[i - 1]!.y) * h);
+  return length;
+}
+
+/** 果蔬的轮廓线（半径是最粗处的倍数，高是 0..1），从底面中心到顶。洋葱、蒜头的顶上收成一截颈（盖子的颜色）。 */
+function produceProfile(shape: ProductShape): ProfilePoint[] {
+  const arc = (from: number, to: number, steps: number, squash = 1, top = 1) => Array.from({ length: steps + 1 }, (_, i) => {
+    const phi = from + ((to - from) * i) / steps;
+    return { r: Math.sin(phi), y: (top * (1 - Math.cos(phi))) / 2 * squash };
+  });
+  switch (shape) {
+    case 'onion':
+      return [...arc(0, Math.PI * 0.82, 10, 1, 0.9).map((p) => ({ ...p, y: p.y })), { r: 0.14, y: 0.9, cap: true }, { r: 0.05, y: 1, cap: true }, { r: 0, y: 1, cap: true }];
+    case 'garlic':
+      return [{ r: 0, y: 0 }, { r: 0.55, y: 0.02 }, ...arc(Math.PI * 0.25, Math.PI * 0.8, 8, 1, 0.92).map((p) => ({ r: p.r, y: p.y })), { r: 0.16, y: 0.88, cap: true }, { r: 0.07, y: 1, cap: true }, { r: 0, y: 1, cap: true }];
+    default:
+      return arc(0, Math.PI, 12);
+  }
 }
 
 /** 摆在货架上占的地方（米）：宽、高、深（瓶罐的深是直径）。 */
 export function productFootprint(file: ProductFile): readonly [number, number, number] {
   const [w, h, d] = file.size;
-  return [w, h, file.shape === 'box' || file.shape === 'pouch' ? d : w];
+  return [w, h, file.shape === 'box' || file.shape === 'pouch' || (isProduce(file.shape) && d > 0) ? d : w];
 }
 
 /** 轮廓线上的一点：半径、高（米），这一点往下的那一段是不是盖子。 */
@@ -119,7 +201,7 @@ function latheProfile(shape: ProductShape, r: number, h: number): ProfilePoint[]
  * 旋转体的网格：每一段轮廓线绕一圈是一圈四边形；u 是角度（正面 +Z 在 0.5），v 是从顶面中心沿轮廓线往下量的长度（贴图的上面
  * 对着包装的上面）。硬边两边的顶点分开、各用各段的法线，软的地方取两段的平均。
  */
-function latheMesh(profile: readonly ProfilePoint[], radial: number): ProductMesh {
+function latheMesh(profile: readonly ProfilePoint[], radial: number, deform?: (x: number, y: number, z: number, u: number) => readonly [number, number, number]): ProductMesh {
   const segments = profile.length - 1;
   const lengths = profile.slice(1).map((p, i) => Math.hypot(p.r - profile[i]!.r, p.y - profile[i]!.y));
   const total = lengths.reduce((sum, l) => sum + l, 0);
@@ -145,7 +227,8 @@ function latheMesh(profile: readonly ProfilePoint[], radial: number): ProductMes
       const [nr, ny] = pointNormal(s, end);
       // 角度 0 对着 +Z（u = 0.5），往 +X 转
       const sin = Math.sin(angle), cos = Math.cos(angle);
-      return builder.vertex([point.r * sin, point.y, point.r * cos], [nr * sin, ny, nr * cos], u, v / total);
+      const position = deform ? deform(point.r * sin, point.y, point.r * cos, u) : [point.r * sin, point.y, point.r * cos];
+      return builder.vertex(position, [nr * sin, ny, nr * cos], u, v / total);
     });
     const lower = ring(a, 0, below), upper = ring(b, 1, above);
     for (let k = 0; k < radial; k++) {
@@ -155,6 +238,7 @@ function latheMesh(profile: readonly ProfilePoint[], radial: number): ProductMes
     }
     below = above;
   }
+  if (deform) smoothNormals(builder);
   // 标签展开：宽是最粗处的周长，高是轮廓线的长度
   const circumference = 2 * Math.PI * Math.max(...profile.map((p) => p.r));
   return finish(builder, [circumference * 1000, total * 1000]);
@@ -211,6 +295,28 @@ function pouchMesh([w, h, d]: readonly [number, number, number]): ProductMesh {
   return finish(builder, [2 * w * 1000, h * 1000]);
 }
 
+/** 按面重算法线：位置相同的顶点（贴图接缝、轮廓的段与段之间各有一份）一起取相邻三角形法线的面积加权平均。 */
+function smoothNormals(builder: MeshBuilder): void {
+  const { vertices, indices } = builder;
+  const key = (i: number) => `${Math.round(vertices[i * 8]! * 1e6)},${Math.round(vertices[i * 8 + 1]! * 1e6)},${Math.round(vertices[i * 8 + 2]! * 1e6)}`;
+  const sums = new Map<string, [number, number, number]>();
+  for (let t = 0; t < indices.length; t += 3) {
+    const [a, b, c] = [indices[t]!, indices[t + 1]!, indices[t + 2]!];
+    const p = (i: number) => [vertices[i * 8]!, vertices[i * 8 + 1]!, vertices[i * 8 + 2]!];
+    const n = cross(sub(p(b), p(a)), sub(p(c), p(a)));
+    for (const i of [a, b, c]) {
+      const sum = sums.get(key(i)) ?? [0, 0, 0];
+      sums.set(key(i), [sum[0] + n[0]!, sum[1] + n[1]!, sum[2] + n[2]!]);
+    }
+  }
+  for (let i = 0; i < vertices.length / 8; i++) {
+    const n = normalize(sums.get(key(i)) ?? [0, 1, 0]);
+    vertices[i * 8 + 3] = n[0]!;
+    vertices[i * 8 + 4] = n[1]!;
+    vertices[i * 8 + 5] = n[2]!;
+  }
+}
+
 function finish(builder: MeshBuilder, labelSize: readonly [number, number]): ProductMesh {
   return { vertices: Float32Array.from(builder.vertices), indices: Uint32Array.from(builder.indices), labelSize };
 }
@@ -240,6 +346,7 @@ export function productLabelShapes(file: ProductFile, labelSize: readonly [numbe
   const [W, H] = labelSize;
   const [w, h, d] = file.size.map((v) => v * 1000) as [number, number, number];
   const parts: string[] = [`<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${design.colors.background}"/>`];
+  if (isProduce(file.shape)) return parts.join('') + produceSkin(file, design, labelSize, variant);
   // 图案画在哪：旋转体是盖子以下的整圈，纸盒是中间那一排，袋是整张
   let body: readonly [number, number, number, number] = [0, 0, W, H];
   let areas: TextArea[];
@@ -264,6 +371,31 @@ export function productLabelShapes(file: ProductFile, labelSize: readonly [numbe
   parts.push(...patternShapes(design, body));
   if (font) for (const area of areas) parts.push(...textBlock(design, font, area));
   return parts.join('');
+}
+
+/**
+ * 果蔬的表皮：洋葱、蒜头是顺着从顶到底的细纹（贴图的竖线）加顶上一截颈的颜色，核桃、土豆是深浅的斑，圆的（番茄、橙子）
+ * 是顶上一小圈深色（蒂）。按种子和变体摆。
+ */
+function produceSkin(file: ProductFile, design: ProductDesign, [W, H]: readonly [number, number], variant: number): string {
+  const random = seededRandom(hash32(hash32(file.seed ?? 1, variant), 77));
+  const shapes: string[] = [];
+  const { accent, cap } = design.colors;
+  if (file.shape === 'onion' || file.shape === 'garlic') {
+    for (let i = 0; i < 28; i++) {
+      const x = random() * W, width = 0.3 + random() * 1.2;
+      shapes.push(`<rect x="${svgNumber(x)}" y="0" width="${svgNumber(width)}" height="${svgNumber(H)}" fill="${accent}" opacity="${svgNumber(0.25 + random() * 0.5)}"/>`);
+    }
+    shapes.push(`<rect width="${svgNumber(W)}" height="${svgNumber(H * 0.1)}" fill="${cap}"/>`);
+  } else if (file.shape === 'nut' || file.shape === 'tuber') {
+    for (let i = 0; i < 60; i++) {
+      shapes.push(`<circle cx="${svgNumber(random() * W)}" cy="${svgNumber(random() * H)}" r="${svgNumber(0.4 + random() * 2)}" fill="${accent}" opacity="${svgNumber(0.2 + random() * 0.4)}"/>`);
+    }
+  } else {
+    shapes.push(`<rect width="${svgNumber(W)}" height="${svgNumber(H * 0.05)}" fill="${cap}"/>`);
+    shapes.push(`<rect y="${svgNumber(H * 0.05)}" width="${svgNumber(W)}" height="${svgNumber(H * 0.25)}" fill="${accent}" opacity="0.35"/>`);
+  }
+  return `<g>${shapes.join('')}</g>`;
 }
 
 /** 底纹（画在 body 那块里）。 */
@@ -363,6 +495,13 @@ function luminance(hex: string): number {
     return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
   };
   return 0.2126 * channel((v >> 16) & 255) + 0.7152 * channel((v >> 8) & 255) + 0.0722 * channel(v & 255);
+}
+
+/** 颜色在附近随机变一点（亮度整体变 ±amount，每个通道再各自变一半）：同一种果蔬一筐里有深有浅。 */
+function jitter(hex: string, random: () => number, amount: number): string {
+  const v = parseInt(hex.slice(1, 7), 16), bright = 1 + (random() - 0.5) * 2 * amount;
+  const channel = (c: number) => Math.max(0, Math.min(255, Math.round(c * bright * (1 + (random() - 0.5) * amount)))).toString(16).padStart(2, '0');
+  return `#${channel((v >> 16) & 255)}${channel((v >> 8) & 255)}${channel(v & 255)}`;
 }
 
 /** 两个颜色的对比度（WCAG 的算法，1 到 21）。 */

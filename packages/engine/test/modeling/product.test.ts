@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import type { ProductFile, ProductShape } from '../../src/content/formats/productFormat';
-import { labelPixels, productDesign, productLabelSvg, productMaterial, productMesh } from '../../src/modeling/product';
+import { isProduce, labelPixels, productDesign, productLabelSvg, productMaterial, productMesh } from '../../src/modeling/product';
 
 const bottle: ProductFile = { name: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], text: '矿泉水', seed: 3 };
 const sizes: Readonly<Record<ProductShape, readonly [number, number, number]>> = {
   box: [0.2, 0.3, 0.06], bottle: [0.065, 0.21, 0], can: [0.066, 0.12, 0], jar: [0.09, 0.11, 0], tub: [0.1, 0.08, 0], pouch: [0.16, 0.22, 0.05],
+  round: [0.08, 0.07, 0], onion: [0.08, 0.085, 0], garlic: [0.055, 0.05, 0], nut: [0.035, 0.034, 0], tuber: [0.11, 0.06, 0.07],
 };
 
 /** 网格的包围盒和每个顶点：位置、法线、UV。 */
@@ -31,9 +32,15 @@ describe('商品包装', () => {
     const { min, max, worstNormal, uvOutside } = inspect(mesh.vertices);
     expect(min[1]).toBeCloseTo(0, 5);
     expect(max[1]).toBeCloseTo(size[1], 5);
-    expect(max[0]! - min[0]!).toBeCloseTo(size[0], 2);
-    if (shape === 'box' || shape === 'pouch') expect(max[2]! - min[2]!).toBeCloseTo(size[2], 2);
-    else expect(max[2]! - min[2]!).toBeCloseTo(size[0], 2);
+    const depth = shape === 'box' || shape === 'pouch' || (isProduce(shape) && size[2] > 0) ? size[2] : size[0];
+    if (isProduce(shape)) {
+      // 果蔬有起伏（土豆疙疙瘩瘩、蒜一瓣瓣）：尺寸差在 15% 以内
+      expect(Math.abs(max[0]! - min[0]! - size[0]) / size[0]).toBeLessThan(0.15);
+      expect(Math.abs(max[2]! - min[2]! - depth) / depth).toBeLessThan(0.15);
+    } else {
+      expect(max[0]! - min[0]!).toBeCloseTo(size[0], 2);
+      expect(max[2]! - min[2]!).toBeCloseTo(depth, 2);
+    }
     expect(worstNormal).toBeLessThan(1e-5);
     expect(uvOutside).toBe(0);
     expect(mesh.labelSize[0]).toBeGreaterThan(0);

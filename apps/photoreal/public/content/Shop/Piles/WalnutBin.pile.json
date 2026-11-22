@@ -1,0 +1,19 @@
+{
+ "name": "WalnutBin",
+ "container": {
+  "size": [
+   0.4,
+   0.1,
+   0.3
+  ],
+  "color": "#6b4a2e"
+ },
+ "items": [
+  {
+   "product": "Shop/Products/Walnut",
+   "count": 420,
+   "variants": 3
+  }
+ ],
+ "seed": 63
+}

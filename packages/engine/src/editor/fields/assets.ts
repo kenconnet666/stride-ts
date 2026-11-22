@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile, ShelfFile } from '../../content/formats/format';
+import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile, ShelfFile, PileFile } from '../../content/formats/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -704,6 +704,28 @@ const SHELF_FIELDS = fields<ShelfFile>({
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the stocking and the prices' },
 });
 
+/** 物理堆放（PileFile）：后端跑物理、生成同名的模型、标签图集和材质。 */
+const PILE_FIELDS = fields<PileFile>({
+  name: string,
+  container: {
+    type: object(fields<PileFile['container']>({
+      size: { type: vector(3, 'm'), description: 'inside width, wall height and depth' },
+      wall: { type: number({ min: 0.001, step: 0.005, unit: 'm' }), optional: true, default: 0.015, description: 'wall thickness' },
+      color: { type: string, optional: true, description: 'color of the container (sRGB #rrggbb, dark grey plastic when missing)' },
+    })),
+    description: 'the bin the items are poured into',
+  },
+  items: {
+    type: list(object(fields<PileFile['items'][number]>({
+      product: { type: asset('product'), description: 'what to pour in (produce or packaged goods)' },
+      count: { type: integer(0, 5000), description: 'how many' },
+      variants: { type: integer(1, 32), optional: true, default: 3, description: 'color or brand variants of it' },
+    }))),
+    description: 'items dropped into the container; physics settles them and the result is baked into one model',
+  },
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the drop positions and variants' },
+});
+
 /** 声音资源：音频文件的格式和播放方式，合成的音效的参数。 */
 export const SOUND_FIELDS = fields<SoundFile>({
   name: string,
@@ -713,5 +735,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, shelf: SHELF_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, shelf: SHELF_FIELDS, pile: PILE_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

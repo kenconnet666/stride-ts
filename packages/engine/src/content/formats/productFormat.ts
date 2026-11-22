@@ -8,11 +8,18 @@
  * 中心，往 +Y 高，正面朝 +Z。
  */
 
-/** 外形：纸盒、瓶（细颈加盖）、易拉罐、广口瓶（宽盖）、桶（上大下小加盖，酱料、冰淇淋）、袋（枕形的零食袋，上下封口）。 */
-export type ProductShape = 'box' | 'bottle' | 'can' | 'jar' | 'tub' | 'pouch';
+/**
+ * 外形：纸盒、瓶（细颈加盖）、易拉罐、广口瓶（宽盖）、桶（上大下小加盖，酱料、冰淇淋）、袋（枕形的零食袋，上下封口）；
+ * 散装的果蔬干货（没有标签和字，表皮按种子出颜色、纹路）：圆的（番茄、橙子、苹果）、洋葱、蒜头（一瓣瓣的）、核桃（坑坑洼洼）、
+ * 土豆（扁长、不规则）。
+ */
+export type ProductShape = 'box' | 'bottle' | 'can' | 'jar' | 'tub' | 'pouch' | 'round' | 'onion' | 'garlic' | 'nut' | 'tuber';
 
-/** 包装的材料：决定粗糙度和金属度。 */
-export type ProductSurface = 'paper' | 'plastic' | 'metal' | 'glass';
+/** 散装的果蔬干货（没有标签，堆放用）。 */
+export const PRODUCE_SHAPES: readonly ProductShape[] = ['round', 'onion', 'garlic', 'nut', 'tuber'];
+
+/** 包装的材料：决定粗糙度和金属度；skin 是果蔬的表皮。 */
+export type ProductSurface = 'paper' | 'plastic' | 'metal' | 'glass' | 'skin';
 
 /** 标签的底纹：纯色、横带、斜条纹、上下两截、波浪、圆点。 */
 export type ProductPattern = 'plain' | 'band' | 'stripes' | 'split' | 'wave' | 'dots';
@@ -28,7 +35,7 @@ export interface ProductColors {
 export interface ProductFile {
   readonly name: string;
   readonly shape: ProductShape;
-  /** 外形尺寸（米）：宽（瓶、罐、桶是直径）、高、深（纸盒、袋的厚度；瓶罐不用）。 */
+  /** 外形尺寸（米）：宽（瓶、罐、桶是直径）、高、深（纸盒、袋的厚度；瓶罐不用；果蔬写了就是扁的、长的，没写同宽）。 */
   readonly size: readonly [number, number, number];
   /** 标签上的字用的字体资源；没有时标签只画色块和图案。 */
   readonly font?: string;

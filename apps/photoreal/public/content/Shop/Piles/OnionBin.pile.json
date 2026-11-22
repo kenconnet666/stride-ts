@@ -1,0 +1,19 @@
+{
+ "name": "OnionBin",
+ "container": {
+  "size": [
+   0.6,
+   0.12,
+   0.4
+  ],
+  "color": "#2b2d30"
+ },
+ "items": [
+  {
+   "product": "Shop/Products/RedOnion",
+   "count": 90,
+   "variants": 4
+  }
+ ],
+ "seed": 62
+}

@@ -1,0 +1,23 @@
+{
+ "name": "Stand",
+ "materials": [
+  "Shop/Materials/Stand"
+ ],
+ "uvScale": 1,
+ "brushes": [
+  {
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0,
+    0.4,
+    0
+   ],
+   "size": [
+    2.1,
+    0.8,
+    0.95
+   ]
+  }
+ ]
+}

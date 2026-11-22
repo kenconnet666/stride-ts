@@ -1,7 +1,7 @@
 // 路线图七"超市和街边小店"（用户 2026-11-22 的第二批照片，reference/shop/，不进仓库）的试验场：先是商品包装生成器的展示台——
 // 各种外形、按种子出的牌子排在一张台子上。只用编辑器的 MCP 服务（agent 那条路），资源和场景按这里写的覆盖，重跑就是重搭。
 //   node apps/photoreal/scripts/build-shop.ts
-//   看：http://localhost:5234/?scene=Shop（包装的展示台）、?scene=Supermarket（货架的过道）
+//   看：http://localhost:5234/?scene=Shop（包装的展示台）、?scene=Supermarket（货架的过道）、?scene=Produce（散装区的物理堆放）
 // 标签的中文字用资源包 @stride-ts/assets 里的站酷庆科黄油体（Shared/Fonts，开发服务器、编辑器后端打开工程时同步进来）。
 import path from 'node:path';
 import type { ProductFile } from '../../../packages/engine/src/content/formats/productFormat.ts';
@@ -155,6 +155,49 @@ await write('scene', 'Supermarket', {
     entity(sid(3), 'Hall', [0, 0, 0], { model: { model: 'Shop/Models/Hall', materials: [] } }),
     ...shelfEntities,
     ...lights,
+  ],
+});
+// ---- 散装区（照片里的蒜、洋葱、核桃、番茄、土豆）：几个筐里物理堆放，放在一张蔬果台上 ----
+const produce: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
+  { id: 'Garlic', shape: 'garlic', size: [0.055, 0.048, 0], seed: 51 },
+  { id: 'RedOnion', shape: 'onion', size: [0.08, 0.085, 0], seed: 52 },
+  { id: 'Walnut', shape: 'nut', size: [0.034, 0.036, 0], seed: 53 },
+  { id: 'Tomato', shape: 'round', size: [0.075, 0.062, 0], seed: 54 },
+  { id: 'Potato', shape: 'tuber', size: [0.11, 0.055, 0.07], seed: 55 },
+];
+for (const { id, ...product } of produce) await write('product', `Shop/Products/${id}`, { name: id, ...product });
+const piles: Record<string, object> = {
+  GarlicBin: { container: { size: [0.6, 0.12, 0.4], color: '#2b2d30' }, items: [{ product: p('Garlic'), count: 220, variants: 4 }], seed: 61 },
+  OnionBin: { container: { size: [0.6, 0.12, 0.4], color: '#2b2d30' }, items: [{ product: p('RedOnion'), count: 90, variants: 4 }], seed: 62 },
+  WalnutBin: { container: { size: [0.4, 0.1, 0.3], color: '#6b4a2e' }, items: [{ product: p('Walnut'), count: 420, variants: 3 }], seed: 63 },
+  TomatoBin: { container: { size: [0.6, 0.12, 0.4], color: '#2b2d30' }, items: [{ product: p('Tomato'), count: 110, variants: 5 }], seed: 64 },
+  PotatoBin: { container: { size: [0.6, 0.12, 0.4], color: '#2b2d30' }, items: [{ product: p('Potato'), count: 70, variants: 3 }], seed: 65 },
+};
+for (const [name, pile] of Object.entries(piles)) await write('pile', `Shop/Piles/${name}`, { name, ...pile });
+await write('material', 'Shop/Materials/Stand', { name: 'Stand', baseColor: [0.32, 0.24, 0.17, 1], metalness: 0, roughness: 0.6 });
+await write('brush', 'Shop/Models/Stand', {
+  name: 'Stand', materials: ['Shop/Materials/Stand'], uvScale: 1,
+  brushes: [{ kind: 'box', operation: 'add', position: [0, 0.4, 0], size: [2.1, 0.8, 0.95] }],
+});
+const standEye: Vec3 = [0.1, 1.55, 1.25];
+const pid = (k: number) => `5e0b5e0b-0003-4000-8000-${k.toString(16).padStart(12, '0')}`;
+const binAt = (k: number, name: string, x: number, z: number) => entity(pid(0x10 + k), name, [x, 0.8, z], { model: { model: `Shop/Piles/${name}`, materials: [] } });
+await write('scene', 'Produce', {
+  name: 'Produce',
+  compositor: {
+    clearColor: [0.05, 0.05, 0.06, 1],
+    postEffects: { brightFilter: true, bloom: true, lightStreak: false, lensFlare: false, toneMap: true, antialiasing: true, antialiasingMode: 'temporal', ambientOcclusion: { radius: 0.1 },
+      colorGrading: { operator: 'agx', temperature: 6000 }, exposure: { metering: 'histogram', localShadows: 0.3 } },
+    transparent: true,
+  },
+  entities: [
+    entity(pid(1), 'Camera', standEye, { camera: { verticalFieldOfView: 60, nearClipPlane: 0.02, farClipPlane: 100 } }, lookAt(standEye, [0, 0.82, -0.05])),
+    entity(pid(2), 'Ambient', [0, 3, 0], { light: { type: 'ambient', color: [1, 0.98, 0.95], intensity: 0.35 } }),
+    entity(pid(3), 'Hall', [0, 0, 0], { model: { model: 'Shop/Models/Hall', materials: [] } }),
+    entity(pid(4), 'Stand', [0, 0, 0], { model: { model: 'Shop/Models/Stand', materials: [] } }),
+    binAt(0, 'GarlicBin', -0.66, -0.23), binAt(1, 'OnionBin', 0, -0.23), binAt(2, 'TomatoBin', 0.66, -0.23),
+    binAt(3, 'PotatoBin', -0.5, 0.23), binAt(4, 'WalnutBin', 0.25, 0.23),
+    entity(pid(5), 'Light', [0, 3.0, 0], { light: { type: 'rect', color: [1, 0.96, 0.9], intensity: 30, width: 1.6, height: 0.3, range: 6 } }, euler(0, -90)),
   ],
 });
 await mcp.stop();

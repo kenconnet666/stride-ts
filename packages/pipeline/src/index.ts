@@ -22,4 +22,5 @@ export { bakeSplineModel } from './bakers/splineModel.ts';
 export { bakeTreeModel } from './bakers/treeModel.ts';
 export { bakeProduct } from './bakers/productModel.ts';
 export { bakeShelf } from './bakers/shelfModel.ts';
+export { bakePile } from './bakers/pileModel.ts';
 export { bakeBuildingModel } from './bakers/buildingModel.ts';

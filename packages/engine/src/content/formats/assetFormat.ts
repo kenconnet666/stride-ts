@@ -63,6 +63,8 @@ export const EXTENSIONS = {
   product: '.product.json',
   /** 货架（ShelfFile，content/formats/shelfFormat.ts）：架子和摆货的规则，编辑器后端生成同名的模型、标签图集（.svg、.surface.svg）和材质。 */
   shelf: '.shelf.json',
+  /** 物理堆放（PileFile，content/formats/pileFormat.ts）：容器和往里倒的东西，编辑器后端跑物理、合成同名的模型、标签图集（.svg、.surface.svg）和材质。 */
+  pile: '.pile.json',
   /** 程序化建筑（BuildingFile，content/formats/buildingFormat.ts）：体块、立面规则和构件（形状文法），编辑器后端把它生成同名的模型（.model）。 */
   building: '.building.json',
   /** 城市（CityFile，content/formats/cityFormat.ts）：沿着路网摆楼的规则和种子，楼运行时由 CitySystem 摆（world/City.ts）。 */

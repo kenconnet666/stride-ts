@@ -19,7 +19,7 @@ import { sceneEditBetween, SceneDocument, UndoStack, type SceneEdit } from '@str
 import { instanceMember, toDocumentEdit, type InstanceMember } from '@stride-ts/engine/editor-prefabs';
 import { clipboardText, copyEntities, duplicateEntities, parseClipboard, pasteEntities, positionAfter, type PasteTarget } from '@stride-ts/engine/editor-copy';
 import { makePrefab } from '@stride-ts/engine/editor-make-prefab';
-import { ASSET_FIELDS } from '@stride-ts/engine/editor-fields';
+import { assetFields } from '@stride-ts/engine/editor-fields';
 import { freeAssetPath } from '../../shared/newAssets';
 import { LIBRARY_EFFECTS, LIBRARY_MATERIALS, libraryAssetName, libraryMaterialPath } from '../../library/index.ts';
 import type { EditAgent, EditableScene, Game, SnapSettings } from '@stride-ts/engine';
@@ -976,8 +976,8 @@ export function assetsToReload(assets: readonly AssetRecord[], changed: readonly
   return [...reload];
 }
 
-/** 属性面板能编辑的资源种类（引擎的 ASSET_FIELDS）。 */
-export type InspectableKind = keyof typeof ASSET_FIELDS;
+/** 属性面板能编辑的资源种类：有字段描述的（引擎的 ASSET_FIELDS 加上登记的，assetFields）。 */
+export type InspectableKind = AssetKind;
 
 /** 属性面板正在编辑的资源和它现在的内容。 */
 export interface InspectedAsset {
@@ -988,7 +988,7 @@ export interface InspectedAsset {
 
 /** 烘出模型的源（编辑器后端按它们烘同名的模型）：选中烘出的模型时看源。 */
 const BAKED_SOURCES = ['brush', 'sdf', 'poly', 'text', 'spline', 'tree', 'building'] as const satisfies readonly AssetKind[];
-const isInspectable = (kind: AssetKind): kind is InspectableKind => Object.hasOwn(ASSET_FIELDS, kind);
+const isInspectable = (kind: AssetKind): kind is InspectableKind => assetFields(kind) !== undefined;
 
 /** 资源改了以后等这么久（毫秒）再存：拖数字、取色时不每一下都写文件。 */
 const INSPECTED_SAVE_DELAY = 250;

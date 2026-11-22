@@ -12,7 +12,7 @@ import path from 'node:path';
 import { checkWorldFile, placeInCells, worldCellPath, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { brushToPoly, importSourceModel } from '@stride-ts/pipeline';
-import type { AssetKind } from '@stride-ts/engine/content-references';
+import { isJsonAssetKind, type AssetKind } from '@stride-ts/engine/content-references';
 import { type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../../shared/protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
 import { rewriteImageEncoding, rewriteReferences } from './rewrite.ts';
@@ -35,8 +35,6 @@ const CHANGE_DELAY = 50;
 type BakedKind = GeneratedKind | 'modelImport' | 'imageImport';
 const isBakedKind = (kind: string): kind is BakedKind => isGenerated(kind) || kind === 'modelImport' || kind === 'imageImport';
 
-/** 能经接口读写的 JSON 资源。模型只有 JSON 写的那种（程序生成的形状，content/modelFile.ts）能，二进制的读、写都拒绝。 */
-const JSON_KINDS: ReadonlySet<string> = new Set(['material', 'scene', 'prefab', 'spriteSheet', 'skybox', 'font', 'texture', 'gameSettings', 'ui', 'sound', 'model', 'timeline', 'brush', 'sdf', 'poly', 'text', 'modelImport', 'imageImport', 'world', 'terrain', 'spline', 'tree', 'building', 'product', 'shelf', 'pile', 'sign', 'ceiling', 'fixture', 'scatter', 'city', 'water']);
 
 export class EditorBackend {
   readonly project: Project;
@@ -458,7 +456,7 @@ export class EditorBackend {
 
   /** 一个 JSON 资源的主文件（绝对路径）；种类不对、路径想跑出内容目录时报错。 */
   #jsonFile(kind: AssetKind, assetPath: string): string {
-    if (!JSON_KINDS.has(kind)) throw new HttpError(400, `${kind} assets cannot be read or saved through the editor API (not a JSON asset)`);
+    if (!isJsonAssetKind(kind)) throw new HttpError(400, `${kind} assets cannot be read or saved through the editor API (not a JSON asset)`);
     return path.join(this.project.contentDir, assetFileName(kind as Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>, checkContentPath(assetPath)));
   }
 

@@ -4,7 +4,7 @@ import { Button, IconButton, Menu, MenuGroup, MenuItem, SHIMMER_STAGGER, Skeleto
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import type { SceneEntityFile } from '@stride-ts/engine/content-format';
 import { SCENE_SETTING_KEYS, type SceneEdit, type SceneSettingKey } from '@stride-ts/engine/editor-document';
-import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
+import { assetFields, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type FieldType } from '@stride-ts/engine/editor-fields';
 import { PaintLayers } from './PaintLayers';
 import { SoundGenerator } from '../editors/SoundGenerator';
 import { assetListId, FieldEditor, Fields, type FieldContext, type ValuePath, type ValueUpdate } from '../fields/FieldEditor';
@@ -117,7 +117,7 @@ function parentHint(session: EditorSession, entity: SceneEntityFile) {
  * 选了几个实体时显示它们都有的组件和脚本，值不一样的地方显示"多个值"（mergeField：照字段类型并，旋转按角）；改一处是对每个实体各一次 set，
  * 一起做、一起撤销；加、去掉组件也是对每个实体。
  *
- * 资源浏览器里选中材质、JSON 写的模型时显示资源自己的字段（引擎的 ASSET_FIELDS）：改了直接存进资源文件，视口里用到它的实体
+ * 资源浏览器里选中材质、JSON 写的模型时显示资源自己的字段（引擎的 assetFields：内置的加上登记的）：改了直接存进资源文件，视口里用到它的实体
  * 热重载（session.editInspected）。
  */
 /** 模型能从哪些源文件烘出来、在视口里编辑：属性面板的模型组件上对应的按钮。 */
@@ -264,11 +264,11 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
   const assetInspector = (asset: NonNullable<typeof session.inspected.value>) => (
     <div {...css.attrs(styles.panel)}>
       {assetLists.map(([kind, paths]) => <datalist id={assetListId(kind)}>{paths.map((path) => <option value={path} />)}</datalist>)}
-      <div {...css.attrs(styles.hint)}>{t.assetHint(t.assetLabels[asset.kind], asset.path)}</div>
+      <div {...css.attrs(styles.hint)}>{t.assetHint(Object.hasOwn(t.assetLabels, asset.kind) ? t.assetLabels[asset.kind as keyof typeof t.assetLabels] : asset.kind, asset.path)}</div>
       {asset.kind === 'material' && <Button {...css.attrs(styles.add)} size="sm" variant="soft" tone="neutral" icon={Workflow} onClick={() => session.openMaterialGraph()}>{t.graphOpen}</Button>}
       {asset.kind === 'material' && <PaintLayers session={session} />}
       {asset.kind === 'sound' && <SoundGenerator session={session} />}
-      <Fields fields={ASSET_FIELDS[asset.kind]} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
+      <Fields fields={assetFields(asset.kind) ?? []} value={asset.content} context={context} onSet={(path, value) => session.editInspected(path, value)} />
     </div>
   );
 

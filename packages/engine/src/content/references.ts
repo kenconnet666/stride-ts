@@ -9,12 +9,19 @@ import type {
 } from './formats/format';
 import { textureRefs } from './loading.ts';
 import { visitScriptAssets } from './sceneScripts.ts';
+import { customAssetReferences, type CustomAssetKinds } from './assetKinds.ts';
+
+export { assetKindExtension, customAssetKinds, isJsonAssetKind, registerAssetKind, type AssetKindDefinition, type CustomAssetKinds, type ReferenceSink } from './assetKinds.ts';
 
 /**
  * 资源的种类：内容文件的种类（EXTENSIONS 的键，字形块算字体的一部分），加上贴图文件（image：.ktx2、.svg、.png、.jpg）、
- * 声音的音频文件（audio）和导入设置旁边的源模型文件（modelSource：.glb、.gltf、.fbx、.obj）。
+ * 声音的音频文件（audio）和导入设置旁边的源模型文件（modelSource：.glb、.gltf、.fbx、.obj），以及登记的自定义种类
+ * （CustomAssetKinds 的键，见 assetKinds.ts）。
  */
-export type AssetKind = Exclude<keyof typeof EXTENSIONS, 'glyphs'> | 'image' | 'audio' | 'modelSource';
+export type AssetKind = BuiltinAssetKind | Extract<keyof CustomAssetKinds, string>;
+
+/** 内置的资源种类。 */
+export type BuiltinAssetKind = Exclude<keyof typeof EXTENSIONS, 'glyphs'> | 'image' | 'audio' | 'modelSource';
 
 export interface AssetReference {
   readonly kind: AssetKind;
@@ -310,6 +317,7 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
       break;
     }
     default:
+      customAssetReferences(kind, file, { add, image });
   }
   return slots;
 }

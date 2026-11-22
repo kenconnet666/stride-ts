@@ -8,7 +8,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { decodeAnimation, decodeModel, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type UIFile } from '@stride-ts/engine/content-format';
-import { assetReferences, type AssetKind, type AssetReference } from '@stride-ts/engine/content-references';
+import { assetKindExtension, assetReferences, customAssetKinds, type AssetKind, type AssetReference } from '@stride-ts/engine/content-references';
 import type { AssetChanges, AssetRecord } from '../../shared/protocol.ts';
 
 /** 声音的音频文件（引擎的 SoundEncoding）。 */
@@ -16,13 +16,24 @@ const AUDIO_EXTENSIONS = ['.mp3', '.ogg', '.wav', '.flac', '.aac'];
 /** 导入设置旁边的源模型（ModelSourceFormat）：运行时不读，编辑器重新导入时用。 */
 const MODEL_SOURCE_EXTENSIONS = ['.glb', '.gltf', '.fbx', '.obj'];
 
-/** 扩展名 → 种类，长的在前（`.material.json` 要先于别的 `.json` 认出来）。 */
-const KIND_BY_EXTENSION: readonly (readonly [extension: string, kind: AssetKind])[] = [
+/** 内置的扩展名 → 种类（贴图、音频、源模型有好几种扩展名）。 */
+const BUILTIN_EXTENSIONS: readonly (readonly [extension: string, kind: AssetKind])[] = [
   ...Object.entries(EXTENSIONS).filter(([kind]) => kind !== 'glyphs').map(([kind, extension]) => [extension, kind as AssetKind] as const),
   ...Object.values(TEXTURE_EXTENSIONS).map((extension) => [extension, 'image'] as const),
   ...AUDIO_EXTENSIONS.map((extension) => [extension, 'audio'] as const),
   ...MODEL_SOURCE_EXTENSIONS.map((extension) => [extension, 'modelSource'] as const),
-].sort((a, b) => b[0].length - a[0].length);
+];
+
+/** 扩展名 → 种类（内置的加上登记的自定义种类），长的在前：`.material.json` 要先于别的 `.json` 认出来。登记变了重建。 */
+let kindByExtension: { readonly custom: number; readonly table: readonly (readonly [string, AssetKind])[] } | undefined;
+function extensionTable(): readonly (readonly [string, AssetKind])[] {
+  const custom = customAssetKinds();
+  if (kindByExtension?.custom !== custom.size) {
+    const table = [...BUILTIN_EXTENSIONS, ...[...custom].map(([kind, { extension }]) => [extension, kind as AssetKind] as const)].sort((a, b) => b[0].length - a[0].length);
+    kindByExtension = { custom: custom.size, table };
+  }
+  return kindByExtension.table;
+}
 
 /** 字体的一个字形块：`<字体>.<块号>.glyphs`。 */
 const GLYPH_BLOCK = /^(.*)\.\d+\.glyphs$/;
@@ -34,7 +45,7 @@ const HANDLE_KINDS: ReadonlySet<AssetKind> = new Set(['model', 'material', 'anim
 export function classifyAssetFile(file: string): { kind: AssetKind; path: string; part: boolean } | undefined {
   const glyphs = GLYPH_BLOCK.exec(file);
   if (glyphs) return { kind: 'font', path: glyphs[1]!, part: true };
-  for (const [extension, kind] of KIND_BY_EXTENSION) {
+  for (const [extension, kind] of extensionTable()) {
     if (file.endsWith(extension) && file.length > extension.length) return { kind, path: file.slice(0, -extension.length), part: false };
   }
   return undefined;
@@ -42,7 +53,9 @@ export function classifyAssetFile(file: string): { kind: AssetKind; path: string
 
 /** 一种资源的主文件名（内容路径加扩展名）；贴图、音频、源模型有几种扩展名，不在这里。 */
 export function assetFileName(kind: Exclude<AssetKind, 'image' | 'audio' | 'modelSource'>, assetPath: string): string {
-  return assetPath + EXTENSIONS[kind];
+  const extension = assetKindExtension(kind);
+  if (extension === undefined) throw new Error(`no asset kind '${kind}' (register custom kinds with registerAssetKind)`);
+  return assetPath + extension;
 }
 
 interface Entry {

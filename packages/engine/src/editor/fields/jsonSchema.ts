@@ -5,7 +5,7 @@
  *   fieldTypeSchema(COMPONENT_FIELDS.light.type)
  *   componentSchemas()   // { model: {...}, light: {...}, ... }
  */
-import { ASSET_FIELDS, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type Field, type FieldType } from './index.ts';
+import { allAssetFields, COMPONENT_FIELDS, ENTITY_FIELDS, SCENE_FIELDS, type Field, type FieldType } from './index.ts';
 
 export type JsonSchema = { readonly [key: string]: unknown };
 
@@ -76,7 +76,7 @@ export function sceneSettingSchemas(): Record<string, JsonSchema> {
 
 /** 编辑器能按字段改的资源文件（材质、JSON 写的模型）的 schema。 */
 export function assetSchemas(): Record<string, JsonSchema> {
-  return Object.fromEntries(Object.entries(ASSET_FIELDS).map(([kind, fields]) => [kind, objectSchema(fields)]));
+  return Object.fromEntries([...allAssetFields()].map(([kind, fields]) => [kind, objectSchema(fields)]));
 }
 
 /** 实体自己的字段（名字、位置、旋转、缩放）。 */

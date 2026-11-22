@@ -64,6 +64,11 @@ export function fakeGpu(): { device: GPUDevice; pass: GPURenderPassEncoder; call
       calls.push({ method: 'createRenderPipelineAsync', args: [descriptor] });
       return Promise.resolve(recorder(calls));
     },
+    // 编译信息是个 Promise（createCheckedShaderModule 等它报错误）
+    createShaderModule: (descriptor: GPUShaderModuleDescriptor) => {
+      calls.push({ method: 'createShaderModule', args: [descriptor] });
+      return { label: descriptor.label, getCompilationInfo: () => Promise.resolve({ messages: [] }) };
+    },
     createComputePipelineAsync: (descriptor: GPUComputePipelineDescriptor) => {
       calls.push({ method: 'createComputePipelineAsync', args: [descriptor] });
       return Promise.resolve(recorder(calls));

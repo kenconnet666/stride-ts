@@ -121,7 +121,7 @@ describe('光追场景（RayTracingScene）', () => {
   test('没有能光追的实例时不给绑定组：空的 BVH 的根在 GPU 上会当成指回自己的内部节点，遍历死循环把显卡卡到驱动重置', async () => {
     const { device } = fakeGpu();
     const scene = new RayTracingScene(device);
-    const game = { frames: 0, meshes: { batches: [] as unknown[] }, transforms: { changedSlots: () => [], renderWorld: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }, native };
+    const game = { frames: 0, meshes: { batches: [] as unknown[], warm: () => Promise.resolve() }, transforms: { changedSlots: () => [], renderWorld: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) }, native };
     // 每次是新的一帧（一帧里只更新一次）
     const update = () => {
       game.frames++;

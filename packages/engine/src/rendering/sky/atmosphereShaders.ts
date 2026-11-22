@@ -437,9 +437,10 @@ ${NIGHT}
 const LUMINANCE = vec3f(0.2126, 0.7152, 0.0722);
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
-  // 远平面上的点（反向 Z：深度 0）
-  let far = view.inverseViewProjection * vec4f(in.ndc, 0.0, 1.0);
-  let direction = normalize(far.xyz / far.w - view.eye.xyz);
+  // 近平面上的点（反向 Z：深度 1）定方向：平面反射的镜像视图是斜裁剪的投影（近平面换成了反射平面），远平面上的点可能落到相机
+  // 后面、方向翻到地下；近平面上的点总在相机前面。普通的相机两种取法一样
+  let near = view.inverseViewProjection * vec4f(in.ndc, 1.0, 1.0);
+  let direction = normalize(near.xyz / near.w - view.eye.xyz);
   // 一个像素的张角：导数要在分支之外取
   let pixel = max(length(dpdx(direction)), length(dpdy(direction)));
   var color = textureSampleLevel(skyViewLut, skySampler, skyViewUv(direction), 0.0).rgb;

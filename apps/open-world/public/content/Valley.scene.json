@@ -1530,6 +1530,15 @@
    "components": {
     "water": {
      "water": "Waters/WestLake"
+    },
+    "planarReflection": {
+     "size": [
+      1100,
+      4,
+      900
+     ],
+     "resolution": 0.5,
+     "distortion": 0.02
     }
    }
   },

@@ -54,6 +54,8 @@ export class PlanarReflections {
    */
   readonly params = new Float32Array(16 + 12);
   active = false;
+  /** 这一帧画的那个平面（渲染空间的法线和平面上的一点）；不画时 undefined。水体按它认出倒影是不是自己的。 */
+  plane: { readonly normal: readonly [number, number, number]; readonly point: readonly [number, number, number] } | undefined;
   /** 用这一帧的反射图着色的视图（主画面）；镜像的视图自己、别的视图不用。 */
   receiver: RenderView | undefined;
   /** 反射图（主画面绑定、着色时采样）；换了贴图就加一（MeshRenderFeature 据此重建绑定组）。 */
@@ -90,6 +92,7 @@ export class PlanarReflections {
    */
   begin(context: RenderContext, main: RenderView): RenderView | undefined {
     this.active = false;
+    this.plane = undefined;
     this.#best = undefined;
     if (!this.enabled || !this.supported) return undefined;
     this.#eye = [main.eye.x, main.eye.y, main.eye.z];
@@ -128,6 +131,7 @@ export class PlanarReflections {
     this.params.set([normal[0], normal[1], normal[2], reflection.distortion], 20);
     this.params.set([reflection.intensity, 0, 0, 0], 24);
     this.active = true;
+    this.plane = { normal: [normal[0], normal[1], normal[2]], point: [point[0], point[1], point[2]] };
     this.receiver = main;
     return view;
   }

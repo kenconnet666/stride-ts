@@ -670,7 +670,7 @@ export class ForwardRenderer {
       // 高斯泼溅（只有主画面）：不透明的之后、透明的之前，读深度、不写
       if (view === this.#mainView) renderSystem.splats.draw(pass, output.format, DEPTH_FORMAT);
       // 水体（只有主画面、拷了不透明的画面以后）：在别的透明物体之前
-      if (refract) renderSystem.water.draw(pass, context, view, renderSystem.lighting, renderSystem.refraction, renderSystem.renderOrigin, output.format, DEPTH_FORMAT);
+      if (refract) renderSystem.water.draw(pass, context, view, renderSystem.lighting, renderSystem.refraction, renderSystem.planarReflections, renderSystem.renderOrigin, output.format, DEPTH_FORMAT);
       if (transparent) renderSystem.draw(context, pass, view, output.transparent);
       // 粒子在透明阶段的最后（Stride 的粒子在透明阶段里，和其他透明物体一起按远近排）
       if (transparent && drawParticles) context.game.particles.draw(context.game, pass, view, output.format, DEPTH_FORMAT);

@@ -9,6 +9,8 @@
  *   接近水的颜色；岸边按水深起泡沫，和地面相交的地方按水深淡出（没有硬边）。
  * - 河（文件的 river）：沿样条的一条带子（riverRibbon），水面在样条下面一点，不叠大浪；波纹顺着样条的方向流（Valve 的 flow map：
  *   两个相位错开半个周期地平移、交替淡入淡出，不会越拉越长），越快越碎，带子的两边淡出。
+ * - 倒影：水的实体上再挂一个 PlanarReflection（平面在水面上）时，这一帧画的平面反射图（rendering/lighting/PlanarReflections.ts）
+ *   就是水面的倒影：按屏幕坐标（u 翻回来）取、按法线偏开；浪陡的地方倒影不准，退回天空的反射（同 WickedEngine）。
  * - 只画主画面（要那份拷贝），在不透明的之后、透明的之前，读深度、不写。
  */
 import type { SplineFile } from '../content/splineFormat';
@@ -25,6 +27,7 @@ import type { GpuResources } from '../graphics/GpuResources';
 import { Skybox } from '../rendering/lighting/Skybox';
 import type { Lighting, RenderContext, RenderView } from '../rendering/RenderSystem';
 import type { Refraction } from '../rendering/screenspace/Refraction';
+import type { PlanarReflections } from '../rendering/lighting/PlanarReflections';
 
 export type WaterAssetId = Branded<number, 'WaterAssetId'>;
 
@@ -162,7 +165,7 @@ export class WaterAsset {
 const RINGS = 160;
 const SEGMENTS = 192;
 /** 常量的字节数（见着色器的 WaterParams）。 */
-const UNIFORM_FLOATS = 92 + (WATER_MAX_OUTLINE / 2) * 4;
+const UNIFORM_FLOATS = 96 + (WATER_MAX_OUTLINE / 2) * 4;
 
 const SHADER = /* wgsl */ `
 struct WaterParams {
@@ -190,6 +193,8 @@ struct WaterParams {
   pattern: vec4f,
   // 1 / 画面宽、1 / 画面高
   screen: vec4f,
+  // 平面反射：用不用（1/0，平面在这片水面上）、最粗的 mip 级
+  planar: vec4f,
   outline: array<vec4f, ${WATER_MAX_OUTLINE / 2}>,
 };
 @group(0) @binding(0) var<uniform> water: WaterParams;
@@ -197,6 +202,7 @@ struct WaterParams {
 @group(0) @binding(2) var sceneDepth: texture_depth_2d;
 @group(0) @binding(3) var sky: texture_cube<f32>;
 @group(0) @binding(4) var linearClamp: sampler;
+@group(0) @binding(5) var reflection: texture_2d<f32>;
 
 const PI = 3.14159265;
 const WAVES = 6u;
@@ -376,7 +382,16 @@ fn scenePosition(uv: vec2f, depth: f32) -> vec3f {
   var r = reflect(-v, n);
   r.y = max(r.y, 0.02);
   let skyIntensity = water.sun.w;
-  let reflected = select(water.ambient.rgb, textureSampleLevel(sky, linearClamp, skyDirection(normalize(r)), 0.0).rgb * skyIntensity, skyIntensity > 0.0);
+  var reflected = select(water.ambient.rgb, textureSampleLevel(sky, linearClamp, skyDirection(normalize(r)), 0.0).rgb * skyIntensity, skyIntensity > 0.0);
+  // 倒影（平面反射图：左右翻过的，按屏幕坐标取时 u 翻回来，按法线偏开）；浪越陡越不准，退回天空
+  if (water.planar.x > 0.5) {
+    let screenUv = in.position.xy * water.screen.xy;
+    let mirrored = vec2f(1.0 - screenUv.x, screenUv.y) + vec2f(-n.x, n.z) * 0.06;
+    let flatR = reflect(-v, vec3f(0.0, 1.0, 0.0));
+    let trust = smoothstep(0.95, 1.0, dot(flatR, normalize(r)));
+    let image = textureSampleLevel(reflection, linearClamp, clamp(mirrored, vec2f(0.001), vec2f(0.999)), 0.0).rgb;
+    reflected = mix(reflected, image, trust);
+  }
   // 太阳的高光（GGX，很光滑）
   let l = water.sun.xyz;
   let h = normalize(l + v);
@@ -484,7 +499,7 @@ export class WaterRenderer {
   /**
    * 在主画面透明的那一遍里画（拷贝了不透明的画面之后）。lighting 是这一帧的光照，origin 是渲染原点（浪按世界坐标排）。
    */
-  draw(pass: GPURenderPassEncoder, context: RenderContext, view: RenderView, lighting: Lighting, refraction: Refraction, origin: readonly number[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
+  draw(pass: GPURenderPassEncoder, context: RenderContext, view: RenderView, lighting: Lighting, refraction: Refraction, planar: PlanarReflections, origin: readonly number[], colorFormat: GPUTextureFormat, depthFormat: GPUTextureFormat): void {
     const scene = refraction.texture, depth = refraction.depthTexture;
     if (this.#frame.length === 0 || !scene || !depth) return;
     const { pipeline, river, layout } = this.#pipelineFor(colorFormat, depthFormat);
@@ -516,7 +531,7 @@ export class WaterRenderer {
         instance = { buffer: this.#device.createBuffer({ label: `Water ${asset.path}`, size: UNIFORM_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }), group: undefined, key: [] };
         this.#instances.set(id, instance);
       }
-      const key = [scene, depth, sky, layout];
+      const key = [scene, depth, sky, layout, planar.texture];
       if (!instance.group || key.some((item, i) => item !== instance!.key[i])) {
         instance.group = this.#device.createBindGroup({
           label: `Water ${asset.path}`,
@@ -527,6 +542,7 @@ export class WaterRenderer {
             { binding: 2, resource: depth.createView() },
             { binding: 3, resource: sky.createView({ dimension: 'cube' }) },
             { binding: 4, resource: this.#resources.linearClamp },
+            { binding: 5, resource: planar.texture.createView() },
           ],
         });
         instance.key = key;
@@ -552,8 +568,12 @@ export class WaterRenderer {
       const yaw = Math.atan2(az, ax);
       data.set([waves.height ?? 0.3, waves.length ?? 12, yaw + ((waves.direction ?? 0) * Math.PI) / 180, waves.speed ?? 1], 76);
       data.set([waves.choppiness ?? 0.5, file.foam?.shore ?? 1, file.river?.speed ?? 1.5, asset.river ? 1 : 0], 80);
-      data.fill(0, 92);
-      outline.forEach(([x, z], i) => data.set([x, z], 92 + i * 2));
+      // 平面反射在这片水面上（平面朝上、高度和水面差不到半米）才用它当倒影
+      const plane = planar.active && planar.receiver === view ? planar.plane : undefined;
+      const mirrored = plane !== undefined && plane.normal[1] > 0.99 && Math.abs(plane.point[1] - world[13]!) < 0.5;
+      data.set([mirrored ? 1 : 0, planar.texture.mipLevelCount - 1, 0, 0], 92);
+      data.fill(0, 96);
+      outline.forEach(([x, z], i) => data.set([x, z], 96 + i * 2));
       this.#device.queue.writeBuffer(instance.buffer, 0, data);
       pass.setBindGroup(0, instance.group);
       const ribbon = asset.ribbon;
@@ -595,6 +615,7 @@ export class WaterRenderer {
         { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
         { binding: 3, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float', viewDimension: 'cube' } },
         { binding: 4, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        { binding: 5, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'float' } },
       ],
     });
     const describe = (entryPoint: 'vs' | 'vsRiver'): GPURenderPipelineDescriptor => ({

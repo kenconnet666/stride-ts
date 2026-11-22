@@ -186,6 +186,7 @@ export interface EditorMessages {
   readonly particleBake: string;
   readonly particleBaking: string;
   readonly particleBakeHint: (frames: number) => string;
+  readonly particleBakeNormals: string;
   readonly particleBaked: (path: string, frames: number, seconds: number) => string;
   readonly graphExported: (paths: readonly string[], seconds: number) => string;
   readonly particleBakeFields: { readonly columns: string; readonly rows: string; readonly size: string; readonly seconds: string; readonly start: string; readonly view: string };
@@ -194,6 +195,12 @@ export interface EditorMessages {
   readonly particleAddEmitter: string;
   readonly particleRemoveEmitter: string;
   readonly particleClose: string;
+  readonly particlePlay: string;
+  readonly particlePause: string;
+  readonly particleRestart: string;
+  readonly particleSpeed: string;
+  readonly particleSolo: string;
+  readonly particleSoloHint: string;
   readonly particleNoSystem: string;
   readonly particleEmitterSettings: string;
   readonly particleAddModule: string;
@@ -419,6 +426,7 @@ const zhCN: EditorMessages = {
   particleBake: '烘成序列帧',
   particleBaking: '正在烘……',
   particleBakeHint: (frames) => `${frames} 帧排成一张图集，存进 Textures；旁边加一个放它的实体（一个粒子）`,
+  particleBakeNormals: '也烘法线图',
   particleBaked: (path, frames, seconds) => `烘好了 ${path}（${frames} 帧，${seconds.toFixed(2)} 秒）`,
   graphExported: (paths, seconds) => `导出了 ${paths.join('、')}（${seconds.toFixed(2)} 秒）`,
   particleBakeFields: { columns: '列', rows: '行', size: '每格像素', seconds: '时长', start: '从第几秒', view: '方向' },
@@ -427,6 +435,12 @@ const zhCN: EditorMessages = {
   particleAddEmitter: '加发射器',
   particleRemoveEmitter: '删掉这个发射器',
   particleClose: '关掉粒子编辑器',
+  particlePlay: '在视口里播放（只改视口里的，不写场景）',
+  particlePause: '暂停',
+  particleRestart: '从头放',
+  particleSpeed: '播放速度',
+  particleSolo: '只看这个',
+  particleSoloHint: '视口里只放正在编辑的这个发射器',
   particleNoSystem: '选中一个有粒子系统的实体，在属性面板上点"粒子编辑器"',
   particleEmitterSettings: '发射器',
   particleAddModule: '加模块',
@@ -663,6 +677,7 @@ const enUS: EditorMessages = {
   particleBake: 'Bake to flipbook',
   particleBaking: 'Baking…',
   particleBakeHint: (frames) => `${frames} frames in one atlas, saved under Textures; an entity playing it (one particle) is added next to this one`,
+  particleBakeNormals: 'Normal atlas too',
   particleBaked: (path, frames, seconds) => `Baked ${path} (${frames} frames, ${seconds.toFixed(2)} s)`,
   graphExported: (paths, seconds) => `Exported ${paths.join(', ')} (${seconds.toFixed(2)} s)`,
   particleBakeFields: { columns: 'Columns', rows: 'Rows', size: 'Pixels per frame', seconds: 'Seconds', start: 'Start at', view: 'View' },
@@ -671,6 +686,12 @@ const enUS: EditorMessages = {
   particleAddEmitter: 'Add emitter',
   particleRemoveEmitter: 'Remove this emitter',
   particleClose: 'Close the particle editor',
+  particlePlay: 'Play in the viewport (only the viewport, the scene is not changed)',
+  particlePause: 'Pause',
+  particleRestart: 'Start over',
+  particleSpeed: 'Playback speed',
+  particleSolo: 'Solo',
+  particleSoloHint: 'Play only the emitter being edited',
   particleNoSystem: 'Select an entity with a particle system and click "Particle editor" in the inspector',
   particleEmitterSettings: 'Emitter',
   particleAddModule: 'Add module',

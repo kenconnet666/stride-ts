@@ -162,6 +162,7 @@ export { drawCollider } from './physics/debugShapes';
 export { ScenePicker } from './rendering/ScenePicker';
 export { EditorCameraController, EditorCameraState } from './editor/viewport/EditorCamera';
 export type { EditableScene, EditAgent, RequiredComponentEntry, WorldSphere } from './editor/viewport/EditAgent';
+export type { ParticlePreview, ParticlePreviewState } from './editor/ParticlePreview';
 export type { FileEditTool, ViewportTool } from './editor/viewport/tools/ViewportTool';
 export type { PaintTool, PaintBrush, PaintImage } from './editor/viewport/tools/PaintTool';
 export type { SculptTool, SculptBrush } from './editor/viewport/tools/SculptTool';

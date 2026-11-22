@@ -28,6 +28,7 @@ import { scriptFields, type Field } from '../fields/index';
 import { LiveScene, type SceneSource } from '../LiveScene';
 import type { SceneInstance } from '../../content/ContentManager';
 import { TimelinePreview, type TimelinePreviewState } from '../TimelinePreview';
+import { ParticlePreview } from '../ParticlePreview';
 import type { SceneEdit } from '../SceneDocument';
 import type { ViewportTool } from './tools/ViewportTool';
 import { DEFAULT_PAINT_BRUSH, PaintTool, type PaintBrush } from './tools/PaintTool';
@@ -80,6 +81,8 @@ export class EditAgent {
   gizmoSpace: 'world' | 'local' = 'world';
   /** 吸附：步长和"一直吸附"，拖操纵器时按住 Ctrl 反过来。编辑器的界面记着它，页面重新加载以后再设回来。 */
   snap: SnapSettings = DEFAULT_SNAP;
+  /** 粒子面板的预览：单独放一个粒子系统（播放、暂停、慢放、只看一个发射器），只改视口里的。 */
+  readonly particles: ParticlePreview;
   /**
    * 视口里正在用的编辑工具（画贴图、雕刻地形、编辑多边形、样条、白盒，见 tools/）：开着时左键交给它，不是点选、拖操纵器。
    * 用下面的 paintMesh、sculptTerrain、editPoly、editSpline、editBrush 开，endTool 关。
@@ -107,6 +110,7 @@ export class EditAgent {
 
   constructor(game: Game) {
     this.game = game;
+    this.particles = new ParticlePreview(game, () => this.#live);
     // 从场景原来的主相机的位置看起：打开编辑器时画面不跳
     const compositor = game.graphicsCompositor;
     this.#sceneCameraSlot = compositor.cameraSlot;
@@ -131,6 +135,20 @@ export class EditAgent {
     // 视口静止时不出帧（输入、修改、调试命令叫醒，见 Game.renderOnDemand）；要粒子、天气一直动时编辑器把它关掉
     game.renderOnDemand = true;
     game.debug.command('paint', PAINT_HELP, (args) => this.#paintCommand(args));
+    game.debug.command('particle-preview', 'Preview one particle system in the editor viewport without changing the scene file (like the particle panel toolbar). '
+      + 'args: entity (scene file id), playing (default true), speed (default 1; 0.25 is a quarter), solo (emitter index to show alone), restart (true: start over), '
+      + 'off (true: stop previewing and put the system back). Returns the preview state.', (args) => {
+      if (args['off'] === true) {
+        this.particles.set(undefined);
+        return { preview: null };
+      }
+      const entity = args['entity'] ?? this.particles.state?.entity;
+      if (typeof entity !== 'string') throw new Error('particle-preview: give entity (the scene file id of the particle system)');
+      const solo = args['solo'] === undefined ? this.particles.state?.solo : args['solo'] === null ? undefined : Number(args['solo']);
+      this.particles.set({ entity, playing: args['playing'] !== false, speed: Number(args['speed'] ?? this.particles.state?.speed ?? 1), solo });
+      if (args['restart'] === true) this.particles.restart();
+      return { preview: this.particles.state };
+    });
     game.debug.command('editor-open', 'Open a scene or a prefab in the editor UI that embeds this page (saves the open document first if it was changed). args: path (content path), kind (scene | prefab, default scene).', async (args) => {
       const path = args['path'], kind = args['kind'] ?? 'scene';
       if (typeof path !== 'string' || path === '') throw new Error('editor-open: path (the content path of the scene or prefab) is required');

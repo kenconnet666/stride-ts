@@ -40,6 +40,8 @@ export interface FlipbookSettings {
   readonly seconds: number;
   readonly start: number;
   readonly view: 'front' | 'side' | 'top';
+  /** 也烘一张按透明度算的法线图（`<图集>Normal`）。 */
+  readonly normals: boolean;
 }
 
 export const EXPORT_PRESETS = ['landscape1080', 'vertical1080', 'square1080'] as const;
@@ -98,6 +100,8 @@ export class EditorSession implements EditableScene {
   readonly baking = shallowRef(false);
   /** 粒子面板开着时编辑的实体（场景文件里的 id）；没开时是 undefined。 */
   readonly particleEntity = shallowRef<string>();
+  /** 粒子面板的预览（视口里单独放这个粒子系统）：在不在放、速度、只看第几个发射器。 */
+  readonly particlePreview = shallowRef<{ readonly playing: boolean; readonly speed: number; readonly solo: number | undefined }>({ playing: false, speed: 1, solo: undefined });
   /** 节点图面板开着（编辑的是属性面板里正开着的材质的 graphPath 那张图）。 */
   readonly graphOpen = shallowRef(false);
   /** 节点图面板编辑材质里的哪张图：材质的 `['graph']`，或者第 i 个绘制层的填充 `['layers', i, 'graph']`。 */
@@ -295,11 +299,26 @@ export class EditorSession implements EditableScene {
 
   /** 打开粒子面板，编辑这个实体的粒子系统（底部显示）。 */
   openParticles(entity: string): void {
+    if (this.particleEntity.value !== entity) this.agent.value?.particles.set(undefined);
     this.particleEntity.value = entity;
   }
 
   closeParticles(): void {
     this.particleEntity.value = undefined;
+    this.particlePreview.value = { ...this.particlePreview.value, playing: false };
+    this.agent.value?.particles.set(undefined);
+  }
+
+  /**
+   * 改粒子面板的预览（视口里单独放正在编辑的粒子系统：播放、暂停、慢放、只看一个发射器；只改视口里的，不写场景）。restart 时从头放。
+   */
+  previewParticles(change: Partial<{ playing: boolean; speed: number; solo: number | undefined }>, restart = false): void {
+    const entity = this.particleEntity.value, agent = this.agent.value;
+    const next = { ...this.particlePreview.value, ...change };
+    this.particlePreview.value = next;
+    if (!entity || !agent) return;
+    agent.particles.set({ entity, playing: next.playing, speed: next.speed, solo: next.solo });
+    if (restart) agent.particles.restart();
   }
 
   /**

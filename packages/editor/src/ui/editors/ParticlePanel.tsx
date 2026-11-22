@@ -6,10 +6,10 @@
  *
  * 每次修改是场景文档的一个修改（同属性面板：能撤销，视口里的粒子马上重建）；拖曲线的点时同一次拖并成一步。
  */
-import { ArrowDown, ArrowUp, CircleX, Film, Plus, X } from '@lucide/icons';
+import { ArrowDown, ArrowUp, CircleX, Film, Pause, Play, Plus, RotateCcw, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, Card, CurveField, Empty, Flex, FormSection, GradientField, Grid, GridItem, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Small, Tab, TabList, Tabs, Text, Toolbar, type CurveKey, type GradientStop } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Card, Checkbox, CurveField, Empty, Flex, FormSection, GradientField, Grid, GridItem, IconButton, Menu, MenuItem, NumberField, Popover, ScrollArea, Select, Small, Tab, TabList, Tabs, Text, Toolbar, type CurveKey, type GradientStop } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { ParticleModuleFile, SceneEntityFile } from '@stride-ts/engine/content-format';
 import { curve, EMITTER_FIELDS, isCurve, newEmitter, PARTICLE_MODULES, type ParticleStackKind } from '@stride-ts/engine/editor-particles';
 import { FieldEditor, Fields, type FieldContext, type ValuePath } from '../fields/FieldEditor';
@@ -20,6 +20,8 @@ const SPECS = new Map(PARTICLE_MODULES.map((spec) => [spec.type, spec]));
 const LISTS: readonly ParticleStackKind[] = ['spawners', 'initializers', 'updaters'];
 const SINGLES: readonly ParticleStackKind[] = ['shapeBuilder', 'material'];
 const small = { size: 'sm', variant: 'ghost', tone: 'neutral' } as const;
+/** 预览的播放速度（慢放看清每一帧）。 */
+const SPEEDS = [1, 0.5, 0.25, 0.1] as const;
 
 /** 文件里的曲线（Stride 的 ComputeCurveSampler + ComputeAnimationCurve）：横轴是走过的寿命 0..1。 */
 interface KeyFrameFile {
@@ -53,7 +55,7 @@ const styles = css.create({
 
 export const ParticlePanel = _component(({ session }: { session: EditorSession }) => {
   let emitterIndex = _state(0);
-  let bake = _state<FlipbookSettings>({ columns: 4, rows: 4, size: 256, seconds: 2, start: 0, view: 'front' });
+  let bake = _state<FlipbookSettings>({ columns: 4, rows: 4, size: 256, seconds: 2, start: 0, view: 'front', normals: false });
   const context: FieldContext = { entities: [] };
 
   const entity = (): SceneEntityFile | undefined => {
@@ -141,10 +143,15 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
     const index = Math.min(emitterIndex, Math.max(0, list.length - 1));
     const emitter = list[index];
     const at: ValuePath = [...base, index];
+    const preview = session.particlePreview.value;
     return (
       <Flex direction="column" sx={styles.panel}>
         <Toolbar docked="top" aria-label={t.particleEmitters}>
-          <Tabs {...css.attrs(styles.tabs)} size="sm" _value={String(index)} onUpdate:_value={(value: string) => (emitterIndex = Number(value))}>
+          <Tabs {...css.attrs(styles.tabs)} size="sm" _value={String(index)} onUpdate:_value={(value: string) => {
+            emitterIndex = Number(value);
+            // 只看一个发射器时跟着换到这一个
+            if (session.particlePreview.value.solo !== undefined) session.previewParticles({ solo: emitterIndex });
+          }}>
             <TabList
               aria-label={t.particleEmitters}
               propsAdd={{ 'aria-label': t.particleAddEmitter }}
@@ -157,6 +164,13 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
               ))}
             </TabList>
           </Tabs>
+          <IconButton {...small} icon={preview.playing ? Pause : Play} aria-label={preview.playing ? t.particlePause : t.particlePlay} title={preview.playing ? t.particlePause : t.particlePlay}
+            onClick={() => session.previewParticles({ playing: !preview.playing })} />
+          <IconButton {...small} icon={RotateCcw} aria-label={t.particleRestart} title={t.particleRestart} onClick={() => session.previewParticles({ playing: true }, true)} />
+          <Select size="sm" aria-label={t.particleSpeed} items={SPEEDS.map((speed) => ({ value: String(speed), label: `${speed}×` }))}
+            _value={String(preview.speed)} onUpdate:_value={(value: string | null) => value && session.previewParticles({ speed: Number(value) })} />
+          <Checkbox size="sm" _checked={preview.solo !== undefined} title={t.particleSoloHint}
+            onUpdate:_checked={(solo: boolean) => session.previewParticles({ solo: solo ? index : undefined })}>{t.particleSolo}</Checkbox>
           <Popover placement="bottom-end" trigger={(props) => <Button {...props} size="sm" variant="soft" tone="neutral" icon={Film} disabled={session.baking.value}>{session.baking.value ? t.particleBaking : t.particleBake}</Button>}>
             <Grid columns={2} gap="xs" sx={styles.bake}>
               {(['columns', 'rows', 'size', 'seconds', 'start'] as const).map((key) => (
@@ -166,6 +180,7 @@ export const ParticlePanel = _component(({ session }: { session: EditorSession }
               ))}
               <Select size="sm" aria-label={t.particleBakeFields.view} items={(['front', 'side', 'top'] as const).map((view) => ({ value: view, label: t.particleBakeViews[view] }))}
                 _value={bake.view} onUpdate:_value={(view: string | null) => view && (bake = { ...bake, view: view as FlipbookSettings['view'] })} />
+              <Checkbox size="sm" _checked={bake.normals} onUpdate:_checked={(normals: boolean) => (bake = { ...bake, normals })}>{t.particleBakeNormals}</Checkbox>
               <GridItem span="full"><Small tone="muted">{t.particleBakeHint(bake.columns * bake.rows)}</Small></GridItem>
               <GridItem span="full"><Button size="sm" icon={Film} disabled={session.baking.value} onClick={() => void session.bakeFlipbook(file.id, bake)}>{t.particleBake}</Button></GridItem>
             </Grid>

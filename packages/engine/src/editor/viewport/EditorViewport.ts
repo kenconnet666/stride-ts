@@ -80,6 +80,7 @@ export class EditorViewport extends SyncScript {
   override update(): void {
     const agent = this.agent, live = agent?.live;
     if (!agent || !live) return;
+    agent.particles.apply();
     const input = this.game.input, draw = this.game.debugDraw;
     for (const id of agent.selection) {
       // 正在编辑多边形、样条、白盒的实体由工具画它自己的线框，不画包围盒

@@ -14,7 +14,11 @@
  *   贴图采样后预乘回去正好是 B'；只有混着加法的地方透明度偏大一点（会挡住后面一点）。
  * - 存成 sRGB 的 png（不预乘）。
  *
- * 和 Niagara 不同：只烘颜色加透明度（没有法线、自发光、速度这些别的图）；相机只有前、侧、顶三个方向。
+ * - 法线图（normals）：每一格按透明度当高度（烟、云这类越厚越鼓），Sobel 算斜率、不跨格，按 OpenGL 的习惯（+Y 朝上）存成
+ *   0..1；透明度照抄颜色图的。给受光照的序列帧、别的软件用（我们的粒子材质不受光照，放的时候用不上）。
+ *
+ * 和 Niagara 不同：只烘颜色加透明度和按透明度算的法线（没有单独的自发光、速度这些图：粒子不受光照，颜色本身就是发出来的光，
+ * 亮度在 intensity 里）；相机只有前、侧、顶三个方向。
  */
 import { Matrix } from '../data/Matrix';
 import { saveImage } from '../editor/backendApi';
@@ -94,6 +98,35 @@ export function composeFlipbook(black: Float32Array, white: Float32Array): { rgb
     rgba[o + 3] = Math.round(alpha * 255);
   }
   return { rgba, intensity };
+}
+
+/**
+ * 法线图（见文件开头）：rgba 是颜色图（a 是透明度），每格 frameSize 见方、columns 列。strength 是斜率的放大倍数（一格的边长当 1，
+ * 透明度从 0 到 1 变化一格那么宽时斜率是 strength）。
+ */
+export function flipbookNormals(rgba: Uint8Array, width: number, height: number, frameSize: number, strength = 4): Uint8Array<ArrayBuffer> {
+  const out = new Uint8Array(width * height * 4);
+  const alpha = (x: number, y: number) => rgba[(y * width + x) * 4 + 3]! / 255;
+  const scale = (strength * frameSize) / 8;
+  for (let y = 0; y < height; y++) {
+    const top = Math.floor(y / frameSize) * frameSize, bottom = top + frameSize - 1;
+    for (let x = 0; x < width; x++) {
+      const left = Math.floor(x / frameSize) * frameSize, right = left + frameSize - 1;
+      // 夹在这一格里：格子边上不借隔壁那一帧的像素
+      const at = (dx: number, dy: number) => alpha(Math.min(Math.max(x + dx, left), right), Math.min(Math.max(y + dy, top), bottom));
+      const gx = at(1, -1) + 2 * at(1, 0) + at(1, 1) - at(-1, -1) - 2 * at(-1, 0) - at(-1, 1);
+      const gy = at(-1, 1) + 2 * at(0, 1) + at(1, 1) - at(-1, -1) - 2 * at(0, -1) - at(1, -1);
+      // 高度往右升高时法线朝左；图的行往下，+Y 朝上要把 y 的斜率反过来
+      const n = [-gx * scale, gy * scale, 1];
+      const length = Math.hypot(n[0]!, n[1]!, n[2]!);
+      const o = (y * width + x) * 4;
+      out[o] = Math.round((n[0]! / length) * 127.5 + 127.5);
+      out[o + 1] = Math.round((n[1]! / length) * 127.5 + 127.5);
+      out[o + 2] = Math.round((n[2]! / length) * 127.5 + 127.5);
+      out[o + 3] = rgba[o + 3]!;
+    }
+  }
+  return out;
 }
 
 function toSrgbByte(linear: number): number {
@@ -272,6 +305,8 @@ async function readFloats(device: GPUDevice, texture: GPUTexture): Promise<Float
 export interface BakeResult extends Omit<BakedFlipbook, 'rgba'> {
   /** 图集存在内容目录的哪（不带扩展名）。 */
   readonly path: string;
+  /** 法线图存在哪（要了 normals 时）。 */
+  readonly normalPath?: string;
   readonly bytes: number;
   /** 放这张序列帧的粒子系统组件（场景文件里的 particleSystem 组件照抄就行）。 */
   readonly component: ParticleModuleFile;
@@ -295,5 +330,10 @@ export async function bakeCommand(game: Game, component: ParticleSystemComponent
   const path = typeof args['path'] === 'string' && args['path'] !== '' ? args['path'] : `Textures/${component.entity.name || 'Particles'}Flipbook`;
   const png = await encodePng(rgba, bake.width, bake.height);
   await saveImage(path, png);
-  return { ...bake, path, bytes: png.length, component: flipbookComponent(bake, path), elapsed: (performance.now() - started) / 1000 };
+  let normalPath: string | undefined;
+  if (args['normals'] === true) {
+    normalPath = `${path}Normal`;
+    await saveImage(normalPath, await encodePng(flipbookNormals(rgba, bake.width, bake.height, bake.width / bake.columns, count('normalStrength', 4)), bake.width, bake.height));
+  }
+  return { ...bake, path, ...(normalPath ? { normalPath } : {}), bytes: png.length, component: flipbookComponent(bake, path), elapsed: (performance.now() - started) / 1000 };
 }

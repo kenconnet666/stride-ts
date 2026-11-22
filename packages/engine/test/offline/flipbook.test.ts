@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { composeFlipbook, flipbookComponent } from '../../src/offline/FlipbookBaker';
+import { composeFlipbook, flipbookComponent, flipbookNormals } from '../../src/offline/FlipbookBaker';
 
 /** 一个像素在黑底、白底上画出来的样子（线性 RGBA）。 */
 const pixel = (black: number[], white: number[]) => composeFlipbook(new Float32Array([...black, 1]), new Float32Array([...white, 1]));
@@ -39,5 +39,20 @@ describe('序列帧烘焙：黑底白底合成', () => {
     expect(emitter['particleLifetime']).toEqual([2, 2]);
     expect((emitter['material'] as Record<string, unknown>)['uvBuilder']).toMatchObject({ xDivisions: 4, yDivisions: 2, animationSpeed: 8 });
     expect((emitter['material'] as { computeColor: unknown }).computeColor).toMatchObject({ texture: { texture: 'Textures/Fx', encoding: 'png' } });
+  });
+
+  test('法线图：按透明度当高度，往右升高时法线朝左；平的格子朝正前；不借隔壁那一格的像素', () => {
+    // 两格，每格 4 × 4：左边那格透明度从左往右升高，右边那格全是 1
+    const width = 8, height = 4, rgba = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) rgba[(y * width + x) * 4 + 3] = x < 4 ? x * 80 : 255;
+    const normals = flipbookNormals(rgba, width, height, 4);
+    const at = (x: number, y: number) => Array.from(normals.subarray((y * width + x) * 4, (y * width + x) * 4 + 4));
+    const [nx, ny, nz, a] = at(1, 1);
+    expect(nx).toBeLessThan(100);
+    expect(ny).toBe(128);
+    expect(nz).toBeGreaterThan(128);
+    expect(a).toBe(80);
+    // 右边那格的左边缘：隔壁格子更低，但不借它，还是平的
+    expect(at(4, 1)).toEqual([128, 128, 255, 255]);
   });
 });

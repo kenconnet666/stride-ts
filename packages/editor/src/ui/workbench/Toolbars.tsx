@@ -1,14 +1,16 @@
 /**
  * 工作台的几条横栏（参考 JetBrains IDE）：
- * - MainToolbar：最上面，工程名、保存、撤销重做，右边是试玩（运行）；
+ * - MainToolbar：最上面，工程名、保存、撤销重做，右边是到处搜、主题、全屏、试玩（运行）；
  * - DocumentTabs：视口上面打开的文档的页签（场景；编辑预制体时再多一个预制体的页签，关掉它回到场景）；
  * - ViewportToolbar：视口上面，对选中实体的操作、吸附、画幅参考线；开着编辑工具时换成它的（ToolToolbar）；
  * - StatusBar：最下面，提示和出错、选中几个、界面语言。
  */
-import { Activity, ArrowDownToLine, ClipboardPaste, Copy, CopyPlus, Globe, Magnet, Package, Play, Plus, Redo2, Save, Square, SquareDot, Trash2, Undo2 } from '@lucide/icons';
+import { Activity, ArrowDownToLine, Maximize, Minimize, ClipboardPaste, Copy, CopyPlus, Globe, Magnet, Package, Play, Plus, Redo2, Save, Square, SquareDot, Trash2, Undo2 } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, Flex, IconButton, NumberField, Select, Separator, Skeleton, Strong, Tab, TabList, Tabs, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Flex, IconButton, NumberField, Select, Separator, Skeleton, Strong, Tab, TabList, Tabs, Text, Toolbar, useFullscreen } from '@zerodep-dev/vue-tsx-pro-ui';
+import { ThemeSwitcher } from '@zerodep-dev/vue-tsx-pro-ui/patterns';
+import { themePreference } from '../session/theme';
 import { LOCALES, locale, setLocale, type Locale } from '../i18n/i18n';
 import { SearchEverywhere } from './SearchEverywhere';
 import { ToolToolbar } from './ToolToolbar';
@@ -34,6 +36,8 @@ const styles = css.create({
 const iconProps = { size: 'sm', variant: 'ghost', tone: 'neutral' } as const;
 
 export const MainToolbar = _component(({ session, playing, onTogglePlay }: { session: EditorSession; playing: boolean; onTogglePlay: () => void }) => {
+  // 整个编辑器全屏（不只是视口）：视口里的东西看得更大，工具窗口照常用
+  const fullscreen = useFullscreen(() => document.documentElement);
   return () => (
     <Toolbar docked="top" variant="surface" aria-label={t.mainToolbar}>
       <Strong sx={styles.brand}>World Engine</Strong>
@@ -44,6 +48,11 @@ export const MainToolbar = _component(({ session, playing, onTogglePlay }: { ses
       <IconButton {...iconProps} icon={Redo2} aria-label={t.redo} title={`${t.redo} (Ctrl+Y)`} disabled={!session.canRedo || playing} onClick={() => session.redo()} />
       <Flex grow />
       <SearchEverywhere session={session} playing={playing} onTogglePlay={onTogglePlay} />
+      <ThemeSwitcher preference={themePreference} propsTrigger={iconProps} />
+      {fullscreen.supported && (
+        <IconButton {...iconProps} icon={fullscreen.active ? Minimize : Maximize} aria-label={fullscreen.active ? t.exitFullscreen : t.fullscreen}
+          title={fullscreen.active ? t.exitFullscreen : t.fullscreen} aria-pressed={fullscreen.active} onClick={() => void fullscreen.toggle()} />
+      )}
       {playing
         ? <IconButton size="sm" variant="soft" tone="danger" icon={Square} aria-label={t.stopPlaying} title={t.stopPlaying} onClick={onTogglePlay} />
         : <IconButton size="sm" variant="ghost" tone="success" icon={Play} aria-label={t.play} title={t.play} onClick={onTogglePlay} />}

@@ -50,6 +50,8 @@ export interface EditorMessages {
   readonly mainToolbar: string;
   readonly viewportToolbar: string;
   readonly statusBar: string;
+  readonly fullscreen: string;
+  readonly exitFullscreen: string;
   readonly openDocuments: string;
   readonly selectedCount: (n: number) => string;
   readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string; readonly library: string };
@@ -282,6 +284,8 @@ const zhCN: EditorMessages = {
   mainToolbar: '主工具条',
   viewportToolbar: '视口工具条',
   statusBar: '状态栏',
+  fullscreen: '全屏',
+  exitFullscreen: '退出全屏',
   openDocuments: '打开的文档',
   selectedCount: (n) => `选中 ${n} 个`,
   toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表', library: '库' },
@@ -515,6 +519,8 @@ const enUS: EditorMessages = {
   mainToolbar: 'Main toolbar',
   viewportToolbar: 'Viewport toolbar',
   statusBar: 'Status bar',
+  fullscreen: 'Full screen',
+  exitFullscreen: 'Exit full screen',
   openDocuments: 'Open documents',
   selectedCount: (n) => `${n} selected`,
   toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet', library: 'Library' },

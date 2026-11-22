@@ -40,10 +40,29 @@ interface Box {
 export function cityLots(file: CityFile, roads: readonly SplineFile[], footprints: readonly CityFootprint[]): CityLot[] {
   const setback = file.setback ?? 3, gap = file.gap ?? 2;
   const segments = roadSegments(roads);
-  const lots: { lot: CityLot; box: Box }[] = [];
+  const placed = new BoxGrid();
+  const lots: CityLot[] = [];
   const weights = file.buildings.map((rule) => rule.weight ?? 1);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   const seed = file.seed ?? 1;
+  const pickAt = (key: number) => pick(weights, totalWeight, key / 4294967296);
+  /** 楼 building 的地块中心放在 center、正面朝着 −outward（路那边）：碰到路、别的楼或者出了范围时不放，返回 false。 */
+  const place = (building: number, center: Vec2, outward: Vec2): boolean => {
+    const footprint = footprints[building]!;
+    // 楼的正面（本地 +Z）朝着路：(sin yaw, cos yaw) = −outward；本地 X 是 (cos yaw, −sin yaw)
+    const yaw = Math.atan2(-outward[0], -outward[1]);
+    const xAxis: Vec2 = [Math.cos(yaw), -Math.sin(yaw)], zAxis: Vec2 = [Math.sin(yaw), Math.cos(yaw)];
+    const box: Box = { center, axes: [xAxis, zAxis], half: [footprint.width / 2, footprint.depth / 2] };
+    const padded: Box = { ...box, half: [box.half[0] + gap / 2, box.half[1] + gap / 2] };
+    if ((file.area && !inside(file.area, center)) || hitsRoad(box, segments, setback * 0.5) || placed.overlaps(padded)) return false;
+    // 实体的位置：模型的包围盒中心转过去以后落在地块中心
+    const [cx, cz] = footprint.center;
+    const position: Vec2 = [center[0] - (xAxis[0] * cx + zAxis[0] * cz), center[1] - (xAxis[1] * cx + zAxis[1] * cz)];
+    lots.push({ building, position, yaw, corners: corners(box) });
+    placed.add(padded);
+    return true;
+  };
+  // 临街的一排：沿每条路径的两边一栋挨一栋
   roads.forEach((road, r) => {
     const halfRoad = splineCorridorWidth(road.profile) / 2;
     splinePaths(road).forEach((path, p) => {
@@ -52,8 +71,7 @@ export function cityLots(file: CityFile, roads: readonly SplineFile[], footprint
       for (const side of [1, -1] as const) {
         let d = 0, k = 0;
         while (d < total) {
-          const random = hash32(hash32(hash32(hash32(seed, r), p), side + 2), k++) / 4294967296;
-          const building = pick(weights, totalWeight, random);
+          const building = pickAt(hash32(hash32(hash32(hash32(seed, r), p), side + 2), k++));
           const footprint = footprints[building]!;
           const along = d + footprint.width / 2;
           if (along + footprint.width / 2 > total) break;
@@ -61,27 +79,86 @@ export function cityLots(file: CityFile, roads: readonly SplineFile[], footprint
           const right = normalize2([frame.right[0], frame.right[2]]);
           const outward: Vec2 = [right[0] * side, right[1] * side];
           const offset = halfRoad * frame.width + setback + footprint.depth / 2;
-          const center: Vec2 = [frame.position[0] + outward[0] * offset, frame.position[2] + outward[1] * offset];
-          // 楼的正面（本地 +Z）朝着路：(sin yaw, cos yaw) = −outward；本地 X 是 (cos yaw, −sin yaw)
-          const yaw = Math.atan2(-outward[0], -outward[1]);
-          const xAxis: Vec2 = [Math.cos(yaw), -Math.sin(yaw)], zAxis: Vec2 = [Math.sin(yaw), Math.cos(yaw)];
-          const box: Box = { center, axes: [xAxis, zAxis], half: [footprint.width / 2, footprint.depth / 2] };
-          const padded: Box = { ...box, half: [box.half[0] + gap / 2, box.half[1] + gap / 2] };
-          const free = (!file.area || inside(file.area, center)) && !hitsRoad(box, segments, setback * 0.5) && !lots.some((other) => overlaps(padded, other.box));
-          if (!free) {
-            d += STEP;
-            continue;
-          }
-          // 实体的位置：模型的包围盒中心转过去以后落在地块中心
-          const [cx, cz] = footprint.center;
-          const position: Vec2 = [center[0] - (xAxis[0] * cx + zAxis[0] * cz), center[1] - (xAxis[1] * cx + zAxis[1] * cz)];
-          lots.push({ lot: { building, position, yaw, corners: corners(box) }, box: padded });
-          d += footprint.width + gap;
+          if (place(building, [frame.position[0] + outward[0] * offset, frame.position[2] + outward[1] * offset], outward)) d += footprint.width + gap;
+          else d += STEP;
         }
       }
     });
   });
-  return lots.map(({ lot }) => lot);
+  // 街区里面：格点（带抖动）按离路由近到远地试，楼朝着最近的路
+  if (file.fill) {
+    const spacing = file.fill.spacing ?? 12, reach = file.fill.maxDistance ?? 100;
+    const [x0, z0, x1, z1] = file.area ? boundsOf(file.area) : expand(segmentBounds(segments), reach);
+    const candidates: { center: Vec2; outward: Vec2; distance: number; key: number }[] = [];
+    for (let i = 0; x0 + i * spacing <= x1; i++) {
+      for (let j = 0; z0 + j * spacing <= z1; j++) {
+        const key = hash32(hash32(seed ^ 0x5bd1e995, i), j);
+        const center: Vec2 = [x0 + (i + (key & 0xffff) / 0x10000 - 0.5) * spacing, z0 + (j + (key >>> 16) / 0x10000 - 0.5) * spacing];
+        const nearest = nearestRoad(segments, center, reach);
+        if (!nearest || nearest.distance < 1e-6) continue;
+        candidates.push({ center, outward: [(center[0] - nearest.point[0]) / nearest.distance, (center[1] - nearest.point[1]) / nearest.distance], distance: nearest.distance, key });
+      }
+    }
+    candidates.sort((a, b) => a.distance - b.distance || a.key - b.key);
+    for (const { center, outward, key } of candidates) place(pickAt(hash32(key, 0x2545f491)), center, outward);
+  }
+  return lots;
+}
+
+/** 摆下的楼的地块，按网格分好（查一个矩形碰没碰到已经摆下的）。 */
+class BoxGrid {
+  readonly #cells = new Map<string, Box[]>();
+
+  add(box: Box): void {
+    for (const key of this.#keys(box)) {
+      let list = this.#cells.get(key);
+      if (!list) this.#cells.set(key, (list = []));
+      list.push(box);
+    }
+  }
+
+  overlaps(box: Box): boolean {
+    for (const key of this.#keys(box)) for (const other of this.#cells.get(key) ?? []) if (overlaps(box, other)) return true;
+    return false;
+  }
+
+  #keys(box: Box): string[] {
+    const r = Math.hypot(box.half[0], box.half[1]), keys: string[] = [];
+    for (let x = Math.floor((box.center[0] - r) / GRID); x <= Math.floor((box.center[0] + r) / GRID); x++) {
+      for (let z = Math.floor((box.center[1] - r) / GRID); z <= Math.floor((box.center[1] + r) / GRID); z++) keys.push(`${x},${z}`);
+    }
+    return keys;
+  }
+}
+
+/** 离 p 最近的路的中心线上的点和距离；reach 米以内没有路时是 undefined。 */
+function nearestRoad(grid: Map<string, Segment[]>, p: Vec2, reach: number): { point: Vec2; distance: number } | undefined {
+  let best: { point: Vec2; distance: number } | undefined;
+  for (let x = Math.floor((p[0] - reach) / GRID); x <= Math.floor((p[0] + reach) / GRID); x++) {
+    for (let z = Math.floor((p[1] - reach) / GRID); z <= Math.floor((p[1] + reach) / GRID); z++) {
+      for (const { a, b } of grid.get(`${x},${z}`) ?? []) {
+        const ex = b[0] - a[0], ez = b[1] - a[1], length = ex * ex + ez * ez;
+        const t = length > 0 ? Math.min(1, Math.max(0, ((p[0] - a[0]) * ex + (p[1] - a[1]) * ez) / length)) : 0;
+        const point: Vec2 = [a[0] + ex * t, a[1] + ez * t];
+        const distance = Math.hypot(p[0] - point[0], p[1] - point[1]);
+        if (distance <= reach && (!best || distance < best.distance)) best = { point, distance };
+      }
+    }
+  }
+  return best;
+}
+
+function boundsOf(points: readonly (readonly [number, number])[]): [number, number, number, number] {
+  return [Math.min(...points.map((p) => p[0])), Math.min(...points.map((p) => p[1])), Math.max(...points.map((p) => p[0])), Math.max(...points.map((p) => p[1]))];
+}
+
+function segmentBounds(grid: Map<string, Segment[]>): [number, number, number, number] {
+  const points = [...grid.values()].flat().flatMap((segment) => [segment.a, segment.b]);
+  return points.length > 0 ? boundsOf(points) : [0, 0, 0, 0];
+}
+
+function expand([x0, z0, x1, z1]: readonly [number, number, number, number], by: number): [number, number, number, number] {
+  return [x0 - by, z0 - by, x1 + by, z1 + by];
 }
 
 /** 按权重挑一个（random 在 [0, 1)）。 */

@@ -49,5 +49,9 @@
    260,
    220
   ]
- ]
+ ],
+ "fill": {
+  "spacing": 14,
+  "maxDistance": 90
+ }
 }

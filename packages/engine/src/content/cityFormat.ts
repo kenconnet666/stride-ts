@@ -4,8 +4,9 @@
  *
  * 摆法（沿街排，照 CityEngine 的"沿街地块"和 Parish & Müller 的思路简化）：沿每条路的两边从头走到尾，每一步按权重随机挑一栋楼，
  * 楼的正面（模型本地的 +Z）朝着路、离路边 setback 米，宽度方向（模型本地的 X）顺着路；和路（这个城的所有路）、已经摆下的楼
- * 碰到的不摆、往前挪一点再试，摆下了就往前走楼的宽度加 gap。坐标是 City 组件所在实体的本地坐标，路的样条用同一套坐标
- * （同地形贴样条）。楼放在地块四个角的地面里最低的那个高度上（坡上的那边埋进地里一点）。
+ * 碰到的不摆、往前挪一点再试，摆下了就往前走楼的宽度加 gap。fill 再把街区里面填上（格点由近到远、楼朝最近的路）。
+ * 坐标是 City 组件所在实体的本地坐标，路的样条用同一套坐标（同地形贴样条）。楼放在地块四个角的地面里最低的那个高度上（坡上的那边
+ * 埋进地里一点）。
  */
 
 export interface CityBuildingRule {
@@ -27,6 +28,11 @@ export interface CityFile {
   readonly gap?: number;
   /** 只在这个多边形（[x, z]）里摆；不写是沿着整个路网。 */
   readonly area?: readonly (readonly [number, number])[];
+  /**
+   * 临街的摆完以后把街区里面也填上：每隔 spacing 米（带抖动）试一个点，离最近的路（中心线）maxDistance 米以内的按由近到远放楼，
+   * 楼朝着最近的路。不写只摆临街的一排。
+   */
+  readonly fill?: { readonly spacing?: number; readonly maxDistance?: number };
 }
 
 /** 检查城市文件（编辑器保存、加载之前）。where 是报错里的位置。 */
@@ -43,6 +49,8 @@ export function checkCity(file: CityFile, where = file.name): CityFile {
   if (file.setback !== undefined && !(file.setback >= 0)) fail('setback', 'must not be negative');
   if (file.gap !== undefined && !(file.gap >= 0)) fail('gap', 'must not be negative');
   if (file.seed !== undefined && !Number.isInteger(file.seed)) fail('seed', 'must be a whole number');
+  if (file.fill?.spacing !== undefined && !(file.fill.spacing >= 1)) fail('fill.spacing', 'must be at least 1');
+  if (file.fill?.maxDistance !== undefined && !(file.fill.maxDistance > 0)) fail('fill.maxDistance', 'must be positive');
   if (file.area !== undefined && (!Array.isArray(file.area) || file.area.length < 3 || file.area.some((p) => !(Array.isArray(p) && p.length === 2 && p.every(Number.isFinite))))) fail('area', 'needs at least 3 points [x, z]');
   return file;
 }

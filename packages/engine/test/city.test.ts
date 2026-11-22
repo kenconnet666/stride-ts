@@ -50,6 +50,27 @@ describe('城市：沿街摆楼', () => {
     for (const lot of inArea) expect(box(lot).center[0]).toBeGreaterThan(0);
   });
 
+  test('填街区：临街的后面还有楼，朝着最近的路，不出 maxDistance，都不重叠、不压路', () => {
+    const front = cityLots(city, [avenue], footprints);
+    const filled = cityLots({ ...city, fill: { spacing: 10, maxDistance: 60 } }, [avenue], footprints);
+    // 临街的那排不变，后面多出来的在更远处
+    expect(filled.slice(0, front.length)).toEqual(front);
+    const extra = filled.slice(front.length);
+    expect(extra.length).toBeGreaterThan(10);
+    expect(Math.max(...extra.map((lot) => Math.abs(box(lot).center[1])))).toBeGreaterThan(25);
+    const boxes = filled.map(box);
+    for (let i = 0; i < boxes.length; i++) {
+      expect(segmentBoxDistance([-100, 0], [100, 0], boxes[i]!)).toBeGreaterThan(4 + 1.5 - 1e-6);
+      for (let j = i + 1; j < boxes.length; j++) expect(overlaps(boxes[i]!, boxes[j]!)).toBe(false);
+    }
+    for (const lot of extra) {
+      const center = box(lot).center;
+      // 离路最近的点在路的中间段时正面朝 ±z；中心离中心线不超过 60 米
+      expect(Math.hypot(Math.max(Math.abs(center[0]) - 100, 0), center[1])).toBeLessThanOrEqual(60 + 1e-6);
+      if (Math.abs(center[0]) < 95) expect(Math.sign(Math.cos(lot.yaw))).toBe(-Math.sign(center[1]));
+    }
+  });
+
   test('检查：没有路、没有楼、权重不对', () => {
     expect(() => checkCity({ ...city, roads: [] })).toThrow('roads needs at least one spline path');
     expect(() => checkCity({ ...city, buildings: [] })).toThrow('buildings needs at least one building');

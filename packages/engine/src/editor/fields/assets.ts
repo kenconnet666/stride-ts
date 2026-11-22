@@ -414,6 +414,14 @@ export const CITY_FIELDS = fields<CityFile>({
   setback: { type: number({ min: 0, step: 0.5, unit: 'm' }), optional: true, default: 3, description: 'distance from the road edge to the building front (sidewalk)' },
   gap: { type: number({ min: 0, step: 0.5, unit: 'm' }), optional: true, default: 2, description: 'space between neighboring buildings' },
   area: { type: { kind: 'json' }, optional: true, description: 'only build inside this polygon [[x, z], …]; unset builds along the whole network' },
+  fill: {
+    type: object(fields<NonNullable<CityFile['fill']>>({
+      spacing: { type: number({ min: 1, step: 1, unit: 'm' }), optional: true, default: 12, description: 'grid step of the points tried inside the blocks (jittered)' },
+      maxDistance: { type: number({ min: 1, step: 10, unit: 'm' }), optional: true, default: 100, description: 'only this far from the nearest road' },
+    })),
+    optional: true,
+    description: 'after the street front, fill the blocks: points nearest the roads first, each building facing the nearest road',
+  },
 });
 
 /** 程序化摆放（ScatterFile）：改了马上存，挂着它的地形重撒。 */

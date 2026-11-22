@@ -9,12 +9,9 @@ import { mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFAULT_MODEL_IMPORT, EXTENSIONS, isProceduralModel, isVideoEncoding, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type ModelSourceFormat, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
+import { checkWorldFile, placeInCells, worldCellPath, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
-import { brushToPoly, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
-import { parseIes } from '@stride-ts/engine/light-profile';
-import { parseCubeLut } from '@stride-ts/engine/color-lut';
-import { materialSet, scannedMaterial, SRGB_ROLES, type MaterialCredit, type MaterialMapRole } from '../../shared/materialSet.ts';
+import { brushToPoly, importSourceModel } from '@stride-ts/pipeline';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../../shared/protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -25,6 +22,7 @@ import { syncAssetPackages } from './assetPackages.ts';
 import { GENERATORS, isGenerated, REBAKE_WITH, type GeneratedKind } from './bakers.ts';
 import { checkContentPath, contentHash, writeAtomically } from './files.ts';
 import { handleEditorRequest, HttpError } from './http.ts';
+import { Importer, type MaterialSetOptions } from './importer.ts';
 
 /** 导出的成片、图像序列放在工程的这个文件夹里（不提交）。 */
 export const EXPORTS_DIR = 'exports';
@@ -48,6 +46,7 @@ export class EditorBackend {
   #pending = new Set<string>();
   /** 原生的导入工具（第一次导入模型时建）。 */
   #tools: Promise<StrideTools> | undefined;
+  readonly #importer: Importer;
   #timer: NodeJS.Timeout | undefined;
   /** 白盒、SDF 最近一次烘焙时的内容（`种类:路径` → JSON 文本）：文件监视报它变了时，内容一样（自己刚存、刚烘的）就不再烘。 */
   readonly #bakes = new Map<string, string>();
@@ -58,6 +57,14 @@ export class EditorBackend {
     this.project = project;
     this.database = new AssetDatabase(project.contentDir);
     this.#publicDir = publicDir;
+    this.#importer = new Importer({
+      contentDir: project.contentDir,
+      database: this.database,
+      tools: () => (this.#tools ??= createStrideTools()),
+      enqueue: (work) => this.#enqueue(work),
+      refresh: (files) => this.#refresh(files),
+      bake: (kind, assetPath, settings) => this.#bake(kind, assetPath, settings),
+    });
   }
 
   /** 打开工程：读清单、同步依赖的资源包（assetPackages.ts）、扫内容目录、生成资源句柄。publicDir 是开发服务器的静态目录。 */
@@ -271,215 +278,14 @@ export class EditorBackend {
     });
   }
 
-  /**
-   * 高斯泼溅（3DGS 的 .ply，标准的或 SuperSplat 的压缩格式；Niantic 的 .spz；PlayCanvas 的 .sog）转成运行时的 .splat 放进 folder（只留转好的：.ply 动辄上百 MB）；
-   * 认不出时什么也不写。
-   */
-  async #importSplats(folder: string, base: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
-    let converted: Uint8Array;
-    try {
-      converted = (await convertSplats(await (this.#tools ??= createStrideTools()), bytes, fileName)).bytes;
-    } catch (error) {
-      throw new HttpError(400, (error as Error).message);
-    }
-    return this.#enqueue(async () => {
-      let assetPath = '';
-      for (let n = 1; ; n++) {
-        assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
-        if (!this.database.get('splats', assetPath)) break;
-      }
-      const file = path.join(this.project.contentDir, assetFileName('splats', assetPath));
-      await writeAtomically(file, converted);
-      await this.#refresh([this.#relative(file)]);
-      return { asset: this.database.get('splats', assetPath)!, warnings: [] };
-    });
+  /** 导入一个拖进来的文件（见 importer.ts 的 Importer.importFile）。 */
+  importFile(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
+    return this.#importer.importFile(folder, fileName, bytes);
   }
 
-  /**
-   * 原样放进 folder 的文本资源（配光曲线 .ies、调色的查找表 .cube）：先用 validate 解析一遍，格式不对时什么也不写。
-   */
-  async #importAsIs(kind: 'lightProfile' | 'lut', validate: (text: string) => unknown, folder: string, base: string, bytes: Uint8Array): Promise<ImportResult> {
-    try {
-      validate(new TextDecoder().decode(bytes));
-    } catch (error) {
-      throw new HttpError(400, (error as Error).message);
-    }
-    return this.#enqueue(async () => {
-      let assetPath = '';
-      for (let n = 1; ; n++) {
-        assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
-        if (!this.database.get(kind, assetPath)) break;
-      }
-      const file = path.join(this.project.contentDir, assetFileName(kind, assetPath));
-      await writeAtomically(file, bytes);
-      await this.#refresh([this.#relative(file)]);
-      return { asset: this.database.get(kind, assetPath)!, warnings: [] };
-    });
-  }
-
-  /**
-   * 导入一个拖进来的文件（编辑器的资源浏览器）：源文件原样放进 folder，旁边写上它的资源文件——音频（mp3、ogg、wav、flac、aac）
-   * 是声音（.sound.json，不流式、不空间化，属性面板里再改），图片（png、jpg、svg）是单独引用的贴图（.texture.json）；模型
-   * （glb、gltf、fbx、obj）经导入器（pipeline 的 importSourceModel，原生的场景导入）成模型、材质、贴图；字体（ttf、otf、ttc）
-   * 编成运行时字体（pipeline 的 importFontFile，字形轮廓按码位分块）。名字取文件名，重名的加数字。返回新资源和导入时的警告。
-   */
-  async importFile(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
-    if (folder !== '') checkContentPath(folder);
-    if (isSourceModel(fileName)) return this.#importModel(folder, fileName, bytes);
-    if (isFontFile(fileName)) {
-      return this.#importConverted('font', folder, fileName, async (tools, name) => {
-        const { font, files } = await importFontFile(tools, bytes, { fileName, folder, name });
-        return { asset: font, files, warnings: [] };
-      });
-    }
-    const extension = path.extname(fileName).toLowerCase();
-    const base = path.basename(fileName, path.extname(fileName)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
-    if (extension === '.ies') return this.#importAsIs('lightProfile', (text) => parseIes(text, fileName), folder, base, bytes);
-    if (extension === '.cube') return this.#importAsIs('lut', (text) => parseCubeLut(text, base, fileName), folder, base, bytes);
-    if (SPLAT_SOURCE_EXTENSIONS.includes(extension)) return this.#importSplats(folder, base, fileName, bytes);
-    const audio = ({ '.mp3': 'mp3', '.ogg': 'ogg', '.wav': 'wav', '.flac': 'flac', '.aac': 'aac' } as const)[extension as '.mp3'];
-    // 视频（mp4、webm）同图片一样是贴图：材质、精灵的贴图槽直接用它，放起来是视频贴图
-    const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg', '.webp': 'webp', '.mp4': 'mp4', '.webm': 'webm' } as const)[extension as '.png'];
-    if (!audio && !image) {
-      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), videos (mp4, webm), models (glb, gltf, fbx, obj), fonts (ttf, otf, ttc), IES light profiles, color LUTs (cube) and Gaussian splats (ply) can be imported`);
-    }
-    const kind: AssetKind = audio ? 'sound' : 'texture';
-    return this.#enqueue(async () => {
-      let assetPath = '';
-      for (let n = 1; ; n++) {
-        assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
-        if (!this.database.get(kind, assetPath) && !this.database.get(audio ? 'audio' : 'image', assetPath)) break;
-      }
-      const source = path.join(this.project.contentDir, audio ? `${assetPath}.${audio}` : assetPath + TEXTURE_EXTENSIONS[image!]);
-      const main = path.join(this.project.contentDir, assetFileName(kind as 'sound', assetPath));
-      await writeAtomically(source, bytes);
-      await writeAtomically(main, JSON.stringify(audio
-        ? { name: path.basename(assetPath), encoding: audio, streamFromDisk: false, spatialized: false }
-        : { texture: assetPath, encoding: image }, null, 1));
-      // 位图旁边写一份默认的导入设置（不压缩）：属性面板里改了就压成 KTX2
-      // image 的类型是从扩展名表里按 '.png' 取的（只剩 'png'），这里按真正的几种比
-      const bitmap = image as ImageImportFile['source'] | 'svg' | undefined;
-      const settings = bitmap && bitmap !== 'svg' && !isVideoEncoding(bitmap as TextureEncoding) ? path.join(this.project.contentDir, assetFileName('imageImport', assetPath)) : undefined;
-      if (settings) await writeAtomically(settings, JSON.stringify({ source: bitmap as ImageImportFile['source'], ...DEFAULT_IMAGE_IMPORT } satisfies ImageImportFile, null, 1));
-      await this.#refresh([this.#relative(source), this.#relative(main), ...(settings ? [this.#relative(settings)] : [])]);
-      return { asset: this.database.get(kind, assetPath)!, warnings: [] };
-    });
-  }
-
-  /**
-   * 导入一套扫描的材质（materialSet.ts）：各张贴图放进 `<folder>/<name>/`（`<name>_<用途>.<扩展名>`，旁边有同名的贴图资源，节点图用），导入设置是压成 UASTC 的
-   * KTX2、带 mipmap、长边最多 maxSize（颜色贴图按 sRGB，其余线性），当场压好；金属度贴图取平均当金属度；再写
-   * `<folder>/<name>.material.json`。高度、不透明度贴图还没有槽，跳过并警告。名字和已有的材质重复时加数字。
-   */
-  importMaterialSet(folder: string, files: readonly { readonly name: string; readonly bytes: Uint8Array }[], options: { readonly name?: string | undefined; readonly tileSize?: number | undefined; readonly maxSize?: number | undefined; readonly credit?: MaterialCredit | undefined } = {}): Promise<ImportResult> {
-    if (folder !== '') checkContentPath(folder);
-    const set = materialSet(files.map((file) => file.name));
-    if (!set) throw new HttpError(400, `not a material set: need a color map and at least one more map with the same prefix (got ${files.map((file) => file.name).join(', ')})`);
-    return this.#enqueue(async () => {
-      const base = (options.name ?? set.name).replace(/[^A-Za-z0-9_-]+/g, '') || 'Scanned';
-      let name = base;
-      for (let n = 2; this.database.get('material', folder ? `${folder}/${name}` : name); n++) name = `${base}${n}`;
-      const dir = folder ? `${folder}/${name}` : name;
-      const warnings: string[] = [];
-      const textures: Partial<Record<MaterialMapRole, string>> = {};
-      const written: string[] = [];
-      let metalness: number | undefined;
-      for (const map of set.maps) {
-        const file = files.find((candidate) => candidate.name === map.fileName)!;
-        if (map.role === 'height' || map.role === 'opacity') {
-          warnings.push(`${map.fileName}: ${map.role} maps have no material slot yet, skipped`);
-          continue;
-        }
-        const extension = path.extname(map.fileName).toLowerCase();
-        const source = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.webp': 'webp' } as const)[extension as '.png'];
-        if (map.role === 'metalness') {
-          const tools = await (this.#tools ??= createStrideTools());
-          const image = await tools.decodeImage(file.bytes);
-          let sum = 0;
-          for (let i = 0; i < image.pixels.length; i += 4) sum += image.pixels[i]!;
-          metalness = Math.round((sum / (image.pixels.length / 4) / 255) * 100) / 100;
-          if (metalness > 0.1 && metalness < 0.9) warnings.push(`${map.fileName}: the metalness map is not uniform (average ${metalness}); a single metalness value is used`);
-          continue;
-        }
-        const assetPath = `${dir}/${name}_${map.role}`;
-        await writeAtomically(path.join(this.project.contentDir, assetPath + TEXTURE_EXTENSIONS[source]), file.bytes);
-        const settings: ImageImportFile = { source, compress: 'uastc', mipmaps: true, maxSize: options.maxSize ?? 2048, srgb: SRGB_ROLES.has(map.role) };
-        const settingsFile = assetFileName('imageImport', assetPath);
-        await writeAtomically(path.join(this.project.contentDir, settingsFile), JSON.stringify(settings, null, 1));
-        const baked = await this.#bake('imageImport', assetPath, settings);
-        // 同名的贴图资源：材质节点图的贴图、三平面投影节点引用的是它（材质的固定槽直接引用图片）
-        const textureFile = assetFileName('texture', assetPath);
-        await writeAtomically(path.join(this.project.contentDir, textureFile), JSON.stringify({ texture: assetPath, srgb: settings.srgb }, null, 1));
-        written.push(this.#relative(path.join(this.project.contentDir, assetPath + TEXTURE_EXTENSIONS[source])), settingsFile, textureFile, ...baked.files);
-        textures[map.role] = assetPath;
-      }
-      const material = scannedMaterial(name, textures, { ...(options.tileSize !== undefined ? { tileSize: options.tileSize } : {}), ...(metalness !== undefined ? { metalness } : {}), ...(options.credit ? { credit: options.credit } : {}) });
-      const main = assetFileName('material', folder ? `${folder}/${name}` : name);
-      await writeAtomically(path.join(this.project.contentDir, main), JSON.stringify(material, null, 1));
-      await this.#refresh([...written, main]);
-      return { asset: this.database.get('material', folder ? `${folder}/${name}` : name)!, warnings };
-    });
-  }
-
-  /**
-   * 导入源模型：源文件放进 folder（`<名字>.<格式>`），旁边写一份默认的导入设置（`<名字>.import.json`），照设置导入成同名的
-   * 模型（连材质、贴图、骨架、动画；#bake）。名字不和已有的模型、导入设置重复。导入不了时什么也不留。
-   */
-  #importModel(folder: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
-    return this.#enqueue(async () => {
-      const source = path.extname(fileName).slice(1).toLowerCase() as ModelSourceFormat;
-      const base = fileName.slice(0, fileName.length - path.extname(fileName).length).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
-      let assetPath = '';
-      for (let n = 1; ; n++) {
-        assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
-        if (!this.database.get('model', assetPath) && !this.database.get('modelImport', assetPath)) break;
-      }
-      const settings: ModelImportFile = { source, ...DEFAULT_MODEL_IMPORT };
-      const sourceFile = `${assetPath}.${source}`;
-      await writeAtomically(path.join(this.project.contentDir, sourceFile), bytes);
-      let baked: Baked;
-      try {
-        baked = await this.#bake('modelImport', assetPath, settings);
-      } catch (error) {
-        await rm(path.join(this.project.contentDir, sourceFile), { force: true });
-        throw new HttpError(400, (error as Error).message);
-      }
-      const main = assetFileName('modelImport', assetPath);
-      await writeAtomically(path.join(this.project.contentDir, main), JSON.stringify(settings, null, 1));
-      await this.#refresh([sourceFile, main, ...baked.files]);
-      const animations = baked.animations ?? [];
-      return { asset: this.database.get('model', assetPath)!, warnings: [...baked.warnings], ...(animations.length > 0 ? { animations } : {}) };
-    });
-  }
-
-  /**
-   * 要转换的文件（字体）：convert 用原生的导入工具在内存里做好资源的全部文件，名字不和已有的同类资源重复，一起写进内容目录。
-   */
-  async #importConverted(
-    kind: AssetKind,
-    folder: string,
-    fileName: string,
-    convert: (tools: StrideTools, name: string) => Promise<{
-      readonly asset: string; readonly files: readonly { readonly path: string; readonly content: Uint8Array | string }[]; readonly warnings: readonly string[];
-      readonly animations?: ImportResult['animations'];
-    }>,
-  ): Promise<ImportResult> {
-    const tools = await (this.#tools ??= createStrideTools());
-    return this.#enqueue(async () => {
-      const base = fileName.slice(0, fileName.length - path.extname(fileName).length).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
-      let name = base;
-      for (let n = 2; this.database.get(kind, folder ? `${folder}/${name}` : name); n++) name = `${base}${n}`;
-      let converted;
-      try {
-        converted = await convert(tools, name);
-      } catch (error) {
-        throw new HttpError(400, (error as Error).message);
-      }
-      for (const file of converted.files) await writeAtomically(path.join(this.project.contentDir, file.path), file.content);
-      await this.#refresh(converted.files.map((file) => file.path));
-      const animations = converted.animations ?? [];
-      return { asset: this.database.get(kind, converted.asset)!, warnings: [...converted.warnings], ...(animations.length > 0 ? { animations } : {}) };
-    });
+  /** 导入一套扫描的材质（见 Importer.importMaterialSet）。 */
+  importMaterialSet(folder: string, files: readonly { readonly name: string; readonly bytes: Uint8Array }[], options: MaterialSetOptions = {}): Promise<ImportResult> {
+    return this.#importer.importMaterialSet(folder, files, options);
   }
 
   /** 关掉后端时调：放掉原生的导入工具（导入过模型、字体时才有）。 */

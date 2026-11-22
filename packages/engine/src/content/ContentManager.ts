@@ -47,6 +47,8 @@ import { checkTerrainFile } from './terrainFormat';
 import { TerrainAsset, terrainPaths } from '../terrain/Terrain';
 import { ScatterAsset } from '../terrain/Scatter';
 import { checkScatterFile } from './scatterFormat';
+import { CityAsset } from '../city/City';
+import { checkCity, type CityFile } from './cityFormat';
 import { checkSpline } from '../modeling/spline';
 import type { SplineFile } from './splineFormat';
 
@@ -514,6 +516,15 @@ export class ContentManager {
         Promise.all(file.layers.map((layer) => (layer.material ? this.loadMaterial(layer.material) : undefined))),
       ]);
       return new ScatterAsset(path, file, models, materials);
+    });
+  }
+
+  /** 城市（.city.json）、它沿着的路和摆的楼的模型；楼由 CitySystem 沿街摆（city/City.ts）。 */
+  loadCity(path: string): Promise<CityAsset> {
+    return this.#once(path + EXTENSIONS.city, async (url) => {
+      const file = checkCity(this.#json<CityFile>(await this.#read(url)), url.href);
+      const [roads, models] = await Promise.all([Promise.all(file.roads.map((road) => this.loadSpline(road))), Promise.all(file.buildings.map((rule) => this.loadModel(rule.model)))]);
+      return new CityAsset(path, file, roads, models);
     });
   }
 

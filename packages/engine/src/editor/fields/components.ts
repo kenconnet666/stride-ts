@@ -212,6 +212,13 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
     })),
     initial: { scatter: '' },
   },
+  city: {
+    label: 'City',
+    type: object(fields<NonNullable<Components['city']>>({
+      city: { type: asset('city'), description: 'city rules (.city.json): buildings placed along its roads, as children of this entity' },
+    })),
+    initial: { city: '' },
+  },
   cameraRig: {
     label: 'Camera rig',
     type: object(fields<NonNullable<Components['cameraRig']>>({

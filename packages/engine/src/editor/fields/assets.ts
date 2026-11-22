@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { BuildingFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/format';
+import type { BuildingFile, CityFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile } from '../../content/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -399,6 +399,23 @@ export const BUILDING_FIELDS = fields<BuildingFile>({
   modules: { type: { kind: 'json' }, optional: true, description: "facade modules by name, one floor high: { kind: 'wall' | 'window' (sill, head, margin, depth, frame, mullions, balcony) | 'pillar' (depth) | 'curtain' (frame), width, slots: { wall, glass, frame } (other material slots) }" },
 });
 
+/** 城市（CityFile）：改了马上存，挂着它的实体整个城重摆。 */
+export const CITY_FIELDS = fields<CityFile>({
+  name: string,
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed: another number picks other buildings along the same roads' },
+  roads: { type: list(asset('spline')), description: 'roads the buildings line (both sides of every path of each spline)' },
+  buildings: {
+    type: list(object(fields<CityFile['buildings'][number]>({
+      model: { type: asset('model'), description: 'the building (usually the model generated from a .building.json); its +Z side faces the road' },
+      weight: { type: number({ min: 0.01, step: 0.5 }), optional: true, default: 1, description: 'how often it is picked compared to the others' },
+    }))),
+    description: 'buildings picked at random by weight along the roads',
+  },
+  setback: { type: number({ min: 0, step: 0.5, unit: 'm' }), optional: true, default: 3, description: 'distance from the road edge to the building front (sidewalk)' },
+  gap: { type: number({ min: 0, step: 0.5, unit: 'm' }), optional: true, default: 2, description: 'space between neighboring buildings' },
+  area: { type: { kind: 'json' }, optional: true, description: 'only build inside this polygon [[x, z], …]; unset builds along the whole network' },
+});
+
 /** 程序化摆放（ScatterFile）：改了马上存，挂着它的地形重撒。 */
 export const SCATTER_FIELDS = fields<ScatterFile>({
   name: string,
@@ -564,5 +581,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

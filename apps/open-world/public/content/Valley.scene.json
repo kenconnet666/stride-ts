@@ -1455,6 +1455,32 @@
    }
   },
   {
+   "id": "533aefb3-e6b2-4d05-99a1-9cf44a04d77d",
+   "name": "EastTown",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "city": {
+     "city": "Cities/EastTown"
+    }
+   }
+  },
+  {
    "id": "1ab99899-2344-4460-a9ac-09849587898e",
    "name": "Wind",
    "parent": null,

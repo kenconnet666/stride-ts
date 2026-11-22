@@ -59,6 +59,8 @@ export const EXTENSIONS = {
   tree: '.tree.json',
   /** 程序化建筑（BuildingFile，content/buildingFormat.ts）：体块、立面规则和构件（形状文法），编辑器后端把它生成同名的模型（.model）。 */
   building: '.building.json',
+  /** 城市（CityFile，content/cityFormat.ts）：沿着路网摆楼的规则和种子，楼运行时由 CitySystem 摆（city/City.ts）。 */
+  city: '.city.json',
   /** 程序化摆放（ScatterFile，content/scatterFormat.ts）：在地形上撒模型的规则和种子，实例运行时按相机附近的格子撒。 */
   scatter: '.scatter.json',
 } as const;

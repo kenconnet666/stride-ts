@@ -1,0 +1,63 @@
+{
+ "name": "Townhouse",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Glass",
+  "Materials/Steel",
+  "Materials/Street"
+ ],
+ "masses": [
+  {
+   "footprint": {
+    "rect": [
+     7,
+     11
+    ]
+   },
+   "floors": 4,
+   "floorHeight": 3,
+   "facade": "Front",
+   "roof": {
+    "kind": "pyramid",
+    "height": 2.5
+   }
+  }
+ ],
+ "facades": {
+  "Front": {
+   "floors": [
+    {
+     "where": "ground",
+     "pattern": "Wall Door Window Wall",
+     "ledge": {
+      "height": 0.25,
+      "depth": 0.12
+     }
+    },
+    {
+     "pattern": "Wall Window* Wall"
+    }
+   ]
+  }
+ },
+ "modules": {
+  "Wall": {
+   "kind": "wall",
+   "width": 0.6
+  },
+  "Door": {
+   "kind": "window",
+   "width": 1.6,
+   "sill": 0,
+   "head": 0.6,
+   "margin": 0.3
+  },
+  "Window": {
+   "kind": "window",
+   "width": 1.7,
+   "sill": 0.9,
+   "head": 0.5,
+   "mullions": 1
+  }
+ }
+}

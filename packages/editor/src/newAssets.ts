@@ -2,7 +2,7 @@
  * 编辑器"新建"出来的资源的初始内容（前端的资源浏览器用；只有数据，没有 Node 的依赖）。都是最小的合法文件，建出来以后在
  * 编辑器里接着改：场景是空的、材质是浅灰的、基本形状是 JSON 写的模型（content/modelFile.ts）、UI 页面是一块全屏的 Canvas。
  */
-import { PROCEDURAL_SHAPES, type BuildingFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type TextModelFile, type TimelineFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
+import { PROCEDURAL_SHAPES, type BuildingFile, type CityFile, type BrushFile, type SdfFile, type PolyMeshFile, type MaterialFile, type ProceduralModelFile, type SceneFile, type SoundFile, type SpriteSheetFile, type TextModelFile, type TimelineFile, type UIFile, type WorldFile, type SplineFile, type TerrainFile, type ScatterFile, type TreeFile } from '@stride-ts/engine/content-format';
 import { SOUND_PRESETS, seededRandom } from '@stride-ts/engine/audio-synth';
 import { polyCube } from '@stride-ts/engine/modeling';
 import type { AssetKind } from './protocol.ts';
@@ -11,7 +11,7 @@ export type ProceduralShapeType = (typeof PROCEDURAL_SHAPES)[number];
 
 /** "新建"菜单里的一项：建出的资源的种类、默认的名字、内容（菜单里的文字在界面的翻译表里，按 id 和 shape 取）。 */
 export interface NewAssetOption {
-  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'spline' | `model:${ProceduralShapeType}`;
+  readonly id: 'scene' | 'world' | 'terrain' | 'scatter' | 'tree' | 'building' | 'city' | 'material' | 'ui' | 'timeline' | 'brush' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'spline' | `model:${ProceduralShapeType}`;
   readonly kind: AssetKind;
   /** 基本形状的模型是哪种形状。 */
   readonly shape?: ProceduralShapeType;
@@ -63,6 +63,11 @@ export const NEW_ASSET_OPTIONS: readonly NewAssetOption[] = [
       },
     }),
   },
+  // 城市：先沿工程里的第一条样条摆、楼用工程里的第一个模型（属性面板里再换、加），场景里给一个实体加 City 组件引用它
+  { id: 'city', kind: 'city', name: 'NewCity', content: (name, existing): CityFile => ({
+    name, seed: 1, roads: [existing.find((asset) => asset.kind === 'spline')?.path ?? ''].filter(Boolean),
+    buildings: [{ model: existing.find((asset) => asset.kind === 'building')?.path ?? existing.find((asset) => asset.kind === 'model')?.path ?? '' }],
+  }) },
   // 程序化摆放：还没有层；在属性面板里加层（模型、密度、坡度……），地形实体加 Scatter 组件引用它
   { id: 'scatter', kind: 'scatter', name: 'NewScatter', content: (name): ScatterFile => ({ name, seed: 1, layers: [] }) },
   // 精灵表：空的，在精灵表面板里选一张贴图开始切

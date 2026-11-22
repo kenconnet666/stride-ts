@@ -27,6 +27,7 @@ import { system } from '../engine/system';
 import { Transform } from '../engine/transform';
 import { Terrain, TerrainAsset, type TerrainPath } from './Terrain';
 import { changedRegions } from './TerrainSystem';
+import type { GroundBox } from '../city/City';
 import { hash32 } from '../data/hash';
 
 export type ScatterAssetId = Branded<number, 'ScatterAssetId'>;
@@ -174,6 +175,9 @@ interface ScatterState {
   /** 上次选格子时的观察点（地形本地的 x、z），那时要的格子是不是都撒好了：没挪多少、都撒好了就不再选。 */
   eye: readonly [number, number] | undefined;
   complete: boolean;
+  /** 避开的楼（城市，地形本地的矩形）和它们是城市系统的哪个版本。 */
+  obstacles: GroundBox[];
+  cityVersion: number;
 }
 
 /** 观察点挪不到这么多米、格子都撒好了时不重选格子。 */
@@ -231,7 +235,7 @@ export class ScatterSystem {
         this.#states.set(id, state);
       }
       if (!state) {
-        state = { entity, asset, terrain, cells: new Map(), eye: undefined, complete: false };
+        state = { entity, asset, terrain, cells: new Map(), eye: undefined, complete: false, obstacles: [], cityVersion: -1 };
         this.#states.set(id, state);
       }
       this.#updateState(state, eyeWorld, deadline);
@@ -250,6 +254,7 @@ export class ScatterSystem {
     const world = state.entity.require(Transform).world;
     if (!Matrix.invert(this.#inverse, world)) return;
     const m = this.#inverse;
+    this.#avoidCity(state, m);
     const ex = m[0]! * eyeWorld[0]! + m[4]! * eyeWorld[1]! + m[8]! * eyeWorld[2]! + m[12]!;
     const ez = m[2]! * eyeWorld[0]! + m[6]! * eyeWorld[1]! + m[10]! * eyeWorld[2]! + m[14]!;
     if (state.complete && state.eye && Math.hypot(ex - state.eye[0], ez - state.eye[1]) < RESELECT_DISTANCE) return;
@@ -311,7 +316,7 @@ export class ScatterSystem {
       const n = new Vector3(-(hx - h), NORMAL_STEP, -(hz - h)).normalize();
       return { height: h, normal: [n.x, n.y, n.z] };
     };
-    const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size), keepOf(layer, tier));
+    const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size, state.obstacles), keepOf(layer, tier));
     const cell = game.entities.create({ name: `${state.entity.name}/scatter ${layer.name} ${id}`, components: [Transform] });
     cell.require(Transform).parent = state.entity;
     const model = this.#modelOf(state.asset, layerIndex, tier);
@@ -347,7 +352,7 @@ export class ScatterSystem {
         if (replaces) dropCell(replaces);
         if (!cellEntity.alive) return;
         const ground = gridGround(heights, ox, oz, GRASS_SPACING, count, half);
-        const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size), keepOf(layer, tier));
+        const instances = scatterCell(layer, layerIndex, state.asset.file.seed ?? 1, x0, z0, size, ground, blockedBy(terrain, layer.avoidPaths ?? 3, x0, z0, size, state.obstacles), keepOf(layer, tier));
         if (instances.length === 0) return;
         cell.mesh = new Mesh(`${state.asset.path} ${layer.name} ${id}`, grassBlades(layer, instances));
         const material = state.asset.materials[layerIndex] ?? game.content.defaultMaterial;
@@ -392,7 +397,7 @@ export class ScatterSystem {
       kept++;
     }
     this.carried = { kept, stale, dropped: state.cells.size - kept };
-    return { entity: state.entity, asset, terrain, cells, eye: undefined, complete: false };
+    return { entity: state.entity, asset, terrain, cells, eye: undefined, complete: false, obstacles: state.obstacles, cityVersion: state.cityVersion };
   }
 
   /**
@@ -411,6 +416,33 @@ export class ScatterSystem {
       for (const state of this.#states.values()) state.complete = false;
     }, (error: unknown) => console.error(`[stride] scatter: cannot bake the impostor of ${asset.path} layer ${asset.file.layers[layerIndex]!.name}:`, error));
     return undefined;
+  }
+
+  /**
+   * 城里的楼变了（城市系统的版本变了）：楼的占地换到地形本地，变了的范围里的格子标成要重撒（同地形改了笔画）；落后太多时
+   * 全部重撒。inverse 是地形实体世界矩阵的逆（地形只能绕 Y 转、平移）。
+   */
+  #avoidCity(state: ScatterState, inverse: Float64Array): void {
+    const city = this.#game.city;
+    if (state.cityVersion === city.version) return;
+    const m = inverse;
+    const toLocal = (x: number, z: number): [number, number] => [m[0]! * x + m[8]! * z + m[12]!, m[2]! * x + m[10]! * z + m[14]!];
+    const turn = ([x, z]: readonly [number, number]): [number, number] => [m[0]! * x + m[8]! * z, m[2]! * x + m[10]! * z];
+    state.obstacles = city.obstacles.map((box) => ({ center: toLocal(...box.center), axes: [turn(box.axes[0]), turn(box.axes[1])], half: box.half }));
+    const changes = state.cityVersion < 0 ? [] : city.changesSince(state.cityVersion);
+    state.cityVersion = city.version;
+    state.complete = false;
+    for (const [key, cell] of state.cells) {
+      const layerIndex = Number(key.slice(0, key.indexOf(':')));
+      const layer = state.asset.file.layers[layerIndex]!, size = layer.cellSize ?? state.asset.file.cellSize ?? 64, margin = layer.avoidPaths ?? 3;
+      const [cx, cz] = key.slice(key.indexOf(':') + 1).split('_').map(Number) as [number, number];
+      const x0 = cx * size - margin, z0 = cz * size - margin, x1 = (cx + 1) * size + margin, z1 = (cz + 1) * size + margin;
+      const hit = changes === undefined || changes.some(([wx0, wz0, wx1, wz1]) => {
+        const corners = [toLocal(wx0, wz0), toLocal(wx1, wz0), toLocal(wx1, wz1), toLocal(wx0, wz1)];
+        return Math.min(...corners.map((c) => c[0])) < x1 && Math.max(...corners.map((c) => c[0])) > x0 && Math.min(...corners.map((c) => c[1])) < z1 && Math.max(...corners.map((c) => c[1])) > z0;
+      });
+      if (hit) cell.stale = true;
+    }
   }
 
   /** 上一次换版本时留下、要重撒、拿掉的格子数（调试命令 scatter 报，看雕刻时重撒了多少）。 */
@@ -491,10 +523,10 @@ export function grassBlades(layer: ScatterLayerFile, instances: readonly Scatter
 }
 
 /**
- * 格子里哪些点不撒：离地形贴着的样条（路、铁路）的路面边 margin 米以内，或者在压平的地物（多边形）里。只看盖到这个格子的
- * 路径线段和地物。
+ * 格子里哪些点不撒：离地形贴着的样条（路、铁路）的路面边 margin 米以内，在压平的地物（多边形）里，或者离城里的楼（obstacles，
+ * 地形本地的矩形）margin 米以内。只看盖到这个格子的路径线段、地物和楼。
  */
-function blockedBy(terrain: TerrainAsset, margin: number, x0: number, z0: number, size: number): (x: number, z: number) => boolean {
+function blockedBy(terrain: TerrainAsset, margin: number, x0: number, z0: number, size: number, obstacles: readonly GroundBox[]): (x: number, z: number) => boolean {
   const segments: { ax: number; az: number; bx: number; bz: number; reach: number }[] = [];
   for (const path of terrain.paths as readonly TerrainPath[]) {
     const reach = path.width / 2 + margin;
@@ -508,7 +540,16 @@ function blockedBy(terrain: TerrainAsset, margin: number, x0: number, z0: number
     const xs = points.map((p) => p[0]), zs = points.map((p) => p[1]);
     return Math.max(...xs) >= x0 && Math.min(...xs) <= x0 + size && Math.max(...zs) >= z0 && Math.min(...zs) <= z0 + size;
   });
+  // 城里的楼：离格子近的那些，矩形各边往外放宽 margin
+  const boxes = obstacles.filter((box) => {
+    const reach = box.half[0] + box.half[1] + margin;
+    return box.center[0] + reach >= x0 && box.center[0] - reach <= x0 + size && box.center[1] + reach >= z0 && box.center[1] - reach <= z0 + size;
+  });
   return (x, z) => {
+    for (const box of boxes) {
+      const dx = x - box.center[0], dz = z - box.center[1];
+      if (Math.abs(dx * box.axes[0][0] + dz * box.axes[0][1]) < box.half[0] + margin && Math.abs(dx * box.axes[1][0] + dz * box.axes[1][1]) < box.half[1] + margin) return true;
+    }
     for (const s of segments) {
       const ex = s.bx - s.ax, ez = s.bz - s.az, len = ex * ex + ez * ez;
       const t = len > 0 ? Math.min(1, Math.max(0, ((x - s.ax) * ex + (z - s.az) * ez) / len)) : 0;

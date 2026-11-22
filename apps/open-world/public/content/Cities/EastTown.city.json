@@ -1,0 +1,53 @@
+{
+ "name": "EastTown",
+ "seed": 4,
+ "roads": [
+  "Splines/EastRoad"
+ ],
+ "buildings": [
+  {
+   "model": "Buildings/Townhouse",
+   "weight": 4
+  },
+  {
+   "model": "Buildings/Shophouse",
+   "weight": 3
+  },
+  {
+   "model": "Buildings/Apartment",
+   "weight": 2
+  },
+  {
+   "model": "Buildings/Office",
+   "weight": 1.5
+  },
+  {
+   "model": "Buildings/Rotunda",
+   "weight": 0.3
+  },
+  {
+   "model": "Buildings/Tower",
+   "weight": 0.3
+  }
+ ],
+ "setback": 3,
+ "gap": 2,
+ "area": [
+  [
+   260,
+   -330
+  ],
+  [
+   760,
+   -330
+  ],
+  [
+   760,
+   220
+  ],
+  [
+   260,
+   220
+  ]
+ ]
+}

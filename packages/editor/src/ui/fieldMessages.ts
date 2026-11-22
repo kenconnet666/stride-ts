@@ -19,7 +19,7 @@ export interface FieldMessages {
 
 const zhCN: FieldMessages = {
   labels: {
-    'Child scenes': '子场景', 'Scatter': '程序化摆放', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
+    'Child scenes': '子场景', 'Scatter': '程序化摆放', 'City': '城市', 'Train': '列车', 'TrainDoor': '车门、屏蔽门', 'Model': '模型', 'Camera': '相机', 'Light': '光源', 'Background': '背景', 'Reflection probe': '反射探针', 'Planar reflection': '平面反射', 'Gaussian splats': '高斯泼溅', 'Terrain': '地形', 'Sky atmosphere': '物理天空',
     'Volumetric clouds': '体积云', 'Volumetric fog': '体积雾', 'Day-night cycle': '日夜循环', 'Wind zone': '风区', 'Precipitation': '雨雪',
     'Decal': '贴花', 'Weather': '天气', 'Streaming Source': '流式源', 'Sprite': '精灵', 'Animation': '动画', 'Static collider': '静态碰撞体', 'Body': '刚体', 'Character': '角色',
     'Constraints': '约束', 'Particle system': '粒子系统', 'UI': 'UI', 'Instancing': '实例化', 'Instance': '实例', 'Model node link': '跟随模型节点',
@@ -64,7 +64,7 @@ const zhCN: FieldMessages = {
     postEffects: '后处理', precipitation: '降水', premultipliedAlpha: '预乘 alpha', procedural: '形状', projection: '投影', pssmFactor: '级联分割系数',
     pulseFrequency: '脉动频率', pulseMagnitude: '脉动幅度', radius: '半径', radiusScale: '半径倍数', range: '范围', rayleighScattering: '瑞利散射', refractiveIndex: '折射率',
     refresh: '刷新', renderGroup: '渲染组', renderMask: '渲染掩码', resolution: '分辨率', resolutionStretch: '分辨率适配', rotation: '旋转', roughness: '粗糙度',
-    sampler: '采样器', scale: '缩放', settings: '设置', shadow: '阴影', shadows: '阴影', shapes: '形状', sheen: '光泽', wind: '风', lods: '细节层次', keep: '留下', impostor: '远处卡片', masses: '体块', footprint: '底面', inset: '往里缩', floors: '层数', floorHeight: '层高', facade: '立面规则', roof: '屋顶', facades: '立面规则', modules: '构件', grass: '草', lean: '歪', bend: '弯', flutter: '叶子抖', sheet: '图集', size: '大小',
+    sampler: '采样器', scale: '缩放', settings: '设置', shadow: '阴影', shadows: '阴影', shapes: '形状', sheen: '光泽', wind: '风', lods: '细节层次', keep: '留下', impostor: '远处卡片', masses: '体块', roads: '路', buildings: '楼', setback: '离路边', gap: '空隙', area: '范围', weight: '权重', city: '城市', footprint: '底面', inset: '往里缩', floors: '层数', floorHeight: '层高', facade: '立面规则', roof: '屋顶', facades: '立面规则', modules: '构件', grass: '草', lean: '歪', bend: '弯', flutter: '叶子抖', sheet: '图集', size: '大小',
     skyIntensity: '天空亮度', skybox: '天空盒', sleepThreshold: '睡眠阈值', slopeAngle: '能站的坡度', slot: '槽', snapText: '文字对齐像素', specular: '镜面',
     specularEnergyConservative: '镜面能量守恒', specularShading: '镜面着色', speed: '速度', srgb: 'sRGB', stabilization: '稳定', starsIntensity: '星星亮度',
     strength: '强度', subsurfaceScattering: '次表面散射', sun: '太阳', target: '目标', temperature: '温度', tessellation: '细分', texture: '贴图',
@@ -138,6 +138,15 @@ const zhCN: FieldMessages = {
     'outline: points [[x, z], …], { rect: [width, depth], center } or { circle: radius, segments, center }; unset is the mass below moved in by inset': '底面：点 [[x, z], …]、{ rect: [宽, 深], center } 或 { circle: 半径, segments, center }；不设是下面那段往里缩 inset',
     'moves every edge of the outline inward (setbacks)': '底面的每条边往里挪这么多（退台）',
     'floors in this mass': '这一段有几层',
+    'random seed: another number picks other buildings along the same roads': '随机种子：换一个数，同样的路边摆别的楼',
+    'roads the buildings line (both sides of every path of each spline)': '沿着哪些路摆楼（每条样条的每条路径两边）',
+    "the building (usually the model generated from a .building.json); its +Z side faces the road": '楼（一般是 .building.json 生成的模型）；本地的 +Z 那面朝着路',
+    'how often it is picked compared to the others': '和别的楼比，挑中它的机会',
+    'buildings picked at random by weight along the roads': '沿路按权重随机挑的楼',
+    'distance from the road edge to the building front (sidewalk)': '路边到楼正面的距离（人行道）',
+    'space between neighboring buildings': '相邻两栋楼之间的空隙',
+    'only build inside this polygon [[x, z], …]; unset builds along the whole network': '只在这个多边形 [[x, z], …] 里摆；不设是沿着整个路网',
+    'city rules (.city.json): buildings placed along its roads, as children of this entity': '城市的规则（.city.json）：沿着它的路摆楼，楼是这个实体的子实体',
     'height of one floor': '一层多高',
     'name of the facade rule; unset is plain wall': '立面规则的名字；不设是整面的墙',
     "{ kind: 'flat', parapet }, { kind: 'dome', height, rings } or { kind: 'pyramid', height }; material is a slot (default 3); default flat": "{ kind: 'flat', parapet }（平顶、女儿墙）、{ kind: 'dome', height, rings }（穹顶）或 { kind: 'pyramid', height }（尖顶）；material 是材质槽（默认 3）；默认平顶",

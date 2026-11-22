@@ -1,0 +1,83 @@
+{
+ "name": "Office",
+ "materials": [
+  "Materials/Facade",
+  "Materials/Glass",
+  "Materials/Steel",
+  "Materials/Street"
+ ],
+ "masses": [
+  {
+   "footprint": {
+    "rect": [
+     20,
+     16
+    ]
+   },
+   "floors": 1,
+   "floorHeight": 4.5,
+   "facade": "Lobby",
+   "roof": {
+    "kind": "flat"
+   }
+  },
+  {
+   "floors": 7,
+   "floorHeight": 3.6,
+   "footprint": {
+    "rect": [
+     20,
+     16
+    ]
+   },
+   "facade": "Glass",
+   "roof": {
+    "kind": "flat",
+    "parapet": 1.2
+   }
+  }
+ ],
+ "facades": {
+  "Lobby": {
+   "floors": [
+    {
+     "pattern": "Pillar [Shop]* Pillar"
+    }
+   ]
+  },
+  "Glass": {
+   "floors": [
+    {
+     "pattern": "Fin [Pane Pane Fin]*"
+    }
+   ]
+  }
+ },
+ "modules": {
+  "Pillar": {
+   "kind": "pillar",
+   "width": 1,
+   "depth": 0.3
+  },
+  "Shop": {
+   "kind": "window",
+   "width": 4,
+   "sill": 0.1,
+   "head": 0.9,
+   "margin": 0.2,
+   "mullions": 2
+  },
+  "Fin": {
+   "kind": "pillar",
+   "width": 0.3,
+   "depth": 0.45,
+   "slots": {
+    "wall": 2
+   }
+  },
+  "Pane": {
+   "kind": "curtain",
+   "width": 1.5
+  }
+ }
+}

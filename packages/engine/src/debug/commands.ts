@@ -379,6 +379,9 @@ export function registerGameCommands(debug: Debug, game: Game): void {
       length: Math.round(roads.reduce((sum, lane) => sum + lane.length, 0)), deadEnds: roads.filter((lane) => lane.next.length === 0).length,
     };
   });
+  debug.command('city', 'Cities (game.city, City components): per city, how many buildings stand and how many of each model, and how many cities and buildings were placed since the start.', () => ({
+    cities: game.city.stats(), built: game.city.built,
+  }));
   debug.command('scatter', 'Procedural placement (game.scatter, Scatter components on terrains): per terrain, how many cells are scattered around the camera and how many instances they hold, how many cells and instances were built since the start, and at the last new version of a scatter file or terrain how many cells were kept, marked for re-scattering or dropped; impostorsBaking: how many far-tree cards (lods with impostor) are still being baked.', () => ({
     terrains: game.scatter.stats(), built: game.scatter.built, lastChange: game.scatter.carried, impostorsBaking: game.renderSystem.impostors.pending,
   }));

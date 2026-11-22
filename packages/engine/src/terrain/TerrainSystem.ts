@@ -99,6 +99,12 @@ export class TerrainSystem {
     this.#game = game;
   }
 
+  /** 场景里的地形都加载好了（按地面高度摆东西的——城市——等它）：update 看到的 Terrain 实体都有了状态。 */
+  get settled(): boolean {
+    for (const id of this.#seen) if (!this.#states.has(id)) return false;
+    return true;
+  }
+
   /** 每帧（变换更新以后、画之前）：选块、发起要算的页、换上好了的块。 */
   update(): void {
     const game = this.#game;

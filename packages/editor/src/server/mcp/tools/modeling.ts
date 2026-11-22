@@ -46,6 +46,10 @@ export function registerModelingTools(server: McpServer, projects: McpProjects):
       'merge {vertices} collapses them to their center; split {edge, t} adds a vertex on an edge; connect {face, a, b} splits a face between two of its vertices;',
       'loopCut {edge, t} cuts across the ring of quads on both sides of an edge (a new edge loop, t from 0 to 1 along the crossed edges, default 0.5);',
       'move {delta:[x,y,z], vertices|faces|edges}; delete {faces}; flip {faces}; material {faces, material}.',
+      'UVs (per face corner, faces without stored UVs use the automatic projection by facing): uvProject {faces, uvScale} unfolds the faces as one',
+      'piece along their average normal (uvScale meters per texture repeat, default the mesh uvScale); uvTransform {faces, rotation degrees',
+      'counterclockwise, scale number or [u, v], offset [u, v]} rotates and scales around the center of their UVs, then offsets; uvReset {faces}',
+      'drops the stored UVs. After an operation that changes the vertices of a face, that face is back on the automatic projection.',
       'The result tells what is selected after the operation (the extruded faces, the new vertex, ...) so operations chain.',
     ].join(' '),
     inputSchema: z.object({
@@ -63,6 +67,10 @@ export function registerModelingTools(server: McpServer, projects: McpProjects):
       t: z.number().optional(),
       delta: z.tuple([z.number(), z.number(), z.number()]).optional(),
       material: z.number().int().optional(),
+      uvScale: z.number().positive().optional(),
+      rotation: z.number().optional(),
+      scale: z.union([z.number(), z.tuple([z.number(), z.number()])]).optional(),
+      offset: z.tuple([z.number(), z.number()]).optional(),
     }),
   }, async ({ path, ...operation }) => {
     const mesh = await projects.current.readAsset('poly', path) as PolyMeshFile;

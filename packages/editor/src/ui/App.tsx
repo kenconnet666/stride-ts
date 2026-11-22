@@ -1,4 +1,4 @@
-import { Clapperboard, FolderTree, Images, Library, ListTree, SlidersHorizontal, Sparkles, Workflow } from '@lucide/icons';
+import { Clapperboard, FolderTree, Grid2x2, Images, Library, ListTree, SlidersHorizontal, Sparkles, Workflow } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import { Flex, usePersistentState } from '@zerodep-dev/vue-tsx-pro-ui';
@@ -6,6 +6,7 @@ import { defaultWorkbenchLayout, Workbench, type WorkbenchWindow } from '@zerode
 import { onMounted, onUnmounted } from 'vue';
 import { AssetBrowser } from './panels/AssetBrowser';
 import { GraphPanel } from './editors/GraphPanel';
+import { UvPanel } from './editors/UvPanel';
 import { Inspector } from './panels/Inspector';
 import { t } from './i18n/messages';
 import { LibraryPanel } from './panels/LibraryPanel';
@@ -137,6 +138,11 @@ export const App = _component(({ session }: { session: EditorSession }) => {
       id: 'sprites', title: t.toolWindows.sprites, icon: Images, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,
       available: session.inspected.value?.kind === 'spriteSheet', ...(session.inspected.value ? { detail: session.inspected.value.path } : {}),
       content: () => <SpriteSheetPanel session={session} />,
+    },
+    {
+      id: 'uv', title: t.toolWindows.uv, icon: Grid2x2, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,
+      available: session.tools.polyEditing.value !== undefined, ...(session.tools.polyEditing.value ? { detail: session.tools.polyEditing.value.path } : {}),
+      content: () => <UvPanel session={session} />,
     },
     { id: 'library', title: t.toolWindows.library, icon: Library, anchor: 'rightBottom', scroll: 'self', content: () => <LibraryPanel session={session} /> },
     {

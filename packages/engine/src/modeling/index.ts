@@ -2,6 +2,7 @@
 export * from './polyMesh.ts';
 export * from './polyEdit.ts';
 export * from './polyLoops.ts';
+export * from './polyUv.ts';
 export * from './trianglesToPolygons.ts';
 export * from './textOutline.ts';
 export * from './spline.ts';

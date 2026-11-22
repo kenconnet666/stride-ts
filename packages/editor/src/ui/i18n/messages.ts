@@ -55,7 +55,7 @@ export interface EditorMessages {
   readonly exitFullscreen: string;
   readonly openDocuments: string;
   readonly selectedCount: (n: number) => string;
-  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string; readonly library: string };
+  readonly toolWindows: { readonly scene: string; readonly assets: string; readonly inspector: string; readonly timeline: string; readonly graph: string; readonly particles: string; readonly sprites: string; readonly library: string; readonly uv: string };
   readonly language: string;
   readonly frameGuide: string;
   readonly frameGuideOff: string;
@@ -150,6 +150,17 @@ export interface EditorMessages {
   readonly polyDone: string;
   readonly polyHint: string;
   readonly polySoft: string;
+  readonly uvSelectFaces: string;
+  readonly uvProject: string;
+  readonly uvProjectHint: string;
+  readonly uvRotate: string;
+  readonly uvFlip: string;
+  readonly uvGrow: string;
+  readonly uvShrink: string;
+  readonly uvReset: string;
+  readonly uvResetHint: string;
+  readonly uvHint: (faces: number) => string;
+  readonly uvCanvas: string;
   readonly polySoftHint: string;
   readonly polySoftRadius: string;
   readonly splineEdit: string;
@@ -315,7 +326,7 @@ const zhCN: EditorMessages = {
   exitFullscreen: '退出全屏',
   openDocuments: '打开的文档',
   selectedCount: (n) => `选中 ${n} 个`,
-  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表', library: '库' },
+  toolWindows: { scene: '场景', assets: '资源', inspector: '属性', timeline: '时间轴', graph: '节点图', particles: '粒子', sprites: '精灵表', library: '库', uv: 'UV' },
   language: '界面语言',
   frameGuide: '画幅参考线（视口上框出画幅和安全框，构图用）',
   frameGuideOff: '画幅：关',
@@ -402,6 +413,17 @@ const zhCN: EditorMessages = {
   polyDone: '完成',
   polyHint: '视口里点选点、边、面（1、2、3 换模式，Shift、Ctrl 加选；双击边选边环、双击面选面环），拖操纵器移动（W、E、R 换移动、旋转、缩放）；Delete 删面，Ctrl+Z 撤销',
   polySoft: '软选择',
+  uvSelectFaces: '编辑多边形时在面模式（3）里选面，这里显示和编辑它们的 UV',
+  uvProject: '平面投影',
+  uvProjectHint: '选中的面按平均法线展成一块（不按最大的轴切开）',
+  uvRotate: '顺时针转 90°',
+  uvFlip: '左右翻',
+  uvGrow: '放大',
+  uvShrink: '缩小',
+  uvReset: '回到自动',
+  uvResetHint: '去掉存的 UV，回到按朝向自动投影',
+  uvHint: (faces) => `${faces} 个面；拖着平移，滚轮缩放（一格是贴图的一个周期）`,
+  uvCanvas: '选中的面的 UV',
   polySoftHint: '拖的时候选中的点周围半径内的点按距离平滑衰减地跟着动（黄的动得多、蓝的动得少）',
   polySoftRadius: '半径',
   splineEdit: '编辑样条',
@@ -576,7 +598,7 @@ const enUS: EditorMessages = {
   exitFullscreen: 'Exit full screen',
   openDocuments: 'Open documents',
   selectedCount: (n) => `${n} selected`,
-  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet', library: 'Library' },
+  toolWindows: { scene: 'Scene', assets: 'Assets', inspector: 'Inspector', timeline: 'Timeline', graph: 'Node graph', particles: 'Particles', sprites: 'Sprite sheet', library: 'Library', uv: 'UV' },
   language: 'Interface language',
   frameGuide: 'Frame guide (the frame and safe areas over the viewport, for composing shots)',
   frameGuideOff: 'Frame: off',
@@ -663,6 +685,17 @@ const enUS: EditorMessages = {
   polyDone: 'Done',
   polyHint: 'Click vertices, edges or faces in the viewport (1, 2, 3 switch the mode; Shift or Ctrl adds; double-click an edge for its loop, a face for its face loop), drag the gizmo to move (W, E, R: move, rotate, scale); Delete removes faces, Ctrl+Z undoes',
   polySoft: 'Soft selection',
+  uvSelectFaces: 'Select faces in face mode (3) while editing a poly mesh to see and edit their UVs here',
+  uvProject: 'Planar projection',
+  uvProjectHint: 'Unfold the selected faces as one piece along their average normal (not split by the largest axis)',
+  uvRotate: 'Rotate 90° clockwise',
+  uvFlip: 'Flip horizontally',
+  uvGrow: 'Scale up',
+  uvShrink: 'Scale down',
+  uvReset: 'Back to automatic',
+  uvResetHint: 'Drop the stored UVs and go back to the automatic projection by facing',
+  uvHint: (faces) => `${faces} face${faces === 1 ? '' : 's'}; drag to move, wheel to scale (one square is one texture repeat)`,
+  uvCanvas: 'UVs of the selected faces',
   polySoftHint: 'While dragging, points within the radius of the selection follow with a smooth falloff (yellow moves more, blue less)',
   polySoftRadius: 'Radius',
   splineEdit: 'Edit spline',

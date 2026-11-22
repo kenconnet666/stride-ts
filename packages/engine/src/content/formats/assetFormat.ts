@@ -728,6 +728,11 @@ export interface PolyFaceFile {
   readonly vertices: readonly number[];
   /** 材质槽的下标，没写是 0。 */
   readonly material?: number;
+  /**
+   * 每个角的 UV（和 vertices 一一对应，UV 编辑出来的，modeling/polyUv.ts）；没写、或者个数和顶点对不上（改了面的顶点的操作之后）
+   * 时按朝向自动投影（uvScale）。
+   */
+  readonly uvs?: readonly (readonly [number, number])[];
 }
 
 /**

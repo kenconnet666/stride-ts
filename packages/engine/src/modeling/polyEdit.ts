@@ -8,6 +8,7 @@
 import type { PolyFaceFile, PolyMeshFile, Vec3Tuple } from '../content/formats/assetFormat.ts';
 import { faceCenter, faceNormalRaw } from './polyMesh.ts';
 import { faceLoop } from './polyLoops.ts';
+import { projectFacesUv, resetFacesUv, transformFacesUv } from './polyUv.ts';
 
 export type PolyEdge = readonly [number, number];
 
@@ -344,7 +345,7 @@ export function deleteFaces(mesh: PolyMeshFile, faces: readonly number[]): PolyE
 export function flipFaces(mesh: PolyMeshFile, faces: readonly number[]): PolyEditResult {
   checkFaces(mesh, faces, 'flip');
   const flipped = new Set(faces);
-  return result({ ...mesh, faces: mesh.faces.map((face, f) => (flipped.has(f) ? { ...face, vertices: [...face.vertices].reverse() } : face)) }, { faces });
+  return result({ ...mesh, faces: mesh.faces.map((face, f) => (flipped.has(f) ? { ...face, vertices: [...face.vertices].reverse(), ...(face.uvs ? { uvs: [...face.uvs].reverse() } : {}) } : face)) }, { faces });
 }
 
 /** 给选中的面换材质槽。 */
@@ -365,12 +366,15 @@ export type PolyOperation =
   | { readonly op: 'split'; readonly edge: PolyEdge; readonly t?: number }
   | { readonly op: 'connect'; readonly face: number; readonly a: number; readonly b: number }
   | { readonly op: 'loopCut'; readonly edge: PolyEdge; readonly t?: number }
+  | { readonly op: 'uvProject'; readonly faces: readonly number[]; readonly uvScale?: number }
+  | { readonly op: 'uvTransform'; readonly faces: readonly number[]; readonly offset?: readonly [number, number]; readonly scale?: number | readonly [number, number]; readonly rotation?: number }
+  | { readonly op: 'uvReset'; readonly faces: readonly number[] }
   | { readonly op: 'move'; readonly delta: Vec3Tuple; readonly vertices?: readonly number[]; readonly faces?: readonly number[]; readonly edges?: readonly PolyEdge[] }
   | { readonly op: 'delete'; readonly faces: readonly number[] }
   | { readonly op: 'flip'; readonly faces: readonly number[] }
   | { readonly op: 'material'; readonly faces: readonly number[]; readonly material: number };
 
-export const POLY_OPERATIONS = ['extrude', 'inset', 'bevel', 'merge', 'split', 'connect', 'loopCut', 'move', 'delete', 'flip', 'material'] as const;
+export const POLY_OPERATIONS = ['extrude', 'inset', 'bevel', 'merge', 'split', 'connect', 'loopCut', 'move', 'delete', 'flip', 'material', 'uvProject', 'uvTransform', 'uvReset'] as const;
 
 export function applyPolyOperation(mesh: PolyMeshFile, operation: PolyOperation): PolyEditResult {
   switch (operation.op) {
@@ -381,6 +385,9 @@ export function applyPolyOperation(mesh: PolyMeshFile, operation: PolyOperation)
     case 'split': return splitEdge(mesh, operation.edge, operation.t);
     case 'connect': return connectVertices(mesh, operation.face, operation.a, operation.b);
     case 'loopCut': return loopCut(mesh, operation.edge, operation.t);
+    case 'uvProject': return result(projectFacesUv(mesh, operation.faces, operation.uvScale), { faces: operation.faces });
+    case 'uvTransform': return result(transformFacesUv(mesh, operation.faces, operation), { faces: operation.faces });
+    case 'uvReset': return result(resetFacesUv(mesh, operation.faces), { faces: operation.faces });
     case 'move': {
       const vertices = selectionVertices(mesh, operation);
       const moved = moveVertices(mesh, vertices, operation.delta);

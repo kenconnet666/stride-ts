@@ -43,7 +43,8 @@ export function mirrored(file: Pick<PolyMeshFile, 'vertices' | 'faces' | 'mirror
   });
   const faces = [
     ...file.faces,
-    ...file.faces.map((face) => ({ ...face, vertices: [...face.vertices].reverse().map((i) => (twin[i]! < 0 ? i : twin[i]!)) })),
+    // 镜像的面顶点倒过来排（朝外），每个角的 UV 跟着倒（同 Blender 的镜像修改器：UV 不翻）
+    ...file.faces.map((face) => ({ ...face, vertices: [...face.vertices].reverse().map((i) => (twin[i]! < 0 ? i : twin[i]!)), ...(face.uvs ? { uvs: [...face.uvs].reverse() } : {}) })),
   ];
   return { vertices, faces };
 }
@@ -145,7 +146,9 @@ export function polyMeshSlots(file: PolyMeshFile, where = file.name): PolySlotMe
   faces.forEach((face, f) => {
     const builder = builders[face.material ?? 0]!;
     const n = normals[f]!;
-    const corner = face.vertices.map((i) => {
+    // 面自己的 UV（UV 编辑过的）；个数对不上（改过面的顶点）时按朝向自动投影
+    const own = face.uvs?.length === face.vertices.length ? face.uvs : undefined;
+    const corner = face.vertices.map((i, k) => {
       const normal: [number, number, number] = [0, 0, 0];
       for (const g of smooth ? facesOfVertex[i]! : [f]) {
         const m = normals[g]!;
@@ -155,7 +158,7 @@ export function polyMeshSlots(file: PolyMeshFile, where = file.name): PolySlotMe
       const length = Math.hypot(...normal) || 1;
       for (let k = 0; k < 3; k++) normal[k]! /= length;
       const position = vertices[i]!;
-      const uv = projectUv(position, n, uvScale);
+      const uv = own ? [own[k]![0], own[k]![1]] : projectUv(position, n, uvScale);
       // 位置、法线、UV 都一样的角点合成一个顶点（光滑的面之间、同一个投影方向的面之间）
       const key = `${i}|${normal.map((c) => Math.round(c * 1e4)).join(',')}|${uv.map((c) => Math.round(c * 1e5)).join(',')}`;
       let vertex = builder.weld.get(key);

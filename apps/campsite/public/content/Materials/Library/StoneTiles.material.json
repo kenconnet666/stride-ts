@@ -12,19 +12,11 @@
   "nodes": [
    {
     "id": "uv",
-    "type": "uv",
-    "position": [
-     0,
-     0
-    ]
+    "type": "uv"
    },
    {
     "id": "tiles",
     "type": "bricks",
-    "position": [
-     220,
-     0
-    ],
     "params": {
      "columns": 12,
      "rows": 6,
@@ -40,10 +32,6 @@
    {
     "id": "tone",
     "type": "colorRamp",
-    "position": [
-     440,
-     0
-    ],
     "params": {
      "from": [
       0.36,
@@ -66,10 +54,6 @@
    {
     "id": "grain",
     "type": "noise",
-    "position": [
-     0,
-     160
-    ],
     "params": {
      "scale": 48,
      "octaves": 4
@@ -83,10 +67,6 @@
    {
     "id": "speckle",
     "type": "colorRamp",
-    "position": [
-     220,
-     160
-    ],
     "params": {
      "from": [
       0.85,
@@ -108,10 +88,6 @@
    {
     "id": "surface",
     "type": "multiply",
-    "position": [
-     440,
-     160
-    ],
     "params": {},
     "inputs": {
      "a": {
@@ -125,10 +101,6 @@
    {
     "id": "joint",
     "type": "color",
-    "position": [
-     0,
-     320
-    ],
     "params": {
      "color": [
       0.2,
@@ -140,10 +112,6 @@
    {
     "id": "color",
     "type": "mix",
-    "position": [
-     220,
-     320
-    ],
     "params": {},
     "inputs": {
      "a": {
@@ -161,10 +129,6 @@
    {
     "id": "normal",
     "type": "normalFromHeight",
-    "position": [
-     440,
-     320
-    ],
     "params": {
      "strength": 1.5
     },

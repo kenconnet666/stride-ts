@@ -19,7 +19,7 @@ export interface GraphNodeFile {
   readonly params?: Readonly<Record<string, unknown>>;
   /** 输入接到哪；没接的用端口的默认值。 */
   readonly inputs?: Readonly<Record<string, GraphLink>>;
-  /** 编辑器里的位置（面板坐标，像素）。 */
+  /** 编辑器里的位置（面板坐标，像素）；不写时编辑器按连线自动排（agent 写图不用管位置）。 */
   readonly position?: readonly [number, number];
 }
 

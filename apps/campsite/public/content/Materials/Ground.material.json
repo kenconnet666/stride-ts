@@ -14,10 +14,6 @@
     "id": "uv",
     "type": "uv",
     "params": {},
-    "position": [
-     0,
-     0
-    ],
     "inputs": {}
    },
    {
@@ -28,10 +24,6 @@
      "octaves": 3,
      "seed": 7
     },
-    "position": [
-     220,
-     0
-    ],
     "inputs": {
      "uv": {
       "node": "uv"
@@ -45,10 +37,6 @@
      "scale": 12,
      "octaves": 4
     },
-    "position": [
-     220,
-     160
-    ],
     "inputs": {
      "uv": {
       "node": "uv"
@@ -70,10 +58,6 @@
       0.08
      ]
     },
-    "position": [
-     440,
-     0
-    ],
     "inputs": {
      "t": {
       "node": "patches"
@@ -95,10 +79,6 @@
       1.15
      ]
     },
-    "position": [
-     440,
-     160
-    ],
     "inputs": {
      "t": {
       "node": "blades"
@@ -109,10 +89,6 @@
     "id": "color",
     "type": "multiply",
     "params": {},
-    "position": [
-     660,
-     0
-    ],
     "inputs": {
      "a": {
       "node": "tone"

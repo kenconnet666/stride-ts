@@ -112,4 +112,43 @@ describe('材质节点图', () => {
     expect(new Set(types).size).toBe(types.length);
     for (const spec of MATERIAL_NODE_SPECS) for (const param of spec.params) expect(param.default, `${spec.type}.${param.name}`).not.toBeUndefined();
   });
+
+  test('sortGraph 的 all：没接到输出的节点也排进去（节点的预览用），被依赖的仍在前', () => {
+    const order = sortGraph(BRICK_WALL, 'wall', { all: true }).map((node) => node.id);
+    expect(order).toContain('unused');
+    expect(new Set(order).size).toBe(BRICK_WALL.nodes.length);
+    expect(order.indexOf('uv')).toBeLessThan(order.indexOf('bricks'));
+  });
+
+  test('多段的颜色渐变：起点、中间的色标（按位置排）、终点连成一串，线性、平滑、阶梯三种插值', () => {
+    const ramp = (params: Record<string, unknown>) => {
+      const graph: GraphFile = { nodes: [{ id: 'ramp', type: 'colorRamp', params }], outputs: { baseColor: { node: 'ramp' } } };
+      const { code } = compileMaterialGraph(graph, compiler(), () => undefined, 'ramp');
+      const expr = /let g_ramp_color = (.*);/.exec(code)![1]!.replace(/clamp\(0\.5,/g, 'clamp(T,');
+      // WGSL 的几个函数换成 JS 求值：颜色是数组
+      const vec4f = (...c: number[]) => c;
+      const clamp = (x: number, lo: number, hi: number) => Math.min(Math.max(x, lo), hi);
+      const step = (edge: number, x: number) => (x >= edge ? 1 : 0);
+      const smoothstep = (a: number, b: number, x: number) => { const u = clamp((x - a) / (b - a), 0, 1); return u * u * (3 - 2 * u); };
+      const mix = (x: number[], y: number[], w: number) => x.map((v, i) => v + (y[i]! - v) * w);
+      // oxlint-disable-next-line typescript/no-implied-eval -- 测试里求值生成的表达式
+      const at = new Function('T', 'vec4f', 'clamp', 'step', 'smoothstep', 'mix', `return ${expr};`) as (...a: unknown[]) => number[];
+      return (t: number) => at(t, vec4f, clamp, step, smoothstep, mix).slice(0, 3).map((v) => Math.round(v * 1000) / 1000);
+    };
+    // 没写色标：同原来，起点到终点
+    expect(ramp({ from: [0, 0, 0], to: [1, 1, 1] })(0.25)).toEqual([0.25, 0.25, 0.25]);
+    // 中间一个红色在 0.5：0.25 是黑到红的一半，0.75 是红到白的一半；色标的顺序不要紧
+    const red = { from: [0, 0, 0], to: [1, 1, 1], colorStops: [{ position: 0.5, color: [1, 0, 0] }] };
+    expect(ramp(red)(0.25)).toEqual([0.5, 0, 0]);
+    expect(ramp(red)(0.75)).toEqual([1, 0.5, 0.5]);
+    expect(ramp(red)(0)).toEqual([0, 0, 0]);
+    expect(ramp(red)(1)).toEqual([1, 1, 1]);
+    const two = { from: [0, 0, 0], to: [1, 1, 1], colorStops: [{ position: 0.8, color: [0, 0, 1] }, { position: 0.2, color: [1, 0, 0] }] };
+    expect(ramp(two)(0.5)).toEqual([0.5, 0, 0.5]);
+    // 阶梯：到了色标的位置才换；平滑：段中间一样、靠近两头变化慢
+    expect(ramp({ ...red, interpolation: 'constant' })(0.4)).toEqual([0, 0, 0]);
+    expect(ramp({ ...red, interpolation: 'constant' })(0.6)).toEqual([1, 0, 0]);
+    expect(ramp({ ...red, interpolation: 'smooth' })(0.25)).toEqual([0.5, 0, 0]);
+    expect(ramp({ ...red, interpolation: 'smooth' })(0.05)[0]).toBeLessThan(0.1 * 1);
+  });
 });

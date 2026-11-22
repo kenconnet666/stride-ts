@@ -13,10 +13,6 @@
    {
     "id": "uv",
     "type": "worldUv",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "scale": 1.6666666666666667
     },
@@ -25,10 +21,6 @@
    {
     "id": "tiles",
     "type": "bricks",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "columns": 1,
      "rows": 1,
@@ -44,10 +36,6 @@
    {
     "id": "tone",
     "type": "colorRamp",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "from": [
       0.66,
@@ -70,10 +58,6 @@
    {
     "id": "wear",
     "type": "noise",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "scale": 30,
      "octaves": 4
@@ -87,10 +71,6 @@
    {
     "id": "speckle",
     "type": "colorRamp",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "from": [
       0.96,
@@ -112,10 +92,6 @@
    {
     "id": "surface",
     "type": "multiply",
-    "position": [
-     0,
-     0
-    ],
     "params": {},
     "inputs": {
      "a": {
@@ -129,10 +105,6 @@
    {
     "id": "joint",
     "type": "color",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "color": [
       0.5,
@@ -145,10 +117,6 @@
    {
     "id": "color",
     "type": "mix",
-    "position": [
-     0,
-     0
-    ],
     "params": {},
     "inputs": {
      "a": {
@@ -166,10 +134,6 @@
    {
     "id": "gloss",
     "type": "levels",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "inMin": 0,
      "inMax": 1,
@@ -186,10 +150,6 @@
    {
     "id": "scuff",
     "type": "levels",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "inMin": 0.4,
      "inMax": 0.9,
@@ -205,10 +165,6 @@
    {
     "id": "tileRough",
     "type": "add",
-    "position": [
-     0,
-     0
-    ],
     "params": {},
     "inputs": {
      "a": {
@@ -222,10 +178,6 @@
    {
     "id": "jointRough",
     "type": "value",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "value": 0.6
     },
@@ -234,10 +186,6 @@
    {
     "id": "rough",
     "type": "mix",
-    "position": [
-     0,
-     0
-    ],
     "params": {},
     "inputs": {
      "a": {
@@ -255,10 +203,6 @@
    {
     "id": "normal",
     "type": "normalFromHeight",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "strength": 0.6
     },

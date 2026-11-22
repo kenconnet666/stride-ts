@@ -19,10 +19,6 @@
       2
      ]
     },
-    "position": [
-     0,
-     0
-    ],
     "inputs": {}
    },
    {
@@ -34,10 +30,6 @@
      "mortar": 0.04,
      "shift": 0.5
     },
-    "position": [
-     220,
-     0
-    ],
     "inputs": {
      "uv": {
       "node": "uv"
@@ -59,10 +51,6 @@
       0.08
      ]
     },
-    "position": [
-     440,
-     0
-    ],
     "inputs": {
      "t": {
       "node": "rows",
@@ -80,20 +68,12 @@
       0.03
      ]
     },
-    "position": [
-     440,
-     160
-    ],
     "inputs": {}
    },
    {
     "id": "color",
     "type": "mix",
     "params": {},
-    "position": [
-     660,
-     0
-    ],
     "inputs": {
      "a": {
       "node": "gap"
@@ -113,10 +93,6 @@
     "params": {
      "strength": 2.5
     },
-    "position": [
-     660,
-     160
-    ],
     "inputs": {
      "height": {
       "node": "rows",

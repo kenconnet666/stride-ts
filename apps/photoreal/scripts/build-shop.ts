@@ -151,8 +151,8 @@ for (const [name, sign] of Object.entries(signs)) await write('sign', `Shop/Sign
 
 // 地面：照片里超市的大块浅色瓷砖（60 厘米），按世界坐标铺；每块深浅、光滑程度略有不同，缝是浅灰的，表面有细的磨痕
 type GraphNode = { id: string; type: string; params?: object; inputs?: Record<string, { node: string; output?: string }> };
-const node = (id: string, type: string, params: object = {}, inputs: Record<string, string | readonly [string, string]> = {}, position: [number, number] = [0, 0]): GraphNode & { position: [number, number] } => ({
-  id, type, position, params,
+const node = (id: string, type: string, params: object = {}, inputs: Record<string, string | readonly [string, string]> = {}): GraphNode => ({
+  id, type, params,
   inputs: Object.fromEntries(Object.entries(inputs).map(([port, from]) => [port, typeof from === 'string' ? { node: from } : { node: from[0], output: from[1] }])),
 });
 await write('material', 'Shop/Materials/Floor', {

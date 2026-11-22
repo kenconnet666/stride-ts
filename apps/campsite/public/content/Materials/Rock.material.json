@@ -14,10 +14,6 @@
     "id": "uv",
     "type": "uv",
     "params": {},
-    "position": [
-     0,
-     0
-    ],
     "inputs": {}
    },
    {
@@ -28,10 +24,6 @@
      "octaves": 4,
      "seed": 3
     },
-    "position": [
-     220,
-     0
-    ],
     "inputs": {
      "uv": {
       "node": "uv"
@@ -46,10 +38,6 @@
      "octaves": 5,
      "roughness": 0.6
     },
-    "position": [
-     220,
-     160
-    ],
     "inputs": {
      "uv": {
       "node": "uv"
@@ -71,10 +59,6 @@
       0.42
      ]
     },
-    "position": [
-     440,
-     0
-    ],
     "inputs": {
      "t": {
       "node": "blotch"
@@ -96,10 +80,6 @@
       1.1
      ]
     },
-    "position": [
-     440,
-     160
-    ],
     "inputs": {
      "t": {
       "node": "grain"
@@ -110,10 +90,6 @@
     "id": "color",
     "type": "multiply",
     "params": {},
-    "position": [
-     660,
-     0
-    ],
     "inputs": {
      "a": {
       "node": "tone"
@@ -129,10 +105,6 @@
     "params": {
      "strength": 1.2
     },
-    "position": [
-     660,
-     160
-    ],
     "inputs": {
      "height": {
       "node": "grain"

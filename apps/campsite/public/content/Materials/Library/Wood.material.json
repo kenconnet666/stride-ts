@@ -13,10 +13,6 @@
    {
     "id": "uv",
     "type": "uv",
-    "position": [
-     0,
-     0
-    ],
     "params": {
      "scale": [
       1,
@@ -27,10 +23,6 @@
    {
     "id": "grain",
     "type": "noise",
-    "position": [
-     220,
-     0
-    ],
     "params": {
      "scale": 6,
      "octaves": 5,
@@ -45,10 +37,6 @@
    {
     "id": "color",
     "type": "colorRamp",
-    "position": [
-     440,
-     0
-    ],
     "params": {
      "from": [
       0.18,
@@ -70,10 +58,6 @@
    {
     "id": "normal",
     "type": "normalFromHeight",
-    "position": [
-     0,
-     160
-    ],
     "params": {
      "strength": 0.5
     },

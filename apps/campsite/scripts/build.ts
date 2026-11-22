@@ -44,8 +44,8 @@ function lookAt(eye: Vec3, target: Vec3): Quat {
 for (const id of ['wood', 'stoneTiles', 'brushedSteel']) await call('use_library', { id });
 const WOOD = 'Materials/Library/Wood', TILES = 'Materials/Library/StoneTiles', STEEL = 'Materials/Library/BrushedSteel';
 
-const node = (id: string, type: string, params: object = {}, inputs: Record<string, string | [string, string]> = {}, position: [number, number] = [0, 0]) => ({
-  id, type, params, position,
+const node = (id: string, type: string, params: object = {}, inputs: Record<string, string | [string, string]> = {}) => ({
+  id, type, params,
   inputs: Object.fromEntries(Object.entries(inputs).map(([port, source]) => [port, typeof source === 'string' ? { node: source } : { node: source[0], output: source[1] }])),
 });
 const graphMaterial = (name: string, roughness: number, nodes: object[], outputs: Record<string, string>) => ({
@@ -55,30 +55,30 @@ const graphMaterial = (name: string, roughness: number, nodes: object[], outputs
 // 屋顶的木瓦：错缝的窄长条，每片一个色调
 await write('material', 'Materials/Shingles', graphMaterial('Shingles', 0.8, [
   node('uv', 'uv', { scale: [2, 2] }),
-  node('rows', 'bricks', { columns: 6, rows: 14, mortar: 0.04, shift: 0.5 }, { uv: 'uv' }, [220, 0]),
-  node('tone', 'colorRamp', { from: [0.16, 0.06, 0.04], to: [0.32, 0.14, 0.08] }, { t: ['rows', 'brick'] }, [440, 0]),
-  node('gap', 'color', { color: [0.04, 0.03, 0.03] }, {}, [440, 160]),
-  node('color', 'mix', {}, { a: 'gap', b: 'tone', t: ['rows', 'mask'] }, [660, 0]),
-  node('normal', 'normalFromHeight', { strength: 2.5 }, { height: ['rows', 'mask'], uv: 'uv' }, [660, 160]),
+  node('rows', 'bricks', { columns: 6, rows: 14, mortar: 0.04, shift: 0.5 }, { uv: 'uv' }),
+  node('tone', 'colorRamp', { from: [0.16, 0.06, 0.04], to: [0.32, 0.14, 0.08] }, { t: ['rows', 'brick'] }),
+  node('gap', 'color', { color: [0.04, 0.03, 0.03] }),
+  node('color', 'mix', {}, { a: 'gap', b: 'tone', t: ['rows', 'mask'] }),
+  node('normal', 'normalFromHeight', { strength: 2.5 }, { height: ['rows', 'mask'], uv: 'uv' }),
 ], { baseColor: 'color', normal: 'normal' }));
 // 石头：大块的明暗加细的颗粒和凹凸
 await write('material', 'Materials/Rock', graphMaterial('Rock', 0.85, [
   node('uv', 'uv'),
-  node('blotch', 'noise', { scale: 3, octaves: 4, seed: 3 }, { uv: 'uv' }, [220, 0]),
-  node('grain', 'noise', { scale: 30, octaves: 5, roughness: 0.6 }, { uv: 'uv' }, [220, 160]),
-  node('tone', 'colorRamp', { from: [0.22, 0.21, 0.2], to: [0.48, 0.46, 0.42] }, { t: 'blotch' }, [440, 0]),
-  node('speckle', 'colorRamp', { from: [0.8, 0.8, 0.8], to: [1.1, 1.1, 1.1] }, { t: 'grain' }, [440, 160]),
-  node('color', 'multiply', {}, { a: 'tone', b: 'speckle' }, [660, 0]),
-  node('normal', 'normalFromHeight', { strength: 1.2 }, { height: 'grain', uv: 'uv' }, [660, 160]),
+  node('blotch', 'noise', { scale: 3, octaves: 4, seed: 3 }, { uv: 'uv' }),
+  node('grain', 'noise', { scale: 30, octaves: 5, roughness: 0.6 }, { uv: 'uv' }),
+  node('tone', 'colorRamp', { from: [0.22, 0.21, 0.2], to: [0.48, 0.46, 0.42] }, { t: 'blotch' }),
+  node('speckle', 'colorRamp', { from: [0.8, 0.8, 0.8], to: [1.1, 1.1, 1.1] }, { t: 'grain' }),
+  node('color', 'multiply', {}, { a: 'tone', b: 'speckle' }),
+  node('normal', 'normalFromHeight', { strength: 1.2 }, { height: 'grain', uv: 'uv' }),
 ], { baseColor: 'color', normal: 'normal' }));
 // 草地（换掉模板的纯色地面）：两层噪声的绿，远看不重复
 await write('material', 'Materials/Ground', graphMaterial('Ground', 0.95, [
   node('uv', 'uv'),
-  node('patches', 'noise', { scale: 0.6, octaves: 3, seed: 7 }, { uv: 'uv' }, [220, 0]),
-  node('blades', 'noise', { scale: 12, octaves: 4 }, { uv: 'uv' }, [220, 160]),
-  node('tone', 'colorRamp', { from: [0.07, 0.11, 0.04], to: [0.17, 0.22, 0.08] }, { t: 'patches' }, [440, 0]),
-  node('detail', 'colorRamp', { from: [0.75, 0.75, 0.75], to: [1.15, 1.15, 1.15] }, { t: 'blades' }, [440, 160]),
-  node('color', 'multiply', {}, { a: 'tone', b: 'detail' }, [660, 0]),
+  node('patches', 'noise', { scale: 0.6, octaves: 3, seed: 7 }, { uv: 'uv' }),
+  node('blades', 'noise', { scale: 12, octaves: 4 }, { uv: 'uv' }),
+  node('tone', 'colorRamp', { from: [0.07, 0.11, 0.04], to: [0.17, 0.22, 0.08] }, { t: 'patches' }),
+  node('detail', 'colorRamp', { from: [0.75, 0.75, 0.75], to: [1.15, 1.15, 1.15] }, { t: 'blades' }),
+  node('color', 'multiply', {}, { a: 'tone', b: 'detail' }),
 ], { baseColor: 'color' }));
 await write('material', 'Materials/LanternGlow', { name: 'LanternGlow', baseColor: [1, 0.85, 0.6, 1], metalness: 0, roughness: 0.3, emissive: [8, 4.5, 1.6] });
 

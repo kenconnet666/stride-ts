@@ -329,8 +329,18 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
   },
   {
     type: 'colorRamp', category: 'math', inputs: [{ name: 't', type: 'float', fallback: '0.5' }], outputs: [{ name: 'color', type: 'color' }],
-    params: [{ name: 'from', type: color, default: [0, 0, 0] }, { name: 'to', type: color, default: [1, 1, 1] }],
-    emit: ({ t }, p) => ({ color: `mix(${rgb(p['from'])}, ${rgb(p['to'])}, clamp(${t}, 0.0, 1.0))` }),
+    params: [
+      { name: 'from', type: color, default: [0, 0, 0], description: 'color at 0' },
+      { name: 'to', type: color, default: [1, 1, 1], description: 'color at 1' },
+      {
+        name: 'colorStops',
+        type: { kind: 'list', item: { kind: 'object', fields: [{ name: 'position', type: num(0, 1, 0.01) }, { name: 'color', type: color }] } },
+        default: [],
+        description: 'more colors in between: position (0..1) and color',
+      },
+      { name: 'interpolation', type: { kind: 'enum', values: ['linear', 'smooth', 'constant'] }, default: 'linear', description: 'between two stops: straight, eased, or a hard step' },
+    ],
+    emit: ({ t }, p) => ({ color: colorRamp(t!, p) }),
   },
   // 法线和映射
   {
@@ -438,6 +448,26 @@ export function convertGraphValue({ expr, type }: MaterialGraphValue, to: PortTy
     case 'vec3': return type === 'float' ? `vec3f(${expr})` : type === 'vec2' ? `vec3f(${expr}, 0.0)` : `${expr}.rgb`;
     case 'color': return type === 'float' ? `vec4f(vec3f(${expr}), 1.0)` : type === 'vec2' ? `vec4f(${expr}, 0.0, 1.0)` : `vec4f(${expr}, 1.0)`;
   }
+}
+
+/**
+ * 多段的颜色渐变：起点（0）、中间的色标（按位置排好）、终点（1）连成一串 mix。每一段的比例在 t 之前的段上是 1、之后的段上
+ * 是 0，所以结果正好是 t 所在那一段的插值；不用分支，也不用数组。
+ */
+function colorRamp(t: string, p: Readonly<Record<string, unknown>>): string {
+  const middle = (Array.isArray(p['colorStops']) ? (p['colorStops'] as { position?: unknown; color?: unknown }[]) : [])
+    .map((stop) => ({ at: Math.min(Math.max(Number(stop.position) || 0, 0), 1), color: stop.color }))
+    .sort((a, b) => a.at - b.at);
+  const stops = [{ at: 0, color: p['from'] }, ...middle, { at: 1, color: p['to'] }];
+  const x = `clamp(${t}, 0.0, 1.0)`;
+  let result = rgb(stops[0]!.color);
+  for (let k = 1; k < stops.length; k++) {
+    const a = stops[k - 1]!.at, b = stops[k]!.at;
+    const fraction = b - a > 1e-6 ? `clamp((${x} - ${f(a)}) / ${f(b - a)}, 0.0, 1.0)` : `step(${f(b)}, ${x})`;
+    const weight = p['interpolation'] === 'constant' ? `step(${f(b)}, ${x})` : p['interpolation'] === 'smooth' ? `smoothstep(0.0, 1.0, ${fraction})` : fraction;
+    result = `mix(${result}, ${rgb(stops[k]!.color)}, ${weight})`;
+  }
+  return result;
 }
 
 function safe(id: string): string {

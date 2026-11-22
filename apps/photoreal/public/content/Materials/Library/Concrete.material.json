@@ -12,19 +12,11 @@
   "nodes": [
    {
     "id": "uv",
-    "type": "uv",
-    "position": [
-     0,
-     0
-    ]
+    "type": "uv"
    },
    {
     "id": "grain",
     "type": "noise",
-    "position": [
-     220,
-     0
-    ],
     "params": {
      "scale": 40,
      "octaves": 5,
@@ -39,10 +31,6 @@
    {
     "id": "stains",
     "type": "noise",
-    "position": [
-     440,
-     0
-    ],
     "params": {
      "scale": 3,
      "octaves": 3,
@@ -57,10 +45,6 @@
    {
     "id": "tone",
     "type": "colorRamp",
-    "position": [
-     0,
-     160
-    ],
     "params": {
      "from": [
       0.32,
@@ -82,10 +66,6 @@
    {
     "id": "speckle",
     "type": "colorRamp",
-    "position": [
-     220,
-     160
-    ],
     "params": {
      "from": [
       0.85,
@@ -107,10 +87,6 @@
    {
     "id": "color",
     "type": "multiply",
-    "position": [
-     440,
-     160
-    ],
     "params": {},
     "inputs": {
      "a": {
@@ -124,10 +100,6 @@
    {
     "id": "normal",
     "type": "normalFromHeight",
-    "position": [
-     0,
-     320
-    ],
     "params": {
      "strength": 0.6
     },

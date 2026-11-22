@@ -19,10 +19,6 @@
       1
      ]
     },
-    "position": [
-     0,
-     0
-    ],
     "inputs": {}
    },
    {
@@ -38,11 +34,7 @@
      "rows": 4,
      "mortar": 0.025,
      "shift": 0.5
-    },
-    "position": [
-     220,
-     0
-    ]
+    }
    },
    {
     "id": "noise",
@@ -55,11 +47,7 @@
     "params": {
      "scale": 24,
      "octaves": 4
-    },
-    "position": [
-     0,
-     146
-    ]
+    }
    },
    {
     "id": "mortar",
@@ -71,10 +59,6 @@
       0.5
      ]
     },
-    "position": [
-     220,
-     400
-    ],
     "inputs": {}
    },
    {
@@ -97,11 +81,7 @@
       0.22,
       0.12
      ]
-    },
-    "position": [
-     440,
-     0
-    ]
+    }
    },
    {
     "id": "albedo",
@@ -117,11 +97,7 @@
       "node": "bricks",
       "output": "mask"
      }
-    },
-    "position": [
-     660,
-     0
-    ]
+    }
    },
    {
     "id": "height",
@@ -134,11 +110,7 @@
      "b": {
       "node": "noise"
      }
-    },
-    "position": [
-     440,
-     200
-    ]
+    }
    },
    {
     "id": "normal",
@@ -153,11 +125,7 @@
     },
     "params": {
      "strength": 1
-    },
-    "position": [
-     660,
-     200
-    ]
+    }
    },
    {
     "id": "rough",
@@ -170,11 +138,7 @@
     "params": {
      "outMin": 0.6,
      "outMax": 0.95
-    },
-    "position": [
-     440,
-     400
-    ]
+    }
    }
   ],
   "outputs": {

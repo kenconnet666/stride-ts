@@ -35,14 +35,14 @@ export const libraryMaterialPath = (id: string): string => `Materials/Library/${
 
 // ---- 材质 ----
 
-/** 一个节点：id、种类、参数、输入（端口名 → 源节点 id 或 [节点 id, 输出名]）。位置按顺序排成一列，面板里打开时不叠在一起。 */
+/** 一个节点：id、种类、参数、输入（端口名 → 源节点 id 或 [节点 id, 输出名]）。不写位置：节点图面板按连线排。 */
 type NodeSpec = readonly [id: string, type: string, params?: Record<string, unknown>, inputs?: Record<string, string | readonly [string, string]>];
 
 function graph(nodes: readonly NodeSpec[], outputs: Record<string, string | readonly [string, string]>): GraphFile {
   const link = (source: string | readonly [string, string]) => (typeof source === 'string' ? { node: source } : { node: source[0], output: source[1] });
   return {
-    nodes: nodes.map(([id, type, params, inputs], i): GraphNodeFile => ({
-      id, type, position: [(i % 3) * 220, Math.floor(i / 3) * 160],
+    nodes: nodes.map(([id, type, params, inputs]): GraphNodeFile => ({
+      id, type,
       ...(params ? { params } : {}),
       ...(inputs ? { inputs: Object.fromEntries(Object.entries(inputs).map(([port, source]) => [port, link(source)])) } : {}),
     })),

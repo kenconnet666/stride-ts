@@ -220,6 +220,7 @@ export interface EditorMessages {
   readonly clipboardNotEntities: string;
   readonly graphAddNode: string;
   readonly graphHint: string;
+  readonly graphArrange: string;
   readonly graphClose: string;
   readonly graphNoMaterial: string;
   readonly graphOutput: string;
@@ -451,6 +452,7 @@ const zhCN: EditorMessages = {
   paintNoMask: '这一层的遮罩不是一张图，画不了（加一个绘制层）',
   clipboardNotEntities: '剪贴板里不是复制的实体',
   graphAddNode: '加节点……',
+  graphArrange: '整理',
   graphHint: '拖节点移动，拖空白处平移，滚轮缩放；从输出口拖到输入口连线；选中节点或连线按 Delete 删除',
   graphClose: '关掉节点图',
   graphNoMaterial: '在资源浏览器里选中一个材质，属性面板上点"节点图"',
@@ -678,6 +680,7 @@ const enUS: EditorMessages = {
   paintNoMask: 'The mask of this layer is not an image, so it cannot be painted (add a paint layer)',
   clipboardNotEntities: 'The clipboard does not hold copied entities',
   graphAddNode: 'Add node…',
+  graphArrange: 'Arrange',
   graphHint: 'Drag a node to move, drag the background to pan, wheel to zoom; drag from an output to an input to link; Delete removes the selected nodes or links',
   graphClose: 'Close the node graph',
   graphNoMaterial: 'Select a material in the asset browser and click "Node graph" in the inspector',

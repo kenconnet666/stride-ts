@@ -26,7 +26,7 @@ import { CLUSTER_WGSL } from '../lighting/Clusters';
 import { LOCAL_LIGHT_WGSL, LTC_WGSL } from '../lighting/LocalLights';
 import { MAX_DIRECTIONAL_LIGHTS } from '../RenderSystem';
 import { MATERIAL_STREAMS } from '../shaderClass';
-import { BRDF, GRADIENT_NOISE } from '../wgsl';
+import { BRDF, GRADIENT_NOISE, HASH3 } from '../wgsl';
 import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees } from './Material';
 import { HEIGHT_PAGE_HEADER, HEIGHT_PAGE_SAMPLES } from './HeightPages';
 import { IMPOSTOR_FRAMES } from './Mesh';
@@ -445,6 +445,9 @@ struct Material {
   absorption: vec4f,
   // 植被的风（Material.wind）：x 是弯，y 是叶子抖，都是 10 米每秒的风里的米数，都是 0 是没有；z 是 1 时是草的模式
   wind: vec4f,
+  // 室内映射（Material.interior）：房间的宽、高、深（米，宽是 0 是没有），亮灯的比例；x 是亮灯的房间的亮度
+  interior: vec4f,
+  interiorLight: vec4f,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;
@@ -974,6 +977,7 @@ fn vogelDisk(i: u32, count: u32, angle: f32) -> vec2f {
 }
 
 ${GRADIENT_NOISE}
+${HASH3}
 
 const PCSS_BLOCKER_TAPS = 16u;
 const PCSS_FILTER_TAPS = 16u;
@@ -1614,6 +1618,57 @@ struct Shaded {
 };
 
 /** 一个像素的光照；coatPass 为真时是清漆的那一遍。 */
+/**
+ * 室内映射（Material.interior；Joost van Dongen 2008 的 Interior Mapping，Spider-Man、黑客帝国觉醒的城市都这么做）：玻璃后面按
+ * 世界坐标排一间间房间（宽、高、深），沿视线算看到房间里的哪一面（后墙、侧墙、地板、天花板），不加几何。房间按格子哈希出墙色、
+ * 有没有一件靠墙的家具、亮不亮灯（亮的发暖光）；没亮的房间按窗外进来的天光（天空的球谐、环境光）照亮，越往里越暗。只有竖直的
+ * 面有（穹顶这种斜的玻璃没有）。返回从玻璃这一点看进去的光（线性），着色时乘透过的比例（1 − 反射）。
+ */
+fn interiorLight(world: vec3f, n: vec3f) -> vec3f {
+  let room = material.interior.xyz;
+  if (room.x <= 0.0 || abs(n.y) > 0.3) {
+    return vec3f(0.0);
+  }
+  let inward = -normalize(vec3f(n.x, 0.0, n.z));
+  let along = vec3f(-inward.z, 0.0, inward.x);
+  // 房间的格子按世界坐标排（加上渲染原点取模的部分：原点换了不跳），射线换到房间的坐标里：u 沿墙、v 往上、w 往里
+  let p = world + view.origin.xyz;
+  let d = normalize(world - view.eye.xyz);
+  let du = dot(d, along);
+  let dv = d.y;
+  let dw = max(dot(d, inward), 1e-4);
+  let cell = floor(vec2f(dot(p, along), p.y) / room.xy);
+  let local = vec2f(dot(p, along), p.y) - cell * room.xy;
+  let big = 1e6;
+  let tu = select(select((room.x - local.x) / du, -local.x / du, du < 0.0), big, abs(du) < 1e-5);
+  let tv = select(select((room.y - local.y) / dv, -local.y / dv, dv < 0.0), big, abs(dv) < 1e-5);
+  let tw = room.z / dw;
+  let t = min(min(tu, tv), tw);
+  let hit = vec3f(local + vec2f(du, dv) * t, dw * t);
+  let random = hash3(vec3i(i32(cell.x), i32(cell.y), i32(round(dot(p, -inward) * 2.0))));
+  // 墙色：暖白、米色、浅灰里挑一个；地板深一点；天花板白
+  let wall = mix(vec3f(0.62, 0.58, 0.52), vec3f(0.72, 0.7, 0.68), random.x) * mix(0.75, 1.0, random.y);
+  var albedo = wall;
+  if (t == tv) {
+    albedo = select(vec3f(0.8, 0.8, 0.78), vec3f(0.3, 0.24, 0.18) * (0.7 + 0.6 * random.z), dv < 0.0);
+  } else if (t == tu) {
+    albedo = wall * 0.85;
+  } else {
+    // 后墙前面一件矮家具（柜子、沙发的剪影）：按房间随机的位置和宽度
+    let start = random.z * 0.6 * room.x;
+    if (hit.y < room.y * 0.38 && hit.x > start && hit.x < start + room.x * 0.35) {
+      albedo = vec3f(0.18, 0.15, 0.13);
+    }
+  }
+  // 窗外进来的天光（朝外看的那一半天空），越往里越暗；亮灯的房间加暖光，靠天花板亮一点
+  var light = (view.ambientColor.rgb + select(vec3f(0.0), evaluateSH(skyDirection(-inward)) * view.sky.x, view.sky.x > 0.0)) * 0.35;
+  light *= mix(1.0, 0.35, saturate(hit.z / room.z));
+  if (random.y < material.interior.w) {
+    light += vec3f(1.0, 0.82, 0.6) * material.interiorLight.x * (0.7 + 0.3 * saturate(hit.y / room.y));
+  }
+  return albedo * light;
+}
+
 fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
   var n = facingNormal(surfaceNormal(in, coatPass), front);
   let v = normalize(view.eye.xyz - in.world);
@@ -1833,7 +1888,9 @@ fn shade(in: Varyings, front: bool, coatPass: bool) -> Shaded {
       alpha = 1.0 - dot(passes, vec3f(1.0 / 3.0));
     }
   }
-  let color = min(scattered + direct.specular * PI + environment + transmitted + layerEmissive(in, emitted.rgb), vec3f(60000.0));
+  // 室内映射：玻璃后面的房间，乘没被反射走的部分
+  let interior = interiorLight(in.world, n) * saturate(1.0 - max(environmentSpecular.r, max(environmentSpecular.g, environmentSpecular.b)));
+  let color = min(scattered + direct.specular * PI + environment + transmitted + interior + layerEmissive(in, emitted.rgb), vec3f(60000.0));
   // 预乘 alpha：颜色已经乘过 alpha；不透明的阶段不混合，alpha 不起作用。网格效果最后可以改颜色（Stride 的 ShadingBase.Shading）
   return Shaded(effectShading(vec4f(color, saturate(alpha * material.blend.a)), in.effect), n, roughness, environmentSpecular, environment, scattered);
 }`;

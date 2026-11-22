@@ -240,6 +240,8 @@ export interface MaterialFile {
   readonly sheen?: { readonly color: Vec3Tuple; readonly roughness: number };
   /** 植被的风（Stride 没有）：在风里摆、叶子抖。意思同 rendering/mesh/Material.ts 的 MaterialWind。 */
   readonly wind?: { readonly bend: number; readonly flutter?: number; readonly mode?: 'tree' | 'grass' };
+  /** 室内映射（Stride 没有）：玻璃后面的房间（宽、高、深）、亮灯的比例、亮度。意思同 rendering/mesh/Material.ts 的 MaterialInterior。 */
+  readonly interior?: { readonly room: Vec3Tuple; readonly lit?: number; readonly brightness?: number };
   /** 各向异性（Stride 没有，glTF 的 KHR_materials_anisotropy）：强度 -1..1，方向绕法线转的角度（弧度）。 */
   readonly anisotropy?: { readonly strength: number; readonly rotation?: number };
   /**

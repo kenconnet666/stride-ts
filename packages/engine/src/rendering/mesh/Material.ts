@@ -159,6 +159,19 @@ export interface MaterialDesc {
   readonly transmission?: MaterialTransmission;
   /** 植被的风（树、草在风里摆），默认没有。 */
   readonly wind?: MaterialWind;
+  /** 室内映射（楼的窗户后面的房间），默认没有。 */
+  readonly interior?: MaterialInterior;
+}
+
+/**
+ * 室内映射（Stride 没有；Joost van Dongen 2008 的 Interior Mapping）：玻璃后面按世界坐标排一间间房间，着色时沿视线算看到房间的
+ * 哪一面，不加几何（网格着色器的 interiorLight）。room 是房间的宽、高、深（米，高一般是层高），lit 是亮灯的房间的比例（默认 0.35），
+ * brightness 是亮灯的房间的亮度（同自发光的线性值，默认 0.5）。只有竖直的玻璃有；透过的比例是 1 − 反射。
+ */
+export interface MaterialInterior {
+  readonly room: readonly [number, number, number];
+  readonly lit?: number;
+  readonly brightness?: number;
 }
 
 /**
@@ -273,6 +286,8 @@ export class Material {
   transmission: Required<MaterialTransmission> | undefined;
   /** 植被的风；改它用 setWind。 */
   wind: Required<MaterialWind> | undefined;
+  /** 室内映射；没有时是 undefined。 */
+  readonly interior: Required<MaterialInterior> | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
   version = 0;
 
@@ -324,6 +339,7 @@ export class Material {
     this.anisotropy = desc.anisotropy && { rotation: 0, ...desc.anisotropy };
     this.transmission = withTransmissionDefaults(desc.transmission);
     this.wind = desc.wind && { flutter: 0, mode: 'tree', ...desc.wind };
+    this.interior = desc.interior && { lit: 0.35, brightness: 0.5, ...desc.interior };
     this.id = materials.add(this) as MaterialId;
   }
 

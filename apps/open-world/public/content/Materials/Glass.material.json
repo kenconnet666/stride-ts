@@ -1,11 +1,20 @@
 {
  "name": "Glass",
  "baseColor": [
-  0.15,
-  0.2,
-  0.26,
+  0.04,
+  0.05,
+  0.06,
   1
  ],
- "metalness": 0.6,
- "roughness": 0.12
+ "metalness": 0.2,
+ "roughness": 0.08,
+ "interior": {
+  "room": [
+   4,
+   3.6,
+   5
+  ],
+  "lit": 0.35,
+  "brightness": 0.5
+ }
 }

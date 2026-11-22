@@ -375,6 +375,7 @@ export class ContentManager {
         ...(file.subsurfaceScattering ? { subsurfaceScattering: file.subsurfaceScattering } : {}),
         ...(file.sheen ? { sheen: file.sheen } : {}),
         ...(file.wind ? { wind: file.wind } : {}),
+        ...(file.interior ? { interior: file.interior } : {}),
         ...(file.anisotropy ? { anisotropy: file.anisotropy } : {}),
         ...(file.transmission ? { transmission: file.transmission } : {}),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),

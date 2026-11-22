@@ -59,6 +59,16 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
     group: 'advanced',
     description: 'vegetation wind: the mesh sways and its leaves flutter in the global wind (WindZone, weather)',
   },
+  interior: {
+    type: object(fields<NonNullable<MaterialFile['interior']>>({
+      room: { type: vector(3, 'm'), description: 'room width, height (usually the floor height) and depth behind the glass' },
+      lit: { type: number({ min: 0, max: 1, step: 0.05 }), optional: true, default: 0.35, description: 'fraction of rooms with the lights on' },
+      brightness: { type: number({ min: 0, step: 0.25 }), optional: true, default: 0.5, description: 'light of a lit room (linear, like emissive)' },
+    })),
+    optional: true,
+    group: 'advanced',
+    description: 'interior mapping: rooms behind vertical glass (walls, floor, ceiling, furniture, lights on or off), no extra geometry',
+  },
   anisotropy: { type: object(fields<NonNullable<MaterialFile['anisotropy']>>({ strength: number({ min: -1, max: 1, step: 0.01 }), rotation: { type: number({ unit: 'rad' }), optional: true, default: 0 } })), optional: true, group: 'advanced' },
   transmission: {
     type: object(fields<NonNullable<MaterialFile['transmission']>>({

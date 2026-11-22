@@ -145,7 +145,7 @@
 - `mall/`：`atrium.mp4`（多层回廊的中庭、扶梯、展车）、`food-court.mp4`（美食广场）。
 - `bedroom/`：`bedroom.mp4`（卧室一角）。
 - `future-city/`：`domes-skybridges.png`（穹顶塔楼、空中走廊上的人流、中间的磁悬浮）、`maglev-meadow.png`（草地上的磁悬浮、远处的塔楼和雾）、`flyers-towers.png`（飞行器、塔楼、空中的车流、下面的森林）。
-- 长视频 `VID_20261121_133122.mp4`（4K 60 帧、7 分 19 秒、2.6 GB）在用户的微信临时目录里，内容见 progress-log 的 R 组一节。
+- `street/`：长视频 `VID_20261121_133122.mp4`（4K 60 帧、7 分 19 秒、2.6 GB，原件在用户的微信临时目录，路径见 `SOURCE.txt`）每 10 秒一帧（`frames/`）和带时间的总览（`sheet*.jpg`）：高架下的人行道、路口、商业街、老小区的巷子、楼道。
 
 ## 6. 定时任务（无人值守续跑）
 

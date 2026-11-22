@@ -122,6 +122,12 @@ fn graphTriplanar(x: vec4f, y: vec4f, z: vec4f, w: vec3f) -> vec4f {
   return x * w.x + y * w.y + z * w.z;
 }
 `;
+/** 这个像素的屏幕空间环境光遮蔽（网格着色器的 screenAmbient）；没有像素坐标（顶点阶段）时当作没遮住。 */
+const SCREEN_OCCLUSION = `fn graphScreenOcclusion() -> f32 {
+  if (streams.pixel.x < 0.0) { return 1.0; }
+  return screenAmbient(vec4f(streams.pixel, 0.0, 1.0)).w;
+}
+`;
 /** Overlay：底色暗于 0.5 时乘、亮于 0.5 时滤色。 */
 const OVERLAY = `fn graphOverlay(base: vec3f, detail: vec3f) -> vec3f {
   return select(1.0 - 2.0 * (1.0 - base) * (1.0 - detail), 2.0 * base * detail, base < vec3f(0.5));
@@ -297,6 +303,19 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
     emit: ({ base, detail, amount }, _, context) => {
       context.addFunction('graphOverlay', OVERLAY);
       return { out: `vec4f(mix(${base}.rgb, graphOverlay(${base}.rgb, ${detail}.rgb), clamp(${amount}, 0.0, 1.0)), ${base}.a)` };
+    },
+  },
+  {
+    // 缝隙、墙角、物体底下这些被遮住的地方是 1、敞开的是 0：读屏幕空间的环境光遮蔽（GTAO，场景的 postEffects.ambientOcclusion
+    // 要开；没开、或者不在主画面里画时是 0）。脏污、灰尘、积水往这些地方攒
+    type: 'occlusionMask', category: 'mask', inputs: [], outputs: [{ name: 'mask', type: 'float' }],
+    params: [
+      { name: 'from', type: num(0, 1, 0.05), default: 0.1, description: 'how occluded a spot must be before the mask starts (0 open, 1 fully occluded)' },
+      { name: 'to', type: num(0, 1, 0.05), default: 0.6, description: 'occlusion where the mask reaches 1' },
+    ],
+    emit: (_, p, context) => {
+      context.addFunction('graphScreenOcclusion', SCREEN_OCCLUSION);
+      return { mask: `smoothstep(${f(p['from'])}, max(${f(p['to'])}, ${f(p['from'])} + 1e-3), 1.0 - graphScreenOcclusion())` };
     },
   },
   {

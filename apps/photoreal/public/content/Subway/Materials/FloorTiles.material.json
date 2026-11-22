@@ -56,5 +56,140 @@
   "source": "https://ambientcg.com/view?id=Tiles141",
   "license": "CC0 1.0",
   "author": "ambientCG (Lennart Demes)"
+ },
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "uv",
+    "params": {
+     "scale": [
+      0.5,
+      0.5
+     ]
+    }
+   },
+   {
+    "id": "tiles",
+    "type": "texture",
+    "params": {
+     "texture": "Subway/Materials/FloorTiles/FloorTiles_baseColor"
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "tilesRough",
+    "type": "texture",
+    "params": {
+     "texture": "Subway/Materials/FloorTiles/FloorTiles_roughness"
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "world",
+    "type": "worldUv",
+    "params": {
+     "scale": 0.6
+    }
+   },
+   {
+    "id": "blotches",
+    "type": "noise",
+    "params": {
+     "scale": 3,
+     "octaves": 4,
+     "roughness": 0.55
+    },
+    "inputs": {
+     "uv": {
+      "node": "world"
+     }
+    }
+   },
+   {
+    "id": "corners",
+    "type": "occlusionMask",
+    "params": {
+     "from": 0.05,
+     "to": 0.45
+    }
+   },
+   {
+    "id": "amount",
+    "type": "multiply",
+    "inputs": {
+     "a": {
+      "node": "corners"
+     },
+     "b": {
+      "node": "blotches"
+     }
+    }
+   },
+   {
+    "id": "grime",
+    "type": "color",
+    "params": {
+     "color": [
+      0.13,
+      0.115,
+      0.1
+     ]
+    }
+   },
+   {
+    "id": "color",
+    "type": "mix",
+    "inputs": {
+     "a": {
+      "node": "tiles"
+     },
+     "b": {
+      "node": "grime"
+     },
+     "t": {
+      "node": "amount"
+     }
+    }
+   },
+   {
+    "id": "rough",
+    "type": "mix",
+    "inputs": {
+     "a": {
+      "node": "tilesRough"
+     },
+     "b": {
+      "node": "white"
+     },
+     "t": {
+      "node": "amount"
+     }
+    }
+   },
+   {
+    "id": "white",
+    "type": "value",
+    "params": {
+     "value": 0.95
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "color"
+   },
+   "roughness": {
+    "node": "rough"
+   }
+  }
  }
 }

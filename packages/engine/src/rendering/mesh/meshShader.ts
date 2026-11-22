@@ -1918,7 +1918,7 @@ const FRAGMENT_NORMAL = 'normalize(in.normal)';
 export function materialTreesCode(trees: MaterialShaderTrees | undefined): string {
   const { emissive, normal, displacement } = trees ?? {};
   // 顶点着色器里（位移）没有世界坐标和法线：给 0 和朝上
-  const fill = (uv: string, local: string, world = 'vec3f(0.0)', normal = 'vec3f(0.0, 1.0, 0.0)') => `streams = MaterialStreams(${uv}, ${uv}, vec4f(1.0), vec4f(1.0), ${local}, view.locals.y, ${world}, ${normal});`;
+  const fill = (uv: string, local: string, world = 'vec3f(0.0)', normal = 'vec3f(0.0, 1.0, 0.0)') => `streams = MaterialStreams(${uv}, ${uv}, vec4f(1.0), vec4f(1.0), ${local}, view.locals.y, ${world}, ${normal}, vec2f(-1.0));`;
   const emissiveCode = emissive
     ? `fn emissiveColor(in: Varyings) -> vec4f {
   ${fill('in.uv', 'in.local', FRAGMENT_WORLD, FRAGMENT_NORMAL)}
@@ -1963,7 +1963,7 @@ function clearCoatCode(coat: MaterialShaderClearCoat | undefined): string {
     return `fn coatNormal(in: Varyings, coatPass: bool) -> vec4f { return vec4f(0.0); }
 fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface { return s; }`;
   }
-  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y, ${FRAGMENT_WORLD}, ${FRAGMENT_NORMAL});`;
+  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y, ${FRAGMENT_WORLD}, ${FRAGMENT_NORMAL}, in.position.xy);`;
   const unpack = (name: string, { scaleAndBias, isXYNormal }: { scaleAndBias: boolean; isXYNormal: boolean }) => [
     scaleAndBias ? `  ${name} = 2.0 * ${name} - 1.0;` : '',
     isXYNormal ? `  ${name}.z = sqrt(max(0.0, 1.0 - (${name}.x * ${name}.x + ${name}.y * ${name}.y)));` : '',
@@ -1999,7 +1999,7 @@ fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface {
  * 再混，法线在切线空间里混再归一化，自发光（乘过强度的）、环境光遮蔽和它对直射光的影响也一样混。没有层时这几个函数原样返回。
  */
 function layersCode(layers: readonly MaterialShaderLayer[], graph: boolean): string {
-  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y, ${FRAGMENT_WORLD}, ${FRAGMENT_NORMAL});`;
+  const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y, ${FRAGMENT_WORLD}, ${FRAGMENT_NORMAL}, in.position.xy);`;
   const surface = layers.map((layer, i) => [
     `  let b${i} = saturate(layer${i}Blend());`,
     layer.diffuse ? `  r.albedo = mix(r.albedo, layer${i}Diffuse().rgb, b${i});` : '',

@@ -356,7 +356,7 @@ export class EditorBackend {
   }
 
   /**
-   * 导入一套扫描的材质（materialSet.ts）：各张贴图放进 `<folder>/<name>/`（`<name>_<用途>.<扩展名>`），导入设置是压成 UASTC 的
+   * 导入一套扫描的材质（materialSet.ts）：各张贴图放进 `<folder>/<name>/`（`<name>_<用途>.<扩展名>`，旁边有同名的贴图资源，节点图用），导入设置是压成 UASTC 的
    * KTX2、带 mipmap、长边最多 maxSize（颜色贴图按 sRGB，其余线性），当场压好；金属度贴图取平均当金属度；再写
    * `<folder>/<name>.material.json`。高度、不透明度贴图还没有槽，跳过并警告。名字和已有的材质重复时加数字。
    */
@@ -396,7 +396,10 @@ export class EditorBackend {
         const settingsFile = assetFileName('imageImport', assetPath);
         await writeAtomically(path.join(this.project.contentDir, settingsFile), JSON.stringify(settings, null, 1));
         const baked = await this.#bake('imageImport', assetPath, settings);
-        written.push(this.#relative(path.join(this.project.contentDir, assetPath + TEXTURE_EXTENSIONS[source])), settingsFile, ...baked.files);
+        // 同名的贴图资源：材质节点图的贴图、三平面投影节点引用的是它（材质的固定槽直接引用图片）
+        const textureFile = assetFileName('texture', assetPath);
+        await writeAtomically(path.join(this.project.contentDir, textureFile), JSON.stringify({ texture: assetPath, srgb: settings.srgb }, null, 1));
+        written.push(this.#relative(path.join(this.project.contentDir, assetPath + TEXTURE_EXTENSIONS[source])), settingsFile, textureFile, ...baked.files);
         textures[map.role] = assetPath;
       }
       const material = scannedMaterial(name, textures, { ...(options.tileSize !== undefined ? { tileSize: options.tileSize } : {}), ...(metalness !== undefined ? { metalness } : {}), ...(options.credit ? { credit: options.credit } : {}) });

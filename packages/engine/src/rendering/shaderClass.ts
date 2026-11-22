@@ -39,6 +39,8 @@ struct MaterialStreams {
   time: f32,
   world: vec3f,
   normal: vec3f,
+  // 片元在画面上的像素坐标（材质节点图的屏幕空间遮蔽用）；顶点阶段、粒子里没有，是 -1
+  pixel: vec2f,
 };
 var<private> streams: MaterialStreams;
 

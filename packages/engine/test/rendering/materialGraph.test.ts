@@ -90,6 +90,14 @@ describe('材质节点图', () => {
     expect(materialGraphTextures(graph)).toEqual(['M/Concrete_baseColor', 'M/Grain']);
   });
 
+  test('遮蔽遮罩：读这个像素的屏幕空间遮蔽，按 from、to 映射；没有像素坐标时当作没遮住', () => {
+    const c = compiler();
+    const graph: GraphFile = { nodes: [{ id: 'dirt', type: 'occlusionMask', params: { from: 0.2, to: 0.7 } }], outputs: { roughness: { node: 'dirt' } } };
+    const { code } = compileMaterialGraph(graph, c, () => undefined, 'dirt');
+    expect(code).toContain('smoothstep(0.2, max(0.7, 0.2 + 1e-3), 1.0 - graphScreenOcclusion())');
+    expect(c.declarations).toContain('if (streams.pixel.x < 0.0) { return 1.0; }');
+  });
+
   test('错误：认不出的节点、不存在的输出、没有的输入、环、指向不存在的节点', () => {
     const fails = (graph: GraphFile) => () => compileMaterialGraph(graph, compiler(), () => undefined, 'bad');
     expect(fails({ nodes: [{ id: 'a', type: 'nope' }], outputs: { baseColor: { node: 'a' } } })).toThrow("bad: node 'a' has the unknown type 'nope'");

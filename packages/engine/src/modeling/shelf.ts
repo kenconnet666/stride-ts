@@ -47,12 +47,27 @@ const GAP = 0.006;
 /** 价签有几种价格。 */
 const PRICES = 8;
 
-/** 按规则摆货：每件商品、每个价签。商品文件读不到的、尺寸不对的跳过（where 是报错的前缀，规则本身不对时报错）。 */
-export function planShelf(file: ShelfFile, products: ReadonlyMap<string, ProductFile>, where = file.name): { readonly items: ShelfItem[]; readonly tags: ShelfTag[] } {
+/** 挂钩架的一个挂钩：x、钩子的高、朝哪面。 */
+export interface ShelfHook {
+  readonly x: number;
+  readonly y: number;
+  readonly side: 1 | -1;
+}
+
+/** 挂钩架：商品挂在钩子下面多远（米）；洞洞板以上第一排挂钩下面留多少。 */
+const HOOK_DROP = 0.015, HOOK_BOTTOM = 0.12;
+
+/**
+ * 按规则摆货：每件商品、每个价签（挂钩架还有每个挂钩）。商品文件读不到的、尺寸不对的跳过（where 是报错的前缀，规则本身不对时
+ * 报错）。挂钩架的商品挂在钩子下面、一个排面一个钩子、往钩里串几个；堆头见 planStack。
+ */
+export function planShelf(file: ShelfFile, products: ReadonlyMap<string, ProductFile>, where = file.name): { readonly items: ShelfItem[]; readonly tags: ShelfTag[]; readonly hooks: ShelfHook[] } {
   checkShelf(file, where);
-  const items: ShelfItem[] = [], tags: ShelfTag[] = [];
+  if (file.type === 'stack') return { ...planStack(file, products), hooks: [] };
+  const items: ShelfItem[] = [], tags: ShelfTag[] = [], hooks: ShelfHook[] = [];
+  const pegboard = file.type === 'pegboard';
   const stock = file.stock;
-  if (!stock || stock.products.length === 0) return { items, tags };
+  if (!stock || stock.products.length === 0) return { items, tags, hooks };
   const candidates = stock.products.flatMap((path) => {
     const product = products.get(path);
     return product && product.size[0] > 0 && product.size[1] > 0 ? [{ path, product, footprint: productFootprint(product) }] : [];
@@ -66,8 +81,9 @@ export function planShelf(file: ShelfFile, products: ReadonlyMap<string, Product
   const xMin = -file.length / 2 + 0.03, xMax = file.length / 2 - 0.03;
   sides.forEach((side, sideIndex) => {
     file.levels.forEach((level, levelIndex) => {
-      const above = file.levels[levelIndex + 1];
-      const clearance = (above === undefined ? file.height : above - BOARD) - level - 0.015;
+      const above = file.levels[levelIndex + 1], below = file.levels[levelIndex - 1];
+      // 挂钩架的东西挂在钩子下面，空间到下面那排钩子为止
+      const clearance = pegboard ? level - HOOK_DROP - (below ?? HOOK_BOTTOM) - 0.02 : (above === undefined ? file.height : above - BOARD) - level - 0.015;
       const fits = candidates.filter((c) => c.footprint[1] <= clearance && c.footprint[2] <= file.depth);
       if (fits.length === 0) return;
       const random = seededRandom(hash32(hash32(file.seed ?? 1, sideIndex), levelIndex));
@@ -80,19 +96,69 @@ export function planShelf(file: ShelfFile, products: ReadonlyMap<string, Product
         if (room < 1) break;
         const facings = Math.min(room, minFacings + Math.floor(random() * (Math.max(minFacings, maxFacings) - minFacings + 1)));
         const rows = Math.max(1, Math.min(maxRows, Math.floor((file.depth - 0.02 + GAP) / (d + GAP))));
-        tags.push({ position: [x + Math.min(TAG[0], w) / 2 + 0.005, level - STRIP[0] / 2, side * (back + file.depth + STRIP[1] + 0.001)], side, price: Math.floor(random() * PRICES) });
+        // 价签：货架的在价签条上，挂钩架的挂在第一个钩子的钩尖上
+        tags.push(pegboard
+          ? { position: [x + w / 2, level + 0.02, side * (back + file.depth + 0.003)], side, price: Math.floor(random() * PRICES) }
+          : { position: [x + Math.min(TAG[0], w) / 2 + 0.005, level - STRIP[0] / 2, side * (back + file.depth + STRIP[1] + 0.001)], side, price: Math.floor(random() * PRICES) });
+        const y = pegboard ? level - HOOK_DROP - choice.footprint[1] : level;
         for (let f = 0; f < facings; f++) {
+          if (pegboard) hooks.push({ x: x + f * (w + GAP) + w / 2, y: level, side });
           // 卖掉了的：这一列的前几排空着
           const missing = random() < gaps ? 1 + Math.floor(random() * rows) : 0;
           for (let r = missing; r < rows; r++) {
             const z = back + file.depth - 0.01 - d / 2 - r * (d + GAP);
-            items.push({ product: choice.path, variant, position: [x + f * (w + GAP) + w / 2, level, side * z], yaw: side > 0 ? 0 : Math.PI, front: r === missing });
+            items.push({ product: choice.path, variant, position: [x + f * (w + GAP) + w / 2, y, side * z], yaw: side > 0 ? 0 : Math.PI, front: r === missing });
           }
         }
         x += facings * (w + GAP);
       }
     });
   });
+  return { items, tags, hooks };
+}
+
+/**
+ * 堆头：台子上按块码垛——从左到右一块一种商品（几列、按种子挑），每块从下往上一层层码，每往上一层四周各收进去半件，码到
+ * height 为止；台子中心是原点。最上面一层和朝外的那一圈是细的。
+ */
+function planStack(file: ShelfFile, products: ReadonlyMap<string, ProductFile>): { items: ShelfItem[]; tags: ShelfTag[] } {
+  const items: ShelfItem[] = [], tags: ShelfTag[] = [];
+  const stock = file.stock;
+  if (!stock || stock.products.length === 0) return { items, tags };
+  const candidates = stock.products.flatMap((path) => {
+    const product = products.get(path);
+    return product && product.size[0] > 0 && product.size[1] > 0 ? [{ path, footprint: productFootprint(product) }] : [];
+  });
+  if (candidates.length === 0) return { items, tags };
+  const random = seededRandom(hash32(file.seed ?? 1, 3));
+  const variants = Math.max(1, Math.round(stock.variants ?? 3));
+  const [minFacings, maxFacings] = stock.facings ?? [3, 6];
+  const base = file.levels[0]!, xMax = file.length / 2 - 0.02;
+  let x = -xMax;
+  for (let blocks = 0; blocks < 200; blocks++) {
+    const choice = candidates[Math.floor(random() * candidates.length)]!, variant = Math.floor(random() * variants);
+    const [w, h, d] = choice.footprint;
+    const room = Math.floor((xMax - x + GAP) / (w + GAP));
+    if (room < 1) break;
+    const columns = Math.min(room, minFacings + Math.floor(random() * (Math.max(minFacings, maxFacings) - minFacings + 1)));
+    const rows = Math.max(1, Math.floor((file.depth + GAP) / (d + GAP)));
+    const layers = Math.max(1, Math.floor((file.height - base) / (h + 0.002)));
+    for (let k = 0; k < layers; k++) {
+      // 每往上一层四周收进去半件
+      const c = columns - k, r = rows - k;
+      if (c < 1 || r < 1) break;
+      for (let i = 0; i < c; i++) {
+        for (let j = 0; j < r; j++) {
+          const px = x + (k / 2 + i) * (w + GAP) + w / 2, pz = -file.depth / 2 + (k / 2 + j) * (d + GAP) + d / 2;
+          const outside = i === 0 || j === 0 || i === c - 1 || j === r - 1;
+          items.push({ product: choice.path, variant, position: [px, base + k * (h + 0.002), pz], yaw: 0, front: outside || k === layers - 1 });
+        }
+      }
+    }
+    // 价签插在台子正面
+    tags.push({ position: [x + (columns * (w + GAP)) / 2, base / 2, file.depth / 2 + 0.032], side: 1, price: Math.floor(random() * PRICES) });
+    x += columns * (w + GAP) + 0.02;
+  }
   return { items, tags };
 }
 
@@ -154,6 +220,18 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
     freezerBody(batch, file);
     return { ...batch.finish(), items: items.length };
   }
+  if (type === 'stack') {
+    // 台子（比垛四周大出一点）和插在正面的价签
+    const L = file.length / 2, D = file.depth / 2 + 0.03;
+    batch.box([-L, 0, -D], [L, file.levels[0]!, D], BASE);
+    for (const tag of tags) addTag(batch, tag, electronic);
+    return { ...batch.finish(), items: items.length };
+  }
+  if (type === 'pegboard') {
+    pegboardBody(batch, file, plan.hooks);
+    for (const tag of tags) addTag(batch, tag, electronic);
+    return { ...batch.finish(), items: items.length };
+  }
   const L = file.length / 2, H = file.height;
   const sides: readonly (1 | -1)[] = file.sides === 2 && type === 'gondola' ? [1, -1] : [1];
   const back = file.sides === 2 && type === 'gondola' ? SPINE : 0;
@@ -176,18 +254,32 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
     }
   }
   // 价签：价签条正面上的一小片（从正面看左下、右下、右上、左上：背面那一面的 x 反过来）
-  for (const tag of tags) {
-    const [x, y, z0] = tag.position, [tw, th] = TAG;
-    // 电子价签：外壳凸出价签条，屏贴在外壳正面
-    const z = electronic ? z0 + tag.side * ESL_DEPTH : z0;
-    if (electronic) {
-      const zs = [z0 - tag.side * 0.001, z - tag.side * 0.0005].sort((a, b) => a - b) as [number, number];
-      batch.box([x - tw / 2 - ESL_RIM, y - th / 2 - ESL_RIM, zs[0]], [x + tw / 2 + ESL_RIM, y + th / 2 + ESL_RIM, zs[1]], TAG_BODY);
-    }
-    const corners = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sy]) => [x + sx * tw / 2 * tag.side, y + sy * th / 2, z]);
-    batch.quad(corners, [0, 0, tag.side], tag.price);
-  }
+  for (const tag of tags) addTag(batch, tag, electronic);
   return { ...batch.finish(), items: items.length };
+}
+
+/** 一个价签：纸的是贴在价签条上的一片；电子的是凸出来的外壳加正面的屏。 */
+function addTag(batch: ProductBatch, tag: ShelfTag, electronic: boolean): void {
+  const [x, y, z0] = tag.position, [tw, th] = TAG;
+  const z = electronic ? z0 + tag.side * ESL_DEPTH : z0;
+  if (electronic) {
+    const zs = [z0 - tag.side * 0.001, z - tag.side * 0.0005].sort((a, b) => a - b) as [number, number];
+    batch.box([x - tw / 2 - ESL_RIM, y - th / 2 - ESL_RIM, zs[0]], [x + tw / 2 + ESL_RIM, y + th / 2 + ESL_RIM, zs[1]], TAG_BODY);
+  }
+  const corners = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sy]) => [x + sx * tw / 2 * tag.side, y + sy * th / 2, z]);
+  batch.quad(corners, [0, 0, tag.side], tag.price);
+}
+
+/** 挂钩架：洞洞板（背板，双面时两面都有）、底座、两头的侧板，每个挂钩一根细的金属杆。 */
+function pegboardBody(batch: ProductBatch, file: ShelfFile, hooks: readonly ShelfHook[]): void {
+  const L = file.length / 2, H = file.height, double = file.sides === 2, back = double ? SPINE : 0;
+  batch.box([-L, 0, -SPINE], [L, H, double ? SPINE : 0], FRAME);
+  for (const x of [-L, L - SPINE]) batch.box([x, 0, double ? -back - 0.15 : -SPINE], [x + SPINE, H, back + 0.15], FRAME);
+  batch.box([-L, 0, double ? -back - 0.15 : 0], [L, HOOK_BOTTOM - 0.02, back + 0.15], BASE);
+  for (const hook of hooks) {
+    const z0 = hook.side * back, z1 = hook.side * (back + file.depth);
+    batch.box([hook.x - 0.002, hook.y - 0.002, Math.min(z0, z1)], [hook.x + 0.002, hook.y + 0.002, Math.max(z0, z1)], DARK);
+  }
 }
 
 /**

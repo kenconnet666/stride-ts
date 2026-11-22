@@ -1,0 +1,30 @@
+{
+ "name": "EndCap",
+ "sides": 1,
+ "length": 0.9,
+ "height": 1.95,
+ "depth": 0.42,
+ "levels": [
+  0.15,
+  0.55,
+  0.92,
+  1.29,
+  1.66
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "priceTags": "electronic",
+ "stock": {
+  "products": [
+   "Shop/Products/Cereal",
+   "Shop/Products/Crackers",
+   "Shop/Products/Biscuits",
+   "Shop/Products/Milk"
+  ],
+  "variants": 3,
+  "facings": [
+   2,
+   3
+  ]
+ },
+ "seed": 48
+}

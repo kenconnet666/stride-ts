@@ -1,0 +1,12 @@
+{
+ "name": "Candy",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "pouch",
+ "size": [
+  0.1,
+  0.14,
+  0.015
+ ],
+ "text": "软糖",
+ "seed": 72
+}

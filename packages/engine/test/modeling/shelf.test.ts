@@ -38,7 +38,9 @@ describe('货架', () => {
     expect(items.some((item) => item.position[2] > 0 && item.yaw === 0)).toBe(true);
     expect(items.some((item) => item.position[2] < 0 && item.yaw === Math.PI)).toBe(true);
     expect(tags.some((tag) => tag.side === -1)).toBe(true);
-    expect(planShelf(island, products)).toEqual({ items, tags });
+    const again = planShelf(island, products);
+    expect(again.items).toEqual(items);
+    expect(again.tags).toEqual(tags);
     expect(planShelf({ ...island, seed: 8 }, products).items).not.toEqual(items);
   });
 
@@ -91,6 +93,33 @@ describe('货架', () => {
     const tags = planShelf(island, products).tags.length;
     expect(electronic.vertices.length / 8 - paper.vertices.length / 8).toBe(tags * 24);
     expect((electronic.colorSvg.match(/fill="#151515"/g) ?? []).length).toBeGreaterThan(8 * 12);
+  });
+
+  test('挂钩架：东西挂在钩子下面、一个排面一个钩子，挂得下才挂', () => {
+    const peg: ShelfFile = { ...island, type: 'pegboard', sides: 1, depth: 0.25, levels: [0.6, 1.0, 1.4], stock: { products: ['P/Water', 'P/Cereal'], variants: 2 } };
+    const { items, hooks } = planShelf(peg, products);
+    expect(hooks.length).toBeGreaterThan(5);
+    for (const item of items) {
+      const product = products.get(item.product)!;
+      const level = peg.levels.find((l) => Math.abs(item.position[1] + product.size[1] + 0.015 - l) < 1e-9);
+      expect(level).toBeDefined();
+      expect(hooks.some((hook) => Math.abs(hook.x - item.position[0]) < 1e-9 && hook.y === level)).toBe(true);
+    }
+    expect(shelfModel(peg, sources).items).toBe(items.length);
+  });
+
+  test('堆头：一块块码垛、往上一层四周收进去，都在台子上方、不超过高', () => {
+    const stack: ShelfFile = { ...island, type: 'stack', length: 1.6, height: 1.2, depth: 0.6, levels: [0.12], stock: { products: ['P/Cereal', 'P/Oil'], variants: 2 } };
+    const { items } = planShelf(stack, products);
+    expect(items.length).toBeGreaterThan(20);
+    const layers = new Set(items.map((item) => item.position[1].toFixed(4)));
+    expect(layers.size).toBeGreaterThan(1);
+    for (const item of items) {
+      const product = products.get(item.product)!;
+      expect(item.position[1]).toBeGreaterThanOrEqual(0.12);
+      expect(item.position[1] + product.size[1]).toBeLessThanOrEqual(1.2 + 1e-9);
+      expect(Math.abs(item.position[2])).toBeLessThanOrEqual(0.3);
+    }
   });
 
   test('材质：颜色图集加表面图集（G 粗糙度、B 金属度）；有发光的格子时加自发光图集', () => {

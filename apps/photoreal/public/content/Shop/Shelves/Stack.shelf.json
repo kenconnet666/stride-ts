@@ -1,0 +1,25 @@
+{
+ "name": "Stack",
+ "type": "stack",
+ "sides": 1,
+ "length": 1.1,
+ "height": 0.85,
+ "depth": 0.6,
+ "levels": [
+  0.12
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "stock": {
+  "products": [
+   "Shop/Products/Tissue",
+   "Shop/Products/Cereal",
+   "Shop/Products/Biscuits"
+  ],
+  "variants": 2,
+  "facings": [
+   3,
+   4
+  ]
+ },
+ "seed": 50
+}

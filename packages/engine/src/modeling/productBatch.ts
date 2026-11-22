@@ -117,6 +117,28 @@ export class ProductBatch {
     addBox(this.#glassVertices, this.#glassIndices, min, max, 0, 0);
   }
 
+  /** 一根圆管（从 from 到 to，半径 radius，绕一圈 segments 段，不封口），第 solid 个纯色：水管、吊杆、灯管。 */
+  tube(from: readonly number[], to: readonly number[], radius: number, solid: number, segments = 10): void {
+    const [x, y, w, h] = this.#solidCells[solid]!, u = (x + w / 2) / ATLAS, v = (y + h / 2) / ATLAS;
+    const axis = [to[0]! - from[0]!, to[1]! - from[1]!, to[2]! - from[2]!], length = Math.hypot(axis[0]!, axis[1]!, axis[2]!);
+    if (length < 1e-9) return;
+    const a = axis.map((c) => c / length);
+    // 和轴垂直的两个方向
+    const helper = Math.abs(a[1]!) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    const p = normalize3(cross3(a, helper)), q = cross3(a, p);
+    const base = this.#vertices.length / 8;
+    for (let k = 0; k <= segments; k++) {
+      const angle = (k / segments) * 2 * Math.PI, c = Math.cos(angle), s = Math.sin(angle);
+      const n = [p[0]! * c + q[0]! * s, p[1]! * c + q[1]! * s, p[2]! * c + q[2]! * s];
+      for (const end of [from, to]) this.#vertices.push(end[0]! + n[0]! * radius, end[1]! + n[1]! * radius, end[2]! + n[2]! * radius, n[0]!, n[1]!, n[2]!, u, v);
+    }
+    for (let k = 0; k < segments; k++) {
+      const i = base + k * 2;
+      // 从外面看逆时针：p→q 的方向绕着 a 转
+      this.#indices.push(i, i + 2, i + 1, i + 1, i + 2, i + 3);
+    }
+  }
+
   /** 一片玻璃（四个角，从正面看左下、右下、右上、左上；两面都画）：进玻璃那个网格。 */
   glassQuad(corners: readonly (readonly number[])[]): void {
     const [a, b, c] = corners as [readonly number[], readonly number[], readonly number[]];
@@ -210,6 +232,11 @@ export class ProductBatch {
 }
 
 const pathOf = (key: string) => key.slice(key.indexOf('|') + 1);
+const cross3 = (a: readonly number[], b: readonly number[]) => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
+const normalize3 = (v: readonly number[]) => {
+  const l = Math.hypot(v[0]!, v[1]!, v[2]!) || 1;
+  return [v[0]! / l, v[1]! / l, v[2]! / l];
+};
 
 /** 轴对齐的盒子的六个面，UV 都是 (u, v)。 */
 function addBox(vertices: number[], indices: number[], min: readonly number[], max: readonly number[], u: number, v: number): void {

@@ -5,6 +5,8 @@
 // 标签的中文字用资源包 @stride-ts/assets 里的站酷庆科黄油体（Shared/Fonts，开发服务器、编辑器后端打开工程时同步进来）。
 import path from 'node:path';
 import type { ProductFile } from '../../../packages/engine/src/content/formats/productFormat.ts';
+import type { CeilingFile } from '../../../packages/engine/src/content/formats/ceilingFormat.ts';
+import { ceilingLights } from '../../../packages/engine/src/modeling/ceiling.ts';
 import { McpProcess } from '../../../packages/editor/src/server/mcpClient.ts';
 
 const project = path.resolve(import.meta.dirname, '..');
@@ -123,7 +125,24 @@ shelves['Freezer'] = {
   type: 'freezer', sides: 1, length: 1.8, height: 0.85, depth: 0.9, levels: [0.45], font: FONT, frameColor: '#e8eaec',
   stock: { products: ['Dumplings', 'IceCream', 'Noodles'].map(p), variants: 4, facings: [2, 5], rows: 10, gaps: 0.1 }, seed: 47,
 };
+// 货架头上的端架（短的单面货架）、挂钩架，过道口的堆头
+for (const { id, ...product } of [
+  { id: 'Jerky', shape: 'pouch', size: [0.12, 0.18, 0.02], text: '牛肉干', seed: 71 },
+  { id: 'Candy', shape: 'pouch', size: [0.1, 0.14, 0.015], text: '软糖', seed: 72 },
+] as const) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
+shelves['EndCap'] = { ...gondola, sides: 1, length: 0.9, priceTags: 'electronic', stock: { products: ['Cereal', 'Crackers', 'Biscuits', 'Milk'].map(p), variants: 3, facings: [2, 3] }, seed: 48 };
+shelves['Hooks'] = {
+  type: 'pegboard', sides: 1, length: 0.9, height: 1.95, depth: 0.22, levels: [0.62, 0.92, 1.22, 1.52, 1.82], font: FONT, frameColor: '#c9ccd0',
+  stock: { products: ['Jerky', 'Candy', 'Konjac', 'Noodles'].map(p), variants: 4, facings: [2, 3], rows: 6 }, seed: 49,
+};
+shelves['Stack'] = { type: 'stack', sides: 1, length: 1.1, height: 0.85, depth: 0.6, levels: [0.12], font: FONT, stock: { products: ['Tissue', 'Cereal', 'Biscuits'].map(p), variants: 2, facings: [3, 4] }, seed: 50 };
 for (const [name, shelf] of Object.entries(shelves)) await write('shelf', `Shop/Shelves/${name}`, { name, ...shelf });
+// 收银台、寄存柜、购物车、篮子、闸机
+const fixtures: Record<string, object> = {
+  Checkout1: { type: 'checkout', number: '1', font: FONT }, Checkout2: { type: 'checkout', number: '2', font: FONT },
+  Locker: { type: 'locker', columns: 6, rows: 4 }, Cart: { type: 'cart' }, Basket: { type: 'basket', color: '#2f9e44' }, Gate: { type: 'gate' },
+};
+for (const [name, fixture] of Object.entries(fixtures)) await write('fixture', `Shop/Fixtures/${name}`, { name, ...fixture });
 // 通道上方挂的双面招牌
 const signs: Record<string, object> = {
   AisleDrinks: { text: '饮料 · 零食', size: [1.5, 0.36, 0.08], doubleSided: true, colors: { background: '#2f9e44' } },
@@ -131,24 +150,48 @@ const signs: Record<string, object> = {
 };
 for (const [name, sign] of Object.entries(signs)) await write('sign', `Shop/Signs/${name}`, { name, font: FONT, ...sign });
 
-await write('material', 'Shop/Materials/Floor', { name: 'Floor', baseColor: [0.72, 0.71, 0.69, 1], metalness: 0, roughness: 0.16 });
-await write('material', 'Shop/Materials/Ceiling', { name: 'Ceiling', baseColor: [0.05, 0.05, 0.055, 1], metalness: 0, roughness: 0.8 });
+// 地面：照片里超市的大块浅色瓷砖（60 厘米），按世界坐标铺；每块深浅、光滑程度略有不同，缝是浅灰的，表面有细的磨痕
+type GraphNode = { id: string; type: string; params?: object; inputs?: Record<string, { node: string; output?: string }> };
+const node = (id: string, type: string, params: object = {}, inputs: Record<string, string | readonly [string, string]> = {}, position: [number, number] = [0, 0]): GraphNode & { position: [number, number] } => ({
+  id, type, position, params,
+  inputs: Object.fromEntries(Object.entries(inputs).map(([port, from]) => [port, typeof from === 'string' ? { node: from } : { node: from[0], output: from[1] }])),
+});
+await write('material', 'Shop/Materials/Floor', {
+  name: 'Floor', baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.18,
+  graph: {
+    nodes: [
+      node('uv', 'worldUv', { scale: 1 / 0.6 }),
+      node('tiles', 'bricks', { columns: 1, rows: 1, mortar: 0.004, shift: 0 }, { uv: 'uv' }),
+      node('tone', 'colorRamp', { from: [0.66, 0.65, 0.63], to: [0.76, 0.75, 0.73] }, { t: ['tiles', 'brick'] }),
+      node('wear', 'noise', { scale: 30, octaves: 4 }, { uv: 'uv' }),
+      node('speckle', 'colorRamp', { from: [0.96, 0.96, 0.96], to: [1.03, 1.03, 1.03] }, { t: 'wear' }),
+      node('surface', 'multiply', {}, { a: 'tone', b: 'speckle' }),
+      node('joint', 'color', { color: [0.5, 0.5, 0.49] }),
+      node('color', 'mix', {}, { a: 'joint', b: 'surface', t: ['tiles', 'mask'] }),
+      // 光滑：瓷砖 0.1～0.2（每块不同，磨痕处糙一点），缝 0.6
+      node('gloss', 'levels', { inMin: 0, inMax: 1, outMin: 0.1, outMax: 0.2 }, { in: ['tiles', 'brick'] }),
+      node('scuff', 'levels', { inMin: 0.4, inMax: 0.9, outMin: 0, outMax: 0.08 }, { in: 'wear' }),
+      node('tileRough', 'add', {}, { a: 'gloss', b: 'scuff' }),
+      node('jointRough', 'value', { value: 0.6 }),
+      node('rough', 'mix', {}, { a: 'jointRough', b: 'tileRough', t: ['tiles', 'mask'] }),
+      node('normal', 'normalFromHeight', { strength: 0.6 }, { height: ['tiles', 'mask'], uv: 'uv' }),
+    ],
+    outputs: { baseColor: { node: 'color' }, roughness: { node: 'rough' }, normal: { node: 'normal' } },
+  },
+});
 await write('material', 'Shop/Materials/Wall', { name: 'Wall', baseColor: [0.62, 0.6, 0.56, 1], metalness: 0, roughness: 0.7 });
-await write('material', 'Shop/Materials/Tube', { name: 'Tube', baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.5, emissive: [6, 5.8, 5.5] });
 await write('brush', 'Shop/Models/Hall', {
-  name: 'Hall', materials: ['Shop/Materials/Floor', 'Shop/Materials/Ceiling', 'Shop/Materials/Wall', 'Shop/Materials/Tube'], uvScale: 1,
+  name: 'Hall', materials: ['Shop/Materials/Floor', 'Shop/Materials/Wall'], uvScale: 1,
   brushes: [
     { kind: 'box', operation: 'add', position: [0, -0.05, -4], size: [14, 0.1, 20] },
-    { kind: 'box', operation: 'add', position: [0, 3.35, -4], size: [14, 0.1, 20], material: 1 },
-    { kind: 'box', operation: 'add', position: [-6.1, 1.65, -4], size: [0.2, 3.3, 20], material: 2 },
-    { kind: 'box', operation: 'add', position: [6.1, 1.65, -4], size: [0.2, 3.3, 20], material: 2 },
-    { kind: 'box', operation: 'add', position: [0, 1.65, -14.1], size: [14, 3.3, 0.2], material: 2 },
-    // 灯管的灯具：和下面的面光源一一对应
-    ...[-1.6, 1.6].flatMap((x) => Array.from({ length: 6 }, (_, i) => ({ kind: 'box', operation: 'add', position: [x * 1.4, 3.28, 2 - i * 2.2], size: [0.12, 0.04, 1.4], material: 3 }))),
+    { kind: 'box', operation: 'add', position: [-6.1, 1.65, -4], size: [0.2, 3.3, 20], material: 1 },
+    { kind: 'box', operation: 'add', position: [6.1, 1.65, -4], size: [0.2, 3.3, 20], material: 1 },
+    { kind: 'box', operation: 'add', position: [0, 1.65, -14.1], size: [14, 3.3, 0.2], material: 1 },
   ],
 });
 const aisleEye: Vec3 = [0.25, 1.5, 3.2];
 const sid = (k: number) => `5e0b5e0b-0002-4000-8000-${k.toString(16).padStart(12, '0')}`;
+const fixtureAt = (k: number, name: string, position: Vec3, yaw: number) => entity(sid(0x80 + k), `${name} ${k}`, position, { model: { model: `Shop/Fixtures/${name}`, materials: [] } }, euler(yaw));
 const shelfAt = (k: number, name: string, position: Vec3, yaw: number) => entity(sid(0x10 + k), `${name} ${k}`, position, { model: { model: `Shop/Shelves/${name}`, materials: [] } }, euler(yaw));
 // 过道沿 -Z：左边一排的正面朝 +X，右边一排朝 -X；靠墙那排在右边的墙上
 const shelfEntities = [
@@ -157,14 +200,28 @@ const shelfEntities = [
   shelfAt(4, 'Snacks', [-4.2, 0, -3], 90), shelfAt(5, 'Wall', [5.95, 0, -3], -90),
   // 过道尽头：一台卧式冰柜，后墙前一排两节立式冷柜
   shelfAt(6, 'Freezer', [0, 0, -8.4], 0), shelfAt(7, 'Fridge', [-1.55, 0, -11.6], 0), shelfAt(8, 'Fridge', [1.55, 0, -11.6], 0),
+  // 两排货架朝着入口的那一头：左边端架、右边挂钩架；过道口一个低的堆头
+  shelfAt(9, 'EndCap', [-1.3, 0, 1.03], 0), shelfAt(10, 'Hooks', [1.3, 0, 1.03], 0), shelfAt(11, 'Stack', [0, 0, 1.85], 0),
+  // 入口那片：左边两个收银台（顾客从 -Z 走过），右墙一排寄存柜，几辆购物车、一摞篮子，中间两道闸机
+  fixtureAt(0, 'Checkout1', [-4.4, 0, 3.6], 90), fixtureAt(1, 'Checkout2', [-2.9, 0, 3.6], 90),
+  fixtureAt(2, 'Locker', [5.75, 0, 3.8], -90),
+  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [3.2 + i * 0.12, 0, 4.4 - i * 0.28], 180)),
+  ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [4.4, i * 0.09, 2.6], 10 * i)),
+  fixtureAt(10, 'Gate', [1.2, 0, 4.6], 0), fixtureAt(11, 'Gate', [2.0, 0, 4.6], 0),
   // 挂在过道上方的招牌
   entity(sid(0x30), 'Sign drinks', [0, 2.55, -2.6], { model: { model: 'Shop/Signs/AisleDrinks', materials: [] } }),
   entity(sid(0x31), 'Sign frozen', [0, 2.55, -7.4], { model: { model: 'Shop/Signs/AisleFrozen', materials: [] } }),
 ];
-// 灯管：沿过道每 2.2 米一盏，两排
-const lights = [-1.6, 1.6].flatMap((x, row) => Array.from({ length: 6 }, (_, i) => entity(sid(0x40 + row * 8 + i), `Light ${row}-${i}`, [x * 1.4, 3.25, 2 - i * 2.2], {
-  light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 24, width: 0.12, height: 1.4, range: 9 },
-}, euler(0, -90))));
+// 天花板：照片里开放式的黑顶（风管、桥架、喷淋管、吊杆上的灯管）。管线沿天花板的 X，转 90° 以后顺着过道（-Z）；
+// 面光源放在 ceilingLights 算出的每盏灯管下面，灯具和光对得上
+const ceiling: CeilingFile = { name: 'Hall', size: [20, 14], height: 3.3, style: 'open', ducts: 2, trays: 2, pipes: 3, lights: { rows: 4, spacing: 2.2, length: 1.4, drop: 0.55 } };
+await write('ceiling', 'Shop/Ceilings/Hall', ceiling);
+const ceilingAt: Vec3 = [0, 0, -4];
+const ceilingEntity = (id: string) => entity(id, 'Ceiling', ceilingAt, { model: { model: 'Shop/Ceilings/Hall', materials: [] } }, euler(90));
+// 转 90°：天花板本地的 (x, z) 到世界是 (z, -x)
+const lights = ceilingLights(ceiling).map((light, i) => entity(sid(0x40 + i), `Light ${i}`, [ceilingAt[0] + light.center[2], light.center[1] - 0.015, ceilingAt[2] - light.center[0]], {
+  light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 24, width: 0.12, height: light.length, range: 9 },
+}, euler(0, -90)));
 await write('scene', 'Supermarket', {
   name: 'Supermarket',
   compositor: {
@@ -177,6 +234,7 @@ await write('scene', 'Supermarket', {
     entity(sid(1), 'Camera', aisleEye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 200 } }, lookAt(aisleEye, [0, 1.2, -6])),
     entity(sid(2), 'Ambient', [0, 3, 0], { light: { type: 'ambient', color: [1, 0.98, 0.95], intensity: 0.35 } }),
     entity(sid(3), 'Hall', [0, 0, 0], { model: { model: 'Shop/Models/Hall', materials: [] } }),
+    ceilingEntity(sid(4)),
     ...shelfEntities,
     ...lights,
   ],
@@ -236,6 +294,7 @@ await write('scene', 'Produce', {
     entity(pid(1), 'Camera', standEye, { camera: { verticalFieldOfView: 60, nearClipPlane: 0.02, farClipPlane: 100 } }, lookAt(standEye, [0, 0.82, -0.05])),
     entity(pid(2), 'Ambient', [0, 3, 0], { light: { type: 'ambient', color: [1, 0.98, 0.95], intensity: 0.35 } }),
     entity(pid(3), 'Hall', [0, 0, 0], { model: { model: 'Shop/Models/Hall', materials: [] } }),
+    ceilingEntity(pid(7)),
     entity(pid(4), 'Stand', [0, 0, 0], { model: { model: 'Shop/Models/Stand', materials: [] } }),
     binAt(0, 'GarlicBin', -0.66, -0.23), binAt(1, 'OnionBin', 0, -0.23), binAt(2, 'TomatoBin', 0.66, -0.23),
     binAt(3, 'PotatoBin', -0.5, 0.23), binAt(4, 'WalnutBin', 0.25, 0.23),

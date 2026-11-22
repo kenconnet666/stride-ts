@@ -1,0 +1,32 @@
+{
+ "name": "Hooks",
+ "type": "pegboard",
+ "sides": 1,
+ "length": 0.9,
+ "height": 1.95,
+ "depth": 0.22,
+ "levels": [
+  0.62,
+  0.92,
+  1.22,
+  1.52,
+  1.82
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "frameColor": "#c9ccd0",
+ "stock": {
+  "products": [
+   "Shop/Products/Jerky",
+   "Shop/Products/Candy",
+   "Shop/Products/Konjac",
+   "Shop/Products/Noodles"
+  ],
+  "variants": 4,
+  "facings": [
+   2,
+   3
+  ],
+  "rows": 6
+ },
+ "seed": 49
+}

@@ -67,6 +67,10 @@ export const EXTENSIONS = {
   pile: '.pile.json',
   /** 招牌（SignFile，content/formats/signFormat.ts）：灯箱、挂牌，编辑器后端生成同名的模型、图集和材质。 */
   sign: '.sign.json',
+  /** 天花板（CeilingFile，content/formats/ceilingFormat.ts）：开放式的顶或格栅吊顶，编辑器后端生成同名的模型、图集和材质。 */
+  ceiling: '.ceiling.json',
+  /** 店里的器具（FixtureFile，content/formats/fixtureFormat.ts）：收银台、购物车、购物篮、寄存柜、闸机，编辑器后端生成同名的模型、图集和材质。 */
+  fixture: '.fixture.json',
   /** 程序化建筑（BuildingFile，content/formats/buildingFormat.ts）：体块、立面规则和构件（形状文法），编辑器后端把它生成同名的模型（.model）。 */
   building: '.building.json',
   /** 城市（CityFile，content/formats/cityFormat.ts）：沿着路网摆楼的规则和种子，楼运行时由 CitySystem 摆（world/City.ts）。 */

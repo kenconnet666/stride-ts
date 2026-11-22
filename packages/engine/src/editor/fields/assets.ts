@@ -1,5 +1,5 @@
 /** 编辑器里能编辑的资源文件的字段描述（ASSET_FIELDS：材质、JSON 模型、时间轴、白盒、SDF、多边形、导入设置、精灵表、声音、游戏设置）。 */
-import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile, ShelfFile, PileFile, SignFile } from '../../content/formats/format';
+import type { BuildingFile, CityFile, WaterFile, TextureRef, MaterialFile, ProceduralModelFile, TextureSlot, TimelineFile, TerrainFile, BrushFile, SdfFile, PolyMeshFile, ModelImportFile, ImageImportFile, GameSettingsFile, SpriteSheetFile, SoundFile, SplineFile, TextModelFile, ScatterFile, TreeFile, ProductFile, ShelfFile, PileFile, SignFile, CeilingFile, FixtureFile } from '../../content/formats/format';
 import { DEFAULT_SOUND_SYNTH, SYNTH_RANGES, type SoundSynth } from '../../audio/soundSynth.ts';
 import { nullable, fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, textureRef, type FieldType, type Field, type FieldSpec } from './builders.ts';
 
@@ -701,7 +701,7 @@ const SHELF_FIELDS = fields<ShelfFile>({
     optional: true,
     description: 'what goes on the shelf; empty shelves without it',
   },
-  type: { type: oneOf('gondola', 'fridge', 'freezer'), optional: true, default: 'gondola', description: 'gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor)' },
+  type: { type: oneOf('gondola', 'fridge', 'freezer', 'pegboard', 'stack'), optional: true, default: 'gondola', description: 'gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor); pegboard: goods hanging on rows of hooks (levels are the hook rows, depth the hook length); stack: a floor display stacked in tapering blocks on a platform (only the first level is used: the platform top; depth is the stack depth; centered)' },
   header: { type: string, optional: true, description: 'text on the lit header of a fridge (needs the font)' },
   priceTags: { type: oneOf('paper', 'electronic'), optional: true, default: 'paper', description: 'paper tags (white or yellow, red price) or electronic shelf labels (a small housing with an e-ink screen, black price and a QR code, some with a red promo bar)' },
   seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed of the stocking and the prices' },
@@ -763,6 +763,40 @@ const SIGN_FIELDS = fields<SignFile>({
   brightness: { type: number({ min: 0, step: 0.5 }), optional: true, default: 3, description: 'emissive strength of a lightbox face' },
 });
 
+/** 天花板（CeilingFile）：后端生成同名的模型、图集和材质。 */
+const CEILING_FIELDS = fields<CeilingFile>({
+  name: string,
+  size: { type: vector(2, 'm'), description: 'width along X and depth along Z' },
+  height: { type: number({ min: 0.5, step: 0.1, unit: 'm' }), description: 'height of the slab underside (open) or of the suspended ceiling (grid)' },
+  style: { type: oneOf('open', 'grid'), optional: true, default: 'open', description: 'open: a dark slab with exposed ducts, cable trays, sprinkler pipes and hanging tube lights; grid: a suspended tile ceiling with recessed light panels' },
+  color: { type: string, optional: true, description: 'slab or tile color (sRGB #rrggbb; dark grey for open, white for grid when missing)' },
+  ducts: { type: integer(0, 20), optional: true, default: 2, description: 'air ducts running along X (open)' },
+  trays: { type: integer(0, 20), optional: true, default: 2, description: 'cable trays running along X (open)' },
+  pipes: { type: integer(0, 20), optional: true, default: 3, description: 'sprinkler pipes running along X (open)' },
+  lights: {
+    type: object(fields<NonNullable<CeilingFile['lights']>>({
+      rows: { type: integer(0, 50), optional: true, default: 2, description: 'rows of lights across the depth' },
+      spacing: { type: number({ min: 0.5, step: 0.1, unit: 'm' }), optional: true, default: 2.2, description: 'spacing of lights along X' },
+      length: { type: number({ min: 0.1, step: 0.1, unit: 'm' }), optional: true, default: 1.4, description: 'length of one tube light (open)' },
+      drop: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0.6, description: 'how far the lights hang below the slab (open)' },
+    })),
+    optional: true,
+    description: 'light fixtures (they glow; place area lights at the same spots to light the scene)',
+  },
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed' },
+});
+
+/** 店里的器具（FixtureFile）：后端生成同名的模型、图集和材质。 */
+const FIXTURE_FIELDS = fields<FixtureFile>({
+  name: string,
+  type: { type: oneOf('checkout', 'cart', 'basket', 'locker', 'gate'), description: 'checkout counter (belt, scanner, register screens, a lit number sign above), shopping cart, hand basket, coin locker, entrance gate' },
+  color: { type: string, optional: true, description: 'main color (sRGB #rrggbb; by type when missing)' },
+  number: { type: string, optional: true, description: 'number on the checkout sign (needs the font)' },
+  font: { type: asset('font'), optional: true, description: 'font of the checkout sign' },
+  columns: { type: integer(1, 20), optional: true, default: 6, description: 'locker columns' },
+  rows: { type: integer(1, 10), optional: true, default: 4, description: 'locker rows' },
+});
+
 /** 声音资源：音频文件的格式和播放方式，合成的音效的参数。 */
 export const SOUND_FIELDS = fields<SoundFile>({
   name: string,
@@ -772,5 +806,5 @@ export const SOUND_FIELDS = fields<SoundFile>({
   synth: { type: object(SOUND_SYNTH_FIELDS), optional: true, description: "sound effect generator parameters (sfxr's), used when the encoding is 'synth'" },
 });
 
-export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, shelf: SHELF_FIELDS, pile: PILE_FIELDS, sign: SIGN_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
+export const ASSET_FIELDS = { material: MATERIAL_FIELDS, terrain: TERRAIN_FIELDS, model: PROCEDURAL_MODEL_FIELDS, timeline: TIMELINE_FIELDS, brush: BRUSH_FIELDS, sdf: SDF_FIELDS, poly: POLY_FIELDS, modelImport: MODEL_IMPORT_FIELDS, imageImport: IMAGE_IMPORT_FIELDS, spriteSheet: SPRITE_SHEET_FIELDS, text: TEXT_FIELDS, product: PRODUCT_FIELDS, shelf: SHELF_FIELDS, pile: PILE_FIELDS, sign: SIGN_FIELDS, ceiling: CEILING_FIELDS, fixture: FIXTURE_FIELDS, spline: SPLINE_FIELDS, tree: TREE_FIELDS, building: BUILDING_FIELDS, city: CITY_FIELDS, water: WATER_FIELDS, scatter: SCATTER_FIELDS, sound: SOUND_FIELDS, gameSettings: GAME_SETTINGS_FIELDS } as const;
 

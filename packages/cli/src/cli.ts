@@ -198,7 +198,13 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
   },
 });
 
-const positionals = rawPositionals.map((arg) => (arg.startsWith(NEGATIVE) ? arg.slice(1) : arg));
+const unhide = (arg: string) => (arg.startsWith(NEGATIVE) ? arg.slice(1) : arg);
+const positionals = rawPositionals.map(unhide);
+// 选项的值也可能是负数（--dy -300）
+for (const [name, value] of Object.entries(options)) {
+  if (typeof value === 'string') Object.assign(options, { [name]: unhide(value) });
+  else if (Array.isArray(value)) Object.assign(options, { [name]: value.map((v) => (typeof v === 'string' ? unhide(v) : v)) });
+}
 const [command, ...rest] = positionals;
 const page = options.page === undefined ? undefined : Number(options.page);
 // 没给 --timeout 时看环境变量 STRIDE_TIMEOUT（秒）：CI 的软件 WebGPU 上一帧零点几秒，按帧等的命令要更久

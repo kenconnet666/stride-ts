@@ -29,6 +29,7 @@ import { keyCode } from '../input/keys';
 import { describe, type Debug } from './Debug';
 import { pageHelpers } from './pageHelpers';
 import { devtoolsBridgeVersion, sendDevtools } from './devtoolsBridge';
+import { readTexture } from '../graphics/readTexture';
 
 type Args = Readonly<Record<string, unknown>>;
 
@@ -78,11 +79,20 @@ export function registerGameCommands(debug: Debug, game: Game): void {
     const current = game.graphicsCompositor.quality;
     return { tier: Object.entries(QUALITY_TIERS).find(([, settings]) => settings === current)?.[0] ?? 'custom', ...current };
   });
-  debug.command('ao', 'Screen-space ambient occlusion (GTAO) of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), radius (world units).', (args) => {
+  debug.command('ao', 'Screen-space ambient occlusion (GTAO) of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), radius (world units), power, dump (true: also return the last occlusion buffer as a grayscale PNG, base64, half resolution; white is open; save it with stride call ao \'{"dump":true}\' --out ao.png).', async (args) => {
     const ao = game.graphicsCompositor.ambientOcclusion;
     ao.enabled = switchArg(args, ao.enabled);
     if (typeof args['radius'] === 'number') ao.radius = args['radius'];
-    return { enabled: ao.enabled, radius: ao.radius, power: ao.power };
+    if (typeof args['power'] === 'number') ao.power = args['power'];
+    const state = { enabled: ao.enabled, radius: ao.radius, power: ao.power };
+    if (args['dump'] !== true) return state;
+    const texture = ao.result;
+    if (!texture) throw new Error('ao: no occlusion buffer yet (GTAO is off or has not run)');
+    const gray = await readTexture(game.graphicsDevice.device, texture, 1);
+    const rgba = new Uint8Array(gray.length * 4);
+    for (let i = 0; i < gray.length; i++) rgba.set([gray[i]!, gray[i]!, gray[i]!, 255], i * 4);
+    const { encodePng } = await import('../offline/png');
+    return { ...state, width: texture.width, height: texture.height, png: (await encodePng(rgba, texture.width, texture.height)).toBase64() };
   });
   debug.command('blur', 'Motion blur of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), shutter (fraction of a frame), maxPixels.', (args) => {
     const blur = game.graphicsCompositor.motionBlur;

@@ -196,7 +196,7 @@ export class AmbientOcclusion {
     const width = Math.ceil(depth.width / 2), height = Math.ceil(depth.height / 2);
     if (this.#textures?.result.width !== width || this.#textures.result.height !== height) {
       if (this.#textures) for (const texture of Object.values(this.#textures)) texture.destroy();
-      const create = (label: string, format: GPUTextureFormat) => this.#device.createTexture({ label: `GTAO ${label}`, size: [width, height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING });
+      const create = (label: string, format: GPUTextureFormat) => this.#device.createTexture({ label: `GTAO ${label}`, size: [width, height], format, usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC });
       this.#textures = { positions: create('positions', POSITION_FORMAT), raw: create('raw', AO_FORMAT), horizontal: create('blurred', AO_FORMAT), result: create('result', AO_FORMAT) };
     }
     const { positions, raw, horizontal, result } = this.#textures;
@@ -212,6 +212,11 @@ export class AmbientOcclusion {
   /** 在后台编三步的管线（加载开着 GTAO 的场景时，见 ForwardRenderer.warmPostEffects）；目标格式是固定的。 */
   warm(): Promise<void> {
     return Promise.all([this.#prefilter.warm([POSITION_FORMAT]), this.#gtao.warm([AO_FORMAT]), this.#blur.warm([AO_FORMAT])]).then(() => undefined);
+  }
+
+  /** 上一帧算好的遮蔽（半分辨率，r8unorm：1 是没遮住）；还没算过时是 undefined。调试命令 ao 的 dump 读它。 */
+  get result(): GPUTexture | undefined {
+    return this.#textures?.result;
   }
 
   /** 这一帧录的通道执行完以后调。 */

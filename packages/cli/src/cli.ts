@@ -31,7 +31,7 @@ Browser and connection
 Game
   status                  status, frame, time, fps, canvas, GPU adapter, counters, watches
   commands                commands the page registered (games add their own with game.debug.command)
-  call <command> [json]   call any page command with JSON args
+  call <command> [json] [--out file.png]   call any page command with JSON args (a png in the result is saved to --out)
   entities [--name <text>] [--with <Component|Script>] [--limit 200]
   inspect <entity>        all component values and script properties (entity: id or name)
   set <entity> <Component.field[.x]> <json value>
@@ -393,7 +393,7 @@ const commands: Record<string, () => Promise<unknown>> = {
   slow: () => call('slow', { ms: Number(required(rest[0], 'ms')) }),
   status: () => call('status'),
   commands: () => call('commands'),
-  call: () => call(required(rest[0], 'command'), rest[1] === undefined ? {} : (JSON.parse(rest[1]) as Record<string, unknown>)),
+  call: async () => savePng(await call(required(rest[0], 'command'), rest[1] === undefined ? {} : (JSON.parse(rest[1]) as Record<string, unknown>))),
   entities: () => call('entities', { ...(options.name ? { name: options.name } : {}), ...(options.with ? { with: options.with } : {}), ...(options.limit ? { limit: Number(options.limit) } : {}) }),
   inspect: () => call('inspect', { entity: required(rest[0], 'entity') }),
   set: () => call('set', { entity: required(rest[0], 'entity'), path: required(rest[1], 'path'), value: parseJson(required(rest[2], 'value')) }),
@@ -655,6 +655,14 @@ const commands: Record<string, () => Promise<unknown>> = {
     return { ...result, ...(ran ? { run } : {}) };
   },
 };
+
+/** 命令的结果里有 png（base64）、又给了 --out 时存成文件，结果里换成文件名（raytrace、ao 的 dump 这类返回图片的命令）。 */
+function savePng(result: unknown): unknown {
+  if (!options.out || typeof result !== 'object' || result === null || typeof (result as { png?: unknown }).png !== 'string') return result;
+  const { png, ...rest } = result as { png: string };
+  writeFileSync(options.out, Buffer.from(png, 'base64'));
+  return { ...rest, file: options.out };
+}
 
 /** parseArgs，选项写错时打一行错误（而不是调用栈）并退出。 */
 function parseArgsOrExit<T extends ParseArgsConfig>(config: T): ReturnType<typeof parseArgs<T>> {

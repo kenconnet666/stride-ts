@@ -15,6 +15,9 @@
    "toneMap": true,
    "antialiasing": true,
    "antialiasingMode": "temporal",
+   "ambientOcclusion": {
+    "radius": 0.25
+   },
    "localReflections": {
     "maxRoughness": 0.45,
     "edgeFade": 0.1

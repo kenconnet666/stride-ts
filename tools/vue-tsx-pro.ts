@@ -1,12 +1,13 @@
 /**
  * 编辑器用的 vue-tsx-pro（`~/IdeaProjects/vue-tsx-pro`，npm 包 `@zerodep-dev/vue-tsx-pro-tsx`、`-ui`）在两种来源之间切换：
  *
- *   node tools/vue-tsx-pro.ts dev            在 vue-tsx-pro 里发临时的预发行版（scripts/dev-release.mjs：不跑测试，pnpm pack 四个包挂到
- *                                            GitHub 的 dev-<提交> 上；库要先提交推送），pnpm-workspace.yaml 的 overrides 指向那里的
- *                                            tsx、ui，pnpm install：库里的改动马上在编辑器里用上，CI 也装得到
+ *   node tools/vue-tsx-pro.ts dev            用库的 HEAD 的测试版：库推到 master 时 CI 的第一个任务（不等测试）把四个包挂到滚动的预发行版
+ *                                            dev 上、文件名带提交号；这里等它挂上（scripts/dev-release.mjs），pnpm-workspace.yaml 的
+ *                                            overrides 指向那里的 tsx、ui，pnpm install。库要先提交推送
  *   node tools/vue-tsx-pro.ts npm <版本>     去掉那两条 override，编辑器的依赖写成 ^<版本>（npm 上的正式版），pnpm install
  *
- * 用户 2026-11-21 定：vue-tsx-pro 先编译直接用、测试后置，主仓库用临时发行版（不再本地安装覆盖）；测试和正式版攒一批再做。
+ * 用户定：vue-tsx-pro 先发测试版直接用、测试后置，主仓库用测试版（不本地安装覆盖，2026-11-21）；测试版由库的 CI 在推送 master 时
+ * 先发、不给每个提交打标签，正式版是打 v* 标签发 npm，挑测试通过的顺手节点发（2026-11-22）。
  * 库的位置可以用环境变量 VUE_TSX_PRO 改。
  */
 import { execFileSync, execSync } from 'node:child_process';

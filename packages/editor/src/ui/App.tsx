@@ -1,7 +1,7 @@
 import { Clapperboard, FolderTree, Images, Library, ListTree, SlidersHorizontal, Sparkles, Workflow } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { usePersistentState } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Flex, usePersistentState } from '@zerodep-dev/vue-tsx-pro-ui';
 import { defaultWorkbenchLayout, Workbench, type WorkbenchWindow } from '@zerodep-dev/vue-tsx-pro-ui/patterns';
 import { onMounted, onUnmounted } from 'vue';
 import { AssetBrowser } from './panels/AssetBrowser';
@@ -18,8 +18,9 @@ import { DocumentTabs, MainToolbar, StatusBar, ViewportToolbar } from './workben
 import { Viewport } from './workbench/Viewport';
 
 const styles = css.create({
-  center: { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column' },
-  viewport: { flex: '1', minHeight: '0', position: 'relative' },
+  // 工作台的主内容区：页签、视口工具条、视口竖着排满
+  center: { position: 'absolute', inset: '0' },
+  viewport: { position: 'relative' },
 });
 
 /** 连按两下 Shift 算一次的间隔（毫秒），同 JetBrains 的默认。 */
@@ -157,13 +158,13 @@ export const App = _component(({ session }: { session: EditorSession }) => {
         header={<MainToolbar session={session} playing={playing} onTogglePlay={() => void togglePlay()} />}
         footer={<StatusBar session={session} />}
       >
-        <div {...css.attrs(styles.center)}>
+        <Flex direction="column" sx={styles.center}>
           <DocumentTabs session={session} playing={playing} />
           <ViewportToolbar session={session} playing={playing} />
-          <div {...css.attrs(styles.viewport)}>
+          <Flex grow sx={styles.viewport}>
             <Viewport session={session} playing={playing} onShortcut={shortcut} onClipboard={clipboard} />
-          </div>
-        </div>
+          </Flex>
+        </Flex>
       </Workbench>
     );
   };

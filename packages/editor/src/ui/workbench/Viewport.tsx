@@ -1,6 +1,6 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Skeleton, Text } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { Game } from '@stride-ts/engine';
 import type { CSSProperties } from 'vue';
 import { LIBRARY_DRAG_TYPE } from '../panels/LibraryPanel';
@@ -9,10 +9,10 @@ import type { EditorSession } from '../session/EditorSession';
 
 const styles = css.create({
   frame: { display: 'block', width: '100%', height: '100%', borderWidth: '0', backgroundColor: 'black' },
-  status: { position: 'absolute', insetInlineStart: '_sm', insetBlockStart: '_sm', color: '_textMuted' },
-  wrap: { position: 'relative', height: '100%' },
+  status: { position: 'absolute', insetInlineStart: '_sm', insetBlockStart: '_sm' },
+  wrap: { position: 'relative', flex: '1', minWidth: '0' },
   // 打开游戏页面时盖住整个视口（游戏页面这时在起设备、打印启动日志），文字在中间；骨架是半透明的，底下垫一层不透明的表面
-  opening: { position: 'absolute', inset: '0', display: 'grid', placeItems: 'center', backgroundColor: '_surface', color: '_textMuted' },
+  opening: { position: 'absolute', inset: '0', display: 'grid', placeItems: 'center', backgroundColor: '_surface' },
   openingShimmer: { position: 'absolute', inset: '0', borderRadius: '0' },
   guide: { position: 'absolute', inset: '0', pointerEvents: 'none', display: 'grid', placeItems: 'center', overflow: 'hidden' },
   // 从库窗口拖东西时盖在 iframe 上接放下（拖放的事件进了 iframe 就到不了编辑器）
@@ -94,10 +94,10 @@ export const Viewport = _component(({ session, playing, onShortcut, onClipboard 
       {status === OPENING && (
         <div {...css.attrs(styles.opening)} role="status">
           <Skeleton sx={styles.openingShimmer} />
-          {t.openingGame}
+          <Text tone="muted">{t.openingGame}</Text>
         </div>
       )}
-      {status && status !== OPENING && <span {...css.attrs(styles.status)}>{status}</span>}
+      {status && status !== OPENING && <Text tone="danger" sx={styles.status} role="alert">{status}</Text>}
     </div>
   );
 });

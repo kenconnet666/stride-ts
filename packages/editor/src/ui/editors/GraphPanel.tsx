@@ -11,8 +11,8 @@
 import { CircleX, Plus } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, IconButton, Menu, MenuGroup, MenuItem } from '@zerodep-dev/vue-tsx-pro-ui';
-import { Diagram, type DiagramConnection, type DiagramEdgeItem, type DiagramNodeItem, type DiagramNodeMove, type DiagramPortItem, type DiagramSelection } from '@zerodep-dev/vue-tsx-pro-ui/diagram';
+import { Button, Empty, Flex, IconButton, Menu, MenuGroup, MenuItem, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Diagram, DiagramPortNode, portNodeLayout, type DiagramConnection, type DiagramEdgeItem, type DiagramNodeItem, type DiagramNodeMove, type DiagramSelection, type PortNodePort } from '@zerodep-dev/vue-tsx-pro-ui/diagram';
 import type { GraphFile, GraphLink, GraphNodeFile, NodeSpec } from '@stride-ts/engine/node-graph';
 import { MATERIAL_GRAPH_OUTPUTS, MATERIAL_NODE_SPECS } from '@stride-ts/engine/material-graph';
 import { Fields, type FieldContext } from '../fields/FieldEditor';
@@ -20,10 +20,6 @@ import { t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
 
 const WIDTH = 190;
-const HEADER = 24;
-const ROW = 20;
-/** 卡片的边框：行从边框里面排起 */
-const BORDER = 1;
 /** 参数一行（属性面板的字段行 28 加行间距 2）的高度。 */
 const PARAM_ROW = 30;
 const OUTPUT_NODE = '$output';
@@ -31,18 +27,9 @@ const SPECS = new Map(MATERIAL_NODE_SPECS.map((spec) => [spec.type, spec]));
 const OUTPUT_PORTS = Object.entries(MATERIAL_GRAPH_OUTPUTS).map(([name, type]) => ({ name, type }));
 
 const styles = css.create({
-  panel: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: '0', fontSize: '0.75rem' },
-  toolbar: { display: 'flex', alignItems: 'center', gap: '_xs', paddingInline: '_sm', paddingBlock: '2px', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border' },
-  grow: { flex: '1', color: '_textMuted' },
+  panel: { height: '100%', minHeight: '0', fontSize: '0.75rem' },
   canvas: { flex: '1', minHeight: '0', position: 'relative' },
   diagram: { position: 'absolute', inset: '0' },
-  card: { width: '100%', height: '100%', borderWidth: '1px', borderStyle: 'solid', borderColor: '_border', borderRadius: '6px', backgroundColor: '_surface', boxShadow: '0 1px 4px rgba(0,0,0,0.3)', overflow: 'hidden' },
-  selected: { borderColor: '_accent' },
-  header: { boxSizing: 'border-box', height: `${HEADER}px`, lineHeight: `${HEADER}px`, paddingInline: '8px', fontWeight: '600', borderBlockEndWidth: '1px', borderBlockEndStyle: 'solid', borderBlockEndColor: '_border', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  row: { height: `${ROW}px`, display: 'flex', alignItems: 'center', paddingInline: '10px' },
-  outputRow: { justifyContent: 'flex-end' },
-  params: { padding: '4px 6px', display: 'flex', flexDirection: 'column', gap: '2px' },
-  hint: { color: '_textMuted', padding: '_sm' },
 });
 
 /** 端口的颜色按种类（数、二维、三维、颜色）。 */
@@ -54,8 +41,11 @@ interface CardItem extends DiagramNodeItem {
   readonly spec?: NodeSpec;
 }
 
-/** 卡片里第 row 行（标题下面从 0 数）的中心在卡片高度里的比例：端口对准它。 */
-const rowAt = (row: number, height: number) => (BORDER + HEADER + row * ROW + ROW / 2) / height;
+/** 节点的端口：名字按语言，点的颜色按种类。 */
+const portsOf = (ports: readonly { readonly name: string; readonly type: string }[], label: (name: string) => string): PortNodePort[] =>
+  ports.map((port) => ({ id: port.name, label: label(port.name), color: PORT_COLORS[port.type]! }));
+const portLabel = (name: string) => t.graphPorts[name] ?? name;
+const outputLabel = (name: string) => t.graphOutputs[name as keyof typeof t.graphOutputs] ?? name;
 
 export const GraphPanel = _component(({ session }: { session: EditorSession }) => {
   let selection = _state<DiagramSelection>({ nodes: [], edges: [] });
@@ -91,20 +81,18 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     const items: CardItem[] = file.nodes.flatMap((node) => {
       const spec = SPECS.get(node.type);
       if (!spec) return [];
-      const height = HEADER + (spec.outputs.length + spec.inputs.length) * ROW + (spec.params.length > 0 ? spec.params.length * PARAM_ROW + 6 : 0) + 2 * BORDER;
-      const ports: DiagramPortItem[] = [
-        ...spec.outputs.map((port, i): DiagramPortItem => ({ id: port.name, direction: 'out', at: rowAt(i, height), color: PORT_COLORS[port.type]!, label: t.graphPorts[port.name] ?? port.name })),
-        ...spec.inputs.map((port, i): DiagramPortItem => ({ id: port.name, direction: 'in', at: rowAt(spec.outputs.length + i, height), color: PORT_COLORS[port.type]!, label: t.graphPorts[port.name] ?? port.name })),
-      ];
+      // 端口行下面是参数（属性面板的字段行，每行 PARAM_ROW），端口位置按行算（portNodeLayout）
+      const { height, ports } = portNodeLayout({
+        outputs: portsOf(spec.outputs, portLabel),
+        inputs: portsOf(spec.inputs, portLabel),
+        body: spec.params.length > 0 ? spec.params.length * PARAM_ROW + 6 : 0,
+      });
       const [x, y] = node.position ?? [0, 0];
       return [{ id: node.id, x, y, width: WIDTH, height, ports, node, spec }];
     });
     const right = Math.max(0, ...items.map((item) => item.x)) + WIDTH + 80;
-    const height = HEADER + OUTPUT_PORTS.length * ROW + 2 * BORDER;
-    items.push({
-      id: OUTPUT_NODE, x: right, y: 0, width: WIDTH, height,
-      ports: OUTPUT_PORTS.map((port, i) => ({ id: port.name, direction: 'in', at: rowAt(i, height), color: PORT_COLORS[port.type]!, label: port.name })),
-    });
+    const output = portNodeLayout({ inputs: portsOf(OUTPUT_PORTS, outputLabel) });
+    items.push({ id: OUTPUT_NODE, x: right, y: 0, width: WIDTH, height: output.height, ports: output.ports });
     return items;
   };
 
@@ -151,43 +139,32 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     selection = { nodes: [], edges: [] };
   };
 
-  const card = (item: CardItem, selected: boolean) => {
+  /** 一个节点：标题、端口行，参数在下面直接改（材质的输出只有输入端口）。 */
+  const card = (item: CardItem) => {
     const { node, spec } = item;
-    if (!node || !spec) {
-      return (
-        <div {...css.attrs(styles.card, selected && styles.selected)}>
-          <div {...css.attrs(styles.header)}>{t.graphOutput}</div>
-          {OUTPUT_PORTS.map((port) => <div {...css.attrs(styles.row)}>{t.graphOutputs[port.name as keyof typeof t.graphOutputs] ?? port.name}</div>)}
-        </div>
-      );
-    }
+    if (!node || !spec) return <DiagramPortNode title={t.graphOutput} inputs={portsOf(OUTPUT_PORTS, outputLabel)} />;
     return (
-      <div {...css.attrs(styles.card, selected && styles.selected)}>
-        <div {...css.attrs(styles.header)} title={node.id}>{t.graphNodes[node.type] ?? node.type}</div>
-        {spec.outputs.map((port) => <div {...css.attrs(styles.row, styles.outputRow)}>{t.graphPorts[port.name] ?? port.name}</div>)}
-        {spec.inputs.map((port) => <div {...css.attrs(styles.row)}>{t.graphPorts[port.name] ?? port.name}</div>)}
+      <DiagramPortNode title={t.graphNodes[node.type] ?? node.type} propsHeader={{ title: node.id }}
+        outputs={portsOf(spec.outputs, portLabel)} inputs={portsOf(spec.inputs, portLabel)}>
         {spec.params.length > 0 && (
-          // 参数里拖数值、选下拉框不是拖节点
-          <div {...css.attrs(styles.params)} onPointerdown={(event: PointerEvent) => event.stopPropagation()}>
-            <Fields
-              fields={spec.params.map((param) => ({ name: param.name, type: param.type, optional: true, default: param.default, ...(param.description ? { description: param.description } : {}) }))}
-              value={node.params ?? {}}
-              context={context}
-              onSet={(path, value) => setParam(node.id, path, value)}
-            />
-          </div>
+          <Fields
+            fields={spec.params.map((param) => ({ name: param.name, type: param.type, optional: true, default: param.default, ...(param.description ? { description: param.description } : {}) }))}
+            value={node.params ?? {}}
+            context={context}
+            onSet={(path, value) => setParam(node.id, path, value)}
+          />
         )}
-      </div>
+      </DiagramPortNode>
     );
   };
 
   return () => {
     const inspected = session.inspected.value;
     const file = graph();
-    if (inspected?.kind !== 'material' || !file) return <div {...css.attrs(styles.hint)}>{t.graphNoMaterial}</div>;
+    if (inspected?.kind !== 'material' || !file) return <Empty size="sm" icon={false} description={t.graphNoMaterial} />;
     return (
-      <div {...css.attrs(styles.panel)}>
-        <div {...css.attrs(styles.toolbar)}>
+      <Flex direction="column" sx={styles.panel}>
+        <Toolbar docked="top" aria-label={t.toolWindows.graph}>
           <Menu trigger={(props) => <Button {...props} size="sm" variant="soft" tone="neutral" icon={Plus}>{t.graphAddNode}</Button>}>
             {[...new Set(MATERIAL_NODE_SPECS.map((spec) => spec.category))].map((category) => (
               <MenuGroup label={t.graphCategories[category] ?? category}>
@@ -195,9 +172,11 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
               </MenuGroup>
             ))}
           </Menu>
-          <span {...css.attrs(styles.grow)}>{t.graphHint}</span>
-          <IconButton icon={CircleX} variant="ghost" aria-label={t.graphClose} onClick={() => session.closeMaterialGraph()} />
-        </div>
+          <Flex grow>
+            <Text tone="muted" truncate>{t.graphHint}</Text>
+          </Flex>
+          <IconButton icon={CircleX} size="sm" variant="ghost" aria-label={t.graphClose} onClick={() => session.closeMaterialGraph()} />
+        </Toolbar>
         <div {...css.attrs(styles.canvas)} onKeydown={onKeydown}>
           <Diagram
             {...css.attrs(styles.diagram)}
@@ -215,10 +194,10 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
             getNodeLabel={(item: CardItem) => (item.node ? t.graphNodes[item.node.type] ?? item.node.type : t.graphOutput)}
             aria-label={t.toolWindows.graph}
           >
-            {(item: CardItem, state: { selected: boolean }) => card(item, state.selected)}
+            {(item: CardItem) => card(item)}
           </Diagram>
         </div>
-      </div>
+      </Flex>
     );
   };
 });

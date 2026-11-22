@@ -1,6 +1,8 @@
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
 import {
+  Grid,
+  Text,
   NumberField,
   PROPERTY_MIXED,
   PropertyEditor,
@@ -39,7 +41,7 @@ export interface FieldContext {
 type EngineKind = Extract<FieldType, { kind: 'rotation' | 'asset' | 'entity' | 'record' }>;
 
 const styles = css.create({
-  vector: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(3.5em, 1fr))', gap: '2px' },
+  // 资源路径、实体的下拉框占满值那一格
   full: { width: '100%' },
 });
 
@@ -60,7 +62,8 @@ function engineEditors(context: () => FieldContext): PropertyEditors<EngineKind>
         const setAngle = (i: number, next: number) => (current: unknown) =>
           eulerToQuaternion(quaternionToEuler(Array.isArray(current) ? (current as number[]) : [0, 0, 0, 1]).map((angle, j) => (j === i ? next : angle)));
         return (
-          <div {...css.attrs(styles.vector)} title={t.eulerHint}>
+          // 同 PropertyGrid 的向量：三个数一行，窄了折行
+          <Grid minItemWidth="3.5em" gap="xs" title={t.eulerHint}>
             {euler.map((angle, i) => (
               <NumberField
                 size="sm"
@@ -79,7 +82,7 @@ function engineEditors(context: () => FieldContext): PropertyEditors<EngineKind>
                   })}
               />
             ))}
-          </div>
+          </Grid>
         );
       },
       empty: () => [0, 0, 0, 1],
@@ -105,7 +108,7 @@ function engineEditors(context: () => FieldContext): PropertyEditors<EngineKind>
     record: {
       // 字段就是值里现在的键，种类按值推（约束的设置、游戏的根渲染器的属性）；多选时几个不一样就不逐项改
       render: ({ value, label, set }) => {
-        if (value === PROPERTY_MIXED) return <span>{t.mixed}</span>;
+        if (value === PROPERTY_MIXED) return <Text tone="muted">{t.mixed}</Text>;
         const values = (value ?? {}) as Readonly<Record<string, SceneScriptValue>>;
         return <PropertyEditor<EngineKind> type={{ kind: 'object', fields: inferFields(values) }} value={values} label={label} editors={editors} getLabel={getLabel} getDescription={getDescription} numberFormat={NUMBER_FORMAT} onSet={set} />;
       },

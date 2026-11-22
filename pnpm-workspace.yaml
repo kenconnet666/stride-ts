@@ -7,8 +7,8 @@ packages:
 # 不用 file: 指向本地的 tgz：pnpm 给它建的目录名带 `..`，JetBrains 的 IDE 就解析不出这个包的类型。
 overrides:
   # vue-tsx-pro：临时发行版（node tools/vue-tsx-pro.ts dev；正式版发了以后 npm <版本> 换回）
-  '@zerodep-dev/vue-tsx-pro-tsx': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev-65d05abc22/zerodep-dev-vue-tsx-pro-tsx-0.39.0.tgz
-  '@zerodep-dev/vue-tsx-pro-ui': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev-65d05abc22/zerodep-dev-vue-tsx-pro-ui-0.39.0.tgz
+  '@zerodep-dev/vue-tsx-pro-tsx': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev/zerodep-dev-vue-tsx-pro-tsx-0.39.0-e7ce38e06b.tgz
+  '@zerodep-dev/vue-tsx-pro-ui': https://github.com/kenconnet666/vue-tsx-pro/releases/download/dev/zerodep-dev-vue-tsx-pro-ui-0.39.0-e7ce38e06b.tgz
   # vue-tsx-pro 临时发行版结束
   # 整个工作区只用一个 TypeScript（根 package.json 定的 7.1 每日版，和 vue-tsx-pro 同一个）：Vue 的可选 peer 不再自己挑最新的正式版
   typescript: 7.1.0-dev.20261104.1

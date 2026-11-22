@@ -28,7 +28,7 @@ import { Mesh, type Bounds, type MeshData } from '../rendering/mesh/Mesh';
 import { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import { LightProfile, parseIes } from '../rendering/lighting/LightProfile';
 import { parseCubeLut, registerColorLut, type ColorLut } from '../rendering/postfx/tonemap/ColorLut';
-import { SplatCloud } from '../rendering/splats/SplatRenderer';
+import { SplatCloud, type SplatRangeReader } from '../rendering/splats/SplatCloud';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
 import { Texture, type ImageDecoder, type TextureData, type TextureDecoder } from '../graphics/Texture';
@@ -137,6 +137,10 @@ export interface ContentOptions {
   /** 内容根目录；默认是页面旁边的 `content/`。 */
   readonly root?: string | URL;
   readonly read?: ContentReader;
+  /**
+   * 按范围读（大的资源按需加载用：高斯泼溅的节点）；没给 read 时默认用 fetch 带 Range 头，给了 read 而没给它时整个文件读。
+   */
+  readonly readRange?: SplatRangeReader;
   /** 按名字找游戏登记的着色器类（材质的颜色树用；Game 给的是它的 Registry）。 */
   readonly shaderClass?: (name: string) => ShaderClass | undefined;
 }
@@ -207,9 +211,20 @@ const fetchReader: ContentReader = async (url) => {
   return response.arrayBuffer();
 };
 
+/**
+ * fetch 带 Range 头；服务器不认 Range、回了 200 时是整个文件（whole）。不经 HTTP 缓存（no-store）：Chrome 的缓存在同一个文件上
+ * 并发的范围请求偶尔报 Failed to fetch（压测 64 个一批：默认缓存 320 个失败 6 个，no-store 0 个）；读到的在内存里留着，不重读。
+ */
+const fetchRangeReader: SplatRangeReader = async (url, start, end) => {
+  const response = await fetch(url, { headers: { Range: `bytes=${start}-${end - 1}` }, cache: 'no-store' });
+  if (!response.ok) throw new Error(`loading ${url.href} (bytes ${start}-${end - 1}) failed: HTTP ${response.status}`);
+  return { bytes: await response.arrayBuffer(), whole: response.status !== 206 };
+};
+
 export class ContentManager {
   readonly root: URL;
   readonly #read: ContentReader;
+  readonly #readRange: SplatRangeReader | undefined;
   readonly #cache = new Map<string, Promise<unknown>>();
   readonly #renderTextures = new Map<string, Texture>();
   /** 没有材质的网格用它：白色。 */
@@ -253,11 +268,12 @@ export class ContentManager {
     spline: (path) => this.loadSpline(path),
   };
 
-  constructor({ root = 'content/', read = fetchReader, shaderClass = () => undefined }: ContentOptions = {}) {
+  constructor({ root = 'content/', read, readRange, shaderClass = () => undefined }: ContentOptions = {}) {
     this.#shaderClasses = shaderClass;
     const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
     this.root = new URL(root, base);
-    this.#read = read;
+    this.#read = read ?? fetchReader;
+    this.#readRange = readRange ?? (read ? undefined : fetchRangeReader);
   }
 
   /**
@@ -505,7 +521,9 @@ export class ContentManager {
 
   /** 高斯泼溅（.splat）。 */
   loadSplats(path: string): Promise<SplatCloud> {
-    return this.#once(path + EXTENSIONS.splats, async (url) => new SplatCloud(path, await this.#read(url)));
+    // 能按范围读时按需加载节点（先读头和节点表，数据渲染器要了才读）
+    const readRange = this.#readRange;
+    return this.#once(path + EXTENSIONS.splats, async (url) => (readRange ? SplatCloud.stream(path, url, readRange) : SplatCloud.fromBytes(path, await this.#read(url))));
   }
 
   /** 样条（.spline.json，检查过的）：模型是编辑器后端烘好的，这里读的是路径本身（地形贴样条、车道图用）。 */

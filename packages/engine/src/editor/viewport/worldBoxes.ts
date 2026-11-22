@@ -7,7 +7,7 @@ import { Transform } from '../../engine/transform';
 import type { Game } from '../../engine/Game';
 import { Matrix } from '../../data/Matrix';
 import { GaussianSplat, Light, Model, ModelPart, PlanarReflection, ReflectionProbe } from '../../rendering/components';
-import { SplatCloud } from '../../rendering/splats/SplatRenderer';
+import { SplatCloud } from '../../rendering/splats/SplatCloud';
 import { Mesh } from '../../rendering/mesh/Mesh';
 import { ParticleSystemComponent } from '../../particles/ParticleSystemComponent';
 import { UIComponent } from '../../ui/UIComponent';

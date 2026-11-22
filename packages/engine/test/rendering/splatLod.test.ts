@@ -30,6 +30,18 @@ describe('高斯泼溅选细节层次', () => {
     expect(out).toEqual([0]);
   });
 
+  test('按需加载：根没到什么都不画、要根；子节点没到先画根，要缺的子节点', () => {
+    const out: number[] = [], wanted: number[] = [];
+    const eye = { eye: [1, 0.5, 10] as [number, number, number], pixelsPerUnit: 1000 };
+    expect(selectSplatNodes(nodes, eye, limits, out, { ready: new Uint8Array([0, 0, 0]), wanted })).toBe(0);
+    expect(wanted).toEqual([0]);
+    expect(selectSplatNodes(nodes, eye, limits, out, { ready: new Uint8Array([1, 1, 0]), wanted })).toBe(100);
+    expect(out).toEqual([0]);
+    expect(wanted).toEqual([2]);
+    expect(selectSplatNodes(nodes, eye, limits, out, { ready: new Uint8Array([1, 1, 1]), wanted })).toBe(600);
+    expect(wanted).toEqual([]);
+  });
+
   test('视锥外的子节点不画（只看 x < 1 的半边）', () => {
     const out: number[] = [];
     // 一个平面 -x + 1 ≥ 0

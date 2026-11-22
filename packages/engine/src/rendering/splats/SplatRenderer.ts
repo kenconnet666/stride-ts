@@ -10,7 +10,8 @@
  *
  * 细节层次（资源版本 3，导入时建）：每个视图每帧按节点投到屏幕上的粗细、预算和视锥选一刀（splatLod.ts），只给选中的节点
  * 的泼溅排序、画——远处画合并过的粗一级，近处画原样的；选中的变了才重排。排序按选中的几段（节点的范围）走，第 i 个在哪段
- * 二分查。
+ * 二分查。节点的数据可以按需加载（SplatCloud）：只选数据已经进了 GPU 的节点，子节点没到时先画父节点那一级，缺的按误差从大到小
+ * 交给资源去读。
  *
  * 颜色是球谐的 0 阶加上资源里有的高阶（1～3 阶：视角相关的颜色，反光的地面、玻璃、金属靠它），方向在泼溅自己的坐标里算
  * （相机位置按实体的逆变换换过去）。参考 PlayCanvas 的 gsplat、apps/bench 的 capabilities.html 里量过的那一版。
@@ -18,51 +19,11 @@
 import { Matrix } from '../../data/Matrix';
 import { system } from '../../engine/system';
 import { Transform } from '../../engine/transform';
-import { ResourceTable } from '../../engine/ResourceTable';
-import type { Branded } from '../../data/prop';
-import { decodeSplats, shWords, SPLAT_WORDS, type SplatNode } from '../../content/splatFile';
+import { shWords, SPLAT_WORDS } from '../../content/splatFile';
+import { SplatCloud } from './SplatCloud';
 import { selectSplatNodes, type SplatLodLimits } from './splatLod';
 import { GaussianSplat } from '../components';
 import type { RenderContext, RenderView } from '../RenderSystem';
-
-export type SplatCloudId = Branded<number, 'SplatCloudId'>;
-
-const clouds = new ResourceTable<SplatCloud>();
-
-/** 一个泼溅资源（`.splat`）：解码好的字和包围盒；GPU 上的存储缓冲由渲染器第一次画它时建。 */
-export class SplatCloud {
-  readonly id: SplatCloudId;
-  readonly name: string;
-  readonly count: number;
-  readonly words: Uint32Array;
-  readonly min: readonly [number, number, number];
-  readonly max: readonly [number, number, number];
-  /** 高阶球谐的阶数（0 是没有）、量化范围和数据（content/splatFile.ts）。 */
-  readonly shBands: number;
-  readonly shRange: number;
-  readonly sh: Uint32Array;
-  /** 细节层次的节点（至少一个根）。 */
-  readonly nodes: readonly SplatNode[];
-
-  constructor(name: string, bytes: ArrayBuffer) {
-    const decoded = decodeSplats(bytes, name);
-    this.name = name;
-    this.count = decoded.count;
-    this.words = decoded.words;
-    this.min = decoded.min;
-    this.max = decoded.max;
-    this.shBands = decoded.shBands;
-    this.shRange = decoded.shRange;
-    this.sh = decoded.sh;
-    this.nodes = decoded.nodes;
-    this.id = clouds.add(this) as SplatCloudId;
-  }
-
-  /** @internal GaussianSplat 组件里存的 id 对应的资源。 */
-  static byId(id: number): SplatCloud | undefined {
-    return id === 0 ? undefined : clouds.get(id);
-  }
-}
 
 /**
  * 每个实例的常量：世界矩阵、视图矩阵、投影、(视口宽高、焦距 x y)、(选中的个数、视深的近、远、选中的段数)、(相机在泼溅坐标里的位置, 0)、
@@ -318,6 +279,7 @@ export class SplatRenderer {
   readonly #params = new Float32Array(PARAMS_FLOATS);
   readonly #inverse = new Float32Array(16);
   readonly #selection: number[] = [];
+  readonly #wanted: number[] = [];
   readonly #localPlanes = new Float32Array(24);
   #entities: SplatEntity[] = [];
   /**
@@ -370,6 +332,8 @@ export class SplatRenderer {
   collect(context: RenderContext, views: readonly RenderView[]): void {
     this.#entities = [];
     if (views.length > 0) context.game.entities.run(this.#collect, context.time);
+    // 读到的节点数据先传进 GPU（传完才算就绪，选节点才会选它）
+    for (const cloud of new Set(this.#entities.map(({ cloud }) => cloud))) this.#upload(cloud);
     for (const view of views) {
       let state = this.#views.get(view);
       if (!state) this.#views.set(view, (state = { instances: new Map(), frame: [] }));
@@ -448,18 +412,50 @@ export class SplatRenderer {
     }
   }
 
-  /** 这一帧各视图画了几个泼溅（调试命令 splats 报）。 */
-  stats(): { readonly views: number; readonly instances: number; readonly drawn: number; readonly total: number; readonly nodes: number } {
+  /** 这一帧各视图画了几个泼溅，资源到了几个节点、还有几个请求在读（调试命令 splats 报）。 */
+  stats(): { readonly views: number; readonly instances: number; readonly drawn: number; readonly total: number; readonly nodes: number; readonly readyNodes: number; readonly allNodes: number; readonly loading: number } {
     let instances = 0, drawn = 0, total = 0, nodes = 0;
+    const clouds = new Set<SplatCloud>();
     for (const state of this.#views.values()) {
       for (const instance of state.frame) {
         instances++;
         drawn += instance.active;
         total += instance.cloud.count;
         nodes += instance.selected.length;
+        clouds.add(instance.cloud);
       }
     }
-    return { views: this.#views.size, instances, drawn, total, nodes };
+    let readyNodes = 0, allNodes = 0, loading = 0;
+    for (const cloud of clouds) {
+      readyNodes += cloud.ready.reduce((sum, flag) => sum + flag, 0);
+      allNodes += cloud.nodes.length;
+      loading += cloud.loading;
+    }
+    return { views: this.#views.size, instances, drawn, total, nodes, readyNodes, allNodes, loading };
+  }
+
+  /** 资源的 GPU 缓冲（照整个文件的大小，第一次用到时建）。 */
+  #buffers(cloud: SplatCloud): { data: GPUBuffer; sh: GPUBuffer | undefined } {
+    let data = this.#data.get(cloud);
+    if (!data) {
+      data = this.#device.createBuffer({ label: `Splats ${cloud.name}`, size: Math.max(16, cloud.count * SPLAT_WORDS * 4), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      this.#data.set(cloud, data);
+      if (cloud.shBands > 0) {
+        this.#sh.set(cloud, this.#device.createBuffer({ label: `Splats SH ${cloud.name}`, size: Math.max(16, cloud.count * shWords(cloud.shBands) * 4), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST }));
+      }
+    }
+    return { data, sh: this.#sh.get(cloud) };
+  }
+
+  /** 把资源读到的节点数据写进 GPU 缓冲，记下这些节点就绪了。 */
+  #upload(cloud: SplatCloud): void {
+    if (cloud.arrived.length === 0) return;
+    const { data, sh } = this.#buffers(cloud);
+    for (const chunk of cloud.arrived.splice(0)) {
+      this.#device.queue.writeBuffer(data, chunk.first * SPLAT_WORDS * 4, chunk.words);
+      if (sh && chunk.sh.length > 0) this.#device.queue.writeBuffer(sh, chunk.first * shWords(cloud.shBands) * 4, chunk.sh);
+      for (const n of chunk.nodes) cloud.ready[n] = 1;
+    }
   }
 
   destroy(): void {
@@ -474,17 +470,7 @@ export class SplatRenderer {
     const existing = state.instances.get(entity);
     if (existing && existing.cloud === cloud) return existing;
     if (existing) destroyInstance(existing);
-    let data = this.#data.get(cloud);
-    if (!data) {
-      data = this.#device.createBuffer({ label: `Splats ${cloud.name}`, size: Math.max(16, cloud.words.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-      this.#device.queue.writeBuffer(data, 0, cloud.words);
-      this.#data.set(cloud, data);
-      if (cloud.shBands > 0) {
-        const sh = this.#device.createBuffer({ label: `Splats SH ${cloud.name}`, size: Math.max(16, cloud.sh.byteLength), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-        this.#device.queue.writeBuffer(sh, 0, cloud.sh);
-        this.#sh.set(cloud, sh);
-      }
-    }
+    const { data, sh } = this.#buffers(cloud);
     const device = this.#device;
     const shared = this.#shared();
     const params = device.createBuffer({ label: 'Splats params', size: PARAMS_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
@@ -496,7 +482,7 @@ export class SplatRenderer {
     const instance: Instance = {
       cloud, params, keys, order, ids, ranges, selected: [], active: 0,
       sortGroup: group(shared.sortLayout, [params, data, keys, shared.bins, order, ranges, ids], 'Splats sort'),
-      drawGroup: group(shared.drawLayout, [params, data, order, this.#sh.get(cloud) ?? shared.noSh], 'Splats draw'),
+      drawGroup: group(shared.drawLayout, [params, data, order, sh ?? shared.noSh], 'Splats draw'),
       // 前 32 个：上次排序时的世界、视图矩阵；后 32 个：这一帧的（排了才挪到前面）
       sorted: new Float32Array(64).fill(NaN),
       live: true,
@@ -548,7 +534,9 @@ export class SplatRenderer {
     // 泼溅坐标里节点的粗细和到相机的距离按同样的比例缩放，像素数只看焦距
     const pixelsPerUnit = Math.abs(view.projection[5]! * view.height) / 2;
     const selection = this.#selection;
-    const active = selectSplatNodes(instance.cloud.nodes, { eye, pixelsPerUnit, planes }, this.limits, selection);
+    const wanted = this.#wanted;
+    const active = selectSplatNodes(instance.cloud.nodes, { eye, pixelsPerUnit, planes }, this.limits, selection, { ready: instance.cloud.ready, wanted });
+    instance.cloud.request(wanted);
     if (selection.length === instance.selected.length && selection.every((n, k) => n === instance.selected[k])) return false;
     instance.selected = [...selection];
     instance.active = active;

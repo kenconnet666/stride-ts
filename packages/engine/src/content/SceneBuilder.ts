@@ -31,7 +31,7 @@ import type { Material } from '../rendering/mesh/Material';
 import type { Mesh } from '../rendering/mesh/Mesh';
 import type { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import type { LightProfile } from '../rendering/lighting/LightProfile';
-import type { SplatCloud } from '../rendering/splats/SplatRenderer';
+import type { SplatCloud } from '../rendering/splats/SplatCloud';
 import { Terrain, type TerrainAsset } from '../world/Terrain';
 import { Scatter, type ScatterAsset } from '../world/Scatter';
 import { City, type CityAsset } from '../world/City';

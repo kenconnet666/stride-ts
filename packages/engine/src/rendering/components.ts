@@ -8,7 +8,7 @@ import { prop, type EntityId } from '../data/prop';
 import { component, tag } from '../engine/component';
 import type { CubemapId, SkyboxId } from './lighting/Skybox';
 import type { LightProfileId } from './lighting/LightProfile';
-import type { SplatCloudId } from './splats/SplatRenderer';
+import type { SplatCloudId } from './splats/SplatCloud';
 import type { SpriteSheetId } from './SpriteSheet';
 import type { TextureId } from '../graphics/Texture';
 

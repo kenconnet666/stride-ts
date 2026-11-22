@@ -348,4 +348,4 @@ export {
   type WireReader,
   type WireType,
 } from './data/wire';
-export { SplatCloud, type SplatCloudId } from './rendering/splats/SplatRenderer';
+export { SplatCloud, type SplatCloudId, type SplatRangeReader } from './rendering/splats/SplatCloud';

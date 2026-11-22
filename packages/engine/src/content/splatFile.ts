@@ -155,8 +155,25 @@ export function encodeSplats(source: SplatSource): Uint8Array {
   return bytes;
 }
 
-/** 读 .splat 文件；格式不对时报错（带 where）。 */
-export function decodeSplats(buffer: ArrayBuffer, where = 'splats'): DecodedSplats {
+/** .splat 文件的头读出来的布局：按需加载时先读头和节点表，再按这些偏移读各节点的那几段。 */
+export interface SplatLayout {
+  readonly count: number;
+  readonly min: readonly [number, number, number];
+  readonly max: readonly [number, number, number];
+  readonly shBands: number;
+  readonly shRange: number;
+  /** 节点表的个数（版本 1、2 是 0：读成一个根节点）。 */
+  readonly nodeCount: number;
+  /** 泼溅的字从第几个字节起（头加节点表之后）。 */
+  readonly dataStart: number;
+  /** 高阶球谐从第几个字节起（全部泼溅的字之后）。 */
+  readonly shStart: number;
+  /** 整个文件至少多长。 */
+  readonly byteLength: number;
+}
+
+/** 读头（至少 SPLAT_HEADER_BYTES 个字节）；格式不对时报错（带 where）。 */
+export function readSplatLayout(buffer: ArrayBuffer, where = 'splats'): SplatLayout {
   if (buffer.byteLength < SPLAT_HEADER_BYTES) throw new Error(`${where}: too short for a .splat file`);
   const header = new DataView(buffer);
   if (header.getUint32(0, true) !== SPLAT_MAGIC) throw new Error(`${where}: not a .splat file`);
@@ -166,29 +183,46 @@ export function decodeSplats(buffer: ArrayBuffer, where = 'splats'): DecodedSpla
   // 版本 1 没有球谐（那个字是保留的 0）
   const shBands = version === 1 ? 0 : header.getUint32(12, true);
   if (shBands > 3) throw new Error(`${where}: ${shBands} spherical harmonics bands (at most 3)`);
-  const shPer = shWords(shBands);
   const nodeCount = version >= 3 ? header.getUint32(44, true) : 0;
   const dataStart = SPLAT_HEADER_BYTES + nodeCount * SPLAT_NODE_WORDS * 4;
-  if (buffer.byteLength < dataStart + count * (SPLAT_WORDS + shPer) * 4) throw new Error(`${where}: truncated (${count} splats, ${nodeCount} nodes)`);
+  const shStart = dataStart + count * SPLAT_WORDS * 4;
   const vector = (offset: number) => [header.getFloat32(offset, true), header.getFloat32(offset + 4, true), header.getFloat32(offset + 8, true)] as const;
-  const min = vector(16), max = vector(28);
+  return {
+    count, min: vector(16), max: vector(28), shBands, shRange: shBands > 0 ? header.getFloat32(40, true) : 0,
+    nodeCount, dataStart, shStart, byteLength: shStart + count * shWords(shBands) * 4,
+  };
+}
+
+/** 读节点表（buffer 从文件开头起、至少到 layout.dataStart）；版本 1、2 是一个根节点。节点的范围不对时报错。 */
+export function readSplatNodes(buffer: ArrayBuffer, layout: SplatLayout, where = 'splats'): SplatNode[] {
+  if (buffer.byteLength < layout.dataStart) throw new Error(`${where}: truncated node table (${layout.nodeCount} nodes)`);
+  const view = new DataView(buffer);
+  const vector = (offset: number) => [view.getFloat32(offset, true), view.getFloat32(offset + 4, true), view.getFloat32(offset + 8, true)] as const;
   const nodes: SplatNode[] = [];
-  for (let n = 0; n < nodeCount; n++) {
+  for (let n = 0; n < layout.nodeCount; n++) {
     const at = SPLAT_HEADER_BYTES + n * SPLAT_NODE_WORDS * 4;
     const node: SplatNode = {
       min: vector(at), max: vector(at + 12),
-      first: header.getUint32(at + 24, true), count: header.getUint32(at + 28, true),
-      firstChild: header.getUint32(at + 32, true), childCount: header.getUint32(at + 36, true),
-      detail: header.getFloat32(at + 40, true),
+      first: view.getUint32(at + 24, true), count: view.getUint32(at + 28, true),
+      firstChild: view.getUint32(at + 32, true), childCount: view.getUint32(at + 36, true),
+      detail: view.getFloat32(at + 40, true),
     };
-    if (node.first + node.count > count || (node.childCount > 0 && (node.firstChild <= n || node.firstChild + node.childCount > nodeCount))) throw new Error(`${where}: node ${n} is out of range`);
+    if (node.first + node.count > layout.count || (node.childCount > 0 && (node.firstChild <= n || node.firstChild + node.childCount > layout.nodeCount))) throw new Error(`${where}: node ${n} is out of range`);
     nodes.push(node);
   }
   // 版本 1、2：一个根节点（叶子），包围盒按泼溅的中心（没有 3σ，近似）
-  if (nodes.length === 0) nodes.push({ min, max, first: 0, count, firstChild: 0, childCount: 0, detail: 0 });
+  if (nodes.length === 0) nodes.push({ min: layout.min, max: layout.max, first: 0, count: layout.count, firstChild: 0, childCount: 0, detail: 0 });
+  return nodes;
+}
+
+/** 读整个 .splat 文件；格式不对时报错（带 where）。 */
+export function decodeSplats(buffer: ArrayBuffer, where = 'splats'): DecodedSplats {
+  const layout = readSplatLayout(buffer, where);
+  if (buffer.byteLength < layout.byteLength) throw new Error(`${where}: truncated (${layout.count} splats, ${layout.nodeCount} nodes)`);
+  const { count, min, max, shBands, shRange } = layout;
   return {
-    count, words: new Uint32Array(buffer, dataStart, count * SPLAT_WORDS), min, max,
-    shBands, shRange: shBands > 0 ? header.getFloat32(40, true) : 0, sh: new Uint32Array(buffer, dataStart + count * SPLAT_WORDS * 4, count * shPer), nodes,
+    count, words: new Uint32Array(buffer, layout.dataStart, count * SPLAT_WORDS), min, max,
+    shBands, shRange, sh: new Uint32Array(buffer, layout.shStart, count * shWords(shBands)), nodes: readSplatNodes(buffer, layout, where),
   };
 }
 

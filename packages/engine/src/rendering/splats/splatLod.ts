@@ -1,7 +1,7 @@
 /**
  * 高斯泼溅的细节层次怎么选（每个视图、每个泼溅实体，每帧）：从根开始，误差最大的节点先往下细分——误差是节点这一级的粗细
  * （SplatNode.detail，米）投到屏幕上有几个像素；不到 pixelError 个像素、是叶子、或者再细分就超出预算的节点画自己那一级。
- * 整个在视锥外面的节点（包围盒按泼溅的 3σ）连同子孙都不画。纯函数，渲染器（SplatRenderer）和测试用。
+ * 整个在视锥外面的节点（包围盒按泼溅的 3σ）连同子孙都不画；按需加载时子节点的数据还没到的也画自己那一级（缺的报出来去读）。纯函数，渲染器（SplatRenderer）和测试用。
  *
  * 选的是一刀：选中的节点互不包含，合起来盖住看得见的部分。参考 PlayCanvas 的 gsplat-octree-instance（按距离和预算选级）。
  */
@@ -23,11 +23,25 @@ export interface SplatLodLimits {
   readonly pixelError: number;
 }
 
+/**
+ * 按需加载时：ready 是每个节点的数据到了没有（没给时都到了）；wanted 收要细分却没到的节点（按误差从大到小，清空后写），
+ * 交给资源去读——没到的子节点所在的节点先画自己那一级。
+ */
+export interface SplatLodLoading {
+  readonly ready?: Uint8Array;
+  readonly wanted?: number[];
+}
+
 /** 选一刀，选中的节点下标写进 out（清空后写），返回它们的泼溅总数。 */
-export function selectSplatNodes(nodes: readonly SplatNode[], view: SplatLodView, limits: SplatLodLimits, out: number[]): number {
+export function selectSplatNodes(nodes: readonly SplatNode[], view: SplatLodView, limits: SplatLodLimits, out: number[], { ready, wanted }: SplatLodLoading = {}): number {
   out.length = 0;
+  if (wanted) wanted.length = 0;
   const root = nodes[0];
   if (!root || !visible(root, view.planes)) return 0;
+  if (ready && !ready[0]) {
+    wanted?.push(0);
+    return 0;
+  }
   // 按误差从大到小的堆（误差相同的先后不要紧）
   const heap: { node: number; error: number }[] = [];
   const push = (node: number) => {
@@ -73,6 +87,12 @@ export function selectSplatNodes(nodes: readonly SplatNode[], view: SplatLodView
     }
     if (total + extra > limits.budget) {
       out.push(n);
+      continue;
+    }
+    const missing = ready ? children.filter((c) => !ready[c]) : [];
+    if (missing.length > 0) {
+      out.push(n);
+      wanted?.push(...missing);
       continue;
     }
     total += extra;

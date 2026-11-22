@@ -66,6 +66,12 @@ export class PostProcessingEffects {
     this.lightStreak.enabled = settings.lightStreak;
     this.lensFlare.enabled = settings.lensFlare;
     this.toneMap.enabled = settings.toneMap;
+    const exposure = settings.exposure ?? {};
+    Object.assign(this.toneMap, {
+      metering: exposure.metering ?? 'average', autoKeyValue: exposure.keyValue === undefined, keyValue: exposure.keyValue ?? 0.18,
+      histogramRange: [exposure.minLog ?? -10, exposure.maxLog ?? 14], histogramFilter: [exposure.low ?? 0.1, exposure.high ?? 0.9],
+      speedBrighten: exposure.speedBrighten ?? 3, speedDarken: exposure.speedDarken ?? 1,
+    });
     const grading = settings.colorGrading ?? {};
     Object.assign(this.toneMap, {
       operator: grading.operator ?? 'hejl2', temperature: grading.temperature ?? 6500, tint: grading.tint ?? 0, contrast: grading.contrast ?? 1,

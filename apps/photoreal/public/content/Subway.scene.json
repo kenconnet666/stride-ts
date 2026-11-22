@@ -24,6 +24,9 @@
     "contrast": 0.9,
     "saturation": 1.15,
     "vignette": 0.15
+   },
+   "exposure": {
+    "metering": "histogram"
    }
   },
   "transparent": true

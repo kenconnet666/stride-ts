@@ -955,6 +955,7 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 
 - `ToneMap` 加了算子（`operator`：hejl2、agx、aces）、白平衡（`temperature`、`tint`，`whiteBalanceMatrix`）、`contrast`、`saturation`，镜头的 `vignette`、`grain`、`chromaticAberration`、`distortion`；场景文件 `postEffects.colorGrading`（`SceneColorGrading`），编辑器的字段和中文名，单测（6500 K 是单位矩阵；3200 K 的光源经相机设 3200 K 以后是中性灰）。
 - 测试浏览器（无头，960×1280）站台和照片比：hejl2 把黑的门框压到 0（暗处差 10 档是这个），AgX 的暗处抬起来；AgX、5600 K、反差 0.9、饱和 1.15、暗角 0.15 以后照片比对不再报偏暖、反差、饱和度，剩曝光（暗处 2.6 档、亮处 1 档）和细节（0.29 倍）——留给自动曝光、材质和几何。畸变、色差、颗粒试过能用，站台不开（手机自己校正）。映射一遍 0.042 毫秒（全开），默认设置 0.027 毫秒。
+- 第二步，按亮度直方图测光（`ToneMap.metering`、`histogramRange`、`histogramFilter`、`speedBrighten`、`speedDarken`；场景的 `postEffects.exposure`）：一个计算通道数 128 格的对数亮度直方图（工作组共享内存里原子加，隔一个像素数一个），一个线程求去掉两头的平均并适应，写进适应亮度。站台：自动 key 时和平均测光差不多（中位数和照片对上），固定 key 0.18 时整体亮 1 档但暗处仍差 1 档——差在动态范围（手机的局部色调映射），不在曝光；把太阳调亮 8 倍、速度调成 0.3 档/秒，左上角那格从 +0.05 到 −0.46 到 −0.5 档慢慢收敛。数的像素从全部换成隔一个以后结果一样、0.046 → 0.037 毫秒；写的时候 `target` 又是 WGSL 的保留字，新的单测当场报了。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
 ## R2 第九步：成片的路径追踪的间接光，R2 做完（2026-11-22）

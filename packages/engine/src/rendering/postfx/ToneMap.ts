@@ -20,6 +20,7 @@
  */
 import { FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../wgsl';
 import { GpuProfiler } from '../../graphics/GpuProfiler';
+import { createCheckedShaderModule } from '../../graphics/shaderModule';
 import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
 import { fullscreenPipeline, isGraphTexture, warmFullscreenPipeline, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 
@@ -55,6 +56,85 @@ struct Adapt { factor: f32, reset: f32 };
   let average = exp2(textureLoad(averageLog, vec2u(0u), i32(textureNumLevels(averageLog)) - 1).r);
   let last = select(textureLoad(previous, vec2u(0u), 0).r, average, adapt.reset > 0.5);
   return vec4f(last + (average - last) * adapt.factor, 0.0, 0.0, 1.0);
+}`;
+
+/** 直方图的格数：第 0 格是比范围暗的，其余按对数亮度均分范围。 */
+const HISTOGRAM_BINS = 128;
+
+/**
+ * 按亮度直方图测光（metering = 'histogram'，照 Bevy 的 auto_exposure）：histogram 每个工作组在共享内存里数自己 32×32 个像素（隔一个取一个）
+ * 落在哪一格（对数亮度），再加进全局的格子；average 去掉最暗、最亮的一部分（filter）求对数亮度的平均，按每秒几档的速度
+ * 往它适应（变亮快、变暗慢，离得近时按指数慢下来），写进适应亮度（和平均测光同一张 1x1，映射那一步不用分），顺手清空格子。
+ */
+const HISTOGRAM_SHADER = /* wgsl */ `
+struct Metering { minLog: f32, logRange: f32, low: f32, high: f32, speedBrighten: f32, speedDarken: f32, transition: f32, elapsed: f32, reset: f32 };
+@group(0) @binding(0) var<uniform> metering: Metering;
+@group(0) @binding(1) var hdr: texture_2d<f32>;
+@group(0) @binding(2) var<storage, read_write> histogram: array<atomic<u32>, ${HISTOGRAM_BINS}>;
+@group(0) @binding(3) var previous: texture_2d<f32>;
+@group(0) @binding(4) var adapted: texture_storage_2d<r32float, write>;
+
+var<workgroup> bins: array<atomic<u32>, ${HISTOGRAM_BINS}>;
+
+fn binOf(color: vec3f) -> u32 {
+  let luminance = dot(color, vec3f(0.2126, 0.7152, 0.0722));
+  if (!(luminance > exp2(metering.minLog))) { return 0u; }
+  let t = saturate((log2(luminance) - metering.minLog) / metering.logRange);
+  return 1u + min(u32(t * ${HISTOGRAM_BINS - 1}.0), ${HISTOGRAM_BINS - 2}u);
+}
+
+@compute @workgroup_size(16, 16)
+fn histogramMain(@builtin(global_invocation_id) id: vec3u, @builtin(local_invocation_index) index: u32) {
+  if (index < ${HISTOGRAM_BINS}u) { atomicStore(&bins[index], 0u); }
+  workgroupBarrier();
+  // 每 2×2 个像素数一个：直方图是统计量，数四分之一的像素分布一样，4K 下省四分之三
+  let pixel = id.xy * 2u;
+  if (all(pixel < textureDimensions(hdr))) { atomicAdd(&bins[binOf(textureLoad(hdr, pixel, 0).rgb)], 1u); }
+  workgroupBarrier();
+  if (index < ${HISTOGRAM_BINS}u) {
+    let count = atomicLoad(&bins[index]);
+    if (count > 0u) { atomicAdd(&histogram[index], count); }
+  }
+}
+
+/** 第 i 格的对数亮度（格子中间；第 0 格算范围的下限）。 */
+fn binLog(i: u32) -> f32 {
+  if (i == 0u) { return metering.minLog; }
+  return metering.minLog + (f32(i) - 0.5) / ${HISTOGRAM_BINS - 1}.0 * metering.logRange;
+}
+
+@compute @workgroup_size(1)
+fn averageMain() {
+  var total = 0u;
+  var cumulative: array<u32, ${HISTOGRAM_BINS}>;
+  for (var i = 0u; i < ${HISTOGRAM_BINS}u; i++) {
+    total += atomicLoad(&histogram[i]);
+    cumulative[i] = total;
+    atomicStore(&histogram[i], 0u);
+  }
+  // 累积的个数夹在 [first, last] 里：最暗的 low、最亮的 1 - high 那部分不算
+  let first = u32(f32(total) * metering.low);
+  let last = u32(f32(total) * metering.high);
+  var counted = 0u;
+  var sum = 0.0;
+  var before = first;
+  for (var i = 0u; i < ${HISTOGRAM_BINS}u; i++) {
+    let upTo = clamp(cumulative[i], first, last);
+    sum += f32(upTo - before) * binLog(i);
+    counted += upTo - before;
+    before = upTo;
+  }
+  let goal = select(metering.minLog, sum / f32(counted), counted > 0u);
+  var current = log2(max(textureLoad(previous, vec2u(0u), 0).r, 1e-6));
+  if (metering.reset > 0.5) {
+    current = goal;
+  } else {
+    // 画面变亮（goal 大）按 speedBrighten，变暗按 speedDarken（档/秒）；离目标不到 transition 档时按指数慢下来
+    let delta = goal - current;
+    let speed = select(metering.speedDarken, metering.speedBrighten, delta > 0.0) * metering.elapsed;
+    current += sign(delta) * min(speed, abs(delta) * speed / metering.transition);
+  }
+  textureStore(adapted, vec2u(0u), vec4f(exp2(current), 0.0, 0.0, 1.0));
 }`;
 
 const TONEMAP_SHADER = /* wgsl */ `
@@ -192,6 +272,11 @@ interface LuminanceTargets {
 
 type ToneMapStep = 'luminance' | 'downscale' | 'adapt' | 'tonemap';
 
+interface HistogramPipelines {
+  readonly histogram: GPUComputePipeline;
+  readonly average: GPUComputePipeline;
+}
+
 /** 映射的算子：hejl2（Stride 的）、agx（Blender 4 的 AgX）、aces（Narkowicz 的拟合）。 */
 export type ToneMapOperator = 'hejl2' | 'agx' | 'aces';
 const OPERATORS: readonly ToneMapOperator[] = ['hejl2', 'agx', 'aces'];
@@ -282,6 +367,18 @@ export class ToneMap {
   chromaticAberration = 0;
   /** 镜头畸变：正的是桶形（广角），负的是枕形。 */
   distortion = 0;
+  /**
+   * 测光：average 是 Stride 的（整个画面的对数平均，按 adaptationRate 指数适应）；histogram 按亮度直方图去掉最暗、最亮的一部分
+   * 再平均，按每秒几档适应（见 HISTOGRAM_SHADER），大片的天空、黑影、高光不会把曝光拽偏。
+   */
+  metering: 'average' | 'histogram' = 'average';
+  /** 直方图的对数亮度范围（log2，下限以下算一格）。 */
+  histogramRange: readonly [min: number, max: number] = [-10, 14];
+  /** 直方图里参加平均的那一段（按像素数的比例：最暗的 10%、最亮的 10% 不算）。 */
+  histogramFilter: readonly [low: number, high: number] = [0.1, 0.9];
+  /** 直方图测光的适应速度（档/秒）：画面变亮时、变暗时。 */
+  speedBrighten = 3;
+  speedDarken = 1;
   #time = 0;
 
   readonly #device: GPUDevice;
@@ -296,13 +393,17 @@ export class ToneMap {
   readonly #sourceGroups = new WeakMap<GPUTexture, GPUBindGroup>();
   /** measure 写好的适应亮度，draw 读它。 */
   #measured: GPUTexture | undefined;
+  /** 直方图测光的格子和设置（第一次用到时建）、管线（后台编，编好以前照平均测光量）。 */
+  #histogram: { readonly bins: GPUBuffer; readonly uniform: GPUBuffer } | undefined;
+  #histogramPipelines: HistogramPipelines | Promise<void> | undefined;
 
   constructor(device: GPUDevice, sampler: GPUSampler) {
     this.#device = device;
     this.#sampler = sampler;
     this.#settings = device.createBuffer({ label: 'ToneMap settings', size: SETTINGS_FLOATS * 4, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     this.#adaptUniform = device.createBuffer({ label: 'ToneMap adapt', size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    const adapted = () => device.createTexture({ label: 'ToneMap adapted luminance', size: [1, 1], format: 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT });
+    // 平均测光画进去（渲染目标），直方图测光写进去（存储贴图）
+    const adapted = () => device.createTexture({ label: 'ToneMap adapted luminance', size: [1, 1], format: 'r32float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.STORAGE_BINDING });
     this.#adapted = [adapted(), adapted()];
   }
 
@@ -322,16 +423,23 @@ export class ToneMap {
       this.#reset = true;
       return;
     }
-    const targets = this.#targetsFor(input.width, input.height);
-    const factor = this.temporalAdaptation ? 1 - Math.exp(-elapsed * this.adaptationRate) : 1;
-    this.#device.queue.writeBuffer(this.#adaptUniform, 0, new Float32Array([factor, this.#reset || !this.temporalAdaptation ? 1 : 0]));
+    const histogram = this.metering === 'histogram' ? this.#histogramPipelinesReady() : undefined;
+    // 平均测光的亮度图跟着画面尺寸（尺寸变了要从头适应，所以在读 #reset 之前）
+    const targets = histogram ? undefined : this.#targetsFor(input.width, input.height);
+    const reset = this.#reset || !this.temporalAdaptation;
     this.#reset = false;
-    const levels = targets.luminance.mipLevelCount;
     // 适应：读上一帧的结果，写另一张
     const previous = this.#adapted[this.#current]!;
     const next = this.#adapted[1 - this.#current]!;
     this.#current = 1 - this.#current;
     this.#measured = next;
+    if (!targets) {
+      this.#measureHistogram(frame, input, previous, next, elapsed, reset, histogram!);
+      return;
+    }
+    const factor = this.temporalAdaptation ? 1 - Math.exp(-elapsed * this.adaptationRate) : 1;
+    this.#device.queue.writeBuffer(this.#adaptUniform, 0, new Float32Array([factor, reset ? 1 : 0]));
+    const levels = targets.luminance.mipLevelCount;
     // 写的是自己留到下一帧的贴图（亮度的 mip 链、适应后的亮度），渲染图看不见：算副作用
     frame.pass('ToneMap measure', (pass) => {
       if (isGraphTexture(input)) pass.read(input);
@@ -353,6 +461,60 @@ export class ToneMap {
         ],
       }), next.createView());
     }, () => this.#warm(['luminance', 'downscale', 'adapt']));
+  }
+
+  /** 直方图测光：数格子、按格子求平均并适应，写进 next（见 HISTOGRAM_SHADER）。 */
+  #measureHistogram(frame: EffectFrame, input: Image, previous: GPUTexture, next: GPUTexture, elapsed: number, reset: boolean, pipelines: HistogramPipelines): void {
+    const device = this.#device;
+    const { bins, uniform } = this.#histogram ??= {
+      bins: device.createBuffer({ label: 'ToneMap histogram', size: HISTOGRAM_BINS * 4, usage: GPUBufferUsage.STORAGE }),
+      uniform: device.createBuffer({ label: 'ToneMap metering', size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }),
+    };
+    const [min, max] = this.histogramRange;
+    // 离目标 1.5 档以内按指数慢下来（Bevy 的 exponential_transition_distance）
+    device.queue.writeBuffer(uniform, 0, new Float32Array([min, Math.max(max - min, 1e-3), ...this.histogramFilter, this.speedBrighten, this.speedDarken, 1.5, elapsed, reset ? 1 : 0]));
+    frame.pass('ToneMap measure', (pass) => {
+      if (isGraphTexture(input)) pass.read(input);
+      pass.sideEffect();
+    }, (real) => {
+      const texture = isGraphTexture(input) ? real.texture(input) : input;
+      const timestampWrites = GpuProfiler.of(device)?.passTimestamps('ToneMap histogram');
+      const pass = frame.encoder.beginComputePass({ label: 'ToneMap histogram', ...(timestampWrites ? { timestampWrites } : {}) });
+      pass.setPipeline(pipelines.histogram);
+      pass.setBindGroup(0, device.createBindGroup({
+        layout: pipelines.histogram.getBindGroupLayout(0),
+        entries: [{ binding: 0, resource: { buffer: uniform } }, { binding: 1, resource: texture.createView() }, { binding: 2, resource: { buffer: bins } }],
+      }));
+      pass.dispatchWorkgroups(Math.ceil(texture.width / 32), Math.ceil(texture.height / 32));
+      pass.setPipeline(pipelines.average);
+      pass.setBindGroup(0, device.createBindGroup({
+        layout: pipelines.average.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: uniform } },
+          { binding: 2, resource: { buffer: bins } },
+          { binding: 3, resource: previous.createView() },
+          { binding: 4, resource: next.createView() },
+        ],
+      }));
+      pass.dispatchWorkgroups(1);
+      pass.end();
+    });
+  }
+
+  /** 直方图测光的两条管线：编好了给出来；第一次问时在后台开始编，编好以前返回 undefined（这几帧照平均测光量）。 */
+  #histogramPipelinesReady(): HistogramPipelines | undefined {
+    const state = this.#histogramPipelines;
+    if (state && !(state instanceof Promise)) return state;
+    if (!state) {
+      const module = createCheckedShaderModule(this.#device, 'ToneMap histogram', HISTOGRAM_SHADER);
+      const create = (entryPoint: string) => this.#device.createComputePipelineAsync({ label: `ToneMap ${entryPoint}`, layout: 'auto', compute: { module, entryPoint } });
+      // 编不出来时留着这个 Promise，不再重试（错误在着色器模块的编译信息里报过了）
+      this.#histogramPipelines = Promise.all([create('histogramMain'), create('averageMain')]).then(
+        ([histogram, average]) => { this.#histogramPipelines = { histogram, average }; },
+        (error: unknown) => console.warn('ToneMap histogram: building the pipelines failed', error),
+      );
+    }
+    return undefined;
   }
 
   /** 按 measure 量出的亮度把 input 加上 layers（已经 prefilterLayers 过）映射后画进 output。 */
@@ -392,6 +554,8 @@ export class ToneMap {
 
   destroy(): void {
     this.#targets?.luminance.destroy();
+    this.#histogram?.bins.destroy();
+    this.#histogram?.uniform.destroy();
     for (const texture of this.#adapted) texture.destroy();
     this.#settings.destroy();
     this.#adaptUniform.destroy();

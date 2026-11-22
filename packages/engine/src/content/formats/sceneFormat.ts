@@ -118,6 +118,23 @@ export interface ScenePostEffects {
   readonly localReflections?: { readonly maxRoughness: number; readonly edgeFade: number };
   /** 调色和镜头（Stride 没有，见 rendering/postfx/ToneMap.ts）；没写的项用不改变画面的默认值。 */
   readonly colorGrading?: SceneColorGrading;
+  /** 自动曝光的测光（Stride 只有平均测光，见 rendering/postfx/ToneMap.ts 的 metering）；没写是 Stride 的。 */
+  readonly exposure?: SceneExposure;
+}
+
+/** 测光的方式和直方图的设置（各项的意思见 ToneMap 的 metering、histogramRange、histogramFilter、speedBrighten、speedDarken）。 */
+export interface SceneExposure {
+  readonly metering?: 'average' | 'histogram';
+  /** 把平均亮度映射成多亮（中灰）；没写按 Stride 的公式随亮度自动算。 */
+  readonly keyValue?: number;
+  /** 直方图的对数亮度范围（log2）。 */
+  readonly minLog?: number;
+  readonly maxLog?: number;
+  /** 参加平均的那一段（按像素数的比例）。 */
+  readonly low?: number;
+  readonly high?: number;
+  readonly speedBrighten?: number;
+  readonly speedDarken?: number;
 }
 
 /** 色调映射的算子、白平衡、对比度、饱和度，镜头的暗角、颗粒、色差、畸变（各项的意思见 ToneMap 的同名字段）。 */

@@ -146,6 +146,7 @@
 - `bedroom/`：`bedroom.mp4`（卧室一角）。
 - `future-city/`：`domes-skybridges.png`（穹顶塔楼、空中走廊上的人流、中间的磁悬浮）、`maglev-meadow.png`（草地上的磁悬浮、远处的塔楼和雾）、`flyers-towers.png`（飞行器、塔楼、空中的车流、下面的森林）。
 - `street/`：长视频 `VID_20261121_133122.mp4`（4K 60 帧、7 分 19 秒、2.6 GB，原件在用户的微信临时目录，路径见 `SOURCE.txt`）每 10 秒一帧（`frames/`）和带时间的总览（`sheet*.jpg`）：高架下的人行道、路口、商业街、老小区的巷子、楼道。
+- `doupo-movie/`：3D 动画的参考（路线图 A 组）——腾讯视频《斗破苍穹》剧场版、年番 4 的官方预告和年番第 219、218 话（用户的会员账号正常播放时截的帧，1080P），`ANALYSIS.md` 是逐类镜头的分析和要补的能力。版权归阅文，只在本地参考。
 
 ## 6. 定时任务（无人值守续跑）
 
@@ -156,7 +157,6 @@
 > 提交和测试：提交前 pnpm typecheck、pnpm test（失败了不提交）；提交后 git pull --rebase origin main 再推 origin main（不强推）；推送后在验证工作树里跑 pwsh tools/verify.ps1 -Changed -Base <推送前的提交>（回归按 WebGPU 默认上限开页面），失败了修好再推；看 CI（gh run list）的失败并修。在 Chrome 里实际看过、量过耗时才算完成。开发服务器、无头 Chrome 用完就停（pwsh tools/stop-dev.ps1）。改源码里带反引号或 ${} 的文字用 Edit 工具或写成脚本文件，不用 PowerShell 的字符串替换。耗时的命令放后台跑。
 > 调试难时先升级调试 CLI（packages/cli，stride debug 下断点），再用 CLion 的 JS 调试器（MCP 的 xdebug_*）和电脑控制（CLion 点击级、Chrome 只读）。
 > 【主动改进】用户 2026-11-21 定：不用提醒，每次除了路线图，也主动改善环境——整理代码和文档（整理和功能分开提交）、需要时克隆参考仓库到 C:\code\refs、想办法加快测试（回归、验证、CI 的耗时）、优化工具和流程、改善 agent 调试代码的体验（调试 CLI、stride debug、调试桥、MCP）；做了什么记进 progress-log。
-efs、想办法加快测试（回归、验证、CI 的耗时）、优化工具和流程；做了什么记进 progress-log。
 > 【单会话】用户 2026-11-20 定：不再多个会话并行，除非用户主动通知；不开子会话、不提议开。../stride-ts-verify-1、-2、-3 是验证位（分离头指针、没有没提交的改动）。
 > 【wasm】原生那边（C:\code\JoltPhysics 的 StrideNative）有问题或者不够用时直接改那边、重编、发新版本，不在 TS 里绕。
 > 【续期】这个定时任务 7 天后过期：2026-11-27 之后路线图还没做完，就照这段文字重新建一个。

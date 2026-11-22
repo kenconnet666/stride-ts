@@ -2,7 +2,7 @@
  * 材质的图层栏（在模型上画贴图，S2）：材质层（MaterialFile.layers）按顺序列出，每层的填充（颜色、粗糙度、金属度）在这里改，
  * "画"进入视口里的绘制模式（画选中的实体上用这个材质的网格，画的是这层的遮罩）；"加绘制层"新建一张全黑的遮罩和一层。
  * 填充也可以是一张节点图（"填充"菜单选库里带节点图的材质，比如掉漆的金属：画到哪儿，哪儿就是那种材质，磨损、脏污的规则跟着走），
- * "节点图"在下面的节点图面板里改这层的图。画的时候下面是笔刷（半径、硬度、强度、擦除）。层的别的写法（导入的、颜色树）在属性
+ * "节点图"在下面的节点图面板里改这层的图。画的时候下面是笔刷（半径、硬度、强度、擦除、投影：只画这个视角看得见的面，一笔能落在几个面上，不绕到背后）。层的别的写法（导入的、颜色树）在属性
  * 面板的"材质层"里按 JSON 改。
  */
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
@@ -87,6 +87,7 @@ export const PaintLayers = _component(({ session }: { session: EditorSession }) 
             {amount(t.paintHardness, brush.hardness, (hardness) => session.tools.setPaintBrush({ ...brush, hardness }), { step: 0.1 })}
             {amount(t.paintStrength, brush.strength, (strength) => session.tools.setPaintBrush({ ...brush, strength }), { step: 0.1 })}
             <Checkbox size="sm" _checked={brush.erase} onUpdate:_checked={(erase: boolean) => session.tools.setPaintBrush({ ...brush, erase })}>{t.paintErase}</Checkbox>
+            <Checkbox size="sm" _checked={brush.projection ?? false} title={t.paintProjectionHint} onUpdate:_checked={(projection: boolean) => session.tools.setPaintBrush({ ...brush, projection })}>{t.paintProjection}</Checkbox>
           </Flex>
         )}
         {painting && <Small tone="muted">{t.paintHint}</Small>}

@@ -67,7 +67,8 @@ export interface EditableScene extends SceneSource {
 
 const PAINT_HELP = 'Paint a material layer mask on a model in the editor (the viewport page): args entity (scene file id), material and mask (content paths; '
   + 'the mask is a linear png, a layer blend of the material), points ([[x, y, z], ...] world space; dabs every quarter radius along them), '
-  + 'radius (m), hardness, strength (0..1), erase. Saves the png through the editor backend.';
+  + 'radius (m), hardness, strength (0..1), erase, projection (true: the brush is a circle on the screen of the current view, painting only the surfaces '
+  + 'seen from it, like a projection tool; radius is measured at each point). Saves the png through the editor backend.';
 
 export class EditAgent {
   readonly game: Game;
@@ -152,15 +153,26 @@ export class EditAgent {
     }
     const brush: PaintBrush = {
       radius: Number(args['radius'] ?? DEFAULT_PAINT_BRUSH.radius), hardness: Number(args['hardness'] ?? DEFAULT_PAINT_BRUSH.hardness),
-      strength: Number(args['strength'] ?? DEFAULT_PAINT_BRUSH.strength), erase: args['erase'] === true,
+      strength: Number(args['strength'] ?? DEFAULT_PAINT_BRUSH.strength), erase: args['erase'] === true, projection: args['projection'] === true,
     };
     const open = this.#tool instanceof PaintTool && this.#tool.entity === entity && this.#tool.mask === mask ? this.#tool : undefined;
     const tool = open ?? await this.paintMesh(entity, material, mask, brush);
     const targets = tool.targets(this.#live?.entity(entity));
     if (targets.length === 0) throw new Error(`entity ${entity} has no mesh with material ${material}`);
+    // 投影绘制要主视图留着深度：先出两帧（第一帧留下，第二帧换成对外的），画的时候用编辑相机现在的视角
+    const release = brush.projection ? this.game.holdFrames() : undefined;
+    try {
+      for (let i = 0; brush.projection && i < 3; i++) {
+        this.game.graphicsCompositor.viewDepth.use();
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+      }
+      if (brush.projection) this.game.graphicsCompositor.viewDepth.use();
+    } finally {
+      release?.();
+    }
     let dabs = 0;
     const dab = (center: readonly [number, number, number]) => {
-      tool.dab(targets, center, brush);
+      tool.dab(this.game, targets, center, brush);
       dabs++;
     };
     dab(points[0]!);
@@ -197,7 +209,7 @@ export class EditAgent {
   /** 开始在模型上画：实体（场景文件里的 id）上用 material 这个材质的网格，画进 mask（材质层遮罩用的线性 png，内容路径）。 */
   async paintMesh(entity: string, material: string, mask: string, brush: PaintBrush = DEFAULT_PAINT_BRUSH): Promise<PaintTool> {
     const [loaded, texture] = await Promise.all([this.game.content.loadMaterial(material), this.game.content.loadTextureRef({ texture: mask, encoding: 'png', srgb: false }, false)]);
-    return this.#use(new PaintTool(entity, loaded, mask, new MeshPainter(this.game.renderSystem.resources, texture), brush));
+    return this.#use(new PaintTool(entity, loaded, mask, new MeshPainter(this.game.renderSystem.resources, texture, this.game.graphicsCompositor.viewDepth), brush));
   }
 
   /** 开始雕刻这个地形实体（场景文件里的 id）。 */

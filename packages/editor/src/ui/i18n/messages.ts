@@ -220,6 +220,8 @@ export interface EditorMessages {
   readonly paintHardness: string;
   readonly paintStrength: string;
   readonly paintErase: string;
+  readonly paintProjection: string;
+  readonly paintProjectionHint: string;
   readonly paintHint: string;
   readonly paintSelectEntity: string;
   readonly paintNoMask: string;
@@ -459,6 +461,8 @@ const zhCN: EditorMessages = {
   paintHardness: '硬度',
   paintStrength: '强度',
   paintErase: '擦除',
+  paintProjection: '投影',
+  paintProjectionHint: '笔刷是画面上的圆，只画这个视角看得见的面：一笔能同时落在几个面上，不会绕到背后',
   paintHint: '在视口里按住左键在选中的实体上画（Alt、右键照常转相机）；每一笔画完存进遮罩',
   paintSelectEntity: '先在场景里选中要画的实体（它要用这个材质）',
   paintNoMask: '这一层的遮罩不是一张图，画不了（加一个绘制层）',
@@ -693,6 +697,8 @@ const enUS: EditorMessages = {
   paintHardness: 'Hardness',
   paintStrength: 'Strength',
   paintErase: 'Erase',
+  paintProjection: 'Projection',
+  paintProjectionHint: 'The brush is a circle on the screen and paints only what this view sees: one stroke can cover several faces and never wraps around to the back',
   paintHint: 'Hold the left button in the viewport to paint on the selected entity (Alt and the right button still move the camera); each stroke is saved into the mask',
   paintSelectEntity: 'Select the entity to paint in the scene first (it must use this material)',
   paintNoMask: 'The mask of this layer is not an image, so it cannot be painted (add a paint layer)',

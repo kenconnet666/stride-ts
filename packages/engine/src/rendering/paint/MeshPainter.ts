@@ -3,14 +3,19 @@
  * 一张工作贴图——顶点着色器输出 UV 位置、带上世界坐标，片元按到笔刷中心的距离算衰减，混进去。所以一笔落在哪个面上、跨了几个
  * UV 岛都对，接缝两边一起画到；三角形的边再画一遍线（1 像素），补上 UV 岛边上漏掉的像素。
  *
+ * 投影绘制（brush.projection，同 Substance Painter 的 Projection 工具）：笔刷是画面上的一个圆，只画从这个视角看得见的地方——
+ * 纹素投到主视图上一帧的深度图（graphicsCompositor.viewDepth，粒子碰撞也用它）里比深浅，被挡住的、背面的不画。一笔可以同时
+ * 落在圆里的几个面上，也不会绕到模型背后去。要在画之前一帧 depth.use()（不然渲染器不留深度）。
+ *
  * 画的是材质层的遮罩那种贴图：浏览器解码的 png、线性（rgba8unorm）、在 GPU 上生成 mip 的。一笔（stroke 里的几个点）画完拷回
  * 那张贴图（GpuResources.replaceLevel0），视口马上看到；read() 读回像素存盘。
  *
- *   const painter = new MeshPainter(game.renderSystem.resources, mask);
+ *   const painter = new MeshPainter(game.renderSystem.resources, mask, game.graphicsCompositor.viewDepth);
  *   painter.dab([{ mesh, world }], { center, radius: 0.2, hardness: 0.5, strength: 1, value: [1, 1, 1, 1] });
  *   painter.commit();
  */
 import type { GpuResources } from '../../graphics/GpuResources';
+import { DEPTH_SURFACE_WGSL, type GpuDepthSurface } from '../DepthSurface';
 import type { Texture } from '../../graphics/Texture';
 import type { Mesh } from '../mesh/Mesh';
 import { readTexture } from '../../graphics/readTexture';
@@ -26,27 +31,52 @@ export interface Brush {
   readonly strength: number;
   /** 画上去的值（rgba，线性）；擦掉就是画 0。 */
   readonly value: readonly [number, number, number, number];
+  /**
+   * 投影绘制（见文件开头）：笔刷是主视图画面上以 center（NDC）为圆心、radius（NDC 的竖直单位，画面高是 2）的圆，aspect 是画面的
+   * 宽高比，origin 是渲染原点（深度图的视图投影是相对它的）。这时 center、radius 这两个球的字段不用。
+   */
+  readonly projection?: { readonly center: readonly [number, number]; readonly radius: number; readonly aspect: number; readonly origin: readonly [number, number, number] };
 }
 
-/** 画在哪：网格和它的世界矩阵（列主序）。 */
+/** 画在哪：网格和它的世界矩阵（列主序；双精度的在投影绘制时先减渲染原点再降成单精度）。 */
 export interface PaintTarget {
   readonly mesh: Mesh;
-  readonly world: Float32Array;
+  readonly world: Float32Array | Float64Array;
 }
 
 const FORMAT: GPUTextureFormat = 'rgba8unorm';
-const UNIFORM_BYTES = 112;
+const UNIFORM_BYTES = 128;
 
 const SHADER = /* wgsl */ `
 struct Dab {
   world: mat4x4f,
   /** xyz：中心，w：半径。 */
   sphere: vec4f,
-  /** x：硬度，y：强度。 */
+  /** x：硬度，y：强度，z：1 是投影绘制。 */
   shape: vec4f,
   value: vec4f,
+  /** 投影绘制：xy 圆心（NDC），z 半径（NDC 的竖直单位），w 画面的宽高比。 */
+  screen: vec4f,
 };
 @group(0) @binding(0) var<uniform> dab: Dab;
+${DEPTH_SURFACE_WGSL}
+
+/** 投影绘制：world（渲染空间）在画面上离圆心多远（半径的倍数）；看不见（被挡住、背面、画面外）时是 2。 */
+fn projectedDistance(world: vec3f) -> f32 {
+  if (surface.valid.x == 0u) { return 2.0; }
+  let c = surface.viewProjection * vec4f(world, 1.0);
+  if (c.w <= 0.0) { return 2.0; }
+  let ndc = c.xyz / c.w;
+  let uv = vec2f(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+  if (any(uv < vec2f(0.0)) || any(uv >= vec2f(1.0))) { return 2.0; }
+  let size = vec2i(surface.valid.yz);
+  let depth = textureLoad(surfaceDepth, clamp(vec2i(uv * vec2f(size)), vec2i(0), size - 1), 0);
+  // 反向 Z（近 1 远 0）：纹素在画面上那一点的表面前面或者就是它才看得见；留一点相对的余量（深度图是上一帧、按像素取的）
+  let tolerance = max(abs(depth) * 0.004, 1e-6);
+  let visible = select(ndc.z <= depth + tolerance, ndc.z >= depth - tolerance, surface.valid.w == 1u);
+  if (!visible) { return 2.0; }
+  return length((ndc.xy - dab.screen.xy) * vec2f(dab.screen.w, 1.0)) / max(dab.screen.z, 1e-6);
+}
 struct Varyings {
   @builtin(position) position: vec4f,
   @location(0) world: vec3f,
@@ -58,7 +88,7 @@ struct Varyings {
   return out;
 }
 @fragment fn fs(in: Varyings) -> @location(0) vec4f {
-  let d = distance(in.world, dab.sphere.xyz) / max(dab.sphere.w, 1e-6);
+  let d = select(distance(in.world, dab.sphere.xyz) / max(dab.sphere.w, 1e-6), projectedDistance(in.world), dab.shape.z > 0.5);
   let falloff = 1.0 - smoothstep(dab.shape.x, 1.0, d);
   if (falloff <= 0.0) { discard; }
   return vec4f(dab.value.rgb, falloff * dab.shape.y);
@@ -80,17 +110,22 @@ export class MeshPainter {
   readonly #device: GPUDevice;
   readonly #work: GPUTexture;
   readonly #uniforms: GPUBuffer;
-  readonly #group: GPUBindGroup;
+  readonly #depth: GpuDepthSurface;
+  readonly #layout: GPUBindGroupLayout;
   readonly #fill: GPURenderPipeline;
   readonly #lines: GPURenderPipeline;
   readonly #meshes = new Map<Mesh, MeshBuffers>();
   #dirty = false;
 
-  /** texture：要画的贴图（材质已经在用的那份，线性的 png）。开始时把它现在的内容拷进工作贴图。 */
-  constructor(resources: GpuResources, texture: Texture) {
+  /**
+   * texture：要画的贴图（材质已经在用的那份，线性的 png）。开始时把它现在的内容拷进工作贴图。depth：投影绘制看可见性用的主视图
+   * 深度（graphicsCompositor.viewDepth）。
+   */
+  constructor(resources: GpuResources, texture: Texture, depth: GpuDepthSurface) {
     if (texture.data.format !== FORMAT) throw new Error(`MeshPainter: '${texture.name}' is ${texture.data.format}; only linear ${FORMAT} images (a mask) can be painted`);
     this.texture = texture;
     this.#resources = resources;
+    this.#depth = depth;
     const device = (this.#device = resources.device);
     const source = resources.texture(texture);
     this.#work = device.createTexture({
@@ -105,7 +140,13 @@ export class MeshPainter {
     void device.popErrorScope().then((error) => error && console.error(`[stride] MeshPainter: cannot copy '${texture.name}' to paint on it: ${error.message}`));
     this.#uniforms = device.createBuffer({ label: 'MeshPainter dab', size: UNIFORM_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     const module = device.createShaderModule({ label: 'MeshPainter', code: SHADER });
-    const layout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: {} }] });
+    const layout = this.#layout = device.createBindGroupLayout({
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: {} },
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, texture: { sampleType: 'depth' } },
+        { binding: 3, visibility: GPUShaderStage.FRAGMENT, buffer: {} },
+      ],
+    });
     const pipeline = (topology: GPUPrimitiveTopology) => device.createRenderPipeline({
       label: `MeshPainter ${topology}`,
       layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
@@ -116,24 +157,32 @@ export class MeshPainter {
     });
     this.#fill = pipeline('triangle-list');
     this.#lines = pipeline('line-list');
-    this.#group = device.createBindGroup({ layout, entries: [{ binding: 0, resource: { buffer: this.#uniforms } }] });
   }
 
   /** 画一下（一个笔刷印）到这些网格上。一笔里的几个印画完调 commit。 */
   dab(targets: readonly PaintTarget[], brush: Brush): void {
     const device = this.#device;
+    const projection = brush.projection;
+    // 深度图换过（窗口改了大小）时绑定组跟着换：每一下现建，很便宜
+    const group = device.createBindGroup({
+      layout: this.#layout,
+      entries: [{ binding: 0, resource: { buffer: this.#uniforms } }, { binding: 2, resource: this.#depth.depthView }, { binding: 3, resource: { buffer: this.#depth.uniform } }],
+    });
     for (const { mesh, world } of targets) {
       const data = new Float32Array(UNIFORM_BYTES / 4);
       data.set(world, 0);
+      // 投影绘制在渲染空间里比（深度图的视图投影相对渲染原点）：平移先按双精度减掉原点
+      if (projection) for (let i = 0; i < 3; i++) data[12 + i] = world[12 + i]! - projection.origin[i]!;
       data.set([...brush.center, brush.radius], 16);
-      data.set([Math.min(Math.max(brush.hardness, 0), 0.999), Math.min(Math.max(brush.strength, 0), 1), 0, 0], 20);
+      data.set([Math.min(Math.max(brush.hardness, 0), 0.999), Math.min(Math.max(brush.strength, 0), 1), projection ? 1 : 0, 0], 20);
       data.set(brush.value, 24);
+      if (projection) data.set([...projection.center, projection.radius, projection.aspect], 28);
       // 每个网格一次提交：同一个统一缓冲在提交前写两次，两次绘制读到的都是后写的值
       device.queue.writeBuffer(this.#uniforms, 0, data);
       const buffers = this.#buffersFor(mesh);
       const encoder = device.createCommandEncoder({ label: 'MeshPainter dab' });
       const pass = encoder.beginRenderPass({ label: 'MeshPainter', colorAttachments: [{ view: this.#work.createView(), loadOp: 'load', storeOp: 'store' }] });
-      pass.setBindGroup(0, this.#group);
+      pass.setBindGroup(0, group);
       pass.setVertexBuffer(0, buffers.vertices);
       pass.setPipeline(this.#fill);
       pass.setIndexBuffer(buffers.triangles, 'uint32');
@@ -204,7 +253,7 @@ const decoded = new WeakMap<Mesh, Float32Array>();
  * 射线和网格的最近交点（Möller–Trumbore，两面都算）：origin、direction 在世界空间，world 是网格的世界矩阵。没打到是 undefined。
  * 在 CPU 上算：绘制要的是画笔落在哪个面上，用编号缓冲的点选只知道是哪个实体。
  */
-export function raycastMesh(mesh: Mesh, world: Float32Array, origin: readonly number[], direction: readonly number[]): { readonly distance: number; readonly point: [number, number, number]; readonly normal: [number, number, number] } | undefined {
+export function raycastMesh(mesh: Mesh, world: Float32Array | Float64Array, origin: readonly number[], direction: readonly number[]): { readonly distance: number; readonly point: [number, number, number]; readonly normal: [number, number, number] } | undefined {
   let positions = decoded.get(mesh);
   if (!positions) decoded.set(mesh, (positions = mesh.positions()));
   const indices = mesh.data.indices;

@@ -23,7 +23,7 @@ export class ViewportTools {
   /** 正在画的材质层（属性面板里开着的材质的第几层、它的遮罩）；没在画时是 undefined。 */
   readonly painting = shallowRef<{ readonly layer: number; readonly mask: string }>();
   /** 绘制的笔刷，换着画别的层时保留。 */
-  readonly paintBrush = shallowRef<PaintBrush>({ radius: 0.25, hardness: 0.5, strength: 0.8, erase: false });
+  readonly paintBrush = shallowRef<PaintBrush>({ radius: 0.25, hardness: 0.5, strength: 0.8, erase: false, projection: false });
   /**
    * 正在雕刻的地形：哪个实体、哪个 .terrain.json，现在存着的文件（工具条显示几笔、选中的地物的字段），左键拖的是笔刷还是
    * 地物，选中的地物（file.features 的下标）。

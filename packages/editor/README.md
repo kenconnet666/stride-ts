@@ -53,7 +53,7 @@ node packages/editor/src/server/cli.ts new apps/my-game
 
 ## 后端
 
-后端是一个 Vite 插件，挂在应用的开发服务器上（`tools/lib/vite-app.ts` 的 `strideApp` 已经带上，所以每个 `apps/*` 的 `pnpm dev` 都有）：
+后端是一个 Vite 插件，挂在应用的开发服务器上（`@stride-ts/devkit/vite` 的 `strideApp` 已经带上，所以每个 `apps/*` 的 `pnpm dev` 都有）：
 
 ```ts
 import { strideEditor } from '@stride-ts/editor/vite';

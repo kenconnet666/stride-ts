@@ -1,0 +1,24 @@
+{
+  "name": "@stride-ts/devkit",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "stride-ts project tooling: the shared Vite config (strideApp: cross-origin isolation, debug hub, editor, asset packages, precompressed builds) and the smoke-test helpers",
+  "exports": {
+    "./vite": "./src/vite.ts",
+    "./smoke": "./src/smoke.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo"
+  },
+  "dependencies": {
+    "@stride-ts/cli": "workspace:*",
+    "@stride-ts/editor": "workspace:*"
+  },
+  "peerDependencies": {
+    "vite": "^8.3.8"
+  },
+  "devDependencies": {
+    "vite": "^8.3.8"
+  }
+}

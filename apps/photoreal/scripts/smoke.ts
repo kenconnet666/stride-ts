@@ -1,7 +1,7 @@
 // 冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/photoreal smoke [-- --hub <中枢名的一部分>]
 // 检查：主场景跑起来了、有实体；没有错误日志（finish 检查）。游戏搭起来以后在这里加玩法的检查。
-import { startSmoke } from '../../../tools/lib/smoke.ts';
+import { startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, check, finish } = startSmoke('photoreal');
 

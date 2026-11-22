@@ -4,7 +4,7 @@
 // 元素在世界里的矩阵 × 本地变换）；骑士在跑；点角上的按钮不换场景，点跟着走的按钮换下一个；没有错误日志（finish 检查）。
 // 点击用合成的指针事件，放在 3D 里的 UI 按元素在世界里的位置投影到画面上算坐标。
 import { decodePng } from '@stride-ts/cli/png';
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('ui-element-link');
 

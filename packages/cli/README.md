@@ -12,7 +12,7 @@ pnpm exec stride --help
 CLI ──HTTP + 令牌──▶ 调试中枢（开发服务器上的 Vite 插件） ◀──WebSocket（同源）── 页面里的 Game（game.debug）
 ```
 
-- **中枢**：`tools/lib/vite-app.ts` 给所有 app 的开发服务器和 preview 服务器挂上 `strideDebug()`（`src/vite.ts`、`src/hub.ts`）。中枢把地址和令牌登记在 `~/.stride-ts/hubs/`，CLI 按它找。同时开着几个中枢时，默认用页面连上得最晚的那个；`--hub <名字或地址里的文字>` 指定。
+- **中枢**：`@stride-ts/devkit/vite` 给所有 app 的开发服务器和 preview 服务器挂上 `strideDebug()`（`src/vite.ts`、`src/hub.ts`）。中枢把地址和令牌登记在 `~/.stride-ts/hubs/`，CLI 按它找。同时开着几个中枢时，默认用页面连上得最晚的那个；`--hub <名字或地址里的文字>` 指定。
 - **页面**：`Game.run` 的 `debug` 选项打开时连中枢。app 的入口传 `import.meta.env.DEV || undefined`，所以开发服务器上总是打开，preview 或部署出去的页面在地址后加 `?debug` 才打开。
 - **安全**：中枢只接受同源页面的 WebSocket；HTTP 接口要带令牌，并且拒绝带 Origin 头的请求，其他网页没法借用户的浏览器调用。
 

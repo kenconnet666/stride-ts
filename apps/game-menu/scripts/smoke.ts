@@ -4,7 +4,7 @@
 // 锁着的飞船不能选，选一艘；UI 占着的点击脚本看不到；血条在涨；没有错误日志（finish 检查）。
 // 点击用合成的指针事件，按元素的位置算坐标（窗口和设备像素比都不影响）。
 import { decodePng } from '@stride-ts/cli/png';
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('game-menu');
 

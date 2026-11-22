@@ -16,6 +16,7 @@
     "@stride-ts/native": "^0.29.0"
   },
   "devDependencies": {
+    "@stride-ts/devkit": "workspace:*",
     "vite": "^8.3.8"
   }
 }

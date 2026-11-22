@@ -2,7 +2,7 @@
 //   pnpm --filter @stride-ts/material-shader smoke [-- --hub <中枢名的一部分>]
 // 检查：在跑；水面的材质带着游戏着色器类编的法线树和位移树；水面在动（隔半秒截两张，画面不一样）；没有错误日志（finish 检查）。
 import { decodePng, diffImages } from '@stride-ts/cli/png';
-import { startSmoke } from '../../../tools/lib/smoke.ts';
+import { startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('material-shader');
 

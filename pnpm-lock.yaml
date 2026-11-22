@@ -54,6 +54,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -64,6 +67,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -77,6 +83,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -90,6 +99,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -103,6 +115,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -116,6 +131,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -129,6 +147,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -142,6 +163,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -155,6 +179,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -168,6 +195,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -181,6 +211,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -194,6 +227,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -207,6 +243,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -220,6 +259,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -233,6 +275,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -246,6 +291,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -262,6 +310,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -275,6 +326,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -288,6 +342,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -301,6 +358,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -314,6 +374,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -327,6 +390,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -340,6 +406,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -353,6 +422,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -363,6 +435,9 @@ importers:
         specifier: workspace:*
         version: link:../../packages/engine
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -376,6 +451,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -389,6 +467,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -402,6 +483,9 @@ importers:
         specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
         version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-cc2cb39947/stride-ts-native-0.43.0.tgz
     devDependencies:
+      '@stride-ts/devkit':
+        specifier: workspace:*
+        version: link:../../packages/devkit
       vite:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
@@ -421,6 +505,19 @@ importers:
       '@types/ws':
         specifier: ^8.18.2
         version: 8.18.2
+
+  packages/devkit:
+    dependencies:
+      '@stride-ts/cli':
+        specifier: workspace:*
+        version: link:../cli
+      '@stride-ts/editor':
+        specifier: workspace:*
+        version: link:../editor
+    devDependencies:
+      vite:
+        specifier: ^8.3.8
+        version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
 
   packages/editor:
     dependencies:

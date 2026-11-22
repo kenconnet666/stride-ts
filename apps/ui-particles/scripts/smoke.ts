@@ -4,7 +4,7 @@
 // 2 秒后移除）；点"重新开始"回到新游戏（火又点起来、彩纸停掉）；没有错误日志（finish 检查）。
 // 点击用合成的指针事件，按元素的位置算坐标。
 import { decodePng } from '@stride-ts/cli/png';
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('ui-particles');
 /** 命中特效的预制体里的实体。 */

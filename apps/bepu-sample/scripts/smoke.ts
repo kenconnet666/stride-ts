@@ -2,14 +2,14 @@
 //   pnpm --filter @stride-ts/bepu-sample smoke [-- --hub <中枢名的一部分>]
 // 检查：Colliders 场景在跑；选场景的页面有七个按钮，Tab 显示、隐藏；相机控制器（W 前进）；小键盘 * 暂停仿真；T 扔出预制体；重力枪抓起箱子；换到 Material Properties 后
 // 旧场景的实体都去掉了；Constraint 的马达和铰链、Ropes 的绳子、Cube Mixer 的聚光灯；Cube Fountain 的生成器按物理时间生成预制体。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('bepu-sample');
 
 stride('eval', `location.href = location.origin + '/?scene=Colliders'`);
 await sleep(1500);
 stride('wait');
-// 等待都按游戏时间和状态（tools/lib/smoke.ts 的 until、seconds、holdFor、tap）：CI 的软件 WebGPU 上一帧要几百毫秒，子场景加载要十几秒
+// 等待都按游戏时间和状态（@stride-ts/devkit/smoke 的 until、seconds、holdFor、tap）：CI 的软件 WebGPU 上一帧要几百毫秒，子场景加载要十几秒
 stride('eval', PAGE_HELPERS);
 stride('eval', `until(() => strideGame.entities.count > 20 && strideGame.entities.ids().some((i) => strideGame.entities.entity(i).name === 'BepuCube'), 30).then(() => seconds(0.5)).then(() => 1)`);
 const status = stride('status') as { status: string; error: string | null; entities: number };

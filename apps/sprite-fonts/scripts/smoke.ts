@@ -4,7 +4,7 @@
 // 跳过淡入）；九屏截图都画出了字；富文本那一屏的链接点了换屏、点别处照常暂停继续、影子 DOM 里有链接节点；日文字体只下载了
 // 用到的码位块。
 import { decodePng } from '@stride-ts/cli/png';
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('sprite-fonts');
 

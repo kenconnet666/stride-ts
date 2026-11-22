@@ -3,7 +3,7 @@
 // 检查：主菜单的按钮钉在画面的 (0.5, 0.7)；点它开始，计分页面出来，管子往左移（管子上的运动学刚体跟着管子组走）；把一组管子
 // 挪到飞机身上，飞机进了管子之间的触发器加一分；不按空格飞机落到地上，结束页面出来、分数清零、背景停住；点 Retry 重新开始；
 // 没有错误日志（finish 检查）。点击用合成的指针事件，按画布的比例算坐标。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('jumpy-jet');
 

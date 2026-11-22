@@ -2,7 +2,7 @@
 //   pnpm --filter @stride-ts/short-film smoke [-- --hub <中枢名的一部分>]
 // 检查：主场景跑起来了；短片（时间轴 Films/Evening）在放，跳到各个时刻时机位、机器人放的剪辑、位置、字幕都是那一刻的；
 // 没有错误日志（finish 检查）。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, check, finish } = startSmoke('short-film');
 

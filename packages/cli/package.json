@@ -11,6 +11,7 @@
     "./vite": "./src/vite.ts",
     "./hub": "./src/hub.ts",
     "./client": "./src/client.ts",
+    "./cli": "./src/cli.ts",
     "./png": "./src/png.ts",
     "./chrome": "./src/chrome.ts",
     "./state": "./src/state.ts"

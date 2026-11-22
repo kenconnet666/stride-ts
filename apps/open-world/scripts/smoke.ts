@@ -1,7 +1,7 @@
 // 冒烟测试：对着正在运行的页面（开发服务器或 preview，`stride open` 打开的），用调试 CLI 走一遍。
 //   pnpm --filter @stride-ts/open-world smoke [-- --hub <中枢名的一部分>]
 // 检查：世界 Worlds/Test 加载了，相机附近的格子都在；相机挪到 1.2 公里外，那边的格子加载、原来的卸载；没有错误日志。
-import { startSmoke } from '../../../tools/lib/smoke.ts';
+import { startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, check, finish } = startSmoke('open-world');
 

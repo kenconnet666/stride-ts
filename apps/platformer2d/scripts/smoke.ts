@@ -2,7 +2,7 @@
 //   pnpm --filter @stride-ts/platformer2d smoke [-- --hub <中枢名的一部分>]
 // 检查：场景在跑、精灵表的帧在换（待机、金币）；W 起跳（跳的帧）；按住 D 往右跑（跑步的帧）、A 转身往左（实体绕 Y 转 180°）；
 // 走到右下角的金币上：精灵马上隐藏、音效响起，3 秒后金币实体移除。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('platformer2d');
 
@@ -22,7 +22,7 @@ const COINS = `const g = strideGame; const coins = g.entities.ids().map((i) => g
   [coins.length, coins.filter((e) => e.require(strideEngine.Sprite).enabled).length, coins.map((e) => e.require(strideEngine.Sprite).frame).join()]`;
 type Player = [number, number, number, number, boolean];
 
-// 等待都按游戏时间和状态（tools/lib/smoke.ts 的 seconds、until、holdFor）：CI 的软件 WebGPU 上一帧要几百毫秒
+// 等待都按游戏时间和状态（@stride-ts/devkit/smoke 的 seconds、until、holdFor）：CI 的软件 WebGPU 上一帧要几百毫秒
 // 玩家出生在半空：先等落地（CI 上开头的一秒墙钟只够几帧，还在播下落的帧）
 const idleFrames = new Set<number>(stride('eval', `(async () => { await until(() => player2d()[4], 10); await seconds(0.3); const seen = []; for (let i = 0; i < 6; i++) { seen.push(player2d()[3]); await seconds(0.22); } return seen; })()`) as number[]);
 check('待机时在 0-3 帧之间换', idleFrames.size > 1 && [...idleFrames].every((f) => f >= 0 && f < 4), [...idleFrames]);

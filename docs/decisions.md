@@ -2,6 +2,11 @@
 
 无人值守执行路线图（docs/roadmap.md）时自己做的决定，按时间倒序。每条写：决定了什么、为什么、考虑过的别的做法、影响到哪里。路线图的范围和 D10 里"停下来问"的事不在这里定，要问用户。
 
+### 全仓库整理第二步：开发工具包 @stride-ts/devkit；工具链换 Rust 的结论（2026-11-22）
+
+- `tools/lib` 里样例和新工程都要用的两样提成工作区包 `packages/devkit`：`@stride-ts/devkit/vite`（`strideApp`：跨源隔离、调试中枢、编辑器、资源包、预压缩）、`@stride-ts/devkit/smoke`（冒烟帮手）。样例的 `vite.config.ts`、冒烟脚本和新工程的模板都经包名用，各样例的 package.json 加它。冒烟帮手原来按相对路径找 CLI 和 `tools/budgets.json`，改成 `import.meta.resolve('@stride-ts/cli/cli')`（CLI 加导出 `./cli`）、从工程目录往上找预算表（仓库外的工程没有就不比）。仓库自己用的（`affected.ts`、`run-page.ts`、`consoleText.ts`）留在 `tools/lib`。新工程还只能建在仓库的 `apps/` 下（依赖写 `workspace:*`、tsconfig 继承仓库的），要在仓库外建得先把各包发到 npm，记在路线图。
+- 用户 11-22 要"用 swc 一类的工具配合 TS 7.1 每日版加快开发、有 Rust 版的直接换"。结论：转译、压缩是 Vite 8 的 Rolldown 加 Oxc（Rust，和 SWC 同类）、lint 是 oxlint、Node 26 跑 `.ts` 的类型擦除内置的就是 SWC 编的 wasm、类型检查是 TypeScript 7 的 Go 原生版，都已经是原生的；CSS 换 Lightning CSS 试过，用户说不用换，撤了。TypeScript 不升：照 11-21 定的跟着 vue-tsx-pro，那边要和浏览器里的 tsgo-wasm 同一个提交，最新的 tsgo-wasm 2026.11.5 对不上任何每日版，能成对的还是现在的 20261104。唯一还是 JS 转译的是 vue-tsx-pro 的 TSX 编译器（Babel 加 Vue 的 `@vue/babel-plugin-jsx`，约 4000 行）：Vue 的 JSX 转换没有 Rust 版，要换得用 Oxc 的接口重写，是 vue-tsx-pro 那边单独的项目，没动。
+
 ### 全仓库整理第一步：lint 清零、跨包导入走包名（2026-11-22，用户要的全仓库整理）
 
 - 全仓库约 270 条 lint 逐条看：冒烟、GPU 实验的帮手接口改成函数属性（解构出来单独调，113 条 `unbound-method` 一次清掉）；读进来的数据取文字改用 `textOf`（引擎 `data/text.ts`）和 `textField`（pipeline 读 Stride YAML，数字取原文），字段是对象、列表时报错，不再悄悄变成 "[object Object]"；报错消息里显示收到的值用 JSON；WebSocket 消息按 Buffer、分片、ArrayBuffer 解（CLI 的 `socketText`）。顺手修掉的问题：测试里数字数组用默认的 `sort()`（字典序，9 排在 10 后面）、物理里 `delete` 数组元素留空洞、调试桥读自己的文件失败时不回复（页面干等到超时）、帧循环把 async 函数直接交给 requestAnimationFrame。有意的写法按行关并写理由（eval 命令、生成初始化函数的 `Function`、序列化的 toString）；字符串按码位展开（`[...text]`）在配置里放过。`pnpm lint` 管全仓库，9 秒，CI 也跑。

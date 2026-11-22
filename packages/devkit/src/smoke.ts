@@ -1,4 +1,4 @@
-// 样例冒烟脚本（apps/*/scripts/smoke.ts）共用的部分：调用调试 CLI、记录检查结果、最后看有没有错误日志。
+// 冒烟脚本（apps/*/scripts/smoke.ts、新工程的 scripts/smoke.ts）共用的部分：调用调试 CLI、记录检查结果、最后看有没有错误日志。
 //   const smoke = startSmoke('physics-sample');   // 命令行的 --hub 覆盖默认的中枢名
 //   smoke.check('在跑', (smoke.stride('status') as { status: string }).status === 'running', ...);
 //   smoke.finish();                                // 查本次运行以来的错误日志，按结果退出
@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'packages', 'cli', 'src', 'cli.ts');
+const cli = fileURLToPath(import.meta.resolve('@stride-ts/cli/cli'));
 
 /** 冒烟脚本的几个函数（是函数属性不是方法：脚本里解构出来单独调）。 */
 export interface Smoke {
@@ -52,7 +52,16 @@ interface SmokeMetric {
 }
 
 /** 各个样例冒烟跑完时的统计量（`stride metrics`）记下的基线，见 checkBudgets。 */
-const BUDGETS_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'budgets.json');
+/** 各样例的统计量基线：从工程目录往上找 tools/budgets.json（仓库里的样例有，仓库外的工程没有就不比）。 */
+const BUDGETS_FILE = findUp(process.cwd(), path.join('tools', 'budgets.json')) ?? path.join(process.cwd(), 'tools', 'budgets.json');
+
+/** 从 dir 往上找 relative 这个文件；找不到是 undefined。 */
+function findUp(dir: string, relative: string): string | undefined {
+  for (let at = dir; ; at = path.dirname(at)) {
+    if (existsSync(path.join(at, relative))) return path.join(at, relative);
+    if (path.dirname(at) === at) return undefined;
+  }
+}
 /** 进基线的量：和机器快慢无关的（实体数、绘制次数、显存、原生内存）。帧时间另由 tools/measure.ps1 和桌面 Stride 比。 */
 const BUDGETED = ['entities', 'render.drawCalls', 'render.instances', 'gpu.buffers', 'gpu.buffers.bytes', 'gpu.textures', 'gpu.textures.bytes', 'gpu.pipelines.sync', 'native.allocated.bytes'];
 /** 允许比基线高多少：冒烟跑完时的状态每次略有不同（随机的关卡、还没回收的子弹），所以留得宽，抓的是成倍的退步和泄漏。 */

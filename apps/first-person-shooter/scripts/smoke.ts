@@ -3,14 +3,14 @@
 // 检查：场景在跑、弹匣一开始是空的；真实点击锁定鼠标，第一枪先换弹、2 秒后 9 发；鼠标转视角（灵敏度同 Stride）；W 往看的方向走；
 // 瞄准箱子开枪，箱子被推走、少一发、生成枪口火焰等特效的预制体（粒子生出来，定时移除）；按 R 换弹时手臂播换弹动画（枪跟着骨骼动）；
 // Esc 解锁鼠标。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('first-person-shooter');
 
 stride('eval', 'location.reload()');
 await sleep(1500);
 stride('wait');
-// 等待都按游戏时间和状态（tools/lib/smoke.ts 的 until、seconds、holdFor、tap）：CI 的软件 WebGPU 上一帧要几百毫秒
+// 等待都按游戏时间和状态（@stride-ts/devkit/smoke 的 until、seconds、holdFor、tap）：CI 的软件 WebGPU 上一帧要几百毫秒
 stride('eval', PAGE_HELPERS);
 stride('eval', 'seconds(1).then(() => 1)');
 const status = stride('status') as { status: string; error: string | null; entities: number };

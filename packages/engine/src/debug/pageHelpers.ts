@@ -1,5 +1,5 @@
 /**
- * 页面里试玩、测量用的帮手（一份实现）：`stride eval` 的代码里直接能用；冒烟脚本（tools/lib/smoke.ts 的 PAGE_HELPERS）把它们装成
+ * 页面里试玩、测量用的帮手（一份实现）：`stride eval` 的代码里直接能用；冒烟脚本（@stride-ts/devkit/smoke 的 PAGE_HELPERS）把它们装成
  * 页面的全局变量，样例自己的帮手用它们拼。等待都按游戏时间和状态，不按墙钟（CI 的软件 WebGPU 上一帧几百毫秒到几秒），也不按
  * 帧数（帧率随机器变）。
  */

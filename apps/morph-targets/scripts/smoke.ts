@@ -3,7 +3,7 @@
 // 检查：在跑；三个模型带形变目标；开始时三个剪辑都在播（权重在变）；面板画出来；Pause/Play；选立方体后滑条换成它的目标，
 // 拖滑条到头权重是 2、剪辑停掉；Reset 归零；甜甜圈切到 FBX（模型换了、权重和时间留着）；F1 隐藏面板；没有错误日志（finish 检查）。
 // 点击、拖动用合成的指针事件，按元素的位置算坐标（UI 的虚拟分辨率宽 1920，同 Stride 的样例）。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('morph-targets');
 

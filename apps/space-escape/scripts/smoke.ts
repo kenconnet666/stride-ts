@@ -2,7 +2,7 @@
 //   pnpm --filter @stride-ts/space-escape smoke [-- --hub <中枢名的一部分>]
 // 检查：主菜单（标志、开始按钮）；点开始后距离在涨、关卡往相机这边移、天空板的 UV 在滚；左键换到左边的道、下键滑铲；把一个
 // 障碍物挪到角色身上，角色倒下、结束页面出来；Retry 后距离清零、角色回到中间道；没有错误日志（finish 检查）。
-import { PAGE_HELPERS, startSmoke } from '../../../tools/lib/smoke.ts';
+import { PAGE_HELPERS, startSmoke } from '@stride-ts/devkit/smoke';
 
 const { stride, sleep, check, finish } = startSmoke('space-escape');
 

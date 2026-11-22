@@ -1,0 +1,14 @@
+{
+ "name": "Peanut",
+ "shape": "tuber",
+ "size": [
+  0.032,
+  0.014,
+  0.016
+ ],
+ "seed": 56,
+ "colors": {
+  "background": "#c9a374",
+  "accent": "#9a7448"
+ }
+}

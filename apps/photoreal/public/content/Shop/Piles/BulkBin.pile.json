@@ -1,0 +1,70 @@
+{
+ "name": "BulkBin",
+ "container": {
+  "size": [
+   1.6,
+   0.16,
+   0.56
+  ],
+  "color": "#cdb994",
+  "cells": [
+   4,
+   2
+  ],
+  "lids": true
+ },
+ "items": [
+  {
+   "product": "Shop/Products/Peanut",
+   "count": 160,
+   "variants": 2,
+   "cell": 0
+  },
+  {
+   "product": "Shop/Products/Shiitake",
+   "count": 70,
+   "variants": 3,
+   "cell": 5
+  }
+ ],
+ "heaps": [
+  {
+   "cell": 1,
+   "color": "#f1ece0",
+   "grain": 0.005,
+   "speckle": "#c9c0aa"
+  },
+  {
+   "cell": 2,
+   "color": "#8e2a2a",
+   "grain": 0.008,
+   "speckle": "#4a1212"
+  },
+  {
+   "cell": 3,
+   "color": "#4e7a2a",
+   "grain": 0.006,
+   "speckle": "#23401a"
+  },
+  {
+   "cell": 4,
+   "color": "#2a2526",
+   "grain": 0.009,
+   "speckle": "#000000"
+  },
+  {
+   "cell": 6,
+   "color": "#3c3734",
+   "grain": 0.014,
+   "speckle": "#d8d0c0",
+   "level": 0.9
+  },
+  {
+   "cell": 7,
+   "color": "#e0b63a",
+   "grain": 0.008,
+   "speckle": "#a77a18"
+  }
+ ],
+ "seed": 66
+}

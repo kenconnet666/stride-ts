@@ -280,6 +280,60 @@
    }
   },
   {
+   "id": "5e0b5e0b-0003-4000-8000-000000000006",
+   "name": "Stand back",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    -1.15
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Models/Stand",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0003-4000-8000-000000000020",
+   "name": "BulkBin",
+   "parent": null,
+   "position": [
+    0,
+    0.8,
+    -1.15
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Piles/BulkBin",
+     "materials": []
+    }
+   }
+  },
+  {
    "id": "5e0b5e0b-0003-4000-8000-000000000005",
    "name": "Light",
    "parent": null,

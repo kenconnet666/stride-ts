@@ -197,6 +197,24 @@ const piles: Record<string, object> = {
   TomatoBin: { container: { size: [0.6, 0.12, 0.4], color: '#2b2d30' }, items: [{ product: p('Tomato'), count: 110, variants: 5 }], seed: 64 },
   PotatoBin: { container: { size: [0.6, 0.12, 0.4], color: '#2b2d30' }, items: [{ product: p('Potato'), count: 70, variants: 3 }], seed: 65 },
 };
+// 散装柜（照片里一格格带透明盖的）：两格干货跑物理，六格米、豆、瓜子画成一堆
+for (const { id, ...product } of [
+  { id: 'Peanut', shape: 'tuber', size: [0.032, 0.014, 0.016], seed: 56, colors: { background: '#c9a374', accent: '#9a7448' } },
+  { id: 'Shiitake', shape: 'round', size: [0.045, 0.018, 0], seed: 57, colors: { background: '#6a4a30', accent: '#3e2a1a', cap: '#8a6a48' } },
+] as const) await write('product', `Shop/Products/${id}`, { name: id, ...product });
+piles['BulkBin'] = {
+  container: { size: [1.6, 0.16, 0.56], color: '#cdb994', cells: [4, 2], lids: true },
+  items: [{ product: p('Peanut'), count: 160, variants: 2, cell: 0 }, { product: p('Shiitake'), count: 70, variants: 3, cell: 5 }],
+  heaps: [
+    { cell: 1, color: '#f1ece0', grain: 0.005, speckle: '#c9c0aa' },
+    { cell: 2, color: '#8e2a2a', grain: 0.008, speckle: '#4a1212' },
+    { cell: 3, color: '#4e7a2a', grain: 0.006, speckle: '#23401a' },
+    { cell: 4, color: '#2a2526', grain: 0.009, speckle: '#000000' },
+    { cell: 6, color: '#3c3734', grain: 0.014, speckle: '#d8d0c0', level: 0.9 },
+    { cell: 7, color: '#e0b63a', grain: 0.008, speckle: '#a77a18' },
+  ],
+  seed: 66,
+};
 for (const [name, pile] of Object.entries(piles)) await write('pile', `Shop/Piles/${name}`, { name, ...pile });
 await write('material', 'Shop/Materials/Stand', { name: 'Stand', baseColor: [0.32, 0.24, 0.17, 1], metalness: 0, roughness: 0.6 });
 await write('brush', 'Shop/Models/Stand', {
@@ -221,6 +239,9 @@ await write('scene', 'Produce', {
     entity(pid(4), 'Stand', [0, 0, 0], { model: { model: 'Shop/Models/Stand', materials: [] } }),
     binAt(0, 'GarlicBin', -0.66, -0.23), binAt(1, 'OnionBin', 0, -0.23), binAt(2, 'TomatoBin', 0.66, -0.23),
     binAt(3, 'PotatoBin', -0.5, 0.23), binAt(4, 'WalnutBin', 0.25, 0.23),
+    // 后面一张台子上是散装柜
+    entity(pid(6), 'Stand back', [0, 0, -1.15], { model: { model: 'Shop/Models/Stand', materials: [] } }),
+    entity(pid(0x20), 'BulkBin', [0, 0.8, -1.15], { model: { model: 'Shop/Piles/BulkBin', materials: [] } }),
     entity(pid(5), 'Light', [0, 3.0, 0], { light: { type: 'rect', color: [1, 0.96, 0.9], intensity: 30, width: 1.6, height: 0.3, range: 6 } }, euler(0, -90)),
   ],
 });

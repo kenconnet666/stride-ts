@@ -1,0 +1,15 @@
+{
+ "name": "Shiitake",
+ "shape": "round",
+ "size": [
+  0.045,
+  0.018,
+  0
+ ],
+ "seed": 57,
+ "colors": {
+  "background": "#6a4a30",
+  "accent": "#3e2a1a",
+  "cap": "#8a6a48"
+ }
+}

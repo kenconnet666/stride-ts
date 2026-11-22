@@ -24,6 +24,7 @@
     "./editor-make-prefab": "./src/editor/makePrefab.ts",
     "./math": "./src/data/Matrix.ts",
     "./light-profile": "./src/rendering/lighting/LightProfile.ts",
+    "./color-lut": "./src/rendering/postfx/ColorLut.ts",
     "./splats": "./src/content/splatFile.ts"
   },
   "scripts": {

@@ -5,7 +5,7 @@
  */
 import type {
   AnimationData, BuildingFile, BrushFile, CityFile, WaterFile, SdfFile, PolyMeshFile, EXTENSIONS, MaterialFile, GameSettingsFile, TimelineFile, ModelData, ScatterFile, SceneAssetKind, SceneEntityFile, TreeFile, SceneRenderTexture, SkyboxFile, SoundFile, SplineFile, SpriteSheetFile, TerrainFile, TextModelFile, TextureRef, UIFile,
-  UISpriteValue,
+  UISpriteValue, SceneCompositor,
 } from './formats/format';
 import { textureRefs } from './loading.ts';
 import { visitScriptAssets } from './sceneScripts.ts';
@@ -188,6 +188,9 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
       });
       // 预制体实例引用它的预制体（覆盖的值里的资源路径在上面，visitEntityReferences 一起找了）
       for (const entity of entities) if (entity.prefab) add('prefab', entity.prefab, 'path');
+      // 场景自己的设置：调色的查找表
+      const grading = (file as { compositor?: SceneCompositor }).compositor?.postEffects?.colorGrading;
+      if (grading?.lut) add('lut', grading, 'lut');
       break;
     }
     case 'model': {

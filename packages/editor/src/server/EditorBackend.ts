@@ -14,6 +14,7 @@ import { checkWorldFile, placeInCells, worldCellPath, DEFAULT_IMAGE_IMPORT, DEFA
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
 import { bakeBrushModel, bakePolyModel, bakeSdfModel, bakeSplineModel, bakeTextModel, bakeTreeModel, bakeBuildingModel, convertSplats, importFontFile, importSourceModel, isFontFile, isSourceModel, SPLAT_SOURCE_EXTENSIONS } from '@stride-ts/pipeline';
 import { parseIes } from '@stride-ts/engine/light-profile';
+import { parseCubeLut } from '@stride-ts/engine/color-lut';
 import type { AssetKind } from '@stride-ts/engine/content-references';
 import { EDITOR_API_PATH, type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../protocol.ts';
 import { AssetDatabase, assetFileName, assetKey } from './AssetDatabase.ts';
@@ -282,10 +283,12 @@ export class EditorBackend {
     });
   }
 
-  /** 配光曲线（IES 文件）原样放进 folder；先解析一遍，格式不对时什么也不写。 */
-  async #importLightProfile(folder: string, base: string, fileName: string, bytes: Uint8Array): Promise<ImportResult> {
+  /**
+   * 原样放进 folder 的文本资源（配光曲线 .ies、调色的查找表 .cube）：先用 validate 解析一遍，格式不对时什么也不写。
+   */
+  async #importAsIs(kind: 'lightProfile' | 'lut', validate: (text: string) => unknown, folder: string, base: string, bytes: Uint8Array): Promise<ImportResult> {
     try {
-      parseIes(new TextDecoder().decode(bytes), fileName);
+      validate(new TextDecoder().decode(bytes));
     } catch (error) {
       throw new HttpError(400, (error as Error).message);
     }
@@ -293,12 +296,12 @@ export class EditorBackend {
       let assetPath = '';
       for (let n = 1; ; n++) {
         assetPath = `${folder ? `${folder}/` : ''}${base}${n === 1 ? '' : n}`;
-        if (!this.database.get('lightProfile', assetPath)) break;
+        if (!this.database.get(kind, assetPath)) break;
       }
-      const file = path.join(this.project.contentDir, assetFileName('lightProfile', assetPath));
+      const file = path.join(this.project.contentDir, assetFileName(kind, assetPath));
       await writeAtomically(file, bytes);
       await this.#refresh([this.#relative(file)]);
-      return { asset: this.database.get('lightProfile', assetPath)!, warnings: [] };
+      return { asset: this.database.get(kind, assetPath)!, warnings: [] };
     });
   }
 
@@ -319,13 +322,14 @@ export class EditorBackend {
     }
     const extension = path.extname(fileName).toLowerCase();
     const base = path.basename(fileName, path.extname(fileName)).replace(/[^A-Za-z0-9_-]+/g, '') || 'Imported';
-    if (extension === '.ies') return this.#importLightProfile(folder, base, fileName, bytes);
+    if (extension === '.ies') return this.#importAsIs('lightProfile', (text) => parseIes(text, fileName), folder, base, bytes);
+    if (extension === '.cube') return this.#importAsIs('lut', (text) => parseCubeLut(text, base, fileName), folder, base, bytes);
     if (SPLAT_SOURCE_EXTENSIONS.includes(extension)) return this.#importSplats(folder, base, fileName, bytes);
     const audio = ({ '.mp3': 'mp3', '.ogg': 'ogg', '.wav': 'wav', '.flac': 'flac', '.aac': 'aac' } as const)[extension as '.mp3'];
     // 视频（mp4、webm）同图片一样是贴图：材质、精灵的贴图槽直接用它，放起来是视频贴图
     const image = ({ '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.svg': 'svg', '.webp': 'webp', '.mp4': 'mp4', '.webm': 'webm' } as const)[extension as '.png'];
     if (!audio && !image) {
-      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), videos (mp4, webm), models (glb, gltf, fbx, obj), fonts (ttf, otf, ttc), IES light profiles and Gaussian splats (ply) can be imported`);
+      throw new HttpError(400, `cannot import ${fileName}: only audio (mp3, ogg, wav, flac, aac), images (png, jpg, webp, svg), videos (mp4, webm), models (glb, gltf, fbx, obj), fonts (ttf, otf, ttc), IES light profiles, color LUTs (cube) and Gaussian splats (ply) can be imported`);
     }
     const kind: AssetKind = audio ? 'sound' : 'texture';
     return this.#enqueue(async () => {

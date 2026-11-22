@@ -27,6 +27,7 @@ import { SceneTemplate } from './SceneTemplate';
 import { Mesh, type Bounds, type MeshData } from '../rendering/mesh/Mesh';
 import { Cubemap, Skybox } from '../rendering/lighting/Skybox';
 import { LightProfile, parseIes } from '../rendering/lighting/LightProfile';
+import { parseCubeLut, registerColorLut, type ColorLut } from '../rendering/postfx/ColorLut';
 import { SplatCloud } from '../rendering/splats/SplatRenderer';
 import { SpriteSheet } from '../rendering/SpriteSheet';
 import { SpriteFont } from '../rendering/text/SpriteFont';
@@ -554,6 +555,11 @@ export class ContentManager {
   /** 配光曲线（IES 文件）。 */
   loadLightProfile(path: string): Promise<LightProfile> {
     return this.#once(path + EXTENSIONS.lightProfile, async (url) => new LightProfile(path, parseIes(new TextDecoder().decode(await this.#read(url)), url.href)));
+  }
+
+  /** 调色的查找表（.cube）；加载好登记进 colorLutAt，后处理按场景设置里的路径取。 */
+  loadColorLut(path: string): Promise<ColorLut> {
+    return this.#once(path + EXTENSIONS.lut, async (url) => registerColorLut(parseCubeLut(new TextDecoder().decode(await this.#read(url)), path, url.href)));
   }
 
   loadSkybox(path: string): Promise<Skybox> {

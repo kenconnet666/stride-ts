@@ -21,6 +21,7 @@
 import { FULLSCREEN_VERTEX, GRADIENT_NOISE } from '../wgsl';
 import { GpuProfiler } from '../../graphics/GpuProfiler';
 import { createCheckedShaderModule } from '../../graphics/shaderModule';
+import type { ColorLut } from './ColorLut';
 import { additiveLayerResources, additiveLayersShader, type AdditiveLayer } from './AdditiveLayers';
 import { fullscreenPipeline, isGraphTexture, warmFullscreenPipeline, type EffectFrame, type Image, type UniformArena } from './ImageEffect';
 
@@ -239,14 +240,15 @@ const TONEMAP_SHADER = /* wgsl */ `
 ${FULLSCREEN_VERTEX}
 // grade：算子（0 hejl2、1 agx、2 aces）、饱和度、对比度、时间；lens：暗角、颗粒、色差、畸变；
 // local：局部曝光的亮处反差、暗处反差、细节、大半径模糊的比例；localRange：网格的对数亮度下限、范围、开没开；
-// whiteBalance：线性 sRGB 上的白平衡矩阵
-struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32, compensation: f32, gate: vec4f, grade: vec4f, lens: vec4f, local: vec4f, localRange: vec4f, whiteBalance: mat3x3f };
+// lutLow、lutHigh：查找表的定义域的下限、上限和强度、边长（强度 0 是没有表）；whiteBalance：线性 sRGB 上的白平衡矩阵
+struct Settings { keyValue: f32, exposure: f32, autoKeyValue: f32, autoExposure: f32, whitePoint: f32, enabled: f32, dither: f32, compensation: f32, gate: vec4f, grade: vec4f, lens: vec4f, local: vec4f, localRange: vec4f, lutLow: vec4f, lutHigh: vec4f, whiteBalance: mat3x3f };
 @group(0) @binding(0) var<uniform> settings: Settings;
 @group(0) @binding(1) var hdr: texture_2d<f32>;
 @group(0) @binding(2) var adapted: texture_2d<f32>;
 ${additiveLayersShader(3)}
 @group(0) @binding(8) var localGrid: texture_3d<f32>;
 @group(0) @binding(9) var localWide: texture_2d<f32>;
+@group(0) @binding(10) var colorLut: texture_3d<f32>;
 
 /**
  * 局部曝光：这个像素的"底"（周围同样亮的那些像素的平均亮度，双边网格里按它自己的亮度取；和不分亮度的大半径模糊按比例混）
@@ -315,12 +317,26 @@ fn distorted(uv: vec2f, k: f32) -> vec2f {
  * 输出的抖动：在 sRGB 编码后的值上加 ±半个灰阶的噪声（三个通道各用一份，不相关），再换回线性（目标是 sRGB 视图，写进去时
  * GPU 再编码一次）。要在编码后的空间里加：一个灰阶在线性空间里的大小暗处和亮处差几十倍。
  */
-fn dither(color: vec3f, pixel: vec2f) -> vec3f {
-  let c = saturate(color);
-  let encoded = select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308));
-  let noise = vec3f(gradientNoise(pixel), gradientNoise(pixel + vec2f(47.0, 17.0)), gradientNoise(pixel + vec2f(101.0, 59.0))) - 0.5;
-  let e = saturate(encoded + noise / 255.0);
+fn srgbEncode(c: vec3f) -> vec3f {
+  return select(1.055 * pow(c, vec3f(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3f(0.0031308));
+}
+
+fn srgbDecode(e: vec3f) -> vec3f {
   return select(pow((e + 0.055) / 1.055, vec3f(2.4)), e / 12.92, e <= vec3f(0.04045));
+}
+
+fn dither(color: vec3f, pixel: vec2f) -> vec3f {
+  let noise = vec3f(gradientNoise(pixel), gradientNoise(pixel + vec2f(47.0, 17.0)), gradientNoise(pixel + vec2f(101.0, 59.0))) - 0.5;
+  return srgbDecode(saturate(srgbEncode(saturate(color)) + noise / 255.0));
+}
+
+/** 查找表（.cube，见 ColorLut.ts）：按显示空间（sRGB 编码后）的颜色查，纹素中心对齐到表的格点，按强度和原色混。 */
+fn applyLut(color: vec3f) -> vec3f {
+  let c = saturate(color);
+  let n = settings.lutHigh.w;
+  let t = saturate((srgbEncode(c) - settings.lutLow.xyz) / (settings.lutHigh.xyz - settings.lutLow.xyz));
+  let graded = textureSampleLevel(colorLut, additiveSampler, (t * (n - 1.0) + 0.5) / n, 0.0).rgb;
+  return mix(c, srgbDecode(saturate(graded)), settings.lutLow.w);
 }
 
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
@@ -366,6 +382,7 @@ fn dither(color: vec3f, pixel: vec2f) -> vec3f {
       let y = dot(color, vec3f(0.2126, 0.7152, 0.0722));
       color = max(mix(vec3f(y), color, settings.grade.y), vec3f(0.0));
     }
+    if (settings.lutLow.w > 0.0) { color = applyLut(color); }
   }
   // 暗角：cos⁴ 的自然衰减（到角上的距离按画面的半对角线归一），按强度混
   if (settings.lens.x > 0.0) {
@@ -426,8 +443,8 @@ interface HistogramPipelines {
 /** 映射的算子：hejl2（Stride 的）、agx（Blender 4 的 AgX）、aces（Narkowicz 的拟合）。 */
 export type ToneMapOperator = 'hejl2' | 'agx' | 'aces';
 const OPERATORS: readonly ToneMapOperator[] = ['hejl2', 'agx', 'aces'];
-/** 映射的 uniform：8 个标量、画幅、调色、镜头、局部曝光的两组、白平衡矩阵（3 列 vec4）。 */
-const SETTINGS_FLOATS = 40;
+/** 映射的 uniform：8 个标量、画幅、调色、镜头、局部曝光的两组、查找表的两组、白平衡矩阵（3 列 vec4）。 */
+const SETTINGS_FLOATS = 48;
 
 /**
  * 白平衡矩阵（线性 sRGB → 线性 sRGB，列主序 3×3）：相机设成 temperature（K）、tint 时，把这个色温的光源的白当成白（von Kries：
@@ -534,6 +551,9 @@ export class ToneMap {
   localShadows = 1;
   localDetail = 1;
   localBlur = 0.6;
+  /** 调色的查找表（.cube，ColorLut.ts）：映射之后按显示空间的颜色查；lutStrength 是和原色混的比例。 */
+  lut: ColorLut | undefined;
+  lutStrength = 1;
   #time = 0;
 
   readonly #device: GPUDevice;
@@ -556,7 +576,10 @@ export class ToneMap {
   #localUniform: GPUBuffer | undefined;
   /** 这一帧映射时绑的网格：开着时是 #local 的，没开时是 1 个纹素的占位（着色器不读）。 */
   #localBound: LocalBinding | undefined;
-  #localPlaceholder: LocalBinding | undefined;
+  #localPlaceholder: (LocalBinding & { readonly lut: GPUTexture }) | undefined;
+  /** 查找表的贴图（按表建一次）；这一帧映射时绑的那张。 */
+  readonly #lutTextures = new WeakMap<ColorLut, GPUTexture>();
+  #lutBound: GPUTexture | undefined;
 
   constructor(device: GPUDevice, sampler: GPUSampler) {
     this.#device = device;
@@ -581,7 +604,10 @@ export class ToneMap {
     settings.set([this.localHighlights, this.localShadows, this.localDetail, this.localBlur], 20);
     settings.set([minLog, Math.max(maxLog - minLog, 1e-3), local ? 1 : 0, 0], 24);
     const balance = whiteBalanceMatrix(this.temperature, this.tint);
-    for (let c = 0; c < 3; c++) settings.set([balance[c * 3]!, balance[c * 3 + 1]!, balance[c * 3 + 2]!, 0], 28 + c * 4);
+    const lut = this.enabled && this.lutStrength > 0 ? this.lut : undefined;
+    settings.set([...lut?.domainMin ?? [0, 0, 0], lut ? this.lutStrength : 0, ...lut?.domainMax ?? [1, 1, 1], lut?.size ?? 1], 28);
+    for (let c = 0; c < 3; c++) settings.set([balance[c * 3]!, balance[c * 3 + 1]!, balance[c * 3 + 2]!, 0], 36 + c * 4);
+    this.#lutBound = lut ? this.#lutTexture(lut) : this.#placeholder().lut;
     this.#device.queue.writeBuffer(this.#settings, 0, settings);
     this.#localBound = local ? this.#buildLocalGrid(frame, input, local, minLog, maxLog) : this.#placeholder();
     // 关掉时 draw 照样绑一张适应亮度（着色器不读它）；重新打开时从当前亮度开始适应
@@ -724,11 +750,26 @@ export class ToneMap {
     });
   }
 
-  #placeholder(): LocalBinding {
+  /** 没开局部曝光、没有查找表时绑的 1 个纹素的贴图（着色器不读）。 */
+  #placeholder(): LocalBinding & { readonly lut: GPUTexture } {
+    const volume = () => this.#device.createTexture({ label: 'ToneMap placeholder', size: [1, 1, 1], dimension: '3d', format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING });
     return this.#localPlaceholder ??= {
-      grid: this.#device.createTexture({ label: 'ToneMap local placeholder', size: [1, 1, 1], dimension: '3d', format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING }),
-      wide: this.#device.createTexture({ label: 'ToneMap local placeholder', size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING }),
+      grid: volume(),
+      wide: this.#device.createTexture({ label: 'ToneMap placeholder', size: [1, 1], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING }),
+      lut: volume(),
     };
+  }
+
+  /** 查找表的三维贴图（rgba16float 才能线性过滤），第一次用到时建、传上去。 */
+  #lutTexture(lut: ColorLut): GPUTexture {
+    let texture = this.#lutTextures.get(lut);
+    if (!texture) {
+      const { size } = lut;
+      texture = this.#device.createTexture({ label: `ToneMap LUT ${lut.path}`, size: [size, size, size], dimension: '3d', format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+      this.#device.queue.writeTexture({ texture }, new Float16Array(lut.rgba), { bytesPerRow: size * 8, rowsPerImage: size }, [size, size, size]);
+      this.#lutTextures.set(lut, texture);
+    }
+    return texture;
   }
 
   /** 局部曝光的两条管线，同 #histogramPipelinesReady：编好以前返回 undefined（这几帧不做局部曝光）。 */
@@ -794,6 +835,7 @@ export class ToneMap {
           }),
           { binding: 8, resource: this.#localBound!.grid.createView() },
           { binding: 9, resource: this.#localBound!.wide.createView() },
+          { binding: 10, resource: this.#lutBound!.createView() },
         ],
       }), output);
     }, () => this.#warm(['tonemap'], outputFormat));
@@ -808,7 +850,7 @@ export class ToneMap {
     this.#targets?.luminance.destroy();
     this.#histogram?.bins.destroy();
     if (this.#local) for (const texture of [this.#local.grid, this.#local.blurred, this.#local.columns, this.#local.wide]) texture.destroy();
-    if (this.#localPlaceholder) for (const texture of [this.#localPlaceholder.grid, this.#localPlaceholder.wide]) texture.destroy();
+    if (this.#localPlaceholder) for (const texture of [this.#localPlaceholder.grid, this.#localPlaceholder.wide, this.#localPlaceholder.lut]) texture.destroy();
     this.#localUniform?.destroy();
     this.#histogram?.uniform.destroy();
     for (const texture of this.#adapted) texture.destroy();

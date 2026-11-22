@@ -148,6 +148,9 @@ export class SceneBuilder {
       else if (ref.kind === 'image') images.set(ref.path, await content.loadTextureRef(ref.texture, true));
     }));
     const assets: SceneAssets = { models, materials, animations, skyboxes, cubemaps, lightProfiles, splats, terrains, images, prefabs, spriteSheets, fonts, textures, uiPages, uiLibraries, sounds, timelines, splines, scatters, cities, waters };
+    // 调色的查找表：后处理按路径同步地取（colorLutAt），先加载好
+    const lut = postEffects?.colorGrading?.lut;
+    if (lut) await content.loadColorLut(lut);
     // 管线也算要等的资源：建实体之前在后台编好，第一帧和以后生成这些模型时都不用当场编译着色器
     await content.pipelineWarmer?.(modelUses(files, assets, content.defaultMaterial), postEffects, files);
     return assets;

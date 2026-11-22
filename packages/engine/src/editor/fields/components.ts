@@ -526,6 +526,8 @@ const postEffects = fields<ScenePostEffects>({
     grain: optional(number({ min: 0, max: 1, step: 0.01 }), 0),
     chromaticAberration: { type: number({ min: 0, max: 0.05, step: 0.001 }), optional: true, default: 0, description: 'red and blue drift apart towards the edges' },
     distortion: { type: number({ min: -1, max: 1, step: 0.01 }), optional: true, default: 0, description: 'lens distortion: positive is barrel (wide angle), negative is pincushion' },
+    lut: { type: asset('lut'), optional: true, description: 'color lookup table (.cube) applied after tone mapping' },
+    lutStrength: { type: number({ min: 0, max: 1, step: 0.01 }), optional: true, default: 1, description: 'how much of the lookup table is mixed in' },
   }))),
 });
 

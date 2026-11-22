@@ -21,6 +21,7 @@ import { LensFlare } from './LensFlare';
 import { LightStreak } from './LightStreak';
 import { QUALITY_TIERS, type QualitySettings } from '../Quality';
 import { ToneMap } from './ToneMap';
+import { colorLutAt } from './ColorLut';
 
 /** 只录不执行的渲染图用：不会去要贴图。 */
 const NO_ALLOCATOR = {
@@ -79,7 +80,9 @@ export class PostProcessingEffects {
       operator: grading.operator ?? 'hejl2', temperature: grading.temperature ?? 6500, tint: grading.tint ?? 0, contrast: grading.contrast ?? 1,
       saturation: grading.saturation ?? 1, vignette: grading.vignette ?? 0, grain: grading.grain ?? 0,
       chromaticAberration: grading.chromaticAberration ?? 0, distortion: grading.distortion ?? 0,
+      lut: grading.lut ? colorLutAt(grading.lut) : undefined, lutStrength: grading.lutStrength ?? 1,
     });
+    if (grading.lut && !this.toneMap.lut) console.warn(`[stride] color grading: the LUT ${grading.lut} is not loaded (ContentManager.loadColorLut), drawing without it`);
     this.antialiasing.enabled = settings.antialiasing;
   }
 

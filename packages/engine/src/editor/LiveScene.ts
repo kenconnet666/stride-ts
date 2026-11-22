@@ -18,6 +18,7 @@ import { entityAssetReferences } from '../content/references';
 import type { Entity } from '../engine/Entity';
 import { Transform } from '../engine/transform';
 import type { Game } from '../engine/Game';
+import { colorLutAt } from '../rendering/postfx/ColorLut';
 
 /** 场景文件没写合成器时的设置（同前向渲染器建好时的默认值）：去掉了合成器的场景配回它。 */
 const DEFAULT_COMPOSITOR: CompositorSettings = { clearColor: [0.01, 0.0134, 0.022, 1], postEffects: null, transparent: true, textureCameras: [] };
@@ -73,6 +74,14 @@ export class LiveScene {
     if (after.compositor !== before.compositor) {
       // 去掉了合成器：照没写合成器的场景，用引擎的默认值
       this.#game.configureCompositor(this.#game.content.compositorSettings(after) ?? DEFAULT_COMPOSITOR, after.name);
+      // 新引用的查找表：加载好再配一次（第一次配的时候还没有，先不带它画）
+      const lut = after.compositor?.postEffects?.colorGrading?.lut;
+      if (lut && !colorLutAt(lut)) {
+        void this.#game.content.loadColorLut(lut).then(
+          () => this.#game.configureCompositor(this.#game.content.compositorSettings(after) ?? DEFAULT_COMPOSITOR, after.name),
+          (error: unknown) => console.warn(`[stride] ${after.name}: cannot load the LUT ${lut}`, error),
+        );
+      }
     }
     if (after.offset !== before.offset) {
       const [x, y, z] = after.offset ?? [0, 0, 0];

@@ -49,6 +49,8 @@ export const EXTENSIONS = {
   imageImport: '.image.json',
   /** 配光曲线：IES 文件（ANSI/IESNA LM-63 的文本）原样放，点光、聚光引用它（rendering/lighting/LightProfile.ts）。 */
   lightProfile: '.ies',
+  /** 调色的查找表：.cube 文件（Adobe 的 Cube LUT）原样放，场景的 postEffects.colorGrading.lut 引用它（rendering/postfx/ColorLut.ts）。 */
+  lut: '.cube',
   /** 高斯泼溅（content/splatFile.ts 的二进制）：编辑器从 3DGS 的 .ply 导入成它。 */
   splats: '.splat',
   /** 矢量地形（TerrainFile，content/formats/terrainFormat.ts）：噪声的底、矢量地物和雕刻的笔画，运行时求值，不存高度图。 */

@@ -153,6 +153,9 @@ export interface SceneColorGrading {
   readonly grain?: number;
   readonly chromaticAberration?: number;
   readonly distortion?: number;
+  /** 查找表（.cube 资源的内容路径），映射之后按显示空间的颜色查；lutStrength 是和原色混的比例（默认 1）。 */
+  readonly lut?: string;
+  readonly lutStrength?: number;
 }
 
 /** 渲染目标贴图（Stride 的 RenderTexture，.sdrendertex）：合成器里的相机画进去，精灵可以显示它。按内容路径区分。 */

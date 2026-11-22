@@ -394,6 +394,7 @@ export const TREE_FIELDS = fields<TreeFile>({
 export const BUILDING_FIELDS = fields<BuildingFile>({
   name: string,
   materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'material slots: wall, glass, frame, roof (modules and roofs can use more slots)' },
+  seed: { type: integer(0, 2 ** 31 - 1), optional: true, default: 1, description: 'random seed for the A|B choices in the patterns: another number is another building of the same kind' },
   masses: {
     type: list(object(fields<BuildingFile['masses'][number]>({
       footprint: { type: { kind: 'json' }, optional: true, description: 'outline: points [[x, z], …], { rect: [width, depth], center } or { circle: radius, segments, center }; unset is the mass below moved in by inset' },
@@ -405,7 +406,7 @@ export const BUILDING_FIELDS = fields<BuildingFile>({
     }))),
     description: 'masses stacked bottom up; every edge of the outline is a facade',
   },
-  facades: { type: { kind: 'json' }, optional: true, description: "facade rules by name: { floors: [{ where: 'ground' | 'top' (unset: any floor), pattern: 'Pillar [Window Window]* Pillar', ledge: { height, depth } }] }; the first matching rule is used, * repeats to fill the edge" },
+  facades: { type: { kind: 'json' }, optional: true, description: "facade rules by name: { floors: [{ where: 'ground' | 'top' (unset: any floor), pattern: 'Pillar [Window Window]* Pillar', ledge: { height, depth } }] }; the first matching rule is used, * repeats to fill the edge, A|B picks one per column by the seed" },
   modules: { type: { kind: 'json' }, optional: true, description: "facade modules by name, one floor high: { kind: 'wall' | 'window' (sill, head, margin, depth, frame, mullions, balcony) | 'pillar' (depth) | 'curtain' (frame), width, slots: { wall, glass, frame } (other material slots) }" },
 });
 

@@ -36,7 +36,7 @@
      }
     },
     {
-     "pattern": "Pillar Window* Pillar"
+     "pattern": "Pillar Window|Window|Plain* Pillar"
     }
    ]
   }
@@ -65,6 +65,14 @@
     "depth": 0.6,
     "railing": 0.9
    }
+  },
+  "Plain": {
+   "kind": "window",
+   "width": 1.8,
+   "sill": 0.9,
+   "head": 0.6,
+   "mullions": 1
   }
- }
+ },
+ "seed": 5
 }

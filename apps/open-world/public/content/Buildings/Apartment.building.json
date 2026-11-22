@@ -32,14 +32,14 @@
     },
     {
      "where": "top",
-     "pattern": "Wall [Window Balcony]* Wall",
+     "pattern": "Wall [Window|Balcony Balcony|Window|Window]* Wall",
      "ledge": {
       "height": 0.2,
       "depth": 0.12
      }
     },
     {
-     "pattern": "Wall [Window Balcony]* Wall",
+     "pattern": "Wall [Window|Balcony Balcony|Window|Window]* Wall",
      "ledge": {
       "height": 0.2,
       "depth": 0.12
@@ -79,5 +79,6 @@
     "railing": 1
    }
   }
- }
+ },
+ "seed": 3
 }

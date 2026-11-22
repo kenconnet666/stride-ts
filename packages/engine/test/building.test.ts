@@ -99,6 +99,33 @@ describe('程序化建筑', () => {
     expect(Math.max(...all.map((p) => Math.hypot(p[0], p[2])))).toBeCloseTo(5);
   });
 
+  test('候选构件 A|B：图案解析、宽度按第一个排、同一列上下一致、换种子换楼', () => {
+    expect(parseFacadePattern('Pillar [Window|Shop Window]*')).toEqual([{ modules: ['Pillar'], repeat: false }, { modules: ['Window|Shop', 'Window'], repeat: true }]);
+    expect(layoutFloor(parseFacadePattern('Window|Shop*'), modules, 12).map((t) => t.u1 - t.u0)).toEqual(Array<number>(6).fill(2));
+    const tower = (seed: number): BuildingFile => ({
+      name: 'T', materials: [], seed,
+      masses: [{ footprint: { rect: [20, 20] }, floors: 6, floorHeight: 3, facade: 'F' }],
+      facades: { F: { floors: [{ pattern: 'Window|Glass*' }] } },
+      modules,
+    });
+    // 每列挑一个：玻璃幕墙（一整块玻璃，从下到上）和窗户的列交替出现，同一列每层都一样
+    const glass = (file: BuildingFile) => buildingMeshes(file)[1]!;
+    const columns = (file: BuildingFile) => {
+      const mesh = glass(file), byColumn = new Map<string, Set<number>>();
+      for (let i = 0; i < mesh.vertices.length; i += 8) {
+        const key = `${mesh.vertices[i]!.toFixed(2)},${mesh.vertices[i + 2]!.toFixed(2)}`;
+        const floors = byColumn.get(key) ?? new Set<number>();
+        floors.add(Math.floor(mesh.vertices[i + 1]! / 3));
+        byColumn.set(key, floors);
+      }
+      return byColumn;
+    };
+    expect([...columns(tower(1)).values()].some((floors) => floors.size >= 6)).toBe(true);
+    expect(glass(tower(1)).vertices).toEqual(glass(tower(1)).vertices);
+    expect(glass(tower(2)).vertices).not.toEqual(glass(tower(1)).vertices);
+    expect(() => checkBuilding({ ...tower(1), facades: { F: { floors: [{ pattern: 'Window|Door*' }] } } })).toThrow("uses the module 'Door'");
+  });
+
   test('检查：没有的构件、立面规则，第一段没有底面，屋顶不对', () => {
     expect(() => checkBuilding({ ...house, facades: { Main: { floors: [{ pattern: 'Pillar Door*' }] } } })).toThrow("uses the module 'Door'");
     expect(() => checkBuilding({ ...house, masses: [{ ...house.masses[0]!, facade: 'Missing' }] })).toThrow("'Missing' is not in facades");

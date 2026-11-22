@@ -5,9 +5,10 @@
  * 立面的框架：从外面看，u 从左到右沿着边、v 往上、w 朝外。窗洞往里凹（w < 0），壁柱、腰线、阳台往外突（w > 0）。
  * UV 按米（u、v），材质按米铺贴图。
  */
-import { checkBuilding, parseFacadePattern, type BuildingFacade, type BuildingFile, type BuildingFootprint, type BuildingMass, type BuildingModule, type BuildingRoof, type FacadePatternItem } from '../content/buildingFormat.ts';
+import { checkBuilding, moduleChoices, parseFacadePattern, type BuildingFacade, type BuildingFile, type BuildingFootprint, type BuildingMass, type BuildingModule, type BuildingRoof, type FacadePatternItem } from '../content/buildingFormat.ts';
 import { MeshBuilder, slotMeshes, type SlotMesh } from './meshBuilder.ts';
 import { triangulateFace } from './polyMesh.ts';
+import { hash32 } from '../data/hash.ts';
 
 type Vec2 = readonly [number, number];
 type Vec3 = readonly [number, number, number];
@@ -33,14 +34,15 @@ export function buildingMeshes(file: BuildingFile, where = file.name): SlotMesh[
   const builders = Array.from({ length: Math.max(slots, ...usedSlots(file).map((s) => s + 1)) }, () => new MeshBuilder());
   let base = 0;
   let below: Vec2[] | undefined;
-  for (const mass of file.masses) {
+  file.masses.forEach((mass, m) => {
     const outline = massOutline(mass, below);
     const height = mass.floors * mass.floorHeight;
-    for (const facade of facadesOf(outline)) buildFacade(builders, file, mass, facade, base);
+    // 候选构件按种子、第几段体块、第几面立面挑
+    facadesOf(outline).forEach((facade, i) => buildFacade(builders, file, mass, facade, base, hash32(hash32(file.seed ?? 1, m), i)));
     buildRoof(builders, mass.roof ?? { kind: 'flat' }, outline, base + height);
     base += height;
     below = outline;
-  }
+  });
   return slotMeshes(builders);
 }
 
@@ -124,9 +126,9 @@ function at(f: Facade, u: number, v: number, w: number): Vec3 {
   return [f.origin[0] + f.along[0] * u + f.out[0] * w, v, f.origin[1] + f.along[1] * u + f.out[1] * w];
 }
 
-/** 一层的构件在立面上铺开：每个构件从哪到哪（u）。 */
+/** 一层的构件在立面上铺开：每个位置从哪到哪（u）；module 是位置（可能是几个候选 `A|B`，宽度按第一个算）。 */
 export function layoutFloor(items: readonly FacadePatternItem[], modules: Readonly<Record<string, BuildingModule>>, length: number): { module: string; u0: number; u1: number }[] {
-  const widthOf = (names: readonly string[]) => names.reduce((sum, name) => sum + modules[name]!.width, 0);
+  const widthOf = (names: readonly string[]) => names.reduce((sum, name) => sum + modules[moduleChoices(name)[0]!]!.width, 0);
   const fixed = items.filter((item) => !item.repeat).reduce((sum, item) => sum + widthOf(item.modules), 0);
   const repeats = items.filter((item) => item.repeat);
   // 剩下的地方平分给各个重复项，每项重复几次取最接近的整数（至少一次，除非一点地方都没有）
@@ -139,7 +141,7 @@ export function layoutFloor(items: readonly FacadePatternItem[], modules: Readon
   let u = 0;
   return names.map((module) => {
     const u0 = u;
-    u += modules[module]!.width * scale;
+    u += modules[moduleChoices(module)[0]!]!.width * scale;
     return { module, u0, u1: u };
   });
 }
@@ -148,7 +150,7 @@ function floorRule(facade: BuildingFacade, floor: number, floors: number): Build
   return facade.floors.find((rule) => rule.where === undefined || (rule.where === 'ground' && floor === 0) || (rule.where === 'top' && floor === floors - 1));
 }
 
-function buildFacade(builders: MeshBuilder[], file: BuildingFile, mass: BuildingMass, f: Facade, base: number): void {
+function buildFacade(builders: MeshBuilder[], file: BuildingFile, mass: BuildingMass, f: Facade, base: number, seed: number): void {
   const modules = file.modules ?? {};
   const facade = mass.facade !== undefined ? file.facades?.[mass.facade] : undefined;
   const h = mass.floorHeight;
@@ -159,7 +161,14 @@ function buildFacade(builders: MeshBuilder[], file: BuildingFile, mass: Building
       panel(builders[WALL]!, f, 0, f.length, v0, v0 + h, 0);
       continue;
     }
-    for (const { module, u0, u1 } of layoutFloor(parseFacadePattern(rule.pattern), modules, f.length)) buildModule(builders, modules[module]!, f, u0, u1, v0, v0 + h);
+    // 候选按图案、第几列挑：同样图案的楼层同一列上下一致
+    let ruleSeed = seed;
+    for (let k = 0; k < rule.pattern.length; k++) ruleSeed = hash32(ruleSeed, rule.pattern.charCodeAt(k));
+    layoutFloor(parseFacadePattern(rule.pattern), modules, f.length).forEach(({ module, u0, u1 }, column) => {
+      const choices = moduleChoices(module);
+      const name = choices.length === 1 ? choices[0]! : choices[hash32(ruleSeed, column) % choices.length]!;
+      buildModule(builders, modules[name]!, f, u0, u1, v0, v0 + h);
+    });
     if (rule.ledge) {
       // 腰线两头多伸出突出的长度，转角处两面的腰线接上
       const { height, depth } = rule.ledge;

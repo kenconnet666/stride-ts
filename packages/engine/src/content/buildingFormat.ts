@@ -6,7 +6,9 @@
  * - 体块（masses）从下往上叠：每段一个底面（多边形、矩形、圆，或者在下面一段的基础上往里缩 inset）、几层、层高、用哪条立面
  *   规则、顶上盖什么屋顶（平顶加女儿墙、穹顶、尖顶）。底面的每条边是一面立面。
  * - 立面规则（facades）按楼层（底层、顶层、其余）给一个图案：`Pillar [Window Window]* Pillar`——构件的名字从左到右（从外面看），
- *   带 `*` 的项重复到铺满，方括号把几个构件当一组重复；铺不满、铺多了的那一点按比例拉宽、压窄所有构件。
+ *   带 `*` 的项重复到铺满，方括号把几个构件当一组重复；铺不满、铺多了的那一点按比例拉宽、压窄所有构件。一个位置可以写几个候选
+ *   `Window|Balcony`：按文件的 seed 和"第几段体块、第几面立面、第几列"挑一个（同一列上下一致，像真楼那样成竖条；多写几遍同一个
+ *   就是加它的权重），宽度按第一个候选排，列始终对齐。
  * - 构件（modules）是一块"一层高、width 宽"的立面：墙、窗（洞口、凹进去的窗台和窗洞、玻璃、窗框和竖梃，可选的阳台）、
  *   突出的壁柱、整片的玻璃幕墙。
  *
@@ -75,6 +77,8 @@ export interface BuildingFile {
   readonly name: string;
   /** 材质槽，默认的意思见文件开头。 */
   readonly materials: readonly (string | null)[];
+  /** 随机种子：图案里的候选（`A|B`）按它挑，换一个数是同一种楼的另一栋。默认 1。 */
+  readonly seed?: number;
   readonly masses: readonly BuildingMass[];
   readonly facades?: Readonly<Record<string, BuildingFacade>>;
   readonly modules?: Readonly<Record<string, BuildingModule>>;
@@ -85,16 +89,21 @@ export const BUILDING_SLOTS = 4;
 /** 最多几个材质槽。 */
 export const BUILDING_MAX_SLOTS = 8;
 
-/** 图案里的一项：一个构件或一组构件，repeat 是带 `*` 的（重复到铺满）。 */
+/** 图案里的一项：一个或一组位置（每个位置是一个构件名，或者几个候选 `A|B`），repeat 是带 `*` 的（重复到铺满）。 */
 export interface FacadePatternItem {
   readonly modules: readonly string[];
   readonly repeat: boolean;
 }
 
-/** 解析图案：`A B* [C D]* E`。语法不对时报错（说清楚哪里）。 */
+/** 一个位置的候选构件（`A|B` → [A, B]；只有一个时就是它）。 */
+export function moduleChoices(slot: string): string[] {
+  return slot.split('|');
+}
+
+/** 解析图案：`A B* [C D|E]* F`。语法不对时报错（说清楚哪里）。 */
 export function parseFacadePattern(pattern: string): FacadePatternItem[] {
   const items: FacadePatternItem[] = [];
-  const re = /\s*(?:\[([^\[\]]*)\]|([A-Za-z_][\w-]*))(\*?)/y;
+  const re = /\s*(?:\[([^\[\]]*)\]|([A-Za-z_][\w-]*(?:\|[A-Za-z_][\w-]*)*))(\*?)/y;
   let at = 0;
   while (at < pattern.length) {
     if (/^\s*$/.test(pattern.slice(at))) break;
@@ -103,7 +112,7 @@ export function parseFacadePattern(pattern: string): FacadePatternItem[] {
     if (!match) throw new Error(`pattern '${pattern}': unexpected '${pattern.slice(at).trim()}' (expected a module name or [group], each optionally followed by *)`);
     const modules = match[1] !== undefined ? match[1].trim().split(/\s+/).filter(Boolean) : [match[2]!];
     if (modules.length === 0) throw new Error(`pattern '${pattern}': empty group []`);
-    for (const name of modules) if (!/^[A-Za-z_][\w-]*$/.test(name)) throw new Error(`pattern '${pattern}': '${name}' is not a module name`);
+    for (const name of modules) if (!/^[A-Za-z_][\w-]*(?:\|[A-Za-z_][\w-]*)*$/.test(name)) throw new Error(`pattern '${pattern}': '${name}' is not a module name (or A|B choices)`);
     items.push({ modules, repeat: match[3] === '*' });
     at = re.lastIndex;
   }
@@ -128,6 +137,7 @@ export function checkBuilding(file: BuildingFile, where = file.name): BuildingFi
     if (value !== undefined && !(value >= 0)) fail(path, 'must not be negative');
   };
   if (!Array.isArray(file.masses) || file.masses.length === 0) fail('masses', 'needs at least one mass');
+  if (file.seed !== undefined && !Number.isInteger(file.seed)) fail('seed', 'must be a whole number');
   const modules = file.modules ?? {};
   for (const [name, module] of Object.entries(modules)) {
     const at = `modules.${name}`;
@@ -158,7 +168,7 @@ export function checkBuilding(file: BuildingFile, where = file.name): BuildingFi
       } catch (error) {
         fail(`${at}.pattern`, (error as Error).message);
       }
-      for (const item of items) for (const module of item.modules) if (!(module in modules)) fail(`${at}.pattern`, `uses the module '${module}', which is not in modules`);
+      for (const item of items) for (const slot of item.modules) for (const module of moduleChoices(slot)) if (!(module in modules)) fail(`${at}.pattern`, `uses the module '${module}', which is not in modules`);
       if (floor.ledge) {
         positive(floor.ledge.height, `${at}.ledge.height`, false);
         positive(floor.ledge.depth, `${at}.ledge.depth`, false);

@@ -1,7 +1,7 @@
 /**
  * 三角网格转成多边形网格（白盒导出成可编辑的多边形网格用：`.brush.json` 烘出的三角形 → `.poly.json`）：位置相同的顶点焊在一起，
  * 同一平面、同一组（材质槽）、靠共用的边连在一起的三角形合成一个面。合成的那组只有一圈边界时是一个 n 边形（边界上和前后两点
- * 共线的点去掉）；有洞或者几圈边界的（多边形网格的面不能带洞）那组保留成三角形。
+ * 共线的点去掉）；有洞的（地板上立着东西，多边形网格的面不能带洞）切成几块不带洞的简单多边形（diskPieces），切不成的才留成三角形。
  */
 import type { PolyFaceFile } from '../content/formats/assetFormat.ts';
 
@@ -83,15 +83,15 @@ export function trianglesToPolygons(positions: ArrayLike<number>, indices: Array
   for (const members of regions) {
     const first = triangles[members[0]!]!;
     const material = first.group === 0 ? {} : { material: first.group };
-    const loop = boundaryLoop(members.map((t) => triangles[t]!.v));
-    if (loop) {
-      const cleaned = dropCollinear(loop, vertices);
-      if (cleaned.length >= 3) {
-        faces.push({ vertices: cleaned, ...material });
-        continue;
-      }
+    const corners = members.map((t) => triangles[t]!.v);
+    // 一圈边界的整块是一个面；有洞的切成几块不带洞的，每块一个面
+    const pieces = boundaryLoop(corners) ? [corners] : diskPieces(corners);
+    for (const piece of pieces) {
+      const loop = boundaryLoop(piece);
+      const cleaned = loop ? dropCollinear(loop, vertices) : [];
+      if (cleaned.length >= 3) faces.push({ vertices: cleaned, ...material });
+      else for (const v of piece) faces.push({ vertices: [...v], ...material });
     }
-    for (const t of members) faces.push({ vertices: [...triangles[t]!.v], ...material });
   }
   // 没用到的顶点（被合并掉的边界中间点）去掉、重新编号
   const used = new Map<number, number>();
@@ -132,6 +132,49 @@ function boundaryLoop(triangles: readonly (readonly [number, number, number])[])
     loop.push(v);
   }
   return loop.length === next.size ? loop : undefined;
+}
+
+/**
+ * 把一块（有洞的）三角形分成几块不带洞的：每块从一个三角形按广度优先长起，只接受贴着它的边、又不会让边界碰到自己的三角形
+ * （新三角形不贴着的那个顶点不能已经在这块上：不然会围出洞或者在一个点上掐住），长不动了另起一块。每块的边界是一圈，是简单多边形。
+ * 一个洞通常多切出一块（绕洞一圈长到快合上时停下，剩下的是另一块）。
+ */
+function diskPieces(triangles: readonly (readonly [number, number, number])[]): (readonly [number, number, number])[][] {
+  const owner = new Map<string, number>();
+  triangles.forEach((v, t) => {
+    for (let k = 0; k < 3; k++) owner.set(`${v[k]}>${v[(k + 1) % 3]}`, t);
+  });
+  const piece = new Array<number>(triangles.length).fill(-1);
+  const pieces: (readonly [number, number, number])[][] = [];
+  triangles.forEach((_, start) => {
+    if (piece[start]! >= 0) return;
+    const id = pieces.length;
+    const members = [triangles[start]!];
+    const inPiece = new Set<number>(triangles[start]);
+    piece[start] = id;
+    const queue = [start];
+    while (queue.length > 0) {
+      const t = queue.shift()!, v = triangles[t]!;
+      for (let k = 0; k < 3; k++) {
+        const n = owner.get(`${v[(k + 1) % 3]}>${v[k]}`);
+        if (n === undefined || piece[n]! >= 0) continue;
+        const w = triangles[n]!;
+        // n 和这块共用的边上的顶点
+        const onShared = new Set<number>();
+        for (let j = 0; j < 3; j++) {
+          const a = w[j]!, b = w[(j + 1) % 3]!, other = owner.get(`${b}>${a}`);
+          if (other !== undefined && piece[other] === id) onShared.add(a).add(b);
+        }
+        if (w.some((x) => !onShared.has(x) && inPiece.has(x))) continue;
+        piece[n] = id;
+        members.push(w);
+        for (const x of w) inPiece.add(x);
+        queue.push(n);
+      }
+    }
+    pieces.push(members);
+  });
+  return pieces;
 }
 
 /** 去掉和前后两点共线的点（布尔运算在边上留下的点）。 */

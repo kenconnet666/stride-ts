@@ -49,7 +49,7 @@ describe('三角网格转多边形网格', () => {
     expect(strip.faces[0]!.vertices).toHaveLength(3);
   });
 
-  test('有洞的一块平面（多边形的面不能带洞）留成三角形', () => {
+  test('有洞的一块平面（多边形的面不能带洞）切成几块不带洞的简单多边形，面积不变、每块一圈边界', () => {
     // 外框 4×4、中间挖 2×2 的洞：8 个三角形围成一圈
     const p = (x: number, y: number) => [x, y, 0];
     const outer = [p(0, 0), p(4, 0), p(4, 4), p(0, 4)], inner = [p(1, 1), p(3, 1), p(3, 3), p(1, 3)];
@@ -62,7 +62,43 @@ describe('三角网格转多边形网格', () => {
       }
     }
     const mesh = trianglesToPolygons(positions, indices, () => 0);
-    expect(mesh.faces).toHaveLength(8);
     expect(mesh.vertices).toHaveLength(8);
+    // 一个洞多切出一块：比 8 个三角形少得多，每块都比三角形大
+    expect(mesh.faces.length).toBeGreaterThanOrEqual(2);
+    expect(mesh.faces.length).toBeLessThanOrEqual(3);
+    expect(mesh.faces.every((face) => face.vertices.length >= 4)).toBe(true);
+    // 面积加起来是 16 - 4，每块的顶点不重复（简单多边形，没有在一个点上掐住）
+    const area = (face: { vertices: readonly number[] }) => {
+      let sum = 0;
+      face.vertices.forEach((v, i) => {
+        const a = mesh.vertices[v]!, b = mesh.vertices[face.vertices[(i + 1) % face.vertices.length]!]!;
+        sum += a[0]! * b[1]! - b[0]! * a[1]!;
+      });
+      return sum / 2;
+    };
+    expect(mesh.faces.reduce((total, face) => total + area(face), 0)).toBeCloseTo(12);
+    for (const face of mesh.faces) {
+      expect(new Set(face.vertices).size).toBe(face.vertices.length);
+      expect(area(face)).toBeGreaterThan(0);
+    }
+  });
+
+  test('一块平面上两个洞（地板上立着两根柱子）：切开以后没有留下零碎的三角形', () => {
+    // 6×2 的地板，(1,0.5)-(2,1.5) 和 (4,0.5)-(5,1.5) 两个洞，按网格三角化后去掉洞里的格子
+    const positions: number[] = [], indices: number[] = [];
+    const holes = new Set(['2,1', '3,1', '2,2', '3,2', '8,1', '9,1', '8,2', '9,2']);
+    const at = (x: number, y: number) => [x / 2, y / 2, 0];
+    for (let x = 0; x < 12; x++) for (let y = 0; y < 4; y++) {
+      if (holes.has(`${x},${y}`)) continue;
+      const a = at(x, y), b = at(x + 1, y), c = at(x + 1, y + 1), d = at(x, y + 1);
+      for (const tri of [[a, b, c], [a, c, d]]) for (const v of tri) {
+        indices.push(positions.length / 3);
+        positions.push(...v);
+      }
+    }
+    const mesh = trianglesToPolygons(positions, indices, () => 0);
+    expect(mesh.faces.length).toBeLessThanOrEqual(5);
+    expect(mesh.faces.filter((face) => face.vertices.length === 3)).toHaveLength(0);
+    for (const face of mesh.faces) expect(new Set(face.vertices).size).toBe(face.vertices.length);
   });
 });

@@ -58,7 +58,7 @@ const cylinder = (name: string, position: Vec3, height: number, radius: number, 
 
 // ---- 场景：先只有相机、太阳和天空（编辑器里打开着的话，接下来一样一样地出现）----
 const entity = (id: string, name: string, position: Vec3, components: object, rotation: Quat = [0, 0, 0, 1]) => ({ id, name, parent: null, position, rotation, scale: [1, 1, 1], components });
-const eye: Vec3 = [2.5, 1.55, 1.4];
+const eye: Vec3 = [3.6, 1.45, 1.1];
 const sunAt: Vec3 = [-20, 25, 20];
 await write('scene', 'Subway', {
   name: 'Subway',
@@ -68,7 +68,7 @@ await write('scene', 'Subway', {
     transparent: true,
   },
   entities: [
-    entity('0b6c7c1e-0001-4000-8000-000000000001', 'Camera', eye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 2000 } }, lookAt(eye, [0.4, 1.25, -1.0])),
+    entity('0b6c7c1e-0001-4000-8000-000000000001', 'Camera', eye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 2000 } }, lookAt(eye, [0.4, 1.3, -0.9])),
     entity('0b6c7c1e-0001-4000-8000-000000000002', 'Sun', sunAt, {
       light: {
         type: 'directional', color: [1, 0.97, 0.92], intensity: 10,

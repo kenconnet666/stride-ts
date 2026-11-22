@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { SignFile } from '../../src/content/formats/signFormat';
-import { signModel } from '../../src/modeling/sign';
+import { floorStickerSvg, signModel } from '../../src/modeling/sign';
 
 const sign: SignFile = { name: 'Entrance', text: '超市入口', font: 'F', size: [1.2, 0.3, 0.08] };
 
@@ -23,5 +23,21 @@ describe('招牌', () => {
     for (let i = both.vertices.length - 32; i < both.vertices.length; i += 8) normals.push(both.vertices[i + 5]);
     expect(normals).toEqual([-1, -1, -1, -1]);
     expect(() => signModel({ ...sign, size: [0, 0.3, 0.08] }, undefined)).toThrow(/size/);
+  });
+
+  test('地贴：透明底的 SVG（毫米），圆角方块、圆标、箭头；磨损时有遮罩；尺寸不对时报错', () => {
+    const base: SignFile = { name: 'Floor', style: 'floor', text: '', font: 'F', size: [0.5, 0.9, 0] };
+    const rect = floorStickerSvg(base, undefined);
+    expect(rect).toContain('viewBox="0 0 500 900"');
+    expect(rect).toContain('<rect x=');
+    expect(rect).not.toContain('mask');
+    expect(floorStickerSvg({ ...base, shape: 'round' }, undefined)).toContain('<circle');
+    const arrow = floorStickerSvg({ ...base, shape: 'arrow', colors: { background: '#2f9e44' } }, undefined);
+    expect(arrow).toMatch(/<path d="M250 \d/);
+    expect(arrow).toContain('#2f9e44');
+    const worn = floorStickerSvg({ ...base, wear: 0.5, seed: 3 }, undefined);
+    expect(worn).toContain('<mask id="wear">');
+    expect(worn).toBe(floorStickerSvg({ ...base, wear: 0.5, seed: 3 }, undefined));
+    expect(() => floorStickerSvg({ ...base, size: [0, 1, 0] }, undefined)).toThrow(/width and a length/);
   });
 });

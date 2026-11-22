@@ -3,12 +3,63 @@
  * 轮廓的路径画进图集；灯箱的字面整块发光（字和底都亮，同真的灯箱），挂牌不发光。走 ProductBatch，同货架出一个模型、图集和材质。
  */
 import type { SignFile } from '../content/formats/signFormat.ts';
+import { hash32, seededRandom } from '../data/hash.ts';
 import { textPath } from './product.ts';
+import { svgNumber } from './svg.ts';
 import { ProductBatch, type Cell, type MergedProducts } from './productBatch.ts';
 import type { TextFont } from './textOutline.ts';
 
 /** 字面比外框往里缩多少（米）、往外凸多少（贴在框的面上，不和框打架）。 */
 const INSET = 0.02, PROUD = 0.002;
+
+/**
+ * 地贴的 SVG（毫米，透明底，见格式的说明）：外形填底色、白色描边，字在中间（箭头的在杆上）；wear 大于 0 时用遮罩按种子擦掉
+ * 几道踩出来的划痕和几片磨掉的斑。
+ */
+export function floorStickerSvg(file: SignFile, font: TextFont | undefined, where = file.name): string {
+  const [w, h] = file.size;
+  if (!(w > 0 && h > 0)) throw new Error(`${where}: a floor sticker needs a width and a length greater than 0`);
+  const W = w * 1000, H = h * 1000, stroke = Math.min(W, H) * 0.04;
+  const fill = file.colors?.background ?? '#f6c40f', frame = file.colors?.frame ?? '#ffffff', ink = file.colors?.text ?? '#1d1d1f';
+  const n = svgNumber;
+  const outline = `fill="${fill}" stroke="${frame}" stroke-width="${n(stroke)}" stroke-linejoin="round"`;
+  let shape: string, text: [number, number, number, number] = [W / 2, H / 2, W * 0.78, H * 0.6];
+  switch (file.shape ?? 'rect') {
+    case 'round': {
+      const r = Math.min(W, H) / 2 - stroke / 2;
+      shape = `<circle cx="${n(W / 2)}" cy="${n(H / 2)}" r="${n(r)}" ${outline}/>`;
+      text = [W / 2, H / 2, r * 1.3, r * 0.8];
+      break;
+    }
+    case 'arrow': {
+      // 箭头朝上：头占长的四成（最多宽的九成），杆宽是宽的 36%
+      const head = Math.min(H * 0.42, W * 0.9), s = stroke / 2, l = W * 0.32, r = W * 0.68;
+      shape = `<path d="M${n(W / 2)} ${n(s)}L${n(W - s)} ${n(head)}L${n(r)} ${n(head)}L${n(r)} ${n(H - s)}L${n(l)} ${n(H - s)}L${n(l)} ${n(head)}L${n(s)} ${n(head)}Z" ${outline}/>`;
+      text = [W / 2, (head + H) / 2, W * 0.3, (H - head) * 0.7];
+      break;
+    }
+    default:
+      shape = `<rect x="${n(stroke / 2)}" y="${n(stroke / 2)}" width="${n(W - stroke)}" height="${n(H - stroke)}" rx="${n(Math.min(W, H) * 0.12)}" ${outline}/>`;
+  }
+  const label = file.text && font ? textPath(font, file.text, text[0], text[1], text[2], text[3], ink) ?? '' : '';
+  const wear = Math.min(1, Math.max(0, file.wear ?? 0));
+  let mask = '', masked = '';
+  if (wear > 0) {
+    // 擦掉的：几道细长的划痕、几片不规则的斑（黑色在遮罩里就是透明）
+    const random = seededRandom(hash32(file.seed ?? 1, 41));
+    const marks: string[] = [];
+    for (let i = 0; i < Math.round(30 * wear); i++) {
+      const x = random() * W, y = random() * H, length = Math.min(W, H) * (0.1 + random() * 0.4);
+      marks.push(`<rect x="${n(x - length / 2)}" y="${n(y)}" width="${n(length)}" height="${n(Math.min(W, H) * (0.004 + random() * 0.01))}" transform="rotate(${n(random() * 40 - 20)} ${n(x)} ${n(y)})" opacity="${n(0.4 + random() * 0.6)}"/>`);
+    }
+    for (let i = 0; i < Math.round(12 * wear); i++) {
+      marks.push(`<ellipse cx="${n(random() * W)}" cy="${n(random() * H)}" rx="${n(Math.min(W, H) * (0.02 + random() * 0.06))}" ry="${n(Math.min(W, H) * (0.01 + random() * 0.03))}" opacity="${n(0.3 + random() * 0.5)}"/>`);
+    }
+    mask = `<mask id="wear"><rect width="${n(W)}" height="${n(H)}" fill="#fff"/><g fill="#000">${marks.join('')}</g></mask>`;
+    masked = ' mask="url(#wear)"';
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n(W)} ${n(H)}" width="${n(W)}" height="${n(H)}">${mask}<g${masked}>${shape}${label}</g></svg>`;
+}
 
 /** 生成招牌；font 是读好的字体（没有时字面只有底色）。 */
 export function signModel(file: SignFile, font: TextFont | undefined, where = file.name): MergedProducts {

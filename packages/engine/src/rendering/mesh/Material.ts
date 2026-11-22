@@ -70,10 +70,10 @@ export interface MaterialShaderTrees {
    */
   readonly layers?: readonly MaterialShaderLayer[];
   /**
-   * 材质节点图（materialGraph.ts）：code 里有 materialGraph()，算好的输出在 graph_* 变量里，图是 layers 的最后一层（权重 1）。
-   * layerNormal 开头调它一次（片元着色器里最先调的材质层函数，后面的层函数直接读变量）。
+   * 材质节点图（materialGraph.ts）的函数名：材质的那张（materialGraph，layers 的第一层、权重 1）、各绘制层的（materialGraphL<i>）。
+   * layerNormal 开头按顺序各调一次（片元着色器里最先调的材质层函数，后面的层函数直接读 graph*_ 变量）。
    */
-  readonly graph?: boolean;
+  readonly graphs?: readonly string[];
   /**
    * 清漆（content/formats/format.ts 的 ClearCoatFile）：code 里有 coatLodDistance、coatBaseDiffuse、coatBaseGloss、coatFlakesDiffuse、
    * coatFlakesGloss、coatFlakesMetalness、coatFlakesNormal、coatTopGloss、coatTopMetalness、coatTopNormal 这些函数。

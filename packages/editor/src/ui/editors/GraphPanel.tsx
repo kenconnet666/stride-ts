@@ -89,7 +89,7 @@ const outputLabel = (name: string) => t.graphOutputs[name as keyof typeof t.grap
 export const GraphPanel = _component(({ session }: { session: EditorSession }) => {
   let selection = _state<DiagramSelection>({ nodes: [], edges: [] });
   const diagram = useDiagram();
-  const graph = (): GraphFile | undefined => session.inspected.value?.content['graph'] as GraphFile | undefined;
+  const graph = (): GraphFile | undefined => session.materialGraph();
   const edit = (change: (file: GraphFile) => GraphFile) => session.editMaterialGraph(change);
   const context: FieldContext = { entities: [] };
 
@@ -167,7 +167,7 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
   /** 改参数：路径直接交给属性面板的修改（向量的一个分量、按旧值算的更新都照它的规矩）。 */
   const setParam = (id: string, path: readonly (string | number)[], value: unknown) => {
     const index = graph()?.nodes.findIndex((n) => n.id === id) ?? -1;
-    if (index >= 0) session.editInspected(['graph', 'nodes', index, 'params', ...path], value);
+    if (index >= 0) session.editInspected([...session.graphPath.value, 'nodes', index, 'params', ...path], value);
   };
 
   /** 图里的节点和材质的输出换成 Diagram 的节点（端口对准卡片里的行）。 */

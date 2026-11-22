@@ -129,7 +129,8 @@ export const App = _component(({ session }: { session: EditorSession }) => {
     },
     {
       id: 'graph', title: t.toolWindows.graph, icon: Workflow, anchor: 'bottom', scroll: 'self', showWhenAvailable: true,
-      available: session.graphOpen.value && session.inspected.value?.kind === 'material', ...(session.inspected.value ? { detail: session.inspected.value.path } : {}),
+      available: session.graphOpen.value && session.inspected.value?.kind === 'material',
+      ...(session.inspected.value ? { detail: session.graphPath.value[0] === 'layers' ? `${session.inspected.value.path} · ${t.paintLayer(Number(session.graphPath.value[1]) + 1)}` : session.inspected.value.path } : {}),
       content: () => <GraphPanel session={session} />,
     },
     {

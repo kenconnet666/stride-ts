@@ -98,8 +98,10 @@ export class EditorSession implements EditableScene {
   readonly baking = shallowRef(false);
   /** 粒子面板开着时编辑的实体（场景文件里的 id）；没开时是 undefined。 */
   readonly particleEntity = shallowRef<string>();
-  /** 节点图面板开着（编辑的是属性面板里正开着的材质的 graph）。 */
+  /** 节点图面板开着（编辑的是属性面板里正开着的材质的 graphPath 那张图）。 */
   readonly graphOpen = shallowRef(false);
+  /** 节点图面板编辑材质里的哪张图：材质的 `['graph']`，或者第 i 个绘制层的填充 `['layers', i, 'graph']`。 */
+  readonly graphPath = shallowRef<readonly (string | number)[]>(['graph']);
   /** 正在导出的时间轴（名字）；没在导出时是 undefined。 */
   readonly exporting = shallowRef<string>();
   /** 还没存的时间轴修改（连着拖关键帧只存最后一次）。 */
@@ -329,12 +331,33 @@ export class EditorSession implements EditableScene {
     }
   }
 
-  /** 打开属性面板里那个材质的节点图（还没有图时建一个只有材质输出的空图），面板显示在下面。 */
-  openMaterialGraph(): void {
+  /**
+   * 打开属性面板里那个材质的节点图（给了 layer 时是那个绘制层的填充图；还没有图时建一个只有材质输出的空图），面板显示在下面。
+   */
+  openMaterialGraph(layer?: number): void {
     const inspected = this.inspected.value;
     if (inspected?.kind !== 'material') return;
-    if (!inspected.content['graph']) this.editInspected(['graph'], { nodes: [], outputs: {} } satisfies GraphFile);
+    this.graphPath.value = layer === undefined ? ['graph'] : ['layers', layer, 'graph'];
+    if (!this.materialGraph()) this.editInspected(this.graphPath.value, { nodes: [], outputs: {} } satisfies GraphFile);
     this.graphOpen.value = true;
+  }
+
+  /** 节点图面板现在编辑的那张图（属性面板里那个材质的 graphPath 处）；没有时是 undefined。 */
+  materialGraph(): GraphFile | undefined {
+    const inspected = this.inspected.value;
+    if (inspected?.kind !== 'material') return undefined;
+    let value: unknown = inspected.content;
+    for (const key of this.graphPath.value) value = (value as Record<string | number, unknown> | undefined)?.[key];
+    return value as GraphFile | undefined;
+  }
+
+  /**
+   * 第 layer 个绘制层的填充换成一张节点图（智能材质：拷一份，之后随便改），或者换回纯色（graph 是 undefined：树还在，接着用）。
+   * 正在编辑这层的图时节点图面板跟着换。
+   */
+  setLayerFill(layer: number, graph: GraphFile | undefined): void {
+    this.editInspected(['layers', layer, 'graph'], graph === undefined ? undefined : structuredClone(graph));
+    if (graph === undefined && this.graphPath.value[1] === layer) this.closeMaterialGraph();
   }
 
   closeMaterialGraph(): void {
@@ -351,7 +374,7 @@ export class EditorSession implements EditableScene {
     this.baking.value = true;
     this.notice.value = '';
     try {
-      const result = await agent.game.debug.run('material-export', { material: inspected.path, graph: inspected.content['graph'], size }) as { files: { path: string }[]; elapsed: number };
+      const result = await agent.game.debug.run('material-export', { material: inspected.path, graph: this.materialGraph(), size }) as { files: { path: string }[]; elapsed: number };
       this.status.value = t.graphExported(result.files.map((file) => file.path), result.elapsed);
     } catch (error) {
       this.notice.value = (error as Error).message;
@@ -360,9 +383,9 @@ export class EditorSession implements EditableScene {
     }
   }
 
-  /** 改节点图（整个换掉）：同属性面板的修改，稍等一下存，材质热重载。 */
+  /** 改节点图面板的那张图（整个换掉）：同属性面板的修改，稍等一下存，材质热重载。 */
   editMaterialGraph(change: (graph: GraphFile) => GraphFile): void {
-    this.editInspected(['graph'], (previous: unknown) => change((previous as GraphFile | undefined) ?? { nodes: [], outputs: {} }));
+    this.editInspected(this.graphPath.value, (previous: unknown) => change((previous as GraphFile | undefined) ?? { nodes: [], outputs: {} }));
   }
 
   /** 关掉时间轴：视口回到场景文档的样子。 */

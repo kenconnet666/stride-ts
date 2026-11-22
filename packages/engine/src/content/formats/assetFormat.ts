@@ -174,7 +174,8 @@ export interface NormalMapSlot extends TextureSlot {
 
 /**
  * 一个材质层（Stride 的 MaterialBlendLayer）：子材质的各个属性按遮罩 blend（0 到 1）线性混进下面的结果（Stride 的
- * MaterialStreamLinearBlend）。子材质没有的属性不改；都是颜色树，运行时编译。
+ * MaterialStreamLinearBlend）。子材质没有的属性不改；都是颜色树，运行时编译。也可以用一张节点图当填充（graph：智能材质
+ * 画在模型上，遮罩照旧是 blend），图接了的输出盖过同名的树。
  */
 export interface MaterialLayerFile {
   /** 遮罩（BlendMap，标量树）。 */
@@ -195,6 +196,8 @@ export interface MaterialLayerFile {
    * 下面没有遮蔽时是从 1、0 往上混。
    */
   readonly occlusion?: { readonly tree: ParticleModuleFile; readonly directLighting: number };
+  /** 这一层的填充是材质节点图（rendering/mesh/materialGraph.ts）：接了的输出（基础色、金属度、粗糙度、法线、自发光、遮蔽）是这层的值。 */
+  readonly graph?: GraphFile;
 }
 
 /** 法线贴图的颜色树和它的两个开关（意思同 NormalMapSlot）。 */

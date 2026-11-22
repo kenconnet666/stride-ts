@@ -1022,7 +1022,7 @@ export function transparentPasses(material: Material): readonly MaterialPass[] {
 
 /** 按材质的颜色树分着色器模块和管线用的键。 */
 function treesKey(trees: MaterialShaderTrees | undefined): string {
-  return trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers, trees.clearCoat]) : '';
+  return trees ? JSON.stringify([trees.code, trees.emissive, trees.normal, trees.displacement, trees.layers, trees.graphs, trees.clearCoat]) : '';
 }
 
 /** Stride 的 BlendStates.AlphaBlend：颜色已经乘过 alpha。 */

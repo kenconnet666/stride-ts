@@ -447,9 +447,10 @@ export interface CompiledMaterialGraph {
 
 /**
  * 编成 WGSL。compiler 是同一份材质里颜色树用的编译器（贴图的绑定、库函数共用）；textures 给加载好的贴图资源（内容路径 →
- * 贴图在 compiler 里的采样，由调用方实现）。认不出的节点、接错的端口报错（where 用在消息里）。
+ * 贴图在 compiler 里的采样，由调用方实现）。认不出的节点、接错的端口报错（where 用在消息里）。suffix 区分同一个材质里的
+ * 几张图（材质的和各个绘制层的）：函数是 `materialGraph<suffix>()`，输出在 `graph<suffix>_<输出>` 里。
  */
-export function compileMaterialGraph(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string): CompiledMaterialGraph {
+export function compileMaterialGraph(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string, suffix = ''): CompiledMaterialGraph {
   const { lines, values } = emitMaterialGraphNodes(graph, compiler, sample, where);
   const outputs = new Set<MaterialGraphOutput>();
   const declarations: string[] = [];
@@ -457,10 +458,10 @@ export function compileMaterialGraph(graph: GraphFile, compiler: Pick<ColorTreeC
     const link = graph.outputs[name];
     if (!link) continue;
     outputs.add(name);
-    declarations.push(`var<private> graph_${name}: ${WGSL_TYPES[type]};`);
-    lines.push(`  graph_${name} = ${convertGraphValue(linked(values, link, `output ${name}`, where), type)};`);
+    declarations.push(`var<private> graph${suffix}_${name}: ${WGSL_TYPES[type]};`);
+    lines.push(`  graph${suffix}_${name} = ${convertGraphValue(linked(values, link, `output ${name}`, where), type)};`);
   }
-  return { code: `${declarations.join('\n')}\nfn materialGraph() {\n${lines.join('\n')}\n}\n`, outputs };
+  return { code: `${declarations.join('\n')}\nfn materialGraph${suffix}() {\n${lines.join('\n')}\n}\n`, outputs };
 }
 
 /** 一个节点算出的值：WGSL 的变量名和种类。 */

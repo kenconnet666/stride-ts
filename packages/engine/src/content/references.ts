@@ -213,9 +213,11 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
     }
     case 'material':
       textureRefs(file).forEach(image);
-      // 节点图里节点（贴图、三平面投影）引用的贴图资源
-      for (const node of (file as MaterialFile).graph?.nodes ?? []) {
-        if (typeof node.params?.['texture'] === 'string') add('texture', node.params, 'texture');
+      // 节点图（材质的、各层的）里节点（贴图、三平面投影）引用的贴图资源
+      for (const graph of [(file as MaterialFile).graph, ...((file as MaterialFile).layers ?? []).map((layer) => layer.graph)]) {
+        for (const node of graph?.nodes ?? []) {
+          if (typeof node.params?.['texture'] === 'string') add('texture', node.params, 'texture');
+        }
       }
       break;
     case 'spriteSheet':

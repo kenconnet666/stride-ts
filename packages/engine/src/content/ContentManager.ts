@@ -36,7 +36,7 @@ import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
 import { SOUND_SYNTH_RATE, synthesizeSound } from '../audio/soundSynth';
 import { ColorTreeCompiler } from '../rendering/mesh/colorTree';
-import { bakedTextureKey, compileMaterialGraph, materialGraphTextures, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
+import { bakedTextureKey, compileMaterialGraph, materialGraphTextures, type CompiledMaterialGraph, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
 import { bakedMaterialGraphNodes, bakedMaterialGraphTexture } from '../rendering/mesh/materialGraphBake';
 import type { GraphFile } from './formats/nodeGraph';
 import type { ShaderClass } from '../rendering/shaderClass';
@@ -415,24 +415,48 @@ export class ContentManager {
     const refs = [emissive?.tree, normal?.tree, displacement?.tree, ...layerTrees, ...coatTrees.map(([, tree]) => tree)].flatMap((t) => (t ? textureRefs(t) : []));
     const textures = new Map(await Promise.all(refs.map(async (ref) => [ref.texture, await this.loadTextureRef(ref, ref.srgb ?? true)] as const)));
     const compiler = new ColorTreeCompiler({ texture: (path) => textures.get(path), shaderClass: (name) => this.#shaderClasses(name) }, 3);
-    const graphCode = graph ? await this.#graphLayer(graph, compiler, layers.length, name) : undefined;
-    const functions = [
+    // 节点图：材质的那张是最底下的一层（权重 1，盖过上面的基础值），绘制层叠在它上面；各层自己的图当那层的填充
+    const where = `material ${name}`;
+    const base = graph ? await this.#compileGraph(graph, compiler, '', where) : undefined;
+    const layerGraphs = await Promise.all(layers.map((layer, i) => (layer.graph ? this.#compileGraph(layer.graph, compiler, `L${i}`, `${where}, layer ${i}`) : Promise.resolve(undefined))));
+    const offset = base ? 1 : 0;
+    const shaderLayers: MaterialShaderLayer[] = [];
+    const functions: (string | undefined | false)[] = [
       emissive && `fn emissiveTree() -> vec4f {\n  return ${compiler.color(emissive.tree)};\n}\n`,
       normal && `fn normalTree() -> vec4f {\n  return ${compiler.color(normal.tree)};\n}\n`,
       displacement && `fn displacementTree() -> f32 {\n  return ${compiler.vertexScalar(displacement.tree)};\n}\n`,
-      ...layers.flatMap((layer, i) => [
-        `fn layer${i}Blend() -> f32 {\n  return ${compiler.scalar(layer.blend)};\n}\n`,
-        layer.diffuse && `fn layer${i}Diffuse() -> vec4f {\n  return ${compiler.color(layer.diffuse)};\n}\n`,
-        layer.specular && `fn layer${i}Specular() -> vec3f {\n  return ${compiler.color(layer.specular.color)}.rgb * clamp(${compiler.scalar(layer.specular.intensity)}, 0.0, 1.0);\n}\n`,
-        layer.metalness && `fn layer${i}Metalness() -> f32 {\n  return ${compiler.scalar(layer.metalness)};\n}\n`,
-        layer.glossiness && `fn layer${i}Gloss() -> f32 {\n  return ${compiler.scalar(layer.glossiness.tree)};\n}\n`,
-        layer.normal && `fn layer${i}Normal() -> vec4f {\n  return ${compiler.color(layer.normal.tree)};\n}\n`,
-        layer.emissive && `fn layer${i}Emissive() -> vec3f {\n  return ${compiler.color(layer.emissive.tree)}.rgb * ${layer.emissive.intensity};\n}\n`,
-        layer.occlusion && `fn layer${i}Occlusion() -> f32 {\n  return ${compiler.scalar(layer.occlusion.tree)};\n}\n`,
-      ]),
-      ...coatTrees.map(([name, tree, type]) => `fn ${name}() -> ${type} {\n  return ${type === 'f32' ? compiler.scalar(tree) : compiler.color(tree)};\n}\n`),
-      graphCode?.code,
+      base?.code,
+      ...layerGraphs.map((compiled) => compiled?.code),
     ];
+    if (base) {
+      functions.push(`fn layer0Blend() -> f32 {\n  return 1.0;\n}\n`, ...graphLayerFunctions(0, '', base.outputs));
+      shaderLayers.push(graphShaderLayer(base.outputs));
+    }
+    layers.forEach((layer, i) => {
+      const k = i + offset, from = layerGraphs[i]?.outputs ?? new Set<MaterialGraphOutput>();
+      // 图接了的输出用图的，其余照旧用这层的树
+      functions.push(
+        `fn layer${k}Blend() -> f32 {\n  return ${compiler.scalar(layer.blend)};\n}\n`,
+        ...graphLayerFunctions(k, `L${i}`, from),
+        !from.has('baseColor') && layer.diffuse && `fn layer${k}Diffuse() -> vec4f {\n  return ${compiler.color(layer.diffuse)};\n}\n`,
+        layer.specular && `fn layer${k}Specular() -> vec3f {\n  return ${compiler.color(layer.specular.color)}.rgb * clamp(${compiler.scalar(layer.specular.intensity)}, 0.0, 1.0);\n}\n`,
+        !from.has('metalness') && layer.metalness && `fn layer${k}Metalness() -> f32 {\n  return ${compiler.scalar(layer.metalness)};\n}\n`,
+        !from.has('roughness') && layer.glossiness && `fn layer${k}Gloss() -> f32 {\n  return ${compiler.scalar(layer.glossiness.tree)};\n}\n`,
+        !from.has('normal') && layer.normal && `fn layer${k}Normal() -> vec4f {\n  return ${compiler.color(layer.normal.tree)};\n}\n`,
+        !from.has('emissive') && layer.emissive && `fn layer${k}Emissive() -> vec3f {\n  return ${compiler.color(layer.emissive.tree)}.rgb * ${layer.emissive.intensity};\n}\n`,
+        !from.has('occlusion') && layer.occlusion && `fn layer${k}Occlusion() -> f32 {\n  return ${compiler.scalar(layer.occlusion.tree)};\n}\n`,
+      );
+      const graphed = graphShaderLayer(from);
+      shaderLayers.push({
+        diffuse: graphed.diffuse || layer.diffuse !== undefined, specular: layer.specular !== undefined,
+        metalness: graphed.metalness || layer.metalness !== undefined, emissive: graphed.emissive || layer.emissive !== undefined,
+        ...(graphed.glossiness ? { glossiness: graphed.glossiness } : layer.glossiness ? { glossiness: { invert: layer.glossiness.invert } } : {}),
+        ...(graphed.normal ? { normal: graphed.normal } : layer.normal ? { normal: { scaleAndBias: layer.normal.scaleAndBias, isXYNormal: layer.normal.isXYNormal } } : {}),
+        ...(graphed.occlusion ? { occlusion: graphed.occlusion } : layer.occlusion ? { occlusion: { directLighting: layer.occlusion.directLighting } } : {}),
+      });
+    });
+    functions.push(...coatTrees.map(([name, tree, type]) => `fn ${name}() -> ${type} {\n  return ${type === 'f32' ? compiler.scalar(tree) : compiler.color(tree)};\n}\n`));
+    const graphs = [...(base ? ['materialGraph'] : []), ...layers.flatMap((_, i) => (layerGraphs[i] ? [`materialGraphL${i}`] : []))];
     return {
       code: compiler.declarations + functions.filter(Boolean).join(''),
       textures: compiler.textures,
@@ -446,52 +470,18 @@ export class ContentManager {
           topNormal: { scaleAndBias: coat.coat.normal.scaleAndBias, isXYNormal: coat.coat.normal.isXYNormal },
         },
       } : {}),
-      ...(graphCode ? { graph: true } : {}),
-      ...(layers.length > 0 || graphCode ? {
-        layers: [...layers.map((layer) => ({
-          diffuse: layer.diffuse !== undefined, specular: layer.specular !== undefined, metalness: layer.metalness !== undefined,
-          emissive: layer.emissive !== undefined,
-          ...(layer.glossiness ? { glossiness: { invert: layer.glossiness.invert } } : {}),
-          ...(layer.normal ? { normal: { scaleAndBias: layer.normal.scaleAndBias, isXYNormal: layer.normal.isXYNormal } } : {}),
-          ...(layer.occlusion ? { occlusion: { directLighting: layer.occlusion.directLighting } } : {}),
-        })), ...(graphCode ? [graphCode.layer] : [])],
-      } : {}),
+      ...(graphs.length > 0 ? { graphs } : {}),
+      ...(shaderLayers.length > 0 ? { layers: shaderLayers } : {}),
     };
   }
 
-  /**
-   * 材质节点图（rendering/mesh/materialGraph.ts）编成第 index 层：先加载贴图节点引用的贴图资源、给滤镜节点建烘焙的贴图，图的代码加上这一层的各个函数
-   * （权重 1，读 materialGraph() 算好的 graph_* 变量）。
-   */
-  async #graphLayer(graph: GraphFile, compiler: ColorTreeCompiler, index: number, name: string): Promise<{ code: string; layer: MaterialShaderLayer }> {
-    const where = `material ${name}`;
+  /** 编一张节点图（贴图节点的贴图、滤镜烘的贴图先准备好）：函数 materialGraph<suffix>、输出在 graph<suffix>_* 里。 */
+  async #compileGraph(graph: GraphFile, compiler: ColorTreeCompiler, suffix: string, where: string): Promise<CompiledMaterialGraph> {
     const textures = await this.loadMaterialGraphTextures(graph, where);
-    const compiled = compileMaterialGraph(graph, compiler, (path, uv) => {
+    return compileMaterialGraph(graph, compiler, (path, uv) => {
       const texture = textures.get(path);
       return texture && compiler.sampleTexture(texture, uv);
-    }, where);
-    const has = (output: MaterialGraphOutput) => compiled.outputs.has(output);
-    const layer = (fn: string, type: string, body: string) => `fn layer${index}${fn}() -> ${type} {\n  return ${body};\n}\n`;
-    const code = [
-      compiled.code,
-      layer('Blend', 'f32', '1.0'),
-      has('baseColor') && layer('Diffuse', 'vec4f', 'graph_baseColor'),
-      has('metalness') && layer('Metalness', 'f32', 'graph_metalness'),
-      has('roughness') && layer('Gloss', 'f32', 'graph_roughness'),
-      has('normal') && layer('Normal', 'vec4f', 'vec4f(graph_normal, 1.0)'),
-      has('emissive') && layer('Emissive', 'vec3f', 'graph_emissive.rgb'),
-      has('occlusion') && layer('Occlusion', 'f32', 'graph_occlusion'),
-    ].filter(Boolean).join('');
-    return {
-      code,
-      layer: {
-        diffuse: has('baseColor'), specular: false, metalness: has('metalness'), emissive: has('emissive'),
-        // 图给的是粗糙度（invert：不再用 1 减）
-        ...(has('roughness') ? { glossiness: { invert: true } } : {}),
-        ...(has('normal') ? { normal: { scaleAndBias: false, isXYNormal: false } } : {}),
-        ...(has('occlusion') ? { occlusion: { directLighting: 1 } } : {}),
-      },
-    };
+    }, where, suffix);
   }
 
   /**
@@ -950,3 +940,26 @@ async function loadVideo(url: URL, srgb: boolean): Promise<TextureData> {
   return { format: srgb ? 'rgba8unorm-srgb' : 'rgba8unorm', width: video.videoWidth, height: video.videoHeight, levels: [], video };
 }
 
+/** 一张图接了的输出当第 k 层的各个函数（读 materialGraph<suffix>() 算好的 graph<suffix>_* 变量）。 */
+function graphLayerFunctions(k: number, suffix: string, outputs: ReadonlySet<MaterialGraphOutput>): string[] {
+  const layer = (fn: string, type: string, body: string) => `fn layer${k}${fn}() -> ${type} {\n  return ${body};\n}\n`;
+  const v = (output: MaterialGraphOutput) => `graph${suffix}_${output}`;
+  return [
+    outputs.has('baseColor') && layer('Diffuse', 'vec4f', v('baseColor')),
+    outputs.has('metalness') && layer('Metalness', 'f32', v('metalness')),
+    outputs.has('roughness') && layer('Gloss', 'f32', v('roughness')),
+    outputs.has('normal') && layer('Normal', 'vec4f', `vec4f(${v('normal')}, 1.0)`),
+    outputs.has('emissive') && layer('Emissive', 'vec3f', `${v('emissive')}.rgb`),
+    outputs.has('occlusion') && layer('Occlusion', 'f32', v('occlusion')),
+  ].filter((code): code is string => typeof code === 'string');
+}
+
+/** 一张图接了的输出在着色器的材质层里有哪些属性（图给的是粗糙度：invert，不再用 1 减；法线已经是 -1..1）。 */
+function graphShaderLayer(outputs: ReadonlySet<MaterialGraphOutput>): MaterialShaderLayer {
+  return {
+    diffuse: outputs.has('baseColor'), specular: false, metalness: outputs.has('metalness'), emissive: outputs.has('emissive'),
+    ...(outputs.has('roughness') ? { glossiness: { invert: true } } : {}),
+    ...(outputs.has('normal') ? { normal: { scaleAndBias: false, isXYNormal: false } } : {}),
+    ...(outputs.has('occlusion') ? { occlusion: { directLighting: 1 } } : {}),
+  };
+}

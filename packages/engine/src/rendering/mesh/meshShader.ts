@@ -79,7 +79,7 @@ export function materialTreesCode(trees: MaterialShaderTrees | undefined): strin
   return ${displacement.scaleAndBias ? '(2.0 * d - 1.0)' : 'd'} * ${wgslFloat(displacement.intensity)};
 }`
     : 'fn treeDisplacement(uv: vec2f, local: vec3f) -> f32 { return 0.0; }';
-  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode, layersCode(trees?.layers ?? [], trees?.graph ?? false), clearCoatCode(trees?.clearCoat)].join('\n');
+  return [MATERIAL_STREAMS, trees?.code ?? '', emissiveCode, normalCode, displacementCode, layersCode(trees?.layers ?? [], trees?.graphs ?? []), clearCoatCode(trees?.clearCoat)].join('\n');
 }
 
 /**
@@ -129,7 +129,7 @@ fn coatSurface(in: Varyings, s: LayerSurface, coatPass: bool) -> LayerSurface {
  * 材质层（Stride 的 MaterialBlendLayer、MaterialStreamLinearBlend）：每层的遮罩 b，各个属性 mix(下面的, 这层的, b)；光泽度换成粗糙度
  * 再混，法线在切线空间里混再归一化，自发光（乘过强度的）、环境光遮蔽和它对直射光的影响也一样混。没有层时这几个函数原样返回。
  */
-function layersCode(layers: readonly MaterialShaderLayer[], graph: boolean): string {
+function layersCode(layers: readonly MaterialShaderLayer[], graphs: readonly string[]): string {
   const fill = `streams = MaterialStreams(in.uv, in.uv, vec4f(1.0), vec4f(1.0), in.local, view.locals.y, ${FRAGMENT_WORLD}, ${FRAGMENT_NORMAL}, in.position.xy);`;
   const surface = layers.map((layer, i) => [
     `  let b${i} = saturate(layer${i}Blend());`,
@@ -161,7 +161,7 @@ ${layers.length > 0 ? `  ${fill}\n${surface}` : ''}
   return r;
 }
 fn layerNormal(in: Varyings, m: vec3f) -> vec4f {
-${graph ? `  ${fill}\n  materialGraph();\n` : ''}${normals.length > 0 ? `${graph ? '' : `  ${fill}\n`}  var n = m;\n${normals.join('\n')}\n  return vec4f(n, 1.0);` : '  return vec4f(m, 0.0);'}
+${graphs.length > 0 ? `  ${fill}\n${graphs.map((name) => `  ${name}();\n`).join('')}` : ''}${normals.length > 0 ? `${graphs.length > 0 ? '' : `  ${fill}\n`}  var n = m;\n${normals.join('\n')}\n  return vec4f(n, 1.0);` : '  return vec4f(m, 0.0);'}
 }`;
 }
 

@@ -1,12 +1,16 @@
 /**
  * 材质的图层栏（在模型上画贴图，S2）：材质层（MaterialFile.layers）按顺序列出，每层的填充（颜色、粗糙度、金属度）在这里改，
  * "画"进入视口里的绘制模式（画选中的实体上用这个材质的网格，画的是这层的遮罩）；"加绘制层"新建一张全黑的遮罩和一层。
- * 画的时候下面是笔刷（半径、硬度、强度、擦除）。层的别的写法（导入的、颜色树）在属性面板的"材质层"里按 JSON 改。
+ * 填充也可以是一张节点图（"填充"菜单选库里带节点图的材质，比如掉漆的金属：画到哪儿，哪儿就是那种材质，磨损、脏污的规则跟着走），
+ * "节点图"在下面的节点图面板里改这层的图。画的时候下面是笔刷（半径、硬度、强度、擦除）。层的别的写法（导入的、颜色树）在属性
+ * 面板的"材质层"里按 JSON 改。
  */
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Brush, Plus, Square } from '@lucide/icons';
-import { Button, Checkbox, ColorField, Flex, FormSection, NumberField, Small, Text } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Brush, Layers, Plus, Square, Workflow } from '@lucide/icons';
+import type { GraphFile } from '@stride-ts/engine/node-graph';
+import { Button, Checkbox, ColorField, Flex, FormSection, Menu, MenuGroup, MenuItem, NumberField, Small, Text } from '@zerodep-dev/vue-tsx-pro-ui';
+import { LIBRARY_MATERIALS } from '../../library/index.ts';
 import { t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
 
@@ -31,7 +35,11 @@ interface LayerFile {
   readonly metalness?: { readonly $type?: string; readonly value?: unknown };
   readonly glossiness?: { readonly tree?: { readonly $type?: string; readonly value?: unknown }; readonly invert?: boolean };
   readonly blend?: { readonly texture?: { readonly texture?: string } };
+  readonly graph?: GraphFile;
 }
+
+/** 能当填充的库材质：带节点图的，智能材质排前面。 */
+const GRAPH_FILLS = LIBRARY_MATERIALS.filter((item) => item.material.graph).sort((a, b) => Number(b.category === 'smart') - Number(a.category === 'smart'));
 
 export const PaintLayers = _component(({ session }: { session: EditorSession }) => {
   const number = (value: unknown, fallback: number) => (typeof value === 'number' ? value : fallback);
@@ -50,14 +58,21 @@ export const PaintLayers = _component(({ session }: { session: EditorSession }) 
           return (
             <Flex align="center" gap="sm" wrap sx={painting?.layer === i && styles.active}>
               <Text>{t.paintLayer(i + 1)}</Text>
-              {layer.diffuse?.$type === 'computeColor' && (
+              <Menu trigger={(props) => <Button {...props} size="sm" variant="soft" tone="neutral" icon={Layers}>{layer.graph ? t.paintFillGraph : t.paintFill}</Button>}>
+                <MenuItem onAction={() => session.setLayerFill(i, undefined)}>{t.paintFillPlain}</MenuItem>
+                <MenuGroup label={t.paintFillLibrary}>
+                  {GRAPH_FILLS.map((item) => <MenuItem onAction={() => session.setLayerFill(i, item.material.graph)}>{t.library.names[item.id] ?? item.id}</MenuItem>)}
+                </MenuGroup>
+              </Menu>
+              {layer.graph && <Button size="sm" variant="soft" tone="neutral" icon={Workflow} onClick={() => session.openMaterialGraph(i)}>{t.graphOpen}</Button>}
+              {!layer.graph && layer.diffuse?.$type === 'computeColor' && (
                 <ColorField size="sm" aria-label={t.paintColor} title={t.paintColor} _value={toHex(layer.diffuse.value)}
                   onUpdate:_value={(hex: string) => session.editInspected(['layers', i, 'diffuse', 'value'], fromHex(hex))} />
               )}
-              {layer.glossiness?.tree?.$type === 'computeFloat' && (
+              {!layer.graph && layer.glossiness?.tree?.$type === 'computeFloat' && (
                 amount(t.paintRoughness, number(layer.glossiness.tree.value, 0.5), (value) => session.editInspected(['layers', i, 'glossiness', 'tree', 'value'], value))
               )}
-              {layer.metalness?.$type === 'computeFloat' && (
+              {!layer.graph && layer.metalness?.$type === 'computeFloat' && (
                 amount(t.paintMetalness, number(layer.metalness.value, 0), (value) => session.editInspected(['layers', i, 'metalness', 'value'], value))
               )}
               {paintable && (painting?.layer === i

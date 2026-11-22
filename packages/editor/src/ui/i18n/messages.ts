@@ -206,6 +206,10 @@ export interface EditorMessages {
   readonly particleModules: Readonly<Record<string, string>>;
   readonly particleFields: Readonly<Record<string, string>>;
   readonly paintAddLayer: string;
+  readonly paintFill: string;
+  readonly paintFillGraph: string;
+  readonly paintFillPlain: string;
+  readonly paintFillLibrary: string;
   readonly paintLayer: (n: number) => string;
   readonly paintColor: string;
   readonly paintRoughness: string;
@@ -441,6 +445,10 @@ const zhCN: EditorMessages = {
   },
   particleFields: { samplerMain: '曲线', samplerOptional: '第二条曲线', samplerSize: '大小曲线', samplerRotation: '旋转曲线' },
   paintAddLayer: '加绘制层',
+  paintFill: '填充：纯色',
+  paintFillGraph: '填充：节点图',
+  paintFillPlain: '纯色',
+  paintFillLibrary: '节点图（从库里拷一份）',
   paintLayer: (n) => `图层 ${n}`,
   paintColor: '这一层的颜色',
   paintRoughness: '粗糙度',
@@ -671,6 +679,10 @@ const enUS: EditorMessages = {
   particleModules: {},
   particleFields: {},
   paintAddLayer: 'Add paint layer',
+  paintFill: 'Fill: plain',
+  paintFillGraph: 'Fill: node graph',
+  paintFillPlain: 'Plain',
+  paintFillLibrary: 'Node graph (copied from the library)',
   paintLayer: (n) => `Layer ${n}`,
   paintColor: 'Color of this layer',
   paintRoughness: 'Roughness',

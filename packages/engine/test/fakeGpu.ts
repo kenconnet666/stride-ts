@@ -26,6 +26,29 @@ export function stubGpuGlobals(): void {
   vi.stubGlobal('GPUMapMode', flags(['READ', 'WRITE']));
 }
 
+/**
+ * WGSL 的保留字（规范的 Reserved Words 一节，gpuweb 仓库的 wgsl/wgsl.reserved.plain）：用来当名字时 Chrome 编不过着色器
+ * （`active`、`operator` 都踩过），假设备的 createShaderModule 先查一遍，单测里就报出来。
+ */
+const WGSL_RESERVED = new Set((
+  'NULL Self abstract active alignas alignof as asm asm_fragment async attribute auto await become cast catch class ' +
+  'co_await co_return co_yield coherent column_major common compile compile_fragment concept const_cast consteval ' +
+  'constexpr constinit crate debugger decltype delete demote demote_to_helper do dynamic_cast enum explicit export ' +
+  'extends extern external fallthrough filter final finally friend from fxgroup get goto groupshared highp impl ' +
+  'implements import inline instanceof interface layout lowp macro macro_rules match mediump meta mod module move mut ' +
+  'mutable namespace new nil noexcept noinline nointerpolation non_coherent noncoherent noperspective null nullptr of ' +
+  'operator package packoffset partition pass patch pixelfragment precise precision premerge priv protected pub public ' +
+  'readonly ref regardless register reinterpret_cast require resource restrict self set shared sizeof smooth snorm static ' +
+  'static_assert static_cast std subroutine super target template this thread_local throw trait try type typedef typeid ' +
+  'typename typeof union unless unorm unsafe unsized use using varying virtual volatile wgsl where with writeonly yield'
+).split(' '));
+
+/** 着色器源码里用到的保留字（去掉注释后按标识符切）。 */
+export function wgslReservedWords(code: string): string[] {
+  const stripped = code.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*$/gm, ' ');
+  return [...new Set(stripped.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [])].filter((word) => WGSL_RESERVED.has(word));
+}
+
 /** 什么方法都能调、调了返回另一个这样的对象；调用记进 calls。 */
 function recorder(calls: GpuCall[], overrides: Record<string, (...args: never[]) => unknown> = {}): never {
   return new Proxy({}, {
@@ -67,6 +90,8 @@ export function fakeGpu(): { device: GPUDevice; pass: GPURenderPassEncoder; call
     // 编译信息是个 Promise（createCheckedShaderModule 等它报错误）
     createShaderModule: (descriptor: GPUShaderModuleDescriptor) => {
       calls.push({ method: 'createShaderModule', args: [descriptor] });
+      const reserved = wgslReservedWords(descriptor.code);
+      if (reserved.length > 0) throw new Error(`WGSL reserved words in shader "${descriptor.label ?? ''}": ${reserved.join(', ')}`);
       return { label: descriptor.label, getCompilationInfo: () => Promise.resolve({ messages: [] }) };
     },
     createComputePipelineAsync: (descriptor: GPUComputePipelineDescriptor) => {

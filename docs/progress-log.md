@@ -963,6 +963,11 @@ Valley 从高处看小镇和林子（测试浏览器，无头，1080p）：120 H
 - 整理（R3 做完以后，单独提交）：`ToneMap.ts` 长到 921 行，拆进 `rendering/postfx/tonemap/`——`ToneMap.ts`（映射和平均测光，532 行）、`HistogramMetering.ts`、`LocalExposure.ts`（建网格；映射时取网格留在 ToneMap 的着色器里）、`ColorLut.ts`（解析、按路径登记、每个设备的贴图）、`whiteBalance.ts`；站台的画面、照片比对、耗时和拆之前一样。
 - 途中的坑：WGSL 里 `operator` 是保留字，整个画面黑了（色调映射的管线无效）。主动改进：假 GPU 的 `createShaderModule` 查 WGSL 的保留字（规范的表，146 个），新单测 `wgslSources.test.ts` 扫源码里 132 段 `/* wgsl */` 模板字符串，以后在单测里就报。
 
+## R4 第二步：三平面投影、细节叠加、按距离淡出的节点（2026-11-22）
+
+- `rendering/mesh/materialGraph.ts`：`triplanar`（贴图、每米几次、过渡的锐度：沿世界三个轴各采一次，按法线分量的次方混）、`overlay`（Photoshop 的叠加，amount 是叠多少）、`distanceFade`（离相机 near 米以内是 1、far 米以外是 0）；节点引用的贴图不只看 `texture` 节点，带 `texture` 参数的都算（加载、改名、移动时改写，`materialGraphTextures`、references.ts）。单测：三平面的六次采样、库函数只放一次、距离读 `view.eye`、贴图引用。
+- 测试浏览器（无头，960×1280）：临时给站台的地砖加节点图（地砖贴图三平面投影，同一张按 8 倍缩小在 2～8 米内叠上去），能编译、能画，砖缝按世界坐标对齐，近处多了一层细的颗粒；不透明阶段 0.361 毫秒，加不加一样。试完还原（地面的白模本来就是按世界坐标投影的 UV，用不着三平面）。
+
 ## R4 第一步：扫描的材质的导入（2026-11-22）
 
 - `packages/editor/src/materialSet.ts`（`classifyMap`、`materialSet`、`scannedMaterial`，界面和后端共用），`EditorBackend.importMaterialSet`（各张图写进 `<文件夹>/<名字>/`、导入设置是 UASTC、当场压好，金属度贴图取平均，写材质）、`POST /import-material`、MCP 的 `import_material`、资源浏览器拖进一组图片时认出来合成一个材质；材质文件的 `credit`（引擎的格式、字段描述、中文名）；单测（ambientCG、Poly Haven 的命名，成套的判断，写出的材质照字段描述检查）。TypeScript 的库升到 es2026（`Uint8Array.toBase64`）。

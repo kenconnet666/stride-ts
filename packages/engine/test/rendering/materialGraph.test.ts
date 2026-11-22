@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { GraphFile } from '../../src/content/formats/nodeGraph';
 import { sortGraph } from '../../src/content/formats/nodeGraph';
 import { ColorTreeCompiler } from '../../src/rendering/mesh/colorTree';
-import { compileMaterialGraph, MATERIAL_NODE_SPECS } from '../../src/rendering/mesh/materialGraph';
+import { compileMaterialGraph, MATERIAL_NODE_SPECS, materialGraphTextures } from '../../src/rendering/mesh/materialGraph';
 
 const compiler = () => new ColorTreeCompiler({ texture: () => undefined, shaderClass: () => undefined }, 3);
 
@@ -64,6 +64,30 @@ describe('材质节点图', () => {
     expect(code).toContain('graphRange(streams.world.y, 200.0, 1000.0, 50.0)');
     // 两个遮罩共用一份库函数
     expect(c.declarations.match(/fn graphRange\(/g)).toHaveLength(1);
+  });
+
+  test('三平面投影、细节叠加、按距离淡出：沿世界三个轴各采一次，按法线混；细节在近处 overlay 上去', () => {
+    const c = compiler();
+    const sampled: string[] = [];
+    const graph: GraphFile = {
+      nodes: [
+        { id: 'base', type: 'triplanar', params: { texture: 'M/Concrete_baseColor', scale: 0.5 } },
+        { id: 'detail', type: 'triplanar', params: { texture: 'M/Grain', scale: 8, sharpness: 2 } },
+        { id: 'near', type: 'distanceFade', params: { near: 2, far: 10 } },
+        { id: 'color', type: 'overlay', inputs: { base: { node: 'base' }, detail: { node: 'detail' }, amount: { node: 'near' } } },
+      ],
+      outputs: { baseColor: { node: 'color' } },
+    };
+    const { code } = compileMaterialGraph(graph, c, (texture, uv) => (sampled.push(`${texture} ${uv}`), `sample(${texture})`), 'concrete');
+    expect(sampled).toContain('M/Concrete_baseColor (streams.world.zy * 0.5)');
+    expect(sampled).toContain('M/Grain (streams.world.xz * 8.0)');
+    expect(sampled).toHaveLength(6);
+    expect(code).toContain('graphTriplanarWeights(streams.normal, 2.0)');
+    expect(code).toContain('distance(streams.world, view.eye.xyz)');
+    expect(code).toContain('graphOverlay(');
+    expect(c.declarations.match(/fn graphTriplanarWeights\(/g)).toHaveLength(1);
+    // 三平面投影的贴图也算材质引用的贴图（加载、改名时改写）
+    expect(materialGraphTextures(graph)).toEqual(['M/Concrete_baseColor', 'M/Grain']);
   });
 
   test('错误：认不出的节点、不存在的输出、没有的输入、环、指向不存在的节点', () => {

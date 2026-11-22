@@ -112,6 +112,21 @@ const RANGE = `fn graphRange(v: f32, lo: f32, hi: f32, width: f32) -> f32 {
   return smoothstep(lo - w, lo + w, v) * (1.0 - smoothstep(hi - w, hi + w, v));
 }
 `;
+/** 三平面投影：法线各分量的 sharpness 次方归一当三个方向的权重，按它混三次采样。 */
+const TRIPLANAR = `fn graphTriplanarWeights(n: vec3f, sharpness: f32) -> vec3f {
+  let w = pow(abs(n), vec3f(sharpness));
+  return w / max(w.x + w.y + w.z, 1e-5);
+}
+
+fn graphTriplanar(x: vec4f, y: vec4f, z: vec4f, w: vec3f) -> vec4f {
+  return x * w.x + y * w.y + z * w.z;
+}
+`;
+/** Overlay：底色暗于 0.5 时乘、亮于 0.5 时滤色。 */
+const OVERLAY = `fn graphOverlay(base: vec3f, detail: vec3f) -> vec3f {
+  return select(1.0 - 2.0 * (1.0 - base) * (1.0 - detail), 2.0 * base * detail, base < vec3f(0.5));
+}
+`;
 /** 高度的导数换成切线空间的法线：按 UV 的导数把屏幕空间的高度梯度换到 UV 空间（x 沿 U、y 沿 V）。 */
 const HEIGHT_NORMAL = `fn graphHeightNormal(height: f32, uv: vec2f, strength: f32) -> vec3f {
   let dx = dpdx(uv);
@@ -183,6 +198,24 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
     type: 'texture', category: 'input', inputs: [UV_IN], outputs: [{ name: 'color', type: 'color' }],
     params: [{ name: 'texture', type: { kind: 'asset', asset: 'texture', form: 'path' }, default: null, description: 'a texture asset (an imported image)' }],
     emit: ({ uv }, p, context) => ({ color: (typeof p['texture'] === 'string' ? context.sample(p['texture'], uv!) : undefined) ?? 'vec4f(1.0, 0.0, 1.0, 1.0)' }),
+  },
+  {
+    // 三平面投影（扫描的贴图用在白盒、SDF 这些按面投影 UV 的模型上：接缝、拉伸都没有）：沿世界的三个轴各采一次，按法线的
+    // 各分量的 sharpness 次方混；scale 是每米重复几次
+    type: 'triplanar', category: 'mapping', inputs: [], outputs: [{ name: 'color', type: 'color' }],
+    params: [
+      { name: 'texture', type: { kind: 'asset', asset: 'texture', form: 'path' }, default: null, description: 'a texture asset (an imported image)' },
+      { name: 'scale', type: num(0, undefined, 0.05), default: 0.5, description: 'repeats per meter' },
+      { name: 'sharpness', type: num(1, 16, 0.5), default: 4, description: 'how quickly the three projections hand over at slanted faces' },
+    ],
+    emit: (_, p, context) => {
+      if (typeof p['texture'] !== 'string') return { color: 'vec4f(1.0, 0.0, 1.0, 1.0)' };
+      const at = (uv: string) => context.sample(p['texture'] as string, `(${uv} * ${f(p['scale'])})`);
+      const x = at('streams.world.zy'), y = at('streams.world.xz'), z = at('streams.world.xy');
+      if (!x || !y || !z) return { color: 'vec4f(1.0, 0.0, 1.0, 1.0)' };
+      context.addFunction('graphTriplanarWeights', TRIPLANAR);
+      return { color: `graphTriplanar(${x}, ${y}, ${z}, graphTriplanarWeights(streams.normal, ${f(p['sharpness'])}))` };
+    },
   },
   // 生成器
   {
@@ -257,6 +290,25 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
     emit: (i, p) => ({ out: `vec4f(pow(max(${i['in']}.rgb, vec3f(0.0)), vec3f(${f(p['exponent'])})), ${i['in']}.a)` }),
   },
   {
+    // 叠加（Photoshop 的 Overlay）：细节贴图压在底色上，暗处更暗、亮处更亮，0.5 的灰不改；amount 是叠多少
+    type: 'overlay', category: 'math',
+    inputs: [{ name: 'base', type: 'color', fallback: 'vec4f(0.5)' }, { name: 'detail', type: 'color', fallback: 'vec4f(0.5)' }, { name: 'amount', type: 'float', fallback: '1.0' }],
+    outputs: [{ name: 'out', type: 'color' }], params: [],
+    emit: ({ base, detail, amount }, _, context) => {
+      context.addFunction('graphOverlay', OVERLAY);
+      return { out: `vec4f(mix(${base}.rgb, graphOverlay(${base}.rgb, ${detail}.rgb), clamp(${amount}, 0.0, 1.0)), ${base}.a)` };
+    },
+  },
+  {
+    // 离相机近是 1、远是 0（细节贴图只在近处叠：远处一个像素盖住好多个纹素，叠上去只剩闪烁和摩尔纹）
+    type: 'distanceFade', category: 'mask', inputs: [], outputs: [{ name: 'mask', type: 'float' }],
+    params: [
+      { name: 'near', type: num(0, undefined, 1), default: 5, description: 'distance (m) up to which the mask is 1' },
+      { name: 'far', type: num(0, undefined, 1), default: 20, description: 'distance where it reaches 0' },
+    ],
+    emit: (_, p) => ({ mask: `(1.0 - smoothstep(${f(p['near'])}, max(${f(p['far'])}, ${f(p['near'])} + 1e-3), distance(streams.world, view.eye.xyz)))` }),
+  },
+  {
     type: 'colorRamp', category: 'math', inputs: [{ name: 't', type: 'float', fallback: '0.5' }], outputs: [{ name: 'color', type: 'color' }],
     params: [{ name: 'from', type: color, default: [0, 0, 0] }, { name: 'to', type: color, default: [1, 1, 1] }],
     emit: ({ t }, p) => ({ color: `mix(${rgb(p['from'])}, ${rgb(p['to'])}, clamp(${t}, 0.0, 1.0))` }),
@@ -285,9 +337,9 @@ const NODES_BY_TYPE = new Map(MATERIAL_NODES.map((node) => [node.type, node]));
 /** 节点库的描述（编辑器的节点图面板用）。 */
 export const MATERIAL_NODE_SPECS: readonly NodeSpec[] = MATERIAL_NODES;
 
-/** 贴图节点引用的贴图资源（内容路径）：加载材质时先加载它们，编辑器改名、移动时改写。 */
+/** 节点（贴图、三平面投影）引用的贴图资源（内容路径）：加载材质时先加载它们，编辑器改名、移动时改写。 */
 export function materialGraphTextures(graph: GraphFile): string[] {
-  return graph.nodes.flatMap((node) => (node.type === 'texture' && typeof node.params?.['texture'] === 'string' ? [node.params['texture']] : []));
+  return graph.nodes.flatMap((node) => (typeof node.params?.['texture'] === 'string' ? [node.params['texture']] : []));
 }
 
 /** 编译的结果：WGSL（私有变量和 materialGraph 函数）和接上了的输出。 */

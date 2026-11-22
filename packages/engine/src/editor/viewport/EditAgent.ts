@@ -18,7 +18,7 @@ import { Transform } from '../../engine/transform';
 import type { Game } from '../../engine/Game';
 import { Camera } from '../../rendering/components';
 import { MeshPainter } from '../../rendering/paint/MeshPainter';
-import type { BrushFile, PolyMeshFile } from '../../content/formats/assetFormat';
+import type { BrushFile, PolyMeshFile, SdfFile } from '../../content/formats/assetFormat';
 import type { SplineFile } from '../../content/formats/splineFormat';
 import { encodePng } from '../../offline/png';
 import { saveImage } from '../backendApi';
@@ -37,6 +37,7 @@ import { PolyEditTool } from './tools/PolyEditTool';
 import type { PolySelectMode } from './tools/polyPicking';
 import { SplineEditTool } from './tools/SplineEditTool';
 import { BrushEditTool } from './tools/BrushEditTool';
+import { SdfEditTool } from './tools/SdfEditTool';
 import { DEFAULT_SNAP, TransformGizmo, type SnapSettings } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
 
@@ -85,7 +86,7 @@ export class EditAgent {
   readonly particles: ParticlePreview;
   /**
    * 视口里正在用的编辑工具（画贴图、雕刻地形、编辑多边形、样条、白盒，见 tools/）：开着时左键交给它，不是点选、拖操纵器。
-   * 用下面的 paintMesh、sculptTerrain、editPoly、editSpline、editBrush 开，endTool 关。
+   * 用下面的 paintMesh、sculptTerrain、editPoly、editSpline、editBrush、editSdf 开，endTool 关。
    */
   get tool(): ViewportTool | undefined {
     return this.#tool;
@@ -248,6 +249,11 @@ export class EditAgent {
   /** 开始编辑这个实体上的白盒（path 是它的 .brush.json）。 */
   editBrush(entity: string, path: string, brush: BrushFile): BrushEditTool {
     return this.#use(new BrushEditTool(entity, path, brush));
+  }
+
+  /** 开始编辑这个实体（场景文件里的 id）的模型来自的 SDF 文件 path（sdf 是现在的内容）：点选形状、操纵器拖着移动、旋转、改大小。 */
+  editSdf(entity: string, path: string, sdf: SdfFile): SdfEditTool {
+    return this.#use(new SdfEditTool(entity, path, sdf));
   }
 
   /** 编辑器直接改了代理、工具的状态（网格、选择）：视口按需出帧时叫醒它画出来。 */

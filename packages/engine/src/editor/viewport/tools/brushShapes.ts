@@ -78,9 +78,14 @@ export function pickBrushFace(file: BrushFile, origin: Vec3, direction: Vec3): B
  * 选中的换成下一个（clickBrush）。
  */
 export function brushHits(file: BrushFile, origin: Vec3, direction: Vec3): BrushHit[] {
+  return boxHits(file.brushes.map(brushBox), origin, direction);
+}
+
+/** 射线穿过的有向盒子（下标是在 boxes 里的位置），由近到远；白盒的笔刷、SDF 的形状（sdfShapes.ts）都按它点选。 */
+export function boxHits(boxes: readonly BrushBox[], origin: Vec3, direction: Vec3): BrushHit[] {
   const hits: BrushHit[] = [];
-  file.brushes.forEach((shape, index) => {
-    const box = brushBox(shape), back = inverse(box.rotation);
+  boxes.forEach((box, index) => {
+    const back = inverse(box.rotation);
     // 射线换进盒子的坐标（盒子的中心在原点、轴对齐）
     const o = rotate(back, [origin[0] - box.center[0], origin[1] - box.center[1], origin[2] - box.center[2]]);
     const d = rotate(back, direction);

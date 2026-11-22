@@ -580,7 +580,8 @@ export type BrushShapeFile = {
 );
 
 /**
- * SDF 建模（Stride 没有；照 Womp、Adobe Substance Modeler 的"液态"建模）：一串形状——球、圆角方块、胶囊、圆柱、圆环、椭球——
+ * SDF 建模（Stride 没有；照 Womp、Adobe Substance Modeler 的"液态"建模）：一串形状——球、圆角方块、胶囊、圆柱、圆环、椭球、圆台、
+ * 两头是球的圆锥、六棱柱——
  * 按顺序平滑地并上、减掉或求交（smoothness 是融合带的宽度，0 是硬接），编辑器后端（原生工具模块的 st_sdf_mesh，Manifold 的等值面）
  * 烘成同名的模型：光滑的法线（距离场的梯度，融合的地方也是圆的），按朝向投影的世界坐标 UV，每个三角形用离它最近的形状的材质槽。
  * 圆润的道具、角色的粗形、石头这类用它很快；场景引用烘出的模型，这个文件是源头，随时回来改参数。
@@ -620,6 +621,12 @@ export type SdfShapeFile = {
   /** 圆环：环在 XZ 平面上。 */
   | { readonly kind: 'torus'; readonly ringRadius: number; readonly tubeRadius: number }
   | { readonly kind: 'ellipsoid'; readonly radii: Vec3Tuple }
+  /** 圆台（topRadius 为 0 是圆锥）：轴是 Y，height 是整个的高，底面半径 bottomRadius。 */
+  | { readonly kind: 'cone'; readonly height: number; readonly bottomRadius: number; readonly topRadius?: number }
+  /** 两头是球的圆锥（四肢、角、手指）：两个球心沿 Y 相距 height，半径差要小于 height。 */
+  | { readonly kind: 'roundCone'; readonly height: number; readonly bottomRadius: number; readonly topRadius: number }
+  /** 六棱柱（螺母、铅笔、蜂窝）：六边形在 XZ 平面上，radius 是中心到边的距离，height 沿 Y。 */
+  | { readonly kind: 'hexPrism'; readonly height: number; readonly radius: number }
 );
 
 /**

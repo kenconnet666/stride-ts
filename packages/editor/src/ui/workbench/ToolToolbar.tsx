@@ -7,7 +7,7 @@ import type { PolyOperation } from '@stride-ts/engine/modeling';
 import type { SculptBrush } from '@stride-ts/engine';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
-import { Button, Flex, NumberField, Separator, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
+import { Button, Flex, Menu, MenuItem, NumberField, Separator, Text, Toolbar } from '@zerodep-dev/vue-tsx-pro-ui';
 import { t } from '../i18n/messages';
 import type { ViewportTools } from '../session/ViewportTools';
 
@@ -84,6 +84,26 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
     ];
   };
+  /** 编辑 SDF 时的工具条：几个形状、加形状（九种）、选中的那个是加减交和融合的宽度、删除，最后是"完成"。 */
+  const sdfControls = (editing: NonNullable<typeof tools.sdfEditing.value>) => {
+    const shape = editing.selection === undefined ? undefined : editing.sdf.shapes[editing.selection];
+    return [
+      <Text tone="muted" numeric>{t.sdfCount(editing.sdf.shapes.length)}</Text>,
+      <Menu trigger={(props) => <Button {...props} size="sm" variant="soft" tone="neutral" icon={Plus}>{t.sdfAdd}</Button>}>
+        {(Object.keys(t.sdfShapes) as (keyof typeof t.sdfShapes)[]).map((kind) => <MenuItem onAction={() => tools.addSdfShape(kind)}>{t.sdfShapes[kind]}</MenuItem>)}
+      </Menu>,
+      ...(['add', 'subtract', 'intersect'] as const).map((operation) => (
+        <Button size="sm" variant={shape?.operation === operation ? 'soft' : 'ghost'} tone="neutral" aria-pressed={shape?.operation === operation} disabled={!shape}
+          onClick={() => tools.setSdfShape({ operation })}>{t.brushOperations[operation]}</Button>
+      )),
+      <NumberField size="sm" prefix={t.sdfSmoothness} aria-label={t.sdfSmoothness} disabled={!shape} min={0} step={0.01} format={{ useGrouping: false, maximumFractionDigits: 3 }}
+        _value={shape?.smoothness ?? 0} onUpdate:_value={(value: number | null) => value !== null && tools.setSdfShape({ smoothness: value })} />,
+      <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.sdfDelete} (Delete)`} disabled={!shape || editing.sdf.shapes.length <= 1}
+        onClick={() => tools.deleteSelectedSdfShape()}>{t.sdfDelete}</Button>,
+      <Flex grow />,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
+    ];
+  };
   /**
    * 雕刻地形时的工具条：先是笔刷、地物两种工具；笔刷是种类、半径（米）、强度，地物是新建、选中的那个的高度、过渡宽度、强度
    * 和删除；文件里有几笔，最后是"完成"。
@@ -136,8 +156,8 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
     ];
   };
   return () => {
-    const poly = tools.polyEditing.value, spline = tools.splineEditing.value, brush = tools.brushEditing.value, sculpting = tools.sculpting.value;
-    const controls = poly ? polyControls(poly) : spline ? splineControls(spline) : brush ? brushControls(brush) : sculpting ? sculptControls(sculpting) : [];
+    const poly = tools.polyEditing.value, spline = tools.splineEditing.value, brush = tools.brushEditing.value, sdf = tools.sdfEditing.value, sculpting = tools.sculpting.value;
+    const controls = poly ? polyControls(poly) : spline ? splineControls(spline) : brush ? brushControls(brush) : sdf ? sdfControls(sdf) : sculpting ? sculptControls(sculpting) : [];
     return <Toolbar docked="top" aria-label={t.viewportToolbar}>{controls}</Toolbar>;
   };
 });

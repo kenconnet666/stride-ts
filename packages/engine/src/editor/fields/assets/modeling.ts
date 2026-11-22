@@ -97,6 +97,20 @@ export const SDF_FIELDS = fields<SdfFile>({
       }),
       torus: fields<{ ringRadius: unknown; tubeRadius: unknown }>({ ringRadius: { type: positiveNumber() }, tubeRadius: { type: positiveNumber() } }),
       ellipsoid: fields<{ radii: unknown }>({ radii: { type: vector(3, 'm') } }),
+      cone: fields<{ height: unknown; bottomRadius: unknown; topRadius: unknown }>({
+        height: { type: positiveNumber() },
+        bottomRadius: { type: number({ min: 0, step: 0.05, unit: 'm' }) },
+        topRadius: { type: number({ min: 0, step: 0.05, unit: 'm' }), optional: true, default: 0, description: '0 is a pointed cone' },
+      }),
+      roundCone: fields<{ height: unknown; bottomRadius: unknown; topRadius: unknown }>({
+        height: { type: positiveNumber(), description: 'distance between the two sphere centers, along Y (more than the difference of the radii)' },
+        bottomRadius: { type: number({ min: 0, step: 0.05, unit: 'm' }) },
+        topRadius: { type: number({ min: 0, step: 0.05, unit: 'm' }) },
+      }),
+      hexPrism: fields<{ height: unknown; radius: unknown }>({
+        height: { type: positiveNumber() },
+        radius: { type: positiveNumber(), description: 'from the center to the middle of a side' },
+      }),
     },
     common: fields<{ name: unknown; operation: unknown; smoothness: unknown; position: unknown; rotation: unknown; material: unknown }>({
       name: { type: string, optional: true },

@@ -103,5 +103,8 @@ function nativeShape(shape: SdfShapeFile): SdfShape {
     case 'cylinder': return { ...base, kind: 'cylinder', halfHeight: shape.height / 2, radius: shape.radius, edgeRadius: shape.edgeRadius ?? 0 };
     case 'torus': return { ...base, kind: 'torus', ringRadius: shape.ringRadius, tubeRadius: shape.tubeRadius };
     case 'ellipsoid': return { ...base, kind: 'ellipsoid', radii: shape.radii };
+    case 'cone': return { ...base, kind: 'cone', halfHeight: shape.height / 2, bottomRadius: shape.bottomRadius, topRadius: shape.topRadius ?? 0 };
+    case 'roundCone': return { ...base, kind: 'roundCone', height: shape.height, bottomRadius: shape.bottomRadius, topRadius: shape.topRadius };
+    case 'hexPrism': return { ...base, kind: 'hexPrism', halfHeight: shape.height / 2, radius: shape.radius };
   }
 }

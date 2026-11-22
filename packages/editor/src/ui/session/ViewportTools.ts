@@ -4,10 +4,10 @@
  * 改了以后经回调告诉这里。会话持有它（`session.tools`），工具条、属性面板、图层栏用它。
  */
 import { shallowRef } from 'vue';
-import type { BrushEditTool, PaintBrush, PaintTool, PolyEditTool, PolySelection, PolySelectMode, SculptBrush, SculptTool, SplineEditTool } from '@stride-ts/engine';
-import { branchFromPoint, deleteBrush, deleteSplinePoints } from '@stride-ts/engine';
+import type { BrushEditTool, PaintBrush, PaintTool, PolyEditTool, PolySelection, PolySelectMode, SculptBrush, SculptTool, SdfEditTool, SplineEditTool } from '@stride-ts/engine';
+import { addSdfShape, branchFromPoint, deleteBrush, deleteSdfShape, deleteSplinePoints } from '@stride-ts/engine';
 import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
-import type { BrushFile, BrushShapeFile, PolyMeshFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
+import type { BrushFile, BrushShapeFile, PolyMeshFile, SdfFile, SdfShapeFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
 import { encodePng } from '@stride-ts/engine/png';
 import { freeAssetPath } from '../../shared/newAssets';
 import { t } from '../i18n/messages';
@@ -15,7 +15,7 @@ import type { EditorSession } from './EditorSession';
 import { FileEditing } from './FileEditing';
 
 /** 模型能从哪种源文件烘出来、在视口里编辑：多边形网格、样条、白盒。 */
-export type ModelSourceKind = 'poly' | 'spline' | 'brush';
+export type ModelSourceKind = 'poly' | 'spline' | 'brush' | 'sdf';
 
 const NO_POLY_SELECTION: PolySelection = { vertices: [], edges: [], faces: [] };
 
@@ -37,6 +37,8 @@ export class ViewportTools {
   readonly splineEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly selection: readonly number[]; readonly spline: SplineFile }>();
   /** 正在编辑的白盒：哪个实体上、哪个 .brush.json，选中的笔刷和现在的白盒。 */
   readonly brushEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly selection: number | undefined; readonly brush: BrushFile }>();
+  /** 正在编辑的 SDF 模型（视口里点选形状、操纵器拖）：实体、文件、选中的形状。 */
+  readonly sdfEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly selection: number | undefined; readonly sdf: SdfFile }>();
 
   readonly #session: EditorSession;
   /** 正在编辑的文件的撤销、存盘（画贴图没有：一笔一存，覆盖遮罩）；响应式的：主工具条的撤销按钮跟着它换。 */
@@ -45,6 +47,7 @@ export class ViewportTools {
   #poly: PolyEditTool | undefined;
   #spline: SplineEditTool | undefined;
   #brush: BrushEditTool | undefined;
+  #sdf: SdfEditTool | undefined;
   #sculpt: SculptTool | undefined;
 
   constructor(session: EditorSession) {
@@ -63,7 +66,7 @@ export class ViewportTools {
 
   /** 开着编辑文件的工具（雕刻、多边形、样条、白盒）：视口上面换成它的工具条。 */
   get editing(): boolean {
-    return this.sculpting.value !== undefined || this.polyEditing.value !== undefined || this.splineEditing.value !== undefined || this.brushEditing.value !== undefined;
+    return this.sculpting.value !== undefined || this.polyEditing.value !== undefined || this.splineEditing.value !== undefined || this.brushEditing.value !== undefined || this.sdfEditing.value !== undefined;
   }
 
   /** 模型 modelPath 是不是从这种源文件烘出来的：同一路径有那种资源时是它的路径。 */
@@ -75,7 +78,7 @@ export class ViewportTools {
   stop(): void {
     const session = this.#session;
     session.agent.value?.endTool();
-    if ([t.polyHint, t.splineHint, t.brushHint, t.sculptHint, t.featuresHint].includes(session.status.value)) session.status.value = '';
+    if ([t.polyHint, t.splineHint, t.brushHint, t.sdfHint, t.sculptHint, t.featuresHint].includes(session.status.value)) session.status.value = '';
     this.#forget();
   }
 
@@ -87,16 +90,17 @@ export class ViewportTools {
   #forget(): void {
     this.#editing.value = undefined;
     this.#paint = undefined;
-    this.#poly = this.#spline = this.#brush = this.#sculpt = undefined;
+    this.#poly = this.#spline = this.#brush = this.#sdf = this.#sculpt = undefined;
     this.painting.value = undefined;
     this.sculpting.value = undefined;
     this.polyEditing.value = undefined;
     this.splineEditing.value = undefined;
     this.brushEditing.value = undefined;
+    this.sdfEditing.value = undefined;
   }
 
   /** 开一个编辑文件的工具：先关掉别的，读文件，记撤销的起点。 */
-  async #open<F extends object>(kind: 'poly' | 'spline' | 'brush' | 'terrain', path: string, restore: (file: F) => void): Promise<F | undefined> {
+  async #open<F extends object>(kind: 'poly' | 'spline' | 'brush' | 'sdf' | 'terrain', path: string, restore: (file: F) => void): Promise<F | undefined> {
     const session = this.#session;
     if (!session.agent.value) return undefined;
     this.stop();
@@ -437,7 +441,72 @@ export class ViewportTools {
     this.brushEditing.value = { entity: tool.entity, path: tool.path, selection: tool.selection, brush: tool.file };
   }
 
-  /** 视口里的 Delete：多边形删选中的面，样条删选中的控制点，白盒删选中的笔刷；返回有没有工具接了它。 */
+  // ── SDF ──
+
+  /** 在视口里编辑实体 entity 的模型来自的 SDF 文件 path 的形状。 */
+  async startSdfEdit(entity: string, path: string): Promise<void> {
+    const sdf = await this.#open<SdfFile>('sdf', path, (restored) => {
+      const tool = this.#sdf;
+      if (!tool) return;
+      tool.file = restored;
+      if (tool.selection !== undefined && tool.selection >= restored.shapes.length) tool.selection = undefined;
+      this.#showSdf();
+    });
+    const agent = this.#session.agent.value;
+    if (!sdf || !agent) return;
+    const tool = this.#sdf = agent.editSdf(entity, path, sdf);
+    tool.onChanged = (commit) => {
+      if (commit) this.#editing.value?.commit(tool.file);
+      this.#showSdf();
+    };
+    this.#showSdf();
+    this.#session.status.value = t.sdfHint;
+  }
+
+  /** 改 SDF 文件（一步撤销），选中 selection。 */
+  #commitSdf(file: SdfFile, selection: number | undefined): void {
+    const tool = this.#sdf;
+    if (!tool) return;
+    tool.file = file;
+    tool.selection = selection;
+    this.#editing.value?.commit(file);
+    this.#showSdf();
+  }
+
+  /** 加一个 kind 形状（放在选中的旁边），选中它。 */
+  addSdfShape(kind: SdfShapeFile['kind']): void {
+    const tool = this.#sdf;
+    if (!tool) return;
+    const { sdf, index } = addSdfShape(tool.file, kind, tool.selection);
+    this.#commitSdf(sdf, index);
+  }
+
+  /** 删掉选中的形状；只剩一个时在状态栏说为什么。 */
+  deleteSelectedSdfShape(): void {
+    const tool = this.#sdf;
+    if (!tool || tool.selection === undefined) return;
+    try {
+      this.#commitSdf(deleteSdfShape(tool.file, tool.selection), undefined);
+    } catch (error) {
+      this.#session.notice.value = (error as Error).message;
+    }
+  }
+
+  /** 改选中的形状：运算（加、减、交）、和前面融合的宽度。 */
+  setSdfShape(change: Partial<Pick<SdfShapeFile, 'operation' | 'smoothness'>>): void {
+    const tool = this.#sdf, index = tool?.selection;
+    if (!tool || index === undefined) return;
+    this.#commitSdf({ ...tool.file, shapes: tool.file.shapes.map((shape, i) => (i === index ? { ...shape, ...change } as SdfShapeFile : shape)) }, index);
+  }
+
+  #showSdf(): void {
+    const tool = this.#sdf;
+    if (!tool) return;
+    this.#session.agent.value?.refresh();
+    this.sdfEditing.value = { entity: tool.entity, path: tool.path, selection: tool.selection, sdf: tool.file };
+  }
+
+  /** 视口里的 Delete：多边形删选中的面，样条删选中的控制点，白盒删选中的笔刷，SDF 删选中的形状；返回有没有工具接了它。 */
   deleteSelected(): boolean {
     const poly = this.polyEditing.value;
     if (poly) {
@@ -450,6 +519,10 @@ export class ViewportTools {
     }
     if (this.brushEditing.value) {
       this.deleteSelectedBrush();
+      return true;
+    }
+    if (this.sdfEditing.value) {
+      this.deleteSelectedSdfShape();
       return true;
     }
     return false;

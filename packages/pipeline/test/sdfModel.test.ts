@@ -36,4 +36,19 @@ describe('SDF 建模的烘焙', () => {
     await expect(bakeSdfModel(tools, { ...base, shapes: [{ kind: 'sphere', operation: 'add', position: [0, 0, 0], radius: 1, material: 2 }] })).rejects.toThrow(/material slot 2/);
     await expect(bakeSdfModel(tools, { ...base, shapes: [{ kind: 'sphere', operation: 'subtract', position: [0, 0, 0], radius: 1 }] })).rejects.toThrow(/no shape adds anything/);
   });
+
+  test('圆台、两头是球的圆锥、六棱柱都烘得出来；圆锥的半径差不小于高、圆台没有半径时报错', async () => {
+    const one = (shape: SdfFile['shapes'][number]): SdfFile => ({ name: shape.kind, materials: [], resolution: 0.03, shapes: [shape] });
+    for (const shape of [
+      { kind: 'cone', operation: 'add', position: [0, 0, 0], height: 0.6, bottomRadius: 0.3 },
+      { kind: 'cone', operation: 'add', position: [0, 0, 0], height: 0.6, bottomRadius: 0.3, topRadius: 0.15 },
+      { kind: 'roundCone', operation: 'add', position: [0, 0, 0], height: 0.6, bottomRadius: 0.2, topRadius: 0.08 },
+      { kind: 'hexPrism', operation: 'add', position: [0, 0, 0], height: 0.3, radius: 0.2 },
+    ] as const) {
+      const model = decode(await bakeSdfModel(tools, one(shape)));
+      expect(model.meshes[0]!.indexCount, shape.kind).toBeGreaterThan(30);
+    }
+    await expect(bakeSdfModel(tools, one({ kind: 'roundCone', operation: 'add', position: [0, 0, 0], height: 0.1, bottomRadius: 0.3, topRadius: 0.05 }))).rejects.toThrow(/radii must differ by less than its height/);
+    await expect(bakeSdfModel(tools, one({ kind: 'cone', operation: 'add', position: [0, 0, 0], height: 0.5, bottomRadius: 0, topRadius: 0 }))).rejects.toThrow(/needs a bottom or a top radius/);
+  });
 });

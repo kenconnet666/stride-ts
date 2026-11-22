@@ -1,4 +1,4 @@
-import { Boxes, FileQuestion, MousePointerClick, Mountain, Plus, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
+import { Blend, Boxes, FileQuestion, MousePointerClick, Mountain, Plus, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { Button, Empty, Flex, FormSection, IconButton, Menu, MenuGroup, MenuItem, Paragraph, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -129,6 +129,7 @@ const MODEL_SOURCE_EDITORS: readonly {
   { kind: 'poly', icon: Shapes, label: () => t.polyEdit, editing: (tools) => tools.polyEditing.value?.entity, start: (tools, entity, path) => tools.startPolyEdit(entity, path) },
   { kind: 'spline', icon: Spline, label: () => t.splineEdit, editing: (tools) => tools.splineEditing.value?.entity, start: (tools, entity, path) => tools.startSplineEdit(entity, path) },
   { kind: 'brush', icon: Boxes, label: () => t.brushEdit, editing: (tools) => tools.brushEditing.value?.entity, start: (tools, entity, path) => tools.startBrushEdit(entity, path) },
+  { kind: 'sdf', icon: Blend, label: () => t.sdfEdit, editing: (tools) => tools.sdfEditing.value?.entity, start: (tools, entity, path) => tools.startSdfEdit(entity, path) },
 ];
 
 export const Inspector = _component(({ session }: { session: EditorSession }) => {

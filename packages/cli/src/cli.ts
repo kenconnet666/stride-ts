@@ -11,6 +11,7 @@ import { HubClient, type DevtoolsSession } from './client.ts';
 import { formatJson } from './format.ts';
 import { COLLECT_GPU_COUNTERS, INSTALL_GPU_COUNTERS } from './gpu-calls.ts';
 import { decodePng, diffImages, encodePng } from './png.ts';
+import { comparePhoto, photoComposite } from './photo.ts';
 import { profileCallers, profileFromTrace, summarizeProfile, type CpuProfile, type TraceEvent } from './profile.ts';
 import { checkEval, runTypeQuery, TS_USAGE, TypeScriptServer } from './lsp.ts';
 import { runDebugPlan, type DebugPlan } from './debugger.ts';
@@ -41,6 +42,12 @@ Game
                                                     protocol (stride open's Chrome), so the page may lock the pointer
   shot <out.png> [--diff <reference.png>] [--diff-out <file>] [--threshold 2] [--region x,y,w,h]
                                                     --region: compare only that rectangle (e.g. leave out UI drawn differently)
+  shot <out.png> --photo <photo.jpg> [--photo-out <file>]
+                                                    compare the frame with a reference photo taken from the same viewpoint
+                                                    (the photo is scaled to cover the frame, centered crop): exposure in stops,
+                                                    contrast, white balance, saturation, fine detail (render / photo), a 4x4
+                                                    grid of both, SSIM, notes; writes photo | render | 50% blend. A phone's
+                                                    main camera (~26 mm equivalent) has ~67 deg across its long side
   perf [--seconds 3] [--no-gpu]                     frame times, CPU per system/phase, native timings, GPU per pass
   native [--reset]                                  native counters (physics bodies, ...), timings, wasm memory
   draws                                             draw calls of the last frame per GPU render pass
@@ -134,6 +141,8 @@ const { values: options, positionals: rawPositionals } = parseArgsOrExit({
     trusted: { type: 'boolean' },
     diff: { type: 'string' },
     'diff-out': { type: 'string' },
+    photo: { type: 'string' },
+    'photo-out': { type: 'string' },
     threshold: { type: 'string' },
     region: { type: 'string' },
     seconds: { type: 'string' },
@@ -389,9 +398,17 @@ const commands: Record<string, () => Promise<unknown>> = {
   async shot() {
     const file = required(rest[0], 'output file');
     // 和参考图比时那一帧不加输出的抖动（每个像素 ±半个色阶的噪声）
-    const { png, ...info } = (await call('screenshot', options.diff ? { exact: true } : {})) as { png: string; width: number; height: number; frame: number };
+    const { png, ...info } = (await call('screenshot', options.diff || options.photo ? { exact: true } : {})) as { png: string; width: number; height: number; frame: number };
     const bytes = Buffer.from(png, 'base64');
     writeFileSync(file, bytes);
+    if (options.photo) {
+      // 照片让页面里的浏览器解（JPEG 这些 CLI 不会解），铺满到截图的大小
+      const decoded = (await call('decode-image', { data: readFileSync(options.photo).toString('base64'), width: info.width, height: info.height })) as { png: string; original: { width: number; height: number } };
+      const photo = decodePng(Buffer.from(decoded.png, 'base64')), render = decodePng(bytes);
+      const compositeFile = options['photo-out'] ?? file.replace(/\.png$/i, '') + '-photo.png';
+      writeFileSync(compositeFile, encodePng(photoComposite(photo, render)));
+      return { file, ...info, photo: { reference: options.photo, original: decoded.original, composite: compositeFile, ...comparePhoto(photo, render) } };
+    }
     if (!options.diff) return { file, ...info };
     const region = options.region?.split(',').map(Number);
     if (region && (region.length !== 4 || region.some((value) => !Number.isInteger(value)))) throw new Error(`--region takes x,y,w,h in pixels, got ${options.region}`);

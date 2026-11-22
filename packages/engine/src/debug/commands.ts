@@ -52,6 +52,7 @@ export function registerGameCommands(debug: Debug, game: Game): void {
   debug.command('input', "Simulate input. args: key (KeyboardEvent.code or a Stride key name) with action 'press' | 'down' | 'up' | 'hold' (ms); mouse [dx, dy] in CSS pixels; button ('left' | 'middle' | 'right') with action.", (args) => input(game, args));
   debug.command('screenshot', 'PNG of the next drawn frame (back buffer only, no page UI), as base64. args: exact (true: that frame without the output dither, for pixel comparisons).', (args) => screenshot(debug, game, args['exact'] === true));
   // 离线渲染的几个模块（编码、封装、混音）用到时才加载，不进每个游戏页面
+  debug.command('decode-image', 'Decode an image with the browser (JPEG, WebP, AVIF, PNG) and scale it to cover width x height (centered crop). Used by stride shot --photo. args: data (base64 of the file), width, height. Returns the PNG as base64 and the original size.', (args) => decodeImage(args));
   debug.command('render', RENDER_HELP, async (args) => (await import('../offline/renderCommand')).renderCommand(game, args));
   debug.command('bake', BAKE_HELP, async (args) => {
     const component = entityArg(game, args).get(ParticleSystemComponent);
@@ -667,14 +668,39 @@ async function screenshot(debug: Debug, game: Game, exact: boolean): Promise<unk
   const offscreen = new OffscreenCanvas(image.width, image.height);
   offscreen.getContext('2d')!.drawImage(image, 0, 0);
   image.close();
-  const blob = await offscreen.convertToBlob({ type: 'image/png' });
+  return { width: offscreen.width, height: offscreen.height, frame: game.frames, png: await pngBase64(offscreen) };
+}
+
+/** 画布的内容编成 PNG，base64（调试命令的返回值走 JSON）。 */
+async function pngBase64(canvas: OffscreenCanvas): Promise<string> {
+  const blob = await canvas.convertToBlob({ type: 'image/png' });
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(blob);
   });
-  return { width: offscreen.width, height: offscreen.height, frame: game.frames, png: dataUrl.slice(dataUrl.indexOf(',') + 1) };
+  return dataUrl.slice(dataUrl.indexOf(',') + 1);
+}
+
+/**
+ * 借浏览器解一张图（JPEG、WebP、AVIF、PNG……，CLI 那边只会解 PNG）：按 width × height 铺满（等比放大、居中裁掉多出来的），
+ * 返回 PNG 的 base64。照片比对（`stride shot --photo`）用。
+ */
+async function decodeImage(args: Args): Promise<unknown> {
+  const data = String(args['data'] ?? '');
+  const width = Number(args['width']), height = Number(args['height']);
+  if (!data || !(width > 0 && height > 0)) throw new Error('decode-image: data (base64) and a positive width and height are required');
+  const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+  const image = await createImageBitmap(new Blob([bytes]));
+  const scale = Math.max(width / image.width, height / image.height);
+  const offscreen = new OffscreenCanvas(width, height);
+  const context = offscreen.getContext('2d')!;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, (width - image.width * scale) / 2, (height - image.height * scale) / 2, image.width * scale, image.height * scale);
+  const original = { width: image.width, height: image.height };
+  image.close();
+  return { original, width, height, png: await pngBase64(offscreen) };
 }
 
 async function perf(debug: Debug, game: Game, args: Args): Promise<unknown> {

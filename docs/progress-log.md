@@ -923,7 +923,7 @@ GPU 粒子的间接绘制（同一天，particles-sample，无头 Chrome 1280x72
 ## CI 提速和 csharp-intermediate 的导航（2026-11-22）
 
 - CI 上 0c68a3f 的 csharp-intermediate 冒烟失败在"导航：角色走到目标"：角色走了 2 米就到了等待的上限。物理每帧最多补 0.25 秒（`maximumTimeToProcess`），CI 的软件 WebGPU 上一帧要零点几秒到一秒，物理只有游戏时间的几分之一，按 15 秒游戏时间等不够（按运行器的快慢时过时不过）。等待放宽到 60 秒游戏时间，快的机器上走到就返回。
-- CI 的耗时：一次全量 70 分钟左右，最慢的是 csharp-intermediate（30 分钟）、内容导入（改了 `packages/pipeline` 时缓存整个失效，16 分钟）、csharp-beginner（14 分钟），别的样例 2～5 分钟；后面的推送排在它后面、被新的推送取消，实际只有最新的提交跑完。两个 C# 样例的冒烟只按 CSS 坐标点击、不看像素，CI 上改成半分辨率画（`STRIDE_DPR=0.5`，`regress.ps1` 传给 `stride open --dpr`；CSS 的大小、点击坐标、UI 的布局不变，片元少四倍）。本机按 0.5 跑这两个样例都过。CI 上的效果见下一次运行。
+- CI 的耗时：一次全量 70 分钟左右，最慢的是 csharp-intermediate（30 分钟）、内容导入（改了 `packages/pipeline` 时缓存整个失效，16 分钟）、csharp-beginner（14 分钟），别的样例 2～5 分钟；后面的推送排在它后面、被新的推送取消，实际只有最新的提交跑完。两个 C# 样例的冒烟只按 CSS 坐标点击、不看像素，CI 上改成半分辨率画（`STRIDE_DPR=0.5`，`regress.ps1` 传给 `stride open --dpr`；CSS 的大小、点击坐标、UI 的布局不变，片元少四倍）。本机按 0.5 跑这两个样例都过。CI 上（8a50ec6 那次）：csharp-intermediate 30 → 4.3 分钟、csharp-beginner 13.6 → 5.1 分钟，都过了；全量的冒烟现在最慢的是 5 分钟左右，一次 CI 主要花在内容导入（改了导入器时 15 分钟）上。
 - 以后：内容缓存按样例分（改了导入器只重导受影响的）。
 
 ## CI 的软件 WebGPU 提速：调研（2026-11-21，没做完）

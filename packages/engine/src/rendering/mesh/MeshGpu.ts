@@ -742,7 +742,7 @@ export class MeshGpu {
    */
   viewBindGroup(shadowAtlas: GPUTexture | undefined, occlusion?: GPUTexture, contact?: GPUTexture, screen?: GPUTexture): GPUBindGroup {
     const atlas = shadowAtlas ?? this.#resources.emptyShadowAtlas;
-    const ao = occlusion ?? this.#resources.white;
+    const ao = occlusion ?? this.#resources.openOcclusion;
     const shadow = contact ?? this.#resources.white;
     const reflection = screen ?? this.#planar.empty;
     let byAtlas = this.#viewBindGroups.get(atlas);

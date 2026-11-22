@@ -3,7 +3,8 @@
  * （材质存成 `Materials/Library/<名字>`，特效变成场景里一个带粒子系统的实体），之后在工程里随便改，和库没有联系。
  *
  * 材质都不用贴图：纯参数的（金属、塑料、玻璃、霓虹）和材质节点图算出来的（混凝土、砖、石板、木头、大理石、布），下载量是零，
- * 放大不糊（vector-assets.md 的方向）。特效是 Stride 格式的粒子系统组件（和粒子编辑器改的是同一种），柔和的圆点不用贴图。
+ * 放大不糊（vector-assets.md 的方向）。"智能材质"带着磨损、脏污的规则：按模型的棱边、缝（curvatureMask）和遮蔽（occlusionMask）
+ * 自动长在该长的地方，用在什么模型上都对（要场景开环境光遮蔽）。特效是 Stride 格式的粒子系统组件（和粒子编辑器改的是同一种），柔和的圆点不用贴图。
  *
  * 只有数据，没有 Node 和 DOM 的依赖：前端的库窗口、MCP 的 library 工具共用。缩略图是 thumbnails/ 下同 id 的图，由
  * tools/dev/library-thumbnails.ts 用引擎画出来（库变了重跑）。
@@ -11,7 +12,7 @@
 import type { GraphFile, GraphNodeFile } from '@stride-ts/engine/node-graph';
 import type { MaterialFile, ParticleModuleFile } from '@stride-ts/engine/content-format';
 
-export type MaterialCategory = 'metal' | 'plastic' | 'glass' | 'emissive' | 'stone' | 'wood' | 'fabric' | 'terrain';
+export type MaterialCategory = 'metal' | 'plastic' | 'glass' | 'emissive' | 'stone' | 'wood' | 'fabric' | 'terrain' | 'smart';
 export type EffectCategory = 'fire' | 'smoke' | 'sparks' | 'magic' | 'ambient' | 'water';
 
 export interface LibraryMaterial {
@@ -146,6 +147,53 @@ export const LIBRARY_MATERIALS: readonly LibraryMaterial[] = [
       ['snow', 'color', { color: [0.86, 0.89, 0.93] }],
       ['color', 'mix', {}, { a: 'ground', b: 'snow', t: 'snowCover' }],
     ], { baseColor: 'color' }),
+  }),
+  // 智能材质：掉漆的金属——棱边上漆磨掉、露出钢（金属度跟着），缝里和被遮住的地方积灰；都用噪声打散
+  plain('wornPaint', 'smart', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.5,
+    graph: graph([
+      ['uv', 'uv'],
+      ['corners', 'curvatureMask', { from: 0.05, to: 0.25 }],
+      ['breakup', 'noise', { scale: 22, octaves: 4, roughness: 0.6, seed: 5 }, { uv: 'uv' }],
+      ['chipping', 'levels', { inMin: 0.35, inMax: 0.6 }, { in: 'breakup' }],
+      ['wear', 'multiply', {}, { a: ['corners', 'edges'], b: 'chipping' }],
+      ['shadowed', 'occlusionMask', { from: 0.15, to: 0.6 }],
+      ['grime', 'add', {}, { a: 'shadowed', b: ['corners', 'cavities'] }],
+      ['grimeBreakup', 'noise', { scale: 9, octaves: 3, seed: 11 }, { uv: 'uv' }],
+      ['dirt', 'multiply', {}, { a: 'grime', b: 'grimeBreakup' }],
+      ['paint', 'color', { color: [0.06, 0.22, 0.27] }],
+      ['steel', 'color', { color: [0.56, 0.57, 0.58] }],
+      ['dirtColor', 'color', { color: [0.07, 0.055, 0.04] }],
+      ['painted', 'mix', {}, { a: 'paint', b: 'steel', t: 'wear' }],
+      ['color', 'mix', {}, { a: 'painted', b: 'dirtColor', t: 'dirt' }],
+      ['paintRoughness', 'value', { value: 0.55 }],
+      ['steelRoughness', 'value', { value: 0.3 }],
+      ['roughness', 'mix', {}, { a: 'paintRoughness', b: 'steelRoughness', t: 'wear' }],
+    ], { baseColor: 'color', metalness: 'wear', roughness: 'roughness' }),
+  }),
+  // 智能材质：长青苔的石头——缝里、被遮住的地方和朝上的面长苔（成片的），棱边磨得发白
+  plain('mossyStone', 'smart', {
+    baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.85,
+    graph: graph([
+      ['uv', 'uv'],
+      ['grain', 'noise', { scale: 30, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
+      ['blotch', 'noise', { scale: 4, octaves: 3, seed: 2 }, { uv: 'uv' }],
+      ['stone', 'colorRamp', { from: [0.2, 0.19, 0.17], to: [0.42, 0.4, 0.36] }, { t: 'blotch' }],
+      ['corners', 'curvatureMask', { from: 0.05, to: 0.3 }],
+      ['shadowed', 'occlusionMask', { from: 0.1, to: 0.5 }],
+      ['damp', 'add', {}, { a: 'shadowed', b: ['corners', 'cavities'] }],
+      // 朝上的面也长（雨水、落叶攒在上面）
+      ['top', 'slopeMask', { minAngle: 0, maxAngle: 25, blend: 15 }],
+      ['wet', 'add', {}, { a: 'damp', b: 'top' }],
+      ['patches', 'noise', { scale: 7, octaves: 4, seed: 9 }, { uv: 'uv' }],
+      ['spread', 'multiply', {}, { a: 'wet', b: 'patches' }],
+      ['mossCover', 'levels', { inMin: 0.2, inMax: 0.45 }, { in: 'spread' }],
+      ['moss', 'colorRamp', { from: [0.05, 0.09, 0.02], to: [0.14, 0.2, 0.05] }, { t: 'grain' }],
+      ['worn', 'color', { color: [0.55, 0.53, 0.49] }],
+      ['edged', 'mix', {}, { a: 'stone', b: 'worn', t: ['corners', 'edges'] }],
+      ['color', 'mix', {}, { a: 'edged', b: 'moss', t: 'mossCover' }],
+      ['normal', 'normalFromHeight', { strength: 0.8 }, { height: 'grain', uv: 'uv' }],
+    ], { baseColor: 'color', normal: 'normal' }),
   }),
   plain('fabric', 'fabric', {
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.9, sheen: { color: [0.4, 0.45, 0.6], roughness: 0.5 },

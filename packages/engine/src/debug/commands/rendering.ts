@@ -91,18 +91,20 @@ function switchArg(args: Readonly<Record<string, unknown>>, current: boolean): b
 export function registerRenderingCommands(debug: Debug, game: Game): void {
   // 离线渲染的几个模块（编码、封装、混音）用到时才加载，不进每个游戏页面
   debug.command('raytrace', 'Render the main camera by ray tracing (the RayTracingScene: two-level BVH traversed in a compute shader; base color times the sun, sky where nothing is hit) and return it as a PNG (base64), to check the ray tracing scene against the rasterized frame. Builds the BVHs first if needed. args: width, height (default the canvas size).', (args) => rayTraceCommand(game, args));
-  debug.command('ao', 'Screen-space ambient occlusion (GTAO) of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), radius (world units), power, dump (true: also return the last occlusion buffer as a grayscale PNG, base64, half resolution; white is open; save it with stride call ao \'{"dump":true}\' --out ao.png).', async (args) => {
+  debug.command('ao', 'Screen-space ambient occlusion (GTAO) of the main view. args: on (true/false, or "toggle"; omitted keeps it and just reports), radius (world units), power, dump (true: also return the last occlusion buffer as a grayscale PNG, base64, half resolution; white is open; "curvature": the surface curvature computed with it instead, gray is flat, brighter is convex; save it with stride call ao \'{"dump":true}\' --out ao.png).', async (args) => {
     const ao = game.graphicsCompositor.ambientOcclusion;
     ao.enabled = switchArg(args, ao.enabled);
     if (typeof args['radius'] === 'number') ao.radius = args['radius'];
     if (typeof args['power'] === 'number') ao.power = args['power'];
     const state = { enabled: ao.enabled, radius: ao.radius, power: ao.power };
-    if (args['dump'] !== true) return state;
+    if (args['dump'] !== true && args['dump'] !== 'curvature') return state;
     const texture = ao.result;
     if (!texture) throw new Error('ao: no occlusion buffer yet (GTAO is off or has not run)');
-    const gray = await readTexture(game.graphicsDevice.device, texture, 1);
-    const rgba = new Uint8Array(gray.length * 4);
-    for (let i = 0; i < gray.length; i++) rgba.set([gray[i]!, gray[i]!, gray[i]!, 255], i * 4);
+    // rg8：r 是遮蔽，g 是曲率
+    const rg = await readTexture(game.graphicsDevice.device, texture, 2);
+    const channel = args['dump'] === 'curvature' ? 1 : 0;
+    const rgba = new Uint8Array((rg.length / 2) * 4);
+    for (let i = 0; i < rg.length / 2; i++) rgba.set([rg[i * 2 + channel]!, rg[i * 2 + channel]!, rg[i * 2 + channel]!, 255], i * 4);
     const { encodePng } = await import('../../offline/png');
     return { ...state, width: texture.width, height: texture.height, png: (await encodePng(rgba, texture.width, texture.height)).toBase64() };
   });

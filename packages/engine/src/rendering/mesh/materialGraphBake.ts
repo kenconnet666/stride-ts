@@ -30,8 +30,9 @@ export const UV_PLANE_DECLARATIONS = /* wgsl */ `
 ${MATERIAL_STREAMS}
 struct PlaneView { eye: vec4f };
 var<private> view: PlaneView;
-// 网格着色器里屏幕空间遮蔽的替身：平面上没有画面，当作没遮住
+// 网格着色器里屏幕空间遮蔽、曲率的替身：平面上没有画面，当作没遮住、平的
 fn screenAmbient(position: vec4f) -> vec4f { return vec4f(0.0, 0.0, 0.0, 1.0); }
+fn screenCurvature(position: vec4f) -> f32 { return 0.0; }
 `;
 
 /** 片元着色器开头：把平面上 uv 处的材质流填好。 */

@@ -82,4 +82,12 @@ describe('材质节点图的滤镜（烘焙）', () => {
     expect(materialGraphOutputShader(file, 'emissive', 'test')).toBeUndefined();
     expect(() => materialGraphOutputShader({ nodes: [{ id: 'n', type: 'noise' }], outputs: { roughness: { node: 'n', output: 'nope' } } }, 'roughness', 'bad')).toThrow(/bad, exporting roughness: output roughness is linked to output 'nope' of node 'n'/);
   });
+
+  test('曲率遮罩：棱边读正的曲率、缝读负的；平面上（预览、烘焙）曲率是 0', () => {
+    const file: GraphFile = { nodes: [{ id: 'c', type: 'curvatureMask', params: { from: 0.1, to: 0.3 } }], outputs: { metalness: { node: 'c', output: 'edges' }, roughness: { node: 'c', output: 'cavities' } } };
+    const { code } = compile(file);
+    expect(code).toContain('let g_c_edges = smoothstep(0.1, max(0.3, 0.1 + 1e-3), graphScreenCurvature());');
+    expect(code).toContain('let g_c_cavities = smoothstep(0.1, max(0.3, 0.1 + 1e-3), -graphScreenCurvature());');
+    expect(materialGraphOutputShader(file, 'metalness', 'test')!.code).toContain('fn screenCurvature(position: vec4f) -> f32 { return 0.0; }');
+  });
 });

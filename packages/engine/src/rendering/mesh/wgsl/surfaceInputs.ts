@@ -205,6 +205,16 @@ fn screenAmbient(position: vec4f) -> vec4f {
   return select(vec4f(0.0, 0.0, 0.0, texel.r), texel, view.locals.z != 0.0);
 }
 
+/**
+ * 表面的曲率（GTAO 顺带算的，AmbientOcclusion.ts）：大于 0 是凸的（边角），小于 0 是凹的（缝），量的是在约 3 厘米上弯了多少。
+ * 屏幕空间全局光照接管 screenOcclusion 时没有，是 0。
+ */
+fn screenCurvature(position: vec4f) -> f32 {
+  if (view.locals.z != 0.0) { return 0.0; }
+  let size = textureDimensions(screenOcclusion);
+  return textureLoad(screenOcclusion, min(vec2u(position.xy) / 2u, size - 1u), 0).g * 2.0 - 1.0;
+}
+
 /** 投阴影的方向光的接触阴影（ContactShadows，全分辨率；没开时是白图）。 */
 fn screenContactShadow(position: vec4f) -> f32 {
   let size = textureDimensions(screenShadow);

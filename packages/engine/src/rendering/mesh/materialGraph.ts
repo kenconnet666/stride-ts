@@ -142,6 +142,12 @@ const SCREEN_OCCLUSION = `fn graphScreenOcclusion() -> f32 {
   return screenAmbient(vec4f(streams.pixel, 0.0, 1.0)).w;
 }
 `;
+/** 这个像素的表面曲率（网格着色器的 screenCurvature，GTAO 顺带算的）：凸的大于 0；没有像素坐标时当作平的。 */
+const SCREEN_CURVATURE = `fn graphScreenCurvature() -> f32 {
+  if (streams.pixel.x < 0.0) { return 0.0; }
+  return screenCurvature(vec4f(streams.pixel, 0.0, 1.0));
+}
+`;
 /** Overlay：底色暗于 0.5 时乘、亮于 0.5 时滤色。 */
 const OVERLAY = `fn graphOverlay(base: vec3f, detail: vec3f) -> vec3f {
   return select(1.0 - 2.0 * (1.0 - base) * (1.0 - detail), 2.0 * base * detail, base < vec3f(0.5));
@@ -330,6 +336,21 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
     emit: (_, p, context) => {
       context.addFunction('graphScreenOcclusion', SCREEN_OCCLUSION);
       return { mask: `smoothstep(${f(p['from'])}, max(${f(p['to'])}, ${f(p['from'])} + 1e-3), 1.0 - graphScreenOcclusion())` };
+    },
+  },
+  {
+    // 边角和缝：凸起的棱边（edges，磨损、掉漆、磨亮的地方）和凹进去的缝（cavities，积灰、锈）。读屏幕空间的曲率（GTAO 顺带算的，
+    // 同 occlusionMask 要场景开环境光遮蔽；量的是在约 3 厘米上弯了多少），白盒、SDF 这些没有唯一 UV 的模型也有。from、to 是曲率
+    // 从哪儿开始算、到哪儿算满
+    type: 'curvatureMask', category: 'mask', inputs: [], outputs: [{ name: 'edges', type: 'float' }, { name: 'cavities', type: 'float' }],
+    params: [
+      { name: 'from', type: num(0, 1, 0.02), default: 0.1, description: 'how sharply the surface must bend before the mask starts' },
+      { name: 'to', type: num(0, 1, 0.02), default: 0.4, description: 'bend where the mask reaches 1' },
+    ],
+    emit: (_, p, context) => {
+      context.addFunction('graphScreenCurvature', SCREEN_CURVATURE);
+      const ramp = (x: string) => `smoothstep(${f(p['from'])}, max(${f(p['to'])}, ${f(p['from'])} + 1e-3), ${x})`;
+      return { edges: ramp('graphScreenCurvature()'), cavities: ramp('-graphScreenCurvature()') };
     },
   },
   {

@@ -9,6 +9,10 @@
  *   重建（左右、上下取离得近的那边），所以不要法线缓冲。
  * - 切片的角度和步长按像素加噪声，开着 TAA 时噪声每帧换，TAA 把它平均掉；再加两遍按深度加权的模糊（横、竖各 5 个）。
  *
+ * - 顺带算表面的曲率（g 通道，材质节点图的 curvatureMask 读：边角的磨损、缝里的脏污）：用同一个重建的法线，世界尺寸
+ *   CURVATURE_RADIUS 外上下左右各取一点 q，κ = −2·n·q / |q|²（过两点、在中心和表面相切的圆的曲率），平均后乘半径存成
+ *   0.5 + κr / 2（凸的大于 0.5，凹的小于）。不模糊（不带噪声），离得太远的点（别的表面、天空）不算。
+ *
  * 和 Stride 不同：Stride 的 AmbientOcclusion（SAO 那一类）在后处理里把整个画面乘上遮蔽，太阳照着的地方也变暗；我们只乘
  * 环境光。效果开不开、半径照合成器里的 AmbientOcclusion（Enabled、ParamRadius）。
  */
@@ -19,7 +23,10 @@ import type { RenderView } from '../RenderSystem';
 
 /** 半分辨率的视图空间位置（POSITIONS_SHADER 的输出，屏幕空间全局光照也用）。 */
 export const POSITION_FORMAT: GPUTextureFormat = 'rgba32float';
-const AO_FORMAT: GPUTextureFormat = 'r8unorm';
+/** r：遮蔽（1 是没遮住），g：曲率（0.5 是平的，凸的大）。 */
+const AO_FORMAT: GPUTextureFormat = 'rg8unorm';
+/** 量曲率的半径（世界单位）：边角磨损的那一圈大约这么宽。 */
+export const CURVATURE_RADIUS = 0.03;
 
 /** 深度缓冲 → 半分辨率的视图空间位置（x 向右、y 向下、z 向前为正，天空的 w 是 0）。uniform 是这一帧主画面投影的逆。 */
 export const POSITIONS_SHADER = /* wgsl */ `
@@ -65,6 +72,25 @@ const SLICES = 2u;
 const STEPS = 6u;
 /** 半径在画面上最多这么多（半分辨率的）像素：近处再大采样太散，遮蔽也看不出差别。 */
 const MAX_RADIUS_PIXELS = 96.0;
+const CURVATURE_RADIUS = ${CURVATURE_RADIUS};
+
+/** 曲率（乘过半径，见文件开头）：上下左右离 CURVATURE_RADIUS 远的点，太远的（别的表面）不算；都不算时是平的。 */
+fn curvature(pixel: vec2i, center: vec3f, normal: vec3f) -> f32 {
+  let pixels = clamp(CURVATURE_RADIUS * gtao.params.y / center.z, 1.0, 16.0);
+  // 实际取样的距离（世界单位）：远处一个像素就比 CURVATURE_RADIUS 宽，κ 乘它，量出来的是"弯了多少"，和远近无关
+  let r = pixels * center.z / gtao.params.y;
+  var sum = 0.0;
+  var count = 0.0;
+  for (var i = 0; i < 4; i++) {
+    let along = select(vec2f(0.0, f32((i & 1) * 2 - 1)), vec2f(f32((i & 1) * 2 - 1), 0.0), i < 2);
+    let q = positionAt(pixel + vec2i(round(along * pixels))) - center;
+    let d2 = dot(q, q);
+    if (d2 < 1e-12 || d2 > 16.0 * r * r) { continue; }
+    sum += -2.0 * dot(normal, q) / d2 * r;
+    count += 1.0;
+  }
+  return select(0.0, sum / count, count > 0.0);
+}
 
 fn positionAt(pixel: vec2i) -> vec3f {
   let size = vec2i(textureDimensions(positions));
@@ -76,7 +102,7 @@ ${GRADIENT_NOISE}
 @fragment fn fs(in: FullscreenVaryings) -> @location(0) vec4f {
   let pixel = vec2i(in.position.xy);
   let here = textureLoad(positions, pixel, 0);
-  if (here.w == 0.0) { return vec4f(1.0); }
+  if (here.w == 0.0) { return vec4f(1.0, 0.5, 0.0, 0.0); }
   let center = here.xyz;
   // 法线：左右、上下各取离得近（深度差小）的那边，不跨过边缘
   let left = positionAt(pixel - vec2i(1, 0)) - center;
@@ -89,8 +115,9 @@ ${GRADIENT_NOISE}
   var normal = normalize(cross(dx, dy));
   normal = select(normal, -normal, dot(normal, viewVec) < 0.0);
 
+  let bend = clamp(0.5 + 0.5 * curvature(pixel, center, normal), 0.0, 1.0);
   let radiusPixels = min(gtao.params.x * gtao.params.y / center.z, MAX_RADIUS_PIXELS);
-  if (radiusPixels < 1.0) { return vec4f(1.0); }
+  if (radiusPixels < 1.0) { return vec4f(1.0, bend, 0.0, 0.0); }
   // 离中心太近（不到 1.3 个像素）的采样只是自己，不算
   let minS = 1.3 / radiusPixels;
   let falloffRange = 0.615 * gtao.params.x;
@@ -135,7 +162,7 @@ ${GRADIENT_NOISE}
     visibility += projectedLength * (arc0 + arc1);
   }
   visibility = clamp(visibility / f32(SLICES), 0.03, 1.0);
-  return vec4f(pow(visibility, gtao.params.z));
+  return vec4f(pow(visibility, gtao.params.z), bend, 0.0, 0.0);
 }`;
 
 const BLUR_SHADER = /* wgsl */ `
@@ -159,7 +186,8 @@ struct Blur { direction: vec4f };
     sum += textureLoad(source, p, 0).r * w;
     weights += w;
   }
-  return vec4f(sum / max(weights, 1e-5));
+  // 曲率（g）不模糊，原样带过去
+  return vec4f(sum / max(weights, 1e-5), textureLoad(source, pixel, 0).g, 0.0, 0.0);
 }`;
 
 export class AmbientOcclusion {
@@ -214,7 +242,7 @@ export class AmbientOcclusion {
     return Promise.all([this.#prefilter.warm([POSITION_FORMAT]), this.#gtao.warm([AO_FORMAT]), this.#blur.warm([AO_FORMAT])]).then(() => undefined);
   }
 
-  /** 上一帧算好的遮蔽（半分辨率，r8unorm：1 是没遮住）；还没算过时是 undefined。调试命令 ao 的 dump 读它。 */
+  /** 上一帧算好的遮蔽和曲率（半分辨率，rg8unorm：r 是遮蔽、1 是没遮住，g 是曲率）；还没算过时是 undefined。调试命令 ao 的 dump 读它。 */
   get result(): GPUTexture | undefined {
     return this.#textures?.result;
   }

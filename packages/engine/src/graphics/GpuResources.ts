@@ -12,6 +12,8 @@ export class GpuResources {
   readonly device: GPUDevice;
   /** 1x1 的白图：没有贴图的材质绑它，着色器不用分支。 */
   readonly white: GPUTexture;
+  /** 1x1 的 rg8：没有屏幕空间遮蔽时绑它，遮蔽 1（没遮住）、曲率 0.5（平的），同 GTAO 的结果（AmbientOcclusion.ts）。 */
+  readonly openOcclusion: GPUTexture;
   /** 1x1 的黑色立方体贴图：没有天空盒时绑它。 */
   readonly blackCube: GPUTexture;
   /** 立方体贴图和查找表用（Stride 的 LinearSampler）。 */
@@ -33,6 +35,8 @@ export class GpuResources {
     this.device = device;
     this.white = device.createTexture({ label: 'white', size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     device.queue.writeTexture({ texture: this.white }, new Uint8Array([255, 255, 255, 255]), { bytesPerRow: 4 }, [1, 1]);
+    this.openOcclusion = device.createTexture({ label: 'open occlusion', size: [1, 1], format: 'rg8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    device.queue.writeTexture({ texture: this.openOcclusion }, new Uint8Array([255, 128]), { bytesPerRow: 2 }, [1, 1]);
     this.blackCube = device.createTexture({ label: 'black cube', size: [1, 1, 6], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     device.queue.writeTexture({ texture: this.blackCube }, new Uint16Array(6 * 4), { bytesPerRow: 8, rowsPerImage: 1 }, [1, 1, 6]);
     this.linearClamp = device.createSampler({ label: 'linear clamp', magFilter: 'linear', minFilter: 'linear', mipmapFilter: 'linear' });
@@ -170,7 +174,7 @@ export class GpuResources {
   }
 
   destroy(): void {
-    for (const texture of [...this.#textures.values(), ...this.#cubemaps.values(), ...this.#skyboxSpecular.values(), this.white, this.blackCube, this.emptyShadowAtlas]) texture.destroy();
+    for (const texture of [...this.#textures.values(), ...this.#cubemaps.values(), ...this.#skyboxSpecular.values(), this.white, this.openOcclusion, this.blackCube, this.emptyShadowAtlas]) texture.destroy();
     this.prefilter.destroy();
   }
 }

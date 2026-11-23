@@ -23,7 +23,7 @@ import { Skinned } from '../rendering/components';
 import { AnimationComponent, type AnimationBlendStack } from './AnimationComponent';
 import { PropertyAnimated, PropertyStack } from './curves';
 import { ModelMorphs, Morphed, MorphStack } from './morphs';
-import type { AnimationClip, Skeleton } from './resources';
+import { AnimationClip, type Skeleton } from './resources';
 
 /** 带骨架的模型：模型实体上，state 是动画系统里的骨架状态（从 1 开始）。 */
 export const ModelSkeleton = component('ModelSkeleton', {
@@ -117,7 +117,11 @@ export class AnimationSystem {
     removed: (entity) => this.#releaseMorphs(entity),
   });
 
+  readonly #native: StrideNative;
+  readonly #retargeted = new WeakMap<AnimationClip, Map<string, AnimationClip>>();
+
   constructor(native: StrideNative, entities: EntityManager) {
+    this.#native = native;
     this.#entities = entities;
     this.#batch = new AnimationBatch(native);
     this.#stack = new BatchStack(this.#batch);
@@ -230,6 +234,43 @@ export class AnimationSystem {
     if (!state) throw new Error(`blendFromPose: entity '${entity.name}' has no skeleton`);
     state.instance.snapshot(rootCorrection);
     state.fade = duration > 0 ? { remaining: duration, duration } : undefined;
+  }
+
+  /**
+   * 重定向（照虚幻的 IK Retargeter、Unity 的 Humanoid）：给别的骨架做的剪辑搬到 target 上，返回新的剪辑（缓存：同一个剪辑、骨架、
+   * 选项只建一次）。关节默认按名字对（去掉 `mixamorig:` 这类命名空间前缀，不分大小写，只看字母和数字），map 写"目标关节名: 源关节名"
+   * 盖掉自动对的；对不上的目标关节保持静止姿势跟着父关节。髋默认找两边都对上的、名字带 hips 或 pelvis 的，没有时取第一个对上的；
+   * inPlace 时髋不挪（原地的动画）。两边的静止姿势要像（都是 T 字或都是 A 字）。
+   */
+  retarget(clip: AnimationClip, target: Skeleton, options: { map?: Readonly<Record<string, string>>; inPlace?: boolean } = {}): AnimationClip {
+    const bones = clip.bones;
+    if (!bones) throw new Error(`retarget: animation '${clip.name}' has no skeleton tracks`);
+    const key = `${target.name}|${JSON.stringify(options)}`;
+    let byKey = this.#retargeted.get(clip);
+    if (!byKey) this.#retargeted.set(clip, (byKey = new Map()));
+    const cached = byKey.get(key);
+    if (cached) return cached;
+    const source = bones.skeleton;
+    const sourceByName = new Map(source.joints.map((joint, j) => [retargetName(joint.name), j]));
+    const sourceOf = target.joints.map((joint) => {
+      const explicit = options.map?.[joint.name];
+      if (explicit !== undefined) {
+        const index = source.jointIndex(explicit);
+        if (index < 0) throw new Error(`retarget: source skeleton '${source.name}' has no joint '${explicit}' (map for '${joint.name}')`);
+        return index;
+      }
+      return sourceByName.get(retargetName(joint.name)) ?? -1;
+    });
+    if (!sourceOf.some((s) => s >= 0)) throw new Error(`retarget: no joint of '${target.name}' matches '${source.name}' (give a map)`);
+    let hips = -1;
+    if (!options.inPlace) {
+      hips = target.joints.findIndex((joint, j) => sourceOf[j]! >= 0 && /hips|pelvis/i.test(joint.name));
+      if (hips < 0) hips = sourceOf.findIndex((s) => s >= 0);
+    }
+    const native = this.#native.retargetAnimation(bones.native, source.native, target.native, sourceOf, hips, hips >= 0 ? sourceOf[hips]! : -1);
+    const result = new AnimationClip(`${clip.name}@${target.name}`, clip.duration, clip.repeatMode, { skeleton: target, native }, clip.morphWeights, clip.curves);
+    byKey.set(key, result);
+    return result;
   }
 
   /**
@@ -491,4 +532,9 @@ class SlotSpace {
     if (!list) this.#free.set(size, (list = []));
     list.push(base);
   }
+}
+
+/** 重定向时按名字对关节用的写法：去掉命名空间前缀（`mixamorig:Hips`），小写，只留字母和数字。 */
+export function retargetName(name: string): string {
+  return name.slice(name.lastIndexOf(':') + 1).toLowerCase().replace(/[^a-z0-9]/g, '');
 }

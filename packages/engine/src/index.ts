@@ -29,7 +29,7 @@ export {
   type AnimationBlendStack,
   type BlendTreeBuilder,
 } from './animation/AnimationComponent';
-export { AnimationSystem, ModelMorph, ModelSkeleton, type SkinnedPart } from './animation/AnimationSystem';
+export { AnimationSystem, ModelMorph, ModelSkeleton, retargetName, type SkinnedPart } from './animation/AnimationSystem';
 export { evaluateMorphCurve, ModelMorphs, Morphed, MorphStack } from './animation/morphs';
 export { ModelNodeLink } from './animation/ModelNodeLink';
 export { AnimationClip, Skeleton, type AnimationNative } from './animation/resources';

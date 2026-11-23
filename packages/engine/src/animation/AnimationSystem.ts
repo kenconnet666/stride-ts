@@ -59,6 +59,8 @@ interface SkeletonState {
   /** 求值以后做的 IK，按来源（脚贴地、看向各一个）；变了要重新交给原生。 */
   ik: Map<object, readonly AnimationIk[]> | undefined;
   ikDirty: boolean;
+  /** 从 blendFromPose 存的快照淡回动画：还剩多少秒、一共多少秒。 */
+  fade: { remaining: number; readonly duration: number } | undefined;
 }
 
 export class AnimationSystem {
@@ -175,7 +177,7 @@ export class AnimationSystem {
       partEntity.add(Skinned.with({ palette: base }));
       return { skin, palette: skin.createPalette(), base };
     });
-    const state: SkeletonState = { entity: entity.id, skeleton, instance: skeleton.native.createInstance(), parts: states, posed: false, poseSource: undefined, ik: undefined, ikDirty: false };
+    const state: SkeletonState = { entity: entity.id, skeleton, instance: skeleton.native.createInstance(), parts: states, posed: false, poseSource: undefined, ik: undefined, ikDirty: false, fade: undefined };
     const id = this.#freeStates.pop() ?? this.#states.length;
     this.#states[id] = state;
     entity.add(ModelSkeleton.with({ state: id }));
@@ -202,6 +204,19 @@ export class AnimationSystem {
     const state = view ? this.#states[view.state] : undefined;
     if (!state) throw new Error(`setPoseSource: entity '${entity.name}' has no skeleton`);
     state.poseSource = source;
+  }
+
+  /**
+   * 从现在的姿势（上一次求值的，或者布娃娃写的）在 duration 秒里淡回动画：姿势先存成快照，之后每帧动画的姿势和它按剩下的时间混。
+   * rootCorrection（列主序 4x4）是模型自己挪了时的修正（新的模型到世界的逆乘旧的，布娃娃以后扶正），姿势在世界里不跳。没有骨架时
+   * 报错。
+   */
+  blendFromPose(entity: Entity, duration: number, rootCorrection?: ArrayLike<number>): void {
+    const view = entity.get(ModelSkeleton);
+    const state = view ? this.#states[view.state] : undefined;
+    if (!state) throw new Error(`blendFromPose: entity '${entity.name}' has no skeleton`);
+    state.instance.snapshot(rootCorrection);
+    state.fade = duration > 0 ? { remaining: duration, duration } : undefined;
   }
 
   /**
@@ -269,8 +284,18 @@ export class AnimationSystem {
         this.#stack.morphs.apply();
         this.#stack.properties.apply(entity);
       }
+      // 从快照淡出（布娃娃交还给动画）：动画的姿势和快照按剩下的时间混；没有动画时只压快照
+      let poses = this.#stack.poses;
+      const fade = state.fade;
+      if (fade) {
+        batch.pushSnapshot();
+        if (poses > 0) batch.blend(Math.max(0, fade.remaining / fade.duration));
+        poses = 1;
+        fade.remaining -= elapsed;
+        if (fade.remaining <= 0) state.fade = undefined;
+      }
       // 没压进骨架的姿势时保留上一个姿势（同 Stride），只有第一次求静止姿势
-      if (this.#stack.poses === 0 && state.posed && !state.ik?.size) continue;
+      if (poses === 0 && state.posed && !state.ik?.size) continue;
       state.posed = true;
       for (const part of state.parts) batch.skin(part.skin, part.palette);
     }

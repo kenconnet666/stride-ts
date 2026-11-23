@@ -1,20 +1,22 @@
 /**
  * 布娃娃（Stride 没有；Jolt 的 Ragdoll，原生侧见 fork 的 Physics.h）：挂在带骨架的模型实体上，`activate()` 时按现在的姿势把
  * 选中的骨头变成一串动态物体（胶囊沿骨头，父子之间摆动加扭转的约束），之后每帧模型的姿势来自物理：动画不再求值，蒙皮照常；
- * 实体跟着根骨头走（模型的包围盒、剔除、挂在它下面的东西都对得上）。`deactivate()` 交还给动画。
+ * 实体跟着根骨头走（模型的包围盒、剔除、挂在它下面的东西都对得上）。`deactivate()` 交还给动画：实体扶正（只留朝向，落到骨盆
+ * 下面的地上），从倒地的姿势在 blendTime 秒里淡回动画（有爬起来的剪辑时游戏先放它）。
  *
  *   const ragdoll = model.require(Ragdoll);
  *   ragdoll.activate([0, 0, -300]);   // 被撞的那一下（世界空间的冲量，加在全身）
  *
  * - 骨头：`bones` 列出关节名和各自的半径、质量、摆动和扭转的最大角；空着时自动选：骨头（到它第一个子关节）有 8 厘米以上的
  *   关节都进（手指、脚趾这些短的跟着父关节；场景的根节点这些零长度的不进，根是第一根够长的骨头），半径是骨头长的四分之一（4～15 厘米），总质量 `mass` 按骨头长分。
- * - 实体自己的物理（角色的胶囊）不管：会和布娃娃挤在一起，游戏在 activate 之前关掉它（移除 Character、换碰撞层）。
+ * - 实体自己的物理（角色的胶囊）不管：会和布娃娃挤在一起，游戏在 activate 之前关掉它（移除 Character、换碰撞层），deactivate 以后
+ *   把胶囊挪到实体那里再打开。
  */
 import { prop } from '../data/prop';
 import { Matrix } from '../data/Matrix';
 import type { RagdollPartDesc } from '@stride-ts/native';
 import { SyncScript } from '../engine/scripts';
-import { Transform } from '../engine/transform';
+import { Transform, type TransformView } from '../engine/transform';
 import type { RagdollHandle } from './Simulation';
 
 const DEGREES = Math.PI / 180;
@@ -135,12 +137,68 @@ export class Ragdoll extends SyncScript.props('Ragdoll', {
     if (impulse) handle.impulse(-1, impulse);
   }
 
-  /** 交还给动画（姿势回到动画的那一刻是跳过去的）。 */
-  deactivate(): void {
-    if (!this.#handle) return;
-    this.game.animation.setPoseSource(this.entity, undefined);
-    this.#handle.remove();
+  /**
+   * 交还给动画：实体扶正（upright：朝向只留水平的那一份，位置落到骨盆下面的地上），姿势从倒地的样子在 blendTime 秒里淡回动画
+   * （0 是一下子跳回去）。
+   */
+  deactivate({ blendTime = 0.5, upright = true }: { blendTime?: number; upright?: boolean } = {}): void {
+    const handle = this.#handle;
+    if (!handle) return;
+    const animation = this.game.animation;
+    const root = handle.root();
+    animation.setPoseSource(this.entity, undefined);
+    handle.remove();
     this.#handle = undefined;
+    const transform = this.entity.require(Transform);
+    const oldWorld = Float64Array.from(transform.world);
+    if (upright) this.#standUp(transform, oldWorld, root.position);
+    // 快照的根按新旧实体的位姿差修正：淡出的那段姿势在世界里不跳
+    const newWorld = this.#worldAfter(transform, oldWorld);
+    const inverse = new Float64Array(16), correction = new Float64Array(16);
+    Matrix.invert(inverse, newWorld);
+    Matrix.multiply(correction, inverse, oldWorld);
+    animation.blendFromPose(this.entity, blendTime, correction);
+  }
+
+  /** 扶正：朝向只留绕竖直轴的那一份（模型的 +z 投到水平面上），位置是骨盆的水平位置、下面的地面（打不到时保持原高度）。 */
+  #standUp(transform: TransformView, world: Float64Array, pelvis: readonly number[]): void {
+    let fx = world[8]!, fz = world[10]!;
+    if (Math.hypot(fx, fz) < 1e-3) {
+      fx = world[0]!;
+      fz = world[2]!;
+    }
+    const yaw = Math.atan2(fx, fz);
+    const rotation: [number, number, number, number] = [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)];
+    let y = world[13]!;
+    const hit = this.game.simulation?.rayCastPenetrating([pelvis[0]!, pelvis[1]! + 0.5, pelvis[2]!], [0, -1, 0], 5).find((h) => !this.#ancestors().has(h.entity));
+    if (hit) y = hit.point[1];
+    const scale = Matrix.decompose(world).scale;
+    const entityWorld = Matrix.compose(new Float64Array(16), [pelvis[0]!, y, pelvis[2]!], rotation, scale);
+    const parent = transform.parent?.require(Transform).world;
+    const local = new Float64Array(16), parentInverse = new Float64Array(16);
+    if (parent && Matrix.invert(parentInverse, parent)) Matrix.multiply(local, parentInverse, entityWorld);
+    else local.set(entityWorld);
+    const { translation, rotation: r } = Matrix.decompose(local);
+    transform.position = { x: translation[0], y: translation[1], z: translation[2] };
+    transform.rotation = { x: r[0], y: r[1], z: r[2], w: r[3] };
+  }
+
+  /** 改了本地位姿以后实体的世界矩阵（变换存储要到下一次更新才算，这里按父实体现在的世界矩阵自己乘）。 */
+  #worldAfter(transform: TransformView, fallback: Float64Array): Float64Array {
+    const { position, rotation } = transform;
+    const scale = Matrix.decompose(fallback).scale;
+    const parentScale = transform.parent ? Matrix.decompose(transform.parent.require(Transform).world).scale : [1, 1, 1];
+    const local = Matrix.compose(new Float64Array(16), [position.x, position.y, position.z], [rotation.x, rotation.y, rotation.z, rotation.w], scale.map((v, k) => v / parentScale[k]!) as [number, number, number]);
+    const parent = transform.parent?.require(Transform).world;
+    if (!parent) return local;
+    return Matrix.multiply(new Float64Array(16), Float64Array.from(parent), local);
+  }
+
+  /** 自己和祖先实体（射线不算角色的胶囊）。 */
+  #ancestors(): Set<number> {
+    const ids = new Set<number>();
+    for (let entity: typeof this.entity | undefined = this.entity; entity; entity = entity.get(Transform)?.parent ?? undefined) ids.add(entity.id);
+    return ids;
   }
 
   /** 给某根骨头（关节名）加冲量，比如被打中的地方；不是布娃娃或这根骨头没进布娃娃时什么都不做。 */

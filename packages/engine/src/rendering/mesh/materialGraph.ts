@@ -19,7 +19,7 @@
  * 端口的种类不同时自动转换：数到向量是重复，向量到数取第一个分量，颜色是 vec4（alpha）。颜色参数和颜色常量都是线性的。
  */
 import type { FieldType } from '../../editor/fields/index';
-import { sortGraph, type GraphFile, type GraphLink, type NodeSpec, type PortSpec, type PortType } from '../../content/formats/nodeGraph';
+import { sortGraph, type GraphFile, type GraphLink, type NodeSpec, type PortSpec, type PortType } from '../../content/formats/nodeGraph.ts';
 import type { ColorTreeCompiler } from './colorTree';
 
 /** 材质的哪些属性能接到图上，各是什么种类。 */
@@ -36,14 +36,17 @@ export const MATERIAL_GRAPH_OUTPUTS = {
 
 export type MaterialGraphOutput = keyof typeof MATERIAL_GRAPH_OUTPUTS;
 
-/** 一种材质节点：端口（没接时的值）、参数，和生成 WGSL 的函数。 */
-interface MaterialNode extends NodeSpec {
+/**
+ * 一种材质节点：端口（没接时的值）、参数，和生成 WGSL 的函数。工程、插件自己的节点用 registerMaterialNodes 登记；emit 里把参数
+ * 写进代码用 graphParam 的格式化（数值参数进材质的 uniform，拖滑块不重新编译）。
+ */
+export interface MaterialNode extends NodeSpec {
   readonly inputs: readonly (PortSpec & { readonly fallback: string })[];
   /** 按输入的表达式（已经换成端口的种类）、参数生成每个输出的表达式。 */
   readonly emit: (inputs: Readonly<Record<string, string>>, params: Readonly<Record<string, unknown>>, context: EmitContext) => Readonly<Record<string, string>>;
 }
 
-interface EmitContext {
+export interface EmitContext {
   /** 用到的库函数，每个只放一次。 */
   addFunction(name: string, code: string): void;
   /** 采样一张贴图资源（内容路径）；还没加载出来时是 undefined。 */
@@ -736,10 +739,30 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
 /** 滤镜节点的种类：value 输入烘进贴图的。 */
 export const BAKED_NODE_TYPES: ReadonlySet<string> = new Set(['bake', 'blur', 'warp']);
 
-const NODES_BY_TYPE = new Map(MATERIAL_NODES.map((node) => [node.type, node]));
+const BUILTIN_NODES = new Map(MATERIAL_NODES.map((node) => [node.type, node]));
+/** 工程、插件登记的节点（registerMaterialNodes）。 */
+const registeredNodes = new Map<string, MaterialNode>();
 
-/** 节点库的描述（编辑器的节点图面板用）。 */
-export const MATERIAL_NODE_SPECS: readonly NodeSpec[] = MATERIAL_NODES;
+/**
+ * 登记工程、插件自己的材质节点：节点图里按 type 引用，编辑器的"加节点"菜单列出来（category 是菜单的分组，可以是新的）。游戏页面
+ * （着色器在这里编）和编辑器（菜单、预览）都要登记：游戏的入口调它，编辑器扩展的 materialNodes 由 installEditorExtension 调它。
+ * 同一个 type 再登记是替换（热重载）；和内置的重名报错。
+ */
+export function registerMaterialNodes(nodes: readonly MaterialNode[]): void {
+  for (const node of nodes) {
+    if (BUILTIN_NODES.has(node.type)) throw new Error(`registerMaterialNodes: '${node.type}' is a built-in material node; pick another type`);
+    registeredNodes.set(node.type, node);
+  }
+}
+
+function materialNode(type: string): MaterialNode | undefined {
+  return BUILTIN_NODES.get(type) ?? registeredNodes.get(type);
+}
+
+/** 节点库的描述，内置的在前、登记的在后（编辑器的节点图面板用）。 */
+export function materialNodeSpecs(): readonly NodeSpec[] {
+  return [...MATERIAL_NODES, ...registeredNodes.values()];
+}
 
 /** 节点（贴图、三平面投影）引用的贴图资源（内容路径）：加载材质时先加载它们，编辑器改名、移动时改写。 */
 export function materialGraphTextures(graph: GraphFile): string[] {
@@ -789,7 +812,7 @@ export function emitMaterialGraphNodes(graph: GraphFile, compiler: Pick<ColorTre
   const values = new Map<string, MaterialGraphValue>();
   for (const node of order) {
     const context: EmitContext = { addFunction: (name, code) => compiler.addFunction(name, code), sample, baked: (uv) => sample(bakedTextureKey(node.id), uv) };
-    const spec = NODES_BY_TYPE.get(node.type);
+    const spec = materialNode(node.type);
     if (!spec) throw new Error(`${where}: node '${node.id}' has the unknown type '${node.type}'`);
     const inputs: Record<string, string> = {};
     for (const port of spec.inputs) {
@@ -923,3 +946,16 @@ function rgb(value: unknown): string {
   const [r, g, b] = (Array.isArray(value) ? value : [1, 1, 1]) as number[];
   return `vec4f(${f(r)}, ${f(g)}, ${f(b)}, 1.0)`;
 }
+
+/**
+ * 节点的 emit 把参数写进 WGSL 用这几个：编材质时数值参数换成读材质 uniform 的表达式（同结构的图共用管线），预览、烘焙时是字面量。
+ * 拿参数做算术、选分支的（`Number(params.x)`）照旧用值，那是代码结构的一部分。
+ */
+export const graphParam = {
+  /** 数 → f32。 */
+  float: f,
+  /** [x, y] → vec2f。 */
+  vec2: v2,
+  /** 线性的 [r, g, b] → vec4f（alpha 1）。 */
+  color: rgb,
+} as const;

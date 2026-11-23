@@ -217,7 +217,9 @@
    "components": {
     "model": {
      "model": "Level/Crate",
-     "materials": []
+     "materials": [
+      "Level/Materials/Hazard"
+     ]
     }
    }
   },

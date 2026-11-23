@@ -22,6 +22,7 @@
  */
 import { registerAssetKind, type AssetKind, type ReferenceSink } from '@stride-ts/engine/content-references';
 import { registerAssetFields, type Field } from '@stride-ts/engine/editor-fields';
+import { registerMaterialNodes, type MaterialNode } from '@stride-ts/engine/material-graph';
 import type { StrideTools } from '@stride-ts/native/tools';
 
 /** 烘的时候能用的：原生工具（Manifold、贴图编码……）、读内容目录里的文件。 */
@@ -64,6 +65,11 @@ export interface EditorExtension {
   // 每种资源的文件类型不同，列表里只能是 any：defineAssetKind 给单个的类型
   // oxlint-disable-next-line typescript/no-explicit-any
   readonly assetKinds?: readonly ExtensionAssetKind<any>[];
+  /**
+   * 材质节点图的节点（引擎的 MaterialNode）：编辑器的"加节点"菜单、预览用。着色器在游戏页面里编，游戏的入口也要登记同一批
+   * （`registerMaterialNodes`，或者调 installEditorExtension）。
+   */
+  readonly materialNodes?: readonly MaterialNode[];
 }
 
 /** 给扩展模块的默认导出补类型（原样返回）。 */
@@ -80,6 +86,7 @@ const installed = new Map<string, ExtensionAssetKind<unknown>>();
 
 /** 装上一个扩展：引擎的种类和字段登记进去，名字、模板、烘焙记在这里（extensionAssetKind 查）。再装一次是替换。 */
 export function installEditorExtension(extension: EditorExtension): void {
+  if (extension.materialNodes) registerMaterialNodes(extension.materialNodes);
   for (const kind of extension.assetKinds ?? []) {
     registerAssetKind(kind.kind, { extension: kind.extension, ...(kind.references ? { references: kind.references as (file: unknown, refs: ReferenceSink) => void } : {}) });
     if (kind.fields) registerAssetFields(kind.kind, kind.fields);
@@ -99,7 +106,11 @@ export function extensionAssetKinds(): readonly ExtensionAssetKind<unknown>[] {
 
 /** 扩展的种类在界面上的名字：按语言取，没有就用别的语言的，都没有用种类名。 */
 export function extensionLabel(kind: ExtensionAssetKind<unknown>, locale: string): string {
-  const { label } = kind;
+  return localizedLabel(kind.label, locale) ?? kind.kind;
+}
+
+/** 扩展写的名字（字符串，或者按语言的表）按语言取，没有这个语言用别的语言的；没写是 undefined。 */
+export function localizedLabel(label: string | Readonly<Partial<Record<'zh-CN' | 'en', string>>> | undefined, locale: string): string | undefined {
   if (typeof label === 'string') return label;
-  return label?.[locale as 'zh-CN' | 'en'] ?? label?.en ?? label?.['zh-CN'] ?? kind.kind;
+  return label?.[locale as 'zh-CN' | 'en'] ?? label?.en ?? label?.['zh-CN'];
 }

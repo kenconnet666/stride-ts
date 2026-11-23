@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { GraphFile } from '../../src/content/formats/nodeGraph';
 import { sortGraph } from '../../src/content/formats/nodeGraph';
 import { ColorTreeCompiler } from '../../src/rendering/mesh/colorTree';
-import { compileMaterialGraph, GraphParams, MATERIAL_NODE_SPECS, materialGraphTextures } from '../../src/rendering/mesh/materialGraph';
+import { compileMaterialGraph, graphParam, GraphParams, materialGraphTextures, materialNodeSpecs, registerMaterialNodes } from '../../src/rendering/mesh/materialGraph';
 
 const compiler = () => new ColorTreeCompiler({ texture: () => undefined, shaderClass: () => undefined }, 3);
 
@@ -191,9 +191,25 @@ describe('材质节点图', () => {
   });
 
   test('节点库：每种节点的参数都有默认值，类型不重复', () => {
-    const types = MATERIAL_NODE_SPECS.map((spec) => spec.type);
+    const types = materialNodeSpecs().map((spec) => spec.type);
     expect(new Set(types).size).toBe(types.length);
-    for (const spec of MATERIAL_NODE_SPECS) for (const param of spec.params) expect(param.default, `${spec.type}.${param.name}`).not.toBeUndefined();
+    for (const spec of materialNodeSpecs()) for (const param of spec.params) expect(param.default, `${spec.type}.${param.name}`).not.toBeUndefined();
+  });
+
+  test('工程登记的节点：进节点库、能编，数值参数照样进 uniform 表；和内置的重名报错，同名再登记是替换', () => {
+    const stripes = (width: number) => ({
+      type: 'test.stripes', category: 'pattern', label: { 'zh-CN': '条纹', en: 'Stripes' },
+      inputs: [{ name: 'uv', type: 'vec2', fallback: 'streams.uv' }], outputs: [{ name: 'mask', type: 'float' }],
+      params: [{ name: 'count', type: { kind: 'number', min: 1 }, default: width }],
+      emit: ({ uv }: Readonly<Record<string, string>>, p: Readonly<Record<string, unknown>>) => ({ mask: `step(0.5, fract(${uv}.x * ${graphParam.float(p['count'])}))` }),
+    }) as const;
+    registerMaterialNodes([stripes(8)]);
+    registerMaterialNodes([stripes(4)]);
+    expect(materialNodeSpecs().filter((spec) => spec.type === 'test.stripes').map((spec) => spec.params[0]!.default)).toEqual([4]);
+    const graph: GraphFile = { nodes: [{ id: 's', type: 'test.stripes', params: { count: 6 } }], outputs: { roughness: { node: 's' } } };
+    expect(compileMaterialGraph(graph, compiler(), () => undefined, 'p').code).toContain('fract(streams.uv.x * 6.0)');
+    expect(compileMaterialGraph(graph, compiler(), () => undefined, 'p', '', new GraphParams()).code).toContain('material.graph');
+    expect(() => registerMaterialNodes([{ ...stripes(1), type: 'noise' }])).toThrow("'noise' is a built-in material node");
   });
 
   test('sortGraph 的 all：没接到输出的节点也排进去（节点的预览用），被依赖的仍在前', () => {

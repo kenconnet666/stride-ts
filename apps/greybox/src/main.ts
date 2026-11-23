@@ -2,8 +2,13 @@
 // 入口只负责启动，游戏内容在 game/ 里，开发时可以热重载。场景在 public/content，用编辑器（开发服务器上的 /__stride/editor/）搭。
 import * as engine from '@stride-ts/engine';
 import { Game } from '@stride-ts/engine';
+import { registerMaterialNodes } from '@stride-ts/engine/material-graph';
 import { physics } from '@stride-ts/native/physics';
 import { GreyboxGame } from './game/GreyboxGame';
+import { GREYBOX_MATERIAL_NODES } from './materialNodes';
+
+// 工程自己的材质节点（着色器在这个页面里编，编辑器那边由编辑器扩展登记同一批）
+registerMaterialNodes(GREYBOX_MATERIAL_NODES);
 
 // 调试用：控制台和 stride eval 可以拿到引擎的类型
 (globalThis as { strideEngine?: typeof engine }).strideEngine = engine;

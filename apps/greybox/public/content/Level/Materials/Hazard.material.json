@@ -1,0 +1,23 @@
+{
+ "name": "Hazard",
+ "metalness": 0,
+ "roughness": 0.6,
+ "graph": {
+  "nodes": [
+   {
+    "id": "stripes",
+    "type": "greybox.hazardStripes",
+    "params": {
+     "count": 5,
+     "angle": 45
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "stripes",
+    "output": "color"
+   }
+  }
+ }
+}

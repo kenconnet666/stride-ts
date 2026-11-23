@@ -9,6 +9,7 @@
 | 不属于某个实体的每帧逻辑 | 子系统 `game.addSystem({ phase, update, moveOrigin, destroy })` | 引擎内置的地形、摆放、天气（`engine/Game.ts` 的 `#builtinSystems`） |
 | 自己的资源种类 | 引擎：`registerAssetKind` 加 `CustomAssetKinds` 声明合并；编辑器：工程扩展 `defineEditorExtension` | `apps/greybox/editor/extension.ts`（柱子） |
 | 调试命令 | `game.debug.command(名字, 说明, handler)`，CLI 用 `stride call <名字>` | `apps/collect-dodge/src/game/GameRules.ts` 的 `rules` |
+| 材质节点图的节点 | `registerMaterialNodes`（游戏入口）加编辑器扩展的 `materialNodes` | `apps/greybox/src/materialNodes.ts`（警示条纹） |
 | 网格的着色钩子 | `meshEffect(wgsl, defaults)` 按导出名登记，场景合成器的效果名引用 | `apps/space-escape`（走廊弯曲、远处起雾） |
 | 自己画的东西 | 继承 `RootRenderFeature`（extract、cull、prepare、draw），`game.renderSystem.addFeature(...)` | `rendering/sky/BackgroundRenderFeature.ts`、`rendering/SpriteRenderFeature.ts` |
 | C/C++ 写的重活 | 原生插件：wasm 侧模块，和物理、贴图、导航模块同等地位，共用内存和线程 | fork 的 `StrideNative/Plugins/README.md` 和 `Example/` |
@@ -58,8 +59,10 @@ declare module '@stride-ts/engine' { interface CustomAssetKinds { lamp: LampFile
 - 根渲染特性（`rendering/RenderSystem.ts` 的 `RootRenderFeature`）：`extract` 在 CPU 上取这一帧要画的，`cull` 按视图剔，
   `prepare` 上传，`draw` 在各阶段（不透明、透明、阴影、点选、运动向量）画；覆盖 `supportsPicking`、`supportsVelocity`、`supportsWireframe`、`drawsDepth` 这几个开关，
   不画的阶段不被调用。
-- 材质节点图的节点库（`rendering/mesh/materialGraph.ts` 的 `MATERIAL_NODES`）和视口里的编辑工具（`editor/viewport/tools/`
-  的 `ViewportTool`）现在只有内置的，还不能从工程里登记。
+- 材质节点图的节点（`@stride-ts/engine/material-graph` 的 `MaterialNode`）：端口、参数和 `emit`（按输入的表达式生成 WGSL，数值参数
+  经 `graphParam` 写进代码才进材质的 uniform）。着色器在游戏页面里编，游戏入口调 `registerMaterialNodes`；编辑器的菜单、预览靠
+  编辑器扩展的 `materialNodes` 登记同一批。type 加工程的前缀（`greybox.hazardStripes`），和内置的重名报错。
+- 视口里的编辑工具（`editor/viewport/tools/` 的 `ViewportTool`）现在只有内置的，还不能从工程里登记。
 
 ## 原生插件
 

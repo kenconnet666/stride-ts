@@ -5,7 +5,8 @@
 import type { MessageTable } from '@zerodep-dev/vue-tsx-pro-ui';
 import type { NewAssetOption, ProceduralShapeType } from '../../shared/newAssets';
 import type { EffectCategory, MaterialCategory } from '../../library/index.ts';
-import { extensionAssetKind, extensionLabel } from '../../shared/extension';
+import type { NodeSpec } from '@stride-ts/engine/node-graph';
+import { extensionAssetKind, extensionLabel, localizedLabel } from '../../shared/extension';
 import { locale, translations } from './i18n';
 
 export interface EditorMessages {
@@ -916,6 +917,11 @@ export const t = translations(editorMessages);
 export function newAssetLabel(option: NewAssetOption): string {
   if (option.id.startsWith('extension:')) return assetLabel(option.kind);
   return option.shape ? t.newAssetLabels.shape(t.shapes[option.shape]) : t.newAssetLabels[option.id as 'scene' | 'material' | 'ui' | 'timeline' | 'brush' | 'spline' | 'sdf' | 'poly' | 'spriteSheet' | 'sound' | 'text' | 'product' | 'shelf' | 'pile' | 'debris' | 'splatEdit' | 'sign' | 'ceiling' | 'fixture' | 'world' | 'terrain'];
+}
+
+/** 材质节点在界面上的名字：内置的按翻译表，工程、插件登记的按它的 label，都没有时是 type。 */
+export function graphNodeLabel(spec: Pick<NodeSpec, 'type' | 'label'>): string {
+  return t.graphNodes[spec.type] ?? localizedLabel(spec.label, locale.value) ?? spec.type;
 }
 
 /** 资源种类在界面上的名字：内置的按翻译表，编辑器扩展登记的按它的 label，都没有时是种类名。 */

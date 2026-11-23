@@ -41,6 +41,8 @@ export interface PortSpec {
 export interface NodeSpec {
   readonly type: string;
   readonly category: string;
+  /** 界面上的名字（按语言）；内置的节点在编辑器的语言包里，工程登记的节点写在这里，都没有时用 type。 */
+  readonly label?: string | Readonly<Partial<Record<'zh-CN' | 'en', string>>>;
   readonly inputs: readonly PortSpec[];
   readonly outputs: readonly PortSpec[];
   /** 参数的字段描述（编辑器在节点上按它画编辑控件），默认值在 default 里。 */

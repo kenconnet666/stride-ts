@@ -19,11 +19,11 @@ import { Button, Empty, Flex, IconButton, Menu, MenuGroup, MenuItem, Text, Toolb
 import { graphLayout } from '@zerodep-dev/vue-tsx-pro-ui/charts';
 import { Diagram, DiagramPortNode, portNodeLayout, useDiagram, type DiagramConnection, type DiagramEdgeItem, type DiagramNodeItem, type DiagramNodeMove, type DiagramSelection, type PortNodePort } from '@zerodep-dev/vue-tsx-pro-ui/diagram';
 import type { GraphFile, GraphLink, GraphNodeFile, NodeSpec } from '@stride-ts/engine/node-graph';
-import { MATERIAL_GRAPH_OUTPUTS, MATERIAL_NODE_SPECS } from '@stride-ts/engine/material-graph';
+import { MATERIAL_GRAPH_OUTPUTS, materialNodeSpecs } from '@stride-ts/engine/material-graph';
 import { MATERIAL_PREVIEW_SIZE, MaterialGraphPreviewer } from '@stride-ts/engine/material-graph-preview';
 import { nextTick, onUnmounted, watch } from 'vue';
 import { Fields, type FieldContext } from '../fields/FieldEditor';
-import { t } from '../i18n/messages';
+import { graphNodeLabel, t } from '../i18n/messages';
 import type { EditorSession } from '../session/EditorSession';
 
 const WIDTH = 190;
@@ -52,7 +52,8 @@ const PREVIEW_DELAY_MS = 150;
 /** 新加的节点和上面的节点之间的空。 */
 const NODE_GAP = 24;
 const OUTPUT_NODE = '$output';
-const SPECS = new Map(MATERIAL_NODE_SPECS.map((spec) => [spec.type, spec]));
+/** 节点的描述（内置的和工程登记的）。 */
+const specOf = (type: string): NodeSpec | undefined => materialNodeSpecs().find((spec) => spec.type === type);
 const OUTPUT_PORTS = Object.entries(MATERIAL_GRAPH_OUTPUTS).map(([name, type]) => ({ name, type }));
 
 const styles = css.create({
@@ -173,7 +174,7 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
   /** 图里的节点和材质的输出换成 Diagram 的节点（端口对准卡片里的行）。 */
   const cards = (file: GraphFile): CardItem[] => {
     const items: CardItem[] = file.nodes.flatMap((node) => {
-      const spec = SPECS.get(node.type);
+      const spec = specOf(node.type);
       if (!spec) return [];
       // 端口行下面是预览图和参数（属性面板的字段行，每行 PARAM_ROW），端口位置按行算（portNodeLayout）；有参数的节点里有控件
       const layout = portNodeLayout({
@@ -202,7 +203,7 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
 
   /** 输入接的线：连线的 id 是"节点:端口"（删连线时按它断开）。 */
   const links = (file: GraphFile): DiagramEdgeItem[] => {
-    const firstOutput = (id: string) => SPECS.get(file.nodes.find((n) => n.id === id)?.type ?? '')?.outputs[0]?.name;
+    const firstOutput = (id: string) => specOf(file.nodes.find((n) => n.id === id)?.type ?? '')?.outputs[0]?.name;
     const edge = (link: GraphLink, node: string, port: string): DiagramEdgeItem[] => {
       const output = link.output ?? firstOutput(link.node);
       return output === undefined ? [] : [{ id: `${node}:${port}`, from: link.node, fromPort: output, to: node, toPort: port }];
@@ -248,7 +249,7 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
     const { node, spec } = item;
     if (!node || !spec) return <DiagramPortNode title={t.graphOutput} inputs={portsOf(OUTPUT_PORTS, outputLabel)} />;
     return (
-      <DiagramPortNode title={t.graphNodes[node.type] ?? node.type} propsHeader={{ title: node.id }}
+      <DiagramPortNode title={graphNodeLabel(spec)} propsHeader={{ title: node.id }}
         outputs={portsOf(spec.outputs, portLabel)} inputs={portsOf(spec.inputs, portLabel)}>
         {spec.outputs.length > 0 && <PreviewImage image={previews.get(node.id)} />}
         {spec.params.length > 0 && (
@@ -271,9 +272,9 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
       <Flex direction="column" sx={styles.panel}>
         <Toolbar docked="top" aria-label={t.toolWindows.graph}>
           <Menu trigger={(props) => <Button {...props} size="sm" variant="soft" tone="neutral" icon={Plus}>{t.graphAddNode}</Button>}>
-            {[...new Set(MATERIAL_NODE_SPECS.map((spec) => spec.category))].map((category) => (
+            {[...new Set(materialNodeSpecs().map((spec) => spec.category))].map((category) => (
               <MenuGroup label={t.graphCategories[category] ?? category}>
-                {MATERIAL_NODE_SPECS.filter((spec) => spec.category === category).map((spec) => <MenuItem onAction={() => add(spec.type)}>{t.graphNodes[spec.type] ?? spec.type}</MenuItem>)}
+                {materialNodeSpecs().filter((spec) => spec.category === category).map((spec) => <MenuItem onAction={() => add(spec.type)}>{graphNodeLabel(spec)}</MenuItem>)}
               </MenuGroup>
             ))}
           </Menu>
@@ -299,7 +300,7 @@ export const GraphPanel = _component(({ session }: { session: EditorSession }) =
             onConnect={onConnect}
             onNodesMove={onNodesMove}
             fitView
-            getNodeLabel={(item: CardItem) => (item.node ? t.graphNodes[item.node.type] ?? item.node.type : t.graphOutput)}
+            getNodeLabel={(item: CardItem) => (item.node ? graphNodeLabel(specOf(item.node.type) ?? { type: item.node.type }) : t.graphOutput)}
             aria-label={t.toolWindows.graph}
           >
             {(item: CardItem) => card(item)}

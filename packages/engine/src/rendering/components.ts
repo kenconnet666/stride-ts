@@ -282,6 +282,11 @@ export const Model = component('Model', {
   /** 投下阴影（Stride 的 ModelComponent.IsShadowCaster）。 */
   isShadowCaster: prop.bool().default(true),
   /**
+   * 进光追场景（Stride 没有；同 Unreal 的 Visible in Ray Tracing、Unity 的 Ray Tracing Mode）：间接光、光追反射、路径追踪里有它。
+   * 地上的杂物、远处的小零碎关掉：对间接光没有贡献，BVH 白大。
+   */
+  visibleInRayTracing: prop.bool().default(true),
+  /**
    * 渲染组（Stride 的 RenderGroup，0 到 31）：视图只画它的掩码（RenderView.cullingMask）里有的组。编辑器的辅助图形、
    * 只给某台相机看的东西放在自己的组里。
    */

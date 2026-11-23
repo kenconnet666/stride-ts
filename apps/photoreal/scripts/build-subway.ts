@@ -137,11 +137,11 @@ const pause = Number(process.env['STRIDE_BUILD_PAUSE'] ?? 0);
 let placed = 0x10;
 /** 白盒模型写好以后放进场景（实体编号按顺序，重搭时一样）。 */
 /** 模型放进场景（实体编号按顺序，重搭时一样）。 */
-const place = async (name: string, model: string, position: Vec3 = [0, 0, 0]) => {
+const place = async (name: string, model: string, position: Vec3 = [0, 0, 0], options: object = {}) => {
   // 场景在开头重写过（相机、太阳、天空、辐照度体四个）：这里按顺序往后加
   const index = 4 + placed - 0x10;
   const id = `0b6c7c1e-0001-4000-8000-${(placed++).toString(16).padStart(12, '0')}`;
-  await call('edit_scene', { kind: 'scene', path: 'Subway', edits: [{ type: 'add', entities: [{ entity: entity(id, name, position, { model: { model, materials: [] } }), index }] }] });
+  await call('edit_scene', { kind: 'scene', path: 'Subway', edits: [{ type: 'add', entities: [{ entity: entity(id, name, position, { model: { model, materials: [], ...options } }), index }] }] });
   if (pause > 0) await new Promise((resolve) => setTimeout(resolve, pause));
 };
 /** 白盒模型写好以后放进场景。 */
@@ -243,7 +243,7 @@ for (let i = 0; i < 14; i++) {
 }
 await brushModel('Surroundings', [M('Grass'), M('Foliage')], trees);
 
-// ---- 地上的碎石杂物：砂粒、石子、落叶、烟头，屏蔽门脚下、尽头的栏杆和挡杆底下攒得多（物理让它们躺稳，合成一个模型）----
+// ---- 地上的碎石杂物：砂粒、石子、落叶、烟头，屏蔽门脚下、尽头的栏杆和挡杆底下攒得多（物理让它们躺稳，合成一个模型；不进光追场景）----
 const debrisProducts = {
   Grit: { shape: 'tuber', size: [0.007, 0.004, 0.006], colors: { background: '#8b877f', accent: '#6c6862' }, seed: 1 },
   Pebble: { shape: 'nut', size: [0.016, 0.011, 0.014], colors: { background: '#7d7a74', accent: '#5a5853' }, seed: 2 },
@@ -257,9 +257,9 @@ const debrisItems = (grit: number, pebbles: number, leaves: number, butts: numbe
 ];
 // 屏蔽门前：机位附近 10 米、离门 1.4 米以内（后边在立柱的正面 z = −0.5），靠门那条边攒
 await write('debris', 'Subway/Debris/DoorLine', { name: 'DoorLine', area: [10, 1.4], items: debrisItems(500, 220, 30, 6), edges: { sides: ['back'], width: 0.3, share: 0.8 }, seed: 5 });
-await place('DoorLineDebris', 'Subway/Debris/DoorLine', [3, 0, 0.2]);
+await place('DoorLineDebris', 'Subway/Debris/DoorLine', [3, 0, 0.2], { visibleInRayTracing: false });
 // 尽头：栏杆和挡杆之间的一块，靠栏杆（后）和挡杆（前）
 await write('debris', 'Subway/Debris/EndCorner', { name: 'EndCorner', area: [6, 1.5], items: debrisItems(400, 120, 40, 5), edges: { sides: ['back', 'front'], width: 0.35, share: 0.75 }, seed: 6 });
-await place('EndCornerDebris', 'Subway/Debris/EndCorner', [-5.2, 0, 0.05]);
+await place('EndCornerDebris', 'Subway/Debris/EndCorner', [-5.2, 0, 0.05], { visibleInRayTracing: false });
 
 await mcp.stop();

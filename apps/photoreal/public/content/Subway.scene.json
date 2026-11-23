@@ -433,7 +433,8 @@
    "components": {
     "model": {
      "model": "Subway/Debris/DoorLine",
-     "materials": []
+     "materials": [],
+     "visibleInRayTracing": false
     }
    }
   },
@@ -460,7 +461,8 @@
    "components": {
     "model": {
      "model": "Subway/Debris/EndCorner",
-     "materials": []
+     "materials": [],
+     "visibleInRayTracing": false
     }
    }
   }

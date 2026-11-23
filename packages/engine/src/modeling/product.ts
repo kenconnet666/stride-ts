@@ -141,7 +141,8 @@ export function isProduce(shape: ProductShape): boolean {
  */
 function produceMesh(file: ProductFile, radial: number): ProductMesh {
   const [w, h, d] = file.size, rx = w / 2, rz = (d > 0 ? d : w) / 2;
-  const profile = produceProfile(file.shape);
+  // 绕一圈分得少（小东西）时，轮廓线也分得少一半
+  const profile = produceProfile(file.shape, radial < 12 ? 0.5 : 1);
   const seed = file.seed ?? 1;
   const bump = (u: number, t: number, cells: number, amount: number) => {
     // 两层格子噪声：圆周上按 u 首尾相接
@@ -212,19 +213,19 @@ function labelHeight(profile: readonly ProfilePoint[], h: number, r: number): nu
   return length;
 }
 
-/** 果蔬的轮廓线（半径是最粗处的倍数，高是 0..1），从底面中心到顶。洋葱、蒜头的顶上收成一截颈（盖子的颜色）。 */
-function produceProfile(shape: ProductShape): ProfilePoint[] {
+/** 果蔬的轮廓线（半径是最粗处的倍数，高是 0..1），从底面中心到顶。洋葱、蒜头的顶上收成一截颈（盖子的颜色）。detail 乘弧线的分段数。 */
+function produceProfile(shape: ProductShape, detail = 1): ProfilePoint[] {
   const arc = (from: number, to: number, steps: number, squash = 1, top = 1) => Array.from({ length: steps + 1 }, (_, i) => {
     const phi = from + ((to - from) * i) / steps;
     return { r: Math.sin(phi), y: (top * (1 - Math.cos(phi))) / 2 * squash };
   });
   switch (shape) {
     case 'onion':
-      return [...arc(0, Math.PI * 0.82, 10, 1, 0.9).map((p) => ({ ...p, y: p.y })), { r: 0.14, y: 0.9, cap: true }, { r: 0.05, y: 1, cap: true }, { r: 0, y: 1, cap: true }];
+      return [...arc(0, Math.PI * 0.82, Math.round(10 * detail), 1, 0.9).map((p) => ({ ...p, y: p.y })), { r: 0.14, y: 0.9, cap: true }, { r: 0.05, y: 1, cap: true }, { r: 0, y: 1, cap: true }];
     case 'garlic':
-      return [{ r: 0, y: 0 }, { r: 0.55, y: 0.02 }, ...arc(Math.PI * 0.25, Math.PI * 0.8, 8, 1, 0.92).map((p) => ({ r: p.r, y: p.y })), { r: 0.16, y: 0.88, cap: true }, { r: 0.07, y: 1, cap: true }, { r: 0, y: 1, cap: true }];
+      return [{ r: 0, y: 0 }, { r: 0.55, y: 0.02 }, ...arc(Math.PI * 0.25, Math.PI * 0.8, Math.round(8 * detail), 1, 0.92).map((p) => ({ r: p.r, y: p.y })), { r: 0.16, y: 0.88, cap: true }, { r: 0.07, y: 1, cap: true }, { r: 0, y: 1, cap: true }];
     default:
-      return arc(0, Math.PI, 12);
+      return arc(0, Math.PI, Math.round(12 * detail));
   }
 }
 

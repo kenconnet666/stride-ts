@@ -115,6 +115,7 @@ describe('光追场景（RayTracingScene）', () => {
     count: 1,
     slots: [0],
     skinned: false,
+    visibleInRayTracing: true,
   });
   const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
 
@@ -141,6 +142,13 @@ describe('光追场景（RayTracingScene）', () => {
     }
     expect(scene.instanceCount).toBe(1);
     expect(scene.bindGroup).toBeDefined();
+
+    // 关了进光追场景（Model.visibleInRayTracing）的批不算
+    game.meshes.batches = [triangleBatch(), { ...triangleBatch(), visibleInRayTracing: false }];
+    update();
+    await settle();
+    expect(scene.instanceCount).toBe(1);
+    game.meshes.batches = [triangleBatch()];
 
     // 又没了：绑定组撤掉（不拿旧的或者空的 TLAS 去遍历）
     game.meshes.batches = [];

@@ -537,6 +537,8 @@ export interface SceneEntityFile {
       readonly materials?: readonly (string | null)[];
       /** 投下阴影；没有时是 true（同 Stride 的 ModelComponent.IsShadowCaster）。 */
       readonly isShadowCaster?: boolean;
+      /** 进光追场景（间接光、光追反射）；没有时是 true。地上的杂物这类小零碎关掉。 */
+      readonly visibleInRayTracing?: boolean;
       /** 渲染组（Stride 的 RenderGroup，0 到 31）；没写是 0。 */
       readonly renderGroup?: number;
     };

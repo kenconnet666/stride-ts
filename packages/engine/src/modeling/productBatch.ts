@@ -10,7 +10,7 @@
 import type { MaterialFile } from '../content/formats/assetFormat.ts';
 import type { ProductFile } from '../content/formats/productFormat.ts';
 import { packPages } from '../data/rectPacking.ts';
-import { PACKAGE_TRANSMISSION, productDesign, productLabelShapes, productMesh, productSurface, productTransmission, svgNumber, type ProductMesh } from './product.ts';
+import { PACKAGE_TRANSMISSION, productDesign, productFootprint, productLabelShapes, productMesh, productSurface, productTransmission, svgNumber, type ProductMesh } from './product.ts';
 import type { TextFont } from './textOutline.ts';
 
 /** 生成要的别的资源：商品文件（按内容路径）和字体。 */
@@ -70,12 +70,19 @@ export interface MeshArrays {
   readonly indices: Uint32Array;
 }
 
-/** 图集的边长（像素）、格子之间的留边、纯色格的边长。 */
-const ATLAS = 2048;
+/**
+ * 图集的边长（像素）：最大 2048；标签最多画到每毫米 4 个像素，东西少、小的（地上的杂物、一筐蒜）用装得下的最小的边长（最小 256），
+ * 不白占一整张 2048 的显存。格子之间的留边、纯色格的边长。
+ */
+const MAX_ATLAS = 2048;
+const MIN_ATLAS = 256;
+const MAX_DENSITY = 4;
 const PADDING = 3;
 const SOLID = 8;
-/** 不细的商品的旋转体分段（12 段：8 段从上往下看是八边形）。 */
+/** 不细的商品的旋转体分段（12 段：8 段从上往下看是八边形）；最长不到 2 厘米的（砂粒、石子）6 段。 */
 const COARSE_SEGMENTS = 12;
+const TINY_SEGMENTS = 6;
+const TINY = 0.02;
 
 export class ProductBatch {
   readonly #sources: ProductSources;
@@ -94,8 +101,11 @@ export class ProductBatch {
   readonly #glassIndices: number[] = [];
   readonly #clearVertices: number[] = [];
   readonly #clearIndices: number[] = [];
+  /** 图集的边长（像素）。 */
+  readonly #atlas: number;
 
-  constructor(sources: ProductSources, where: string, items: readonly PlacedProduct[], { solids = [], cells = [] }: { readonly solids?: readonly AtlasSolid[]; readonly cells?: readonly AtlasCell[] } = {}) {
+  /** maxDensity：标签最多画到每毫米几个像素（默认 4；地上的杂物远看就行，给 2）。 */
+  constructor(sources: ProductSources, where: string, items: readonly PlacedProduct[], { solids = [], cells = [], maxDensity = MAX_DENSITY }: { readonly solids?: readonly AtlasSolid[]; readonly cells?: readonly AtlasCell[]; readonly maxDensity?: number } = {}) {
     this.#sources = sources;
     this.#where = where;
     this.#items = items;
@@ -105,10 +115,11 @@ export class ProductBatch {
     const labelSizes = this.#variantKeys.map((key) => this.#mesh(pathOf(key), true).labelSize);
     // 纯色格排在最下面一行（右往左），别的装进上面
     const reserve = solids.length > 0 ? SOLID + 2 * PADDING : 0;
-    const packed = packAtlas([...labelSizes, ...cells.map((cell) => cell.size)], reserve);
+    const { atlas, cells: packed } = packAtlas([...labelSizes, ...cells.map((cell) => cell.size)], reserve, solids.length * (SOLID + 2 * PADDING), maxDensity);
+    this.#atlas = atlas;
     this.#labelCells = packed.slice(0, this.#variantKeys.length);
     this.#extraCells = packed.slice(this.#variantKeys.length);
-    this.#solidCells = solids.map((_, i): Cell => [ATLAS - (i + 1) * (SOLID + PADDING * 2) + PADDING, ATLAS - SOLID - PADDING, SOLID, SOLID]);
+    this.#solidCells = solids.map((_, i): Cell => [atlas - (i + 1) * (SOLID + PADDING * 2) + PADDING, atlas - SOLID - PADDING, SOLID, SOLID]);
   }
 
   /** 单独的第 i 格（像素），架子的几何按它算 UV。 */
@@ -119,7 +130,7 @@ export class ProductBatch {
   /** 轴对齐的盒子，六个面都是第 solid 个纯色。 */
   box(min: readonly number[], max: readonly number[], solid: number): void {
     const [x, y, w, h] = this.#solidCells[solid]!;
-    addBox(this.#vertices, this.#indices, min, max, (x + w / 2) / ATLAS, (y + h / 2) / ATLAS);
+    addBox(this.#vertices, this.#indices, min, max, (x + w / 2) / this.#atlas, (y + h / 2) / this.#atlas);
   }
 
   /** 轴对齐的一块玻璃（冷柜的门、冰柜的盖）：进玻璃那个网格。 */
@@ -132,7 +143,7 @@ export class ProductBatch {
    * （to 那头的半径，熟食柜的灯罩），法线按斜边。
    */
   tube(from: readonly number[], to: readonly number[], radius: number, solid: number, segments = 10, toRadius = radius): void {
-    const [x, y, w, h] = this.#solidCells[solid]!, u = (x + w / 2) / ATLAS, v = (y + h / 2) / ATLAS;
+    const [x, y, w, h] = this.#solidCells[solid]!, u = (x + w / 2) / this.#atlas, v = (y + h / 2) / this.#atlas;
     const axis = [to[0]! - from[0]!, to[1]! - from[1]!, to[2]! - from[2]!], length = Math.hypot(axis[0]!, axis[1]!, axis[2]!);
     if (length < 1e-9) return;
     const a = axis.map((c) => c / length);
@@ -173,7 +184,7 @@ export class ProductBatch {
   mesh(vertices: ArrayLike<number>, indices: ArrayLike<number>, cell: number): void {
     const [cx, cy, cw, ch] = this.#extraCells[cell]!, base = this.#vertices.length / 8;
     for (let i = 0; i < vertices.length; i += 8) {
-      this.#vertices.push(vertices[i]!, vertices[i + 1]!, vertices[i + 2]!, vertices[i + 3]!, vertices[i + 4]!, vertices[i + 5]!, (cx + vertices[i + 6]! * cw) / ATLAS, (cy + vertices[i + 7]! * ch) / ATLAS);
+      this.#vertices.push(vertices[i]!, vertices[i + 1]!, vertices[i + 2]!, vertices[i + 3]!, vertices[i + 4]!, vertices[i + 5]!, (cx + vertices[i + 6]! * cw) / this.#atlas, (cy + vertices[i + 7]! * ch) / this.#atlas);
     }
     for (let i = 0; i < indices.length; i++) this.#indices.push(base + indices[i]!);
   }
@@ -182,7 +193,7 @@ export class ProductBatch {
   quad(corners: readonly (readonly number[])[], normal: readonly number[], cell: number): void {
     const [cx, cy, cw, ch] = this.#extraCells[cell]!, base = this.#vertices.length / 8;
     const uv = [[0, 1], [1, 1], [1, 0], [0, 0]] as const;
-    corners.forEach((p, i) => this.#vertices.push(p[0]!, p[1]!, p[2]!, normal[0]!, normal[1]!, normal[2]!, (cx + uv[i]![0] * cw) / ATLAS, (cy + uv[i]![1] * ch) / ATLAS));
+    corners.forEach((p, i) => this.#vertices.push(p[0]!, p[1]!, p[2]!, normal[0]!, normal[1]!, normal[2]!, (cx + uv[i]![0] * cw) / this.#atlas, (cy + uv[i]![1] * ch) / this.#atlas));
     this.#indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
   }
 
@@ -203,7 +214,7 @@ export class ProductBatch {
       const base = vertices.length / 8, src = mesh.vertices, [px, py, pz] = item.position;
       for (let i = 0; i < src.length; i += 8) {
         const p = rotate(src[i]!, src[i + 1]!, src[i + 2]!), n = rotate(src[i + 3]!, src[i + 4]!, src[i + 5]!);
-        vertices.push(px + p[0], py + p[1], pz + p[2], n[0], n[1], n[2], (cx + src[i + 6]! * cw) / ATLAS, (cy + src[i + 7]! * ch) / ATLAS);
+        vertices.push(px + p[0], py + p[1], pz + p[2], n[0], n[1], n[2], (cx + src[i + 6]! * cw) / this.#atlas, (cy + src[i + 7]! * ch) / this.#atlas);
       }
       for (const index of mesh.indices) indices.push(base + index);
     }
@@ -241,10 +252,10 @@ export class ProductBatch {
       // 发光的格子里画的字也发光（灯箱的字）
       if ((cell.emissive ?? 0) > 0) glow.push(drawn);
     });
-    const svg = (shapes: string[], background?: string, definitions = '') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${ATLAS} ${ATLAS}" width="${ATLAS}" height="${ATLAS}">${definitions ? `<defs>${definitions}</defs>` : ''}${background ? `<rect width="${ATLAS}" height="${ATLAS}" fill="${background}"/>` : ''}${shapes.join('')}</svg>`;
+    const svg = (shapes: string[], background?: string, definitions = '') => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${this.#atlas} ${this.#atlas}" width="${this.#atlas}" height="${this.#atlas}">${definitions ? `<defs>${definitions}</defs>` : ''}${background ? `<rect width="${this.#atlas}" height="${this.#atlas}" fill="${background}"/>` : ''}${shapes.join('')}</svg>`;
     return {
       vertices: Float32Array.from(this.#vertices), indices: Uint32Array.from(this.#indices), colorSvg: svg(color), surfaceSvg: svg(surface, undefined, [...defs].join('')),
-      emissiveSvg: strongest > 0 ? svg(glow, '#000000') : undefined, emissive: strongest, atlasPixels: ATLAS,
+      emissiveSvg: strongest > 0 ? svg(glow, '#000000') : undefined, emissive: strongest, atlasPixels: this.#atlas,
       glass: this.#glassIndices.length > 0 ? { vertices: Float32Array.from(this.#glassVertices), indices: Uint32Array.from(this.#glassIndices) } : undefined,
       clear: this.#clearIndices.length > 0 ? { vertices: Float32Array.from(this.#clearVertices), indices: Uint32Array.from(this.#clearIndices) } : undefined,
     };
@@ -253,7 +264,11 @@ export class ProductBatch {
   #mesh(path: string, fine: boolean): ProductMesh {
     const key = `${fine ? 'f' : 'c'}|${path}`;
     let mesh = this.#meshes.get(key);
-    if (!mesh) this.#meshes.set(key, mesh = productMesh(this.#sources.products.get(path)!, `${this.#where}: ${path}`, fine ? undefined : COARSE_SEGMENTS));
+    if (!mesh) {
+      const product = this.#sources.products.get(path)!;
+      const segments = fine ? undefined : Math.max(...productFootprint(product)) < TINY ? TINY_SEGMENTS : COARSE_SEGMENTS;
+      this.#meshes.set(key, mesh = productMesh(product, `${this.#where}: ${path}`, segments));
+    }
     return mesh;
   }
 }
@@ -287,23 +302,32 @@ function addBox(vertices: number[], indices: number[], min: readonly number[], m
   }
 }
 
-/** 把标签（毫米）缩放、装进图集（最下面留 reserve 像素给纯色格）：找一个最大的缩放，让全部装得下。返回每一格（像素）。 */
-function packAtlas(sizes: readonly (readonly [number, number])[], reserve: number): Cell[] {
-  if (sizes.length === 0) return [];
-  let low = 0, high = 10;
-  let best: Cell[] | undefined;
-  for (let step = 0; step < 24; step++) {
-    const scale = (low + high) / 2;
-    const scaled = sizes.map(([w, h]) => [Math.max(4, Math.floor(w * scale)), Math.max(4, Math.floor(h * scale))] as const);
-    const placed = packPages(scaled, ATLAS - reserve, PADDING);
-    // 放不进的那块在结果里是空位（every 会跳过空位），按下标逐个查
-    if (sizes.every((_, i) => placed[i] !== undefined && placed[i]![0] === 0)) {
-      best = placed.map((at) => [at![1], at![2], at![3], at![4]] as const);
-      low = scale;
-    } else high = scale;
+/**
+ * 把标签（毫米）缩放、装进图集（最下面留 reserve 像素给纯色格，那一行至少 solidsWidth 宽）：从最小的边长往上试，每种边长找一个
+ * 最大的缩放（不超过每毫米 maxDensity 个像素）让全部装得下；够到上限的、或者已经是最大的边长就用它。返回边长和每一格（像素）。
+ */
+function packAtlas(sizes: readonly (readonly [number, number])[], reserve: number, solidsWidth: number, maxDensity: number): { readonly atlas: number; readonly cells: Cell[] } {
+  for (let atlas = MIN_ATLAS; ; atlas *= 2) {
+    const last = atlas >= MAX_ATLAS;
+    if (!last && solidsWidth > atlas) continue;
+    if (sizes.length === 0) return { atlas, cells: [] };
+    let low = 0, high = maxDensity;
+    let best: Cell[] | undefined;
+    for (let step = 0; step < 24; step++) {
+      const scale = step === 0 ? high : (low + high) / 2;
+      const scaled = sizes.map(([w, h]) => [Math.max(4, Math.floor(w * scale)), Math.max(4, Math.floor(h * scale))] as const);
+      const placed = packPages(scaled, atlas - reserve, PADDING);
+      // 放不进的那块在结果里是空位（every 会跳过空位），按下标逐个查
+      if (sizes.every((_, i) => placed[i] !== undefined && placed[i]![0] === 0)) {
+        best = placed.map((at) => [at![1], at![2], at![3], at![4]] as const);
+        low = scale;
+        // 最细的那一档就装得下：不用再试
+        if (step === 0) break;
+      } else high = step === 0 ? maxDensity : scale;
+    }
+    if (best && (low >= maxDensity || last)) return { atlas, cells: best };
+    if (last) throw new Error(`too many labels for one ${MAX_ATLAS}px atlas`);
   }
-  if (!best) throw new Error(`too many labels for one ${ATLAS}px atlas`);
-  return best;
 }
 
 /**

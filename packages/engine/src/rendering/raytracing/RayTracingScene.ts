@@ -238,8 +238,8 @@ interface Entry {
 }
 
 /**
- * 一个网格进 BVH 最多几个三角形，多了原生先简化（sloppy，形变不超过网格尺寸的 1%）：光追只算间接光、反射里的大致形状，打到的
- * 颜色是整个批的平均色（SurfaceColors），货架连同几千件商品的几十万个三角形没必要原样进去。
+ * 一个网格进 BVH 最多几个三角形，多了原生把小零件按格子换成包围盒（sn_bvh_build_triangles 的 max_triangles）：光追只算间接光、
+ * 反射里的大致形状，打到的颜色是整个批的平均色（SurfaceColors），货架连同几千件商品的几十万个三角形没必要原样进去。
  */
 const MAX_BLAS_TRIANGLES = 65536;
 /** 地形块光追用的网格隔几个高度取一个（32 格的块取成 16 格：间接光够了，BVH 小四倍）。 */
@@ -559,7 +559,7 @@ export class RayTracingScene {
  */
 function traceable(batch: MeshBatch): boolean {
   const mesh = batch.mesh;
-  return batch.count > 0 && mesh.data.indices.length >= 3 && !batch.skinned && !batch.material.isTransparent && !mesh.impostor && mesh.data.morph === undefined;
+  return batch.count > 0 && batch.visibleInRayTracing && mesh.data.indices.length >= 3 && !batch.skinned && !batch.material.isTransparent && !mesh.impostor && mesh.data.morph === undefined;
 }
 
 function append(target: Uint32Array | Float32Array, used: number, data: Uint32Array | Float32Array): Uint32Array | Float32Array {

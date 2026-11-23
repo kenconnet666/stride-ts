@@ -84,6 +84,7 @@ export const COMPONENT_FIELDS: { readonly [K in Exclude<keyof Components, 'scrip
       model: asset('model'),
       materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, optional: true, default: [], description: 'one per material slot of the model; null keeps the model\'s own material; omitted keeps all of them' },
       isShadowCaster: optional(bool, true),
+      visibleInRayTracing: { type: bool, optional: true, default: true, description: 'part of the ray-traced scene (indirect light, ray-traced reflections, path tracing); turn off for small clutter like debris on the ground' },
       renderGroup,
     })),
     initial: { model: '' },

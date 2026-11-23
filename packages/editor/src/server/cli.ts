@@ -57,6 +57,8 @@ if (command === 'assets-types') {
   for (const asset of result.removed) console.log(`removed ${asset.kind} ${asset.path}`);
   for (const asset of result.broken) console.log(`broken reference in ${asset.kind} ${asset.path}`);
 } else if (command === 'mcp') {
+  // stdout 是 MCP 的通道：后端（打开工程时的补烘、监视）的提示改打到 stderr，不然客户端读到一行不是 JSON 的就断了
+  console.log = console.info = console.debug = console.error;
   await serveMcp(await backend());
 } else {
   console.error(`usage: stride-editor new <apps/folder> [--port <port>]

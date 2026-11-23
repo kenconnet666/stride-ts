@@ -49,7 +49,8 @@ export function debrisSpawn(file: DebrisFile, products: ReadonlyMap<string, Prod
       }
       return {
         product: item.product, variant: Math.floor(random() * Math.max(1, Math.round(item.variants ?? 3))),
-        position: [x, radius + 0.005 + random() * 0.03, z], rotation: randomRotation(random), fine: true,
+        // 3 厘米以下的（砂粒、石子、烟头）用少分段的网格：几百件，近看也看不出棱
+        position: [x, radius + 0.005 + random() * 0.03, z], rotation: randomRotation(random), fine: Math.max(...footprint) >= 0.03,
       };
     });
   });
@@ -71,5 +72,6 @@ export function debrisBoards(file: DebrisFile): PileBoard[] {
 export function debrisModel(file: DebrisFile, sources: ProductSources, settled: readonly PlacedProduct[], where = file.name): MergedProducts & { readonly items: number } {
   const [w, d] = file.area;
   const inside = settled.filter(({ position: [x, y, z] }) => Math.abs(x) <= w / 2 + 0.01 && Math.abs(z) <= d / 2 + 0.01 && y >= -0.02);
-  return { ...new ProductBatch(sources, where, inside).finish(), items: inside.length };
+  // 杂物远看就行：标签每毫米 2 个像素
+  return { ...new ProductBatch(sources, where, inside, { maxDensity: 2 }).finish(), items: inside.length };
 }

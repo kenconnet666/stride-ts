@@ -21,6 +21,7 @@ import { installProjectExtension, loadProject, projectInfo, type Project } from 
 import { syncAssetPackages } from './assetPackages.ts';
 import { generatedKinds, generatorFor, isGenerated, REBAKE_WITH } from './bakers.ts';
 import { checkContentPath, contentHash, writeAtomically } from './files.ts';
+import { generatorVersion } from './generatorVersion.ts';
 import { handleEditorRequest, HttpError } from './http.ts';
 import { Importer, type MaterialSetOptions } from './importer.ts';
 
@@ -72,6 +73,7 @@ export class EditorBackend {
     await installProjectExtension(project);
     await syncAssetPackages(project.root, project.contentDir);
     const backend = new EditorBackend(project, publicDir);
+    backend.#generatorVersion = await generatorVersion();
     await backend.database.scan();
     await backend.#bakeStale();
     await backend.#writeAssetTypes();
@@ -92,7 +94,7 @@ export class EditorBackend {
       const key = `${kind}:${record.path}`;
       try {
         const content: unknown = JSON.parse(await readFile(path.join(this.project.contentDir, assetFileName(kind, record.path)), 'utf8'));
-        const hash = contentHash(content), known = this.#bakeHashes[key];
+        const hash = this.#bakeHash(content), known = this.#bakeHashes[key];
         // 生成的模型不在（包装、货架这类生成的大文件不进 git，新检出里没有）：源文件没变也要烘
         const exists = existsSync(path.join(this.project.contentDir, record.path + EXTENSIONS.model));
         if (known === hash && exists) continue;
@@ -114,6 +116,13 @@ export class EditorBackend {
 
   /** 上次烘的内容的哈希（`种类:路径` → 哈希），存在 #bakeCacheFile。 */
   #bakeHashes: Record<string, string> = {};
+  /** 生成资源的代码的版本（generatorVersion.ts），烘焙记录的哈希带上它。 */
+  #generatorVersion = '';
+
+  /** 烘焙记录用的哈希：内容加生成它的代码的版本（代码改了，同样的内容也要重烘）。 */
+  #bakeHash(content: unknown): string {
+    return contentHash([this.#generatorVersion, content]);
+  }
 
   get #bakeCacheFile(): string {
     return path.join(this.project.root, 'node_modules', '.cache', 'stride-editor', 'bakes.json');
@@ -126,7 +135,7 @@ export class EditorBackend {
    */
   async #recordBake(key: string, content: unknown): Promise<void> {
     this.#bakes.set(key, JSON.stringify(content));
-    this.#bakeHashes[key] = contentHash(content);
+    this.#bakeHashes[key] = this.#bakeHash(content);
     const shared = await this.#readSharedBakeHashes();
     await this.#writeBakeHashes({ ...shared, [key]: this.#bakeHashes[key] });
   }
@@ -139,7 +148,7 @@ export class EditorBackend {
   /** 别的进程已经烘过这份内容：共用的表里是这个哈希、生成的模型在。 */
   async #bakedElsewhere(key: string, assetPath: string, content: unknown): Promise<boolean> {
     const shared = await this.#readSharedBakeHashes();
-    return shared[key] === contentHash(content) && existsSync(path.join(this.project.contentDir, assetPath + EXTENSIONS.model));
+    return shared[key] === this.#bakeHash(content) && existsSync(path.join(this.project.contentDir, assetPath + EXTENSIONS.model));
   }
 
   #saveBakeHashes(): Promise<void> {
@@ -502,7 +511,7 @@ export class EditorBackend {
         if (JSON.stringify(content) === this.#bakes.get(key)) continue;
         if (await this.#bakedElsewhere(key, record.path, content)) {
           this.#bakes.set(key, JSON.stringify(content));
-          this.#bakeHashes[key] = contentHash(content);
+          this.#bakeHashes[key] = this.#bakeHash(content);
           continue;
         }
         baked.push(...(await this.#bake(kind, record.path, content)).files);

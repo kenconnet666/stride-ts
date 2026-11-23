@@ -57,6 +57,8 @@ struct Material {
   iridescence: vec4f,
   // 漫透射（Material.diffuseTransmission）：透过去的颜色，比例（0 是没有）
   diffuseTransmission: vec4f,
+  // 节点图的数值参数（Material.shaderTrees.graphParams，materialGraph.ts 的 GraphParams）：代码里读 material.graph[i].x
+  graph: array<vec4f, 64>,
 };
 @group(1) @binding(0) var<uniform> material: Material;
 @group(1) @binding(1) var baseColorTexture: texture_2d<f32>;

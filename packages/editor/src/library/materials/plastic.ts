@@ -21,7 +21,7 @@ export const PLASTIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.55,
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['grain', 'noise', { scale: 120, octaves: 3, roughness: 0.7 }, { uv: 'uv' }],
+      ['grain', 'noise', { tileable: true, scale: 120, octaves: 3, roughness: 0.7 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.025, 0.025, 0.027], to: [0.05, 0.05, 0.055] }, { t: 'grain' }],
       ['normal', 'normalFromHeight', { strength: 0.5 }, { height: 'grain', uv: 'uv' }],
     ], { baseColor: 'tone', normal: 'normal' }),
@@ -35,8 +35,8 @@ export const PLASTIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.95,
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['grain', 'noise', { scale: 90, octaves: 4, roughness: 0.65 }, { uv: 'uv' }],
-      ['pits', 'spots', { scale: 50, size: 0.35, variation: 0.8, density: 0.5 }, { uv: 'uv' }],
+      ['grain', 'noise', { tileable: true, scale: 90, octaves: 4, roughness: 0.65 }, { uv: 'uv' }],
+      ['pits', 'spots', { tileable: true, scale: 50, size: 0.35, variation: 0.8, density: 0.5 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.012, 0.012, 0.012], to: [0.05, 0.05, 0.05] }, { t: 'grain' }],
       ['normal', 'normalFromHeight', { strength: 0.7 }, { height: ['pits', 'dome'], uv: 'uv' }],
     ], { baseColor: 'tone', normal: 'normal' }),
@@ -46,7 +46,7 @@ export const PLASTIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.95,
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['pores', 'spots', { scale: 70, size: 0.6, variation: 0.8, density: 0.7 }, { uv: 'uv' }],
+      ['pores', 'spots', { tileable: true, scale: 70, size: 0.6, variation: 0.8, density: 0.7 }, { uv: 'uv' }],
       ['body', 'color', { color: [0.05, 0.33, 0.8] }],
       ['hollow', 'color', { color: [0.02, 0.15, 0.4] }],
       ['color', 'mix', {}, { a: 'body', b: 'hollow', t: ['pores', 'mask'] }],

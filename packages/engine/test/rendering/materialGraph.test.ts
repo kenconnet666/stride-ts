@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import type { GraphFile } from '../../src/content/formats/nodeGraph';
 import { sortGraph } from '../../src/content/formats/nodeGraph';
 import { ColorTreeCompiler } from '../../src/rendering/mesh/colorTree';
-import { compileMaterialGraph, MATERIAL_NODE_SPECS, materialGraphTextures } from '../../src/rendering/mesh/materialGraph';
+import { compileMaterialGraph, GraphParams, MATERIAL_NODE_SPECS, materialGraphTextures } from '../../src/rendering/mesh/materialGraph';
 
 const compiler = () => new ColorTreeCompiler({ texture: () => undefined, shaderClass: () => undefined }, 3);
 
@@ -143,6 +143,51 @@ describe('材质节点图', () => {
     expect(c.declarations.match(/fn graphHash2\(/g)).toHaveLength(1);
     expect(code).toContain('graphWeave(');
     expect(code).toContain('1.0 - abs(');
+  });
+
+  test('可平铺的噪声：格点编号按周期取模，周期是取整的 scale；没开时周期是 0（不循环）', () => {
+    const compile = (tileable: boolean) => {
+      const c = compiler();
+      const { code } = compileMaterialGraph({
+        nodes: [{ id: 'uv', type: 'uv' }, { id: 'n', type: 'noise', inputs: { uv: { node: 'uv' } }, params: { scale: 6.4, tileable } }, { id: 'v', type: 'voronoi', inputs: { uv: { node: 'uv' } }, params: { scale: 9, tileable } }, { id: 'sum', type: 'add', inputs: { a: { node: 'n' }, b: { node: 'v' } } }],
+        outputs: { baseColor: { node: 'sum' } },
+      }, c, () => undefined, 'tile');
+      return { code, declarations: c.declarations };
+    };
+    const on = compile(true), off = compile(false);
+    expect(on.declarations).toContain('fn graphWrap(');
+    expect(on.code).toContain('vec2f(6.0))');
+    expect(on.code).toContain('vec2f(9.0))');
+    expect(off.code).not.toContain('vec2f(6.0))');
+    expect(off.code).toContain('vec2f(0.0))');
+  });
+
+  test('数值参数放 uniform：只有数不同的图编出一样的代码，数在表里；没给表时照旧是字面量', () => {
+    const graph = (scale: number, color: number[], seed: number): GraphFile => ({
+      nodes: [
+        { id: 'uv', type: 'uv' },
+        { id: 'n', type: 'noise', inputs: { uv: { node: 'uv' } }, params: { scale, seed, tileable: true } },
+        { id: 'c', type: 'color', params: { color } },
+        { id: 'tint', type: 'colorRamp', inputs: { t: { node: 'n' } }, params: { from: color, to: [1, 1, 1] } },
+      ],
+      outputs: { baseColor: { node: 'tint' } },
+    });
+    const build = (g: GraphFile, params?: GraphParams) => compileMaterialGraph(g, compiler(), () => undefined, 'p', '', params).code;
+    const a = new GraphParams(), b = new GraphParams();
+    const codeA = build(graph(6, [0.2, 0.3, 0.4], 1), a), codeB = build(graph(9, [0.5, 0.6, 0.7], 4), b);
+    expect(codeA).toBe(codeB);
+    expect(codeA).toContain('material.graph[0].x');
+    expect(a.values).not.toEqual(b.values);
+    // 取整后的周期、颜色、seed 都在表里
+    expect(a.values).toContain(6);
+    expect(a.values).toContain(0.3);
+    // 没给表：字面量，数不同代码就不同
+    expect(build(graph(6, [0.2, 0.3, 0.4], 1))).not.toBe(build(graph(9, [0.5, 0.6, 0.7], 4)));
+    expect(build(graph(6, [0.2, 0.3, 0.4], 1))).not.toContain('material.graph');
+    // 槽位满了：多出来的写成字面量，不报错
+    const full = new GraphParams();
+    for (let i = 0; i < GraphParams.SLOTS; i++) full.slot(i);
+    expect(build(graph(6, [0.2, 0.3, 0.4], 1), full)).not.toContain('material.graph');
   });
 
   test('节点库：每种节点的参数都有默认值，类型不重复', () => {

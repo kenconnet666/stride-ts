@@ -85,6 +85,11 @@ export interface MaterialShaderTrees {
    */
   readonly graphs?: readonly string[];
   /**
+   * 节点图的数值参数（GraphParams 登记的，按槽位排）：代码里读材质 uniform 的 `material.graph[i]`，MeshGpu 把它们写进材质的 uniform。
+   * 不进着色器模块的缓存键：只有这些数不同的材质共用同一个模块和管线。
+   */
+  readonly graphParams?: Float32Array;
+  /**
    * 清漆（content/formats/format.ts 的 ClearCoatFile）：code 里有 coatLodDistance、coatBaseDiffuse、coatBaseGloss、coatFlakesDiffuse、
    * coatFlakesGloss、coatFlakesMetalness、coatFlakesNormal、coatTopGloss、coatTopMetalness、coatTopNormal 这些函数。
    */

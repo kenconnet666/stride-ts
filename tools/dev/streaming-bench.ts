@@ -1,0 +1,112 @@
+// 加载与流式加载的度量基线（路线图"十、大世界收尾"的"加载与缓存"第 0 步，docs/stages.md）：在开放世界样例里打开一个世界，量
+//   出画面：打开页面到引擎启动各阶段（原生模块、内容、第一帧）、到近处的格子都加载好；
+//   卡顿：按固定路线飞一圈时的帧间隔（中位数、p95、p99、最长、超过 50 毫秒的帧数）；
+//   下载量：页面请求数、传输字节；
+//   流式加载：飞行中加载、卸载的格子数；当场建的管线数（着色器的编译堵住一帧，应该是 0）和后台预热的数。
+//   node tools/dev/streaming-bench.ts [--world Worlds/Valley] [--seconds 30] [--speed 60] [--port 5232] [--size 1280x720] [--out result.json]
+// 借开放世界的开发服务器（没开就开一个，用完 pwsh tools/stop-dev.ps1 停）和自己的无头 Chrome（不限帧率、关垂直同步）。开发服务器
+// 上每个模块一个请求，下载量比构建出来的大得多：要量发布的样子用 preview 的地址（--url）。路线：相机从 (0, 40, 0) 出发往 +X
+// 飞 seconds 秒（速度 speed 米每秒），到一半时拐向 +Z。
+import { spawn } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
+
+process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', 'streaming-bench');
+const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('@stride-ts/cli/chrome');
+
+const option = (name: string, fallback: string) => {
+  const at = process.argv.indexOf(name);
+  return at < 0 ? fallback : process.argv[at + 1]!;
+};
+const world = option('--world', 'Worlds/Valley');
+const seconds = Number(option('--seconds', '30'));
+const speed = Number(option('--speed', '60'));
+const port = Number(option('--port', '5232'));
+const size = option('--size', '1280x720').split('x').map(Number) as [number, number];
+const out = option('--out', '');
+const base = option('--url', `http://localhost:${port}/`);
+const url = `${base}${base.includes('?') ? '&' : '?'}world=${world}&debug`;
+
+const reachable = () => fetch(base).then(() => true, () => false);
+if (!(await reachable()) && !process.argv.includes('--url')) {
+  spawn('pnpm -F @stride-ts/open-world dev', { cwd: path.resolve(import.meta.dirname, '..', '..'), shell: true, detached: true, stdio: 'ignore' }).unref();
+  for (let i = 0; i < 90 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 1000));
+}
+
+/** 页面里：等引擎跑起来，记启动各阶段、等近处的格子加载完，然后按路线飞，返回所有数字。 */
+const measure = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const t0 = performance.now();
+  const game = () => globalThis.strideGame;
+  while (!game()?.rootScene) await wait(50);
+  const rootAt = performance.now() - t0;
+  while (!(game().world?.loaded.length > 0)) await wait(50);
+  const firstCellAt = performance.now() - t0;
+  // 近处的格子都加载完（没有在读的了），或者等了 60 秒
+  let settleAt;
+  for (;;) {
+    await wait(100);
+    if (game().world.loading.length === 0) { settleAt = performance.now() - t0; break; }
+    if (performance.now() - t0 > 60000) { settleAt = null; break; }
+  }
+  const startup = { ...game().startup };
+  const origin = performance.timeOrigin;
+  const marks = Object.fromEntries(Object.entries(startup).map(([name, at]) => [name, Math.round(at)]));
+  const resources = performance.getEntriesByType('resource');
+  const loadStats = { requests: resources.length, transferKB: Math.round(resources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0) / 1024) };
+  const metric = (name) => game().metrics?.read?.(name);
+  const pipelinesBefore = { sync: game().graphicsDevice.pipelines.sync, warmed: game().graphicsDevice.pipelines.warmed };
+  const worldBefore = { loads: game().world.loads, unloads: game().world.unloads };
+  // 飞一圈：相机按路线挪，每帧记间隔
+  const camera = game().entities.ids().map((id) => game().entities.entity(id)).find((entity) => entity.name === 'Camera');
+  const position = camera.require(strideEngine.Transform).position;
+  const from = { x: position.x, y: position.y, z: position.z };
+  const frames = [];
+  let last = performance.now();
+  const flightStart = last;
+  await new Promise((resolve) => {
+    const step = (now) => {
+      frames.push(now - last);
+      last = now;
+      const t = (now - flightStart) / 1000;
+      const distance = ${speed} * t;
+      const half = ${seconds} * ${speed} / 2;
+      position.x = from.x + Math.min(distance, half);
+      position.z = from.z + Math.max(0, distance - half);
+      if (t < ${seconds}) requestAnimationFrame(step); else resolve();
+    };
+    requestAnimationFrame(step);
+  });
+  // 最后一段时间飞完以后让加载的格子落定，再数一次
+  await wait(2000);
+  const sorted = [...frames].sort((a, b) => a - b);
+  const at = (p) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
+  return {
+    url: location.href,
+    startupMs: { ...marks, rootScene: Math.round(rootAt), firstCell: Math.round(firstCellAt), nearCellsReady: settleAt === null ? null : Math.round(settleAt) },
+    initialDownload: loadStats,
+    flight: {
+      frames: frames.length, medianMs: +at(0.5).toFixed(2), p95Ms: +at(0.95).toFixed(2), p99Ms: +at(0.99).toFixed(2), maxMs: +sorted[sorted.length - 1].toFixed(1),
+      over50ms: frames.filter((ms) => ms > 50).length, over100ms: frames.filter((ms) => ms > 100).length,
+    },
+    world: { cellsLoaded: game().world.loads - worldBefore.loads, cellsUnloaded: game().world.unloads - worldBefore.unloads, loadedNow: game().world.loaded.length },
+    pipelines: { syncDuringFlight: game().graphicsDevice.pipelines.sync - pipelinesBefore.sync, warmedDuringFlight: game().graphicsDevice.pipelines.warmed - pipelinesBefore.warmed, recentSync: game().graphicsDevice.pipelines.recentSync.slice(-8) },
+    finalDownload: { requests: performance.getEntriesByType('resource').length, transferKB: Math.round(performance.getEntriesByType('resource').reduce((sum, entry) => sum + (entry.transferSize || 0), 0) / 1024) },
+  };
+})()`;
+
+await closeBrowser();
+// 不限帧率、关垂直同步：量的是引擎能多快，不是显示器的刷新率
+const browser = await openUrl(url, { headless: true, size, dpr: 1, chromeArgs: ['--disable-frame-rate-limit', '--disable-gpu-vsync'] });
+try {
+  const cdp = await CdpSession.connect((await pageTarget(browser, base)).webSocketDebuggerUrl);
+  const reply = (await cdp.send('Runtime.evaluate', { expression: measure, awaitPromise: true, returnByValue: true, timeout: (seconds + 120) * 1000 })) as { result: { value?: unknown }; exceptionDetails?: { exception?: { description?: string } } };
+  if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description ?? 'the measurement failed');
+  const result = reply.result.value;
+  console.log(JSON.stringify(result, null, 2));
+  if (out) await writeFile(out, JSON.stringify(result, null, 2));
+} finally {
+  await closeBrowser();
+}
+process.exit(0);

@@ -29,8 +29,8 @@ export const GLASS_MATERIALS: readonly LibraryMaterial[] = [
     transmission: { factor: 1, ior: 1.31, thickness: 0.25, attenuationColor: [0.72, 0.9, 1], attenuationDistance: 0.4 },
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['cracks', 'cracks', { scale: 4, width: 0.02, warp: 0.8, seed: 3 }, { uv: 'uv' }],
-      ['bubbles', 'spots', { scale: 18, size: 0.3, variation: 0.9, density: 0.4 }, { uv: 'uv' }],
+      ['cracks', 'cracks', { tileable: true, scale: 4, width: 0.02, warp: 0.8, seed: 3 }, { uv: 'uv' }],
+      ['bubbles', 'spots', { tileable: true, scale: 18, size: 0.3, variation: 0.9, density: 0.4 }, { uv: 'uv' }],
       ['relief', 'add', {}, { a: ['cracks', 'mask'], b: ['bubbles', 'dome'] }],
       ['rough', 'colorRamp', { from: [0.06, 0.06, 0.06], to: [0.4, 0.4, 0.4] }, { t: ['cracks', 'mask'] }],
       ['normal', 'normalFromHeight', { strength: 1.5 }, { height: 'relief', uv: 'uv' }],
@@ -56,7 +56,7 @@ export const GLASS_MATERIALS: readonly LibraryMaterial[] = [
     transmission: { factor: 1, ior: 1.5, thickness: 0.01 },
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['cells', 'voronoi', { scale: 6 }, { uv: 'uv' }],
+      ['cells', 'voronoi', { tileable: true, scale: 6 }, { uv: 'uv' }],
       ['glass', 'colorRamp', {
         from: [0.7, 0.05, 0.04], to: [0.9, 0.5, 0.05],
         colorStops: [{ position: 0.25, color: [0.05, 0.2, 0.7] }, { position: 0.5, color: [0.05, 0.5, 0.2] }, { position: 0.75, color: [0.6, 0.15, 0.55] }],

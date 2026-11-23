@@ -18,8 +18,8 @@ export const EMISSIVE_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.85,
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['cracks', 'cracks', { scale: 4, width: 0.07, warp: 1, seed: 2 }, { uv: 'uv' }],
-      ['grain', 'noise', { scale: 30, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
+      ['cracks', 'cracks', { tileable: true, scale: 4, width: 0.07, warp: 1, seed: 2 }, { uv: 'uv' }],
+      ['grain', 'noise', { tileable: true, scale: 30, octaves: 5, roughness: 0.6 }, { uv: 'uv' }],
       ['crust', 'colorRamp', { from: [0.01, 0.008, 0.008], to: [0.06, 0.05, 0.05] }, { t: 'grain' }],
       ['glowTone', 'colorRamp', { from: [3, 0.5, 0.05], to: [8, 3.5, 0.6] }, { t: 'grain' }],
       ['glow', 'multiply', {}, { a: 'glowTone', b: ['cracks', 'mask'] }],
@@ -31,8 +31,8 @@ export const EMISSIVE_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0.6, roughness: 0.6,
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['heat', 'noise', { scale: 4, octaves: 5, roughness: 0.6, seed: 6 }, { uv: 'uv' }],
-      ['fine', 'noise', { scale: 40, octaves: 4 }, { uv: 'uv' }],
+      ['heat', 'noise', { tileable: true, scale: 4, octaves: 5, roughness: 0.6, seed: 6 }, { uv: 'uv' }],
+      ['fine', 'noise', { tileable: true, scale: 40, octaves: 4 }, { uv: 'uv' }],
       ['metal', 'colorRamp', { from: [0.08, 0.07, 0.07], to: [0.2, 0.18, 0.17] }, { t: 'fine' }],
       ['glow', 'colorRamp', { from: [0.2, 0.01, 0], to: [6, 1.6, 0.15] }, { t: 'heat' }],
     ], { baseColor: 'metal', emissive: 'glow' }),

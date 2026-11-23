@@ -11,6 +11,11 @@
  * 画一遍（materialGraphBake.ts），材质里按节点自己的 uv 采样。所以滤镜的上游按 UV 空间算——接了世界位置、屏幕遮蔽这些的，
  * 烘的时候用平面上的替身（同节点的预览）。
  *
+ * 参数放 uniform：编材质时给一张 GraphParams 表，节点的数值参数（缩放、颜色、阈值……）不写成字面量拼进代码，而是登记进表里、
+ * 代码里读材质 uniform 的 `material.graph[i].x`。结构相同、只有数不同的图编出来的代码一样，共用着色器模块和管线：拖滑块、同一类预设
+ * 之间不用重新编译（浏览器编一份网格着色器要一两秒）。没给表时（预览、烘焙，那里没有材质的 uniform）照旧写成字面量。参数在 emit
+ * 里只经 f、v2、rgb 格式化的才进表；做算术（Number(...)）、选分支用的照旧用它的值，那样的代码里是字面量（结构的一部分）。
+ *
  * 端口的种类不同时自动转换：数到向量是重复，向量到数取第一个分量，颜色是 vec4（alpha）。颜色参数和颜色常量都是线性的。
  */
 import type { FieldType } from '../../editor/fields/index';
@@ -53,6 +58,16 @@ export const bakedTextureKey = (node: string): string => `#bake:${node}`;
 const WGSL_TYPES: Readonly<Record<PortType, string>> = { float: 'f32', vec2: 'vec2f', vec3: 'vec3f', color: 'vec4f' };
 
 const num = (min?: number, max?: number, step = 0.05): FieldType => ({ kind: 'number', step, ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}) });
+/**
+ * 可平铺时的周期（WGSL 的 vec2f）：scale 取整，UV 里每个方向循环一次；scale 为小数或没开 tileable 时不循环（0）。
+ * 周期是 scale 个格子：uv * scale 走完 0..1 正好是 scale 格。
+ */
+function tile(scale: unknown, tileable: unknown): string {
+  if (!tileable) return 'vec2f(0.0)';
+  const cells = Math.max(1, Math.round(Number(scale)));
+  // scale 在表里时周期也放进表（取整以后的），改 scale 不换代码
+  return scale instanceof Param ? `vec2f(${f(toParam(scale.table, cells))})` : `vec2f(${cells}.0)`;
+}
 const int = (min: number, max: number): FieldType => ({ kind: 'number', integer: true, min, max });
 const vec2: FieldType = { kind: 'vector', size: 2 };
 const color: FieldType = { kind: 'color', alpha: false, space: 'linear' };
@@ -69,33 +84,40 @@ const HASH = `fn graphHash2(p: vec2f) -> vec2f {
   let q = vec2f(dot(p, vec2f(127.1, 311.7)), dot(p, vec2f(269.5, 183.3)));
   return fract(sin(q) * 43758.5453);
 }
+/** 格点 c 在周期 period 里的编号（period 的分量是 0 时那个方向不循环）：噪声、Voronoi 这些按格子随机的图案要平铺（球的 UV 接缝、铺的地面）时用。 */
+fn graphWrap(c: vec2f, period: vec2f) -> vec2f {
+  return select(c, c - period * floor(c / max(period, vec2f(1.0))), period > vec2f(0.0));
+}
 `;
-const NOISE = `fn graphGradientNoise(p: vec2f) -> f32 {
+const NOISE = `fn graphGradientNoise(p: vec2f, period: vec2f) -> f32 {
   let i = floor(p);
   let f = fract(p);
   let u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-  let g00 = dot(graphHash2(i) * 2.0 - 1.0, f);
-  let g10 = dot(graphHash2(i + vec2f(1.0, 0.0)) * 2.0 - 1.0, f - vec2f(1.0, 0.0));
-  let g01 = dot(graphHash2(i + vec2f(0.0, 1.0)) * 2.0 - 1.0, f - vec2f(0.0, 1.0));
-  let g11 = dot(graphHash2(i + vec2f(1.0, 1.0)) * 2.0 - 1.0, f - vec2f(1.0, 1.0));
+  let g00 = dot(graphHash2(graphWrap(i, period)) * 2.0 - 1.0, f);
+  let g10 = dot(graphHash2(graphWrap(i + vec2f(1.0, 0.0), period)) * 2.0 - 1.0, f - vec2f(1.0, 0.0));
+  let g01 = dot(graphHash2(graphWrap(i + vec2f(0.0, 1.0), period)) * 2.0 - 1.0, f - vec2f(0.0, 1.0));
+  let g11 = dot(graphHash2(graphWrap(i + vec2f(1.0, 1.0), period)) * 2.0 - 1.0, f - vec2f(1.0, 1.0));
   return mix(mix(g00, g10, u.x), mix(g01, g11, u.x), u.y);
 }
-fn graphFbm(p: vec2f, octaves: i32, roughness: f32) -> f32 {
+/** 分形噪声；period 是第一层的周期（格子数，整数；每高一层翻倍），分量是 0 的方向不循环。 */
+fn graphFbm(p: vec2f, octaves: i32, roughness: f32, period: vec2f) -> f32 {
   var sum = 0.0;
   var amplitude = 0.5;
   var total = 0.0;
   var q = p;
+  var cycle = period;
   for (var i = 0; i < octaves; i++) {
-    sum += graphGradientNoise(q) * amplitude;
+    sum += graphGradientNoise(q, cycle) * amplitude;
     total += amplitude;
     amplitude *= roughness;
     q = q * 2.0 + vec2f(17.3, 9.1);
+    cycle *= 2.0;
   }
   return clamp(sum / total * 0.85 + 0.5, 0.0, 1.0);
 }
 `;
 /** x：到最近的点的距离，y：这个格子的随机数，z：到格子边界的距离（第二近减第一近的一半，裂缝、鹅卵石的缝用它）。 */
-const VORONOI = `fn graphVoronoi(p: vec2f, randomness: f32) -> vec3f {
+const VORONOI = `fn graphVoronoi(p: vec2f, randomness: f32, period: vec2f) -> vec3f {
   let i = floor(p);
   var best = 8.0;
   var second = 8.0;
@@ -103,7 +125,7 @@ const VORONOI = `fn graphVoronoi(p: vec2f, randomness: f32) -> vec3f {
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
       let c = i + vec2f(f32(x), f32(y));
-      let h = graphHash2(c);
+      let h = graphHash2(graphWrap(c, period));
       let d = length(c + 0.5 + (h - 0.5) * randomness - p);
       if (d < best) { second = best; best = d; cell = h.x; }
       else if (d < second) { second = d; }
@@ -124,14 +146,15 @@ const BRICKS = `fn graphBricks(uv: vec2f, columns: f32, rows: f32, mortar: f32, 
 }
 `;
 /** 随机圆点：x 盖住的程度（圆里是 1），y 圆顶的高度（球冠），z 这个圆的随机数；size 是圆占格子的比例，density 是有圆的格子的比例。 */
-const SPOTS = `fn graphSpots(p: vec2f, size: f32, variation: f32, density: f32) -> vec3f {
+const SPOTS = `fn graphSpots(p: vec2f, size: f32, variation: f32, density: f32, period: vec2f) -> vec3f {
   let i = floor(p);
   var best = vec3f(0.0);
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
       let c = i + vec2f(f32(x), f32(y));
-      let h = graphHash2(c);
-      let h2 = graphHash2(c + vec2f(37.7, 11.3));
+      let w = graphWrap(c, period);
+      let h = graphHash2(w);
+      let h2 = graphHash2(w + vec2f(37.7, 11.3));
       if (h2.x > density) { continue; }
       let radius = max(size * 0.5 * (1.0 - variation * h2.y), 1e-4);
       let d = length(c + 0.2 + h * 0.6 - p) / radius;
@@ -149,14 +172,15 @@ const SCRATCHES = `fn graphSegmentDistance(p: vec2f, a: vec2f, b: vec2f) -> f32 
   let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-8), 0.0, 1.0);
   return length(pa - ba * h);
 }
-fn graphScratches(p: vec2f, segment: f32, width: f32, angle: f32, spread: f32, density: f32) -> f32 {
+fn graphScratches(p: vec2f, segment: f32, width: f32, angle: f32, spread: f32, density: f32, period: vec2f) -> f32 {
   let i = floor(p);
   var m = 0.0;
   for (var y = -1; y <= 1; y++) {
     for (var x = -1; x <= 1; x++) {
       let c = i + vec2f(f32(x), f32(y));
-      let h = graphHash2(c);
-      let h2 = graphHash2(c + vec2f(11.3, 73.1));
+      let w = graphWrap(c, period);
+      let h = graphHash2(w);
+      let h2 = graphHash2(w + vec2f(11.3, 73.1));
       if (h2.y > density) { continue; }
       let a = angle + (h2.x - 0.5) * spread;
       let half = vec2f(cos(a), sin(a)) * segment * (0.25 + 0.5 * h.x);
@@ -348,21 +372,21 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
   // 生成器
   {
     type: 'noise', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'value', type: 'float' }],
-    params: [{ name: 'scale', type: num(0, undefined, 0.5), default: 8 }, { name: 'octaves', type: int(1, 8), default: 4 }, { name: 'roughness', type: num(0, 1), default: 0.5 }, { name: 'seed', type: num(), default: 0 }, { name: 'ridged', type: num(0, 1), default: 0, description: '0 smooth clouds .. 1 sharp ridges (veins, rock strata, cracks in dry earth)' }],
+    params: [{ name: 'scale', type: num(0, undefined, 0.5), default: 8 }, { name: 'octaves', type: int(1, 8), default: 4 }, { name: 'roughness', type: num(0, 1), default: 0.5 }, { name: 'seed', type: num(), default: 0 }, { name: 'ridged', type: num(0, 1), default: 0, description: '0 smooth clouds .. 1 sharp ridges (veins, rock strata, cracks in dry earth)' }, { name: 'tileable', type: { kind: 'bool' }, default: false, description: 'repeat seamlessly every UV unit (the scale is rounded to a whole number): no seam on spheres or when tiling' }],
     emit: ({ uv }, p, context) => {
       context.addFunction('graphHash2', HASH);
       context.addFunction('graphFbm', NOISE);
-      const n = `graphFbm(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${Math.round(Number(p['octaves']))}, ${f(p['roughness'])})`;
+      const n = `graphFbm(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${Math.round(Number(p['octaves']))}, ${f(p['roughness'])}, ${tile(p['scale'], p['tileable'])})`;
       return { value: Number(p['ridged']) > 0 ? `mix(${n}, 1.0 - abs(${n} * 2.0 - 1.0), ${f(p['ridged'])})` : n };
     },
   },
   {
     type: 'voronoi', category: 'generator', inputs: [UV_IN], outputs: [{ name: 'distance', type: 'float' }, { name: 'cell', type: 'float' }, { name: 'edge', type: 'float' }],
-    params: [{ name: 'scale', type: num(0, undefined, 0.5), default: 8 }, { name: 'randomness', type: num(0, 1), default: 1 }],
+    params: [{ name: 'scale', type: num(0, undefined, 0.5), default: 8 }, { name: 'randomness', type: num(0, 1), default: 1 }, { name: 'tileable', type: { kind: 'bool' }, default: false, description: 'repeat seamlessly every UV unit (the scale is rounded to a whole number): no seam on spheres or when tiling' }],
     emit: ({ uv }, p, context) => {
       context.addFunction('graphHash2', HASH);
       context.addFunction('graphVoronoi', VORONOI);
-      const v = `graphVoronoi(${uv} * ${f(p['scale'])}, ${f(p['randomness'])})`;
+      const v = `graphVoronoi(${uv} * ${f(p['scale'])}, ${f(p['randomness'])}, ${tile(p['scale'], p['tileable'])})`;
       return { distance: `${v}.x`, cell: `${v}.y`, edge: `${v}.z` };
     },
   },
@@ -408,11 +432,12 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
       { name: 'variation', type: num(0, 1, 0.05), default: 0.5, description: 'how much the sizes differ' },
       { name: 'density', type: num(0, 1, 0.05), default: 1, description: 'share of cells that have a spot' },
       { name: 'seed', type: num(), default: 0 },
+      { name: 'tileable', type: { kind: 'bool' }, default: false, description: 'repeat seamlessly every UV unit (the scale is rounded to a whole number): no seam on spheres or when tiling' },
     ],
     emit: ({ uv }, p, context) => {
       context.addFunction('graphHash2', HASH);
       context.addFunction('graphSpots', SPOTS);
-      const v = `graphSpots(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${f(p['size'])}, ${f(p['variation'])}, ${f(p['density'])})`;
+      const v = `graphSpots(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${f(p['size'])}, ${f(p['variation'])}, ${f(p['density'])}, ${tile(p['scale'], p['tileable'])})`;
       return { mask: `${v}.x`, dome: `${v}.y`, id: `${v}.z` };
     },
   },
@@ -428,12 +453,13 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
       { name: 'spread', type: { kind: 'number', step: 5, min: 0, max: 360, unit: 'deg' }, default: 40 },
       { name: 'density', type: num(0, 1, 0.05), default: 0.6 },
       { name: 'seed', type: num(), default: 0 },
+      { name: 'tileable', type: { kind: 'bool' }, default: false, description: 'repeat seamlessly every UV unit (the scale is rounded to a whole number): no seam on spheres or when tiling' },
     ],
     emit: ({ uv }, p, context) => {
       context.addFunction('graphHash2', HASH);
       context.addFunction('graphScratches', SCRATCHES);
       const rad = (v: unknown) => f((Number(v) * Math.PI) / 180);
-      return { mask: `graphScratches(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${f(p['length'])}, ${f(p['width'])}, ${rad(p['angle'])}, ${rad(p['spread'])}, ${f(p['density'])})` };
+      return { mask: `graphScratches(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13), ${f(p['length'])}, ${f(p['width'])}, ${rad(p['angle'])}, ${rad(p['spread'])}, ${f(p['density'])}, ${tile(p['scale'], p['tileable'])})` };
     },
   },
   {
@@ -471,15 +497,16 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
       { name: 'distortion', type: num(0, undefined, 0.05), default: 1.2 },
       { name: 'fiberScale', type: num(0, undefined, 1), default: 60 },
       { name: 'seed', type: num(), default: 0 },
+      { name: 'tileable', type: { kind: 'bool' }, default: false, description: 'repeat seamlessly every UV unit (the scale is rounded to a whole number): no seam on spheres or when tiling' },
     ],
     emit: ({ uv }, p, context) => {
       context.addFunction('graphHash2', HASH);
       context.addFunction('graphFbm', NOISE);
       const q = `(${uv} + vec2f(${f(p['seed'])} * 7.13, 0.0))`;
-      const warp = `(graphFbm(${q} * vec2f(3.0, 0.6), 4, 0.5) - 0.5) * ${f(p['distortion'])}`;
+      const warp = p['tileable'] ? `(graphFbm(${q} * vec2f(3.0, 1.0), 4, 0.5, vec2f(3.0, 1.0)) - 0.5) * ${f(p['distortion'])}` : `(graphFbm(${q} * vec2f(3.0, 0.6), 4, 0.5, vec2f(0.0)) - 0.5) * ${f(p['distortion'])}`;
       return {
         rings: `fract(${q}.x * ${f(p['rings'])} + ${warp} * ${f(p['rings'])} * 0.35)`,
-        fibers: `graphFbm(${q} * vec2f(${f(p['fiberScale'])}, ${f(Number(p['fiberScale']) * 0.04)}), 3, 0.6)`,
+        fibers: `graphFbm(${q} * vec2f(${f(p['fiberScale'])}, ${f(Number(p['fiberScale']) * 0.04)}), 3, 0.6, ${p['tileable'] ? `vec2f(${Math.max(1, Math.round(Number(p['fiberScale'])))}.0, ${Math.max(1, Math.round(Number(p['fiberScale']) * 0.04))}.0)` : 'vec2f(0.0)'})`,
       };
     },
   },
@@ -491,13 +518,15 @@ export const MATERIAL_NODES: readonly MaterialNode[] = [
       { name: 'width', type: num(0, 0.5, 0.005), default: 0.03 },
       { name: 'warp', type: num(0, undefined, 0.05), default: 0.6, description: 'how crooked the cracks run' },
       { name: 'seed', type: num(), default: 0 },
+      { name: 'tileable', type: { kind: 'bool' }, default: false, description: 'repeat seamlessly every UV unit (the scale is rounded to a whole number): no seam on spheres or when tiling' },
     ],
     emit: ({ uv }, p, context) => {
       context.addFunction('graphHash2', HASH);
       context.addFunction('graphFbm', NOISE);
       context.addFunction('graphVoronoi', VORONOI);
-      const bend = `(vec2f(graphFbm(${uv} * ${f(Number(p['scale']) * 1.7)} + vec2f(3.1, 8.2), 3, 0.5), graphFbm(${uv} * ${f(Number(p['scale']) * 1.7)} + vec2f(9.4, 1.7), 3, 0.5)) - 0.5) * ${f(p['warp'])}`;
-      const e = `graphVoronoi(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13) + ${bend}, 1.0).z`;
+      const warpScale = Math.max(1, Math.round(Number(p['scale']) * 1.7)), warpPeriod = p['tileable'] ? `vec2f(${warpScale}.0)` : 'vec2f(0.0)';
+      const bend = `(vec2f(graphFbm(${uv} * ${f(p['tileable'] ? warpScale : Number(p['scale']) * 1.7)} + vec2f(3.1, 8.2), 3, 0.5, ${warpPeriod}), graphFbm(${uv} * ${f(p['tileable'] ? warpScale : Number(p['scale']) * 1.7)} + vec2f(9.4, 1.7), 3, 0.5, ${warpPeriod})) - 0.5) * ${f(p['warp'])}`;
+      const e = `graphVoronoi(${uv} * ${f(p['scale'])} + vec2f(${f(p['seed'])} * 7.13) + ${bend}, 1.0, ${tile(p['scale'], p['tileable'])}).z`;
       return { mask: `(1.0 - smoothstep(0.0, ${f(p['width'])}, ${e}))`, height: `smoothstep(0.0, ${f(Number(p['width']) * 2.5)}, ${e})` };
     },
   },
@@ -728,8 +757,8 @@ export interface CompiledMaterialGraph {
  * 贴图在 compiler 里的采样，由调用方实现）。认不出的节点、接错的端口报错（where 用在消息里）。suffix 区分同一个材质里的
  * 几张图（材质的和各个绘制层的）：函数是 `materialGraph<suffix>()`，输出在 `graph<suffix>_<输出>` 里。
  */
-export function compileMaterialGraph(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string, suffix = ''): CompiledMaterialGraph {
-  const { lines, values } = emitMaterialGraphNodes(graph, compiler, sample, where);
+export function compileMaterialGraph(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string, suffix = '', params?: GraphParams): CompiledMaterialGraph {
+  const { lines, values } = emitMaterialGraphNodes(graph, compiler, sample, where, params ? { params } : {});
   const outputs = new Set<MaterialGraphOutput>();
   const declarations: string[] = [];
   for (const [name, type] of Object.entries(MATERIAL_GRAPH_OUTPUTS) as [MaterialGraphOutput, PortType][]) {
@@ -752,7 +781,7 @@ export interface MaterialGraphValue {
  * 按依赖排好的节点每个算一次：每个输出一行 `let g_<节点>_<输出> = …;`。values 按 `节点:输出` 找到变量（`节点:` 是第一个输出）。
  * compileMaterialGraph 和节点的预览（materialGraphPreview.ts）共用；all 时没接到输出的节点也算（预览要每个节点）。
  */
-export function emitMaterialGraphNodes(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string, options: { readonly all?: boolean } = {}): { readonly lines: string[]; readonly values: ReadonlyMap<string, MaterialGraphValue> } {
+export function emitMaterialGraphNodes(graph: GraphFile, compiler: Pick<ColorTreeCompiler, 'addFunction'>, sample: (texture: string, uv: string) => string | undefined, where: string, options: { readonly all?: boolean; readonly params?: GraphParams } = {}): { readonly lines: string[]; readonly values: ReadonlyMap<string, MaterialGraphValue> } {
   // 滤镜节点的 value 已经烘进贴图：它的上游不用在材质里再算一遍（只给它烘的，预览要每个节点时照样算）
   const live = { ...graph, nodes: graph.nodes.map((node) => (BAKED_NODE_TYPES.has(node.type) && node.inputs?.['value'] ? { ...node, inputs: withoutKey(node.inputs, 'value') } : node)) };
   const order = sortGraph(live, where, options);
@@ -768,7 +797,10 @@ export function emitMaterialGraphNodes(graph: GraphFile, compiler: Pick<ColorTre
       inputs[port.name] = link ? convertGraphValue(linked(values, link, `input ${port.name} of node '${node.id}'`, where), port.type) : port.fallback;
     }
     for (const name of Object.keys(node.inputs ?? {})) if (!spec.inputs.some((port) => port.name === name)) throw new Error(`${where}: node '${node.id}' (${node.type}) has no input '${name}'`);
-    const params = Object.fromEntries(spec.params.map((param) => [param.name, node.params?.[param.name] ?? param.default]));
+    const params = Object.fromEntries(spec.params.map((param) => {
+      const value = node.params?.[param.name] ?? param.default;
+      return [param.name, options.params ? withParams(value, options.params) : value];
+    }));
     const emitted = spec.emit(inputs, params, context);
     for (const output of spec.outputs) {
       const variable = `g_${safe(node.id)}_${output.name}`;
@@ -827,7 +859,56 @@ function safe(id: string): string {
   return id.replace(/[^A-Za-z0-9_]/g, '_');
 }
 
+/**
+ * 节点图参数的 uniform 表：编一份材质（它的所有图）用一张，数值按登记的顺序放进槽位；材质的 uniform 里有 SLOTS 个浮点数。
+ * 同样结构的图登记的顺序、个数一样，所以代码一样（结构里的分支决定登记哪些，也在代码里体现）。
+ */
+export class GraphParams {
+  /** 槽位数：材质 uniform 里 `graph: array<vec4f, 64>` 的浮点数个数。 */
+  static readonly SLOTS = 256;
+  readonly values: number[] = [];
+
+  /** 登记一个数，返回读它的 WGSL 表达式；槽位满了返回 undefined（调用方写成字面量）。 */
+  slot(value: number): string | undefined {
+    if (this.values.length >= GraphParams.SLOTS) return undefined;
+    const index = this.values.push(value) - 1;
+    return `material.graph[${index >> 2}].${'xyzw'[index & 3]}`;
+  }
+}
+
+/** 一个进了表的数：像数一样参与运算（valueOf），经 f 格式化时写成读 uniform 的表达式。 */
+class Param {
+  readonly value: number;
+  readonly expr: string;
+  readonly table: GraphParams;
+  constructor(value: number, expr: string, table: GraphParams) {
+    this.value = value;
+    this.expr = expr;
+    this.table = table;
+  }
+  valueOf(): number {
+    return this.value;
+  }
+  toString(): string {
+    return String(this.value);
+  }
+}
+
+/** 登记 value，返回进了表的 Param（槽位满了就是原来的数）。 */
+function toParam(table: GraphParams, value: number): unknown {
+  const expr = Number.isFinite(value) ? table.slot(value) : undefined;
+  return expr === undefined ? value : new Param(value, expr, table);
+}
+
+/** 节点的参数里的数和数的数组（向量、颜色）换成 Param；别的（字符串、开关、列表）原样。 */
+function withParams(value: unknown, table: GraphParams): unknown {
+  if (typeof value === 'number') return toParam(table, value);
+  if (Array.isArray(value) && value.length > 0 && value.length <= 4 && value.every((item) => typeof item === 'number')) return value.map((item: number) => toParam(table, item));
+  return value;
+}
+
 function f(value: unknown): string {
+  if (value instanceof Param) return value.expr;
   const n = Number(value);
   if (!Number.isFinite(n)) return '0.0';
   return Number.isInteger(n) ? `${n}.0` : `${n}`;

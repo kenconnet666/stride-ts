@@ -6,7 +6,7 @@ const leaf = (id: string, from: readonly [number, number, number], to: readonly 
   baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.5, sheen: { color: [0.15, 0.2, 0.08], roughness: 0.5 }, diffuseTransmission: { factor: 0.45, color: through },
   graph: nodeGraph([
     ['uv', 'uv'],
-    ['blotch', 'noise', { scale: 6, octaves: 4, seed: 2 }, { uv: 'uv' }],
+    ['blotch', 'noise', { tileable: true, scale: 6, octaves: 4, seed: 2 }, { uv: 'uv' }],
     ['blade', 'colorRamp', { from, to }, { t: 'blotch' }],
     ['midrib', 'wave', { frequency: 1, angle: 0, shape: 'triangle' }, { uv: 'uv' }],
     ['rib', 'levels', { inMin: 0.94, inMax: 1 }, { in: 'midrib' }],
@@ -28,8 +28,8 @@ export const ORGANIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.95,
     graph: nodeGraph([
       ['uv', 'uv', { scale: [5, 1] }],
-      ['furrows', 'noise', { scale: 5, octaves: 6, roughness: 0.6, ridged: 0.9, seed: 3 }, { uv: 'uv' }],
-      ['grain', 'noise', { scale: 40, octaves: 4 }, { uv: 'uv' }],
+      ['furrows', 'noise', { tileable: true, scale: 5, octaves: 6, roughness: 0.6, ridged: 0.9, seed: 3 }, { uv: 'uv' }],
+      ['grain', 'noise', { tileable: true, scale: 40, octaves: 4 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.025, 0.018, 0.012], to: [0.26, 0.19, 0.13] }, { t: 'furrows' }],
       ['fine', 'colorRamp', { from: [0.85, 0.85, 0.85], to: [1.1, 1.1, 1.1] }, { t: 'grain' }],
       ['color', 'multiply', {}, { a: 'tone', b: 'fine' }],
@@ -42,8 +42,8 @@ export const ORGANIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 1, sheen: { color: [0.2, 0.3, 0.1], roughness: 0.7 },
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['clumps', 'noise', { scale: 12, octaves: 5, roughness: 0.65, seed: 5 }, { uv: 'uv' }],
-      ['fuzz', 'noise', { scale: 150, octaves: 3 }, { uv: 'uv' }],
+      ['clumps', 'noise', { tileable: true, scale: 12, octaves: 5, roughness: 0.65, seed: 5 }, { uv: 'uv' }],
+      ['fuzz', 'noise', { tileable: true, scale: 150, octaves: 3 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.025, 0.07, 0.01], to: [0.14, 0.26, 0.04] }, { t: 'clumps' }],
       ['tips', 'colorRamp', { from: [0.85, 0.85, 0.85], to: [1.2, 1.2, 1.1] }, { t: 'fuzz' }],
       ['color', 'multiply', {}, { a: 'tone', b: 'tips' }],
@@ -55,8 +55,8 @@ export const ORGANIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.45, subsurfaceScattering: { width: 0.015, translucency: 0.83, strength: [0.48, 0.41, 0.28], falloff: [1, 0.37, 0.3] },
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['pores', 'voronoi', { scale: 140, randomness: 1 }, { uv: 'uv' }],
-      ['flush', 'noise', { scale: 5, octaves: 4, seed: 3 }, { uv: 'uv' }],
+      ['pores', 'voronoi', { tileable: true, scale: 140, randomness: 1 }, { uv: 'uv' }],
+      ['flush', 'noise', { tileable: true, scale: 5, octaves: 4, seed: 3 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.5, 0.28, 0.2], to: [0.7, 0.45, 0.35] }, { t: 'flush' }],
       ['pore', 'colorRamp', { from: [0.8, 0.7, 0.68], to: [1, 1, 1] }, { t: ['pores', 'distance'] }],
       ['color', 'multiply', {}, { a: 'tone', b: 'pore' }],
@@ -72,7 +72,7 @@ export const ORGANIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.4,
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['glands', 'voronoi', { scale: 60, randomness: 1 }, { uv: 'uv' }],
+      ['glands', 'voronoi', { tileable: true, scale: 60, randomness: 1 }, { uv: 'uv' }],
       ['rind', 'colorRamp', { from: [0.55, 0.12, 0.005], to: [0.85, 0.28, 0.01] }, { t: ['glands', 'distance'] }],
       ['normal', 'normalFromHeight', { strength: 2 }, { height: ['glands', 'distance'], uv: 'uv' }],
     ], { baseColor: 'rind', normal: 'normal' }),
@@ -82,9 +82,9 @@ export const ORGANIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.55,
     graph: nodeGraph([
       ['uv', 'uv'],
-      ['grain', 'noise', { scale: 120, octaves: 3 }, { uv: 'uv' }],
+      ['grain', 'noise', { tileable: true, scale: 120, octaves: 3 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.6, 0.5, 0.36], to: [0.8, 0.7, 0.55] }, { t: 'grain' }],
-      ['freckles', 'spots', { scale: 40, size: 0.3, variation: 0.9, density: 0.25, seed: 4 }, { uv: 'uv' }],
+      ['freckles', 'spots', { tileable: true, scale: 40, size: 0.3, variation: 0.9, density: 0.25, seed: 4 }, { uv: 'uv' }],
       ['brown', 'color', { color: [0.3, 0.17, 0.08] }],
       ['color', 'mix', {}, { a: 'tone', b: 'brown', t: ['freckles', 'mask'] }],
       ['normal', 'normalFromHeight', { strength: 0.5 }, { height: 'grain', uv: 'uv' }],
@@ -95,7 +95,7 @@ export const ORGANIC_MATERIALS: readonly LibraryMaterial[] = [
     baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.5, diffuseTransmission: { factor: 0.15, color: [1, 0.85, 0.7] },
     graph: nodeGraph([
       ['uv', 'uv', { scale: [4, 1] }],
-      ['fibers', 'noise', { scale: 40, octaves: 4, seed: 2 }, { uv: 'uv' }],
+      ['fibers', 'noise', { tileable: true, scale: 40, octaves: 4, seed: 2 }, { uv: 'uv' }],
       ['tone', 'colorRamp', { from: [0.5, 0.42, 0.3], to: [0.78, 0.72, 0.6] }, { t: 'fibers' }],
       ['normal', 'normalFromHeight', { strength: 0.7 }, { height: 'fibers', uv: 'uv' }],
     ], { baseColor: 'tone', normal: 'normal' }),

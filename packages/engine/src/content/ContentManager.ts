@@ -37,7 +37,7 @@ import type { AudioEngine } from '../audio/AudioEngine';
 import { Sound } from '../audio/Sound';
 import { SOUND_SYNTH_RATE, synthesizeSound } from '../audio/soundSynth';
 import { ColorTreeCompiler } from '../rendering/mesh/colorTree';
-import { bakedTextureKey, compileMaterialGraph, materialGraphTextures, type CompiledMaterialGraph, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
+import { GraphParams, bakedTextureKey, compileMaterialGraph, materialGraphTextures, type CompiledMaterialGraph, type MaterialGraphOutput } from '../rendering/mesh/materialGraph';
 import { bakedMaterialGraphNodes, bakedMaterialGraphTexture } from '../rendering/mesh/materialGraphBake';
 import type { GraphFile } from './formats/nodeGraph';
 import type { ShaderClass } from '../rendering/shaderClass';
@@ -438,8 +438,11 @@ export class ContentManager {
     const compiler = new ColorTreeCompiler({ texture: (path) => textures.get(path), shaderClass: (name) => this.#shaderClasses(name) }, 3);
     // 节点图：材质的那张是最底下的一层（权重 1，盖过上面的基础值），绘制层叠在它上面；各层自己的图当那层的填充
     const where = `material ${name}`;
-    const base = graph ? await this.#compileGraph(graph, compiler, '', where) : undefined;
-    const layerGraphs = await Promise.all(layers.map((layer, i) => (layer.graph ? this.#compileGraph(layer.graph, compiler, `L${i}`, `${where}, layer ${i}`) : Promise.resolve(undefined))));
+    // 图的数值参数放材质的 uniform（materialGraph.ts 的 GraphParams）：同一份材质的几张图用一张表；先后顺序固定，代码才稳定
+    const params = new GraphParams();
+    const base = graph ? await this.#compileGraph(graph, compiler, '', where, params) : undefined;
+    const layerGraphs: (CompiledMaterialGraph | undefined)[] = [];
+    for (const [i, layer] of layers.entries()) layerGraphs.push(layer.graph ? await this.#compileGraph(layer.graph, compiler, `L${i}`, `${where}, layer ${i}`, params) : undefined);
     const offset = base ? 1 : 0;
     const shaderLayers: MaterialShaderLayer[] = [];
     const functions: (string | undefined | false)[] = [
@@ -492,17 +495,18 @@ export class ContentManager {
         },
       } : {}),
       ...(graphs.length > 0 ? { graphs } : {}),
+      ...(params.values.length > 0 ? { graphParams: new Float32Array(params.values) } : {}),
       ...(shaderLayers.length > 0 ? { layers: shaderLayers } : {}),
     };
   }
 
   /** 编一张节点图（贴图节点的贴图、滤镜烘的贴图先准备好）：函数 materialGraph<suffix>、输出在 graph<suffix>_* 里。 */
-  async #compileGraph(graph: GraphFile, compiler: ColorTreeCompiler, suffix: string, where: string): Promise<CompiledMaterialGraph> {
+  async #compileGraph(graph: GraphFile, compiler: ColorTreeCompiler, suffix: string, where: string, params: GraphParams): Promise<CompiledMaterialGraph> {
     const textures = await this.loadMaterialGraphTextures(graph, where);
     return compileMaterialGraph(graph, compiler, (path, uv) => {
       const texture = textures.get(path);
       return texture && compiler.sampleTexture(texture, uv);
-    }, where, suffix);
+    }, where, suffix, params);
   }
 
   /**

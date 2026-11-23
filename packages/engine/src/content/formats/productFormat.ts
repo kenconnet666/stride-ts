@@ -99,6 +99,8 @@ export const PRODUCT = s.object({
   transmission: s.number({ min: 0, max: 1, step: 0.05 }).default(0).describe('how much light passes through the body (0..1: oil and drink bottles show what is inside); the label background is the body, printed parts (cap, pattern, text) stay opaque; produce and ware ignore it'),
   /** 旧了多少（0..1；0 是刚出厂）：每个变体按种子褪一点色、沾几块手印似的灰、边上几道擦痕（只画在颜色上，不挡透光）。果蔬、器皿不看它。 */
   wear: s.number({ min: 0, max: 1, step: 0.05 }).default(0.5).describe('how handled the package looks (0..1): each variant fades a little and gets a few grimy smudges and scuffs near the edges, from the seed; 0 is fresh from the factory; produce and ware ignore it'),
+  /** 零售价（元）：货架上的价签印它，别的款式（别的牌子）在它上下一成左右；没写时价签上是随机的价格。 */
+  price: s.number({ min: 0, step: 0.1 }).optional().describe('retail price in yuan printed on the shelf tags; other variants (brands) are within about 10% of it; a random price when missing'),
   seed: s.integer(0, 2 ** 31 - 1).default(1).describe('random seed of everything not written: another number is another brand of the same product'),
 });
 

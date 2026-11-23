@@ -93,6 +93,21 @@ export const SHELF = s.object({
   tagAccent: s.string().optional().describe('color of a block on the right of paper tags (sRGB #rrggbb, the store color): all tags white with dark grey prices then; white or yellow with red prices when missing'),
   /** 价签：纸的（白底或黄底红字）或电子价签（一个小外壳加一块墨水屏：黑字、角上的二维码，有的带红色的促销条）。 */
   priceTags: s.oneOf('paper', 'electronic').default('paper').describe('paper tags (white or yellow, red price) or electronic shelf labels (a small housing with an e-ink screen, black price and a QR code, some with a red promo bar)'),
+  /**
+   * 货架顶上的格子柜（照片里油货架上面两排深色的木格子，横躺着放酒）：摞在货架顶上，height 高、depth 深（没写同货架），rows 排，
+   * 每个立柱间距里 columns 格（格宽按种子错开一点，每排各分各的，上下的竖板错开）；hex 个六边形格上下贯通所有排（左右在半高处
+   * 是尖角，位置按种子挑）；products 里的瓶子瓶口朝外、贴近前沿横躺成一排，fill 是有瓶子的格子的比例。木头带木纹（color 是它的颜色）。只对货架（gondola）有用。
+   */
+  cubbies: s.object({
+    height: s.number({ min: 0.1, step: 0.05, unit: 'm' }).describe('height of the cabinet on top of the shelf'),
+    depth: s.number({ min: 0.1, step: 0.05, unit: 'm' }).optional().describe('depth of the cabinet; the shelf depth when missing'),
+    rows: s.integer(1, 8).default(2).describe('rows of cells'),
+    columns: s.integer(1, 8).default(2).describe('cells per bay (the widths vary a little from the seed, each row on its own)'),
+    color: s.string().default('#5f5650').describe('wood color (sRGB #rrggbb)'),
+    hex: s.integer(0, 8).default(0).describe('tall hexagonal cells through all rows (pointed at half height on the left and right), placed by the seed'),
+    products: s.list(s.asset('product')).default([]).describe('bottles lying in the cells, neck out'),
+    fill: s.number({ min: 0, max: 1, step: 0.05 }).default(0.6).describe('share of the cells that have bottles'),
+  }).optional().describe('a wooden cubby cabinet on top of a gondola, bottles lying in the cells'),
   seed: s.integer(0, 2 ** 31 - 1).default(1).describe('random seed of the stocking and the prices'),
 });
 

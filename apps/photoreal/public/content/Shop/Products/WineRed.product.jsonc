@@ -1,0 +1,20 @@
+{
+ "name": "WineRed",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.075,
+  0.3,
+  0
+ ],
+ "text": "干红",
+ "price": 68,
+ "seed": 87,
+ "pattern": "band",
+ "surface": "glass",
+ "colors": {
+  "background": "#1c0d0b",
+  "accent": "#e8dcc8",
+  "cap": "#c8281e"
+ }
+}

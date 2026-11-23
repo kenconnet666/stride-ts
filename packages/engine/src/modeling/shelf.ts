@@ -14,7 +14,7 @@ import { hash32, seededRandom } from '../data/hash.ts';
 import { productFootprint, svgNumber, textPath } from './product.ts';
 import { shadeColor } from './svg.ts';
 import type { TextFont } from './textOutline.ts';
-import { ProductBatch, type AtlasCell, type Cell, type MergedProducts, type ProductSources } from './productBatch.ts';
+import { ProductBatch, type AtlasCell, type Cell, type MergedProducts, type PlacedProduct, type ProductSources } from './productBatch.ts';
 
 /** 摆上去的一件商品：哪个商品文件、第几个变体，底面中心的位置，绕 Y 转多少（背面那一面转半圈），是不是第一排。 */
 export interface ShelfItem {
@@ -29,7 +29,8 @@ export interface ShelfItem {
 export interface ShelfTag {
   readonly position: readonly [number, number, number];
   readonly side: 1 | -1;
-  readonly price: number;
+  /** 价签上印的价格（元，两位小数）。 */
+  readonly price: string;
 }
 
 /** 生成的货架：网格（一个材质槽）、图集的两张 SVG（颜色、表面）和栅格化的边长，摆了几件商品。 */
@@ -48,8 +49,27 @@ const RAIL_TAG = [0.075, 0.036] as const;
 const RAIL_HEIGHT = 0.05, RAIL_TILT = (10 * Math.PI) / 180, RAIL_OUT = 0.004, RAIL_TAG_BEHIND = 0.0015, RAIL_TAG_LIFT = 0.006;
 /** 商品之间留的缝（米）。 */
 const GAP = 0.006;
-/** 价签有几种价格。 */
+/** 商品没写价格时，价签从这么多个按货架种子随机的价格里挑。 */
 const PRICES = 8;
+/** 价格的尾数（超市的习惯）。 */
+const PRICE_ENDINGS = ['.90', '.80', '.50', '.00', '.99'] as const;
+
+/**
+ * 价签上印的价格。商品写了 price 的：第 0 款就是它，别的款（同一种货的别的牌子）按款式和货架的种子在它的 0.9～1.12 倍之间，
+ * 取整到元再配超市常见的尾数；没写的从 PRICES 个按货架种子随机的价格（1～39 元）里按 pick（0..1）挑一个。
+ */
+function tagPrice(file: Shelf, product: ProductFile, variant: number, pick: number): string {
+  if (product.price === undefined) {
+    const random = seededRandom(hash32(file.seed, 1000 + Math.floor(pick * PRICES)));
+    return `${Math.floor(1 + random() * 39)}${PRICE_ENDINGS[Math.floor(random() * PRICE_ENDINGS.length)]}`;
+  }
+  if (variant === 0) return product.price.toFixed(2);
+  const random = seededRandom(hash32(hash32(file.seed, 1100), hash32(variant, Math.round(product.price * 100))));
+  const price = product.price * (0.9 + random() * 0.22);
+  // 贵的不用 .99、.00 这种零头（几十块的油写 59.90、62.80）
+  const endings = price >= 20 ? PRICE_ENDINGS.slice(0, 3) : PRICE_ENDINGS;
+  return `${Math.max(0, Math.floor(price))}${endings[Math.floor(random() * endings.length)]}`;
+}
 
 /** 挂钩架的一个挂钩：x、钩子的高、朝哪面。 */
 export interface ShelfHook {
@@ -109,8 +129,8 @@ export function planShelf(input: ShelfFile, products: ReadonlyMap<string, Produc
         const rows = Math.max(1, Math.min(maxRows, Math.floor((file.depth - 0.02 + GAP) / (d + GAP))));
         // 价签：货架的在价签条上，挂钩架的挂在第一个钩子的钩尖上
         tags.push(pegboard
-          ? { position: [x + w / 2, level + 0.02, side * (back + file.depth + 0.003)], side, price: Math.floor(random() * PRICES) }
-          : { position: [x + Math.min(TAG[0], w) / 2 + 0.005, level - STRIP[0] / 2, side * (back + file.depth + STRIP[1] + 0.001)], side, price: Math.floor(random() * PRICES) });
+          ? { position: [x + w / 2, level + 0.02, side * (back + file.depth + 0.003)], side, price: tagPrice(file, choice.product, variant, random()) }
+          : { position: [x + Math.min(TAG[0], w) / 2 + 0.005, level - STRIP[0] / 2, side * (back + file.depth + STRIP[1] + 0.001)], side, price: tagPrice(file, choice.product, variant, random()) });
         const y = pegboard ? level - HOOK_DROP - choice.footprint[1] : level;
         // 乱：圆的转起来不占地方，随便转；方的转了会碰到旁边的，最多转到对角刚好碰不着（sin θ ≤ 缝 / 深）
         const round = ROUND_SHAPES.has(choice.product.shape);
@@ -146,7 +166,7 @@ function planStack(file: Shelf, products: ReadonlyMap<string, ProductFile>): { i
   if (!stock || stock.products.length === 0) return { items, tags };
   const candidates = stock.products.flatMap((path) => {
     const product = products.get(path);
-    return product && product.size[0] > 0 && product.size[1] > 0 ? [{ path, footprint: productFootprint(product) }] : [];
+    return product && product.size[0] > 0 && product.size[1] > 0 ? [{ path, product, footprint: productFootprint(product) }] : [];
   });
   if (candidates.length === 0) return { items, tags };
   const random = seededRandom(hash32(file.seed, 3));
@@ -175,7 +195,7 @@ function planStack(file: Shelf, products: ReadonlyMap<string, ProductFile>): { i
       }
     }
     // 价签插在台子正面
-    tags.push({ position: [x + (columns * (w + GAP)) / 2, base / 2, file.depth / 2 + 0.032], side: 1, price: Math.floor(random() * PRICES) });
+    tags.push({ position: [x + (columns * (w + GAP)) / 2, base / 2, file.depth / 2 + 0.032], side: 1, price: tagPrice(file, choice.product, variant, random()) });
     x += columns * (w + GAP) + 0.02;
   }
   return { items, tags };
@@ -194,7 +214,7 @@ function checkShelf(file: Shelf, where: string): void {
  * 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳，熟食柜的黑柜体、
  * 白石英、金、保温灯的暖光，层板，透明挡条顶上折边（塑料折过的地方发白、很亮的一道反光），冷柜的门框和柜体（doorColor）、门把手。
  */
-const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11, RAIL_EDGE = 12, DOOR_BODY = 13, HANDLE = 14, LED = 15, STICKER = 16;
+const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11, RAIL_EDGE = 12, DOOR_BODY = 13, HANDLE = 14, LED = 15, STICKER = 16, CUBBY = 17;
 /** 电子价签：外壳比屏大一圈（米）、凸出价签条多厚。 */
 const ESL_RIM = 0.004, ESL_DEPTH = 0.009;
 /** 冷柜：门在层板前面多远、门框多宽；顶上灯箱的高；冰柜的壁厚。 */
@@ -233,18 +253,17 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
   const items = type === 'freezer' ? plan.items.map((item) => ({ ...item, position: [item.position[0], item.position[1], item.position[2] - inner / 2] as const }))
     : type === 'deli' ? plan.items.map((item) => ({ ...item, position: [item.position[0], item.position[1], item.position[2] + trayBack] as const }))
     : plan.items;
+  const cubbies = type === 'gondola' && file.cubbies ? planCubbies(file, file.cubbies, sources.products) : undefined;
   const tags = type === 'freezer' || type === 'deli' ? [] : plan.tags;
   const tagFont = file.font ? sources.font(file.font) : undefined;
   const electronic = file.priceTags === 'electronic';
   // 透明挡条只给纸价签的货架、冷柜（价签插在挡条后面）
   const rail = file.tagHolder === 'rail' && !electronic && (type === 'gondola' || type === 'fridge');
-  const prices = Array.from({ length: PRICES }, (_, k) => {
-    const random = seededRandom(hash32(file.seed, 1000 + k));
-    return `${Math.floor(1 + random() * 39)}.${['90', '80', '50', '00', '99'][Math.floor(random() * 5)]}`;
-  });
-  const batch = new ProductBatch(sources, where, items.map((item) => ({
+  // 每个不同的价格一格（排在图集的最前面）
+  const prices = [...new Set(tags.map((tag) => tag.price))], priceCell = new Map(prices.map((price, k) => [price, k]));
+  const batch = new ProductBatch(sources, where, items.map((item): PlacedProduct => ({
     product: item.product, variant: item.variant, position: item.position, rotation: [0, Math.sin(item.yaw / 2), 0, Math.cos(item.yaw / 2)], fine: item.front,
-  })), {
+  })).concat(cubbies?.bottles ?? []), {
     solids: [
       { color: file.frameColor, roughness: 0.45, metalness: 0.5 },
       { color: file.stripColor, roughness: 0.35, metalness: 0 },
@@ -266,6 +285,8 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
       { color: '#f4f8ff', roughness: 0.5, metalness: 0, emissive: 120 },
       // 门上广告贴的底色（两边的边框）
       { color: file.doorSticker?.color ?? '#ffffff', roughness: 0.35, metalness: 0 },
+      // 格子柜的斜隔板（格子柜的板是木纹格）
+      { color: file.cubbies?.color ?? '#5f5650', roughness: 0.6, metalness: 0 },
     ],
     // 价签：几种价格；纸的三个里一个黄底，电子的是墨水屏
     cells: prices.map((price, k): AtlasCell => (electronic ? eslCell(price, k, tagFont, hash32(file.seed, 2000 + k))
@@ -277,10 +298,12 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
       // 冷柜顶上的灯箱：蓝底白字，整块发光
       size: [file.length * 1000, (HEADER - 0.04) * 1000] as const, color: file.doorColor ?? '#1e64c8', roughness: 0.3, metalness: 0, emissive: 2,
       draw: ([x, y, w, h]: Cell) => (file.header && tagFont ? textPath(tagFont, file.header, x + w / 2, y + h / 2, w * 0.6, h * 0.62, '#ffffff') : undefined),
-    }, ...stickerCells(file, tagFont)] : []).concat(file.boardColor ? [woodCell(file.boardColor, file.seed)] : []),
+    }, ...stickerCells(file, tagFont)] : []).concat(file.boardColor ? [woodCell(file.boardColor, file.seed)] : [])
+      .concat(cubbies && file.cubbies ? [woodCell(file.cubbies.color, file.seed + 7)] : []),
   });
-  // 木纹层板那一格：在所有格子的最后
-  const woodBoard = file.boardColor ? PRICES + (type === 'fridge' ? 1 + stickerCells(file, undefined).length : 0) : -1;
+  // 木纹层板、格子柜的木纹在所有格子的最后
+  const woodBoard = file.boardColor ? prices.length + (type === 'fridge' ? 1 + stickerCells(file, undefined).length : 0) : -1;
+  const cubbyWood = cubbies ? prices.length + (type === 'fridge' ? 1 + stickerCells(file, undefined).length : 0) + (file.boardColor ? 1 : 0) : -1;
   if (type === 'freezer') {
     freezerBody(batch, file);
     return { ...batch.finish(), items: items.length };
@@ -293,12 +316,12 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
     // 台子（比垛四周大出一点）和插在正面的价签
     const L = file.length / 2, D = file.depth / 2 + 0.03;
     batch.box([-L, 0, -D], [L, file.levels[0]!, D], BASE);
-    for (const tag of tags) addTag(batch, tag, electronic);
+    for (const tag of tags) addTag(batch, tag, electronic, priceCell.get(tag.price)!);
     return { ...batch.finish(), items: items.length };
   }
   if (type === 'pegboard') {
     pegboardBody(batch, file, plan.hooks);
-    for (const tag of tags) addTag(batch, tag, electronic);
+    for (const tag of tags) addTag(batch, tag, electronic, priceCell.get(tag.price)!);
     return { ...batch.finish(), items: items.length };
   }
   const L = file.length / 2, H = file.height;
@@ -309,7 +332,7 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
   const zFar = back + file.depth;
   const zEnd = type === 'fridge' ? zFar + DOOR + 0.01 : zFar;
   for (const x of [-L, L - SPINE]) batch.box([x, 0, file.sides === 2 && type === 'gondola' ? -zFar : -SPINE], [x + SPINE, H, zEnd], FRAME);
-  if (type === 'fridge') fridgeFront(batch, file, zFar, PRICES);
+  if (type === 'fridge') fridgeFront(batch, file, zFar, prices.length);
   for (const side of sides) {
     const z0 = side * back, z1 = side * zFar;
     const zs = [Math.min(z0, z1), Math.max(z0, z1)] as const;
@@ -332,14 +355,128 @@ export function shelfModel(input: ShelfFile, sources: ProductSources, where = in
   }
   // 价签：价签条正面上的一小片（从正面看左下、右下、右上、左上：背面那一面的 x 反过来），或者插在透明挡条后面
   for (const tag of tags) {
-    if (rail) railTag(batch, tag, zFar);
-    else addTag(batch, tag, electronic);
+    if (rail) railTag(batch, tag, zFar, priceCell.get(tag.price)!);
+    else addTag(batch, tag, electronic, priceCell.get(tag.price)!);
   }
-  return { ...batch.finish(), items: items.length };
+  if (cubbies) cubbyBody(batch, cubbies, cubbyWood);
+  return { ...batch.finish(), items: items.length + (cubbies?.bottles.length ?? 0) };
+}
+
+/** 格子柜的板厚（米）。 */
+const CUBBY_BOARD = 0.02;
+/** 六边形格占几格宽；切角的板从半高的尖角斜到顶、底，横着占六边形宽的多少。 */
+const CUBBY_HEX_WIDTH = 1.3, CUBBY_HEX_CUT = 0.28;
+
+/** 格子柜怎么分（米，都是板以内的空当）：柜子的范围、每排的格子、上下贯通的六边形格，瓶子摆在哪。 */
+interface CubbyPlan {
+  readonly box: { readonly x0: number; readonly x1: number; readonly y0: number; readonly y1: number; readonly z0: number; readonly z1: number };
+  /** 六边形格把每排切成几段，段和段之间是六边形格。 */
+  readonly segments: readonly { readonly x0: number; readonly x1: number }[];
+  readonly rows: readonly { readonly y0: number; readonly y1: number; readonly cells: readonly { readonly x0: number; readonly x1: number }[] }[];
+  readonly hexes: readonly { readonly x0: number; readonly x1: number }[];
+  readonly bottles: PlacedProduct[];
+}
+
+/**
+ * 格子柜怎么分、瓶子放在哪（照片里油货架顶上的木格子）：hex 个六边形格上下贯通所有排（左右两边在半高处是尖角），位置按种子挑、
+ * 不挨着两头；别的地方每排各分各的格子，格宽按种子在平均宽的 0.8～1.2 倍之间，所以上下两排的竖板错开。fill 比例的格子里，
+ * 瓶子瓶口朝外、贴近前沿横躺成一排，瓶子之间留半个瓶身的空，各自绕瓶身转一点（标签朝向不一）。
+ */
+function planCubbies(file: Shelf, cubbies: NonNullable<Shelf['cubbies']>, products: ReadonlyMap<string, ProductFile>): CubbyPlan {
+  const random = seededRandom(hash32(file.seed, 5003));
+  const L = file.length / 2, t = CUBBY_BOARD, depth = cubbies.depth ?? file.depth;
+  const box = { x0: -L, x1: L, y0: file.height, y1: file.height + cubbies.height, z0: 0, z1: depth };
+  const perRow = Math.max(1, Math.round(file.length / (file.bay ?? 1))) * cubbies.columns;
+  // 一格连同一块板的平均宽
+  const unit = (file.length - t) / perRow;
+  const hexes: { x0: number; x1: number }[] = [], segments: { x0: number; x1: number }[] = [];
+  let cursor = box.x0 + t;
+  for (const slot of hexSlots(random, perRow, cubbies.hex)) {
+    const x0 = box.x0 + t + slot * unit, x1 = x0 + CUBBY_HEX_WIDTH * unit - t;
+    segments.push({ x0: cursor, x1: x0 - t });
+    hexes.push({ x0, x1 });
+    cursor = x1 + t;
+  }
+  segments.push({ x0: cursor, x1: box.x1 - t });
+  const rowHeight = (cubbies.height - t) / cubbies.rows;
+  const rows = Array.from({ length: cubbies.rows }, (_, r) => ({
+    y0: box.y0 + t + r * rowHeight, y1: box.y0 + (r + 1) * rowHeight,
+    cells: segments.flatMap((segment) => {
+      const span = segment.x1 - segment.x0 + t, count = Math.max(1, Math.round(span / unit));
+      const weights = Array.from({ length: count }, () => 0.8 + random() * 0.4), total = weights.reduce((a, b) => a + b, 0);
+      let x = segment.x0;
+      return weights.map((weight) => {
+        const x0 = x;
+        x += (span * weight) / total;
+        return { x0, x1: x - t };
+      });
+    }),
+  }));
+  const candidates = cubbies.products.flatMap((path) => {
+    const product = products.get(path);
+    return product ? [{ path, footprint: productFootprint(product) }] : [];
+  });
+  const bottles: PlacedProduct[] = [];
+  for (const row of rows) {
+    for (const cell of row.cells) {
+      if (candidates.length === 0 || random() >= cubbies.fill) continue;
+      const choice = candidates[Math.floor(random() * candidates.length)]!, variant = Math.floor(random() * 3);
+      // 横躺着：瓶身的直径朝上，瓶身的长朝外
+      const [w, length] = choice.footprint, width = cell.x1 - cell.x0, count = Math.floor((width + w * 0.5) / (w * 1.5));
+      if (count < 1 || w > row.y1 - row.y0 || length > depth - 0.01) continue;
+      const pitch = width / count;
+      for (let k = 0; k < count; k++) {
+        const roll = random() * Math.PI * 2, x = cell.x0 + pitch * (k + 0.5) + (random() - 0.5) * (pitch - w) * 0.6;
+        // 瓶底离前沿 length 再往里 2～5 厘米（瓶口差不多和前沿齐）；先绕 X 转 90°（瓶身的 +Y 朝 +Z），再绕 Z 转 roll：q = qz · qx
+        const z = Math.max(box.z0 + 0.005, box.z1 - length - 0.02 - random() * 0.03);
+        const s = Math.SQRT1_2, sz = Math.sin(roll / 2), cz = Math.cos(roll / 2);
+        bottles.push({ product: choice.path, variant, position: [x, row.y0 + w / 2, z], rotation: [cz * s, sz * s, sz * s, cz * s], fine: true });
+      }
+    }
+  }
+  return { box, segments, rows, hexes, bottles };
+}
+
+/** 六边形格放在哪几格（从左数，按种子挑）：不挨着两头，两个之间至少隔两格；放不下的不放。 */
+function hexSlots(random: () => number, perRow: number, count: number): number[] {
+  const slots: number[] = [];
+  for (let attempt = 0; slots.length < count && attempt < 64; attempt++) {
+    const slot = 1 + Math.floor(random() * Math.max(0, perRow - 1 - CUBBY_HEX_WIDTH));
+    if (slot + CUBBY_HEX_WIDTH <= perRow - 1 && slots.every((other) => Math.abs(other - slot) >= 2 + CUBBY_HEX_WIDTH)) slots.push(slot);
+  }
+  return slots.sort((a, b) => a - b);
+}
+
+/** 格子柜的板（木纹格）：底、顶、背板、两侧，每段每排之间的横板、格之间的竖板，六边形格两边的竖板和切角的四块斜板（纯色）。 */
+function cubbyBody(batch: ProductBatch, plan: CubbyPlan, wood: number): void {
+  const t = CUBBY_BOARD, { x0, x1, y0, y1, z0, z1 } = plan.box;
+  batch.texturedBox([x0, y0, z0], [x1, y0 + t, z1], wood);
+  batch.texturedBox([x0, y1 - t, z0], [x1, y1, z1], wood);
+  batch.texturedBox([x0, y0, z0 - t], [x1, y1, z0], wood);
+  batch.texturedBox([x0, y0, z0], [x0 + t, y1, z1], wood);
+  batch.texturedBox([x1 - t, y0, z0], [x1, y1, z1], wood);
+  for (const [r, row] of plan.rows.entries()) {
+    if (r < plan.rows.length - 1) for (const segment of plan.segments) batch.texturedBox([segment.x0, row.y1, z0], [segment.x1, row.y1 + t, z1], wood);
+    for (const cell of row.cells) {
+      // 段尾的竖板是侧板或六边形格边上的竖板
+      if (plan.segments.some((segment) => Math.abs(segment.x1 - cell.x1) < 1e-6)) continue;
+      batch.texturedBox([cell.x1, row.y0, z0], [cell.x1 + t, row.y1, z1], wood);
+    }
+  }
+  const bottom = y0 + t, top = y1 - t, middle = (bottom + top) / 2;
+  for (const hex of plan.hexes) {
+    batch.texturedBox([hex.x0 - t, bottom, z0], [hex.x0, top, z1], wood);
+    batch.texturedBox([hex.x1, bottom, z0], [hex.x1 + t, top, z1], wood);
+    const cut = (hex.x1 - hex.x0) * CUBBY_HEX_CUT, h = t / 2;
+    batch.plank([hex.x0, middle], [hex.x0 + cut, top - h], t, z0, z1, CUBBY);
+    batch.plank([hex.x0, middle], [hex.x0 + cut, bottom + h], t, z0, z1, CUBBY);
+    batch.plank([hex.x1, middle], [hex.x1 - cut, top - h], t, z0, z1, CUBBY);
+    batch.plank([hex.x1, middle], [hex.x1 - cut, bottom + h], t, z0, z1, CUBBY);
+  }
 }
 
 /** 一个价签：纸的是贴在价签条上的一片；电子的是凸出来的外壳加正面的屏。 */
-function addTag(batch: ProductBatch, tag: ShelfTag, electronic: boolean): void {
+function addTag(batch: ProductBatch, tag: ShelfTag, electronic: boolean, cell: number): void {
   const [x, y, z0] = tag.position, [tw, th] = TAG;
   const z = electronic ? z0 + tag.side * ESL_DEPTH : z0;
   if (electronic) {
@@ -347,7 +484,7 @@ function addTag(batch: ProductBatch, tag: ShelfTag, electronic: boolean): void {
     batch.box([x - tw / 2 - ESL_RIM, y - th / 2 - ESL_RIM, zs[0]], [x + tw / 2 + ESL_RIM, y + th / 2 + ESL_RIM, zs[1]], TAG_BODY);
   }
   const corners = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sy]) => [x + sx * tw / 2 * tag.side, y + sy * th / 2, z]);
-  batch.quad(corners, [0, 0, tag.side], tag.price);
+  batch.quad(corners, [0, 0, tag.side], cell);
 }
 
 /**
@@ -368,14 +505,14 @@ function tagRail(batch: ProductBatch, x0: number, x1: number, level: number, zFa
  * 插在透明挡条后面的纸价签（RAIL_TAG 大）：和挡条一样仰着，底边离层板 RAIL_TAG_LIFT，在挡条后面 RAIL_TAG_BEHIND。tag 的位置是
  * 价签条上的（TAG 大）：左边对齐。
  */
-function railTag(batch: ProductBatch, tag: ShelfTag, zFar: number): void {
+function railTag(batch: ProductBatch, tag: ShelfTag, zFar: number, cell: number): void {
   const [tw, th] = RAIL_TAG, side = tag.side, level = tag.position[1] + STRIP[0] / 2;
   const x = tag.position[0] + ((tw - TAG[0]) / 2) * side;
   const sin = Math.sin(RAIL_TILT), cos = Math.cos(RAIL_TILT);
   const at = (along: number): [number, number] => [level + along * cos, side * (zFar + RAIL_OUT - RAIL_TAG_BEHIND - along * sin)];
   const [y0, z0] = at(RAIL_TAG_LIFT), [y1, z1] = at(RAIL_TAG_LIFT + th);
   const corners = [[x - (tw / 2) * side, y0, z0], [x + (tw / 2) * side, y0, z0], [x + (tw / 2) * side, y1, z1], [x - (tw / 2) * side, y1, z1]];
-  batch.quad(corners, [0, sin, side * cos], tag.price);
+  batch.quad(corners, [0, sin, side * cos], cell);
 }
 
 /**
@@ -484,7 +621,7 @@ function stickerCells(file: Shelf, font: TextFont | undefined): AtlasCell[] {
 
 /**
  * 冷柜的前面：每一扇门的玻璃、门之间的门框（doorColor，默认深色）和门框里侧竖着的灯带、门把手，门下面压缩机那一格的前脸，
- * 顶盖和顶上的灯箱（图集里 PRICES 之后那一格；写了 doorColor 时顶盖、灯箱也是这个颜色），门上的广告贴（doorSticker：灯箱之后
+ * 顶盖和顶上的灯箱（图集里价签格之后那一格；写了 doorColor 时顶盖、灯箱也是这个颜色），门上的广告贴（doorSticker：灯箱之后
  * 的两格是横幅和下面那条，两边的边框是纯色）。zFar 是层板前沿。
  */
 function fridgeFront(batch: ProductBatch, file: Shelf, zFar: number, headerCell: number): void {

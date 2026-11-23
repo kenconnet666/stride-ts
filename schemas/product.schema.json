@@ -186,6 +186,11 @@
       "description": "how handled the package looks (0..1): each variant fades a little and gets a few grimy smudges and scuffs near the edges, from the seed; 0 is fresh from the factory; produce and ware ignore it",
       "default": 0.5
     },
+    "price": {
+      "type": "number",
+      "minimum": 0,
+      "description": "retail price in yuan printed on the shelf tags; other variants (brands) are within about 10% of it; a random price when missing"
+    },
     "seed": {
       "type": "integer",
       "minimum": 0,

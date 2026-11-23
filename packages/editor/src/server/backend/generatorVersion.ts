@@ -8,11 +8,24 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** 算一次（进程里的代码不会变）。 */
+/** 这个进程加载的代码的版本：启动后算一次（进程里加载了的代码不会变）。 */
 let version: Promise<string> | undefined;
 
 export function generatorVersion(): Promise<string> {
   return (version ??= compute());
+}
+
+/** 磁盘上现在的代码的版本（最近一次算的，一秒内不重算：一次要读几百个源文件，八十毫秒上下）。 */
+let onDisk: { readonly at: number; readonly version: Promise<string> } | undefined;
+
+/**
+ * 进程加载的生成代码已经旧了：磁盘上的源文件在进程起来以后改过。旧代码烘出来的会盖掉新代码烘的（出过：开发服务器开着时改了
+ * 货架的生成器，MCP 服务用新代码烘了货架，开发服务器看见商品文件变了，用它加载的旧代码把用着商品的货架又烘了一遍）。
+ */
+export async function generatorCodeIsStale(): Promise<boolean> {
+  const now = Date.now();
+  if (!onDisk || now - onDisk.at > 1000) onDisk = { at: now, version: compute() };
+  return (await onDisk.version) !== (await generatorVersion());
 }
 
 async function compute(): Promise<string> {

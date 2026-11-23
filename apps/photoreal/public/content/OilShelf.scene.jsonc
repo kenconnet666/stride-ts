@@ -149,33 +149,6 @@
    }
   },
   {
-   "id": "0b1e0b1e-0001-4000-8000-000000000005",
-   "name": "Cubbies",
-   "parent": null,
-   "position": [
-    0,
-    0,
-    0
-   ],
-   "rotation": [
-    0,
-    0,
-    0,
-    1
-   ],
-   "scale": [
-    1,
-    1,
-    1
-   ],
-   "components": {
-    "model": {
-     "model": "Shop/Models/Cubbies",
-     "materials": []
-    }
-   }
-  },
-  {
    "id": "0b1e0b1e-0001-4000-8000-000000000020",
    "name": "Panel 0",
    "parent": null,

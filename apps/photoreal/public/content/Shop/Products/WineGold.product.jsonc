@@ -1,0 +1,20 @@
+{
+ "name": "WineGold",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.075,
+  0.3,
+  0
+ ],
+ "text": "干红",
+ "price": 88,
+ "seed": 88,
+ "pattern": "band",
+ "surface": "glass",
+ "colors": {
+  "background": "#1a110a",
+  "accent": "#efe3c4",
+  "cap": "#d9a520"
+ }
+}

@@ -264,4 +264,47 @@ describe('货架', () => {
       name: 'Island clear', transmission: { factor: 1 }, glossinessTexture: { texture: 'Shop/Island.surface', transmissionChannel: 'r', metalnessChannel: 'b' },
     });
   });
+  test('价签：商品写了价格的第 0 款印它，别的款在 0.9～1.12 倍、几十块的不用 .99 和 .00；没写的随机', () => {
+    const priced = new Map([...products].map(([path, product]): [string, ProductFile] => [path, { ...product, price: 59.9 }]));
+    const one = planShelf({ ...island, stock: { ...island.stock!, variants: 1 } }, priced);
+    expect(new Set(one.tags.map((tag) => tag.price))).toEqual(new Set(['59.90']));
+    const { tags } = planShelf(island, priced);
+    expect(new Set(tags.map((tag) => tag.price)).size).toBeGreaterThan(1);
+    for (const tag of tags) {
+      expect(Number(tag.price)).toBeGreaterThanOrEqual(53);
+      expect(Number(tag.price)).toBeLessThanOrEqual(67.1);
+      expect(tag.price).toMatch(/\.(90|80|50)$/);
+    }
+    // 同一种货、同一款的价签一样
+    expect(new Set(planShelf({ ...island, seed: 9 }, priced).tags.map((tag) => tag.price)).size).toBeLessThanOrEqual(3);
+    expect(planShelf(island, products).tags.every((tag) => /^\d+\.\d\d$/.test(tag.price))).toBe(true);
+  });
+
+  test('透光的商品：后排不透明，标签另用一格，瓶身压暗成透着油的颜色', () => {
+    const oil: ProductFile = { name: 'Oil', shape: 'bottle', size: [0.08, 0.28, 0], transmission: 0.9, pattern: 'band', colors: { background: '#e4c45a' }, seed: 2 };
+    const model = shelfModel({ ...island, sides: 1, stock: { products: ['P/Oil'], variants: 1, gaps: 0, rows: 3 } }, { products: new Map([['P/Oil', oil]]), font: () => undefined });
+    expect(model.clear).toBeDefined();
+    expect(model.colorSvg).toContain('fill="#e4c45a"');
+    expect(model.colorSvg).toContain('fill="#ce9b26"');
+  });
+
+  test('格子柜：摞在货架顶上，瓶子横躺在格子里、瓶口朝外贴近前沿；有六边形格；没有瓶子时也能画', () => {
+    const wine: ProductFile = { name: 'Wine', shape: 'bottle', size: [0.075, 0.3, 0], seed: 4 };
+    const shelf: ShelfFile = {
+      name: 'Oil', sides: 1, length: 2, height: 1.6, depth: 0.4, levels: [0.15, 0.5, 0.85, 1.2], seed: 7,
+      stock: { products: ['P/Water'], gaps: 0 },
+      cubbies: { height: 0.8, rows: 2, columns: 3, hex: 1, products: ['P/Wine'], fill: 1 },
+    };
+    const all = new Map([...products, ['P/Wine', wine]]);
+    const { items } = planShelf(shelf, all);
+    const model = shelfModel(shelf, { products: all, font: () => undefined });
+    const bottles = model.items - items.length;
+    expect(bottles).toBeGreaterThan(6);
+    let top = 0;
+    for (let i = 1; i < model.vertices.length; i += 8) top = Math.max(top, model.vertices[i]!);
+    expect(top).toBeCloseTo(2.4, 5);
+    const empty = shelfModel({ ...shelf, cubbies: { ...shelf.cubbies!, products: [] } }, { products: all, font: () => undefined });
+    expect(empty.items).toBe(items.length);
+    expect(empty.vertices.length).toBeLessThan(model.vertices.length);
+  });
 });

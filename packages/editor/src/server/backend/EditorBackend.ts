@@ -23,7 +23,7 @@ import { installProjectExtension, loadProject, projectInfo, type Project } from 
 import { syncAssetPackages } from './assetPackages.ts';
 import { generatedKinds, generatorFor, isGenerated, REBAKE_WITH } from './bakers.ts';
 import { checkContentPath, contentHash, writeAtomically } from './files.ts';
-import { generatorVersion } from './generatorVersion.ts';
+import { generatorCodeIsStale, generatorVersion } from './generatorVersion.ts';
 import { handleEditorRequest, HttpError } from './http.ts';
 import { Importer, type MaterialSetOptions } from './importer.ts';
 
@@ -605,8 +605,10 @@ export class EditorBackend {
    * 返回它们的相对路径（还没刷新数据库）和导入的警告、动画。形状、设置不对时报错。
    */
   async #bake(kind: BakedKind, assetPath: string, content: unknown): Promise<Baked> {
-    const tools = await (this.#tools ??= createStrideTools());
     const where = `${kind} ${assetPath}`;
+    // 生成代码在这个进程起来以后改过：不用旧代码烘（会盖掉别的进程用新代码烘的），保存时报错、被动重烘时只留警告
+    if (await generatorCodeIsStale()) throw new Error(`${where}: the asset generator code changed after this editor backend started; restart it (the dev server or the MCP service) to bake`);
+    const tools = await (this.#tools ??= createStrideTools());
     if (kind === 'imageImport') return this.#encodeImage(assetPath, content as ImageImportFile);
     if (kind === 'modelImport') {
       const settings = content as ModelImportFile;

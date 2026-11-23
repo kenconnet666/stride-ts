@@ -37,12 +37,12 @@ const FONT = 'Shared/Fonts/ZCOOLQingKeHuangYou';
 // 照片里的酱（标签的色带照照片是红、黄、绿，别的颜色每个牌子自己挑；罐身是酱的颜色，标签以外隔着玻璃看见酱里的辣椒碎、芝麻）：小玻璃罐（油辣椒、豆瓣、豆豉、腐乳、芝麻酱），罐身透出来的是酱的红褐色，标签一圈；中间几层有橙色盖的瓶子（蚝油
 // 那样的），最下层是大罐的辣椒酱（红盖）
 const sauces: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
-  { id: 'ChiliOil', shape: 'jar', size: [0.072, 0.11, 0], text: '油辣椒', seed: 91, badge: '280g', pattern: 'band', surface: 'glass', colors: { background: '#4a130b', accent: '#c8281e', cap: '#d0261e' } },
-  { id: 'BeanPaste', shape: 'jar', size: [0.078, 0.12, 0], text: '豆瓣酱', seed: 92, badge: '300g', pattern: 'band', surface: 'glass', colors: { background: '#3e1a0e', accent: '#e2b11e', cap: '#d9a520' } },
-  { id: 'Douchi', shape: 'jar', size: [0.07, 0.1, 0], text: '风味豆豉', seed: 93, pattern: 'band', surface: 'glass', colors: { background: '#33150c', accent: '#2f8f3a', cap: '#2f8f3a' } },
-  { id: 'Sesame', shape: 'jar', size: [0.07, 0.095, 0], text: '芝麻酱', seed: 94, motif: 'sesame', pattern: 'band', surface: 'glass', colors: { background: '#8a5a2a', accent: '#f4f0e2', cap: '#f2c40f' } },
-  { id: 'Oyster', shape: 'bottle', size: [0.058, 0.15, 0], text: '蚝油', seed: 95, pattern: 'band', surface: 'plastic', colors: { background: '#7a3410', accent: '#e8731a', cap: '#e8731a' } },
-  { id: 'ChiliBig', shape: 'jar', size: [0.095, 0.15, 0], text: '辣椒酱', seed: 96, badge: '1kg', pattern: 'band', surface: 'plastic', colors: { background: '#6a160c', accent: '#f4f0e2', cap: '#e0321e' } },
+  { id: 'ChiliOil', shape: 'jar', size: [0.072, 0.11, 0], text: '油辣椒', price: 11.5, seed: 91, badge: '280g', pattern: 'band', surface: 'glass', colors: { background: '#4a130b', accent: '#c8281e', cap: '#d0261e' } },
+  { id: 'BeanPaste', shape: 'jar', size: [0.078, 0.12, 0], text: '豆瓣酱', price: 9.9, seed: 92, badge: '300g', pattern: 'band', surface: 'glass', colors: { background: '#3e1a0e', accent: '#e2b11e', cap: '#d9a520' } },
+  { id: 'Douchi', shape: 'jar', size: [0.07, 0.1, 0], text: '风味豆豉', price: 10.8, seed: 93, pattern: 'band', surface: 'glass', colors: { background: '#33150c', accent: '#2f8f3a', cap: '#2f8f3a' } },
+  { id: 'Sesame', shape: 'jar', size: [0.07, 0.095, 0], text: '芝麻酱', price: 12.9, seed: 94, motif: 'sesame', pattern: 'band', surface: 'glass', colors: { background: '#8a5a2a', accent: '#f4f0e2', cap: '#f2c40f' } },
+  { id: 'Oyster', shape: 'bottle', size: [0.058, 0.15, 0], text: '蚝油', price: 8.9, seed: 95, pattern: 'band', surface: 'plastic', colors: { background: '#7a3410', accent: '#e8731a', cap: '#e8731a' } },
+  { id: 'ChiliBig', shape: 'jar', size: [0.095, 0.15, 0], text: '辣椒酱', price: 15.8, seed: 96, badge: '1kg', pattern: 'band', surface: 'plastic', colors: { background: '#6a160c', accent: '#f4f0e2', cap: '#e0321e' } },
 ];
 for (const { id, ...product } of sauces) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 const p = (id: string) => `Shop/Products/${id}`;

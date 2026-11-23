@@ -36,9 +36,9 @@ const FONT = 'Shared/Fonts/ZCOOLQingKeHuangYou';
 
 // 照片里的饮料：透明瓶的矿泉水（蓝标、蓝盖，瓶身透光），瓶装的茶、果汁（绿、橙、黄），可乐罐；Cola、Juice、Tea 用 build-shop.ts 的
 const drinks: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
-  { id: 'Spring', shape: 'bottle', size: [0.068, 0.23, 0], text: '天然矿泉水', seed: 101, pattern: 'band', transmission: 0.95, colors: { background: '#d8e8f2', accent: '#1e64c8', cap: '#1e64c8' } },
-  { id: 'GreenTea', shape: 'bottle', size: [0.065, 0.22, 0], text: '绿茶', seed: 102, pattern: 'band', transmission: 0.9, colors: { background: '#b9c86a', accent: '#2f9e44', cap: '#2f9e44' } },
-  { id: 'OrangeDrink', shape: 'bottle', size: [0.065, 0.22, 0], text: '橙汁', seed: 103, pattern: 'band', transmission: 0.85, colors: { background: '#f09a2a', accent: '#f6c40f', cap: '#f4f2ec' } },
+  { id: 'Spring', shape: 'bottle', size: [0.068, 0.23, 0], text: '天然矿泉水', price: 2.0, seed: 101, pattern: 'band', transmission: 0.95, colors: { background: '#d8e8f2', accent: '#1e64c8', cap: '#1e64c8' } },
+  { id: 'GreenTea', shape: 'bottle', size: [0.065, 0.22, 0], text: '绿茶', price: 3.5, seed: 102, pattern: 'band', transmission: 0.9, colors: { background: '#b9c86a', accent: '#2f9e44', cap: '#2f9e44' } },
+  { id: 'OrangeDrink', shape: 'bottle', size: [0.065, 0.22, 0], text: '橙汁', price: 3.8, seed: 103, pattern: 'band', transmission: 0.85, colors: { background: '#f09a2a', accent: '#f6c40f', cap: '#f4f2ec' } },
 ];
 for (const { id, ...product } of drinks) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 const p = (id: string) => `Shop/Products/${id}`;

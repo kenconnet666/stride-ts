@@ -32,5 +32,19 @@
   "rows": 3,
   "gaps": 0.03
  },
- "seed": 86
+ "seed": 86,
+ "cubbies": {
+  "height": 0.55,
+  "depth": 0.4,
+  "rows": 2,
+  "columns": 3,
+  "color": "#4a433d",
+  "hex": 1,
+  "products": [
+   "Shop/Products/WineRed",
+   "Shop/Products/WineGold",
+   "Shop/Products/WineGreen"
+  ],
+  "fill": 0.75
+ }
 }

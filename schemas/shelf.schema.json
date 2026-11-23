@@ -212,6 +212,68 @@
       "description": "paper tags (white or yellow, red price) or electronic shelf labels (a small housing with an e-ink screen, black price and a QR code, some with a red promo bar)",
       "default": "paper"
     },
+    "cubbies": {
+      "type": "object",
+      "properties": {
+        "height": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "height of the cabinet on top of the shelf; unit: m"
+        },
+        "depth": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "depth of the cabinet; the shelf depth when missing; unit: m"
+        },
+        "rows": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "rows of cells",
+          "default": 2
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "cells per bay (the widths vary a little from the seed, each row on its own)",
+          "default": 2
+        },
+        "color": {
+          "type": "string",
+          "description": "wood color (sRGB #rrggbb)",
+          "default": "#5f5650"
+        },
+        "hex": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8,
+          "description": "tall hexagonal cells through all rows (pointed at half height on the left and right), placed by the seed",
+          "default": 0
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "content path of a product asset (no extension)"
+          },
+          "description": "bottles lying in the cells, neck out",
+          "default": []
+        },
+        "fill": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "share of the cells that have bottles",
+          "default": 0.6
+        }
+      },
+      "required": [
+        "height"
+      ],
+      "additionalProperties": false,
+      "description": "a wooden cubby cabinet on top of a gondola, bottles lying in the cells"
+    },
     "seed": {
       "type": "integer",
       "minimum": 0,

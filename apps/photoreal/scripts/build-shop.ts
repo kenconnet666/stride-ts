@@ -37,18 +37,18 @@ const entity = (id: string, name: string, position: Vec3, components: object, ro
 const FONT = 'Shared/Fonts/ZCOOLQingKeHuangYou';
 // 照片里常见的几类：瓶装的酱油、油、水，罐装饮料，广口瓶的酱，桶装的酸奶，纸盒的饼干、牛奶，袋装的零食
 const products: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
-  { id: 'SoySauce', shape: 'bottle', size: [0.07, 0.25, 0], text: '生抽', seed: 11 },
-  { id: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], text: '矿泉水', seed: 12, colors: { background: '#e8f1f8', cap: '#d7262b' } },
-  { id: 'PeanutOil', shape: 'bottle', size: [0.13, 0.32, 0], text: '花生油', seed: 13, colors: { background: '#f2c230' } },
-  { id: 'Cola', shape: 'can', size: [0.066, 0.122, 0], text: '可乐', seed: 14, colors: { background: '#d7262b', cap: '#c8c8c8' } },
-  { id: 'Tea', shape: 'can', size: [0.058, 0.16, 0], text: '凉茶', seed: 15, colors: { cap: '#c8c8c8' } },
-  { id: 'ChiliSauce', shape: 'jar', size: [0.08, 0.1, 0], text: '辣酱', seed: 16 },
-  { id: 'Yogurt', shape: 'tub', size: [0.09, 0.07, 0], text: '酸奶', seed: 17 },
-  { id: 'Biscuits', shape: 'box', size: [0.2, 0.06, 0.09], text: '饼干', seed: 18 },
-  { id: 'Milk', shape: 'box', size: [0.095, 0.2, 0.065], text: '纯牛奶', seed: 19 },
-  { id: 'Cereal', shape: 'box', size: [0.19, 0.28, 0.07], text: '麦片', seed: 20 },
-  { id: 'Chips', shape: 'pouch', size: [0.18, 0.25, 0.06], text: '薯片', seed: 21 },
-  { id: 'Konjac', shape: 'pouch', size: [0.13, 0.18, 0.03], text: '魔芋爽', seed: 22 },
+  { id: 'SoySauce', shape: 'bottle', size: [0.07, 0.25, 0], text: '生抽', price: 12.9, seed: 11 },
+  { id: 'Water', shape: 'bottle', size: [0.065, 0.21, 0], text: '矿泉水', price: 1.5, seed: 12, colors: { background: '#e8f1f8', cap: '#d7262b' } },
+  { id: 'PeanutOil', shape: 'bottle', size: [0.13, 0.32, 0], text: '花生油', price: 45.9, seed: 13, colors: { background: '#f2c230' } },
+  { id: 'Cola', shape: 'can', size: [0.066, 0.122, 0], text: '可乐', price: 3, seed: 14, colors: { background: '#d7262b', cap: '#c8c8c8' } },
+  { id: 'Tea', shape: 'can', size: [0.058, 0.16, 0], text: '凉茶', price: 3.5, seed: 15, colors: { cap: '#c8c8c8' } },
+  { id: 'ChiliSauce', shape: 'jar', size: [0.08, 0.1, 0], text: '辣酱', price: 9.5, seed: 16 },
+  { id: 'Yogurt', shape: 'tub', size: [0.09, 0.07, 0], text: '酸奶', price: 6.5, seed: 17 },
+  { id: 'Biscuits', shape: 'box', size: [0.2, 0.06, 0.09], text: '饼干', price: 8.9, seed: 18 },
+  { id: 'Milk', shape: 'box', size: [0.095, 0.2, 0.065], text: '纯牛奶', price: 12.9, seed: 19 },
+  { id: 'Cereal', shape: 'box', size: [0.19, 0.28, 0.07], text: '麦片', price: 25.9, seed: 20 },
+  { id: 'Chips', shape: 'pouch', size: [0.18, 0.25, 0.06], text: '薯片', price: 7.5, seed: 21 },
+  { id: 'Konjac', shape: 'pouch', size: [0.13, 0.18, 0.03], text: '魔芋爽', price: 9.9, seed: 22 },
 ];
 for (const { id, ...product } of products) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 
@@ -92,14 +92,14 @@ await write('scene', 'Shop', {
 // ---- 超市的过道（照片 reference/shop/ 里的货架过道）：两边各两节中岛货架，靠墙一排，顶上一排排灯管 ----
 // 几类没写配色、品牌名的商品：货架的变体按种子换成不同的牌子
 const families: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
-  { id: 'Juice', shape: 'bottle', size: [0.075, 0.26, 0], text: '果汁', seed: 31 },
-  { id: 'Vinegar', shape: 'bottle', size: [0.068, 0.24, 0], text: '香醋', seed: 32 },
-  { id: 'Detergent', shape: 'bottle', size: [0.12, 0.3, 0], text: '洗衣液', seed: 33, surface: 'plastic' },
-  { id: 'Beer', shape: 'can', size: [0.066, 0.165, 0], text: '啤酒', seed: 34 },
-  { id: 'Sauce', shape: 'jar', size: [0.075, 0.12, 0], text: '酱', seed: 35 },
-  { id: 'Noodles', shape: 'pouch', size: [0.2, 0.13, 0.07], text: '方便面', seed: 36 },
-  { id: 'Crackers', shape: 'box', size: [0.14, 0.2, 0.05], text: '苏打饼干', seed: 37 },
-  { id: 'Tissue', shape: 'box', size: [0.2, 0.09, 0.11], text: '抽纸', seed: 38 },
+  { id: 'Juice', shape: 'bottle', size: [0.075, 0.26, 0], text: '果汁', price: 6.9, seed: 31 },
+  { id: 'Vinegar', shape: 'bottle', size: [0.068, 0.24, 0], text: '香醋', price: 8.5, seed: 32 },
+  { id: 'Detergent', shape: 'bottle', size: [0.12, 0.3, 0], text: '洗衣液', price: 39.9, seed: 33, surface: 'plastic' },
+  { id: 'Beer', shape: 'can', size: [0.066, 0.165, 0], text: '啤酒', price: 4.5, seed: 34 },
+  { id: 'Sauce', shape: 'jar', size: [0.075, 0.12, 0], text: '酱', price: 9.8, seed: 35 },
+  { id: 'Noodles', shape: 'pouch', size: [0.2, 0.13, 0.07], text: '方便面', price: 4.5, seed: 36 },
+  { id: 'Crackers', shape: 'box', size: [0.14, 0.2, 0.05], text: '苏打饼干', price: 9.9, seed: 37 },
+  { id: 'Tissue', shape: 'box', size: [0.2, 0.09, 0.11], text: '抽纸', price: 4.9, seed: 38 },
 ];
 for (const { id, ...product } of families) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 const p = (id: string) => `Shop/Products/${id}`;
@@ -113,8 +113,8 @@ const shelves: Record<string, object> = {
 };
 // 冷冻的货（冰柜里躺着的）、冷柜和冰柜
 for (const { id, ...product } of [
-  { id: 'Dumplings', shape: 'pouch', size: [0.2, 0.26, 0.05], text: '水饺', seed: 39 },
-  { id: 'IceCream', shape: 'tub', size: [0.1, 0.08, 0], text: '冰淇淋', seed: 40 },
+  { id: 'Dumplings', shape: 'pouch', size: [0.2, 0.26, 0.05], text: '水饺', price: 24.9, seed: 39 },
+  { id: 'IceCream', shape: 'tub', size: [0.1, 0.08, 0], text: '冰淇淋', price: 15.9, seed: 40 },
 ] as const) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 shelves['Fridge'] = {
   type: 'fridge', sides: 1, length: 3, height: 1.95, depth: 0.55, levels: [0.12, 0.5, 0.88, 1.26, 1.64], bay: 0.75, font: FONT, header: '冷藏饮料',
@@ -126,8 +126,8 @@ shelves['Freezer'] = {
 };
 // 货架头上的端架（短的单面货架）、挂钩架，过道口的堆头
 for (const { id, ...product } of [
-  { id: 'Jerky', shape: 'pouch', size: [0.12, 0.18, 0.02], text: '牛肉干', seed: 71 },
-  { id: 'Candy', shape: 'pouch', size: [0.1, 0.14, 0.015], text: '软糖', seed: 72 },
+  { id: 'Jerky', shape: 'pouch', size: [0.12, 0.18, 0.02], text: '牛肉干', price: 29.9, seed: 71 },
+  { id: 'Candy', shape: 'pouch', size: [0.1, 0.14, 0.015], text: '软糖', price: 6.9, seed: 72 },
 ] as const) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 shelves['EndCap'] = { ...gondola, sides: 1, length: 0.9, priceTags: 'electronic', stock: { products: ['Cereal', 'Crackers', 'Biscuits', 'Milk'].map(p), variants: 3, facings: [2, 3] }, seed: 48 };
 shelves['Hooks'] = {

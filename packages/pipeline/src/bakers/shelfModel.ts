@@ -12,7 +12,8 @@ import { loadFonts, productFontTexts, readProducts, settleFood } from './settle.
 
 /** 生成 path（货架的内容路径）同名的模型、两张图集和材质。商品读不到、规则不对时报错。 */
 export async function bakeShelf(tools: StrideTools, file: ShelfFile, path: string, readContent: (path: string) => Promise<Uint8Array>, where = file.name): Promise<BakedFile[]> {
-  const products = await readProducts(file.stock?.products ?? [], readContent, where);
+  // 摆货的商品，加上顶上格子柜里躺着的瓶子
+  const products = await readProducts([...(file.stock?.products ?? []), ...(file.cubbies?.products ?? [])], readContent, where);
   // 每个字体要排的字：商品各个变体的品牌名、品类、角标，价签的数字
   const variants = file.stock?.variants ?? 3;
   const texts = productFontTexts([...products.values()].map((product) => [product, variants] as const), [[file.font, `0123456789.${file.header ?? ''}${file.doorSticker?.title ?? ''}${file.doorSticker?.slogan ?? ''}`]]);

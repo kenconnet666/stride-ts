@@ -114,8 +114,8 @@ export class ProductBatch {
     this.#items = items;
     this.#solids = solids;
     this.#cells = cells;
-    this.#variantKeys = [...new Set(items.map((item) => `${item.variant}|${item.product}`))];
-    const labelSizes = this.#variantKeys.map((key) => this.#mesh(pathOf(key), true).labelSize);
+    this.#variantKeys = [...new Set(items.map((item) => this.#labelKey(item)))];
+    const labelSizes = this.#variantKeys.map((key) => this.#mesh(parseLabelKey(key).path, true).labelSize);
     // 纯色格排在最下面一行（右往左），别的装进上面
     const reserve = solids.length > 0 ? SOLID + 2 * PADDING : 0;
     const { atlas, cells: packed } = packAtlas([...labelSizes, ...cells.map((cell) => cell.size)], reserve, solids.length * (SOLID + 2 * PADDING), maxDensity);
@@ -148,6 +148,30 @@ export class ProductBatch {
       const alongV = alongU === sa ? sb : sa;
       return [(cx + alongU * cw) / this.#atlas, (cy + alongV * ch) / this.#atlas];
     });
+  }
+
+  /**
+   * 斜放的一块板（格子柜里切角的斜隔板）：在 XY 平面上从 from 到 to、厚 thickness，沿 Z 从 z0 到 z1；六个面都是第 solid 个纯色。
+   */
+  plank(from: readonly [number, number], to: readonly [number, number], thickness: number, z0: number, z1: number, solid: number): void {
+    const [x, y, w, h] = this.#solidCells[solid]!, u = (x + w / 2) / this.#atlas, v = (y + h / 2) / this.#atlas;
+    const dx = to[0] - from[0], dy = to[1] - from[1], length = Math.hypot(dx, dy);
+    if (length < 1e-9) return;
+    // 沿板的方向 d、板面的法线 n（XY 平面里和 d 垂直）
+    const d = [dx / length, dy / length], n = [-d[1]!, d[0]!], half = thickness / 2;
+    const corner = (end: readonly [number, number], side: number, z: number) => [end[0] + n[0]! * half * side, end[1] + n[1]! * half * side, z];
+    const quad = (a: number[], b: number[], c: number[], e: number[], normal: readonly number[]) => {
+      const base = this.#vertices.length / 8;
+      for (const p of [a, b, c, e]) this.#vertices.push(p[0]!, p[1]!, p[2]!, normal[0]!, normal[1]!, normal[2]!, u, v);
+      // 按法线定绕向：(b - a) × (c - a) 和法线同向是逆时针
+      const ab = [b[0]! - a[0]!, b[1]! - a[1]!, b[2]! - a[2]!], ac = [c[0]! - a[0]!, c[1]! - a[1]!, c[2]! - a[2]!];
+      const facing = (ab[1]! * ac[2]! - ab[2]! * ac[1]!) * normal[0]! + (ab[2]! * ac[0]! - ab[0]! * ac[2]!) * normal[1]! + (ab[0]! * ac[1]! - ab[1]! * ac[0]!) * normal[2]!;
+      if (facing >= 0) this.#indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      else this.#indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+    };
+    for (const side of [1, -1]) quad(corner(from, side, z0), corner(to, side, z0), corner(to, side, z1), corner(from, side, z1), [n[0]! * side, n[1]! * side, 0]);
+    for (const [end, sign] of [[from, -1], [to, 1]] as const) quad(corner(end, 1, z0), corner(end, -1, z0), corner(end, -1, z1), corner(end, 1, z1), [d[0]! * sign, d[1]! * sign, 0]);
+    for (const [z, sign] of [[z0, -1], [z1, 1]] as const) quad(corner(from, 1, z), corner(to, 1, z), corner(to, -1, z), corner(from, -1, z), [0, 0, sign]);
   }
 
   /** 轴对齐的一块玻璃（冷柜的门、冰柜的盖）：进玻璃那个网格。 */
@@ -219,14 +243,14 @@ export class ProductBatch {
     const cellOf = new Map(this.#variantKeys.map((key, i) => [key, this.#labelCells[i]!]));
     for (const item of this.#items) {
       const mesh = this.#mesh(item.product, item.fine);
-      const [cx, cy, cw, ch] = cellOf.get(`${item.variant}|${item.product}`)!;
+      const [cx, cy, cw, ch] = cellOf.get(this.#labelKey(item))!;
       const [qx, qy, qz, qw] = item.rotation;
       const rotate = (x: number, y: number, z: number): [number, number, number] => {
         const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
         return [x + qw * tx + qy * tz - qz * ty, y + qw * ty + qz * tx - qx * tz, z + qw * tz + qx * ty - qy * tx];
       };
       // 只有前排（细的）透光：后排、堆在下面的照常不透明，画进折射拷的画面里——前排的瓶子透出来的是后面亮着的油，不是货架的暗底
-      const clear = item.fine && productTransmission(this.#sources.products.get(item.product)!) > 0;
+      const clear = item.fine && this.#transmission(item.product) > 0;
       const vertices = clear ? this.#clearVertices : this.#vertices, indices = clear ? this.#clearIndices : this.#indices;
       const base = vertices.length / 8, src = mesh.vertices, [px, py, pz] = item.position;
       for (let i = 0; i < src.length; i += 8) {
@@ -248,14 +272,16 @@ export class ProductBatch {
     };
     this.#solids.forEach((solid, i) => fill(this.#solidCells[i]!, solid));
     this.#variantKeys.forEach((key, i) => {
-      const variant = Number(key.slice(0, key.indexOf('|'))), path = pathOf(key);
+      const { variant, path, behind } = parseLabelKey(key);
       const product = this.#sources.products.get(path)!, design = productDesign(product, variant), cell = this.#labelCells[i]!;
       const [W, H] = this.#mesh(path, true).labelSize;
       const font = product.font ? this.#sources.font(product.font) : undefined;
       const surfaceCell = productSurface(product, [W, H], font, variant);
-      fill(cell, { color: design.colors.background, roughness: 0, metalness: 0 }, surfaceCell.color);
+      const body = behind ? seenThroughOil(design.colors.background, this.#transmission(path)) : design.colors.background;
+      fill(cell, { color: body, roughness: 0, metalness: 0 }, surfaceCell.color);
       const nested = (shapes: string) => `<svg x="${cell[0]}" y="${cell[1]}" width="${cell[2]}" height="${cell[3]}" viewBox="0 0 ${svgNumber(W)} ${svgNumber(H)}" preserveAspectRatio="none">${shapes}</svg>`;
-      color.push(nested(productLabelShapes(product, [W, H], font, variant)));
+      // 标签的图形里瓶身的明暗也按底色画：后排那格的也换成压暗的
+      color.push(nested(productLabelShapes(product, [W, H], font, variant, behind ? body : undefined)));
       if (surfaceCell.print) {
         surface.push(nested(surfaceCell.print));
         defs.add(surfaceCell.defs);
@@ -278,6 +304,18 @@ export class ProductBatch {
     };
   }
 
+  /**
+   * 商品的标签图用哪一格：商品、款式；透光商品的后排（不透明，见 finish）另用一格，瓶身压暗成前排透着油看到的颜色——
+   * 不然后排露出来的瓶肩是浅黄的不透明塑料，看着像另一种货。
+   */
+  #labelKey(item: PlacedProduct): string {
+    return `${item.variant}|${!item.fine && this.#transmission(item.product) > 0 ? 1 : 0}|${item.product}`;
+  }
+
+  #transmission(path: string): number {
+    return productTransmission(this.#sources.products.get(path)!);
+  }
+
   #mesh(path: string, fine: boolean): ProductMesh {
     const key = `${fine ? 'f' : 'c'}|${path}`;
     let mesh = this.#meshes.get(key);
@@ -290,7 +328,21 @@ export class ProductBatch {
   }
 }
 
-const pathOf = (key: string) => key.slice(key.indexOf('|') + 1);
+/** 拆开 #labelKey 的键：款式、是不是透光商品的后排、商品的路径（路径里可能有 |，放最后）。 */
+function parseLabelKey(key: string): { readonly variant: number; readonly behind: boolean; readonly path: string } {
+  const [variant, behind] = key.split('|', 2);
+  return { variant: Number(variant), behind: behind === '1', path: key.slice(variant!.length + behind!.length + 2) };
+}
+
+/**
+ * 透光的瓶身（比例 transmission）不透明地画时的颜色：光穿过油再从后面反射回来，颜色大约乘了两次瓶身的颜色
+ * （sRGB 的每个通道 c 变成 c · (1 - t + t · c)），浅黄的油变成琥珀色，和前排透射画出来的接近。
+ */
+function seenThroughOil(hex: string, transmission: number): string {
+  const v = parseInt(hex.slice(1, 7), 16);
+  const channel = (c: number) => Math.round(c * (1 - transmission + (transmission * c) / 255)).toString(16).padStart(2, '0');
+  return `#${channel((v >> 16) & 255)}${channel((v >> 8) & 255)}${channel(v & 255)}`;
+}
 const cross3 = (a: readonly number[], b: readonly number[]) => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
 const normalize3 = (v: readonly number[]) => {
   const l = Math.hypot(v[0]!, v[1]!, v[2]!) || 1;

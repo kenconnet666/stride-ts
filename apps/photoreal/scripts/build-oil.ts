@@ -35,31 +35,26 @@ const FONT = 'Shared/Fonts/ZCOOLQingKeHuangYou';
 // 照片里的油：5 升的大桶（下面几层）、1.8 升（中间）、900 毫升（最上层）。瓶身是透出来的油色（琥珀、金黄），标签只是中间一圈
 // （band），红、绿、蓝居多（金龙鱼、鲁花、福临门那样）
 const oils: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
-  { id: 'Oil5L', shape: 'jug', size: [0.17, 0.32, 0.105], text: '食用油', seed: 81, motif: 'sunflower', badge: '5L', pattern: 'band', transmission: 0.9, colors: { background: '#dcb54e', accent: '#d7262b', cap: '#d7262b' } },
-  { id: 'Peanut5L', shape: 'jug', size: [0.17, 0.32, 0.105], text: '花生油', seed: 82, motif: 'peanut', badge: '5L', pattern: 'band', transmission: 0.9, colors: { background: '#d09a3e', accent: '#2f9e44', cap: '#d7262b' } },
-  { id: 'Corn5L', shape: 'jug', size: [0.16, 0.31, 0.1], text: '玉米油', seed: 83, motif: 'corn', badge: '5L', pattern: 'band', transmission: 0.9, colors: { background: '#e4c45a', accent: '#1e64c8', cap: '#f6c40f' } },
-  { id: 'Oil18', shape: 'bottle', size: [0.1, 0.3, 0], text: '调和油', seed: 84, motif: 'drop', badge: '1.8L', pattern: 'band', transmission: 0.9, colors: { background: '#d9b04c', accent: '#d7262b', cap: '#d7262b' } },
-  { id: 'Oil900', shape: 'bottle', size: [0.075, 0.26, 0], text: '芝麻油', seed: 85, motif: 'sesame', badge: '900ml', pattern: 'band', transmission: 0.9, colors: { background: '#8a4a1a', accent: '#2f9e44', cap: '#f4f2ec' } },
+  { id: 'Oil5L', shape: 'jug', size: [0.17, 0.32, 0.105], text: '食用油', price: 69.9, seed: 81, motif: 'sunflower', badge: '5L', pattern: 'band', transmission: 0.9, colors: { background: '#dcb54e', accent: '#d7262b', cap: '#d7262b' } },
+  { id: 'Peanut5L', shape: 'jug', size: [0.17, 0.32, 0.105], text: '花生油', price: 129.9, seed: 82, motif: 'peanut', badge: '5L', pattern: 'band', transmission: 0.9, colors: { background: '#d09a3e', accent: '#2f9e44', cap: '#d7262b' } },
+  { id: 'Corn5L', shape: 'jug', size: [0.16, 0.31, 0.1], text: '玉米油', price: 79.9, seed: 83, motif: 'corn', badge: '5L', pattern: 'band', transmission: 0.9, colors: { background: '#e4c45a', accent: '#1e64c8', cap: '#f6c40f' } },
+  { id: 'Oil18', shape: 'bottle', size: [0.1, 0.3, 0], text: '调和油', price: 29.9, seed: 84, motif: 'drop', badge: '1.8L', pattern: 'band', transmission: 0.9, colors: { background: '#d9b04c', accent: '#d7262b', cap: '#d7262b' } },
+  { id: 'Oil900', shape: 'bottle', size: [0.075, 0.26, 0], text: '芝麻油', price: 32.8, seed: 85, motif: 'sesame', badge: '900ml', pattern: 'band', transmission: 0.9, colors: { background: '#8a4a1a', accent: '#2f9e44', cap: '#f4f2ec' } },
 ];
 for (const { id, ...product } of oils) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
+// 上面格子柜里横躺的红酒：深色的玻璃瓶、红、黄、绿的瓶盖朝外（照片里一格一排）
+const wines: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
+  { id: 'WineRed', shape: 'bottle', size: [0.075, 0.3, 0], text: '干红', price: 68, seed: 87, pattern: 'band', surface: 'glass', colors: { background: '#1c0d0b', accent: '#e8dcc8', cap: '#c8281e' } },
+  { id: 'WineGold', shape: 'bottle', size: [0.075, 0.3, 0], text: '干红', price: 88, seed: 88, pattern: 'band', surface: 'glass', colors: { background: '#1a110a', accent: '#efe3c4', cap: '#d9a520' } },
+  { id: 'WineGreen', shape: 'bottle', size: [0.075, 0.3, 0], text: '白葡萄酒', price: 59, seed: 89, pattern: 'band', surface: 'glass', colors: { background: '#13210f', accent: '#f0ead8', cap: '#2f8f3a' } },
+];
+for (const { id, ...product } of wines) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 await write('shelf', 'Shop/Shelves/Oil', {
   name: 'Oil', sides: 1, length: 3.2, height: 1.95, depth: 0.42, levels: [0.3, 0.72, 1.08, 1.43, 1.78], font: FONT,
   frameColor: '#3b3c3f', boardColor: '#cfb48c', tagHolder: 'rail', tagAccent: '#28a9d7',
   stock: { products: oils.map((oil) => `Shop/Products/${oil.id}`), variants: 3, facings: [2, 5], rows: 3, gaps: 0.03 }, seed: 86,
-});
-// 上面一排深色木格子（照片里放红酒的）：一块深色的板子挡在货架顶上
-await write('material', 'Shop/Materials/DarkWood', { name: 'DarkWood', baseColor: [0.045, 0.036, 0.03, 1], metalness: 0, roughness: 0.6 });
-await write('brush', 'Shop/Models/Cubbies', {
-  name: 'Cubbies', materials: ['Shop/Materials/DarkWood'], uvScale: 1,
-  brushes: [
-    { kind: 'box', operation: 'add', position: [0, 2.45, -0.2], size: [3.2, 1.0, 0.4] },
-    { kind: 'box', operation: 'subtract', position: [-0.8, 2.2, 0.02], size: [0.7, 0.4, 0.3] },
-    { kind: 'box', operation: 'subtract', position: [-0.8, 2.68, 0.02], size: [0.7, 0.4, 0.3] },
-    { kind: 'box', operation: 'subtract', position: [0, 2.2, 0.02], size: [0.7, 0.4, 0.3] },
-    { kind: 'box', operation: 'subtract', position: [0, 2.68, 0.02], size: [0.7, 0.4, 0.3] },
-    { kind: 'box', operation: 'subtract', position: [0.8, 2.2, 0.02], size: [0.7, 0.4, 0.3] },
-    { kind: 'box', operation: 'subtract', position: [0.8, 2.68, 0.02], size: [0.7, 0.4, 0.3] },
-  ],
+  // 照片里货架顶上两排灰褐色的木格子，横躺着放红酒，中间偏右有一个上下贯通的六边形格
+  cubbies: { height: 0.55, depth: 0.4, rows: 2, columns: 3, color: '#4a433d', hex: 1, products: wines.map((wine) => `Shop/Products/${wine.id}`), fill: 0.75 },
 });
 
 // 机位：离货架 2.7 米、1.5 米高，往右前方看（货架往右退远），稍往下
@@ -82,7 +77,6 @@ await write('scene', 'OilShelf', {
     entity(sid(2), 'Ambient', [0, 3, 0], { light: { type: 'ambient', color: [1, 0.98, 0.95], intensity: 0.12 } }),
     entity(sid(3), 'Hall', [0, 0, 0], { model: { model: 'Shop/Models/Hall', materials: [] } }),
     entity(sid(4), 'Shelf', [0, 0, 0], { model: { model: 'Shop/Shelves/Oil', materials: [] } }),
-    entity(sid(5), 'Cubbies', [0, 0, 0], { model: { model: 'Shop/Models/Cubbies', materials: [] } }),
     ...panels,
   ],
 });

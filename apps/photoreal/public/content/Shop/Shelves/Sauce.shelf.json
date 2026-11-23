@@ -1,0 +1,75 @@
+{
+ "name": "Sauce",
+ "sides": 1,
+ "length": 16,
+ "height": 2,
+ "depth": 0.32,
+ "levels": [
+  0.12,
+  0.33,
+  0.54,
+  0.75,
+  0.96,
+  1.17,
+  1.38,
+  1.59,
+  1.8
+ ],
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "frameColor": "#4a4b4e",
+ "boardColor": "#bfb8ac",
+ "boardThickness": 0.04,
+ "tagHolder": "rail",
+ "tagAccent": "#28a9d7",
+ "stock": {
+  "products": [
+   "Shop/Products/ChiliOil",
+   "Shop/Products/BeanPaste",
+   "Shop/Products/Douchi",
+   "Shop/Products/Sesame",
+   "Shop/Products/Oyster",
+   "Shop/Products/ChiliBig"
+  ],
+  "variants": 4,
+  "facings": [
+   3,
+   7
+  ],
+  "rows": 3,
+  "gaps": 0.02,
+  "levels": [
+   [
+    "Shop/Products/ChiliBig"
+   ],
+   [
+    "Shop/Products/ChiliOil",
+    "Shop/Products/BeanPaste"
+   ],
+   [
+    "Shop/Products/Douchi",
+    "Shop/Products/ChiliOil"
+   ],
+   [
+    "Shop/Products/BeanPaste",
+    "Shop/Products/Douchi"
+   ],
+   [
+    "Shop/Products/Oyster"
+   ],
+   [
+    "Shop/Products/Sesame",
+    "Shop/Products/Douchi"
+   ],
+   [
+    "Shop/Products/ChiliOil",
+    "Shop/Products/Sesame"
+   ],
+   [
+    "Shop/Products/Oyster",
+    "Shop/Products/BeanPaste"
+   ],
+   null
+  ]
+ },
+ "seed": 97
+}

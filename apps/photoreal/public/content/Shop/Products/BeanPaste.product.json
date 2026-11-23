@@ -1,0 +1,19 @@
+{
+ "name": "BeanPaste",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "jar",
+ "size": [
+  0.078,
+  0.12,
+  0
+ ],
+ "text": "豆瓣酱",
+ "seed": 92,
+ "badge": "300g",
+ "pattern": "band",
+ "surface": "glass",
+ "colors": {
+  "background": "#3e1a0e",
+  "cap": "#d9a520"
+ }
+}

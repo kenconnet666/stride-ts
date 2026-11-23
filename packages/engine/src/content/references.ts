@@ -321,6 +321,7 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
     case 'shelf': {
       const shelf = file as ShelfFile;
       shelf.stock?.products.forEach((_, i) => add('product', shelf.stock!.products, i));
+      shelf.stock?.levels?.forEach((level) => level?.forEach((_, i) => add('product', level, i)));
       if (shelf.font) add('font', shelf, 'font');
       break;
     }

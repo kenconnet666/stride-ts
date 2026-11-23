@@ -19,6 +19,10 @@ export interface ShelfStockFile {
   readonly rows?: number;
   /** 架上空着的比例（0..1，卖掉了的空位），默认 0.05。 */
   readonly gaps?: number;
+  /**
+   * 按层摆（从下往上第 i 个是第 i 层，同 levels）：这一层只从这些商品里挑（超市里一层常是一类货）；没写、null 的层用 products。
+   */
+  readonly levels?: readonly (readonly string[] | null)[];
 }
 
 export interface ShelfFile {
@@ -40,6 +44,8 @@ export interface ShelfFile {
   readonly stripColor?: string;
   /** 层板的颜色（sRGB 的 #rrggbb，木纹板的浅木色这类）；没写同架子。 */
   readonly boardColor?: string;
+  /** 层板的厚（米，默认 0.02；木层板前沿常有 4 厘米厚）。 */
+  readonly boardThickness?: number;
   /** 价签上的数字用的字体；没有时价签只是色块。 */
   readonly font?: string;
   readonly stock?: ShelfStockFile;
@@ -52,6 +58,8 @@ export interface ShelfFile {
    * levels 只用第一个——托盘面的高，height 是灯罩底的高，depth 是整个柜子的深）。端架就是短的单面货架。
    */
   readonly type?: 'gondola' | 'fridge' | 'freezer' | 'pegboard' | 'stack' | 'deli';
+  /** 冷柜的门框、门下的前脸、顶盖和灯箱的颜色（sRGB 的 #rrggbb；饮料厂家的品牌冷柜，黄的、红的）；没写是深灰门框、架子色的顶、蓝灯箱。 */
+  readonly doorColor?: string;
   /** 冷柜顶上灯箱的字（"冷藏饮料"），要有 font；没写时灯箱只发光不写字。 */
   readonly header?: string;
   /** 价签：纸的（默认，白底或黄底红字）或电子价签（一个小外壳加一块墨水屏：黑字、角上的二维码，有的带红色的促销条）。 */

@@ -1,0 +1,19 @@
+{
+ "name": "Spring",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.068,
+  0.23,
+  0
+ ],
+ "text": "天然矿泉水",
+ "seed": 101,
+ "pattern": "band",
+ "transmission": 0.95,
+ "colors": {
+  "background": "#d8e8f2",
+  "accent": "#1e64c8",
+  "cap": "#1e64c8"
+ }
+}

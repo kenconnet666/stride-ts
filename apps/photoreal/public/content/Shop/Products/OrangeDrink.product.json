@@ -1,0 +1,19 @@
+{
+ "name": "OrangeDrink",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.065,
+  0.22,
+  0
+ ],
+ "text": "橙汁",
+ "seed": 103,
+ "pattern": "band",
+ "transmission": 0.85,
+ "colors": {
+  "background": "#f09a2a",
+  "accent": "#f6c40f",
+  "cap": "#f4f2ec"
+ }
+}

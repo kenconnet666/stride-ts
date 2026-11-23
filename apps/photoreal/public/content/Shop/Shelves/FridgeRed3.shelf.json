@@ -1,0 +1,34 @@
+{
+ "name": "FridgeRed3",
+ "type": "fridge",
+ "sides": 1,
+ "length": 0.68,
+ "height": 1.9,
+ "depth": 0.5,
+ "levels": [
+  0.32,
+  0.62,
+  0.92,
+  1.22,
+  1.52
+ ],
+ "bay": 0.68,
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "doorColor": "#b8231c",
+ "stripColor": "#b8231c",
+ "frameColor": "#e9ebec",
+ "stock": {
+  "products": [
+   "Shop/Products/Juice",
+   "Shop/Products/Cola"
+  ],
+  "variants": 3,
+  "facings": [
+   3,
+   6
+  ],
+  "rows": 5,
+  "gaps": 0.04
+ },
+ "seed": 114
+}

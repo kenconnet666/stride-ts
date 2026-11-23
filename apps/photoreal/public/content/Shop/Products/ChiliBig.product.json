@@ -1,0 +1,20 @@
+{
+ "name": "ChiliBig",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "jar",
+ "size": [
+  0.095,
+  0.15,
+  0
+ ],
+ "text": "辣椒酱",
+ "seed": 96,
+ "badge": "1kg",
+ "pattern": "band",
+ "surface": "plastic",
+ "colors": {
+  "background": "#6a160c",
+  "accent": "#f4f0e2",
+  "cap": "#e0321e"
+ }
+}

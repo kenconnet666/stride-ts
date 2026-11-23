@@ -1,0 +1,19 @@
+{
+ "name": "ChiliOil",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "jar",
+ "size": [
+  0.072,
+  0.11,
+  0
+ ],
+ "text": "油辣椒",
+ "seed": 91,
+ "badge": "280g",
+ "pattern": "band",
+ "surface": "glass",
+ "colors": {
+  "background": "#4a130b",
+  "cap": "#d0261e"
+ }
+}

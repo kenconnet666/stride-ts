@@ -88,6 +88,16 @@ describe('货架', () => {
     for (let i = 0; i < model.vertices.length; i += 8) expect(Math.abs(model.vertices[i + 2]!)).toBeLessThanOrEqual(0.45 + 1e-6);
   });
 
+  test('品牌冷柜：doorColor 是门框、门下前脸、顶和灯箱的颜色；每扇门一个把手，凸在门外', () => {
+    const fridge: ShelfFile = { ...island, type: 'fridge', sides: 1, length: 0.7, bay: 0.7 };
+    const plain = shelfModel(fridge, sources), branded = shelfModel({ ...fridge, doorColor: '#e8a91c' }, sources);
+    expect(plain.colorSvg).not.toContain('#e8a91c');
+    expect(branded.colorSvg).toContain('fill="#e8a91c"');
+    // 一扇门：把手是三个盒子，最前面那个在门的玻璃外 3 厘米
+    const front = Math.max(...Array.from({ length: branded.vertices.length / 8 }, (_, i) => branded.vertices[i * 8 + 2]!));
+    expect(front).toBeGreaterThan(island.depth + 0.05 + 0.02);
+  });
+
   test('电子价签：每个价签多一个外壳（6 个面），屏比纸价签凸出来；图集里画了二维码的方块', () => {
     const paper = shelfModel(island, sources), electronic = shelfModel({ ...island, priceTags: 'electronic' }, sources);
     const tags = planShelf(island, products).tags.length;
@@ -140,6 +150,19 @@ describe('货架', () => {
       expect(Math.abs(v[i * 8 + 2]!)).toBeGreaterThan(island.depth + 0.02 - 0.01);
     }
     expect(items.length).toBeGreaterThan(0);
+  });
+
+  test('按层摆：写了 stock.levels 的层只摆那几种，null 的层照 products；层板厚了上一层的净空跟着少', () => {
+    const file: ShelfFile = { ...island, sides: 1, stock: { ...island.stock!, levels: [['P/Cereal'], null, ['P/Water']] } };
+    const { items } = planShelf(file, products);
+    const on = (level: number) => new Set(items.filter((item) => Math.abs(item.position[1] - level) < 1e-6).map((item) => item.product));
+    expect([...on(0.15)]).toEqual(['P/Cereal']);
+    expect([...on(0.85)]).toEqual(['P/Water']);
+    expect(on(0.5).size).toBeGreaterThan(1);
+    // 0.35 米一层、麦片盒 0.28 米高：层板 2 厘米时下面几层放得下，8 厘米时只有最上一层放得下
+    const below = (thickness: number) => planShelf({ ...island, boardThickness: thickness }, products).items.some((item) => item.product === 'P/Cereal' && item.position[1] < 1.2);
+    expect(below(0.02)).toBe(true);
+    expect(below(0.08)).toBe(false);
   });
 
   test('带色块的纸价签：白底深灰字，右边一块 tagAccent 的颜色；没写时有黄底的', () => {

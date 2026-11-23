@@ -38,6 +38,7 @@ export interface ShelfModel extends MergedProducts {
 
 /** 中岛的背板一半的厚度（米）；单面的背板贴着 z = 0 往 -Z 厚。 */
 const SPINE = 0.02;
+/** 层板默认的厚（米）；ShelfFile.boardThickness 改。 */
 const BOARD = 0.02;
 /** 价签条：高、厚（米），贴在层板前沿往下。 */
 const STRIP = [0.045, 0.008] as const;
@@ -72,10 +73,11 @@ export function planShelf(file: ShelfFile, products: ReadonlyMap<string, Product
   const pegboard = file.type === 'pegboard';
   const stock = file.stock;
   if (!stock || stock.products.length === 0) return { items, tags, hooks };
-  const candidates = stock.products.flatMap((path) => {
+  const candidatesOf = (paths: readonly string[]) => paths.flatMap((path) => {
     const product = products.get(path);
     return product && product.size[0] > 0 && product.size[1] > 0 ? [{ path, product, footprint: productFootprint(product) }] : [];
   });
+  const candidates = candidatesOf(stock.products);
   const variants = Math.max(1, Math.round(stock.variants ?? 3));
   const [minFacings, maxFacings] = stock.facings ?? [2, 5];
   const maxRows = Math.max(1, Math.round(stock.rows ?? 4));
@@ -87,8 +89,9 @@ export function planShelf(file: ShelfFile, products: ReadonlyMap<string, Product
     file.levels.forEach((level, levelIndex) => {
       const above = file.levels[levelIndex + 1], below = file.levels[levelIndex - 1];
       // 挂钩架的东西挂在钩子下面，空间到下面那排钩子为止
-      const clearance = pegboard ? level - HOOK_DROP - (below ?? HOOK_BOTTOM) - 0.02 : (above === undefined ? file.height : above - BOARD) - level - 0.015;
-      const fits = candidates.filter((c) => c.footprint[1] <= clearance && c.footprint[2] <= file.depth);
+      const clearance = pegboard ? level - HOOK_DROP - (below ?? HOOK_BOTTOM) - 0.02 : (above === undefined ? file.height : above - (file.boardThickness ?? BOARD)) - level - 0.015;
+      const own = stock.levels?.[levelIndex];
+      const fits = (own ? candidatesOf(own) : candidates).filter((c) => c.footprint[1] <= clearance && c.footprint[2] <= file.depth);
       if (fits.length === 0) return;
       const random = seededRandom(hash32(hash32(file.seed ?? 1, sideIndex), levelIndex));
       let x = xMin;
@@ -177,9 +180,9 @@ function checkShelf(file: ShelfFile, where: string): void {
 
 /**
  * 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳，熟食柜的黑柜体、
- * 白石英、金、保温灯的暖光，层板，透明挡条顶上折边（塑料折过的地方发白、很亮的一道反光）。
+ * 白石英、金、保温灯的暖光，层板，透明挡条顶上折边（塑料折过的地方发白、很亮的一道反光），冷柜的门框和柜体（doorColor）、门把手。
  */
-const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11, RAIL_EDGE = 12;
+const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11, RAIL_EDGE = 12, DOOR_BODY = 13, HANDLE = 14;
 /** 电子价签：外壳比屏大一圈（米）、凸出价签条多厚。 */
 const ESL_RIM = 0.004, ESL_DEPTH = 0.009;
 /** 冷柜：门在层板前面多远、门框多宽；顶上灯箱的高；冰柜的壁厚。 */
@@ -244,6 +247,8 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
       // 层板：写了 boardColor 时是木纹板那样的哑光，没写同架子
       file.boardColor ? { color: file.boardColor, roughness: 0.55, metalness: 0 } : { color: file.frameColor ?? '#d9dadc', roughness: 0.45, metalness: 0.5 },
       { color: '#e6ecee', roughness: 0.12, metalness: 0 },
+      file.doorColor ? { color: file.doorColor, roughness: 0.35, metalness: 0.1 } : { color: '#2a2c2f', roughness: 0.35, metalness: 0.6 },
+      { color: '#c9ccd0', roughness: 0.3, metalness: 0.85 },
     ],
     // 价签：几种价格；纸的三个里一个黄底，电子的是墨水屏
     cells: prices.map((price, k): AtlasCell => (electronic ? eslCell(price, k, tagFont, hash32(file.seed ?? 1, 2000 + k))
@@ -253,7 +258,7 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
         draw: ([x, y, w, h]) => tagFont && textPath(tagFont, price, x + w * 0.55, y + h * 0.55, w * 0.78, h * 0.62, '#d7262b'),
       })).concat(type === 'fridge' ? [{
       // 冷柜顶上的灯箱：蓝底白字，整块发光
-      size: [file.length * 1000, (HEADER - 0.04) * 1000] as const, color: '#1e64c8', roughness: 0.3, metalness: 0, emissive: 2,
+      size: [file.length * 1000, (HEADER - 0.04) * 1000] as const, color: file.doorColor ?? '#1e64c8', roughness: 0.3, metalness: 0, emissive: 2,
       draw: ([x, y, w, h]: Cell) => (file.header && tagFont ? textPath(tagFont, file.header, x + w / 2, y + h / 2, w * 0.6, h * 0.62, '#ffffff') : undefined),
     }] : []),
   });
@@ -291,7 +296,7 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
     const zs = [Math.min(z0, z1), Math.max(z0, z1)] as const;
     // 底座（第一层的下面是实心的踢脚板）和每一层的层板
     batch.box([-L + SPINE, 0, zs[0]], [L - SPINE, file.levels[0]!, zs[1]], BASE);
-    for (const level of file.levels.slice(1)) batch.box([-L + SPINE, level - BOARD, zs[0]], [L - SPINE, level, zs[1]], BOARD_SOLID);
+    for (const level of file.levels.slice(1)) batch.box([-L + SPINE, level - (file.boardThickness ?? BOARD), zs[0]], [L - SPINE, level, zs[1]], BOARD_SOLID);
     for (const level of file.levels) {
       if (rail) {
         tagRail(batch, -L + SPINE, L - SPINE, level, zFar, side);
@@ -406,7 +411,8 @@ function eslCell(price: string, k: number, font: TextFont | undefined, seed: num
 }
 
 /**
- * 冷柜的前面：每一扇门的玻璃、门之间的门框（深色）和门框里侧竖着的灯带，顶盖和顶上的灯箱（图集里 PRICES 之后那一格）。
+ * 冷柜的前面：每一扇门的玻璃、门之间的门框（doorColor，默认深色）和门框里侧竖着的灯带、门把手，门下面压缩机那一格的前脸，
+ * 顶盖和顶上的灯箱（图集里 PRICES 之后那一格；写了 doorColor 时顶盖、灯箱也是这个颜色）。
  * zFar 是层板前沿。
  */
 function fridgeFront(batch: ProductBatch, file: ShelfFile, zFar: number, headerCell: number): void {
@@ -415,17 +421,27 @@ function fridgeFront(batch: ProductBatch, file: ShelfFile, zFar: number, headerC
   const z0 = zFar + DOOR - 0.01, z1 = zFar + DOOR + 0.01;
   for (let k = 0; k <= doors; k++) {
     const x = -L + (file.length * k) / doors;
-    batch.box([x - MULLION / 2, bottom, z0 - 0.01], [x + MULLION / 2, H, z1], DARK);
+    batch.box([x - MULLION / 2, bottom, z0 - 0.01], [x + MULLION / 2, H, z1], DOOR_BODY);
     // 灯带贴在门框里侧（最两头的只有一边）
     if (k > 0) batch.box([x - MULLION / 2 - 0.012, bottom + 0.03, z0 - 0.03], [x - MULLION / 2, H - 0.03, z0 - 0.01], LIGHT);
     if (k < doors) batch.box([x + MULLION / 2, bottom + 0.03, z0 - 0.03], [x + MULLION / 2 + 0.012, H - 0.03, z0 - 0.01], LIGHT);
-    if (k < doors) batch.glassBox([x + MULLION / 2, bottom, z0], [-L + (file.length * (k + 1)) / doors - MULLION / 2, H, z0 + 0.008]);
+    if (k < doors) {
+      const right = -L + (file.length * (k + 1)) / doors - MULLION / 2;
+      batch.glassBox([x + MULLION / 2, bottom, z0], [right, H, z0 + 0.008]);
+      // 门把手：竖着一根，在门不开铰链的那边（相邻两扇对开）
+      const hx = k % 2 === 0 ? right - 0.05 : x + MULLION / 2 + 0.05, hy = bottom + (H - bottom) * 0.45;
+      batch.box([hx - 0.009, hy, z1 + 0.012], [hx + 0.009, hy + 0.45, z1 + 0.03], HANDLE);
+      batch.box([hx - 0.006, hy + 0.03, z1], [hx + 0.006, hy + 0.05, z1 + 0.012], HANDLE);
+      batch.box([hx - 0.006, hy + 0.4, z1], [hx + 0.006, hy + 0.42, z1 + 0.012], HANDLE);
+    }
   }
   // 门的上下框、顶盖、灯箱
-  batch.box([-L, bottom - 0.03, z0 - 0.01], [L, bottom, z1], DARK);
-  batch.box([-L, H - 0.03, z0 - 0.01], [L, H, z1], DARK);
-  batch.box([-L, H, -SPINE], [L, H + 0.04, z1], FRAME);
-  batch.box([-L, H + 0.04, z1 - 0.2], [L, H + HEADER, z1], FRAME);
+  batch.box([-L, bottom - 0.03, z0 - 0.01], [L, bottom, z1], DOOR_BODY);
+  batch.box([-L, H - 0.03, z0 - 0.01], [L, H, z1], DOOR_BODY);
+  // 门下面压缩机那一格的前脸（和门一平）
+  batch.box([-L, 0, zFar], [L, bottom - 0.03, z1], DOOR_BODY);
+  batch.box([-L, H, -SPINE], [L, H + 0.04, z1], file.doorColor ? DOOR_BODY : FRAME);
+  batch.box([-L, H + 0.04, z1 - 0.2], [L, H + HEADER, z1], file.doorColor ? DOOR_BODY : FRAME);
   const z = z1 + 0.001, y0 = H + 0.06, y1 = H + HEADER - 0.02;
   batch.quad([[-L, y0, z], [L, y0, z], [L, y1, z], [-L, y1, z]], [0, 0, 1], headerCell);
 }

@@ -1,0 +1,19 @@
+{
+ "name": "GreenTea",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.065,
+  0.22,
+  0
+ ],
+ "text": "绿茶",
+ "seed": 102,
+ "pattern": "band",
+ "transmission": 0.9,
+ "colors": {
+  "background": "#b9c86a",
+  "accent": "#2f9e44",
+  "cap": "#2f9e44"
+ }
+}

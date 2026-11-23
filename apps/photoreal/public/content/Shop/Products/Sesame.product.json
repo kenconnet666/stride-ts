@@ -1,0 +1,20 @@
+{
+ "name": "Sesame",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "jar",
+ "size": [
+  0.07,
+  0.095,
+  0
+ ],
+ "text": "芝麻酱",
+ "seed": 94,
+ "motif": "sesame",
+ "pattern": "band",
+ "surface": "glass",
+ "colors": {
+  "background": "#8a5a2a",
+  "accent": "#f4f0e2",
+  "cap": "#f2c40f"
+ }
+}

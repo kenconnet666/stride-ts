@@ -1,0 +1,19 @@
+{
+ "name": "Oyster",
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "shape": "bottle",
+ "size": [
+  0.058,
+  0.15,
+  0
+ ],
+ "text": "蚝油",
+ "seed": 95,
+ "pattern": "band",
+ "surface": "plastic",
+ "colors": {
+  "background": "#7a3410",
+  "accent": "#e8731a",
+  "cap": "#e8731a"
+ }
+}

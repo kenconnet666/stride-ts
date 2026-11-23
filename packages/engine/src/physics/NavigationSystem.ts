@@ -5,8 +5,12 @@
  * - 寻路用 Detour：起点、终点先在 (2, 4, 2) 的范围里找最近的多边形（Stride 的 polyPickExt），结果是路径的拐点（含起点和终点）。
  *   和 Stride 不同：Stride 的 FindFollowPath 沿拐点按固定步长采样出平滑的点，这里直接给拐点（跟随路径的脚本照样能用）。
  */
-import { NativeError, type NavConfig, type NavMesh, type StrideNative } from '@stride-ts/native';
+import { NativeError, type Crowd, type NavConfig, type NavMesh, type StrideNative } from '@stride-ts/native';
+import { Matrix } from '../data/Matrix';
 import { Vector3, type Vec3Like } from '../data/vectors';
+import type { GameTime } from '../engine/GameTime';
+import { Transform } from '../engine/transform';
+import type { CrowdAgent } from './CrowdAgent';
 import type { Simulation } from './Simulation';
 
 /** 导航的设置（Stride 的 RecastNavigationConfiguration）。 */
@@ -40,6 +44,16 @@ export class NavigationSystem {
   /** 排队等着算的寻路（RecastNavigationComponent.setTarget）。 */
   readonly #queue: (() => void)[] = [];
   #queueFrame = -1;
+  /** 人群（CrowdAgent）：导航网格建好、有人时才建；网格换了、人满了重建。 */
+  readonly #agents = new Set<CrowdAgent>();
+  #crowd: Crowd | undefined;
+  #crowdCapacity = 0;
+  #crowdFrame = -1;
+  /** 人群避让有多仔细：0 低、1 中、2 好、3 高（Recast 演示的四档），越高每步越贵；改了下一次更新时生效。 */
+  crowdAvoidance: 0 | 1 | 2 | 3 = 1;
+  #appliedAvoidance = -1;
+  /** 上一次人群更新：几个人、原生走一步花了多少毫秒。 */
+  crowdStats = { agents: 0, milliseconds: 0 };
 
   constructor(native: StrideNative, simulation: Simulation) {
     this.#native = native;
@@ -65,6 +79,8 @@ export class NavigationSystem {
       navMesh?.destroy();
       return;
     }
+    // 人群挂在旧网格上：先拆掉，下一次更新时在新网格上重建
+    this.#dropCrowd();
     this.#navMesh?.destroy();
     this.#navMesh = navMesh;
   }
@@ -96,9 +112,106 @@ export class NavigationSystem {
     for (const plan of this.#queue.splice(0, MAX_QUEUED_PATHS_PER_FRAME)) plan();
   }
 
+  /** @internal CrowdAgent 开始时登记。 */
+  addAgent(agent: CrowdAgent): void {
+    agent.slot = -1;
+    agent.targetDirty = true;
+    this.#agents.add(agent);
+  }
+
+  /** @internal CrowdAgent 去掉时。 */
+  removeAgent(agent: CrowdAgent): void {
+    if (this.#crowd && agent.slot !== -1) this.#crowd.removeAgent(agent.slot);
+    agent.slot = -1;
+    this.#agents.delete(agent);
+  }
+
+  /**
+   * @internal 人群走一步（每帧第一个 CrowdAgent 的 update 调，一帧只走一次）：没进人群的加进去，改了目标的交给人群，走完把位置、朝向
+   * 写回实体。
+   */
+  updateCrowd(time: GameTime): void {
+    if (time.frameCount === this.#crowdFrame) return;
+    this.#crowdFrame = time.frameCount;
+    const navMesh = this.#navMesh;
+    if (!navMesh || this.#agents.size === 0) return;
+    if (!this.#crowd || this.#agents.size > this.#crowdCapacity) {
+      this.#dropCrowd();
+      this.#crowdCapacity = Math.max(64, 2 ** Math.ceil(Math.log2(this.#agents.size * 1.5)));
+      const radius = Math.max(...[...this.#agents].map((agent) => agent.radius));
+      this.#crowd = navMesh.createCrowd(this.#crowdCapacity, radius);
+      this.#appliedAvoidance = -1;
+    }
+    const crowd = this.#crowd;
+    if (this.#appliedAvoidance !== this.crowdAvoidance) {
+      crowd.setAvoidanceQuality(this.crowdAvoidance);
+      this.#appliedAvoidance = this.crowdAvoidance;
+    }
+    // 这一帧才出生的实体世界矩阵还没算（变换存储下一次更新才算）：要加人时先更新一次
+    const joining = [...this.#agents].find((agent) => agent.slot === -1);
+    if (joining) joining.game.transforms.update();
+    for (const agent of this.#agents) {
+      const world = agent.entity.require(Transform).world;
+      if (agent.slot === -1) {
+        try {
+          agent.slot = crowd.addAgent([world[12]!, world[13]!, world[14]!], { radius: agent.radius, height: agent.height, maxSpeed: agent.maxSpeed, maxAcceleration: agent.maxAcceleration });
+          agent.targetDirty = true;
+        } catch (error) {
+          // 不在导航网格上（还在空中、网格还没覆盖到）：下一帧再试
+          if (error instanceof NativeError) continue;
+          throw error;
+        }
+      }
+      if (agent.slot === -1) continue;
+      if (agent.targetDirty) {
+        const target = agent.target ?? { x: world[12]!, y: world[13]!, z: world[14]! };
+        try {
+          crowd.requestMove(agent.slot, [target.x, target.y, target.z]);
+          agent.targetDirty = false;
+        } catch (error) {
+          if (!(error instanceof NativeError)) throw error;
+        }
+      }
+    }
+    const started = performance.now();
+    crowd.update(time.elapsed);
+    this.crowdStats = { agents: this.#agents.size, milliseconds: performance.now() - started };
+    const positions = crowd.positions(), velocities = crowd.velocities();
+    for (const agent of this.#agents) {
+      if (agent.slot === -1) continue;
+      const k = agent.slot * 3;
+      agent.velocity.set(velocities[k]!, velocities[k + 1]!, velocities[k + 2]!);
+      placeAgent(agent, positions[k]!, positions[k + 1]!, positions[k + 2]!);
+    }
+  }
+
+  #dropCrowd(): void {
+    this.#crowd?.destroy();
+    this.#crowd = undefined;
+    for (const agent of this.#agents) agent.slot = -1;
+  }
+
   destroy(): void {
+    this.#dropCrowd();
     this.#generation++;
     this.#navMesh?.destroy();
     this.#navMesh = undefined;
+  }
+}
+
+const PARENT_INVERSE = Matrix.identity();
+
+/** 人群算出的世界位置（和朝向）写回实体：有父实体时换成本地的。 */
+function placeAgent(agent: CrowdAgent, x: number, y: number, z: number): void {
+  const transform = agent.entity.require(Transform);
+  const parent = transform.parent?.require(Transform).world;
+  let lx = x, ly = y, lz = z;
+  if (parent && Matrix.invert(PARENT_INVERSE, parent)) [lx, ly, lz] = Matrix.transformPoint(PARENT_INVERSE, x, y, z);
+  transform.position = { x: lx, y: ly, z: lz };
+  const vx = agent.velocity.x, vz = agent.velocity.z;
+  if (agent.faceMovement && vx * vx + vz * vz > 0.01) {
+    // 模型的 +z 朝走的方向（绕竖直轴；有父实体时按世界的算，父实体一般不转）
+    const yaw = Math.atan2(vx, vz);
+    transform.rotation = { x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2) };
   }
 }

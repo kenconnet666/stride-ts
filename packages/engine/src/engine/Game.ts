@@ -37,6 +37,7 @@ import { Ragdoll } from '../physics/Ragdoll';
 import { Rope } from '../physics/Rope';
 import { Breakable } from '../physics/Breakable';
 import { Cloth } from '../physics/Cloth';
+import { CrowdAgent } from '../physics/CrowdAgent';
 import { Animator } from '../animation/Animator';
 import { FootIk } from '../animation/FootIk';
 import { LookAt } from '../animation/LookAt';
@@ -366,6 +367,7 @@ export class Game {
       this.registry.register(Rope);
       this.registry.register(Breakable);
       this.registry.register(Cloth);
+      this.registry.register(CrowdAgent);
       this.registry.register(Animator);
       this.registry.register(FootIk);
       this.registry.register(LookAt);

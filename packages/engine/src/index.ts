@@ -227,6 +227,7 @@ export { FootIk } from './animation/FootIk';
 export { LookAt } from './animation/LookAt';
 export { findLegs, kneePole, toJointLocal, worldToModel, type Leg } from './animation/ikRig';
 export { Cloth, clothGrid } from './physics/Cloth';
+export { CrowdAgent } from './physics/CrowdAgent';
 export { SoftBody, weldModel } from './physics/SoftBody';
 export { Deformable, deformableCopy, subdivideMesh } from './physics/Deformable';
 export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './physics/NavigationSystem';

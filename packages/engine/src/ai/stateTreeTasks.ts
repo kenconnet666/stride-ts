@@ -5,7 +5,7 @@
 import { Animator } from '../animation/Animator';
 import { Transform } from '../engine/transform';
 import { CrowdAgent } from '../physics/CrowdAgent';
-import { registerBuiltInTask, type StateTreeContext, type StateTreeStatus, type StateTreeTaskRun } from './StateTree';
+import { perceivedBy, registerBuiltInTask, type StateTreeContext, type StateTreeStatus, type StateTreeTaskRun } from './StateTree';
 
 const done: StateTreeTaskRun = { update: () => 'succeeded' };
 
@@ -58,6 +58,32 @@ registerBuiltInTask('wander', (context, task) => {
   }
   return { update: () => 'failed' };
 });
+
+registerBuiltInTask('flee', (context, task) => {
+  const agent = agentOf(context, 'flee');
+  const world = context.entity?.get(Transform)?.world;
+  const navigation = context.game?.navigation;
+  if (!agent || !world || !navigation) return { update: () => 'failed' };
+  // 背对着它跑；正后方走不通时左右偏一点再试
+  const from = { x: world[12]!, y: world[13]!, z: world[14]! };
+  const threat = context.tree.vector(task.parameter);
+  const away = Math.atan2(from.z - threat.z, from.x - threat.x);
+  for (const turn of [0, 0.5, -0.5, 1, -1]) {
+    const angle = away + turn;
+    const end = navigation.findPath(from, { x: from.x + Math.cos(angle) * task.distance, y: from.y, z: from.z + Math.sin(angle) * task.distance })?.at(-1);
+    if (end && Math.hypot(end.x - from.x, end.z - from.z) > task.distance * 0.3) return walk(agent, end, task.tolerance, task.timeout);
+  }
+  return { update: () => 'failed' };
+});
+
+registerBuiltInTask('sense', (context, task) => ({
+  update() {
+    const found = perceivedBy(context, task.tag, task.sense);
+    if (task.flag !== undefined) context.tree.set(task.flag, found !== undefined);
+    if (found && task.store !== undefined) context.tree.set(task.store, found.position);
+    return 'running';
+  },
+}));
 
 registerBuiltInTask('stand', (context) => {
   context.entity?.get(CrowdAgent)?.stop();

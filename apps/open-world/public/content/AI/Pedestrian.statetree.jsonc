@@ -1,14 +1,20 @@
-// 行人：平时等一会儿、附近走一走；收到 scare 事件（或者 alarm 开着）就往远处跑开，跑完回到平时
+// 行人：平时等一会儿、附近走一走；看见 threat（挂 PerceptionStimulus、tag 是 threat 的东西）或者收到 scare 事件就背对着它跑开，
+// 跑完还看得见就接着跑，看不见了回到平时
 {
   "name": "Pedestrian",
   "parameters": [
-    { "name": "alarm", "type": "bool" }
+    { "name": "alarm", "type": "bool" },
+    { "name": "threat", "type": "vector" }
   ],
   "states": [
     {
       "name": "Calm",
       "enter": [{ "type": "parameter", "parameter": "alarm", "value": 0 }],
-      "transitions": [{ "on": "event", "event": "scare", "to": "Panic" }]
+      "tasks": [{ "type": "sense", "tag": "threat", "sense": "sight", "store": "threat", "flag": "alarm" }],
+      "transitions": [
+        { "on": "event", "event": "scare", "to": "Panic" },
+        { "on": "tick", "when": [{ "type": "parameter", "parameter": "alarm", "value": 1 }], "to": "Panic" }
+      ]
     },
     { "name": "Idle", "parent": "Calm", "tasks": [{ "type": "wait", "seconds": 1, "random": 4 }], "transitions": [{ "to": "$next" }] },
     {
@@ -19,7 +25,10 @@
     },
     {
       "name": "Panic",
-      "tasks": [{ "type": "wander", "radius": 50, "timeout": 30 }],
+      "tasks": [
+        { "type": "sense", "tag": "threat", "sense": "sight", "store": "threat", "flag": "alarm" },
+        { "type": "flee", "parameter": "threat", "distance": 30 }
+      ],
       "transitions": [{ "to": "$root" }]
     }
   ]

@@ -40,6 +40,7 @@ import { Cloth } from '../physics/Cloth';
 import { CrowdAgent } from '../physics/CrowdAgent';
 import { Animator } from '../animation/Animator';
 import { StateTreeRunner } from '../ai/StateTreeRunner';
+import { PerceptionSystem } from '../ai/Perception';
 import { FootIk } from '../animation/FootIk';
 import { LookAt } from '../animation/LookAt';
 import { SoftBody } from '../physics/SoftBody';
@@ -227,6 +228,8 @@ export class Game {
   readonly events = new GameEventBus(() => this.updateTime.frameCount);
   /** 世界时钟和日历：世界里现在几点、第几天（日夜循环、日程、存档读写它），见 world/WorldClock.ts。编辑状态下不走。 */
   readonly clock = new WorldClock();
+  /** 感知：挂 Perceiver 的实体看得见、听得到什么（视觉带遮挡、声音、记忆），见 ai/Perception.ts。 */
+  readonly perception = new PerceptionSystem();
   /** 存档和世界状态的持久化：挂 Persistent 的场景实体卸掉再读回来状态还在，save() / load() 存档读档，见 world/Persistence.ts。 */
   readonly persistence = new PersistenceSystem(this.entities, this.clock);
   /**
@@ -666,6 +669,7 @@ export class Game {
       { phase: 'beforeTransforms', update: () => this.city.update() },
       { update: () => this.world.update() },
       { update: () => this.weather.update(this) },
+      { update: () => (this.editing ? undefined : this.perception.update(this)) },
       { update: () => this.wind.update(this) },
       { update: () => this.#updateRenderWind() },
       { update: () => this.precipitation.update(this) },

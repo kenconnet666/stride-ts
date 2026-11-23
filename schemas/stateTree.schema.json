@@ -146,6 +146,43 @@
                   "properties": {
                     "type": {
                       "enum": [
+                        "perceives"
+                      ]
+                    },
+                    "not": {
+                      "type": "boolean",
+                      "description": "inverts the result",
+                      "default": false
+                    },
+                    "tag": {
+                      "type": "string",
+                      "description": "stimulus tag; empty matches any",
+                      "default": ""
+                    },
+                    "sense": {
+                      "enum": [
+                        "any",
+                        "sight",
+                        "hearing"
+                      ],
+                      "default": "any"
+                    },
+                    "seeing": {
+                      "type": "boolean",
+                      "description": "only while it is in sight right now (not remembered)",
+                      "default": false
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
                         "chance"
                       ]
                     },
@@ -305,6 +342,43 @@
                   "properties": {
                     "type": {
                       "enum": [
+                        "flee"
+                      ]
+                    },
+                    "parameter": {
+                      "type": "string",
+                      "description": "vector parameter with what to run from"
+                    },
+                    "distance": {
+                      "type": "number",
+                      "minimum": 1,
+                      "description": "unit: m",
+                      "default": 25
+                    },
+                    "tolerance": {
+                      "type": "number",
+                      "minimum": 0.1,
+                      "description": "unit: m",
+                      "default": 0.8
+                    },
+                    "timeout": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s",
+                      "default": 30
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "parameter"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
                         "set"
                       ]
                     },
@@ -359,6 +433,41 @@
                   "required": [
                     "type",
                     "event"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "sense"
+                      ]
+                    },
+                    "tag": {
+                      "type": "string",
+                      "description": "stimulus tag; empty matches any",
+                      "default": ""
+                    },
+                    "sense": {
+                      "enum": [
+                        "any",
+                        "sight",
+                        "hearing"
+                      ],
+                      "default": "any"
+                    },
+                    "store": {
+                      "type": "string",
+                      "description": "vector parameter that gets the last known position"
+                    },
+                    "flag": {
+                      "type": "string",
+                      "description": "bool parameter set while something is perceived"
+                    }
+                  },
+                  "required": [
+                    "type"
                   ],
                   "additionalProperties": false
                 },
@@ -498,6 +607,43 @@
                         "required": [
                           "type",
                           "parameter"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "enum": [
+                              "perceives"
+                            ]
+                          },
+                          "not": {
+                            "type": "boolean",
+                            "description": "inverts the result",
+                            "default": false
+                          },
+                          "tag": {
+                            "type": "string",
+                            "description": "stimulus tag; empty matches any",
+                            "default": ""
+                          },
+                          "sense": {
+                            "enum": [
+                              "any",
+                              "sight",
+                              "hearing"
+                            ],
+                            "default": "any"
+                          },
+                          "seeing": {
+                            "type": "boolean",
+                            "description": "only while it is in sight right now (not remembered)",
+                            "default": false
+                          }
+                        },
+                        "required": [
+                          "type"
                         ],
                         "additionalProperties": false
                       },

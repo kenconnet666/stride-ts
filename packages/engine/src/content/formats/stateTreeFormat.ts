@@ -36,6 +36,12 @@ export const STATE_TREE_CONDITION = s.union('type', {
     test: s.oneOf('<', '>').default('<'),
     value: s.number({ min: 0, step: 0.5, unit: 'm' }).default(5),
   },
+  /** 感知到（ai/Perception.ts：实体上要有 Perceiver）tag 那种东西。 */
+  perceives: {
+    tag: s.string().default('').describe('stimulus tag; empty matches any'),
+    sense: s.oneOf('any', 'sight', 'hearing').default('any'),
+    seeing: s.bool().default(false).describe('only while it is in sight right now (not remembered)'),
+  },
   /** 按概率成立（每次看都重新掷）。 */
   chance: { probability: s.number({ min: 0, max: 1, step: 0.05 }).default(0.5) },
   /** 代码里登记的条件（registerStateTreeCondition）。 */
@@ -58,12 +64,26 @@ export const STATE_TREE_TASK = s.union('type', {
     tolerance: s.number({ min: 0.1, step: 0.1, unit: 'm' }).default(0.8),
     timeout: s.number({ min: 0, step: 1, unit: 's' }).default(60),
   },
+  /** 从一个位置参数那里跑开 distance 米（导航网格上走得到的那一头），到了成功。 */
+  flee: {
+    parameter: s.string().describe('vector parameter with what to run from'),
+    distance: s.number({ min: 1, step: 1, unit: 'm' }).default(25),
+    tolerance: s.number({ min: 0.1, step: 0.1, unit: 'm' }).default(0.8),
+    timeout: s.number({ min: 0, step: 1, unit: 's' }).default(30),
+  },
   /** 设一个参数（数、开关），马上成功。 */
   set: { parameter: s.string(), value: s.number({ step: 0.05 }).default(1) },
   /** 设实体上 Animator 的参数，马上成功。 */
   animator: { parameter: s.string(), value: s.number({ step: 0.05 }).default(1) },
   /** 发一个全局的命名事件（game.events），马上成功。 */
   emit: { event: s.string() },
+  /** 一直在跑：每帧把感知到的 tag 那种东西里最近的一次写进参数（store 是它的位置，flag 是有没有），给过渡的条件用。 */
+  sense: {
+    tag: s.string().default('').describe('stimulus tag; empty matches any'),
+    sense: s.oneOf('any', 'sight', 'hearing').default('any'),
+    store: s.string().optional().describe('vector parameter that gets the last known position'),
+    flag: s.string().optional().describe('bool parameter set while something is perceived'),
+  },
   /** 停在原地（CrowdAgent），一直在跑（靠过渡离开）。 */
   stand: {},
   /** 代码里登记的任务（registerStateTreeTask）。 */
@@ -132,6 +152,11 @@ export function checkStateTree(tree: StateTreeData, where: string): StateTreeDat
     state.tasks.forEach((task, i) => {
       const atTask = `${at} task ${i} (${task.type})`;
       if (task.type === 'set') parameter(atTask, task.parameter, ['number', 'bool']);
+      if (task.type === 'flee') parameter(atTask, task.parameter, ['vector']);
+      if (task.type === 'sense') {
+        if (task.store !== undefined) parameter(atTask, task.store, ['vector']);
+        if (task.flag !== undefined) parameter(atTask, task.flag, ['number', 'bool']);
+      }
       if (task.type === 'moveTo') {
         if (task.parameter !== undefined) parameter(atTask, task.parameter, ['vector']);
         else if (task.point === undefined) throw new Error(`${atTask} needs a point or a vector parameter`);

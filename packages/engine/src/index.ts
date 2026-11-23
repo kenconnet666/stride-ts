@@ -224,6 +224,7 @@ export { Breakable, solidOf } from './physics/Breakable';
 export { AnimationGraphInstance, blend1d, blend2d, type AnimationGraph } from './animation/AnimationGraph';
 export { StateTreeInstance, registerStateTreeCondition, registerStateTreeTask, type StateTree, type StateTreeContext, type StateTreeStatus, type StateTreeTaskFactory, type StateTreeTaskRun, type StateTreeConditionFunction } from './ai/StateTree';
 export { StateTreeRunner } from './ai/StateTreeRunner';
+export { Perceiver, PerceptionStimulus, PerceptionSystem, type Perceived } from './ai/Perception';
 export { Animator } from './animation/Animator';
 export { FootIk } from './animation/FootIk';
 export { LookAt } from './animation/LookAt';

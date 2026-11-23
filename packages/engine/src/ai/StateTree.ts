@@ -11,6 +11,7 @@ import type { Game } from '../engine/Game';
 import type { StateTreeConditionData, StateTreeData, StateTreeStateData, StateTreeTaskData } from '../content/formats/stateTreeFormat';
 import { Vector3, type Vec3Like } from '../data/vectors';
 import { Transform } from '../engine/transform';
+import type { Perceived } from './Perception';
 
 /** 加载好的状态树资源。 */
 export interface StateTree {
@@ -305,6 +306,8 @@ export class StateTreeInstance {
       }
       case 'chance':
         return Math.random() < condition.probability;
+      case 'perceives':
+        return perceivedBy(this.context, condition.tag, condition.sense, condition.seeing) !== undefined;
       case 'call': {
         const test = customConditions.get(condition.name);
         if (!test) throw new Error(`state tree '${this.tree.path}': condition '${condition.name}' is not registered (registerStateTreeCondition)`);
@@ -312,4 +315,10 @@ export class StateTreeInstance {
       }
     }
   }
+}
+
+/** 实体感知到的、tag 和感官对得上的最近一样东西（没有 Perceiver、没有游戏时是 undefined）。 */
+export function perceivedBy(context: StateTreeContext, tag: string, sense: 'any' | 'sight' | 'hearing', seeing = false): Perceived | undefined {
+  if (!context.entity || !context.game) return undefined;
+  return context.game.perception.of(context.entity).find((item) => (tag === '' || item.tag === tag) && (sense === 'any' || item.sense === sense) && (!seeing || item.seeing));
 }

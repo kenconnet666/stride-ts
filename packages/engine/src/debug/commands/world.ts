@@ -50,6 +50,19 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
     if (typeof args['avoidance'] === 'number') navigation.crowdAvoidance = Math.max(0, Math.min(3, Math.round(args['avoidance']))) as 0 | 1 | 2 | 3;
     return { streaming: navigation.settings.streaming ?? false, showTiles: navigation.showTiles, ...navigation.streamStats, crowd: navigation.crowdStats, avoidance: navigation.crowdAvoidance };
   });
+  debug.command('perception', 'Perception (Perceiver sees and hears PerceptionStimulus entities and noises): reports how many perceivers and stimuli there are and the last frame cost. args: show (true/false) draws what each perceiver knows (green in sight, yellow remembered, blue heard); interval (s between looks per perceiver); entity (name) lists what it perceives; noise ({ position: [x, y, z], range, tag }) makes a sound.', (args) => {
+    const perception = game.perception;
+    if (typeof args['show'] === 'boolean') perception.show = args['show'];
+    if (typeof args['interval'] === 'number') perception.interval = args['interval'];
+    const noise = args['noise'] as { position?: number[]; range?: number; tag?: string } | undefined;
+    if (noise?.position) perception.noise({ x: noise.position[0]!, y: noise.position[1]!, z: noise.position[2]! }, noise.range ?? 10, noise.tag ?? '');
+    const name = typeof args['entity'] === 'string' ? args['entity'] : undefined;
+    const entity = name === undefined ? undefined : game.entities.ids().map((id) => game.entities.entity(id)).find((e) => e.name === name);
+    return {
+      show: perception.show, interval: perception.interval, ...perception.stats,
+      ...(entity ? { perceives: perception.of(entity).map((item) => ({ entity: item.entity?.name, tag: item.tag, sense: item.sense, seeing: item.seeing, position: [item.position.x, item.position.y, item.position.z].map((v) => +v.toFixed(2)), age: +(game.updateTime.total - item.time).toFixed(2) })) } : {}),
+    };
+  });
   debug.command('statetree', 'State trees (StateTreeRunner): lists each running tree with its entity, active states (root to leaf), status and transition count. args: entity (name; default all), event (sends it to the trees), set ({ parameter: value } sets parameters), limit (default 20).', (args) => {
     const name = typeof args['entity'] === 'string' ? args['entity'] : undefined;
     const runners = game.entities.ids().map((id) => game.entities.entity(id))

@@ -18,32 +18,38 @@ function intersect(o: number[], d: number[], v0: number[], e1: number[], e2: num
   return t > 1e-6 ? t : Infinity;
 }
 
-/** 按 GPU 上同样的布局（32 字节的节点、左右孩子挨着、三角形是 v0 加两条边）遍历：最近的交点和原来的三角形下标。 */
+/**
+ * 按 GPU 上同样的布局遍历：4 叉的节点 32 个 32 位（4 个孩子的最小 x、y、z，最大 x、y、z 各 4 个，孩子 4 个，图元数 4 个；空的孩子
+ * 盒子是反的），三角形是 v0 加两条边。返回最近的交点和原来的三角形下标。
+ */
 function traverse(nodes: Uint32Array, triangles: Float32Array, o: number[], d: number[]): { t: number; triangle: number } {
   const f = new Float32Array(nodes.buffer, nodes.byteOffset, nodes.length);
   const words = new Uint32Array(triangles.buffer, triangles.byteOffset, triangles.length);
   let best = { t: Infinity, triangle: -1 };
   const stack = [0];
   while (stack.length > 0) {
-    const n = stack.pop()!;
-    let tmin = 0, tmax = best.t;
-    for (let c = 0; c < 3; c++) {
-      const inv = 1 / d[c]!;
-      let t0 = (f[n * 8 + c]! - o[c]!) * inv, t1 = (f[n * 8 + 4 + c]! - o[c]!) * inv;
-      if (t0 > t1) [t0, t1] = [t1, t0];
-      tmin = Math.max(tmin, t0);
-      tmax = Math.min(tmax, t1);
-    }
-    if (tmin > tmax) continue;
-    const first = nodes[n * 8 + 3]!, count = nodes[n * 8 + 7]!;
-    if (count === 0) {
-      stack.push(first, first + 1);
-      continue;
-    }
-    for (let i = first; i < first + count; i++) {
-      const at = (k: number) => [triangles[i * 12 + k]!, triangles[i * 12 + k + 1]!, triangles[i * 12 + k + 2]!];
-      const t = intersect(o, d, at(0), at(4), at(8));
-      if (t < best.t) best = { t, triangle: words[i * 12 + 3]! };
+    const at = stack.pop()! * 32;
+    for (let c = 0; c < 4; c++) {
+      if (f[at + c]! > f[at + 12 + c]!) continue;
+      let tmin = 0, tmax = best.t;
+      for (let axis = 0; axis < 3; axis++) {
+        const inv = 1 / d[axis]!;
+        let t0 = (f[at + axis * 4 + c]! - o[axis]!) * inv, t1 = (f[at + 12 + axis * 4 + c]! - o[axis]!) * inv;
+        if (t0 > t1) [t0, t1] = [t1, t0];
+        tmin = Math.max(tmin, t0);
+        tmax = Math.min(tmax, t1);
+      }
+      if (tmin > tmax) continue;
+      const child = nodes[at + 24 + c]!, count = nodes[at + 28 + c]!;
+      if (count === 0) {
+        stack.push(child);
+        continue;
+      }
+      for (let i = child; i < child + count; i++) {
+        const v = (k: number) => [triangles[i * 12 + k]!, triangles[i * 12 + k + 1]!, triangles[i * 12 + k + 2]!];
+        const t = intersect(o, d, v(0), v(4), v(8));
+        if (t < best.t) best = { t, triangle: words[i * 12 + 3]! };
+      }
     }
   }
   return best;
@@ -96,7 +102,7 @@ describe('光追的 BVH（原生建，GPU 的布局）', () => {
     const boxes = new Float32Array(Array.from({ length: 50 }, (_, i) => [i * 3, 0, 0, i * 3 + 1, 1, 1]).flat());
     const { nodes, order, nodeCount } = await native.buildBoxBvh(boxes);
     expect([...order].sort((a, b) => a - b)).toEqual(Array.from({ length: 50 }, (_, i) => i));
-    for (let n = 0; n < nodeCount; n++) expect(nodes[n * 8 + 7]!).toBeLessThanOrEqual(2);
+    for (let n = 0; n < nodeCount; n++) for (let c = 0; c < 4; c++) expect(nodes[n * 32 + 28 + c]!).toBeLessThanOrEqual(2);
   });
 });
 

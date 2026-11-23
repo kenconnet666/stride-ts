@@ -16,7 +16,8 @@ import type { MeshBatch } from '../mesh/MeshRenderFeature';
 
 /** 一个实例几个 32 位：世界矩阵的逆（3 行 × 4）、BLAS 的节点和三角形起点、标志（第 1 位：双面的材质）、表面颜色的格号 + 1（0 是没有）、材质的颜色（rgba）、自发光（rgb、0）。 */
 export const RT_INSTANCE_WORDS = 24;
-const NODE_WORDS = 8;
+/** 宽 BVH 的一个节点（原生的 sn_bvh_*，布局见 Runtime.h）：32 个 32 位，GPU 上是 8 个 vec4u。 */
+const NODE_WORDS = 32;
 /**
  * 一次遍历最多访问几个节点：坏了的 BVH（下标指回自己）也不会让着色器死循环、把显卡卡到驱动重置（DXGI_ERROR_DEVICE_HUNG，整个
  * 浏览器都卡死）。BLAS 里正常的射线几十到几百个；顶层在大世界里贴着地面横穿整张图的射线能过几千个实例的盒子，给得多些。
@@ -24,6 +25,8 @@ const NODE_WORDS = 8;
 const MAX_TRAVERSAL_STEPS = 4096;
 const MAX_TLAS_STEPS = 16384;
 const TRIANGLE_WORDS = 12;
+/** 遍历栈的深度：4 叉树浅，多数射线压不到一半；压满时丢掉的孩子不测（极少，只影响那一条射线）。 */
+const STACK_SIZE = 24;
 
 /**
  * 光追的着色器代码（group 是绑定组号）：rtTrace(原点, 方向, 最远) 返回最近的交点（instance 是 0xffffffff 时没打到），
@@ -51,24 +54,35 @@ struct RtHit {
   steps: u32,
 };
 
-/** 射线和节点（两个 vec4u：最小角 + 第一个、最大角 + 个数）的盒子相交：进入的距离，没交上是 1e30。 */
-fn rtBox(node0: vec4u, node1: vec4u, origin: vec3f, inverse: vec3f, tMax: f32) -> f32 {
-  let t0 = (bitcast<vec3f>(node0.xyz) - origin) * inverse;
-  let t1 = (bitcast<vec3f>(node1.xyz) - origin) * inverse;
-  let near = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), max(min(t0.z, t1.z), 0.0));
-  let far = min(min(max(t0.x, t1.x), max(t0.y, t1.y)), min(max(t0.z, t1.z), tMax));
-  return select(1e30, near, near <= far);
+/**
+ * 射线和宽节点（8 个 vec4u，从 o 开始：4 个孩子的最小 x、y、z，最大 x、y、z，孩子，图元数）的 4 个盒子一起相交：每个孩子进入的
+ * 距离，没交上的是 1e30。空的孩子盒子是反的（最小 x 大于最大 x），要单独排除：下面按方向交换远近以后，反的盒子和无穷大的盒子
+ * 算出来一样，会被当成测中。
+ */
+fn rtWideBoxes(nodes: ptr<storage, array<vec4u>, read>, o: u32, origin: vec3f, inverse: vec3f, tMax: f32) -> vec4f {
+  let minX = bitcast<vec4f>((*nodes)[o]);
+  let maxX = bitcast<vec4f>((*nodes)[o + 3u]);
+  let tx0 = (minX - origin.x) * inverse.x;
+  let ty0 = (bitcast<vec4f>((*nodes)[o + 1u]) - origin.y) * inverse.y;
+  let tz0 = (bitcast<vec4f>((*nodes)[o + 2u]) - origin.z) * inverse.z;
+  let tx1 = (maxX - origin.x) * inverse.x;
+  let ty1 = (bitcast<vec4f>((*nodes)[o + 4u]) - origin.y) * inverse.y;
+  let tz1 = (bitcast<vec4f>((*nodes)[o + 5u]) - origin.z) * inverse.z;
+  let near = max(max(min(tx0, tx1), min(ty0, ty1)), max(min(tz0, tz1), vec4f(0.0)));
+  let far = min(min(max(tx0, tx1), max(ty0, ty1)), min(max(tz0, tz1), vec4f(tMax)));
+  return select(vec4f(1e30), near, (near <= far) & (minX <= maxX));
 }
 
-/** 一个实例的 BLAS 里最近的三角形（局部的射线，t 和世界里的一样），比 hit.t 近才改；any 时打到一个就停（阴影射线）。 */
+/**
+ * 一个实例的 BLAS 里最近的三角形（局部的射线，t 和世界里的一样），比 hit.t 近才改；any 时打到一个就停（阴影射线）。宽 BVH：一次
+ * 读一个节点测 4 个孩子，叶子当场测三角形，内部的孩子最近的接着走、别的压栈。
+ */
 fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHit>, any: bool) {
   let header = bitcast<vec4u>(rtInstances[instance * 6u + 3u]);
   let nodeBase = header.x;
   let triangleBase = header.y;
   let inverse = 1.0 / select(dir, vec3f(1e-20), abs(dir) < vec3f(1e-20));
-  // 根节点也要先比盒子：根是叶子（一个三角形的网格）时下面直接按叶子算
-  if (rtBox(rtBlas[nodeBase * 2u], rtBlas[nodeBase * 2u + 1u], origin, inverse, (*hit).t) >= 1e30) { return; }
-  var stack: array<u32, 48>;
+  var stack: array<u32, ${STACK_SIZE}>;
   var sp = 0u;
   var node = 0u;
   var steps = 0u;
@@ -78,23 +92,27 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
       break;
     }
     steps++;
-    let node0 = rtBlas[(nodeBase + node) * 2u];
-    let node1 = rtBlas[(nodeBase + node) * 2u + 1u];
-    if (node1.w == 0u) {
-      // 内部节点：两个孩子挨着，先走近的
-      let a = node0.w;
-      let da = rtBox(rtBlas[(nodeBase + a) * 2u], rtBlas[(nodeBase + a) * 2u + 1u], origin, inverse, (*hit).t);
-      let db = rtBox(rtBlas[(nodeBase + a + 1u) * 2u], rtBlas[(nodeBase + a + 1u) * 2u + 1u], origin, inverse, (*hit).t);
-      if (da < 1e30 && db < 1e30 && sp < 48u) {
-        node = select(a + 1u, a, da <= db);
-        stack[sp] = select(a, a + 1u, da <= db);
-        sp++;
+    let o = (nodeBase + node) * 8u;
+    let enter = rtWideBoxes(&rtBlas, o, origin, inverse, (*hit).t);
+    let children = rtBlas[o + 6u];
+    let counts = rtBlas[o + 7u];
+    var next = 0xffffffffu;
+    var nextT = 1e30;
+    for (var c = 0u; c < 4u; c++) {
+      if (enter[c] >= 1e30 || enter[c] > (*hit).t) { continue; }
+      if (counts[c] == 0u) {
+        // 内部的孩子：最近的接着走，别的压栈
+        if (enter[c] < nextT) {
+          if (next != 0xffffffffu && sp < ${STACK_SIZE}u) { stack[sp] = next; sp++; }
+          next = children[c];
+          nextT = enter[c];
+        } else if (sp < ${STACK_SIZE}u) {
+          stack[sp] = children[c];
+          sp++;
+        }
         continue;
       }
-      if (da < 1e30) { node = a; continue; }
-      if (db < 1e30) { node = a + 1u; continue; }
-    } else {
-      for (var i = node0.w; i < node0.w + node1.w; i++) {
+      for (var i = children[c]; i < children[c] + counts[c]; i++) {
         let base = (triangleBase + i) * 3u;
         let v0 = rtTriangles[base];
         let e1 = rtTriangles[base + 1u].xyz;
@@ -118,6 +136,10 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
         }
       }
     }
+    if (next != 0xffffffffu) {
+      node = next;
+      continue;
+    }
     if (sp == 0u) { break; }
     sp--;
     node = stack[sp];
@@ -135,15 +157,14 @@ fn rtOccluded(origin: vec3f, dir: vec3f, tMax: f32) -> bool {
   return rtTraverse(origin, dir, tMax, true).instance != 0xffffffffu;
 }
 
-/** 两层 BVH 的遍历：any 是假时找最近的交点，真时打到任何一个就停。 */
+/** 两层 BVH 的遍历：any 是假时找最近的交点，真时打到任何一个就停。顶层同 BLAS 是宽 BVH，叶子是实例（射线变到网格的坐标再走它的 BLAS）。 */
 fn rtTraverse(origin: vec3f, dir: vec3f, tMax: f32, any: bool) -> RtHit {
   var hit = RtHit(tMax, 0xffffffffu, 0u, vec2f(0.0), false, 0u);
-  if (arrayLength(&rtTlas) < 2u) { return hit; }
+  if (arrayLength(&rtTlas) < 8u) { return hit; }
   let inverse = 1.0 / select(dir, vec3f(1e-20), abs(dir) < vec3f(1e-20));
-  var stack: array<u32, 48>;
+  var stack: array<u32, ${STACK_SIZE}>;
   var sp = 0u;
   var node = 0u;
-  if (rtBox(rtTlas[0], rtTlas[1], origin, inverse, tMax) >= 1e30) { return hit; }
   var steps = 0u;
   loop {
     if (steps >= ${MAX_TLAS_STEPS}u) {
@@ -151,22 +172,26 @@ fn rtTraverse(origin: vec3f, dir: vec3f, tMax: f32, any: bool) -> RtHit {
       break;
     }
     steps++;
-    let node0 = rtTlas[node * 2u];
-    let node1 = rtTlas[node * 2u + 1u];
-    if (node1.w == 0u) {
-      let a = node0.w;
-      let da = rtBox(rtTlas[a * 2u], rtTlas[a * 2u + 1u], origin, inverse, hit.t);
-      let db = rtBox(rtTlas[(a + 1u) * 2u], rtTlas[(a + 1u) * 2u + 1u], origin, inverse, hit.t);
-      if (da < 1e30 && db < 1e30 && sp < 48u) {
-        node = select(a + 1u, a, da <= db);
-        stack[sp] = select(a, a + 1u, da <= db);
-        sp++;
+    let o = node * 8u;
+    let enter = rtWideBoxes(&rtTlas, o, origin, inverse, hit.t);
+    let children = rtTlas[o + 6u];
+    let counts = rtTlas[o + 7u];
+    var next = 0xffffffffu;
+    var nextT = 1e30;
+    for (var c = 0u; c < 4u; c++) {
+      if (enter[c] >= 1e30 || enter[c] > hit.t) { continue; }
+      if (counts[c] == 0u) {
+        if (enter[c] < nextT) {
+          if (next != 0xffffffffu && sp < ${STACK_SIZE}u) { stack[sp] = next; sp++; }
+          next = children[c];
+          nextT = enter[c];
+        } else if (sp < ${STACK_SIZE}u) {
+          stack[sp] = children[c];
+          sp++;
+        }
         continue;
       }
-      if (da < 1e30) { node = a; continue; }
-      if (db < 1e30) { node = a + 1u; continue; }
-    } else {
-      for (var i = node0.w; i < node0.w + node1.w; i++) {
+      for (var i = children[c]; i < children[c] + counts[c]; i++) {
         // 世界的射线变到网格的坐标：乘世界矩阵的逆（3 行）
         let r0 = rtInstances[i * 6u];
         let r1 = rtInstances[i * 6u + 1u];
@@ -179,6 +204,10 @@ fn rtTraverse(origin: vec3f, dir: vec3f, tMax: f32, any: bool) -> RtHit {
           return hit;
         }
       }
+    }
+    if (next != 0xffffffffu) {
+      node = next;
+      continue;
     }
     if (sp == 0u) { break; }
     sp--;
@@ -545,11 +574,15 @@ export class RayTracingScene {
         if (at + NODE_WORDS > words.length) { problems.push(`${label}: node ${node} is outside the buffer`); continue; }
         if (seen.has(node)) { problems.push(`${label}: node ${node} is reached twice (cycle)`); continue; }
         seen.add(node);
-        const first = words[at + 3]!, count = words[at + 7]!;
-        if (count === 0) {
-          if (first <= node) problems.push(`${label}: interior node ${node} has children at ${first} (not after it)`);
-          else stack.push(first, first + 1);
-        } else leaf(first, count);
+        // 宽节点：4 个孩子，空的盒子是反的（最小 x 大于最大 x）
+        const floats = new Float32Array(words.buffer, words.byteOffset + at * 4, NODE_WORDS);
+        for (let c = 0; c < 4; c++) {
+          if (floats[c]! > floats[12 + c]!) continue;
+          const child = words[at + 24 + c]!, count = words[at + 28 + c]!;
+          if (count > 0) leaf(child, count);
+          else if (child <= node) problems.push(`${label}: interior node ${node} has a child at ${child} (not after it)`);
+          else stack.push(child);
+        }
       }
     };
     const count = this.instanceCount;

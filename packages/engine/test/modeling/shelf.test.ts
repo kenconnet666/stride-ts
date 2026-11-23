@@ -98,6 +98,15 @@ describe('货架', () => {
     expect(front).toBeGreaterThan(island.depth + 0.05 + 0.02);
   });
 
+  test('冷柜门上的广告贴：每扇门多两条横幅（两个四边形）和两条边框（两个盒子），贴在玻璃外面；图集里有贴纸的底色', () => {
+    const fridge: ShelfFile = { ...island, type: 'fridge', sides: 1, length: 1.4, bay: 0.7 };
+    const plain = shelfModel(fridge, sources), stuck = shelfModel({ ...fridge, doorSticker: { color: '#5a2d91', title: 'A', slogan: 'B' } }, sources);
+    // 两扇门，每扇 2 个四边形（4 个顶点）加 2 个盒子（24 个顶点）
+    expect(stuck.vertices.length / 8 - plain.vertices.length / 8).toBe(2 * (2 * 4 + 2 * 24));
+    expect(stuck.colorSvg).toContain('fill="#5a2d91"');
+    expect(plain.colorSvg).not.toContain('#5a2d91');
+  });
+
   test('电子价签：每个价签多一个外壳（6 个面），屏比纸价签凸出来；图集里画了二维码的方块', () => {
     const paper = shelfModel(island, sources), electronic = shelfModel({ ...island, priceTags: 'electronic' }, sources);
     const tags = planShelf(island, products).tags.length;

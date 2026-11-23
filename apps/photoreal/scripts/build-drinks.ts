@@ -43,19 +43,20 @@ const drinks: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] =
 for (const { id, ...product } of drinks) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 const p = (id: string) => `Shop/Products/${id}`;
 // 单门冷柜：一扇门一台，下面 0.32 米是压缩机那一格（柜体色的前脸），五层
-const fridge = (name: string, doorColor: string, products: string[], seed: number) => write('shelf', `Shop/Shelves/${name}`, {
+const fridge = (name: string, doorColor: string, products: string[], seed: number, doorSticker?: object) => write('shelf', `Shop/Shelves/${name}`, {
   name, type: 'fridge', sides: 1, length: 0.68, height: 1.9, depth: 0.5, levels: [0.32, 0.62, 0.92, 1.22, 1.52], bay: 0.68, font: FONT,
-  doorColor, stripColor: doorColor, frameColor: '#e9ebec',
+  doorColor, stripColor: doorColor, frameColor: '#e9ebec', ...(doorSticker ? { doorSticker } : {}),
   stock: { products: products.map(p), variants: 3, facings: [3, 6], rows: 5, gaps: 0.04 }, seed,
 });
 const fridges = [
-  { name: 'FridgeWhite', color: '#eef0f2', products: ['Spring'] },
+  // 白冷柜门上贴着矿泉水的广告：紫色的一圈，上面"冰冻专区"，下面"天然矿泉水"
+  { name: 'FridgeWhite', color: '#eef0f2', products: ['Spring'], sticker: { color: '#5a2d91', title: '冰冻专区', slogan: '天然矿泉水', border: 0.045 } },
   { name: 'FridgeYellow', color: '#e8a91c', products: ['GreenTea', 'OrangeDrink', 'Tea'] },
   { name: 'FridgeRed1', color: '#b8231c', products: ['Cola', 'Juice', 'OrangeDrink'] },
   { name: 'FridgeRed2', color: '#b8231c', products: ['Cola', 'GreenTea'] },
   { name: 'FridgeRed3', color: '#b8231c', products: ['Juice', 'Cola'] },
 ];
-for (const [i, f] of fridges.entries()) await fridge(f.name, f.color, f.products, 110 + i);
+for (const [i, f] of fridges.entries()) await fridge(f.name, f.color, f.products, 110 + i, 'sticker' in f ? f.sticker : undefined);
 
 // 冷柜沿大厅的左墙排（正面朝 +X，这一排自己的 +X 是世界的 -Z）；自己坐标里的点 (x, y, z) 在世界的 (z - 5.6, y, -x - 4)
 const rowAt: Vec3 = [-5.6, 0, -4];
@@ -83,6 +84,8 @@ await write('scene', 'DrinkFridges', {
     entity(sid(3), 'Hall', [0, 0, 0], { model: { model: 'Shop/Models/Hall', materials: [] } }),
     ...fridges.map((f, i) => entity(sid(0x10 + i), f.name, world([-0.34 + i * 0.7, 0, 0]), { model: { model: `Shop/Shelves/${f.name}`, materials: [] } }, euler(90))),
     entity(sid(5), 'Ceiling', ceilingAt, { model: { model: 'Shop/Ceilings/Hall', materials: [] } }, euler(90)),
+    // 反射探针：冷柜的玻璃门映着大厅（地砖、对面的墙、顶上的灯管），盒子是大厅的墙（按盒子投影，近处的地砖对得上）
+    entity(sid(6), 'Reflections', [-3, 1.6, -4], { reflectionProbe: { size: [6, 3.3, 16], boxProjection: true, blendDistance: 0.5 } }),
     ...lights,
   ],
 });

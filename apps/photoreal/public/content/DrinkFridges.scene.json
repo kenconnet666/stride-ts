@@ -285,6 +285,38 @@
    }
   },
   {
+   "id": "0b1e0b1e-0003-4000-8000-000000000006",
+   "name": "Reflections",
+   "parent": null,
+   "position": [
+    -3,
+    1.6,
+    -4
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "reflectionProbe": {
+     "size": [
+      6,
+      3.3,
+      16
+     ],
+     "boxProjection": true,
+     "blendDistance": 0.5
+    }
+   }
+  },
+  {
    "id": "0b1e0b1e-0003-4000-8000-000000000040",
    "name": "Light 0",
    "parent": null,

@@ -56,7 +56,7 @@ await write('shelf', 'Shop/Shelves/Deli', deli);
 // 熟食柜靠后墙（z = -6.5），正面朝 +Z；机位站在柜前、1.5 米高（人站着往下看），斜着看中间那几碗
 const deliAt: Vec3 = [0, 0, -6.2];
 const eye: Vec3 = [0.45, 1.5, -5.35];
-const sid = (n: number) => `0b1e0b1e-0003-4000-8000-${n.toString(16).padStart(12, '0')}`;
+const sid = (n: number) => `0b1e0b1e-0004-4000-8000-${n.toString(16).padStart(12, '0')}`;
 const ceiling: CeilingFile = { name: 'Hall', size: [20, 14], height: 3.3, style: 'open', ducts: 2, trays: 2, pipes: 3, lights: { rows: 4, spacing: 2.2, length: 1.4, drop: 0.55 } };
 const ceilingAt: Vec3 = [0, 0, -4];
 const lights = ceilingLights(ceiling).map((light, i) => entity(sid(0x40 + i), `Light ${i}`, [ceilingAt[0] + light.center[2], light.center[1] - 0.015, ceilingAt[2] - light.center[0]], {

@@ -62,6 +62,12 @@ export interface ShelfFile {
   readonly doorColor?: string;
   /** 冷柜顶上灯箱的字（"冷藏饮料"），要有 font；没写时灯箱只发光不写字。 */
   readonly header?: string;
+  /**
+   * 冷柜门上的广告贴（贴在每扇门的玻璃外面）：门的下面三分之二贴一圈——上面一条横幅写 title（"冰冻专区"），两边各一条边框，
+   * 下面一条写 slogan（"天然矿泉水"），中间空着看得见里面的货。color 是贴纸的底色，textColor 是字的颜色（默认白），border 是两边
+   * 边框的宽（米，默认 0.05）；字要有 font。
+   */
+  readonly doorSticker?: ShelfDoorSticker;
   /** 价签：纸的（默认，白底或黄底红字）或电子价签（一个小外壳加一块墨水屏：黑字、角上的二维码，有的带红色的促销条）。 */
   readonly priceTags?: 'paper' | 'electronic';
   /**
@@ -72,4 +78,13 @@ export interface ShelfFile {
   /** 纸价签右边一块的颜色（sRGB 的 #rrggbb，超市自己的颜色）：写了时价签都是白底深灰字、右边这一块；没写是白底或黄底红字。 */
   readonly tagAccent?: string;
   readonly seed?: number;
+}
+
+/** 冷柜门上的广告贴（ShelfFile.doorSticker）。 */
+export interface ShelfDoorSticker {
+  readonly color: string;
+  readonly title?: string;
+  readonly slogan?: string;
+  readonly textColor?: string;
+  readonly border?: number;
 }

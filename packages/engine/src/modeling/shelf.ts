@@ -182,7 +182,7 @@ function checkShelf(file: ShelfFile, where: string): void {
  * 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳，熟食柜的黑柜体、
  * 白石英、金、保温灯的暖光，层板，透明挡条顶上折边（塑料折过的地方发白、很亮的一道反光），冷柜的门框和柜体（doorColor）、门把手。
  */
-const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11, RAIL_EDGE = 12, DOOR_BODY = 13, HANDLE = 14;
+const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11, RAIL_EDGE = 12, DOOR_BODY = 13, HANDLE = 14, LED = 15, STICKER = 16;
 /** 电子价签：外壳比屏大一圈（米）、凸出价签条多厚。 */
 const ESL_RIM = 0.004, ESL_DEPTH = 0.009;
 /** 冷柜：门在层板前面多远、门框多宽；顶上灯箱的高；冰柜的壁厚。 */
@@ -249,6 +249,10 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
       { color: '#e6ecee', roughness: 0.12, metalness: 0 },
       file.doorColor ? { color: file.doorColor, roughness: 0.35, metalness: 0.1 } : { color: '#2a2c2f', roughness: 0.35, metalness: 0.6 },
       { color: '#c9ccd0', roughness: 0.3, metalness: 0.85 },
+      // 冷柜门框里侧的 LED 灯带：一颗颗灯珠直接对着人，比层板下的灯条亮得多（照片里刺眼、发出光晕）
+      { color: '#f4f8ff', roughness: 0.5, metalness: 0, emissive: 120 },
+      // 门上广告贴的底色（两边的边框）
+      { color: file.doorSticker?.color ?? '#ffffff', roughness: 0.35, metalness: 0 },
     ],
     // 价签：几种价格；纸的三个里一个黄底，电子的是墨水屏
     cells: prices.map((price, k): AtlasCell => (electronic ? eslCell(price, k, tagFont, hash32(file.seed ?? 1, 2000 + k))
@@ -260,7 +264,7 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
       // 冷柜顶上的灯箱：蓝底白字，整块发光
       size: [file.length * 1000, (HEADER - 0.04) * 1000] as const, color: file.doorColor ?? '#1e64c8', roughness: 0.3, metalness: 0, emissive: 2,
       draw: ([x, y, w, h]: Cell) => (file.header && tagFont ? textPath(tagFont, file.header, x + w / 2, y + h / 2, w * 0.6, h * 0.62, '#ffffff') : undefined),
-    }] : []),
+    }, ...stickerCells(file, tagFont)] : []),
   });
   if (type === 'freezer') {
     freezerBody(batch, file);
@@ -410,10 +414,28 @@ function eslCell(price: string, k: number, font: TextFont | undefined, seed: num
   };
 }
 
+/** 门上广告贴的横幅、下面那条占门的玻璃多高（米），整圈贴纸的上沿在门的玻璃高的多少。 */
+const STICKER_TITLE = 0.11, STICKER_SLOGAN = 0.09, STICKER_TOP = 0.68;
+
+/** 一扇门的玻璃有多宽（米）。 */
+const doorWidth = (file: ShelfFile) => file.length / Math.max(1, Math.round(file.length / (file.bay ?? 0.75))) - MULLION;
+
+/** 门上广告贴的横幅、下面那条的两格（底色加字；图集里灯箱之后），没贴时没有。 */
+function stickerCells(file: ShelfFile, font: TextFont | undefined): AtlasCell[] {
+  const sticker = file.doorSticker;
+  if (!sticker) return [];
+  const width = doorWidth(file) * 1000, ink = sticker.textColor ?? '#ffffff';
+  const cell = (text: string | undefined, height: number): AtlasCell => ({
+    size: [width, height * 1000] as const, color: sticker.color, roughness: 0.35, metalness: 0,
+    draw: ([x, y, w, h]: Cell) => (text && font ? textPath(font, text, x + w / 2, y + h / 2, w * 0.86, h * 0.6, ink) : undefined),
+  });
+  return [cell(sticker.title, STICKER_TITLE), cell(sticker.slogan, STICKER_SLOGAN)];
+}
+
 /**
  * 冷柜的前面：每一扇门的玻璃、门之间的门框（doorColor，默认深色）和门框里侧竖着的灯带、门把手，门下面压缩机那一格的前脸，
- * 顶盖和顶上的灯箱（图集里 PRICES 之后那一格；写了 doorColor 时顶盖、灯箱也是这个颜色）。
- * zFar 是层板前沿。
+ * 顶盖和顶上的灯箱（图集里 PRICES 之后那一格；写了 doorColor 时顶盖、灯箱也是这个颜色），门上的广告贴（doorSticker：灯箱之后
+ * 的两格是横幅和下面那条，两边的边框是纯色）。zFar 是层板前沿。
  */
 function fridgeFront(batch: ProductBatch, file: ShelfFile, zFar: number, headerCell: number): void {
   const L = file.length / 2, H = file.height, bottom = file.levels[0]!;
@@ -423,11 +445,12 @@ function fridgeFront(batch: ProductBatch, file: ShelfFile, zFar: number, headerC
     const x = -L + (file.length * k) / doors;
     batch.box([x - MULLION / 2, bottom, z0 - 0.01], [x + MULLION / 2, H, z1], DOOR_BODY);
     // 灯带贴在门框里侧（最两头的只有一边）
-    if (k > 0) batch.box([x - MULLION / 2 - 0.012, bottom + 0.03, z0 - 0.03], [x - MULLION / 2, H - 0.03, z0 - 0.01], LIGHT);
-    if (k < doors) batch.box([x + MULLION / 2, bottom + 0.03, z0 - 0.03], [x + MULLION / 2 + 0.012, H - 0.03, z0 - 0.01], LIGHT);
+    if (k > 0) batch.box([x - MULLION / 2 - 0.02, bottom + 0.03, z0 - 0.03], [x - MULLION / 2, H - 0.03, z0 - 0.01], LED);
+    if (k < doors) batch.box([x + MULLION / 2, bottom + 0.03, z0 - 0.03], [x + MULLION / 2 + 0.02, H - 0.03, z0 - 0.01], LED);
     if (k < doors) {
       const right = -L + (file.length * (k + 1)) / doors - MULLION / 2;
       batch.glassBox([x + MULLION / 2, bottom, z0], [right, H, z0 + 0.008]);
+      if (file.doorSticker) doorSticker(batch, file.doorSticker, [x + MULLION / 2, right], [bottom, H], z0 + 0.0085, headerCell + 1);
       // 门把手：竖着一根，在门不开铰链的那边（相邻两扇对开）
       const hx = k % 2 === 0 ? right - 0.05 : x + MULLION / 2 + 0.05, hy = bottom + (H - bottom) * 0.45;
       batch.box([hx - 0.009, hy, z1 + 0.012], [hx + 0.009, hy + 0.45, z1 + 0.03], HANDLE);
@@ -444,6 +467,21 @@ function fridgeFront(batch: ProductBatch, file: ShelfFile, zFar: number, headerC
   batch.box([-L, H + 0.04, z1 - 0.2], [L, H + HEADER, z1], file.doorColor ? DOOR_BODY : FRAME);
   const z = z1 + 0.001, y0 = H + 0.06, y1 = H + HEADER - 0.02;
   batch.quad([[-L, y0, z], [L, y0, z], [L, y1, z], [-L, y1, z]], [0, 0, 1], headerCell);
+}
+
+/**
+ * 一扇门上的广告贴：贴在玻璃外面（z），门的下面 STICKER_TOP 那么高一圈——上面横幅（图集的 cell 格）、下面一条（cell + 1 格）、
+ * 两边纯色的边框。
+ */
+function doorSticker(batch: ProductBatch, sticker: NonNullable<ShelfFile['doorSticker']>, [x0, x1]: readonly [number, number], [bottom, top]: readonly [number, number], z: number, cell: number): void {
+  const inset = 0.012, border = sticker.border ?? 0.05;
+  const left = x0 + inset, right = x1 - inset, y0 = bottom + 0.04, y1 = bottom + (top - bottom) * STICKER_TOP;
+  const band = (y: number, height: number, slot: number) => batch.quad([[left, y, z], [right, y, z], [right, y + height, z], [left, y + height, z]], [0, 0, 1], slot);
+  band(y1 - STICKER_TITLE, STICKER_TITLE, cell);
+  band(y0, STICKER_SLOGAN, cell + 1);
+  // 两边的边框：贴纸就半毫米厚
+  batch.box([left, y0 + STICKER_SLOGAN, z - 0.0005], [left + border, y1 - STICKER_TITLE, z], STICKER);
+  batch.box([right - border, y0 + STICKER_SLOGAN, z - 0.0005], [right, y1 - STICKER_TITLE, z], STICKER);
 }
 
 /** 卧式冰柜：四壁和槽底（槽里白的），柜沿深色，沿下一圈灯带，上面两块错开的玻璃推拉盖。 */

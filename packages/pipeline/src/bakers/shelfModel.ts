@@ -15,7 +15,7 @@ export async function bakeShelf(tools: StrideTools, file: ShelfFile, path: strin
   const products = await readProducts(file.stock?.products ?? [], readContent, where);
   // 每个字体要排的字：商品各个变体的品牌名、品类、角标，价签的数字
   const variants = file.stock?.variants ?? 3;
-  const texts = productFontTexts([...products.values()].map((product) => [product, variants] as const), [[file.font, `0123456789.${file.header ?? ''}`]]);
+  const texts = productFontTexts([...products.values()].map((product) => [product, variants] as const), [[file.font, `0123456789.${file.header ?? ''}${file.doorSticker?.title ?? ''}${file.doorSticker?.slogan ?? ''}`]]);
   const fonts = await loadFonts(texts, readContent, where);
   return mergedFiles(tools, file.name, path, shelfModel(file, { products, font: (font) => fonts.get(font), food: await settleFood(products) }, where));
 }

@@ -17,6 +17,12 @@
  "doorColor": "#eef0f2",
  "stripColor": "#eef0f2",
  "frameColor": "#e9ebec",
+ "doorSticker": {
+  "color": "#5a2d91",
+  "title": "冰冻专区",
+  "slogan": "天然矿泉水",
+  "border": 0.045
+ },
  "stock": {
   "products": [
    "Shop/Products/Spring"

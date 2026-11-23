@@ -79,6 +79,17 @@ export const SHELF_FIELDS = fields<ShelfFile>({
   type: { type: oneOf('gondola', 'fridge', 'freezer', 'pegboard', 'stack', 'deli'), optional: true, default: 'gondola', description: 'gondola: open shelves; fridge: one face behind glass doors with light strips and a lit header; freezer: a chest with goods lying in the well under sliding glass lids (depth is the whole width, only the first level is used: the well floor); pegboard: goods hanging on rows of hooks (levels are the hook rows, depth the hook length); stack: a floor display stacked in tapering blocks on a platform (only the first level is used: the platform top; depth is the stack depth; centered); deli: a black counter with a white quartz front ledge and rows of bowls and plates in a sunken black tray, gold heat lamps every bay above (only the first level is used: the tray top; height is the bottom of the lamp shades; depth is the whole counter)' },
   header: { type: string, optional: true, description: 'text on the lit header of a fridge (needs the font)' },
   doorColor: { type: string, optional: true, description: 'fridge: color of the door frames, the front below the doors, the top and the header box (sRGB #rrggbb; branded drink fridges are yellow, red...); dark frames and a blue header when missing' },
+  doorSticker: {
+    type: object(fields<NonNullable<ShelfFile['doorSticker']>>({
+      color: { type: string, description: 'sticker color (sRGB #rrggbb)' },
+      title: { type: string, optional: true, description: 'text on the banner at the top of the sticker ("frozen zone"); needs font' },
+      slogan: { type: string, optional: true, description: 'text on the strip at the bottom of the sticker; needs font' },
+      textColor: { type: string, optional: true, default: '#ffffff', description: 'color of the sticker text (sRGB #rrggbb)' },
+      border: { type: number({ min: 0, step: 0.005, unit: 'm' }), optional: true, default: 0.05, description: 'width of the side borders' },
+    })),
+    optional: true,
+    description: 'fridge: an advertising sticker on the outside of every door glass, around the lower two thirds: a banner with a title, side borders and a strip with a slogan, the middle left clear',
+  },
   tagHolder: { type: oneOf('strip', 'rail'), optional: true, default: 'strip', description: 'where the tags sit: on a strip below the board front (strip) or slid behind a clear plastic rail standing on the board front, leaning back a little (rail; no strip under the board)' },
   tagAccent: { type: string, optional: true, description: 'color of a block on the right of paper tags (sRGB #rrggbb, the store color): all tags white with dark grey prices then; white or yellow with red prices when missing' },
   priceTags: { type: oneOf('paper', 'electronic'), optional: true, default: 'paper', description: 'paper tags (white or yellow, red price) or electronic shelf labels (a small housing with an e-ink screen, black price and a QR code, some with a red promo bar)' },

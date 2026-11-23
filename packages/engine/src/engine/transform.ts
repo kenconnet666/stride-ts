@@ -66,7 +66,9 @@ export type TransformView = DataValues<TransformShape> & {
 /** 一个变换存储在 TS 这边的记录：槽位属于哪个实体（场景的根不属于实体）、每个槽位有哪些子槽位。 */
 interface TransformState {
   readonly store: TransformStore;
-  readonly data: readonly Column[];
+  /** 位置、旋转、缩放三列（ECS 当 Transform 组件的数据用）；存储增长以后列换了新的视图，generation 对不上时重取。 */
+  data: readonly Column[];
+  generation: number;
   readonly owner: (EntityId | undefined)[];
   readonly children: (Set<number> | undefined)[];
 }
@@ -78,8 +80,12 @@ function stateOf(manager: EntityManager): TransformState {
   if (!store) throw new Error('Transform needs the native transform store: create entities with Transform after Game.run has loaded the native module');
   let state = states.get(store);
   if (!state) {
-    state = { store, data: [store.position, store.rotation, store.scale], owner: [], children: [] };
+    state = { store, data: [store.position, store.rotation, store.scale], generation: store.generation, owner: [], children: [] };
     states.set(store, state);
+  }
+  if (state.generation !== store.generation) {
+    state.data = [store.position, store.rotation, store.scale];
+    state.generation = store.generation;
   }
   return state;
 }

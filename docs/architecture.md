@@ -33,7 +33,7 @@ stride-native（C++，核心 wasm 模块加按需加载的侧模块和第三方�
 - stride-native 的变换存储 `sn_transforms_*`：本地位置、旋转、缩放、父槽位、列主序世界矩阵各一列，槽位从 1 开始（0 表示空，父槽位为 0 就是根），列在创建时一次分配好。分配、释放成批进行；释放时检查子节点，挂接时检查环。层级变了才按深度计数排序重排计算顺序，平时一遍顺序扫描，世界矩阵用 Jolt 的 `Mat44`（SIMD）。Chrome 里 1 万个变换（每 10 个一条 9 层的链）每次更新 0.106 ms。
 - 物理世界创建时可以绑定变换存储，`sn_box` 带一个变换槽位：物体从槽位当前的世界位姿出发，动态物体每步结束把位姿写回槽位的本地位置和旋转，有父节点时换算到父节点空间。运动学物体从数组读位姿还没做（现在只有静态和动态）。
 - 引擎里是数据组件 `Transform`（`packages/engine/src/engine/transform.ts`）：表里只存一列槽位，值按槽位存在原生列里。组件类型多了一个 `external` 存取方式（以后刚体也用它），写入、默认值、校验、视图都复用普通数据组件的代码：`schema.writeRow` 直接以槽位为行号写进原生列。系统里写 `transform.position[transform.slot[i] * 3 + 1]`；视图另有 `world`、`parent`、`children`。销毁实体时子实体跟着销毁（同 Stride 把实体移出场景）；只去掉 `Transform` 时如果还有子实体就报错。
-- `Game` 在加载原生模块后创建变换存储（`maxTransforms`，默认 65536 个槽位），每帧在 `update` 之后、`draw` 之前调用一次 `transforms.update()`，所以 `update` 里读到的世界矩阵是上一帧的。和 Stride 不同，实体不会自动带 `Transform`：只有数据的实体（粒子之类）用不着。
+- `Game` 在加载原生模块后创建变换存储（`initialTransforms`，一开始 16384 个槽位，不够时自动翻倍增长、没有上限：原生那边各列换新内存，`TransformStore.generation` 加 1，缓存了列的地方按它重取），每帧在 `update` 之后、`draw` 之前调用一次 `transforms.update()`，所以 `update` 里读到的世界矩阵是上一帧的。和 Stride 不同，实体不会自动带 `Transform`：只有数据的实体（粒子之类）用不着。
 
 ## 渲染器：按 Stride 的结构
 

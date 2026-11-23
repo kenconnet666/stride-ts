@@ -73,8 +73,8 @@ export interface GameOptions {
    * 贴图时要有它）、navigation（Recast/Detour），也可以是第三方插件。没列出的不会下载，构建时也不会输出。
    */
   nativeFeatures?: readonly NativeFeature[];
-  /** 变换存储的槽位数，即最多有多少个带 Transform 的实体；默认 65536（每个约 108 字节）。 */
-  maxTransforms?: number;
+  /** 变换存储一开始的槽位数（带 Transform 的实体数）；不够时自动翻倍增长，没有上限（到 2^31 - 2）。默认 16384。 */
+  initialTransforms?: number;
   /** 物理仿真最多的物体数（nativeFeatures 里有 physics 时），默认 4096。 */
   maxBodies?: number;
   /**
@@ -100,7 +100,7 @@ export interface GameOptions {
 const MAX_ELAPSED = 0.25;
 /** GameOptions.stats 隔多少秒（游戏时间）更新一次。 */
 const STATS_INTERVAL = 0.25;
-const DEFAULT_MAX_TRANSFORMS = 65536;
+const DEFAULT_INITIAL_TRANSFORMS = 16384;
 const DEFAULT_MAX_BODIES = 4096;
 /** 帧时间的统计量取最近这么多帧的平均。 */
 const METRIC_FRAMES = 60;
@@ -326,7 +326,7 @@ export class Game {
       });
       this.startup.native = performance.now();
       reportLoading('content');
-      this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
+      this.transforms = this.native.createTransforms(options.initialTransforms ?? DEFAULT_INITIAL_TRANSFORMS);
       if (this.native.hasFeature('physics')) {
         this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
         this.buoyancy.attach(this.simulation);

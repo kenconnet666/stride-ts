@@ -39,6 +39,25 @@ describe('Transform', () => {
     expect(transform.world[0]).toBeCloseTo(2);
   });
 
+  test('存储不够时自动增长：已有实体的位姿、层级不变，系统和视图读到新的列', () => {
+    const game = createGame(4);
+    const first = game.entities.create({ components: [Transform.with({ position: [1, 2, 3] })] });
+    const child = game.entities.create({ components: [Transform.with({ position: [0, 1, 0] })] });
+    child.require(Transform).parent = first;
+    const before = game.transforms.generation;
+    const many = Array.from({ length: 300 }, (_, i) => game.entities.create({ components: [Transform.with({ position: [i, 0, 0] })] }));
+    expect(game.transforms.generation).toBeGreaterThan(before);
+    expect(game.transforms.capacity).toBeGreaterThanOrEqual(300);
+    game.transforms.update();
+    near(translation(first), [1, 2, 3]);
+    near(translation(child), [1, 3, 3]);
+    near(translation(many[299]!), [299, 0, 0]);
+    // 增长以后写 position 视图，原生那边读到
+    many[7]!.require(Transform).position.y = 9;
+    game.transforms.update();
+    near(translation(many[7]!), [7, 9, 0]);
+  });
+
   test('父子层级：世界矩阵按父节点组合，子实体列表、环和去掉组件都有检查', () => {
     const game = createGame();
     const s = Math.SQRT1_2;
@@ -101,9 +120,10 @@ describe('Transform', () => {
     c!.require(Transform).parent = b;
     a!.destroy();
     expect([a, b, c].map((e) => e!.alive)).toEqual([false, false, false]);
-    // 3 个槽位都回收了：再建 4 个正好用满
-    for (let i = 0; i < 4; i++) game.entities.create({ components: [Transform] });
-    expect(() => game.entities.create({ components: [Transform] })).toThrow('capacity 4 reached');
+    // 3 个槽位都回收了：再建 3 个用的是回收的槽位，存储没有增长
+    const generation = game.transforms.generation;
+    for (let i = 0; i < 3; i++) game.entities.create({ components: [Transform] });
+    expect(game.transforms.generation).toBe(generation);
   });
 
   test('系统按槽位读写原生列；实体搬表后槽位和取值不变', () => {

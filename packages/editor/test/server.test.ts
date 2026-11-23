@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import zlib from 'node:zlib';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -501,6 +501,17 @@ describe('关卡白盒：存下就烘成同名的模型', () => {
     expect(model.meshes.map((mesh) => mesh.material)).toEqual([0, 1]);
     expect(backend.database.get('brush', 'Game/Level/Room')!.references).toEqual([{ kind: 'material', path: 'Game/Materials/Grid' }]);
     expect(backend.database.get('model', 'Game/Level/Room')).toBeDefined();
+  });
+
+  test('存一样的内容：不重写源文件、不重烘模型（搭场景的脚本每次全写一遍）；内容变了照常写、烘', async () => {
+    await backend.saveAsset('brush', 'Game/Level/Same', room, { create: true });
+    const source = path.join(contentDir, 'Game/Level/Same.brush.jsonc'), model = path.join(contentDir, 'Game/Level/Same.model');
+    const before = [(await stat(source)).mtimeMs, (await stat(model)).mtimeMs];
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await backend.saveAsset('brush', 'Game/Level/Same', structuredClone(room));
+    expect([(await stat(source)).mtimeMs, (await stat(model)).mtimeMs]).toEqual(before);
+    await backend.saveAsset('brush', 'Game/Level/Same', { ...room, uvScale: 2 });
+    expect((await stat(model)).mtimeMs).toBeGreaterThan(before[1]!);
   });
 
   test('笔刷不对时报 400、什么也不写；挪白盒时模型跟着挪', async () => {

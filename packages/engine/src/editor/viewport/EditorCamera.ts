@@ -139,6 +139,9 @@ export class EditorCameraController extends SyncScript.props({
     // mouseDelta 按画布的宽、高各自归一：换成"画布高度"的倍数
     const dx = input.mouseDelta[0] * aspect, dy = input.mouseDelta[1];
     const alt = input.isKeyDown('AltLeft') || input.isKeyDown('AltRight');
+    // 没有输入时不写回（别处改了相机的位姿——调试命令、过场——不被盖掉；没变就不做）
+    const moving = input.isMouseButtonDown('right') || input.isMouseButtonDown('middle') || (alt && input.isMouseButtonDown('left')) || input.mouseWheelDelta !== 0;
+    if (!moving) return;
     if (input.isMouseButtonDown('right')) {
       state.look(-dx * this.rotateSpeed, -dy * this.rotateSpeed);
       const speed = this.flySpeed * (input.isKeyDown('ShiftLeft') || input.isKeyDown('ShiftRight') ? this.boost : 1) * time.elapsed;

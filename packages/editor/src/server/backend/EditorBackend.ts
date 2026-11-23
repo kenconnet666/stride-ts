@@ -159,6 +159,17 @@ export class EditorBackend {
     return readFile(this.#bakeCacheFile, 'utf8').then((text) => JSON.parse(text) as Record<string, string>, () => ({}));
   }
 
+  /** 磁盘上这个资源的内容和 content 一样，会烘的还要按同一版生成代码烘过这份内容、生成的模型在（共用的哈希表里查）。 */
+  async #unchanged(kind: AssetKind, assetPath: string, content: unknown): Promise<boolean> {
+    if (!this.database.get(kind, assetPath)) return false;
+    const current = await this.#readJson(kind, assetPath).catch(() => undefined);
+    if (current === undefined || contentHash(current) !== contentHash(content)) return false;
+    if (!isBakedKind(kind)) return true;
+    const key = `${kind}:${assetPath}`, hash = this.#bakeHash(content);
+    const known = this.#bakeHashes[key] ?? (await this.#readSharedBakeHashes())[key];
+    return known === hash && this.#generatedExists(kind, assetPath);
+  }
+
   /** 别的进程已经烘过这份内容：共用的表里是这个哈希、生成的模型在。 */
   async #bakedElsewhere(key: string, kind: AssetKind, assetPath: string, content: unknown): Promise<boolean> {
     const shared = await this.#readSharedBakeHashes();
@@ -345,6 +356,9 @@ export class EditorBackend {
     }
     return this.#enqueue(async () => {
       if (create && this.database.get(kind, assetPath)) throw new HttpError(409, `${kind} ${assetPath} already exists`);
+      // 内容和磁盘上的一样、（会烘的）用同一版生成代码烘过、生成的模型在：不写、不烘。搭场景的脚本每次把所有资源写一遍，没变的
+      // 不该重烘几十个货架，也不该改文件、让开着的页面热重载
+      if (!create && await this.#unchanged(kind, assetPath, content)) return this.database.get(kind, assetPath)!;
       // 白盒、SDF、导入设置先烘：形状、设置不对时报错、什么也不写（不留一个烘不出模型的源文件）
       const baked = isBakedKind(kind) ? await this.#bake(kind, assetPath, content).catch((error: unknown) => {
         // 烘不出来时先照字段描述查：缺了字段、种类不对时报那个（烘焙器碰到缺的字段只会报 undefined 之类的）

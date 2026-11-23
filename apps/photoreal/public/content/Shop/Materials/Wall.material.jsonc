@@ -1,11 +1,290 @@
 {
  "name": "Wall",
  "baseColor": [
-  0.62,
-  0.6,
-  0.56,
+  1,
+  1,
+  1,
   1
  ],
  "metalness": 0,
- "roughness": 0.7
+ "roughness": 0.7,
+ "graph": {
+  "nodes": [
+   {
+    "id": "uv",
+    "type": "uv",
+    "params": {},
+    "inputs": {}
+   },
+   {
+    "id": "paint",
+    "type": "color",
+    "params": {
+     "color": [
+      0.62,
+      0.6,
+      0.56
+     ]
+    },
+    "inputs": {}
+   },
+   {
+    "id": "stainNoise",
+    "type": "noise",
+    "params": {
+     "scale": 1.2,
+     "octaves": 5,
+     "seed": 11
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "stain",
+    "type": "levels",
+    "params": {
+     "inMin": 0.5,
+     "inMax": 0.9,
+     "outMax": 0.35
+    },
+    "inputs": {
+     "in": {
+      "node": "stainNoise"
+     }
+    }
+   },
+   {
+    "id": "stainColor",
+    "type": "color",
+    "params": {
+     "color": [
+      0.54,
+      0.52,
+      0.48
+     ]
+    },
+    "inputs": {}
+   },
+   {
+    "id": "stained",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "paint"
+     },
+     "b": {
+      "node": "stainColor"
+     },
+     "t": {
+      "node": "stain"
+     }
+    }
+   },
+   {
+    "id": "base",
+    "type": "heightMask",
+    "params": {
+     "minHeight": -1,
+     "maxHeight": 0.12,
+     "blend": 0.14
+    },
+    "inputs": {}
+   },
+   {
+    "id": "baseNoise",
+    "type": "noise",
+    "params": {
+     "scale": 6,
+     "octaves": 3,
+     "seed": 5
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "baseGrime",
+    "type": "multiply",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "base"
+     },
+     "b": {
+      "node": "baseNoise"
+     }
+    }
+   },
+   {
+    "id": "grimeColor",
+    "type": "color",
+    "params": {
+     "color": [
+      0.42,
+      0.4,
+      0.37
+     ]
+    },
+    "inputs": {}
+   },
+   {
+    "id": "grimy",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "stained"
+     },
+     "b": {
+      "node": "grimeColor"
+     },
+     "t": {
+      "node": "baseGrime"
+     }
+    }
+   },
+   {
+    "id": "scuffUv",
+    "type": "uvTransform",
+    "params": {
+     "scale": [
+      0.25,
+      10
+     ]
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "scuffNoise",
+    "type": "noise",
+    "params": {
+     "scale": 5,
+     "octaves": 2,
+     "seed": 9
+    },
+    "inputs": {
+     "uv": {
+      "node": "scuffUv"
+     }
+    }
+   },
+   {
+    "id": "scuffLine",
+    "type": "levels",
+    "params": {
+     "inMin": 0.76,
+     "inMax": 0.8,
+     "outMax": 0.55
+    },
+    "inputs": {
+     "in": {
+      "node": "scuffNoise"
+     }
+    }
+   },
+   {
+    "id": "bumpHeight",
+    "type": "heightMask",
+    "params": {
+     "minHeight": 0.15,
+     "maxHeight": 0.9,
+     "blend": 0.1
+    },
+    "inputs": {}
+   },
+   {
+    "id": "scuff",
+    "type": "multiply",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "scuffLine"
+     },
+     "b": {
+      "node": "bumpHeight"
+     }
+    }
+   },
+   {
+    "id": "rubber",
+    "type": "color",
+    "params": {
+     "color": [
+      0.2,
+      0.2,
+      0.2
+     ]
+    },
+    "inputs": {}
+   },
+   {
+    "id": "color",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "grimy"
+     },
+     "b": {
+      "node": "rubber"
+     },
+     "t": {
+      "node": "scuff"
+     }
+    }
+   },
+   {
+    "id": "roughBase",
+    "type": "value",
+    "params": {
+     "value": 0.7
+    },
+    "inputs": {}
+   },
+   {
+    "id": "roughGrime",
+    "type": "levels",
+    "params": {
+     "outMin": 0,
+     "outMax": 0.15
+    },
+    "inputs": {
+     "in": {
+      "node": "baseGrime"
+     }
+    }
+   },
+   {
+    "id": "rough",
+    "type": "add",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "roughBase"
+     },
+     "b": {
+      "node": "roughGrime"
+     }
+    }
+   }
+  ],
+  "outputs": {
+   "baseColor": {
+    "node": "color"
+   },
+   "roughness": {
+    "node": "rough"
+   }
+  }
+ }
 }

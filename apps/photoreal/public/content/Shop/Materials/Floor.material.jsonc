@@ -115,7 +115,7 @@
     "inputs": {}
    },
    {
-    "id": "color",
+    "id": "clean",
     "type": "mix",
     "params": {},
     "inputs": {
@@ -128,6 +128,164 @@
      "t": {
       "node": "tiles",
       "output": "mask"
+     }
+    }
+   },
+   {
+    "id": "dirtUv",
+    "type": "worldUv",
+    "params": {
+     "scale": 0.35
+    },
+    "inputs": {}
+   },
+   {
+    "id": "blotch",
+    "type": "noise",
+    "params": {
+     "scale": 3,
+     "octaves": 5,
+     "seed": 7
+    },
+    "inputs": {
+     "uv": {
+      "node": "dirtUv"
+     }
+    }
+   },
+   {
+    "id": "blotches",
+    "type": "levels",
+    "params": {
+     "inMin": 0.45,
+     "inMax": 0.68,
+     "outMax": 0.45
+    },
+    "inputs": {
+     "in": {
+      "node": "blotch"
+     }
+    }
+   },
+   {
+    "id": "corners",
+    "type": "occlusionMask",
+    "params": {
+     "from": 0.15,
+     "to": 0.6
+    },
+    "inputs": {}
+   },
+   {
+    "id": "dirt",
+    "type": "add",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "blotches"
+     },
+     "b": {
+      "node": "corners"
+     }
+    }
+   },
+   {
+    "id": "grime",
+    "type": "color",
+    "params": {
+     "color": [
+      0.5,
+      0.48,
+      0.44
+     ]
+    },
+    "inputs": {}
+   },
+   {
+    "id": "dirty",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "clean"
+     },
+     "b": {
+      "node": "grime"
+     },
+     "t": {
+      "node": "dirt"
+     }
+    }
+   },
+   {
+    "id": "scratchUv",
+    "type": "uvTransform",
+    "params": {
+     "scale": [
+      40,
+      1.2
+     ],
+     "rotation": 8
+    },
+    "inputs": {
+     "uv": {
+      "node": "uv"
+     }
+    }
+   },
+   {
+    "id": "scratchNoise",
+    "type": "noise",
+    "params": {
+     "scale": 4,
+     "octaves": 2,
+     "seed": 3
+    },
+    "inputs": {
+     "uv": {
+      "node": "scratchUv"
+     }
+    }
+   },
+   {
+    "id": "scratch",
+    "type": "levels",
+    "params": {
+     "inMin": 0.67,
+     "inMax": 0.69
+    },
+    "inputs": {
+     "in": {
+      "node": "scratchNoise"
+     }
+    }
+   },
+   {
+    "id": "bright",
+    "type": "color",
+    "params": {
+     "color": [
+      0.82,
+      0.81,
+      0.79
+     ]
+    },
+    "inputs": {}
+   },
+   {
+    "id": "color",
+    "type": "mix",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "dirty"
+     },
+     "b": {
+      "node": "bright"
+     },
+     "t": {
+      "node": "scratch",
+      "output": "out"
      }
     }
    },
@@ -163,7 +321,7 @@
     }
    },
    {
-    "id": "tileRough",
+    "id": "worn",
     "type": "add",
     "params": {},
     "inputs": {
@@ -172,6 +330,56 @@
      },
      "b": {
       "node": "scuff"
+     }
+    }
+   },
+   {
+    "id": "dirtRough",
+    "type": "levels",
+    "params": {
+     "outMax": 0.18
+    },
+    "inputs": {
+     "in": {
+      "node": "dirt"
+     }
+    }
+   },
+   {
+    "id": "scratchRough",
+    "type": "levels",
+    "params": {
+     "outMax": 0.15
+    },
+    "inputs": {
+     "in": {
+      "node": "scratch"
+     }
+    }
+   },
+   {
+    "id": "roughExtra",
+    "type": "add",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "dirtRough"
+     },
+     "b": {
+      "node": "scratchRough"
+     }
+    }
+   },
+   {
+    "id": "tileRough",
+    "type": "add",
+    "params": {},
+    "inputs": {
+     "a": {
+      "node": "worn"
+     },
+     "b": {
+      "node": "roughExtra"
      }
     }
    },

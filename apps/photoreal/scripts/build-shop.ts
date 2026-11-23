@@ -167,11 +167,29 @@ await write('material', 'Shop/Materials/Floor', {
       node('speckle', 'colorRamp', { from: [0.96, 0.96, 0.96], to: [1.03, 1.03, 1.03] }, { t: 'wear' }),
       node('surface', 'multiply', {}, { a: 'tone', b: 'speckle' }),
       node('joint', 'color', { color: [0.5, 0.5, 0.49] }),
-      node('color', 'mix', {}, { a: 'joint', b: 'surface', t: ['tiles', 'mask'] }),
+      node('clean', 'mix', {}, { a: 'joint', b: 'surface', t: ['tiles', 'mask'] }),
+      // 脏：一米多一块的灰印（低频噪声），货架脚下、墙角这些被遮住的地方更脏（屏幕空间遮蔽）
+      node('dirtUv', 'worldUv', { scale: 0.35 }),
+      node('blotch', 'noise', { scale: 3, octaves: 5, seed: 7 }, { uv: 'dirtUv' }),
+      node('blotches', 'levels', { inMin: 0.45, inMax: 0.68, outMax: 0.45 }, { in: 'blotch' }),
+      node('corners', 'occlusionMask', { from: 0.15, to: 0.6 }),
+      node('dirt', 'add', {}, { a: 'blotches', b: 'corners' }),
+      node('grime', 'color', { color: [0.5, 0.48, 0.44] }),
+      node('dirty', 'mix', {}, { a: 'clean', b: 'grime', t: 'dirt' }),
+      // 划痕：顺着过道拉长的细线（拉长的噪声取很窄的一段），稍亮、糙
+      node('scratchUv', 'uvTransform', { scale: [40, 1.2], rotation: 8 }, { uv: 'uv' }),
+      node('scratchNoise', 'noise', { scale: 4, octaves: 2, seed: 3 }, { uv: 'scratchUv' }),
+      node('scratch', 'levels', { inMin: 0.67, inMax: 0.69 }, { in: 'scratchNoise' }),
+      node('bright', 'color', { color: [0.82, 0.81, 0.79] }),
+      node('color', 'mix', {}, { a: 'dirty', b: 'bright', t: ['scratch', 'out'] }),
       // 光滑：瓷砖 0.1～0.2（每块不同，磨痕处糙一点），缝 0.6
       node('gloss', 'levels', { inMin: 0, inMax: 1, outMin: 0.1, outMax: 0.2 }, { in: ['tiles', 'brick'] }),
       node('scuff', 'levels', { inMin: 0.4, inMax: 0.9, outMin: 0, outMax: 0.08 }, { in: 'wear' }),
-      node('tileRough', 'add', {}, { a: 'gloss', b: 'scuff' }),
+      node('worn', 'add', {}, { a: 'gloss', b: 'scuff' }),
+      node('dirtRough', 'levels', { outMax: 0.18 }, { in: 'dirt' }),
+      node('scratchRough', 'levels', { outMax: 0.15 }, { in: 'scratch' }),
+      node('roughExtra', 'add', {}, { a: 'dirtRough', b: 'scratchRough' }),
+      node('tileRough', 'add', {}, { a: 'worn', b: 'roughExtra' }),
       node('jointRough', 'value', { value: 0.6 }),
       node('rough', 'mix', {}, { a: 'jointRough', b: 'tileRough', t: ['tiles', 'mask'] }),
       node('normal', 'normalFromHeight', { strength: 0.6 }, { height: ['tiles', 'mask'], uv: 'uv' }),
@@ -179,7 +197,36 @@ await write('material', 'Shop/Materials/Floor', {
     outputs: { baseColor: { node: 'color' }, roughness: { node: 'rough' }, normal: { node: 'normal' } },
   },
 });
-await write('material', 'Shop/Materials/Wall', { name: 'Wall', baseColor: [0.62, 0.6, 0.56, 1], metalness: 0, roughness: 0.7 });
+// 墙：大片淡淡的水渍，墙根一截脏，推车、拖把碰到的高度（0.15～0.9 米）横着几道黑色的擦痕；UV 是白盒的自动 UV（一米一个周期）
+await write('material', 'Shop/Materials/Wall', {
+  name: 'Wall', baseColor: [1, 1, 1, 1], metalness: 0, roughness: 0.7,
+  graph: {
+    nodes: [
+      node('uv', 'uv'),
+      node('paint', 'color', { color: [0.62, 0.6, 0.56] }),
+      node('stainNoise', 'noise', { scale: 1.2, octaves: 5, seed: 11 }, { uv: 'uv' }),
+      node('stain', 'levels', { inMin: 0.5, inMax: 0.9, outMax: 0.35 }, { in: 'stainNoise' }),
+      node('stainColor', 'color', { color: [0.54, 0.52, 0.48] }),
+      node('stained', 'mix', {}, { a: 'paint', b: 'stainColor', t: 'stain' }),
+      node('base', 'heightMask', { minHeight: -1, maxHeight: 0.12, blend: 0.14 }),
+      node('baseNoise', 'noise', { scale: 6, octaves: 3, seed: 5 }, { uv: 'uv' }),
+      node('baseGrime', 'multiply', {}, { a: 'base', b: 'baseNoise' }),
+      node('grimeColor', 'color', { color: [0.42, 0.4, 0.37] }),
+      node('grimy', 'mix', {}, { a: 'stained', b: 'grimeColor', t: 'baseGrime' }),
+      node('scuffUv', 'uvTransform', { scale: [0.25, 10] }, { uv: 'uv' }),
+      node('scuffNoise', 'noise', { scale: 5, octaves: 2, seed: 9 }, { uv: 'scuffUv' }),
+      node('scuffLine', 'levels', { inMin: 0.76, inMax: 0.8, outMax: 0.55 }, { in: 'scuffNoise' }),
+      node('bumpHeight', 'heightMask', { minHeight: 0.15, maxHeight: 0.9, blend: 0.1 }),
+      node('scuff', 'multiply', {}, { a: 'scuffLine', b: 'bumpHeight' }),
+      node('rubber', 'color', { color: [0.2, 0.2, 0.2] }),
+      node('color', 'mix', {}, { a: 'grimy', b: 'rubber', t: 'scuff' }),
+      node('roughBase', 'value', { value: 0.7 }),
+      node('roughGrime', 'levels', { outMin: 0, outMax: 0.15 }, { in: 'baseGrime' }),
+      node('rough', 'add', {}, { a: 'roughBase', b: 'roughGrime' }),
+    ],
+    outputs: { baseColor: { node: 'color' }, roughness: { node: 'rough' } },
+  },
+});
 await write('brush', 'Shop/Models/Hall', {
   name: 'Hall', materials: ['Shop/Materials/Floor', 'Shop/Materials/Wall'], uvScale: 1,
   brushes: [

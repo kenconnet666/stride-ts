@@ -13,9 +13,9 @@
  "motif": "drop",
  "badge": "1.8L",
  "pattern": "band",
- "transmission": 0.9,
+ "transmission": 0.75,
  "colors": {
-  "background": "#d9b04c",
+  "background": "#e6a82e",
   "accent": "#d7262b",
   "cap": "#d7262b"
  }

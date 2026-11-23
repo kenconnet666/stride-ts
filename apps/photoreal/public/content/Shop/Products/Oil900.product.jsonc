@@ -13,9 +13,9 @@
  "motif": "sesame",
  "badge": "900ml",
  "pattern": "band",
- "transmission": 0.9,
+ "transmission": 0.75,
  "colors": {
-  "background": "#8a4a1a",
+  "background": "#8a3c10",
   "accent": "#2f9e44",
   "cap": "#f4f2ec"
  }

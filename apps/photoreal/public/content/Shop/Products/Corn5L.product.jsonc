@@ -13,9 +13,9 @@
  "motif": "corn",
  "badge": "5L",
  "pattern": "band",
- "transmission": 0.9,
+ "transmission": 0.75,
  "colors": {
-  "background": "#e4c45a",
+  "background": "#f0b830",
   "accent": "#1e64c8",
   "cap": "#f6c40f"
  }

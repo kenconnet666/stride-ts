@@ -434,11 +434,9 @@ export function productLabelSvg(input: ProductFile, labelSize: readonly [number,
 }
 
 /** 标签里的图形（不带外面的 svg 标签，坐标同 productLabelSvg）：货架把它们嵌进图集的一格。 */
-export function productLabelShapes(input: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0, body?: string): string {
+export function productLabelShapes(input: ProductFile, labelSize: readonly [number, number], font: TextFont | undefined, variant = 0): string {
   const file = PRODUCT.parse(input, input.name);
-  const chosen = productDesign(file, variant);
-  // body：换掉瓶身的颜色（配色照旧按原来的底色挑），透光商品不透明地画的那一格用
-  const design = body ? { ...chosen, colors: { ...chosen.colors, background: body } } : chosen;
+  const design = productDesign(file, variant);
   const [W, H] = labelSize;
   const background = `<rect width="${svgNumber(W)}" height="${svgNumber(H)}" fill="${design.colors.background}"/>`;
   if (isWare(file.shape)) return wareSkin(file, labelSize, design.colors.background, design.colors.accent, design.pattern === 'floral', variant);

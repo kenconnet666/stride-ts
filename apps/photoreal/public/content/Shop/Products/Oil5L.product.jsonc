@@ -13,9 +13,9 @@
  "motif": "sunflower",
  "badge": "5L",
  "pattern": "band",
- "transmission": 0.9,
+ "transmission": 0.75,
  "colors": {
-  "background": "#dcb54e",
+  "background": "#e8a52c",
   "accent": "#d7262b",
   "cap": "#d7262b"
  }

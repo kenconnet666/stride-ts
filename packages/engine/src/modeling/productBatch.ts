@@ -2,7 +2,7 @@
  * 把一批摆好的商品（连同货架、筐这些架子）合成一个网格、一张标签图集（货架、堆放共用）：每个用到的商品变体在图集里一格（标签的
  * 图形照原样嵌进去，按毫米的大小一起缩放），架子的纯色、价签这些另外几格；商品的 UV 从自己的 0..1 换到它那一格。图集是两张 SVG：
  * 颜色，和表面（G 粗糙度、B 金属度，材质的 glossinessTexture 加 metalnessChannel；R 是透射的比例）。整批一个材质，几千件商品
- * 一次绘制；瓶身透光的商品（ProductFile.transmission）的前排另成一个网格，用同样的图集加透射的材质（透明阶段画，标签按 R 不透）。
+ * 一次绘制；瓶身透光的商品（ProductFile.transmission）另成一个网格，用同样的图集加透射的材质（透明阶段画，标签按 R 不透）。
  *
  * 用法：new ProductBatch(sources, items, { solids, cells }) 排好图集；box、quad 加架子的几何（UV 指着纯色格、单独的格），
  * finish() 加上商品、出网格和两张 SVG。
@@ -114,8 +114,8 @@ export class ProductBatch {
     this.#items = items;
     this.#solids = solids;
     this.#cells = cells;
-    this.#variantKeys = [...new Set(items.map((item) => this.#labelKey(item)))];
-    const labelSizes = this.#variantKeys.map((key) => this.#mesh(parseLabelKey(key).path, true).labelSize);
+    this.#variantKeys = [...new Set(items.map((item) => `${item.variant}|${item.product}`))];
+    const labelSizes = this.#variantKeys.map((key) => this.#mesh(pathOf(key), true).labelSize);
     // 纯色格排在最下面一行（右往左），别的装进上面
     const reserve = solids.length > 0 ? SOLID + 2 * PADDING : 0;
     const { atlas, cells: packed } = packAtlas([...labelSizes, ...cells.map((cell) => cell.size)], reserve, solids.length * (SOLID + 2 * PADDING), maxDensity);
@@ -243,14 +243,14 @@ export class ProductBatch {
     const cellOf = new Map(this.#variantKeys.map((key, i) => [key, this.#labelCells[i]!]));
     for (const item of this.#items) {
       const mesh = this.#mesh(item.product, item.fine);
-      const [cx, cy, cw, ch] = cellOf.get(this.#labelKey(item))!;
+      const [cx, cy, cw, ch] = cellOf.get(`${item.variant}|${item.product}`)!;
       const [qx, qy, qz, qw] = item.rotation;
       const rotate = (x: number, y: number, z: number): [number, number, number] => {
         const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
         return [x + qw * tx + qy * tz - qz * ty, y + qw * ty + qz * tx - qx * tz, z + qw * tz + qx * ty - qy * tx];
       };
-      // 只有前排（细的）透光：后排、堆在下面的照常不透明，画进折射拷的画面里——前排的瓶子透出来的是后面亮着的油，不是货架的暗底
-      const clear = item.fine && this.#transmission(item.product) > 0;
+      // 透光的商品每一排都用透射的材质：前后排不透明、透射混着画，同一个价签后面的油看着像两种（用户 11-23 指出）
+      const clear = productTransmission(this.#sources.products.get(item.product)!) > 0;
       const vertices = clear ? this.#clearVertices : this.#vertices, indices = clear ? this.#clearIndices : this.#indices;
       const base = vertices.length / 8, src = mesh.vertices, [px, py, pz] = item.position;
       for (let i = 0; i < src.length; i += 8) {
@@ -272,16 +272,14 @@ export class ProductBatch {
     };
     this.#solids.forEach((solid, i) => fill(this.#solidCells[i]!, solid));
     this.#variantKeys.forEach((key, i) => {
-      const { variant, path, behind } = parseLabelKey(key);
+      const variant = Number(key.slice(0, key.indexOf('|'))), path = pathOf(key);
       const product = this.#sources.products.get(path)!, design = productDesign(product, variant), cell = this.#labelCells[i]!;
       const [W, H] = this.#mesh(path, true).labelSize;
       const font = product.font ? this.#sources.font(product.font) : undefined;
       const surfaceCell = productSurface(product, [W, H], font, variant);
-      const body = behind ? seenThroughOil(design.colors.background, this.#transmission(path)) : design.colors.background;
-      fill(cell, { color: body, roughness: 0, metalness: 0 }, surfaceCell.color);
+      fill(cell, { color: design.colors.background, roughness: 0, metalness: 0 }, surfaceCell.color);
       const nested = (shapes: string) => `<svg x="${cell[0]}" y="${cell[1]}" width="${cell[2]}" height="${cell[3]}" viewBox="0 0 ${svgNumber(W)} ${svgNumber(H)}" preserveAspectRatio="none">${shapes}</svg>`;
-      // 标签的图形里瓶身的明暗也按底色画：后排那格的也换成压暗的
-      color.push(nested(productLabelShapes(product, [W, H], font, variant, behind ? body : undefined)));
+      color.push(nested(productLabelShapes(product, [W, H], font, variant)));
       if (surfaceCell.print) {
         surface.push(nested(surfaceCell.print));
         defs.add(surfaceCell.defs);
@@ -304,18 +302,6 @@ export class ProductBatch {
     };
   }
 
-  /**
-   * 商品的标签图用哪一格：商品、款式；透光商品的后排（不透明，见 finish）另用一格，瓶身压暗成前排透着油看到的颜色——
-   * 不然后排露出来的瓶肩是浅黄的不透明塑料，看着像另一种货。
-   */
-  #labelKey(item: PlacedProduct): string {
-    return `${item.variant}|${!item.fine && this.#transmission(item.product) > 0 ? 1 : 0}|${item.product}`;
-  }
-
-  #transmission(path: string): number {
-    return productTransmission(this.#sources.products.get(path)!);
-  }
-
   #mesh(path: string, fine: boolean): ProductMesh {
     const key = `${fine ? 'f' : 'c'}|${path}`;
     let mesh = this.#meshes.get(key);
@@ -328,21 +314,7 @@ export class ProductBatch {
   }
 }
 
-/** 拆开 #labelKey 的键：款式、是不是透光商品的后排、商品的路径（路径里可能有 |，放最后）。 */
-function parseLabelKey(key: string): { readonly variant: number; readonly behind: boolean; readonly path: string } {
-  const [variant, behind] = key.split('|', 2);
-  return { variant: Number(variant), behind: behind === '1', path: key.slice(variant!.length + behind!.length + 2) };
-}
-
-/**
- * 透光的瓶身（比例 transmission）不透明地画时的颜色：光穿过油再从后面反射回来，颜色大约乘了两次瓶身的颜色
- * （sRGB 的每个通道 c 变成 c · (1 - t + t · c)），浅黄的油变成琥珀色，和前排透射画出来的接近。
- */
-function seenThroughOil(hex: string, transmission: number): string {
-  const v = parseInt(hex.slice(1, 7), 16);
-  const channel = (c: number) => Math.round(c * (1 - transmission + (transmission * c) / 255)).toString(16).padStart(2, '0');
-  return `#${channel((v >> 16) & 255)}${channel((v >> 8) & 255)}${channel(v & 255)}`;
-}
+const pathOf = (key: string) => key.slice(key.indexOf('|') + 1);
 const cross3 = (a: readonly number[], b: readonly number[]) => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
 const normalize3 = (v: readonly number[]) => {
   const l = Math.hypot(v[0]!, v[1]!, v[2]!) || 1;

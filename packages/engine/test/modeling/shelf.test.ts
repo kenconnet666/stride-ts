@@ -280,12 +280,15 @@ describe('货架', () => {
     expect(planShelf(island, products).tags.every((tag) => /^\d+\.\d\d$/.test(tag.price))).toBe(true);
   });
 
-  test('透光的商品：后排不透明，标签另用一格，瓶身压暗成透着油的颜色', () => {
-    const oil: ProductFile = { name: 'Oil', shape: 'bottle', size: [0.08, 0.28, 0], transmission: 0.9, pattern: 'band', colors: { background: '#e4c45a' }, seed: 2 };
-    const model = shelfModel({ ...island, sides: 1, stock: { products: ['P/Oil'], variants: 1, gaps: 0, rows: 3 } }, { products: new Map([['P/Oil', oil]]), font: () => undefined });
-    expect(model.clear).toBeDefined();
-    expect(model.colorSvg).toContain('fill="#e4c45a"');
-    expect(model.colorSvg).toContain('fill="#ce9b26"');
+  test('透光的商品：每一排都进透射的网格（前后排同一种材质），别的进不透明的', () => {
+    const oil: ProductFile = { name: 'Oil', shape: 'bottle', size: [0.08, 0.28, 0], transmission: 0.75, seed: 2 };
+    const shelf = (rows: number): ShelfFile => ({ ...island, sides: 1, stock: { products: ['P/Oil'], variants: 1, gaps: 0, rows, messiness: 0 } });
+    const all = { products: new Map([['P/Oil', oil]]), font: () => undefined };
+    const one = shelfModel(shelf(1), all), three = shelfModel(shelf(3), all);
+    expect(three.items).toBeGreaterThan(one.items);
+    // 多出来的后排都在透射的网格里，不透明的只多了价签之类的零碎
+    expect(three.clear!.vertices.length / one.clear!.vertices.length).toBeGreaterThan(1.5);
+    expect(three.vertices.length).toBeLessThan(one.vertices.length * 1.2);
   });
 
   test('格子柜：摞在货架顶上，瓶子横躺在格子里、瓶口朝外贴近前沿；有六边形格；没有瓶子时也能画', () => {

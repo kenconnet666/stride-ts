@@ -13,9 +13,9 @@
  "motif": "peanut",
  "badge": "5L",
  "pattern": "band",
- "transmission": 0.9,
+ "transmission": 0.75,
  "colors": {
-  "background": "#d09a3e",
+  "background": "#d98a22",
   "accent": "#2f9e44",
   "cap": "#d7262b"
  }

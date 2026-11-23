@@ -42,6 +42,10 @@ const BOARD = 0.02;
 /** 价签条：高、厚（米），贴在层板前沿往下。 */
 const STRIP = [0.045, 0.008] as const;
 const TAG = [0.055, 0.032] as const;
+/** 插在透明挡条里的纸价签大一些（照片里和 1.8 升的油瓶差不多宽）。 */
+const RAIL_TAG = [0.075, 0.036] as const;
+/** 透明挡条（tagHolder: 'rail'）：高（米）、往后仰的角度、底边在层板前沿外多远；价签在挡条后面多远、底边离层板多高。 */
+const RAIL_HEIGHT = 0.05, RAIL_TILT = (10 * Math.PI) / 180, RAIL_OUT = 0.004, RAIL_TAG_BEHIND = 0.0015, RAIL_TAG_LIFT = 0.006;
 /** 商品之间留的缝（米）。 */
 const GAP = 0.006;
 /** 价签有几种价格。 */
@@ -171,8 +175,11 @@ function checkShelf(file: ShelfFile, where: string): void {
   if (file.levels.at(-1)! >= file.height) throw new Error(`${where}: the top level must be below the height`);
 }
 
-/** 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳，熟食柜的黑柜体、白石英、金、保温灯的暖光。 */
-const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11;
+/**
+ * 纯色（ProductBatch 的 solids 的下标）：架子、价签条、底座、冷柜的门框、灯带、冷柜里面的白、电子价签的外壳，熟食柜的黑柜体、
+ * 白石英、金、保温灯的暖光，层板，透明挡条顶上折边（塑料折过的地方发白、很亮的一道反光）。
+ */
+const FRAME = 0, STRIP_SOLID = 1, BASE = 2, DARK = 3, LIGHT = 4, INTERIOR = 5, TAG_BODY = 6, COUNTER = 7, QUARTZ = 8, GOLD = 9, WARM = 10, BOARD_SOLID = 11, RAIL_EDGE = 12;
 /** 电子价签：外壳比屏大一圈（米）、凸出价签条多厚。 */
 const ESL_RIM = 0.004, ESL_DEPTH = 0.009;
 /** 冷柜：门在层板前面多远、门框多宽；顶上灯箱的高；冰柜的壁厚。 */
@@ -213,6 +220,8 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
   const tags = type === 'freezer' || type === 'deli' ? [] : plan.tags;
   const tagFont = file.font ? sources.font(file.font) : undefined;
   const electronic = file.priceTags === 'electronic';
+  // 透明挡条只给纸价签的货架、冷柜（价签插在挡条后面）
+  const rail = file.tagHolder === 'rail' && !electronic && (type === 'gondola' || type === 'fridge');
   const prices = Array.from({ length: PRICES }, (_, k) => {
     const random = seededRandom(hash32(file.seed ?? 1, 1000 + k));
     return `${Math.floor(1 + random() * 39)}.${['90', '80', '50', '00', '99'][Math.floor(random() * 5)]}`;
@@ -234,12 +243,15 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
       { color: '#ffd9a0', roughness: 0.5, metalness: 0, emissive: 8 },
       // 层板：写了 boardColor 时是木纹板那样的哑光，没写同架子
       file.boardColor ? { color: file.boardColor, roughness: 0.55, metalness: 0 } : { color: file.frameColor ?? '#d9dadc', roughness: 0.45, metalness: 0.5 },
+      { color: '#e6ecee', roughness: 0.12, metalness: 0 },
     ],
     // 价签：几种价格；纸的三个里一个黄底，电子的是墨水屏
-    cells: prices.map((price, k): AtlasCell => (electronic ? eslCell(price, k, tagFont, hash32(file.seed ?? 1, 2000 + k)) : {
-      size: [TAG[0] * 1000, TAG[1] * 1000] as const, color: k % 3 === 0 ? '#f6d21a' : '#ffffff', roughness: 0.4, metalness: 0,
-      draw: ([x, y, w, h]) => tagFont && textPath(tagFont, price, x + w * 0.55, y + h * 0.55, w * 0.78, h * 0.62, '#d7262b'),
-    })).concat(type === 'fridge' ? [{
+    cells: prices.map((price, k): AtlasCell => (electronic ? eslCell(price, k, tagFont, hash32(file.seed ?? 1, 2000 + k))
+      : file.tagAccent ? accentTagCell(price, file.tagAccent, tagFont, rail ? RAIL_TAG : TAG)
+      : {
+        size: [(rail ? RAIL_TAG : TAG)[0] * 1000, (rail ? RAIL_TAG : TAG)[1] * 1000] as const, color: k % 3 === 0 ? '#f6d21a' : '#ffffff', roughness: 0.4, metalness: 0,
+        draw: ([x, y, w, h]) => tagFont && textPath(tagFont, price, x + w * 0.55, y + h * 0.55, w * 0.78, h * 0.62, '#d7262b'),
+      })).concat(type === 'fridge' ? [{
       // 冷柜顶上的灯箱：蓝底白字，整块发光
       size: [file.length * 1000, (HEADER - 0.04) * 1000] as const, color: '#1e64c8', roughness: 0.3, metalness: 0, emissive: 2,
       draw: ([x, y, w, h]: Cell) => (file.header && tagFont ? textPath(tagFont, file.header, x + w / 2, y + h / 2, w * 0.6, h * 0.62, '#ffffff') : undefined),
@@ -280,14 +292,21 @@ export function shelfModel(file: ShelfFile, sources: ProductSources, where = fil
     // 底座（第一层的下面是实心的踢脚板）和每一层的层板
     batch.box([-L + SPINE, 0, zs[0]], [L - SPINE, file.levels[0]!, zs[1]], BASE);
     for (const level of file.levels.slice(1)) batch.box([-L + SPINE, level - BOARD, zs[0]], [L - SPINE, level, zs[1]], BOARD_SOLID);
-    // 价签条：层板前沿往下
     for (const level of file.levels) {
+      if (rail) {
+        tagRail(batch, -L + SPINE, L - SPINE, level, zFar, side);
+        continue;
+      }
+      // 价签条：层板前沿往下
       const s0 = side * zFar, s1 = side * (zFar + STRIP[1]);
       batch.box([-L + SPINE, level - STRIP[0], Math.min(s0, s1)], [L - SPINE, level, Math.max(s0, s1)], STRIP_SOLID);
     }
   }
-  // 价签：价签条正面上的一小片（从正面看左下、右下、右上、左上：背面那一面的 x 反过来）
-  for (const tag of tags) addTag(batch, tag, electronic);
+  // 价签：价签条正面上的一小片（从正面看左下、右下、右上、左上：背面那一面的 x 反过来），或者插在透明挡条后面
+  for (const tag of tags) {
+    if (rail) railTag(batch, tag, zFar);
+    else addTag(batch, tag, electronic);
+  }
   return { ...batch.finish(), items: items.length };
 }
 
@@ -301,6 +320,52 @@ function addTag(batch: ProductBatch, tag: ShelfTag, electronic: boolean): void {
   }
   const corners = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([sx, sy]) => [x + sx * tw / 2 * tag.side, y + sy * th / 2, z]);
   batch.quad(corners, [0, 0, tag.side], tag.price);
+}
+
+/**
+ * 透明挡条：立在层板前沿（zFar，side 那一面）的一条透明塑料，从 x0 到 x1，往后（往商品那边）仰 RAIL_TILT；顶上折一道小边（照片里
+ * 挡条顶上那条亮线）。进玻璃的网格。
+ */
+function tagRail(batch: ProductBatch, x0: number, x1: number, level: number, zFar: number, side: 1 | -1): void {
+  const z = side * (zFar + RAIL_OUT), top = level + RAIL_HEIGHT * Math.cos(RAIL_TILT), zTop = z - side * RAIL_HEIGHT * Math.sin(RAIL_TILT);
+  // 从正面看左下、右下、右上、左上（背面那一面 x 反过来）
+  const [left, right] = side > 0 ? [x0, x1] : [x1, x0];
+  batch.glassQuad([[left, level, z], [right, level, z], [right, top, zTop], [left, top, zTop]]);
+  // 顶上往前折的小边：不透明的一道（照片里很亮的那条线）
+  const lip = [zTop, zTop + side * 0.004].sort((a, b) => a - b) as [number, number];
+  batch.box([x0, top - 0.0015, lip[0]], [x1, top, lip[1]], RAIL_EDGE);
+}
+
+/**
+ * 插在透明挡条后面的纸价签（RAIL_TAG 大）：和挡条一样仰着，底边离层板 RAIL_TAG_LIFT，在挡条后面 RAIL_TAG_BEHIND。tag 的位置是
+ * 价签条上的（TAG 大）：左边对齐。
+ */
+function railTag(batch: ProductBatch, tag: ShelfTag, zFar: number): void {
+  const [tw, th] = RAIL_TAG, side = tag.side, level = tag.position[1] + STRIP[0] / 2;
+  const x = tag.position[0] + ((tw - TAG[0]) / 2) * side;
+  const sin = Math.sin(RAIL_TILT), cos = Math.cos(RAIL_TILT);
+  const at = (along: number): [number, number] => [level + along * cos, side * (zFar + RAIL_OUT - RAIL_TAG_BEHIND - along * sin)];
+  const [y0, z0] = at(RAIL_TAG_LIFT), [y1, z1] = at(RAIL_TAG_LIFT + th);
+  const corners = [[x - (tw / 2) * side, y0, z0], [x + (tw / 2) * side, y0, z0], [x + (tw / 2) * side, y1, z1], [x - (tw / 2) * side, y1, z1]];
+  batch.quad(corners, [0, sin, side * cos], tag.price);
+}
+
+/**
+ * 带色块的纸价签（tagAccent）：白底，左边深灰的价格、价格上下两道浅灰的细字（品名、规格），右边一块超市的颜色里一个白色的手指
+ * 图标那样的圆。
+ */
+function accentTagCell(price: string, accent: string, font: TextFont | undefined, [tw, th]: readonly [number, number]): AtlasCell {
+  return {
+    size: [tw * 1000, th * 1000], color: '#f4f5f3', roughness: 0.45, metalness: 0,
+    draw: ([x, y, w, h]: Cell) => {
+      const tab = w * 0.2, shapes = [`<rect x="${svgNumber(x + w - tab)}" y="${y}" width="${svgNumber(tab)}" height="${h}" fill="${accent}"/>`];
+      shapes.push(`<circle cx="${svgNumber(x + w - tab / 2)}" cy="${svgNumber(y + h * 0.5)}" r="${svgNumber(tab * 0.28)}" fill="none" stroke="#ffffff" stroke-width="${svgNumber(tab * 0.09)}"/>`);
+      for (const [row, width] of [[0.16, 0.62], [0.8, 0.4]] as const) shapes.push(`<rect x="${svgNumber(x + w * 0.06)}" y="${svgNumber(y + h * row)}" width="${svgNumber(w * width)}" height="${svgNumber(h * 0.07)}" fill="#a9acab"/>`);
+      const digits = font && textPath(font, price, x + (w - tab) * 0.45, y + h * 0.5, (w - tab) * 0.6, h * 0.42, '#4a4c4d');
+      if (digits) shapes.push(digits);
+      return shapes.join('');
+    },
+  };
 }
 
 /** 挂钩架：洞洞板（背板，双面时两面都有）、底座、两头的侧板，每个挂钩一根细的金属杆。 */

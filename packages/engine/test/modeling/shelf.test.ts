@@ -122,6 +122,33 @@ describe('货架', () => {
     }
   });
 
+  test('透明挡条：每层每面一条进玻璃网格，层板下没有价签条；价签插在挡条后面、和挡条一样往后仰，不碰前排的商品', () => {
+    const strip = shelfModel(island, sources), rail = shelfModel({ ...island, tagHolder: 'rail' }, sources);
+    expect(strip.glass).toBeUndefined();
+    // 每层每面：一片两面画的挡条（8 个顶点）进玻璃；价签条换成了挡条顶上不透明的折边（都是盒子，顶点一样多）
+    expect(rail.glass!.vertices.length / 8).toBe(island.levels.length * 2 * 8);
+    expect(rail.vertices.length).toBe(strip.vertices.length);
+    // 价签：法线是挡条的（往上仰 10°、朝外）的四边形；都在层板以上、挡条的范围里
+    const { tags, items } = planShelf(island, products);
+    const v = rail.vertices, tilted: number[] = [];
+    for (let i = 0; i < v.length / 8; i++) if (Math.abs(v[i * 8 + 4]! - Math.sin(Math.PI / 18)) < 1e-4 && Math.abs(v[i * 8 + 3]!) < 1e-6) tilted.push(i);
+    expect(tilted.length).toBe(tags.length * 4);
+    for (const i of tilted) {
+      const y = v[i * 8 + 1]!, level = island.levels.find((l) => y > l && y < l + 0.05);
+      expect(level).toBeDefined();
+      // 前排的商品最前面在层板前沿往里 1 厘米，价签在它前面
+      expect(Math.abs(v[i * 8 + 2]!)).toBeGreaterThan(island.depth + 0.02 - 0.01);
+    }
+    expect(items.length).toBeGreaterThan(0);
+  });
+
+  test('带色块的纸价签：白底深灰字，右边一块 tagAccent 的颜色；没写时有黄底的', () => {
+    const plain = shelfModel(island, sources), accent = shelfModel({ ...island, tagAccent: '#1a8fe0' }, sources);
+    expect(plain.colorSvg).toContain('#f6d21a');
+    expect(accent.colorSvg).not.toContain('#f6d21a');
+    expect((accent.colorSvg.match(/fill="#1a8fe0"/g) ?? []).length).toBe(8);
+  });
+
   test('层板颜色：写了 boardColor 时层板用它（哑光），没写同架子', () => {
     const plain = shelfModel({ ...island, frameColor: '#3b3c3f' }, sources);
     const wood = shelfModel({ ...island, frameColor: '#3b3c3f', boardColor: '#cfb48c' }, sources);

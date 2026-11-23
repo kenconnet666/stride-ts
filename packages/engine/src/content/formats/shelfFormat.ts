@@ -56,5 +56,12 @@ export interface ShelfFile {
   readonly header?: string;
   /** 价签：纸的（默认，白底或黄底红字）或电子价签（一个小外壳加一块墨水屏：黑字、角上的二维码，有的带红色的促销条）。 */
   readonly priceTags?: 'paper' | 'electronic';
+  /**
+   * 价签放在哪：价签条（strip，默认：层板前沿往下的一条，价签贴在正面）或透明挡条（rail：立在层板前沿、略往后仰的一条透明塑料，
+   * 纸价签插在它后面，层板下面没有价签条；照片里的木层板货架）。只对货架、冷柜有用。
+   */
+  readonly tagHolder?: 'strip' | 'rail';
+  /** 纸价签右边一块的颜色（sRGB 的 #rrggbb，超市自己的颜色）：写了时价签都是白底深灰字、右边这一块；没写是白底或黄底红字。 */
+  readonly tagAccent?: string;
   readonly seed?: number;
 }

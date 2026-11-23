@@ -14,7 +14,8 @@
  "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
  "frameColor": "#3b3c3f",
  "boardColor": "#cfb48c",
- "stripColor": "#8ec8e8",
+ "tagHolder": "rail",
+ "tagAccent": "#28a9d7",
  "stock": {
   "products": [
    "Shop/Products/Oil5L",

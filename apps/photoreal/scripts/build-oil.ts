@@ -1,5 +1,5 @@
 // 路线图七"超市和街边小店"的照片比对：照用户拍的油货架（reference/shop/051c92b8…jpg，不进仓库）搭同样的一排靠墙货架——浅木色的
-// 层板、蓝色的价签条、深灰的架子，摆满大桶小桶的食用油，上面一排深色木格子；机位照手机主摄（约 26 毫米等效，竖拍时长边 67°）。
+// 层板、插在透明挡条里带蓝色块的价签、深灰的架子，摆满大桶小桶的食用油，上面一排深色木格子；机位照手机主摄（约 26 毫米等效，竖拍时长边 67°）。
 // 只用编辑器的 MCP 服务，资源和场景按这里写的覆盖，重跑就是重搭。地面、墙用 build-shop.ts 写的（先跑过它）。
 //   node apps/photoreal/scripts/build-oil.ts
 //   看：http://localhost:5234/?scene=OilShelf；比：stride shot oil.png --photo reference/shop/051c92b832461cf0f6ad9de50d851329.jpg
@@ -44,7 +44,7 @@ const oils: (Omit<ProductFile, 'name' | 'font'> & { readonly id: string })[] = [
 for (const { id, ...product } of oils) await write('product', `Shop/Products/${id}`, { name: id, font: FONT, ...product });
 await write('shelf', 'Shop/Shelves/Oil', {
   name: 'Oil', sides: 1, length: 3.2, height: 1.95, depth: 0.42, levels: [0.3, 0.72, 1.08, 1.43, 1.78], font: FONT,
-  frameColor: '#3b3c3f', boardColor: '#cfb48c', stripColor: '#8ec8e8',
+  frameColor: '#3b3c3f', boardColor: '#cfb48c', tagHolder: 'rail', tagAccent: '#28a9d7',
   stock: { products: oils.map((oil) => `Shop/Products/${oil.id}`), variants: 3, facings: [2, 5], rows: 3, gaps: 0.03 }, seed: 86,
 });
 // 上面一排深色木格子（照片里放红酒的）：一块深色的板子挡在货架顶上

@@ -112,11 +112,12 @@ export class Mesh {
   }
 
   /**
-   * 动态网格（MeshData.dynamic）的顶点在原地改过了：下次画时重新上传，包围盒（剔除用的也是）重算。不是动态网格时报错。
+   * 动态网格（MeshData.dynamic）的顶点在原地改过了：下次画时重新上传，包围盒（剔除用的也是）重算——调用的人知道新的包围盒
+   * （或者一个包得住的）时传进来，省掉重算。不是动态网格时报错。
    */
-  updateVertices(): void {
+  updateVertices(bounds?: Bounds): void {
     if (!this.dynamic) throw new Error(`mesh '${this.name}' is not dynamic (create it with MeshData.dynamic to update its vertices)`);
-    this.#bounds = this.cullBounds = boundsOf(this.data.vertices, this.layout, this.dequantize, this.vertexStride);
+    this.#bounds = this.cullBounds = bounds ?? boundsOf(this.data.vertices, this.layout, this.dequantize, this.vertexStride);
     this.vertexVersion++;
   }
 

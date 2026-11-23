@@ -562,12 +562,12 @@ export class Simulation {
 
   /** 一步的接触事件交给两边的处理器（原生只报一次：设了事件的一方在前）。 */
   #dispatchContacts(): void {
-    for (const { type, self, other, depth, speed } of this.#world!.contactEvents()) {
+    for (const { type, self, other, depth, speed, point, normal } of this.#world!.contactEvents()) {
       const a = this.#bodyEntities[self], b = this.#bodyEntities[other];
       if (a === undefined || b === undefined) continue;
-      for (const [body, entity, otherEntity] of [[self, a, b], [other, b, a]] as const) {
+      for (const [body, entity, otherEntity, sign] of [[self, a, b, 1], [other, b, a, -1]] as const) {
         const handler = this.#handlers.get(body);
-        if (type === 'started') handler?.onStartedTouching?.({ entity, other: otherEntity, speed });
+        if (type === 'started') handler?.onStartedTouching?.({ entity, other: otherEntity, speed, point, normal: [normal[0] * sign, normal[1] * sign, normal[2] * sign] });
         else if (type === 'touching') handler?.onTouching?.({ entity, other: otherEntity, depth });
         else handler?.onStoppedTouching?.({ entity, other: otherEntity });
       }

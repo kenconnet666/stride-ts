@@ -14,6 +14,10 @@ export interface Contact {
 /** 开始接触：两者在接触点上互相接近的速度（米/秒，碰撞求解之前的、沿接触法线；Stride 没有）。撞得多狠——可破碎、撞击声——按它。 */
 export interface StartedContact extends Contact {
   readonly speed: number;
+  /** 接触点（几个接触点的平均，世界位置，双精度）。 */
+  readonly point: readonly [number, number, number];
+  /** 接触的法线（单位向量，从自己指向对方）。 */
+  readonly normal: readonly [number, number, number];
 }
 
 /** 正在接触：这一个物理步里两者最深的穿透深度（米，正数是陷进去）。 */

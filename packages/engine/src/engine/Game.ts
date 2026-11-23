@@ -37,6 +37,7 @@ import { Ragdoll } from '../physics/Ragdoll';
 import { Rope } from '../physics/Rope';
 import { Breakable } from '../physics/Breakable';
 import { Cloth } from '../physics/Cloth';
+import { Deformable } from '../physics/Deformable';
 import { cameraRigSystem } from '../rendering/CameraRig';
 import { RecastNavigationComponent } from '../physics/RecastNavigationComponent';
 import { AtmosphereRenderFeature } from '../rendering/sky/AtmosphereRenderFeature';
@@ -361,6 +362,7 @@ export class Game {
       this.registry.register(Rope);
       this.registry.register(Breakable);
       this.registry.register(Cloth);
+      this.registry.register(Deformable);
       this.registry.register(Train);
       this.registry.register(TrainDoor);
       this.animation = new AnimationSystem(this.native, this.entities);

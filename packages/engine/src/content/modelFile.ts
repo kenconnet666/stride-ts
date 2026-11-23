@@ -166,3 +166,18 @@ export function meshPositions({ vertices, layout, dequantize }: Pick<DecodedMesh
   }
   return out;
 }
+
+/** 解开的网格的切线（每个顶点 xyz 加手性 w，snorm8 的已经还原）；网格没有切线时是 undefined。 */
+export function meshTangents({ vertices, layout }: Pick<DecodedMesh, 'vertices' | 'layout'>): Float32Array | undefined {
+  if (!layout.tangent) return undefined;
+  const { tangent: at, stride } = vertexLayoutOffsets(layout);
+  const view = new DataView(vertices.buffer, vertices.byteOffset, vertices.byteLength);
+  const count = vertices.byteLength / stride;
+  const out = new Float32Array(count * 4);
+  for (let v = 0; v < count; v++) {
+    for (let k = 0; k < 4; k++) {
+      out[v * 4 + k] = layout.tangent === 'snorm8x4' ? Math.max(-1, view.getInt8(v * stride + at! + k) / 127) : view.getFloat32(v * stride + at! + k * 4, true);
+    }
+  }
+  return out;
+}

@@ -992,7 +992,7 @@
    "position": [
     -5.75,
     0,
-    3.6
+    7.6
    ],
    "rotation": [
     0,
@@ -1073,7 +1073,7 @@
    "position": [
     -2.6,
     0,
-    4.9
+    3.4
    ],
    "rotation": [
     0,
@@ -1100,7 +1100,7 @@
    "position": [
     -2.6,
     0,
-    5.16
+    3.66
    ],
    "rotation": [
     0,
@@ -1127,7 +1127,7 @@
    "position": [
     -2.6,
     0,
-    5.42
+    3.92
    ],
    "rotation": [
     0,
@@ -1152,7 +1152,7 @@
    "name": "Basket 6",
    "parent": null,
    "position": [
-    -2.2,
+    -1.7,
     0,
     3.6
    ],
@@ -1179,7 +1179,7 @@
    "name": "Basket 7",
    "parent": null,
    "position": [
-    -2.2,
+    -1.7,
     0.09,
     3.6
    ],
@@ -1206,7 +1206,7 @@
    "name": "Basket 8",
    "parent": null,
    "position": [
-    -2.2,
+    -1.7,
     0.18,
     3.6
    ],
@@ -1233,7 +1233,7 @@
    "name": "Basket 9",
    "parent": null,
    "position": [
-    -2.2,
+    -1.7,
     0.27,
     3.6
    ],
@@ -1333,6 +1333,130 @@
     "model": {
      "model": "Shop/Splines/CheckoutFence",
      "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000036",
+   "name": "Entrance fence",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Splines/EntranceFence",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000037",
+   "name": "Vestibule",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Models/Vestibule",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000038",
+   "name": "Vestibule light 0",
+   "parent": null,
+   "position": [
+    -3,
+    3.28,
+    7.75
+   ],
+   "rotation": [
+    -0.7071067811865475,
+    0,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "rect",
+     "color": [
+      1,
+      0.97,
+      0.92
+     ],
+     "intensity": 18,
+     "width": 0.12,
+     "height": 1.4,
+     "range": 7
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000039",
+   "name": "Vestibule light 1",
+   "parent": null,
+   "position": [
+    3,
+    3.28,
+    7.75
+   ],
+   "rotation": [
+    -0.7071067811865475,
+    0,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "light": {
+     "type": "rect",
+     "color": [
+      1,
+      0.97,
+      0.92
+     ],
+     "intensity": 18,
+     "width": 0.12,
+     "height": 1.4,
+     "range": 7
     }
    }
   },

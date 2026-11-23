@@ -1,0 +1,29 @@
+{
+ "name": "EntranceFence",
+ "materials": [
+  "Shop/Materials/Railing",
+  "Shop/Materials/Railing"
+ ],
+ "profile": {
+  "type": "fence",
+  "height": 0.97,
+  "postSpacing": 1.1,
+  "rails": 2
+ },
+ "points": [
+  {
+   "position": [
+    -5.98,
+    0,
+    4.8
+   ]
+  },
+  {
+   "position": [
+    -4.74,
+    0,
+    4.8
+   ]
+  }
+ ]
+}

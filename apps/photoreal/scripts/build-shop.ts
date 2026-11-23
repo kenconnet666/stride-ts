@@ -296,7 +296,7 @@ await write('brush', 'Shop/Models/Hall', {
 });
 // 整个超市（用户 11-23 画的布局）：大厅 12 × 20 米，入口在 +Z 那头。靠墙三面铺满单面货架（左墙、右墙一节节，后墙两头各一节、中间
 // 两节立式冷柜）；中间三排双面货架（x = -3、0、3，顺着 -Z，两节 8 米，两头是端架和挂钩架），后面一片放卧式冰柜；门口左边是入口
-// （寄存柜、两道单向闸机、购物车和篮子），右边是结账出口（两个收银台、靠右墙三台自助收银机），中间一片码垛（四个托盘的整箱货）。
+// （门外的门厅里贴墙的寄存柜，两道单向闸机和两段围栏，闸机里面的购物车和篮子），右边是结账出口（两个收银台、靠右墙三台自助收银机），中间一片码垛（四个托盘的整箱货）。
 // 货架的原点：单面的在背板上、正面朝它自己的 +Z；双面的、冰柜、码垛在中心。yaw 90 正面朝 +X，-90 朝 -X，0 朝 +Z，180 朝 -Z。
 const entranceEye: Vec3 = [0.2, 1.75, 5.8];
 const sid = (k: number) => `5e0b5e0b-0002-4000-8000-${k.toString(16).padStart(12, '0')}`;
@@ -304,13 +304,25 @@ const fixtureAt = (k: number, name: string, position: Vec3, yaw: number) => enti
 let shelfCount = 0;
 const shelfAt = (name: string, position: Vec3, yaw: number) => entity(sid(0x10 + shelfCount), `${name} ${shelfCount++}`, position, { model: { model: `Shop/Shelves/${name}`, materials: [] } }, euler(yaw));
 const WALL_X = 5.95, BACK_Z = -13.95, ROWS = [-3, 0, 3] as const;
-// 入口和结账出口之间的不锈钢围栏（用户 11-23 在截图上画的）：沿门口横着，从入口闸机右边拦到收银台那边，进店只能走闸机，
-// 出店走收银台外面
-await write('material', 'Shop/Materials/Railing', { name: 'Railing', baseColor: [0.82, 0.83, 0.84, 1], metalness: 1, roughness: 0.25 });
-await write('spline', 'Shop/Splines/CheckoutFence', {
-  name: 'CheckoutFence', materials: ['Shop/Materials/Railing', 'Shop/Materials/Railing'],
-  profile: { type: 'fence', height: 1.0, postSpacing: 1.1, rails: 2 },
-  points: [{ position: [-3.15, 0, 5.9] }, { position: [2.0, 0, 5.9] }],
+// 入口的围栏（用户 11-23 在截图上画的）：沿着闸机那条线（z = 4.8）横着拦，左墙到第一道闸机一段，第二道闸机到收银台那头一段，
+// 进店只能走闸机，出店走收银台外面；颜色、质感同闸机（灰色的漆面金属，fixture.ts 的闸机主色）
+await write('material', 'Shop/Materials/Railing', { name: 'Railing', baseColor: [0.48, 0.5, 0.53, 1], metalness: 0.8, roughness: 0.45 });
+const fence = (name: string, from: number, to: number) => write('spline', `Shop/Splines/${name}`, {
+  name, materials: ['Shop/Materials/Railing', 'Shop/Materials/Railing'],
+  profile: { type: 'fence', height: 0.97, postSpacing: 1.1, rails: 2 },
+  points: [{ position: [from, 0, 4.8] }, { position: [to, 0, 4.8] }],
+});
+await fence('EntranceFence', -5.98, -4.74);
+await fence('CheckoutFence', -3.06, 2.0);
+// 门外的门厅（储物柜放在入口外面，用户 11-23）：地面、两边的墙、顶往外接 3.5 米，顶上两盏灯
+await write('brush', 'Shop/Models/Vestibule', {
+  name: 'Vestibule', materials: ['Shop/Materials/Floor', 'Shop/Materials/Wall'], uvScale: 1,
+  brushes: [
+    { kind: 'box', operation: 'add', position: [0, -0.05, 7.75], size: [14, 0.1, 3.5] },
+    { kind: 'box', operation: 'add', position: [-6.1, 1.65, 7.75], size: [0.2, 3.3, 3.5], material: 1 },
+    { kind: 'box', operation: 'add', position: [6.1, 1.65, 7.75], size: [0.2, 3.3, 3.5], material: 1 },
+    { kind: 'box', operation: 'add', position: [0, 3.35, 7.75], size: [12.4, 0.1, 3.5], material: 1 },
+  ],
 });
 const shelfEntities = [
   // 左墙：粮油、酒、罐头调味、零食，从入口那头（z = 2.05）铺到后墙
@@ -332,15 +344,20 @@ const shelfEntities = [
   }),
   // 码垛区：入口和出口之间四个托盘
   ...(['PalletMilk', 'PalletWater', 'PalletNoodle', 'PalletBeer'] as const).map((name, i) => shelfAt(name, [i % 2 === 0 ? -0.75 : 0.75, 0, i < 2 ? 1.75 : 3.0], 0)),
-  // 入口（左）：左墙前的寄存柜，两道单向闸机，购物车、一摞篮子
-  fixtureAt(2, 'Locker', [-5.75, 0, 3.6], 90),
+  // 入口（左）：门厅左墙的寄存柜（在入口外面），两道单向闸机，闸机里面的购物车、一摞篮子
+  fixtureAt(2, 'Locker', [-5.75, 0, 7.6], 90),
   fixtureAt(10, 'Gate', [-4.3, 0, 4.8], 0), fixtureAt(11, 'Gate', [-3.5, 0, 4.8], 0),
   // 购物车顺着车身套成一串（车头朝店里，后一辆的车头插进前一辆的车尾）
-  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [-2.6, 0, 4.9 + i * 0.26], 180)),
-  ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [-2.2, i * 0.09, 3.6], 10 * i)),
+  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [-2.6, 0, 3.4 + i * 0.26], 180)),
+  ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [-1.7, i * 0.09, 3.6], 10 * i)),
   // 结账出口（右）：两个收银台（顾客从 -Z 走过来），右墙前三台自助收银机朝过道
   fixtureAt(0, 'Checkout1', [2.9, 0, 3.6], -90), fixtureAt(1, 'Checkout2', [4.4, 0, 3.6], -90),
   entity(sid(0x35), 'Checkout fence', [0, 0, 0], { model: { model: 'Shop/Splines/CheckoutFence', materials: [] } }),
+  entity(sid(0x36), 'Entrance fence', [0, 0, 0], { model: { model: 'Shop/Splines/EntranceFence', materials: [] } }),
+  entity(sid(0x37), 'Vestibule', [0, 0, 0], { model: { model: 'Shop/Models/Vestibule', materials: [] } }),
+  ...[-3, 3].map((x, i) => entity(sid(0x38 + i), `Vestibule light ${i}`, [x, 3.28, 7.75], {
+    light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 18, width: 0.12, height: 1.4, range: 7 },
+  }, euler(0, -90))),
   ...[3, 4, 5].map((n, i) => fixtureAt(12 + i, `Self${n}`, [5.7, 0, 0.6 + i * 1.15], -90)),
   // 四条过道上方的招牌
   ...([['AisleGrain', -4.5], ['AisleDrinks', -1.5], ['AislePantry', 1.5], ['AisleHome', 4.5]] as const).map(([name, x], i) => entity(sid(0x30 + i), `Sign ${name}`, [x, 2.55, -3.6], { model: { model: `Shop/Signs/${name}`, materials: [] } }, euler(0))),

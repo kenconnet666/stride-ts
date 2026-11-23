@@ -2551,6 +2551,19 @@
                 "required": [],
                 "additionalProperties": false
               },
+              "persistent": {
+                "title": "Persistent",
+                "type": "object",
+                "properties": {
+                  "transform": {
+                    "type": "boolean",
+                    "description": "keep where it was moved (off when something else places it)",
+                    "default": true
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              },
               "streamingSource": {
                 "title": "Streaming Source",
                 "type": "object",

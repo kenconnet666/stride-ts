@@ -151,7 +151,7 @@ export class Importer {
 
   /**
    * 导入一套扫描的材质（materialSet.ts）：各张贴图放进 `<folder>/<name>/`（`<name>_<用途>.<扩展名>`，旁边有同名的贴图资源，节点图用），导入设置是压成 UASTC 的
-   * KTX2、带 mipmap、长边最多 maxSize（颜色贴图按 sRGB，其余线性），当场压好；金属度贴图取平均当金属度；再写
+   * KTX2、带 mipmap、长边最多 maxSize（颜色贴图按 sRGB，其余线性），当场几张一起压好；金属度贴图取平均当金属度；再写
    * `<folder>/<name>.material.json`。高度、不透明度贴图还没有槽，跳过并警告。名字和已有的材质重复时加数字。
    */
   importMaterialSet(folder: string, files: readonly { readonly name: string; readonly bytes: Uint8Array }[], options: MaterialSetOptions = {}): Promise<ImportResult> {
@@ -166,6 +166,7 @@ export class Importer {
       const warnings: string[] = [];
       const textures: Partial<Record<MaterialMapRole, string>> = {};
       const written: string[] = [];
+      const encodes: { readonly assetPath: string; readonly settings: ImageImportFile }[] = [];
       let metalness: number | undefined;
       for (const map of set.maps) {
         const file = files.find((candidate) => candidate.name === map.fileName)!;
@@ -189,13 +190,15 @@ export class Importer {
         const settings: ImageImportFile = { source, compress: 'uastc', mipmaps: true, maxSize: options.maxSize ?? 2048, srgb: SRGB_ROLES.has(map.role) };
         const settingsFile = assetFileName('imageImport', assetPath);
         await writeAtomically(path.join(this.#host.contentDir, settingsFile), JSON.stringify(settings, null, 1));
-        const baked = await this.#host.bake('imageImport', assetPath, settings);
         // 同名的贴图资源：材质节点图的贴图、三平面投影节点引用的是它（材质的固定槽直接引用图片）
         const textureFile = assetFileName('texture', assetPath);
         await writeAtomically(path.join(this.#host.contentDir, textureFile), JSON.stringify({ texture: assetPath, srgb: settings.srgb }, null, 1));
-        written.push(this.#relative(path.join(this.#host.contentDir, assetPath + TEXTURE_EXTENSIONS[source])), settingsFile, textureFile, ...baked.files);
+        written.push(this.#relative(path.join(this.#host.contentDir, assetPath + TEXTURE_EXTENSIONS[source])), settingsFile, textureFile);
+        encodes.push({ assetPath, settings });
         textures[map.role] = assetPath;
       }
+      // 几张贴图一起压：每张是原生任务系统上的一个任务（Basis 的编码单线程，一张 1K 带 mipmap 二三十秒），并行时三张差不多一张的时间
+      for (const baked of await Promise.all(encodes.map(({ assetPath, settings }) => this.#host.bake('imageImport', assetPath, settings)))) written.push(...baked.files);
       const material = scannedMaterial(name, textures, { ...(options.tileSize !== undefined ? { tileSize: options.tileSize } : {}), ...(metalness !== undefined ? { metalness } : {}), ...(options.credit ? { credit: options.credit } : {}) });
       const main = assetFileName('material', folder ? `${folder}/${name}` : name);
       await writeAtomically(path.join(this.#host.contentDir, main), JSON.stringify(material, null, 1));

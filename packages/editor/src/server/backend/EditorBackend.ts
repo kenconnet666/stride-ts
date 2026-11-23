@@ -133,12 +133,21 @@ export class EditorBackend {
    * 再写源文件：同一个工程上开着的别的后端（agent 的 MCP 服务、另一个开发服务器）看到源文件变了时，查表知道已经烘过了，不用它
    * 那份可能是旧的代码再烘一遍、盖掉这边的模型（出过：一个前一天起的 MCP 服务用旧代码把新烘的模型盖了）。
    */
-  async #recordBake(key: string, content: unknown): Promise<void> {
+  #recordBake(key: string, content: unknown): Promise<void> {
     this.#bakes.set(key, JSON.stringify(content));
-    this.#bakeHashes[key] = this.#bakeHash(content);
-    const shared = await this.#readSharedBakeHashes();
-    await this.#writeBakeHashes({ ...shared, [key]: this.#bakeHashes[key] });
+    const hash = this.#bakeHash(content);
+    this.#bakeHashes[key] = hash;
+    // 几个烘焙同时记（一套扫描材质的几张贴图并行压）：读改写排成一串，不互相盖掉
+    const recorded = this.#recording.then(async () => {
+      const shared = await this.#readSharedBakeHashes();
+      await this.#writeBakeHashes({ ...shared, [key]: hash });
+    });
+    this.#recording = recorded.catch(() => undefined);
+    return recorded;
   }
+
+  /** 正在写共用哈希表的那一串（#recordBake）。 */
+  #recording: Promise<void> = Promise.resolve();
 
   /** 磁盘上共用的哈希表（没有时是空的）。 */
   #readSharedBakeHashes(): Promise<Record<string, string>> {

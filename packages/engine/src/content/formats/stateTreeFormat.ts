@@ -77,6 +77,19 @@ export const STATE_TREE_TASK = s.union('type', {
     query: ENVIRONMENT_QUERY,
     store: s.string().describe('vector parameter that gets the spot'),
   },
+  /**
+   * 用一个智能物体（ai/SmartObjects.ts）：附近 radius 米以内找能干 activity 的空槽占上，走过去、转向槽的朝向，用的时候
+   * Animator 的 animator 参数是 1，待 seconds（加 0..random）秒后放开、成功；找不到空槽、走不到失败。
+   */
+  useSmartObject: {
+    activity: s.string().default('sit'),
+    radius: s.number({ min: 1, step: 1, unit: 'm' }).default(20),
+    seconds: s.number({ min: 0, step: 0.5, unit: 's' }).default(8),
+    random: s.number({ min: 0, step: 0.5, unit: 's' }).default(4),
+    animator: s.string().optional().describe('Animator parameter set to 1 while using'),
+    tolerance: s.number({ min: 0.1, step: 0.1, unit: 'm' }).default(0.5),
+    timeout: s.number({ min: 0, step: 1, unit: 's' }).default(40),
+  },
   /** 设一个参数（数、开关），马上成功。 */
   set: { parameter: s.string(), value: s.number({ step: 0.05 }).default(1) },
   /** 设实体上 Animator 的参数，马上成功。 */

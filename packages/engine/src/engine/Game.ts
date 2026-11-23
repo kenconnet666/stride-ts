@@ -41,6 +41,7 @@ import { CrowdAgent } from '../physics/CrowdAgent';
 import { Animator } from '../animation/Animator';
 import { StateTreeRunner } from '../ai/StateTreeRunner';
 import { PerceptionSystem } from '../ai/Perception';
+import { SmartObject, SmartObjectSystem } from '../ai/SmartObjects';
 import { FootIk } from '../animation/FootIk';
 import { LookAt } from '../animation/LookAt';
 import { SoftBody } from '../physics/SoftBody';
@@ -230,6 +231,8 @@ export class Game {
   readonly clock = new WorldClock();
   /** 感知：挂 Perceiver 的实体看得见、听得到什么（视觉带遮挡、声音、记忆），见 ai/Perception.ts。 */
   readonly perception = new PerceptionSystem();
+  /** 智能物体：长椅、柜台这类东西的槽，占、放开，见 ai/SmartObjects.ts。 */
+  readonly smartObjects = new SmartObjectSystem();
   /** 存档和世界状态的持久化：挂 Persistent 的场景实体卸掉再读回来状态还在，save() / load() 存档读档，见 world/Persistence.ts。 */
   readonly persistence = new PersistenceSystem(this.entities, this.clock);
   /**
@@ -374,6 +377,7 @@ export class Game {
       this.registry.register(CrowdAgent);
       this.registry.register(Animator);
       this.registry.register(StateTreeRunner);
+      this.registry.register(SmartObject);
       this.registry.register(FootIk);
       this.registry.register(LookAt);
       this.registry.register(SoftBody);
@@ -670,6 +674,7 @@ export class Game {
       { update: () => this.world.update() },
       { update: () => this.weather.update(this) },
       { update: () => (this.editing ? undefined : this.perception.update(this)) },
+      { update: () => this.smartObjects.update(this) },
       { update: () => this.wind.update(this) },
       { update: () => this.#updateRenderWind() },
       { update: () => this.precipitation.update(this) },

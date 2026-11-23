@@ -77,6 +77,40 @@ registerBuiltInTask('flee', (context, task) => {
   return { update: () => 'failed' };
 });
 
+registerBuiltInTask('useSmartObject', (context, task) => {
+  const agent = agentOf(context, 'useSmartObject');
+  const entity = context.entity, game = context.game;
+  const world = entity?.get(Transform)?.world;
+  if (!agent || !entity || !game || !world) return { update: () => 'failed' };
+  const claim = game.smartObjects.claim(entity, { activity: task.activity, near: { x: world[12]!, y: world[13]!, z: world[14]! }, radius: task.radius });
+  if (!claim) return { update: () => 'failed' };
+  const animator = task.animator !== undefined ? entity.get(Animator) : undefined;
+  const walking = walk(agent, claim.position, task.tolerance, task.timeout);
+  const seconds = task.seconds + Math.random() * task.random;
+  let using = -1;
+  return {
+    update(elapsed): StateTreeStatus {
+      if (using < 0) {
+        const status = walking.update!(elapsed);
+        if (status !== 'succeeded') return status;
+        // 到了：转向槽的朝向（人群不动时不再改朝向），开始用
+        using = 0;
+        agent.faceMovement = false;
+        entity.require(Transform).rotation = { x: 0, y: Math.sin(claim.yaw / 2), z: 0, w: Math.cos(claim.yaw / 2) };
+        if (animator && task.animator !== undefined) animator.set(task.animator, 1);
+      }
+      using += elapsed;
+      return using >= seconds ? 'succeeded' : 'running';
+    },
+    exit() {
+      if (using < 0) walking.exit!();
+      game.smartObjects.release(claim);
+      agent.faceMovement = true;
+      if (animator && task.animator !== undefined) animator.set(task.animator, 0);
+    },
+  };
+});
+
 registerBuiltInTask('findSpot', (context, task) => {
   const world = context.entity?.get(Transform)?.world;
   const game = context.game;

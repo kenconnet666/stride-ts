@@ -634,6 +634,58 @@
                   "properties": {
                     "type": {
                       "enum": [
+                        "useSmartObject"
+                      ]
+                    },
+                    "activity": {
+                      "type": "string",
+                      "default": "sit"
+                    },
+                    "radius": {
+                      "type": "number",
+                      "minimum": 1,
+                      "description": "unit: m",
+                      "default": 20
+                    },
+                    "seconds": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s",
+                      "default": 8
+                    },
+                    "random": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s",
+                      "default": 4
+                    },
+                    "animator": {
+                      "type": "string",
+                      "description": "Animator parameter set to 1 while using"
+                    },
+                    "tolerance": {
+                      "type": "number",
+                      "minimum": 0.1,
+                      "description": "unit: m",
+                      "default": 0.5
+                    },
+                    "timeout": {
+                      "type": "number",
+                      "minimum": 0,
+                      "description": "unit: s",
+                      "default": 40
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
                         "set"
                       ]
                     },

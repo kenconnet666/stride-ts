@@ -63,6 +63,14 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
       ...(entity ? { perceives: perception.of(entity).map((item) => ({ entity: item.entity?.name, tag: item.tag, sense: item.sense, seeing: item.seeing, position: [item.position.x, item.position.y, item.position.z].map((v) => +v.toFixed(2)), age: +(game.updateTime.total - item.time).toFixed(2) })) } : {}),
     };
   });
+  debug.command('smartobjects', 'Smart objects (SmartObject: benches, counters with slots people claim and use): reports objects, slots and claims (who uses which slot). args: show (true/false) draws every slot (green free, red claimed) with its facing.', (args) => {
+    const system = game.smartObjects;
+    if (typeof args['show'] === 'boolean') system.show = args['show'];
+    return {
+      ...system.stats,
+      claims: system.claims.map((claim) => ({ object: claim.object.entity.name, slot: claim.slot, activity: claim.activity, user: game.entities.isAlive(claim.user) ? game.entities.entity(claim.user).name : claim.user })),
+    };
+  });
   debug.command('statetree', 'State trees (StateTreeRunner): lists each running tree with its entity, active states (root to leaf), status and transition count. args: entity (name; default all), event (sends it to the trees), set ({ parameter: value } sets parameters), limit (default 20).', (args) => {
     const name = typeof args['entity'] === 'string' ? args['entity'] : undefined;
     const runners = game.entities.ids().map((id) => game.entities.entity(id))

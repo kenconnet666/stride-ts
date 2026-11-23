@@ -8,7 +8,7 @@
  * 约束用 `addConstraint`（Stride.BepuPhysics 的约束组件的参数，语义照 Bepu；Bepu 的约束都是软的，这里除了伺服、马达和
  * 距离限制都是刚性的）。每个物理步之前调 `onStep` 登记的回调（Stride 的 ISimulationUpdate.SimulationUpdate）。
  */
-import type { BodyDesc, BodyId, ConstraintDesc, PhysicsConstraint, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore } from '@stride-ts/native';
+import type { BodyDesc, BodyId, ConstraintDesc, PhysicsConstraint, PhysicsHull, PhysicsMesh, PhysicsWorld, ShapeDesc, StrideNative, TransformSlot, TransformStore, VehicleDesc, VehicleState } from '@stride-ts/native';
 import { PhysicsHit } from '@stride-ts/native';
 import type { Commands } from '../engine/Commands';
 import type { EntityId } from '../data/prop';
@@ -53,6 +53,15 @@ export type ConstraintSettings = ConstraintDesc extends infer D
 
 /** 某种约束的设置，比如 `ConstraintSettingsOf<'oneBodyLinearServo'>`。 */
 export type ConstraintSettingsOf<T extends ConstraintSettings['type']> = Extract<ConstraintSettings, { type: T }>;
+
+/** addVehicle 建的车。 */
+export interface VehicleHandle {
+  /** 驾驶的输入：油门 -1..1（负的倒车）、转向 -1..1（正的向右）、刹车 0..1、手刹 0..1；下一次物理步起作用，一直保持到再设。 */
+  input(forward: number, right: number, brake?: number, handBrake?: number): void;
+  /** 转速、挡位、速度、每个轮子相对车身的位姿；移除了是 undefined。 */
+  state(): VehicleState | undefined;
+  remove(): void;
+}
 
 /** addConstraint 建的约束（Stride 的 ConstraintComponent）。 */
 export interface Constraint<S extends ConstraintSettings = ConstraintSettings> {
@@ -364,6 +373,30 @@ export class Simulation {
       const desc = { ...s, bodyA: this.#bodyOf(s.bodyA), ...('bodyB' in s ? { bodyB: this.#bodyOf(s.bodyB) } : {}) } as ConstraintDesc;
       return this.#world!.addConstraint(desc);
     }, (id) => this.#world?.removeConstraint(id));
+  }
+
+  /**
+   * 加一辆轮式车：车身是实体上的动态 Body（还没建时先建好），轮子不是物体（沿悬挂投圆柱找地面）。实体销毁时车一起移除。
+   * 一般经 Vehicle 脚本用（physics/Vehicle.ts）。
+   */
+  addVehicle(entity: Entity | EntityId, desc: Omit<VehicleDesc, 'body'>): VehicleHandle {
+    const body = this.#bodyOf(entity);
+    const world = this.#worldOrCreate();
+    const id = world.addVehicle({ ...desc, body });
+    const wheels = desc.wheels.length;
+    let removed = false;
+    return {
+      input: (forward, right, brake = 0, handBrake = 0) => {
+        if (!removed) world.vehicleInput(id, forward, right, brake, handBrake);
+      },
+      state: () => (removed ? undefined : world.vehicleState(id, wheels)),
+      remove: () => {
+        if (removed) return;
+        removed = true;
+        // 车身先被移除（实体销毁）时原生已经一起移除了，这里再移除是空操作
+        if (this.#world === world) world.removeVehicle(id);
+      },
+    };
   }
 
   /**

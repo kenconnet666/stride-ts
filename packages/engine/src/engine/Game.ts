@@ -32,6 +32,7 @@ import { NavigationSystem } from '../physics/NavigationSystem';
 import { AudioEmitterComponent, AudioListenerComponent } from '../audio/AudioEmitterComponent';
 import { Train, TrainDoor } from '../world/Train';
 import { TimelinePlayer } from '../animation/TimelinePlayer';
+import { Vehicle } from '../physics/Vehicle';
 import { cameraRigSystem } from '../rendering/CameraRig';
 import { RecastNavigationComponent } from '../physics/RecastNavigationComponent';
 import { AtmosphereRenderFeature } from '../rendering/sky/AtmosphereRenderFeature';
@@ -351,6 +352,7 @@ export class Game {
       this.registry.register(AudioEmitterComponent);
       this.registry.register(AudioListenerComponent);
       this.registry.register(TimelinePlayer);
+      this.registry.register(Vehicle);
       this.registry.register(Train);
       this.registry.register(TrainDoor);
       this.animation = new AnimationSystem(this.native, this.entities);

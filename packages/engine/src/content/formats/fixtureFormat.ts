@@ -10,12 +10,14 @@ export interface FixtureFile {
   /**
    * checkout：收银台（带传送带的台面、收银机的屏、扫码台、上方挂着号码牌的灯箱）；cart：购物车；basket：手提的购物篮；
    * locker：寄存柜（一格格的小门，每格一个指示灯）；gate：入口的单向闸机（立柱和摆臂）；track：吸顶的轨道射灯（一根轨道上等距
-   * 几个灯头，往正面斜着照；灯具只发光，照亮东西的聚光灯由场景按 modeling/fixture.ts 的 trackSpots 放）。
+   * 几个灯头，往正面斜着照；灯具只发光，照亮东西的聚光灯由场景按 modeling/fixture.ts 的 trackSpots 放）；selfCheckout：自助
+   * 收银机（顾客在 +Z：左边柜体上平放的扫码玻璃和竖的扫码窗，中间立柱上往后仰的触摸屏——发光的界面——屏下吐出一截小票的出票口
+   * 和刷卡器，右边低一截的称重台上是购物袋架：两根立杆、两根往前伸的挂臂撑着一个打开的袋子；顶上一根带号码的指示灯柱）。
    */
-  readonly type: 'checkout' | 'cart' | 'basket' | 'locker' | 'gate' | 'track';
-  /** 主色（sRGB 的 #rrggbb）：收银台的柜体、购物车的车筐、篮子、寄存柜的门、闸机的柱子；没写时按种类。 */
+  readonly type: 'checkout' | 'cart' | 'basket' | 'locker' | 'gate' | 'track' | 'selfCheckout';
+  /** 主色（sRGB 的 #rrggbb）：收银台、自助收银机的柜体，购物车的车筐、篮子、寄存柜的门、闸机的柱子；没写时按种类。 */
   readonly color?: string;
-  /** 收银台的号码（灯箱上的字，要有 font）；寄存柜几列、几行（默认 6、4）。 */
+  /** 收银台、自助收银机的号码（灯箱、指示灯柱上的字，屏上的界面也要 font）；寄存柜几列、几行（默认 6、4）。 */
   readonly number?: string;
   readonly font?: string;
   readonly columns?: number;

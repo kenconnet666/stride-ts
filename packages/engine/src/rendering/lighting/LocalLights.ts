@@ -251,15 +251,25 @@ fn ltcPolygon(m: mat3x3f, p: vec3f, polygon: AreaPolygon) -> f32 {
   return ltcHorizon(f);
 }
 
-/** 矩形光的 LTC 积分（同 ltcPolygon，四个角直接算，不经数组和循环，寄存器少）。 */
-fn ltcQuad(m: mat3x3f, p: vec3f, light: LocalLight) -> f32 {
-  let c = light.position.xyz - p;
-  let u = light.angle.xyz;
-  let v = normalize(cross(u, light.direction.xyz)) * light.angle.w;
-  let a = normalize(m * (c + u - v));
-  let b = normalize(m * (c - u - v));
-  let d = normalize(m * (c - u + v));
-  let e = normalize(m * (c + u + v));
+/**
+ * 矩形光的四个角在着色点的本地坐标里（frame 乘过、没归一化），漫反射、镜面共用：漫反射直接积分，镜面每个角再乘 mInv（稀疏，
+ * 比从头建角、乘满的矩阵便宜）。toLight 是着色点到灯中心。
+ */
+struct RectCorners { a: vec3f, b: vec3f, d: vec3f, e: vec3f };
+
+fn rectCorners(frame: mat3x3f, toLight: vec3f, light: LocalLight) -> RectCorners {
+  let c = frame * toLight;
+  let u = frame * light.angle.xyz;
+  let v = frame * (normalize(cross(light.angle.xyz, light.direction.xyz)) * light.angle.w);
+  return RectCorners(c + u - v, c - u - v, c - u + v, c + u + v);
+}
+
+/** 矩形光的 LTC 积分（同 ltcPolygon，四个角直接算，不经数组和循环，寄存器少）：角已经在余弦分布的空间里（漫反射是 rectCorners，镜面再乘 mInv）。 */
+fn ltcRect(q: RectCorners) -> f32 {
+  let a = normalize(q.a);
+  let b = normalize(q.b);
+  let d = normalize(q.d);
+  let e = normalize(q.e);
   return ltcHorizon(ltcEdge(a, b) + ltcEdge(b, d) + ltcEdge(d, e) + ltcEdge(e, a));
 }
 

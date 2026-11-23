@@ -3,7 +3,7 @@ import type { FixtureFile } from '../../src/content/formats/fixtureFormat';
 import { fixtureModel, trackSpots } from '../../src/modeling/fixture';
 
 describe('店里的器具', () => {
-  test.each(['checkout', 'cart', 'basket', 'locker', 'gate'] as const)('%s：有几何，站在地上，索引都在顶点范围里', (type) => {
+  test.each(['checkout', 'cart', 'basket', 'locker', 'gate', 'selfCheckout'] as const)('%s：有几何，站在地上，索引都在顶点范围里', (type) => {
     const model = fixtureModel({ name: type, type }, undefined);
     expect(model.indices.length).toBeGreaterThan(0);
     let lowest = Infinity, maxIndex = 0;
@@ -25,6 +25,18 @@ describe('店里的器具', () => {
     };
     expect(width(big)).toBeGreaterThan(width(small) * 2);
     expect(() => fixtureModel({ name: 'X', type: 'nope' as FixtureFile['type'] }, undefined)).toThrow(/unknown/);
+  });
+
+  test('自助收银机：屏和指示灯发光，图集里有界面（蓝标题栏、绿按钮）和号码牌两格；购物袋架的挂臂往顾客那边伸', () => {
+    const model = fixtureModel({ name: 'S', type: 'selfCheckout' }, undefined);
+    expect(model.emissive).toBeGreaterThan(0);
+    expect(model.colorSvg).toContain('fill="#1e64c8"');
+    expect(model.colorSvg).toContain('fill="#2f9e44"');
+    // 最前面的是挂臂的头、袋子（顾客在 +Z），比柜体（0.2）伸得更前
+    let front = -Infinity;
+    for (let i = 0; i < model.vertices.length; i += 8) if (model.vertices[i]! > 0.1) front = Math.max(front, model.vertices[i + 2]!);
+    expect(front).toBeGreaterThan(0.2 - 0.1);
+    expect(front).toBeLessThan(0.25);
   });
 
   test('轨道射灯：灯头等距排在轨道下面，往下、往正面斜着照，灯口发光', () => {

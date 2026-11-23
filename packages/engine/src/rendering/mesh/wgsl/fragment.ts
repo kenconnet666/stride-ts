@@ -127,7 +127,7 @@ fn celEnvironment(color: vec3f) -> vec3f {
  * 面光源每个像素只算一次的部分（光源循环之前，areaShading）：着色点的本地坐标系（法线是 z）、按粗糙度和视角查的 LTC 矩阵和
  * 菲涅耳的缩放偏移。原来每盏灯各查一遍表、各建一遍坐标系，灯一多（超市的天花板 36 盏，一簇平均 23 盏）白算很多遍。
  */
-struct AreaShading { frame: mat3x3f, mInv: mat3x3f, specularFrame: mat3x3f, fresnel: vec3f, determinant: f32 };
+struct AreaShading { frame: mat3x3f, mInv: mat3x3f, specularFrame: mat3x3f, fresnel: vec3f, determinant: f32, reflection: vec3f };
 
 fn areaShading(s: Surface) -> AreaShading {
   let frame = ltcFrame(s.n, s.v);
@@ -139,7 +139,7 @@ fn areaShading(s: Surface) -> AreaShading {
     mInv = mat3x3f(m.x, 0.0, m.y, 0.0, 1.0, 0.0, m.z, 0.0, m.w);
     fresnel = s.specular * table[1].x + (1.0 - s.specular) * table[1].y;
   }
-  return AreaShading(frame, mInv, mInv * frame, fresnel, abs(determinant(mInv)));
+  return AreaShading(frame, mInv, mInv * frame, fresnel, abs(determinant(mInv)), reflect(-s.v, s.n));
 }
 
 /** 离发光面中心超过它半径的这么多倍时漫反射当小光源算（形状因子的误差约 (1 / AREA_FAR)²，1.5% 以内）。 */
@@ -151,8 +151,11 @@ const AREA_FAR = 8.0;
  * 形状因子），这里的光照最后要乘 π（见 shade），所以先除掉。到中心的距离在射程以内平滑地淡出。查找表还没上传时不画。
  *
  * 省掉的：着色点在发光面背后、或者整盏灯在表面的地平线以下时不算；远处（AREA_FAR 倍半径以外）漫反射按小光源（Snyder）——
- * 立体角 = 面积 · cosθₗ / d²，形状因子 = 立体角 · cosθₛ / π；镜面的波瓣比灯在画面上的张角宽得多时也按小光源（LTC 的分布在灯的
- * 方向上的值乘立体角），光滑的表面（地面的倒影）照旧积分。矩形按 4 个角单独积分（ltcQuad），不走 12 个角的数组。
+ * 立体角 = 面积 · cosθₗ / d²，形状因子 = 立体角 · cosθₛ / π；镜面在灯的张角 ε 里变化不大时也按小光源（LTC 的分布在灯的方向上
+ * 的值乘立体角）：分布变化的尺度在波瓣中心附近是粗糙度 α，在尾巴上是灯离反射方向的角度 φ，ε 不到 max(α, φ) 的四分之一时
+ * 点近似的误差是 (ε / max(α, φ))² 量级——粗糙的表面、光滑表面上离倒影远的灯都走这条（超市的天花板 36 盏灯，光滑的地面、
+ * 货架上只有倒影附近的几盏要积分，镜面那部分 4K 下从 3.2 毫秒降到约 1 毫秒）；倒影附近的照旧积分。矩形按 4 个角单独积分
+ * （ltcRect，四个角在本地坐标里只建一次，漫反射、镜面共用），不走 12 个角的数组。
  */
 fn areaLight(s: Surface, shading: AreaShading, light: LocalLight, world: vec3f, kind: u32) -> Lit {
   var result = Lit(vec3f(0.0), vec3f(0.0));
@@ -184,17 +187,24 @@ fn areaLight(s: Surface, shading: AreaShading, light: LocalLight, world: vec3f, 
     return result;
   }
   let far = distance2 > AREA_FAR * AREA_FAR * extent * extent;
-  var solidAngle = 0.0;
-  var l = vec3f(0.0);
+  let d = sqrt(distance2);
+  let l = toLight / d;
+  // 面积：矩形 4 · 半宽 · 半高，圆盘按正 12 边形 3r²（同 CPU 定亮度时的面积）
+  let area = select(3.0, 4.0, kind == 2u) * light.angle.w * length(light.angle.xyz);
+  let solidAngle = area * dot(-l, light.direction.xyz) / distance2;
+  // 镜面按小光源：灯的张角 ε = extent / d 不到分布变化尺度 max(α, φ) 的四分之一（φ² ≈ 2 (1 − cos φ)），且灯离得够远（立体角的
+  // 公式成立）——LTC 的分布在灯上几乎不变，取中心的值乘立体角
+  let scale2 = max(s.alphaR * s.alphaR, 2.0 * (1.0 - dot(shading.reflection, l)));
+  let pointSpecular = !s.hasSpecular || (distance2 > 16.0 * extent * extent && scale2 * distance2 > 16.0 * extent * extent);
+  // 矩形要积分时（漫反射近、或者镜面要积分）四个角只建一次
+  var corners = RectCorners(vec3f(0.0), vec3f(0.0), vec3f(0.0), vec3f(0.0));
+  if (kind == 2u && (!far || !pointSpecular)) {
+    corners = rectCorners(shading.frame, toLight, light);
+  }
   if (far) {
-    let d = sqrt(distance2);
-    l = toLight / d;
-    // 面积：矩形 4 · 半宽 · 半高，圆盘按正 12 边形 3r²（同 CPU 定亮度时的面积）
-    let area = select(3.0, 4.0, kind == 2u) * light.angle.w * length(light.angle.xyz);
-    solidAngle = area * dot(-l, light.direction.xyz) / distance2;
     result.diffuse = s.diffuse * radiance * (solidAngle * max(dot(s.n, l), 0.0) / PI);
   } else if (kind == 2u) {
-    result.diffuse = s.diffuse * radiance * ltcQuad(shading.frame, world, light);
+    result.diffuse = s.diffuse * radiance * ltcRect(corners);
   } else {
     // 圆盘的漫反射很糊、看不出边，按正 6 边形算（面积 2.598r²，乘 3 / 2.598 补成正 12 边形的）
     result.diffuse = s.diffuse * radiance * 1.1547005 * ltcPolygon(shading.frame, world, areaLightPolygon(light, kind, 6u));
@@ -202,14 +212,14 @@ fn areaLight(s: Surface, shading: AreaShading, light: LocalLight, world: vec3f, 
   if (!s.hasSpecular) {
     return result;
   }
-  // 波瓣（宽约 α）比灯的张角（extent / d）宽四倍以上：LTC 的分布在灯的方向上几乎不变，取中心的值乘立体角
-  if (far && s.alphaR * s.alphaR * distance2 > 16.0 * extent * extent) {
+  if (pointSpecular) {
     let w = shading.specularFrame * l;
     let length2 = dot(w, w);
     let lobe = max(w.z, 0.0) * inverseSqrt(length2) / PI * shading.determinant / (length2 * sqrt(length2));
     result.specular = radiance * shading.fresnel * (lobe * solidAngle);
   } else if (kind == 2u) {
-    result.specular = radiance * shading.fresnel * ltcQuad(shading.specularFrame, world, light);
+    let m = shading.mInv;
+    result.specular = radiance * shading.fresnel * ltcRect(RectCorners(m * corners.a, m * corners.b, m * corners.d, m * corners.e));
   } else {
     // 镜面反射按正 12 边形，亮面上的倒影是圆的
     result.specular = radiance * shading.fresnel * ltcPolygon(shading.specularFrame, world, areaLightPolygon(light, kind, AREA_CORNERS));

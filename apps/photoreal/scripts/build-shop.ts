@@ -136,9 +136,10 @@ shelves['Hooks'] = {
 };
 shelves['Stack'] = { type: 'stack', sides: 1, length: 1.1, height: 0.85, depth: 0.6, levels: [0.12], font: FONT, stock: { products: ['Tissue', 'Cereal', 'Biscuits'].map(p), variants: 2, facings: [3, 4] }, seed: 50 };
 for (const [name, shelf] of Object.entries(shelves)) await write('shelf', `Shop/Shelves/${name}`, { name, ...shelf });
-// 收银台、寄存柜、购物车、篮子、闸机
+// 收银台、自助收银机、寄存柜、购物车、篮子、闸机
 const fixtures: Record<string, object> = {
   Checkout1: { type: 'checkout', number: '1', font: FONT }, Checkout2: { type: 'checkout', number: '2', font: FONT },
+  ...Object.fromEntries([3, 4, 5].map((n) => [`Self${n}`, { type: 'selfCheckout', number: String(n), font: FONT }])),
   Locker: { type: 'locker', columns: 6, rows: 4 }, Cart: { type: 'cart' }, Basket: { type: 'basket', color: '#2f9e44' }, Gate: { type: 'gate' },
 };
 for (const [name, fixture] of Object.entries(fixtures)) await write('fixture', `Shop/Fixtures/${name}`, { name, ...fixture });
@@ -201,8 +202,10 @@ const shelfEntities = [
   shelfAt(6, 'Freezer', [0, 0, -8.4], 0), shelfAt(7, 'Fridge', [-1.55, 0, -11.6], 0), shelfAt(8, 'Fridge', [1.55, 0, -11.6], 0),
   // 两排货架朝着入口的那一头：左边端架、右边挂钩架；过道口一个低的堆头
   shelfAt(9, 'EndCap', [-1.3, 0, 1.03], 0), shelfAt(10, 'Hooks', [1.3, 0, 1.03], 0), shelfAt(11, 'Stack', [0, 0, 1.85], 0),
-  // 入口那片：左边两个收银台（顾客从 -Z 走过），右墙一排寄存柜，几辆购物车、一摞篮子，中间两道闸机
+  // 入口那片：左边两个收银台（顾客从 -Z 走过）、左墙前的自助收银机，右墙一排寄存柜，几辆购物车、一摞篮子，中间两道闸机
   fixtureAt(0, 'Checkout1', [-4.4, 0, 3.6], 90), fixtureAt(1, 'Checkout2', [-2.9, 0, 3.6], 90),
+  // 左墙前一排三台自助收银机，正面朝过道（+X）
+  ...[3, 4, 5].map((n, i) => fixtureAt(12 + i, `Self${n}`, [-5.7, 0, 0.6 + i * 1.15], 90)),
   fixtureAt(2, 'Locker', [5.75, 0, 3.8], -90),
   ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [3.2 + i * 0.12, 0, 4.4 - i * 0.28], 180)),
   ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [4.4, i * 0.09, 2.6], 10 * i)),

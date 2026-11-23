@@ -527,6 +527,87 @@
    }
   },
   {
+   "id": "5e0b5e0b-0002-4000-8000-00000000008c",
+   "name": "Self3 12",
+   "parent": null,
+   "position": [
+    -5.7,
+    0,
+    0.6
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Self3",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000008d",
+   "name": "Self4 13",
+   "parent": null,
+   "position": [
+    -5.7,
+    0,
+    1.75
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Self4",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-00000000008e",
+   "name": "Self5 14",
+   "parent": null,
+   "position": [
+    -5.7,
+    0,
+    2.9
+   ],
+   "rotation": [
+    0,
+    0.7071067811865475,
+    0,
+    0.7071067811865476
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Fixtures/Self5",
+     "materials": []
+    }
+   }
+  },
+  {
    "id": "5e0b5e0b-0002-4000-8000-000000000082",
    "name": "Locker 2",
    "parent": null,

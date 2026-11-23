@@ -1,16 +1,20 @@
 /**
- * 店里器具的生成（`.fixture.json`，格式见 content/formats/fixtureFormat.ts）：收银台、购物车、购物篮、寄存柜、闸机，都用
- * ProductBatch 的方块和圆管拼，出一个模型、图集和材质。收银台上方的号码灯箱、寄存柜每格的指示灯、轨道射灯的灯口发光。
+ * 店里器具的生成（`.fixture.json`，格式见 content/formats/fixtureFormat.ts）：收银台、自助收银机、购物车、购物篮、寄存柜、闸机、
+ * 轨道射灯，都用 ProductBatch 的方块和圆管拼，出一个模型、图集和材质。收银台上方的号码灯箱、自助收银机的屏和指示灯、寄存柜每格的
+ * 指示灯、轨道射灯的灯口发光。
  */
 import type { FixtureFile } from '../content/formats/fixtureFormat.ts';
 import { textPath } from './product.ts';
 import { ProductBatch, type AtlasCell, type Cell, type MergedProducts } from './productBatch.ts';
 import type { TextFont } from './textOutline.ts';
 
-/** 纯色：主色、不锈钢、深色（传送带、屏、轮子）、浅色（柜体、台面）、绿灯（发光）、玻璃那样的深青（扫码窗、屏面）、射灯口的暖白光。 */
-const MAIN = 0, STEEL = 1, DARK = 2, LIGHT = 3, LED = 4, SCREEN = 5, LAMP = 6;
+/**
+ * 纯色：主色、不锈钢、深色（传送带、屏、轮子）、浅色（柜体、台面）、绿灯（发光）、玻璃那样的深青（扫码窗、屏面）、射灯口的暖白光、
+ * 购物袋和小票的白。
+ */
+const MAIN = 0, STEEL = 1, DARK = 2, LIGHT = 3, LED = 4, SCREEN = 5, LAMP = 6, PAPER = 7;
 
-const DEFAULT_COLORS: Readonly<Record<FixtureFile['type'], string>> = { checkout: '#d8d6d0', cart: '#2f9e44', basket: '#1e64c8', locker: '#f08c00', gate: '#b8bcc0', track: '#1d1d1f' };
+const DEFAULT_COLORS: Readonly<Record<FixtureFile['type'], string>> = { checkout: '#d8d6d0', cart: '#2f9e44', basket: '#1e64c8', locker: '#f08c00', gate: '#b8bcc0', track: '#1d1d1f', selfCheckout: '#e9eaec' };
 
 /** 轨道射灯：轨道的截面边长、灯头吊在轨道下多深、灯身的半径和长（米）。 */
 const RAIL = 0.035, HEAD_DROP = 0.09, HEAD_RADIUS = 0.04, HEAD_LENGTH = 0.13;
@@ -42,13 +46,19 @@ function trackLenses(file: FixtureFile): TrackSpot[] {
   });
 }
 
+/** 这件器具上要写的字（烘焙时按它取字形）；不写字的种类是空串。 */
+export function fixtureText(file: FixtureFile): string {
+  const number = file.number ?? '1';
+  return file.type === 'checkout' ? `收银 ${number}` : file.type === 'selfCheckout' ? `${SELF_CHECKOUT_TEXT.join('')}${number}` : '';
+}
+
 export function fixtureModel(file: FixtureFile, font: TextFont | undefined, where = file.name): MergedProducts {
   const main = file.color ?? DEFAULT_COLORS[file.type];
   if (!main) throw new Error(`${where}: unknown fixture type '${String(file.type)}'`);
   const cells: AtlasCell[] = file.type === 'checkout' ? [{
     size: [700, 260], color: '#d7262b', roughness: 0.3, metalness: 0, emissive: 2.5,
     draw: ([x, y, w, h]: Cell) => (font ? textPath(font, `收银 ${file.number ?? '1'}`, x + w / 2, y + h / 2, w * 0.8, h * 0.62, '#ffffff') : undefined),
-  }] : [];
+  }] : file.type === 'selfCheckout' ? selfCheckoutCells(file.number ?? '1', font) : [];
   const batch = new ProductBatch({ products: new Map(), font: () => undefined }, where, [], {
     solids: [
       { color: main, roughness: 0.45, metalness: file.type === 'gate' ? 0.8 : 0.1 },
@@ -58,6 +68,7 @@ export function fixtureModel(file: FixtureFile, font: TextFont | undefined, wher
       { color: '#3cd35a', roughness: 0.4, metalness: 0, emissive: 3 },
       { color: '#1b2a33', roughness: 0.08, metalness: 0.3 },
       { color: '#fff1d8', roughness: 0.4, metalness: 0, emissive: 8 },
+      { color: '#e8ecee', roughness: 0.45, metalness: 0 },
     ],
     cells,
   });
@@ -68,6 +79,7 @@ export function fixtureModel(file: FixtureFile, font: TextFont | undefined, wher
     case 'locker': locker(batch, Math.max(1, Math.round(file.columns ?? 6)), Math.max(1, Math.round(file.rows ?? 4))); break;
     case 'gate': gate(batch); break;
     case 'track': track(batch, file); break;
+    case 'selfCheckout': selfCheckout(batch); break;
   }
   return batch.finish();
 }
@@ -173,7 +185,6 @@ function locker(batch: ProductBatch, columns: number, rows: number): void {
   }
 }
 
-/** 闸机：两根立柱（顶上一块深色的感应面板），中间一根摆臂。 */
 /**
  * 轨道射灯：一根方的轨道（顶面在原点），每个灯头是轨道下的转接块、一根短杆、一个朝着照的方向的圆筒灯身（后头收成一个钝的
  * 圆台），灯口一片发光的圆。
@@ -194,6 +205,7 @@ function track(batch: ProductBatch, file: FixtureFile): void {
   }
 }
 
+/** 闸机：两根立柱（顶上一块深色的感应面板），中间一根摆臂。 */
 function gate(batch: ProductBatch): void {
   for (const x of [-0.38, 0.38]) {
     batch.box([x - 0.06, 0, -0.25], [x + 0.06, 0.95, 0.25], MAIN);
@@ -201,4 +213,81 @@ function gate(batch: ProductBatch): void {
   }
   batch.box([0.3, 0.94, -0.22], [0.32, 0.96, -0.12], LED);
   batch.tube([-0.32, 0.85, 0], [0.32, 0.85, 0], 0.015, STEEL, 10);
+}
+
+/**
+ * 自助收银机的两格：触摸屏的界面（蓝色的标题栏、白底、"请扫描商品"、绿色的大按钮，整块发光）和指示灯柱上的号码牌（黑底白字，
+ * 发光）。没有字体时只画色块。
+ */
+const SELF_CHECKOUT_TEXT = ['自助收银', '请扫描商品', '开始结账'] as const;
+
+function selfCheckoutCells(number: string, font: TextFont | undefined): AtlasCell[] {
+  const [title, prompt, button] = SELF_CHECKOUT_TEXT;
+  return [{
+    size: [400, 300], color: '#f4f6f8', roughness: 0.1, metalness: 0, emissive: 1.2,
+    draw: ([x, y, w, h]: Cell) => {
+      const shapes = [`<rect x="${x}" y="${y}" width="${w}" height="${h * 0.16}" fill="#1e64c8"/>`,
+        `<rect x="${x + w * 0.2}" y="${y + h * 0.66}" width="${w * 0.6}" height="${h * 0.2}" rx="${h * 0.04}" fill="#2f9e44"/>`];
+      if (font) {
+        shapes.push(textPath(font, title, x + w / 2, y + h * 0.08, w * 0.5, h * 0.11, '#ffffff') ?? '');
+        shapes.push(textPath(font, prompt, x + w / 2, y + h * 0.4, w * 0.7, h * 0.16, '#1d1d1f') ?? '');
+        shapes.push(textPath(font, button, x + w / 2, y + h * 0.76, w * 0.45, h * 0.12, '#ffffff') ?? '');
+      }
+      return shapes.join('');
+    },
+  }, {
+    size: [160, 120], color: '#1d1d1f', roughness: 0.3, metalness: 0, emissive: 2,
+    draw: ([x, y, w, h]: Cell) => (font ? textPath(font, number, x + w / 2, y + h / 2, w * 0.6, h * 0.7, '#ffffff') : undefined),
+  }];
+}
+
+/**
+ * 自助收银机（顾客在 +Z）：左边是柜体，台面上平放的扫码玻璃、后面一个竖的扫码窗、右前角的刷卡器；柜体后沿一根立柱托着触摸屏
+ * （界面是图集的第 0 格），屏下是出票口，吐出一截小票；右边低一截的称重台上是购物袋架——两根立杆、一根横杆、两根往前伸的挂臂，
+ * 撑着一个打开的袋子；左后角一根指示灯柱，顶上绿灯，下面号码牌（第 1 格）。
+ */
+function selfCheckout(batch: ProductBatch): void {
+  // 柜体和台面
+  batch.box([-0.5, 0, -0.25], [0, 0.82, 0.2], MAIN);
+  batch.box([-0.52, 0.82, -0.27], [0.02, 0.85, 0.22], LIGHT);
+  // 扫码：平放的玻璃、后面竖的扫码窗
+  batch.box([-0.42, 0.85, -0.05], [-0.1, 0.852, 0.15], SCREEN);
+  batch.box([-0.42, 0.85, -0.2], [-0.1, 1.0, -0.12], DARK);
+  batch.box([-0.4, 0.87, -0.12], [-0.12, 0.98, -0.118], SCREEN);
+  // 刷卡器
+  batch.box([-0.08, 0.85, 0.04], [-0.01, 0.93, 0.13], DARK);
+  batch.box([-0.07, 0.88, 0.13], [-0.02, 0.92, 0.132], SCREEN);
+  // 立柱、出票口（吐出一截小票）、触摸屏
+  batch.tube([-0.26, 0.85, -0.23], [-0.26, 1.12, -0.23], 0.03, DARK, 12);
+  batch.box([-0.37, 1.0, -0.25], [-0.15, 1.1, -0.17], DARK);
+  batch.box([-0.31, 1.03, -0.17], [-0.21, 1.035, -0.165], DARK);
+  batch.box([-0.3, 0.94, -0.166], [-0.22, 1.033, -0.164], PAPER);
+  batch.box([-0.48, 1.12, -0.26], [-0.04, 1.43, -0.2], DARK);
+  batch.quad([[-0.46, 1.14, -0.199], [-0.06, 1.14, -0.199], [-0.06, 1.41, -0.199], [-0.46, 1.41, -0.199]], [0, 0, 1], 0);
+  // 指示灯柱：号码牌、顶上的绿灯
+  batch.tube([-0.49, 1.43, -0.24], [-0.49, 1.9, -0.24], 0.014, STEEL, 8);
+  batch.box([-0.56, 1.7, -0.26], [-0.42, 1.8, -0.22], DARK);
+  batch.quad([[-0.55, 1.705, -0.219], [-0.43, 1.705, -0.219], [-0.43, 1.795, -0.219], [-0.55, 1.795, -0.219]], [0, 0, 1], 1);
+  batch.tube([-0.49, 1.9, -0.24], [-0.49, 1.98, -0.24], 0.035, LED, 12);
+  // 称重台
+  batch.box([0.1, 0, -0.22], [0.53, 0.72, 0.18], MAIN);
+  batch.box([0.08, 0.72, -0.24], [0.55, 0.74, 0.2], STEEL);
+  // 购物袋架：立杆、横杆、往前伸的挂臂
+  for (const x of [0.12, 0.51]) batch.tube([x, 0.74, -0.21], [x, 1.16, -0.21], 0.01, STEEL, 8);
+  batch.tube([0.12, 1.16, -0.21], [0.51, 1.16, -0.21], 0.01, STEEL, 8);
+  for (const x of [0.15, 0.48]) batch.tube([x, 1.14, -0.21], [x, 1.14, 0.13], 0.007, STEEL, 8);
+  // 撑开的塑料袋：底和四壁（前壁矮一截，袋口往前耷拉），两只提手套在挂臂上
+  const [bx0, bx1, bz0, bz1, by0, t] = [0.17, 0.46, -0.17, 0.1, 0.745, 0.002];
+  const back = 1.06, front = 0.96;
+  batch.box([bx0, by0, bz0], [bx1, by0 + t, bz1], PAPER);
+  batch.box([bx0, by0, bz0], [bx1, back, bz0 + t], PAPER);
+  batch.box([bx0, by0, bz1 - t], [bx1, front, bz1], PAPER);
+  batch.box([bx0, by0, bz0], [bx0 + t, back, bz1], PAPER);
+  batch.box([bx1 - t, by0, bz0], [bx1, back, bz1], PAPER);
+  for (const x of [0.15, 0.48]) {
+    const inner = x < 0.3 ? bx0 : bx1;
+    // 提手：从袋壁顶上斜着挂到挂臂上，再从挂臂上垂下来
+    batch.tube([inner, back, bz0 + 0.04], [x, 1.14, -0.1], 0.004, PAPER, 6);
+    batch.tube([inner, front, bz1 - 0.04], [x, 1.14, 0.06], 0.004, PAPER, 6);
+  }
 }

@@ -192,6 +192,18 @@ TS 版能用、而且写法基本不变的优化：
 - 游戏脚本只用 TypeScript（stages.md 的 D5，2026-11-19）。
 - C# 移植版停止，只当参考实现（D6，2026-11-19）。
 
+## 提高帧率的做法（2026-11-23 调研）
+
+用户看超市时帧率到不了 120 Hz，要求查光追、多光源相关的前沿论文和做法。查到的和我们的关系：
+
+- **多光源的随机直接光照**：Unreal 的 MegaLights（SIGGRAPH 2025 Advances）每个像素朝重要的灯射固定数量的光线、按重要性抽样，阴影和直接光照一起做，再整体降噪，开销和灯数基本无关（要硬件光追）；HypeHype 的 Stochastic Tile-Based Lighting（同一届）按块（不是按像素）用加权蓄水池抽样每块挑 16 盏，相邻块交错取样去掉块状的相关，阴影一次 gather 的随机 PCF，最后逐像素按权重算 BRDF，无偏、开销固定。我们的分簇前向渲染很适合后者（簇本来就有灯表，挑灯在计算着色器里做，时间累积交给已有的 TAA），排进路线图。ReSTIR DI（Bitterli 2020）是在光追里重用蓄水池的标准做法，要每像素的射线，留给路径追踪那边。
+- **面光的 LTC**：没查到专门给"很多面光"提速的工作；我们自己的做法（镜面按 max(α, φ) 判断走小光源、四个角共用）见 decisions.md 的"多盏面光的开销"。
+- **光追遍历**：Ylitie、Karras、Laine 2017 的压缩 8 叉 BVH（CWBVH）把二叉 BVH 按 SAH 转成 8 叉、子节点的包围盒量化、栈也压缩，非相干光线（反射、GI）的遍历快 1.9～2.1 倍，显存是普通 BVH 的 35～60%；2025 年 CTU 的硕士论文测量化的 6 叉 BVH，次级光线平均快 78%。tinybvh（jbikker，单头文件）有 CWBVH 的构建和 GPU 遍历，克隆在 C:/code/refs/tinybvh。我们的光追（反射、DDGI、路径追踪）都在计算着色器里遍历原生建的二叉 BVH，这条能整体提速，排进路线图。
+- **混合反射**：AMD FidelityFX Hybrid Reflections 按 8×8 块统计屏幕空间的命中率，分"全光追、棋盘格混合、全混合"三类，按材质也能定死（镜子只用光追）；战地 V、PICA PICA 的镜面光追是半分辨率追、整分辨率重建。我们已经是"SSR 没把握的才光追、半分辨率"，按块分类是下一步可以借的。
+- **可变着色率**：WebGPU 没有 VRS；能借的是思路（低频的项——面光的漫反射、环境光——按 2×2 共享），要 WGSL 的 subgroup 的 quad 操作，留着。
+
+来源：[MegaLights（SIGGRAPH 2025）](https://www.advances.realtimerendering.com/s2025/content/MegaLights_Stochastic_Direct_Lighting_2025.pdf)、[MegaLights 文档](https://dev.epicgames.com/documentation/unreal-engine/megalights-in-unreal-engine)、[Stochastic Tile-Based Lighting 讲稿](https://www.advances.realtimerendering.com/s2025/content/s2025_stb_lighting_v1.1_notes.pdf)、[ReSTIR（Bitterli 2020）](https://developer.download.nvidia.com/devblogs/ReSTIR.pdf)、[CWBVH（Ylitie 2017）](https://research.nvidia.com/sites/default/files/publications/ylitie2017hpg-paper.pdf)、[宽 BVH 的硕士论文（CTU 2025）](https://dcgi.fel.cvut.cz/wp-content/wpallimport-dist/theses/pdf/theses-2025-cezneluk-thesis.pdf)、[tinybvh](https://github.com/jbikker/tinybvh)、[AMD Hybrid Reflections](https://gpuopen.com/learn/hybrid-reflections/)、[D3D12 VRS](https://learn.microsoft.com/en-us/windows/win32/direct3d12/vrs)。
+
 ## 来源
 
 - [Rapier](https://rapier.rs/)、[rapier.js](https://github.com/dimforge/rapier.js)（0.19.x）

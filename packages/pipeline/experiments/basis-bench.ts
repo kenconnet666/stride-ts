@@ -20,5 +20,4 @@ const time = async (label: string, run: () => Promise<unknown>) => {
 };
 await time(`${size}² uastc effort 2 one`, () => tools.encodeBasis(pixels, size, size, { mode: 'uastc', srgb: true, mipmaps: true }));
 await time(`${size}² uastc ×4 concurrent`, () => Promise.all([0, 1, 2, 3].map(() => tools.encodeBasis(pixels, size, size, { mode: 'uastc', srgb: true, mipmaps: true }))));
-tools.dispose?.();
 process.exit(0);

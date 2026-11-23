@@ -76,6 +76,8 @@ try {
         Write-Host "FAILED: $($failed -join ', ')"
         exit 1
     }
+    # 最后一行固定：后台等它的脚本按 PASSED 或 FAILED: 判断跑完了（成功时的表格带颜色码，不好匹配）
+    Write-Host 'PASSED'
     exit 0
 } finally {
     Pop-Location

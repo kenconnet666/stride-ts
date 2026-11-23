@@ -27,7 +27,8 @@ const zhCN: FieldMessages = {
     'UI element link': '跟随 UI 元素', 'Physics': '物理', 'Navigation': '导航', 'Offset': '偏移', 'Compositor': '合成器', 'Material': '材质', 'Timeline': '时间轴', 'Camera rig': '镜头系统',
   },
   names: {
-    // 输入映射、数据表
+    // 持久（存档）、输入映射、数据表
+    transform: '记位置',
     actions: '动作', bindings: '绑定', control: '控件', negative: '负方向', positive: '正方向', up: '上', down: '下', left: '左', right: '右', deadZone: '死区',
     min: '最小', max: '最大', unit: '单位', values: '可选的值', asset: '资源种类', default: '默认值', description: '说明',
     terrain: '地形', detail: '细节', lodFactor: '细分距离', lacunarity: '频率倍数', gain: '幅度倍数', ridged: '山脊', warp: '扭曲', erosion: '侵蚀', falloff: '过渡', splines: '贴着的样条', spline: '样条', branches: '分支', lanes: '车道', oneWay: '单行', track: '轨道', path: '路径', scatter: '摆放', levels: '层级', count: '数量', direction: '方向', children: '子枝数', gnarliness: '弯曲', taper: '收细', twist: '扭转', sections: '节数', leaves: '叶片', sizeVariance: '大小变化', growth: '生长方向', slope: '坡度', clump: '成片', avoidPaths: '离路', alignToSlope: '顺着坡', sink: '埋深', viewDistance: '可见距离', castShadows: '投阴影', stops: '车站', at: '停在', dwell: '停站时长', maxSpeed: '最高速度', acceleration: '加速度', deceleration: '减速度', doorTime: '开关门用时', carLength: '车厢长', carGap: '车厢间距', timeOffset: '时刻表偏移', station: '站名', gullies: '冲沟', valley: '谷底高度', peak: '山顶高度', features: '地物', strokes: '笔画',
@@ -85,6 +86,7 @@ const zhCN: FieldMessages = {
     shakeRotation: '晃动的角度', shakePosition: '晃动的位移', shakeFrequency: '晃动的频率', sensor: '传感器', focalLength: '焦距', aperture: '光圈', focusDistance: '对焦距离', shutterAngle: '快门角', exposureCompensation: '曝光补偿', depthOfField: '景深', cuts: '切点', clips: '片段', start: '开始', sound: '声音', volume: '音量', cues: '字幕条', end: '结束', text: '文字', events: '事件',
   },
   descriptions: {
+    'keep where it was moved (off when something else places it)': '记下挪到的位置、旋转、缩放（位置由别的东西定的关掉）',
     'key:W, key:Space, mouse:left, mouse:delta, mouse:wheel, pad:a, pad:leftStick, pad:rightTrigger …': '键 key:W、key:Space，鼠标 mouse:left、mouse:delta（移动）、mouse:wheel（滚轮），手柄 pad:a、pad:leftStick（左摇杆）、pad:rightTrigger（右扳机）……',
     'the text; line breaks start new lines': '文字；换行就是另起一行',
     'inside width, wall height and depth': '里面的宽、壁高、深',

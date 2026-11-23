@@ -220,8 +220,17 @@ export class DebugHub {
     }
   }
 
+  /**
+   * 没指定 --page 时操作哪个页面：最后连上的、不经调试桥的那个（agent 自己用 stride open 开的）；都经调试桥时才用最后连上的。
+   * 用户在主 Chrome 里开着同一个场景时（经调试桥的），热重载以后它常常是最后连上的，原来默认落到它上面、挪了用户的相机。
+   */
+  #defaultPage(): Page | undefined {
+    const pages = [...this.#pages.values()];
+    return pages.findLast((page) => page.bridge === undefined) ?? pages.at(-1);
+  }
+
   #call({ page: pageId, command, args = {}, timeout = DEFAULT_TIMEOUT }: CallRequest & { timeout?: number }): Promise<CallResponse> {
-    const page = pageId === undefined ? [...this.#pages.values()].at(-1) : this.#pages.get(pageId);
+    const page = pageId === undefined ? this.#defaultPage() : this.#pages.get(pageId);
     if (!page) return Promise.resolve({ ok: false, error: pageId === undefined ? 'no page is connected to this hub' : `page ${pageId} is not connected` });
     const id = this.#nextCall++;
     return new Promise((resolve) => {

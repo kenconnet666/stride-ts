@@ -113,7 +113,7 @@ Types (TypeScript 7's language server; positions are 1-based like the compiler's
 
 Common options
   --hub <text>            pick a hub by name or url (default: the one whose page connected last)
-  --page <id>             pick a page of the hub (default: the last connected)
+  --page <id>             pick a page of the hub (default: the last connected one not reached through the debug bridge, i.e. not the user's own Chrome)
   --timeout <seconds>     how long a page command may take (default 120, or STRIDE_TIMEOUT)
 `;
 

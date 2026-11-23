@@ -68,6 +68,14 @@ export class EditorClient {
   }
 
   /** 白盒导出成可编辑的多边形网格（新的 `.poly.json`，target 没给时是 `<白盒>Poly`）；返回它的路径。 */
+  /**
+   * 自动对齐扫描场景的编辑 path 里合并的第 part 段；write 时对好的变换写回文件（不写时调用的人自己存）。返回对好的变换、配上的
+   * 点数和均方根距离（米）。
+   */
+  alignSplatPart(path: string, part: number, write = true): Promise<{ transform: { position: [number, number, number]; rotation: [number, number, number, number]; scale: number }; matched: number; error: number }> {
+    return request('POST', '/splat-align', { path, part, write });
+  }
+
   brushToPoly(path: string, target?: string): Promise<{ path: string; vertexCount: number; faceCount: number }> {
     return request('POST', '/brush/to-poly', target === undefined ? { path } : { path, target });
   }

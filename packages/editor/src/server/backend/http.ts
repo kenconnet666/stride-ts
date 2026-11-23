@@ -49,6 +49,11 @@ const ROUTES: Readonly<Record<string, Route>> = {
     if (!path) throw new HttpError(400, 'path (the content path of the greybox) is required');
     return backend.exportBrushToPoly(path, target);
   },
+  'POST /splat-align': async (backend, request) => {
+    const { path, part, write } = await readJson(request) as { path?: string; part?: number; write?: boolean };
+    if (!path || typeof part !== 'number') throw new HttpError(400, 'path (the content path of the scan edit) and part (the index of the merged scan) are required');
+    return backend.alignSplatPart(path, part, write ?? true);
+  },
   'POST /import-material': async (backend, request) => {
     // 一套扫描的材质：JSON 里各个文件是 base64
     const body = await readJson(request) as { folder?: string; files: { name: string; base64: string }[]; name?: string; tileSize?: number; maxSize?: number; parallaxDepth?: number; credit?: MaterialCredit };

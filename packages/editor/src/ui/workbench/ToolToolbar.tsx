@@ -118,6 +118,10 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
     const modeControls = editing.mode === 'boxes' ? [
       <Button size="sm" variant="ghost" tone="neutral" icon={Plus} onClick={() => tools.addSplatBox('keep')}>{t.splatAddKeep}</Button>,
       <Button size="sm" variant="ghost" tone="neutral" icon={Plus} onClick={() => tools.addSplatBox('remove')}>{t.splatAddRemove}</Button>,
+      <Menu trigger={(props) => <Button {...props} size="sm" variant="ghost" tone="neutral" icon={Plus}>{t.splatAddPart}</Button>}>
+        {tools.splatSources().map((path) => <MenuItem onAction={() => tools.addSplatPart(path)}>{path}</MenuItem>)}
+      </Menu>,
+      <Button size="sm" variant="ghost" tone="neutral" disabled={editing.selection?.list !== 'merge'} onClick={() => void tools.alignSplatPart()}>{t.splatAlign}</Button>,
       <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.sdfDelete} (Delete)`} disabled={!editing.selection} onClick={() => tools.deleteSelectedSplatBox()}>{t.sdfDelete}</Button>,
     ] : [
       <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.sculptRadius} aria-label={t.sculptRadius} min={0.01} step={0.05} format={{ useGrouping: false, maximumFractionDigits: 3 }}

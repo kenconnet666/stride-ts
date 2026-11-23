@@ -574,13 +574,40 @@ export class ViewportTools {
   }
 
   /** 加一个裁剪框（盖住整个扫描）或删掉的框，选中它。 */
-  addSplatBox(list: SplatBoxList): void {
+  addSplatBox(list: Exclude<SplatBoxList, 'merge'>): void {
     this.#splat?.addBox(list);
   }
 
-  /** 删掉选中的框。 */
+  /** 删掉选中的框、合并的一段。 */
   deleteSelectedSplatBox(): void {
     this.#splat?.deleteSelected();
+  }
+
+  /** 能合并进来的扫描：工程里的泼溅资源，除了正在编辑的这个生成的、它的源。 */
+  splatSources(): string[] {
+    const editing = this.splatEditing.value;
+    return editing ? this.#session.assets.value.filter((asset) => asset.kind === 'splats' && asset.path !== editing.path && asset.path !== editing.file.source).map((asset) => asset.path) : [];
+  }
+
+  /** 合并一段扫描（splats 资源）进来，选中它（视口里拖到大概的地方，再自动对齐）。 */
+  addSplatPart(source: string): void {
+    this.#splat?.addPart(source);
+  }
+
+  /** 自动对齐选中的那段合并的扫描（后端跑 ICP），对好的变换存成一步撤销；状态栏报配上的点数和误差。 */
+  async alignSplatPart(): Promise<void> {
+    const tool = this.#splat, selection = tool?.selection, session = this.#session;
+    if (!tool || selection?.list !== 'merge') return;
+    session.notice.value = t.splatAligning;
+    try {
+      const result = await session.client.alignSplatPart(tool.path, selection.index, false);
+      tool.file = { ...tool.file, merge: (tool.file.merge ?? []).map((part, i) => (i === selection.index ? { ...part, ...result.transform } : part)) };
+      this.#editing.value?.commit(tool.file);
+      this.#showSplat();
+      session.notice.value = t.splatAligned(result.matched, result.error);
+    } catch (error) {
+      session.notice.value = (error as Error).message;
+    }
   }
 
   /** 删飞点开、关（开的时候用默认的格子和邻居数）。 */

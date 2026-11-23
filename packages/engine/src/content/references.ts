@@ -305,6 +305,7 @@ export function assetReferenceSlots(kind: AssetKind, file: unknown): AssetRefere
     case 'splatEdit': {
       const edit = file as SplatEditFile;
       if (edit.source) add('splats', edit, 'source');
+      edit.merge?.forEach((part) => part.source && add('splats', part, 'source'));
       break;
     }
     case 'debris': {

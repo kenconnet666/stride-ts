@@ -12,6 +12,16 @@ const splatBox = object(fields<NonNullable<SplatEditFile['keep']>[number]>({
 export const SPLAT_EDIT_FIELDS = fields<SplatEditFile>({
   name: string,
   source: { type: asset('splats'), description: 'the scanned splats this is made from (left unchanged)' },
+  merge: {
+    type: list(object(fields<NonNullable<SplatEditFile['merge']>[number]>({
+      source: { type: asset('splats'), description: 'another scan merged in' },
+      position: { type: vector(3, 'm'), optional: true, default: [0, 0, 0], description: 'where it goes in the source splats\' coordinates' },
+      rotation: { type: vector(4), optional: true, default: [0, 0, 0, 1], description: 'its rotation (quaternion xyzw)' },
+      scale: { type: number({ min: 0.0001, step: 0.01 }), optional: true, default: 1, description: 'its uniform scale (phone scans often differ in scale)' },
+    }))),
+    optional: true,
+    description: 'other scans merged in first (place them roughly, then auto-align); crop, erase and floaters apply to the merged result',
+  },
   keep: { type: list(splatBox), optional: true, description: 'crop boxes: only splats inside one of them are kept; nothing is cropped when missing' },
   remove: { type: list(splatBox), optional: true, description: 'splats inside these boxes are removed' },
   erase: {

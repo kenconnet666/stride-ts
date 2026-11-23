@@ -9,8 +9,9 @@ import { mkdir, readdir, readFile, rename, rm, rmdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
-import { checkWorldFile, placeInCells, worldCellPath, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type TextureEncoding, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
+import { checkWorldFile, placeInCells, worldCellPath, EXTENSIONS, isProceduralModel, parseProceduralModel, TEXTURE_EXTENSIONS, type BrushFile, type ImageImportFile, type ModelImportFile, type SplatEditFile, type TextureEncoding, type SceneEntityFile, type SceneFile, type WorldFile, type WorldLayer } from '@stride-ts/engine/content-format';
 import { createStrideTools, type StrideTools } from '@stride-ts/native/tools';
+import { alignSplats, concatSplats, decodeSplatSource, partTransform, transformSplats, type SplatTransform } from '@stride-ts/engine/splat-edit';
 import { brushToPoly, importSourceModel } from '@stride-ts/pipeline';
 import { isJsonAssetKind, type AssetKind } from '@stride-ts/engine/content-references';
 import { type ImportResult, type AssetChanges, type AssetMove, type AssetRecord, type DeleteResult, type MoveRequest, type MoveResult } from '../../shared/protocol.ts';
@@ -281,6 +282,32 @@ export class EditorBackend {
    * 白盒 brushPath 导出成可编辑的多边形网格（pipeline 的 brushToPoly），存成新的 `.poly.json`（照常烘出同名的模型）：target 没给时
    * 是白盒旁边的 `<名字>Poly`，有了往后加数字。白盒本身不动；返回新的多边形网格的路径和面数。
    */
+  /**
+   * 自动对齐扫描场景的编辑 editPath 里合并的第 part 段（content/splatAlign.ts 的 ICP，带缩放）：从它现在摆的变换开始，对到源泼溅
+   * 加上别的几段上；write 时对好的变换写回编辑文件（重新生成泼溅；编辑器界面不写，自己当一步撤销存）。返回新的变换、配上的
+   * 点数、配上的点之间的均方根距离（米）。
+   */
+  async alignSplatPart(editPath: string, part: number, write = true): Promise<{ readonly transform: SplatTransform; readonly matched: number; readonly error: number }> {
+    const file = await this.readAsset('splatEdit', editPath) as SplatEditFile;
+    const parts = file.merge ?? [];
+    if (!parts[part]) throw new HttpError(400, `${editPath} has no merged part ${part} (it has ${parts.length})`);
+    const decode = async (splats: string) => {
+      const bytes = await readFile(path.join(this.project.contentDir, assetFileName('splats', splats))).catch(() => {
+        throw new HttpError(400, `cannot read the splats ${splats}`);
+      });
+      return decodeSplatSource(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, splats);
+    };
+    const others = await Promise.all(parts.map(async (other, i) => (i === part ? undefined : transformSplats(await decode(other.source), partTransform(other)))));
+    const target = concatSplats([await decode(file.source), ...others.filter((other) => other !== undefined)]);
+    const result = alignSplats(target, await decode(parts[part].source), partTransform(parts[part]));
+    if (result.matched < 3) throw new HttpError(400, `merged part ${part} does not overlap the rest within 0.5 m: place it closer first`);
+    const round = (v: number) => Math.round(v * 1e5) / 1e5;
+    const { position, rotation, scale } = result.transform;
+    const aligned = { ...parts[part], position: position.map(round), rotation: rotation.map((v) => Math.round(v * 1e6) / 1e6), scale: round(scale) };
+    if (write) await this.saveAsset('splatEdit', editPath, { ...file, merge: parts.map((other, i) => (i === part ? aligned : other)) });
+    return { ...result, transform: { position: aligned.position as [number, number, number], rotation: aligned.rotation as [number, number, number, number], scale: aligned.scale } };
+  }
+
   async exportBrushToPoly(brushPath: string, target?: string): Promise<{ readonly path: string; readonly vertexCount: number; readonly faceCount: number }> {
     const brush = await this.readAsset('brush', brushPath) as BrushFile;
     const taken = (candidate: string) => this.database.get('poly', candidate) !== undefined || this.database.get('model', candidate) !== undefined;

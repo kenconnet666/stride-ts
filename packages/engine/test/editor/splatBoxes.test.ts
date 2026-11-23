@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { SplatEditFile } from '../../src/content/formats/splatEditFormat';
 import { insideBox, splatEditMask } from '../../src/content/splatEdit';
-import { addSplatBox, applySplatBoxChange, deleteSplatBox, extendStroke, splatBoxes, splatExtent } from '../../src/editor/viewport/tools/splatBoxes';
+import { addPart, addSplatBox, applyPartChange, applySplatBoxChange, deleteSplatBox, extendStroke, partBox, splatBoxes, splatExtent } from '../../src/editor/viewport/tools/splatBoxes';
 import { Quaternion, Vector3 } from '../../src/data/vectors';
 
 const file: SplatEditFile = { name: 'Edit', source: 'Scans/Room' };
@@ -47,6 +47,26 @@ describe('扫描场景编辑的框和刷', () => {
     const { min, max } = splatExtent(nodes);
     expect(min[0]).toBeGreaterThan(-6);
     expect(max[0]).toBeLessThan(5.5);
+  });
+
+  test('合并的一段：框是它的主体按变换放过来的；移动挪位置，转、缩绕框的中心，位置跟着变；知道范围的才在框的一串里', () => {
+    const { file: merged, selection } = addPart(file, 'Scans/Hall');
+    expect(selection).toEqual({ list: 'merge', index: 0 });
+    const extent = { min: [-1, 0, -1] as const, max: [1, 2, 1] as const };
+    const placed = { ...merged, merge: [{ source: 'Scans/Hall', position: [3, 0, 0] as [number, number, number], scale: 2 }] };
+    expect(partBox(placed.merge[0]!, extent)).toMatchObject({ center: [3, 2, 0], half: [2, 2, 2] });
+    expect(splatBoxes(placed).map((entry) => entry.selection.list)).toEqual([]);
+    expect(splatBoxes(placed, () => extent).map((entry) => entry.selection.list)).toEqual(['merge']);
+    const moved = applyPartChange(placed, 0, { type: 'translate', delta: new Vector3(0, 1, 0) } as never, [0, 0, 0, 1], 1, [3, 2, 0]);
+    expect(moved.merge![0]!.position).toEqual([3, 1, 0]);
+    // 绕框的中心 (3, 2, 0) 放大一倍：原点从 (3, 0, 0) 挪到 (3, -2, 0)，框的中心不动
+    const grown = applyPartChange(placed, 0, { type: 'scale', factor: new Vector3(2, 2, 2) } as never, [0, 0, 0, 1], 1, [3, 2, 0]);
+    expect(grown.merge![0]).toMatchObject({ scale: 4, position: [3, -2, 0] });
+    expect(partBox(grown.merge![0]!, extent).center.map((v) => Math.round(v * 1e4) / 1e4)).toEqual([3, 2, 0]);
+    // 绕框的中心转半圈（Y 轴）：框的中心还在原地
+    const turned = applyPartChange(placed, 0, { type: 'rotate', rotation: new Quaternion(0, 1, 0, 0) } as never, [0, 0, 0, 1], 1, [3, 2, 0]);
+    expect(partBox(turned.merge![0]!, extent).center.map((v) => Math.round(v * 1e4) / 1e4)).toEqual([3, 2, 0]);
+    expect(deleteSplatBox(placed, { list: 'merge', index: 0 }).merge).toBeUndefined();
   });
 
   test('刷：一笔按半径的一半的间距放球，挪得快时中间补上，挪得近时不加，跳得远时不补', () => {

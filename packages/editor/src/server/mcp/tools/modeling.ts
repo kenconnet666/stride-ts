@@ -91,6 +91,15 @@ export function registerModelingTools(server: McpServer, projects: McpProjects):
     return json(face === undefined ? { edges: edgeLoop(mesh, edge) } : { faces: faceLoop(mesh, face, edge) });
   });
 
+  server.registerTool('align_splats', {
+    description: [
+      'Auto-align a scan merged into a scan edit (kind splatEdit, .splatedit.json, its merge list): ICP with uniform scale from its current placement (position, rotation, scale)',
+      'onto the source scan plus the other merged scans, using splats with opacity >= 0.5 as surface points. Place the part roughly first (within ~0.5 m, a few degrees) with write_asset;',
+      'the aligned transform is written back and the edit is re-baked. Returns the transform, matched points and their RMS distance in meters.',
+    ].join(' '),
+    inputSchema: z.object({ path: assetPath, part: z.number().int().min(0).describe('index in merge') }),
+  }, async ({ path, part }) => json(await projects.current.alignSplatPart(path, part)));
+
   server.registerTool('brush_to_poly', {
     description: [
       'Export a greybox (kind brush, .brush.json) as an editable poly mesh (kind poly, .poly.json): the CSG result welded, coplanar triangles of one material slot merged into n-gon faces (concave allowed; faces with holes stay triangles), hard edges.',

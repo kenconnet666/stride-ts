@@ -182,6 +182,10 @@ export interface EditorMessages {
   readonly splatAddRemove: string;
   readonly splatClearErase: (count: number) => string;
   readonly splatFloaters: string;
+  readonly splatAddPart: string;
+  readonly splatAlign: string;
+  readonly splatAligning: string;
+  readonly splatAligned: (matched: number, error: number) => string;
   readonly sdfCount: (count: number) => string;
   readonly sdfAdd: string;
   readonly sdfDelete: string;
@@ -452,6 +456,10 @@ const zhCN: EditorMessages = {
   splatAddRemove: '删除框',
   splatClearErase: (count) => `清掉刷的（${count}）`,
   splatFloaters: '删飞点',
+  splatAddPart: '合并一段',
+  splatAlign: '自动对齐',
+  splatAligning: '正在对齐（几秒）……',
+  splatAligned: (matched, error) => `对齐了：配上 ${matched} 个点，平均差 ${(error * 100).toFixed(1)} 厘米`,
   sdfHint: '视口里点选形状（同一处再点换成后面的），操纵器拖着移动、旋转、改大小（W、E、R 换）；Delete 删形状，Ctrl+Z 撤销',
   sdfCount: (count) => `${count} 个形状`,
   sdfAdd: '加形状',
@@ -732,6 +740,10 @@ const enUS: EditorMessages = {
   splatAddRemove: 'Delete box',
   splatClearErase: (count) => `Clear brushing (${count})`,
   splatFloaters: 'Remove floaters',
+  splatAddPart: 'Merge a scan',
+  splatAlign: 'Auto-align',
+  splatAligning: 'Aligning (a few seconds)…',
+  splatAligned: (matched, error) => `Aligned: ${matched} points matched, ${(error * 100).toFixed(1)} cm apart on average`,
   sdfHint: 'Click a shape in the viewport (again at the same spot for the one behind), drag the gizmo to move, rotate or resize it (W, E, R); Delete removes it, Ctrl+Z undoes',
   sdfCount: (count) => `${count} shape${count === 1 ? '' : 's'}`,
   sdfAdd: 'Add shape',

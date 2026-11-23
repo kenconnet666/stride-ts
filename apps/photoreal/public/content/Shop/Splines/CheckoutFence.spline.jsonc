@@ -1,0 +1,29 @@
+{
+ "name": "CheckoutFence",
+ "materials": [
+  "Shop/Materials/Railing",
+  "Shop/Materials/Railing"
+ ],
+ "profile": {
+  "type": "fence",
+  "height": 1,
+  "postSpacing": 1.1,
+  "rails": 2
+ },
+ "points": [
+  {
+   "position": [
+    1.95,
+    0,
+    5.95
+   ]
+  },
+  {
+   "position": [
+    1.95,
+    0,
+    2.6
+   ]
+  }
+ ]
+}

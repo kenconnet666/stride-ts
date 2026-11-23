@@ -304,11 +304,18 @@ const fixtureAt = (k: number, name: string, position: Vec3, yaw: number) => enti
 let shelfCount = 0;
 const shelfAt = (name: string, position: Vec3, yaw: number) => entity(sid(0x10 + shelfCount), `${name} ${shelfCount++}`, position, { model: { model: `Shop/Shelves/${name}`, materials: [] } }, euler(yaw));
 const WALL_X = 5.95, BACK_Z = -13.95, ROWS = [-3, 0, 3] as const;
+// 入口和结账出口之间的不锈钢围栏（用户 11-23）：从门口顺着 -Z 拦到第一个收银台前，进来的人走不到出口那边
+await write('material', 'Shop/Materials/Railing', { name: 'Railing', baseColor: [0.82, 0.83, 0.84, 1], metalness: 1, roughness: 0.25 });
+await write('spline', 'Shop/Splines/CheckoutFence', {
+  name: 'CheckoutFence', materials: ['Shop/Materials/Railing', 'Shop/Materials/Railing'],
+  profile: { type: 'fence', height: 1.0, postSpacing: 1.1, rails: 2 },
+  points: [{ position: [1.95, 0, 5.95] }, { position: [1.95, 0, 2.6] }],
+});
 const shelfEntities = [
   // 左墙：粮油、酒、罐头调味、零食，从入口那头（z = 2.05）铺到后墙
   ...['WallGrain', 'WallLiquor', 'WallCanned', 'WallSnack'].map((name, i) => shelfAt(name, [-WALL_X, 0, 0.05 - 4 * i], 90)),
-  // 右墙：洗护、日化、饮料，前面留给自助收银机（z = -0.2 起），最后一节短的接到后墙
-  ...['WallCare', 'WallHome', 'WallDrinks'].map((name, i) => shelfAt(name, [WALL_X, 0, -2.2 - 4 * i], -90)),
+  // 右墙：饮料（紧挨着收银，用户 11-23 定）、日化、洗护，前面留给自助收银机（z = -0.2 起），最后一节短的接到后墙
+  ...['WallDrinks', 'WallHome', 'WallCare'].map((name, i) => shelfAt(name, [WALL_X, 0, -2.2 - 4 * i], -90)),
   shelfAt('WallEnd', [WALL_X, 0, -13.075], -90),
   // 后墙：中间两节立式冷柜，两头各一节短货架
   shelfAt('Fridge', [-1.55, 0, BACK_Z], 0), shelfAt('Fridge', [1.55, 0, BACK_Z], 0),
@@ -327,10 +334,12 @@ const shelfEntities = [
   // 入口（左）：左墙前的寄存柜，两道单向闸机，购物车、一摞篮子
   fixtureAt(2, 'Locker', [-5.75, 0, 3.6], 90),
   fixtureAt(10, 'Gate', [-4.3, 0, 4.8], 0), fixtureAt(11, 'Gate', [-3.5, 0, 4.8], 0),
-  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [-2.6 + i * 0.12, 0, 5.3 - i * 0.28], 180)),
+  // 购物车顺着车身套成一串（车头朝店里，后一辆的车头插进前一辆的车尾）
+  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [-2.6, 0, 4.9 + i * 0.26], 180)),
   ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [-2.2, i * 0.09, 3.6], 10 * i)),
   // 结账出口（右）：两个收银台（顾客从 -Z 走过来），右墙前三台自助收银机朝过道
   fixtureAt(0, 'Checkout1', [2.9, 0, 3.6], -90), fixtureAt(1, 'Checkout2', [4.4, 0, 3.6], -90),
+  entity(sid(0x35), 'Checkout fence', [0, 0, 0], { model: { model: 'Shop/Splines/CheckoutFence', materials: [] } }),
   ...[3, 4, 5].map((n, i) => fixtureAt(12 + i, `Self${n}`, [5.7, 0, 0.6 + i * 1.15], -90)),
   // 四条过道上方的招牌
   ...([['AisleGrain', -4.5], ['AisleDrinks', -1.5], ['AislePantry', 1.5], ['AisleHome', 4.5]] as const).map(([name, x], i) => entity(sid(0x30 + i), `Sign ${name}`, [x, 2.55, -3.6], { model: { model: `Shop/Signs/${name}`, materials: [] } }, euler(0))),
@@ -349,7 +358,7 @@ function detailEntities() {
   return [
     // 墙上的灯箱：在每节靠墙货架的正上方，贴着墙
     ...(['WallSignGrain', 'WallSignLiquor', 'WallSignCanned', 'WallSignSnack'] as const).map((name, i) => sign(name, [-WALL_X, 2.55, 0.05 - 4 * i], 90)),
-    ...(['WallSignCare', 'WallSignHome', 'WallSignDrinks'] as const).map((name, i) => sign(name, [WALL_X, 2.55, -2.2 - 4 * i], -90)),
+    ...(['WallSignDrinks', 'WallSignHome', 'WallSignCare'] as const).map((name, i) => sign(name, [WALL_X, 2.55, -2.2 - 4 * i], -90)),
     sign('Entrance', [-3.9, 2.5, 4.8], 0), sign('Exit', [3.65, 2.6, 5.3], 0),
     // 吊旗：中间两条过道上错开挂
     sign('BannerSale', [-1.5, 2.3, -1.5], 0), sign('BannerDeal', [1.5, 2.3, -2.2], 0),

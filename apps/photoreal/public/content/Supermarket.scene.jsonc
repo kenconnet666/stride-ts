@@ -258,7 +258,7 @@
   },
   {
    "id": "5e0b5e0b-0002-4000-8000-000000000014",
-   "name": "WallCare 4",
+   "name": "WallDrinks 4",
    "parent": null,
    "position": [
     5.95,
@@ -278,7 +278,7 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Shelves/WallCare",
+     "model": "Shop/Shelves/WallDrinks",
      "materials": []
     }
    }
@@ -312,7 +312,7 @@
   },
   {
    "id": "5e0b5e0b-0002-4000-8000-000000000016",
-   "name": "WallDrinks 6",
+   "name": "WallCare 6",
    "parent": null,
    "position": [
     5.95,
@@ -332,7 +332,7 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Shelves/WallDrinks",
+     "model": "Shop/Shelves/WallCare",
      "materials": []
     }
    }
@@ -1073,7 +1073,7 @@
    "position": [
     -2.6,
     0,
-    5.3
+    4.9
    ],
    "rotation": [
     0,
@@ -1098,9 +1098,9 @@
    "name": "Cart 4",
    "parent": null,
    "position": [
-    -2.48,
+    -2.6,
     0,
-    5.02
+    5.16
    ],
    "rotation": [
     0,
@@ -1125,9 +1125,9 @@
    "name": "Cart 5",
    "parent": null,
    "position": [
-    -2.3600000000000003,
+    -2.6,
     0,
-    4.74
+    5.42
    ],
    "rotation": [
     0,
@@ -1305,6 +1305,33 @@
    "components": {
     "model": {
      "model": "Shop/Fixtures/Checkout2",
+     "materials": []
+    }
+   }
+  },
+  {
+   "id": "5e0b5e0b-0002-4000-8000-000000000035",
+   "name": "Checkout fence",
+   "parent": null,
+   "position": [
+    0,
+    0,
+    0
+   ],
+   "rotation": [
+    0,
+    0,
+    0,
+    1
+   ],
+   "scale": [
+    1,
+    1,
+    1
+   ],
+   "components": {
+    "model": {
+     "model": "Shop/Splines/CheckoutFence",
      "materials": []
     }
    }
@@ -1635,7 +1662,7 @@
   },
   {
    "id": "5e0b5e0b-0004-4000-8000-000000000004",
-   "name": "WallSignCare",
+   "name": "WallSignDrinks",
    "parent": null,
    "position": [
     5.95,
@@ -1655,7 +1682,7 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Signs/WallSignCare",
+     "model": "Shop/Signs/WallSignDrinks",
      "materials": []
     }
    }
@@ -1689,7 +1716,7 @@
   },
   {
    "id": "5e0b5e0b-0004-4000-8000-000000000006",
-   "name": "WallSignDrinks",
+   "name": "WallSignCare",
    "parent": null,
    "position": [
     5.95,
@@ -1709,7 +1736,7 @@
    ],
    "components": {
     "model": {
-     "model": "Shop/Signs/WallSignDrinks",
+     "model": "Shop/Signs/WallSignCare",
      "materials": []
     }
    }

@@ -1,0 +1,11 @@
+{
+ "name": "Railing",
+ "baseColor": [
+  0.82,
+  0.83,
+  0.84,
+  1
+ ],
+ "metalness": 1,
+ "roughness": 0.25
+}

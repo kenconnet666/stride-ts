@@ -118,34 +118,42 @@ function checkout(batch: ProductBatch): void {
   }
 }
 
-/** 购物车：车筐是金属丝（一根根细杆），四个轮子，推手在 -Z 那头、是主色的塑料。 */
+/**
+ * 购物车：车筐是金属丝（一根根细杆），后宽前窄（一辆的车头能插进另一辆的车尾，停在一起时顺着车身套成一串，每辆错开
+ * 0.26 米左右），推手在 -Z 那头、是主色的塑料；车筐下面一层底盘，四个万向轮（前面两个收窄）。
+ */
 function cart(batch: ProductBatch): void {
-  const x0 = -0.27, x1 = 0.27, z0 = -0.42, z1 = 0.45, y0 = 0.38, y1 = 0.85, bar = 0.004;
-  // 底盘和四个轮子
-  batch.box([x0 + 0.03, 0.12, z0], [x1 - 0.03, 0.14, z1 - 0.1], STEEL);
-  for (const [x, z] of [[x0 + 0.05, z0 + 0.05], [x1 - 0.05, z0 + 0.05], [x0 + 0.08, z1 - 0.15], [x1 - 0.08, z1 - 0.15]] as const) {
-    batch.tube([x - 0.02, 0.06, z], [x + 0.02, 0.06, z], 0.06, DARK, 12);
-    batch.tube([x, 0.06, z], [x, 0.14, z], 0.01, STEEL, 6);
+  const zb = -0.42, zf = 0.45, wb = 0.27, wf = 0.21, y0 = 0.4, y1 = 0.86, bar = 0.004;
+  // 车筐在 z 处的半宽：从后往前线性收窄
+  const half = (z: number) => wb + ((wf - wb) * (z - zb)) / (zf - zb);
+  // 底盘（下层的托盘，也是前窄）和四个轮子：轮子是横着的轴（沿 X）的圆柱，上面一根竖的叉
+  batch.box([-0.2, 0.125, zb + 0.02], [0.2, 0.14, zf - 0.12], STEEL);
+  for (const [x, z] of [[-0.22, zb + 0.05], [0.22, zb + 0.05], [-0.16, zf - 0.13], [0.16, zf - 0.13]] as const) {
+    batch.tube([x - 0.012, 0.05, z], [x + 0.012, 0.05, z], 0.05, DARK, 12);
+    batch.tube([x, 0.05, z], [x, 0.14, z], 0.008, STEEL, 6);
   }
-  // 车筐的竖杆（四面）、横杆、底
-  for (let x = x0; x <= x1 + 1e-6; x += 0.045) {
-    batch.box([x - bar, y0, z0 - bar], [x + bar, y1, z0 + bar], STEEL);
-    batch.box([x - bar, y0, z1 - bar], [x + bar, y1, z1 + bar], STEEL);
+  // 车筐：前后两面的竖杆，两侧的竖杆跟着收窄，底是一根根横杆
+  for (let t = -1; t <= 1 + 1e-6; t += 0.17) {
+    batch.box([t * wb - bar, y0, zb - bar], [t * wb + bar, y1, zb + bar], STEEL);
+    batch.box([t * wf - bar, y0, zf - bar], [t * wf + bar, y1, zf + bar], STEEL);
   }
-  for (let z = z0; z <= z1 + 1e-6; z += 0.045) {
-    batch.box([x0 - bar, y0, z - bar], [x0 + bar, y1, z + bar], STEEL);
-    batch.box([x1 - bar, y0, z - bar], [x1 + bar, y1, z + bar], STEEL);
-    batch.box([x0, y0 - bar, z - bar], [x1, y0 + bar, z + bar], STEEL);
+  for (let z = zb; z <= zf + 1e-6; z += 0.045) {
+    const w = half(z);
+    for (const x of [-w, w]) batch.box([x - bar, y0, z - bar], [x + bar, y1, z + bar], STEEL);
+    batch.box([-w, y0 - bar, z - bar], [w, y0 + bar, z + bar], STEEL);
   }
-  for (let y = y0; y <= y1 + 1e-6; y += 0.09) {
-    batch.box([x0, y - bar, z0 - bar], [x1, y + bar, z0 + bar], STEEL);
-    batch.box([x0, y - bar, z1 - bar], [x1, y + bar, z1 + bar], STEEL);
-    batch.box([x0 - bar, y - bar, z0], [x0 + bar, y + bar, z1], STEEL);
-    batch.box([x1 - bar, y - bar, z0], [x1 + bar, y + bar, z1], STEEL);
+  // 横杆：前后两面平的，两侧斜着收
+  for (let y = y0; y <= y1 + 1e-6; y += 0.092) {
+    batch.box([-wb, y - bar, zb - bar], [wb, y + bar, zb + bar], STEEL);
+    batch.box([-wf, y - bar, zf - bar], [wf, y + bar, zf + bar], STEEL);
+    for (const side of [-1, 1]) batch.tube([side * wb, y, zb], [side * wf, y, zf], bar, STEEL, 4);
   }
-  // 车架连到底盘，推手（主色）
-  for (const x of [x0, x1]) batch.box([x - 0.008, 0.14, z0 - 0.008], [x + 0.008, y1 + 0.12, z0 + 0.008], STEEL);
-  batch.tube([x0 - 0.02, y1 + 0.13, z0 - 0.04], [x1 + 0.02, y1 + 0.13, z0 - 0.04], 0.018, MAIN, 12);
+  // 车架：后面两根立柱从底盘到推手，前面两根斜撑从车筐底到底盘
+  for (const side of [-1, 1]) {
+    batch.box([side * wb - 0.008, 0.14, zb - 0.008], [side * wb + 0.008, y1 + 0.12, zb + 0.008], STEEL);
+    batch.tube([side * wf, y0, zf], [side * 0.16, 0.14, zf - 0.13], 0.008, STEEL, 6);
+  }
+  batch.tube([-wb - 0.02, y1 + 0.13, zb - 0.04], [wb + 0.02, y1 + 0.13, zb - 0.04], 0.018, MAIN, 12);
 }
 
 /** 购物篮：主色的塑料篮，四壁是一条条横的板条（中间有缝），两边各一个提手。 */

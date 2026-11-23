@@ -3,6 +3,7 @@
  * stride：从命令行查看和操作正在运行的 stride-ts 游戏，给 agent 和开发者调试用。结果是 JSON（打到 stdout），
  * 出错时信息打到 stderr，退出码 1。游戏要打开 debug（开发服务器上默认开），开发服务器带调试中枢（@stride-ts/devkit/vite）。
  */
+import { stripTypeScriptTypes } from 'node:module';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import type { HubLogEntry, LogLevel, PageInfo } from '@stride-ts/engine/debug-protocol';
@@ -216,6 +217,17 @@ const timeout = timeoutSeconds === undefined ? undefined : Number(timeoutSeconds
 async function call(name: string, args: Record<string, unknown> = {}, extraTimeout = 0): Promise<unknown> {
   const client = await HubClient.find(options.hub);
   return client.call(name, args, { ...(page === undefined ? {} : { page }), ...(timeout === undefined && extraTimeout === 0 ? {} : { timeout: (timeout ?? 120_000) + extraTimeout }) });
+}
+
+/** 去掉 TS 的类型（eval 的代码在页面里按 JS 跑）。Node 的这个接口还是实验性的，调用时会打一行提示：只在调它的时候不打。 */
+function stripTypes(code: string): string {
+  const emitWarning = process.emitWarning;
+  process.emitWarning = () => undefined;
+  try {
+    return stripTypeScriptTypes(code);
+  } finally {
+    process.emitWarning = emitWarning;
+  }
 }
 
 function required(value: string | undefined, what: string): string {
@@ -628,7 +640,8 @@ const commands: Record<string, () => Promise<unknown>> = {
         return { ran: false, diagnostics: errors };
       }
     }
-    return call('eval', { code });
+    // 写成 TS 的（类型注解、非空断言、as）去掉类型再发：页面里求值的是 JS，原来这类写法在页面里报 SyntaxError
+    return call('eval', { code: stripTypes(code) });
   },
   ts: () => runTypeQuery(rest[0], rest.slice(1), options),
   async debug() {

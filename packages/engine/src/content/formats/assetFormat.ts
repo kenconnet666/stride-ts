@@ -5,6 +5,7 @@
 
 import type { SoundSynth } from '../../audio/soundSynth';
 import type { GraphFile } from './nodeGraph';
+import { s, type Infer, type InputOf } from '../schema/schema.ts';
 
 export const EXTENSIONS = {
   model: '.model',
@@ -564,35 +565,52 @@ export interface UIStripDefinition {
  * 按朝向投影的世界坐标 UV（uvScale 米一个周期，贴网格图时各个面接得上），每个笔刷的面用它的材质槽。场景引用的是烘出的模型，
  * 运行时不做布尔运算；这个文件是源头，随时能回来改参数（和直接改网格的建模不同）。
  */
-export interface BrushFile {
-  readonly name: string;
-  /** 材质槽（内容路径；null 是默认材质）；笔刷的 material 是这里的下标。 */
-  readonly materials: readonly (string | null)[];
-  /** 自动 UV：多少米一个贴图周期（默认 1）。 */
-  readonly uvScale?: number;
-  /** 按顺序合成（第一个应该是 add）。 */
-  readonly brushes: readonly BrushShapeFile[];
-}
+/** 正的长度（米）。 */
+const positive = () => s.number({ min: 0, step: 0.05 });
 
 /** 一个笔刷：形状、运算、放在哪（相对模型的原点）、用哪个材质槽。 */
-export type BrushShapeFile = {
-  /** 编辑器里显示的名字。 */
-  readonly name?: string;
-  readonly operation: 'add' | 'subtract' | 'intersect';
-  readonly position: Vec3Tuple;
-  /** 四元数 xyzw；没写是不转。 */
-  readonly rotation?: readonly [number, number, number, number];
-  /** 材质槽的下标，没写是 0。 */
-  readonly material?: number;
-} & (
+export const BRUSH_SHAPE = s.union('kind', {
   /** 方块：中心在 position。 */
-  | { readonly kind: 'box'; readonly size: Vec3Tuple }
+  box: { size: s.vector(3, 'm') },
   /** 挤出的多边形：XZ 平面上的简单多边形（可以是凹的，点是 [x, z]），从 position 往上挤出 height。 */
-  | { readonly kind: 'prism'; readonly points: readonly (readonly [number, number])[]; readonly height: number }
+  prism: {
+    points: s.json().$type<readonly (readonly [number, number])[]>().describe('polygon in the XZ plane as [x, z] pairs (may be concave), extruded up from the position'),
+    height: positive(),
+  },
   /** 圆柱（顶面半径不同时是圆台、为 0 是圆锥）：轴是 Y，中心在 position。 */
-  | { readonly kind: 'cylinder'; readonly height: number; readonly radius: number; readonly topRadius?: number; readonly segments?: number }
-  | { readonly kind: 'sphere'; readonly radius: number; readonly segments?: number }
-);
+  cylinder: {
+    height: positive(),
+    radius: positive(),
+    topRadius: positive().optional().describe('unset: same as radius; 0 makes a cone'),
+    segments: s.integer(3, 256).default(32),
+  },
+  sphere: { radius: positive(), segments: s.integer(3, 256).default(32) },
+}, {
+  /** 编辑器里显示的名字。 */
+  name: s.string().optional(),
+  operation: s.oneOf('add', 'subtract', 'intersect'),
+  position: s.vector(3, 'm'),
+  /** 四元数 xyzw。 */
+  rotation: s.rotation().default([0, 0, 0, 1]),
+  /** 材质槽的下标。 */
+  material: s.integer(0, 255).default(0).describe('index into materials'),
+});
+
+export const BRUSH = s.object({
+  name: s.string(),
+  /** 材质槽（内容路径；null 是默认材质）；笔刷的 material 是这里的下标。 */
+  materials: s.nullableList(s.asset('material')).describe('material slots; a brush picks one by index'),
+  /** 自动 UV：多少米一个贴图周期。 */
+  uvScale: s.number({ min: 0.01, step: 0.25, unit: 'm' }).default(1).describe('automatic UVs: one texture repeat per this many meters'),
+  /** 按顺序合成（第一个应该是 add）。 */
+  brushes: s.list(BRUSH_SHAPE),
+});
+
+/** 白盒文件的样子（有默认值的可以不写）。 */
+export type BrushFile = InputOf<typeof BRUSH>;
+/** 解析以后的白盒（默认值补齐）。 */
+export type Brush = Infer<typeof BRUSH>;
+export type BrushShapeFile = InputOf<typeof BRUSH_SHAPE>;
 
 /**
  * SDF 建模（Stride 没有；照 Womp、Adobe Substance Modeler 的"液态"建模）：一串形状——球、圆角方块、胶囊、圆柱、圆环、椭球、圆台、

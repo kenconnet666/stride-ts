@@ -1,5 +1,6 @@
 /** 建模类资源的字段：JSON 写的基本形状、白盒、SDF、多边形网格、样条、3D 文字。 */
-import type { ProceduralModelFile, BrushFile, SdfFile, PolyMeshFile, SplineFile, TextModelFile } from '../../../content/formats/format';
+import { BRUSH, type ProceduralModelFile, type SdfFile, type PolyMeshFile, type SplineFile, type TextModelFile } from '../../../content/formats/format.ts';
+import { schemaFields } from '../../../content/schema/schema.ts';
 import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, list, optional, type FieldType, type FieldSpec } from '../../../content/schema/builders.ts';
 
 export const positiveNumber = (step = 0.05): FieldType => number({ min: 0, step });
@@ -40,36 +41,7 @@ export const PROCEDURAL_MODEL_FIELDS = fields<ProceduralModelFile>({
 });
 
 /** 关卡白盒（BrushFile）：笔刷按形状分；改了马上存，编辑器后端烘成同名的模型，视口里热重载。 */
-export const BRUSH_FIELDS = fields<BrushFile>({
-  name: string,
-  materials: { type: { kind: 'list', item: asset('material'), nullableItems: true }, description: 'material slots; a brush picks one by index' },
-  uvScale: { type: number({ min: 0.01, step: 0.25, unit: 'm' }), optional: true, default: 1, description: 'automatic UVs: one texture repeat per this many meters' },
-  brushes: list({
-    kind: 'union',
-    tag: 'kind',
-    variants: {
-      box: fields<{ size: unknown }>({ size: { type: vector(3, 'm') } }),
-      prism: fields<{ points: unknown; height: unknown }>({
-        points: { type: { kind: 'json' }, description: 'polygon in the XZ plane as [x, z] pairs (may be concave), extruded up from the position' },
-        height: { type: positiveNumber() },
-      }),
-      cylinder: fields<{ height: unknown; radius: unknown; topRadius: unknown; segments: unknown }>({
-        height: { type: positiveNumber() },
-        radius: { type: positiveNumber() },
-        topRadius: { type: positiveNumber(), optional: true, description: 'unset: same as radius; 0 makes a cone' },
-        segments: { type: integer(3, 256), optional: true, default: 32 },
-      }),
-      sphere: fields<{ radius: unknown; segments: unknown }>({ radius: { type: positiveNumber() }, segments: { type: integer(3, 256), optional: true, default: 32 } }),
-    },
-    common: fields<{ name: unknown; operation: unknown; position: unknown; rotation: unknown; material: unknown }>({
-      name: { type: string, optional: true },
-      operation: { type: oneOf('add', 'subtract', 'intersect') },
-      position: { type: vector(3, 'm') },
-      rotation: { type: rotation, optional: true, default: [0, 0, 0, 1] },
-      material: { type: integer(0, 255), optional: true, default: 0, description: 'index into materials' },
-    }),
-  }),
-});
+export const BRUSH_FIELDS = schemaFields(BRUSH);
 
 /** SDF 建模（SdfFile）：形状按种类分；改了马上存，编辑器后端烘成同名的模型，视口里热重载。 */
 export const SDF_FIELDS = fields<SdfFile>({

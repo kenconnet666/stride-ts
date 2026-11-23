@@ -1,5 +1,4 @@
-/** 字段描述的种类（FieldType、Field）和写描述用的小函数，同目录的各份描述共用。 */
-import { TEXTURE_EXTENSIONS, type TextureEncoding, type TextureRef } from '../formats/assetFormat.ts';
+/** 字段描述的种类（FieldType、Field）和写描述用的小函数（通用的；具体资源的字段描述在 editor/fields）。内容格式的模式也用它，所以这里不在运行时依赖任何格式。 */
 import type { AssetKind } from '../references';
 
 export type FieldType =
@@ -65,11 +64,3 @@ export const object = (of: readonly Field[]): FieldType => ({ kind: 'object', fi
 export const optional = (type: FieldType, fallback?: unknown): FieldSpec => ({ type, optional: true, ...(fallback !== undefined ? { default: fallback } : {}) });
 export const nullable = (type: FieldType): FieldSpec => ({ type, nullable: true });
 
-/** 一张贴图文件，或者（精灵、背景）一张渲染目标贴图。 */
-export const textureRef = fields<TextureRef>({
-  texture: asset('image'),
-  encoding: optional(oneOf(...(Object.keys(TEXTURE_EXTENSIONS) as TextureEncoding[])), 'ktx2'),
-  size: optional(vector(2, 'px')),
-  srgb: optional(bool),
-  invertY: optional(bool, false),
-});

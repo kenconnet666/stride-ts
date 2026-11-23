@@ -1,7 +1,8 @@
 /** 实体的组件、场景的设置、实体自己的字段描述（COMPONENT_FIELDS、SCENE_FIELDS、ENTITY_FIELDS）。 */
 import type { ColliderShapeFile, SceneAnimation, SceneBackground, SceneBody, SceneCharacter, SceneCollidable, SceneConstraint, SceneDayNightCycle, SceneEntityFile, ScenePrecipitation, SceneWeather, SceneStreamingSource, SceneDecal, SceneWindZone, SceneLightShadow, SceneReflectionProbe, ScenePlanarReflection, SceneIrradianceVolume, SceneSkyAtmosphere, SceneVolumetricClouds, SceneVolumetricFog, SceneLocalLightShadow, SceneColorGrading, SceneExposure, SceneRenderTexture, SceneSprite, SceneUI, SceneCompositor, SceneNavigation, ScenePhysics, ScenePostEffects, SceneTextureCamera } from '../../content/formats/format';
 import type { SceneSettingKey } from '../SceneDocument';
-import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, nullable, textureRef, type FieldType, type Field, type FieldSpec } from '../../content/schema/builders.ts';
+import { fields, number, integer, bool, string, oneOf, vector, rotation, asset, entity, list, object, optional, nullable, type FieldType, type Field, type FieldSpec } from '../../content/schema/builders.ts';
+import { textureRef } from './assets/shared.ts';
 
 /** 渲染组（Stride 的 RenderGroup）。 */
 const renderGroup = optional(integer(0, 31), 0);

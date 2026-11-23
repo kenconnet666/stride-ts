@@ -6,23 +6,21 @@
  * 编辑器后端在白盒文件存下、或者在磁盘上改了以后调它（server/EditorBackend.ts）。法线贴图要的切线不生成：白盒的材质用颜色、
  * 网格图就够，要细节时导出成可编辑的网格（brushToPoly）再做。
  */
-import { encodeModel, VERTEX_FLOATS, type BrushFile, type BrushShapeFile, type PolyMeshFile } from '@stride-ts/engine/content-format';
-import type { Brush, StrideTools } from '@stride-ts/native/tools';
+import { BRUSH, encodeModel, VERTEX_FLOATS, type Brush, type BrushFile, type PolyMeshFile } from '@stride-ts/engine/content-format';
+import type { Brush as NativeBrush, StrideTools } from '@stride-ts/native/tools';
 import { projectUv, trianglesToPolygons } from '@stride-ts/engine/modeling';
 import { compressMeshes, type SourceMesh } from '../mesh.ts';
 
-/** 圆柱、球没写分段数时用的。 */
-const DEFAULT_SEGMENTS = 32;
-
 /** 烘成模型文件的字节（.model）。笔刷的参数不对、合不成实体时报错，消息里有是第几个笔刷。 */
-export async function bakeBrushModel(tools: StrideTools, file: BrushFile, where = file.name): Promise<Uint8Array> {
+export async function bakeBrushModel(tools: StrideTools, input: BrushFile, where = input.name): Promise<Uint8Array> {
+  const file = BRUSH.parse(input, where);
   const slots = Math.max(1, file.materials.length);
   const { positions, indices, brushOfTriangle } = await brushSolid(tools, file, where);
-  const uvScale = file.uvScale ?? 1;
+  const uvScale = file.uvScale;
   const builders = Array.from({ length: slots }, () => ({ vertices: [] as number[], indices: [] as number[], weld: new Map<string, number>() }));
   const corner = [0, 0, 0], a = [0, 0, 0], b = [0, 0, 0];
   for (let t = 0; t < indices.length / 3; t++) {
-    const builder = builders[file.brushes[brushOfTriangle[t]!]!.material ?? 0]!;
+    const builder = builders[file.brushes[brushOfTriangle[t]!]!.material]!;
     const i0 = indices[t * 3]! * 3, i1 = indices[t * 3 + 1]! * 3, i2 = indices[t * 3 + 2]! * 3;
     for (let k = 0; k < 3; k++) {
       a[k] = positions[i1 + k]! - positions[i0 + k]!;
@@ -55,21 +53,23 @@ export async function bakeBrushModel(tools: StrideTools, file: BrushFile, where 
  * 白盒导出成可编辑的多边形网格（`.poly.json`）：布尔运算的结果焊好顶点，同一平面、同一材质槽连着的三角形合成一个 n 边形
  * （modeling/trianglesToPolygons.ts），材质槽、UV 的尺度照搬，全部硬边（白盒的样子）。之后在多边形编辑里加细节。
  */
-export async function brushToPoly(tools: StrideTools, file: BrushFile, name: string, where = file.name): Promise<PolyMeshFile> {
+export async function brushToPoly(tools: StrideTools, input: BrushFile, name: string, where = input.name): Promise<PolyMeshFile> {
+  const file = BRUSH.parse(input, where);
   const { positions, indices, brushOfTriangle } = await brushSolid(tools, file, where);
-  const { vertices, faces } = trianglesToPolygons(positions, indices, (t) => file.brushes[brushOfTriangle[t]!]!.material ?? 0);
+  const { vertices, faces } = trianglesToPolygons(positions, indices, (t) => file.brushes[brushOfTriangle[t]!]!.material);
   return {
     name, materials: file.materials.length > 0 ? file.materials : [null], vertices, faces, smoothAngle: 0,
-    ...(file.uvScale !== undefined ? { uvScale: file.uvScale } : {}),
+    // 白盒文件里写了才照搬（没写的多边形网格同样按 1 米一个周期）
+    ...(input.uvScale !== undefined ? { uvScale: input.uvScale } : {}),
   };
 }
 
 /** 检查材质槽，按顺序做笔刷的布尔运算；什么都不剩时报错。 */
-async function brushSolid(tools: StrideTools, file: BrushFile, where: string) {
+async function brushSolid(tools: StrideTools, file: Brush, where: string) {
   if (file.brushes.length === 0) throw new Error(`${where}: a greybox needs at least one brush`);
   const slots = Math.max(1, file.materials.length);
   file.brushes.forEach((brush, i) => {
-    const slot = brush.material ?? 0;
+    const slot = brush.material;
     if (!Number.isInteger(slot) || slot < 0 || slot >= slots) throw new Error(`${where}: brush ${i} uses material slot ${slot}, but there ${slots === 1 ? 'is 1 slot' : `are ${slots} slots`}`);
   });
   let solid;
@@ -93,13 +93,13 @@ export function rigidTransform([px, py, pz]: readonly number[], [qx, qy, qz, qw]
 }
 
 /** 文件里的笔刷换成原生的：位置和旋转合成列主序的矩阵。 */
-function nativeBrush(brush: BrushShapeFile): Brush {
+function nativeBrush(brush: Brush['brushes'][number]): NativeBrush {
   const transform = rigidTransform(brush.position, brush.rotation);
   const { operation } = brush;
   switch (brush.kind) {
     case 'box': return { kind: 'box', operation, transform, size: brush.size };
     case 'prism': return { kind: 'prism', operation, transform, points: brush.points, height: brush.height };
-    case 'cylinder': return { kind: 'cylinder', operation, transform, height: brush.height, bottomRadius: brush.radius, topRadius: brush.topRadius ?? brush.radius, segments: brush.segments ?? DEFAULT_SEGMENTS };
-    case 'sphere': return { kind: 'sphere', operation, transform, radius: brush.radius, segments: brush.segments ?? DEFAULT_SEGMENTS };
+    case 'cylinder': return { kind: 'cylinder', operation, transform, height: brush.height, bottomRadius: brush.radius, topRadius: brush.topRadius ?? brush.radius, segments: brush.segments };
+    case 'sphere': return { kind: 'sphere', operation, transform, radius: brush.radius, segments: brush.segments };
   }
 }

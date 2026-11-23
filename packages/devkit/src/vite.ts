@@ -7,7 +7,8 @@
  *   `src/assets.gen.ts`；依赖的资源包（@stride-ts/assets）开发时由编辑器后端、构建前由 strideAssetPackages 同步进内容目录；
  * - 带注释的 JSON 资源（`.jsonc`）开发服务器、构建都换成同名的 `.json` 给页面（strideJsonc）；
  * - 页面外壳的加载骨架（strideLoading，loadingScreen.ts）：脚本和原生模块下载时就有占位和进度条，引擎第一帧画出来时淡出；
- * - 构建后给 dist 里每个压得小的文件旁边写 .br 和 .gz（precompress）。静态服务器打开预压缩文件的支持
+ * - 构建后内容文件按哈希改名、清单嵌进页面、写 `_headers`（strideContentHash，contentHash.ts）：带哈希的文件永不过期，再次打开几乎不发请求；
+ * - 构建后给 dist 里每个压得小的文件旁边写 .br 和 .gz（precompress，在哈希之后，压的是带哈希的名字）。静态服务器打开预压缩文件的支持
  *   （nginx 的 brotli_static/gzip_static、Caddy 的 precompressed 等）就直接发它们，不依赖托管平台在线压缩。
  */
 import { readdir, readFile, writeFile } from 'node:fs/promises';
@@ -17,6 +18,7 @@ import { brotliCompress, constants, gzip } from 'node:zlib';
 import { strideDebug } from '@stride-ts/cli/vite';
 import { strideAssetPackages, strideEditor, strideJsonc } from '@stride-ts/editor/vite';
 import { defineConfig, mergeConfig, type Plugin, type UserConfig } from 'vite';
+import { strideContentHash } from './contentHash.ts';
 import { strideLoading } from './loadingScreen.ts';
 
 const crossOriginIsolation = {
@@ -32,7 +34,7 @@ export function strideApp(port: number, extra: UserConfig = {}): UserConfig {
     worker: { format: 'es' },
     optimizeDeps: { exclude: ['@stride-ts/native'] },
     build: { target: 'es2024' },
-    plugins: [strideDebug(), strideEditor(), strideAssetPackages(), strideJsonc(), strideLoading(), precompress()],
+    plugins: [strideDebug(), strideEditor(), strideAssetPackages(), strideJsonc(), strideLoading(), strideContentHash(), precompress()],
   }), extra);
 }
 

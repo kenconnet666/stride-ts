@@ -139,6 +139,11 @@ export interface ContentOptions {
   readonly root?: string | URL;
   readonly read?: ContentReader;
   /**
+   * 内容文件的清单（原路径 → 带哈希的路径）：读文件时按它换成带哈希的地址，带哈希的文件永不过期、浏览器直接用缓存。
+   * 不给时读页面里嵌的（devkit 的 strideContentHash 构建时写）；都没有就读原路径。
+   */
+  readonly manifest?: ContentManifest;
+  /**
    * 按范围读（大的资源按需加载用：高斯泼溅的节点）；没给 read 时默认用 fetch 带 Range 头，给了 read 而没给它时整个文件读。
    */
   readonly readRange?: SplatRangeReader;
@@ -206,17 +211,25 @@ export interface SceneInstance extends EntityScene {
   readonly compositor?: CompositorSettings;
 }
 
-const fetchReader: ContentReader = async (url) => {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`loading ${url.href} failed: HTTP ${response.status}`);
-  return response.arrayBuffer();
-};
+/** 内容文件的清单：原路径（相对内容根）→ 带哈希的路径（构建时 devkit 的 strideContentHash 写，嵌在页面里）。 */
+export type ContentManifest = Readonly<Record<string, string>>;
+
+/** 清单嵌在页面里的元素 id（devkit 的 contentHash.ts 同名）。 */
+const MANIFEST_ELEMENT_ID = 'stride-content-manifest';
+
+/** 页面里嵌的清单；没有（开发服务器、没做哈希的构建、不在浏览器里）是 undefined。 */
+function embeddedManifest(): ContentManifest | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const text = document.getElementById(MANIFEST_ELEMENT_ID)?.textContent;
+  return text ? (JSON.parse(text) as ContentManifest) : undefined;
+}
 
 /**
  * fetch 带 Range 头；服务器不认 Range、回了 200 时是整个文件（whole）。不经 HTTP 缓存（no-store）：Chrome 的缓存在同一个文件上
  * 并发的范围请求偶尔报 Failed to fetch（压测 64 个一批：默认缓存 320 个失败 6 个，no-store 0 个）；读到的在内存里留着，不重读。
  */
-const fetchRangeReader: SplatRangeReader = async (url, start, end) => {
+const fetchRangeReader = (resolve: (url: URL) => URL): SplatRangeReader => async (rawUrl, start, end) => {
+  const url = resolve(rawUrl);
   const response = await fetch(url, { headers: { Range: `bytes=${start}-${end - 1}` }, cache: 'no-store' });
   if (!response.ok) throw new Error(`loading ${url.href} (bytes ${start}-${end - 1}) failed: HTTP ${response.status}`);
   return { bytes: await response.arrayBuffer(), whole: response.status !== 206 };
@@ -269,12 +282,38 @@ export class ContentManager {
     spline: (path) => this.loadSpline(path),
   };
 
-  constructor({ root = 'content/', read, readRange, shaderClass = () => undefined }: ContentOptions = {}) {
+  constructor({ root = 'content/', read, readRange, manifest, shaderClass = () => undefined }: ContentOptions = {}) {
     this.#shaderClasses = shaderClass;
     const base = typeof document === 'undefined' ? 'file:///' : document.baseURI;
     this.root = new URL(root, base);
-    this.#read = read ?? fetchReader;
-    this.#readRange = readRange ?? (read ? undefined : fetchRangeReader);
+    this.#manifest = manifest ?? embeddedManifest();
+    // 默认读器按清单换地址；自己给了 read 的（测试、Node、虚拟文件）它自己管，不换
+    this.#read = read ?? ((url) => this.#fetch(url));
+    this.#readRange = readRange ?? (read ? undefined : fetchRangeReader((url) => this.resolveUrl(url)));
+  }
+
+  readonly #manifest: ContentManifest | undefined;
+
+  /**
+   * 默认的读文件：fetch。换成了带哈希的地址时内容永远不变，让浏览器直接用缓存（force-cache），不向服务器验证；没有哈希的照旧
+   * （服务器的缓存头说了算）。
+   */
+  async #fetch(url: URL): Promise<ArrayBuffer> {
+    const resolved = this.resolveUrl(url);
+    const response = await fetch(resolved, resolved.href !== url.href ? { cache: 'force-cache' } : undefined);
+    if (!response.ok) throw new Error(`loading ${resolved.href} failed: HTTP ${response.status}`);
+    return response.arrayBuffer();
+  }
+
+  /**
+   * 内容文件的实际地址：有清单时换成带哈希的路径（`Valley.scene.json` → `Valley.scene.3fa9c2d1b0e4.json`），没有或者不在清单里
+   * （内容根以外的地址）原样。视频、流式的音频这些直接交给浏览器的元素用的地址也要过它。
+   */
+  resolveUrl(url: URL): URL {
+    const manifest = this.#manifest;
+    if (!manifest || !url.href.startsWith(this.root.href)) return url;
+    const hashed = manifest[decodeURIComponent(url.href.slice(this.root.href.length).split(/[?#]/)[0]!)];
+    return hashed === undefined ? url : new URL(hashed.split('/').map(encodeURIComponent).join('/'), this.root);
   }
 
   /**
@@ -610,7 +649,7 @@ export class ContentManager {
   loadTexture(path: string, { encoding = 'ktx2', srgb = true, size }: { encoding?: TextureEncoding; srgb?: boolean; size?: readonly [number, number] } = {}): Promise<Texture> {
     const variant = encoding === 'ktx2' || srgb ? '' : ' (linear)';
     return this.#once(path + TEXTURE_EXTENSIONS[encoding], variant, async (url) => {
-      if (isVideoEncoding(encoding)) return new Texture(path, await loadVideo(url, srgb));
+      if (isVideoEncoding(encoding)) return new Texture(path, await loadVideo(this.resolveUrl(url), srgb));
       const bytes = new Uint8Array(await this.#read(url));
       if (encoding === 'ktx2') {
         if (!this.textureDecoder) {
@@ -714,7 +753,7 @@ export class ContentManager {
       if (!audio) throw new Error(`loading ${url.href}: sounds need an audio engine (Game sets one when it starts)`);
       if (file.encoding === 'synth') return new Sound(audio, file.name, { buffer: audio.fromSamples(synthesizeSound(file.synth ?? {}), SOUND_SYNTH_RATE) }, file.spatialized);
       const audioUrl = new URL(`${path}.${file.encoding}`, this.root);
-      const source = file.streamFromDisk ? { url: audioUrl.href } : { buffer: await audio.decode(await this.#read(audioUrl)) };
+      const source = file.streamFromDisk ? { url: this.resolveUrl(audioUrl).href } : { buffer: await audio.decode(await this.#read(audioUrl)) };
       return new Sound(audio, file.name, source, file.spatialized);
     });
   }

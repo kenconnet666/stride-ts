@@ -27,6 +27,11 @@ export const StreamingSource = component('StreamingSource', {
 
 /** 同时在读的格子最多几个：读和建实体都在主线程上，一次读太多一帧会卡。 */
 const MAX_LOADING = 2;
+/**
+ * 提前读（只下载、解码格子场景的文件和它引用的资源，不建实体）的格子最多几个：网络有延迟时，同时只读 MAX_LOADING 个格子的话
+ * 每个来回只出一两个格子，远处的格子要等很久；先把后面的格子的文件读着，轮到它们建实体时资源已经在内存里了。
+ */
+const MAX_PREFETCH = 8;
 /** 离开加载半径的这么多倍才卸载。 */
 const UNLOAD_SLACK = 1.25;
 
@@ -79,6 +84,10 @@ export class WorldStreaming {
   /** 上一帧要的格子（近的在前）和它们的状态；加载骨架、进度显示、调试命令读它。 */
   cellStates: readonly WorldCellView[] = [];
   readonly #placeholders = new WorldPlaceholders();
+  /** 已经开始提前读的格子路径（读好的资源在内容管理器里缓存着，不重复发请求）。 */
+  readonly #prefetched = new Set<string>();
+  /** 提前读几个格子（0 是不提前读：对照、测量用）。 */
+  maxPrefetch = MAX_PREFETCH;
 
   /** 要的格子里：好了几个、在读几个、排队几个，和占位的个数。 */
   get stats(): { wanted: number; ready: number; loading: number; queued: number; placeholders: number } {
@@ -152,6 +161,7 @@ export class WorldStreaming {
     for (const cell of this.#cells.values()) if (cell.scene) game.unloadScene(cell.scene);
     this.#cells.clear();
     this.cellStates = [];
+    this.#prefetched.clear();
     this.#placeholders.clear();
     this.file = undefined;
     this.path = undefined;
@@ -221,6 +231,17 @@ export class WorldStreaming {
       if (this.#cells.has(cell.key)) continue;
       loading++;
       this.#loadCell(game, cell.key, cell.layer, cell.x, cell.z);
+    }
+    // 轮不到建实体的近处格子先把文件读着（并行下载，建实体仍是 MAX_LOADING 个一批）
+    let prefetching = 0;
+    for (const cell of wanted) {
+      if (prefetching >= this.maxPrefetch) break;
+      if (this.#cells.get(cell.key)?.scene) continue;
+      prefetching++;
+      const path = worldCellPath(this.path!, cell.layer, cell.x, cell.z);
+      if (this.#prefetched.has(path)) continue;
+      this.#prefetched.add(path);
+      game.content.preloadScene(path).catch(() => this.#prefetched.delete(path));
     }
     // 状态给界面和占位用：要的格子，近的在前
     this.cellStates = wanted.map((cell): WorldCellView => {

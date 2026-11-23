@@ -19,3 +19,4 @@ export * from './debris.ts';
 export * from './sign.ts';
 export * from './ceiling.ts';
 export * from './fixture.ts';
+export { svgShapes, type VectorImage, type VectorShape } from './svgShapes.ts';

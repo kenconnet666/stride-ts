@@ -171,6 +171,8 @@ export interface MaterialDesc {
   readonly wind?: MaterialWind;
   /** 室内映射（楼的窗户后面的房间），默认没有。 */
   readonly interior?: MaterialInterior;
+  /** 矢量贴图的数据（rendering/mesh/vectorAtlas.ts 的 buildVectorAtlas；材质文件的 vector）：近处代替基础色贴图。 */
+  readonly vectorAtlas?: Uint32Array;
 }
 
 /**
@@ -298,6 +300,8 @@ export class Material {
   wind: Required<MaterialWind> | undefined;
   /** 室内映射；没有时是 undefined。 */
   readonly interior: Required<MaterialInterior> | undefined;
+  /** 矢量贴图；没有时是 undefined。 */
+  readonly vectorAtlas: Uint32Array | undefined;
   /** 改了参数要递增，渲染特性据此重新上传。 */
   version = 0;
 
@@ -351,6 +355,7 @@ export class Material {
     this.transmission = withTransmissionDefaults(desc.transmission);
     this.wind = desc.wind && { flutter: 0, mode: 'tree', ...desc.wind };
     this.interior = desc.interior && { lit: 0.35, brightness: 0.5, ...desc.interior };
+    this.vectorAtlas = desc.vectorAtlas;
     this.id = materials.add(this) as MaterialId;
   }
 

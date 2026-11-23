@@ -18,6 +18,19 @@ fn baseColor(in: Varyings) -> vec4f {
   if ((u32(material.flags.w) & 1u) != 0u) {
     let uv = in.uv * material.uvTransform.xy + material.uvTransform.zw;
     texel = textureSample(baseColorTexture, baseColorSampler, uv);
+    // 矢量贴图（vectorAtlas.ts）：一个屏幕像素不到 1.5 个图集像素（位图开始糊）时按曲线算颜色，到 0.75 以下全用它；远处照旧
+    // 用位图。导数在分支外面取（一致的控制流）
+    if ((u32(material.flags.w) & 512u) != 0u) {
+      let texels = uv * vectorAtlasSize();
+      let perPixel = fwidth(texels);
+      let footprint = max(perPixel.x, perPixel.y);
+      let sharp = saturate((1.5 - footprint) / 0.75);
+      if (sharp > 0.0) {
+        let vector = vectorColor(uv, perPixel);
+        // 矢量是线性、预乘的；没盖满的地方透出位图
+        texel = vec4f(mix(texel.rgb, vector.rgb + texel.rgb * (1.0 - vector.a), sharp), texel.a);
+      }
+    }
     if (material.flags.y >= 0.0) {
       let texels = uv * vec2f(textureDimensions(baseColorTexture));
       let dx = dpdx(texels);

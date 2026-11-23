@@ -402,7 +402,7 @@ function packAtlas(sizes: readonly (readonly [number, number])[], reserve: numbe
 
 /**
  * 合成的那批的材质：颜色图集、表面图集（G 粗糙度、B 金属度），有发光的格子时加自发光图集乘 emissive。path 是资源的内容路径
- * （图集是 `<path>.svg`、`<path>.surface.svg`、`<path>.emissive.svg`）。
+ * （图集是 `<path>.svg`、`<path>.surface.svg`、`<path>.emissive.svg`，颜色图集的矢量版 `<path>.vector`）。
  */
 export function mergedMaterial(name: string, path: string, pixels: number, emissive = 0): MaterialFile {
   const slot = { encoding: 'svg' as const, size: [pixels, pixels] as const, filter: 'anisotropic' as const, scale: [1, 1] as const, offset: [0, 0] as const };
@@ -410,6 +410,8 @@ export function mergedMaterial(name: string, path: string, pixels: number, emiss
     name,
     baseColor: [1, 1, 1, 1],
     baseColorTexture: { texture: path, srgb: true, ...slot },
+    // 颜色图集的矢量版（`<path>.vector`，烘焙时由颜色图集的 SVG 建）：近处按曲线画，走多近都清楚
+    vector: path,
     metalness: 1,
     glossinessTexture: { texture: `${path}.surface`, srgb: false, channel: 'g', invert: true, metalnessChannel: 'b', ...slot },
     ...(emissive > 0 ? { emissive: [emissive, emissive, emissive] as const, emissiveTexture: { texture: `${path}.emissive`, srgb: true, ...slot } } : {}),

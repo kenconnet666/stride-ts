@@ -157,6 +157,18 @@ export class MeshRenderFeature extends RootRenderFeature {
    * CPU 上剔；关掉它也是（`stride call culling '{"on": false}'`，对比用）。
    */
   gpuCulling = true;
+
+  /** 材质的矢量贴图（rendering/mesh/vectorAtlas.ts）用不用：关掉时近处也用位图（和位图比、量开销，调试命令 vector）。 */
+  get vectorAtlases(): boolean {
+    return this.#vectorAtlases;
+  }
+
+  set vectorAtlases(on: boolean) {
+    this.#vectorAtlases = on;
+    if (this.#gpu) this.#gpu.vectorAtlases = on;
+  }
+
+  #vectorAtlases = true;
   #culling: GpuCulling | undefined;
   /** 这一帧 GPU 剔除的视图（按 cull 的调用顺序），Prepare 时定各自在实例列表里的起点。 */
   readonly #gpuViews: { readonly view: RenderView; readonly pass: CullPass; readonly index: number }[] = [];
@@ -431,7 +443,11 @@ export class MeshRenderFeature extends RootRenderFeature {
   }
 
   #ensureGpu(): MeshGpu {
-    return (this.#gpu ??= new MeshGpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters, this.system.localLights, this.system.planarReflections, this.system.refraction));
+    if (!this.#gpu) {
+      this.#gpu = new MeshGpu(this.system.device, this.system.resources, this.system.graphicsDevice.depthClipControl, this.system.subsurfaceMaterials, this.system.reflectionProbes, this.system.clouds, this.system, this.system.decals, this.system.clusters, this.system.localLights, this.system.planarReflections, this.system.refraction);
+      this.#gpu.vectorAtlases = this.#vectorAtlases;
+    }
+    return this.#gpu;
   }
 
 

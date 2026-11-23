@@ -12,17 +12,8 @@
  * 数穿越），所以再到竖带里找它们。每条曲线上最近的点用牛顿法找（从投到弦上的位置起步）：闭式解在接近直线的曲线上
  * 单精度不够用。
  */
-export const SLUG_WGSL = /* wgsl */ `
-struct GlyphEntry {
-  // 竖带、横带的缩放和偏移：em 坐标乘 xy 加 zw 得到带的下标
-  bandTransform: vec4f,
-  // 点的起点、带的起点、横带条数、竖带条数
-  data: vec4u,
-};
-@group(1) @binding(0) var<storage, read> glyphTable: array<GlyphEntry>;
-@group(1) @binding(1) var<storage, read> glyphPoints: array<vec2f>;
-@group(1) @binding(2) var<storage, read> glyphBands: array<u32>;
-
+/** Slug 的求根判别和横、竖两个方向的求交（纯函数，矢量贴图 rendering/mesh/vectorAtlas.ts 也用）。 */
+export const SLUG_CURVE_WGSL = /* wgsl */ `
 // 曲线的三个控制点（已经减去采样点）的 y（或 x）的符号决定哪个根有贡献：第 0 位是第一个根，第 8 位是第二个
 fn slugRootCode(y1: f32, y2: f32, y3: f32) -> u32 {
   let i1 = bitcast<u32>(y1) >> 31u;
@@ -61,6 +52,19 @@ fn slugSolveVertical(p12: vec4f, p3: vec2f) -> vec2f {
   }
   return vec2f((a.y * t1 - b.y * 2.0) * t1 + p12.y, (a.y * t2 - b.y * 2.0) * t2 + p12.y);
 }
+`;
+
+export const SLUG_WGSL = /* wgsl */ `
+${SLUG_CURVE_WGSL}
+struct GlyphEntry {
+  // 竖带、横带的缩放和偏移：em 坐标乘 xy 加 zw 得到带的下标
+  bandTransform: vec4f,
+  // 点的起点、带的起点、横带条数、竖带条数
+  data: vec4u,
+};
+@group(1) @binding(0) var<storage, read> glyphTable: array<GlyphEntry>;
+@group(1) @binding(1) var<storage, read> glyphPoints: array<vec2f>;
+@group(1) @binding(2) var<storage, read> glyphBands: array<u32>;
 
 // em 坐标 coord 处的覆盖率（0..1）。emsPerPixel 是 fwidth(coord)，要在均匀的控制流里算好传进来
 fn slugCoverage(coord: vec2f, emsPerPixel: vec2f, glyph: u32) -> f32 {

@@ -383,6 +383,10 @@
       "additionalProperties": false,
       "description": "interior mapping: rooms behind vertical glass (walls, floor, ceiling, furniture, lights on or off), no extra geometry"
     },
+    "vector": {
+      "type": "string",
+      "description": "vector atlas (content path of <path>.vector): the base color texture drawn from its curves up close, sharp at any distance; written by the bakers of merged shelves and piles"
+    },
     "anisotropy": {
       "type": "object",
       "properties": {

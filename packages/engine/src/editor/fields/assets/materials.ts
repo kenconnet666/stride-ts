@@ -79,6 +79,7 @@ export const MATERIAL_FIELDS = fields<MaterialFile>({
     group: 'advanced',
     description: 'interior mapping: rooms behind vertical glass (walls, floor, ceiling, furniture, lights on or off), no extra geometry',
   },
+  vector: { type: string, optional: true, group: 'advanced', description: 'vector atlas (content path of <path>.vector): the base color texture drawn from its curves up close, sharp at any distance; written by the bakers of merged shelves and piles' },
   anisotropy: { type: object(fields<NonNullable<MaterialFile['anisotropy']>>({ strength: number({ min: -1, max: 1, step: 0.01 }), rotation: { type: number({ unit: 'rad' }), optional: true, default: 0 } })), optional: true, group: 'advanced' },
   transmission: {
     type: object(fields<NonNullable<MaterialFile['transmission']>>({

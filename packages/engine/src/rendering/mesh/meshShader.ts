@@ -29,12 +29,13 @@ import type { MaterialShaderClearCoat, MaterialShaderLayer, MaterialShaderTrees 
 import { DFG_LUT_HEIGHT, DFG_LUT_WIDTH, MESH_VIEW } from './wgsl/view';
 import { MESH_SURFACE_INPUTS } from './wgsl/surfaceInputs';
 import { MESH_MATERIAL_BINDINGS } from './wgsl/materialBindings';
+import { VECTOR_ATLAS_WGSL } from './vectorAtlas';
 import { MESH_VERTEX } from './wgsl/vertex';
 import { MESH_LIGHTING } from './wgsl/lighting';
 import { MESH_FRAGMENT } from './wgsl/fragment';
 
 /** 固定的那一大段 WGSL：按段落分在 wgsl/ 里，顺序就是着色器里的顺序。 */
-export const MESH_SHADER = MESH_VIEW + MESH_SURFACE_INPUTS + MESH_MATERIAL_BINDINGS + MESH_VERTEX + MESH_LIGHTING + MESH_FRAGMENT;
+export const MESH_SHADER = MESH_VIEW + MESH_SURFACE_INPUTS + MESH_MATERIAL_BINDINGS + VECTOR_ATLAS_WGSL + MESH_VERTEX + MESH_LIGHTING + MESH_FRAGMENT;
 
 /**
  * 材质的颜色树（Material.shaderTrees）接进网格着色器的三个函数，没有对应的树时用默认：

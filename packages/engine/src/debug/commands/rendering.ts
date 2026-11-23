@@ -367,6 +367,11 @@ export function registerRenderingCommands(debug: Debug, game: Game): void {
     meshes.gpuCulling = switchArg(args, meshes.gpuCulling);
     return { gpu: meshes.gpuCulling, supported: game.renderSystem.graphicsDevice.indirectFirstInstance, wireframeFallsBackToCpu: game.graphicsCompositor.wireframe, stats: meshes.stats() };
   });
+  debug.command('vector', 'Vector atlases (rendering/mesh/vectorAtlas.ts): up close the label atlases of merged shelves are drawn from their curves instead of the bitmap. args: on (true/false, or "toggle"; omitted keeps it and just reports). Turn it off to compare sharpness and cost.', (args) => {
+    const meshes = game.meshes;
+    meshes.vectorAtlases = switchArg(args, meshes.vectorAtlases);
+    return { enabled: meshes.vectorAtlases };
+  });
   debug.command('splats', 'Gaussian splats (rendering/splats/SplatRenderer.ts): per frame each view picks a cut of the level-of-detail tree. args: budget (most splats one splat entity draws in one view), pixelError (how many pixels one level\'s coarseness may cover before refining). Reports the views drawing splats, instances, splats drawn of the total in the files, and selected nodes.', (args) => {
     const splats = game.renderSystem.splats;
     const budget = typeof args['budget'] === 'number' ? args['budget'] : splats.limits.budget;

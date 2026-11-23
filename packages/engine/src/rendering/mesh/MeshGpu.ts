@@ -102,6 +102,10 @@ interface GpuMaterial {
   readonly buffer: GPUBuffer;
   bindGroup: GPUBindGroup | undefined;
   version: number;
+  /** 矢量贴图的数据（Material.vectorAtlas）；没有时绑 #noVector。 */
+  vector: GPUBuffer | undefined;
+  /** 上传时 MeshGpu.vectorAtlases 开没开（开关一变就重建绑定组）。 */
+  vectorOn: boolean;
 }
 
 /** 顶点在网格空间里怎么变形：不变、按形变目标、按高度页（地形块）。 */
@@ -283,6 +287,8 @@ export class MeshGpu {
         ...[6, 7, 8].map((binding) => ({ binding, visibility: GPUShaderStage.FRAGMENT, sampler: {} })),
         { binding: 9, visibility: GPUShaderStage.FRAGMENT, texture: {} },
         { binding: 10, visibility: GPUShaderStage.FRAGMENT, sampler: {} },
+        // 矢量贴图（vectorAtlas.ts）；没有时是 #noVector
+        { binding: 11, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'read-only-storage' } },
       ],
     });
     this.#meshLayout = device.createBindGroupLayout({
@@ -871,15 +877,33 @@ export class MeshGpu {
     return gpu;
   }
 
+  /** 材质的矢量贴图用不用（调试命令 vector：和位图比清晰度、量开销）。 */
+  vectorAtlases = true;
+
+  /** 没有矢量贴图的材质绑的空数据（头是 0，着色器认出来不画）。 */
+  #noVector: GPUBuffer | undefined;
+
+  /** 材质的矢量贴图上传一次（同一份数据不重复传），没有时用空的。 */
+  #vectorBuffer(gpu: GpuMaterial, data: Uint32Array | undefined): GPUBuffer {
+    if (!data) return (this.#noVector ??= this.device.createBuffer({ label: 'MeshRenderFeature no vector atlas', size: 64, usage: GPUBufferUsage.STORAGE }));
+    if (!gpu.vector || gpu.vector.size !== data.byteLength) {
+      gpu.vector?.destroy();
+      gpu.vector = this.device.createBuffer({ label: 'MeshRenderFeature vector atlas', size: data.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      this.device.queue.writeBuffer(gpu.vector, 0, data.buffer, data.byteOffset, data.byteLength);
+    }
+    return gpu.vector;
+  }
+
   /** 材质的绑定组；参数改了（version 变了）就重新上传。 */
   material(material: Material): GPUBindGroup {
     let gpu = this.#materials.get(material);
     if (!gpu) {
       const buffer = this.device.createBuffer({ label: `${material.name} material`, size: MATERIAL_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-      gpu = { buffer, bindGroup: undefined, version: -1 };
+      gpu = { buffer, bindGroup: undefined, version: -1, vector: undefined, vectorOn: this.vectorAtlases };
       this.#materials.set(material, gpu);
     }
-    if (gpu.version !== material.version || !gpu.bindGroup) {
+    if (gpu.version !== material.version || !gpu.bindGroup || gpu.vectorOn !== this.vectorAtlases) {
+      gpu.vectorOn = this.vectorAtlases;
       const { baseColorTexture: slot, normalMap, emissiveTexture, ambientOcclusion: occlusion, transparency } = material;
       const { r, g, b, a } = material.baseColor;
       const uv = (texture: Required<MaterialTexture> | undefined) => [...(texture?.scale ?? [1, 1]), ...(texture?.offset ?? [0, 0])];
@@ -905,7 +929,9 @@ export class MeshGpu {
       floats.set(uv(gloss), 48);
       // 第 3..5 位、6..8 位：光泽度贴图里金属度、透射的通道 + 1（0 是没有）
       const channelBits = (channel: string | undefined) => (channel ? 'rgba'.indexOf(channel) + 1 : 0);
-      const textures = (slot ? 1 : 0) | (emissiveTexture ? 2 : 0) | (occlusion.texture ? 4 : 0) | (channelBits(gloss?.metalnessChannel) << 3) | (channelBits(gloss?.transmissionChannel) << 6);
+      // 第 9 位：有矢量贴图（近处代替基础色贴图，vectorAtlas.ts）
+      const vector = slot && material.vectorAtlas && this.vectorAtlases ? material.vectorAtlas : undefined;
+      const textures = (slot ? 1 : 0) | (emissiveTexture ? 2 : 0) | (occlusion.texture ? 4 : 0) | (channelBits(gloss?.metalnessChannel) << 3) | (channelBits(gloss?.transmissionChannel) << 6) | (vector ? 512 : 0);
       floats.set([gloss?.invert ? 1 : 0, material.alphaCutoff ?? -1, material.glass?.refractiveIndex ?? 0, textures], 52);
       const scattering = material.subsurfaceScattering;
       floats.set([this.#subsurface.slotOf(material), scattering?.translucency ?? 0, scattering?.width ?? 0, 0], 56);
@@ -945,6 +971,7 @@ export class MeshGpu {
           { binding: 8, resource: sampler(occlusion.texture) },
           { binding: 9, resource: view(gloss) },
           { binding: 10, resource: sampler(gloss) },
+          { binding: 11, resource: { buffer: this.#vectorBuffer(gpu, vector) } },
         ],
       });
       gpu.version = material.version;
@@ -968,7 +995,11 @@ export class MeshGpu {
       indices.destroy();
       edges?.buffer.destroy();
     }
-    for (const { buffer } of this.#materials.values()) buffer.destroy();
+    for (const { buffer, vector } of this.#materials.values()) {
+      buffer.destroy();
+      vector?.destroy();
+    }
+    this.#noVector?.destroy();
     this.#dfgLut.destroy();
   }
 

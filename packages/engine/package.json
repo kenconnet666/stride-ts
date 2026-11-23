@@ -26,6 +26,7 @@
     "./math": "./src/data/Matrix.ts",
     "./light-profile": "./src/rendering/lighting/LightProfile.ts",
     "./color-lut": "./src/rendering/postfx/tonemap/ColorLut.ts",
+    "./vector-atlas": "./src/rendering/mesh/vectorAtlas.ts",
     "./splats": "./src/content/splatFile.ts",
     "./splat-edit": "./src/content/splatEdit.ts"
   },

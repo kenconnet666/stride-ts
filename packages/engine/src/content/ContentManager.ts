@@ -19,6 +19,7 @@ import { Model, ModelPart, Skinned } from '../rendering/components';
 import { ModelMorph, ModelSkeleton } from '../animation/AnimationSystem';
 import { Morphed } from '../animation/morphs';
 import { Material, type MaterialShaderLayer, type MaterialShaderTrees } from '../rendering/mesh/Material';
+import { readVectorAtlas } from '../rendering/mesh/vectorAtlas';
 import { preload, textureRefs } from './loading';
 import { expandPrefabInstances, loadPrefabs } from './prefabInstances';
 import { Prefab, type PrefabShape } from './Prefab';
@@ -372,13 +373,14 @@ export class ContentManager {
       const slot = async ({ scale, offset, filter, addressU, addressV, ...ref }: TextureSlot, srgb: boolean) =>
         ({ texture: await this.loadTextureRef(ref, srgb), scale, offset, sampler: { ...(filter ? { filter } : {}), ...(addressU ? { addressU } : {}), ...(addressV ? { addressV } : {}) } });
       const { normalMap: normal, ambientOcclusion: occlusion } = file;
-      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture, shaderTrees, glossinessTexture] = await Promise.all([
+      const [baseColorTexture, emissiveTexture, normalTexture, occlusionTexture, shaderTrees, glossinessTexture, vectorAtlas] = await Promise.all([
         file.baseColorTexture && slot(file.baseColorTexture, true),
         file.emissiveTexture && slot(file.emissiveTexture, true),
         normal && slot(normal, false),
         occlusion?.texture && slot(occlusion.texture, false),
         this.#shaderTrees(file),
         file.glossinessTexture && slot(file.glossinessTexture, false),
+        file.vector && this.#once(`${file.vector}.vector`, async (vectorUrl) => readVectorAtlas(new Uint8Array(await this.#read(vectorUrl)), vectorUrl.href)),
       ]);
       return new Material(file.name, {
         baseColor: file.baseColor,
@@ -396,6 +398,7 @@ export class ContentManager {
         ...(file.sheen ? { sheen: file.sheen } : {}),
         ...(file.wind ? { wind: file.wind } : {}),
         ...(file.interior ? { interior: file.interior } : {}),
+        ...(vectorAtlas ? { vectorAtlas } : {}),
         ...(file.anisotropy ? { anisotropy: file.anisotropy } : {}),
         ...(file.transmission ? { transmission: file.transmission } : {}),
         ...(file.roughness === undefined ? {} : { roughness: file.roughness }),

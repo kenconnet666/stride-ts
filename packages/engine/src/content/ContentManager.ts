@@ -118,6 +118,11 @@ export interface LoadSceneOptions {
    * 编辑的场景的画面和仿真。
    */
   readonly applySettings?: boolean;
+  /**
+   * 中止：文件和资源读好、建实体之前看一眼，已经中止就不建，Promise 以中止的原因拒绝（`signal.reason`）。已经发出去的下载照样读完、
+   * 留在缓存里（附近的格子多半也要用）。世界的流式加载用它扔掉还没读好就走远了的格子。
+   */
+  readonly signal?: AbortSignal;
 }
 
 /** meshopt 解码的一个请求（同 @stride-ts/native 的 MeshoptRequest）。 */
@@ -775,6 +780,7 @@ export class ContentManager {
    */
   async loadScene(path: string, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const { scene, assets } = await this.#sceneWithAssets(path);
+    options.signal?.throwIfAborted();
     return this.#createScene(scene, assets, entities, options, path, path);
   }
 
@@ -785,7 +791,9 @@ export class ContentManager {
   async instantiateScene(file: SceneFile, entities: EntityManager, options: LoadSceneOptions = {}): Promise<SceneInstance> {
     const where = `scene ${file.name}`;
     const scene = { ...file, entities: await this.#expandInstances(file.entities, where) };
-    return this.#createScene(scene, await this.#scenes.preload(scene.entities, where, postEffectsOf(scene)), entities, options, where);
+    const assets = await this.#scenes.preload(scene.entities, where, postEffectsOf(scene));
+    options.signal?.throwIfAborted();
+    return this.#createScene(scene, assets, entities, options, where);
   }
 
   /**

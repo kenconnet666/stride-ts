@@ -416,6 +416,22 @@ describe('ContentManager', () => {
     expect([sceneComponentKey(Light), sceneComponentKey(Model), sceneComponentKey(UIComponent), sceneComponentKey(Static), sceneComponentKey(Speaker)]).toEqual(['light', 'model', 'ui', 'static', undefined]);
   });
 
+  test('读场景时中止（signal）：文件读好也不建实体，以中止的原因拒绝；文件留在缓存里，再读不发请求', async () => {
+    const scene: SceneFile = { name: 'Cell', entities: [{ id: 'a', name: 'a', parent: null, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} }] };
+    const game = new Game();
+    game.native = native;
+    game.transforms = native.createTransforms(8);
+    let reads = 0;
+    const content = new ContentManager({ root: 'https://game.test/content/', read: async () => (reads++, json(scene)) });
+    const abort = new AbortController();
+    const loading = content.loadScene('scenes/Cell', game.entities, { signal: abort.signal });
+    abort.abort(new Error('walked away'));
+    await expect(loading).rejects.toThrow('walked away');
+    expect(game.entities.count).toBe(0);
+    const loaded = await content.loadScene('scenes/Cell', game.entities);
+    expect([loaded.entities.size, game.entities.count, reads]).toEqual([1, 1, 1]);
+  });
+
   test('场景的偏移（Stride 的 Scene.Offset）在场景上：实体的世界位置带着它，本地位置不带；可以运行时改；子场景的偏移接在父场景后面', async () => {
     const entity = (id: string, parent: string | null) => ({ id, name: id, parent, position: [1, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], components: {} }) as const;
     const scene: SceneFile = { name: 'Chunk', offset: [-20, 0, 5], entities: [entity('root', null), entity('child', 'root')] };

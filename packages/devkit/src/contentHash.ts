@@ -1,5 +1,5 @@
 /**
- * 内容文件的哈希命名和长期缓存（路线图"十、大世界收尾"的"加载与缓存"，docs/stages.md 第 4 步的网络层）：构建完成后给 `dist/content`
+ * 内容文件的哈希命名和长期缓存（路线图"大世界收尾"的"加载与缓存"，docs/stages.md 第 4 步的网络层）：构建完成后给 `dist/content`
  * 里的每个文件按内容哈希改名（`Valley.scene.json` → `Valley.scene.3fa9c2d1b0e4.json`），清单（原路径 → 带哈希的路径）嵌进页面
  * （`<script type="application/json" id="stride-content-manifest">`，不用多一个请求），引擎的内容管理器读文件时按清单换成带哈希的地址
  * （ContentManager.resolveUrl）。内容变了名字就变，所以带哈希的文件可以放心设成永不过期（`Cache-Control: immutable`），再次打开页面

@@ -1,9 +1,10 @@
-// 加载与流式加载的度量基线（路线图"十、大世界收尾"的"加载与缓存"第 0 步，docs/stages.md）：在开放世界样例里打开一个世界，量
+// 加载与流式加载的度量基线（路线图"大世界收尾"的"加载与缓存"第 0 步，docs/stages.md）：在开放世界样例里打开一个世界，量
 //   出画面：打开页面到引擎启动各阶段（原生模块、内容、第一帧）、到近处的格子都加载好；
 //   卡顿：按固定路线飞一圈时的帧间隔（中位数、p95、p99、最长、超过 50 毫秒的帧数）；
 //   下载量：页面请求数、传输字节；
 //   流式加载：飞行中加载、卸载的格子数；当场建的管线数（着色器的编译堵住一帧，应该是 0）和后台预热的数。
-//   node tools/dev/streaming-bench.ts [--sync] [--check] [--headed] [--cold] [--world Worlds/Valley] [--seconds 30] [--speed 60] [--port 5232] [--size 1280x720] [--out result.json]
+//   node tools/dev/streaming-bench.ts [--sync] [--check] [--headed] [--cold] [--world Worlds/Valley] [--seconds 30] [--speed 60] [--latency 0] [--port 5232] [--size 1280x720] [--out result.json]
+// --latency：每个请求多等这么多毫秒（DevTools 的网络模拟，页面打开以后才生效：量的是格子的加载，不是启动），看网络慢时排队、提前读、中止。
 // --sync：对照用，关掉"管线没好先不画"（MeshRenderFeature.deferPipelines），回到当场编译的老做法。
 // 借开放世界的开发服务器（没开就开一个，用完 pwsh tools/stop-dev.ps1 停）和自己的无头 Chrome（不限帧率、关垂直同步）。开发服务器
 // 上每个模块一个请求，下载量比构建出来的大得多：要量发布的样子用 preview 的地址（--url）。路线：相机从 (0, 40, 0) 出发往 +X
@@ -13,8 +14,10 @@ import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
-// --cold：每次用全新的浏览器用户目录（没有磁盘上的着色器缓存），量第一次访问的启动；不加是同一个目录，量再次访问
-process.env['STRIDE_BROWSER_DIR'] = path.join(homedir(), '.stride-ts', process.argv.includes('--cold') ? `streaming-bench-cold-${Date.now()}` : 'streaming-bench');
+// --cold：每次用全新的浏览器用户目录（没有磁盘上的着色器缓存），量第一次访问的启动；不加是同一个目录，量再次访问。
+// 验证槽里（STRIDE_STATE_DIR 是槽位的状态目录）放在槽位自己的目录下，不和主检出的度量抢同一个 Chrome
+const stateRoot = process.env['STRIDE_STATE_DIR'] ?? path.join(homedir(), '.stride-ts');
+process.env['STRIDE_BROWSER_DIR'] = path.join(stateRoot, process.argv.includes('--cold') ? `streaming-bench-cold-${Date.now()}` : 'streaming-bench');
 const { CdpSession, closeBrowser, openUrl, pageTarget } = await import('@stride-ts/cli/chrome');
 
 const option = (name: string, fallback: string) => {
@@ -27,13 +30,14 @@ const speed = Number(option('--speed', '60'));
 const port = Number(option('--port', '5232'));
 const size = option('--size', '1280x720').split('x').map(Number) as [number, number];
 const out = option('--out', '');
+const latency = Number(option('--latency', '0'));
 const base = option('--url', `http://localhost:${port}/`);
 const url = `${base}${base.includes('?') ? '&' : '?'}world=${world}&debug`;
 
 let lastResult: unknown;
 const reachable = () => fetch(base).then(() => true, () => false);
 if (!(await reachable()) && !process.argv.includes('--url')) {
-  spawn('pnpm -F @stride-ts/open-world dev', { cwd: path.resolve(import.meta.dirname, '..', '..'), shell: true, detached: true, stdio: 'ignore' }).unref();
+  spawn(`pnpm -F @stride-ts/open-world dev --strictPort --port ${port}`, { cwd: path.resolve(import.meta.dirname, '..', '..'), shell: true, detached: true, stdio: 'ignore' }).unref();
   for (let i = 0; i < 90 && !(await reachable()); i++) await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 
@@ -62,7 +66,7 @@ const measure = `(async () => {
   const loadStats = { requests: resources.length, transferKB: Math.round(resources.reduce((sum, entry) => sum + (entry.transferSize || 0), 0) / 1024) };
   const metric = (name) => game().metrics.snapshot().find((entry) => entry.name === name)?.value;
   const pipelinesBefore = { sync: game().graphicsDevice.pipelines.sync, warmed: game().graphicsDevice.pipelines.warmed };
-  const worldBefore = { loads: game().world.loads, unloads: game().world.unloads };
+  const worldBefore = { loads: game().world.loads, unloads: game().world.unloads, cancels: game().world.cancels };
   // 显存和内存：飞行前后各读一次，飞过的格子卸载以后应该基本回到原来的数（涨得多就是泄漏）
   const memoryNow = () => ({ entities: metric('entities'), gpuBufferMB: +(metric('gpu.buffers.bytes') / 1048576).toFixed(1), gpuTextureMB: +(metric('gpu.textures.bytes') / 1048576).toFixed(1), nativeMB: +(metric('native.allocated.bytes') / 1048576).toFixed(1) });
   const memoryBefore = memoryNow();
@@ -99,7 +103,7 @@ const measure = `(async () => {
       over50ms: frames.filter((ms) => ms > 50).length, over100ms: frames.filter((ms) => ms > 100).length,
     },
     memory: { before: memoryBefore, after: memoryNow() },
-    world: { cellsLoaded: game().world.loads - worldBefore.loads, cellsUnloaded: game().world.unloads - worldBefore.unloads, loadedNow: game().world.loaded.length },
+    world: { cellsLoaded: game().world.loads - worldBefore.loads, cellsUnloaded: game().world.unloads - worldBefore.unloads, cellsCancelled: game().world.cancels - worldBefore.cancels, loadedNow: game().world.loaded.length },
     pipelines: { syncDuringFlight: game().graphicsDevice.pipelines.sync - pipelinesBefore.sync, warmedDuringFlight: game().graphicsDevice.pipelines.warmed - pipelinesBefore.warmed, recentSync: game().graphicsDevice.pipelines.recentSync.slice(-8) },
     finalDownload: { requests: performance.getEntriesByType('resource').length, transferKB: Math.round(performance.getEntriesByType('resource').reduce((sum, entry) => sum + (entry.transferSize || 0), 0) / 1024) },
   };
@@ -110,6 +114,10 @@ await closeBrowser();
 const browser = await openUrl(url, { headless: !process.argv.includes('--headed'), size, dpr: 1, chromeArgs: ['--disable-frame-rate-limit', '--disable-gpu-vsync'] });
 try {
   const cdp = await CdpSession.connect((await pageTarget(browser, base)).webSocketDebuggerUrl);
+  if (latency > 0) {
+    await cdp.send('Network.enable', {});
+    await cdp.send('Network.emulateNetworkConditions', { offline: false, latency, downloadThroughput: -1, uploadThroughput: -1 });
+  }
   const reply = (await cdp.send('Runtime.evaluate', { expression: measure, awaitPromise: true, returnByValue: true }, (seconds + 120) * 1000)) as { result: { value?: unknown }; exceptionDetails?: { exception?: { description?: string } } };
   if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description ?? 'the measurement failed');
   const result = reply.result.value;

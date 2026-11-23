@@ -31,7 +31,7 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
     return {
       world: world.path ?? null, cellSize: world.file?.cellSize, layers: world.file?.layers,
       loaded: world.loaded, loading: world.loading, sources: world.sources.map((source) => [Math.round(source.x), Math.round(source.z)]),
-      loads: world.loads, unloads: world.unloads, stats: world.stats,
+      loads: world.loads, unloads: world.unloads, cancels: world.cancels, stats: world.stats,
       ...(args['cells'] === true ? { cells: world.cellStates.map((cell) => `${cell.state} ${cell.key} ${Math.round(cell.distance)}m`) } : {}),
     };
   });

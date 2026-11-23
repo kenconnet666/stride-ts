@@ -156,6 +156,33 @@ $results = $selected | ForEach-Object -ThrottleLimit $Parallel -Parallel {
     $_.Output | Write-Host
     $_
 }
+# 流式加载的预算（tools/streaming-budgets.json，加载与缓存阶段的验收）：开放世界在选中的样例里时，冒烟都跑完以后单独跑（量帧间隔，
+# 要独占机器）。Valley 走默认路线；Town 飞得远（40 秒、每秒 100 米），格子卸载以后显存、原生内存的增长是泄漏的门槛
+if ('open-world' -in $selected) {
+    $port = $portOffset + 5232
+    $env:STRIDE_STATE_DIR = Join-Path $stateRoot 'streaming-bench'
+    $hidden = $IsWindows ? @{ WindowStyle = 'Hidden' } : @{}
+    $server = Start-Process pwsh -ArgumentList '-NoProfile', '-Command', "Set-Location '$(Join-Path $root 'apps' 'open-world')'; pnpm dev --strictPort --port $port" -PassThru @hidden
+    $started = Get-Date
+    $output = try {
+        $deadline = (Get-Date).AddSeconds(90)
+        while (-not (Test-Port $port)) {
+            if ((Get-Date) -gt $deadline) { throw "open-world's dev server did not listen on $port" }
+            Start-Sleep -Milliseconds 500
+        }
+        foreach ($route in @(@('--world', 'Worlds/Valley'), @('--world', 'Worlds/Town', '--seconds', '40', '--speed', '100'))) {
+            node (Join-Path $root 'tools' 'dev' 'streaming-bench.ts') --check --port $port @route 2>&1 | Where-Object { "$_" -match '^(ok  |FAIL)' } | ForEach-Object { "$_ ($($route[1]))" }
+            if ($LASTEXITCODE -ne 0) { "FAIL $($route[1]): streaming-bench --check exited with $LASTEXITCODE" }
+        }
+    } catch {
+        "FAIL streaming budgets: $_"
+    } finally {
+        try { [System.Diagnostics.Process]::GetProcessById($server.Id).Kill($true) } catch { }
+    }
+    Write-Host "===== streaming budgets ($([int]((Get-Date) - $started).TotalSeconds) s)"
+    $output | Write-Host
+    $results = @($results) + [pscustomobject]@{ App = 'streaming budgets'; Passed = -not ($output -match '^FAIL'); Failed = @($output -match '^FAIL').Count; Seconds = [int]((Get-Date) - $started).TotalSeconds; Output = $output }
+}
 $results | Sort-Object App | Format-Table App, Passed, Failed, Seconds -AutoSize
 # 失败的样例在最后再列一遍 FAIL 的那几行：只看输出尾巴（后台跑、verify.ps1 截尾）时也知道是哪一项
 foreach ($failed in @($results | Where-Object { -not $_.Passed } | Sort-Object App)) {

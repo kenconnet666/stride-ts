@@ -3,7 +3,7 @@
  * 当根场景，之后每帧看流式源（主画面的相机、带 StreamingSource 的实体）在哪，按各图层的加载半径加载附近有内容的格子、卸载远了的。
  *
  * - 格子是普通的场景（content/formats/worldFormat.ts），加载时 offset 是格子的原点，挂在常驻场景下面；
- * - 同时最多 MAX_LOADING 个格子在读，近的先读；读好时已经不要了（走远了、换了世界）就马上卸载；
+ * - 同时最多 MAX_LOADING 个格子在读，近的先读；还在读就走远了（离开加载半径的 1.25 倍）、换了世界的中止，不建实体、让出名额；
  * - 卸载有滞后：离开加载半径的 1.25 倍才卸载，在边上来回走不会反复加载；
  * - 编辑状态（`game.editing`）不自己流式加载：编辑器按编辑相机加载格子（以后的世界视图）。
  *
@@ -42,6 +42,8 @@ interface CellState {
   readonly path: string;
   /** 加载好了是场景；还在读是 undefined。 */
   scene: SceneInstance | undefined;
+  /** 还在读时中止它（走远了、换了世界）。 */
+  readonly abort: AbortController;
 }
 
 /** 一个要的格子（流式源的加载半径里有内容的）和它现在的状态：排队（还没开始读，同时最多读 MAX_LOADING 个）、在读、好了。 */
@@ -93,13 +95,12 @@ export class WorldStreaming {
   readonly #cells = new Map<string, CellState>();
   /** 每个图层有内容的格子（键 `x_z`），按世界文件的索引。 */
   #index = new Map<string, Set<string>>();
-  /** 换世界时加一：读好的格子发现世界换了就扔掉。 */
-  #generation = 0;
   /** 上一帧的流式源（调试命令看）。 */
   sources: readonly Source[] = [];
-  /** 一共加载、卸载了几次格子（统计）。 */
+  /** 一共加载、卸载了几次格子，几个还在读就走远了被中止（统计）。 */
   loads = 0;
   unloads = 0;
+  cancels = 0;
   /** 上一帧要的格子（近的在前）和它们的状态；加载骨架、进度显示、调试命令读它。 */
   cellStates: readonly WorldCellView[] = [];
   readonly #placeholders = new WorldPlaceholders();
@@ -176,8 +177,10 @@ export class WorldStreaming {
   /** 卸掉世界的格子（根场景留着，换根场景时自然卸掉）。 */
   unload(): void {
     const game = this.#game;
-    this.#generation++;
-    for (const cell of this.#cells.values()) if (cell.scene) game.unloadScene(cell.scene);
+    for (const cell of this.#cells.values()) {
+      if (cell.scene) game.unloadScene(cell.scene);
+      else cell.abort.abort();
+    }
     this.#cells.clear();
     this.cellStates = [];
     this.#prefetched.clear();
@@ -242,15 +245,19 @@ export class WorldStreaming {
         }
       }
     }
-    // 卸载：离所有源都超过加载半径的 1.25 倍（还在读的读好时再看）
+    // 卸载：离所有源都超过加载半径的 1.25 倍；还在读的中止（不建实体，名额让给眼前的格子）
     for (const [key, cell] of this.#cells) {
-      if (!cell.scene) continue;
       const radius = file.layers.find((layer) => layer.name === cell.layer)!.loadRadius;
       const near = this.sources.some((source) => distanceToCell(file, source.x, source.z, cell.x, cell.z) <= radius * source.scale * UNLOAD_SLACK);
       if (near) continue;
-      game.unloadScene(cell.scene);
       this.#cells.delete(key);
-      this.unloads++;
+      if (cell.scene) {
+        game.unloadScene(cell.scene);
+        this.unloads++;
+      } else {
+        cell.abort.abort();
+        this.cancels++;
+      }
     }
     // 加载：优先级高的（近的、在朝向前方的）先读，同时最多 MAX_LOADING 个
     wanted.sort((a, b) => a.priority - b.priority);
@@ -282,12 +289,11 @@ export class WorldStreaming {
 
   #loadCell(game: Game, key: string, layer: string, x: number, z: number): void {
     const file = this.file!, root = this.root!;
-    const state: CellState = { layer, x, z, path: worldCellPath(this.path!, layer, x, z), scene: undefined };
+    const state: CellState = { layer, x, z, path: worldCellPath(this.path!, layer, x, z), scene: undefined, abort: new AbortController() };
     this.#cells.set(key, state);
-    const generation = this.#generation;
-    game.loadScene(state.path, { parent: root, offset: cellOrigin(file, x, z), applySettings: false }).then((scene) => {
-      // 读的时候世界换了，或者这个格子已经不要了（被别的状态替掉）
-      if (generation !== this.#generation || this.#cells.get(key) !== state) {
+    game.loadScene(state.path, { parent: root, offset: cellOrigin(file, x, z), applySettings: false, signal: state.abort.signal }).then((scene) => {
+      // 建实体的时候才不要了（中止赶不上）：建好马上卸掉
+      if (this.#cells.get(key) !== state) {
         game.unloadScene(scene);
         return;
       }
@@ -295,6 +301,7 @@ export class WorldStreaming {
       this.loads++;
       game.requestFrames();
     }, (error: unknown) => {
+      if (state.abort.signal.aborted) return;
       if (this.#cells.get(key) === state) this.#cells.delete(key);
       console.error(`[stride] world ${this.path}: cell ${key} failed to load`, error);
     });

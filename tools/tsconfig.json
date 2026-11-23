@@ -1,4 +1,6 @@
 {
   "extends": "../tsconfig.base.json",
-  "include": ["*.ts", "lib/*.ts", "dev/*.ts", "editor-accept/*.ts"]
+  "include": ["*.ts", "lib/*.ts", "dev/*.ts", "editor-accept/*.ts"],
+  // 页面里跑的片段（stride eval --file）：作用域是页面的 game、engine，用 stride eval --check 查
+  "exclude": ["dev/*.eval.ts"]
 }

@@ -14,6 +14,9 @@ ${FULLSCREEN_VERTEX}
   return textureSampleLevel(source, linearClamp, in.uv, 0.0);
 }`;
 
+/** 图片贴图的两种格式：管线在后台先编好，加载时第一张要出 mip 的贴图不用当场编（当场编会卡一下，统计量 gpu.pipelines.sync）。 */
+const WARM_FORMATS: readonly GPUTextureFormat[] = ['rgba8unorm', 'rgba8unorm-srgb'];
+
 export class MipmapGenerator {
   readonly #device: GPUDevice;
   readonly #module: GPUShaderModule;
@@ -26,6 +29,11 @@ export class MipmapGenerator {
     this.#device = device;
     this.#module = device.createShaderModule({ label: 'MipmapGenerator', code: SHADER });
     this.#sampler = device.createSampler({ label: 'MipmapGenerator', minFilter: 'linear', magFilter: 'linear' });
+    for (const format of WARM_FORMATS) {
+      void device.createRenderPipelineAsync(this.#descriptor(format)).then((pipeline) => {
+        if (!this.#pipelines.has(format)) this.#pipelines.set(format, pipeline);
+      }, () => undefined);
+    }
   }
 
   /**
@@ -63,17 +71,22 @@ export class MipmapGenerator {
     if (!into) this.#device.queue.submit([encoder.finish()]);
   }
 
+  /** 这种格式的管线：后台编好了就用，没有（别的格式、预热还没编完）当场编。 */
   #pipelineFor(format: GPUTextureFormat): GPURenderPipeline {
     let pipeline = this.#pipelines.get(format);
     if (!pipeline) {
-      pipeline = this.#device.createRenderPipeline({
-        label: `MipmapGenerator ${format}`,
-        layout: 'auto',
-        vertex: { module: this.#module, entryPoint: 'fullscreenVertex' },
-        fragment: { module: this.#module, entryPoint: 'fs', targets: [{ format }] },
-      });
+      pipeline = this.#device.createRenderPipeline(this.#descriptor(format));
       this.#pipelines.set(format, pipeline);
     }
     return pipeline;
+  }
+
+  #descriptor(format: GPUTextureFormat): GPURenderPipelineDescriptor {
+    return {
+      label: `MipmapGenerator ${format}`,
+      layout: 'auto',
+      vertex: { module: this.#module, entryPoint: 'fullscreenVertex' },
+      fragment: { module: this.#module, entryPoint: 'fs', targets: [{ format }] },
+    };
   }
 }

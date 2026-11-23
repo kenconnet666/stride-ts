@@ -165,15 +165,15 @@
     "render.instances": 10
   },
   "photoreal": {
-    "entities": 24,
-    "gpu.buffers": 132,
-    "gpu.buffers.bytes": 1921488,
+    "entities": 26,
+    "gpu.buffers": 141,
+    "gpu.buffers.bytes": 5125264,
     "gpu.pipelines.sync": 1,
-    "gpu.textures": 48,
-    "gpu.textures.bytes": 113734282,
-    "native.allocated.bytes": 60537528,
-    "render.drawCalls": 173,
-    "render.instances": 100
+    "gpu.textures": 60,
+    "gpu.textures.bytes": 128589864,
+    "native.allocated.bytes": 76045608,
+    "render.drawCalls": 191,
+    "render.instances": 110
   },
   "physics-sample": {
     "entities": 8,

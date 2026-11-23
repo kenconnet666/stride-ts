@@ -13,6 +13,7 @@
  "surface": "glass",
  "colors": {
   "background": "#33150c",
+  "accent": "#2f8f3a",
   "cap": "#2f8f3a"
  }
 }

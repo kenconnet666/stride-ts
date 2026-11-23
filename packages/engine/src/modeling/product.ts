@@ -13,7 +13,7 @@ import { PRODUCE_SHAPES, WARE_SHAPES, type ProductColors, type ProductFile, type
 import { hash32, seededRandom } from '../data/hash.ts';
 import { MeshBuilder } from './meshBuilder.ts';
 import { cross, finish, latheMesh, normalize, smoothNormals, sub, type ProductMesh, type ProfilePoint } from './lathe.ts';
-import { svgNumber } from './svg.ts';
+import { shadeColor, svgNumber } from './svg.ts';
 import { WARE_COBALT, WARE_GLAZE, wareMesh, wareSkin, type FoodPiecePose } from './ware.ts';
 import { textContours, type TextFont } from './textOutline.ts';
 
@@ -486,6 +486,10 @@ function labelPrint(file: ProductFile, design: ProductDesign, labelSize: readonl
     const profile = latheProfile(file.shape, file.size[0] / 2, file.size[1]);
     const capLength = capLengthOf(profile) * 1000;
     if (capLength > 0) parts.push(`<rect width="${svgNumber(W)}" height="${svgNumber(capLength)}" fill="${design.colors.cap}"/>`);
+    // 不透光的玻璃罐：标签以外露出来的是隔着玻璃看见的里面的酱（底色当它的颜色）；玻璃瓶里是酱油、醋这种匀的，不画
+    if (design.surface === 'glass' && productTransmission(file) === 0 && file.shape === 'jar') {
+      parts.push(contentsShapes(design.colors.background, [0, capLength, W, H - capLength], seededRandom(hash32(hash32(file.seed ?? 1, variant), 97))));
+    }
     // 瓶的肩、颈不放字：字放在瓶身的直段（离底 3% 到 60% 高）
     const straight = file.shape === 'bottle' ? [0.03, 0.6] : file.shape === 'jug' ? [0.05, 0.66] : file.shape === 'can' ? [0.08, 0.9] : file.shape === 'jar' ? [0.06, 0.76] : [0.1, 0.84];
     const bottom = H - (straight[0]! * h + file.size[0] * 1000 * 0.46), top = H - (straight[1]! * h + file.size[0] * 1000 * 0.46);
@@ -531,6 +535,22 @@ function produceSkin(file: ProductFile, design: ProductDesign, [W, H]: readonly 
   } else {
     shapes.push(`<rect width="${svgNumber(W)}" height="${svgNumber(H * 0.05)}" fill="${cap}"/>`);
     shapes.push(`<rect y="${svgNumber(H * 0.05)}" width="${svgNumber(W)}" height="${svgNumber(H * 0.25)}" fill="${accent}" opacity="0.35"/>`);
+  }
+  return `<g>${shapes.join('')}</g>`;
+}
+
+/**
+ * 隔着玻璃看见的里面的东西（玻璃罐里的辣椒酱、豆瓣、腐乳）：color 是它的颜色，画在 [x, y, w, h] 那块里——最上面一层浮着的
+ * 红油（亮一些、偏红），下面是酱，撒满辣椒碎（亮红）、芝麻（米黄）、豆瓣和深色的渣；标签的图案再盖在上面。
+ */
+function contentsShapes(color: string, [x, y, w, h]: readonly [number, number, number, number], random: () => number): string {
+  const shapes = [`<rect x="${svgNumber(x)}" y="${svgNumber(y)}" width="${svgNumber(w)}" height="${svgNumber(h * 0.12)}" fill="${shadeColor(color, 1.6)}" opacity="0.7"/>`];
+  // 辣椒碎是两三毫米的片：货架合并的图集每毫米只有几个像素，再小就糊成一片底色
+  const count = Math.min(500, Math.round((w * h) / 40));
+  for (let i = 0; i < count; i++) {
+    const pick = random(), cx = x + random() * w, cy = y + h * 0.1 + random() * h * 0.9, r = 0.8 + random() * 1.2;
+    const fill = pick < 0.5 ? shadeColor(color, 2.4 + random() * 0.8) : pick < 0.65 ? '#e6d7a8' : pick < 0.85 ? shadeColor(color, 0.45) : shadeColor(color, 1.6);
+    shapes.push(`<ellipse cx="${svgNumber(cx)}" cy="${svgNumber(cy)}" rx="${svgNumber(r * 1.5)}" ry="${svgNumber(r)}" transform="rotate(${Math.round(random() * 180)} ${svgNumber(cx)} ${svgNumber(cy)})" fill="${fill}" opacity="${svgNumber(0.75 + random() * 0.25)}"/>`);
   }
   return `<g>${shapes.join('')}</g>`;
 }

@@ -111,6 +111,14 @@ describe('商品包装', () => {
     expect(svg.length).toBeGreaterThan(productLabelSvg({ ...file, food: { ...file.food!, dropped: 0 } }, plain.labelSize, undefined).length);
   });
 
+  test('不透光的玻璃罐：标签以外画隔着玻璃看见的酱（辣椒碎、芝麻）；塑料罐、玻璃瓶不画', () => {
+    const jar: ProductFile = { name: 'Chili', shape: 'jar', size: [0.072, 0.11, 0], pattern: 'band', surface: 'glass', colors: { background: '#4a130b', accent: '#c8281e', cap: '#d0261e' }, seed: 3 };
+    const ellipses = (file: ProductFile) => (productLabelSvg(file, productMesh(file).labelSize, undefined).match(/<ellipse /g) ?? []).length;
+    expect(ellipses(jar) - ellipses({ ...jar, surface: 'plastic' })).toBeGreaterThan(50);
+    expect(productLabelSvg(jar, productMesh(jar).labelSize, undefined)).toContain('#e6d7a8');
+    expect(ellipses({ ...jar, shape: 'bottle' })).toBe(ellipses({ ...jar, shape: 'bottle', surface: 'plastic' }));
+  });
+
   test('旋转体的法线朝外：侧面的法线和从轴出来的方向同向', () => {
     const { vertices } = productMesh({ name: 'Can', shape: 'can', size: [0.066, 0.12, 0] });
     for (let i = 0; i < vertices.length; i += 8) {

@@ -14,6 +14,7 @@
  "surface": "glass",
  "colors": {
   "background": "#3e1a0e",
+  "accent": "#e2b11e",
   "cap": "#d9a520"
  }
 }

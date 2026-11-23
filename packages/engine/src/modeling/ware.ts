@@ -16,7 +16,7 @@ import type { ProductFile, ProductFood } from '../content/formats/productFormat.
 import { hash32, randomRotation, seededRandom } from '../data/hash.ts';
 import { latheMesh, smoothNormals, type ProductMesh, type ProfilePoint } from './lathe.ts';
 import { MeshBuilder } from './meshBuilder.ts';
-import { svgNumber } from './svg.ts';
+import { shadeColor, svgNumber } from './svg.ts';
 
 /** 釉的白和青花的钴蓝（没写颜色时）。 */
 export const WARE_GLAZE = '#f5f5ef';
@@ -418,8 +418,8 @@ export function wareSkin(file: ProductFile, [W, H]: readonly [number, number], g
 function foodSkin(file: ProductFile, food: ProductFood, [W, H]: readonly [number, number], L: number, variant: number): string {
   const F = foodSide(file);
   const random = seededRandom(hash32(hash32(file.seed ?? 1, variant), 913));
-  const main = food.color, accent = food.accent ?? shade(main, 0.6), sauce = food.sauce ?? shade(main, 0.55);
-  const pick = () => (random() < 0.8 ? shade(main, 0.8 + random() * 0.4) : shade(accent, 0.85 + random() * 0.3));
+  const main = food.color, accent = food.accent ?? shadeColor(main, 0.6), sauce = food.sauce ?? shadeColor(main, 0.55);
+  const pick = () => (random() < 0.8 ? shadeColor(main, 0.8 + random() * 0.4) : shadeColor(accent, 0.85 + random() * 0.3));
   const at = () => [random() * F, L + random() * F] as const;
   const shapes: string[] = [`<rect y="${svgNumber(L)}" width="${svgNumber(Math.min(W, F))}" height="${svgNumber(H - L)}" fill="${sauce}"/>`];
   const pieces = food.pieces ?? 'chunks';
@@ -430,7 +430,7 @@ function foodSkin(file: ProductFile, food: ProductFood, [W, H]: readonly [number
     }
     for (let i = 0; i < 24; i++) {
       const [x, y] = at(), w = F * (0.08 + random() * 0.1);
-      shapes.push(`<rect x="${svgNumber(x - w / 2)}" y="${svgNumber(y - F * 0.006)}" width="${svgNumber(w)}" height="${svgNumber(F * 0.012)}" transform="rotate(${svgNumber(random() * 180)} ${svgNumber(x)} ${svgNumber(y)})" fill="${shade(accent, 1)}"/>`);
+      shapes.push(`<rect x="${svgNumber(x - w / 2)}" y="${svgNumber(y - F * 0.006)}" width="${svgNumber(w)}" height="${svgNumber(F * 0.012)}" transform="rotate(${svgNumber(random() * 180)} ${svgNumber(x)} ${svgNumber(y)})" fill="${shadeColor(accent, 1)}"/>`);
     }
   } else if (pieces === 'strands') {
     for (let i = 0; i < 520; i++) {
@@ -446,7 +446,7 @@ function foodSkin(file: ProductFile, food: ProductFood, [W, H]: readonly [number
     shapes.push(`<rect y="${svgNumber(L)}" width="${svgNumber(Math.min(W, F))}" height="${svgNumber(F)}" fill="${main}"/>`);
     for (let i = 0; i < 14; i++) {
       const [x, y] = at(), r = F * (0.05 + random() * 0.08);
-      shapes.push(`<circle cx="${svgNumber(x)}" cy="${svgNumber(y)}" r="${svgNumber(r)}" fill="${shade(main, 0.9 + random() * 0.2)}" opacity="0.6"/>`);
+      shapes.push(`<circle cx="${svgNumber(x)}" cy="${svgNumber(y)}" r="${svgNumber(r)}" fill="${shadeColor(main, 0.9 + random() * 0.2)}" opacity="0.6"/>`);
     }
     for (let i = 0; i < 8; i++) {
       const [x, y] = at();
@@ -455,17 +455,10 @@ function foodSkin(file: ProductFile, food: ProductFood, [W, H]: readonly [number
   }
   // 落下去的菜块取色的四个色块（正方形的四个角，圆的菜面用不到）：主料亮、暗、配料、主料，每块横着几道深浅
   if ((food.dropped ?? 0) > 0) {
-    [shade(main, 1.12), shade(main, 0.82), accent, main].forEach((color, swatch) => {
+    [shadeColor(main, 1.12), shadeColor(main, 0.82), accent, main].forEach((color, swatch) => {
       const [x, y, side] = swatchRect(swatch, F, L);
-      for (let k = 0; k < 4; k++) shapes.push(`<rect x="${svgNumber(x)}" y="${svgNumber(y + (k * side) / 4)}" width="${svgNumber(side)}" height="${svgNumber(side / 4 + 0.01)}" fill="${shade(color, 0.92 + (k % 2) * 0.12)}"/>`);
+      for (let k = 0; k < 4; k++) shapes.push(`<rect x="${svgNumber(x)}" y="${svgNumber(y + (k * side) / 4)}" width="${svgNumber(side)}" height="${svgNumber(side / 4 + 0.01)}" fill="${shadeColor(color, 0.92 + (k % 2) * 0.12)}"/>`);
     });
   }
   return shapes.join('');
-}
-
-/** 颜色乘一个亮度（sRGB 的 #rrggbb）。 */
-function shade(hex: string, factor: number): string {
-  const v = parseInt(hex.slice(1, 7), 16);
-  const channel = (c: number) => Math.max(0, Math.min(255, Math.round(c * factor))).toString(16).padStart(2, '0');
-  return `#${channel((v >> 16) & 255)}${channel((v >> 8) & 255)}${channel(v & 255)}`;
 }

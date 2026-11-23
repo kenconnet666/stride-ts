@@ -25,7 +25,7 @@ const NODE_WORDS = 32;
 const MAX_TRAVERSAL_STEPS = 4096;
 const MAX_TLAS_STEPS = 16384;
 const TRIANGLE_WORDS = 12;
-/** 遍历栈的深度：4 叉树浅，多数射线压不到一半；压满时丢掉的孩子不测（极少，只影响那一条射线）。 */
+/** 遍历栈的深度：4 叉树浅，多数射线压不到一半；压满时丢掉的子节点不测（极少，只影响那一条射线）。 */
 const STACK_SIZE = 24;
 
 /**
@@ -55,8 +55,8 @@ struct RtHit {
 };
 
 /**
- * 射线和宽节点（8 个 vec4u，从 o 开始：4 个孩子的最小 x、y、z，最大 x、y、z，孩子，图元数）的 4 个盒子一起相交：每个孩子进入的
- * 距离，没交上的是 1e30。空的孩子盒子是反的（最小 x 大于最大 x），要单独排除：下面按方向交换远近以后，反的盒子和无穷大的盒子
+ * 射线和宽节点（8 个 vec4u，从 o 开始：4 个子节点的最小 x、y、z，最大 x、y、z，子节点，图元数）的 4 个盒子一起相交：每个子节点进入的
+ * 距离，没交上的是 1e30。空的子节点盒子是反的（最小 x 大于最大 x），要单独排除：下面按方向交换远近以后，反的盒子和无穷大的盒子
  * 算出来一样，会被当成测中。
  */
 fn rtWideBoxes(nodes: ptr<storage, array<vec4u>, read>, o: u32, origin: vec3f, inverse: vec3f, tMax: f32) -> vec4f {
@@ -75,7 +75,7 @@ fn rtWideBoxes(nodes: ptr<storage, array<vec4u>, read>, o: u32, origin: vec3f, i
 
 /**
  * 一个实例的 BLAS 里最近的三角形（局部的射线，t 和世界里的一样），比 hit.t 近才改；any 时打到一个就停（阴影射线）。宽 BVH：一次
- * 读一个节点测 4 个孩子，叶子当场测三角形，内部的孩子最近的接着走、别的压栈。
+ * 读一个节点测 4 个子节点，叶子当场测三角形，内部的子节点最近的接着走、别的压栈。
  */
 fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHit>, any: bool) {
   let header = bitcast<vec4u>(rtInstances[instance * 6u + 3u]);
@@ -101,7 +101,7 @@ fn rtTraceBlas(instance: u32, origin: vec3f, dir: vec3f, hit: ptr<function, RtHi
     for (var c = 0u; c < 4u; c++) {
       if (enter[c] >= 1e30 || enter[c] > (*hit).t) { continue; }
       if (counts[c] == 0u) {
-        // 内部的孩子：最近的接着走，别的压栈
+        // 内部的子节点：最近的接着走，别的压栈
         if (enter[c] < nextT) {
           if (next != 0xffffffffu && sp < ${STACK_SIZE}u) { stack[sp] = next; sp++; }
           next = children[c];
@@ -574,7 +574,7 @@ export class RayTracingScene {
         if (at + NODE_WORDS > words.length) { problems.push(`${label}: node ${node} is outside the buffer`); continue; }
         if (seen.has(node)) { problems.push(`${label}: node ${node} is reached twice (cycle)`); continue; }
         seen.add(node);
-        // 宽节点：4 个孩子，空的盒子是反的（最小 x 大于最大 x）
+        // 宽节点：4 个子节点，空的盒子是反的（最小 x 大于最大 x）
         const floats = new Float32Array(words.buffer, words.byteOffset + at * 4, NODE_WORDS);
         for (let c = 0; c < 4; c++) {
           if (floats[c]! > floats[12 + c]!) continue;

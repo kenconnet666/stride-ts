@@ -19,7 +19,7 @@ function intersect(o: number[], d: number[], v0: number[], e1: number[], e2: num
 }
 
 /**
- * 按 GPU 上同样的布局遍历：4 叉的节点 32 个 32 位（4 个孩子的最小 x、y、z，最大 x、y、z 各 4 个，孩子 4 个，图元数 4 个；空的孩子
+ * 按 GPU 上同样的布局遍历：4 叉的节点 32 个 32 位（4 个子节点的最小 x、y、z，最大 x、y、z 各 4 个，子节点 4 个，图元数 4 个；空的子节点
  * 盒子是反的），三角形是 v0 加两条边。返回最近的交点和原来的三角形下标。
  */
 function traverse(nodes: Uint32Array, triangles: Float32Array, o: number[], d: number[]): { t: number; triangle: number } {

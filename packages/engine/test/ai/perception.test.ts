@@ -40,7 +40,7 @@ describe('感知', () => {
     // 守卫和 Hidden 之间一堵墙
     game.entities.create({ components: [Transform.with({ position: [-3, 1.5, 4] }), Static.with({ collider: new Collider([{ type: 'box', size: [1, 3, 1] }]).id })] });
     step(0.3);
-    const seen = () => game.perception.of(guard).filter((item) => item.seeing).map((item) => item.entity?.name ?? "").sort((a, b) => a.localeCompare(b));
+    const seen = () => game.perception.of(guard).filter((item) => item.seeing).map((item) => item.entity?.name ?? '').sort((a, b) => a.localeCompare(b));
     expect(seen()).toEqual(['Front']);
     expect(game.perception.stats.perceivers).toBe(1);
     // 拿掉墙后的人的可见：躲起来

@@ -82,7 +82,7 @@
 | ui-particles | 5204 | greybox（白盒演示） | 5228 |
 | simple-audio | 5206 | campsite（S2 的营地） | 5230 |
 
-另外：`apps/sandbox`（5180，冒烟页）、`apps/bench`（5182，基准）。
+另外：`apps/sandbox`（5180，冒烟页）。早期的基准页 `apps/bench`（5182）11-24 删了，结论在 architecture.md 的实测数字里，要重量找 git 历史。
 
 ---
 

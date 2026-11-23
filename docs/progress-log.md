@@ -1254,4 +1254,9 @@ R2 第八步的回归里 bepu-sample（开着屏幕空间反射：光追的反�
   - **Basis 编码**（脚本 `packages/pipeline/experiments/basis-bench.ts`，已删）：2048² 的 UASTC（effort 2，带 mip）单张 76.3 秒，四张并发 77.2 秒（张与张之间已经完美并行，慢在单张只用一个核；原生是 wasm 的、没有 SIMD 路径，`BASISU_SUPPORT_SSE=0`）。改成编码器自带的线程池（`ST_BASIS_FLAG_THREADED`，`encodeBasis` 的 `threaded` 默认开）：1024² 19.6 → 3.9 秒，512² 5.0 → 1.2 秒，24 张 512² 并发 9.4 → 6.6 秒（输出字节数一样）。
   - **10 万实例**（页面里 `stride eval` 临时脚本）：Valley 里 10 万个共用一个盒子模型的静态实体，生成 1.5 秒，55 fps（无头、不限帧率），update 5.2 毫秒（其中变换更新 4.6 毫秒：当时每帧对全部槽位单线程重算，已改成按深度层分块并行，`TransformApi.cpp`），绘制 CPU 12.4 毫秒、GPU 5.4 毫秒；原生内存 394 MB。**发现的上限**：变换存储容量默认 65536（`Game.maxTransforms`），超了 `sn_transforms_alloc` 报错；放大到 100 万要多占约 300 MB 原生内存（列都是一次分配、填满），而 `Transform` 组件的列直接缓存存储的视图（`engine/transform.ts` 的 `state.data`），让存储随用随长要改这层，还没做。
   - **资源热重载的引擎侧延迟**（脚本已删）：忘掉加载结果再读一遍，材质 4.2 毫秒、模型 4.0 毫秒、树的模型（大）约 62～170 毫秒（中位 72.5）；所以热重载的延迟大头不在引擎重读，在后端烘焙和文件监听，要优化先量那一段。
+121. **整仓清点一次性的测试和脚本**（11-24，用户要求："临时测试、性能测试这类记结论、别留在回归里，定期清理，整个仓库检查"）：
+  - **删了**（结论都在文档里，git 历史找得回）：`apps/bench`（早期数据布局、GC、内存、位移微图的性能页）连同 `tools/dev/bench.cjs`、`gc-trace.cjs`；`packages/pipeline/experiments/` 的两个几何实验（`displacement-storage.ts`、`sweep-generator.ts`，结论在 vector-assets.md 的 E1、E4）；`tools/dev/shelf-stats.ts`（一次性的货架统计）；多余的旧工作树 `.claude/worktrees/brave-mccarthy-c70cb4`（和它的分支，已合并）。
+  - **量了、留着**：`packages/engine/test/core/stress.check.ts`（2553 行的类型压力文件，看推导会不会出 TS2589）：引擎类型检查有它 5 秒、没有它也 5 秒，没有可见的开销，是个低成本的类型回归门槛，留着。单测总共约 30 秒（110 个文件，最慢的是 `core/modules.test.ts` 从入口加载全部模块 11 秒），不是瓶颈。回归冒烟最慢的是 csharp-intermediate 168 秒、photoreal 121 秒、csharp-beginner 118 秒，都是真覆盖，按 `-Changed` 只在相关改动时跑。
+  - **留着的工具**（有人用）：`streaming-bench`（有预算门槛）、`loading-timeline`、`terrain-hillshade`、`hdr-ratio`、`library-thumbnails`、`open-project`、`cdp-eval`。
+  - **约定**：一次性测量放 `packages/*/experiments/` 或 `tools/dev/`，不进 `regress.ps1`；量完把结论和数字写进本文件、脚本删掉；每轮"主动改进"顺手清扫这两处。
 

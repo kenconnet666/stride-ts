@@ -61,19 +61,6 @@ importers:
         specifier: ^8.3.8
         version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
 
-  apps/bench:
-    dependencies:
-      '@stride-ts/native':
-        specifier: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-7c455d0134/stride-ts-native-0.43.0.tgz
-        version: https://github.com/kenconnet666/JoltPhysics/releases/download/native-dev-7c455d0134/stride-ts-native-0.43.0.tgz
-    devDependencies:
-      '@stride-ts/devkit':
-        specifier: workspace:*
-        version: link:../../packages/devkit
-      vite:
-        specifier: ^8.3.8
-        version: 8.3.8(@types/node@26.6.6)(yaml@2.9.1)
-
   apps/bepu-sample:
     dependencies:
       '@stride-ts/engine':

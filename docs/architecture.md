@@ -123,7 +123,7 @@ TS 加 C++ wasm 做高帧率可行。性能来自代码形态和数据流向，�
 
 先澄清数据流：wasm 是在主线程上同步调用的，工作线程只跑 Jolt 的任务；内存是同一块 `SharedArrayBuffer`。JS 通过 TypedArray 视图直接读写 wasm 内存，`writeBuffer` 也能直接从这个视图上传。**没有线程之间的交换**，代价只有两种：调用的开销、我们自己选择做的拷贝。
 
-基准在 `apps/bench`，用 `tools/dev/bench.cjs` 在本机无头 Chrome 157 里跑（12 核，适配器报告 NVIDIA Ampere），跑了三次，数字稳定在 ±20% 以内。每项是中位数：
+基准在 `apps/bench`（11-24 删了，结论留在下面的数字里，脚本在 git 历史）用 `tools/dev/bench.cjs` 在本机无头 Chrome 157 里跑（12 核，适配器报告 NVIDIA Ampere），跑了三次，数字稳定在 ±20% 以内。每项是中位数：
 
 | 项目 | 1 万个实体 | 10 万个实体 | 每个实体 |
 |---|---|---|---|

@@ -5,6 +5,7 @@ import { modelNodeLinkSystem } from '../animation/ModelNodeLink';
 import { uiElementLinkSystem } from '../ui/UIElementLink';
 import { dayNightCycleSystem } from '../rendering/sky/DayNightCycle';
 import { hook } from './events';
+import { failLoading, finishLoading, reportLoading } from './loadingScreen';
 import { ContentManager, type CompositorSettings, type GameSettings, type LoadSceneOptions, type SceneInstance, type SceneReference } from '../content/ContentManager';
 import type { SceneFile } from '../content/formats/format';
 import { Metrics } from '../debug/Metrics';
@@ -312,12 +313,14 @@ export class Game {
     this.editing = options.editing ?? (debugging && query.has('stride-edit'));
     try {
       if (options.modules) this.registry.registerModules(options.modules);
+      reportLoading('native');
       this.native = await createStrideNative({
         debug: options.debugNative ?? false,
         features: options.nativeFeatures ?? [],
         ...workerThreadsOption(options, debugging ? query : null),
       });
       this.startup.native = performance.now();
+      reportLoading('content');
       this.transforms = this.native.createTransforms(options.maxTransforms ?? DEFAULT_MAX_TRANSFORMS);
       if (this.native.hasFeature('physics')) {
         this.simulation = new Simulation(this.native, this.transforms, this.entities, options.maxBodies ?? DEFAULT_MAX_BODIES);
@@ -374,6 +377,7 @@ export class Game {
       this.#registerMetrics();
       await this.loadContent();
       this.startup.content = performance.now();
+      reportLoading('scene');
       // 编辑器的代理只在编辑状态用到：单独加载，不进游戏的主包
       if (this.editing) this.editor = new (await import('../editor/viewport/EditAgent')).EditAgent(this);
     } catch (error) {
@@ -848,6 +852,7 @@ export class Game {
       this.graphicsDevice.submitFrame();
       const end = performance.now();
       this.startup.firstFrame ??= end;
+      finishLoading();
       this.debug.frames.record(interval, advance !== undefined ? drawStart - start : 0, end - drawStart);
       this.debug.endFrame();
       if (this.debug.connected) this.forwardNativeDebug();
@@ -876,6 +881,8 @@ export class Game {
     this.status = 'failed';
     this.error = error instanceof Error ? (error.stack ?? error.message) : String(error);
     console.error(error);
+    // 启动阶段出的错：加载骨架停下来、写出原因（第一帧以后骨架已经摘掉了，空操作）
+    failLoading(this.error);
   }
 }
 

@@ -9,7 +9,8 @@
     "./smoke": "./src/smoke.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo"
+    "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo",
+    "test": "vitest run"
   },
   "dependencies": {
     "@stride-ts/cli": "workspace:*",

@@ -81,7 +81,7 @@ export function fixtureModel(input: FixtureFile, font: TextFont | undefined, whe
   });
   if (file.wear > 0) batch.textureSolid(MAIN, cells.length - 1);
   switch (file.type) {
-    case 'checkout': checkout(batch); break;
+    case 'checkout': checkout(batch, file.mirror); break;
     case 'cart': cart(batch); break;
     case 'basket': basket(batch); break;
     case 'locker': locker(batch, Math.max(1, Math.round(file.columns)), Math.max(1, Math.round(file.rows))); break;
@@ -92,29 +92,36 @@ export function fixtureModel(input: FixtureFile, font: TextFont | undefined, whe
   return batch.finish();
 }
 
-/** 收银台：2.4 米长的柜台（顾客在 -Z、收银员在 +Z），前半段是传送带，中间扫码台，收银机的屏朝收银员，顾客屏朝外；一头立杆上挂号码灯箱。 */
-function checkout(batch: ProductBatch): void {
-  batch.box([-1.2, 0, -0.35], [1.2, 0.86, 0.35], MAIN);
-  batch.box([-1.22, 0.86, -0.37], [1.22, 0.9, 0.37], LIGHT);
+/**
+ * 收银台：2.4 米长的柜台（顾客在 -Z、收银员在 +Z；mirror 时反过来，几何按 Z 镜像），前半段是传送带，中间扫码台，收银机的屏朝
+ * 收银员，顾客屏朝外；一头立杆上挂号码灯箱。
+ */
+function checkout(batch: ProductBatch, mirror: boolean): void {
+  const s = mirror ? -1 : 1;
+  // 盒子按 Z 镜像（两头的 z 换过来、仍然是小的在前）
+  const box = (min: readonly number[], max: readonly number[], solid: number) =>
+    batch.box([min[0]!, min[1]!, Math.min(s * min[2]!, s * max[2]!)], [max[0]!, max[1]!, Math.max(s * min[2]!, s * max[2]!)], solid);
+  box([-1.2, 0, -0.35], [1.2, 0.86, 0.35], MAIN);
+  box([-1.22, 0.86, -0.37], [1.22, 0.9, 0.37], LIGHT);
   // 传送带（略高出台面）和两头的挡板
-  batch.box([-1.15, 0.9, -0.28], [0.15, 0.915, 0.22], DARK);
-  batch.box([-1.15, 0.9, -0.3], [0.15, 0.95, -0.28], STEEL);
+  box([-1.15, 0.9, -0.28], [0.15, 0.915, 0.22], DARK);
+  box([-1.15, 0.9, -0.3], [0.15, 0.95, -0.28], STEEL);
   // 扫码台：玻璃窗
-  batch.box([0.25, 0.9, -0.2], [0.6, 0.905, 0.15], SCREEN);
+  box([0.25, 0.9, -0.2], [0.6, 0.905, 0.15], SCREEN);
   // 打包台（低一截）
-  batch.box([0.7, 0.9, -0.33], [1.2, 0.92, 0.33], STEEL);
-  // 收银机：立柱、屏（朝 +Z 的收银员）、顾客屏（朝 -Z）
-  batch.box([0.62, 0.9, 0.18], [0.66, 1.2, 0.22], DARK);
-  batch.box([0.48, 1.18, 0.18], [0.8, 1.4, 0.22], DARK);
-  batch.box([0.5, 1.2, 0.222], [0.78, 1.38, 0.226], SCREEN);
-  batch.box([0.5, 1.2, 0.174], [0.78, 1.38, 0.178], SCREEN);
+  box([0.7, 0.9, -0.33], [1.2, 0.92, 0.33], STEEL);
+  // 收银机：立柱、屏（朝收银员）、顾客屏（朝外）
+  box([0.62, 0.9, 0.18], [0.66, 1.2, 0.22], DARK);
+  box([0.48, 1.18, 0.18], [0.8, 1.4, 0.22], DARK);
+  box([0.5, 1.2, 0.222], [0.78, 1.38, 0.226], SCREEN);
+  box([0.5, 1.2, 0.174], [0.78, 1.38, 0.178], SCREEN);
   // 号码灯箱：立杆和两面的灯箱
-  batch.tube([-1.15, 0.9, 0.3], [-1.15, 2.2, 0.3], 0.02, STEEL, 10);
-  batch.box([-1.5, 2.2, 0.26], [-0.8, 2.46, 0.34], STEEL);
+  batch.tube([-1.15, 0.9, s * 0.3], [-1.15, 2.2, s * 0.3], 0.02, STEEL, 10);
+  box([-1.5, 2.2, 0.26], [-0.8, 2.46, 0.34], STEEL);
   for (const side of [1, -1] as const) {
-    const z = 0.3 + side * 0.041, x0 = -1.48, x1 = -0.82;
+    const z = s * (0.3 + side * 0.041), facing = s * side, x0 = -1.48, x1 = -0.82;
     // 从这一面看左下、右下、右上、左上
-    batch.quad(side > 0 ? [[x0, 2.22, z], [x1, 2.22, z], [x1, 2.44, z], [x0, 2.44, z]] : [[x1, 2.22, z], [x0, 2.22, z], [x0, 2.44, z], [x1, 2.44, z]], [0, 0, side], 0);
+    batch.quad(facing > 0 ? [[x0, 2.22, z], [x1, 2.22, z], [x1, 2.44, z], [x0, 2.44, z]] : [[x1, 2.22, z], [x0, 2.22, z], [x0, 2.44, z], [x1, 2.44, z]], [0, 0, facing], 0);
   }
 }
 

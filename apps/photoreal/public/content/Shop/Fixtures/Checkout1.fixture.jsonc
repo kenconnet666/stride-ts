@@ -2,5 +2,6 @@
  "name": "Checkout1",
  "type": "checkout",
  "number": "1",
- "font": "Shared/Fonts/ZCOOLQingKeHuangYou"
+ "font": "Shared/Fonts/ZCOOLQingKeHuangYou",
+ "mirror": true
 }

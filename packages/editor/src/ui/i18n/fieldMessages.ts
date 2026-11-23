@@ -120,6 +120,7 @@ const zhCN: FieldMessages = {
     'text on the lit header of a fridge (needs the font)': '冷柜顶上灯箱的字（要有字体）',
     'checkout counter (belt, scanner, register screens, a lit number sign above), shopping cart, hand basket, coin locker, entrance gate, ceiling track with spotlight heads (origin at the top of the rail; the lights that light things are placed by the scene at trackSpots), self-checkout kiosk (customer at +Z: scanner glass, lit touch screen, receipt printer with a strip of paper, card reader, bagging scale with a bag rack holding an open bag, a numbered status light pole)': '收银台（传送带、扫码台、收银机的屏、上方发光的号码牌）、购物车、购物篮、寄存柜、入口闸机、吸顶的轨道射灯（原点在轨道顶面；照亮东西的灯由场景按 trackSpots 放）、自助收银机（顾客在 +Z：扫码玻璃、发光的触摸屏、吐出一截小票的出票口、刷卡器、称重台上撑着打开的袋子的购物袋架、带号码的指示灯柱）',
     'main color (sRGB #rrggbb; by type when missing)': '主色（sRGB 的 #rrggbb；没写时按种类）',
+    'checkout: mirrored, the cashier and the register screen on -Z and the customers on +Z (checkouts come in both hands; by a wall the cashier stands with the back to it)': '收银台左右镜像：收银员、收银机的屏在 -Z，顾客在 +Z（收银台有左右两种，摆在墙边时收银员背靠墙）',
     'number on the checkout sign (needs the font)': '收银台灯箱上的号码（要有字体）',
     'font of the checkout sign': '收银台灯箱用的字体',
     'locker columns': '寄存柜几列',

@@ -175,7 +175,8 @@ Object.assign(shelves, {
 for (const [name, shelf] of Object.entries(shelves)) await write('shelf', `Shop/Shelves/${name}`, { name, ...shelf });
 // 收银台、自助收银机、寄存柜、购物车、篮子、闸机
 const fixtures: Record<string, object> = {
-  Checkout1: { type: 'checkout', number: '1', font: FONT }, Checkout2: { type: 'checkout', number: '2', font: FONT },
+  // 收银台镜像：摆在右边时收银员、收银机靠墙那一面，面朝中间的顾客（用户 11-23）
+  Checkout1: { type: 'checkout', number: '1', font: FONT, mirror: true }, Checkout2: { type: 'checkout', number: '2', font: FONT, mirror: true },
   ...Object.fromEntries([3, 4, 5].map((n) => [`Self${n}`, { type: 'selfCheckout', number: String(n), font: FONT }])),
   Locker: { type: 'locker', columns: 6, rows: 4 }, Cart: { type: 'cart' }, Basket: { type: 'basket', color: '#2f9e44' }, Gate: { type: 'gate' },
 };
@@ -313,7 +314,7 @@ const fence = (name: string, from: number, to: number) => write('spline', `Shop/
   points: [{ position: [from, 0, 4.8] }, { position: [to, 0, 4.8] }],
 });
 await fence('EntranceFence', -5.98, -4.74);
-await fence('CheckoutFence', -3.06, 2.0);
+await fence('CheckoutFence', -3.06, 1.7);
 // 门外的门厅（储物柜放在入口外面，用户 11-23）：地面、两边的墙、顶往外接 3.5 米，顶上两盏灯
 await write('brush', 'Shop/Models/Vestibule', {
   name: 'Vestibule', materials: ['Shop/Materials/Floor', 'Shop/Materials/Wall'], uvScale: 1,
@@ -347,18 +348,19 @@ const shelfEntities = [
   // 入口（左）：门厅左墙的寄存柜（在入口外面），两道单向闸机，闸机里面的购物车、一摞篮子
   fixtureAt(2, 'Locker', [-5.75, 0, 7.6], 90),
   fixtureAt(10, 'Gate', [-4.3, 0, 4.8], 0), fixtureAt(11, 'Gate', [-3.5, 0, 4.8], 0),
-  // 购物车顺着车身套成一串（车头朝店里，后一辆的车头插进前一辆的车尾）
-  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [-2.6, 0, 3.4 + i * 0.26], 180)),
-  ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [-1.7, i * 0.09, 3.6], 10 * i)),
+  // 购物车、篮子靠左墙（用户 11-23）：闸机里面、靠墙货架的前头；购物车顺着车身套成一串（车头朝店里，后一辆的车头插进前一辆的车尾）
+  ...[0, 1, 2].map((i) => fixtureAt(3 + i, 'Cart', [-5.62, 0, 2.6 + i * 0.26], 180)),
+  ...[0, 1, 2, 3].map((i) => fixtureAt(6 + i, 'Basket', [-5.7, i * 0.09, 4.15], 90 + 4 * i)),
   // 结账出口（右）：两个收银台（顾客从 -Z 走过来），右墙前三台自助收银机朝过道
-  fixtureAt(0, 'Checkout1', [2.9, 0, 3.6], -90), fixtureAt(1, 'Checkout2', [4.4, 0, 3.6], -90),
+  // 收银台：收银员背靠墙那一面（镜像的），顾客从中间那边过来、两条通道
+  fixtureAt(0, 'Checkout1', [2.6, 0, 3.6], -90), fixtureAt(1, 'Checkout2', [4.7, 0, 3.6], -90),
   entity(sid(0x35), 'Checkout fence', [0, 0, 0], { model: { model: 'Shop/Splines/CheckoutFence', materials: [] } }),
   entity(sid(0x36), 'Entrance fence', [0, 0, 0], { model: { model: 'Shop/Splines/EntranceFence', materials: [] } }),
   entity(sid(0x37), 'Vestibule', [0, 0, 0], { model: { model: 'Shop/Models/Vestibule', materials: [] } }),
   ...[-3, 3].map((x, i) => entity(sid(0x38 + i), `Vestibule light ${i}`, [x, 3.28, 7.75], {
     light: { type: 'rect', color: [1, 0.97, 0.92], intensity: 18, width: 0.12, height: 1.4, range: 7 },
   }, euler(0, -90))),
-  ...[3, 4, 5].map((n, i) => fixtureAt(12 + i, `Self${n}`, [5.7, 0, 0.6 + i * 1.15], -90)),
+  ...[3, 4, 5].map((n, i) => fixtureAt(12 + i, `Self${n}`, [5.7, 0, 0.25 + i * 0.9], -90)),
   // 四条过道上方的招牌
   ...([['AisleGrain', -4.5], ['AisleDrinks', -1.5], ['AislePantry', 1.5], ['AisleHome', 4.5]] as const).map(([name, x], i) => entity(sid(0x30 + i), `Sign ${name}`, [x, 2.55, -3.6], { model: { model: `Shop/Signs/${name}`, materials: [] } }, euler(0))),
   entity(sid(0x34), 'Sign frozen', [0, 2.55, -9.0], { model: { model: 'Shop/Signs/AisleFrozen', materials: [] } }),
@@ -385,7 +387,8 @@ function detailEntities() {
     sign('StandMilk', [-1.55, 0, 2.15], 15), sign('StandWater', [1.55, 0, 2.15], -15),
     sign('StandNoodle', [-1.55, 0, 3.4], 15), sign('StandBeer', [1.55, 0, 3.4], -15),
     sticker('FloorEnter', [-3.9, 0, 3.6], [0.6, 1.0], 0), sticker('FloorExit', [3.65, 0, 5.0], [0.6, 1.0], 180),
-    sticker('FloorQueue', [3.65, 0, 2.1], [0.5, 0.5], 0), sticker('FloorQueue', [3.65, 0, 1.3], [0.5, 0.5], 0),
+    // 两条收银通道（第一个收银台靠中间那边、两个收银台之间）进口前各一个排队圆标
+    sticker('FloorQueue', [1.95, 0, 1.75], [0.5, 0.5], 0), sticker('FloorQueue', [4.0, 0, 1.75], [0.5, 0.5], 0),
     // 过道里推着的购物车、放在地上的篮子
     fixtureAt(16, 'Cart', [-1.45, 0, -3.3], 165), fixtureAt(17, 'Basket', [1.6, 0, -2.6], 30),
   ];

@@ -31,6 +31,11 @@
       "type": "string",
       "description": "font of the checkout sign; content path of a font asset (no extension)"
     },
+    "mirror": {
+      "type": "boolean",
+      "description": "checkout: mirrored, the cashier and the register screen on -Z and the customers on +Z (checkouts come in both hands; by a wall the cashier stands with the back to it)",
+      "default": false
+    },
     "columns": {
       "type": "integer",
       "minimum": 1,

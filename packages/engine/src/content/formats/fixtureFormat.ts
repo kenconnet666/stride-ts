@@ -22,6 +22,8 @@ export const FIXTURE = s.object({
   /** 收银台、自助收银机的号码（灯箱、指示灯柱上的字，屏上的界面也要 font）。 */
   number: s.string().default('1').describe('number on the checkout sign (needs the font)'),
   font: s.asset('font').optional().describe('font of the checkout sign'),
+  /** 收银台左右镜像：收银员、收银机的屏在 -Z、顾客在 +Z（收银台有左右两种手，摆在墙边时收银员背靠墙）。 */
+  mirror: s.bool().default(false).describe('checkout: mirrored, the cashier and the register screen on -Z and the customers on +Z (checkouts come in both hands; by a wall the cashier stands with the back to it)'),
   /** 寄存柜几列、几行。 */
   columns: s.integer(1, 20).default(6).describe('locker columns'),
   rows: s.integer(1, 10).default(4).describe('locker rows'),

@@ -1,0 +1,19 @@
+{
+  "name": "@stride-ts/bench",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p . --incremental --tsBuildInfoFile node_modules/.cache/typecheck.tsbuildinfo"
+  },
+  "dependencies": {
+    "@stride-ts/native": "^0.29.0"
+  },
+  "devDependencies": {
+    "@stride-ts/devkit": "workspace:*",
+    "vite": "^8.3.8"
+  }
+}

@@ -40,6 +40,20 @@
 
 `bench.cjs` 和 `gc-trace.cjs` 还用 Playwright（第一个参数是它的路径，`require.resolve('playwright')`），Chrome 是本机安装的 `C:/Program Files/Google/Chrome/Application/chrome.exe`。
 
+## 按需运行的压力和性能测试（不进 `regress.ps1`、`verify.ps1`）
+
+这些测试留着，但不是每次推送都跑（用户 2026-11-24：压力测试组可以留着，只是不适合作为长期回归每次都跑）：改了对应的部分、要查性能或规模问题时才跑，结论和数字写进 docs/progress-log.md。会写进回归门槛的只有 `streaming-bench --check` 的预算。
+
+| 测试 | 作用 | 怎么跑 |
+|---|---|---|
+| `dev/streaming-bench.ts` | 加载与流式：启动各阶段、按路线飞行的帧间隔、下载量、同步建管线数、飞行前后显存和内存的增长；`--check` 比 `streaming-budgets.json`（Valley 无格子，Town 飞过 172 个格子） | `node tools/dev/streaming-bench.ts --world Worlds/Town --seconds 40 --speed 100 --check`；要在验证没跑的时候量（冒烟会关掉共用的无头 Chrome） |
+| `dev/loading-timeline.ts` | 页面外壳、骨架、第一帧的时间线 | 见文件头 |
+| `dev/instance-stress.eval.ts` | 实例化压力：10 万、100 万个共用一个模型的静态实体，生成时间、变换更新、绘制耗时 | 开放世界页面里 `stride eval --file tools/dev/instance-stress.eval.ts`，再 `stride perf`、`stride metrics` |
+| `packages/engine/test/core/stress.check.ts`（生成：`dev/gen-type-stress.mjs`） | 类型推导压力（几百个组件、系统、脚本，看会不会 TS2589）；引擎类型检查里有它和没有它都是 5 秒，所以留在类型检查里 | `pnpm -F @stride-ts/engine typecheck` |
+| `apps/bench`（`dev/bench.cjs`、`dev/gc-trace.cjs`） | 早期的数据布局、跨边界开销、GC、内存、位移微图基准（结论在 docs/architecture.md） | 见下面 |
+| `packages/pipeline/experiments/` | 几何实验 E1（位移微图的大小）、E4（规则生成对下载）、Basis 编码耗时（`basis-bench.ts`：2K 单张 76 秒，线程池默认开以后 1K 19.6 → 3.9 秒） | `node packages/pipeline/experiments/<脚本>.ts` |
+| `dev/shelf-stats.ts` | 货架生成的统计（商品数、顶点和三角形、图集大小） | 见文件头 |
+
 原生部分的脚本（PowerShell 7）：
 
 | 脚本 | 作用 |

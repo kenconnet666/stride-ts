@@ -25,6 +25,32 @@
     "model": {
      "model": "Models/Box",
      "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 1
     }
    }
   },
@@ -52,6 +78,32 @@
     "model": {
      "model": "Models/Box",
      "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 1
     }
    }
   },
@@ -79,6 +131,32 @@
     "model": {
      "model": "Models/Box",
      "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 1
     }
    }
   },
@@ -106,6 +184,32 @@
     "model": {
      "model": "Models/Box",
      "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 1
     }
    }
   },
@@ -133,6 +237,32 @@
     "model": {
      "model": "Models/Box",
      "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 1
     }
    }
   },
@@ -160,6 +290,32 @@
     "model": {
      "model": "Models/Box",
      "materials": []
+    },
+    "static": {
+     "shapes": [
+      {
+       "type": "box",
+       "size": [
+        1,
+        1,
+        1
+       ],
+       "position": [
+        0,
+        0,
+        0
+       ],
+       "rotation": [
+        0,
+        0,
+        0,
+        1
+       ],
+       "mass": 1
+      }
+     ],
+     "layer": 0,
+     "friction": 1
     }
    }
   }

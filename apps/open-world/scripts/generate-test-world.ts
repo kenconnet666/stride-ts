@@ -44,14 +44,22 @@ for (let x = -half; x < half; x++) {
     const boxes = Array.from({ length: 6 }, (_, i) => {
       const height = 2 + next() * 18;
       const width = 3 + next() * 10;
-      return entity(`box-${name}-${i}`, `Box ${i}`, [next() * size, height / 2, next() * size], { model: { model: 'Models/Box', materials: [] } }, [width, height, width]);
+      // 方块带静态的碰撞体（跟着实体的缩放）：格子读进来、卸掉时碰撞体一起加、一起去；0_0 的第一个方块是持久的（冒烟里挪它，格子卸掉再读回来还在）
+      const id = `box-${name}-${i}`;
+      const components = {
+        model: { model: 'Models/Box', materials: [] },
+        static: { shapes: [{ type: 'box', size: [1, 1, 1], position: [0, 0, 0], rotation: [0, 0, 0, 1], mass: 1 }], layer: 0, friction: 1 },
+        ...(id === 'box-0_0-0' ? { persistent: {} } : {}),
+      };
+      return entity(id, `Box ${i}`, [next() * size, height / 2, next() * size], components, [width, height, width]);
     });
     await writeFile(path.join(worldDir, 'props', `${name}.scene.json`), json({ name, entities: boxes }));
   }
 }
 await writeFile(path.join(content, 'Worlds/Test.world.json'), json({
   name: 'Test', cellSize: size, persistent: 'MainScene',
-  layers: [{ name: 'ground', loadRadius: 1024 }, { name: 'props', loadRadius: 256 }],
+  // 地面没读到的格子先画一块平板（world/WorldPlaceholders.ts）
+  layers: [{ name: 'ground', loadRadius: 1024, placeholder: { y: 0, color: [0.25, 0.27, 0.3] } }, { name: 'props', loadRadius: 256 }],
   cells: { ground: cells, props: cells },
 }));
 console.log(`Worlds/Test: ${count} × ${count} cells of ${size} m (${count * size} m across), ${cells.length * 2} cell scenes`);

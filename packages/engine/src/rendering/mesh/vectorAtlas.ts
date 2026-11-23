@@ -44,7 +44,7 @@ export function buildVectorAtlas(image: VectorImage): Uint32Array {
     shapeWords[o] = packColor(shape.color);
     shapeWords[o + 1] = shape.evenOdd ? 1 : 0;
     const pointStart = points.length / 2;
-    points.push(...shape.curves);
+    for (const value of shape.curves) points.push(value);
     const curveCount = shape.curves.length / 6;
     const [x0, y0, x1, y1] = curveBounds(shape.curves);
     const count = Math.min(MAX_BANDS, Math.max(1, Math.round(Math.sqrt(curveCount / 2))));
@@ -59,9 +59,22 @@ export function buildVectorAtlas(image: VectorImage): Uint32Array {
     // 带：先占好 (hBands + vBands) 对表头，列表接在后面
     const head = bands.length;
     for (let i = 0; i < 2 * (hBands + vBands); i++) bands.push(0);
-    const curve = (c: number) => shape.curves.slice(c * 6, c * 6 + 6);
-    const fill = (index: number, members: number[], key: (c: number) => number) => {
-      members.sort((a, b) => key(b) - key(a));
+    // 每条曲线的外框先算好（建带要反复用）
+    const c6 = shape.curves;
+    const lowX = new Float64Array(curveCount), highX = new Float64Array(curveCount), lowY = new Float64Array(curveCount), highY = new Float64Array(curveCount);
+    const flatX = new Uint8Array(curveCount), flatY = new Uint8Array(curveCount);
+    for (let c = 0; c < curveCount; c++) {
+      const o6 = c * 6, ax = c6[o6]!, ay = c6[o6 + 1]!, bx = c6[o6 + 2]!, by = c6[o6 + 3]!, cx = c6[o6 + 4]!, cy = c6[o6 + 5]!;
+      lowX[c] = Math.min(ax, bx, cx);
+      highX[c] = Math.max(ax, bx, cx);
+      lowY[c] = Math.min(ay, by, cy);
+      highY[c] = Math.max(ay, by, cy);
+      // 和带平行的直线不参与数穿越
+      flatY[c] = ay === by && by === cy ? 1 : 0;
+      flatX[c] = ax === bx && bx === cx ? 1 : 0;
+    }
+    const fill = (index: number, members: number[], key: Float64Array) => {
+      members.sort((a, b) => key[b]! - key[a]!);
       bands[head + index * 2] = members.length;
       bands[head + index * 2 + 1] = bands.length - head;
       for (const c of members) bands.push(pointStart + c * 3);
@@ -69,20 +82,14 @@ export function buildVectorAtlas(image: VectorImage): Uint32Array {
     for (let b = 0; b < hBands; b++) {
       const lo = y0 + (b * (y1 - y0)) / hBands, hi = y0 + ((b + 1) * (y1 - y0)) / hBands;
       const members: number[] = [];
-      for (let c = 0; c < curveCount; c++) {
-        const p = curve(c), ylo = Math.min(p[1]!, p[3]!, p[5]!), yhi = Math.max(p[1]!, p[3]!, p[5]!);
-        if (yhi >= lo && ylo <= hi && !(p[1] === p[3] && p[3] === p[5])) members.push(c);
-      }
-      fill(b, members, (c) => Math.max(...[0, 2, 4].map((k) => curve(c)[k]!)));
+      for (let c = 0; c < curveCount; c++) if (highY[c]! >= lo && lowY[c]! <= hi && !flatY[c]) members.push(c);
+      fill(b, members, highX);
     }
     for (let b = 0; b < vBands; b++) {
       const lo = x0 + (b * (x1 - x0)) / vBands, hi = x0 + ((b + 1) * (x1 - x0)) / vBands;
       const members: number[] = [];
-      for (let c = 0; c < curveCount; c++) {
-        const p = curve(c), xlo = Math.min(p[0]!, p[2]!, p[4]!), xhi = Math.max(p[0]!, p[2]!, p[4]!);
-        if (xhi >= lo && xlo <= hi && !(p[0] === p[2] && p[2] === p[4])) members.push(c);
-      }
-      fill(hBands + b, members, (c) => Math.max(...[1, 3, 5].map((k) => curve(c)[k]!)));
+      for (let c = 0; c < curveCount; c++) if (highX[c]! >= lo && lowX[c]! <= hi && !flatX[c]) members.push(c);
+      fill(hBands + b, members, highY);
     }
     // 格子：外框（多一个像素，边上的抗锯齿）盖到的格
     const cx0 = Math.max(0, Math.floor((bounds[0] - 1) / CELL)), cy0 = Math.max(0, Math.floor((bounds[1] - 1) / CELL));

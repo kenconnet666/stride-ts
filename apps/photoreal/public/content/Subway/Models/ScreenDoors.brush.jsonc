@@ -12,7 +12,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    1.2,
+    0.76,
     1.1,
     -0.6
    ],
@@ -28,7 +28,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    1.2,
+    0.76,
     2.24,
     -0.6
    ],
@@ -44,7 +44,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    1.9,
+    1.46,
     1.045,
     -0.6
    ],
@@ -60,7 +60,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    1.9,
+    1.46,
     1.095,
     -0.6
    ],
@@ -72,11 +72,27 @@
    "material": 1
   },
   {
+   "name": "Door0LKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    1.46,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Door0RFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    2.9,
+    2.46,
     1.045,
     -0.6
    ],
@@ -92,7 +108,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    2.9,
+    2.46,
     1.095,
     -0.6
    ],
@@ -104,11 +120,27 @@
    "material": 1
   },
   {
+   "name": "Door0RKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    2.46,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Header0",
    "kind": "box",
    "operation": "add",
    "position": [
-    2.4,
+    1.96,
     2.1199999999999997,
     -0.6
    ],
@@ -124,7 +156,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    3.6,
+    3.16,
     1.1,
     -0.6
    ],
@@ -140,7 +172,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    3.6,
+    3.16,
     2.24,
     -0.6
    ],
@@ -156,7 +188,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    4.7,
+    4.26,
     1.045,
     -0.6
    ],
@@ -172,7 +204,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    4.7,
+    4.26,
     1.095,
     -0.6
    ],
@@ -184,11 +216,27 @@
    "material": 1
   },
   {
+   "name": "Fixed0Kick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    4.26,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Post1a",
    "kind": "box",
    "operation": "add",
    "position": [
-    5.8,
+    5.36,
     1.1,
     -0.6
    ],
@@ -204,7 +252,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    5.8,
+    5.36,
     2.24,
     -0.6
    ],
@@ -220,7 +268,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    6.5,
+    6.0600000000000005,
     1.045,
     -0.6
    ],
@@ -236,7 +284,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    6.5,
+    6.0600000000000005,
     1.095,
     -0.6
    ],
@@ -248,11 +296,27 @@
    "material": 1
   },
   {
+   "name": "Door1LKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    6.0600000000000005,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Door1RFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    7.5,
+    7.0600000000000005,
     1.045,
     -0.6
    ],
@@ -268,7 +332,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    7.5,
+    7.0600000000000005,
     1.095,
     -0.6
    ],
@@ -280,11 +344,27 @@
    "material": 1
   },
   {
+   "name": "Door1RKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    7.0600000000000005,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Header1",
    "kind": "box",
    "operation": "add",
    "position": [
-    7,
+    6.5600000000000005,
     2.1199999999999997,
     -0.6
    ],
@@ -300,7 +380,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    8.2,
+    7.760000000000001,
     1.1,
     -0.6
    ],
@@ -316,7 +396,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    8.2,
+    7.760000000000001,
     2.24,
     -0.6
    ],
@@ -332,7 +412,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    9.299999999999999,
+    8.86,
     1.045,
     -0.6
    ],
@@ -348,7 +428,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    9.299999999999999,
+    8.86,
     1.095,
     -0.6
    ],
@@ -360,11 +440,27 @@
    "material": 1
   },
   {
+   "name": "Fixed1Kick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    8.86,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Post2a",
    "kind": "box",
    "operation": "add",
    "position": [
-    10.399999999999999,
+    9.959999999999999,
     1.1,
     -0.6
    ],
@@ -380,7 +476,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    10.399999999999999,
+    9.959999999999999,
     2.24,
     -0.6
    ],
@@ -396,7 +492,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    11.1,
+    10.66,
     1.045,
     -0.6
    ],
@@ -412,7 +508,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    11.1,
+    10.66,
     1.095,
     -0.6
    ],
@@ -424,11 +520,27 @@
    "material": 1
   },
   {
+   "name": "Door2LKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    10.66,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Door2RFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    12.1,
+    11.66,
     1.045,
     -0.6
    ],
@@ -444,7 +556,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    12.1,
+    11.66,
     1.095,
     -0.6
    ],
@@ -456,11 +568,27 @@
    "material": 1
   },
   {
+   "name": "Door2RKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    11.66,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Header2",
    "kind": "box",
    "operation": "add",
    "position": [
-    11.6,
+    11.16,
     2.1199999999999997,
     -0.6
    ],
@@ -476,7 +604,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    12.799999999999999,
+    12.36,
     1.1,
     -0.6
    ],
@@ -492,7 +620,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    12.799999999999999,
+    12.36,
     2.24,
     -0.6
    ],
@@ -508,7 +636,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    13.9,
+    13.459999999999999,
     1.045,
     -0.6
    ],
@@ -524,7 +652,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    13.9,
+    13.459999999999999,
     1.095,
     -0.6
    ],
@@ -536,11 +664,27 @@
    "material": 1
   },
   {
+   "name": "Fixed2Kick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    13.459999999999999,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Post3a",
    "kind": "box",
    "operation": "add",
    "position": [
-    14.999999999999998,
+    14.559999999999999,
     1.1,
     -0.6
    ],
@@ -556,7 +700,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    14.999999999999998,
+    14.559999999999999,
     2.24,
     -0.6
    ],
@@ -572,7 +716,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    15.7,
+    15.26,
     1.045,
     -0.6
    ],
@@ -588,7 +732,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    15.7,
+    15.26,
     1.095,
     -0.6
    ],
@@ -600,11 +744,27 @@
    "material": 1
   },
   {
+   "name": "Door3LKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    15.26,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Door3RFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    16.7,
+    16.259999999999998,
     1.045,
     -0.6
    ],
@@ -620,7 +780,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    16.7,
+    16.259999999999998,
     1.095,
     -0.6
    ],
@@ -632,11 +792,27 @@
    "material": 1
   },
   {
+   "name": "Door3RKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    16.259999999999998,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Header3",
    "kind": "box",
    "operation": "add",
    "position": [
-    16.2,
+    15.76,
     2.1199999999999997,
     -0.6
    ],
@@ -652,7 +828,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    17.4,
+    16.959999999999997,
     1.1,
     -0.6
    ],
@@ -668,7 +844,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    17.4,
+    16.959999999999997,
     2.24,
     -0.6
    ],
@@ -684,7 +860,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    18.499999999999996,
+    18.06,
     1.045,
     -0.6
    ],
@@ -700,7 +876,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    18.499999999999996,
+    18.06,
     1.095,
     -0.6
    ],
@@ -712,11 +888,27 @@
    "material": 1
   },
   {
+   "name": "Fixed3Kick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    18.06,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Post4a",
    "kind": "box",
    "operation": "add",
    "position": [
-    19.599999999999998,
+    19.16,
     1.1,
     -0.6
    ],
@@ -732,7 +924,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    19.599999999999998,
+    19.16,
     2.24,
     -0.6
    ],
@@ -748,7 +940,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    20.299999999999997,
+    19.86,
     1.045,
     -0.6
    ],
@@ -764,7 +956,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    20.299999999999997,
+    19.86,
     1.095,
     -0.6
    ],
@@ -776,11 +968,27 @@
    "material": 1
   },
   {
+   "name": "Door4LKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    19.86,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Door4RFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    21.299999999999997,
+    20.86,
     1.045,
     -0.6
    ],
@@ -796,7 +1004,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    21.299999999999997,
+    20.86,
     1.095,
     -0.6
    ],
@@ -808,11 +1016,27 @@
    "material": 1
   },
   {
+   "name": "Door4RKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    20.86,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Header4",
    "kind": "box",
    "operation": "add",
    "position": [
-    20.799999999999997,
+    20.36,
     2.1199999999999997,
     -0.6
    ],
@@ -828,7 +1052,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    21.999999999999996,
+    21.56,
     1.1,
     -0.6
    ],
@@ -844,7 +1068,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    21.999999999999996,
+    21.56,
     2.24,
     -0.6
    ],
@@ -860,7 +1084,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    23.099999999999998,
+    22.66,
     1.045,
     -0.6
    ],
@@ -876,7 +1100,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    23.099999999999998,
+    22.66,
     1.095,
     -0.6
    ],
@@ -888,11 +1112,27 @@
    "material": 1
   },
   {
+   "name": "Fixed4Kick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    22.66,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Post5a",
    "kind": "box",
    "operation": "add",
    "position": [
-    24.2,
+    23.76,
     1.1,
     -0.6
    ],
@@ -908,7 +1148,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    24.2,
+    23.76,
     2.24,
     -0.6
    ],
@@ -924,7 +1164,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    24.9,
+    24.46,
     1.045,
     -0.6
    ],
@@ -940,7 +1180,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    24.9,
+    24.46,
     1.095,
     -0.6
    ],
@@ -952,11 +1192,27 @@
    "material": 1
   },
   {
+   "name": "Door5LKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    24.46,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Door5RFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    25.9,
+    25.46,
     1.045,
     -0.6
    ],
@@ -972,7 +1228,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    25.9,
+    25.46,
     1.095,
     -0.6
    ],
@@ -984,11 +1240,27 @@
    "material": 1
   },
   {
+   "name": "Door5RKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    25.46,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Header5",
    "kind": "box",
    "operation": "add",
    "position": [
-    25.4,
+    24.96,
     2.1199999999999997,
     -0.6
    ],
@@ -1004,7 +1276,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    26.599999999999998,
+    26.16,
     1.1,
     -0.6
    ],
@@ -1020,7 +1292,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    26.599999999999998,
+    26.16,
     2.24,
     -0.6
    ],
@@ -1036,7 +1308,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    27.7,
+    27.26,
     1.045,
     -0.6
    ],
@@ -1052,7 +1324,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    27.7,
+    27.26,
     1.095,
     -0.6
    ],
@@ -1064,11 +1336,27 @@
    "material": 1
   },
   {
+   "name": "Fixed5Kick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    27.26,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Post6a",
    "kind": "box",
    "operation": "add",
    "position": [
-    28.8,
+    28.360000000000003,
     1.1,
     -0.6
    ],
@@ -1084,7 +1372,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    28.8,
+    28.360000000000003,
     2.24,
     -0.6
    ],
@@ -1100,7 +1388,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    29.5,
+    29.060000000000002,
     1.045,
     -0.6
    ],
@@ -1116,7 +1404,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    29.5,
+    29.060000000000002,
     1.095,
     -0.6
    ],
@@ -1128,11 +1416,27 @@
    "material": 1
   },
   {
+   "name": "Door6LKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    29.060000000000002,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Door6RFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    30.5,
+    30.060000000000002,
     1.045,
     -0.6
    ],
@@ -1148,7 +1452,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    30.5,
+    30.060000000000002,
     1.095,
     -0.6
    ],
@@ -1160,11 +1464,27 @@
    "material": 1
   },
   {
+   "name": "Door6RKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    30.060000000000002,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Header6",
    "kind": "box",
    "operation": "add",
    "position": [
-    30,
+    29.560000000000002,
     2.1199999999999997,
     -0.6
    ],
@@ -1180,7 +1500,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    31.2,
+    30.76,
     1.1,
     -0.6
    ],
@@ -1196,7 +1516,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    31.2,
+    30.76,
     2.24,
     -0.6
    ],
@@ -1212,7 +1532,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    32.300000000000004,
+    31.860000000000003,
     1.045,
     -0.6
    ],
@@ -1228,7 +1548,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    32.300000000000004,
+    31.860000000000003,
     1.095,
     -0.6
    ],
@@ -1240,11 +1560,27 @@
    "material": 1
   },
   {
+   "name": "Fixed6Kick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    31.860000000000003,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Post7a",
    "kind": "box",
    "operation": "add",
    "position": [
-    33.400000000000006,
+    32.96000000000001,
     1.1,
     -0.6
    ],
@@ -1260,7 +1596,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    33.400000000000006,
+    32.96000000000001,
     2.24,
     -0.6
    ],
@@ -1276,7 +1612,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    34.1,
+    33.660000000000004,
     1.045,
     -0.6
    ],
@@ -1292,7 +1628,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    34.1,
+    33.660000000000004,
     1.095,
     -0.6
    ],
@@ -1304,11 +1640,27 @@
    "material": 1
   },
   {
+   "name": "Door7LKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    33.660000000000004,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Door7RFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    35.1,
+    34.660000000000004,
     1.045,
     -0.6
    ],
@@ -1324,7 +1676,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    35.1,
+    34.660000000000004,
     1.095,
     -0.6
    ],
@@ -1336,11 +1688,27 @@
    "material": 1
   },
   {
+   "name": "Door7RKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    34.660000000000004,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    0.88,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "Header7",
    "kind": "box",
    "operation": "add",
    "position": [
-    34.6,
+    34.160000000000004,
     2.1199999999999997,
     -0.6
    ],
@@ -1356,7 +1724,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    35.800000000000004,
+    35.36000000000001,
     1.1,
     -0.6
    ],
@@ -1372,7 +1740,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    35.800000000000004,
+    35.36000000000001,
     2.24,
     -0.6
    ],
@@ -1388,7 +1756,7 @@
    "kind": "box",
    "operation": "add",
    "position": [
-    36.9,
+    36.46,
     1.045,
     -0.6
    ],
@@ -1404,7 +1772,7 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    36.9,
+    36.46,
     1.095,
     -0.6
    ],
@@ -1416,18 +1784,34 @@
    "material": 1
   },
   {
+   "name": "Fixed7Kick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    36.46,
+    0.375,
+    -0.6
+   ],
+   "size": [
+    1.6800000000000002,
+    0.35,
+    0.03
+   ],
+   "material": 0
+  },
+  {
    "name": "GateFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    -0.6000000000000001,
+    0.4,
     1.045,
-    -0.6
+    1
    ],
    "size": [
-    2,
+    0.06,
     2.01,
-    0.06
+    2
    ],
    "material": 1
   },
@@ -1436,46 +1820,126 @@
    "kind": "box",
    "operation": "subtract",
    "position": [
-    -0.6000000000000001,
+    0.4,
     1.095,
-    -0.6
+    1
    ],
    "size": [
-    1.88,
+    0.2,
     1.7899999999999998,
-    0.2
+    1.88
    ],
    "material": 1
+  },
+  {
+   "name": "GateKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0.4,
+    0.375,
+    1
+   ],
+   "size": [
+    0.03,
+    0.35,
+    1.88
+   ],
+   "material": 0
+  },
+  {
+   "name": "GateFixedFrame",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0.4,
+    1.045,
+    2.95
+   ],
+   "size": [
+    0.06,
+    2.01,
+    1.9
+   ],
+   "material": 1
+  },
+  {
+   "name": "GateFixedHole",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
+    0.4,
+    1.095,
+    2.95
+   ],
+   "size": [
+    0.2,
+    1.7899999999999998,
+    1.7799999999999998
+   ],
+   "material": 1
+  },
+  {
+   "name": "GateFixedKick",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    0.4,
+    0.375,
+    2.95
+   ],
+   "size": [
+    0.03,
+    0.35,
+    1.7799999999999998
+   ],
+   "material": 0
   },
   {
    "name": "GatePost",
    "kind": "box",
    "operation": "add",
    "position": [
-    0.7,
+    0.4,
     1.15,
-    -0.6
+    -0.3
    ],
    "size": [
-    0.6,
+    0.32,
     2.3,
-    0.32
+    0.6
    ],
    "material": 0
   },
   {
-   "name": "GatePostWindow",
+   "name": "GatePostWindowFrame",
    "kind": "box",
    "operation": "add",
    "position": [
-    0.7,
-    1.95,
-    -0.42999999999999994
+    0.4,
+    1.88,
+    -0.3
    ],
    "size": [
+    0.34,
     0.46,
+    0.5
+   ],
+   "material": 1
+  },
+  {
+   "name": "GatePostWindow",
+   "kind": "box",
+   "operation": "subtract",
+   "position": [
     0.4,
-    0.04
+    1.88,
+    -0.3
+   ],
+   "size": [
+    0.5,
+    0.38,
+    0.42
    ],
    "material": 1
   }

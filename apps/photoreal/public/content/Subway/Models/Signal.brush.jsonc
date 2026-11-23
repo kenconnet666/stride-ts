@@ -12,49 +12,85 @@
    "kind": "cylinder",
    "operation": "add",
    "position": [
-    1.55,
+    -0.8,
     0,
-    -1.25
+    -1
    ],
-   "height": 3.4,
-   "radius": 0.05,
+   "height": 2.75,
+   "radius": 0.04,
    "material": 0,
    "segments": 16
+  },
+  {
+   "name": "Plate",
+   "kind": "box",
+   "operation": "add",
+   "position": [
+    -0.8,
+    2.76,
+    -1
+   ],
+   "size": [
+    0.3,
+    0.03,
+    0.26
+   ],
+   "material": 1
   },
   {
    "name": "Head",
    "kind": "box",
    "operation": "add",
    "position": [
-    1.55,
-    3.55,
-    -1.25
+    -0.8,
+    2.95,
+    -1
    ],
    "size": [
-    0.28,
-    0.4,
-    0.24
+    0.24,
+    0.36,
+    0.26
    ],
    "material": 1
   },
   {
-   "name": "Lens",
+   "name": "Dome",
    "kind": "cylinder",
    "operation": "add",
    "position": [
-    1.55,
-    3.5,
-    -1.12
+    -0.8,
+    3.13,
+    -1.13
    ],
-   "height": 0.04,
-   "radius": 0.08,
-   "material": 2,
+   "height": 0.26,
+   "radius": 0.12,
+   "material": 1,
    "segments": 16,
    "rotation": [
     0.7071067811865475,
     0,
     0,
     0.7071067811865476
+   ]
+  },
+  {
+   "name": "Lens",
+   "kind": "cylinder",
+   "operation": "add",
+   "position": [
+    -0.68,
+    2.93,
+    -1
+   ],
+   "height": 0.03,
+   "radius": 0.07,
+   "material": 2,
+   "segments": 16,
+   "rotation": [
+    0.5,
+    0.5,
+    -0.4999999999999999,
+    0.5000000000000001
    ]
   }
  ]

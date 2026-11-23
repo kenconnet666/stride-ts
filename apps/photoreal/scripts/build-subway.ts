@@ -106,7 +106,9 @@ const cylinder = (name: string, position: Vec3, height: number, radius: number, 
 
 // ---- 场景：先只有相机、太阳和天空（编辑器里打开着的话，接下来一样一样地出现）----
 const entity = (id: string, name: string, position: Vec3, components: object, rotation: Quat = [0, 0, 0, 1]) => ({ id, name, parent: null, position, rotation, scale: [1, 1, 1], components });
-const eye: Vec3 = [3.6, 1.45, 1.1];
+// 机位按照片的透视估的：拐角的立柱在正前方约 3.1 米，屏蔽门那条线的消失点在画面左边约 22°（相机往轨道那边偏 22°），地平线
+// 在画面中心上面，相机往下俯约 7°；手机拿在 1.55 米高
+const eye: Vec3 = [3.45, 1.55, 0.86];
 const sunAt: Vec3 = [-20, 25, 20];
 await write('scene', 'Subway', {
   name: 'Subway',
@@ -120,7 +122,7 @@ await write('scene', 'Subway', {
     transparent: true,
   },
   entities: [
-    entity('0b6c7c1e-0001-4000-8000-000000000001', 'Camera', eye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 2000 } }, lookAt(eye, [0.4, 1.3, -0.9])),
+    entity('0b6c7c1e-0001-4000-8000-000000000001', 'Camera', eye, { camera: { verticalFieldOfView: 67, nearClipPlane: 0.05, farClipPlane: 2000 } }, lookAt(eye, [0.67, 1.2, -0.27])),
     entity('0b6c7c1e-0001-4000-8000-000000000002', 'Sun', sunAt, {
       light: {
         type: 'directional', color: [1, 0.97, 0.92], intensity: 10,
@@ -168,20 +170,30 @@ await brushModel('Tracks', [M('Ballast'), STEEL, CONCRETE], [
 // ---- 屏蔽门：一跨是 立柱 0.4 | 滑动门 2.0（两扇）| 立柱 0.4 | 固定门 1.8 ----
 const Z = -0.6, SILL = 0.04, TOP = 2.05;
 const doorBrushes: Brush[] = [];
-/** 一扇带黑框的玻璃：x0 起、宽 width。 */
-const leaf = (name: string, x0: number, width: number) => {
-  const cx = x0 + width / 2, height = TOP - SILL, cy = SILL + height / 2;
-  doorBrushes.push(box(`${name}Frame`, [cx, cy, Z], [width, height, 0.06], 1));
-  doorBrushes.push(box(`${name}Hole`, [cx, cy + 0.05, Z], [width - 0.12, height - 0.22, 0.2], 1, 'subtract'));
+/** 玻璃下面一截不锈钢的踢脚板到多高（照片里门、端门的下部都是一块拉丝板）。 */
+const KICK = 0.55;
+/** 一扇带黑框的玻璃（下面一截踢脚板）：沿 X 的从 x0 起、宽 width；across 时沿 Z（端门），x0 是 z 的起点、站在 x = END_X。 */
+const leaf = (name: string, x0: number, width: number, across = false) => {
+  const c = x0 + width / 2, height = TOP - SILL, cy = SILL + height / 2;
+  const at = (along: number, y: number): Vec3 => (across ? [END_X, y, along] : [along, y, Z]);
+  const size = (along: number, y: number, thick: number): Vec3 => (across ? [thick, y, along] : [along, y, thick]);
+  doorBrushes.push(box(`${name}Frame`, at(c, cy), size(width, height, 0.06), 1));
+  doorBrushes.push(box(`${name}Hole`, at(c, cy + 0.05), size(width - 0.12, height - 0.22, 0.2), 1, 'subtract'));
+  doorBrushes.push(box(`${name}Kick`, at(c, (SILL + 0.16 + KICK) / 2), size(width - 0.12, KICK - SILL - 0.16, 0.03), 0));
 };
 const glassBrushes: Brush[] = [];
-const pane = (x0: number, width: number) => glassBrushes.push(box('Glass', [x0 + width / 2, SILL + (TOP - SILL) / 2 + 0.05, Z], [width - 0.1, TOP - SILL - 0.2, 0.012], 0));
+const pane = (x0: number, width: number, across = false) => {
+  const c = x0 + width / 2, bottom = KICK, top = TOP - 0.06;
+  glassBrushes.push(box('Glass', across ? [END_X, (bottom + top) / 2, c] : [c, (bottom + top) / 2, Z], across ? [0.012, top - bottom, width - 0.1] : [width - 0.1, top - bottom, 0.012], 0));
+};
 const post = (name: string, x0: number) => {
   doorBrushes.push(box(name, [x0 + 0.2, 1.1, Z], [0.4, 2.2, 0.32], 0));
   // 立柱顶上的门灯
   doorBrushes.push(box(`${name}Lamp`, [x0 + 0.2, 2.24, Z], [0.26, 0.08, 0.2], 2));
 };
-let x = 1.0;
+// 端门在站台尽头横着（沿 Z），和屏蔽门成直角；拐角是带小窗的不锈钢立柱（窗是通透的，朝着站台）
+const END_X = 0.4;
+let x = END_X + 0.16;
 for (let bay = 0; bay < 8; bay++) {
   post(`Post${bay}a`, x);
   leaf(`Door${bay}L`, x + 0.4, 1.0);
@@ -194,11 +206,15 @@ for (let bay = 0; bay < 8; bay++) {
   pane(x + 2.8, 1.8);
   x += 4.6;
 }
-// 端门（左边的玻璃门）和带小窗的立柱
-leaf('Gate', -1.6, 2.0);
-pane(-1.6, 2.0);
-doorBrushes.push(box('GatePost', [0.7, 1.15, Z], [0.6, 2.3, 0.32], 0));
-doorBrushes.push(box('GatePostWindow', [0.7, 1.95, Z + 0.17], [0.46, 0.4, 0.04], 1));
+leaf('Gate', 0.0, 2.0, true);
+pane(0.0, 2.0, true);
+leaf('GateFixed', 2.0, 1.9, true);
+pane(2.0, 1.9, true);
+// 拐角的立柱：0.6 宽（沿 Z）、0.32 深，上面一个黑框的小窗（打通，里面一块玻璃）
+doorBrushes.push(box('GatePost', [END_X, 1.15, -0.3], [0.32, 2.3, 0.6], 0));
+doorBrushes.push(box('GatePostWindowFrame', [END_X, 1.88, -0.3], [0.34, 0.46, 0.5], 1));
+doorBrushes.push(box('GatePostWindow', [END_X, 1.88, -0.3], [0.5, 0.38, 0.42], 1, 'subtract'));
+glassBrushes.push(box('GatePostGlass', [END_X, 1.88, -0.3], [0.012, 0.38, 0.42], 0));
 await brushModel('ScreenDoors', [M('DoorSteel'), M('FrameBlack'), M('LampRed')], doorBrushes);
 await brushModel('ScreenDoorGlass', [GLASS], glassBrushes);
 
@@ -207,12 +223,17 @@ const railing: Brush[] = [];
 for (let i = 0; i <= 6; i++) railing.push(cylinder(`RailPost${i}`, [-8.6 + i * 1.15, 0, -0.75], 1.1, 0.025, 0));
 railing.push(box('RailTop', [-5.15, 1.1, -0.75], [6.9, 0.05, 0.05], 0));
 railing.push(box('RailMid', [-5.15, 0.55, -0.75], [6.9, 0.04, 0.04], 0));
-railing.push(box('HazardBar', [-3.2, 0.42, 0.9], [3.0, 0.14, 0.06], 1));
-await brushModel('EndRailing', [STEEL, M('HazardYellow')], railing);
+// 端门后面横着一道黄黑挡杆（照片里在玻璃后面，膝盖高），旁边一块水泥墩
+railing.push(box('HazardBar', [-1.3, 0.42, 1.6], [0.06, 0.14, 4.2], 1));
+railing.push(box('Bollard', [-1.0, 0.33, 0.8], [0.32, 0.66, 0.4], 2));
+await brushModel('EndRailing', [STEEL, M('HazardYellow'), CONCRETE], railing);
+// 信号灯：在拐角立柱的正后方、轨道那一侧，杆顶一个圆顶的黑灯罩，绿灯朝站台（+X）
 await brushModel('Signal', [STEEL, M('FrameBlack'), M('LampGreen')], [
-  cylinder('Pole', [1.55, 0, -1.25], 3.4, 0.05, 0),
-  box('Head', [1.55, 3.55, -1.25], [0.28, 0.4, 0.24], 1),
-  cylinder('Lens', [1.55, 3.5, -1.12], 0.04, 0.08, 2, euler(0, 90)),
+  cylinder('Pole', [-0.8, 0, -1.0], 2.75, 0.04, 0),
+  box('Plate', [-0.8, 2.76, -1.0], [0.3, 0.03, 0.26], 1),
+  box('Head', [-0.8, 2.95, -1.0], [0.24, 0.36, 0.26], 1),
+  cylinder('Dome', [-0.8, 3.13, -1.13], 0.26, 0.12, 1, euler(0, 90)),
+  cylinder('Lens', [-0.68, 2.93, -1.0], 0.03, 0.07, 2, euler(90, 90)),
 ]);
 
 // ---- 顶棚：屋面、梁、檐口、立柱 ----
@@ -260,6 +281,6 @@ await write('debris', 'Subway/Debris/DoorLine', { name: 'DoorLine', area: [10, 1
 await place('DoorLineDebris', 'Subway/Debris/DoorLine', [3, 0, 0.2], { visibleInRayTracing: false });
 // 尽头：栏杆和挡杆之间的一块，靠栏杆（后）和挡杆（前）
 await write('debris', 'Subway/Debris/EndCorner', { name: 'EndCorner', area: [6, 1.5], items: debrisItems(400, 120, 40, 5), edges: { sides: ['back', 'front'], width: 0.35, share: 0.75 }, seed: 6 });
-await place('EndCornerDebris', 'Subway/Debris/EndCorner', [-5.2, 0, 0.05], { visibleInRayTracing: false });
+await place('EndCornerDebris', 'Subway/Debris/EndCorner', [-3.6, 0, 0.05], { visibleInRayTracing: false });
 
 await mcp.stop();

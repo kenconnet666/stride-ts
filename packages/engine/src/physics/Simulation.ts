@@ -381,6 +381,25 @@ export class Simulation {
     return this.#world?.staticTriangles(mask) ?? new Float32Array(0);
   }
 
+  /**
+   * 世界坐标的包围盒里静态物体的三角形（同 staticTriangles），顶点相对 origin（双精度）；网格、高度场只给和盒子相交的三角形。
+   * 分块导航网格重建几块时用。
+   */
+  staticTrianglesInBox(min: Vec3Like, max: Vec3Like, origin: Vec3Like, mask = ALL_LAYERS): Float32Array {
+    this.#createPending(this.#entities.game.updateTime);
+    return this.#world?.staticTrianglesInBox([min.x, min.y, min.z], [max.x, max.y, max.z], [origin.x, origin.y, origin.z], mask) ?? new Float32Array(0);
+  }
+
+  /** 开始记静态物体的变化（加上、移除时的世界包围盒，staticChanges 取走）：分块导航网格按它重建盖到的块。 */
+  trackStaticChanges(enabled: boolean): void {
+    this.#worldOrCreate().trackStaticChanges(enabled);
+  }
+
+  /** 取走记下的静态物体变化：每个 6 个数（min xyz、max xyz，世界坐标）。 */
+  staticChanges(): Float32Array {
+    return this.#world?.staticChanges() ?? new Float32Array(0);
+  }
+
   /** 碰撞体的接触处理器（场景里 ContactEventHandler 是 Trigger 的是 TriggerHandler）；没有时是 undefined。 */
   contactHandler(entity: Entity | EntityId): ContactHandler | undefined {
     return this.#handlers.get(this.#bodyOf(entity));

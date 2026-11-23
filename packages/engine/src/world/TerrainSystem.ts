@@ -140,7 +140,7 @@ export class TerrainSystem {
   }
 
   /**
-   * 碰撞的块：相机和每个角色附近 COLLIDER_RADIUS 块以内的最细一层块建成静态的高度场（和画出来的最细一层同样的采样点，碰撞和画面
+   * 碰撞的块：相机、每个角色和导航的引子附近 COLLIDER_RADIUS 块以内的最细一层块建成静态的高度场（和画出来的最细一层同样的采样点，碰撞和画面
    * 对得上）；出了范围再多一块才拿掉。碰撞只跟地形实体的位置走（不转、不缩放）。
    */
   #updateColliders(state: TerrainState, eyeWorld: readonly number[] | undefined): void {
@@ -150,12 +150,19 @@ export class TerrainSystem {
     const half = terrain.size / 2, cells = Math.round(terrain.size / leaf);
     this.#characters.length = 0;
     this.#game.entities.run(this.#collectCharacters, this.#game.updateTime);
-    const sources = eyeWorld ? [...this.#characters, eyeWorld] : this.#characters;
+    // 分块流式的导航网格的引子（人群里的人、NavigationInvoker）脚下也要有地面的碰撞：导航网格按碰撞体建
+    const invokers = this.#game.navigation?.invokers.map((invoker) => [invoker.x, 0, invoker.z]) ?? [];
+    const sources = [...this.#characters, ...invokers, ...(eyeWorld ? [eyeWorld] : [])];
     const frame = this.#frame;
+    // 来源所在的块（人群里的人常常挤在几块里：先去重再往外扩）
+    const centers = new Map<string, readonly [number, number]>();
+    for (const source of sources) {
+      const cx = Math.floor((source[0]! - origin[12]! + half) / leaf), cz = Math.floor((source[2]! - origin[14]! + half) / leaf);
+      centers.set(`${cx}_${cz}`, [cx, cz]);
+    }
     const wanted = (reach: number) => {
       const keys = new Set<string>();
-      for (const source of sources) {
-        const cx = Math.floor((source[0]! - origin[12]! + half) / leaf), cz = Math.floor((source[2]! - origin[14]! + half) / leaf);
+      for (const [cx, cz] of centers.values()) {
         for (let z = cz - reach; z <= cz + reach; z++) for (let x = cx - reach; x <= cx + reach; x++) if (x >= 0 && z >= 0 && x < cells && z < cells) keys.add(`${x}_${z}`);
       }
       return keys;

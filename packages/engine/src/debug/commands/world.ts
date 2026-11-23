@@ -3,6 +3,7 @@ import { Transform } from '../../engine/transform';
 import { Matrix } from '../../data/Matrix';
 import type { DebugColor } from '../DebugDraw';
 import { roadLanes } from '../../modeling/roadLanes';
+import { DEFAULT_NAVIGATION_STREAMING } from '../../physics/NavigationSystem';
 import { Precipitation } from '../../world/Precipitation';
 import type { SaveData } from '../../world/Persistence';
 import { Weather, WEATHER_PRESETS, type WeatherPreset, type WeatherTarget } from '../../world/Weather';
@@ -35,6 +36,18 @@ export function registerWorldCommands(debug: Debug, game: Game): void {
     if (!simulation) throw new Error('the game has no physics (nativeFeatures has no physics)');
     for (const key of ['sleepDistance', 'wakeDistance', 'interval'] as const) if (typeof args[key] === 'number') simulation.lod[key] = args[key];
     return { ...simulation.lod, focus: simulation.focus, ...simulation.lodStats };
+  });
+  debug.command('navigation', 'Navigation mesh and crowd: streaming tiles (navigation.settings.streaming) are built around crowd agents and NavigationInvoker entities and rebuilt where static bodies change. args: tiles (true/false) draws built tiles (green) and tiles being built (yellow); streaming (true/false) turns tile streaming on with the default settings, or off; avoidance (0..3) crowd avoidance quality. Reports tile and crowd stats.', (args) => {
+    const navigation = game.navigation;
+    if (!navigation) throw new Error('the game has no navigation (nativeFeatures needs physics and navigation)');
+    if (typeof args['tiles'] === 'boolean') navigation.showTiles = args['tiles'];
+    if (args['streaming'] === true && !navigation.settings.streaming) navigation.settings = { ...navigation.settings, streaming: DEFAULT_NAVIGATION_STREAMING };
+    if (args['streaming'] === false && navigation.settings.streaming) {
+      const { streaming: _streaming, ...rest } = navigation.settings;
+      navigation.settings = rest;
+    }
+    if (typeof args['avoidance'] === 'number') navigation.crowdAvoidance = Math.max(0, Math.min(3, Math.round(args['avoidance']))) as 0 | 1 | 2 | 3;
+    return { streaming: navigation.settings.streaming ?? false, showTiles: navigation.showTiles, ...navigation.streamStats, crowd: navigation.crowdStats, avoidance: navigation.crowdAvoidance };
   });
   debug.command('animation-lod', 'Animation update rate by distance (animation.lod): skeletons within distances[0] m of the main camera evaluate every frame, then every 2nd, 4th and 8th frame. args: distances (array of metres, [] turns it off). Reports the distances, the focus and how many skeletons were evaluated and skipped last frame.', (args) => {
     const animation = game.animation;

@@ -355,7 +355,7 @@ export class Game {
         this.buoyancy.attach(this.simulation);
       }
       if (this.simulation && this.editing) this.simulation.enabled = false;
-      if (this.simulation && this.native.hasFeature('navigation')) this.navigation = new NavigationSystem(this.native, this.simulation);
+      if (this.simulation && this.native.hasFeature('navigation')) this.navigation = new NavigationSystem(this.native, this.simulation, this.entities);
       this.registry.register(RecastNavigationComponent);
       this.registry.register(UIComponent);
       this.registry.register(ParticleSystemComponent);
@@ -744,7 +744,11 @@ export class Game {
     const eye = this.terrain.eyeWorld();
     if (this.simulation) this.simulation.focus = eye;
     if (this.animation) this.animation.focus = eye;
-    this.entities.update(time, this.simulation ? (t) => this.simulation!.update(t) : undefined);
+    // 分块流式的导航网格在物理之后看静态物体的变化、引子走到哪了
+    this.entities.update(time, this.simulation ? (t) => {
+      this.simulation!.update(t);
+      this.navigation?.update(t);
+    } : undefined);
   }
 
   /** 画一帧：世界矩阵这时已经算好。默认交给图形合成器。 */

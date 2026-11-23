@@ -230,7 +230,7 @@ export { Cloth, clothGrid } from './physics/Cloth';
 export { CrowdAgent } from './physics/CrowdAgent';
 export { SoftBody, weldModel } from './physics/SoftBody';
 export { Deformable, deformableCopy, subdivideMesh } from './physics/Deformable';
-export { DEFAULT_NAVIGATION_SETTINGS, NavigationSystem, type NavigationSettings } from './physics/NavigationSystem';
+export { DEFAULT_NAVIGATION_SETTINGS, DEFAULT_NAVIGATION_STREAMING, NavigationInvoker, NavigationSystem, type NavigationSettings, type NavigationStreaming } from './physics/NavigationSystem';
 export { RecastNavigationComponent, type NavigationState } from './physics/RecastNavigationComponent';
 export { TriggerHandler, type Contact, type ContactHandler, type StartedContact, type TouchingContact } from './physics/contacts';
 export { CameraRig, cameraRigSystem } from './rendering/CameraRig';

@@ -30,17 +30,21 @@ export class CrowdAgent extends SyncScript.props('CrowdAgent', {
   slot: AgentId | -1 = -1;
   /** @internal 目标改了、还没交给人群。 */
   targetDirty = false;
+  /** @internal 目标不在导航网格上时，下一次试的游戏时间（秒）。 */
+  retryAt = 0;
 
-  /** 走到 point（世界位置）。 */
+  /** 走到 point（世界位置）。目标还不在导航网格上时（分块流式还没建到那）先朝它走，建到了再按真的目标走。 */
   moveTo(point: Vec3Like): void {
     this.target = new Vector3(point.x, point.y, point.z);
     this.targetDirty = true;
+    this.retryAt = 0;
   }
 
   /** 停下（站在原地）。 */
   stop(): void {
     this.target = undefined;
     this.targetDirty = true;
+    this.retryAt = 0;
   }
 
   /** 离目标的水平距离不到 tolerance 米（没有目标时也算到了）。 */

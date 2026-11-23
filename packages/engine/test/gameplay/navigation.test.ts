@@ -18,7 +18,7 @@ describe('导航（Stride 的 RecastMeshSystem、RecastNavigationComponent）', 
     game.native = native;
     game.transforms = native.createTransforms(64);
     game.simulation = new Simulation(native, game.transforms, game.entities, 64);
-    game.navigation = new NavigationSystem(native, game.simulation);
+    game.navigation = new NavigationSystem(native, game.simulation, game.entities);
     game.navigation.settings = { ...game.navigation.settings, build: { ...game.navigation.settings.build, cellSize: 0.1, cellHeight: 0.1, agentRadius: 0.5, agentHeight: 1.2 }, includedLayers: 1 << 6 };
     const box = (position: [number, number, number], size: [number, number, number], layer: number, trigger = false) =>
       game.entities.create({ components: [Transform.with({ position }), Static.with({ collider: new Collider([{ type: 'box', size }]).id, layer, trigger })] });

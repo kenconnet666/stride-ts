@@ -101,7 +101,7 @@ export async function decodeModelMeshes(meshes: readonly ModelMeshData[], decode
   const compressed = meshes.filter((mesh) => mesh.compression === 'meshopt');
   let decoded: Uint8Array[] = [];
   if (compressed.length > 0) {
-    if (!decoder) throw new Error(`loading ${where}: compressed meshes need a meshopt decoder`);
+    if (!decoder) throw new Error(`loading ${where}: compressed meshes need a meshoptDecoder (Game sets one when it starts)`);
     decoded = await decoder(compressed.flatMap((mesh) => [
       { source: mesh.vertices, count: mesh.vertexCount, stride: vertexLayoutOffsets(mesh.layout).stride, mode: 'attributes' as const },
       { source: mesh.indices, count: mesh.indexCount, stride: mesh.indexFormat === 'uint16' ? 2 : 4, mode: 'triangles' as const },

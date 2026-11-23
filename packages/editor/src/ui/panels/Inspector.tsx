@@ -1,4 +1,4 @@
-import { Blend, Boxes, FileQuestion, MousePointerClick, Mountain, Plus, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
+import { Blend, Boxes, FileQuestion, MousePointerClick, Mountain, Plus, Scissors, Shapes, Sparkles, Spline, Workflow, X } from '@lucide/icons';
 import { _component } from '@zerodep-dev/vue-tsx-pro-tsx';
 import { Button, Empty, Flex, FormSection, IconButton, Menu, MenuGroup, MenuItem, Paragraph, SHIMMER_STAGGER, Skeleton } from '@zerodep-dev/vue-tsx-pro-ui';
 import { css } from '@zerodep-dev/vue-tsx-pro-tsx/styles';
@@ -297,6 +297,10 @@ export const Inspector = _component(({ session }: { session: EditorSession }) =>
             {key === 'terrain' && list.length === 1 && typeof list[0]!.components['terrain']?.['terrain'] === 'string' && (
               <Button sx={styles.action} size="sm" variant="soft" tone={session.tools.sculpting.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Mountain}
                 onClick={() => void session.tools.startSculpt(list[0]!.id, list[0]!.components['terrain']!['terrain'] as string)}>{t.sculpt}</Button>
+            )}
+            {key === 'gaussianSplat' && list.length === 1 && typeof list[0]!.components['gaussianSplat']?.['splats'] === 'string' && list[0]!.components['gaussianSplat']['splats'] !== '' && (
+              <Button sx={styles.action} size="sm" variant="soft" tone={session.tools.splatEditing.value?.entity === list[0]!.id ? 'accent' : 'neutral'} icon={Scissors}
+                onClick={() => void session.tools.startSplatEdit(list[0]!.id, list[0]!.components['gaussianSplat']!['splats'] as string)}>{t.splatEdit}</Button>
             )}
             {key === 'model' && list.length === 1 && MODEL_SOURCE_EDITORS.map((editor) => {
               // 模型是从这种源文件烘出来的：能在视口里编辑源文件

@@ -9,8 +9,8 @@
  * pickSurface 另外读回那个像素的深度（点到的表面在世界里的位置：编辑器拖东西吸附到表面），可以把一些渲染组排除在外
  * （拖着的东西自己不挡）。
  *
- * 认网格（MeshRenderFeature）、精灵（SpriteRenderFeature），还有不是渲染特性的粒子和放在 3D 里的 UI：它们在网格、精灵之后
- * 画（`game.particles.drawPicking`、`game.ui.drawPicking`），写粒子系统、UI 所在的实体。全屏的 UI 不参加（见 UISystem）。
+ * 认网格（MeshRenderFeature）、精灵（SpriteRenderFeature），还有不是渲染特性的高斯泼溅、粒子和放在 3D 里的 UI：它们在网格、精灵之后
+ * 画（`renderSystem.splats.drawPicking`、`game.particles.drawPicking`、`game.ui.drawPicking`），写泼溅、粒子系统、UI 所在的实体。全屏的 UI 不参加（见 UISystem）。
  */
 import { RenderStage, type RenderContext, type RenderSystem, type RenderView } from './RenderSystem';
 
@@ -113,6 +113,7 @@ export class ScenePicker {
       } finally {
         view.cullingMask = mask;
       }
+      this.#renderSystem.splats.drawPicking(pass, view, ID_FORMAT, PICK_DEPTH_FORMAT);
       context.game.particles.drawPicking(context.game, pass, view, ID_FORMAT, PICK_DEPTH_FORMAT);
       context.game.ui.drawPicking(context.game, pass, view, [width, height], [x, y, 1, 1], ID_FORMAT, PICK_DEPTH_FORMAT);
       pass.end();

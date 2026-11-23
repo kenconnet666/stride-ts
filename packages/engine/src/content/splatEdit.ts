@@ -97,15 +97,42 @@ export function applySplatEdit(source: SplatSource, edit: SplatEditFile): { read
   return { source: pickSplats(source, keep), stats: { kept: count - cropped - erased - floaters, cropped, erased, floaters } };
 }
 
+/**
+ * 编辑的裁剪框、删掉的框、刷掉的球编成 GPU 上的遮罩（rendering/splats/SplatRenderer.ts 的 masked，编辑器里马上预览）：第一项是
+ * 三种的个数，后面每个框 3 行——泼溅坐标换到框里 ±0.5 的单位坐标（第 k 行是框的第 k 根轴除以那条边长，w 是平移）——每个球一项
+ * （球心、半径）。删飞点要数邻居，不在遮罩里。
+ */
+export function splatEditMask(edit: Pick<SplatEditFile, 'keep' | 'remove' | 'erase'>): Float32Array {
+  const keep = edit.keep ?? [], remove = edit.remove ?? [], erase = edit.erase ?? [];
+  const data = new Float32Array(4 + (keep.length + remove.length) * 12 + erase.length * 4);
+  data.set([keep.length, remove.length, erase.length, 0]);
+  let at = 4;
+  for (const box of [...keep, ...remove]) {
+    const q = box.rotation ?? [0, 0, 0, 1];
+    for (let k = 0; k < 3; k++) {
+      const axis = rotate(q, [k === 0 ? 1 : 0, k === 1 ? 1 : 0, k === 2 ? 1 : 0]).map((v) => v / box.size[k]!);
+      data.set([axis[0]!, axis[1]!, axis[2]!, -(axis[0]! * box.center[0] + axis[1]! * box.center[1] + axis[2]! * box.center[2])], at);
+      at += 4;
+    }
+  }
+  for (const sphere of erase) {
+    data.set([...sphere.center, sphere.radius], at);
+    at += 4;
+  }
+  return data;
+}
+
+/** 四元数（xyzw）转一个向量。 */
+function rotate([qx, qy, qz, qw]: readonly number[], [x, y, z]: readonly number[]): [number, number, number] {
+  const tx = 2 * (qy! * z! - qz! * y!), ty = 2 * (qz! * x! - qx! * z!), tz = 2 * (qx! * y! - qy! * x!);
+  return [x! + qw! * tx + qy! * tz - qz! * ty, y! + qw! * ty + qz! * tx - qx! * tz, z! + qw! * tz + qx! * ty - qy! * tx];
+}
+
 /** 点在盒子里（含边界）：转进盒子自己的坐标比半边长。 */
 export function insideBox(box: SplatEditBox, point: readonly number[]): boolean {
-  let x = point[0]! - box.center[0], y = point[1]! - box.center[1], z = point[2]! - box.center[2];
-  if (box.rotation) {
-    // 用旋转的共轭把点转回去：v' = v + 2w(q×v) + 2q×(q×v)，q 取 −xyz
-    const [qx, qy, qz, qw] = [-box.rotation[0], -box.rotation[1], -box.rotation[2], box.rotation[3]];
-    const tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
-    [x, y, z] = [x + qw * tx + qy * tz - qz * ty, y + qw * ty + qz * tx - qx * tz, z + qw * tz + qx * ty - qy * tx];
-  }
+  let [x, y, z] = [point[0]! - box.center[0], point[1]! - box.center[1], point[2]! - box.center[2]];
+  // 用旋转的共轭把点转回去
+  if (box.rotation) [x, y, z] = rotate([-box.rotation[0], -box.rotation[1], -box.rotation[2], box.rotation[3]], [x, y, z]);
   return Math.abs(x) <= box.size[0] / 2 && Math.abs(y) <= box.size[1] / 2 && Math.abs(z) <= box.size[2] / 2;
 }
 

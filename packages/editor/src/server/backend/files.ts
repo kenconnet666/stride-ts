@@ -32,19 +32,26 @@ export async function writeAtomically(file: string, content: string | Uint8Array
   }
 }
 
-/** Windows 上目标文件正被别的进程打开着（开发服务器在读它烘模型、监视文件的、杀毒）时改名报 EPERM、EBUSY：等一下再试。 */
+/**
+ * Windows 上目标文件正被别的进程打开着（开发服务器在读它烘模型、监视文件的、杀毒扫刚写的大文件）时改名报 EPERM、EBUSY：等一下
+ * 再试，等的间隔翻倍、最长半秒，最多等 RENAME_PATIENCE 毫秒（同 graceful-fs 的做法；杀毒扫一个几十 MB 的泼溅文件一秒多也是有的）。
+ */
 async function renameRetrying(from: string, to: string): Promise<void> {
+  const start = performance.now();
   for (let attempt = 0; ; attempt++) {
     try {
       await rename(from, to);
       return;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (attempt >= 6 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 10 * 2 ** attempt));
+      if (performance.now() - start > RENAME_PATIENCE || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(500, 10 * 2 ** attempt)));
     }
   }
 }
+
+/** 改名最多等多久（毫秒）。 */
+const RENAME_PATIENCE = 10_000;
 
 /** 资源内容的哈希（解析过的 JSON 重新序列化：空白、换行不算改了）。 */
 export function contentHash(content: unknown): string {

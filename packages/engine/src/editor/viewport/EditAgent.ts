@@ -38,6 +38,8 @@ import type { PolySelectMode } from './tools/polyPicking';
 import { SplineEditTool } from './tools/SplineEditTool';
 import { BrushEditTool } from './tools/BrushEditTool';
 import { SdfEditTool } from './tools/SdfEditTool';
+import { SplatEditTool } from './tools/SplatEditTool';
+import type { SplatEditFile } from '../../content/formats/splatEditFormat';
 import { DEFAULT_SNAP, TransformGizmo, type SnapSettings } from './TransformGizmo';
 import { currentWorld, probeBoxes, selectionBoxes } from './worldBoxes';
 
@@ -86,7 +88,7 @@ export class EditAgent {
   readonly particles: ParticlePreview;
   /**
    * 视口里正在用的编辑工具（画贴图、雕刻地形、编辑多边形、样条、白盒，见 tools/）：开着时左键交给它，不是点选、拖操纵器。
-   * 用下面的 paintMesh、sculptTerrain、editPoly、editSpline、editBrush、editSdf 开，endTool 关。
+   * 用下面的 paintMesh、sculptTerrain、editPoly、editSpline、editBrush、editSdf、editSplats 开，endTool 关。
    */
   get tool(): ViewportTool | undefined {
     return this.#tool;
@@ -254,6 +256,11 @@ export class EditAgent {
   /** 开始编辑这个实体（场景文件里的 id）的模型来自的 SDF 文件 path（sdf 是现在的内容）：点选形状、操纵器拖着移动、旋转、改大小。 */
   editSdf(entity: string, path: string, sdf: SdfFile): SdfEditTool {
     return this.#use(new SdfEditTool(entity, path, sdf));
+  }
+
+  /** 开始编辑这个实体画着的扫描场景的编辑文件 path（.splatedit.json，file 是现在的内容）：裁剪框、删掉的框、刷选。 */
+  editSplats(entity: string, path: string, file: SplatEditFile): SplatEditTool {
+    return this.#use(new SplatEditTool(entity, path, file));
   }
 
   /** 编辑器直接改了代理、工具的状态（网格、选择）：视口按需出帧时叫醒它画出来。 */

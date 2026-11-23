@@ -110,6 +110,30 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
       <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
     ];
   };
+  /** 编辑扫描场景时的工具条：框选、刷选两种模式；框的模式加裁剪框、删掉的框、删选中的；刷的模式笔刷半径、清掉刷的；删飞点；最后是"完成"。 */
+  const splatControls = (editing: NonNullable<typeof tools.splatEditing.value>) => {
+    const modes = (['boxes', 'erase'] as const).map((mode) => (
+      <Button size="sm" variant={editing.mode === mode ? 'soft' : 'ghost'} tone="neutral" aria-pressed={editing.mode === mode} onClick={() => tools.setSplatMode(mode)}>{t.splatModes[mode]}</Button>
+    ));
+    const modeControls = editing.mode === 'boxes' ? [
+      <Button size="sm" variant="ghost" tone="neutral" icon={Plus} onClick={() => tools.addSplatBox('keep')}>{t.splatAddKeep}</Button>,
+      <Button size="sm" variant="ghost" tone="neutral" icon={Plus} onClick={() => tools.addSplatBox('remove')}>{t.splatAddRemove}</Button>,
+      <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} title={`${t.sdfDelete} (Delete)`} disabled={!editing.selection} onClick={() => tools.deleteSelectedSplatBox()}>{t.sdfDelete}</Button>,
+    ] : [
+      <NumberField {...css.attrs(styles.step)} size="sm" prefix={t.sculptRadius} aria-label={t.sculptRadius} min={0.01} step={0.05} format={{ useGrouping: false, maximumFractionDigits: 3 }}
+        _value={editing.radius} onUpdate:_value={(value: number | null) => value !== null && tools.setSplatBrushRadius(value)} />,
+      <Button size="sm" variant="ghost" tone="neutral" icon={Trash2} disabled={!editing.file.erase?.length} onClick={() => tools.clearSplatErase()}>{t.splatClearErase(editing.file.erase?.length ?? 0)}</Button>,
+    ];
+    return [
+      ...modes,
+      <Separator orientation="vertical" />,
+      ...modeControls,
+      <Separator orientation="vertical" />,
+      <Button size="sm" variant={editing.file.floaters ? 'soft' : 'ghost'} tone="neutral" aria-pressed={editing.file.floaters !== undefined} onClick={() => tools.setSplatFloaters(!editing.file.floaters)}>{t.splatFloaters}</Button>,
+      <Flex grow />,
+      <Button size="sm" variant="soft" tone="accent" icon={Check} onClick={() => tools.stop()}>{t.polyDone}</Button>,
+    ];
+  };
   /**
    * 雕刻地形时的工具条：先是笔刷、地物两种工具；笔刷是种类、半径（米）、强度，地物是新建、选中的那个的高度、过渡宽度、强度
    * 和删除；文件里有几笔，最后是"完成"。
@@ -162,8 +186,8 @@ export const ToolToolbar = _component(({ tools }: { tools: ViewportTools }) => {
     ];
   };
   return () => {
-    const poly = tools.polyEditing.value, spline = tools.splineEditing.value, brush = tools.brushEditing.value, sdf = tools.sdfEditing.value, sculpting = tools.sculpting.value;
-    const controls = poly ? polyControls(poly) : spline ? splineControls(spline) : brush ? brushControls(brush) : sdf ? sdfControls(sdf) : sculpting ? sculptControls(sculpting) : [];
+    const poly = tools.polyEditing.value, spline = tools.splineEditing.value, brush = tools.brushEditing.value, sdf = tools.sdfEditing.value, splat = tools.splatEditing.value, sculpting = tools.sculpting.value;
+    const controls = poly ? polyControls(poly) : spline ? splineControls(spline) : brush ? brushControls(brush) : sdf ? sdfControls(sdf) : splat ? splatControls(splat) : sculpting ? sculptControls(sculpting) : [];
     return <Toolbar docked="top" aria-label={t.viewportToolbar}>{controls}</Toolbar>;
   };
 });

@@ -170,6 +170,8 @@ export type { PolyEditTool, PolySoftSelection } from './editor/viewport/tools/Po
 export type { SplineEditTool } from './editor/viewport/tools/SplineEditTool';
 export type { BrushEditTool } from './editor/viewport/tools/BrushEditTool';
 export type { SdfEditTool } from './editor/viewport/tools/SdfEditTool';
+export type { SplatEditTool, SplatEditMode } from './editor/viewport/tools/SplatEditTool';
+export type { SplatBoxList, SplatBoxSelection } from './editor/viewport/tools/splatBoxes';
 export { addSdfShape, deleteSdfShape } from './editor/viewport/tools/sdfShapes';
 export type { PolySelection, PolySelectMode } from './editor/viewport/tools/polyPicking';
 export { branchFromPoint, deleteSplinePoints } from './editor/viewport/tools/splinePoints';

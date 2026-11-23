@@ -174,6 +174,14 @@ export interface EditorMessages {
   readonly brushHint: string;
   readonly sdfEdit: string;
   readonly sdfHint: string;
+  readonly splatEdit: string;
+  readonly splatBoxesHint: string;
+  readonly splatEraseHint: string;
+  readonly splatModes: { readonly boxes: string; readonly erase: string };
+  readonly splatAddKeep: string;
+  readonly splatAddRemove: string;
+  readonly splatClearErase: (count: number) => string;
+  readonly splatFloaters: string;
   readonly sdfCount: (count: number) => string;
   readonly sdfAdd: string;
   readonly sdfDelete: string;
@@ -436,6 +444,14 @@ const zhCN: EditorMessages = {
   brushHint: '视口里点选笔刷（同一处再点换成后面的），拖面上的手柄改尺寸（吸附按移动的步长，Ctrl 反过来），双击面在外侧加方块；Delete 删笔刷，Ctrl+Z 撤销',
   brushCount: (count) => `${count} 个笔刷`,
   sdfEdit: '编辑 SDF',
+  splatEdit: '编辑扫描（裁剪、刷掉、删飞点）',
+  splatBoxesHint: '视口里点选框（同一处再点换成后面的），操纵器拖着移动、旋转、改大小（W、E、R 换）；绿框外、红框里的泼溅删掉，Delete 删框，Ctrl+Z 撤销',
+  splatEraseHint: '左键在扫描上拖着刷，刷过的泼溅删掉；松开存一步，Ctrl+Z 撤销',
+  splatModes: { boxes: '框选', erase: '刷选' },
+  splatAddKeep: '裁剪框',
+  splatAddRemove: '删除框',
+  splatClearErase: (count) => `清掉刷的（${count}）`,
+  splatFloaters: '删飞点',
   sdfHint: '视口里点选形状（同一处再点换成后面的），操纵器拖着移动、旋转、改大小（W、E、R 换）；Delete 删形状，Ctrl+Z 撤销',
   sdfCount: (count) => `${count} 个形状`,
   sdfAdd: '加形状',
@@ -708,6 +724,14 @@ const enUS: EditorMessages = {
   brushHint: 'Click a brush in the viewport (click again for the one behind), drag a face handle to resize (snaps to the move step, Ctrl inverts), double-click a face to add a box beside it; Delete removes the brush, Ctrl+Z undoes',
   brushCount: (count) => `${count} brush${count === 1 ? '' : 'es'}`,
   sdfEdit: 'Edit SDF',
+  splatEdit: 'Edit scan (crop, erase, floaters)',
+  splatBoxesHint: 'Click a box in the viewport (again at the same spot for the one behind), drag the gizmo to move, rotate or resize it (W, E, R); splats outside green boxes and inside red ones are removed, Delete removes a box, Ctrl+Z undoes',
+  splatEraseHint: 'Drag over the scan with the left button to brush splats away; releasing saves a step, Ctrl+Z undoes',
+  splatModes: { boxes: 'Boxes', erase: 'Brush' },
+  splatAddKeep: 'Crop box',
+  splatAddRemove: 'Delete box',
+  splatClearErase: (count) => `Clear brushing (${count})`,
+  splatFloaters: 'Remove floaters',
   sdfHint: 'Click a shape in the viewport (again at the same spot for the one behind), drag the gizmo to move, rotate or resize it (W, E, R); Delete removes it, Ctrl+Z undoes',
   sdfCount: (count) => `${count} shape${count === 1 ? '' : 's'}`,
   sdfAdd: 'Add shape',

@@ -4,10 +4,10 @@
  * 改了以后经回调告诉这里。会话持有它（`session.tools`），工具条、属性面板、图层栏用它。
  */
 import { shallowRef } from 'vue';
-import type { BrushEditTool, PaintBrush, PaintTool, PolyEditTool, PolySelection, PolySelectMode, PolySoftSelection, SculptBrush, SculptTool, SdfEditTool, SplineEditTool } from '@stride-ts/engine';
+import type { BrushEditTool, PaintBrush, PaintTool, PolyEditTool, PolySelection, PolySelectMode, PolySoftSelection, SculptBrush, SculptTool, SdfEditTool, SplatBoxList, SplatBoxSelection, SplatEditMode, SplatEditTool, SplineEditTool } from '@stride-ts/engine';
 import { addSdfShape, branchFromPoint, deleteBrush, deleteSdfShape, deleteSplinePoints } from '@stride-ts/engine';
 import { applyPolyOperation, type PolyEditResult, type PolyOperation } from '@stride-ts/engine/modeling';
-import type { BrushFile, BrushShapeFile, PolyMeshFile, SdfFile, SdfShapeFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
+import type { BrushFile, BrushShapeFile, PolyMeshFile, SdfFile, SdfShapeFile, SplatEditFile, SplineFile, TerrainFile } from '@stride-ts/engine/content-format';
 import { encodePng } from '@stride-ts/engine/png';
 import { freeAssetPath } from '../../shared/newAssets';
 import { t } from '../i18n/messages';
@@ -41,6 +41,8 @@ export class ViewportTools {
   readonly brushEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly selection: number | undefined; readonly brush: BrushFile }>();
   /** 正在编辑的 SDF 模型（视口里点选形状、操纵器拖）：实体、文件、选中的形状。 */
   readonly sdfEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly selection: number | undefined; readonly sdf: SdfFile }>();
+  /** 正在编辑的扫描场景（视口里框选、刷选）：实体、.splatedit.json、选中的框、模式和笔刷半径、现在的文件。 */
+  readonly splatEditing = shallowRef<{ readonly entity: string; readonly path: string; readonly selection: SplatBoxSelection | undefined; readonly mode: SplatEditMode; readonly radius: number; readonly file: SplatEditFile }>();
 
   readonly #session: EditorSession;
   /** 正在编辑的文件的撤销、存盘（画贴图没有：一笔一存，覆盖遮罩）；响应式的：主工具条的撤销按钮跟着它换。 */
@@ -50,6 +52,7 @@ export class ViewportTools {
   #spline: SplineEditTool | undefined;
   #brush: BrushEditTool | undefined;
   #sdf: SdfEditTool | undefined;
+  #splat: SplatEditTool | undefined;
   #sculpt: SculptTool | undefined;
 
   constructor(session: EditorSession) {
@@ -68,7 +71,7 @@ export class ViewportTools {
 
   /** 开着编辑文件的工具（雕刻、多边形、样条、白盒）：视口上面换成它的工具条。 */
   get editing(): boolean {
-    return this.sculpting.value !== undefined || this.polyEditing.value !== undefined || this.splineEditing.value !== undefined || this.brushEditing.value !== undefined || this.sdfEditing.value !== undefined;
+    return this.sculpting.value !== undefined || this.polyEditing.value !== undefined || this.splineEditing.value !== undefined || this.brushEditing.value !== undefined || this.sdfEditing.value !== undefined || this.splatEditing.value !== undefined;
   }
 
   /** 模型 modelPath 是不是从这种源文件烘出来的：同一路径有那种资源时是它的路径。 */
@@ -80,7 +83,7 @@ export class ViewportTools {
   stop(): void {
     const session = this.#session;
     session.agent.value?.endTool();
-    if ([t.polyHint, t.splineHint, t.brushHint, t.sdfHint, t.sculptHint, t.featuresHint].includes(session.status.value)) session.status.value = '';
+    if ([t.polyHint, t.splineHint, t.brushHint, t.sdfHint, t.splatBoxesHint, t.splatEraseHint, t.sculptHint, t.featuresHint].includes(session.status.value)) session.status.value = '';
     this.#forget();
   }
 
@@ -92,17 +95,18 @@ export class ViewportTools {
   #forget(): void {
     this.#editing.value = undefined;
     this.#paint = undefined;
-    this.#poly = this.#spline = this.#brush = this.#sdf = this.#sculpt = undefined;
+    this.#poly = this.#spline = this.#brush = this.#sdf = this.#splat = this.#sculpt = undefined;
     this.painting.value = undefined;
     this.sculpting.value = undefined;
     this.polyEditing.value = undefined;
     this.splineEditing.value = undefined;
     this.brushEditing.value = undefined;
     this.sdfEditing.value = undefined;
+    this.splatEditing.value = undefined;
   }
 
   /** 开一个编辑文件的工具：先关掉别的，读文件，记撤销的起点。 */
-  async #open<F extends object>(kind: 'poly' | 'spline' | 'brush' | 'sdf' | 'terrain', path: string, restore: (file: F) => void): Promise<F | undefined> {
+  async #open<F extends object>(kind: 'poly' | 'spline' | 'brush' | 'sdf' | 'splatEdit' | 'terrain', path: string, restore: (file: F) => void): Promise<F | undefined> {
     const session = this.#session;
     if (!session.agent.value) return undefined;
     this.stop();
@@ -516,6 +520,96 @@ export class ViewportTools {
     this.sdfEditing.value = { entity: tool.entity, path: tool.path, selection: tool.selection, sdf: tool.file };
   }
 
+  // ── 扫描场景 ──
+
+  /**
+   * 在视口里编辑实体 entity 画着的扫描场景：splats 是它现在的泼溅资源。是某个编辑（.splatedit.json）生成的就编辑那个文件；
+   * 是导入的原样的扫描就先建一个以它为源的编辑（旁边的 `<名字>Edit`），实体换成画编辑生成的那个，再编辑。
+   */
+  async startSplatEdit(entity: string, splats: string): Promise<void> {
+    const session = this.#session;
+    let path = splats;
+    if (!session.assets.value.some((asset) => asset.kind === 'splatEdit' && asset.path === splats)) {
+      const taken = new Set(session.assets.value.map((asset) => `${asset.kind}:${asset.path}`));
+      const folder = splats.includes('/') ? splats.slice(0, splats.lastIndexOf('/')) : '';
+      path = freeAssetPath(folder, `${splats.slice(splats.lastIndexOf('/') + 1)}Edit`, 'splatEdit', taken);
+      await session.createAsset('splatEdit', path, { name: path.slice(path.lastIndexOf('/') + 1), source: splats } satisfies SplatEditFile);
+      session.apply({ type: 'set', entity, path: ['components', 'gaussianSplat', 'splats'], value: path });
+      session.commit();
+      await session.synced;
+    }
+    const file = await this.#open<SplatEditFile>('splatEdit', path, (restored) => {
+      const tool = this.#splat;
+      if (!tool) return;
+      tool.file = restored;
+      tool.selection = undefined;
+      this.#showSplat();
+    });
+    const agent = session.agent.value;
+    if (!file || !agent) return;
+    const tool = this.#splat = agent.editSplats(entity, path, file);
+    tool.onChanged = (commit) => {
+      if (commit) this.#editing.value?.commit(tool.file);
+      this.#showSplat();
+    };
+    this.#showSplat();
+    session.status.value = t.splatBoxesHint;
+  }
+
+  /** 换框选、刷选。 */
+  setSplatMode(mode: SplatEditMode): void {
+    const tool = this.#splat;
+    if (!tool) return;
+    tool.mode = mode;
+    this.#session.status.value = mode === 'erase' ? t.splatEraseHint : t.splatBoxesHint;
+    this.#showSplat();
+  }
+
+  /** 刷选的笔刷半径（米）。 */
+  setSplatBrushRadius(radius: number): void {
+    const tool = this.#splat;
+    if (!tool || !(radius > 0)) return;
+    tool.brushRadius = radius;
+    this.#showSplat();
+  }
+
+  /** 加一个裁剪框（盖住整个扫描）或删掉的框，选中它。 */
+  addSplatBox(list: SplatBoxList): void {
+    this.#splat?.addBox(list);
+  }
+
+  /** 删掉选中的框。 */
+  deleteSelectedSplatBox(): void {
+    this.#splat?.deleteSelected();
+  }
+
+  /** 删飞点开、关（开的时候用默认的格子和邻居数）。 */
+  setSplatFloaters(on: boolean): void {
+    const tool = this.#splat;
+    if (!tool) return;
+    const { floaters: _, ...rest } = tool.file;
+    tool.file = on ? { ...rest, floaters: {} } : rest;
+    this.#editing.value?.commit(tool.file);
+    this.#showSplat();
+  }
+
+  /** 清掉刷掉的球（刷错了重来）。 */
+  clearSplatErase(): void {
+    const tool = this.#splat;
+    if (!tool?.file.erase) return;
+    const { erase: _, ...rest } = tool.file;
+    tool.file = rest;
+    this.#editing.value?.commit(tool.file);
+    this.#showSplat();
+  }
+
+  #showSplat(): void {
+    const tool = this.#splat;
+    if (!tool) return;
+    this.#session.agent.value?.refresh();
+    this.splatEditing.value = { entity: tool.entity, path: tool.path, selection: tool.selection, mode: tool.mode, radius: tool.brushRadius, file: tool.file };
+  }
+
   /** 视口里的 Delete：多边形删选中的面，样条删选中的控制点，白盒删选中的笔刷，SDF 删选中的形状；返回有没有工具接了它。 */
   deleteSelected(): boolean {
     const poly = this.polyEditing.value;
@@ -533,6 +627,10 @@ export class ViewportTools {
     }
     if (this.sdfEditing.value) {
       this.deleteSelectedSdfShape();
+      return true;
+    }
+    if (this.splatEditing.value) {
+      this.deleteSelectedSplatBox();
       return true;
     }
     return false;
